@@ -11,6 +11,7 @@ import { randomSeed } from '../core/rng.js';
 import { reachable } from '../core/pathfind.js';
 import { placeUnit, resolveCombat } from './units.js';
 import { TurnManager } from './turn.js';
+import { captureCity } from './cities.js';
 
 export class Game {
   constructor(canvas) {
@@ -129,13 +130,24 @@ export class Game {
     const cost = info?.costs.get(tile);
     if (cost === undefined) return false;
 
-    placeUnit(unit, tile);
+    this.enterTile(unit, tile);
     unit.movesLeft = Math.max(0, unit.movesLeft - cost);
-    this.turns.claim(tile, unit.nationId);
     if (unit === this.selectedUnit) this.selectUnit(unit.movesLeft > 0 ? unit : null);
     this.emit('units', this.selectedUnit);
     this.requestRender();
     return true;
+  }
+
+  /** Bir birimin kareye girişi: yerleş, toprağı al, şehirse ele geçir. */
+  enterTile(unit, tile) {
+    placeUnit(unit, tile);
+    this.turns.claim(tile, unit.nationId);
+    const city = tile.city;
+    if (city && city.nationId !== unit.nationId) {
+      const old = this.world.nations[city.nationId];
+      captureCity(this, city, unit.nationId);
+      this.turns.addLog(`${city.name} ele geçirildi (${old.name}).`);
+    }
   }
 
   attack(unit, tile) {
@@ -149,10 +161,7 @@ export class Game {
 
     if (result.defenderDied) {
       this.turns.killUnit(defender);
-      if (!result.attackerDied) {
-        placeUnit(unit, tile);
-        this.turns.claim(tile, unit.nationId);
-      }
+      if (!result.attackerDied) this.enterTile(unit, tile);
     }
     if (result.attackerDied) this.turns.killUnit(unit);
 

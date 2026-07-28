@@ -1,6 +1,9 @@
 // DOM arayüzü: ayarlar, katman anahtarları, seçili hex paneli.
 // Oyun mantığı burada yok; sadece Game'i sürer ve olaylarını dinler.
 
+import { CITY_COST, UNIT_PRICES, canFoundCity } from '../game/cities.js';
+import { UNIT_TYPES } from '../game/units.js';
+
 const $ = (id) => document.getElementById(id);
 
 export class Hud {
@@ -24,6 +27,8 @@ export class Hud {
       lblNations: $('lbl-nations'),
       turnValue: $('turn-value'),
       turnNation: $('turn-nation'),
+      goldValue: $('gold-value'),
+      incomeValue: $('income-value'),
     };
     this.bind();
   }
@@ -73,7 +78,10 @@ export class Hud {
     game.on('world', (world) => this.onWorld(world));
     game.on('select', (tile) => this.showTile(tile));
     game.on('turn', () => this.onTurn());
-    game.on('units', () => this.showTile(this.game.selected));
+    game.on('units', () => {
+      this.showTile(this.game.selected);
+      this.onTurn();
+    });
   }
 
   setLayer(flag, value) {
@@ -108,8 +116,13 @@ export class Hud {
     this.el.turnValue.textContent = String(turns.turn);
     const me = world.nations[turns.playerNation];
     const alive = world.nations.filter((n) => n.alive).length;
+    const cities = world.cities.filter((c) => c.nationId === turns.playerNation).length;
+    this.el.goldValue.textContent = String(me?.gold ?? 0);
+    this.el.incomeValue.textContent = me
+      ? `(${me.income >= 0 ? '+' : ''}${me.income} · bakım ${me.upkeep ?? 0})`
+      : '';
     this.el.turnNation.textContent = me
-      ? `${me.name} · ${me.tiles} hex · ${alive} ülke ayakta`
+      ? `${me.name} · ${me.tiles} hex · ${cities} şehir · ${alive} ülke ayakta`
       : '—';
   }
 
@@ -161,7 +174,7 @@ export class Hud {
         </div>
       </div>` : '';
 
-    body.innerHTML = unitBlock + `
+    body.innerHTML = unitBlock + this.actionsHtml(tile) + `
       <div class="tile-head">
         <span class="swatch" style="background:${color}"></span>
         <div>
@@ -172,6 +185,40 @@ export class Hud {
       <div class="stats">
         ${stats.map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}
       </div>`;
+
+    this.bindActions();
+  }
+
+  /** Karede yapılabilecek eylemler: şehirde birim al, birimle şehir kur. */
+  actionsHtml(tile) {
+    const { game } = this;
+    const me = game.world.nations[game.turns.playerNation];
+    const rows = [];
+
+    if (tile.city && tile.city.nationId === game.turns.playerNation) {
+      const buttons = Object.entries(UNIT_PRICES).map(([id, price]) => {
+        const disabled = me.gold < price ? 'disabled' : '';
+        return `<button class="action" data-buy="${id}" ${disabled}>${UNIT_TYPES[id].name} · ${price}</button>`;
+      }).join('');
+      rows.push(`<div class="action-row"><div class="k">${escapeHtml(tile.city.name)} — birim al</div>${buttons}</div>`);
+    }
+
+    const unit = game.selectedUnit;
+    if (unit && unit.tile === tile && unit.movesLeft > 0 && canFoundCity(game.world, tile, unit.nationId)) {
+      const disabled = me.gold < CITY_COST ? 'disabled' : '';
+      rows.push(`<div class="action-row"><button class="action wide" data-found="1" ${disabled}>Şehir Kur · ${CITY_COST} altın</button></div>`);
+    }
+    return rows.join('');
+  }
+
+  bindActions() {
+    const { game } = this;
+    const me = game.world.nations[game.turns.playerNation];
+    for (const btn of this.el.sheetBody.querySelectorAll('[data-buy]')) {
+      btn.onclick = () => game.turns.buyUnit(me, btn.dataset.buy);
+    }
+    const found = this.el.sheetBody.querySelector('[data-found]');
+    if (found) found.onclick = () => game.turns.foundCity(game.selectedUnit);
   }
 }
 

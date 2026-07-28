@@ -94,6 +94,7 @@ export class Renderer {
     if (state.hovered && state.hovered !== state.selected) {
       this.drawHighlight(ctx, state.hovered, 'rgba(255,255,255,0.45)', 2);
     }
+    this.drawCities(ctx, world);
     this.drawUnits(ctx, world, state.selectedUnit);
     ctx.restore();
 
@@ -214,6 +215,38 @@ export class Renderer {
     ctx.lineWidth = 1.5 / this.camera.zoom;
     ctx.strokeStyle = 'rgba(255,255,255,0.5)';
     ctx.stroke(path);
+  }
+
+  /** Şehirler: ülke renginde köşeli sur işareti, seviye kadar burçlu. */
+  drawCities(ctx, world) {
+    if (!world.cities?.length) return;
+    const rect = this.camera.visibleRect(HEX_SIZE * 2);
+    const s = HEX_SIZE * 0.46;
+
+    for (const city of world.cities) {
+      const t = city.tile;
+      if (t.x < rect.minX || t.x > rect.maxX || t.y < rect.minY || t.y > rect.maxY) continue;
+      const color = world.nations[city.nationId].color;
+
+      ctx.beginPath();
+      ctx.rect(t.x - s, t.y - s * 0.7, s * 2, s * 1.4);
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.lineWidth = 2 / this.camera.zoom;
+      ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+      ctx.stroke();
+
+      // Burçlar: seviye arttıkça üstte daha çok diş.
+      const teeth = 1 + city.level;
+      const w = (s * 2) / (teeth * 2 - 1);
+      ctx.beginPath();
+      for (let i = 0; i < teeth; i++) {
+        ctx.rect(t.x - s + i * w * 2, t.y - s * 0.7 - w * 0.8, w, w * 0.8);
+      }
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.stroke();
+    }
   }
 
   /**

@@ -36,7 +36,7 @@ src/
   render/    camera.js (dünya<->ekran), renderer.js (Canvas2D çizim + önbellek)
   input/     pointer.js (dokunmatik/fare/pinch tek katman)
   game/      game.js (kabuk + eylemler), units.js (birim tipleri, savaş),
-             turn.js (tur döngüsü, üretim), ai.js (ülke yapay zekâsı)
+             cities.js (şehirler + ekonomi), turn.js (tur döngüsü), ai.js (ülke YZ'si)
   ui/        hud.js (DOM paneller — oyun mantığı içermez)
 ```
 
@@ -58,17 +58,22 @@ hiçbir üst katmanı tanımaz. Bu yüzden harita üretimini tarayıcı olmadan 
 
 ### Oyun döngüsü
 
-Oyuncu 0. ülkeyi yönetir. Her tur: birimleri hareket ettir/saldır → **Turu Bitir** →
-yapay zekâ tüm ülkeler için oynar → hareket hakları yenilenir → 4 turda bir
-başkentlerde birim üretilir. Toprağı olmayan ve birimi kalmayan ülke elenir.
+Oyuncu 0. ülkeyi yönetir. Her tur: birimleri hareket ettir/saldır, şehirde birim
+satın al → **Turu Bitir** → yapay zekâ tüm ülkeler için oynar → hareket hakları
+yenilenir → gelir toplanır. Şehri ve birimi kalmayan ülke elenir, toprakları
+sahipsizleşir.
 
-Savaş: saldıran ve savunan aynı anda hasar alır; savunan arazi bonusundan
-yararlanır (piyade iki katı). Savunan ölürse saldıran kareye ilerler ve orayı
-ülkesine katar. Saldırı turun kalan hareketini tüketir.
+Savaş: saldıran ve savunan aynı anda hasar alır; savunan arazi ve şehir surları
+bonusundan yararlanır (piyade arazi bonusunu iki katı kullanır). Savunan ölürse
+saldıran kareye ilerler. Saldırı turun kalan hareketini tüketir.
+
+Ekonomi: şehirler gelirin ana kaynağı, toprak verimi ikincil. Her birim tur başına
+**2 altın bakım** ister; hazine eksiye düşerse birimler dağılır. İmparatorluk
+büyüdükçe şehir başına verim düşer (yolsuzluk). Bu iki fren olmadan ilk fetheden
+ülke katlanarak büyüyüp oyunu ~100. turda bitiriyordu.
 
 ## Sonraki adımlar
 
-- Şehirler ve kaynak/üretim ekonomisi (`tile.terrain.fertility` yerinde duruyor)
 - Nehirler (`tile.river` alanı ayrılmış), köprü/geçit maliyetleri
 - Deniz birimleri ve karaya çıkarma (şu an okyanus tamamen geçilmez)
 - Diplomasi: şu an herkes herkesle savaşta

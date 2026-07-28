@@ -51,7 +51,9 @@ export function placeUnit(unit, tile) {
  * @returns {{ attackerDamage: number, defenderDamage: number, defenderDied: boolean, attackerDied: boolean }}
  */
 export function resolveCombat(attacker, defender, rng) {
-  const terrainBonus = defender.tile.terrain.defense * (defender.type.entrenched ? 2 : 1);
+  // Şehir surları araziden bağımsız sabit bir savunma katkısı verir.
+  const cityBonus = defender.tile.city ? 0.3 + defender.tile.city.level * 0.1 : 0;
+  const terrainBonus = defender.tile.terrain.defense * (defender.type.entrenched ? 2 : 1) + cityBonus;
   const roll = () => 0.75 + rng() * 0.5;
 
   const defenderDamage = Math.round(attacker.type.attack * 10 * roll() * (1 - Math.min(0.7, terrainBonus)));
