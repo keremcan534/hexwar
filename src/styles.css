@@ -188,6 +188,47 @@ html, body {
 }
 .placeholder { margin: 4px 0 8px; color: var(--muted); font-size: 13px; text-align: center; }
 
+.turn-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 10px;
+  margin-bottom: 10px;
+  border-bottom: 1px solid var(--line);
+}
+.turn-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.turn-no { font-size: 13px; color: var(--muted); }
+.turn-no b { color: var(--text); font-size: 15px; }
+.turn-nation { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.primary.compact { width: auto; margin: 0; padding: 10px 16px; font-size: 14px; flex: none; }
+
+.unit-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+.unit-badge {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  color: rgba(0, 0, 0, 0.85);
+  border: 1px solid rgba(0, 0, 0, 0.6);
+  flex: none;
+}
+.hp-bar {
+  height: 5px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  margin-top: 4px;
+}
+.hp-bar i { display: block; height: 100%; background: #5ed46a; }
+
 .tile-head {
   display: flex;
   align-items: center;

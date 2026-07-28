@@ -22,6 +22,8 @@ export class Hud {
       lblCont: $('lbl-cont'),
       lblLand: $('lbl-land'),
       lblNations: $('lbl-nations'),
+      turnValue: $('turn-value'),
+      turnNation: $('turn-nation'),
     };
     this.bind();
   }
@@ -66,8 +68,12 @@ export class Hud {
       el.settings.classList.add('hidden');
     };
 
+    $('btn-end-turn').onclick = () => game.endTurn();
+
     game.on('world', (world) => this.onWorld(world));
     game.on('select', (tile) => this.showTile(tile));
+    game.on('turn', () => this.onTurn());
+    game.on('units', () => this.showTile(this.game.selected));
   }
 
   setLayer(flag, value) {
@@ -92,7 +98,19 @@ export class Hud {
     const landPct = Math.round((world.landCount / world.tiles.length) * 100);
     this.el.genStats.textContent =
       `${world.tiles.length} hex · %${landPct} kara · ${world.nations.length} ülke · ${world.genTime.toFixed(0)} ms`;
-    this.el.sheetBody.innerHTML = '<p class="placeholder">Bilgi için bir hex\'e dokun.</p>';
+    this.el.sheetBody.innerHTML = '<p class="placeholder">Birimini seç, sonra gideceği hex\'e dokun.</p>';
+    this.onTurn();
+  }
+
+  onTurn() {
+    const { turns, world } = this.game;
+    if (!world) return;
+    this.el.turnValue.textContent = String(turns.turn);
+    const me = world.nations[turns.playerNation];
+    const alive = world.nations.filter((n) => n.alive).length;
+    this.el.turnNation.textContent = me
+      ? `${me.name} · ${me.tiles} hex · ${alive} ülke ayakta`
+      : '—';
   }
 
   async copySeed() {
@@ -110,7 +128,7 @@ export class Hud {
   showTile(tile) {
     const body = this.el.sheetBody;
     if (!tile) {
-      body.innerHTML = '<p class="placeholder">Harita dışı.</p>';
+      body.innerHTML = '<p class="placeholder">Birimini seç, sonra gideceği hex\'e dokun.</p>';
       return;
     }
     const world = this.game.world;
@@ -132,7 +150,18 @@ export class Hud {
       stats.push(['Nüfus', formatNumber(nation.population)]);
     }
 
-    body.innerHTML = `
+    const unit = tile.unit;
+    const unitBlock = unit ? `
+      <div class="unit-row">
+        <span class="unit-badge" style="background:${world.nations[unit.nationId].color}">${unit.type.glyph}</span>
+        <div style="flex:1;min-width:0">
+          <div class="tile-title">${escapeHtml(unit.type.name)}${unit.nationId === this.game.turns.playerNation ? '' : ' (düşman)'}</div>
+          <div class="tile-sub">can ${unit.hp}/${unit.type.hp} · hareket ${unit.movesLeft}/${unit.type.moves} · saldırı ${unit.type.attack}</div>
+          <div class="hp-bar"><i style="width:${Math.max(0, (unit.hp / unit.type.hp) * 100)}%"></i></div>
+        </div>
+      </div>` : '';
+
+    body.innerHTML = unitBlock + `
       <div class="tile-head">
         <span class="swatch" style="background:${color}"></span>
         <div>

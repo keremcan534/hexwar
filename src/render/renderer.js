@@ -89,10 +89,12 @@ export class Renderer {
       this.lastDrawn = tiles.length;
     }
 
+    if (state.reachable) this.drawReachable(ctx, state.reachable);
     if (state.selected) this.drawHighlight(ctx, state.selected, '#ffffff', 3);
     if (state.hovered && state.hovered !== state.selected) {
       this.drawHighlight(ctx, state.hovered, 'rgba(255,255,255,0.45)', 2);
     }
+    this.drawUnits(ctx, world, state.selectedUnit);
     ctx.restore();
 
     if (this.showLabels && world.nations?.length && cam.zoom > 0.3) {
@@ -198,6 +200,70 @@ export class Renderer {
     for (const [color, path] of byColor) {
       ctx.strokeStyle = color;
       ctx.stroke(path);
+    }
+  }
+
+  /** Seçili birimin gidebileceği kareler. */
+  drawReachable(ctx, reachable) {
+    const path = new Path2D();
+    for (const tile of reachable.costs.keys()) this.hexPath(path, tile.x, tile.y);
+    ctx.globalAlpha = 0.22;
+    ctx.fillStyle = '#ffffff';
+    ctx.fill(path);
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 1.5 / this.camera.zoom;
+    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+    ctx.stroke(path);
+  }
+
+  /**
+   * Birimler: ülke renginde disk + tip harfi + can çubuğu.
+   * Uzaklaşınca yazı okunmaz olduğu için sadece disk çizilir.
+   */
+  drawUnits(ctx, world, selectedUnit) {
+    if (!world.units?.length) return;
+    const zoom = this.camera.zoom;
+    const rect = this.camera.visibleRect(HEX_SIZE * 2);
+    const radius = HEX_SIZE * 0.52;
+    const detailed = zoom > 0.5;
+
+    for (const unit of world.units) {
+      const t = unit.tile;
+      if (t.x < rect.minX || t.x > rect.maxX || t.y < rect.minY || t.y > rect.maxY) continue;
+      const nation = world.nations[unit.nationId];
+
+      ctx.beginPath();
+      ctx.arc(t.x, t.y, radius, 0, Math.PI * 2);
+      ctx.fillStyle = nation.color;
+      ctx.fill();
+      ctx.lineWidth = (unit === selectedUnit ? 3 : 1.5) / zoom;
+      ctx.strokeStyle = unit === selectedUnit ? '#ffffff' : 'rgba(0,0,0,0.7)';
+      ctx.stroke();
+
+      if (!detailed) continue;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.85)';
+      ctx.font = `700 ${Math.round(HEX_SIZE * 0.62)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(unit.type.glyph, t.x, t.y + 1);
+
+      // Can çubuğu yalnızca hasarlıysa.
+      const ratio = unit.hp / unit.type.hp;
+      if (ratio < 1) {
+        const w = radius * 1.8;
+        ctx.fillStyle = 'rgba(0,0,0,0.6)';
+        ctx.fillRect(t.x - w / 2, t.y + radius + 2, w, 4);
+        ctx.fillStyle = ratio > 0.5 ? '#5ed46a' : ratio > 0.25 ? '#e8c34a' : '#e05a4a';
+        ctx.fillRect(t.x - w / 2, t.y + radius + 2, w * ratio, 4);
+      }
+      // Hareket hakkı bittiyse soluk perde.
+      if (unit.movesLeft <= 0) {
+        ctx.beginPath();
+        ctx.arc(t.x, t.y, radius, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.4)';
+        ctx.fill();
+      }
     }
   }
 

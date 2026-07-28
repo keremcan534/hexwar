@@ -22,15 +22,21 @@ Belirli bir dünyayı paylaşmak için: `http://localhost:5173/?seed=TNGZT4`
 | Yakınlaş | iki parmak pinch | fare tekerleği |
 | Seç | dokun | tıkla |
 
+Kendi birimine dokun → gidebileceği kareler beyazla işaretlenir → hedefe dokun.
+Bitişik düşmana dokunmak saldırıdır. Birim durduğu kareyi ülkesine katar.
+Alttaki **Turu Bitir** ile yapay zekâ oynar, sonra hareket hakları yenilenir.
+
 ## Mimari
 
 ```
 src/
-  core/      hex.js (hex matematiği), rng.js (seed'li PRNG), noise.js (Perlin + fBm)
+  core/      hex.js (hex matematiği), rng.js (seed'li PRNG), noise.js (Perlin + fBm),
+             pathfind.js (Dijkstra menzil + A*)
   world/     terrain.js (biyom tanımları), worldgen.js (harita üretimi), nations.js (ülkeler)
   render/    camera.js (dünya<->ekran), renderer.js (Canvas2D çizim + önbellek)
   input/     pointer.js (dokunmatik/fare/pinch tek katman)
-  game/      game.js (her şeyi bağlayan kabuk, olay yayını)
+  game/      game.js (kabuk + eylemler), units.js (birim tipleri, savaş),
+             turn.js (tur döngüsü, üretim), ai.js (ülke yapay zekâsı)
   ui/        hud.js (DOM paneller — oyun mantığı içermez)
 ```
 
@@ -50,10 +56,21 @@ hiçbir üst katmanı tanımaz. Bu yüzden harita üretimini tarayıcı olmadan 
   tek `drawImage` ile basılır (~0.1 ms). Yakın zoomda doğrudan çizim (~1 ms).
   Dünya veya katman değişince `renderer.invalidateCache()` çağrılmalı.
 
-## Sonraki adımlar (iskelet hazır, üstüne inşa edilecek)
+### Oyun döngüsü
 
-- Birimler ve hareket: `terrain.moveCost` ile A* (hex mesafesi sezgiseli hazır)
-- Tur döngüsü ve ülke yapay zekâsı
-- Şehirler, üretim, kaynaklar (`tile.terrain.fertility` yerinde duruyor)
-- Nehirler (`tile.river` alanı ayrılmış), savaş çözümü (`terrain.defense`)
-- Kaydetme: seed + yapılan hamleler yeterli, harita yeniden üretilebilir
+Oyuncu 0. ülkeyi yönetir. Her tur: birimleri hareket ettir/saldır → **Turu Bitir** →
+yapay zekâ tüm ülkeler için oynar → hareket hakları yenilenir → 4 turda bir
+başkentlerde birim üretilir. Toprağı olmayan ve birimi kalmayan ülke elenir.
+
+Savaş: saldıran ve savunan aynı anda hasar alır; savunan arazi bonusundan
+yararlanır (piyade iki katı). Savunan ölürse saldıran kareye ilerler ve orayı
+ülkesine katar. Saldırı turun kalan hareketini tüketir.
+
+## Sonraki adımlar
+
+- Şehirler ve kaynak/üretim ekonomisi (`tile.terrain.fertility` yerinde duruyor)
+- Nehirler (`tile.river` alanı ayrılmış), köprü/geçit maliyetleri
+- Deniz birimleri ve karaya çıkarma (şu an okyanus tamamen geçilmez)
+- Diplomasi: şu an herkes herkesle savaşta
+- Daha akıllı YZ: şu an "en yakın yabancı kareye yürü, bitişiktekine vur"
+- Kaydetme: seed + hamle listesi yeterli, harita yeniden üretilebilir
