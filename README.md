@@ -67,6 +67,11 @@ Savaş: saldıran ve savunan aynı anda hasar alır; savunan arazi ve şehir sur
 bonusundan yararlanır (piyade arazi bonusunu iki katı kullanır). Savunan ölürse
 saldıran kareye ilerler. Saldırı turun kalan hareketini tüketir.
 
+Deniz: kara birimi kıyıdan denize girince **bindirilmiş** olur — hızı 4'e sabitlenir,
+saldıramaz, savunmada 1.6 kat hasar alır. Karaya çıkınca normale döner. Savaş gemisi
+yalnızca kıyı şehrinde üretilir, karaya çıkamaz ama bitişik kara birimini vurabilir
+(öldürse de kareye ilerlemez). Açık deniz iki kat pahalıdır, kıyı boyu seyretmek ucuz.
+
 Ekonomi: şehirler gelirin ana kaynağı, toprak verimi ikincil. Her birim tur başına
 **2 altın bakım** ister; hazine eksiye düşerse birimler dağılır. İmparatorluk
 büyüdükçe şehir başına verim düşer (yolsuzluk). Bu iki fren olmadan ilk fetheden
@@ -75,7 +80,7 @@ büyüdükçe şehir başına verim düşer (yolsuzluk). Bu iki fren olmadan ilk
 ## Sonraki adımlar
 
 - Nehirler (`tile.river` alanı ayrılmış), köprü/geçit maliyetleri
-- Deniz birimleri ve karaya çıkarma (şu an okyanus tamamen geçilmez)
 - Diplomasi: şu an herkes herkesle savaşta
+- Görüş alanı / savaş sisi (şu an tüm harita açık)
 - Daha akıllı YZ: şu an "en yakın yabancı kareye yürü, bitişiktekine vur"
 - Kaydetme: seed + hamle listesi yeterli, harita yeniden üretilebilir

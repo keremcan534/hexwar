@@ -45,11 +45,19 @@ function defaultCanEnter(tile) {
   return tile.terrain.passable && !tile.unit;
 }
 
+/** Varsayılan maliyet: kara hareket maliyeti. Deniz için costOf geçilmeli. */
+function defaultCostOf(tile) {
+  return tile.terrain.moveCost;
+}
+
 /**
  * Verilen hareket bütçesiyle ulaşılabilen tüm kareler.
  * @returns {{ costs: Map<object, number>, prev: Map<object, object> }}
  */
-export function reachable(world, start, budget, { canEnter = defaultCanEnter } = {}) {
+export function reachable(world, start, budget, {
+  canEnter = defaultCanEnter,
+  costOf = defaultCostOf,
+} = {}) {
   const costs = new Map([[start, 0]]);
   const prev = new Map();
   const heap = new MinHeap();
@@ -60,7 +68,7 @@ export function reachable(world, start, budget, { canEnter = defaultCanEnter } =
     if (f > (costs.get(tile) ?? Infinity)) continue; // eskimiş giriş
     for (const n of world.neighbors(tile)) {
       if (!canEnter(n, tile)) continue;
-      const next = f + n.terrain.moveCost;
+      const next = f + costOf(n, tile);
       if (next > budget) continue;
       if (next >= (costs.get(n) ?? Infinity)) continue;
       costs.set(n, next);
@@ -86,7 +94,11 @@ export function tracePath(prev, target) {
  * Bütçesiz A*: uzak hedefe en ucuz yol. Bulunamazsa null.
  * Sezgisel = hex mesafesi (en ucuz adım maliyeti 1 olduğu için kabul edilebilir).
  */
-export function findPath(world, start, goal, { canEnter = defaultCanEnter, maxNodes = 8000 } = {}) {
+export function findPath(world, start, goal, {
+  canEnter = defaultCanEnter,
+  costOf = defaultCostOf,
+  maxNodes = 8000,
+} = {}) {
   if (start === goal) return [];
   const g = new Map([[start, 0]]);
   const prev = new Map();
@@ -101,8 +113,8 @@ export function findPath(world, start, goal, { canEnter = defaultCanEnter, maxNo
     const cost = g.get(tile);
     for (const n of world.neighbors(tile)) {
       if (n !== goal && !canEnter(n, tile)) continue;
-      if (!n.terrain.passable) continue;
-      const next = cost + n.terrain.moveCost;
+      const next = cost + costOf(n, tile);
+      if (!Number.isFinite(next)) continue;
       if (next >= (g.get(n) ?? Infinity)) continue;
       g.set(n, next);
       prev.set(n, tile);

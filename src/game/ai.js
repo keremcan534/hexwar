@@ -38,6 +38,18 @@ function spend(game, nation) {
   let army = world.units.filter((u) => u.nationId === nation.id).length;
   let projectedNet = nation.income ?? 0;
 
+  // Kıyı ülkeleri mütevazı bir donanma tutar: adalar ve kıyı şehirleri savunmasız kalmasın.
+  const hasPort = world.cities.some((c) => c.nationId === nation.id && c.tile.coastal);
+  const fleet = world.units.filter(
+    (u) => u.nationId === nation.id && u.type.domain === 'sea',
+  ).length;
+  if (hasPort && fleet < 1 + Math.floor(cities / 3)
+    && nation.gold >= UNIT_PRICES.WARSHIP + 30 && projectedNet - UNIT_UPKEEP >= 0
+    && game.turns.buyUnit(nation, 'WARSHIP')) {
+    army++;
+    projectedNet -= UNIT_UPKEEP;
+  }
+
   for (let i = 0; i < 3; i++) {
     const surplus = nation.gold > 150;
     if (army >= target && !surplus) break;
@@ -51,21 +63,54 @@ function spend(game, nation) {
   }
 }
 
-/** Ulusun sahip olmadığı en yakın geçilebilir kare (BFS). */
+/** Kara birimi kesintisiz en fazla bu kadar su karesi geçmeyi göze alır. */
+const MAX_SEA_CROSSING = 5;
+
+/**
+ * Ulusun sahip olmadığı en yakın kara karesi (BFS).
+ * Arama denizden de geçer (yoksa YZ adaları hiç keşfetmiyor) ama sınırlı
+ * derinlikte: serbest bırakınca ordular okyanus aşırı akın yapıp haritayı
+ * 150 turda iki ülkeye indiriyor.
+ */
 function nearestFrontier(world, from, nationId, maxNodes = 900) {
-  const seen = new Set([from]);
+  const depth = new Map([[from, 0]]);
   const queue = [from];
   let head = 0;
   while (head < queue.length && head < maxNodes) {
     const tile = queue[head++];
     if (tile.owner !== nationId && tile.terrain.passable) return tile;
+    const seaDepth = depth.get(tile);
     for (const n of world.neighbors(tile)) {
-      if (seen.has(n) || !n.terrain.passable) continue;
-      seen.add(n);
+      if (depth.has(n)) continue;
+      if (n.terrain.passable) depth.set(n, 0);
+      else if (n.terrain.navigable && seaDepth < MAX_SEA_CROSSING) depth.set(n, seaDepth + 1);
+      else continue;
       queue.push(n);
     }
   }
   return null;
+}
+
+/** Gemiler için hedef: en yakın düşman gemisi ya da kıyı şehri. */
+function navalGoal(world, unit) {
+  let best = null;
+  let bestDist = Infinity;
+  const consider = (tile) => {
+    const d = hexDistance(tile.q, tile.r, unit.tile.q, unit.tile.r);
+    if (d < bestDist) {
+      bestDist = d;
+      best = tile;
+    }
+  };
+  for (const other of world.units) {
+    if (other.nationId !== unit.nationId && (other.embarked || other.type.domain === 'sea')) {
+      consider(other.tile);
+    }
+  }
+  for (const city of world.cities) {
+    if (city.nationId !== unit.nationId && city.tile.coastal) consider(city.tile);
+  }
+  return best;
 }
 
 function adjacentEnemy(world, unit) {
@@ -106,15 +151,17 @@ export function runNationAI(game, nation, rng) {
   for (const unit of units) {
     if (unit.hp <= 0) continue;
 
-    // 1) Bitişikte düşman varsa saldır.
+    // 1) Bitişikte düşman varsa saldır (denizdeki kara birimi saldıramaz).
     let target = adjacentEnemy(world, unit);
-    if (target && unit.movesLeft > 0) {
+    if (target && unit.movesLeft > 0 && !unit.embarked) {
       game.attack(unit, target.tile);
       continue;
     }
 
-    // 2) Değilse yakındaki düşman şehrine, yoksa en yakın yabancı kareye ilerle.
-    const goal = enemyCityNear(world, unit) ?? nearestFrontier(world, unit.tile, nation.id);
+    // 2) Değilse hedefe ilerle: gemiler denizi, kara birimleri sınırı kollar.
+    const goal = unit.type.domain === 'sea'
+      ? navalGoal(world, unit)
+      : (enemyCityNear(world, unit) ?? nearestFrontier(world, unit.tile, nation.id));
     if (!goal) continue;
 
     const { costs } = game.getReachable(unit);
@@ -133,6 +180,6 @@ export function runNationAI(game, nation, rng) {
 
     // 3) Hareketten sonra hâlâ hakkı varsa ve düşman bitişikse vur.
     target = adjacentEnemy(world, unit);
-    if (target && unit.movesLeft > 0) game.attack(unit, target.tile);
+    if (target && unit.movesLeft > 0 && !unit.embarked) game.attack(unit, target.tile);
   }
 }

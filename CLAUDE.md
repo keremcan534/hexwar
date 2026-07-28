@@ -11,6 +11,8 @@ Mimari ve tasarım kararları için [README.md](README.md).
 - Katman sırası tek yönlü: `ui`/`render` → `game` → `world` → `core`.
   `core` ve `world` DOM'a dokunmaz (Node'da test edilebilir kalsınlar).
 - Yeni arazi tipi = sadece `src/world/terrain.js`. Renk/maliyet/verim orada.
+  İki ayrı geçilebilirlik var: `passable`/`moveCost` kara, `navigable`/`seaCost`
+  deniz içindir. Yol bulmaya alanı `Game.canEnterFor/costFor` verir.
 - Çizimi değiştiren her şey `renderer.invalidateCache()` istemeli, yoksa uzak
   zoomda eski görüntü kalır.
 - Sürekli `requestAnimationFrame` döngüsü açma; `game.requestRender()` kullan.

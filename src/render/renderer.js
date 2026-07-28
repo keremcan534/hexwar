@@ -265,13 +265,22 @@ export class Renderer {
       if (t.x < rect.minX || t.x > rect.maxX || t.y < rect.minY || t.y > rect.maxY) continue;
       const nation = world.nations[unit.nationId];
 
-      ctx.beginPath();
-      ctx.arc(t.x, t.y, radius, 0, Math.PI * 2);
+      const shape = new Path2D();
+      if (unit.embarked || unit.type.domain === 'sea') {
+        // Denizdekiler tekne gövdesi: karadakilerden bir bakışta ayrılsın.
+        shape.moveTo(t.x - radius, t.y - radius * 0.5);
+        shape.lineTo(t.x + radius, t.y - radius * 0.5);
+        shape.lineTo(t.x + radius * 0.55, t.y + radius * 0.75);
+        shape.lineTo(t.x - radius * 0.55, t.y + radius * 0.75);
+        shape.closePath();
+      } else {
+        shape.arc(t.x, t.y, radius, 0, Math.PI * 2);
+      }
       ctx.fillStyle = nation.color;
-      ctx.fill();
+      ctx.fill(shape);
       ctx.lineWidth = (unit === selectedUnit ? 3 : 1.5) / zoom;
       ctx.strokeStyle = unit === selectedUnit ? '#ffffff' : 'rgba(0,0,0,0.7)';
-      ctx.stroke();
+      ctx.stroke(shape);
 
       if (!detailed) continue;
 
@@ -292,10 +301,8 @@ export class Renderer {
       }
       // Hareket hakkı bittiyse soluk perde.
       if (unit.movesLeft <= 0) {
-        ctx.beginPath();
-        ctx.arc(t.x, t.y, radius, 0, Math.PI * 2);
         ctx.fillStyle = 'rgba(0,0,0,0.4)';
-        ctx.fill();
+        ctx.fill(shape);
       }
     }
   }

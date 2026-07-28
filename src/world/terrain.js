@@ -1,18 +1,25 @@
 // Arazi tipleri tek yerde tanımlı: renk, hareket maliyeti, verimlilik.
 // Yeni tip eklemek istersen sadece burayı genişlet.
+//
+// İki ayrı geçilebilirlik var: `passable` kara birimleri, `navigable` deniz
+// yolu içindir. Kara birimi denize girince "bindirilmiş" (embarked) sayılır.
 
 export const TERRAIN = {
   DEEP_OCEAN: {
     id: 'DEEP_OCEAN', name: 'Derin Okyanus', color: '#123a63',
-    water: true, passable: false, moveCost: Infinity, fertility: 0, defense: 0,
+    // Açık deniz pahalı: kıyı boyu seyretmek okyanusu kesmekten ucuz olsun.
+    water: true, passable: false, navigable: true, seaCost: 2,
+    moveCost: Infinity, fertility: 0, defense: 0,
   },
   OCEAN: {
     id: 'OCEAN', name: 'Okyanus', color: '#1a5185',
-    water: true, passable: false, moveCost: Infinity, fertility: 0, defense: 0,
+    water: true, passable: false, navigable: true, seaCost: 1,
+    moveCost: Infinity, fertility: 0, defense: 0,
   },
   COAST: {
     id: 'COAST', name: 'Sığ Su', color: '#2a76ad',
-    water: true, passable: false, moveCost: Infinity, fertility: 1, defense: 0,
+    water: true, passable: false, navigable: true, seaCost: 1,
+    moveCost: Infinity, fertility: 1, defense: 0,
   },
   BEACH: {
     id: 'BEACH', name: 'Kumsal', color: '#d9c489',

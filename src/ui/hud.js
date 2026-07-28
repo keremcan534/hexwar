@@ -2,7 +2,7 @@
 // Oyun mantığı burada yok; sadece Game'i sürer ve olaylarını dinler.
 
 import { CITY_COST, UNIT_PRICES, canFoundCity } from '../game/cities.js';
-import { UNIT_TYPES } from '../game/units.js';
+import { UNIT_TYPES, movesFor } from '../game/units.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -169,7 +169,7 @@ export class Hud {
         <span class="unit-badge" style="background:${world.nations[unit.nationId].color}">${unit.type.glyph}</span>
         <div style="flex:1;min-width:0">
           <div class="tile-title">${escapeHtml(unit.type.name)}${unit.nationId === this.game.turns.playerNation ? '' : ' (düşman)'}</div>
-          <div class="tile-sub">can ${unit.hp}/${unit.type.hp} · hareket ${unit.movesLeft}/${unit.type.moves} · saldırı ${unit.type.attack}</div>
+          <div class="tile-sub">can ${unit.hp}/${unit.type.hp} · hareket ${unit.movesLeft}/${movesFor(unit)} · saldırı ${unit.type.attack}${unit.embarked ? ' · denizde (saldıramaz)' : ''}</div>
           <div class="hp-bar"><i style="width:${Math.max(0, (unit.hp / unit.type.hp) * 100)}%"></i></div>
         </div>
       </div>` : '';
@@ -196,7 +196,10 @@ export class Hud {
     const rows = [];
 
     if (tile.city && tile.city.nationId === game.turns.playerNation) {
-      const buttons = Object.entries(UNIT_PRICES).map(([id, price]) => {
+      const buttons = Object.entries(UNIT_PRICES).filter(
+        // Gemi ancak kıyı şehrinde üretilebilir.
+        ([id]) => UNIT_TYPES[id].domain !== 'sea' || tile.coastal,
+      ).map(([id, price]) => {
         const disabled = me.gold < price ? 'disabled' : '';
         return `<button class="action" data-buy="${id}" ${disabled}>${UNIT_TYPES[id].name} · ${price}</button>`;
       }).join('');

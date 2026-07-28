@@ -12,6 +12,7 @@ export const UNIT_PRICES = {
   SCOUT: 20,
   INFANTRY: 35,
   CAVALRY: 55,
+  WARSHIP: 45,
 };
 
 const NAME_A = ['Ak', 'Kara', 'Gök', 'Yeni', 'Eski', 'Tuz', 'Demir', 'Alt', 'Yüce', 'Kızıl'];

@@ -1,7 +1,7 @@
 // Tur döngüsü: oyuncu hamlesini bitirir -> yapay zekâ oynar -> yeni tur başlar.
 
 import { makeRng } from '../core/rng.js';
-import { createUnit, removeUnit, UNIT_TYPES } from './units.js';
+import { createUnit, movesFor, removeUnit, UNIT_TYPES } from './units.js';
 import { runNationAI } from './ai.js';
 import {
   CITY_COST, UNIT_PRICES, UNIT_UPKEEP, canFoundCity, cityName, createCity, nationBudget,
@@ -92,10 +92,14 @@ export class TurnManager {
     if (!cities.length && !fallbackToCapital) return null;
     const spots = cities.length ? cities.map((c) => c.tile) : [nation.capital];
 
+    const isSea = UNIT_TYPES[typeId].domain === 'sea';
     for (const spot of spots) {
-      const tile = spot.unit
-        ? world.neighbors(spot).find((n) => n.terrain.passable && !n.unit && n.owner === nation.id)
-        : spot;
+      // Gemi şehrin kendisine değil, bitişik suya iner; şehir kıyıda değilse üretilemez.
+      const tile = isSea
+        ? world.neighbors(spot).find((n) => n.terrain.navigable && !n.unit)
+        : (spot.unit
+          ? world.neighbors(spot).find((n) => n.terrain.passable && !n.unit && n.owner === nation.id)
+          : spot);
       if (!tile) continue;
       const unit = createUnit(typeId, nation.id, tile);
       world.units.push(unit);
@@ -125,7 +129,7 @@ export class TurnManager {
     }
 
     this.turn++;
-    for (const unit of world.units) unit.movesLeft = unit.type.moves;
+    for (const unit of world.units) unit.movesLeft = movesFor(unit);
     this.collectIncome();
     this.checkElimination();
 

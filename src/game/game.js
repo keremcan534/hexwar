@@ -119,9 +119,25 @@ export class Game {
     this.emit('units', unit);
   }
 
+  /**
+   * Birimin girebileceği kareler. Kara birimi denize girebilir ("bindirilmiş"),
+   * gemi karaya çıkamaz.
+   */
+  static canEnterFor(unit) {
+    if (unit.type.domain === 'sea') {
+      return (tile) => tile.terrain.navigable && !tile.unit;
+    }
+    return (tile) => (tile.terrain.passable || tile.terrain.navigable) && !tile.unit;
+  }
+
+  static costFor(unit) {
+    return (tile) => (tile.terrain.water ? tile.terrain.seaCost : tile.terrain.moveCost);
+  }
+
   getReachable(unit) {
     return reachable(this.world, unit.tile, unit.movesLeft, {
-      canEnter: (tile) => tile.terrain.passable && !tile.unit,
+      canEnter: Game.canEnterFor(unit),
+      costOf: Game.costFor(unit),
     });
   }
 
@@ -154,6 +170,8 @@ export class Game {
     const defender = tile.unit;
     if (!defender || defender.nationId === unit.nationId || unit.movesLeft <= 0) return false;
     if (hexDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) !== 1) return false;
+    // Denizdeki kara birimi savaşamaz; önce karaya çıkmalı.
+    if (unit.embarked) return false;
 
     const result = resolveCombat(unit, defender, this.turns.rng);
     // Saldırı turun kalan hareketini tüketir.
@@ -161,7 +179,8 @@ export class Game {
 
     if (result.defenderDied) {
       this.turns.killUnit(defender);
-      if (!result.attackerDied) this.enterTile(unit, tile);
+      // Gemi karaya, kara birimi de gemisiz olmayan kareye ilerleyemez.
+      if (!result.attackerDied && Game.canEnterFor(unit)(tile)) this.enterTile(unit, tile);
     }
     if (result.attackerDied) this.turns.killUnit(unit);
 
