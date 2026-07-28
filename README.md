@@ -36,7 +36,8 @@ src/
   render/    camera.js (dünya<->ekran), renderer.js (Canvas2D çizim + önbellek)
   input/     pointer.js (dokunmatik/fare/pinch tek katman)
   game/      game.js (kabuk + eylemler), units.js (birim tipleri, savaş),
-             cities.js (şehirler + ekonomi), turn.js (tur döngüsü), ai.js (ülke YZ'si)
+             cities.js (şehirler + ekonomi), diplomacy.js (savaş/barış),
+             turn.js (tur döngüsü), ai.js (ülke YZ'si)
   ui/        hud.js (DOM paneller — oyun mantığı içermez)
 ```
 
@@ -67,6 +68,13 @@ Savaş: saldıran ve savunan aynı anda hasar alır; savunan arazi ve şehir sur
 bonusundan yararlanır (piyade arazi bonusunu iki katı kullanır). Savunan ölürse
 saldıran kareye ilerler. Saldırı turun kalan hareketini tüketir.
 
+Diplomasi: oyun **herkes barış içinde** başlar. Barıştaki komşunun toprağına
+girilmez, birimine saldırılmaz, karesi alınamaz — sınırlar ancak savaş ilanıyla
+aşılır. Savaş açıldıktan sonra en az 8 tur barış görüşülemez; teklif edilince
+karşı taraf reddedebilir (güçlüyse ve tek cephesi varsa reddeder). YZ yalnız
+temas hâlindeki ve kendinden zayıf komşuya, en fazla iki cephe olacak şekilde
+savaş açar; kaybettiği savaştan çıkmaya çalışır.
+
 Deniz: kara birimi kıyıdan denize girince **bindirilmiş** olur — hızı 4'e sabitlenir,
 saldıramaz, savunmada 1.6 kat hasar alır. Karaya çıkınca normale döner. Savaş gemisi
 yalnızca kıyı şehrinde üretilir, karaya çıkamaz ama bitişik kara birimini vurabilir
@@ -80,7 +88,7 @@ büyüdükçe şehir başına verim düşer (yolsuzluk). Bu iki fren olmadan ilk
 ## Sonraki adımlar
 
 - Nehirler (`tile.river` alanı ayrılmış), köprü/geçit maliyetleri
-- Diplomasi: şu an herkes herkesle savaşta
-- Görüş alanı / savaş sisi (şu an tüm harita açık)
+- İttifaklar ve karşılıklı savaş çağrısı (şu an yalnız ikili savaş/barış var)
+- Birim terfisi / deneyim
 - Daha akıllı YZ: şu an "en yakın yabancı kareye yürü, bitişiktekine vur"
 - Kaydetme: seed + hamle listesi yeterli, harita yeniden üretilebilir

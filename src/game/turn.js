@@ -3,6 +3,7 @@
 import { makeRng } from '../core/rng.js';
 import { createUnit, movesFor, removeUnit, UNIT_TYPES } from './units.js';
 import { runNationAI } from './ai.js';
+import { atWar, computeContacts, initRelations } from './diplomacy.js';
 import {
   CITY_COST, UNIT_PRICES, UNIT_UPKEEP, canFoundCity, cityName, createCity, nationBudget,
 } from './cities.js';
@@ -31,6 +32,7 @@ export class TurnManager {
     this.turn = 1;
     this.log = [];
     this.rng = makeRng(`${world.seed}-turns`);
+    initRelations(world);
     const usedNames = new Set();
 
     for (const nation of world.nations) {
@@ -112,6 +114,8 @@ export class TurnManager {
   claim(tile, nationId) {
     if (tile.owner === nationId || !tile.terrain.passable) return false;
     const world = this.world;
+    // Barış içindeki komşunun toprağı alınamaz.
+    if (tile.owner >= 0 && !atWar(world, tile.owner, nationId)) return false;
     if (tile.owner >= 0) world.nations[tile.owner].tiles--;
     tile.owner = nationId;
     world.nations[nationId].tiles++;
@@ -123,6 +127,8 @@ export class TurnManager {
     const world = this.world;
     if (!world) return;
 
+    // Temas tablosu tur başında bir kez: her ülke için ayrı taramak pahalı.
+    world.contacts = computeContacts(world);
     for (const nation of world.nations) {
       if (nation.id === this.playerNation || !nation.alive) continue;
       runNationAI(this.game, nation, this.rng);

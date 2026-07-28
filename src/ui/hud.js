@@ -3,6 +3,7 @@
 
 import { CITY_COST, UNIT_PRICES, canFoundCity } from '../game/cities.js';
 import { UNIT_TYPES, movesFor } from '../game/units.js';
+import { MIN_WAR_TURNS, atWar, relation } from '../game/diplomacy.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -121,8 +122,11 @@ export class Hud {
     this.el.incomeValue.textContent = me
       ? `(${me.income >= 0 ? '+' : ''}${me.income} · bakım ${me.upkeep ?? 0})`
       : '';
+    const wars = world.nations.filter(
+      (n) => n.alive && atWar(world, n.id, turns.playerNation),
+    ).length;
     this.el.turnNation.textContent = me
-      ? `${me.name} · ${me.tiles} hex · ${cities} şehir · ${alive} ülke ayakta`
+      ? `${me.name} · ${me.tiles} hex · ${cities} şehir · ${wars ? `${wars} savaş` : 'barış'} · ${alive} ülke`
       : '—';
   }
 
@@ -206,6 +210,23 @@ export class Hud {
       rows.push(`<div class="action-row"><div class="k">${escapeHtml(tile.city.name)} — birim al</div>${buttons}</div>`);
     }
 
+    // Yabancı toprak/birim: savaş ilanı ya da barış teklifi.
+    const foreign = tile.owner >= 0 && tile.owner !== game.turns.playerNation
+      ? tile.owner
+      : (tile.unit && tile.unit.nationId !== game.turns.playerNation ? tile.unit.nationId : -1);
+    if (foreign >= 0 && game.world.nations[foreign].alive) {
+      const other = game.world.nations[foreign];
+      const war = atWar(game.world, foreign, game.turns.playerNation);
+      const rec = relation(game.world, foreign, game.turns.playerNation);
+      const locked = war && game.turns.turn - rec.since < MIN_WAR_TURNS;
+      rows.push(`<div class="action-row">
+        <div class="k">${escapeHtml(other.name)} — ${war ? 'savaştayız' : 'barış içindeyiz'}</div>
+        ${war
+    ? `<button class="action wide" data-peace="${foreign}" ${locked ? 'disabled' : ''}>Barış Teklif Et${locked ? ` (${MIN_WAR_TURNS - (game.turns.turn - rec.since)} tur)` : ''}</button>`
+    : `<button class="action wide" data-war="${foreign}">Savaş İlan Et</button>`}
+      </div>`);
+    }
+
     const unit = game.selectedUnit;
     if (unit && unit.tile === tile && unit.movesLeft > 0 && canFoundCity(game.world, tile, unit.nationId)) {
       const disabled = me.gold < CITY_COST ? 'disabled' : '';
@@ -222,6 +243,10 @@ export class Hud {
     }
     const found = this.el.sheetBody.querySelector('[data-found]');
     if (found) found.onclick = () => game.turns.foundCity(game.selectedUnit);
+    const war = this.el.sheetBody.querySelector('[data-war]');
+    if (war) war.onclick = () => game.declareWarOn(Number(war.dataset.war));
+    const peace = this.el.sheetBody.querySelector('[data-peace]');
+    if (peace) peace.onclick = () => game.proposePeaceTo(Number(peace.dataset.peace));
   }
 }
 

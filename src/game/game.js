@@ -12,6 +12,7 @@ import { reachable } from '../core/pathfind.js';
 import { placeUnit, resolveCombat } from './units.js';
 import { TurnManager } from './turn.js';
 import { captureCity } from './cities.js';
+import { atWar, considerPeaceOffer, declareWar } from './diplomacy.js';
 
 export class Game {
   constructor(canvas) {
@@ -123,11 +124,18 @@ export class Game {
    * Birimin girebileceği kareler. Kara birimi denize girebilir ("bindirilmiş"),
    * gemi karaya çıkamaz.
    */
-  static canEnterFor(unit) {
+  canEnterFor(unit) {
+    const world = this.world;
+    // Barış içindeki ülkenin toprağına girilmez: sınırlar ancak savaşla aşılır.
+    const allowed = (tile) => tile.owner < 0
+      || tile.owner === unit.nationId
+      || atWar(world, tile.owner, unit.nationId);
+
     if (unit.type.domain === 'sea') {
       return (tile) => tile.terrain.navigable && !tile.unit;
     }
-    return (tile) => (tile.terrain.passable || tile.terrain.navigable) && !tile.unit;
+    return (tile) => (tile.terrain.passable || tile.terrain.navigable)
+      && !tile.unit && allowed(tile);
   }
 
   static costFor(unit) {
@@ -136,7 +144,7 @@ export class Game {
 
   getReachable(unit) {
     return reachable(this.world, unit.tile, unit.movesLeft, {
-      canEnter: Game.canEnterFor(unit),
+      canEnter: this.canEnterFor(unit),
       costOf: Game.costFor(unit),
     });
   }
@@ -172,6 +180,8 @@ export class Game {
     if (hexDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) !== 1) return false;
     // Denizdeki kara birimi savaşamaz; önce karaya çıkmalı.
     if (unit.embarked) return false;
+    // Barış içindeki ülkeye saldırmak için önce savaş ilan edilmeli.
+    if (!atWar(this.world, unit.nationId, defender.nationId)) return false;
 
     const result = resolveCombat(unit, defender, this.turns.rng);
     // Saldırı turun kalan hareketini tüketir.
@@ -180,7 +190,7 @@ export class Game {
     if (result.defenderDied) {
       this.turns.killUnit(defender);
       // Gemi karaya, kara birimi de gemisiz olmayan kareye ilerleyemez.
-      if (!result.attackerDied && Game.canEnterFor(unit)(tile)) this.enterTile(unit, tile);
+      if (!result.attackerDied && this.canEnterFor(unit)(tile)) this.enterTile(unit, tile);
     }
     if (result.attackerDied) this.turns.killUnit(unit);
 
@@ -188,6 +198,28 @@ export class Game {
     this.emit('units', this.selectedUnit);
     this.requestRender();
     return true;
+  }
+
+  declareWarOn(nationId) {
+    const ok = declareWar(this, this.turns.playerNation, nationId);
+    if (ok) {
+      this.selectUnit(this.selectedUnit);
+      this.emit('units', this.selectedUnit);
+      this.requestRender();
+    }
+    return ok;
+  }
+
+  /** Barış teklifi: karşı taraf reddedebilir. */
+  proposePeaceTo(nationId) {
+    const accepted = considerPeaceOffer(this, this.turns.playerNation, nationId, this.turns.rng);
+    if (!accepted) {
+      this.turns.addLog(`${this.world.nations[nationId].name} barışı reddetti.`);
+    }
+    this.selectUnit(this.selectedUnit);
+    this.emit('units', this.selectedUnit);
+    this.requestRender();
+    return accepted;
   }
 
   endTurn() {
