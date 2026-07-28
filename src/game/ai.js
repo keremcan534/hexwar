@@ -198,44 +198,51 @@ function enemyCityNear(world, unit, maxDistance = 7) {
   return best;
 }
 
+/**
+ * Tek birimin tur davranışı. Ayrı durması önemli: oyuncu "otomatik" emri
+ * verdiği birimleri de aynı rutine devrediyor.
+ */
+export function runUnitAI(game, unit, rng) {
+  const world = game.world;
+  if (unit.hp <= 0) return;
+
+  // 1) Bitişikte düşman varsa saldır (denizdeki kara birimi saldıramaz).
+  let target = adjacentEnemy(world, unit);
+  if (target && unit.movesLeft > 0 && !unit.embarked) {
+    game.attack(unit, target.tile);
+    return;
+  }
+
+  // 2) Değilse hedefe ilerle: gemiler denizi, kara birimleri sınırı kollar.
+  const goal = unit.type.domain === 'sea'
+    ? navalGoal(world, unit)
+    : (enemyCityNear(world, unit) ?? nearestFrontier(world, unit.tile, unit.nationId));
+  if (!goal) return;
+
+  const { costs } = game.getReachable(unit);
+  let bestTile = null;
+  let bestScore = Infinity;
+  for (const [tile, cost] of costs) {
+    if (tile === unit.tile) continue;
+    // Hedefe yakınlık birincil, ucuzluk ikincil; küçük rastgelelik tekdüzeliği kırar.
+    const score = hexDistance(tile.q, tile.r, goal.q, goal.r) + cost * 0.05 + rng() * 0.3;
+    if (score < bestScore) {
+      bestScore = score;
+      bestTile = tile;
+    }
+  }
+  if (bestTile) game.moveUnit(unit, bestTile);
+
+  // 3) Hareketten sonra hâlâ hakkı varsa ve düşman bitişikse vur.
+  target = adjacentEnemy(world, unit);
+  if (target && unit.movesLeft > 0 && !unit.embarked) game.attack(unit, target.tile);
+}
+
 export function runNationAI(game, nation, rng) {
   const world = game.world;
   diplomacy(game, nation, rng);
   spend(game, nation);
-  const units = world.units.filter((u) => u.nationId === nation.id);
-
-  for (const unit of units) {
-    if (unit.hp <= 0) continue;
-
-    // 1) Bitişikte düşman varsa saldır (denizdeki kara birimi saldıramaz).
-    let target = adjacentEnemy(world, unit);
-    if (target && unit.movesLeft > 0 && !unit.embarked) {
-      game.attack(unit, target.tile);
-      continue;
-    }
-
-    // 2) Değilse hedefe ilerle: gemiler denizi, kara birimleri sınırı kollar.
-    const goal = unit.type.domain === 'sea'
-      ? navalGoal(world, unit)
-      : (enemyCityNear(world, unit) ?? nearestFrontier(world, unit.tile, nation.id));
-    if (!goal) continue;
-
-    const { costs } = game.getReachable(unit);
-    let bestTile = null;
-    let bestScore = Infinity;
-    for (const [tile, cost] of costs) {
-      if (tile === unit.tile) continue;
-      // Hedefe yakınlık birincil, ucuzluk ikincil; küçük rastgelelik tekdüzeliği kırar.
-      const score = hexDistance(tile.q, tile.r, goal.q, goal.r) + cost * 0.05 + rng() * 0.3;
-      if (score < bestScore) {
-        bestScore = score;
-        bestTile = tile;
-      }
-    }
-    if (bestTile) game.moveUnit(unit, bestTile);
-
-    // 3) Hareketten sonra hâlâ hakkı varsa ve düşman bitişikse vur.
-    target = adjacentEnemy(world, unit);
-    if (target && unit.movesLeft > 0 && !unit.embarked) game.attack(unit, target.tile);
+  for (const unit of world.units.filter((u) => u.nationId === nation.id)) {
+    runUnitAI(game, unit, rng);
   }
 }

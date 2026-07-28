@@ -13,6 +13,9 @@ import { placeUnit, resolveCombat } from './units.js';
 import { TurnManager } from './turn.js';
 import { captureCity } from './cities.js';
 import { atWar, considerPeaceOffer, declareWar } from './diplomacy.js';
+import {
+  ORDER, clearOrder, executeOrders, idleUnits, setOrder,
+} from './orders.js';
 
 export class Game {
   constructor(canvas) {
@@ -105,6 +108,13 @@ export class Game {
         this.requestRender();
         return;
       }
+      // Menzil dışı ama girilebilir bir kareye dokunmak = "oraya yürü" emri.
+      if (tile !== unit.tile && this.canEnterFor(unit)(tile)) {
+        this.orderGoto(unit, tile);
+        this.emit('select', tile);
+        this.requestRender();
+        return;
+      }
     }
 
     this.selectUnit(tile?.unit ?? null);
@@ -138,14 +148,14 @@ export class Game {
       && !tile.unit && allowed(tile);
   }
 
-  static costFor(unit) {
+  costForUnit() {
     return (tile) => (tile.terrain.water ? tile.terrain.seaCost : tile.terrain.moveCost);
   }
 
   getReachable(unit) {
     return reachable(this.world, unit.tile, unit.movesLeft, {
       canEnter: this.canEnterFor(unit),
-      costOf: Game.costFor(unit),
+      costOf: this.costForUnit(unit),
     });
   }
 
@@ -198,6 +208,57 @@ export class Game {
     this.emit('units', this.selectedUnit);
     this.requestRender();
     return true;
+  }
+
+  // --- Sürekli emirler: mikro yönetimi azaltan katman ---
+
+  /** Uzak hedefe yürüme emri; ilk adımı hemen atar. */
+  orderGoto(unit, tile) {
+    setOrder(unit, ORDER.GOTO, tile);
+    executeOrders(this, unit.nationId, this.turns.rng);
+    // Emir sürüyorsa birim seçili kalmasın: sıradaki birime geçilebilsin.
+    this.selectUnit(unit.order || unit.movesLeft <= 0 ? null : unit);
+    this.emit('units', this.selectedUnit);
+    return unit.order;
+  }
+
+  setUnitOrder(unit, type) {
+    if (!unit) return;
+    setOrder(unit, type);
+    if (type === ORDER.AUTO) executeOrders(this, unit.nationId, this.turns.rng);
+    this.selectUnit(unit.order ? null : unit);
+    this.emit('units', this.selectedUnit);
+    this.requestRender();
+  }
+
+  clearUnitOrder(unit) {
+    if (!unit) return;
+    clearOrder(unit);
+    this.selectUnit(unit);
+    this.emit('units', this.selectedUnit);
+    this.requestRender();
+  }
+
+  idleUnits() {
+    return idleUnits(this.world, this.turns.playerNation);
+  }
+
+  /**
+   * Hareket hakkı olan bir sonraki emirsiz birime geçer ve kamerayı oraya taşır.
+   * Turu bitirmeden önce "unuttuğum birim var mı?" derdini ortadan kaldırır.
+   */
+  selectNextIdle() {
+    const idle = this.idleUnits();
+    if (!idle.length) return null;
+    const current = idle.indexOf(this.selectedUnit);
+    const next = idle[(current + 1) % idle.length];
+    this.camera.zoom = Math.max(this.camera.zoom, 0.8);
+    this.camera.centerOn(next.tile.x, next.tile.y);
+    this.selected = next.tile;
+    this.selectUnit(next);
+    this.emit('select', next.tile);
+    this.requestRender();
+    return next;
   }
 
   declareWarOn(nationId) {

@@ -4,6 +4,13 @@
 import { CITY_COST, UNIT_PRICES, canFoundCity } from '../game/cities.js';
 import { UNIT_TYPES, movesFor } from '../game/units.js';
 import { MIN_WAR_TURNS, atWar, relation } from '../game/diplomacy.js';
+import { ORDER } from '../game/orders.js';
+
+const ORDER_LABELS = {
+  [ORDER.AUTO]: 'otomatik (YZ sürüyor)',
+  [ORDER.GOTO]: 'hedefe yürüyor',
+  [ORDER.HOLD]: 'bekliyor',
+};
 
 const $ = (id) => document.getElementById(id);
 
@@ -75,6 +82,7 @@ export class Hud {
     };
 
     $('btn-end-turn').onclick = () => game.endTurn();
+    $('btn-next-unit').onclick = () => game.selectNextIdle();
 
     game.on('world', (world) => this.onWorld(world));
     game.on('select', (tile) => this.showTile(tile));
@@ -122,6 +130,12 @@ export class Hud {
     this.el.incomeValue.textContent = me
       ? `(${me.income >= 0 ? '+' : ''}${me.income} · bakım ${me.upkeep ?? 0})`
       : '';
+    // Bekleyen birim sayısı düğmede: turu bitirmeden önce ne kaldığı görünsün.
+    const idle = this.game.idleUnits().length;
+    const btn = $('btn-next-unit');
+    btn.textContent = idle ? `Sıradaki (${idle})` : 'Sıradaki';
+    btn.disabled = idle === 0;
+
     const wars = world.nations.filter(
       (n) => n.alive && atWar(world, n.id, turns.playerNation),
     ).length;
@@ -227,6 +241,19 @@ export class Hud {
       </div>`);
     }
 
+    // Birim emirleri: mikro yönetimden kaçış.
+    const own = tile.unit && tile.unit.nationId === game.turns.playerNation ? tile.unit : null;
+    if (own) {
+      const label = ORDER_LABELS[own.order?.type];
+      rows.push(`<div class="action-row">
+        <div class="k">emir — ${label ?? 'yok'}</div>
+        ${own.order
+    ? '<button class="action" data-order="clear">Emri İptal Et</button>'
+    : `<button class="action" data-order="${ORDER.AUTO}">Otomatik</button>
+           <button class="action" data-order="${ORDER.HOLD}">Bekle</button>`}
+      </div>`);
+    }
+
     const unit = game.selectedUnit;
     if (unit && unit.tile === tile && unit.movesLeft > 0 && canFoundCity(game.world, tile, unit.nationId)) {
       const disabled = me.gold < CITY_COST ? 'disabled' : '';
@@ -247,6 +274,12 @@ export class Hud {
     if (war) war.onclick = () => game.declareWarOn(Number(war.dataset.war));
     const peace = this.el.sheetBody.querySelector('[data-peace]');
     if (peace) peace.onclick = () => game.proposePeaceTo(Number(peace.dataset.peace));
+    for (const btn of this.el.sheetBody.querySelectorAll('[data-order]')) {
+      const unit = game.selected?.unit;
+      btn.onclick = () => (btn.dataset.order === 'clear'
+        ? game.clearUnitOrder(unit)
+        : game.setUnitOrder(unit, btn.dataset.order));
+    }
   }
 }
 

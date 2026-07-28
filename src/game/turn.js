@@ -4,6 +4,7 @@ import { makeRng } from '../core/rng.js';
 import { createUnit, movesFor, removeUnit, UNIT_TYPES } from './units.js';
 import { runNationAI } from './ai.js';
 import { atWar, computeContacts, initRelations } from './diplomacy.js';
+import { executeOrders } from './orders.js';
 import {
   CITY_COST, UNIT_PRICES, UNIT_UPKEEP, canFoundCity, cityName, createCity, nationBudget,
 } from './cities.js';
@@ -138,6 +139,9 @@ export class TurnManager {
     for (const unit of world.units) unit.movesLeft = movesFor(unit);
     this.collectIncome();
     this.checkElimination();
+    // Oyuncunun sürekli emirleri yeni turun hakkıyla işlensin: tur açıldığında
+    // otomatik ve yol emirli birimler hamlelerini yapmış olur.
+    executeOrders(this.game, this.playerNation, this.rng);
 
     this.game.emit('turn', this.turn);
     this.game.requestRender();

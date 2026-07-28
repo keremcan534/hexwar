@@ -41,6 +41,7 @@ export function createUnit(typeId, nationId, tile) {
     hp: type.hp,
     embarked: type.domain === 'land' && tile.terrain.water,
     movesLeft: type.moves,
+    order: null,
   };
   tile.unit = unit;
   return unit;

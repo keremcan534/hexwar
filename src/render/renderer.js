@@ -8,6 +8,9 @@ const MAX_DPR = 2;            // mobilde 3x DPR gereksiz pahalı
 const CACHE_MAX_SIDE = 2048;  // önbellek dokusunun en uzun kenarı (bellek sınırı)
 const CACHE_ZOOM = 0.55;      // bu zoom altında tüm dünya önbellekten tek seferde basılır
 
+/** Emir rozetleri; orders.js'teki ORDER değerleriyle eşleşir. */
+const ORDER_BADGE = { auto: '⚙', goto: '→', hold: '⏸' };
+
 export class Renderer {
   constructor(canvas, camera) {
     this.canvas = canvas;
@@ -299,10 +302,20 @@ export class Renderer {
         ctx.fillStyle = ratio > 0.5 ? '#5ed46a' : ratio > 0.25 ? '#e8c34a' : '#e05a4a';
         ctx.fillRect(t.x - w / 2, t.y + radius + 2, w * ratio, 4);
       }
-      // Hareket hakkı bittiyse soluk perde.
-      if (unit.movesLeft <= 0) {
+      // Hareket hakkı bittiyse ya da emirle meşgulse soluk perde.
+      if (unit.movesLeft <= 0 || unit.order) {
         ctx.fillStyle = 'rgba(0,0,0,0.4)';
         ctx.fill(shape);
+      }
+      // Emir rozeti: oyuncu hangi birimi devrettiğini bir bakışta görsün.
+      if (unit.order) {
+        ctx.font = `700 ${Math.round(HEX_SIZE * 0.4)}px system-ui, sans-serif`;
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = 'rgba(0,0,0,0.8)';
+        ctx.lineWidth = 2.5 / zoom;
+        const badge = ORDER_BADGE[unit.order.type] ?? '';
+        ctx.strokeText(badge, t.x + radius * 0.9, t.y - radius * 0.8);
+        ctx.fillText(badge, t.x + radius * 0.9, t.y - radius * 0.8);
       }
     }
   }

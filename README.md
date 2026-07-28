@@ -26,6 +26,21 @@ Kendi birimine dokun → gidebileceği kareler beyazla işaretlenir → hedefe d
 Bitişik düşmana dokunmak saldırıdır. Birim durduğu kareyi ülkesine katar.
 Alttaki **Turu Bitir** ile yapay zekâ oynar, sonra hareket hakları yenilenir.
 
+### Mikro yönetimden kaçış
+
+Geç oyunda 10-15 birimi her tur tek tek dolaştırmak turu dakikalara çıkarıyordu.
+Üç mekanizma bunu çözer:
+
+- **Sıradaki (n)** düğmesi: emri olmayan ve hakkı kalan bir sonraki birime atlar,
+  kamerayı oraya taşır. Sayaç sıfırsa o tur bitmiştir.
+- **Menzil dışına dokunma** = "oraya yürü" emri. Birim kaç tur sürerse sürsün
+  kendi gider; varınca emir düşer, yol üç tur tıkanırsa iptal olur.
+- **Otomatik** emri: birimi yapay zekâya devreder — YZ'nin kendi birim rutininin
+  aynısını kullanır. **Bekle** emri birimi sıradaki döngüsünden çıkarır.
+
+Emirli birimler haritada soluk çizilir ve rozet taşır (⚙ otomatik, → yolda,
+⏸ bekliyor).
+
 ## Mimari
 
 ```
@@ -37,7 +52,7 @@ src/
   input/     pointer.js (dokunmatik/fare/pinch tek katman)
   game/      game.js (kabuk + eylemler), units.js (birim tipleri, savaş),
              cities.js (şehirler + ekonomi), diplomacy.js (savaş/barış),
-             turn.js (tur döngüsü), ai.js (ülke YZ'si)
+             orders.js (sürekli emirler), turn.js (tur döngüsü), ai.js (ülke YZ'si)
   ui/        hud.js (DOM paneller — oyun mantığı içermez)
 ```
 

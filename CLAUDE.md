@@ -16,6 +16,8 @@ Mimari ve tasarım kararları için [README.md](README.md).
 - Çizimi değiştiren her şey `renderer.invalidateCache()` istemeli, yoksa uzak
   zoomda eski görüntü kalır.
 - Sürekli `requestAnimationFrame` döngüsü açma; `game.requestRender()` kullan.
+- Oyuncuya birim başına iş çıkaran her özellik, `orders.js` üzerinden
+  devredilebilir olmalı. Mikro yönetim mobilde en hızlı büyüyen maliyet.
 
 ## Test
 
