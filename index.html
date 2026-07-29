@@ -60,13 +60,15 @@
   <div class="sheet" id="sheet">
     <div class="sheet-grip"></div>
     <div class="turn-bar">
-      <div class="turn-info">
+      <div class="turn-top">
         <span class="turn-no">Tur <b id="turn-value">1</b></span>
         <span class="resources" id="resources">—</span>
-        <span class="turn-nation" id="turn-nation">—</span>
       </div>
-      <button class="action compact" id="btn-next-unit">Sıradaki</button>
-      <button class="primary compact" id="btn-end-turn">Turu Bitir</button>
+      <div class="turn-bottom">
+        <span class="turn-nation" id="turn-nation">—</span>
+        <button class="action compact" id="btn-next-unit">Sıradaki</button>
+        <button class="primary compact" id="btn-end-turn">Turu Bitir</button>
+      </div>
     </div>
     <div class="sheet-body" id="sheet-body">
       <p class="placeholder">Bilgi için bir hex'e dokun.</p>

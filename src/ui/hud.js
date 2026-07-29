@@ -7,6 +7,7 @@ import {
 import { UNIT_TYPES, movesFor } from '../game/units.js';
 import { MIN_WAR_TURNS, atWar, relation } from '../game/diplomacy.js';
 import { ORDER } from '../game/orders.js';
+import { flagDataUrl } from '../render/flagPainter.js';
 
 const ORDER_LABELS = {
   [ORDER.AUTO]: 'otomatik (YZ sürüyor)',
@@ -137,8 +138,8 @@ export class Hud {
     const wars = world.nations.filter(
       (n) => n.alive && atWar(world, n.id, turns.playerNation),
     ).length;
-    this.el.turnNation.textContent = me
-      ? `${me.name} · ${me.tiles} hex · ${cities} şehir · ${wars ? `${wars} savaş` : 'barış'} · ${alive} ülke`
+    this.el.turnNation.innerHTML = me
+      ? `<img class="flag flag-sm" src="${flagDataUrl(me)}" alt="">${escapeHtml(me.name)} · ${me.tiles} hex · ${cities} şehir · ${wars ? `${wars} savaş` : 'barış'} · ${alive} ülke`
       : '—';
   }
 
@@ -190,9 +191,14 @@ export class Hud {
         </div>
       </div>` : '';
 
+    // Ülke varsa bayrağı, yoksa arazi rengi göster.
+    const emblem = nation
+      ? `<img class="flag" src="${flagDataUrl(nation)}" alt="">`
+      : `<span class="swatch" style="background:${color}"></span>`;
+
     body.innerHTML = unitBlock + this.actionsHtml(tile) + `
       <div class="tile-head">
-        <span class="swatch" style="background:${color}"></span>
+        ${emblem}
         <div>
           <div class="tile-title">${escapeHtml(title)}</div>
           <div class="tile-sub">${escapeHtml(sub)}</div>

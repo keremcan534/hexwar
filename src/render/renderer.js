@@ -3,13 +3,49 @@
 
 import { HEX_CORNERS, SQRT3, DIRS } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
+import { drawFlag } from './flagPainter.js';
 
 const MAX_DPR = 2;            // mobilde 3x DPR gereksiz pahalı
 const CACHE_MAX_SIDE = 2048;  // önbellek dokusunun en uzun kenarı (bellek sınırı)
 const CACHE_ZOOM = 0.55;      // bu zoom altında tüm dünya önbellekten tek seferde basılır
 
+/** Şehir ve birim aynı karede: biri yukarı, biri aşağı kaydırılır. */
+const CITY_OFFSET = 0.3;
+const UNIT_ON_CITY_OFFSET = 0.22;
+
 /** Emir rozetleri; orders.js'teki ORDER değerleriyle eşleşir. */
 const ORDER_BADGE = { auto: '⚙', goto: '→', hold: '⏸' };
+
+/**
+ * NATO harita sembolleri: keşif tek eğik çizgi, piyade çapraz, zırhlı elips.
+ * Harf yerine bunlar kullanılıyor — dilden bağımsız ve uzaktan okunur.
+ */
+function natoSymbol(path, typeId, cx, cy, r) {
+  const w = r * 0.78;
+  const h = r * 0.52;
+  switch (typeId) {
+    case 'SCOUT':
+      path.moveTo(cx - w, cy + h);
+      path.lineTo(cx + w, cy - h);
+      break;
+    case 'INFANTRY':
+      path.moveTo(cx - w, cy - h);
+      path.lineTo(cx + w, cy + h);
+      path.moveTo(cx + w, cy - h);
+      path.lineTo(cx - w, cy + h);
+      break;
+    case 'CAVALRY':
+      path.ellipse(cx, cy, w, h, 0, 0, Math.PI * 2);
+      break;
+    case 'WARSHIP':
+      // Gövdenin kendisi zaten okunuyor; sadece direk eklenir.
+      path.moveTo(cx - r * 0.15, cy + h * 0.3);
+      path.lineTo(cx - r * 0.15, cy - h * 1.5);
+      break;
+    default:
+      path.ellipse(cx, cy, w * 0.5, h * 0.5, 0, 0, Math.PI * 2);
+  }
+}
 
 export class Renderer {
   constructor(canvas, camera) {
@@ -161,7 +197,9 @@ export class Renderer {
       }
       this.hexPath(path, t.x, t.y);
     }
-    ctx.globalAlpha = 0.42;
+    // Düşük tutuldu: yüksek alfada ülke rengi arazi paletini soldurup
+    // haritayı tek düze çamur rengine çeviriyor.
+    ctx.globalAlpha = 0.3;
     for (const [color, path] of byColor) {
       ctx.fillStyle = color;
       ctx.fill(path);
@@ -230,9 +268,11 @@ export class Renderer {
       const t = city.tile;
       if (t.x < rect.minX || t.x > rect.maxX || t.y < rect.minY || t.y > rect.maxY) continue;
       const color = world.nations[city.nationId].color;
+      // Şehir hexin üst yarısına: aynı karedeki birim onu tamamen örtüyordu.
+      const cy = t.y - HEX_SIZE * CITY_OFFSET;
 
       ctx.beginPath();
-      ctx.rect(t.x - s, t.y - s * 0.7, s * 2, s * 1.4);
+      ctx.rect(t.x - s, cy - s * 0.7, s * 2, s * 1.4);
       ctx.fillStyle = color;
       ctx.fill();
       ctx.lineWidth = 2 / this.camera.zoom;
@@ -244,7 +284,7 @@ export class Renderer {
       const w = (s * 2) / (teeth * 2 - 1);
       ctx.beginPath();
       for (let i = 0; i < teeth; i++) {
-        ctx.rect(t.x - s + i * w * 2, t.y - s * 0.7 - w * 0.8, w, w * 0.8);
+        ctx.rect(t.x - s + i * w * 2, cy - s * 0.7 - w * 0.8, w, w * 0.8);
       }
       ctx.fillStyle = color;
       ctx.fill();
@@ -267,40 +307,57 @@ export class Renderer {
       const t = unit.tile;
       if (t.x < rect.minX || t.x > rect.maxX || t.y < rect.minY || t.y > rect.maxY) continue;
       const nation = world.nations[unit.nationId];
+      // Şehirle aynı karedeyse aşağı kayar; ikisi de görünür kalsın.
+      const ux = t.x;
+      const uy = t.y + (t.city ? HEX_SIZE * UNIT_ON_CITY_OFFSET : 0);
 
+      const atSea = unit.embarked || unit.type.domain === 'sea';
       const shape = new Path2D();
-      if (unit.embarked || unit.type.domain === 'sea') {
-        // Denizdekiler tekne gövdesi: karadakilerden bir bakışta ayrılsın.
-        shape.moveTo(t.x - radius, t.y - radius * 0.5);
-        shape.lineTo(t.x + radius, t.y - radius * 0.5);
-        shape.lineTo(t.x + radius * 0.55, t.y + radius * 0.75);
-        shape.lineTo(t.x - radius * 0.55, t.y + radius * 0.75);
+      if (atSea) {
+        // Sivri pruvalı gövde: simetrik yamuk sepete benziyordu.
+        shape.moveTo(ux - radius * 0.85, uy - radius * 0.45);
+        shape.lineTo(ux + radius * 0.45, uy - radius * 0.45);
+        shape.lineTo(ux + radius, uy + radius * 0.1);
+        shape.lineTo(ux + radius * 0.35, uy + radius * 0.6);
+        shape.lineTo(ux - radius * 0.6, uy + radius * 0.6);
         shape.closePath();
       } else {
-        shape.arc(t.x, t.y, radius, 0, Math.PI * 2);
+        shape.arc(ux, uy, radius, 0, Math.PI * 2);
       }
       ctx.fillStyle = nation.color;
       ctx.fill(shape);
+
+      // Sağ alta kalınlaşan hilal gölge: düz renk diski hacimli gösterir.
+      if (!atSea) {
+        const crescent = new Path2D();
+        crescent.arc(ux, uy, radius, 0, Math.PI * 2);
+        crescent.arc(ux - radius * 0.1, uy - radius * 0.1, radius * 0.85, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(0,0,0,0.28)';
+        ctx.fill(crescent, 'evenodd');
+      }
+
       ctx.lineWidth = (unit === selectedUnit ? 3 : 1.5) / zoom;
       ctx.strokeStyle = unit === selectedUnit ? '#ffffff' : 'rgba(0,0,0,0.7)';
       ctx.stroke(shape);
 
       if (!detailed) continue;
 
-      ctx.fillStyle = 'rgba(0,0,0,0.85)';
-      ctx.font = `700 ${Math.round(HEX_SIZE * 0.62)}px system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(unit.type.glyph, t.x, t.y + 1);
+      // NATO sembolü: harften daha okunur ve dile bağlı değil.
+      const symbol = new Path2D();
+      natoSymbol(symbol, unit.type.id, ux, uy, radius);
+      ctx.lineWidth = Math.max(1.2 / zoom, radius * 0.13);
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.stroke(symbol);
 
       // Can çubuğu yalnızca hasarlıysa.
       const ratio = unit.hp / unit.type.hp;
       if (ratio < 1) {
         const w = radius * 1.8;
         ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(t.x - w / 2, t.y + radius + 2, w, 4);
+        ctx.fillRect(ux - w / 2, uy + radius + 2, w, 4);
         ctx.fillStyle = ratio > 0.5 ? '#5ed46a' : ratio > 0.25 ? '#e8c34a' : '#e05a4a';
-        ctx.fillRect(t.x - w / 2, t.y + radius + 2, w * ratio, 4);
+        ctx.fillRect(ux - w / 2, uy + radius + 2, w * ratio, 4);
       }
       // Hareket hakkı bittiyse ya da emirle meşgulse soluk perde.
       if (unit.movesLeft <= 0 || unit.order) {
@@ -314,8 +371,8 @@ export class Renderer {
         ctx.strokeStyle = 'rgba(0,0,0,0.8)';
         ctx.lineWidth = 2.5 / zoom;
         const badge = ORDER_BADGE[unit.order.type] ?? '';
-        ctx.strokeText(badge, t.x + radius * 0.9, t.y - radius * 0.8);
-        ctx.fillText(badge, t.x + radius * 0.9, t.y - radius * 0.8);
+        ctx.strokeText(badge, ux + radius * 0.9, uy - radius * 0.8);
+        ctx.fillText(badge, ux + radius * 0.9, uy - radius * 0.8);
       }
     }
   }
@@ -339,19 +396,15 @@ export class Renderer {
       if (nation.tiles === 0) continue;
       const p = cam.worldToScreen(nation.capital.x, nation.capital.y);
       if (p.x < -80 || p.y < -30 || p.x > cam.viewWidth + 80 || p.y > cam.viewHeight + 30) continue;
+      // Etiket başkentin altına: üstüne yazınca şehir işaretini örtüyordu.
+      const ly = p.y + Math.max(16, HEX_SIZE * cam.zoom * 0.7);
       ctx.lineWidth = 3;
       ctx.strokeStyle = 'rgba(0,0,0,0.75)';
-      ctx.strokeText(nation.name, p.x, p.y);
+      ctx.strokeText(nation.name, p.x, ly);
       ctx.fillStyle = '#fff';
-      ctx.fillText(nation.name, p.x, p.y);
-      // Başkent işareti
-      ctx.beginPath();
-      ctx.arc(p.x, p.y - 14, 3.5, 0, Math.PI * 2);
-      ctx.fillStyle = nation.color;
-      ctx.fill();
-      ctx.lineWidth = 1.5;
-      ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-      ctx.stroke();
+      ctx.fillText(nation.name, p.x, ly);
+      // Başkent bayrağı: ülkeyi renginden değil kimliğinden tanı.
+      if (nation.flag) drawFlag(ctx, nation.flag, p.x - 9, ly + 8, 18, 12);
     }
     ctx.restore();
   }

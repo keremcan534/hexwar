@@ -2,6 +2,7 @@
 
 import { makeRng } from '../core/rng.js';
 import { hexDistance } from '../core/hex.js';
+import { makeFlag } from './flags.js';
 
 const SYL_START = ['Ar', 'Bel', 'Cor', 'Dra', 'El', 'Fen', 'Gor', 'Hal', 'Ir', 'Kaz', 'Lor', 'Mar', 'Nor', 'Oss', 'Pra', 'Quen', 'Rav', 'Sar', 'Tur', 'Ul', 'Vas', 'Wyn', 'Yar', 'Zen'];
 const SYL_MID = ['a', 'e', 'i', 'o', 'an', 'en', 'ir', 'or', 'al', 'ath', 'esh', 'ov', 'ur', 'yl'];
@@ -21,11 +22,12 @@ function makeName(rng, used) {
   return `Ulus-${used.size + 1}`;
 }
 
+/** Altın oran açısıyla dağıtılan ton: 20+ ülkede bile renkler karışmaz. */
 function makeColor(index, rng) {
   const hue = (index * 137.508 + rng.range(0, 40)) % 360;
   const sat = 62 + ((index * 17) % 20);
   const light = 48 + ((index * 11) % 16);
-  return `hsl(${hue.toFixed(0)} ${sat}% ${light}%)`;
+  return { color: `hsl(${hue.toFixed(0)} ${sat}% ${light}%)`, hue, sat, light };
 }
 
 /** Küçük ikili yığın (min-heap). Yayılma kuyruğu için. */
@@ -94,11 +96,13 @@ export function generateNations(world, options = {}) {
   const nations = seeds.map((tile, i) => {
     const name = makeName(rng, usedNames);
     const avgShare = land.length / seeds.length;
+    const palette = makeColor(i, rng);
     return {
       id: i,
       name,
       fullName: `${name} ${rng.pick(TITLES)}`,
-      color: makeColor(i, rng),
+      color: palette.color,
+      flag: makeFlag(rng, palette),
       capital: tile,
       tiles: 0,
       population: 0,

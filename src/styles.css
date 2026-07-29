@@ -188,20 +188,37 @@ html, body {
 }
 .placeholder { margin: 4px 0 8px; color: var(--muted); font-size: 13px; text-align: center; }
 
+/* İki satır: üstte kaynaklar, altta ülke ve düğmeler. Tek satıra sıkıştırınca
+   kaynaklar alt alta düşüp ülke adı kırpılıyordu. */
 .turn-bar {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   padding-bottom: 10px;
   margin-bottom: 10px;
   border-bottom: 1px solid var(--line);
 }
-.turn-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.turn-no { font-size: 13px; color: var(--muted); }
+.turn-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.turn-top::-webkit-scrollbar { display: none; }
+.turn-bottom { display: flex; align-items: center; gap: 8px; }
+.turn-no { font-size: 13px; color: var(--muted); white-space: nowrap; }
 .turn-no b { color: var(--text); font-size: 15px; }
-.turn-nation { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.resources { display: flex; gap: 10px; font-size: 12px; flex-wrap: wrap; }
+.turn-nation {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.resources { display: flex; gap: 12px; font-size: 12px; white-space: nowrap; }
 .resources span { white-space: nowrap; }
 .resources b { color: var(--text); font-weight: 600; }
 .res-neg { color: #e07a6a; }
@@ -278,6 +295,19 @@ html, body {
   border-radius: 4px;
   border: 1px solid rgba(0, 0, 0, 0.4);
   flex: none;
+}
+.flag {
+  width: 30px;
+  height: 20px;
+  border-radius: 3px;
+  flex: none;
+  image-rendering: auto;
+}
+.flag-sm {
+  width: 18px;
+  height: 12px;
+  vertical-align: -1px;
+  margin-right: 5px;
 }
 .tile-title { font-weight: 700; font-size: 15px; }
 .tile-sub { font-size: 12px; color: var(--muted); }
