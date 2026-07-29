@@ -188,7 +188,7 @@ function computeStats(world, nations) {
     if (tile.owner < 0) return;
     const n = nations[tile.owner];
     n.tiles++;
-    n.population += Math.round(tile.terrain.fertility * 1800 + tile.moisture * 400);
+    n.population += Math.round(tile.terrain.yields.food * 2200 + tile.moisture * 400);
     if (tile.coastal) n.coastal = true;
   });
   // Başkent nüfusu ayrıca ağırlıklı.

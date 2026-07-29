@@ -2,7 +2,7 @@
 // Amaç zekâ değil, dünyanın canlı hissettirmesi; strateji katmanı sonra gelir.
 
 import { hexDistance } from '../core/hex.js';
-import { CITY_COST, UNIT_PRICES, UNIT_UPKEEP, canFoundCity } from './cities.js';
+import { CITY_COST, UNIT_COSTS, UNIT_UPKEEP, canAfford, canFoundCity } from './cities.js';
 import {
   MIN_WAR_TURNS, atWar, declareWar, makePeace, nationStrength, relation,
 } from './diplomacy.js';
@@ -60,11 +60,11 @@ function desiredArmy(nation) {
   return 2 + Math.floor(nation.tiles / 25);
 }
 
-/** Hazinenin alabileceği en güçlü birim. */
+/** Stokun alabileceği en güçlü birim; demir yoksa izciye düşer. */
 function affordableUnit(nation) {
-  if (nation.gold >= UNIT_PRICES.CAVALRY) return 'CAVALRY';
-  if (nation.gold >= UNIT_PRICES.INFANTRY) return 'INFANTRY';
-  if (nation.gold >= UNIT_PRICES.SCOUT) return 'SCOUT';
+  for (const id of ['CAVALRY', 'INFANTRY', 'SCOUT']) {
+    if (canAfford(nation, UNIT_COSTS[id])) return id;
+  }
   return null;
 }
 
@@ -76,41 +76,45 @@ function spend(game, nation) {
   const world = game.world;
   const cities = world.cities.filter((c) => c.nationId === nation.id).length;
 
-  if (nation.gold >= CITY_COST + UNIT_PRICES.INFANTRY && cities < 1 + nation.tiles / 45) {
+  // Yeni şehir: gelirin asıl kaynağı, orduyu beslemekten önce gelir.
+  if (canAfford(nation, { gold: CITY_COST.gold + 25, timber: CITY_COST.timber })
+    && cities < 1 + nation.tiles / 45) {
     const unit = world.units.find(
       (u) => u.nationId === nation.id && canFoundCity(world, u.tile, nation.id),
     );
     if (unit) game.turns.foundCity(unit);
   }
 
-  // Tek alım yetmiyor: geliri yüksek ülkelerde hazine şişip YZ pasifleşiyor.
-  // Ama bakım giderini karşılayamayacağı orduyu da kurmamalı.
+  // Ordu, erzak fazlasının beslediği kadar büyür; altın ikincil frendir.
   const target = desiredArmy(nation);
   let army = world.units.filter((u) => u.nationId === nation.id).length;
-  let projectedNet = nation.income ?? 0;
+  let food = nation.budget?.net.food ?? 0;
+  const canFeed = () => food - UNIT_UPKEEP.food >= 0;
 
   // Kıyı ülkeleri mütevazı bir donanma tutar: adalar ve kıyı şehirleri savunmasız kalmasın.
   const hasPort = world.cities.some((c) => c.nationId === nation.id && c.tile.coastal);
   const fleet = world.units.filter(
     (u) => u.nationId === nation.id && u.type.domain === 'sea',
   ).length;
-  if (hasPort && fleet < 1 + Math.floor(cities / 3)
-    && nation.gold >= UNIT_PRICES.WARSHIP + 30 && projectedNet - UNIT_UPKEEP >= 0
+  if (hasPort && fleet < 1 + Math.floor(cities / 3) && canFeed()
+    && canAfford(nation, UNIT_COSTS.WARSHIP)
     && game.turns.buyUnit(nation, 'WARSHIP')) {
     army++;
-    projectedNet -= UNIT_UPKEEP;
+    food -= UNIT_UPKEEP.food;
   }
 
   for (let i = 0; i < 3; i++) {
-    const surplus = nation.gold > 150;
+    // Hazine fazlası orduya dönüşür ama sert bir tavan var: ölçümde tek ülke
+    // 93 süvari yığıp tur süresini 22 ms'ye çıkarmıştı.
+    const surplus = nation.gold > 120 && army < target * 2;
     if (army >= target && !surplus) break;
-    if (projectedNet - UNIT_UPKEEP < 0) break;
-    const typeId = nation.gold >= UNIT_PRICES.CAVALRY && (nation.tiles > 80 || surplus)
+    if (!canFeed()) break;
+    const typeId = canAfford(nation, UNIT_COSTS.CAVALRY) && (nation.tiles > 80 || surplus)
       ? 'CAVALRY'
       : affordableUnit(nation);
     if (!typeId || !game.turns.buyUnit(nation, typeId)) break;
     army++;
-    projectedNet -= UNIT_UPKEEP;
+    food -= UNIT_UPKEEP.food;
   }
 }
 

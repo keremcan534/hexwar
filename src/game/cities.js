@@ -2,18 +2,65 @@
 // düşman birimi girdiğinde el değiştirir.
 
 import { hexDistance, hexesInRange } from '../core/hex.js';
+import { CITY_CENTER_YIELD, RESOURCES } from '../world/terrain.js';
 
-/** Yeni şehir kurma bedeli (altın) ve şehirler arası asgari mesafe. */
-export const CITY_COST = 80;
+/** Yeni şehir kurma bedeli ve şehirler arası asgari mesafe. */
+export const CITY_COST = { gold: 60, timber: 4 };
 export const CITY_MIN_DISTANCE = 4;
 
-/** Birim satın alma bedelleri. */
-export const UNIT_PRICES = {
-  SCOUT: 20,
-  INFANTRY: 35,
-  CAVALRY: 55,
-  WARSHIP: 45,
+/** Şehrin işçi yerleştirebileceği yarıçap. */
+export const WORK_RADIUS = 2;
+
+/**
+ * Birim bedelleri. Altın tek darboğaz olmasın diye maliyet dört kaynağa
+ * bölündü; İzci kasten demirsiz, demirsiz doğan ülke kilitlenmesin.
+ */
+export const UNIT_COSTS = {
+  SCOUT: { gold: 15 },
+  INFANTRY: { gold: 25, iron: 1 },
+  CAVALRY: { gold: 40, iron: 2 },
+  WARSHIP: { gold: 30, iron: 1, timber: 3 },
 };
+
+/** Birim başına tur bakımı. Ordunun asıl freni artık erzak. */
+export const UNIT_UPKEEP = { gold: 1, food: 1 };
+
+/** İşçi başına tüketim. İşçi net katkısı azalsın ki nüfus sonsuz büyümesin. */
+export const WORKER_FOOD = 2;
+
+/** Yeni şehir bu kadar erzakla başlar: kötü arazide doğan ülke ilk turda çökmesin. */
+export const STARTING_FOOD_STORE = 15;
+
+/**
+ * Ambar kapasitesi. Tavan olmazsa demir/kereste birikip anlamsızlaşıyor
+ * (ölçüm: 150 turda 2968 demir, 7464 kereste). Fazlası ziyan olur; bu,
+ * ileride ticaretin de sebebi olacak.
+ */
+export function storageCap(cityCount) {
+  return 30 + cityCount * 5;
+}
+
+export function emptyPool() {
+  return { gold: 0, food: 0, timber: 0, iron: 0 };
+}
+
+export function canAfford(nation, cost) {
+  return RESOURCES.every((r) => (nation[r] ?? 0) >= (cost[r] ?? 0));
+}
+
+export function pay(nation, cost) {
+  if (!canAfford(nation, cost)) return false;
+  for (const r of RESOURCES) nation[r] -= cost[r] ?? 0;
+  return true;
+}
+
+export function formatCost(cost) {
+  const parts = [];
+  if (cost.gold) parts.push(`${cost.gold}⬤`);
+  if (cost.iron) parts.push(`${cost.iron}⛏`);
+  if (cost.timber) parts.push(`${cost.timber}🪵`);
+  return parts.join(' ');
+}
 
 const NAME_A = ['Ak', 'Kara', 'Gök', 'Yeni', 'Eski', 'Tuz', 'Demir', 'Alt', 'Yüce', 'Kızıl'];
 const NAME_B = ['şehir', 'kale', 'liman', 'köprü', 'geçit', 'burç', 'ova', 'tepe', 'pınar', 'sur'];
@@ -29,8 +76,18 @@ export function cityName(rng, used) {
   return `Şehir-${used.size + 1}`;
 }
 
-export function createCity(world, tile, nationId, name, level = 1) {
-  const city = { id: world.cities.length + 1, name, tile, nationId, level };
+export function createCity(world, tile, nationId, name, level = 1, pop = 2) {
+  const city = {
+    id: world.cities.length + 1,
+    name,
+    tile,
+    nationId,
+    level,          // tahkimat kademesi: savunma ve çizim
+    pop,            // işçi sayısı: ekonominin motoru
+    worked: [],     // işlenen kareler; uzunluğu pop kadar
+    foodStore: STARTING_FOOD_STORE,
+    manualWorkers: false, // elle atama geldiğinde otomatik dağıtımı kilitler
+  };
   tile.city = city;
   world.cities.push(city);
   return city;
@@ -44,41 +101,123 @@ export function canFoundCity(world, tile, nationId) {
   );
 }
 
-/** Birim başına tur bakım gideri. Sonsuz ordu birikmesini engeller. */
-export const UNIT_UPKEEP = 2;
-
 /**
- * Büyüyen imparatorluğun verim kaybı (yolsuzluk/mesafe).
- * Olmazsa ilk fetheden ülke katlanarak büyüyüp oyunu 100. turda bitiriyor.
+ * Büyüyen imparatorluğun verim kaybı (yolsuzluk/mesafe). Yalnız altına uygulanır;
+ * erzak/kereste/demir fiziksel mallar, onları mesafe değil taşıma sınırlar.
+ * Not: kültür ve infamy katmanı gelince bu elle konmuş fren kaldırılacak.
  */
 function corruption(cityCount) {
   return 12 / (12 + Math.max(0, cityCount - 1));
 }
 
+/** Bir karenin bir işçiye verdiği üretim. */
+export function tileYield(tile) {
+  return tile.terrain.yields;
+}
+
 /**
- * Ulusun tur bütçesi: şehirler ana kaynak, topraktan gelen verim ikincil,
- * ordunun bakımı gider. Tek yerde durması denge ayarını kolaylaştırır.
- * @returns {{ gross: number, upkeep: number, net: number }}
+ * Şehrin işçilerini çevresindeki en iyi karelere dağıtır.
+ * Ağırlıklar ulusun o anki açığına göre gelir: erzak eksiyse tarlaya,
+ * demir bitmişse madene yönelir. Elle atama kilidi varsa dokunmaz.
+ */
+export function assignWorkers(world, city, weights) {
+  if (city.manualWorkers) {
+    // Elle atanmış kareler sahiplik değişmediyse korunur.
+    city.worked = city.worked.filter((t) => t.owner === city.nationId && !t.workedBy);
+    for (const tile of city.worked) tile.workedBy = city;
+    return;
+  }
+  const candidates = [];
+  for (const { q, r } of hexesInRange(city.tile.q, city.tile.r, WORK_RADIUS)) {
+    const tile = world.get(q, r);
+    if (!tile || tile === city.tile) continue;
+    if (tile.owner !== city.nationId) continue;
+    // Başka şehrin işlediği kare paylaşılmaz.
+    if (tile.workedBy && tile.workedBy !== city) continue;
+    const yields = tileYield(tile);
+    const score = yields.food * weights.food + yields.gold * weights.gold
+      + yields.timber * weights.timber + yields.iron * weights.iron;
+    if (score > 0) candidates.push({ tile, score });
+  }
+  candidates.sort((a, b) => b.score - a.score);
+
+  for (const tile of city.worked) {
+    if (tile.workedBy === city) tile.workedBy = null;
+  }
+  city.worked = candidates.slice(0, city.pop).map((c) => c.tile);
+  for (const tile of city.worked) tile.workedBy = city;
+}
+
+/**
+ * İşçi dağıtım ağırlıkları: neyi eksikse ona yönel. Otomatik işçinin
+ * "akıllı" hissetmesini sağlayan tek yer burası.
+ */
+export function workerWeights(nation) {
+  const weights = { food: 1.5, gold: 1, timber: 0.7, iron: 0.7 };
+  if ((nation.budget?.net.food ?? 0) < 2) weights.food = 4;
+  if ((nation.gold ?? 0) < 20) weights.gold = 2;
+  if ((nation.timber ?? 0) < 3) weights.timber = 2;
+  if ((nation.iron ?? 0) < 3) weights.iron = 2.5;
+  return weights;
+}
+
+/**
+ * Tüm şehirlerin işçilerini yeniden dağıtır. Önce bütün işaretler silinir,
+ * yoksa el değiştiren şehirlerin eski işaretleri kareleri kilitler.
+ */
+export function assignAllWorkers(world) {
+  world.forEach((t) => { t.workedBy = null; });
+  const weights = new Map();
+  for (const nation of world.nations) weights.set(nation.id, workerWeights(nation));
+  for (const city of world.cities) assignWorkers(world, city, weights.get(city.nationId));
+}
+
+/** Şehrin bu turki üretimi: merkez bedavası + işlenen kareler. */
+export function cityProduction(city) {
+  const out = { ...CITY_CENTER_YIELD };
+  for (const tile of city.worked) {
+    const yields = tileYield(tile);
+    for (const r of RESOURCES) out[r] += yields[r];
+  }
+  // Şehrin kendisi bir pazar: tahkimat kademesi altın tabanı verir.
+  out.gold += 2 + city.level * 2;
+  return out;
+}
+
+/**
+ * Ulusun tur bilançosu. Erzak stoklanmaz: üretilir, işçiler ve ordu yer,
+ * artan şehir ambarlarına gidip nüfusu büyütür.
+ * @returns {{ production, upkeep, net, cities }}
  */
 export function nationBudget(world, nation) {
-  let gold = 0;
+  const production = emptyPool();
   let cityCount = 0;
+  let workers = 0;
+
   for (const city of world.cities) {
     if (city.nationId !== nation.id) continue;
     cityCount++;
-    gold += 2 + city.level * 2;
+    workers += city.pop;
+    const out = cityProduction(city);
+    for (const r of RESOURCES) production[r] += out[r];
   }
-  let fertility = 0;
-  world.forEach((t) => {
-    if (t.owner === nation.id) fertility += t.terrain.fertility;
-  });
+  production.gold = Math.round(production.gold * corruption(cityCount));
 
-  // Katsayı düşük tutuldu: birim almak gerçek bir tercih olsun, her tur bedava olmasın.
-  const gross = Math.round((gold + fertility * 0.05) * corruption(cityCount));
   let army = 0;
   for (const u of world.units) if (u.nationId === nation.id) army++;
-  const upkeep = army * UNIT_UPKEEP;
-  return { gross, upkeep, net: gross - upkeep };
+
+  const upkeep = emptyPool();
+  upkeep.gold = army * UNIT_UPKEEP.gold;
+  upkeep.food = army * UNIT_UPKEEP.food + workers * WORKER_FOOD;
+
+  const net = emptyPool();
+  for (const r of RESOURCES) net[r] = production[r] - upkeep[r];
+  return { production, upkeep, net, cities: cityCount, workers, army };
+}
+
+/** Nüfusun bir kademe büyümesi için gereken erzak. */
+export function growthCost(city) {
+  return 15 + city.pop * 10;
 }
 
 /** Şehir el değiştirir; çevresindeki kareler de yeni sahibe geçer. */

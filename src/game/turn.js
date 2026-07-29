@@ -6,11 +6,13 @@ import { runNationAI } from './ai.js';
 import { atWar, computeContacts, initRelations } from './diplomacy.js';
 import { executeOrders } from './orders.js';
 import {
-  CITY_COST, UNIT_PRICES, UNIT_UPKEEP, canFoundCity, cityName, createCity, nationBudget,
+  CITY_COST, UNIT_COSTS, assignAllWorkers, canAfford, canFoundCity, cityName,
+  createCity, growthCost, nationBudget, pay, storageCap, UNIT_UPKEEP,
 } from './cities.js';
+import { RESOURCES } from '../world/terrain.js';
 
-/** Başlangıç hazinesi: ilk birkaç turda bir birim alacak kadar. */
-const STARTING_GOLD = 60;
+/** Başlangıç stoku: ilk birkaç turda bir birim alacak kadar. */
+const STARTING_STOCK = { gold: 50, food: 0, timber: 5, iron: 5 };
 
 export class TurnManager {
   constructor(game) {
@@ -38,31 +40,27 @@ export class TurnManager {
 
     for (const nation of world.nations) {
       nation.alive = nation.tiles > 0;
-      nation.gold = STARTING_GOLD;
-      nation.income = 0;
+      for (const r of RESOURCES) nation[r] = STARTING_STOCK[r];
+      nation.budget = null;
       if (!nation.alive) continue;
       // Her ülke başkentinde bir şehirle başlar.
-      createCity(world, nation.capital, nation.id, cityName(this.rng, usedNames), 2);
+      createCity(world, nation.capital, nation.id, cityName(this.rng, usedNames), 2, 3);
       this.spawnAt(nation, 'INFANTRY', { fallbackToCapital: true });
       this.spawnAt(nation, 'SCOUT', { fallbackToCapital: true });
     }
-    for (const nation of world.nations) {
-      const budget = nationBudget(world, nation);
-      nation.gross = budget.gross;
-      nation.upkeep = budget.upkeep;
-      nation.income = budget.net;
-    }
+    assignAllWorkers(world);
+    for (const nation of world.nations) nation.budget = nationBudget(world, nation);
   }
 
   /** Şehirlerinden birinde boş kare bulup birim satın alır. */
   buyUnit(nation, typeId) {
-    const price = UNIT_PRICES[typeId];
-    if (!nation.alive || price === undefined || nation.gold < price) return null;
+    const cost = UNIT_COSTS[typeId];
+    if (!nation.alive || !cost || !canAfford(nation, cost)) return null;
     const unit = this.spawnAt(nation, typeId);
     if (!unit) return null;
-    nation.gold -= price;
+    pay(nation, cost);
     if (nation.id === this.playerNation) {
-      this.addLog(`${UNIT_TYPES[typeId].name} satın alındı (${price} altın).`);
+      this.addLog(`${UNIT_TYPES[typeId].name} satın alındı.`);
     }
     this.game.emit('units', this.game.selectedUnit);
     return unit;
@@ -72,9 +70,9 @@ export class TurnManager {
   foundCity(unit) {
     const world = this.world;
     const nation = world.nations[unit.nationId];
-    if (nation.gold < CITY_COST) return null;
+    if (!canAfford(nation, CITY_COST)) return null;
     if (!canFoundCity(world, unit.tile, unit.nationId)) return null;
-    nation.gold -= CITY_COST;
+    pay(nation, CITY_COST);
     this.usedCityNames = this.usedCityNames ?? new Set(world.cities.map((c) => c.name));
     const city = createCity(world, unit.tile, unit.nationId, cityName(this.rng, this.usedCityNames));
     unit.movesLeft = 0;
@@ -137,7 +135,9 @@ export class TurnManager {
 
     this.turn++;
     for (const unit of world.units) unit.movesLeft = movesFor(unit);
-    this.collectIncome();
+    // Sıra önemli: sahiplik savaşta değişmiş olabilir, önce işçiler yeniden dağıtılır.
+    assignAllWorkers(world);
+    this.produce();
     this.checkElimination();
     // Oyuncunun sürekli emirleri yeni turun hakkıyla işlensin: tur açıldığında
     // otomatik ve yol emirli birimler hamlelerini yapmış olur.
@@ -147,29 +147,72 @@ export class TurnManager {
     this.game.requestRender();
   }
 
-  collectIncome() {
+  /**
+   * Üretim, tüketim ve büyüme. Erzak ulusta stoklanmaz: üretilir, işçiler ve
+   * ordu yer, artan şehir ambarlarına gidip nüfusu büyütür. Açık verilirse
+   * ordu beslenemez.
+   */
+  produce() {
     const world = this.world;
     for (const nation of world.nations) {
       if (!nation.alive) continue;
       const budget = nationBudget(world, nation);
-      nation.gross = budget.gross;
-      nation.upkeep = budget.upkeep;
-      nation.income = budget.net;
-      nation.gold += budget.net;
+      nation.budget = budget;
 
-      // Hazine tükendiyse ordu beslenemez: en ucuz birim dağılır.
-      while (nation.gold < 0) {
-        const units = world.units.filter((u) => u.nationId === nation.id);
-        if (!units.length) {
-          nation.gold = 0;
-          break;
-        }
-        units.sort((a, b) => a.type.attack - b.type.attack);
-        this.killUnit(units[0]);
-        nation.gold += UNIT_UPKEEP * 3; // dağıtılan birimin bir süre yükü kalkar
-        if (nation.id === this.playerNation) this.addLog('Hazine boş: bir birim dağıldı.');
-      }
+      const cap = storageCap(budget.cities);
+      nation.gold = Math.max(0, nation.gold + budget.net.gold);
+      // Ambar taşarsa fazlası ziyan: stok biriktirmek strateji olmasın.
+      nation.timber = Math.min(cap, nation.timber + budget.net.timber);
+      nation.iron = Math.min(cap, nation.iron + budget.net.iron);
+
+      this.settleFood(nation);
     }
+  }
+
+  /**
+   * Erzak bilançosunu kapatır. Fazla ambarlara gider ve nüfusu büyütür;
+   * açık önce ambarlardan karşılanır. Ambarlar da boşsa ordu beslenemez.
+   * Tampon önemli: yoksa kötü arazide doğan ülke ilk turda birim kaybediyor.
+   */
+  settleFood(nation) {
+    const world = this.world;
+    const cities = world.cities.filter((c) => c.nationId === nation.id);
+    if (!cities.length) return;
+    const net = nation.budget.net.food;
+
+    if (net >= 0) {
+      const share = net / cities.length;
+      for (const city of cities) {
+        city.foodStore += share;
+        const cost = growthCost(city);
+        if (city.foodStore >= cost) {
+          city.foodStore -= cost;
+          city.pop++;
+          // Kalabalıklaşan şehir tahkimatını da güçlendirir (savunma ve çizim).
+          city.level = Math.min(4, 1 + Math.floor(city.pop / 4));
+          if (nation.id === this.playerNation) this.addLog(`${city.name} büyüdü (${city.pop} işçi).`);
+        }
+      }
+      return;
+    }
+
+    let shortfall = -net;
+    for (const city of cities) {
+      const taken = Math.min(city.foodStore, shortfall);
+      city.foodStore -= taken;
+      shortfall -= taken;
+      if (shortfall <= 0) break;
+    }
+    // Ambarlar boş ve hâlâ açık varsa: en zayıf birimler dağılır.
+    while (shortfall > 0) {
+      const units = world.units.filter((u) => u.nationId === nation.id);
+      if (!units.length) break;
+      units.sort((a, b) => a.type.attack - b.type.attack);
+      this.killUnit(units[0]);
+      shortfall -= UNIT_UPKEEP.food;
+      if (nation.id === this.playerNation) this.addLog('Kıtlık: bir birim dağıldı.');
+    }
+    nation.budget = nationBudget(world, nation);
   }
 
   /**

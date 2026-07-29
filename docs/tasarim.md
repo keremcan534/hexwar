@@ -3,7 +3,8 @@
 Bu belge **kod yazılmadan önce** alınan denge kararlarını kaydeder. Amaç, sayılar
 tartışmaya açıldığında "bu neden böyleydi" sorusunun cevabının elde olması.
 
-Uygulama durumu: **hiçbiri kodlanmadı.** Mevcut oyun saf fetih odaklıdır.
+Uygulama durumu: **1. adım (kaynaklar + arazi verimleri + otomatik işçi) yazıldı.**
+Gerisi bekliyor. Yol haritası ve gerçekleşen sayılar için bölüm 11 ve 13.
 
 ## 1. Vizyon
 
@@ -190,7 +191,7 @@ imparatorluğu **ekonomide** geçtiği en az bir örnek görülmeli.
 Her adım tek başına ölçülebilir olmalı; hepsini yazıp sonra denge aramak,
 hangi mekaniğin bozduğunu ayırt etmeyi imkânsız kılar.
 
-1. **Kaynak havuzları + arazi verimleri + otomatik işçi**
+1. ~~**Kaynak havuzları + arazi verimleri + otomatik işçi**~~ — yazıldı, bkz. bölüm 13
 2. **Kültür bölgeleri + şehir nüfusu** — worldgen değişikliği, kayıt biçiminden önce
 3. **Infamy + hoşnutsuzluk + ateşkes** — tempo yarıya inmeli
 4. **Kayıt/yükleme** — 300 tur tek oturumda bitmez
@@ -216,4 +217,37 @@ kayıtlar geçersiz olur.
 4. **Kaynak kilidi** — ne demiri ne ticaret ortağı olan ada ülkesi ölü doğar.
    İzci'nin demirsizliği hafifletir ama ölçmek gerek.
 5. **Altın birikmesinin dönüşü** — YZ'ye bina ve teknoloji alımı eklenmezse hazine
-   yine şişer. Ekonomiyle **aynı anda** yazılmalı.
+   yine şişer. Ekonomiyle **aynı anda** yazılmalı. *(Gerçekleşti, bkz. 13.)*
+
+## 13. 1. adımın uygulama notları
+
+Tasarımdan sapan ve ölçüm sonucu eklenen şeyler:
+
+| Karar | Tasarımda | Uygulanan | Sebep |
+|---|---|---|---|
+| Şehir bedeli | 80 altın | 60 altın + 4 kereste | Kereste bir işe yarasın |
+| İşçi tüketimi | belirtilmemiş | 2 erzak | 1 olunca erzak freni hiç bağlamıyor |
+| Ambar kapasitesi | yok | `30 + 5×şehir` | Ölçümde 2968 demir, 7464 kereste birikti |
+| Şehir erzak stoku | yok | 15 ile başlar | Ormanlık başlangıçta 1. turda birim dağılıyordu |
+| Ordu tavanı | yok | hedefin 2 katı | Bir seed'de 93 süvari, tur 22 ms'ye çıktı |
+| Nüfus artışı | belirtilmemiş | `15 + işçi×10` erzak | — |
+
+### Ölçüm (150 tur, 4 seed)
+
+| Ölçüt | Hedef | Sonuç |
+|---|---|---|
+| Ayakta ülke | ≥ 3 (150. turda 8-10 hedefi 300 tur içindi) | 2-5 |
+| Lider toprak payı | %25-45 | %35-43 (ada haritasında %69) |
+| Biriken demir/kereste | < 60 | 110-200 (tavana dayalı, sınırlı) |
+| Erzak dengesi −2…+6 arası ülke | ≥ %60 | %50-75 |
+| Tur süresi | < 8 ms | 2.9-3.7 ms |
+| Bütünlük hatası | 0 | 0 |
+
+### Açık kalan: altın birikmesi
+
+En yüksek hazine **2022 altına** çıktı (hedef < 400) ve bu ekonomiden *önce*
+görülen 1110'dan kötü. Sebebi mekanik: ordu artık **erzakla** sınırlı olduğundan
+YZ altınını orduya çeviremiyor ve altının başka gideri yok.
+
+Bu, 2. adımın (binalar) tam olarak çözmesi gereken sorun. Binalar yazılmadan
+altına yapay bir fren koymak, gerçek gideri gizler.

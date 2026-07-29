@@ -201,6 +201,11 @@ html, body {
 .turn-no { font-size: 13px; color: var(--muted); }
 .turn-no b { color: var(--text); font-size: 15px; }
 .turn-nation { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.resources { display: flex; gap: 10px; font-size: 12px; flex-wrap: wrap; }
+.resources span { white-space: nowrap; }
+.resources b { color: var(--text); font-weight: 600; }
+.res-neg { color: #e07a6a; }
+.res-pos { color: #7fc98a; }
 .primary.compact { width: auto; margin: 0; padding: 10px 16px; font-size: 14px; flex: none; }
 .action.compact { flex: none; padding: 10px 14px; }
 .action.compact[disabled] { opacity: 0.35; }

@@ -1,7 +1,9 @@
 // DOM arayüzü: ayarlar, katman anahtarları, seçili hex paneli.
 // Oyun mantığı burada yok; sadece Game'i sürer ve olaylarını dinler.
 
-import { CITY_COST, UNIT_PRICES, canFoundCity } from '../game/cities.js';
+import {
+  CITY_COST, UNIT_COSTS, canAfford, canFoundCity, cityProduction, formatCost, growthCost,
+} from '../game/cities.js';
 import { UNIT_TYPES, movesFor } from '../game/units.js';
 import { MIN_WAR_TURNS, atWar, relation } from '../game/diplomacy.js';
 import { ORDER } from '../game/orders.js';
@@ -35,8 +37,7 @@ export class Hud {
       lblNations: $('lbl-nations'),
       turnValue: $('turn-value'),
       turnNation: $('turn-nation'),
-      goldValue: $('gold-value'),
-      incomeValue: $('income-value'),
+      resources: $('resources'),
     };
     this.bind();
   }
@@ -126,10 +127,7 @@ export class Hud {
     const me = world.nations[turns.playerNation];
     const alive = world.nations.filter((n) => n.alive).length;
     const cities = world.cities.filter((c) => c.nationId === turns.playerNation).length;
-    this.el.goldValue.textContent = String(me?.gold ?? 0);
-    this.el.incomeValue.textContent = me
-      ? `(${me.income >= 0 ? '+' : ''}${me.income} · bakım ${me.upkeep ?? 0})`
-      : '';
+    this.el.resources.innerHTML = me ? resourcesHtml(me) : '—';
     // Bekleyen birim sayısı düğmede: turu bitirmeden önce ne kaldığı görünsün.
     const idle = this.game.idleUnits().length;
     const btn = $('btn-next-unit');
@@ -168,18 +166,18 @@ export class Hud {
     const title = nation ? nation.fullName : 'Sahipsiz Bölge';
     const sub = `${tile.terrain.name} · ${tile.q}, ${tile.r}${tile.coastal ? ' · kıyı' : ''}`;
 
+    // Karenin ne ürettiği artık en önemli bilgi: başa alındı.
+    const yields = tile.terrain.yields;
     const stats = [
-      ['Yükseklik', tile.elevation.toFixed(2)],
-      ['Nem', tile.moisture.toFixed(2)],
-      ['Sıcaklık', tile.temperature.toFixed(2)],
-      ['Verim', String(tile.terrain.fertility)],
+      ['Erzak', String(yields.food)],
+      ['Kereste', String(yields.timber)],
+      ['Demir', String(yields.iron)],
+      ['Altın', String(yields.gold)],
       ['Savunma', `%${Math.round(tile.terrain.defense * 100)}`],
       ['Geçiş', tile.terrain.passable ? `${tile.terrain.moveCost}` : 'yok'],
     ];
-    if (nation) {
-      stats.push(['Ülke Alanı', `${nation.tiles} hex`]);
-      stats.push(['Nüfus', formatNumber(nation.population)]);
-    }
+    if (tile.workedBy) stats.push(['İşleyen', tile.workedBy.name]);
+    if (nation) stats.push(['Ülke Alanı', `${nation.tiles} hex`]);
 
     const unit = tile.unit;
     const unitBlock = unit ? `
@@ -214,14 +212,21 @@ export class Hud {
     const rows = [];
 
     if (tile.city && tile.city.nationId === game.turns.playerNation) {
-      const buttons = Object.entries(UNIT_PRICES).filter(
+      const city = tile.city;
+      const out = cityProduction(city);
+      const buttons = Object.entries(UNIT_COSTS).filter(
         // Gemi ancak kıyı şehrinde üretilebilir.
         ([id]) => UNIT_TYPES[id].domain !== 'sea' || tile.coastal,
-      ).map(([id, price]) => {
-        const disabled = me.gold < price ? 'disabled' : '';
-        return `<button class="action" data-buy="${id}" ${disabled}>${UNIT_TYPES[id].name} · ${price}</button>`;
+      ).map(([id, cost]) => {
+        const disabled = canAfford(me, cost) ? '' : 'disabled';
+        return `<button class="action" data-buy="${id}" ${disabled}>${UNIT_TYPES[id].name} · ${formatCost(cost)}</button>`;
       }).join('');
-      rows.push(`<div class="action-row"><div class="k">${escapeHtml(tile.city.name)} — birim al</div>${buttons}</div>`);
+      rows.push(`<div class="action-row">
+        <div class="k">${escapeHtml(city.name)} — ${city.pop} işçi · üretim
+          ${out.food}🌾 ${out.timber}🪵 ${out.iron}⛏ ${out.gold}⬤
+          · büyüme ${Math.floor(city.foodStore)}/${growthCost(city)}</div>
+        ${buttons}
+      </div>`);
     }
 
     // Yabancı toprak/birim: savaş ilanı ya da barış teklifi.
@@ -256,8 +261,8 @@ export class Hud {
 
     const unit = game.selectedUnit;
     if (unit && unit.tile === tile && unit.movesLeft > 0 && canFoundCity(game.world, tile, unit.nationId)) {
-      const disabled = me.gold < CITY_COST ? 'disabled' : '';
-      rows.push(`<div class="action-row"><button class="action wide" data-found="1" ${disabled}>Şehir Kur · ${CITY_COST} altın</button></div>`);
+      const disabled = canAfford(me, CITY_COST) ? '' : 'disabled';
+      rows.push(`<div class="action-row"><button class="action wide" data-found="1" ${disabled}>Şehir Kur · ${formatCost(CITY_COST)}</button></div>`);
     }
     return rows.join('');
   }
@@ -281,6 +286,17 @@ export class Hud {
         : game.setUnitOrder(unit, btn.dataset.order));
     }
   }
+}
+
+/** Dört kaynağın stok ve net akışı; erzak akışı stoktan önemli olduğu için öne alındı. */
+function resourcesHtml(nation) {
+  const net = nation.budget?.net ?? { gold: 0, food: 0, timber: 0, iron: 0 };
+  const flow = (v) => `<b class="${v < 0 ? 'res-neg' : v > 0 ? 'res-pos' : ''}">${v >= 0 ? '+' : ''}${Math.round(v)}</b>`;
+  return `
+    <span>⬤ <b>${Math.round(nation.gold)}</b> ${flow(net.gold)}</span>
+    <span>🌾 ${flow(net.food)}</span>
+    <span>🪵 <b>${Math.round(nation.timber)}</b> ${flow(net.timber)}</span>
+    <span>⛏ <b>${Math.round(nation.iron)}</b> ${flow(net.iron)}</span>`;
 }
 
 function formatNumber(n) {
