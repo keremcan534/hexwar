@@ -85,6 +85,9 @@ export function createCity(world, tile, nationId, name, level = 1, pop = 2) {
     nationId,
     level,          // tahkimat kademesi: savunma ve çizim
     pop,            // işçi sayısı: ekonominin motoru
+    // Nüfusun etnik bileşimi. Şehir el değiştirince **değişmez**: fethedilen
+    // toprakta yabancı halkla yaşamak zorunda kalmak tasarımın çekirdeği.
+    pops: { [tile.culture]: pop },
     worked: [],     // işlenen kareler; uzunluğu pop kadar
     buildings: [],
     foodStore: STARTING_FOOD_STORE,
@@ -218,6 +221,46 @@ export function nationBudget(world, nation) {
   const net = emptyPool();
   for (const r of RESOURCES) net[r] = production[r] - upkeep[r];
   return { production, upkeep, net, cities: cityCount, workers, army };
+}
+
+/**
+ * Yeni doğan işçinin kültürü: şehrin işlediği toprakların halkından gelir.
+ * Böylece yabancı araziye yayılan şehir zamanla karışık nüfuslu olur.
+ */
+export function growPop(city, rng) {
+  const weights = new Map();
+  for (const tile of city.worked) {
+    if (tile.culture < 0) continue;
+    weights.set(tile.culture, (weights.get(tile.culture) ?? 0) + 1);
+  }
+  if (city.tile.culture >= 0) {
+    // Şehir merkezi iki kat ağırlıklı: çekirdek halk baskın kalır ama tek olmaz.
+    weights.set(city.tile.culture, (weights.get(city.tile.culture) ?? 0) + 2);
+  }
+  if (!weights.size) weights.set(city.tile.culture, 1);
+
+  // Ağırlıklı **rastgele** seçim. En yükseği almak, merkez bonusu yüzünden
+  // her şehri tek kültüre kilitliyordu: etnik karışım hiç oluşmuyordu.
+  let total = 0;
+  for (const weight of weights.values()) total += weight;
+  let roll = rng() * total;
+  let chosen = city.tile.culture;
+  for (const [culture, weight] of weights) {
+    roll -= weight;
+    if (roll <= 0) { chosen = culture; break; }
+  }
+
+  city.pop++;
+  city.pops[chosen] = (city.pops[chosen] ?? 0) + 1;
+}
+
+/** Şehir nüfusunun ulusun kurucu kültüründen olmayan kısmı. */
+export function foreignPop(city, nationCulture) {
+  let foreign = 0;
+  for (const [culture, count] of Object.entries(city.pops)) {
+    if (Number(culture) !== nationCulture) foreign += count;
+  }
+  return foreign;
 }
 
 /** Nüfusun bir kademe büyümesi için gereken erzak; ambar eşiği düşürür. */

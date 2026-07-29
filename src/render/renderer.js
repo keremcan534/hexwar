@@ -56,6 +56,8 @@ export class Renderer {
     this.showGrid = true;
     this.showOwners = true;
     this.showLabels = true;
+    /** 'nations' | 'cultures' */
+    this.mapMode = 'nations';
     this.corners = HEX_CORNERS.map(([x, y]) => [x * HEX_SIZE, y * HEX_SIZE]);
     this.cache = null;
     this.lastDrawn = 0;
@@ -185,11 +187,14 @@ export class Renderer {
     }
   }
 
+  /** Sahiplik katmanı: ülke renkleri ya da kültür kipinde halk renkleri. */
   drawOwnership(ctx, world, tiles) {
     const byColor = new Map();
     for (const t of tiles) {
-      if (t.owner < 0) continue;
-      const color = world.nations[t.owner].color;
+      const color = this.mapMode === 'cultures'
+        ? (t.culture >= 0 ? world.cultures[t.culture].color : null)
+        : (t.owner >= 0 ? world.nations[t.owner].color : null);
+      if (!color) continue;
       let path = byColor.get(color);
       if (!path) {
         path = new Path2D();
@@ -198,8 +203,9 @@ export class Renderer {
       this.hexPath(path, t.x, t.y);
     }
     // Düşük tutuldu: yüksek alfada ülke rengi arazi paletini soldurup
-    // haritayı tek düze çamur rengine çeviriyor.
-    ctx.globalAlpha = 0.3;
+    // haritayı tek düze çamur rengine çeviriyor. Kültür kipinde amaç zaten
+    // bölgeleri okumak olduğu için biraz daha koyu.
+    ctx.globalAlpha = this.mapMode === 'cultures' ? 0.5 : 0.3;
     for (const [color, path] of byColor) {
       ctx.fillStyle = color;
       ctx.fill(path);
@@ -219,9 +225,13 @@ export class Renderer {
   drawBorders(ctx, world, tiles, scale) {
     const byColor = new Map();
     const c = this.corners;
+    const cultureMode = this.mapMode === 'cultures';
+    const groupOf = (tile) => (cultureMode ? tile.culture : tile.owner);
+
     for (const t of tiles) {
-      if (t.owner < 0) continue;
-      const color = world.nations[t.owner].color;
+      const group = groupOf(t);
+      if (group < 0) continue;
+      const color = cultureMode ? world.cultures[group].color : world.nations[group].color;
       let path = byColor.get(color);
       if (!path) {
         path = new Path2D();
@@ -229,7 +239,7 @@ export class Renderer {
       }
       for (let i = 0; i < 6; i++) {
         const n = world.get(t.q + DIRS[i][0], t.r + DIRS[i][1]);
-        if (n && n.owner === t.owner) continue;
+        if (n && groupOf(n) === group) continue;
         const a = c[i];
         const b = c[(i + 1) % 6];
         path.moveTo(t.x + a[0], t.y + a[1]);

@@ -4,6 +4,7 @@ import { makeRng } from '../core/rng.js';
 import { makeNoise2D, fbm } from '../core/noise.js';
 import { classify, SEA_LEVEL, TERRAIN } from './terrain.js';
 import { DIRS, hexToPixel, key, offsetToAxial } from '../core/hex.js';
+import { generateCultures } from './cultures.js';
 
 /** Hex dış yarıçapı (dünya birimi). Ekran ölçeği kamera zoom'undan gelir. */
 export const HEX_SIZE = 26;
@@ -137,6 +138,7 @@ export function generateWorld(seed, options = {}) {
         coastal: false,
         river: false,
         owner: -1,      // ülke index'i, -1 = sahipsiz
+        culture: -1,    // halk id'si; ülke sınırından bağımsız
         continent: -1,  // kara kütlesi id'si
       };
 
@@ -148,6 +150,7 @@ export function generateWorld(seed, options = {}) {
 
   markCoasts(world);
   labelContinents(world);
+  generateCultures(world, rng);
   computeBounds(world);
   return world;
 }

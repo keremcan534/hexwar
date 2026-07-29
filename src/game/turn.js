@@ -7,7 +7,7 @@ import { atWar, computeContacts, initRelations } from './diplomacy.js';
 import { executeOrders } from './orders.js';
 import {
   CITY_COST, UNIT_COSTS, assignAllWorkers, canAfford, canFoundCity, cityName,
-  createCity, growthCost, nationBudget, pay, storageCap, UNIT_UPKEEP, WORK_RADIUS,
+  createCity, growPop, growthCost, nationBudget, pay, storageCap, UNIT_UPKEEP, WORK_RADIUS,
 } from './cities.js';
 import { BUILDINGS, canBuild } from './buildings.js';
 import { RESOURCES } from '../world/terrain.js';
@@ -206,7 +206,7 @@ export class TurnManager {
         const cost = growthCost(city);
         if (city.foodStore >= cost) {
           city.foodStore -= cost;
-          city.pop++;
+          growPop(city, this.rng);
           // Kalabalıklaşan şehir tahkimatını da güçlendirir (savunma ve çizim).
           city.level = Math.min(4, 1 + Math.floor(city.pop / 4));
           if (nation.id === this.playerNation) this.addLog(`${city.name} büyüdü (${city.pop} işçi).`);

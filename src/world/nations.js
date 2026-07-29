@@ -3,6 +3,7 @@
 import { makeRng } from '../core/rng.js';
 import { hexDistance } from '../core/hex.js';
 import { makeFlag } from './flags.js';
+import { growRegions, pickSeeds } from './regions.js';
 
 const SYL_START = ['Ar', 'Bel', 'Cor', 'Dra', 'El', 'Fen', 'Gor', 'Hal', 'Ir', 'Kaz', 'Lor', 'Mar', 'Nor', 'Oss', 'Pra', 'Quen', 'Rav', 'Sar', 'Tur', 'Ul', 'Vas', 'Wyn', 'Yar', 'Zen'];
 const SYL_MID = ['a', 'e', 'i', 'o', 'an', 'en', 'ir', 'or', 'al', 'ath', 'esh', 'ov', 'ur', 'yl'];
@@ -30,43 +31,6 @@ function makeColor(index, rng) {
   return { color: `hsl(${hue.toFixed(0)} ${sat}% ${light}%)`, hue, sat, light };
 }
 
-/** Küçük ikili yığın (min-heap). Yayılma kuyruğu için. */
-class MinHeap {
-  constructor() { this.items = []; }
-  get size() { return this.items.length; }
-  push(item) {
-    const a = this.items;
-    a.push(item);
-    let i = a.length - 1;
-    while (i > 0) {
-      const p = (i - 1) >> 1;
-      if (a[p].cost <= a[i].cost) break;
-      [a[p], a[i]] = [a[i], a[p]];
-      i = p;
-    }
-  }
-  pop() {
-    const a = this.items;
-    const top = a[0];
-    const last = a.pop();
-    if (a.length) {
-      a[0] = last;
-      let i = 0;
-      for (;;) {
-        const l = i * 2 + 1;
-        const r = l + 1;
-        let m = i;
-        if (l < a.length && a[l].cost < a[m].cost) m = l;
-        if (r < a.length && a[r].cost < a[m].cost) m = r;
-        if (m === i) break;
-        [a[m], a[i]] = [a[i], a[m]];
-        i = m;
-      }
-    }
-    return top;
-  }
-}
-
 /**
  * Dünyaya ülkeler yerleştirir. world.tiles[].owner alanını doldurur.
  * @returns {Array} nations
@@ -90,7 +54,7 @@ export function generateNations(world, options = {}) {
   }
 
   const nationCount = count ?? Math.max(4, Math.min(22, Math.round(land.length / 95)));
-  const seeds = pickSeeds(world, land, nationCount, rng);
+  const seeds = pickNationSeeds(world, land, nationCount, rng);
 
   const usedNames = new Set();
   const nations = seeds.map((tile, i) => {
@@ -104,6 +68,9 @@ export function generateNations(world, options = {}) {
       color: palette.color,
       flag: makeFlag(rng, palette),
       capital: tile,
+      // Kurucu kültür: başkentin halkı. Ülke sınırlarıyla kültür sınırları
+      // örtüşmediği için bu, ileride hoşnutsuzluğun ölçütü olacak.
+      culture: tile.culture ?? -1,
       tiles: 0,
       population: 0,
       coastal: false,
@@ -120,66 +87,26 @@ export function generateNations(world, options = {}) {
   return nations;
 }
 
-/** Tohumlar: birbirinden uzak, mümkünse verimli ve büyük kıtalarda. */
-function pickSeeds(world, land, count, rng) {
-  const candidates = rng.shuffle(land.slice());
-  const chosen = [];
-  // Haritanın kısa kenarına göre ölçekli minimum mesafe; sıkışırsa gevşetilir.
-  let minDist = Math.max(4, Math.floor(Math.min(world.cols, world.rows) / Math.sqrt(count)));
-
-  while (chosen.length < count && minDist > 1) {
-    for (const tile of candidates) {
-      if (chosen.length >= count) break;
-      if (chosen.includes(tile)) continue;
-      const continentSize = world.continentSizes?.[tile.continent] ?? 0;
-      if (continentSize < 12 && chosen.length < count - 1) continue; // minik adalara başkent kurma
-      const ok = chosen.every((c) => hexDistance(c.q, c.r, tile.q, tile.r) >= minDist);
-      if (ok) chosen.push(tile);
-    }
-    minDist = Math.floor(minDist * 0.7);
-  }
-
-  // Hâlâ eksikse kalan karadan doldur.
-  for (const tile of candidates) {
-    if (chosen.length >= count) break;
-    if (!chosen.includes(tile)) chosen.push(tile);
-  }
-  return chosen.slice(0, count);
+/** Tohumlar: birbirinden uzak, minik adalara başkent kurmayan. */
+function pickNationSeeds(world, land, count, rng) {
+  const mainland = land.filter((t) => (world.continentSizes?.[t.continent] ?? 0) >= 12);
+  return pickSeeds(
+    mainland.length >= count ? mainland : land,
+    count,
+    rng,
+    (a, b) => hexDistance(a.q, a.r, b.q, b.r),
+    Math.max(4, Math.floor(Math.min(world.cols, world.rows) / Math.sqrt(count))),
+  );
 }
 
 function growNations(world, nations, rng) {
-  const heap = new MinHeap();
-  const best = new Map(); // tile -> ulaşılan en düşük maliyet
-
-  for (const nation of nations) {
-    nation.capital.owner = nation.id;
-    nation.tiles = 1;
-    best.set(nation.capital, 0);
-    push(nation.capital, nation, 0);
-  }
-
-  function push(tile, nation, cost) {
-    for (const n of world.neighbors(tile)) {
-      if (n.terrain.water || !n.terrain.passable) continue;
-      // Arazi maliyeti + rastgele jitter -> düz değil, tırtıklı sınırlar.
-      const step = (n.terrain.moveCost + rng.range(0, 2.2)) * nation.aggression;
-      const total = cost + step;
-      const known = best.get(n);
-      if (known !== undefined && known <= total) continue;
-      best.set(n, total);
-      heap.push({ tile: n, nation, cost: total });
-    }
-  }
-
-  while (heap.size) {
-    const { tile, nation, cost } = heap.pop();
-    if (tile.owner !== -1) continue;
-    if (nation.tiles >= nation.budget) continue;
-    if (best.get(tile) !== cost) continue; // eskimiş giriş
-    tile.owner = nation.id;
-    nation.tiles++;
-    push(tile, nation, cost);
-  }
+  const { assignment } = growRegions(world, nations.map((n) => n.capital), {
+    canEnter: (tile) => !tile.terrain.water && tile.terrain.passable,
+    // Arazi maliyeti + rastgele jitter -> düz değil, tırtıklı sınırlar.
+    stepCost: (tile, i) => (tile.terrain.moveCost + rng.range(0, 2.2)) * nations[i].aggression,
+    budget: (i) => nations[i].budget,
+  });
+  for (const [tile, id] of assignment) tile.owner = id;
 }
 
 function computeStats(world, nations) {

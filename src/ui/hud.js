@@ -59,6 +59,11 @@ export class Hud {
     $('btn-close-settings').onclick = () => el.settings.classList.add('hidden');
 
     $('opt-owners').onchange = (e) => this.setLayer('showOwners', e.target.checked);
+    $('opt-cultures').onchange = (e) => {
+      game.renderer.mapMode = e.target.checked ? 'cultures' : 'nations';
+      game.renderer.invalidateCache();
+      game.requestRender();
+    };
     $('opt-grid').onchange = (e) => this.setLayer('showGrid', e.target.checked);
     $('opt-labels').onchange = (e) => this.setLayer('showLabels', e.target.checked);
 
@@ -179,6 +184,7 @@ export class Hud {
       ['Savunma', `%${Math.round(tile.terrain.defense * 100)}`],
       ['Geçiş', tile.terrain.passable ? `${tile.terrain.moveCost}` : 'yok'],
     ];
+    if (tile.culture >= 0) stats.push(['Halk', world.cultures[tile.culture].name]);
     if (tile.workedBy) stats.push(['İşleyen', tile.workedBy.name]);
     if (nation) stats.push(['Ülke Alanı', `${nation.tiles} hex`]);
 
@@ -237,7 +243,16 @@ export class Hud {
           return `<button class="action" data-build="${b.id}" title="${b.desc}" ${off}>${b.name} · ${formatCost(b.cost)}</button>`;
         }).join('');
 
+      // Nüfusun etnik bileşimi: yabancı halk payı ileride hoşnutsuzluğun ölçütü.
+      const composition = Object.entries(city.pops)
+        .sort((a, b) => b[1] - a[1])
+        .map(([id, n]) => `${n} ${escapeHtml(game.world.cultures[id]?.name ?? '?')}`)
+        .join(' · ');
+
       rows.push(`<div class="action-row">
+        <div class="k">${escapeHtml(city.name)} — halk: ${composition}</div>
+      </div>
+      <div class="action-row">
         <div class="k">${escapeHtml(city.name)} — ${city.pop} işçi · üretim
           ${out.food}🌾 ${out.timber}🪵 ${out.iron}⛏ ${out.gold}⬤
           · büyüme ${Math.floor(city.foodStore)}/${growthCost(city)}</div>
