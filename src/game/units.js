@@ -1,5 +1,7 @@
 // Birim tipleri ve savaş çözümü. Tek yerde tanımlı: yeni birim eklemek için burası yeter.
 
+import { buildingDefense } from './buildings.js';
+
 /** Kara birimi denize girdiğinde bu hızla yol alır (bindirilmiş hâli). */
 export const EMBARKED_MOVES = 4;
 
@@ -67,7 +69,8 @@ export function placeUnit(unit, tile) {
  */
 export function resolveCombat(attacker, defender, rng) {
   // Şehir surları araziden bağımsız sabit bir savunma katkısı verir.
-  const cityBonus = defender.tile.city ? 0.3 + defender.tile.city.level * 0.1 : 0;
+  const city = defender.tile.city;
+  const cityBonus = city ? 0.3 + city.level * 0.1 + buildingDefense(city) : 0;
   const terrainBonus = defender.tile.terrain.defense * (defender.type.entrenched ? 2 : 1) + cityBonus;
   const roll = () => 0.75 + rng() * 0.5;
   // Denizdeki kara birimi savunmasızdır: karaya çıkmadan yakalanmak pahalıya patlar.

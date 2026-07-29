@@ -3,6 +3,7 @@
 
 import { hexDistance, hexesInRange } from '../core/hex.js';
 import { CITY_CENTER_YIELD, RESOURCES } from '../world/terrain.js';
+import { applyBuildings, buildingUpkeep, hasBuilding } from './buildings.js';
 
 /** Yeni şehir kurma bedeli ve şehirler arası asgari mesafe. */
 export const CITY_COST = { gold: 60, timber: 4 };
@@ -85,6 +86,7 @@ export function createCity(world, tile, nationId, name, level = 1, pop = 2) {
     level,          // tahkimat kademesi: savunma ve çizim
     pop,            // işçi sayısı: ekonominin motoru
     worked: [],     // işlenen kareler; uzunluğu pop kadar
+    buildings: [],
     foodStore: STARTING_FOOD_STORE,
     manualWorkers: false, // elle atama geldiğinde otomatik dağıtımı kilitler
   };
@@ -181,6 +183,7 @@ export function cityProduction(city) {
   }
   // Şehrin kendisi bir pazar: tahkimat kademesi altın tabanı verir.
   out.gold += 2 + city.level * 2;
+  applyBuildings(city, out);
   return out;
 }
 
@@ -193,11 +196,13 @@ export function nationBudget(world, nation) {
   const production = emptyPool();
   let cityCount = 0;
   let workers = 0;
+  let buildings = 0;
 
   for (const city of world.cities) {
     if (city.nationId !== nation.id) continue;
     cityCount++;
     workers += city.pop;
+    buildings += buildingUpkeep(city);
     const out = cityProduction(city);
     for (const r of RESOURCES) production[r] += out[r];
   }
@@ -207,7 +212,7 @@ export function nationBudget(world, nation) {
   for (const u of world.units) if (u.nationId === nation.id) army++;
 
   const upkeep = emptyPool();
-  upkeep.gold = army * UNIT_UPKEEP.gold;
+  upkeep.gold = army * UNIT_UPKEEP.gold + buildings;
   upkeep.food = army * UNIT_UPKEEP.food + workers * WORKER_FOOD;
 
   const net = emptyPool();
@@ -215,9 +220,10 @@ export function nationBudget(world, nation) {
   return { production, upkeep, net, cities: cityCount, workers, army };
 }
 
-/** Nüfusun bir kademe büyümesi için gereken erzak. */
+/** Nüfusun bir kademe büyümesi için gereken erzak; ambar eşiği düşürür. */
 export function growthCost(city) {
-  return 15 + city.pop * 10;
+  const base = 15 + city.pop * 10;
+  return Math.round(base * (hasBuilding(city, 'GRANARY') ? 0.8 : 1));
 }
 
 /** Şehir el değiştirir; çevresindeki kareler de yeni sahibe geçer. */

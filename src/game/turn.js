@@ -7,8 +7,9 @@ import { atWar, computeContacts, initRelations } from './diplomacy.js';
 import { executeOrders } from './orders.js';
 import {
   CITY_COST, UNIT_COSTS, assignAllWorkers, canAfford, canFoundCity, cityName,
-  createCity, growthCost, nationBudget, pay, storageCap, UNIT_UPKEEP,
+  createCity, growthCost, nationBudget, pay, storageCap, UNIT_UPKEEP, WORK_RADIUS,
 } from './cities.js';
+import { BUILDINGS, canBuild } from './buildings.js';
 import { RESOURCES } from '../world/terrain.js';
 
 /** Başlangıç stoku: ilk birkaç turda bir birim alacak kadar. */
@@ -64,6 +65,24 @@ export class TurnManager {
     }
     this.game.emit('units', this.game.selectedUnit);
     return unit;
+  }
+
+  /** Şehre bina kurar. Altının asıl gideri burasıdır. */
+  build(city, buildingId) {
+    const world = this.world;
+    const nation = world.nations[city.nationId];
+    const building = BUILDINGS[buildingId];
+    if (!building || !nation.alive) return false;
+    if (!canBuild(world, city, buildingId, WORK_RADIUS)) return false;
+    if (!pay(nation, building.cost)) return false;
+
+    city.buildings.push(buildingId);
+    if (city.nationId === this.playerNation) {
+      this.addLog(`${city.name}: ${building.name} yapıldı.`);
+    }
+    this.game.emit('units', this.game.selectedUnit);
+    this.game.requestRender();
+    return true;
   }
 
   /** Birimin durduğu karede yeni şehir kurar. */

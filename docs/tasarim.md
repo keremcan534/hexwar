@@ -3,7 +3,7 @@
 Bu belge **kod yazılmadan önce** alınan denge kararlarını kaydeder. Amaç, sayılar
 tartışmaya açıldığında "bu neden böyleydi" sorusunun cevabının elde olması.
 
-Uygulama durumu: **1. adım (kaynaklar + arazi verimleri + otomatik işçi) yazıldı.**
+Uygulama durumu: **1. adım (kaynaklar) ve 2. adım (binalar) yazıldı.**
 Gerisi bekliyor. Yol haritası ve gerçekleşen sayılar için bölüm 11 ve 13.
 
 ## 1. Vizyon
@@ -192,6 +192,8 @@ Her adım tek başına ölçülebilir olmalı; hepsini yazıp sonra denge aramak
 hangi mekaniğin bozduğunu ayırt etmeyi imkânsız kılar.
 
 1. ~~**Kaynak havuzları + arazi verimleri + otomatik işçi**~~ — yazıldı, bkz. bölüm 13
+1b. ~~**Binalar**~~ — yazıldı, bkz. bölüm 14. Vizyon değişince listeden düşmüştü;
+    1. adımın açık bıraktığı altın birikmesini kapatmak için öne alındı.
 2. **Kültür bölgeleri + şehir nüfusu** — worldgen değişikliği, kayıt biçiminden önce
 3. **Infamy + hoşnutsuzluk + ateşkes** — tempo yarıya inmeli
 4. **Kayıt/yükleme** — 300 tur tek oturumda bitmez
@@ -249,5 +251,36 @@ En yüksek hazine **2022 altına** çıktı (hedef < 400) ve bu ekonomiden *önc
 görülen 1110'dan kötü. Sebebi mekanik: ordu artık **erzakla** sınırlı olduğundan
 YZ altınını orduya çeviremiyor ve altının başka gideri yok.
 
-Bu, 2. adımın (binalar) tam olarak çözmesi gereken sorun. Binalar yazılmadan
-altına yapay bir fren koymak, gerçek gideri gizler.
+Bu, binaların tam olarak çözmesi gereken sorun. Binalar yazılmadan altına yapay
+bir fren koymak, gerçek gideri gizler. *(Çözüldü, bkz. 14.)*
+
+## 14. Binaların uygulama notları
+
+Tasarımdaki bina tablosu (bölüm 3) neredeyse aynen uygulandı; tek fark
+Bıçkıhane/Demirhane/Liman'ın **arazi koşuluna bağlanması**: beslendiği arazi
+yakında yoksa kurulamaz. Koşulsuz bıraksak oyuncu için tuzak olurdu (etkisi
+sıfır bir binaya para vermek).
+
+### Ölçüm (150 tur, 4 seed)
+
+| Ölçüt | Öncesi | Sonrası |
+|---|---|---|
+| **En yüksek biriken altın** | 2022 | **29 / 52 / 705 / 29** |
+| Ortalama hazine | — | 23-178 |
+| Dolu bina yuvası | — | şehir başına 2.4-2.7 / 3 |
+| Ayakta ülke | 2-5 | 3-5 |
+| Lider toprak payı | %35-43 | %28-56 |
+| Tur süresi | 2.9-3.7 ms | 3.5-4.2 ms |
+| Bütünlük hatası | 0 | 0 |
+
+Altın birikmesi dört seed'in üçünde hedefin (< 400) çok altına indi. Kalan
+aykırı değer (705), tüm şehir yuvaları dolduktan sonra ordunun erzakla sınırlı
+kalmasından: harcayacak yer bitiyor. **Yapısal sınır bu** — sıradaki gider
+kalemleri ticaret (6) ve teknoloji (7).
+
+### Gözlenen: kaynak kilidi gerçek
+
+TNGZT4'te bir ulusun demir üretimi **0**, stoğu 3'te kalıyor. Tepe/dağ toprağı
+olmadığı için Demirhane de kuramıyor; yalnız İzci üretebiliyor. Bu, bölüm 12'de
+4 numaralı risk olarak yazdığımız durumun doğrulanması. İzci'nin demirsiz
+olması ülkeyi ayakta tutuyor ama gerçek çözüm ticaret (6. adım).

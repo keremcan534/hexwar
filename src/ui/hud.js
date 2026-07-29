@@ -2,8 +2,10 @@
 // Oyun mantığı burada yok; sadece Game'i sürer ve olaylarını dinler.
 
 import {
-  CITY_COST, UNIT_COSTS, canAfford, canFoundCity, cityProduction, formatCost, growthCost,
+  CITY_COST, UNIT_COSTS, WORK_RADIUS, canAfford, canFoundCity, cityProduction,
+  formatCost, growthCost,
 } from '../game/cities.js';
+import { BUILDINGS, MAX_BUILDINGS, canBuild } from '../game/buildings.js';
 import { UNIT_TYPES, movesFor } from '../game/units.js';
 import { MIN_WAR_TURNS, atWar, relation } from '../game/diplomacy.js';
 import { ORDER } from '../game/orders.js';
@@ -227,11 +229,23 @@ export class Hud {
         const disabled = canAfford(me, cost) ? '' : 'disabled';
         return `<button class="action" data-buy="${id}" ${disabled}>${UNIT_TYPES[id].name} · ${formatCost(cost)}</button>`;
       }).join('');
+      const built = city.buildings.map((id) => BUILDINGS[id].name).join(', ') || 'yok';
+      const buildButtons = Object.values(BUILDINGS)
+        .filter((b) => canBuild(game.world, city, b.id, WORK_RADIUS))
+        .map((b) => {
+          const off = canAfford(me, b.cost) ? '' : 'disabled';
+          return `<button class="action" data-build="${b.id}" title="${b.desc}" ${off}>${b.name} · ${formatCost(b.cost)}</button>`;
+        }).join('');
+
       rows.push(`<div class="action-row">
         <div class="k">${escapeHtml(city.name)} — ${city.pop} işçi · üretim
           ${out.food}🌾 ${out.timber}🪵 ${out.iron}⛏ ${out.gold}⬤
           · büyüme ${Math.floor(city.foodStore)}/${growthCost(city)}</div>
         ${buttons}
+      </div>
+      <div class="action-row">
+        <div class="k">binalar (${city.buildings.length}/${MAX_BUILDINGS}) — ${escapeHtml(built)}</div>
+        ${buildButtons}
       </div>`);
     }
 
@@ -278,6 +292,9 @@ export class Hud {
     const me = game.world.nations[game.turns.playerNation];
     for (const btn of this.el.sheetBody.querySelectorAll('[data-buy]')) {
       btn.onclick = () => game.turns.buyUnit(me, btn.dataset.buy);
+    }
+    for (const btn of this.el.sheetBody.querySelectorAll('[data-build]')) {
+      btn.onclick = () => game.turns.build(game.selected.city, btn.dataset.build);
     }
     const found = this.el.sheetBody.querySelector('[data-found]');
     if (found) found.onclick = () => game.turns.foundCity(game.selectedUnit);

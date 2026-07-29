@@ -2,7 +2,10 @@
 // Amaç zekâ değil, dünyanın canlı hissettirmesi; strateji katmanı sonra gelir.
 
 import { hexDistance } from '../core/hex.js';
-import { CITY_COST, UNIT_COSTS, UNIT_UPKEEP, canAfford, canFoundCity } from './cities.js';
+import {
+  CITY_COST, UNIT_COSTS, UNIT_UPKEEP, WORK_RADIUS, canAfford, canFoundCity,
+} from './cities.js';
+import { BUILDINGS, canBuild } from './buildings.js';
 import {
   MIN_WAR_TURNS, atWar, declareWar, makePeace, nationStrength, relation,
 } from './diplomacy.js';
@@ -72,9 +75,46 @@ function affordableUnit(nation) {
  * Harcama önceliği: önce yeterli ordu, sonra yeni şehir, artan altınla yine ordu.
  * Hazine biriktirmek YZ'yi pasifleştirdiği için son adım önemli.
  */
+/**
+ * Bina alımı: hazinenin asıl gideri. Ordu erzakla sınırlı olduğundan altının
+ * başka çıkışı yok; bu adım olmadan hazine 2000 altını aşıyordu.
+ * Öncelik ulusun o anki darboğazına göre.
+ */
+function buildSomething(game, nation) {
+  const world = game.world;
+  const net = nation.budget?.net ?? { food: 0, gold: 0, timber: 0, iron: 0 };
+  const atWar = world.nations.some((n) => n.alive && n.id !== nation.id
+    && world.relations?.[n.id]?.[nation.id]?.state === 'war');
+
+  // Darboğazdan çıkmayı hedefleyen sıra.
+  const wishlist = [];
+  if (net.food < 4) wishlist.push('GRANARY');
+  if (nation.iron < 10) wishlist.push('FORGE');
+  if (nation.timber < 10) wishlist.push('SAWMILL');
+  if (atWar) wishlist.push('WALLS');
+  wishlist.push('MARKET', 'HARBOR', 'GRANARY', 'SAWMILL', 'FORGE', 'WALLS');
+
+  const cities = world.cities.filter((c) => c.nationId === nation.id);
+  // Turda en fazla iki bina: hazine boşalsın ama tek turda her şey bitmesin.
+  for (let built = 0; built < 2; built++) {
+    let done = false;
+    for (const id of wishlist) {
+      if (!canAfford(nation, BUILDINGS[id].cost)) continue;
+      const city = cities.find((c) => canBuild(world, c, id, WORK_RADIUS));
+      if (city && game.turns.build(city, id)) {
+        done = true;
+        break;
+      }
+    }
+    if (!done) return;
+  }
+}
+
 function spend(game, nation) {
   const world = game.world;
   const cities = world.cities.filter((c) => c.nationId === nation.id).length;
+
+  buildSomething(game, nation);
 
   // Yeni şehir: gelirin asıl kaynağı, orduyu beslemekten önce gelir.
   if (canAfford(nation, { gold: CITY_COST.gold + 25, timber: CITY_COST.timber })
