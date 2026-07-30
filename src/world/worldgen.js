@@ -151,6 +151,10 @@ export function generateWorld(seed, options = {}) {
   markCoasts(world);
   labelContinents(world);
   generateCultures(world, rng);
+  // Kayıt yalnız üretilenden sapan kareleri yazar; taban kültür karşılaştırma için.
+  world.forEach((t) => { t.baseCulture = t.culture; });
+  // Kaydı aynı ayarlarla geri kurabilmek için üretim seçenekleri saklanır.
+  world.genOptions = { ...opt };
   computeBounds(world);
   return world;
 }

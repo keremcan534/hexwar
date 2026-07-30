@@ -8,8 +8,11 @@ const game = new Game(canvas);
 new Hud(game);
 
 // URL'de ?seed=ABC123 varsa o dünyayı aç (paylaşılabilir haritalar).
+// Yoksa kaldığı yerden devam et: 300 turluk oyun tek oturumda bitmez.
 const params = new URLSearchParams(location.search);
-game.newWorld(params.get('seed') || undefined);
+const seed = params.get('seed');
+if (seed) game.newWorld(seed);
+else if (!game.load()) game.newWorld();
 
 // Hata ayıklama için konsoldan erişim.
 window.game = game;

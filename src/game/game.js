@@ -14,6 +14,8 @@ import { TurnManager } from './turn.js';
 import { captureCity } from './cities.js';
 import { atWar, considerPeaceOffer, declareWar } from './diplomacy.js';
 import { INFAMY, addInfamy } from './infamy.js';
+import { assignAllWorkers, nationBudget } from './cities.js';
+import { loadFromStorage, saveToStorage } from './save.js';
 import {
   ORDER, clearOrder, executeOrders, idleUnits, setOrder,
 } from './orders.js';
@@ -32,6 +34,7 @@ export class Game {
     this.listeners = { select: [], world: [], turn: [], units: [] };
     this.dirty = false;
     this.frameHandle = 0;
+    this.autosaveEnabled = true;
 
     this.input = new PointerController(canvas, this.camera, {
       onTap: (x, y) => this.handleTap(x, y),
@@ -240,6 +243,33 @@ export class Game {
     this.selectUnit(unit);
     this.emit('units', this.selectedUnit);
     this.requestRender();
+  }
+
+  /**
+   * Her turun sonunda otomatik kayıt. Mobilde uygulama arka planda kapanabilir;
+   * oyuncunun 200. turda her şeyi kaybetmesi kabul edilemez.
+   * Simülasyon ölçümlerinde kapatılabilsin diye anahtarlı.
+   */
+  autosave() {
+    if (!this.autosaveEnabled || !this.world) return;
+    saveToStorage(this);
+  }
+
+  save() {
+    return saveToStorage(this);
+  }
+
+  load() {
+    return loadFromStorage(this);
+  }
+
+  /** İşçileri ve bütçeleri baştan hesaplar; kayıt yüklendikten sonra gerekir. */
+  recomputeEconomy() {
+    if (!this.world) return;
+    assignAllWorkers(this.world);
+    for (const nation of this.world.nations) {
+      nation.budget = nationBudget(this.world, nation);
+    }
   }
 
   idleUnits() {

@@ -10,6 +10,7 @@ import { UNIT_TYPES, movesFor } from '../game/units.js';
 import { MIN_WAR_TURNS, atWar, relation, truceLeft } from '../game/diplomacy.js';
 import { INFAMY_COALITION, OCCUPATION_TURNS, tileEfficiency } from '../game/infamy.js';
 import { canTrade } from '../game/trade.js';
+import { savedInfo } from '../game/save.js';
 import { ORDER } from '../game/orders.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 
@@ -43,6 +44,7 @@ export class Hud {
       turnValue: $('turn-value'),
       turnNation: $('turn-nation'),
       resources: $('resources'),
+      saveInfo: $('save-info'),
     };
     this.bind();
   }
@@ -92,6 +94,14 @@ export class Hud {
       el.settings.classList.add('hidden');
     };
 
+    $('btn-save').onclick = () => {
+      this.el.saveInfo.textContent = game.save() ? 'Kaydedildi.' : 'Kaydedilemedi (depolama kapalı?).';
+    };
+    $('btn-load').onclick = () => {
+      this.el.saveInfo.textContent = game.load() ? 'Yüklendi.' : 'Kayıt yok ya da eski sürüm.';
+      this.refreshSaveInfo();
+    };
+
     $('btn-end-turn').onclick = () => game.endTurn();
     $('btn-next-unit').onclick = () => game.selectNextIdle();
 
@@ -128,6 +138,14 @@ export class Hud {
       `${world.tiles.length} hex · %${landPct} kara · ${world.nations.length} ülke · ${world.genTime.toFixed(0)} ms`;
     this.el.sheetBody.innerHTML = '<p class="placeholder">Birimini seç, sonra gideceği hex\'e dokun.</p>';
     this.onTurn();
+    this.refreshSaveInfo();
+  }
+
+  refreshSaveInfo() {
+    const info = savedInfo();
+    this.el.saveInfo.textContent = info
+      ? `Kayıt: ${info.seed} · tur ${info.turn}`
+      : 'Kayıt yok. Her tur sonunda otomatik kaydedilir.';
   }
 
   onTurn() {

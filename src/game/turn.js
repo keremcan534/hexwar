@@ -186,6 +186,7 @@ export class TurnManager {
 
     this.game.emit('turn', this.turn);
     this.game.requestRender();
+    this.game.autosave();
   }
 
   /**
