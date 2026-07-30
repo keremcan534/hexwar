@@ -10,6 +10,7 @@ import {
   MIN_WAR_TURNS, atWar, declareWar, makePeace, nationStrength, relation, truceLeft,
 } from './diplomacy.js';
 import { INFAMY_COALITION } from './infamy.js';
+import { affordableTechs, research } from './tech.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
 const WAR_THRESHOLD = 1.15;
@@ -114,10 +115,26 @@ function buildSomething(game, nation) {
   }
 }
 
+/**
+ * Araştırma: altının son gider kalemi. Ülke kendi dalını tercih eder ama
+ * karşılayabildiği başka dalı da alır; yoksa hazine yine şişiyor.
+ */
+function researchSomething(nation) {
+  const options = affordableTechs(nation);
+  if (!options.length) return;
+  // Ucuzdan pahalıya, kendi dalı öncelikli.
+  options.sort((a, b) => {
+    const focusDiff = (b.branch === nation.focus) - (a.branch === nation.focus);
+    return focusDiff || a.tier - b.tier;
+  });
+  research(nation, options[0].id);
+}
+
 function spend(game, nation) {
   const world = game.world;
   const cities = world.cities.filter((c) => c.nationId === nation.id).length;
 
+  researchSomething(nation);
   buildSomething(game, nation);
 
   // Yeni şehir: gelirin asıl kaynağı, orduyu beslemekten önce gelir.

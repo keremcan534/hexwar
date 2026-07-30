@@ -76,6 +76,9 @@ export function generateNations(world, options = {}) {
       coastal: false,
       // Yayılma hızı: küçük değer = daha hızlı büyür = daha geniş ülke.
       aggression: rng.range(0.7, 1.4),
+      // Teknoloji eğilimi: YZ'lerin farklı yollardan büyümesini sağlar.
+      focus: rng.pick(['economy', 'military', 'admin']),
+      techs: [],
       budget: Math.round(avgShare * rng.range(minShare, maxShare)),
     };
   });

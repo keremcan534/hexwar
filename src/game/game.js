@@ -199,7 +199,7 @@ export class Game {
     // Barış içindeki ülkeye saldırmak için önce savaş ilan edilmeli.
     if (!atWar(this.world, unit.nationId, defender.nationId)) return false;
 
-    const result = resolveCombat(unit, defender, this.turns.rng);
+    const result = resolveCombat(unit, defender, this.turns.rng, this.world);
     // Saldırı turun kalan hareketini tüketir.
     unit.movesLeft = 0;
 

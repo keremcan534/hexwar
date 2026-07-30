@@ -196,13 +196,13 @@ hangi mekaniğin bozduğunu ayırt etmeyi imkânsız kılar.
     1. adımın açık bıraktığı altın birikmesini kapatmak için öne alındı.
 2. **Kültür bölgeleri + şehir nüfusu** — worldgen değişikliği, kayıt biçiminden önce
 3. ~~**Infamy + hoşnutsuzluk + ateşkes**~~ — yazıldı, bkz. bölüm 15
-4. **Kayıt/yükleme** — 300 tur tek oturumda bitmez
-5. **Politikalar**
+4. ~~**Kayıt/yükleme**~~ — yazıldı
+5. **Politikalar** — *yazılmadı*
 6. ~~**Ticaret**~~ — yazıldı (kayıt biçimi iki kez değişmesin diye öne alındı),
    bkz. bölüm 15
-7. **Teknoloji**
-8. **Hegemonya puanı ve zafer**
-9. **Elle işçi ataması + şehir ekranı** — en pahalı ve en riskli iş, en sona
+7. ~~**Teknoloji**~~ — yazıldı, bkz. bölüm 16
+8. ~~**Hegemonya puanı ve zafer**~~ — yazıldı, bkz. bölüm 16
+9. **Elle işçi ataması + şehir ekranı** — *yazılmadı*; en pahalı ve en riskli iş
 
 Kültür üretimi (2) kayıt biçiminden (4) önce gelmeli: worldgen değişince eski
 kayıtlar geçersiz olur.
@@ -317,6 +317,59 @@ var ve hiçbiri kilitli değil. Ticaretin varlık sebebi buydu.
   beklenir.
 - Bir seed'de hazine 1772'de kaldı: tüm bina yuvaları dolu, ordu erzakla
   sınırlı, ticaret ortağı doymuş. Teknoloji sıradaki gider kalemi.
+
+## 16. Teknoloji, hegemonya zaferi ve ana ölçütün karşılanması
+
+Üç dal (ekonomi/askerî/idare) × dört kademe = 12 teknoloji. Kademe maliyeti
+katlandığı için 250 turluk oyunda bir ülke 2-5 teknoloji alıyor: dal seçmek
+gerçek bir tercih. Etkiler yeni mekanik eklemiyor, mevcutların katsayısını
+oynatıyor (şehir üretimi, ambar, yolsuzluk tabanı, asimilasyon, şöhret azalması,
+bina yuvası, birim canı/saldırısı, sur etkisi).
+
+Zafer: **hegemonya puanı** = ekonomi (üretim×1.2) + teknoloji (kademe×7)
++ prestij (şehirler + barışçı ilişkiler×2 + toprak×0.04). Toprağın katsayısı
+kasten en zayıf. Eşiğe ilk ulaşan ya da 300. turda en yüksek olan kazanır.
+
+### Ana ölçütün hikâyesi
+
+Tasarımın kabul ölçütü şuydu: **oyunların en az %40'ı fetih dışı bir yolla
+kazanılabilmeli** (bölüm 10). Ölçüm üç aşamada yürüdü:
+
+| Durum | Ort. bitiş turu | Fetih dışı kazanma |
+|---|---|---|
+| Eşik 220 | 122 | %38 |
+| Eşik 420 (seçilen 250-300 ufkuna uyum) | 236 | **%17** |
+| Eşik 420 + asimilasyon teknolojiye bağlı | 244 | **%50** |
+
+Ortadaki satır önemli bir şey öğretti: **oyun uzadıkça fetih kazanıyordu.**
+Sebebi, fethin bütün bedellerinin geçici olmasıydı — 40 turda asimilasyon
+tamamlanıyor, şöhret sönüyor, yabancı toprak tam verimli hâle geliyor. 250
+turluk bir oyunda bu, fethi matematiksel olarak en iyi strateji yapıyor.
+
+Çözüm katsayı oynatmak değil, tasarımda zaten duran kancayı kullanmak oldu:
+**asimilasyon artık bedava değil, İdare dalındaki Asimilasyon teknolojisini
+gerektiriyor.** O teknoloji olmadan fethedilen toprak kalıcı olarak yabancı ve
+−%30 verimli kalıyor. Böylece fethin bedeli süreklileşti.
+
+12 oyunun kazananlarından yalnız 1'i Asimilasyon teknolojisine sahipti: yani
+fetihçiler idari yatırımı genellikle yapmıyor ve fethettikleri toprak onlara
+tam getiri sağlamıyor. Amaçlanan baskı tam olarak bu.
+
+### Ölçüm (12 seed, zafere kadar)
+
+| Ölçüt | Hedef | Sonuç |
+|---|---|---|
+| **Fetih dışı kazanma** | ≥ %40 | **%50** |
+| Bitiş turu | 250-300 ufku | ort. 244 (182-300) |
+| Ayakta ülke | ≥ 6 (300. turda) | 3-7 |
+| Lider toprak payı | %25-45 | %20-62 |
+| En yüksek hazine | < 400 | 430 (bir seed) |
+| Tur süresi | < 8 ms | ≤ 5.4 ms |
+| Bütünlük hatası | 0 | **0** |
+
+Aşan iki ölçüt (lider payı %62, hazine 430) tek seed'de görülüyor ve
+politikalar (5. adım) yazılmadığı için fakirin elinde henüz bir alternatif
+kaldıraç yok. Politikalar geldiğinde yeniden ölçülmeli.
 
 ### Gözlenen: kaynak kilidi gerçek
 

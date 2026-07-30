@@ -3,6 +3,7 @@
 // Her binanın bakımı var ki "hep al, hiç düşünme" olmasın.
 
 import { hexesInRange } from '../core/hex.js';
+import { techBuildingSlots } from './tech.js';
 
 /** Şehir başına bina yuvası. Geç oyun şehirleri sınırsız yığmasın. */
 export const MAX_BUILDINGS = 3;
@@ -89,10 +90,15 @@ export function hasBuilding(city, id) {
   return city.buildings?.includes(id);
 }
 
+/** Şehrin bina yuvası sayısı; Yönetim teknolojisi bir tane ekler. */
+export function buildingSlots(nation) {
+  return MAX_BUILDINGS + (nation ? techBuildingSlots(nation) : 0);
+}
+
 export function canBuild(world, city, id, radius) {
   const b = BUILDINGS[id];
   if (!b || !city.buildings) return false;
-  if (city.buildings.length >= MAX_BUILDINGS) return false;
+  if (city.buildings.length >= buildingSlots(world?.nations?.[city.nationId])) return false;
   if (hasBuilding(city, id)) return false;
   return !b.requires || b.requires(world, city, radius);
 }

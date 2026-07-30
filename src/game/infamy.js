@@ -8,6 +8,7 @@
 // Bir ülkeyi yutmak ~70, dünyayı üstüne çeker.
 
 import { atWar, declareWar, nationStrength } from './diplomacy.js';
+import { canAssimilate, techAssimilationFactor, techInfamyDecayFactor } from './tech.js';
 
 export const INFAMY = {
   /** Kendi halkının yaşadığı kareyi almak ucuz: haklı talep sayılır. */
@@ -49,7 +50,9 @@ export function decayInfamy(world) {
   for (const nation of world.nations) {
     if (!nation.alive) continue;
     const current = nation.infamy ?? 0;
-    addInfamy(nation, -(INFAMY.DECAY_PER_TURN + current * INFAMY.DECAY_RATIO));
+    const rate = (INFAMY.DECAY_PER_TURN + current * INFAMY.DECAY_RATIO)
+      * techInfamyDecayFactor(nation);
+    addInfamy(nation, -rate);
   }
 }
 
@@ -67,7 +70,16 @@ export function tileEfficiency(tile, nationCulture, turn) {
   return 1;
 }
 
-/** Uzun süre elde tutulan yabancı kareler sahibin kültürüne döner. */
+/**
+ * Uzun süre elde tutulan yabancı kareler sahibin kültürüne döner —
+ * **ama yalnız Asimilasyon teknolojisi varsa.**
+ *
+ * Bedava asimilasyon fethin bütün bedellerini geçici kılıyordu: 40 turda
+ * yabancı toprak tam verimli hâle geliyor, şöhret sönüyor ve 250 turluk oyunda
+ * fetih matematiksel olarak en iyi strateji oluyordu (ölçüm: oyunların yalnız
+ * %17'si fetih dışı yolla kazanılıyordu). Artık fethedilen toprağı sindirmek
+ * idari yatırım istiyor.
+ */
 export function runAssimilation(world, turn) {
   let converted = 0;
   world.forEach((tile) => {
@@ -75,7 +87,9 @@ export function runAssimilation(world, turn) {
     const nation = world.nations[tile.owner];
     if (!nation?.alive || nation.culture < 0) return;
     if (tile.culture === nation.culture) return;
-    if (turn - (tile.heldSince ?? 0) < ASSIMILATION_TURNS) return;
+    if (!canAssimilate(nation)) return;
+    const needed = ASSIMILATION_TURNS * techAssimilationFactor(nation);
+    if (turn - (tile.heldSince ?? 0) < needed) return;
     // Yalnız kendi kültürüne komşu kareler asimile olur: yayılma kenardan gelir.
     const touching = world.neighbors(tile).some((n) => n.culture === nation.culture);
     if (!touching) return;

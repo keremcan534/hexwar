@@ -8,6 +8,7 @@ import {
   INFAMY, addInfamy, checkCoalitions, decayInfamy, runAssimilation, tileInfamy,
 } from './infamy.js';
 import { runTrade } from './trade.js';
+import { checkVictory } from './hegemony.js';
 import { executeOrders } from './orders.js';
 import {
   CITY_COST, UNIT_COSTS, assignAllWorkers, canAfford, canFoundCity, cityName,
@@ -39,6 +40,7 @@ export class TurnManager {
     world.forEach((t) => { t.unit = null; t.city = null; });
     this.turn = 1;
     this.log = [];
+    this.victory = null;
     this.rng = makeRng(`${world.seed}-turns`);
     world.turn = 1;
     initRelations(world);
@@ -49,6 +51,7 @@ export class TurnManager {
       for (const r of RESOURCES) nation[r] = STARTING_STOCK[r];
       nation.budget = null;
       nation.infamy = 0;
+      nation.techs = [];
       if (!nation.alive) continue;
       // Her ülke başkentinde bir şehirle başlar.
       createCity(world, nation.capital, nation.id, cityName(this.rng, usedNames), 2, 3);
@@ -127,7 +130,7 @@ export class TurnManager {
           ? world.neighbors(spot).find((n) => n.terrain.passable && !n.unit && n.owner === nation.id)
           : spot);
       if (!tile) continue;
-      const unit = createUnit(typeId, nation.id, tile);
+      const unit = createUnit(typeId, nation.id, tile, nation);
       world.units.push(unit);
       return unit;
     }
@@ -184,6 +187,15 @@ export class TurnManager {
     // otomatik ve yol emirli birimler hamlelerini yapmış olur.
     executeOrders(this.game, this.playerNation, this.rng);
 
+    if (!this.victory) {
+      const result = checkVictory(world, this.turn);
+      if (result) {
+        this.victory = result;
+        this.addLog(`${result.nation.name} hegemonya kurdu (${result.score} puan).`);
+        this.game.emit('victory', result);
+      }
+    }
+
     this.game.emit('turn', this.turn);
     this.game.requestRender();
     this.game.autosave();
@@ -201,7 +213,7 @@ export class TurnManager {
       const budget = nationBudget(world, nation);
       nation.budget = budget;
 
-      const cap = storageCap(budget.cities);
+      const cap = storageCap(budget.cities, nation);
       nation.gold = Math.max(0, nation.gold + budget.net.gold);
       // Ambar taşarsa fazlası ziyan: stok biriktirmek strateji olmasın.
       nation.timber = Math.min(cap, nation.timber + budget.net.timber);

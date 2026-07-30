@@ -4,6 +4,7 @@
 import { HEX_CORNERS, SQRT3, DIRS } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { drawFlag } from './flagPainter.js';
+import { maxHpOf } from '../game/units.js';
 
 const MAX_DPR = 2;            // mobilde 3x DPR gereksiz pahalı
 const CACHE_MAX_SIDE = 2048;  // önbellek dokusunun en uzun kenarı (bellek sınırı)
@@ -361,7 +362,7 @@ export class Renderer {
       ctx.stroke(symbol);
 
       // Can çubuğu yalnızca hasarlıysa.
-      const ratio = unit.hp / unit.type.hp;
+      const ratio = unit.hp / maxHpOf(unit);
       if (ratio < 1) {
         const w = radius * 1.8;
         ctx.fillStyle = 'rgba(0,0,0,0.6)';

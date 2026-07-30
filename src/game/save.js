@@ -8,7 +8,8 @@
 import { UNIT_TYPES, createUnit } from './units.js';
 import { createCity } from './cities.js';
 
-export const SAVE_VERSION = 1;
+// Teknoloji ve birim can tavanı eklendiği için biçim yükseldi.
+export const SAVE_VERSION = 2;
 const STORAGE_KEY = 'hexwar.save';
 
 /** Ulusun tur içinde değişen alanları. */
@@ -35,7 +36,7 @@ export function serialize(game) {
     log: turns.log.slice(0, 20),
     tiles,
     nations: world.nations.map((n) => {
-      const out = { id: n.id };
+      const out = { id: n.id, techs: (n.techs ?? []).slice() };
       for (const f of NATION_FIELDS) out[f] = n[f];
       return out;
     }),
@@ -60,6 +61,7 @@ export function serialize(game) {
       q: u.tile.q,
       r: u.tile.r,
       hp: u.hp,
+      maxHp: u.maxHp,
       movesLeft: u.movesLeft,
       embarked: u.embarked,
       order: u.order
@@ -105,6 +107,7 @@ export function deserialize(game, data) {
     const nation = world.nations[saved.id];
     if (!nation) continue;
     for (const f of NATION_FIELDS) nation[f] = saved[f];
+    nation.techs = (saved.techs ?? []).slice();
   }
 
   // 5) İlişkiler — simetrik nesne paylaşımı korunmalı.
@@ -134,7 +137,8 @@ export function deserialize(game, data) {
   for (const saved of data.units) {
     const tile = world.get(saved.q, saved.r);
     if (!tile || !UNIT_TYPES[saved.type]) continue;
-    const unit = createUnit(saved.type, saved.nationId, tile);
+    const unit = createUnit(saved.type, saved.nationId, tile, world.nations[saved.nationId]);
+    if (saved.maxHp) unit.maxHp = saved.maxHp;
     unit.hp = saved.hp;
     unit.movesLeft = saved.movesLeft;
     unit.embarked = saved.embarked;

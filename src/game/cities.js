@@ -5,6 +5,9 @@ import { hexDistance, hexesInRange } from '../core/hex.js';
 import { CITY_CENTER_YIELD, RESOURCES } from '../world/terrain.js';
 import { applyBuildings, buildingUpkeep, hasBuilding } from './buildings.js';
 import { tileEfficiency } from './infamy.js';
+import {
+  techCorruptionBase, techFoodPerCity, techGoldPerCity, techIronPerCity, techStorageBonus,
+} from './tech.js';
 
 /** Yeni şehir kurma bedeli ve şehirler arası asgari mesafe. */
 export const CITY_COST = { gold: 60, timber: 4 };
@@ -38,8 +41,8 @@ export const STARTING_FOOD_STORE = 15;
  * (ölçüm: 150 turda 2968 demir, 7464 kereste). Fazlası ziyan olur; bu,
  * ileride ticaretin de sebebi olacak.
  */
-export function storageCap(cityCount) {
-  return 30 + cityCount * 5;
+export function storageCap(cityCount, nation) {
+  return 30 + cityCount * 5 + (nation ? techStorageBonus(nation) : 0);
 }
 
 export function emptyPool() {
@@ -112,8 +115,9 @@ export function canFoundCity(world, tile, nationId) {
  * erzak/kereste/demir fiziksel mallar, onları mesafe değil taşıma sınırlar.
  * Not: kültür ve infamy katmanı gelince bu elle konmuş fren kaldırılacak.
  */
-function corruption(cityCount) {
-  return 12 / (12 + Math.max(0, cityCount - 1));
+function corruption(cityCount, nation) {
+  const base = techCorruptionBase(nation);
+  return base / (base + Math.max(0, cityCount - 1));
 }
 
 /**
@@ -233,8 +237,13 @@ export function nationBudget(world, nation) {
     const out = cityProduction(city, world);
     for (const r of RESOURCES) production[r] += out[r];
   }
+  // Teknoloji şehir başına sabit katkı verir: yüzde değil, kartopu yapmasın.
+  production.food += cityCount * techFoodPerCity(nation);
+  production.gold += cityCount * techGoldPerCity(nation);
+  production.iron += cityCount * techIronPerCity(nation);
+
   for (const r of RESOURCES) production[r] = Math.round(production[r]);
-  production.gold = Math.round(production.gold * corruption(cityCount));
+  production.gold = Math.round(production.gold * corruption(cityCount, nation));
 
   let army = 0;
   for (const u of world.units) if (u.nationId === nation.id) army++;

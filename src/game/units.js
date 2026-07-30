@@ -1,6 +1,7 @@
 // Birim tipleri ve savaş çözümü. Tek yerde tanımlı: yeni birim eklemek için burası yeter.
 
 import { buildingDefense } from './buildings.js';
+import { techAttackBonus, techHpBonus, techSiegeFactor } from './tech.js';
 
 /** Kara birimi denize girdiğinde bu hızla yol alır (bindirilmiş hâli). */
 export const EMBARKED_MOVES = 4;
@@ -31,16 +32,25 @@ export function movesFor(unit) {
   return unit.embarked ? EMBARKED_MOVES : unit.type.moves;
 }
 
+/** Can tavanı: zırh teknolojisiyle birlikte üretilen birimlerde daha yüksek. */
+export function maxHpOf(unit) {
+  return unit.maxHp ?? unit.type.hp;
+}
+
 let nextId = 1;
 
-export function createUnit(typeId, nationId, tile) {
+export function createUnit(typeId, nationId, tile, nation) {
   const type = UNIT_TYPES[typeId];
+  // Zırh teknolojisi can tavanını yükseltir; birim başına saklanır ki
+  // teknoloji sonradan gelse eski birimler etkilenmesin.
+  const maxHp = type.hp + (nation ? techHpBonus(nation) : 0);
   const unit = {
     id: nextId++,
     type,
     nationId,
     tile,
-    hp: type.hp,
+    maxHp,
+    hp: maxHp,
     embarked: type.domain === 'land' && tile.terrain.water,
     movesLeft: type.moves,
     order: null,
@@ -67,18 +77,30 @@ export function placeUnit(unit, tile) {
  * savunan arazinin savunma bonusundan yararlanır.
  * @returns {{ attackerDamage: number, defenderDamage: number, defenderDied: boolean, attackerDied: boolean }}
  */
-export function resolveCombat(attacker, defender, rng) {
+export function resolveCombat(attacker, defender, rng, world) {
+  const attackerNation = world?.nations?.[attacker.nationId];
+  const defenderNation = world?.nations?.[defender.nationId];
+  const atkBonus = attackerNation ? techAttackBonus(attackerNation) : 0;
+  const defBonus = defenderNation ? techAttackBonus(defenderNation) : 0;
+  const siege = attackerNation ? techSiegeFactor(attackerNation) : 1;
+  return combat(attacker, defender, rng, { atkBonus, defBonus, siege });
+}
+
+function combat(attacker, defender, rng, { atkBonus, defBonus, siege }) {
   // Şehir surları araziden bağımsız sabit bir savunma katkısı verir.
   const city = defender.tile.city;
-  const cityBonus = city ? 0.3 + city.level * 0.1 + buildingDefense(city) : 0;
+  // Kuşatma bilen saldırganın karşısında surlar yarı etkili.
+  const cityBonus = city ? (0.3 + city.level * 0.1 + buildingDefense(city)) * siege : 0;
   const terrainBonus = defender.tile.terrain.defense * (defender.type.entrenched ? 2 : 1) + cityBonus;
   const roll = () => 0.75 + rng() * 0.5;
   // Denizdeki kara birimi savunmasızdır: karaya çıkmadan yakalanmak pahalıya patlar.
   const exposed = defender.embarked ? 1.6 : 1;
 
-  const defenderDamage = Math.round(attacker.type.attack * 10 * roll() * exposed * (1 - Math.min(0.7, terrainBonus)));
+  const atk = attacker.type.attack + atkBonus;
+  const def = defender.type.attack + defBonus;
+  const defenderDamage = Math.round(atk * 10 * roll() * exposed * (1 - Math.min(0.7, terrainBonus)));
   // Karşı saldırı daha zayıf: saldıran inisiyatifi elinde tutar.
-  const attackerDamage = Math.round(defender.type.attack * 10 * roll() * (defender.embarked ? 0.2 : 0.6));
+  const attackerDamage = Math.round(def * 10 * roll() * (defender.embarked ? 0.2 : 0.6));
 
   defender.hp -= defenderDamage;
   attacker.hp -= attackerDamage;

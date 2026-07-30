@@ -5,12 +5,14 @@ import {
   CITY_COST, UNIT_COSTS, WORK_RADIUS, canAfford, canFoundCity, cityProduction,
   formatCost, growthCost,
 } from '../game/cities.js';
-import { BUILDINGS, MAX_BUILDINGS, canBuild } from '../game/buildings.js';
-import { UNIT_TYPES, movesFor } from '../game/units.js';
+import { BUILDINGS, buildingSlots, canBuild } from '../game/buildings.js';
+import { UNIT_TYPES, maxHpOf, movesFor } from '../game/units.js';
 import { MIN_WAR_TURNS, atWar, relation, truceLeft } from '../game/diplomacy.js';
 import { INFAMY_COALITION, OCCUPATION_TURNS, tileEfficiency } from '../game/infamy.js';
 import { canTrade } from '../game/trade.js';
 import { savedInfo } from '../game/save.js';
+import { HEGEMONY_TARGET, scoreboard } from '../game/hegemony.js';
+import { TECHS, availableTechs, research } from '../game/tech.js';
 import { ORDER } from '../game/orders.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 
@@ -45,6 +47,7 @@ export class Hud {
       turnNation: $('turn-nation'),
       resources: $('resources'),
       saveInfo: $('save-info'),
+      hegemony: $('hegemony'),
     };
     this.bind();
   }
@@ -141,6 +144,36 @@ export class Hud {
     this.refreshSaveInfo();
   }
 
+  /** Hegemonya çubuğu: oyunun amacı her an görünür olsun. */
+  refreshHegemony() {
+    const { game } = this;
+    const el = this.el.hegemony;
+    if (!game.world) return;
+
+    if (game.turns.victory) {
+      const v = game.turns.victory;
+      el.classList.add('won');
+      el.innerHTML = `${escapeHtml(v.nation.name)} hegemonya kurdu — ${v.score} puan
+        (${v.reason === 'hegemonya' ? 'eşiğe ulaştı' : 'süre doldu'},
+        ${v.byConquest ? 'en geniş ülke' : 'fetihle değil'})`;
+      return;
+    }
+
+    el.classList.remove('won');
+    const board = scoreboard(game.world);
+    const me = board.find((b) => b.nation.id === game.turns.playerNation);
+    const leader = board[0];
+    if (!me) {
+      el.innerHTML = 'Elendin.';
+      return;
+    }
+    const rank = board.indexOf(me) + 1;
+    el.innerHTML = `hegemonya <b>${me.total}</b>/${HEGEMONY_TARGET}
+      · ${rank}. sıra · ekonomi ${me.economy} teknoloji ${me.technology} prestij ${me.prestige}
+      ${leader.nation.id === me.nation.id ? '' : `· lider ${escapeHtml(leader.nation.name)} ${leader.total}`}
+      <span class="bar"><i style="width:${Math.min(100, (me.total / HEGEMONY_TARGET) * 100)}%"></i></span>`;
+  }
+
   refreshSaveInfo() {
     const info = savedInfo();
     this.el.saveInfo.textContent = info
@@ -165,6 +198,7 @@ export class Hud {
     const wars = world.nations.filter(
       (n) => n.alive && atWar(world, n.id, turns.playerNation),
     ).length;
+    this.refreshHegemony();
     this.el.turnNation.innerHTML = me
       ? `<img class="flag flag-sm" src="${flagDataUrl(me)}" alt="">${escapeHtml(me.name)} · ${me.tiles} hex · ${cities} şehir · ${wars ? `${wars} savaş` : 'barış'} · ${alive} ülke`
       : '—';
@@ -222,8 +256,8 @@ export class Hud {
         <span class="unit-badge" style="background:${world.nations[unit.nationId].color}">${unit.type.glyph}</span>
         <div style="flex:1;min-width:0">
           <div class="tile-title">${escapeHtml(unit.type.name)}${unit.nationId === this.game.turns.playerNation ? '' : ' (düşman)'}</div>
-          <div class="tile-sub">can ${unit.hp}/${unit.type.hp} · hareket ${unit.movesLeft}/${movesFor(unit)} · saldırı ${unit.type.attack}${unit.embarked ? ' · denizde (saldıramaz)' : ''}</div>
-          <div class="hp-bar"><i style="width:${Math.max(0, (unit.hp / unit.type.hp) * 100)}%"></i></div>
+          <div class="tile-sub">can ${unit.hp}/${maxHpOf(unit)} · hareket ${unit.movesLeft}/${movesFor(unit)} · saldırı ${unit.type.attack}${unit.embarked ? ' · denizde (saldıramaz)' : ''}</div>
+          <div class="hp-bar"><i style="width:${Math.max(0, (unit.hp / maxHpOf(unit)) * 100)}%"></i></div>
         </div>
       </div>` : '';
 
@@ -287,8 +321,15 @@ export class Hud {
         ${buttons}
       </div>
       <div class="action-row">
-        <div class="k">binalar (${city.buildings.length}/${MAX_BUILDINGS}) — ${escapeHtml(built)}</div>
+        <div class="k">binalar (${city.buildings.length}/${buildingSlots(me)}) — ${escapeHtml(built)}</div>
         ${buildButtons}
+      </div>
+      <div class="action-row">
+        <div class="k">teknoloji — ${escapeHtml((me.techs ?? []).map((id) => TECHS[id].name).join(', ') || 'yok')}</div>
+        ${availableTechs(me).slice(0, 4).map((t) => {
+    const off = canAfford(me, t.cost) ? '' : 'disabled';
+    return `<button class="action" data-tech="${t.id}" title="${t.desc}" ${off}>${t.name} · ${formatCost(t.cost)}</button>`;
+  }).join('')}
       </div>`);
     }
 
@@ -340,6 +381,15 @@ export class Hud {
     }
     for (const btn of this.el.sheetBody.querySelectorAll('[data-build]')) {
       btn.onclick = () => game.turns.build(game.selected.city, btn.dataset.build);
+    }
+    for (const btn of this.el.sheetBody.querySelectorAll('[data-tech]')) {
+      btn.onclick = () => {
+        if (research(me, btn.dataset.tech)) {
+          game.turns.addLog(`${TECHS[btn.dataset.tech].name} araştırıldı.`);
+          game.recomputeEconomy();
+          game.emit('units', game.selectedUnit);
+        }
+      };
     }
     const found = this.el.sheetBody.querySelector('[data-found]');
     if (found) found.onclick = () => game.turns.foundCity(game.selectedUnit);
