@@ -152,14 +152,19 @@ function corruption(cityCount, nation) {
  */
 export function tileYield(tile, ctx) {
   const base = tile.terrain.yields;
-  if (!ctx) return base;
+  // Yol karenin ticaretini artırır: seviye başına +1 altın. Ölçümde yol yapan
+  // ülkeler kaybediyordu çünkü yolun tek faydası hareketti ve YZ onu
+  // kullanmıyordu — yatırımın kendini ödemesi gerek.
+  const roadGold = tile.roadLevel ?? 0;
+  if (!ctx) return roadGold ? { ...base, gold: base.gold + roadGold } : base;
+
   const factor = tileEfficiency(tile, ctx.culture, ctx.turn);
-  if (factor === 1) return base;
+  if (factor === 1 && !roadGold) return base;
   return {
     food: base.food * factor,
     timber: base.timber * factor,
     iron: base.iron * factor,
-    gold: base.gold * factor,
+    gold: (base.gold + roadGold) * factor,
   };
 }
 

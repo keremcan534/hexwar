@@ -200,6 +200,8 @@ export class Renderer {
     const all = world.tiles;
     this.drawTerrain(ctx, all, world);
     if (this.mapMode !== 'terrain') this.drawBorders(ctx, world, all, scale);
+    // Yollar önbelleğe de girmeli: yoksa uzaklaşınca ağ tamamen kayboluyordu.
+    this.drawRoads(ctx, world, all, scale);
 
     this.cache = { canvas, x: b.minX, y: b.minY, w, h, scale };
     return this.cache;
@@ -311,9 +313,14 @@ export class Renderer {
         segment.lineTo(next.x, next.y);
       }
       if (!connected) {
+        // Yalnız kare: komşusuna bağlanmamış yol. Kısa bir tire neredeyse
+        // görünmüyordu; ağın ilk düğümü de okunabilir olmalı.
         const marker = pathFor(level);
-        marker.moveTo(tile.x - 2 / scale, tile.y);
-        marker.lineTo(tile.x + 2 / scale, tile.y);
+        const r = HEX_SIZE * 0.16;
+        marker.moveTo(tile.x - r, tile.y);
+        marker.lineTo(tile.x + r, tile.y);
+        marker.moveTo(tile.x, tile.y - r);
+        marker.lineTo(tile.x, tile.y + r);
       }
     }
 

@@ -371,6 +371,50 @@ Aşan iki ölçüt (lider payı %62, hazine 430) tek seed'de görülüyor ve
 politikalar (5. adım) yazılmadığı için fakirin elinde henüz bir alternatif
 kaldıraç yok. Politikalar geldiğinde yeniden ölçülmeli.
 
+## 17. Ölçüm yönteminin kendisi hakkında
+
+Yol katmanı eklenirken ana ölçütün ("oyunların ≥%40'ı fetih dışı kazanılmalı")
+güvenilir olmadığı anlaşıldı. Üç kusur vardı:
+
+**1. Pasif oyuncu sonuçları kirletiyordu.** Simülasyonda oyuncu ülkesi hiçbir
+şey yapmıyor, altın biriktiriyor ve "hazine 1533" gibi sahte alarmlar
+üretiyordu. Ölçümler artık `playerNation = -1` ile, **tüm ülkeler YZ** olarak
+koşuluyor.
+
+**2. 12 seed yetersiz.** Aynı yapı arka arkaya %17 ve %33 verdi; 30 oyunda bile
+güven aralığı ±16 puan. Bu ölçütle 10 puanlık farklar okunamaz. Karar vermek
+için en az 30 oyun, tercihen daha fazlası gerekir.
+
+**3. İkili ölçüt yanıltıcı.** "Kazanan en geniş ülke mi?" sorusu, toprağın
+ekonomiyi *dolaylı* beslediğini gizler: en geniş ülke genellikle en üretken
+ülkedir.
+
+### Daha iyi gösterge: kazananın puan kompozisyonu
+
+20 oyunda kazananın hegemonya puanının kaynağı:
+
+| Bileşen | Pay |
+|---|---|
+| Ekonomi + teknoloji | **%84** |
+| Toprak (doğrudan) | %6 |
+| Kalan prestij (şehir, barış) | %10 |
+
+Yani zafer **üretimden** geliyor, topraktan değil — tasarımın istediği bu.
+Ama toprak hâlâ üretime giden en iyi *yol*. Bu, Victoria'nın kendi mantığıyla
+tutarlı (fetih bir araçtır, amaç değil); yine de "fetih dışı yol yeterince
+güçlü mü" sorusu açık kalıyor ve cevabı ikili ölçütle değil bu kompozisyonla
+izlenmeli.
+
+### Yol yatırımı: çözülmemiş
+
+Ölçümde yol yapan ülkelerin kazanma oranı %14, yapmayanların %22. İlk bakışta
+yol bir tuzak gibi duruyor ama sebep muhtemelen ters nedensellik: `investInRoads`
+ancak ordu/bina/teknoloji alımından sonra hâlâ 140+ altını olan ülkelerde
+çalışıyor, yani yol yapanlar **zengin değil, parasını başka bir şeye
+harcayamayan sıkışmış** ülkeler. Yola seviye başına +1 altın getiri eklendi;
+gürültü içinde bu değişimin etkisi ayırt edilemedi. Yol maliyeti/getirisi hâlâ
+ölçülmüş bir denge değil.
+
 ### Gözlenen: kaynak kilidi gerçek
 
 TNGZT4'te bir ulusun demir üretimi **0**, stoğu 3'te kalıyor. Tepe/dağ toprağı
