@@ -1,7 +1,8 @@
 // Basit ülke yapay zekâsı: sınıra yürü, toprak al, komşudaki düşmana vur.
 // Amaç zekâ değil, dünyanın canlı hissettirmesi; strateji katmanı sonra gelir.
 
-import { hexDistance } from '../core/hex.js';
+import { hexDistance, hexesInRange } from '../core/hex.js';
+import { ROAD_MAX_LEVEL, buildRoad, canBuildRoad } from './infrastructure.js';
 import {
   CITY_COST, UNIT_COSTS, UNIT_UPKEEP, WORK_RADIUS, canAfford, canFoundCity,
 } from './cities.js';
@@ -108,7 +109,10 @@ function buildSomething(game, nation) {
   for (let built = 0; built < 2; built++) {
     let done = false;
     for (const id of wishlist) {
-      if (!canAfford(nation, BUILDINGS[id].cost)) continue;
+      // Listede tanımsız bir kimlik olursa (yazım hatası, kaldırılmış bina)
+      // sessizce atla: eskiden tüm turu çökertiyordu.
+      const building = BUILDINGS[id];
+      if (!building || !canAfford(nation, building.cost)) continue;
       const city = cities.find((c) => canBuild(world, c, id, WORK_RADIUS));
       if (city && game.turns.build(city, id)) {
         done = true;
@@ -134,12 +138,41 @@ function researchSomething(nation) {
   research(nation, options[0].id);
 }
 
+/**
+ * Yol yatırımı. Yol sistemi yazıldığında yalnız oyuncuya açılmıştı; 30 oyunluk
+ * ölçümde YZ hiç yol yapmıyordu, yani harita genelinde ölü bir sistemdi.
+ * Şehir çevresinden başlar: asıl faydası üretim bölgesindeki hareket.
+ */
+function investInRoads(game, nation) {
+  const world = game.world;
+  // Ordu ve bina önce gelir; yol artan altının gideri.
+  if (nation.gold < 140) return;
+
+  let best = null;
+  let bestLevel = ROAD_MAX_LEVEL;
+  for (const city of world.cities) {
+    if (city.nationId !== nation.id) continue;
+    for (const { q, r } of hexesInRange(city.tile.q, city.tile.r, 1)) {
+      const tile = world.get(q, r);
+      if (!tile || !canBuildRoad(tile, nation.id)) continue;
+      const level = tile.roadLevel ?? 0;
+      // En geri kalmış kareyi yükselt: ağ dengeli büyüsün.
+      if (level < bestLevel) {
+        bestLevel = level;
+        best = tile;
+      }
+    }
+  }
+  if (best) buildRoad(game, best, nation.id);
+}
+
 function spend(game, nation) {
   const world = game.world;
   const cities = world.cities.filter((c) => c.nationId === nation.id).length;
 
   researchSomething(nation);
   buildSomething(game, nation);
+  investInRoads(game, nation);
 
   // Yeni şehir: gelirin asıl kaynağı, orduyu beslemekten önce gelir.
   if (canAfford(nation, { gold: CITY_COST.gold + 25, timber: CITY_COST.timber })
