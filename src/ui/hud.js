@@ -316,7 +316,7 @@ export class Hud {
       </div>
       <div class="action-row">
         <div class="k">${escapeHtml(city.name)} — ${city.pop} işçi · üretim
-          ${out.food}🌾 ${out.timber}🪵 ${out.iron}⛏ ${out.gold}⬤
+          ${Math.round(out.food)}🌾 ${Math.round(out.timber)}🪵 ${Math.round(out.iron)}⛏ ${Math.round(out.gold)}⬤
           · büyüme ${Math.floor(city.foodStore)}/${growthCost(city)}</div>
         ${buttons}
       </div>
