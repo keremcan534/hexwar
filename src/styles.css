@@ -37,28 +37,114 @@ html, body {
   touch-action: none;
 }
 
-/* --- Üst bar --- */
+/* --- Üst bar (HOI4 düzeni: bayrak · kaynak şeridi · tur denetimi) --- */
 .topbar {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
   display: flex;
-  align-items: center;
+  align-items: stretch;
   gap: 8px;
-  padding: calc(var(--safe-top) + 8px) 10px 8px;
-  background: linear-gradient(180deg, rgba(6, 14, 24, 0.85), rgba(6, 14, 24, 0));
+  padding: calc(var(--safe-top) + 6px) 8px 6px;
+  background: linear-gradient(180deg, rgba(6, 12, 20, 0.94) 60%, rgba(6, 12, 20, 0));
   pointer-events: none;
+  flex-wrap: wrap;
 }
 .topbar > * { pointer-events: auto; }
-.spacer { flex: 1; pointer-events: none; }
 
-.brand {
-  font-weight: 800;
-  letter-spacing: 1.5px;
-  font-size: 15px;
+.nation-badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 5px 9px;
+  color: var(--text);
+  cursor: pointer;
+  flex: none;
 }
-.brand span { color: var(--accent); }
+.nation-badge .flag { width: 26px; height: 18px; }
+.nation-text { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.2; }
+.nation-text b { font-size: 12px; }
+.nation-text small { font-size: 10px; color: var(--muted); }
+
+/* Kaynak şeridi: HOI4'ün üst çubuğu gibi, taşarsa yatay kayar */
+.res-strip {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 0 10px;
+}
+.res-strip::-webkit-scrollbar { display: none; }
+.res-strip b { color: var(--text); font-weight: 600; margin-left: 2px; }
+.res-strip span { display: inline-flex; align-items: center; gap: 1px; }
+
+/* Dar ekranda ülke künyesinin alt satırı kalkar: kaynak şeridine yer açar. */
+@media (max-width: 480px) {
+  .res-strip { gap: 7px; font-size: 11px; padding: 0 7px; }
+  .nation-text small { display: none; }
+  .nation-badge { padding: 5px 7px; gap: 6px; }
+}
+
+.turn-control {
+  position: fixed;
+  left: 10px;
+  bottom: calc(45% + 10px);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: rgba(14, 26, 42, 0.9);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+  z-index: 5;
+}
+.turn-badge {
+  font-size: 9px;
+  color: var(--muted);
+  letter-spacing: 0.6px;
+  text-align: center;
+}
+.turn-badge b { display: block; color: var(--text); font-size: 15px; }
+
+/* --- Harita modları: sağ alt köşe --- */
+.map-modes {
+  position: fixed;
+  right: 10px;
+  /* Alt panelin azami yüksekliğinin (%45) üstünde durur: örtüşme deterministik
+     olarak engellenir, panel kısaldığında düğmeler biraz yüksekte kalır. */
+  bottom: calc(45% + 10px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  z-index: 5;
+}
+.mode-btn {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: rgba(14, 26, 42, 0.9);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: 17px;
+  line-height: 1;
+  cursor: pointer;
+  backdrop-filter: blur(8px);
+}
+.mode-btn.active { color: var(--accent); border-color: var(--accent); background: rgba(77, 163, 255, 0.18); }
+.mode-btn:active { background: rgba(255, 255, 255, 0.18); }
 
 .chip {
   display: inline-flex;
@@ -349,4 +435,7 @@ html, body {
 
 @media (min-width: 760px) {
   .sheet { left: auto; right: 12px; bottom: 12px; width: 320px; border-radius: 18px; border: 1px solid var(--line); }
+  /* Masaüstünde panel sağ altta bir kart; modlar onun soluna geçer. */
+  .map-modes { right: 348px; bottom: 12px; flex-direction: row; }
+  .turn-control { bottom: 12px; }
 }

@@ -66,6 +66,10 @@ export function generateNations(world, options = {}) {
       name,
       fullName: `${name} ${rng.pick(TITLES)}`,
       color: palette.color,
+      // Politik harita kipi ülke rengini arazi parlaklığıyla oynatabilsin.
+      hue: palette.hue,
+      sat: palette.sat,
+      light: palette.light,
       flag: makeFlag(rng, palette),
       capital: tile,
       // Kurucu kültür: başkentin halkı. Ülke sınırlarıyla kültür sınırları

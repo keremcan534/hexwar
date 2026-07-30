@@ -44,7 +44,9 @@ export class Hud {
       lblLand: $('lbl-land'),
       lblNations: $('lbl-nations'),
       turnValue: $('turn-value'),
-      turnNation: $('turn-nation'),
+      topFlag: $('top-flag'),
+      topNation: $('top-nation'),
+      topSub: $('top-sub'),
       resources: $('resources'),
       saveInfo: $('save-info'),
       hegemony: $('hegemony'),
@@ -65,12 +67,17 @@ export class Hud {
     };
     $('btn-close-settings').onclick = () => el.settings.classList.add('hidden');
 
-    $('opt-owners').onchange = (e) => this.setLayer('showOwners', e.target.checked);
-    $('opt-cultures').onchange = (e) => {
-      game.renderer.mapMode = e.target.checked ? 'cultures' : 'nations';
-      game.renderer.invalidateCache();
-      game.requestRender();
-    };
+    // Harita modları: sağ alt köşedeki düğme kümesi
+    for (const btn of document.querySelectorAll('.mode-btn[data-mode]')) {
+      btn.onclick = () => {
+        game.renderer.setMapMode(btn.dataset.mode);
+        for (const other of document.querySelectorAll('.mode-btn[data-mode]')) {
+          other.classList.toggle('active', other === btn);
+        }
+        game.requestRender();
+      };
+    }
+
     $('opt-grid').onchange = (e) => this.setLayer('showGrid', e.target.checked);
     $('opt-labels').onchange = (e) => this.setLayer('showLabels', e.target.checked);
 
@@ -107,6 +114,8 @@ export class Hud {
 
     $('btn-end-turn').onclick = () => game.endTurn();
     $('btn-next-unit').onclick = () => game.selectNextIdle();
+    // Künyeye dokunmak başkente götürür: HOI4'te ülke kutusunun karşılığı.
+    $('nation-badge').onclick = () => game.focusNation(game.world?.nations[game.turns.playerNation]);
 
     game.on('world', (world) => this.onWorld(world));
     game.on('select', (tile) => this.showTile(tile));
@@ -199,9 +208,16 @@ export class Hud {
       (n) => n.alive && atWar(world, n.id, turns.playerNation),
     ).length;
     this.refreshHegemony();
-    this.el.turnNation.innerHTML = me
-      ? `<img class="flag flag-sm" src="${flagDataUrl(me)}" alt="">${escapeHtml(me.name)} · ${me.tiles} hex · ${cities} şehir · ${wars ? `${wars} savaş` : 'barış'} · ${alive} ülke`
-      : '—';
+
+    // Sol üst künye: bayrak + ülke adı + tek satır özet (HOI4'ün ülke kutusu).
+    if (me) {
+      this.el.topFlag.src = flagDataUrl(me);
+      this.el.topNation.textContent = me.name;
+      this.el.topSub.textContent = `${me.tiles} hex · ${cities} şehir · ${wars ? `${wars} savaş` : 'barış'} · ${alive} ülke`;
+    } else {
+      this.el.topNation.textContent = '—';
+      this.el.topSub.textContent = 'elendin';
+    }
   }
 
   async copySeed() {
@@ -414,12 +430,14 @@ function resourcesHtml(nation) {
   const infamy = Math.round(nation.infamy ?? 0);
   const infamyClass = infamy >= INFAMY_COALITION ? 'res-neg'
     : infamy >= INFAMY_COALITION * 0.6 ? 'res-warn' : '';
+  // Akış göstergesi yalnız altın ve erzakta: 375 pikselde beşinin de akışı
+  // sığmıyor, kereste/demir için stok yeterli bilgi.
   return `
-    <span>⬤ <b>${Math.round(nation.gold)}</b> ${flow(net.gold)}</span>
-    <span>🌾 ${flow(net.food)}</span>
-    <span>🪵 <b>${Math.round(nation.timber)}</b> ${flow(net.timber)}</span>
-    <span>⛏ <b>${Math.round(nation.iron)}</b> ${flow(net.iron)}</span>
-    <span title="kötü şöhret — ${INFAMY_COALITION} olursa koalisyon">☠ <b class="${infamyClass}">${infamy}</b></span>`;
+    <span title="altın">⬤<b>${Math.round(nation.gold)}</b>${flow(net.gold)}</span>
+    <span title="erzak dengesi">🌾${flow(net.food)}</span>
+    <span title="kereste">🪵<b>${Math.round(nation.timber)}</b></span>
+    <span title="demir">⛏<b>${Math.round(nation.iron)}</b></span>
+    <span title="kötü şöhret — ${INFAMY_COALITION} olursa koalisyon">☠<b class="${infamyClass}">${infamy}</b></span>`;
 }
 
 function formatNumber(n) {

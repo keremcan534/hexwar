@@ -81,6 +81,22 @@ export const TERRAIN = {
   },
 };
 
+/**
+ * Politik harita kipinde arazinin ülke rengine kattığı parlaklık.
+ * Ülke rengiyle araziyi *karıştırmak* yerine ülke renginin açıklığını arazi
+ * kadar oynatıyoruz; böylece bir ülke her arazide aynı renk olarak okunur ama
+ * dağ/orman/ova ayrımı yine görünür.
+ */
+export const TERRAIN_SHADE = {
+  SNOW_PEAK: 1.34, ICE: 1.32, DESERT: 1.2, BEACH: 1.16, TUNDRA: 1.1,
+  PLAINS: 1.04, GRASSLAND: 1, HILLS: 0.9, FOREST: 0.8, JUNGLE: 0.74,
+  MOUNTAIN: 0.68,
+};
+
+export function terrainShade(terrain) {
+  return TERRAIN_SHADE[terrain.id] ?? 1;
+}
+
 /** Şehir merkezinin bedava verimi: işçi harcanmadan gelir. */
 export const CITY_CENTER_YIELD = { food: 2, timber: 1, iron: 0, gold: 1 };
 

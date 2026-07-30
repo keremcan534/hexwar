@@ -5,6 +5,7 @@ import { HEX_CORNERS, SQRT3, DIRS } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { drawFlag } from './flagPainter.js';
 import { maxHpOf } from '../game/units.js';
+import { terrainShade } from '../world/terrain.js';
 
 const MAX_DPR = 2;            // mobilde 3x DPR gereksiz pahalı
 const CACHE_MAX_SIDE = 2048;  // önbellek dokusunun en uzun kenarı (bellek sınırı)
@@ -55,10 +56,11 @@ export class Renderer {
     this.camera = camera;
     this.dpr = 1;
     this.showGrid = true;
-    this.showOwners = true;
     this.showLabels = true;
-    /** 'nations' | 'cultures' */
-    this.mapMode = 'nations';
+    /** 'political' | 'terrain' | 'cultures' */
+    this.mapMode = 'political';
+    /** (ülke,arazi) ve (kültür,arazi) renk önbelleği; her karede yeniden hesaplanmasın. */
+    this.tintCache = new Map();
     this.corners = HEX_CORNERS.map(([x, y]) => [x * HEX_SIZE, y * HEX_SIZE]);
     this.cache = null;
     this.lastDrawn = 0;
@@ -76,6 +78,40 @@ export class Renderer {
   /** Dünya ya da katman ayarları değişince önbellek geçersizleşir. */
   invalidateCache() {
     this.cache = null;
+  }
+
+  setMapMode(mode) {
+    this.mapMode = mode;
+    this.tintCache.clear();
+    this.invalidateCache();
+  }
+
+  /**
+   * Politik/kültür kipinde bir karenin rengi: sahibinin tonu, arazinin
+   * parlaklığıyla. Karıştırma (alfa) yerine bu yöntem seçildi çünkü alfada
+   * aynı ülke ormanda ve çölde iki farklı renge dönüşüyor, ayırt edilemiyordu.
+   */
+  ownerTint(owner, terrain) {
+    const key = `${owner.id}:${terrain.id}`;
+    let color = this.tintCache.get(key);
+    if (color) return color;
+    const shade = terrainShade(terrain);
+    const light = Math.max(14, Math.min(82, owner.light * shade));
+    // Doygunluğu biraz kısıyoruz: 15 ülke tam doygun olunca harita bağırıyor.
+    color = `hsl(${Math.round(owner.hue)} ${Math.round(owner.sat * 0.82)}% ${Math.round(light)}%)`;
+    this.tintCache.set(key, color);
+    return color;
+  }
+
+  /** Sahipsiz kara politik kipte soluk kalır ki sahipli topraklar öne çıksın. */
+  neutralTint(terrain) {
+    const key = `neutral:${terrain.id}`;
+    let color = this.tintCache.get(key);
+    if (color) return color;
+    const l = Math.round(Math.max(20, Math.min(78, 46 * terrainShade(terrain))));
+    color = `hsl(80 8% ${l}%)`;
+    this.tintCache.set(key, color);
+    return color;
   }
 
   hexPath(path, cx, cy) {
@@ -124,10 +160,9 @@ export class Renderer {
       this.lastDrawn = 0;
     } else {
       const tiles = this.visibleTiles(world);
-      this.drawTerrain(ctx, tiles);
-      if (this.showOwners) this.drawOwnership(ctx, world, tiles);
+      this.drawTerrain(ctx, tiles, world);
       if (this.showGrid) this.drawGrid(ctx, tiles, cam.zoom);
-      if (this.showOwners) this.drawBorders(ctx, world, tiles, cam.zoom);
+      if (this.mapMode !== 'terrain') this.drawBorders(ctx, world, tiles, cam.zoom);
       this.lastDrawn = tiles.length;
     }
 
@@ -162,40 +197,21 @@ export class Renderer {
     ctx.translate(-b.minX, -b.minY);
 
     const all = world.tiles;
-    this.drawTerrain(ctx, all);
-    if (this.showOwners) {
-      this.drawOwnership(ctx, world, all);
-      this.drawBorders(ctx, world, all, scale);
-    }
+    this.drawTerrain(ctx, all, world);
+    if (this.mapMode !== 'terrain') this.drawBorders(ctx, world, all, scale);
 
     this.cache = { canvas, x: b.minX, y: b.minY, w, h, scale };
     return this.cache;
   }
 
-  drawTerrain(ctx, tiles) {
+  /**
+   * Zemin dolgusu. Kipe göre renk seçilir ama çizim tek geçişte, renge göre
+   * gruplanarak yapılır (binlerce hex için tek fill çağrısı başına bir path).
+   */
+  drawTerrain(ctx, tiles, world) {
     const byColor = new Map();
     for (const t of tiles) {
-      let path = byColor.get(t.terrain.color);
-      if (!path) {
-        path = new Path2D();
-        byColor.set(t.terrain.color, path);
-      }
-      this.hexPath(path, t.x, t.y);
-    }
-    for (const [color, path] of byColor) {
-      ctx.fillStyle = color;
-      ctx.fill(path);
-    }
-  }
-
-  /** Sahiplik katmanı: ülke renkleri ya da kültür kipinde halk renkleri. */
-  drawOwnership(ctx, world, tiles) {
-    const byColor = new Map();
-    for (const t of tiles) {
-      const color = this.mapMode === 'cultures'
-        ? (t.culture >= 0 ? world.cultures[t.culture].color : null)
-        : (t.owner >= 0 ? world.nations[t.owner].color : null);
-      if (!color) continue;
+      const color = this.tileColor(t, world);
       let path = byColor.get(color);
       if (!path) {
         path = new Path2D();
@@ -203,16 +219,24 @@ export class Renderer {
       }
       this.hexPath(path, t.x, t.y);
     }
-    // Düşük tutuldu: yüksek alfada ülke rengi arazi paletini soldurup
-    // haritayı tek düze çamur rengine çeviriyor. Kültür kipinde amaç zaten
-    // bölgeleri okumak olduğu için biraz daha koyu.
-    ctx.globalAlpha = this.mapMode === 'cultures' ? 0.5 : 0.3;
     for (const [color, path] of byColor) {
       ctx.fillStyle = color;
       ctx.fill(path);
     }
-    ctx.globalAlpha = 1;
   }
+
+  tileColor(tile, world) {
+    // Su her kipte arazi rengiyle kalır: kimsenin toprağı değil.
+    if (tile.terrain.water || this.mapMode === 'terrain') return tile.terrain.color;
+
+    if (this.mapMode === 'cultures') {
+      if (tile.culture < 0) return this.neutralTint(tile.terrain);
+      return this.ownerTint(world.cultures[tile.culture], tile.terrain);
+    }
+    if (tile.owner < 0) return this.neutralTint(tile.terrain);
+    return this.ownerTint(world.nations[tile.owner], tile.terrain);
+  }
+
 
   drawGrid(ctx, tiles, scale) {
     const path = new Path2D();
@@ -247,9 +271,14 @@ export class Renderer {
         path.lineTo(t.x + b[0], t.y + b[1]);
       }
     }
-    // Sabit ekran kalınlığı: dünya birimine çevirmek için ölçeğe bölünür.
-    ctx.lineWidth = 2.2 / scale;
     ctx.lineCap = 'round';
+    // Önce koyu alt çizgi, sonra ülke rengi: benzer tonlu iki komşu birbirine
+    // karışmasın. Sabit ekran kalınlığı için ölçeğe bölünür.
+    ctx.lineWidth = 4.2 / scale;
+    ctx.strokeStyle = 'rgba(8,12,18,0.75)';
+    for (const path of byColor.values()) ctx.stroke(path);
+
+    ctx.lineWidth = 2 / scale;
     for (const [color, path] of byColor) {
       ctx.strokeStyle = color;
       ctx.stroke(path);

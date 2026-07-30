@@ -12,21 +12,42 @@
 <body>
   <canvas id="map"></canvas>
 
+  <!-- HOI4 düzeni: sol üstte bayrak, sağa doğru kaynak şeridi, sağda tur denetimi -->
   <header class="topbar">
-    <div class="brand">HEX<span>WAR</span></div>
-    <button class="chip" id="seed-chip" title="Tohumu kopyala">
-      <span class="chip-label">seed</span><span id="seed-value">—</span>
+    <button class="nation-badge" id="nation-badge" title="Ülke özeti">
+      <img class="flag" id="top-flag" alt="" />
+      <span class="nation-text">
+        <b id="top-nation">—</b>
+        <small id="top-sub">—</small>
+      </span>
     </button>
-    <div class="spacer"></div>
-    <button class="icon-btn" id="btn-layers" aria-label="Katmanlar">◈</button>
+
+    <div class="res-strip" id="resources">—</div>
     <button class="icon-btn" id="btn-settings" aria-label="Ayarlar">☰</button>
   </header>
 
+  <!-- Tur denetimi sol altta: harita modlarının karşısı. Üst çubuk bilgi için
+       kalsın; 375 pikselde hepsi tek satıra sığmıyordu. -->
+  <div class="turn-control" id="turn-control">
+    <span class="turn-badge">TUR <b id="turn-value">1</b></span>
+    <button class="action compact" id="btn-next-unit">Sıradaki</button>
+    <button class="primary compact" id="btn-end-turn">Turu Bitir</button>
+  </div>
+
+  <!-- Sağ altta harita modları, Paradox oyunlarındaki gibi -->
+  <div class="map-modes" id="map-modes">
+    <button class="mode-btn active" data-mode="political" title="Politik harita">◧</button>
+    <button class="mode-btn" data-mode="terrain" title="Arazi haritası">▲</button>
+    <button class="mode-btn" data-mode="cultures" title="Kültür haritası">☯</button>
+    <button class="mode-btn" id="btn-layers" title="Katmanlar">◈</button>
+  </div>
+
   <div class="layer-menu hidden" id="layer-menu">
-    <label><input type="checkbox" id="opt-owners" checked /> Ülkeler</label>
-    <label><input type="checkbox" id="opt-cultures" /> Kültür haritası</label>
     <label><input type="checkbox" id="opt-grid" checked /> Izgara</label>
     <label><input type="checkbox" id="opt-labels" checked /> Etiketler</label>
+    <button class="chip" id="seed-chip" title="Tohumu kopyala">
+      <span class="chip-label">seed</span><span id="seed-value">—</span>
+    </button>
   </div>
 
   <div class="panel hidden" id="settings">
@@ -66,17 +87,6 @@
 
   <div class="sheet" id="sheet">
     <div class="sheet-grip"></div>
-    <div class="turn-bar">
-      <div class="turn-top">
-        <span class="turn-no">Tur <b id="turn-value">1</b></span>
-        <span class="resources" id="resources">—</span>
-      </div>
-      <div class="turn-bottom">
-        <span class="turn-nation" id="turn-nation">—</span>
-        <button class="action compact" id="btn-next-unit">Sıradaki</button>
-        <button class="primary compact" id="btn-end-turn">Turu Bitir</button>
-      </div>
-    </div>
     <div class="hegemony" id="hegemony"></div>
     <div class="sheet-body" id="sheet-body">
       <p class="placeholder">Bilgi için bir hex'e dokun.</p>

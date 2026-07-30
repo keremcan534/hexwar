@@ -13,7 +13,7 @@ const TAIL = ['en', 'ani', 'ir', 'oy', 'ash', 'uk', 'iel', 'ar', 'os', 'une'];
 /** Kültür renkleri ülke paletinden ayrı: harita kipinde karışmasınlar. */
 function cultureColor(index, rng) {
   const hue = (index * 97 + rng.range(0, 30)) % 360;
-  return `hsl(${hue.toFixed(0)} 42% 58%)`;
+  return { color: `hsl(${hue.toFixed(0)} 42% 58%)`, hue, sat: 42, light: 58 };
 }
 
 function cultureName(rng, used) {
@@ -57,13 +57,19 @@ export function generateCultures(world, rng, options = {}) {
   });
 
   const used = new Set();
-  const cultures = seeds.map((tile, i) => ({
-    id: i,
-    name: cultureName(rng, used),
-    color: cultureColor(i, rng),
-    origin: tile,
-    tiles: 0,
-  }));
+  const cultures = seeds.map((tile, i) => {
+    const palette = cultureColor(i, rng);
+    return {
+      id: i,
+      name: cultureName(rng, used),
+      color: palette.color,
+      hue: palette.hue,
+      sat: palette.sat,
+      light: palette.light,
+      origin: tile,
+      tiles: 0,
+    };
+  });
 
   for (const [tile, id] of assignment) {
     if (tile.terrain.water) continue; // deniz sadece geçit, kültürü yok
