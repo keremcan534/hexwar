@@ -195,10 +195,11 @@ hangi mekaniğin bozduğunu ayırt etmeyi imkânsız kılar.
 1b. ~~**Binalar**~~ — yazıldı, bkz. bölüm 14. Vizyon değişince listeden düşmüştü;
     1. adımın açık bıraktığı altın birikmesini kapatmak için öne alındı.
 2. **Kültür bölgeleri + şehir nüfusu** — worldgen değişikliği, kayıt biçiminden önce
-3. **Infamy + hoşnutsuzluk + ateşkes** — tempo yarıya inmeli
+3. ~~**Infamy + hoşnutsuzluk + ateşkes**~~ — yazıldı, bkz. bölüm 15
 4. **Kayıt/yükleme** — 300 tur tek oturumda bitmez
 5. **Politikalar**
-6. **Ticaret**
+6. ~~**Ticaret**~~ — yazıldı (kayıt biçimi iki kez değişmesin diye öne alındı),
+   bkz. bölüm 15
 7. **Teknoloji**
 8. **Hegemonya puanı ve zafer**
 9. **Elle işçi ataması + şehir ekranı** — en pahalı ve en riskli iş, en sona
@@ -277,6 +278,45 @@ Altın birikmesi dört seed'in üçünde hedefin (< 400) çok altına indi. Kala
 aykırı değer (705), tüm şehir yuvaları dolduktan sonra ordunun erzakla sınırlı
 kalmasından: harcayacak yer bitiyor. **Yapısal sınır bu** — sıradaki gider
 kalemleri ticaret (6) ve teknoloji (7).
+
+## 15. Infamy, hoşnutsuzluk, ateşkes ve ticaret
+
+Tasarım sayıları aynen uygulandı. Eklenen üç şey:
+
+| Ekleme | Sebep |
+|---|---|
+| Ateşkes: barıştan sonra 15 tur savaş yasağı | Barış yapıp ertesi tur saldırmak serbestti |
+| Şöhretin **oransal** azalması (`1 + %3`) | Sabit azalmayla 300. turda 1548'e çıkıyordu |
+| YZ şöhreti 18'i geçince yeni savaş açmaz | Koalisyon riskini hesaba katsın |
+
+Şehir zaptının gerçek bedeli **~12 infamy**: şehir (+6) artı zaptla birlikte
+gelen çevre kareler. Tasarımda öngörülen "bir şehir + çevresi ~14" ile uyumlu.
+
+### Ölçüm (300 tur, 4 seed)
+
+| Ölçüt | Hedef | Adım 2 sonrası | **Şimdi** |
+|---|---|---|---|
+| 150. turda ayakta | 8-10 | 2-5 | **6-9** |
+| 300. turda ayakta | ≥ 6 | — | 4-6 |
+| 300. turda lider payı | %25-45 | — | %30-61 |
+| En yüksek şöhret | anlamlı kalmalı | 1548 | **107-178** |
+| En yüksek hazine | < 400 | 3465 | **210-375** (bir aykırı: 1772) |
+| Tur süresi | < 8 ms | 3.5-4.2 | 3.2-4.2 ms |
+| Bütünlük hatası | 0 | 0 | 0 |
+
+### Kaynak kilidi çözüldü
+
+Bölüm 14'te "demir üretimi 0, stoğu 3'te kilitli" diye yazdığımız ülke artık
+ticaretle **12-45 demir** tutuyor. Dört seed'in hepsinde demir üretmeyen 2 ülke
+var ve hiçbiri kilitli değil. Ticaretin varlık sebebi buydu.
+
+### Açık kalanlar
+
+- 300. turda lider payı iki seed'de %61 ve %41 — hedef %25-45'in üstünde.
+  Politikalar (5) ve teknoloji (7) fakire alternatif yol açtığında düşmesi
+  beklenir.
+- Bir seed'de hazine 1772'de kaldı: tüm bina yuvaları dolu, ordu erzakla
+  sınırlı, ticaret ortağı doymuş. Teknoloji sıradaki gider kalemi.
 
 ### Gözlenen: kaynak kilidi gerçek
 

@@ -222,6 +222,7 @@ html, body {
 .resources span { white-space: nowrap; }
 .resources b { color: var(--text); font-weight: 600; }
 .res-neg { color: #e07a6a; }
+.res-warn { color: #e8c34a; }
 .res-pos { color: #7fc98a; }
 .primary.compact { width: auto; margin: 0; padding: 10px 16px; font-size: 14px; flex: none; }
 .action.compact { flex: none; padding: 10px 14px; }

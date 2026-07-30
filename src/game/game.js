@@ -13,6 +13,7 @@ import { placeUnit, resolveCombat } from './units.js';
 import { TurnManager } from './turn.js';
 import { captureCity } from './cities.js';
 import { atWar, considerPeaceOffer, declareWar } from './diplomacy.js';
+import { INFAMY, addInfamy } from './infamy.js';
 import {
   ORDER, clearOrder, executeOrders, idleUnits, setOrder,
 } from './orders.js';
@@ -180,6 +181,8 @@ export class Game {
     if (city && city.nationId !== unit.nationId) {
       const old = this.world.nations[city.nationId];
       captureCity(this, city, unit.nationId);
+      // Şehir almak en pahalı fetihtir: bir ülkeyi yutmak dünyayı üstüne çeker.
+      addInfamy(this.world.nations[unit.nationId], INFAMY.CITY);
       this.turns.addLog(`${city.name} ele geçirildi (${old.name}).`);
     }
   }

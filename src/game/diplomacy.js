@@ -9,6 +9,12 @@ export const PEACE = 'peace';
 export const MIN_WAR_TURNS = 8;
 
 /**
+ * Barıştan sonra yeniden savaş ilan edilemeyen tur sayısı. Ateşkes olmadan
+ * barış yapıp ertesi tur yeniden saldırmak serbestti; tempoyu bu tutuyor.
+ */
+export const TRUCE_TURNS = 15;
+
+/**
  * Simetrik ilişki tablosu: world.relations[a][b] ile [b][a] *aynı* nesnedir.
  * Kopyalarsak bir yönü güncelleyip diğerini unutmak mümkün olur.
  */
@@ -37,15 +43,23 @@ export function atPeace(world, a, b) {
   return a !== b && !atWar(world, a, b);
 }
 
-function setState(world, a, b, state, turn) {
-  const rec = { state, since: turn };
+function setState(world, a, b, state, turn, extra = {}) {
+  const rec = { state, since: turn, ...extra };
   world.relations[a][b] = rec;
   world.relations[b][a] = rec;
+}
+
+/** Ateşkes sürüyorsa savaş ilan edilemez. */
+export function truceLeft(world, a, b, turn) {
+  const rec = relation(world, a, b);
+  if (!rec || rec.state === WAR) return 0;
+  return Math.max(0, (rec.truceUntil ?? 0) - turn);
 }
 
 export function declareWar(game, a, b) {
   const world = game.world;
   if (a === b || atWar(world, a, b)) return false;
+  if (truceLeft(world, a, b, game.turns.turn) > 0) return false;
   setState(world, a, b, WAR, game.turns.turn);
   game.renderer.invalidateCache();
   if (a === game.turns.playerNation || b === game.turns.playerNation) {
@@ -60,7 +74,9 @@ export function declareWar(game, a, b) {
 export function makePeace(game, a, b) {
   const world = game.world;
   if (!atWar(world, a, b)) return false;
-  setState(world, a, b, PEACE, game.turns.turn);
+  setState(world, a, b, PEACE, game.turns.turn, {
+    truceUntil: game.turns.turn + TRUCE_TURNS,
+  });
   game.renderer.invalidateCache();
   if (a === game.turns.playerNation || b === game.turns.playerNation) {
     const other = world.nations[a === game.turns.playerNation ? b : a];

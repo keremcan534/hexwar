@@ -7,7 +7,9 @@ import {
 } from '../game/cities.js';
 import { BUILDINGS, MAX_BUILDINGS, canBuild } from '../game/buildings.js';
 import { UNIT_TYPES, movesFor } from '../game/units.js';
-import { MIN_WAR_TURNS, atWar, relation } from '../game/diplomacy.js';
+import { MIN_WAR_TURNS, atWar, relation, truceLeft } from '../game/diplomacy.js';
+import { INFAMY_COALITION, OCCUPATION_TURNS, tileEfficiency } from '../game/infamy.js';
+import { canTrade } from '../game/trade.js';
 import { ORDER } from '../game/orders.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 
@@ -185,6 +187,14 @@ export class Hud {
       ['Geçiş', tile.terrain.passable ? `${tile.terrain.moveCost}` : 'yok'],
     ];
     if (tile.culture >= 0) stats.push(['Halk', world.cultures[tile.culture].name]);
+    // Fethin bedeli karede görünsün: işgal süresi ve verim kaybı.
+    if (nation && tile.culture >= 0) {
+      const held = (world.turn ?? 0) - (tile.heldSince ?? 0);
+      const eff = tileEfficiency(tile, nation.culture, world.turn ?? 0);
+      if (eff === 0) stats.push(['Durum', `işgal (${OCCUPATION_TURNS - held} tur)`]);
+      else if (eff < 1) stats.push(['Durum', `yabancı halk −%${Math.round((1 - eff) * 100)}`]);
+      else if (tile.culture !== nation.culture) stats.push(['Durum', 'yabancı halk']);
+    }
     if (tile.workedBy) stats.push(['İşleyen', tile.workedBy.name]);
     if (nation) stats.push(['Ülke Alanı', `${nation.tiles} hex`]);
 
@@ -227,7 +237,7 @@ export class Hud {
 
     if (tile.city && tile.city.nationId === game.turns.playerNation) {
       const city = tile.city;
-      const out = cityProduction(city);
+      const out = cityProduction(city, game.world);
       const buttons = Object.entries(UNIT_COSTS).filter(
         // Gemi ancak kıyı şehrinde üretilebilir.
         ([id]) => UNIT_TYPES[id].domain !== 'sea' || tile.coastal,
@@ -273,11 +283,13 @@ export class Hud {
       const war = atWar(game.world, foreign, game.turns.playerNation);
       const rec = relation(game.world, foreign, game.turns.playerNation);
       const locked = war && game.turns.turn - rec.since < MIN_WAR_TURNS;
+      const truce = truceLeft(game.world, foreign, game.turns.playerNation, game.turns.turn);
+      const trade = !war && canTrade(other) && canTrade(me) ? 'ticaret açık' : 'ticaret yok';
       rows.push(`<div class="action-row">
-        <div class="k">${escapeHtml(other.name)} — ${war ? 'savaştayız' : 'barış içindeyiz'}</div>
+        <div class="k">${escapeHtml(other.name)} — ${war ? 'savaştayız' : truce ? `ateşkes (${truce} tur)` : 'barış içindeyiz'} · ${trade}</div>
         ${war
     ? `<button class="action wide" data-peace="${foreign}" ${locked ? 'disabled' : ''}>Barış Teklif Et${locked ? ` (${MIN_WAR_TURNS - (game.turns.turn - rec.since)} tur)` : ''}</button>`
-    : `<button class="action wide" data-war="${foreign}">Savaş İlan Et</button>`}
+    : `<button class="action wide" data-war="${foreign}" ${truce ? 'disabled' : ''}>Savaş İlan Et${truce ? ` (${truce} tur)` : ''}</button>`}
       </div>`);
     }
 
@@ -330,11 +342,16 @@ export class Hud {
 function resourcesHtml(nation) {
   const net = nation.budget?.net ?? { gold: 0, food: 0, timber: 0, iron: 0 };
   const flow = (v) => `<b class="${v < 0 ? 'res-neg' : v > 0 ? 'res-pos' : ''}">${v >= 0 ? '+' : ''}${Math.round(v)}</b>`;
+  // Şöhret eşiğe yaklaşırsa kırmızıya döner: koalisyon habersiz gelmesin.
+  const infamy = Math.round(nation.infamy ?? 0);
+  const infamyClass = infamy >= INFAMY_COALITION ? 'res-neg'
+    : infamy >= INFAMY_COALITION * 0.6 ? 'res-warn' : '';
   return `
     <span>⬤ <b>${Math.round(nation.gold)}</b> ${flow(net.gold)}</span>
     <span>🌾 ${flow(net.food)}</span>
     <span>🪵 <b>${Math.round(nation.timber)}</b> ${flow(net.timber)}</span>
-    <span>⛏ <b>${Math.round(nation.iron)}</b> ${flow(net.iron)}</span>`;
+    <span>⛏ <b>${Math.round(nation.iron)}</b> ${flow(net.iron)}</span>
+    <span title="kötü şöhret — ${INFAMY_COALITION} olursa koalisyon">☠ <b class="${infamyClass}">${infamy}</b></span>`;
 }
 
 function formatNumber(n) {

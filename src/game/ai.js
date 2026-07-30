@@ -7,8 +7,9 @@ import {
 } from './cities.js';
 import { BUILDINGS, canBuild } from './buildings.js';
 import {
-  MIN_WAR_TURNS, atWar, declareWar, makePeace, nationStrength, relation,
+  MIN_WAR_TURNS, atWar, declareWar, makePeace, nationStrength, relation, truceLeft,
 } from './diplomacy.js';
+import { INFAMY_COALITION } from './infamy.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
 const WAR_THRESHOLD = 1.15;
@@ -38,6 +39,8 @@ function diplomacy(game, nation, rng) {
 
   // Aynı anda ikiden fazla cephe açma.
   if (wars.length >= 2 || rng() > 0.25) return;
+  // Şöhreti kirlenmiş ülke yeni savaş açmaz: koalisyon riski taşıyor.
+  if ((nation.infamy ?? 0) > INFAMY_COALITION * 0.6) return;
 
   let bestTarget = null;
   let bestScore = 0;
@@ -46,6 +49,7 @@ function diplomacy(game, nation, rng) {
     if (atWar(world, other.id, nation.id)) continue;
     const contact = contacts[nation.id][other.id];
     if (!contact) continue;
+    if (truceLeft(world, nation.id, other.id, game.turns.turn) > 0) continue;
     const ratio = myPower / Math.max(1, nationStrength(world, other));
     if (ratio < WAR_THRESHOLD) continue;
     // Uzun sınır + zayıf komşu = cazip hedef.

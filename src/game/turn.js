@@ -4,6 +4,10 @@ import { makeRng } from '../core/rng.js';
 import { createUnit, movesFor, removeUnit, UNIT_TYPES } from './units.js';
 import { runNationAI } from './ai.js';
 import { atWar, computeContacts, initRelations } from './diplomacy.js';
+import {
+  INFAMY, addInfamy, checkCoalitions, decayInfamy, runAssimilation, tileInfamy,
+} from './infamy.js';
+import { runTrade } from './trade.js';
 import { executeOrders } from './orders.js';
 import {
   CITY_COST, UNIT_COSTS, assignAllWorkers, canAfford, canFoundCity, cityName,
@@ -36,6 +40,7 @@ export class TurnManager {
     this.turn = 1;
     this.log = [];
     this.rng = makeRng(`${world.seed}-turns`);
+    world.turn = 1;
     initRelations(world);
     const usedNames = new Set();
 
@@ -43,6 +48,7 @@ export class TurnManager {
       nation.alive = nation.tiles > 0;
       for (const r of RESOURCES) nation[r] = STARTING_STOCK[r];
       nation.budget = null;
+      nation.infamy = 0;
       if (!nation.alive) continue;
       // Her ülke başkentinde bir şehirle başlar.
       createCity(world, nation.capital, nation.id, cityName(this.rng, usedNames), 2, 3);
@@ -134,6 +140,12 @@ export class TurnManager {
     const world = this.world;
     // Barış içindeki komşunun toprağı alınamaz.
     if (tile.owner >= 0 && !atWar(world, tile.owner, nationId)) return false;
+
+    const nation = world.nations[nationId];
+    // Sahipli toprağı almak şöhret bedeli ister; boş toprağa yerleşmek istemez.
+    if (tile.owner >= 0) addInfamy(nation, tileInfamy(tile, nation));
+    // İşgal saati sıfırlanır: taze fetih bir süre üretmez, sonra asimile olur.
+    tile.heldSince = this.turn;
     if (tile.owner >= 0) world.nations[tile.owner].tiles--;
     tile.owner = nationId;
     world.nations[nationId].tiles++;
@@ -147,16 +159,26 @@ export class TurnManager {
 
     // Temas tablosu tur başında bir kez: her ülke için ayrı taramak pahalı.
     world.contacts = computeContacts(world);
+    // Koalisyon YZ'den önce: şöhreti aşan ülke bu turda cephe bulsun.
+    const joined = checkCoalitions(this.game, this.rng);
+    if (joined) this.game.renderer.invalidateCache();
+
     for (const nation of world.nations) {
       if (nation.id === this.playerNation || !nation.alive) continue;
       runNationAI(this.game, nation, this.rng);
     }
 
     this.turn++;
+    world.turn = this.turn;
     for (const unit of world.units) unit.movesLeft = movesFor(unit);
+    decayInfamy(world);
+    // Asimilasyon kültür sınırını değiştirir; önbellek tazelenmeli.
+    if (runAssimilation(world, this.turn)) this.game.renderer.invalidateCache();
     // Sıra önemli: sahiplik savaşta değişmiş olabilir, önce işçiler yeniden dağıtılır.
     assignAllWorkers(world);
     this.produce();
+    // Ticaret üretimden sonra: bu turun fazlası satılabilsin.
+    this.lastTrade = runTrade(world);
     this.checkElimination();
     // Oyuncunun sürekli emirleri yeni turun hakkıyla işlensin: tur açıldığında
     // otomatik ve yol emirli birimler hamlelerini yapmış olur.

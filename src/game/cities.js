@@ -4,6 +4,7 @@
 import { hexDistance, hexesInRange } from '../core/hex.js';
 import { CITY_CENTER_YIELD, RESOURCES } from '../world/terrain.js';
 import { applyBuildings, buildingUpkeep, hasBuilding } from './buildings.js';
+import { tileEfficiency } from './infamy.js';
 
 /** Yeni şehir kurma bedeli ve şehirler arası asgari mesafe. */
 export const CITY_COST = { gold: 60, timber: 4 };
@@ -115,9 +116,29 @@ function corruption(cityCount) {
   return 12 / (12 + Math.max(0, cityCount - 1));
 }
 
-/** Bir karenin bir işçiye verdiği üretim. */
-export function tileYield(tile) {
-  return tile.terrain.yields;
+/**
+ * Bir karenin bir işçiye verdiği üretim. Taze işgal ve yabancı halk verim
+ * kaybettirir (bkz. infamy.js), o yüzden bağlam gerekir.
+ */
+export function tileYield(tile, ctx) {
+  const base = tile.terrain.yields;
+  if (!ctx) return base;
+  const factor = tileEfficiency(tile, ctx.culture, ctx.turn);
+  if (factor === 1) return base;
+  return {
+    food: base.food * factor,
+    timber: base.timber * factor,
+    iron: base.iron * factor,
+    gold: base.gold * factor,
+  };
+}
+
+/** Şehrin sahibine göre üretim bağlamı. */
+function cityContext(world, city) {
+  return {
+    culture: world?.nations?.[city.nationId]?.culture ?? -1,
+    turn: world?.turn ?? 0,
+  };
 }
 
 /**
@@ -133,13 +154,15 @@ export function assignWorkers(world, city, weights) {
     return;
   }
   const candidates = [];
+  const ctx = cityContext(world, city);
   for (const { q, r } of hexesInRange(city.tile.q, city.tile.r, WORK_RADIUS)) {
     const tile = world.get(q, r);
     if (!tile || tile === city.tile) continue;
     if (tile.owner !== city.nationId) continue;
     // Başka şehrin işlediği kare paylaşılmaz.
     if (tile.workedBy && tile.workedBy !== city) continue;
-    const yields = tileYield(tile);
+    // İşçi taze işgal edilmiş kareye gitmez: orada verim sıfır.
+    const yields = tileYield(tile, ctx);
     const score = yields.food * weights.food + yields.gold * weights.gold
       + yields.timber * weights.timber + yields.iron * weights.iron;
     if (score > 0) candidates.push({ tile, score });
@@ -178,10 +201,11 @@ export function assignAllWorkers(world) {
 }
 
 /** Şehrin bu turki üretimi: merkez bedavası + işlenen kareler. */
-export function cityProduction(city) {
+export function cityProduction(city, world) {
   const out = { ...CITY_CENTER_YIELD };
+  const ctx = cityContext(world, city);
   for (const tile of city.worked) {
-    const yields = tileYield(tile);
+    const yields = tileYield(tile, ctx);
     for (const r of RESOURCES) out[r] += yields[r];
   }
   // Şehrin kendisi bir pazar: tahkimat kademesi altın tabanı verir.
@@ -206,9 +230,10 @@ export function nationBudget(world, nation) {
     cityCount++;
     workers += city.pop;
     buildings += buildingUpkeep(city);
-    const out = cityProduction(city);
+    const out = cityProduction(city, world);
     for (const r of RESOURCES) production[r] += out[r];
   }
+  for (const r of RESOURCES) production[r] = Math.round(production[r]);
   production.gold = Math.round(production.gold * corruption(cityCount));
 
   let army = 0;
