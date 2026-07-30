@@ -65,8 +65,8 @@ export function declareWar(game, a, b) {
   if (a === game.turns.playerNation || b === game.turns.playerNation) {
     const other = world.nations[a === game.turns.playerNation ? b : a];
     game.turns.addLog(a === game.turns.playerNation
-      ? `${other.name} ülkesine savaş ilan edildi.`
-      : `${other.name} bize savaş ilan etti!`);
+      ? `War declared on ${other.name}.`
+      : `${other.name} declared war on us!`);
   }
   return true;
 }
@@ -80,7 +80,7 @@ export function makePeace(game, a, b) {
   game.renderer.invalidateCache();
   if (a === game.turns.playerNation || b === game.turns.playerNation) {
     const other = world.nations[a === game.turns.playerNation ? b : a];
-    game.turns.addLog(`${other.name} ile barış yapıldı.`);
+    game.turns.addLog(`Peace signed with ${other.name}.`);
   }
   return true;
 }

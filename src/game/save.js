@@ -6,7 +6,7 @@
 // değişirse eski kayıtlar geçersizleşir, o yüzden SAVE_VERSION var.
 
 import { UNIT_TYPES, createUnit } from './units.js';
-import { createCity } from './cities.js';
+import { createCity, englishCityName } from './cities.js';
 
 // Teknoloji ve birim can tavanı eklendiği için biçim yükseldi.
 export const SAVE_VERSION = 2;
@@ -22,8 +22,13 @@ export function serialize(game) {
   // Sahiplik/kültür/işgal: yalnız üretilenden **farklı** olan kareler yazılır.
   const tiles = [];
   world.forEach((tile, index) => {
-    if (tile.owner < 0 && !tile.heldSince && tile.culture === tile.baseCulture) return;
-    tiles.push([index, tile.owner, tile.culture, tile.heldSince ?? 0]);
+    if (
+      tile.owner < 0
+      && !tile.heldSince
+      && tile.culture === tile.baseCulture
+      && !(tile.roadLevel > 0)
+    ) return;
+    tiles.push([index, tile.owner, tile.culture, tile.heldSince ?? 0, tile.roadLevel ?? 0]);
   });
 
   return {
@@ -91,15 +96,17 @@ export function deserialize(game, data) {
     t.city = null;
     t.workedBy = null;
     t.owner = -1;
+    t.roadLevel = 0;
   });
 
   // 3) Kareler
-  for (const [index, owner, culture, heldSince] of data.tiles) {
+  for (const [index, owner, culture, heldSince, roadLevel = 0] of data.tiles) {
     const tile = world.tiles[index];
     if (!tile) continue;
     tile.owner = owner;
     tile.culture = culture;
     tile.heldSince = heldSince;
+    tile.roadLevel = roadLevel;
   }
 
   // 4) Uluslar
@@ -125,7 +132,9 @@ export function deserialize(game, data) {
   for (const saved of data.cities) {
     const tile = world.get(saved.q, saved.r);
     if (!tile) continue;
-    const city = createCity(world, tile, saved.nationId, saved.name, saved.level, saved.pop);
+    const city = createCity(
+      world, tile, saved.nationId, englishCityName(saved.name), saved.level, saved.pop,
+    );
     city.pops = { ...saved.pops };
     city.buildings = saved.buildings.slice();
     city.foodStore = saved.foodStore;

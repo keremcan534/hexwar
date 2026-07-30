@@ -75,7 +75,7 @@ export function checkVictory(world, turn) {
     nation: leader.nation,
     score: leader.total,
     byConquest: leader.nation.tiles === maxTiles,
-    reason: reachedTarget ? 'hegemonya' : 'süre',
+    reason: reachedTarget ? 'hegemony' : 'time',
     board,
   };
 }

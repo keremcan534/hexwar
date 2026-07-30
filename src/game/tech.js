@@ -12,57 +12,57 @@ import { canAfford, pay } from './cities.js';
 export const TECHS = {
   // --- Ekonomi ---
   FARMING: {
-    id: 'FARMING', name: 'Tarım', branch: 'economy', tier: 1,
-    cost: { gold: 80 }, desc: 'her şehir +1 erzak',
+    id: 'FARMING', name: 'Agriculture', branch: 'economy', tier: 1,
+    cost: { gold: 80 }, desc: '+1 food per city',
   },
   ROADS: {
-    id: 'ROADS', name: 'Yollar', branch: 'economy', tier: 2,
-    cost: { gold: 150, timber: 8 }, requires: ['FARMING'], desc: 'her şehir +1 altın',
+    id: 'ROADS', name: 'Roads', branch: 'economy', tier: 2,
+    cost: { gold: 150, timber: 8 }, requires: ['FARMING'], desc: '+1 gold per city',
   },
   BANKING: {
-    id: 'BANKING', name: 'Bankacılık', branch: 'economy', tier: 3,
-    cost: { gold: 280 }, requires: ['ROADS'], desc: 'her şehir +2 altın',
+    id: 'BANKING', name: 'Banking', branch: 'economy', tier: 3,
+    cost: { gold: 280 }, requires: ['ROADS'], desc: '+2 gold per city',
   },
   ACCOUNTING: {
-    id: 'ACCOUNTING', name: 'Muhasebe', branch: 'economy', tier: 4,
-    cost: { gold: 450 }, requires: ['BANKING'], desc: 'büyük imparatorlukta verim kaybı azalır',
+    id: 'ACCOUNTING', name: 'Accounting', branch: 'economy', tier: 4,
+    cost: { gold: 450 }, requires: ['BANKING'], desc: 'reduces efficiency loss in large empires',
   },
 
   // --- Askerî ---
   SMITHING: {
-    id: 'SMITHING', name: 'Demircilik', branch: 'military', tier: 1,
-    cost: { gold: 80, iron: 4 }, desc: 'her şehir +1 demir',
+    id: 'SMITHING', name: 'Smithing', branch: 'military', tier: 1,
+    cost: { gold: 80, iron: 4 }, desc: '+1 iron per city',
   },
   ARMOR: {
-    id: 'ARMOR', name: 'Zırh', branch: 'military', tier: 2,
-    cost: { gold: 150, iron: 10 }, requires: ['SMITHING'], desc: 'birimler +15 can',
+    id: 'ARMOR', name: 'Armor', branch: 'military', tier: 2,
+    cost: { gold: 150, iron: 10 }, requires: ['SMITHING'], desc: '+15 unit strength',
   },
   TACTICS: {
-    id: 'TACTICS', name: 'Taktik', branch: 'military', tier: 3,
-    cost: { gold: 280, iron: 12 }, requires: ['ARMOR'], desc: 'birimler +1 saldırı',
+    id: 'TACTICS', name: 'Tactics', branch: 'military', tier: 3,
+    cost: { gold: 280, iron: 12 }, requires: ['ARMOR'], desc: '+1 unit attack',
   },
   SIEGE: {
-    id: 'SIEGE', name: 'Kuşatma', branch: 'military', tier: 4,
-    cost: { gold: 450, iron: 16 }, requires: ['TACTICS'], desc: 'şehir savunması yarı etkili',
+    id: 'SIEGE', name: 'Siegecraft', branch: 'military', tier: 4,
+    cost: { gold: 450, iron: 16 }, requires: ['TACTICS'], desc: 'halves enemy city defense',
   },
 
   // --- İdare ---
   CLERKS: {
-    id: 'CLERKS', name: 'Kâtiplik', branch: 'admin', tier: 1,
-    cost: { gold: 80, timber: 4 }, desc: 'ambar kapasitesi +25',
+    id: 'CLERKS', name: 'Civil Service', branch: 'admin', tier: 1,
+    cost: { gold: 80, timber: 4 }, desc: '+25 storage capacity',
   },
   ASSIMILATION: {
-    id: 'ASSIMILATION', name: 'Asimilasyon', branch: 'admin', tier: 2,
+    id: 'ASSIMILATION', name: 'Assimilation', branch: 'admin', tier: 2,
     cost: { gold: 150 }, requires: ['CLERKS'],
-    desc: 'yabancı topraklar asimile olmaya başlar (bu teknoloji olmadan hiç olmaz)',
+    desc: 'foreign territories begin to assimilate',
   },
   DIPLOMACY: {
-    id: 'DIPLOMACY', name: 'Diplomasi', branch: 'admin', tier: 3,
-    cost: { gold: 280 }, requires: ['ASSIMILATION'], desc: 'kötü şöhret daha hızlı unutulur',
+    id: 'DIPLOMACY', name: 'Diplomacy', branch: 'admin', tier: 3,
+    cost: { gold: 280 }, requires: ['ASSIMILATION'], desc: 'infamy decays faster',
   },
   GOVERNANCE: {
-    id: 'GOVERNANCE', name: 'Yönetim', branch: 'admin', tier: 4,
-    cost: { gold: 450, timber: 12 }, requires: ['DIPLOMACY'], desc: 'şehir başına +1 bina yuvası',
+    id: 'GOVERNANCE', name: 'Governance', branch: 'admin', tier: 4,
+    cost: { gold: 450, timber: 12 }, requires: ['DIPLOMACY'], desc: '+1 building slot per city',
   },
 };
 
@@ -80,15 +80,25 @@ export function availableTechs(nation) {
   return Object.values(TECHS).filter((t) => canResearch(nation, t.id));
 }
 
+export function researchCost(nation, idOrTech) {
+  const tech = typeof idOrTech === 'string' ? TECHS[idOrTech] : idOrTech;
+  if (!tech) return {};
+  const discount = Math.min(0.32, nation.budget?.researchDiscount ?? 0);
+  return {
+    ...tech.cost,
+    gold: Math.ceil((tech.cost.gold ?? 0) * (1 - discount)),
+  };
+}
+
 export function research(nation, id) {
   if (!canResearch(nation, id)) return false;
-  if (!pay(nation, TECHS[id].cost)) return false;
+  if (!pay(nation, researchCost(nation, id))) return false;
   nation.techs.push(id);
   return true;
 }
 
 export function affordableTechs(nation) {
-  return availableTechs(nation).filter((t) => canAfford(nation, t.cost));
+  return availableTechs(nation).filter((t) => canAfford(nation, researchCost(nation, t)));
 }
 
 // --- Etki kancaları. Her biri tek satır: nereye dokunduğu açık kalsın. ---

@@ -8,7 +8,7 @@ import { growRegions, pickSeeds } from './regions.js';
 const SYL_START = ['Ar', 'Bel', 'Cor', 'Dra', 'El', 'Fen', 'Gor', 'Hal', 'Ir', 'Kaz', 'Lor', 'Mar', 'Nor', 'Oss', 'Pra', 'Quen', 'Rav', 'Sar', 'Tur', 'Ul', 'Vas', 'Wyn', 'Yar', 'Zen'];
 const SYL_MID = ['a', 'e', 'i', 'o', 'an', 'en', 'ir', 'or', 'al', 'ath', 'esh', 'ov', 'ur', 'yl'];
 const SYL_END = ['ya', 'ia', 'land', 'mark', 'stan', 'grad', 'heim', 'dor', 'ria', 'nia', 'gard', 'vik', 'esh', 'ov'];
-const TITLES = ['Krallığı', 'İmparatorluğu', 'Cumhuriyeti', 'Prensliği', 'Dükalığı', 'Konfederasyonu', 'Hanlığı', 'Emirliği'];
+const TITLES = ['Kingdom', 'Empire', 'Republic', 'Principality', 'Duchy', 'Confederation', 'Khanate', 'Emirate'];
 
 function makeName(rng, used) {
   for (let attempt = 0; attempt < 50; attempt++) {
@@ -20,7 +20,7 @@ function makeName(rng, used) {
       return base;
     }
   }
-  return `Ulus-${used.size + 1}`;
+  return `Nation-${used.size + 1}`;
 }
 
 /** Altın oran açısıyla dağıtılan ton: 20+ ülkede bile renkler karışmaz. */

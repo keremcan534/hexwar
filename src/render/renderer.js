@@ -163,6 +163,7 @@ export class Renderer {
       this.drawTerrain(ctx, tiles, world);
       if (this.showGrid) this.drawGrid(ctx, tiles, cam.zoom);
       if (this.mapMode !== 'terrain') this.drawBorders(ctx, world, tiles, cam.zoom);
+      this.drawRoads(ctx, world, tiles, cam.zoom);
       this.lastDrawn = tiles.length;
     }
 
@@ -281,6 +282,48 @@ export class Renderer {
     ctx.lineWidth = 2 / scale;
     for (const [color, path] of byColor) {
       ctx.strokeStyle = color;
+      ctx.stroke(path);
+    }
+  }
+
+  /** Yol ağı yakın ve orta zoomda siyasi haritanın üstünde okunur kalır. */
+  drawRoads(ctx, world, tiles, scale) {
+    const paths = new Map();
+    const pathFor = (level) => {
+      let path = paths.get(level);
+      if (!path) {
+        path = new Path2D();
+        paths.set(level, path);
+      }
+      return path;
+    };
+
+    for (const tile of tiles) {
+      const level = tile.roadLevel ?? 0;
+      if (level <= 0 || tile.terrain.water) continue;
+      let connected = false;
+      for (const next of world.neighbors(tile)) {
+        if ((next.roadLevel ?? 0) <= 0 || next.owner !== tile.owner) continue;
+        if (next.q < tile.q || (next.q === tile.q && next.r < tile.r)) continue;
+        connected = true;
+        const segment = pathFor(Math.min(level, next.roadLevel));
+        segment.moveTo(tile.x, tile.y);
+        segment.lineTo(next.x, next.y);
+      }
+      if (!connected) {
+        const marker = pathFor(level);
+        marker.moveTo(tile.x - 2 / scale, tile.y);
+        marker.lineTo(tile.x + 2 / scale, tile.y);
+      }
+    }
+
+    ctx.lineCap = 'round';
+    for (const [level, path] of paths) {
+      ctx.lineWidth = (3.2 + level * 0.9) / scale;
+      ctx.strokeStyle = 'rgba(34, 25, 17, 0.78)';
+      ctx.stroke(path);
+      ctx.lineWidth = (1.3 + level * 0.55) / scale;
+      ctx.strokeStyle = level === 3 ? '#e8c982' : level === 2 ? '#c8a96a' : '#9a8058';
       ctx.stroke(path);
     }
   }

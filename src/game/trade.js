@@ -50,7 +50,7 @@ export function runTrade(world) {
   for (let a = 0; a < world.nations.length; a++) {
     const seller = world.nations[a];
     if (!canTrade(seller)) continue;
-    const sellerCap = storageCap(seller.budget?.cities ?? 1);
+    const sellerCap = storageCap(seller.budget?.cities ?? 1, seller);
 
     for (let b = 0; b < world.nations.length; b++) {
       if (a === b) continue;

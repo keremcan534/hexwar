@@ -93,11 +93,15 @@ function buildSomething(game, nation) {
 
   // Darboğazdan çıkmayı hedefleyen sıra.
   const wishlist = [];
-  if (net.food < 4) wishlist.push('GRANARY');
-  if (nation.iron < 10) wishlist.push('FORGE');
+  if (net.food < 4) wishlist.push('GRANARY', 'FARM_ESTATE');
+  if (nation.iron < 10) wishlist.push('MINE', 'FORGE');
   if (nation.timber < 10) wishlist.push('SAWMILL');
-  if (atWar) wishlist.push('WALLS');
-  wishlist.push('MARKET', 'HARBOR', 'GRANARY', 'SAWMILL', 'FORGE', 'WALLS');
+  if (atWar) wishlist.push('WALLS', 'BARRACKS', 'SUPPLY_DEPOT');
+  if ((nation.techs?.length ?? 0) < 6) wishlist.push('UNIVERSITY');
+  wishlist.push(
+    'MARKET', 'WORKSHOP', 'ADMIN_CENTER', 'HARBOR', 'SHIPYARD', 'GRANARY',
+    'FARM_ESTATE', 'SAWMILL', 'MINE', 'FORGE', 'BARRACKS', 'SUPPLY_DEPOT', 'WALLS',
+  );
 
   const cities = world.cities.filter((c) => c.nationId === nation.id);
   // Turda en fazla iki bina: hazine boşalsın ama tek turda her şey bitmesin.

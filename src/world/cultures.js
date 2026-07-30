@@ -24,7 +24,7 @@ function cultureName(rng, used) {
       return name;
     }
   }
-  return `Halk-${used.size + 1}`;
+  return `Culture-${used.size + 1}`;
 }
 
 /**

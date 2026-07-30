@@ -8,21 +8,21 @@ export const EMBARKED_MOVES = 4;
 
 export const UNIT_TYPES = {
   SCOUT: {
-    id: 'SCOUT', name: 'İzci', glyph: 'İ', domain: 'land',
+    id: 'SCOUT', name: 'Scout', glyph: 'S', domain: 'land',
     moves: 5, attack: 2, hp: 60,
   },
   INFANTRY: {
-    id: 'INFANTRY', name: 'Piyade', glyph: 'P', domain: 'land',
+    id: 'INFANTRY', name: 'Infantry', glyph: 'I', domain: 'land',
     moves: 3, attack: 5, hp: 110,
     /** Savunmada arazi bonusunu iki katı kullanır. */
     entrenched: true,
   },
   CAVALRY: {
-    id: 'CAVALRY', name: 'Süvari', glyph: 'S', domain: 'land',
+    id: 'CAVALRY', name: 'Cavalry', glyph: 'C', domain: 'land',
     moves: 6, attack: 6, hp: 90,
   },
   WARSHIP: {
-    id: 'WARSHIP', name: 'Savaş Gemisi', glyph: 'G', domain: 'sea',
+    id: 'WARSHIP', name: 'Warship', glyph: 'W', domain: 'sea',
     moves: 7, attack: 6, hp: 80,
   },
 };

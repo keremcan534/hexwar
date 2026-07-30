@@ -19,6 +19,7 @@ import { loadFromStorage, saveToStorage } from './save.js';
 import {
   ORDER, clearOrder, executeOrders, idleUnits, setOrder,
 } from './orders.js';
+import { roadMoveCost } from './infrastructure.js';
 
 export class Game {
   constructor(canvas) {
@@ -153,7 +154,7 @@ export class Game {
   }
 
   costForUnit() {
-    return (tile) => (tile.terrain.water ? tile.terrain.seaCost : tile.terrain.moveCost);
+    return (tile) => (tile.terrain.water ? tile.terrain.seaCost : roadMoveCost(tile));
   }
 
   getReachable(unit) {
@@ -186,7 +187,7 @@ export class Game {
       captureCity(this, city, unit.nationId);
       // Şehir almak en pahalı fetihtir: bir ülkeyi yutmak dünyayı üstüne çeker.
       addInfamy(this.world.nations[unit.nationId], INFAMY.CITY);
-      this.turns.addLog(`${city.name} ele geçirildi (${old.name}).`);
+      this.turns.addLog(`${city.name} captured from ${old.name}.`);
     }
   }
 
@@ -308,7 +309,7 @@ export class Game {
   proposePeaceTo(nationId) {
     const accepted = considerPeaceOffer(this, this.turns.playerNation, nationId, this.turns.rng);
     if (!accepted) {
-      this.turns.addLog(`${this.world.nations[nationId].name} barışı reddetti.`);
+      this.turns.addLog(`${this.world.nations[nationId].name} rejected the peace offer.`);
     }
     this.selectUnit(this.selectedUnit);
     this.emit('units', this.selectedUnit);

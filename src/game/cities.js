@@ -3,7 +3,10 @@
 
 import { hexDistance, hexesInRange } from '../core/hex.js';
 import { CITY_CENTER_YIELD, RESOURCES } from '../world/terrain.js';
-import { applyBuildings, buildingUpkeep, hasBuilding } from './buildings.js';
+import {
+  applyBuildings, buildingArmyUpkeepRelief, buildingResearchDiscount, buildingStorage,
+  buildingMaintenance, hasBuilding,
+} from './buildings.js';
 import { tileEfficiency } from './infamy.js';
 import {
   techCorruptionBase, techFoodPerCity, techGoldPerCity, techIronPerCity, techStorageBonus,
@@ -42,7 +45,9 @@ export const STARTING_FOOD_STORE = 15;
  * ileride ticaretin de sebebi olacak.
  */
 export function storageCap(cityCount, nation) {
-  return 30 + cityCount * 5 + (nation ? techStorageBonus(nation) : 0);
+  return 30 + cityCount * 5
+    + (nation ? techStorageBonus(nation) : 0)
+    + (nation?.budget?.storageBonus ?? 0);
 }
 
 export function emptyPool() {
@@ -67,8 +72,17 @@ export function formatCost(cost) {
   return parts.join(' ');
 }
 
-const NAME_A = ['Ak', 'Kara', 'Gök', 'Yeni', 'Eski', 'Tuz', 'Demir', 'Alt', 'Yüce', 'Kızıl'];
-const NAME_B = ['şehir', 'kale', 'liman', 'köprü', 'geçit', 'burç', 'ova', 'tepe', 'pınar', 'sur'];
+const NAME_A = ['White', 'Black', 'Blue', 'New', 'Old', 'Salt', 'Iron', 'High', 'Grand', 'Red'];
+const NAME_B = ['haven', 'keep', 'port', 'bridge', 'pass', 'watch', 'field', 'hill', 'spring', 'wall'];
+const LEGACY_NAME_A = new Map([
+  ['Ak', 'White'], ['Kara', 'Black'], ['Gök', 'Blue'], ['Yeni', 'New'], ['Eski', 'Old'],
+  ['Tuz', 'Salt'], ['Demir', 'Iron'], ['Alt', 'High'], ['Yüce', 'Grand'], ['Kızıl', 'Red'],
+]);
+const LEGACY_NAME_B = new Map([
+  ['şehir', 'haven'], ['kale', 'keep'], ['liman', 'port'], ['köprü', 'bridge'],
+  ['geçit', 'pass'], ['burç', 'watch'], ['ova', 'field'], ['tepe', 'hill'],
+  ['pınar', 'spring'], ['sur', 'wall'],
+]);
 
 export function cityName(rng, used) {
   for (let i = 0; i < 40; i++) {
@@ -78,7 +92,19 @@ export function cityName(rng, used) {
       return name;
     }
   }
-  return `Şehir-${used.size + 1}`;
+  return `City-${used.size + 1}`;
+}
+
+/** Eski Türkçe kayıtlardaki şehir adlarını oyuncuya İngilizce gösterir. */
+export function englishCityName(name) {
+  const numbered = /^Şehir-(\d+)$/.exec(name);
+  if (numbered) return `City-${numbered[1]}`;
+  for (const [oldPrefix, prefix] of LEGACY_NAME_A) {
+    if (!name.startsWith(oldPrefix)) continue;
+    const suffix = LEGACY_NAME_B.get(name.slice(oldPrefix.length));
+    if (suffix) return prefix + suffix;
+  }
+  return name;
 }
 
 export function createCity(world, tile, nationId, name, level = 1, pop = 2) {
@@ -227,13 +253,24 @@ export function nationBudget(world, nation) {
   const production = emptyPool();
   let cityCount = 0;
   let workers = 0;
-  let buildings = 0;
+  let buildingCount = 0;
+  const buildingCosts = emptyPool();
+  let storageBonus = 0;
+  let researchDiscount = 0;
+  let armyUpkeepRelief = 0;
 
   for (const city of world.cities) {
     if (city.nationId !== nation.id) continue;
     cityCount++;
     workers += city.pop;
-    buildings += buildingUpkeep(city);
+    buildingCount += city.buildings?.length ?? 0;
+    const maintenance = buildingMaintenance(city);
+    for (const resource of RESOURCES) {
+      buildingCosts[resource] += maintenance[resource] ?? 0;
+    }
+    storageBonus += buildingStorage(city);
+    researchDiscount += buildingResearchDiscount(city);
+    armyUpkeepRelief += buildingArmyUpkeepRelief(city);
     const out = cityProduction(city, world);
     for (const r of RESOURCES) production[r] += out[r];
   }
@@ -249,12 +286,26 @@ export function nationBudget(world, nation) {
   for (const u of world.units) if (u.nationId === nation.id) army++;
 
   const upkeep = emptyPool();
-  upkeep.gold = army * UNIT_UPKEEP.gold + buildings;
-  upkeep.food = army * UNIT_UPKEEP.food + workers * WORKER_FOOD;
+  upkeep.gold = Math.max(0, army * UNIT_UPKEEP.gold - armyUpkeepRelief) + buildingCosts.gold;
+  upkeep.food = army * UNIT_UPKEEP.food + workers * WORKER_FOOD + buildingCosts.food;
+  upkeep.timber = buildingCosts.timber;
+  upkeep.iron = buildingCosts.iron;
 
   const net = emptyPool();
   for (const r of RESOURCES) net[r] = production[r] - upkeep[r];
-  return { production, upkeep, net, cities: cityCount, workers, army };
+  return {
+    production,
+    upkeep,
+    net,
+    cities: cityCount,
+    workers,
+    army,
+    buildings: buildingCount,
+    buildingMaintenance: buildingCosts,
+    storageBonus,
+    researchDiscount: Math.min(0.32, researchDiscount),
+    armyUpkeepRelief,
+  };
 }
 
 /**

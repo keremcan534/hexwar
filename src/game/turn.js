@@ -16,6 +16,7 @@ import {
 } from './cities.js';
 import { BUILDINGS, canBuild } from './buildings.js';
 import { RESOURCES } from '../world/terrain.js';
+import { buildRoad, roadLabel } from './infrastructure.js';
 
 /** Başlangıç stoku: ilk birkaç turda bir birim alacak kadar. */
 const STARTING_STOCK = { gold: 50, food: 0, timber: 5, iron: 5 };
@@ -70,7 +71,7 @@ export class TurnManager {
     if (!unit) return null;
     pay(nation, cost);
     if (nation.id === this.playerNation) {
-      this.addLog(`${UNIT_TYPES[typeId].name} satın alındı.`);
+      this.addLog(`${UNIT_TYPES[typeId].name} recruited.`);
     }
     this.game.emit('units', this.game.selectedUnit);
     return unit;
@@ -86,11 +87,22 @@ export class TurnManager {
     if (!pay(nation, building.cost)) return false;
 
     city.buildings.push(buildingId);
+    this.game.recomputeEconomy();
     if (city.nationId === this.playerNation) {
-      this.addLog(`${city.name}: ${building.name} yapıldı.`);
+      this.addLog(`${city.name}: ${building.name} completed.`);
     }
     this.game.emit('units', this.game.selectedUnit);
     this.game.requestRender();
+    return true;
+  }
+
+  /** Oyuncunun sahip olduğu kara karesindeki yol altyapısını bir kademe yükseltir. */
+  buildRoad(tile, nationId = this.playerNation) {
+    if (!buildRoad(this.game, tile, nationId)) return false;
+    if (nationId === this.playerNation) {
+      this.addLog(`${roadLabel(tile)} completed at ${tile.q}, ${tile.r}.`);
+    }
+    this.game.emit('units', this.game.selectedUnit);
     return true;
   }
 
@@ -105,7 +117,7 @@ export class TurnManager {
     const city = createCity(world, unit.tile, unit.nationId, cityName(this.rng, this.usedCityNames));
     unit.movesLeft = 0;
     this.game.renderer.invalidateCache();
-    if (unit.nationId === this.playerNation) this.addLog(`${city.name} kuruldu.`);
+    if (unit.nationId === this.playerNation) this.addLog(`${city.name} founded.`);
     this.game.emit('units', this.game.selectedUnit);
     this.game.requestRender();
     return city;
@@ -191,7 +203,7 @@ export class TurnManager {
       const result = checkVictory(world, this.turn);
       if (result) {
         this.victory = result;
-        this.addLog(`${result.nation.name} hegemonya kurdu (${result.score} puan).`);
+        this.addLog(`${result.nation.name} established hegemony (${result.score} points).`);
         this.game.emit('victory', result);
       }
     }
@@ -216,8 +228,8 @@ export class TurnManager {
       const cap = storageCap(budget.cities, nation);
       nation.gold = Math.max(0, nation.gold + budget.net.gold);
       // Ambar taşarsa fazlası ziyan: stok biriktirmek strateji olmasın.
-      nation.timber = Math.min(cap, nation.timber + budget.net.timber);
-      nation.iron = Math.min(cap, nation.iron + budget.net.iron);
+      nation.timber = Math.max(0, Math.min(cap, nation.timber + budget.net.timber));
+      nation.iron = Math.max(0, Math.min(cap, nation.iron + budget.net.iron));
 
       this.settleFood(nation);
     }
@@ -244,7 +256,7 @@ export class TurnManager {
           growPop(city, this.rng);
           // Kalabalıklaşan şehir tahkimatını da güçlendirir (savunma ve çizim).
           city.level = Math.min(4, 1 + Math.floor(city.pop / 4));
-          if (nation.id === this.playerNation) this.addLog(`${city.name} büyüdü (${city.pop} işçi).`);
+          if (nation.id === this.playerNation) this.addLog(`${city.name} grew to ${city.pop} workers.`);
         }
       }
       return;
@@ -264,7 +276,7 @@ export class TurnManager {
       units.sort((a, b) => a.type.attack - b.type.attack);
       this.killUnit(units[0]);
       shortfall -= UNIT_UPKEEP.food;
-      if (nation.id === this.playerNation) this.addLog('Kıtlık: bir birim dağıldı.');
+      if (nation.id === this.playerNation) this.addLog('Famine: one unit disbanded.');
     }
     nation.budget = nationBudget(world, nation);
   }
@@ -286,7 +298,7 @@ export class TurnManager {
       world.forEach((t) => { if (t.owner === nation.id) t.owner = -1; });
       nation.tiles = 0;
       this.game.renderer.invalidateCache();
-      this.addLog(`${nation.name} tarih sahnesinden silindi.`);
+      this.addLog(`${nation.name} has been eliminated.`);
     }
   }
 

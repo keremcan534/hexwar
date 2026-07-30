@@ -13,61 +13,61 @@ const y = (partial) => ({ ...NO_YIELD, ...partial });
 
 export const TERRAIN = {
   DEEP_OCEAN: {
-    id: 'DEEP_OCEAN', name: 'Derin Okyanus', color: '#123a63',
+    id: 'DEEP_OCEAN', name: 'Deep Ocean', color: '#123a63',
     // Açık deniz pahalı: kıyı boyu seyretmek okyanusu kesmekten ucuz olsun.
     water: true, passable: false, navigable: true, seaCost: 2,
     moveCost: Infinity, defense: 0, yields: y({ food: 1, gold: 1 }),
   },
   OCEAN: {
-    id: 'OCEAN', name: 'Okyanus', color: '#1a5185',
+    id: 'OCEAN', name: 'Ocean', color: '#1a5185',
     water: true, passable: false, navigable: true, seaCost: 1,
     moveCost: Infinity, defense: 0, yields: y({ food: 1, gold: 1 }),
   },
   COAST: {
-    id: 'COAST', name: 'Sığ Su', color: '#2a76ad',
+    id: 'COAST', name: 'Shallow Water', color: '#2a76ad',
     water: true, passable: false, navigable: true, seaCost: 1,
     moveCost: Infinity, defense: 0, yields: y({ food: 2, gold: 1 }),
   },
   BEACH: {
-    id: 'BEACH', name: 'Kumsal', color: '#d9c489',
+    id: 'BEACH', name: 'Beach', color: '#d9c489',
     water: false, passable: true, moveCost: 1, defense: 0,
     yields: y({ food: 1, gold: 1 }),
   },
   DESERT: {
-    id: 'DESERT', name: 'Çöl', color: '#d7b667',
+    id: 'DESERT', name: 'Desert', color: '#d7b667',
     water: false, passable: true, moveCost: 1, defense: 0, yields: y({}),
   },
   PLAINS: {
-    id: 'PLAINS', name: 'Ova', color: '#8fae55',
+    id: 'PLAINS', name: 'Plains', color: '#8fae55',
     water: false, passable: true, moveCost: 1, defense: 0,
     yields: y({ food: 2, gold: 1 }),
   },
   GRASSLAND: {
-    id: 'GRASSLAND', name: 'Çayır', color: '#71a04a',
+    id: 'GRASSLAND', name: 'Grassland', color: '#71a04a',
     water: false, passable: true, moveCost: 1, defense: 0, yields: y({ food: 3 }),
   },
   FOREST: {
-    id: 'FOREST', name: 'Orman', color: '#3f7442',
+    id: 'FOREST', name: 'Forest', color: '#3f7442',
     water: false, passable: true, moveCost: 2, defense: 0.25,
     yields: y({ food: 1, timber: 3 }),
   },
   JUNGLE: {
-    id: 'JUNGLE', name: 'Balta Girmemiş Orman', color: '#2f6b39',
+    id: 'JUNGLE', name: 'Jungle', color: '#2f6b39',
     water: false, passable: true, moveCost: 2, defense: 0.25,
     yields: y({ food: 1, timber: 2 }),
   },
   HILLS: {
-    id: 'HILLS', name: 'Tepeler', color: '#8a8a55',
+    id: 'HILLS', name: 'Hills', color: '#8a8a55',
     water: false, passable: true, moveCost: 2, defense: 0.35,
     yields: y({ food: 1, iron: 2 }),
   },
   MOUNTAIN: {
-    id: 'MOUNTAIN', name: 'Dağ', color: '#7d7268',
+    id: 'MOUNTAIN', name: 'Mountain', color: '#7d7268',
     water: false, passable: false, moveCost: Infinity, defense: 0.6,
     yields: y({ iron: 3 }),
   },
   SNOW_PEAK: {
-    id: 'SNOW_PEAK', name: 'Karlı Zirve', color: '#e6e8ea',
+    id: 'SNOW_PEAK', name: 'Snowy Peak', color: '#e6e8ea',
     water: false, passable: false, moveCost: Infinity, defense: 0.6,
     yields: y({ iron: 1 }),
   },
@@ -76,7 +76,7 @@ export const TERRAIN = {
     water: false, passable: true, moveCost: 1, defense: 0, yields: y({ food: 1 }),
   },
   ICE: {
-    id: 'ICE', name: 'Buzul', color: '#dfe9ef',
+    id: 'ICE', name: 'Ice Sheet', color: '#dfe9ef',
     water: false, passable: false, moveCost: Infinity, defense: 0, yields: y({}),
   },
 };

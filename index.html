@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="tr">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
-  <meta name="theme-color" content="#0a1b2e" />
+  <meta name="theme-color" content="#071019" />
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>HexWar</title>
@@ -14,72 +14,98 @@
 
   <!-- HOI4 düzeni: sol üstte bayrak, sağa doğru kaynak şeridi, sağda tur denetimi -->
   <header class="topbar">
-    <button class="nation-badge" id="nation-badge" title="Ülke özeti">
-      <img class="flag" id="top-flag" alt="" />
+    <button class="nation-badge" id="nation-badge" title="Nation overview">
+      <span class="flag-frame">
+        <img class="flag" id="top-flag" alt="" />
+        <i aria-hidden="true"></i>
+      </span>
       <span class="nation-text">
         <b id="top-nation">—</b>
         <small id="top-sub">—</small>
       </span>
     </button>
 
-    <div class="res-strip" id="resources">—</div>
-    <button class="icon-btn" id="btn-settings" aria-label="Ayarlar">☰</button>
+    <div class="res-strip" id="resources" aria-label="National resources">—</div>
+    <button class="icon-btn" id="btn-settings" aria-label="Settings">☰</button>
   </header>
 
   <!-- Tur denetimi sol altta: harita modlarının karşısı. Üst çubuk bilgi için
        kalsın; 375 pikselde hepsi tek satıra sığmıyordu. -->
   <div class="turn-control" id="turn-control">
-    <span class="turn-badge">TUR <b id="turn-value">1</b></span>
-    <button class="action compact" id="btn-next-unit">Sıradaki</button>
-    <button class="primary compact" id="btn-end-turn">Turu Bitir</button>
+    <span class="turn-badge">TURN <b id="turn-value">1</b></span>
+    <button class="action compact" id="btn-next-unit">Next Unit</button>
+    <button class="primary compact" id="btn-end-turn">End Turn</button>
   </div>
+
+  <!-- HOI4'ün sekme düğmeleri: her biri tam ekran bir yönetim ekranı açar -->
+  <nav class="tab-bar" id="tab-bar" aria-label="National management">
+    <button data-screen="construction"><span>🏗</span>Construction</button>
+    <button data-screen="production"><span>⚒</span>Production</button>
+    <button data-screen="research"><span>🔬</span>Research</button>
+    <button data-screen="logistics"><span>📦</span>Logistics</button>
+    <button data-screen="diplomacy"><span>🕊</span>Diplomacy</button>
+    <button data-screen="trade"><span>⚖</span>Trade</button>
+  </nav>
+
+  <section class="screen hidden" id="screen" aria-hidden="true">
+    <header class="screen-head">
+      <div class="screen-heading">
+        <span>STRATEGIC COMMAND</span>
+        <h2 id="screen-title">—</h2>
+      </div>
+      <div class="screen-res" id="screen-res"></div>
+      <button class="icon-btn" id="screen-close" aria-label="Close">✕</button>
+    </header>
+    <div class="screen-body" id="screen-body"></div>
+    <i class="screen-rail" aria-hidden="true"></i>
+  </section>
 
   <!-- Sağ altta harita modları, Paradox oyunlarındaki gibi -->
   <div class="map-modes" id="map-modes">
-    <button class="mode-btn active" data-mode="political" title="Politik harita">◧</button>
-    <button class="mode-btn" data-mode="terrain" title="Arazi haritası">▲</button>
-    <button class="mode-btn" data-mode="cultures" title="Kültür haritası">☯</button>
-    <button class="mode-btn" id="btn-layers" title="Katmanlar">◈</button>
+    <button class="mode-btn active" data-mode="political" title="Political map">◧</button>
+    <button class="mode-btn" data-mode="terrain" title="Terrain map">▲</button>
+    <button class="mode-btn" data-mode="cultures" title="Culture map">☯</button>
+    <button class="mode-btn" id="btn-layers" title="Map layers">◈</button>
   </div>
 
   <div class="layer-menu hidden" id="layer-menu">
-    <label><input type="checkbox" id="opt-grid" checked /> Izgara</label>
-    <label><input type="checkbox" id="opt-labels" checked /> Etiketler</label>
-    <button class="chip" id="seed-chip" title="Tohumu kopyala">
+    <label><input type="checkbox" id="opt-grid" checked /> Grid</label>
+    <label><input type="checkbox" id="opt-labels" checked /> Labels</label>
+    <button class="chip" id="seed-chip" title="Copy seed">
       <span class="chip-label">seed</span><span id="seed-value">—</span>
     </button>
   </div>
 
   <div class="panel hidden" id="settings">
     <div class="panel-head">
-      <h2>Dünya Ayarları</h2>
-      <button class="icon-btn" id="btn-close-settings" aria-label="Kapat">✕</button>
+      <h2>World Settings</h2>
+      <button class="icon-btn" id="btn-close-settings" aria-label="Close">✕</button>
     </div>
     <label class="field">
-      <span>Tohum (seed)</span>
-      <input type="text" id="in-seed" placeholder="boş bırak = rastgele" autocomplete="off" />
+      <span>World seed</span>
+      <input type="text" id="in-seed" placeholder="leave blank for random" autocomplete="off" />
     </label>
     <label class="field">
-      <span>Harita boyutu: <b id="lbl-size">78 × 62</b></span>
+      <span>Map size: <b id="lbl-size">78 × 62</b></span>
       <input type="range" id="in-size" min="30" max="130" step="2" value="78" />
     </label>
     <label class="field">
-      <span>Kıtasallık: <b id="lbl-cont">0.50</b></span>
+      <span>Continentality: <b id="lbl-cont">0.50</b></span>
       <input type="range" id="in-cont" min="0" max="1" step="0.05" value="0.5" />
     </label>
     <label class="field">
-      <span>Kara oranı: <b id="lbl-land">0.00</b></span>
+      <span>Land ratio: <b id="lbl-land">0.00</b></span>
       <input type="range" id="in-land" min="-0.5" max="0.5" step="0.05" value="0" />
     </label>
     <label class="field">
-      <span>Ülke sayısı: <b id="lbl-nations">otomatik</b></span>
+      <span>Nation count: <b id="lbl-nations">automatic</b></span>
       <input type="range" id="in-nations" min="0" max="30" step="1" value="0" />
     </label>
-    <button class="primary" id="btn-generate">Yeni Dünya Üret</button>
+    <button class="primary" id="btn-generate">Generate New World</button>
     <div class="action-row" style="margin-top:14px">
-      <div class="k">kayıt</div>
-      <button class="action" id="btn-save">Kaydet</button>
-      <button class="action" id="btn-load">Yükle</button>
+      <div class="k">save game</div>
+      <button class="action" id="btn-save">Save</button>
+      <button class="action" id="btn-load">Load</button>
     </div>
     <p class="hint" id="save-info"></p>
     <p class="hint" id="gen-stats"></p>
@@ -89,7 +115,7 @@
     <div class="sheet-grip"></div>
     <div class="hegemony" id="hegemony"></div>
     <div class="sheet-body" id="sheet-body">
-      <p class="placeholder">Bilgi için bir hex'e dokun.</p>
+      <p class="placeholder">Select a hex for details.</p>
     </div>
   </div>
 
