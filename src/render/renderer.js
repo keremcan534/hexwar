@@ -228,7 +228,31 @@ export class Renderer {
     }
   }
 
+  /**
+   * Kaynak kipi: kare, en çok verdiği kaynağın rengini alır; yoğunluk
+   * miktarla artar. Nerede demir/kereste olduğunu görmeden genişleme kararı
+   * vermek körlemesineydi.
+   */
+  resourceTint(tile) {
+    const y = tile.terrain.yields;
+    const best = [
+      ['food', y.food, 96], ['timber', y.timber, 140],
+      ['iron', y.iron, 205], ['gold', y.gold, 48],
+    ].sort((a, b) => b[1] - a[1])[0];
+    if (!best[1]) return 'hsl(210 6% 26%)';
+    const key = `res:${tile.terrain.id}`;
+    let color = this.tintCache.get(key);
+    if (color) return color;
+    const light = 26 + Math.min(3, best[1]) * 12;
+    color = `hsl(${best[2]} 58% ${light}%)`;
+    this.tintCache.set(key, color);
+    return color;
+  }
+
   tileColor(tile, world) {
+    if (this.mapMode === 'resources') {
+      return tile.terrain.water ? 'hsl(210 30% 18%)' : this.resourceTint(tile);
+    }
     // Su her kipte arazi rengiyle kalır: kimsenin toprağı değil.
     if (tile.terrain.water || this.mapMode === 'terrain') return tile.terrain.color;
 

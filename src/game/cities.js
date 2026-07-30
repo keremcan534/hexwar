@@ -33,6 +33,21 @@ export const UNIT_COSTS = {
 /** Birim başına tur bakımı. Ordunun asıl freni artık erzak. */
 export const UNIT_UPKEEP = { gold: 1, food: 1 };
 
+/**
+ * Ağır birimlerin demir gideri. Ölçümde demirin hiç sürekli gideri yoktu:
+ * üretilip ambar tavanında ziyan oluyordu. Zırhlı birlik ve donanma artık
+ * demir yer, böylece demir stratejik bir kısıt hâline gelir.
+ */
+export const IRON_UPKEEP_TYPES = { CAVALRY: 1, WARSHIP: 1 };
+
+/**
+ * Bina onarımı: her iki bina bir kereste ister. Keresteye de sürekli bir gider
+ * bağlanmadan şehir geliştirmek tek yönlü bir merdivendi.
+ */
+export function timberRepair(buildingCount) {
+  return Math.floor(buildingCount / 2);
+}
+
 /** İşçi başına tüketim. İşçi net katkısı azalsın ki nüfus sonsuz büyümesin. */
 export const WORKER_FOOD = 2;
 
@@ -288,13 +303,18 @@ export function nationBudget(world, nation) {
   production.gold = Math.round(production.gold * corruption(cityCount, nation));
 
   let army = 0;
-  for (const u of world.units) if (u.nationId === nation.id) army++;
+  let armyIron = 0;
+  for (const u of world.units) {
+    if (u.nationId !== nation.id) continue;
+    army++;
+    armyIron += IRON_UPKEEP_TYPES[u.type.id] ?? 0;
+  }
 
   const upkeep = emptyPool();
   upkeep.gold = Math.max(0, army * UNIT_UPKEEP.gold - armyUpkeepRelief) + buildingCosts.gold;
   upkeep.food = army * UNIT_UPKEEP.food + workers * WORKER_FOOD + buildingCosts.food;
-  upkeep.timber = buildingCosts.timber;
-  upkeep.iron = buildingCosts.iron;
+  upkeep.timber = buildingCosts.timber + timberRepair(buildingCount);
+  upkeep.iron = buildingCosts.iron + armyIron;
 
   const net = emptyPool();
   for (const r of RESOURCES) net[r] = production[r] - upkeep[r];

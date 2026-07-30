@@ -11,8 +11,9 @@ import { runTrade } from './trade.js';
 import { checkVictory } from './hegemony.js';
 import { executeOrders } from './orders.js';
 import {
-  CITY_COST, UNIT_COSTS, assignAllWorkers, canAfford, canFoundCity, cityName,
-  createCity, growPop, growthCost, nationBudget, pay, storageCap, UNIT_UPKEEP, WORK_RADIUS,
+  CITY_COST, IRON_UPKEEP_TYPES, UNIT_COSTS, assignAllWorkers, canAfford, canFoundCity,
+  cityName, createCity, growPop, growthCost, nationBudget, pay, storageCap, UNIT_UPKEEP,
+  WORK_RADIUS,
 } from './cities.js';
 import { BUILDINGS, canBuild } from './buildings.js';
 import { RESOURCES } from '../world/terrain.js';
@@ -229,10 +230,36 @@ export class TurnManager {
       nation.gold = Math.max(0, nation.gold + budget.net.gold);
       // Ambar taşarsa fazlası ziyan: stok biriktirmek strateji olmasın.
       nation.timber = Math.max(0, Math.min(cap, nation.timber + budget.net.timber));
-      nation.iron = Math.max(0, Math.min(cap, nation.iron + budget.net.iron));
+      const ironAfter = nation.iron + budget.net.iron;
+      nation.iron = Math.max(0, Math.min(cap, ironAfter));
+
+      // Demir bitmişse ağır birlikler beslenemez: erzak kıtlığının karşılığı.
+      if (ironAfter < 0) this.disbandForIron(nation, -ironAfter);
 
       this.settleFood(nation);
     }
+  }
+
+  /**
+   * Demir açığı: ağır birlikler (süvari, savaş gemisi) dağıtılır.
+   * Erzak kıtlığıyla aynı mantık — kaynak bitince ordu küçülür.
+   */
+  disbandForIron(nation, shortfall) {
+    const world = this.world;
+    let missing = shortfall;
+    while (missing > 0) {
+      const heavy = world.units.filter(
+        (u) => u.nationId === nation.id && IRON_UPKEEP_TYPES[u.type.id],
+      );
+      if (!heavy.length) break;
+      heavy.sort((a, b) => a.hp - b.hp);
+      this.killUnit(heavy[0]);
+      missing -= IRON_UPKEEP_TYPES[heavy[0].type.id];
+      if (nation.id === this.playerNation) {
+        this.addLog('Iron shortage: a heavy unit was disbanded.');
+      }
+    }
+    nation.budget = nationBudget(world, nation);
   }
 
   /**
