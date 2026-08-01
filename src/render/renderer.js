@@ -430,14 +430,31 @@ export class Renderer {
       const arrow = front.plan === 'arrow';
       const selected = state.selectedFront?.id === front.id;
 
+      const tone = arrow ? 'rgba(232, 153, 70, 0.96)'
+        : attack ? 'rgba(214, 96, 84, 0.92)' : 'rgba(101, 169, 207, 0.92)';
+      // Bandın parlak tonu: ülke rengi zaten kırmızıysa aynı tonda bir dolgu
+      // hiç okunmuyordu, bu yüzden kare vurgusu açık renkle çiziliyor.
+      const glow = arrow ? '#ffb15e' : attack ? '#ff9382' : '#8fcdef';
+
+      // Hattı taşıyan province'ler de boyanır: oyuncu "hat nereye kuruldu"yu
+      // ince bir çizgiden değil, yanan karelerden okusun.
+      const band = new Path2D();
+      for (const tile of tiles) this.hexPath(band, tile.x, tile.y);
+      ctx.globalAlpha = selected ? 0.42 : 0.28;
+      ctx.fillStyle = glow;
+      ctx.fill(band);
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 2.5 / zoom;
+      ctx.strokeStyle = glow;
+      ctx.stroke(band);
+
       ctx.beginPath();
       ctx.moveTo(tiles[0].x, tiles[0].y);
       for (const tile of tiles.slice(1)) ctx.lineTo(tile.x, tile.y);
       ctx.lineWidth = (selected ? 6 : 4) / zoom;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.strokeStyle = arrow ? 'rgba(232, 153, 70, 0.96)'
-        : attack ? 'rgba(214, 96, 84, 0.92)' : 'rgba(101, 169, 207, 0.92)';
+      ctx.strokeStyle = tone;
       ctx.setLineDash(front.active ? [] : [9 / zoom, 6 / zoom]);
       ctx.stroke();
       ctx.setLineDash([]);

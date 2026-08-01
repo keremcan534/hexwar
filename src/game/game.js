@@ -397,6 +397,17 @@ export class Game {
     this.frontDraw = null;
     this.drawMode = null;
     if (!draw || draw.tiles.length < 2) {
+      // Sürüklenmeden bırakıldı: bu bir tıklamadır. Cephe/geri çekilme kipinde
+      // tıklamak "vurgulanan sınıra hattı kur" demek. Çizim kipindeyken sol tık
+      // handleTap'e ulaşmıyor (giriş katmanı onu sürükleme sayıyor), o yüzden
+      // sınıra oturtma bu daldan yapılmalı.
+      if (mode === 'front' || mode === 'fallback') {
+        const preview = this.borderPreview ?? this.borderPreviewAt(draw?.tiles?.[0] ?? null);
+        if (preview) {
+          this.drawMode = mode;
+          return this.commitBorderFront(preview);
+        }
+      }
       this.requestRender();
       return null;
     }
@@ -739,7 +750,14 @@ export class Game {
         break;
       }
     }
-    const all = borderTiles(this.world, nationId, foreignId);
+    // O ülkeyle temasımız bir province'ten ibaretse hat kurulamaz; böyle
+    // durumda imlecin çevresindeki genel sınıra genişleriz. Yoksa dar temaslı
+    // sınırlarda düğme hiçbir şey yapmıyormuş gibi görünüyordu.
+    let all = borderTiles(this.world, nationId, foreignId);
+    if (all.length < 2) {
+      foreignId = null;
+      all = borderTiles(this.world, nationId, null);
+    }
     if (all.length < 2) return null;
     // Uzun sinirin tamami degil, imlece en yakin parcasi secilir.
     const chain = chainTiles(all);

@@ -340,45 +340,49 @@ function advanceTargets(world, front) {
 }
 
 /**
- * Orduları hat boyunca dağıtır. Her ordu kendisine en yakın *boş* hat karesine
- * yürür; böylece hat kendiliğinden doldurulur ve oyuncu tek tek yürütmez.
+ * Orduları hat boyunca *eşit* dağıtır. Hat, ordu sayısı kadar dilime bölünür
+ * ve her ordu kendi diliminin ortasına yürür.
+ *
+ * Önceki sürüm "en yakın boş kareyi kap" diyordu; bütün ordular hattın bir
+ * ucundan gelince hepsi o uca yığılıyor, hattın geri kalanı boş kalıyordu.
  */
 function distribute(game, front) {
   const world = game.world;
   const armies = armiesOf(world, front);
-  if (!armies.length) return;
   const slots = frontTiles(world, front);
-  if (!slots.length) return;
+  if (!armies.length || !slots.length) return;
 
-  const taken = new Set();
-  // Yakınlık sırasına göre eşle: en yakın ordu en yakın slotu kapsın.
-  const pairs = [];
-  for (const army of armies) {
-    for (const slot of slots) {
-      pairs.push({
-        army,
-        slot,
-        distance: hexDistance(army.tile.q, army.tile.r, slot.q, slot.r),
-      });
-    }
-  }
-  pairs.sort((a, b) => a.distance - b.distance);
-  const assigned = new Set();
-  for (const pair of pairs) {
-    if (assigned.has(pair.army.id) || taken.has(pair.slot)) continue;
-    assigned.add(pair.army.id);
-    taken.add(pair.slot);
-    if (pair.army.battleId) continue;
-    if (pair.army.tile === pair.slot) continue;
+  // Hat üzerindeki sıralarını koru: soldaki ordu solda kalsın, yollar kesişmesin.
+  const slotIndexOf = (army) => {
+    let best = 0;
+    let bestDistance = Infinity;
+    slots.forEach((slot, index) => {
+      const distance = hexDistance(army.tile.q, army.tile.r, slot.q, slot.r);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = index;
+      }
+    });
+    return best;
+  };
+  const ordered = [...armies].sort((a, b) => slotIndexOf(a) - slotIndexOf(b));
+
+  ordered.forEach((army, index) => {
+    const target = slots[Math.min(
+      slots.length - 1,
+      Math.floor(((index + 0.5) * slots.length) / ordered.length),
+    )];
+    if (!target || army.battleId || army.tile === target) return;
     // Zaten oraya yürüyorsa yeniden yol arama.
-    if (isMoving(pair.army) && destinationOf(pair.army) === pair.slot) continue;
-    orderMove(game, pair.army, pair.slot);
-  }
+    if (isMoving(army) && destinationOf(army) === target) return;
+    orderMove(game, army, target);
+  });
 }
 
 /**
- * Taarruz: hat, önündeki düşman karelerine kayar ve ordular yeni hatta yürür.
- * Hattın uzunluğu korunur; her kare kendi önündeki en yakın hedefe taşınır.
+ * Cephe hattının ilerlemesi: her kare önündeki en yakın düşman karesine kayar.
+ * Hattın uzunluğu korunur; önünde hedef kalmayan kare yerinde durur ki hat
+ * kopmasın. Saldırgan komutan daha uzaktaki hedefi de kabul eder.
  */
 function advanceLine(game, front, reach = 2) {
   const world = game.world;
@@ -400,8 +404,6 @@ function advanceLine(game, front, reach = 2) {
         best = target;
       }
     }
-    // Önünde hedef kalmayan kare yerinde durur: hat kopmaz. Saldırgan komutan
-    // daha uzaktaki hedefi de kabul eder, temkinli olan yalnız bitişiği.
     const chosen = best && bestDistance <= reach ? best : tile;
     if (best && bestDistance <= reach) used.add(best);
     next.push({ q: chosen.q, r: chosen.r });
