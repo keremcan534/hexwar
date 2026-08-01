@@ -442,34 +442,44 @@ export class Renderer {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      // Taarruz okunun yönü ve gerçek hedefi ayrı çizilir. Hedef, front.tiles
-      // içinde değildir; tur ilerledikçe okun gövdesi hedefe yaklaşır.
-      if (arrow && front.target) {
-        const target = world.get(front.target.q, front.target.r);
-        if (target) {
-          const lead = tiles.reduce((best, tile) => (
-            hexDistance(tile.q, tile.r, target.q, target.r)
-              < hexDistance(best.q, best.r, target.q, target.r) ? tile : best
-          ), tiles[0]);
-          const angle = Math.atan2(target.y - lead.y, target.x - lead.x);
-          const head = 12 / zoom;
+      // Taarruz planında hedef *hattı* çizilir: cepheden ona doğru oklar uzar.
+      // Hedef hattı front.tiles içinde değildir; hat haftalar içinde ona yürür.
+      if (arrow && front.objective?.length) {
+        const goal = front.objective.map((p) => world.get(p.q, p.r)).filter(Boolean);
+        if (goal.length) {
           ctx.beginPath();
-          ctx.moveTo(lead.x, lead.y);
-          ctx.lineTo(target.x, target.y);
-          ctx.lineTo(
-            target.x - Math.cos(angle - Math.PI / 6) * head,
-            target.y - Math.sin(angle - Math.PI / 6) * head,
-          );
-          ctx.moveTo(target.x, target.y);
-          ctx.lineTo(
-            target.x - Math.cos(angle + Math.PI / 6) * head,
-            target.y - Math.sin(angle + Math.PI / 6) * head,
-          );
-          ctx.lineWidth = (selected ? 6 : 4) / zoom;
-          ctx.strokeStyle = 'rgba(232, 153, 70, 0.96)';
-          ctx.setLineDash(front.active ? [] : [9 / zoom, 6 / zoom]);
+          ctx.moveTo(goal[0].x, goal[0].y);
+          for (const tile of goal.slice(1)) ctx.lineTo(tile.x, tile.y);
+          ctx.lineWidth = 3 / zoom;
+          ctx.strokeStyle = 'rgba(120, 214, 138, 0.95)';
+          ctx.setLineDash([7 / zoom, 5 / zoom]);
           ctx.stroke();
           ctx.setLineDash([]);
+
+          // Cepheden hedefe ok: hangi kesimin nereye gideceği okunur olsun.
+          const head = 11 / zoom;
+          ctx.lineWidth = (selected ? 5 : 3.5) / zoom;
+          ctx.strokeStyle = 'rgba(232, 153, 70, 0.96)';
+          const steps = Math.min(tiles.length, 4);
+          for (let i = 0; i < steps; i++) {
+            const from = tiles[Math.round((i / Math.max(1, steps - 1)) * (tiles.length - 1))];
+            const to = goal[Math.round((i / Math.max(1, steps - 1)) * (goal.length - 1))];
+            if (!from || !to || from === to) continue;
+            const angle = Math.atan2(to.y - from.y, to.x - from.x);
+            ctx.beginPath();
+            ctx.moveTo(from.x, from.y);
+            ctx.lineTo(to.x, to.y);
+            ctx.lineTo(
+              to.x - Math.cos(angle - Math.PI / 6) * head,
+              to.y - Math.sin(angle - Math.PI / 6) * head,
+            );
+            ctx.moveTo(to.x, to.y);
+            ctx.lineTo(
+              to.x - Math.cos(angle + Math.PI / 6) * head,
+              to.y - Math.sin(angle + Math.PI / 6) * head,
+            );
+            ctx.stroke();
+          }
         }
       }
 
@@ -483,6 +493,34 @@ export class Renderer {
         ctx.stroke();
       }
       ctx.lineCap = 'butt';
+    }
+
+    // Seçili taarruz planının izleyeceği güzergâh: kesikli province vurgusu.
+    if (state.plannedPath?.length) {
+      const path = new Path2D();
+      for (const tile of state.plannedPath) this.hexPath(path, tile.x, tile.y);
+      ctx.globalAlpha = 0.3;
+      ctx.fillStyle = 'rgba(232, 153, 70, 0.55)';
+      ctx.fill(path);
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 1.5 / zoom;
+      ctx.strokeStyle = 'rgba(232, 153, 70, 0.7)';
+      ctx.setLineDash([5 / zoom, 4 / zoom]);
+      ctx.stroke(path);
+      ctx.setLineDash([]);
+    }
+
+    // Çizim kipinde imlecin yakınındaki sınır parlar: tıklayınca hat oraya oturur.
+    if (state.borderPreview?.tiles?.length) {
+      const preview = new Path2D();
+      for (const tile of state.borderPreview.tiles) this.hexPath(preview, tile.x, tile.y);
+      ctx.globalAlpha = 0.26;
+      ctx.fillStyle = state.drawMode === 'fallback' ? '#65a9cf' : '#e5ca84';
+      ctx.fill(preview);
+      ctx.globalAlpha = 1;
+      ctx.lineWidth = 3 / zoom;
+      ctx.strokeStyle = state.drawMode === 'fallback' ? '#65a9cf' : '#e5ca84';
+      ctx.stroke(preview);
     }
 
     const draw = state.frontDraw;

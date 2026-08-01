@@ -23,11 +23,17 @@ import {
 import { roadMoveCost } from './infrastructure.js';
 import { startBattle } from './battles.js';
 import { BUILDINGS, buildingPlacementTiles } from './buildings.js';
-import { PLAN, assignArmy, createFront, reconcileFronts } from './fronts.js';
+import {
+  PLAN, assignArmy, borderTiles, chainTiles, createFront, fillGaps, frontsOfGeneral,
+  plannedPath, reconcileFronts, spanObjective,
+} from './fronts.js';
 import { assignDivisions, divisionsOf, generalOfArmy } from './generals.js';
 
 /** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */
 const SPEEDS = [0, 1, 2, 4];
+
+/** Sınıra oturan cephe hattının bir seferde kapsadığı province sayısı. */
+const BORDER_SEGMENT = 12;
 
 /**
  * Çok sayıda ordu tek kareye gönderilirse hepsi aynı hexe tıkışır ve
@@ -64,6 +70,7 @@ export class Game {
     this.frontDraw = null;   // sürüklenirken oluşan geçici cephe hattı
     this.marquee = null;     // sürüklenirken oluşan seçim kutusu
     this.drawMode = null;    // 'front' | 'fallback' | 'arrow' — sürükleme çizim kipi
+    this.borderPreview = null;  // çizim kipinde vurgulanan sınır parçası
     this.activeGeneral = null;  // komuta arayüzünde seçili general
     this.selectedFront = null;
     this.selected_ = [];     // seçili ordular (bkz. selectUnits)
@@ -129,6 +136,7 @@ export class Game {
     this.frontDraw = null;
     this.marquee = null;
     this.drawMode = null;
+    this.borderPreview = null;
     this.activeGeneral = null;
     this.selectedFront = null;
     this.reachable = null;
@@ -166,6 +174,16 @@ export class Game {
       this.emit('select', tile);
       this.requestRender();
       return;
+    }
+
+    // Cephe/geri çekilme kipinde tıklamak vurgulanan sınıra hattı oturtur.
+    if (['front', 'fallback'].includes(this.drawMode)) {
+      const preview = this.borderPreview ?? this.borderPreviewAt(tile);
+      if (preview) {
+        this.commitBorderFront(preview);
+        this.emit('select', tile);
+        return;
+      }
     }
 
     // Kendi ordumuza tıklamak onu seçer; başka her yere tıklamak seçimi iptal eder.
@@ -399,16 +417,12 @@ export class Game {
     const general = this.activeGeneral
       ?? generalOfArmy(nation, this.selection[0])
       ?? null;
-    // Okun son karesi hedeftir, hattın kendisi değildir. Hedefi hatta da
-    // bırakırsak advanceArrow ilk çalışmada mesafeyi 0 görüp planı durdurur.
-    const planTiles = plan === PLAN.ARROW ? draw.tiles.slice(0, -1) : draw.tiles;
-    const front = createFront(this, nation, planTiles, plan, general?.id ?? null);
+
+    const front = plan === PLAN.ARROW
+      ? this.createOffensive(nation, general, draw.tiles)
+      : createFront(this, nation, draw.tiles, plan, general?.id ?? null);
+
     if (front) {
-      // Taarruz okunda sürüklemenin *son* karesi hedeftir.
-      if (plan === PLAN.ARROW) {
-        const tip = draw.tiles[draw.tiles.length - 1];
-        front.target = { q: tip.q, r: tip.r };
-      }
       // Generalin bütün tümenleri, yoksa seçili tümenler hatta katılır.
       const armies = general ? divisionsOf(this.world, general) : this.selection;
       for (const unit of armies) assignArmy(this.world, front, unit);
@@ -416,6 +430,46 @@ export class Game {
     this.selectedFront = front;
     this.emit('fronts', front);
     this.requestRender();
+    return front;
+  }
+
+  /**
+   * Taarruz planı: çizilen hat *hedeftir*, cephe değil. Başlangıç hattı ya
+   * generalin mevcut cephesidir ya da hedefe bakan sınırımızdır. Kopuk çizilen
+   * hedef hattının boşlukları doldurulur; tek kare seçilirse ondan bir hat
+   * türetilir (HOI4'te olduğu gibi ok bir *hatta* ilerler).
+   */
+  createOffensive(nation, general, drawn) {
+    const world = this.world;
+    const objective = drawn.length > 1
+      ? fillGaps(world, chainTiles(drawn))
+      : null;
+
+    // Başlangıç hattı: generalin mevcut cephesi, yoksa hedefe en yakın sınırımız.
+    const existing = general
+      ? frontsOfGeneral(world, general).find((item) => item.plan !== PLAN.ARROW)
+      : null;
+    const anchor = objective?.[Math.floor(objective.length / 2)] ?? drawn[0];
+    let start = existing
+      ? existing.tiles.map((point) => world.get(point.q, point.r)).filter(Boolean)
+      : this.borderPreviewAt(anchor)?.tiles ?? [];
+    if (!start.length) {
+      // Sınır bulunamadıysa en yakın kendi karelerimizden bir hat kur.
+      const own = borderTiles(world, nation.id, null);
+      own.sort((a, b) => hexDistance(a.q, a.r, anchor.q, anchor.r)
+        - hexDistance(b.q, b.r, anchor.q, anchor.r));
+      start = chainTiles(own.slice(0, 6));
+    }
+    if (!start.length) return null;
+
+    // Tek kare hedef: başlangıç hattının ortasından bakıp bir hedef hattı türet.
+    const objectiveTiles = objective
+      ?? spanObjective(world, drawn[0], start[Math.floor(start.length / 2)]);
+
+    const front = createFront(this, nation, start, PLAN.ARROW, general?.id ?? null);
+    if (front) {
+      front.objective = objectiveTiles.map((tile) => ({ q: tile.q, r: tile.r }));
+    }
     return front;
   }
 
@@ -431,6 +485,7 @@ export class Game {
   setDrawMode(mode) {
     this.drawMode = ['front', 'fallback', 'arrow'].includes(mode) ? mode : null;
     if (!this.drawMode) this.frontDraw = null;
+    this.borderPreview = null;
     this.emit('fronts', this.selectedFront);
     this.requestRender();
     return this.drawMode;
@@ -648,10 +703,82 @@ export class Game {
 
   handleHover(sx, sy) {
     const tile = this.tileAtScreen(sx, sy);
-    if (tile !== this.hovered) {
-      this.hovered = tile;
+    const changed = tile !== this.hovered;
+    this.hovered = tile;
+    // Cephe/geri cekilme kipinde imlecin yakinindaki sinir parlar; tiklayinca
+    // hat oraya oturur. Elle hex hex cizmek gerekmesin.
+    const wanted = ['front', 'fallback'].includes(this.drawMode)
+      ? this.borderPreviewAt(tile)
+      : null;
+    const same = wanted?.key === this.borderPreview?.key;
+    if (changed || !same) {
+      this.borderPreview = wanted;
       this.requestRender();
     }
+  }
+
+  /**
+   * Imlecin altindaki/yakinindaki sinir hatti. Once o karenin komsusu olan
+   * yabanci ulke bulunur, sonra o ulkeyle olan sinirin imlece yakin parcasi
+   * dondurulur.
+   */
+  borderPreviewAt(tile) {
+    if (!tile || !this.world) return null;
+    const nationId = this.turns.playerNation;
+    const nation = this.world.nations[nationId];
+    if (!nation?.alive) return null;
+
+    // İmlecin bulunduğu ya da bitişiğindeki yabancı ülke hedeftir. Komşuda
+    // sahipli bir ülke yoksa (sınırımız boş araziye bakıyorsa) genel cephe
+    // hattına düşeriz — erken oyunda sınırların çoğu böyledir.
+    const candidates = [tile, ...this.world.neighbors(tile)];
+    let foreignId = null;
+    for (const candidate of candidates) {
+      if (candidate.owner >= 0 && candidate.owner !== nationId) {
+        foreignId = candidate.owner;
+        break;
+      }
+    }
+    const all = borderTiles(this.world, nationId, foreignId);
+    if (all.length < 2) return null;
+    // Uzun sinirin tamami degil, imlece en yakin parcasi secilir.
+    const chain = chainTiles(all);
+    let closest = 0;
+    let bestDistance = Infinity;
+    chain.forEach((candidate, index) => {
+      const distance = hexDistance(candidate.q, candidate.r, tile.q, tile.r);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        closest = index;
+      }
+    });
+    const half = Math.floor(BORDER_SEGMENT / 2);
+    const from = Math.max(0, closest - half);
+    const tiles = chain.slice(from, from + BORDER_SEGMENT);
+    return {
+      foreignId,
+      tiles,
+      key: `${foreignId ?? 'frontier'}:${tiles[0]?.q}:${tiles[0]?.r}:${tiles.length}`,
+    };
+  }
+
+  /** Vurgulanan sinira cephe/geri cekilme hatti kurar. */
+  commitBorderFront(preview) {
+    const nation = this.world.nations[this.turns.playerNation];
+    if (!preview?.tiles?.length || !nation?.alive) return null;
+    const plan = this.drawMode === 'fallback' ? PLAN.HOLD : PLAN.ADVANCE;
+    const general = this.activeGeneral ?? generalOfArmy(nation, this.selection[0]) ?? null;
+    const front = createFront(this, nation, preview.tiles, plan, general?.id ?? null);
+    if (front) {
+      const armies = general ? divisionsOf(this.world, general) : this.selection;
+      for (const unit of armies) assignArmy(this.world, front, unit);
+    }
+    this.drawMode = null;
+    this.borderPreview = null;
+    this.selectedFront = front;
+    this.emit('fronts', front);
+    this.requestRender();
+    return front;
   }
 
   focusNation(nation) {
@@ -682,6 +809,10 @@ export class Game {
           playerNation: this.turns.playerNation,
           frontDraw: this.frontDraw,
           drawMode: this.drawMode,
+          borderPreview: this.borderPreview,
+          plannedPath: this.selectedFront?.plan === PLAN.ARROW
+            ? plannedPath(this.world, this.selectedFront)
+            : null,
           selectedFront: this.selectedFront,
           selection: this.selection,
           marquee: this.marquee,

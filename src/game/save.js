@@ -59,7 +59,11 @@ export function serialize(game) {
     frontSystem: {
       nextId: world.frontSystem?.nextId ?? 1,
       fronts: (world.frontSystem?.fronts ?? []).map((front) => ({
-        ...front, tiles: front.tiles.map((t) => ({ ...t })), armies: [...front.armies],
+        ...front,
+        tiles: front.tiles.map((t) => ({ ...t })),
+        // Hedef hattı da derin kopyalanır: kayıt canlı diziye bağlı kalmasın.
+        objective: front.objective?.map((t) => ({ ...t })) ?? null,
+        armies: [...front.armies],
       })),
     },
     tiles,

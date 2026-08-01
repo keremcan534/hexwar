@@ -69,6 +69,140 @@ export function frontsOfGeneral(world, general) {
   return ensureFronts(world).fronts.filter((front) => front.generalId === general.id);
 }
 
+/**
+ * Bir ulusun belirli bir komsusuyla olan sinir hatti: kendi tarafimizdaki,
+ * o ulkeye bitisik province'ler. HOI4'te cephe hatti elle cizilmez, sinira
+ * oturur — bu fonksiyon o oturmayi saglar.
+ */
+export function borderTiles(world, nationId, foreignId) {
+  const tiles = [];
+  world.forEach((tile) => {
+    if (tile.owner !== nationId || !tile.terrain.passable) return;
+    const touches = world.neighbors(tile).some((near) => (
+      foreignId === null ? near.owner !== nationId : near.owner === foreignId
+    ));
+    if (touches) tiles.push(tile);
+  });
+  return tiles;
+}
+
+/**
+ * Dagimik kareleri tek bir zincire dizer: bir uctan baslayip her adimda en
+ * yakin kullanilmamis kareye gecer. Cephe boyunca dagitim sirayi kullandigi
+ * icin hattin sirali olmasi gerekir.
+ */
+export function chainTiles(tiles) {
+  if (tiles.length < 2) return [...tiles];
+  // Uc kare: en uzak ciftin bir ucu. Ortadan baslarsak zincir catallanir.
+  let start = tiles[0];
+  let best = -1;
+  for (const a of tiles) {
+    for (const b of tiles) {
+      const distance = hexDistance(a.q, a.r, b.q, b.r);
+      if (distance > best) {
+        best = distance;
+        start = a;
+      }
+    }
+  }
+  const remaining = new Set(tiles);
+  remaining.delete(start);
+  const chain = [start];
+  while (remaining.size) {
+    const last = chain[chain.length - 1];
+    let next = null;
+    let bestDistance = Infinity;
+    for (const tile of remaining) {
+      const distance = hexDistance(last.q, last.r, tile.q, tile.r);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        next = tile;
+      }
+    }
+    remaining.delete(next);
+    chain.push(next);
+  }
+  return chain;
+}
+
+/**
+ * Zincirdeki bosluklari doldurur. Oyuncu hattini kopuk cizerse (ya da sinir
+ * dogal olarak kopuksa) aradaki kareler hayali olarak eklenir; boylece hat
+ * her zaman sureklidir.
+ */
+export function fillGaps(world, chain) {
+  if (chain.length < 2) return [...chain];
+  const out = [chain[0]];
+  for (let i = 1; i < chain.length; i++) {
+    const from = out[out.length - 1];
+    const to = chain[i];
+    let cursor = from;
+    let guard = 0;
+    while (hexDistance(cursor.q, cursor.r, to.q, to.r) > 1 && guard++ < MAX_FRONT_TILES) {
+      const step = world.neighbors(cursor)
+        .filter((near) => near.terrain.passable)
+        .sort((a, b) => hexDistance(a.q, a.r, to.q, to.r)
+          - hexDistance(b.q, b.r, to.q, to.r))[0];
+      if (!step || step === cursor) break;
+      out.push(step);
+      cursor = step;
+    }
+    out.push(to);
+  }
+  // Tekrarlari at, sirayi koru.
+  const seen = new Set();
+  return out.filter((tile) => {
+    if (seen.has(tile)) return false;
+    seen.add(tile);
+    return true;
+  });
+}
+
+/**
+ * Tek kare secildiginde ondan bir hedef hatti uretir: ilerleme yonune dik,
+ * her iki yana dogru uzatilir. Oyuncu tek province'e tiklayinca da anlamli
+ * bir taarruz hatti olusur.
+ */
+export function spanObjective(world, origin, from, width = 3) {
+  const line = [origin];
+  // Ilerleme yonu; ona dik iki komsu yonde genisletiriz.
+  const forward = { q: origin.q - from.q, r: origin.r - from.r };
+  const sides = world.neighbors(origin).filter((near) => {
+    if (!near.terrain.passable) return false;
+    const dot = (near.q - origin.q) * forward.q + (near.r - origin.r) * forward.r;
+    return dot <= 0;
+  });
+  for (const side of sides.slice(0, 2)) {
+    let cursor = side;
+    line.push(cursor);
+    for (let i = 1; i < width; i++) {
+      const step = world.neighbors(cursor).find((near) => (
+        near.terrain.passable
+        && !line.includes(near)
+        && hexDistance(near.q, near.r, origin.q, origin.r) > hexDistance(cursor.q, cursor.r, origin.q, origin.r)
+      ));
+      if (!step) break;
+      line.push(step);
+      cursor = step;
+    }
+  }
+  return chainTiles(line);
+}
+
+/**
+ * Cephe ve geri cekilme hatti ayni generalde birlikte duramaz: biri kurulunca
+ * digeri kalkar. Ikisi ayni tumenleri ters yonlere cekiyordu.
+ */
+function dropConflicting(system, front) {
+  if (front.plan === PLAN.ARROW) return;
+  system.fronts = system.fronts.filter((other) => (
+    other.id === front.id
+    || other.nationId !== front.nationId
+    || other.generalId !== front.generalId
+    || other.plan === PLAN.ARROW
+  ));
+}
+
 export function frontTiles(world, front) {
   return front.tiles.map((point) => world.get(point.q, point.r)).filter(Boolean);
 }
@@ -103,11 +237,14 @@ export function createFront(game, nation, tiles, plan = PLAN.ADVANCE, generalId 
     tiles: points,
     armies: [],
     plan,
+    // Taarruzda ilerlenecek hedef hatti (bkz. advanceToObjective).
+    objective: null,
     active: false,
     planning: 0,
     created: game.turns.turn,
   };
   system.fronts.push(front);
+  dropConflicting(system, front);
   game.emit('fronts', front);
   return front;
 }
@@ -274,51 +411,84 @@ function advanceLine(game, front, reach = 2) {
 }
 
 /**
- * Taarruz oku: hattın tamamını itmek yerine, oku çizilen hedefe doğru en yakın
- * hat karesini ilerletir. Dar ve derin bir hamledir — HOI4'teki offensive line.
+ * Bir cephe karesinin hedef hattindaki karsiligi. Hat boyunca oransal eslesme:
+ * soldaki kare soldaki hedefe, sagdaki sagdakine gider. Boylece hat kendi
+ * icinde catallanmadan topluca ilerler.
  */
-function advanceArrow(game, front, reach = 2) {
-  const world = game.world;
-  const target = front.target ? world.get(front.target.q, front.target.r) : null;
-  if (!target) return advanceLine(game, front, reach);
+function objectiveFor(world, front, index) {
+  const objective = front.objective ?? [];
+  if (!objective.length) return null;
+  const ratio = front.tiles.length > 1 ? index / (front.tiles.length - 1) : 0;
+  const point = objective[Math.round(ratio * (objective.length - 1))];
+  return point ? world.get(point.q, point.r) : null;
+}
 
-  const tiles = frontTiles(world, front);
-  let leadIndex = 0;
-  let bestDistance = Infinity;
-  tiles.forEach((tile, index) => {
-    const distance = hexDistance(tile.q, tile.r, target.q, target.r);
-    if (distance < bestDistance) {
-      bestDistance = distance;
-      leadIndex = index;
-    }
-  });
-  if (bestDistance === 0) {
-    front.active = false;
-    return false;
-  }
-
-  // Uç kare hedefe bir adım yaklaşır; komşuları onu izler ki hat kopmasın.
-  const lead = tiles[leadIndex];
-  const step = world.neighbors(lead)
+/**
+ * Bir karenin hedefine giden bir sonraki adimi: hedefe *yaklasan*, gecilebilir
+ * komsulardan en iyisi. Yaklasan komsu yoksa null (kare yerinde kalir).
+ */
+function stepToward(world, tile, target) {
+  const current = hexDistance(tile.q, tile.r, target.q, target.r);
+  if (current === 0) return null;
+  return world.neighbors(tile)
     .filter((near) => near.terrain.passable
-      && hexDistance(near.q, near.r, target.q, target.r) < bestDistance)
+      && hexDistance(near.q, near.r, target.q, target.r) < current)
     .sort((a, b) => hexDistance(a.q, a.r, target.q, target.r)
-      - hexDistance(b.q, b.r, target.q, target.r))[0];
-  if (!step) return false;
+      - hexDistance(b.q, b.r, target.q, target.r))[0] ?? null;
+}
 
-  const next = tiles.map((tile, index) => {
-    if (index === leadIndex) return { q: step.q, r: step.r };
-    if (Math.abs(index - leadIndex) <= reach - 1) {
-      const follow = world.neighbors(tile)
-        .filter((near) => near.terrain.passable)
-        .sort((a, b) => hexDistance(a.q, a.r, step.q, step.r)
-          - hexDistance(b.q, b.r, step.q, step.r))[0];
-      if (follow) return { q: follow.q, r: follow.r };
+/**
+ * Taarruz: hat, oyuncunun cizdigi hedef hattina dogru topluca kayar. HOI4'teki
+ * offensive line budur — plan tek bir kareye degil bir *hedef hattina* gider.
+ */
+function advanceToObjective(game, front, reach = 2) {
+  const world = game.world;
+  if (!front.objective?.length) return advanceLine(game, front, reach);
+
+  let moved = false;
+  const next = frontTiles(world, front).map((tile, index) => {
+    const target = objectiveFor(world, front, index);
+    if (!target) return { q: tile.q, r: tile.r };
+    let cursor = tile;
+    // Saldirganlik kademesi bir haftada kac kare ilerleyecegini belirler.
+    for (let step = 0; step < reach; step++) {
+      const ahead = stepToward(world, cursor, target);
+      if (!ahead) break;
+      cursor = ahead;
+      moved = true;
     }
-    return { q: tile.q, r: tile.r };
+    return { q: cursor.q, r: cursor.r };
   });
   front.tiles = next;
-  return true;
+  // Hicbir kare ilerleyemediyse hedefe varilmistir: plan tamamlandi.
+  if (!moved) front.active = false;
+  return moved;
+}
+
+/**
+ * Planin onizlemesi: her cephe karesinin hedefine giden yol. Oyuncu plani
+ * calistirmadan once nereden gecilecegini gorur (HOI4'teki kesikli guzergah).
+ */
+export function plannedPath(world, front) {
+  if (!front?.objective?.length) return [];
+  const path = [];
+  const seen = new Set();
+  frontTiles(world, front).forEach((tile, index) => {
+    const target = objectiveFor(world, front, index);
+    if (!target) return;
+    let cursor = tile;
+    let guard = 0;
+    while (cursor !== target && guard++ < MAX_FRONT_TILES) {
+      const ahead = stepToward(world, cursor, target);
+      if (!ahead) break;
+      cursor = ahead;
+      if (!seen.has(cursor)) {
+        seen.add(cursor);
+        path.push(cursor);
+      }
+    }
+  });
+  return path;
 }
 
 /** Haftalık cephe işleyişi. Hareketten *önce* çağrılır ki emirler aynı hafta işlesin. */
@@ -357,7 +527,7 @@ export function runFronts(game) {
       const maturity = front.planning >= 1 ? 0 : front.planning >= 0.5 ? 1 : 2;
       const cadence = aggression.cadence + maturity;
       if ((game.turns.turn - front.created) % cadence === 0) {
-        if (front.plan === PLAN.ARROW) advanceArrow(game, front, aggression.reach);
+        if (front.plan === PLAN.ARROW) advanceToObjective(game, front, aggression.reach);
         else advanceLine(game, front, aggression.reach);
       }
       // Taarruz planı harcanır: ilerledikçe hazırlık erir.

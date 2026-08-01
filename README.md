@@ -31,7 +31,7 @@ npm run diagnose:policy
 | Çoklu seç | basılı tut + sürükle | sol tuş basılı + sürükle (kutu seçimi) |
 | Yürüt | seç, sonra hedefe dokun | sağ tık |
 | Seçimi bırak | boş yere dokun | boş yere sol tık · `Esc` |
-| Cephe çiz | "Draw Front" + sürükle | sağ tuş basılı + sürükle |
+| Cephe çiz | Front/Fallback + sınıra dokun | Front/Fallback + sınıra tık · sağ tuş sürükle |
 | Zaman | duraklat, 1×, 2×, 4× | `boşluk` duraklat · `+` / `−` hız |
 
 Giriş HOI4 semantiğindedir: **sol tuş seçer, sağ tuş yürütür**. Sol tuş sürükleme
@@ -101,39 +101,56 @@ Kutu seçimi yapıldığında **solda tümen listesi** açılır: her satırda a
 bileşimi, asker sayısı, morali, durumu (bekliyor / yürüyor / muharebede /
 çekiliyor) ve komutanı görünür. Satıra tıklamak kamerayı o tümene götürür.
 
-**Altta komutan portreleri** durur — HOI4'teki gibi her seçili tümen için bir
-yuva. Komutanı olmayan yuvada **+** işareti vardır; ona basmak general seçme
-ekranını açar ve seçilen general o orduya atanır. Dar ekranda yüzen çubuk yerine
-aynı düğme tümen satırının sağında görünür.
+**Komuta paneli ekranın orta altında her zaman durur**: ülkenin her generali için
+bir portre yuvası, sonda **+** (Assign) yuvası. Portreye **sol tık** o generalin
+bütün tümenlerini seçer, **sağ tık** o an seçili tümenleri ona devreder — 10
+tümenden 5'ini seçip başka bir generale sağ tıklamak onları o komutaya geçirir.
+**+** seçimi listeden bir subaya bağlar.
+
+Bir general seçiliyken portrelerin üstünde plan araçları çıkar: **Front**,
+**Fallback**, **Offensive** ve **duruş 1-2-3**. Duruş ilerleme hızını ve bir
+haftada kaç province ilerleneceğini belirler (temkinli 3 haftada bir 1 kare,
+saldırgan her hafta 3 kare).
 
 ### Komutanlar
 
-Her ülke bir subay kadrosuyla başlar. Ordu seçilince komutan yuvasından general
-atanır; bir generalin tek ordusu, bir ordunun tek generali olur. Yetenek (1–5) her kademede %6 güç verir, nitelikler kendi alanlarında
+Her ülke bir subay kadrosuyla başlar. Bir general tek tümene değil bir **ordu
+grubuna** komuta eder; altındaki bütün tümenler onun bonuslarını alır ve bir
+tümen aynı anda yalnız tek generalde olur. Yetenek (1–5) her kademede %6 güç
+verir, nitelikler kendi alanlarında
 ekler: saldırı/savunma doktrini, mühendis (arazi ve tahkimat bonusunu deler),
 süvari/topçu uzmanı (yığındaki o kolun payı kadar), kurmay (cephe planını
 hızlandırır), düzenbaz (muharebe zarının aralığını genişletir).
 
-Generaller savaştıkça tecrübe kazanıp terfi eder. İki ordu birleşince yetenekli
-olan komutayı alır, diğeri boşta kadroya döner. Altınla yeni subay yetiştirilir;
-kadro büyüdükçe pahalanır.
+Generaller savaştıkça tecrübe kazanıp terfi eder. İki tümen birleşince komuta
+hedefin generalinde kalır. Altınla yeni subay yetiştirilir; kadro büyüdükçe
+pahalanır.
 
 ### Cephe hatları ve muharebe planları
 
-Sağ tuşu basılı tutup haritada sürüklemek (dokunmatikte basılı tutup sürüklemek)
-bir cephe hattı çizer. Çizim sırasında seçili olan ordu hatta otomatik katılır.
-Hat tamamen kendi toprağımızda çizilirse **savunma hattı**, sınırı veya düşman
-toprağını kapsıyorsa **taarruz hattı** olur.
+Komuta panelindeki **Front** ya da **Fallback** düğmesine basınca imlecin
+yakınındaki sınır parlar; tıklayınca hat oraya oturur — hex hex çizmek gerekmez.
+Sınır hangi ülkeyle ise o ülkeyle olan hat seçilir; komşuda sahipli ülke yoksa
+kendi sınırımızın tamamı kullanılır. Bir generalin aynı anda ya cephe hattı ya
+geri çekilme hattı olur: biri kurulunca diğeri kalkar.
+
+**Offensive** planında çizilen hat cephe değil **hedeftir**: ordunun ilerleyeceği
+sınırı çizersin, plan mevcut cephenden oraya doğru yürür. Kopuk çizersen aradaki
+boşluklar doldurulur, tek province seçersen ondan bir hedef hattı türetilir.
+Seçili taarruz planının izleyeceği güzergâh haritada kesikli province'lerle
+gösterilir.
+
+Masaüstünde sağ tuşu basılı tutup sürüklemek de serbest hat çizer.
 
 Hatta atanan ordular kendiliğinden hat boyunca dağılır — her ordu kendine en
 yakın boş hat karesine yürür, oyuncu tek tek yürütmez. Hat boşta beklerken
 **planlama** birikir (haftada %6, kurmay generalle daha hızlı); plan olgunlaştıkça
 o cephedeki ordular muharebede %25'e kadar bonus alır.
 
-"Execute Plan" denince taarruz hattı düşman toprağına doğru itilir ve ordular
-yeni hatta yürür. İlerleme hızı planlama olgunluğuna bağlıdır: hazırlıksız
-taarruz üç haftada bir, tam hazırlıklı taarruz her hafta ilerler. İlerledikçe
-hazırlık erir — plan harcanan bir kaynaktır.
+"Execute Plan" denince hat ilerlemeye başlar: cephe hattı düşman toprağına
+itilir, taarruz planı çizilen hedef hattına yürür. Hız hem planlama olgunluğuna
+hem komutanın duruşuna bağlıdır. İlerledikçe hazırlık erir — plan harcanan bir
+kaynaktır.
 
 Cephe yalnız kimin nerede duracağını ve ne zaman ilerleyeceğini yönetir;
 muharebenin kendisi hâlâ province muharebesidir. Ayrı bir soyut cephe gücü
