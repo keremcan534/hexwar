@@ -2,8 +2,8 @@
 
 import { makeRng } from '../core/rng.js';
 import {
-  UNIT_TYPES, addRegiment, clearPath, createUnit, recoverArmy, refreshArmy,
-  regimentCount, removeUnit, removeWeakestRegiment,
+  UNIT_TYPES, clearPath, createUnit, recoverArmy, refreshArmy,
+  regimentCount, removeUnit, removeWeakestRegiment, stackFull,
 } from './units.js';
 import { advanceMovement } from './movement.js';
 import { recruit } from './recruitment.js';
@@ -53,6 +53,7 @@ export class TurnManager {
     world.cities = [];
     world.forEach((t) => {
       t.unit = null;
+      t.units = [];
       t.city = null;
       // Başlangıç sınırları işgal değildir; ilk beş haftayı sıfır üretimle açmasın.
       if (t.owner >= 0) t.heldSince = -100;
@@ -185,18 +186,15 @@ export class TurnManager {
 
     const isSea = UNIT_TYPES[typeId].domain === 'sea';
     for (const spot of spots) {
-      // Gemi şehrin kendisine değil, bitişik suya iner; şehir kıyıda değilse üretilemez.
-      const existing = spot.unit && spot.unit.nationId === nation.id
-        && spot.unit.type.domain === UNIT_TYPES[typeId].domain
-        && !spot.unit.battleId
-        ? spot.unit
-        : null;
-      if (existing && addRegiment(existing, typeId, nation)) return existing;
+      // Tümenler birleşmez: aynı province'te ayrı ayrı dururlar. Şehir karesi
+      // doluysa bitişik boş/az dolu bir kareye inilir.
       const tile = isSea
-        ? world.neighbors(spot).find((n) => n.terrain.navigable && !n.unit)
-        : (spot.unit
-          ? world.neighbors(spot).find((n) => n.terrain.passable && !n.unit && n.owner === nation.id)
-          : spot);
+        ? world.neighbors(spot).find((n) => n.terrain.navigable && !stackFull(n))
+        : (!stackFull(spot)
+          ? spot
+          : world.neighbors(spot).find(
+            (n) => n.terrain.passable && !stackFull(n) && n.owner === nation.id,
+          ));
       if (!tile) continue;
       const unit = createUnit(typeId, nation.id, tile, nation);
       world.units.push(unit);

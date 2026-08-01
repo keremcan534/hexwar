@@ -62,6 +62,13 @@ function diplomacy(game, nation, rng) {
   for (const other of world.nations) {
     if (!other.alive || other.id === nation.id) continue;
     if (atWar(world, other.id, nation.id)) continue;
+    // Zaten savaşan ülkeye çullanılmaz. Savaş zincirinin asıl sebebi buydu:
+    // bir ülke zayıflar zayıflamaz bütün komşuları üstüne biniyor, o da
+    // çökünce sıradakine geçiyordu. Kurbanı bekleyen kuyruk kalkar.
+    const busy = world.nations.some(
+      (third) => third.alive && third.id !== other.id && atWar(world, third.id, other.id),
+    );
+    if (busy) continue;
     const contact = contacts[nation.id][other.id];
     if (!contact) continue;
     if (truceLeft(world, nation.id, other.id, game.turns.turn) > 0) continue;
@@ -77,9 +84,13 @@ function diplomacy(game, nation, rng) {
   if (bestTarget) declareWar(game, nation.id, bestTarget.id);
 }
 
-/** Ülke başına hedeflenen birim sayısı: toprak büyüdükçe ordu büyür. */
+/**
+ * Ülke başına hedeflenen tümen sayısı. Tümenler artık birleşmediği için bir
+ * birim = bir alay; eski hedef (2 + tiles/25) yığınlar birleşirken anlamlıydı,
+ * şimdi ülkeleri savunmasız bırakıp savaş zincirini tetikliyordu.
+ */
 function desiredArmy(nation) {
-  return 2 + Math.floor(nation.tiles / 25);
+  return 4 + Math.floor(nation.tiles / 12);
 }
 
 /**

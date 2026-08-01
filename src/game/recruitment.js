@@ -6,7 +6,7 @@
 //   dağıtım  → nüfus çıktığı province'e geri döner
 //   ölüm     → kalıcı kayıp, kimseye geri dönmez
 
-import { UNIT_TYPES, createUnit, removeUnit, resolveTypeId } from './units.js';
+import { UNIT_TYPES, createUnit, removeUnit, resolveTypeId, stackFull } from './units.js';
 import { orderMove } from './movement.js';
 
 /** Bir province'in altına inemeyeceği nüfus. Ülke kendi taşrasını boşaltamasın. */
@@ -96,11 +96,14 @@ function drawManpower(world, source, amount) {
 function deploymentTile(world, source, typeId) {
   const domain = UNIT_TYPES[resolveTypeId(typeId)].domain;
   if (domain === 'sea') {
-    return world.neighbors(source).find((tile) => tile.terrain.navigable && !tile.unit) ?? null;
+    return world.neighbors(source).find(
+      (tile) => tile.terrain.navigable && !stackFull(tile),
+    ) ?? null;
   }
-  if (!source.unit) return source;
+  // Tümenler birleşmediği için dolu olmayan yığına inmek serbest.
+  if (!stackFull(source)) return source;
   return world.neighbors(source).find(
-    (tile) => tile.terrain.passable && !tile.unit && tile.owner === source.owner,
+    (tile) => tile.terrain.passable && !stackFull(tile) && tile.owner === source.owner,
   ) ?? null;
 }
 

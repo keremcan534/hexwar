@@ -40,15 +40,17 @@
   </div>
 
   <!-- HOI4'ün sekme düğmeleri: her biri tam ekran bir yönetim ekranı açar -->
+  <!-- Cephe mekaniği üzerinde çalışırken yalnız Production açık. Diğer ekranların
+       kodu duruyor; hidden sınıfı kaldırılınca geri gelirler. -->
   <nav class="tab-bar" id="tab-bar" aria-label="National management">
-    <button data-screen="construction"><span>🏗</span>Construction</button>
-    <button data-screen="industry"><span>🏭</span>Industry</button>
+    <button data-screen="construction" class="hidden"><span>🏗</span>Construction</button>
+    <button data-screen="industry" class="hidden"><span>🏭</span>Industry</button>
     <button data-screen="production"><span>⚒</span>Production</button>
-    <button data-screen="budget"><span>¤</span>Budget</button>
-    <button data-screen="research"><span>🔬</span>Research</button>
-    <button data-screen="logistics"><span>📦</span>Logistics</button>
-    <button data-screen="diplomacy"><span>🕊</span>Diplomacy</button>
-    <button data-screen="trade"><span>⚖</span>Trade</button>
+    <button data-screen="budget" class="hidden"><span>¤</span>Budget</button>
+    <button data-screen="research" class="hidden"><span>🔬</span>Research</button>
+    <button data-screen="logistics" class="hidden"><span>📦</span>Logistics</button>
+    <button data-screen="diplomacy" class="hidden"><span>🕊</span>Diplomacy</button>
+    <button data-screen="trade" class="hidden"><span>⚖</span>Trade</button>
   </nav>
 
   <section class="screen hidden" id="screen" aria-hidden="true">
@@ -131,7 +133,7 @@
     <div class="command-tools hidden" id="command-tools">
       <button class="tool-btn" data-tool="front" title="Draw a front line">⌇ Front</button>
       <button class="tool-btn" data-tool="fallback" title="Draw a fallback line">⌐ Fallback</button>
-      <button class="tool-btn" data-tool="arrow" title="Draw an offensive arrow">➤ Offensive</button>
+      <button class="tool-btn" id="btn-offensive" title="Toggle the offensive: divisions advance along the front">➤ Offensive</button>
       <span class="tool-sep"></span>
       <span class="tool-label">Stance</span>
       <button class="tool-btn stance" data-stance="1" title="Careful">1</button>

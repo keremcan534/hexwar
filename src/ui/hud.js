@@ -237,6 +237,10 @@ export class Hud {
         this.showCommand();
       };
     }
+    $('btn-offensive').onclick = () => {
+      game.toggleOffensive();
+      this.showCommand();
+    };
     for (const btn of document.querySelectorAll('#command-tools [data-stance]')) {
       btn.onclick = () => {
         const general = game.activeGeneral;
@@ -326,6 +330,10 @@ export class Hud {
       for (const btn of el.commandTools.querySelectorAll('[data-tool]')) {
         btn.classList.toggle('active', game.drawMode === btn.dataset.tool);
       }
+      const offensive = $('btn-offensive');
+      const running = game.offensiveActive();
+      offensive.classList.toggle('active', running);
+      offensive.textContent = running ? '■ Halt' : '➤ Offensive';
       for (const btn of el.commandTools.querySelectorAll('[data-stance]')) {
         btn.classList.toggle('active', Number(btn.dataset.stance) === (active.aggression ?? 2));
       }

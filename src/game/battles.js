@@ -3,8 +3,7 @@
 
 import { atWar } from './diplomacy.js';
 import {
-  applyArmyLosses, armyPower, mergeArmies, moraleOf, placeUnit, recoverArmy,
-  soldiersOf,
+  applyArmyLosses, armyPower, moraleOf, placeUnit, recoverArmy, soldiersOf, stackFull,
 } from './units.js';
 import {
   addExperience, generalModifier, generalOfArmy, generalSiegeRelief, generalVariance,
@@ -105,7 +104,7 @@ function retreatDestination(world, army, awayFrom) {
   for (let head = 0; head < queue.length; head++) {
     const { tile, depth } = queue[head];
     if (depth > 0 && tile.owner === army.nationId && tile.terrain.passable) {
-      if (!tile.unit || tile.unit.nationId === army.nationId) {
+      if (!tile.unit || (tile.unit.nationId === army.nationId && !stackFull(tile))) {
         const distance = Math.abs(tile.q - awayFrom.q) + Math.abs(tile.r - awayFrom.r);
         candidates.push({ tile, depth, distance });
       }
@@ -128,11 +127,8 @@ function retreatArmy(game, army, awayFrom) {
   army.retreatUntil = game.turns.turn + 3;
   army.order = null;
   if (!target) return;
-  if (target.unit && target.unit.nationId === army.nationId) {
-    mergeArmies(game.world, target.unit, army);
-  } else {
-    placeUnit(army, target);
-  }
+  // Geri çekilen tümen dost yığına *katılır*, onunla birleşmez.
+  placeUnit(army, target);
 }
 
 function occupyAfterBattle(game, attacker, battleTile) {

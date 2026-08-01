@@ -8,7 +8,7 @@
 import { findPath } from '../core/pathfind.js';
 import { atWar } from './diplomacy.js';
 import { startBattle } from './battles.js';
-import { clearPath, isMoving, mergeArmies, speedOf } from './units.js';
+import { clearPath, isMoving, speedOf, stackFull } from './units.js';
 
 /** Yol tıkanınca bu kadar kez yeniden hesaplanır, sonra emir düşer. */
 const MAX_REROUTES = 2;
@@ -59,15 +59,9 @@ function stepInto(game, unit, next) {
     return 'blocked';
   }
 
-  if (next.unit && next.unit !== unit) {
-    // Dost yığın: birleş. Birleşen ordu hedefi devralır ki yürüyüş sürsün.
-    const target = next.unit;
-    const remaining = unit.path.slice(1);
-    if (!mergeArmies(game.world, target, unit)) return 'blocked';
-    target.path = remaining.length ? remaining : null;
-    target.progress = 0;
-    return 'merged';
-  }
+  // Dost tümenler *birleşmez*: aynı province'i paylaşırlar (HOI4 modeli).
+  // Yığın doluysa giriş engellenir.
+  if (next.unit && next.unit !== unit && stackFull(next)) return 'blocked';
 
   game.enterTile(unit, next);
   unit.path.shift();
@@ -118,7 +112,7 @@ export function advanceMovement(game) {
         break;
       }
       const result = stepInto(game, unit, next);
-      if (result === 'battle' || result === 'merged') { moved = true; break; }
+      if (result === 'battle') { moved = true; break; }
       if (result === 'blocked') {
         if (!reroute(game, unit)) break;
         continue;

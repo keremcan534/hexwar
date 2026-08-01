@@ -5,7 +5,7 @@ import { Game } from '../src/game/game.js';
 import { TurnManager } from '../src/game/turn.js';
 import { generateWorld } from '../src/world/worldgen.js';
 import { generateNations } from '../src/world/nations.js';
-import { regimentCount, soldiersOf } from '../src/game/units.js';
+import { MAX_STACK, regimentCount, soldiersOf, unitsOn } from '../src/game/units.js';
 
 const seed = process.argv[2] ?? 'SYSTEM';
 const weeks = Math.max(1, Number(process.argv[3] ?? 180));
@@ -50,16 +50,25 @@ const battleIds = new Set(game.world.battleSystem.battles.map((battle) => battle
 const orphanedArmies = game.world.units.filter(
   (army) => army.battleId && !battleIds.has(army.battleId),
 );
-const occupiedTiles = new Set();
-let duplicateTiles = 0;
+// Tümenler artık birleşmiyor: bir province'te MAX_STACK kadarı yan yana
+// durabilir. Hata, yığın tavanının aşılması ya da düşman tümenlerinin aynı
+// karede bulunmasıdır — sayının birden büyük olması değil.
+const stacks = new Map();
 for (const army of game.world.units) {
   const key = `${army.tile.q}:${army.tile.r}`;
-  if (occupiedTiles.has(key)) duplicateTiles++;
-  occupiedTiles.add(key);
+  if (!stacks.has(key)) stacks.set(key, []);
+  stacks.get(key).push(army);
 }
-const invalidStacks = game.world.units.filter(
-  (army) => !army.regiments?.length || soldiersOf(army) <= 0 || army.tile.unit !== army,
-);
+let duplicateTiles = 0;
+for (const group of stacks.values()) {
+  const nations = new Set(group.map((army) => army.nationId));
+  if (group.length > MAX_STACK || nations.size > 1) duplicateTiles++;
+}
+const invalidStacks = game.world.units.filter((army) => (
+  !army.regiments?.length
+  || soldiersOf(army) <= 0
+  || !unitsOn(army.tile).includes(army)
+));
 const provinces = game.world.tiles.filter((tile) => tile.province);
 const developed = provinces.filter((tile) => (
   tile.province.agriculture + tile.province.extraction + tile.province.commerce > 3

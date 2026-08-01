@@ -4,7 +4,7 @@
 import { HEX_CORNERS, SQRT3, DIRS, hexDistance } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { drawFlag } from './flagPainter.js';
-import { maxHpOf, moraleOf, regimentCount, soldiersOf } from '../game/units.js';
+import { maxHpOf, moraleOf, regimentCount, soldiersOf, unitsOn } from '../game/units.js';
 import { terrainShade } from '../world/terrain.js';
 import { BUILDINGS } from '../game/buildings.js';
 
@@ -650,6 +650,10 @@ export class Renderer {
     for (const unit of world.units) {
       const t = unit.tile;
       if (t.x < rect.minX || t.x > rect.maxX || t.y < rect.minY || t.y > rect.maxY) continue;
+      // Tümenler birleşmediği için bir province'te birkaçı olabilir; yalnızca
+      // ilki çizilir, kaçı olduğu rozetle gösterilir.
+      const stack = unitsOn(t);
+      if (stack.length > 1 && stack[0] !== unit) continue;
       const nation = world.nations[unit.nationId];
       // Şehirle aynı karedeyse aşağı kayar; ikisi de görünür kalsın.
       const ux = t.x;
@@ -708,6 +712,18 @@ export class Renderer {
         ctx.fillStyle = 'rgba(0,0,0,0.4)';
         ctx.fill(shape);
       }
+      // Yığın rozeti: aynı province'te kaç tümen var.
+      if (stack.length > 1 && detailed) {
+        const label = `×${stack.length}`;
+        ctx.font = `700 ${Math.round(HEX_SIZE * 0.36)}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.lineWidth = 3 / zoom;
+        ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+        ctx.fillStyle = '#ffe9b0';
+        ctx.strokeText(label, ux - radius * 0.95, uy - radius * 0.8);
+        ctx.fillText(label, ux - radius * 0.95, uy - radius * 0.8);
+      }
+
       // Emir rozeti: oyuncu hangi birimi devrettiğini bir bakışta görsün.
       if (unit.order) {
         ctx.font = `700 ${Math.round(HEX_SIZE * 0.4)}px system-ui, sans-serif`;

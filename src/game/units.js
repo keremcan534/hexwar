@@ -284,7 +284,9 @@ export function createUnit(typeId, nationId, tile, nation, home = null) {
     battleId: null,
     retreatUntil: 0,
   };
-  tile.unit = unit;
+  tile.units = tile.units ?? [];
+  tile.units.push(unit);
+  tile.unit = tile.units[0];
   return unit;
 }
 
@@ -305,16 +307,54 @@ export function isMoving(unit) {
   return Boolean(unit.path?.length) && !unit.battleId;
 }
 
+/**
+ * Bir province'te yan yana durabilecek tümen sayısı. HOI4'te tümenler
+ * birleşmez, aynı province'i paylaşır; tavan doomstack'i engeller.
+ */
+export const MAX_STACK = 4;
+
+/** Bir province'teki tümenler. Eski tek-birim alanıyla uyumlu okur. */
+export function unitsOn(tile) {
+  if (!tile) return [];
+  if (Array.isArray(tile.units)) return tile.units;
+  return tile.unit ? [tile.unit] : [];
+}
+
+/** `tile.unit` artık yığının ilk tümeni: eski okuyucular bozulmasın. */
+function syncTile(tile) {
+  if (!tile) return;
+  tile.units = tile.units ?? [];
+  tile.unit = tile.units[0] ?? null;
+}
+
+/** Tümeni durduğu province'ten çıkarır. */
+function detach(unit) {
+  const tile = unit.tile;
+  if (!tile) return;
+  if (Array.isArray(tile.units)) {
+    const index = tile.units.indexOf(unit);
+    if (index >= 0) tile.units.splice(index, 1);
+  }
+  syncTile(tile);
+}
+
+/** Yığın doldu mu? Dost tümen için giriş kontrolü bunu sorar. */
+export function stackFull(tile) {
+  return unitsOn(tile).length >= MAX_STACK;
+}
+
 export function removeUnit(world, unit) {
-  if (unit.tile?.unit === unit) unit.tile.unit = null;
+  detach(unit);
   const i = world.units.indexOf(unit);
   if (i >= 0) world.units.splice(i, 1);
 }
 
 export function placeUnit(unit, tile) {
-  if (unit.tile?.unit === unit) unit.tile.unit = null;
+  detach(unit);
   unit.tile = tile;
-  tile.unit = unit;
+  tile.units = tile.units ?? [];
+  if (!tile.units.includes(unit)) tile.units.push(unit);
+  syncTile(tile);
   if (unit.type.domain === 'land') unit.embarked = tile.terrain.water;
 }
 

@@ -9,7 +9,7 @@ import { PointerController } from '../input/pointer.js';
 import { pixelToHex, hexDistance } from '../core/hex.js';
 import { randomSeed } from '../core/rng.js';
 import { reachable } from '../core/pathfind.js';
-import { clearPath, placeUnit, speedOf } from './units.js';
+import { clearPath, placeUnit, speedOf, stackFull, unitsOn } from './units.js';
 import { orderMove } from './movement.js';
 import { TurnManager } from './turn.js';
 import { captureCity } from './cities.js';
@@ -24,8 +24,8 @@ import { roadMoveCost } from './infrastructure.js';
 import { startBattle } from './battles.js';
 import { BUILDINGS, buildingPlacementTiles } from './buildings.js';
 import {
-  PLAN, assignArmy, borderTiles, chainTiles, createFront, fillGaps, frontsOfGeneral,
-  plannedPath, reconcileFronts, spanObjective,
+  PLAN, assignArmy, borderTiles, chainTiles, createFront, deleteFront, fillGaps,
+  frontsOf, frontsOfGeneral, plannedPath, reconcileFronts, spanObjective,
 } from './fronts.js';
 import { assignDivisions, divisionsOf, generalOfArmy } from './generals.js';
 
@@ -192,11 +192,11 @@ export class Game {
       }
     }
 
-    // Kendi ordumuza tıklamak onu seçer; başka her yere tıklamak seçimi iptal eder.
-    const own = tile?.unit && tile.unit.nationId === this.turns.playerNation
-      ? tile.unit
-      : null;
-    this.selectUnits(own ? [own] : []);
+    // Kendi ordumuza tıklamak o province'teki bütün tümenlerini seçer
+    // (tümenler birleşmiyor, bir karede birkaçı olabilir); başka her yere
+    // tıklamak seçimi iptal eder.
+    const own = unitsOn(tile).filter((u) => u.nationId === this.turns.playerNation);
+    this.selectUnits(own);
     this.emit('select', tile);
     this.requestRender();
   }
@@ -286,11 +286,10 @@ export class Game {
         picked.push(unit);
       }
     }
+    // Kutu seçimi *yalnızca* tümen seçer. Seçili province'i değiştirmez:
+    // değiştirince altındaki province paneli (bina yerleştirme dahil) açılıyor,
+    // oyuncu sadece birlik seçmek isterken şehir ekranıyla karşılaşıyordu.
     this.selectUnits(picked);
-    if (picked.length) {
-      this.selected = picked[0].tile;
-      this.emit('select', this.selected);
-    }
     this.requestRender();
     return picked;
   }
@@ -306,10 +305,13 @@ export class Game {
       || tile.owner === unit.nationId
       || atWar(world, tile.owner, unit.nationId);
 
+    // Dost tümenler aynı province'te yan yana durabilir (birleşmezler);
+    // yığın tavanı dolduysa ya da içeride muharebe varsa girilmez.
     const openOrFriendly = (tile) => !tile.unit || (
       tile.unit.nationId === unit.nationId
       && tile.unit.type.domain === unit.type.domain
       && !tile.unit.battleId
+      && !stackFull(tile)
     );
 
     if (unit.type.domain === 'sea') {
@@ -510,6 +512,50 @@ export class Game {
 
   toggleDrawMode(mode = 'front') {
     return this.setDrawMode(this.drawMode === mode ? null : mode);
+  }
+
+  /**
+   * Taarruz aç/kapa. Ayrı bir ok çizmek yerine, generalin cephesi ilerleme
+   * kipine geçer: tümenler hat boyunca kendiliğinden ilerler. Kapatınca hat
+   * bulunduğu yerde tutulur.
+   *
+   * Çizim yerine düğme: ok çizmek hem zahmetliydi hem de ordular hattan kopup
+   * tek tek dalarak sınırı parçalıyordu (bordergore).
+   */
+  toggleOffensive() {
+    const nation = this.world.nations[this.turns.playerNation];
+    const general = this.activeGeneral;
+    if (!nation?.alive || !general) return null;
+
+    let front = frontsOfGeneral(this.world, general).find((f) => f.plan !== PLAN.ARROW);
+    if (!front) {
+      // Cephesi yoksa düşmanla olan sınırımıza kendiliğinden bir hat kurulur.
+      const tiles = chainTiles(borderTiles(this.world, nation.id, null));
+      if (tiles.length < 2) return null;
+      front = createFront(this, nation, tiles, PLAN.ADVANCE, general.id, null);
+      if (!front) return null;
+      for (const unit of divisionsOf(this.world, general)) assignArmy(this.world, front, unit);
+    }
+
+    if (front.active) {
+      front.active = false;
+      front.plan = PLAN.HOLD;
+    } else {
+      front.plan = PLAN.ADVANCE;
+      front.active = true;
+    }
+    this.selectedFront = front;
+    this.emit('fronts', front);
+    this.requestRender();
+    return front;
+  }
+
+  /** Seçili generalin taarruzu yürüyor mu? */
+  offensiveActive() {
+    const general = this.activeGeneral;
+    if (!general) return false;
+    return frontsOfGeneral(this.world, general)
+      .some((front) => front.plan === PLAN.ADVANCE && front.active);
   }
 
   // --- Komuta: general seçimi ve tümen devri ---
@@ -796,6 +842,11 @@ export class Game {
     const plan = this.drawMode === 'fallback' ? PLAN.HOLD : PLAN.ADVANCE;
     const general = this.activeGeneral ?? generalOfArmy(nation, this.selection[0]) ?? null;
     // Hedef ülke cepheye yazılır: hat her hafta o sınırdan yeniden kurulur.
+    // Yeni hat kurulmadan önce eskiler silinir: aksi hâlde bir generalin eski
+    // parlaması haritada kalıyor ve iki hat üst üste biniyordu.
+    for (const old of frontsOf(this.world, nation.id)) {
+      if (old.plan !== PLAN.ARROW) deleteFront(this, old);
+    }
     const front = createFront(
       this, nation, preview.tiles, plan, general?.id ?? null, preview.foreignId ?? null,
     );
