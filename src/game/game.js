@@ -23,7 +23,7 @@ import {
 import { roadMoveCost } from './infrastructure.js';
 import { startBattle } from './battles.js';
 import { BUILDINGS, buildingPlacementTiles } from './buildings.js';
-import { PLAN, assignArmy, createFront } from './fronts.js';
+import { PLAN, assignArmy, createFront, reconcileFronts } from './fronts.js';
 import { assignDivisions, divisionsOf, generalOfArmy } from './generals.js';
 
 /** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */
@@ -128,6 +128,8 @@ export class Game {
     this.buildingPlacement = null;
     this.frontDraw = null;
     this.marquee = null;
+    this.drawMode = null;
+    this.activeGeneral = null;
     this.selectedFront = null;
     this.reachable = null;
     this.turns.start(this.world);
@@ -397,7 +399,10 @@ export class Game {
     const general = this.activeGeneral
       ?? generalOfArmy(nation, this.selection[0])
       ?? null;
-    const front = createFront(this, nation, draw.tiles, plan, general?.id ?? null);
+    // Okun son karesi hedeftir, hattın kendisi değildir. Hedefi hatta da
+    // bırakırsak advanceArrow ilk çalışmada mesafeyi 0 görüp planı durdurur.
+    const planTiles = plan === PLAN.ARROW ? draw.tiles.slice(0, -1) : draw.tiles;
+    const front = createFront(this, nation, planTiles, plan, general?.id ?? null);
     if (front) {
       // Taarruz okunda sürüklemenin *son* karesi hedeftir.
       if (plan === PLAN.ARROW) {
@@ -460,6 +465,7 @@ export class Game {
     const nation = this.world.nations[this.turns.playerNation];
     if (!general || !nation || !this.selection.length) return 0;
     const moved = assignDivisions(nation, general.id, this.selection);
+    reconcileFronts(this.world);
     this.activeGeneral = general;
     this.emit('command', general);
     this.emit('selection', this.selection);
@@ -675,6 +681,7 @@ export class Game {
           selectedUnit: this.selectedUnit,
           playerNation: this.turns.playerNation,
           frontDraw: this.frontDraw,
+          drawMode: this.drawMode,
           selectedFront: this.selectedFront,
           selection: this.selection,
           marquee: this.marquee,

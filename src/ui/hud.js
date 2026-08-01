@@ -27,10 +27,11 @@ import { formatPopulation } from '../game/economy.js';
 import { nationManpower, rallyTile, setRallyPoint } from '../game/recruitment.js';
 import {
   MAX_SKILL, TRAITS, assignDivisions, commandSize, createGeneral, generalById,
-  generalCost, generalOfArmy, generalsOf, unassignGeneral,
+  generalCost, generalOfArmy, generalsOf, setAggression, unassignGeneral,
 } from '../game/generals.js';
 import {
-  PLAN, aggressionInfo, deleteFront, frontById, frontOfArmy, setPlan, toggleExecution,
+  PLAN, aggressionInfo, deleteFront, frontById, frontOfArmy, reconcileFronts, setPlan,
+  toggleExecution,
 } from '../game/fronts.js';
 import {
   AUTHORITY_CAP, DEVELOPMENT_AUTHORITY, PROVINCE_TRACKS, canDevelopProvince,
@@ -240,7 +241,10 @@ export class Hud {
       btn.onclick = () => {
         const general = game.activeGeneral;
         if (!general) return;
-        general.aggression = Number(btn.dataset.stance);
+        setAggression(general, Number(btn.dataset.stance));
+        game.emit('command', general);
+        game.emit('fronts', game.selectedFront);
+        game.requestRender();
         this.showCommand();
       };
     }
@@ -337,6 +341,7 @@ export class Hud {
         if (moved) {
           game.turns.addLog(`${moved} divisions transferred to ${general.name}.`);
           game.activeGeneral = general;
+          reconcileFronts(game.world);
         }
         this.showSelection();
       };
@@ -818,6 +823,7 @@ export class Hud {
       btn.onclick = () => {
         assignDivisions(me, Number(btn.dataset.pickGeneral), list);
         game.activeGeneral = generalById(me, Number(btn.dataset.pickGeneral));
+        reconcileFronts(game.world);
         this.showTile(game.selected);
         this.showSelection();
         game.requestRender();
@@ -875,6 +881,7 @@ export class Hud {
     if (dismiss) {
       dismiss.onclick = () => {
         unassignGeneral(me, Number(dismiss.dataset.unassign));
+        reconcileFronts(game.world);
         this.showTile(game.selected);
         this.showCommand();
       };

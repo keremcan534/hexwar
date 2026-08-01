@@ -9,13 +9,17 @@ import { TurnManager } from '../src/game/turn.js';
 import { generateWorld } from '../src/world/worldgen.js';
 import { generateNations } from '../src/world/nations.js';
 import { hexDistance } from '../src/core/hex.js';
+import { createUnit } from '../src/game/units.js';
 import {
-  MAX_SKILL, TRAITS, assignGeneral, generalModifier, generalOfArmy, generalsOf,
+  MAX_SKILL, TRAITS, assignDivisions, assignGeneral, commandSize, generalModifier,
+  generalOfArmy, generalsOf, setAggression,
 } from '../src/game/generals.js';
 import {
-  PLAN, assignArmy, createFront, frontOfArmy, runFronts, toggleExecution,
+  PLAN, aggressionInfo, assignArmy, createFront, frontOfArmy, reconcileFronts, runFronts,
+  toggleExecution,
 } from '../src/game/fronts.js';
 import { declareWar } from '../src/game/diplomacy.js';
+import { deserialize, serialize } from '../src/game/save.js';
 
 const weeks = Math.max(1, Number.parseInt(process.argv[2] ?? '60', 10));
 
@@ -31,6 +35,23 @@ function headlessGame(seed) {
   game.turns = new TurnManager(game);
   game.turns.start(game.world);
   game.turns.playerNation = -1;
+  return game;
+}
+
+function makeReloadable(game) {
+  game.newWorld = function newWorld(seed, options = {}) {
+    this.world = generateWorld(seed, options);
+    generateNations(this.world, { seed: `${seed}-nations`, count: options.nationCount ?? null });
+    this.selected = null;
+    this.selectedUnit = null;
+    this.selected_ = [];
+    this.activeGeneral = null;
+    this.selectedFront = null;
+    this.drawMode = null;
+    this.turns.start(this.world);
+    return this.world;
+  };
+  game.setSpeed = () => 0;
   return game;
 }
 
@@ -64,6 +85,38 @@ results.commanderAffectsCombat = {
   modifierAfter: Number(after.toFixed(3)),
   changed: after > before,
   oneGeneralPerArmy: generalsOf(nation).filter((g) => g.divisions.includes(army.id)).length === 1,
+};
+
+// --- 2b) General tek tümen değil, bir ordu grubu komuta ediyor mu? ---
+let groupArmies = world.units.filter((u) => u.nationId === nation.id).slice(0, 2);
+if (groupArmies.length < 2) {
+  let reinforcementTile = null;
+  world.forEach((tile) => {
+    if (!reinforcementTile && tile.owner === nation.id && tile.terrain.passable && !tile.unit) {
+      reinforcementTile = tile;
+    }
+  });
+  if (reinforcementTile) {
+    const reinforcement = createUnit(army.type.id, nation.id, reinforcementTile, nation);
+    world.units.push(reinforcement);
+    groupArmies = [army, reinforcement];
+  }
+}
+const otherGeneral = generalsOf(nation)[1];
+assignDivisions(nation, general.id, groupArmies);
+const groupFront = createFront(game, nation, [army.tile, ...world.neighbors(army.tile)].slice(0, 2), PLAN.HOLD, general.id);
+if (groupFront) for (const unit of groupArmies) assignArmy(world, groupFront, unit);
+assignDivisions(nation, otherGeneral.id, [groupArmies[1]]);
+reconcileFronts(world);
+results.armyGroupTransfer = {
+  initialGroupHadTwo: groupArmies.length === 2,
+  sourceSize: commandSize(general),
+  targetSize: commandSize(otherGeneral),
+  transferredToTarget: generalOfArmy(nation, groupArmies[1])?.id === otherGeneral.id,
+  uniqueAssignments: groupArmies.every((unit) => generalsOf(nation).filter(
+    (candidate) => candidate.divisions.includes(unit.id),
+  ).length === 1),
+  removedFromOldFront: !groupFront || !groupFront.armies.includes(groupArmies[1]?.id),
 };
 
 // --- 3) Cepheye atanan ordular hat boyunca dağılıyor mu? ---
@@ -145,6 +198,98 @@ if (neighbourId !== null) {
 }
 results.advancePlanPushesLine = advance;
 
+// --- 4b) Taarruz oku hedefe ilerliyor, geri çekilme hattı yerinde kalıyor mu? ---
+let arrowResult = { skipped: 'no bordering nation found' };
+if (neighbourId !== null) {
+  let origin = null;
+  let target = null;
+  world.forEach((tile) => {
+    if (origin || tile.owner !== nation.id || !tile.terrain.passable) return;
+    const enemy = world.neighbors(tile).find(
+      (near) => near.owner === neighbourId && near.terrain.passable,
+    );
+    if (enemy) {
+      origin = tile;
+      target = enemy;
+    }
+  });
+  if (origin && target) {
+    const arrowGeneral = generalsOf(nation)[2];
+    const arrowArmy = world.units.find((unit) => unit.nationId === nation.id);
+    assignDivisions(nation, arrowGeneral.id, [arrowArmy]);
+    setAggression(arrowGeneral, 3);
+    const arrow = createFront(game, nation, [origin], PLAN.ARROW, arrowGeneral.id);
+    arrow.target = { q: target.q, r: target.r };
+    assignArmy(world, arrow, arrowArmy);
+    arrow.planning = 1;
+    toggleExecution(game, arrow);
+    const beforeDistance = hexDistance(origin.q, origin.r, target.q, target.r);
+    runFronts(game);
+    const lead = world.get(arrow.tiles[0].q, arrow.tiles[0].r);
+    const afterDistance = hexDistance(lead.q, lead.r, target.q, target.r);
+
+    const holdTiles = [origin, ...world.neighbors(origin).filter(
+      (near) => near.owner === nation.id && near.terrain.passable,
+    )].slice(0, 2);
+    const fallback = createFront(game, nation, holdTiles, PLAN.HOLD);
+    const fallbackBefore = fallback?.tiles.map((point) => `${point.q}:${point.r}`).join(',');
+    if (fallback) {
+      toggleExecution(game, fallback);
+      runFronts(game);
+    }
+    arrowResult = {
+      singleProvinceOriginAccepted: Boolean(arrow),
+      distanceBefore: beforeDistance,
+      distanceAfter: afterDistance,
+      movedTowardTarget: afterDistance < beforeDistance,
+      fallbackStayedPut: !fallback || fallbackBefore === fallback.tiles
+        .map((point) => `${point.q}:${point.r}`).join(','),
+      aggressionCadence: {
+        careful: aggressionInfo(1).cadence,
+        balanced: aggressionInfo(2).cadence,
+        aggressive: aggressionInfo(3).cadence,
+      },
+    };
+  }
+}
+results.arrowAndFallbackPlans = arrowResult;
+
+// --- 4c) Kayıt/yükleme general ve cephe ordu kimliklerini koruyor mu? ---
+const saveGame = makeReloadable(headlessGame('COMMAND-SAVE'));
+const saveWorld = saveGame.world;
+const saveNation = saveWorld.nations.find(
+  (candidate) => candidate.alive && saveWorld.units.some((unit) => unit.nationId === candidate.id),
+);
+const saveArmy = saveWorld.units.find((unit) => unit.nationId === saveNation.id);
+const saveGeneral = generalsOf(saveNation)[0];
+assignGeneral(saveNation, saveGeneral.id, saveArmy);
+const saveLine = [saveArmy.tile, ...saveWorld.neighbors(saveArmy.tile).filter(
+  (tile) => tile.terrain.passable,
+)].slice(0, 2);
+const saveFront = createFront(
+  saveGame, saveNation, saveLine, PLAN.HOLD, saveGeneral.id,
+);
+assignArmy(saveWorld, saveFront, saveArmy);
+const saveData = serialize(saveGame);
+const loaded = deserialize(saveGame, saveData);
+const loadedNation = saveGame.world.nations[saveNation.id];
+const loadedGeneral = generalsOf(loadedNation).find((candidate) => candidate.id === saveGeneral.id);
+const loadedFront = saveGame.world.frontSystem.fronts.find(
+  (candidate) => candidate.id === saveFront.id,
+);
+results.commandSaveRoundTrip = {
+  loaded,
+  generalDivisions: loadedGeneral?.divisions.length ?? 0,
+  frontArmies: loadedFront?.armies.length ?? 0,
+  generalRefsExist: (loadedGeneral?.divisions ?? []).every(
+    (id) => saveGame.world.units.some((unit) => unit.id === id),
+  ),
+  frontRefsExist: (loadedFront?.armies ?? []).every(
+    (id) => saveGame.world.units.some((unit) => unit.id === id),
+  ),
+  sameArmyReference: loadedGeneral?.divisions[0] === loadedFront?.armies[0],
+};
+
 // --- 5) Uzun koşuda bütünlük ---
 for (let i = 0; i < weeks; i++) game.turns.endTurn();
 const fronts = world.frontSystem.fronts;
@@ -176,4 +321,32 @@ results.integrity = {
   ),
 };
 
+results.passed = Boolean(
+  results.generalsSeeded.traitsValid
+  && results.commanderAffectsCombat.changed
+  && results.commanderAffectsCombat.oneGeneralPerArmy
+  && results.armyGroupTransfer.initialGroupHadTwo
+  && results.armyGroupTransfer.transferredToTarget
+  && results.armyGroupTransfer.uniqueAssignments
+  && results.armyGroupTransfer.removedFromOldFront
+  && results.frontDistributesArmies.armiesMovedToLine
+  && results.frontDistributesArmies.planningGrows
+  && results.frontDistributesArmies.armyBoundToOneFront
+  && (results.advancePlanPushesLine.skipped || results.advancePlanPushesLine.lineMoved)
+  && (results.arrowAndFallbackPlans.skipped
+    || (results.arrowAndFallbackPlans.movedTowardTarget
+      && results.arrowAndFallbackPlans.fallbackStayedPut))
+  && results.commandSaveRoundTrip.loaded
+  && results.commandSaveRoundTrip.generalDivisions === 1
+  && results.commandSaveRoundTrip.frontArmies === 1
+  && results.commandSaveRoundTrip.generalRefsExist
+  && results.commandSaveRoundTrip.frontRefsExist
+  && results.commandSaveRoundTrip.sameArmyReference
+  && results.integrity.orphanArmyRefs === 0
+  && results.integrity.generalsOnDeadArmies === 0
+  && results.integrity.duplicateGeneralAssignments === 0
+  && results.integrity.armiesInTwoFronts === 0
+);
+
 console.log(JSON.stringify(results, null, 2));
+if (!results.passed) process.exitCode = 1;

@@ -89,7 +89,10 @@ export function createFront(game, nation, tiles, plan = PLAN.ADVANCE, generalId 
     points.push({ q: tile.q, r: tile.r });
     if (points.length >= MAX_FRONT_TILES) break;
   }
-  if (points.length < 2) return null;
+  // Bir taarruz oku tek bir çıkış karesinden başlayabilir; düz cephe ve geri
+  // çekilme hattı ise anlamlı bir hat oluşturmak için en az iki kare ister.
+  const minimum = plan === PLAN.ARROW ? 1 : 2;
+  if (points.length < minimum) return null;
 
   const front = {
     id: system.nextId++,
@@ -130,6 +133,31 @@ export function removeArmy(world, army) {
   for (const front of ensureFronts(world).fronts) {
     front.armies = front.armies.filter((id) => id !== army.id);
   }
+}
+
+/**
+ * General değiştirilen ya da komutadan çıkarılan tümenleri eski planlarından
+ * düşürür. Böylece cephe, artık başka bir ordu grubuna bağlı tümenleri gizlice
+ * yürütmeye devam etmez.
+ */
+export function reconcileFronts(world) {
+  const system = ensureFronts(world);
+  for (const front of system.fronts) {
+    const nation = world.nations[front.nationId];
+    const general = front.generalId == null
+      ? null
+      : generalsOf(nation).find((item) => item.id === front.generalId);
+    const commanded = front.generalId == null
+      ? null
+      : new Set(general?.divisions ?? []);
+    front.armies = front.armies.filter((id) => {
+      const army = world.units.find(
+        (unit) => unit.id === id && unit.nationId === front.nationId && unit.hp > 0,
+      );
+      return Boolean(army) && (!commanded || commanded.has(id));
+    });
+  }
+  return system.fronts;
 }
 
 export function setPlan(game, front, plan) {
@@ -272,7 +300,8 @@ function advanceArrow(game, front, reach = 2) {
   // Uç kare hedefe bir adım yaklaşır; komşuları onu izler ki hat kopmasın.
   const lead = tiles[leadIndex];
   const step = world.neighbors(lead)
-    .filter((near) => near.terrain.passable)
+    .filter((near) => near.terrain.passable
+      && hexDistance(near.q, near.r, target.q, target.r) < bestDistance)
     .sort((a, b) => hexDistance(a.q, a.r, target.q, target.r)
       - hexDistance(b.q, b.r, target.q, target.r))[0];
   if (!step) return false;
@@ -296,6 +325,7 @@ function advanceArrow(game, front, reach = 2) {
 export function runFronts(game) {
   const world = game.world;
   const system = ensureFronts(world);
+  reconcileFronts(world);
 
   for (const front of [...system.fronts]) {
     const nation = world.nations[front.nationId];

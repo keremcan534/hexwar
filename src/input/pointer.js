@@ -154,7 +154,6 @@ export class PointerController {
       // Masaüstünde sol basış kutu seçiminin başlangıcıdır; eşiği geçmezse tıklama sayılır.
       e.preventDefault();
       this.beginMarquee(e.pointerId, this.localPos(e));
-      this.marquee.startTime = performance.now();
       return;
     }
 

@@ -67,7 +67,11 @@ export function serialize(game) {
       const out = {
         id: n.id, techs: (n.techs ?? []).slice(), economy: n.economy,
         rallyPoint: n.rallyPoint ?? null,
-        generals: (n.generals ?? []).map((g) => ({ ...g, traits: [...g.traits] })),
+        generals: (n.generals ?? []).map((g) => ({
+          ...g,
+          traits: [...g.traits],
+          divisions: [...(g.divisions ?? [])],
+        })),
       };
       for (const f of NATION_FIELDS) out[f] = n[f];
       return out;
@@ -88,6 +92,7 @@ export function serialize(game) {
       manualWorkers: c.manualWorkers,
     })),
     units: world.units.map((u) => ({
+      id: u.id,
       type: u.type.id,
       nationId: u.nationId,
       q: u.tile.q,
@@ -182,6 +187,7 @@ export function deserialize(game, data) {
 
   // 7) Birimler
   const pendingOrders = [];
+  const unitIds = new Map();
   for (const saved of data.units) {
     const tile = world.get(saved.q, saved.r);
     if (!tile) continue;
@@ -200,6 +206,7 @@ export function deserialize(game, data) {
     unit.morale = saved.morale ?? unit.morale;
     unit.retreatUntil = saved.retreatUntil ?? 0;
     world.units.push(unit);
+    if (saved.id != null) unitIds.set(saved.id, unit.id);
     if (saved.order) pendingOrders.push([unit, saved.order]);
   }
   // Emirler birimler yerleştikten sonra: hedef karesi çözülebilsin.
@@ -222,9 +229,28 @@ export function deserialize(game, data) {
   if (data.generalSystem) world.generalSystem = data.generalSystem;
   ensureFronts(world);
   if (data.frontSystem) world.frontSystem = data.frontSystem;
+  // createUnit kimlikleri süreç boyunca artar. Kayıttaki general ve cephe
+  // bağlantılarını yeni kimliklere taşımazsak yüklenen bütün komuta zinciri
+  // sessizce kopar. Eski v5 kayıtlarında id yoksa geçersiz bağlantılar güvenle
+  // boşaltılır; oyun ve kayıt yine açılır.
+  for (const nation of world.nations) {
+    for (const general of nation.generals ?? []) {
+      general.divisions = (general.divisions ?? [])
+        .map((id) => unitIds.get(id))
+        .filter((id) => id != null);
+    }
+  }
+  for (const front of world.frontSystem?.fronts ?? []) {
+    front.armies = (front.armies ?? [])
+      .map((id) => unitIds.get(id))
+      .filter((id) => id != null);
+  }
   game.setSpeed(0);
 
   game.selected = null;
+  game.activeGeneral = null;
+  game.selectedFront = null;
+  game.drawMode = null;
   game.selectUnit(null);
   game.recomputeEconomy();
   game.renderer.invalidateCache();

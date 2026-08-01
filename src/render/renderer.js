@@ -1,7 +1,7 @@
 // Canvas2D hex çizimi. Görünmeyen hexler kırpılır, aynı renkler tek path'te toplanır,
 // uzaklaşınca tüm dünya önceden pişirilmiş tek dokudan basılır.
 
-import { HEX_CORNERS, SQRT3, DIRS } from '../core/hex.js';
+import { HEX_CORNERS, SQRT3, DIRS, hexDistance } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { drawFlag } from './flagPainter.js';
 import { maxHpOf, moraleOf, regimentCount, soldiersOf } from '../game/units.js';
@@ -425,8 +425,9 @@ export class Renderer {
       const tiles = front.tiles
         .map((point) => world.get(point.q, point.r))
         .filter(Boolean);
-      if (tiles.length < 2) continue;
-      const attack = front.plan === 'advance';
+      if (!tiles.length || (front.plan !== 'arrow' && tiles.length < 2)) continue;
+      const attack = front.plan === 'advance' || front.plan === 'arrow';
+      const arrow = front.plan === 'arrow';
       const selected = state.selectedFront?.id === front.id;
 
       ctx.beginPath();
@@ -435,10 +436,42 @@ export class Renderer {
       ctx.lineWidth = (selected ? 6 : 4) / zoom;
       ctx.lineCap = 'round';
       ctx.lineJoin = 'round';
-      ctx.strokeStyle = attack ? 'rgba(214, 96, 84, 0.92)' : 'rgba(101, 169, 207, 0.92)';
+      ctx.strokeStyle = arrow ? 'rgba(232, 153, 70, 0.96)'
+        : attack ? 'rgba(214, 96, 84, 0.92)' : 'rgba(101, 169, 207, 0.92)';
       ctx.setLineDash(front.active ? [] : [9 / zoom, 6 / zoom]);
       ctx.stroke();
       ctx.setLineDash([]);
+
+      // Taarruz okunun yönü ve gerçek hedefi ayrı çizilir. Hedef, front.tiles
+      // içinde değildir; tur ilerledikçe okun gövdesi hedefe yaklaşır.
+      if (arrow && front.target) {
+        const target = world.get(front.target.q, front.target.r);
+        if (target) {
+          const lead = tiles.reduce((best, tile) => (
+            hexDistance(tile.q, tile.r, target.q, target.r)
+              < hexDistance(best.q, best.r, target.q, target.r) ? tile : best
+          ), tiles[0]);
+          const angle = Math.atan2(target.y - lead.y, target.x - lead.x);
+          const head = 12 / zoom;
+          ctx.beginPath();
+          ctx.moveTo(lead.x, lead.y);
+          ctx.lineTo(target.x, target.y);
+          ctx.lineTo(
+            target.x - Math.cos(angle - Math.PI / 6) * head,
+            target.y - Math.sin(angle - Math.PI / 6) * head,
+          );
+          ctx.moveTo(target.x, target.y);
+          ctx.lineTo(
+            target.x - Math.cos(angle + Math.PI / 6) * head,
+            target.y - Math.sin(angle + Math.PI / 6) * head,
+          );
+          ctx.lineWidth = (selected ? 6 : 4) / zoom;
+          ctx.strokeStyle = 'rgba(232, 153, 70, 0.96)';
+          ctx.setLineDash(front.active ? [] : [9 / zoom, 6 / zoom]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
 
       // Hazırlık göstergesi: hattın her ucunda planlama oranı kadar dolu nokta.
       const ready = Math.max(0, Math.min(1, front.planning ?? 0));
@@ -459,7 +492,11 @@ export class Renderer {
       for (const tile of draw.tiles.slice(1)) ctx.lineTo(tile.x, tile.y);
       ctx.lineWidth = 5 / zoom;
       ctx.lineCap = 'round';
-      ctx.strokeStyle = 'rgba(229, 202, 132, 0.95)';
+      ctx.strokeStyle = state.drawMode === 'arrow'
+        ? 'rgba(232, 153, 70, 0.96)'
+        : state.drawMode === 'fallback'
+          ? 'rgba(101, 169, 207, 0.92)'
+          : 'rgba(229, 202, 132, 0.95)';
       ctx.stroke();
       ctx.lineCap = 'butt';
     }
