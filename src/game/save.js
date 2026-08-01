@@ -5,11 +5,16 @@
 // şeyler saklanır. Bu, kaydı küçük tutar ama bir bedeli var: worldgen
 // değişirse eski kayıtlar geçersizleşir, o yüzden SAVE_VERSION var.
 
-import { UNIT_TYPES, createUnit } from './units.js';
+import { createUnit, refreshArmy, resolveTypeId } from './units.js';
 import { createCity, englishCityName } from './cities.js';
+import { ensureEconomy } from './economy.js';
+import { ensureGenerals } from './generals.js';
+import { ensureFronts } from './fronts.js';
+import { ensureBattles } from './battles.js';
+import { ensureProvinces } from './provinces.js';
 
 // Teknoloji ve birim can tavanı eklendiği için biçim yükseldi.
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 5;
 const STORAGE_KEY = 'hexwar.save';
 
 /** Ulusun tur içinde değişen alanları. */
@@ -27,8 +32,13 @@ export function serialize(game) {
       && !tile.heldSince
       && tile.culture === tile.baseCulture
       && !(tile.roadLevel > 0)
+      && !tile.structure
     ) return;
-    tiles.push([index, tile.owner, tile.culture, tile.heldSince ?? 0, tile.roadLevel ?? 0]);
+    tiles.push([
+      index, tile.owner, tile.culture, tile.heldSince ?? 0, tile.roadLevel ?? 0,
+      tile.province ? { ...tile.province } : null,
+      tile.structure ? { ...tile.structure } : null,
+    ]);
   });
 
   return {
@@ -39,9 +49,26 @@ export function serialize(game) {
     turn: turns.turn,
     playerNation: turns.playerNation,
     log: turns.log.slice(0, 20),
+    market: world.market,
+    battleSystem: {
+      nextId: world.battleSystem?.nextId ?? 1,
+      // Aktif muharebeler yüklemede iptal edilir; ordu kimlikleri yeniden üretilir.
+      battles: [],
+    },
+    generalSystem: { nextId: world.generalSystem?.nextId ?? 1 },
+    frontSystem: {
+      nextId: world.frontSystem?.nextId ?? 1,
+      fronts: (world.frontSystem?.fronts ?? []).map((front) => ({
+        ...front, tiles: front.tiles.map((t) => ({ ...t })), armies: [...front.armies],
+      })),
+    },
     tiles,
     nations: world.nations.map((n) => {
-      const out = { id: n.id, techs: (n.techs ?? []).slice() };
+      const out = {
+        id: n.id, techs: (n.techs ?? []).slice(), economy: n.economy,
+        rallyPoint: n.rallyPoint ?? null,
+        generals: (n.generals ?? []).map((g) => ({ ...g, traits: [...g.traits] })),
+      };
       for (const f of NATION_FIELDS) out[f] = n[f];
       return out;
     }),
@@ -67,11 +94,15 @@ export function serialize(game) {
       r: u.tile.r,
       hp: u.hp,
       maxHp: u.maxHp,
-      movesLeft: u.movesLeft,
+      path: u.path?.map((tile) => ({ q: tile.q, r: tile.r })) ?? null,
+      progress: u.progress ?? 0,
       embarked: u.embarked,
       order: u.order
         ? { type: u.order.type, tq: u.order.target?.q, tr: u.order.target?.r }
         : null,
+      regiments: u.regiments?.map((regiment) => ({ ...regiment })) ?? null,
+      morale: u.morale,
+      retreatUntil: u.retreatUntil ?? 0,
     })),
   };
 }
@@ -97,16 +128,21 @@ export function deserialize(game, data) {
     t.workedBy = null;
     t.owner = -1;
     t.roadLevel = 0;
+    t.structure = null;
   });
 
   // 3) Kareler
-  for (const [index, owner, culture, heldSince, roadLevel = 0] of data.tiles) {
+  for (const [
+    index, owner, culture, heldSince, roadLevel = 0, province = null, structure = null,
+  ] of data.tiles) {
     const tile = world.tiles[index];
     if (!tile) continue;
     tile.owner = owner;
     tile.culture = culture;
     tile.heldSince = heldSince;
     tile.roadLevel = roadLevel;
+    if (province) tile.province = { ...province };
+    if (structure) tile.structure = { ...structure };
   }
 
   // 4) Uluslar
@@ -115,6 +151,9 @@ export function deserialize(game, data) {
     if (!nation) continue;
     for (const f of NATION_FIELDS) nation[f] = saved[f];
     nation.techs = (saved.techs ?? []).slice();
+    nation.economy = saved.economy ?? nation.economy;
+    nation.rallyPoint = saved.rallyPoint ?? null;
+    nation.generals = (saved.generals ?? []).map((g) => ({ ...g, traits: [...(g.traits ?? [])] }));
   }
 
   // 5) İlişkiler — simetrik nesne paylaşımı korunmalı.
@@ -145,12 +184,21 @@ export function deserialize(game, data) {
   const pendingOrders = [];
   for (const saved of data.units) {
     const tile = world.get(saved.q, saved.r);
-    if (!tile || !UNIT_TYPES[saved.type]) continue;
-    const unit = createUnit(saved.type, saved.nationId, tile, world.nations[saved.nationId]);
+    if (!tile) continue;
+    // Kaldirilan birim tipleri (örn. Scout) yeni karşılıklarına çevrilir.
+    const unit = createUnit(resolveTypeId(saved.type), saved.nationId, tile, world.nations[saved.nationId]);
     if (saved.maxHp) unit.maxHp = saved.maxHp;
     unit.hp = saved.hp;
-    unit.movesLeft = saved.movesLeft;
+    unit.path = saved.path?.map((step) => world.get(step.q, step.r)).filter(Boolean) ?? null;
+    if (!unit.path?.length) unit.path = null;
+    unit.progress = saved.progress ?? 0;
     unit.embarked = saved.embarked;
+    if (saved.regiments?.length) {
+      unit.regiments = saved.regiments.map((regiment) => ({ ...regiment }));
+      refreshArmy(unit);
+    }
+    unit.morale = saved.morale ?? unit.morale;
+    unit.retreatUntil = saved.retreatUntil ?? 0;
     world.units.push(unit);
     if (saved.order) pendingOrders.push([unit, saved.order]);
   }
@@ -165,6 +213,16 @@ export function deserialize(game, data) {
   world.turn = data.turn;
   turns.playerNation = data.playerNation;
   turns.log = data.log ?? [];
+  ensureEconomy(world);
+  ensureProvinces(world);
+  if (data.market) world.market = data.market;
+  ensureBattles(world);
+  if (data.battleSystem) world.battleSystem = data.battleSystem;
+  ensureGenerals(world);
+  if (data.generalSystem) world.generalSystem = data.generalSystem;
+  ensureFronts(world);
+  if (data.frontSystem) world.frontSystem = data.frontSystem;
+  game.setSpeed(0);
 
   game.selected = null;
   game.selectUnit(null);

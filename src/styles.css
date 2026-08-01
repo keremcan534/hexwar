@@ -10,6 +10,13 @@
   --accent: #4da3ff;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
+  /* Sağ üstteki saat penceresinin kapladığı genişlik; üst çubuk bu kadar
+     boşluk bırakır ki kaynak şeridi saatin altına kaymasın. Saatin gerçek
+     genişliğinden dar olursa üst çubuk öğeleri saatin altına giriyor. */
+  --clock-width: 306px;
+  /* Sol alttaki province penceresinin genişliği; harita kipleri ve alt
+     paneller bu ölçüye göre yerleşir. */
+  --sheet-width: 360px;
 }
 
 * { box-sizing: border-box; }
@@ -46,7 +53,8 @@ html, body {
   display: flex;
   align-items: stretch;
   gap: 8px;
-  padding: calc(var(--safe-top) + 6px) 8px 6px;
+  /* Sağdaki boşluk saat penceresine ayrılmıştır (bkz. .turn-control). */
+  padding: calc(var(--safe-top) + 6px) var(--clock-width) 6px 8px;
   background: linear-gradient(180deg, rgba(6, 12, 20, 0.94) 60%, rgba(6, 12, 20, 0));
   pointer-events: none;
   flex-wrap: wrap;
@@ -97,10 +105,13 @@ html, body {
   .nation-badge { padding: 5px 7px; gap: 6px; }
 }
 
+/* Saat sağ üstte (Vic2/HOI4 düzeni). Üst çubuğun üstünde durur, bu yüzden
+   .topbar sağdan --clock-width kadar boşluk bırakır. z-index üst çubuğunkinden
+   (12) büyük olmalı, yoksa çubuğun arka planı saati örtüyor. */
 .turn-control {
   position: fixed;
-  left: 10px;
-  bottom: calc(45% + 10px);
+  top: calc(var(--safe-top) + 6px);
+  right: 10px;
   display: flex;
   align-items: center;
   gap: 6px;
@@ -109,7 +120,7 @@ html, body {
   background: rgba(14, 26, 42, 0.9);
   border: 1px solid var(--line);
   backdrop-filter: blur(8px);
-  z-index: 5;
+  z-index: 13;
 }
 .turn-badge {
   font-size: 9px;
@@ -419,15 +430,16 @@ html, body {
   .card { padding: 9px 10px; }
 }
 
-/* --- Harita modları: sağ alt köşe --- */
+/* --- Harita modları: sağ alt köşe, Vic2'deki gibi yan yana ---
+   Dar ekranda province penceresiyle yan yana sığmadıkları için onun üstüne
+   çıkarlar; sabit ofset kullanılıyor ki panel kısalınca boşluk kalsa da
+   örtüşme hiç oluşmasın. Geniş ekranda (760px+) ikisi yan yana durur. */
 .map-modes {
   position: fixed;
   right: 10px;
-  /* Alt panelin azami yüksekliğinin (%45) üstünde durur: örtüşme deterministik
-     olarak engellenir, panel kısaldığında düğmeler biraz yüksekte kalır. */
-  bottom: calc(45% + 10px);
+  bottom: calc(min(52vh, 520px) + var(--safe-bottom) + 18px);
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
   gap: 6px;
   z-index: 5;
 }
@@ -476,9 +488,10 @@ html, body {
 .icon-btn:active { background: rgba(255, 255, 255, 0.18); }
 
 /* --- Katman menüsü --- */
+/* Katman menüsü harita kiplerinin hemen üstünde açılır: düğmesi orada. */
 .layer-menu {
   position: fixed;
-  top: calc(var(--safe-top) + 56px);
+  bottom: calc(min(52vh, 520px) + var(--safe-bottom) + 74px);
   right: 10px;
   background: var(--panel);
   border: 1px solid var(--line);
@@ -551,18 +564,20 @@ html, body {
 .hint { margin: 10px 0 0; font-size: 11px; color: var(--muted); text-align: center; }
 
 /* --- Alt bilgi paneli --- */
+/* Vic2 düzeni: province penceresi sol altta kutu hâlinde durur, haritanın
+   tamamını kaplamaz. Genişliği --sheet-width, dar ekranda ekrana sığar. */
 .sheet {
   position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  left: 8px;
+  bottom: calc(var(--safe-bottom) + 8px);
+  width: min(var(--sheet-width), calc(100vw - 16px));
   background: var(--panel);
-  border-top: 1px solid var(--line);
-  border-radius: 18px 18px 0 0;
-  padding: 6px 16px calc(var(--safe-bottom) + 14px);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 6px 14px 12px;
   backdrop-filter: blur(12px);
   z-index: 4;
-  max-height: 45%;
+  max-height: min(52vh, 520px);
   overflow-y: auto;
 }
 .sheet-grip {
@@ -733,11 +748,26 @@ html, body {
 
 .hidden { display: none !important; }
 
+/* Orta genişlik (tablet): panel ve kipler alt sırayı paylaşabilsin diye panel
+   daralır. Böylece kipler telefondaki gibi yukarı kaçmak yerine sağ altta kalır. */
+@media (min-width: 561px) and (max-width: 759px) {
+  .sheet { width: min(var(--sheet-width), calc(100vw - 248px)); }
+  .map-modes { bottom: calc(var(--safe-bottom) + 10px); }
+  .layer-menu { bottom: calc(var(--safe-bottom) + 66px); }
+}
+
 @media (min-width: 760px) {
-  .sheet { left: auto; right: 12px; bottom: 12px; width: 320px; border-radius: 18px; border: 1px solid var(--line); }
-  /* Masaüstünde panel sağ altta bir kart; modlar onun soluna geçer. */
-  .map-modes { right: 348px; bottom: 12px; flex-direction: row; }
-  .turn-control { bottom: 12px; }
+  /* Vic2 düzeni: province penceresi sol altta, harita kipleri sağ altta,
+     saat sağ üstte. Panel artık haritanın sağını kapatmıyor. */
+  .sheet {
+    left: 12px;
+    right: auto;
+    bottom: 12px;
+    width: var(--sheet-width);
+    border-radius: 3px;
+  }
+  .map-modes { right: 12px; bottom: 12px; flex-direction: row; }
+  .layer-menu { right: 12px; bottom: 70px; }
 }
 
 /* --- Komuta arayüzü: daha ağır, katmanlı grand-strategy görsel dili --- */
@@ -811,7 +841,8 @@ button:not([disabled]):active {
 .topbar {
   z-index: 12;
   gap: 6px;
-  padding: calc(var(--safe-top) + 7px) 9px 8px;
+  /* Sağdaki boşluk saat penceresine ayrılmıştır (bkz. .turn-control). */
+  padding: calc(var(--safe-top) + 7px) var(--clock-width) 8px 9px;
   align-items: stretch;
   flex-wrap: nowrap;
   background:
@@ -992,6 +1023,7 @@ button:not([disabled]):active {
 .screen {
   top: calc(var(--safe-top) + 121px);
   width: min(478px, 88vw);
+  z-index: 9;
   border-radius: 0;
   border-top-color: rgba(197, 164, 93, 0.32);
   border-right-color: rgba(197, 164, 93, 0.38);
@@ -1350,12 +1382,18 @@ button:not([disabled]):active {
   letter-spacing: 0.55px;
 }
 
-.turn-control,
 .sheet,
 .map-modes,
 .layer-menu,
 .panel {
   z-index: 8;
+}
+
+/* Saat üst çubuğun (z:12) üstünde kalmalı: çubuk opak bir arka plan çiziyor ve
+   daha düşük bir katmandaki saati tamamen örtüyor. Fare testi bunu yakalamaz,
+   çünkü .topbar pointer-events:none — sorun yalnızca boyamada. */
+.turn-control {
+  z-index: 13;
 }
 
 .turn-control {
@@ -1409,12 +1447,12 @@ button:not([disabled]):active {
 }
 
 .sheet {
-  border-radius: 4px 4px 0 0;
-  border-top-color: rgba(197, 164, 93, 0.36);
+  border-radius: 3px;
+  border-color: rgba(197, 164, 93, 0.36);
   background:
     linear-gradient(135deg, rgba(197, 164, 93, 0.06), transparent 40%),
     rgba(7, 16, 25, 0.965);
-  box-shadow: 0 -18px 42px rgba(0, 0, 0, 0.38), var(--bevel);
+  box-shadow: var(--shadow-heavy), var(--bevel);
 }
 
 .sheet-grip {
@@ -1500,10 +1538,250 @@ button:not([disabled]):active {
   }
 }
 
+/* --- Gerçek zaman, makro ekonomi ve sanayi katmanı --- */
+.macro-strip {
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  min-width: 0;
+  height: 42px;
+  border-left: 1px solid rgba(126, 171, 194, 0.16);
+  border-right: 1px solid rgba(126, 171, 194, 0.16);
+}
+
+.macro-strip span {
+  display: grid;
+  align-content: center;
+  min-width: 74px;
+  padding: 3px 10px;
+  background: linear-gradient(180deg, rgba(18, 38, 51, 0.82), rgba(8, 21, 30, 0.82));
+}
+
+.macro-strip small {
+  color: #7e9cad;
+  font: 700 8px/1.1 system-ui, sans-serif;
+  letter-spacing: 1.3px;
+}
+
+.macro-strip b {
+  color: #dceaf0;
+  font: 700 12px/1.3 system-ui, sans-serif;
+}
+
+.turn-control {
+  gap: 3px;
+  padding: 5px;
+  background: linear-gradient(180deg, rgba(10, 27, 38, 0.96), rgba(5, 15, 23, 0.98));
+  border: 1px solid rgba(100, 151, 177, 0.28);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.36);
+}
+
+.turn-badge {
+  min-width: 105px;
+  padding: 0 10px;
+  color: #c8d9e1;
+  letter-spacing: 0.5px;
+}
+
+.time-btn {
+  min-width: 34px;
+  height: 30px;
+  border: 1px solid rgba(106, 149, 171, 0.28);
+  border-radius: 2px;
+  color: #8da7b5;
+  background: #0b202c;
+  font: 700 10px/1 system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.time-btn:hover { color: #d5e8ef; border-color: rgba(117, 181, 211, 0.55); }
+.time-btn.active {
+  color: #effbff;
+  border-color: #4d9abb;
+  background: linear-gradient(180deg, #1d617c, #153e52);
+  box-shadow: inset 0 0 0 1px rgba(152, 218, 240, 0.15), 0 0 12px rgba(43, 147, 190, 0.2);
+}
+
+.tab-bar {
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.tab-bar::-webkit-scrollbar { display: none; }
+.tab-bar button { flex: 0 0 auto; min-width: 92px; }
+
+.factory-kpis,
+.fiscal-hero,
+.market-hero,
+.front-numbers {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  margin: 10px 0;
+  background: rgba(103, 151, 172, 0.13);
+  border: 1px solid rgba(105, 153, 174, 0.16);
+}
+
+.factory-kpis span,
+.fiscal-hero > div,
+.market-hero > div,
+.front-numbers span {
+  display: grid;
+  gap: 3px;
+  padding: 10px 12px;
+  background: rgba(7, 20, 29, 0.88);
+}
+
+.factory-kpis small,
+.fiscal-hero small,
+.market-hero small,
+.front-numbers small {
+  color: #718e9d;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+
+.factory-kpis b,
+.fiscal-hero b,
+.market-hero b,
+.front-numbers b { color: #d8e7ed; font-size: 13px; }
+
+.factory-card { border-left: 3px solid #4a8aa6; }
+.factory-card.profitable { border-left-color: #4b9b73; }
+.factory-card.unprofitable { border-left-color: #a85252; }
+
+.factory-chain {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 9px;
+  margin: 9px 0;
+  color: #8fa8b5;
+  font-size: 11px;
+}
+
+.factory-chain span:last-child { text-align: right; color: #b7cfbe; }
+.factory-chain strong { color: #4d91ad; }
+
+.meter,
+.front-track {
+  position: relative;
+  height: 6px;
+  margin: 10px 0 13px;
+  overflow: hidden;
+  background: #07141d;
+  border: 1px solid rgba(103, 153, 176, 0.2);
+}
+
+.meter i {
+  display: block;
+  height: 100%;
+  background: linear-gradient(90deg, #286d88, #5cacbe);
+}
+
+.class-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 9px;
+  margin-bottom: 10px;
+}
+
+.class-card {
+  padding: 13px;
+  background: linear-gradient(160deg, color-mix(in srgb, var(--class-color) 8%, #0a1b25), #07141d);
+  border: 1px solid color-mix(in srgb, var(--class-color) 32%, transparent);
+  border-top: 3px solid var(--class-color);
+}
+
+.policy-card { display: grid; gap: 16px; }
+.policy-slider { display: grid; gap: 8px; }
+.policy-slider > span {
+  display: flex;
+  justify-content: space-between;
+  color: #9bb1bd;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+.policy-slider > span b { color: #e1edf1; }
+.policy-slider input { width: 100%; accent-color: #4f9dba; }
+.policy-slider > small { color: #667e8b; font-size: 10px; }
+
+.market-table td:first-child { min-width: 150px; }
+.good-name { display: block; color: #d7e5ea; font-weight: 650; }
+.market-table td > small { color: #607987; font-size: 8px; text-transform: uppercase; }
+
+.front-card { border-left: 3px solid #a6534e; }
+.front-numbers { grid-template-columns: 1fr 42px 1fr; }
+.front-numbers strong {
+  display: grid;
+  place-items: center;
+  background: #111f27;
+  color: #bd6a61;
+  font-size: 10px;
+}
+.front-numbers span:last-child { text-align: right; }
+.front-track {
+  height: 12px;
+  overflow: visible;
+  background: linear-gradient(90deg, #356f91 0 50%, #8a4343 50% 100%);
+}
+.front-track::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.5);
+}
+.front-track i {
+  position: absolute;
+  top: -5px;
+  width: 3px;
+  height: 20px;
+  background: #f1e2bd;
+  box-shadow: 0 0 8px rgba(255, 222, 151, 0.8);
+  transform: translateX(-50%);
+}
+
+@media (max-width: 820px) {
+  .macro-strip span { min-width: 61px; padding: 3px 7px; }
+  .macro-strip small { font-size: 7px; }
+  .macro-strip b { font-size: 10px; }
+  .class-grid { grid-template-columns: 1fr; }
+  /* Saat daralır ki üst çubuktaki kaynak ve makro şeritleri ezilmesin. */
+  :root { --clock-width: 252px; }
+  .turn-control { gap: 2px; padding: 4px 5px; }
+  .turn-badge { min-width: 74px; padding: 0 5px; }
+  .turn-badge b { font-size: 15px; }
+  .time-btn { min-width: 26px; height: 27px; }
+}
+
+@media (max-width: 560px) {
+  .macro-strip { position: absolute; top: 48px; left: 5px; height: 34px; }
+  .topbar { overflow: visible; }
+  /* Dar ekranda saat iyice küçülür, province penceresi tam genişliğe yayılır. */
+  :root { --clock-width: 158px; }
+  .turn-badge { min-width: 52px; padding: 0 3px; }
+  .turn-badge b { font-size: 13px; }
+  .time-btn { min-width: 22px; height: 25px; }
+  .sheet { width: calc(100vw - 16px); max-height: 46vh; }
+  .map-modes { bottom: calc(46vh + var(--safe-bottom) + 16px); }
+  .layer-menu { bottom: calc(46vh + var(--safe-bottom) + 66px); }
+  .factory-kpis,
+  .fiscal-hero,
+  .market-hero { grid-template-columns: 1fr; }
+  .market-card { overflow-x: auto; }
+  .screen-open .turn-control { display: none; }
+}
+
 @media (max-width: 620px) {
   .topbar {
     gap: 4px;
-    padding-inline: 5px;
+    /* Sağdaki boşluk saatin altına kaymamak için korunur. */
+    padding-inline: 5px var(--clock-width);
   }
 
   .nation-badge {
@@ -1525,6 +1803,32 @@ button:not([disabled]):active {
     min-height: 32px;
     padding: 0 7px;
   }
+
+  /* Telefon genişliği: saat üst çubuğa ancak iyice sıkışınca sığıyor.
+     Tarih kısalır, hız düğmeleri daralır; ülke künyesi de yer açar. */
+  :root { --clock-width: 188px; }
+
+  .turn-control {
+    gap: 1px;
+    padding: 3px 4px;
+    right: 5px;
+  }
+
+  .turn-badge {
+    min-width: 0;
+    padding: 0 3px;
+  }
+
+  .turn-badge b { font-size: 11px; letter-spacing: 0; }
+
+  .time-btn {
+    min-width: 19px;
+    height: 24px;
+    font-size: 8px;
+  }
+
+  .nation-badge { max-width: 130px; }
+  .nation-text b { font-size: 12px; }
 
   .tab-bar {
     left: 5px;
@@ -1596,4 +1900,410 @@ button:not([disabled]):active {
     animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important;
   }
+}
+
+/* Province kararları ve okunabilir ana döngü */
+.decision-card {
+  padding: 14px;
+  border: 1px solid rgba(104, 166, 190, 0.3);
+  border-left: 4px solid #4f9db8;
+  background: linear-gradient(145deg, rgba(11, 34, 46, 0.96), rgba(5, 16, 24, 0.96));
+}
+
+.decision-card > small,
+.province-head small {
+  color: #65a8c0;
+  font-size: 8px;
+  letter-spacing: 1.4px;
+}
+
+.decision-card h3,
+.province-head h3 {
+  margin: 5px 0;
+  color: #e4eef1;
+  font-size: 14px;
+}
+
+.decision-card p,
+.province-card p {
+  margin: 7px 0 11px;
+  color: #7f98a5;
+  font-size: 10px;
+  line-height: 1.45;
+}
+
+.decision-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1px;
+  background: rgba(99, 151, 171, 0.16);
+}
+
+.decision-kpis span {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  background: #091821;
+}
+
+.decision-kpis b { color: #dce9ed; font-size: 12px; }
+.decision-kpis small {
+  color: #637e8c;
+  font-size: 7px;
+  text-transform: uppercase;
+}
+
+.province-card {
+  margin-bottom: 10px;
+  padding: 11px;
+  border: 1px solid rgba(111, 161, 181, 0.24);
+  background: rgba(6, 20, 29, 0.94);
+}
+
+.province-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.province-head > b {
+  color: #d2b66a;
+  font-size: 9px;
+  white-space: nowrap;
+}
+
+.province-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.province-action {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 6px;
+  align-items: center;
+  min-height: 54px;
+  padding: 7px;
+  color: #d9e7eb;
+  text-align: left;
+  border: 1px solid rgba(101, 158, 179, 0.28);
+  background: #0b202b;
+  cursor: pointer;
+}
+
+.province-action:hover:not(:disabled) {
+  border-color: #5fa5bd;
+  background: #10303e;
+}
+
+.province-action:disabled { opacity: 0.38; cursor: not-allowed; }
+.province-action > span { grid-row: 1 / span 2; font-size: 17px; }
+.province-action b { font-size: 9px; }
+.province-action small { color: #708b98; font-size: 7px; line-height: 1.25; }
+.army-composition { margin-top: 3px; color: #78929f; font-size: 8px; }
+.order-help { color: #78929f; font-size: 9px; line-height: 1.35; }
+.doctrine-card { border-left: 3px solid #9b7042; }
+
+@media (max-width: 560px) {
+  .province-actions { grid-template-columns: 1fr; }
+  .province-action { min-height: 46px; }
+}
+
+/* --- Komutan kadrosu (HOI4 tarzı general seçme) --- */
+.general-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 6px;
+  margin: 8px 0;
+}
+
+.general-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px 9px;
+  text-align: left;
+  cursor: pointer;
+  color: var(--text);
+  border: 1px solid rgba(139, 162, 178, 0.2);
+  border-radius: 2px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent),
+    #0b1723;
+}
+
+.general-card b { font-size: 12px; }
+.general-card small { color: var(--muted); font-size: 10px; }
+
+.general-card.active {
+  border-color: var(--accent);
+  background:
+    linear-gradient(180deg, rgba(197, 164, 93, 0.18), rgba(197, 164, 93, 0.05)),
+    #0b1723;
+}
+
+.general-skill { color: var(--accent-bright); font-size: 12px; letter-spacing: 1px; }
+
+.general-traits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--accent-cold);
+}
+
+.general-traits em { font-style: normal; }
+
+/* --- Seçili tümen listesi: solda, province penceresinin üstünde --- */
+.divisions {
+  position: fixed;
+  left: 12px;
+  bottom: calc(min(52vh, 520px) + var(--safe-bottom) + 20px);
+  width: min(var(--sheet-width), calc(100vw - 24px));
+  /* Yükseklik kalan boşluğa göre: üstte sekme çubuğu, altta province penceresi
+     var. Sabit bir oran verilirse dar ekranlarda ikisinden birine giriyor. */
+  max-height: calc(
+    100vh - var(--safe-top) - 132px - min(52vh, 520px) - var(--safe-bottom) - 28px
+  );
+  display: flex;
+  flex-direction: column;
+  z-index: 8;
+  border: 1px solid rgba(197, 164, 93, 0.34);
+  border-radius: 3px;
+  background:
+    linear-gradient(135deg, rgba(197, 164, 93, 0.06), transparent 40%),
+    rgba(7, 16, 25, 0.965);
+  box-shadow: var(--shadow-heavy), var(--bevel);
+}
+
+.divisions.hidden { display: none; }
+
+.divisions-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px 6px 10px;
+  border-bottom: 1px solid rgba(197, 164, 93, 0.22);
+  color: var(--accent);
+  font: 700 10px/1 system-ui, sans-serif;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+}
+
+.divisions-body {
+  overflow-y: auto;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.division-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 7px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.division-row:hover { border-color: rgba(197, 164, 93, 0.4); }
+
+.division-row .unit-badge {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 auto;
+  font-size: 11px;
+}
+
+.division-row .division-text { flex: 1; min-width: 0; }
+.division-row b { display: block; font-size: 11px; }
+.division-row small { color: var(--muted); font-size: 10px; }
+
+/* --- Komuta paneli: ekranın orta altında, her zaman görünür ---
+   Üstte plan araçları (cephe / geri çekilme / taarruz oku / duruş 1-2-3),
+   altta general portreleri. Sol alt province penceresinin, sağ alt harita
+   kiplerinin; bu yüzden panel ortada durur. */
+.command-dock {
+  position: fixed;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--safe-bottom) + 10px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  z-index: 9;
+  max-width: calc(100vw - var(--sheet-width) - 260px);
+  pointer-events: none;
+}
+
+.command-dock > * { pointer-events: auto; }
+
+.command-tools {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  border: 1px solid rgba(197, 164, 93, 0.3);
+  border-radius: 3px;
+  background: rgba(6, 15, 24, 0.96);
+  box-shadow: var(--shadow-heavy), var(--bevel);
+}
+
+.command-tools.hidden { display: none; }
+
+.tool-btn {
+  padding: 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  color: var(--muted);
+  border: 1px solid rgba(139, 162, 178, 0.24);
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.045), transparent), #0b1723;
+  font: 700 10px/1.2 system-ui, sans-serif;
+  letter-spacing: 0.4px;
+}
+
+.tool-btn:hover { color: var(--text); border-color: var(--accent); }
+
+.tool-btn.active {
+  color: var(--accent-bright);
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(197, 164, 93, 0.22), rgba(197, 164, 93, 0.07)), #0b1723;
+}
+
+.tool-btn.stance { min-width: 24px; padding: 4px 0; text-align: center; }
+.tool-sep { width: 1px; height: 18px; background: rgba(197, 164, 93, 0.28); margin: 0 3px; }
+.tool-label {
+  color: var(--faint);
+  font: 700 8px/1 system-ui, sans-serif;
+  letter-spacing: 1.1px;
+  text-transform: uppercase;
+}
+
+.command-bar {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  padding: 5px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  border: 1px solid rgba(197, 164, 93, 0.3);
+  border-radius: 3px;
+  background: rgba(6, 15, 24, 0.96);
+  box-shadow: var(--shadow-heavy), var(--bevel);
+}
+
+.command-bar.hidden { display: none; }
+.command-bar::-webkit-scrollbar { display: none; }
+.command-slot { flex: 0 0 auto; }
+
+.command-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  width: 62px;
+  height: 62px;
+  cursor: pointer;
+  color: var(--muted);
+  border: 1px solid rgba(139, 162, 178, 0.24);
+  border-radius: 2px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent),
+    #0b1723;
+}
+
+.command-slot .portrait { font-size: 20px; line-height: 1; }
+.command-slot b { font-size: 9px; color: var(--text); text-align: center; line-height: 1.15; }
+.command-slot small { font-size: 8px; color: var(--accent-bright); letter-spacing: 0.5px; }
+
+.command-slot.active {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(197, 164, 93, 0.2), rgba(197, 164, 93, 0.06)), #0b1723;
+}
+
+.command-slot.empty .portrait { font-size: 26px; color: var(--accent); font-weight: 700; }
+
+.command-slot:hover {
+  border-color: var(--accent);
+  color: var(--text);
+}
+
+@media (max-width: 560px) {
+  /* Kipler province penceresinin üstünde duruyor; tümen listesi onların da
+     üstüne çıkar (46vh panel + 48px kip yüksekliği + boşluklar). */
+  .divisions {
+    bottom: calc(46vh + var(--safe-bottom) + 74px);
+    max-height: calc(100vh - var(--safe-top) - 132px - 46vh - var(--safe-bottom) - 84px);
+  }
+  .command-slot { width: 52px; height: 52px; }
+}
+
+.divisions-tools { display: flex; align-items: center; gap: 6px; }
+.divisions-tools .action { padding: 3px 8px; font-size: 10px; }
+.divisions-tools .action.active {
+  color: var(--accent-bright);
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(197, 164, 93, 0.2), rgba(197, 164, 93, 0.07)), #0b1723;
+}
+
+/* Tümen satırı: gövde odaklar, sağdaki düğme komutan atar. */
+.division-row { padding: 0; background: none; border: 0; gap: 0; }
+
+.division-main {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 5px 7px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--text);
+  border: 1px solid transparent;
+  border-radius: 2px 0 0 2px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.division-main:hover { border-color: rgba(197, 164, 93, 0.4); }
+
+.division-cmd {
+  flex: 0 0 auto;
+  width: 32px;
+  align-self: stretch;
+  cursor: pointer;
+  font-size: 14px;
+  color: var(--text);
+  border: 1px solid rgba(139, 162, 178, 0.22);
+  border-radius: 0 2px 2px 0;
+  background: #0b1723;
+}
+
+.division-cmd.empty { color: var(--accent); font-size: 18px; font-weight: 700; }
+.division-cmd:hover { border-color: var(--accent); }
+
+@media (max-width: 560px) {
+  /* Dar ekranda panel tam genişliğe yayılır ve province penceresinin üstünde
+     durur; gizlenmez, çünkü komuta arayüzü her zaman erişilebilir olmalı. */
+  .command-dock {
+    left: 8px;
+    right: 8px;
+    transform: none;
+    max-width: none;
+    align-items: stretch;
+    bottom: calc(46vh + var(--safe-bottom) + 66px);
+  }
+  .command-slot { width: 52px; height: 52px; }
+  .tool-btn { padding: 4px 6px; font-size: 9px; }
 }

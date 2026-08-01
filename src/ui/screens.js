@@ -10,25 +10,35 @@ import {
   growthCost, storageCap,
 } from '../game/cities.js';
 import {
-  BUILDINGS, buildingSlots, buildingStatus,
+  BUILDINGS, buildingPlacementTiles, buildingSlots,
 } from '../game/buildings.js';
 import {
   TECHS, canResearch, hasTech, research, researchCost,
 } from '../game/tech.js';
 import { MIN_WAR_TURNS, atWar, nationStrength, relation, truceLeft } from '../game/diplomacy.js';
-import { GOOD_PRICE, TRADE_GOODS, canTrade } from '../game/trade.js';
 import { INFAMY_COALITION } from '../game/infamy.js';
-import { UNIT_TYPES } from '../game/units.js';
+import {
+  MAX_TIER, UNIT_TYPES, armyTier, modernizeCost, moraleOf, regimentCount, soldiersOf, tierInfo,
+} from '../game/units.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { HEGEMONY_TARGET, scoreboard } from '../game/hegemony.js';
 import {
   ROAD_MAX_LEVEL, canBuildRoad, roadCost, roadLabel,
 } from '../game/infrastructure.js';
+import {
+  CLASS_INFO, FACTORIES, GOODS, GOOD_IDS, MAX_FACTORY_LEVEL, SOCIAL_PROGRAMS, buildFactory,
+  canBuildFactory, educationResearchDiscount, expandFactory, expansionCost, factoryCost,
+  factoryMargin, formatPopulation, healthGrowthFactor, modernizeArmy, setFiscalPolicy,
+  socialSpendingCost,
+} from '../game/economy.js';
+import { battlesFor } from '../game/battles.js';
 
 const TITLES = {
   nation: 'Nation Overview',
   construction: 'Construction',
+  industry: 'Industry & Factories',
   production: 'Production',
+  budget: 'Budget & Society',
   research: 'Research',
   logistics: 'Logistics',
   diplomacy: 'Diplomacy',
@@ -41,7 +51,6 @@ const BRANCHES = [
   ['admin', 'Administration'],
 ];
 
-const GOOD_NAMES = { timber: 'Timber', iron: 'Iron' };
 const BUILDING_CATEGORIES = {
   civilian: 'Civilian',
   industry: 'Industry',
@@ -92,6 +101,9 @@ export class Screens {
     // Tur ilerlediğinde ya da bir şey satın alındığında açık ekran tazelenir.
     game.on('turn', () => this.refresh());
     game.on('units', () => this.refresh());
+    game.on('economy', () => this.refresh());
+    game.on('battles', () => this.refresh());
+    game.on('provinces', () => this.refresh());
     game.on('select', () => {
       if (this.active === 'construction') this.refresh();
     });
@@ -109,6 +121,7 @@ export class Screens {
 
   open(name) {
     this.active = name;
+    document.body.classList.add('screen-open');
     this.el.root.classList.remove('hidden');
     this.el.root.setAttribute('aria-hidden', 'false');
     for (const btn of document.querySelectorAll('#tab-bar button')) {
@@ -119,6 +132,7 @@ export class Screens {
 
   close() {
     this.active = null;
+    document.body.classList.remove('screen-open');
     this.el.root.classList.add('hidden');
     this.el.root.setAttribute('aria-hidden', 'true');
     for (const btn of document.querySelectorAll('#tab-bar button')) {
@@ -194,7 +208,7 @@ export class Screens {
       </div>
       <div class="overview-stats">
         <div><span>Hegemony</span><b>${score?.total ?? 0}/${HEGEMONY_TARGET}</b><small>Rank ${rank || '—'}</small></div>
-        <div><span>Territory</span><b>${me.tiles}</b><small>hexes</small></div>
+        <div><span>Territory</span><b>${me.tiles}</b><small>provinces</small></div>
         <div><span>Cities</span><b>${cities.length}</b><small>${population} workers</small></div>
         <div><span>Armed Forces</span><b>${units.length}</b><small>power ${nationStrength(world, me)}</small></div>
         <div><span>Internal Cohesion</span><b>${100 - foreignPct}%</b><small>${foreignPct}% foreign population</small></div>
@@ -205,6 +219,8 @@ export class Screens {
           <small>${budget?.buildings ?? 0} buildings · storage +${budget?.storageBonus ?? 0}</small></div>
         <div class="economy-ledger">
           <span><small>Building operations</small><b>${formatResources(budget?.buildingMaintenance) || 'none'}</b></span>
+          <span><small>Road maintenance</small><b>${Math.round(budget?.roadMaintenance ?? 0)} gold</b></span>
+          <span><small>Administration</small><b>${(budget?.administration ?? 0).toFixed(1)} gold</b></span>
           <span><small>Research efficiency</small><b>${Math.round((budget?.researchDiscount ?? 0) * 100)}%</b></span>
         </div>
         <table class="data-table">
@@ -254,46 +270,149 @@ export class Screens {
       <div class="card-head"><h3>Strategic Infrastructure</h3><small>roads reduce land movement cost</small></div>
       ${selected && selected.owner === me.id && selected.terrain.passable
     ? `<div class="detail-list">
-          <div><span>Selected Hex</span><b>${selected.q}, ${selected.r}</b></div>
+          <div><span>Selected Province</span><b>${selected.q}, ${selected.r}</b></div>
           <div><span>Road Network</span><b>${esc(roadLabel(selected))} · level ${selected.roadLevel ?? 0}/${ROAD_MAX_LEVEL}</b></div>
         </div>${roadButton || '<p class="hint">Maximum infrastructure reached.</p>'}`
-    : '<p class="overview-copy">Select one of your land hexes on the map to construct or upgrade its road network.</p>'}
+    : '<p class="overview-copy">Select one of your provinces on the map to construct or upgrade its road network.</p>'}
     </div>`;
 
-    const cityCards = cities.map((city) => {
-      const slots = buildingSlots(me, city);
-      const built = city.buildings.map((id) => (
-        `<span class="building-chip category-${BUILDINGS[id]?.category ?? 'state'}">${BUILDINGS[id]?.icon ?? '◆'} ${esc(BUILDINGS[id]?.name ?? id)}</span>`
-      )).join('') || '<span class="building-chip empty-chip">Empty building queue</span>';
-      const options = Object.values(BUILDINGS)
-        .filter((building) => !city.buildings.includes(building.id))
-        .map((building) => {
-          const status = buildingStatus(this.game.world, city, building.id, WORK_RADIUS);
-          const affordable = canAfford(me, building.cost);
-          const disabled = status.ok && affordable ? '' : 'disabled';
-          const note = status.ok ? 'Available for construction' : status.reason;
-          return `<button class="building-option category-${building.category}" data-build="${building.id}" data-city="${city.id}" ${disabled}>
-            <span class="building-icon">${building.icon ?? '◆'}</span>
-            <span><b>${esc(building.name)}</b><small>${esc(note)}</small>
-              <em>${BUILDING_CATEGORIES[building.category] ?? 'Building'} · investment ${formatCost(building.cost)}</em>
-              <span class="building-ledger">
-                <i class="ledger-gain">Effect · ${esc(building.desc)}</i>
-                <i class="ledger-cost">Operations · ${operatingCost(building)} / turn</i>
-              </span>
-            </span>
-          </button>`;
-        }).join('');
+    const placed = this.game.world.tiles
+      .filter((tile) => tile.structure && tile.owner === me.id)
+      .map((tile) => {
+        const building = BUILDINGS[tile.structure.buildingId];
+        const city = this.game.world.cities.find((item) => item.id === tile.structure.cityId);
+        return `<span class="building-chip category-${building?.category ?? 'state'}">
+          ${building?.icon ?? '◆'} ${esc(building?.name ?? tile.structure.buildingId)}
+          · ${tile.q},${tile.r} · ${esc(city?.name ?? 'province')}
+        </span>`;
+      }).join('') || '<span class="building-chip empty-chip">No buildings placed on the map yet</span>';
 
-      return `<div class="card city-construction">
-        <div class="card-head">
-          <h3>${esc(city.name)}</h3>
-          <small>${city.buildings.length}/${slots} slots · ${city.pop} workers</small>
+    const options = Object.values(BUILDINGS).map((building) => {
+      const placements = buildingPlacementTiles(
+        this.game.world, me.id, building.id, WORK_RADIUS,
+      );
+      const affordable = canAfford(me, building.cost);
+      const disabled = placements.size && affordable ? '' : 'disabled';
+      const note = !placements.size
+        ? 'No eligible province or city slot'
+        : `${placements.size} highlighted province${placements.size === 1 ? '' : 's'}`;
+      return `<button class="building-option category-${building.category}" data-place-building="${building.id}" ${disabled}>
+        <span class="building-icon">${building.icon ?? '◆'}</span>
+        <span><b>${esc(building.name)}</b><small>${esc(note)}</small>
+          <em>${BUILDING_CATEGORIES[building.category] ?? 'Building'} · investment ${formatCost(building.cost)}</em>
+          <span class="building-ledger">
+            <i class="ledger-gain">Effect · ${esc(building.desc)}</i>
+            <i class="ledger-cost">Operations · ${operatingCost(building)} / week</i>
+          </span>
+        </span>
+      </button>`;
+    }).join('');
+
+    return `${infrastructure}
+      <div class="card map-construction">
+        <div class="card-head"><h3>Place Buildings on the Map</h3>
+          <small>choose a building, then click a highlighted province</small></div>
+        <div class="building-grid">${options}</div>
+      </div>
+      <div class="card">
+        <div class="card-head"><h3>Existing Buildings</h3>
+          <small>${cities.reduce((sum, city) => sum + city.buildings.length, 0)} total</small></div>
+        <div class="building-chips">${placed}</div>
+      </div>`;
+  }
+
+  // --- Sanayi: şehir fabrikaları, istihdam ve dünya fiyatına bağlı kârlılık ---
+  render_industry(me) {
+    const world = this.game.world;
+    const economy = me.economy;
+    const cities = this.myCities(me);
+    if (!economy || !cities.length) return '<p class="empty">Industry requires an incorporated city.</p>';
+
+    const factoryCards = economy.factories.map((factory) => {
+      const type = FACTORIES[factory.typeId];
+      const city = world.cities.find((candidate) => candidate.id === factory.cityId);
+      const capacity = factory.level * 18000;
+      const employment = capacity ? (factory.employees / capacity) * 100 : 0;
+      const inputs = Object.entries(type.inputs)
+        .map(([id, amount]) => `${amount} ${GOODS[id].icon} ${GOODS[id].name}`).join(' · ');
+      const outputs = Object.entries(type.outputs)
+        .map(([id, amount]) => `${amount} ${GOODS[id].icon} ${GOODS[id].name}`).join(' · ');
+      const profitable = factory.profit >= 0;
+      return `<div class="card factory-card ${profitable ? 'profitable' : 'unprofitable'}">
+        <div class="card-head"><h3>${type.icon} ${esc(type.name)}</h3>
+          <small>${esc(city?.name ?? 'Lost city')} · level ${factory.level}</small></div>
+        <div class="factory-kpis">
+          <span><small>Employment</small><b>${formatPopulation(factory.employees)} / ${formatPopulation(capacity)}</b></span>
+          <span><small>Weekly profit</small><b class="${profitable ? 'res-pos' : 'res-neg'}">${profitable ? '+' : ''}¤${factory.profit.toFixed(1)}</b></span>
+          <span><small>Margin</small><b>${Math.round(factory.margin * 100)}%</b></span>
         </div>
-        <div class="building-chips">${built}</div>
-        <div class="building-grid">${options || '<span class="empty">Every available building has been constructed.</span>'}</div>
+        <div class="factory-chain"><span>buys ${esc(inputs)}</span><strong>→</strong><span>sells ${esc(outputs)}</span></div>
+        <div class="meter"><i style="width:${Math.max(0, Math.min(100, employment))}%"></i></div>
+        <button class="action" data-expand-factory="${esc(factory.id)}"
+          ${factory.level >= MAX_FACTORY_LEVEL || !canAfford(me, expansionCost(factory)) ? 'disabled' : ''}>
+          ${factory.level >= MAX_FACTORY_LEVEL ? 'Fully developed' : `Expand · ${formatCost(expansionCost(factory))}`}
+        </button>
+      </div>`;
+    }).join('') || '<div class="card"><p class="empty">No factories. Choose an industry below.</p></div>';
+
+    const buildCards = cities.map((city) => {
+      const options = Object.values(FACTORIES).map((type) => {
+        const margin = factoryMargin(world, type.id);
+        const enabled = canBuildFactory(world, me, city, type.id);
+        return `<button class="building-option category-industry" data-factory="${type.id}" data-city="${city.id}" ${enabled ? '' : 'disabled'}>
+          <span class="building-icon">${type.icon}</span>
+          <span><b>${esc(type.name)}</b><small>expected margin ${margin >= 0 ? '+' : ''}¤${margin.toFixed(1)} per level</small>
+            <em>investment ${formatCost(factoryCost(me, type.id))}</em></span>
+        </button>`;
+      }).join('');
+      return `<div class="card city-construction">
+        <div class="card-head"><h3>Invest in ${esc(city.name)}</h3>
+          <small>maximum 4 factories per city · investment cost rises with installed capacity</small></div>
+        <div class="building-grid">${options}</div>
       </div>`;
     }).join('');
-    return infrastructure + cityCards;
+
+    return `<div class="card">
+      <div class="card-head"><h3>National Industry</h3>
+        <small>GDP ¤${Math.round(economy.gdp)} · factory balance ${economy.factoryProfit >= 0 ? '+' : ''}¤${economy.factoryProfit.toFixed(1)}</small></div>
+    </div>${factoryCards}${buildCards}`;
+  }
+
+  /**
+   * Ordu modernizasyonu. Tek seferlik bedelin yanında bakım da kalıcı olarak
+   * artar, o yüzden her satırda yeni haftalık gider de gösteriliyor.
+   */
+  modernizationCard(me, army) {
+    const stacks = army.filter((unit) => unit.regiments?.length);
+    if (!stacks.length) return '';
+    const rows = stacks
+      .sort((a, b) => armyTier(a) - armyTier(b) || regimentCount(b) - regimentCount(a))
+      .map((unit) => {
+        const tier = armyTier(unit);
+        const info = tierInfo(tier);
+        const cost = modernizeCost(unit);
+        const next = tier < MAX_TIER ? tierInfo(tier + 1) : null;
+        const action = !next
+          ? '<span class="num">fully modern</span>'
+          : `<button class="action" data-modernize="${unit.id}" ${canAfford(me, cost) ? '' : 'disabled'}>
+              ${next.name} · ${formatCost(cost)}</button>`;
+        return `<tr>
+          <td>${esc(unit.type.name)} ×${regimentCount(unit)}<small> @${unit.tile.q},${unit.tile.r}</small></td>
+          <td class="num">${info.name}</td>
+          <td class="num">×${info.power.toFixed(2)}</td>
+          <td class="num">${(info.upkeep * regimentCount(unit)).toFixed(1)} ⬤</td>
+          <td class="num">${action}</td>
+        </tr>`;
+      }).join('');
+    return `<div class="card">
+      <div class="card-head"><h3>Modernization</h3>
+        <small>better equipment costs gold up front and permanently raises upkeep</small></div>
+      <table class="data-table">
+        <tr><th>army</th><th class="num">equipment</th><th class="num">power</th>
+          <th class="num">upkeep</th><th class="num">re-equip</th></tr>
+        ${rows}
+      </table>
+    </div>`;
   }
 
   // --- Üretim: birim satın alma + mevcut ordu dökümü ---
@@ -322,13 +441,87 @@ export class Screens {
       </div>`;
     }).join('') : '<p class="empty">You have no cities.</p>';
 
+    const armyGold = Math.round(me.budget?.armyGold ?? army.length);
     return `<div class="card">
-        <div class="card-head"><h3>Armed Forces</h3><small>${army.length} units · upkeep ${army.length} ⬤ / ${army.length} 🌾</small></div>
+        <div class="card-head"><h3>Armed Forces</h3>
+          <small>${army.length} units · upkeep ${armyGold} ⬤ / ${me.budget?.army ?? army.length} 🌾</small></div>
         <table class="data-table">
           <tr><th>unit</th><th style="text-align:right">count</th><th style="text-align:right">attack</th><th style="text-align:right">strength</th></tr>
           ${armyRows}
         </table>
-      </div>${cityCards}`;
+      </div>${this.modernizationCard(me, army)}${cityCards}`;
+  }
+
+  /**
+   * Sosyal harcama kartı. Vergiden farklı olarak bunlar *sürekli* giderdir:
+   * nüfusla birlikte büyür, geç oyunda hazinenin asıl çıkışıdır.
+   */
+  socialCard(me) {
+    const economy = me.economy;
+    const projected = socialSpendingCost(me);
+    const effects = {
+      education: `research −${Math.round(educationResearchDiscount(me) * 100)}% · workforce +${Math.round((economy.social.education ?? 0) * 0.25)}%`,
+      health: `growth ×${healthGrowthFactor(me).toFixed(2)}`,
+      welfare: `satisfaction +${Math.round((economy.social.welfare ?? 0) * 0.14)}%`,
+    };
+    const sliders = Object.values(SOCIAL_PROGRAMS).map((program) => {
+      const level = economy.social[program.id] ?? 0;
+      return `<label class="policy-slider"><span>${program.name} <b data-policy-value>${level}%</b></span>
+        <input type="range" min="0" max="100" step="10" value="${level}"
+          data-policy="social" data-class="${program.id}">
+        <small>${esc(program.desc)} Current effect: ${effects[program.id]}.</small>
+      </label>`;
+    }).join('');
+    return `<div class="card policy-card">
+      <div class="card-head"><h3>Social Spending</h3>
+        <small>projected ¤${projected.toFixed(1)} per week · scales with population</small></div>
+      ${sliders}
+    </div>`;
+  }
+
+  // --- Bütçe: üç sınıfın vergisi, gümrük ve askerî harcama ---
+  render_budget(me) {
+    const economy = me.economy;
+    if (!economy) return '<p class="empty">Fiscal institutions are not initialized.</p>';
+    const classCards = Object.entries(CLASS_INFO).map(([id, info]) => {
+      const socialClass = economy.classes[id];
+      const tax = economy.taxes[id];
+      return `<div class="class-card" style="--class-color:${info.color}">
+        <div class="card-head"><h3>${esc(info.name)}</h3><small>${formatPopulation(socialClass.population)}</small></div>
+        <div class="detail-list">
+          <div><span>Income</span><b>¤${socialClass.income.toFixed(1)}</b></div>
+          <div><span>Tax paid</span><b>¤${socialClass.taxPaid.toFixed(1)}</b></div>
+          <div><span>Satisfaction</span><b>${Math.round(socialClass.satisfaction * 100)}%</b></div>
+        </div>
+        <label class="policy-slider"><span>Tax rate <b data-policy-value>${tax}%</b></span>
+          <input type="range" min="0" max="100" step="5" value="${tax}" data-policy="tax" data-class="${id}">
+          <small>Higher tax raises revenue next week, but lowers satisfaction and national stability.</small>
+        </label>
+      </div>`;
+    }).join('');
+
+    return `<div class="fiscal-hero card">
+        <div><small>Population</small><b>${formatPopulation(economy.population)}</b></div>
+        <div><small>Standard of living</small><b>${economy.standardOfLiving.toFixed(1)}</b></div>
+        <div><small>National stability</small><b>${Math.round((economy.stability ?? 0.6) * 100)}%</b></div>
+        <div><small>Tax revenue</small><b>+¤${economy.taxRevenue.toFixed(1)}</b></div>
+        <div><small>Tariffs</small><b>${economy.tariffRevenue >= 0 ? '+' : ''}¤${economy.tariffRevenue.toFixed(1)}</b></div>
+        <div><small>Strategic imports</small><b class="res-neg">−¤${economy.importCost.toFixed(1)}</b></div>
+        <div><small>Social spending</small><b class="res-neg">−¤${(economy.socialCost ?? 0).toFixed(1)}</b></div>
+      </div>
+      <div class="class-grid">${classCards}</div>
+      ${this.socialCard(me)}
+      <div class="card policy-card">
+        <div class="card-head"><h3>National Budget</h3><small>policy changes settle at the next weekly tick</small></div>
+        <label class="policy-slider"><span>Tariffs / import subsidies <b data-policy-value>${economy.tariff}%</b></span>
+          <input type="range" min="-25" max="50" step="5" value="${economy.tariff}" data-policy="tariff">
+          <small>Subsidies improve household affordability. Positive tariffs raise revenue but reduce satisfaction.</small>
+        </label>
+        <label class="policy-slider"><span>Army maintenance <b data-policy-value>${economy.armySpending}%</b></span>
+          <input type="range" min="25" max="100" step="5" value="${economy.armySpending}" data-policy="armySpending">
+          <small>Lower funding saves gold but directly reduces army battle strength and arms demand.</small>
+        </label>
+      </div>`;
   }
 
   // --- Araştırma: üç dal, dört kademe ---
@@ -442,56 +635,86 @@ export class Screens {
           <img class="flag" src="${flagDataUrl(n)}" alt="">
           <div class="grow">
             <div class="name">${esc(n.name)} ${tag}</div>
-            <div class="meta">${n.tiles} hexes · power ratio ${ratio} · infamy ${Math.round(n.infamy ?? 0)}</div>
+            <div class="meta">${n.tiles} provinces · power ratio ${ratio} · infamy ${Math.round(n.infamy ?? 0)}</div>
           </div>
           ${action}
         </div>
       </div>`;
     }).join('');
 
+    const battleRows = battlesFor(world, me.id).map((battle) => {
+      const mineAttacks = battle.attackerNation === me.id;
+      const myArmy = world.units.find((army) => army.id === (
+        mineAttacks ? battle.attackerId : battle.defenderId
+      ));
+      const enemyArmy = world.units.find((army) => army.id === (
+        mineAttacks ? battle.defenderId : battle.attackerId
+      ));
+      const enemyId = mineAttacks ? battle.defenderNation : battle.attackerNation;
+      const moraleTotal = Math.max(1, moraleOf(myArmy) + moraleOf(enemyArmy));
+      const position = Math.max(2, Math.min(98, (moraleOf(myArmy) / moraleTotal) * 100));
+      return `<div class="front-card card">
+        <div class="card-head"><h3>Battle of ${battle.q}, ${battle.r}</h3>
+          <small>round ${battle.rounds}/${6} · province terrain modifies the defender</small></div>
+        <div class="front-numbers">
+          <span><small>${esc(me.name)}</small><b>${formatPopulation(soldiersOf(myArmy))} · ${Math.round(moraleOf(myArmy))}% morale</b></span>
+          <strong>VS</strong>
+          <span><small>${esc(world.nations[enemyId].name)}</small><b>${formatPopulation(soldiersOf(enemyArmy))} · ${Math.round(moraleOf(enemyArmy))}% morale</b></span>
+        </div>
+        <div class="front-track"><i style="left:${position}%"></i></div>
+        <p class="hint">losses: ${battle.attackerLosses} attacker / ${battle.defenderLosses} defender · the broken army retreats automatically</p>
+      </div>`;
+    }).join('');
+
     return `<div class="card">
         <div class="card-head"><h3>${esc(me.name)}</h3>
           <small>infamy ${Math.round(me.infamy ?? 0)}/${INFAMY_COALITION} · coalition at ${INFAMY_COALITION}</small></div>
-      </div>${rows}`;
+      </div>
+      <div class="card doctrine-card">
+        <div class="card-head"><h3>How war works now</h3><small>one map, one combat system</small></div>
+        <p class="hint">Select an army and tap a destination. Friendly armies merge. Entering an enemy army starts a weekly battle; low morale forces retreat and the winner occupies the province.</p>
+      </div>
+      ${battleRows || '<div class="card"><p class="empty">No active province battles.</p></div>'}${rows}`;
   }
 
-  // --- Ticaret: fazla/açık ve ortaklar ---
+  // --- Ticaret: Stellaris mantığında küresel arz, talep ve dinamik fiyatlar ---
   render_trade(me) {
     const world = this.game.world;
-    const partners = world.nations.filter((n) => n.alive && n.id !== me.id
-      && !atWar(world, n.id, me.id) && canTrade(n) && canTrade(me));
-
-    const balance = TRADE_GOODS.map((good) => {
-      const mine = Math.round(me[good]);
-      const state = mine > 12 ? 'surplus' : mine < 12 ? 'shortage' : 'balanced';
-      return `<tr><td>${GOOD_NAMES[good]}</td><td class="num">${mine}</td>
-        <td>${state}</td><td class="num">${GOOD_PRICE[good]} ⬤</td></tr>`;
+    const market = world.market;
+    if (!market) return '<p class="empty">The world market is not initialized.</p>';
+    const rows = GOOD_IDS.map((goodId) => {
+      const good = GOODS[goodId];
+      const state = market.goods[goodId];
+      const trend = state.trend > 0.005 ? '▲' : state.trend < -0.005 ? '▼' : '—';
+      const cls = state.trend > 0.005 ? 'res-neg' : state.trend < -0.005 ? 'res-pos' : '';
+      const pressure = state.demand - state.supply;
+      return `<tr>
+        <td><span class="good-name">${good.icon} ${esc(good.name)}</span><small>${good.category}</small></td>
+        <td class="num"><b>¤${state.price.toFixed(2)}</b></td>
+        <td class="num ${cls}">${trend} ${Math.abs(state.trend).toFixed(2)}</td>
+        <td class="num">${state.supply.toFixed(1)}</td>
+        <td class="num">${state.demand.toFixed(1)}</td>
+        <td class="num ${pressure > 0 ? 'res-neg' : 'res-pos'}">${pressure >= 0 ? '+' : ''}${pressure.toFixed(1)}</td>
+        <td class="num">${(me.economy?.inventory?.[goodId] ?? 0).toFixed(1)}</td>
+      </tr>`;
     }).join('');
+    const hottest = GOOD_IDS.map((id) => market.goods[id])
+      .sort((a, b) => (b.demand - b.supply) - (a.demand - a.supply))[0];
 
-    const partnerRows = partners.length ? partners.map((n) => {
-      const flows = TRADE_GOODS.map((good) => {
-        const diff = Math.round(n[good]) - Math.round(me[good]);
-        if (Math.abs(diff) < 4) return null;
-        return diff > 0 ? `can supply ${GOOD_NAMES[good]}` : `can buy ${GOOD_NAMES[good]}`;
-      }).filter(Boolean).join(' · ');
-      return `<div class="card"><div class="rel-row">
-        <img class="flag" src="${flagDataUrl(n)}" alt="">
-        <div class="grow">
-          <div class="name">${esc(n.name)}</div>
-          <div class="meta">🪵 ${Math.round(n.timber)} · ⛏ ${Math.round(n.iron)}${flows ? ` · ${flows}` : ''}</div>
-        </div>
-      </div></div>`;
-    }).join('') : `<p class="empty">${canTrade(me) ? 'No eligible trade partners at peace.' : `Your infamy is too high (${Math.round(me.infamy)}); no nation will trade with you.`}</p>`;
-
-    return `<div class="card">
-        <div class="card-head"><h3>Resource Balance</h3><small>trade flows automatically from surplus to shortage</small></div>
-        <table class="data-table">
-          <tr><th>good</th><th style="text-align:right">stock</th><th>status</th><th style="text-align:right">unit price</th></tr>
-          ${balance}
-        </table>
+    return `<div class="market-hero card">
+        <div><small>World market GDP</small><b>¤${Math.round(market.totalGdp)}</b></div>
+        <div><small>Tariff policy</small><b>${me.economy?.tariff ?? 0}%</b></div>
+        <div><small>Highest pressure</small><b>${GOODS[hottest.id].icon} ${esc(GOODS[hottest.id].name)}</b></div>
       </div>
-      <div class="card"><div class="card-head"><h3>Trade Partners</h3><small>${partners.length} nations</small></div></div>
-      ${partnerRows}`;
+      <div class="card market-card">
+        <div class="card-head"><h3>Global Prices</h3>
+          <small>every purchase adds demand; scarcity raises the next weekly price</small></div>
+        <table class="data-table market-table">
+          <tr><th>good</th><th class="num">price</th><th class="num">week</th>
+            <th class="num">sell</th><th class="num">buy</th><th class="num">pressure</th><th class="num">our output</th></tr>
+          ${rows}
+        </table>
+      </div>`;
   }
 
   /** Ekranlardaki eylemleri oyunun mevcut fonksiyonlarına bağlar. */
@@ -504,6 +727,11 @@ export class Screens {
       btn.onclick = () => {
         const city = game.world.cities.find((c) => c.id === Number(btn.dataset.city));
         if (city) game.turns.build(city, btn.dataset.build);
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-place-building]')) {
+      btn.onclick = () => {
+        if (game.beginBuildingPlacement(btn.dataset.placeBuilding)) this.close();
       };
     }
     const road = this.el.body.querySelector('[data-road]');
@@ -521,6 +749,33 @@ export class Screens {
     }
     for (const btn of this.el.body.querySelectorAll('[data-buy]')) {
       btn.onclick = () => game.turns.buyUnit(me, btn.dataset.buy);
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-factory]')) {
+      btn.onclick = () => {
+        if (buildFactory(game, me, Number(btn.dataset.city), btn.dataset.factory)) this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-expand-factory]')) {
+      btn.onclick = () => {
+        if (expandFactory(game, me, btn.dataset.expandFactory)) this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-modernize]')) {
+      btn.onclick = () => {
+        const unit = game.world.units.find((u) => u.id === Number(btn.dataset.modernize));
+        if (unit && modernizeArmy(game, me, unit)) this.refresh();
+      };
+    }
+    for (const input of this.el.body.querySelectorAll('[data-policy]')) {
+      input.oninput = () => {
+        const label = input.closest('.policy-slider')?.querySelector('[data-policy-value]');
+        if (label) label.textContent = `${input.value}%`;
+      };
+      input.onchange = () => {
+        setFiscalPolicy(me, input.dataset.policy, Number(input.value), input.dataset.class);
+        game.recomputeEconomy();
+        game.emit('economy', me.economy);
+      };
     }
     for (const btn of this.el.body.querySelectorAll('[data-tech]')) {
       btn.onclick = () => {

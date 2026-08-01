@@ -2,6 +2,8 @@
 // Herkesin doğuştan savaşta olması haritayı erken mop-up'a çeviriyordu;
 // barış varsayılan, savaş bir karar.
 
+import { armyPower } from './units.js';
+
 export const WAR = 'war';
 export const PEACE = 'peace';
 
@@ -12,7 +14,7 @@ export const MIN_WAR_TURNS = 8;
  * Barıştan sonra yeniden savaş ilan edilemeyen tur sayısı. Ateşkes olmadan
  * barış yapıp ertesi tur yeniden saldırmak serbestti; tempoyu bu tutuyor.
  */
-export const TRUCE_TURNS = 15;
+export const TRUCE_TURNS = 26;
 
 /**
  * Simetrik ilişki tablosu: world.relations[a][b] ile [b][a] *aynı* nesnedir.
@@ -109,7 +111,7 @@ export function considerPeaceOffer(game, fromId, toId, rng) {
 export function nationStrength(world, nation) {
   let power = 0;
   for (const unit of world.units) {
-    if (unit.nationId === nation.id) power += unit.type.attack * (unit.hp / unit.type.hp);
+    if (unit.nationId === nation.id) power += armyPower(unit);
   }
   for (const city of world.cities) {
     if (city.nationId === nation.id) power += 3;

@@ -12,7 +12,9 @@ import { TECHS } from './tech.js';
  * 220 iken oyunlar 100-151. turda bitiyordu; seçilen 250-300 turluk ufka göre
  * erken. Eşik ölçümle bu değere çekildi.
  */
-export const HEGEMONY_TARGET = 420;
+// Province ekonomisi ulusal üretimi görünür biçimde büyüttüğü için eski 420
+// eşiği oyunu 70-100 haftada bitiriyordu. Yeni ölçek yaklaşık 220-300 haftayı hedefler.
+export const HEGEMONY_TARGET = 1000;
 export const FINAL_TURN = 300;
 
 /**

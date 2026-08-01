@@ -1,13 +1,28 @@
-// Tek giriş katmanı: dokunmatik + fare + tekerlek. Pinch zoom ve kaydırma ataleti dahil.
+// Tek giriş katmanı: dokunmatik + fare + tekerlek.
+//
+// HOI4 semantiği:
+//   sol tık            → seç
+//   sol sürükle        → kutu (marquee) seçimi, masaüstünde klasör seçer gibi
+//   sağ tık            → seçili birimleri yürüt
+//   sağ sürükle        → cephe hattı çiz
+//   orta sürükle       → kamerayı kaydır (sol tuş artık seçim için ayrıldı)
+//   tekerlek           → yakınlaş
+//
+// Dokunmatikte sağ tuş yok: tek parmak kaydırır, basılı tutup sürüklemek kutu
+// seçimi yapar, iki parmak pinch zoom. Cephe çizimi dokunmatikte açık bir
+// "çizim kipi" ile yapılır (bkz. game.drawMode), jest çakışması olmasın.
 
 const TAP_MOVE_LIMIT = 12;   // CSS piksel
 const TAP_TIME_LIMIT = 300;  // ms
+const LONG_PRESS_MS = 380;   // dokunmatikte kutu seçimini baslatan basili tutma
+/** Sol sürükleme bu eşiği geçmeden seçim kutusu sayılmaz (titreme tıklamayı yemesin). */
+const MARQUEE_MIN = 10;
 
 export class PointerController {
   /**
    * @param {HTMLElement} el
    * @param {import('../render/camera.js').Camera} camera
-   * @param {{ onTap?: (x:number,y:number)=>void, onChange?: ()=>void, onHover?: (x:number,y:number)=>void }} handlers
+   * @param {object} handlers
    */
   constructor(el, camera, handlers = {}) {
     this.el = el;
@@ -19,6 +34,9 @@ export class PointerController {
     this.velocity = { x: 0, y: 0 };
     this.lastMoveTime = 0;
     this.gesture = null; // 'pan' | 'pinch'
+    this.rightDrag = null;   // { id, points[] } — cephe cizimi
+    this.marquee = null;     // { id, start, current, active } — kutu secimi
+    this.longPress = 0;
 
     el.style.touchAction = 'none';
     el.addEventListener('pointerdown', this.onDown, { passive: false });
@@ -38,6 +56,7 @@ export class PointerController {
     el.removeEventListener('pointercancel', this.onUp);
     el.removeEventListener('pointerleave', this.onUp);
     el.removeEventListener('wheel', this.onWheel);
+    this.clearLongPress();
   }
 
   localPos(e) {
@@ -45,9 +64,110 @@ export class PointerController {
     return { x: e.clientX - rect.left, y: e.clientY - rect.top };
   }
 
+  /** Dokunmatikte basılı tutmak kutu seçimini başlatır; kaydırmayla karışmasın diye eşikli. */
+  armLongPress(e) {
+    this.clearLongPress();
+    const start = this.localPos(e);
+    this.longPress = setTimeout(() => {
+      const rec = this.pointers.get(e.pointerId);
+      if (!rec || rec.moved > TAP_MOVE_LIMIT) return;
+      this.pointers.delete(e.pointerId);
+      this.velocity.x = 0;
+      this.velocity.y = 0;
+      this.beginMarquee(e.pointerId, start);
+    }, LONG_PRESS_MS);
+  }
+
+  clearLongPress() {
+    if (this.longPress) clearTimeout(this.longPress);
+    this.longPress = 0;
+  }
+
+  /**
+   * Pointer capture kaybolan parmagi da takip etmek icindir; basarisiz olmasi
+   * jesti iptal etmemeli (etkin olmayan pointerId'de NotFoundError atar).
+   */
+  capture(pointerId) {
+    try { this.el.setPointerCapture?.(pointerId); } catch { /* capture zorunlu degil */ }
+  }
+
+  release(pointerId) {
+    try { this.el.releasePointerCapture?.(pointerId); } catch { /* zaten birakilmis */ }
+  }
+
+  /**
+   * Sürükleme başlar. Çizim kipi açıkken (dokunmatikte sağ tuş yok, bkz.
+   * game.drawMode) sürükleme cephe hattı çizer, değilse kutu seçimi yapar.
+   */
+  beginMarquee(pointerId, start) {
+    if (this.handlers.isDrawMode?.()) {
+      this.rightDrag = { id: pointerId, points: [start], moved: TAP_MOVE_LIMIT + 1 };
+      this.capture(pointerId);
+      this.handlers.onRightDragStart?.(start.x, start.y);
+      return;
+    }
+    this.marquee = { id: pointerId, start, current: start, active: false };
+    this.capture(pointerId);
+    this.handlers.onMarqueeStart?.(start.x, start.y);
+  }
+
+  marqueeRect() {
+    const m = this.marquee;
+    if (!m) return null;
+    return {
+      x: Math.min(m.start.x, m.current.x),
+      y: Math.min(m.start.y, m.current.y),
+      w: Math.abs(m.current.x - m.start.x),
+      h: Math.abs(m.current.y - m.start.y),
+    };
+  }
+
   onDown = (e) => {
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    this.el.setPointerCapture?.(e.pointerId);
+    const mouse = e.pointerType === 'mouse';
+
+    // Sağ tuş: cephe çizimi (sürüklenirse) ya da yürüyüş emri (bırakılırsa).
+    if (mouse && e.button === 2) {
+      e.preventDefault();
+      const p = this.localPos(e);
+      // Durum capture'dan önce kurulur: capture başarısız olsa da çizim başlasın.
+      this.rightDrag = { id: e.pointerId, points: [p], moved: 0 };
+      this.capture(e.pointerId);
+      this.handlers.onRightDragStart?.(p.x, p.y);
+      return;
+    }
+
+    // Orta tuş kamerayı kaydırır; sol tuş artık seçim için ayrılmıştır.
+    if (mouse && e.button === 1) {
+      e.preventDefault();
+      this.capture(e.pointerId);
+      const p = this.localPos(e);
+      this.pointers.set(e.pointerId, {
+        ...p, startX: p.x, startY: p.y, startTime: performance.now(), moved: 0, pan: true,
+      });
+      this.gesture = 'pan';
+      return;
+    }
+
+    if (mouse && e.button !== 0) return;
+
+    if (mouse) {
+      // Masaüstünde sol basış kutu seçiminin başlangıcıdır; eşiği geçmezse tıklama sayılır.
+      e.preventDefault();
+      this.beginMarquee(e.pointerId, this.localPos(e));
+      this.marquee.startTime = performance.now();
+      return;
+    }
+
+    // Çizim kipi açıkken dokunuş uzun basış beklemeden doğrudan çizime girer:
+    // kipi zaten oyuncu açtı, ayrıca bekletmek anlamsız.
+    if (this.handlers.isDrawMode?.()) {
+      e.preventDefault();
+      this.beginMarquee(e.pointerId, this.localPos(e));
+      return;
+    }
+
+    this.armLongPress(e);
+    this.capture(e.pointerId);
     const p = this.localPos(e);
     this.pointers.set(e.pointerId, {
       ...p, startX: p.x, startY: p.y, startTime: performance.now(), moved: 0,
@@ -59,6 +179,29 @@ export class PointerController {
   };
 
   onMove = (e) => {
+    if (this.rightDrag?.id === e.pointerId) {
+      e.preventDefault();
+      const p = this.localPos(e);
+      const last = this.rightDrag.points[this.rightDrag.points.length - 1];
+      this.rightDrag.moved += Math.hypot(p.x - last.x, p.y - last.y);
+      this.rightDrag.points.push(p);
+      this.handlers.onRightDragMove?.(p.x, p.y);
+      return;
+    }
+
+    if (this.marquee?.id === e.pointerId) {
+      e.preventDefault();
+      this.marquee.current = this.localPos(e);
+      const rect = this.marqueeRect();
+      // Eşiği geçince kutu "etkin" olur; altında kalırsa bırakışta tıklama sayılır.
+      if (!this.marquee.active && Math.hypot(rect.w, rect.h) >= MARQUEE_MIN) {
+        this.marquee.active = true;
+      }
+      if (this.marquee.active) this.handlers.onMarqueeMove?.(rect);
+      this.handlers.onChange?.();
+      return;
+    }
+
     const rec = this.pointers.get(e.pointerId);
     if (!rec) {
       if (e.pointerType === 'mouse' && this.handlers.onHover) {
@@ -101,13 +244,44 @@ export class PointerController {
   };
 
   onUp = (e) => {
+    if (this.rightDrag?.id === e.pointerId) {
+      const { points, moved } = this.rightDrag;
+      const last = points[points.length - 1];
+      this.rightDrag = null;
+      this.release(e.pointerId);
+      // Sürüklenmediyse bu bir sağ tıktır: yürüyüş emri.
+      if (moved < TAP_MOVE_LIMIT) {
+        this.handlers.onRightDragCancel?.();
+        this.handlers.onRightTap?.(last.x, last.y);
+      } else {
+        this.handlers.onRightDragEnd?.(points);
+      }
+      this.handlers.onChange?.();
+      return;
+    }
+
+    if (this.marquee?.id === e.pointerId) {
+      const { active, start } = this.marquee;
+      const rect = this.marqueeRect();
+      this.marquee = null;
+      this.release(e.pointerId);
+      if (active) this.handlers.onMarqueeEnd?.(rect);
+      else this.handlers.onTap?.(start.x, start.y);
+      this.handlers.onChange?.();
+      return;
+    }
+
+    this.clearLongPress();
     const rec = this.pointers.get(e.pointerId);
     if (!rec) return;
     this.pointers.delete(e.pointerId);
-    this.el.releasePointerCapture?.(e.pointerId);
+    this.release(e.pointerId);
 
     const duration = performance.now() - rec.startTime;
-    const isTap = rec.moved < TAP_MOVE_LIMIT && duration < TAP_TIME_LIMIT && this.gesture !== 'pinch';
+    const isTap = !rec.pan
+      && rec.moved < TAP_MOVE_LIMIT
+      && duration < TAP_TIME_LIMIT
+      && this.gesture !== 'pinch';
     if (isTap) {
       this.velocity.x = 0;
       this.velocity.y = 0;

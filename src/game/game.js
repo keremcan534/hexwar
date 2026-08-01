@@ -9,7 +9,8 @@ import { PointerController } from '../input/pointer.js';
 import { pixelToHex, hexDistance } from '../core/hex.js';
 import { randomSeed } from '../core/rng.js';
 import { reachable } from '../core/pathfind.js';
-import { placeUnit, resolveCombat } from './units.js';
+import { clearPath, placeUnit, speedOf } from './units.js';
+import { orderMove } from './movement.js';
 import { TurnManager } from './turn.js';
 import { captureCity } from './cities.js';
 import { atWar, considerPeaceOffer, declareWar } from './diplomacy.js';
@@ -20,6 +21,35 @@ import {
   ORDER, clearOrder, executeOrders, idleUnits, setOrder,
 } from './orders.js';
 import { roadMoveCost } from './infrastructure.js';
+import { startBattle } from './battles.js';
+import { BUILDINGS, buildingPlacementTiles } from './buildings.js';
+import { PLAN, assignArmy, createFront } from './fronts.js';
+import { assignDivisions, divisionsOf, generalOfArmy } from './generals.js';
+
+/** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */
+const SPEEDS = [0, 1, 2, 4];
+
+/**
+ * Çok sayıda ordu tek kareye gönderilirse hepsi aynı hexe tıkışır ve
+ * birbirini bloklar. Hedefi merkez alıp dışa doğru genişleyen halkalardan
+ * boş kareler toplayıp her orduya ayrı bir varış noktası veririz.
+ */
+function spreadTargets(world, center, count) {
+  if (count <= 1) return [center];
+  const targets = [center];
+  const seen = new Set([center]);
+  const queue = [center];
+  for (let head = 0; head < queue.length && targets.length < count; head++) {
+    for (const near of world.neighbors(queue[head])) {
+      if (seen.has(near) || !near.terrain.passable) continue;
+      seen.add(near);
+      queue.push(near);
+      targets.push(near);
+      if (targets.length >= count) break;
+    }
+  }
+  return targets;
+}
 
 export class Game {
   constructor(canvas) {
@@ -30,17 +60,39 @@ export class Game {
     this.selected = null;
     this.hovered = null;
     this.selectedUnit = null;
+    this.buildingPlacement = null;
+    this.frontDraw = null;   // sürüklenirken oluşan geçici cephe hattı
+    this.marquee = null;     // sürüklenirken oluşan seçim kutusu
+    this.drawMode = null;    // 'front' | 'fallback' | 'arrow' — sürükleme çizim kipi
+    this.activeGeneral = null;  // komuta arayüzünde seçili general
+    this.selectedFront = null;
+    this.selected_ = [];     // seçili ordular (bkz. selectUnits)
     this.reachable = null;   // { costs, prev } — seçili birimin menzili
     this.turns = new TurnManager(this);
-    this.listeners = { select: [], world: [], turn: [], units: [] };
+    this.listeners = {
+      select: [], world: [], turn: [], units: [], clock: [], economy: [],
+      battles: [], provinces: [], placement: [], victory: [], fronts: [], selection: [],
+      command: [],
+    };
     this.dirty = false;
     this.frameHandle = 0;
     this.autosaveEnabled = true;
+    this.clock = { speed: 0, accumulator: 0, lastTime: performance.now() };
+    this.clockTimer = setInterval(() => this.updateClock(), 100);
 
     this.input = new PointerController(canvas, this.camera, {
       onTap: (x, y) => this.handleTap(x, y),
       onHover: (x, y) => this.handleHover(x, y),
       onChange: () => this.requestRender(),
+      onRightDragStart: (x, y) => this.beginFrontDraw(x, y),
+      onRightDragMove: (x, y) => this.extendFrontDraw(x, y),
+      onRightDragEnd: () => this.finishFrontDraw(),
+      onRightDragCancel: () => this.cancelFrontDraw(),
+      onRightTap: (x, y) => this.handleRightTap(x, y),
+      isDrawMode: () => Boolean(this.drawMode),
+      onMarqueeStart: (x, y) => this.beginMarquee(x, y),
+      onMarqueeMove: (rect) => this.updateMarquee(rect),
+      onMarqueeEnd: (rect) => this.finishMarquee(rect),
     });
 
     this.onResize = () => {
@@ -63,6 +115,7 @@ export class Game {
 
   /** Yeni dünya üret. seed verilmezse rastgele. */
   newWorld(seed = randomSeed(), options = {}) {
+    this.setSpeed(0);
     const t0 = performance.now();
     this.world = generateWorld(seed, options);
     generateNations(this.world, { seed: `${seed}-nations`, count: options.nationCount ?? null });
@@ -71,6 +124,11 @@ export class Game {
     this.selected = null;
     this.hovered = null;
     this.selectedUnit = null;
+    this.selected_ = [];
+    this.buildingPlacement = null;
+    this.frontDraw = null;
+    this.marquee = null;
+    this.selectedFront = null;
     this.reachable = null;
     this.turns.start(this.world);
     this.renderer.invalidateCache();
@@ -91,48 +149,124 @@ export class Game {
   }
 
   /**
-   * Tek dokunuşun anlamı bağlama göre değişir:
-   * seçili birim varsa menzile git / bitişik düşmana vur, yoksa seç.
+   * Sol tık = seçim (HOI4). Üstünde ordu varsa onu seçer, yoksa seçimi bırakır.
+   * Yürütme sağ tuşa taşındı; sol tık artık asla emir vermez.
    */
   handleTap(sx, sy) {
     const tile = this.tileAtScreen(sx, sy);
     this.selected = tile;
 
-    const unit = this.selectedUnit;
-    if (tile && unit && unit.hp > 0) {
-      const enemy = tile.unit && tile.unit.nationId !== unit.nationId;
-      if (enemy && hexDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) === 1) {
-        this.attack(unit, tile);
-        this.emit('select', tile);
-        this.requestRender();
-        return;
-      }
-      if (!enemy && this.reachable?.costs.has(tile) && tile !== unit.tile) {
-        this.moveUnit(unit, tile);
-        this.emit('select', tile);
-        this.requestRender();
-        return;
-      }
-      // Menzil dışı ama girilebilir bir kareye dokunmak = "oraya yürü" emri.
-      if (tile !== unit.tile && this.canEnterFor(unit)(tile)) {
-        this.orderGoto(unit, tile);
-        this.emit('select', tile);
-        this.requestRender();
-        return;
-      }
+    if (tile && this.buildingPlacement) {
+      const buildingId = this.buildingPlacement.buildingId;
+      const placed = this.buildingPlacement.tiles.has(tile)
+        && this.turns.buildAt(tile, buildingId, this.turns.playerNation);
+      if (placed) this.cancelBuildingPlacement();
+      this.emit('select', tile);
+      this.requestRender();
+      return;
     }
 
-    this.selectUnit(tile?.unit ?? null);
+    // Kendi ordumuza tıklamak onu seçer; başka her yere tıklamak seçimi iptal eder.
+    const own = tile?.unit && tile.unit.nationId === this.turns.playerNation
+      ? tile.unit
+      : null;
+    this.selectUnits(own ? [own] : []);
     this.emit('select', tile);
     this.requestRender();
   }
 
-  /** Yalnızca oyuncunun ve hareket hakkı olan birimleri seçilebilir kılar. */
+  /**
+   * Sağ tık = seçili bütün ordulara yürüyüş emri. Bitişikteki düşmana denk
+   * gelirse saldırıya döner; birden çok ordu aynı hedefe gönderildiğinde
+   * hedefler yayılır, yoksa hepsi tek kareye tıkışıp birbirini bloklar.
+   */
+  handleRightTap(sx, sy) {
+    const tile = this.tileAtScreen(sx, sy);
+    if (!tile || !this.selection.length) return false;
+
+    const spread = spreadTargets(this.world, tile, this.selection.length);
+    let issued = 0;
+    this.selection.forEach((unit, index) => {
+      if (!unit || unit.hp <= 0 || unit.battleId) return;
+      const target = spread[index] ?? tile;
+      const enemy = target.unit && target.unit.nationId !== unit.nationId;
+      if (enemy && hexDistance(unit.tile.q, unit.tile.r, target.q, target.r) === 1) {
+        if (this.attack(unit, target)) issued++;
+        return;
+      }
+      if (target !== unit.tile && this.canEnterFor(unit)(target)) {
+        if (orderMove(this, unit, target)) issued++;
+      }
+    });
+
+    this.selected = tile;
+    this.emit('select', tile);
+    this.emit('units', this.selectedUnit);
+    this.requestRender();
+    return issued > 0;
+  }
+
+  /** Seçili ordular. `selectedUnit` ilk seçilendir; tekil kullanan kod bozulmasın. */
+  get selection() {
+    return this.selected_ ?? [];
+  }
+
+  /**
+   * Seçimi değiştirir. Yalnız oyuncunun, sağ ve muharebede olmayan orduları
+   * seçilebilir. Tek kaynak burasıdır; `selectedUnit` buradan türetilir.
+   */
+  selectUnits(units) {
+    const mine = (units ?? []).filter(
+      (unit) => unit && unit.hp > 0 && unit.nationId === this.turns.playerNation,
+    );
+    this.selected_ = mine;
+    this.selectedUnit = mine[0] ?? null;
+    // Menzil vurgusu kalktı: ordu artık haftalık bütçeyle değil, yol boyunca
+    // sürekli yürüyor. Seçili orduya sağ tıklanan her yer geçerli bir hedeftir.
+    this.reachable = null;
+    this.emit('units', this.selectedUnit);
+    this.emit('selection', mine);
+    return mine;
+  }
+
+  /** Tek birim seçimi: eski çağrı yerleri bozulmasın diye korunuyor. */
   selectUnit(unit) {
-    if (unit && unit.nationId !== this.turns.playerNation) unit = null;
-    this.selectedUnit = unit;
-    this.reachable = unit && unit.movesLeft > 0 ? this.getReachable(unit) : null;
-    this.emit('units', unit);
+    return this.selectUnits(unit ? [unit] : []);
+  }
+
+  // --- Kutu (marquee) seçimi: masaüstünde klasör seçer gibi ---
+
+  beginMarquee(sx, sy) {
+    this.marquee = { x: sx, y: sy, w: 0, h: 0 };
+  }
+
+  updateMarquee(rect) {
+    this.marquee = rect;
+    this.requestRender();
+  }
+
+  /** Kutunun içinde kalan kendi ordularımızı seçer. */
+  finishMarquee(rect) {
+    this.marquee = null;
+    if (!this.world || !rect) {
+      this.requestRender();
+      return [];
+    }
+    const picked = [];
+    for (const unit of this.world.units) {
+      if (unit.nationId !== this.turns.playerNation || unit.hp <= 0) continue;
+      const p = this.camera.worldToScreen(unit.tile.x, unit.tile.y);
+      if (p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h) {
+        picked.push(unit);
+      }
+    }
+    this.selectUnits(picked);
+    if (picked.length) {
+      this.selected = picked[0].tile;
+      this.emit('select', this.selected);
+    }
+    this.requestRender();
+    return picked;
   }
 
   /**
@@ -146,33 +280,39 @@ export class Game {
       || tile.owner === unit.nationId
       || atWar(world, tile.owner, unit.nationId);
 
+    const openOrFriendly = (tile) => !tile.unit || (
+      tile.unit.nationId === unit.nationId
+      && tile.unit.type.domain === unit.type.domain
+      && !tile.unit.battleId
+    );
+
     if (unit.type.domain === 'sea') {
-      return (tile) => tile.terrain.navigable && !tile.unit;
+      return (tile) => tile.terrain.navigable && openOrFriendly(tile);
     }
     return (tile) => (tile.terrain.passable || tile.terrain.navigable)
-      && !tile.unit && allowed(tile);
+      && openOrFriendly(tile) && allowed(tile);
   }
 
   costForUnit() {
     return (tile) => (tile.terrain.water ? tile.terrain.seaCost : roadMoveCost(tile));
   }
 
+  /**
+   * Bir haftada kabaca nereye varılabileceğinin önizlemesi. Artık bir kural
+   * değil, yalnızca çizim ipucu: hareketin kendisi `movement.js`te sürüyor.
+   */
   getReachable(unit) {
-    return reachable(this.world, unit.tile, unit.movesLeft, {
+    return reachable(this.world, unit.tile, speedOf(unit), {
       canEnter: this.canEnterFor(unit),
       costOf: this.costForUnit(unit),
     });
   }
 
+  /** Orduya yürüyüş emri verir; yol haftalar içinde kat edilir. */
   moveUnit(unit, tile) {
-    const info = unit === this.selectedUnit ? this.reachable : this.getReachable(unit);
-    const cost = info?.costs.get(tile);
-    if (cost === undefined) return false;
-
-    this.enterTile(unit, tile);
-    unit.movesLeft = Math.max(0, unit.movesLeft - cost);
-    if (unit === this.selectedUnit) this.selectUnit(unit.movesLeft > 0 ? unit : null);
-    this.emit('units', this.selectedUnit);
+    if (unit.battleId || (unit.retreatUntil ?? 0) > this.turns.turn) return false;
+    if (!orderMove(this, unit, tile)) return false;
+    this.emit('units', unit);
     this.requestRender();
     return true;
   }
@@ -193,47 +333,153 @@ export class Game {
 
   attack(unit, tile) {
     const defender = tile.unit;
-    if (!defender || defender.nationId === unit.nationId || unit.movesLeft <= 0) return false;
+    if (!defender || defender.nationId === unit.nationId) return false;
     if (hexDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) !== 1) return false;
     // Denizdeki kara birimi savaşamaz; önce karaya çıkmalı.
     if (unit.embarked) return false;
     // Barış içindeki ülkeye saldırmak için önce savaş ilan edilmeli.
     if (!atWar(this.world, unit.nationId, defender.nationId)) return false;
 
-    const result = resolveCombat(unit, defender, this.turns.rng, this.world);
-    // Saldırı turun kalan hareketini tüketir.
-    unit.movesLeft = 0;
-
-    if (result.defenderDied) {
-      this.turns.killUnit(defender);
-      // Gemi karaya, kara birimi de gemisiz olmayan kareye ilerleyemez.
-      if (!result.attackerDied && this.canEnterFor(unit)(tile)) this.enterTile(unit, tile);
-    }
-    if (result.attackerDied) this.turns.killUnit(unit);
-
-    if (unit === this.selectedUnit) this.selectUnit(null);
+    if (!startBattle(this, unit, defender)) return false;
+    if (unit === this.selectedUnit) this.selectUnit(unit);
     this.emit('units', this.selectedUnit);
     this.requestRender();
     return true;
   }
 
-  // --- Sürekli emirler: mikro yönetimi azaltan katman ---
+  // --- Cephe çizimi: sağ tuşu sürükleyerek hat kurulur ---
 
-  /** Uzak hedefe yürüme emri; ilk adımı hemen atar. */
-  orderGoto(unit, tile) {
-    setOrder(unit, ORDER.GOTO, tile);
-    executeOrders(this, unit.nationId, this.turns.rng);
-    // Emir sürüyorsa birim seçili kalmasın: sıradaki birime geçilebilsin.
-    this.selectUnit(unit.order || unit.movesLeft <= 0 ? null : unit);
-    this.emit('units', this.selectedUnit);
-    return unit.order;
+  beginFrontDraw(sx, sy) {
+    const tile = this.tileAtScreen(sx, sy);
+    this.frontDraw = { tiles: tile ? [tile] : [] };
+    this.requestRender();
   }
+
+  extendFrontDraw(sx, sy) {
+    if (!this.frontDraw) return;
+    const tile = this.tileAtScreen(sx, sy);
+    const tiles = this.frontDraw.tiles;
+    // Aynı kareyi tekrar eklemeyiz; hat sürükleme sırasını korur.
+    if (tile && tile !== tiles[tiles.length - 1] && !tiles.includes(tile)) {
+      tiles.push(tile);
+      this.requestRender();
+    }
+  }
+
+  /**
+   * Çizim biter ve plan kurulur. Plan tipi çizim kipinden gelir; kip yoksa
+   * (masaüstünde düz sağ sürükleme) nerede çizildiğine bakılır — kendi
+   * toprağımızın içi geri çekilme hattı, sınır/düşman cephe hattıdır.
+   */
+  finishFrontDraw() {
+    const draw = this.frontDraw;
+    const mode = this.drawMode;
+    this.frontDraw = null;
+    this.drawMode = null;
+    if (!draw || draw.tiles.length < 2) {
+      this.requestRender();
+      return null;
+    }
+    const nation = this.world.nations[this.turns.playerNation];
+    if (!nation?.alive) return null;
+
+    let plan;
+    if (mode === 'fallback') plan = PLAN.HOLD;
+    else if (mode === 'arrow') plan = PLAN.ARROW;
+    else if (mode === 'front') plan = PLAN.ADVANCE;
+    else {
+      const ownShare = draw.tiles.filter((tile) => tile.owner === nation.id).length
+        / draw.tiles.length;
+      plan = ownShare > 0.85 ? PLAN.HOLD : PLAN.ADVANCE;
+    }
+
+    // Plan seçili generalindir; yoksa seçili tümenlerin komutanı devralır.
+    const general = this.activeGeneral
+      ?? generalOfArmy(nation, this.selection[0])
+      ?? null;
+    const front = createFront(this, nation, draw.tiles, plan, general?.id ?? null);
+    if (front) {
+      // Taarruz okunda sürüklemenin *son* karesi hedeftir.
+      if (plan === PLAN.ARROW) {
+        const tip = draw.tiles[draw.tiles.length - 1];
+        front.target = { q: tip.q, r: tip.r };
+      }
+      // Generalin bütün tümenleri, yoksa seçili tümenler hatta katılır.
+      const armies = general ? divisionsOf(this.world, general) : this.selection;
+      for (const unit of armies) assignArmy(this.world, front, unit);
+    }
+    this.selectedFront = front;
+    this.emit('fronts', front);
+    this.requestRender();
+    return front;
+  }
+
+  cancelFrontDraw() {
+    this.frontDraw = null;
+    this.requestRender();
+  }
+
+  /**
+   * Çizim kipi: 'front' cephe hattı, 'fallback' geri çekilme hattı, 'arrow'
+   * taarruz oku. Masaüstünde düz sağ sürükleme kipsiz de çizer.
+   */
+  setDrawMode(mode) {
+    this.drawMode = ['front', 'fallback', 'arrow'].includes(mode) ? mode : null;
+    if (!this.drawMode) this.frontDraw = null;
+    this.emit('fronts', this.selectedFront);
+    this.requestRender();
+    return this.drawMode;
+  }
+
+  toggleDrawMode(mode = 'front') {
+    return this.setDrawMode(this.drawMode === mode ? null : mode);
+  }
+
+  // --- Komuta: general seçimi ve tümen devri ---
+
+  /** Generali seçer ve komuta ettiği bütün tümenleri seçili yapar. */
+  selectGeneral(general) {
+    this.activeGeneral = general ?? null;
+    if (!general) {
+      this.emit('command', null);
+      return [];
+    }
+    const divisions = divisionsOf(this.world, general);
+    this.selectUnits(divisions);
+    if (divisions.length) {
+      this.selected = divisions[0].tile;
+      this.emit('select', this.selected);
+    }
+    this.emit('command', general);
+    this.requestRender();
+    return divisions;
+  }
+
+  /** Seçili tümenleri bu generalin komutasına devreder. */
+  transferSelection(general) {
+    const nation = this.world.nations[this.turns.playerNation];
+    if (!general || !nation || !this.selection.length) return 0;
+    const moved = assignDivisions(nation, general.id, this.selection);
+    this.activeGeneral = general;
+    this.emit('command', general);
+    this.emit('selection', this.selection);
+    this.requestRender();
+    return moved;
+  }
+
+  selectFront(front) {
+    this.selectedFront = front ?? null;
+    this.emit('fronts', this.selectedFront);
+    this.requestRender();
+  }
+
+  // --- Sürekli emirler: mikro yönetimi azaltan katman ---
 
   setUnitOrder(unit, type) {
     if (!unit) return;
     setOrder(unit, type);
     if (type === ORDER.AUTO) executeOrders(this, unit.nationId, this.turns.rng);
-    this.selectUnit(unit.order ? null : unit);
+    if (type === ORDER.HOLD) clearPath(unit);
     this.emit('units', this.selectedUnit);
     this.requestRender();
   }
@@ -241,6 +487,7 @@ export class Game {
   clearUnitOrder(unit) {
     if (!unit) return;
     clearOrder(unit);
+    clearPath(unit);
     this.selectUnit(unit);
     this.emit('units', this.selectedUnit);
     this.requestRender();
@@ -318,8 +565,79 @@ export class Game {
   }
 
   endTurn() {
-    this.selectUnit(null);
     this.turns.endTurn();
+    // Seçim haftalık olarak *silinmez*: saat gerçek zamanlı akıyor, silinseydi
+    // oyuncunun seçimi saniyede birkaç kez uçardı. Yalnız ölenler ayıklanır.
+    this.pruneSelection();
+  }
+
+  /** Artık var olmayan orduları seçimden düşürür. */
+  pruneSelection() {
+    if (!this.selection.length) return;
+    const alive = this.selection.filter(
+      (unit) => unit.hp > 0 && this.world.units.includes(unit),
+    );
+    if (alive.length !== this.selection.length) this.selectUnits(alive);
+    else this.emit('selection', alive);
+  }
+
+  beginBuildingPlacement(buildingId) {
+    const building = BUILDINGS[buildingId];
+    if (!building || !this.world) return false;
+    const tiles = buildingPlacementTiles(
+      this.world, this.turns.playerNation, buildingId, 2,
+    );
+    if (!tiles.size) return false;
+    this.selectUnit(null);
+    this.buildingPlacement = { buildingId, tiles };
+    this.emit('placement', this.buildingPlacement);
+    this.requestRender();
+    return true;
+  }
+
+  cancelBuildingPlacement() {
+    if (!this.buildingPlacement) return;
+    this.buildingPlacement = null;
+    this.emit('placement', null);
+    this.requestRender();
+  }
+
+  /** 0 = duraklat, 1/2/4 = gerçek zaman hızları. Bir simülasyon adımı bir haftadır. */
+  setSpeed(speed) {
+    const next = SPEEDS.includes(Number(speed)) ? Number(speed) : 0;
+    // Duraklatmadan önceki hız hatırlanır: boşluk tuşu oyuncuyu 1x'e düşürmesin.
+    if (this.clock.speed) this.clock.lastSpeed = this.clock.speed;
+    this.clock.speed = next;
+    this.clock.accumulator = 0;
+    this.clock.lastTime = performance.now();
+    this.emit('clock', this.clock);
+    return this.clock.speed;
+  }
+
+  togglePause() {
+    return this.setSpeed(this.clock.speed ? 0 : (this.clock.lastSpeed ?? 1));
+  }
+
+  /** Hız kademesini bir basamak kaydırır (+ / − tuşları). */
+  stepSpeed(delta) {
+    const index = SPEEDS.indexOf(this.clock.speed);
+    const next = Math.max(0, Math.min(SPEEDS.length - 1, index + delta));
+    return this.setSpeed(SPEEDS[next]);
+  }
+
+  updateClock() {
+    const now = performance.now();
+    const elapsed = Math.min(500, now - this.clock.lastTime);
+    this.clock.lastTime = now;
+    if (!this.world || !this.clock.speed || this.turns.victory) return;
+    this.clock.accumulator += elapsed;
+    const stepMs = 1200 / this.clock.speed;
+    let steps = 0;
+    while (this.clock.accumulator >= stepMs && steps < 3) {
+      this.clock.accumulator -= stepMs;
+      this.endTurn();
+      steps++;
+    }
   }
 
   handleHover(sx, sy) {
@@ -355,7 +673,13 @@ export class Game {
           selected: this.selected,
           hovered: this.hovered,
           selectedUnit: this.selectedUnit,
+          playerNation: this.turns.playerNation,
+          frontDraw: this.frontDraw,
+          selectedFront: this.selectedFront,
+          selection: this.selection,
+          marquee: this.marquee,
           reachable: this.reachable,
+          buildingPlacement: this.buildingPlacement,
         });
       }
     }
@@ -367,5 +691,6 @@ export class Game {
     window.removeEventListener('orientationchange', this.onResize);
     this.input.destroy();
     if (this.frameHandle) cancelAnimationFrame(this.frameHandle);
+    if (this.clockTimer) clearInterval(this.clockTimer);
   }
 }

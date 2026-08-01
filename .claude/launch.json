@@ -3,8 +3,8 @@
   "configurations": [
     {
       "name": "hexwar",
-      "runtimeExecutable": "npx",
-      "runtimeArgs": ["--yes", "serve", "-l", "5173", "."],
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["scripts/dev-server.mjs"],
       "port": 5173
     }
   ]

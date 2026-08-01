@@ -11,6 +11,8 @@ import { tileEfficiency } from './infamy.js';
 import {
   techCorruptionBase, techFoodPerCity, techGoldPerCity, techIronPerCity, techStorageBonus,
 } from './tech.js';
+import { provinceOutput } from './provinces.js';
+import { regimentCount, upkeepWeight } from './units.js';
 
 /** Yeni şehir kurma bedeli ve şehirler arası asgari mesafe. */
 export const CITY_COST = { gold: 60, timber: 4 };
@@ -24,9 +26,9 @@ export const WORK_RADIUS = 2;
  * bölündü; İzci kasten demirsiz, demirsiz doğan ülke kilitlenmesin.
  */
 export const UNIT_COSTS = {
-  SCOUT: { gold: 15 },
   INFANTRY: { gold: 25, iron: 1 },
   CAVALRY: { gold: 40, iron: 2 },
+  ARTILLERY: { gold: 55, iron: 3, timber: 2 },
   WARSHIP: { gold: 30, iron: 1, timber: 3 },
 };
 
@@ -38,7 +40,7 @@ export const UNIT_UPKEEP = { gold: 1, food: 1 };
  * üretilip ambar tavanında ziyan oluyordu. Zırhlı birlik ve donanma artık
  * demir yer, böylece demir stratejik bir kısıt hâline gelir.
  */
-export const IRON_UPKEEP_TYPES = { CAVALRY: 1, WARSHIP: 1 };
+export const IRON_UPKEEP_TYPES = { CAVALRY: 1, ARTILLERY: 2, WARSHIP: 1 };
 
 /**
  * Bina onarımı: her iki bina bir kereste ister. Keresteye de sürekli bir gider
@@ -52,7 +54,7 @@ export function timberRepair(buildingCount) {
 export const WORKER_FOOD = 2;
 
 /** Yeni şehir bu kadar erzakla başlar: kötü arazide doğan ülke ilk turda çökmesin. */
-export const STARTING_FOOD_STORE = 15;
+export const STARTING_FOOD_STORE = 60;
 
 /**
  * Ambar kapasitesi. Tavan olmazsa demir/kereste birikip anlamsızlaşıyor
@@ -159,6 +161,26 @@ export function canFoundCity(world, tile, nationId) {
 function corruption(cityCount, nation) {
   const base = techCorruptionBase(nation);
   return base / (base + Math.max(0, cityCount - 1));
+}
+
+/** İdari giderin ilk kaç şehri bedava saydığı. Küçük ülke boğulmasın. */
+const ADMIN_FREE_CITIES = 3;
+// Ülkeler zaten ~85 province ile başlıyor; eşik bunun üstünde olmalı ki
+// idari gider erken oyunun sabit vergisi değil, genişlemenin bedeli olsun.
+const ADMIN_FREE_PROVINCES = 120;
+/** Başkente bu mesafeden uzak şehir ayrıca idari yük getirir. */
+const ADMIN_FREE_DISTANCE = 6;
+
+/**
+ * İdari gider: imparatorluk büyüdükçe artan *görünür* bir altın kalemi.
+ * Yolsuzluk geliri yalnızca oransal kısıyordu, bu yüzden büyümenin bütçede
+ * okunabilir bir bedeli yoktu ve geç oyunda altın birikip duruyordu.
+ * Şehir sayısı süperdoğrusal, taşra ve başkente uzaklık doğrusal artar.
+ */
+function administrationCost(cityCount, provinceCount, distanceLoad) {
+  const scale = Math.max(0, cityCount - ADMIN_FREE_CITIES) ** 1.45 * 0.9;
+  const provinces = Math.max(0, provinceCount - ADMIN_FREE_PROVINCES) * 0.06;
+  return Math.round((scale + provinces + distanceLoad) * 10) / 10;
 }
 
 /**
@@ -278,10 +300,17 @@ export function nationBudget(world, nation) {
   let storageBonus = 0;
   let researchDiscount = 0;
   let armyUpkeepRelief = 0;
+  let roadMaintenance = 0;
+  let provinceCount = 0;
+  let distanceLoad = 0;
 
   for (const city of world.cities) {
     if (city.nationId !== nation.id) continue;
     cityCount++;
+    if (nation.capital) {
+      const distance = hexDistance(city.tile.q, city.tile.r, nation.capital.q, nation.capital.r);
+      distanceLoad += Math.max(0, distance - ADMIN_FREE_DISTANCE) * 0.25;
+    }
     workers += city.pop;
     buildingCount += city.buildings?.length ?? 0;
     const maintenance = buildingMaintenance(city);
@@ -294,6 +323,18 @@ export function nationBudget(world, nation) {
     const out = cityProduction(city, world);
     for (const r of RESOURCES) production[r] += out[r];
   }
+  // İşlenen yol seviyesi +1 altın üretir. Aynı miktardaki bakım, kullanılan
+  // altyapıyı kendi kendine yeterli; atıl askerî ağı ise gerçek gider yapar.
+  world.forEach((tile) => {
+    if (tile.owner !== nation.id) return;
+    provinceCount++;
+    roadMaintenance += tile.roadLevel ?? 0;
+    const provincial = provinceOutput(tile);
+    production.gold += provincial.gold;
+    production.food += provincial.food;
+    production.timber += provincial.timber;
+    production.iron += provincial.iron;
+  });
   // Teknoloji şehir başına sabit katkı verir: yüzde değil, kartopu yapmasın.
   production.food += cityCount * techFoodPerCity(nation);
   production.gold += cityCount * techGoldPerCity(nation);
@@ -303,15 +344,28 @@ export function nationBudget(world, nation) {
   production.gold = Math.round(production.gold * corruption(cityCount, nation));
 
   let army = 0;
+  let armyWeight = 0;
   let armyIron = 0;
   for (const u of world.units) {
     if (u.nationId !== nation.id) continue;
-    army++;
-    armyIron += IRON_UPKEEP_TYPES[u.type.id] ?? 0;
+    army += regimentCount(u);
+    armyWeight += upkeepWeight(u);
+    if (u.regiments?.length) {
+      for (const regiment of u.regiments) {
+        armyIron += IRON_UPKEEP_TYPES[regiment.typeId] ?? 0;
+      }
+    } else {
+      armyIron += IRON_UPKEEP_TYPES[u.type.id] ?? 0;
+    }
   }
 
   const upkeep = emptyPool();
-  upkeep.gold = Math.max(0, army * UNIT_UPKEEP.gold - armyUpkeepRelief) + buildingCosts.gold;
+  const armyFunding = (nation.economy?.armySpending ?? 100) / 100;
+  // Bakım artık alay *sayısına* değil teçhizat ağırlığına bağlı: modern ordu
+  // sürekli para yer, ordu modernizasyonu geç oyunun asıl gider kalemi olur.
+  const armyGold = Math.max(0, armyWeight * UNIT_UPKEEP.gold * armyFunding - armyUpkeepRelief);
+  const administration = administrationCost(cityCount, provinceCount, distanceLoad);
+  upkeep.gold = armyGold + administration + buildingCosts.gold + roadMaintenance;
   upkeep.food = army * UNIT_UPKEEP.food + workers * WORKER_FOOD + buildingCosts.food;
   upkeep.timber = buildingCosts.timber + timberRepair(buildingCount);
   upkeep.iron = buildingCosts.iron + armyIron;
@@ -325,8 +379,12 @@ export function nationBudget(world, nation) {
     cities: cityCount,
     workers,
     army,
+    armyGold,
+    provinces: provinceCount,
+    administration,
     buildings: buildingCount,
     buildingMaintenance: buildingCosts,
+    roadMaintenance,
     storageBonus,
     researchDiscount: Math.min(0.32, researchDiscount),
     armyUpkeepRelief,
@@ -388,5 +446,9 @@ export function captureCity(game, city, nationId) {
     const t = world.get(q, r);
     if (t) game.turns.claim(t, nationId);
   }
+  // Şehrin haritaya yerleştirilmiş dış binaları da şehirle birlikte devredilir.
+  world.forEach((tile) => {
+    if (tile.structure?.cityId === city.id) game.turns.claim(tile, nationId);
+  });
   return old;
 }

@@ -5,7 +5,12 @@
   "type": "module",
   "description": "Hex tabanlı, prosedürel dünya üreten mobil uyumlu strateji oyunu iskeleti",
   "scripts": {
-    "dev": "npx --yes serve -l 5173 .",
-    "start": "npx --yes serve -l 5173 ."
+    "dev": "node scripts/dev-server.mjs",
+    "start": "node scripts/dev-server.mjs",
+    "diagnose:economy": "node scripts/economy-diagnostic.mjs",
+    "diagnose:system": "node scripts/system-diagnostic.mjs",
+    "diagnose:policy": "node scripts/policy-diagnostic.mjs",
+    "diagnose:sink": "node scripts/sink-diagnostic.mjs",
+    "diagnose:command": "node scripts/command-diagnostic.mjs"
   }
 }

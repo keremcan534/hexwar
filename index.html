@@ -26,21 +26,25 @@
     </button>
 
     <div class="res-strip" id="resources" aria-label="National resources">—</div>
+    <div class="macro-strip" id="macro-stats" aria-label="National statistics">—</div>
     <button class="icon-btn" id="btn-settings" aria-label="Settings">☰</button>
   </header>
 
-  <!-- Tur denetimi sol altta: harita modlarının karşısı. Üst çubuk bilgi için
-       kalsın; 375 pikselde hepsi tek satıra sığmıyordu. -->
+  <!-- Gerçek zaman denetimi: simülasyon haftalık adımlarla arka planda akar. -->
   <div class="turn-control" id="turn-control">
-    <span class="turn-badge">TURN <b id="turn-value">1</b></span>
-    <button class="action compact" id="btn-next-unit">Next Unit</button>
-    <button class="primary compact" id="btn-end-turn">End Turn</button>
+    <span class="turn-badge"><b id="turn-value">1 JAN 1836</b></span>
+    <button class="time-btn active" id="btn-pause" data-speed="0" aria-label="Pause">Ⅱ</button>
+    <button class="time-btn" data-speed="1">▶</button>
+    <button class="time-btn" data-speed="2">▶▶</button>
+    <button class="time-btn" data-speed="4">▶▶▶</button>
   </div>
 
   <!-- HOI4'ün sekme düğmeleri: her biri tam ekran bir yönetim ekranı açar -->
   <nav class="tab-bar" id="tab-bar" aria-label="National management">
     <button data-screen="construction"><span>🏗</span>Construction</button>
+    <button data-screen="industry"><span>🏭</span>Industry</button>
     <button data-screen="production"><span>⚒</span>Production</button>
+    <button data-screen="budget"><span>¤</span>Budget</button>
     <button data-screen="research"><span>🔬</span>Research</button>
     <button data-screen="logistics"><span>📦</span>Logistics</button>
     <button data-screen="diplomacy"><span>🕊</span>Diplomacy</button>
@@ -112,11 +116,36 @@
     <p class="hint" id="gen-stats"></p>
   </div>
 
+  <!-- Solda seçili tümen listesi (HOI4'ün seçim paneli) -->
+  <aside class="divisions hidden" id="divisions" aria-label="Selected divisions">
+    <div class="divisions-head">
+      <b id="divisions-count">—</b>
+      <button class="icon-btn" id="divisions-clear" aria-label="Clear selection">✕</button>
+    </div>
+    <div class="divisions-body" id="divisions-body"></div>
+  </aside>
+
+  <!-- Ekranın orta altında sabit komuta paneli: üstte plan araçları,
+       altta general portreleri. HOI4'teki komutan çubuğunun karşılığı. -->
+  <div class="command-dock" id="command-dock" aria-label="Army command">
+    <div class="command-tools hidden" id="command-tools">
+      <button class="tool-btn" data-tool="front" title="Draw a front line">⌇ Front</button>
+      <button class="tool-btn" data-tool="fallback" title="Draw a fallback line">⌐ Fallback</button>
+      <button class="tool-btn" data-tool="arrow" title="Draw an offensive arrow">➤ Offensive</button>
+      <span class="tool-sep"></span>
+      <span class="tool-label">Stance</span>
+      <button class="tool-btn stance" data-stance="1" title="Careful">1</button>
+      <button class="tool-btn stance" data-stance="2" title="Balanced">2</button>
+      <button class="tool-btn stance" data-stance="3" title="Aggressive">3</button>
+    </div>
+    <div class="command-bar" id="command-bar" aria-label="Commanders"></div>
+  </div>
+
   <div class="sheet" id="sheet">
     <div class="sheet-grip"></div>
     <div class="hegemony" id="hegemony"></div>
     <div class="sheet-body" id="sheet-body">
-      <p class="placeholder">Select a hex for details.</p>
+      <p class="placeholder">Select a province to develop it, or an army to issue movement orders.</p>
     </div>
   </div>
 

@@ -421,3 +421,162 @@ TNGZT4'te bir ulusun demir üretimi **0**, stoğu 3'te kalıyor. Tepe/dağ topra
 olmadığı için Demirhane de kuramıyor; yalnız İzci üretebiliyor. Bu, bölüm 12'de
 4 numaralı risk olarak yazdığımız durumun doğrulanması. İzci'nin demirsiz
 olması ülkeyi ayakta tutuyor ama gerçek çözüm ticaret (6. adım).
+
+## 18. Sürekli kaynak giderlerinin ikinci ölçümü
+
+Kereste ve demir bakımından sonra görülen 1432 altınlık hazine önce ticaret
+kapasitesine bağlandı. Tur izleri bu tahmini doğrulamadı:
+
+- Kerestesi 0 olan ülkenin bakım bilançosu −2 olmasına rağmen binaları tam
+  verimle çalışıyordu. Stok 0'a sabitleniyor, açığın hiçbir sonucu olmuyordu.
+- Yol seviyesi işlenen karede +1 altın üretiyor ama yolun sürekli gideri yoktu.
+  Yol ağı tamamlandıktan sonra bu gelir sonsuza kadar hazineye ekleniyordu.
+- Bazı kilitli ülkelerde `ROUTE_CAPACITY = 3` değil, uygun satıcının hiç
+  bulunmaması sorundu. Kapasiteyi büyütmek bu durumu değiştirmiyor.
+
+İki simetrik sonuç eklendi: kereste açığında bütçe dengelenene kadar en yeni
+binalar bakımsızlıktan kapanıyor; yol seviyesi başına 1 altın bakım ödeniyor.
+İşlenen yol kendi ticaret gelirini karşılıyor, atıl stratejik ağ ise gerçek bir
+bütçe tercihi oluyor.
+
+İki bağımsız 30 oyunluk grupta finaldeki en yüksek ülke hazinesi:
+
+| Grup | Medyan | p90 | En yüksek |
+|---|---:|---:|---:|
+| ECON | 109 | 149 | 177 |
+| VERIFY | 108 | 159 | 213 |
+
+Geçici zirveler 457 ve 456; bunlar sonraki teknoloji/yapı harcamasında düşüyor.
+Yol bakımını aynı VERIFY seed'lerinde kapatan A/B koşusunda final maksimumu
+213'ten 749'a çıktı. Fetih dışı oran yalnız bir oyunda değişti (%23 → %27);
+bu, 30 oyunluk örneklemin belirsizliğinin altında. İki grubun ikili fetih dışı
+sonucu %40 ve %23 olduğundan bu ölçüt hâlâ kararsız; bölüm 17'deki puan
+kompozisyonu göstergesiyle birlikte izlenmeli.
+
+## 19. Gerçek zamanlı pazar, sınıflar, sanayi ve cephe dikey dilimi
+
+Tur sonu düğmesi kaldırıldı. Simülasyon artık haftalık adımlarla akar ve
+duraklatma, 1×, 2×, 4× hızlarıyla yönetilir. Bu, ekonominin ve cephelerin
+oyuncu emri beklemeden birbirini beslemesini sağlıyor. Yeni oyun ve kayıt
+yükleme duraklatılmış başlar; otomatik kayıt her on haftada bir yapılır.
+
+### Dünya pazarı
+
+Dört stratejik stoğun yanında yedi işlenmiş mal tanımlandı: kömür, konserve,
+kumaş, alet, çelik, silah, mobilya ve lüks ürünlerle toplam on bir piyasa malı
+var. Her hafta gerçekleşen üretim ve tüketim arz/talep sayaçlarına yazılır;
+fiyat önceki değerden kademeli hareket eder. Ülkelerin eksik kereste ve demiri
+dünya pazarından alması özellikle önemlidir: stok açığı artık yalnız yerel bir
+engel değil, herkesin ödediği fiyatı yükselten küresel taleptir.
+
+### Sınıflar ve maliye
+
+Nüfus alt (%78), orta (%17) ve üst (%5) sınıfa ayrıldı. Sınıfların ayrı geliri,
+ihtiyaç sepeti, yaşam standardı ve memnuniyeti var. Oyuncu her sınıfın vergisini,
+gümrük tarifesini ve ordu bakımını ayrı kaydırıcılarla belirler. Ordu bakımını
+azaltmak bütçede anlık rahatlama sağlar ama cephe gücünü aynı oranda düşürür.
+
+### Fabrikalar
+
+Yedi fabrika tarifi yerel hammaddeyi dünya fiyatından girdiye, işlenmiş mala
+çevirir. İşçi doluluğu anlık değildir: kârlı tesisler boş işgücünden haftalık
+işçi çeker, zarar edenler işçi kaybeder. Böylece yüksek çıktı fiyatı tek başına
+yeterli değildir; girdi maliyeti ve tarife de yatırım kararını değiştirir.
+Sanayi ekranı her tesis için çalışan/kapasite, haftalık kâr, marj ve üretim
+zincirini gösterir.
+
+### Cephe savaşı
+
+Tek tek birlik mikro yönetimi yerine savaş başına otomatik temas cepheleri
+oluşturulur. Beş haftada bir iki tarafın kara gücü, ordu bakım bütçesi ve küçük
+bir belirsizlikle muharebe çözülür. Kayıplar birlik canına uygulanır; yenilen
+taraf geri çekilmiş sayılır. Cephe ilerlemesi ±100'e ulaştığında sınırdaki bir
+hex ve varsa şehir el değiştirir. Harita üzerindeki cephe rozeti ve Diplomasi
+ekranı asker gücünü, ilerlemeyi ve son muharebe sonucunu gösterir.
+
+Bu ilk dikey dilim general, ikmal hattı ve saldırı emri içermiyor. Bunlar,
+temel ekonomik-savaş geri beslemesi oynanıp ölçüldükten sonra eklenecek ikinci
+katmandır.
+
+### İlk denge gözlemi
+
+Beş seed'lik hızlı başsız koşuda simülasyon hatasız tamamlandı. Stratejik pazar
+alımları eklenmeden bir ülke 1112 altınla kaynak kilidinde kalabiliyordu.
+Alımlar dünya fiyatına bağlandıktan sonra finalde en zengin ülke medyanı 236,
+p90 ve maksimum 370 oldu. Bu küçük örnek sonuç kararı değildir; 30+ seed ile
+yeniden ölçülmelidir. Yine de stok-pazar bağının eski para biriktirme arızasını
+doğru yönde kırdığı görülüyor.
+
+## 20. Tek savaş dili ve anlamlı provinceler
+
+Vic3 tarzı otomatik cephe ile haritada seçilip yürütülen birlikler birbirini
+boşa çıkarıyordu: oyuncu bir orduyu konumlandırabiliyor ama savaşın sonucu o
+ordunun bulunduğu yerden bağımsız çözülüyordu. Cephe sistemi kaldırıldı.
+
+Yeni modelde haritadaki her ordu birden fazla alay taşır. Dost ordular aynı
+province'de birleşir. Bitişik düşman ordusuna saldırı haftalık, en fazla altı
+raundluk bir muharebe başlatır. Asker sayısı ve moral birlikte aşınır; arazi ve
+şehir savunana, ordu bütçesi iki tarafa katsayı verir. Moral kırılınca ordu
+kendi kontrolündeki bir province'e çekilir ve üç hafta emir alamaz. Kazanan
+sahada kalır ve province'i işgal eder. Böylece oyuncunun haritada gördüğü,
+seçtiği ve yürüttüğü nesne savaş hesabındaki nesnenin aynısıdır.
+
+Her geçilebilir kara hex'i artık bir province'dir ve şunları taşır:
+
+- Yerel nüfus
+- Sahiplik değişince düşen, zamanla toparlanan kontrol
+- Tarım, çıkarım ve ticaret için üç ayrı 0-5 gelişim seviyesi
+- Şehir işçisi atamasından bağımsız haftalık hammadde ve vergi katkısı
+
+Province geliştirmek 20 idari kapasiteyle birlikte altın ve kereste harcar.
+İdari kapasite 100'de sınırlı ve haftada 2 yenilenir. Bu kaynak, boş zamanda
+her kareye basılan bedava bir düğme yerine “hangi bölgeyi önce uzmanlaştırayım?”
+kararı yaratır. Verimli ova tarım, orman/tepe çıkarım, kıyı ve altın üreten
+arazi ticaret için daha iyi adaydır.
+
+Alt panel seçili bir province'in nüfusunu, kontrolünü, gerçek haftalık çıktısını
+ve üç yatırımın maliyetini birlikte gösterir. Seçim yokken “sonraki anlamlı
+karar” kartı ülkenin açık veren kaynağına, savaşa ve mevcut idari kapasiteye
+göre tek bir öneri verir.
+
+Province üretimi eski 420 hegemonya eşiğini 70-100 haftada doldurduğu için hedef
+1000'e ölçeklendi. İlk beş seed'de 750 hedefiyle ortalama bitiş 171 haftaydı;
+1000 hedefi 220-300 haftalık eski tasarım ufkunu geri kazanmayı amaçlıyor.
+
+Üç ayrı 180 haftalık bütünlük koşusunda 132 muharebe gözlendi. Orphan muharebe
+referansı, aynı karede iki ordu ve boş/negatif alay yığını sayıları sıfırdı.
+
+## 21. Savaş temposu, çalışan maliye ve harita yapıları
+
+YZ'nin savaş kararı ilk 26 hafta kilitli ve daha sonra aylık değerlendirilir.
+Bir ülke ikinci bir savaşı açamaz; en az dört kara alayı, 45 altın ve %40
+istikrar gerekir. Uygun hedef bulunsa bile aylık savaş ilanı olasılığı %2'dir;
+barıştan sonra aynı iki ülke arasında 26 haftalık ateşkes vardır.
+Bu tempo savaşın kaybolmadığı fakat haritanın sürekli zincir savaşa da
+dönüşmediği başlangıç aralığını hedefler. Altı ayrı 250 haftalık koşuda 4–32
+savaş görüldü; ortalama 18.8 savaştı. Aynı koşularda bütünlük hatası sıfırdı.
+
+Budget & Society artık yalnız arayüz değerleri değildir. Vergi doğrudan hazine
+gelirine; tarife hem dış ticaret gelirine hem hanelerin ödediği ihtiyaç sepetine;
+ordu bütçesi ise bakım giderine ve gerçek muharebe gücüne bağlanır. Sınıfların
+ağırlıklı memnuniyeti ulusal istikrarı üretir. İstikrar province kontrol
+toparlanmasını, nüfus büyümesini, idari kapasite yenilenmesini ve fabrika
+işgücünü etkiler.
+
+Aynı seed üzerinde 180 haftalık politika A/B koşusu:
+
+| Politika | Vergi | Tarife | İstikrar | Alt sınıf memnuniyeti | Otorite |
+|---|---:|---:|---:|---:|---:|
+| Düşük vergi + sübvansiyon | 0.00 | −2.98 | %57 | %59.7 | 92.8 |
+| Yüksek vergi + yüksek tarife | 4.02 | 11.92 | %27 | %29.0 | 85.9 |
+
+Ordu bütçesini %100'den %25'e indirmek aynı kuvvet için haftalık bakımı
+2.0'dan 0.5 altına düşürdü; muharebe katsayısı da aynı politika değerini
+kullanıyor.
+
+Şehir binaları artık Construction ekranından doğrudan satın alınmaz. Oyuncu
+önce yapıyı, sonra haritada uygun bir province'i seçer. Kıyı, hammadde ve arazi
+koşulları yer seçimini anlamlı kılar; bir province yalnız bir yapı taşıyabilir.
+Yapılar Canvas üzerinde görünür, kayıt dosyasında province ile saklanır ve şehir
+fethinde bağlı yapılar tutarlı biçimde el değiştirir. Başsız bütünlük koşusunda
+212 yapı üretildi ve sahipsiz/geçersiz yapı sayısı sıfır kaldı.

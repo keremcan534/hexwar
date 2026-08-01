@@ -83,7 +83,10 @@ export function availableTechs(nation) {
 export function researchCost(nation, idOrTech) {
   const tech = typeof idOrTech === 'string' ? TECHS[idOrTech] : idOrTech;
   if (!tech) return {};
-  const discount = Math.min(0.32, nation.budget?.researchDiscount ?? 0);
+  // Eğitim harcaması bina indirimine eklenir. Veriyi doğrudan okuyoruz:
+  // economy.js zaten cities.js'e bağlı, buradan import etmek döngü yapardı.
+  const schooling = Math.min(100, nation.economy?.social?.education ?? 0) / 100 * 0.2;
+  const discount = Math.min(0.45, (nation.budget?.researchDiscount ?? 0) + schooling);
   return {
     ...tech.cost,
     gold: Math.ceil((tech.cost.gold ?? 0) * (1 - discount)),

@@ -2,7 +2,7 @@
 // değil — yüzde verirsek her fetih lideri katlar ve kırdığımız kartopu geri gelir.
 // Her binanın bakımı var ki "hep al, hiç düşünme" olmasın.
 
-import { hexesInRange } from '../core/hex.js';
+import { hexDistance, hexesInRange } from '../core/hex.js';
 import { techBuildingSlots } from './tech.js';
 
 /** Şehir başına bina yuvası. Geç oyun şehirleri sınırsız yığmasın. */
@@ -228,6 +228,44 @@ export function buildingStatus(world, city, id, radius) {
 
 export function canBuild(world, city, id, radius) {
   return buildingStatus(world, city, id, radius).ok;
+}
+
+function locationFits(buildingId, tile, city) {
+  if (!tile?.terrain.passable || tile.structure) return false;
+  if (buildingId === 'SAWMILL') return tile.terrain.yields.timber > 0;
+  if (buildingId === 'FORGE' || buildingId === 'MINE') return tile.terrain.yields.iron > 0;
+  if (buildingId === 'FARM_ESTATE') return tile.terrain.yields.food >= 2;
+  if (buildingId === 'HARBOR' || buildingId === 'SHIPYARD') return tile.coastal;
+  if (buildingId === 'WALLS') return tile === city.tile;
+  return true;
+}
+
+/** Seçilen province'e hangi şehir adına bina yerleştirilebileceğini döndürür. */
+export function placementCityFor(world, nationId, tile, buildingId, radius = 2) {
+  if (!tile || tile.owner !== nationId || !tile.terrain.passable || tile.structure) return null;
+  const cities = world.cities
+    .filter((city) => (
+      city.nationId === nationId
+      && hexDistance(city.tile.q, city.tile.r, tile.q, tile.r) <= radius
+    ))
+    .sort((a, b) => (
+      hexDistance(a.tile.q, a.tile.r, tile.q, tile.r)
+      - hexDistance(b.tile.q, b.tile.r, tile.q, tile.r)
+    ));
+  for (const city of cities) {
+    if (!locationFits(buildingId, tile, city)) continue;
+    if (buildingStatus(world, city, buildingId, radius).ok) return city;
+  }
+  return null;
+}
+
+export function buildingPlacementTiles(world, nationId, buildingId, radius = 2) {
+  const placements = new Map();
+  world.forEach((tile) => {
+    const city = placementCityFor(world, nationId, tile, buildingId, radius);
+    if (city) placements.set(tile, city);
+  });
+  return placements;
 }
 
 /** Binaların şehir üretimine katkısı. */

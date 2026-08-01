@@ -1,7 +1,12 @@
 // Tur döngüsü: oyuncu hamlesini bitirir -> yapay zekâ oynar -> yeni tur başlar.
 
 import { makeRng } from '../core/rng.js';
-import { createUnit, movesFor, removeUnit, UNIT_TYPES } from './units.js';
+import {
+  UNIT_TYPES, addRegiment, clearPath, createUnit, recoverArmy, refreshArmy,
+  regimentCount, removeUnit, removeWeakestRegiment,
+} from './units.js';
+import { advanceMovement } from './movement.js';
+import { recruit } from './recruitment.js';
 import { runNationAI } from './ai.js';
 import { atWar, computeContacts, initRelations } from './diplomacy.js';
 import {
@@ -15,9 +20,16 @@ import {
   cityName, createCity, growPop, growthCost, nationBudget, pay, storageCap, UNIT_UPKEEP,
   WORK_RADIUS,
 } from './cities.js';
-import { BUILDINGS, canBuild } from './buildings.js';
+import {
+  BUILDINGS, buildingPlacementTiles, canBuild, placementCityFor,
+} from './buildings.js';
 import { RESOURCES } from '../world/terrain.js';
 import { buildRoad, roadLabel } from './infrastructure.js';
+import { initEconomy, runEconomy } from './economy.js';
+import { initBattles, runBattles } from './battles.js';
+import { initGenerals, reconcileGenerals, releaseArmy, seedGenerals } from './generals.js';
+import { initFronts, removeArmy as removeArmyFromFront, runFronts } from './fronts.js';
+import { initProvinces, runProvinces } from './provinces.js';
 
 /** Başlangıç stoku: ilk birkaç turda bir birim alacak kadar. */
 const STARTING_STOCK = { gold: 50, food: 0, timber: 5, iron: 5 };
@@ -39,7 +51,12 @@ export class TurnManager {
   start(world) {
     world.units = [];
     world.cities = [];
-    world.forEach((t) => { t.unit = null; t.city = null; });
+    world.forEach((t) => {
+      t.unit = null;
+      t.city = null;
+      // Başlangıç sınırları işgal değildir; ilk beş haftayı sıfır üretimle açmasın.
+      if (t.owner >= 0) t.heldSince = -100;
+    });
     this.turn = 1;
     this.log = [];
     this.victory = null;
@@ -58,21 +75,30 @@ export class TurnManager {
       // Her ülke başkentinde bir şehirle başlar.
       createCity(world, nation.capital, nation.id, cityName(this.rng, usedNames), 2, 3);
       this.spawnAt(nation, 'INFANTRY', { fallbackToCapital: true });
-      this.spawnAt(nation, 'SCOUT', { fallbackToCapital: true });
+      this.spawnAt(nation, 'CAVALRY', { fallbackToCapital: true });
     }
+    initProvinces(world);
+    initEconomy(world);
+    initBattles(world);
+    initGenerals(world);
+    seedGenerals(world, this.rng);
+    initFronts(world);
     assignAllWorkers(world);
     for (const nation of world.nations) nation.budget = nationBudget(world, nation);
   }
 
-  /** Şehirlerinden birinde boş kare bulup birim satın alır. */
+  /**
+   * Alay kurar. Altın *ve* insan gücü ister: asker en kalabalık province'in
+   * nüfusundan çıkar, toplanma noktası varsa oraya yürür (bkz. recruitment.js).
+   */
   buyUnit(nation, typeId) {
     const cost = UNIT_COSTS[typeId];
     if (!nation.alive || !cost || !canAfford(nation, cost)) return null;
-    const unit = this.spawnAt(nation, typeId);
+    const unit = recruit(this.game, nation, typeId);
     if (!unit) return null;
     pay(nation, cost);
     if (nation.id === this.playerNation) {
-      this.addLog(`${UNIT_TYPES[typeId].name} recruited.`);
+      this.addLog(`${UNIT_TYPES[typeId].name} raised (${UNIT_TYPES[typeId].manpower} men).`);
     }
     this.game.emit('units', this.game.selectedUnit);
     return unit;
@@ -80,19 +106,42 @@ export class TurnManager {
 
   /** Şehre bina kurar. Altının asıl gideri burasıdır. */
   build(city, buildingId) {
-    const world = this.world;
-    const nation = world.nations[city.nationId];
     const building = BUILDINGS[buildingId];
-    if (!building || !nation.alive) return false;
-    if (!canBuild(world, city, buildingId, WORK_RADIUS)) return false;
-    if (!pay(nation, building.cost)) return false;
+    if (!building || !city) return false;
+    const placements = [...buildingPlacementTiles(
+      this.world, city.nationId, buildingId, WORK_RADIUS,
+    ).entries()].filter(([, placementCity]) => placementCity === city);
+    placements.sort(([a], [b]) => {
+      const score = (tile) => {
+        if (buildingId === 'SAWMILL') return tile.terrain.yields.timber;
+        if (buildingId === 'FORGE' || buildingId === 'MINE') return tile.terrain.yields.iron;
+        if (buildingId === 'FARM_ESTATE') return tile.terrain.yields.food;
+        return tile.coastal ? 1 : 0;
+      };
+      return score(b) - score(a);
+    });
+    return placements.length
+      ? this.buildAt(placements[0][0], buildingId, city.nationId)
+      : false;
+  }
+
+  /** Seçili binayı haritadaki province'e kurar ve en yakın şehre bağlar. */
+  buildAt(tile, buildingId, nationId = this.playerNation) {
+    const world = this.world;
+    const nation = world.nations[nationId];
+    const building = BUILDINGS[buildingId];
+    const city = placementCityFor(world, nationId, tile, buildingId, WORK_RADIUS);
+    if (!building || !nation?.alive || !city || !pay(nation, building.cost)) return false;
 
     city.buildings.push(buildingId);
+    tile.structure = { buildingId, cityId: city.id };
     this.game.recomputeEconomy();
-    if (city.nationId === this.playerNation) {
-      this.addLog(`${city.name}: ${building.name} completed.`);
+    if (nationId === this.playerNation) {
+      this.addLog(`${building.name} completed in ${tile.q}, ${tile.r} (${city.name}).`);
     }
+    this.game.renderer.invalidateCache();
     this.game.emit('units', this.game.selectedUnit);
+    this.game.emit('provinces', tile);
     this.game.requestRender();
     return true;
   }
@@ -116,7 +165,7 @@ export class TurnManager {
     pay(nation, CITY_COST);
     this.usedCityNames = this.usedCityNames ?? new Set(world.cities.map((c) => c.name));
     const city = createCity(world, unit.tile, unit.nationId, cityName(this.rng, this.usedCityNames));
-    unit.movesLeft = 0;
+    clearPath(unit);
     this.game.renderer.invalidateCache();
     if (unit.nationId === this.playerNation) this.addLog(`${city.name} founded.`);
     this.game.emit('units', this.game.selectedUnit);
@@ -137,6 +186,12 @@ export class TurnManager {
     const isSea = UNIT_TYPES[typeId].domain === 'sea';
     for (const spot of spots) {
       // Gemi şehrin kendisine değil, bitişik suya iner; şehir kıyıda değilse üretilemez.
+      const existing = spot.unit && spot.unit.nationId === nation.id
+        && spot.unit.type.domain === UNIT_TYPES[typeId].domain
+        && !spot.unit.battleId
+        ? spot.unit
+        : null;
+      if (existing && addRegiment(existing, typeId, nation)) return existing;
       const tile = isSea
         ? world.neighbors(spot).find((n) => n.terrain.navigable && !n.unit)
         : (spot.unit
@@ -158,10 +213,23 @@ export class TurnManager {
     if (tile.owner >= 0 && !atWar(world, tile.owner, nationId)) return false;
 
     const nation = world.nations[nationId];
+    if (tile.structure && tile.owner >= 0) {
+      const structureCity = world.cities.find((city) => city.id === tile.structure.cityId);
+      // Şehir zaten yeni sahibe geçtiyse ona bağlı yapı da devredilir. Tek başına
+      // işgal edilen province yapısı ise yıkılır ve eski şehrin bonusundan çıkar.
+      if (structureCity?.nationId !== nationId) {
+        if (structureCity) {
+          const index = structureCity.buildings.indexOf(tile.structure.buildingId);
+          if (index >= 0) structureCity.buildings.splice(index, 1);
+        }
+        tile.structure = null;
+      }
+    }
     // Sahipli toprağı almak şöhret bedeli ister; boş toprağa yerleşmek istemez.
     if (tile.owner >= 0) addInfamy(nation, tileInfamy(tile, nation));
     // İşgal saati sıfırlanır: taze fetih bir süre üretmez, sonra asimile olur.
     tile.heldSince = this.turn;
+    if (tile.province) tile.province.control = tile.owner < 0 ? 60 : 25;
     if (tile.owner >= 0) world.nations[tile.owner].tiles--;
     tile.owner = nationId;
     world.nations[nationId].tiles++;
@@ -186,15 +254,27 @@ export class TurnManager {
 
     this.turn++;
     world.turn = this.turn;
-    for (const unit of world.units) unit.movesLeft = movesFor(unit);
+    for (const unit of world.units) {
+      if (!unit.battleId && (unit.retreatUntil ?? 0) <= this.turn) recoverArmy(unit);
+    }
+    // Cephe emirleri yürüyüşten *önce* işlenir ki hatta atanan ordular aynı
+    // hafta yola çıksın; sonra yürüyüş ilerler ve temas muharebe açar.
+    reconcileGenerals(world);
+    runFronts(this.game);
+    advanceMovement(this.game);
     decayInfamy(world);
     // Asimilasyon kültür sınırını değiştirir; önbellek tazelenmeli.
     if (runAssimilation(world, this.turn)) this.game.renderer.invalidateCache();
     // Sıra önemli: sahiplik savaşta değişmiş olabilir, önce işçiler yeniden dağıtılır.
+    runProvinces(this.game);
     assignAllWorkers(world);
     this.produce();
     // Ticaret üretimden sonra: bu turun fazlası satılabilsin.
     this.lastTrade = runTrade(world);
+    // Sınıflar, fabrikalar ve küresel fiyatlar haftalık ekonomik kapanışta çözülür.
+    runEconomy(this.game);
+    // Haritadaki ordular çarpıştıkları province üzerinde haftalık muharebe çözer.
+    runBattles(this.game);
     this.checkElimination();
     // Oyuncunun sürekli emirleri yeni turun hakkıyla işlensin: tur açıldığında
     // otomatik ve yol emirli birimler hamlelerini yapmış olur.
@@ -211,7 +291,7 @@ export class TurnManager {
 
     this.game.emit('turn', this.turn);
     this.game.requestRender();
-    this.game.autosave();
+    if (this.turn % 10 === 0) this.game.autosave();
   }
 
   /**
@@ -229,15 +309,53 @@ export class TurnManager {
       const cap = storageCap(budget.cities, nation);
       nation.gold = Math.max(0, nation.gold + budget.net.gold);
       // Ambar taşarsa fazlası ziyan: stok biriktirmek strateji olmasın.
-      nation.timber = Math.max(0, Math.min(cap, nation.timber + budget.net.timber));
+      const timberAfter = nation.timber + budget.net.timber;
+      nation.timber = Math.max(0, Math.min(cap, timberAfter));
       const ironAfter = nation.iron + budget.net.iron;
       nation.iron = Math.max(0, Math.min(cap, ironAfter));
 
+      // Onarım karşılanamıyorsa bina tam verimle çalışmaya devam edemez.
+      if (timberAfter < 0) this.disrepairForTimber(nation);
       // Demir bitmişse ağır birlikler beslenemez: erzak kıtlığının karşılığı.
       if (ironAfter < 0) this.disbandForIron(nation, -ironAfter);
 
       this.settleFood(nation);
     }
+  }
+
+  /**
+   * Kereste açığı: bütçe yeniden dengeye gelene kadar en yeni binalar kapanır.
+   * İdare Merkezi yuva açtığı için, mümkünken önce başka bir bina seçilir.
+   */
+  disrepairForTimber(nation) {
+    const world = this.world;
+    let budget = nationBudget(world, nation);
+
+    while (budget.net.timber < 0) {
+      const cities = world.cities
+        .filter((city) => city.nationId === nation.id && city.buildings?.length)
+        .sort((a, b) => b.buildings.length - a.buildings.length);
+      if (!cities.length) break;
+
+      const city = cities[0];
+      let index = city.buildings.length - 1;
+      while (index >= 0 && city.buildings[index] === 'ADMIN_CENTER') index--;
+      if (index < 0) index = city.buildings.length - 1;
+      const [buildingId] = city.buildings.splice(index, 1);
+      world.forEach((tile) => {
+        if (
+          tile.structure?.cityId === city.id
+          && tile.structure.buildingId === buildingId
+        ) tile.structure = null;
+      });
+
+      if (nation.id === this.playerNation) {
+        this.addLog(`${BUILDINGS[buildingId]?.name ?? 'A building'} closed due to timber shortage.`);
+      }
+      budget = nationBudget(world, nation);
+    }
+
+    nation.budget = budget;
   }
 
   /**
@@ -248,13 +366,16 @@ export class TurnManager {
     const world = this.world;
     let missing = shortfall;
     while (missing > 0) {
-      const heavy = world.units.filter(
-        (u) => u.nationId === nation.id && IRON_UPKEEP_TYPES[u.type.id],
-      );
+      const heavy = world.units.filter((u) => (
+        u.nationId === nation.id
+        && u.regiments?.some((regiment) => IRON_UPKEEP_TYPES[regiment.typeId])
+      ));
       if (!heavy.length) break;
       heavy.sort((a, b) => a.hp - b.hp);
-      this.killUnit(heavy[0]);
-      missing -= IRON_UPKEEP_TYPES[heavy[0].type.id];
+      const removed = removeWeakestRegiment(heavy[0], Object.keys(IRON_UPKEEP_TYPES));
+      if (!removed) break;
+      missing -= IRON_UPKEEP_TYPES[removed.typeId] ?? 1;
+      if (!heavy[0].regiments.length) this.killUnit(heavy[0]);
       if (nation.id === this.playerNation) {
         this.addLog('Iron shortage: a heavy unit was disbanded.');
       }
@@ -301,7 +422,8 @@ export class TurnManager {
       const units = world.units.filter((u) => u.nationId === nation.id);
       if (!units.length) break;
       units.sort((a, b) => a.type.attack - b.type.attack);
-      this.killUnit(units[0]);
+      const removed = removeWeakestRegiment(units[0]);
+      if (!removed || !units[0].regiments.length) this.killUnit(units[0]);
       shortfall -= UNIT_UPKEEP.food;
       if (nation.id === this.playerNation) this.addLog('Famine: one unit disbanded.');
     }
@@ -335,6 +457,18 @@ export class TurnManager {
   }
 
   killUnit(unit) {
+    const battle = this.world.battleSystem?.battles?.find((item) => item.id === unit.battleId);
+    if (battle) {
+      const otherId = battle.attackerId === unit.id ? battle.defenderId : battle.attackerId;
+      const other = this.world.units.find((army) => army.id === otherId);
+      if (other) other.battleId = null;
+      this.world.battleSystem.battles = this.world.battleSystem.battles.filter(
+        (item) => item.id !== battle.id,
+      );
+    }
+    // Komutan boşta kadroya döner, cephe ataması düşer.
+    releaseArmy(this.world.nations[unit.nationId], unit.id);
+    removeArmyFromFront(this.world, unit);
     removeUnit(this.world, unit);
   }
 }

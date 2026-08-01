@@ -67,7 +67,8 @@ export function runTrade(world) {
           ROUTE_CAPACITY,
         );
         if (flow <= 0) continue;
-        const price = flow * GOOD_PRICE[good];
+        const unitPrice = world.market?.goods?.[good]?.price ?? GOOD_PRICE[good];
+        const price = flow * unitPrice;
         // Alıcı parayı denkleştiremiyorsa alışveriş küçülür.
         if (buyer.gold < price) continue;
 

@@ -4,8 +4,9 @@
 import { HEX_CORNERS, SQRT3, DIRS } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { drawFlag } from './flagPainter.js';
-import { maxHpOf } from '../game/units.js';
+import { maxHpOf, moraleOf, regimentCount, soldiersOf } from '../game/units.js';
 import { terrainShade } from '../world/terrain.js';
+import { BUILDINGS } from '../game/buildings.js';
 
 const MAX_DPR = 2;            // mobilde 3x DPR gereksiz pahalı
 const CACHE_MAX_SIDE = 2048;  // önbellek dokusunun en uzun kenarı (bellek sınırı)
@@ -16,20 +17,16 @@ const CITY_OFFSET = 0.3;
 const UNIT_ON_CITY_OFFSET = 0.22;
 
 /** Emir rozetleri; orders.js'teki ORDER değerleriyle eşleşir. */
-const ORDER_BADGE = { auto: '⚙', goto: '→', hold: '⏸' };
+const ORDER_BADGE = { auto: '⚙', hold: '⏸' };
 
 /**
- * NATO harita sembolleri: keşif tek eğik çizgi, piyade çapraz, zırhlı elips.
+ * NATO harita sembolleri: piyade çapraz, süvari elips, topçu nokta.
  * Harf yerine bunlar kullanılıyor — dilden bağımsız ve uzaktan okunur.
  */
 function natoSymbol(path, typeId, cx, cy, r) {
   const w = r * 0.78;
   const h = r * 0.52;
   switch (typeId) {
-    case 'SCOUT':
-      path.moveTo(cx - w, cy + h);
-      path.lineTo(cx + w, cy - h);
-      break;
     case 'INFANTRY':
       path.moveTo(cx - w, cy - h);
       path.lineTo(cx + w, cy + h);
@@ -38,6 +35,10 @@ function natoSymbol(path, typeId, cx, cy, r) {
       break;
     case 'CAVALRY':
       path.ellipse(cx, cy, w, h, 0, 0, Math.PI * 2);
+      break;
+    case 'ARTILLERY':
+      // Topçu simgesi tek dolu nokta: NATO'da ateş desteğinin karşılığı.
+      path.ellipse(cx, cy, h * 0.55, h * 0.55, 0, 0, Math.PI * 2);
       break;
     case 'WARSHIP':
       // Gövdenin kendisi zaten okunuyor; sadece direk eklenir.
@@ -168,13 +169,22 @@ export class Renderer {
     }
 
     if (state.reachable) this.drawReachable(ctx, state.reachable);
+    if (state.buildingPlacement) this.drawBuildingPlacement(ctx, state.buildingPlacement);
     if (state.selected) this.drawHighlight(ctx, state.selected, '#ffffff', 3);
     if (state.hovered && state.hovered !== state.selected) {
       this.drawHighlight(ctx, state.hovered, 'rgba(255,255,255,0.45)', 2);
     }
     this.drawCities(ctx, world);
+    this.drawStructures(ctx, world);
+    this.drawFronts(ctx, world, state);
+    this.drawMovement(ctx, world, state.selectedUnit, state.playerNation);
     this.drawUnits(ctx, world, state.selectedUnit);
+    this.drawBattles(ctx, world);
+    this.drawSelection(ctx, state.selection);
     ctx.restore();
+
+    // Seçim kutusu ekran uzayında: kamera dönüşümünün dışında çizilir.
+    if (state.marquee) this.drawMarquee(ctx, state.marquee);
 
     if (this.showLabels && world.nations?.length && cam.zoom > 0.3) {
       this.drawLabels(ctx, world);
@@ -372,6 +382,134 @@ export class Renderer {
     ctx.stroke(path);
   }
 
+  /** Seçili ordular: altın çember. Çoklu seçimde hepsi işaretlenir. */
+  drawSelection(ctx, selection) {
+    if (!selection?.length) return;
+    const zoom = this.camera.zoom;
+    ctx.lineWidth = 3 / zoom;
+    ctx.strokeStyle = '#e5ca84';
+    for (const unit of selection) {
+      if (!unit?.tile) continue;
+      ctx.beginPath();
+      ctx.arc(unit.tile.x, unit.tile.y, HEX_SIZE * 0.62, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
+  /** Sürüklenen seçim kutusu (masaüstünde klasör seçer gibi). */
+  drawMarquee(ctx, rect) {
+    if (rect.w < 2 && rect.h < 2) return;
+    ctx.save();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.fillStyle = 'rgba(229, 202, 132, 0.12)';
+    ctx.fillRect(rect.x, rect.y, rect.w, rect.h);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = 'rgba(229, 202, 132, 0.9)';
+    ctx.setLineDash([5, 4]);
+    ctx.strokeRect(rect.x + 0.5, rect.y + 0.5, rect.w, rect.h);
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  /**
+   * Cephe hatları. Taarruz hattı kırmızı, savunma hattı mavi; etkin plan kalın
+   * ve dolu, hazırlık aşamasındaki plan kesikli çizilir. Sürüklenirken oluşan
+   * geçici hat da aynı yerde, sarı olarak gösterilir.
+   */
+  drawFronts(ctx, world, state) {
+    const zoom = this.camera.zoom;
+    const fronts = world.frontSystem?.fronts ?? [];
+
+    for (const front of fronts) {
+      if (front.nationId !== state.playerNation) continue;
+      const tiles = front.tiles
+        .map((point) => world.get(point.q, point.r))
+        .filter(Boolean);
+      if (tiles.length < 2) continue;
+      const attack = front.plan === 'advance';
+      const selected = state.selectedFront?.id === front.id;
+
+      ctx.beginPath();
+      ctx.moveTo(tiles[0].x, tiles[0].y);
+      for (const tile of tiles.slice(1)) ctx.lineTo(tile.x, tile.y);
+      ctx.lineWidth = (selected ? 6 : 4) / zoom;
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = attack ? 'rgba(214, 96, 84, 0.92)' : 'rgba(101, 169, 207, 0.92)';
+      ctx.setLineDash(front.active ? [] : [9 / zoom, 6 / zoom]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Hazırlık göstergesi: hattın her ucunda planlama oranı kadar dolu nokta.
+      const ready = Math.max(0, Math.min(1, front.planning ?? 0));
+      for (const tile of [tiles[0], tiles[tiles.length - 1]]) {
+        ctx.beginPath();
+        ctx.arc(tile.x, tile.y, HEX_SIZE * 0.26, -Math.PI / 2, -Math.PI / 2 + ready * Math.PI * 2);
+        ctx.lineWidth = 4 / zoom;
+        ctx.strokeStyle = ready >= 1 ? '#e5ca84' : 'rgba(229, 202, 132, 0.6)';
+        ctx.stroke();
+      }
+      ctx.lineCap = 'butt';
+    }
+
+    const draw = state.frontDraw;
+    if (draw?.tiles?.length > 1) {
+      ctx.beginPath();
+      ctx.moveTo(draw.tiles[0].x, draw.tiles[0].y);
+      for (const tile of draw.tiles.slice(1)) ctx.lineTo(tile.x, tile.y);
+      ctx.lineWidth = 5 / zoom;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(229, 202, 132, 0.95)';
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    }
+  }
+
+  /**
+   * Yürüyüş hatları. Ordu artık haftalar boyunca yol alıyor; oyuncunun nereye
+   * gittiğini görmesi şart. Seçili ordunun yolu parlak, diğerleri soluk çizilir.
+   */
+  drawMovement(ctx, world, selectedUnit, playerNation) {
+    const zoom = this.camera.zoom;
+
+    // Toplanma noktası: yeni alayların yürüdüğü yer. Yürüyüş hatlarıyla aynı
+    // katmanda çizilir ki oyuncu ordusunun nereye aktığını tek bakışta görsün.
+    const rally = world.nations?.[playerNation]?.rallyPoint;
+    const rallyTile = rally ? world.get(rally.q, rally.r) : null;
+    if (rallyTile) {
+      ctx.lineWidth = 2.5 / zoom;
+      ctx.strokeStyle = 'rgba(197, 164, 93, 0.95)';
+      ctx.beginPath();
+      ctx.arc(rallyTile.x, rallyTile.y, HEX_SIZE * 0.42, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(rallyTile.x, rallyTile.y - HEX_SIZE * 0.42);
+      ctx.lineTo(rallyTile.x, rallyTile.y + HEX_SIZE * 0.42);
+      ctx.moveTo(rallyTile.x - HEX_SIZE * 0.42, rallyTile.y);
+      ctx.lineTo(rallyTile.x + HEX_SIZE * 0.42, rallyTile.y);
+      ctx.stroke();
+    }
+
+    for (const unit of world.units) {
+      if (!unit.path?.length || unit.nationId !== playerNation) continue;
+      const active = unit === selectedUnit;
+      ctx.beginPath();
+      ctx.moveTo(unit.tile.x, unit.tile.y);
+      for (const tile of unit.path) ctx.lineTo(tile.x, tile.y);
+      ctx.lineWidth = (active ? 3 : 2) / zoom;
+      ctx.strokeStyle = active ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.35)';
+      ctx.setLineDash([6 / zoom, 5 / zoom]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Hedef işareti: yolun sonunda içi boş halka.
+      const end = unit.path[unit.path.length - 1];
+      ctx.beginPath();
+      ctx.arc(end.x, end.y, HEX_SIZE * 0.3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+  }
+
   /** Şehirler: ülke renginde köşeli sur işareti, seviye kadar burçlu. */
   drawCities(ctx, world) {
     if (!world.cities?.length) return;
@@ -473,8 +611,8 @@ export class Renderer {
         ctx.fillStyle = ratio > 0.5 ? '#5ed46a' : ratio > 0.25 ? '#e8c34a' : '#e05a4a';
         ctx.fillRect(ux - w / 2, uy + radius + 2, w * ratio, 4);
       }
-      // Hareket hakkı bittiyse ya da emirle meşgulse soluk perde.
-      if (unit.movesLeft <= 0 || unit.order) {
+      // Emirle meşgulse soluk perde: oyuncunun ilgilenmesi gereken ordu öne çıksın.
+      if (unit.order) {
         ctx.fillStyle = 'rgba(0,0,0,0.4)';
         ctx.fill(shape);
       }
@@ -488,6 +626,102 @@ export class Renderer {
         ctx.strokeText(badge, ux + radius * 0.9, uy - radius * 0.8);
         ctx.fillText(badge, ux + radius * 0.9, uy - radius * 0.8);
       }
+
+      // Ordu yığını: province üzerindeki gerçek asker sayısı ve alay adedi.
+      ctx.font = `800 ${Math.round(HEX_SIZE * 0.3)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+      ctx.lineWidth = 2.5 / zoom;
+      const stackLabel = soldiersOf(unit) >= 1000
+        ? `${(soldiersOf(unit) / 1000).toFixed(1)}K`
+        : String(soldiersOf(unit));
+      ctx.strokeText(stackLabel, ux, uy + radius * 0.78);
+      ctx.fillText(stackLabel, ux, uy + radius * 0.78);
+    }
+  }
+
+  drawBuildingPlacement(ctx, placement) {
+    const path = new Path2D();
+    for (const tile of placement.tiles.keys()) this.hexPath(path, tile.x, tile.y);
+    ctx.globalAlpha = 0.32;
+    ctx.fillStyle = '#58c3a5';
+    ctx.fill(path);
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = 2 / this.camera.zoom;
+    ctx.strokeStyle = 'rgba(119,255,213,0.85)';
+    ctx.stroke(path);
+  }
+
+  /** Province'e fiziksel olarak yerleştirilen ulusal binalar. */
+  drawStructures(ctx, world) {
+    const rect = this.camera.visibleRect(HEX_SIZE * 2);
+    const zoom = this.camera.zoom;
+    for (const tile of world.tiles) {
+      const building = BUILDINGS[tile.structure?.buildingId];
+      if (!building) continue;
+      if (tile.x < rect.minX || tile.x > rect.maxX || tile.y < rect.minY || tile.y > rect.maxY) continue;
+      const x = tile.x + HEX_SIZE * 0.28;
+      const y = tile.y - HEX_SIZE * 0.28;
+      const size = HEX_SIZE * 0.34;
+      ctx.fillStyle = 'rgba(5,15,22,0.9)';
+      ctx.fillRect(x - size, y - size, size * 2, size * 2);
+      ctx.strokeStyle = 'rgba(218,235,225,0.8)';
+      ctx.lineWidth = 1.4 / zoom;
+      ctx.strokeRect(x - size, y - size, size * 2, size * 2);
+      ctx.font = `${Math.round(HEX_SIZE * 0.38)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fff';
+      ctx.fillText(building.icon ?? '◆', x, y);
+    }
+  }
+
+  /** Province muharebesi: çatışma yerinde iki ordunun asker ve moral durumu. */
+  drawBattles(ctx, world) {
+    const battles = world.battleSystem?.battles;
+    if (!battles?.length) return;
+    const zoom = this.camera.zoom;
+    const rect = this.camera.visibleRect(HEX_SIZE * 3);
+
+    for (const battle of battles) {
+      const tile = world.get(battle.q, battle.r);
+      if (!tile) continue;
+      const x = tile.x;
+      const y = tile.y - HEX_SIZE * 0.8;
+      if (x < rect.minX || x > rect.maxX || y < rect.minY || y > rect.maxY) continue;
+
+      const attacker = world.units.find((army) => army.id === battle.attackerId);
+      const defender = world.units.find((army) => army.id === battle.defenderId);
+      const width = 88 / zoom;
+      const height = 28 / zoom;
+      const half = width / 2;
+      ctx.fillStyle = world.nations[battle.attackerNation].color;
+      ctx.fillRect(x - half, y - height / 2, half, height);
+      ctx.fillStyle = world.nations[battle.defenderNation].color;
+      ctx.fillRect(x, y - height / 2, half, height);
+      ctx.lineWidth = 2 / zoom;
+      ctx.strokeStyle = 'rgba(5,10,14,0.9)';
+      ctx.strokeRect(x - half, y - height / 2, width, height);
+
+      ctx.font = `700 ${10 / zoom}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#fff';
+      ctx.shadowColor = '#000';
+      ctx.shadowBlur = 3 / zoom;
+      const a = attacker ? `${(soldiersOf(attacker) / 1000).toFixed(1)}K` : '0';
+      const d = defender ? `${(soldiersOf(defender) / 1000).toFixed(1)}K` : '0';
+      ctx.fillText(`${a}  ⚔  ${d}`, x, y);
+      ctx.shadowBlur = 0;
+
+      const aMorale = attacker ? moraleOf(attacker) : 0;
+      const dMorale = defender ? moraleOf(defender) : 0;
+      const moraleTotal = Math.max(1, aMorale + dMorale);
+      const markerX = x - half + (aMorale / moraleTotal) * width;
+      ctx.fillStyle = '#f5d58c';
+      ctx.fillRect(markerX - 1.5 / zoom, y - height / 2 - 4 / zoom, 3 / zoom, height + 8 / zoom);
     }
   }
 
