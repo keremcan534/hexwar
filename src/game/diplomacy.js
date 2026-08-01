@@ -14,7 +14,7 @@ export const MIN_WAR_TURNS = 8;
  * Barıştan sonra yeniden savaş ilan edilemeyen tur sayısı. Ateşkes olmadan
  * barış yapıp ertesi tur yeniden saldırmak serbestti; tempoyu bu tutuyor.
  */
-export const TRUCE_TURNS = 26;
+export const TRUCE_TURNS = 40;
 
 /**
  * Simetrik ilişki tablosu: world.relations[a][b] ile [b][a] *aynı* nesnedir.

@@ -10,8 +10,12 @@ import {
   addExperience, generalModifier, generalOfArmy, generalSiegeRelief, generalVariance,
 } from './generals.js';
 
-const MAX_ROUNDS = 6;
-const BREAK_MORALE = 22;
+// WW1 dengesi: muharebe uzun sürer, moral yavaş kırılır, savunan üstündür.
+// Kısa ve kesin muharebeler cepheyi haftalar içinde uçuruyordu (bordergore).
+const MAX_ROUNDS = 12;
+const BREAK_MORALE = 12;
+/** Savunanın kazandığı kalıcı üstünlük: siper avantajı. */
+const ENTRENCHMENT = 1.35;
 
 export function initBattles(world) {
   world.battleSystem = { battles: [], nextId: 1 };
@@ -75,7 +79,9 @@ function battlePower(world, army, defending = false, foeGeneral = null) {
   const funding = (nation.economy?.armySpending ?? 100) / 100;
   const general = generalOfArmy(nation, army);
   const relief = defending ? generalSiegeRelief(foeGeneral) : 0;
-  const terrain = defending ? 1 + terrainDefense(army) * (1 - relief) : 1;
+  const terrain = defending
+    ? (1 + terrainDefense(army) * (1 - relief)) * ENTRENCHMENT
+    : 1;
   return armyPower(army)
     * (0.55 + funding * 0.45)
     * terrain
@@ -187,10 +193,12 @@ function resolveRound(game, battle) {
   const attackerRoll = attackerBase * roll(attackerGeneral);
   const defenderRoll = defenderBase * roll(defenderGeneral);
   const total = Math.max(1, attackerRoll + defenderRoll);
-  const attackerCasualties = Math.round(35 + (defenderRoll / total) * 115);
-  const defenderCasualties = Math.round(35 + (attackerRoll / total) * 115);
-  const attackerMoraleLoss = 8 + (defenderRoll / total) * 18;
-  const defenderMoraleLoss = 8 + (attackerRoll / total) * 18;
+  // Raund başına kayıp düşük, raund sayısı yüksek: muharebe kısa ve kesin
+  // değil, uzun ve aşındırıcıdır. Toplam kayıp artar, ilerleme yavaşlar.
+  const attackerCasualties = Math.round(45 + (defenderRoll / total) * 130);
+  const defenderCasualties = Math.round(30 + (attackerRoll / total) * 105);
+  const attackerMoraleLoss = 5 + (defenderRoll / total) * 10;
+  const defenderMoraleLoss = 4 + (attackerRoll / total) * 9;
 
   applyArmyLosses(attacker, attackerCasualties, attackerMoraleLoss);
   applyArmyLosses(defender, defenderCasualties, defenderMoraleLoss);

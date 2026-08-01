@@ -17,7 +17,7 @@ import { destinationOf, orderMove } from './movement.js';
 import { canDevelopProvince, developProvince } from './provinces.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
-const WAR_THRESHOLD = 1.30;
+const WAR_THRESHOLD = 1.4;
 
 /**
  * Diplomatik karar: sınır komşusu zayıfsa savaş, savaş kaybediliyorsa barış.

@@ -32,6 +32,10 @@ import { assignDivisions, divisionsOf, generalOfArmy } from './generals.js';
 /** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */
 const SPEEDS = [0, 1, 2, 4];
 
+/** Bir oyun günü kaç ms sürer (1x hızda) ve haftada kaç gün var. */
+const DAY_MS = 220;
+const DAYS_PER_WEEK = 7;
+
 /** Sınıra oturan cephe hattının bir seferde kapsadığı province sayısı. */
 const BORDER_SEGMENT = 12;
 
@@ -84,7 +88,9 @@ export class Game {
     this.dirty = false;
     this.frameHandle = 0;
     this.autosaveEnabled = true;
-    this.clock = { speed: 0, accumulator: 0, lastTime: performance.now() };
+    // Saat gün gün akar; oyunun sistemleri (ekonomi, muharebe, cephe) haftalık
+    // çözülür. Böylece tarih akıcı ilerlerken denge haftalık kalır.
+    this.clock = { speed: 0, accumulator: 0, lastTime: performance.now(), day: 0 };
     this.clockTimer = setInterval(() => this.updateClock(), 100);
 
     this.input = new PointerController(canvas, this.camera, {
@@ -703,11 +709,14 @@ export class Game {
     this.clock.lastTime = now;
     if (!this.world || !this.clock.speed || this.turns.victory) return;
     this.clock.accumulator += elapsed;
-    const stepMs = 1200 / this.clock.speed;
+    // Bir gün bu kadar sürer; hafta yedi günde bir kapanır.
+    const stepMs = DAY_MS / this.clock.speed;
     let steps = 0;
-    while (this.clock.accumulator >= stepMs && steps < 3) {
+    while (this.clock.accumulator >= stepMs && steps < 14) {
       this.clock.accumulator -= stepMs;
-      this.endTurn();
+      this.clock.day++;
+      if (this.clock.day % DAYS_PER_WEEK === 0) this.endTurn();
+      else this.emit('clock', this.clock);
       steps++;
     }
   }
@@ -786,7 +795,10 @@ export class Game {
     if (!preview?.tiles?.length || !nation?.alive) return null;
     const plan = this.drawMode === 'fallback' ? PLAN.HOLD : PLAN.ADVANCE;
     const general = this.activeGeneral ?? generalOfArmy(nation, this.selection[0]) ?? null;
-    const front = createFront(this, nation, preview.tiles, plan, general?.id ?? null);
+    // Hedef ülke cepheye yazılır: hat her hafta o sınırdan yeniden kurulur.
+    const front = createFront(
+      this, nation, preview.tiles, plan, general?.id ?? null, preview.foreignId ?? null,
+    );
     if (front) {
       const armies = general ? divisionsOf(this.world, general) : this.selection;
       for (const unit of armies) assignArmy(this.world, front, unit);

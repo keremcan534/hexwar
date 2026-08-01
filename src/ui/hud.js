@@ -418,7 +418,7 @@ export class Hud {
   onTurn() {
     const { turns, world } = this.game;
     if (!world) return;
-    this.el.turnValue.textContent = gameDate(turns.turn);
+    this.el.turnValue.textContent = gameDate(turns.turn, this.game.clock.day);
     const me = world.nations[turns.playerNation];
     const alive = world.nations.filter((n) => n.alive).length;
     const cities = world.cities.filter((c) => c.nationId === turns.playerNation).length;
@@ -946,9 +946,10 @@ function resourcesHtml(nation) {
     <span title="infamy — a coalition forms at ${INFAMY_COALITION}">☠<b class="${infamyClass}">${infamy}</b></span>`;
 }
 
-function gameDate(turn) {
+function gameDate(turn, day = 0) {
   const date = new Date(Date.UTC(1836, 0, 1));
-  date.setUTCDate(date.getUTCDate() + Math.max(0, turn - 1) * 7);
+  // Hafta sistemin adımı, gün ise saatin adımı: tarih gün gün ilerler.
+  date.setUTCDate(date.getUTCDate() + Math.max(0, day || (turn - 1) * 7));
   return date.toLocaleDateString('en-GB', {
     day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
   }).toUpperCase();

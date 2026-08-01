@@ -20,11 +20,15 @@ import { isMoving } from './units.js';
 
 export const PLAN = { ADVANCE: 'advance', HOLD: 'hold', ARROW: 'arrow' };
 
-/** Saldırganlık kademesinin ilerleme sıklığına ve menziline etkisi. */
+/**
+ * Saldırganlık kademesinin ilerleme sıklığına ve menziline etkisi.
+ * Sayılar kasten yüksek: cephe WW1 gibi yavaş ilerlemeli — en saldırgan komutan
+ * bile iki haftada bir province ısırabilsin, temkinli olan altı haftada bir.
+ */
 const AGGRESSION = {
-  1: { label: 'Careful', cadence: 3, reach: 1 },
-  2: { label: 'Balanced', cadence: 2, reach: 2 },
-  3: { label: 'Aggressive', cadence: 1, reach: 3 },
+  1: { label: 'Careful', cadence: 6, reach: 1 },
+  2: { label: 'Balanced', cadence: 4, reach: 1 },
+  3: { label: 'Aggressive', cadence: 2, reach: 1 },
 };
 
 export function aggressionInfo(level) {
@@ -33,8 +37,12 @@ export function aggressionInfo(level) {
 
 /** Plan bu hızda olgunlaşır; 1.0'da tam bonus verir. */
 const PLANNING_RATE = 0.06;
-/** Hattın taşıyabileceği en fazla province. Çok uzun hat yönetilemez olur. */
-export const MAX_FRONT_TILES = 24;
+/**
+ * Hattın taşıyabileceği en fazla province. Cephe artık bir "combat zone" —
+ * o ülkeyle olan sınırımızın tamamı — olduğu için sınır cömert tutuldu;
+ * kuşatılmış cepler de hatta dahil olmalı.
+ */
+export const MAX_FRONT_TILES = 60;
 
 export function initFronts(world) {
   world.frontSystem = { fronts: [], nextId: 1 };
@@ -194,13 +202,33 @@ export function spanObjective(world, origin, from, width = 3) {
  * digeri kalkar. Ikisi ayni tumenleri ters yonlere cekiyordu.
  */
 function dropConflicting(system, front) {
-  if (front.plan === PLAN.ARROW) return;
-  system.fronts = system.fronts.filter((other) => (
-    other.id === front.id
-    || other.nationId !== front.nationId
-    || other.generalId !== front.generalId
-    || other.plan === PLAN.ARROW
-  ));
+  system.fronts = system.fronts.filter((other) => {
+    if (other.id === front.id) return true;
+    if (other.nationId !== front.nationId || other.generalId !== front.generalId) return true;
+    // Yeni taarruz eskisinin yerine geçer; cephe ve geri çekilme hattı da
+    // birbirini dışlar. Aynı generalin iki çelişkili planı olamaz.
+    if (front.plan === PLAN.ARROW) return other.plan !== PLAN.ARROW;
+    return other.plan === PLAN.ARROW;
+  });
+}
+
+/**
+ * Cepheyi güncel sınıra oturtur. Hat donmuş bir kare listesi değildir: her
+ * hafta izlediği ülkeyle olan sınırımızdan yeniden kurulur. Böylece toprak
+ * el değiştirince, ya da bir yerde kuşatılınca cephe kendiliğinden oraya uzar.
+ *
+ * Taarruz yürürken tazelenmez — o sırada hat kasten sınırın ötesindedir.
+ */
+export function refreshZone(world, front) {
+  if (front.plan === PLAN.ARROW || front.active) return false;
+  const fresh = borderTiles(world, front.nationId, front.foreignId ?? null);
+  if (fresh.length < 2) return false;
+  const chain = chainTiles(fresh).slice(0, MAX_FRONT_TILES);
+  const before = front.tiles.map((t) => `${t.q}:${t.r}`).join(',');
+  const after = chain.map((t) => `${t.q}:${t.r}`).join(',');
+  if (before === after) return false;
+  front.tiles = chain.map((tile) => ({ q: tile.q, r: tile.r }));
+  return true;
 }
 
 export function frontTiles(world, front) {
@@ -211,7 +239,7 @@ export function frontTiles(world, front) {
  * Hattı çizilen karelerden kurar. Aynı kare iki kez sayılmaz, sıra korunur
  * (hat boyunca dağıtım sırayı kullanır) ve uzunluk sınırlanır.
  */
-export function createFront(game, nation, tiles, plan = PLAN.ADVANCE, generalId = null) {
+export function createFront(game, nation, tiles, plan = PLAN.ADVANCE, generalId = null, foreignId = null) {
   const system = ensureFronts(game.world);
   const seen = new Set();
   const points = [];
@@ -234,6 +262,9 @@ export function createFront(game, nation, tiles, plan = PLAN.ADVANCE, generalId 
     // Plan bir generalindir: onun tümenleri hatta dağılır, saldırganlığı
     // ilerleme hızını belirler (HOI4'te plan komutana bağlıdır).
     generalId,
+    // Cephenin izlediği düşman. Hat her hafta bu ülkeyle olan sınırdan yeniden
+    // hesaplanır; sınır değişince (fetih, kuşatma) cephe kendiliğinden uyar.
+    foreignId,
     tiles: points,
     armies: [],
     plan,
@@ -340,11 +371,12 @@ function advanceTargets(world, front) {
 }
 
 /**
- * Orduları hat boyunca *eşit* dağıtır. Hat, ordu sayısı kadar dilime bölünür
- * ve her ordu kendi diliminin ortasına yürür.
+ * Orduları hat boyunca dağıtır.
  *
- * Önceki sürüm "en yakın boş kareyi kap" diyordu; bütün ordular hattın bir
- * ucundan gelince hepsi o uca yığılıyor, hattın geri kalanı boş kalıyordu.
+ * Hattı zaten tutan ordular yerinde bırakılır — yeni bir tümen geldi diye
+ * bütün cepheyi yeniden dizmek, oturmuş bir hattı boşaltıp haftalarca
+ * yürütüyordu. Yalnız hatta olmayanlar hareket eder ve *en zayıf* yere,
+ * yani dolu komşusu en uzak olan boşluğa gönderilir.
  */
 function distribute(game, front) {
   const world = game.world;
@@ -352,31 +384,47 @@ function distribute(game, front) {
   const slots = frontTiles(world, front);
   if (!armies.length || !slots.length) return;
 
-  // Hat üzerindeki sıralarını koru: soldaki ordu solda kalsın, yollar kesişmesin.
-  const slotIndexOf = (army) => {
-    let best = 0;
-    let bestDistance = Infinity;
-    slots.forEach((slot, index) => {
-      const distance = hexDistance(army.tile.q, army.tile.r, slot.q, slot.r);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = index;
-      }
-    });
-    return best;
-  };
-  const ordered = [...armies].sort((a, b) => slotIndexOf(a) - slotIndexOf(b));
+  const index = new Map(slots.map((slot, i) => [slot, i]));
+  const held = new Set();
+  const idle = [];
+  for (const army of armies) {
+    const at = index.get(army.tile);
+    if (at !== undefined) held.add(at);
+    else if (!army.battleId) idle.push(army);
+  }
+  // Yolda olanların hedefi de dolu sayılır, yoksa hepsi aynı boşluğa koşar.
+  for (const army of armies) {
+    const destination = destinationOf(army);
+    if (destination && index.has(destination)) held.add(index.get(destination));
+  }
+  if (!idle.length) return;
 
-  ordered.forEach((army, index) => {
-    const target = slots[Math.min(
-      slots.length - 1,
-      Math.floor(((index + 0.5) * slots.length) / ordered.length),
-    )];
-    if (!target || army.battleId || army.tile === target) return;
-    // Zaten oraya yürüyorsa yeniden yol arama.
-    if (isMoving(army) && destinationOf(army) === target) return;
+  // Boşluğun zayıflığı: en yakın dolu slota uzaklığı. Hiç dolu yoksa hat boştur,
+  // o zaman eşit aralıklı yerleşim yapılır.
+  const weakness = (i) => (held.size
+    ? Math.min(...[...held].map((taken) => Math.abs(taken - i)))
+    : slots.length);
+
+  for (const army of idle) {
+    let best = null;
+    let bestScore = -Infinity;
+    for (let i = 0; i < slots.length; i++) {
+      if (held.has(i)) continue;
+      // Zayıflık birincil, orduya yakınlık ikincil.
+      const score = weakness(i) * 10
+        - hexDistance(army.tile.q, army.tile.r, slots[i].q, slots[i].r) * 0.1;
+      if (score > bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    }
+    if (best === null) break;
+    held.add(best);
+    const target = slots[best];
+    if (army.tile === target) continue;
+    if (isMoving(army) && destinationOf(army) === target) continue;
     orderMove(game, army, target);
-  });
+  }
 }
 
 /**
@@ -509,6 +557,8 @@ export function runFronts(game) {
     front.armies = front.armies.filter(
       (id) => world.units.some((unit) => unit.id === id && unit.nationId === front.nationId),
     );
+    // Cephe canlıdır: sınır değiştiyse hat oraya uzar/kısalır.
+    refreshZone(world, front);
 
     const armies = armiesOf(world, front);
     // Plan olgunlaşması: kurmay generali olan cepheler daha hızlı hazırlanır.
