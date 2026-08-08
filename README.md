@@ -45,8 +45,8 @@ tuşu duraklatır ve duraklatmadan önceki hızı hatırlar, `+`/`−` kademe de
 Yeni oyun ve yüklenen kayıt duraklatılmış başlar.
 
 Ekran yerleşimi Vic2 düzenindedir: seçili province penceresi **sol altta**, saat
-**sağ üstte**, harita kipleri **sağ altta**. Dar ekranda panel genişler ve kipler
-onun üstüne çıkar.
+**sağ üstte**, bildirim kartları **saatin altında**, harita kipleri **sağ
+altta**. Dar ekranda panel genişler ve kipler onun üstüne çıkar.
 
 ## Ana sistemler
 
@@ -105,6 +105,24 @@ bileşimi, asker sayısı, morali, durumu (bekliyor / yürüyor / muharebede /
 yuva. Komutanı olmayan yuvada **+** işareti vardır; ona basmak general seçme
 ekranını açar ve seçilen general o orduya atanır. Dar ekranda yüzen çubuk yerine
 aynı düğme tümen satırının sağında görünür.
+
+### Bildirimler
+
+Olaylar sağ üstte, saatin altında biriken küçük kartlarla duyurulur (HOI4/EU4
+uyarı yığını). Kart türünü, rengini ve ömrünü `game/notifications.js` belirler;
+çizim ve zamanlama `ui/notifications.js` işidir.
+
+- Aynı türden olaylar **tek kartta sayılır**: 4× hızda haftada bir muharebe
+  bildirimi yağdığında ekran kart kulesine dönmesin diye rozet artar, yeni kart
+  açılmaz. Ayrı ayrı görünmesi gereken olaylar (her ülkeyle savaş ilanı) kendi
+  anahtarını verir.
+- Savaş ilanı, kıtlık, şehrin düşmesi ve hegemonya gibi kartlar **kendiliğinden
+  kapanmaz**; gerisi alttaki çubuk boşalınca kayarak çıkar. İmleç yığının
+  üstündeyken sayaç durur.
+- Kartın bağlı olduğu kare varsa **tıklamak kamerayı oraya götürür**.
+- Oyuncunun karışmadığı muharebeler günlüğe girer ama kart açmaz.
+
+Ekranda en çok beş (telefonda üç) kart durur; taşarsa en eski geçici kart düşer.
 
 ### Komutanlar
 
@@ -195,10 +213,12 @@ src/
     trade.js       stratejik mal ticareti
     diplomacy.js   savaş ve barış
     ai.js          ülke yapay zekâsı
+    notifications.js  olayların bildirim kartına çevrilmesi
     save.js        sürümlü kayıt
   ui/
     hud.js         üst çubuk, tarih ve hız denetimi
     screens.js     sanayi, bütçe, ticaret ve diplomasi ekranları
+    notifications.js  bildirim yığınının çizimi ve animasyonu
 ```
 
 Katmanlar tek yönlüdür: `ui` ve `render`, `game` katmanını tanır; `world` ve

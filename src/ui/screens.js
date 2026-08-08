@@ -780,7 +780,7 @@ export class Screens {
     for (const btn of this.el.body.querySelectorAll('[data-tech]')) {
       btn.onclick = () => {
         if (research(me, btn.dataset.tech)) {
-          game.turns.addLog(`${TECHS[btn.dataset.tech].name} researched.`);
+          game.turns.addLog(`${TECHS[btn.dataset.tech].name} researched.`, { kind: 'RESEARCH' });
           game.recomputeEconomy();
           this.refresh();
         }

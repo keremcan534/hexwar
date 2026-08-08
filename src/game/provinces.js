@@ -124,7 +124,9 @@ export function developProvince(game, tile, trackId, nationId = game.turns.playe
   if (trackId === 'agriculture') tile.province.population += 350;
   game.recomputeEconomy();
   if (nationId === game.turns.playerNation) {
-    game.turns.addLog(`${provinceName(tile)} developed ${PROVINCE_TRACKS[trackId].name}.`);
+    game.turns.addLog(`${provinceName(tile)} developed ${PROVINCE_TRACKS[trackId].name}.`, {
+      kind: 'PROVINCE', tile,
+    });
   }
   game.emit('provinces', tile);
   game.emit('economy', nation.economy);

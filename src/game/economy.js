@@ -250,7 +250,9 @@ export function buildFactory(game, nation, cityId, typeId) {
     throughput: 0,
   });
   if (nation.id === game.turns.playerNation) {
-    game.turns.addLog(`${city.name}: ${type.name} opened.`);
+    game.turns.addLog(`${city.name}: ${type.name} opened.`, {
+      kind: 'INDUSTRY', tile: city.tile,
+    });
     game.emit('economy', nation.economy);
   }
   return true;
@@ -307,7 +309,9 @@ export function modernizeArmy(game, nation, unit) {
   if (!cost || unit.nationId !== nation.id || !pay(nation, cost)) return false;
   applyModernization(unit);
   if (nation.id === game.turns.playerNation) {
-    game.turns.addLog(`An army was re-equipped to ${tierInfo(armyTier(unit)).name}.`);
+    game.turns.addLog(`An army was re-equipped to ${tierInfo(armyTier(unit)).name}.`, {
+      kind: 'ARMY', tile: unit.tile,
+    });
     game.emit('economy', nation.economy);
   }
   return true;

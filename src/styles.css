@@ -2307,3 +2307,241 @@ button:not([disabled]):active {
   .command-slot { width: 52px; height: 52px; }
   .tool-btn { padding: 4px 6px; font-size: 9px; }
 }
+
+/* --- Bildirim kutucukları (HOI4/EU4 uyarı yığını) ------------------------
+   Sağ üstte, saatin altında birikirler. Kart eklenirken/çıkarken yükseklik de
+   animasyona girer: yoksa yığın her olayda bir kare zıplıyor. Süreleri
+   ui/notifications.js yönetir, buradaki --notify-slide onunla aynı olmalı. */
+.notify-stack {
+  position: fixed;
+  top: calc(var(--safe-top) + 58px);
+  right: 10px;
+  z-index: 12;
+  width: min(320px, calc(100vw - 20px));
+  display: flex;
+  flex-direction: column;
+  /* Boş yığın haritanın üstünü kapatmasın; kartlar tıklamayı kendi alır. */
+  pointer-events: none;
+  --notify-slide: 420ms;
+}
+
+.notify-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: 38px 1fr 18px;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 7px;
+  padding: 8px 8px 9px;
+  overflow: hidden;
+  cursor: default;
+  pointer-events: auto;
+  border: 1px solid rgba(139, 162, 178, 0.2);
+  border-left: 3px solid var(--tone);
+  border-radius: 3px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent 60%),
+    rgba(6, 15, 24, 0.95);
+  box-shadow: var(--shadow-heavy), var(--bevel);
+  backdrop-filter: blur(7px);
+  transition:
+    transform var(--notify-slide) cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 260ms ease,
+    height 340ms cubic-bezier(0.4, 0, 0.2, 1),
+    margin-bottom 340ms cubic-bezier(0.4, 0, 0.2, 1),
+    padding 340ms cubic-bezier(0.4, 0, 0.2, 1),
+    border-color 160ms ease,
+    box-shadow 200ms ease;
+  will-change: transform, opacity, height;
+}
+
+.notify-info { --tone: var(--accent-cold); }
+.notify-good { --tone: var(--success); }
+.notify-bad { --tone: var(--danger); }
+.notify-war { --tone: #e0603f; }
+.notify-linked { cursor: pointer; }
+
+.notify-icon {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  font-size: 18px;
+  line-height: 1;
+  border: 1px solid var(--tone);
+  border-radius: 2px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.07), transparent),
+    #0b1723;
+  box-shadow: var(--bevel);
+}
+
+.notify-count {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  display: none;
+  place-items: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  font-size: 9px;
+  font-weight: 750;
+  color: #0a1119;
+  border-radius: 9px;
+  background: var(--accent-bright);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.notify-count.shown { display: grid; }
+
+.notify-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.notify-text small {
+  font-size: 8.5px;
+  font-weight: 700;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: var(--tone);
+}
+
+/* İki satırdan uzun metin kırpılır: kart yüksekliği öngörülebilir kalsın. */
+.notify-body {
+  font-size: 11.5px;
+  line-height: 1.35;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.notify-close {
+  align-self: start;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted);
+  border: 0;
+  background: none;
+  opacity: 0.55;
+}
+
+.notify-close:hover { color: var(--text); opacity: 1; }
+
+/* Kalan süre çubuğu. İmleç yığının üstündeyken durur (bkz. .paused). */
+.notify-timer {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  transform-origin: left center;
+  background: linear-gradient(90deg, var(--tone), var(--accent-bright));
+  animation: notify-drain var(--notify-ttl, 9000ms) linear forwards;
+}
+
+.notify-sticky .notify-timer { display: none; }
+.notify-stack.paused .notify-timer { animation-play-state: paused; }
+
+/* Kendiliğinden kapanmayan kart (savaş ilanı, kıtlık) yavaşça nabız atar. */
+.notify-sticky::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 1px solid var(--tone);
+  border-radius: 3px;
+  opacity: 0;
+  animation: notify-pulse 2.4s ease-in-out infinite;
+}
+
+@media (hover: hover) {
+  .notify-card:hover {
+    border-color: var(--accent);
+    box-shadow: var(--shadow-heavy), 0 0 0 1px rgba(197, 164, 93, 0.25);
+    transform: translateX(-3px);
+  }
+}
+
+/* Aynı olay tekrar geldi: kart bir kez zıplar, sayaç büyür. */
+.notify-card.bump { animation: notify-bump 380ms cubic-bezier(0.3, 1.4, 0.5, 1); }
+
+/* Giriş/çıkış durumları hover kuralından sonra gelmeli: aynı özgüllükte
+   sonraki kural kazanır, yoksa imleç kartın üstündeyken animasyon bozulur. */
+.notify-card.notify-enter,
+.notify-card.notify-leave {
+  opacity: 0;
+  padding-top: 0;
+  padding-bottom: 0;
+  border-top-width: 0;
+  border-bottom-width: 0;
+  transform: translateX(calc(100% + 24px)) scale(0.94);
+}
+
+@keyframes notify-drain {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+@keyframes notify-pulse {
+  0%, 100% { opacity: 0; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes notify-bump {
+  0% { transform: translateX(0) scale(1); }
+  35% { transform: translateX(-5px) scale(1.025); }
+  100% { transform: translateX(0) scale(1); }
+}
+
+/* Sekme çubuğu sağa uzandığında kartlar onun altına iner. */
+@media (max-width: 1100px) {
+  .notify-stack { top: calc(var(--safe-top) + 122px); }
+}
+
+@media (max-width: 620px) {
+  .notify-stack { right: 6px; width: min(280px, 68vw); }
+  .notify-card { grid-template-columns: 30px 1fr 16px; gap: 7px; padding: 6px 6px 7px; }
+  .notify-icon { width: 30px; height: 30px; font-size: 15px; }
+  .notify-body { font-size: 10.5px; }
+}
+
+/* Hareket duyarlılığı: kartlar kayıp büyümez, yalnızca yer açıp solar. */
+@media (prefers-reduced-motion: reduce) {
+  .notify-card {
+    transition:
+      height 200ms linear,
+      margin-bottom 200ms linear,
+      padding 200ms linear,
+      opacity 150ms linear;
+  }
+  .notify-card.notify-enter,
+  .notify-card.notify-leave,
+  .notify-card:hover { transform: none; }
+  .notify-card.bump { animation: none; }
+  .notify-sticky::after { animation: none; opacity: 0.4; }
+}
+
+/* Telefonda yönetim ekranı açıkken kartlar çekilir: ekranın 88vw'sini örtüp
+   içeriği okunmaz yapıyorlardı (saat de aynı gerekçeyle gizleniyor). */
+@media (max-width: 560px) {
+  .notify-stack {
+    transition: opacity 200ms ease, transform 260ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .screen-open .notify-stack {
+    opacity: 0;
+    pointer-events: none;
+    transform: translateX(18px);
+  }
+}
