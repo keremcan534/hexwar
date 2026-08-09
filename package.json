@@ -9,8 +9,18 @@
     "start": "node scripts/dev-server.mjs",
     "diagnose:economy": "node scripts/economy-diagnostic.mjs",
     "diagnose:system": "node scripts/system-diagnostic.mjs",
+    "diagnose:assault": "node scripts/assault-diagnostic.mjs",
+    "diagnose:reinforcement": "node scripts/reinforcement-diagnostic.mjs",
+    "diagnose:production": "node scripts/production-line-diagnostic.mjs",
+    "diagnose:population": "node scripts/population-diagnostic.mjs",
+    "diagnose:politics": "node scripts/politics-diagnostic.mjs",
+    "diagnose:construction": "node scripts/construction-diagnostic.mjs",
+    "diagnose:trade": "node scripts/trade-diagnostic.mjs",
+    "diagnose:rgo": "node scripts/rgo-diagnostic.mjs",
     "diagnose:policy": "node scripts/policy-diagnostic.mjs",
     "diagnose:sink": "node scripts/sink-diagnostic.mjs",
-    "diagnose:command": "node scripts/command-diagnostic.mjs"
+    "diagnose:command": "node scripts/command-diagnostic.mjs",
+    "diagnose:combat-org": "node scripts/combat-organization-diagnostic.mjs",
+    "diagnose:occupation": "node scripts/occupation-diagnostic.mjs"
   }
 }

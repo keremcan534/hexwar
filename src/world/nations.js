@@ -10,6 +10,23 @@ const SYL_MID = ['a', 'e', 'i', 'o', 'an', 'en', 'ir', 'or', 'al', 'ath', 'esh',
 const SYL_END = ['ya', 'ia', 'land', 'mark', 'stan', 'grad', 'heim', 'dor', 'ria', 'nia', 'gard', 'vik', 'esh', 'ov'];
 const TITLES = ['Kingdom', 'Empire', 'Republic', 'Principality', 'Duchy', 'Confederation', 'Khanate', 'Emirate'];
 
+// Politik harita paleti. Renkler yalniz genel olarak farkli degil, asagidaki
+// komsuluk boyamasinda birbirine siniri olan ulkeler icin ozellikle ayrilir.
+const NATION_PALETTE = [
+  { hue: 4, sat: 74, light: 52 },
+  { hue: 211, sat: 72, light: 55 },
+  { hue: 111, sat: 58, light: 47 },
+  { hue: 48, sat: 80, light: 56 },
+  { hue: 282, sat: 64, light: 59 },
+  { hue: 174, sat: 64, light: 44 },
+  { hue: 326, sat: 70, light: 58 },
+  { hue: 27, sat: 84, light: 55 },
+  { hue: 239, sat: 58, light: 66 },
+  { hue: 84, sat: 64, light: 49 },
+  { hue: 195, sat: 82, light: 46 },
+  { hue: 350, sat: 52, light: 68 },
+];
+
 function makeName(rng, used) {
   for (let attempt = 0; attempt < 50; attempt++) {
     let base = rng.pick(SYL_START);
@@ -29,6 +46,65 @@ function makeColor(index, rng) {
   const sat = 62 + ((index * 17) % 20);
   const light = 48 + ((index * 11) % 16);
   return { color: `hsl(${hue.toFixed(0)} ${sat}% ${light}%)`, hue, sat, light };
+}
+
+function colorDistance(a, b) {
+  const hue = Math.min(Math.abs(a.hue - b.hue), 360 - Math.abs(a.hue - b.hue));
+  return hue + Math.abs(a.light - b.light) * 2.4 + Math.abs(a.sat - b.sat) * 0.25;
+}
+
+/**
+ * Ulke kimligi haritadaki konumu bilmeden renk uretemez: altin-oran tonlari
+ * genel olarak daginik olsa da iki benzer ton yan yana gelebiliyordu. Sinir
+ * grafigini cikarip en cok komsusu olan ulkeden baslayarak, atanmis komsularina
+ * en uzak palet rengini seceriz. Ayni renk yalniz siniri olmayanlarda tekrarlar.
+ */
+function separateNeighborColors(world, nations, rng) {
+  const adjacent = nations.map(() => new Set());
+  world.forEach((tile) => {
+    if (tile.owner < 0) return;
+    for (const near of world.neighbors(tile)) {
+      if (near.owner < 0 || near.owner === tile.owner) continue;
+      adjacent[tile.owner].add(near.owner);
+    }
+  });
+
+  const assigned = new Array(nations.length).fill(-1);
+  const usage = new Array(NATION_PALETTE.length).fill(0);
+  const order = nations.map((nation) => nation.id)
+    .sort((a, b) => adjacent[b].size - adjacent[a].size || a - b);
+
+  for (const nationId of order) {
+    let best = 0;
+    let bestScore = -Infinity;
+    for (let i = 0; i < NATION_PALETTE.length; i++) {
+      let nearest = 240;
+      for (const otherId of adjacent[nationId]) {
+        const other = assigned[otherId];
+        if (other >= 0) nearest = Math.min(
+          nearest, colorDistance(NATION_PALETTE[i], NATION_PALETTE[other]),
+        );
+      }
+      // Esitlikte haritanin tamaminin ayni ilk renkle baslamamasi icin daha az
+      // kullanilmis renk kazanir; son terim yalniz deterministik bag kiricidir.
+      const score = nearest - usage[i] * 8 + ((nationId * 7 + i * 3) % 13) * 0.001;
+      if (score > bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    }
+    assigned[nationId] = best;
+    usage[best]++;
+  }
+
+  for (const nation of nations) {
+    const base = NATION_PALETTE[assigned[nation.id]];
+    nation.hue = base.hue;
+    nation.sat = base.sat;
+    nation.light = base.light;
+    nation.color = `hsl(${base.hue} ${base.sat}% ${base.light}%)`;
+    nation.flag = makeFlag(rng, base);
+  }
 }
 
 /**
@@ -82,12 +158,12 @@ export function generateNations(world, options = {}) {
       aggression: rng.range(0.7, 1.4),
       // Teknoloji eğilimi: YZ'lerin farklı yollardan büyümesini sağlar.
       focus: rng.pick(['economy', 'military', 'admin']),
-      techs: [],
       budget: Math.round(avgShare * rng.range(minShare, maxShare)),
     };
   });
 
   growNations(world, nations, rng);
+  separateNeighborColors(world, nations, rng);
   computeStats(world, nations);
 
   world.nations = nations;

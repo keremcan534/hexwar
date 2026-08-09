@@ -12,7 +12,18 @@
 <body>
   <canvas id="map"></canvas>
 
-  <!-- HOI4 düzeni: sol üstte bayrak, sağa doğru kaynak şeridi, sağda tur denetimi -->
+  <!-- Haritanın malzeme katmanı: ince film greni, sıcak derecelendirme ve
+       kenar koyulaşması. Canvas'ta kare başına çizilince yazılım rasterleştirme
+       altında tek başına ~30 ms tutuyordu; DOM katmanı olarak tarayıcı
+       tarafından bir kez birleştirilir. Yalnız harita alanını kaplar, arayüz
+       panelleri daha üst katmanda durur. -->
+  <div class="map-film" id="map-film" aria-hidden="true"></div>
+
+  <!-- Üst bar ve yönetim sekmeleri tek bir sabit başlıkta. Ayrı ayrı `fixed`
+       olduklarında sekme şeridinin üst kenarı, satır sayısına göre değişen
+       çubuk yüksekliğinden elle hesaplanmak zorundaydı; hesap tutmayınca
+       şeritler üst üste biniyordu. Aynı akışta oldukları için artık çakışamazlar. -->
+  <div class="hud-header" id="hud-header">
   <header class="topbar">
     <button class="nation-badge" id="nation-badge" title="Nation overview">
       <span class="flag-frame">
@@ -27,31 +38,34 @@
 
     <div class="res-strip" id="resources" aria-label="National resources">—</div>
     <div class="macro-strip" id="macro-stats" aria-label="National statistics">—</div>
-    <button class="icon-btn" id="btn-settings" aria-label="Settings">☰</button>
+
+    <!-- Saat üst çubuğun *içinde* durur. Ayrı bir yüzen katman olduğunda üst
+         çubuğun sağ boşluğu elle tahmin edilmek zorundaydı ve tahmin tutmayınca
+         kaynak değerleri saatin altında kırpılıyordu. -->
+    <div class="turn-control" id="turn-control">
+      <span class="turn-badge"><b id="turn-value">1 JAN 1836</b></span>
+      <button class="time-btn active" id="btn-pause" data-speed="0" aria-label="Pause" title="Pause"><svg viewBox="0 0 16 16"><path d="M6 3.5v9M10 3.5v9"/></svg></button>
+      <button class="time-btn" data-speed="1" aria-label="Normal speed" title="Normal speed"><svg viewBox="0 0 16 16"><path d="M5 3.5 12 8l-7 4.5z"/></svg></button>
+      <button class="time-btn" data-speed="2" aria-label="Fast" title="Fast"><svg viewBox="0 0 16 16"><path d="M3 3.5 8 8l-5 4.5zM9 3.5 14 8l-5 4.5z"/></svg></button>
+      <button class="time-btn" data-speed="4" aria-label="Fastest" title="Fastest"><svg viewBox="0 0 16 16"><path d="M1.5 3.5 6 8l-4.5 4.5zM6.5 3.5 11 8l-4.5 4.5zM12.5 3.5v9"/></svg></button>
+    </div>
+
+    <button class="icon-btn" id="btn-settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></svg></button>
   </header>
 
-  <!-- Gerçek zaman denetimi: simülasyon haftalık adımlarla arka planda akar. -->
-  <div class="turn-control" id="turn-control">
-    <span class="turn-badge"><b id="turn-value">1 JAN 1836</b></span>
-    <button class="time-btn active" id="btn-pause" data-speed="0" aria-label="Pause">Ⅱ</button>
-    <button class="time-btn" data-speed="1">▶</button>
-    <button class="time-btn" data-speed="2">▶▶</button>
-    <button class="time-btn" data-speed="4">▶▶▶</button>
-  </div>
-
-  <!-- HOI4'ün sekme düğmeleri: her biri tam ekran bir yönetim ekranı açar -->
-  <!-- Cephe mekaniği üzerinde çalışırken yalnız Production açık. Diğer ekranların
-       kodu duruyor; hidden sınıfı kaldırılınca geri gelirler. -->
+  <!-- Yalnızca oyuncuya açık ve etkin olan ulusal yönetim ekranları.
+       Simgeler inline SVG: emoji ve Unicode karışımı her sekmede farklı
+       ağırlık ve renkte görünüyordu. Hepsi tek renk, 16px, 1.4 stroke. -->
   <nav class="tab-bar" id="tab-bar" aria-label="National management">
-    <button data-screen="construction" class="hidden"><span>🏗</span>Construction</button>
-    <button data-screen="industry" class="hidden"><span>🏭</span>Industry</button>
-    <button data-screen="production"><span>⚒</span>Production</button>
-    <button data-screen="budget" class="hidden"><span>¤</span>Budget</button>
-    <button data-screen="research" class="hidden"><span>🔬</span>Research</button>
-    <button data-screen="logistics" class="hidden"><span>📦</span>Logistics</button>
-    <button data-screen="diplomacy" class="hidden"><span>🕊</span>Diplomacy</button>
-    <button data-screen="trade" class="hidden"><span>⚖</span>Trade</button>
+    <button data-screen="construction"><span aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M2 14h12M3.5 14V7l4.5-3 4.5 3v7M6.5 14v-3.5h3V14"/></svg></span>Construction</button>
+    <button data-screen="production"><span aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M2 14h12M3 14V6l3 2V6l3 2V6l3 2v6M6 10.5h1M9 10.5h1"/></svg></span>Production</button>
+    <button data-screen="logistics"><span aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M2 5.5 8 2.5l6 3v5l-6 3-6-3zM2 5.5 8 8.5m0 0 6-3M8 8.5v5"/></svg></span>Logistics</button>
+    <button data-screen="budget"><span aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 2v12M11 4.5H6.5a2 2 0 0 0 0 4h3a2 2 0 0 1 0 4H5"/></svg></span>Budget</button>
+    <button data-screen="trade"><span aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 2.5v11M3 5.5h10M4.5 5.5 2.5 10h4zM11.5 5.5 9.5 10h4zM5.5 13.5h5"/></svg></span>Trade</button>
+    <button data-screen="population"><span aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M5.5 7a2 2 0 1 0 0-4 2 2 0 0 0 0 4zM2 13.5c0-2 1.6-3.5 3.5-3.5S9 11.5 9 13.5M10.5 6.5a1.8 1.8 0 1 0 0-3.6M11 10.2c1.7.2 3 1.6 3 3.3"/></svg></span>Population</button>
+    <button data-screen="politics"><span aria-hidden="true"><svg viewBox="0 0 16 16"><path d="M8 2.2 13.5 5v3.2c0 3-2.3 4.9-5.5 5.6C4.8 13.1 2.5 11.2 2.5 8.2V5z"/></svg></span>Politics</button>
   </nav>
+  </div>
 
   <section class="screen hidden" id="screen" aria-hidden="true">
     <header class="screen-head">
@@ -66,13 +80,32 @@
     <i class="screen-rail" aria-hidden="true"></i>
   </section>
 
-  <!-- Sağ altta harita modları, Paradox oyunlarındaki gibi -->
+  <!-- Sağ altta harita modları: ayrı parlak kutular değil, tek bir kompakt
+       kontrol grubu. Simgeler sekme çubuğuyla aynı SVG dilinde. -->
   <div class="map-modes" id="map-modes">
-    <button class="mode-btn active" data-mode="political" title="Political map">◧</button>
-    <button class="mode-btn" data-mode="terrain" title="Terrain map">▲</button>
-    <button class="mode-btn" data-mode="cultures" title="Culture map">☯</button>
-    <button class="mode-btn" data-mode="resources" title="Resource map">⛏</button>
-    <button class="mode-btn" id="btn-layers" title="Map layers">◈</button>
+    <button class="mode-btn active" data-mode="political" aria-label="Political map" title="Political map"><svg viewBox="0 0 16 16"><path d="M2 4.2 6 2.6l4 1.6 4-1.6v9.2l-4 1.6-4-1.6-4 1.6zM6 2.6v9.2M10 4.2v9.2"/></svg></button>
+    <button class="mode-btn" data-mode="terrain" aria-label="Terrain map" title="Terrain map"><svg viewBox="0 0 16 16"><path d="M1.5 12.5 6 5l3 4.6 1.8-2.6 3.7 5.5z"/></svg></button>
+    <button class="mode-btn" data-mode="cultures" aria-label="Culture map" title="Culture map"><svg viewBox="0 0 16 16"><path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM2.4 6.5h11.2M2.4 9.5h11.2M8 2c-1.8 2-2.6 4-2.6 6s.8 4 2.6 6c1.8-2 2.6-4 2.6-6s-.8-4-2.6-6z"/></svg></button>
+    <button class="mode-btn" data-mode="resources" aria-label="Resource map" title="Resource map"><svg viewBox="0 0 16 16"><path d="M9.5 2.5 13.5 6.5M11.5 4.5 6 10l-3.5 3.5M4.5 8.5 7.5 11.5"/></svg></button>
+    <button class="mode-btn" data-mode="population" aria-label="Population map" title="Population map"><svg viewBox="0 0 16 16"><path d="M8 7.5a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4zM3.5 13.5c0-2.5 2-4.2 4.5-4.2s4.5 1.7 4.5 4.2"/></svg></button>
+    <button class="mode-btn" id="btn-layers" aria-label="Map layers" title="Map layers"><svg viewBox="0 0 16 16"><path d="M8 2 14 5.2 8 8.4 2 5.2zM2 8.4 8 11.6l6-3.2M2 11.2 8 14.4l6-3.2"/></svg></button>
+  </div>
+
+  <!-- Lejand çipleri haritadaki gerçek tonlarla aynı doygunlukta olmalı;
+       aksi halde gösterge haritadan daha parlak görünüyor (bkz. renderer
+       resourceTint / populationTint). -->
+  <div class="rgo-map-legend hidden" id="rgo-map-legend" aria-label="RGO resource legend">
+    <span style="--rgo-color:hsl(91 30% 38%)">🌾 Grain</span>
+    <span style="--rgo-color:hsl(139 30% 38%)">🪵 Timber</span>
+    <span style="--rgo-color:hsl(211 30% 38%)">⛏ Iron</span>
+    <span style="--rgo-color:hsl(28 30% 38%)">◆ Coal</span>
+  </div>
+
+  <div class="rgo-map-legend population-map-legend hidden" id="population-map-legend" aria-label="Population map legend">
+    <span style="--rgo-color:hsl(268 18% 20%)">under 1K</span>
+    <span style="--rgo-color:hsl(220 24% 27%)">1K–3K</span>
+    <span style="--rgo-color:hsl(150 30% 37%)">3K–8K</span>
+    <span style="--rgo-color:hsl(63 36% 54%)">8K+</span>
   </div>
 
   <div class="layer-menu hidden" id="layer-menu">
@@ -127,12 +160,14 @@
     <div class="divisions-body" id="divisions-body"></div>
   </aside>
 
-  <!-- Ekranın orta altında sabit komuta paneli: üstte plan araçları,
+  <!-- Ekranın orta altında sabit komuta paneli: üstte hedef ve duruş,
        altta general portreleri. HOI4'teki komutan çubuğunun karşılığı. -->
   <div class="command-dock" id="command-dock" aria-label="Army command">
     <div class="command-tools hidden" id="command-tools">
-      <button class="tool-btn" data-tool="front" title="Draw a front line">⌇ Front</button>
-      <button class="tool-btn" data-tool="fallback" title="Draw a fallback line">⌐ Fallback</button>
+      <label class="command-target-label" for="command-target">Target</label>
+      <select class="command-target" id="command-target" title="Choose the nation whose border this command holds">
+        <option value="">All active fronts</option>
+      </select>
       <button class="tool-btn" id="btn-offensive" title="Toggle the offensive: divisions advance along the front">➤ Offensive</button>
       <span class="tool-sep"></span>
       <span class="tool-label">Stance</span>

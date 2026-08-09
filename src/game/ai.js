@@ -1,20 +1,24 @@
 // Basit ülke yapay zekâsı: sınıra yürü, toprak al, komşudaki düşmana vur.
 // Amaç zekâ değil, dünyanın canlı hissettirmesi; strateji katmanı sonra gelir.
 
-import { hexDistance, hexesInRange } from '../core/hex.js';
-import { ROAD_MAX_LEVEL, buildRoad, canBuildRoad } from './infrastructure.js';
+import { hexDistance } from '../core/hex.js';
 import {
-  CITY_COST, UNIT_COSTS, UNIT_UPKEEP, WORK_RADIUS, canAfford, canFoundCity,
+  CITY_COST, UNIT_COSTS, canAfford, canFoundCity,
 } from './cities.js';
-import { BUILDINGS, canBuild } from './buildings.js';
 import {
   MIN_WAR_TURNS, atWar, declareWar, makePeace, nationStrength, relation, truceLeft,
 } from './diplomacy.js';
 import { INFAMY_COALITION } from './infamy.js';
-import { affordableTechs, research } from './tech.js';
-import { isMoving, regimentCount } from './units.js';
+import { isMoving, regimentCount, unitsOn } from './units.js';
 import { destinationOf, orderMove } from './movement.js';
-import { canDevelopProvince, developProvince } from './provinces.js';
+import { controllerOf } from './control.js';
+import { canRecruit } from './recruitment.js';
+import {
+  STANCE, assignDivisions, commandSize, generalOfArmy, generalsOf, setStance,
+} from './command.js';
+import {
+  MILITARY_EQUIPMENT, ensureProductionLine, equipmentStock,
+} from './economy.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
 const WAR_THRESHOLD = 1.4;
@@ -97,13 +101,13 @@ function desiredArmy(nation) {
  * Sıradaki kol. Topçu destek sınıfıdır: ordunun gövdesi piyade, hızı süvari,
  * ateş gücü topçudur. Her üçüncü alay topçu olsun ki YZ dengeli ordu kursun.
  */
-function affordableUnit(nation, army) {
+function affordableUnit(world, nation, army) {
   const wantsArtillery = army >= 3 && army % 3 === 0;
   const order = wantsArtillery
     ? ['ARTILLERY', 'INFANTRY', 'CAVALRY']
     : ['INFANTRY', 'CAVALRY', 'ARTILLERY'];
   for (const id of order) {
-    if (canAfford(nation, UNIT_COSTS[id])) return id;
+    if (canAfford(nation, UNIT_COSTS[id]) && canRecruit(world, nation, id)) return id;
   }
   return null;
 }
@@ -112,125 +116,23 @@ function affordableUnit(nation, army) {
  * Harcama önceliği: önce yeterli ordu, sonra yeni şehir, artan altınla yine ordu.
  * Hazine biriktirmek YZ'yi pasifleştirdiği için son adım önemli.
  */
-/**
- * Bina alımı: hazinenin asıl gideri. Ordu erzakla sınırlı olduğundan altının
- * başka çıkışı yok; bu adım olmadan hazine 2000 altını aşıyordu.
- * Öncelik ulusun o anki darboğazına göre.
- */
-function buildSomething(game, nation) {
-  const world = game.world;
-  const net = nation.budget?.net ?? { food: 0, gold: 0, timber: 0, iron: 0 };
-  const atWar = world.nations.some((n) => n.alive && n.id !== nation.id
-    && world.relations?.[n.id]?.[nation.id]?.state === 'war');
-
-  // Darboğazdan çıkmayı hedefleyen sıra.
-  const wishlist = [];
-  if (net.food < 4) wishlist.push('GRANARY', 'FARM_ESTATE');
-  if (nation.iron < 10) wishlist.push('MINE', 'FORGE');
-  if (nation.timber < 10) wishlist.push('SAWMILL');
-  if (atWar) wishlist.push('WALLS', 'BARRACKS', 'SUPPLY_DEPOT');
-  if ((nation.techs?.length ?? 0) < 6) wishlist.push('UNIVERSITY');
-  wishlist.push(
-    'MARKET', 'WORKSHOP', 'ADMIN_CENTER', 'HARBOR', 'SHIPYARD', 'GRANARY',
-    'FARM_ESTATE', 'SAWMILL', 'MINE', 'FORGE', 'BARRACKS', 'SUPPLY_DEPOT', 'WALLS',
-  );
-
-  const cities = world.cities.filter((c) => c.nationId === nation.id);
-  // Turda en fazla iki bina: hazine boşalsın ama tek turda her şey bitmesin.
-  for (let built = 0; built < 2; built++) {
-    let done = false;
-    for (const id of wishlist) {
-      // Listede tanımsız bir kimlik olursa (yazım hatası, kaldırılmış bina)
-      // sessizce atla: eskiden tüm turu çökertiyordu.
-      const building = BUILDINGS[id];
-      if (!building || !canAfford(nation, building.cost)) continue;
-      const city = cities.find((c) => canBuild(world, c, id, WORK_RADIUS));
-      if (city && game.turns.build(city, id)) {
-        done = true;
-        break;
-      }
-    }
-    if (!done) return;
-  }
-}
-
-/**
- * Araştırma: altının son gider kalemi. Ülke kendi dalını tercih eder ama
- * karşılayabildiği başka dalı da alır; yoksa hazine yine şişiyor.
- */
-function researchSomething(nation) {
-  const options = affordableTechs(nation);
-  if (!options.length) return;
-  // Ucuzdan pahalıya, kendi dalı öncelikli.
-  options.sort((a, b) => {
-    const focusDiff = (b.branch === nation.focus) - (a.branch === nation.focus);
-    return focusDiff || a.tier - b.tier;
-  });
-  research(nation, options[0].id);
-}
-
-/**
- * Yol yatırımı. Yol sistemi yazıldığında yalnız oyuncuya açılmıştı; 30 oyunluk
- * ölçümde YZ hiç yol yapmıyordu, yani harita genelinde ölü bir sistemdi.
- * Şehir çevresinden başlar: asıl faydası üretim bölgesindeki hareket.
- */
-function investInRoads(game, nation) {
-  const world = game.world;
-  // Ordu ve bina önce gelir; yol artan altının gideri.
-  if (nation.gold < 140) return;
-
-  let best = null;
-  let bestLevel = ROAD_MAX_LEVEL;
-  for (const city of world.cities) {
-    if (city.nationId !== nation.id) continue;
-    for (const { q, r } of hexesInRange(city.tile.q, city.tile.r, 1)) {
-      const tile = world.get(q, r);
-      if (!tile || !canBuildRoad(tile, nation.id)) continue;
-      const level = tile.roadLevel ?? 0;
-      // En geri kalmış kareyi yükselt: ağ dengeli büyüsün.
-      if (level < bestLevel) {
-        bestLevel = level;
-        best = tile;
-      }
-    }
-  }
-  if (best) buildRoad(game, best, nation.id);
-}
-
-/** Dar boğaza göre bir province'i uzmanlaştır; YZ de aynı idari bütçeyi kullanır. */
-function investInProvince(game, nation) {
-  if ((nation.economy?.authority ?? 0) < 20 || nation.gold < 45) return;
-  const net = nation.budget?.net ?? {};
-  const preferred = net.food < 2 ? 'agriculture'
-    : nation.iron < 8 || nation.timber < 8 ? 'extraction'
-      : 'commerce';
-  let best = null;
-  let bestScore = -Infinity;
-  game.world.forEach((tile) => {
-    if (!canDevelopProvince(game.world, nation, tile, preferred)) return;
-    const yields = tile.terrain.yields;
-    const score = preferred === 'agriculture' ? yields.food
-      : preferred === 'extraction' ? yields.iron + yields.timber
-        : yields.gold + (tile.coastal ? 2 : 0);
-    if (score > bestScore) {
-      best = tile;
-      bestScore = score;
-    }
-  });
-  if (best) developProvince(game, best, preferred, nation.id);
-}
-
 function spend(game, nation) {
   const world = game.world;
   const cities = world.cities.filter((c) => c.nationId === nation.id).length;
 
-  researchSomething(nation);
-  buildSomething(game, nation);
-  investInProvince(game, nation);
-  investInRoads(game, nation);
+  const militaryLines = (nation.economy?.factories ?? [])
+    .filter((factory) => factory.typeId === 'ARMS_FACTORY')
+    .map((factory) => ensureProductionLine(factory));
+  const uncoveredCriticalStock = Object.values(MILITARY_EQUIPMENT).some((equipment) => (
+    equipmentStock(nation, equipment.id) < equipment.reserve
+    && !militaryLines.some((factory) => factory.lineEquipment === equipment.id)
+  ));
+  // Do not spend the military-factory fund on another unit or local project.
+  // runEconomicAI executes later in the same week and buys the missing line.
+  if (uncoveredCriticalStock) return;
 
   // Yeni şehir: gelirin asıl kaynağı, orduyu beslemekten önce gelir.
-  if (canAfford(nation, { gold: CITY_COST.gold + 25, timber: CITY_COST.timber })
+  if (canAfford(nation, { gold: CITY_COST.gold + 25 })
     && cities < 1 + nation.tiles / 45) {
     const unit = world.units.find(
       (u) => u.nationId === nation.id && canFoundCity(world, u.tile, nation.id),
@@ -243,8 +145,7 @@ function spend(game, nation) {
   let army = world.units
     .filter((u) => u.nationId === nation.id)
     .reduce((sum, unit) => sum + regimentCount(unit), 0);
-  let food = nation.budget?.net.food ?? 0;
-  const canFeed = () => food - UNIT_UPKEEP.food >= 0;
+  const canFeed = () => true;
 
   // Kıyı ülkeleri mütevazı bir donanma tutar: adalar ve kıyı şehirleri savunmasız kalmasın.
   const hasPort = world.cities.some((c) => c.nationId === nation.id && c.tile.coastal);
@@ -255,19 +156,17 @@ function spend(game, nation) {
     && canAfford(nation, UNIT_COSTS.WARSHIP)
     && game.turns.buyUnit(nation, 'WARSHIP')) {
     army++;
-    food -= UNIT_UPKEEP.food;
   }
 
   for (let i = 0; i < 3; i++) {
     // Hazine fazlası orduya dönüşür ama sert bir tavan var: ölçümde tek ülke
     // 93 süvari yığıp tur süresini 22 ms'ye çıkarmıştı.
-    const surplus = nation.gold > 120 && army < target * 2;
+    const surplus = nation.gold > 180 && army < Math.ceil(target * 1.35);
     if (army >= target && !surplus) break;
     if (!canFeed()) break;
-    const typeId = affordableUnit(nation, army);
+    const typeId = affordableUnit(world, nation, army);
     if (!typeId || !game.turns.buyUnit(nation, typeId)) break;
     army++;
-    food -= UNIT_UPKEEP.food;
   }
 }
 
@@ -282,13 +181,14 @@ const MAX_SEA_CROSSING = 5;
  */
 function nearestFrontier(world, from, nationId, maxNodes = 900) {
   // Barış içindeki komşunun toprağı ne hedeftir ne de geçit.
-  const open = (t) => t.owner < 0 || t.owner === nationId || atWar(world, t.owner, nationId);
+  const open = (t) => controllerOf(t) < 0 || controllerOf(t) === nationId
+    || atWar(world, controllerOf(t), nationId);
   const depth = new Map([[from, 0]]);
   const queue = [from];
   let head = 0;
   while (head < queue.length && head < maxNodes) {
     const tile = queue[head++];
-    if (tile.owner !== nationId && tile.terrain.passable && open(tile)) return tile;
+    if (controllerOf(tile) !== nationId && tile.terrain.passable && open(tile)) return tile;
     const seaDepth = depth.get(tile);
     for (const n of world.neighbors(tile)) {
       if (depth.has(n)) continue;
@@ -326,11 +226,12 @@ function navalGoal(world, unit) {
 function adjacentEnemy(world, unit) {
   let best = null;
   for (const n of world.neighbors(unit.tile)) {
-    const other = n.unit;
-    if (!other || other.nationId === unit.nationId) continue;
-    if (!atWar(world, other.nationId, unit.nationId)) continue;
-    // En zayıfına vur: birim düşürme şansı yüksek olsun.
-    if (!best || other.hp < best.unit.hp) best = { tile: n, unit: other };
+    for (const other of unitsOn(n)) {
+      if (other.nationId === unit.nationId) continue;
+      if (!atWar(world, other.nationId, unit.nationId)) continue;
+      // En zayıfına vur: birim düşürme şansı yüksek olsun.
+      if (!best || other.hp < best.unit.hp) best = { tile: n, unit: other };
+    }
   }
   return best;
 }
@@ -382,11 +283,55 @@ export function runUnitAI(game, unit, rng) {
   orderMove(game, unit, goal);
 }
 
+/**
+ * Ordu grubu yönetimi. YZ artık tümenleri tek tek gezdirmez: hepsini
+ * generallerine dağıtır, her gruba bir düşman ve bir duruş verir, gerisini
+ * komuta katmanına bırakır (bkz. command.js).
+ *
+ * Eski davranış — "her tümen en yakın sınıra koşsun" — orduları tek tek
+ * daldırıp sınırları parçalıyordu; cephe diye bir şey oluşmuyordu.
+ */
+function manageCommand(game, nation) {
+  const world = game.world;
+  const generals = generalsOf(nation);
+  if (!generals.length) return;
+
+  // Komutasız kalan tümen en küçük gruba katılır: gruplar dengeli büyüsün.
+  for (const unit of world.units) {
+    if (unit.nationId !== nation.id || unit.type.domain !== 'land') continue;
+    if (generalOfArmy(nation, unit)) continue;
+    const host = generals.reduce((a, b) => (commandSize(a) <= commandSize(b) ? a : b));
+    assignDivisions(nation, host.id, [unit]);
+  }
+
+  const foes = world.nations.filter((other) => other.alive && atWar(world, other.id, nation.id));
+  const myPower = nationStrength(world, nation);
+  generals.forEach((general, index) => {
+    if (!general.divisions.length) return;
+    // Her grup bir düşmana bakar; düşman yoksa hedefsiz kalır ve sınırı tutar.
+    const wanted = foes.length ? foes[index % foes.length].id : null;
+    if (general.target !== wanted) {
+      // setTarget yerine doğrudan yazılır: cepheyi zaten runCommand tazeleyecek,
+      // general başına ayrı bir dünya taraması yaptırmaya değmez.
+      general.target = wanted;
+      general.planning = 0;
+    }
+    // Üstünsek ilerle, değilsek tut. Barışta ilerleme sahipsiz toprağa genişlemektir.
+    const foe = wanted == null ? null : world.nations[wanted];
+    const advancing = foe
+      ? myPower > nationStrength(world, foe) * 0.9
+      : true;
+    setStance(world, general, advancing ? STANCE.ADVANCE : STANCE.HOLD);
+  });
+}
+
 export function runNationAI(game, nation, rng) {
   const world = game.world;
   diplomacy(game, nation, rng);
   spend(game, nation);
-  for (const unit of [...world.units].filter((u) => u.nationId === nation.id)) {
-    runUnitAI(game, unit, rng);
+  manageCommand(game, nation);
+  // Kara tümenleri komuta katmanından yönetilir; burada yalnız donanma kalır.
+  for (const unit of [...world.units]) {
+    if (unit.nationId === nation.id && unit.type.domain === 'sea') runUnitAI(game, unit, rng);
   }
 }

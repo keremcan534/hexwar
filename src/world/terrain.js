@@ -13,18 +13,18 @@ const y = (partial) => ({ ...NO_YIELD, ...partial });
 
 export const TERRAIN = {
   DEEP_OCEAN: {
-    id: 'DEEP_OCEAN', name: 'Deep Ocean', color: '#123a63',
+    id: 'DEEP_OCEAN', name: 'Deep Ocean', color: '#0a1a24',
     // Açık deniz pahalı: kıyı boyu seyretmek okyanusu kesmekten ucuz olsun.
     water: true, passable: false, navigable: true, seaCost: 2,
     moveCost: Infinity, defense: 0, yields: y({ food: 1, gold: 1 }),
   },
   OCEAN: {
-    id: 'OCEAN', name: 'Ocean', color: '#1a5185',
+    id: 'OCEAN', name: 'Ocean', color: '#0e2430',
     water: true, passable: false, navigable: true, seaCost: 1,
     moveCost: Infinity, defense: 0, yields: y({ food: 1, gold: 1 }),
   },
   COAST: {
-    id: 'COAST', name: 'Shallow Water', color: '#2a76ad',
+    id: 'COAST', name: 'Shallow Water', color: '#14313d',
     water: true, passable: false, navigable: true, seaCost: 1,
     moveCost: Infinity, defense: 0, yields: y({ food: 2, gold: 1 }),
   },

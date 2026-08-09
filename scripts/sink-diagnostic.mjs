@@ -7,7 +7,7 @@ import { TurnManager } from '../src/game/turn.js';
 import { generateWorld } from '../src/world/worldgen.js';
 import { generateNations } from '../src/world/nations.js';
 import { SOCIAL_PROGRAMS, socialSpendingCost } from '../src/game/economy.js';
-import { MAX_TIER, armyTier, regimentCount } from '../src/game/units.js';
+import { regimentCount } from '../src/game/units.js';
 
 const gameCount = Math.max(1, Number.parseInt(process.argv[2] ?? '4', 10));
 const seedPrefix = process.argv[3] ?? 'SINK';
@@ -33,9 +33,6 @@ function headlessGame(seed) {
 }
 
 function snapshot(world, nation) {
-  const armies = world.units.filter((unit) => unit.nationId === nation.id && unit.regiments?.length);
-  const tierCounts = Array.from({ length: MAX_TIER }, () => 0);
-  for (const army of armies) tierCounts[armyTier(army) - 1] += regimentCount(army);
   const factories = nation.economy?.factories ?? [];
   return {
     name: nation.name,
@@ -47,7 +44,6 @@ function snapshot(world, nation) {
     socialCost: Number(socialSpendingCost(nation).toFixed(1)),
     social: { ...nation.economy.social },
     stability: Math.round((nation.economy?.stability ?? 0) * 100),
-    regimentsByTier: tierCounts,
     factories: factories.length,
     factoryLevels: factories.reduce((sum, factory) => sum + factory.level, 0),
     netGold: Math.round(nation.budget?.net?.gold ?? 0),
@@ -73,9 +69,6 @@ for (let index = 0; index < gameCount; index++) {
     peakGold: Math.round(peakGold),
     richest: richest ? snapshot(game.world, richest) : null,
     totalRegiments: game.world.units.reduce((sum, u) => sum + regimentCount(u), 0),
-    modernRegiments: game.world.units
-      .filter((u) => u.regiments?.length && armyTier(u) > 1)
-      .reduce((sum, u) => sum + regimentCount(u), 0),
     socialSpenders: alive.filter(
       (n) => Object.keys(SOCIAL_PROGRAMS).some((id) => (n.economy.social[id] ?? 0) > 0),
     ).length,

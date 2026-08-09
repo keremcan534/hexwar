@@ -137,7 +137,6 @@ export function generateWorld(seed, options = {}) {
         terrain,
         coastal: false,
         river: false,
-        roadLevel: 0,
         owner: -1,      // ülke index'i, -1 = sahipsiz
         culture: -1,    // halk id'si; ülke sınırından bağımsız
         continent: -1,  // kara kütlesi id'si

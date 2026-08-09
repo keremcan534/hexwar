@@ -8,17 +8,20 @@
 import { createUnit, refreshArmy, resolveTypeId } from './units.js';
 import { createCity, englishCityName } from './cities.js';
 import { ensureEconomy } from './economy.js';
-import { ensureGenerals } from './generals.js';
-import { ensureFronts } from './fronts.js';
+import { ensureCommand } from './command.js';
 import { ensureBattles } from './battles.js';
 import { ensureProvinces } from './provinces.js';
+import { ensurePolitics } from './politics.js';
+import { ensureConstruction } from './construction.js';
 
-// Teknoloji ve birim can tavanı eklendiği için biçim yükseldi.
-export const SAVE_VERSION = 5;
+// Ordu sistemi yeniden yazıldı: cephe artık saklanmıyor (sınırdan türetiliyor),
+// komuta tek listede toplandı ve muharebe kare anahtarlı oldu. v8'de kaldırılan
+// yol ve şehir binası katmanları kare kaydından da çıktı.
+export const SAVE_VERSION = 8;
 const STORAGE_KEY = 'hexwar.save';
 
 /** Ulusun tur içinde değişen alanları. */
-const NATION_FIELDS = ['gold', 'food', 'timber', 'iron', 'infamy', 'alive'];
+const NATION_FIELDS = ['gold', 'infamy', 'alive'];
 
 export function serialize(game) {
   const world = game.world;
@@ -29,15 +32,14 @@ export function serialize(game) {
   world.forEach((tile, index) => {
     if (
       tile.owner < 0
+      && (tile.controller ?? tile.owner) === tile.owner
       && !tile.heldSince
       && tile.culture === tile.baseCulture
-      && !(tile.roadLevel > 0)
-      && !tile.structure
     ) return;
     tiles.push([
-      index, tile.owner, tile.culture, tile.heldSince ?? 0, tile.roadLevel ?? 0,
+      index, tile.owner, tile.culture, tile.heldSince ?? 0,
       tile.province ? { ...tile.province } : null,
-      tile.structure ? { ...tile.structure } : null,
+      tile.controller ?? tile.owner,
     ]);
   });
 
@@ -55,23 +57,16 @@ export function serialize(game) {
       // Aktif muharebeler yüklemede iptal edilir; ordu kimlikleri yeniden üretilir.
       battles: [],
     },
-    generalSystem: { nextId: world.generalSystem?.nextId ?? 1 },
-    frontSystem: {
-      nextId: world.frontSystem?.nextId ?? 1,
-      fronts: (world.frontSystem?.fronts ?? []).map((front) => ({
-        ...front,
-        tiles: front.tiles.map((t) => ({ ...t })),
-        // Hedef hattı da derin kopyalanır: kayıt canlı diziye bağlı kalmasın.
-        objective: front.objective?.map((t) => ({ ...t })) ?? null,
-        armies: [...front.armies],
-      })),
-    },
+    commandSystem: { nextId: world.commandSystem?.nextId ?? 1 },
     tiles,
     nations: world.nations.map((n) => {
       const out = {
-        id: n.id, techs: (n.techs ?? []).slice(), economy: n.economy,
+        id: n.id, economy: n.economy, politics: n.politics,
+        construction: ensureConstruction(n),
         rallyPoint: n.rallyPoint ?? null,
-        generals: (n.generals ?? []).map((g) => ({
+        // Cephe kareleri yazılmaz: sınırdan türetilen veridir, ilk haftalık
+        // işleyişte kendiliğinden geri gelir.
+        generals: (n.generals ?? []).map(({ front, ...g }) => ({
           ...g,
           traits: [...g.traits],
           divisions: [...(g.divisions ?? [])],
@@ -91,9 +86,6 @@ export function serialize(game) {
       level: c.level,
       pop: c.pop,
       pops: c.pops,
-      buildings: c.buildings.slice(),
-      foodStore: c.foodStore,
-      manualWorkers: c.manualWorkers,
     })),
     units: world.units.map((u) => ({
       id: u.id,
@@ -110,8 +102,13 @@ export function serialize(game) {
         ? { type: u.order.type, tq: u.order.target?.q, tr: u.order.target?.r }
         : null,
       regiments: u.regiments?.map((regiment) => ({ ...regiment })) ?? null,
+      organization: u.organization,
       morale: u.morale,
       retreatUntil: u.retreatUntil ?? 0,
+      attackReadyAt: u.attackReadyAt ?? 0,
+      entrenchment: u.entrenchment ?? 0,
+      // Cephede tuttuğu province: yüklemede tümenler yerlerinde kalsın.
+      post: u.post ? { ...u.post } : null,
     })),
   };
 }
@@ -121,6 +118,7 @@ export function serialize(game) {
  * @returns {boolean} başarılı mı
  */
 export function deserialize(game, data) {
+  // Rework sirasinda dunya semasi degisti; eski surumler guvenle acilamaz.
   if (!data || data.version !== SAVE_VERSION) return false;
 
   // 1) Aynı seed ve ayarlarla dünyayı yeniden kur (arazi, iklim, kültür aynı).
@@ -133,25 +131,22 @@ export function deserialize(game, data) {
   world.cities.length = 0;
   world.forEach((t) => {
     t.unit = null;
+    t.units = [];
     t.city = null;
     t.workedBy = null;
     t.owner = -1;
-    t.roadLevel = 0;
-    t.structure = null;
+    t.controller = -1;
   });
 
   // 3) Kareler
-  for (const [
-    index, owner, culture, heldSince, roadLevel = 0, province = null, structure = null,
-  ] of data.tiles) {
+  for (const [index, owner, culture, heldSince, province = null, controller = owner] of data.tiles) {
     const tile = world.tiles[index];
     if (!tile) continue;
     tile.owner = owner;
+    tile.controller = Number.isInteger(controller) ? controller : owner;
     tile.culture = culture;
     tile.heldSince = heldSince;
-    tile.roadLevel = roadLevel;
     if (province) tile.province = { ...province };
-    if (structure) tile.structure = { ...structure };
   }
 
   // 4) Uluslar
@@ -159,10 +154,23 @@ export function deserialize(game, data) {
     const nation = world.nations[saved.id];
     if (!nation) continue;
     for (const f of NATION_FIELDS) nation[f] = saved[f];
-    nation.techs = (saved.techs ?? []).slice();
     nation.economy = saved.economy ?? nation.economy;
+    // Politics eski kayıtlarda yoktur. Başlangıçta üretilen turn-1 verisini
+    // taşımak yerine null bırakılır; ensurePolitics gerçek kayıt turuna göre
+    // partileri ve bir sonraki seçimi yeniden kurar.
+    nation.politics = saved.politics ?? null;
+    nation.construction = saved.construction ?? null;
+    ensureConstruction(nation);
     nation.rallyPoint = saved.rallyPoint ?? null;
-    nation.generals = (saved.generals ?? []).map((g) => ({ ...g, traits: [...(g.traits ?? [])] }));
+    nation.generals = (saved.generals ?? []).map((g) => ({
+      ...g,
+      traits: [...(g.traits ?? [])],
+      stance: g.stance ?? 'hold',
+      target: g.target ?? null,
+      planning: g.planning ?? 0,
+      // Cephe kareleri kaydedilmez: ilk haftalik islemede sinirdan turetilir.
+      front: [],
+    }));
   }
 
   // 5) İlişkiler — simetrik nesne paylaşımı korunmalı.
@@ -184,9 +192,8 @@ export function deserialize(game, data) {
       world, tile, saved.nationId, englishCityName(saved.name), saved.level, saved.pop,
     );
     city.pops = { ...saved.pops };
-    city.buildings = saved.buildings.slice();
-    city.foodStore = saved.foodStore;
-    city.manualWorkers = saved.manualWorkers;
+    city.foodStore = 0;
+    city.manualWorkers = false;
   }
 
   // 7) Birimler
@@ -204,11 +211,22 @@ export function deserialize(game, data) {
     unit.progress = saved.progress ?? 0;
     unit.embarked = saved.embarked;
     if (saved.regiments?.length) {
-      unit.regiments = saved.regiments.map((regiment) => ({ ...regiment }));
+      unit.regiments = saved.regiments.map((regiment) => ({
+        ...regiment,
+        // Old starting armies were not deducted from province population.
+        // An explicit empty draw list prevents disbanding them from creating
+        // thousands of residents out of thin air.
+        draws: Array.isArray(regiment.draws)
+          ? regiment.draws.map((draw) => ({ ...draw })) : [],
+      }));
       refreshArmy(unit);
     }
-    unit.morale = saved.morale ?? unit.morale;
+    unit.organization = saved.organization ?? saved.morale ?? unit.organization;
+    unit.morale = unit.organization;
     unit.retreatUntil = saved.retreatUntil ?? 0;
+    unit.attackReadyAt = saved.attackReadyAt ?? 0;
+    unit.entrenchment = Math.max(0, Math.min(0.35, saved.entrenchment ?? 0));
+    unit.post = saved.post ? { ...saved.post } : null;
     world.units.push(unit);
     if (saved.id != null) unitIds.set(saved.id, unit.id);
     if (saved.order) pendingOrders.push([unit, saved.order]);
@@ -225,18 +243,19 @@ export function deserialize(game, data) {
   turns.playerNation = data.playerNation;
   turns.log = data.log ?? [];
   ensureEconomy(world);
+  ensurePolitics(world);
   ensureProvinces(world);
-  if (data.market) world.market = data.market;
+  if (data.market) {
+    world.market = data.market;
+    ensureEconomy(world);
+  }
   ensureBattles(world);
   if (data.battleSystem) world.battleSystem = data.battleSystem;
-  ensureGenerals(world);
-  if (data.generalSystem) world.generalSystem = data.generalSystem;
-  ensureFronts(world);
-  if (data.frontSystem) world.frontSystem = data.frontSystem;
-  // createUnit kimlikleri süreç boyunca artar. Kayıttaki general ve cephe
-  // bağlantılarını yeni kimliklere taşımazsak yüklenen bütün komuta zinciri
-  // sessizce kopar. Eski v5 kayıtlarında id yoksa geçersiz bağlantılar güvenle
-  // boşaltılır; oyun ve kayıt yine açılır.
+  if (data.commandSystem) world.commandSystem = data.commandSystem;
+  else if (data.generalSystem) world.commandSystem = { ...data.generalSystem };
+  ensureCommand(world);
+  // createUnit kimlikleri süreç boyunca artar. Kayıttaki komuta bağlantılarını
+  // yeni kimliklere taşımazsak yüklenen bütün komuta zinciri sessizce kopar.
   for (const nation of world.nations) {
     for (const general of nation.generals ?? []) {
       general.divisions = (general.divisions ?? [])
@@ -244,17 +263,10 @@ export function deserialize(game, data) {
         .filter((id) => id != null);
     }
   }
-  for (const front of world.frontSystem?.fronts ?? []) {
-    front.armies = (front.armies ?? [])
-      .map((id) => unitIds.get(id))
-      .filter((id) => id != null);
-  }
   game.setSpeed(0);
 
   game.selected = null;
   game.activeGeneral = null;
-  game.selectedFront = null;
-  game.drawMode = null;
   game.selectUnit(null);
   game.recomputeEconomy();
   game.renderer.invalidateCache();
@@ -284,13 +296,6 @@ export function loadFromStorage(game, slot = STORAGE_KEY) {
   }
 }
 
-export function hasSave(slot = STORAGE_KEY) {
-  try {
-    return Boolean(localStorage.getItem(slot));
-  } catch (err) {
-    return false;
-  }
-}
 
 export function savedInfo(slot = STORAGE_KEY) {
   try {

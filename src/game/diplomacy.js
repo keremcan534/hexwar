@@ -3,6 +3,8 @@
 // barış varsayılan, savaş bir karar.
 
 import { armyPower } from './units.js';
+import { captureConstructionAt } from './construction.js';
+import { controllerOf } from './control.js';
 
 export const WAR = 'war';
 export const PEACE = 'peace';
@@ -73,16 +75,40 @@ export function declareWar(game, a, b) {
   return true;
 }
 
+/** Baris masasi: yalniz karsi taraftan fiilen isgal edilen province'ler devredilir. */
+export function settleOccupations(game, a, b) {
+  const world = game.world;
+  let transferred = 0;
+  for (const tile of world.tiles) {
+    const controller = controllerOf(tile);
+    const validTransfer = (tile.owner === a && controller === b)
+      || (tile.owner === b && controller === a);
+    if (!validTransfer) continue;
+    const oldOwner = tile.owner;
+    captureConstructionAt(world, tile, controller);
+    world.nations[oldOwner].tiles = Math.max(0, world.nations[oldOwner].tiles - 1);
+    world.nations[controller].tiles++;
+    tile.owner = controller;
+    tile.controller = controller;
+    tile.heldSince = game.turns.turn;
+    if (tile.province) tile.province.control = 25;
+    if (tile.city) tile.city.nationId = controller;
+    transferred++;
+  }
+  return transferred;
+}
+
 export function makePeace(game, a, b) {
   const world = game.world;
   if (!atWar(world, a, b)) return false;
+  const transferred = settleOccupations(game, a, b);
   setState(world, a, b, PEACE, game.turns.turn, {
     truceUntil: game.turns.turn + TRUCE_TURNS,
   });
   game.renderer.invalidateCache();
   if (a === game.turns.playerNation || b === game.turns.playerNation) {
     const other = world.nations[a === game.turns.playerNation ? b : a];
-    game.turns.addLog(`Peace signed with ${other.name}.`);
+    game.turns.addLog(`Peace signed with ${other.name}; ${transferred} occupied provinces changed sovereignty.`);
   }
   return true;
 }

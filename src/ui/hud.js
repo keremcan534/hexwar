@@ -2,41 +2,32 @@
 // Oyun mantığı burada yok; sadece Game'i sürer ve olaylarını dinler.
 
 import {
-  CITY_COST, UNIT_COSTS, canAfford, canFoundCity, cityProduction,
-  formatCost, growthCost, pay,
+  CITY_COST, UNIT_COSTS, canAfford, canFoundCity, formatCost, pay,
 } from '../game/cities.js';
-import { BUILDINGS, buildingSlots } from '../game/buildings.js';
 import {
-  UNIT_TYPES, isMoving, maxHpOf, moraleOf, regimentCount, soldiersOf, speedOf,
+  UNIT_TYPES, isMoving, maxHpOf, organizationOf, regimentCount, soldiersOf, speedOf,
+  strengthRatio,
 } from '../game/units.js';
 import { MIN_WAR_TURNS, atWar, relation, truceLeft } from '../game/diplomacy.js';
 import { INFAMY_COALITION, OCCUPATION_TURNS, tileEfficiency } from '../game/infamy.js';
-import { canTrade } from '../game/trade.js';
 import { savedInfo } from '../game/save.js';
 import { HEGEMONY_TARGET, scoreboard } from '../game/hegemony.js';
-import {
-  TECHS, availableTechs, research, researchCost,
-} from '../game/tech.js';
 import { ORDER } from '../game/orders.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { Screens } from './screens.js';
-import {
-  ROAD_MAX_LEVEL, canBuildRoad, roadCost, roadLabel, roadMoveCost,
-} from '../game/infrastructure.js';
 import { formatPopulation } from '../game/economy.js';
-import { nationManpower, rallyTile, setRallyPoint } from '../game/recruitment.js';
+import {
+  canRecruit, equipmentCostLabel, nationManpower, rallyTile, setRallyPoint,
+} from '../game/recruitment.js';
 import {
   MAX_SKILL, TRAITS, assignDivisions, commandSize, createGeneral, generalById,
-  generalCost, generalOfArmy, generalsOf, setAggression, unassignGeneral,
-} from '../game/generals.js';
+  aggressionInfo, borderNationIds, frontTilesOf, generalCost, generalOfArmy, generalsOf,
+  refreshFront, setAggression, unassignGeneral,
+} from '../game/command.js';
 import {
-  PLAN, aggressionInfo, deleteFront, frontById, frontOfArmy, reconcileFronts, setPlan,
-  toggleExecution,
-} from '../game/fronts.js';
-import {
-  AUTHORITY_CAP, DEVELOPMENT_AUTHORITY, PROVINCE_TRACKS, canDevelopProvince,
-  developProvince, provinceDevelopmentCost, provinceName, provinceOutput,
+  provinceOutput, provinceRgoStatus,
 } from '../game/provinces.js';
+import { controllerOf, isOccupied } from '../game/control.js';
 
 const ORDER_LABELS = {
   [ORDER.AUTO]: 'automatic (AI controlled)',
@@ -61,6 +52,8 @@ export class Hud {
       seedChip: $('seed-chip'),
       seedValue: $('seed-value'),
       layers: $('layer-menu'),
+      rgoLegend: $('rgo-map-legend'),
+      populationLegend: $('population-map-legend'),
       settings: $('settings'),
       sheetBody: $('sheet-body'),
       genStats: $('gen-stats'),
@@ -107,10 +100,13 @@ export class Hud {
     // Harita modları: sağ alt köşedeki düğme kümesi
     for (const btn of document.querySelectorAll('.mode-btn[data-mode]')) {
       btn.onclick = () => {
+        if (this.screens.active === 'construction') this.screens.close();
         game.renderer.setMapMode(btn.dataset.mode);
         for (const other of document.querySelectorAll('.mode-btn[data-mode]')) {
           other.classList.toggle('active', other === btn);
         }
+        el.rgoLegend.classList.toggle('hidden', btn.dataset.mode !== 'resources');
+        el.populationLegend.classList.toggle('hidden', btn.dataset.mode !== 'population');
         game.requestRender();
       };
     }
@@ -154,6 +150,7 @@ export class Hud {
     }
     this.bindKeys();
     this.bindCommandDock();
+    this.trackHeaderHeight();
     // HOI4'teki ülke bayrağı gibi ulusal durum panelini açar.
     $('nation-badge').onclick = () => this.screens.toggle('nation');
 
@@ -170,18 +167,46 @@ export class Hud {
       if (game.selected) this.showTile(game.selected);
       this.onTurn();
     });
-    game.on('placement', (placement) => {
-      if (placement) this.showPlacement(placement);
-      else if (game.selected) this.showTile(game.selected);
-      else this.showGuidance();
-    });
     game.on('selection', (units) => this.showSelection(units));
     game.on('command', () => this.showCommand());
-    game.on('fronts', () => this.showCommand());
     game.on('units', () => {
       this.showTile(this.game.selected);
       this.onTurn();
     });
+  }
+
+  /**
+   * Üst çubuğun gerçek yüksekliğini `--hud-top` değişkenine yazar; sekme
+   * şeridi ve yönetim paneli konumlarını buradan okur.
+   *
+   * Neden ölçüyoruz: yükseklik sabit değil — göstergeler geniş ekranda tek,
+   * dar ekranda iki ya da üç satıra diziliyor. Bunu CSS'te sabit bir
+   * `--topbar-height` ile tahmin etmek iki türlü kırılıyordu: tahmin gerçek
+   * yüksekliği tutmayınca şeritler üst üste biniyor, ve media query pencere
+   * yeniden boyutlandırılarak değiştiğinde `calc()` içindeki değişkenler
+   * tarayıcıda yeniden hesaplanmadığı için düzen ancak sayfa yenilenince
+   * toparlanıyordu. ResizeObserver ölçüyü her durumda doğru tutar.
+   */
+  trackHeaderHeight() {
+    const header = document.querySelector('.hud-header');
+    const screen = document.querySelector('.screen');
+    if (!header || !screen) return;
+    // Üst bar ve sekme şeridi artık aynı akışta olduğu için birbirlerine
+    // binemezler; ölçülmesi gereken tek şey yönetim panelinin nereden
+    // başlayacağı. Ölçü doğrudan elemanın `style`'ına yazılır — CSS değişkeni
+    // üzerinden yapılan güncelleme bu tarayıcıda her zaman yerleşimi yeniden
+    // hesaplatmıyor.
+    const apply = () => {
+      const top = Math.round(header.getBoundingClientRect().height) + 16;
+      screen.style.top = `${top}px`;
+      screen.style.maxHeight = `calc(100vh - ${top}px - 12px)`;
+    };
+    apply();
+    if (typeof ResizeObserver === 'function') {
+      this.headerObserver = new ResizeObserver(() => apply());
+      this.headerObserver.observe(header);
+    }
+    window.addEventListener('resize', apply);
   }
 
   /**
@@ -210,7 +235,6 @@ export class Hud {
         return;
       }
       if (event.code === 'Escape') {
-        this.game.setDrawMode(null);
         this.game.selectGeneral(null);
         this.game.selectUnits([]);
         return;
@@ -231,14 +255,13 @@ export class Hud {
       game.selectGeneral(null);
       game.selectUnits([]);
     };
-    for (const btn of document.querySelectorAll('#command-tools [data-tool]')) {
-      btn.onclick = () => {
-        game.toggleDrawMode(btn.dataset.tool);
-        this.showCommand();
-      };
-    }
     $('btn-offensive').onclick = () => {
       game.toggleOffensive();
+      this.showCommand();
+    };
+    $('command-target').onchange = (event) => {
+      const value = event.target.value;
+      game.setCommandTarget(value === '' ? null : Number(value));
       this.showCommand();
     };
     for (const btn of document.querySelectorAll('#command-tools [data-stance]')) {
@@ -247,7 +270,6 @@ export class Hud {
         if (!general) return;
         setAggression(general, Number(btn.dataset.stance));
         game.emit('command', general);
-        game.emit('fronts', game.selectedFront);
         game.requestRender();
         this.showCommand();
       };
@@ -269,14 +291,15 @@ export class Hud {
         const general = generalOfArmy(me, unit);
         const state = unit.battleId ? 'in battle'
           : (unit.retreatUntil ?? 0) > game.turns.turn ? 'retreating'
-            : isMoving(unit) ? `marching (${unit.path.length} left)`
-              : 'holding';
+            : (unit.attackReadyAt ?? 0) > game.turns.turn ? 'reorganizing'
+              : isMoving(unit) ? `marching (${unit.path.length} left)`
+                : 'holding';
         return `<div class="division-row">
           <button class="division-main" data-focus-unit="${unit.id}">
             <span class="unit-badge" style="background:${me.color}">${unit.type.glyph}</span>
             <span class="division-text">
               <b>${regimentCount(unit)}× ${escapeHtml(unit.type.name)} · ${formatPopulation(soldiersOf(unit))}</b>
-              <small>${state} · morale ${Math.round(moraleOf(unit))}%
+              <small>${state} · STR ${Math.round(strengthRatio(unit) * 100)}% · ORG ${Math.round(organizationOf(unit))}%
                 · ${general ? escapeHtml(general.name) : 'no commander'}</small>
             </span>
           </button>
@@ -327,13 +350,21 @@ export class Hud {
 
     el.commandTools.classList.toggle('hidden', !active);
     if (active) {
-      for (const btn of el.commandTools.querySelectorAll('[data-tool]')) {
-        btn.classList.toggle('active', game.drawMode === btn.dataset.tool);
-      }
       const offensive = $('btn-offensive');
       const running = game.offensiveActive();
       offensive.classList.toggle('active', running);
       offensive.textContent = running ? '■ Halt' : '➤ Offensive';
+      const target = $('command-target');
+      const borderIds = new Set(borderNationIds(game.world, me.id));
+      if (active.target != null) borderIds.add(active.target);
+      const options = game.world.nations
+        .filter((nation) => nation.alive && nation.id !== me.id && borderIds.has(nation.id))
+        .sort((a, b) => Number(atWar(game.world, me.id, b.id))
+          - Number(atWar(game.world, me.id, a.id)) || a.name.localeCompare(b.name));
+      target.innerHTML = `<option value="">All active fronts</option>${options.map((nation) => (
+        `<option value="${nation.id}">${atWar(game.world, me.id, nation.id) ? '⚔ ' : ''}${escapeHtml(nation.name)}</option>`
+      )).join('')}`;
+      target.value = active.target == null ? '' : String(active.target);
       for (const btn of el.commandTools.querySelectorAll('[data-stance]')) {
         btn.classList.toggle('active', Number(btn.dataset.stance) === (active.aggression ?? 2));
       }
@@ -345,11 +376,9 @@ export class Hud {
       btn.oncontextmenu = (event) => {
         event.preventDefault();
         if (!game.selection.length) return;
-        const moved = assignDivisions(me, general.id, game.selection);
+        const moved = game.transferSelection(general);
         if (moved) {
           game.turns.addLog(`${moved} divisions transferred to ${general.name}.`);
-          game.activeGeneral = general;
-          reconcileFronts(game.world);
         }
         this.showSelection();
       };
@@ -410,10 +439,18 @@ export class Hud {
       return;
     }
     const rank = board.indexOf(me) + 1;
-    el.innerHTML = `hegemony <b>${me.total}</b>/${HEGEMONY_TARGET}
-      · rank ${rank} · economy ${me.economy} technology ${me.technology} prestige ${me.prestige}
-      ${leader.nation.id === me.nation.id ? '' : `· leader ${escapeHtml(leader.nation.name)} ${leader.total}`}
-      <span class="bar"><i style="width:${Math.min(100, (me.total / HEGEMONY_TARGET) * 100)}%"></i></span>`;
+    // Etiket/değer düzeni: tek satır serbest metin yerine taranabilir hücreler.
+    el.innerHTML = `
+      <div class="hegemony-row">
+        <span><small>Hegemony</small><b>${me.total}<em>/${HEGEMONY_TARGET}</em></b></span>
+        <span><small>Rank</small><b>${rank}<em>/${board.length}</em></b></span>
+        <span><small>Economy</small><b>${me.economy}</b></span>
+        <span><small>Prestige</small><b>${me.prestige}</b></span>
+      </div>
+      <span class="bar"><i style="width:${Math.min(100, (me.total / HEGEMONY_TARGET) * 100)}%"></i></span>
+      ${leader.nation.id === me.nation.id
+        ? '<p class="hegemony-leader">You lead the world.</p>'
+        : `<p class="hegemony-leader">Leader: <b>${escapeHtml(leader.nation.name)}</b> ${leader.total}</p>`}`;
   }
 
   refreshSaveInfo() {
@@ -447,17 +484,21 @@ export class Hud {
         .filter((unit) => unit.nationId === me.id && unit.type.domain === 'land')
         .reduce((sum, unit) => sum + soldiersOf(unit), 0);
       this.el.macroStats.innerHTML = `
-        <span title="Population"><small>POP</small><b>${formatPopulation(me.economy?.population ?? 0)}</b></span>
-        <span title="Standing army"><small>ARMY</small><b>${formatNumber(army)}</b></span>
-        <span title="Recruitable population left in your provinces"><small>MANPOWER</small><b>${formatPopulation(nationManpower(world, me.id))}</b></span>
+        <span title="Population"><small>Population</small><b>${formatPopulation(me.economy?.population ?? 0)}</b></span>
+        <span title="Standing army"><small>Army</small><b>${formatNumber(army)}</b></span>
+        <span title="Recruitable population left in your provinces"><small>Manpower</small><b>${formatPopulation(nationManpower(world, me.id))}</b></span>
         <span title="Gross domestic product"><small>GDP</small><b>¤${formatNumber(Math.round(me.economy?.gdp ?? 0))}</b></span>`;
       this.el.topFlag.src = flagDataUrl(me);
       this.el.topNation.textContent = me.name;
-      this.el.topSub.textContent =
-        `${me.tiles} ${me.tiles === 1 ? 'province' : 'provinces'} · `
-        + `${cities} ${cities === 1 ? 'city' : 'cities'} · `
-        + `${wars ? `${wars} ${wars === 1 ? 'war' : 'wars'}` : 'at peace'} · `
-        + `${alive} ${alive === 1 ? 'nation' : 'nations'}`;
+      // Savaş durumu künyedeki tek renkli öğe; gerisi soluk kalır. Ayraç
+      // elmas: orta nokta tarihî künyede fazla "web" duruyordu.
+      const state = wars
+        ? `<span class="at-war">At war</span>`
+        : 'At peace';
+      const sep = '<i class="sep">◆</i>';
+      this.el.topSub.innerHTML =
+        `${me.tiles} ${me.tiles === 1 ? 'province' : 'provinces'} ${sep} `
+        + `${cities} ${cities === 1 ? 'city' : 'cities'} ${sep} ${state}`;
     } else {
       this.el.macroStats.textContent = '—';
       this.el.topNation.textContent = '—';
@@ -479,37 +520,19 @@ export class Hud {
       battle.attackerNation === me.id || battle.defenderNation === me.id
     )) ?? [];
     const net = me.budget?.net ?? {};
-    let next = 'Select one of your provinces and choose a specialization.';
-    if (battles.length) next = 'A battle is active: select its army to inspect strength and morale.';
+    let next = 'Review Production, Logistics or Construction before unpausing.';
+    if (battles.length) next = 'A battle is active: select its army to inspect strength and organization.';
     else if (wars.length) next = 'Move an army onto an enemy army or province; defeated armies retreat.';
-    else if ((net.food ?? 0) < 0) next = 'Food is negative: develop Farms on a fertile province.';
-    else if ((me.economy?.authority ?? 0) < DEVELOPMENT_AUTHORITY) {
-      next = 'Authority is recovering; inspect prices, factories or reposition armies meanwhile.';
-    }
     this.el.sheetBody.innerHTML = `
       <div class="decision-card">
         <small>NEXT MEANINGFUL DECISION</small>
         <h3>${escapeHtml(next)}</h3>
         <p>Province → population and raw goods → factories and taxes → army and world prices.</p>
         <div class="decision-kpis">
-          <span><b>${Math.round(me.economy?.authority ?? 0)}/${AUTHORITY_CAP}</b><small>authority</small></span>
           <span><b>${net.gold >= 0 ? '+' : ''}${Math.round(net.gold ?? 0)}</b><small>weekly gold</small></span>
           <span><b>${battles.length}</b><small>active battles</small></span>
         </div>
       </div>`;
-  }
-
-  showPlacement(placement) {
-    const building = BUILDINGS[placement.buildingId];
-    this.el.sheetBody.innerHTML = `
-      <div class="decision-card placement-card">
-        <small>BUILDING PLACEMENT</small>
-        <h3>${building?.icon ?? '◆'} Place ${escapeHtml(building?.name ?? placement.buildingId)}</h3>
-        <p>${placement.tiles.size} suitable provinces are highlighted in green. Click one to build; location and nearby city determine eligibility.</p>
-        <button class="action wide" data-cancel-placement="1">Cancel placement</button>
-      </div>`;
-    const cancel = this.el.sheetBody.querySelector('[data-cancel-placement]');
-    if (cancel) cancel.onclick = () => this.game.cancelBuildingPlacement();
   }
 
   async copySeed() {
@@ -532,45 +555,44 @@ export class Hud {
     }
     const world = this.game.world;
     const nation = tile.owner >= 0 ? world.nations[tile.owner] : null;
+    const controller = controllerOf(tile) >= 0 ? world.nations[controllerOf(tile)] : null;
     const color = nation ? nation.color : tile.terrain.color;
     const title = nation ? nation.fullName : 'Unclaimed Territory';
     const sub = `${tile.terrain.name} · ${tile.q}, ${tile.r}${tile.coastal ? ' · coast' : ''}`;
 
-    // Karenin ne ürettiği artık en önemli bilgi: başa alındı.
-    const yields = tile.terrain.yields;
     const stats = [
-      ['Food', String(yields.food)],
-      ['Timber', String(yields.timber)],
-      ['Iron', String(yields.iron)],
-      ['Gold', String(yields.gold)],
       ['Defense', `${Math.round(tile.terrain.defense * 100)}%`],
-      ['Move Cost', tile.terrain.passable ? `${Number(roadMoveCost(tile).toFixed(2))}` : 'impassable'],
+      ['Terrain', tile.terrain.name],
     ];
     if (tile.culture >= 0) stats.push(['Culture', world.cultures[tile.culture].name]);
-    if (!tile.terrain.water) {
-      stats.push(['Infrastructure', `${roadLabel(tile)} · ${tile.roadLevel ?? 0}/${ROAD_MAX_LEVEL}`]);
-    }
     // Fethin bedeli karede görünsün: işgal süresi ve verim kaybı.
     if (nation && tile.culture >= 0) {
       const held = (world.turn ?? 0) - (tile.heldSince ?? 0);
       const eff = tileEfficiency(tile, nation.culture, world.turn ?? 0);
-      if (eff === 0) stats.push(['Status', `occupied (${OCCUPATION_TURNS - held} weeks)`]);
+      if (isOccupied(tile)) stats.push(['Status', `occupied by ${controller?.name ?? '?'}`]);
+      else if (eff === 0) stats.push(['Status', `postwar integration (${OCCUPATION_TURNS - held} weeks)`]);
       else if (eff < 1) stats.push(['Status', `foreign culture −${Math.round((1 - eff) * 100)}%`]);
       else if (tile.culture !== nation.culture) stats.push(['Status', 'foreign culture']);
     }
     if (tile.workedBy) stats.push(['Worked By', tile.workedBy.name]);
     if (nation) stats.push(['Nation Size', `${nation.tiles} provinces`]);
     if (tile.province) {
-      const output = provinceOutput(tile);
+      const rgo = provinceRgoStatus(tile);
+      const rgoOutput = rgo.type ? provinceOutput(tile)[rgo.type.goodId] : 0;
       stats.unshift(
         ['Population', formatPopulation(tile.province.population)],
+        ['RGO', rgo.type ? `${rgo.type.icon} ${rgo.type.name}` : '—'],
+        ['RGO Workforce', `${formatPopulation(rgo.employed)}/${formatPopulation(rgo.jobs)} · ${Math.round(rgo.efficiency * 100)}%`],
+        ['RGO Output', rgo.type ? `${rgoOutput.toFixed(2)}/week` : '—'],
+        ['Unemployed', formatPopulation(rgo.unemployed)],
         ['Control', `${Math.round(tile.province.control)}%`],
-        ['Weekly Output', `¤${output.gold.toFixed(1)} · 🌾${output.food.toFixed(1)} · 🪵${output.timber.toFixed(1)} · ⛏${output.iron.toFixed(1)}`],
       );
-    }
-    if (tile.structure) {
-      const placed = BUILDINGS[tile.structure.buildingId];
-      stats.unshift(['Building', `${placed?.icon ?? '◆'} ${placed?.name ?? tile.structure.buildingId}`]);
+      if (tile.province.migration) {
+        stats.splice(5, 0, [
+          'Migration',
+          `${tile.province.migration > 0 ? '+' : ''}${formatPopulation(tile.province.migration)}`,
+        ]);
+      }
     }
 
     const unit = tile.unit;
@@ -579,7 +601,7 @@ export class Hud {
         <span class="unit-badge" style="background:${world.nations[unit.nationId].color}">${unit.type.glyph}</span>
         <div style="flex:1;min-width:0">
           <div class="tile-title">${regimentCount(unit)}-regiment Army${unit.nationId === this.game.turns.playerNation ? '' : ' (enemy)'}</div>
-          <div class="tile-sub">${formatPopulation(soldiersOf(unit))} soldiers · morale ${Math.round(moraleOf(unit))}% · speed ${speedOf(unit)}${isMoving(unit) ? ` · MARCHING (${unit.path.length} left)` : ''}${unit.battleId ? ' · IN BATTLE' : ''}${(unit.retreatUntil ?? 0) > this.game.turns.turn ? ' · RETREATING' : ''}</div>
+          <div class="tile-sub">${formatPopulation(soldiersOf(unit))} soldiers · STR ${Math.round(strengthRatio(unit) * 100)}% · ORG ${Math.round(organizationOf(unit))}% · speed ${speedOf(unit)}${isMoving(unit) ? ` · MARCHING (${unit.path.length} left)` : ''}${unit.battleId ? ' · IN BATTLE' : ''}${(unit.retreatUntil ?? 0) > this.game.turns.turn ? ' · RETREATING' : ''}</div>
           <div class="army-composition">${Object.entries(unit.regiments?.reduce((out, regiment) => {
             out[regiment.typeId] = (out[regiment.typeId] ?? 0) + 1;
             return out;
@@ -614,41 +636,15 @@ export class Hud {
     const me = game.world.nations[game.turns.playerNation];
     const rows = [];
 
-    if (tile.province && tile.owner === game.turns.playerNation) {
-      const province = tile.province;
-      const buttons = Object.values(PROVINCE_TRACKS).map((track) => {
-        const cost = provinceDevelopmentCost(tile, track.id);
-        const maxed = province[track.id] >= 5;
-        const disabled = canDevelopProvince(game.world, me, tile, track.id) ? '' : 'disabled';
-        return `<button class="province-action" data-province="${track.id}" ${disabled}
-          title="${escapeHtml(track.desc)}">
-          <span>${track.icon}</span>
-          <b>${escapeHtml(track.name)} ${province[track.id]}/5</b>
-          <small>${maxed ? 'maximum' : `+1 · ${formatCost(cost)} · ${DEVELOPMENT_AUTHORITY} authority`}</small>
-        </button>`;
-      }).join('');
-      rows.push(`<div class="province-card">
-        <div class="province-head">
-          <div><small>PROVINCE</small><h3>${escapeHtml(provinceName(tile))}</h3></div>
-          <b>${Math.round(me.economy?.authority ?? 0)}/${AUTHORITY_CAP} authority</b>
-        </div>
-        <p>Permanent local output. Choose a specialization; authority prevents upgrading every province at once.</p>
-        <div class="province-actions">${buttons}</div>
-      </div>`);
-    }
-
     if (tile.city && tile.city.nationId === game.turns.playerNation) {
       const city = tile.city;
-      const out = cityProduction(city, game.world);
       const buttons = Object.entries(UNIT_COSTS).filter(
         // Gemi ancak kıyı şehrinde üretilebilir.
         ([id]) => UNIT_TYPES[id].domain !== 'sea' || tile.coastal,
       ).map(([id, cost]) => {
-        const disabled = canAfford(me, cost) ? '' : 'disabled';
-        return `<button class="action" data-buy="${id}" ${disabled}>${UNIT_TYPES[id].name} · ${formatCost(cost)}</button>`;
+        const disabled = canAfford(me, cost) && canRecruit(game.world, me, id) ? '' : 'disabled';
+        return `<button class="action" data-buy="${id}" ${disabled}>${UNIT_TYPES[id].name} · ${formatCost(cost)} · ${equipmentCostLabel(id)}</button>`;
       }).join('');
-      const built = city.buildings.map((id) => BUILDINGS[id].name).join(', ') || 'none';
-
       // Nüfusun etnik bileşimi: yabancı halk payı ileride hoşnutsuzluğun ölçütü.
       const composition = Object.entries(city.pops)
         .sort((a, b) => b[1] - a[1])
@@ -659,22 +655,8 @@ export class Hud {
         <div class="k">${escapeHtml(city.name)} — population: ${composition}</div>
       </div>
       <div class="action-row">
-        <div class="k">${escapeHtml(city.name)} — ${city.pop} workers · output
-          ${Math.round(out.food)}🌾 ${Math.round(out.timber)}🪵 ${Math.round(out.iron)}⛏ ${Math.round(out.gold)}⬤
-          · growth ${Math.floor(city.foodStore)}/${growthCost(city)}</div>
+        <div class="k">Recruitment · ${escapeHtml(city.name)}</div>
         ${buttons}
-      </div>
-      <div class="action-row">
-        <div class="k">buildings (${city.buildings.length}/${buildingSlots(me, city)}) — ${escapeHtml(built)}</div>
-        <button class="action wide" data-open-construction="1">Open Construction · choose building, then place on map</button>
-      </div>
-      <div class="action-row">
-        <div class="k">technology — ${escapeHtml((me.techs ?? []).map((id) => TECHS[id].name).join(', ') || 'none')}</div>
-        ${availableTechs(me).slice(0, 4).map((t) => {
-    const cost = researchCost(me, t);
-    const off = canAfford(me, cost) ? '' : 'disabled';
-    return `<button class="action" data-tech="${t.id}" title="${t.desc}" ${off}>${t.name} · ${formatCost(cost)}</button>`;
-  }).join('')}
       </div>`);
     }
 
@@ -688,22 +670,11 @@ export class Hud {
       const rec = relation(game.world, foreign, game.turns.playerNation);
       const locked = war && game.turns.turn - rec.since < MIN_WAR_TURNS;
       const truce = truceLeft(game.world, foreign, game.turns.playerNation, game.turns.turn);
-      const trade = !war && canTrade(other) && canTrade(me) ? 'trade available' : 'no trade';
       rows.push(`<div class="action-row">
-        <div class="k">${escapeHtml(other.name)} — ${war ? 'at war' : truce ? `truce (${truce} turns)` : 'at peace'} · ${trade}</div>
+        <div class="k">${escapeHtml(other.name)} — ${war ? 'at war' : truce ? `truce (${truce} turns)` : 'at peace'}</div>
         ${war
     ? `<button class="action wide" data-peace="${foreign}" ${locked ? 'disabled' : ''}>Offer Peace${locked ? ` (${MIN_WAR_TURNS - (game.turns.turn - rec.since)} weeks)` : ''}</button>`
     : `<button class="action wide" data-war="${foreign}" ${truce ? 'disabled' : ''}>Declare War${truce ? ` (${truce} turns)` : ''}</button>`}
-      </div>`);
-    }
-
-    if (canBuildRoad(tile, game.turns.playerNation)) {
-      const cost = roadCost(tile);
-      rows.push(`<div class="action-row">
-        <div class="k">infrastructure — ${roadLabel(tile)} (${tile.roadLevel ?? 0}/${ROAD_MAX_LEVEL})</div>
-        <button class="action wide" data-road="1" ${canAfford(me, cost) ? '' : 'disabled'}>
-          Upgrade to ${roadLabel({ roadLevel: (tile.roadLevel ?? 0) + 1 })} · ${formatCost(cost)}
-        </button>
       </div>`);
     }
 
@@ -734,10 +705,13 @@ export class Hud {
     if (own) {
       const label = ORDER_LABELS[own.order?.type];
       rows.push(`<div class="action-row">
-        <div class="k">army orders — ${own.battleId ? 'fighting' : (own.retreatUntil ?? 0) > game.turns.turn ? 'retreating' : label ?? 'awaiting destination'}</div>
+        <div class="k">army orders — ${own.battleId ? 'fighting'
+    : (own.retreatUntil ?? 0) > game.turns.turn ? 'retreating'
+      : (own.attackReadyAt ?? 0) > game.turns.turn ? 'reorganizing'
+        : label ?? 'awaiting destination'}</div>
         ${own.order
     ? '<button class="action" data-order="clear">Cancel Orders</button>'
-    : '<span class="order-help">Select the army, then tap a province. Friendly stacks merge; enemy stacks start a battle.</span>'}
+    : '<span class="order-help">Select the division, then tap a province. Friendly divisions share the province; enemy divisions start a battle.</span>'}
       </div>`);
     }
 
@@ -770,30 +744,27 @@ export class Hud {
     </div>`;
   }
 
-  /** Ordunun bagli oldugu cephe ve plan denetimleri. */
+  /** Ordunun komutasindan turetilen cephe ve plan durumu. */
   frontRow(me, army) {
-    const front = frontOfArmy(this.game.world, army);
-    if (!front) {
+    const general = generalOfArmy(me, army);
+    if (!general) {
       return `<div class="action-row">
         <div class="k">front — unassigned</div>
-        <span class="order-help">Pick a commander below, then use Front / Fallback /
-          Offensive and drag on the map.</span>
+        <span class="order-help">Assign a commander; the front is derived from the border automatically.</span>
       </div>`;
     }
-    const ready = Math.round((front.planning ?? 0) * 100);
-    const attack = front.plan !== PLAN.HOLD;
-    const label = front.plan === PLAN.ARROW ? 'offensive arrow'
-      : front.plan === PLAN.ADVANCE ? 'front line' : 'fallback line';
+    const front = frontTilesOf(this.game.world, general);
+    const ready = Math.round((general.planning ?? 0) * 100);
+    const attack = general.stance === 'advance';
+    const target = general.target == null
+      ? 'all active borders'
+      : this.game.world.nations[general.target]?.name ?? 'unknown nation';
     return `<div class="action-row">
-      <div class="k">front #${front.id} — ${label} ·
-        ${front.tiles.length} provinces · ${front.armies.length} divisions · planning ${ready}%</div>
+      <div class="k">front — ${attack ? 'advancing' : 'holding'} against ${escapeHtml(target)} ·
+        ${front.length} provinces · ${commandSize(general)} divisions · planning ${ready}%</div>
       <div class="meter"><i style="width:${ready}%"></i></div>
-      <button class="action" data-front-plan="${front.id}"
-        data-plan="${attack ? PLAN.HOLD : PLAN.ADVANCE}">
-        Switch to ${attack ? 'Hold' : 'Advance'}</button>
-      <button class="action" data-front-exec="${front.id}">
-        ${front.active ? 'Halt Plan' : 'Execute Plan'}</button>
-      <button class="action" data-front-delete="${front.id}">Disband Front</button>
+      <button class="action" data-command-stance="${general.id}">
+        ${attack ? 'Halt Offensive' : 'Start Offensive'}</button>
     </div>`;
   }
 
@@ -831,7 +802,7 @@ export class Hud {
       btn.onclick = () => {
         assignDivisions(me, Number(btn.dataset.pickGeneral), list);
         game.activeGeneral = generalById(me, Number(btn.dataset.pickGeneral));
-        reconcileFronts(game.world);
+        refreshFront(game.world, game.activeGeneral);
         this.showTile(game.selected);
         this.showSelection();
         game.requestRender();
@@ -857,24 +828,8 @@ export class Hud {
     for (const btn of this.el.sheetBody.querySelectorAll('[data-buy]')) {
       btn.onclick = () => game.turns.buyUnit(me, btn.dataset.buy);
     }
-    const openConstruction = this.el.sheetBody.querySelector('[data-open-construction]');
-    if (openConstruction) openConstruction.onclick = () => this.screens.open('construction');
-    for (const btn of this.el.sheetBody.querySelectorAll('[data-province]')) {
-      btn.onclick = () => developProvince(game, game.selected, btn.dataset.province);
-    }
-    for (const btn of this.el.sheetBody.querySelectorAll('[data-tech]')) {
-      btn.onclick = () => {
-        if (research(me, btn.dataset.tech)) {
-          game.turns.addLog(`${TECHS[btn.dataset.tech].name} researched.`);
-          game.recomputeEconomy();
-          game.emit('units', game.selectedUnit);
-        }
-      };
-    }
     const found = this.el.sheetBody.querySelector('[data-found]');
     if (found) found.onclick = () => game.turns.foundCity(game.selectedUnit);
-    const road = this.el.sheetBody.querySelector('[data-road]');
-    if (road) road.onclick = () => game.turns.buildRoad(game.selected, me.id);
     const war = this.el.sheetBody.querySelector('[data-war]');
     if (war) war.onclick = () => game.declareWarOn(Number(war.dataset.war));
     const peace = this.el.sheetBody.querySelector('[data-peace]');
@@ -888,37 +843,20 @@ export class Hud {
     const dismiss = this.el.sheetBody.querySelector('[data-unassign]');
     if (dismiss) {
       dismiss.onclick = () => {
-        unassignGeneral(me, Number(dismiss.dataset.unassign));
-        reconcileFronts(game.world);
+        unassignGeneral(game.world, me, Number(dismiss.dataset.unassign));
         this.showTile(game.selected);
         this.showCommand();
       };
     }
-    const planBtn = this.el.sheetBody.querySelector('[data-front-plan]');
-    if (planBtn) {
-      planBtn.onclick = () => {
-        const front = frontById(game.world, Number(planBtn.dataset.frontPlan));
-        if (front) setPlan(game, front, planBtn.dataset.plan);
-        this.showTile(game.selected);
-        game.requestRender();
-      };
-    }
-    const execBtn = this.el.sheetBody.querySelector('[data-front-exec]');
-    if (execBtn) {
-      execBtn.onclick = () => {
-        const front = frontById(game.world, Number(execBtn.dataset.frontExec));
-        if (front) toggleExecution(game, front);
-        this.showTile(game.selected);
-      };
-    }
-    const delBtn = this.el.sheetBody.querySelector('[data-front-delete]');
-    if (delBtn) {
-      delBtn.onclick = () => {
-        const front = frontById(game.world, Number(delBtn.dataset.frontDelete));
-        if (front) deleteFront(game, front);
-        this.showTile(game.selected);
-      };
-    }
+    const stance = this.el.sheetBody.querySelector('[data-command-stance]');
+    if (stance) stance.onclick = () => {
+      const general = generalById(me, Number(stance.dataset.commandStance));
+      if (!general) return;
+      game.activeGeneral = general;
+      game.toggleOffensive();
+      this.showTile(game.selected);
+      this.showCommand();
+    };
     const rally = this.el.sheetBody.querySelector('[data-rally]');
     if (rally) {
       rally.onclick = () => {
@@ -936,22 +874,29 @@ export class Hud {
   }
 }
 
-/** Dört kaynağın stok ve net akışı; erzak akışı stoktan önemli olduğu için öne alındı. */
+/** Üst çubuk yalnız yeni makro ekonomiyi gösterir; eski ham stoklar kaldırıldı. */
 function resourcesHtml(nation) {
-  const net = nation.budget?.net ?? { gold: 0, food: 0, timber: 0, iron: 0 };
-  const flow = (v) => `<b class="${v < 0 ? 'res-neg' : v > 0 ? 'res-pos' : ''}">${v >= 0 ? '+' : ''}${Math.round(v)}</b>`;
+  const weekly = (nation.budget?.net?.gold ?? 0) + (nation.economy?.fiscalNet ?? 0);
+  // Akış ayrı bir <em>: değerin içine ikinci bir <b> koymak geçersiz iç içe
+  // yapıydı ve akışı ana rakamla aynı ağırlıkta gösteriyordu.
+  const flowClass = weekly < 0 ? 'res-neg' : weekly > 0 ? 'res-pos' : '';
+  const flow = `<em class="stat-flow ${flowClass}">${weekly >= 0 ? '+' : ''}${Math.round(weekly)}</em>`;
   // Şöhret eşiğe yaklaşırsa kırmızıya döner: koalisyon habersiz gelmesin.
-  const infamy = Math.round(nation.infamy ?? 0);
+  const infamy = nation.infamy ?? 0;
   const infamyClass = infamy >= INFAMY_COALITION ? 'res-neg'
     : infamy >= INFAMY_COALITION * 0.6 ? 'res-warn' : '';
-  // Akış göstergesi yalnız altın ve erzakta: 375 pikselde beşinin de akışı
-  // sığmıyor, kereste/demir için stok yeterli bilgi.
+  const stability = Math.round((nation.economy?.stability ?? 0) * 100);
+  // Etiketler Title Case: her şeyin versal olması üst barı bağırtıyordu.
+  // Hazine binlik ayraçla okunur — dört haneden sonra ayraçsız sayı taranmıyor.
   return `
-    <span title="gold">⬤<b>${Math.round(nation.gold)}</b>${flow(net.gold)}</span>
-    <span title="food balance">🌾${flow(net.food)}</span>
-    <span title="timber">🪵<b>${Math.round(nation.timber)}</b></span>
-    <span title="iron">⛏<b>${Math.round(nation.iron)}</b></span>
-    <span title="infamy — a coalition forms at ${INFAMY_COALITION}">☠<b class="${infamyClass}">${infamy}</b></span>`;
+    <span title="treasury"><small>Treasury</small><b>¤${grouped(nation.gold)}${flow}</b></span>
+    <span title="national stability"><small>Stability</small><b>${stability}%</b></span>
+    <span title="infamy — a coalition forms at ${INFAMY_COALITION}"><small>Infamy</small><b class="${infamyClass}">${infamy.toFixed(1)}</b></span>`;
+}
+
+/** Binlik ayraçlı tam sayı: 3847 → 3,847. */
+function grouped(value) {
+  return Math.round(value ?? 0).toLocaleString('en-US');
 }
 
 function gameDate(turn, day = 0) {

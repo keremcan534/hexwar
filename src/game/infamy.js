@@ -8,7 +8,7 @@
 // Bir ülkeyi yutmak ~70, dünyayı üstüne çeker.
 
 import { atWar, declareWar, nationStrength } from './diplomacy.js';
-import { canAssimilate, techAssimilationFactor, techInfamyDecayFactor } from './tech.js';
+import { isOccupied } from './control.js';
 
 export const INFAMY = {
   /** Kendi halkının yaşadığı kareyi almak ucuz: haklı talep sayılır. */
@@ -24,8 +24,6 @@ export const INFAMY = {
   DECAY_RATIO: 0.03,
 };
 
-/** Ticaret ortakları bu eşikten sonra anlaşmayı keser (6. adımda bağlanacak). */
-export const INFAMY_TRADE_CUTOFF = 15;
 /** Bu eşikten sonra komşular birleşip savaş ilan eder. */
 export const INFAMY_COALITION = 30;
 
@@ -33,8 +31,6 @@ export const INFAMY_COALITION = 30;
 export const OCCUPATION_TURNS = 5;
 /** Yabancı kültürlü karenin kalıcı verim kaybı. */
 export const FOREIGN_YIELD_PENALTY = 0.3;
-/** Bu kadar tur elde tutulan yabancı kare asimile olur. */
-export const ASSIMILATION_TURNS = 40;
 
 export function addInfamy(nation, amount) {
   nation.infamy = Math.max(0, (nation.infamy ?? 0) + amount);
@@ -50,8 +46,7 @@ export function decayInfamy(world) {
   for (const nation of world.nations) {
     if (!nation.alive) continue;
     const current = nation.infamy ?? 0;
-    const rate = (INFAMY.DECAY_PER_TURN + current * INFAMY.DECAY_RATIO)
-      * techInfamyDecayFactor(nation);
+    const rate = INFAMY.DECAY_PER_TURN + current * INFAMY.DECAY_RATIO;
     addInfamy(nation, -rate);
   }
 }
@@ -62,42 +57,13 @@ export function decayInfamy(world) {
  */
 export function tileEfficiency(tile, nationCulture, turn) {
   if (tile.owner < 0) return 1;
+  if (isOccupied(tile)) return 0;
   const held = turn - (tile.heldSince ?? 0);
   if (held < OCCUPATION_TURNS) return 0;
   if (tile.culture >= 0 && nationCulture >= 0 && tile.culture !== nationCulture) {
     return 1 - FOREIGN_YIELD_PENALTY;
   }
   return 1;
-}
-
-/**
- * Uzun süre elde tutulan yabancı kareler sahibin kültürüne döner —
- * **ama yalnız Asimilasyon teknolojisi varsa.**
- *
- * Bedava asimilasyon fethin bütün bedellerini geçici kılıyordu: 40 turda
- * yabancı toprak tam verimli hâle geliyor, şöhret sönüyor ve 250 turluk oyunda
- * fetih matematiksel olarak en iyi strateji oluyordu (ölçüm: oyunların yalnız
- * %17'si fetih dışı yolla kazanılıyordu). Artık fethedilen toprağı sindirmek
- * idari yatırım istiyor.
- */
-export function runAssimilation(world, turn) {
-  let converted = 0;
-  world.forEach((tile) => {
-    if (tile.owner < 0 || tile.culture < 0) return;
-    const nation = world.nations[tile.owner];
-    if (!nation?.alive || nation.culture < 0) return;
-    if (tile.culture === nation.culture) return;
-    if (!canAssimilate(nation)) return;
-    const needed = ASSIMILATION_TURNS * techAssimilationFactor(nation);
-    if (turn - (tile.heldSince ?? 0) < needed) return;
-    // Yalnız kendi kültürüne komşu kareler asimile olur: yayılma kenardan gelir.
-    const touching = world.neighbors(tile).some((n) => n.culture === nation.culture);
-    if (!touching) return;
-    tile.culture = nation.culture;
-    tile.heldSince = turn;
-    converted++;
-  });
-  return converted;
 }
 
 /**

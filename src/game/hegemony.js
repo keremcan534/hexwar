@@ -1,24 +1,33 @@
 // Hegemonya puanı ve zafer. Oyunun amacı budur: eleme değil, üstünlük.
 //
-// Puan üç ayaklı, çünkü tasarımın kabul ölçütü "oyunların en az %40'ı fetih
-// dışı bir yolla kazanılabilmeli" (docs/tasarim.md § 10). Toprak puana katkı
-// verir ama tek yol değildir; ekonomi ve teknoloji kendi başına yeter.
+// Toprak puana katkı verir ama tek yol değildir; ekonomi ve prestij de
+// barışçı bir zafer yolu sağlar.
 
 import { atPeace } from './diplomacy.js';
-import { TECHS } from './tech.js';
 
 /**
  * Bu puana ilk ulaşan kazanır; kimse ulaşmazsa 300. turda en yüksek kazanır.
- * 220 iken oyunlar 100-151. turda bitiyordu; seçilen 250-300 turluk ufka göre
- * erken. Eşik ölçümle bu değere çekildi.
+ * Eşik ölçümle seçilir: hedef, güçlü bir ülkenin 220-300. hafta arasında
+ * ulaşabileceği ama 50. haftada ulaşamayacağı yerde durmalı. 12 oyunluk
+ * koşuda 400 eşiği ortalama 235. haftada ve oyunların %83'ünde gerçekten
+ * eşiğe ulaşarak bitiyor; 440 ortalamayı 277'ye çekiyor ama oyunların
+ * yarıdan fazlası süre dolarak bitiyordu.
  */
-// Province ekonomisi ulusal üretimi görünür biçimde büyüttüğü için eski 420
-// eşiği oyunu 70-100 haftada bitiriyordu. Yeni ölçek yaklaşık 220-300 haftayı hedefler.
-export const HEGEMONY_TARGET = 1000;
+export const HEGEMONY_TARGET = 400;
 export const FINAL_TURN = 300;
 
 /**
- * @returns {{ total:number, economy:number, technology:number, prestige:number }}
+ * Kurulu sanayi kapasitesinin puan ağırlığı. Ham üretim ve prestij ilk elli
+ * haftada donuyor (toprak neredeyse hiç el değiştirmiyor, şehir nüfusu sabit);
+ * fabrika seviyesi ise yatırımla oyun boyunca büyüyen tek eksen. Puanın zamanla
+ * yükselmesi bu yüzden buradan gelir ve geç oyunda skorun çoğunluğunu sanayi
+ * oluşturur. Fetih ya da province gelişimi tekrar büyümeye başlarsa bu ağırlık
+ * yeniden ölçülmeli.
+ */
+const INDUSTRY_WEIGHT = 10;
+
+/**
+ * @returns {{ total:number, economy:number, prestige:number }}
  */
 export function hegemonyScore(world, nation) {
   const budget = nation.budget;
@@ -27,11 +36,10 @@ export function hegemonyScore(world, nation) {
     ? budget.production.gold + budget.production.food
       + budget.production.timber + budget.production.iron
     : 0;
-  const economy = production * 1.2;
-
-  // Teknoloji: kademe ağırlıklı, ileri teknoloji daha değerli.
-  let technology = 0;
-  for (const id of nation.techs ?? []) technology += (TECHS[id]?.tier ?? 1) * 7;
+  const industry = (nation.economy?.factories ?? []).reduce(
+    (sum, factory) => sum + factory.level, 0,
+  );
+  const economy = production * 1.2 + industry * INDUSTRY_WEIGHT;
 
   // Prestij: şehirler, barışçı ilişkiler, toprak (en zayıf katsayı toprakta).
   let cities = 0;
@@ -44,9 +52,8 @@ export function hegemonyScore(world, nation) {
   const prestige = cities + partners * 2 + nation.tiles * 0.04;
 
   return {
-    total: Math.round(economy + technology + prestige),
+    total: Math.round(economy + prestige),
     economy: Math.round(economy),
-    technology: Math.round(technology),
     prestige: Math.round(prestige),
   };
 }

@@ -3,19 +3,13 @@
 
 import { hexDistance, hexesInRange } from '../core/hex.js';
 import { CITY_CENTER_YIELD, RESOURCES } from '../world/terrain.js';
-import {
-  applyBuildings, buildingArmyUpkeepRelief, buildingResearchDiscount, buildingStorage,
-  buildingMaintenance, hasBuilding,
-} from './buildings.js';
 import { tileEfficiency } from './infamy.js';
-import {
-  techCorruptionBase, techFoodPerCity, techGoldPerCity, techIronPerCity, techStorageBonus,
-} from './tech.js';
 import { provinceOutput } from './provinces.js';
 import { regimentCount, upkeepWeight } from './units.js';
+import { controllerOf } from './control.js';
 
 /** Yeni şehir kurma bedeli ve şehirler arası asgari mesafe. */
-export const CITY_COST = { gold: 60, timber: 4 };
+export const CITY_COST = { gold: 60 };
 export const CITY_MIN_DISTANCE = 4;
 
 /** Şehrin işçi yerleştirebileceği yarıçap. */
@@ -26,10 +20,10 @@ export const WORK_RADIUS = 2;
  * bölündü; İzci kasten demirsiz, demirsiz doğan ülke kilitlenmesin.
  */
 export const UNIT_COSTS = {
-  INFANTRY: { gold: 25, iron: 1 },
-  CAVALRY: { gold: 40, iron: 2 },
-  ARTILLERY: { gold: 55, iron: 3, timber: 2 },
-  WARSHIP: { gold: 30, iron: 1, timber: 3 },
+  INFANTRY: { gold: 25 },
+  CAVALRY: { gold: 40 },
+  ARTILLERY: { gold: 55 },
+  WARSHIP: { gold: 30 },
 };
 
 /** Birim başına tur bakımı. Ordunun asıl freni artık erzak. */
@@ -42,42 +36,25 @@ export const UNIT_UPKEEP = { gold: 1, food: 1 };
  */
 export const IRON_UPKEEP_TYPES = { CAVALRY: 1, ARTILLERY: 2, WARSHIP: 1 };
 
-/**
- * Bina onarımı: her iki bina bir kereste ister. Keresteye de sürekli bir gider
- * bağlanmadan şehir geliştirmek tek yönlü bir merdivendi.
- */
-export function timberRepair(buildingCount) {
-  return Math.floor(buildingCount / 2);
-}
-
 /** İşçi başına tüketim. İşçi net katkısı azalsın ki nüfus sonsuz büyümesin. */
 export const WORKER_FOOD = 2;
 
 /** Yeni şehir bu kadar erzakla başlar: kötü arazide doğan ülke ilk turda çökmesin. */
 export const STARTING_FOOD_STORE = 60;
 
-/**
- * Ambar kapasitesi. Tavan olmazsa demir/kereste birikip anlamsızlaşıyor
- * (ölçüm: 150 turda 2968 demir, 7464 kereste). Fazlası ziyan olur; bu,
- * ileride ticaretin de sebebi olacak.
- */
-export function storageCap(cityCount, nation) {
-  return 30 + cityCount * 5
-    + (nation ? techStorageBonus(nation) : 0)
-    + (nation?.budget?.storageBonus ?? 0);
-}
-
 export function emptyPool() {
   return { gold: 0, food: 0, timber: 0, iron: 0 };
 }
 
 export function canAfford(nation, cost) {
-  return RESOURCES.every((r) => (nation[r] ?? 0) >= (cost[r] ?? 0));
+  return Object.entries(cost ?? {}).every(
+    ([resource, amount]) => (nation[resource] ?? 0) >= amount,
+  );
 }
 
 export function pay(nation, cost) {
   if (!canAfford(nation, cost)) return false;
-  for (const r of RESOURCES) nation[r] -= cost[r] ?? 0;
+  for (const [resource, amount] of Object.entries(cost ?? {})) nation[resource] -= amount;
   return true;
 }
 
@@ -136,7 +113,6 @@ export function createCity(world, tile, nationId, name, level = 1, pop = 2) {
     // toprakta yabancı halkla yaşamak zorunda kalmak tasarımın çekirdeği.
     pops: { [tile.culture]: pop },
     worked: [],     // işlenen kareler; uzunluğu pop kadar
-    buildings: [],
     foodStore: STARTING_FOOD_STORE,
     manualWorkers: false, // elle atama geldiğinde otomatik dağıtımı kilitler
   };
@@ -147,7 +123,8 @@ export function createCity(world, tile, nationId, name, level = 1, pop = 2) {
 
 /** Bir karede şehir kurulabilir mi? (kendi toprağın, karada, şehirlerden uzakta) */
 export function canFoundCity(world, tile, nationId) {
-  if (!tile || tile.city || !tile.terrain.passable || tile.owner !== nationId) return false;
+  if (!tile || tile.city || !tile.terrain.passable || tile.owner !== nationId
+    || controllerOf(tile) !== nationId) return false;
   return world.cities.every(
     (c) => hexDistance(c.tile.q, c.tile.r, tile.q, tile.r) >= CITY_MIN_DISTANCE,
   );
@@ -159,7 +136,7 @@ export function canFoundCity(world, tile, nationId) {
  * Not: kültür ve infamy katmanı gelince bu elle konmuş fren kaldırılacak.
  */
 function corruption(cityCount, nation) {
-  const base = techCorruptionBase(nation);
+  const base = 12;
   return base / (base + Math.max(0, cityCount - 1));
 }
 
@@ -189,19 +166,15 @@ function administrationCost(cityCount, provinceCount, distanceLoad) {
  */
 export function tileYield(tile, ctx) {
   const base = tile.terrain.yields;
-  // Yol karenin ticaretini artırır: seviye başına +1 altın. Ölçümde yol yapan
-  // ülkeler kaybediyordu çünkü yolun tek faydası hareketti ve YZ onu
-  // kullanmıyordu — yatırımın kendini ödemesi gerek.
-  const roadGold = tile.roadLevel ?? 0;
-  if (!ctx) return roadGold ? { ...base, gold: base.gold + roadGold } : base;
+  if (!ctx) return base;
 
   const factor = tileEfficiency(tile, ctx.culture, ctx.turn);
-  if (factor === 1 && !roadGold) return base;
+  if (factor === 1) return base;
   return {
     food: base.food * factor,
     timber: base.timber * factor,
     iron: base.iron * factor,
-    gold: (base.gold + roadGold) * factor,
+    gold: base.gold * factor,
   };
 }
 
@@ -221,7 +194,8 @@ function cityContext(world, city) {
 export function assignWorkers(world, city, weights) {
   if (city.manualWorkers) {
     // Elle atanmış kareler sahiplik değişmediyse korunur.
-    city.worked = city.worked.filter((t) => t.owner === city.nationId && !t.workedBy);
+    city.worked = city.worked.filter((t) => t.owner === city.nationId
+      && controllerOf(t) === city.nationId && !t.workedBy);
     for (const tile of city.worked) tile.workedBy = city;
     return;
   }
@@ -230,7 +204,7 @@ export function assignWorkers(world, city, weights) {
   for (const { q, r } of hexesInRange(city.tile.q, city.tile.r, WORK_RADIUS)) {
     const tile = world.get(q, r);
     if (!tile || tile === city.tile) continue;
-    if (tile.owner !== city.nationId) continue;
+    if (tile.owner !== city.nationId || controllerOf(tile) !== city.nationId) continue;
     // Başka şehrin işlediği kare paylaşılmaz.
     if (tile.workedBy && tile.workedBy !== city) continue;
     // İşçi taze işgal edilmiş kareye gitmez: orada verim sıfır.
@@ -256,8 +230,8 @@ export function workerWeights(nation) {
   const weights = { food: 1.5, gold: 1, timber: 0.7, iron: 0.7 };
   if ((nation.budget?.net.food ?? 0) < 2) weights.food = 4;
   if ((nation.gold ?? 0) < 20) weights.gold = 2;
-  if ((nation.timber ?? 0) < 3) weights.timber = 2;
-  if ((nation.iron ?? 0) < 3) weights.iron = 2.5;
+  if ((nation.budget?.net?.timber ?? 0) < 2) weights.timber = 2;
+  if ((nation.budget?.net?.iron ?? 0) < 2) weights.iron = 2.5;
   return weights;
 }
 
@@ -282,7 +256,6 @@ export function cityProduction(city, world) {
   }
   // Şehrin kendisi bir pazar: tahkimat kademesi altın tabanı verir.
   out.gold += 2 + city.level * 2;
-  applyBuildings(city, out);
   return out;
 }
 
@@ -295,12 +268,6 @@ export function nationBudget(world, nation) {
   const production = emptyPool();
   let cityCount = 0;
   let workers = 0;
-  let buildingCount = 0;
-  const buildingCosts = emptyPool();
-  let storageBonus = 0;
-  let researchDiscount = 0;
-  let armyUpkeepRelief = 0;
-  let roadMaintenance = 0;
   let provinceCount = 0;
   let distanceLoad = 0;
 
@@ -312,34 +279,23 @@ export function nationBudget(world, nation) {
       distanceLoad += Math.max(0, distance - ADMIN_FREE_DISTANCE) * 0.25;
     }
     workers += city.pop;
-    buildingCount += city.buildings?.length ?? 0;
-    const maintenance = buildingMaintenance(city);
-    for (const resource of RESOURCES) {
-      buildingCosts[resource] += maintenance[resource] ?? 0;
-    }
-    storageBonus += buildingStorage(city);
-    researchDiscount += buildingResearchDiscount(city);
-    armyUpkeepRelief += buildingArmyUpkeepRelief(city);
     const out = cityProduction(city, world);
-    for (const r of RESOURCES) production[r] += out[r];
+    // Raw goods come only from province RGOs below. City worked-tile yields
+    // remain useful for city placement/worker choice, but must not create a
+    // second invisible grain/timber/iron source in the national market.
+    production.gold += out.gold;
   }
   // İşlenen yol seviyesi +1 altın üretir. Aynı miktardaki bakım, kullanılan
   // altyapıyı kendi kendine yeterli; atıl askerî ağı ise gerçek gider yapar.
   world.forEach((tile) => {
     if (tile.owner !== nation.id) return;
     provinceCount++;
-    roadMaintenance += tile.roadLevel ?? 0;
     const provincial = provinceOutput(tile);
     production.gold += provincial.gold;
     production.food += provincial.food;
     production.timber += provincial.timber;
     production.iron += provincial.iron;
   });
-  // Teknoloji şehir başına sabit katkı verir: yüzde değil, kartopu yapmasın.
-  production.food += cityCount * techFoodPerCity(nation);
-  production.gold += cityCount * techGoldPerCity(nation);
-  production.iron += cityCount * techIronPerCity(nation);
-
   for (const r of RESOURCES) production[r] = Math.round(production[r]);
   production.gold = Math.round(production.gold * corruption(cityCount, nation));
 
@@ -363,12 +319,11 @@ export function nationBudget(world, nation) {
   const armyFunding = (nation.economy?.armySpending ?? 100) / 100;
   // Bakım artık alay *sayısına* değil teçhizat ağırlığına bağlı: modern ordu
   // sürekli para yer, ordu modernizasyonu geç oyunun asıl gider kalemi olur.
-  const armyGold = Math.max(0, armyWeight * UNIT_UPKEEP.gold * armyFunding - armyUpkeepRelief);
+  const armyGold = Math.max(0, armyWeight * UNIT_UPKEEP.gold * armyFunding);
   const administration = administrationCost(cityCount, provinceCount, distanceLoad);
-  upkeep.gold = armyGold + administration + buildingCosts.gold + roadMaintenance;
-  upkeep.food = army * UNIT_UPKEEP.food + workers * WORKER_FOOD + buildingCosts.food;
-  upkeep.timber = buildingCosts.timber + timberRepair(buildingCount);
-  upkeep.iron = buildingCosts.iron + armyIron;
+  upkeep.gold = armyGold + administration;
+  upkeep.food = army * UNIT_UPKEEP.food + workers * WORKER_FOOD;
+  upkeep.iron = armyIron;
 
   const net = emptyPool();
   for (const r of RESOURCES) net[r] = production[r] - upkeep[r];
@@ -382,73 +337,6 @@ export function nationBudget(world, nation) {
     armyGold,
     provinces: provinceCount,
     administration,
-    buildings: buildingCount,
-    buildingMaintenance: buildingCosts,
-    roadMaintenance,
-    storageBonus,
-    researchDiscount: Math.min(0.32, researchDiscount),
-    armyUpkeepRelief,
   };
 }
 
-/**
- * Yeni doğan işçinin kültürü: şehrin işlediği toprakların halkından gelir.
- * Böylece yabancı araziye yayılan şehir zamanla karışık nüfuslu olur.
- */
-export function growPop(city, rng) {
-  const weights = new Map();
-  for (const tile of city.worked) {
-    if (tile.culture < 0) continue;
-    weights.set(tile.culture, (weights.get(tile.culture) ?? 0) + 1);
-  }
-  if (city.tile.culture >= 0) {
-    // Şehir merkezi iki kat ağırlıklı: çekirdek halk baskın kalır ama tek olmaz.
-    weights.set(city.tile.culture, (weights.get(city.tile.culture) ?? 0) + 2);
-  }
-  if (!weights.size) weights.set(city.tile.culture, 1);
-
-  // Ağırlıklı **rastgele** seçim. En yükseği almak, merkez bonusu yüzünden
-  // her şehri tek kültüre kilitliyordu: etnik karışım hiç oluşmuyordu.
-  let total = 0;
-  for (const weight of weights.values()) total += weight;
-  let roll = rng() * total;
-  let chosen = city.tile.culture;
-  for (const [culture, weight] of weights) {
-    roll -= weight;
-    if (roll <= 0) { chosen = culture; break; }
-  }
-
-  city.pop++;
-  city.pops[chosen] = (city.pops[chosen] ?? 0) + 1;
-}
-
-/** Şehir nüfusunun ulusun kurucu kültüründen olmayan kısmı. */
-export function foreignPop(city, nationCulture) {
-  let foreign = 0;
-  for (const [culture, count] of Object.entries(city.pops)) {
-    if (Number(culture) !== nationCulture) foreign += count;
-  }
-  return foreign;
-}
-
-/** Nüfusun bir kademe büyümesi için gereken erzak; ambar eşiği düşürür. */
-export function growthCost(city) {
-  const base = 15 + city.pop * 10;
-  return Math.round(base * (hasBuilding(city, 'GRANARY') ? 0.8 : 1));
-}
-
-/** Şehir el değiştirir; çevresindeki kareler de yeni sahibe geçer. */
-export function captureCity(game, city, nationId) {
-  const world = game.world;
-  const old = city.nationId;
-  city.nationId = nationId;
-  for (const { q, r } of hexesInRange(city.tile.q, city.tile.r, 1)) {
-    const t = world.get(q, r);
-    if (t) game.turns.claim(t, nationId);
-  }
-  // Şehrin haritaya yerleştirilmiş dış binaları da şehirle birlikte devredilir.
-  world.forEach((tile) => {
-    if (tile.structure?.cityId === city.id) game.turns.claim(tile, nationId);
-  });
-  return old;
-}

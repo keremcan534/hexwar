@@ -8,6 +8,30 @@
 
 import { UNIT_TYPES, createUnit, removeUnit, resolveTypeId, stackFull } from './units.js';
 import { orderMove } from './movement.js';
+import {
+  MILITARY_EQUIPMENT, ensureMilitaryEconomy, equipmentStock, setEquipmentStock,
+} from './economy.js';
+import { controllerOf } from './control.js';
+
+export const RECRUITMENT_EQUIPMENT = {
+  INFANTRY: { arms: 4 },
+  CAVALRY: { arms: 6 },
+  ARTILLERY: { arms: 2, artillery: 4 },
+  WARSHIP: { arms: 10 },
+};
+export const RECRUITMENT_ARMS = Object.fromEntries(
+  Object.entries(RECRUITMENT_EQUIPMENT).map(([id, cost]) => [id, cost.arms ?? 0]),
+);
+
+export function recruitmentEquipmentCost(typeId) {
+  return RECRUITMENT_EQUIPMENT[resolveTypeId(typeId)] ?? {};
+}
+
+export function equipmentCostLabel(typeId) {
+  return Object.entries(recruitmentEquipmentCost(typeId))
+    .map(([id, amount]) => `${amount}${MILITARY_EQUIPMENT[id]?.icon ?? id}`)
+    .join(' ');
+}
 
 /** Bir province'in altına inemeyeceği nüfus. Ülke kendi taşrasını boşaltamasın. */
 export const PROVINCE_POPULATION_FLOOR = 2000;
@@ -22,7 +46,7 @@ export function provinceManpower(tile) {
 export function nationManpower(world, nationId) {
   let total = 0;
   world.forEach((tile) => {
-    if (tile.owner === nationId) total += provinceManpower(tile);
+    if (tile.owner === nationId && controllerOf(tile) === nationId) total += provinceManpower(tile);
   });
   return total;
 }
@@ -55,7 +79,8 @@ export function recruitmentSource(world, nation, typeId) {
   let best = null;
   let bestScore = 0;
   world.forEach((tile) => {
-    if (tile.owner !== nation.id || !tile.terrain.passable || !tile.province) return;
+    if (tile.owner !== nation.id || controllerOf(tile) !== nation.id
+      || !tile.terrain.passable || !tile.province) return;
     const available = regionManpower(world, tile);
     if (available < need) return;
     const score = available + (tile.city ? 3000 : 0);
@@ -68,7 +93,11 @@ export function recruitmentSource(world, nation, typeId) {
 }
 
 export function canRecruit(world, nation, typeId) {
-  return Boolean(recruitmentSource(world, nation, typeId));
+  const id = resolveTypeId(typeId);
+  ensureMilitaryEconomy(nation);
+  return Object.entries(recruitmentEquipmentCost(id))
+    .every(([equipmentId, amount]) => equipmentStock(nation, equipmentId) >= amount)
+    && Boolean(recruitmentSource(world, nation, id));
 }
 
 /**
@@ -103,7 +132,8 @@ function deploymentTile(world, source, typeId) {
   // Tümenler birleşmediği için dolu olmayan yığına inmek serbest.
   if (!stackFull(source)) return source;
   return world.neighbors(source).find(
-    (tile) => tile.terrain.passable && !stackFull(tile) && tile.owner === source.owner,
+    (tile) => tile.terrain.passable && !stackFull(tile)
+      && controllerOf(tile) === source.owner,
   ) ?? null;
 }
 
@@ -126,6 +156,10 @@ export function rallyTile(world, nation) {
 export function recruit(game, nation, typeId) {
   const world = game.world;
   const id = resolveTypeId(typeId);
+  ensureMilitaryEconomy(nation);
+  const equipmentCost = recruitmentEquipmentCost(id);
+  if (!Object.entries(equipmentCost)
+    .every(([equipmentId, amount]) => equipmentStock(nation, equipmentId) >= amount)) return null;
   const source = recruitmentSource(world, nation, id);
   if (!source) return null;
   const tile = deploymentTile(world, source, id);
@@ -134,6 +168,9 @@ export function recruit(game, nation, typeId) {
   const draws = drawManpower(world, source, UNIT_TYPES[id].manpower);
   if (!draws.length) return null;
   const unit = createUnit(id, nation.id, tile, nation, source);
+  for (const [equipmentId, amount] of Object.entries(equipmentCost)) {
+    setEquipmentStock(nation, equipmentId, equipmentStock(nation, equipmentId) - amount);
+  }
   // Nereden kaç asker alındığı alayda durur: dağıtımda aynı yerlere döner.
   unit.regiments[0].draws = draws;
   world.units.push(unit);
@@ -152,17 +189,18 @@ export function disband(game, unit) {
   if (!unit?.regiments?.length) return false;
   for (const regiment of unit.regiments) {
     // Yalnız hayatta kalanlar döner: ölenler kalıcı kayıptır.
-    const survival = Math.max(0, regiment.strength / Math.max(1, regiment.maxStrength));
     // Askerin toplandığı province'ler biliniyorsa oraya, bilinmiyorsa
     // (eski kayıt) alayın kurulduğu province'e döner.
     const draws = regiment.draws ?? (regiment.home
-      ? [{ ...regiment.home, men: regiment.manpower ?? 0 }]
+      ? [{ ...regiment.home, men: (regiment.manpower ?? 0)
+        * Math.max(0, regiment.strength / Math.max(1, regiment.maxStrength)) }]
       : []);
     for (const draw of draws) {
       const tile = world.get(draw.q, draw.r);
       // Province kaybedildiyse dönecek yurt kalmamıştır: insan gücü de kaybolur.
-      if (!tile?.province || tile.owner !== unit.nationId) continue;
-      tile.province.population += Math.round(draw.men * survival);
+      if (!tile?.province || tile.owner !== unit.nationId
+        || controllerOf(tile) !== unit.nationId) continue;
+      tile.province.population += Math.round(draw.men);
     }
   }
   removeUnit(world, unit);

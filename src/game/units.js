@@ -1,17 +1,23 @@
-// Birim tipleri ve savaş çözümü. Tek yerde tanımlı: yeni birim eklemek için burası yeter.
+// Tumen ve alay: ordunun veri katmani. Yeni birim tipi eklemek icin burasi yeter.
+//
+// Muharebe burada degil battles.js'te cozulur; burasi yalniz "ordu nedir, ne
+// kadar guclu, kaybi nasil dagilir" sorularini yanitlar. Katman notu: DOM yok,
+// dunya nesnesi disinda bagimlilik yok.
 
-import { buildingDefense } from './buildings.js';
-import { techAttackBonus, techHpBonus, techSiegeFactor } from './tech.js';
-import { mergeCommand } from './generals.js';
+import { controllerOf } from './control.js';
 
-/** Kara birimi denize girdiğinde bu hızla yol alır (bindirilmiş hâli). */
+/** Kara birimi denize girdiginde bu hizla yol alir (bindirilmis hali). */
 export const EMBARKED_MOVES = 4;
 
+/** Stationary land divisions dig in by this amount each weekly tick. */
+export const ENTRENCHMENT_RATE = 0.05;
+export const MAX_ENTRENCHMENT = 0.35;
+
 /**
- * Teçhizat kademeleri. Geç oyunda ülke bütün teknolojiyi bitirdikten sonra
- * altınını harcayacak yer bulamıyordu; modernizasyon hem tek seferlik hem de
- * *kalıcı* bir gider açar. Bakım çarpanı güçten daha hızlı büyür: üst kademe
- * ordu tutmak bilinçli bir bütçe tercihi olsun, otomatik doğru cevap olmasın.
+ * Techizat kademeleri. Gec oyunda ulke butun teknolojiyi bitirdikten sonra
+ * altinini harcayacak yer bulamiyordu; modernizasyon hem tek seferlik hem de
+ * *kalici* bir gider acar. Bakim carpani gucten daha hizli buyur: ust kademe
+ * ordu tutmak bilincli bir butce tercihi olsun, otomatik dogru cevap olmasin.
  */
 export const EQUIPMENT_TIERS = [
   { level: 1, name: 'Levy', power: 1, upkeep: 1, cost: null },
@@ -30,54 +36,28 @@ export function regimentTier(regiment) {
   return Math.max(1, Math.min(MAX_TIER, Math.round(regiment?.tier ?? 1)));
 }
 
-/** Ordunun en düşük kademesi: modernizasyon hep en geriden ilerler. */
+/** Ordunun en dusuk kademesi: modernizasyon hep en geriden ilerler. */
 export function armyTier(unit) {
   if (!unit?.regiments?.length) return 1;
   return Math.min(...unit.regiments.map(regimentTier));
 }
 
-/** Ordunun altın bakımı, alay sayısı yerine teçhizat ağırlığıyla ölçülür. */
+/** Ordunun altin bakimi, alay sayisi yerine techizat agirligiyla olculur. */
 export function upkeepWeight(unit) {
   if (!unit?.regiments?.length) return tierInfo(unit?.tier ?? 1).upkeep;
   return unit.regiments.reduce((sum, regiment) => sum + tierInfo(regimentTier(regiment)).upkeep, 0);
 }
 
 /**
- * Bir kademe yükseltmenin bedeli: yalnızca en geride kalan alaylar ödenir,
- * böylece karışık ordu tek seferde uçurulmaz.
- */
-export function modernizeCost(unit) {
-  if (!unit?.regiments?.length) return null;
-  const tier = armyTier(unit);
-  if (tier >= MAX_TIER) return null;
-  const next = tierInfo(tier + 1);
-  const count = unit.regiments.filter((regiment) => regimentTier(regiment) === tier).length;
-  return Object.fromEntries(
-    Object.entries(next.cost).map(([resource, amount]) => [resource, amount * count]),
-  );
-}
-
-/** Bedeli ödenmiş modernizasyonu uygular; ödeme çağıranın işi (bkz. economy.js). */
-export function applyModernization(unit) {
-  const tier = armyTier(unit);
-  if (tier >= MAX_TIER) return false;
-  for (const regiment of unit.regiments) {
-    if (regimentTier(regiment) === tier) regiment.tier = tier + 1;
-  }
-  refreshArmy(unit);
-  return true;
-}
-
-/**
- * Kara ordusunun üç kolu. `manpower` alayın topladığı asker sayısıdır: kuruluşta
- * çıktığı province'in nüfusundan düşer, dağıtılınca geri döner, savaşta ölürse
- * kalıcı kayıptır (bkz. recruitment.js).
+ * Kara ordusunun uc kolu. `manpower` alayin topladigi asker sayisidir: kurulusta
+ * ciktigi province'in nufusundan duser, dagitilinca geri doner, savasta olurse
+ * kalici kayiptir (bkz. recruitment.js).
  */
 export const UNIT_TYPES = {
   INFANTRY: {
     id: 'INFANTRY', name: 'Infantry', glyph: 'I', domain: 'land',
     moves: 3, attack: 5, hp: 110, manpower: 3000,
-    /** Savunmada arazi bonusunu iki katı kullanır. */
+    /** Savunmada arazi bonusunu iki kati kullanir. */
     entrenched: true,
   },
   CAVALRY: {
@@ -87,7 +67,7 @@ export const UNIT_TYPES = {
   ARTILLERY: {
     id: 'ARTILLERY', name: 'Artillery', glyph: 'A', domain: 'land',
     moves: 2, attack: 9, hp: 70, manpower: 1500,
-    /** Topçu ateş desteğidir: yalnız kaldığında kırılgan, yığın içinde belirleyici. */
+    /** Topcu ates destegidir: yalniz kaldiginda kirilgan, yigin icinde belirleyici. */
     support: true,
   },
   WARSHIP: {
@@ -96,7 +76,7 @@ export const UNIT_TYPES = {
   },
 };
 
-/** Kaldırılan birim tipleri: eski kayıtlar yüklenirken bunlara çevrilir. */
+/** Kaldirilan birim tipleri: eski kayitlar yuklenirken bunlara cevrilir. */
 export const LEGACY_UNIT_TYPES = { SCOUT: 'INFANTRY' };
 
 export function resolveTypeId(typeId) {
@@ -104,9 +84,9 @@ export function resolveTypeId(typeId) {
 }
 
 /**
- * Ordunun haftalık hareket hızı (hex-maliyeti cinsinden). Tur bazlı hamle
- * bütçesi kalktı: bu değer artık bir haftada yol boyunca *biriktirilen*
- * ilerlemedir, en yavaş alay bütün yığını yavaşlatır.
+ * Ordunun haftalik hareket hizi (hex-maliyeti cinsinden). Tur bazli hamle
+ * butcesi yok: bu deger yol boyunca *biriktirilen* ilerlemedir, en yavas alay
+ * butun yigini yavaslatir.
  */
 export function speedOf(unit) {
   if (unit.embarked) return EMBARKED_MOVES;
@@ -118,7 +98,7 @@ export function speedOf(unit) {
   return unit.type.moves;
 }
 
-/** Can tavanı: zırh teknolojisiyle birlikte üretilen birimlerde daha yüksek. */
+/** Can tavani: zirh teknolojisiyle birlikte uretilen birimlerde daha yuksek. */
 export function maxHpOf(unit) {
   return unit.maxHp ?? unit.type.hp;
 }
@@ -136,25 +116,42 @@ export function soldiersOf(unit) {
   )));
 }
 
-export function moraleOf(unit) {
-  if (!unit?.regiments?.length) return unit?.morale ?? 100;
+/**
+ * Tumenin muharebede kalma kapasitesi. Eski kayitlarda bu alan `morale`
+ * adindaydi; ilk yenilemede organization'a tasinir.
+ */
+export function organizationOf(unit) {
+  if (!unit?.regiments?.length) return unit?.organization ?? unit?.morale ?? 100;
   const soldiers = Math.max(1, soldiersOf(unit));
   return unit.regiments.reduce(
-    (sum, regiment) => sum + regiment.morale * Math.max(0, regiment.strength),
+    (sum, regiment) => sum + (regiment.organization ?? regiment.morale ?? 100)
+      * Math.max(0, regiment.strength),
     0,
   ) / soldiers;
 }
 
-/** Eski alanları yeni ordu yığınıyla senkron tutar; UI ve bütçe tek veri görür. */
+export function strengthRatio(unit) {
+  return soldiersOf(unit) / Math.max(1, maxHpOf(unit));
+}
+
+/** Eski alanlari yeni ordu yiginiyla senkron tutar; UI ve butce tek veri gorur. */
 export function refreshArmy(unit) {
   if (!unit.regiments?.length) return unit;
   const counts = new Map();
   for (const regiment of unit.regiments) {
     regiment.typeId = resolveTypeId(regiment.typeId);
+    regiment.maxStrength = Math.max(1, regiment.maxStrength ?? 1000);
+    regiment.strength = Math.max(0, Math.min(regiment.maxStrength, regiment.strength ?? 0));
+    regiment.organization = Math.max(0, Math.min(
+      100,
+      regiment.organization ?? regiment.morale ?? 100,
+    ));
+    // Eski save/UI okuyuculari morale bekliyor. Tek gercek organization'dir.
+    regiment.morale = regiment.organization;
     counts.set(regiment.typeId, (counts.get(regiment.typeId) ?? 0) + 1);
   }
-  // Yığının simgesi en kalabalık koldur; topçu destek sınıfı olduğu için
-  // eşitlikte öne çıkmaz, yığın "piyade" görünür.
+  // Yiginin simgesi en kalabalik koldur; topcu destek sinifi oldugu icin
+  // esitlikte one cikmaz, yigin "piyade" gorunur.
   unit.type = UNIT_TYPES[[...counts.entries()].sort((a, b) => (
     b[1] - a[1]
     || (UNIT_TYPES[a[0]].support ? 1 : 0) - (UNIT_TYPES[b[0]].support ? 1 : 0)
@@ -162,22 +159,24 @@ export function refreshArmy(unit) {
   ))[0][0]];
   unit.hp = soldiersOf(unit);
   unit.maxHp = unit.regiments.reduce((sum, regiment) => sum + regiment.maxStrength, 0);
-  unit.morale = moraleOf(unit);
+  unit.organization = organizationOf(unit);
+  unit.morale = unit.organization;
   unit.tier = armyTier(unit);
   return unit;
 }
 
 /**
- * Alay. `manpower` kuruluşta province nüfusundan düşen asker sayısıdır;
- * `home` o province'in koordinatıdır, dağıtımda nüfus oraya geri verilir.
+ * Alay. `manpower` kurulusta province nufusundan dusen asker sayisidir;
+ * `home` o province'in koordinatidir, dagitimda nufus oraya geri verilir.
  */
 function createRegiment(typeId, nation, home = null) {
   const id = resolveTypeId(typeId);
-  const maxStrength = 1000 + (nation ? techHpBonus(nation) * 5 : 0);
+  const maxStrength = 1000;
   return {
     typeId: id,
     strength: maxStrength,
     maxStrength,
+    organization: 100,
     morale: 100,
     tier: 1,
     manpower: UNIT_TYPES[id].manpower,
@@ -185,30 +184,10 @@ function createRegiment(typeId, nation, home = null) {
   };
 }
 
-export function addRegiment(unit, typeId, nation, home = null) {
-  const type = UNIT_TYPES[typeId];
-  if (!type || type.domain !== unit.type.domain) return false;
-  unit.regiments = unit.regiments ?? [createRegiment(unit.type.id, nation)];
-  unit.regiments.push(createRegiment(typeId, nation, home));
-  refreshArmy(unit);
-  return true;
-}
-
-export function mergeArmies(world, target, source) {
-  if (!target || !source || target === source || target.nationId !== source.nationId) return false;
-  if (target.type.domain !== source.type.domain || target.battleId || source.battleId) return false;
-  target.regiments = target.regiments ?? [createRegiment(target.type.id)];
-  const incoming = source.regiments ?? [createRegiment(source.type.id)];
-  target.regiments.push(...incoming.map((regiment) => ({ ...regiment })));
-  target.order = null;
-  refreshArmy(target);
-  // Birleşen iki ordunun komutanlarından yetenekli olan yığının başına geçer,
-  // diğeri boşta kadroya döner. Yoksa general yok olan orduya bağlı kalıyordu.
-  mergeCommand(world.nations?.[target.nationId], target, source);
-  removeUnit(world, source);
-  return target;
-}
-
+/**
+ * Tumenin ham muharebe gucu. Alay basina: kol saldirisi × mevcut × moral ×
+ * techizat. Arazi, general ve plan carpanlari battles.js'te uygulanir.
+ */
 export function armyPower(unit) {
   if (!unit) return 0;
   if (!unit.regiments?.length) {
@@ -218,21 +197,36 @@ export function armyPower(unit) {
     const type = UNIT_TYPES[regiment.typeId];
     const strength = regiment.strength / Math.max(1, regiment.maxStrength);
     const equipment = tierInfo(regimentTier(regiment)).power;
-    return sum + type.attack * strength * (0.45 + regiment.morale / 180) * equipment;
+    const organization = regiment.organization ?? regiment.morale ?? 100;
+    return sum + type.attack * strength * (0.45 + organization / 180) * equipment;
   }, 0);
 }
 
-export function applyArmyLosses(unit, casualties, moraleLoss = 0) {
+export function applyArmyLosses(unit, casualties, organizationLoss = 0) {
   if (!unit?.regiments?.length) return false;
   const total = Math.max(1, soldiersOf(unit));
   for (const regiment of unit.regiments) {
     const share = regiment.strength / total;
-    regiment.strength = Math.max(0, regiment.strength - casualties * share);
-    regiment.morale = Math.max(0, regiment.morale - moraleLoss);
+    const strengthLoss = Math.min(regiment.strength, casualties * share);
+    if (regiment.draws?.length && strengthLoss > 0) {
+      const representedMen = regiment.draws.reduce((sum, draw) => sum + Math.max(0, draw.men ?? 0), 0);
+      const menLoss = strengthLoss * ((regiment.manpower ?? 0) / Math.max(1, regiment.maxStrength));
+      const keep = representedMen > 0 ? Math.max(0, representedMen - menLoss) / representedMen : 0;
+      for (const draw of regiment.draws) draw.men = Math.max(0, (draw.men ?? 0) * keep);
+      regiment.draws = regiment.draws.filter((draw) => draw.men > 0.01);
+    }
+    regiment.strength = Math.max(0, regiment.strength - strengthLoss);
+    regiment.organization = Math.max(
+      0,
+      (regiment.organization ?? regiment.morale ?? 100) - organizationLoss,
+    );
+    regiment.morale = regiment.organization;
   }
-  unit.regiments = unit.regiments.filter((regiment) => regiment.strength > 50);
-  if (!unit.regiments.length) {
+  // Iskelet kadro listede kalir: max strength degismez ve alay sonradan
+  // takviye alabilir. Division yalniz toplam strength tamamen sifirsa oludur.
+  if (soldiersOf(unit) <= 0) {
     unit.hp = 0;
+    unit.organization = 0;
     unit.morale = 0;
     return false;
   }
@@ -240,25 +234,18 @@ export function applyArmyLosses(unit, casualties, moraleLoss = 0) {
   return true;
 }
 
-export function recoverArmy(unit, soldiers = 24, morale = 10) {
+// Strength varsayilan olarak asla bedava dolmaz; asker takviyesi reinforcement.js'tedir.
+export function recoverArmy(unit, soldiers = 0, organization = 10) {
   if (!unit?.regiments?.length || unit.battleId) return;
   for (const regiment of unit.regiments) {
     regiment.strength = Math.min(regiment.maxStrength, regiment.strength + soldiers);
-    regiment.morale = Math.min(100, regiment.morale + morale);
+    regiment.organization = Math.min(
+      100,
+      (regiment.organization ?? regiment.morale ?? 100) + organization,
+    );
+    regiment.morale = regiment.organization;
   }
   refreshArmy(unit);
-}
-
-export function removeWeakestRegiment(unit, typeIds = null) {
-  if (!unit?.regiments?.length) return null;
-  const candidates = unit.regiments
-    .map((regiment, index) => ({ regiment, index }))
-    .filter(({ regiment }) => !typeIds || typeIds.includes(regiment.typeId))
-    .sort((a, b) => a.regiment.strength - b.regiment.strength);
-  if (!candidates.length) return null;
-  const [removed] = unit.regiments.splice(candidates[0].index, 1);
-  refreshArmy(unit);
-  return removed;
 }
 
 let nextId = 1;
@@ -275,14 +262,20 @@ export function createUnit(typeId, nationId, tile, nation, home = null) {
     regiments: [regiment],
     maxHp: regiment.maxStrength,
     hp: regiment.strength,
+    organization: 100,
     morale: 100,
     embarked: type.domain === 'land' && tile.terrain.water,
-    // Hareket artık haftalık hamle bütçesi değil: yol boyunca biriken ilerleme.
+    // Hareket haftalik hamle butcesi degil: yol boyunca biriken ilerleme.
     path: null,
     progress: 0,
     order: null,
     battleId: null,
     retreatUntil: 0,
+    attackReadyAt: 0,
+    entrenchment: 0,
+    // Cephede tuttugu province (bkz. command.js). Kalicidir: cephe yeniden
+    // hesaplansa da mevkisi duran tumen yerinden oynamaz.
+    post: null,
   };
   tile.units = tile.units ?? [];
   tile.units.push(unit);
@@ -290,44 +283,64 @@ export function createUnit(typeId, nationId, tile, nation, home = null) {
   return unit;
 }
 
-/** Orduya bir yürüyüş yolu verir. Yol boşsa hareket durur. */
-export function setPath(unit, path) {
-  unit.path = path?.length ? [...path] : null;
-  unit.progress = 0;
-  return unit.path;
-}
-
 export function clearPath(unit) {
   unit.path = null;
   unit.progress = 0;
 }
 
-/** Ordunun yürüyüşünü sürdürüyor mu? Çizim ve "boşta birim" listesi bunu sorar. */
+/** Ordunun yuruyusunu surduruyor mu? Cizim ve "bosta birim" listesi bunu sorar. */
 export function isMoving(unit) {
   return Boolean(unit.path?.length) && !unit.battleId;
 }
 
+export function resetEntrenchment(unit) {
+  if (unit) unit.entrenchment = 0;
+}
+
+/** Advance persistent defensive preparation for one deterministic weekly tick. */
+export function advanceEntrenchment(unit, turn) {
+  if (!unit) return 0;
+  const friendlyLand = unit.type?.domain === 'land'
+    && !unit.embarked
+    && unit.tile?.terrain?.passable
+    && !unit.tile.terrain.water
+    && controllerOf(unit.tile) === unit.nationId;
+  const canDigIn = friendlyLand
+    && !isMoving(unit)
+    && !unit.battleId
+    && (unit.retreatUntil ?? 0) <= turn;
+  if (!canDigIn) {
+    resetEntrenchment(unit);
+    return 0;
+  }
+  unit.entrenchment = Math.min(
+    MAX_ENTRENCHMENT,
+    Math.max(0, unit.entrenchment ?? 0) + ENTRENCHMENT_RATE,
+  );
+  return unit.entrenchment;
+}
+
 /**
- * Bir province'te yan yana durabilecek tümen sayısı. HOI4'te tümenler
- * birleşmez, aynı province'i paylaşır; tavan doomstack'i engeller.
+ * Bir province'te yan yana durabilecek tumen sayisi. Tumenler birlesmez,
+ * ayni province'i paylasir; tavan doomstack'i engeller.
  */
 export const MAX_STACK = 4;
 
-/** Bir province'teki tümenler. Eski tek-birim alanıyla uyumlu okur. */
+/** Bir province'teki tumenler. Eski tek-birim alaniyla uyumlu okur. */
 export function unitsOn(tile) {
   if (!tile) return [];
   if (Array.isArray(tile.units)) return tile.units;
   return tile.unit ? [tile.unit] : [];
 }
 
-/** `tile.unit` artık yığının ilk tümeni: eski okuyucular bozulmasın. */
+/** `tile.unit` yiginin ilk tumeni: eski okuyucular bozulmasin. */
 function syncTile(tile) {
   if (!tile) return;
   tile.units = tile.units ?? [];
   tile.unit = tile.units[0] ?? null;
 }
 
-/** Tümeni durduğu province'ten çıkarır. */
+/** Tumeni durdugu province'ten cikarir. */
 function detach(unit) {
   const tile = unit.tile;
   if (!tile) return;
@@ -338,7 +351,7 @@ function detach(unit) {
   syncTile(tile);
 }
 
-/** Yığın doldu mu? Dost tümen için giriş kontrolü bunu sorar. */
+/** Yigin doldu mu? Dost tumen icin giris kontrolu bunu sorar. */
 export function stackFull(tile) {
   return unitsOn(tile).length >= MAX_STACK;
 }
@@ -350,51 +363,11 @@ export function removeUnit(world, unit) {
 }
 
 export function placeUnit(unit, tile) {
+  if (unit.tile !== tile) resetEntrenchment(unit);
   detach(unit);
   unit.tile = tile;
   tile.units = tile.units ?? [];
   if (!tile.units.includes(unit)) tile.units.push(unit);
   syncTile(tile);
   if (unit.type.domain === 'land') unit.embarked = tile.terrain.water;
-}
-
-/**
- * Bir saldırı turu. Saldıran ve savunan aynı anda hasar alır;
- * savunan arazinin savunma bonusundan yararlanır.
- * @returns {{ attackerDamage: number, defenderDamage: number, defenderDied: boolean, attackerDied: boolean }}
- */
-export function resolveCombat(attacker, defender, rng, world) {
-  const attackerNation = world?.nations?.[attacker.nationId];
-  const defenderNation = world?.nations?.[defender.nationId];
-  const atkBonus = attackerNation ? techAttackBonus(attackerNation) : 0;
-  const defBonus = defenderNation ? techAttackBonus(defenderNation) : 0;
-  const siege = attackerNation ? techSiegeFactor(attackerNation) : 1;
-  return combat(attacker, defender, rng, { atkBonus, defBonus, siege });
-}
-
-function combat(attacker, defender, rng, { atkBonus, defBonus, siege }) {
-  // Şehir surları araziden bağımsız sabit bir savunma katkısı verir.
-  const city = defender.tile.city;
-  // Kuşatma bilen saldırganın karşısında surlar yarı etkili.
-  const cityBonus = city ? (0.3 + city.level * 0.1 + buildingDefense(city)) * siege : 0;
-  const terrainBonus = defender.tile.terrain.defense * (defender.type.entrenched ? 2 : 1) + cityBonus;
-  const roll = () => 0.75 + rng() * 0.5;
-  // Denizdeki kara birimi savunmasızdır: karaya çıkmadan yakalanmak pahalıya patlar.
-  const exposed = defender.embarked ? 1.6 : 1;
-
-  const atk = (attacker.type.attack + atkBonus) * tierInfo(armyTier(attacker)).power;
-  const def = (defender.type.attack + defBonus) * tierInfo(armyTier(defender)).power;
-  const defenderDamage = Math.round(atk * 10 * roll() * exposed * (1 - Math.min(0.7, terrainBonus)));
-  // Karşı saldırı daha zayıf: saldıran inisiyatifi elinde tutar.
-  const attackerDamage = Math.round(def * 10 * roll() * (defender.embarked ? 0.2 : 0.6));
-
-  defender.hp -= defenderDamage;
-  attacker.hp -= attackerDamage;
-
-  return {
-    defenderDamage,
-    attackerDamage,
-    defenderDied: defender.hp <= 0,
-    attackerDied: attacker.hp <= 0,
-  };
 }

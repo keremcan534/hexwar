@@ -580,3 +580,40 @@ koşulları yer seçimini anlamlı kılar; bir province yalnız bir yapı taşı
 Yapılar Canvas üzerinde görünür, kayıt dosyasında province ile saklanır ve şehir
 fethinde bağlı yapılar tutarlı biçimde el değiştirir. Başsız bütünlük koşusunda
 212 yapı üretildi ve sahipsiz/geçersiz yapı sayısı sıfır kaldı.
+
+## 22. Ölü katmanların sökülmesi ve çalışan bir zafer koşulu
+
+Rework sırasında sökülen sistemlerin arkasında kalan ulaşılamaz kod temizlendi:
+eski şehir binası katmanı, yol ağı, ordu modernizasyonu, province geliştirme ve
+şehir nüfus büyümesi. Hiçbiri bir çağrı noktasına bağlı değildi; bir kısmı
+bütçede daima sıfır olan gider satırları üretiyordu. Kayıt şeması v8'e çıktı ve
+kare kaydından ölü yol/yapı alanları düştü.
+
+Zafer koşulu çalışmıyordu. Ölçüm, lider ülkenin hegemonya puanının 300 hafta
+boyunca **sabit** kaldığını gösterdi:
+
+| | hafta 50 | hafta 300 |
+|---|---:|---:|
+| Puan | 117 | 126 |
+| Province | 136 | 141 |
+| Şehir | 4 | 5 |
+| Nüfus | 685K | 721K |
+| Fabrika seviyesi | 4 | 13 |
+
+Puan formülü ham üretim ve prestijden oluşuyordu; ikisi de ilk elli haftada
+donuyor. Büyüyen tek eksen olan sanayi ise puana hiç girmiyordu. Bu yüzden eşiği
+düşürmek işe yaramazdı: oyun 50. haftada biterdi. Kurulu fabrika seviyesi
+ağırlık 10 ile ekonomi bileşenine bağlandı; puan artık 187'den 440'a çıkıyor.
+
+Eşik ölçümle seçildi. 12 oyunluk koşularda:
+
+| Eşik | Ortalama bitiş | En erken | Eşiğe ulaşarak biten |
+|---:|---:|---:|---:|
+| 400 | 235 | 179 | %83 |
+| 420 | 263 | 189 | %58 |
+| 440 | 277 | 205 | %42 |
+
+400 seçildi: ortalama 220-300 haftalık tasarım ufkunun içinde kalıyor ve
+oyunların çoğu süre dolarak değil, gerçekten hedefe ulaşarak bitiyor. Bedeli,
+geç oyunda puanın çoğunluğunun sanayiden gelmesi. Fetih ya da province gelişimi
+tekrar büyümeye başlarsa ağırlık yeniden ölçülmeli.

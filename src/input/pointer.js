@@ -4,13 +4,12 @@
 //   sol tık            → seç
 //   sol sürükle        → kutu (marquee) seçimi, masaüstünde klasör seçer gibi
 //   sağ tık            → seçili birimleri yürüt
-//   sağ sürükle        → cephe hattı çiz
+//   sağ sürükle        → bırakılan province'e yürüt
 //   orta sürükle       → kamerayı kaydır (sol tuş artık seçim için ayrıldı)
 //   tekerlek           → yakınlaş
 //
 // Dokunmatikte sağ tuş yok: tek parmak kaydırır, basılı tutup sürüklemek kutu
-// seçimi yapar, iki parmak pinch zoom. Cephe çizimi dokunmatikte açık bir
-// "çizim kipi" ile yapılır (bkz. game.drawMode), jest çakışması olmasın.
+// seçimi yapar, iki parmak pinch zoom.
 
 const TAP_MOVE_LIMIT = 12;   // CSS piksel
 const TAP_TIME_LIMIT = 300;  // ms
@@ -34,7 +33,7 @@ export class PointerController {
     this.velocity = { x: 0, y: 0 };
     this.lastMoveTime = 0;
     this.gesture = null; // 'pan' | 'pinch'
-    this.rightDrag = null;   // { id, points[] } — cephe cizimi
+    this.rightDrag = null;   // { id, points[] } — sag tus yuruyus jesti
     this.marquee = null;     // { id, start, current, active } — kutu secimi
     this.longPress = 0;
 
@@ -95,10 +94,7 @@ export class PointerController {
     try { this.el.releasePointerCapture?.(pointerId); } catch { /* zaten birakilmis */ }
   }
 
-  /**
-   * Sürükleme başlar. Çizim kipi açıkken (dokunmatikte sağ tuş yok, bkz.
-   * game.drawMode) sürükleme cephe hattı çizer, değilse kutu seçimi yapar.
-   */
+  /** Secim kutusunu baslatir. Eski cizim-kipi kancasi geriye uyumludur. */
   beginMarquee(pointerId, start) {
     if (this.handlers.isDrawMode?.()) {
       this.rightDrag = { id: pointerId, points: [start], moved: TAP_MOVE_LIMIT + 1 };
@@ -125,7 +121,7 @@ export class PointerController {
   onDown = (e) => {
     const mouse = e.pointerType === 'mouse';
 
-    // Sağ tuş: cephe çizimi (sürüklenirse) ya da yürüyüş emri (bırakılırsa).
+    // Sağ tuş: tikta veya surukleyip birakista yuruyus emri.
     if (mouse && e.button === 2) {
       e.preventDefault();
       const p = this.localPos(e);
@@ -157,8 +153,7 @@ export class PointerController {
       return;
     }
 
-    // Çizim kipi açıkken dokunuş uzun basış beklemeden doğrudan çizime girer:
-    // kipi zaten oyuncu açtı, ayrıca bekletmek anlamsız.
+    // Istege bagli kip kancasi eski istemcilerle uyumluluk icindir.
     if (this.handlers.isDrawMode?.()) {
       e.preventDefault();
       this.beginMarquee(e.pointerId, this.localPos(e));

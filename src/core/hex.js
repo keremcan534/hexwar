@@ -81,27 +81,10 @@ export function hexesInRange(cq, cr, radius) {
   return out;
 }
 
-/** İki hex arasındaki düz hat (görüş/menzil hesapları için). */
-export function hexLine(aq, ar, bq, br) {
-  const n = hexDistance(aq, ar, bq, br);
-  if (n === 0) return [{ q: aq, r: ar }];
-  const out = [];
-  for (let i = 0; i <= n; i++) {
-    const t = i / n;
-    // Bağ (tie) durumlarında kararlılık için minik epsilon.
-    out.push(hexRound(aq + (bq - aq) * t + 1e-6, ar + (br - ar) * t + 1e-6));
-  }
-  return out;
-}
-
 // --- Offset (odd-r) <-> axial dönüşümleri: dikdörtgen harita depolaması için ---
 
 export function offsetToAxial(col, row) {
   return { q: col - ((row - (row & 1)) >> 1), r: row };
-}
-
-export function axialToOffset(q, r) {
-  return { col: q + ((r - (r & 1)) >> 1), row: r };
 }
 
 /** Harita anahtarı. Sayısal anahtar, string'den çok daha hızlı. */

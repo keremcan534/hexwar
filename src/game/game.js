@@ -9,25 +9,21 @@ import { PointerController } from '../input/pointer.js';
 import { pixelToHex, hexDistance } from '../core/hex.js';
 import { randomSeed } from '../core/rng.js';
 import { reachable } from '../core/pathfind.js';
-import { clearPath, placeUnit, speedOf, stackFull, unitsOn } from './units.js';
+import { armyPower, clearPath, placeUnit, speedOf, stackFull, unitsOn } from './units.js';
 import { orderMove } from './movement.js';
 import { TurnManager } from './turn.js';
-import { captureCity } from './cities.js';
 import { atWar, considerPeaceOffer, declareWar } from './diplomacy.js';
-import { INFAMY, addInfamy } from './infamy.js';
 import { assignAllWorkers, nationBudget } from './cities.js';
+import { controllerOf } from './control.js';
 import { loadFromStorage, saveToStorage } from './save.js';
 import {
   ORDER, clearOrder, executeOrders, idleUnits, setOrder,
 } from './orders.js';
-import { roadMoveCost } from './infrastructure.js';
-import { startBattle } from './battles.js';
-import { BUILDINGS, buildingPlacementTiles } from './buildings.js';
+import { MAX_ASSAULT_DIVISIONS, battleAt, startBattle } from './battles.js';
 import {
-  PLAN, assignArmy, borderTiles, chainTiles, createFront, deleteFront, fillGaps,
-  frontsOf, frontsOfGeneral, plannedPath, reconcileFronts, spanObjective,
-} from './fronts.js';
-import { assignDivisions, divisionsOf, generalOfArmy } from './generals.js';
+  STANCE, assignDivisions, divisionsOf, frontTilesOf, generalOfArmy, refreshFront, setTarget,
+  toggleStance,
+} from './command.js';
 
 /** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */
 const SPEEDS = [0, 1, 2, 4];
@@ -35,9 +31,8 @@ const SPEEDS = [0, 1, 2, 4];
 /** Bir oyun günü kaç ms sürer (1x hızda) ve haftada kaç gün var. */
 const DAY_MS = 220;
 const DAYS_PER_WEEK = 7;
-
-/** Sınıra oturan cephe hattının bir seferde kapsadığı province sayısı. */
-const BORDER_SEGMENT = 12;
+/** Dusman province'i alindiktan sonra yeni taarruzdan once ikmal suresi. */
+const CONSOLIDATION_WEEKS = 2;
 
 /**
  * Çok sayıda ordu tek kareye gönderilirse hepsi aynı hexe tıkışır ve
@@ -70,19 +65,14 @@ export class Game {
     this.selected = null;
     this.hovered = null;
     this.selectedUnit = null;
-    this.buildingPlacement = null;
-    this.frontDraw = null;   // sürüklenirken oluşan geçici cephe hattı
     this.marquee = null;     // sürüklenirken oluşan seçim kutusu
-    this.drawMode = null;    // 'front' | 'fallback' | 'arrow' — sürükleme çizim kipi
-    this.borderPreview = null;  // çizim kipinde vurgulanan sınır parçası
     this.activeGeneral = null;  // komuta arayüzünde seçili general
-    this.selectedFront = null;
     this.selected_ = [];     // seçili ordular (bkz. selectUnits)
     this.reachable = null;   // { costs, prev } — seçili birimin menzili
     this.turns = new TurnManager(this);
     this.listeners = {
       select: [], world: [], turn: [], units: [], clock: [], economy: [],
-      battles: [], provinces: [], placement: [], victory: [], fronts: [], selection: [],
+      battles: [], provinces: [], construction: [], victory: [], selection: [],
       command: [],
     };
     this.dirty = false;
@@ -97,12 +87,13 @@ export class Game {
       onTap: (x, y) => this.handleTap(x, y),
       onHover: (x, y) => this.handleHover(x, y),
       onChange: () => this.requestRender(),
-      onRightDragStart: (x, y) => this.beginFrontDraw(x, y),
-      onRightDragMove: (x, y) => this.extendFrontDraw(x, y),
-      onRightDragEnd: () => this.finishFrontDraw(),
-      onRightDragCancel: () => this.cancelFrontDraw(),
       onRightTap: (x, y) => this.handleRightTap(x, y),
-      isDrawMode: () => Boolean(this.drawMode),
+      // Sağ sürükleme de yürüyüş emridir: bırakılan yer hedeftir. Cephe artık
+      // elle çizilmiyor (bkz. command.js), sürüklemenin başka bir işi yok.
+      onRightDragEnd: (points) => {
+        const last = points?.[points.length - 1];
+        if (last) this.handleRightTap(last.x, last.y);
+      },
       onMarqueeStart: (x, y) => this.beginMarquee(x, y),
       onMarqueeMove: (rect) => this.updateMarquee(rect),
       onMarqueeEnd: (rect) => this.finishMarquee(rect),
@@ -138,13 +129,8 @@ export class Game {
     this.hovered = null;
     this.selectedUnit = null;
     this.selected_ = [];
-    this.buildingPlacement = null;
-    this.frontDraw = null;
     this.marquee = null;
-    this.drawMode = null;
-    this.borderPreview = null;
     this.activeGeneral = null;
-    this.selectedFront = null;
     this.reachable = null;
     this.turns.start(this.world);
     this.renderer.invalidateCache();
@@ -164,33 +150,33 @@ export class Game {
     return this.world.get(q, r) ?? null;
   }
 
+  /** Gorunen amblemin kenari komsu province sayilmasin. */
+  unitAtScreen(sx, sy) {
+    if (!this.world || !this.camera?.worldToScreen) return null;
+    const hitRadius = Math.max(9, HEX_SIZE * 0.92 * this.camera.zoom);
+    let best = null;
+    let bestDistance = Infinity;
+    for (const unit of this.world.units) {
+      if (!unit?.tile || unit.hp <= 0) continue;
+      const y = unit.tile.y + (unit.tile.city ? HEX_SIZE * 0.22 : 0);
+      const point = this.camera.worldToScreen(unit.tile.x, y);
+      const distance = Math.hypot(point.x - sx, point.y - sy);
+      if (distance <= hitRadius && distance < bestDistance) {
+        best = unit;
+        bestDistance = distance;
+      }
+    }
+    return best;
+  }
+
   /**
    * Sol tık = seçim (HOI4). Üstünde ordu varsa onu seçer, yoksa seçimi bırakır.
    * Yürütme sağ tuşa taşındı; sol tık artık asla emir vermez.
    */
   handleTap(sx, sy) {
-    const tile = this.tileAtScreen(sx, sy);
+    const hitUnit = this.unitAtScreen(sx, sy);
+    const tile = hitUnit?.tile ?? this.tileAtScreen(sx, sy);
     this.selected = tile;
-
-    if (tile && this.buildingPlacement) {
-      const buildingId = this.buildingPlacement.buildingId;
-      const placed = this.buildingPlacement.tiles.has(tile)
-        && this.turns.buildAt(tile, buildingId, this.turns.playerNation);
-      if (placed) this.cancelBuildingPlacement();
-      this.emit('select', tile);
-      this.requestRender();
-      return;
-    }
-
-    // Cephe/geri çekilme kipinde tıklamak vurgulanan sınıra hattı oturtur.
-    if (['front', 'fallback'].includes(this.drawMode)) {
-      const preview = this.borderPreview ?? this.borderPreviewAt(tile);
-      if (preview) {
-        this.commitBorderFront(preview);
-        this.emit('select', tile);
-        return;
-      }
-    }
 
     // Kendi ordumuza tıklamak o province'teki bütün tümenlerini seçer
     // (tümenler birleşmiyor, bir karede birkaçı olabilir); başka her yere
@@ -207,21 +193,78 @@ export class Game {
    * hedefler yayılır, yoksa hepsi tek kareye tıkışıp birbirini bloklar.
    */
   handleRightTap(sx, sy) {
-    const tile = this.tileAtScreen(sx, sy);
+    const hitUnit = this.unitAtScreen(sx, sy);
+    const tile = hitUnit?.tile ?? this.tileAtScreen(sx, sy);
     if (!tile || !this.selection.length) return false;
+
+    const selected = [...this.selection];
+    const controller = controllerOf(tile);
+    const foreignOwner = controller >= 0 && controller !== this.turns.playerNation;
+    const hostileUnits = unitsOn(tile).filter((unit) => (
+      unit.nationId !== this.turns.playerNation
+      && atWar(this.world, unit.nationId, this.turns.playerNation)
+    ));
+    const hostileTarget = hostileUnits.length > 0 || (
+      foreignOwner && atWar(this.world, controller, this.turns.playerNation)
+    );
+    if (hostileTarget) {
+      const defenders = hostileUnits;
+      let issued = 0;
+      if (defenders.length) {
+        // Tek sag tik tek province operasyonudur. Bitişik secili tumenler ayni
+        // muharebeye katilir; battles.js combat width fazlasini reddeder.
+        const participants = selected.filter((unit) => (
+          unit && unit.hp > 0 && !unit.battleId && !unit.embarked
+        )).sort((a, b) => (
+          hexDistance(a.tile.q, a.tile.r, tile.q, tile.r)
+          - hexDistance(b.tile.q, b.tile.r, tile.q, tile.r)
+          || armyPower(b) - armyPower(a) || a.id - b.id
+        )).slice(0, MAX_ASSAULT_DIVISIONS);
+        for (const unit of participants) {
+          const adjacent = hexDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) === 1;
+          if (adjacent && this.attack(unit, tile)) issued++;
+          else if (orderMove(this, unit, tile)) issued++;
+        }
+      } else {
+        // Bos dusman province'i bir tikla yalniz bir tumen alir; toplu secim
+        // cevredeki birden cok province'i ayni anda yutamaz.
+        const candidates = selected.filter((unit) => (
+          unit && unit.hp > 0 && !unit.battleId && this.canEnterFor(unit)(tile)
+        )).sort((a, b) => (
+          hexDistance(a.tile.q, a.tile.r, tile.q, tile.r)
+          - hexDistance(b.tile.q, b.tile.r, tile.q, tile.r)
+          || armyPower(b) - armyPower(a) || a.id - b.id
+        ));
+        if (candidates[0] && orderMove(this, candidates[0], tile)) issued = 1;
+      }
+      this.selected = tile;
+      this.emit('select', tile);
+      this.emit('units', this.selectedUnit);
+      this.requestRender();
+      return issued > 0;
+    }
 
     const spread = spreadTargets(this.world, tile, this.selection.length);
     let issued = 0;
     this.selection.forEach((unit, index) => {
       if (!unit || unit.hp <= 0 || unit.battleId) return;
-      const target = spread[index] ?? tile;
-      const enemy = target.unit && target.unit.nationId !== unit.nationId;
-      if (enemy && hexDistance(unit.tile.q, unit.tile.r, target.q, target.r) === 1) {
-        if (this.attack(unit, target)) issued++;
-        return;
-      }
-      if (target !== unit.tile && this.canEnterFor(unit)(target)) {
-        if (orderMove(this, unit, target)) issued++;
+      const choices = [spread[index], tile, ...spread].filter(Boolean);
+      const tried = new Set();
+      for (const target of choices) {
+        if (tried.has(target) || target === unit.tile) continue;
+        tried.add(target);
+        const enemy = unitsOn(target).find((other) => (
+          other.nationId !== unit.nationId
+          && atWar(this.world, other.nationId, unit.nationId)
+        ));
+        if (enemy && hexDistance(unit.tile.q, unit.tile.r, target.q, target.r) === 1) {
+          if (this.attack(unit, target)) issued++;
+          break;
+        }
+        if (this.canEnterFor(unit)(target) && orderMove(this, unit, target)) {
+          issued++;
+          break;
+        }
       }
     });
 
@@ -301,16 +344,17 @@ export class Game {
   canEnterFor(unit) {
     const world = this.world;
     // Barış içindeki ülkenin toprağına girilmez: sınırlar ancak savaşla aşılır.
-    const allowed = (tile) => tile.owner < 0
-      || tile.owner === unit.nationId
-      || atWar(world, tile.owner, unit.nationId);
+    const allowed = (tile) => {
+      const controller = controllerOf(tile);
+      return controller < 0 || controller === unit.nationId
+        || atWar(world, controller, unit.nationId);
+    };
 
-    // Dost tümenler aynı province'te yan yana durabilir (birleşmezler);
-    // yığın tavanı dolduysa ya da içeride muharebe varsa girilmez.
+    // Dost tümenler aynı province'te yan yana durabilir (birleşmezler).
+    // Muharebe varsa gelen dost takviye hareket katmanında o savaşa yazılır.
     const openOrFriendly = (tile) => !tile.unit || (
       tile.unit.nationId === unit.nationId
       && tile.unit.type.domain === unit.type.domain
-      && !tile.unit.battleId
       && !stackFull(tile)
     );
 
@@ -322,7 +366,7 @@ export class Game {
   }
 
   costForUnit() {
-    return (tile) => (tile.terrain.water ? tile.terrain.seaCost : roadMoveCost(tile));
+    return (tile) => (tile.terrain.water ? tile.terrain.seaCost : tile.terrain.moveCost);
   }
 
   /**
@@ -347,215 +391,84 @@ export class Game {
 
   /** Bir birimin kareye girişi: yerleş, toprağı al, şehirse ele geçir. */
   enterTile(unit, tile) {
+    const previousController = controllerOf(tile);
     placeUnit(unit, tile);
-    this.turns.claim(tile, unit.nationId);
-    const city = tile.city;
-    if (city && city.nationId !== unit.nationId) {
-      const old = this.world.nations[city.nationId];
-      captureCity(this, city, unit.nationId);
-      // Şehir almak en pahalı fetihtir: bir ülkeyi yutmak dünyayı üstüne çeker.
-      addInfamy(this.world.nations[unit.nationId], INFAMY.CITY);
-      this.turns.addLog(`${city.name} captured from ${old.name}.`);
+    const occupied = this.turns.occupy(tile, unit.nationId);
+    const conquered = occupied && previousController >= 0
+      && previousController !== unit.nationId;
+    if (conquered) {
+      unit.attackReadyAt = Math.max(
+        unit.attackReadyAt ?? 0, this.turns.turn + CONSOLIDATION_WEEKS,
+      );
     }
+    const city = tile.city;
+    if (conquered && city && city.nationId !== unit.nationId) {
+      // Sehir hukuken eski ulkede kalir; baris antlasmasi devri kesinlestirir.
+      this.turns.addLog(`${city.name} occupied; sovereignty will be decided at peace.`);
+    }
+    return conquered;
   }
 
   attack(unit, tile) {
-    const defender = tile.unit;
-    if (!defender || defender.nationId === unit.nationId) return false;
+    const defender = unitsOn(tile).find((other) => other.nationId !== unit.nationId);
+    if (!defender) return false;
     if (hexDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) !== 1) return false;
     // Denizdeki kara birimi savaşamaz; önce karaya çıkmalı.
     if (unit.embarked) return false;
+    if ((unit.attackReadyAt ?? 0) > this.turns.turn) return false;
     // Barış içindeki ülkeye saldırmak için önce savaş ilan edilmeli.
     if (!atWar(this.world, unit.nationId, defender.nationId)) return false;
 
-    if (!startBattle(this, unit, defender)) return false;
+    // Ayni general yeni bir province taarruzunu cadence dolmadan acamaz.
+    // Mevcut muharebeye combat-width icinde takviye girmek serbesttir.
+    const existing = battleAt(this.world, tile);
+    const general = generalOfArmy(this.world.nations[unit.nationId], unit);
+    if (!existing && general && this.turns.turn < (general.nextAssaultAt ?? 0)) return false;
+
+    // Muharebe kareye aittir: o province'teki bütün savunanlar aynı savaşa girer.
+    if (!startBattle(this, unit, tile)) return false;
     if (unit === this.selectedUnit) this.selectUnit(unit);
     this.emit('units', this.selectedUnit);
     this.requestRender();
     return true;
   }
 
-  // --- Cephe çizimi: sağ tuşu sürükleyerek hat kurulur ---
-
-  beginFrontDraw(sx, sy) {
-    const tile = this.tileAtScreen(sx, sy);
-    this.frontDraw = { tiles: tile ? [tile] : [] };
-    this.requestRender();
-  }
-
-  extendFrontDraw(sx, sy) {
-    if (!this.frontDraw) return;
-    const tile = this.tileAtScreen(sx, sy);
-    const tiles = this.frontDraw.tiles;
-    // Aynı kareyi tekrar eklemeyiz; hat sürükleme sırasını korur.
-    if (tile && tile !== tiles[tiles.length - 1] && !tiles.includes(tile)) {
-      tiles.push(tile);
-      this.requestRender();
-    }
-  }
+  // --- Komuta duruşu: cephe çizilmez, generale verilir ---
 
   /**
-   * Çizim biter ve plan kurulur. Plan tipi çizim kipinden gelir; kip yoksa
-   * (masaüstünde düz sağ sürükleme) nerede çizildiğine bakılır — kendi
-   * toprağımızın içi geri çekilme hattı, sınır/düşman cephe hattıdır.
-   */
-  finishFrontDraw() {
-    const draw = this.frontDraw;
-    const mode = this.drawMode;
-    this.frontDraw = null;
-    this.drawMode = null;
-    if (!draw || draw.tiles.length < 2) {
-      // Sürüklenmeden bırakıldı: bu bir tıklamadır. Cephe/geri çekilme kipinde
-      // tıklamak "vurgulanan sınıra hattı kur" demek. Çizim kipindeyken sol tık
-      // handleTap'e ulaşmıyor (giriş katmanı onu sürükleme sayıyor), o yüzden
-      // sınıra oturtma bu daldan yapılmalı.
-      if (mode === 'front' || mode === 'fallback') {
-        const preview = this.borderPreview ?? this.borderPreviewAt(draw?.tiles?.[0] ?? null);
-        if (preview) {
-          this.drawMode = mode;
-          return this.commitBorderFront(preview);
-        }
-      }
-      this.requestRender();
-      return null;
-    }
-    const nation = this.world.nations[this.turns.playerNation];
-    if (!nation?.alive) return null;
-
-    let plan;
-    if (mode === 'fallback') plan = PLAN.HOLD;
-    else if (mode === 'arrow') plan = PLAN.ARROW;
-    else if (mode === 'front') plan = PLAN.ADVANCE;
-    else {
-      const ownShare = draw.tiles.filter((tile) => tile.owner === nation.id).length
-        / draw.tiles.length;
-      plan = ownShare > 0.85 ? PLAN.HOLD : PLAN.ADVANCE;
-    }
-
-    // Plan seçili generalindir; yoksa seçili tümenlerin komutanı devralır.
-    const general = this.activeGeneral
-      ?? generalOfArmy(nation, this.selection[0])
-      ?? null;
-
-    const front = plan === PLAN.ARROW
-      ? this.createOffensive(nation, general, draw.tiles)
-      : createFront(this, nation, draw.tiles, plan, general?.id ?? null);
-
-    if (front) {
-      // Generalin bütün tümenleri, yoksa seçili tümenler hatta katılır.
-      const armies = general ? divisionsOf(this.world, general) : this.selection;
-      for (const unit of armies) assignArmy(this.world, front, unit);
-    }
-    this.selectedFront = front;
-    this.emit('fronts', front);
-    this.requestRender();
-    return front;
-  }
-
-  /**
-   * Taarruz planı: çizilen hat *hedeftir*, cephe değil. Başlangıç hattı ya
-   * generalin mevcut cephesidir ya da hedefe bakan sınırımızdır. Kopuk çizilen
-   * hedef hattının boşlukları doldurulur; tek kare seçilirse ondan bir hat
-   * türetilir (HOI4'te olduğu gibi ok bir *hatta* ilerler).
-   */
-  createOffensive(nation, general, drawn) {
-    const world = this.world;
-    const objective = drawn.length > 1
-      ? fillGaps(world, chainTiles(drawn))
-      : null;
-
-    // Başlangıç hattı: generalin mevcut cephesi, yoksa hedefe en yakın sınırımız.
-    const existing = general
-      ? frontsOfGeneral(world, general).find((item) => item.plan !== PLAN.ARROW)
-      : null;
-    const anchor = objective?.[Math.floor(objective.length / 2)] ?? drawn[0];
-    let start = existing
-      ? existing.tiles.map((point) => world.get(point.q, point.r)).filter(Boolean)
-      : this.borderPreviewAt(anchor)?.tiles ?? [];
-    if (!start.length) {
-      // Sınır bulunamadıysa en yakın kendi karelerimizden bir hat kur.
-      const own = borderTiles(world, nation.id, null);
-      own.sort((a, b) => hexDistance(a.q, a.r, anchor.q, anchor.r)
-        - hexDistance(b.q, b.r, anchor.q, anchor.r));
-      start = chainTiles(own.slice(0, 6));
-    }
-    if (!start.length) return null;
-
-    // Tek kare hedef: başlangıç hattının ortasından bakıp bir hedef hattı türet.
-    const objectiveTiles = objective
-      ?? spanObjective(world, drawn[0], start[Math.floor(start.length / 2)]);
-
-    const front = createFront(this, nation, start, PLAN.ARROW, general?.id ?? null);
-    if (front) {
-      front.objective = objectiveTiles.map((tile) => ({ q: tile.q, r: tile.r }));
-    }
-    return front;
-  }
-
-  cancelFrontDraw() {
-    this.frontDraw = null;
-    this.requestRender();
-  }
-
-  /**
-   * Çizim kipi: 'front' cephe hattı, 'fallback' geri çekilme hattı, 'arrow'
-   * taarruz oku. Masaüstünde düz sağ sürükleme kipsiz de çizer.
-   */
-  setDrawMode(mode) {
-    this.drawMode = ['front', 'fallback', 'arrow'].includes(mode) ? mode : null;
-    if (!this.drawMode) this.frontDraw = null;
-    this.borderPreview = null;
-    this.emit('fronts', this.selectedFront);
-    this.requestRender();
-    return this.drawMode;
-  }
-
-  toggleDrawMode(mode = 'front') {
-    return this.setDrawMode(this.drawMode === mode ? null : mode);
-  }
-
-  /**
-   * Taarruz aç/kapa. Ayrı bir ok çizmek yerine, generalin cephesi ilerleme
-   * kipine geçer: tümenler hat boyunca kendiliğinden ilerler. Kapatınca hat
-   * bulunduğu yerde tutulur.
+   * Taarruz aç/kapa. Cephe artık elle çizilmiyor: seçili generalin ordu grubu
+   * ya hattını tutar ya da önündeki province'lere yürür (bkz. command.js).
    *
-   * Çizim yerine düğme: ok çizmek hem zahmetliydi hem de ordular hattan kopup
-   * tek tek dalarak sınırı parçalıyordu (bordergore).
+   * Çizim kalktı çünkü çizilen hat sınırla çelişiyordu — sınır değişince hat
+   * yeniden kuruluyor, tümenler her hafta baştan diziliyordu.
    */
   toggleOffensive() {
-    const nation = this.world.nations[this.turns.playerNation];
     const general = this.activeGeneral;
-    if (!nation?.alive || !general) return null;
-
-    let front = frontsOfGeneral(this.world, general).find((f) => f.plan !== PLAN.ARROW);
-    if (!front) {
-      // Cephesi yoksa düşmanla olan sınırımıza kendiliğinden bir hat kurulur.
-      const tiles = chainTiles(borderTiles(this.world, nation.id, null));
-      if (tiles.length < 2) return null;
-      front = createFront(this, nation, tiles, PLAN.ADVANCE, general.id, null);
-      if (!front) return null;
-      for (const unit of divisionsOf(this.world, general)) assignArmy(this.world, front, unit);
-    }
-
-    if (front.active) {
-      front.active = false;
-      front.plan = PLAN.HOLD;
-    } else {
-      front.plan = PLAN.ADVANCE;
-      front.active = true;
-    }
-    this.selectedFront = front;
-    this.emit('fronts', front);
+    if (!general) return null;
+    const stance = toggleStance(this.world, general);
+    this.emit('command', general);
     this.requestRender();
-    return front;
+    return stance;
   }
 
   /** Seçili generalin taarruzu yürüyor mu? */
   offensiveActive() {
+    return this.activeGeneral?.stance === STANCE.ADVANCE;
+  }
+
+  /** Ordu grubunun izleyeceği düşman; null = savaşta olduğumuz herkes. */
+  setCommandTarget(nationId) {
     const general = this.activeGeneral;
-    if (!general) return false;
-    return frontsOfGeneral(this.world, general)
-      .some((front) => front.plan === PLAN.ADVANCE && front.active);
+    if (!general) return null;
+    const target = setTarget(this.world, general, nationId);
+    this.emit('command', general);
+    this.requestRender();
+    return target;
+  }
+
+  /** Seçili generalin cephe kareleri (çizim ve panel için). */
+  frontTiles(general = this.activeGeneral) {
+    return general ? frontTilesOf(this.world, general) : [];
   }
 
   // --- Komuta: general seçimi ve tümen devri ---
@@ -565,8 +478,11 @@ export class Game {
     this.activeGeneral = general ?? null;
     if (!general) {
       this.emit('command', null);
+      this.requestRender();
       return [];
     }
+    // Cephesi çizim için tazelenir: hedefi ya da sınırı değişmiş olabilir.
+    refreshFront(this.world, general);
     const divisions = divisionsOf(this.world, general);
     this.selectUnits(divisions);
     if (divisions.length) {
@@ -583,18 +499,12 @@ export class Game {
     const nation = this.world.nations[this.turns.playerNation];
     if (!general || !nation || !this.selection.length) return 0;
     const moved = assignDivisions(nation, general.id, this.selection);
-    reconcileFronts(this.world);
+    refreshFront(this.world, general);
     this.activeGeneral = general;
     this.emit('command', general);
     this.emit('selection', this.selection);
     this.requestRender();
     return moved;
-  }
-
-  selectFront(front) {
-    this.selectedFront = front ?? null;
-    this.emit('fronts', this.selectedFront);
-    this.requestRender();
   }
 
   // --- Sürekli emirler: mikro yönetimi azaltan katman ---
@@ -705,27 +615,6 @@ export class Game {
     else this.emit('selection', alive);
   }
 
-  beginBuildingPlacement(buildingId) {
-    const building = BUILDINGS[buildingId];
-    if (!building || !this.world) return false;
-    const tiles = buildingPlacementTiles(
-      this.world, this.turns.playerNation, buildingId, 2,
-    );
-    if (!tiles.size) return false;
-    this.selectUnit(null);
-    this.buildingPlacement = { buildingId, tiles };
-    this.emit('placement', this.buildingPlacement);
-    this.requestRender();
-    return true;
-  }
-
-  cancelBuildingPlacement() {
-    if (!this.buildingPlacement) return;
-    this.buildingPlacement = null;
-    this.emit('placement', null);
-    this.requestRender();
-  }
-
   /** 0 = duraklat, 1/2/4 = gerçek zaman hızları. Bir simülasyon adımı bir haftadır. */
   setSpeed(speed) {
     const next = SPEEDS.includes(Number(speed)) ? Number(speed) : 0;
@@ -769,97 +658,9 @@ export class Game {
 
   handleHover(sx, sy) {
     const tile = this.tileAtScreen(sx, sy);
-    const changed = tile !== this.hovered;
+    if (tile === this.hovered) return;
     this.hovered = tile;
-    // Cephe/geri cekilme kipinde imlecin yakinindaki sinir parlar; tiklayinca
-    // hat oraya oturur. Elle hex hex cizmek gerekmesin.
-    const wanted = ['front', 'fallback'].includes(this.drawMode)
-      ? this.borderPreviewAt(tile)
-      : null;
-    const same = wanted?.key === this.borderPreview?.key;
-    if (changed || !same) {
-      this.borderPreview = wanted;
-      this.requestRender();
-    }
-  }
-
-  /**
-   * Imlecin altindaki/yakinindaki sinir hatti. Once o karenin komsusu olan
-   * yabanci ulke bulunur, sonra o ulkeyle olan sinirin imlece yakin parcasi
-   * dondurulur.
-   */
-  borderPreviewAt(tile) {
-    if (!tile || !this.world) return null;
-    const nationId = this.turns.playerNation;
-    const nation = this.world.nations[nationId];
-    if (!nation?.alive) return null;
-
-    // İmlecin bulunduğu ya da bitişiğindeki yabancı ülke hedeftir. Komşuda
-    // sahipli bir ülke yoksa (sınırımız boş araziye bakıyorsa) genel cephe
-    // hattına düşeriz — erken oyunda sınırların çoğu böyledir.
-    const candidates = [tile, ...this.world.neighbors(tile)];
-    let foreignId = null;
-    for (const candidate of candidates) {
-      if (candidate.owner >= 0 && candidate.owner !== nationId) {
-        foreignId = candidate.owner;
-        break;
-      }
-    }
-    // O ülkeyle temasımız bir province'ten ibaretse hat kurulamaz; böyle
-    // durumda imlecin çevresindeki genel sınıra genişleriz. Yoksa dar temaslı
-    // sınırlarda düğme hiçbir şey yapmıyormuş gibi görünüyordu.
-    let all = borderTiles(this.world, nationId, foreignId);
-    if (all.length < 2) {
-      foreignId = null;
-      all = borderTiles(this.world, nationId, null);
-    }
-    if (all.length < 2) return null;
-    // Uzun sinirin tamami degil, imlece en yakin parcasi secilir.
-    const chain = chainTiles(all);
-    let closest = 0;
-    let bestDistance = Infinity;
-    chain.forEach((candidate, index) => {
-      const distance = hexDistance(candidate.q, candidate.r, tile.q, tile.r);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        closest = index;
-      }
-    });
-    const half = Math.floor(BORDER_SEGMENT / 2);
-    const from = Math.max(0, closest - half);
-    const tiles = chain.slice(from, from + BORDER_SEGMENT);
-    return {
-      foreignId,
-      tiles,
-      key: `${foreignId ?? 'frontier'}:${tiles[0]?.q}:${tiles[0]?.r}:${tiles.length}`,
-    };
-  }
-
-  /** Vurgulanan sinira cephe/geri cekilme hatti kurar. */
-  commitBorderFront(preview) {
-    const nation = this.world.nations[this.turns.playerNation];
-    if (!preview?.tiles?.length || !nation?.alive) return null;
-    const plan = this.drawMode === 'fallback' ? PLAN.HOLD : PLAN.ADVANCE;
-    const general = this.activeGeneral ?? generalOfArmy(nation, this.selection[0]) ?? null;
-    // Hedef ülke cepheye yazılır: hat her hafta o sınırdan yeniden kurulur.
-    // Yeni hat kurulmadan önce eskiler silinir: aksi hâlde bir generalin eski
-    // parlaması haritada kalıyor ve iki hat üst üste biniyordu.
-    for (const old of frontsOf(this.world, nation.id)) {
-      if (old.plan !== PLAN.ARROW) deleteFront(this, old);
-    }
-    const front = createFront(
-      this, nation, preview.tiles, plan, general?.id ?? null, preview.foreignId ?? null,
-    );
-    if (front) {
-      const armies = general ? divisionsOf(this.world, general) : this.selection;
-      for (const unit of armies) assignArmy(this.world, front, unit);
-    }
-    this.drawMode = null;
-    this.borderPreview = null;
-    this.selectedFront = front;
-    this.emit('fronts', front);
     this.requestRender();
-    return front;
   }
 
   focusNation(nation) {
@@ -888,17 +689,11 @@ export class Game {
           hovered: this.hovered,
           selectedUnit: this.selectedUnit,
           playerNation: this.turns.playerNation,
-          frontDraw: this.frontDraw,
-          drawMode: this.drawMode,
-          borderPreview: this.borderPreview,
-          plannedPath: this.selectedFront?.plan === PLAN.ARROW
-            ? plannedPath(this.world, this.selectedFront)
-            : null,
-          selectedFront: this.selectedFront,
+          activeGeneral: this.activeGeneral,
+          front: this.frontTiles(),
           selection: this.selection,
           marquee: this.marquee,
           reachable: this.reachable,
-          buildingPlacement: this.buildingPlacement,
         });
       }
     }

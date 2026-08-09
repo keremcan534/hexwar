@@ -1,20 +1,34 @@
-// EU4 tarzı province muharebesi. Haritadaki ordu yığınları düşman province'inde
-// karşılaşır; savaş haftalık turlarda güç ve moral aşındırır, kaybeden geri çekilir.
+// Province muharebesi. Muharebe bir *kareye* aittir, iki tumene degil: o
+// province'te savunan butun tumenler ile oraya saldiran butun tumenler tek bir
+// muharebede toplanir.
+//
+// Eskiden muharebe tumen ciftiydi. Bir karede dort tumen durabildigi icin
+// saldiran birine vururken digerleri seyrediyor, cephe boyunca gelen tumenler
+// ayni province'e ayri ayri dalip tek tek eziliyordu. Kare anahtarli muharebe
+// hem bunu cozer hem de cephenin toplu davranmasini mumkun kilar.
+//
+// Denge WW1'e bakar: muharebe uzun surer, moral yavas kirilir, savunan ustundur.
 
 import { atWar } from './diplomacy.js';
+import { hexDistance } from '../core/hex.js';
 import {
-  applyArmyLosses, armyPower, moraleOf, placeUnit, recoverArmy, soldiersOf, stackFull,
+  MAX_STACK, applyArmyLosses, armyPower, clearPath, organizationOf, placeUnit, recoverArmy,
+  resetEntrenchment, soldiersOf, stackFull, unitsOn,
 } from './units.js';
 import {
-  addExperience, generalModifier, generalOfArmy, generalSiegeRelief, generalVariance,
-} from './generals.js';
+  addExperience, consumeAssaultPlanning, generalModifier, generalOfArmy,
+  generalSiegeRelief, generalVariance, planningBonus,
+} from './command.js';
+import { fortDefenseAt } from './construction.js';
+import { controllerOf } from './control.js';
 
-// WW1 dengesi: muharebe uzun sürer, moral yavaş kırılır, savunan üstündür.
-// Kısa ve kesin muharebeler cepheyi haftalar içinde uçuruyordu (bordergore).
-const MAX_ROUNDS = 12;
-const BREAK_MORALE = 12;
-/** Savunanın kazandığı kalıcı üstünlük: siper avantajı. */
-const ENTRENCHMENT = 1.35;
+/** Muharebe bu kadar raunttan sonra zorla biter; kazanan guce gore belirlenir. */
+export const MAX_ROUNDS = 20;
+/** Tek province muharebesinin combat width'i; sonsuz tumen yigmayi engeller. */
+export const MAX_ASSAULT_DIVISIONS = 3;
+export const MAX_DEFENSE_DIVISIONS = MAX_STACK;
+/** Bu organization seviyesine dusen division tek basina kirilir ve cekilir. */
+export const BREAK_ORGANIZATION = 15;
 
 export function initBattles(world) {
   world.battleSystem = { battles: [], nextId: 1 };
@@ -22,32 +36,109 @@ export function initBattles(world) {
 
 export function ensureBattles(world) {
   if (!world.battleSystem) initBattles(world);
+  if (!Array.isArray(world.battleSystem.battles)) world.battleSystem.battles = [];
+  for (const battle of world.battleSystem.battles) {
+    if (!Array.isArray(battle.attackers)) battle.attackers = [];
+    if (!Array.isArray(battle.defenders)) battle.defenders = [];
+    if (!Number.isFinite(battle.attackerCommitted)) {
+      battle.attackerCommitted = battle.attackers.length;
+    }
+    if (!Number.isFinite(battle.defenderCommitted)) {
+      battle.defenderCommitted = battle.defenders.length;
+    }
+  }
   return world.battleSystem;
 }
 
-function findArmy(world, id) {
-  return world.units.find((army) => army.id === id);
+function armiesByIds(world, ids) {
+  return ids.map((id) => world.units.find((unit) => unit.id === id)).filter(Boolean);
 }
 
-function terrainDefense(army) {
+/** Bir karede suren muharebe. */
+export function battleAt(world, tile) {
+  if (!tile) return null;
+  return ensureBattles(world).battles.find(
+    (battle) => battle.q === tile.q && battle.r === tile.r,
+  ) ?? null;
+}
+
+/** Muharebenin iki tarafi, canli tumenler olarak. */
+export function battleSides(world, battle) {
+  return {
+    attackers: armiesByIds(world, battle.attackers ?? []),
+    defenders: armiesByIds(world, battle.defenders ?? []),
+  };
+}
+
+function terrainDefense(world, army) {
   const tile = army.tile;
-  return (tile.terrain.defense ?? 0) + (tile.city ? 0.12 + tile.city.level * 0.04 : 0);
+  return (tile.terrain.defense ?? 0) + (tile.city ? 0.12 + tile.city.level * 0.04 : 0)
+    + fortDefenseAt(world, army.nationId, tile);
 }
 
-export function startBattle(game, attacker, defender) {
-  const system = ensureBattles(game.world);
-  if (!attacker || !defender || attacker.battleId || defender.battleId) return false;
-  if (attacker.nationId === defender.nationId) return false;
-  if (!atWar(game.world, attacker.nationId, defender.nationId)) return false;
+/** Bir tarafin en yetenekli komutani: zar oynakligi ve kusatma ondan gelir. */
+function leadGeneral(world, units) {
+  let best = null;
+  for (const unit of units) {
+    const general = generalOfArmy(world.nations[unit.nationId], unit);
+    if (general && (!best || general.skill > best.skill)) best = general;
+  }
+  return best;
+}
+
+/**
+ * Bir tumenin muharebe gucu. Ham guc × butce × arazi × general × plan.
+ * Saldiran muhendis general, savunanin arazi/tahkimat bonusunun bir kismini
+ * silebilir — kusatmanin karsiligi budur.
+ */
+export function battleUnitPower(world, unit, defending, relief = 0) {
+  const nation = world.nations[unit.nationId];
+  const funding = (nation.economy?.armySpending ?? 100) / 100;
+  const general = generalOfArmy(nation, unit);
+  const terrain = defending
+    ? (1 + terrainDefense(world, unit) * (1 - relief)) * (1 + (unit.entrenchment ?? 0))
+    : 1;
+  return armyPower(unit)
+    * (0.55 + funding * 0.45)
+    * terrain
+    * generalModifier(general, { defending, army: unit })
+    * (defending ? 1 : planningBonus(nation, unit));
+}
+
+function sidePower(world, units, defending, relief) {
+  return units.reduce((sum, unit) => sum + battleUnitPower(world, unit, defending, relief), 0);
+}
+
+/**
+ * Bir tumeni muharebeye sokar. Karede zaten bir muharebe varsa ona katilir —
+ * cephe boyunca gelen takviyeler ayri muharebeler acmasin.
+ * @returns {boolean} muharebeye girildi mi
+ */
+export function startBattle(game, attacker, tile) {
+  const world = game.world;
+  const system = ensureBattles(world);
+  if (!attacker || !tile || attacker.hp <= 0
+    || organizationOf(attacker) <= BREAK_ORGANIZATION) return false;
+
+  const existing = battleAt(world, tile);
+  if (existing) return joinBattle(game, existing, attacker);
+
+  const defenders = unitsOn(tile).filter((unit) => unit.nationId !== attacker.nationId);
+  if (!defenders.length || attacker.battleId) return false;
+  const defenderNation = defenders[0].nationId;
+  if (!atWar(world, attacker.nationId, defenderNation)) return false;
+  consumeAssaultPlanning(world.nations[attacker.nationId], attacker, game.turns.turn);
 
   const battle = {
     id: system.nextId++,
-    attackerId: attacker.id,
-    defenderId: defender.id,
+    q: tile.q,
+    r: tile.r,
     attackerNation: attacker.nationId,
-    defenderNation: defender.nationId,
-    q: defender.tile.q,
-    r: defender.tile.r,
+    defenderNation,
+    attackers: [],
+    defenders: [],
+    attackerCommitted: 0,
+    defenderCommitted: 0,
     started: game.turns.turn,
     nextRound: game.turns.turn + 1,
     rounds: 0,
@@ -55,176 +146,261 @@ export function startBattle(game, attacker, defender) {
     defenderLosses: 0,
     lastRoll: null,
   };
-  attacker.battleId = battle.id;
-  defender.battleId = battle.id;
-  attacker.order = null;
-  defender.order = null;
   system.battles.push(battle);
+  enlist(battle, attacker, true);
+  for (const unit of defenders.slice(0, MAX_DEFENSE_DIVISIONS)) {
+    if (unit.nationId === defenderNation) enlist(battle, unit, false);
+  }
+
   game.turns.addLog(
-    `${game.world.nations[attacker.nationId].name} engaged at ${defender.tile.q}, ${defender.tile.r}.`,
+    `${world.nations[attacker.nationId].name} engaged at ${tile.q}, ${tile.r}.`,
   );
   game.emit('battles', battle);
   game.requestRender();
   return true;
 }
 
+/** Tumeni muharebenin bir tarafina yazar; yuruyusu ve emri duser. */
+function enlist(battle, unit, attacking) {
+  const list = attacking ? battle.attackers : battle.defenders;
+  if (!list.includes(unit.id)) {
+    list.push(unit.id);
+    const key = attacking ? 'attackerCommitted' : 'defenderCommitted';
+    battle[key] = (battle[key] ?? 0) + 1;
+  }
+  unit.battleId = battle.id;
+  if (attacking) resetEntrenchment(unit);
+  unit.order = null;
+  clearPath(unit);
+}
+
+/** Suren bir muharebeye takviye. Ucuncu ulus katilamaz. */
+export function joinBattle(game, battle, unit) {
+  if (!battle || !unit || unit.battleId === battle.id) return false;
+  if (unit.battleId || organizationOf(unit) <= BREAK_ORGANIZATION) return false;
+  if (unit.nationId === battle.attackerNation) {
+    if ((battle.attackerCommitted ?? battle.attackers.length) >= MAX_ASSAULT_DIVISIONS) {
+      return false;
+    }
+    enlist(battle, unit, true);
+  } else if (unit.nationId === battle.defenderNation) {
+    if ((battle.defenderCommitted ?? battle.defenders.length) >= MAX_DEFENSE_DIVISIONS) {
+      return false;
+    }
+    enlist(battle, unit, false);
+  } else {
+    return false;
+  }
+  game.emit('battles', battle);
+  return true;
+}
+
+/** Olen ya da dagilan tumeni butun muharebelerden duşurur. */
+export function removeFromBattles(world, unit) {
+  for (const battle of ensureBattles(world).battles) {
+    battle.attackers = battle.attackers.filter((id) => id !== unit.id);
+    battle.defenders = battle.defenders.filter((id) => id !== unit.id);
+  }
+  unit.battleId = null;
+}
+
 /**
- * Muharebe gücü. Ordunun ham gücü × bütçe × arazi × general.
- * Saldıran mühendis general, savunanın arazi/tahkimat bonusunun bir kısmını
- * silebilir — kuşatmanın karşılığı budur.
+ * Cekilecek province: kendi topragimizda, dusman baskisi az ve muharebenin
+ * gerisinde kalan yer. Bir karelik geri ziplamak ayni savasi hemen yeniden
+ * aciyordu; iki province derinlik duzenli bir ikinci hat kurar.
  */
-function battlePower(world, army, defending = false, foeGeneral = null) {
-  const nation = world.nations[army.nationId];
-  const funding = (nation.economy?.armySpending ?? 100) / 100;
-  const general = generalOfArmy(nation, army);
-  const relief = defending ? generalSiegeRelief(foeGeneral) : 0;
-  const terrain = defending
-    ? (1 + terrainDefense(army) * (1 - relief)) * ENTRENCHMENT
-    : 1;
-  return armyPower(army)
-    * (0.55 + funding * 0.45)
-    * terrain
-    * generalModifier(general, { defending, army })
-    * planningBonus(world, army);
-}
-
-/** Cephe planı olgunlaştıysa saldırıya katılan ordu bonus alır (bkz. fronts.js). */
-function planningBonus(world, army) {
-  const front = world.frontSystem?.fronts?.find(
-    (candidate) => candidate.armies.includes(army.id) && candidate.active,
-  );
-  if (!front) return 1;
-  return 1 + (front.planning ?? 0) * 0.25;
-}
-
 function retreatDestination(world, army, awayFrom) {
   const queue = [{ tile: army.tile, depth: 0 }];
   const seen = new Set([army.tile]);
   const candidates = [];
   for (let head = 0; head < queue.length; head++) {
     const { tile, depth } = queue[head];
-    if (depth > 0 && tile.owner === army.nationId && tile.terrain.passable) {
-      if (!tile.unit || (tile.unit.nationId === army.nationId && !stackFull(tile))) {
-        const distance = Math.abs(tile.q - awayFrom.q) + Math.abs(tile.r - awayFrom.r);
-        candidates.push({ tile, depth, distance });
+    if (depth > 0 && controllerOf(tile) === army.nationId
+      && tile.terrain.passable && !stackFull(tile)) {
+      const hostile = unitsOn(tile).some((unit) => unit.nationId !== army.nationId);
+      if (!hostile) {
+        const distance = hexDistance(tile.q, tile.r, awayFrom.q, awayFrom.r);
+        const pressure = world.neighbors(tile).filter((near) => (
+          controllerOf(near) >= 0 && controllerOf(near) !== army.nationId
+          && atWar(world, controllerOf(near), army.nationId)
+        )).length;
+        candidates.push({ tile, depth, distance, pressure });
       }
     }
-    if (depth >= 4) continue;
     for (const near of world.neighbors(tile)) {
       if (seen.has(near) || !near.terrain.passable) continue;
-      if (near.owner !== army.nationId) continue;
+      if (controllerOf(near) !== army.nationId) continue;
       seen.add(near);
       queue.push({ tile: near, depth: depth + 1 });
     }
   }
-  candidates.sort((a, b) => a.depth - b.depth || b.distance - a.distance);
+  candidates.sort((a, b) => a.pressure - b.pressure
+    || Math.abs(a.depth - 2) - Math.abs(b.depth - 2)
+    || b.distance - a.distance);
   return candidates[0]?.tile ?? null;
 }
 
 function retreatArmy(game, army, awayFrom) {
-  if (!army || !game.world.units.includes(army)) return;
+  if (!army || !game.world.units.includes(army)) return false;
   const target = retreatDestination(game.world, army, awayFrom);
-  army.retreatUntil = game.turns.turn + 3;
-  army.order = null;
-  if (!target) return;
-  // Geri çekilen tümen dost yığına *katılır*, onunla birleşmez.
-  placeUnit(army, target);
-}
-
-function occupyAfterBattle(game, attacker, battleTile) {
-  if (!attacker || !game.world.units.includes(attacker) || battleTile.unit) return;
-  game.enterTile(attacker, battleTile);
-}
-
-function finishBattle(game, battle, attacker, defender, attackerWon) {
-  const system = ensureBattles(game.world);
-  let winner = attackerWon ? attacker : defender;
-  const loser = attackerWon ? defender : attacker;
-  const battleTile = game.world.get(battle.q, battle.r);
-
-  if (attacker) attacker.battleId = null;
-  if (defender) defender.battleId = null;
-  if (winner && soldiersOf(winner) <= 0) {
-    game.turns.killUnit(winner);
-    winner = null;
-  } else if (winner) {
-    recoverArmy(winner, 0, 8);
-  }
-
-  if (loser && game.world.units.includes(loser)) {
-    if (soldiersOf(loser) <= 0) game.turns.killUnit(loser);
-    else retreatArmy(game, loser, winner?.tile ?? battleTile);
-  }
-  if (attackerWon && attacker && battleTile) {
-    occupyAfterBattle(game, attacker, battleTile);
-  }
-
-  system.battles = system.battles.filter((item) => item.id !== battle.id);
-  const winnerNation = winner ? game.world.nations[winner.nationId] : null;
-  if (winnerNation) {
+  // Cep, ada veya dolu geri hat: province'ten cikamayan maglup tumen teslim
+  // olur. Aksi halde karede kalip kazananin isgalini sonsuza dek engelliyordu.
+  if (!target) {
+    const nation = game.world.nations[army.nationId];
     game.turns.addLog(
-      `${winnerNation.name} won the battle at ${battle.q}, ${battle.r}; the enemy retreated.`,
+      `${nation?.name ?? 'A division'} surrendered at ${awayFrom.q}, ${awayFrom.r}; no retreat route remained.`,
+    );
+    game.turns.killUnit(army);
+    return false;
+  }
+  army.retreatUntil = game.turns.turn + 4;
+  resetEntrenchment(army);
+  army.attackReadyAt = Math.max(army.attackReadyAt ?? 0, army.retreatUntil);
+  army.order = null;
+  clearPath(army);
+  // Cekilen tumen mevkisini birakir: cephe onu geride yeniden konumlandirsin.
+  army.post = null;
+  army.lastRetreat = {
+    turn: game.turns.turn,
+    from: { q: awayFrom.q, r: awayFrom.r },
+    to: { q: target.q, r: target.r },
+    distance: hexDistance(target.q, target.r, awayFrom.q, awayFrom.r),
+  };
+  placeUnit(army, target);
+  return true;
+}
+
+/** Kazanan saldirgan bosalan province'e girer; girisi ilk giden tumen yapar. */
+function occupyAfterBattle(game, attackers, tile) {
+  if (!tile || unitsOn(tile).length) return;
+  const winner = attackers
+    .filter((unit) => game.world.units.includes(unit) && soldiersOf(unit) > 0)
+    .sort((a, b) => armyPower(b) - armyPower(a))[0];
+  if (winner) game.enterTile(winner, tile);
+}
+
+function finishBattle(game, battle, attackerWon) {
+  const world = game.world;
+  const system = ensureBattles(world);
+  const { attackers, defenders } = battleSides(world, battle);
+  const tile = world.get(battle.q, battle.r);
+  const winners = attackerWon ? attackers : defenders;
+  const losers = attackerWon ? defenders : attackers;
+
+  for (const unit of [...attackers, ...defenders]) unit.battleId = null;
+  system.battles = system.battles.filter((item) => item.id !== battle.id);
+
+  for (const unit of winners) {
+    if (soldiersOf(unit) <= 0) game.turns.killUnit(unit);
+    else {
+      recoverArmy(unit, 0, 8);
+      // Kazanan da hemen sonraki province'e zincirleme kosmaz; ikmal ve yeniden
+      // orgutlenme iki hafta surer. Yavas cephe temposunun ikinci kapisi budur.
+      unit.attackReadyAt = Math.max(unit.attackReadyAt ?? 0, game.turns.turn + 2);
+    }
+  }
+  const awayFrom = tile ?? losers[0]?.tile;
+  for (const unit of losers) {
+    if (!world.units.includes(unit)) continue;
+    if (soldiersOf(unit) <= 0) game.turns.killUnit(unit);
+    else retreatArmy(game, unit, awayFrom);
+  }
+  if (attackerWon) occupyAfterBattle(game, attackers, tile);
+
+  const nation = world.nations[attackerWon ? battle.attackerNation : battle.defenderNation];
+  if (nation) {
+    game.turns.addLog(
+      `${nation.name} won the battle at ${battle.q}, ${battle.r}; the enemy was forced out.`,
     );
   }
   game.emit('battles', battle);
   game.renderer.invalidateCache();
 }
 
+/** Kayiplari tarafa gucu oraninda dagitir. */
+function distributeLosses(units, casualties, organizationLoss) {
+  const total = units.reduce((sum, unit) => sum + armyPower(unit), 0);
+  for (const unit of units) {
+    const share = total > 0 ? armyPower(unit) / total : 1 / units.length;
+    applyArmyLosses(unit, casualties * share, organizationLoss);
+  }
+}
+
 function resolveRound(game, battle) {
   const world = game.world;
-  const attacker = findArmy(world, battle.attackerId);
-  const defender = findArmy(world, battle.defenderId);
-  if (!attacker || !defender || !atWar(world, battle.attackerNation, battle.defenderNation)) {
-    finishBattle(game, battle, attacker, defender, Boolean(attacker && !defender));
+  const { attackers, defenders } = battleSides(world, battle);
+  // Bir taraf tamamen yok olduysa muharebe biter.
+  if (!attackers.length || !defenders.length
+    || !atWar(world, battle.attackerNation, battle.defenderNation)) {
+    finishBattle(game, battle, attackers.length > 0 && defenders.length === 0);
     return;
   }
 
-  const attackerGeneral = generalOfArmy(world.nations[attacker.nationId], attacker);
-  const defenderGeneral = generalOfArmy(world.nations[defender.nationId], defender);
-  const attackerBase = battlePower(world, attacker, false, defenderGeneral);
-  const defenderBase = battlePower(world, defender, true, attackerGeneral);
-  // Trickster generalin zar aralığı geniştir: hem daha iyi hem daha kötü çeker.
+  const attackerLead = leadGeneral(world, attackers);
+  const defenderLead = leadGeneral(world, defenders);
+  // Bir general ayni muharebede kac tumen yonetirse yonetsin raund basina bir
+  // kez tecrube kazanir. Katilim kayiplar uygulanmadan once kaydedilir.
+  const participatingGenerals = new Map();
+  for (const unit of [...attackers, ...defenders]) {
+    const general = generalOfArmy(world.nations[unit.nationId], unit);
+    if (general) participatingGenerals.set(general, unit.nationId);
+  }
+  const relief = generalSiegeRelief(attackerLead);
+  const attackerBase = sidePower(world, attackers, false, 0);
+  const defenderBase = sidePower(world, defenders, true, relief);
+  // Trickster generalin zar araligi genistir: hem daha iyi hem daha kotu ceker.
   const swing = (general) => 0.36 * (1 + generalVariance(general));
   const roll = (general) => 1 - swing(general) / 2 + game.turns.rng() * swing(general);
-  const attackerRoll = attackerBase * roll(attackerGeneral);
-  const defenderRoll = defenderBase * roll(defenderGeneral);
+  const attackerRoll = attackerBase * roll(attackerLead);
+  const defenderRoll = defenderBase * roll(defenderLead);
   const total = Math.max(1, attackerRoll + defenderRoll);
-  // Raund başına kayıp düşük, raund sayısı yüksek: muharebe kısa ve kesin
-  // değil, uzun ve aşındırıcıdır. Toplam kayıp artar, ilerleme yavaşlar.
-  const attackerCasualties = Math.round(45 + (defenderRoll / total) * 130);
-  const defenderCasualties = Math.round(30 + (attackerRoll / total) * 105);
-  const attackerMoraleLoss = 5 + (defenderRoll / total) * 10;
-  const defenderMoraleLoss = 4 + (attackerRoll / total) * 9;
 
-  applyArmyLosses(attacker, attackerCasualties, attackerMoraleLoss);
-  applyArmyLosses(defender, defenderCasualties, defenderMoraleLoss);
+  // Raund basina kayip dusuk, raund sayisi yuksek: muharebe kisa ve kesin
+  // degil, uzun ve asindiricidir. Kayip tumen basinadir, boylece kalabalik
+  // taraf toplamda daha cok kaybeder ama tumen basina ayni asinmayi yasar.
+  const attackerCasualties = (16 + (defenderRoll / total) * 34) * attackers.length;
+  const defenderCasualties = (12 + (attackerRoll / total) * 28) * defenders.length;
+  const attackerOrganizationLoss = 6 + (defenderRoll / total) * 5;
+  const defenderOrganizationLoss = 5.5 + (attackerRoll / total) * 4.5;
+
+  distributeLosses(attackers, attackerCasualties, attackerOrganizationLoss);
+  distributeLosses(defenders, defenderCasualties, defenderOrganizationLoss);
+
   battle.rounds++;
-  battle.attackerLosses += attackerCasualties;
-  battle.defenderLosses += defenderCasualties;
-  battle.lastRoll = {
-    attacker: attackerRoll,
-    defender: defenderRoll,
-    turn: game.turns.turn,
-  };
+  battle.attackerLosses += Math.round(attackerCasualties);
+  battle.defenderLosses += Math.round(defenderCasualties);
+  battle.lastRoll = { attacker: attackerRoll, defender: defenderRoll, turn: game.turns.turn };
 
-  // Komutanlar her raundda tecrübe kazanır; terfi oyuncunun günlüğüne düşer.
-  for (const [general, army] of [[attackerGeneral, attacker], [defenderGeneral, defender]]) {
-    if (!general) continue;
+  // Sifirlanan tumen bir sonraki raundun sayi/casualty carpaninda kalmasin.
+  for (const unit of [...attackers, ...defenders]) {
+    if (soldiersOf(unit) <= 0 && world.units.includes(unit)) game.turns.killUnit(unit);
+  }
+
+  // Komutanlar her raundda bir kez tecrube kazanir; terfi oyuncunun gunlugune duser.
+  for (const [general, nationId] of participatingGenerals) {
     general.battles = (general.battles ?? 0) + 1;
-    if (addExperience(general, 9) && army.nationId === game.turns.playerNation) {
+    if (addExperience(general, 4) && nationId === game.turns.playerNation) {
       game.turns.addLog(`${general.name} was promoted to skill ${general.skill}.`);
     }
   }
 
-  const attackerBroken = soldiersOf(attacker) <= 0 || moraleOf(attacker) <= BREAK_MORALE;
-  const defenderBroken = soldiersOf(defender) <= 0 || moraleOf(defender) <= BREAK_MORALE;
-  const timedOut = battle.rounds >= MAX_ROUNDS;
-  if (attackerBroken || defenderBroken || timedOut) {
-    const attackerScore = armyPower(attacker) * (0.5 + moraleOf(attacker) / 200);
-    const defenderScore = armyPower(defender) * (0.5 + moraleOf(defender) / 200);
-    finishBattle(game, battle, attacker, defender, !attackerBroken && (
-      defenderBroken || attackerScore > defenderScore
-    ));
+  // HOI tarzi kirilma division bazindadir. Dusuk org'lu birlik, tarafin
+  // ortalamasi yuksek diye cephede kalip strength'i sifirlanana dek dovusmez.
+  const battleTile = world.get(battle.q, battle.r);
+  for (const unit of [...attackers, ...defenders]) {
+    if (!world.units.includes(unit) || soldiersOf(unit) <= 0) continue;
+    if (organizationOf(unit) > BREAK_ORGANIZATION) continue;
+    removeFromBattles(world, unit);
+    retreatArmy(game, unit, battleTile ?? unit.tile);
+  }
+
+  const { attackers: liveAttackers, defenders: liveDefenders } = battleSides(world, battle);
+  if (!liveAttackers.length || !liveDefenders.length) {
+    finishBattle(game, battle, liveAttackers.length > 0 && liveDefenders.length === 0);
+  } else if (battle.rounds >= MAX_ROUNDS) {
+    const attackerScore = sidePower(world, liveAttackers, false, 0);
+    const defenderScore = sidePower(world, liveDefenders, true, relief);
+    finishBattle(game, battle, attackerScore > defenderScore);
   }
 }
 

@@ -2,6 +2,18 @@
 
 import { Game } from './game/game.js';
 import { Hud } from './ui/hud.js';
+import { materials } from './render/textures.js';
+
+// Yüzey dokuları bir kez üretilip CSS'e verilir. Çalışma anında hesaplandığı
+// için depoda ikili dosya, indirilen görsel ya da derleme adımı yok
+// (bkz. textures.js). Panel ve harita ayrı malzeme kullanır: biri mat metal
+// greni, diğeri atlas kâğıdı greni.
+{
+  const mat = materials();
+  const root = document.documentElement.style;
+  root.setProperty('--ui-grain', `url("${mat.uiMetal.toDataURL('image/png')}")`);
+  root.setProperty('--map-grain', `url("${mat.filmGrain.toDataURL('image/png')}")`);
+}
 
 const canvas = document.getElementById('map');
 const game = new Game(canvas);

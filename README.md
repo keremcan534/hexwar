@@ -31,13 +31,13 @@ npm run diagnose:policy
 | Çoklu seç | basılı tut + sürükle | sol tuş basılı + sürükle (kutu seçimi) |
 | Yürüt | seç, sonra hedefe dokun | sağ tık |
 | Seçimi bırak | boş yere dokun | boş yere sol tık · `Esc` |
-| Cephe çiz | Front/Fallback + sınıra dokun | Front/Fallback + sınıra tık · sağ tuş sürükle |
+| Cephe yönet | general + hedef + Offensive | general + hedef + Offensive |
 | Zaman | duraklat, 1×, 2×, 4× | `boşluk` duraklat · `+` / `−` hız |
 
 Giriş HOI4 semantiğindedir: **sol tuş seçer, sağ tuş yürütür**. Sol tuş sürükleme
 masaüstünde klasör seçer gibi kutu seçimi yapar, bu yüzden kamera orta tuş ve
-`WASD`/ok tuşlarıyla gezer. Sağ tuşu *sürüklemek* cephe hattı çizer, *tıklamak*
-seçili tümenleri oraya yürütür; birden çok tümen seçiliyse hedefler çevreye
+`WASD`/ok tuşlarıyla gezer. Sağ tuşu tıklamak ya da sürükleyip bırakmak seçili
+tümenleri hedef province'e yürütür; birden çok tümen seçiliyse hedefler çevreye
 yayılır, hepsi tek province'e tıkışmaz.
 
 Oyun haftalık adımlarla gerçek zamanlı akar. Saat penceresi sağ üsttedir; boşluk
@@ -49,6 +49,18 @@ Ekran yerleşimi Vic2 düzenindedir: seçili province penceresi **sol altta**, s
 onun üstüne çıkar.
 
 ## Ana sistemler
+
+### Oyunun amacı: hegemonya
+
+Zafer eleme değil üstünlüktür. Her ülkenin haftalık bir hegemonya puanı vardır:
+ham üretim ve kurulu sanayi kapasitesi **ekonomi**, şehirler ile barışçı
+ilişkiler ve toprak **prestij** bileşenini oluşturur. 400 puana ilk ulaşan
+kazanır; kimse ulaşamazsa 300. haftada en yüksek puanlı kazanır. Eşik ölçümle
+seçildi: on iki oyunluk koşuda ortalama bitiş 235. hafta ve oyunların %83'ü
+süre dolarak değil hedefe ulaşarak bitiyor.
+
+Puanın zamanla yükselen kısmı sanayidir. Toprak ve şehir nüfusu bu yapıda
+neredeyse sabit kaldığı için geç oyunda skorun çoğunluğu fabrikalardan gelir.
 
 ### Dünya pazarı ve sanayi
 
@@ -74,11 +86,11 @@ vergi, gümrük tarifesi ve ordu bakım oranı değiştirilebilir. Düşük ordu
 harcamayı azaltırken orduların muharebe gücünü de doğrudan düşürür.
 Yüksek vergi ve pozitif tarifeler geliri artırır; hane alım gücünü, sınıf
 memnuniyetini ve ulusal istikrarı düşürür. İstikrar da nüfus büyümesini, province
-kontrolünün toparlanmasını, idari kapasiteyi ve fabrika işgücünü etkiler.
+kontrolünün toparlanmasını ve fabrika işgücünü etkiler.
 
 Bütçe ekranında ayrıca üç sürekli sosyal harcama vardır: eğitim, sağlık ve
 refah. Maliyetleri nüfusla birlikte büyür. Eğitim işgücünü niteliklendirir ve
-araştırmayı ucuzlatır, sağlık nüfus büyümesini ve yaşam standardını yükseltir,
+aynı nüfusla daha çok fabrika doldurur, sağlık yaşam standardını yükseltir,
 refah bütün sınıfların memnuniyetini artırır.
 
 İmparatorluk büyüdükçe idari gider de artar: şehir sayısı süperdoğrusal,
@@ -89,11 +101,13 @@ yer. Bu kalem Lojistik/Ülke ekranında ayrı satır olarak görünür.
 
 ### Ordu yığınları ve province muharebeleri
 
-Haritadaki ordular birkaç alaydan oluşan yığınlardır. Aynı province'e giren
-dost ordular birleşir; düşman orduları ise EU4 tarzı haftalık muharebeye
-kilitlenir. Arazi savunanı, ordu bütçesi iki tarafın gücünü etkiler. Asker
-sayısı ve moral her raund aşınır; morali kırılan ordu üç hafta geri çekilir,
-kazanan province'i işgal eder.
+Haritadaki tümenler birkaç alaydan oluşur. Aynı province'te dört dost tümen yan
+yana durabilir; birbirleriyle birleşmezler. Düşmanla temas province'e bağlı tek
+bir muharebe açar: karedeki bütün savunanlar ve oraya saldıran takviyeler aynı
+savaşa katılır. Arazi savunanı, ordu bütçesi iki tarafın gücünü etkiler. Asker
+sayısı ve moral 20 raunda kadar haftalar boyunca aşınır. Morali kırılan taraf
+iki province gerideki baskısı düşük bir hatta çekilir ve dört hafta toparlanır.
+Kazanan province'i işgal eder ama ikmal kurmadan yeni taarruza geçemez.
 
 ### Seçim ve komuta arayüzü
 
@@ -107,10 +121,10 @@ bütün tümenlerini seçer, **sağ tık** o an seçili tümenleri ona devreder 
 tümenden 5'ini seçip başka bir generale sağ tıklamak onları o komutaya geçirir.
 **+** seçimi listeden bir subaya bağlar.
 
-Bir general seçiliyken portrelerin üstünde plan araçları çıkar: **Front**,
-**Fallback**, **Offensive** ve **duruş 1-2-3**. Duruş ilerleme hızını ve bir
-haftada kaç province ilerleneceğini belirler (temkinli 3 haftada bir 1 kare,
-saldırgan her hafta 3 kare).
+Bir general seçiliyken portrelerin üstünde **hedef ülke**, **Offensive** ve
+**duruş 1-2-3** araçları çıkar. Hedef, grubun hangi ülkeyle olan sınırı tutacağını;
+duruş ise taarruz sıklığını ve kabul edilen güç riskini belirler. Hedef ülke
+barıştayken de seçilebilir; tümenler savaş ilan etmeden o ülkenin sınırına dizilir.
 
 ### Komutanlar
 
@@ -122,35 +136,27 @@ ekler: saldırı/savunma doktrini, mühendis (arazi ve tahkimat bonusunu deler),
 süvari/topçu uzmanı (yığındaki o kolun payı kadar), kurmay (cephe planını
 hızlandırır), düzenbaz (muharebe zarının aralığını genişletir).
 
-Generaller savaştıkça tecrübe kazanıp terfi eder. İki tümen birleşince komuta
-hedefin generalinde kalır. Altınla yeni subay yetiştirilir; kadro büyüdükçe
-pahalanır.
+Generaller savaştıkça tecrübe kazanıp terfi eder. Altınla yeni subay yetiştirilir;
+kadro büyüdükçe pahalanır.
 
 ### Cephe hatları ve muharebe planları
 
-Komuta panelindeki **Front** ya da **Fallback** düğmesine basınca imlecin
-yakınındaki sınır parlar; tıklayınca hat oraya oturur — hex hex çizmek gerekmez.
-Sınır hangi ülkeyle ise o ülkeyle olan hat seçilir; komşuda sahipli ülke yoksa
-kendi sınırımızın tamamı kullanılır. Bir generalin aynı anda ya cephe hattı ya
-geri çekilme hattı olur: biri kurulunca diğeri kalkar.
+Cephe ayrı bir kare listesi değildir; **ülke ile hedef ülke arasındaki ilişki**dir.
+Hat her hafta gerçek sınırdan türetilir. Oyuncu bir general seçip hedef ülkeyi
+belirler; hedef boş bırakılırsa savaşta olunan bütün sınırlar birlikte tutulur.
 
-**Offensive** planında çizilen hat cephe değil **hedeftir**: ordunun ilerleyeceği
-sınırı çizersin, plan mevcut cephenden oraya doğru yürür. Kopuk çizersen aradaki
-boşluklar doldurulur, tek province seçersen ondan bir hedef hattı türetilir.
-Seçili taarruz planının izleyeceği güzergâh haritada kesikli province'lerle
-gösterilir.
+Her tümenin kalıcı bir **mevkisi** vardır. Mevki hâlâ sınırdaysa tümen yerinde
+kalır; sınırın başka bir ucundaki değişiklik bütün orduyu yeniden yürütmez.
+Mevkisiz tümenler, dolu mevkilere hex mesafesi en büyük olan sınır karesine
+yerleşir. Aynı karede en fazla dört tümen bulunur.
 
-Masaüstünde sağ tuşu basılı tutup sürüklemek de serbest hat çizer.
-
-Hatta atanan ordular kendiliğinden hat boyunca dağılır — her ordu kendine en
-yakın boş hat karesine yürür, oyuncu tek tek yürütmez. Hat boşta beklerken
-**planlama** birikir (haftada %6, kurmay generalle daha hızlı); plan olgunlaştıkça
-o cephedeki ordular muharebede %25'e kadar bonus alır.
-
-"Execute Plan" denince hat ilerlemeye başlar: cephe hattı düşman toprağına
-itilir, taarruz planı çizilen hedef hattına yürür. Hız hem planlama olgunluğuna
-hem komutanın duruşuna bağlıdır. İlerledikçe hazırlık erir — plan harcanan bir
-kaynaktır.
+Tümenler mevzilerine oturdukça **planlama** birikir (kurmay generalle daha
+hızlı); olgun plan taarruzda %25'e kadar muharebe bonusu verir. **Offensive**
+açılınca soyut hat düşman toprağına itilmez: her tümen, önündeki uygun düşman
+province'ine gerçek yürüyüş ya da saldırı emri alır. Province ele geçirilince
+sınır ve dolayısıyla cephe kendiliğinden ilerler. Hedef seçimi dost kenarı çok,
+düşman kenarı az olan province'leri tercih eder; tek karelik derin koridorlar
+kanatlar ilerlemeden açılmaz. İlerledikçe hazırlık erir.
 
 Cephe yalnız kimin nerede duracağını ve ne zaman ilerleyeceğini yönetir;
 muharebenin kendisi hâlâ province muharebesidir. Ayrı bir soyut cephe gücü
@@ -162,37 +168,37 @@ aynı yerlere döner, savaşta ölenler kalıcı kayıptır. Üst şeritteki **M
 kalan asker havuzunu gösterir.
 
 Bir province seçilip **toplanma noktası** atanabilir; yeni kurulan alaylar
-çıktıkları yerden oraya kendi yürür ve oradaki dost yığına katılır. Nokta
+çıktıkları yerden oraya kendi yürür ve oradaki dost tümenlerle konumlanır. Nokta
 haritada altın renkli artı-daire ile işaretlenir.
 
-Alaylar dört teçhizat kademesi taşır (Levy → Regular → Drilled → Modern).
-Üretim ekranındaki Modernization kartından altın ve demir ödenerek bir kademe
-yükseltilir; kademe muharebe gücünü artırırken haftalık altın bakımını da
-kalıcı olarak yükseltir. Bakım çarpanı güçten daha hızlı büyüdüğü için modern
-ordu tutmak bilinçli bir bütçe tercihidir.
+Alayların teçhizat kademesi (Levy, Regular, Drilled, Modern) muharebe gücünü
+ve haftalık bakımı belirler. Kademeyi yükselten oyuncu eylemi rework sırasında
+kaldırıldı; şu an bütün alaylar Levy kademesinde kalır.
 
 ### Province kararları
 
-Her kara hex'i nüfus, kontrol ve üç kalıcı gelişim hattı taşır: tarım, çıkarım
-ve ticaret. Bütün provinceler bağımsız olarak vergi ve hammadde üretir; şehirler
-ise sanayi merkezidir. Geliştirme altın, kereste ve sınırlı idari kapasite
-kullandığı için her yeri aynı anda yükseltmek mümkün değildir.
+Her kara hex'i nüfus, kontrol ve üç gelişim hattı taşır: tarım, çıkarım ve
+ticaret. Bunlar province'in RGO çıktısını ve vergi tabanını belirler; şehirler
+ise sanayi merkezidir. Hatları elle yükselten province geliştirme eylemi rework
+sırasında kaldırıldı; gelişim şu an yalnız dünya üretiminden gelir.
 
 Fethedilen province düşük kontrolle başlar ve tam üretime zamanla döner. Böylece
 arazi yalnız harita rengi değil, nüfus ve üretim tabanıdır.
 
-Construction ekranındaki binalar şehir listesine anında eklenmez. Önce bina
-seçilir, ardından uygun olduğu vurgulanan bir province haritada tıklanır. Her
-province tek yapı taşır; liman kıyı, maden demir, tarım arazisi verimli toprak
-ister. Yapı, yakındaki şehrin kapasitesini ve ekonomisini kullanırken haritada
-fiziksel olarak görünür ve fetihte bağlı olduğu şehirle birlikte el değiştirebilir.
+Yapılar şehre değil **eyalet bölgelerine** kurulur. Ülkenin toprağı yaklaşık
+14 province'lik deterministik bölgelere ayrılır; her bölgenin sınırlı yapı yuvası
+vardır. Construction ekranından bir yapı seçilip bölgeye kuyruğa alınır ve tek
+bir ulusal öncelik kuyruğu haftalık inşaat gücüyle ilerler. Dört yapı vardır:
+inşaat sektörü (inşaat gücü), tahkimat (bölgede savunma), idare (vergi tahsilatı)
+ve üniversite (sanayi işgücü niteliği). Yapı bölge merkezinde haritada görünür ve
+o kare fethedilirse bölgenin yapıları yeni sahibe geçer.
 
 ### Kaynak ekonomisi
 
-Altın, erzak, kereste ve demirin hem üretimi hem sürekli gideri vardır.
-Binalar kereste, ağır birlikler demir, yollar altın tüketir. Karşılanamayan
-kereste bakımı binaları geçici olarak kapatabilir. Stratejik stok açığı dünya
-pazarından alımla kapatılır; böylece yerel kıtlık küresel fiyata yansır.
+Ülke kereste ya da demir stoklamaz: bütün hammadde province RGO'larından
+dünya pazarına akar. Hazineden çıkan sürekli kalemler ordu bakımı, idari gider,
+inşaat bakımı, sosyal harcama ve stratejik teçhizat ithalatıdır. Yerel kıtlık
+pazardan alımla kapanır ve küresel fiyata yansır.
 
 ## Mimari
 
@@ -203,19 +209,24 @@ src/
   render/    kamera ve Canvas2D harita/muharebe çizimi
   input/     birleşik dokunmatik, fare ve pinch girişi
   game/
-    game.js        gerçek zaman saati ve oyun kabuğu
-    turn.js        haftalık simülasyon adımı
-    economy.js     dünya pazarı, sınıflar, fabrikalar ve maliye
-    battles.js     ordu yığını muharebesi, moral ve geri çekilme
-    provinces.js   nüfus, kontrol, yerel üretim ve geliştirme
-    cities.js      şehir, bina ve eski kaynak ekonomisi
-    trade.js       stratejik mal ticareti
-    diplomacy.js   savaş ve barış
-    ai.js          ülke yapay zekâsı
-    save.js        sürümlü kayıt
+    game.js          gerçek zaman saati ve oyun kabuğu
+    turn.js          haftalık simülasyon adımı
+    economy.js       dünya pazarı, sınıflar, fabrikalar ve maliye
+    provinces.js     nüfus, kontrol, RGO üretimi ve göç
+    cities.js        şehir, işçi dağıtımı ve ulusal bilanço
+    construction.js  eyalet bölgeleri, yapılar ve inşaat kuyruğu
+    politics.js      partiler, seçim ve politika sınırları
+    command.js       generaller, ordu grupları ve cephe hattı
+    battles.js       province muharebesi, moral ve geri çekilme
+    reinforcement.js insan ve teçhizat takviyesi
+    recruitment.js   alay kurma ve province asker havuzu
+    control.js       hukuki sahiplik ile fiilî işgal ayrımı
+    diplomacy.js     savaş, barış ve işgal tasfiyesi
+    ai.js            ülke yapay zekâsı
+    save.js          sürümlü kayıt
   ui/
-    hud.js         üst çubuk, tarih ve hız denetimi
-    screens.js     sanayi, bütçe, ticaret ve diplomasi ekranları
+    hud.js         üst çubuk, tarih, hız ve komuta paneli
+    screens.js     inşaat, üretim, bütçe, ticaret, nüfus ve siyaset ekranları
 ```
 
 Katmanlar tek yönlüdür: `ui` ve `render`, `game` katmanını tanır; `world` ve
@@ -235,8 +246,18 @@ tarayıcı olmadan Node ile de test edilebilir.
 
 ## Sonraki adımlar
 
+Rework sırasında sökülen ve henüz geri bağlanmayanlar:
+
+- Ordu modernizasyonu: teçhizat kademesi var ama yükseltme eylemi yok
+- Province geliştirme: gelişim hatları var ama oyuncu eylemi yok
+- Şehir nüfusunun büyümesi (`city.pop` artık sabit)
+- Mobilizasyon (arayüzde kapalı duruyor)
+
+Yeni işler:
+
 - Cephelere ikmal menzili ve yıpranma; hattan kopan ordunun cezalandırılması
-- Yapay zekânın da cephe çizip plan yürütmesi (şu an yalnız oyuncu kullanıyor)
+- Yapay zekânın cephe planlamasının derinleşmesi (şu an her generale sırayla
+  bir düşman düşüyor)
 - Savaş sıklığının yeni muharebe modeline göre yeniden ayarlanması
 - Nüfus sınıfları arasında meslek ve toplumsal hareketlilik
 - Dünya pazarı için ülke bazlı ihracat önceliği ve ambargo

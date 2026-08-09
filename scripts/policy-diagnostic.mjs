@@ -47,8 +47,9 @@ function run(policy) {
     stability: Number((nation.economy.stability * 100).toFixed(1)),
     lowerSatisfaction: Number((nation.economy.classes.lower.satisfaction * 100).toFixed(1)),
     standardOfLiving: Number(nation.economy.standardOfLiving.toFixed(2)),
-    authority: Number(nation.economy.authority.toFixed(1)),
     population: nation.economy.population,
+    classes: Object.fromEntries(Object.entries(nation.economy.classes)
+      .map(([id, socialClass]) => [id, socialClass.population])),
     armyGoldUpkeep: Number(nation.budget.upkeep.gold.toFixed(1)),
   };
 }
@@ -61,8 +62,9 @@ const assertions = {
   highTaxRaisesRevenue: highTax.weeklyTax > lowTax.weeklyTax,
   highTaxLowersSatisfaction: highTax.lowerSatisfaction < lowTax.lowerSatisfaction,
   highTaxLowersStability: highTax.stability < lowTax.stability,
-  lowStabilitySlowsAuthority: highTax.authority < lowTax.authority,
   lowArmySpendingCutsUpkeep: lowArmy.armyGoldUpkeep < baseline.armyGoldUpkeep,
+  highTaxDemotesPopulation: highTax.classes.lower > lowTax.classes.lower
+    && highTax.classes.upper < lowTax.classes.upper,
 };
 
 console.log(JSON.stringify({

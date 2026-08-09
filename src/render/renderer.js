@@ -1,12 +1,15 @@
 // Canvas2D hex çizimi. Görünmeyen hexler kırpılır, aynı renkler tek path'te toplanır,
 // uzaklaşınca tüm dünya önceden pişirilmiş tek dokudan basılır.
 
-import { HEX_CORNERS, SQRT3, DIRS, hexDistance } from '../core/hex.js';
+import { HEX_CORNERS, SQRT3, DIRS } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { drawFlag } from './flagPainter.js';
-import { maxHpOf, moraleOf, regimentCount, soldiersOf, unitsOn } from '../game/units.js';
+import { maxHpOf, organizationOf, soldiersOf, unitsOn } from '../game/units.js';
 import { terrainShade } from '../world/terrain.js';
-import { BUILDINGS } from '../game/buildings.js';
+import { constructionAtlas } from '../game/construction.js';
+import { RGO_TYPES } from '../game/provinces.js';
+import { controllerOf, isOccupied } from '../game/control.js';
+import { materials } from './textures.js';
 
 const MAX_DPR = 2;            // mobilde 3x DPR gereksiz pahalı
 const CACHE_MAX_SIDE = 2048;  // önbellek dokusunun en uzun kenarı (bellek sınırı)
@@ -50,6 +53,27 @@ function natoSymbol(path, typeId, cx, cy, r) {
   }
 }
 
+function roundedRectPath(path, x, y, width, height, radius) {
+  const r = Math.min(radius, width / 2, height / 2);
+  path.moveTo(x + r, y);
+  path.lineTo(x + width - r, y);
+  path.quadraticCurveTo(x + width, y, x + width, y + r);
+  path.lineTo(x + width, y + height - r);
+  path.quadraticCurveTo(x + width, y + height, x + width - r, y + height);
+  path.lineTo(x + r, y + height);
+  path.quadraticCurveTo(x, y + height, x, y + height - r);
+  path.lineTo(x, y + r);
+  path.quadraticCurveTo(x, y, x + r, y);
+  path.closePath();
+  return path;
+}
+
+function compactSoldiers(unit) {
+  const soldiers = soldiersOf(unit);
+  if (soldiers >= 1000) return `${(soldiers / 1000).toFixed(1)}K`;
+  return String(soldiers);
+}
+
 export class Renderer {
   constructor(canvas, camera) {
     this.canvas = canvas;
@@ -58,8 +82,10 @@ export class Renderer {
     this.dpr = 1;
     this.showGrid = true;
     this.showLabels = true;
-    /** 'political' | 'terrain' | 'cultures' */
+    /** 'political' | 'terrain' | 'cultures' | 'resources' | 'population' | 'construction' */
     this.mapMode = 'political';
+    this.constructionNation = -1;
+    this.constructionCache = null;
     /** (ülke,arazi) ve (kültür,arazi) renk önbelleği; her karede yeniden hesaplanmasın. */
     this.tintCache = new Map();
     this.corners = HEX_CORNERS.map(([x, y]) => [x * HEX_SIZE, y * HEX_SIZE]);
@@ -79,6 +105,7 @@ export class Renderer {
   /** Dünya ya da katman ayarları değişince önbellek geçersizleşir. */
   invalidateCache() {
     this.cache = null;
+    this.constructionCache = null;
   }
 
   setMapMode(mode) {
@@ -87,21 +114,88 @@ export class Renderer {
     this.invalidateCache();
   }
 
+  setConstructionMode(nationId) {
+    this.constructionNation = nationId;
+    this.setMapMode('construction');
+  }
+
+  constructionData(world) {
+    if (this.constructionCache?.world === world
+      && this.constructionCache?.nationId === this.constructionNation) {
+      return this.constructionCache.atlas;
+    }
+    const atlas = constructionAtlas(world, this.constructionNation);
+    this.constructionCache = { world, nationId: this.constructionNation, atlas };
+    return atlas;
+  }
+
   /**
    * Politik/kültür kipinde bir karenin rengi: sahibinin tonu, arazinin
    * parlaklığıyla. Karıştırma (alfa) yerine bu yöntem seçildi çünkü alfada
    * aynı ülke ormanda ve çölde iki farklı renge dönüşüyor, ayırt edilemiyordu.
    */
-  ownerTint(owner, terrain) {
-    const key = `${owner.id}:${terrain.id}`;
+  /**
+   * Ülke renginin mineral karşılığı. Genel bir doygunluk kısma yerine ton
+   * bazlı dönüşüm: parlak yeşil zeytine, mor mürdüme, turkuaz oksitlenmiş
+   * bakıra, kırmızı demir oksite, sarı hardala gider. Uluslar arası kontrast
+   * korunur, ama hiçbiri dijital görünmez.
+   */
+  mineralize(hue, sat, light) {
+    const h = ((hue % 360) + 360) % 360;
+    // Ton başına doygunluk tavanı: yeşil ve turkuaz gözde en baskın
+    // ailelerdir, en çok onlar kısılır; kırmızı-toprak aralığı korunur.
+    let ceiling;
+    if (h < 20 || h >= 340) ceiling = 34;        // kiremit / demir oksit
+    else if (h < 50) ceiling = 32;               // hardal, eski altın
+    else if (h < 95) ceiling = 26;               // zeytin
+    else if (h < 165) ceiling = 22;              // orman yeşili
+    else if (h < 200) ceiling = 24;              // oksitlenmiş bakır
+    else if (h < 260) ceiling = 26;              // arduvaz mavisi
+    else if (h < 320) ceiling = 24;              // soluk erik
+    else ceiling = 30;                           // gül kurusu
+    // Sıcak toprak eksenine doğru hafif çekiş: saf turkuaz ve saf mor
+    // haritada dijital duruyordu.
+    const warmPull = h > 150 && h < 300 ? -6 : 2;
+    return {
+      hue: (h + warmPull + 360) % 360,
+      sat: Math.min(sat, ceiling),
+      light,
+    };
+  }
+
+  ownerTint(owner, terrain, tile = null) {
+    // Province başına çok küçük, deterministik ton sapması. Amaç yamalı bir
+    // görünüm değil: aynı ülkenin komşu province'leri arasında ±%3 parlaklık
+    // ve ±%2 doygunluk farkı, baskı mürekkebinin eşit olmayan yoğunluğunu
+    // taklit eder. Sapma az sayıda kademeye yuvarlanır ki renk önbelleği
+    // province sayısı kadar büyümesin.
+    const step = tile ? this.provinceStep(tile) : 0;
+    const key = `${owner.id}:${terrain.id}:${step}`;
     let color = this.tintCache.get(key);
     if (color) return color;
     const shade = terrainShade(terrain);
-    const light = Math.max(14, Math.min(82, owner.light * shade));
-    // Doygunluğu biraz kısıyoruz: 15 ülke tam doygun olunca harita bağırıyor.
-    color = `hsl(${Math.round(owner.hue)} ${Math.round(owner.sat * 0.82)}% ${Math.round(light)}%)`;
+    const base = this.mineralize(owner.hue, owner.sat * 0.52, owner.light * shade * 0.88);
+    const light = Math.max(12, Math.min(66, base.light + step * 1.5));
+    const sat = Math.max(6, base.sat + step * 0.8);
+    color = `hsl(${Math.round(base.hue)} ${Math.round(sat)}% ${Math.round(light)}%)`;
     this.tintCache.set(key, color);
     return color;
+  }
+
+  /**
+   * Province'in ton kademesi (−2..+2). İki frekans toplanır: kare başına
+   * hash (mürekkep grenі) ve geniş ölçekli sinüs alanı (baskı bölgesi). Tek
+   * başına hash kullanmak satranç tahtası, tek başına alan kullanmak bant
+   * yaratıyordu.
+   */
+  provinceStep(tile) {
+    let h = (tile.q * 374761393 + tile.r * 668265263) | 0;
+    h = (h ^ (h >>> 13)) * 1274126177;
+    const grain = (((h ^ (h >>> 16)) >>> 0) % 1000) / 1000;
+    const field = (Math.sin(tile.q * 0.21 + tile.r * 0.13)
+      + Math.sin(tile.q * 0.07 - tile.r * 0.31)) / 2;
+    const mixed = grain * 0.45 + (field * 0.5 + 0.5) * 0.55;
+    return Math.round((mixed - 0.5) * 4);
   }
 
   /** Sahipsiz kara politik kipte soluk kalır ki sahipli topraklar öne çıksın. */
@@ -146,7 +240,8 @@ export class Renderer {
     const ctx = this.ctx;
     const cam = this.camera;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    ctx.fillStyle = '#0a1b2e';
+    // Harita zemini arayüz paletiyle aynı kömür-lacivert tonda.
+    ctx.fillStyle = '#0b1115';
     ctx.fillRect(0, 0, cam.viewWidth, cam.viewHeight);
 
     ctx.save();
@@ -162,31 +257,37 @@ export class Renderer {
     } else {
       const tiles = this.visibleTiles(world);
       this.drawTerrain(ctx, tiles, world);
+      if (this.mapMode === 'political') this.drawOccupationOverlay(ctx, world, tiles, cam.zoom);
+      if (this.mapMode === 'construction') {
+        this.drawConstructionOverlay(ctx, world, tiles, cam.zoom);
+      }
       if (this.showGrid) this.drawGrid(ctx, tiles, cam.zoom);
       if (this.mapMode !== 'terrain') this.drawBorders(ctx, world, tiles, cam.zoom);
-      this.drawRoads(ctx, world, tiles, cam.zoom);
       this.lastDrawn = tiles.length;
     }
 
     if (state.reachable) this.drawReachable(ctx, state.reachable);
-    if (state.buildingPlacement) this.drawBuildingPlacement(ctx, state.buildingPlacement);
     if (state.selected) this.drawHighlight(ctx, state.selected, '#ffffff', 3);
     if (state.hovered && state.hovered !== state.selected) {
       this.drawHighlight(ctx, state.hovered, 'rgba(255,255,255,0.45)', 2);
     }
     this.drawCities(ctx, world);
-    this.drawStructures(ctx, world);
-    this.drawFronts(ctx, world, state);
-    this.drawMovement(ctx, world, state.selectedUnit, state.playerNation);
-    this.drawUnits(ctx, world, state.selectedUnit);
-    this.drawBattles(ctx, world);
+    if (this.mapMode === 'construction') {
+      this.drawConstructionBadges(ctx, world, cam.zoom);
+    } else {
+      this.drawFronts(ctx, world, state);
+      this.drawMovement(ctx, world, state.selectedUnit, state.playerNation);
+      this.drawUnitCounters(ctx, world, state.selectedUnit);
+      this.drawBattles(ctx, world);
+    }
     this.drawSelection(ctx, state.selection);
     ctx.restore();
 
     // Seçim kutusu ekran uzayında: kamera dönüşümünün dışında çizilir.
     if (state.marquee) this.drawMarquee(ctx, state.marquee);
 
-    if (this.showLabels && world.nations?.length && cam.zoom > 0.3) {
+    if (this.showLabels && this.mapMode !== 'construction'
+      && world.nations?.length && cam.zoom > 0.3) {
       this.drawLabels(ctx, world);
     }
   }
@@ -208,12 +309,14 @@ export class Renderer {
     ctx.translate(-b.minX, -b.minY);
 
     const all = world.tiles;
-    this.drawTerrain(ctx, all, world);
+    this.drawTerrain(ctx, all, world, true);
+    if (this.mapMode === 'political') this.drawOccupationOverlay(ctx, world, all, scale);
+    if (this.mapMode === 'construction') {
+      this.drawConstructionOverlay(ctx, world, all, scale);
+    }
     if (this.mapMode !== 'terrain') this.drawBorders(ctx, world, all, scale);
-    // Yollar önbelleğe de girmeli: yoksa uzaklaşınca ağ tamamen kayboluyordu.
-    this.drawRoads(ctx, world, all, scale);
 
-    this.cache = { canvas, x: b.minX, y: b.minY, w, h, scale };
+    this.cache ={ canvas, x: b.minX, y: b.minY, w, h, scale };
     return this.cache;
   }
 
@@ -221,8 +324,10 @@ export class Renderer {
    * Zemin dolgusu. Kipe göre renk seçilir ama çizim tek geçişte, renge göre
    * gruplanarak yapılır (binlerce hex için tek fill çağrısı başına bir path).
    */
-  drawTerrain(ctx, tiles, world) {
+  drawTerrain(ctx, tiles, world, baking = false) {
     const byColor = new Map();
+    const land = new Path2D();
+    const sea = new Path2D();
     for (const t of tiles) {
       const color = this.tileColor(t, world);
       let path = byColor.get(color);
@@ -231,47 +336,239 @@ export class Renderer {
         byColor.set(color, path);
       }
       this.hexPath(path, t.x, t.y);
+      this.hexPath(t.terrain.water ? sea : land, t.x, t.y);
     }
     for (const [color, path] of byColor) {
       ctx.fillStyle = color;
       ctx.fill(path);
     }
+    if (baking) this.paintAtlas(ctx, land, sea, true);
+  }
+
+  /** Doku desenleri dünya uzayına sabitlenir; bir kez üretilip saklanır. */
+  patterns(ctx) {
+    if (!this.texturePatterns) {
+      const mat = materials();
+      this.texturePatterns = {
+        atlas: ctx.createPattern(mat.mapAtlas, 'repeat'),
+        ocean: ctx.createPattern(mat.oceanInk, 'repeat'),
+      };
+    }
+    return this.texturePatterns;
   }
 
   /**
-   * Kaynak kipi: kare, en çok verdiği kaynağın rengini alır; yoğunluk
-   * miktarla artar. Nerede demir/kereste olduğunu görmeden genişleme kararı
-   * vermek körlemesineydi.
+   * Atlas baskısı. Desen dünya uzayına sabitlendiği için ülke sınırlarında
+   * kesilip yeniden başlamaz: tek parça bir kâğıt yüzeyi gibi davranır.
+   *
+   * Performans notu: kara ve deniz için iki ayrı `fill(Path2D)` çağrısı,
+   * binlerce hex'ten oluşan birleşik yolu `soft-light` ile taramak demekti ve
+   * yakın zoomda kareye ~43 ms ekliyordu. Kâğıt zaten tüm dünyayı kaplayan tek
+   * bir yüzey olduğu için tek dikdörtgen yeterli; deniz kendi malzemesini
+   * yalnız önbellek pişirilirken (uzak zoom) alır, orada maliyet bir kez ödenir.
    */
+  paintAtlas(ctx, land, sea, baking = false) {
+    const { atlas, ocean } = this.patterns(ctx);
+    if (!atlas) return;
+    ctx.save();
+    // soft-light: altındaki rengi yok etmeden yoğunluğunu dalgalandırır.
+    ctx.globalCompositeOperation = 'soft-light';
+    if (baking) {
+      // Önbellek pişirilirken maliyet bir kez ödenir: kara ve deniz kendi
+      // malzemesini alır.
+      if (ocean) {
+        ctx.fillStyle = ocean;
+        ctx.fill(sea);
+      }
+      ctx.fillStyle = atlas;
+      ctx.fill(land);
+    }
+    ctx.restore();
+  }
+
+
+  /** Kaynak kipi: her province yalnız kendi RGO rengini taşır. */
   resourceTint(tile) {
-    const y = tile.terrain.yields;
-    const best = [
-      ['food', y.food, 96], ['timber', y.timber, 140],
-      ['iron', y.iron, 205], ['gold', y.gold, 48],
-    ].sort((a, b) => b[1] - a[1])[0];
-    if (!best[1]) return 'hsl(210 6% 26%)';
-    const key = `res:${tile.terrain.id}`;
+    const type = RGO_TYPES[tile.province?.rgo];
+    if (!type) return 'hsl(210 6% 26%)';
+    const quality = Math.max(0.85, Math.min(1.15, tile.province.rgoQuality ?? 1));
+    const key = `res:${type.id}:${Math.round(quality * 10)}`;
     let color = this.tintCache.get(key);
     if (color) return color;
-    const light = 26 + Math.min(3, best[1]) * 12;
-    color = `hsl(${best[2]} 58% ${light}%)`;
+    const light = 30 + (quality - 0.85) * 38;
+    color = `hsl(${type.hue} 30% ${Math.round(light)}%)`;
     this.tintCache.set(key, color);
     return color;
+  }
+
+  /** Logaritmik nufus skalasi: 1K koyu, 20K+ parlak sari-yesil. */
+  populationTint(tile) {
+    const population = Math.max(0, tile.province?.population ?? 0);
+    if (!population) return 'hsl(225 8% 20%)';
+    const low = Math.log10(800);
+    const high = Math.log10(20000);
+    const ratio = Math.max(0, Math.min(1, (Math.log10(population) - low) / (high - low)));
+    const hue = 268 - ratio * 205;
+    const saturation = 18 + ratio * 18;
+    const light = 20 + ratio * 34;
+    return `hsl(${Math.round(hue)} ${Math.round(saturation)}% ${Math.round(light)}%)`;
   }
 
   tileColor(tile, world) {
     if (this.mapMode === 'resources') {
       return tile.terrain.water ? 'hsl(210 30% 18%)' : this.resourceTint(tile);
     }
+    if (this.mapMode === 'population') {
+      return tile.terrain.water ? 'hsl(210 30% 15%)' : this.populationTint(tile);
+    }
+    if (this.mapMode === 'construction') {
+      if (tile.terrain.water) return 'hsl(207 35% 14%)';
+      if (tile.owner !== this.constructionNation) return 'hsl(205 10% 19%)';
+      const region = this.constructionData(world).tileRegions.get(tile);
+      // Ton, orandan cok mutlak bos kapasiteyi anlatir: 4/4 ile 10/10 ayni
+      // aciklikta gorunmemeli; fazla bos slotu olan state daha acik yesildir.
+      // Doygunluk arayuz paletiyle ayni kademede: %52 neon yesil bir alan
+      // yaratiyor ve acik panelle gorsel guc yarisina giriyordu.
+      const light = 22 + Math.min(1, (region?.free ?? 0) / 12) * 26;
+      return `hsl(96 18% ${Math.round(light)}%)`;
+    }
     // Su her kipte arazi rengiyle kalır: kimsenin toprağı değil.
     if (tile.terrain.water || this.mapMode === 'terrain') return tile.terrain.color;
 
     if (this.mapMode === 'cultures') {
       if (tile.culture < 0) return this.neutralTint(tile.terrain);
-      return this.ownerTint(world.cultures[tile.culture], tile.terrain);
+      return this.ownerTint(world.cultures[tile.culture], tile.terrain, tile);
     }
     if (tile.owner < 0) return this.neutralTint(tile.terrain);
-    return this.ownerTint(world.nations[tile.owner], tile.terrain);
+    return this.ownerTint(world.nations[tile.owner], tile.terrain, tile);
+  }
+
+  /** Hukuki sinir sabit kalir; isgal edilen province controller renginde taranir. */
+  drawOccupationOverlay(ctx, world, tiles, scale) {
+    const groups = new Map();
+    for (const tile of tiles) {
+      if (!isOccupied(tile) || tile.terrain.water) continue;
+      const controller = controllerOf(tile);
+      let group = groups.get(controller);
+      if (!group) {
+        group = { path: new Path2D(), minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity };
+        groups.set(controller, group);
+      }
+      this.hexPath(group.path, tile.x, tile.y);
+      group.minX = Math.min(group.minX, tile.x - HEX_SIZE);
+      group.maxX = Math.max(group.maxX, tile.x + HEX_SIZE);
+      group.minY = Math.min(group.minY, tile.y - HEX_SIZE);
+      group.maxY = Math.max(group.maxY, tile.y + HEX_SIZE);
+    }
+    for (const [controller, group] of groups) {
+      ctx.save();
+      ctx.globalAlpha = 0.46;
+      ctx.fillStyle = world.nations[controller]?.color ?? '#999';
+      ctx.fill(group.path);
+      ctx.globalAlpha = 1;
+      ctx.clip(group.path);
+      ctx.beginPath();
+      const height = group.maxY - group.minY;
+      const spacing = 9 / scale;
+      for (let x = group.minX - height; x <= group.maxX + height; x += spacing) {
+        ctx.moveTo(x, group.minY);
+        ctx.lineTo(x + height, group.maxY);
+      }
+      ctx.lineWidth = 2.2 / scale;
+      ctx.strokeStyle = 'rgba(214, 200, 168, 0.5)';
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  drawConstructionOverlay(ctx, world, tiles, scale) {
+    const atlas = this.constructionData(world);
+    const visible = new Set(tiles);
+    const spacing = 10 / scale;
+    const stripeWidth = 2.5 / scale;
+
+    for (const region of atlas.regions) {
+      if (region.status === 'open') continue;
+      const shown = region.tiles.filter((tile) => visible.has(tile));
+      if (!shown.length) continue;
+      const clip = new Path2D();
+      let minX = Infinity;
+      let maxX = -Infinity;
+      let minY = Infinity;
+      let maxY = -Infinity;
+      for (const tile of shown) {
+        this.hexPath(clip, tile.x, tile.y);
+        minX = Math.min(minX, tile.x - HEX_SIZE);
+        maxX = Math.max(maxX, tile.x + HEX_SIZE);
+        minY = Math.min(minY, tile.y - HEX_SIZE);
+        maxY = Math.max(maxY, tile.y + HEX_SIZE);
+      }
+      ctx.save();
+      ctx.clip(clip);
+      ctx.beginPath();
+      const height = maxY - minY;
+      for (let x = minX - height; x <= maxX + height; x += spacing) {
+        ctx.moveTo(x, minY);
+        ctx.lineTo(x + height, maxY);
+      }
+      ctx.lineWidth = stripeWidth;
+      ctx.strokeStyle = region.status === 'full'
+        ? 'rgba(126, 141, 146, 0.7)'
+        : 'rgba(183, 142, 72, 0.66)';
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // Ulke sinirindan farkli olarak planlama bolgesi sinirlari ince beyazdir.
+    const border = new Path2D();
+    for (const tile of tiles) {
+      const region = atlas.tileRegions.get(tile);
+      if (!region) continue;
+      for (let side = 0; side < 6; side++) {
+        const neighbor = world.get(tile.q + DIRS[side][0], tile.r + DIRS[side][1]);
+        const other = atlas.tileRegions.get(neighbor);
+        if (!other || other.id === region.id) continue;
+        const a = this.corners[side];
+        const b = this.corners[(side + 1) % 6];
+        border.moveTo(tile.x + a[0], tile.y + a[1]);
+        border.lineTo(tile.x + b[0], tile.y + b[1]);
+      }
+    }
+    ctx.lineWidth = 1.8 / scale;
+    ctx.strokeStyle = 'rgba(214, 200, 168, 0.55)';
+    ctx.stroke(border);
+  }
+
+  drawConstructionBadges(ctx, world, scale) {
+    if (scale < 0.25) return;
+    const atlas = this.constructionData(world);
+    const rect = this.camera.visibleRect(HEX_SIZE * 3);
+    const width = 54 / scale;
+    const height = 27 / scale;
+    for (const region of atlas.regions) {
+      const tile = region.center;
+      if (!tile || tile.x < rect.minX || tile.x > rect.maxX
+        || tile.y < rect.minY || tile.y > rect.maxY) continue;
+      const x = tile.x - width / 2;
+      const y = tile.y - height / 2;
+      ctx.fillStyle = 'rgba(11, 17, 21, 0.9)';
+      ctx.fillRect(x, y, width, height);
+      ctx.strokeStyle = region.status === 'full'
+        ? 'rgba(126, 141, 146, 0.9)'
+        : region.status === 'partial'
+          ? 'rgba(183, 142, 72, 0.9)'
+          : 'rgba(131, 154, 107, 0.9)';
+      ctx.lineWidth = 1.4 / scale;
+      ctx.strokeRect(x, y, width, height);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = '#d9d1bd';
+      ctx.font = `700 ${10 / scale}px ui-monospace, monospace`;
+      ctx.fillText(`${region.used}/${region.slots}`, tile.x, tile.y - 4 / scale);
+      ctx.fillStyle = '#839a6b';
+      ctx.font = `${8 / scale}px ui-monospace, monospace`;
+      ctx.fillText(`${region.free} free`, tile.x, tile.y + 7 / scale);
+    }
   }
 
 
@@ -279,7 +576,9 @@ export class Renderer {
     const path = new Path2D();
     for (const t of tiles) this.hexPath(path, t.x, t.y);
     ctx.lineWidth = 1 / scale;
-    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    // Province ızgarası saf siyah değil koyu bir toprak tonudur: baskıda
+    // hatlar mürekkebin kendi rengindedir, altına siyah çizilmez.
+    ctx.strokeStyle = 'rgba(8, 12, 12, 0.22)';
     ctx.stroke(path);
   }
 
@@ -311,60 +610,16 @@ export class Renderer {
     ctx.lineCap = 'round';
     // Önce koyu alt çizgi, sonra ülke rengi: benzer tonlu iki komşu birbirine
     // karışmasın. Sabit ekran kalınlığı için ölçeğe bölünür.
-    ctx.lineWidth = 4.2 / scale;
-    ctx.strokeStyle = 'rgba(8,12,18,0.75)';
+    // Dış hat: kalın ve koyu, ülkeyi yerinden söker.
+    ctx.lineWidth = 4.6 / scale;
+    ctx.strokeStyle = 'rgba(2, 5, 6, 0.88)';
     for (const path of byColor.values()) ctx.stroke(path);
 
-    ctx.lineWidth = 2 / scale;
+    // İç hat: çok ince, düşük opaklıkta sıcak highlight. Neon bir dış çizgi
+    // değil, baskıda hattın iç kenarında kalan açık mürekkep payı.
+    ctx.lineWidth = (cultureMode ? 2 : 1) / scale;
     for (const [color, path] of byColor) {
-      ctx.strokeStyle = color;
-      ctx.stroke(path);
-    }
-  }
-
-  /** Yol ağı yakın ve orta zoomda siyasi haritanın üstünde okunur kalır. */
-  drawRoads(ctx, world, tiles, scale) {
-    const paths = new Map();
-    const pathFor = (level) => {
-      let path = paths.get(level);
-      if (!path) {
-        path = new Path2D();
-        paths.set(level, path);
-      }
-      return path;
-    };
-
-    for (const tile of tiles) {
-      const level = tile.roadLevel ?? 0;
-      if (level <= 0 || tile.terrain.water) continue;
-      let connected = false;
-      for (const next of world.neighbors(tile)) {
-        if ((next.roadLevel ?? 0) <= 0 || next.owner !== tile.owner) continue;
-        if (next.q < tile.q || (next.q === tile.q && next.r < tile.r)) continue;
-        connected = true;
-        const segment = pathFor(Math.min(level, next.roadLevel));
-        segment.moveTo(tile.x, tile.y);
-        segment.lineTo(next.x, next.y);
-      }
-      if (!connected) {
-        // Yalnız kare: komşusuna bağlanmamış yol. Kısa bir tire neredeyse
-        // görünmüyordu; ağın ilk düğümü de okunabilir olmalı.
-        const marker = pathFor(level);
-        const r = HEX_SIZE * 0.16;
-        marker.moveTo(tile.x - r, tile.y);
-        marker.lineTo(tile.x + r, tile.y);
-        marker.moveTo(tile.x, tile.y - r);
-        marker.lineTo(tile.x, tile.y + r);
-      }
-    }
-
-    ctx.lineCap = 'round';
-    for (const [level, path] of paths) {
-      ctx.lineWidth = (3.2 + level * 0.9) / scale;
-      ctx.strokeStyle = 'rgba(34, 25, 17, 0.78)';
-      ctx.stroke(path);
-      ctx.lineWidth = (1.3 + level * 0.55) / scale;
-      ctx.strokeStyle = level === 3 ? '#e8c982' : level === 2 ? '#c8a96a' : '#9a8058';
+      ctx.strokeStyle = cultureMode ? color : 'rgba(193, 167, 112, 0.16)';
       ctx.stroke(path);
     }
   }
@@ -386,13 +641,17 @@ export class Renderer {
   drawSelection(ctx, selection) {
     if (!selection?.length) return;
     const zoom = this.camera.zoom;
-    ctx.lineWidth = 3 / zoom;
+    const width = HEX_SIZE * 1.72;
+    const height = HEX_SIZE * 1.28;
+    ctx.lineWidth = 2.5 / zoom;
     ctx.strokeStyle = '#e5ca84';
     for (const unit of selection) {
       if (!unit?.tile) continue;
-      ctx.beginPath();
-      ctx.arc(unit.tile.x, unit.tile.y, HEX_SIZE * 0.62, 0, Math.PI * 2);
-      ctx.stroke();
+      const y = unit.tile.y + (unit.tile.city ? HEX_SIZE * UNIT_ON_CITY_OFFSET : 0);
+      const frame = roundedRectPath(
+        new Path2D(), unit.tile.x - width / 2, y - height / 2, width, height, 3 / zoom,
+      );
+      ctx.stroke(frame);
     }
   }
 
@@ -412,149 +671,39 @@ export class Renderer {
   }
 
   /**
-   * Cephe hatları. Taarruz hattı kırmızı, savunma hattı mavi; etkin plan kalın
-   * ve dolu, hazırlık aşamasındaki plan kesikli çizilir. Sürüklenirken oluşan
-   * geçici hat da aynı yerde, sarı olarak gösterilir.
+   * Secili komutanin cephesi. Hat sirali bir zincir degildir: sinira bakan
+   * province kumesidir. Bu nedenle kareler birbirine baglanmaz; her province
+   * ayni bant icinde boyanir ve sinir degisince goruntu kendiliginden ilerler.
    */
   drawFronts(ctx, world, state) {
+    const tiles = state.front ?? [];
+    const general = state.activeGeneral;
+    if (!general || !tiles.length || general.nationId !== state.playerNation) return;
+
     const zoom = this.camera.zoom;
-    const fronts = world.frontSystem?.fronts ?? [];
+    const attack = general.stance === 'advance';
+    const glow = attack ? '#ff9382' : '#8fcdef';
+    const band = new Path2D();
+    for (const tile of tiles) this.hexPath(band, tile.x, tile.y);
 
-    for (const front of fronts) {
-      if (front.nationId !== state.playerNation) continue;
-      const tiles = front.tiles
-        .map((point) => world.get(point.q, point.r))
-        .filter(Boolean);
-      if (!tiles.length || (front.plan !== 'arrow' && tiles.length < 2)) continue;
-      const attack = front.plan === 'advance' || front.plan === 'arrow';
-      const arrow = front.plan === 'arrow';
-      const selected = state.selectedFront?.id === front.id;
+    ctx.globalAlpha = 0.3;
+    ctx.fillStyle = glow;
+    ctx.fill(band);
+    ctx.globalAlpha = 1;
+    ctx.lineWidth = (attack ? 3.5 : 2.5) / zoom;
+    ctx.strokeStyle = glow;
+    ctx.stroke(band);
 
-      const tone = arrow ? 'rgba(232, 153, 70, 0.96)'
-        : attack ? 'rgba(214, 96, 84, 0.92)' : 'rgba(101, 169, 207, 0.92)';
-      // Bandın parlak tonu: ülke rengi zaten kırmızıysa aynı tonda bir dolgu
-      // hiç okunmuyordu, bu yüzden kare vurgusu açık renkle çiziliyor.
-      const glow = arrow ? '#ffb15e' : attack ? '#ff9382' : '#8fcdef';
-
-      // Hattı taşıyan province'ler de boyanır: oyuncu "hat nereye kuruldu"yu
-      // ince bir çizgiden değil, yanan karelerden okusun.
-      const band = new Path2D();
-      for (const tile of tiles) this.hexPath(band, tile.x, tile.y);
-      ctx.globalAlpha = selected ? 0.42 : 0.28;
-      ctx.fillStyle = glow;
-      ctx.fill(band);
-      ctx.globalAlpha = 1;
-      ctx.lineWidth = 2.5 / zoom;
-      ctx.strokeStyle = glow;
-      ctx.stroke(band);
-
-      ctx.beginPath();
-      ctx.moveTo(tiles[0].x, tiles[0].y);
-      for (const tile of tiles.slice(1)) ctx.lineTo(tile.x, tile.y);
-      ctx.lineWidth = (selected ? 6 : 4) / zoom;
-      ctx.lineCap = 'round';
-      ctx.lineJoin = 'round';
-      ctx.strokeStyle = tone;
-      ctx.setLineDash(front.active ? [] : [9 / zoom, 6 / zoom]);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      // Taarruz planında hedef *hattı* çizilir: cepheden ona doğru oklar uzar.
-      // Hedef hattı front.tiles içinde değildir; hat haftalar içinde ona yürür.
-      if (arrow && front.objective?.length) {
-        const goal = front.objective.map((p) => world.get(p.q, p.r)).filter(Boolean);
-        if (goal.length) {
-          ctx.beginPath();
-          ctx.moveTo(goal[0].x, goal[0].y);
-          for (const tile of goal.slice(1)) ctx.lineTo(tile.x, tile.y);
-          ctx.lineWidth = 3 / zoom;
-          ctx.strokeStyle = 'rgba(120, 214, 138, 0.95)';
-          ctx.setLineDash([7 / zoom, 5 / zoom]);
-          ctx.stroke();
-          ctx.setLineDash([]);
-
-          // Cepheden hedefe ok: hangi kesimin nereye gideceği okunur olsun.
-          const head = 11 / zoom;
-          ctx.lineWidth = (selected ? 5 : 3.5) / zoom;
-          ctx.strokeStyle = 'rgba(232, 153, 70, 0.96)';
-          const steps = Math.min(tiles.length, 4);
-          for (let i = 0; i < steps; i++) {
-            const from = tiles[Math.round((i / Math.max(1, steps - 1)) * (tiles.length - 1))];
-            const to = goal[Math.round((i / Math.max(1, steps - 1)) * (goal.length - 1))];
-            if (!from || !to || from === to) continue;
-            const angle = Math.atan2(to.y - from.y, to.x - from.x);
-            ctx.beginPath();
-            ctx.moveTo(from.x, from.y);
-            ctx.lineTo(to.x, to.y);
-            ctx.lineTo(
-              to.x - Math.cos(angle - Math.PI / 6) * head,
-              to.y - Math.sin(angle - Math.PI / 6) * head,
-            );
-            ctx.moveTo(to.x, to.y);
-            ctx.lineTo(
-              to.x - Math.cos(angle + Math.PI / 6) * head,
-              to.y - Math.sin(angle + Math.PI / 6) * head,
-            );
-            ctx.stroke();
-          }
-        }
-      }
-
-      // Hazırlık göstergesi: hattın her ucunda planlama oranı kadar dolu nokta.
-      const ready = Math.max(0, Math.min(1, front.planning ?? 0));
-      for (const tile of [tiles[0], tiles[tiles.length - 1]]) {
-        ctx.beginPath();
-        ctx.arc(tile.x, tile.y, HEX_SIZE * 0.26, -Math.PI / 2, -Math.PI / 2 + ready * Math.PI * 2);
-        ctx.lineWidth = 4 / zoom;
-        ctx.strokeStyle = ready >= 1 ? '#e5ca84' : 'rgba(229, 202, 132, 0.6)';
-        ctx.stroke();
-      }
-      ctx.lineCap = 'butt';
-    }
-
-    // Seçili taarruz planının izleyeceği güzergâh: kesikli province vurgusu.
-    if (state.plannedPath?.length) {
-      const path = new Path2D();
-      for (const tile of state.plannedPath) this.hexPath(path, tile.x, tile.y);
-      ctx.globalAlpha = 0.3;
-      ctx.fillStyle = 'rgba(232, 153, 70, 0.55)';
-      ctx.fill(path);
-      ctx.globalAlpha = 1;
-      ctx.lineWidth = 1.5 / zoom;
-      ctx.strokeStyle = 'rgba(232, 153, 70, 0.7)';
-      ctx.setLineDash([5 / zoom, 4 / zoom]);
-      ctx.stroke(path);
-      ctx.setLineDash([]);
-    }
-
-    // Çizim kipinde imlecin yakınındaki sınır parlar: tıklayınca hat oraya oturur.
-    if (state.borderPreview?.tiles?.length) {
-      const preview = new Path2D();
-      for (const tile of state.borderPreview.tiles) this.hexPath(preview, tile.x, tile.y);
-      ctx.globalAlpha = 0.26;
-      ctx.fillStyle = state.drawMode === 'fallback' ? '#65a9cf' : '#e5ca84';
-      ctx.fill(preview);
-      ctx.globalAlpha = 1;
-      ctx.lineWidth = 3 / zoom;
-      ctx.strokeStyle = state.drawMode === 'fallback' ? '#65a9cf' : '#e5ca84';
-      ctx.stroke(preview);
-    }
-
-    const draw = state.frontDraw;
-    if (draw?.tiles?.length > 1) {
-      ctx.beginPath();
-      ctx.moveTo(draw.tiles[0].x, draw.tiles[0].y);
-      for (const tile of draw.tiles.slice(1)) ctx.lineTo(tile.x, tile.y);
-      ctx.lineWidth = 5 / zoom;
-      ctx.lineCap = 'round';
-      ctx.strokeStyle = state.drawMode === 'arrow'
-        ? 'rgba(232, 153, 70, 0.96)'
-        : state.drawMode === 'fallback'
-          ? 'rgba(101, 169, 207, 0.92)'
-          : 'rgba(229, 202, 132, 0.95)';
-      ctx.stroke();
-      ctx.lineCap = 'butt';
-    }
+    const ready = Math.max(0, Math.min(1, general.planning ?? 0));
+    const marker = tiles[Math.floor(tiles.length / 2)];
+    ctx.beginPath();
+    ctx.arc(
+      marker.x, marker.y, HEX_SIZE * 0.26,
+      -Math.PI / 2, -Math.PI / 2 + ready * Math.PI * 2,
+    );
+    ctx.lineWidth = 4 / zoom;
+    ctx.strokeStyle = ready >= 1 ? '#e5ca84' : 'rgba(229, 202, 132, 0.65)';
+    ctx.stroke();
   }
 
   /**
@@ -640,6 +789,145 @@ export class Renderer {
    * Birimler: ülke renginde disk + tip harfi + can çubuğu.
    * Uzaklaşınca yazı okunmaz olduğu için sadece disk çizilir.
    */
+  drawUnitCounters(ctx, world, selectedUnit) {
+    if (!world.units?.length) return;
+    const zoom = this.camera.zoom;
+    const rect = this.camera.visibleRect(HEX_SIZE * 2);
+    const width = HEX_SIZE * 1.56;
+    const height = HEX_SIZE * 1.08;
+    const detailed = zoom > 0.46;
+    const typeCode = {
+      INFANTRY: 'INF', CAVALRY: 'CAV', ARTILLERY: 'ART', WARSHIP: 'NAV',
+    };
+
+    for (const unit of world.units) {
+      const tile = unit.tile;
+      if (tile.x < rect.minX || tile.x > rect.maxX || tile.y < rect.minY || tile.y > rect.maxY) {
+        continue;
+      }
+      const stack = unitsOn(tile);
+      if (stack.length > 1 && stack[0] !== unit) continue;
+      const nation = world.nations[unit.nationId];
+      const x = tile.x;
+      const y = tile.y + (tile.city ? HEX_SIZE * UNIT_ON_CITY_OFFSET : 0);
+      const left = x - width / 2;
+      const top = y - height / 2;
+      const radius = Math.max(1.5 / zoom, HEX_SIZE * 0.1);
+      const outer = roundedRectPath(new Path2D(), left, top, width, height, radius);
+      const strength = Math.max(0, Math.min(1, unit.hp / Math.max(1, maxHpOf(unit))));
+      const organization = Math.max(0, Math.min(1, organizationOf(unit) / 100));
+
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,0.55)';
+      ctx.shadowBlur = 2.5 / zoom;
+      ctx.shadowOffsetY = 1.5 / zoom;
+      // Plaka düz renk değil: üstten alta hafif koyulaşan boyalı metal.
+      const plate = ctx.createLinearGradient(left, top, left, top + height);
+      plate.addColorStop(0, '#1a2228');
+      plate.addColorStop(1, '#0e1417');
+      ctx.fillStyle = plate;
+      ctx.fill(outer);
+      // Cerceve ulke renginden alinmaz: doygun uluslarda neon turkuaz bir
+      // kutuya donuyordu. Secili birim pirinc, muharebedeki tugla kirmizisi,
+      // gerisi mat kirik beyaz.
+      ctx.lineWidth = (unit.battleId || unit === selectedUnit ? 2.4 : 1.4) / zoom;
+      ctx.strokeStyle = unit === selectedUnit ? '#d0ae62'
+        : unit.battleId ? '#a95e4a' : 'rgba(206, 196, 172, 0.5)';
+      ctx.stroke(outer);
+      ctx.restore();
+
+      // Ulke rengi yalniz ust kimlik seridinde: counter haritaya karismaz.
+      ctx.save();
+      ctx.clip(outer);
+      // Kimlik şeridi ülkenin haritadaki mineral tonunu kullanır; ham palet
+      // rengi kartı dijital bir rozete çeviriyordu.
+      const band = this.mineralize(nation.hue, nation.sat * 0.5, nation.light * 0.8);
+      ctx.fillStyle = `hsl(${Math.round(band.hue)} ${Math.round(band.sat)}% ${Math.round(band.light)}%)`;
+      ctx.fillRect(left, top, width, height * 0.25);
+      ctx.fillStyle = 'rgba(226, 214, 186, 0.14)';
+      ctx.fillRect(left, top, width, Math.max(0.8 / zoom, height * 0.045));
+      // İç gölge: plaka gömülü dursun.
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.lineWidth = 2 / zoom;
+      ctx.stroke(outer);
+      ctx.restore();
+
+      if (detailed) {
+        ctx.font = `800 ${Math.round(HEX_SIZE * 0.2)}px ui-sans-serif, system-ui, sans-serif`;
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#081017';
+        ctx.textAlign = 'left';
+        ctx.fillText(typeCode[unit.type.id] ?? 'DIV', left + width * 0.08, top + height * 0.135);
+        ctx.textAlign = 'right';
+        ctx.fillText(compactSoldiers(unit), left + width * 0.92, top + height * 0.135);
+
+        // NATO cercevesi ve sinif sembolu koyu govdede acik renkle okunur.
+        const symbolWidth = width * 0.58;
+        const symbolHeight = height * 0.38;
+        const symbolY = top + height * 0.48;
+        ctx.lineWidth = 1.15 / zoom;
+        ctx.strokeStyle = 'rgba(214, 200, 168, 0.8)';
+        ctx.strokeRect(x - symbolWidth / 2, symbolY - symbolHeight / 2, symbolWidth, symbolHeight);
+        const symbol = new Path2D();
+        natoSymbol(symbol, unit.type.id, x, symbolY, height * 0.2);
+        ctx.lineWidth = Math.max(1.15 / zoom, height * 0.055);
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#d9d1bd';
+        ctx.stroke(symbol);
+      }
+
+      // STR ve ORG iki ayri durum cubugudur; her zaman gorunur.
+      const barLeft = left + width * 0.07;
+      const barWidth = width * 0.86;
+      const barHeight = Math.max(1.35 / zoom, height * 0.065);
+      const strengthY = top + height * 0.77;
+      const organizationY = top + height * 0.89;
+      ctx.fillStyle = '#05090c';
+      ctx.fillRect(barLeft, strengthY, barWidth, barHeight);
+      ctx.fillRect(barLeft, organizationY, barWidth, barHeight);
+      ctx.fillStyle = strength > 0.5 ? '#839a6b' : strength > 0.25 ? '#b78e48' : '#a95e4a';
+      ctx.fillRect(barLeft, strengthY, barWidth * strength, barHeight);
+      ctx.fillStyle = organization > 0.35 ? '#7e8d92' : organization > 0.15 ? '#b78e48' : '#a95e4a';
+      ctx.fillRect(barLeft, organizationY, barWidth * organization, barHeight);
+
+      if (stack.length > 1) {
+        const badgeWidth = HEX_SIZE * 0.48;
+        const badge = roundedRectPath(
+          new Path2D(), left + width - badgeWidth * 0.75, top - badgeWidth * 0.25,
+          badgeWidth, badgeWidth, badgeWidth * 0.22,
+        );
+        ctx.fillStyle = '#0b1117';
+        ctx.fill(badge);
+        ctx.lineWidth = 1.4 / zoom;
+        ctx.strokeStyle = '#e5ca84';
+        ctx.stroke(badge);
+        ctx.font = `800 ${Math.round(HEX_SIZE * 0.22)}px ui-sans-serif, system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#f2e4b9';
+        ctx.fillText(String(stack.length), left + width - badgeWidth * 0.25, top + badgeWidth * 0.25);
+      }
+
+      if (unit.order && detailed) {
+        ctx.font = `800 ${Math.round(HEX_SIZE * 0.23)}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillStyle = '#f7e7b3';
+        ctx.fillText(ORDER_BADGE[unit.order.type] ?? '', left + width * 0.1, top + height * 0.58);
+      }
+
+      if (unit === selectedUnit) {
+        ctx.lineWidth = 1.15 / zoom;
+        ctx.strokeStyle = '#ffffff';
+        const inner = roundedRectPath(
+          new Path2D(), left + 2 / zoom, top + 2 / zoom,
+          width - 4 / zoom, height - 4 / zoom, radius * 0.7,
+        );
+        ctx.stroke(inner);
+      }
+    }
+  }
+
   drawUnits(ctx, world, selectedUnit) {
     if (!world.units?.length) return;
     const zoom = this.camera.zoom;
@@ -750,42 +1038,6 @@ export class Renderer {
     }
   }
 
-  drawBuildingPlacement(ctx, placement) {
-    const path = new Path2D();
-    for (const tile of placement.tiles.keys()) this.hexPath(path, tile.x, tile.y);
-    ctx.globalAlpha = 0.32;
-    ctx.fillStyle = '#58c3a5';
-    ctx.fill(path);
-    ctx.globalAlpha = 1;
-    ctx.lineWidth = 2 / this.camera.zoom;
-    ctx.strokeStyle = 'rgba(119,255,213,0.85)';
-    ctx.stroke(path);
-  }
-
-  /** Province'e fiziksel olarak yerleştirilen ulusal binalar. */
-  drawStructures(ctx, world) {
-    const rect = this.camera.visibleRect(HEX_SIZE * 2);
-    const zoom = this.camera.zoom;
-    for (const tile of world.tiles) {
-      const building = BUILDINGS[tile.structure?.buildingId];
-      if (!building) continue;
-      if (tile.x < rect.minX || tile.x > rect.maxX || tile.y < rect.minY || tile.y > rect.maxY) continue;
-      const x = tile.x + HEX_SIZE * 0.28;
-      const y = tile.y - HEX_SIZE * 0.28;
-      const size = HEX_SIZE * 0.34;
-      ctx.fillStyle = 'rgba(5,15,22,0.9)';
-      ctx.fillRect(x - size, y - size, size * 2, size * 2);
-      ctx.strokeStyle = 'rgba(218,235,225,0.8)';
-      ctx.lineWidth = 1.4 / zoom;
-      ctx.strokeRect(x - size, y - size, size * 2, size * 2);
-      ctx.font = `${Math.round(HEX_SIZE * 0.38)}px system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#fff';
-      ctx.fillText(building.icon ?? '◆', x, y);
-    }
-  }
-
   /** Province muharebesi: çatışma yerinde iki ordunun asker ve moral durumu. */
   drawBattles(ctx, world) {
     const battles = world.battleSystem?.battles;
@@ -800,8 +1052,10 @@ export class Renderer {
       const y = tile.y - HEX_SIZE * 0.8;
       if (x < rect.minX || x > rect.maxX || y < rect.minY || y > rect.maxY) continue;
 
-      const attacker = world.units.find((army) => army.id === battle.attackerId);
-      const defender = world.units.find((army) => army.id === battle.defenderId);
+      const attackers = (battle.attackers ?? [])
+        .map((id) => world.units.find((army) => army.id === id)).filter(Boolean);
+      const defenders = (battle.defenders ?? [])
+        .map((id) => world.units.find((army) => army.id === id)).filter(Boolean);
       const width = 88 / zoom;
       const height = 28 / zoom;
       const half = width / 2;
@@ -819,15 +1073,21 @@ export class Renderer {
       ctx.fillStyle = '#fff';
       ctx.shadowColor = '#000';
       ctx.shadowBlur = 3 / zoom;
-      const a = attacker ? `${(soldiersOf(attacker) / 1000).toFixed(1)}K` : '0';
-      const d = defender ? `${(soldiersOf(defender) / 1000).toFixed(1)}K` : '0';
+      const aSoldiers = attackers.reduce((sum, army) => sum + soldiersOf(army), 0);
+      const dSoldiers = defenders.reduce((sum, army) => sum + soldiersOf(army), 0);
+      const a = aSoldiers ? `${(aSoldiers / 1000).toFixed(1)}K` : '0';
+      const d = dSoldiers ? `${(dSoldiers / 1000).toFixed(1)}K` : '0';
       ctx.fillText(`${a}  ⚔  ${d}`, x, y);
       ctx.shadowBlur = 0;
 
-      const aMorale = attacker ? moraleOf(attacker) : 0;
-      const dMorale = defender ? moraleOf(defender) : 0;
-      const moraleTotal = Math.max(1, aMorale + dMorale);
-      const markerX = x - half + (aMorale / moraleTotal) * width;
+      const aOrganization = aSoldiers > 0 ? attackers.reduce(
+        (sum, army) => sum + organizationOf(army) * soldiersOf(army), 0,
+      ) / aSoldiers : 0;
+      const dOrganization = dSoldiers > 0 ? defenders.reduce(
+        (sum, army) => sum + organizationOf(army) * soldiersOf(army), 0,
+      ) / dSoldiers : 0;
+      const organizationTotal = Math.max(1, aOrganization + dOrganization);
+      const markerX = x - half + (aOrganization / organizationTotal) * width;
       ctx.fillStyle = '#f5d58c';
       ctx.fillRect(markerX - 1.5 / zoom, y - height / 2 - 4 / zoom, 3 / zoom, height + 8 / zoom);
     }
@@ -854,10 +1114,17 @@ export class Renderer {
       if (p.x < -80 || p.y < -30 || p.x > cam.viewWidth + 80 || p.y > cam.viewHeight + 30) continue;
       // Etiket başkentin altına: üstüne yazınca şehir işaretini örtüyordu.
       const ly = p.y + Math.max(16, HEX_SIZE * cam.zoom * 0.7);
-      ctx.lineWidth = 3;
-      ctx.strokeStyle = 'rgba(0,0,0,0.75)';
+      // Sıcak ivory + kontrollü koyu kontur + çok hafif aşağı gölge.
+      // Glow yok: parlama etiketi haritadan kopartıyor.
+      ctx.save();
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+      ctx.shadowBlur = 2;
+      ctx.shadowOffsetY = 1;
+      ctx.lineWidth = 2.2;
+      ctx.strokeStyle = 'rgba(3, 6, 7, 0.72)';
       ctx.strokeText(nation.name, p.x, ly);
-      ctx.fillStyle = '#fff';
+      ctx.restore();
+      ctx.fillStyle = '#e6dcc4';
       ctx.fillText(nation.name, p.x, ly);
       // Başkent bayrağı: ülkeyi renginden değil kimliğinden tanı.
       if (nation.flag) drawFlag(ctx, nation.flag, p.x - 9, ly + 8, 18, 12);
