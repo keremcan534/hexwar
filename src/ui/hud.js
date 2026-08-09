@@ -20,6 +20,7 @@ import {
 import { ORDER } from '../game/orders.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { Screens } from './screens.js';
+import { Notifications } from './notifications.js';
 import {
   ROAD_MAX_LEVEL, canBuildRoad, roadCost, roadLabel, roadMoveCost,
 } from '../game/infrastructure.js';
@@ -87,6 +88,7 @@ export class Hud {
       commandTools: $('command-tools'),
     };
     this.screens = new Screens(game);
+    this.notifications = new Notifications(game);
     this.bind();
   }
 
@@ -335,7 +337,9 @@ export class Hud {
         if (!game.selection.length) return;
         const moved = assignDivisions(me, general.id, game.selection);
         if (moved) {
-          game.turns.addLog(`${moved} divisions transferred to ${general.name}.`);
+          game.turns.addLog(`${moved} divisions transferred to ${general.name}.`, {
+            kind: 'COMMANDER',
+          });
           game.activeGeneral = general;
         }
         this.showSelection();
@@ -830,7 +834,7 @@ export class Hud {
       train.onclick = () => {
         if (!pay(me, generalCost(me))) return;
         const general = createGeneral(game.world, me, game.turns.rng);
-        game.turns.addLog(`${general.name} joined the officer staff.`);
+        game.turns.addLog(`${general.name} joined the officer staff.`, { kind: 'COMMANDER' });
         this.openGeneralPicker(list);
         this.showCommand();
       };
@@ -851,7 +855,7 @@ export class Hud {
     for (const btn of this.el.sheetBody.querySelectorAll('[data-tech]')) {
       btn.onclick = () => {
         if (research(me, btn.dataset.tech)) {
-          game.turns.addLog(`${TECHS[btn.dataset.tech].name} researched.`);
+          game.turns.addLog(`${TECHS[btn.dataset.tech].name} researched.`, { kind: 'RESEARCH' });
           game.recomputeEconomy();
           game.emit('units', game.selectedUnit);
         }

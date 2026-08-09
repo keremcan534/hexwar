@@ -25,6 +25,7 @@ import { startBattle } from './battles.js';
 import { BUILDINGS, buildingPlacementTiles } from './buildings.js';
 import { PLAN, assignArmy, createFront } from './fronts.js';
 import { assignDivisions, divisionsOf, generalOfArmy } from './generals.js';
+import { NotificationCenter } from './notifications.js';
 
 /** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */
 const SPEEDS = [0, 1, 2, 4];
@@ -68,11 +69,12 @@ export class Game {
     this.selectedFront = null;
     this.selected_ = [];     // seçili ordular (bkz. selectUnits)
     this.reachable = null;   // { costs, prev } — seçili birimin menzili
+    this.notifications = new NotificationCenter(this);
     this.turns = new TurnManager(this);
     this.listeners = {
       select: [], world: [], turn: [], units: [], clock: [], economy: [],
       battles: [], provinces: [], placement: [], victory: [], fronts: [], selection: [],
-      command: [],
+      command: [], notify: [], 'notify-clear': [],
     };
     this.dirty = false;
     this.frameHandle = 0;
@@ -327,7 +329,14 @@ export class Game {
       captureCity(this, city, unit.nationId);
       // Şehir almak en pahalı fetihtir: bir ülkeyi yutmak dünyayı üstüne çeker.
       addInfamy(this.world.nations[unit.nationId], INFAMY.CITY);
-      this.turns.addLog(`${city.name} captured from ${old.name}.`);
+      const mine = unit.nationId === this.turns.playerNation;
+      this.turns.addLog(`${city.name} captured from ${old.name}.`, {
+        kind: 'CONQUEST',
+        tile: city.tile,
+        // Kendi şehrini kaybetmek kaybolmayan kart açar.
+        ttl: old.id === this.turns.playerNation ? 0 : undefined,
+        silent: !mine && old.id !== this.turns.playerNation,
+      });
     }
   }
 
@@ -556,7 +565,9 @@ export class Game {
   proposePeaceTo(nationId) {
     const accepted = considerPeaceOffer(this, this.turns.playerNation, nationId, this.turns.rng);
     if (!accepted) {
-      this.turns.addLog(`${this.world.nations[nationId].name} rejected the peace offer.`);
+      this.turns.addLog(`${this.world.nations[nationId].name} rejected the peace offer.`, {
+        kind: 'DIPLOMACY', tile: this.world.nations[nationId].capital,
+      });
     }
     this.selectUnit(this.selectedUnit);
     this.emit('units', this.selectedUnit);
@@ -650,11 +661,25 @@ export class Game {
 
   focusNation(nation) {
     if (!nation) return;
+    this.focusTile(nation.capital);
+  }
+
+  /** Bildirim kartına tıklandığında olayın geçtiği kareye gider. */
+  focusTile(tile) {
+    if (!tile) return;
     this.camera.zoom = Math.max(this.camera.zoom, 1);
-    this.camera.centerOn(nation.capital.x, nation.capital.y);
-    this.selected = nation.capital;
-    this.emit('select', nation.capital);
+    this.camera.centerOn(tile.x, tile.y);
+    this.selected = tile;
+    this.emit('select', tile);
     this.requestRender();
+  }
+
+  /**
+   * Bildirim kartı açar. Tanılama betikleri Game'i tam kurmadan kullanıyor,
+   * bu yüzden merkez yoksa sessizce geçilir.
+   */
+  notify(text, meta) {
+    return this.notifications?.push(text, meta) ?? null;
   }
 
   requestRender() {

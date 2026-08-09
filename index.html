@@ -39,6 +39,10 @@
     <button class="time-btn" data-speed="4">▶▶▶</button>
   </div>
 
+  <!-- Bildirim yığını: saatin altında, sağ üstte. Kartları ui/notifications.js
+       basar; boş yığın haritaya tıklamayı engellemez (pointer-events: none). -->
+  <div class="notify-stack" id="notify-stack" role="log" aria-live="polite" aria-relevant="additions"></div>
+
   <!-- HOI4'ün sekme düğmeleri: her biri tam ekran bir yönetim ekranı açar -->
   <nav class="tab-bar" id="tab-bar" aria-label="National management">
     <button data-screen="construction"><span>🏗</span>Construction</button>

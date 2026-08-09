@@ -57,8 +57,13 @@ export function startBattle(game, attacker, defender) {
   attacker.order = null;
   defender.order = null;
   system.battles.push(battle);
+  // Uzaktaki ülkelerin muharebeleri günlüğe girer ama kart açmaz: oyuncunun
+  // karışmadığı savaş ekranı doldurmasın.
+  const mine = attacker.nationId === game.turns.playerNation
+    || defender.nationId === game.turns.playerNation;
   game.turns.addLog(
     `${game.world.nations[attacker.nationId].name} engaged at ${defender.tile.q}, ${defender.tile.r}.`,
+    { kind: 'BATTLE', tile: defender.tile, silent: !mine },
   );
   game.emit('battles', battle);
   game.requestRender();
@@ -160,8 +165,17 @@ function finishBattle(game, battle, attacker, defender, attackerWon) {
   system.battles = system.battles.filter((item) => item.id !== battle.id);
   const winnerNation = winner ? game.world.nations[winner.nationId] : null;
   if (winnerNation) {
+    // Kazanan ve kaybeden kartı ayrı: zafer altın, bozgun kırmızı görünür.
+    const won = winnerNation.id === game.turns.playerNation;
+    const involved = battle.attackerNation === game.turns.playerNation
+      || battle.defenderNation === game.turns.playerNation;
     game.turns.addLog(
       `${winnerNation.name} won the battle at ${battle.q}, ${battle.r}; the enemy retreated.`,
+      {
+        kind: won ? 'FIELD_WIN' : 'BATTLE',
+        tile: battleTile,
+        silent: !involved,
+      },
     );
   }
   game.emit('battles', battle);
@@ -208,7 +222,9 @@ function resolveRound(game, battle) {
     if (!general) continue;
     general.battles = (general.battles ?? 0) + 1;
     if (addExperience(general, 9) && army.nationId === game.turns.playerNation) {
-      game.turns.addLog(`${general.name} was promoted to skill ${general.skill}.`);
+      game.turns.addLog(`${general.name} was promoted to skill ${general.skill}.`, {
+        kind: 'COMMANDER', tile: army.tile,
+      });
     }
   }
 

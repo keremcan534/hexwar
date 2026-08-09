@@ -98,7 +98,10 @@ export class TurnManager {
     if (!unit) return null;
     pay(nation, cost);
     if (nation.id === this.playerNation) {
-      this.addLog(`${UNIT_TYPES[typeId].name} raised (${UNIT_TYPES[typeId].manpower} men).`);
+      this.addLog(
+        `${UNIT_TYPES[typeId].name} raised (${UNIT_TYPES[typeId].manpower} men).`,
+        { kind: 'ARMY', tile: unit.tile },
+      );
     }
     this.game.emit('units', this.game.selectedUnit);
     return unit;
@@ -137,7 +140,10 @@ export class TurnManager {
     tile.structure = { buildingId, cityId: city.id };
     this.game.recomputeEconomy();
     if (nationId === this.playerNation) {
-      this.addLog(`${building.name} completed in ${tile.q}, ${tile.r} (${city.name}).`);
+      this.addLog(
+        `${building.name} completed in ${tile.q}, ${tile.r} (${city.name}).`,
+        { kind: 'BUILDING', tile },
+      );
     }
     this.game.renderer.invalidateCache();
     this.game.emit('units', this.game.selectedUnit);
@@ -150,7 +156,10 @@ export class TurnManager {
   buildRoad(tile, nationId = this.playerNation) {
     if (!buildRoad(this.game, tile, nationId)) return false;
     if (nationId === this.playerNation) {
-      this.addLog(`${roadLabel(tile)} completed at ${tile.q}, ${tile.r}.`);
+      this.addLog(
+        `${roadLabel(tile)} completed at ${tile.q}, ${tile.r}.`,
+        { kind: 'INFRA', tile },
+      );
     }
     this.game.emit('units', this.game.selectedUnit);
     return true;
@@ -167,7 +176,9 @@ export class TurnManager {
     const city = createCity(world, unit.tile, unit.nationId, cityName(this.rng, this.usedCityNames));
     clearPath(unit);
     this.game.renderer.invalidateCache();
-    if (unit.nationId === this.playerNation) this.addLog(`${city.name} founded.`);
+    if (unit.nationId === this.playerNation) {
+      this.addLog(`${city.name} founded.`, { kind: 'CITY', tile: city.tile });
+    }
     this.game.emit('units', this.game.selectedUnit);
     this.game.requestRender();
     return city;
@@ -284,7 +295,10 @@ export class TurnManager {
       const result = checkVictory(world, this.turn);
       if (result) {
         this.victory = result;
-        this.addLog(`${result.nation.name} established hegemony (${result.score} points).`);
+        this.addLog(
+          `${result.nation.name} established hegemony (${result.score} points).`,
+          { kind: 'HEGEMONY', tile: result.nation.capital },
+        );
         this.game.emit('victory', result);
       }
     }
@@ -350,7 +364,10 @@ export class TurnManager {
       });
 
       if (nation.id === this.playerNation) {
-        this.addLog(`${BUILDINGS[buildingId]?.name ?? 'A building'} closed due to timber shortage.`);
+        this.addLog(
+          `${BUILDINGS[buildingId]?.name ?? 'A building'} closed due to timber shortage.`,
+          { kind: 'CRISIS', key: 'CRISIS:timber', tile: city.tile },
+        );
       }
       budget = nationBudget(world, nation);
     }
@@ -377,7 +394,9 @@ export class TurnManager {
       missing -= IRON_UPKEEP_TYPES[removed.typeId] ?? 1;
       if (!heavy[0].regiments.length) this.killUnit(heavy[0]);
       if (nation.id === this.playerNation) {
-        this.addLog('Iron shortage: a heavy unit was disbanded.');
+        this.addLog('Iron shortage: a heavy unit was disbanded.', {
+          kind: 'CRISIS', key: 'CRISIS:iron',
+        });
       }
     }
     nation.budget = nationBudget(world, nation);
@@ -404,7 +423,11 @@ export class TurnManager {
           growPop(city, this.rng);
           // Kalabalıklaşan şehir tahkimatını da güçlendirir (savunma ve çizim).
           city.level = Math.min(4, 1 + Math.floor(city.pop / 4));
-          if (nation.id === this.playerNation) this.addLog(`${city.name} grew to ${city.pop} workers.`);
+          if (nation.id === this.playerNation) {
+            this.addLog(`${city.name} grew to ${city.pop} workers.`, {
+              kind: 'GROWTH', tile: city.tile,
+            });
+          }
         }
       }
       return;
@@ -425,7 +448,9 @@ export class TurnManager {
       const removed = removeWeakestRegiment(units[0]);
       if (!removed || !units[0].regiments.length) this.killUnit(units[0]);
       shortfall -= UNIT_UPKEEP.food;
-      if (nation.id === this.playerNation) this.addLog('Famine: one unit disbanded.');
+      if (nation.id === this.playerNation) {
+        this.addLog('Famine: one unit disbanded.', { kind: 'CRISIS', key: 'CRISIS:food' });
+      }
     }
     nation.budget = nationBudget(world, nation);
   }
@@ -447,13 +472,24 @@ export class TurnManager {
       world.forEach((t) => { if (t.owner === nation.id) t.owner = -1; });
       nation.tiles = 0;
       this.game.renderer.invalidateCache();
-      this.addLog(`${nation.name} has been eliminated.`);
+      // Oyuncunun elenmesi kaybolmayan kart açar; başkalarınınki tek kartta sayılır.
+      this.addLog(`${nation.name} has been eliminated.`, {
+        kind: 'NATION',
+        tile: nation.capital,
+        ttl: nation.id === this.playerNation ? 0 : undefined,
+      });
     }
   }
 
-  addLog(text) {
+  /**
+   * Günlüğe yazar ve aynı olayı bildirim kartına çevirir. `meta` kartın türünü,
+   * tıklanınca gidilecek kareyi ve gerekirse `silent` bayrağını taşır
+   * (bkz. notifications.js).
+   */
+  addLog(text, meta) {
     this.log.unshift(`T${this.turn}: ${text}`);
     if (this.log.length > 30) this.log.pop();
+    this.game.notify?.(text, meta);
   }
 
   killUnit(unit) {
