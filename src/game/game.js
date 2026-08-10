@@ -14,6 +14,7 @@ import { orderMove } from './movement.js';
 import { TurnManager } from './turn.js';
 import { atWar, declareWar } from './diplomacy.js';
 import { signPeace } from './peace.js';
+import { NotificationCenter } from './notifications.js';
 
 /** Masadaki teklif bu kadar hafta cevapsız kalırsa geri çekilir. */
 const PEACE_OFFER_TTL = 6;
@@ -28,6 +29,21 @@ import {
   STANCE, assignDivisions, divisionsOf, frontTilesOf, generalOfArmy, refreshFront, setTarget,
   toggleStance,
 } from './command.js';
+
+/**
+ * Oyunun yayınladığı bütün olaylar. Liste tek yerde durur ki `on`/`emit`
+ * yanlış bir ada karşı sessiz kalmasın.
+ *
+ * Neden gerekli: kayıt eskiden elle yazılmış bir nesneydi ve `on` içindeki
+ * `this.listeners[event]?.push(fn)` olmayan bir olaya abone olmayı hiç hata
+ * vermeden yutuyordu. Üç özellik bu yüzden ölü kalmıştı: politika ekranı hiç
+ * tazelenmiyor, bildirim kartları hiç çizilmiyordu (`notify`, `notify-clear`).
+ */
+const EVENTS = [
+  'select', 'world', 'turn', 'units', 'clock', 'economy', 'battles',
+  'provinces', 'construction', 'victory', 'selection', 'command', 'peace',
+  'nation', 'politics', 'notify', 'notify-clear',
+];
 
 /** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */
 const SPEEDS = [0, 1, 2, 4, 8];
@@ -88,11 +104,9 @@ export class Game {
     this.selected_ = [];     // seçili ordular (bkz. selectUnits)
     this.reachable = null;   // { costs, prev } — seçili birimin menzili
     this.turns = new TurnManager(this);
-    this.listeners = {
-      select: [], world: [], turn: [], units: [], clock: [], economy: [],
-      battles: [], provinces: [], construction: [], victory: [], selection: [],
-      command: [], peace: [], nation: [],
-    };
+    this.listeners = Object.fromEntries(EVENTS.map((name) => [name, []]));
+    // Bildirim merkezi: günlüğe düşen olayı karta çevirir (bkz. notifications.js).
+    this.notifications = new NotificationCenter(this);
     // YZ'den gelip oyuncunun cevabını bekleyen barış teklifleri.
     this.peaceOffers = [];
     this.nextPeaceOfferId = 1;
@@ -129,13 +143,21 @@ export class Game {
     window.addEventListener('orientationchange', this.onResize);
   }
 
+  /**
+   * Bilinmeyen ad programlama hatasıdır ve açılışta patlamalı. Sessizce
+   * yutulduğunda özellik hiç çalışmaz ama kimse fark etmez — bu dosyanın
+   * EVENTS notuna bakınız.
+   */
   on(event, fn) {
-    this.listeners[event]?.push(fn);
+    if (!this.listeners[event]) throw new Error(`Bilinmeyen olay: ${event}`);
+    this.listeners[event].push(fn);
     return this;
   }
 
   emit(event, payload) {
-    for (const fn of this.listeners[event] ?? []) fn(payload);
+    const list = this.listeners[event];
+    if (!list) throw new Error(`Bilinmeyen olay: ${event}`);
+    for (const fn of list) fn(payload);
   }
 
   /** Yeni dünya üret. seed verilmezse rastgele. */
@@ -436,7 +458,8 @@ export class Game {
     const city = tile.city;
     if (conquered && city && city.nationId !== unit.nationId) {
       // Sehir hukuken eski ulkede kalir; baris antlasmasi devri kesinlestirir.
-      this.turns.addLog(`${city.name} occupied; sovereignty will be decided at peace.`);
+      this.turns.addLog(`${city.name} occupied; sovereignty will be decided at peace.`,
+        { kind: 'CONQUEST', tile: city.tile });
     }
     return conquered;
   }
@@ -646,7 +669,8 @@ export class Game {
       id: this.nextPeaceOfferId++, from: fromId, to: toId, offer, turn: this.turns.turn,
     };
     this.pendingPeace().push(entry);
-    this.turns.addLog(`${this.world.nations[fromId].name} proposes terms of peace.`);
+    this.turns.addLog(`${this.world.nations[fromId].name} proposes terms of peace.`,
+      { kind: 'DIPLOMACY', key: `peace-offer-${fromId}` });
     this.emit('peace', this.peaceOffers);
     return entry;
   }
@@ -663,7 +687,8 @@ export class Game {
     const done = accept ? signPeace(this, entry.from, entry.to, entry.offer) : false;
     this.turns.addLog(accept && done
       ? `Treaty signed with ${from.name}.`
-      : `We rejected ${from.name}'s terms; the war goes on.`);
+      : `We rejected ${from.name}'s terms; the war goes on.`,
+    { kind: accept && done ? 'PEACE' : 'DIPLOMACY' });
     this.emit('peace', this.peaceOffers);
     this.emit('units', this.selectedUnit);
     this.requestRender();
@@ -742,6 +767,19 @@ export class Game {
     const tile = this.tileAtScreen(sx, sy);
     if (tile === this.hovered) return;
     this.hovered = tile;
+    this.requestRender();
+  }
+
+  /**
+   * Bildirim kartına tıklayınca olayın geçtiği yere gider (bkz.
+   * ui/notifications.js). Kart bir kareyi işaret ediyorsa kamerayı oraya alır.
+   */
+  focusTile(tile) {
+    if (!tile) return;
+    this.camera.zoom = Math.max(this.camera.zoom, 1);
+    this.camera.centerOn(tile.x, tile.y);
+    this.selected = tile;
+    this.emit('select', tile);
     this.requestRender();
   }
 

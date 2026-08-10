@@ -2,6 +2,7 @@
 
 import { Game } from './game/game.js';
 import { Hud } from './ui/hud.js';
+import { Notifications } from './ui/notifications.js';
 import { materials } from './render/textures.js';
 
 // Yüzey dokuları bir kez üretilip CSS'e verilir. Çalışma anında hesaplandığı
@@ -18,6 +19,7 @@ import { materials } from './render/textures.js';
 const canvas = document.getElementById('map');
 const game = new Game(canvas);
 new Hud(game);
+new Notifications(game);
 
 // URL'de ?seed=ABC123 varsa o dünyayı aç (paylaşılabilir haritalar).
 // Yoksa kaldığı yerden devam et: 300 turluk oyun tek oturumda bitmez.

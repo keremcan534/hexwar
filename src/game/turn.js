@@ -116,7 +116,8 @@ export class TurnManager {
     if (!unit) return null;
     pay(nation, cost);
     if (nation.id === this.playerNation) {
-      this.addLog(`${UNIT_TYPES[typeId].name} raised (${UNIT_TYPES[typeId].manpower} men).`);
+      this.addLog(`${UNIT_TYPES[typeId].name} raised (${UNIT_TYPES[typeId].manpower} men).`,
+        { kind: 'ARMY' });
     }
     this.game.emit('units', this.game.selectedUnit);
     return unit;
@@ -133,7 +134,9 @@ export class TurnManager {
     const city = createCity(world, unit.tile, unit.nationId, cityName(this.rng, this.usedCityNames));
     clearPath(unit);
     this.game.renderer.invalidateCache();
-    if (unit.nationId === this.playerNation) this.addLog(`${city.name} founded.`);
+    if (unit.nationId === this.playerNation) {
+      this.addLog(`${city.name} founded.`, { kind: 'CITY', tile: city.tile });
+    }
     this.game.emit('units', this.game.selectedUnit);
     this.game.requestRender();
     return city;
@@ -301,7 +304,8 @@ export class TurnManager {
       const result = checkVictory(world, this.turn);
       if (result) {
         this.victory = result;
-        this.addLog(`${result.nation.name} established hegemony (${result.score} points).`);
+        this.addLog(`${result.nation.name} established hegemony (${result.score} points).`,
+          { kind: 'HEGEMONY' });
         this.game.emit('victory', result);
       }
     }
@@ -378,13 +382,25 @@ export class TurnManager {
       });
       nation.tiles = 0;
       this.game.renderer.invalidateCache();
-      this.addLog(`${nation.name} has been eliminated.`);
+      this.addLog(`${nation.name} has been eliminated.`, { kind: 'NATION' });
     }
   }
 
-  addLog(text) {
+  /**
+   * Günlüğe yazar ve olayı bildirim merkezine iletir.
+   *
+   * `meta` verilmezse kart türü INFO olur; yani her çağrı yeri güncellenmeden
+   * de bildirim akar. Anlamlı olaylar (savaş, barış, fetih, kriz) kendi
+   * türünü geçer — tür ikonu, tonu ve ekranda kalma süresini belirler
+   * (bkz. game/notifications.js NOTIFY tablosu).
+   *
+   * `meta.silent` ile yalnız günlüğe yazılır: arka planda akan YZ olayları
+   * oyuncunun ekranını doldurmasın.
+   */
+  addLog(text, meta = {}) {
     this.log.unshift(`T${this.turn}: ${text}`);
     if (this.log.length > 30) this.log.pop();
+    this.game.notifications?.push(text, meta);
   }
 
   killUnit(unit) {

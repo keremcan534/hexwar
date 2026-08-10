@@ -401,7 +401,8 @@ function completeProject(game, nation, project) {
     completed: game.turns.turn,
   });
   if (nation.id === game.turns.playerNation) {
-    game.turns.addLog(`${CONSTRUCTION_TYPES[project.typeId].name} completed in ${project.regionName}.`);
+    game.turns.addLog(`${CONSTRUCTION_TYPES[project.typeId].name} completed in ${project.regionName}.`,
+      { kind: 'BUILDING' });
   }
 }
 

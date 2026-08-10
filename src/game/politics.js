@@ -262,7 +262,8 @@ export function runPolitics(game) {
     nation.politics.lastElectionTurn = world.turn;
     nation.politics.nextElectionTurn = world.turn + nation.politics.electionInterval;
     if (nation.id === game.turns.playerNation && previous?.id !== winner.id) {
-      game.turns.addLog(`${winner.name} won the election with ${Math.round(winner.support)}% support.`);
+      game.turns.addLog(`${winner.name} won the election with ${Math.round(winner.support)}% support.`,
+        { kind: 'POLITICS' });
     }
   }
   game.emit('politics', world.turn);

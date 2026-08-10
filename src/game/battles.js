@@ -152,8 +152,13 @@ export function startBattle(game, attacker, tile) {
     if (unit.nationId === defenderNation) enlist(battle, unit, false);
   }
 
+  // Dünyadaki her muharebe günlüğe düşer ama kart yalnız oyuncununkiler için
+  // açılır: 15 ülke savaşırken ekran başka türlü okunmaz olurdu.
+  const mine = attacker.nationId === game.turns.playerNation
+    || defenderNation === game.turns.playerNation;
   game.turns.addLog(
     `${world.nations[attacker.nationId].name} engaged at ${tile.q}, ${tile.r}.`,
+    { kind: 'BATTLE', silent: !mine, tile },
   );
   game.emit('battles', battle);
   game.requestRender();
@@ -249,6 +254,11 @@ function retreatArmy(game, army, awayFrom) {
     const nation = game.world.nations[army.nationId];
     game.turns.addLog(
       `${nation?.name ?? 'A division'} surrendered at ${awayFrom.q}, ${awayFrom.r}; no retreat route remained.`,
+      {
+        kind: 'BATTLE',
+        silent: army.nationId !== game.turns.playerNation,
+        tile: awayFrom,
+      },
     );
     game.turns.killUnit(army);
     return false;
@@ -309,8 +319,16 @@ function finishBattle(game, battle, attackerWon) {
 
   const nation = world.nations[attackerWon ? battle.attackerNation : battle.defenderNation];
   if (nation) {
+    const me = game.turns.playerNation;
+    const involved = battle.attackerNation === me || battle.defenderNation === me;
     game.turns.addLog(
       `${nation.name} won the battle at ${battle.q}, ${battle.r}; the enemy was forced out.`,
+      {
+        // Kazanan biz miyiz: zafer ve yenilgi aynı tonda görünmemeli.
+        kind: nation.id === me ? 'FIELD_WIN' : 'BATTLE',
+        silent: !involved,
+        tile,
+      },
     );
   }
   game.emit('battles', battle);
@@ -380,7 +398,8 @@ function resolveRound(game, battle) {
   for (const [general, nationId] of participatingGenerals) {
     general.battles = (general.battles ?? 0) + 1;
     if (addExperience(general, 4) && nationId === game.turns.playerNation) {
-      game.turns.addLog(`${general.name} was promoted to skill ${general.skill}.`);
+      game.turns.addLog(`${general.name} was promoted to skill ${general.skill}.`,
+        { kind: 'COMMANDER' });
     }
   }
 

@@ -248,10 +248,15 @@ export class Hud {
     // başlayacağı. Ölçü doğrudan elemanın `style`'ına yazılır — CSS değişkeni
     // üzerinden yapılan güncelleme bu tarayıcıda her zaman yerleşimi yeniden
     // hesaplatmıyor.
+    // Bildirim yığını da aynı ölçüye bağlanır: sabit bir CSS değeriyle
+    // konumlandırıldığında sekme şeridinin üstüne biniyor ve Budget/Politics
+    // sekmelerini kapatıyordu.
+    const notify = document.getElementById('notify-stack');
     const apply = () => {
       const top = Math.round(header.getBoundingClientRect().height) + 16;
       screen.style.top = `${top}px`;
       screen.style.maxHeight = `calc(100vh - ${top}px - 12px)`;
+      if (notify) notify.style.top = `${top}px`;
     };
     apply();
     if (typeof ResizeObserver === 'function') {

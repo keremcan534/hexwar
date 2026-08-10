@@ -167,6 +167,12 @@
   --z-command: 10;
   --z-tabbar: 11;
   --z-topbar: 12;
+  /* Bildirim her seyin ustunde: kacirilmamasi gereken tek katman. */
+  --z-notify: 13;
+
+  /* Kart giris/cikis suresi. ui/notifications.js icindeki SLIDE_MS ile
+     ayni olmali, yoksa kart DOM'dan animasyon bitmeden silinir. */
+  --notify-slide: 420ms;
 }
 
 /* ==========================================================================
@@ -3750,3 +3756,147 @@ body.screen-open .layer-menu { display: none; }
 .peace-term-body { display: grid; min-width: 0; }
 .peace-term-body small { color: var(--text-dim); }
 .peace-term-cost { text-align: right; color: var(--gold-bright); font-variant-numeric: tabular-nums; }
+
+/* ==========================================================================
+   BILDIRIM KARTLARI
+   Sag ustte, saatin altinda yigilir. Ne oldugunu game/notifications.js,
+   nasil gorundugunu ui/notifications.js ve bu blok soyler.
+   ========================================================================== */
+
+.notify-stack {
+  position: fixed;
+  /* Baslangic degeri; gercek konumu hud.js trackHeaderHeight olcup yazar
+     (ust bar dar ekranda iki-uc satira dagiliyor, sabit deger tutmuyor). */
+  top: calc(var(--hud-top) + var(--tabbar-height) + var(--sp-2));
+  right: var(--sp-3);
+  z-index: var(--z-notify);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  width: min(320px, calc(100vw - var(--sp-3) * 2));
+  pointer-events: none;
+}
+
+.notify-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
+  gap: var(--sp-3);
+  overflow: hidden;
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gold-dark);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-float);
+  pointer-events: auto;
+  /* Yukseklik gecisi mount/remove animasyonu icin; ui tarafi olcup ayarlar. */
+  transition:
+    height var(--notify-slide) ease,
+    margin-bottom var(--notify-slide) ease,
+    opacity var(--notify-slide) ease,
+    transform var(--notify-slide) ease;
+}
+
+/* Tonlar NOTIFY tablosundaki dort degerdir: war, bad, good, info. */
+.notify-war { border-left-color: var(--red); }
+.notify-bad { border-left-color: var(--viz-neg); }
+.notify-good { border-left-color: var(--viz-pos); }
+.notify-info { border-left-color: var(--gold); }
+
+.notify-icon {
+  position: relative;
+  font-size: 16px;
+  line-height: 1.2;
+}
+
+/* Ayni olay tekrarlarsa ikonun ustune sayac binter. */
+.notify-count {
+  position: absolute;
+  top: -6px;
+  right: -8px;
+  display: none;
+  min-width: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--gold-dark);
+  color: var(--text);
+  font-size: var(--fs-xs, 0.7rem);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.notify-count.shown { display: block; }
+
+.notify-text { display: grid; gap: 2px; min-width: 0; }
+.notify-text small {
+  color: var(--text-dim);
+  font-size: var(--fs-xs, 0.7rem);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+.notify-body { font-size: var(--fs-sm); overflow-wrap: anywhere; }
+
+.notify-close {
+  border: 0;
+  background: none;
+  padding: 0 2px;
+  color: var(--text-dim);
+  cursor: pointer;
+  line-height: 1;
+}
+
+.notify-close:hover { color: var(--gold-bright); }
+
+/* Bir kareyi isaret eden kart tiklanabilir oldugunu belli eder. */
+.notify-linked { cursor: pointer; }
+.notify-linked:hover { border-color: var(--gold); }
+
+/* Kalan sureyi gosteren ince serit; kalici kartta cizilmez. */
+.notify-timer {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  transform-origin: left;
+  background: var(--gold-dark);
+  animation: notify-drain linear forwards;
+  animation-duration: var(--notify-ttl, 0ms);
+}
+
+.notify-sticky .notify-timer { display: none; }
+/* Imlec yiginin ustundeyken sayac durur; serit de durmali. */
+.notify-stack.paused .notify-timer { animation-play-state: paused; }
+
+@keyframes notify-drain {
+  from { transform: scaleX(1); }
+  to { transform: scaleX(0); }
+}
+
+.notify-enter { opacity: 0; transform: translateX(12px); }
+.notify-leave { opacity: 0; transform: translateX(12px); }
+
+.bump { animation: notify-bump 320ms ease; }
+
+@keyframes notify-bump {
+  0%, 100% { transform: none; }
+  35% { transform: translateX(-4px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notify-card { transition: none; }
+  .notify-timer { animation: none; }
+  .bump { animation: none; }
+}
+
+@media (max-width: 620px) {
+  .notify-stack {
+    top: auto;
+    bottom: calc(var(--sp-3) + env(safe-area-inset-bottom, 0px));
+    right: var(--sp-2);
+    left: var(--sp-2);
+    width: auto;
+  }
+}

@@ -521,7 +521,8 @@ export function setMilitaryProductionLine(game, nation, factoryId, equipmentId) 
   factory.lineEfficiency = 0.5;
   factory.lineOutput = 0;
   if (nation.id === game.turns.playerNation) {
-    game.turns.addLog(`Production line switched to ${MILITARY_EQUIPMENT[equipmentId].name}.`);
+    game.turns.addLog(`Production line switched to ${MILITARY_EQUIPMENT[equipmentId].name}.`,
+      { kind: 'INDUSTRY' });
   }
   game.emit('economy', nation.economy);
   return true;
@@ -1083,7 +1084,8 @@ export function buildFactory(game, nation, regionId, typeId, options = {}) {
     actor,
   });
   if (nation.id === game.turns.playerNation) {
-    game.turns.addLog(`${region.name}: ${type.name} started${actor === 'private' ? ' by private investors' : ''}.`);
+    game.turns.addLog(`${region.name}: ${type.name} started${actor === 'private' ? ' by private investors' : ''}.`,
+      { kind: 'INDUSTRY' });
     game.emit('economy', nation.economy);
   }
   return true;
@@ -1108,7 +1110,8 @@ function commitCompletedProjects(game, nation) {
       factory.fundedBy = project.actor;
       factory.lastUpgrade = game.world.turn;
       if (nation.id === game.turns.playerNation) {
-        game.turns.addLog(`${FACTORIES[factory.typeId].name} reached level ${factory.level}.`);
+        game.turns.addLog(`${FACTORIES[factory.typeId].name} reached level ${factory.level}.`,
+          { kind: 'INDUSTRY' });
       }
       continue;
     }
@@ -1129,7 +1132,8 @@ function commitCompletedProjects(game, nation) {
       } : {}),
     });
     if (nation.id === game.turns.playerNation) {
-      game.turns.addLog(`${FACTORIES[project.typeId].name} opened in ${project.regionName}.`);
+      game.turns.addLog(`${FACTORIES[project.typeId].name} opened in ${project.regionName}.`,
+        { kind: 'INDUSTRY' });
     }
   }
 }

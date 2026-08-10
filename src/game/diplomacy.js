@@ -68,9 +68,10 @@ export function declareWar(game, a, b) {
   game.renderer.invalidateCache();
   if (a === game.turns.playerNation || b === game.turns.playerNation) {
     const other = world.nations[a === game.turns.playerNation ? b : a];
+    // Savaş ilanı kendiliğinden kapanmaz (NOTIFY.WAR ttl 0): görülmeden geçmemeli.
     game.turns.addLog(a === game.turns.playerNation
       ? `War declared on ${other.name}.`
-      : `${other.name} declared war on us!`);
+      : `${other.name} declared war on us!`, { kind: 'WAR' });
   }
   return true;
 }
@@ -116,7 +117,8 @@ export function makePeace(game, a, b, options = {}) {
     // burada bildirmek yaniltici olur (her zaman 0 yazardi).
     game.turns.addLog(options.settle === false
       ? `Peace signed with ${other.name}.`
-      : `Peace signed with ${other.name}; ${transferred} occupied provinces changed sovereignty.`);
+      : `Peace signed with ${other.name}; ${transferred} occupied provinces changed sovereignty.`,
+    { kind: 'PEACE' });
   }
   return true;
 }

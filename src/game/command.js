@@ -790,7 +790,8 @@ function refreshOfficerCorps(game, nation, rng) {
     for (const armyId of [...general.divisions]) releaseArmy(nation, armyId);
     nation.generals = generalsOf(nation).filter((other) => other.id !== general.id);
     if (nation.id === game.turns.playerNation) {
-      game.turns.addLog(`General ${general.name} retired after ${general.age} years.`);
+      game.turns.addLog(`General ${general.name} retired after ${general.age} years.`,
+        { kind: 'COMMANDER' });
     }
   }
   // Komutasız tümen kalmasın: ordu büyüdükçe kadro da büyür.

@@ -22,6 +22,7 @@ export const NOTIFY = {
   ARMY: { icon: '🛡', tone: 'info', label: 'Army', ttl: 8000 },
   COMMANDER: { icon: '🎖', tone: 'good', label: 'Officer staff', ttl: 10000 },
   PROVINCE: { icon: '⛏', tone: 'info', label: 'Province', ttl: 9000 },
+  POLITICS: { icon: '🗳', tone: 'info', label: 'Politics', ttl: 12000 },
   CRISIS: { icon: '⚠', tone: 'bad', label: 'Crisis', ttl: 0 },
   NATION: { icon: '☠', tone: 'bad', label: 'Nations', ttl: 12000 },
   HEGEMONY: { icon: '👑', tone: 'good', label: 'Hegemony', ttl: 0 },
