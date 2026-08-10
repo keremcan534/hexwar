@@ -248,6 +248,20 @@ export const HIRING_INTERVAL = 4;
 const MONTHLY_HIRE_RATE = 0.0008;
 // Sanayi fakir nüfusun tamamını yutamaz: tarla ve maden de işçi ister.
 const MAX_WORKER_SHARE = 0.4;
+
+/**
+ * Sermaye işe alamayacağı fabrikayı kurmaz. Bu eşiğin altında kadro doluluğu
+ * olan ülke yeni tesis açmaz, önce eldekini doldurur.
+ *
+ * Eskiden tek koşul hazinede altın olmasıydı; sanayi işgücü akışının onlarca
+ * katı hızda büyüyor, kadro %30'da takılıyordu (bkz. employment-diagnostic).
+ * Sınır burada olunca doluluk kendiliğinden bu eşiğe oturur ve fabrika sayısı
+ * işgücünün hızıyla artar.
+ */
+const EXPANSION_FILL_FLOOR = 0.7;
+/** Bir birim throughput'un ücret maliyeti; kâr hesabıyla beklenen marj paylaşır. */
+const WAGE_PER_THROUGHPUT = 1.2;
+
 // Zarar eden fabrika işçi salar. Serbest kalan işgücü aynı ay kârlı olana akar.
 const LAYOFF_RATE = 0.06;
 
@@ -572,6 +586,16 @@ export function industrialJobs(nation) {
   return (nation.economy?.factories ?? []).reduce(
     (sum, factory) => sum + (factory.jobs ?? factory.level * WORKERS_PER_LEVEL), 0,
   );
+}
+
+/** Mevcut tesislerin kadro doluluğu (0-1). Kadro yoksa 1: kısıt yok demektir. */
+export function laborFill(nation) {
+  const jobs = industrialJobs(nation);
+  if (jobs <= 0) return 1;
+  const employed = (nation.economy?.factories ?? []).reduce(
+    (sum, factory) => sum + (factory.employees ?? 0), 0,
+  );
+  return employed / jobs;
 }
 
 function automaticProfession(nation, classId) {
@@ -1336,6 +1360,46 @@ export function supportProject(game, nation, projectId, options = {}) {
 }
 
 /**
+ * Tesisin bir birim throughput için çıktı tablosu. Silah fabrikasının çıktısı
+ * seçili üretim hattına bağlıdır, tabloya doğrudan bakmak yetmez.
+ */
+function factoryOutputs(factory, type) {
+  if (factory.typeId !== 'ARMS_FACTORY') return type.outputs;
+  const line = ensureProductionLine(factory);
+  const equipment = MILITARY_EQUIPMENT[line.lineEquipment];
+  return {
+    [line.lineEquipment]:
+      (type.outputs.arms ?? 1.25) * equipment.factoryRate * line.lineEfficiency,
+  };
+}
+
+/**
+ * Fiyatlara göre *beklenen* kâr marjı — `factoryMargin`in tesis düzeyindeki
+ * karşılığı: oran döndürür, silah fabrikasının hat çıktısını ve ülkenin
+ * gümrüğünü hesaba katar.
+ *
+ * Neden gerçekleşen marj yetmiyor: kadrosu olmayan tesiste `margin` her zaman
+ * 0'dır. İşe alım sırası ona bakınca yeni kurulan çelik fabrikası hiç işçi
+ * alamıyor, alamadığı için hiç üretmiyor, üretmediği için de marjını hiç
+ * gösteremiyordu. Beklenen marj bu kısır döngüyü kırar.
+ */
+function expectedMargin(world, nation, factory) {
+  const type = FACTORIES[factory.typeId];
+  if (!type) return 0;
+  let revenue = 0;
+  for (const [id, amount] of Object.entries(factoryOutputs(factory, type))) {
+    revenue += priceOf(world, id) * amount;
+  }
+  if (revenue <= 0) return 0;
+  let cost = 0;
+  for (const [id, amount] of Object.entries(type.inputs)) {
+    const importShare = clamp(nation.economy.goodsFlow?.[id]?.importShare ?? 0, 0, 1);
+    cost += priceOf(world, id) * amount * (1 + (nation.economy.tariff / 100) * importShare);
+  }
+  return (revenue - cost - WAGE_PER_THROUGHPUT) / revenue;
+}
+
+/**
  * Aylık işgücü akışı. Köyden fabrikaya geçiş nüfusun küçük bir oranı kadardır;
  * bu yüzden bir tesisin dolması yıllar alır ve sanayi 100 yıla yayılır.
  * Kârlılık akışı yönlendirir: zarar eden işçi salar, kârlı olan işe alır.
@@ -1377,18 +1441,27 @@ function runFactoryEmployment(game, nation) {
   ));
   if (pool <= 0) return;
 
-  // Kârlı tesis önce dolar: piyasa sinyali istihdamı yönlendirir.
+  // Kârlı tesis önce dolar: piyasa sinyali istihdamı yönlendirir. Ölçüt
+  // gerçekleşen değil beklenen marj (bkz. expectedMargin).
   const hiring = factories
-    .filter((factory) => factory.profit >= 0 && factoryVacancies(factory) > 0)
-    .sort((a, b) => b.margin - a.margin);
-  const totalVacancies = hiring.reduce((sum, factory) => sum + factoryVacancies(factory), 0);
-  if (totalVacancies <= 0) return;
+    .filter((factory) => factoryVacancies(factory) > 0)
+    .map((factory) => ({ factory, score: expectedMargin(game.world, nation, factory) }))
+    .filter((row) => row.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .map((row) => row.factory);
+  if (!hiring.length) return;
 
+  // Havuz *sırayla* dağıtılır. Orantılı dağıtımda aylık kontenjan ülkedeki
+  // bütün boş kadrolara bölünüyordu: yüz fabrikanın her birine ayda birkaç
+  // işçi düşüyor, hiçbiri dolmuyor, marja göre yapılan sıralama da boşa
+  // gidiyordu. Kıt işgücü önce en kârlı tesisi doldurur.
+  let left = pool;
   for (const factory of hiring) {
-    const share = pool * (factoryVacancies(factory) / totalVacancies);
-    const hired = Math.min(share, factoryVacancies(factory));
+    if (left <= 0) break;
+    const hired = Math.min(left, factoryVacancies(factory));
     factory.employees += hired;
     economy.industrialHiring += hired;
+    left -= hired;
   }
 
   for (const factory of factories) autoUpgradeFactory(game, nation, factory);
@@ -1398,6 +1471,20 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
   const economy = nation.economy;
   let totalProfit = 0;
   let industrialOutput = 0;
+
+  // Kentli işgücü province'e yazılır: provinces.js RGO çıktısını *kırsal*
+  // nüfusla ölçer ve economy.js'i import edemez (katman döngüsü olurdu).
+  // `factory.jobs` ile aynı kanal — veri nesne üzerinden taşınır.
+  for (const factory of economy.factories) {
+    const tile = world.get(factory.q, factory.r);
+    if (tile?.province) tile.province.industrialEmployees = 0;
+  }
+  for (const factory of economy.factories) {
+    const tile = world.get(factory.q, factory.r);
+    if (tile?.province) {
+      tile.province.industrialEmployees += Math.max(0, factory.employees ?? 0);
+    }
+  }
 
   for (const factory of economy.factories) {
     const type = FACTORIES[factory.typeId];
@@ -1433,17 +1520,12 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
       const tariffFactor = 1 + (economy.tariff / 100) * importShare;
       inputCost += priceOf(world, id) * consumed * tariffFactor;
     }
-    let outputs = type.outputs;
     if (factory.typeId === 'ARMS_FACTORY') {
       const line = ensureProductionLine(factory);
       if (throughput > 0.05) line.lineEfficiency = Math.min(1, line.lineEfficiency + 0.025);
-      const equipment = MILITARY_EQUIPMENT[line.lineEquipment];
-      outputs = {
-        [line.lineEquipment]: (type.outputs.arms ?? 1.25)
-          * equipment.factoryRate * line.lineEfficiency,
-      };
       line.lineOutput = 0;
     }
+    const outputs = factoryOutputs(factory, type);
     for (const [id, amount] of Object.entries(outputs)) {
       const qty = amount * throughput;
       addFlow(market, id, 'supply', qty);
@@ -1454,7 +1536,7 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
       if (factory.typeId === 'ARMS_FACTORY') factory.lineOutput += qty;
     }
     // İşçi, girdi kıtlığında üretim düşse de fabrikada kalır ve ücretini alır.
-    const wages = laborThroughput * 1.2;
+    const wages = laborThroughput * WAGE_PER_THROUGHPUT;
     factory.profit = revenue - inputCost - wages;
     factory.margin = revenue > 0 ? factory.profit / revenue : 0;
     totalProfit += factory.profit;
@@ -1735,6 +1817,9 @@ function runEconomicAI(game, nation) {
   // Seviye atlatma artık bir YZ kararı değil; kadro dolunca kendiliğinden olur.
   // Geriye kalan tek sanayi kararı, yeni bir state'i sanayileştirmek.
   if (nation.gold < 170) return;
+  // Altın tek başına yetmez: doldurulamayan kadro varken yeni tesis açmak
+  // sanayiyi büyütmez, sadece boş fabrika sayar.
+  if (laborFill(nation) < EXPANSION_FILL_FLOOR) return;
   const options = investmentOptions(game.world, nation);
   for (const option of options) {
     const region = regions.find((candidate) => canBuildFactory(
@@ -1895,9 +1980,9 @@ function updatePrices(market) {
     const total = Math.max(1, state.supply + state.demand);
     const imbalance = (state.demand - state.supply) / total;
     // Band 0.25-4'ten 0.12-8'e genisletildi. Zincir 12 maldan 43'e cikinca
-// kitlik ve bolluk cok daha keskin oluyor; dar bandda fiyatlar raya yapisip
-// hic hareket etmiyordu (olculdu: 80. turda 43 maldan yalniz 1'i oynuyordu).
-state.price = clamp(state.price * (1 + imbalance * PRICE_SPEED), base * 0.12, base * 8);
+    // kitlik ve bolluk cok daha keskin oluyor; dar bandda fiyatlar raya yapisip
+    // hic hareket etmiyordu (olculdu: 80. turda 43 maldan yalniz 1'i oynuyordu).
+    state.price = clamp(state.price * (1 + imbalance * PRICE_SPEED), base * 0.12, base * 8);
     state.trend = state.price - state.previousPrice;
     state.traded = Math.min(state.supply, state.demand);
     totalGdp += state.traded * state.price;

@@ -101,6 +101,7 @@ export class Screens {
     game.on('battles', () => this.refresh());
     game.on('provinces', () => this.refresh());
     game.on('politics', () => this.refresh());
+    game.on('peace', () => this.refresh());
     game.on('construction', () => this.refresh());
     game.on('select', (tile) => {
       if (this.active === 'peace') {
@@ -406,6 +407,41 @@ export class Screens {
         <span class="peace-term-cost">${term.cost}</span>
       </button>`;
     }).join('');
+  }
+
+  /**
+   * Masaya düşen YZ teklifi. Oyuncunun kendi masasında gördüğü bilgilerin
+   * aynısını gösterir — ne alınıyor, ne veriliyor, karşılığında hangi şartlar —
+   * yoksa "kabul et" kör bir bahis olur.
+   */
+  peaceOfferCard(entry) {
+    const world = this.game.world;
+    const from = world.nations[entry.from];
+    const offer = entry.offer;
+    const tileLine = (keys, label) => (keys?.length ? `<div class="offer-line">
+      <small>${label}</small><span>${keys.map((key) => {
+    const [q, r] = key.split(':').map(Number);
+    const tile = world.get(q, r);
+    return `${esc(provinceName(tile))}${tile?.city ? ' ★' : ''} (${tileWarCost(tile)})`;
+  }).join(' · ')}</span></div>` : '');
+    const terms = offer.terms?.length ? `<div class="offer-line"><small>Terms</small>
+      <span>${offer.terms.map((id) => `${PEACE_TERMS[id].icon} ${esc(PEACE_TERMS[id].name)}`)
+    .join(' · ')}</span></div>` : '';
+    const white = !offer.demands?.length && !offer.concessions?.length && !terms;
+    // Teklifin bedeli oyuncunun gözünden: pozitif sayı "bu kadarını veriyorum".
+    const cost = offerCost(world, offer);
+    return `<div class="card peace-offer">
+      <div class="card-head"><h3>${esc(from.name)} proposes peace</h3>
+        <small>their war score ${warScore(world, entry.from, this.me.id)} · costs you ${cost}</small></div>
+      ${white ? '<p class="hint">A white peace: the borders stay exactly where they are.</p>' : ''}
+      ${tileLine(offer.demands, 'They annex')}
+      ${tileLine(offer.concessions, 'They cede to us')}
+      ${terms}
+      <div class="row-buttons">
+        <button class="action" data-accept-offer="${entry.id}">Accept terms</button>
+        <button class="action" data-reject-offer="${entry.id}">Fight on</button>
+      </div>
+    </div>`;
   }
 
   /** Sanayi ekranının alt sekmeleri. Vic2'deki gibi sayı rozetiyle. */
@@ -1314,10 +1350,15 @@ export class Screens {
       </div>`;
     }).join('');
 
+    const offers = (this.game.peaceOffers ?? [])
+      .filter((entry) => entry.to === me.id)
+      .map((entry) => this.peaceOfferCard(entry)).join('');
+
     return `<div class="card">
         <div class="card-head"><h3>${esc(me.name)}</h3>
           <small>infamy ${Math.round(me.infamy ?? 0)}/${INFAMY_COALITION} · coalition at ${INFAMY_COALITION}</small></div>
       </div>
+      ${offers}
       <div class="card doctrine-card">
         <div class="card-head"><h3>How war works now</h3><small>one map, one combat system</small></div>
         <p class="hint">Select divisions and order a destination. Friendly divisions share provinces without merging. Entering an enemy army starts a weekly battle; low organization forces retreat and the winner occupies the province. Only a division with no connected retreat route surrenders.</p>
@@ -1561,8 +1602,22 @@ export class Screens {
     for (const btn of this.el.body.querySelectorAll('[data-war]')) {
       btn.onclick = () => { game.declareWarOn(Number(btn.dataset.war)); this.refresh(); };
     }
+    // Eskiden bu düğme tek tıkla işgalleri devreden otomatik barışı yapıyordu.
+    // Artık oyuncunun tek barış yolu var: masa.
     for (const btn of this.el.body.querySelectorAll('[data-peace]')) {
-      btn.onclick = () => { game.proposePeaceTo(Number(btn.dataset.peace)); this.refresh(); };
+      btn.onclick = () => this.openPeaceTalks(Number(btn.dataset.peace));
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-accept-offer]')) {
+      btn.onclick = () => {
+        game.resolvePeaceOffer(Number(btn.dataset.acceptOffer), true);
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-reject-offer]')) {
+      btn.onclick = () => {
+        game.resolvePeaceOffer(Number(btn.dataset.rejectOffer), false);
+        this.refresh();
+      };
     }
   }
 }

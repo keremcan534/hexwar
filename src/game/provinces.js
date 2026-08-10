@@ -214,6 +214,35 @@ export function provinceRgoJobs(tile) {
   return Math.max(1000, Math.round((province.rgoBaseJobs + developed * 500) / 100) * 100);
 }
 
+/**
+ * Fazla nüfusun RGO çıktısını ne kadar büyütebileceğinin tavanı. Sınırsız
+ * olsaydı kalabalık province tek başına dünya arzını karşılardı.
+ */
+const RGO_LABOR_CAP = 3;
+
+/** Fazla işgücünün azalan getirisi; 1 doğrusal, 0 hiç katkı yok demektir. */
+const RGO_LABOR_FALLOFF = 0.75;
+
+/**
+ * RGO işgücü ölçeği. Kadro dolana kadar doluluk oranıdır — yani eksik nüfuslu
+ * province eskisi gibi az üretir. Kadro dolduktan sonrası yeni: gelen fazla
+ * nüfus azalan getiriyle çıktıyı büyütmeye devam eder.
+ *
+ * Bu bağ yokken çıktı `development`e çakılıydı ve development dünya üretiminde
+ * bir kez atanıp bir daha hiç artmıyordu. Sonuç ölçüldü: 40 yılda hammadde
+ * arzı +%14, sanayi talebi +%489; bütün hammaddeler fiyat tavanına yapışıyor,
+ * girdisi 8 katına çıkan fabrikalar işçi alamıyordu (bkz. market-diagnostic).
+ */
+export function rgoLaborScale(province, jobs) {
+  if (!province || jobs <= 0) return 0;
+  // Fabrikada çalışan tarlada çalışmıyor. Bu ayrım olmadan şehir province'i
+  // nüfusuyla birlikte hem sanayi hem hammadde üretiyor gibi görünüyordu.
+  const rural = Math.max(0, province.population - (province.industrialEmployees ?? 0));
+  const ratio = rural / jobs;
+  if (ratio <= 1) return ratio;
+  return Math.min(RGO_LABOR_CAP, ratio ** RGO_LABOR_FALLOFF);
+}
+
 export function provinceRgoStatus(tile) {
   const province = tile?.province;
   const type = RGO_TYPES[province?.rgo];
@@ -254,7 +283,8 @@ export function provinceOutput(tile) {
   output[status.type.goodId] ??= 0;
   const development = province[status.type.track] ?? 0;
   output[status.type.goodId] = status.type.baseOutput
-    * province.rgoQuality * (1 + development * 0.18) * status.efficiency * control;
+    * province.rgoQuality * (1 + development * 0.18)
+    * rgoLaborScale(province, status.jobs) * control;
   const taxpayerScale = clamp(province.population / 7000, 0, 2.2);
   output.gold = (0.08 + base.gold * 0.05 + province.commerce * 0.09)
     * taxpayerScale * control;

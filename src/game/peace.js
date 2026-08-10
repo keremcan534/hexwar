@@ -168,6 +168,74 @@ export function offerAcceptable(world, a, b, offer) {
 }
 
 /**
+ * Masada istenebilecek şey, cephede tutulan şeydir: `a`nın fiilen işgal ettiği
+ * `b` kareleri, değerlisinden ucuzuna. Teklif kurmanın ham maddesi.
+ */
+export function occupiedTilesOf(world, a, b) {
+  const held = [];
+  for (const tile of world.tiles) {
+    if (tile.owner !== b || !tile.terrain.passable) continue;
+    if (controllerOf(tile) !== a) continue;
+    held.push({ tile, cost: tileWarCost(tile) });
+  }
+  return held.sort((x, y) => y.cost - x.cost);
+}
+
+/**
+ * Şartların istenme sırası. Kalıcı olanlar (vassallık, bağımsızlık) önce
+ * denenir; bütçe yetmezse süreli olanlara düşülür.
+ */
+const TERM_PRIORITY = [
+  'VASSALIZE', 'LIBERATE', 'REPARATIONS', 'CONCESSION', 'FACTORY_RIGHTS', 'DEMILITARIZE',
+];
+
+/**
+ * Warscore bütçesiyle bir teklif kurar. Oyuncunun masada elle yaptığının
+ * aynısı: önce tutulan toprak, kalan bütçe şartlara. Bütçe yoksa sonuç beyaz
+ * barıştır — "savaşı bitirelim, kimse bir şey almasın".
+ *
+ * `appetite` bütçenin ne kadarının harcanacağını söyler; YZ her seferinde
+ * son kuruşuna kadar dayatmasın diye vardır.
+ */
+export function buildOffer(world, a, b, options = {}) {
+  const { appetite = 1, maxTiles = MAX_DEMAND_TILES, termShare = 0 } = options;
+  const offer = { demands: [], concessions: [], terms: [] };
+  const budget = Math.floor(Math.max(0, warScore(world, a, b)) * clamp(appetite, 0, 1));
+  if (budget <= 0) return offer;
+
+  // Toprak her zaman önce gelirse şartlar hiç alınmaz: en ucuz şart bile birkaç
+  // province ediyor. `termShare` bütçenin bir kısmını masada tutar, böylece
+  // "toprak yerine tazminat" diyen bir barış da mümkün olur.
+  const reserved = Math.floor(budget * clamp(termShare, 0, 1));
+  let left = budget - reserved;
+  for (const { tile, cost } of occupiedTilesOf(world, a, b)) {
+    if (offer.demands.length >= maxTiles) break;
+    if (cost > left) continue;
+    offer.demands.push(tileKey(tile));
+    left -= cost;
+  }
+  // Toprağa harcanmayan bütçe de şartlara akar; hiçbir puan boşa gitmez.
+  left += reserved;
+  for (const termId of TERM_PRIORITY) {
+    const term = PEACE_TERMS[termId];
+    if (!term || term.cost > left) continue;
+    if (!termAvailable(world, a, b, termId)) continue;
+    offer.terms.push(termId);
+    left -= term.cost;
+  }
+  return offer;
+}
+
+/**
+ * Teklifin *alıcı* için net değeri. Negatif sayı "bu kadarını kaybediyorum"
+ * demektir. `offerCost` teklifi verenin gözünden bakar; masanın iki tarafı
+ * olduğu için karşı tarafın hesabı da gerekli.
+ */
+export function offerValueFor(world, offer) {
+  return -offerCost(world, offer);
+}
+
+/**
  * Süreli anlaşma şartını kaydeder. Etkiler tek yerde tutulur ki hangi ülkenin
  * neye tabi olduğu tek bakışta okunsun ve süre dolunca temizlenebilsin.
  */

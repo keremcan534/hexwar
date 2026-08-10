@@ -12,7 +12,11 @@ import { reachable } from '../core/pathfind.js';
 import { armyPower, clearPath, placeUnit, speedOf, stackFull, unitsOn } from './units.js';
 import { orderMove } from './movement.js';
 import { TurnManager } from './turn.js';
-import { atWar, considerPeaceOffer, declareWar } from './diplomacy.js';
+import { atWar, declareWar } from './diplomacy.js';
+import { signPeace } from './peace.js';
+
+/** Masadaki teklif bu kadar hafta cevapsız kalırsa geri çekilir. */
+const PEACE_OFFER_TTL = 6;
 import { assignAllWorkers, nationBudget } from './cities.js';
 import { controllerOf } from './control.js';
 import { loadFromStorage, saveToStorage } from './save.js';
@@ -79,8 +83,11 @@ export class Game {
     this.listeners = {
       select: [], world: [], turn: [], units: [], clock: [], economy: [],
       battles: [], provinces: [], construction: [], victory: [], selection: [],
-      command: [],
+      command: [], peace: [],
     };
+    // YZ'den gelip oyuncunun cevabını bekleyen barış teklifleri.
+    this.peaceOffers = [];
+    this.nextPeaceOfferId = 1;
     this.dirty = false;
     this.frameHandle = 0;
     this.autosaveEnabled = true;
@@ -592,16 +599,66 @@ export class Game {
     return ok;
   }
 
-  /** Barış teklifi: karşı taraf reddedebilir. */
-  proposePeaceTo(nationId) {
-    const accepted = considerPeaceOffer(this, this.turns.playerNation, nationId, this.turns.rng);
-    if (!accepted) {
-      this.turns.addLog(`${this.world.nations[nationId].name} rejected the peace offer.`);
-    }
-    this.selectUnit(this.selectedUnit);
+  /**
+   * Bekleyen teklif kuyruğu. Tembel kurulur: tanılama betikleri Game'i
+   * kurucusuz örnekliyor (`Object.create(Game.prototype)`), orada alan yok.
+   */
+  pendingPeace() {
+    this.peaceOffers ??= [];
+    return this.peaceOffers;
+  }
+
+  /** Bu savaş için oyuncunun önünde bekleyen bir teklif var mı? */
+  hasPeaceOffer(a, b) {
+    return this.pendingPeace().some(
+      (item) => (item.from === a && item.to === b) || (item.from === b && item.to === a),
+    );
+  }
+
+  /**
+   * YZ'den gelen barış teklifi. Otomatik uygulanmaz: masaya düşer, kararı
+   * oyuncu verir. Eskiden YZ tarafında barış tek yönlüydü ve işgalleri
+   * kendiliğinden devrediyordu (bkz. peace.js başlığı).
+   */
+  receivePeaceOffer(fromId, toId, offer) {
+    if (!atWar(this.world, fromId, toId) || this.hasPeaceOffer(fromId, toId)) return null;
+    this.nextPeaceOfferId ??= 1;
+    const entry = {
+      id: this.nextPeaceOfferId++, from: fromId, to: toId, offer, turn: this.turns.turn,
+    };
+    this.pendingPeace().push(entry);
+    this.turns.addLog(`${this.world.nations[fromId].name} proposes terms of peace.`);
+    this.emit('peace', this.peaceOffers);
+    return entry;
+  }
+
+  /**
+   * Oyuncunun cevabı. Kabul edilirse anlaşma oyuncunun kendi masasıyla aynı
+   * yoldan (`signPeace`) uygulanır; reddedilirse savaş sürer.
+   */
+  resolvePeaceOffer(offerId, accept) {
+    const index = this.pendingPeace().findIndex((item) => item.id === offerId);
+    if (index < 0) return false;
+    const [entry] = this.peaceOffers.splice(index, 1);
+    const from = this.world.nations[entry.from];
+    const done = accept ? signPeace(this, entry.from, entry.to, entry.offer) : false;
+    this.turns.addLog(accept && done
+      ? `Treaty signed with ${from.name}.`
+      : `We rejected ${from.name}'s terms; the war goes on.`);
+    this.emit('peace', this.peaceOffers);
     this.emit('units', this.selectedUnit);
     this.requestRender();
-    return accepted;
+    return done;
+  }
+
+  /** Savaş bittiyse ya da teklif bayatladıysa masadan kalkar. */
+  expirePeaceOffers() {
+    const before = this.pendingPeace().length;
+    this.peaceOffers = this.peaceOffers.filter((item) => (
+      atWar(this.world, item.from, item.to)
+      && this.turns.turn - item.turn <= PEACE_OFFER_TTL
+    ));
+    if (this.peaceOffers.length !== before) this.emit('peace', this.peaceOffers);
   }
 
   endTurn() {

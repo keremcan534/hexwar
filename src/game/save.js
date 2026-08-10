@@ -64,6 +64,9 @@ export function serialize(game) {
         id: n.id, economy: n.economy, politics: n.politics,
         construction: ensureConstruction(n),
         rallyPoint: n.rallyPoint ?? null,
+        // Barış masasında imzalanan süreli şartlar. Türetilebilir veri değil:
+        // yazılmazsa tazminat, vassallık ve silahsızlanma yüklemede buhar olur.
+        treaties: (n.treaties ?? []).map((t) => ({ ...t })),
         // Cephe kareleri yazılmaz: sınırdan türetilen veridir, ilk haftalık
         // işleyişte kendiliğinden geri gelir.
         generals: (n.generals ?? []).map(({ front, ...g }) => ({
@@ -162,6 +165,7 @@ export function deserialize(game, data) {
     nation.construction = saved.construction ?? null;
     ensureConstruction(nation);
     nation.rallyPoint = saved.rallyPoint ?? null;
+    nation.treaties = (saved.treaties ?? []).map((t) => ({ ...t }));
     nation.generals = (saved.generals ?? []).map((g) => ({
       ...g,
       traits: [...(g.traits ?? [])],

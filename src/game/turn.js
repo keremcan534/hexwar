@@ -335,6 +335,9 @@ export class TurnManager {
   payTreaties() {
     const world = this.world;
     expireTreaties(world, this.turn);
+    // Masada bekleyen teklifler de bayatlar: savaş bitmişse ya da oyuncu haftalarca
+    // cevap vermediyse geri çekilir.
+    this.game.expirePeaceOffers();
     for (const nation of world.nations) {
       if (!nation.alive) continue;
       for (const treaty of treatiesOf(nation)) {

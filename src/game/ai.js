@@ -6,8 +6,11 @@ import {
   CITY_COST, UNIT_COSTS, canAfford, canFoundCity,
 } from './cities.js';
 import {
-  MIN_WAR_TURNS, atWar, declareWar, makePeace, nationStrength, relation, truceLeft,
+  MIN_WAR_TURNS, atWar, declareWar, nationStrength, relation, truceLeft,
 } from './diplomacy.js';
+import {
+  MAX_DEMAND_TILES, buildOffer, occupiedTilesOf, offerValueFor, signPeace, tileKey, warScore,
+} from './peace.js';
 import { INFAMY_COALITION } from './infamy.js';
 import { isMoving, regimentCount, unitsOn } from './units.js';
 import { destinationOf, orderMove } from './movement.js';
@@ -22,6 +25,58 @@ import {
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
 const WAR_THRESHOLD = 1.4;
+
+/** Aylık hazırlık kontrolünün ilan aşamasına gelme ihtimali. */
+const DECLARE_CHANCE = 0.03;
+
+/**
+ * Bu warscore'un üstünde YZ masaya oturup kazancını toplamak ister. 45 denendi
+ * ve daha kötü çıktı: YZ eşiğe hiç ulaşamayınca savaşlar kazananın masaya
+ * oturmasıyla değil kaybedenin teslim olmasıyla bitiyor, savaşlı hafta oranı
+ * %84'ten %27'ye düşüyordu (bkz. war-tempo-diagnostic).
+ */
+const PEACE_WIN_SCORE = 25;
+
+/** Bu warscore'un altında YZ savaşı ne pahasına olursa olsun kesmeye çalışır. */
+const PEACE_LOSS_SCORE = -30;
+
+/**
+ * Teklifi alan tarafın kararı. Ölçüt tek: masada verdiğim, cephede
+ * kaybedeceğimden az mı? Warscore'u negatif olan ülke kaybını kabul eder,
+ * kazanan taraf beyaz barışı reddeder — eskiden yenilen her ülke bedavaya
+ * kurtuluyordu. Yorgunluk (ikinci cephe, çöken istikrar) eşiği gevşetir.
+ */
+function acceptsOffer(game, receiver, proposer, offer, rng) {
+  const world = game.world;
+  const hope = warScore(world, receiver.id, proposer.id);
+  const fronts = world.nations.filter((n) => n.alive && atWar(world, n.id, receiver.id)).length;
+  const tolerance = 10 + Math.max(0, fronts - 1) * 15
+    + ((receiver.economy?.stability ?? 0.6) < 0.4 ? 15 : 0);
+  return offerValueFor(world, offer) >= hope - tolerance || rng() < 0.08;
+}
+
+/**
+ * Yenilen tarafın teklifi: cephede zaten kaybedilmiş kareleri masada bırakır.
+ * "Elinde tuttuğun senin olsun" savaşı durdurmanın en ucuz yoludur; beyaz
+ * barış kazanan tarafa artık yetmiyor.
+ */
+function surrenderOffer(world, nation, foe) {
+  const lost = occupiedTilesOf(world, foe.id, nation.id).slice(0, MAX_DEMAND_TILES);
+  return { demands: [], concessions: lost.map(({ tile }) => tileKey(tile)), terms: [] };
+}
+
+/**
+ * Barış girişimi. Oyuncuya giden teklif masaya düşer ve cevabı oyuncu verir;
+ * YZ'ler arasında karar aynı turda verilir. Artık iki taraf da aynı `peace.js`
+ * araçlarını kullanıyor — YZ'nin işgalleri otomatik devreden ayrı yolu kalktı.
+ */
+function offerPeace(game, nation, foe, offer, rng) {
+  if (foe.id === game.turns.playerNation) {
+    game.receivePeaceOffer(nation.id, foe.id, offer);
+    return;
+  }
+  if (acceptsOffer(game, foe, nation, offer, rng)) signPeace(game, nation.id, foe.id, offer);
+}
 
 /**
  * Diplomatik karar: sınır komşusu zayıfsa savaş, savaş kaybediliyorsa barış.
@@ -41,19 +96,37 @@ function diplomacy(game, nation, rng) {
   const myPower = nationStrength(world, nation);
   const wars = world.nations.filter((n) => n.alive && atWar(world, n.id, nation.id));
 
-  // Kaybedilen savaşlardan çıkmayı dene.
+  // Savaşları masaya taşı: kazanan talebini toplar, kaybeden zararı durdurur.
   for (const foe of wars) {
     const rec = relation(world, nation.id, foe.id);
     if (game.turns.turn - rec.since < MIN_WAR_TURNS) continue;
-    const foePower = nationStrength(world, foe);
-    if (myPower >= foePower * 0.6) continue;
-    // Karşı taraf da yorgunsa ya da başka cephesi varsa kabul eder.
-    const foeWars = world.nations.filter((n) => n.alive && atWar(world, n.id, foe.id)).length;
-    if (foeWars > 1 || rng() < 0.3) makePeace(game, nation.id, foe.id);
+    // Oyuncu masadaki teklifi cevaplayana kadar aynı savaş için ikincisi gelmez.
+    if (game.hasPeaceOffer(nation.id, foe.id)) continue;
+    const score = warScore(world, nation.id, foe.id);
+    if (score >= PEACE_WIN_SCORE) {
+      // Kazanan taraf son kuruşuna kadar dayatmaz; bütçenin bir kısmı masada
+      // kalır. Ülkelerin bir kısmı toprak yerine tazminat/imtiyaz ister ki
+      // her barış aynı görünmesin.
+      offerPeace(game, nation, foe, buildOffer(world, nation.id, foe.id, {
+        appetite: 0.6 + rng() * 0.4,
+        termShare: rng() < 0.35 ? 0.5 : 0,
+      }), rng);
+    } else if (score <= PEACE_LOSS_SCORE
+      || myPower < nationStrength(world, foe) * 0.6) {
+      offerPeace(game, nation, foe, surrenderOffer(world, nation, foe), rng);
+    }
   }
 
-  // Tek savaş yeterli. Aylık hazırlık kontrolünün yalnız %2'si ilan aşamasına gelir.
-  if (wars.length >= 1 || rng() > 0.02) return;
+  // Tek cepheye kilitlenen YZ, fethin şöhret bedelini hiç ödeyemiyordu: denge
+  // noktası ~1 kare/tur işgal ister, ölçümde zirve şöhret 21 ve koalisyon hiç
+  // kurulmuyordu. Açık ara üstün ve mevcut cephesinde kazanan ülke ikinci
+  // cepheyi göze alır; üçüncüsü savaş zinciri demektir, oraya gidilmez.
+  const committed = wars.reduce((sum, foe) => sum + nationStrength(world, foe), 0);
+  const canOpenSecond = wars.length === 1
+    && myPower > committed * 2
+    && warScore(world, nation.id, wars[0].id) > 20;
+  if (wars.length >= 2 || (wars.length === 1 && !canOpenSecond)) return;
+  if (rng() > DECLARE_CHANCE) return;
   const regiments = world.units
     .filter((unit) => unit.nationId === nation.id && unit.type.domain === 'land')
     .reduce((sum, unit) => sum + regimentCount(unit), 0);

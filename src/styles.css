@@ -3510,6 +3510,27 @@ body.screen-open .layer-menu { display: none; }
 .war-chip.winning .war-score { color: var(--viz-pos); }
 .war-chip.losing .war-score { color: var(--viz-neg); }
 
+/* Bekleyen teklif savas rengini birakir: bu kutucuk artik bir karar bekliyor. */
+.war-chip.offered {
+  border-color: var(--gold);
+  background: var(--gold-wash, var(--red-wash));
+  animation: none;
+}
+
+/* Masaya dusen YZ teklifi. */
+.peace-offer { border-color: var(--gold); }
+
+.offer-line {
+  display: grid;
+  grid-template-columns: 5.5rem 1fr;
+  gap: var(--sp-2);
+  align-items: baseline;
+  padding: var(--sp-1) 0;
+}
+
+.offer-line small { color: var(--text-dim); }
+.offer-line span { font-size: var(--fs-sm); }
+
 /* Baris masasi: puan seridi, secilen province listesi. */
 .peace-head { display: grid; gap: var(--sp-2); }
 

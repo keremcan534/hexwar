@@ -117,14 +117,21 @@ export class Hud {
     bar.innerHTML = wars.map((other) => {
       const score = warScore(world, me.id, other.id);
       const tone = score > 8 ? 'winning' : score < -8 ? 'losing' : 'even';
-      return `<button class="war-chip ${tone}" data-war-target="${other.id}"
-        title="Open peace talks with ${escapeHtml(other.name)}">
-        <span class="war-name">${escapeHtml(other.name)}</span>
+      // Bekleyen teklif menude kaybolmamali: savas kutucugu zaten ustte duruyor.
+      const offered = this.game.hasPeaceOffer(me.id, other.id);
+      return `<button class="war-chip ${tone}${offered ? ' offered' : ''}" data-war-target="${other.id}"
+        title="${offered ? `${escapeHtml(other.name)} has proposed terms`
+    : `Open peace talks with ${escapeHtml(other.name)}`}">
+        <span class="war-name">${offered ? '🕊 ' : ''}${escapeHtml(other.name)}</span>
         <b class="war-score">${score >= 0 ? '+' : ''}${score}</b>
       </button>`;
     }).join('');
     for (const chip of bar.querySelectorAll('[data-war-target]')) {
-      chip.onclick = () => this.screens.openPeaceTalks(Number(chip.dataset.warTarget));
+      const id = Number(chip.dataset.warTarget);
+      // Teklif bekleyen savasta masa degil, teklifin durdugu diplomasi ekrani acilir.
+      chip.onclick = () => (this.game.hasPeaceOffer(me.id, id)
+        ? this.screens.open('diplomacy')
+        : this.screens.openPeaceTalks(id));
     }
   }
 
@@ -201,6 +208,7 @@ export class Hud {
     game.on('world', (world) => { this.onWorld(world); this.showWars(); });
     game.on('select', (tile) => this.showTile(tile));
     game.on('turn', () => { this.onTurn(); this.showWars(); });
+    game.on('peace', () => this.showWars());
     game.on('clock', () => this.onTurn());
     game.on('economy', () => this.onTurn());
     game.on('battles', () => {
@@ -877,7 +885,8 @@ export class Hud {
     const war = this.el.sheetBody.querySelector('[data-war]');
     if (war) war.onclick = () => game.declareWarOn(Number(war.dataset.war));
     const peace = this.el.sheetBody.querySelector('[data-peace]');
-    if (peace) peace.onclick = () => game.proposePeaceTo(Number(peace.dataset.peace));
+    // Otomatik barış kalktı: bu düğme de masayı açar (bkz. screens.openPeaceTalks).
+    if (peace) peace.onclick = () => this.screens.openPeaceTalks(Number(peace.dataset.peace));
     for (const btn of this.el.sheetBody.querySelectorAll('[data-generals]')) {
       btn.onclick = () => {
         const army = game.world.units.find((u) => u.id === Number(btn.dataset.generals));

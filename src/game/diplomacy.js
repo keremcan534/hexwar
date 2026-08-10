@@ -112,29 +112,13 @@ export function makePeace(game, a, b, options = {}) {
   game.renderer.invalidateCache();
   if (a === game.turns.playerNation || b === game.turns.playerNation) {
     const other = world.nations[a === game.turns.playerNation ? b : a];
-    game.turns.addLog(`Peace signed with ${other.name}; ${transferred} occupied provinces changed sovereignty.`);
+    // `settle: false` geldiginde toprak devrini anlasma yapar; isgal sayisini
+    // burada bildirmek yaniltici olur (her zaman 0 yazardi).
+    game.turns.addLog(options.settle === false
+      ? `Peace signed with ${other.name}.`
+      : `Peace signed with ${other.name}; ${transferred} occupied provinces changed sovereignty.`);
   }
   return true;
-}
-
-/**
- * Karşı tarafın barış teklifini değerlendirmesi. Teklif eden güçlüyse ya da
- * hedefin başka cephesi varsa kabul edilir.
- * @returns {boolean} kabul edildi mi
- */
-export function considerPeaceOffer(game, fromId, toId, rng) {
-  const world = game.world;
-  const rec = relation(world, fromId, toId);
-  if (!rec || rec.state !== WAR) return false;
-  if (game.turns.turn - rec.since < MIN_WAR_TURNS) return false;
-
-  const mine = nationStrength(world, world.nations[fromId]);
-  const theirs = nationStrength(world, world.nations[toId]);
-  const theirFronts = world.nations.filter((n) => n.alive && atWar(world, n.id, toId)).length;
-
-  const accept = mine > theirs * 0.9 || theirFronts > 1 || rng() < 0.25;
-  if (accept) makePeace(game, fromId, toId);
-  return accept;
 }
 
 /** Kaba askerî güç: ordu + şehir gücü. Savaş/barış kararlarının ölçütü. */
