@@ -35,11 +35,19 @@ const SPEEDS = [0, 1, 2, 4, 8];
 /**
  * Bir oyun günü kaç ms sürer (1x hızda) ve haftada kaç gün var.
  *
- * 220 ms, oyunun 300 tur sürdüğü döneme aitti. Ufuk 5740 tura (1836-1945)
- * çıkınca aynı değer 1x'te 147 dakikalık bir oyun demek oluyordu. 120 ms ile
- * yüzyıl 1x'te 80, 2x'te 40, 4x'te 20, 8x'te 10 dakika sürer.
+ * 120 ms yüzyılı 8x'te 10 dakikaya indiriyordu: bir asır, bir kahve molası
+ * kadar sürüyordu. Grand strategy'de asıl mesele tarihin ağırlığıdır; 1000 ms
+ * ile yüzyıl 1x'te 11, 2x'te 5.5, 4x'te 2.8, 8x'te 1.4 saat sürer.
+ *
+ * Tempoyu değiştirmek isteyen tek yeri burasıdır. Ölçüldü: haftalık tur 30 ms,
+ * yani simülasyon saniyede ~235 gün kaldırabiliyor — darboğaz hesap değil,
+ * bu sabit.
+ *
+ * Not: sekme arka plandayken tarayıcı `setInterval`i saniyede bire kısar ve
+ * `elapsed` 500 ms'de sınırlı olduğu için oyun yavaşlar. Bu kasıtlıdır:
+ * oyuncu bakmıyorken yüzyıl akıp gitmez.
  */
-const DAY_MS = 120;
+const DAY_MS = 1000;
 const DAYS_PER_WEEK = 7;
 /** Dusman province'i alindiktan sonra yeni taarruzdan once ikmal suresi. */
 const CONSOLIDATION_WEEKS = 2;
@@ -83,7 +91,7 @@ export class Game {
     this.listeners = {
       select: [], world: [], turn: [], units: [], clock: [], economy: [],
       battles: [], provinces: [], construction: [], victory: [], selection: [],
-      command: [], peace: [],
+      command: [], peace: [], nation: [],
     };
     // YZ'den gelip oyuncunun cevabını bekleyen barış teklifleri.
     this.peaceOffers = [];
@@ -208,7 +216,18 @@ export class Game {
   handleRightTap(sx, sy) {
     const hitUnit = this.unitAtScreen(sx, sy);
     const tile = hitUnit?.tile ?? this.tileAtScreen(sx, sy);
-    if (!tile || !this.selection.length) return false;
+    if (!tile) return false;
+    // Seçili birim yokken sağ tık boştaydı. Yabancı toprakta o ülkenin
+    // panelini açar: diplomasi ekranı menüde aranmak yerine haritadan gelir.
+    // Katman kuralı gereği ekranı buradan açmayız, olayı duyururuz (ui dinler).
+    if (!this.selection.length) {
+      const owner = tile.owner;
+      if (owner >= 0 && owner !== this.turns.playerNation) {
+        this.emit('nation', owner);
+        return true;
+      }
+      return false;
+    }
 
     const selected = [...this.selection];
     const controller = controllerOf(tile);

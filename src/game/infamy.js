@@ -26,11 +26,24 @@ export const INFAMY = {
    * Fethi bırakan ülke birkaç on yılda temizlenir.
    */
   DECAY_PER_TURN: 0.05,
-  DECAY_RATIO: 0.03,
+  /**
+   * 0.03'ten 0.02'ye. Denge noktası kazanç/oran olduğu için 0.03, eşiğe
+   * ulaşmayı ~0.95 kare/tur sürekli işgale bağlıyordu; savaş WW1 hızına
+   * çekildikten sonra bu tempoya kimse ulaşamıyor (ölçüldü: 6 tohumda zirve
+   * 11-24, koalisyon hiç kurulmadı).
+   */
+  DECAY_RATIO: 0.02,
 };
 
-/** Bu eşikten sonra komşular birleşip savaş ilan eder. */
-export const INFAMY_COALITION = 30;
+/**
+ * Bu eşikten sonra komşular birleşip savaş ilan eder.
+ *
+ * 30'dan 22'ye. Eşik, oyunun artık üretmediği bir fetih hızına göre
+ * ayarlanmıştı. Kazancı büyütmek yerine eşiği indirdik: böylece yukarıdaki
+ * "bir şehir + çevresi ~14, güvenli" kuralı korunur, ama sürekli fetheden
+ * ülke gerçekten dünyayı üstüne çeker (bkz. war-tempo-diagnostic).
+ */
+export const INFAMY_COALITION = 22;
 
 /** İşgalden sonra karenin hiç üretmediği tur sayısı. */
 export const OCCUPATION_TURNS = 5;

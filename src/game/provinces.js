@@ -215,6 +215,21 @@ export function provinceRgoJobs(tile) {
 }
 
 /**
+ * RGO gelişimi: tarla ve maden kendiliğinden verimlenmez, barış ve istikrar
+ * ister. Bu olmadan `agriculture`/`extraction` dünya üretiminde bir kez atanıp
+ * bir daha hiç değişmiyor, dolayısıyla `provinceRgoJobs`teki `developed * 500`
+ * terimi yapısal olarak hep 0 kalıyordu. Sonucu ölçüldü: 40 yılda hammadde
+ * arzı +%14, sanayi talebi +%489, bütün hammaddeler fiyat tavanında ve alt
+ * zincirler ölü (bkz. market-diagnostic).
+ *
+ * Hız, iyi yönetilen bir province'in yüzyılda ~6 kademe kazanacağı şekilde
+ * seçildi: kapasite ~1.8, verim ~1.8 kat artar. Oyuncuya iş çıkarmaz —
+ * mikro yönetim mobilde en pahalı maliyet (bkz. CLAUDE.md).
+ */
+const RGO_DEVELOPMENT_PER_WEEK = 0.0011;
+const RGO_DEVELOPMENT_CAP = 10;
+
+/**
  * Fazla nüfusun RGO çıktısını ne kadar büyütebileceğinin tavanı. Sınırsız
  * olsaydı kalabalık province tek başına dünya arzını karşılardı.
  */
@@ -238,7 +253,11 @@ export function rgoLaborScale(province, jobs) {
   // Fabrikada çalışan tarlada çalışmıyor. Bu ayrım olmadan şehir province'i
   // nüfusuyla birlikte hem sanayi hem hammadde üretiyor gibi görünüyordu.
   const rural = Math.max(0, province.population - (province.industrialEmployees ?? 0));
-  const ratio = rural / jobs;
+  // Ölçü *kuruluş* kadrosudur, güncel kadro değil. Güncel kadroya bölünürken
+  // gelişme çıktıya hiç yansımıyordu: kapasite artıyor, göç kırsal nüfusu yeni
+  // kadroya eşitliyor, oran 1'de kalıyor, üretim yerinde sayıyordu.
+  const base = Math.max(1, province.rgoBaseJobs ?? jobs);
+  const ratio = rural / base;
   if (ratio <= 1) return ratio;
   return Math.min(RGO_LABOR_CAP, ratio ** RGO_LABOR_FALLOFF);
 }
@@ -411,6 +430,15 @@ export function runProvinces(game) {
     const weeklyGrowth = (0.00018 + province.agriculture * 0.00006)
       * (peace ? 1 : 0.55) * (0.45 + stability) * health;
     province.population = Math.round(province.population * (1 + weeklyGrowth));
+
+    // Gelişme yalnız düzenin oturduğu yerde birikir: savaş ve kaos durdurur.
+    const track = RGO_TYPES[province.rgo]?.track;
+    if (track && peace && province.control > 80) {
+      province[track] = Math.min(
+        RGO_DEVELOPMENT_CAP,
+        (province[track] ?? 0) + RGO_DEVELOPMENT_PER_WEEK * stability,
+      );
+    }
   });
   runProvinceMigration(world);
   game.emit('provinces', null);

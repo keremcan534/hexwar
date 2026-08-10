@@ -19,13 +19,13 @@ import {
 } from '../game/units.js';
 import { provinceName } from '../game/provinces.js';
 import { flagDataUrl } from '../render/flagPainter.js';
-import { scoreboard } from '../game/hegemony.js';
+import { hegemonyScore, scoreboard } from '../game/hegemony.js';
 import {
   CLASS_INFO, CLASS_PROFESSIONS, FACTORIES, GOODS, GOOD_IDS, MAX_FACTORY_LEVEL,
   MILITARY_EQUIPMENT, POPULATION_COHORT, PROFESSION_INFO,
   SOCIAL_PROGRAMS, buildFactory,
   canBuildFactory, factoriesInRegion, factoryAtlas, factoryCost, factoryJobs,
-  factoryMargin, formatPopulation, setFiscalPolicy,
+  factoryMargin, formatPopulation, populationOf, setFiscalPolicy,
   setMilitaryProductionLine, socialSpendingCost, ensureProductionLine, supportProject, upgradeOutlook,
 } from '../game/economy.js';
 import { MAX_ROUNDS, battleSides, battlesFor } from '../game/battles.js';
@@ -61,6 +61,7 @@ const TITLES = {
   peace: 'Peace Talks',
   logistics: 'Logistics',
   diplomacy: 'Diplomacy',
+  dossier: 'Foreign Power',
   trade: 'Trade',
 };
 
@@ -80,6 +81,7 @@ export class Screens {
     this.industryPicker = null;
     this.tradeGood = null;
     this.peaceTarget = null;
+    this.nationTarget = null;
     this.peaceTab = 'take';
     this.peaceSelection = { demands: new Set(), concessions: new Set(), terms: new Set() };
     this.el = {
@@ -102,6 +104,8 @@ export class Screens {
     game.on('provinces', () => this.refresh());
     game.on('politics', () => this.refresh());
     game.on('peace', () => this.refresh());
+    // Haritada yabancı toprağa sağ tık: o ülkenin paneli açılır.
+    game.on('nation', (nationId) => this.openDossier(nationId));
     game.on('construction', () => this.refresh());
     game.on('select', (tile) => {
       if (this.active === 'peace') {
@@ -288,6 +292,88 @@ export class Screens {
     </svg>
     <div class="price-chart-foot"><small>${history.length} weeks</small>
       <small>base ¤${base}</small></div>`;
+  }
+
+  /**
+   * Tek ülkenin paneli. Haritada yabancı toprağa sağ tıklayınca (ya da kare
+   * bilgi kartındaki düğmeyle) açılır: diplomasi artık menüde aranmıyor,
+   * ilgilendiğin ülkeye dokunarak geliyor.
+   */
+  openDossier(nationId) {
+    this.nationTarget = nationId;
+    this.open('dossier');
+  }
+
+  /**
+   * Ülke paneli. Vic2'nin ülke kartındaki bilgi düzenini izler: kimlik,
+   * sıralamalı puanlar, nüfus, ilişki durumu, sonra eylemler. Eylem listesi
+   * oyunda gerçekten var olan diplomasi kadardır — ittifak/nüfuz alanı gibi
+   * mekanikler henüz yok, olmayan düğme koymuyoruz.
+   */
+  render_dossier(me) {
+    const world = this.game.world;
+    const target = world.nations[this.nationTarget];
+    if (!target?.alive) {
+      return '<p class="empty">Right-click a foreign province on the map to open its dossier.</p>';
+    }
+    const turn = this.game.turns.turn;
+    const war = atWar(world, me.id, target.id);
+    const truce = truceLeft(world, me.id, target.id, turn);
+    const rec = relation(world, me.id, target.id);
+    const locked = war && turn - rec.since < MIN_WAR_TURNS;
+    const board = scoreboard(world);
+    const rankOf = (id) => board.findIndex((row) => row.nation.id === id) + 1;
+    const score = hegemonyScore(world, target);
+    const myPower = nationStrength(world, me);
+    const power = nationStrength(world, target);
+    const ratio = power > 0 ? (myPower / power).toFixed(2) : '∞';
+    const cities = world.cities.filter((city) => city.nationId === target.id).length;
+    const factories = (target.economy?.factories ?? []).reduce((s, f) => s + f.level, 0);
+    const party = rulingParty(target);
+    const offer = this.game.peaceOffers.find(
+      (entry) => entry.from === target.id && entry.to === me.id,
+    );
+
+    const status = war ? '<span class="tag war">at war</span>'
+      : truce ? `<span class="tag truce">truce ${truce}w</span>`
+        : '<span class="tag peace">at peace</span>';
+
+    return `<div class="card nation-dossier">
+      <div class="dossier-head">
+        <img class="nation-flag-large" src="${flagDataUrl(target)}" alt="">
+        <div class="grow">
+          <h2>${esc(target.name)} ${status}</h2>
+          <div class="dossier-sub">${esc(party?.name ?? 'No government')}
+            · infamy ${Math.round(target.infamy ?? 0)}/${INFAMY_COALITION}</div>
+        </div>
+        <div class="dossier-rank"><small>rank</small><b>#${rankOf(target.id)}</b></div>
+      </div>
+      <div class="dossier-scores">
+        <span><small>Total</small><b>${score.total}</b></span>
+        <span><small>Economy</small><b>${score.economy}</b></span>
+        <span><small>Prestige</small><b>${score.prestige}</b></span>
+        <span><small>Power ratio</small><b class="${myPower >= power ? 'res-pos' : 'res-neg'}">${ratio}</b></span>
+      </div>
+      <div class="dossier-facts">
+        <div><span>Population</span><b>${formatPopulation(populationOf(world, target))}</b></div>
+        <div><span>Provinces</span><b>${target.tiles}</b></div>
+        <div><span>Cities</span><b>${cities}</b></div>
+        <div><span>Industry</span><b>${factories} levels</b></div>
+      </div>
+    </div>
+    ${offer ? this.peaceOfferCard(offer) : ''}
+    <div class="card">
+      <div class="card-head"><h3>Diplomacy</h3>
+        <small>${war ? 'a treaty is negotiated province by province at the peace table'
+    : truce ? 'a truce forbids a new declaration until it lapses'
+      : 'declaring war costs infamy for every province you take'}</small></div>
+      <div class="row-buttons dossier-actions">
+        ${war
+    ? `<button class="action" data-peace="${target.id}" ${locked ? 'disabled' : ''}>Peace Talks${locked ? ` (${MIN_WAR_TURNS - (turn - rec.since)}w)` : ''}</button>`
+    : `<button class="action" data-war="${target.id}" ${truce ? 'disabled' : ''}>Declare War</button>`}
+        <button class="action" data-locate="${target.id}">Show on map</button>
+      </div>
+    </div>`;
   }
 
   /** Barış görüşmesini açar ve haritayı seçim kipine alır. */
@@ -1022,72 +1108,114 @@ export class Screens {
     live.net = live.income - live.expenses;
     const ledger = saved.lastUpdated ? saved : live;
     const money = (value, forceSign = true) => `${forceSign && value >= 0 ? '+' : value < 0 ? '−' : ''}¤${Math.abs(value).toFixed(1)}`;
-    const row = (name, value, total = false, tone = 'auto') => {
-      const positive = tone === 'income' || (tone === 'auto' && value >= 0);
-      const shown = tone === 'expense' ? `−¤${Math.abs(value).toFixed(1)}` : money(value);
-      return `<div class="budget-row${total ? ' total' : ''}">
-        <span>${esc(name)}</span><b class="${positive ? 'res-pos' : 'res-neg'}">${shown}</b>
-      </div>`;
-    };
-    const taxControls = [
-      ['lower', 'Lower class tax'], ['middle', 'Middle class tax'], ['upper', 'Upper class tax'],
-    ].map(([id, label]) => `<label class="budget-policy">
-      <span>${label}<b data-policy-value>${economy.taxes[id]}%</b></span>
-      <input type="range" min="0" max="100" step="5" value="${economy.taxes[id]}" data-policy="tax" data-class="${id}">
-    </label>`).join('');
-    const socialControls = Object.values(SOCIAL_PROGRAMS).map((program) => {
-      const level = economy.social[program.id] ?? 0;
-      return `<label class="budget-policy"><span>${esc(program.name)}<b data-policy-value>${level}%</b></span>
-        <input type="range" min="0" max="100" step="10" value="${level}" data-policy="social" data-class="${program.id}">
-      </label>`;
-    }).join('');
     const politicalLimits = fiscalPolicyLimits(me);
 
-    // Hazine ve istikrar üst barda zaten duruyor; panelde tekrarlanmaz.
-    // Panelin tek ana metriği haftalık bakiyedir ve ilk bakışta görülmelidir.
-    return `<div class="budget-hero">
-        <span>Weekly balance</span>
+    // Victoria düzeni: kaldıraç ile sonucu *aynı satırda* gösterir. Eskiden
+    // gelir/gider dökümü üstte, vergi kaydırakları altta ayrı bir kutudaydı;
+    // "vergiyi 5 puan artırırsam ne kazanırım" sorusu iki blok arasında
+    // gidip gelmeden cevaplanamıyordu.
+    const total = Math.max(1, Object.values(economy.classes)
+      .reduce((sum, socialClass) => sum + socialClass.population, 0));
+
+    /** Sınıf vergisi: nüfus pastası + kaydırak + o sınıftan gelen gerçek gelir. */
+    const taxLine = (classId, label) => {
+      const socialClass = economy.classes[classId];
+      const info = CLASS_INFO[classId];
+      const share = (socialClass.population / total) * 100;
+      const pie = `background:conic-gradient(${info.color} 0 ${share.toFixed(2)}%,`
+        + ` var(--line) ${share.toFixed(2)}% 100%)`;
+      return `<div class="fiscal-line">
+        <i class="fiscal-pie" style="${pie}" title="${share.toFixed(1)}% of population"></i>
+        <div class="fiscal-body budget-policy">
+          <span class="fiscal-label">${label}<b data-policy-value>${economy.taxes[classId]}%</b></span>
+          <input type="range" min="0" max="100" step="5" value="${economy.taxes[classId]}"
+            data-policy="tax" data-class="${classId}">
+        </div>
+        <b class="fiscal-amount res-pos">${(socialClass.taxPaid ?? 0).toFixed(1)}</b>
+      </div>`;
+    };
+
+    /** Kaydıraksız kalem: yalnız sonucu gösterir. */
+    const flatLine = (label, value, tone, note = '') => `<div class="fiscal-line flat">
+      <div class="fiscal-body budget-policy">
+        <span class="fiscal-label">${esc(label)}</span>
+        ${note ? `<small class="fiscal-note">${esc(note)}</small>` : ''}
+      </div>
+      <b class="fiscal-amount ${tone}">${Math.abs(value).toFixed(1)}</b>
+    </div>`;
+
+    const sliderLine = (label, value, tone, policy, current, min, max, step = 5) => `
+      <div class="fiscal-line">
+        <div class="fiscal-body budget-policy">
+          <span class="fiscal-label">${esc(label)}<b data-policy-value>${current}%</b></span>
+          <input type="range" min="${min}" max="${max}" step="${step}" value="${current}"
+            data-policy="${policy}">
+        </div>
+        <b class="fiscal-amount ${tone}">${Math.abs(value).toFixed(1)}</b>
+      </div>`;
+
+    const socialLines = Object.values(SOCIAL_PROGRAMS).map((program) => {
+      const level = economy.social[program.id] ?? 0;
+      return `<div class="fiscal-line sub">
+        <div class="fiscal-body budget-policy">
+          <span class="fiscal-label">${esc(program.name)}<b data-policy-value>${level}%</b></span>
+          <input type="range" min="0" max="100" step="10" value="${level}"
+            data-policy="social" data-class="${program.id}">
+        </div>
+      </div>`;
+    }).join('');
+
+    return `<div class="fiscal-grid">
+      <section class="card fiscal-column">
+        <div class="fiscal-head">Weekly Income</div>
+        ${taxLine('lower', 'Tax (Lower)')}
+        ${taxLine('middle', 'Tax (Middle)')}
+        ${taxLine('upper', 'Tax (Upper)')}
+        ${flatLine('Provinces & cities', ledger.cityRevenue ?? 0, 'res-pos',
+    'crown land, customs houses and city trade')}
+        ${(ledger.tariffRevenue ?? 0) > 0
+    ? flatLine('Tariffs', ledger.tariffRevenue, 'res-pos', 'see the tariff bar below') : ''}
+        <div class="fiscal-total">
+          <span>Total</span><b class="res-pos">¤${(ledger.income ?? 0).toFixed(1)}</b>
+        </div>
+      </section>
+
+      <section class="card fiscal-column">
+        <div class="fiscal-head">Weekly Expenses</div>
+        ${sliderLine('Military Spending', ledger.armyCost ?? 0, 'res-neg', 'armySpending',
+    economy.armySpending, politicalLimits.armySpendingMin, politicalLimits.armySpendingMax)}
+        <div class="fiscal-group">
+          ${flatLine('Social Spending', ledger.socialCost ?? 0, 'res-neg')}
+          ${socialLines}
+        </div>
+        ${flatLine('Administration', ledger.administrationCost ?? 0, 'res-neg',
+    'scales with the provinces you hold')}
+        ${flatLine('Construction', ledger.constructionCost ?? 0, 'res-neg',
+    'upkeep of everything on the build queue')}
+        ${flatLine('Strategic imports', ledger.importCost ?? 0, 'res-neg',
+    'equipment bought abroad when factories fall short')}
+        ${(ledger.tariffRevenue ?? 0) < 0
+    ? flatLine('Tariff losses', ledger.tariffRevenue, 'res-neg') : ''}
+        <div class="fiscal-total">
+          <span>Total</span><b class="res-neg">¤${(ledger.expenses ?? 0).toFixed(1)}</b>
+        </div>
+      </section>
+    </div>
+
+    <div class="card fiscal-footer">
+      <div class="fiscal-line">
+        <div class="fiscal-body budget-policy">
+          <span class="fiscal-label">Tariffs<b data-policy-value>${economy.tariff}%</b></span>
+          <input type="range" min="${politicalLimits.tariffMin}" max="${politicalLimits.tariffMax}"
+            step="5" value="${economy.tariff}" data-policy="tariff">
+        </div>
+        <b class="fiscal-amount ${(ledger.tariffRevenue ?? 0) >= 0 ? 'res-pos' : 'res-neg'}">${money(ledger.tariffRevenue ?? 0)}</b>
+      </div>
+      <div class="fiscal-balance">
+        <span>Projected weekly balance</span>
         <b class="${ledger.net >= 0 ? 'res-pos' : 'res-neg'}">${money(ledger.net)}</b>
       </div>
-      <div class="budget-flow-grid">
-        <section class="budget-flow">
-          <h3>Income</h3>
-          <div class="budget-rows">
-            ${row('Cities & provinces', ledger.cityRevenue ?? 0, false, 'income')}
-            ${row('Taxes', ledger.taxRevenue ?? 0, false, 'income')}
-            ${row('Tariffs', ledger.tariffRevenue ?? 0)}
-            ${row('Total', ledger.income ?? 0, true, 'income')}
-          </div>
-        </section>
-        <section class="budget-flow">
-          <h3>Expenses</h3>
-          <div class="budget-rows">
-            ${row('Army', ledger.armyCost ?? 0, false, 'expense')}
-            ${row('Administration', ledger.administrationCost ?? 0, false, 'expense')}
-            ${row('Construction', ledger.constructionCost ?? 0, false, 'expense')}
-            ${row('Social programs', ledger.socialCost ?? 0, false, 'expense')}
-            ${row('Strategic imports', ledger.importCost ?? 0, false, 'expense')}
-            ${row('Total', ledger.expenses ?? 0, true, 'expense')}
-          </div>
-        </section>
-      </div>
-      <div class="budget-policy-grid">
-        <section class="budget-policy-card">
-          <h3>Tax Policy</h3>
-          ${taxControls}
-          <label class="budget-policy"><span>Tariffs<b data-policy-value>${economy.tariff}%</b></span>
-            <input type="range" min="${politicalLimits.tariffMin}" max="${politicalLimits.tariffMax}" step="5" value="${economy.tariff}" data-policy="tariff">
-          </label>
-          <label class="budget-policy"><span>Army funding<b data-policy-value>${economy.armySpending}%</b></span>
-            <input type="range" min="${politicalLimits.armySpendingMin}" max="${politicalLimits.armySpendingMax}" step="5" value="${economy.armySpending}" data-policy="armySpending">
-          </label>
-        </section>
-        <section class="budget-policy-card">
-          <h3>Public Spending</h3>
-          <p class="section-note">−¤${socialSpendingCost(me).toFixed(1)} per week</p>
-          ${socialControls}
-        </section>
-      </div>`;
+    </div>`;
   }
 
   // --- Nüfus: kişi başı nesne yerine 1.000 kişilik toplu sınıf kohortları ---
@@ -1311,10 +1439,10 @@ export class Screens {
       return `<div class="card">
         <div class="rel-row">
           <img class="flag" src="${flagDataUrl(n)}" alt="">
-          <div class="grow">
+          <button class="grow rel-open" data-nation="${n.id}" title="Open dossier">
             <div class="name">${esc(n.name)} ${tag}</div>
             <div class="meta">${n.tiles} provinces · power ratio ${ratio} · infamy ${Math.round(n.infamy ?? 0)}</div>
-          </div>
+          </button>
           ${action}
         </div>
       </div>`;
@@ -1606,6 +1734,15 @@ export class Screens {
     // Artık oyuncunun tek barış yolu var: masa.
     for (const btn of this.el.body.querySelectorAll('[data-peace]')) {
       btn.onclick = () => this.openPeaceTalks(Number(btn.dataset.peace));
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-locate]')) {
+      btn.onclick = () => {
+        game.focusNation(game.world.nations[Number(btn.dataset.locate)]);
+        this.close();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-nation]')) {
+      btn.onclick = () => this.openDossier(Number(btn.dataset.nation));
     }
     for (const btn of this.el.body.querySelectorAll('[data-accept-offer]')) {
       btn.onclick = () => {

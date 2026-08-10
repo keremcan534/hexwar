@@ -724,6 +724,7 @@ export class Hud {
       const truce = truceLeft(game.world, foreign, game.turns.playerNation, game.turns.turn);
       rows.push(`<div class="action-row">
         <div class="k">${escapeHtml(other.name)} — ${war ? 'at war' : truce ? `truce (${truce} turns)` : 'at peace'}</div>
+        <button class="action wide" data-dossier="${foreign}">Open ${escapeHtml(other.name)} Dossier</button>
         ${war
     ? `<button class="action wide" data-peace="${foreign}" ${locked ? 'disabled' : ''}>Offer Peace${locked ? ` (${MIN_WAR_TURNS - (game.turns.turn - rec.since)} weeks)` : ''}</button>`
     : `<button class="action wide" data-war="${foreign}" ${truce ? 'disabled' : ''}>Declare War${truce ? ` (${truce} turns)` : ''}</button>`}
@@ -887,6 +888,9 @@ export class Hud {
     const peace = this.el.sheetBody.querySelector('[data-peace]');
     // Otomatik barış kalktı: bu düğme de masayı açar (bkz. screens.openPeaceTalks).
     if (peace) peace.onclick = () => this.screens.openPeaceTalks(Number(peace.dataset.peace));
+    // Sağ tık masaüstünde kısayol; dokunmatikte panele buradan girilir.
+    const dossier = this.el.sheetBody.querySelector('[data-dossier]');
+    if (dossier) dossier.onclick = () => this.screens.openDossier(Number(dossier.dataset.dossier));
     for (const btn of this.el.sheetBody.querySelectorAll('[data-generals]')) {
       btn.onclick = () => {
         const army = game.world.units.find((u) => u.id === Number(btn.dataset.generals));
