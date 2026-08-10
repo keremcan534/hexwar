@@ -6,22 +6,72 @@ import { makeRng } from '../core/rng.js';
 import { policyOf } from './politics.js';
 import { controllerOf, isOccupied } from './control.js';
 
+/**
+ * Province kaynakları. Tahıl kasten baskın tutuldu: ordunun erzağı ve nüfusun
+ * temel gıdası buradan gelir, egzotik kaynaklar onu ezerse ülkeler açlıktan
+ * çöker. Kauçuk/tropik ağaç/ipek gibi kalemler nadirdir ve araziye bağlıdır —
+ * kıtlıkları ticaretin ve sömürge hırsının asıl sebebidir.
+ *
+ * Verimler zincir derinleşince ~1.8 katına çıkarıldı: kömür artık sekiz ayrı
+ * tesisin girdisi ve eski 0.16'lık province verimi toplam fabrika talebinin
+ * otuzda birini karşılıyordu — bütün ham mallar fiyat tavanına yapışıyordu.
+ */
 export const RGO_TYPES = {
   GRAIN: {
     id: 'GRAIN', goodId: 'food', name: 'Grain Farms', icon: '🌾', hue: 91,
-    track: 'agriculture', baseOutput: 0.24,
+    track: 'agriculture', baseOutput: 0.54,
+  },
+  CATTLE: {
+    id: 'CATTLE', goodId: 'cattle', name: 'Cattle Ranches', icon: '🐄', hue: 74,
+    track: 'agriculture', baseOutput: 0.324,
+  },
+  FISH: {
+    id: 'FISH', goodId: 'fish', name: 'Fishing Wharfs', icon: '🐟', hue: 195,
+    track: 'agriculture', baseOutput: 0.54,
+  },
+  FRUIT: {
+    id: 'FRUIT', goodId: 'fruit', name: 'Orchards', icon: '🍇', hue: 300,
+    track: 'agriculture', baseOutput: 0.396,
+  },
+  COTTON: {
+    id: 'COTTON', goodId: 'cotton', name: 'Cotton Plantations', icon: '🌱', hue: 52,
+    track: 'agriculture', baseOutput: 0.54,
+  },
+  SILK: {
+    id: 'SILK', goodId: 'silk', name: 'Silk Farms', icon: '🕸', hue: 330,
+    track: 'agriculture', baseOutput: 0.144,
+  },
+  DYE: {
+    id: 'DYE', goodId: 'dye', name: 'Dye Plantations', icon: '🎨', hue: 275,
+    track: 'agriculture', baseOutput: 0.396,
   },
   TIMBER: {
     id: 'TIMBER', goodId: 'timber', name: 'Logging Camps', icon: '🪵', hue: 139,
-    track: 'extraction', baseOutput: 0.22,
+    track: 'extraction', baseOutput: 0.396,
+  },
+  TROPICAL_WOOD: {
+    id: 'TROPICAL_WOOD', goodId: 'tropical_wood', name: 'Tropical Logging', icon: '🌴', hue: 158,
+    track: 'extraction', baseOutput: 0.18,
+  },
+  RUBBER: {
+    id: 'RUBBER', goodId: 'rubber', name: 'Rubber Plantations', icon: '⬤', hue: 120,
+    track: 'extraction', baseOutput: 0.198,
   },
   IRON: {
     id: 'IRON', goodId: 'iron', name: 'Iron Mines', icon: '⛏', hue: 211,
-    track: 'extraction', baseOutput: 0.18,
+    track: 'extraction', baseOutput: 0.324,
   },
   COAL: {
     id: 'COAL', goodId: 'coal', name: 'Coal Mines', icon: '◆', hue: 28,
-    track: 'extraction', baseOutput: 0.16,
+    track: 'extraction', baseOutput: 0.288,
+  },
+  SULPHUR: {
+    id: 'SULPHUR', goodId: 'sulphur', name: 'Sulphur Mines', icon: '🜍', hue: 48,
+    track: 'extraction', baseOutput: 0.18,
+  },
+  OIL: {
+    id: 'OIL', goodId: 'oil', name: 'Oil Derricks', icon: '🛢', hue: 12,
+    track: 'extraction', baseOutput: 0.162,
   },
 };
 
@@ -34,12 +84,28 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 function weightedRgo(world, tile) {
   const yields = tile.terrain.yields;
   const rng = makeRng(`${world.seed}-rgo-${tile.q}:${tile.r}`);
-  const rugged = tile.terrain.id === 'HILLS' || tile.terrain.id === 'MOUNTAIN';
+  const terrain = tile.terrain.id;
+  const rugged = terrain === 'HILLS' || terrain === 'MOUNTAIN';
+  const tropical = terrain === 'JUNGLE';
+  const open = terrain === 'PLAINS' || terrain === 'GRASSLAND';
+  const arid = terrain === 'DESERT' || terrain === 'TUNDRA';
+  // Tahılın ağırlığı bilerek yüksek: erzak çökerse ordular dağılır. Egzotik
+  // kaynaklar yalnız kendi arazilerinde ve düşük ağırlıkla çıkar.
   const weights = [
-    ['GRAIN', 1.5 + yields.food * 4.5 + (tile.coastal ? 1 : 0)],
-    ['TIMBER', 1 + yields.timber * 5.5],
-    ['IRON', 0.8 + yields.iron * 5 + (rugged ? 1.5 : 0)],
-    ['COAL', 0.45 + (rugged ? 4.5 : 0) + (tile.terrain.id === 'FOREST' ? 0.5 : 0)],
+    ['GRAIN', 2.5 + yields.food * 5 + (open ? 2 : 0)],
+    ['CATTLE', 0.5 + (open ? 2 : 0) + (terrain === 'TUNDRA' ? 0.8 : 0)],
+    ['FISH', tile.coastal ? 3 : 0],
+    ['FRUIT', 0.3 + (open ? 1 : 0) + (tropical ? 1.2 : 0)],
+    ['COTTON', 0.2 + (open ? 1.2 : 0) + (terrain === 'BEACH' ? 0.6 : 0)],
+    ['SILK', 0.15 + (tropical ? 0.7 : 0)],
+    ['DYE', 0.2 + (tropical ? 0.6 : 0) + (open ? 0.3 : 0)],
+    ['TIMBER', 0.6 + yields.timber * 5.5],
+    ['TROPICAL_WOOD', tropical ? 2.2 : 0],
+    ['RUBBER', tropical ? 2 : 0],
+    ['IRON', 0.6 + yields.iron * 5 + (rugged ? 1.5 : 0)],
+    ['COAL', 0.35 + (rugged ? 4 : 0) + (terrain === 'FOREST' ? 0.5 : 0)],
+    ['SULPHUR', 0.15 + (rugged ? 1.2 : 0) + (terrain === 'DESERT' ? 0.5 : 0)],
+    ['OIL', 0.1 + (arid ? 1.4 : 0)],
   ];
   let roll = rng() * weights.reduce((sum, [, weight]) => sum + weight, 0);
   let rgo = 'GRAIN';
@@ -110,9 +176,26 @@ export function ensureProvinces(world) {
   });
 }
 
+// State adları için hece tabloları. "Forest 18:15" bir ad değil, koordinattı;
+// yönetim ekranlarında ilk sütun olduğu için okunur bir şey olmalı.
+const LAND_NAME_A = [
+  'Aster', 'Bram', 'Cald', 'Dorn', 'Elm', 'Fen', 'Gar', 'Hald', 'Ilm', 'Jor',
+  'Kesh', 'Lund', 'Mar', 'Norr', 'Oster', 'Pell', 'Quen', 'Rav', 'Sten', 'Tor',
+  'Ulm', 'Vard', 'Wehr', 'Yar', 'Zel',
+];
+const LAND_NAME_B = [
+  'mark', 'land', 'gau', 'thal', 'burg', 'stead', 'moor', 'vale', 'reach', 'holm',
+  'wick', 'fell', 'heim', 'garde', 'ford',
+];
+
+/**
+ * Kareye bağlı, deterministik ad. Aynı kare her zaman aynı adı verir; dünya
+ * yeniden üretilmedikçe kayıt ile ekran arasında ad kayması olmaz.
+ */
 export function provinceName(tile) {
   if (tile.city) return `${tile.city.name} Province`;
-  return `${tile.terrain.name} ${tile.q}:${tile.r}`;
+  const rng = makeRng(`province-name-${tile.q}:${tile.r}`);
+  return rng.pick(LAND_NAME_A) + rng.pick(LAND_NAME_B);
 }
 
 export function provincePopulation(world, nationId) {
@@ -152,14 +235,23 @@ export function provinceRgoStatus(tile) {
 /** Province'in haftalık ulusal bütçe katkısı. */
 export function provinceOutput(tile) {
   const province = tile?.province;
-  if (!province || tile.owner < 0 || isOccupied(tile)) return {
-    gold: 0, food: 0, timber: 0, iron: 0, coal: 0,
-  };
+  if (!province || tile.owner < 0 || isOccupied(tile)) {
+    // Üretmeyen kare de karenin *kendi* malını anahtar olarak taşımalı: çağıran
+    // taraf `output[rgo.goodId]` okuyor ve eksik anahtar undefined dönüyordu
+    // (14 RGO'ya geçince eski dört anahtarlık sabit nesne yetersiz kaldı).
+    const idle = { gold: 0, food: 0, timber: 0, iron: 0, coal: 0 };
+    const goodId = RGO_TYPES[province?.rgo]?.goodId;
+    if (goodId) idle[goodId] = 0;
+    return idle;
+  }
   const base = tile.terrain.yields;
   const control = clamp(province.control / 100, 0, 1);
   const status = provinceRgoStatus(tile);
+  // Eski dört kalem sıfırla hazır durur (bütçe onları doğrudan okuyor);
+  // province'in gerçek malı aşağıda kendi anahtarına yazılır.
   const output = { gold: 0, food: 0, timber: 0, iron: 0, coal: 0 };
   if (!status.type) return output;
+  output[status.type.goodId] ??= 0;
   const development = province[status.type.track] ?? 0;
   output[status.type.goodId] = status.type.baseOutput
     * province.rgoQuality * (1 + development * 0.18) * status.efficiency * control;
@@ -194,9 +286,24 @@ export function runProvinceMigration(world, force = false) {
     const donors = tiles.map((tile) => ({ tile, surplus: provinceRgoStatus(tile).unemployed }))
       .filter((row) => row.surplus >= MIGRATION_COHORT)
       .sort((a, b) => b.surplus - a.surplus);
+    // Sanayileşen bölge de nüfus çeker. Eskiden göç yalnız RGO boşluklarına
+    // bakıyordu; fabrika açmak bir province'i cazip hale getirmiyordu.
+    // Fabrikanın kadrosu economy.js tarafından `jobs` alanına yazılır, böylece
+    // bu dosyanın ekonomi katmanını import etmesi gerekmez.
+    const factoryVacanciesAt = (tile) => {
+      const factories = world.nations[tile.owner]?.economy?.factories ?? [];
+      let free = 0;
+      for (const factory of factories) {
+        if (factory.q !== tile.q || factory.r !== tile.r) continue;
+        free += Math.max(0, (factory.jobs ?? 0) - (factory.employees ?? 0));
+      }
+      return free;
+    };
     const receivers = tiles.map((tile) => ({
       tile,
-      vacancies: tile.province.control >= 50 ? provinceRgoStatus(tile).vacancies : 0,
+      vacancies: tile.province.control >= 50
+        ? provinceRgoStatus(tile).vacancies + factoryVacanciesAt(tile)
+        : 0,
     }))
       .filter((row) => row.vacancies >= MIGRATION_COHORT)
       .sort((a, b) => (
@@ -213,8 +320,9 @@ export function runProvinceMigration(world, force = false) {
       ) / MIGRATION_COHORT) * MIGRATION_COHORT;
       while (movable >= MIGRATION_COHORT && receiverIndex < receivers.length) {
         const receiver = receivers[receiverIndex];
-        const vacancies = Math.floor(provinceRgoStatus(receiver.tile).vacancies / MIGRATION_COHORT)
-          * MIGRATION_COHORT;
+        const open = provinceRgoStatus(receiver.tile).vacancies
+          + factoryVacanciesAt(receiver.tile);
+        const vacancies = Math.floor(open / MIGRATION_COHORT) * MIGRATION_COHORT;
         if (vacancies < MIGRATION_COHORT) {
           receiverIndex++;
           continue;

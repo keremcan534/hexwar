@@ -3,7 +3,7 @@
 import { makeRng } from '../core/rng.js';
 import {
   UNIT_TYPES, advanceEntrenchment, clearPath, createUnit, refreshArmy,
-  removeUnit, stackFull,
+  removeUnit, stackFull, unitAvailable,
 } from './units.js';
 import { advanceMovement } from './movement.js';
 import { recruit } from './recruitment.js';
@@ -17,7 +17,7 @@ import { checkVictory } from './hegemony.js';
 import { executeOrders } from './orders.js';
 import {
   CITY_COST, UNIT_COSTS, assignAllWorkers, canAfford, canFoundCity,
-  cityName, createCity, nationBudget, pay,
+  cityName, createCity, growCities, nationBudget, pay,
 } from './cities.js';
 import { initEconomy, reconcilePopulation, runEconomy } from './economy.js';
 import { initBattles, removeFromBattles, runBattles } from './battles.js';
@@ -26,6 +26,7 @@ import { initProvinces, provincePopulation, runProvinces } from './provinces.js'
 import { initPolitics, runPolitics } from './politics.js';
 import { captureConstructionAt, initConstruction, runConstruction } from './construction.js';
 import { controllerOf, setController } from './control.js';
+import { expireTreaties, treatiesOf, underTreaty } from './peace.js';
 
 /** Başlangıç stoku: ilk birkaç turda bir birim alacak kadar. */
 const STARTING_GOLD = 50;
@@ -107,6 +108,10 @@ export class TurnManager {
   buyUnit(nation, typeId) {
     const cost = UNIT_COSTS[typeId];
     if (!nation.alive || !cost || !canAfford(nation, cost)) return null;
+    // Askersizleştirme anlaşması süresince yeni tümen kurulamaz.
+    if (underTreaty(nation, 'DEMILITARIZE', this.turn)) return null;
+    // Tank ve uçak yüzyılın ortasında açılır; 1836'da kurulamaz.
+    if (!unitAvailable(typeId, this.turn)) return null;
     const unit = recruit(this.game, nation, typeId);
     if (!unit) return null;
     pay(nation, cost);
@@ -189,6 +194,27 @@ export class TurnManager {
   }
 
   /**
+   * Barış masasında el değişen toprak. `claim`'den ayrıdır çünkü o savaş
+   * kuralına bakar (savaşta olmayanın toprağı alınamaz); burada devir zaten
+   * imzalanmış bir anlaşmanın sonucudur ve şöhret bedeli barışla ödenmiştir.
+   */
+  claimAtPeace(tile, nationId) {
+    const world = this.world;
+    if (!tile?.terrain.passable || tile.owner === nationId || tile.owner < 0) return false;
+    captureConstructionAt(world, tile, nationId);
+    world.nations[tile.owner].tiles = Math.max(0, world.nations[tile.owner].tiles - 1);
+    tile.owner = nationId;
+    tile.controller = nationId;
+    tile.heldSince = this.turn;
+    world.nations[nationId].tiles++;
+    // Yeni tebaa hemen sadık olmaz; kontrol düşük başlar.
+    if (tile.province) tile.province.control = 25;
+    if (tile.city) tile.city.nationId = nationId;
+    this.game.renderer.invalidateCache();
+    return true;
+  }
+
+  /**
    * Savas sirasinda egemenlik degismez; yalniz askeri kontrol el degistirir.
    * Sahipsiz province ise isgal degil yerlesimdir ve dogrudan claim edilir.
    */
@@ -252,6 +278,8 @@ export class TurnManager {
     decayInfamy(world);
     // Sıra önemli: sahiplik savaşta değişmiş olabilir, önce işçiler yeniden dağıtılır.
     runProvinces(this.game);
+    // Şehirler işçi dağıtımından önce büyür ki yeni nüfus aynı hafta bir kare işlesin.
+    growCities(world);
     assignAllWorkers(world);
     this.produce();
     // Ticaret üretimden sonra: bu turun fazlası satılabilsin.
@@ -296,6 +324,30 @@ export class TurnManager {
       nation.budget = budget;
 
       nation.gold = Math.max(0, nation.gold + budget.net.gold);
+    }
+    this.payTreaties();
+  }
+
+  /**
+   * Anlaşma yükümlülükleri. Tazminat ve vassal haracı gelirin bir payıdır:
+   * sabit bir rakam olsaydı zengin ülke için anlamsız, fakir için yıkıcı olurdu.
+   */
+  payTreaties() {
+    const world = this.world;
+    expireTreaties(world, this.turn);
+    for (const nation of world.nations) {
+      if (!nation.alive) continue;
+      for (const treaty of treatiesOf(nation)) {
+        const holder = world.nations[treaty.partner];
+        if (!holder?.alive) continue;
+        const share = treaty.type === 'VASSALIZE' ? 0.15
+          : treaty.type === 'REPARATIONS' ? 0.2 : 0;
+        if (!share) continue;
+        const due = Math.max(0, (nation.budget?.net?.gold ?? 0)) * share;
+        if (due <= 0) continue;
+        nation.gold = Math.max(0, nation.gold - due);
+        holder.gold += due;
+      }
     }
   }
 

@@ -15,12 +15,17 @@ export const INFAMY = {
   OWN_CULTURE_TILE: 0.5,
   FOREIGN_CULTURE_TILE: 1,
   CITY: 6,
-  DECAY_PER_TURN: 1,
   /**
-   * Şöhret ne kadar yüksekse o kadar hızlı unutulur. Sabit azalmayla ölçümde
-   * 300. turda 1548'e çıkıyordu: eşik sistemi için anlamsız bir sayı ve fetihten
-   * vazgeçen ülkenin toparlanma şansı yok. Oransal azalma doğal bir tavan verir.
+   * Sabit azalma 1'den 0.05'e indirildi. 300 turluk oyunda savaşlar sıkışıktı
+   * ve 1/tur işe yarıyordu; 5740 turluk ufukta fetih seyrekleşince azalma her
+   * zaman kazanıyordu. Ölçüm: 109 yılda 471 kare el değiştirdi, hiçbir ülkenin
+   * şöhreti 0'ın üstüne çıkmadı — yani fethin diplomatik bedeli hiç işlemedi.
+   *
+   * Artık asıl fren oransaldır: %3/tur unutulma, sürekli fetihte ~33 puanlık
+   * bir denge noktası verir ve bu tam da koalisyon eşiğidir (INFAMY_COALITION).
+   * Fethi bırakan ülke birkaç on yılda temizlenir.
    */
+  DECAY_PER_TURN: 0.05,
   DECAY_RATIO: 0.03,
 };
 

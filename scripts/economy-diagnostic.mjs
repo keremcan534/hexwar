@@ -8,7 +8,10 @@ import { generateNations } from '../src/world/nations.js';
 import { ensureConstruction } from '../src/game/construction.js';
 import { FINAL_TURN, hegemonyScore } from '../src/game/hegemony.js';
 
-const gameCount = Math.max(1, Number.parseInt(process.argv[2] ?? '30', 10));
+// Oyun ufku 300 turdan 5200'e (yuz yil) cikinca tek kosu ~15 kat uzadi.
+// Varsayilan 30 oyun saatler suruyordu; 6 oyun ayni egilimi birkac dakikada
+// verir, daha genis ornek gerekince sayi arguman olarak yukseltilir.
+const gameCount = Math.max(1, Number.parseInt(process.argv[2] ?? '6', 10));
 const seedPrefix = process.argv[3] ?? 'ECON';
 const traceSeed = process.argv[4] ?? null;
 

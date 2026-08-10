@@ -57,7 +57,9 @@ const slotReserved = constructionAtlas(game.world, nation.id).free === beforeSlo
 for (let week = 0; week < 20; week++) runConstruction(game);
 const sectorCompleted = constructionCount(nation, 'CONSTRUCTION_SECTOR', region.id) === 1;
 const capacityIncreased = constructionPower(nation) === 10;
-const upkeepApplied = constructionUpkeep(nation) === 6;
+// Sektor bakimi 6'dan 4'e indi: fabrikalar da ayni insaat gucunu kullandigi
+// icin ulkeler cok daha fazla santiye tasimak zorunda (bkz. CONSTRUCTION_TYPES).
+const upkeepApplied = constructionUpkeep(nation) === 4;
 
 const fortQueued = queueConstruction(game, nation.id, region.id, 'FORT');
 const adminQueued = queueConstruction(game, nation.id, region.id, 'ADMINISTRATION');

@@ -98,10 +98,14 @@ export function settleOccupations(game, a, b) {
   return transferred;
 }
 
-export function makePeace(game, a, b) {
+/**
+ * Barisi imzalar. `settle: false` ile cagrildiginda isgalleri otomatik
+ * devretmez: toprak degisimini peace.js'teki anlasma belirler (bkz. signPeace).
+ */
+export function makePeace(game, a, b, options = {}) {
   const world = game.world;
   if (!atWar(world, a, b)) return false;
-  const transferred = settleOccupations(game, a, b);
+  const transferred = options.settle === false ? 0 : settleOccupations(game, a, b);
   setState(world, a, b, PEACE, game.turns.turn, {
     truceUntil: game.turns.turn + TRUCE_TURNS,
   });

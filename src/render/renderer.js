@@ -119,6 +119,24 @@ export class Renderer {
     this.setMapMode('construction');
   }
 
+  /**
+   * Baris masasi kipi. Karsi tarafin topragi kirmizi, secilenler yesil yanar;
+   * kendi verdigin topraklar turuncu. Construction kipiyle ayni kalip: harita
+   * bir secim yuzeyine doner.
+   */
+  setPeaceMode(nationId, targetId, selection) {
+    this.peaceNation = nationId;
+    this.peaceTarget = targetId;
+    this.peaceSelection = selection ?? { demands: new Set(), concessions: new Set() };
+    this.setMapMode('peace');
+  }
+
+  updatePeaceSelection(selection) {
+    this.peaceSelection = selection;
+    this.tintCache.clear();
+    this.invalidateCache();
+  }
+
   constructionData(world) {
     if (this.constructionCache?.world === world
       && this.constructionCache?.nationId === this.constructionNation) {
@@ -420,6 +438,15 @@ export class Renderer {
     }
     if (this.mapMode === 'population') {
       return tile.terrain.water ? 'hsl(210 30% 15%)' : this.populationTint(tile);
+    }
+    if (this.mapMode === 'peace') {
+      if (tile.terrain.water) return 'hsl(207 35% 14%)';
+      const key = `${tile.q}:${tile.r}`;
+      if (this.peaceSelection?.demands?.has(key)) return 'hsl(126 38% 34%)';
+      if (this.peaceSelection?.concessions?.has(key)) return 'hsl(28 44% 34%)';
+      if (tile.owner === this.peaceTarget) return 'hsl(2 40% 30%)';
+      if (tile.owner === this.peaceNation) return 'hsl(210 16% 26%)';
+      return 'hsl(205 8% 17%)';
     }
     if (this.mapMode === 'construction') {
       if (tile.terrain.water) return 'hsl(207 35% 14%)';
@@ -798,6 +825,7 @@ export class Renderer {
     const detailed = zoom > 0.46;
     const typeCode = {
       INFANTRY: 'INF', CAVALRY: 'CAV', ARTILLERY: 'ART', WARSHIP: 'NAV',
+      ARMOR: 'ARM', AIRCRAFT: 'AIR',
     };
 
     for (const unit of world.units) {

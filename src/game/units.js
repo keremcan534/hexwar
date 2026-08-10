@@ -74,7 +74,26 @@ export const UNIT_TYPES = {
     id: 'WARSHIP', name: 'Warship', glyph: 'W', domain: 'sea',
     moves: 7, attack: 6, hp: 80, manpower: 1000,
   },
+  // Modern kollar yuzyilin ortasinda sahneye cikar. `availableFrom` olmasaydi
+  // 1836'da tank kurulabilirdi; ayrica bunlar tank/ucak fabrikalarinin tek
+  // musterisidir, o mallar aksi halde fiyat tabaninda cakili kaliyordu.
+  ARMOR: {
+    id: 'ARMOR', name: 'Armour', glyph: 'T', domain: 'land',
+    moves: 5, attack: 11, hp: 130, manpower: 1200,
+    availableFrom: 4176,
+  },
+  AIRCRAFT: {
+    id: 'AIRCRAFT', name: 'Air Wing', glyph: 'P', domain: 'land',
+    moves: 8, attack: 8, hp: 60, manpower: 800,
+    support: true,
+    availableFrom: 3654,
+  },
 };
+
+/** Bu tur o birim tipi kurulabilir mi? (tarihsel acilis) */
+export function unitAvailable(typeId, turn) {
+  return (UNIT_TYPES[typeId]?.availableFrom ?? 0) <= turn;
+}
 
 /** Kaldirilan birim tipleri: eski kayitlar yuklenirken bunlara cevrilir. */
 export const LEGACY_UNIT_TYPES = { SCOUT: 'INFANTRY' };

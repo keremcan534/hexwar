@@ -26,10 +26,16 @@ import {
 } from './command.js';
 
 /** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */
-const SPEEDS = [0, 1, 2, 4];
+const SPEEDS = [0, 1, 2, 4, 8];
 
-/** Bir oyun günü kaç ms sürer (1x hızda) ve haftada kaç gün var. */
-const DAY_MS = 220;
+/**
+ * Bir oyun günü kaç ms sürer (1x hızda) ve haftada kaç gün var.
+ *
+ * 220 ms, oyunun 300 tur sürdüğü döneme aitti. Ufuk 5740 tura (1836-1945)
+ * çıkınca aynı değer 1x'te 147 dakikalık bir oyun demek oluyordu. 120 ms ile
+ * yüzyıl 1x'te 80, 2x'te 40, 4x'te 20, 8x'te 10 dakika sürer.
+ */
+const DAY_MS = 120;
 const DAYS_PER_WEEK = 7;
 /** Dusman province'i alindiktan sonra yeni taarruzdan once ikmal suresi. */
 const CONSOLIDATION_WEEKS = 2;

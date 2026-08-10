@@ -767,13 +767,52 @@ function runGroup(game, nation, general, borders) {
  * Haftalik komuta isleyisi. Hareketten *once* cagrilir ki verilen emirler
  * ayni hafta yol alsin.
  */
+/**
+ * Subay kadrosunun yenilenmesi. Ölçüm: ülkeler 109 yıl boyunca kurulustaki
+ * *tam olarak üç* generalle kalıyordu — ne yenisi yetişiyor ne eskisi
+ * ayrılıyordu, yani `createGeneral`/`generalCost` ölü koddu ve komuta katmanı
+ * yüzyıl boyunca donuktu.
+ *
+ * Artık kadro yaşlanır: her general yılda bir yaşlanır, yaşlananın ayrılma
+ * ihtimali artar. YZ de tümen sayısına göre yeni subay yetiştirir.
+ */
+const GENERAL_RETIRE_AGE = 30;
+const MAX_GENERALS = 8;
+
+function refreshOfficerCorps(game, nation, rng) {
+  const world = game.world;
+  if (world.turn % 52 !== 0) return;
+  for (const general of [...generalsOf(nation)]) {
+    general.age = (general.age ?? 0) + 1;
+    // Otuz hizmet yılından sonra her yıl artan bir ayrılma şansı.
+    const odds = (general.age - GENERAL_RETIRE_AGE) * 0.08;
+    if (odds <= 0 || rng() > odds) continue;
+    for (const armyId of [...general.divisions]) releaseArmy(nation, armyId);
+    nation.generals = generalsOf(nation).filter((other) => other.id !== general.id);
+    if (nation.id === game.turns.playerNation) {
+      game.turns.addLog(`General ${general.name} retired after ${general.age} years.`);
+    }
+  }
+  // Komutasız tümen kalmasın: ordu büyüdükçe kadro da büyür.
+  const divisions = world.units.filter(
+    (unit) => unit.nationId === nation.id && unit.type.domain === 'land',
+  ).length;
+  const wanted = Math.min(MAX_GENERALS, Math.max(2, Math.ceil(divisions / 4)));
+  const cost = generalCost(nation);
+  if (generalsOf(nation).length >= wanted || nation.gold < cost.gold) return;
+  nation.gold -= cost.gold;
+  nation.generals.push(createGeneral(world, nation, rng));
+}
+
 export function runCommand(game) {
   const world = game.world;
   ensureCommand(world);
   reconcileCommand(world);
   const borders = scanBorders(world);
+  const rng = game.turns.rng;
   for (const nation of world.nations) {
     if (!nation.alive) continue;
+    refreshOfficerCorps(game, nation, rng);
     for (const general of generalsOf(nation)) runGroup(game, nation, general, borders);
   }
   game.emit('command', game.activeGeneral ?? null);

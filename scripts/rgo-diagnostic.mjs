@@ -35,10 +35,13 @@ function owned(world, nationId) {
   return world.tiles.filter((tile) => tile.owner === nationId && tile.province);
 }
 
+// Province'ler artik 14 farkli hammadde uretebiliyor; test dort mala
+// sabitlenemez, karenin kendi RGO malina bakar.
 function rawOutput(tiles) {
   return tiles.reduce((sum, tile) => {
-    const out = provinceOutput(tile);
-    return sum + out.food + out.timber + out.iron + out.coal;
+    const goodId = RGO_TYPES[tile.province?.rgo]?.goodId;
+    if (!goodId) return sum;
+    return sum + (provinceOutput(tile)[goodId] ?? 0);
   }, 0);
 }
 
@@ -50,10 +53,12 @@ const land = first.world.tiles.filter((tile) => tile.province);
 const rgoCounts = Object.fromEntries(Object.keys(RGO_TYPES).map((id) => [
   id, land.filter((tile) => tile.province.rgo === id).length,
 ]));
+// Bir province tek bir hammadde uretir: altin disinda tam bir kalem pozitif olmali.
 const uniqueOutput = land.every((tile) => {
   if (tile.owner < 0) return true;
   const output = provinceOutput(tile);
-  return ['food', 'timber', 'iron', 'coal'].filter((id) => output[id] > 0).length === 1;
+  const goods = Object.entries(output).filter(([id, value]) => id !== 'gold' && value > 0);
+  return goods.length === 1 && goods[0][0] === RGO_TYPES[tile.province.rgo].goodId;
 });
 const startingUnit = first.world.units[0];
 const startingDraws = startingUnit.regiments[0].draws.reduce(

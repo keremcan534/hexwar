@@ -32,7 +32,7 @@ npm run diagnose:policy
 | Yürüt | seç, sonra hedefe dokun | sağ tık |
 | Seçimi bırak | boş yere dokun | boş yere sol tık · `Esc` |
 | Cephe yönet | general + hedef + Offensive | general + hedef + Offensive |
-| Zaman | duraklat, 1×, 2×, 4× | `boşluk` duraklat · `+` / `−` hız |
+| Zaman | duraklat, 1×, 2×, 4×, 8× | `boşluk` duraklat · `+` / `−` hız |
 
 Giriş HOI4 semantiğindedir: **sol tuş seçer, sağ tuş yürütür**. Sol tuş sürükleme
 masaüstünde klasör seçer gibi kutu seçimi yapar, bu yüzden kamera orta tuş ve
@@ -54,29 +54,85 @@ onun üstüne çıkar.
 
 Zafer eleme değil üstünlüktür. Her ülkenin haftalık bir hegemonya puanı vardır:
 ham üretim ve kurulu sanayi kapasitesi **ekonomi**, şehirler ile barışçı
-ilişkiler ve toprak **prestij** bileşenini oluşturur. 400 puana ilk ulaşan
-kazanır; kimse ulaşamazsa 300. haftada en yüksek puanlı kazanır. Eşik ölçümle
-seçildi: on iki oyunluk koşuda ortalama bitiş 235. hafta ve oyunların %83'ü
-süre dolarak değil hedefe ulaşarak bitiyor.
+ilişkiler ve toprak **prestij** bileşenini oluşturur.
 
-Puanın zamanla yükselen kısmı sanayidir. Toprak ve şehir nüfusu bu yapıda
-neredeyse sabit kaldığı için geç oyunda skorun çoğunluğu fabrikalardan gelir.
+Oyun 1836'da başlar, bir tur bir haftadır ve **1945'te biter** (5740. tur =
+28 Aralık 1945). **Erken zafer yoktur**: kazanan, son turda en yüksek puana
+sahip ülkedir. Eskiden bir puan eşiğine ilk ulaşan oyunu bitiriyordu; bu, güçlü
+ülkenin yüzyılın ortasında masayı toplamasına ve kalan onlarca yılın hiç
+oynanmamasına yol açıyordu.
+
+Puanın bileşimi zamanla kayar: 1845'te sanayi %39 / ham üretim %39 / prestij
+%21, 1935'te %73-82 / %10-18 / %8-9. Erken oyun dengelidir, geç oyunda sanayi
+baskın hale gelir — çünkü fabrika seviyesi en hızlı büyüyen eksendir.
+
+### Savaş ve barış masası
+
+Aktif savaşlar üst menünün altında kırmızı parlayan kutucuklar olarak durur;
+üzerlerinde anlık **warscore** yazar. Tıklamak barış masasını açar ve harita bir
+seçim yüzeyine döner (Construction ekranıyla aynı kalıp): karşı tarafın toprağı
+kırmızı, istediklerin yeşil, verdiklerin turuncu.
+
+Her province'in bir bedeli vardır (nüfus + gelişmişlik + şehir primi) ve toplam
+talep warscore'unu aşamaz. Warscore işgal ettiğin toprak, kaybettiğin toprak ve
+askerî üstünlükten hesaplanır; işgal payı en ağır kalemdir.
+
+Victoria'da olduğu gibi savaşlar ülke yutmaz, sınır düzeltir: **bir anlaşmada en
+çok altı province** el değiştirir. Toprak dışı talepler de vardır ve hepsinin
+gerçek bir oyun etkisi bulunur:
+
+| Talep | Etkisi |
+| --- | --- |
+| Savaş tazminatı | Beş yıl boyunca gelirinin bir payı sana akar |
+| Askersizleştirme | Dört yıl yeni tümen kuramaz |
+| Kaynak imtiyazı | Ham üretiminin beşte biri altı yıl sana teslim edilir |
+| Sanayi hakkı | Altı yıl onun state'lerinde fabrika kurabilirsin |
+| Azınlıkları serbest bırak | Yabancı kültürlü province'leri bağımsızlaşır |
+| Vassallaştırma | Kalıcı barış ve gelirinden haraç (yalnız çok zayıf ülkeye) |
+
+Kaybeden taraf da masaya toprak koyarak anlaşmanın bedelini düşürebilir.
 
 ### Dünya pazarı ve sanayi
 
-Gıda, kereste, demir, kömür, konserve, kumaş, alet, çelik, silah, mobilya ve
-lüks ürünlerden oluşan tek bir dünya pazarı vardır. Her malın fiyatı haftalık
-arz-talep dengesine göre değişir. Bir ülkenin stratejik mal satın alması talebi
-ve dolayısıyla küresel fiyatı artırır.
+Victoria 2'nin üretim zinciri: **43 mal, 29 fabrika türü, 14 province kaynağı**
+tek bir dünya pazarında buluşur. Her malın fiyatı haftalık arz-talep dengesine
+göre değişir (taban fiyatın 0.12–8 katı arasında).
 
-Şehirlere Victoria tarzı fabrikalar kurulabilir. Fabrikalar işçilerini zamanla
-doldurur; girdilerini dünya fiyatından alıp çıktılarını dünya fiyatından satar.
-Girdi pahalanır ya da çıktı ucuzlarsa kâr düşer, işçiler fabrikadan ayrılmaya
-başlar. Sanayi ekranı üretim zincirini, kapasiteyi ve beklenen kârı gösterir.
+Zincir katmanlıdır — Kömür+Demir → Çelik → Makine Parçası → Otomobil → Tank —
+ve bir halkadaki kıtlık üst katmanların hepsini yavaşlatır. Kaynak dağılımı
+kasten dengesizdir: tahıl haritanın yarısını kaplar (ordunun erzağı ona bağlı),
+kauçuk ve petrol ise bir avuç province'te bulunur. Kıtlıkları ticaretin ve
+sömürge hırsının asıl sebebidir.
 
-Sanayileşmenin sabit bir tavanı yoktur: fabrika kurulum bedeli kurulu kapasiteyle
-birlikte artar, genişletme maliyeti ise seviye başına üstel büyür. Böylece sanayi
-geç oyunda da hazineyi emmeye devam eder.
+Ham maddenin yalnız fabrikaya girmesi yetmez; çıktının da müşterisi olmalıdır.
+Ordu mühimmat ve yakıt tüketir, inşaat kuyruğu çimento harcar, gübre tarım
+verimini artırır. Müşterisi olmayan mal fiyat tabanına çakılır ve onu üreten
+tesis zarar eder.
+
+Victoria tarzı fabrikalar **state'lere** kurulur ve bir state'te her türden tek
+tesis bulunur. Fabrika anında belirmez: **ulusal inşaat kuyruğuna** girer ve
+kale/üniversite ile aynı inşaat gücünü paylaşır. Zincir böylece kapanır —
+politika kimin başlatabileceğini, sermaye parayı, inşaat gücü hızı belirler.
+Construction Sector yatırımı doğrudan sanayileşme hızına dönüşür.
+
+Kapitalist projeleri Victoria 2'deki gibi para biriktirerek ilerler: sermaye
+bitince proje durur ve Factories ekranında "¤ support" ile hazineden destek
+verilebilir (tık = eksiğin dörtte biri, shift+tık = hazine yettiği kadar).
+
+Oyuncunun verdiği tek karar nereye ne dikeceğidir; büyüme kararı ekonomiye aittir:
+
+- Tesis işçisini **ayda bir**, alt sınıf nüfusun küçük bir oranı kadar toplar.
+  Bu yüzden bir seviyenin dolması yıllar sürer ve sanayi yüz yıla yayılır.
+- Kadrosunu dolduran **ve kâr eden** tesis kendini bir üst seviyeye çıkarır.
+  Parayı kimin verdiğini ekonomi politikası belirler: planlı ekonomide hazine,
+  laissez-faire'de kapitalistler, ikisinin serbest olduğu düzende önce özel
+  sermaye. Kasa yetmiyorsa tesis tavanda bekler — sanayileşmenin gerçek freni budur.
+- Girdi pahalanır ya da çıktı ucuzlarsa kâr düşer; zarar eden tesis işçi salar ve
+  seviye atlayamaz. Serbest kalan işgücü aynı ay kârlı tesislere akar.
+
+Sanayi fakir nüfusun tamamını yutamaz (tarla ve maden de işçi ister), kurulum
+bedeli de kurulu kapasiteyle birlikte artar. İki fren birlikte, tavanın oyun
+ortasından önce görülmesini engeller.
 
 ### Nüfus ve bütçe
 

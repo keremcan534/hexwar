@@ -14,7 +14,9 @@ export const BASE_CONSTRUCTION_POWER = 5;
 export const CONSTRUCTION_TYPES = {
   CONSTRUCTION_SECTOR: {
     id: 'CONSTRUCTION_SECTOR', name: 'Construction Sector', icon: '🏗',
-    cost: 100, upkeep: 6, maxPerRegion: 3,
+    // Bakım 6'dan 4'e: fabrikalar da bu güçle kurulduğu için ülkeler artık çok
+    // daha fazla şantiyeye ihtiyaç duyuyor, 6'da bütçe onları taşıyamıyordu.
+    cost: 100, upkeep: 4, maxPerRegion: 3,
     desc: '+5 weekly construction power. Expensive to maintain.',
   },
   FORT: {
@@ -84,8 +86,38 @@ function displayCenter(tiles) {
   ) || tileOrder(a, b))[0];
 }
 
+/**
+ * Kuyruk artik yalniz bina tasimaz: fabrika kurulumu ve seviye atlamasi da
+ * ayni ulusal insaat gucunu paylasir. Boylece "kim insa edebilir" (politika),
+ * "parayi kim veriyor" (hazine/ozel sermaye) ve "ne kadar hizli" (insaat gucu)
+ * tek bir zincire baglanir.
+ *
+ * Bina projeleri yalniz is ister; fabrika projeleri hem is hem para ister ve
+ * odenmemis kismin otesine ilerleyemez.
+ */
+export const PROJECT_KIND = { BUILDING: 'building', FACTORY: 'factory', UPGRADE: 'upgrade' };
+
+/**
+ * Yerinde düzeltir, kopya üretmez. Kopyalasaydı ensureConstruction'ın her
+ * çağrısı proje nesnelerini tazeler ve dışarıda tutulan bir referansa yapılan
+ * ödeme (bkz. fundProject) sessizce kaybolurdu.
+ */
+function normalizeProject(project) {
+  project.kind ??= PROJECT_KIND.BUILDING;
+  const work = Number.isFinite(project.work)
+    ? project.work
+    : CONSTRUCTION_TYPES[project.typeId]?.cost ?? 0;
+  project.work = Math.max(1, work);
+  project.cost = Math.max(0, Number(project.cost) || 0);
+  project.funded = Math.max(0, Number(project.funded) || 0);
+  project.progress = Math.max(0, Number(project.progress) || 0);
+  return project;
+}
+
 export function ensureConstruction(nation) {
-  nation.construction ??= { nextId: 1, buildings: [], projects: [], lastCompleted: 0 };
+  nation.construction ??= {
+    nextId: 1, buildings: [], projects: [], completedFactories: [], lastCompleted: 0,
+  };
   const state = nation.construction;
   state.nextId = Math.max(1, Number(state.nextId) || 1);
   state.buildings = (state.buildings ?? []).filter(
@@ -93,14 +125,37 @@ export function ensureConstruction(nation) {
       && (typeof building.regionId === 'string' || Number.isFinite(building.q)),
   );
   state.projects = (state.projects ?? []).filter(
-    (project) => CONSTRUCTION_TYPES[project.typeId]
-      && (typeof project.regionId === 'string' || Number.isFinite(project.q)),
-  ).map((project) => ({
-    ...project,
-    progress: Math.max(0, Number(project.progress) || 0),
-  }));
+    (project) => (project.kind && project.kind !== PROJECT_KIND.BUILDING
+      ? Number.isFinite(project.q)
+      : CONSTRUCTION_TYPES[project.typeId]
+        && (typeof project.regionId === 'string' || Number.isFinite(project.q))),
+  ).map(normalizeProject);
+  state.completedFactories ??= [];
   state.lastCompleted ??= 0;
   return state;
+}
+
+/** Fabrika/seviye projesini kuyruga ekler. Parasi ayri akar (bkz. fundProject). */
+export function queueIndustryProject(game, nation, project) {
+  const state = ensureConstruction(nation);
+  const queued = normalizeProject({ ...project, id: state.nextId++, started: game.world.turn });
+  state.projects.push(queued);
+  game.emit('construction', state);
+  return queued;
+}
+
+/**
+ * Projeye para koyar. Kapitalistler kendi sermayelerinden, oyuncu hazineden
+ * destek verir; ilerleme odenen orani asamaz.
+ */
+export function fundProject(project, amount) {
+  const paid = Math.max(0, Math.min(amount, Math.max(0, project.cost - project.funded)));
+  project.funded += paid;
+  return paid;
+}
+
+export function projectFundingRatio(project) {
+  return project.cost > 0 ? Math.min(1, project.funded / project.cost) : 1;
 }
 
 export function initConstruction(world) {
@@ -144,6 +199,19 @@ export function fortDefenseAt(world, nationId, tile) {
   return region ? region.buildings.filter((building) => building.typeId === 'FORT').length * 0.08 : 0;
 }
 
+/**
+ * Bölge hesabı O(bölge² × kare) tutar ve sanayi ekranı bunu tip × state başına
+ * sorar. Sonuç yalnız *hangi karelerin* bize ait olduğuna bağlı olduğu için
+ * ucuz bir imzayla önbelleğe alınır: sınır değişmediyse aynı atlas döner.
+ */
+const atlasCache = new WeakMap();
+
+function territorySignature(owned) {
+  let signature = owned.length;
+  for (const tile of owned) signature = (signature * 31 + tile.q * 73 + tile.r) % 2147483647;
+  return signature;
+}
+
 export function constructionAtlas(world, nationId) {
   const nation = world?.nations?.[nationId];
   const owned = world?.tiles?.filter(
@@ -153,6 +221,14 @@ export function constructionAtlas(world, nationId) {
   if (!nation || !owned.length) {
     return { nationId, regions: [], tileRegions: new Map(), slots: 0, used: 0, free: 0 };
   }
+
+  // Bina/proje listeleri atlas içinde okunduğu için imzaya onlar da girer.
+  const state = ensureConstruction(nation);
+  const signature = `${territorySignature(owned)}:${state.buildings.length}:${state.projects.length}`;
+  if (!atlasCache.has(world)) atlasCache.set(world, new Map());
+  const perWorld = atlasCache.get(world);
+  const cached = perWorld.get(nationId);
+  if (cached?.signature === signature) return cached.atlas;
 
   const regionCount = clamp(
     Math.ceil(owned.length / TARGET_PROVINCES_PER_REGION),
@@ -201,13 +277,20 @@ export function constructionAtlas(world, nationId) {
     };
     region.buildings = state.buildings.filter(inRegion);
     region.projects = state.projects.filter(inRegion);
-    region.used = region.buildings.length + region.projects.length;
+    // Yuva sayımı yalnız binaları kapsar. Fabrikanın kendi kuralı var (state
+    // başına tür başına bir tesis); sanayi projesi kuyruğa girdi diye kışla
+    // yeri işgal etmemeli.
+    region.industryProjects = region.projects.filter(
+      (project) => project.kind && project.kind !== PROJECT_KIND.BUILDING,
+    );
+    region.used = region.buildings.length
+      + (region.projects.length - region.industryProjects.length);
     region.free = Math.max(0, region.slots - region.used);
     region.freeRatio = region.slots ? region.free / region.slots : 0;
     region.status = region.free === 0 ? 'full' : region.used > 0 ? 'partial' : 'open';
   }
 
-  return {
+  const atlas = {
     nationId,
     regions,
     tileRegions,
@@ -215,6 +298,8 @@ export function constructionAtlas(world, nationId) {
     used: regions.reduce((sum, region) => sum + region.used, 0),
     free: regions.reduce((sum, region) => sum + region.free, 0),
   };
+  perWorld.set(nationId, { signature, atlas });
+  return atlas;
 }
 
 export function canQueueConstruction(world, nation, regionId, typeId) {
@@ -295,16 +380,60 @@ export function captureConstructionAt(world, tile, newNationId) {
   return captured.length;
 }
 
+/**
+ * Biten projeyi karşılar. Bina burada doğar; fabrika ve seviye projeleri
+ * economy.js'e devredilir — bu dosya FACTORIES'i tanımaz, tanısa iki modül
+ * birbirine düğümlenirdi (bkz. CLAUDE.md katman kuralı).
+ */
+function completeProject(game, nation, project) {
+  const state = ensureConstruction(nation);
+  if (project.kind !== PROJECT_KIND.BUILDING) {
+    state.completedFactories.push(project);
+    return;
+  }
+  state.buildings.push({
+    id: `building-${nation.id}-${project.id}`,
+    typeId: project.typeId,
+    regionId: project.regionId,
+    regionName: project.regionName,
+    q: project.q,
+    r: project.r,
+    completed: game.turns.turn,
+  });
+  if (nation.id === game.turns.playerNation) {
+    game.turns.addLog(`${CONSTRUCTION_TYPES[project.typeId].name} completed in ${project.regionName}.`);
+  }
+}
+
 function planConstructionAI(game, nation) {
   const state = ensureConstruction(nation);
-  if (nation.id === game.turns.playerNation || state.projects.length || nation.gold < 180) return;
-  const desired = constructionCount(nation, 'CONSTRUCTION_SECTOR') < 1
+  if (nation.id === game.turns.playerNation || nation.gold < 180) return;
+  // Yalnız bina projeleri sayılır: fabrika kuyruğu dolu diye ülke bir daha
+  // hiç kışla ya da üniversite yapamaz hale gelmemeli.
+  const pendingBuildings = state.projects.filter(
+    (project) => project.kind === PROJECT_KIND.BUILDING,
+  ).length;
+  if (pendingBuildings) return;
+  // Hazine şişiyorsa asıl darboğaz inşaat gücüdür: sanayi kuyrukta bekler,
+  // para harcanacak yer bulamaz. Fazla altın yeni şantiyeye gider; bakım
+  // gideri de biriken parayı geri emer.
+  const sectors = constructionCount(nation, 'CONSTRUCTION_SECTOR');
+  const queuedWork = state.projects.reduce(
+    (sum, project) => sum + Math.max(0, project.work - project.progress), 0,
+  );
+  // Hazine şişmişse de yeni şantiye açılır: laissez-faire'de devlet fabrika
+  // kuramadığı için kuyruğu hiç dolmaz, `starved` tetiklenmez ve para
+  // harcanacak yer bulamazdı. Kapasite, kapitalistlerin projelerini de hızlandırır.
+  const starved = queuedWork > constructionPower(nation) * 12 || nation.gold > 900;
+  const desired = sectors < 1
     ? 'CONSTRUCTION_SECTOR'
     : constructionCount(nation, 'ADMINISTRATION') < 1
       ? 'ADMINISTRATION'
       : constructionCount(nation, 'UNIVERSITY') < 1
         ? 'UNIVERSITY'
-        : constructionCount(nation, 'FORT') < 2 ? 'FORT' : null;
+        : (starved && nation.gold > 400)
+          ? 'CONSTRUCTION_SECTOR'
+          : constructionCount(nation, 'FORT') < 2 ? 'FORT' : null;
   if (!desired) return;
   const regions = constructionAtlas(game.world, nation.id).regions
     .sort((a, b) => b.free - a.free || b.population - a.population);
@@ -322,28 +451,32 @@ export function runConstruction(game) {
     const state = ensureConstruction(nation);
     let power = constructionPower(nation);
     let completed = 0;
-    while (power > 0 && state.projects.length) {
-      const project = state.projects[0];
-      const type = CONSTRUCTION_TYPES[project.typeId];
-      const remaining = Math.max(0, type.cost - project.progress);
+    const finished = new Set();
+    // Kapasite yatırımı, o kapasiteyi tüketen işin arkasında bekleyemez. Yeni
+    // şantiye fabrika kuyruğunun sonuna eklenince inşaat gücü hiç artmıyor,
+    // kuyruk erimiyor ve hazine harcanamayan altın biriktiriyordu (ölçüldü:
+    // 2600 altın, 5 bekleyen proje, 6 fabrika). Sıralama kararlıdır; geri kalan
+    // projeler oyuncunun verdiği öncelik sırasını korur.
+    const ordered = [...state.projects].sort(
+      (a, b) => (b.typeId === 'CONSTRUCTION_SECTOR') - (a.typeId === 'CONSTRUCTION_SECTOR'),
+    );
+    // Finansmanı bekleyen proje kuyruğu tıkamaz, sıradakine geçilir: kapitalist
+    // parasını toplayana kadar devletin kışlası beklemek zorunda değil.
+    for (const project of ordered) {
+      if (power <= 0) break;
+      const payable = project.work * projectFundingRatio(project);
+      const remaining = Math.max(0, payable - project.progress);
+      if (remaining <= 1e-6) continue;
       const spent = Math.min(power, remaining);
       project.progress += spent;
       power -= spent;
-      if (project.progress + 1e-6 < type.cost) break;
-      state.projects.shift();
-      state.buildings.push({
-        id: `building-${nation.id}-${project.id}`,
-        typeId: project.typeId,
-        regionId: project.regionId,
-        regionName: project.regionName,
-        q: project.q,
-        r: project.r,
-        completed: game.turns.turn,
-      });
+      if (project.progress + 1e-6 < project.work) continue;
+      finished.add(project.id);
+      completeProject(game, nation, project);
       completed++;
-      if (nation.id === game.turns.playerNation) {
-        game.turns.addLog(`${type.name} completed in ${project.regionName}.`);
-      }
+    }
+    if (finished.size) {
+      state.projects = state.projects.filter((project) => !finished.has(project.id));
     }
     state.lastCompleted = completed;
     if (completed || state.projects.length) changed = true;

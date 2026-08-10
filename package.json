@@ -8,6 +8,7 @@
     "dev": "node scripts/dev-server.mjs",
     "start": "node scripts/dev-server.mjs",
     "diagnose:economy": "node scripts/economy-diagnostic.mjs",
+    "diagnose:industry": "node scripts/industry-diagnostic.mjs",
     "diagnose:system": "node scripts/system-diagnostic.mjs",
     "diagnose:assault": "node scripts/assault-diagnostic.mjs",
     "diagnose:reinforcement": "node scripts/reinforcement-diagnostic.mjs",

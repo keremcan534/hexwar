@@ -6,7 +6,10 @@ import {
   POLITICAL_POLICIES, canInvestInFactory, ensurePolitics, fiscalPolicyLimits, runPolitics,
   rulingParty,
 } from '../src/game/politics.js';
-import { buildFactory, canBuildFactory, setFiscalPolicy } from '../src/game/economy.js';
+import {
+  FACTORIES, buildFactory, canBuildFactory, runEconomy, setFiscalPolicy,
+} from '../src/game/economy.js';
+import { constructionAtlas, ensureConstruction } from '../src/game/construction.js';
 import { deserialize, serialize } from '../src/game/save.js';
 
 function headless(seed) {
@@ -61,15 +64,30 @@ nation.politics.rulingPartyId = liberal.id;
 liberal.policies.economy = 'laissez_faire';
 liberal.policies.trade = 'free_trade';
 liberal.policies.military = 'anti_military';
-const city = game.world.cities.find((candidate) => candidate.nationId === nation.id);
+// Fabrika artik sehre degil state'e kurulur (bkz. economy.js canBuildFactory).
+const region = constructionAtlas(game.world, nation.id).regions[0];
 Object.assign(nation, { gold: 1000, timber: 1000, iron: 1000 });
 nation.politics.privateCapital = 1000;
-const stateBlocked = !canBuildFactory(game.world, nation, city, 'CANNERY');
-const privateAllowed = canBuildFactory(game.world, nation, city, 'CANNERY', 'private');
+// Ulkeler artik kurulus sanayisiyle basliyor (bkz. STARTING_INDUSTRY), bu
+// yuzden tur sabit secilemez: o state'te henuz olmayan bir tesis bulunur.
+const buildable = Object.keys(FACTORIES).find(
+  (typeId) => canBuildFactory(game.world, nation, region.id, typeId, 'private'),
+);
+const stateBlocked = !canBuildFactory(game.world, nation, region.id, buildable);
+const privateAllowed = canBuildFactory(game.world, nation, region.id, buildable, 'private');
 const treasuryBefore = nation.gold;
 const capitalBefore = nation.politics.privateCapital;
-const privateBuilt = buildFactory(game, nation, city.id, 'CANNERY', { actor: 'private' });
-const builtFactory = nation.economy.factories[nation.economy.factories.length - 1];
+const privateBuilt = buildFactory(game, nation, region.id, buildable, { actor: 'private' });
+// Fabrika artik aninda dogmaz: insaat kuyruguna proje olarak girer ve ozel
+// sermaye ona haftalar icinde akar (bkz. economy.js fundPrivateProjects).
+const privateProject = ensureConstruction(nation).projects.find(
+  (project) => project.kind === 'factory' && project.typeId === buildable,
+);
+// Hazine kurulum aninda hic dokunulmamis olmali; asagidaki runEconomy vergi
+// geliri de ekledigi icin karsilastirma o cagridan once alinir.
+const treasuryAfterBuild = nation.gold;
+runEconomy(game);
+const capitalAfter = nation.politics.privateCapital;
 
 setFiscalPolicy(nation, 'tariff', 50);
 setFiscalPolicy(nation, 'armySpending', 100);
@@ -114,9 +132,11 @@ const results = {
     stateBlocked,
     privateAllowed,
     privateBuilt,
-    stateTreasuryUntouched: nation.gold === treasuryBefore,
-    privateCapitalPaid: nation.politics.privateCapital < capitalBefore,
-    markedPrivate: builtFactory.fundedBy === 'private',
+    projectQueued: Boolean(privateProject),
+    // Hazineye dokunulmadi: parayi kapitalistler koydu.
+    stateTreasuryUntouched: treasuryAfterBuild === treasuryBefore,
+    privateCapitalPaid: capitalAfter < capitalBefore && privateProject.funded > 0,
+    markedPrivate: privateProject.actor === 'private',
   },
   policyLimits: {
     freeTradeTariffCap: limits.tariffMax === 10 && nation.economy.tariff === 10,

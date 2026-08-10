@@ -9,19 +9,24 @@ import {
   UNIT_COSTS, canAfford, formatCost,
 } from '../game/cities.js';
 import { MIN_WAR_TURNS, atWar, nationStrength, relation, truceLeft } from '../game/diplomacy.js';
+import {
+  MAX_DEMAND_TILES, PEACE_TERMS, canConcedeTile, canDemandTile, offerCost,
+  offerRefusal, signPeace, termAvailable, tileKey, tileWarCost, warScore,
+} from '../game/peace.js';
 import { INFAMY_COALITION } from '../game/infamy.js';
 import {
-  UNIT_TYPES, maxHpOf, organizationOf, soldiersOf,
+  UNIT_TYPES, maxHpOf, organizationOf, soldiersOf, unitAvailable,
 } from '../game/units.js';
+import { provinceName } from '../game/provinces.js';
 import { flagDataUrl } from '../render/flagPainter.js';
-import { HEGEMONY_TARGET, scoreboard } from '../game/hegemony.js';
+import { scoreboard } from '../game/hegemony.js';
 import {
   CLASS_INFO, CLASS_PROFESSIONS, FACTORIES, GOODS, GOOD_IDS, MAX_FACTORY_LEVEL,
   MILITARY_EQUIPMENT, POPULATION_COHORT, PROFESSION_INFO,
   SOCIAL_PROGRAMS, buildFactory,
-  canBuildFactory, canExpandFactory, expandFactory, expansionCost, factoryCost,
+  canBuildFactory, factoriesInRegion, factoryAtlas, factoryCost, factoryJobs,
   factoryMargin, formatPopulation, setFiscalPolicy,
-  setMilitaryProductionLine, socialSpendingCost, ensureProductionLine,
+  setMilitaryProductionLine, socialSpendingCost, ensureProductionLine, supportProject, upgradeOutlook,
 } from '../game/economy.js';
 import { MAX_ROUNDS, battleSides, battlesFor } from '../game/battles.js';
 import { canRecruit, equipmentCostLabel } from '../game/recruitment.js';
@@ -36,14 +41,24 @@ import {
   queueConstruction,
 } from '../game/construction.js';
 
+/** Victoria 2'nin mal blokları. GOODS[].category ile eşleşir. */
+const GOOD_CATEGORIES = {
+  raw: 'Raw Materials',
+  industrial: 'Industrial Goods',
+  consumer: 'Consumer Goods',
+  military: 'Military Goods',
+  luxury: 'Luxury Goods',
+};
+
 const TITLES = {
   nation: 'Nation Overview',
   construction: 'Construction',
-  industry: 'Industry & Factories',
+  industry: 'Factories',
   production: 'Production',
   budget: 'Budget',
   population: 'Population',
   politics: 'Politics',
+  peace: 'Peace Talks',
   logistics: 'Logistics',
   diplomacy: 'Diplomacy',
   trade: 'Trade',
@@ -61,6 +76,12 @@ export class Screens {
     this.active = null;
     this.previousMapMode = null;
     this.constructionType = null;
+    this.industryTab = 'plants';
+    this.industryPicker = null;
+    this.tradeGood = null;
+    this.peaceTarget = null;
+    this.peaceTab = 'take';
+    this.peaceSelection = { demands: new Set(), concessions: new Set(), terms: new Set() };
     this.el = {
       root: document.getElementById('screen'),
       title: document.getElementById('screen-title'),
@@ -82,6 +103,10 @@ export class Screens {
     game.on('politics', () => this.refresh());
     game.on('construction', () => this.refresh());
     game.on('select', (tile) => {
+      if (this.active === 'peace') {
+        this.pickPeaceTile(tile);
+        return;
+      }
       if (this.active !== 'construction') return;
       const me = this.me;
       if (this.constructionType && tile?.owner === me?.id) {
@@ -108,7 +133,8 @@ export class Screens {
   }
 
   open(name) {
-    if (this.active === 'construction' && name !== 'construction') {
+    // Baris kipi de haritayi ele gecirir; ekrandan cikarken geri verilmeli.
+    if ((this.active === 'construction' || this.active === 'peace') && name !== this.active) {
       this.restoreMapMode();
     }
     this.active = name;
@@ -130,7 +156,7 @@ export class Screens {
   }
 
   close() {
-    if (this.active === 'construction') this.restoreMapMode();
+    if (this.active === 'construction' || this.active === 'peace') this.restoreMapMode();
     this.constructionType = null;
     this.active = null;
     delete this.el.root.dataset.screen;
@@ -158,11 +184,242 @@ export class Screens {
     this.el.title.textContent = TITLES[this.active] ?? '—';
     // Construction artik eski sehir kaynaklariyla degil state-slot kapasitesiyle
     // calisir; eski gold/food/timber/iron seridi bu ekranda gosterilmez.
-    this.el.res.innerHTML = me && this.active !== 'construction' ? this.resourceLine(me) : '';
+    // Sanayi ekranı Victoria 2 gibi alt sekmelidir: başlık şeridi kaynak
+    // satırı yerine sekmeleri taşır, böylece tesisler ve şantiyeler tek uzun
+    // sayfada alt alta kaydırılmak yerine ayrı pencerelerde durur.
+    this.el.res.innerHTML = !me ? ''
+      : this.active === 'industry' ? this.industryTabs(me)
+        : this.active !== 'construction' ? this.resourceLine(me) : '';
     this.el.body.innerHTML = me
       ? (this[`render_${this.active}`]?.(me) ?? '')
       : '<p class="empty">Your nation has been eliminated.</p>';
     this.bind();
+    for (const btn of this.el.res.querySelectorAll('[data-industry-tab]')) {
+      btn.onclick = () => {
+        this.industryTab = btn.dataset.industryTab;
+        this.refresh();
+      };
+    }
+  }
+
+  /**
+   * Seçili malın dünya tablosu: kim üretiyor, biz neredeyiz. Fiyatın neden
+   * tavanda ya da tabanda olduğunu ancak üretimin kimde toplandığını görerek
+   * anlayabiliyorsun; bu panel o soruyu cevaplar.
+   */
+  goodDetail(me, world) {
+    const goodId = this.tradeGood;
+    const good = GOODS[goodId];
+    if (!good) {
+      return `<aside class="good-detail empty-detail">
+        <p class="empty">Select a good to see who produces it.</p></aside>`;
+    }
+    const state = world.market.goods[goodId];
+    const rows = world.nations
+      .filter((nation) => nation.alive && nation.economy?.goodsFlow?.[goodId])
+      .map((nation) => ({
+        nation,
+        production: nation.economy.goodsFlow[goodId].production ?? 0,
+        demand: nation.economy.goodsFlow[goodId].demand ?? 0,
+      }))
+      .sort((a, b) => b.production - a.production);
+    const worldProduction = rows.reduce((sum, row) => sum + row.production, 0);
+    const mineIndex = rows.findIndex((row) => row.nation.id === me.id);
+    const mine = rows[mineIndex];
+    const share = (value) => (worldProduction > 0
+      ? `${((value / worldProduction) * 100).toFixed(1)}%` : '—');
+    const line = (row, rank) => `<div class="good-rank ${row.nation.id === me.id ? 'me' : ''}">
+      <span class="rank-no">${rank}</span>
+      <span class="rank-name">${esc(row.nation.name)}</span>
+      <span class="rank-out">${row.production.toFixed(1)}</span>
+      <span class="rank-share">${share(row.production)}</span>
+    </div>`;
+    const top = rows.slice(0, 5).map((row, index) => line(row, index + 1)).join('');
+    // Oyuncu ilk beşte değilse kendi satırı ayrıca en alta eklenir.
+    const own = mine && mineIndex >= 5 ? line(mine, mineIndex + 1) : '';
+    const flow = me.economy?.goodsFlow?.[goodId] ?? {};
+    const ratio = state.price / good.basePrice;
+    const pinned = ratio >= 7.9 ? 'at the price ceiling — severe shortage'
+      : ratio <= 0.13 ? 'at the price floor — nobody wants it' : '';
+    return `<aside class="good-detail">
+      <div class="good-detail-head"><b>${good.icon} ${esc(good.name)}</b>
+        <span>¤${state.price.toFixed(2)} <small>${ratio.toFixed(2)}× base</small></span></div>
+      ${pinned ? `<p class="res-warn good-pinned">${pinned}</p>` : ''}
+      ${this.priceChart(state, good)}
+      <div class="good-detail-kpis">
+        <span><small>World supply</small><b>${state.supply.toFixed(1)}</b></span>
+        <span><small>World demand</small><b>${state.demand.toFixed(1)}</b></span>
+        <span><small>Your output</small><b>${(flow.production ?? 0).toFixed(1)}</b></span>
+        <span><small>Your need</small><b>${(flow.demand ?? 0).toFixed(1)}</b></span>
+        <span><small>Your share</small><b>${share(mine?.production ?? 0)}</b></span>
+        <span><small>Your rank</small><b>${mineIndex >= 0 ? `${mineIndex + 1}/${rows.length}` : '—'}</b></span>
+      </div>
+      <div class="good-rank-head"><span>#</span><span>Top producers</span><span>out</span><span>share</span></div>
+      ${top || '<p class="empty">Nobody produces this yet.</p>'}
+      ${own}
+    </aside>`;
+  }
+
+  /**
+   * Fiyat grafiği. Tek bir anlık fiyat "pahalı mı ucuz mu" sorusunu cevaplar
+   * ama "yükseliyor mu düşüyor mu" sorusunu cevaplamaz; karar için gereken
+   * ikincisidir. Taban fiyat kesikli çizgi olarak referans verir.
+   */
+  priceChart(state, good) {
+    const history = state.history ?? [];
+    if (history.length < 2) return '<p class="empty price-chart-empty">Price history builds up as weeks pass.</p>';
+    const base = good.basePrice;
+    const max = Math.max(base, ...history);
+    const min = Math.min(base, ...history);
+    const span = Math.max(1e-6, max - min);
+    const w = 240;
+    const h = 46;
+    const x = (i) => (i / (history.length - 1)) * w;
+    const y = (value) => h - ((value - min) / span) * h;
+    const line = history.map((value, index) => `${index ? 'L' : 'M'}${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(' ');
+    const area = `${line} L${w},${h} L0,${h} Z`;
+    const rising = history[history.length - 1] >= history[0];
+    return `<svg class="price-chart ${rising ? 'up' : 'down'}" viewBox="0 0 ${w} ${h}"
+      role="img" aria-label="Price over the last ${history.length} weeks">
+      <line class="price-base" x1="0" x2="${w}" y1="${y(base).toFixed(1)}" y2="${y(base).toFixed(1)}"></line>
+      <path class="price-area" d="${area}"></path>
+      <path class="price-line" d="${line}"></path>
+    </svg>
+    <div class="price-chart-foot"><small>${history.length} weeks</small>
+      <small>base ¤${base}</small></div>`;
+  }
+
+  /** Barış görüşmesini açar ve haritayı seçim kipine alır. */
+  openPeaceTalks(targetId) {
+    this.peaceTarget = targetId;
+    this.peaceTab = 'take';
+    this.peaceSelection = { demands: new Set(), concessions: new Set(), terms: new Set() };
+    this.previousMapMode ??= this.game.renderer.mapMode;
+    this.game.renderer.setPeaceMode(
+      this.game.turns.playerNation, targetId, this.peaceSelection,
+    );
+    this.game.requestRender();
+    this.open('peace');
+  }
+
+  /**
+   * Haritadan kare seçimi. Hangi listeye gireceğini açık sekme belirler;
+   * aynı kareye tekrar tıklamak seçimi kaldırır.
+   */
+  pickPeaceTile(tile) {
+    const me = this.me;
+    if (!tile || !me || this.peaceTarget == null) return;
+    const key = tileKey(tile);
+    const take = this.peaceTab !== 'give';
+    const set = take ? this.peaceSelection.demands : this.peaceSelection.concessions;
+    const allowed = take
+      ? canDemandTile(tile, this.peaceTarget)
+      : canConcedeTile(tile, me.id);
+    if (!allowed) return;
+    if (set.has(key)) set.delete(key);
+    else set.add(key);
+    this.game.renderer.updatePeaceSelection(this.peaceSelection);
+    this.game.requestRender();
+    this.refresh();
+  }
+
+  /**
+   * Barış masası. Harita bir seçim yüzeyine döner: karşı tarafın toprağı
+   * kırmızı, istediklerin yeşil, verdiklerin turuncu. Her karenin bir bedeli
+   * vardır ve toplam bedel warscore'unu aşamaz (bkz. peace.js).
+   */
+  render_peace(me) {
+    const world = this.game.world;
+    const target = world.nations[this.peaceTarget];
+    if (!target || !atWar(world, me.id, target.id)) {
+      return '<p class="empty">Select an active war from the war bar to open peace talks.</p>';
+    }
+    const selection = this.peaceSelection;
+    const offer = {
+      demands: [...selection.demands],
+      concessions: [...selection.concessions],
+      terms: [...selection.terms],
+    };
+    const score = warScore(world, me.id, target.id);
+    const cost = offerCost(world, offer);
+    const refusal = offerRefusal(world, me.id, target.id, offer);
+    const acceptable = refusal === null;
+    const budget = Math.max(0, score);
+    const list = (keys, kind) => (keys.length ? keys.map((key) => {
+      const [q, r] = key.split(':').map(Number);
+      const tile = world.get(q, r);
+      return `<div class="peace-tile ${kind}">
+        <span>${esc(provinceName(tile))}${tile?.city ? ' ★' : ''}</span>
+        <b>${tileWarCost(tile)}</b>
+        <button class="peace-drop" data-drop-tile="${esc(key)}" data-drop-kind="${kind}" title="Remove">✕</button>
+      </div>`;
+    }).join('') : '<p class="empty">Click provinces on the map.</p>');
+
+    const tab = ['give', 'terms'].includes(this.peaceTab) ? this.peaceTab : 'take';
+    return `<div class="card peace-head">
+      <div class="peace-score">
+        <span><small>War score against ${esc(target.name)}</small>
+          <b class="${score >= 0 ? 'res-pos' : 'res-neg'}">${score >= 0 ? '+' : ''}${score}</b></span>
+        <span><small>Demanded</small><b>${cost}</b></span>
+        <span><small>Budget</small><b>${budget}</b></span>
+      </div>
+      <div class="meter peace-meter"><i class="${cost > budget ? 'over' : ''}"
+        style="width:${budget > 0 ? Math.min(100, (cost / budget) * 100).toFixed(1) : (cost > 0 ? 100 : 0)}%"></i></div>
+      <p class="hint ${acceptable ? '' : 'res-warn'}">${acceptable
+    ? 'They will sign this treaty.' : esc(refusal)}</p>
+      <div class="row-buttons">
+        <button class="action" data-sign-peace="1" ${acceptable ? '' : 'disabled'}>
+          ${offer.demands.length || offer.concessions.length ? 'Sign treaty' : 'Sign white peace'}</button>
+        <button class="action" data-clear-peace="1">Clear</button>
+      </div>
+    </div>
+    <div class="sub-tabs peace-tabs">
+      <button data-peace-tab="take" class="${tab === 'take' ? 'active' : ''}">Demand<em>${offer.demands.length}</em></button>
+      <button data-peace-tab="give" class="${tab === 'give' ? 'active' : ''}">Concede<em>${offer.concessions.length}</em></button>
+      <button data-peace-tab="terms" class="${tab === 'terms' ? 'active' : ''}">Terms<em>${offer.terms.length}</em></button>
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>${tab === 'take' ? `Demands from ${esc(target.name)}`
+    : tab === 'give' ? 'Provinces you offer' : 'Additional terms'}</h3>
+        <small>${tab === 'take'
+    ? `click their red provinces on the map · at most ${MAX_DEMAND_TILES} provinces per treaty`
+    : tab === 'give' ? 'giving land lowers the price of the treaty'
+      : 'terms that do not move borders'}</small></div>
+      ${tab === 'terms' ? this.peaceTermList(world, me, target)
+    : tab === 'take' ? list(offer.demands, 'take') : list(offer.concessions, 'give')}
+    </div>`;
+  }
+
+  /** Toprak dışı şartlar. Uygulanamayanlar sebebiyle birlikte kapalı görünür. */
+  peaceTermList(world, me, target) {
+    return Object.values(PEACE_TERMS).map((term) => {
+      const picked = this.peaceSelection.terms.has(term.id);
+      const usable = termAvailable(world, me.id, target.id, term.id);
+      const why = term.id === 'VASSALIZE'
+        ? 'They are not weak enough to vassalise.'
+        : 'They have no foreign-culture provinces.';
+      return `<button class="peace-term ${picked ? 'picked' : ''}" data-peace-term="${term.id}"
+        ${usable ? '' : 'disabled'} title="${esc(usable ? term.desc : why)}">
+        <span class="peace-term-icon">${term.icon}</span>
+        <span class="peace-term-body"><b>${esc(term.name)}</b>
+          <small>${esc(usable ? term.desc : why)}</small></span>
+        <span class="peace-term-cost">${term.cost}</span>
+      </button>`;
+    }).join('');
+  }
+
+  /** Sanayi ekranının alt sekmeleri. Vic2'deki gibi sayı rozetiyle. */
+  industryTabs(me) {
+    const building = ensureConstruction(me).projects.filter(
+      (project) => project.kind && project.kind !== 'building',
+    ).length;
+    const tabs = [
+      ['plants', 'Factories', me.economy?.factories?.length ?? 0],
+      ['projects', 'Under Construction', building],
+    ];
+    return `<div class="sub-tabs">${tabs.map(([id, label, count]) => `
+      <button data-industry-tab="${id}" class="${this.industryTab === id ? 'active' : ''}">
+        ${label}<em>${count}</em></button>`).join('')}</div>`;
   }
 
   resourceLine(me) {
@@ -212,7 +469,7 @@ export class Screens {
         <button class="action focus-capital" data-focus-capital="1">Focus Capital</button>
       </div>
       <div class="overview-stats">
-        <div><span>Hegemony</span><b>${score?.total ?? 0}/${HEGEMONY_TARGET}</b><small>Rank ${rank || '—'}</small></div>
+        <div><span>Hegemony</span><b>${score?.total ?? 0}</b><small>Rank ${rank || '—'} · leader ${board[0]?.total ?? 0}</small></div>
         <div><span>Territory</span><b>${me.tiles}</b><small>provinces</small></div>
         <div><span>Population</span><b>${formatPopulation(population)}</b><small>${cities.length} cities</small></div>
         <div><span>Armed Forces</span><b>${units.length}</b><small>power ${nationStrength(world, me)}</small></div>
@@ -284,15 +541,20 @@ export class Screens {
     }).join('');
     let cumulative = 0;
     const queueRows = state.projects.map((project, index) => {
-      const type = CONSTRUCTION_TYPES[project.typeId];
-      const remaining = Math.max(0, type.cost - project.progress);
+      // Kuyrukta artık fabrika ve seviye projeleri de var; tip araması iki
+      // tabloya birden bakmalı, yoksa sanayi projesi ekranı çökertir.
+      const type = CONSTRUCTION_TYPES[project.typeId] ?? FACTORIES[project.typeId]
+        ?? { name: project.typeId, icon: '🏭' };
+      const work = project.work ?? type.cost ?? 1;
+      const remaining = Math.max(0, work - project.progress);
       cumulative += remaining;
       const eta = Math.max(1, Math.ceil(cumulative / Math.max(1, power)));
-      const percent = Math.min(100, Math.round((project.progress / type.cost) * 100));
+      const percent = Math.min(100, Math.round((project.progress / work) * 100));
+      const label = project.kind === 'upgrade' ? `${type.name} expansion` : type.name;
       return `<div class="construction-project">
         <strong>${index + 1}</strong><i>${type.icon}</i>
-        <span><b>${esc(type.name)}</b><small>${esc(project.regionName)} · about ${eta} week${eta === 1 ? '' : 's'}</small>
-          <span class="construction-project-bar"><i style="width:${percent}%"></i><em>${Math.round(project.progress)} / ${type.cost}</em></span>
+        <span><b>${esc(label)}</b><small>${esc(project.regionName ?? '')} · about ${eta} week${eta === 1 ? '' : 's'}</small>
+          <span class="construction-project-bar"><i style="width:${percent}%"></i><em>${Math.round(project.progress)} / ${Math.round(work)}</em></span>
         </span>
         <span class="construction-project-actions">
           <button data-project-up="${project.id}" ${index === 0 ? 'disabled' : ''} title="Move up">▲</button>
@@ -334,61 +596,276 @@ export class Screens {
       </div>${regionOverview}`;
   }
 
-  // --- Sanayi: şehir fabrikaları, istihdam ve dünya fiyatına bağlı kârlılık ---
+  /**
+   * Sanayi ekranı state eksenlidir: her state'te türü başına tek tesis olur ve
+   * o tesis kadrosunu doldurdukça kendi kendine seviye atlar. Oyuncunun tek
+   * kararı nereye ne dikeceği; büyüme kararı ekonomiye aittir.
+   */
   render_industry(me) {
     const world = this.game.world;
     const economy = me.economy;
-    const cities = this.myCities(me);
-    if (!economy || !cities.length) return '<p class="empty">Industry requires an incorporated city.</p>';
+    if (!economy) return '<p class="empty">This nation has no economy.</p>';
+    const { atlas, regions } = factoryAtlas(world, me.id);
+    const byRegion = new Map(atlas.regions.map((region) => [region.id, []]));
+    for (const [factory, region] of regions) byRegion.get(region.id)?.push(factory);
+    // İşgal altındaki state atlasa girmez; oradaki tesis yok sayılmamalı, yoksa
+    // ülke toprağını geri alana kadar sanayisini ekranda hiç göremez.
+    // İşgal altındaki state atlasa girmez. Oradaki tesisleri ayrı bir bölüme
+    // sürmek yerine aynı tabloda kırmızı isimle göster: sanayi tek listede kalsın.
+    const stranded = economy.factories.filter((factory) => !regions.has(factory));
+    const occupied = new Map();
+    for (const factory of stranded) {
+      const tile = world.get(factory.q, factory.r);
+      const name = tile ? provinceName(tile) : 'Lost territory';
+      if (!occupied.has(name)) occupied.set(name, []);
+      occupied.get(name).push(factory);
+    }
+    if (!atlas.regions.length && !stranded.length) {
+      return '<p class="empty">No industry yet, and no state is under your control.</p>';
+    }
 
-    const factoryCards = economy.factories.map((factory) => {
-      const type = FACTORIES[factory.typeId];
-      const city = world.cities.find((candidate) => candidate.id === factory.cityId);
-      const capacity = factory.level * 18000;
-      const employment = capacity ? (factory.employees / capacity) * 100 : 0;
-      const inputs = Object.entries(type.inputs)
-        .map(([id, amount]) => `${amount} ${GOODS[id].icon} ${GOODS[id].name}`).join(' · ');
-      const outputs = Object.entries(type.outputs)
-        .map(([id, amount]) => `${amount} ${GOODS[id].icon} ${GOODS[id].name}`).join(' · ');
-      const profitable = factory.profit >= 0;
-      return `<div class="card factory-card ${profitable ? 'profitable' : 'unprofitable'}">
-        <div class="card-head"><h3>${type.icon} ${esc(type.name)}</h3>
-          <small>${esc(city?.name ?? 'Lost city')} · level ${factory.level}</small></div>
-        <div class="factory-kpis">
-          <span><small>Employment</small><b>${formatPopulation(factory.employees)} / ${formatPopulation(capacity)}</b></span>
-          <span><small>Weekly profit</small><b class="${profitable ? 'res-pos' : 'res-neg'}">${profitable ? '+' : ''}¤${factory.profit.toFixed(1)}</b></span>
-          <span><small>Margin</small><b>${Math.round(factory.margin * 100)}%</b></span>
-        </div>
-        <div class="factory-chain"><span>buys ${esc(inputs)}</span><strong>→</strong><span>sells ${esc(outputs)}</span></div>
-        <div class="meter"><i style="width:${Math.max(0, Math.min(100, employment))}%"></i></div>
-        <button class="action" data-expand-factory="${esc(factory.id)}"
-          ${!canExpandFactory(me, factory) ? 'disabled' : ''}>
-          ${factory.level >= MAX_FACTORY_LEVEL ? 'Fully developed' : `Expand · ${formatCost(expansionCost(factory))}`}
-        </button>
-      </div>`;
-    }).join('') || '<div class="card"><p class="empty">No factories. Choose an industry below.</p></div>';
+    const totalLevels = economy.factories.reduce((sum, factory) => sum + factory.level, 0);
+    const employed = economy.factories.reduce((sum, factory) => sum + factory.employees, 0);
+    const lower = economy.classes.lower.population;
+    const rules = factoryInvestmentRules(me);
+    // Tek şerit özet: rakamlar yan yana, açıklama hover'da. Ayrı kart + başlık
+    // + paragraf, ekranın üçte birini tek cümle için harcıyordu.
+    const summary = `<div class="industry-summary"
+      title="Factories hire once a month from the lower class. A plant that fills every post and turns a profit upgrades itself; an unprofitable one sheds workers.">
+      <span><small>levels</small><b>${totalLevels}</b></span>
+      <span><small>workers</small><b>${formatPopulation(employed)}</b></span>
+      <span><small>of lower class</small><b>${lower ? ((employed / lower) * 100).toFixed(1) : '0.0'}%</b></span>
+      <span><small>hired/month</small><b class="res-pos">+${formatPopulation(economy.industrialHiring ?? 0)}</b></span>
+      <span><small>¤/week</small><b class="${economy.factoryProfit >= 0 ? 'res-pos' : 'res-neg'}">${economy.factoryProfit >= 0 ? '+' : ''}${(economy.factoryProfit ?? 0).toFixed(1)}</b></span>
+      <span class="industry-policy">${esc(policyLabel('economy', rules.policy))} · upgrades by ${
+  rules.privateExpand && rules.stateExpand ? 'private capital, then treasury'
+    : rules.privateExpand ? 'private capital' : rules.stateExpand ? 'treasury' : 'nobody'
+}</span>
+    </div>`;
 
-    const buildCards = cities.map((city) => {
-      const options = Object.values(FACTORIES).map((type) => {
-        const margin = factoryMargin(world, type.id);
-        const enabled = canBuildFactory(world, me, city, type.id);
-        return `<button class="building-option category-industry" data-factory="${type.id}" data-city="${city.id}" ${enabled ? '' : 'disabled'}>
-          <span class="building-icon">${type.icon}</span>
-          <span><b>${esc(type.name)}</b><small>expected margin ${margin >= 0 ? '+' : ''}¤${margin.toFixed(1)} per level</small>
-            <em>investment ${formatCost(factoryCost(me, type.id))}</em></span>
-        </button>`;
-      }).join('');
-      return `<div class="card city-construction">
-        <div class="card-head"><h3>Invest in ${esc(city.name)}</h3>
-          <small>maximum 4 factories per city · investment cost rises with installed capacity</small></div>
-        <div class="building-grid">${options}</div>
+    // Victoria 2 düzeni: her state tek bir satırdır — solda adı ve sayıları,
+    // sağda o state'teki tesisler yan yana kutucuklar halinde.
+    const slots = Object.keys(FACTORIES).length;
+    const stateRows = atlas.regions.map((region) => {
+      const built = byRegion.get(region.id) ?? [];
+      const staff = built.reduce((sum, factory) => sum + factory.employees, 0);
+      const profit = built.reduce((sum, factory) => sum + factory.profit, 0);
+      const tiles = built.map((factory) => this.factoryTile(me, factory)).join('');
+      // Tür sayısı 29'a çıkınca her satıra yirmi küsur soluk boş kutu dizmek
+      // satırı okunmaz hale getiriyordu. Yerine tek bir "+" durur; seçim
+      // ayrı bir pencerede, zinciri ve maliyeti okunur şekilde yapılır.
+      const free = Object.values(FACTORIES).filter(
+        (type) => !built.some((factory) => factory.typeId === type.id),
+      );
+      const options = free.length
+        ? `<button class="factory-slot add" data-add-region="${esc(region.id)}"
+            title="Build a new industry in ${esc(region.name)} — ${free.length} types available">+</button>`
+        : '';
+      // Sütun başlıkları satırın üstünde bir kez duruyor; hücrede birim
+      // tekrarlamak satır yüksekliğini iki katına çıkarıyordu.
+      return `<div class="state-row">
+        <div class="state-cell state-name">${esc(region.name)}</div>
+        <div class="state-cell num dim">${formatPopulation(region.population)}</div>
+        <div class="state-cell num">${built.length}/${slots}</div>
+        <div class="state-cell num">${formatPopulation(staff)}</div>
+        <div class="state-cell num ${profit >= 0 ? 'res-pos' : 'res-neg'}">${profit >= 0 ? '+' : ''}${profit.toFixed(1)}</div>
+        <div class="state-slots">${tiles}${options}</div>
       </div>`;
     }).join('');
 
-    return `<div class="card">
-      <div class="card-head"><h3>National Industry</h3>
-        <small>GDP ¤${Math.round(economy.gdp)} · factory balance ${economy.factoryProfit >= 0 ? '+' : ''}¤${economy.factoryProfit.toFixed(1)}</small></div>
-    </div>${factoryCards}${buildCards}`;
+    const occupiedRows = [...occupied].map(([name, built]) => {
+      const staff = built.reduce((sum, factory) => sum + factory.employees, 0);
+      const profit = built.reduce((sum, factory) => sum + factory.profit, 0);
+      return `<div class="state-row" title="Occupied — these plants keep producing, but you cannot invest here until the state is back under your control.">
+        <div class="state-cell state-name res-neg">${esc(name)}</div>
+        <div class="state-cell num dim">—</div>
+        <div class="state-cell num">${built.length}</div>
+        <div class="state-cell num">${formatPopulation(staff)}</div>
+        <div class="state-cell num ${profit >= 0 ? 'res-pos' : 'res-neg'}">${profit >= 0 ? '+' : ''}${profit.toFixed(1)}</div>
+        <div class="state-slots">${built.map((factory) => this.factoryTile(me, factory)).join('')}</div>
+      </div>`;
+    }).join('');
+
+    const stateCards = `<div class="industry-states">
+      <div class="state-row state-head">
+        <div class="state-cell">State</div>
+        <div class="state-cell num">Pop</div>
+        <div class="state-cell num">Plants</div>
+        <div class="state-cell num">Workers</div>
+        <div class="state-cell num">¤/week</div>
+        <div class="state-slots">Industry</div>
+      </div>
+      ${stateRows}${occupiedRows}
+    </div>`;
+
+    // Özet her sekmede kalır; altında yalnız seçili panel çizilir.
+    if (this.industryTab === 'projects') return summary + this.industryProjects(me);
+    return summary + this.factoryPicker(me, world) + stateCards;
+  }
+
+  /**
+   * "+" ile açılan tesis seçimi. Izgaradaki kutucuk yalnız ikon taşıyabilir;
+   * hangi tesisin ne tükettiğine burada, tam adı ve zinciriyle bakılır.
+   */
+  factoryPicker(me, world) {
+    if (!this.industryPicker) return '';
+    const region = constructionAtlas(world, me.id).regions
+      .find((candidate) => candidate.id === this.industryPicker);
+    if (!region) return '';
+    const existing = factoriesInRegion(world, me.id, region.id).map((f) => f.typeId);
+    const stateMayBuild = factoryInvestmentRules(me).stateBuild;
+    const options = Object.values(FACTORIES)
+      .filter((type) => !existing.includes(type.id))
+      .map((type) => {
+        const margin = factoryMargin(world, type.id);
+        const enabled = canBuildFactory(world, me, region.id, type.id);
+        const cost = factoryCost(me, type.id);
+        // Gri bir düğme sebebini söylemezse oyuncu neyi bekleyeceğini bilemez.
+        const blocked = enabled ? '' : !stateMayBuild ? 'policy forbids state industry'
+          : me.gold < (cost.gold ?? 0) ? `treasury short by ¤${Math.ceil((cost.gold ?? 0) - me.gold)}`
+            : 'unavailable';
+        const inputs = Object.entries(type.inputs)
+          .map(([id, amount]) => `${amount} ${GOODS[id].icon} ${GOODS[id].name}`).join(' + ') || 'nothing';
+        const outputs = Object.entries(type.outputs)
+          .map(([id, amount]) => `${amount} ${GOODS[id].icon} ${GOODS[id].name}`).join(' + ');
+        return `<button class="picker-option" data-factory="${type.id}"
+          data-region="${esc(region.id)}" ${enabled ? '' : 'disabled'}
+          ${blocked ? `title="${esc(blocked)}"` : ''}>
+          <span class="picker-icon">${type.icon}</span>
+          <span class="picker-body"><b>${esc(type.name)}</b>
+            <small>${esc(inputs)} → ${esc(outputs)}</small>
+            ${blocked ? `<small class="res-neg">${esc(blocked)}</small>` : ''}</span>
+          <span class="picker-meta"><em>${formatCost(cost)}</em>
+            <small class="${margin >= 0 ? 'res-pos' : 'res-neg'}">${margin >= 0 ? '+' : ''}¤${margin.toFixed(1)}/level</small></span>
+        </button>`;
+      }).join('');
+    return `<div class="card factory-picker">
+      <div class="card-head"><h3>Build in ${esc(region.name)}</h3>
+        <small>treasury ¤${Math.round(me.gold)} · ${esc(policyLabel('economy', factoryInvestmentRules(me).policy))}</small>
+        <button class="action" data-close-picker="1">Close</button></div>
+      <div class="picker-grid">${options || '<p class="empty">Every industry is already present here.</p>'}</div>
+    </div>`;
+  }
+
+  /**
+   * Kurulmakta olan tesisler. Kapitalist projeleri Victoria 2'deki gibi para
+   * biriktirerek ilerler; oyuncu hazineden destek vererek hızlandırabilir.
+   */
+  industryProjects(me) {
+    const projects = ensureConstruction(me).projects.filter(
+      (project) => project.kind && project.kind !== 'building',
+    );
+    if (!projects.length) {
+      return `<div class="card"><p class="empty">Nothing under construction.
+        Start a plant from the Factories tab, or wait for private investors.</p></div>`;
+    }
+    const rows = projects.map((project) => {
+      const type = FACTORIES[project.typeId];
+      const built = Math.round((project.progress / project.work) * 100);
+      const paid = project.cost > 0 ? Math.round((project.funded / project.cost) * 100) : 100;
+      const owed = Math.max(0, project.cost - project.funded);
+      const isPrivate = project.actor === 'private';
+      // Para bekleyen proje inşaat gücü alsa da ilerleyemez; oyuncuya neyi
+      // beklediğini söylemek, boşuna kuyruk sırası değiştirmesini önler.
+      const waiting = owed > 0 && project.progress >= project.work * (project.funded / Math.max(1, project.cost));
+      return `<div class="industry-project ${waiting ? 'stalled' : ''}">
+        <span class="project-icon">${type?.icon ?? '🏭'}</span>
+        <span class="project-name"><b>${esc(type?.name ?? project.typeId)}</b>
+          <small>${project.kind === 'upgrade' ? 'expansion' : 'new plant'} · ${esc(project.regionName ?? '')} · ${isPrivate ? 'private' : 'state'}</small></span>
+        <span class="project-meters">
+          <span class="meter" title="Construction ${built}%"><i style="width:${Math.min(100, built)}%"></i></span>
+          <span class="meter funding" title="Funding ${paid}%"><i style="width:${Math.min(100, paid)}%"></i></span>
+        </span>
+        <span class="project-owed">${owed > 0 ? `¤${owed.toFixed(0)} short` : 'fully funded'}</span>
+        ${owed > 0 && isPrivate ? `<button class="action project-support" data-support="${project.id}"
+          ${me.gold <= 0 ? 'disabled' : ''}
+          title="Click to contribute a quarter of what is missing. Shift+click to pay as much of it as the treasury allows.">¤ support</button>` : '<span></span>'}
+      </div>`;
+    }).join('');
+    return `<div class="card industry-projects">
+      <div class="card-head"><h3>Under construction</h3>
+        <small>national construction power ${constructionPower(me).toFixed(0)}/week</small></div>
+      ${rows}
+    </div>`;
+  }
+
+  /**
+   * Victoria 2'nin fabrika kutucuğu: ikon, köşede seviye, altında istihdam
+   * çubuğu ve haftalık kâr. Ayrıntı hover'daki başlıkta durur — ızgara tek
+   * bakışta "hangi tesis dolu, hangisi para kaybediyor" sorusunu cevaplar.
+   */
+  factoryTile(me, factory) {
+    const type = FACTORIES[factory.typeId];
+    const jobs = factoryJobs(factory);
+    const employment = jobs ? (factory.employees / jobs) * 100 : 0;
+    const outlook = upgradeOutlook(me, factory);
+    const profitable = factory.profit >= 0;
+    const chain = `${Object.entries(type.inputs).map(([id, amount]) => `${amount} ${GOODS[id].name}`).join(' + ') || 'nothing'} → ${Object.entries(type.outputs).map(([id, amount]) => `${amount} ${GOODS[id].name}`).join(' + ')}`;
+    const status = outlook.maxed ? 'Fully developed'
+      : factory.profit < 0 ? 'Losing money, sheds workers'
+        : !outlook.profitable ? 'Idle'
+          : !outlook.ready ? 'Hiring'
+            : outlook.funded ? `Upgrading to level ${factory.level + 1}`
+              : `Full staff, waiting for ${formatCost(outlook.cost)}`;
+    // Victoria 2 kutucuğunun düzeni: üstte seviye + ürettiği mal, altında
+    // tükettiği malların ikonları, onun altında her girdinin tedarik çubuğu,
+    // en altta haftalık kâr. Çubuk kısaysa o girdi bulunamıyor demektir.
+    const outputs = factory.typeId === 'ARMS_FACTORY'
+      ? [MILITARY_EQUIPMENT[factory.lineEquipment]?.icon ?? '⚔']
+      : Object.keys(type.outputs).map((id) => GOODS[id].icon);
+    const inputs = Object.keys(type.inputs);
+    const supplyOf = (goodId) => {
+      const flow = me.economy?.goodsFlow?.[goodId];
+      if (!flow || !(flow.demand > 0)) return 1;
+      return Math.max(0, Math.min(1, (flow.fulfilled ?? 0) / flow.demand));
+    };
+    const inputIcons = inputs.map((id) => `<i>${GOODS[id].icon}</i>`).join('') || '<i>·</i>';
+    const inputBars = inputs.map((id) => {
+      const supply = supplyOf(id);
+      return `<i class="${supply < 0.75 ? 'short' : ''}" style="height:${Math.round(supply * 100)}%"
+        title="${esc(GOODS[id].name)} supply ${Math.round(supply * 100)}%"></i>`;
+    }).join('') || '<i style="height:100%"></i>';
+    return `<div class="factory-slot ${profitable ? 'profitable' : 'unprofitable'}"
+      title="${esc(type.name)} · level ${factory.level}/${MAX_FACTORY_LEVEL} · ${formatPopulation(factory.employees)}/${formatPopulation(jobs)} workers&#10;${esc(chain)}&#10;${esc(status)}">
+      <span class="factory-slot-head"><i class="factory-level">${factory.level}</i>
+        <b>${outputs.join('')}</b></span>
+      <span class="factory-goods">${inputIcons}</span>
+      <span class="factory-supply">${inputBars}</span>
+      <span class="meter"><i style="width:${Math.max(0, Math.min(100, employment))}%"></i></span>
+      <span class="factory-slot-profit ${profitable ? 'res-pos' : 'res-neg'}">${profitable ? '+' : ''}${factory.profit.toFixed(1)}</span>
+    </div>`;
+  }
+
+  factoryRow(me, factory) {
+    const type = FACTORIES[factory.typeId];
+    const jobs = factoryJobs(factory);
+    const employment = jobs ? (factory.employees / jobs) * 100 : 0;
+    const outlook = upgradeOutlook(me, factory);
+    const profitable = factory.profit >= 0;
+    const inputs = Object.entries(type.inputs)
+      .map(([id, amount]) => `${amount} ${GOODS[id].icon}`).join(' ') || '—';
+    const outputs = Object.entries(type.outputs)
+      .map(([id, amount]) => `${amount} ${GOODS[id].icon}`).join(' ');
+    // Tesisin bir sonraki adımı: neyi beklediğini açıkça söyle ki oyuncu
+    // büyümeyen fabrikanın sebebini ekranda görsün.
+    const status = outlook.maxed ? 'Fully developed'
+      : factory.profit < 0 ? 'Losing money — no investor will expand it'
+        : !outlook.profitable ? 'Idle — no output priced yet'
+          : !outlook.ready ? `Hiring · ${formatCost(outlook.cost)} needed at full staff`
+            : outlook.funded ? `Upgrading to level ${factory.level + 1} this month`
+              : `Full staff · waiting for ${formatCost(outlook.cost)}`;
+    return `<div class="factory-card ${profitable ? 'profitable' : 'unprofitable'}">
+      <div class="factory-head"><span>${type.icon} <b>${esc(type.name)}</b></span>
+        <em>level ${factory.level}${outlook.maxed ? '' : `/${MAX_FACTORY_LEVEL}`}</em></div>
+      <div class="factory-kpis">
+        <span><small>Workers</small><b>${formatPopulation(factory.employees)} / ${formatPopulation(jobs)}</b></span>
+        <span><small>Weekly profit</small><b class="${profitable ? 'res-pos' : 'res-neg'}">${profitable ? '+' : ''}¤${factory.profit.toFixed(1)}</b></span>
+        <span><small>Margin</small><b>${Math.round(factory.margin * 100)}%</b></span>
+      </div>
+      <div class="factory-chain"><span>${esc(inputs)}</span><strong>→</strong><span>${esc(outputs)}</span></div>
+      <div class="meter"><i style="width:${Math.max(0, Math.min(100, employment))}%"></i></div>
+      <small class="factory-status">${esc(status)}</small>
+    </div>`;
   }
 
   // --- Üretim: birim satın alma + mevcut ordu dökümü ---
@@ -403,36 +880,37 @@ export class Screens {
       <tr><td>${t.name}</td><td class="num">${byType[id] ?? 0}</td>
       <td class="num">${t.attack}</td><td class="num">${t.hp}</td></tr>`).join('');
 
-    const cityCards = cities.length ? cities.map((city) => {
-      const buttons = Object.entries(UNIT_COSTS)
-        .filter(([id]) => UNIT_TYPES[id].domain !== 'sea' || city.tile.coastal)
-        .map(([id, cost]) => {
-          const off = canAfford(me, cost) && canRecruit(world, me, id) ? '' : 'disabled';
-          return `<button class="action" data-buy="${id}" ${off}>${UNIT_TYPES[id].name} · ${formatPopulation(UNIT_TYPES[id].manpower)} men · ${formatCost(cost)} · ${equipmentCostLabel(id)}</button>`;
-        }).join('');
-      return `<div class="card">
-        <div class="card-head"><h3>${esc(city.name)}</h3>
-          <small>${city.tile.coastal ? 'coastal city' : 'inland city'}</small></div>
-        <div class="row-buttons">${buttons}</div>
-      </div>`;
-    }).join('') : '<p class="empty">You have no cities.</p>';
-
-    // TODO: Mobilization is intentionally disabled; its gameplay system is not implemented yet.
-    const mobilizationCard = `<div class="card">
+    // Tek seferrar liste. Eskiden bu butonlar her şehir için ayrı ayrı
+    // basılıyordu — oysa `buyUnit` şehir almaz, alayın çıkacağı province'i
+    // recruitment kendisi seçer. Aynı beş düğmeyi on kez göstermek ekranı
+    // bitmeyen bir kaydırmaya çeviriyordu.
+    const hasCoast = cities.some((city) => city.tile.coastal);
+    const recruitButtons = Object.entries(UNIT_COSTS).map(([id, cost]) => {
+      const type = UNIT_TYPES[id];
+      if (type.domain === 'sea' && !hasCoast) return '';
+      const locked = !unitAvailable(id, this.game.turns.turn);
+      const off = !locked && canAfford(me, cost) && canRecruit(world, me, id) ? '' : 'disabled';
+      // Kilitli kol neden kurulamadığını söylesin: yıl gelmemiş demektir.
+      const note = locked
+        ? `<small class="res-warn">unlocked in ${1836 + Math.floor((type.availableFrom - 1) * 7 / 365)}</small>`
+        : `<small>${formatCost(cost)} · ${equipmentCostLabel(id)}</small>`;
+      return `<button class="action recruit-option" data-buy="${id}" ${off}>
+        <b>${esc(type.name)}</b><small>${formatPopulation(type.manpower)} men</small>${note}
+      </button>`;
+    }).join('');
+    const cityCards = cities.length ? `<div class="card">
       <div class="card-head"><h3>Mobilization</h3>
-        <small>reserved for the future manpower and wartime economy system</small></div>
-      <div class="row-buttons">
-        <button class="action wide" type="button" disabled title="Mobilization is not implemented yet">
-          Mobilization &middot; Coming later
-        </button>
-      </div>
-    </div>`;
+        <small>recruits are drawn from the most populous province; naval units need a coastal city</small></div>
+      <div class="recruit-grid">${recruitButtons}</div>
+    </div>` : '<p class="empty">You have no cities.</p>';
+    const mobilizationCard = '';
 
     const militaryFactories = (me.economy?.factories ?? [])
       .filter((factory) => factory.typeId === 'ARMS_FACTORY')
       .map((factory) => ensureProductionLine(factory));
+    const armsRegions = factoryAtlas(world, me.id).regions;
     const lineRows = militaryFactories.map((factory) => {
-      const city = world.cities.find((candidate) => candidate.id === factory.cityId);
+      const region = armsRegions.get(factory);
       const equipment = MILITARY_EQUIPMENT[factory.lineEquipment];
       const efficiency = Math.round(factory.lineEfficiency * 100);
       const inputs = Math.round((factory.inputFulfillment ?? 1) * 100);
@@ -442,25 +920,19 @@ export class Screens {
           ${candidate.id === equipment.id ? 'disabled' : ''}>${candidate.icon} ${esc(candidate.name)}</button>`).join('');
       return `<div class="production-line-row">
         <div class="production-line-head"><span><b>${equipment.icon} ${esc(equipment.name)}</b>
-          <small>${esc(city?.name ?? 'Unknown city')} · level ${factory.level} · inputs ${inputs}%</small></span>
+          <small>${esc(region?.name ?? 'Unassigned state')} · level ${factory.level} · inputs ${inputs}%</small></span>
           <strong>${((factory.lineOutput ?? 0) / 7).toFixed(2)}/day</strong></div>
         <div class="line-efficiency"><i style="width:${efficiency}%"></i><span>efficiency ${efficiency}%</span></div>
         <div class="production-choices">${choices}</div>
       </div>`;
     }).join('');
-    const armsCost = factoryCost(me, 'ARMS_FACTORY');
-    const investmentRules = factoryInvestmentRules(me);
-    const buildLineButtons = cities.map((city) => `
-      <button class="action" data-factory="ARMS_FACTORY" data-city="${city.id}"
-        ${canBuildFactory(world, me, city, 'ARMS_FACTORY') ? '' : 'disabled'}>
-        Build in ${esc(city.name)} · ${formatCost(armsCost)}</button>`).join('');
+    // Fabrika kurmak buradan kaldırıldı: sanayi yatırımı artık tek bir yerde,
+    // Factories ekranında yapılır. Bu ekran orduyu toplar ve silahlandırır.
     const productionLinesCard = `<div class="card production-lines-card">
       <div class="card-head"><h3>Military Production Lines</h3>
         <small>efficiency rises while a line stays on the same equipment</small></div>
-      ${lineRows || '<p class="empty">No Arms Industry is producing military equipment.</p>'}
-      <div class="row-buttons">${buildLineButtons}</div>
+      ${lineRows || '<p class="empty">No Arms Industry is producing military equipment. Build one from the Factories screen.</p>'}
       <p class="hint">Switching equipment resets that factory line to 50% efficiency.</p>
-      ${investmentRules.stateBuild ? '' : `<p class="hint res-warn">${esc(policyLabel('economy', investmentRules.policy))}: the state cannot open factories. Private investors act automatically when they have enough capital.</p>`}
     </div>`;
 
     const replacement = reinforcementNeed(world, me);
@@ -599,9 +1071,12 @@ export class Screens {
       const share = socialClass.population / total;
       const professions = CLASS_PROFESSIONS[classId]
         .map((id) => PROFESSION_INFO[id].name).join(' · ');
+      // Vergiden sonra geçim masrafını karşılayınca elde kalan. Üst sınıfta bu
+      // artık, yatırım sermayesine dönüşen paradır (bkz. collectPrivateCapital).
+      const surplus = (socialClass.needsBudget ?? 0) - (socialClass.needsCost ?? 0);
       return `<div class="population-class" style="--population-class:${info.color}">
         <div class="population-class-main">
-          <span><i></i><b>${esc(info.name)}</b><small>${Math.round(share * 100)}%</small></span>
+          <span><i></i><b>${esc(info.name)}</b><small>${(share * 100).toFixed(1)}% of nation</small></span>
           <strong>${formatPopulation(socialClass.population)}</strong>
         </div>
         <div class="population-class-meta">
@@ -609,13 +1084,33 @@ export class Screens {
           <span>Satisfaction <b>${Math.round((socialClass.satisfaction ?? 0) * 100)}%</b></span>
           <span>Needs <b class="${socialClass.canAffordNeeds ? 'res-pos' : 'res-neg'}">${socialClass.canAffordNeeds ? 'covered' : 'unmet'}</b></span>
         </div>
-        <p>Automatic occupations: ${esc(professions)}</p>
+        <div class="population-class-meta">
+          <span>Income <b>¤${(socialClass.income ?? 0).toFixed(1)}</b></span>
+          <span>Tax paid <b>¤${(socialClass.taxPaid ?? 0).toFixed(1)}</b></span>
+          <span>Cost of living <b>¤${(socialClass.needsCost ?? 0).toFixed(1)}</b></span>
+          <span>Left over <b class="${surplus >= 0 ? 'res-pos' : 'res-neg'}">${surplus >= 0 ? '+' : ''}¤${surplus.toFixed(1)}</b></span>
+        </div>
+        ${classId === 'upper' ? `<p class="class-capital">Accumulated investment capital
+          <b>¤${(me.politics?.privateCapital ?? 0).toFixed(1)}</b> — this is what capitalists
+          spend on factory projects. Heavy taxation drains it.</p>` : ''}
+        <div class="profession-bars">${CLASS_PROFESSIONS[classId].map((id) => {
+    const count = economy.professionCounts?.[id] ?? 0;
+    const within = socialClass.population > 0 ? (count / socialClass.population) * 100 : 0;
+    return `<div class="profession-row" title="${esc(PROFESSION_INFO[id].name)}: ${formatPopulation(count)} (${within.toFixed(1)}% of class)">
+            <span class="profession-name">${esc(PROFESSION_INFO[id].name)}</span>
+            <span class="meter"><i style="width:${Math.min(100, within).toFixed(1)}%"></i></span>
+            <span class="profession-count">${formatPopulation(count)}</span>
+            <span class="profession-share">${within.toFixed(0)}%</span>
+          </div>`;
+  }).join('')}</div>
       </div>`;
     }).join('');
     const mobility = economy.mobility ?? {};
     const movements = [];
-    if (mobility.demotedUpper) movements.push(`${formatPopulation(mobility.demotedUpper)} Upper → Middle`);
-    if (mobility.demotedMiddle) movements.push(`${formatPopulation(mobility.demotedMiddle)} Middle → Lower`);
+    if (mobility.promotedLower) movements.push(`<b class="res-pos">${formatPopulation(mobility.promotedLower)} Lower → Middle</b>`);
+    if (mobility.promotedMiddle) movements.push(`<b class="res-pos">${formatPopulation(mobility.promotedMiddle)} Middle → Upper</b>`);
+    if (mobility.demotedUpper) movements.push(`<b class="res-neg">${formatPopulation(mobility.demotedUpper)} Upper → Middle</b>`);
+    if (mobility.demotedMiddle) movements.push(`<b class="res-neg">${formatPopulation(mobility.demotedMiddle)} Middle → Lower</b>`);
 
     return `<div class="card population-overview">
         <div class="population-pie" style="${pieStyle}">
@@ -837,29 +1332,55 @@ export class Screens {
     if (!market) return '<p class="empty">The world market is not initialized.</p>';
     const flowNumber = (value) => (value ?? 0).toFixed(value >= 100 ? 0 : 1);
     const trade = me.economy?.trade ?? {};
-    const rows = GOOD_IDS.map((goodId) => {
+    const netTradeOf = (goodId) => {
+      const flow = me.economy?.goodsFlow?.[goodId] ?? {};
+      return (flow.exports ?? 0) - (flow.imports ?? 0);
+    };
+    // Bütün mallar tek ölçeği paylaşır, yoksa çubuk boyları kıyaslanamaz.
+    const scale = Math.max(0.1, ...GOOD_IDS.map((id) => Math.abs(netTradeOf(id))));
+    const goodRows = GOOD_IDS.map((goodId) => {
       const good = GOODS[goodId];
       const state = market.goods[goodId];
       const flow = me.economy?.goodsFlow?.[goodId] ?? {};
       const trend = state.trend > 0.005 ? '▲' : state.trend < -0.005 ? '▼' : '—';
       const cls = state.trend > 0.005 ? 'res-neg' : state.trend < -0.005 ? 'res-pos' : '';
-      const pressure = state.demand - state.supply;
-      const netTrade = (flow.exports ?? 0) - (flow.imports ?? 0);
-      const tradeQuantity = Math.abs(netTrade) < 0.05
-        ? '&lt;0.1' : flowNumber(Math.abs(netTrade));
-      const tradeLabel = netTrade > 0.005
-        ? `EXP +${tradeQuantity}`
-        : netTrade < -0.005 ? `IMP -${tradeQuantity}` : 'BALANCED';
-      const tradeClass = netTrade > 0.005 ? 'res-pos' : netTrade < -0.005 ? 'res-neg' : '';
+      const netTrade = netTradeOf(goodId);
+      const magnitude = (Math.abs(netTrade) / scale) * 50;
+      const exporting = netTrade > 0.005;
+      const importing = netTrade < -0.005;
+      const quantity = Math.abs(netTrade) < 0.05 ? '<0.1' : flowNumber(Math.abs(netTrade));
+      const label = exporting ? `sells ${quantity}`
+        : importing ? `buys ${quantity}` : 'balanced';
       const coverage = (flow.demand ?? 0) > 0
         ? Math.round(((flow.fulfilled ?? 0) / flow.demand) * 100) : 100;
-      return `<tr title="World supply ${flowNumber(state.supply)} · demand ${flowNumber(state.demand)} · traded ${flowNumber(state.traded)}">
-        <td><span class="good-name">${good.icon} ${esc(good.name)}</span><small>${good.category}</small></td>
-        <td class="num trade-price"><b>¤${state.price.toFixed(2)}</b><small class="${cls}">${trend} ${Math.abs(state.trend).toFixed(2)}</small></td>
-        <td class="num trade-flow-cell"><b>${flowNumber(flow.production)}</b><small>need ${flowNumber(flow.demand)}</small></td>
-        <td class="num trade-flow-cell"><b class="${tradeClass}">${tradeLabel}</b><small class="${pressure > 0 ? 'res-neg' : 'res-pos'}">world ${pressure >= 0 ? '+' : ''}${flowNumber(pressure)}</small></td>
-        <td class="num trade-flow-cell"><b class="${coverage < 99 ? 'res-neg' : 'res-pos'}">${coverage}%</b><small>${(flow.shortage ?? 0) > 0.005 ? `${flowNumber(flow.shortage)} short` : 'met'}</small></td>
-      </tr>`;
+      // Yön tek başına yeterli bir işarettir: renk körlüğünde de sağ/sol okunur.
+      const side = exporting ? 'pos' : importing ? 'neg' : 'flat';
+      return { category: good.category, html: `<div class="market-row ${this.tradeGood === goodId ? 'selected' : ''}"
+        data-good="${goodId}" title="World supply ${flowNumber(state.supply)} · demand ${flowNumber(state.demand)} · made ${flowNumber(flow.production)} · needs ${flowNumber(flow.demand)}">
+        <div class="market-row-head">
+          <span class="good-name">${good.icon} ${esc(good.name)}</span>
+          <span class="market-price">¤${state.price.toFixed(2)}
+            <small class="${cls}">${trend} ${Math.abs(state.trend).toFixed(2)}</small></span>
+        </div>
+        <div class="trade-bar">
+          <div class="trade-bar-track">
+            ${importing ? `<i class="trade-bar-fill neg" style="width:${magnitude.toFixed(2)}%"></i>` : ''}
+            ${exporting ? `<i class="trade-bar-fill pos" style="width:${magnitude.toFixed(2)}%"></i>` : ''}
+          </div>
+          <span class="trade-bar-label ${side}">${esc(label)}</span>
+        </div>
+        ${coverage < 99 ? `<small class="trade-shortfall">only ${coverage}% of demand met · ${flowNumber(flow.shortage)} short</small>` : ''}
+      </div>` };
+    });
+    // Victoria 2 mallari kategori bloklari halinde gosterir; ham madde ile
+    // askeri mal ayni listede karisinca goz neyi aradigini bulamiyordu.
+    const rows = Object.entries(GOOD_CATEGORIES).map(([id, name]) => {
+      const inCategory = goodRows.filter((row) => row.category === id);
+      if (!inCategory.length) return '';
+      return `<section class="market-group">
+        <h4 class="market-group-head">${esc(name)}</h4>
+        <div class="market-grid">${inCategory.map((row) => row.html).join('')}</div>
+      </section>`;
     }).join('');
     const hottest = GOOD_IDS.map((id) => market.goods[id])
       .sort((a, b) => (b.demand - b.supply) - (a.demand - a.supply))[0];
@@ -875,11 +1396,14 @@ export class Screens {
       <div class="card market-card">
         <div class="card-head"><h3>Goods Flow</h3>
           <small>${GOODS[hottest.id].icon} ${esc(GOODS[hottest.id].name)} has the highest world pressure</small></div>
-        <div class="trade-table-wrap"><table class="data-table market-table">
-          <tr><th>good</th><th class="num">price</th><th class="num">made / need</th>
-            <th class="num">automatic trade</th><th class="num">need met</th></tr>
-          ${rows}
-        </table></div>
+        <div class="trade-legend">
+          <span><i class="swatch neg"></i>bought abroad</span>
+          <span><i class="swatch pos"></i>sold abroad</span>
+        </div>
+        <div class="trade-columns">
+          <div class="trade-goods">${rows}</div>
+          ${this.goodDetail(me, world)}
+        </div>
         <p class="trade-note">Surplus is sold and shortages are imported automatically. Trade balance belongs to the whole economy; only tariffs and military equipment purchases enter the state budget.</p>
       </div>`;
   }
@@ -938,14 +1462,82 @@ export class Screens {
     for (const btn of this.el.body.querySelectorAll('[data-buy]')) {
       btn.onclick = () => game.turns.buyUnit(me, btn.dataset.buy);
     }
-    for (const btn of this.el.body.querySelectorAll('[data-factory]')) {
+    for (const btn of this.el.body.querySelectorAll('[data-peace-term]')) {
       btn.onclick = () => {
-        if (buildFactory(game, me, Number(btn.dataset.city), btn.dataset.factory)) this.refresh();
+        const set = this.peaceSelection.terms;
+        const id = btn.dataset.peaceTerm;
+        if (set.has(id)) set.delete(id); else set.add(id);
+        this.refresh();
       };
     }
-    for (const btn of this.el.body.querySelectorAll('[data-expand-factory]')) {
+    for (const btn of this.el.body.querySelectorAll('[data-peace-tab]')) {
+      btn.onclick = () => { this.peaceTab = btn.dataset.peaceTab; this.refresh(); };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-drop-tile]')) {
       btn.onclick = () => {
-        if (expandFactory(game, me, btn.dataset.expandFactory)) this.refresh();
+        const set = btn.dataset.dropKind === 'give'
+          ? this.peaceSelection.concessions : this.peaceSelection.demands;
+        set.delete(btn.dataset.dropTile);
+        game.renderer.updatePeaceSelection(this.peaceSelection);
+        game.requestRender();
+        this.refresh();
+      };
+    }
+    const clearPeace = this.el.body.querySelector('[data-clear-peace]');
+    if (clearPeace) {
+      clearPeace.onclick = () => {
+        this.peaceSelection = { demands: new Set(), concessions: new Set(), terms: new Set() };
+        game.renderer.updatePeaceSelection(this.peaceSelection);
+        game.requestRender();
+        this.refresh();
+      };
+    }
+    const sign = this.el.body.querySelector('[data-sign-peace]');
+    if (sign) {
+      sign.onclick = () => {
+        const offer = {
+          demands: [...this.peaceSelection.demands],
+          concessions: [...this.peaceSelection.concessions],
+          terms: [...this.peaceSelection.terms],
+        };
+        if (!signPeace(game, me.id, this.peaceTarget, offer)) return;
+        game.turns.addLog(`Peace signed with ${game.world.nations[this.peaceTarget].name}.`);
+        this.peaceTarget = null;
+        this.close();
+        game.emit('turn', game.turns.turn);
+        game.requestRender();
+      };
+    }
+    for (const row of this.el.body.querySelectorAll('[data-good]')) {
+      row.onclick = () => {
+        this.tradeGood = this.tradeGood === row.dataset.good ? null : row.dataset.good;
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-add-region]')) {
+      btn.onclick = () => {
+        this.industryPicker = this.industryPicker === btn.dataset.addRegion
+          ? null : btn.dataset.addRegion;
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-close-picker]')) {
+      btn.onclick = () => { this.industryPicker = null; this.refresh(); };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-factory]')) {
+      btn.onclick = () => {
+        if (!buildFactory(game, me, btn.dataset.region, btn.dataset.factory)) return;
+        // Kurulunca pencere kapanır: aynı state'e ikinci kez aynı tür zaten girmez.
+        this.industryPicker = null;
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-support]')) {
+      // Shift ile tam destek: Vic2'de olduğu gibi kalanın tamamı, hazine yettiği kadar.
+      btn.onclick = (event) => {
+        if (supportProject(game, me, Number(btn.dataset.support), { full: event.shiftKey })) {
+          this.refresh();
+        }
       };
     }
     for (const btn of this.el.body.querySelectorAll('[data-production-line]')) {

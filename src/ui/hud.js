@@ -9,9 +9,10 @@ import {
   strengthRatio,
 } from '../game/units.js';
 import { MIN_WAR_TURNS, atWar, relation, truceLeft } from '../game/diplomacy.js';
+import { warScore } from '../game/peace.js';
 import { INFAMY_COALITION, OCCUPATION_TURNS, tileEfficiency } from '../game/infamy.js';
 import { savedInfo } from '../game/save.js';
-import { HEGEMONY_TARGET, scoreboard } from '../game/hegemony.js';
+import { scoreboard } from '../game/hegemony.js';
 import { ORDER } from '../game/orders.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { Screens } from './screens.js';
@@ -25,7 +26,7 @@ import {
   refreshFront, setAggression, unassignGeneral,
 } from '../game/command.js';
 import {
-  provinceOutput, provinceRgoStatus,
+  RGO_TYPES, provinceOutput, provinceRgoStatus,
 } from '../game/provinces.js';
 import { controllerOf, isOccupied } from '../game/control.js';
 
@@ -79,9 +80,52 @@ export class Hud {
       divisionsCount: $('divisions-count'),
       commandBar: $('command-bar'),
       commandTools: $('command-tools'),
+      warBar: $('war-bar'),
     };
     this.screens = new Screens(game);
+    this.buildRgoLegend();
     this.bind();
+  }
+
+  /**
+   * Kaynak lejandi RGO tablosundan uretilir. Elle yazilmis liste tabloya yeni
+   * kaynak eklendikce geride kaliyordu: harita 14 kaynagi dogru boyuyor ama
+   * lejand yalniz 4'unu acikliyordu.
+   */
+  buildRgoLegend() {
+    const legend = this.el.rgoLegend;
+    if (!legend) return;
+    legend.innerHTML = Object.values(RGO_TYPES).map((type) => (
+      `<span style="--rgo-color:hsl(${type.hue} 30% 38%)">${type.icon} ${type.name}</span>`
+    )).join('');
+  }
+
+  /**
+   * Aktif savaslar. Savas bir menu icinde gizli kalmamali: EU4'te oldugu gibi
+   * ustte, kirmizi parlayan bir kutucuk olarak durur ve tiklaninca dogrudan
+   * baris masasini acar.
+   */
+  showWars() {
+    const bar = this.el.warBar;
+    const world = this.game.world;
+    const me = world?.nations[this.game.turns.playerNation];
+    if (!bar || !me?.alive) { if (bar) bar.innerHTML = ''; return; }
+    const wars = world.nations.filter(
+      (other) => other.alive && other.id !== me.id && atWar(world, me.id, other.id),
+    );
+    bar.classList.toggle('hidden', wars.length === 0);
+    bar.innerHTML = wars.map((other) => {
+      const score = warScore(world, me.id, other.id);
+      const tone = score > 8 ? 'winning' : score < -8 ? 'losing' : 'even';
+      return `<button class="war-chip ${tone}" data-war-target="${other.id}"
+        title="Open peace talks with ${escapeHtml(other.name)}">
+        <span class="war-name">${escapeHtml(other.name)}</span>
+        <b class="war-score">${score >= 0 ? '+' : ''}${score}</b>
+      </button>`;
+    }).join('');
+    for (const chip of bar.querySelectorAll('[data-war-target]')) {
+      chip.onclick = () => this.screens.openPeaceTalks(Number(chip.dataset.warTarget));
+    }
   }
 
   bind() {
@@ -154,9 +198,9 @@ export class Hud {
     // HOI4'teki ülke bayrağı gibi ulusal durum panelini açar.
     $('nation-badge').onclick = () => this.screens.toggle('nation');
 
-    game.on('world', (world) => this.onWorld(world));
+    game.on('world', (world) => { this.onWorld(world); this.showWars(); });
     game.on('select', (tile) => this.showTile(tile));
-    game.on('turn', () => this.onTurn());
+    game.on('turn', () => { this.onTurn(); this.showWars(); });
     game.on('clock', () => this.onTurn());
     game.on('economy', () => this.onTurn());
     game.on('battles', () => {
@@ -442,12 +486,12 @@ export class Hud {
     // Etiket/değer düzeni: tek satır serbest metin yerine taranabilir hücreler.
     el.innerHTML = `
       <div class="hegemony-row">
-        <span><small>Hegemony</small><b>${me.total}<em>/${HEGEMONY_TARGET}</em></b></span>
+        <span><small>Hegemony</small><b>${me.total}<em>/${leader.total}</em></b></span>
         <span><small>Rank</small><b>${rank}<em>/${board.length}</em></b></span>
         <span><small>Economy</small><b>${me.economy}</b></span>
         <span><small>Prestige</small><b>${me.prestige}</b></span>
       </div>
-      <span class="bar"><i style="width:${Math.min(100, (me.total / HEGEMONY_TARGET) * 100)}%"></i></span>
+      <span class="bar"><i style="width:${Math.min(100, (me.total / Math.max(1, leader.total)) * 100)}%"></i></span>
       ${leader.nation.id === me.nation.id
         ? '<p class="hegemony-leader">You lead the world.</p>'
         : `<p class="hegemony-leader">Leader: <b>${escapeHtml(leader.nation.name)}</b> ${leader.total}</p>`}`;
@@ -578,7 +622,7 @@ export class Hud {
     if (nation) stats.push(['Nation Size', `${nation.tiles} provinces`]);
     if (tile.province) {
       const rgo = provinceRgoStatus(tile);
-      const rgoOutput = rgo.type ? provinceOutput(tile)[rgo.type.goodId] : 0;
+      const rgoOutput = rgo.type ? (provinceOutput(tile)[rgo.type.goodId] ?? 0) : 0;
       stats.unshift(
         ['Population', formatPopulation(tile.province.population)],
         ['RGO', rgo.type ? `${rgo.type.icon} ${rgo.type.name}` : '—'],

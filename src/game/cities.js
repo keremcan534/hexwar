@@ -24,6 +24,8 @@ export const UNIT_COSTS = {
   CAVALRY: { gold: 40 },
   ARTILLERY: { gold: 55 },
   WARSHIP: { gold: 30 },
+  ARMOR: { gold: 90 },
+  AIRCRAFT: { gold: 80 },
 };
 
 /** Birim başına tur bakımı. Ordunun asıl freni artık erzak. */
@@ -119,6 +121,45 @@ export function createCity(world, tile, nationId, name, level = 1, pop = 2) {
   tile.city = city;
   world.cities.push(city);
   return city;
+}
+
+/**
+ * Şehir nüfusunun tavanı ve büyüme hızı.
+ *
+ * Şehirler yüz yıl boyunca kurulduğu boyutta (pop 2) donuyordu. Sonucu iki
+ * ayrı semptomdu: prestij puanı hiç artmıyor (şehir puanı `pop`'a bağlı) ve
+ * ham üretim hiç artmıyor (işlenen kare sayısı = `pop`). Geç oyunda büyüyen
+ * tek eksen sanayi kalıyordu.
+ *
+ * Büyümeyi `standardOfLiving`'e bağlamak ikisini birden çözer ve o güne dek
+ * yalnız ekranda duran, hiçbir şeyi etkilemeyen sayıyı oyuna sokar. Hız,
+ * yüzyıl boyunca 2'den ~15'e çıkacak şekilde seçildi.
+ */
+export const CITY_MAX_POP = 20;
+const CITY_GROWTH_RATE = 0.0006;
+
+/**
+ * Refah şehri büyütür. economy.js buradan import ediyor, tersi katman
+ * döngüsü olurdu; bu yüzden yaşam standardı doğrudan veriden okunur
+ * (aynı kalıp provinces.js'te de var).
+ */
+export function growCities(world) {
+  for (const city of world.cities) {
+    const nation = world.nations[city.nationId];
+    if (!nation?.alive || controllerOf(city.tile) !== city.nationId) continue;
+    if (city.pop >= CITY_MAX_POP) continue;
+    const living = nation.economy?.standardOfLiving ?? 0;
+    const food = nation.budget?.net?.food ?? 0;
+    // Yoksulluk ve kıtlık büyümeyi durdurur: şehir beslenemediği kadar büyümez.
+    if (living <= 10 || food < 0) continue;
+    city.growth = (city.growth ?? 0) + (living - 10) * CITY_GROWTH_RATE * (food > 2 ? 1 : 0.5);
+    if (city.growth < 1) continue;
+    city.growth -= 1;
+    city.pop++;
+    // Yeni gelenler çevredeki kırdan gelir: şehrin bulunduğu karenin kültürü.
+    const culture = city.tile.culture;
+    city.pops[culture] = (city.pops[culture] ?? 0) + 1;
+  }
 }
 
 /** Bir karede şehir kurulabilir mi? (kendi toprağın, karada, şehirlerden uzakta) */

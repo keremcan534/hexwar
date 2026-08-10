@@ -6,25 +6,30 @@
 import { atPeace } from './diplomacy.js';
 
 /**
- * Bu puana ilk ulaşan kazanır; kimse ulaşmazsa 300. turda en yüksek kazanır.
- * Eşik ölçümle seçilir: hedef, güçlü bir ülkenin 220-300. hafta arasında
- * ulaşabileceği ama 50. haftada ulaşamayacağı yerde durmalı. 12 oyunluk
- * koşuda 400 eşiği ortalama 235. haftada ve oyunların %83'ünde gerçekten
- * eşiğe ulaşarak bitiyor; 440 ortalamayı 277'ye çekiyor ama oyunların
- * yarıdan fazlası süre dolarak bitiyordu.
+ * Oyun 1836'da başlar, bir tur bir haftadır ve 1945'te biter: 5740. tur
+ * 28 Aralık 1945'e denk gelir (bkz. hud.js tarih hesabı).
+ *
+ * Erken zafer yoktur. Eskiden bir puan eşiğine ilk ulaşan oyunu bitiriyordu;
+ * bu, güçlü ülkenin yüzyılın ortasında masayı toplamasına ve geri kalan
+ * onlarca yılın hiç oynanmamasına yol açıyordu. Artık tek kural son turda en
+ * yüksek puana sahip olmaktır — bütün yüz yıl oynanır.
  */
-export const HEGEMONY_TARGET = 400;
-export const FINAL_TURN = 300;
+export const FINAL_TURN = 5740;
 
 /**
- * Kurulu sanayi kapasitesinin puan ağırlığı. Ham üretim ve prestij ilk elli
- * haftada donuyor (toprak neredeyse hiç el değiştirmiyor, şehir nüfusu sabit);
- * fabrika seviyesi ise yatırımla oyun boyunca büyüyen tek eksen. Puanın zamanla
- * yükselmesi bu yüzden buradan gelir ve geç oyunda skorun çoğunluğunu sanayi
- * oluşturur. Fetih ya da province gelişimi tekrar büyümeye başlarsa bu ağırlık
- * yeniden ölçülmeli.
+ * Kurulu sanayi kapasitesinin puan ağırlığı. Ham üretim ve prestij yüzyıl
+ * boyunca yavaş büyür; fabrika seviyesi ise asıl yükselen eksendir.
+ *
+ * Ağırlık 10'dan 4'e indirildi: fabrikalar artık state başına kurulup kendi
+ * kendine seviye atladığı için toplam seviye 12 değil 250'yi aşıyor.
+ *
+ * Ölçülen bileşim (industry/production/prestige): 1845'te %49/%35/%17,
+ * 1935'te %86/%10/%4. Geç oyundaki baskınlık bu ağırlıktan değil, prestij ve
+ * ham üretimin yüzyıl boyunca sabit kalmasından gelir (prestij 49 → 47).
+ * Ağırlığı buradan düşürmek geç oyunu çeşitlendirmez, yalnız eşiği
+ * ulaşılamaz yapar; çözüm diğer eksenleri büyütmektir.
  */
-const INDUSTRY_WEIGHT = 10;
+const INDUSTRY_WEIGHT = 4;
 
 /**
  * @returns {{ total:number, economy:number, prestige:number }}
@@ -74,9 +79,8 @@ export function checkVictory(world, turn) {
   if (!board.length) return null;
   const leader = board[0];
 
-  const reachedTarget = leader.total >= HEGEMONY_TARGET;
-  const timeUp = turn >= FINAL_TURN;
-  if (!reachedTarget && !timeUp) return null;
+  // Tek bitiş koşulu süredir; erken zafer yoktur (bkz. FINAL_TURN notu).
+  if (turn < FINAL_TURN) return null;
 
   // Kazanan aynı zamanda en geniş ülke mi? Tasarım ölçütü bunu sorar.
   const maxTiles = Math.max(...board.map((b) => b.nation.tiles));
@@ -84,7 +88,7 @@ export function checkVictory(world, turn) {
     nation: leader.nation,
     score: leader.total,
     byConquest: leader.nation.tiles === maxTiles,
-    reason: reachedTarget ? 'hegemony' : 'time',
+    reason: 'time',
     board,
   };
 }

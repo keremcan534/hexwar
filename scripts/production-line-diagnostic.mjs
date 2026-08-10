@@ -1,9 +1,10 @@
+import { constructionAtlas } from '../src/game/construction.js';
 import { Game } from '../src/game/game.js';
 import { TurnManager } from '../src/game/turn.js';
 import { generateWorld } from '../src/world/worldgen.js';
 import { generateNations } from '../src/world/nations.js';
 import {
-  buildFactory, ensureEconomy, ensureMilitaryEconomy, ensureProductionLine,
+  buildFactory, canBuildFactory, ensureEconomy, ensureMilitaryEconomy, ensureProductionLine,
   equipmentStock, runEconomy, setMilitaryProductionLine,
 } from '../src/game/economy.js';
 import { deserialize, serialize } from '../src/game/save.js';
@@ -54,7 +55,12 @@ const nation = game.world.nations[city.nationId];
 game.turns.playerNation = nation.id;
 nation.gold = 10000;
 
-const built = buildFactory(game, nation, city.id, 'ARMS_FACTORY');
+// Ulke kurulus silah fabrikasiyla basliyor ve bir state'te ayni turden tek
+// tesis olur; yeni hat bu yuzden bos bir state'e kurulur.
+const freeRegion = constructionAtlas(game.world, nation.id).regions.find(
+  (region) => canBuildFactory(game.world, nation, region.id, 'ARMS_FACTORY'),
+);
+const built = buildFactory(game, nation, freeRegion.id, 'ARMS_FACTORY');
 const factory = nation.economy.factories.find((item) => item.typeId === 'ARMS_FACTORY');
 const defaultLine = ensureProductionLine(factory);
 const defaultsToSmallArms = defaultLine.lineEquipment === 'arms';

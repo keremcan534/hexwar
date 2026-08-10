@@ -17,7 +17,9 @@ export const RECRUITMENT_EQUIPMENT = {
   INFANTRY: { arms: 4 },
   CAVALRY: { arms: 6 },
   ARTILLERY: { arms: 2, artillery: 4 },
-  WARSHIP: { arms: 10 },
+  WARSHIP: { arms: 10, steamers: 6 },
+  ARMOR: { arms: 2, tanks: 5 },
+  AIRCRAFT: { arms: 1, airplane: 5 },
 };
 export const RECRUITMENT_ARMS = Object.fromEntries(
   Object.entries(RECRUITMENT_EQUIPMENT).map(([id, cost]) => [id, cost.arms ?? 0]),

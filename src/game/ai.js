@@ -104,8 +104,8 @@ function desiredArmy(nation) {
 function affordableUnit(world, nation, army) {
   const wantsArtillery = army >= 3 && army % 3 === 0;
   const order = wantsArtillery
-    ? ['ARTILLERY', 'INFANTRY', 'CAVALRY']
-    : ['INFANTRY', 'CAVALRY', 'ARTILLERY'];
+    ? ['ARMOR', 'ARTILLERY', 'AIRCRAFT', 'INFANTRY', 'CAVALRY']
+    : ['INFANTRY', 'ARMOR', 'CAVALRY', 'ARTILLERY', 'AIRCRAFT'];
   for (const id of order) {
     if (canAfford(nation, UNIT_COSTS[id]) && canRecruit(world, nation, id)) return id;
   }

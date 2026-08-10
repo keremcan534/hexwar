@@ -83,6 +83,14 @@
   --green-wash: rgba(131, 154, 107, 0.12);
   --red-wash: rgba(169, 94, 74, 0.12);
 
+  /* Veri çubukları için ayrı bir kutup çifti. Metindeki --green/--red kasten
+     soluk; dolgu olarak kullanılınca chroma testinden kalıyor, yani ekran tek
+     renk griye çalıyordu. Bu ikili doğrulandı: renk körlüğünde ayrım ΔE 20.5
+     (eşik 8) ve açıklık farkı yönü renkten bağımsız okunur kılıyor.
+     Ölçüm: dataviz/scripts/validate_palette.js */
+  --viz-pos: #93b65c;
+  --viz-neg: #a04e30;
+
   /* --- Tipografi ölçeği. 1080p'de rahat okunur; hiyerarşi boyutla değil
      ağırlık ve renkle kurulur ama panelin *tek* ana metriği belirgin olur. --- */
   --fs-label: 11px;              /* küçük versal kategori etiketi */
@@ -721,6 +729,35 @@ select:focus-visible {
     visibility 0s linear;
 }
 
+/* Victoria 2'deki gibi: veri yoğun yönetim ekranları haritayı bırakıp neredeyse
+   tüm pencereyi kaplar. Dar panelde state satırları ve mal ızgarası alt alta
+   kırılıyor, ekranın asıl işi olan "tek bakışta kıyas" mümkün olmuyordu. */
+.screen[data-screen='industry'],
+.screen[data-screen='trade'] {
+  width: min(1560px, 97vw);
+  left: 50%;
+  transform: translateX(-50%);
+  border-right: 1px solid rgba(174, 139, 74, 0.34);
+  border-left: 1px solid rgba(174, 139, 74, 0.34);
+}
+
+.screen[data-screen='industry'].hidden,
+.screen[data-screen='trade'].hidden { transform: translateX(-50%) translateY(-102%); }
+
+/* Tam ekran veri görünümlerinde cömert dolgu ekranın üçte birini yiyordu;
+   bu iki ekranda yoğunluk okunaklılığın önüne geçer. */
+.screen[data-screen='industry'] .screen-head,
+.screen[data-screen='trade'] .screen-head { padding: var(--sp-3) var(--sp-4) var(--sp-2); }
+
+.screen[data-screen='industry'] .screen-body,
+.screen[data-screen='trade'] .screen-body {
+  gap: var(--sp-3);
+  padding: 0 var(--sp-4) calc(var(--safe-bottom) + var(--sp-4));
+}
+
+.screen[data-screen='industry'] .screen-head h2,
+.screen[data-screen='trade'] .screen-head h2 { font-size: 20px; }
+
 .screen.hidden {
   display: flex !important;
   transform: translateX(-102%);
@@ -765,6 +802,13 @@ select:focus-visible {
 
 /* Üst bar ekran açıkken de görünüyor; başlıktaki kaynak kopyası kaldırıldı. */
 .screen-res { display: none; }
+
+/* Sanayi ekranında bu şerit alt sekmeleri taşır; başlığın sağında görünür. */
+.screen[data-screen='industry'] .screen-res {
+  display: flex;
+  align-self: flex-end;
+  margin-left: auto;
+}
 
 
 /* Tek sütun. İki sütuna akıtmak paneli ekranın yarısına çıkarıyordu; HOI4
@@ -960,6 +1004,111 @@ body.screen-open .layer-menu { display: none; }
   border-collapse: collapse;
   font-size: var(--fs-base);
 }
+
+/* Ticaret: her mal, ortadan bölünmüş bir çubukla okunur. Sayı tablosu tek
+   bakışta "neyi alıyorum, neyi satıyorum" sorusunu cevaplamıyordu; yön (sağ/sol)
+   ve renk aynı bilgiyi iki kez kodlar, böylece renk körlüğünde de anlaşılır. */
+.market-rows { display: grid; gap: var(--sp-3); }
+
+.market-row {
+  display: grid;
+  gap: var(--sp-1);
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.market-row:last-child { border-bottom: 0; }
+
+.market-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.market-price {
+  color: var(--text-dim);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.trade-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/* Yatak sabit; sıfır çizgisi tam ortadadır ve bütün mallarda aynı yerde durur. */
+.trade-bar-track {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  height: 10px;
+  border-radius: 2px;
+  background: var(--surface-sunken);
+}
+
+.trade-bar-track::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  width: 1px;
+  background: var(--border);
+}
+
+.trade-bar-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 2px;
+}
+
+/* Dolu uç yuvarlak, sıfıra bakan uç düz: çubuk her zaman eksene yapışık durur. */
+.trade-bar-fill.neg {
+  right: 50%;
+  background: var(--viz-neg);
+  border-radius: 3px 0 0 3px;
+  margin-right: 1px;
+}
+
+.trade-bar-fill.pos {
+  left: 50%;
+  background: var(--viz-pos);
+  border-radius: 0 3px 3px 0;
+  margin-left: 1px;
+}
+
+.trade-bar-label {
+  flex: 0 0 7.5em;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.trade-bar-label.pos { color: var(--viz-pos); }
+.trade-bar-label.neg { color: var(--viz-neg); }
+.trade-shortfall { color: var(--red); }
+
+.trade-legend {
+  display: flex;
+  gap: var(--sp-4);
+  margin-bottom: var(--sp-3);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+.trade-legend span { display: flex; align-items: center; gap: var(--sp-2); }
+
+.trade-legend .swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+}
+
+.trade-legend .swatch.pos { background: var(--viz-pos); }
+.trade-legend .swatch.neg { background: var(--viz-neg); }
 
 /* Veri tabloları kabın tamamına yayılmaz: `width: 100%` sütunlar arasına
    onlarca piksel boşluk koyuyor, göz bir satırı okurken yol kat ediyordu.
@@ -2219,9 +2368,294 @@ body.screen-open .layer-menu { display: none; }
 .ledger-gain { color: var(--green); background: var(--green-wash); }
 .ledger-cost { color: var(--red); background: var(--red-wash); }
 
-.factory-card { border-left: 3px solid var(--cyan); }
+/* Sanayi ekrani state eksenli: her kart bir state, icindeki satirlar tesisler. */
+.state-industry { display: grid; gap: var(--sp-3); }
+
+/* Victoria 2 duzeni: state'ler alt alta satirlar, tesisler satirin sagindaki
+   kutucuk seridi. Sabit sutunlar sayilari hizalar; goz bir sutunu asagi
+   tarayarak state'leri kiyaslayabilir. */
+.industry-states { display: grid; gap: 0; }
+
+/* Yoğunluk kasıtlı: Victoria 2'nin sanayi ekranı bir tabloya yakındır, satır
+   başına bir bakış yeter. Sütun başlıkları bir kez yazılır, hücreler yalnız
+   sayı taşır; satır yüksekliğini kutucuk şeridi belirler. */
+/* Ad sutunu sabit genislikte: `1.1fr` genis ekranda yuzlerce piksel bos alan
+   biraktigi icin state adi ile sayilar arasi kopuyordu. */
+.state-row {
+  display: grid;
+  grid-template-columns: minmax(88px, 132px) 52px 50px 58px 64px minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-3);
+  padding: 4px var(--sp-2);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  line-height: 1.25;
+}
+
+.state-row:nth-child(even of .state-row) { background: rgba(255, 255, 255, 0.014); }
+.state-row:last-child { border-bottom: 0; }
+
+.state-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding-block: var(--sp-1);
+  background: var(--surface-1);
+  color: var(--text-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.state-cell { min-width: 0; }
+.state-cell.num { text-align: right; font-variant-numeric: tabular-nums; }
+.state-cell.dim { color: var(--text-dim); }
+.state-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.state-slots { display: flex; flex-wrap: wrap; gap: 3px; }
+
+/* Victoria 2 kutucugu: seviye + urun, tuketilen mallar, girdi tedarik
+   cubuklari, kadro ve kar. Genislik bu bes satiri tasiyacak kadar. */
+.factory-slot {
+  display: grid;
+  gap: 3px;
+  width: 78px;
+  padding: 5px 4px 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  text-align: center;
+}
+
+/* Yeni tesis: tek dugme, secim ayri pencerede. */
+.factory-slot.add {
+  align-content: center;
+  min-height: 58px;
+  border-style: dashed;
+  background: none;
+  color: var(--text-dim);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.factory-slot.add:hover { border-color: var(--gold); color: var(--gold-bright); }
+
+.factory-slot-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 2px;
+}
+
+.factory-slot-head b { font-size: 18px; line-height: 1.1; }
+
+.factory-goods {
+  display: flex;
+  justify-content: center;
+  gap: 1px;
+  min-height: 15px;
+  font-size: 13px;
+  opacity: 0.9;
+}
+
+.factory-goods i { font-style: normal; }
+
+/* Girdi tedarik cubuklari: kisa cubuk o mali bulamiyor demektir. */
+.factory-supply {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 3px;
+  height: 12px;
+}
+
+.factory-supply i {
+  width: 6px;
+  min-height: 1px;
+  border-radius: 1px;
+  background: var(--viz-pos);
+}
+
+.factory-supply i.short { background: var(--viz-neg); }
+
+.factory-slot.profitable { border-left: 2px solid var(--viz-pos); }
+.factory-slot.unprofitable { border-left: 2px solid var(--viz-neg); }
+
+.factory-slot-icon { position: relative; font-size: 16px; line-height: 1.1; }
+
+/* Bos slot kisa kalir: dolu kutucugun satirlarini tasimaz ama ayni genislikte
+   durur ki izgara hizali kalsin. */
+.factory-slot.empty { align-content: center; min-height: 46px; }
+
+/* Özet tek şerittir: etiket küçük ve üstte, sayı hemen altında. */
+.industry-summary {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-5);
+  padding: var(--sp-2) var(--sp-2) var(--sp-3);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-sm);
+}
+
+.industry-summary span { display: flex; align-items: baseline; gap: var(--sp-2); }
+.industry-summary small { color: var(--text-dim); }
+.industry-summary b { font-variant-numeric: tabular-nums; }
+.industry-summary .industry-policy { margin-left: auto; color: var(--text-dim); }
+
+/* Seviye rozeti ikonun kosesinde durur: Vic2'de de sayi kutunun icindedir. */
+.factory-level {
+  min-width: 16px;
+  padding: 0 3px;
+  border-radius: 3px;
+  background: var(--gold-dark);
+  color: var(--gold-bright);
+  font-size: 11px;
+  font-style: normal;
+  line-height: 16px;
+}
+
+.factory-slot .meter { height: 5px; }
+.factory-slot-profit { font-size: 11px; font-variant-numeric: tabular-nums; }
+
+.factory-slot.empty {
+  border-style: dashed;
+  background: none;
+  cursor: pointer;
+  opacity: 0.55;
+}
+
+.factory-slot.empty:hover:not(:disabled) { opacity: 1; border-color: var(--gold); }
+.factory-slot.empty:disabled { cursor: default; opacity: 0.22; }
+.factory-slot-cost { color: var(--text-dim); font-size: 10px; }
+
+/* Ekran ici alt sekmeler: baslik seridinde durur, icerigi degistirir. Uzun tek
+   sayfa yerine pencereli duzen — Victoria 2'nin Factories/Projects sekmeleri. */
+.sub-tabs { display: flex; gap: var(--sp-1); }
+
+.sub-tabs button {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid transparent;
+  border-radius: var(--radius) var(--radius) 0 0;
+  background: none;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.sub-tabs button:hover { color: var(--text); }
+
+.sub-tabs button.active {
+  border-color: var(--line);
+  border-bottom-color: transparent;
+  background: var(--surface-sunken);
+  color: var(--gold-bright);
+}
+
+.sub-tabs em {
+  padding: 0 5px;
+  border-radius: 8px;
+  background: var(--surface-sunken);
+  color: var(--text-dim);
+  font-style: normal;
+  font-size: 10px;
+}
+
+.sub-tabs button.active em { background: var(--gold-dark); color: var(--gold-bright); }
+
+/* Ust sinifin biriken yatirim sermayesi: hangi paranin fabrikaya gittigini
+   oyuncunun gorebilmesi icin sinif kartinda ayri durur. */
+.class-capital {
+  margin-top: var(--sp-2);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+.class-capital b { color: var(--gold-bright); }
+
+/* Kurulmakta olan tesisler. Iki olcek yan yana durur: ustteki insaat isi,
+   alttaki odenen para. Kapitalist projesi parasi bitince durur; oyuncu bunu
+   tek bakista gorup destek verebilmeli. */
+.industry-projects { display: grid; gap: var(--sp-1); }
+
+.industry-project {
+  display: grid;
+  grid-template-columns: 20px minmax(120px, 1.6fr) minmax(80px, 2fr) 84px 90px;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 3px var(--sp-1);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-sm);
+}
+
+.industry-project:last-child { border-bottom: 0; }
+.industry-project.stalled .project-owed { color: var(--red); }
+.project-name { display: grid; min-width: 0; }
+.project-name small { color: var(--text-dim); }
+.project-meters { display: grid; gap: 2px; }
+.project-meters .meter { height: 5px; }
+.project-meters .meter.funding i { background: var(--gold); }
+.project-owed { color: var(--text-dim); text-align: right; font-variant-numeric: tabular-nums; }
+
+.project-support {
+  padding: 2px var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+/* Ticaret: mallar Vic2'deki gibi kategori bloklarinda, blok icinde izgara. */
+.market-group + .market-group { margin-top: var(--sp-4); }
+
+.market-group-head {
+  margin-bottom: var(--sp-2);
+  padding-bottom: var(--sp-1);
+  border-bottom: 1px solid var(--line);
+  color: var(--gold-bright);
+  font-size: var(--fs-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.market-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: var(--sp-2) var(--sp-5);
+}
+
+.factory-card {
+  border-left: 3px solid var(--cyan);
+  padding: var(--sp-3);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+}
 .factory-card.profitable { border-left-color: var(--green); }
 .factory-card.unprofitable { border-left-color: var(--red); }
+
+.factory-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.factory-head em {
+  color: var(--text-dim);
+  font-style: normal;
+  font-size: var(--fs-sm);
+}
+
+.factory-status {
+  display: block;
+  margin-top: var(--sp-2);
+  color: var(--text-dim);
+}
 
 .factory-chain {
   display: flex;
@@ -2688,7 +3122,10 @@ body.screen-open .layer-menu { display: none; }
    ========================================================================== */
 
 .trade-table-wrap,
-.market-card { overflow-x: auto; }
+/* `overflow-x: auto` sticky'yi kirar: tasan kutu yeni bir kaydirma baglami
+   yaratir ve sagdaki mal paneli liste kayarken yukarida asili kalamaz. Izgara
+   duzeninde yatay tasma zaten yok. */
+.market-card { overflow-x: clip; }
 .good-name { display: block; color: var(--text); font-weight: 650; }
 .trade-price b,
 .trade-flow-cell b { display: block; color: var(--text); font-size: var(--fs-base); font-weight: 650; white-space: nowrap; }
@@ -2865,3 +3302,275 @@ body.screen-open .layer-menu { display: none; }
     animation-duration: 0.01ms !important;
   }
 }
+
+/* Tesis secim penceresi: "+" ile acilir. Izgaradaki kutucuk yalnizca ikon
+   tasiyabildigi icin tam ad, uretim zinciri ve maliyet burada okunur. */
+.factory-picker { border-left: 3px solid var(--gold); }
+
+.picker-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+  gap: var(--sp-2);
+}
+
+.picker-option {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.picker-option:hover:not(:disabled) { border-color: var(--gold); }
+.picker-option:disabled { opacity: 0.4; cursor: default; }
+.picker-icon { font-size: 18px; }
+.picker-body { display: grid; min-width: 0; }
+.picker-body small { color: var(--text-dim); }
+.picker-meta { display: grid; justify-items: end; }
+.picker-meta em { color: var(--gold-bright); font-style: normal; }
+
+/* Ticaret ekrani iki sutun: solda mal izgarasi, sagda secili malin dunya
+   tablosu. Fiyatin neden tavanda oldugunu ancak uretimin kimde toplandigini
+   gorerek anlarsin; panel o soruyu cevaplar. */
+.trade-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(230px, 300px);
+  gap: var(--sp-4);
+  align-items: start;
+}
+
+.trade-goods { min-width: 0; }
+
+.good-detail {
+  position: sticky;
+  /* Kaydirma kabi .screen-body; panel onun ust kenarina yapisir. Aksi halde
+     liste asagi kayarken panel yukarida kaliyor ve gorunmez oluyordu. */
+  top: 0;
+  max-height: calc(100vh - var(--screen-top) - var(--sp-6));
+  overflow-y: auto;
+  display: grid;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gold);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  font-size: var(--fs-sm);
+}
+
+.good-detail.empty-detail { border-left-color: var(--line); }
+
+.good-detail-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.good-detail-head small { color: var(--text-dim); }
+.good-pinned { margin: 0; font-size: var(--fs-sm); }
+
+.good-detail-kpis {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-1) var(--sp-3);
+}
+
+.good-detail-kpis span { display: flex; justify-content: space-between; gap: var(--sp-2); }
+.good-detail-kpis small { color: var(--text-dim); }
+.good-detail-kpis b { font-variant-numeric: tabular-nums; }
+
+.good-rank-head,
+.good-rank {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) 46px 46px;
+  gap: var(--sp-2);
+  align-items: baseline;
+}
+
+.good-rank-head {
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-dim);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.good-rank-head span:nth-child(n+3),
+.good-rank-out,
+.good-rank .rank-out,
+.good-rank .rank-share { text-align: right; }
+
+.good-rank .rank-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.good-rank .rank-no { color: var(--text-dim); }
+.good-rank .rank-out,
+.good-rank .rank-share { font-variant-numeric: tabular-nums; }
+.good-rank.me { color: var(--gold-bright); }
+
+.market-row { cursor: pointer; }
+.market-row.selected { background: var(--gold-wash); border-radius: var(--radius); }
+
+/* Fiyat grafigi: anlik fiyat "pahali mi" sorusunu cevaplar, egri "yukseliyor
+   mu" sorusunu. Karar icin gereken ikincisidir. */
+.price-chart {
+  width: 100%;
+  height: 46px;
+  overflow: visible;
+}
+
+.price-line { fill: none; stroke: var(--viz-pos); stroke-width: 1.5; }
+.price-area { fill: var(--viz-pos); opacity: 0.14; stroke: none; }
+.price-chart.down .price-line { stroke: var(--viz-neg); }
+.price-chart.down .price-area { fill: var(--viz-neg); }
+.price-base { stroke: var(--text-dim); stroke-width: 1; stroke-dasharray: 3 3; opacity: 0.5; }
+.price-chart-empty { margin: 0; font-size: var(--fs-sm); }
+
+.price-chart-foot {
+  display: flex;
+  justify-content: space-between;
+  color: var(--text-dim);
+}
+
+/* Mobilizasyon: tek izgara. Ayni butonlari her sehir icin tekrarlamak
+   ekrani bitmeyen bir kaydirmaya ceviriyordu. */
+.recruit-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+  gap: var(--sp-2);
+}
+
+.recruit-option {
+  display: grid;
+  gap: 1px;
+  padding: var(--sp-2) var(--sp-3);
+  text-align: left;
+}
+
+.recruit-option small { color: var(--text-dim); font-size: var(--fs-sm); }
+
+/* Sinif icindeki meslek dagilimi: kac ciftci, kac isci, kac subay. */
+.profession-bars { display: grid; gap: 2px; margin-top: var(--sp-2); }
+
+.profession-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 70px 48px 34px;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.profession-row .meter { height: 5px; }
+.profession-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profession-count,
+.profession-share { text-align: right; font-variant-numeric: tabular-nums; color: var(--text-dim); }
+
+/* Aktif savaslar. Menunun altinda, kirmizi parlayan kutucuklar: savas bir
+   ekranin icinde gizli kalmamali, surekli gorunur olmali (EU4/HOI4 kalibi). */
+.war-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+}
+
+.war-bar.hidden { display: none; }
+
+.war-chip {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 3px var(--sp-3);
+  border: 1px solid var(--red);
+  border-radius: var(--radius);
+  background: var(--red-wash);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  animation: war-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes war-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(169, 94, 74, 0.45); }
+  50% { box-shadow: 0 0 10px 2px rgba(169, 94, 74, 0.32); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .war-chip { animation: none; }
+}
+
+.war-chip:hover { border-color: var(--gold); }
+.war-chip .war-score { font-variant-numeric: tabular-nums; }
+.war-chip.winning .war-score { color: var(--viz-pos); }
+.war-chip.losing .war-score { color: var(--viz-neg); }
+
+/* Baris masasi: puan seridi, secilen province listesi. */
+.peace-head { display: grid; gap: var(--sp-2); }
+
+.peace-score {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-5);
+}
+
+.peace-score span { display: flex; align-items: baseline; gap: var(--sp-2); }
+.peace-score small { color: var(--text-dim); }
+.peace-score b { font-variant-numeric: tabular-nums; }
+.peace-meter { height: 8px; }
+.peace-meter i.over { background: var(--viz-neg); }
+.peace-tabs { margin-bottom: var(--sp-2); }
+
+.peace-tile {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px 24px;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 3px var(--sp-2);
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-sm);
+}
+
+.peace-tile:last-child { border-bottom: 0; }
+.peace-tile b { text-align: right; font-variant-numeric: tabular-nums; }
+.peace-tile.take b { color: var(--viz-pos); }
+.peace-tile.give b { color: var(--viz-neg); }
+
+.peace-drop {
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  cursor: pointer;
+}
+
+.peace-drop:hover { color: var(--red); }
+
+/* Toprak disi baris sartlari. */
+.peace-term {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) 34px;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: var(--sp-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface-sunken);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.peace-term + .peace-term { margin-top: var(--sp-1); }
+.peace-term:hover:not(:disabled) { border-color: var(--gold); }
+.peace-term:disabled { opacity: 0.4; cursor: default; }
+.peace-term.picked { border-color: var(--viz-pos); background: var(--green-wash); }
+.peace-term-icon { font-size: 15px; text-align: center; }
+.peace-term-body { display: grid; min-width: 0; }
+.peace-term-body small { color: var(--text-dim); }
+.peace-term-cost { text-align: right; color: var(--gold-bright); font-variant-numeric: tabular-nums; }
