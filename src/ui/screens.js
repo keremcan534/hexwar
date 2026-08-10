@@ -1175,6 +1175,9 @@ export class Screens {
     'crown land, customs houses and city trade')}
         ${(ledger.tariffRevenue ?? 0) > 0
     ? flatLine('Tariffs', ledger.tariffRevenue, 'res-pos', 'see the tariff bar below') : ''}
+        ${(ledger.treatyRevenue ?? 0) > 0
+    ? flatLine('War reparations', ledger.treatyRevenue, 'res-pos',
+      'tribute owed to us under a peace treaty') : ''}
         <div class="fiscal-total">
           <span>Total</span><b class="res-pos">¤${(ledger.income ?? 0).toFixed(1)}</b>
         </div>
@@ -1194,6 +1197,9 @@ export class Screens {
     'upkeep of everything on the build queue')}
         ${flatLine('Strategic imports', ledger.importCost ?? 0, 'res-neg',
     'equipment bought abroad when factories fall short')}
+        ${(ledger.treatyCost ?? 0) > 0
+    ? flatLine('Treaty obligations', ledger.treatyCost, 'res-neg',
+      'reparations or tribute imposed on us at a peace table') : ''}
         ${(ledger.tariffRevenue ?? 0) < 0
     ? flatLine('Tariff losses', ledger.tariffRevenue, 'res-neg') : ''}
         <div class="fiscal-total">

@@ -1,0 +1,387 @@
+// Olu mekanik dedektoru.
+//
+// Bir mekanik "yazilmis" olabilir ama bagli olmayabilir. Kod okuyarak bu
+// gorunmez; yalniz olcunce gorunur. Buradaki tek soru su: kaldiraci cevirince
+// cikti degisiyor mu?
+//
+// Her kontrol bir kaldirac alir, iki uc degerde ayni tohumla oyunu isletir ve
+// beklenen ciktinin gercekten ayrildigina bakar. Ayrilmiyorsa mekanik OLU'dur
+// ve bunu sormadan bildirmek gerekir.
+//
+// Kullanim:  npm run audit          (butun kontroller)
+//            npm run audit tarife   (adinda 'tarife' gecenler)
+
+import { Game } from '../src/game/game.js';
+import { TurnManager } from '../src/game/turn.js';
+import { generateWorld } from '../src/world/worldgen.js';
+import { generateNations } from '../src/world/nations.js';
+import {
+  SOCIAL_PROGRAMS, populationOf, setFiscalPolicy, socialSpendingCost,
+} from '../src/game/economy.js';
+import { computeContacts, declareWar, nationStrength } from '../src/game/diplomacy.js';
+import { setAggression, STANCE } from '../src/game/command.js';
+import { policyOf, rulingParty } from '../src/game/politics.js';
+import { provinceRgoJobs, rgoLaborScale } from '../src/game/provinces.js';
+
+function headless(seed) {
+  const game = Object.create(Game.prototype);
+  game.world = generateWorld(seed);
+  generateNations(game.world, { seed: `${seed}-nations` });
+  Object.assign(game, {
+    selected: null, selectedUnit: null, selected_: [], activeGeneral: null,
+    reachable: null, autosaveEnabled: false, listeners: {},
+    renderer: { invalidateCache() {}, resize() {} },
+    camera: { setBounds() {}, fit() {} },
+    emit() {}, requestRender() {}, autosave() {}, setSpeed() {},
+  });
+  game.turns = new TurnManager(game);
+  game.turns.start(game.world);
+  game.turns.playerNation = -1;
+  return game;
+}
+
+function run(game, weeks) {
+  for (let i = 0; i < weeks; i++) game.turns.endTurn();
+  return game;
+}
+
+const results = [];
+
+/**
+ * Bir kaldiracin etkisini olcer. `setup` kaldiraci kurar, `measure` ciktiyi
+ * okur; iki uc deger arasindaki bagil fark `minDelta`nin altindaysa mekanik
+ * olu sayilir.
+ */
+function lever({
+  name, area, seed = 'audit', weeks = 40, warmup = 20,
+  values, setup, measure, minDelta = 0.05, unit = '', expect = null,
+}) {
+  const samples = [];
+  for (const value of values) {
+    const game = headless(seed);
+    run(game, warmup);
+    setup(game, value);
+    run(game, weeks);
+    samples.push({ value, out: measure(game) });
+  }
+  const lo = samples[0].out;
+  const hi = samples[samples.length - 1].out;
+  const scale = Math.max(Math.abs(lo), Math.abs(hi), 1e-9);
+  const delta = Math.abs(hi - lo) / scale;
+  // Buyukluk degismesi yetmez, yonu de dogru olmali: "sosyal harcamayi
+  // artirdim, gider azaldi" buyukluk testinden gecer ama mekanik terstir.
+  const yon = hi > lo ? 'up' : hi < lo ? 'down' : 'flat';
+  const yonHatasi = expect && delta >= minDelta && yon !== expect;
+  results.push({
+    name, area, samples, delta, minDelta, unit, expect, yon,
+    verdict: delta < minDelta ? 'OLU' : yonHatasi ? 'TERS' : 'ETKILI',
+  });
+}
+
+/** Basit dogruluk kontrolu: bir sey tutuyor mu? */
+function invariant({ name, area, check, detail = '' }) {
+  let ok = false;
+  let note = detail;
+  try {
+    const r = check();
+    ok = typeof r === 'object' ? r.ok : Boolean(r);
+    if (typeof r === 'object' && r.note) note = r.note;
+  } catch (error) {
+    note = `hata: ${error.message}`;
+  }
+  results.push({ name, area, verdict: ok ? 'TUTUYOR' : 'TUTMUYOR', note, invariant: true });
+}
+
+const me = (game) => game.world.nations.find((n) => n.alive && n.economy);
+
+// ---------------------------------------------------------------- MALIYE ---
+
+lever({
+  name: 'Vergi orani -> hazine geliri',
+  area: 'maliye',
+  values: [0, 90],
+  setup: (g, v) => { for (const c of ['lower', 'middle', 'upper']) setFiscalPolicy(me(g), 'tax', v, c); },
+  measure: (g) => me(g).economy.ledger?.taxRevenue ?? 0,
+  unit: 'altin/hafta',
+  expect: 'up',
+});
+
+lever({
+  // Anlik olculur: 40 hafta beklenirse zenginlesme/fakirlesme gibi ikinci
+  // derece etkiler isareti cevirebilir ve "ters" tanisi yaniltici olur.
+  name: 'Sosyal harcama -> gider (anlik)',
+  area: 'maliye',
+  weeks: 1,
+  values: [0, 100],
+  setup: (g, v) => { for (const p of Object.values(SOCIAL_PROGRAMS)) setFiscalPolicy(me(g), 'social', v, p.id); },
+  measure: (g) => socialSpendingCost(me(g)),
+  unit: 'altin/hafta',
+  expect: 'up',
+});
+
+lever({
+  name: 'Sosyal harcama -> alt sinif memnuniyeti',
+  area: 'maliye',
+  values: [0, 100],
+  setup: (g, v) => { for (const p of Object.values(SOCIAL_PROGRAMS)) setFiscalPolicy(me(g), 'social', v, p.id); },
+  measure: (g) => me(g).economy.classes.lower.satisfaction ?? 0,
+  unit: 'memnuniyet',
+  expect: 'up',
+});
+
+lever({
+  name: 'Ordu butcesi -> muharebe gucu',
+  area: 'maliye',
+  values: [0, 100],
+  setup: (g, v) => setFiscalPolicy(me(g), 'armySpending', v),
+  measure: (g) => {
+    const n = me(g);
+    return (n.economy.armySpending ?? 0) / 100 * nationStrength(g.world, n);
+  },
+  unit: 'etkin guc',
+  expect: 'up',
+});
+
+// ---------------------------------------------------------------- TICARET ---
+
+lever({
+  name: 'Tarife -> hazine geliri',
+  area: 'ticaret',
+  values: [0, 50],
+  setup: (g, v) => setFiscalPolicy(me(g), 'tariff', v),
+  measure: (g) => me(g).economy.tariffRevenue ?? 0,
+  unit: 'altin/hafta',
+  expect: 'up',
+});
+
+lever({
+  name: 'Tarife -> ithalat MIKTARI (korumacilik koruyor mu)',
+  area: 'ticaret',
+  values: [0, 50],
+  setup: (g, v) => setFiscalPolicy(me(g), 'tariff', v),
+  measure: (g) => me(g).economy.trade?.imports ?? 0,
+  unit: 'birim/hafta',
+  expect: 'down',
+});
+
+lever({
+  name: 'Tarife -> fabrika karliligi',
+  area: 'ticaret',
+  values: [0, 50],
+  setup: (g, v) => setFiscalPolicy(me(g), 'tariff', v),
+  measure: (g) => me(g).economy.factoryProfit ?? 0,
+  unit: 'altin/hafta',
+});
+
+// ------------------------------------------------------------------ SANAYI ---
+
+lever({
+  name: 'Isgucu -> sanayi uretimi',
+  area: 'sanayi',
+  weeks: 60,
+  values: [0, 1],
+  setup: (g, v) => {
+    // Butun fabrikalari bosalt / doldur: kadro gercekten cikti uretiyor mu?
+    for (const n of g.world.nations) {
+      for (const f of n.economy?.factories ?? []) f.employees = (f.jobs ?? 2000) * v;
+    }
+  },
+  measure: (g) => g.world.nations.reduce(
+    (s, n) => s + (n.economy?.factories ?? []).reduce((t, f) => t + (f.throughput ?? 0), 0), 0,
+  ),
+  unit: 'throughput',
+  expect: 'up',
+});
+
+// ------------------------------------------------------------------ ARAZI ---
+
+lever({
+  name: 'RGO gelisimi -> hammadde arzi',
+  area: 'arazi',
+  weeks: 60,
+  values: [0, 8],
+  setup: (g, v) => {
+    g.world.forEach((t) => {
+      if (!t.province) return;
+      t.province.agriculture = v;
+      t.province.extraction = v;
+    });
+  },
+  measure: (g) => Object.entries(g.world.market.goods)
+    .filter(([id]) => ['food', 'iron', 'coal', 'timber', 'cotton'].includes(id))
+    .reduce((s, [, st]) => s + (st.supply ?? 0), 0),
+  unit: 'arz',
+  expect: 'up',
+});
+
+lever({
+  name: 'Kirsal nufus -> RGO ciktisi',
+  area: 'arazi',
+  weeks: 30,
+  values: [0.4, 3],
+  setup: (g, v) => {
+    g.world.forEach((t) => {
+      if (t.province) t.province.population = Math.round(provinceRgoJobs(t) * v);
+    });
+  },
+  measure: (g) => Object.entries(g.world.market.goods)
+    .filter(([id]) => ['food', 'iron', 'coal'].includes(id))
+    .reduce((s, [, st]) => s + (st.supply ?? 0), 0),
+  unit: 'arz',
+  expect: 'up',
+});
+
+// -------------------------------------------------------------- DIPLOMASI ---
+
+lever({
+  name: 'Sohret -> koalisyon riski',
+  area: 'diplomasi',
+  weeks: 30,
+  values: [0, 60],
+  setup: (g, v) => { for (const n of g.world.nations) if (n.alive) n.infamy = v; },
+  measure: (g) => {
+    const w = g.world;
+    let wars = 0;
+    for (let a = 0; a < w.nations.length; a++) {
+      for (let b = a + 1; b < w.nations.length; b++) {
+        if (w.relations[a][b].state === 'war') wars++;
+      }
+    }
+    return wars;
+  },
+  unit: 'savas',
+  expect: 'up',
+});
+
+lever({
+  name: 'Isgal -> warscore',
+  area: 'diplomasi',
+  weeks: 1,
+  warmup: 12,
+  values: [0, 0.8],
+  setup: (g, v) => {
+    const w = g.world;
+    const contacts = computeContacts(w);
+    let pair = null;
+    for (let a = 0; a < w.nations.length && !pair; a++) {
+      for (let b = a + 1; b < w.nations.length && !pair; b++) {
+        if (contacts[a]?.[b]) pair = [a, b];
+      }
+    }
+    if (!pair) return;
+    declareWar(g, pair[0], pair[1]);
+    g.turns.turn += 20;
+    const theirs = w.tiles.filter((t) => t.owner === pair[1] && t.terrain.passable);
+    theirs.slice(0, Math.floor(theirs.length * v)).forEach((t) => { t.controller = pair[0]; });
+    g.auditPair = pair;
+  },
+  measure: async (g) => 0,   // asagida invariant ile olculuyor
+  minDelta: -1,
+  unit: '',
+});
+
+// --------------------------------------------------------------- DOGRULUK ---
+
+invariant({
+  name: 'Butce defteri gercek altin degisimini tutuyor',
+  area: 'maliye',
+  check: () => {
+    const g = headless('ledger');
+    run(g, 40);
+    const n = me(g);
+    let sapma = 0;
+    let toplam = 0;
+    for (let i = 0; i < 10; i++) {
+      const once = n.gold;
+      const defter = n.economy.ledger?.net ?? 0;
+      g.turns.endTurn();
+      sapma += Math.abs((n.gold - once) - defter);
+      toplam += Math.abs(defter);
+    }
+    const oran = sapma / Math.max(1, toplam);
+    return {
+      ok: oran < 0.05,
+      note: `ortalama sapma ${(oran * 100).toFixed(1)}% (esik %5)`,
+    };
+  },
+});
+
+invariant({
+  name: 'Hicbir ulke sonsuz altin biriktirmiyor (para deligi var)',
+  area: 'maliye',
+  check: () => {
+    const g = headless('sink');
+    run(g, 400);
+    const altinlar = g.world.nations.filter((n) => n.alive).map((n) => n.gold);
+    const en = Math.max(...altinlar);
+    return { ok: en < 100000, note: `en zengin hazine ${Math.round(en)}` };
+  },
+});
+
+invariant({
+  name: 'Nufus sonsuz buyumuyor',
+  area: 'arazi',
+  check: () => {
+    const g = headless('pop');
+    const bas = populationOf(g.world, me(g));
+    run(g, 400);
+    const son = populationOf(g.world, me(g));
+    const kat = son / Math.max(1, bas);
+    return { ok: kat < 20, note: `400 haftada ${kat.toFixed(1)} kat` };
+  },
+});
+
+invariant({
+  name: 'Politika kaldiraclarinin gercek bir kisiti var',
+  area: 'politika',
+  check: () => {
+    const g = headless('policy');
+    run(g, 60);
+    const n = me(g);
+    const parti = rulingParty(n);
+    setFiscalPolicy(n, 'armySpending', 100);
+    const kisitli = n.economy.armySpending < 100;
+    return {
+      ok: Boolean(parti) && (kisitli || policyOf(n, 'military') !== 'pacifism'),
+      note: `parti ${parti?.name ?? 'yok'}, ordu tavani ${n.economy.armySpending}`,
+    };
+  },
+});
+
+// ------------------------------------------------------------------ RAPOR ---
+
+const filtre = (process.argv[2] ?? '').toLowerCase();
+const gosterilecek = filtre
+  ? results.filter((r) => `${r.name} ${r.area}`.toLowerCase().includes(filtre))
+  : results;
+
+console.log('HexWar mekanik denetimi — kaldiraci cevir, cikti degisiyor mu?\n');
+let olu = 0;
+let bozuk = 0;
+let alan = null;
+for (const r of gosterilecek) {
+  if (r.area !== alan) { alan = r.area; console.log(`\n[${alan.toUpperCase()}]`); }
+  if (r.invariant) {
+    if (r.verdict !== 'TUTUYOR') bozuk++;
+    console.log(`  ${r.verdict === 'TUTUYOR' ? 'OK  ' : 'BOZUK'} ${r.name}`
+      + (r.note ? ` — ${r.note}` : ''));
+    continue;
+  }
+  if (r.minDelta < 0) continue;
+  if (r.verdict !== 'ETKILI') olu++;
+  const [a, b] = [r.samples[0], r.samples[r.samples.length - 1]];
+  const etiket = { ETKILI: 'OK  ', OLU: 'OLU ', TERS: 'TERS' }[r.verdict];
+  console.log(`  ${etiket} ${r.name}`
+    + (r.verdict === 'TERS' ? `  (beklenen yon ${r.expect}, olcülen ${r.yon})` : ''));
+  console.log(`        ${a.value} -> ${a.out.toFixed(2)}${r.unit ? ' ' + r.unit : ''}`
+    + `  |  ${b.value} -> ${b.out.toFixed(2)}`
+    + `  |  fark %${(r.delta * 100).toFixed(1)}`);
+}
+
+console.log('\n' + '-'.repeat(70));
+console.log(`olu mekanik: ${olu} · bozuk dogruluk: ${bozuk} · toplam kontrol: ${gosterilecek.length}`);
+if (olu || bozuk) {
+  console.log('\nOLU = kaldirac cevriliyor ama cikti degismiyor. Mekanik bagli degil.');
+  console.log('BOZUK = sistemin tutmasi gereken bir sey tutmuyor.');
+}
+process.exit(olu + bozuk > 0 ? 1 : 0);

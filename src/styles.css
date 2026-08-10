@@ -716,17 +716,21 @@ select:focus-visible {
   top: var(--screen-top);
   bottom: auto;
   max-height: calc(100vh - var(--screen-top) - var(--sp-3));
-  left: 0;
   z-index: var(--z-screen);
   display: flex;
   flex-direction: column;
-  /* Panel ekranın ~%30-35'i: haritanın üstüne oturur ama onu ezmez. */
-  width: clamp(400px, 34vw, 590px);
+  /* Victoria 2'deki gibi: yönetim ekranı haritayı bırakıp neredeyse tüm
+     pencereyi kaplar. Dar panelde tablolar ve iki sütunlu düzenler alt alta
+     kırılıp kaydırma gerektiriyor, ekranın asıl işi olan "tek bakışta kıyas"
+     mümkün olmuyordu. İstisna aşağıda: haritayla çalışan ekranlar dar kalır. */
+  width: min(1560px, 97vw);
+  left: 50%;
+  transform: translateX(-50%);
   border-top: 1px solid rgba(174, 139, 74, 0.34);
   border-right: 1px solid rgba(174, 139, 74, 0.34);
+  border-left: 1px solid rgba(174, 139, 74, 0.34);
   background: var(--ui-grain), var(--panel-tone), var(--surface-1);
   box-shadow: var(--frame-brass);
-  transform: translateX(0);
   opacity: 1;
   visibility: visible;
   transition:
@@ -735,38 +739,53 @@ select:focus-visible {
     visibility 0s linear;
 }
 
-/* Victoria 2'deki gibi: veri yoğun yönetim ekranları haritayı bırakıp neredeyse
-   tüm pencereyi kaplar. Dar panelde state satırları ve mal ızgarası alt alta
-   kırılıyor, ekranın asıl işi olan "tek bakışta kıyas" mümkün olmuyordu. */
-.screen[data-screen='industry'],
-.screen[data-screen='trade'] {
-  width: min(1560px, 97vw);
-  left: 50%;
-  transform: translateX(-50%);
-  border-right: 1px solid rgba(174, 139, 74, 0.34);
-  border-left: 1px solid rgba(174, 139, 74, 0.34);
+/* Haritayla *çalışan* ekranlar dar kalır ve sola yaslanır: construction ile
+   peace kareye tıklatarak seçim yaptırır, dossier haritadan sağ tıkla açılır.
+   Panel haritayı kaplarsa bu etkileşimlerin anlamı kalmaz. Geri kalan her
+   ekran veri okumak içindir ve genişler. */
+.screen[data-screen='construction'],
+.screen[data-screen='peace'],
+.screen[data-screen='dossier'] {
+  /* 94vw sınırı dar telefonda gerekli: clamp'in 400px alt sınırı ekranı taşardı. */
+  width: min(clamp(400px, 34vw, 590px), 94vw);
+  left: 0;
+  transform: translateX(0);
+  border-left: 0;
 }
 
-.screen[data-screen='industry'].hidden,
-.screen[data-screen='trade'].hidden { transform: translateX(-50%) translateY(-102%); }
+.screen[data-screen='construction'].hidden,
+.screen[data-screen='peace'].hidden,
+.screen[data-screen='dossier'].hidden { transform: translateX(-102%); }
 
 /* Tam ekran veri görünümlerinde cömert dolgu ekranın üçte birini yiyordu;
-   bu iki ekranda yoğunluk okunaklılığın önüne geçer. */
-.screen[data-screen='industry'] .screen-head,
-.screen[data-screen='trade'] .screen-head { padding: var(--sp-3) var(--sp-4) var(--sp-2); }
+   genişleyen ekranlarda yoğunluk okunaklılığın önüne geçer. */
+.screen .screen-head { padding: var(--sp-3) var(--sp-4) var(--sp-2); }
 
-.screen[data-screen='industry'] .screen-body,
-.screen[data-screen='trade'] .screen-body {
+.screen .screen-body {
   gap: var(--sp-3);
   padding: 0 var(--sp-4) calc(var(--safe-bottom) + var(--sp-4));
 }
 
-.screen[data-screen='industry'] .screen-head h2,
-.screen[data-screen='trade'] .screen-head h2 { font-size: 20px; }
+.screen .screen-head h2 { font-size: 20px; }
+
+/* Dar ekranlar eski cömert dolgusunu korur: orada yer sıkıntısı yok, panel
+   zaten haritanın yanında bir sütun. */
+.screen[data-screen='construction'] .screen-head,
+.screen[data-screen='peace'] .screen-head,
+.screen[data-screen='dossier'] .screen-head { padding: var(--sp-5) var(--sp-6) var(--sp-4); }
+
+.screen[data-screen='construction'] .screen-body,
+.screen[data-screen='peace'] .screen-body,
+.screen[data-screen='dossier'] .screen-body {
+  gap: var(--sp-4);
+  padding: 0 var(--sp-6) calc(var(--safe-bottom) + var(--sp-5));
+}
 
 .screen.hidden {
   display: flex !important;
-  transform: translateX(-102%);
+  /* Panel ortalandığı için kapanırken yukarı kayar; sola kayan varyant
+     yalnız dar (haritayla çalışan) ekranlarda geçerli. */
+  transform: translateX(-50%) translateY(-102%);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;

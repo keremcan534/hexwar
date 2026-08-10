@@ -468,6 +468,9 @@ function emptyLedger() {
     administrationCost: 0,
     socialCost: 0,
     importCost: 0,
+    constructionCost: 0,
+    treatyCost: 0,
+    treatyRevenue: 0,
     income: 0,
     expenses: 0,
     net: 0,
@@ -1949,9 +1952,13 @@ function updateLedger(nation, turn) {
   const socialCost = Math.max(0, economy.socialCost ?? 0);
   const importCost = Math.max(0, economy.importCost ?? 0);
   const constructionCost = Math.max(0, economy.constructionUpkeep ?? 0);
-  const income = cityRevenue + (economy.taxRevenue ?? 0) + Math.max(0, tariffRevenue);
-  const expenses = armyCost + administrationCost
-    + socialCost + importCost + constructionCost + Math.max(0, -tariffRevenue);
+  // Barış anlaşmalarının para tarafı: ödenen tazminat/haraç gider, alınan gelir.
+  const treatyCost = Math.max(0, economy.treatyCost ?? 0);
+  const treatyRevenue = Math.max(0, economy.treatyRevenue ?? 0);
+  const income = cityRevenue + (economy.taxRevenue ?? 0)
+    + Math.max(0, tariffRevenue) + treatyRevenue;
+  const expenses = armyCost + administrationCost + socialCost + importCost
+    + constructionCost + treatyCost + Math.max(0, -tariffRevenue);
   economy.ledger = {
     lastUpdated: turn,
     cityRevenue,
@@ -1962,6 +1969,8 @@ function updateLedger(nation, turn) {
     socialCost,
     importCost,
     constructionCost,
+    treatyCost,
+    treatyRevenue,
     income,
     expenses,
     net: income - expenses,

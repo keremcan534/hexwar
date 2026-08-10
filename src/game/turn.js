@@ -342,6 +342,17 @@ export class TurnManager {
     // Masada bekleyen teklifler de bayatlar: savaş bitmişse ya da oyuncu haftalarca
     // cevap vermediyse geri çekilir.
     this.game.expirePeaceOffers();
+    // Ödenen ve alınan haraç bütçe ekranında görünsün: barış masasında
+    // imzalanan tazminat hazineden çıkıyor ama hiçbir kalemde yazmıyordu,
+    // "öngörülen bakiye" de bu yüzden gerçeğin üstünde kalıyordu.
+    //
+    // Sıfırlama ayrı geçiştir: alacaklı ülkeye yazılan geliri, ana döngü ona
+    // sıra gelince silerdi.
+    for (const nation of world.nations) {
+      if (!nation.economy) continue;
+      nation.economy.treatyCost = 0;
+      nation.economy.treatyRevenue = 0;
+    }
     for (const nation of world.nations) {
       if (!nation.alive) continue;
       for (const treaty of treatiesOf(nation)) {
@@ -354,6 +365,8 @@ export class TurnManager {
         if (due <= 0) continue;
         nation.gold = Math.max(0, nation.gold - due);
         holder.gold += due;
+        if (nation.economy) nation.economy.treatyCost += due;
+        if (holder.economy) holder.economy.treatyRevenue = (holder.economy.treatyRevenue ?? 0) + due;
       }
     }
   }
