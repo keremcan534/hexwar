@@ -862,11 +862,15 @@ export class Screens {
           region: region.id,
         });
       }).join('');
-    return `<div class="card factory-picker">
-      <div class="card-head"><h3>Build in ${esc(region.name)}</h3>
-        <small>treasury ¤${Math.round(me.gold)} · ${esc(policyLabel('economy', factoryInvestmentRules(me).policy))}</small>
-        <button class="action" data-close-picker="1">Close</button></div>
-      <div class="fcard-grid">${options || '<p class="empty">Every industry is already present here.</p>'}</div>
+    // Popup: "+" ekranın üstünde açılınca sürekli kaydırmak gerekiyordu.
+    // Kaplama tıklaması da kapatır (bkz. bindScreenActions).
+    return `<div class="picker-overlay" data-picker-overlay="1">
+      <div class="card factory-picker">
+        <div class="card-head"><h3>Build in ${esc(region.name)}</h3>
+          <small>treasury ¤${Math.round(me.gold)} · ${esc(policyLabel('economy', factoryInvestmentRules(me).policy))}</small>
+          <button class="action" data-close-picker="1">Close</button></div>
+        <div class="fcard-grid">${options || '<p class="empty">Every industry is already present here.</p>'}</div>
+      </div>
     </div>`;
   }
 
@@ -1704,6 +1708,16 @@ export class Screens {
     }
     for (const btn of this.el.body.querySelectorAll('[data-close-picker]')) {
       btn.onclick = () => { this.industryPicker = null; this.refresh(); };
+    }
+    // Modalın dışına tıklamak da kapatır; içeriye tıklama kabarcıklanınca
+    // hedef kontrolüyle ayrılır.
+    const overlay = this.el.body.querySelector('[data-picker-overlay]');
+    if (overlay) {
+      overlay.onclick = (event) => {
+        if (event.target !== overlay) return;
+        this.industryPicker = null;
+        this.refresh();
+      };
     }
     for (const btn of this.el.body.querySelectorAll('[data-factory]')) {
       btn.onclick = () => {

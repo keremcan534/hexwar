@@ -15,7 +15,7 @@
 //   blocked   '' ya da neden metni; doluysa kart devre dışı çizilir
 //   region    data-region değeri (inşa hedefi)
 
-import { factoryEmblem, hasResourceArt, resourceGlyph } from './icons/index.js';
+import { factoryEmblem, resourceArtRinged, resourceGlyph } from './icons/index.js';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -45,10 +45,11 @@ export function factoryOptionCard(data) {
     perLevel = 0, blocked = '', region = '',
   } = data;
   const gain = perLevel >= 0;
-  // Boyalı madalyon kendi halkasını taşır; CSS'in çizdiği pirinç halka yalnız
-  // vektör glife eşlik eder, yoksa çift çerçeve görünür.
+  // Halkasını sanatın içinde taşıyan madalyonda (paket 1) CSS halkası kalkar,
+  // yoksa çift çerçeve görünür; halkasız nesne (paket 2) ve vektör glif CSS
+  // pirinç halkasının içine oturur.
   const outputId = outputs[0]?.id ?? null;
-  const painted = outputId && hasResourceArt(outputId);
+  const painted = outputId && resourceArtRinged(outputId);
   return `<button class="fcard${blocked ? ' blocked' : ''}" data-factory="${esc(typeId)}"
     data-region="${esc(region)}" ${blocked ? 'disabled' : ''}
     title="${esc(blocked || `${name} — ¤${Math.round(cost)}`)}">

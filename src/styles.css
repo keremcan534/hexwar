@@ -4202,3 +4202,35 @@ body.screen-open .layer-menu { display: none; }
 .project-icon { display: grid; place-items: center; }
 .project-icon img, .project-icon svg { width: 26px; height: 26px; }
 .project-icon svg { color: var(--gold-bright); }
+
+/* Paket 2: halkasiz nesne, CSS pirinc halkasinin icini doldurur. */
+.fcard-emblem:not(.painted) img {
+  width: 100%;
+  height: 100%;
+  display: block;
+  border-radius: 50%;
+}
+
+/* --- Insa secicisi bir popup (Vic2 tarzi) -------------------------------
+   "+" ekranin ustunde acilinca surekli asagi-yukari kaydirmak gerekiyordu;
+   modal gozun oldugu yerde acilir, arkasi kararir, disina tiklamak kapatir. */
+.picker-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-command);
+  display: grid;
+  place-items: center;
+  padding: var(--sp-4);
+  background: rgba(4, 7, 9, 0.62);
+}
+
+.picker-overlay .factory-picker {
+  width: min(1180px, 94vw);
+  max-height: 84vh;
+  overflow: auto;
+  margin: 0;
+  padding: var(--sp-4);
+  border: 1px solid rgba(174, 139, 74, 0.4);
+  background: var(--ui-grain), var(--panel-tone), var(--surface-1);
+  box-shadow: var(--frame-brass), 0 18px 48px rgba(0, 0, 0, 0.6);
+}

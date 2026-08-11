@@ -9,7 +9,7 @@
 // veriden türer (yeni tesis eklemek sanat istemez) ve kart, referanstaki
 // gibi boyalı bir madalyonla açılır. Ürünü boyasız tesis tür glifine düşer.
 
-import { RESOURCE_ART, RESOURCE_PATHS } from './resources.js';
+import { RESOURCE_ART, RESOURCE_PATHS, RINGED_ART } from './resources.js';
 import { FACTORY_PATHS } from './factories.js';
 
 const ART_BASE = 'assets/icons/resources';
@@ -31,6 +31,14 @@ const FALLBACK_FACTORY = '<circle cx="12" cy="12" r="4"/>'
 /** Bu malın boyalı madalyonu var mı? (Kart, halka çizimini buna göre seçer.) */
 export function hasResourceArt(goodId) {
   return Boolean(RESOURCE_ART[goodId]);
+}
+
+/**
+ * Halkası sanatın içinde mi? Paket 1 madalyonları kendi pirinç halkasını
+ * taşır; paket 2 nesneleri halkasızdır ve CSS halkasının içine oturur.
+ */
+export function resourceArtRinged(goodId) {
+  return RINGED_ART.has(goodId);
 }
 
 /** Mal ikonu: boyalı madalyon ya da çizgi-SVG. Satır içi kullanım. */
