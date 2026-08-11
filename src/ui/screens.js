@@ -1283,7 +1283,151 @@ export class Screens {
         <span>Projected weekly balance</span>
         <b class="${ledger.net >= 0 ? 'res-pos' : 'res-neg'}">${money(ledger.net)}</b>
       </div>
+    </div>
+    ${this.fiscalSummary(me, ledger)}
+    ${this.warBudgetPanel(me, ledger)}`;
+  }
+
+  /**
+   * Alt özet: hazine / borç / maliye etiketi üçlüsü + 52 haftalık hazine
+   * grafiği. Etiketler gerçek değerlerden türetilir, sabit metin yok.
+   */
+  fiscalSummary(me, ledger) {
+    const economy = me.economy;
+    const net = ledger.net ?? 0;
+    const debt = Math.max(0, me.debt ?? 0);
+    const capacity = debtCapacity(me);
+    // Rezerv göstergesi: açık sürerse hazine kaç haftada biter.
+    const reserveLine = net >= 0.05 ? 'Reserve trend: growing'
+      : net <= -0.05 && me.gold > 0
+        ? `At current deficit: ${Math.max(1, Math.floor(me.gold / -net))} weeks until exhaustion`
+        : net <= -0.05 ? 'Running on debt' : 'Reserve trend: flat';
+
+    const grade = (value, low, high, labels) => (
+      value < low ? labels[0] : value < high ? labels[1] : labels[2]);
+    const taxAvg = (economy.taxes.lower + economy.taxes.middle + economy.taxes.upper) / 3;
+    const readiness = Math.min(
+      (economy.militaryWages ?? 100) / 100,
+      ((economy.militaryProcurement ?? 100) / 100)
+        * Math.max(0.4, economy.military?.supplyIndex ?? 1),
+    );
+    const services = (Object.values(SOCIAL_PROGRAMS)
+      .reduce((sum, program) => sum + (economy.social[program.id] ?? 0), 0))
+      / (Object.keys(SOCIAL_PROGRAMS).length * 100);
+
+    const history = economy.treasuryHistory ?? [];
+    let chart = '<p class="hint">Treasury history appears after a few weeks of play.</p>';
+    if (history.length > 3) {
+      const width = 520;
+      const height = 64;
+      const low = Math.min(...history, 0);
+      const high = Math.max(...history, 1);
+      const span = Math.max(1, high - low);
+      const points = history.map((value, index) => `${(
+        (index / Math.max(1, history.length - 1)) * width).toFixed(1)},${(
+        height - ((value - low) / span) * (height - 6) - 3).toFixed(1)}`).join(' ');
+      const zeroY = height - ((0 - low) / span) * (height - 6) - 3;
+      chart = `<svg class="treasury-chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+        ${low < 0 ? `<line class="treasury-zero" x1="0" y1="${zeroY.toFixed(1)}" x2="${width}" y2="${zeroY.toFixed(1)}"></line>` : ''}
+        <polyline class="treasury-line" points="${points}"></polyline>
+      </svg>
+      <div class="price-chart-foot"><small>${history.length} weeks</small>
+        <small>low ¤${Math.round(low)} · high ¤${Math.round(high)}</small></div>`;
+    }
+
+    return `<div class="card fiscal-summary">
+      <div class="fiscal-summary-grid">
+        <div><small>TREASURY</small><b>¤${Math.round(me.gold)}</b>
+          <span class="${net >= 0 ? 'res-pos' : 'res-neg'}">${net >= 0 ? '+' : ''}¤${net.toFixed(1)}/week</span>
+          <em>${esc(reserveLine)}</em></div>
+        <div><small>DEBT</small><b>¤${Math.round(debt)}</b>
+          <span>interest ${(debtInterestRate(me) * 100).toFixed(1)}%</span>
+          <em>borrowing capacity ¤${Math.round(Math.max(0, capacity - debt))}</em></div>
+        <div><small>FISCAL EFFECTS</small>
+          <em>Tax burden: ${grade(taxAvg, 20, 45, ['Light', 'Moderate', 'Heavy'])}</em>
+          <em>Military readiness: ${grade(readiness, 0.5, 0.85, ['Starved', 'Partial', 'Fully funded'])}</em>
+          <em>Public services: ${grade(services, 0.25, 0.6, ['Underfunded', 'Adequate', 'Generous'])}</em>
+          <em>Administration: ${grade((economy.adminFunding ?? 100) / 100, 0.5, 0.85, ['Neglected', 'Adequate', 'Full'])}</em></div>
+      </div>
+      ${chart}
     </div>`;
+  }
+
+  /**
+   * Savaş Bütçesi: tek tıkla ayar DEĞİL, teklif paneli. "Bu tempoda kaç hafta
+   * savaşabilirim" sorusunun cevabı uygulamadan önce görünür; sihirli bonus
+   * yok, yalnız kaydıraçları öneriye çeker.
+   */
+  warBudgetPanel(me, ledger) {
+    const economy = me.economy;
+    const limits = fiscalPolicyLimits(me);
+    if (!this.warBudgetOpen) {
+      return `<div class="row-buttons fiscal-war-row">
+        <button class="action" data-war-budget-open="1">War Budget…</button>
+      </div>`;
+    }
+    const proposal = {
+      militaryWages: limits.armySpendingMax,
+      militaryProcurement: limits.armySpendingMax,
+      welfare: Math.min(economy.social.welfare ?? 0, 30),
+      education: Math.min(economy.social.education ?? 0, 60),
+      tariff: Math.max(economy.tariff, Math.min(limits.tariffMax, 25)),
+    };
+    // Tahmin: mevcut defter kalemleri yeni kaydıraç oranıyla doğrusal ölçeklenir.
+    // Piyasa tepkisi (fiyatlar, savaş tüketimi) bunu değiştirir; bu bir niyet
+    // tahminidir, taahhüt değil — etiketi de öyle söyler.
+    const scaleOr = (cost, from, to) => (from > 0 ? cost * (to / from) : cost);
+    const wagesCost = scaleOr(ledger.armyCost ?? 0, economy.militaryWages ?? 100, proposal.militaryWages);
+    const procurementCost = scaleOr(ledger.procurementCost ?? 0,
+      economy.militaryProcurement ?? 100, proposal.militaryProcurement)
+      / (this.atWarNow(me) ? 1 : 0.35);
+    const socialNow = ledger.socialCost ?? 0;
+    const socialThen = socialSpendingCost(me)
+      * ((proposal.welfare + proposal.education + (economy.social.health ?? 0))
+        / Math.max(1, (economy.social.welfare ?? 0) + (economy.social.education ?? 0)
+          + (economy.social.health ?? 0)));
+    const tariffThen = (ledger.tariffRevenue ?? 0)
+      * (economy.tariff !== 0 ? proposal.tariff / economy.tariff : 1);
+    const projected = (ledger.net ?? 0)
+      - (wagesCost - (ledger.armyCost ?? 0))
+      - (procurementCost - (ledger.procurementCost ?? 0))
+      - (socialThen - socialNow)
+      + (tariffThen - (ledger.tariffRevenue ?? 0));
+    const weeks = projected < -0.05
+      ? Math.max(1, Math.floor((me.gold + Math.max(0, debtCapacity(me) - (me.debt ?? 0)))
+        / -projected))
+      : null;
+
+    const row = (label, from, to, unit = '%') => `<div class="warbudget-row">
+      <span>${esc(label)}</span><em>${from}${unit} → <b>${to}${unit}</b></em></div>`;
+    return `<div class="card warbudget">
+      <div class="card-head"><h3>War Budget proposal</h3>
+        <small>estimate at wartime consumption — market prices will move</small></div>
+      ${row('Military wages', economy.militaryWages ?? 100, proposal.militaryWages)}
+      ${row('Military procurement', economy.militaryProcurement ?? 100, proposal.militaryProcurement)}
+      ${row('Welfare', economy.social.welfare ?? 0, proposal.welfare)}
+      ${row('Education', economy.social.education ?? 0, proposal.education)}
+      ${row('Tariffs', economy.tariff, proposal.tariff)}
+      <div class="fiscal-balance">
+        <span>Projected weekly balance (wartime)</span>
+        <b class="${projected >= 0 ? 'res-pos' : 'res-neg'}">${projected >= 0 ? '+' : ''}¤${projected.toFixed(1)}</b>
+      </div>
+      <p class="hint">${weeks
+    ? `Treasury and borrowing could sustain this for about <b>${weeks} weeks</b> of war.`
+    : 'This allocation pays for itself even at wartime tempo.'}</p>
+      <div class="row-buttons">
+        <button class="action" data-war-budget-apply="1">Apply War Budget</button>
+        <button class="action" data-war-budget-close="1">Cancel</button>
+      </div>
+    </div>`;
+  }
+
+  /** Şu an herhangi bir savaşta mıyız? (tempo tahmini için) */
+  atWarNow(me) {
+    const world = this.game.world;
+    return world.nations.some(
+      (other) => other.alive && other.id !== me.id && atWar(world, me.id, other.id),
+    );
   }
 
   // --- Nüfus: kişi başı nesne yerine 1.000 kişilik toplu sınıf kohortları ---
@@ -1776,6 +1920,25 @@ export class Screens {
         if (!buildFactory(game, me, btn.dataset.region, btn.dataset.factory)) return;
         // Kurulunca pencere kapanır: aynı state'e ikinci kez aynı tür zaten girmez.
         this.industryPicker = null;
+        this.refresh();
+      };
+    }
+    const warOpen = this.el.body.querySelector('[data-war-budget-open]');
+    if (warOpen) warOpen.onclick = () => { this.warBudgetOpen = true; this.refresh(); };
+    const warClose = this.el.body.querySelector('[data-war-budget-close]');
+    if (warClose) warClose.onclick = () => { this.warBudgetOpen = false; this.refresh(); };
+    const warApply = this.el.body.querySelector('[data-war-budget-apply]');
+    if (warApply) {
+      warApply.onclick = () => {
+        const limits = fiscalPolicyLimits(me);
+        setFiscalPolicy(me, 'militaryWages', limits.armySpendingMax);
+        setFiscalPolicy(me, 'militaryProcurement', limits.armySpendingMax);
+        setFiscalPolicy(me, 'social', Math.min(me.economy.social.welfare ?? 0, 30), 'welfare');
+        setFiscalPolicy(me, 'social', Math.min(me.economy.social.education ?? 0, 60), 'education');
+        setFiscalPolicy(me, 'tariff', Math.max(me.economy.tariff, Math.min(limits.tariffMax, 25)));
+        this.warBudgetOpen = false;
+        game.recomputeEconomy?.();
+        game.emit('economy', me.economy);
         this.refresh();
       };
     }

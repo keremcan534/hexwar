@@ -2180,6 +2180,10 @@ function updateLedger(nation, turn) {
   // bu haftanın kaydına girsin.
   settleDebt(nation);
   const interestCost = Math.max(0, economy.interestGold ?? 0);
+  // 52 haftalık hazine izi: bütçe ekranındaki grafik buradan çizilir.
+  economy.treasuryHistory ??= [];
+  economy.treasuryHistory.push(Number(nation.gold.toFixed(1)));
+  if (economy.treasuryHistory.length > 52) economy.treasuryHistory.shift();
   const income = cityRevenue + (economy.taxRevenue ?? 0)
     + Math.max(0, tariffRevenue) + treatyRevenue;
   const expenses = armyCost + administrationCost + socialCost + importCost

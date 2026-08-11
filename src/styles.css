@@ -4261,3 +4261,71 @@ body.screen-open .layer-menu { display: none; }
   background: var(--gold-dark);
   color: #f4e9c9;
 }
+
+/* Maliye ozeti: uclu grup + hazine grafigi. Kutu yigmak yerine ince ayrac. */
+.fiscal-summary { margin-top: var(--sp-4); }
+
+.fiscal-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--sp-4);
+  padding-bottom: var(--sp-3);
+  margin-bottom: var(--sp-3);
+  border-bottom: 1px solid var(--line);
+}
+
+.fiscal-summary-grid > div { display: grid; gap: 2px; align-content: start; }
+
+.fiscal-summary-grid small {
+  color: var(--text-mute);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+}
+
+.fiscal-summary-grid b {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 400;
+  line-height: 1.1;
+}
+
+.fiscal-summary-grid em {
+  font-style: normal;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+}
+
+.treasury-chart {
+  width: 100%;
+  height: 64px;
+  display: block;
+}
+
+.treasury-line {
+  fill: none;
+  stroke: var(--gold-bright);
+  stroke-width: 1.4;
+}
+
+.treasury-zero {
+  stroke: var(--viz-neg);
+  stroke-width: 1;
+  stroke-dasharray: 3 4;
+  opacity: 0.6;
+}
+
+/* Savas butcesi teklifi. */
+.fiscal-war-row { margin-top: var(--sp-3); justify-content: flex-end; }
+.warbudget { margin-top: var(--sp-3); }
+
+.warbudget-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-1) 0;
+  border-bottom: 1px solid var(--line);
+  font-size: var(--fs-sm);
+}
+
+.warbudget-row em { font-style: normal; font-variant-numeric: tabular-nums; }
+.warbudget-row b { color: var(--gold-bright); }
