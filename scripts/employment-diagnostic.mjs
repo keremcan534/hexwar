@@ -62,6 +62,7 @@ console.log(`HexWar kadro tanilamasi — ${YEARS} yil (${WEEKS} hafta), `
   + `${world.nations.length} ulke\n`);
 
 const marks = new Set([0, 5, 10, 15, 20, 25, 40, 60, 80, 100].map((y) => y * 52));
+const fillHistory = [];
 let bindingFlow = 0;
 let bindingStock = 0;
 let samples = 0;
@@ -95,6 +96,18 @@ for (let week = 0; week <= WEEKS; week++) {
       + ` | ${String(Math.round(totals.shareCap)).padStart(10)}`,
     );
   }
+  // Doluluk seyri: salinim olcumu icin duzenli ornekleme.
+  if (week % 13 === 0) {
+    const alive = world.nations.filter((n) => n.alive && n.economy);
+    let jobs = 0;
+    let employees = 0;
+    for (const nation of alive) {
+      const s = snapshot(nation);
+      jobs += s.jobs;
+      employees += s.employees;
+    }
+    if (jobs > 0) fillHistory.push({ week, fill: (employees / jobs) * 100 });
+  }
   // Hangi sinir bagliyor: isci stogu mu, aylik akis mi?
   if (week > 52 && week % 13 === 0) {
     for (const nation of world.nations) {
@@ -108,6 +121,30 @@ for (let week = 0; week <= WEEKS; week++) {
     }
   }
   if (week < WEEKS) game.turns.endTurn();
+}
+
+// Salinim: doluluk oturuyor mu, yoksa testere disi mi? Ardisik olcumler
+// arasindaki ortalama mutlak degisim (hafta basina puan) ve tepe-dip araligi.
+// Ham tepe-dip yaniltir: doluluk saglikli sekilde tirmanirken de araligi
+// buyutur. Once egilim cikarilir (komsu orneklerin ortalamasi), kalan artik
+// gercek salinimdir. Egilim ayrica kendi basina rapor edilir.
+if (fillHistory.length > 4) {
+  const ikinciYari = fillHistory.slice(Math.floor(fillHistory.length / 2));
+  let artikToplam = 0;
+  let enBuyukArtik = 0;
+  for (let i = 1; i < ikinciYari.length - 1; i++) {
+    const egilim = (ikinciYari[i - 1].fill + ikinciYari[i + 1].fill) / 2;
+    const artik = Math.abs(ikinciYari[i].fill - egilim);
+    artikToplam += artik;
+    enBuyukArtik = Math.max(enBuyukArtik, artik);
+  }
+  const orta = Math.max(1, ikinciYari.length - 2);
+  const egilimDegisim = ikinciYari[ikinciYari.length - 1].fill - ikinciYari[0].fill;
+  console.log('\nSalinim (ikinci yari, egilim cikarilmis):');
+  console.log(`  ortalama artik   %${(artikToplam / orta).toFixed(2)} (dusuk = puruzsuz)`);
+  console.log(`  en buyuk artik   %${enBuyukArtik.toFixed(1)}`);
+  console.log(`  egilim           %${egilimDegisim >= 0 ? '+' : ''}${egilimDegisim.toFixed(1)}`
+    + ` (${ikinciYari[0].fill.toFixed(1)} -> ${ikinciYari[ikinciYari.length - 1].fill.toFixed(1)})`);
 }
 
 console.log(`\nBagliyan sinir (${samples} ornek, kadrosu dolmamis ulkeler):`);

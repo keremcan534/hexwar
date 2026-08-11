@@ -268,6 +268,13 @@ const WAGE_PER_THROUGHPUT = 1.2;
 // Zarar eden fabrika işçi salar. Serbest kalan işgücü aynı ay kârlı olana akar.
 const LAYOFF_RATE = 0.06;
 
+/**
+ * Aylık kârın kâr eğilimine katkısı (üstel hareketli ortalama). 0.25 ile
+ * eğilim yaklaşık bir yıllık hafızaya sahip olur: tek kötü ay kadroyu
+ * dağıtmaz, üst üste gelen zarar dağıtır.
+ */
+const PROFIT_TREND_WEIGHT = 0.25;
+
 export const CLASS_INFO = {
   lower: { name: 'Lower Class', share: 0.78, color: '#b8a56a' },
   middle: { name: 'Middle Class', share: 0.17, color: '#62a7c8' },
@@ -1328,6 +1335,11 @@ function autoUpgradeFactory(game, nation, factory) {
   if (factory.level >= MAX_FACTORY_LEVEL || !factoryAtCapacity(factory)) return false;
   // Zarar eden tesise kimse sermaye koymaz.
   if (factory.profit <= 0) return false;
+  // Yeni tesise koyulan işgücü kapısı seviye atlamada da geçerli: tek tesisin
+  // dolu olması ülkenin kadro bulabileceği anlamına gelmez. Bu kapı yokken
+  // dolu fabrikalar büyüyüp ulusal doluluğu seyreltiyordu (ölçüldü: 15. yılda
+  // %58.7'ye çıkan doluluk 40. yılda %38.9'a geriliyordu).
+  if (laborFill(nation) < EXPANSION_FILL_FLOOR) return false;
   const state = ensureConstruction(nation);
   if (state.projects.some((project) => project.kind === PROJECT_KIND.UPGRADE
     && project.factoryId === factory.id)) return false;
@@ -1440,9 +1452,27 @@ function runFactoryEmployment(game, nation) {
   economy.industrialLayoffs = 0;
   if (!factories.length) return;
 
+  // İşten çıkarma da işe alımla aynı sinyale bakar. Eskiden alım ileriye
+  // dönük beklenen marja, çıkarma tek ayın gerçekleşen kârına bakıyordu:
+  // aynı tesis aynı ay hem "kârlı" diye doluyor hem "zararda" diye
+  // boşalıyordu. Testere dişinin motoru buydu (ölçüldü: tepe-dip %20.9).
   for (const factory of factories) {
-    if (factory.profit >= 0) continue;
-    const laid = factory.employees * LAYOFF_RATE;
+    // Kâr eğilimi: tek kötü ay kadroyu dağıtmasın, ısrarlı zarar dağıtsın.
+    const previous = factory.profitTrend ?? factory.profit ?? 0;
+    factory.profitTrend = previous * (1 - PROFIT_TREND_WEIGHT)
+      + (factory.profit ?? 0) * PROFIT_TREND_WEIGHT;
+    if (factory.profitTrend >= 0) continue;
+    // Fiyatlar toparlanma vaat ediyorsa kadro daha uzun tutulur: işçi
+    // yetiştirmek pahalıdır ve kapıda kuyruk yoktur. Veto değil fren —
+    // girdisi kesilen tesis (beklenen marj olumlu ama üretim yok) sonsuza
+    // kadar ücret ödemesin.
+    const recovering = expectedMargin(game.world, nation, factory) > 0;
+    // Zararın derinliğiyle orantılı çıkarma denendi ve GERİ ALINDI: kadroyu
+    // koruduğu için sanayi büyüdü (100. yılda doluluk %69) ama hammadde
+    // talebi arzı üçe katladı — arz/talep 0.74'ten 0.36'ya, tavandaki mal
+    // 16'dan 22'ye çıktı. İstihdam ile piyasa aynı kısıttan besleniyor;
+    // sanayiyi işgücü tarafından büyütmek arz sorununu yalnız taşıyor.
+    const laid = factory.employees * LAYOFF_RATE * (recovering ? 0.25 : 1);
     factory.employees = Math.max(0, factory.employees - laid);
     economy.industrialLayoffs += laid;
   }
