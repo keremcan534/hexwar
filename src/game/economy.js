@@ -1870,11 +1870,79 @@ function adjustFiscalAI(nation) {
       if (next !== current) { economy.taxes[classId] = next; break; }
     }
   }
-  // Korumacı hükümet sanayisini kollar, serbest ticaretçi gümrüğü indirir.
+  // Korumacı hükümet sanayisini kollar, serbest ticaretçi gümrüğü SIFIRA
+  // indirir — tabana değil. Taban artık −50 (ithalat sübvansiyonu) ve oraya
+  // sürüklenen YZ hazinesini kalıcı olarak ithalata akıtıyordu.
   const limits = fiscalPolicyLimits(nation);
-  const wanted = policyOf(nation, 'trade') === 'protectionism' ? limits.tariffMax : limits.tariffMin;
+  const wanted = policyOf(nation, 'trade') === 'protectionism' ? limits.tariffMax : 0;
   const drift = Math.sign(wanted - economy.tariff) * 2;
   if (drift) economy.tariff = clamp(economy.tariff + drift, limits.tariffMin, limits.tariffMax);
+
+  adjustWarFiscalAI(nation);
+}
+
+/**
+ * Savaş/barış/kriz maliyesi. Kusursuz değil, makul: savaşta ordu fonlanır ve
+ * kontrollü açık kabul edilir; barışta tedarik gevşer, zenginlik eğitime
+ * akar; kriz (borç kapasiteyi yarıladı) her şeyi keser.
+ */
+function adjustWarFiscalAI(nation) {
+  const economy = nation.economy;
+  // Savaş bilgisi runEconomicAI'da bağlanır (economy dünyayı tutmaz).
+  const wartime = economy.atWarCache ?? false;
+  const limits = fiscalPolicyLimits(nation);
+  const debt = Math.max(0, nation.debt ?? 0);
+  const crisis = debt > debtCapacity(nation) * 0.5 && nation.gold < 50;
+
+  const drift = (key, target, step = 5) => {
+    const current = economy[key] ?? 100;
+    if (Math.abs(current - target) < step) return;
+    setFiscalPolicy(nation, key, current + Math.sign(target - current) * step);
+  };
+
+  if (crisis) {
+    // Önce isteğe bağlı harcamalar: sübvansiyonlar kapanır, sosyal kısılır,
+    // tedarik tabana iner. Vergi tarafını mevcut "broke" dalı zaten sıkıyor.
+    for (const factory of economy.factories ?? []) factory.subsidized = false;
+    for (const programId of Object.keys(economy.social ?? {})) {
+      const level = economy.social[programId] ?? 0;
+      if (level > 0) setFiscalPolicy(nation, 'social', level - 10, programId);
+    }
+    drift('militaryProcurement', wartime ? 60 : 40);
+    drift('militaryWages', wartime ? limits.armySpendingMax : 60);
+    return;
+  }
+
+  if (wartime) {
+    drift('militaryWages', limits.armySpendingMax);
+    drift('militaryProcurement', limits.armySpendingMax);
+    // Sosyal harcama savaşta yarıya süzülür; barış gelince zenginlik geri açar.
+    const welfare = economy.social.welfare ?? 0;
+    if (welfare > 30) setFiscalPolicy(nation, 'social', welfare - 10, 'welfare');
+    // Savaş kasası: yalnız stratejik tesisler (silah/mühimmat) desteklenir.
+    for (const factory of economy.factories ?? []) {
+      const strategic = factory.typeId === 'ARMS_FACTORY'
+        || factory.typeId === 'AMMUNITION_FACTORY';
+      if (strategic && factory.profit < 0) factory.subsidized = true;
+    }
+    return;
+  }
+
+  // Barış: tedarik %60-75 bandına gevşer (stoklar doluysa para israfıdır),
+  // zengin hazine eğitimi besler, her fabrika sübvansiyonu kalkmaz ama
+  // stratejik olmayanlar bırakılır.
+  drift('militaryProcurement', 65);
+  drift('militaryWages', Math.min(limits.armySpendingMax, 85));
+  if (nation.gold > 400) {
+    const education = economy.social.education ?? 0;
+    if (education < 60) setFiscalPolicy(nation, 'social', education + 10, 'education');
+  }
+  for (const factory of economy.factories ?? []) {
+    if (factory.subsidized && factory.typeId !== 'ARMS_FACTORY'
+      && factory.typeId !== 'AMMUNITION_FACTORY') {
+      factory.subsidized = false;
+    }
+  }
 }
 
 function runPrivateSector(game, nation) {
@@ -1916,6 +1984,12 @@ function runEconomicAI(game, nation) {
   const economy = nation.economy;
   const regions = investmentTargets(game.world, nation);
   if (!regions.length) return;
+  // Maliye YZ'sinin savaş/barış kararı için: economy dünyayı bilmez, bağ
+  // burada kurulur.
+  economy.atWarCache = game.world.nations.some(
+    (other) => other.alive && other.id !== nation.id
+      && atWar(game.world, nation.id, other.id),
+  );
   adjustSocialAI(nation);
   adjustFiscalAI(nation);
 
@@ -2349,6 +2423,16 @@ export function runEconomy(game) {
       ammunition: landUnits * 0.06 * armyScale * tempo,
       fuel: landUnits * 0.04 * armyScale * tempo,
     };
+    // Hazırlık, ordunun TAM ihtiyacına göre ölçülür (tedarik kaydıracından
+    // bağımsız payda). Kısılmış talebe göre ölçülünce %25 tedarik "daha iyi
+    // ikmal" görünüyordu: az isteyen, istediğinin çoğunu alıyor (ölçüldü,
+    // TERS). Az almak ordunun ihtiyacını küçültmez.
+    const fullDemand = {
+      arms: landUnits * 0.08 * tempo,
+      groceries: landUnits * 0.05 * tempo,
+      ammunition: landUnits * 0.06 * tempo,
+      fuel: landUnits * 0.04 * tempo,
+    };
     let armySupplyWeighted = 0;
     let armySupplyTotal = 0;
     for (const [id, amount] of Object.entries(armyDemand)) {
@@ -2362,12 +2446,12 @@ export function runEconomy(game) {
       nation.gold -= consumptionCost;
       nation.economy.procurementGold = (nation.economy.procurementGold ?? 0) + consumptionCost;
       armySupplyWeighted += fulfilled * amount;
-      armySupplyTotal += amount;
+      armySupplyTotal += fullDemand[id] ?? amount;
     }
-    // İkmal endeksi: ordunun mal ihtiyacının ne kadarı gerçekten karşılanıyor.
-    // EMA (~7 hafta yarı ömür) tek kötü haftayı değil süregiden kıtlığı
-    // cezalandırır; takviye ve toparlanma bunu okur.
-    const weekSupply = armySupplyTotal > 0 ? armySupplyWeighted / armySupplyTotal : 1;
+    // İkmal endeksi: EMA (~7 hafta yarı ömür) tek kötü haftayı değil
+    // süregiden kıtlığı cezalandırır; takviye ve toparlanma bunu okur.
+    const weekSupply = armySupplyTotal > 0
+      ? clamp(armySupplyWeighted / armySupplyTotal, 0, 1) : 1;
     military.supplyIndex = clamp(
       (military.supplyIndex ?? 1) * 0.85 + weekSupply * 0.15, 0, 1,
     );

@@ -156,6 +156,87 @@ lever({
   asPlayer: true,
 });
 
+lever({
+  name: 'Tedarik kaydiragi -> ikmal endeksi',
+  area: 'maliye',
+  weeks: 30,
+  values: [25, 100],
+  setup: (g, v) => setFiscalPolicy(me(g), 'militaryProcurement', v),
+  measure: (g) => me(g).economy.military?.supplyIndex ?? 1,
+  unit: 'endeks',
+  expect: 'up',
+  asPlayer: true,
+})
+
+lever({
+  name: 'Yonetim butcesi -> vergi geliri',
+  area: 'maliye',
+  values: [30, 100],
+  setup: (g, v) => setFiscalPolicy(me(g), 'adminFunding', v),
+  measure: (g) => me(g).economy.ledger?.taxRevenue ?? 0,
+  unit: 'altin/hafta',
+  expect: 'up',
+  asPlayer: true,
+});
+
+invariant({
+  name: 'Subvansiyon gercek zarari oduyor ve tesisi ayakta tutuyor',
+  area: 'maliye',
+  check: () => {
+    const g = headless('subsidy');
+    run(g, 30);
+    const n = me(g);
+    g.turns.playerNation = n.id;
+    // Zarar eden bir tesis bul (yoksa birini zarara zorla).
+    let target = (n.economy.factories ?? []).find((f) => f.profit < 0);
+    if (!target) {
+      target = (n.economy.factories ?? [])[0];
+      if (!target) return { ok: false, note: 'tesis yok' };
+    }
+    target.subsidized = true;
+    let paid = 0;
+    for (let i = 0; i < 8; i++) {
+      g.turns.endTurn();
+      paid += n.economy.ledger?.subsidyCost ?? 0;
+    }
+    return {
+      ok: target.profit >= 0,
+      note: `8 haftada odenen ${paid.toFixed(1)} · tesis kari ${target.profit.toFixed(2)}`,
+    };
+  },
+});
+
+invariant({
+  name: 'Borc faiz isliyor ve bolluk geri oduyor',
+  area: 'maliye',
+  check: () => {
+    const g = headless('debt');
+    run(g, 30);
+    const n = me(g);
+    g.turns.playerNation = n.id;
+    n.gold = -200;            // acik: borclanma tetiklensin
+    g.turns.endTurn();
+    const borrowed = n.economy.ledger?.borrowed ?? 0;
+    let interest = 0;
+    for (let i = 0; i < 6; i++) {
+      g.turns.endTurn();
+      interest += n.economy.ledger?.interestCost ?? 0;
+    }
+    const debtAfter = n.debt ?? 0;
+    n.gold = 800;             // bolluk: geri odeme calissin
+    let repaid = 0;
+    for (let i = 0; i < 10; i++) {
+      g.turns.endTurn();
+      repaid += n.economy.ledger?.repaid ?? 0;
+    }
+    return {
+      ok: borrowed > 0 && interest > 0 && repaid > 0 && (n.debt ?? 0) < debtAfter,
+      note: `borclanilan ${borrowed.toFixed(0)} · faiz ${interest.toFixed(2)}`
+        + ` · geri odenen ${repaid.toFixed(0)} · kalan ${(n.debt ?? 0).toFixed(0)}`,
+    };
+  },
+});
+
 // ---------------------------------------------------------------- TICARET ---
 
 lever({
