@@ -21,6 +21,7 @@ import { provinceName } from '../game/provinces.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { hegemonyScore, scoreboard } from '../game/hegemony.js';
 import { factoryOptionCard } from './factoryCard.js';
+import { factoryEmblem, resourceGlyph } from './icons/index.js';
 import {
   CLASS_INFO, CLASS_PROFESSIONS, FACTORIES, GOODS, GOOD_IDS, MAX_FACTORY_LEVEL,
   MILITARY_EQUIPMENT, POPULATION_COHORT, PROFESSION_INFO,
@@ -891,7 +892,7 @@ export class Screens {
       // beklediğini söylemek, boşuna kuyruk sırası değiştirmesini önler.
       const waiting = owed > 0 && project.progress >= project.work * (project.funded / Math.max(1, project.cost));
       return `<div class="industry-project ${waiting ? 'stalled' : ''}">
-        <span class="project-icon">${type?.icon ?? '🏭'}</span>
+        <span class="project-icon">${factoryEmblem(project.typeId, Object.keys(type?.outputs ?? {})[0] ?? null)}</span>
         <span class="project-name"><b>${esc(type?.name ?? project.typeId)}</b>
           <small>${project.kind === 'upgrade' ? 'expansion' : 'new plant'} · ${esc(project.regionName ?? '')} · ${isPrivate ? 'private' : 'state'}</small></span>
         <span class="project-meters">
@@ -932,16 +933,18 @@ export class Screens {
     // Victoria 2 kutucuğunun düzeni: üstte seviye + ürettiği mal, altında
     // tükettiği malların ikonları, onun altında her girdinin tedarik çubuğu,
     // en altta haftalık kâr. Çubuk kısaysa o girdi bulunamıyor demektir.
+    // Emoji yerine birleşik ikon sistemi: silah fabrikası seçili hattın
+    // ekipman ikonunu, digerleri ürünün madalyonunu/glifini gösterir.
     const outputs = factory.typeId === 'ARMS_FACTORY'
-      ? [MILITARY_EQUIPMENT[factory.lineEquipment]?.icon ?? '⚔']
-      : Object.keys(type.outputs).map((id) => GOODS[id].icon);
+      ? [resourceGlyph(factory.lineEquipment ?? 'arms')]
+      : Object.keys(type.outputs).map((id) => resourceGlyph(id));
     const inputs = Object.keys(type.inputs);
     const supplyOf = (goodId) => {
       const flow = me.economy?.goodsFlow?.[goodId];
       if (!flow || !(flow.demand > 0)) return 1;
       return Math.max(0, Math.min(1, (flow.fulfilled ?? 0) / flow.demand));
     };
-    const inputIcons = inputs.map((id) => `<i>${GOODS[id].icon}</i>`).join('') || '<i>·</i>';
+    const inputIcons = inputs.map((id) => `<i>${resourceGlyph(id)}</i>`).join('') || '<i>·</i>';
     const inputBars = inputs.map((id) => {
       const supply = supplyOf(id);
       return `<i class="${supply < 0.75 ? 'short' : ''}" style="height:${Math.round(supply * 100)}%"

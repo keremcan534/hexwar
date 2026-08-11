@@ -4165,3 +4165,40 @@ body.screen-open .layer-menu { display: none; }
 .fcard-body, .fcard-emblem { position: relative; z-index: 1; }
 
 .fcard.blocked .fcard-wash { opacity: 0.04; filter: grayscale(1); }
+
+/* Asama 5: ekran duzeyi cila. */
+
+/* Referans yogunlugu: genis panelde 4 sutun (340px taban). */
+.fcard-grid { grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); }
+
+/* Amblem referanstaki gibi biraz daha iri. */
+.fcard-emblem { width: 62px; height: 62px; }
+
+/* "Build in X" satiri bir bolum seridi gibi: kucuk buyuk-harf etiket,
+   pirinc vurgulu bolge adi, sagda Close. */
+.factory-picker > .card-head h3 {
+  font-family: var(--font-display);
+  letter-spacing: 0.04em;
+}
+
+.factory-picker > .card-head {
+  border-bottom: 1px solid rgba(174, 139, 74, 0.3);
+  padding-bottom: var(--sp-2);
+}
+
+/* Kutucuk izgarasi ve proje listesi de ayni ikon sistemine gecti:
+   emoji yerine img/svg — boyut kabi burada. */
+.factory-slot-head b,
+.factory-goods i {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.factory-slot-head b img, .factory-slot-head b svg { width: 20px; height: 20px; }
+.factory-goods i img, .factory-goods i svg { width: 13px; height: 13px; }
+.factory-goods i svg { color: var(--text-dim); }
+
+.project-icon { display: grid; place-items: center; }
+.project-icon img, .project-icon svg { width: 26px; height: 26px; }
+.project-icon svg { color: var(--gold-bright); }
