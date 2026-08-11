@@ -28,6 +28,7 @@
     "diagnose:employment": "node scripts/employment-diagnostic.mjs",
     "diagnose:war": "node scripts/war-tempo-diagnostic.mjs",
     "audit": "node scripts/mechanics-audit.mjs",
-    "diagnose:budget": "node scripts/budget-diagnostic.mjs"
+    "diagnose:budget": "node scripts/budget-diagnostic.mjs",
+    "diagnose:tax": "node scripts/tax-behavior-diagnostic.mjs"
   }
 }
