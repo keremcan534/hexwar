@@ -4134,3 +4134,34 @@ body.screen-open .layer-menu { display: none; }
 @media (prefers-reduced-motion: reduce) {
   .fcard:not(.blocked):hover { transform: none; }
 }
+
+/* Asama 4: kart ici dusuk kontrast illustrasyon. Ayni amblem buyutulup sag
+   kenara yaslanir ve radyal maskeyle karta erir — referanstaki "kartin
+   icinde silik resim" katmani, ek sanat dosyasi olmadan veriden turer. */
+.fcard-wash {
+  position: absolute;
+  right: -22px;
+  top: 50%;
+  width: 120px;
+  height: 120px;
+  transform: translateY(-50%);
+  pointer-events: none;
+  opacity: 0.07;
+  color: var(--gold-bright);
+  -webkit-mask-image: radial-gradient(circle at 60% 50%, #000 30%, transparent 74%);
+  mask-image: radial-gradient(circle at 60% 50%, #000 30%, transparent 74%);
+}
+
+.fcard-wash img,
+.fcard-wash svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.fcard-wash img { border-radius: 50%; filter: saturate(0.6); }
+
+/* Metin yikamanin ustunde kalir. */
+.fcard-body, .fcard-emblem { position: relative; z-index: 1; }
+
+.fcard.blocked .fcard-wash { opacity: 0.04; filter: grayscale(1); }

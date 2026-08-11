@@ -52,6 +52,7 @@ export function factoryOptionCard(data) {
   return `<button class="fcard${blocked ? ' blocked' : ''}" data-factory="${esc(typeId)}"
     data-region="${esc(region)}" ${blocked ? 'disabled' : ''}
     title="${esc(blocked || `${name} — ¤${Math.round(cost)}`)}">
+    <span class="fcard-wash" aria-hidden="true">${factoryEmblem(typeId, outputId)}</span>
     <span class="fcard-emblem${painted ? ' painted' : ''}">${factoryEmblem(typeId, outputId)}</span>
     <span class="fcard-body">
       <span class="fcard-head">
