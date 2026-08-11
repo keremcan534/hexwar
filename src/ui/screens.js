@@ -1024,12 +1024,14 @@ export class Screens {
       <span class="factory-goods">${inputIcons}</span>
       <span class="factory-supply">${inputBars}</span>
       <span class="meter"><i style="width:${Math.max(0, Math.min(100, employment))}%"></i></span>
-      <span class="factory-slot-profit ${profitable ? 'res-pos' : 'res-neg'}">${profitable ? '+' : ''}${factory.profit.toFixed(1)}</span>
-      <button class="factory-subsidy${factory.subsidized ? ' on' : ''}"
-        data-subsidize="${esc(factory.id)}"
-        title="${factory.subsidized
+      <span class="factory-slot-foot">
+        <span class="factory-slot-profit ${profitable ? 'res-pos' : 'res-neg'}">${profitable ? '+' : ''}${factory.profit.toFixed(1)}</span>
+        <button class="factory-subsidy${factory.subsidized ? ' on' : ''}"
+          data-subsidize="${esc(factory.id)}"
+          title="${factory.subsidized
     ? `Subsidised — treasury covered −¤${(factory.subsidyPaid ?? 0).toFixed(1)} this week. Click to stop.`
     : 'Subsidise: the treasury covers this plant’s losses so it keeps its workers.'}">¤</button>
+      </span>
     </div>`;
   }
 

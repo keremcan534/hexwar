@@ -2443,9 +2443,9 @@ body.screen-open .layer-menu { display: none; }
    cubuklari, kadro ve kar. Genislik bu bes satiri tasiyacak kadar. */
 .factory-slot {
   display: grid;
-  gap: 3px;
-  width: 78px;
-  padding: 5px 4px 4px;
+  gap: 4px;
+  width: 104px;
+  padding: 6px 5px 5px;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--surface-sunken);
@@ -2473,15 +2473,22 @@ body.screen-open .layer-menu { display: none; }
   gap: 2px;
 }
 
-.factory-slot-head b { font-size: 18px; line-height: 1.1; }
+.factory-slot-head b {
+  font-size: 18px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
 
 .factory-goods {
   display: flex;
   justify-content: center;
-  gap: 1px;
-  min-height: 15px;
+  gap: 3px;
+  min-height: 22px;
   font-size: 13px;
-  opacity: 0.9;
+  opacity: 0.95;
 }
 
 .factory-goods i { font-style: normal; }
@@ -4195,8 +4202,10 @@ body.screen-open .layer-menu { display: none; }
   gap: 2px;
 }
 
-.factory-slot-head b img, .factory-slot-head b svg { width: 20px; height: 20px; }
-.factory-goods i img, .factory-goods i svg { width: 13px; height: 13px; }
+/* Kutucuk ikon boyutlari TEK yerde. Once 2485'te ikinci bir tanim vardi ve
+   bu blok onu sessizce eziyordu; "ikonlar neden buyumuyor" bundandi. */
+.factory-slot-head b img, .factory-slot-head b svg { width: 34px; height: 34px; }
+.factory-goods i img, .factory-goods i svg { width: 20px; height: 20px; }
 .factory-goods i svg { color: var(--text-dim); }
 
 .project-icon { display: grid; place-items: center; }
@@ -4238,12 +4247,19 @@ body.screen-open .layer-menu { display: none; }
 /* Subvansiyon dugmesi: kutucugun kosesinde kucuk pirinc rozet. */
 .factory-slot { position: relative; }
 
+/* Alt satir: solda kar, sagda subvansiyon rozeti. Rozet eskiden mutlak
+   konumluydu ve urun ikonunun tam ustune biniyordu (kullanici raporu). */
+.factory-slot-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 4px;
+}
+
 .factory-subsidy {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 16px;
-  height: 16px;
+  flex: none;
+  width: 17px;
+  height: 17px;
   padding: 0;
   border: 1px solid var(--line);
   border-radius: 50%;
