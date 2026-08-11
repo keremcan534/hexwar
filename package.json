@@ -29,6 +29,7 @@
     "diagnose:war": "node scripts/war-tempo-diagnostic.mjs",
     "audit": "node scripts/mechanics-audit.mjs",
     "diagnose:budget": "node scripts/budget-diagnostic.mjs",
-    "diagnose:tax": "node scripts/tax-behavior-diagnostic.mjs"
+    "diagnose:tax": "node scripts/tax-behavior-diagnostic.mjs",
+    "diagnose:pops": "node scripts/population-cohort-diagnostic.mjs"
   }
 }

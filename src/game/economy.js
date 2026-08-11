@@ -1597,12 +1597,18 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
   // `factory.jobs` ile aynı kanal — veri nesne üzerinden taşınır.
   for (const factory of economy.factories) {
     const tile = world.get(factory.q, factory.r);
-    if (tile?.province) tile.province.industrialEmployees = 0;
+    if (tile?.province) {
+      tile.province.industrialEmployees = 0;
+      tile.province.industrialJobs = 0;
+    }
   }
   for (const factory of economy.factories) {
     const tile = world.get(factory.q, factory.r);
     if (tile?.province) {
       tile.province.industrialEmployees += Math.max(0, factory.employees ?? 0);
+      // Kapasite de yazılır: POP kohortları işçiyi işin OLDUĞU yere dağıtır,
+      // dolu kadroya göre değil (bkz. population.js weightOf).
+      tile.province.industrialJobs += Math.max(0, factoryJobs(factory));
     }
   }
 

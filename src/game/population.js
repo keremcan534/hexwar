@@ -1,0 +1,280 @@
+// POP kohortları: "bu ülkede kim, nerede, ne iş yaparak yaşıyor?"
+//
+// Bu dosya YENİ BİR NÜFUS SİSTEMİ DEĞİLDİR. Mevcut kanonik verinin üzerine
+// kurulmuş bir türetme katmanıdır ve iki kaynağı birleştirir:
+//
+//   province.population        — nerede (kare başına gerçek nüfus)
+//   economy.professionCounts   — ne iş (ulusal meslek sayaçları)
+//   tile.culture               — hangi kültür (kare başına)
+//
+// Neden türetme: ikinci bir nüfus deposu tutmak, iki sayacın zamanla
+// birbirinden ayrılması demektir (ekranda 300 bin işçi, meslek tablosunda
+// 80 bin — bu hata bu depoda bir kez yaşandı). Türetilen kohortların toplamı
+// tanım gereği ulusal toplamı tutar; `reconcile` bunu her hafta kanıtlar.
+//
+// Dağıtım keyfi değil, gerçek zemine oturur:
+//   farmers   -> tarım RGO istihdamı        (provinceRgoStatus)
+//   laborers  -> madencilik RGO istihdamı   (provinceRgoStatus)
+//   workers   -> province.industrialEmployees (runFactories yazar)
+//   diğerleri -> nüfus payı, orta/üst sınıf şehirlere ağırlıklı
+//
+// Katman notu: yalnız okur. Simülasyonu değiştirmez, DOM bilmez.
+
+import {
+  CLASS_INFO, PROFESSION_INFO, factoryJobs,
+} from './economy.js';
+import { RGO_TYPES, provinceRgoStatus } from './provinces.js';
+
+/** Bu meslek hangi zemine göre dağıtılır? */
+const BASIS = {
+  farmers: 'agriculture',
+  laborers: 'extraction',
+  workers: 'industry',
+  clerks: 'urban',
+  artisans: 'urban',
+  officers: 'population',
+  capitalists: 'urban',
+  aristocrats: 'population',
+};
+
+/**
+ * Bir province'in verilen zemindeki ağırlığı. Sıfır dönerse o meslek orada
+ * yok demektir — kohort da üretilmez.
+ */
+function weightOf(tile, basis) {
+  const province = tile.province;
+  if (!province) return 0;
+  if (basis === 'population') return Math.max(0, province.population);
+  if (basis === 'urban') {
+    // Kâtip, zanaatkâr ve kapitalist şehirde toplanır; şehirsiz province
+    // yine de az bir pay alır (kasaba esnafı).
+    const urban = tile.city ? 3 + tile.city.level : 1;
+    return Math.max(0, province.population) * urban;
+  }
+  if (basis === 'industry') {
+    // Zemin dolu kadro değil, KAPASITEDIR: işçi işin olduğu yere gider ve
+    // boşta kalan kadro gerçek işsizliği verir. Dolu kadroya göre dağıtınca
+    // işsizlik tanım gereği sıfırlanıyordu.
+    const jobs = province.industrialJobs ?? 0;
+    return Math.max(0, jobs > 0 ? jobs : (province.industrialEmployees ?? 0));
+  }
+  const status = provinceRgoStatus(tile);
+  const track = RGO_TYPES[province.rgo]?.track;
+  if (basis === 'agriculture') return track === 'agriculture' ? status.employed : 0;
+  if (basis === 'extraction') return track === 'extraction' ? status.employed : 0;
+  return 0;
+}
+
+/**
+ * Tam sayı dağıtımı, en büyük artık yöntemiyle. Yuvarlama artığı kaybolmasın
+ * ya da hayalet nüfus üretmesin: paylar toplamı her zaman `total`dir.
+ */
+function allocate(total, weights) {
+  const sum = weights.reduce((acc, value) => acc + value, 0);
+  const counts = new Array(weights.length).fill(0);
+  if (total <= 0) return counts;
+  if (sum <= 0) {
+    // Zemin yoksa ilk province hepsini alır: nüfus buharlaşmaz.
+    counts[0] = total;
+    return counts;
+  }
+  const exact = weights.map((weight) => (weight / sum) * total);
+  let used = 0;
+  for (let i = 0; i < counts.length; i++) {
+    counts[i] = Math.floor(exact[i]);
+    used += counts[i];
+  }
+  // Kalanı en büyük kesirli artığa sahip olanlara dağıt.
+  const order = exact
+    .map((value, index) => ({ index, frac: value - Math.floor(value) }))
+    .sort((a, b) => b.frac - a.frac);
+  let remainder = total - used;
+  for (let i = 0; remainder > 0; i = (i + 1) % order.length) {
+    counts[order[i].index]++;
+    remainder--;
+  }
+  return counts;
+}
+
+/** Ülkenin sahip olduğu, nüfus taşıyan kareler. */
+function ownedProvinces(world, nation) {
+  const list = [];
+  world.forEach((tile) => {
+    if (tile.owner === nation.id && tile.province) list.push(tile);
+  });
+  return list;
+}
+
+/**
+ * Bir kohortun ekonomisi. Sınıf düzeyindeki gerçek rakamlar kişi başına
+ * indirgenip kohort boyutuyla çarpılır — uydurma yok, sınıfın kendi
+ * geliri/vergisi/sepeti neyse kohorta o oranda düşer.
+ */
+function cohortEconomics(nation, classId, size) {
+  const socialClass = nation.economy?.classes?.[classId];
+  if (!socialClass || !(socialClass.population > 0)) {
+    return { income: 0, taxPaid: 0, consumption: 0, disposable: 0, needsFulfilled: 1 };
+  }
+  const share = size / socialClass.population;
+  const consumption = (socialClass.needsCost ?? 0) * share;
+  const disposable = (socialClass.needsBudget ?? 0) * share;
+  return {
+    income: (socialClass.income ?? 0) * share,
+    taxPaid: (socialClass.taxPaid ?? 0) * share,
+    consumption,
+    disposable,
+    // Sepetinin ne kadarını karşılayabiliyor (1 = tamamı).
+    needsFulfilled: consumption > 0 ? Math.min(1, disposable / consumption) : 1,
+  };
+}
+
+/**
+ * Ülkenin POP kohortları. Bir kohort = province × meslek; kültür kareden
+ * gelir (bir karede tek kültür yaşar, o yüzden ayrı kırılım gerekmez).
+ * Boyu sıfır olan kohort üretilmez.
+ */
+export function nationCohorts(world, nation) {
+  const economy = nation?.economy;
+  if (!economy?.professionCounts) return [];
+  const tiles = ownedProvinces(world, nation);
+  if (!tiles.length) return [];
+
+  const cohorts = [];
+  for (const [professionId, profession] of Object.entries(PROFESSION_INFO)) {
+    const total = Math.max(0, Math.round(economy.professionCounts[professionId] ?? 0));
+    if (total <= 0) continue;
+    const basis = BASIS[professionId] ?? 'population';
+    let weights = tiles.map((tile) => weightOf(tile, basis));
+    // Zemin tamamen boşsa (ör. hiç fabrika yok ama işçi sayılmış) nüfusa düş:
+    // meslek kaybolmasın, hepsi ilk kareye yığılmasın.
+    if (weights.every((value) => value <= 0)) {
+      weights = tiles.map((tile) => weightOf(tile, 'population'));
+    }
+    const sizes = allocate(total, weights);
+    for (let i = 0; i < tiles.length; i++) {
+      const size = sizes[i];
+      if (size <= 0) continue;
+      const tile = tiles[i];
+      const classId = profession.classId;
+      cohorts.push({
+        id: `${tile.q}:${tile.r}:${professionId}`,
+        tile,
+        q: tile.q,
+        r: tile.r,
+        professionId,
+        professionName: profession.name,
+        classId,
+        className: CLASS_INFO[classId]?.name ?? classId,
+        culture: tile.culture,
+        size,
+        ...cohortEconomics(nation, classId, size),
+        ...cohortEmployment(world, nation, tile, professionId, size),
+      });
+    }
+  }
+  return cohorts;
+}
+
+/**
+ * İstihdam. Yalnız gerçek iş yeri olan meslekler için anlamlı: fabrika işçisi
+ * o province'teki tesis kadrosuna, çiftçi/madenci RGO kadrosuna bakar.
+ * Diğer meslekler için istihdam kavramı yok (null) — uydurma oran üretilmez.
+ */
+function cohortEmployment(world, nation, tile, professionId, size) {
+  if (professionId === 'workers') {
+    const factories = (nation.economy?.factories ?? [])
+      .filter((factory) => factory.q === tile.q && factory.r === tile.r);
+    const employed = Math.min(size, Math.round(
+      factories.reduce((sum, factory) => sum + (factory.employees ?? 0), 0),
+    ));
+    const vacancies = Math.max(0, Math.round(
+      factories.reduce((sum, factory) => sum + factoryJobs(factory) - (factory.employees ?? 0), 0),
+    ));
+    return {
+      employed,
+      unemployed: Math.max(0, size - employed),
+      vacancies,
+      workplaces: factories.length,
+    };
+  }
+  if (professionId === 'farmers' || professionId === 'laborers') {
+    const status = provinceRgoStatus(tile);
+    const employed = Math.min(size, Math.round(status.employed));
+    return {
+      employed,
+      unemployed: Math.max(0, size - employed),
+      vacancies: Math.max(0, Math.round(status.vacancies)),
+      workplaces: status.type ? 1 : 0,
+    };
+  }
+  return { employed: null, unemployed: null, vacancies: 0, workplaces: 0 };
+}
+
+/**
+ * Muhasebe kanıtı: kohort toplamı ulusal meslek sayaçlarını ve sınıf
+ * toplamlarını tutuyor mu? Hayalet nüfus ya da kayıp nüfus varsa burada
+ * görünür (bkz. population-cohort-diagnostic).
+ */
+export function reconcile(world, nation) {
+  const cohorts = nationCohorts(world, nation);
+  const economy = nation.economy ?? {};
+  const byProfession = {};
+  const byClass = {};
+  let total = 0;
+  for (const cohort of cohorts) {
+    byProfession[cohort.professionId] = (byProfession[cohort.professionId] ?? 0) + cohort.size;
+    byClass[cohort.classId] = (byClass[cohort.classId] ?? 0) + cohort.size;
+    total += cohort.size;
+  }
+  const professionDrift = Object.entries(PROFESSION_INFO).map(([id]) => ({
+    id,
+    expected: Math.round(economy.professionCounts?.[id] ?? 0),
+    actual: byProfession[id] ?? 0,
+  }));
+  const classDrift = Object.keys(CLASS_INFO).map((id) => ({
+    id,
+    expected: Math.round(economy.classes?.[id]?.population ?? 0),
+    actual: byClass[id] ?? 0,
+  }));
+  return {
+    cohorts: cohorts.length,
+    total,
+    cohortPopulation: Math.round(economy.cohortPopulation ?? 0),
+    professionDrift,
+    classDrift,
+    worstDrift: Math.max(
+      0,
+      ...professionDrift.map((row) => Math.abs(row.expected - row.actual)),
+      ...classDrift.map((row) => Math.abs(row.expected - row.actual)),
+    ),
+  };
+}
+
+/** Ekranın üstündeki dağılımlar için toplayıcı. */
+export function summarize(cohorts) {
+  const bucket = (keyFn) => {
+    const map = new Map();
+    for (const cohort of cohorts) {
+      const key = keyFn(cohort);
+      map.set(key, (map.get(key) ?? 0) + cohort.size);
+    }
+    return [...map].sort((a, b) => b[1] - a[1]);
+  };
+  const total = cohorts.reduce((sum, cohort) => sum + cohort.size, 0);
+  const employable = cohorts.filter((cohort) => cohort.employed !== null);
+  const employed = employable.reduce((sum, cohort) => sum + cohort.employed, 0);
+  const employableTotal = employable.reduce((sum, cohort) => sum + cohort.size, 0);
+  return {
+    total,
+    byClass: bucket((cohort) => cohort.classId),
+    byProfession: bucket((cohort) => cohort.professionId),
+    byCulture: bucket((cohort) => cohort.culture),
+    employment: employableTotal > 0 ? employed / employableTotal : null,
+    employed,
+    employableTotal,
+    // Ağırlıklı ortalama ihtiyaç karşılama: küçük kohort büyüğü ezmesin.
+    needsFulfilled: total > 0
+      ? cohorts.reduce((sum, cohort) => sum + cohort.needsFulfilled * cohort.size, 0) / total
+      : 1,
+  };
+}
