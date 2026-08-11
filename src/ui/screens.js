@@ -74,6 +74,33 @@ function esc(s) {
   ));
 }
 
+/** Bütçe: bu hafta ithal edilen askeri mallar — "ammunition 4.2 · fuel 2.0". */
+function strategicImportNote(me) {
+  const military = me.economy?.military ?? {};
+  const items = Object.entries(MILITARY_EQUIPMENT)
+    .map(([id, type]) => ({ name: type.name, amount: military[`${id}Imported`] ?? 0 }))
+    .filter((row) => row.amount > 0.05)
+    .map((row) => `${row.name.toLowerCase()} ${row.amount.toFixed(1)}`);
+  return items.length
+    ? `this week: ${items.join(' · ')}`
+    : 'buys critical equipment abroad when stock runs short';
+}
+
+/** Bütçe: sübvanse edilen tesisler — "3 plants: Steel Mill −3.7 …". */
+function subsidyNote(me) {
+  const rows = (me.economy?.factories ?? [])
+    .filter((factory) => factory.subsidized)
+    .map((factory) => ({
+      name: FACTORIES[factory.typeId]?.name ?? factory.typeId,
+      paid: factory.subsidyPaid ?? 0,
+    }))
+    .sort((a, b) => b.paid - a.paid);
+  if (!rows.length) return '';
+  const top = rows.slice(0, 3)
+    .map((row) => `${row.name} −${row.paid.toFixed(1)}`).join(' · ');
+  return `${rows.length} subsidised ${rows.length === 1 ? 'plant' : 'plants'}: ${top}`;
+}
+
 export class Screens {
   constructor(game) {
     this.game = game;
@@ -963,6 +990,11 @@ export class Screens {
       <span class="factory-supply">${inputBars}</span>
       <span class="meter"><i style="width:${Math.max(0, Math.min(100, employment))}%"></i></span>
       <span class="factory-slot-profit ${profitable ? 'res-pos' : 'res-neg'}">${profitable ? '+' : ''}${factory.profit.toFixed(1)}</span>
+      <button class="factory-subsidy${factory.subsidized ? ' on' : ''}"
+        data-subsidize="${esc(factory.id)}"
+        title="${factory.subsidized
+    ? `Subsidised — treasury covered −¤${(factory.subsidyPaid ?? 0).toFixed(1)} this week. Click to stop.`
+    : 'Subsidise: the treasury covers this plant’s losses so it keeps its workers.'}">¤</button>
     </div>`;
   }
 
@@ -1213,9 +1245,14 @@ export class Screens {
           ${socialLines}
         </div>
         ${flatLine('Construction', ledger.constructionCost ?? 0, 'res-neg',
-    'upkeep of everything on the build queue')}
+    'sector upkeep of the build queue')}
+        ${(ledger.projectCost ?? 0) > 0
+    ? flatLine('Project funding', ledger.projectCost, 'res-neg',
+      'state money paid into factories and works this week') : ''}
         ${flatLine('Strategic imports', ledger.importCost ?? 0, 'res-neg',
-    'equipment bought abroad when factories fall short')}
+    strategicImportNote(me))}
+        ${(ledger.subsidyCost ?? 0) > 0
+    ? flatLine('Industrial subsidies', ledger.subsidyCost, 'res-neg', subsidyNote(me)) : ''}
         ${(ledger.treatyCost ?? 0) > 0
     ? flatLine('Treaty obligations', ledger.treatyCost, 'res-neg',
       'reparations or tribute imposed on us at a peace table') : ''}
@@ -1739,6 +1776,17 @@ export class Screens {
         if (!buildFactory(game, me, btn.dataset.region, btn.dataset.factory)) return;
         // Kurulunca pencere kapanır: aynı state'e ikinci kez aynı tür zaten girmez.
         this.industryPicker = null;
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-subsidize]')) {
+      btn.onclick = (event) => {
+        // Kutucuk tıklaması başka işler de yapabilir; düğme kendi başına.
+        event.stopPropagation();
+        const factory = (me.economy?.factories ?? [])
+          .find((candidate) => candidate.id === btn.dataset.subsidize);
+        if (!factory) return;
+        factory.subsidized = !factory.subsidized;
         this.refresh();
       };
     }

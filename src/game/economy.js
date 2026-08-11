@@ -493,6 +493,8 @@ function emptyLedger() {
     treatyRevenue: 0,
     outlayCost: 0,
     procurementCost: 0,
+    subsidyCost: 0,
+    projectCost: 0,
     interestCost: 0,
     borrowed: 0,
     repaid: 0,
@@ -1033,7 +1035,17 @@ function canPayFactoryCost(nation, cost, actor) {
 }
 
 function payFactoryCost(nation, cost, actor) {
-  if (actor !== 'private') return pay(nation, cost);
+  if (actor !== 'private') {
+    if (!pay(nation, cost)) return false;
+    // pay() tutari outlayGold'a yazdi; devlet fabrika yatirimi insaat
+    // kalemidir — dogru satira tasinir (cifte sayim yok, aktarim).
+    const gold = cost.gold ?? 0;
+    if (gold && nation.economy) {
+      nation.economy.outlayGold = Math.max(0, (nation.economy.outlayGold ?? 0) - gold);
+      nation.economy.projectGold = (nation.economy.projectGold ?? 0) + gold;
+    }
+    return true;
+  }
   if (!canPayFactoryCost(nation, cost, actor)) return false;
   nation.politics.privateCapital -= cost.gold ?? 0;
   return true;
@@ -1442,8 +1454,8 @@ export function supportProject(game, nation, projectId, options = {}) {
   if (amount <= 0) return false;
   const paid = fundProject(project, amount);
   nation.gold -= paid;
-  // Proje desteği de deftere: bkz. cities.js pay() içindeki not.
-  nation.economy.outlayGold = (nation.economy.outlayGold ?? 0) + paid;
+  // Proje desteği inşaat kalemine yazılır (bkz. updateLedger projectCost).
+  nation.economy.projectGold = (nation.economy.projectGold ?? 0) + paid;
   game.emit('construction', state);
   game.emit('economy', nation.economy);
   return true;
@@ -1652,6 +1664,18 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
     // İşçi, girdi kıtlığında üretim düşse de fabrikada kalır ve ücretini alır.
     const wages = laborThroughput * WAGE_PER_THROUGHPUT;
     factory.profit = revenue - inputCost - wages;
+    // Sübvansiyon: işaretli tesisin zararını devlet kapatır. Sahte sabit
+    // maliyet yok — ödeme gerçekleşen zararın kendisidir ve kâr 0'a çekilir
+    // ki kâr eğilimi (işten çıkarma) tesisi desteklenmiş görsün. Bedel
+    // deftere subsidyCost olarak düşer; kapatmak tek tık (bkz. ekran).
+    factory.subsidyPaid = 0;
+    if (factory.subsidized && factory.profit < 0) {
+      const support = -factory.profit;
+      nation.gold -= support;
+      economy.subsidyGold = (economy.subsidyGold ?? 0) + support;
+      factory.subsidyPaid = support;
+      factory.profit = 0;
+    }
     factory.margin = revenue > 0 ? factory.profit / revenue : 0;
     totalProfit += factory.profit;
   }
@@ -2145,6 +2169,12 @@ function updateLedger(nation, turn) {
   // sorusunun cevabını ekranda görünür kılar.
   const procurementCost = Math.max(0, economy.procurementGold ?? 0);
   economy.procurementGold = 0;
+  const subsidyCost = Math.max(0, economy.subsidyGold ?? 0);
+  economy.subsidyGold = 0;
+  // Devlet insaat/fabrika fonlamasi tek seferlik alimlardan ayri gosterilir:
+  // "State purchases" birim/sehir/general, "Project funding" santiyedir.
+  const projectCost = Math.max(0, economy.projectGold ?? 0);
+  economy.projectGold = 0;
   // Borç kapanışı gelir/gider bilinmeden ÖNCE koşamaz (kapasite gelire
   // bakar) ama defter yazılmadan önce koşmalı ki faiz ve finansman satırları
   // bu haftanın kaydına girsin.
@@ -2154,7 +2184,7 @@ function updateLedger(nation, turn) {
     + Math.max(0, tariffRevenue) + treatyRevenue;
   const expenses = armyCost + administrationCost + socialCost + importCost
     + constructionCost + treatyCost + outlayCost + procurementCost
-    + interestCost + Math.max(0, -tariffRevenue);
+    + subsidyCost + projectCost + interestCost + Math.max(0, -tariffRevenue);
   economy.ledger = {
     lastUpdated: turn,
     cityRevenue,
@@ -2169,6 +2199,8 @@ function updateLedger(nation, turn) {
     treatyRevenue,
     outlayCost,
     procurementCost,
+    subsidyCost,
+    projectCost,
     interestCost,
     // Finansman satırları gelir/gider DEĞİLDİR (bilanço hareketi): kimlik
     // Δhazine = net + borçlanılan − ödenen şeklinde kapanır.

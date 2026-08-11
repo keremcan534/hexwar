@@ -4234,3 +4234,30 @@ body.screen-open .layer-menu { display: none; }
   background: var(--ui-grain), var(--panel-tone), var(--surface-1);
   box-shadow: var(--frame-brass), 0 18px 48px rgba(0, 0, 0, 0.6);
 }
+
+/* Subvansiyon dugmesi: kutucugun kosesinde kucuk pirinc rozet. */
+.factory-slot { position: relative; }
+
+.factory-subsidy {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface-sunken);
+  color: var(--text-mute);
+  font-size: 10px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.factory-subsidy:hover { border-color: var(--gold); color: var(--gold-bright); }
+
+.factory-subsidy.on {
+  border-color: var(--gold);
+  background: var(--gold-dark);
+  color: #f4e9c9;
+}
