@@ -21,7 +21,7 @@ export const SAVE_VERSION = 8;
 const STORAGE_KEY = 'hexwar.save';
 
 /** Ulusun tur içinde değişen alanları. */
-const NATION_FIELDS = ['gold', 'infamy', 'alive'];
+const NATION_FIELDS = ['gold', 'infamy', 'alive', 'debt'];
 
 export function serialize(game) {
   const world = game.world;

@@ -261,7 +261,15 @@ export class TurnManager {
       // duzenini yavasca kurar; strength ise asagida nufus ve ekipman harcayan
       // reinforcement sistemi olmadan bedava dolmaz.
       if (!unit.battleId) {
-        const organizationRecovery = (unit.retreatUntil ?? 0) > this.turn ? 6 : 10;
+        // Toparlanma maaşa ve ikmale bağlıdır: parasız asker yavaş toplanır,
+        // ikmalsiz ordu daha da yavaş. Tabanlar (0.6/0.7) kademeli tutar —
+        // felaket cezası yok, süregiden ihmal hissedilir (bkz. supplyIndex).
+        const economy = world.nations[unit.nationId]?.economy;
+        const wages = (economy?.militaryWages ?? 100) / 100;
+        const supply = economy?.military?.supplyIndex ?? 1;
+        const fundingFactor = (0.6 + 0.4 * wages) * (0.7 + 0.3 * supply);
+        const organizationRecovery = ((unit.retreatUntil ?? 0) > this.turn ? 6 : 10)
+          * fundingFactor;
         for (const regiment of unit.regiments ?? []) {
           regiment.organization = Math.min(
             100,
@@ -327,7 +335,8 @@ export class TurnManager {
       const budget = nationBudget(world, nation);
       nation.budget = budget;
 
-      nation.gold = Math.max(0, nation.gold + budget.net.gold);
+      // Kelepçe yok: açık borçlanmayla kapanır (economy.js settleDebt).
+      nation.gold += budget.net.gold;
     }
     this.payTreaties();
   }
@@ -363,7 +372,7 @@ export class TurnManager {
         if (!share) continue;
         const due = Math.max(0, (nation.budget?.net?.gold ?? 0)) * share;
         if (due <= 0) continue;
-        nation.gold = Math.max(0, nation.gold - due);
+        nation.gold -= due;
         holder.gold += due;
         if (nation.economy) nation.economy.treatyCost += due;
         if (holder.economy) holder.economy.treatyRevenue = (holder.economy.treatyRevenue ?? 0) + due;

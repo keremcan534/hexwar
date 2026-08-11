@@ -27,7 +27,8 @@ import {
   MILITARY_EQUIPMENT, POPULATION_COHORT, PROFESSION_INFO,
   SOCIAL_PROGRAMS, buildFactory,
   canBuildFactory, factoriesInRegion, factoryAtlas, factoryCost, factoryJobs,
-  factoryMargin, formatPopulation, populationOf, setFiscalPolicy,
+  debtCapacity, debtInterestRate, factoryMargin, formatPopulation, populationOf,
+  setFiscalPolicy, taxEfficiency,
   setMilitaryProductionLine, socialSpendingCost, ensureProductionLine, supportProject, upgradeOutlook,
 } from '../game/economy.js';
 import { MAX_ROUNDS, battleSides, battlesFor } from '../game/battles.js';
@@ -1151,12 +1152,15 @@ export class Screens {
       <b class="fiscal-amount ${tone}">${Math.abs(value).toFixed(1)}</b>
     </div>`;
 
-    const sliderLine = (label, value, tone, policy, current, min, max, step = 5) => `
+    // `notes` kaydıracın görünür sonuçlarıdır: oyuncu neyi satın aldığını
+    // tahmin etmek zorunda kalmasın (gizli çarpan yok, hepsi gerçek formül).
+    const sliderLine = (label, value, tone, policy, current, min, max, step = 5, notes = '') => `
       <div class="fiscal-line">
         <div class="fiscal-body budget-policy">
           <span class="fiscal-label">${esc(label)}<b data-policy-value>${current}%</b></span>
           <input type="range" min="${min}" max="${max}" step="${step}" value="${current}"
             data-policy="${policy}">
+          ${notes ? `<small class="fiscal-note">${notes}</small>` : ''}
         </div>
         <b class="fiscal-amount ${tone}">${Math.abs(value).toFixed(1)}</b>
       </div>`;
@@ -1192,14 +1196,22 @@ export class Screens {
 
       <section class="card fiscal-column">
         <div class="fiscal-head">Weekly Expenses</div>
-        ${sliderLine('Military Spending', ledger.armyCost ?? 0, 'res-neg', 'armySpending',
-    economy.armySpending, politicalLimits.armySpendingMin, politicalLimits.armySpendingMax)}
+        ${sliderLine('Military Wages', ledger.armyCost ?? 0, 'res-neg', 'militaryWages',
+    economy.militaryWages ?? 100, politicalLimits.armySpendingMin, politicalLimits.armySpendingMax, 5,
+    `combat power ${Math.round(55 + (economy.militaryWages ?? 100) * 0.45)}%
+     · organization recovery ${Math.round((0.6 + 0.4 * (economy.militaryWages ?? 100) / 100) * 100)}%`)}
+        ${sliderLine('Military Procurement', ledger.procurementCost ?? 0, 'res-neg', 'militaryProcurement',
+    economy.militaryProcurement ?? 100, politicalLimits.armySpendingMin, politicalLimits.armySpendingMax, 5,
+    `army supply ${Math.round((economy.military?.supplyIndex ?? 1) * 100)}%
+     · reinforcement ${Math.round(Math.max(25, (economy.militaryProcurement ?? 100))
+       * Math.max(0.4, economy.military?.supplyIndex ?? 1))}%`)}
+        ${sliderLine('Administration', ledger.administrationCost ?? 0, 'res-neg', 'adminFunding',
+    economy.adminFunding ?? 100, 30, 100, 5,
+    `tax efficiency ${Math.round(taxEfficiency(me) * 100)}%`)}
         <div class="fiscal-group">
           ${flatLine('Social Spending', ledger.socialCost ?? 0, 'res-neg')}
           ${socialLines}
         </div>
-        ${flatLine('Administration', ledger.administrationCost ?? 0, 'res-neg',
-    'scales with the provinces you hold')}
         ${flatLine('Construction', ledger.constructionCost ?? 0, 'res-neg',
     'upkeep of everything on the build queue')}
         ${flatLine('Strategic imports', ledger.importCost ?? 0, 'res-neg',
@@ -1207,6 +1219,9 @@ export class Screens {
         ${(ledger.treatyCost ?? 0) > 0
     ? flatLine('Treaty obligations', ledger.treatyCost, 'res-neg',
       'reparations or tribute imposed on us at a peace table') : ''}
+        ${(ledger.interestCost ?? 0) > 0
+    ? flatLine('Debt interest', ledger.interestCost, 'res-neg',
+      `debt ¤${Math.round(ledger.debt ?? 0)} at ${(debtInterestRate(me) * 100).toFixed(1)}%/year`) : ''}
         ${(ledger.outlayCost ?? 0) > 0
     ? flatLine('State purchases', ledger.outlayCost, 'res-neg',
       'this week: units raised, cities founded, projects funded') : ''}

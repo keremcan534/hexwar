@@ -166,7 +166,11 @@ function reinforceNation(game, nation) {
     return deficit(b) - deficit(a) || a.id - b.id;
   });
 
-  const funding = Math.max(0.25, (nation.economy.armySpending ?? 100) / 100);
+  // Takviye hızını TEDARİK belirler: adam maaşla değil, mühimmat ve ikmalle
+  // cepheye taşınır. Uzayan kıtlık da yavaşça bastırır (supplyIndex, EMA) —
+  // tek kötü hafta değil, süregiden açlık hissedilsin.
+  const supply = Math.max(0.4, nation.economy.military?.supplyIndex ?? 1);
+  const funding = Math.max(0.25, (nation.economy.militaryProcurement ?? 100) / 100) * supply;
   for (const unit of units) {
     const general = generalOfArmy(nation, unit);
     const rate = BASE_REINFORCEMENT_RATE

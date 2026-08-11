@@ -189,8 +189,10 @@ export function fiscalPolicyLimits(nation) {
   const trade = policyOf(nation, 'trade');
   const military = policyOf(nation, 'military');
   return {
-    tariffMin: -25,
-    tariffMax: trade === 'free_trade' ? 10 : 50,
+    // Negatif tarife ithalat sübvansiyonudur: hazine farkı öder. Serbest
+    // ticaret partisi sübvansiyona geniş, gümrüğe dar bakar; korumacı tersi.
+    tariffMin: trade === 'free_trade' ? -50 : -15,
+    tariffMax: trade === 'free_trade' ? 25 : 100,
     armySpendingMin: 25,
     armySpendingMax: military === 'pacifism' ? 60 : military === 'anti_military' ? 75 : 100,
   };
@@ -204,6 +206,13 @@ function applyGovernmentLimits(nation) {
     limits.armySpendingMin,
     Math.min(limits.armySpendingMax, nation.economy.armySpending),
   );
+  // İki yeni ordu kaydıracı da aynı parti sınırına tabidir.
+  for (const key of ['militaryWages', 'militaryProcurement']) {
+    nation.economy[key] = Math.max(
+      limits.armySpendingMin,
+      Math.min(limits.armySpendingMax, nation.economy[key] ?? 100),
+    );
+  }
 }
 
 function supportScore(nation, party) {

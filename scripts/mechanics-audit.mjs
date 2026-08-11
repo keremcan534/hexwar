@@ -340,11 +340,12 @@ invariant({
       const once = n.gold;
       g.turns.endTurn();
       // Defter haftanin KAYDIDIR, kehaneti degil: tur bitince yazilan net,
-      // o turda gerceklesen altin degisimini aciklamali. Tek seferlik alimlar
-      // (birim, sehir) onceden bilinemez ama olduklarinda kayda girmeli.
-      const defter = n.economy.ledger?.net ?? 0;
-      sapma += Math.abs((n.gold - once) - defter);
-      toplam += Math.abs(defter) + Math.abs(n.gold - once);
+      // o turda gerceklesen altin degisimini aciklamali. Borclanma bilanco
+      // hareketidir, gelir degil: kimlik Δhazine = net + borclanilan - odenen.
+      const L = n.economy.ledger ?? {};
+      const beklenen = (L.net ?? 0) + (L.borrowed ?? 0) - (L.repaid ?? 0);
+      sapma += Math.abs((n.gold - once) - beklenen);
+      toplam += Math.abs(beklenen) + Math.abs(n.gold - once);
     }
     const oran = sapma / Math.max(1, toplam / 2);
     return {

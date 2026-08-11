@@ -139,7 +139,10 @@ const results = {
     markedPrivate: privateProject.actor === 'private',
   },
   policyLimits: {
-    freeTradeTariffCap: limits.tariffMax === 10 && nation.economy.tariff === 10,
+    // Serbest ticaret tavani 10'dan 25'e cikti ve taban -50 oldu (ithalat
+    // subvansiyonu); beklenti bilincli tasarim degisikligiyle guncellendi.
+    freeTradeTariffCap: limits.tariffMax === 25 && limits.tariffMin === -50
+      && nation.economy.tariff <= 25,
     antiMilitaryFundingCap: limits.armySpendingMax === 75 && nation.economy.armySpending === 75,
     plannedStateAllowed,
     plannedPrivateBlocked,

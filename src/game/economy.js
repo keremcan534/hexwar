@@ -4,6 +4,7 @@
 
 import { canAfford, pay } from './cities.js';
 import { RGO_TYPES, provinceOutput, provincePopulation } from './provinces.js';
+import { atWar } from './diplomacy.js';
 import { treatiesOf } from './peace.js';
 import { regimentCount } from './units.js';
 import {
@@ -424,6 +425,8 @@ const DEFAULT_MILITARY = {
   manpowerDemand: 0,
   reinforced: 0,
   manpowerUsed: 0,
+  // Ordu ihtiyacının karşılanma endeksi (EMA). 1 = tam ikmal.
+  supplyIndex: 1,
   ...Object.fromEntries(MILITARY_EQUIPMENT_IDS.flatMap((id) => [
     [id, MILITARY_EQUIPMENT[id].defaultStock],
     [`${id}Produced`, 0],
@@ -489,6 +492,11 @@ function emptyLedger() {
     treatyCost: 0,
     treatyRevenue: 0,
     outlayCost: 0,
+    procurementCost: 0,
+    interestCost: 0,
+    borrowed: 0,
+    repaid: 0,
+    debt: 0,
     income: 0,
     expenses: 0,
     net: 0,
@@ -508,7 +516,7 @@ export function ensureMilitaryEconomy(nation) {
 }
 
 export function workshopArmsOutput(nation) {
-  return 0.08 * (0.5 + (nation.economy.armySpending ?? 100) / 200);
+  return 0.08 * (0.5 + (nation.economy.militaryProcurement ?? 100) / 200);
 }
 
 export function equipmentStock(nation, equipmentId) {
@@ -828,7 +836,17 @@ export function initNationEconomy(world, nation) {
     social: { ...DEFAULT_SOCIAL },
     socialCost: 0,
     tariff: 10,
+    // Eski tek kaydıraç: yalnız geriye dönük kayıtlar için duruyor, hiçbir
+    // sistem artık okumuyor (bkz. militaryWages / militaryProcurement).
     armySpending: 100,
+    // Ordu bütçesi iki ayrı karardır: maaş (muharebe gücü, moral, toparlanma)
+    // ve tedarik (devletin piyasadan fiilen satın aldığı mühimmat/yiyecek/
+    // yakıt). Tek kaydıraç ikisini birden oynatıyordu ve "ordu güçlü ama
+    // ikmalsiz" gibi bir durum kurulamıyordu.
+    militaryWages: 100,
+    militaryProcurement: 100,
+    // Yönetim bütçesi: vergi tahsilat verimi ve province kontrol desteği.
+    adminFunding: 100,
     military: { ...DEFAULT_MILITARY },
     factories: [],
     professionCounts: initialProfessionCounts(population),
@@ -921,6 +939,11 @@ export function ensureEconomy(world) {
     if (!nation.economy) initNationEconomy(world, nation);
     // Eski kayıtlar sosyal harcama alanını tanımıyor; eksik alan çökertmesin.
     else nation.economy.social = { ...DEFAULT_SOCIAL, ...(nation.economy.social ?? {}) };
+    // Eski kayıt göçü: tek armySpending kaydıracı iki yeni kaydırağa açılır,
+    // oyuncunun ayarı iki tarafta da korunmuş olur. Yönetim varsayılan tam.
+    nation.economy.militaryWages ??= nation.economy.armySpending ?? 100;
+    nation.economy.militaryProcurement ??= nation.economy.armySpending ?? 100;
+    nation.economy.adminFunding ??= 100;
     nation.economy.inventory ??= emptyGoods();
     for (const id of GOOD_IDS) nation.economy.inventory[id] ??= 0;
     nation.economy.goodsFlow ??= emptyGoodsFlow();
@@ -947,6 +970,15 @@ export function ensureEconomy(world) {
       ensureProductionLine(factory);
     }
   }
+}
+
+/**
+ * Vergi tahsilat verimi: yönetim bütçesinin görünür sonucu. %100 fonlama tam
+ * tahsilat, taban %30 fonlama ~%68 verir. Bütçe ekranı bu sayıyı gösterir.
+ */
+export function taxEfficiency(nation) {
+  const funding = clamp((nation.economy?.adminFunding ?? 100) / 100, 0.3, 1);
+  return 0.55 + 0.45 * funding;
 }
 
 /** Sosyal programın 0–1 aralığındaki etkin seviyesi. */
@@ -1194,11 +1226,28 @@ export function setFiscalPolicy(nation, key, value, classId = null) {
     nation.economy.tariff = clamp(Math.round(value), limits.tariffMin, limits.tariffMax);
     return true;
   }
-  if (key === 'armySpending') {
+  if (key === 'militaryWages' || key === 'militaryProcurement') {
     const limits = fiscalPolicyLimits(nation);
-    nation.economy.armySpending = clamp(
+    // İki kaydıraç da parti askerî politikasının sınırına tabidir: pasifist
+    // hükümet ne maaşı ne tedariki tavana çekebilir.
+    nation.economy[key] = clamp(
       Math.round(value), limits.armySpendingMin, limits.armySpendingMax,
     );
+    return true;
+  }
+  if (key === 'adminFunding') {
+    // Tabanda %30: devlet aygıtı tamamen kapatılamaz, sadece ihmal edilir.
+    nation.economy.adminFunding = clamp(Math.round(value), 30, 100);
+    return true;
+  }
+  if (key === 'armySpending') {
+    // Eski anahtar iki yeni kaydıracı birden sürer: tek kaydıraç dönemine
+    // yazılmış çağrılar (eski YZ/betikler) davranış kaybetmesin.
+    const limits = fiscalPolicyLimits(nation);
+    const level = clamp(Math.round(value), limits.armySpendingMin, limits.armySpendingMax);
+    nation.economy.armySpending = level;
+    nation.economy.militaryWages = level;
+    nation.economy.militaryProcurement = level;
     return true;
   }
   if (key === 'social' && SOCIAL_PROGRAMS[classId]) {
@@ -1688,6 +1737,9 @@ function fiscalBalance(nation, baseOutputValue, industrialOutput) {
   }
   const social = socialSpendingCost(nation);
   taxes *= constructionTaxMultiplier(nation);
+  // Tahsilat verimi yönetim bütçesine bağlıdır: %100'te tam, %30'da %68.
+  // Gizli ceza değil — bütçe ekranı bu oranı açıkça gösterir.
+  taxes *= taxEfficiency(nation);
   const construction = constructionUpkeep(nation);
   economy.taxRevenue = taxes;
   // Trade is cleared after every country has submitted its weekly orders.
@@ -1697,7 +1749,8 @@ function fiscalBalance(nation, baseOutputValue, industrialOutput) {
   economy.socialCost = social;
   economy.constructionUpkeep = construction;
   economy.fiscalNet = taxes - social - construction;
-  nation.gold = Math.max(0, nation.gold + economy.fiscalNet);
+  // Kelepçe yok: açık görünür kalır, kapanışta borçlanma devralır (settleDebt).
+  nation.gold += economy.fiscalNet;
 }
 
 /**
@@ -1914,12 +1967,15 @@ function procureStrategicGoods(world) {
     for (const id of MILITARY_EQUIPMENT_IDS) {
       const equipment = MILITARY_EQUIPMENT[id];
       military[`${id}Imported`] = 0;
+      // Tedarik kaydırağı ithalat hedefini de ölçekler: %50 fonlanan ordu
+      // yarım depoyla idare etmeye çalışır, hazine de yarım öder.
+      const procurement = (nation.economy.militaryProcurement ?? 100) / 100;
       const target = Math.min(
         equipment.stockCap,
-        equipment.reserve + Math.min(
+        (equipment.reserve + Math.min(
           equipment.stockCap - equipment.reserve,
           military[`${id}Demand`] ?? 0,
-        ),
+        )) * procurement,
       );
       const shortage = Math.max(0, target - equipmentStock(nation, id));
       if (shortage <= 0 || available[id] <= 0) continue;
@@ -2004,7 +2060,7 @@ export function settleGlobalTrade(world) {
     trade.lastUpdated = world.turn;
     nation.economy.tariffRevenue = trade.tariffRevenue;
     nation.economy.fiscalNet += trade.tariffRevenue;
-    nation.gold = Math.max(0, nation.gold + trade.tariffRevenue);
+    nation.gold += trade.tariffRevenue;
   }
 }
 
@@ -2015,6 +2071,56 @@ function marketInputAvailability(market) {
     return [id, clamp(state.supply / state.demand, 0, 1)];
   }));
 }
+
+/**
+ * Borçlanma kapasitesi: yıllık gelirin ~yarısı. GSYH değil gelir esas alınır
+ * çünkü faizi ödeyecek olan hazinedir; zengin ama vergisiz ülke borç bulamaz.
+ */
+export function debtCapacity(nation) {
+  const weekly = Math.max(0, nation.economy?.ledger?.income ?? 0);
+  return Math.max(50, weekly * 26);
+}
+
+/** Yıllık faiz: taban %4, kapasite doldukça %12'ye tırmanır. */
+export function debtInterestRate(nation) {
+  const debt = Math.max(0, nation.debt ?? 0);
+  const load = clamp(debt / Math.max(1, debtCapacity(nation)), 0, 1);
+  return 0.04 + 0.08 * load;
+}
+
+/**
+ * Hazine kapanışı: faiz tahakkuk eder, açık borçlanmayla kapanır, bolluk
+ * borcu geri öder. Sıfırda oyun bitmez — devlet borçlanır ve faiz bütçeye
+ * gider olarak düşer; kapasite dolunca hazine eksiye sıkışır ve harcama
+ * kapıları (canAfford) kendiliğinden kapanır.
+ */
+function settleDebt(nation) {
+  const economy = nation.economy;
+  nation.debt = Math.max(0, nation.debt ?? 0);
+  const interest = nation.debt * debtInterestRate(nation) / 52;
+  nation.gold -= interest;
+  economy.interestGold = interest;
+  economy.borrowedGold = 0;
+  economy.repaidGold = 0;
+
+  if (nation.gold < 0) {
+    const room = Math.max(0, debtCapacity(nation) - nation.debt);
+    const borrow = Math.min(-nation.gold, room);
+    nation.debt += borrow;
+    nation.gold += borrow;
+    economy.borrowedGold = borrow;
+  } else if (nation.debt > 0 && nation.gold > DEBT_CUSHION) {
+    // Geri ödeme otomatik ve ılımlı: hazine yastığın üstündeyse fazlanın
+    // çeyreği borca gider. Oyuncu isterse bütçeyi sıkıp hızlandırır.
+    const repay = Math.min(nation.debt, (nation.gold - DEBT_CUSHION) * 0.25);
+    nation.debt -= repay;
+    nation.gold -= repay;
+    economy.repaidGold = repay;
+  }
+}
+
+/** Geri ödemeye başlamadan önce hazinede tutulan yastık. */
+const DEBT_CUSHION = 25;
 
 function updateLedger(nation, turn) {
   const economy = nation.economy;
@@ -2034,10 +2140,21 @@ function updateLedger(nation, turn) {
   // ve sıfırlanır ki her hafta yalnız kendi harcamasını göstersin.
   const outlayCost = Math.max(0, economy.outlayGold ?? 0);
   economy.outlayGold = 0;
+  // Askeri tedarik: alıkonan teçhizat + ordunun haftalık tüketimi, piyasa
+  // fiyatından. armyCost yalnız MAAŞTIR; ikisini ayırmak "ordu neden pahalı"
+  // sorusunun cevabını ekranda görünür kılar.
+  const procurementCost = Math.max(0, economy.procurementGold ?? 0);
+  economy.procurementGold = 0;
+  // Borç kapanışı gelir/gider bilinmeden ÖNCE koşamaz (kapasite gelire
+  // bakar) ama defter yazılmadan önce koşmalı ki faiz ve finansman satırları
+  // bu haftanın kaydına girsin.
+  settleDebt(nation);
+  const interestCost = Math.max(0, economy.interestGold ?? 0);
   const income = cityRevenue + (economy.taxRevenue ?? 0)
     + Math.max(0, tariffRevenue) + treatyRevenue;
   const expenses = armyCost + administrationCost + socialCost + importCost
-    + constructionCost + treatyCost + outlayCost + Math.max(0, -tariffRevenue);
+    + constructionCost + treatyCost + outlayCost + procurementCost
+    + interestCost + Math.max(0, -tariffRevenue);
   economy.ledger = {
     lastUpdated: turn,
     cityRevenue,
@@ -2051,6 +2168,13 @@ function updateLedger(nation, turn) {
     treatyCost,
     treatyRevenue,
     outlayCost,
+    procurementCost,
+    interestCost,
+    // Finansman satırları gelir/gider DEĞİLDİR (bilanço hareketi): kimlik
+    // Δhazine = net + borçlanılan − ödenen şeklinde kapanır.
+    borrowed: economy.borrowedGold ?? 0,
+    repaid: economy.repaidGold ?? 0,
+    debt: nation.debt ?? 0,
     income,
     expenses,
     net: income - expenses,
@@ -2113,6 +2237,13 @@ export function runEconomy(game) {
     // dört haftada bir. Sanayinin 100 yıla yayılmasını sağlayan tempo budur.
     if ((world.turn ?? 1) % HIRING_INTERVAL === 0) runFactoryEmployment(game, nation);
     const military = ensureMilitaryEconomy(nation);
+    // Stok yatırımının haftalık bütçesi: geçen haftanın gelirinin çeyreği ×
+    // tedarik kaydırağı. Sınırsız hızda stoklama, kuruluş yıllarında bütün
+    // ülkeleri borç tavanına yığıyordu (ölçüldü: 53. haftada 12/15 ülke
+    // kapasitede, ortalama hazine −652). Bütçeyi aşan üretim depoya değil
+    // piyasaya gider — silahlanma bir on yıla yayılır, bir yıla değil.
+    let retainedBudget = Math.max(2, (nation.economy.ledger?.income ?? 20) * 0.25)
+      * ((nation.economy.militaryProcurement ?? 100) / 100);
     for (const id of MILITARY_EQUIPMENT_IDS) {
       const equipment = MILITARY_EQUIPMENT[id];
       const factoryOutput = Math.max(0, ownOutput[id] ?? 0);
@@ -2120,7 +2251,9 @@ export function runEconomy(game) {
       // permanently unable to field an army before its first military factory.
       const workshopOutput = id === 'arms' ? workshopArmsOutput(nation) : 0;
       const room = Math.max(0, equipment.stockCap - equipmentStock(nation, id));
-      const retainedFactory = Math.min(factoryOutput, room);
+      const price = Math.max(0.01, priceOf(world, id));
+      const affordable = retainedBudget / price;
+      const retainedFactory = Math.min(factoryOutput, room, affordable);
       const retainedWorkshop = Math.min(workshopOutput, room - retainedFactory);
       military[`${id}Produced`] = retainedFactory + retainedWorkshop;
       setEquipmentStock(
@@ -2131,6 +2264,14 @@ export function runEconomy(game) {
       // Equipment retained by the state cannot also be sold on the market.
       market.goods[id].supply = Math.max(0, market.goods[id].supply - retainedFactory);
       addNationFlow(nation, id, 'retained', retainedFactory);
+      // Devlet fabrika çıktısını artık BEDAVA almaz: alıkonan teçhizat piyasa
+      // fiyatından hazineden ödenir. Fabrika bu geliri zaten yazıyordu
+      // (runFactories bütün çıktıyı fiyatlandırır) ama karşısında hiçbir
+      // ödeme yoktu — bütçe ile sanayi arasındaki delik buydu.
+      const retainedCost = retainedFactory * price;
+      nation.gold -= retainedCost;
+      retainedBudget = Math.max(0, retainedBudget - retainedCost);
+      nation.economy.procurementGold = (nation.economy.procurementGold ?? 0) + retainedCost;
     }
     populationDemand(world, nation, market);
 
@@ -2155,17 +2296,45 @@ export function runEconomy(game) {
     // Ordunun haftalık tüketimi. Mühimmat ve yakıt buraya eklendi: onları
     // üreten tesisler kuruluyordu ama hiçbir tüketicisi olmadığı için fiyat
     // tabana çakılıp fabrikalar zarar ediyordu (ölçüldü).
-    const armyScale = nation.economy.armySpending / 100;
+    // Tedarik kaydiragi devletin orduya ne kadar mal aldigini belirler;
+    // grocery kalemi de artik olceklenir (ac orduyu az beslemek bir karardir).
+    const armyScale = (nation.economy.militaryProcurement ?? 100) / 100;
+    // Barış ordusu talim tüketir, savaş ordusu cephane yakar. Bu çarpan
+    // olmadan tedarik faturası barışta bile geliri ikiye katlıyordu (ölçüldü:
+    // ~100/hafta gider, ~35 gelir) ve her hazine kalıcı sıfırdaydı. Savaşın
+    // "ne kadarını karşılayabilirim" sorusu tam bu farktan doğar.
+    const wartime = world.nations.some(
+      (other) => other.alive && other.id !== nation.id && atWar(world, nation.id, other.id),
+    );
+    const tempo = wartime ? 1 : 0.35;
     const armyDemand = {
-      arms: landUnits * 0.08 * armyScale,
-      groceries: landUnits * 0.05,
-      ammunition: landUnits * 0.06 * armyScale,
-      fuel: landUnits * 0.04 * armyScale,
+      arms: landUnits * 0.08 * armyScale * tempo,
+      groceries: landUnits * 0.05 * (0.5 + armyScale * 0.5) * tempo,
+      ammunition: landUnits * 0.06 * armyScale * tempo,
+      fuel: landUnits * 0.04 * armyScale * tempo,
     };
+    let armySupplyWeighted = 0;
+    let armySupplyTotal = 0;
     for (const [id, amount] of Object.entries(armyDemand)) {
       addFlow(market, id, 'demand', amount);
       addNationFlow(nation, id, 'demand', amount);
+      // Ordunun tükettiğini devlet öder: geçen haftanın karşılanma oranı
+      // üzerinden (bu haftanın ticareti daha kapanmadı). Karşılanmayan pay
+      // ödenmez ama ikmal endeksini düşürür.
+      const fulfilled = clamp(nation.economy.goodsFlow?.[id]?.fulfilledShare ?? 1, 0, 1);
+      const consumptionCost = amount * fulfilled * priceOf(world, id);
+      nation.gold -= consumptionCost;
+      nation.economy.procurementGold = (nation.economy.procurementGold ?? 0) + consumptionCost;
+      armySupplyWeighted += fulfilled * amount;
+      armySupplyTotal += amount;
     }
+    // İkmal endeksi: ordunun mal ihtiyacının ne kadarı gerçekten karşılanıyor.
+    // EMA (~7 hafta yarı ömür) tek kötü haftayı değil süregiden kıtlığı
+    // cezalandırır; takviye ve toparlanma bunu okur.
+    const weekSupply = armySupplyTotal > 0 ? armySupplyWeighted / armySupplyTotal : 1;
+    military.supplyIndex = clamp(
+      (military.supplyIndex ?? 1) * 0.85 + weekSupply * 0.15, 0, 1,
+    );
 
     nation.economy.gdp = baseOutputValue + industrialOutput;
     fiscalBalance(nation, baseOutputValue, industrialOutput);

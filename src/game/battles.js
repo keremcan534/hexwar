@@ -93,7 +93,9 @@ function leadGeneral(world, units) {
  */
 export function battleUnitPower(world, unit, defending, relief = 0) {
   const nation = world.nations[unit.nationId];
-  const funding = (nation.economy?.armySpending ?? 100) / 100;
+  // Maaş muharebe iradesini alır: aç asker savaşmaz. Tedarik tarafı ayrı —
+  // o, takviye ve toparlanma üzerinden işler (bkz. reinforcement/turn).
+  const funding = (nation.economy?.militaryWages ?? 100) / 100;
   const general = generalOfArmy(nation, unit);
   const terrain = defending
     ? (1 + terrainDefense(world, unit) * (1 - relief)) * (1 + (unit.entrenchment ?? 0))

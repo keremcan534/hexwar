@@ -363,11 +363,16 @@ export function nationBudget(world, nation) {
   }
 
   const upkeep = emptyPool();
-  const armyFunding = (nation.economy?.armySpending ?? 100) / 100;
+  // Bu kalem MAAŞTIR: asker/subay ücreti. Tedarik (mühimmat, yiyecek, yakıt)
+  // ayrı bir kalemdir ve piyasadan gerçek fiyatla alınır (economy.js).
+  const armyFunding = (nation.economy?.militaryWages ?? 100) / 100;
   // Bakım artık alay *sayısına* değil teçhizat ağırlığına bağlı: modern ordu
   // sürekli para yer, ordu modernizasyonu geç oyunun asıl gider kalemi olur.
   const armyGold = Math.max(0, armyWeight * UNIT_UPKEEP.gold * armyFunding);
-  const administration = administrationCost(cityCount, provinceCount, distanceLoad);
+  // Yönetim gideri bütçelenen kadarıyla ödenir; verimi de o oran belirler
+  // (bkz. fiscalBalance'taki tahsilat verimi).
+  const adminFunding = (nation.economy?.adminFunding ?? 100) / 100;
+  const administration = administrationCost(cityCount, provinceCount, distanceLoad) * adminFunding;
   upkeep.gold = armyGold + administration;
   upkeep.food = army * UNIT_UPKEEP.food + workers * WORKER_FOOD;
   upkeep.iron = armyIron;
