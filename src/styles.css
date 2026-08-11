@@ -3919,3 +3919,155 @@ body.screen-open .layer-menu { display: none; }
     width: auto;
   }
 }
+
+/* ==========================================================================
+   FABRIKA KARTLARI (fcard)
+   "Insa et" secicisinin karti. Referans: koyu levha + eski pirinc cerceve +
+   solda dairesel amblem + sagda maliyet + altta kar. Gorsel tamamen kod:
+   depoda ikili dosya yok, amblem ve dokular gradyan + satir-ici SVG.
+   ========================================================================== */
+
+.fcard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: var(--sp-3);
+}
+
+.fcard {
+  position: relative;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: var(--sp-3);
+  align-items: center;
+  padding: var(--sp-3);
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+  overflow: hidden;
+  border-radius: 3px;
+  /* Eski pirinc cerceve: ince disli cizgi + ic golge. Duz border yerine
+     cift katman, kose isigi olmadan da "metal" okunsun diye. */
+  border: 1px solid rgba(174, 139, 74, 0.38);
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 0, 0, 0.55),
+    inset 0 1px 0 rgba(214, 181, 116, 0.14),
+    0 2px 6px rgba(0, 0, 0, 0.35);
+  background:
+    linear-gradient(160deg, rgba(214, 181, 116, 0.05), rgba(0, 0, 0, 0) 38%),
+    var(--ui-grain),
+    linear-gradient(180deg, #141d21, #0e1518);
+}
+
+/* Solda dairesel amblem: pirinc halka + karanlik madalyon zemini. */
+.fcard-emblem {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: var(--gold-bright);
+  background:
+    radial-gradient(circle at 34% 30%, rgba(214, 181, 116, 0.16), rgba(0, 0, 0, 0) 58%),
+    radial-gradient(circle, #0b1214 62%, #131a1d 100%);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.7),
+    0 0 0 3px rgba(150, 122, 69, 0.55),
+    0 0 0 4px rgba(0, 0, 0, 0.6),
+    inset 0 2px 5px rgba(0, 0, 0, 0.65);
+}
+
+.fcard-emblem svg { width: 30px; height: 30px; }
+
+.fcard-body { display: grid; gap: 4px; min-width: 0; }
+
+.fcard-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.fcard-name {
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 15px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fcard-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--gold-bright);
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-sm);
+  flex: none;
+}
+
+/* Altin pul: kucuk pirinc disk, isik solda ustte. */
+.fcard-coin {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #d6b574, #967a45 62%, #59482a);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+
+.fcard-io {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px var(--sp-2);
+  min-height: 18px;
+}
+
+.fcard-res {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: var(--text-dim);
+}
+
+.fcard-res svg { width: 15px; height: 15px; }
+.fcard-res em {
+  font-style: normal;
+  font-size: var(--fs-xs, 0.7rem);
+  font-variant-numeric: tabular-nums;
+}
+
+.fcard-noin { color: var(--text-mute); font-size: var(--fs-xs, 0.7rem); }
+
+.fcard-foot {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.fcard-out {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  color: var(--text);
+}
+
+.fcard-out svg { width: 15px; height: 15px; color: var(--gold-bright); }
+.fcard-out em {
+  font-style: normal;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.fcard-profit {
+  font-variant-numeric: tabular-nums;
+  font-size: var(--fs-sm);
+  flex: none;
+}
+
+.fcard-blocked { color: var(--viz-neg); font-size: var(--fs-xs, 0.7rem); }

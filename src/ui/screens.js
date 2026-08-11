@@ -20,6 +20,7 @@ import {
 import { provinceName } from '../game/provinces.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { hegemonyScore, scoreboard } from '../game/hegemony.js';
+import { factoryOptionCard } from './factoryCard.js';
 import {
   CLASS_INFO, CLASS_PROFESSIONS, FACTORIES, GOODS, GOOD_IDS, MAX_FACTORY_LEVEL,
   MILITARY_EQUIPMENT, POPULATION_COHORT, PROFESSION_INFO,
@@ -836,36 +837,35 @@ export class Screens {
     if (!region) return '';
     const existing = factoriesInRegion(world, me.id, region.id).map((f) => f.typeId);
     const stateMayBuild = factoryInvestmentRules(me).stateBuild;
+    // Oyun verisi kart sözleşmesine burada çevrilir; görsel tamamen
+    // factoryCard.js'te yaşar (bkz. oradaki sözleşme notu).
     const options = Object.values(FACTORIES)
       .filter((type) => !existing.includes(type.id))
       .map((type) => {
-        const margin = factoryMargin(world, type.id);
         const enabled = canBuildFactory(world, me, region.id, type.id);
         const cost = factoryCost(me, type.id);
         // Gri bir düğme sebebini söylemezse oyuncu neyi bekleyeceğini bilemez.
         const blocked = enabled ? '' : !stateMayBuild ? 'policy forbids state industry'
           : me.gold < (cost.gold ?? 0) ? `treasury short by ¤${Math.ceil((cost.gold ?? 0) - me.gold)}`
             : 'unavailable';
-        const inputs = Object.entries(type.inputs)
-          .map(([id, amount]) => `${amount} ${GOODS[id].icon} ${GOODS[id].name}`).join(' + ') || 'nothing';
-        const outputs = Object.entries(type.outputs)
-          .map(([id, amount]) => `${amount} ${GOODS[id].icon} ${GOODS[id].name}`).join(' + ');
-        return `<button class="picker-option" data-factory="${type.id}"
-          data-region="${esc(region.id)}" ${enabled ? '' : 'disabled'}
-          ${blocked ? `title="${esc(blocked)}"` : ''}>
-          <span class="picker-icon">${type.icon}</span>
-          <span class="picker-body"><b>${esc(type.name)}</b>
-            <small>${esc(inputs)} → ${esc(outputs)}</small>
-            ${blocked ? `<small class="res-neg">${esc(blocked)}</small>` : ''}</span>
-          <span class="picker-meta"><em>${formatCost(cost)}</em>
-            <small class="${margin >= 0 ? 'res-pos' : 'res-neg'}">${margin >= 0 ? '+' : ''}¤${margin.toFixed(1)}/level</small></span>
-        </button>`;
+        const io = (table) => Object.entries(table)
+          .map(([id, amount]) => ({ id, name: GOODS[id].name, amount }));
+        return factoryOptionCard({
+          typeId: type.id,
+          name: type.name,
+          cost: cost.gold ?? 0,
+          inputs: io(type.inputs),
+          outputs: io(type.outputs),
+          perLevel: factoryMargin(world, type.id),
+          blocked,
+          region: region.id,
+        });
       }).join('');
     return `<div class="card factory-picker">
       <div class="card-head"><h3>Build in ${esc(region.name)}</h3>
         <small>treasury ¤${Math.round(me.gold)} · ${esc(policyLabel('economy', factoryInvestmentRules(me).policy))}</small>
         <button class="action" data-close-picker="1">Close</button></div>
-      <div class="picker-grid">${options || '<p class="empty">Every industry is already present here.</p>'}</div>
+      <div class="fcard-grid">${options || '<p class="empty">Every industry is already present here.</p>'}</div>
     </div>`;
   }
 
