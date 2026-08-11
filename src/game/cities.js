@@ -57,6 +57,12 @@ export function canAfford(nation, cost) {
 export function pay(nation, cost) {
   if (!canAfford(nation, cost)) return false;
   for (const [resource, amount] of Object.entries(cost ?? {})) nation[resource] -= amount;
+  // Tek seferlik alımlar (birim, şehir, devlet fabrikası) bütçe defterine
+  // yazılır; yoksa defter haftanın gerçek altın değişimini tutmaz (ölçüldü:
+  // %83 sapma, bkz. mechanics-audit). Kalem updateLedger'da okunup sıfırlanır.
+  if (cost?.gold && nation.economy) {
+    nation.economy.outlayGold = (nation.economy.outlayGold ?? 0) + cost.gold;
+  }
   return true;
 }
 

@@ -2,7 +2,7 @@
 
 import { Game } from '../src/game/game.js';
 import { TurnManager } from '../src/game/turn.js';
-import { GOOD_IDS, settleGlobalTrade } from '../src/game/economy.js';
+import { GOOD_IDS, IMPORT_ELASTICITY, settleGlobalTrade } from '../src/game/economy.js';
 import { generateWorld } from '../src/world/worldgen.js';
 import { generateNations } from '../src/world/nations.js';
 
@@ -70,10 +70,16 @@ const controlledFlow = {
   tariffRevenue: buyer.economy.tariffRevenue,
   treasuryDelta: buyer.gold - buyerGoldBefore,
 };
+// Tarife ithalat istahini kisar (bkz. economy.js IMPORT_ELASTICITY): %25
+// gumruklu alici talebinin tamamini DEGIL, istah kadarini ithal eder.
+// Eski beklenti "talep tam karsilanir" idi; korumacilik gercek bir kisinti
+// yaratmaya baslayinca beklenti de ona gore guncellendi.
+const appetite = 1 / (1 + (buyer.economy.tariff / 100) * IMPORT_ELASTICITY);
+const expectedImports = 6 * appetite;
 const controlledWorks = {
-  exactQuantity: Math.abs(controlledFlow.sellerExports - 6) < 1e-7
-    && Math.abs(controlledFlow.buyerImports - 6) < 1e-7,
-  demandMet: Math.abs(controlledFlow.buyerCoverage - 1) < 1e-7,
+  exactQuantity: Math.abs(controlledFlow.sellerExports - expectedImports) < 1e-7
+    && Math.abs(controlledFlow.buyerImports - expectedImports) < 1e-7,
+  demandMet: Math.abs(controlledFlow.buyerCoverage - appetite) < 1e-7,
   tariffOnlyTreasuryFlow: controlledFlow.tariffRevenue > 0
     && Math.abs(controlledFlow.treasuryDelta - controlledFlow.tariffRevenue) < 1e-7,
 };

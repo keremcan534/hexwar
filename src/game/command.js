@@ -802,6 +802,8 @@ function refreshOfficerCorps(game, nation, rng) {
   const cost = generalCost(nation);
   if (generalsOf(nation).length >= wanted || nation.gold < cost.gold) return;
   nation.gold -= cost.gold;
+  // Atama bedeli de deftere: bkz. cities.js pay() içindeki not.
+  if (nation.economy) nation.economy.outlayGold = (nation.economy.outlayGold ?? 0) + cost.gold;
   nation.generals.push(createGeneral(world, nation, rng));
 }
 

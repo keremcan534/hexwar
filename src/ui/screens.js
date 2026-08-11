@@ -1200,6 +1200,9 @@ export class Screens {
         ${(ledger.treatyCost ?? 0) > 0
     ? flatLine('Treaty obligations', ledger.treatyCost, 'res-neg',
       'reparations or tribute imposed on us at a peace table') : ''}
+        ${(ledger.outlayCost ?? 0) > 0
+    ? flatLine('State purchases', ledger.outlayCost, 'res-neg',
+      'this week: units raised, cities founded, projects funded') : ''}
         ${(ledger.tariffRevenue ?? 0) < 0
     ? flatLine('Tariff losses', ledger.tariffRevenue, 'res-neg') : ''}
         <div class="fiscal-total">

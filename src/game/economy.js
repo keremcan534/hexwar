@@ -351,6 +351,13 @@ const DEFAULT_TAXES = { lower: 20, middle: 15, upper: 10 };
 const PRICE_SPEED = 0.09;
 
 /**
+ * Gümrüğün ithalat iştahını ne kadar kıstığı. %10 tarife iştahı ~%14, %50
+ * tarife ~%44 düşürür. 0 olsaydı tarife yine yalnız bir vergi olurdu;
+ * korumacılığın "koruyan" kısmı bu katsayıdır.
+ */
+export const IMPORT_ELASTICITY = 1.6;
+
+/**
  * Sürekli sosyal harcamalar. Geç oyunda hazine doluyordu çünkü bütün giderler
  * tek seferlikti; bunlar nüfusla birlikte büyüyen, kapatılabilir ama kapatınca
  * bedeli olan kalemler. Maliyet 10.000 kişi başına, %100 seviyede haftalık.
@@ -471,6 +478,7 @@ function emptyLedger() {
     constructionCost: 0,
     treatyCost: 0,
     treatyRevenue: 0,
+    outlayCost: 0,
     income: 0,
     expenses: 0,
     net: 0,
@@ -1214,6 +1222,14 @@ function resetNationGoodsFlow(nation) {
     // This is last week's import reliance. Population prices use it until the
     // current week's world market has been cleared below.
     importShare: clamp(previous[id]?.importShare ?? 0, 0, 1),
+    // Geçen haftanın ülke bazlı karşılanma oranı. Şimdilik yalnız kayıt:
+    // fabrika girdisine bağlamak iki kez denendi ve geri alındı (bkz.
+    // runFactories'teki not) — dünya arzı yapısal olarak kıtken her ülkeyi
+    // kronik cezalandırıyordu. Arz sorunu çözülünce (RGO kapasitesi) erişim
+    // cezası buradan yeniden kurulmalı.
+    fulfilledShare: (previous[id]?.demand ?? 0) > 0
+      ? clamp((previous[id].fulfilled ?? 0) / previous[id].demand, 0, 1)
+      : 1,
   }]));
   nation.economy.trade = emptyTradeSummary();
 }
@@ -1360,7 +1376,10 @@ export function supportProject(game, nation, projectId, options = {}) {
   const wanted = options.full ? remaining : Math.max(1, Math.ceil(remaining * 0.25));
   const amount = Math.min(wanted, remaining, nation.gold);
   if (amount <= 0) return false;
-  nation.gold -= fundProject(project, amount);
+  const paid = fundProject(project, amount);
+  nation.gold -= paid;
+  // Proje desteği de deftere: bkz. cities.js pay() içindeki not.
+  nation.economy.outlayGold = (nation.economy.outlayGold ?? 0) + paid;
   game.emit('construction', state);
   game.emit('economy', nation.economy);
   return true;
@@ -1501,6 +1520,12 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
     // böylece economy.js'i import etmek (katman döngüsü) gerekmez.
     factory.jobs = factoryJobs(factory);
     const laborThroughput = factory.employees / WORKERS_PER_LEVEL;
+    // Girdi kapısı küresel bolluktur. Ülke bazlı erişim cezası (fulfilledShare
+    // ile min) iki kez denendi ve geri alındı: dünya arzı yapısal olarak kıt
+    // olduğu için kronik kıtlıktaki HER ülke sürekli cezalanıyor, sanayi 40
+    // yılda %52'den %31-35 doluluğa geriliyordu. O bağ, arz sorunu (RGO
+    // kapasitesi) çözüldükten sonra yeniden denenmeli; tarifenin sanayiye
+    // maliyeti şimdilik yalnız girdi fiyatı kanalından (aşağıda tariffFactor).
     const inputFulfillment = Object.keys(type.inputs).reduce(
       (lowest, id) => Math.min(lowest, inputAvailability[id] ?? 1),
       1,
@@ -1588,13 +1613,20 @@ function populationDemand(world, nation, market) {
     const taxRate = economy.taxes[classId] / 100;
     const needsBudget = scale * Math.max(0.35, wageIndex) * CLASS_NEEDS_BUDGET[classId]
       * (1 - taxRate) * (1 + welfare * 0.22);
-    const affordability = 1 / (1 + basket / Math.max(1, scale * 2.5));
-    socialClass.needsCost = basket;
+    // Refah sepetin bir kısmını devlet cebinden öder; parası zaten
+    // socialSpendingCost ile hazineden çıkıyor. Bu bağ yokken sosyal harcama
+    // memnuniyeti DÜŞÜRÜYORDU (0.50 -> 0.46, ölçüldü): para gidiyor, sepete
+    // hiç dokunmuyor, ekonomiyi ısıtıp fiyatları yukarı itiyordu. Kademe
+    // sınıfa göre: yoksul en çok yararlanır, aristokrasiye sosyal yardım yok.
+    const reliefRate = classId === 'lower' ? 0.35 : classId === 'middle' ? 0.12 : 0;
+    const outOfPocket = basket * (1 - welfare * reliefRate);
+    const affordability = 1 / (1 + outOfPocket / Math.max(1, scale * 2.5));
+    socialClass.needsCost = outOfPocket;
     socialClass.needsBudget = needsBudget;
     // Sepet tam yaşam standardını temsil eder; sınıf bunun temel %60'ını dahi
     // karşılayamıyorsa durum sınıf düşüşüne dönüşür. Lüks açığı memnuniyeti
     // azaltır fakat tek başına aristokrasiyi birkaç ayda yok etmez.
-    socialClass.canAffordNeeds = needsBudget + 0.01 >= basket * 0.6;
+    socialClass.canAffordNeeds = needsBudget + 0.01 >= outOfPocket * 0.6;
     socialClass.satisfaction = clamp(
       0.35 + affordability * 0.5 - taxRate * 0.28 + welfare * 0.14,
       0.08,
@@ -1890,23 +1922,30 @@ export function settleGlobalTrade(world) {
       const flow = nation.economy.goodsFlow[id];
       const marketProduction = Math.max(0, flow.production - flow.retained);
       const domestic = Math.min(marketProduction, flow.demand);
+      const deficit = Math.max(0, flow.demand - domestic);
+      // Gümrük ithalat iştahını kısar. Bu bağ yokken tarife ölü bir kaldıraçtı:
+      // ticaret saf fiziksel eşleşmeydi, %0 ile %50 arasında ithalat MİKTARI
+      // %0.9 oynuyordu (ölçüldü, bkz. mechanics-audit). Korumacılık artık
+      // gerçekten koruyor; bedeli de gerçek — karşılanmayan talep büyüyor.
+      const appetite = 1 / (1 + (nation.economy.tariff / 100) * IMPORT_ELASTICITY);
       return {
         nation,
         flow,
         domestic,
         surplus: Math.max(0, marketProduction - domestic),
-        deficit: Math.max(0, flow.demand - domestic),
+        deficit,
+        bid: deficit * appetite,
       };
     });
     const totalSurplus = rows.reduce((sum, row) => sum + row.surplus, 0);
-    const totalDeficit = rows.reduce((sum, row) => sum + row.deficit, 0);
-    const crossBorderTrade = Math.min(totalSurplus, totalDeficit);
+    const totalBid = rows.reduce((sum, row) => sum + row.bid, 0);
+    const crossBorderTrade = Math.min(totalSurplus, totalBid);
 
     for (const row of rows) {
       const { nation, flow } = row;
       flow.domestic = row.domestic;
       flow.exports = totalSurplus > 0 ? row.surplus * crossBorderTrade / totalSurplus : 0;
-      flow.imports = totalDeficit > 0 ? row.deficit * crossBorderTrade / totalDeficit : 0;
+      flow.imports = totalBid > 0 ? row.bid * crossBorderTrade / totalBid : 0;
       flow.fulfilled = Math.min(flow.demand, flow.domestic + flow.imports);
       flow.shortage = Math.max(0, flow.demand - flow.fulfilled);
       flow.importShare = flow.demand > 0 ? clamp(flow.imports / flow.demand, 0, 1) : 0;
@@ -1923,10 +1962,12 @@ export function settleGlobalTrade(world) {
   for (const nation of nations) {
     const trade = nation.economy.trade;
     trade.balance = trade.exportValue - trade.importValue;
-    // Goods are paid for by households and firms. Only the tariff/subsidy is
-    // a treasury flow; keeping that distinction prevents exports from becoming
-    // a magic state-money exploit.
-    trade.tariffRevenue = trade.importValue * (nation.economy.tariff / 100) * 0.12;
+    // Goods are paid for by households and firms. Only the tariff is a
+    // treasury flow; keeping that distinction prevents exports from becoming
+    // a magic state-money exploit. Tahsilat tamdır: eski 0.12 katsayısı
+    // geliri öldürüyordu (%50 tarife haftada 0.15 altın topluyordu, ölçüldü)
+    // ve hane sepetine binen gümrük bedeli hazineye hiç ulaşmıyordu.
+    trade.tariffRevenue = trade.importValue * (nation.economy.tariff / 100);
     trade.lastUpdated = world.turn;
     nation.economy.tariffRevenue = trade.tariffRevenue;
     nation.economy.fiscalNet += trade.tariffRevenue;
@@ -1955,10 +1996,15 @@ function updateLedger(nation, turn) {
   // Barış anlaşmalarının para tarafı: ödenen tazminat/haraç gider, alınan gelir.
   const treatyCost = Math.max(0, economy.treatyCost ?? 0);
   const treatyRevenue = Math.max(0, economy.treatyRevenue ?? 0);
+  // Haftanın tek seferlik alımları (birim, şehir, general, proje desteği).
+  // Biriktirme satın alma anında yapılır (bkz. cities.js pay); burada okunur
+  // ve sıfırlanır ki her hafta yalnız kendi harcamasını göstersin.
+  const outlayCost = Math.max(0, economy.outlayGold ?? 0);
+  economy.outlayGold = 0;
   const income = cityRevenue + (economy.taxRevenue ?? 0)
     + Math.max(0, tariffRevenue) + treatyRevenue;
   const expenses = armyCost + administrationCost + socialCost + importCost
-    + constructionCost + treatyCost + Math.max(0, -tariffRevenue);
+    + constructionCost + treatyCost + outlayCost + Math.max(0, -tariffRevenue);
   economy.ledger = {
     lastUpdated: turn,
     cityRevenue,
@@ -1971,6 +2017,7 @@ function updateLedger(nation, turn) {
     constructionCost,
     treatyCost,
     treatyRevenue,
+    outlayCost,
     income,
     expenses,
     net: income - expenses,
