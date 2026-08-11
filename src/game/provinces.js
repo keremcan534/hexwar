@@ -427,16 +427,30 @@ export function runProvinces(game) {
     // Sağlık harcaması büyümeyi hızlandırır (bkz. economy.js SOCIAL_PROGRAMS);
     // veri doğrudan okunuyor, economy.js'i import etmek katman döngüsü olurdu.
     const health = 1 + Math.min(100, nation.economy?.social?.health ?? 0) / 100 * 0.35;
-    const weeklyGrowth = (0.00018 + province.agriculture * 0.00006)
+    // Taban Vic2 ölçeğinde: en iyi koşulda yılda ~%0.9, yüzyılda ~2.3 kat
+    // (1836-1936 gerçeği ~1.75 kat). Eski katsayılar yüzyılda ~4.6 kat
+    // veriyordu ve hiçbir RGO kapasitesi bunu kovalayamıyordu: 100. yılda
+    // talep 3255'e çıkarken arz 1046'da kalıyor, 27 mal fiyat tavanına
+    // yapışıyordu (ölçüldü, bkz. market-diagnostic).
+    const weeklyGrowth = (0.00006 + province.agriculture * 0.00003)
       * (peace ? 1 : 0.55) * (0.45 + stability) * health;
     province.population = Math.round(province.population * (1 + weeklyGrowth));
 
     // Gelişme yalnız düzenin oturduğu yerde birikir: savaş ve kaos durdurur.
     const track = RGO_TYPES[province.rgo]?.track;
     if (track && peace && province.control > 80) {
+      // Nüfus baskısı gelişmeyi hızlandırır: kadroyu aşan her el yeni tarla
+      // açar, yeni kuyu kazar. Bu çarpan olmadan kapasite sabit hızda
+      // büyüyordu ve yüzyılda nüfus ~5 katına çıkarken RGO kadrosu +%45'te
+      // kalıyordu (ölçüldü): göçün yığdığı mega-province'ler kapasitesini
+      // kendisi açamıyor, hammadde arzı nüfustan kalıcı olarak kopuyordu.
+      const jobs = provinceRgoJobs(tile);
+      const rural = Math.max(0, province.population - (province.industrialEmployees ?? 0));
+      const pressure = jobs > 0 ? clamp(rural / jobs - 1, 0, 2) : 0;
       province[track] = Math.min(
         RGO_DEVELOPMENT_CAP,
-        (province[track] ?? 0) + RGO_DEVELOPMENT_PER_WEEK * stability,
+        (province[track] ?? 0)
+          + RGO_DEVELOPMENT_PER_WEEK * stability * (1 + pressure * 1.5),
       );
     }
   });

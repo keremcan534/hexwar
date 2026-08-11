@@ -245,7 +245,10 @@ export const FACTORIES = {
  */
 export const WORKERS_PER_LEVEL = 2000;
 export const HIRING_INTERVAL = 4;
-const MONTHLY_HIRE_RATE = 0.0008;
+// 0.0008 -> 0.0018: nüfus artışı Vic2 ölçeğine (yüzyılda ~2 kat) inince eski
+// akış sanayiyi açlıktan öldürüyordu — doluluk 40. yılda %38'e düşmüştü.
+// Sanayileşme artık doğum fazlasından değil, kırdan gelen göçten beslenir.
+const MONTHLY_HIRE_RATE = 0.0018;
 // Sanayi fakir nüfusun tamamını yutamaz: tarla ve maden de işçi ister.
 const MAX_WORKER_SHARE = 0.4;
 
