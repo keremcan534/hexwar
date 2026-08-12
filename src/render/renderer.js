@@ -118,10 +118,19 @@ export class Renderer {
     this.camera.setViewport(rect.width, rect.height);
   }
 
-  /** Dünya ya da katman ayarları değişince önbellek geçersizleşir. */
+  /**
+   * Dünya ya da katman ayarları değişince önbellek geçersizleşir.
+   *
+   * Ton önbelleği de burada düşer. Anahtarı `sahipId:arazi:kademe` — yeni bir
+   * dünyada ülke id'leri aynı ama renkleri bambaşka, dolayısıyla eski girdiler
+   * yeni ülkelere yanlış rengi veriyordu: tek ülkenin toprağı iki ayrı tonda
+   * çiziliyordu (ölçüldü: 15 ülkenin hepsi hatalı, en kötüsü 165° sapma).
+   * Yeniden kurma maliyeti önemsiz — ülke × arazi × kademe, birkaç yüz girdi.
+   */
   invalidateCache() {
     this.cache = null;
     this.constructionCache = null;
+    this.tintCache.clear();
   }
 
   setMapMode(mode) {
