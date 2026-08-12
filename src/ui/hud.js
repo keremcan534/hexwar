@@ -270,11 +270,28 @@ export class Hud {
    * Paradox tarzi saat kisayollari ve kamera tuslari. Sol surukleme kutu
    * secimine ayrildigi icin kamera WASD/ok tuslariyla da gezer.
    */
+  /**
+   * Ana menüyü ayarlar panelindeki düğmeye bağlar. Menü `main.js`te kurulur;
+   * HUD onu yalnız açabilsin diye referansı burada tutulur.
+   * (Arayüz metni İngilizce; Türkçe olan yalnız kod ve yorumlar.)
+   */
+  bindMenu(menu) {
+    this.menu = menu;
+    const btn = document.getElementById('btn-menu');
+    if (!btn) return;
+    btn.onclick = () => {
+      this.el.settings.classList.add('hidden');
+      menu.reopen();
+    };
+  }
+
   bindKeys() {
     window.addEventListener('keydown', (event) => {
       const tag = event.target?.tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || event.target?.isContentEditable) return;
       if (event.ctrlKey || event.altKey || event.metaKey) return;
+      // Perde açıkken boşluk/ok tuşları arkadaki haritayı sürmesin.
+      if (document.body.classList.contains('menu-open')) return;
 
       if (event.code === 'Space') {
         event.preventDefault();
@@ -961,7 +978,7 @@ function grouped(value) {
   return Math.round(value ?? 0).toLocaleString('en-US');
 }
 
-function gameDate(turn, day = 0) {
+export function gameDate(turn, day = 0) {
   const date = new Date(Date.UTC(1836, 0, 1));
   // Hafta sistemin adımı, gün ise saatin adımı: tarih gün gün ilerler.
   date.setUTCDate(date.getUTCDate() + Math.max(0, day || (turn - 1) * 7));
