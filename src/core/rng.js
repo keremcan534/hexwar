@@ -30,6 +30,12 @@ export function makeRng(seed) {
     }
     return arr;
   };
+  // Uzun omurlu bir akis (tur zari) kaydedilebilmeli. Durum tek bir 32-bit
+  // tamsayidir; yazilmazsa yuklenen oyun zarlari bastan atmaya baslar ve
+  // kesintisiz devam eden oyundan ayrilir (olculdu: 100 hafta sonra farkli
+  // savaslar, farkli nufus).
+  rng.state = () => a | 0;
+  rng.seedState = (value) => { a = (Number(value) | 0) || 1; };
   return rng;
 }
 

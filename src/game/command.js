@@ -716,11 +716,17 @@ function advance(game, general, divisions) {
 
   // Sahipsiz toprak askeri operasyondan ayridir; eski dalgali yerlesim temposu
   // korunur ve iki tumen ayni bos province'i rezerve edemez.
-  for (const unit of divisions) {
+  for (let index = 0; index < divisions.length; index++) {
+    const unit = divisions[index];
     if (!readyForOperation(game, unit)) continue;
     // Butun grup ayni hafta firlamasin: her tumen kendi sirasinda taarruz eder.
-    // Kimlige gore kaydirmak cepheyi dalga dalga ilerletir.
-    if ((game.turns.turn + unit.id) % cadence !== 0) continue;
+    // Faz, tumenin komuta icindeki SIRASIDIR — mutlak kimligi degil. Kimlik
+    // surec omurlu bir sayactan geliyordu (units.js nextId), dolayisiyla ayni
+    // tohumla kurulan ikinci dunya farkli bir cephe temposu aliyor ve bastan
+    // sona baska bir oyun oluyordu (olculdu: ayni tohumdan 5 farkli sonuc).
+    // Kayittan yuklemek de kimlikleri yeniden urettigi icin ayni dallanmayi
+    // yaratiyordu. Sira ise dunyaya aittir: kayitta korunur, surecten bagimsizdir.
+    if ((game.turns.turn + index) % cadence !== 0) continue;
     const target = pickFrontierTarget(world, unit, reserved);
     if (!target) continue;
     // Savunulan kareye yuruyusle girilmez (yol bulma dolu kareyi kapali sayar);

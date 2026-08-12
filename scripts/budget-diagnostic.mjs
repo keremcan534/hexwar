@@ -54,7 +54,9 @@ for (let week = 1; week <= WEEKS; week++) {
     const L = nation.economy.ledger;
     if (L.lastUpdated !== world.turn) continue;
     const delta = nation.gold - goldPrev.get(nation.id);
-    const expected = (L.net ?? 0) + (L.borrowed ?? 0) - (L.repaid ?? 0);
+    // Temerrut de bir bilanco hareketidir: borclanma kapasitesi dolunca
+    // odenmeyen acik hazineyi sifira oturtur (bkz. economy.js settleDebt).
+    const expected = (L.net ?? 0) + (L.borrowed ?? 0) - (L.repaid ?? 0) + (L.defaulted ?? 0);
     const err = Math.abs(delta - expected);
     identitySamples++;
     identityWorst = Math.max(identityWorst, err);

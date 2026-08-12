@@ -5,7 +5,7 @@
 // şeyler saklanır. Bu, kaydı küçük tutar ama bir bedeli var: worldgen
 // değişirse eski kayıtlar geçersizleşir, o yüzden SAVE_VERSION var.
 
-import { createUnit, refreshArmy, resolveTypeId } from './units.js';
+import { createUnit, refreshArmy, resetUnitIds, resolveTypeId } from './units.js';
 import { createCity, englishCityName } from './cities.js';
 import { ensureEconomy } from './economy.js';
 import { ensureCommand } from './command.js';
@@ -50,6 +50,9 @@ export function serialize(game) {
     options: world.genOptions ?? {},
     turn: turns.turn,
     playerNation: turns.playerNation,
+    // Tur zarinin durumu. Yazilmazsa yukleme zari basa sarar; savas ilanlari,
+    // muharebe zarlari ve koalisyon kontrolleri bastan baska sonuc verir.
+    rngState: turns.rng.state(),
     log: turns.log.slice(0, 20),
     market: world.market,
     battleSystem: {
@@ -231,20 +234,38 @@ export function deserialize(game, data) {
     unit.attackReadyAt = saved.attackReadyAt ?? 0;
     unit.entrenchment = Math.max(0, Math.min(0.35, saved.entrenchment ?? 0));
     unit.post = saved.post ? { ...saved.post } : null;
+    // Kimlik kayittan geri yazilir. Yeniden uretilen kimlikler cephe temposunu
+    // kaydiriyordu: yuklenen oyun kesintisiz devam eden oyundan ayriliyordu
+    // (olculdu: 100 hafta sonra nufus, birim, sehir ve savaslar farkli).
+    if (saved.id != null) unit.id = saved.id;
     world.units.push(unit);
     if (saved.id != null) unitIds.set(saved.id, unit.id);
     if (saved.order) pendingOrders.push([unit, saved.order]);
   }
+  // Sayac kayittaki en buyuk kimligin uzerine kurulur ki yeni alaylar
+  // yuklenmis olanlarla carpismasin.
+  resetUnitIds(world.units.reduce((max, unit) => Math.max(max, unit.id), 0) + 1);
   // Emirler birimler yerleştikten sonra: hedef karesi çözülebilsin.
   for (const [unit, order] of pendingOrders) {
     const target = order.tq === undefined ? null : world.get(order.tq, order.tr);
     unit.order = { type: order.type, target, blocked: 0 };
   }
 
+  // Toprak sayaci kayitta tutulmaz ve turetilebilir bir sayidir; yeniden
+  // sayilmazsa dunya uretiminden gelen 1. tur degeri kalir (olculdu: gercek
+  // 126 kareye karsi sayacta 61). Bu sayac YZ'nin ordu/sehir hedefini ve
+  // hegemonya puanini besledigi icin sessizce oyunun kazananini degistirir.
+  for (const nation of world.nations) nation.tiles = 0;
+  world.forEach((tile) => {
+    if (tile.owner >= 0 && world.nations[tile.owner]) world.nations[tile.owner].tiles++;
+  });
+
   // 8) Tur durumu
   turns.turn = data.turn;
   world.turn = data.turn;
   turns.playerNation = data.playerNation;
+  // Eski kayitlarda bu alan yok: o zaman zar taze baslar, yani bugunku davranis.
+  if (Number.isFinite(data.rngState)) turns.rng.seedState(data.rngState);
   turns.log = data.log ?? [];
   ensureEconomy(world);
   ensurePolitics(world);

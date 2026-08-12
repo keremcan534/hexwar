@@ -230,6 +230,19 @@ const RGO_DEVELOPMENT_PER_WEEK = 0.0011;
 const RGO_DEVELOPMENT_CAP = 10;
 
 /**
+ * Sepetinin bu oranindan azini alabilen nufus aclik cekmeye baslar. %50 bilerek
+ * comert: eksik luks tuketim olum demek degildir, asil kirilma temel gidanin
+ * alinamamasidir.
+ */
+const FAMINE_THRESHOLD = 0.5;
+/**
+ * Tam aclikta haftalik nufus kaybi. 0.0012 ile bes yillik (260 hafta) toplam
+ * aclik nufusu ~%27 eritir: gorunur ve geri donulebilir bir felaket, anlik
+ * cokus degil.
+ */
+const FAMINE_DECLINE = 0.0012;
+
+/**
  * Fazla nüfusun RGO çıktısını ne kadar büyütebileceğinin tavanı. Sınırsız
  * olsaydı kalabalık province tek başına dünya arzını karşılardı.
  */
@@ -427,14 +440,27 @@ export function runProvinces(game) {
     // Sağlık harcaması büyümeyi hızlandırır (bkz. economy.js SOCIAL_PROGRAMS);
     // veri doğrudan okunuyor, economy.js'i import etmek katman döngüsü olurdu.
     const health = 1 + Math.min(100, nation.economy?.social?.health ?? 0) / 100 * 0.35;
+    // Beslenme: sepetinin ne kadarini fiilen alabildigi (bkz. economy.js
+    // populationDemand). Bu bag yokken kitligin nufusta hicbir karsiligi
+    // yoktu — dunya tahil uretimi TAMAMEN kesildiginde bile 120 haftalik
+    // nufus farki %0.0 olcusundeydi. Ac nufus once buyumeyi durdurur, uzayan
+    // aclik ise nufusu eritir.
+    const nourishment = clamp(nation.economy?.needsMet ?? 1, 0, 1);
+    const famine = nourishment < FAMINE_THRESHOLD
+      ? (FAMINE_THRESHOLD - nourishment) / FAMINE_THRESHOLD : 0;
     // Taban Vic2 ölçeğinde: en iyi koşulda yılda ~%0.9, yüzyılda ~2.3 kat
     // (1836-1936 gerçeği ~1.75 kat). Eski katsayılar yüzyılda ~4.6 kat
     // veriyordu ve hiçbir RGO kapasitesi bunu kovalayamıyordu: 100. yılda
     // talep 3255'e çıkarken arz 1046'da kalıyor, 27 mal fiyat tavanına
     // yapışıyordu (ölçüldü, bkz. market-diagnostic).
     const weeklyGrowth = (0.00006 + province.agriculture * 0.00003)
-      * (peace ? 1 : 0.55) * (0.45 + stability) * health;
-    province.population = Math.round(province.population * (1 + weeklyGrowth));
+      * (peace ? 1 : 0.55) * (0.45 + stability) * health
+      * (0.25 + 0.75 * nourishment)
+      - famine * FAMINE_DECLINE;
+    province.population = Math.max(
+      0,
+      Math.round(province.population * (1 + weeklyGrowth)),
+    );
 
     // Gelişme yalnız düzenin oturduğu yerde birikir: savaş ve kaos durdurur.
     const track = RGO_TYPES[province.rgo]?.track;

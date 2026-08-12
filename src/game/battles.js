@@ -20,6 +20,7 @@ import {
   generalSiegeRelief, generalVariance, planningBonus,
 } from './command.js';
 import { fortDefenseAt } from './construction.js';
+import { MILITARY_EQUIPMENT, equipmentStock } from './economy.js';
 import { controllerOf } from './control.js';
 
 /** Muharebe bu kadar raunttan sonra zorla biter; kazanan guce gore belirlenir. */
@@ -93,15 +94,22 @@ function leadGeneral(world, units) {
  */
 export function battleUnitPower(world, unit, defending, relief = 0) {
   const nation = world.nations[unit.nationId];
-  // Maaş muharebe iradesini alır: aç asker savaşmaz. Tedarik tarafı ayrı —
-  // o, takviye ve toparlanma üzerinden işler (bkz. reinforcement/turn).
+  // Maaş muharebe iradesini alır: aç asker savaşmaz.
   const funding = (nation.economy?.militaryWages ?? 100) / 100;
+  // Cephanesi olmayan ordu dövüşemez. Ölçüt ihtiyat stoğudur: stok ihtiyatın
+  // altına inince güç doğrusal olarak düşer. Bu bağ yokken teçhizat muharebeye
+  // hiç girmiyordu — stoğu sıfır olan ve askerî sanayisi tamamen kapalı bir
+  // ordu, deposu dolu orduyla neredeyse aynı güçte dövüşüyor (fark %3.6) ve
+  // aynı savaşta DAHA FAZLA toprak işgal ediyordu (59'a 52, ölçüldü).
+  const reserve = Math.max(1, MILITARY_EQUIPMENT.arms.reserve);
+  const readiness = Math.max(0, Math.min(1, equipmentStock(nation, 'arms') / reserve));
   const general = generalOfArmy(nation, unit);
   const terrain = defending
     ? (1 + terrainDefense(world, unit) * (1 - relief)) * (1 + (unit.entrenchment ?? 0))
     : 1;
   return armyPower(unit)
     * (0.55 + funding * 0.45)
+    * (0.65 + readiness * 0.35)
     * terrain
     * generalModifier(general, { defending, army: unit })
     * (defending ? 1 : planningBonus(nation, unit));

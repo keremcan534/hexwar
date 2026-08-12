@@ -30,6 +30,23 @@
     "audit": "node scripts/mechanics-audit.mjs",
     "diagnose:budget": "node scripts/budget-diagnostic.mjs",
     "diagnose:tax": "node scripts/tax-behavior-diagnostic.mjs",
-    "diagnose:pops": "node scripts/population-cohort-diagnostic.mjs"
+    "diagnose:pops": "node scripts/population-cohort-diagnostic.mjs",
+    "audit:all": "node scripts/audit/run-all.mjs",
+    "audit:determinism": "node scripts/audit/determinism-audit.mjs",
+    "audit:tax": "node scripts/audit/tax-audit.mjs",
+    "audit:tariff": "node scripts/audit/tariff-audit.mjs",
+    "audit:budget": "node scripts/audit/budget-audit.mjs",
+    "audit:market": "node scripts/audit/market-audit.mjs",
+    "audit:factory": "node scripts/audit/factory-audit.mjs",
+    "audit:population": "node scripts/audit/population-audit.mjs",
+    "audit:construction": "node scripts/audit/construction-audit.mjs",
+    "audit:military": "node scripts/audit/military-audit.mjs",
+    "audit:debt": "node scripts/audit/debt-audit.mjs",
+    "audit:ai": "node scripts/audit/ai-audit.mjs",
+    "audit:strategy": "node scripts/audit/strategy-audit.mjs",
+    "audit:boundary": "node scripts/audit/boundary-audit.mjs",
+    "audit:save": "node scripts/audit/save-audit.mjs",
+    "audit:legacy": "node scripts/audit/legacy-audit.mjs",
+    "audit:long-run": "node scripts/audit/long-run-audit.mjs"
   }
 }

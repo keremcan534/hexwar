@@ -12,8 +12,8 @@ import {
 } from './politics.js';
 import {
   PROJECT_KIND, constructionAtlas, constructionPower, constructionTaxMultiplier,
-  constructionUpkeep, ensureConstruction, fundProject, queueIndustryProject,
-  universityWorkforceBonus,
+  constructionUpkeep, ensureConstruction, fundProject, planConstructionAI,
+  queueIndustryProject, universityWorkforceBonus,
 } from './construction.js';
 
 /**
@@ -498,6 +498,8 @@ function emptyLedger() {
     interestCost: 0,
     borrowed: 0,
     repaid: 0,
+    defaulted: 0,
+    creditPenalty: 0,
     debt: 0,
     income: 0,
     expenses: 0,
@@ -1694,6 +1696,7 @@ function populationDemand(world, nation, market) {
   const economy = nation.economy;
   let totalCost = 0;
   let satisfactionWeighted = 0;
+  let metWeighted = 0;
   const welfare = socialLevel(nation, 'welfare');
 
   for (const [classId, needs] of Object.entries(CLASS_NEEDS)) {
@@ -1701,20 +1704,42 @@ function populationDemand(world, nation, market) {
     const scale = socialClass.population / 10000;
     let basket = 0;
     let basketAtBase = 0;
+    // BIRINCI GECIS: sepetin *istenen* hali. Pazara henuz hicbir sey yazilmaz —
+    // ne kadarini karsilayabildigini bilmeden talebi yazmak, tuketimi butceden
+    // tamamen kopariyordu. Olculdu: alt sinif vergisi %0 -> %100 arasinda gecim
+    // butcesi 330.1 -> 0.0 duserken sepet harcamasi 153.7 -> 160.2 CIKIYORDU;
+    // yani parasi olmayan hane ayni mali almaya devam ediyordu. Bu kopukluk
+    // verginin, gumrugun, refahin ve kitligin butun asagi yonlu etkilerini
+    // birden olduruyordu (bkz. SYSTEM_AUDIT_REPORT KRITIK-2).
+    const wanted = [];
+    let onShelf = 0;
     for (const [goodId, need] of Object.entries(needs)) {
       const amount = needAmount(need, world.turn ?? 1);
       if (amount <= 0) continue;
       const quantity = amount * scale;
-      addFlow(market, goodId, 'demand', quantity);
-      addNationFlow(nation, goodId, 'demand', quantity);
       // Tariffs only raise the imported share of a household basket. Last
       // week's share is used because this week's trade clears after all
       // nations have submitted supply and demand.
       const importShare = clamp(economy.goodsFlow?.[goodId]?.importShare ?? 0, 0, 1);
       const tariffFactor = 1 + (economy.tariff / 100) * importShare;
-      basket += priceOf(world, goodId) * quantity * tariffFactor;
-      basketAtBase += GOODS[goodId].basePrice * quantity;
+      const cost = priceOf(world, goodId) * quantity * tariffFactor;
+      const baseCost = GOODS[goodId].basePrice * quantity;
+      wanted.push({ goodId, quantity });
+      basket += cost;
+      basketAtBase += baseCost;
+      // Rafta var mi: gecen haftanin karsilanma orani (bu haftanin ticareti
+      // henuz kapanmadi). Parasi yetmek ile mal BULMAK ayri seylerdir; dunya
+      // tahil uretimi tamamen kesildiginde hane hala "karsilayabiliyor"
+      // gorunuyordu cunku fiyat artinca ucret endeksi de artiyor.
+      //
+      // Agirlik GUNCEL fiyat degil TABAN fiyattir. Guncel fiyatla olcunce
+      // tavana yapismis kucuk bir luks (uretilmeyen likor, tabanda 0.16 pay)
+      // sepetin %17'sini kapliyor, tabana cakili tahil ise %0.8'e dusuyordu:
+      // beslenme endeksi fiyat bandinin patolojisini (bkz. rapor YUKSEK-16)
+      // miras aliyordu. Taban fiyat sepetin TASARLANMIS bilesimidir.
+      onShelf += baseCost * clamp(economy.goodsFlow?.[goodId]?.fulfilledShare ?? 1, 0, 1);
     }
+    const availability = basketAtBase > 1e-9 ? clamp(onShelf / basketAtBase, 0, 1) : 1;
     // Ücretler fiyatları kısmen takip eder. Etmezse: geçim bütçesi sabit bir
     // sayı, geçim masrafı ise fiyatla 8 katına çıkabilen bir sayı olur ve ilk
     // ciddi kıtlıkta bütün sınıflar iflas eder. Ölçüldü: üst sınıf tamamen
@@ -1733,8 +1758,32 @@ function populationDemand(world, nation, market) {
     const reliefRate = classId === 'lower' ? 0.35 : classId === 'middle' ? 0.12 : 0;
     const outOfPocket = basket * (1 - welfare * reliefRate);
     const affordability = 1 / (1 + outOfPocket / Math.max(1, scale * 2.5));
+    // IKINCI GECIS: hane ancak odeyebildigi kadarini satin alir. Oran butun
+    // sepete esit uygulanir; kalem sirasi (once luks kesilsin) bilerek
+    // yapilmadi — bu duzeltmenin isi bagi KURMAK, dengeyi yeniden yazmak degil.
+    //
+    // needsCost ve canAffordNeeds ISTENEN sepeti gostermeye devam eder: yoksa
+    // ac kalan sinif "sepetini karsiliyor" gibi gorunur ve sinif dususu,
+    // memnuniyet, hareketlilik zincirlerinin hepsi yanilir.
+    const affordShare = outOfPocket > 1e-9
+      ? clamp(needsBudget / outOfPocket, 0, 1)
+      : 1;
+    for (const { goodId, quantity } of wanted) {
+      const bought = quantity * affordShare;
+      addFlow(market, goodId, 'demand', bought);
+      addNationFlow(nation, goodId, 'demand', bought);
+    }
     socialClass.needsCost = outOfPocket;
     socialClass.needsBudget = needsBudget;
+    // Sepetin fiilen alinan orani. Ekranlar ve tanilar icin: "istedigi" ile
+    // "aldigi" arasindaki fark artik gorunur bir sayidir.
+    // Sepetin fiilen KARSILANAN orani iki kapiya birden bakar: parasi yetti mi
+    // (affordShare) ve mal var miydi (availability). Talep yalnizca ilkiyle
+    // kisilir — parasi olup mal bulamayan hane yine de talep eder ve fiyati
+    // yukari iter; ama karni doymaz.
+    socialClass.needsMet = affordShare * availability;
+    socialClass.needsAvailable = availability;
+    socialClass.needsSpent = outOfPocket * affordShare * availability;
     // Sepet tam yaşam standardını temsil eder; sınıf bunun temel %60'ını dahi
     // karşılayamıyorsa durum sınıf düşüşüne dönüşür. Lüks açığı memnuniyeti
     // azaltır fakat tek başına aristokrasiyi birkaç ayda yok etmez.
@@ -1746,11 +1795,16 @@ function populationDemand(world, nation, market) {
     );
     totalCost += basket;
     satisfactionWeighted += socialClass.satisfaction * socialClass.population;
+    metWeighted += socialClass.needsMet * socialClass.population;
   }
 
   economy.standardOfLiving = 5 + 15 * (satisfactionWeighted / Math.max(1, economy.population))
     + socialLevel(nation, 'health') * 2.5;
   economy.stability = satisfactionWeighted / Math.max(1, economy.population);
+  // Ulusal beslenme endeksi: sepetinin ne kadarini fiilen alabilen bir nufus.
+  // provinces.js bunu okur (economy.js'i import etmek katman dongusu olurdu,
+  // ayni kalip saglik harcamasinda da kullaniliyor).
+  economy.needsMet = clamp(metWeighted / Math.max(1, economy.population), 0, 1);
   return totalCost;
 }
 
@@ -2120,7 +2174,10 @@ export function settleGlobalTrade(world) {
       // ticaret saf fiziksel eşleşmeydi, %0 ile %50 arasında ithalat MİKTARI
       // %0.9 oynuyordu (ölçüldü, bkz. mechanics-audit). Korumacılık artık
       // gerçekten koruyor; bedeli de gerçek — karşılanmayan talep büyüyor.
-      const appetite = 1 / (1 + (nation.economy.tariff / 100) * IMPORT_ELASTICITY);
+      // Payda 0.05'in altina inemez: formul −%62.5 tarifede sonsuza, altinda
+      // NEGATIFE gidiyor. UI bandi (taban −50) bugun oraya girmiyor ama
+      // matematiksel koruma bantla birlikte tasinmamali.
+      const appetite = 1 / Math.max(0.05, 1 + (nation.economy.tariff / 100) * IMPORT_ELASTICITY);
       return {
         nation,
         flow,
@@ -2182,14 +2239,18 @@ function marketInputAvailability(market) {
  */
 export function debtCapacity(nation) {
   const weekly = Math.max(0, nation.economy?.ledger?.income ?? 0);
-  return Math.max(50, weekly * 26);
+  // Temerrude dusen devlete daha az borc verilir. Bu carpan olmadan iflasin
+  // hicbir bedeli olmuyordu (bkz. settleDebt).
+  const credit = 1 - clamp(nation.economy?.creditPenalty ?? 0, 0, 0.85);
+  return Math.max(50, weekly * 26 * credit);
 }
 
-/** Yıllık faiz: taban %4, kapasite doldukça %12'ye tırmanır. */
+/** Yıllık faiz: taban %4, kapasite doldukça %12'ye tırmanır; temerrüt ekler. */
 export function debtInterestRate(nation) {
   const debt = Math.max(0, nation.debt ?? 0);
   const load = clamp(debt / Math.max(1, debtCapacity(nation)), 0, 1);
-  return 0.04 + 0.08 * load;
+  const credit = clamp(nation.economy?.creditPenalty ?? 0, 0, 0.85);
+  return 0.04 + 0.08 * load + 0.10 * credit;
 }
 
 /**
@@ -2207,12 +2268,30 @@ function settleDebt(nation) {
   economy.borrowedGold = 0;
   economy.repaidGold = 0;
 
+  economy.defaultedGold = 0;
+  economy.creditPenalty = clamp(economy.creditPenalty ?? 0, 0, 0.85);
+
   if (nation.gold < 0) {
     const room = Math.max(0, debtCapacity(nation) - nation.debt);
     const borrow = Math.min(-nation.gold, room);
     nation.debt += borrow;
     nation.gold += borrow;
     economy.borrowedGold = borrow;
+    // Kapasite dolduysa devlet TEMERRUDE duser: kalan acik odenmez, hazine
+    // sifira oturur. Eskiden bu acik hazinede sinirsiz negatif olarak
+    // birikiyordu (olculdu: -23.350 altin, geri donusu olmayan bir cukur;
+    // 1040. haftada ulkelerin %30'u oradaydi). Temerrut bedavaya degildir:
+    // kredi itibari duser, kapasite daralir, faiz tirmanir.
+    if (nation.gold < 0) {
+      const defaulted = -nation.gold;
+      nation.gold = 0;
+      economy.defaultedGold = defaulted;
+      economy.creditPenalty = clamp(
+        economy.creditPenalty + defaulted / Math.max(1, debtCapacity(nation)),
+        0,
+        0.85,
+      );
+    }
   } else if (nation.debt > 0 && nation.gold > DEBT_CUSHION) {
     // Geri ödeme otomatik ve ılımlı: hazine yastığın üstündeyse fazlanın
     // çeyreği borca gider. Oyuncu isterse bütçeyi sıkıp hızlandırır.
@@ -2220,6 +2299,11 @@ function settleDebt(nation) {
     nation.debt -= repay;
     nation.gold -= repay;
     economy.repaidGold = repay;
+  }
+  // Itibar borcunu odeyen ulkede yavasca geri gelir: temerrut kalici bir olum
+  // cezasi degil, yillar suren bir bedeldir (yarilanma ~70 hafta).
+  if (economy.defaultedGold <= 0 && nation.gold > DEBT_CUSHION) {
+    economy.creditPenalty = Math.max(0, economy.creditPenalty - 0.01);
   }
 }
 
@@ -2290,6 +2374,10 @@ function updateLedger(nation, turn) {
     // Δhazine = net + borçlanılan − ödenen şeklinde kapanır.
     borrowed: economy.borrowedGold ?? 0,
     repaid: economy.repaidGold ?? 0,
+    // Odenmeyen acik da bir bilanco hareketidir: kimlik
+    // Δhazine = net + borclanilan − odenen + temerrut.
+    defaulted: economy.defaultedGold ?? 0,
+    creditPenalty: economy.creditPenalty ?? 0,
     debt: nation.debt ?? 0,
     income,
     expenses,
@@ -2470,6 +2558,9 @@ export function runEconomy(game) {
     }
     runPrivateSector(game, nation);
     runEconomicAI(game, nation);
+    // Bina kararı da bir harcamadır ve defter bu haftanın kaydını yazmadan
+    // önce verilmeli; construction.js yalnız işi ilerletir.
+    planConstructionAI(game, nation);
   }
 
   // Dünya piyasasındaki gerçek alımlar stratejik stokları doldurur ve fiyatı

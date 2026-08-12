@@ -108,14 +108,30 @@ function ownedProvinces(world, nation) {
 /**
  * Bir kohortun ekonomisi. Sınıf düzeyindeki gerçek rakamlar kişi başına
  * indirgenip kohort boyutuyla çarpılır — uydurma yok, sınıfın kendi
- * geliri/vergisi/sepeti neyse kohorta o oranda düşer.
+ * geliri/vergisi/sepeti neyse kohorta o oranda düşer. Pay, kohort boyutu
+ * değil ETKİNLİK ağırlığıdır (bkz. activityWeight): işsiz kohort daha az alır
+ * ve sınıf toplamı yine de birebir korunur.
  */
-function cohortEconomics(nation, classId, size) {
+/**
+ * Issiz bir kohortun kisi basina geliri, calisanin bu kadari kadardir. Bu
+ * agirlik yokken istihdam durumu hane ekonomisine hic girmiyordu: ayni
+ * province'te calisan ve issiz isci kohortu kisi basi AYNI geliri ve AYNI
+ * tuketimi gosteriyordu (olculdu).
+ */
+const UNEMPLOYED_INCOME_SHARE = 0.35;
+
+/** Kohortun gelir agirligi: issizlik payi kadar dusuk. */
+function activityWeight(size, employment) {
+  if (!employment || employment.employed == null || size <= 0) return size;
+  const employed = Math.min(size, Math.max(0, employment.employed));
+  return employed + (size - employed) * UNEMPLOYED_INCOME_SHARE;
+}
+
+function cohortEconomics(nation, classId, size, share) {
   const socialClass = nation.economy?.classes?.[classId];
   if (!socialClass || !(socialClass.population > 0)) {
     return { income: 0, taxPaid: 0, consumption: 0, disposable: 0, needsFulfilled: 1 };
   }
-  const share = size / socialClass.population;
   const consumption = (socialClass.needsCost ?? 0) * share;
   const disposable = (socialClass.needsBudget ?? 0) * share;
   return {
@@ -123,8 +139,13 @@ function cohortEconomics(nation, classId, size) {
     taxPaid: (socialClass.taxPaid ?? 0) * share,
     consumption,
     disposable,
-    // Sepetinin ne kadarını karşılayabiliyor (1 = tamamı).
-    needsFulfilled: consumption > 0 ? Math.min(1, disposable / consumption) : 1,
+    // Sepetinin ne kadarını gerçekten aldı (1 = tamamı). İki kapıya birden
+    // bakar: parası yetti mi ve mal var mıydı (bkz. economy.js needsMet).
+    // Yalnız bütçeye bakan eski ölçü, tamamen boş bir pazarda bile "%99
+    // karşılandı" diyordu — kohort katmanı ile ekonomi katmanı aynı hanenin
+    // iki farklı hikâyesini anlatıyordu.
+    needsFulfilled: socialClass.needsMet
+      ?? (consumption > 0 ? Math.min(1, disposable / consumption) : 1),
   };
 }
 
@@ -139,7 +160,10 @@ export function nationCohorts(world, nation) {
   const tiles = ownedProvinces(world, nation);
   if (!tiles.length) return [];
 
-  const cohorts = [];
+  // Once butun kohortlar ve istihdamlari kurulur; gelir dagitimi ancak sinifin
+  // TOPLAM etkinlik agirligi bilindiginde yapilabilir (yoksa paylar toplami
+  // 1 etmez ve sinif geliri sizar).
+  const draft = [];
   for (const [professionId, profession] of Object.entries(PROFESSION_INFO)) {
     const total = Math.max(0, Math.round(economy.professionCounts[professionId] ?? 0));
     if (total <= 0) continue;
@@ -155,24 +179,34 @@ export function nationCohorts(world, nation) {
       const size = sizes[i];
       if (size <= 0) continue;
       const tile = tiles[i];
-      const classId = profession.classId;
-      cohorts.push({
+      const employment = cohortEmployment(world, nation, tile, professionId, size);
+      draft.push({
         id: `${tile.q}:${tile.r}:${professionId}`,
         tile,
         q: tile.q,
         r: tile.r,
         professionId,
         professionName: profession.name,
-        classId,
-        className: CLASS_INFO[classId]?.name ?? classId,
+        classId: profession.classId,
+        className: CLASS_INFO[profession.classId]?.name ?? profession.classId,
         culture: tile.culture,
         size,
-        ...cohortEconomics(nation, classId, size),
-        ...cohortEmployment(world, nation, tile, professionId, size),
+        employment,
+        weight: activityWeight(size, employment),
       });
     }
   }
-  return cohorts;
+
+  const classWeight = {};
+  for (const cohort of draft) {
+    classWeight[cohort.classId] = (classWeight[cohort.classId] ?? 0) + cohort.weight;
+  }
+  return draft.map(({ weight, employment, ...cohort }) => ({
+    ...cohort,
+    ...cohortEconomics(nation, cohort.classId, cohort.size,
+      classWeight[cohort.classId] > 0 ? weight / classWeight[cohort.classId] : 0),
+    ...employment,
+  }));
 }
 
 /**

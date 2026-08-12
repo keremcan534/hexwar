@@ -51,6 +51,10 @@ const nations = game.world.nations.filter((nation) => nation.alive).map((nation)
 const nation = game.world.nations.find((candidate) => candidate.alive);
 game.turns.playerNation = nation.id;
 const region = constructionAtlas(game.world, nation.id).regions[0];
+// Binalar artik bedelini PESIN oduyor (bkz. construction.js queueConstruction).
+// Bu tani kuyruk/oncelik/iptal davranisini olcuyor, finansmani degil: kasa
+// bilerek dolduruluyor ki dort bina da kuyruga girebilsin.
+nation.gold = Math.max(nation.gold, 500);
 const beforeSlots = constructionAtlas(game.world, nation.id).free;
 const sectorQueued = queueConstruction(game, nation.id, region.id, 'CONSTRUCTION_SECTOR');
 const slotReserved = constructionAtlas(game.world, nation.id).free === beforeSlots - 1;
@@ -102,11 +106,20 @@ const loadedRegion = constructionAtlas(game.world, loadedNation.id).regions[0];
 queueConstruction(game, loadedNation.id, loadedRegion.id, 'ADMINISTRATION');
 for (let week = 0; week < 8; week++) runConstruction(game);
 const adminEffectApplied = constructionTaxMultiplier(loadedNation) === 1.04;
+// Bina etkileri artik hazine bakiyesine degil KREDI ITIBARINA baglidir.
+// Eski kural `nation.gold > 0` ikili kapisiydi: 1 altindan 0 altina inen ulke
+// butun altyapisini bir anda kaybediyordu (bkz. SYSTEM_AUDIT_REPORT D-38).
+// Yeni kural kademeli: temerrude dusen devletin binalari orantili korelir.
 loadedNation.gold = 0;
-const unfundedBuildingsStop = constructionPower(loadedNation) === 5
-  && fortDefenseAt(game.world, loadedNation.id, fortAnchorTile) === 0
-  && universityWorkforceBonus(loadedNation) === 0
-  && constructionTaxMultiplier(loadedNation) === 1;
+const solventKeepsBuildings = constructionPower(loadedNation) === 10
+  && constructionTaxMultiplier(loadedNation) === 1.04;
+loadedNation.economy.creditPenalty = 0.85;
+const defaultDegradesBuildings = constructionPower(loadedNation) < 10
+  && fortDefenseAt(game.world, loadedNation.id, fortAnchorTile) < 0.08
+  && universityWorkforceBonus(loadedNation) < 0.04
+  && constructionTaxMultiplier(loadedNation) < 1.04;
+loadedNation.economy.creditPenalty = 0;
+const unfundedBuildingsStop = solventKeepsBuildings && defaultDegradesBuildings;
 
 const functional = {
   sectorQueued,

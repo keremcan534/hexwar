@@ -421,10 +421,11 @@ invariant({
       const once = n.gold;
       g.turns.endTurn();
       // Defter haftanin KAYDIDIR, kehaneti degil: tur bitince yazilan net,
-      // o turda gerceklesen altin degisimini aciklamali. Borclanma bilanco
-      // hareketidir, gelir degil: kimlik Δhazine = net + borclanilan - odenen.
+      // o turda gerceklesen altin degisimini aciklamali. Borclanma ve temerrut
+      // bilanco hareketidir, gelir degil:
+      // kimlik Δhazine = net + borclanilan - odenen + temerrut.
       const L = n.economy.ledger ?? {};
-      const beklenen = (L.net ?? 0) + (L.borrowed ?? 0) - (L.repaid ?? 0);
+      const beklenen = (L.net ?? 0) + (L.borrowed ?? 0) - (L.repaid ?? 0) + (L.defaulted ?? 0);
       sapma += Math.abs((n.gold - once) - beklenen);
       toplam += Math.abs(beklenen) + Math.abs(n.gold - once);
     }

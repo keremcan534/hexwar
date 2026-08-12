@@ -269,6 +269,16 @@ export function recoverArmy(unit, soldiers = 0, organization = 10) {
 
 let nextId = 1;
 
+/**
+ * Kimlik sayacini sifirlar. Sayac modul duzeyinde oldugu icin ayni oturumda
+ * kurulan ikinci dunya birimlerini farkli bir aralikta dogurur; sirali kimlik
+ * bekleyen her sey (kayit turu, komuta baglari) bundan etkilenir. Yeni dunya
+ * ve kayit yukleme bu yuzden sayaci acikca kurar.
+ */
+export function resetUnitIds(next = 1) {
+  nextId = Math.max(1, Math.floor(next));
+}
+
 export function createUnit(typeId, nationId, tile, nation, home = null) {
   const id = resolveTypeId(typeId);
   const type = UNIT_TYPES[id];

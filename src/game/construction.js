@@ -171,9 +171,20 @@ export function constructionCount(nation, typeId, regionId = null) {
   )).length;
 }
 
+/**
+ * Binalarin ne kadarinin calistigi. Eskiden `nation.gold > 0` ikili kapisiydi:
+ * hazine 1 altindan 0 altina inince ulke butun altyapisini bir anda
+ * kaybediyordu (olculdu: insaat gucu 125 -> 5, vergi carpani 1.04 -> 1.00).
+ * Olcut artik borcunu odeyebilmek: temerrude dusen devletin binalari kademeli
+ * korelir (bkz. economy.js settleDebt creditPenalty).
+ */
+function upkeepFactor(nation) {
+  return 1 - clamp(nation.economy?.creditPenalty ?? 0, 0, 0.85);
+}
+
 export function constructionPower(nation) {
   const sectorPower = constructionCount(nation, 'CONSTRUCTION_SECTOR') * 5;
-  return BASE_CONSTRUCTION_POWER + (nation.gold > 0 ? sectorPower : 0);
+  return BASE_CONSTRUCTION_POWER + sectorPower * upkeepFactor(nation);
 }
 
 export function constructionUpkeep(nation) {
@@ -183,20 +194,22 @@ export function constructionUpkeep(nation) {
 }
 
 export function constructionTaxMultiplier(nation) {
-  return nation.gold > 0
-    ? 1 + Math.min(0.24, constructionCount(nation, 'ADMINISTRATION') * 0.04) : 1;
+  return 1 + Math.min(0.24, constructionCount(nation, 'ADMINISTRATION') * 0.04)
+    * upkeepFactor(nation);
 }
 
 export function universityWorkforceBonus(nation) {
-  return nation.gold > 0
-    ? Math.min(0.24, constructionCount(nation, 'UNIVERSITY') * 0.04) : 0;
+  return Math.min(0.24, constructionCount(nation, 'UNIVERSITY') * 0.04) * upkeepFactor(nation);
 }
 
 export function fortDefenseAt(world, nationId, tile) {
   if (!tile || tile.owner !== nationId) return 0;
-  if (!(world.nations[nationId]?.gold > 0)) return 0;
+  const nation = world.nations[nationId];
+  if (!nation) return 0;
   const region = constructionAtlas(world, nationId).tileRegions.get(tile);
-  return region ? region.buildings.filter((building) => building.typeId === 'FORT').length * 0.08 : 0;
+  if (!region) return 0;
+  return region.buildings.filter((building) => building.typeId === 'FORT').length
+    * 0.08 * upkeepFactor(nation);
 }
 
 /**
@@ -305,6 +318,10 @@ export function constructionAtlas(world, nationId) {
 export function canQueueConstruction(world, nation, regionId, typeId) {
   const type = CONSTRUCTION_TYPES[typeId];
   if (!nation?.alive || !type) return false;
+  // Bina bedeli PESIN odenir. Eskiden `cost` yalniz `work` (insaat isi) olarak
+  // okunuyordu ve dort bina turu de hazineden sifir altin cikariyordu: sinirsiz
+  // bedava santiye, bedava vergi carpani, bedava kale (olculdu).
+  if ((nation.gold ?? 0) < type.cost) return false;
   const region = constructionAtlas(world, nation.id).regions.find((item) => item.id === regionId);
   if (!region || region.free <= 0) return false;
   const sameType = region.buildings.filter((building) => building.typeId === typeId).length
@@ -317,9 +334,16 @@ export function queueConstruction(game, nationId, regionId, typeId) {
   if (!canQueueConstruction(game.world, nation, regionId, typeId)) return false;
   const state = ensureConstruction(nation);
   const region = constructionAtlas(game.world, nationId).regions.find((item) => item.id === regionId);
+  const price = CONSTRUCTION_TYPES[typeId].cost;
+  nation.gold -= price;
+  // Insaat kalemine yazilir (bkz. economy.js updateLedger projectCost).
+  if (nation.economy) nation.economy.projectGold = (nation.economy.projectGold ?? 0) + price;
   state.projects.push({
     id: state.nextId++, typeId, regionId, regionName: region.name,
     q: region.center.q, r: region.center.r,
+    // Is ve para ayri iki sayidir: `work` haftalik insaat gucuyle, `cost`
+    // hazineyle odenir. Pesin odendigi icin `funded` bastan doludur.
+    work: price, cost: price, funded: price,
     progress: 0, started: game.turns.turn,
   });
   game.renderer.invalidateCache();
@@ -334,6 +358,22 @@ export function cancelConstruction(game, nationId, projectId) {
   const state = ensureConstruction(nation);
   const index = state.projects.findIndex((project) => project.id === projectId);
   if (index < 0) return false;
+  // Harcanmamis para geri doner. Eskiden iptal edilen projenin pesin odenen
+  // bedeli tamamen kayboluyordu (olculdu: 434 altin odendi, 0 altin dondu).
+  // Yapilan is batiktir; iade yalniz henuz insa EDILMEMIS kisim icindir.
+  const project = state.projects[index];
+  const done = project.work > 0 ? clamp(project.progress / project.work, 0, 1) : 1;
+  const refund = Math.max(0, (project.funded ?? 0) * (1 - done));
+  if (refund > 0) {
+    if (project.actor === 'private' && nation.politics) {
+      nation.politics.privateCapital = Math.min(1200, (nation.politics.privateCapital ?? 0) + refund);
+    } else {
+      nation.gold += refund;
+      if (nation.economy) {
+        nation.economy.projectGold = Math.max(0, (nation.economy.projectGold ?? 0) - refund);
+      }
+    }
+  }
   state.projects.splice(index, 1);
   game.renderer.invalidateCache();
   game.emit('construction', state);
@@ -406,7 +446,14 @@ function completeProject(game, nation, project) {
   }
 }
 
-function planConstructionAI(game, nation) {
+/**
+ * YZ'nin bina karari. runEconomy icinden, defter yazilmadan ONCE cagrilir:
+ * bina bedeli artik pesin odendigi icin (bkz. queueConstruction) burada
+ * harcanan altin ayni haftanin defterine girmeli. runConstruction'in icinden
+ * cagrildiginda harcama updateLedger'dan sonra oluyor ve haftalik muhasebe
+ * kimligi tam bina bedeli kadar sapiyordu (olculdu: en kotu sapma 100.00).
+ */
+export function planConstructionAI(game, nation) {
   const state = ensureConstruction(nation);
   if (nation.id === game.turns.playerNation || nation.gold < 180) return;
   // Yalnız bina projeleri sayılır: fabrika kuyruğu dolu diye ülke bir daha
@@ -448,7 +495,8 @@ export function runConstruction(game) {
   let changed = false;
   for (const nation of game.world.nations) {
     if (!nation.alive) continue;
-    planConstructionAI(game, nation);
+    // Bina karari runEconomy icinde verildi (bkz. planConstructionAI); burada
+    // yalniz kuyruktaki is ilerletilir.
     const state = ensureConstruction(nation);
     let power = constructionPower(nation);
     let completed = 0;

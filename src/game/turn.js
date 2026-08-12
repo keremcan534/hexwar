@@ -3,7 +3,7 @@
 import { makeRng } from '../core/rng.js';
 import {
   UNIT_TYPES, advanceEntrenchment, clearPath, createUnit, refreshArmy,
-  removeUnit, stackFull, unitAvailable,
+  removeUnit, resetUnitIds, stackFull, unitAvailable,
 } from './units.js';
 import { advanceMovement } from './movement.js';
 import { recruit } from './recruitment.js';
@@ -46,6 +46,9 @@ export class TurnManager {
 
   /** Yeni dünyada başlangıç birimlerini kurar. */
   start(world) {
+    // Kimlikler dunyaya ait olmali: sayac sifirlanmazsa ayni tohumla kurulan
+    // ikinci dunya baska bir oyun olur (bkz. command.js advance faz notu).
+    resetUnitIds(1);
     world.units = [];
     world.cities = [];
     world.forEach((t) => {
