@@ -18,13 +18,15 @@ import {
   UNIT_TYPES, maxHpOf, organizationOf, soldiersOf, unitAvailable,
 } from '../game/units.js';
 import { provinceName } from '../game/provinces.js';
+import { censusFor, censusSource, censusTree } from '../game/census.js';
+import { defaultSortDir, populationScreen } from './populationScreen.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { hegemonyScore, scoreboard } from '../game/hegemony.js';
 import { factoryOptionCard } from './factoryCard.js';
 import { factoryEmblem, resourceGlyph } from './icons/index.js';
 import {
-  CLASS_INFO, CLASS_PROFESSIONS, FACTORIES, GOODS, GOOD_IDS, MAX_FACTORY_LEVEL,
-  MILITARY_EQUIPMENT, POPULATION_COHORT, PROFESSION_INFO,
+  CLASS_INFO, FACTORIES, GOODS, GOOD_IDS, MAX_FACTORY_LEVEL,
+  MILITARY_EQUIPMENT, PROFESSION_INFO,
   SOCIAL_PROGRAMS, buildFactory,
   canBuildFactory, factoriesInRegion, factoryAtlas, factoryCost, factoryJobs,
   debtCapacity, debtInterestRate, factoryMargin, formatPopulation, populationOf,
@@ -73,6 +75,9 @@ function esc(s) {
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
   ));
 }
+
+/** Yeniden çizimde kaydırma konumu korunacak iç listeler. */
+const SCROLL_KEEPERS = ['.census-scroll', '.census-browser-list'];
 
 /**
  * Defter piktogramları: tek renk, 16px, sekme çubuğuyla aynı çizgi dili.
@@ -140,6 +145,7 @@ export class Screens {
   constructor(game) {
     this.game = game;
     this.active = null;
+    this.refreshHandle = 0;
     this.previousMapMode = null;
     this.constructionType = null;
     this.industryTab = 'plants';
@@ -149,6 +155,18 @@ export class Screens {
     this.nationTarget = null;
     this.peaceTab = 'take';
     this.peaceSelection = { demands: new Set(), concessions: new Set(), terms: new Set() };
+    // Sayım ekranının durumu. `touched` olmadan iki davranış çakışıyordu:
+    // fethedilen toprak seçime kendiliğinden girmeli, ama "Deselect All"
+    // dedikten sonra hiçbir şey geri gelmemeli. Oyuncu seçime dokunana kadar
+    // seçim ülkenin tamamını izler; dokunduktan sonra seçim onundur.
+    this.census = {
+      nationId: null,
+      touched: false,
+      selection: new Set(),
+      expanded: new Set(),
+      trades: new Set(Object.keys(PROFESSION_INFO)),
+      sort: { key: 'size', dir: -1 },
+    };
     this.el = {
       root: document.getElementById('screen'),
       title: document.getElementById('screen-title'),
@@ -162,16 +180,15 @@ export class Screens {
     document.getElementById('screen-close').onclick = () => this.close();
 
     // Tur ilerlediğinde ya da bir şey satın alındığında açık ekran tazelenir.
-    game.on('turn', () => this.refresh());
-    game.on('units', () => this.refresh());
-    game.on('economy', () => this.refresh());
-    game.on('battles', () => this.refresh());
-    game.on('provinces', () => this.refresh());
-    game.on('politics', () => this.refresh());
-    game.on('peace', () => this.refresh());
+    // Tek bir hafta bu olaylardan on üç tane yayar (ölçüldü); hepsi aynı
+    // kareye toplanır, yoksa ekran haftada birkaç kez baştan kurulur.
+    for (const event of [
+      'turn', 'units', 'economy', 'battles', 'provinces', 'politics', 'peace', 'construction',
+    ]) {
+      game.on(event, () => this.scheduleRefresh());
+    }
     // Haritada yabancı toprağa sağ tık: o ülkenin paneli açılır.
     game.on('nation', (nationId) => this.openDossier(nationId));
-    game.on('construction', () => this.refresh());
     game.on('select', (tile) => {
       if (this.active === 'peace') {
         this.pickPeaceTile(tile);
@@ -248,9 +265,46 @@ export class Screens {
     this.game.requestRender();
   }
 
+  /**
+   * Kaydırılan iç listelerin konumu. Ekran her hafta yeniden çizilir; konum
+   * korunmazsa oyuncu uzun bir tabloda baktığı satırı her turda kaybeder.
+   */
+  captureScroll() {
+    return SCROLL_KEEPERS.map((selector) => {
+      const node = this.el.body.querySelector(selector);
+      return node ? [selector, node.scrollTop] : null;
+    }).filter(Boolean);
+  }
+
+  restoreScroll(saved) {
+    for (const [selector, top] of saved) {
+      const node = this.el.body.querySelector(selector);
+      if (node) node.scrollTop = top;
+    }
+  }
+
+  /**
+   * Tazelemeyi bir kareye toplar. Tek bir hafta 'turn', 'economy', 'provinces'
+   * ve 'politics' olaylarını arka arkaya yayar; her biri ayrı ayrı yeniden
+   * çizince ekran dört kez baştan kuruluyordu. Etkileşimler doğrudan `refresh`
+   * çağırmaya devam eder — tıklamanın yanıtı gecikmemeli.
+   */
+  scheduleRefresh() {
+    if (!this.active || this.refreshHandle) return;
+    this.refreshHandle = requestAnimationFrame(() => {
+      this.refreshHandle = 0;
+      this.refresh();
+    });
+  }
+
   refresh() {
+    if (this.refreshHandle) {
+      cancelAnimationFrame(this.refreshHandle);
+      this.refreshHandle = 0;
+    }
     if (!this.active || !this.game.world) return;
     const me = this.me;
+    const scroll = this.captureScroll();
     this.el.title.textContent = TITLES[this.active] ?? '—';
     // Construction artik eski sehir kaynaklariyla degil state-slot kapasitesiyle
     // calisir; eski gold/food/timber/iron seridi bu ekranda gosterilmez.
@@ -264,6 +318,7 @@ export class Screens {
       ? (this[`render_${this.active}`]?.(me) ?? '')
       : '<p class="empty">Your nation has been eliminated.</p>';
     this.bind();
+    this.restoreScroll(scroll);
     for (const btn of this.el.res.querySelectorAll('[data-industry-tab]')) {
       btn.onclick = () => {
         this.industryTab = btn.dataset.industryTab;
@@ -1457,89 +1512,120 @@ export class Screens {
     );
   }
 
-  // --- Nüfus: kişi başı nesne yerine 1.000 kişilik toplu sınıf kohortları ---
+  /**
+   * Nüfus: Victoria 2'nin sayım defteri düzeni — solda ülke → state → province
+   * tarayıcısı, üstte altı dağılım pastası, altta yoğun POP tablosu. Bütün
+   * sayılar game/census.js'ten hazır gelir; burası yalnız durumu tutar.
+   */
   render_population(me) {
-    const economy = me.economy;
-    if (!economy?.classes) return '<p class="empty">Population records are not initialized.</p>';
-    const total = Math.max(1, economy.cohortPopulation
-      ?? Object.values(economy.classes).reduce((sum, socialClass) => sum + socialClass.population, 0));
-    const lower = economy.classes.lower.population;
-    const middle = economy.classes.middle.population;
-    const upper = economy.classes.upper.population;
-    const lowerEnd = (lower / total) * 100;
-    const middleEnd = lowerEnd + (middle / total) * 100;
-    const pieStyle = `background:conic-gradient(${CLASS_INFO.lower.color} 0 ${lowerEnd.toFixed(2)}%, ${CLASS_INFO.middle.color} ${lowerEnd.toFixed(2)}% ${middleEnd.toFixed(2)}%, ${CLASS_INFO.upper.color} ${middleEnd.toFixed(2)}% 100%)`;
-    const classRows = Object.entries(CLASS_INFO).map(([classId, info]) => {
-      const socialClass = economy.classes[classId];
-      const share = socialClass.population / total;
-      const professions = CLASS_PROFESSIONS[classId]
-        .map((id) => PROFESSION_INFO[id].name).join(' · ');
-      // Vergiden sonra geçim masrafını karşılayınca elde kalan. Üst sınıfta bu
-      // artık, yatırım sermayesine dönüşen paradır (bkz. collectPrivateCapital).
-      const surplus = (socialClass.needsBudget ?? 0) - (socialClass.needsCost ?? 0);
-      return `<div class="population-class" style="--population-class:${info.color}">
-        <div class="population-class-main">
-          <span><i></i><b>${esc(info.name)}</b><small>${(share * 100).toFixed(1)}% of nation</small></span>
-          <strong>${formatPopulation(socialClass.population)}</strong>
-        </div>
-        <div class="population-class-meta">
-          <span>Tax <b>${economy.taxes[classId]}%</b></span>
-          <span>Satisfaction <b>${Math.round((socialClass.satisfaction ?? 0) * 100)}%</b></span>
-          <span>Needs <b class="${socialClass.canAffordNeeds ? 'res-pos' : 'res-neg'}">${socialClass.canAffordNeeds ? 'covered' : 'unmet'}</b></span>
-        </div>
-        <div class="population-class-meta">
-          <span>Income <b>¤${(socialClass.income ?? 0).toFixed(1)}</b></span>
-          <span>Tax paid <b>¤${(socialClass.taxPaid ?? 0).toFixed(1)}</b></span>
-          <span>Cost of living <b>¤${(socialClass.needsCost ?? 0).toFixed(1)}</b></span>
-          <span>Left over <b class="${surplus >= 0 ? 'res-pos' : 'res-neg'}">${surplus >= 0 ? '+' : ''}¤${surplus.toFixed(1)}</b></span>
-        </div>
-        ${classId === 'upper' ? `<p class="class-capital">Accumulated investment capital
-          <b>¤${(me.politics?.privateCapital ?? 0).toFixed(1)}</b> — this is what capitalists
-          spend on factory projects. Heavy taxation drains it.</p>` : ''}
-        <div class="profession-bars">${CLASS_PROFESSIONS[classId].map((id) => {
-    const count = economy.professionCounts?.[id] ?? 0;
-    const within = socialClass.population > 0 ? (count / socialClass.population) * 100 : 0;
-    return `<div class="profession-row" title="${esc(PROFESSION_INFO[id].name)}: ${formatPopulation(count)} (${within.toFixed(1)}% of class)">
-            <span class="profession-name">${esc(PROFESSION_INFO[id].name)}</span>
-            <span class="meter"><i style="width:${Math.min(100, within).toFixed(1)}%"></i></span>
-            <span class="profession-count">${formatPopulation(count)}</span>
-            <span class="profession-share">${within.toFixed(0)}%</span>
-          </div>`;
-  }).join('')}</div>
-      </div>`;
-    }).join('');
-    const mobility = economy.mobility ?? {};
-    const movements = [];
-    if (mobility.promotedLower) movements.push(`<b class="res-pos">${formatPopulation(mobility.promotedLower)} Lower → Middle</b>`);
-    if (mobility.promotedMiddle) movements.push(`<b class="res-pos">${formatPopulation(mobility.promotedMiddle)} Middle → Upper</b>`);
-    if (mobility.demotedUpper) movements.push(`<b class="res-neg">${formatPopulation(mobility.demotedUpper)} Upper → Middle</b>`);
-    if (mobility.demotedMiddle) movements.push(`<b class="res-neg">${formatPopulation(mobility.demotedMiddle)} Middle → Lower</b>`);
+    if (!me.economy?.classes) return '<p class="empty">Population records are not initialized.</p>';
+    const world = this.game.world;
+    // Kohortlar bir kez üretilir: ağaç da dağılımlar da aynı deftere baksın.
+    const source = censusSource(world, me);
+    // Ağaç `bind` tarafından da okunur; iki kez kurmak bütün kareleri iki kez
+    // taramak demek olurdu.
+    const tree = censusTree(world, me, source);
+    this.censusTreeView = tree;
+    this.syncCensusSelection(me, tree);
+    if (!tree.keys.length) return '<p class="empty">This nation holds no populated province.</p>';
+    const census = censusFor(world, me, source, this.census.selection);
+    return populationScreen(world, me, tree, census, this.census);
+  }
 
-    return `<div class="card population-overview">
-        <div class="population-pie" style="${pieStyle}">
-          <div><b>${formatPopulation(total)}</b><small>grouped population</small></div>
-        </div>
-        <div class="population-overview-copy">
-          <div class="card-head"><h3>Social Classes</h3><small>${formatPopulation(economy.population)} exact population</small></div>
-          <p>Population is processed in ${formatPopulation(POPULATION_COHORT)}-person cohorts. Individuals are never simulated.</p>
-          <div class="population-mobility">
-            <span>Class movement this week</span>
-            <b>${movements.length ? movements.join(' · ') : 'No movement'}</b>
-          </div>
-          <div class="population-mobility">
-            <span>Latest internal migration</span>
-            <b>${formatPopulation(economy.lastInternalMigration ?? 0)} people found work in another province</b>
-          </div>
-        </div>
-      </div>
-      <div class="card population-classes">
-        <div class="card-head"><h3>Class Population</h3><small>occupation assignment is automatic</small></div>
-        ${classRows}
-      </div>
-      <div class="card population-rule">
-        <b>Demotion rule</b>
-        <p>If a class cannot cover its needs after taxes for four consecutive weeks, one ${formatPopulation(POPULATION_COHORT)} cohort moves down one class. Calculations are aggregated, so the cost does not grow per person.</p>
-      </div>`;
+  /**
+   * Seçimi mevcut toprağa oturtur. Kaybedilen province seçimden düşer; oyuncu
+   * seçime hiç dokunmadıysa yeni topraklar da kendiliğinden girer.
+   */
+  syncCensusSelection(me, tree) {
+    const state = this.census;
+    if (state.nationId !== me.id) {
+      state.nationId = me.id;
+      state.touched = false;
+      // State'ler açık başlar. Ülkenin on kadar state'i var; kapalıyken
+      // tarayıcı on satırda bitiyor ve sütunun geri kalanı boş kalıyordu —
+      // üstelik province düzeyi okun arkasında görünmez oluyordu.
+      state.expanded = new Set(tree.states.map((entry) => entry.id));
+    }
+    if (!state.touched) {
+      state.selection = new Set(tree.keys);
+      return;
+    }
+    const live = new Set(tree.keys);
+    for (const key of state.selection) if (!live.has(key)) state.selection.delete(key);
+  }
+
+  /** Bir state'in bütün province'lerini seçer ya da hepsini bırakır. */
+  toggleCensusState(tree, stateId) {
+    const state = this.census;
+    const target = tree.states.find((entry) => entry.id === stateId);
+    if (!target) return;
+    const keys = target.provinces.map((province) => province.key);
+    const all = keys.every((key) => state.selection.has(key));
+    for (const key of keys) {
+      if (all) state.selection.delete(key);
+      else state.selection.add(key);
+    }
+  }
+
+  /** Sayım defterinin etkileşimleri: ağaç, süzgeçler, sıralama. */
+  bindCensus() {
+    const state = this.census;
+    const tree = this.censusTreeView;
+    if (!tree) return;
+    // Seçime dokunulduğu an seçim oyuncunundur: yeni fethedilen toprak artık
+    // kendiliğinden eklenmez (bkz. syncCensusSelection).
+    const touch = (mutate) => {
+      state.touched = true;
+      mutate();
+      this.refresh();
+    };
+
+    for (const btn of this.el.body.querySelectorAll('[data-census-toggle]')) {
+      btn.onclick = () => {
+        const id = btn.dataset.censusToggle.slice('state:'.length);
+        if (state.expanded.has(id)) state.expanded.delete(id);
+        else state.expanded.add(id);
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-census-pick]')) {
+      btn.onclick = () => touch(() => {
+        const id = btn.dataset.censusPick;
+        if (id === 'country') {
+          const whole = tree.keys.every((key) => state.selection.has(key));
+          state.selection = whole ? new Set() : new Set(tree.keys);
+        } else if (btn.dataset.censusKind === 'state') {
+          this.toggleCensusState(tree, id.slice('state:'.length));
+        } else {
+          const key = id.slice('prov:'.length);
+          if (state.selection.has(key)) state.selection.delete(key);
+          else state.selection.add(key);
+        }
+      });
+    }
+    const selectAll = this.el.body.querySelector('[data-census-all]');
+    if (selectAll) selectAll.onclick = () => touch(() => { state.selection = new Set(tree.keys); });
+    const selectNone = this.el.body.querySelector('[data-census-none]');
+    if (selectNone) selectNone.onclick = () => touch(() => { state.selection = new Set(); });
+
+    for (const btn of this.el.body.querySelectorAll('[data-census-trade]')) {
+      btn.onclick = () => {
+        const id = btn.dataset.censusTrade;
+        if (state.trades.has(id)) state.trades.delete(id);
+        else state.trades.add(id);
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-census-sort]')) {
+      btn.onclick = () => {
+        const key = btn.dataset.censusSort;
+        // Aynı sütuna ikinci tıklama yönü çevirir; yeni sütun kendi doğal
+        // yönünde başlar (metin A→Z, sayı büyükten küçüğe).
+        state.sort = state.sort.key === key
+          ? { key, dir: -state.sort.dir } : { key, dir: defaultSortDir(key) };
+        this.refresh();
+      };
+    }
   }
 
   // --- Politics: sınıf toplamlarından türetilen parti desteği ve politika paketleri ---
@@ -1821,6 +1907,8 @@ export class Screens {
     const { game } = this;
     const me = this.me;
     if (!me) return;
+
+    if (this.active === 'population') this.bindCensus();
 
     for (const btn of this.el.body.querySelectorAll('[data-construction-type]')) {
       btn.onclick = () => {

@@ -69,7 +69,12 @@ const PARTY_TEMPLATES = {
   },
 };
 
-const CLASS_IDEOLOGY = {
+/**
+ * Sınıfların ideoloji eğilimi. Nüfus ekranı da bunu okur: ideoloji pastası
+ * uydurma bir tablo yerine desteği fiilen hesaplayan tablodan çizilsin,
+ * yoksa ekran ile simülasyon aynı halkın iki farklı hikâyesini anlatır.
+ */
+export const CLASS_IDEOLOGY = {
   lower: { conservative: 0.23, liberal: 0.16, socialist: 0.34, communist: 0.12, fascist: 0.09, reactionary: 0.06 },
   middle: { conservative: 0.28, liberal: 0.35, socialist: 0.17, communist: 0.04, fascist: 0.10, reactionary: 0.06 },
   upper: { conservative: 0.35, liberal: 0.25, socialist: 0.05, communist: 0.01, fascist: 0.10, reactionary: 0.24 },
