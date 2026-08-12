@@ -14,6 +14,22 @@ import { materials } from './textures.js';
 const MAX_DPR = 2;            // mobilde 3x DPR gereksiz pahalı
 const CACHE_MAX_SIDE = 2048;  // önbellek dokusunun en uzun kenarı (bellek sınırı)
 const CACHE_ZOOM = 0.55;      // bu zoom altında tüm dünya önbellekten tek seferde basılır
+/** Tek `Path2D`ye eklenecek azami hex sayısı (bkz. chunkedHexPaths). */
+const PATH_CHUNK = 64;
+/**
+ * Dolgu için parça boyu. Stroke'tan büyük tutulur: aynı renkteki komşu hexler
+ * ayrı `fill` çağrılarına bölünürse paylaştıkları kenarda kenar yumuşatma iki
+ * kez uygulanır ve ince bir dikiş kalır. 256'da deniz gibi geniş tek renkli
+ * alanlar birkaç parçaya bölünür, dikiş sayısı görünmeyecek kadar az kalır.
+ */
+const FILL_CHUNK = 256;
+/**
+ * Siyasi/kültür kipinde arazi gölgesinin ağırlığı (0 = arazi hiç etkilemez,
+ * 1 = ham TERRAIN_SHADE). Ham değerle bir ülkenin toprağı içinde parlaklık
+ * 24 puan yayılıyordu; 0.22 ile yayılım ~8 puana iner ve ülke tek renk okunur.
+ * Arazi dokusu kaybolmaz, yalnız kimliğin önüne geçmez.
+ */
+const POLITICAL_TERRAIN_WEIGHT = 0.22;
 
 /** Şehir ve birim aynı karede: biri yukarı, biri aşağı kaydırılır. */
 const CITY_OFFSET = 0.3;
@@ -191,8 +207,13 @@ export class Renderer {
     const key = `${owner.id}:${terrain.id}:${step}`;
     let color = this.tintCache.get(key);
     if (color) return color;
-    const shade = terrainShade(terrain);
-    const base = this.mineralize(owner.hue, owner.sat * 0.52, owner.light * shade * 0.88);
+    // Arazi gölgesi 1'e doğru sıkıştırılır. Ham TERRAIN_SHADE 0.68–1.34
+    // aralığında, yani iki kat: ülkenin parlaklığıyla çarpılınca aynı ülke
+    // dağda %40, karda %66 çıkıyordu (ölçüldü) ve tek ülke birkaç ayrı ülke
+    // gibi okunuyordu. Siyasi haritada asıl bilgi kimin toprağı olduğudur;
+    // arazi yalnız dokuyu verir, kimliği ezmez.
+    const shade = 1 + (terrainShade(terrain) - 1) * POLITICAL_TERRAIN_WEIGHT;
+    const base = this.mineralize(owner.hue, owner.sat * 0.62, owner.light * shade * 0.88);
     const light = Math.max(12, Math.min(66, base.light + step * 1.5));
     const sat = Math.max(6, base.sat + step * 0.8);
     color = `hsl(${Math.round(base.hue)} ${Math.round(sat)}% ${Math.round(light)}%)`;
@@ -232,6 +253,30 @@ export class Renderer {
     path.moveTo(cx + c[0][0], cy + c[0][1]);
     for (let i = 1; i < 6; i++) path.lineTo(cx + c[i][0], cy + c[i][1]);
     path.closePath();
+  }
+
+  /**
+   * Hex yollarını parçalara böler.
+   *
+   * Tek bir `Path2D`ye binlerce kenar eklemek süper-doğrusal pahalıdır; ölçüm
+   * (3243 hex, aynı makine): tek yolda 30.4 ms, 512'lik parçalarda 4.9 ms,
+   * 64'lük parçalarda 1.1 ms. Çizim maliyeti parça sayısından bağımsız —
+   * `stroke`/`fill` ölçülebilir bir süre almıyor.
+   *
+   * YALNIZ stroke için güvenlidir: dolgu ayrı yollara bölünürse aynı renkteki
+   * komşu hexlerin paylaştığı kenarlarda kenar yumuşatmadan ince dikiş kalır.
+   */
+  chunkedHexPaths(tiles, chunk = PATH_CHUNK) {
+    const paths = [];
+    let path = null;
+    for (let i = 0; i < tiles.length; i++) {
+      if (i % chunk === 0) {
+        path = new Path2D();
+        paths.push(path);
+      }
+      this.hexPath(path, tiles[i].x, tiles[i].y);
+    }
+    return paths;
   }
 
   /** Görünür alandaki tile'ları offset ızgara üzerinden toplar. */
@@ -341,26 +386,36 @@ export class Renderer {
   /**
    * Zemin dolgusu. Kipe göre renk seçilir ama çizim tek geçişte, renge göre
    * gruplanarak yapılır (binlerce hex için tek fill çağrısı başına bir path).
+   *
+   * Kâğıt dokusunun kara/deniz yolları YALNIZ önbellek pişirilirken kurulur.
+   * Önceden her karede kuruluyordu ama `paintAtlas` canlı karede hiçbir şey
+   * çizmiyor: 3243 hex için karede 15.5 ms tamamen boşa gidiyordu (ölçüldü).
    */
   drawTerrain(ctx, tiles, world, baking = false) {
     const byColor = new Map();
-    const land = new Path2D();
-    const sea = new Path2D();
     for (const t of tiles) {
       const color = this.tileColor(t, world);
-      let path = byColor.get(color);
-      if (!path) {
-        path = new Path2D();
-        byColor.set(color, path);
+      let group = byColor.get(color);
+      if (!group) {
+        group = [];
+        byColor.set(color, group);
       }
-      this.hexPath(path, t.x, t.y);
-      this.hexPath(t.terrain.water ? sea : land, t.x, t.y);
+      group.push(t);
     }
-    for (const [color, path] of byColor) {
+    for (const [color, group] of byColor) {
       ctx.fillStyle = color;
-      ctx.fill(path);
+      for (const path of this.chunkedHexPaths(group, FILL_CHUNK)) ctx.fill(path);
     }
-    if (baking) this.paintAtlas(ctx, land, sea, true);
+    if (!baking) return;
+    const land = [];
+    const sea = [];
+    for (const t of tiles) (t.terrain.water ? sea : land).push(t);
+    this.paintAtlas(
+      ctx,
+      this.chunkedHexPaths(land, FILL_CHUNK),
+      this.chunkedHexPaths(sea, FILL_CHUNK),
+      true,
+    );
   }
 
   /** Doku desenleri dünya uzayına sabitlenir; bir kez üretilip saklanır. */
@@ -384,6 +439,10 @@ export class Renderer {
    * yakın zoomda kareye ~43 ms ekliyordu. Kâğıt zaten tüm dünyayı kaplayan tek
    * bir yüzey olduğu için tek dikdörtgen yeterli; deniz kendi malzemesini
    * yalnız önbellek pişirilirken (uzak zoom) alır, orada maliyet bir kez ödenir.
+   *
+   * `land` ve `sea` parça listeleridir (bkz. chunkedHexPaths): tek yolda
+   * 4836 hex kurmak pişirmenin 36.6 ms'ini tek başına yiyordu. Desen zaten
+   * soft-light ile çok soluk bindiği için parça sınırlarındaki dikiş görünmez.
    */
   paintAtlas(ctx, land, sea, baking = false) {
     const { atlas, ocean } = this.patterns(ctx);
@@ -396,10 +455,10 @@ export class Renderer {
       // malzemesini alır.
       if (ocean) {
         ctx.fillStyle = ocean;
-        ctx.fill(sea);
+        for (const path of sea) ctx.fill(path);
       }
       ctx.fillStyle = atlas;
-      ctx.fill(land);
+      for (const path of land) ctx.fill(path);
     }
     ctx.restore();
   }
@@ -600,13 +659,13 @@ export class Renderer {
 
 
   drawGrid(ctx, tiles, scale) {
-    const path = new Path2D();
-    for (const t of tiles) this.hexPath(path, t.x, t.y);
     ctx.lineWidth = 1 / scale;
     // Province ızgarası saf siyah değil koyu bir toprak tonudur: baskıda
     // hatlar mürekkebin kendi rengindedir, altına siyah çizilmez.
     ctx.strokeStyle = 'rgba(8, 12, 12, 0.22)';
-    ctx.stroke(path);
+    // Parçalı yol: tek yolda binlerce hex kurmak karenin tamamını yiyordu
+    // (bkz. chunkedHexPaths). Stroke olduğu için bölmek görüntüyü değiştirmez.
+    for (const path of this.chunkedHexPaths(tiles)) ctx.stroke(path);
   }
 
   /** Yalnızca farklı sahipler arasındaki kenarları çizer -> net ülke sınırları. */
