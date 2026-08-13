@@ -10,7 +10,7 @@
 // Katman notu: DOM'a dokunur (canvas üretir) ama oyun durumuna dokunmaz.
 
 /** Küçük, hızlı ve tekrarlanabilir sayı üreteci (mulberry32). */
-function makeRng(seed) {
+export function makeRng(seed) {
   let a = seed >>> 0;
   return () => {
     a += 0x6d2b79f5;
@@ -28,7 +28,7 @@ const smooth = (t) => t * t * (3 - 2 * t);
  * kendine sarıldığı için doku yan yana dizildiğinde dikiş görünmez.
  * @returns {Float32Array} 0..1 aralığında width*height değer
  */
-function valueNoise(width, height, cells, rng) {
+export function valueNoise(width, height, cells, rng) {
   const lattice = new Float32Array(cells * cells);
   for (let i = 0; i < lattice.length; i++) lattice[i] = rng();
   const out = new Float32Array(width * height);
@@ -59,7 +59,7 @@ function valueNoise(width, height, cells, rng) {
  * Birden çok oktavı toplar: her oktav iki kat daha ince, yarı ağırlıkta.
  * Sonuç 0..1'e normalize edilir.
  */
-function fbm(width, height, octaves, rng) {
+export function fbm(width, height, octaves, rng) {
   const out = new Float32Array(width * height);
   let amplitude = 1;
   let total = 0;

@@ -112,6 +112,7 @@ export class Game {
     this.nextPeaceOfferId = 1;
     this.dirty = false;
     this.frameHandle = 0;
+    this.waterTimer = 0;     // su animasyonunun kısılmış zamanlayıcısı
     this.autosaveEnabled = true;
     // Saat gün gün akar; oyunun sistemleri (ekonomi, muharebe, cephe) haftalık
     // çözülür. Böylece tarih akıcı ilerlerken denge haftalık kalır.
@@ -818,13 +819,38 @@ export class Game {
       }
     }
     if (moving) this.frameHandle = requestAnimationFrame(this.frame);
+    else if (this.renderer.waterActive()) this.scheduleWaterFrame();
   };
+
+  /**
+   * Deniz animasyonu sürekli rAF döngüsü AÇMAZ: kısılmış bir zamanlayıcı
+   * requestRender'ı dürter (yakında ~25, uzak zoomda ~12 kare/sn — yavaş su
+   * için yeterli, tam kare hızının maliyetinin yarısından azı). Sekme
+   * gizliyken çizilmez; su çizmeyen kiplerde (inşaat/barış) waterActive
+   * false döner ve zincir kendiliğinden durur, ilk requestRender'da yeniden
+   * kurulur.
+   */
+  scheduleWaterFrame() {
+    if (this.waterTimer || this.frameHandle) return;
+    const interval = this.camera.zoom < 0.55 ? 80 : 40;
+    this.waterTimer = setTimeout(() => {
+      this.waterTimer = 0;
+      // Sekme gizliyken ya da ana menü haritayı örterken çizim boşa gider;
+      // zamanlayıcı ucuz olduğundan zincir canlı tutulur, görünürlük dönünce
+      // ilk tikte kaldığı yerden akar.
+      const covered = document.visibilityState === 'hidden'
+        || document.body.classList.contains('menu-open');
+      if (covered) this.scheduleWaterFrame();
+      else this.requestRender();
+    }, interval);
+  }
 
   destroy() {
     window.removeEventListener('resize', this.onResize);
     window.removeEventListener('orientationchange', this.onResize);
     this.input.destroy();
     if (this.frameHandle) cancelAnimationFrame(this.frameHandle);
+    if (this.waterTimer) clearTimeout(this.waterTimer);
     if (this.clockTimer) clearInterval(this.clockTimer);
   }
 }

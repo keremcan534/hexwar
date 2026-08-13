@@ -294,6 +294,16 @@ tarayıcı olmadan Node ile de test edilebilir.
 - Harita pointy-top eksenel `q,r` koordinatları kullanır.
 - Çizim sürekli çalışan bir animasyon döngüsü yerine gerektiğinde yenilenir;
   simülasyon saati hafif bir zamanlayıcıyla ilerler.
+- Deniz yüzeyi `render/water.js`'te ayrı bir katmandır: açılışta üretilen
+  döşenebilir dokular (geniş kabarma, kırışıklık, parıltı) dünya uzayına
+  sabitlenmiş desenler olarak deniz hexlerine dolgulanır ve zamanla yavaşça
+  kayar. Kıyı köpüğü ile kıyı kümesi dünya başına bir kez çıkarılıp saklanır.
+  Animasyon rAF döngüsü açmaz; `Game.scheduleWaterFrame` kısılmış bir
+  zamanlayıcıyla `requestRender`'ı dürter, seçim yüzeyi kiplerinde (inşaat,
+  barış) ve sekme gizliyken kendiliğinden durur. `addWaterRipple` benzeri
+  yerel bozulmalar (gemi dümen suyu, top şoku) için `water.addRipple(x, y)`
+  hazırdır; gelecekteki hava sistemi `water.setEnvironment` üzerinden ışık
+  yönü, fırtına ve rüzgâr şiddeti yazabilir.
 - Diplomasi ilk 26 hafta barış süresi tanır. Yapay zekâ savaş kararını aylık
   değerlendirir; yalnız temas ettiği, istikrarlı, hazırlıklı ve tek cepheli
   ülkeler uygun gördüğü komşularla savaş açar.

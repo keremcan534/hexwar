@@ -10,6 +10,7 @@ import { constructionAtlas } from '../game/construction.js';
 import { RGO_TYPES } from '../game/provinces.js';
 import { controllerOf, isOccupied } from '../game/control.js';
 import { materials } from './textures.js';
+import { WaterLayer } from './water.js';
 
 const MAX_DPR = 2;            // mobilde 3x DPR gereksiz pahalı
 const CACHE_MAX_SIDE = 2048;  // önbellek dokusunun en uzun kenarı (bellek sınırı)
@@ -107,6 +108,24 @@ export class Renderer {
     this.corners = HEX_CORNERS.map(([x, y]) => [x * HEX_SIZE, y * HEX_SIZE]);
     this.cache = null;
     this.lastDrawn = 0;
+    // Deniz yüzeyi ayrı bir katman nesnesidir: dokular, kıyı topolojisi ve
+    // yerel bozulmalar orada yaşar (bkz. water.js).
+    this.water = new WaterLayer();
+    this.waterTime = 0;
+  }
+
+  /**
+   * Su animasyonu yalnız coğrafi kiplerde çizilir. İnşaat/barış gibi kipler
+   * haritayı bir seçim yüzeyine çevirir; orada kıpırdayan deniz dikkat
+   * dağıtır ve animasyon zinciri kendiliğinden durur.
+   */
+  waterAnimatedMode() {
+    return this.mapMode === 'political' || this.mapMode === 'terrain' || this.mapMode === 'cultures';
+  }
+
+  /** Game bir sonraki animasyon karesini zamanlasın mı (bkz. Game.scheduleWaterFrame). */
+  waterActive() {
+    return this.water.animatedThisFrame || this.water.disturbances.length > 0;
   }
 
   resize() {
@@ -311,6 +330,9 @@ export class Renderer {
   render(world, state = {}) {
     const ctx = this.ctx;
     const cam = this.camera;
+    // Geçen zaman kare sayısından bağımsız: animasyon her FPS'te aynı hızda akar.
+    this.waterTime = performance.now() / 1000;
+    this.water.animatedThisFrame = false;
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     // Harita zemini arayüz paletiyle aynı kömür-lacivert tonda.
     ctx.fillStyle = '#0b1115';
@@ -325,6 +347,7 @@ export class Renderer {
       const cache = this.cache ?? this.buildCache(world);
       ctx.imageSmoothingEnabled = true;
       ctx.drawImage(cache.canvas, cache.x, cache.y, cache.w, cache.h);
+      if (this.waterAnimatedMode()) this.water.drawFar(ctx, world, this.waterTime);
       this.lastDrawn = 0;
     } else {
       const tiles = this.visibleTiles(world);
@@ -415,15 +438,28 @@ export class Renderer {
       ctx.fillStyle = color;
       for (const path of this.chunkedHexPaths(group, FILL_CHUNK)) ctx.fill(path);
     }
-    if (!baking) return;
-    const land = [];
-    const sea = [];
-    for (const t of tiles) (t.terrain.water ? sea : land).push(t);
-    this.paintAtlas(
-      ctx,
-      this.chunkedHexPaths(land, FILL_CHUNK),
+    if (baking) {
+      const land = [];
+      const sea = [];
+      for (const t of tiles) (t.terrain.water ? sea : land).push(t);
+      this.paintAtlas(
+        ctx,
+        this.chunkedHexPaths(land, FILL_CHUNK),
+        this.chunkedHexPaths(sea, FILL_CHUNK),
+        true,
+      );
+      // Suyun statik tabanı (gök gradyanı, kıyı aydınlanması) önbelleğe bir
+      // kez pişer; hareketli katmanlar canlı karede üstüne biner (drawFar).
+      if (this.waterAnimatedMode()) this.water.bakeStatic(ctx, world);
+      return;
+    }
+    if (!this.waterAnimatedMode()) return;
+    const sea = tiles.filter((t) => t.terrain.water);
+    if (!sea.length) return;
+    this.water.drawNear(
+      ctx, world, sea,
       this.chunkedHexPaths(sea, FILL_CHUNK),
-      true,
+      this.camera.zoom, this.waterTime,
     );
   }
 
@@ -672,9 +708,12 @@ export class Renderer {
     // Province ızgarası saf siyah değil koyu bir toprak tonudur: baskıda
     // hatlar mürekkebin kendi rengindedir, altına siyah çizilmez.
     ctx.strokeStyle = 'rgba(8, 12, 12, 0.22)';
+    // Deniz ızgara dışıdır: hex kenarları suyu petekli bir zemine çeviriyordu.
+    // Su malzemesi komşu deniz hexlerini tek yüzeye köprüler; ızgara bunu bozar.
+    const land = tiles.filter((t) => !t.terrain.water);
     // Parçalı yol: tek yolda binlerce hex kurmak karenin tamamını yiyordu
     // (bkz. chunkedHexPaths). Stroke olduğu için bölmek görüntüyü değiştirmez.
-    for (const path of this.chunkedHexPaths(tiles)) ctx.stroke(path);
+    for (const path of this.chunkedHexPaths(land)) ctx.stroke(path);
   }
 
   /** Yalnızca farklı sahipler arasındaki kenarları çizer -> net ülke sınırları. */

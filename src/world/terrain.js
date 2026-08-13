@@ -12,19 +12,23 @@ const NO_YIELD = { food: 0, timber: 0, iron: 0, gold: 0 };
 const y = (partial) => ({ ...NO_YIELD, ...partial });
 
 export const TERRAIN = {
+  // Deniz paleti soğuk, desatüre çelik mavisi ailesindendir ve üç kademe
+  // birbirine yakın tutulur: derinlik bantları arasındaki sert kontrast
+  // denizi hex hex bölüyordu (bkz. render/water.js — su malzemesi bu
+  // bantların üstüne binerek tek yüzey hissi verir).
   DEEP_OCEAN: {
-    id: 'DEEP_OCEAN', name: 'Deep Ocean', color: '#0a1a24',
+    id: 'DEEP_OCEAN', name: 'Deep Ocean', color: '#0f2e3b',
     // Açık deniz pahalı: kıyı boyu seyretmek okyanusu kesmekten ucuz olsun.
     water: true, passable: false, navigable: true, seaCost: 2,
     moveCost: Infinity, defense: 0, yields: y({ food: 1, gold: 1 }),
   },
   OCEAN: {
-    id: 'OCEAN', name: 'Ocean', color: '#0e2430',
+    id: 'OCEAN', name: 'Ocean', color: '#123746',
     water: true, passable: false, navigable: true, seaCost: 1,
     moveCost: Infinity, defense: 0, yields: y({ food: 1, gold: 1 }),
   },
   COAST: {
-    id: 'COAST', name: 'Shallow Water', color: '#14313d',
+    id: 'COAST', name: 'Shallow Water', color: '#143c4b',
     water: true, passable: false, navigable: true, seaCost: 1,
     moveCost: Infinity, defense: 0, yields: y({ food: 2, gold: 1 }),
   },
