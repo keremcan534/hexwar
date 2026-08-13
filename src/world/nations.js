@@ -1,7 +1,6 @@
 // Rastgele ülkeler: tohum seçimi + ağırlıklı yayılma (Dijkstra) ile organik sınırlar.
 
 import { makeRng } from '../core/rng.js';
-import { hexDistance } from '../core/hex.js';
 import { makeFlag } from './flags.js';
 import { growRegions, pickSeeds } from './regions.js';
 
@@ -177,7 +176,7 @@ function pickNationSeeds(world, land, count, rng) {
     mainland.length >= count ? mainland : land,
     count,
     rng,
-    (a, b) => hexDistance(a.q, a.r, b.q, b.r),
+    (a, b) => world.wrapDistance(a.q, a.r, b.q, b.r),
     Math.max(4, Math.floor(Math.min(world.cols, world.rows) / Math.sqrt(count))),
   );
 }

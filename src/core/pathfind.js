@@ -1,8 +1,6 @@
 // Hex ızgarada yol bulma. Arazi maliyetleri terrain.moveCost'tan gelir.
 // DOM'a dokunmaz; Node ile de test edilebilir.
 
-import { hexDistance } from './hex.js';
-
 /** Küçük ikili yığın. Dijkstra/A* kuyruğu. */
 class MinHeap {
   constructor() { this.items = []; }
@@ -118,7 +116,9 @@ export function findPath(world, start, goal, {
       if (next >= (g.get(n) ?? Infinity)) continue;
       g.set(n, next);
       prev.set(n, tile);
-      heap.push({ tile: n, f: next + hexDistance(n.q, n.r, goal.q, goal.r) });
+      // Silindir metriği: dikişin ötesindeki hedefe düz mesafe aşırı tahmin
+      // olur ve A* kabul edilebilirliğini kaybederdi.
+      heap.push({ tile: n, f: next + world.wrapDistance(n.q, n.r, goal.q, goal.r) });
     }
   }
   return null;

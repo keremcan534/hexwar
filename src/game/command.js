@@ -19,7 +19,6 @@
 //
 // Katman notu: burasi saf veri + hesap + emir. DOM'a dokunmaz.
 
-import { hexDistance } from '../core/hex.js';
 import { atWar } from './diplomacy.js';
 import { MAX_ASSAULT_DIVISIONS, startBattle } from './battles.js';
 import { orderMove } from './movement.js';
@@ -519,7 +518,7 @@ function assignPosts(world, divisions, front) {
     if (count[i] > 1) return;
     const tile = front[i];
     for (let j = 0; j < front.length; j++) {
-      const distance = hexDistance(tile.q, tile.r, front[j].q, front[j].r);
+      const distance = world.wrapDistance(tile.q, tile.r, front[j].q, front[j].r);
       if (distance < gap[j]) gap[j] = distance;
     }
   };
@@ -539,7 +538,7 @@ function assignPosts(world, divisions, front) {
       if (count[i] >= capacity) continue;
       // Zayiflik birincil, orduya yakinlik ikincil.
       const score = gap[i] * 10
-        - hexDistance(unit.tile.q, unit.tile.r, front[i].q, front[i].r);
+        - world.wrapDistance(unit.tile.q, unit.tile.r, front[i].q, front[i].r);
       if (score > bestScore) {
         bestScore = score;
         best = i;
@@ -591,7 +590,7 @@ function readyForOperation(game, unit) {
 function operationParticipants(game, divisions, target) {
   return divisions.filter((unit) => (
     readyForOperation(game, unit)
-    && hexDistance(unit.tile.q, unit.tile.r, target.q, target.r) === 1
+    && game.world.wrapDistance(unit.tile.q, unit.tile.r, target.q, target.r) === 1
   )).sort((a, b) => armyPower(b) - armyPower(a) || a.id - b.id)
     .slice(0, MAX_ASSAULT_DIVISIONS);
 }

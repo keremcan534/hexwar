@@ -87,7 +87,11 @@ export function offsetToAxial(col, row) {
   return { q: col - ((row - (row & 1)) >> 1), r: row };
 }
 
-/** Harita anahtarı. Sayısal anahtar, string'den çok daha hızlı. */
-export function key(q, r) {
-  return ((q + 4096) << 13) | (r + 4096);
+export function axialToOffset(q, r) {
+  return { col: q + ((r - (r & 1)) >> 1), row: r };
+}
+
+/** Sütunu doğu-batı sarmalına oturtur: dünya silindir, col mod cols. */
+export function wrapCol(col, cols) {
+  return ((col % cols) + cols) % cols;
 }

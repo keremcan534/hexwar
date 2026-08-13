@@ -1,7 +1,6 @@
 // Basit ülke yapay zekâsı: sınıra yürü, toprak al, komşudaki düşmana vur.
 // Amaç zekâ değil, dünyanın canlı hissettirmesi; strateji katmanı sonra gelir.
 
-import { hexDistance } from '../core/hex.js';
 import {
   CITY_COST, UNIT_COSTS, canAfford, canFoundCity,
 } from './cities.js';
@@ -279,7 +278,7 @@ function navalGoal(world, unit) {
   let best = null;
   let bestDist = Infinity;
   const consider = (tile) => {
-    const d = hexDistance(tile.q, tile.r, unit.tile.q, unit.tile.r);
+    const d = world.wrapDistance(tile.q, tile.r, unit.tile.q, unit.tile.r);
     if (d < bestDist) {
       bestDist = d;
       best = tile;
@@ -320,7 +319,7 @@ function enemyCityNear(world, unit, maxDistance = 7) {
   for (const city of world.cities) {
     if (city.nationId === unit.nationId) continue;
     if (!atWar(world, city.nationId, unit.nationId)) continue;
-    const d = hexDistance(city.tile.q, city.tile.r, unit.tile.q, unit.tile.r);
+    const d = world.wrapDistance(city.tile.q, city.tile.r, unit.tile.q, unit.tile.r);
     if (d < bestDist) {
       bestDist = d;
       best = city.tile;

@@ -1,7 +1,7 @@
 // Şehirler ve ekonomi. Şehirler gelir üretir, birim satın alma noktasıdır,
 // düşman birimi girdiğinde el değiştirir.
 
-import { hexDistance, hexesInRange } from '../core/hex.js';
+import { hexesInRange } from '../core/hex.js';
 import { CITY_CENTER_YIELD, RESOURCES } from '../world/terrain.js';
 import { tileEfficiency } from './infamy.js';
 import { provinceOutput } from './provinces.js';
@@ -173,7 +173,7 @@ export function canFoundCity(world, tile, nationId) {
   if (!tile || tile.city || !tile.terrain.passable || tile.owner !== nationId
     || controllerOf(tile) !== nationId) return false;
   return world.cities.every(
-    (c) => hexDistance(c.tile.q, c.tile.r, tile.q, tile.r) >= CITY_MIN_DISTANCE,
+    (c) => world.wrapDistance(c.tile.q, c.tile.r, tile.q, tile.r) >= CITY_MIN_DISTANCE,
   );
 }
 
@@ -322,7 +322,7 @@ export function nationBudget(world, nation) {
     if (city.nationId !== nation.id) continue;
     cityCount++;
     if (nation.capital) {
-      const distance = hexDistance(city.tile.q, city.tile.r, nation.capital.q, nation.capital.r);
+      const distance = world.wrapDistance(city.tile.q, city.tile.r, nation.capital.q, nation.capital.r);
       distanceLoad += Math.max(0, distance - ADMIN_FREE_DISTANCE) * 0.25;
     }
     workers += city.pop;

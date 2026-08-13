@@ -17,7 +17,9 @@ import { ensureConstruction } from './construction.js';
 // Ordu sistemi yeniden yazıldı: cephe artık saklanmıyor (sınırdan türetiliyor),
 // komuta tek listede toplandı ve muharebe kare anahtarlı oldu. v8'de kaldırılan
 // yol ve şehir binası katmanları kare kaydından da çıktı.
-export const SAVE_VERSION = 8;
+// 9: silindirik sarmal dünya — worldgen çıktısı (falloff + periyodik gürültü)
+// değişti, eski kayıtların dünyası aynı seed'den artık üretilemez.
+export const SAVE_VERSION = 9;
 const STORAGE_KEY = 'hexwar.save';
 
 /** Ulusun tur içinde değişen alanları. */

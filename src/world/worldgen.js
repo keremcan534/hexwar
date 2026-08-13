@@ -3,7 +3,7 @@
 import { makeRng } from '../core/rng.js';
 import { makeNoise2D, fbm } from '../core/noise.js';
 import { classify, SEA_LEVEL, TERRAIN } from './terrain.js';
-import { DIRS, hexToPixel, key, offsetToAxial } from '../core/hex.js';
+import { DIRS, SQRT3, axialToOffset, hexDistance, hexToPixel, offsetToAxial, wrapCol } from '../core/hex.js';
 import { generateCultures } from './cultures.js';
 
 /** Hex dış yarıçapı (dünya birimi). Ekran ölçeği kamera zoom'undan gelir. */
@@ -24,29 +24,44 @@ export class World {
     this.rows = rows;
     this.seed = seed;
     this.tiles = [];
-    this.index = new Map();
     this.landCount = 0;
     this.bounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+    // Silindir dünyanın piksel periyodu. bounds genişliği DEĞİL: bounds pad taşır.
+    this.wrapWidth = cols * SQRT3 * HEX_SIZE;
   }
 
+  /** Axial erişim; doğu-batı sarmalı burada çözülür, kutuplar dışarıda kalır. */
   get(q, r) {
-    return this.index.get(key(q, r));
+    if (r < 0 || r >= this.rows) return undefined;
+    const { col } = axialToOffset(q, r);
+    return this.tiles[r * this.cols + wrapCol(col, this.cols)];
   }
 
   /** Offset ızgara erişimi: çizimde görünür aralığı taramak için. */
   tileAt(col, row) {
-    if (col < 0 || row < 0 || col >= this.cols || row >= this.rows) return undefined;
-    return this.tiles[row * this.cols + col];
+    if (row < 0 || row >= this.rows) return undefined;
+    return this.tiles[row * this.cols + wrapCol(col, this.cols)];
   }
 
-  /** Harita dışındakiler atlanır; her zaman 0-6 arası komşu döner. */
+  /** Yalnız kutup satırlarında komşu eksilir; doğu-batı kenarı sarmalla kapanır. */
   neighbors(tile) {
     const out = [];
     for (let i = 0; i < 6; i++) {
-      const n = this.index.get(key(tile.q + DIRS[i][0], tile.r + DIRS[i][1]));
+      const n = this.get(tile.q + DIRS[i][0], tile.r + DIRS[i][1]);
       if (n) out.push(n);
     }
     return out;
+  }
+
+  /**
+   * Silindir metriği: iki hex arasındaki gerçek mesafe. Offset'te tam tur,
+   * axial q'da ±cols kaymasına denk gelir (r sarmada değişmez).
+   */
+  wrapDistance(aq, ar, bq, br) {
+    const direct = hexDistance(aq, ar, bq, br);
+    const east = hexDistance(aq + this.cols, ar, bq, br);
+    const west = hexDistance(aq - this.cols, ar, bq, br);
+    return Math.min(direct, east, west);
   }
 
   forEach(fn) {
@@ -75,16 +90,14 @@ export function generateWorld(seed, options = {}) {
       const u = col * nx;
       const v = row * ny;
 
-      // Kenarları denize çeken radyal sönüm: haritanın dışı hep okyanus.
-      const dx = (u - 0.5) * 2;
-      const dy = (v - 0.5) * 2;
-      const dist = Math.sqrt(dx * dx + dy * dy) / Math.SQRT2;
+      // Dünya doğu-batıda silindir: yalnız kutup satırları denize çekilir.
+      const dist = Math.abs(v - 0.5) * 2;
       const falloff = Math.pow(Math.max(0, 1 - Math.pow(dist, 2.6)), 1.1);
 
-      let e = fbm(elevNoise, u * 4, v * 4, { octaves: 6, gain: 0.52 });
+      let e = fbm(elevNoise, u * 4, v * 4, { octaves: 6, gain: 0.52, periodX: 4 });
       // continentality: yüksek -> alçak yerler bastırılır, kara tek parça toplanır
       e = Math.pow(e, 1 + opt.continentality * 1.2);
-      e += fbm(detailNoise, u * 12, v * 12, { octaves: 3 }) * 0.12 - 0.06;
+      e += fbm(detailNoise, u * 12, v * 12, { octaves: 3, periodX: 12 }) * 0.12 - 0.06;
       raw[row * opt.cols + col] = e * falloff + (falloff - 1) * 0.15;
     }
   }
@@ -117,11 +130,11 @@ export function generateWorld(seed, options = {}) {
       const latitude = Math.abs(v - 0.5) * 2;
       let temperature = 1 - Math.pow(latitude, 1.25);
       temperature -= Math.max(0, elevation - SEA_LEVEL) * 0.7;
-      temperature += (fbm(tempNoise, u * 3, v * 3, { octaves: 3 }) - 0.5) * 0.18;
+      temperature += (fbm(tempNoise, u * 3, v * 3, { octaves: 3, periodX: 3 }) - 0.5) * 0.18;
       temperature = Math.min(1, Math.max(0, temperature));
 
       // fbm değerleri ortalamaya toplanır; kontrastı açmazsak her yer aynı biyom olur.
-      let moisture = (fbm(moistNoise, u * 5, v * 5, { octaves: 5 }) - 0.5) * 1.9 + 0.5;
+      let moisture = (fbm(moistNoise, u * 5, v * 5, { octaves: 5, periodX: 5 }) - 0.5) * 1.9 + 0.5;
       // Kutuplar kuru, ekvator nemli; ~30. enlemde (at enlemleri) kurak kuşak -> çöller.
       const horseLat = Math.exp(-Math.pow((latitude - 0.36) / 0.12, 2));
       moisture = moisture * (0.8 + (1 - latitude) * 0.4 - horseLat * 0.4);
@@ -143,7 +156,6 @@ export function generateWorld(seed, options = {}) {
       };
 
       world.tiles.push(tile);
-      world.index.set(key(q, r), tile);
       if (!terrain.water) world.landCount++;
     }
   }

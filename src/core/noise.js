@@ -28,32 +28,48 @@ export function makeNoise2D(rng) {
     }
   }
 
-  /** [-1, 1] aralığında Perlin değeri. */
-  return function noise(x, y) {
-    const X = Math.floor(x) & 255;
+  /**
+   * [-1, 1] aralığında Perlin değeri. periodX verilirse x ekseninde o periyotla
+   * dikişsiz tekrarlar (silindir dünya); perm 256'lık olduğundan periodX <= 256 şart.
+   */
+  return function noise(x, y, periodX) {
+    const xi = Math.floor(x);
+    let X = xi & 255;
+    // Periyotlu kipte lattice sütunu modulo periyot seçilir; periyotsuz kipte
+    // X+1'in 256 taşması perm'in 512'ye kopyalı olmasıyla zaten güvenli.
+    let X1 = X + 1;
+    if (periodX) {
+      X = ((xi % periodX) + periodX) % periodX;
+      X1 = (X + 1) % periodX;
+    }
     const Y = Math.floor(y) & 255;
-    const xf = x - Math.floor(x);
+    const xf = x - xi;
     const yf = y - Math.floor(y);
     const u = fade(xf);
     const v = fade(yf);
     const aa = perm[perm[X] + Y];
     const ab = perm[perm[X] + Y + 1];
-    const ba = perm[perm[X + 1] + Y];
-    const bb = perm[perm[X + 1] + Y + 1];
+    const ba = perm[perm[X1] + Y];
+    const bb = perm[perm[X1] + Y + 1];
     const x1 = lerp(grad(aa, xf, yf), grad(ba, xf - 1, yf), u);
     const x2 = lerp(grad(ab, xf, yf - 1), grad(bb, xf - 1, yf - 1), u);
     return lerp(x1, x2, v) * 0.7071;
   };
 }
 
-/** Katmanlı gürültü. Sonuç [0, 1]. */
-export function fbm(noise, x, y, { octaves = 5, frequency = 1, lacunarity = 2, gain = 0.5 } = {}) {
+/** Katmanlı gürültü. Sonuç [0, 1]. periodX oktavlarla birlikte ölçeklenir. */
+export function fbm(noise, x, y, { octaves = 5, frequency = 1, lacunarity = 2, gain = 0.5, periodX } = {}) {
+  if (periodX) {
+    // En yüksek oktavın periyodu perm tablosunu aşarsa dikiş geri gelir.
+    const top = periodX * frequency * Math.pow(lacunarity, octaves - 1);
+    console.assert(Number.isInteger(top) && top <= 256, 'fbm periodX tamsayı ve <=256 kalmalı', top);
+  }
   let amp = 1;
   let freq = frequency;
   let sum = 0;
   let norm = 0;
   for (let i = 0; i < octaves; i++) {
-    sum += noise(x * freq, y * freq) * amp;
+    sum += noise(x * freq, y * freq, periodX ? periodX * freq : undefined) * amp;
     norm += amp;
     amp *= gain;
     freq *= lacunarity;

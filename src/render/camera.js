@@ -1,4 +1,5 @@
 // Kamera: dünya <-> ekran dönüşümü, zoom sınırları, kenar kilidi.
+// wrapX verilirse dünya doğu-batıda silindir: X kilidi yerine periyoda normalize.
 
 export class Camera {
   constructor() {
@@ -10,6 +11,7 @@ export class Camera {
     this.viewWidth = 1;   // CSS piksel
     this.viewHeight = 1;
     this.bounds = null;   // { minX, minY, maxX, maxY }
+    this.wrapX = null;    // silindir periyodu (dünya birimi) ya da null
   }
 
   setViewport(width, height) {
@@ -18,22 +20,27 @@ export class Camera {
     this.clamp();
   }
 
-  setBounds(bounds) {
+  setBounds(bounds, wrapWidth = null) {
     this.bounds = bounds;
+    this.wrapX = wrapWidth;
     const worldW = bounds.maxX - bounds.minX;
     const worldH = bounds.maxY - bounds.minY;
-    // Tüm dünyayı görebilecek kadar uzaklaşmaya izin ver, daha fazlasına değil.
-    const fit = Math.min(this.viewWidth / worldW, this.viewHeight / worldH);
+    // Sarmalda genişlik sınırlamaz: tüm yükseklik görünecek kadar uzaklaşılır.
+    const fit = this.wrapX
+      ? this.viewHeight / worldH
+      : Math.min(this.viewWidth / worldW, this.viewHeight / worldH);
     this.minZoom = Math.min(0.9, fit * 0.9);
     this.clamp();
   }
 
-  /** Dünyayı ekrana sığdır ve ortala. */
+  /** Dünyayı ekrana sığdır ve ortala. Sarmalda yalnız yükseklik esas alınır. */
   fit(padding = 0.92) {
     if (!this.bounds) return;
     const w = this.bounds.maxX - this.bounds.minX;
     const h = this.bounds.maxY - this.bounds.minY;
-    this.zoom = Math.min(this.viewWidth / w, this.viewHeight / h) * padding;
+    this.zoom = (this.wrapX
+      ? this.viewHeight / h
+      : Math.min(this.viewWidth / w, this.viewHeight / h)) * padding;
     this.x = (this.bounds.minX + this.bounds.maxX) / 2;
     this.y = (this.bounds.minY + this.bounds.maxY) / 2;
     this.clamp();
@@ -66,11 +73,23 @@ export class Camera {
     const halfW = this.viewWidth / (2 * this.zoom);
     const halfH = this.viewHeight / (2 * this.zoom);
     const b = this.bounds;
-    // Dünya ekrandan küçükse ortala, büyükse kenardan dışarı çıkmayı engelle.
-    if (b.maxX - b.minX < halfW * 2) this.x = (b.minX + b.maxX) / 2;
+    if (this.wrapX) {
+      // Silindirde X serbest; yalnız float büyümesin diye periyoda normalize.
+      const P = this.wrapX;
+      this.x = b.minX + ((((this.x - b.minX) % P) + P) % P);
+    } else if (b.maxX - b.minX < halfW * 2) this.x = (b.minX + b.maxX) / 2;
     else this.x = Math.min(b.maxX - halfW, Math.max(b.minX + halfW, this.x));
     if (b.maxY - b.minY < halfH * 2) this.y = (b.minY + b.maxY) / 2;
     else this.y = Math.min(b.maxY - halfH, Math.max(b.minY + halfH, this.y));
+  }
+
+  /**
+   * Dünya noktasının ekrana en yakın sarmal temsilcisi: dikişin öbür yanındaki
+   * kopya ekranda daha yakınsa onu döndürür. Sarmalsız worldToScreen ile aynı.
+   */
+  worldToScreenWrapped(wx, wy) {
+    if (this.wrapX) wx += this.wrapX * Math.round((this.x - wx) / this.wrapX);
+    return this.worldToScreen(wx, wy);
   }
 
   worldToScreen(wx, wy) {

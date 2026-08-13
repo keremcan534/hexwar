@@ -1,7 +1,6 @@
 // State construction: deterministik planlama bolgeleri, kalici binalar ve
 // Victoria 3 benzeri ulusal insaat gucuyle ilerleyen tek bir oncelik kuyrugu.
 
-import { hexDistance } from '../core/hex.js';
 import { provinceName } from './provinces.js';
 import { controllerOf } from './control.js';
 
@@ -42,7 +41,7 @@ function tileOrder(a, b) {
   return a.r - b.r || a.q - b.q;
 }
 
-function chooseSeeds(tiles, capital, count) {
+function chooseSeeds(world, tiles, capital, count) {
   const ordered = [...tiles].sort(tileOrder);
   const first = tiles.includes(capital) ? capital : ordered[0];
   const seeds = [first];
@@ -52,7 +51,7 @@ function chooseSeeds(tiles, capital, count) {
     for (const tile of ordered) {
       if (seeds.includes(tile)) continue;
       const distance = Math.min(...seeds.map(
-        (seed) => hexDistance(tile.q, tile.r, seed.q, seed.r),
+        (seed) => world.wrapDistance(tile.q, tile.r, seed.q, seed.r),
       ));
       if (distance > bestDistance) {
         best = tile;
@@ -65,11 +64,11 @@ function chooseSeeds(tiles, capital, count) {
   return seeds;
 }
 
-function nearestSeed(tile, seeds) {
+function nearestSeed(world, tile, seeds) {
   let winner = 0;
   let distance = Infinity;
   for (let index = 0; index < seeds.length; index++) {
-    const next = hexDistance(tile.q, tile.r, seeds[index].q, seeds[index].r);
+    const next = world.wrapDistance(tile.q, tile.r, seeds[index].q, seeds[index].r);
     if (next < distance) {
       winner = index;
       distance = next;
@@ -78,11 +77,11 @@ function nearestSeed(tile, seeds) {
   return winner;
 }
 
-function displayCenter(tiles) {
+function displayCenter(world, tiles) {
   const q = tiles.reduce((sum, tile) => sum + tile.q, 0) / Math.max(1, tiles.length);
   const r = tiles.reduce((sum, tile) => sum + tile.r, 0) / Math.max(1, tiles.length);
   return [...tiles].sort((a, b) => (
-    hexDistance(a.q, a.r, q, r) - hexDistance(b.q, b.r, q, r)
+    world.wrapDistance(a.q, a.r, q, r) - world.wrapDistance(b.q, b.r, q, r)
   ) || tileOrder(a, b))[0];
 }
 
@@ -248,7 +247,7 @@ export function constructionAtlas(world, nationId) {
     MIN_REGIONS,
     MAX_REGIONS,
   );
-  const seeds = chooseSeeds(owned, nation.capital, regionCount);
+  const seeds = chooseSeeds(world, owned, nation.capital, regionCount);
   const regions = seeds.map((seed, index) => ({
     id: `${nationId}:${index}`,
     index,
@@ -261,7 +260,7 @@ export function constructionAtlas(world, nationId) {
   const tileRegions = new Map();
 
   for (const tile of owned) {
-    const region = regions[nearestSeed(tile, seeds)];
+    const region = regions[nearestSeed(world, tile, seeds)];
     region.tiles.push(tile);
     region.population += tile.province?.population ?? 0;
     region.development += (tile.province?.agriculture ?? 0)
@@ -274,7 +273,7 @@ export function constructionAtlas(world, nationId) {
   }
 
   for (const region of regions) {
-    region.center = displayCenter(region.tiles);
+    region.center = displayCenter(world, region.tiles);
     region.name = region.cities[0]?.name ?? provinceName(region.seed);
     const capacity = 3 + Math.floor(region.tiles.length / 6)
       + Math.floor(region.population / 70000) + Math.floor(region.development / 12);

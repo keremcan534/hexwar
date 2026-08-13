@@ -4,7 +4,6 @@
 //
 // Bu adımda kültürün oyun etkisi yok; hoşnutsuzluk ve infamy 3. adımda gelecek.
 
-import { hexDistance } from '../core/hex.js';
 import { growRegions, pickSeeds } from './regions.js';
 
 const STEM = ['Ar', 'Ves', 'Kest', 'Morv', 'Dun', 'Sel', 'Tarn', 'Ilv', 'Gwen', 'Ozr', 'Bask', 'Ren', 'Vol', 'Amr', 'Sirn', 'Kald'];
@@ -46,7 +45,7 @@ export function generateCultures(world, rng, options = {}) {
     land,
     count,
     rng,
-    (a, b) => hexDistance(a.q, a.r, b.q, b.r),
+    (a, b) => world.wrapDistance(a.q, a.r, b.q, b.r),
     Math.max(6, Math.floor(Math.min(world.cols, world.rows) / Math.sqrt(count))),
   );
 
@@ -82,7 +81,7 @@ export function generateCultures(world, rng, options = {}) {
     let bestId = 0;
     let bestDist = Infinity;
     for (const c of cultures) {
-      const d = hexDistance(c.origin.q, c.origin.r, tile.q, tile.r);
+      const d = world.wrapDistance(c.origin.q, c.origin.r, tile.q, tile.r);
       if (d < bestDist) { bestDist = d; bestId = c.id; }
     }
     tile.culture = bestId;

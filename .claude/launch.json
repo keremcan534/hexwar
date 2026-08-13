@@ -5,7 +5,8 @@
       "name": "hexwar",
       "runtimeExecutable": "node",
       "runtimeArgs": ["scripts/dev-server.mjs"],
-      "port": 5173
+      "port": 5173,
+      "autoPort": true
     }
   ]
 }

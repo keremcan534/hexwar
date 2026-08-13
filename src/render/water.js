@@ -302,9 +302,15 @@ export class WaterLayer {
    * durur, zaman yalnız dönüşümün öteleme bileşenini oynatır — her karede
    * yeni piksel üretilmez.
    */
-  fillPattern(ctx, name, paths, time, vel, alpha, scale = 1) {
+  fillPattern(ctx, name, paths, time, vel, alpha, scale = 1, wrapWidth = 0) {
     if (alpha <= 0) return;
     const pattern = this.patterns[name];
+    // Sarmal dünyada desen periyodu dünya periyodunu tam bölmeli; yoksa
+    // dikişin iki yanındaki kopyalar aynı denizi farklı fazda gösterir.
+    if (wrapWidth) {
+      const reps = Math.max(1, Math.round(wrapWidth / (this.textures[name].width * scale)));
+      scale = wrapWidth / (this.textures[name].width * reps);
+    }
     const period = this.textures[name].width * scale;
     const ox = (((time * vel.x) % period) + period) % period;
     const oy = (((time * vel.y) % period) + period) % period;
@@ -325,7 +331,11 @@ export class WaterLayer {
     const cx = (b.minX + b.maxX) / 2;
     const cy = (b.minY + b.maxY) / 2;
     const r = Math.hypot(b.maxX - b.minX, b.maxY - b.minY) / 2;
-    const L = this.env.lightDirection;
+    // Silindir dünyada gradyan x'e bağlı olamaz: dikişte açık uç koyu uca
+    // çarpar. Işık yönü dikeye izdüşürülür, kutuptan kutba tek geçiş kalır.
+    const L = world.wrapWidth
+      ? { x: 0, y: this.env.lightDirection.y >= 0 ? 1 : -1 }
+      : this.env.lightDirection;
     const k = this.env.lightIntensity;
     const g = ctx.createLinearGradient(cx + L.x * r, cy + L.y * r, cx - L.x * r, cy - L.y * r);
     g.addColorStop(0, `rgba(150, 168, 176, ${(0.07 * k).toFixed(3)})`);
@@ -354,7 +364,8 @@ export class WaterLayer {
     let coastalVisible = null;
     if (quality !== 'low' && zoom >= FOAM_MIN_ZOOM) {
       coastalVisible = [];
-      for (const t of seaTiles) if (cache.coastalSet.has(t)) coastalVisible.push(t);
+      // Sarmal hayaletleri (bkz. renderer.visibleTiles) gerçek karesinden çözülür.
+      for (const t of seaTiles) if (cache.coastalSet.has(t.ghostOf ?? t)) coastalVisible.push(t);
     }
     if (dbg.base && coastalVisible?.length) {
       // Kıyıda su hafifçe aydınlanır: sığlık, beyaz kontur çizmeden hissedilir.
@@ -367,16 +378,17 @@ export class WaterLayer {
     }
 
     let animated = false;
+    const P = world.wrapWidth ?? 0;
     if (dbg.swell) {
-      this.fillPattern(ctx, 'swell', seaPaths, time, scaleVel(SWELL_VEL, wind), 0.9);
+      this.fillPattern(ctx, 'swell', seaPaths, time, scaleVel(SWELL_VEL, wind), 0.9, 1, P);
       animated = true;
     }
     if (quality !== 'low' && zoom >= RIPPLE_MIN_ZOOM && dbg.ripple) {
-      this.fillPattern(ctx, 'ripple', seaPaths, time, scaleVel(RIPPLE_VEL, wind), 0.6);
+      this.fillPattern(ctx, 'ripple', seaPaths, time, scaleVel(RIPPLE_VEL, wind), 0.6, 1, P);
       if (zoom >= RIPPLE_DETAIL_ZOOM) {
         // Yakın plan: aynı doku yarı ölçekte, farklı yönde — yeni bir doku
         // maliyeti ödemeden çözünürlük hissi artar.
-        this.fillPattern(ctx, 'ripple', seaPaths, time, scaleVel(RIPPLE_DETAIL_VEL, wind), 0.35, 0.5);
+        this.fillPattern(ctx, 'ripple', seaPaths, time, scaleVel(RIPPLE_DETAIL_VEL, wind), 0.35, 0.5, P);
       }
       animated = true;
     }
@@ -386,7 +398,7 @@ export class WaterLayer {
       const pulse = 0.45 + 0.35 * Math.sin(time * 0.21) + 0.3 * Math.sin(time * 0.073 + 1.7);
       const alpha = Math.max(0.12, Math.min(0.65, pulse))
         * this.env.lightIntensity * (1 - this.env.storminess * 0.6);
-      this.fillPattern(ctx, 'shimmer', seaPaths, time, scaleVel(SHIMMER_VEL, wind), alpha);
+      this.fillPattern(ctx, 'shimmer', seaPaths, time, scaleVel(SHIMMER_VEL, wind), alpha, 1, P);
       animated = true;
     }
     if (dbg.foam && coastalVisible?.length) {
@@ -404,16 +416,19 @@ export class WaterLayer {
     const tiers = [[], [], []];
     const counts = [0, 0, 0];
     for (const tile of coastalVisible) {
-      const segs = cache.foamByTile.get(tile);
+      const segs = cache.foamByTile.get(tile.ghostOf ?? tile);
       if (!segs) continue;
+      // Hayalet karede parçalar gerçek karenin koordinatını taşır; periyot
+      // kayması kadar ötelenir.
+      const dx = tile.ghostOf ? tile.x - tile.ghostOf.x : 0;
       for (const s of segs) {
         // Stroke da parçalanır (bkz. FILL_CHUNK gerekçesi) — kıyısı uzun
         // haritalarda tek Path2D yine süper-doğrusal pahalıya kaçar.
         if (counts[s.tier] % FILL_CHUNK === 0) tiers[s.tier].push(new Path2D());
         counts[s.tier]++;
         const path = tiers[s.tier][tiers[s.tier].length - 1];
-        path.moveTo(s.x1, s.y1);
-        path.lineTo(s.x2, s.y2);
+        path.moveTo(s.x1 + dx, s.y1);
+        path.lineTo(s.x2 + dx, s.y2);
       }
     }
     ctx.lineCap = 'round';
@@ -474,13 +489,19 @@ export class WaterLayer {
    * Uzak-zoom önbelleğine giren statik su tabanı. Hareketli katmanlar burada
    * pişirilmez; onlar canlı karede önbelleğin üstüne biner (bkz. drawFar).
    */
-  bakeStatic(ctx, world) {
+  bakeStatic(ctx, world, tiles = null) {
     const cache = this.ensureWorld(world);
     if (!cache.hasSea) return;
-    this.fillSkyGradient(ctx, world, cache.seaPaths);
+    // Alt küme verilirse yalnız o kareler boyanır: sarmal önbelleğin kenar
+    // geçişleri tüm denizi yeniden boyayıp alfayı katlamasın.
+    const seaPaths = tiles ? this.chunkedPaths(tiles) : cache.seaPaths;
+    const coastalPaths = tiles
+      ? this.chunkedPaths(tiles.filter((t) => cache.coastalSet.has(t.ghostOf ?? t)))
+      : cache.coastalPaths;
+    this.fillSkyGradient(ctx, world, seaPaths);
     ctx.globalAlpha = 0.03;
     ctx.fillStyle = '#9eb4b7';
-    for (const path of cache.coastalPaths) ctx.fill(path);
+    for (const path of coastalPaths) ctx.fill(path);
     ctx.globalAlpha = 1;
   }
 
@@ -492,7 +513,10 @@ export class WaterLayer {
     const cache = this.ensureWorld(world);
     if (!cache.hasSea || !this.debug.swell) return;
     this.ensurePatterns(ctx);
-    this.fillPattern(ctx, 'swell', cache.seaPaths, time, scaleVel(SWELL_VEL, this.env.windStrength), 0.5);
+    this.fillPattern(
+      ctx, 'swell', cache.seaPaths, time,
+      scaleVel(SWELL_VEL, this.env.windStrength), 0.5, 1, world.wrapWidth ?? 0,
+    );
     this.animatedThisFrame = true;
   }
 }

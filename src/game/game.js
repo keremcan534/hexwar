@@ -6,7 +6,7 @@ import { generateNations } from '../world/nations.js';
 import { Camera } from '../render/camera.js';
 import { Renderer } from '../render/renderer.js';
 import { PointerController } from '../input/pointer.js';
-import { pixelToHex, hexDistance } from '../core/hex.js';
+import { pixelToHex } from '../core/hex.js';
 import { randomSeed } from '../core/rng.js';
 import { reachable } from '../core/pathfind.js';
 import { armyPower, clearPath, placeUnit, speedOf, stackFull, unitsOn } from './units.js';
@@ -137,7 +137,10 @@ export class Game {
 
     this.onResize = () => {
       this.renderer.resize();
-      this.camera.setBounds(this.world?.bounds ?? this.camera.bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 });
+      this.camera.setBounds(
+        this.world?.bounds ?? this.camera.bounds ?? { minX: 0, minY: 0, maxX: 1, maxY: 1 },
+        this.world?.wrapWidth ?? null,
+      );
       this.requestRender();
     };
     window.addEventListener('resize', this.onResize);
@@ -179,7 +182,7 @@ export class Game {
     this.turns.start(this.world);
     this.renderer.invalidateCache();
     this.renderer.resize();
-    this.camera.setBounds(this.world.bounds);
+    this.camera.setBounds(this.world.bounds, this.world.wrapWidth);
     this.camera.fit();
     this.emit('world', this.world);
     this.emit('turn', this.turns.turn);
@@ -203,7 +206,8 @@ export class Game {
     for (const unit of this.world.units) {
       if (!unit?.tile || unit.hp <= 0) continue;
       const y = unit.tile.y + (unit.tile.city ? HEX_SIZE * 0.22 : 0);
-      const point = this.camera.worldToScreen(unit.tile.x, y);
+      // Sarmal temsilci: dikişin öbür yanında görünen kopya da tıklanabilsin.
+      const point = this.camera.worldToScreenWrapped(unit.tile.x, y);
       const distance = Math.hypot(point.x - sx, point.y - sy);
       if (distance <= hitRadius && distance < bestDistance) {
         best = unit;
@@ -271,12 +275,12 @@ export class Game {
         const participants = selected.filter((unit) => (
           unit && unit.hp > 0 && !unit.battleId && !unit.embarked
         )).sort((a, b) => (
-          hexDistance(a.tile.q, a.tile.r, tile.q, tile.r)
-          - hexDistance(b.tile.q, b.tile.r, tile.q, tile.r)
+          this.world.wrapDistance(a.tile.q, a.tile.r, tile.q, tile.r)
+          - this.world.wrapDistance(b.tile.q, b.tile.r, tile.q, tile.r)
           || armyPower(b) - armyPower(a) || a.id - b.id
         )).slice(0, MAX_ASSAULT_DIVISIONS);
         for (const unit of participants) {
-          const adjacent = hexDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) === 1;
+          const adjacent = this.world.wrapDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) === 1;
           if (adjacent && this.attack(unit, tile)) issued++;
           else if (orderMove(this, unit, tile)) issued++;
         }
@@ -286,8 +290,8 @@ export class Game {
         const candidates = selected.filter((unit) => (
           unit && unit.hp > 0 && !unit.battleId && this.canEnterFor(unit)(tile)
         )).sort((a, b) => (
-          hexDistance(a.tile.q, a.tile.r, tile.q, tile.r)
-          - hexDistance(b.tile.q, b.tile.r, tile.q, tile.r)
+          this.world.wrapDistance(a.tile.q, a.tile.r, tile.q, tile.r)
+          - this.world.wrapDistance(b.tile.q, b.tile.r, tile.q, tile.r)
           || armyPower(b) - armyPower(a) || a.id - b.id
         ));
         if (candidates[0] && orderMove(this, candidates[0], tile)) issued = 1;
@@ -312,7 +316,7 @@ export class Game {
           other.nationId !== unit.nationId
           && atWar(this.world, other.nationId, unit.nationId)
         ));
-        if (enemy && hexDistance(unit.tile.q, unit.tile.r, target.q, target.r) === 1) {
+        if (enemy && this.world.wrapDistance(unit.tile.q, unit.tile.r, target.q, target.r) === 1) {
           if (this.attack(unit, target)) issued++;
           break;
         }
@@ -379,7 +383,7 @@ export class Game {
     const picked = [];
     for (const unit of this.world.units) {
       if (unit.nationId !== this.turns.playerNation || unit.hp <= 0) continue;
-      const p = this.camera.worldToScreen(unit.tile.x, unit.tile.y);
+      const p = this.camera.worldToScreenWrapped(unit.tile.x, unit.tile.y);
       if (p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h) {
         picked.push(unit);
       }
@@ -468,7 +472,7 @@ export class Game {
   attack(unit, tile) {
     const defender = unitsOn(tile).find((other) => other.nationId !== unit.nationId);
     if (!defender) return false;
-    if (hexDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) !== 1) return false;
+    if (this.world.wrapDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) !== 1) return false;
     // Denizdeki kara birimi savaşamaz; önce karaya çıkmalı.
     if (unit.embarked) return false;
     if ((unit.attackReadyAt ?? 0) > this.turns.turn) return false;

@@ -10,7 +10,6 @@
 // Denge WW1'e bakar: muharebe uzun surer, moral yavas kirilir, savunan ustundur.
 
 import { atWar } from './diplomacy.js';
-import { hexDistance } from '../core/hex.js';
 import {
   MAX_STACK, applyArmyLosses, armyPower, clearPath, organizationOf, placeUnit, recoverArmy,
   resetEntrenchment, soldiersOf, stackFull, unitsOn,
@@ -234,7 +233,7 @@ function retreatDestination(world, army, awayFrom) {
       && tile.terrain.passable && !stackFull(tile)) {
       const hostile = unitsOn(tile).some((unit) => unit.nationId !== army.nationId);
       if (!hostile) {
-        const distance = hexDistance(tile.q, tile.r, awayFrom.q, awayFrom.r);
+        const distance = world.wrapDistance(tile.q, tile.r, awayFrom.q, awayFrom.r);
         const pressure = world.neighbors(tile).filter((near) => (
           controllerOf(near) >= 0 && controllerOf(near) !== army.nationId
           && atWar(world, controllerOf(near), army.nationId)
@@ -284,7 +283,7 @@ function retreatArmy(game, army, awayFrom) {
     turn: game.turns.turn,
     from: { q: awayFrom.q, r: awayFrom.r },
     to: { q: target.q, r: target.r },
-    distance: hexDistance(target.q, target.r, awayFrom.q, awayFrom.r),
+    distance: game.world.wrapDistance(target.q, target.r, awayFrom.q, awayFrom.r),
   };
   placeUnit(army, target);
   return true;
