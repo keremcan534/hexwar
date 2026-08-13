@@ -310,13 +310,24 @@ const COLUMNS = [
 const ESTATE = { lower: 'Lower', middle: 'Middle', upper: 'Upper' };
 
 /**
- * Satır kapasitesi. Ekran her hafta yeniden çizilir ve maliyet satır sayısıyla
- * doğrusal: 700 satır tek tazelemede ~130 ms yerleşim demekti (ölçüldü), yani
- * hızlı oyunda sürekli takılma. 250 satır ~9 ekranlık kaydırma bırakır ve
- * tazelemeyi 40 ms altına indirir. Sınırı aşan seçimde defter en büyük
- * kohortları gösterir ve bunu altında açıkça söyler; daralt, hepsini gör.
+ * Satır yüksekliği, piksel. Sanallaştırmanın bütün aritmetiği buna dayanır ve
+ * CSS ile BİREBİR aynı olmalı (bkz. .census-grid td: 20px içerik + 1px ayraç).
+ * Kaydığında boşluk satırları gerçek satırlarla tutmaz, kaydırma zıplar.
  */
-const MAX_ROWS = 250;
+const ROW_HEIGHT = 21;
+
+/**
+ * Yedek satır bloğu. Pencere blok sınırında kaydığı için bu sayı iki şeyi
+ * birden ayarlar: kaç satır fazladan çizilir ve kaç piksel kaydırınca gövde
+ * yeniden yazılır (blok × 21 px).
+ *
+ * 10 seçildi çünkü iki maliyet aynı yöne çekmiyor: haftalık yeniden çizim
+ * OYUNCU HİÇBİR ŞEY YAPMADAN olur, kaydırma ise ancak oyuncu kaydırırken.
+ * Büyük yedek haftalık maliyeti şişiriyordu (18'de pencere 84 satır, 10'da
+ * ~59). Karşılığında yeniden çizim ~210 px'de bire iner — kaydırırken bile
+ * tek karelik iş.
+ */
+const ROW_BUFFER = 10;
 
 function sortValue(row, key) {
   switch (key) {
@@ -348,7 +359,12 @@ const tone = (value, warn, bad) => (value >= bad ? ' bad' : value >= warn ? ' wa
 /** Bir sütuna ilk tıklamada hangi yön? Metin A→Z, sayı büyükten küçüğe. */
 export const defaultSortDir = (key) => (COLUMNS.find((column) => column.key === key)?.text ? 1 : -1);
 
-export function popTable(world, nation, cohorts, sort) {
+/**
+ * Kohortları tablo satırına çevirir ve sıralar. Türetilen alanlar (mezhep, ad,
+ * okuryazarlık, militanlık…) burada bir kez hesaplanır; kaydırma sırasında
+ * yalnız çizim tekrarlanır, bu liste değil.
+ */
+export function buildPopRows(world, nation, cohorts, sort) {
   const rows = cohorts.map((cohort) => {
     const tile = cohort.tile ?? world.get(cohort.q, cohort.r);
     return {
@@ -377,21 +393,15 @@ export function popTable(world, nation, cohorts, sort) {
       ? left.localeCompare(right) : (left - right);
     return cmp * dir || b.cohort.size - a.cohort.size;
   });
+  return rows;
+}
 
-  const head = COLUMNS.map((column) => {
-    const active = sort.key === column.key;
-    return `<th class="c-${column.key} ${column.cls ?? ''}">
-      <button class="census-th${active ? ' sorted' : ''}" data-census-sort="${column.key}"
-        title="${esc(column.title)}">${esc(column.label)}<i>${
-  active ? (dir < 0 ? '▾' : '▴') : '⇅'}</i></button></th>`;
-  }).join('');
-
-  const shown = rows.slice(0, MAX_ROWS);
-  const body = shown.map((row) => {
-    const { cohort } = row;
-    const needs = Math.round((cohort.needsFulfilled ?? 1) * 100);
-    const unemployment = row.unemployment;
-    return `<tr class="census-tr" title="${esc(cohort.professionName)} of ${esc(row.culture)} in ${esc(row.location)}">
+/** Tek satır. */
+function popRow(row) {
+  const { cohort } = row;
+  const needs = Math.round((cohort.needsFulfilled ?? 1) * 100);
+  const unemployment = row.unemployment;
+  return `<tr class="census-tr" title="${esc(cohort.professionName)} of ${esc(row.culture)} in ${esc(row.location)}">
       <td class="c-size num strong">${formatPopulation(cohort.size)}</td>
       <td class="c-type census-type fig-${cohort.professionId}">${esc(cohort.professionName)}</td>
       <td class="c-estate census-estate est-${cohort.classId}">${ESTATE[cohort.classId] ?? cohort.classId}</td>
@@ -416,11 +426,51 @@ export function popTable(world, nation, cohorts, sort) {
       <td class="c-con num">${row.consciousness.toFixed(1)}</td>
       <td class="c-lit num">${Math.round(row.literacy * 100)}%</td>
     </tr>`;
-  }).join('');
+}
 
-  const clipped = rows.length > MAX_ROWS
-    ? `<div class="census-clip">Showing the ${MAX_ROWS} largest of ${rows.length} cohorts —
-       narrow the selection to see the rest.</div>` : '';
+/**
+ * Yalnız görünen pencereyi çizer; üstteki ve alttaki satırların yerini iki
+ * boşluk satırı tutar, böylece kaydırma çubuğu bütün listeyi gösterir.
+ *
+ * Neden: maliyet DOM düğüm sayısıyla doğrusaldır (ölçüldü: ~11 ms / 1000
+ * düğüm) ve 1080p'de aynı anda yalnız ~28 satır görünür. Bütün kohortları
+ * çizmek, görülmeyen satırların yerleşimini her hafta yeniden hesaplamaktı.
+ */
+/**
+ * Çizilecek satır aralığı. Başlangıç blok sınırına yuvarlanır: yuvarlanmasa
+ * pencere her 21 px'lik kaydırmada kayar ve gövde her karede yeniden çizilirdi.
+ * Blok sınırıyla yeniden çizim ~380 px'de bire iner.
+ */
+export function popRowWindow(total, view = {}) {
+  const height = Math.max(ROW_HEIGHT, view.height || 640);
+  const scrollTop = Math.max(0, view.scrollTop || 0);
+  const visible = Math.ceil(height / ROW_HEIGHT);
+  const start = Math.floor(scrollTop / ROW_HEIGHT);
+  const first = Math.max(0, Math.floor(start / ROW_BUFFER) * ROW_BUFFER - ROW_BUFFER);
+  return { first, last: Math.min(total, first + visible + ROW_BUFFER * 3) };
+}
+
+export function popRowsHtml(rows, view = {}) {
+  const total = rows.length;
+  if (!total) return '';
+  const { first, last } = popRowWindow(total, view);
+  const spacer = (count) => (count > 0
+    ? `<tr class="census-spacer" style="height:${count * ROW_HEIGHT}px"><td colspan="${COLUMNS.length}"></td></tr>`
+    : '');
+  return spacer(first)
+    + rows.slice(first, last).map(popRow).join('')
+    + spacer(total - last);
+}
+
+export function popTable(rows, sort, view) {
+  const dir = sort.dir;
+  const head = COLUMNS.map((column) => {
+    const active = sort.key === column.key;
+    return `<th class="c-${column.key} ${column.cls ?? ''}">
+      <button class="census-th${active ? ' sorted' : ''}" data-census-sort="${column.key}"
+        title="${esc(column.title)}">${esc(column.label)}<i>${
+  active ? (dir < 0 ? '▾' : '▴') : '⇅'}</i></button></th>`;
+  }).join('');
 
   // Gerçek tablo, `table-layout: fixed` ile. Satır başına CSS ızgarası kurmak
   // 700 satırda tek başına 103 ms yerleşim demekti (ölçüldü); tarayıcının
@@ -429,11 +479,10 @@ export function popTable(world, nation, cohorts, sort) {
     <div class="census-scroll">
       <table class="census-grid">
         <thead><tr>${head}</tr></thead>
-        <tbody>${body}</tbody>
+        <tbody>${popRowsHtml(rows, view)}</tbody>
       </table>
-      ${body ? '' : '<p class="census-empty">No cohorts in this selection.</p>'}
+      ${rows.length ? '' : '<p class="census-empty">No cohorts in this selection.</p>'}
     </div>
-    ${clipped}
   </div>`;
 }
 
@@ -463,25 +512,36 @@ function totalsBar(census, tree, visible) {
   </div>`;
 }
 
+/** Meslek süzgecinden geçen kohortlar, tablo satırına çevrilmiş ve sıralanmış. */
+export function censusRows(world, nation, census, state) {
+  return buildPopRows(
+    world,
+    nation,
+    census.cohorts.filter((cohort) => state.trades.has(cohort.professionId)),
+    state.sort,
+  );
+}
+
 /**
  * Ekranın tamamı. `state` Screens örneğinde yaşar: seçili province'ler, açık
- * state'ler, görünür meslekler ve sıralama.
+ * state'ler, görünür meslekler, sıralama ve tablonun kaydırma penceresi.
+ * `rows` dışarıdan verilir (bkz. censusRows): kaydırma sırasında yalnız gövde
+ * yeniden çizilirken aynı liste kullanılır, satırlar baştan türetilmez.
  */
-export function populationScreen(world, nation, tree, census, state) {
+export function populationScreen(world, nation, tree, census, state, rows) {
   const counts = new Map();
   const classes = new Map();
   for (const cohort of census.cohorts) {
     counts.set(cohort.professionId, (counts.get(cohort.professionId) ?? 0) + cohort.size);
     if (!classes.has(cohort.classId)) classes.set(cohort.classId, cohortPolitics(nation, cohort));
   }
-  const visible = census.cohorts.filter((cohort) => state.trades.has(cohort.professionId));
 
   return `<div class="census">
     ${paintRules(world, nation, classes)}
     ${geographicBrowser(tree, state)}
     <div class="census-main">
       ${headerStrip({ trades: state.trades, counts })}
-      ${totalsBar(census, tree, visible.length)}
+      ${totalsBar(census, tree, rows.length)}
       <div class="census-band">
         ${summaryBlock({
     title: 'Workforce',
@@ -522,7 +582,7 @@ export function populationScreen(world, nation, tree, census, state) {
     colorOf: ideologyColor,
   })}
       </div>
-      ${popTable(world, nation, visible, state.sort)}
+      ${popTable(rows, state.sort, state.view)}
     </div>
   </div>`;
 }

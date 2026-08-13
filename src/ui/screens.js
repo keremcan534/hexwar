@@ -19,7 +19,9 @@ import {
 } from '../game/units.js';
 import { provinceName } from '../game/provinces.js';
 import { censusFor, censusSource, censusTree } from '../game/census.js';
-import { defaultSortDir, populationScreen } from './populationScreen.js';
+import {
+  censusRows, defaultSortDir, popRowWindow, popRowsHtml, populationScreen,
+} from './populationScreen.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { hegemonyScore, scoreboard } from '../game/hegemony.js';
 import { factoryOptionCard } from './factoryCard.js';
@@ -161,11 +163,14 @@ export class Screens {
     // seçim ülkenin tamamını izler; dokunduktan sonra seçim onundur.
     this.census = {
       nationId: null,
+      world: null,
       touched: false,
       selection: new Set(),
       expanded: new Set(),
       trades: new Set(Object.keys(PROFESSION_INFO)),
       sort: { key: 'size', dir: -1 },
+      // Tablonun kaydırma penceresi: yalnız görünen satırlar çizilir.
+      view: { scrollTop: 0, height: 640 },
     };
     this.el = {
       root: document.getElementById('screen'),
@@ -1529,7 +1534,10 @@ export class Screens {
     this.syncCensusSelection(me, tree);
     if (!tree.keys.length) return '<p class="empty">This nation holds no populated province.</p>';
     const census = censusFor(world, me, source, this.census.selection);
-    return populationScreen(world, me, tree, census, this.census);
+    // Satırlar `bind` tarafından da okunur: kaydırma sırasında yalnız gövde
+    // yeniden çizilir, liste baştan türetilip sıralanmaz.
+    this.censusRowView = censusRows(world, me, census, this.census);
+    return populationScreen(world, me, tree, census, this.census, this.censusRowView);
   }
 
   /**
@@ -1538,9 +1546,16 @@ export class Screens {
    */
   syncCensusSelection(me, tree) {
     const state = this.census;
-    if (state.nationId !== me.id) {
+    const world = this.game.world;
+    // Dünya da kimliğe dahil. Oyuncunun ülke id'si dünyalar arasında aynı
+    // kaldığı için yalnız ona bakmak yetmiyordu: yeni dünyada eski seçim
+    // korunuyor, eski province anahtarları yeni haritada bulunmadığı için
+    // aşağıdaki budama seçimi tamamen boşaltıyor ve defter bomboş açılıyordu.
+    if (state.nationId !== me.id || state.world !== world) {
       state.nationId = me.id;
+      state.world = world;
       state.touched = false;
+      state.view.scrollTop = 0;
       // State'ler açık başlar. Ülkenin on kadar state'i var; kapalıyken
       // tarayıcı on satırda bitiyor ve sütunun geri kalanı boş kalıyordu —
       // üstelik province düzeyi okun arkasında görünmez oluyordu.
@@ -1616,6 +1631,30 @@ export class Screens {
         this.refresh();
       };
     }
+    // Kaydırma: tablo sanallaştırılmış, yalnız görünen pencere çizilidir.
+    // Pencere blok sınırında kaydığında gövde yeniden yazılır — ekranın
+    // tamamı değil, çünkü ağaç ve pastalar kaydırmadan etkilenmiyor.
+    const scroll = this.el.body.querySelector('.census-scroll');
+    const tbody = scroll?.querySelector('tbody');
+    if (scroll && tbody) {
+      // Yükseklik ölçülür: sabit tahmin pencereyi eksik ya da fazla çizdirir.
+      state.view.height = scroll.clientHeight || state.view.height;
+      let drawn = popRowWindow(this.censusRowView.length, state.view).first;
+      let pending = 0;
+      scroll.onscroll = () => {
+        state.view.scrollTop = scroll.scrollTop;
+        if (pending) return;
+        pending = requestAnimationFrame(() => {
+          pending = 0;
+          if (!tbody.isConnected) return;
+          const { first } = popRowWindow(this.censusRowView.length, state.view);
+          if (first === drawn) return;
+          drawn = first;
+          tbody.innerHTML = popRowsHtml(this.censusRowView, state.view);
+        });
+      };
+    }
+
     for (const btn of this.el.body.querySelectorAll('[data-census-sort]')) {
       btn.onclick = () => {
         const key = btn.dataset.censusSort;

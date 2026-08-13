@@ -3471,6 +3471,9 @@ body.screen-open .layer-menu { display: none; }
 .census-grid tbody tr:nth-child(even) { background: rgba(232, 220, 194, 0.014); }
 .census-tr:hover { background: rgba(168, 138, 75, 0.1); }
 
+/* 20px icerik + 1px ayrac = 21px. Bu olcu populationScreen.js'teki ROW_HEIGHT
+   ile BIREBIR ayni olmali: sanallastirmanin bosluk satirlari bu sayiya gore
+   hesaplanir, kayarsa kaydirma ziplar. */
 .census-grid td {
   height: 20px;
   padding: 1px 4px;
@@ -3478,6 +3481,14 @@ body.screen-open .layer-menu { display: none; }
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Cizilmeyen satirlarin yerini tutan bosluk. Gorunmez olmali: ayrac cizgisi
+   ya da dolgu, listenin ortasinda kalin bir bosluk gibi gorunuyordu. */
+.census-spacer td {
+  height: auto;
+  padding: 0;
+  border: 0;
 }
 
 .census-grid td.num { text-align: right; font-variant-numeric: tabular-nums; }
