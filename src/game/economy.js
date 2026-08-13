@@ -321,7 +321,12 @@ const CLASS_NEEDS_BUDGET = { lower: 4, middle: 8, upper: 11 };
  * sınıf lüks. Böylece üst katman fabrikaların (telefon, radyo, otomobil, lüks)
  * gerçek bir iç talebi olur — yoksa yalnız ihracat için üretilirlerdi.
  */
-const CLASS_NEEDS = {
+/**
+ * Sınıf sepetleri. Ticaret defteri de bunu okur: seçili malın nüfus talebi
+ * uydurma bir pay değil, populationDemand'ın kullandığı tablonun kendisinden
+ * türetilsin (aynı gerekçe: CLASS_IDEOLOGY, bkz. politics.js).
+ */
+export const CLASS_NEEDS = {
   lower: {
     food: 0.26, fish: 0.02, groceries: 0.07, clothes: 0.04, liquor: 0.02,
   },
@@ -353,7 +358,7 @@ const CLASS_NEEDS = {
  * fiyatlarini kalici olarak tavana yapistiriyordu (olculdu: 80. turda 43
  * malin 30'u fiyat sinirinda takiliydi, hicbirinin fiyati oynamiyordu).
  */
-function needAmount(need, turn) {
+export function needAmount(need, turn) {
   if (typeof need === 'number') return need;
   return turn >= (need.from ?? 0) ? need.amount : 0;
 }
@@ -2112,6 +2117,42 @@ function runEconomicAI(game, nation) {
   }
 }
 
+/**
+ * Ordunun haftalık mal tüketimi. Mühimmat ve yakıt bilerek listede: onları
+ * üreten tesisler kuruluyordu ama hiçbir tüketicisi olmadığı için fiyat
+ * tabana çakılıp fabrikalar zarar ediyordu (ölçüldü).
+ *
+ * Tedarik kaydırağı devletin orduya ne kadar mal aldığını belirler; grocery
+ * kalemi de ölçeklenir (aç orduyu az beslemek bir karardır). Barış ordusu
+ * talim tüketir, savaş ordusu cephane yakar — bu çarpan olmadan tedarik
+ * faturası barışta bile geliri ikiye katlıyordu (ölçüldü).
+ *
+ * `fullDemand` ordunun TAM ihtiyacıdır (kaydıraçtan bağımsız payda): hazırlık
+ * kısılmış talebe göre ölçülünce %25 tedarik "daha iyi ikmal" görünüyordu.
+ *
+ * Dışa açık çünkü ticaret defteri de okur: ekrandaki "ordu tüketimi" satırı
+ * bu tablonun kendisinden gelir, kopyasından değil.
+ */
+export function armyWeeklyDemand(world, nation) {
+  const landUnits = world.units
+    .filter((unit) => unit.nationId === nation.id && unit.type.domain === 'land')
+    .reduce((sum, unit) => sum + regimentCount(unit), 0);
+  const wartime = world.nations.some(
+    (other) => other.alive && other.id !== nation.id && atWar(world, nation.id, other.id),
+  );
+  const tempo = wartime ? 1 : 0.35;
+  const scale = (nation.economy?.militaryProcurement ?? 100) / 100;
+  const rates = { arms: 0.08, groceries: 0.05, ammunition: 0.06, fuel: 0.04 };
+  const demand = {};
+  const fullDemand = {};
+  for (const [id, rate] of Object.entries(rates)) {
+    const base = landUnits * rate * tempo;
+    fullDemand[id] = base;
+    demand[id] = id === 'groceries' ? base * (0.5 + scale * 0.5) : base * scale;
+  }
+  return { demand, fullDemand, landUnits, wartime };
+}
+
 function procureStrategicGoods(world) {
   // Tablodan türetilir. Elle yazılan iki kalemlik liste, tank/uçak/vapur
   // eklenince onlar için `undefined` döndürüyor ve hazineyi NaN yapıyordu.
@@ -2494,39 +2535,7 @@ export function runEconomy(game) {
       addNationFlow(nation, 'cement', 'demand', cementNeed);
     }
 
-    const landUnits = world.units
-      .filter((unit) => unit.nationId === nation.id && unit.type.domain === 'land')
-      .reduce((sum, unit) => sum + regimentCount(unit), 0);
-    // Ordunun haftalık tüketimi. Mühimmat ve yakıt buraya eklendi: onları
-    // üreten tesisler kuruluyordu ama hiçbir tüketicisi olmadığı için fiyat
-    // tabana çakılıp fabrikalar zarar ediyordu (ölçüldü).
-    // Tedarik kaydiragi devletin orduya ne kadar mal aldigini belirler;
-    // grocery kalemi de artik olceklenir (ac orduyu az beslemek bir karardir).
-    const armyScale = (nation.economy.militaryProcurement ?? 100) / 100;
-    // Barış ordusu talim tüketir, savaş ordusu cephane yakar. Bu çarpan
-    // olmadan tedarik faturası barışta bile geliri ikiye katlıyordu (ölçüldü:
-    // ~100/hafta gider, ~35 gelir) ve her hazine kalıcı sıfırdaydı. Savaşın
-    // "ne kadarını karşılayabilirim" sorusu tam bu farktan doğar.
-    const wartime = world.nations.some(
-      (other) => other.alive && other.id !== nation.id && atWar(world, nation.id, other.id),
-    );
-    const tempo = wartime ? 1 : 0.35;
-    const armyDemand = {
-      arms: landUnits * 0.08 * armyScale * tempo,
-      groceries: landUnits * 0.05 * (0.5 + armyScale * 0.5) * tempo,
-      ammunition: landUnits * 0.06 * armyScale * tempo,
-      fuel: landUnits * 0.04 * armyScale * tempo,
-    };
-    // Hazırlık, ordunun TAM ihtiyacına göre ölçülür (tedarik kaydıracından
-    // bağımsız payda). Kısılmış talebe göre ölçülünce %25 tedarik "daha iyi
-    // ikmal" görünüyordu: az isteyen, istediğinin çoğunu alıyor (ölçüldü,
-    // TERS). Az almak ordunun ihtiyacını küçültmez.
-    const fullDemand = {
-      arms: landUnits * 0.08 * tempo,
-      groceries: landUnits * 0.05 * tempo,
-      ammunition: landUnits * 0.06 * tempo,
-      fuel: landUnits * 0.04 * tempo,
-    };
+    const { demand: armyDemand, fullDemand } = armyWeeklyDemand(world, nation);
     let armySupplyWeighted = 0;
     let armySupplyTotal = 0;
     for (const [id, amount] of Object.entries(armyDemand)) {

@@ -22,6 +22,10 @@ import { censusFor, censusSource, censusTree } from '../game/census.js';
 import {
   censusRows, defaultSortDir, popRowWindow, popRowsHtml, populationScreen,
 } from './populationScreen.js';
+import {
+  goodDossier, goodRows, tradeStructure, tradeSummary,
+} from '../game/tradeLedger.js';
+import { tradeScreen } from './tradeScreen.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { hegemonyScore, scoreboard } from '../game/hegemony.js';
 import { factoryOptionCard } from './factoryCard.js';
@@ -48,15 +52,6 @@ import {
   queueConstruction,
 } from '../game/construction.js';
 
-/** Victoria 2'nin mal blokları. GOODS[].category ile eşleşir. */
-const GOOD_CATEGORIES = {
-  raw: 'Raw Materials',
-  industrial: 'Industrial Goods',
-  consumer: 'Consumer Goods',
-  military: 'Military Goods',
-  luxury: 'Luxury Goods',
-};
-
 const TITLES = {
   nation: 'Nation Overview',
   construction: 'Construction',
@@ -79,7 +74,9 @@ function esc(s) {
 }
 
 /** Yeniden çizimde kaydırma konumu korunacak iç listeler. */
-const SCROLL_KEEPERS = ['.census-scroll', '.census-browser-list'];
+const SCROLL_KEEPERS = [
+  '.census-scroll', '.census-browser-list', '.trade-goods-scroll', '.trade-detail',
+];
 
 /**
  * Defter piktogramları: tek renk, 16px, sekme çubuğuyla aynı çizgi dili.
@@ -330,93 +327,6 @@ export class Screens {
         this.refresh();
       };
     }
-  }
-
-  /**
-   * Seçili malın dünya tablosu: kim üretiyor, biz neredeyiz. Fiyatın neden
-   * tavanda ya da tabanda olduğunu ancak üretimin kimde toplandığını görerek
-   * anlayabiliyorsun; bu panel o soruyu cevaplar.
-   */
-  goodDetail(me, world) {
-    const goodId = this.tradeGood;
-    const good = GOODS[goodId];
-    if (!good) {
-      return `<aside class="good-detail empty-detail">
-        <p class="empty">Select a good to see who produces it.</p></aside>`;
-    }
-    const state = world.market.goods[goodId];
-    const rows = world.nations
-      .filter((nation) => nation.alive && nation.economy?.goodsFlow?.[goodId])
-      .map((nation) => ({
-        nation,
-        production: nation.economy.goodsFlow[goodId].production ?? 0,
-        demand: nation.economy.goodsFlow[goodId].demand ?? 0,
-      }))
-      .sort((a, b) => b.production - a.production);
-    const worldProduction = rows.reduce((sum, row) => sum + row.production, 0);
-    const mineIndex = rows.findIndex((row) => row.nation.id === me.id);
-    const mine = rows[mineIndex];
-    const share = (value) => (worldProduction > 0
-      ? `${((value / worldProduction) * 100).toFixed(1)}%` : '—');
-    const line = (row, rank) => `<div class="good-rank ${row.nation.id === me.id ? 'me' : ''}">
-      <span class="rank-no">${rank}</span>
-      <span class="rank-name">${esc(row.nation.name)}</span>
-      <span class="rank-out">${row.production.toFixed(1)}</span>
-      <span class="rank-share">${share(row.production)}</span>
-    </div>`;
-    const top = rows.slice(0, 5).map((row, index) => line(row, index + 1)).join('');
-    // Oyuncu ilk beşte değilse kendi satırı ayrıca en alta eklenir.
-    const own = mine && mineIndex >= 5 ? line(mine, mineIndex + 1) : '';
-    const flow = me.economy?.goodsFlow?.[goodId] ?? {};
-    const ratio = state.price / good.basePrice;
-    const pinned = ratio >= 7.9 ? 'at the price ceiling — severe shortage'
-      : ratio <= 0.13 ? 'at the price floor — nobody wants it' : '';
-    return `<aside class="good-detail">
-      <div class="good-detail-head"><b>${good.icon} ${esc(good.name)}</b>
-        <span>¤${state.price.toFixed(2)} <small>${ratio.toFixed(2)}× base</small></span></div>
-      ${pinned ? `<p class="res-warn good-pinned">${pinned}</p>` : ''}
-      ${this.priceChart(state, good)}
-      <div class="good-detail-kpis">
-        <span><small>World supply</small><b>${state.supply.toFixed(1)}</b></span>
-        <span><small>World demand</small><b>${state.demand.toFixed(1)}</b></span>
-        <span><small>Your output</small><b>${(flow.production ?? 0).toFixed(1)}</b></span>
-        <span><small>Your need</small><b>${(flow.demand ?? 0).toFixed(1)}</b></span>
-        <span><small>Your share</small><b>${share(mine?.production ?? 0)}</b></span>
-        <span><small>Your rank</small><b>${mineIndex >= 0 ? `${mineIndex + 1}/${rows.length}` : '—'}</b></span>
-      </div>
-      <div class="good-rank-head"><span>#</span><span>Top producers</span><span>out</span><span>share</span></div>
-      ${top || '<p class="empty">Nobody produces this yet.</p>'}
-      ${own}
-    </aside>`;
-  }
-
-  /**
-   * Fiyat grafiği. Tek bir anlık fiyat "pahalı mı ucuz mu" sorusunu cevaplar
-   * ama "yükseliyor mu düşüyor mu" sorusunu cevaplamaz; karar için gereken
-   * ikincisidir. Taban fiyat kesikli çizgi olarak referans verir.
-   */
-  priceChart(state, good) {
-    const history = state.history ?? [];
-    if (history.length < 2) return '<p class="empty price-chart-empty">Price history builds up as weeks pass.</p>';
-    const base = good.basePrice;
-    const max = Math.max(base, ...history);
-    const min = Math.min(base, ...history);
-    const span = Math.max(1e-6, max - min);
-    const w = 240;
-    const h = 46;
-    const x = (i) => (i / (history.length - 1)) * w;
-    const y = (value) => h - ((value - min) / span) * h;
-    const line = history.map((value, index) => `${index ? 'L' : 'M'}${x(index).toFixed(1)},${y(value).toFixed(1)}`).join(' ');
-    const area = `${line} L${w},${h} L0,${h} Z`;
-    const rising = history[history.length - 1] >= history[0];
-    return `<svg class="price-chart ${rising ? 'up' : 'down'}" viewBox="0 0 ${w} ${h}"
-      role="img" aria-label="Price over the last ${history.length} weeks">
-      <line class="price-base" x1="0" x2="${w}" y1="${y(base).toFixed(1)}" y2="${y(base).toFixed(1)}"></line>
-      <path class="price-area" d="${area}"></path>
-      <path class="price-line" d="${line}"></path>
-    </svg>
-    <div class="price-chart-foot"><small>${history.length} weeks</small>
-      <small>base ¤${base}</small></div>`;
   }
 
   /**
@@ -1859,86 +1769,28 @@ export class Screens {
   }
 
   // --- Ticaret: tek dünya pazarı, ülke bazlı haftalık mal akışı ---
+  /**
+   * Ticaret: Victoria 2'nin ticaret defteri düzeni — üstte ulusal künye, solda
+   * kategori kategori mal kataloğu, sağda seçili malın dosyası, altta ticaret
+   * yapısı. Bütün sayılar game/tradeLedger.js'ten hazır gelir; ekran yalnız
+   * seçimi tutar. Sağ panel hiç boş açılmaz: seçim yoksa dünyanın en çok baskı
+   * altındaki malı seçilir.
+   */
   render_trade(me) {
     const world = this.game.world;
-    const market = world.market;
-    if (!market) return '<p class="empty">The world market is not initialized.</p>';
-    const flowNumber = (value) => (value ?? 0).toFixed(value >= 100 ? 0 : 1);
-    const trade = me.economy?.trade ?? {};
-    const netTradeOf = (goodId) => {
-      const flow = me.economy?.goodsFlow?.[goodId] ?? {};
-      return (flow.exports ?? 0) - (flow.imports ?? 0);
-    };
-    // Bütün mallar tek ölçeği paylaşır, yoksa çubuk boyları kıyaslanamaz.
-    const scale = Math.max(0.1, ...GOOD_IDS.map((id) => Math.abs(netTradeOf(id))));
-    const goodRows = GOOD_IDS.map((goodId) => {
-      const good = GOODS[goodId];
-      const state = market.goods[goodId];
-      const flow = me.economy?.goodsFlow?.[goodId] ?? {};
-      const trend = state.trend > 0.005 ? '▲' : state.trend < -0.005 ? '▼' : '—';
-      const cls = state.trend > 0.005 ? 'res-neg' : state.trend < -0.005 ? 'res-pos' : '';
-      const netTrade = netTradeOf(goodId);
-      const magnitude = (Math.abs(netTrade) / scale) * 50;
-      const exporting = netTrade > 0.005;
-      const importing = netTrade < -0.005;
-      const quantity = Math.abs(netTrade) < 0.05 ? '<0.1' : flowNumber(Math.abs(netTrade));
-      const label = exporting ? `sells ${quantity}`
-        : importing ? `buys ${quantity}` : 'balanced';
-      const coverage = (flow.demand ?? 0) > 0
-        ? Math.round(((flow.fulfilled ?? 0) / flow.demand) * 100) : 100;
-      // Yön tek başına yeterli bir işarettir: renk körlüğünde de sağ/sol okunur.
-      const side = exporting ? 'pos' : importing ? 'neg' : 'flat';
-      return { category: good.category, html: `<div class="market-row ${this.tradeGood === goodId ? 'selected' : ''}"
-        data-good="${goodId}" title="World supply ${flowNumber(state.supply)} · demand ${flowNumber(state.demand)} · made ${flowNumber(flow.production)} · needs ${flowNumber(flow.demand)}">
-        <div class="market-row-head">
-          <span class="good-name">${good.icon} ${esc(good.name)}</span>
-          <span class="market-price">¤${state.price.toFixed(2)}
-            <small class="${cls}">${trend} ${Math.abs(state.trend).toFixed(2)}</small></span>
-        </div>
-        <div class="trade-bar">
-          <div class="trade-bar-track">
-            ${importing ? `<i class="trade-bar-fill neg" style="width:${magnitude.toFixed(2)}%"></i>` : ''}
-            ${exporting ? `<i class="trade-bar-fill pos" style="width:${magnitude.toFixed(2)}%"></i>` : ''}
-          </div>
-          <span class="trade-bar-label ${side}">${esc(label)}</span>
-        </div>
-        ${coverage < 99 ? `<small class="trade-shortfall">only ${coverage}% of demand met · ${flowNumber(flow.shortage)} short</small>` : ''}
-      </div>` };
-    });
-    // Victoria 2 mallari kategori bloklari halinde gosterir; ham madde ile
-    // askeri mal ayni listede karisinca goz neyi aradigini bulamiyordu.
-    const rows = Object.entries(GOOD_CATEGORIES).map(([id, name]) => {
-      const inCategory = goodRows.filter((row) => row.category === id);
-      if (!inCategory.length) return '';
-      return `<section class="market-group">
-        <h4 class="market-group-head">${esc(name)}</h4>
-        <div class="market-grid">${inCategory.map((row) => row.html).join('')}</div>
-      </section>`;
-    }).join('');
-    const hottest = GOOD_IDS.map((id) => market.goods[id])
-      .sort((a, b) => (b.demand - b.supply) - (a.demand - a.supply))[0];
-    const balance = trade.balance ?? 0;
-
-    return `${!(trade.lastUpdated > 0) ? '<p class="trade-awaiting">Market flow will populate after the next weekly tick.</p>' : ''}<div class="trade-hero card">
-        <div><small>Trade balance</small><b class="${balance >= 0 ? 'res-pos' : 'res-neg'}">${balance >= 0 ? '+' : ''}¤${balance.toFixed(1)}</b></div>
-        <div><small>Exports</small><b class="res-pos">¤${(trade.exportValue ?? 0).toFixed(1)}</b></div>
-        <div><small>Imports</small><b class="res-neg">¤${(trade.importValue ?? 0).toFixed(1)}</b></div>
-        <div><small>World trade</small><b>¤${Math.round(market.totalGdp)}</b></div>
-        <div><small>Tariff</small><b>${me.economy?.tariff ?? 0}%</b></div>
-      </div>
-      <div class="card market-card">
-        <div class="card-head"><h3>Goods Flow</h3>
-          <small>${GOODS[hottest.id].icon} ${esc(GOODS[hottest.id].name)} has the highest world pressure</small></div>
-        <div class="trade-legend">
-          <span><i class="swatch neg"></i>bought abroad</span>
-          <span><i class="swatch pos"></i>sold abroad</span>
-        </div>
-        <div class="trade-columns">
-          <div class="trade-goods">${rows}</div>
-          ${this.goodDetail(me, world)}
-        </div>
-        <p class="trade-note">Surplus is sold and shortages are imported automatically. Trade balance belongs to the whole economy; only tariffs and military equipment purchases enter the state budget.</p>
-      </div>`;
+    if (!world.market?.goods) return '<p class="empty">The world market is not initialized.</p>';
+    const rows = goodRows(world, me);
+    const summary = tradeSummary(world, me, rows);
+    if (!this.tradeGood || !world.market.goods[this.tradeGood]) {
+      this.tradeGood = summary.pressure?.id
+        ?? rows.find((row) => row.active)?.id ?? rows[0].id;
+    }
+    return tradeScreen({
+      rows,
+      summary,
+      dossier: goodDossier(world, me, this.tradeGood),
+      structure: tradeStructure(world, me, rows),
+    }, this.tradeGood);
   }
 
   /** Ekranlardaki eylemleri oyunun mevcut fonksiyonlarına bağlar. */
@@ -2043,9 +1895,11 @@ export class Screens {
         game.requestRender();
       };
     }
-    for (const row of this.el.body.querySelectorAll('[data-good]')) {
+    // Mal seçimi kapanmaz, değişir: sağ panel hiç boş kalmamalı (aynı karoya
+    // ikinci tıklama seçimi düşürüyordu ve panel "mal seç" boşluğuna dönüyordu).
+    for (const row of this.el.body.querySelectorAll('[data-trade-good]')) {
       row.onclick = () => {
-        this.tradeGood = this.tradeGood === row.dataset.good ? null : row.dataset.good;
+        this.tradeGood = row.dataset.tradeGood;
         this.refresh();
       };
     }
