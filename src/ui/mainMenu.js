@@ -1,9 +1,12 @@
 // Ana menü: oyunun açılış perdesi.
 //
-// Fon, depoya konmuş tek görsel varlıktır (assets/menu/main-menu.png). Projenin
-// geri kalanı dokularını çalışma anında üretir (bkz. render/textures.js); bu
-// dosya o kuralın bilinçli istisnasıdır — mat resim oyuncunun gördüğü ilk şey
+// Fon resimleri ve müzik depoya konmuş varlıklardır (assets/menu, assets/music).
+// Projenin geri kalanı dokularını çalışma anında üretir (bkz. render/textures.js);
+// bu dosya o kuralın bilinçli istisnasıdır — mat resim oyuncunun gördüğü ilk şey
 // ve elle yapılmış bir kompozisyon.
+//
+// Perdenin üstünde iki katman daha var: sürüklenen sis (CSS ile hareket eder,
+// bkz. .menu-fog) ve müzik (bkz. menuMusic.js).
 //
 // Menüde olmayan özelliğin düğmesi yoktur: "Devam Et" ancak kayıt varsa çıkar,
 // dünya kurma alanları da ayarlar panelindeki üretim seçeneklerinin aynısıdır.
@@ -12,25 +15,30 @@
 
 import { savedInfo } from '../game/save.js';
 import { gameDate } from './hud.js';
+import { worldRows } from '../world/worldgen.js';
+import { MenuMusic } from './menuMusic.js';
 
 /**
  * Açılış sahneleri. Her uygulama açılışında sıradaki gelir.
  *
- * Kırpma noktası ve ton düzeltmesi sahneye özeldir: üç resmin en boy oranı ve
- * ışığı farklı, tek bir ayar üçünde birden tutmuyor. Ortak kural şu — metin
- * sütunu solda durur, o yüzden her sahnenin sol yarısı koyu kalmalı ve parlak
- * odak sağa düşmeli (perdeyi bkz. .menu-scrim).
+ * Kırpma noktası ve ton düzeltmesi sahneye özeldir: resimlerin en boy oranı ve
+ * ışığı birbirini tutmuyor, tek bir ayar sekizinde birden çalışmıyor. Ortak
+ * kural şu — metin sütunu solda durur, o yüzden her sahnenin sol yarısı koyu
+ * kalmalı ve parlak odak sağa düşmeli (perdeyi bkz. .menu-scrim).
+ *
+ * Resimler JPEG: fon fotoğrafı PNG olarak 2,4 MB tutuyordu ve menü artık sekiz
+ * sahne arasında dönüyor. Kalite 92'de fark görünmüyor, boyut yedide bire iniyor.
  */
 const SCENES = [
   {
-    src: 'assets/menu/main-menu.png',
+    src: 'assets/menu/main-menu.jpg',
     // Yanan kıyı şeridi resmin üst üçte birinde; merkezden kırpınca kesiliyor.
     position: '50% 42%',
     filter: 'saturate(0.88) contrast(1.04) brightness(0.94)',
     tagline: 'A coastline under the guns, an empire behind them.',
   },
   {
-    src: 'assets/menu/palace-hall.png',
+    src: 'assets/menu/palace-hall.jpg',
     // Işık huzmeleri ve zemin yansıması alt yarıda; biraz aşağı bakılır.
     position: '50% 54%',
     // Zaten koyu ve çok mavi: kısmak yerine hafif ısıtılır.
@@ -38,7 +46,44 @@ const SCENES = [
     tagline: 'Empires are lost in quiet halls long before they are lost at sea.',
   },
   {
-    src: 'assets/menu/field-road.png',
+    src: 'assets/menu/harbour-dawn.jpg',
+    // Ay ışığının suya düşen sütunu ortada; vinçler sağda. Merkez kırpma tutar.
+    position: '50% 50%',
+    // Neredeyse tek renk: kontrastı açmazsak kurşuni bir levha gibi duruyor.
+    filter: 'saturate(0.72) contrast(1.14) brightness(0.98)',
+    tagline: 'Every empire is a ledger of ships that came home.',
+  },
+  {
+    src: 'assets/menu/palace-square.jpg',
+    // Sütunlu cephe solda: metin sütunu tam onun üstüne oturur, koyu kalır.
+    position: '50% 52%',
+    filter: 'saturate(0.76) contrast(1.08) brightness(1.0)',
+    tagline: 'The rain washes the square; it never washes the treaty.',
+  },
+  {
+    src: 'assets/menu/rail-yard.jpg',
+    // Gökyüzü kadrajın üst yarısını yiyor; makaslar görünsün diye aşağı bakılır.
+    position: '50% 62%',
+    filter: 'saturate(0.8) contrast(1.1) brightness(0.95)',
+    tagline: 'Timetables move armies. Generals only sign for them.',
+  },
+  {
+    src: 'assets/menu/coast-fort.jpg',
+    // Toplar ve surlar sağ yarıda; sol yarı deniz, metin için ideal.
+    position: '50% 50%',
+    filter: 'saturate(0.74) contrast(1.1) brightness(0.97)',
+    tagline: 'A gun on a headland is an argument the sea must answer.',
+  },
+  {
+    src: 'assets/menu/tulip-night.jpg',
+    // Hilal sağ üstte, tarlanın ufku ortada; yukarı kayarsa ay kesiliyor.
+    position: '50% 46%',
+    // Gece sahnesi: zaten koyu, karartma yok — hafif açılır.
+    filter: 'saturate(0.9) contrast(1.05) brightness(1.06)',
+    tagline: 'Fortunes were made and ruined here, over flowers.',
+  },
+  {
+    src: 'assets/menu/field-road.jpg',
     // Ufuk çizgisi ortada; gökyüzü ile çamurlu yol birlikte kalsın.
     position: '50% 48%',
     // En soluk sahne; kontrast biraz açılır yoksa gri bir yüzey gibi duruyor.
@@ -106,12 +151,16 @@ export class MainMenu {
       contLabel: $('menu-cont-label'),
       landLabel: $('menu-land-label'),
       nationsLabel: $('menu-nations-label'),
+      mute: $('menu-mute'),
     };
+
+    this.music = new MenuMusic();
 
     // Sahne yapıcıda seçilir: menü açıldığında resim çoktan yüklenmeye
     // başlamış olsun, perde boş bir kare göstermesin.
     this.setScene(nextScene());
     this.bind();
+    this.syncMute();
   }
 
   setScene(scene) {
@@ -137,6 +186,12 @@ export class MainMenu {
     el.create.onclick = () => this.showSetup(true);
     el.back.onclick = () => this.showSetup(false);
     el.build.onclick = () => this.build();
+    if (el.mute) {
+      el.mute.onclick = () => {
+        this.music.toggleMute();
+        this.syncMute();
+      };
+    }
 
     const sync = () => this.syncLabels();
     for (const input of [el.size, el.cont, el.land, el.nations]) input.oninput = sync;
@@ -161,7 +216,7 @@ export class MainMenu {
   syncLabels() {
     const { el } = this;
     const cols = Number(el.size.value);
-    el.sizeLabel.textContent = `${cols} × ${Math.round(cols * 0.8)}`;
+    el.sizeLabel.textContent = `${cols} × ${worldRows(cols)}`;
     el.contLabel.textContent = Number(el.cont.value).toFixed(2);
     el.landLabel.textContent = Number(el.land.value).toFixed(2);
     const nations = Number(el.nations.value);
@@ -175,12 +230,23 @@ export class MainMenu {
     const nations = Number(el.nations.value);
     this.game.newWorld(el.seed.value.trim() || undefined, {
       cols,
-      rows: Math.round(cols * 0.8),
+      rows: worldRows(cols),
       continentality: Number(el.cont.value),
       landBias: Number(el.land.value),
       nationCount: nations > 0 ? nations : null,
     });
     this.close();
+  }
+
+  /** Sessiz düğmesinin görünümü tek yerden yazılır; durum müzikte tutulur. */
+  syncMute() {
+    const { mute } = this.el;
+    if (!mute) return;
+    const muted = this.music.muted;
+    mute.classList.toggle('is-muted', muted);
+    mute.setAttribute('aria-pressed', muted ? 'true' : 'false');
+    mute.setAttribute('aria-label', muted ? 'Unmute menu music' : 'Mute menu music');
+    mute.title = muted ? 'Music off' : `Music: ${this.music.trackTitle}`;
   }
 
   showSetup(on) {
@@ -201,6 +267,8 @@ export class MainMenu {
     document.body.classList.add('menu-open');
     this.showSetup(false);
     (this.resumable ? this.el.resume : this.el.create).focus();
+    this.music.start();
+    this.syncMute();
   }
 
   close() {
@@ -209,6 +277,8 @@ export class MainMenu {
     this.el.root.classList.add('hidden');
     this.el.root.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('menu-open');
+    // Kampanya başlıyor: menü müziği perdeyle birlikte söner.
+    this.music.stop();
     // Perde kalkarken harita ölçüsü değişmiş olabilir: menü açıkken gelen
     // resize olayları haritaya ulaşmıyordu.
     this.game.renderer.resize();

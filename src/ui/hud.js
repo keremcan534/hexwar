@@ -29,6 +29,7 @@ import {
   RGO_TYPES, provinceOutput, provinceRgoStatus,
 } from '../game/provinces.js';
 import { controllerOf, isOccupied } from '../game/control.js';
+import { worldRows } from '../world/worldgen.js';
 
 const ORDER_LABELS = {
   [ORDER.AUTO]: 'automatic (AI controlled)',
@@ -176,7 +177,7 @@ export class Hud {
 
     $('btn-generate').onclick = () => {
       const cols = Number(el.inSize.value);
-      const rows = Math.round(cols * 0.8);
+      const rows = worldRows(cols);
       const nations = Number(el.inNations.value);
       game.newWorld(el.inSeed.value.trim() || undefined, {
         cols,
@@ -470,7 +471,7 @@ export class Hud {
   syncLabels() {
     const { el } = this;
     const cols = Number(el.inSize.value);
-    el.lblSize.textContent = `${cols} × ${Math.round(cols * 0.8)}`;
+    el.lblSize.textContent = `${cols} × ${worldRows(cols)}`;
     el.lblCont.textContent = Number(el.inCont.value).toFixed(2);
     el.lblLand.textContent = Number(el.inLand.value).toFixed(2);
     const n = Number(el.inNations.value);

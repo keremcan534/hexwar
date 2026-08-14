@@ -94,6 +94,7 @@
   <div class="map-modes" id="map-modes">
     <button class="mode-btn active" data-mode="political" aria-label="Political map" title="Political map"><svg viewBox="0 0 16 16"><path d="M2 4.2 6 2.6l4 1.6 4-1.6v9.2l-4 1.6-4-1.6-4 1.6zM6 2.6v9.2M10 4.2v9.2"/></svg></button>
     <button class="mode-btn" data-mode="terrain" aria-label="Terrain map" title="Terrain map"><svg viewBox="0 0 16 16"><path d="M1.5 12.5 6 5l3 4.6 1.8-2.6 3.7 5.5z"/></svg></button>
+    <button class="mode-btn" data-mode="geography" aria-label="Geography preview" title="Geography (no borders)"><svg viewBox="0 0 16 16"><path d="M1.5 7.4c1.6-2.1 3-3.1 4.4-3.1s2.1 1.3 3.3 1.3 1.2-1.7 2.4-1.7c1 0 1.9.6 1.9.6M1.5 11.4c1.6-2.1 3-3.1 4.4-3.1s2.1 1.3 3.3 1.3 1.2-1.7 2.4-1.7c1 0 1.9.6 1.9.6"/></svg></button>
     <button class="mode-btn" data-mode="cultures" aria-label="Culture map" title="Culture map"><svg viewBox="0 0 16 16"><path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM2.4 6.5h11.2M2.4 9.5h11.2M8 2c-1.8 2-2.6 4-2.6 6s.8 4 2.6 6c1.8-2 2.6-4 2.6-6s-.8-4-2.6-6z"/></svg></button>
     <button class="mode-btn" data-mode="resources" aria-label="Resource map" title="Resource map"><svg viewBox="0 0 16 16"><path d="M9.5 2.5 13.5 6.5M11.5 4.5 6 10l-3.5 3.5M4.5 8.5 7.5 11.5"/></svg></button>
     <button class="mode-btn" data-mode="population" aria-label="Population map" title="Population map"><svg viewBox="0 0 16 16"><path d="M8 7.5a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4zM3.5 13.5c0-2.5 2-4.2 4.5-4.2s4.5 1.7 4.5 4.2"/></svg></button>
@@ -132,8 +133,8 @@
       <input type="text" id="in-seed" placeholder="leave blank for random" autocomplete="off" />
     </label>
     <label class="field">
-      <span>Map size: <b id="lbl-size">200 × 160</b></span>
-      <input type="range" id="in-size" min="30" max="200" step="2" value="200" />
+      <span>Map size: <b id="lbl-size">160 × 96</b></span>
+      <input type="range" id="in-size" min="60" max="220" step="4" value="160" />
     </label>
     <label class="field">
       <span>Continentality: <b id="lbl-cont">0.50</b></span>
@@ -144,7 +145,7 @@
       <input type="range" id="in-land" min="-0.5" max="0.5" step="0.05" value="0" />
     </label>
     <label class="field">
-      <span>Nation count: <b id="lbl-nations">automatic</b></span>
+      <span>Great powers: <b id="lbl-nations">automatic</b></span>
       <input type="range" id="in-nations" min="0" max="30" step="1" value="0" />
     </label>
     <button class="primary" id="btn-generate">Generate New World</button>
@@ -192,8 +193,13 @@
        solda durur ve altına koyu bir perde serilir (bkz. .menu-scrim) çünkü
        resmin sol yarısı gemiyle dolu ve tek başına metni taşımaz. -->
   <section class="menu hidden" id="menu" aria-hidden="true" aria-label="Main menu">
-    <img class="menu-art" id="menu-art" src="assets/menu/main-menu.png" alt="" decoding="async" />
+    <img class="menu-art" id="menu-art" src="assets/menu/main-menu.jpg" alt="" decoding="async" />
     <i class="menu-scrim" aria-hidden="true"></i>
+    <!-- Sürüklenen sis: aynı saydam doku iki katmanda, farklı hız ve
+         yükseklikte. Tek katman "kayan bir resim" gibi okunuyordu; ikisi
+         birbirinin üstünden geçince derinlik doğuyor (bkz. .menu-fog). -->
+    <i class="menu-fog menu-fog-far" aria-hidden="true"></i>
+    <i class="menu-fog menu-fog-near" aria-hidden="true"></i>
     <div class="menu-panel">
       <header class="menu-brand">
         <span class="menu-eyebrow">Grand Strategy · 1836</span>
@@ -219,8 +225,8 @@
           <input type="text" id="menu-seed" placeholder="leave blank for random" autocomplete="off" spellcheck="false" />
         </label>
         <label class="menu-field">
-          <span>Map size <b id="menu-size-label">200 × 160</b></span>
-          <input type="range" id="menu-size" min="30" max="200" step="2" value="200" />
+          <span>Map size <b id="menu-size-label">160 × 96</b></span>
+          <input type="range" id="menu-size" min="60" max="220" step="4" value="160" />
         </label>
         <label class="menu-field">
           <span>Continentality <b id="menu-cont-label">0.50</b></span>
@@ -231,7 +237,7 @@
           <input type="range" id="menu-land" min="-0.5" max="0.5" step="0.05" value="0" />
         </label>
         <label class="menu-field">
-          <span>Nation count <b id="menu-nations-label">automatic</b></span>
+          <span>Great powers <b id="menu-nations-label">automatic</b></span>
           <input type="range" id="menu-nations" min="0" max="30" step="1" value="0" />
         </label>
         <div class="menu-setup-buttons">
@@ -242,6 +248,13 @@
 
       <footer class="menu-foot">
         <span>No dependencies · plain ES modules and Canvas2D</span>
+        <button class="menu-mute" id="menu-mute" type="button" aria-pressed="false" aria-label="Mute menu music">
+          <svg viewBox="0 0 16 16" aria-hidden="true">
+            <path class="mute-body" d="M3.5 6.2h2.2L8.8 3.6v8.8L5.7 9.8H3.5z" />
+            <path class="mute-wave" d="M10.8 6.1a2.7 2.7 0 0 1 0 3.8M12.6 4.4a5.2 5.2 0 0 1 0 7.2" />
+            <path class="mute-slash" d="M11 5.4 14.4 10.6" />
+          </svg>
+        </button>
       </footer>
     </div>
   </section>

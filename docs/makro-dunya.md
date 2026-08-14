@@ -4,6 +4,11 @@ Amaç: "Bu Dünya değil" ama "stratejik mantığı hemen anlıyorum" hissi.
 Silindirik (doğu-batı sarmal) haritada, rol atanmış makro bölgeler ve
 arketip güçler. Hiçbir bölge/ülke gerçek adlarla anılmaz.
 
+> **Bu belge ROLLERİ anlatır.** Bölgelerin fiziksel biçimi — kıta iskeleti,
+> kıyı, iç deniz, boğaz, sıradağ — [cografya.md](cografya.md) içindedir.
+> Standart dünya artık **160 × 96**'dır; aşağıdaki (u,v) konumları eski blob
+> şablonundan kalmadır ve yalnız rollerin göreli yerleşimini anlatır.
+
 ## Faz 1 — Mevcut durumun denetimi (uygulama öncesi)
 
 | Konu | Durum |
@@ -29,7 +34,7 @@ arası bantlar okyanus kalır (yüzdelik deniz seviyesi bunu garantiler).
 
 | Bölge (zone id) | Rol | Konum (u,v merkez) | Not |
 |---|---|---|---|
-| `yeni-kuzey` | Amerika-benzeri kuzey | .245,.30 | Doğu kıyısı yerleşik, iç batı SAHİPSİZ sınır |
+| `yeni-kuzey` | Amerika-benzeri kuzey | .245,.30 | Doğu kıyısı yerleşik, iç batı sınır konfederasyonlarında |
 | `kistak` | Orta köprü | .272,.475 | İnce kara köprüsü = stratejik geçit |
 | `yeni-guney` | Latin-benzeri güney | .30,.64 | Parçalı cumhuriyetler; batıda sıradağ |
 | `yogun-bati` | Avrupa-benzeri yoğun siyasi bölge | .475,.30 | Küçük province'ler, çok ülke, sanayi çekirdeği |
@@ -39,7 +44,7 @@ arası bantlar okyanus kalır (yüzdelik deniz seviyesi bunu garantiler).
 | `guney-yarimada` | Hindistan-benzeri yarımada | .70,.58 | Yüksek nüfus; kuzeyinde aşılmaz sıradağ yayı |
 | `dogu-ovasi` | Çin-benzeri nüfus devi | .84,.44 | Dev nüfus, düşük sanayi |
 | `dogu-adalari` | Japonya-benzeri ada modernleşicisi | .965,.34 | Sarmalı dikişe yakın düşebilir — sorun değil |
-| `guney-kita` | Afrika-benzeri kolonizasyon alanı | .49,.70 | Kıyı krallıkları + SAHİPSİZ iç bölge; iri province'ler |
+| `guney-kita` | Afrika-benzeri kolonizasyon alanı | .49,.70 | Kıyı krallıkları + kabile birlikleri; iri province'ler |
 | `baharat-adalari` | Ada zinciri | .93→.06,.62 | Deniz yolu basamakları (Grand Ocean'ı köprüler) |
 | `korsan-adalari` | Karayip-benzeri küme | .21,.50 | Kıstak önü ada kümesi |
 
@@ -58,18 +63,46 @@ Adlar üretimden gelir (mevcut ad üreteci); roller şablondan.
 | Arketip | Bölge | Çekirdek province | Ek |
 |---|---|---|---|
 | Denizci koloni imparatorluğu | yogun-bati (kıyı) | 14-18 | `guney-yarimada`nın ~%70'i KOLONİ (çekirdek değil, kabul edilmeyen kültür) + 2-3 ada üssü |
-| Kuzey kara imparatorluğu | kuzey-bozkiri | 26-34 | Düşük gelişim; çok kültürlü doğu ucu |
+| Kuzey kara imparatorluğu | kuzey-bozkiri | 24-31 | Düşük gelişim; çok kültürlü doğu ucu |
 | Bileşik monarşi | yogun-bati (merkez-doğu) | 14-20 | 3 kültür: 2'si KABUL EDİLMİŞ — kırılgan çokluk |
 | Gerileyen kavşak imparatorluğu | kavsak (+iç deniz kıyıları) | 12-18 | Karışık kültür; düşük istikrar başlangıcı |
 | Doğu devi | dogu-ovasi | 24-32 | Nüfus ×3; sanayi 0; büyük gelecek |
 | Ada modernleşicisi | dogu-adalari | 5-8 | Yüksek gelişim eğilimi |
-| Yeni dünya federasyonu | yeni-kuzey (doğu kıyısı) | 10-16 | Batısı SAHİPSİZ sınır — yerleşimci genişleme |
+| Yeni dünya federasyonu | yeni-kuzey (doğu kıyısı) | 10-16 | Batısı sınır konfederasyonu — yerleşimci genişleme |
 | Güney cumhuriyetleri (3-5 ülke) | yeni-guney | 4-8'er | Kaynak zengini, sanayisiz |
 | Yoğun-batı küçükleri (5-8 ülke) | yogun-bati | 3-12'şer | Avrupa dokusu |
-| Kıyı krallıkları (3-4 ülke) | guney-kita kıyısı | 2-5'er | İç bölge tamamen sahipsiz |
+| Kıyı krallıkları (3-4 ülke) | guney-kita kıyısı | 2-5'er | İç bölge kabile birliklerinde |
 
-Toplam ~20-24 ülke; province'lerin ~%35-45'i SAHİPSİZ kalır (sınır +
-kolonizasyon alanı) — dünya "dolu" değil "açık" hisseder.
+## Faz 3b — Doldurma: dünyada sahipsiz toprak kalmaz
+
+Arketip planı yalnız BÜYÜK güçleri kurar (~20-24 ülke) ve dünyanın ancak
+üçte birini kaplar. Kalan toprak boş bırakılmaz: `nations.fillRemaining`
+her sahipsiz province kümesini bölge karakterine göre devletlere böler.
+
+| Kural | Değer |
+|---|---|
+| Sahipsiz province | **0** (her kara bir devlete bağlı) |
+| Toplam ülke (160×96) | ~53-63 |
+| Doldurma devleti boyu | bozkır 28, güney kıtası/yeni kuzey 26, yoğun-batı 10 province (harita boyuyla üsse 0.6 ölçeklenir) |
+| Üst sınır | 24 province/devlet (Voronoi sapmasını keser) |
+| İzole ada kümesi ≤12 province | devlet değil, en yakın kıyı ülkesinin **deniz aşırı** toprağı |
+| Kara cebi ≤3 province | en KÜÇÜK komşuya katılır (bant şişmesin) |
+
+Doldurma rolleri: `bozkir-boyu`, `kabile-birligi`, `sinir-konfederasyonu`,
+`bati-prensligi`, `kavsak-beyligi`, `dogu-beyligi`, `yarimada-beyligi`,
+`kistak-beyligi`, `ada-beyligi`. Hepsi `devTier 0`, ikinci şehirsiz ve
+tek kültürlü doğar.
+
+**Neden:** kolonizasyon gerilimi BOŞLUKTAN değil ZAYIFLIKTAN gelmeli. Boş
+harita politik kipte gri bir levha gibi okunuyordu (ölçüldü: karenin yalnız
+%35'i sahipli). Artık dünya dolu ama sınır boyları hâlâ av alanı.
+
+**Bedeli:** sahipsiz toprağa bedava yerleşme yolu (`TurnManager.occupy` →
+`claim`) fiilen kapanır; genişleme savaş ister.
+
+Geçilmez arazi (dağ, zirve, buz) hiçbir province'e üye olmaz ama en yakın
+province'e "etek" olarak bağlanır: ekonomiye girmez, politik haritada o
+province'in sahibinin renginde görünür (bkz. provinces-gen.attachImpassableFringe).
 
 ## Faz 4 — Yoğunluk
 
@@ -104,10 +137,10 @@ Beklenen: ~1.300-1.500 province (2.675 yerine) ve ülke başına 3-35 bandı.
 
 1. Arketiplerin hepsi doğdu mu (bölge-rol eşleşmesi)?
 2. Ülke başına province bandı (3-35) tutuyor mu; ortalama ≤ 20 mi?
-3. Sahipsiz province payı %30-55 aralığında mı?
+3. Sahipsiz province kalmadı mı (%0)?
 4. Yarımada kolonisi: nüfus ≥ sahip ülkenin ev nüfusunun ~%60'ı, kültürü
    kabul edilmemiş, çekirdek değil mi?
 5. İç deniz var mı (kapalı deniz hücresi) ve ağzı dar mı?
 6. Dikişte kıta bütünlüğü (wrap-audit zaten garanti ediyor)?
 7. Yoğun-batıda ≥6 ülke; bozkırda tek dev; doğuda nüfus devi mi?
-8. Kolonizasyon alanı: guney-kita iç province'lerinin ≥%70'i sahipsiz mi?
+8. Kolonizasyon alanı: guney-kita iç province'lerinin ≥%70'i gelişmemiş yerel devletlerde mi (dev 0)?

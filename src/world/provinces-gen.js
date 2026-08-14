@@ -271,6 +271,8 @@ export function generateProvinces(world) {
     }
   });
 
+  attachImpassableFringe(world, provinces);
+
   // Kültür snap: province tek kültür konuşur (çoğunluk; eşitlikte küçük id).
   // Sayaçlar yeniden kurulur ki cultureCounts gerçek dağılımı yansıtsın.
   for (const province of provinces) {
@@ -300,4 +302,39 @@ export function generateProvinces(world) {
 
   world.provinces = provinces;
   return provinces;
+}
+
+/**
+ * Geçilmez kara (dağ, zirve, buz) hiçbir province'e üye olmaz: ne nüfus taşır
+ * ne işlenir ne de asker girer. Ama SAHİPSİZ de görünmemeli — politik haritada
+ * ülkelerin ortasında gri delikler açıyordu.
+ *
+ * Çözüm: her geçilmez kare en yakın province'e "etek" (fringe) olarak bağlanır.
+ * Ekonomiye girmez (tileIdx'e eklenmez), yalnız boyama ve sınır çizimi onu
+ * province'in sahibiyle gösterir. Fetihte otomatik doğru kalır: etek kendi
+ * sahibini değil bağlı olduğu province'inkini izler.
+ */
+function attachImpassableFringe(world, provinces) {
+  for (const province of provinces) province.fringeIdx = [];
+  const owner = new Int32Array(world.tiles.length).fill(-1);
+  let queue = [];
+  world.forEach((tile, idx) => {
+    tile.fringeOf = -1;
+    if (tile.provinceId >= 0) { owner[idx] = tile.provinceId; queue.push(idx); }
+  });
+  while (queue.length) {
+    const next = [];
+    for (const idx of queue) {
+      const tile = world.tiles[idx];
+      for (const n of world.neighbors(tile)) {
+        const at = n.row * world.cols + n.col;
+        if (owner[at] >= 0 || n.terrain.water || n.terrain.passable) continue;
+        owner[at] = owner[idx];
+        n.fringeOf = owner[idx];
+        provinces[owner[idx]].fringeIdx.push(at);
+        next.push(at);
+      }
+    }
+    queue = next;
+  }
 }

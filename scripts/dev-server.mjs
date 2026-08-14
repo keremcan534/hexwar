@@ -14,6 +14,9 @@ const contentTypes = new Map([
   [".js", "text/javascript; charset=utf-8"],
   [".json", "application/json; charset=utf-8"],
   [".mjs", "text/javascript; charset=utf-8"],
+  // Menü müziği: yanlış tür gönderilirse tarayıcı <audio> kaynağını reddeder.
+  [".mp3", "audio/mpeg"],
+  [".ogg", "audio/ogg"],
   [".png", "image/png"],
   [".svg", "image/svg+xml"],
   [".webp", "image/webp"],

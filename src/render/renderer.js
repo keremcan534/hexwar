@@ -12,6 +12,18 @@ import { controllerOf, isOccupied } from '../game/control.js';
 import { materials } from './textures.js';
 import { WaterLayer } from './water.js';
 
+/**
+ * Karenin GÖRÜNEN sahibi. Geçilmez arazi (dağ, zirve, buz) hiçbir province'e
+ * üye olmadığı için `owner` alanı hep -1'dir; bağlı olduğu province'in sahibini
+ * gösteririz (bkz. provinces-gen.attachImpassableFringe). Böylece ülkelerin
+ * ortasında gri delik kalmaz ve fetihten sonra da doğru kalır.
+ */
+function ownerOf(tile, world) {
+  if (tile.owner >= 0) return tile.owner;
+  if (tile.fringeOf >= 0) return world.provinces?.[tile.fringeOf]?.owner ?? -1;
+  return -1;
+}
+
 const MAX_DPR = 2;            // mobilde 3x DPR gereksiz pahalı
 /**
  * Sarmal periyodunun sol kenarı: 0. kolonun çift satır hexinin sol ucu.
@@ -131,7 +143,14 @@ export class Renderer {
     this.dpr = 1;
     this.showGrid = true;
     this.showLabels = true;
-    /** 'political' | 'terrain' | 'cultures' | 'resources' | 'population' | 'construction' */
+    /**
+     * 'political' | 'terrain' | 'geography' | 'cultures' | 'resources'
+     * | 'population' | 'construction'
+     *
+     * 'geography': fiziksel coğrafya önizlemesi. Ülke, sınır, province kenarı,
+     * ızgara ve etiket kapalı — yalnız kara, deniz ve arazi. Kıtaların biçimi
+     * siyasi katmandan bağımsız değerlendirilebilsin diye vardır.
+     */
     this.mapMode = 'political';
     this.constructionNation = -1;
     this.constructionCache = null;
@@ -152,7 +171,8 @@ export class Renderer {
    * dağıtır ve animasyon zinciri kendiliğinden durur.
    */
   waterAnimatedMode() {
-    return this.mapMode === 'political' || this.mapMode === 'terrain' || this.mapMode === 'cultures';
+    return this.mapMode === 'political' || this.mapMode === 'terrain'
+      || this.mapMode === 'geography' || this.mapMode === 'cultures';
   }
 
   /** Game bir sonraki animasyon karesini zamanlasın mı (bkz. Game.scheduleWaterFrame). */
@@ -250,8 +270,13 @@ export class Renderer {
     this.drawTerrain(ctx, list, world, true);
     if (this.mapMode === 'political') this.drawOccupationOverlay(ctx, world, list, cache.scale);
     if (this.mapMode === 'construction') this.drawConstructionOverlay(ctx, world, list, cache.scale);
-    if (this.mapMode !== 'terrain') this.drawBorders(ctx, world, list, cache.scale);
+    if (this.showsPolitics()) this.drawBorders(ctx, world, list, cache.scale);
     ctx.restore();
+  }
+
+  /** Siyasi katmanlar (sınır, province kenarı, etiket) çizilsin mi? */
+  showsPolitics() {
+    return this.mapMode !== 'terrain' && this.mapMode !== 'geography';
   }
 
   setMapMode(mode) {
@@ -498,7 +523,7 @@ export class Renderer {
     // Seçim kutusu ekran uzayında: kamera dönüşümünün dışında çizilir.
     if (state.marquee) this.drawMarquee(ctx, state.marquee);
 
-    if (this.showLabels && this.mapMode !== 'construction'
+    if (this.showLabels && this.mapMode !== 'construction' && this.mapMode !== 'geography'
       && world.nations?.length && cam.zoom > 0.3) {
       this.drawLabels(ctx, world);
     }
@@ -526,9 +551,11 @@ export class Renderer {
       if (this.mapMode === 'construction') {
         this.drawConstructionOverlay(ctx, world, tiles, cam.zoom);
       }
-      if (this.showGrid && cam.zoom >= GRID_MIN_ZOOM) this.drawGrid(ctx, tiles, cam.zoom);
-      this.drawProvinceEdges(ctx, tiles, world, cam.zoom);
-      if (this.mapMode !== 'terrain') this.drawBorders(ctx, world, tiles, cam.zoom);
+      if (this.showGrid && cam.zoom >= GRID_MIN_ZOOM && this.mapMode !== 'geography') {
+        this.drawGrid(ctx, tiles, cam.zoom);
+      }
+      if (this.mapMode !== 'geography') this.drawProvinceEdges(ctx, tiles, world, cam.zoom);
+      if (this.showsPolitics()) this.drawBorders(ctx, world, tiles, cam.zoom);
       this.lastDrawn += tiles.length;
     }
 
@@ -543,7 +570,9 @@ export class Renderer {
     this.drawCities(ctx, world, rect);
     if (this.mapMode === 'construction') {
       this.drawConstructionBadges(ctx, world, cam.zoom, rect);
-    } else {
+    } else if (this.mapMode !== 'geography') {
+      // Coğrafya kipi fiziksel dünyayı yalnız başına gösterir: ordu, cephe ve
+      // muharebe de siyasettir (bkz. mapMode yorumu).
       this.drawFronts(ctx, world, state);
       this.drawMovement(ctx, world, state.selectedUnit, state.playerNation);
       this.drawUnitCounters(ctx, world, state.selectedUnit, rect);
@@ -611,7 +640,7 @@ export class Renderer {
     if (this.mapMode === 'construction') {
       this.drawConstructionOverlay(ctx, world, bakeTiles, scale);
     }
-    if (this.mapMode !== 'terrain') this.drawBorders(ctx, world, bakeTiles, scale);
+    if (this.showsPolitics()) this.drawBorders(ctx, world, bakeTiles, scale);
 
     this.cache = { canvas, x: x0, y: b.minY, w: P, h, scale, widthPx, heightPx };
     return this.cache;
@@ -769,14 +798,17 @@ export class Renderer {
       return `hsl(96 18% ${Math.round(light)}%)`;
     }
     // Su her kipte arazi rengiyle kalır: kimsenin toprağı değil.
-    if (tile.terrain.water || this.mapMode === 'terrain') return tile.terrain.color;
+    if (tile.terrain.water || this.mapMode === 'terrain' || this.mapMode === 'geography') {
+      return tile.terrain.color;
+    }
 
     if (this.mapMode === 'cultures') {
       if (tile.culture < 0) return this.neutralTint(tile.terrain);
       return this.ownerTint(world.cultures[tile.culture], tile.terrain, tile, world);
     }
-    if (tile.owner < 0) return this.neutralTint(tile.terrain);
-    return this.ownerTint(world.nations[tile.owner], tile.terrain, tile, world);
+    const owner = ownerOf(tile, world);
+    if (owner < 0) return this.neutralTint(tile.terrain);
+    return this.ownerTint(world.nations[owner], tile.terrain, tile, world);
   }
 
   /** Hukuki sinir sabit kalir; isgal edilen province controller renginde taranir. */
@@ -993,7 +1025,9 @@ export class Renderer {
     const byColor = new Map();
     const c = this.corners;
     const cultureMode = this.mapMode === 'cultures';
-    const groupOf = (tile) => (cultureMode ? tile.culture : tile.owner);
+    // Sınır da etek kareleri kapsar: dağ silsilesi ülkenin İÇİNDE kalır,
+    // sınır çizgisi onun etrafından dolaşmaz.
+    const groupOf = (tile) => (cultureMode ? tile.culture : ownerOf(tile, world));
 
     for (const t of tiles) {
       const group = groupOf(t);
@@ -1167,7 +1201,8 @@ export class Renderer {
 
   /** Şehirler: ülke renginde köşeli sur işareti, seviye kadar burçlu. */
   drawCities(ctx, world, rect) {
-    if (!world.cities?.length) return;
+    // Coğrafya kipi fiziksel dünyayı yalnız başına gösterir: şehir de siyasettir.
+    if (!world.cities?.length || this.mapMode === 'geography') return;
     const s = HEX_SIZE * 0.46;
 
     for (const city of world.cities) {

@@ -39,3 +39,4 @@ hud.bindMenu(menu);
 
 // Hata ayıklama için konsoldan erişim.
 window.game = game;
+window.menu = menu;

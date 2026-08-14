@@ -10,7 +10,7 @@
 //   7. Kolonizasyon alani (guney-kita ici) bos mu?
 //   8. Nufus asimetrisi: dogu devi ve koloni nufus agirligi tasiyor mu?
 
-import { generateWorld } from '../../src/world/worldgen.js';
+import { STANDARD_COLS, STANDARD_ROWS, generateWorld } from '../../src/world/worldgen.js';
 import { generateNations } from '../../src/world/nations.js';
 import { initProvinces } from '../../src/game/provinces.js';
 import { finding, n0, reportFindings, section, sub } from './harness.mjs';
@@ -18,8 +18,8 @@ import { finding, n0, reportFindings, section, sub } from './harness.mjs';
 const SEEDS = ['world-audit-1', 'world-audit-2', 'world-audit-3'];
 
 for (const seed of SEEDS) {
-  section(`MAKRO DUNYA — ${seed} (200x160)`);
-  const world = generateWorld(seed, { cols: 200, rows: 160 });
+  section(`MAKRO DUNYA — ${seed} (${STANDARD_COLS}x${STANDARD_ROWS})`);
+  const world = generateWorld(seed, { cols: STANDARD_COLS, rows: STANDARD_ROWS });
   generateNations(world, { seed: `${seed}-nations` });
   initProvinces(world);
   const nations = world.nations;
@@ -70,14 +70,16 @@ for (const seed of SEEDS) {
     console.log('  Bant tutuyor: ulkeler okunur boyutta.');
   }
 
-  sub('3. sahipsiz pay');
+  sub('3. dolu dunya (sahipsiz toprak kalmamali)');
+  // Tasarim degisti: dunya artik BOS birakilmaz. Kolonizasyon gerilimi
+  // bosluktan degil, sinir devletlerinin ZAYIFLIGINDAN gelir (bkz. 7).
   const owned = provinces.filter((p) => p.owner >= 0).length;
   const freeShare = 1 - owned / provinces.length;
-  console.log(`  sahipli ${owned}/${provinces.length} · sahipsiz %${(freeShare * 100).toFixed(0)}`);
-  if (freeShare < 0.25 || freeShare > 0.8) {
-    finding('HIGH', 'sahipsiz pay', '%25-80 acik alan (kolonizasyon sahasi)',
-      `%${(freeShare * 100).toFixed(0)}`);
-  }
+  console.log(`  sahipli ${owned}/${provinces.length} · sahipsiz %${(freeShare * 100).toFixed(1)}`);
+  if (freeShare > 0.001) {
+    finding('HIGH', 'sahipsiz toprak', 'her province bir devlete bagli olmali',
+      `%${(freeShare * 100).toFixed(1)} sahipsiz (${provinces.length - owned} province)`);
+  } else console.log('  Dunyada sahipsiz province yok.');
 
   sub('4. yarimada kolonisi');
   const maritime = nations.find((n) => n.archetype === 'denizci-imparatorluk');
@@ -155,15 +157,27 @@ for (const seed of SEEDS) {
     finding('HIGH', 'yogun-bati dokusu', '>= 5 devlet (Avrupa hissi)', String(westStates));
   } else console.log(`  yogun-batida ${westStates} devlet.`);
 
-  sub('7. kolonizasyon alani');
+  sub('7. kolonizasyon alani (zayif sinir devletleri)');
+  // Yeni olcut: ic bolge BOS degil, ama buyuk gucun degil GELISMEMIS yerel
+  // devletlerin elinde olmali. Av alani olmasi bundan gelir.
+  const FRONTIER = new Set([
+    'kabile-birligi', 'sinir-konfederasyonu', 'bozkir-boyu', 'ada-beyligi',
+    'kiyi-kralligi', 'kistak-beyligi',
+  ]);
   const interior = provinces.filter((p) => p.zone === 'guney-kita' && !p.coastal);
-  const freeInterior = interior.filter((p) => p.owner < 0).length;
-  const interiorShare = interior.length ? freeInterior / interior.length : 1;
-  console.log(`  guney-kita ici: ${freeInterior}/${interior.length} sahipsiz`
-    + ` (%${(interiorShare * 100).toFixed(0)})`);
-  if (interiorShare < 0.7) {
-    finding('HIGH', 'kolonizasyon alani', 'ic bolgenin >= %70 kadari sahipsiz',
-      `%${(interiorShare * 100).toFixed(0)}`);
+  const frontierHeld = interior.filter(
+    (p) => p.owner >= 0 && FRONTIER.has(nations[p.owner].archetype),
+  ).length;
+  const share = interior.length ? frontierHeld / interior.length : 1;
+  const devs = new Set(interior.filter((p) => p.owner >= 0).map((p) => nations[p.owner].devTier));
+  console.log(`  guney-kita ici: ${frontierHeld}/${interior.length} yerel sinir devletinde`
+    + ` (%${(share * 100).toFixed(0)}) · gelisim kademeleri: ${[...devs].sort().join(',') || '-'}`);
+  if (share < 0.7) {
+    finding('HIGH', 'kolonizasyon alani', 'ic bolgenin >= %70 kadari gelismemis yerel devlette',
+      `%${(share * 100).toFixed(0)}`);
+  }
+  if ([...devs].some((d) => d > 0)) {
+    finding('MEDIUM', 'kolonizasyon alani', 'ic bolge devletleri dev 0 olmali', `kademe ${[...devs].join(',')}`);
   }
 
   sub('8. nufus asimetrisi');

@@ -23,7 +23,9 @@ import { ensureConstruction } from './construction.js';
 // province payload'ı çıktı, kümeler kendi bölümünde saklanıyor.
 // 11: makro dünya şablonu — kıta iskeleti, bölge bazlı province boyları ve
 // arketip ülke yerleşimi worldgen çıktısını kökten değiştirdi.
-export const SAVE_VERSION = 11;
+// 12: fiziksel coğrafya yeniden yazıldı (geography.js: omurga tabanlı kıtalar)
+// ve standart dünya 160x96'ya sabitlendi — aynı seed başka bir dünya üretir.
+export const SAVE_VERSION = 12;
 const STORAGE_KEY = 'hexwar.save';
 
 /**

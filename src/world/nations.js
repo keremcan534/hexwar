@@ -130,8 +130,9 @@ export function generateNations(world, options = {}) {
   }
 
   // Arketip planı: her ülkenin ROLÜ, bölgesi ve province hedefi şablondan
-  // gelir (bkz. macro.archetypePlan + docs/makro-dunya.md). Dünyanın kalanı
-  // SAHİPSİZ kalır — sınır boyları ve kolonizasyon alanı bilerek açıktır.
+  // gelir (bkz. macro.archetypePlan + docs/makro-dunya.md). Plan yalnız BÜYÜK
+  // güçleri kurar; artan toprak sahipsiz bırakılmaz, doldurma geçişinde sınır
+  // devletlerine ve kabile birliklerine bağlanır (bkz. fillRemaining).
   // `count` (menü kaydıracı) plan listesini kırpar: büyükler önce doğar.
   const plan = archetypePlan(rng);
   const specs = count != null ? plan.slice(0, Math.max(1, count)) : plan;
@@ -160,6 +161,38 @@ export function generateNations(world, options = {}) {
     province.coreOf = core ? nationId : -1;
     for (const idx of province.tileIdx) world.tiles[idx].owner = nationId;
   };
+  /** Ortak ülke kaydı: hem arketip güçler hem doldurma devletleri buradan doğar. */
+  const makeNation = (seedProvince, role, dev, extraCity) => {
+    const id = nations.length;
+    const name = makeName(rng, usedNames);
+    const palette = makeColor(id, rng);
+    const nation = {
+      id,
+      name,
+      fullName: `${name} ${rng.pick(TITLES)}`,
+      color: palette.color,
+      // Politik harita kipi ülke rengini arazi parlaklığıyla oynatabilsin.
+      hue: palette.hue,
+      sat: palette.sat,
+      light: palette.light,
+      flag: makeFlag(rng, palette),
+      capital: seedProvince.center,
+      culture: seedProvince.culture ?? -1,
+      // Kabul edilen kültürler: birincil + (bileşik monarşi gibi) komşu halklar.
+      accepted: [],
+      archetype: role,
+      devTier: dev ?? 0,
+      extraCity: Boolean(extraCity),
+      tiles: 0,
+      provinces: 0,
+      population: 0,
+      coastal: false,
+      aggression: rng.range(0.7, 1.4),
+      focus: rng.pick(['economy', 'military', 'admin']),
+    };
+    nations.push(nation);
+    return nation;
+  };
   const growHome = (spec, seedProvince, nationId) => {
     const { assignment } = growRegions(graph, [seedProvince], {
       canEnter: (province) => province.owner === -1 && zoneAllowed(province, spec),
@@ -181,34 +214,8 @@ export function generateNations(world, options = {}) {
     if (!candidates.length) continue;
     candidates.sort((a, b) => distanceToAnchor(a, anchorTile) - distanceToAnchor(b, anchorTile));
     const seedProvince = candidates[0];
-    const id = nations.length;
-    const name = makeName(rng, usedNames);
-    const palette = makeColor(id, rng);
-    const nation = {
-      id,
-      name,
-      fullName: `${name} ${rng.pick(TITLES)}`,
-      color: palette.color,
-      // Politik harita kipi ülke rengini arazi parlaklığıyla oynatabilsin.
-      hue: palette.hue,
-      sat: palette.sat,
-      light: palette.light,
-      flag: makeFlag(rng, palette),
-      capital: seedProvince.center,
-      culture: seedProvince.culture ?? -1,
-      // Kabul edilen kültürler: birincil + (bileşik monarşi gibi) komşu halklar.
-      accepted: [],
-      archetype: spec.role,
-      devTier: spec.dev ?? 0,
-      extraCity: Boolean(spec.extraCity),
-      tiles: 0,
-      provinces: 0,
-      population: 0,
-      coastal: false,
-      aggression: rng.range(0.7, 1.4),
-      focus: rng.pick(['economy', 'military', 'admin']),
-    };
-    nations.push(nation);
+    const nation = makeNation(seedProvince, spec.role, spec.dev, spec.extraCity);
+    const id = nation.id;
     growHome(spec, seedProvince, id);
 
     // Deniz aşırı koloni: Hindistan-benzeri yarımadanın büyük payı — çekirdek
@@ -254,11 +261,263 @@ export function generateNations(world, options = {}) {
     nation.accepted = [nation.culture, ...acceptedNeighbors].filter((c) => c >= 0);
   }
 
+  fillRemaining(world, nations, rng, { graph, makeNation, claimCluster });
+
   separateNeighborColors(world, nations, rng);
   computeStats(world, nations);
 
   world.nations = nations;
   return nations;
+}
+
+/**
+ * Bölge başına tipik sınır devleti boyu (province). Doldurma kaç devlet
+ * kuracağını buradan bilir: bozkırda gevşek ve iri hanlıklar, yoğun batıda
+ * küçük prenslikler. Üst sınır denetimin bandını (<= 35 çekirdek) korur.
+ */
+const FILL_SIZE = {
+  'yogun-bati': 10,
+  'kavsak': 13,
+  'dogu-ovasi': 18,
+  'guney-yarimada': 15,
+  'dogu-adalari': 12,
+  'kuzey-bozkiri': 28,
+  'guney-kita': 26,
+  'yeni-kuzey': 26,
+  'yeni-guney': 20,
+  'kistak': 10,
+  'korsan-adalari': 12,
+  'baharat-adalari': 12,
+  'acik-deniz': 12,
+};
+const FILL_SIZE_DEFAULT = 18;
+
+/** Boyların ayarlandığı referans dünya: standart 160x96 ~700 province eder. */
+const FILL_REFERENCE_PROVINCES = 700;
+/** Doldurma devleti için üst sınır: denetimin okunurluk bandını korur. */
+const FILL_MAX = 24;
+
+/**
+ * Bu boya kadar izole ada kümesi DEVLET kurmaz: en yakın kıyı ülkesinin deniz
+ * aşırı toprağı olur. Eşik düşükken okyanus mikro devletlerle doluyordu
+ * (ölçüldü: 20 ada beyliği, 15 ülke <= 2 province).
+ */
+const ISLAND_ABSORB = 12;
+/** Bu boya kadar kara cebi de devlet kurmaz; komşusuna katılır. */
+const POCKET_ABSORB = 3;
+
+/** Doldurma devletinin rolü: bölge karakterine göre ad ve davranış çerçevesi. */
+const FILL_ROLE = {
+  'kuzey-bozkiri': 'bozkir-boyu',
+  'guney-kita': 'kabile-birligi',
+  'yeni-kuzey': 'sinir-konfederasyonu',
+  'yeni-guney': 'sinir-konfederasyonu',
+  'kistak': 'kistak-beyligi',
+  'yogun-bati': 'bati-prensligi',
+  'kavsak': 'kavsak-beyligi',
+  'dogu-ovasi': 'dogu-beyligi',
+  'guney-yarimada': 'yarimada-beyligi',
+};
+const FILL_ROLE_ISLAND = 'ada-beyligi';
+
+/**
+ * DOLDURMA GEÇİŞİ — sahipsiz toprak bırakmaz.
+ *
+ * Önceki tasarım dünyanın yarısından fazlasını boş bırakıyordu (ölçüldü:
+ * karanın yalnız %35-38'i sahipli); politik harita gri bir levhaya dönüyordu.
+ * Kolonizasyon gerilimi artık BOŞLUKLA değil ZAYIFLIKLA kurulur: sınır boyları
+ * gelişmemiş, tek kültürlü, düşük gelişimli devletlerle dolar — büyük güç için
+ * hâlâ av alanıdır ama harita yaşıyor görünür.
+ *
+ * Küçük ve izole ada kümeleri devlet kurmaz; en yakın kıyı ülkesinin deniz
+ * aşırı toprağı olur (çekirdek değil) — yoksa okyanus tek province'lik
+ * mikro devletlerle dolardı.
+ */
+function fillRemaining(world, nations, rng, { graph, makeNation, claimCluster }) {
+  const provinces = world.provinces;
+  const free = provinces.filter((p) => p.owner === -1);
+  if (!free.length) return;
+  const sizeFactor = (provinces.length / FILL_REFERENCE_PROVINCES) ** 0.6;
+  // Devlet başına province sayacı: cep dağıtımı bandı bozmasın diye lazım.
+  const size = new Map();
+  for (const p of provinces) {
+    if (p.owner >= 0) size.set(p.owner, (size.get(p.owner) ?? 0) + 1);
+  }
+  const give = (province, nationId, core) => {
+    claimCluster(province, nationId, core);
+    size.set(nationId, (size.get(nationId) ?? 0) + 1);
+  };
+
+  // Sahipsiz province'lerin bitişik kümeleri (kara komşuluğu; adalar ayrı düşer).
+  const seen = new Set();
+  const clusters = [];
+  for (const start of free) {
+    if (seen.has(start.id)) continue;
+    const cluster = [start];
+    seen.add(start.id);
+    for (let head = 0; head < cluster.length; head++) {
+      for (const n of graph.neighbors(cluster[head])) {
+        if (n.owner !== -1 || seen.has(n.id)) continue;
+        seen.add(n.id);
+        cluster.push(n);
+      }
+    }
+    clusters.push(cluster);
+  }
+  // Büyükten küçüğe: iri kütleler renk paletinin başını alsın. Eşitlikte
+  // en küçük province kimliği — sıra tohumdan bağımsız ve kararlı kalır.
+  clusters.sort((a, b) => b.length - a.length
+    || Math.min(...a.map((p) => p.id)) - Math.min(...b.map((p) => p.id)));
+
+  const dominantZone = (cluster) => {
+    const votes = new Map();
+    for (const p of cluster) votes.set(p.zone, (votes.get(p.zone) ?? 0) + 1);
+    let best = null; let bestVotes = -1;
+    for (const [zone, v] of votes) {
+      if (v > bestVotes || (v === bestVotes && String(zone) < String(best))) {
+        best = zone; bestVotes = v;
+      }
+    }
+    return best;
+  };
+  const isIsland = (cluster) => cluster.every((p) => p.neighbors.every(
+    (i) => provinces[i].owner === -1 || cluster.includes(provinces[i]),
+  )) && cluster.every((p) => p.coastal);
+
+  for (const cluster of clusters) {
+    const zone = dominantZone(cluster);
+    // Küçük ada kümesi: devlet değil, en yakın kıyı ülkesinin deniz aşırı toprağı.
+    if (cluster.length <= ISLAND_ABSORB && isIsland(cluster)) {
+      const host = nearestCoastalNation(world, cluster[0]);
+      if (host >= 0) {
+        for (const p of cluster) give(p, host, false);
+        continue;
+      }
+    }
+    // Karaya bitişik küçük cep: komşu devlete katılır, yeni bayrak açmaz.
+    if (cluster.length <= POCKET_ABSORB) {
+      const host = adjacentOwner(provinces, cluster, size);
+      if (host >= 0) {
+        for (const p of cluster) give(p, host, true);
+        continue;
+      }
+    }
+    // Devlet boyu harita boyuyla büyür (üsse 0.6): büyük dünya daha ÇOK değil
+    // daha İRİ devlet doğurur. Aksi halde 200x160'ta ülke sayısı üçe katlanıp
+    // tur maliyetini de üçe katlıyordu (ölçüldü: 124 ülke, 71 ms/hafta).
+    const target = (FILL_SIZE[zone] ?? FILL_SIZE_DEFAULT) * sizeFactor;
+    // Tavan da var: yayılma Voronoi olduğu için tek devlet kümenin yarısını
+    // kapabiliyordu (ölçüldü: 49 province'lik sınır konfederasyonu).
+    const states = Math.max(
+      1,
+      Math.round(cluster.length / target),
+      Math.ceil(cluster.length / FILL_MAX),
+    );
+    const seeds = pickSpreadSeeds(world, cluster, states);
+    const inCluster = new Set(cluster);
+    // Kota şart: yayılma maliyet tabanlı olduğu için ova üzerindeki tohum
+    // dağ üzerindekinin iki katını yutuyordu (ölçüldü: 8 devletlik kümede biri
+    // 48 province). Kota tavanı koyar, artıklar aşağıda dengeli dağıtılır.
+    // Kota şart: yayılma maliyet tabanlı olduğu için ova üzerindeki tohum dağ
+    // üzerindekinin iki katını yutuyordu (ölçüldü: 8 devletlik kümede biri 48
+    // province). Kotayı gevşetmek çare değil — kotayı büyütünce tek erişim
+    // yolu olan uzantılar yine tek devlete akıyor; artıklar aşağıda en küçük
+    // komşuya dağıtılır.
+    const quota = Math.ceil(cluster.length / states) + 2;
+    const { assignment } = growRegions(graph, seeds, {
+      canEnter: (p) => p.owner === -1 && inCluster.has(p),
+      stepCost: (p) => p.moveCost + rng.range(0, 2.0),
+      budget: () => quota,
+    });
+    const role = (zone && FILL_ROLE[zone]) ?? FILL_ROLE_ISLAND;
+    const born = seeds.map((seed) => makeNation(seed, role, 0, false));
+    const counts = born.map(() => 0);
+    for (const [province, region] of assignment) {
+      claimCluster(province, born[region].id, true);
+      counts[region]++;
+    }
+    // Kota yüzünden dışarıda kalanlar: her artık, komşu devletlerin EN KÜÇÜĞÜNE
+    // katılır. Böylece küme tamamen dolar ve boylar birbirine yakın kalır.
+    const index = new Map(born.map((n, i) => [n.id, i]));
+    for (let pass = 0; pass < 6; pass++) {
+      let changed = false;
+      for (const p of cluster) {
+        if (p.owner !== -1) continue;
+        let best = -1; let bestCount = Infinity;
+        for (const i of p.neighbors) {
+          const owner = provinces[i].owner;
+          const region = index.get(owner);
+          if (region === undefined || counts[region] >= bestCount) continue;
+          bestCount = counts[region];
+          best = region;
+        }
+        if (best < 0) continue;
+        claimCluster(p, born[best].id, true);
+        counts[best]++;
+        changed = true;
+      }
+      if (!changed) break;
+    }
+    // Hiçbir komşusu doldurulmamış artık (kopuk cep) ilk devlete yazılır.
+    for (const p of cluster) {
+      if (p.owner === -1) claimCluster(p, born[0].id, true);
+    }
+    for (const nation of born) nation.accepted = [nation.culture].filter((c) => c >= 0);
+  }
+}
+
+/** Kümenin içinde birbirinden uzak `count` tohum: devletler üst üste doğmasın. */
+function pickSpreadSeeds(world, cluster, count) {
+  if (count <= 1) return [cluster[0]];
+  const distance = (a, b) => world.wrapDistance(
+    a.center.q, a.center.r, b.center.q, b.center.r,
+  );
+  const seeds = [cluster[0]];
+  while (seeds.length < count) {
+    let best = null; let bestDist = -1;
+    for (const p of cluster) {
+      if (seeds.includes(p)) continue;
+      const d = Math.min(...seeds.map((s) => distance(s, p)));
+      if (d > bestDist) { bestDist = d; best = p; }
+    }
+    if (!best) break;
+    seeds.push(best);
+  }
+  return seeds;
+}
+
+/**
+ * Kümeye komşu devletlerden EN KÜÇÜĞÜ. En çok temas edeni seçmek, zaten büyük
+ * olan komşuyu daha da şişiriyordu (ölçüldü: planı 34 olan kuzey imparatorluğu
+ * ceplerle 39'a çıkıyordu). Cep küçüğe gider: bant korunur.
+ */
+function adjacentOwner(provinces, cluster, size) {
+  const seen = new Set();
+  for (const p of cluster) {
+    for (const i of p.neighbors) {
+      const owner = provinces[i].owner;
+      if (owner >= 0) seen.add(owner);
+    }
+  }
+  let best = -1; let bestSize = Infinity;
+  for (const owner of seen) {
+    const n = size.get(owner) ?? 0;
+    if (n < bestSize || (n === bestSize && owner < best)) { best = owner; bestSize = n; }
+  }
+  return best;
+}
+
+/** Ada kümesini sahiplenecek en yakın kıyı ülkesi (yoksa -1). */
+function nearestCoastalNation(world, province) {
+  let best = -1; let bestDist = Infinity;
+  for (const other of world.provinces) {
+    if (other.owner < 0 || !other.coastal) continue;
+    const d = world.wrapDistance(
+      province.center.q, province.center.r, other.center.q, other.center.r,
+    );
+    if (d < bestDist) { bestDist = d; best = other.owner; }
+  }
+  return best;
 }
 
 function computeStats(world, nations) {

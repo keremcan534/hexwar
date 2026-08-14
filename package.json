@@ -51,6 +51,7 @@
     "audit:boundary": "node scripts/audit/boundary-audit.mjs",
     "audit:save": "node scripts/audit/save-audit.mjs",
     "audit:legacy": "node scripts/audit/legacy-audit.mjs",
-    "audit:long-run": "node scripts/audit/long-run-audit.mjs"
+    "audit:long-run": "node scripts/audit/long-run-audit.mjs",
+    "audit:geography": "node scripts/audit/geography-audit.mjs"
   }
 }

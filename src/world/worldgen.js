@@ -1,4 +1,10 @@
-// Prosedürel dünya üretimi. Seed -> yükseklik/nem/sıcaklık -> arazi -> kıtalar.
+// Prosedürel dünya üretimi.
+//
+//   coğrafya (kıta iskeleti; geography.js) -> yükseklik -> iklim -> arazi
+//
+// Kıtaların BİÇİMİ burada değil geography.js'te doğar; burası o fiziksel
+// iskeleti iklime ve arazi tiplerine çevirir. Gürültü artık kıta üretmez,
+// yalnız sıcaklık/nem dokusunu ve kıyı ayrıntısını verir.
 
 import { makeRng } from '../core/rng.js';
 import { makeNoise2D, fbm } from '../core/noise.js';
@@ -6,17 +12,37 @@ import { classify, SEA_LEVEL, TERRAIN } from './terrain.js';
 import { DIRS, SQRT3, axialToOffset, hexDistance, hexToPixel, offsetToAxial, wrapCol } from '../core/hex.js';
 import { generateCultures } from './cultures.js';
 import { generateProvinces } from './provinces-gen.js';
-import { makeMacro } from './macro.js';
+import { buildGeography, zoneAnchors } from './geography.js';
 
 /** Hex dış yarıçapı (dünya birimi). Ekran ölçeği kamera zoom'undan gelir. */
 export const HEX_SIZE = 26;
 
+/**
+ * STANDART DÜNYA: 160 x 96, doğu-batı sarmalı açık, kuzey-güney kapalı.
+ * Denge hedefi budur; şablon coğrafya bu ölçüye göre tasarlandı
+ * (bkz. docs/cografya.md). Kaydırıcı başka boy verebilir ama iskelet en/boy
+ * oranı 160:96'ya (5:3) yakın kaldığı sürece okunur kalır.
+ */
+export const STANDARD_COLS = 160;
+export const STANDARD_ROWS = 96;
+
+/** Hedef kara oranı: okyanuslar geniş kalsın diye üçte birin biraz üstü. */
+export const TARGET_LAND = 0.36;
+
+/**
+ * Kaydırıcı yalnız sütun verir; satır standart en/boy oranından türer.
+ * Oran korunmazsa şablon kıtalar yatay/dikey ezilir (bkz. geography.js TX).
+ */
+export function worldRows(cols) {
+  return Math.max(24, Math.round(cols * (STANDARD_ROWS / STANDARD_COLS)));
+}
+
 export const DEFAULT_OPTIONS = {
-  cols: 200,
-  rows: 160,
-  /** 0 = bol ada, 1 = tek büyük kıta */
+  cols: STANDARD_COLS,
+  rows: STANDARD_ROWS,
+  /** 0 = daha çok ada ve kırık kıyı, 1 = daha derli toplu kıta */
   continentality: 0.5,
-  /** Deniz seviyesi kaydırması: + = daha çok kara */
+  /** Kara oranı kaydırması: + = daha çok kara */
   landBias: 0,
 };
 
@@ -75,66 +101,44 @@ export function generateWorld(seed, options = {}) {
   const opt = { ...DEFAULT_OPTIONS, ...options };
   const rng = makeRng(seed);
   const world = new World(opt.cols, opt.rows, seed);
-  // Makro şablon kendi rng dalını kullanır; ana akış (gürültü permütasyonları,
-  // kültürler) kaymaz. Bloblar döndürme+jitter'ı kuruluşta alır.
-  const macro = makeMacro(seed);
 
-  const elevNoise = makeNoise2D(rng);
+  // Fiziksel coğrafya kendi rng dalını kullanır; iklim/kültür akışı kaymaz.
+  const geo = buildGeography(seed, opt.cols, opt.rows, {
+    targetLand: Math.min(0.55, Math.max(0.15, TARGET_LAND + opt.landBias)),
+    continentality: opt.continentality,
+  });
+
   const moistNoise = makeNoise2D(rng);
   const tempNoise = makeNoise2D(rng);
-  const detailNoise = makeNoise2D(rng);
+  const depthNoise = makeNoise2D(rng);
 
-  // Gürültü uzayında haritayı kare tutmak için ölçek.
   const nx = 1 / opt.cols;
   const ny = 1 / opt.rows;
+  const total = opt.cols * opt.rows;
 
-  // --- 1. geçiş: ham yükseklik alanı ---
-  const raw = new Float32Array(opt.cols * opt.rows);
+  // Kara yüksekliği SIRALAMAYLA eşlenir: tepe/yayla/ova oranları coğrafya
+  // alanının dağılımından bağımsız kalsın (dağ zinciri nerede olursa olsun
+  // dünyanın %11'i dağ). Sıralama yalnız kara karelerinden kurulur.
+  const landHeights = [];
+  for (let i = 0; i < total; i++) if (geo.land[i]) landHeights.push(geo.height[i]);
+  landHeights.sort((a, b) => a - b);
+  const landSorted = Float32Array.from(landHeights);
+
   for (let row = 0; row < opt.rows; row++) {
     for (let col = 0; col < opt.cols; col++) {
-      const u = col * nx;
-      const v = row * ny;
-
-      // Dünya doğu-batıda silindir: yalnız kutup satırları denize çekilir.
-      const dist = Math.abs(v - 0.5) * 2;
-      const falloff = Math.pow(Math.max(0, 1 - Math.pow(dist, 2.6)), 1.1);
-
-      let e = fbm(elevNoise, u * 4, v * 4, { octaves: 6, gain: 0.52, periodX: 4 });
-      // continentality: yüksek -> alçak yerler bastırılır, kara tek parça toplanır
-      e = Math.pow(e, 1 + opt.continentality * 1.2);
-      e += fbm(detailNoise, u * 12, v * 12, { octaves: 3, periodX: 12 }) * 0.12 - 0.06;
-      // Kıtaların iskeleti makro maskeden gelir; gürültü kıyıları ve iç dokuyu
-      // bozar ama blobsuz bantlar (okyanus koridorları) karaya dönemez.
-      // Sıradağ itmesi yüzdelik sıralamada tepeye taşır -> aşılmaz zincirler.
-      raw[row * opt.cols + col] = macro.mask(u, v)
-        + (e - 0.5) * 0.62
-        + macro.ridge(u, v)
-        - (1 - falloff) * 1.3;
-    }
-  }
-
-  // Deniz seviyesi sabit eşik değil, yüzdelik dilim: kara oranı hep kontrollü.
-  const targetLand = Math.min(0.9, Math.max(0.05, 0.34 + opt.landBias));
-  const sorted = Float32Array.from(raw).sort();
-  const waterShare = 1 - targetLand;
-
-  // --- 2. geçiş: normalize et, iklimi hesapla, arazi ata ---
-  for (let row = 0; row < opt.rows; row++) {
-    for (let col = 0; col < opt.cols; col++) {
+      const idx = row * opt.cols + col;
       const { q, r } = offsetToAxial(col, row);
       const u = col * nx;
       const v = row * ny;
-      const e = raw[row * opt.cols + col];
+      const isLand = geo.land[idx] === 1;
 
-      // Sıralama (rank) tabanlı eşleme: biyom oranları gürültünün dağılımından bağımsız.
-      const rank = rankOf(sorted, e);
       let elevation;
-      if (rank < waterShare) {
-        elevation = (rank / waterShare) * SEA_LEVEL;
-      } else {
-        const lr = (rank - waterShare) / targetLand;
+      if (isLand) {
+        const lr = rankOf(landSorted, geo.height[idx]);
         // Kare eğri: alçak arazi bol, yüksek zirve seyrek.
         elevation = SEA_LEVEL + Math.pow(lr, 2) * (1 - SEA_LEVEL);
+      } else {
+        elevation = SEA_LEVEL - shelfDepth(geo.toLand[idx], depthNoise, u, v);
       }
 
       // Sıcaklık: enleme bağlı (kutuplar soğuk) + yükseklik cezası + biraz gürültü.
@@ -148,7 +152,10 @@ export function generateWorld(seed, options = {}) {
       let moisture = (fbm(moistNoise, u * 5, v * 5, { octaves: 5, periodX: 5 }) - 0.5) * 1.9 + 0.5;
       // Kutuplar kuru, ekvator nemli; ~30. enlemde (at enlemleri) kurak kuşak -> çöller.
       const horseLat = Math.exp(-Math.pow((latitude - 0.36) / 0.12, 2));
-      moisture = moisture * (0.8 + (1 - latitude) * 0.4 - horseLat * 0.4);
+      moisture *= 0.8 + (1 - latitude) * 0.4 - horseLat * 0.4;
+      // Karasallık: denizden uzak iç bölge kurur. Çöl/bozkır artık rastgele
+      // değil, coğrafyanın sonucudur (geniş kıta içi = kurak kuşak).
+      if (isLand) moisture -= 0.12 * (1 - Math.exp(-geo.toWater[idx] / 9));
       moisture = Math.min(1, Math.max(0, moisture));
 
       const terrain = classify(elevation, moisture, temperature);
@@ -166,7 +173,7 @@ export function generateWorld(seed, options = {}) {
         continent: -1,  // kara kütlesi id'si
         // Makro bölge: province boyu, nüfus/gelişim çarpanı ve arketip
         // yerleşimi buradan okur. Deniz bölgesizdir.
-        zone: terrain.water ? null : macro.zoneOf(u, v),
+        zone: isLand ? geo.zones[idx] : null,
       };
 
       world.tiles.push(tile);
@@ -182,12 +189,30 @@ export function generateWorld(seed, options = {}) {
   generateProvinces(world);
   // Kayıt yalnız üretilenden sapan kareleri yazar; taban kültür karşılaştırma için.
   world.forEach((t) => { t.baseCulture = t.culture; });
-  // Arketip ülke yerleşimi bölge çapalarını arar (bkz. nations.js).
-  world.macroAnchors = macro.anchors();
+  // Arketip ülke yerleşimi bölge çapalarını arar (bkz. nations.js). Çapa
+  // şablon noktası değil GERÇEK kara ağırlık merkezidir: bükülme sonrası
+  // bölge nereye kaydıysa oraya.
+  world.macroAnchors = zoneAnchors(geo.zones, opt.cols, opt.rows, geo.anchors);
+  // Coğrafya karnesi: denetim betikleri ve hata ayıklama okur, oyun okumaz.
+  world.geo = {
+    stats: geo.stats, score: geo.score, reasons: geo.reasons, attempt: geo.attempt,
+  };
   // Kaydı aynı ayarlarla geri kurabilmek için üretim seçenekleri saklanır.
   world.genOptions = { ...opt };
   computeBounds(world);
   return world;
+}
+
+/**
+ * Deniz derinliği kıyıdan uzaklıkla bantlanır: 1 kare sahanlık, 2-4 kare
+ * açık deniz, sonrası derin. Gürültü yalnız bant kenarını tırtıklar — yoksa
+ * kıtaların çevresinde mükemmel halkalar oluşur.
+ */
+function shelfDepth(distance, noise, u, v) {
+  const d = Math.max(1, distance);
+  const base = d <= 1 ? 0.022 : 0.048 + Math.min(0.24, (d - 1) * 0.038);
+  const jitter = (fbm(noise, u * 9, v * 9, { octaves: 2, periodX: 9 }) - 0.5) * 0.03;
+  return Math.min(0.34, Math.max(0.012, base + (d <= 1 ? jitter * 0.3 : jitter)));
 }
 
 /** Değerin sıralı dizideki göreli konumu (0..1). Alt sınır ikili arama. */
@@ -209,7 +234,7 @@ function markCoasts(world) {
     tile.coastal = world.neighbors(tile).some((n) => n.terrain.water);
     if (
       tile.coastal &&
-      tile.elevation < SEA_LEVEL + 0.018 &&
+      tile.elevation < SEA_LEVEL + 0.011 &&
       tile.temperature > 0.3 &&
       tile.terrain !== TERRAIN.MOUNTAIN
     ) {

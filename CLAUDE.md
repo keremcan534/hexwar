@@ -13,6 +13,10 @@ Mimari ve tasarım kararları için [README.md](README.md).
 - Yeni arazi tipi = sadece `src/world/terrain.js`. Renk/maliyet/verim orada.
   İki ayrı geçilebilirlik var: `passable`/`moveCost` kara, `navigable`/`seaCost`
   deniz içindir. Yol bulmaya alanı `Game.canEnterFor/costFor` verir.
+- Standart dünya **160×96** (yatay sarmal, hedef %36 kara). Kıtaların biçimi
+  `src/world/geography.js` şablonundandır — gürültü kıtayı tanımlamaz, bozar.
+  Şablona dokunduysan `npm run audit:geography` ile kanıtla (bkz.
+  [docs/cografya.md](docs/cografya.md)).
 - Çizimi değiştiren her şey `renderer.invalidateCache()` istemeli, yoksa uzak
   zoomda eski görüntü kalır.
 - Sürekli `requestAnimationFrame` döngüsü açma; `game.requestRender()` kullan.
@@ -24,7 +28,9 @@ Mimari ve tasarım kararları için [README.md](README.md).
 `npm run dev` ile aç, tarayıcı konsolunda `window.game` üzerinden:
 
 ```js
-game.newWorld('SEED', { cols: 90, rows: 72, continentality: 0.8 });
+game.newWorld('SEED');                 // standart dünya: 160x96
+game.renderer.setMapMode('geography'); // siyasetsiz coğrafya önizlemesi
+game.world.geo.stats;                  // kara oranı, kütleler, yarımada, boğaz
 game.world.nations.map(n => [n.name, n.tiles]);
 game.renderer.lastDrawn;   // son karede çizilen hex sayısı
 ```

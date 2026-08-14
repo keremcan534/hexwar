@@ -5166,7 +5166,7 @@ body.screen-open .layer-menu { display: none; }
 /* ==========================================================================
    18. ANA MENU — acilis perdesi
 
-   Tam ekran mat resim + solda tek sutun. Resim (assets/menu/main-menu.png)
+   Tam ekran mat resim + solda tek sutun. Resim (assets/menu/main-menu.jpg)
    4:3'tur, ekran 16:9: `cover` ile kirpilir ve `object-position` yukari
    kaydirilir, yoksa yanan kiyi seridi ustten kesiliyor. Metin gemi siluetinin
    ustune bindigi icin altina ayri bir perde serilir; resmin kendi kontrastina
@@ -5220,6 +5220,67 @@ body.screen-open .layer-menu { display: none; }
       rgba(6, 10, 13, 0.22) 46%, rgba(6, 10, 13, 0) 66%),
     linear-gradient(0deg, rgba(6, 10, 13, 0.62) 0%, rgba(6, 10, 13, 0) 28%),
     radial-gradient(125% 95% at 52% 48%, rgba(0, 0, 0, 0) 48%, rgba(0, 0, 0, 0.42) 100%);
+}
+
+/* --- 18.0b Suruklenen sis ---
+   Ayni saydam doku (assets/menu/fog.png) iki katmanda: uzak katman genis,
+   yavas ve soluk; yakin katman iri, hizli ve alt kenara oturur. Doku yatayda
+   iki kopya genisliginde doseniyor, animasyon tam bir kopya kaydiriyor —
+   basa donerken dikis gorunmez. Perdenin (menu-scrim) USTUNDE durur ki
+   metnin altindaki karartmayi sis de yumusatsin, ama panelin ALTINDA kalir. */
+.menu-fog {
+  position: absolute;
+  left: -20%;
+  width: 140%;
+  background-image: url('../assets/menu/fog.png');
+  background-repeat: repeat-x;
+  pointer-events: none;
+  /* Normal karisim, `screen` degil: gercek sis kontrasti ORTAYA ceker —
+     karanligi acar, parlagi kisar. `screen` yalnizca aydinlattigi icin islak
+     meydan gibi zaten parlak sahnelerde hicbir sey gorunmuyordu (olculdu:
+     opaklik 0.34'te bile fark yok). */
+  mix-blend-mode: normal;
+  will-change: transform;
+  /* Iki yonlu maske. Yatay: sol ucte metin sutunu var, sis oraya girince
+     perdenin karartmasini geri acip basligi okunmaz yapiyor. Dikey: katman
+     dikdortgen oldugu icin ust kenari duz bir cizgi olarak goruluyordu. */
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent 0%, transparent 22%, #000 44%, #000 100%),
+    linear-gradient(180deg, transparent 0%, #000 58%, #000 100%);
+  mask-image:
+    linear-gradient(90deg, transparent 0%, transparent 22%, #000 44%, #000 100%),
+    linear-gradient(180deg, transparent 0%, #000 58%, #000 100%);
+  -webkit-mask-composite: source-in;
+  mask-composite: intersect;
+}
+
+.menu-fog-far {
+  bottom: 10%;
+  height: 34%;
+  background-size: 46% 100%;
+  opacity: 0.24;
+  animation: menu-fog-drift 168s linear infinite;
+}
+
+.menu-fog-near {
+  bottom: -8%;
+  height: 30%;
+  background-size: 72% 100%;
+  opacity: 0.34;
+  /* Ters yon: iki katman ayni yone giderse tek kalin sis gibi okunuyor. */
+  animation: menu-fog-drift 96s linear infinite reverse;
+}
+
+@keyframes menu-fog-drift {
+  from { transform: translate3d(0, 0, 0); }
+  to { transform: translate3d(-25%, 0, 0); }
+}
+
+/* Hareket azaltma: genel kural sureyi 0.01ms'ye cekiyor, ama `infinite` bir
+   animasyonda bu "durmak" degil "cilgin hizda donmek" demek. Sis burada
+   tamamen durur ve duran bir katman olarak kalir. */
+@media (prefers-reduced-motion: reduce) {
+  .menu-fog { animation: none !important; }
 }
 
 .menu-panel {
@@ -5449,11 +5510,56 @@ body.screen-open .layer-menu { display: none; }
 /* --- 18.4 Alt kunye --- */
 
 .menu-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
   margin-top: auto;
   color: var(--text-faint);
   font-size: var(--fs-label);
   letter-spacing: 0.04em;
 }
+
+/* Ses dugmesi kunyenin sagina oturur: menunun isi degil, ayari. Bu yuzden
+   eylem listesinde degil altta ve sonuk durur; ancak uzerine gelince canlanir. */
+.menu-mute {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  /* Panelin sag kenari dar ekranda ekranin kenari: yuvarlak dugme cerceveye
+     yapisik durmasin. */
+  margin-right: var(--sp-1);
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: rgba(6, 10, 13, 0.45);
+  color: var(--text-faint);
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease;
+}
+
+.menu-mute svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.menu-mute .mute-body { fill: currentColor; stroke-width: 1; }
+.menu-mute .mute-slash { opacity: 0; transition: opacity 140ms ease; }
+
+.menu-mute:hover,
+.menu-mute:focus-visible { color: var(--gold-bright); border-color: var(--gold); outline: none; }
+
+/* Sessizde dalgalar gider, cizgi gelir: iki durum bakisla ayrilir. */
+.menu-mute.is-muted .mute-wave { opacity: 0; }
+.menu-mute.is-muted .mute-slash { opacity: 1; }
+.menu-mute.is-muted { color: var(--text-faint); }
 
 /* Menu acikken arkadaki arayuz tamamen susar: perde saydam degil ama odak ve
    ekran okuyucu hala oraya kayabiliyordu. */

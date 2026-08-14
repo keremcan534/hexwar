@@ -1,6 +1,6 @@
-// Olcek denetimi: 200x160 (urun varsayilani) dunya makul surede uretiliyor
-// ve isliyor mu? Diger denetimler 78x62'ye sabitli (bkz. harness.headless);
-// buyuk haritanin maliyet profili yalniz burada olculur.
+// Olcek denetimi: STANDART dunya (160x96) makul surede uretiliyor ve isliyor
+// mu? Diger denetimler 78x62'ye sabitli (bkz. harness.headless); tam boy
+// haritanin maliyet profili yalniz burada olculur.
 //
 // Esikler Node tek cekirdek icindir ve comert tutulmustur: amac gercek
 // regresyonu yakalamak, CI'yi titretmek degil.
@@ -11,8 +11,8 @@ import {
 } from './harness.mjs';
 
 const SEED = 'scale-audit';
-const COLS = 200;
-const ROWS = 160;
+const COLS = 160;
+const ROWS = 96;
 
 section(`URETIM — ${COLS}x${ROWS}`);
 {
@@ -39,8 +39,11 @@ section('TAM OYUN KURULUMU + 40 HAFTA');
   if (setupMs > 8000) {
     finding('HIGH', 'kurulum suresi', '< 8000 ms', `${setupMs.toFixed(0)} ms`);
   }
-  if (world.nations.length < 15 || world.nations.length > 30) {
-    finding('MEDIUM', 'ulke sayisi', '15-30 bandi (buyuk harita dolu hissettirmeli)',
+  // Dunya artik BOS birakilmiyor: her toprak bir devlete bagli (bkz.
+  // nations.fillRemaining). Bant buna gore genis; ust sinir tur maliyetini
+  // korur, alt sinir "harita dolu hissettirmeli" kuralini.
+  if (world.nations.length < 35 || world.nations.length > 75) {
+    finding('MEDIUM', 'ulke sayisi', '35-75 bandi (dolu dunya, yonetilebilir tur)',
       String(world.nations.length));
   }
 
