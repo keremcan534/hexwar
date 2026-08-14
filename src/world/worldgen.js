@@ -10,8 +10,8 @@ import { generateCultures } from './cultures.js';
 export const HEX_SIZE = 26;
 
 export const DEFAULT_OPTIONS = {
-  cols: 78,
-  rows: 62,
+  cols: 200,
+  rows: 160,
   /** 0 = bol ada, 1 = tek büyük kıta */
   continentality: 0.5,
   /** Deniz seviyesi kaydırması: + = daha çok kara */

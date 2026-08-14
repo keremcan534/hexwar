@@ -17,7 +17,7 @@ import { checkVictory } from './hegemony.js';
 import { executeOrders } from './orders.js';
 import {
   CITY_COST, UNIT_COSTS, assignAllWorkers, canAfford, canFoundCity,
-  cityName, createCity, growCities, nationBudget, pay,
+  cityName, collectProvinceTotals, createCity, growCities, nationBudget, pay,
 } from './cities.js';
 import { initEconomy, reconcilePopulation, runEconomy } from './economy.js';
 import { initBattles, removeFromBattles, runBattles } from './battles.js';
@@ -101,7 +101,8 @@ export class TurnManager {
     initCommand(world);
     seedGenerals(world, this.rng);
     assignAllWorkers(world);
-    for (const nation of world.nations) nation.budget = nationBudget(world, nation);
+    const totals = collectProvinceTotals(world);
+    for (const nation of world.nations) nation.budget = nationBudget(world, nation, totals);
   }
 
   /**
@@ -195,7 +196,7 @@ export class TurnManager {
     tile.owner = nationId;
     tile.controller = nationId;
     world.nations[nationId].tiles++;
-    this.game.renderer.invalidateCache();
+    this.game.renderer.invalidateTiles([tile]);
     return true;
   }
 
@@ -216,7 +217,7 @@ export class TurnManager {
     // Yeni tebaa hemen sadık olmaz; kontrol düşük başlar.
     if (tile.province) tile.province.control = 25;
     if (tile.city) tile.city.nationId = nationId;
-    this.game.renderer.invalidateCache();
+    this.game.renderer.invalidateTiles([tile]);
     return true;
   }
 
@@ -238,7 +239,7 @@ export class TurnManager {
     }
     setController(tile, nationId, this.turn);
     if (tile.province) tile.province.control = tile.owner === nationId ? 70 : 10;
-    this.game.renderer.invalidateCache();
+    this.game.renderer.invalidateTiles([tile]);
     return true;
   }
 
@@ -333,9 +334,10 @@ export class TurnManager {
    */
   produce() {
     const world = this.world;
+    const totals = collectProvinceTotals(world);
     for (const nation of world.nations) {
       if (!nation.alive) continue;
-      const budget = nationBudget(world, nation);
+      const budget = nationBudget(world, nation, totals);
       nation.budget = budget;
 
       // Kelepçe yok: açık borçlanmayla kapanır (economy.js settleDebt).

@@ -95,9 +95,12 @@ export function tracePath(prev, target) {
 export function findPath(world, start, goal, {
   canEnter = defaultCanEnter,
   costOf = defaultCostOf,
-  maxNodes = 8000,
+  maxNodes = null,
 } = {}) {
   if (start === goal) return [];
+  // Sınır harita boyutuyla ölçeklenir: 200x160'ta sabit 8000 düğüm uzun
+  // yolları sessizce null'a düşürüyor, yürüyüş emri kayboluyordu.
+  const nodeCap = maxNodes ?? Math.max(8000, Math.ceil(world.cols * world.rows * 1.25));
   const g = new Map([[start, 0]]);
   const prev = new Map();
   const heap = new MinHeap();
@@ -107,7 +110,7 @@ export function findPath(world, start, goal, {
   while (heap.size) {
     const { tile } = heap.pop();
     if (tile === goal) return tracePath(prev, goal);
-    if (++expanded > maxNodes) break;
+    if (++expanded > nodeCap) break;
     const cost = g.get(tile);
     for (const n of world.neighbors(tile)) {
       if (n !== goal && !canEnter(n, tile)) continue;

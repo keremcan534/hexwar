@@ -307,15 +307,40 @@ export function cityProduction(city, world) {
 }
 
 /**
+ * Tüm ülkelerin province üretim toplamları TEK dünya taramasında.
+ *
+ * nationBudget ülke başına çağrılır; tarama içeride kalsaydı maliyet
+ * ülke sayısıyla çarpılırdı (30 ülke x 32k kare ≈ haftada 1M provinceOutput).
+ * Toplu çağıranlar (turn.produce, turns.start, recomputeEconomy) bunu bir
+ * kez hesaplayıp parametre geçer.
+ */
+export function collectProvinceTotals(world) {
+  const totals = world.nations.map(() => ({
+    gold: 0, food: 0, timber: 0, iron: 0, provinces: 0,
+  }));
+  world.forEach((tile) => {
+    if (tile.owner < 0) return;
+    const sum = totals[tile.owner];
+    if (!sum) return;
+    sum.provinces++;
+    const out = provinceOutput(tile);
+    sum.gold += out.gold;
+    sum.food += out.food;
+    sum.timber += out.timber;
+    sum.iron += out.iron;
+  });
+  return totals;
+}
+
+/**
  * Ulusun tur bilançosu. Erzak stoklanmaz: üretilir, işçiler ve ordu yer,
  * artan şehir ambarlarına gidip nüfusu büyütür.
  * @returns {{ production, upkeep, net, cities }}
  */
-export function nationBudget(world, nation) {
+export function nationBudget(world, nation, provinceTotals = null) {
   const production = emptyPool();
   let cityCount = 0;
   let workers = 0;
-  let provinceCount = 0;
   let distanceLoad = 0;
 
   for (const city of world.cities) {
@@ -332,17 +357,13 @@ export function nationBudget(world, nation) {
     // second invisible grain/timber/iron source in the national market.
     production.gold += out.gold;
   }
-  // İşlenen yol seviyesi +1 altın üretir. Aynı miktardaki bakım, kullanılan
-  // altyapıyı kendi kendine yeterli; atıl askerî ağı ise gerçek gider yapar.
-  world.forEach((tile) => {
-    if (tile.owner !== nation.id) return;
-    provinceCount++;
-    const provincial = provinceOutput(tile);
-    production.gold += provincial.gold;
-    production.food += provincial.food;
-    production.timber += provincial.timber;
-    production.iron += provincial.iron;
-  });
+  const provincial = (provinceTotals ?? collectProvinceTotals(world))[nation.id]
+    ?? { gold: 0, food: 0, timber: 0, iron: 0, provinces: 0 };
+  const provinceCount = provincial.provinces;
+  production.gold += provincial.gold;
+  production.food += provincial.food;
+  production.timber += provincial.timber;
+  production.iron += provincial.iron;
   for (const r of RESOURCES) production[r] = Math.round(production[r]);
   production.gold = Math.round(production.gold * corruption(cityCount, nation));
 

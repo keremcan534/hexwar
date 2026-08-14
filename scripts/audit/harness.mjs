@@ -23,10 +23,16 @@ import { regimentCount, soldiersOf } from '../../src/game/units.js';
 import { atWar } from '../../src/game/diplomacy.js';
 import { ensureConstruction } from '../../src/game/construction.js';
 
-/** Bassiz oyun. DOM, zamanlayici, cizim yok; simulasyon tam calisir. */
+/**
+ * Bassiz oyun. DOM, zamanlayici, cizim yok; simulasyon tam calisir.
+ *
+ * Boyut 78x62'ye SABITLENIR: urun varsayilani 200x160'a cikti ama denetim
+ * taban cizgileri ve kosu sureleri kucuk haritada kurulu. Olcek testleri
+ * boyutu acikca gecer (bkz. scale-audit.mjs).
+ */
 export function headless(seed, options = {}) {
   const game = Object.create(Game.prototype);
-  game.world = generateWorld(seed, options);
+  game.world = generateWorld(seed, { cols: 78, rows: 62, ...options });
   generateNations(game.world, { seed: `${seed}-nations`, count: options.nationCount ?? null });
   Object.assign(game, {
     selected: null, selectedUnit: null, selected_: [], activeGeneral: null,
@@ -35,7 +41,7 @@ export function headless(seed, options = {}) {
     peaceOffers: [], nextPeaceOfferId: 1,
     listeners: {},
     notifications: { push() {} },
-    renderer: { invalidateCache() {}, resize() {} },
+    renderer: { invalidateCache() {}, invalidateTiles() {}, resize() {} },
     camera: { setBounds() {}, fit() {}, centerOn() {} },
     clock: { speed: 0, accumulator: 0, lastTime: 0, day: 0 },
     emit() {}, requestRender() {}, autosave() {}, setSpeed() {},

@@ -4,7 +4,7 @@
 import { generateWorld, HEX_SIZE } from '../world/worldgen.js';
 import { generateNations } from '../world/nations.js';
 import { Camera } from '../render/camera.js';
-import { Renderer } from '../render/renderer.js';
+import { CACHE_ZOOM, Renderer } from '../render/renderer.js';
 import { PointerController } from '../input/pointer.js';
 import { pixelToHex } from '../core/hex.js';
 import { randomSeed } from '../core/rng.js';
@@ -18,7 +18,7 @@ import { NotificationCenter } from './notifications.js';
 
 /** Masadaki teklif bu kadar hafta cevapsız kalırsa geri çekilir. */
 const PEACE_OFFER_TTL = 6;
-import { assignAllWorkers, nationBudget } from './cities.js';
+import { assignAllWorkers, collectProvinceTotals, nationBudget } from './cities.js';
 import { controllerOf } from './control.js';
 import { loadFromStorage, saveToStorage } from './save.js';
 import {
@@ -609,8 +609,9 @@ export class Game {
   recomputeEconomy() {
     if (!this.world) return;
     assignAllWorkers(this.world);
+    const totals = collectProvinceTotals(this.world);
     for (const nation of this.world.nations) {
-      nation.budget = nationBudget(this.world, nation);
+      nation.budget = nationBudget(this.world, nation, totals);
     }
   }
 
@@ -836,7 +837,8 @@ export class Game {
    */
   scheduleWaterFrame() {
     if (this.waterTimer || this.frameHandle) return;
-    const interval = this.camera.zoom < 0.55 ? 80 : 40;
+    // Eşik önbellek zoom'uyla senkron: uzak dalda su daha seyrek dürtülür.
+    const interval = this.camera.zoom < CACHE_ZOOM ? 80 : 40;
     this.waterTimer = setTimeout(() => {
       this.waterTimer = 0;
       // Sekme gizliyken ya da ana menü haritayı örterken çizim boşa gider;

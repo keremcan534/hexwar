@@ -40,7 +40,7 @@ export function generateCultures(world, rng, options = {}) {
 
   // Ülkelerden çok daha az: bir kültür bölgesi birkaç ülkeyi kapsasın.
   const count = options.count
-    ?? Math.max(3, Math.min(10, Math.round(land.length / 260)));
+    ?? Math.max(3, Math.min(14, Math.round(land.length / 260)));
   const seeds = pickSeeds(
     land,
     count,

@@ -286,10 +286,35 @@ export class WaterLayer {
       }
     }
 
+    // Deniz yolları 8 kolonluk bantlara bölünür: uzak zoom animasyonu her
+    // karede TÜM denizi dolduruyordu; 200x160 dünyada ~20k deniz hexi bunu
+    // tek başına kare bütçesinin üstüne çıkarıyor. Bant başına yol listesi
+    // sayesinde drawFar yalnız görünür dilimleri doldurur.
+    const BAND_COLS = 8;
+    const bandMap = new Map();
+    for (const t of sea) {
+      const idx = Math.floor(t.col / BAND_COLS);
+      let band = bandMap.get(idx);
+      if (!band) {
+        band = { tiles: [], minX: Infinity, maxX: -Infinity };
+        bandMap.set(idx, band);
+      }
+      band.tiles.push(t);
+      if (t.x < band.minX) band.minX = t.x;
+      if (t.x > band.maxX) band.maxX = t.x;
+    }
+    const seaBands = [...bandMap.values()].map((band) => ({
+      // Hex yarıçapı kadar pay: bandın mürekkebi merkezlerden taşar.
+      minX: band.minX - HEX_SIZE * 1.2,
+      maxX: band.maxX + HEX_SIZE * 1.2,
+      paths: this.chunkedPaths(band.tiles),
+    }));
+
     this.worldCache = {
       world,
       hasSea: sea.length > 0,
       seaPaths: this.chunkedPaths(sea),
+      seaBands,
       coastalSet,
       coastalPaths: this.chunkedPaths([...coastalSet]),
       foamByTile,
@@ -509,12 +534,22 @@ export class WaterLayer {
    * Uzak zoom: önbellek görüntüsünün üstüne YALNIZ geniş kabarma biner.
    * Kırışıklık/parıltı bu ölçekte okunmaz, maliyeti boşa gider (LOD).
    */
-  drawFar(ctx, world, time) {
+  drawFar(ctx, world, time, rect = null) {
     const cache = this.ensureWorld(world);
     if (!cache.hasSea || !this.debug.swell) return;
     this.ensurePatterns(ctx);
+    // Görünür dikdörtgen verilirse yalnız kesişen bantlar doldurulur.
+    let paths = cache.seaPaths;
+    if (rect) {
+      paths = [];
+      for (const band of cache.seaBands) {
+        if (band.maxX < rect.minX || band.minX > rect.maxX) continue;
+        paths.push(...band.paths);
+      }
+      if (!paths.length) return;
+    }
     this.fillPattern(
-      ctx, 'swell', cache.seaPaths, time,
+      ctx, 'swell', paths, time,
       scaleVel(SWELL_VEL, this.env.windStrength), 0.5, 1, world.wrapWidth ?? 0,
     );
     this.animatedThisFrame = true;

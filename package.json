@@ -34,6 +34,7 @@
     "audit:all": "node scripts/audit/run-all.mjs",
     "audit:determinism": "node scripts/audit/determinism-audit.mjs",
     "audit:wrap": "node scripts/audit/wrap-audit.mjs",
+    "audit:scale": "node scripts/audit/scale-audit.mjs",
     "audit:tax": "node scripts/audit/tax-audit.mjs",
     "audit:tariff": "node scripts/audit/tariff-audit.mjs",
     "audit:budget": "node scripts/audit/budget-audit.mjs",

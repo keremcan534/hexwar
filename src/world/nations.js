@@ -128,7 +128,9 @@ export function generateNations(world, options = {}) {
     return [];
   }
 
-  const nationCount = count ?? Math.max(4, Math.min(22, Math.round(land.length / 95)));
+  // Tavan 30: 200x160 haritada kara ~11k kareye çıkıyor; 22'de dünya birkaç
+  // dev imparatorluğa bölünüp savaş çeşitliliği ölüyordu.
+  const nationCount = count ?? Math.max(4, Math.min(30, Math.round(land.length / 95)));
   const seeds = pickNationSeeds(world, land, nationCount, rng);
 
   const usedNames = new Set();

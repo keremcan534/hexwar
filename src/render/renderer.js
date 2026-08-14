@@ -19,8 +19,34 @@ const MAX_DPR = 2;            // mobilde 3x DPR gereksiz pahalı
  * farklı orijinler kullanılırsa aradaki şerit hiçbir kopyaya düşmez.
  */
 const WRAP_X0 = -(SQRT3 * HEX_SIZE) / 2;
-const CACHE_MAX_SIDE = 2048;  // önbellek dokusunun en uzun kenarı (bellek sınırı)
-const CACHE_ZOOM = 0.55;      // bu zoom altında tüm dünya önbellekten tek seferde basılır
+/**
+ * Önbellek dokusunun en uzun kenarı. 200x160 dünyada periyot ~9000 birim;
+ * 2048 uzak zoomu fazla bulanıklaştırıyordu. 3072 RGBA ~27 MB — alloc
+ * başarısız olursa buildCache 2048'e geri düşer.
+ */
+const CACHE_MAX_SIDE = 3072;
+const CACHE_FALLBACK_SIDE = 2048;
+/**
+ * Önbellek dokusunun her iki yanındaki yaka (piksel). Kopyalar piksel hizalı
+ * bantlarla kırpılırken drawImage kenarı kesirli kalır; kenar pikselindeki
+ * örtülmeyen kesir arka planı gösterip dikişte koyu çizgi bırakıyordu.
+ * Yaka, kırpma sınırını görüntünün İÇİNE taşır: 4 px, en güçlü küçültmede
+ * bile 2+ hedef piksellik pay bırakır.
+ */
+const CACHE_COLLAR = 4;
+/**
+ * Bu zoom altında tüm dünya önbellekten tek seferde basılır. 0.55'ten 0.45'e:
+ * büyük haritada önbellek ölçeği düştü, 0.55'te büyütme bulanıklığı görünür
+ * oluyordu; 0.45'te yakın dal telefonda ~1000 hex çizer, hala bütçede.
+ */
+export const CACHE_ZOOM = 0.45;
+/**
+ * Hex ızgarasının görünmeye başladığı zoom. CACHE_ZOOM 0.55'ten 0.45'e
+ * inince yakın dal 0.45-0.55 bandını da çizer oldu; ızgara o bantta hem
+ * kare bütçesini aşıyor (3k+ hex stroke) hem de uzak görünümle (ızgarasız
+ * önbellek) arasında görsel sıçrama yaratıyordu. Eski eşik korunur.
+ */
+const GRID_MIN_ZOOM = 0.55;
 /** Tek `Path2D`ye eklenecek azami hex sayısı (bkz. chunkedHexPaths). */
 const PATH_CHUNK = 64;
 /**
@@ -156,6 +182,76 @@ export class Renderer {
     this.cache = null;
     this.constructionCache = null;
     this.tintCache.clear();
+    this.dirtyTiles?.clear();
+  }
+
+  /**
+   * Nokta geçersizleme: sahiplik/işgal değişen kareler tam pişirme yerine
+   * önbelleğe yerinde boyanır. Savaş haftalarında invalidateCache fırtınası
+   * 32k hexlik dünyayı haftada onlarca kez baştan pişiriyordu; artık yalnız
+   * değişen kareler (+1 komşu halkası) yeniden mürekkeplenir.
+   */
+  invalidateTiles(tiles) {
+    // Önbellek yoksa iş yok: ilk uzak-zoom karesi zaten taze pişirir.
+    if (!this.cache) return;
+    this.dirtyTiles ??= new Set();
+    for (const tile of tiles) this.dirtyTiles.add(tile);
+    // Küme büyüdüyse (toplu ilhak, çökme) tam pişirme daha ucuz.
+    if (this.dirtyTiles.size > 512) this.invalidateCache();
+  }
+
+  /** Kirli kareleri önbellek dokusuna yerinde boyar (bkz. invalidateTiles). */
+  repaintTiles(world) {
+    const cache = this.cache;
+    const dirty = this.dirtyTiles;
+    if (!cache || !dirty?.size) return;
+    // Sınır mürekkebi komşuya taşar: +1 halka birlikte boyanır.
+    const affected = new Set();
+    for (const tile of dirty) {
+      affected.add(tile);
+      for (const n of world.neighbors(tile)) affected.add(n);
+    }
+    dirty.clear();
+    const P = world.wrapWidth;
+    const list = [];
+    for (const tile of affected) {
+      list.push(tile);
+      // Dikişe yakın kareler yakalı dokunun iki ucunda da yaşar.
+      if (tile.col <= 2) list.push({ ...tile, x: tile.x + P, ghostOf: tile });
+      if (tile.col >= world.cols - 3) list.push({ ...tile, x: tile.x - P, ghostOf: tile });
+    }
+    const ctx = cache.canvas.getContext('2d');
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.translate(CACHE_COLLAR, 0);
+    ctx.scale(cache.scale, cache.scale);
+    ctx.translate(-cache.x, -world.bounds.minY);
+    const clip = new Path2D();
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const tile of list) {
+      this.hexPath(clip, tile.x, tile.y);
+      if (tile.x < minX) minX = tile.x;
+      if (tile.x > maxX) maxX = tile.x;
+      if (tile.y < minY) minY = tile.y;
+      if (tile.y > maxY) maxY = tile.y;
+    }
+    ctx.clip(clip);
+    // Eski mürekkep tamamen silinir: işgal taraması gibi yarı saydam katmanlar
+    // üst üste binip koyulaşmasın. Temizlik karmaşık kırpmayla kesiştiği için
+    // tüm doku yerine yalnız etkilenen karelerin kutusu silinir (ölçüldü:
+    // tam genişlik 60 karelik kirli kümede ~1 sn, kutu ~milisaniyeler).
+    ctx.clearRect(
+      minX - HEX_SIZE * 2, minY - HEX_SIZE * 2,
+      (maxX - minX) + HEX_SIZE * 4, (maxY - minY) + HEX_SIZE * 4,
+    );
+    this.drawTerrain(ctx, list, world, true);
+    if (this.mapMode === 'political') this.drawOccupationOverlay(ctx, world, list, cache.scale);
+    if (this.mapMode === 'construction') this.drawConstructionOverlay(ctx, world, list, cache.scale);
+    if (this.mapMode !== 'terrain') this.drawBorders(ctx, world, list, cache.scale);
+    ctx.restore();
   }
 
   setMapMode(mode) {
@@ -410,14 +506,16 @@ export class Renderer {
     const cam = this.camera;
     if (cam.zoom < CACHE_ZOOM) {
       const cache = this.cache ?? this.buildCache(world);
+      if (this.dirtyTiles?.size) this.repaintTiles(world);
       ctx.imageSmoothingEnabled = true;
-      // 9 argümanlı biçim: yaka piksellerinin içinden örneklenir, kopyalar
-      // bitişik basılırken alt-piksel boşluğu koyu çizgi bırakmaz.
+      // Yaka dahil basılır: kopya bandının kırpma sınırı görüntünün içinden
+      // geçer, kenar pikselinde örtülmeyen kesir kalmaz (bkz. CACHE_COLLAR).
+      const pad = CACHE_COLLAR / cache.scale;
       ctx.drawImage(
-        cache.canvas, 1, 0, cache.widthPx, cache.heightPx,
-        cache.x, cache.y, cache.w, cache.h,
+        cache.canvas,
+        cache.x - pad, cache.y, cache.w + pad * 2, cache.h,
       );
-      if (this.waterAnimatedMode()) this.water.drawFar(ctx, world, this.waterTime);
+      if (this.waterAnimatedMode()) this.water.drawFar(ctx, world, this.waterTime, rect);
     } else {
       const tiles = this.visibleTiles(world, rect);
       this.drawTerrain(ctx, tiles, world);
@@ -425,7 +523,7 @@ export class Renderer {
       if (this.mapMode === 'construction') {
         this.drawConstructionOverlay(ctx, world, tiles, cam.zoom);
       }
-      if (this.showGrid) this.drawGrid(ctx, tiles, cam.zoom);
+      if (this.showGrid && cam.zoom >= GRID_MIN_ZOOM) this.drawGrid(ctx, tiles, cam.zoom);
       if (this.mapMode !== 'terrain') this.drawBorders(ctx, world, tiles, cam.zoom);
       this.lastDrawn += tiles.length;
     }
@@ -456,21 +554,31 @@ export class Renderer {
    * sınır kalınlığı) kenar kolonların ±P kaydırılmış ek geçişiyle tamamlanır.
    */
   buildCache(world) {
+    try {
+      return this.bakeCache(world, CACHE_MAX_SIDE);
+    } catch {
+      // Mobil bellek tavanı: 3072'lik doku ayrılamazsa 2048 ile yetin.
+      return this.bakeCache(world, CACHE_FALLBACK_SIDE);
+    }
+  }
+
+  bakeCache(world, maxSide) {
     const b = world.bounds;
     const P = world.wrapWidth;
     const h = b.maxY - b.minY;
-    const idealScale = Math.min(1, CACHE_MAX_SIDE / Math.max(P, h));
+    const idealScale = Math.min(1, maxSide / Math.max(P, h));
     const widthPx = Math.max(1, Math.round(P * idealScale));
     const scale = widthPx / P;
     const heightPx = Math.max(1, Math.round(h * scale));
     const canvas = document.createElement('canvas');
-    // 1'er piksellik yaka: dikişte örnekleyici sarmalın devamını okusun diye
-    // periyodun iki yanına taşan mürekkep de pişirilir (bkz. drawImage çağrısı).
-    canvas.width = widthPx + 2;
+    // Yakalı doku: periyodun iki yanına taşan mürekkep de pişirilir, kopya
+    // bandı kırpması görüntünün içinden geçer (bkz. CACHE_COLLAR).
+    canvas.width = widthPx + CACHE_COLLAR * 2;
     canvas.height = heightPx;
     const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('önbellek dokusu ayrılamadı');
     const x0 = WRAP_X0;
-    ctx.translate(1, 0);
+    ctx.translate(CACHE_COLLAR, 0);
     ctx.scale(scale, scale);
     ctx.translate(-x0, -b.minY);
 
@@ -1157,121 +1265,15 @@ export class Renderer {
     }
   }
 
-  drawUnits(ctx, world, selectedUnit) {
-    if (!world.units?.length) return;
-    const zoom = this.camera.zoom;
-    const rect = this.camera.visibleRect(HEX_SIZE * 2);
-    const radius = HEX_SIZE * 0.52;
-    const detailed = zoom > 0.5;
-
-    for (const unit of world.units) {
-      const t = unit.tile;
-      if (t.x < rect.minX || t.x > rect.maxX || t.y < rect.minY || t.y > rect.maxY) continue;
-      // Tümenler birleşmediği için bir province'te birkaçı olabilir; yalnızca
-      // ilki çizilir, kaçı olduğu rozetle gösterilir.
-      const stack = unitsOn(t);
-      if (stack.length > 1 && stack[0] !== unit) continue;
-      const nation = world.nations[unit.nationId];
-      // Şehirle aynı karedeyse aşağı kayar; ikisi de görünür kalsın.
-      const ux = t.x;
-      const uy = t.y + (t.city ? HEX_SIZE * UNIT_ON_CITY_OFFSET : 0);
-
-      const atSea = unit.embarked || unit.type.domain === 'sea';
-      const shape = new Path2D();
-      if (atSea) {
-        // Sivri pruvalı gövde: simetrik yamuk sepete benziyordu.
-        shape.moveTo(ux - radius * 0.85, uy - radius * 0.45);
-        shape.lineTo(ux + radius * 0.45, uy - radius * 0.45);
-        shape.lineTo(ux + radius, uy + radius * 0.1);
-        shape.lineTo(ux + radius * 0.35, uy + radius * 0.6);
-        shape.lineTo(ux - radius * 0.6, uy + radius * 0.6);
-        shape.closePath();
-      } else {
-        shape.arc(ux, uy, radius, 0, Math.PI * 2);
-      }
-      ctx.fillStyle = nation.color;
-      ctx.fill(shape);
-
-      // Sağ alta kalınlaşan hilal gölge: düz renk diski hacimli gösterir.
-      if (!atSea) {
-        const crescent = new Path2D();
-        crescent.arc(ux, uy, radius, 0, Math.PI * 2);
-        crescent.arc(ux - radius * 0.1, uy - radius * 0.1, radius * 0.85, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(0,0,0,0.28)';
-        ctx.fill(crescent, 'evenodd');
-      }
-
-      ctx.lineWidth = (unit === selectedUnit ? 3 : 1.5) / zoom;
-      ctx.strokeStyle = unit === selectedUnit ? '#ffffff' : 'rgba(0,0,0,0.7)';
-      ctx.stroke(shape);
-
-      if (!detailed) continue;
-
-      // NATO sembolü: harften daha okunur ve dile bağlı değil.
-      const symbol = new Path2D();
-      natoSymbol(symbol, unit.type.id, ux, uy, radius);
-      ctx.lineWidth = Math.max(1.2 / zoom, radius * 0.13);
-      ctx.lineCap = 'round';
-      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-      ctx.stroke(symbol);
-
-      // Can çubuğu yalnızca hasarlıysa.
-      const ratio = unit.hp / maxHpOf(unit);
-      if (ratio < 1) {
-        const w = radius * 1.8;
-        ctx.fillStyle = 'rgba(0,0,0,0.6)';
-        ctx.fillRect(ux - w / 2, uy + radius + 2, w, 4);
-        ctx.fillStyle = ratio > 0.5 ? '#5ed46a' : ratio > 0.25 ? '#e8c34a' : '#e05a4a';
-        ctx.fillRect(ux - w / 2, uy + radius + 2, w * ratio, 4);
-      }
-      // Emirle meşgulse soluk perde: oyuncunun ilgilenmesi gereken ordu öne çıksın.
-      if (unit.order) {
-        ctx.fillStyle = 'rgba(0,0,0,0.4)';
-        ctx.fill(shape);
-      }
-      // Yığın rozeti: aynı province'te kaç tümen var.
-      if (stack.length > 1 && detailed) {
-        const label = `×${stack.length}`;
-        ctx.font = `700 ${Math.round(HEX_SIZE * 0.36)}px system-ui, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.lineWidth = 3 / zoom;
-        ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-        ctx.fillStyle = '#ffe9b0';
-        ctx.strokeText(label, ux - radius * 0.95, uy - radius * 0.8);
-        ctx.fillText(label, ux - radius * 0.95, uy - radius * 0.8);
-      }
-
-      // Emir rozeti: oyuncu hangi birimi devrettiğini bir bakışta görsün.
-      if (unit.order) {
-        ctx.font = `700 ${Math.round(HEX_SIZE * 0.4)}px system-ui, sans-serif`;
-        ctx.fillStyle = '#fff';
-        ctx.strokeStyle = 'rgba(0,0,0,0.8)';
-        ctx.lineWidth = 2.5 / zoom;
-        const badge = ORDER_BADGE[unit.order.type] ?? '';
-        ctx.strokeText(badge, ux + radius * 0.9, uy - radius * 0.8);
-        ctx.fillText(badge, ux + radius * 0.9, uy - radius * 0.8);
-      }
-
-      // Ordu yığını: province üzerindeki gerçek asker sayısı ve alay adedi.
-      ctx.font = `800 ${Math.round(HEX_SIZE * 0.3)}px system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#fff';
-      ctx.strokeStyle = 'rgba(0,0,0,0.85)';
-      ctx.lineWidth = 2.5 / zoom;
-      const stackLabel = soldiersOf(unit) >= 1000
-        ? `${(soldiersOf(unit) / 1000).toFixed(1)}K`
-        : String(soldiersOf(unit));
-      ctx.strokeText(stackLabel, ux, uy + radius * 0.78);
-      ctx.fillText(stackLabel, ux, uy + radius * 0.78);
-    }
-  }
 
   /** Province muharebesi: çatışma yerinde iki ordunun asker ve moral durumu. */
   drawBattles(ctx, world, rect) {
     const battles = world.battleSystem?.battles;
     if (!battles?.length) return;
     const zoom = this.camera.zoom;
+    // Kimlik -> birim tablosu bir kez: muharebe basina world.units.find
+    // taramak O(muharebe x birim), buyuk haritada kare butcesini yiyordu.
+    const unitById = new Map(world.units.map((army) => [army.id, army]));
 
     for (const battle of battles) {
       const tile = world.get(battle.q, battle.r);
@@ -1281,9 +1283,9 @@ export class Renderer {
       if (x < rect.minX || x > rect.maxX || y < rect.minY || y > rect.maxY) continue;
 
       const attackers = (battle.attackers ?? [])
-        .map((id) => world.units.find((army) => army.id === id)).filter(Boolean);
+        .map((id) => unitById.get(id)).filter(Boolean);
       const defenders = (battle.defenders ?? [])
-        .map((id) => world.units.find((army) => army.id === id)).filter(Boolean);
+        .map((id) => unitById.get(id)).filter(Boolean);
       const width = 88 / zoom;
       const height = 28 / zoom;
       const half = width / 2;
