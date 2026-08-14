@@ -570,8 +570,12 @@ export class Hud {
         ? `<span class="at-war">At war</span>`
         : 'At peace';
       const sep = '<i class="sep">◆</i>';
+      // Gerçek province sayısı üretimden gelir; savaşta kare kare işgal
+      // sürerken sayaç Faz E'ye dek üretim anındaki değeri gösterir.
+      const provinceCount = me.provinces || null;
       this.el.topSub.innerHTML =
-        `${me.tiles} ${me.tiles === 1 ? 'province' : 'provinces'} ${sep} `
+        `${provinceCount ? `${provinceCount} ${provinceCount === 1 ? 'province' : 'provinces'}`
+          : `${me.tiles} ${me.tiles === 1 ? 'hex' : 'hexes'}`} ${sep} `
         + `${cities} ${cities === 1 ? 'city' : 'cities'} ${sep} ${state}`;
     } else {
       this.el.macroStats.textContent = '—';
@@ -649,7 +653,7 @@ export class Hud {
       else if (tile.culture !== nation.culture) stats.push(['Status', 'foreign culture']);
     }
     if (tile.workedBy) stats.push(['Worked By', tile.workedBy.name]);
-    if (nation) stats.push(['Nation Size', `${nation.tiles} provinces`]);
+    if (nation) stats.push(['Nation Size', `${nation.tiles} hexes`]);
     if (tile.province) {
       const rgo = provinceRgoStatus(tile);
       const rgoOutput = rgo.type ? (provinceOutput(tile)[rgo.type.goodId] ?? 0) : 0;
@@ -668,6 +672,9 @@ export class Hud {
         ]);
       }
     }
+    // Küme kimliği en üstte: hangi province'in parçası olduğu ilk bakışta okunsun.
+    const cluster = world.provinces?.[tile.provinceId];
+    if (cluster) stats.unshift(['Province', `${cluster.name} · ${cluster.tileIdx.length} hexes`]);
 
     const unit = tile.unit;
     const unitBlock = unit ? `

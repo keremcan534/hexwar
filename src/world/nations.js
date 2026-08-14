@@ -122,8 +122,9 @@ export function generateNations(world, options = {}) {
   const rng = makeRng(seed);
   const land = world.tiles.filter((t) => !t.terrain.water && t.terrain.passable);
   world.forEach((t) => { t.owner = -1; });
+  for (const province of world.provinces ?? []) province.owner = -1;
 
-  if (land.length === 0) {
+  if (land.length === 0 || !world.provinces?.length) {
     world.nations = [];
     return [];
   }
@@ -131,12 +132,14 @@ export function generateNations(world, options = {}) {
   // Tavan 30: 200x160 haritada kara ~11k kareye çıkıyor; 22'de dünya birkaç
   // dev imparatorluğa bölünüp savaş çeşitliliği ölüyordu.
   const nationCount = count ?? Math.max(4, Math.min(30, Math.round(land.length / 95)));
-  const seeds = pickNationSeeds(world, land, nationCount, rng);
+  // Ülkeler province GRAFINDA doğar ve büyür: sınırlar hiçbir zaman bir
+  // province'in içinden geçmez (CK3 kuralı — bordergore imkânsız).
+  const seedProvinces = pickNationSeeds(world, nationCount, rng);
 
   const usedNames = new Set();
-  const nations = seeds.map((tile, i) => {
+  const nations = seedProvinces.map((province, i) => {
     const name = makeName(rng, usedNames);
-    const avgShare = land.length / seeds.length;
+    const avgShare = land.length / seedProvinces.length;
     const palette = makeColor(i, rng);
     return {
       id: i,
@@ -148,22 +151,24 @@ export function generateNations(world, options = {}) {
       sat: palette.sat,
       light: palette.light,
       flag: makeFlag(rng, palette),
-      capital: tile,
+      capital: province.center,
       // Kurucu kültür: başkentin halkı. Ülke sınırlarıyla kültür sınırları
       // örtüşmediği için bu, ileride hoşnutsuzluğun ölçütü olacak.
-      culture: tile.culture ?? -1,
+      culture: province.culture ?? -1,
       tiles: 0,
+      provinces: 0,
       population: 0,
       coastal: false,
       // Yayılma hızı: küçük değer = daha hızlı büyür = daha geniş ülke.
       aggression: rng.range(0.7, 1.4),
       // Teknoloji eğilimi: YZ'lerin farklı yollardan büyümesini sağlar.
       focus: rng.pick(['economy', 'military', 'admin']),
+      // Bütçe kare cinsinden tutulur; province grafında paya bölünür.
       budget: Math.round(avgShare * rng.range(minShare, maxShare)),
     };
   });
 
-  growNations(world, nations, rng);
+  growNations(world, nations, seedProvinces, rng);
   separateNeighborColors(world, nations, rng);
   computeStats(world, nations);
 
@@ -171,31 +176,57 @@ export function generateNations(world, options = {}) {
   return nations;
 }
 
-/** Tohumlar: birbirinden uzak, minik adalara başkent kurmayan. */
-function pickNationSeeds(world, land, count, rng) {
-  const mainland = land.filter((t) => (world.continentSizes?.[t.continent] ?? 0) >= 12);
+/** Ortalama province boyu: kare bütçesini province sayısına çevirir. */
+function avgProvinceSize(world) {
+  let members = 0;
+  for (const province of world.provinces) members += province.tileIdx.length;
+  return members / world.provinces.length;
+}
+
+/**
+ * Tohum province'leri: birbirinden uzak, minik adalara ve kırıntı
+ * province'lere başkent kurmayan (1-2 hexlik kümede başkent sıkışıyordu).
+ */
+function pickNationSeeds(world, count, rng) {
+  const roomy = world.provinces.filter((p) => p.tileIdx.length >= 3);
+  const mainland = roomy.filter(
+    (p) => (world.continentSizes?.[p.center.continent] ?? 0) >= 12,
+  );
+  const pool = mainland.length >= count ? mainland
+    : roomy.length >= count ? roomy : world.provinces;
   return pickSeeds(
-    mainland.length >= count ? mainland : land,
+    pool,
     count,
     rng,
-    (a, b) => world.wrapDistance(a.q, a.r, b.q, b.r),
+    (a, b) => world.wrapDistance(a.center.q, a.center.r, b.center.q, b.center.r),
     Math.max(4, Math.floor(Math.min(world.cols, world.rows) / Math.sqrt(count))),
   );
 }
 
-function growNations(world, nations, rng) {
-  const { assignment } = growRegions(world, nations.map((n) => n.capital), {
-    canEnter: (tile) => !tile.terrain.water && tile.terrain.passable,
-    // Arazi maliyeti + rastgele jitter -> düz değil, tırtıklı sınırlar.
-    stepCost: (tile, i) => (tile.terrain.moveCost + rng.range(0, 2.2)) * nations[i].aggression,
-    budget: (i) => nations[i].budget,
+function growNations(world, nations, seedProvinces, rng) {
+  // growRegions yalnız `neighbors` çağırır; province grafı adaptörle verilir.
+  const graph = {
+    neighbors: (province) => province.neighbors.map((i) => world.provinces[i]),
+  };
+  const provinceBudget = nations.map(
+    (n) => Math.max(1, Math.round(n.budget / avgProvinceSize(world))),
+  );
+  const { assignment } = growRegions(graph, seedProvinces, {
+    canEnter: () => true,
+    // Üye arazi maliyeti ortalaması + jitter -> tırtıklı ama province-hizalı sınır.
+    stepCost: (province, i) => (province.moveCost + rng.range(0, 2.2)) * nations[i].aggression,
+    budget: (i) => provinceBudget[i],
   });
-  for (const [tile, id] of assignment) tile.owner = id;
+  for (const [province, id] of assignment) {
+    province.owner = id;
+    for (const idx of province.tileIdx) world.tiles[idx].owner = id;
+  }
 }
 
 function computeStats(world, nations) {
   for (const n of nations) {
     n.tiles = 0;
+    n.provinces = 0;
     n.population = 0;
     n.coastal = false;
   }
@@ -206,6 +237,9 @@ function computeStats(world, nations) {
     n.population += Math.round(tile.terrain.yields.food * 2200 + tile.moisture * 400);
     if (tile.coastal) n.coastal = true;
   });
+  for (const province of world.provinces ?? []) {
+    if (province.owner >= 0) nations[province.owner].provinces++;
+  }
   // Başkent nüfusu ayrıca ağırlıklı.
   for (const n of nations) n.population = Math.round(n.population * 1.15);
 }

@@ -327,13 +327,13 @@ export class Renderer {
     };
   }
 
-  ownerTint(owner, terrain, tile = null) {
+  ownerTint(owner, terrain, tile = null, world = null) {
     // Province başına çok küçük, deterministik ton sapması. Amaç yamalı bir
     // görünüm değil: aynı ülkenin komşu province'leri arasında ±%3 parlaklık
     // ve ±%2 doygunluk farkı, baskı mürekkebinin eşit olmayan yoğunluğunu
     // taklit eder. Sapma az sayıda kademeye yuvarlanır ki renk önbelleği
     // province sayısı kadar büyümesin.
-    const step = tile ? this.provinceStep(tile) : 0;
+    const step = tile ? this.provinceStep(tile, world) : 0;
     const key = `${owner.id}:${terrain.id}:${step}`;
     let color = this.tintCache.get(key);
     if (color) return color;
@@ -357,12 +357,15 @@ export class Renderer {
    * başına hash kullanmak satranç tahtası, tek başına alan kullanmak bant
    * yaratıyordu.
    */
-  provinceStep(tile) {
-    let h = (tile.q * 374761393 + tile.r * 668265263) | 0;
+  provinceStep(tile, world = null) {
+    // Ton çapası province merkezidir: küme tek yüzey gibi tonlanır, komşu
+    // kümeler ±kademe ayrışır. Küme yoksa (eski çağrı yolu) kare kendisi.
+    const anchor = world?.provinces?.[tile.provinceId]?.center ?? tile;
+    let h = (anchor.q * 374761393 + anchor.r * 668265263) | 0;
     h = (h ^ (h >>> 13)) * 1274126177;
     const grain = (((h ^ (h >>> 16)) >>> 0) % 1000) / 1000;
-    const field = (Math.sin(tile.q * 0.21 + tile.r * 0.13)
-      + Math.sin(tile.q * 0.07 - tile.r * 0.31)) / 2;
+    const field = (Math.sin(anchor.q * 0.21 + anchor.r * 0.13)
+      + Math.sin(anchor.q * 0.07 - anchor.r * 0.31)) / 2;
     const mixed = grain * 0.45 + (field * 0.5 + 0.5) * 0.55;
     return Math.round((mixed - 0.5) * 4);
   }
@@ -524,11 +527,15 @@ export class Renderer {
         this.drawConstructionOverlay(ctx, world, tiles, cam.zoom);
       }
       if (this.showGrid && cam.zoom >= GRID_MIN_ZOOM) this.drawGrid(ctx, tiles, cam.zoom);
+      this.drawProvinceEdges(ctx, tiles, world, cam.zoom);
       if (this.mapMode !== 'terrain') this.drawBorders(ctx, world, tiles, cam.zoom);
       this.lastDrawn += tiles.length;
     }
 
     if (state.reachable) this.drawReachable(ctx, state.reachable);
+    if (state.selected && state.selected.provinceId >= 0) {
+      this.drawProvinceHighlight(ctx, world, state.selected.provinceId);
+    }
     if (state.selected) this.drawHighlight(ctx, state.selected, '#ffffff', 3);
     if (state.hovered && state.hovered !== state.selected) {
       this.drawHighlight(ctx, state.hovered, 'rgba(255,255,255,0.45)', 2);
@@ -765,10 +772,10 @@ export class Renderer {
 
     if (this.mapMode === 'cultures') {
       if (tile.culture < 0) return this.neutralTint(tile.terrain);
-      return this.ownerTint(world.cultures[tile.culture], tile.terrain, tile);
+      return this.ownerTint(world.cultures[tile.culture], tile.terrain, tile, world);
     }
     if (tile.owner < 0) return this.neutralTint(tile.terrain);
-    return this.ownerTint(world.nations[tile.owner], tile.terrain, tile);
+    return this.ownerTint(world.nations[tile.owner], tile.terrain, tile, world);
   }
 
   /** Hukuki sinir sabit kalir; isgal edilen province controller renginde taranir. */
@@ -901,15 +908,83 @@ export class Renderer {
 
   drawGrid(ctx, tiles, scale) {
     ctx.lineWidth = 1 / scale;
-    // Province ızgarası saf siyah değil koyu bir toprak tonudur: baskıda
-    // hatlar mürekkebin kendi rengindedir, altına siyah çizilmez.
-    ctx.strokeStyle = 'rgba(8, 12, 12, 0.22)';
+    // Hex ızgarası artık en alt kademe: üstünde province kenarı, onun
+    // üstünde ülke sınırı var. Saf siyah değil koyu toprak tonu.
+    ctx.strokeStyle = 'rgba(8, 12, 12, 0.16)';
     // Deniz ızgara dışıdır: hex kenarları suyu petekli bir zemine çeviriyordu.
     // Su malzemesi komşu deniz hexlerini tek yüzeye köprüler; ızgara bunu bozar.
     const land = tiles.filter((t) => !t.terrain.water);
     // Parçalı yol: tek yolda binlerce hex kurmak karenin tamamını yiyordu
     // (bkz. chunkedHexPaths). Stroke olduğu için bölmek görüntüyü değiştirmez.
     for (const path of this.chunkedHexPaths(land)) ctx.stroke(path);
+  }
+
+  /**
+   * Province kenarları: kara-kara farklı kümeler arasındaki ince nötr çizgi.
+   * Ülke sınırından zayıf, hex ızgarasından güçlü — CK3'ün üç kademeli
+   * okuması (hex dokusu / province / ülke). Kıyıda çizilmez, su katmanı
+   * kıyıyı zaten anlatıyor.
+   */
+  drawProvinceEdges(ctx, tiles, world, scale) {
+    const c = this.corners;
+    const paths = [];
+    let path = null;
+    let segments = 0;
+    for (const t of tiles) {
+      if (t.provinceId < 0) continue;
+      for (let i = 0; i < 6; i++) {
+        const n = world.get(t.q + DIRS[i][0], t.r + DIRS[i][1]);
+        if (!n || n.terrain.water || n.provinceId === t.provinceId) continue;
+        // Parçalı yol (bkz. chunkedHexPaths gerekçesi).
+        if (segments % 512 === 0) {
+          path = new Path2D();
+          paths.push(path);
+        }
+        segments++;
+        const a = c[i];
+        const b = c[(i + 1) % 6];
+        path.moveTo(t.x + a[0], t.y + a[1]);
+        path.lineTo(t.x + b[0], t.y + b[1]);
+      }
+    }
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 1.6 / scale;
+    ctx.strokeStyle = 'rgba(8, 12, 12, 0.34)';
+    for (const p of paths) ctx.stroke(p);
+  }
+
+  /**
+   * Seçili karenin province'i tek parça vurgulanır: hangi hexlerin aynı
+   * kümede olduğu tıklamadan önce okunur. Üye sayısı ≤8 — her kare yeniden
+   * kurmak önbellekten ucuz.
+   */
+  drawProvinceHighlight(ctx, world, provinceId) {
+    const province = world.provinces?.[provinceId];
+    if (!province) return;
+    const zoom = this.camera.zoom;
+    const fill = new Path2D();
+    const outline = new Path2D();
+    const c = this.corners;
+    for (const idx of province.tileIdx) {
+      const t = world.tiles[idx];
+      this.hexPath(fill, t.x, t.y);
+      for (let i = 0; i < 6; i++) {
+        const n = world.get(t.q + DIRS[i][0], t.r + DIRS[i][1]);
+        if (n && n.provinceId === provinceId) continue;
+        const a = c[i];
+        const b = c[(i + 1) % 6];
+        outline.moveTo(t.x + a[0], t.y + a[1]);
+        outline.lineTo(t.x + b[0], t.y + b[1]);
+      }
+    }
+    ctx.globalAlpha = 0.08;
+    ctx.fillStyle = '#ffffff';
+    ctx.fill(fill);
+    ctx.globalAlpha = 1;
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 2.2 / zoom;
+    ctx.strokeStyle = 'rgba(229, 202, 132, 0.85)';
+    ctx.stroke(outline);
   }
 
   /** Yalnızca farklı sahipler arasındaki kenarları çizer -> net ülke sınırları. */

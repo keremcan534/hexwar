@@ -13,6 +13,7 @@ const AUDITS = [
   ['determinism', 'Ayni tohum ayni oyunu veriyor mu'],
   ['wrap', 'Silindirik sarmal topoloji'],
   ['scale', '200x160 olcek profili'],
+  ['province', 'Province bolumlemesi'],
   ['tax', 'C. Vergi uc deger testi'],
   ['tariff', 'D. Gumruk istismar testi'],
   ['budget', 'E/F/G. Butce kaydiraclari, sifir ve tavan devlet'],
