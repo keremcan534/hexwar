@@ -13,7 +13,7 @@
 
 import { generateWorld } from '../../src/world/worldgen.js';
 import { generateNations } from '../../src/world/nations.js';
-import { finding, n0, reportFindings, section, sub } from './harness.mjs';
+import { finding, headless, n0, reportFindings, run, section, sub } from './harness.mjs';
 
 const SEED = 'province-audit';
 const SIZES = [
@@ -118,6 +118,33 @@ for (const size of SIZES) {
   }
   if (cultureBad) finding('HIGH', 'kultur snap', 'kume ici tek kultur', `${cultureBad} karisik`);
   else console.log('  Her province tek kultur konusuyor.');
+}
+
+section('SAVAS SONRASI HIZA — 150 hafta serbest kosu');
+{
+  const game = headless(SEED);
+  run(game, 150);
+  const world = game.world;
+  let mixed = 0;
+  let counterBad = 0;
+  const counted = world.nations.map(() => 0);
+  for (const province of world.provinces ?? []) {
+    const owners = new Set(province.tileIdx.map((i) => world.tiles[i].owner));
+    if (owners.size > 1) mixed++;
+    if (province.owner >= 0 && counted[province.owner] !== undefined) counted[province.owner]++;
+  }
+  for (const nation of world.nations) {
+    if ((nation.provinces ?? 0) !== counted[nation.id]) counterBad++;
+  }
+  if (mixed) {
+    finding('CRITICAL', 'savas sonrasi hiza',
+      'sinir hicbir kumeyi bolmemeli (claim/claimAtPeace kume butunu)',
+      `${mixed} karisik-sahipli kume`);
+  } else console.log('  150 haftada hicbir kume karisik sahipli degil (bordergore sifir).');
+  if (counterBad) {
+    finding('HIGH', 'province sayaci', 'nation.provinces gercek sayimi tutmali',
+      `${counterBad} ulkede sapma`);
+  } else console.log('  nation.provinces sayaclari gercek sayimla birebir.');
 }
 
 section('DETERMINIZM');

@@ -749,7 +749,8 @@ export class Renderer {
     }
     if (this.mapMode === 'peace') {
       if (tile.terrain.water) return 'hsl(207 35% 14%)';
-      const key = `${tile.q}:${tile.r}`;
+      // Barış teklifi küme anahtarı taşır: seçim bütün kümeyi boyar.
+      const key = `p${tile.provinceId}`;
       if (this.peaceSelection?.demands?.has(key)) return 'hsl(126 38% 34%)';
       if (this.peaceSelection?.concessions?.has(key)) return 'hsl(28 44% 34%)';
       if (tile.owner === this.peaceTarget) return 'hsl(2 40% 30%)';

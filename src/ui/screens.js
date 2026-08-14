@@ -10,8 +10,8 @@ import {
 } from '../game/cities.js';
 import { MIN_WAR_TURNS, atWar, nationStrength, relation, truceLeft } from '../game/diplomacy.js';
 import {
-  MAX_DEMAND_TILES, PEACE_TERMS, canConcedeTile, canDemandTile, offerCost,
-  offerRefusal, signPeace, termAvailable, tileKey, tileWarCost, warScore,
+  MAX_DEMAND_PROVINCES, PEACE_TERMS, concedeKeyForTile, demandKeyForTile, offerCost,
+  offerRefusal, provinceFromKey, provinceWarCost, signPeace, termAvailable, warScore,
 } from '../game/peace.js';
 import { INFAMY_COALITION } from '../game/infamy.js';
 import {
@@ -425,19 +425,20 @@ export class Screens {
   }
 
   /**
-   * Haritadan kare seçimi. Hangi listeye gireceğini açık sekme belirler;
-   * aynı kareye tekrar tıklamak seçimi kaldırır.
+   * Haritadan seçim. Tıklanan hex hangi kümedeyse BÜTÜN küme masaya girer;
+   * hangi listeye gireceğini açık sekme belirler; aynı kümeye tekrar
+   * tıklamak seçimi kaldırır.
    */
   pickPeaceTile(tile) {
     const me = this.me;
+    const world = this.game.world;
     if (!tile || !me || this.peaceTarget == null) return;
-    const key = tileKey(tile);
     const take = this.peaceTab !== 'give';
+    const key = take
+      ? demandKeyForTile(world, tile, this.peaceTarget)
+      : concedeKeyForTile(world, tile, me.id);
+    if (!key) return;
     const set = take ? this.peaceSelection.demands : this.peaceSelection.concessions;
-    const allowed = take
-      ? canDemandTile(tile, this.peaceTarget)
-      : canConcedeTile(tile, me.id);
-    if (!allowed) return;
     if (set.has(key)) set.delete(key);
     else set.add(key);
     this.game.renderer.updatePeaceSelection(this.peaceSelection);
@@ -468,11 +469,12 @@ export class Screens {
     const acceptable = refusal === null;
     const budget = Math.max(0, score);
     const list = (keys, kind) => (keys.length ? keys.map((key) => {
-      const [q, r] = key.split(':').map(Number);
-      const tile = world.get(q, r);
+      const province = provinceFromKey(world, key);
+      if (!province) return '';
+      const starred = province.tileIdx.some((idx) => world.tiles[idx].city);
       return `<div class="peace-tile ${kind}">
-        <span>${esc(provinceName(tile))}${tile?.city ? ' ★' : ''}</span>
-        <b>${tileWarCost(tile)}</b>
+        <span>${esc(province.name)}${starred ? ' ★' : ''} · ${province.tileIdx.length} hex</span>
+        <b>${provinceWarCost(world, province)}</b>
         <button class="peace-drop" data-drop-tile="${esc(key)}" data-drop-kind="${kind}" title="Remove">✕</button>
       </div>`;
     }).join('') : '<p class="empty">Click provinces on the map.</p>');
@@ -504,7 +506,7 @@ export class Screens {
       <div class="card-head"><h3>${tab === 'take' ? `Demands from ${esc(target.name)}`
     : tab === 'give' ? 'Provinces you offer' : 'Additional terms'}</h3>
         <small>${tab === 'take'
-    ? `click their red provinces on the map · at most ${MAX_DEMAND_TILES} provinces per treaty`
+    ? `click their red provinces on the map · at most ${MAX_DEMAND_PROVINCES} provinces per treaty`
     : tab === 'give' ? 'giving land lowers the price of the treaty'
       : 'terms that do not move borders'}</small></div>
       ${tab === 'terms' ? this.peaceTermList(world, me, target)
@@ -541,9 +543,10 @@ export class Screens {
     const offer = entry.offer;
     const tileLine = (keys, label) => (keys?.length ? `<div class="offer-line">
       <small>${label}</small><span>${keys.map((key) => {
-    const [q, r] = key.split(':').map(Number);
-    const tile = world.get(q, r);
-    return `${esc(provinceName(tile))}${tile?.city ? ' ★' : ''} (${tileWarCost(tile)})`;
+    const province = provinceFromKey(world, key);
+    if (!province) return '';
+    const starred = province.tileIdx.some((idx) => world.tiles[idx].city);
+    return `${esc(province.name)}${starred ? ' ★' : ''} (${provinceWarCost(world, province)})`;
   }).join(' · ')}</span></div>` : '');
     const terms = offer.terms?.length ? `<div class="offer-line"><small>Terms</small>
       <span>${offer.terms.map((id) => `${PEACE_TERMS[id].icon} ${esc(PEACE_TERMS[id].name)}`)

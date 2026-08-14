@@ -589,6 +589,13 @@ export function runProvinces(game) {
       );
     }
   }
+  // Küme sayaçları: HUD ve hegemonya gerçek province sayısını okur.
+  for (const nation of world.nations) nation.provinces = 0;
+  for (const province of world.provinces ?? []) {
+    if (province.owner >= 0 && world.nations[province.owner]) {
+      world.nations[province.owner].provinces++;
+    }
+  }
   runProvinceMigration(world);
   game.emit('provinces', null);
 }

@@ -8,7 +8,8 @@ import {
   MIN_WAR_TURNS, atWar, declareWar, nationStrength, relation, truceLeft,
 } from './diplomacy.js';
 import {
-  MAX_DEMAND_TILES, buildOffer, occupiedTilesOf, offerValueFor, signPeace, tileKey, warScore,
+  MAX_DEMAND_PROVINCES, buildOffer, occupiedProvincesOf, offerValueFor, provinceKeyOf,
+  signPeace, warScore,
 } from './peace.js';
 import { INFAMY_COALITION } from './infamy.js';
 import { isMoving, regimentCount, unitsOn } from './units.js';
@@ -60,8 +61,8 @@ function acceptsOffer(game, receiver, proposer, offer, rng) {
  * barış kazanan tarafa artık yetmiyor.
  */
 function surrenderOffer(world, nation, foe) {
-  const lost = occupiedTilesOf(world, foe.id, nation.id).slice(0, MAX_DEMAND_TILES);
-  return { demands: [], concessions: lost.map(({ tile }) => tileKey(tile)), terms: [] };
+  const lost = occupiedProvincesOf(world, foe.id, nation.id).slice(0, MAX_DEMAND_PROVINCES);
+  return { demands: [], concessions: lost.map(({ province }) => provinceKeyOf(province)), terms: [] };
 }
 
 /**

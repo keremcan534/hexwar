@@ -12,8 +12,8 @@ import { generateNations } from '../src/world/nations.js';
 import { computeContacts, declareWar } from '../src/game/diplomacy.js';
 import { controllerOf } from '../src/game/control.js';
 import {
-  MAX_DEMAND_TILES, PEACE_TERMS, buildOffer, occupiedTilesOf, offerAcceptable,
-  offerCost, signPeace, tileWarCost, warScore,
+  MAX_DEMAND_PROVINCES, PEACE_TERMS, buildOffer, occupiedProvincesOf, offerAcceptable,
+  offerCost, provinceKeyOf, provinceWarCost, signPeace, warScore,
 } from '../src/game/peace.js';
 
 function headless(seed) {
@@ -54,12 +54,16 @@ function occupiedWar(seed, held = 5) {
 
   const theirs = world.tiles.filter((t) => t.owner === pair.b && t.terrain.passable);
   const want = held <= 1 ? Math.floor(theirs.length * held) : held;
-  // b'nin karelerini a isgal etsin: controller degisir, egemenlik degismez.
+  // b'nin KUMELERINI a isgal etsin: masada yalniz tamamen isgal edilmis kume
+  // istenebildigi icin isgal kume kume ilerletilir (kusatma tamamlama kurali).
   let taken = 0;
-  for (const tile of theirs) {
+  for (const cluster of (world.provinces ?? [])) {
     if (taken >= want) break;
-    tile.controller = pair.a;
-    taken++;
+    if (cluster.owner !== pair.b || !cluster.econ) continue;
+    for (const idx of cluster.tileIdx) {
+      world.tiles[idx].controller = pair.a;
+      taken++;
+    }
   }
   return { game, ...pair, taken, theirs: theirs.length };
 }
@@ -102,10 +106,10 @@ section('buildOffer warscore butcesini asmaz');
     + ` · sart ${offer.terms.length} · bedel ${cost}`);
   check('bedel butceyi asmiyor', cost <= Math.max(0, score), `${cost} <= ${Math.max(0, score)}`);
   check('karsi taraf kabul ediyor', offerAcceptable(world, a, b, offer));
-  check(`en fazla ${MAX_DEMAND_TILES} kare`, offer.demands.length <= MAX_DEMAND_TILES);
+  check(`en fazla ${MAX_DEMAND_PROVINCES} kume`, offer.demands.length <= MAX_DEMAND_PROVINCES);
 
-  const held = new Set(occupiedTilesOf(world, a, b).map(({ tile }) => `${tile.q}:${tile.r}`));
-  check('yalniz cephede tutulan kareler isteniyor',
+  const held = new Set(occupiedProvincesOf(world, a, b).map(({ province }) => provinceKeyOf(province)));
+  check('yalniz cephede tamamen tutulan kumeler isteniyor',
     offer.demands.every((key) => held.has(key)));
 }
 
@@ -139,14 +143,18 @@ section('signPeace sadece masadaki kareleri devreder');
   const world = game.world;
   const offer = buildOffer(world, a, b);
   const demanded = new Set(offer.demands);
-  const occupiedBefore = occupiedTilesOf(world, a, b).length;
+  // Talep edilen kumelerin toplam hex sayisi: devir kume butunuyle olur.
+  const demandedTiles = [...demanded].reduce((sum, key) => (
+    sum + (world.provinces[Number(key.slice(1))]?.tileIdx.length ?? 0)
+  ), 0);
+  const occupiedBefore = occupiedProvincesOf(world, a, b).length;
   const aTilesBefore = world.nations[a].tiles;
 
   const ok = signPeace(game, a, b, offer);
   check('anlasma imzalandi', ok);
-  check('devredilen kare sayisi talep kadar',
-    world.nations[a].tiles === aTilesBefore + demanded.size,
-    `${aTilesBefore} -> ${world.nations[a].tiles}, talep ${demanded.size}`);
+  check('devredilen kare sayisi talep edilen kumelerin toplami kadar',
+    world.nations[a].tiles === aTilesBefore + demandedTiles,
+    `${aTilesBefore} -> ${world.nations[a].tiles}, talep ${demanded.size} kume / ${demandedTiles} kare`);
 
   const stillOccupied = world.tiles.filter(
     (t) => t.owner === b && controllerOf(t) === a,
@@ -177,20 +185,24 @@ section('anlasma sartlari save/load hayatta kaliyor');
   }
 }
 
-// --- 6) Kare degeri: sehirli ve kalabalik toprak pahali ---
-section('tileWarCost gelisime gore artiyor');
+// --- 6) Kume degeri: sehirli ve kalabalik kume pahali ---
+section('provinceWarCost gelisime gore artiyor');
 {
   const { game } = occupiedWar('peace-6', 1);
   const world = game.world;
-  const cityTile = world.tiles.find((t) => t.city);
-  const emptyTile = world.tiles.find(
-    (t) => t.owner >= 0 && t.terrain.passable && !t.city && (t.province?.population ?? 0) < 5000,
-  );
-  if (cityTile && emptyTile) {
-    console.log(`  sehir ${tileWarCost(cityTile)} · bos ${tileWarCost(emptyTile)}`);
-    check('sehir daha pahali', tileWarCost(cityTile) > tileWarCost(emptyTile));
+  const hasCity = (p) => p.tileIdx.some((idx) => world.tiles[idx].city);
+  const cityCluster = world.provinces.find((p) => p.owner >= 0 && p.econ && hasCity(p));
+  const emptyCluster = world.provinces.find((p) => (
+    p.owner >= 0 && p.econ && !hasCity(p)
+    && p.econ.population / p.econ.hexes < 5000
+  ));
+  if (cityCluster && emptyCluster) {
+    const c1 = provinceWarCost(world, cityCluster);
+    const c2 = provinceWarCost(world, emptyCluster);
+    console.log(`  sehirli kume ${c1} · bos kume ${c2}`);
+    check('sehirli kume daha pahali', c1 > c2);
   } else {
-    console.log('  ATLANDI — karsilastirilacak kare bulunamadi');
+    console.log('  ATLANDI — karsilastirilacak kume bulunamadi');
   }
 }
 

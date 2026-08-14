@@ -15,11 +15,11 @@ import { controllerOf } from './control.js';
 export const MAX_WAR_SCORE = 100;
 
 /**
- * Bir barışta alınabilecek azami province sayısı. Victoria'da savaşlar ülke
- * yutmaz, sınır düzeltir: tam zafer bile birkaç eyalet getirir. Sınır olmadan
- * warscore 100'e ulaşan taraf düşmanın yarısını tek anlaşmada alıyordu.
+ * Bir barışta alınabilecek azami province (küme) sayısı. Victoria'da savaşlar
+ * ülke yutmaz, sınır düzeltir: tam zafer bile birkaç eyalet getirir. Birim
+ * artık 2-7 hexlik kümedir; 3 küme ≈ eski 6 karelik tavanla aynı yüzölçümü.
  */
-export const MAX_DEMAND_TILES = 6;
+export const MAX_DEMAND_PROVINCES = 3;
 
 /** Toprak dışı talepler. Hepsinin gerçek bir oyun etkisi vardır. */
 export const PEACE_TERMS = {
@@ -56,17 +56,33 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
  * pahalıdır; kimsenin yaşamadığı kenar province ucuz. Böylece "warscore'um 40,
  * ne alabilirim" sorusunun cevabı haritaya bakarak verilir.
  */
-export function tileWarCost(tile) {
-  if (!tile || tile.owner < 0 || !tile.terrain.passable) return 0;
-  // tile.province paylaşılan KÜME econ'udur: nüfus hex payına indirgenir,
-  // yoksa warScore toplamı aynı havuzu üye sayısı kadar sayardı.
-  const hexes = tile.province?.hexes ?? 1;
-  const population = (tile.province?.population ?? 0) / hexes;
-  const development = (tile.province?.agriculture ?? 0)
-    + (tile.province?.extraction ?? 0) + (tile.province?.commerce ?? 0);
+/**
+ * Bir province KÜMESİNİN barış masasındaki bedeli. Kalabalık, gelişmiş ve
+ * şehirli küme pahalıdır; kimsenin yaşamadığı sınır kümesi ucuz. Böylece
+ * "warscore'um 40, ne alabilirim" sorusunun cevabı haritaya bakarak verilir.
+ */
+export function provinceWarCost(world, province) {
+  const econ = province?.econ;
+  if (!econ || province.owner < 0) return 0;
+  let cities = 0;
+  for (const idx of province.tileIdx) {
+    if (world.tiles[idx].city) cities++;
+  }
+  const development = (econ.agriculture ?? 0) + (econ.extraction ?? 0) + (econ.commerce ?? 0);
   return Math.max(1, Math.round(
-    2 + population / 3000 + development * 0.6 + (tile.city ? 12 : 0),
+    2 * econ.hexes + econ.population / 3000 + development * 0.6 * econ.hexes + cities * 12,
   ));
+}
+
+/** Küme anahtarı: barış teklifi listeleri bu kimlikle taşınır. */
+export function provinceKeyOf(province) {
+  return `p${province.id}`;
+}
+
+/** Anahtardan küme kaydı; tanınmayan anahtar null döner. */
+export function provinceFromKey(world, key) {
+  if (typeof key !== 'string' || !key.startsWith('p')) return null;
+  return world.provinces?.[Number(key.slice(1))] ?? null;
 }
 
 /**
@@ -79,13 +95,24 @@ export function warScore(world, a, b) {
   let lost = 0;
   let theirTotal = 0;
   let ourTotal = 0;
-  for (const tile of world.tiles) {
-    if (tile.owner === b) {
-      theirTotal += tileWarCost(tile);
-      if (controllerOf(tile) === a) held += tileWarCost(tile);
-    } else if (tile.owner === a) {
-      ourTotal += tileWarCost(tile);
-      if (controllerOf(tile) === b) lost += tileWarCost(tile);
+  // Küme döngüsü; kısmi işgal payı kadar puan kımıldatır — savaş temposu
+  // "son kareyi de al" şartına kilitlenmez, cephe ilerledikçe skor akar.
+  const shareControlledBy = (province, nationId) => {
+    let count = 0;
+    for (const idx of province.tileIdx) {
+      if (controllerOf(world.tiles[idx]) === nationId) count++;
+    }
+    return count / Math.max(1, province.tileIdx.length);
+  };
+  for (const province of world.provinces ?? []) {
+    if (province.owner === b) {
+      const cost = provinceWarCost(world, province);
+      theirTotal += cost;
+      held += cost * shareControlledBy(province, a);
+    } else if (province.owner === a) {
+      const cost = provinceWarCost(world, province);
+      ourTotal += cost;
+      lost += cost * shareControlledBy(province, b);
     }
   }
   // İşgal payı asıl belirleyicidir: toprak tutmadan savaş kazanılmış sayılmaz.
@@ -97,16 +124,15 @@ export function warScore(world, a, b) {
     -MAX_WAR_SCORE, MAX_WAR_SCORE);
 }
 
-/** Teklifin toplam bedeli: istenen toprak + talepler eksi verilen toprak. */
+/** Teklifin toplam bedeli: istenen kümeler + talepler eksi verilen kümeler. */
 export function offerCost(world, offer) {
-  const tiles = (list) => (list ?? []).reduce((sum, key) => {
-    const [q, r] = key.split(':').map(Number);
-    return sum + tileWarCost(world.get(q, r));
-  }, 0);
+  const provinces = (list) => (list ?? []).reduce((sum, key) => (
+    sum + provinceWarCost(world, provinceFromKey(world, key))
+  ), 0);
   const terms = (offer?.terms ?? []).reduce(
     (sum, id) => sum + (PEACE_TERMS[id]?.cost ?? 0), 0,
   );
-  return tiles(offer?.demands) + terms - tiles(offer?.concessions);
+  return provinces(offer?.demands) + terms - provinces(offer?.concessions);
 }
 
 /** Vassallik yalnız açık ara zayıf düşmandan istenebilir. */
@@ -120,27 +146,28 @@ export function termAvailable(world, a, b, termId) {
   if (termId === 'VASSALIZE') return canVassalize(world, a, b);
   if (termId === 'LIBERATE') {
     const target = world.nations[b];
-    return world.tiles.some(
-      (tile) => tile.owner === b && tile.terrain.passable && tile.culture !== target.culture,
+    return (world.provinces ?? []).some(
+      (province) => province.owner === b && province.econ
+        && province.culture !== target.culture,
     );
   }
   return true;
 }
 
-export function tileKey(tile) {
-  return `${tile.q}:${tile.r}`;
-}
-
 /**
- * Bir kare barış masasında istenebilir mi? Yalnız karşı tarafın *egemenliğinde*
- * olan geçilebilir kareler; kendi toprağını "istemek" anlamsızdır.
+ * Haritadaki kareden masadaki küme: barış ekranı hexe tıklatır, teklif
+ * kümeyi taşır. Yalnız karşı tarafın *egemenliğindeki* kümeler istenebilir.
  */
-export function canDemandTile(tile, targetId) {
-  return Boolean(tile?.terrain.passable && tile.owner === targetId);
+export function demandKeyForTile(world, tile, targetId) {
+  const province = world.provinces?.[tile?.provinceId];
+  if (!province || province.owner !== targetId) return null;
+  return provinceKeyOf(province);
 }
 
-export function canConcedeTile(tile, ownId) {
-  return Boolean(tile?.terrain.passable && tile.owner === ownId);
+export function concedeKeyForTile(world, tile, ownId) {
+  const province = world.provinces?.[tile?.provinceId];
+  if (!province || province.owner !== ownId) return null;
+  return provinceKeyOf(province);
 }
 
 /**
@@ -151,8 +178,8 @@ export function canConcedeTile(tile, ownId) {
 /** Teklifin neden reddedildiği; kabul edilirse null. */
 export function offerRefusal(world, a, b, offer) {
   const demands = offer?.demands ?? [];
-  if (demands.length > MAX_DEMAND_TILES) {
-    return `No treaty may transfer more than ${MAX_DEMAND_TILES} provinces.`;
+  if (demands.length > MAX_DEMAND_PROVINCES) {
+    return `No treaty may transfer more than ${MAX_DEMAND_PROVINCES} provinces.`;
   }
   for (const termId of offer?.terms ?? []) {
     if (!termAvailable(world, a, b, termId)) {
@@ -171,15 +198,19 @@ export function offerAcceptable(world, a, b, offer) {
 }
 
 /**
- * Masada istenebilecek şey, cephede tutulan şeydir: `a`nın fiilen işgal ettiği
- * `b` kareleri, değerlisinden ucuzuna. Teklif kurmanın ham maddesi.
+ * Masada istenebilecek şey, cephede tutulan şeydir: `a`nın TAMAMEN işgal
+ * ettiği `b` kümeleri, değerlisinden ucuzuna. Kuşatma tamamlama kuralı
+ * (CK3): yarım işgal skora sayılır ama masada bütün küme istenir.
  */
-export function occupiedTilesOf(world, a, b) {
+export function occupiedProvincesOf(world, a, b) {
   const held = [];
-  for (const tile of world.tiles) {
-    if (tile.owner !== b || !tile.terrain.passable) continue;
-    if (controllerOf(tile) !== a) continue;
-    held.push({ tile, cost: tileWarCost(tile) });
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== b || !province.econ) continue;
+    const fully = province.tileIdx.every(
+      (idx) => controllerOf(world.tiles[idx]) === a,
+    );
+    if (!fully) continue;
+    held.push({ province, cost: provinceWarCost(world, province) });
   }
   return held.sort((x, y) => y.cost - x.cost);
 }
@@ -201,7 +232,7 @@ const TERM_PRIORITY = [
  * son kuruşuna kadar dayatmasın diye vardır.
  */
 export function buildOffer(world, a, b, options = {}) {
-  const { appetite = 1, maxTiles = MAX_DEMAND_TILES, termShare = 0 } = options;
+  const { appetite = 1, maxTiles = MAX_DEMAND_PROVINCES, termShare = 0 } = options;
   const offer = { demands: [], concessions: [], terms: [] };
   const budget = Math.floor(Math.max(0, warScore(world, a, b)) * clamp(appetite, 0, 1));
   if (budget <= 0) return offer;
@@ -211,10 +242,10 @@ export function buildOffer(world, a, b, options = {}) {
   // "toprak yerine tazminat" diyen bir barış da mümkün olur.
   const reserved = Math.floor(budget * clamp(termShare, 0, 1));
   let left = budget - reserved;
-  for (const { tile, cost } of occupiedTilesOf(world, a, b)) {
+  for (const { province, cost } of occupiedProvincesOf(world, a, b)) {
     if (offer.demands.length >= maxTiles) break;
     if (cost > left) continue;
-    offer.demands.push(tileKey(tile));
+    offer.demands.push(provinceKeyOf(province));
     left -= cost;
   }
   // Toprağa harcanmayan bütçe de şartlara akar; hiçbir puan boşa gitmez.
@@ -278,15 +309,22 @@ function applyTerms(game, a, b, terms) {
     const term = PEACE_TERMS[termId];
     if (!term || !termAvailable(world, a, b, termId)) continue;
     if (termId === 'LIBERATE') {
-      // Yabancı kültürlü province'ler bağımsızlaşır: imparatorluk küçülür ama
+      // Yabancı kültürlü kümeler bağımsızlaşır: imparatorluk küçülür ama
       // toprak fatihe geçmez — Victoria'daki "ulus serbest bırakma" bunu yapar.
-      for (const tile of world.tiles) {
-        if (tile.owner !== b || !tile.terrain.passable) continue;
-        if (tile.culture === loser.culture) continue;
-        loser.tiles = Math.max(0, loser.tiles - 1);
-        tile.owner = -1;
-        tile.controller = -1;
-        if (tile.province) tile.province.control = 60;
+      // Küme bütün olarak çözülür; sınır hiçbir kümeyi ikiye bölmez.
+      for (const province of world.provinces ?? []) {
+        if (province.owner !== b || !province.econ) continue;
+        if (province.culture === loser.culture) continue;
+        province.owner = -1;
+        loser.provinces = Math.max(0, (loser.provinces ?? 0) - 1);
+        for (const idx of province.tileIdx) {
+          const tile = world.tiles[idx];
+          loser.tiles = Math.max(0, loser.tiles - 1);
+          tile.owner = -1;
+          tile.controller = -1;
+        }
+        province.econ.control = 60;
+        game.renderer.invalidateTiles(province.tileIdx.map((idx) => world.tiles[idx]));
       }
       continue;
     }
@@ -312,10 +350,10 @@ export function signPeace(game, a, b, offer) {
 
   const transfer = (keys, from, to) => {
     for (const key of keys ?? []) {
-      const [q, r] = key.split(':').map(Number);
-      const tile = world.get(q, r);
-      if (!tile || tile.owner !== from) continue;
-      game.turns.claimAtPeace(tile, to);
+      const province = provinceFromKey(world, key);
+      if (!province || province.owner !== from) continue;
+      // Devir küme bütünüyle: sınır hiçbir kümeyi ikiye bölmez.
+      game.turns.claimAtPeace(province.center, to);
     }
   };
   transfer(offer?.demands, b, a);

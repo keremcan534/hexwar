@@ -22,7 +22,9 @@ import {
 import { initEconomy, reconcilePopulation, runEconomy } from './economy.js';
 import { initBattles, removeFromBattles, runBattles } from './battles.js';
 import { initCommand, releaseArmy, runCommand, seedGenerals } from './command.js';
-import { initProvinces, provincePopulation, runProvinces } from './provinces.js';
+import {
+  initProvinces, provincePopulation, refreshProvinceOwner, runProvinces,
+} from './provinces.js';
 import { initPolitics, runPolitics } from './politics.js';
 import { captureConstructionAt, initConstruction, runConstruction } from './construction.js';
 import { controllerOf, setController } from './control.js';
@@ -178,46 +180,73 @@ export class TurnManager {
     return null;
   }
 
-  /** Bir karenin sahibini değiştirir; sınırlar değiştiği için önbellek tazelenir. */
+  /**
+   * Toprak alımı KÜME bütünüyledir (CK3 kuralı): sınır hiçbir province'i
+   * ikiye bölmez. Verilen kare kümenin herhangi bir üyesi olabilir; alınabilir
+   * üyelerin tamamı (sahipsiz ya da savaşılan düşmanın) el değiştirir.
+   */
   claim(tile, nationId) {
-    if (tile.owner === nationId || !tile.terrain.passable) return false;
     const world = this.world;
-    // Barış içindeki komşunun toprağı alınamaz.
-    if (tile.owner >= 0 && !atWar(world, tile.owner, nationId)) return false;
-
+    const province = world.provinces?.[tile?.provinceId];
+    if (!province || !tile.terrain.passable) return false;
     const nation = world.nations[nationId];
-    captureConstructionAt(world, tile, nationId);
-    // Sahipli toprağı almak şöhret bedeli ister; boş toprağa yerleşmek istemez.
-    if (tile.owner >= 0) addInfamy(nation, tileInfamy(tile, nation));
-    // İşgal saati sıfırlanır: taze fetih bir süre üretmez, sonra asimile olur.
-    tile.heldSince = this.turn;
-    if (tile.province) tile.province.control = tile.owner < 0 ? 60 : 25;
-    if (tile.owner >= 0) world.nations[tile.owner].tiles--;
-    tile.owner = nationId;
-    tile.controller = nationId;
-    world.nations[nationId].tiles++;
-    this.game.renderer.invalidateTiles([tile]);
+    let taken = 0;
+    const takenTiles = [];
+    for (const idx of province.tileIdx) {
+      const member = world.tiles[idx];
+      if (member.owner === nationId) continue;
+      // Barış içindeki komşunun toprağı alınamaz.
+      if (member.owner >= 0 && !atWar(world, member.owner, nationId)) continue;
+      // Sahipli toprağı almak şöhret bedeli ister; boş toprağa yerleşmek istemez.
+      if (member.owner >= 0) {
+        addInfamy(nation, tileInfamy(member, nation));
+        world.nations[member.owner].tiles--;
+      }
+      // İşgal saati sıfırlanır: taze fetih bir süre üretmez, sonra asimile olur.
+      member.heldSince = this.turn;
+      member.owner = nationId;
+      member.controller = nationId;
+      world.nations[nationId].tiles++;
+      captureConstructionAt(world, member, nationId);
+      taken++;
+      takenTiles.push(member);
+    }
+    if (!taken) return false;
+    if (province.econ) {
+      province.econ.control = province.owner < 0 ? 60 : 25;
+    }
+    refreshProvinceOwner(world, province);
+    this.game.renderer.invalidateTiles(takenTiles);
     return true;
   }
 
   /**
-   * Barış masasında el değişen toprak. `claim`'den ayrıdır çünkü o savaş
-   * kuralına bakar (savaşta olmayanın toprağı alınamaz); burada devir zaten
-   * imzalanmış bir anlaşmanın sonucudur ve şöhret bedeli barışla ödenmiştir.
+   * Barış masasında el değişen toprak: KÜME bütünüyle devredilir. `claim`'den
+   * ayrıdır çünkü o savaş kuralına bakar; burada devir imzalanmış anlaşmanın
+   * sonucudur ve şöhret bedeli barışla ödenmiştir.
    */
   claimAtPeace(tile, nationId) {
     const world = this.world;
-    if (!tile?.terrain.passable || tile.owner === nationId || tile.owner < 0) return false;
-    captureConstructionAt(world, tile, nationId);
-    world.nations[tile.owner].tiles = Math.max(0, world.nations[tile.owner].tiles - 1);
-    tile.owner = nationId;
-    tile.controller = nationId;
-    tile.heldSince = this.turn;
-    world.nations[nationId].tiles++;
+    const province = world.provinces?.[tile?.provinceId];
+    if (!province?.econ || province.owner === nationId || province.owner < 0) return false;
+    const members = [];
+    for (const idx of province.tileIdx) {
+      const member = world.tiles[idx];
+      if (member.owner >= 0) {
+        world.nations[member.owner].tiles = Math.max(0, world.nations[member.owner].tiles - 1);
+      }
+      captureConstructionAt(world, member, nationId);
+      member.owner = nationId;
+      member.controller = nationId;
+      member.heldSince = this.turn;
+      world.nations[nationId].tiles++;
+      if (member.city) member.city.nationId = nationId;
+      members.push(member);
+    }
+    province.owner = nationId;
     // Yeni tebaa hemen sadık olmaz; kontrol düşük başlar.
-    if (tile.province) tile.province.control = 25;
-    if (tile.city) tile.city.nationId = nationId;
-    this.game.renderer.invalidateTiles([tile]);
+    province.econ.control = 25;
+    this.game.renderer.invalidateTiles(members);
     return true;
   }
 
@@ -408,6 +437,10 @@ export class TurnManager {
         }
       });
       nation.tiles = 0;
+      nation.provinces = 0;
+      for (const province of world.provinces ?? []) {
+        if (province.owner === nation.id) refreshProvinceOwner(world, province);
+      }
       this.game.renderer.invalidateCache();
       this.addLog(`${nation.name} has been eliminated.`, { kind: 'NATION' });
     }

@@ -676,7 +676,15 @@ export class Hud {
     }
     // Küme kimliği en üstte: hangi province'in parçası olduğu ilk bakışta okunsun.
     const cluster = world.provinces?.[tile.provinceId];
-    if (cluster) stats.unshift(['Province', `${cluster.name} · ${cluster.tileIdx.length} hexes`]);
+    if (cluster) {
+      const occupiedMembers = cluster.tileIdx.filter(
+        (idx) => controllerOf(world.tiles[idx]) !== cluster.owner,
+      ).length;
+      if (cluster.owner >= 0 && occupiedMembers > 0) {
+        stats.unshift(['Occupation', `${occupiedMembers}/${cluster.tileIdx.length} hexes lost`]);
+      }
+      stats.unshift(['Province', `${cluster.name} · ${cluster.tileIdx.length} hexes`]);
+    }
 
     const unit = tile.unit;
     const unitBlock = unit ? `
