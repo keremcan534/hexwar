@@ -45,10 +45,11 @@ function chooseNation(game, mode) {
 const MUTATIONS = {
   /** Bir malin dunya RGO uretimini carpar (0 = tamamen kes). */
   rgoScale(game, { goodId, factor }) {
-    game.world.forEach((tile) => {
-      const rgo = RGO_TYPES[tile.province?.rgo];
-      if (rgo?.goodId === goodId) tile.province.rgoQuality *= factor;
-    });
+    // Kume dongusu: kare basina `*=` uye sayisi kadar tekrar uygulaniyordu.
+    for (const province of game.world.provinces ?? []) {
+      const rgo = RGO_TYPES[province.econ?.rgo];
+      if (rgo?.goodId === goodId) province.econ.rgoQuality *= factor;
+    }
   },
   /** Belirli mallari ureten fabrikalarin kadrosunu carpar. */
   factoryScale(game, { goodId, factor }) {
@@ -114,21 +115,28 @@ const MUTATIONS = {
   },
   /** Province nufuslarini asker alim tabanina indirir (insan gucu ~0). */
   drainManpower(game, { nationId }) {
-    game.world.forEach((tile) => {
-      if (tile.owner === nationId && tile.province) tile.province.population = 2000;
-    });
+    // Taban hex basina olceklenir; kume nufusu tam tabana cekilir.
+    for (const province of game.world.provinces ?? []) {
+      if (province.owner === nationId && province.econ) {
+        province.econ.population = 2000 * (province.econ.hexes ?? 1);
+      }
+    }
   },
-  /** Province nufusunu sabit bir degere ceker. */
+  /** Province nufusunu hex basina sabit degere ceker (eski kalibrasyonla ayni). */
   setProvincePopulation(game, { nationId, population }) {
-    game.world.forEach((tile) => {
-      if (tile.owner === nationId && tile.province) tile.province.population = population;
-    });
+    for (const province of game.world.provinces ?? []) {
+      if (province.owner === nationId && province.econ) {
+        province.econ.population = population * (province.econ.hexes ?? 1);
+      }
+    }
   },
   /** Butun province nufuslarini carpar. */
   populationScale(game, { factor }) {
-    game.world.forEach((tile) => {
-      if (tile.province) tile.province.population = Math.max(0, Math.round(tile.province.population * factor));
-    });
+    // Kume dongusu: kare basina carpan uye sayisi kadar tekrar uygulaniyordu.
+    for (const province of game.world.provinces ?? []) {
+      if (!province.econ) continue;
+      province.econ.population = Math.max(0, Math.round(province.econ.population * factor));
+    }
   },
   /** Insaat sektoru kuyruga ekler (bedava: kapasitenin etkisini izole etmek icin). */
   grantConstructionSectors(game, { nationId, count }) {

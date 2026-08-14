@@ -24,7 +24,7 @@ function headlessGame(seed) {
   game.reachable = null;
   game.autosaveEnabled = false;
   game.listeners = {};
-  game.renderer = { invalidateCache() {} };
+  game.renderer = { invalidateCache() {}, invalidateTiles() {} };
   game.emit = () => {};
   game.requestRender = () => {};
   game.autosave = () => {};

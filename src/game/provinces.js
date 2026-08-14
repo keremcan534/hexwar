@@ -1,10 +1,18 @@
-// Province katmanı: her kara hex'i nüfus, kontrol ve uzmanlaşma taşıyan
-// ekonomik bir karar alanına dönüştürür. Şehirler sanayi merkezidir; province
-// ise hammadde, vergi tabanı ve nüfus sağlar.
+// Province katmanı: nüfus, kontrol ve uzmanlaşma artık tek hex değil,
+// world.provinces'teki 2-7 hexlik KÜMELER üzerinde yaşar (CK3 modeli).
+// Ordular hex hex yürür ve işgal eder; ekonomi kümeyi okur.
+//
+// Temsil: her kümenin tek `econ` nesnesi vardır ve üye karelerin
+// `tile.province` alanı AYNI nesneye işaret eder (paylaşılan referans).
+// Böylece kare üzerinden okuyan eski kod (hud, denetimler) kırılmaz; ama
+// kare döngüsüyle TOPLAYAN her yer üye sayısı kadar çift sayar — o yüzden
+// bütün toplayıcılar bu dosyayla birlikte küme döngüsüne taşındı
+// (cities.collectProvinceTotals, economy.rawProduction, population, census,
+// recruitment). Yenisini yazarken world.provinces üzerinden dolaş.
 
 import { makeRng } from '../core/rng.js';
 import { policyOf } from './politics.js';
-import { controllerOf, isOccupied } from './control.js';
+import { controllerOf } from './control.js';
 
 /**
  * Province kaynakları. Tahıl kasten baskın tutuldu: ordunun erzağı ve nüfusun
@@ -81,9 +89,10 @@ export const MIGRATION_RATE = 0.04;
 
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
-function weightedRgo(world, tile) {
+
+/** Tek karenin RGO ağırlık vektörü; küme seçimi üyelerin toplamından yapılır. */
+function rgoWeightsOf(tile) {
   const yields = tile.terrain.yields;
-  const rng = makeRng(`${world.seed}-rgo-${tile.q}:${tile.r}`);
   const terrain = tile.terrain.id;
   const rugged = terrain === 'HILLS' || terrain === 'MOUNTAIN';
   const tropical = terrain === 'JUNGLE';
@@ -91,7 +100,7 @@ function weightedRgo(world, tile) {
   const arid = terrain === 'DESERT' || terrain === 'TUNDRA';
   // Tahılın ağırlığı bilerek yüksek: erzak çökerse ordular dağılır. Egzotik
   // kaynaklar yalnız kendi arazilerinde ve düşük ağırlıkla çıkar.
-  const weights = [
+  return [
     ['GRAIN', 2.5 + yields.food * 5 + (open ? 2 : 0)],
     ['CATTLE', 0.5 + (open ? 2 : 0) + (terrain === 'TUNDRA' ? 0.8 : 0)],
     ['FISH', tile.coastal ? 3 : 0],
@@ -107,6 +116,20 @@ function weightedRgo(world, tile) {
     ['SULPHUR', 0.15 + (rugged ? 1.2 : 0) + (terrain === 'DESERT' ? 0.5 : 0)],
     ['OIL', 0.1 + (arid ? 1.4 : 0)],
   ];
+}
+
+/**
+ * Kümenin TEK RGO'su (Vic2 kuralı). Zar, rastgele seçilen bir ÜYENİN eski
+ * kare ağırlıklarıyla atılır — ağırlıkları toplamak çoğunluk arazisini
+ * kayırıyor, dağınık azınlık kaynakları (tepe kömürü, karışık orman) dünya
+ * genelinde eksiliyor du (ölçüldü: kömür −%30, kereste −%22). Üye örneklemesi
+ * beklenen dağılımı kare-tabanlı eski dağılıma birebir oturtur. Zar kümenin
+ * merkez koordinatına bağlı dalla atılır: kayıt/yükleme arasında kaymaz.
+ */
+function weightedRgo(world, province) {
+  const rng = makeRng(`${world.seed}-rgo-${province.center.q}:${province.center.r}`);
+  const sample = world.tiles[province.tileIdx[rng.int(0, province.tileIdx.length - 1)]];
+  const weights = rgoWeightsOf(sample);
   let roll = rng() * weights.reduce((sum, [, weight]) => sum + weight, 0);
   let rgo = 'GRAIN';
   for (const [id, weight] of weights) {
@@ -116,64 +139,132 @@ function weightedRgo(world, tile) {
   return { id: rgo, quality: rng.range(0.85, 1.15), jobsRatio: rng.range(0.72, 0.88) };
 }
 
-function initialProvince(world, tile) {
-  const yields = tile.terrain.yields;
-  const agriculture = yields.food >= 3 ? 2 : yields.food > 0 ? 1 : 0;
-  const extraction = Math.max(yields.timber, yields.iron) >= 2 ? 2
-    : Math.max(yields.timber, yields.iron) > 0 ? 1 : 0;
-  const commerce = tile.coastal || yields.gold > 0 ? 1 : 0;
-  const population = Math.round(
-    1800 + yields.food * 1200 + (tile.coastal ? 900 : 0)
-      + (agriculture + extraction + commerce) * 450,
-  );
-  const selected = weightedRgo(world, tile);
+/**
+ * Kümenin başlangıç ekonomisi. Nüfus, eski kare formülünün üye toplamıdır —
+ * dünya toplam nüfusu hex-tabanlı sürümle birebir aynı kalır. Gelişim
+ * kademeleri üye verim ORTALAMASINA eşiklenir (küme tek karar alanıdır).
+ */
+function initialProvinceEcon(world, province) {
+  const members = province.tileIdx.map((idx) => world.tiles[idx]);
+  let population = 0;
+  let foodSum = 0;
+  let timberSum = 0;
+  let ironSum = 0;
+  let goldSum = 0;
+  let coastal = false;
+  for (const tile of members) {
+    const yields = tile.terrain.yields;
+    const tileAg = yields.food >= 3 ? 2 : yields.food > 0 ? 1 : 0;
+    const tileEx = Math.max(yields.timber, yields.iron) >= 2 ? 2
+      : Math.max(yields.timber, yields.iron) > 0 ? 1 : 0;
+    const tileCom = tile.coastal || yields.gold > 0 ? 1 : 0;
+    population += 1800 + yields.food * 1200 + (tile.coastal ? 900 : 0)
+      + (tileAg + tileEx + tileCom) * 450;
+    foodSum += yields.food;
+    timberSum += yields.timber;
+    ironSum += yields.iron;
+    goldSum += yields.gold;
+    if (tile.coastal) coastal = true;
+  }
+  const n = Math.max(1, members.length);
+  const avgFood = foodSum / n;
+  const avgOre = Math.max(timberSum / n, ironSum / n);
+  const agriculture = avgFood >= 3 ? 2 : avgFood > 0 ? 1 : 0;
+  const extraction = avgOre >= 2 ? 2 : avgOre > 0 ? 1 : 0;
+  const commerce = coastal || goldSum > 0 ? 1 : 0;
+  const selected = weightedRgo(world, province);
   const track = RGO_TYPES[selected.id].track;
   return {
-    population,
+    population: Math.round(population),
+    // Kaç hexlik küme: kare başına pay isteyen eski okuyucular (barış bedeli
+    // gibi) toplamı buna böler.
+    hexes: members.length,
+    baseGold: goldSum / n,
     agriculture,
     extraction,
     commerce,
-    control: tile.owner >= 0 ? 100 : 0,
+    control: province.owner >= 0 ? 100 : 0,
     lastInvestment: 0,
     rgo: selected.id,
     rgoQuality: selected.quality,
     rgoBaseJobs: Math.max(1000, Math.round(population * selected.jobsRatio / 100) * 100),
     rgoBaseDevelopment: track === 'agriculture' ? agriculture : extraction,
     migration: 0,
+    industrialEmployees: 0,
+    industrialJobs: 0,
   };
 }
 
-function ensureProvinceRgo(world, tile) {
-  const province = tile.province;
-  if (!province) return null;
-  const selected = weightedRgo(world, tile);
-  if (!RGO_TYPES[province.rgo]) province.rgo = selected.id;
-  if (!Number.isFinite(province.rgoQuality)) province.rgoQuality = selected.quality;
-  if (!Number.isFinite(province.rgoBaseJobs)) {
-    province.rgoBaseJobs = Math.max(
+function ensureProvinceRgo(world, province) {
+  const econ = province.econ;
+  if (!econ) return null;
+  const selected = weightedRgo(world, province);
+  if (!RGO_TYPES[econ.rgo]) econ.rgo = selected.id;
+  if (!Number.isFinite(econ.rgoQuality)) econ.rgoQuality = selected.quality;
+  if (!Number.isFinite(econ.rgoBaseJobs)) {
+    econ.rgoBaseJobs = Math.max(
       1000,
-      Math.round(province.population * selected.jobsRatio / 100) * 100,
+      Math.round(econ.population * selected.jobsRatio / 100) * 100,
     );
   }
-  const type = RGO_TYPES[province.rgo];
-  if (!Number.isFinite(province.rgoBaseDevelopment)) {
-    province.rgoBaseDevelopment = province[type.track] ?? 0;
+  const type = RGO_TYPES[econ.rgo];
+  if (!Number.isFinite(econ.rgoBaseDevelopment)) {
+    econ.rgoBaseDevelopment = econ[type.track] ?? 0;
   }
-  if (!Number.isFinite(province.migration)) province.migration = 0;
-  return province;
+  if (!Number.isFinite(econ.migration)) econ.migration = 0;
+  if (!Number.isFinite(econ.hexes)) econ.hexes = province.tileIdx.length;
+  return econ;
 }
 
 export function initProvinces(world) {
-  world.forEach((tile) => {
-    tile.province = tile.terrain.passable ? initialProvince(world, tile) : null;
-  });
+  world.forEach((tile) => { tile.province = null; });
+  for (const province of world.provinces ?? []) {
+    province.econ = initialProvinceEcon(world, province);
+    for (const idx of province.tileIdx) world.tiles[idx].province = province.econ;
+  }
 }
 
 export function ensureProvinces(world) {
-  world.forEach((tile) => {
-    if (tile.terrain.passable && !tile.province) tile.province = initialProvince(world, tile);
-    if (tile.province) ensureProvinceRgo(world, tile);
-  });
+  for (const province of world.provinces ?? []) {
+    if (!province.econ) {
+      province.econ = initialProvinceEcon(world, province);
+    }
+    ensureProvinceRgo(world, province);
+    for (const idx of province.tileIdx) world.tiles[idx].province = province.econ;
+  }
+}
+
+/**
+ * Kümenin hukuki sahibi üye çoğunluğundan türetilir. Savaşta kareler tek tek
+ * el değiştirebildiği için (hex hex işgal) küme geçici olarak karışık
+ * kalabilir; ekonomi çoğunluğun devletine akar.
+ */
+export function refreshProvinceOwner(world, province) {
+  const votes = new Map();
+  for (const idx of province.tileIdx) {
+    const owner = world.tiles[idx].owner;
+    votes.set(owner, (votes.get(owner) ?? 0) + 1);
+  }
+  let winner = -1;
+  let winnerVotes = -1;
+  for (const [owner, count] of votes) {
+    if (count > winnerVotes || (count === winnerVotes && owner < winner)) {
+      winner = owner;
+      winnerVotes = count;
+    }
+  }
+  province.owner = winner;
+  return winner;
+}
+
+/** İşgal payı: sahibinden başkasının fiilen kontrol ettiği üye oranı. */
+export function occupiedShareOf(world, province) {
+  if (province.owner < 0) return 0;
+  let occupied = 0;
+  for (const idx of province.tileIdx) {
+    if (controllerOf(world.tiles[idx]) !== province.owner) occupied++;
+  }
+  return occupied / Math.max(1, province.tileIdx.length);
 }
 
 // State adları için hece tabloları. "Forest 18:15" bir ad değil, koordinattı;
@@ -200,18 +291,23 @@ export function provinceName(tile) {
 
 export function provincePopulation(world, nationId) {
   let total = 0;
-  world.forEach((tile) => {
-    if (tile.owner === nationId && tile.province) total += tile.province.population;
-  });
+  for (const province of world.provinces ?? []) {
+    if (province.owner === nationId && province.econ) total += province.econ.population;
+  }
   return Math.round(total);
 }
 
+/** Küme econ'unun RGO kadrosu; gelişim kadroyu 500'lük adımlarla açar. */
+export function rgoJobsOf(econ) {
+  const type = RGO_TYPES[econ?.rgo];
+  if (!econ || !type) return 0;
+  const developed = Math.max(0, (econ[type.track] ?? 0) - (econ.rgoBaseDevelopment ?? 0));
+  return Math.max(1000, Math.round((econ.rgoBaseJobs + developed * 500) / 100) * 100);
+}
+
+/** Kare üzerinden okuma: tile.province paylaşılan küme econ'udur. */
 export function provinceRgoJobs(tile) {
-  const province = tile?.province;
-  const type = RGO_TYPES[province?.rgo];
-  if (!province || !type) return 0;
-  const developed = Math.max(0, (province[type.track] ?? 0) - (province.rgoBaseDevelopment ?? 0));
-  return Math.max(1000, Math.round((province.rgoBaseJobs + developed * 500) / 100) * 100);
+  return rgoJobsOf(tile?.province);
 }
 
 /**
@@ -275,51 +371,56 @@ export function rgoLaborScale(province, jobs) {
   return Math.min(RGO_LABOR_CAP, ratio ** RGO_LABOR_FALLOFF);
 }
 
-export function provinceRgoStatus(tile) {
-  const province = tile?.province;
-  const type = RGO_TYPES[province?.rgo];
-  if (!province || !type) return {
+/** Küme econ'unun RGO istihdam durumu. */
+export function rgoStatusOf(econ) {
+  const type = RGO_TYPES[econ?.rgo];
+  if (!econ || !type) return {
     type: null, jobs: 0, employed: 0, unemployed: 0, vacancies: 0, efficiency: 0,
   };
-  const jobs = provinceRgoJobs(tile);
-  const employed = Math.min(Math.max(0, province.population), jobs);
+  const jobs = rgoJobsOf(econ);
+  const employed = Math.min(Math.max(0, econ.population), jobs);
   return {
     type,
     jobs,
     employed,
-    unemployed: Math.max(0, province.population - jobs),
-    vacancies: Math.max(0, jobs - province.population),
+    unemployed: Math.max(0, econ.population - jobs),
+    vacancies: Math.max(0, jobs - econ.population),
     efficiency: jobs > 0 ? employed / jobs : 0,
   };
 }
 
-/** Province'in haftalık ulusal bütçe katkısı. */
-export function provinceOutput(tile) {
-  const province = tile?.province;
-  if (!province || tile.owner < 0 || isOccupied(tile)) {
-    // Üretmeyen kare de karenin *kendi* malını anahtar olarak taşımalı: çağıran
-    // taraf `output[rgo.goodId]` okuyor ve eksik anahtar undefined dönüyordu
-    // (14 RGO'ya geçince eski dört anahtarlık sabit nesne yetersiz kaldı).
-    const idle = { gold: 0, food: 0, timber: 0, iron: 0, coal: 0 };
-    const goodId = RGO_TYPES[province?.rgo]?.goodId;
-    if (goodId) idle[goodId] = 0;
-    return idle;
-  }
-  const base = tile.terrain.yields;
-  const control = clamp(province.control / 100, 0, 1);
-  const status = provinceRgoStatus(tile);
-  // Eski dört kalem sıfırla hazır durur (bütçe onları doğrudan okuyor);
-  // province'in gerçek malı aşağıda kendi anahtarına yazılır.
+/** Kare üzerinden okuma: aynı kümenin her karesi aynı durumu döndürür. */
+export function provinceRgoStatus(tile) {
+  return rgoStatusOf(tile?.province);
+}
+
+/**
+ * Kümenin haftalık ulusal bütçe katkısı. Çıktı üye sayısıyla (hexes) ölçekli:
+ * eskiden her kare kendi RGO'suyla üretiyordu, şimdi tek RGO kümenin tüm
+ * toprağını işliyor. Kısmi işgal üretimi payı kadar keser — hex hex ilerleyen
+ * ordu ekonomiyi kademeli boğar, barış masasını beklemez.
+ */
+export function provinceOutput(world, province) {
+  const econ = province?.econ;
+  // Üretmeyen küme de kendi malını anahtar olarak taşımalı: çağıran taraf
+  // `output[rgo.goodId]` okuyor ve eksik anahtar undefined dönüyordu.
   const output = { gold: 0, food: 0, timber: 0, iron: 0, coal: 0 };
+  if (econ) output[RGO_TYPES[econ.rgo]?.goodId ?? 'food'] ??= 0;
+  if (!econ || province.owner < 0) return output;
+  const occupied = occupiedShareOf(world, province);
+  if (occupied >= 1) return output;
+  const control = clamp(econ.control / 100, 0, 1) * (1 - occupied);
+  const status = rgoStatusOf(econ);
   if (!status.type) return output;
-  output[status.type.goodId] ??= 0;
-  const development = province[status.type.track] ?? 0;
+  const development = econ[status.type.track] ?? 0;
   output[status.type.goodId] = status.type.baseOutput
-    * province.rgoQuality * (1 + development * 0.18)
-    * rgoLaborScale(province, status.jobs) * control;
-  const taxpayerScale = clamp(province.population / 7000, 0, 2.2);
-  output.gold = (0.08 + base.gold * 0.05 + province.commerce * 0.09)
-    * taxpayerScale * control;
+    * econ.rgoQuality * (1 + development * 0.18)
+    * rgoLaborScale(econ, status.jobs) * control * econ.hexes;
+  // Vergi tabanı kare başına eski ölçekte: nüfus hex payına indirgenir,
+  // toplam hex sayısıyla geri çarpılır.
+  const taxpayerScale = clamp(econ.population / (7000 * econ.hexes), 0, 2.2);
+  output.gold = (0.08 + (econ.baseGold ?? 0) * 0.05 + econ.commerce * 0.09)
+    * taxpayerScale * control * econ.hexes;
   return output;
 }
 
@@ -333,44 +434,48 @@ export function runProvinceMigration(world, force = false) {
   for (const nation of world.nations) {
     if (nation.economy) nation.economy.internalMigration = 0;
   }
-  world.forEach((tile) => {
-    if (!tile.province) return;
-    tile.province.migration = 0;
-    if (tile.owner < 0 || controllerOf(tile) !== tile.owner
-      || !world.nations[tile.owner]?.alive) return;
-    if (!byNation.has(tile.owner)) byNation.set(tile.owner, []);
-    byNation.get(tile.owner).push(tile);
-  });
+  for (const province of world.provinces ?? []) {
+    if (!province.econ) continue;
+    province.econ.migration = 0;
+    // Savaş bölgesi göçe kapalı: kısmen bile işgal edilmiş küme ne verir ne alır.
+    if (province.owner < 0 || !world.nations[province.owner]?.alive
+      || occupiedShareOf(world, province) > 0) continue;
+    if (!byNation.has(province.owner)) byNation.set(province.owner, []);
+    byNation.get(province.owner).push(province);
+  }
   if (!force && (world.turn ?? 0) % MIGRATION_INTERVAL !== 0) return 0;
 
   let totalMoved = 0;
-  for (const [nationId, tiles] of byNation) {
-    const donors = tiles.map((tile) => ({ tile, surplus: provinceRgoStatus(tile).unemployed }))
+  for (const [nationId, provinces] of byNation) {
+    // Sanayileşen küme de nüfus çeker. Fabrika kadrosu economy.js tarafından
+    // `jobs` alanına yazılır; kümesi kare koordinatından çözülür — bu dosyanın
+    // ekonomi katmanını import etmesi gerekmez.
+    const factoryVacancies = new Map();
+    for (const factory of world.nations[nationId]?.economy?.factories ?? []) {
+      const tile = world.get(factory.q, factory.r);
+      if (!tile || tile.provinceId < 0) continue;
+      factoryVacancies.set(
+        tile.provinceId,
+        (factoryVacancies.get(tile.provinceId) ?? 0)
+          + Math.max(0, (factory.jobs ?? 0) - (factory.employees ?? 0)),
+      );
+    }
+    const cityOf = (province) => province.tileIdx.some((idx) => world.tiles[idx].city);
+    const donors = provinces
+      .map((province) => ({ province, surplus: rgoStatusOf(province.econ).unemployed }))
       .filter((row) => row.surplus >= MIGRATION_COHORT)
       .sort((a, b) => b.surplus - a.surplus);
-    // Sanayileşen bölge de nüfus çeker. Eskiden göç yalnız RGO boşluklarına
-    // bakıyordu; fabrika açmak bir province'i cazip hale getirmiyordu.
-    // Fabrikanın kadrosu economy.js tarafından `jobs` alanına yazılır, böylece
-    // bu dosyanın ekonomi katmanını import etmesi gerekmez.
-    const factoryVacanciesAt = (tile) => {
-      const factories = world.nations[tile.owner]?.economy?.factories ?? [];
-      let free = 0;
-      for (const factory of factories) {
-        if (factory.q !== tile.q || factory.r !== tile.r) continue;
-        free += Math.max(0, (factory.jobs ?? 0) - (factory.employees ?? 0));
-      }
-      return free;
-    };
-    const receivers = tiles.map((tile) => ({
-      tile,
-      vacancies: tile.province.control >= 50
-        ? provinceRgoStatus(tile).vacancies + factoryVacanciesAt(tile)
+    const receivers = provinces.map((province) => ({
+      province,
+      city: cityOf(province),
+      vacancies: province.econ.control >= 50
+        ? rgoStatusOf(province.econ).vacancies + (factoryVacancies.get(province.id) ?? 0)
         : 0,
     }))
       .filter((row) => row.vacancies >= MIGRATION_COHORT)
       .sort((a, b) => (
-        (b.tile.city ? 1 : 0) - (a.tile.city ? 1 : 0)
-        || b.tile.province.control - a.tile.province.control
+        (b.city ? 1 : 0) - (a.city ? 1 : 0)
+        || b.province.econ.control - a.province.econ.control
         || b.vacancies - a.vacancies
       ));
     let receiverIndex = 0;
@@ -378,22 +483,26 @@ export function runProvinceMigration(world, force = false) {
     for (const donor of donors) {
       let movable = Math.floor(Math.min(
         donor.surplus,
-        Math.max(MIGRATION_COHORT, donor.tile.province.population * MIGRATION_RATE),
+        Math.max(MIGRATION_COHORT, donor.province.econ.population * MIGRATION_RATE),
       ) / MIGRATION_COHORT) * MIGRATION_COHORT;
       while (movable >= MIGRATION_COHORT && receiverIndex < receivers.length) {
         const receiver = receivers[receiverIndex];
-        const open = provinceRgoStatus(receiver.tile).vacancies
-          + factoryVacanciesAt(receiver.tile);
+        if (receiver.province === donor.province) {
+          receiverIndex++;
+          continue;
+        }
+        const open = rgoStatusOf(receiver.province.econ).vacancies
+          + (factoryVacancies.get(receiver.province.id) ?? 0);
         const vacancies = Math.floor(open / MIGRATION_COHORT) * MIGRATION_COHORT;
         if (vacancies < MIGRATION_COHORT) {
           receiverIndex++;
           continue;
         }
         const moved = Math.min(movable, vacancies);
-        donor.tile.province.population -= moved;
-        receiver.tile.province.population += moved;
-        donor.tile.province.migration -= moved;
-        receiver.tile.province.migration += moved;
+        donor.province.econ.population -= moved;
+        receiver.province.econ.population += moved;
+        donor.province.econ.migration -= moved;
+        receiver.province.econ.migration += moved;
         movable -= moved;
         nationMoved += moved;
         totalMoved += moved;
@@ -409,27 +518,31 @@ export function runProvinceMigration(world, force = false) {
 
 export function runProvinces(game) {
   const world = game.world;
-  for (const nation of world.nations) {
-    if (!nation.alive || !nation.economy) continue;
-  }
 
-  world.forEach((tile) => {
-    const province = tile.province;
-    if (!province || tile.owner < 0) return;
-    const nation = world.nations[tile.owner];
-    if (!nation?.alive) return;
-    if (controllerOf(tile) !== tile.owner) {
-      province.control = clamp(province.control - 2, 5, 100);
-      return;
+  for (const province of world.provinces ?? []) {
+    const econ = province.econ;
+    if (!econ) continue;
+    // Sahiplik türetmesi: savaşta üye kareler tek tek el değiştirir (hex hex
+    // işgal); hukuk çoğunluğu izler. Barış devri bütün kümeyi taşıdığında bu
+    // türetme değişmeden doğru kalır.
+    refreshProvinceOwner(world, province);
+    if (province.owner < 0) continue;
+    const nation = world.nations[province.owner];
+    if (!nation?.alive) continue;
+    const occupied = occupiedShareOf(world, province);
+    if (occupied >= 1) {
+      econ.control = clamp(econ.control - 2, 5, 100);
+      continue;
     }
     const stability = Math.max(0.1, Math.min(1, nation.economy?.stability ?? 0.6));
     const citizenship = policyOf(nation, 'citizenship');
     const minorityControl = citizenship === 'full_citizenship'
       ? 1.25
       : citizenship === 'limited_citizenship' ? 0.85 : 0.6;
-    province.control = clamp(
-      province.control + (tile.culture === nation.culture ? 1.5 : minorityControl)
-        * (0.45 + stability),
+    // Kısmi işgal sadakati aşındırır: kazanım payı, sağlam kalan toprağın oranı.
+    econ.control = clamp(
+      econ.control + ((province.culture === nation.culture ? 1.5 : minorityControl)
+        * (0.45 + stability)) * (1 - occupied) - occupied * 2,
       0,
       100,
     );
@@ -450,36 +563,32 @@ export function runProvinces(game) {
       ? (FAMINE_THRESHOLD - nourishment) / FAMINE_THRESHOLD : 0;
     // Taban Vic2 ölçeğinde: en iyi koşulda yılda ~%0.9, yüzyılda ~2.3 kat
     // (1836-1936 gerçeği ~1.75 kat). Eski katsayılar yüzyılda ~4.6 kat
-    // veriyordu ve hiçbir RGO kapasitesi bunu kovalayamıyordu: 100. yılda
-    // talep 3255'e çıkarken arz 1046'da kalıyor, 27 mal fiyat tavanına
-    // yapışıyordu (ölçüldü, bkz. market-diagnostic).
-    const weeklyGrowth = (0.00006 + province.agriculture * 0.00003)
+    // veriyordu ve hiçbir RGO kapasitesi bunu kovalayamıyordu (ölçüldü,
+    // bkz. market-diagnostic). İşgal payı büyümeyi de payı kadar keser.
+    const weeklyGrowth = ((0.00006 + econ.agriculture * 0.00003)
       * (peace ? 1 : 0.55) * (0.45 + stability) * health
-      * (0.25 + 0.75 * nourishment)
+      * (0.25 + 0.75 * nourishment)) * (1 - occupied)
       - famine * FAMINE_DECLINE;
-    province.population = Math.max(
+    econ.population = Math.max(
       0,
-      Math.round(province.population * (1 + weeklyGrowth)),
+      Math.round(econ.population * (1 + weeklyGrowth)),
     );
 
-    // Gelişme yalnız düzenin oturduğu yerde birikir: savaş ve kaos durdurur.
-    const track = RGO_TYPES[province.rgo]?.track;
-    if (track && peace && province.control > 80) {
+    // Gelişme yalnız düzenin oturduğu yerde birikir: savaş, işgal ve kaos durdurur.
+    const track = RGO_TYPES[econ.rgo]?.track;
+    if (track && peace && occupied === 0 && econ.control > 80) {
       // Nüfus baskısı gelişmeyi hızlandırır: kadroyu aşan her el yeni tarla
-      // açar, yeni kuyu kazar. Bu çarpan olmadan kapasite sabit hızda
-      // büyüyordu ve yüzyılda nüfus ~5 katına çıkarken RGO kadrosu +%45'te
-      // kalıyordu (ölçüldü): göçün yığdığı mega-province'ler kapasitesini
-      // kendisi açamıyor, hammadde arzı nüfustan kalıcı olarak kopuyordu.
-      const jobs = provinceRgoJobs(tile);
-      const rural = Math.max(0, province.population - (province.industrialEmployees ?? 0));
+      // açar, yeni kuyu kazar (gerekçe ölçümleri için git geçmişine bakınız).
+      const jobs = rgoJobsOf(econ);
+      const rural = Math.max(0, econ.population - (econ.industrialEmployees ?? 0));
       const pressure = jobs > 0 ? clamp(rural / jobs - 1, 0, 2) : 0;
-      province[track] = Math.min(
+      econ[track] = Math.min(
         RGO_DEVELOPMENT_CAP,
-        (province[track] ?? 0)
+        (econ[track] ?? 0)
           + RGO_DEVELOPMENT_PER_WEEK * stability * (1 + pressure * 1.5),
       );
     }
-  });
+  }
   runProvinceMigration(world);
   game.emit('provinces', null);
 }

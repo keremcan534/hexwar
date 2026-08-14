@@ -140,14 +140,14 @@ function producersOf(world, nation, id, flow) {
   let rgoAmount = 0;
   let rgoProvinces = 0;
   let rgoName = null;
-  world.forEach((tile) => {
-    if (tile.owner !== nation.id || !tile.province) return;
-    const type = RGO_TYPES[tile.province.rgo];
-    if (type?.goodId !== id) return;
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== nation.id || !province.econ) continue;
+    const type = RGO_TYPES[province.econ.rgo];
+    if (type?.goodId !== id) continue;
     rgoProvinces++;
     rgoName = type.name;
-    rgoAmount += provinceOutput(tile)[id] ?? 0;
-  });
+    rgoAmount += provinceOutput(world, province)[id] ?? 0;
+  }
   if (rgoProvinces > 0) {
     rows.push({ name: rgoName, amount: rgoAmount, note: `${rgoProvinces} provinces` });
   }

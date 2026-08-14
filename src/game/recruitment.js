@@ -12,6 +12,7 @@ import {
   MILITARY_EQUIPMENT, ensureMilitaryEconomy, equipmentStock, setEquipmentStock,
 } from './economy.js';
 import { controllerOf } from './control.js';
+import { occupiedShareOf } from './provinces.js';
 
 export const RECRUITMENT_EQUIPMENT = {
   INFANTRY: { arms: 4 },
@@ -35,62 +36,73 @@ export function equipmentCostLabel(typeId) {
     .join(' ');
 }
 
-/** Bir province'in altına inemeyeceği nüfus. Ülke kendi taşrasını boşaltamasın. */
+/**
+ * Bir kümenin hex başına altına inemeyeceği nüfus. Ülke kendi taşrasını
+ * boşaltamasın; taban küme boyuna ölçeklenir ki toplam rezerv hex-tabanlı
+ * eski dengeyle aynı kalsın.
+ */
 export const PROVINCE_POPULATION_FLOOR = 2000;
 
-/** Bir province'in verebileceği asker sayısı. */
+/** Kümenin verebileceği asker sayısı. tile.province paylaşılan küme econ'udur. */
 export function provinceManpower(tile) {
-  if (!tile?.province) return 0;
-  return Math.max(0, tile.province.population - PROVINCE_POPULATION_FLOOR);
+  const econ = tile?.province;
+  if (!econ) return 0;
+  return Math.max(0, econ.population - PROVINCE_POPULATION_FLOOR * (econ.hexes ?? 1));
 }
 
-/** Ulusun toplam insan gücü: bütün province'lerin verebileceğinin toplamı. */
+/** Ulusun toplam insan gücü: sahip olunan huzurlu kümelerin toplamı. */
 export function nationManpower(world, nationId) {
   let total = 0;
-  world.forEach((tile) => {
-    if (tile.owner === nationId && controllerOf(tile) === nationId) total += provinceManpower(tile);
-  });
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== nationId || !province.econ) continue;
+    if (occupiedShareOf(world, province) > 0) continue;
+    total += provinceManpower(province.center);
+  }
   return total;
 }
 
 /**
- * Alayın toplandığı bölge: çıkış province'i ve ona bitişik kendi province'leri.
- * Tek province'in bütün alayı beslemesi şartı orduları imkânsız kılıyordu
- * (ölçüm: alay sayısı 151'den 65'e düşmüştü) — asker civardan toplanır.
+ * Alayın toplandığı bölge: çıkış kümesi ve komşu kendi kümeleri. Kümeler
+ * MERKEZ kareleriyle temsil edilir — aynı havuz iki kez sayılmaz (paylaşılan
+ * econ yüzünden üye kareleri saymak havuzu üye sayısı kadar şişirirdi).
  */
 export function recruitmentRegion(world, tile) {
-  const region = [tile];
-  for (const near of world.neighbors(tile)) {
-    if (near.owner === tile.owner && near.province) region.push(near);
+  const cluster = world.provinces?.[tile?.provinceId];
+  if (!cluster) return tile?.province ? [tile] : [];
+  const region = [cluster.center];
+  for (const neighborId of cluster.neighbors) {
+    const near = world.provinces[neighborId];
+    if (near?.owner === cluster.owner && near.econ) region.push(near.center);
   }
   return region;
 }
 
 export function regionManpower(world, tile) {
   return recruitmentRegion(world, tile).reduce(
-    (sum, province) => sum + provinceManpower(province), 0,
+    (sum, center) => sum + provinceManpower(center), 0,
   );
 }
 
 /**
- * Alayın çıkacağı province: bölgesi en kalabalık olan. Şehir province'i
- * eşitlikte öncelikli — asker toplamak şehirde daha kolaydır.
+ * Alayın çıkacağı küme (merkez karesiyle): bölgesi en kalabalık olan. Şehirli
+ * küme eşitlikte öncelikli — asker toplamak şehirde daha kolaydır.
  */
 export function recruitmentSource(world, nation, typeId) {
   const need = UNIT_TYPES[resolveTypeId(typeId)].manpower;
   let best = null;
   let bestScore = 0;
-  world.forEach((tile) => {
-    if (tile.owner !== nation.id || controllerOf(tile) !== nation.id
-      || !tile.terrain.passable || !tile.province) return;
-    const available = regionManpower(world, tile);
-    if (available < need) return;
-    const score = available + (tile.city ? 3000 : 0);
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== nation.id || !province.econ) continue;
+    if (occupiedShareOf(world, province) > 0) continue;
+    const available = regionManpower(world, province.center);
+    if (available < need) continue;
+    const hasCity = province.tileIdx.some((idx) => world.tiles[idx].city);
+    const score = available + (hasCity ? 3000 : 0);
     if (score > bestScore) {
       bestScore = score;
-      best = tile;
+      best = province.center;
     }
-  });
+  }
   return best;
 }
 

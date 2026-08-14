@@ -1,10 +1,12 @@
 // State construction: deterministik planlama bolgeleri, kalici binalar ve
 // Victoria 3 benzeri ulusal insaat gucuyle ilerleyen tek bir oncelik kuyrugu.
 
-import { provinceName } from './provinces.js';
+import { occupiedShareOf, provinceName } from './provinces.js';
 import { controllerOf } from './control.js';
 
-const TARGET_PROVINCES_PER_REGION = 14;
+// Birim artık 2-7 hexlik province KÜMESİDİR (bkz. world/provinces-gen.js):
+// state başına ~3 küme ≈ eski 14 karelik hedefle aynı yüzölçümü.
+const TARGET_PROVINCES_PER_REGION = 3;
 const MIN_REGIONS = 1;
 const MAX_REGIONS = 12;
 
@@ -41,20 +43,25 @@ function tileOrder(a, b) {
   return a.r - b.r || a.q - b.q;
 }
 
-function chooseSeeds(world, tiles, capital, count) {
-  const ordered = [...tiles].sort(tileOrder);
-  const first = tiles.includes(capital) ? capital : ordered[0];
+/** Küme sıralaması: merkez karesinin satır-major konumu (deterministik). */
+function clusterOrder(a, b) {
+  return a.center.r - b.center.r || a.center.q - b.center.q;
+}
+
+function chooseSeeds(world, clusters, capitalCluster, count) {
+  const ordered = [...clusters].sort(clusterOrder);
+  const first = capitalCluster && clusters.includes(capitalCluster) ? capitalCluster : ordered[0];
   const seeds = [first];
   while (seeds.length < count) {
     let best = null;
     let bestDistance = -1;
-    for (const tile of ordered) {
-      if (seeds.includes(tile)) continue;
+    for (const cluster of ordered) {
+      if (seeds.includes(cluster)) continue;
       const distance = Math.min(...seeds.map(
-        (seed) => world.wrapDistance(tile.q, tile.r, seed.q, seed.r),
+        (seed) => world.wrapDistance(cluster.center.q, cluster.center.r, seed.center.q, seed.center.r),
       ));
       if (distance > bestDistance) {
-        best = tile;
+        best = cluster;
         bestDistance = distance;
       }
     }
@@ -64,11 +71,13 @@ function chooseSeeds(world, tiles, capital, count) {
   return seeds;
 }
 
-function nearestSeed(world, tile, seeds) {
+function nearestSeed(world, cluster, seeds) {
   let winner = 0;
   let distance = Infinity;
   for (let index = 0; index < seeds.length; index++) {
-    const next = world.wrapDistance(tile.q, tile.r, seeds[index].q, seeds[index].r);
+    const next = world.wrapDistance(
+      cluster.center.q, cluster.center.r, seeds[index].center.q, seeds[index].center.r,
+    );
     if (next < distance) {
       winner = index;
       distance = next;
@@ -220,16 +229,18 @@ const atlasCache = new WeakMap();
 
 function territorySignature(owned) {
   let signature = owned.length;
-  for (const tile of owned) signature = (signature * 31 + tile.q * 73 + tile.r) % 2147483647;
+  for (const cluster of owned) signature = (signature * 31 + cluster.id * 73 + 7) % 2147483647;
   return signature;
 }
 
 export function constructionAtlas(world, nationId) {
   const nation = world?.nations?.[nationId];
-  const owned = world?.tiles?.filter(
-    (tile) => tile.owner === nationId && controllerOf(tile) === nationId
-      && tile.terrain.passable,
-  ) ?? [];
+  // Planlama birimi küme: yalnız hukuken sahip olunan VE tamamen huzurlu
+  // (işgalsiz) kümeler. Savaş bölgesinde şantiye açılmaz.
+  const owned = (world?.provinces ?? []).filter(
+    (cluster) => cluster.owner === nationId && cluster.econ
+      && occupiedShareOf(world, cluster) === 0,
+  );
   if (!nation || !owned.length) {
     return { nationId, regions: [], tileRegions: new Map(), slots: 0, used: 0, free: 0 };
   }
@@ -247,11 +258,14 @@ export function constructionAtlas(world, nationId) {
     MIN_REGIONS,
     MAX_REGIONS,
   );
-  const seeds = chooseSeeds(world, owned, nation.capital, regionCount);
+  const capitalCluster = nation.capital?.provinceId >= 0
+    ? world.provinces[nation.capital.provinceId] : null;
+  const seeds = chooseSeeds(world, owned, owned.includes(capitalCluster) ? capitalCluster : null, regionCount);
   const regions = seeds.map((seed, index) => ({
     id: `${nationId}:${index}`,
     index,
     seed,
+    provinces: [],
     tiles: [],
     cities: [],
     population: 0,
@@ -259,13 +273,17 @@ export function constructionAtlas(world, nationId) {
   }));
   const tileRegions = new Map();
 
-  for (const tile of owned) {
-    const region = regions[nearestSeed(world, tile, seeds)];
-    region.tiles.push(tile);
-    region.population += tile.province?.population ?? 0;
-    region.development += (tile.province?.agriculture ?? 0)
-      + (tile.province?.extraction ?? 0) + (tile.province?.commerce ?? 0);
-    tileRegions.set(tile, region);
+  for (const cluster of owned) {
+    const region = regions[nearestSeed(world, cluster, seeds)];
+    region.provinces.push(cluster);
+    region.population += cluster.econ.population;
+    region.development += cluster.econ.agriculture
+      + cluster.econ.extraction + cluster.econ.commerce;
+    for (const idx of cluster.tileIdx) {
+      const tile = world.tiles[idx];
+      region.tiles.push(tile);
+      tileRegions.set(tile, region);
+    }
   }
 
   for (const city of world.cities.filter((candidate) => candidate.nationId === nationId)) {
@@ -274,7 +292,7 @@ export function constructionAtlas(world, nationId) {
 
   for (const region of regions) {
     region.center = displayCenter(world, region.tiles);
-    region.name = region.cities[0]?.name ?? provinceName(region.seed);
+    region.name = region.cities[0]?.name ?? region.seed.name;
     const capacity = 3 + Math.floor(region.tiles.length / 6)
       + Math.floor(region.population / 70000) + Math.floor(region.development / 12);
     region.slots = clamp(capacity, 4, 12);

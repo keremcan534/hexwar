@@ -656,7 +656,9 @@ export class Hud {
     if (nation) stats.push(['Nation Size', `${nation.tiles} hexes`]);
     if (tile.province) {
       const rgo = provinceRgoStatus(tile);
-      const rgoOutput = rgo.type ? (provinceOutput(tile)[rgo.type.goodId] ?? 0) : 0;
+      const clusterRec = world.provinces?.[tile.provinceId];
+      const rgoOutput = rgo.type && clusterRec
+        ? (provinceOutput(world, clusterRec)[rgo.type.goodId] ?? 0) : 0;
       stats.unshift(
         ['Population', formatPopulation(tile.province.population)],
         ['RGO', rgo.type ? `${rgo.type.icon} ${rgo.type.name}` : '—'],

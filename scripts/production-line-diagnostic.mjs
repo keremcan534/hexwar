@@ -21,7 +21,7 @@ function headless(seed) {
     reachable: null,
     autosaveEnabled: false,
     listeners: {},
-    renderer: { invalidateCache() {} },
+    renderer: { invalidateCache() {}, invalidateTiles() {} },
     emit() {},
     requestRender() {},
     autosave() {},

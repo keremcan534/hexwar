@@ -23,7 +23,7 @@ function headless(seed) {
   Object.assign(game, {
     selected: null, selectedUnit: null, selected_: [], activeGeneral: null,
     reachable: null, autosaveEnabled: false, listeners: {},
-    renderer: { invalidateCache() {}, resize() {} },
+    renderer: { invalidateCache() {}, invalidateTiles() {}, resize() {} },
     camera: { setBounds() {}, fit() {} },
     emit() {}, requestRender() {}, autosave() {}, setSpeed() {},
   });
@@ -82,11 +82,12 @@ for (let week = 1; week <= WEEKS; week++) {
     }
   }
 
-  // TEST 7: ulusal nufus, province nufuslarinin toplamiyla bagdasmali.
+  // TEST 7: ulusal nufus, kume nufuslarinin toplamiyla bagdasmali.
+  // (tile.province paylasilan econ; kare dongusu ayni havuzu tekrar sayardi)
   let provinceSum = 0;
-  world.forEach((tile) => {
-    if (tile.owner === nation.id && tile.province) provinceSum += tile.province.population;
-  });
+  for (const province of world.provinces ?? []) {
+    if (province.owner === nation.id && province.econ) provinceSum += province.econ.population;
+  }
   const drift = Math.abs(provinceSum - (nation.economy.population ?? 0));
   popAccountingWorst = Math.max(popAccountingWorst, drift);
 }

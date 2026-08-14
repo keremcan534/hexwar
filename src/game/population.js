@@ -23,7 +23,7 @@
 import {
   CLASS_INFO, PROFESSION_INFO, factoryJobs,
 } from './economy.js';
-import { RGO_TYPES, provinceRgoStatus } from './provinces.js';
+import { RGO_TYPES, rgoStatusOf } from './provinces.js';
 
 /** Bu meslek hangi zemine göre dağıtılır? */
 const BASIS = {
@@ -38,28 +38,28 @@ const BASIS = {
 };
 
 /**
- * Bir province'in verilen zemindeki ağırlığı. Sıfır dönerse o meslek orada
+ * Bir kümenin verilen zemindeki ağırlığı. Sıfır dönerse o meslek orada
  * yok demektir — kohort da üretilmez.
  */
-function weightOf(tile, basis) {
-  const province = tile.province;
-  if (!province) return 0;
-  if (basis === 'population') return Math.max(0, province.population);
+function weightOf(entry, basis) {
+  const econ = entry.province.econ;
+  if (!econ) return 0;
+  if (basis === 'population') return Math.max(0, econ.population);
   if (basis === 'urban') {
-    // Kâtip, zanaatkâr ve kapitalist şehirde toplanır; şehirsiz province
+    // Kâtip, zanaatkâr ve kapitalist şehirde toplanır; şehirsiz küme
     // yine de az bir pay alır (kasaba esnafı).
-    const urban = tile.city ? 3 + tile.city.level : 1;
-    return Math.max(0, province.population) * urban;
+    const urban = entry.city ? 3 + entry.city.level : 1;
+    return Math.max(0, econ.population) * urban;
   }
   if (basis === 'industry') {
     // Zemin dolu kadro değil, KAPASITEDIR: işçi işin olduğu yere gider ve
     // boşta kalan kadro gerçek işsizliği verir. Dolu kadroya göre dağıtınca
     // işsizlik tanım gereği sıfırlanıyordu.
-    const jobs = province.industrialJobs ?? 0;
-    return Math.max(0, jobs > 0 ? jobs : (province.industrialEmployees ?? 0));
+    const jobs = econ.industrialJobs ?? 0;
+    return Math.max(0, jobs > 0 ? jobs : (econ.industrialEmployees ?? 0));
   }
-  const status = provinceRgoStatus(tile);
-  const track = RGO_TYPES[province.rgo]?.track;
+  const status = rgoStatusOf(econ);
+  const track = RGO_TYPES[econ.rgo]?.track;
   if (basis === 'agriculture') return track === 'agriculture' ? status.employed : 0;
   if (basis === 'extraction') return track === 'extraction' ? status.employed : 0;
   return 0;
@@ -96,12 +96,28 @@ function allocate(total, weights) {
   return counts;
 }
 
-/** Ülkenin sahip olduğu, nüfus taşıyan kareler. */
+/**
+ * Ülkenin sahip olduğu, nüfus taşıyan kümeler. Her girdi kümeyi, varsa
+ * şehirli üyesini ve harita odağı için çapa karesini birlikte taşır (şehir
+ * kümenin merkez karesinde olmayabilir).
+ */
 function ownedProvinces(world, nation) {
   const list = [];
-  world.forEach((tile) => {
-    if (tile.owner === nation.id && tile.province) list.push(tile);
-  });
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== nation.id || !province.econ) continue;
+    let cityTile = null;
+    for (const idx of province.tileIdx) {
+      if (world.tiles[idx].city) {
+        cityTile = world.tiles[idx];
+        break;
+      }
+    }
+    list.push({
+      province,
+      city: cityTile?.city ?? null,
+      anchor: cityTile ?? province.center,
+    });
+  }
   return list;
 }
 
@@ -157,8 +173,8 @@ function cohortEconomics(nation, classId, size, share) {
 export function nationCohorts(world, nation) {
   const economy = nation?.economy;
   if (!economy?.professionCounts) return [];
-  const tiles = ownedProvinces(world, nation);
-  if (!tiles.length) return [];
+  const entries = ownedProvinces(world, nation);
+  if (!entries.length) return [];
 
   // Once butun kohortlar ve istihdamlari kurulur; gelir dagitimi ancak sinifin
   // TOPLAM etkinlik agirligi bilindiginde yapilabilir (yoksa paylar toplami
@@ -168,28 +184,33 @@ export function nationCohorts(world, nation) {
     const total = Math.max(0, Math.round(economy.professionCounts[professionId] ?? 0));
     if (total <= 0) continue;
     const basis = BASIS[professionId] ?? 'population';
-    let weights = tiles.map((tile) => weightOf(tile, basis));
+    let weights = entries.map((entry) => weightOf(entry, basis));
     // Zemin tamamen boşsa (ör. hiç fabrika yok ama işçi sayılmış) nüfusa düş:
-    // meslek kaybolmasın, hepsi ilk kareye yığılmasın.
+    // meslek kaybolmasın, hepsi ilk kümeye yığılmasın.
     if (weights.every((value) => value <= 0)) {
-      weights = tiles.map((tile) => weightOf(tile, 'population'));
+      weights = entries.map((entry) => weightOf(entry, 'population'));
     }
     const sizes = allocate(total, weights);
-    for (let i = 0; i < tiles.length; i++) {
+    for (let i = 0; i < entries.length; i++) {
       const size = sizes[i];
       if (size <= 0) continue;
-      const tile = tiles[i];
-      const employment = cohortEmployment(world, nation, tile, professionId, size);
+      const entry = entries[i];
+      const employment = cohortEmployment(world, nation, entry, professionId, size);
       draft.push({
-        id: `${tile.q}:${tile.r}:${professionId}`,
-        tile,
-        q: tile.q,
-        r: tile.r,
+        // Kimlik küme id'sine bağlı: bölümleme deterministik olduğundan kayıt
+        // ve ekran arasında kaymaz.
+        id: `p${entry.province.id}:${professionId}`,
+        provinceId: entry.province.id,
+        provinceName: entry.province.name,
+        // Harita odağı ve şehir bazlı türetmeler (okuryazarlık) için çapa kare.
+        tile: entry.anchor,
+        q: entry.anchor.q,
+        r: entry.anchor.r,
         professionId,
         professionName: profession.name,
         classId: profession.classId,
         className: CLASS_INFO[profession.classId]?.name ?? profession.classId,
-        culture: tile.culture,
+        culture: entry.province.culture,
         size,
         employment,
         weight: activityWeight(size, employment),
@@ -214,10 +235,12 @@ export function nationCohorts(world, nation) {
  * o province'teki tesis kadrosuna, çiftçi/madenci RGO kadrosuna bakar.
  * Diğer meslekler için istihdam kavramı yok (null) — uydurma oran üretilmez.
  */
-function cohortEmployment(world, nation, tile, professionId, size) {
+function cohortEmployment(world, nation, entry, professionId, size) {
   if (professionId === 'workers') {
-    const factories = (nation.economy?.factories ?? [])
-      .filter((factory) => factory.q === tile.q && factory.r === tile.r);
+    // Fabrika kare koordinatıyla çapalı; kümesi provinceId üzerinden çözülür.
+    const factories = (nation.economy?.factories ?? []).filter(
+      (factory) => world.get(factory.q, factory.r)?.provinceId === entry.province.id,
+    );
     const employed = Math.min(size, Math.round(
       factories.reduce((sum, factory) => sum + (factory.employees ?? 0), 0),
     ));
@@ -232,7 +255,7 @@ function cohortEmployment(world, nation, tile, professionId, size) {
     };
   }
   if (professionId === 'farmers' || professionId === 'laborers') {
-    const status = provinceRgoStatus(tile);
+    const status = rgoStatusOf(entry.province.econ);
     const employed = Math.min(size, Math.round(status.employed));
     return {
       employed,

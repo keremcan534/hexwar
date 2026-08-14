@@ -23,7 +23,9 @@ import { provinceName } from './provinces.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-/** Bir province'in ağaçtaki ve seçimdeki kimliği. */
+/** Bir province kümesinin ağaçtaki ve seçimdeki kimliği. */
+export const provinceKey = (province) => `p${province.id}`;
+/** Eski kare anahtarı; barış masası gibi hex bazlı ekranlar hala kullanır. */
 export const tileKey = (tile) => `${tile.q}:${tile.r}`;
 
 // --- Bellekleme ---------------------------------------------------------
@@ -140,38 +142,48 @@ export function censusTree(world, nation, cohorts) {
   const atlas = constructionAtlas(world, nation.id);
   const pops = new Map();
   for (const cohort of cohorts) {
-    const key = `${cohort.q}:${cohort.r}`;
+    const key = `p${cohort.provinceId}`;
     pops.set(key, (pops.get(key) ?? 0) + cohort.size);
   }
   const states = new Map();
   const stateOf = new Map();
-  const push = (id, name, order, tile) => {
+  const seen = new Set();
+  const push = (id, name, order, cluster) => {
     if (!states.has(id)) states.set(id, { id, name, order, provinces: [], population: 0 });
     const state = states.get(id);
-    const key = tileKey(tile);
+    const key = provinceKey(cluster);
+    seen.add(cluster.id);
     const population = pops.get(key) ?? 0;
+    let city = null;
+    for (const idx of cluster.tileIdx) {
+      if (world.tiles[idx].city) {
+        city = world.tiles[idx].city;
+        break;
+      }
+    }
     state.provinces.push({
       key,
-      tile,
-      name: locationName(tile),
+      province: cluster,
+      tile: cluster.center,
+      name: city ? `${city.name} Province` : cluster.name,
       population,
-      city: tile.city ?? null,
+      city,
     });
     state.population += population;
     stateOf.set(key, id);
   };
 
   for (const region of atlas.regions) {
-    for (const tile of region.tiles) {
-      if (tile.province) push(region.id, region.name, region.index, tile);
+    for (const cluster of region.provinces) {
+      push(region.id, region.name, region.index, cluster);
     }
   }
-  // Atlasın dışında kalan (işgal edilmiş) kendi karelerimiz.
-  world.forEach((tile) => {
-    if (tile.owner !== nation.id || !tile.province) return;
-    if (atlas.tileRegions.has(tile)) return;
-    push('occupied', 'Occupied Territory', 9999, tile);
-  });
+  // Atlasın dışında kalan (kısmen/tamamen işgal edilmiş) kendi kümelerimiz:
+  // halkı hala senin halkındır, sayımdan düşmez.
+  for (const cluster of world.provinces ?? []) {
+    if (cluster.owner !== nation.id || !cluster.econ || seen.has(cluster.id)) continue;
+    push('occupied', 'Occupied Territory', 9999, cluster);
+  }
 
   const list = [...states.values()].sort(
     (a, b) => a.order - b.order || a.name.localeCompare(b.name),
@@ -285,7 +297,7 @@ export function issueName(id) {
  */
 export function censusFor(world, nation, source, keys) {
   const selection = keys instanceof Set ? keys : new Set(keys ?? []);
-  const cohorts = source.filter((cohort) => selection.has(`${cohort.q}:${cohort.r}`));
+  const cohorts = source.filter((cohort) => selection.has(`p${cohort.provinceId}`));
   const total = cohorts.reduce((sum, cohort) => sum + cohort.size, 0);
 
   const workforce = new Map();

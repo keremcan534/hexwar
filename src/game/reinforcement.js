@@ -8,7 +8,7 @@ import {
 import { generalOfArmy, generalRecoveryBonus } from './command.js';
 import { nationManpower, provinceManpower } from './recruitment.js';
 import { UNIT_TYPES, refreshArmy, resolveTypeId } from './units.js';
-import { controllerOf } from './control.js';
+import { occupiedShareOf } from './provinces.js';
 
 export const BASE_REINFORCEMENT_RATE = 24;
 export const REINFORCEMENT_EQUIPMENT = {
@@ -41,25 +41,33 @@ function appendDraw(regiment, tile, men) {
   else regiment.draws.push({ q: tile.q, r: tile.r, men });
 }
 
-/** Once alayin yurdu ve komsulari, sonra ulkenin kalan province'leri askere verir. */
+/**
+ * Once alayin yurdu ve komsu kumeler, sonra ulkenin kalan kumeleri askere
+ * verir. Kumeler MERKEZ kareleriyle temsil edilir: ayni havuz iki kez
+ * listelenmez ve tarama kare sayisi degil kume sayisi kadardir (32k haritada
+ * alay basina tam dunya taramasi kare butcesini yiyordu).
+ */
 function manpowerSources(world, nationId, regiment) {
   const preferred = [];
   const seen = new Set();
-  const add = (tile) => {
-    if (!tile?.province || tile.owner !== nationId || controllerOf(tile) !== nationId
-      || seen.has(tile)) return;
-    seen.add(tile);
-    preferred.push(tile);
+  const addCluster = (province) => {
+    if (!province?.econ || province.owner !== nationId || seen.has(province.id)) return;
+    if (occupiedShareOf(world, province) > 0) return;
+    seen.add(province.id);
+    preferred.push(province.center);
   };
   const home = regiment.home ? world.get(regiment.home.q, regiment.home.r) : null;
-  add(home);
-  if (home) for (const near of world.neighbors(home)) add(near);
+  const homeCluster = home ? world.provinces?.[home.provinceId] : null;
+  addCluster(homeCluster);
+  if (homeCluster) {
+    for (const neighborId of homeCluster.neighbors) addCluster(world.provinces[neighborId]);
+  }
 
   const rest = [];
-  world.forEach((tile) => {
-    if (tile.owner === nationId && controllerOf(tile) === nationId
-      && tile.province && !seen.has(tile)) rest.push(tile);
-  });
+  for (const province of world.provinces ?? []) {
+    if (province.owner === nationId && province.econ && !seen.has(province.id)
+      && occupiedShareOf(world, province) === 0) rest.push(province.center);
+  }
   rest.sort((a, b) => provinceManpower(b) - provinceManpower(a));
   return preferred.concat(rest);
 }

@@ -17,8 +17,10 @@ const SEED = 'population-audit';
 
 /** Dunyadaki toplam province nufusu — tek kanonik nufus deposu. */
 function worldPopulation(world) {
+  // Kume dongusu: tile.province paylasilan econ, kare kare toplamak ayni
+  // havuzu uye sayisi kadar sayar.
   let total = 0;
-  world.forEach((tile) => { if (tile.province) total += tile.province.population; });
+  for (const province of world.provinces ?? []) total += province.econ?.population ?? 0;
   return total;
 }
 

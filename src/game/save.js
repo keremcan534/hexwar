@@ -10,7 +10,7 @@ import { createCity, englishCityName } from './cities.js';
 import { ensureEconomy } from './economy.js';
 import { ensureCommand } from './command.js';
 import { ensureBattles } from './battles.js';
-import { ensureProvinces } from './provinces.js';
+import { ensureProvinces, refreshProvinceOwner } from './provinces.js';
 import { ensurePolitics } from './politics.js';
 import { ensureConstruction } from './construction.js';
 
@@ -19,8 +19,24 @@ import { ensureConstruction } from './construction.js';
 // yol ve şehir binası katmanları kare kaydından da çıktı.
 // 9: silindirik sarmal dünya — worldgen çıktısı (falloff + periyodik gürültü)
 // değişti, eski kayıtların dünyası aynı seed'den artık üretilemez.
-export const SAVE_VERSION = 9;
+// 10: ekonomi 2-7 hexlik province kümelerine taşındı — kare satırından
+// province payload'ı çıktı, kümeler kendi bölümünde saklanıyor.
+export const SAVE_VERSION = 10;
 const STORAGE_KEY = 'hexwar.save';
+
+/**
+ * Bölümleme parmak izi. Kayıt, kümelerin seed'den birebir yeniden
+ * üretileceğine güvenir; worldgen kayarsa econ satırları yanlış kümelere
+ * oturur. Checksum uyuşmazsa yükleme sessiz bozulma yerine temiz reddeder.
+ */
+function partitionChecksum(world) {
+  let h = 2166136261 >>> 0;
+  for (const province of world.provinces ?? []) {
+    h = Math.imul(h ^ province.id, 16777619) >>> 0;
+    for (const idx of province.tileIdx) h = Math.imul(h ^ idx, 16777619) >>> 0;
+  }
+  return h;
+}
 
 /** Ulusun tur içinde değişen alanları. */
 const NATION_FIELDS = ['gold', 'infamy', 'alive', 'debt'];
@@ -30,6 +46,7 @@ export function serialize(game) {
   const turns = game.turns;
 
   // Sahiplik/kültür/işgal: yalnız üretilenden **farklı** olan kareler yazılır.
+  // Küme ekonomisi kare satırında DEĞİL kendi bölümünde durur (aşağıda).
   const tiles = [];
   world.forEach((tile, index) => {
     if (
@@ -40,16 +57,24 @@ export function serialize(game) {
     ) return;
     tiles.push([
       index, tile.owner, tile.culture, tile.heldSince ?? 0,
-      tile.province ? { ...tile.province } : null,
       tile.controller ?? tile.owner,
     ]);
   });
+
+  // Küme ekonomileri. Sanayi alanları da yazılır: runFactories her hafta
+  // tazeler ama yüklemeden sonraki İLK hafta gelişim baskısı bu değerleri
+  // okur — sıfırla başlatmak kaydet-yükle simülasyonunu dallandırıyordu.
+  const provinces = (world.provinces ?? []).map((province) => (
+    province.econ ? [province.id, { ...province.econ }] : null
+  )).filter(Boolean);
 
   return {
     version: SAVE_VERSION,
     savedAt: new Date().toISOString(),
     seed: world.seed,
     options: world.genOptions ?? {},
+    provinceChecksum: partitionChecksum(world),
+    provinces,
     turn: turns.turn,
     playerNation: turns.playerNation,
     // Tur zarinin durumu. Yazilmazsa yukleme zari basa sarar; savas ilanlari,
@@ -134,6 +159,11 @@ export function deserialize(game, data) {
   const world = game.world;
   const turns = game.turns;
 
+  // Bölümleme parmak izi tutmuyorsa worldgen kaymış demektir: econ satırları
+  // yanlış kümelere oturacağına yükleme temiz reddedilir.
+  if (Number.isFinite(data.provinceChecksum)
+    && data.provinceChecksum !== partitionChecksum(world)) return false;
+
   // 2) Üretimden gelen durumu temizle: kayıt tam durumu taşır.
   world.units.length = 0;
   world.cities.length = 0;
@@ -147,15 +177,24 @@ export function deserialize(game, data) {
   });
 
   // 3) Kareler
-  for (const [index, owner, culture, heldSince, province = null, controller = owner] of data.tiles) {
+  for (const [index, owner, culture, heldSince, controller = owner] of data.tiles) {
     const tile = world.tiles[index];
     if (!tile) continue;
     tile.owner = owner;
     tile.controller = Number.isInteger(controller) ? controller : owner;
     tile.culture = culture;
     tile.heldSince = heldSince;
-    if (province) tile.province = { ...province };
   }
+
+  // 3b) Küme ekonomileri: taze üretilen econ'un üzerine kayıttaki durum yazılır.
+  // Paylaşılan referans korunur — üye karelerin tile.province'i aynı nesne.
+  for (const [id, econ] of data.provinces ?? []) {
+    const province = world.provinces?.[id];
+    if (!province?.econ || !econ) continue;
+    Object.assign(province.econ, econ);
+  }
+  // Hukuki sahip üye çoğunluğundan: kayıt savaşın ortasında alınmış olabilir.
+  for (const province of world.provinces ?? []) refreshProvinceOwner(world, province);
 
   // 4) Uluslar
   for (const saved of data.nations) {

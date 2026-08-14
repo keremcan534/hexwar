@@ -30,7 +30,7 @@ function headless(seed) {
   Object.assign(game, {
     selected: null, selectedUnit: null, selected_: [], activeGeneral: null,
     reachable: null, autosaveEnabled: false, listeners: {},
-    renderer: { invalidateCache() {}, resize() {} },
+    renderer: { invalidateCache() {}, invalidateTiles() {}, resize() {} },
     camera: { setBounds() {}, fit() {} },
     emit() {}, requestRender() {}, autosave() {}, setSpeed() {},
   });

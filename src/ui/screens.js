@@ -598,9 +598,11 @@ export class Screens {
     const cities = this.myCities(me);
     const units = world.units.filter((u) => u.nationId === me.id);
     const population = me.economy?.population ?? 0;
-    const foreign = world.tiles.reduce((sum, tile) => (
-      tile.owner === me.id && tile.culture !== me.culture
-        ? sum + (tile.province?.population ?? 0) : sum
+    // Küme döngüsü: tile.province paylaşılan econ, kare kare toplamak aynı
+    // havuzu üye sayısı kadar sayardı.
+    const foreign = (world.provinces ?? []).reduce((sum, province) => (
+      province.owner === me.id && province.culture !== me.culture
+        ? sum + (province.econ?.population ?? 0) : sum
     ), 0);
     const culture = world.cultures[me.culture]?.name ?? 'Unknown';
     const capital = cities.find((city) => city.tile === me.capital) ?? cities[0];

@@ -214,10 +214,12 @@ function supplyShock(goodId, factor, weeks = 120, nationId = null) {
   // Olculecek ulke SOKTAN ONCE ve sabit kimlikle secilir. pickNation'i sonda
   // cagirmak senaryolar arasinda farkli ulkeleri karsilastirmaya yol aciyordu.
   const watched = nationId == null ? pickNation(game).id : nationId;
-  world.forEach((tile) => {
-    const rgo = RGO_TYPES[tile.province?.rgo];
-    if (rgo?.goodId === goodId) tile.province.rgoQuality *= factor;
-  });
+  // Kume dongusu: paylasilan econ'da kare basina `*=` carpani uye sayisi
+  // kadar uygulanip kaliteyi factor^hexes'e cekiyordu.
+  for (const province of world.provinces ?? []) {
+    const rgo = RGO_TYPES[province.econ?.rgo];
+    if (rgo?.goodId === goodId) province.econ.rgoQuality *= factor;
+  }
   // RGO'su olmayan mallar icin (or. clothes) fabrika kadrosu uzerinden vurulur.
   if (!Object.values(RGO_TYPES).some((r) => r.goodId === goodId)) {
     for (const n of world.nations) {

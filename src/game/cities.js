@@ -318,17 +318,19 @@ export function collectProvinceTotals(world) {
   const totals = world.nations.map(() => ({
     gold: 0, food: 0, timber: 0, iron: 0, provinces: 0,
   }));
-  world.forEach((tile) => {
-    if (tile.owner < 0) return;
-    const sum = totals[tile.owner];
-    if (!sum) return;
-    sum.provinces++;
-    const out = provinceOutput(tile);
+  for (const province of world.provinces ?? []) {
+    if (province.owner < 0) continue;
+    const sum = totals[province.owner];
+    if (!sum) continue;
+    // Yönetim yükü kare sayısıyla kalibre edildi; küme sayısı değil hex
+    // toplamı sayılır ki idari maliyet eski ölçekte kalsın.
+    sum.provinces += province.tileIdx.length;
+    const out = provinceOutput(world, province);
     sum.gold += out.gold;
     sum.food += out.food;
     sum.timber += out.timber;
     sum.iron += out.iron;
-  });
+  }
   return totals;
 }
 

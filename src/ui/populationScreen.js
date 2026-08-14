@@ -372,7 +372,8 @@ export function buildPopRows(world, nation, cohorts, sort) {
       tile,
       culture: world.cultures?.[cohort.culture]?.name ?? 'Stateless',
       confession: confessionOf(world, cohort.culture),
-      location: locationName(tile),
+      // Kohort artık kümeye bağlı; adı bölümlemeden gelir.
+      location: cohort.provinceName ?? locationName(tile),
       politics: cohortPolitics(nation, cohort),
       literacy: literacyOf(nation, cohort),
       militancy: militancyOf(cohort),

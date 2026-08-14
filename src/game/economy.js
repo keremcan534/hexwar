@@ -1339,15 +1339,15 @@ function rawProduction(world, nation, market) {
   const fertilized = fertilizer?.demand > 0
     ? clamp((fertilizer.fulfilled ?? 0) / fertilizer.demand, 0, 1) : 0;
   const farmBonus = 1 + fertilized * 0.25;
-  world.forEach((tile) => {
-    if (tile.owner !== nation.id) return;
-    const produced = provinceOutput(tile);
-    const track = RGO_TYPES[tile.province?.rgo]?.track;
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== nation.id || !province.econ) continue;
+    const produced = provinceOutput(world, province);
+    const track = RGO_TYPES[province.econ.rgo]?.track;
     for (const [id, amount] of Object.entries(produced)) {
       if (id === 'gold' || !GOODS[id] || !(amount > 0)) continue;
       output[id] += track === 'agriculture' ? amount * farmBonus : amount;
     }
-  });
+  }
   // Talep, ekilen alana orantılı: büyük tarım ülkesi daha çok gübre ister.
   const farmland = Object.entries(output).reduce((sum, [id, amount]) => (
     AGRICULTURE_GOODS.has(id) ? sum + amount : sum), 0);

@@ -58,7 +58,10 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
  */
 export function tileWarCost(tile) {
   if (!tile || tile.owner < 0 || !tile.terrain.passable) return 0;
-  const population = tile.province?.population ?? 0;
+  // tile.province paylaşılan KÜME econ'udur: nüfus hex payına indirgenir,
+  // yoksa warScore toplamı aynı havuzu üye sayısı kadar sayardı.
+  const hexes = tile.province?.hexes ?? 1;
+  const population = (tile.province?.population ?? 0) / hexes;
   const development = (tile.province?.agriculture ?? 0)
     + (tile.province?.extraction ?? 0) + (tile.province?.commerce ?? 0);
   return Math.max(1, Math.round(
