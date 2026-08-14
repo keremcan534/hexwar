@@ -13,6 +13,7 @@
 import { makeRng } from '../core/rng.js';
 import { policyOf } from './politics.js';
 import { controllerOf } from './control.js';
+import { DEFAULT_ZONE, ZONE_RULES } from '../world/macro.js';
 
 /**
  * Province kaynakları. Tahıl kasten baskın tutuldu: ordunun erzağı ve nüfusun
@@ -171,7 +172,13 @@ function initialProvinceEcon(world, province) {
   const avgOre = Math.max(timberSum / n, ironSum / n);
   const agriculture = avgFood >= 3 ? 2 : avgFood > 0 ? 1 : 0;
   const extraction = avgOre >= 2 ? 2 : avgOre > 0 ? 1 : 0;
-  const commerce = coastal || goldSum > 0 ? 1 : 0;
+  // Makro asimetri: nüfus ve gelişim bölgeden gelir. Doğu ovası nüfus devi,
+  // yoğun-batı ticaret/sanayi çekirdeği, sınır bölgeleri seyrek başlar.
+  const rule = ZONE_RULES[province.zone ?? DEFAULT_ZONE] ?? ZONE_RULES[DEFAULT_ZONE];
+  let commerce = coastal || goldSum > 0 ? 1 : 0;
+  if (rule.dev >= 1) commerce = Math.max(commerce, 1);
+  if (rule.dev >= 2 && coastal) commerce = 2;
+  population *= rule.popMul;
   const selected = weightedRgo(world, province);
   const track = RGO_TYPES[selected.id].track;
   return {
@@ -419,8 +426,11 @@ export function provinceOutput(world, province) {
   // Vergi tabanı kare başına eski ölçekte: nüfus hex payına indirgenir,
   // toplam hex sayısıyla geri çarpılır.
   const taxpayerScale = clamp(econ.population / (7000 * econ.hexes), 0, 2.2);
+  // Çekirdek olmayan toprak (koloni, fetih) tam vergi vermez: sömürü gelir
+  // getirir ama ev toprağı gibi işlemez — Vic2'nin non-core mantığı.
+  const coreScale = province.coreOf === province.owner ? 1 : 0.55;
   output.gold = (0.08 + (econ.baseGold ?? 0) * 0.05 + econ.commerce * 0.09)
-    * taxpayerScale * control * econ.hexes;
+    * taxpayerScale * control * econ.hexes * coreScale;
   return output;
 }
 

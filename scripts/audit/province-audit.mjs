@@ -13,6 +13,7 @@
 
 import { generateWorld } from '../../src/world/worldgen.js';
 import { generateNations } from '../../src/world/nations.js';
+import { DEFAULT_ZONE, ZONE_RULES } from '../../src/world/macro.js';
 import { finding, headless, n0, reportFindings, run, section, sub } from './harness.mjs';
 
 const SEED = 'province-audit';
@@ -54,21 +55,23 @@ for (const size of SIZES) {
       `ortme ${coverBad}, referans ${refBad}`);
   } else console.log('  Her gecilebilir kare tam bir province\'te; id\'ler cift yonlu tutarli.');
 
-  sub('2. boy histogrami');
+  sub('2. boy histogrami (bolge hedefine gore)');
+  // Boy hedefi makro bolgeden gelir: yogun-bati 4-5, bozkir/kolonizasyon
+  // alani 11-15. Tavan = bolge hedefi + katilim toleransi (bkz. provinces-gen).
   const histogram = new Map();
+  let over = 0;
   for (const p of provinces) {
     const n = p.tileIdx.length;
     histogram.set(n, (histogram.get(n) ?? 0) + 1);
+    const rule = ZONE_RULES[p.zone ?? DEFAULT_ZONE] ?? ZONE_RULES[DEFAULT_ZONE];
+    if (n > Math.max(rule.size[0], rule.size[1]) + 4) over++;
   }
   const sizes = [...histogram.keys()].sort((a, b) => a - b);
   console.log('  boy -> adet: ' + sizes.map((s) => `${s}:${histogram.get(s)}`).join('  '));
-  const over = provinces.filter((p) => p.tileIdx.length > 8).length;
-  const inBand = provinces.filter((p) => p.tileIdx.length >= 2 && p.tileIdx.length <= 7).length;
-  const share = inBand / Math.max(1, provinces.length);
-  if (over) finding('CRITICAL', 'boy tavani', '<= 8', `${over} province 8 uzeri`);
-  if (share < 0.8) {
-    finding('HIGH', 'boy bandi', 'provincelerin >= %80\'i 2-7 hex', `%${(share * 100).toFixed(1)}`);
-  } else console.log(`  2-7 bandinda %${(share * 100).toFixed(1)}.`);
+  console.log(`  ort boy ${(world.landCount / Math.max(1, provinces.length)).toFixed(2)}`);
+  if (over) {
+    finding('CRITICAL', 'boy tavani', 'bolge hedefi + 4 asilamaz', `${over} province tavan ustu`);
+  } else console.log('  Hicbir province bolge tavanini asmiyor.');
 
   sub('3. bitisiklik');
   let splitBad = 0;

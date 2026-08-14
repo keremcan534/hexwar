@@ -646,11 +646,15 @@ export class Hud {
     // Fethin bedeli karede görünsün: işgal süresi ve verim kaybı.
     if (nation && tile.culture >= 0) {
       const held = (world.turn ?? 0) - (tile.heldSince ?? 0);
-      const eff = tileEfficiency(tile, nation.culture, world.turn ?? 0);
+      const eff = tileEfficiency(tile, nation, world.turn ?? 0);
+      const acceptedCulture = tile.culture === nation.culture
+        || nation.accepted?.includes(tile.culture);
       if (isOccupied(tile)) stats.push(['Status', `occupied by ${controller?.name ?? '?'}`]);
       else if (eff === 0) stats.push(['Status', `postwar integration (${OCCUPATION_TURNS - held} weeks)`]);
       else if (eff < 1) stats.push(['Status', `foreign culture −${Math.round((1 - eff) * 100)}%`]);
-      else if (tile.culture !== nation.culture) stats.push(['Status', 'foreign culture']);
+      else if (acceptedCulture && tile.culture !== nation.culture) {
+        stats.push(['Status', 'accepted culture']);
+      }
     }
     if (tile.workedBy) stats.push(['Worked By', tile.workedBy.name]);
     if (nation) stats.push(['Nation Size', `${nation.tiles} hexes`]);
@@ -682,6 +686,10 @@ export class Hud {
       ).length;
       if (cluster.owner >= 0 && occupiedMembers > 0) {
         stats.unshift(['Occupation', `${occupiedMembers}/${cluster.tileIdx.length} hexes lost`]);
+      }
+      // Koloni/fetih toprakları çekirdek değildir: eksik vergi, gönülsüz asker.
+      if (cluster.owner >= 0 && cluster.coreOf !== cluster.owner) {
+        stats.unshift(['Territory', 'non-core (colonial)']);
       }
       stats.unshift(['Province', `${cluster.name} · ${cluster.tileIdx.length} hexes`]);
     }

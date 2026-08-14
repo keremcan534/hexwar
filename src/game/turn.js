@@ -83,6 +83,18 @@ export class TurnManager {
       if (!nation.alive) continue;
       // Her ülke başkentinde bir şehirle başlar.
       createCity(world, nation.capital, nation.id, cityName(this.rng, usedNames), 2, 3);
+      // Büyük güçler ikinci bir kent çekirdeğiyle başlar: sanayi/idare
+      // asimetrisi ilk günden okunur (bkz. macro.archetypePlan extraCity).
+      if (nation.extraCity) {
+        const second = (world.provinces ?? [])
+          .filter((p) => p.coreOf === nation.id && p.econ
+            && !p.tileIdx.some((idx) => world.tiles[idx].city)
+            && world.wrapDistance(p.center.q, p.center.r, nation.capital.q, nation.capital.r) >= 4)
+          .sort((a, b) => b.econ.population - a.econ.population)[0];
+        if (second) {
+          createCity(world, second.center, nation.id, cityName(this.rng, usedNames), 1, 2);
+        }
+      }
     }
     initEconomy(world);
     for (const nation of world.nations) {

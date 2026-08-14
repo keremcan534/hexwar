@@ -43,11 +43,22 @@ export function equipmentCostLabel(typeId) {
  */
 export const PROVINCE_POPULATION_FLOOR = 2000;
 
-/** Kümenin verebileceği asker sayısı. tile.province paylaşılan küme econ'udur. */
-export function provinceManpower(tile) {
+/**
+ * Kümenin verebileceği asker sayısı. tile.province paylaşılan küme econ'udur.
+ * Kültürü kabul edilmemiş toprak (koloni, fetih) tam asker vermez: halk
+ * imparatorluğun ordusuna gönülsüzdür — Vic2'nin accepted-culture mantığı.
+ */
+export function provinceManpower(world, tile) {
   const econ = tile?.province;
   if (!econ) return 0;
-  return Math.max(0, econ.population - PROVINCE_POPULATION_FLOOR * (econ.hexes ?? 1));
+  const base = Math.max(0, econ.population - PROVINCE_POPULATION_FLOOR * (econ.hexes ?? 1));
+  const cluster = world?.provinces?.[tile.provinceId];
+  if (!cluster || cluster.owner < 0) return base;
+  const nation = world.nations?.[cluster.owner];
+  const accepted = nation?.accepted?.length
+    ? nation.accepted.includes(cluster.culture)
+    : cluster.culture === nation?.culture;
+  return Math.round(base * (accepted ? 1 : 0.35));
 }
 
 /** Ulusun toplam insan gücü: sahip olunan huzurlu kümelerin toplamı. */
@@ -56,7 +67,7 @@ export function nationManpower(world, nationId) {
   for (const province of world.provinces ?? []) {
     if (province.owner !== nationId || !province.econ) continue;
     if (occupiedShareOf(world, province) > 0) continue;
-    total += provinceManpower(province.center);
+    total += provinceManpower(world, province.center);
   }
   return total;
 }
@@ -79,7 +90,7 @@ export function recruitmentRegion(world, tile) {
 
 export function regionManpower(world, tile) {
   return recruitmentRegion(world, tile).reduce(
-    (sum, center) => sum + provinceManpower(center), 0,
+    (sum, center) => sum + provinceManpower(world, center), 0,
   );
 }
 
@@ -120,13 +131,13 @@ export function canRecruit(world, nation, typeId) {
  */
 function drawManpower(world, source, amount) {
   const region = recruitmentRegion(world, source)
-    .filter((tile) => provinceManpower(tile) > 0)
-    .sort((a, b) => provinceManpower(b) - provinceManpower(a));
+    .filter((tile) => provinceManpower(world, tile) > 0)
+    .sort((a, b) => provinceManpower(world, b) - provinceManpower(world, a));
   const draws = [];
   let remaining = amount;
   for (const tile of region) {
     if (remaining <= 0) break;
-    const take = Math.min(remaining, provinceManpower(tile));
+    const take = Math.min(remaining, provinceManpower(world, tile));
     if (take <= 0) continue;
     tile.province.population -= take;
     draws.push({ q: tile.q, r: tile.r, men: take });

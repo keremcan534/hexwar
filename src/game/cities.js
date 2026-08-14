@@ -215,7 +215,8 @@ export function tileYield(tile, ctx) {
   const base = tile.terrain.yields;
   if (!ctx) return base;
 
-  const factor = tileEfficiency(tile, ctx.culture, ctx.turn);
+  // Ülke nesnesi geçilir: kabul edilen kültürler tam verimle çalışır.
+  const factor = tileEfficiency(tile, ctx.nation ?? ctx.culture, ctx.turn);
   if (factor === 1) return base;
   return {
     food: base.food * factor,
@@ -227,8 +228,10 @@ export function tileYield(tile, ctx) {
 
 /** Şehrin sahibine göre üretim bağlamı. */
 function cityContext(world, city) {
+  const nation = world?.nations?.[city.nationId] ?? null;
   return {
-    culture: world?.nations?.[city.nationId]?.culture ?? -1,
+    nation,
+    culture: nation?.culture ?? -1,
     turn: world?.turn ?? 0,
   };
 }

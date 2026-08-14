@@ -9,13 +9,18 @@
 
 import { makeRng } from '../core/rng.js';
 import { growRegions } from './regions.js';
+import { DEFAULT_ZONE, ZONE_RULES } from './macro.js';
 
-/** Hedef ortalama boy; growRegions kotası ve tohum yoğunluğu buna göre. */
-const TARGET_SIZE = 4.5;
-/** growRegions kotası: tek province bundan büyük büyüyemez. */
-const GROW_CAP = 7;
-/** Artık onarımı katılımlarıyla üst tolerans. */
-const MAX_SIZE = 8;
+/**
+ * Province boyu makro bölgeden gelir: yoğun-batı küçük (siyasi doku),
+ * bozkır/kolonizasyon alanı iri (okunurluk + "büyük ama boş" hissi).
+ * [kıyı, iç] hedef çifti; katılım toleransı hedef+4.
+ */
+function sizeTargetOf(tile) {
+  const rule = ZONE_RULES[tile.zone ?? DEFAULT_ZONE] ?? ZONE_RULES[DEFAULT_ZONE];
+  return tile.coastal ? rule.size[0] : rule.size[1];
+}
+
 /** Tohum ızgarası hücre kenarı (offset kolon/satır). 2x2 hücre ≈ 4 hex. */
 const SEED_CELL = 2;
 
@@ -53,7 +58,14 @@ function gridSeeds(world, rng) {
           if (t.terrain.passable) bucket.push(t);
         }
       }
-      if (bucket.length) seeds.push(rng.pick(bucket));
+      if (!bucket.length) continue;
+      const pick = rng.pick(bucket);
+      // Tohum yoğunluğu bölge hedefiyle ölçeklenir: kota bir TAVANDIR, boyu
+      // asıl belirleyen komşu tohum mesafesidir. Hücre ~4 hex; iri hedefli
+      // bölgede tohumların çoğu atlanır ki kalanlar hedefe kadar büyüsün.
+      if (rng.chance(Math.min(1, (SEED_CELL * SEED_CELL) / sizeTargetOf(pick)))) {
+        seeds.push(pick);
+      }
     }
   }
   return seeds;
@@ -64,7 +76,7 @@ function gridSeeds(world, rng) {
  * komşu province'e katılır (bitişiklik bozulmaz). Hiçbir province'e değmeyen
  * bileşenler (adalar, kapalı cepler) kendi province'lerini kurar.
  */
-function repairOrphans(world, assignment, counts, rng) {
+function repairOrphans(world, assignment, counts, caps, rng) {
   // Katılım geçişi: province'li komşusu olan artık, en küçük komşuya bağlanır.
   const joinPass = () => {
     for (;;) {
@@ -76,12 +88,15 @@ function repairOrphans(world, assignment, counts, rng) {
         for (const n of world.neighbors(tile)) {
           const region = assignment.get(n);
           if (region === undefined) continue;
+          // Katılım toleransı bölge hedefine bağlı: iri sınır province'i
+          // biraz daha şişebilir, yoğun-batı kümesi şişemez.
+          if (counts[region] >= (caps[region] ?? 8) + 4) continue;
           if (counts[region] < bestCount) {
             bestCount = counts[region];
             best = region;
           }
         }
-        if (best < 0 || bestCount >= MAX_SIZE) return;
+        if (best < 0) return;
         assignment.set(tile, best);
         counts[best]++;
         changed = true;
@@ -111,10 +126,12 @@ function repairOrphans(world, assignment, counts, rng) {
     });
     if (!component) return;
 
-    if (component.length <= GROW_CAP) {
+    const componentTarget = sizeTargetOf(component[0]);
+    if (component.length <= componentTarget) {
       // İzole ada ya da dolu komşulara sıkışmış cep: kendi province'i olur.
       const region = counts.length;
       counts.push(0);
+      caps.push(componentTarget);
       for (const member of component) {
         assignment.set(member, region);
         counts[region]++;
@@ -122,17 +139,20 @@ function repairOrphans(world, assignment, counts, rng) {
       continue;
     }
     // Büyük bileşen kendi içinde bölünür.
-    const seedCount = Math.ceil(component.length / TARGET_SIZE);
+    const seedCount = Math.ceil(component.length / componentTarget);
     const stride = component.length / seedCount;
     const seeds = [];
     for (let i = 0; i < seedCount; i++) seeds.push(component[Math.floor(i * stride)]);
     const sub = growRegions(world, seeds, {
       canEnter: (t) => componentSet.has(t) && !assignment.has(t),
       stepCost: () => 1 + rng.range(0, 0.4),
-      budget: () => GROW_CAP,
+      budget: (i) => sizeTargetOf(seeds[i]),
     });
     const offset = counts.length;
-    for (let i = 0; i < seeds.length; i++) counts.push(0);
+    for (const seed of seeds) {
+      counts.push(0);
+      caps.push(sizeTargetOf(seed));
+    }
     for (const [member, sr] of sub.assignment) {
       assignment.set(member, offset + sr);
       counts[offset + sr]++;
@@ -167,13 +187,16 @@ export function generateProvinces(world) {
   world.forEach((tile) => { tile.provinceId = -1; });
 
   const seeds = gridSeeds(world, rng);
+  const caps = seeds.map((seed) => sizeTargetOf(seed));
   const { assignment, counts } = growRegions(world, seeds, {
     canEnter: (tile) => tile.terrain.passable,
     // Düşük jitter: kompakt ama tam altıgen olmayan, organik kümeler.
-    stepCost: () => 1 + rng.range(0, 0.4),
-    budget: () => GROW_CAP,
+    // Bölge sınırında büyüme yavaşlar: iri bozkır kümesi yoğun-batıya taşmasın.
+    stepCost: (tile, i) => (tile.zone === seeds[i].zone ? 1 : 2.4) + rng.range(0, 0.4),
+    // Kota tohumun bölgesinden: yoğun-batı 4-5, bozkır/kolonizasyon 11-15.
+    budget: (i) => caps[i],
   });
-  repairOrphans(world, assignment, counts, rng);
+  repairOrphans(world, assignment, counts, caps, rng);
 
   // Kümeleri topla; boşları at (kota yarışını tümden kaybeden tohumlar).
   const buckets = new Map();
@@ -195,10 +218,20 @@ export function generateProvinces(world) {
     const center = centerOf(world, members);
     let moveCost = 0;
     let coastal = false;
+    const zoneVotes = new Map();
     for (const t of members) {
       t.provinceId = id;
       moveCost += t.terrain.moveCost;
       if (t.coastal) coastal = true;
+      if (t.zone) zoneVotes.set(t.zone, (zoneVotes.get(t.zone) ?? 0) + 1);
+    }
+    let zone = DEFAULT_ZONE;
+    let zoneBest = 0;
+    for (const [z, votes] of zoneVotes) {
+      if (votes > zoneBest || (votes === zoneBest && z < zone)) {
+        zone = z;
+        zoneBest = votes;
+      }
     }
     const nameRng = makeRng(`${world.seed}-provname-${center.q}:${center.r}`);
     return {
@@ -208,8 +241,12 @@ export function generateProvinces(world) {
       center,
       moveCost: moveCost / members.length,
       coastal,
+      // Makro bölge (üye çoğunluğu): arketip yerleşimi ve ekonomi çarpanları.
+      zone,
       culture: -1,
       owner: -1,
+      // Çekirdek toprak: üretimde ev toprağı olan ülke; koloniler -1 kalır.
+      coreOf: -1,
       neighbors: [],
     };
   });

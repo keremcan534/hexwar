@@ -1,10 +1,10 @@
-// Kültür bölgeleri: ülkelerden az sayıda ve büyük. Ülkeler bunların üstüne
-// kurulduğu için sınırlar doğuştan "yapay" olur — bir ülkenin toprağında
-// başka halkların yaşaması kuraldır, istisna değil.
-//
-// Bu adımda kültürün oyun etkisi yok; hoşnutsuzluk ve infamy 3. adımda gelecek.
+// Kültür bölgeleri: makro bölge ailelerinden doğar (bkz. macro.ZONE_CULTURES).
+// Yoğun-batı 3 kültür konuşur, güney kıtası 4 parçalı, doğu ovası 2 dev halk.
+// Ülkeler bunların üstüne kurulduğu için sınırlar doğuştan "yapay" olur — bir
+// ülkenin toprağında başka halkların yaşaması kuraldır, istisna değil.
 
 import { growRegions, pickSeeds } from './regions.js';
+import { DEFAULT_ZONE, ZONE_CULTURES } from './macro.js';
 
 const STEM = ['Ar', 'Ves', 'Kest', 'Morv', 'Dun', 'Sel', 'Tarn', 'Ilv', 'Gwen', 'Ozr', 'Bask', 'Ren', 'Vol', 'Amr', 'Sirn', 'Kald'];
 const TAIL = ['en', 'ani', 'ir', 'oy', 'ash', 'uk', 'iel', 'ar', 'os', 'une'];
@@ -38,21 +38,40 @@ export function generateCultures(world, rng, options = {}) {
     return [];
   }
 
-  // Ülkelerden çok daha az: bir kültür bölgesi birkaç ülkeyi kapsasın.
-  const count = options.count
-    ?? Math.max(3, Math.min(14, Math.round(land.length / 260)));
-  const seeds = pickSeeds(
-    land,
-    count,
-    rng,
-    (a, b) => world.wrapDistance(a.q, a.r, b.q, b.r),
-    Math.max(6, Math.floor(Math.min(world.cols, world.rows) / Math.sqrt(count))),
-  );
+  // Tohumlar makro bölge ailelerinden: bölge başına ZONE_CULTURES kadar,
+  // bölge içinde birbirinden uzak. Küçük haritada bölge cılız kalırsa
+  // (kara payı düşükse) tohum sayısı bölge karesine göre kısılır.
+  const seeds = [];
+  const byZone = new Map();
+  for (const tile of land) {
+    const zone = tile.zone ?? DEFAULT_ZONE;
+    if (!byZone.has(zone)) byZone.set(zone, []);
+    byZone.get(zone).push(tile);
+  }
+  const zoneOrder = [...byZone.keys()].sort();
+  for (const zone of zoneOrder) {
+    const tiles = byZone.get(zone);
+    const want = options.count != null
+      ? 1
+      : Math.max(1, Math.min(ZONE_CULTURES[zone] ?? 1, Math.floor(tiles.length / 30) || 1));
+    seeds.push(...pickSeeds(
+      tiles,
+      want,
+      rng,
+      (a, b) => world.wrapDistance(a.q, a.r, b.q, b.r),
+      Math.max(4, Math.floor(Math.sqrt(tiles.length / want))),
+    ));
+  }
 
   const { assignment, counts } = growRegions(world, seeds, {
     // Kültürler denizi aşar: yoksa her ada kendi başına kültürsüz kalıyor.
     canEnter: (tile) => tile.terrain.passable || tile.terrain.navigable,
-    stepCost: (tile) => (tile.terrain.water ? 3 : 1 + rng.range(0, 1.6)),
+    // Bölge dışına yayılmak pahalı: aileler kendi coğrafyasında kalır ama
+    // sınır boylarında iç içe geçebilir (Vic2'nin karışık kuşakları).
+    stepCost: (tile, i) => {
+      const base = tile.terrain.water ? 3 : 1 + rng.range(0, 1.6);
+      return tile.terrain.water || tile.zone === seeds[i].zone ? base : base + 2.2;
+    },
   });
 
   const used = new Set();

@@ -21,7 +21,9 @@ import { ensureConstruction } from './construction.js';
 // değişti, eski kayıtların dünyası aynı seed'den artık üretilemez.
 // 10: ekonomi 2-7 hexlik province kümelerine taşındı — kare satırından
 // province payload'ı çıktı, kümeler kendi bölümünde saklanıyor.
-export const SAVE_VERSION = 10;
+// 11: makro dünya şablonu — kıta iskeleti, bölge bazlı province boyları ve
+// arketip ülke yerleşimi worldgen çıktısını kökten değiştirdi.
+export const SAVE_VERSION = 11;
 const STORAGE_KEY = 'hexwar.save';
 
 /**

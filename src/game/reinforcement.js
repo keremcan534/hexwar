@@ -68,7 +68,7 @@ function manpowerSources(world, nationId, regiment) {
     if (province.owner === nationId && province.econ && !seen.has(province.id)
       && occupiedShareOf(world, province) === 0) rest.push(province.center);
   }
-  rest.sort((a, b) => provinceManpower(b) - provinceManpower(a));
+  rest.sort((a, b) => provinceManpower(world, b) - provinceManpower(world, a));
   return preferred.concat(rest);
 }
 
@@ -77,7 +77,7 @@ function drawManpower(world, nationId, regiment, requested) {
   let drawn = 0;
   for (const tile of manpowerSources(world, nationId, regiment)) {
     if (remaining <= 0) break;
-    const take = Math.min(remaining, provinceManpower(tile));
+    const take = Math.min(remaining, provinceManpower(world, tile));
     if (take <= 0) continue;
     tile.province.population -= take;
     appendDraw(regiment, tile, take);

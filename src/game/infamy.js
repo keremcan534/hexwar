@@ -72,13 +72,21 @@ export function decayInfamy(world) {
 /**
  * Karenin verim çarpanı: taze işgal sıfır, yabancı halk eksik üretir.
  * Fethin 45-50 turda kâra geçmesini sağlayan yer burası.
+ *
+ * `cultureOrNation` bir kültür id'si YA DA ülke nesnesi olabilir: ülke
+ * verilirse kabul edilen kültür listesi (accepted) tam sayılır — bileşik
+ * monarşinin ikinci halkı "yabancı" değildir.
  */
-export function tileEfficiency(tile, nationCulture, turn) {
+export function tileEfficiency(tile, cultureOrNation, turn) {
   if (tile.owner < 0) return 1;
   if (isOccupied(tile)) return 0;
   const held = turn - (tile.heldSince ?? 0);
   if (held < OCCUPATION_TURNS) return 0;
-  if (tile.culture >= 0 && nationCulture >= 0 && tile.culture !== nationCulture) {
+  const nation = typeof cultureOrNation === 'object' && cultureOrNation !== null
+    ? cultureOrNation : null;
+  const primary = nation ? nation.culture : cultureOrNation;
+  if (tile.culture >= 0 && primary >= 0 && tile.culture !== primary) {
+    if (nation?.accepted?.includes(tile.culture)) return 1;
     return 1 - FOREIGN_YIELD_PENALTY;
   }
   return 1;

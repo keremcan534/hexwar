@@ -6,6 +6,7 @@ import { classify, SEA_LEVEL, TERRAIN } from './terrain.js';
 import { DIRS, SQRT3, axialToOffset, hexDistance, hexToPixel, offsetToAxial, wrapCol } from '../core/hex.js';
 import { generateCultures } from './cultures.js';
 import { generateProvinces } from './provinces-gen.js';
+import { makeMacro } from './macro.js';
 
 /** Hex dış yarıçapı (dünya birimi). Ekran ölçeği kamera zoom'undan gelir. */
 export const HEX_SIZE = 26;
@@ -74,6 +75,9 @@ export function generateWorld(seed, options = {}) {
   const opt = { ...DEFAULT_OPTIONS, ...options };
   const rng = makeRng(seed);
   const world = new World(opt.cols, opt.rows, seed);
+  // Makro şablon kendi rng dalını kullanır; ana akış (gürültü permütasyonları,
+  // kültürler) kaymaz. Bloblar döndürme+jitter'ı kuruluşta alır.
+  const macro = makeMacro(seed);
 
   const elevNoise = makeNoise2D(rng);
   const moistNoise = makeNoise2D(rng);
@@ -99,7 +103,13 @@ export function generateWorld(seed, options = {}) {
       // continentality: yüksek -> alçak yerler bastırılır, kara tek parça toplanır
       e = Math.pow(e, 1 + opt.continentality * 1.2);
       e += fbm(detailNoise, u * 12, v * 12, { octaves: 3, periodX: 12 }) * 0.12 - 0.06;
-      raw[row * opt.cols + col] = e * falloff + (falloff - 1) * 0.15;
+      // Kıtaların iskeleti makro maskeden gelir; gürültü kıyıları ve iç dokuyu
+      // bozar ama blobsuz bantlar (okyanus koridorları) karaya dönemez.
+      // Sıradağ itmesi yüzdelik sıralamada tepeye taşır -> aşılmaz zincirler.
+      raw[row * opt.cols + col] = macro.mask(u, v)
+        + (e - 0.5) * 0.62
+        + macro.ridge(u, v)
+        - (1 - falloff) * 1.3;
     }
   }
 
@@ -154,6 +164,9 @@ export function generateWorld(seed, options = {}) {
         owner: -1,      // ülke index'i, -1 = sahipsiz
         culture: -1,    // halk id'si; ülke sınırından bağımsız
         continent: -1,  // kara kütlesi id'si
+        // Makro bölge: province boyu, nüfus/gelişim çarpanı ve arketip
+        // yerleşimi buradan okur. Deniz bölgesizdir.
+        zone: terrain.water ? null : macro.zoneOf(u, v),
       };
 
       world.tiles.push(tile);
@@ -169,6 +182,8 @@ export function generateWorld(seed, options = {}) {
   generateProvinces(world);
   // Kayıt yalnız üretilenden sapan kareleri yazar; taban kültür karşılaştırma için.
   world.forEach((t) => { t.baseCulture = t.culture; });
+  // Arketip ülke yerleşimi bölge çapalarını arar (bkz. nations.js).
+  world.macroAnchors = macro.anchors();
   // Kaydı aynı ayarlarla geri kurabilmek için üretim seçenekleri saklanır.
   world.genOptions = { ...opt };
   computeBounds(world);

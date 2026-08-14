@@ -2,7 +2,8 @@
 
 import { makeRng } from '../core/rng.js';
 import { makeFlag } from './flags.js';
-import { growRegions, pickSeeds } from './regions.js';
+import { growRegions } from './regions.js';
+import { archetypePlan } from './macro.js';
 
 const SYL_START = ['Ar', 'Bel', 'Cor', 'Dra', 'El', 'Fen', 'Gor', 'Hal', 'Ir', 'Kaz', 'Lor', 'Mar', 'Nor', 'Oss', 'Pra', 'Quen', 'Rav', 'Sar', 'Tur', 'Ul', 'Vas', 'Wyn', 'Yar', 'Zen'];
 const SYL_MID = ['a', 'e', 'i', 'o', 'an', 'en', 'ir', 'or', 'al', 'ath', 'esh', 'ov', 'ur', 'yl'];
@@ -114,35 +115,77 @@ export function generateNations(world, options = {}) {
   const {
     seed = world.seed + '-nations',
     count = null,
-    /** Ülke başına hedef kare sayısı; boyut çeşitliliği buradan gelir. */
-    minShare = 0.5,
-    maxShare = 1.8,
   } = options;
 
   const rng = makeRng(seed);
-  const land = world.tiles.filter((t) => !t.terrain.water && t.terrain.passable);
   world.forEach((t) => { t.owner = -1; });
-  for (const province of world.provinces ?? []) province.owner = -1;
+  for (const province of world.provinces ?? []) {
+    province.owner = -1;
+    province.coreOf = -1;
+  }
 
-  if (land.length === 0 || !world.provinces?.length) {
+  if (!world.provinces?.length) {
     world.nations = [];
     return [];
   }
 
-  // Tavan 30: 200x160 haritada kara ~11k kareye çıkıyor; 22'de dünya birkaç
-  // dev imparatorluğa bölünüp savaş çeşitliliği ölüyordu.
-  const nationCount = count ?? Math.max(4, Math.min(30, Math.round(land.length / 95)));
-  // Ülkeler province GRAFINDA doğar ve büyür: sınırlar hiçbir zaman bir
-  // province'in içinden geçmez (CK3 kuralı — bordergore imkânsız).
-  const seedProvinces = pickNationSeeds(world, nationCount, rng);
+  // Arketip planı: her ülkenin ROLÜ, bölgesi ve province hedefi şablondan
+  // gelir (bkz. macro.archetypePlan + docs/makro-dunya.md). Dünyanın kalanı
+  // SAHİPSİZ kalır — sınır boyları ve kolonizasyon alanı bilerek açıktır.
+  // `count` (menü kaydıracı) plan listesini kırpar: büyükler önce doğar.
+  const plan = archetypePlan(rng);
+  const specs = count != null ? plan.slice(0, Math.max(1, count)) : plan;
+  const anchors = world.macroAnchors ?? {};
+  const graph = {
+    neighbors: (province) => province.neighbors.map((i) => world.provinces[i]),
+  };
+  const anchorTileOf = (zone) => {
+    const anchor = anchors[zone];
+    if (!anchor) return world.tiles[Math.floor(world.tiles.length / 2)];
+    const col = Math.min(world.cols - 1, Math.max(0, Math.floor(anchor.u * world.cols)));
+    const row = Math.min(world.rows - 1, Math.max(0, Math.floor(anchor.v * world.rows)));
+    return world.tileAt(col, row);
+  };
+  const distanceToAnchor = (province, anchorTile) => world.wrapDistance(
+    province.center.q, province.center.r, anchorTile.q, anchorTile.r,
+  );
+  const zoneAllowed = (province, spec) => province.zone === spec.zone
+    || province.zone === 'acik-deniz';
 
+  // Yerleşim: sırayla, bölge içinde çapaya en yakın uygun kümeden büyüme.
   const usedNames = new Set();
-  const nations = seedProvinces.map((province, i) => {
+  const nations = [];
+  const claimCluster = (province, nationId, core) => {
+    province.owner = nationId;
+    province.coreOf = core ? nationId : -1;
+    for (const idx of province.tileIdx) world.tiles[idx].owner = nationId;
+  };
+  const growHome = (spec, seedProvince, nationId) => {
+    const { assignment } = growRegions(graph, [seedProvince], {
+      canEnter: (province) => province.owner === -1 && zoneAllowed(province, spec),
+      stepCost: (province) => province.moveCost + rng.range(0, 2.2),
+      budget: () => spec.provinces,
+    });
+    for (const [province] of assignment) claimCluster(province, nationId, true);
+  };
+
+  for (const spec of specs) {
+    const anchorTile = anchorTileOf(spec.zone);
+    const candidates = world.provinces.filter((province) => (
+      province.owner === -1
+      && province.zone === spec.zone
+      && (!spec.coastal || province.coastal)
+      && (province.tileIdx.length >= 3 || spec.zone.includes('adalar'))
+    ));
+    // Bölge doluysa (küçük harita, kırpılmış plan) ülke doğmaz; plan esnektir.
+    if (!candidates.length) continue;
+    candidates.sort((a, b) => distanceToAnchor(a, anchorTile) - distanceToAnchor(b, anchorTile));
+    const seedProvince = candidates[0];
+    const id = nations.length;
     const name = makeName(rng, usedNames);
-    const avgShare = land.length / seedProvinces.length;
-    const palette = makeColor(i, rng);
-    return {
-      id: i,
+    const palette = makeColor(id, rng);
+    const nation = {
+      id,
       name,
       fullName: `${name} ${rng.pick(TITLES)}`,
       color: palette.color,
@@ -151,76 +194,71 @@ export function generateNations(world, options = {}) {
       sat: palette.sat,
       light: palette.light,
       flag: makeFlag(rng, palette),
-      capital: province.center,
-      // Kurucu kültür: başkentin halkı. Ülke sınırlarıyla kültür sınırları
-      // örtüşmediği için bu, ileride hoşnutsuzluğun ölçütü olacak.
-      culture: province.culture ?? -1,
+      capital: seedProvince.center,
+      culture: seedProvince.culture ?? -1,
+      // Kabul edilen kültürler: birincil + (bileşik monarşi gibi) komşu halklar.
+      accepted: [],
+      archetype: spec.role,
+      devTier: spec.dev ?? 0,
+      extraCity: Boolean(spec.extraCity),
       tiles: 0,
       provinces: 0,
       population: 0,
       coastal: false,
-      // Yayılma hızı: küçük değer = daha hızlı büyür = daha geniş ülke.
       aggression: rng.range(0.7, 1.4),
-      // Teknoloji eğilimi: YZ'lerin farklı yollardan büyümesini sağlar.
       focus: rng.pick(['economy', 'military', 'admin']),
-      // Bütçe kare cinsinden tutulur; province grafında paya bölünür.
-      budget: Math.round(avgShare * rng.range(minShare, maxShare)),
     };
-  });
+    nations.push(nation);
+    growHome(spec, seedProvince, id);
 
-  growNations(world, nations, seedProvinces, rng);
+    // Deniz aşırı koloni: Hindistan-benzeri yarımadanın büyük payı — çekirdek
+    // DEĞİL, kültürü kabul edilmemiş, ama ekonomik olarak değerli.
+    if (spec.colony) {
+      const colonyAnchor = anchorTileOf(spec.colony.zone);
+      const pool = world.provinces.filter(
+        (province) => province.owner === -1 && province.zone === spec.colony.zone,
+      );
+      const target = Math.round(pool.length * spec.colony.share);
+      if (target > 0 && pool.length) {
+        pool.sort((a, b) => distanceToAnchor(a, colonyAnchor) - distanceToAnchor(b, colonyAnchor));
+        const { assignment } = growRegions(graph, [pool[0]], {
+          canEnter: (province) => province.owner === -1
+            && province.zone === spec.colony.zone,
+          stepCost: (province) => province.moveCost + rng.range(0, 1.4),
+          budget: () => target,
+        });
+        for (const [province] of assignment) claimCluster(province, id, false);
+      }
+    }
+    // Ada üsleri: deniz yolunun basamak taşları (tek küme, çekirdek değil).
+    if (spec.bases) {
+      const baseAnchor = anchorTileOf(spec.bases.zone);
+      const pool = world.provinces.filter(
+        (province) => province.owner === -1 && province.zone === spec.bases.zone,
+      ).sort((a, b) => distanceToAnchor(a, baseAnchor) - distanceToAnchor(b, baseAnchor));
+      for (const province of pool.slice(0, spec.bases.provinces)) {
+        claimCluster(province, id, false);
+      }
+    }
+    // Kabul edilen kültürler: ev topraklarında en yaygın yabancı halklar.
+    const votes = new Map();
+    for (const province of world.provinces) {
+      if (province.coreOf !== id || province.culture < 0) continue;
+      if (province.culture === nation.culture) continue;
+      votes.set(province.culture, (votes.get(province.culture) ?? 0) + 1);
+    }
+    const acceptedNeighbors = [...votes.entries()]
+      .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+      .slice(0, spec.acceptNeighbors ?? 0)
+      .map(([cultureId]) => cultureId);
+    nation.accepted = [nation.culture, ...acceptedNeighbors].filter((c) => c >= 0);
+  }
+
   separateNeighborColors(world, nations, rng);
   computeStats(world, nations);
 
   world.nations = nations;
   return nations;
-}
-
-/** Ortalama province boyu: kare bütçesini province sayısına çevirir. */
-function avgProvinceSize(world) {
-  let members = 0;
-  for (const province of world.provinces) members += province.tileIdx.length;
-  return members / world.provinces.length;
-}
-
-/**
- * Tohum province'leri: birbirinden uzak, minik adalara ve kırıntı
- * province'lere başkent kurmayan (1-2 hexlik kümede başkent sıkışıyordu).
- */
-function pickNationSeeds(world, count, rng) {
-  const roomy = world.provinces.filter((p) => p.tileIdx.length >= 3);
-  const mainland = roomy.filter(
-    (p) => (world.continentSizes?.[p.center.continent] ?? 0) >= 12,
-  );
-  const pool = mainland.length >= count ? mainland
-    : roomy.length >= count ? roomy : world.provinces;
-  return pickSeeds(
-    pool,
-    count,
-    rng,
-    (a, b) => world.wrapDistance(a.center.q, a.center.r, b.center.q, b.center.r),
-    Math.max(4, Math.floor(Math.min(world.cols, world.rows) / Math.sqrt(count))),
-  );
-}
-
-function growNations(world, nations, seedProvinces, rng) {
-  // growRegions yalnız `neighbors` çağırır; province grafı adaptörle verilir.
-  const graph = {
-    neighbors: (province) => province.neighbors.map((i) => world.provinces[i]),
-  };
-  const provinceBudget = nations.map(
-    (n) => Math.max(1, Math.round(n.budget / avgProvinceSize(world))),
-  );
-  const { assignment } = growRegions(graph, seedProvinces, {
-    canEnter: () => true,
-    // Üye arazi maliyeti ortalaması + jitter -> tırtıklı ama province-hizalı sınır.
-    stepCost: (province, i) => (province.moveCost + rng.range(0, 2.2)) * nations[i].aggression,
-    budget: (i) => provinceBudget[i],
-  });
-  for (const [province, id] of assignment) {
-    province.owner = id;
-    for (const idx of province.tileIdx) world.tiles[idx].owner = id;
-  }
 }
 
 function computeStats(world, nations) {

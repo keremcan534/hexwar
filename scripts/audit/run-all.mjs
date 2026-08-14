@@ -14,6 +14,7 @@ const AUDITS = [
   ['wrap', 'Silindirik sarmal topoloji'],
   ['scale', '200x160 olcek profili'],
   ['province', 'Province bolumlemesi'],
+  ['world', 'Makro dunya sablonu'],
   ['tax', 'C. Vergi uc deger testi'],
   ['tariff', 'D. Gumruk istismar testi'],
   ['budget', 'E/F/G. Butce kaydiraclari, sifir ve tavan devlet'],
