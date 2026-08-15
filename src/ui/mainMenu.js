@@ -1,8 +1,11 @@
 // Ana menü: oyunun açılış perdesi.
 //
-// Kurgu: tam ekran sinematik sahne + SOLDA dikey cam raf (bkz. styles.css
-// "18. ANA MENU"). Rome II'deki gibi sahneli ve ağır, ama oyunun kendi
-// dilinde: koyu cam, pirinç saç teli çizgi, keskin köşe.
+// Kurgu (bkz. styles.css "18. ANA MENU"): kimlik ÜSTTE ortada, amblem
+// MERKEZDE, tek birincil eylem ALTTA, seçenekler SOLDA dar bir ikon şeridinde.
+// Şerit fareyle üzerine gelince sağa açılıp adları gösterir; alt görünümler
+// (kurulum, ayarlar, künye) şeridin yanından açılan çekmeceye düşer.
+// Grand strategy açılışları gibi sahneli ve ağır, ama oyunun kendi dilinde:
+// koyu cam, pirinç saç teli çizgi, keskin köşe.
 //
 // Fon resimleri ve müzik depoya konmuş varlıklardır (assets/menu, assets/music).
 // Projenin geri kalanı dokularını çalışma anında üretir (bkz. render/textures.js);
@@ -43,8 +46,8 @@ export const BUILD_LABEL = `v0.1.0 · save ${SAVE_VERSION}`;
  *   label    — ayarlardaki sahne etiketi
  *   tagline  — panelin motto satırı
  *
- * Ortak kural: metin rafı SOLDA durur, o yüzden her sahnenin sol yarısı koyu
- * kalmalı ve parlak odak sağa düşmeli.
+ * Ortak kural: kimlik ve amblem sahnenin ORTASINDA durur, o yüzden her sahnenin
+ * merkezi sakin kalmalı; kalabalık ve parlak odak kenarlara düşmeli.
  *
  * Resimler JPEG: fon fotoğrafı PNG olarak 2,4 MB tutuyordu ve menü sekiz sahne
  * arasında dönüyor. Kalite 92'de fark görünmüyor, boyut yedide bire iniyor.
@@ -183,7 +186,12 @@ export class MainMenu {
       settings: $('menu-settings'),
       credits: $('menu-credits'),
       exit: $('menu-exit'),
-      actions: $('menu-actions'),
+      drawer: $('menu-drawer'),
+      drawerTitle: $('menu-drawer-title'),
+      drawerClose: $('menu-drawer-close'),
+      cta: $('menu-cta'),
+      ctaLabel: $('menu-cta-label'),
+      ctaNote: $('menu-cta-note'),
       setup: $('menu-setup'),
       options: $('menu-options'),
       creditsView: $('menu-credits-view'),
@@ -299,6 +307,12 @@ export class MainMenu {
     el.settings.onclick = () => this.showView('options');
     el.credits.onclick = () => this.showView('credits');
     el.back.onclick = () => this.showView('actions');
+    el.drawerClose.onclick = () => this.showView('actions');
+    // Birincil eylem: kayıt varsa kampanyayı sürdürür, yoksa yeni dünya kurar.
+    el.cta.onclick = () => {
+      if (!this.resumable) this.game.newWorld();
+      this.close();
+    };
     el.build.onclick = () => this.build();
     el.load.onclick = () => this.loadSave();
     el.exit.onclick = () => this.exit();
@@ -420,17 +434,27 @@ export class MainMenu {
     this.el.exit.querySelector('small').textContent = 'close the tab to leave';
   }
 
-  /** Görünüm değiştirir: ana liste / dünya kurulumu / ayarlar / künye. */
+  /**
+   * Görünüm değiştirir. Ana listede çekmece kapalıdır; diğerlerinde çekmece
+   * şeridin YANINDAN açılır ve şerit açık kalır — nereden geldiğin görünür.
+   */
   showView(view) {
     this.view = view;
     const { el } = this;
-    el.actions.classList.toggle('hidden', view !== 'actions');
+    const titles = { setup: 'New Campaign', options: 'Settings', credits: 'Credits' };
     el.setup.classList.toggle('hidden', view !== 'setup');
     el.options.classList.toggle('hidden', view !== 'options');
     el.creditsView.classList.toggle('hidden', view !== 'credits');
-    el.root.classList.toggle('setup-open', view !== 'actions');
+    el.drawer.classList.toggle('hidden', view === 'actions');
+    el.root.classList.toggle('drawer-open', view !== 'actions');
+    if (titles[view]) el.drawerTitle.textContent = titles[view];
+    // Şeritte hangi satırdan gelindiği işaretli kalır.
+    const owner = { setup: el.create, options: el.settings, credits: el.credits }[view];
+    for (const item of [el.create, el.settings, el.credits]) {
+      item.classList.toggle('is-active', item === owner);
+    }
     if (view === 'setup') el.seed.focus();
-    else if (view === 'actions') el.create.focus();
+    else if (view === 'actions') el.cta.focus();
     if (view === 'options') { this.syncVolume(); this.syncMotionNote(); }
   }
 
@@ -443,12 +467,17 @@ export class MainMenu {
     this.el.resumeNote.textContent = this.resumable ? saveLabel(info) : '';
     this.el.load.hidden = !info;
     this.el.loadNote.textContent = info ? saveLabel(info) : '';
+    // Alt şeritteki tek birincil eylem duruma göre ad değiştirir.
+    this.el.ctaLabel.textContent = this.resumable ? 'Continue Campaign' : 'Begin Campaign';
+    this.el.ctaNote.textContent = this.resumable
+      ? saveLabel(info)
+      : 'a fresh world at the standard size';
 
     this.el.root.classList.remove('hidden');
     this.el.root.setAttribute('aria-hidden', 'false');
     document.body.classList.add('menu-open');
     this.showView('actions');
-    (this.resumable ? this.el.resume : this.el.create).focus();
+    this.el.cta.focus();
     this.music.start();
     this.syncMute();
     this.syncVolume();
