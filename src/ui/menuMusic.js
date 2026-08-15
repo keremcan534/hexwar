@@ -18,7 +18,8 @@ const TRACKS = [
 ];
 
 const MUTE_KEY = 'hexwar:menu-muted';
-/** Menüde hedeflenen ses düzeyi. Fon müziği konuşmayı bastırmamalı. */
+const VOLUME_KEY = 'hexwar:menu-volume';
+/** Varsayılan ses düzeyi. Fon müziği konuşmayı bastırmamalı. */
 const VOLUME = 0.42;
 const FADE_MS = 900;
 
@@ -31,6 +32,7 @@ export class MenuMusic {
     this.audio.volume = 0;
     this.index = 0;
     this.muted = readMuted();
+    this.level = readVolume();
     this.fade = 0;
     this.wanted = false;
     this.unlocked = false;
@@ -49,6 +51,31 @@ export class MenuMusic {
     return TRACKS[this.index].title;
   }
 
+  /** Künyede geçen parça listesi. */
+  get trackList() {
+    return TRACKS.map((track) => track.title).join(' · ');
+  }
+
+  /**
+   * Ses düzeyi. Sürükleme sırasında fade çalıştırmak sesi titretiyor; değer
+   * doğrudan yazılır ve fade zamanlayıcısı iptal edilir.
+   */
+  setVolume(level) {
+    this.level = Math.max(0, Math.min(1, level));
+    writeVolume(this.level);
+    // Sıfıra çekmek "sessiz"e denktir: iki kontrol birbiriyle tutarlı kalsın.
+    const silent = this.level <= 0.001;
+    if (silent !== this.muted) {
+      this.muted = silent;
+      writeMuted(this.muted);
+    }
+    clearInterval(this.fade);
+    this.fade = 0;
+    this.audio.volume = this.muted ? 0 : this.level;
+    if (this.muted) this.audio.pause();
+    else if (this.wanted && this.audio.paused) this.attempt();
+  }
+
   /** Menü açıldı: çalmayı dene, engellenirse ilk dokunuşu bekle. */
   start() {
     this.wanted = true;
@@ -58,10 +85,10 @@ export class MenuMusic {
 
   attempt() {
     const promise = this.audio.play();
-    if (!promise?.catch) { this.fadeTo(VOLUME); return; }
+    if (!promise?.catch) { this.fadeTo(this.level); return; }
     promise.then(() => {
       this.unlocked = true;
-      this.fadeTo(VOLUME);
+      this.fadeTo(this.level);
     }).catch(() => {
       // Otomatik oynatma politikası: ilk kullanıcı hareketinde tekrar denenir.
       if (this.unlocked) return;
@@ -95,8 +122,14 @@ export class MenuMusic {
   toggleMute() {
     this.muted = !this.muted;
     writeMuted(this.muted);
-    if (this.muted) this.fadeTo(0, () => this.audio.pause());
-    else if (this.wanted) this.attempt();
+    if (this.muted) {
+      this.fadeTo(0, () => this.audio.pause());
+    } else {
+      // Kaydırıcı sıfıra çekilerek susturulmuşsa sesi açmak sessizliğe
+      // dönmemeli: düzey varsayılana geri gelir.
+      if (this.level <= 0.001) { this.level = VOLUME; writeVolume(this.level); }
+      if (this.wanted) this.attempt();
+    }
     return this.muted;
   }
 
@@ -116,6 +149,23 @@ export class MenuMusic {
         done?.();
       }
     }, 40);
+  }
+}
+
+function readVolume() {
+  try {
+    const raw = Number(localStorage.getItem(VOLUME_KEY));
+    return Number.isFinite(raw) && raw > 0 ? Math.min(1, raw) : VOLUME;
+  } catch {
+    return VOLUME;
+  }
+}
+
+function writeVolume(level) {
+  try {
+    localStorage.setItem(VOLUME_KEY, String(level));
+  } catch {
+    // Depolama kapali: tercih oturumla sinirli kalir.
   }
 }
 

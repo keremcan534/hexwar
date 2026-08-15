@@ -1,5 +1,9 @@
 // Ana menü: oyunun açılış perdesi.
 //
+// Kurgu: tam ekran sinematik sahne + SOLDA dikey cam raf (bkz. styles.css
+// "18. ANA MENU"). Rome II'deki gibi sahneli ve ağır, ama oyunun kendi
+// dilinde: koyu cam, pirinç saç teli çizgi, keskin köşe.
+//
 // Fon resimleri ve müzik depoya konmuş varlıklardır (assets/menu, assets/music).
 // Projenin geri kalanı dokularını çalışma anında üretir (bkz. render/textures.js);
 // bu dosya o kuralın bilinçli istisnasıdır — mat resim oyuncunun gördüğü ilk şey
@@ -8,26 +12,42 @@
 // Perdenin üstünde iki katman daha var: sürüklenen sis (CSS ile hareket eder,
 // bkz. .menu-fog) ve müzik (bkz. menuMusic.js).
 //
-// Menüde olmayan özelliğin düğmesi yoktur: "Devam Et" ancak kayıt varsa çıkar,
-// dünya kurma alanları da ayarlar panelindeki üretim seçeneklerinin aynısıdır.
+// Menüde olmayan özelliğin düğmesi yoktur: "Continue" ancak oturumda yüklü
+// oyun varsa, "Load Game" ancak diskte kayıt varsa çıkar.
 //
 // Katman notu: DOM'a dokunur, oyun durumunu yalnız `game` üzerinden değiştirir.
 
-import { savedInfo } from '../game/save.js';
+import { SAVE_VERSION, savedInfo } from '../game/save.js';
 import { gameDate } from './hud.js';
 import { worldRows } from '../world/worldgen.js';
 import { MenuMusic } from './menuMusic.js';
 
 /**
- * Açılış sahneleri. Her uygulama açılışında sıradaki gelir.
+ * Oyunun adı. Menüde tek yerden yazılır; başlığı değiştirmek için markup'a
+ * ya da CSS'e dokunmak gerekmez.
+ */
+export const GAME_TITLE = 'Imperial Eye';
+export const GAME_EYEBROW = 'Grand Strategy · 1836';
+/** Alt şeritteki sürüm künyesi. Kayıt biçimi sürümü de burada okunur. */
+export const BUILD_LABEL = `v0.1.0 · save ${SAVE_VERSION}`;
+
+/**
+ * Açılış sahneleri. Her uygulama açılışında sıradaki gelir; ayarlardan elle
+ * de seçilebilir.
  *
- * Kırpma noktası ve ton düzeltmesi sahneye özeldir: resimlerin en boy oranı ve
- * ışığı birbirini tutmuyor, tek bir ayar sekizinde birden çalışmıyor. Ortak
- * kural şu — metin sütunu solda durur, o yüzden her sahnenin sol yarısı koyu
- * kalmalı ve parlak odak sağa düşmeli (perdeyi bkz. .menu-scrim).
+ * Her sahnenin dört alanı var:
+ *   src      — resim
+ *   position — `object-position`: sahnenin odağı kadrajda nereye düşecek
+ *   filter   — ton düzeltmesi; resimlerin ışığı birbirini tutmuyor
+ *   theme    — CSS'teki vurgu paleti (bkz. .menu[data-theme])
+ *   label    — ayarlardaki sahne etiketi
+ *   tagline  — panelin motto satırı
  *
- * Resimler JPEG: fon fotoğrafı PNG olarak 2,4 MB tutuyordu ve menü artık sekiz
- * sahne arasında dönüyor. Kalite 92'de fark görünmüyor, boyut yedide bire iniyor.
+ * Ortak kural: metin rafı SOLDA durur, o yüzden her sahnenin sol yarısı koyu
+ * kalmalı ve parlak odak sağa düşmeli.
+ *
+ * Resimler JPEG: fon fotoğrafı PNG olarak 2,4 MB tutuyordu ve menü sekiz sahne
+ * arasında dönüyor. Kalite 92'de fark görünmüyor, boyut yedide bire iniyor.
  */
 const SCENES = [
   {
@@ -35,6 +55,8 @@ const SCENES = [
     // Yanan kıyı şeridi resmin üst üçte birinde; merkezden kırpınca kesiliyor.
     position: '50% 42%',
     filter: 'saturate(0.88) contrast(1.04) brightness(0.94)',
+    theme: 'bombardment',
+    label: 'Bombardment',
     tagline: 'A coastline under the guns, an empire behind them.',
   },
   {
@@ -43,6 +65,8 @@ const SCENES = [
     position: '50% 54%',
     // Zaten koyu ve çok mavi: kısmak yerine hafif ısıtılır.
     filter: 'saturate(0.78) contrast(1.06) brightness(1.02)',
+    theme: 'imperial-hall',
+    label: 'Imperial Hall',
     tagline: 'Empires are lost in quiet halls long before they are lost at sea.',
   },
   {
@@ -51,13 +75,17 @@ const SCENES = [
     position: '50% 50%',
     // Neredeyse tek renk: kontrastı açmazsak kurşuni bir levha gibi duruyor.
     filter: 'saturate(0.72) contrast(1.14) brightness(0.98)',
+    theme: 'harbour',
+    label: 'Harbour',
     tagline: 'Every empire is a ledger of ships that came home.',
   },
   {
     src: 'assets/menu/palace-square.jpg',
-    // Sütunlu cephe solda: metin sütunu tam onun üstüne oturur, koyu kalır.
+    // Sütunlu cephe solda: raf tam onun üstüne oturur, koyu kalır.
     position: '50% 52%',
     filter: 'saturate(0.76) contrast(1.08) brightness(1.0)',
+    theme: 'rainy-capital',
+    label: 'Rainy Capital',
     tagline: 'The rain washes the square; it never washes the treaty.',
   },
   {
@@ -65,13 +93,17 @@ const SCENES = [
     // Gökyüzü kadrajın üst yarısını yiyor; makaslar görünsün diye aşağı bakılır.
     position: '50% 62%',
     filter: 'saturate(0.8) contrast(1.1) brightness(0.95)',
+    theme: 'rail-yard',
+    label: 'Marshalling Yard',
     tagline: 'Timetables move armies. Generals only sign for them.',
   },
   {
     src: 'assets/menu/coast-fort.jpg',
-    // Toplar ve surlar sağ yarıda; sol yarı deniz, metin için ideal.
+    // Toplar ve surlar sağ yarıda; sol yarı deniz, raf için ideal.
     position: '50% 50%',
     filter: 'saturate(0.74) contrast(1.1) brightness(0.97)',
+    theme: 'coast-fort',
+    label: 'Coastal Fort',
     tagline: 'A gun on a headland is an argument the sea must answer.',
   },
   {
@@ -80,6 +112,8 @@ const SCENES = [
     position: '50% 46%',
     // Gece sahnesi: zaten koyu, karartma yok — hafif açılır.
     filter: 'saturate(0.9) contrast(1.05) brightness(1.06)',
+    theme: 'crescent-night',
+    label: 'Crescent Night',
     tagline: 'Fortunes were made and ruined here, over flowers.',
   },
   {
@@ -88,6 +122,8 @@ const SCENES = [
     position: '50% 48%',
     // En soluk sahne; kontrast biraz açılır yoksa gri bir yüzey gibi duruyor.
     filter: 'saturate(0.9) contrast(1.12) brightness(0.92)',
+    theme: 'field-road',
+    label: 'Field Road',
     tagline: 'Roads decide campaigns long before the armies meet.',
   },
 ];
@@ -95,11 +131,11 @@ const SCENES = [
 const SCENE_KEY = 'hexwar:menu-scene';
 
 /**
- * Sıradaki sahne. Sayaç depolamada tutulur — "sırayla" oturum içinde değil,
- * açılıştan açılışa ilerler. Depolama kapalıysa (gizli sekme) ilk sahneye
- * düşer; menü resimsiz kalmaz.
+ * Sıradaki sahne indeksi. Sayaç depolamada tutulur — "sırayla" oturum içinde
+ * değil, açılıştan açılışa ilerler. Depolama kapalıysa (gizli sekme) ilk
+ * sahneye düşer; menü resimsiz kalmaz.
  */
-function nextScene() {
+function nextSceneIndex() {
   let index = 0;
   try {
     index = (Number(localStorage.getItem(SCENE_KEY)) || 0) % SCENES.length;
@@ -107,7 +143,7 @@ function nextScene() {
   } catch (err) {
     index = 0;
   }
-  return SCENES[index] ?? SCENES[0];
+  return index;
 }
 
 /** Kayıt künyesi: "seed 4KZQ81 · 14 MAR 1851". */
@@ -129,17 +165,29 @@ export class MainMenu {
     this.game = game;
     this.resumable = resumable;
     this.open_ = false;
+    this.sceneIndex = 0;
 
     const $ = (id) => document.getElementById(id);
     this.el = {
       root: $('menu'),
       art: $('menu-art'),
+      title: $('menu-title'),
+      eyebrow: document.querySelector('.menu-eyebrow'),
       tagline: $('menu-tagline'),
       resume: $('menu-resume'),
       resumeNote: $('menu-resume-note'),
       create: $('menu-create'),
+      load: $('menu-load'),
+      loadNote: $('menu-load-note'),
       random: $('menu-random'),
+      settings: $('menu-settings'),
+      credits: $('menu-credits'),
+      exit: $('menu-exit'),
+      actions: $('menu-actions'),
       setup: $('menu-setup'),
+      options: $('menu-options'),
+      creditsView: $('menu-credits-view'),
+      creditsMusic: $('menu-credits-music'),
       back: $('menu-back'),
       build: $('menu-build'),
       seed: $('menu-seed'),
@@ -151,28 +199,92 @@ export class MainMenu {
       contLabel: $('menu-cont-label'),
       landLabel: $('menu-land-label'),
       nationsLabel: $('menu-nations-label'),
+      volume: $('menu-volume'),
+      volumeLabel: $('menu-volume-label'),
+      themeList: $('menu-theme-list'),
+      motionNote: $('menu-motion-note'),
       mute: $('menu-mute'),
+      sceneBtn: $('menu-scene'),
+      buildInfo: $('menu-build-info'),
     };
 
     this.music = new MenuMusic();
 
+    // Kimlik ve künye markup'tan değil buradan gelir: ismi değiştirmek tek
+    // sabiti değiştirmektir (bkz. GAME_TITLE).
+    if (this.el.title) this.el.title.textContent = GAME_TITLE;
+    if (this.el.eyebrow) this.el.eyebrow.textContent = GAME_EYEBROW;
+    if (this.el.buildInfo) this.el.buildInfo.textContent = BUILD_LABEL;
+
     // Sahne yapıcıda seçilir: menü açıldığında resim çoktan yüklenmeye
     // başlamış olsun, perde boş bir kare göstermesin.
-    this.setScene(nextScene());
+    this.setScene(nextSceneIndex());
+    this.buildThemeChips();
     this.bind();
     this.syncMute();
+    this.syncVolume();
+    this.syncMotionNote();
   }
 
-  setScene(scene) {
-    const { art, tagline } = this.el;
-    if (!art || !scene) return;
-    // index.html ilk sahneyi taşır; aynı kaynağa yeniden atamak yükleme
-    // başlatmaz, farklıysa tarayıcı hemen indirmeye başlar.
-    if (!art.src.endsWith(scene.src)) art.src = scene.src;
-    art.style.objectPosition = scene.position;
-    art.style.filter = scene.filter;
-    // Metin sahneye bağlı: tek bir cümle üç resmin üçünde birden durmuyor.
+  /**
+   * Sahneyi ve temayı birlikte kurar. Tema yalnız vurgu tonunu oynatır;
+   * yapı, opaklık ve köşe yarıçapı her temada aynı kalır.
+   */
+  setScene(index) {
+    const scene = SCENES[((index % SCENES.length) + SCENES.length) % SCENES.length];
+    if (!scene) return;
+    this.sceneIndex = SCENES.indexOf(scene);
+    const { art, tagline, root } = this.el;
+    if (art) {
+      // index.html ilk sahneyi taşır; aynı kaynağa yeniden atamak yükleme
+      // başlatmaz, farklıysa tarayıcı hemen indirmeye başlar.
+      if (!art.src.endsWith(scene.src)) {
+        art.src = scene.src;
+        // Giriş animasyonunu yeniden tetikle: aynı sınıf kalınca resim
+        // sessizce takas oluyordu.
+        art.style.animation = 'none';
+        void art.offsetWidth;
+        art.style.animation = '';
+      }
+      art.style.objectPosition = scene.position;
+      art.style.filter = scene.filter;
+    }
+    // Metin sahneye bağlı: tek bir cümle sekiz resmin sekizinde birden durmuyor.
     if (tagline && scene.tagline) tagline.textContent = scene.tagline;
+    if (root) root.dataset.theme = scene.theme;
+    this.syncThemeChips();
+  }
+
+  /** Ayarlardaki sahne etiketleri. Liste SCENES'ten türer, elle yazılmaz. */
+  buildThemeChips() {
+    const { themeList } = this.el;
+    if (!themeList) return;
+    themeList.textContent = '';
+    SCENES.forEach((scene, index) => {
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'menu-chip';
+      chip.textContent = scene.label;
+      chip.setAttribute('aria-pressed', 'false');
+      chip.onclick = () => {
+        this.setScene(index);
+        // Elle seçilen sahne bir sonraki açılışta tekrar gelmesin: sayaç
+        // seçilenin BİR SONRASINA kurulur.
+        try {
+          localStorage.setItem(SCENE_KEY, String((index + 1) % SCENES.length));
+        } catch (err) { /* depolama kapalı: seçim oturumla sınırlı */ }
+      };
+      themeList.append(chip);
+    });
+    this.syncThemeChips();
+  }
+
+  syncThemeChips() {
+    const chips = this.el.themeList?.children;
+    if (!chips) return;
+    for (let i = 0; i < chips.length; i++) {
+      chips[i].setAttribute('aria-pressed', i === this.sceneIndex ? 'true' : 'false');
+    }
   }
 
   bind() {
@@ -183,12 +295,30 @@ export class MainMenu {
       this.game.newWorld();
       this.close();
     };
-    el.create.onclick = () => this.showSetup(true);
-    el.back.onclick = () => this.showSetup(false);
+    el.create.onclick = () => this.showView('setup');
+    el.settings.onclick = () => this.showView('options');
+    el.credits.onclick = () => this.showView('credits');
+    el.back.onclick = () => this.showView('actions');
     el.build.onclick = () => this.build();
+    el.load.onclick = () => this.loadSave();
+    el.exit.onclick = () => this.exit();
+    for (const button of el.root.querySelectorAll('[data-menu-back]')) {
+      button.onclick = () => this.showView('actions');
+    }
+
     if (el.mute) {
       el.mute.onclick = () => {
         this.music.toggleMute();
+        this.syncMute();
+      };
+    }
+    // Sahne düğmesi: bir sonraki sahneye geçer. Temayı denemek için ayarlara
+    // girmek gerekmesin.
+    if (el.sceneBtn) el.sceneBtn.onclick = () => this.setScene(this.sceneIndex + 1);
+    if (el.volume) {
+      el.volume.oninput = () => {
+        this.music.setVolume(Number(el.volume.value) / 100);
+        this.syncVolume();
         this.syncMute();
       };
     }
@@ -203,11 +333,12 @@ export class MainMenu {
         this.build();
       }
     };
-    // Kurulum açıkken Esc geri alır; menünün kendisinde kapatacak bir şey yok.
+    // Alt görünümdeyken Esc ana listeye döner; menünün kendisinde kapatacak
+    // bir şey yok.
     el.root.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && !el.setup.classList.contains('hidden')) {
+      if (event.key === 'Escape' && this.view !== 'actions') {
         event.preventDefault();
-        this.showSetup(false);
+        this.showView('actions');
       }
     });
     this.syncLabels();
@@ -221,6 +352,35 @@ export class MainMenu {
     el.landLabel.textContent = Number(el.land.value).toFixed(2);
     const nations = Number(el.nations.value);
     el.nationsLabel.textContent = nations > 0 ? String(nations) : 'automatic';
+  }
+
+  /** Sessiz düğmesinin görünümü tek yerden yazılır; durum müzikte tutulur. */
+  syncMute() {
+    const { mute } = this.el;
+    if (!mute) return;
+    const muted = this.music.muted;
+    mute.classList.toggle('is-muted', muted);
+    mute.setAttribute('aria-pressed', muted ? 'true' : 'false');
+    mute.setAttribute('aria-label', muted ? 'Unmute menu music' : 'Mute menu music');
+    mute.title = muted ? 'Music off' : `Music: ${this.music.trackTitle}`;
+  }
+
+  syncVolume() {
+    const { volume, volumeLabel, creditsMusic } = this.el;
+    const level = Math.round(this.music.level * 100);
+    if (volume && Number(volume.value) !== level) volume.value = String(level);
+    if (volumeLabel) volumeLabel.textContent = this.music.muted ? 'off' : `${level}%`;
+    if (creditsMusic) creditsMusic.textContent = `Menu music: ${this.music.trackList}.`;
+  }
+
+  /** Hareket azaltma açıksa oyuncu bunu bilsin: sis ve geçişler durur. */
+  syncMotionNote() {
+    const { motionNote } = this.el;
+    if (!motionNote) return;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    motionNote.textContent = reduced
+      ? 'Reduced motion is on in your system settings — drifting fog and scene transitions are held still.'
+      : 'Drifting fog and scene transitions follow your system’s reduced-motion setting.';
   }
 
   /** Kaydırıcılardaki değerlerle yeni dünya kurar ve perdeyi kaldırır. */
@@ -238,37 +398,60 @@ export class MainMenu {
     this.close();
   }
 
-  /** Sessiz düğmesinin görünümü tek yerden yazılır; durum müzikte tutulur. */
-  syncMute() {
-    const { mute } = this.el;
-    if (!mute) return;
-    const muted = this.music.muted;
-    mute.classList.toggle('is-muted', muted);
-    mute.setAttribute('aria-pressed', muted ? 'true' : 'false');
-    mute.setAttribute('aria-label', muted ? 'Unmute menu music' : 'Mute menu music');
-    mute.title = muted ? 'Music off' : `Music: ${this.music.trackTitle}`;
+  /**
+   * Diskteki kaydı yükler. "Continue"dan farkı: bu, oturumdaki oyunu bırakıp
+   * kayıttan okur — menüye oyun içinden dönülmüşse ikisi ayrı şeydir.
+   */
+  loadSave() {
+    if (!this.game.load()) {
+      this.el.loadNote.textContent = 'no compatible save found';
+      return;
+    }
+    this.resumable = true;
+    this.close();
   }
 
-  showSetup(on) {
-    this.el.setup.classList.toggle('hidden', !on);
-    this.el.root.classList.toggle('setup-open', on);
-    if (on) this.el.seed.focus();
-    else this.el.create.focus();
+  /**
+   * Tarayıcı oyunu kendini kapatamaz: `window.close()` yalnız script'in açtığı
+   * sekmede çalışır. Denenir, olmazsa oyuncuya ne yapacağı söylenir.
+   */
+  exit() {
+    window.close();
+    this.el.exit.querySelector('small').textContent = 'close the tab to leave';
+  }
+
+  /** Görünüm değiştirir: ana liste / dünya kurulumu / ayarlar / künye. */
+  showView(view) {
+    this.view = view;
+    const { el } = this;
+    el.actions.classList.toggle('hidden', view !== 'actions');
+    el.setup.classList.toggle('hidden', view !== 'setup');
+    el.options.classList.toggle('hidden', view !== 'options');
+    el.creditsView.classList.toggle('hidden', view !== 'credits');
+    el.root.classList.toggle('setup-open', view !== 'actions');
+    if (view === 'setup') el.seed.focus();
+    else if (view === 'actions') el.create.focus();
+    if (view === 'options') { this.syncVolume(); this.syncMotionNote(); }
   }
 
   open() {
     this.open_ = true;
-    // "Devam Et" yalnız gerçekten devam edilecek bir oyun varsa görünür.
+    // Düğme ancak işe yarıyorsa görünür: "Continue" oturumdaki oyunu sürdürür,
+    // "Load Game" diskte kayıt varsa okur.
+    const info = savedInfo();
     this.el.resume.hidden = !this.resumable;
-    this.el.resumeNote.textContent = this.resumable ? saveLabel(savedInfo()) : '';
+    this.el.resumeNote.textContent = this.resumable ? saveLabel(info) : '';
+    this.el.load.hidden = !info;
+    this.el.loadNote.textContent = info ? saveLabel(info) : '';
 
     this.el.root.classList.remove('hidden');
     this.el.root.setAttribute('aria-hidden', 'false');
     document.body.classList.add('menu-open');
-    this.showSetup(false);
+    this.showView('actions');
     (this.resumable ? this.el.resume : this.el.create).focus();
     this.music.start();
     this.syncMute();
+    this.syncVolume();
   }
 
   close() {
@@ -288,6 +471,8 @@ export class MainMenu {
   /** Menüyü tekrar açar: oyun içi ayarlar panelindeki "Ana Menü" düğmesi. */
   reopen() {
     this.resumable = true;
+    // Her dönüşte yeni sahne: menü aynı resimle donuk kalmasın.
+    this.setScene(nextSceneIndex());
     this.open();
   }
 }

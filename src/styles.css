@@ -5166,24 +5166,114 @@ body.screen-open .layer-menu { display: none; }
 /* ==========================================================================
    18. ANA MENU — acilis perdesi
 
-   Tam ekran mat resim + solda tek sutun. Resim (assets/menu/main-menu.jpg)
-   4:3'tur, ekran 16:9: `cover` ile kirpilir ve `object-position` yukari
-   kaydirilir, yoksa yanan kiyi seridi ustten kesiliyor. Metin gemi siluetinin
-   ustune bindigi icin altina ayri bir perde serilir; resmin kendi kontrastina
-   guvenilince baslik her ekranda okunmuyordu.
+   Kurgu: tam ekran sinematik sahne + SOLDA dikey cam raf. Rome II'deki gibi
+   sahneli ve agir, ama oyunun kendi dilinde: koyu cam panel, pirinc sac teli
+   cizgi, keskin kose. Sahneler sag yariya kompoze edildigi icin raf solda
+   durur ve sahnenin odagini kapatmaz.
+
+   Tema: `.menu[data-theme]` yalniz VURGU tonunu ve rafin sicakligini oynatir.
+   Yapi, opaklik ve kosе yaricapi her temada aynidir — tema degisince arayuz
+   baska bir oyuna donmemeli, yalnizca sahneye uymalidir.
    ========================================================================== */
+
+/* --- 18.0 Tema jetonlari ---
+   Hepsi pirinc/celik ailesinden, dusuk doygunlukta ve birbirine yakin
+   parlaklikta. Neon yok: vurgu metni okunur kilar, dikkat calmaz. */
+.menu {
+  --menu-accent: #bfa063;        /* vurgu metni, hover, odak */
+  --menu-line: rgba(191, 160, 99, 0.34);
+  --menu-line-soft: rgba(191, 160, 99, 0.14);
+  --menu-wash: rgba(191, 160, 99, 0.10);
+  --menu-glow: rgba(191, 160, 99, 0.22);
+  --menu-rail-tint: rgba(9, 13, 16, 0.26);
+  --menu-rail-deep: rgba(5, 8, 10, 0.4);
+}
+
+.menu[data-theme="bombardment"] {
+  --menu-accent: #c9a05c;
+  --menu-line: rgba(201, 160, 92, 0.36);
+  --menu-line-soft: rgba(201, 160, 92, 0.15);
+  --menu-wash: rgba(201, 160, 92, 0.11);
+  --menu-glow: rgba(214, 150, 78, 0.26);
+  --menu-rail-tint: rgba(13, 12, 12, 0.27);
+}
+
+.menu[data-theme="imperial-hall"] {
+  --menu-accent: #cdb078;
+  --menu-line: rgba(205, 176, 120, 0.36);
+  --menu-line-soft: rgba(205, 176, 120, 0.15);
+  --menu-wash: rgba(205, 176, 120, 0.11);
+  --menu-glow: rgba(214, 186, 128, 0.24);
+  --menu-rail-tint: rgba(11, 13, 17, 0.26);
+}
+
+.menu[data-theme="harbour"] {
+  --menu-accent: #a8b7bd;
+  --menu-line: rgba(168, 183, 189, 0.32);
+  --menu-line-soft: rgba(168, 183, 189, 0.13);
+  --menu-wash: rgba(168, 183, 189, 0.09);
+  --menu-glow: rgba(150, 172, 182, 0.2);
+  --menu-rail-tint: rgba(8, 12, 15, 0.28);
+}
+
+.menu[data-theme="rainy-capital"] {
+  --menu-accent: #aebac6;
+  --menu-line: rgba(174, 186, 198, 0.32);
+  --menu-line-soft: rgba(174, 186, 198, 0.13);
+  --menu-wash: rgba(174, 186, 198, 0.09);
+  --menu-glow: rgba(160, 176, 194, 0.2);
+  --menu-rail-tint: rgba(8, 11, 15, 0.28);
+}
+
+.menu[data-theme="rail-yard"] {
+  --menu-accent: #b3a37e;
+  --menu-line: rgba(179, 163, 126, 0.32);
+  --menu-line-soft: rgba(179, 163, 126, 0.13);
+  --menu-wash: rgba(179, 163, 126, 0.09);
+  --menu-glow: rgba(170, 156, 124, 0.2);
+  --menu-rail-tint: rgba(10, 12, 14, 0.27);
+}
+
+.menu[data-theme="coast-fort"] {
+  --menu-accent: #a2b3b2;
+  --menu-line: rgba(162, 179, 178, 0.32);
+  --menu-line-soft: rgba(162, 179, 178, 0.13);
+  --menu-wash: rgba(162, 179, 178, 0.09);
+  --menu-glow: rgba(146, 168, 168, 0.2);
+  --menu-rail-tint: rgba(8, 12, 14, 0.28);
+}
+
+.menu[data-theme="crescent-night"] {
+  --menu-accent: #b0bcd0;
+  --menu-line: rgba(176, 188, 208, 0.32);
+  --menu-line-soft: rgba(176, 188, 208, 0.13);
+  --menu-wash: rgba(176, 188, 208, 0.09);
+  --menu-glow: rgba(158, 176, 210, 0.22);
+  --menu-rail-tint: rgba(7, 10, 16, 0.3);
+}
+
+.menu[data-theme="field-road"] {
+  --menu-accent: #bda86f;
+  --menu-line: rgba(189, 168, 111, 0.33);
+  --menu-line-soft: rgba(189, 168, 111, 0.14);
+  --menu-wash: rgba(189, 168, 111, 0.1);
+  --menu-glow: rgba(184, 162, 108, 0.2);
+  --menu-rail-tint: rgba(10, 12, 13, 0.27);
+}
+
+/* --- 18.1 Perde ve sahne --- */
 
 .menu {
   position: fixed;
   inset: 0;
   z-index: var(--z-menu);
   display: flex;
-  align-items: center;
+  align-items: stretch;
   overflow: hidden;
   background: var(--surface-0);
   opacity: 1;
   visibility: visible;
-  transition: opacity 260ms ease, visibility 0s linear;
+  transition: opacity 320ms ease, visibility 0s linear;
 }
 
 /* Perde kalkarken haritaya yumusak gecsin; `display:none` aninda kesiyordu. */
@@ -5192,7 +5282,7 @@ body.screen-open .layer-menu { display: none; }
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
-  transition: opacity 260ms ease, visibility 0s linear 260ms;
+  transition: opacity 320ms ease, visibility 0s linear 320ms;
 }
 
 .menu-art {
@@ -5202,32 +5292,36 @@ body.screen-open .layer-menu { display: none; }
   height: 100%;
   object-fit: cover;
   /* Kirpma noktasi ve ton duzeltmesi sahneye ozeldir; mainMenu.js SCENES
-     tablosundan yazar (uc resmin orani ve isigi ayni degil). Buradakiler
-     yalniz JS calismadan onceki ilk kare icin gecerli varsayilanlardir.
-     Fazla karartmak resmi perdenin altinda yok ediyordu — metin okunurlugu
-     perdenin isi, filtrenin degil. */
+     tablosundan yazar (resimlerin orani ve isigi ayni degil). Buradakiler
+     yalniz JS calismadan onceki ilk kare icin gecerli varsayilanlardir. */
   object-position: 50% 42%;
   filter: saturate(0.88) contrast(1.04) brightness(0.94);
+  /* Sahne degisirken sert kesme olmasin: yeni resim iceri erir. */
+  animation: menu-scene-in 900ms ease both;
 }
 
-/* Iki yonlu perde: soldan metin sutunu icin, alttan kunye seridi icin.
-   Yalniz metnin *altini* koyultacak kadar; gemi ve patlama gorunur kalmali. */
+@keyframes menu-scene-in {
+  from { opacity: 0; transform: scale(1.03); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* Uc yonlu perde: soldan raf icin, alttan kunye seridi icin, disa dogru
+   vinyet. Yalniz metnin *altini* koyultacak kadar; sahne gorunur kalmali. */
 .menu-scrim {
   position: absolute;
   inset: 0;
   background:
-    linear-gradient(90deg, rgba(6, 10, 13, 0.88) 0%, rgba(6, 10, 13, 0.62) 22%,
-      rgba(6, 10, 13, 0.22) 46%, rgba(6, 10, 13, 0) 66%),
-    linear-gradient(0deg, rgba(6, 10, 13, 0.62) 0%, rgba(6, 10, 13, 0) 28%),
-    radial-gradient(125% 95% at 52% 48%, rgba(0, 0, 0, 0) 48%, rgba(0, 0, 0, 0.42) 100%);
+    linear-gradient(90deg, rgba(5, 8, 11, 0.34) 0%, rgba(5, 8, 11, 0.3) 30%,
+      rgba(5, 8, 11, 0.14) 50%, rgba(5, 8, 11, 0) 70%),
+    linear-gradient(0deg, rgba(5, 8, 11, 0.5) 0%, rgba(5, 8, 11, 0) 30%),
+    radial-gradient(125% 95% at 56% 46%, rgba(0, 0, 0, 0) 46%, rgba(0, 0, 0, 0.48) 100%);
 }
 
-/* --- 18.0b Suruklenen sis ---
+/* --- 18.2 Suruklenen sis ---
    Ayni saydam doku (assets/menu/fog.png) iki katmanda: uzak katman genis,
    yavas ve soluk; yakin katman iri, hizli ve alt kenara oturur. Doku yatayda
-   iki kopya genisliginde doseniyor, animasyon tam bir kopya kaydiriyor —
-   basa donerken dikis gorunmez. Perdenin (menu-scrim) USTUNDE durur ki
-   metnin altindaki karartmayi sis de yumusatsin, ama panelin ALTINDA kalir. */
+   dosendigi icin animasyon tam bir kopya kaydirir, basa donerken dikis
+   gorunmez. */
 .menu-fog {
   position: absolute;
   left: -20%;
@@ -5241,14 +5335,14 @@ body.screen-open .layer-menu { display: none; }
      opaklik 0.34'te bile fark yok). */
   mix-blend-mode: normal;
   will-change: transform;
-  /* Iki yonlu maske. Yatay: sol ucte metin sutunu var, sis oraya girince
-     perdenin karartmasini geri acip basligi okunmaz yapiyor. Dikey: katman
-     dikdortgen oldugu icin ust kenari duz bir cizgi olarak goruluyordu. */
+  /* Iki yonlu maske. Yatay: solda cam raf var, sis oraya girince rafin
+     arkasini aydinlatip metni okunmaz yapiyor. Dikey: katman dikdortgen
+     oldugu icin ust kenari duz bir cizgi olarak goruluyordu. */
   -webkit-mask-image:
-    linear-gradient(90deg, transparent 0%, transparent 22%, #000 44%, #000 100%),
+    linear-gradient(90deg, transparent 0%, transparent 26%, #000 48%, #000 100%),
     linear-gradient(180deg, transparent 0%, #000 58%, #000 100%);
   mask-image:
-    linear-gradient(90deg, transparent 0%, transparent 22%, #000 44%, #000 100%),
+    linear-gradient(90deg, transparent 0%, transparent 26%, #000 48%, #000 100%),
     linear-gradient(180deg, transparent 0%, #000 58%, #000 100%);
   -webkit-mask-composite: source-in;
   mask-composite: intersect;
@@ -5276,290 +5370,447 @@ body.screen-open .layer-menu { display: none; }
   to { transform: translate3d(-25%, 0, 0); }
 }
 
-/* Hareket azaltma: genel kural sureyi 0.01ms'ye cekiyor, ama `infinite` bir
-   animasyonda bu "durmak" degil "cilgin hizda donmek" demek. Sis burada
-   tamamen durur ve duran bir katman olarak kalir. */
-@media (prefers-reduced-motion: reduce) {
-  .menu-fog { animation: none !important; }
-}
-
-.menu-panel {
+/* --- 18.3 Sol cam raf ---
+   Tam boy dikey band. Cam hissi uc katmandan gelir: arkasindaki sahneyi
+   bulaniklastiran backdrop, uzerine cok koyu bir ton, en uste arayuzun kendi
+   metal greni. Tek basina koyu bir dikdortgen "siyah kutu" gibi duruyordu. */
+.menu-rail {
   position: relative;
+  z-index: 1;
+  flex: none;
   display: flex;
   flex-direction: column;
   gap: var(--sp-5);
-  width: min(470px, 88vw);
-  max-height: 100%;
-  margin-left: clamp(var(--sp-5), 7vw, 108px);
-  padding: var(--sp-5) 0;
+  width: clamp(330px, 29vw, 452px);
+  padding: clamp(var(--sp-5), 4vh, 44px) clamp(var(--sp-5), 2.2vw, 38px);
   overflow-y: auto;
   scrollbar-width: none;
+  background:
+    var(--ui-grain),
+    linear-gradient(180deg, var(--menu-rail-tint) 0%, var(--menu-rail-deep) 100%);
+  -webkit-backdrop-filter: blur(20px) saturate(0.8);
+  backdrop-filter: blur(20px) saturate(0.8);
+  box-shadow:
+    inset 0 1px rgba(255, 255, 255, 0.035),
+    24px 0 60px rgba(0, 0, 0, 0.42);
 }
 
-.menu-panel::-webkit-scrollbar { display: none; }
+.menu-rail::-webkit-scrollbar { display: none; }
 
-/* --- 18.1 Kunye --- */
+/* Cam saydam oldugu icin metin dogrudan sahnenin uzerinde duruyor. Golge
+   burada dekor degil OKUNURLUK tasiyicisi: tonu 0.26'ya indirmeden once panel
+   opak bir levhaydi, indirdikten sonra kucuk yazilar parlak su bandinda
+   kayboluyordu. */
+.menu-rail :is(h1, b) { text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85); }
+.menu-rail :is(small, p, span, select, .menu-build) {
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95), 0 0 12px rgba(0, 0, 0, 0.7);
+}
+
+/* Rafin sag kenari: sac teli pirinc hat + disa vuran cok yumusak parilti.
+   Duz `border-right` cizgisi web paneli gibi duruyordu. */
+.menu-rail-edge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 1px;
+  background: linear-gradient(180deg,
+    transparent 0%, var(--menu-line) 12%, var(--menu-line) 88%, transparent 100%);
+  box-shadow: 0 0 22px var(--menu-glow);
+  pointer-events: none;
+}
+
+/* Acilis: raf soldan iceri kayar, icerik pesinden kademeli gelir. Agir ve
+   yumusak — UI gosterisi degil, perde acilisi. */
+.menu:not(.hidden) .menu-rail {
+  animation: menu-rail-in 520ms cubic-bezier(0.16, 0.84, 0.28, 1) both;
+}
+
+@keyframes menu-rail-in {
+  from { transform: translate3d(-26px, 0, 0); opacity: 0; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+
+/* --- 18.4 Kunye: logo, isim, motto --- */
+
+.menu-brand { flex: none; }
 
 .menu-eyebrow {
   display: block;
-  margin-bottom: var(--sp-2);
-  color: var(--gold-bright);
+  margin-bottom: var(--sp-3);
+  color: var(--menu-accent);
   font-size: var(--fs-label);
-  font-weight: 650;
-  letter-spacing: var(--ls-label);
+  letter-spacing: 0.22em;
   text-transform: uppercase;
 }
 
-.menu-brand h1 {
-  margin: 0;
-  color: #f0e6cf;
-  font-family: var(--font-display);
-  font-size: clamp(46px, 6.4vw, 82px);
-  font-weight: 400;
-  letter-spacing: 0.04em;
-  line-height: 0.98;
-  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.75), 0 1px 2px rgba(0, 0, 0, 0.9);
+.menu-mark {
+  display: flex;
+  align-items: center;
+  gap: clamp(var(--sp-3), 1.4vw, var(--sp-4));
 }
 
-/* Basligin altindaki pirinc cubuk: menuyu resimden ayiran tek cizgi. */
-.menu-brand h1::after {
-  content: '';
-  display: block;
-  width: 92px;
-  height: 2px;
-  margin-top: var(--sp-3);
-  background: linear-gradient(90deg, var(--metal-hi), var(--metal-mid) 55%, transparent);
+/* Logo elle cizilmis mürekkep isidir: keskinlestirme, kontrast artirma ya da
+   tam beyaz yapma YOK. Yalniz sahneye oturmasi icin cok hafif sicaklik ve
+   arkasinda nefes alan bir parilti. */
+.menu-logo {
+  flex: none;
+  width: clamp(46px, 4.6vw, 64px);
+  height: auto;
+  filter:
+    drop-shadow(0 0 14px var(--menu-glow))
+    saturate(0.72)
+    brightness(1.18);
+  animation: menu-breathe 7.5s ease-in-out infinite;
+}
+
+@keyframes menu-breathe {
+  0%, 100% { opacity: 0.82; }
+  50% { opacity: 1; }
+}
+
+/* Olcek dar rafa gore secildi: 3.4vw'da "Imperial Eye" 1280px ekranda ikiye
+   boluniyordu. Uzun isimler (bkz. GAME_TITLE) yine sarabilir; `balance` iki
+   satiri esit boler, tek kelime altta kalmaz. */
+.menu-brand h1 {
+  margin: 0;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: clamp(26px, 2.7vw, 42px);
+  font-weight: 400;
+  line-height: 1.06;
+  letter-spacing: 0.005em;
+  text-wrap: balance;
+  text-shadow: 0 2px 18px rgba(0, 0, 0, 0.75);
 }
 
 .menu-tagline {
-  margin: var(--sp-3) 0 0;
+  margin: var(--sp-4) 0 0;
+  padding-top: var(--sp-3);
+  border-top: 1px solid var(--menu-line-soft);
   max-width: 34ch;
   color: var(--text-dim);
+  font-family: var(--font-display);
   font-size: var(--fs-base);
-  line-height: var(--lh-body);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+  font-style: italic;
+  line-height: 1.6;
 }
 
-/* --- 18.2 Eylemler --- */
+/* --- 18.5 Govde: gorunumler --- */
 
-.menu-actions { display: flex; flex-direction: column; transition: opacity 160ms ease; }
+.menu-body {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 0;
+}
 
+.menu-view { display: flex; flex-direction: column; }
+.menu-view.hidden { display: none; }
+
+.menu-actions { gap: 0; }
+
+/* Buton bir "kutu" degil, cam rafta acilmis bir SATIR: ustunde ve altinda
+   sac teli ayrac, uzerine gelince icten aydinlanan bir yikama. Kenarlikli
+   yuvarlak kutular mobil uygulama gibi duruyordu. */
 .menu-item {
-  display: grid;
-  gap: 2px;
-  padding: var(--sp-3) var(--sp-4);
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: clamp(var(--sp-2), 1.4vh, var(--sp-3)) var(--sp-4);
   border: 0;
-  border-top: 1px solid var(--line);
-  background: rgba(9, 14, 17, 0.42);
+  border-top: 1px solid var(--menu-line-soft);
+  border-radius: var(--radius);
+  background: transparent;
   color: var(--text);
-  font-family: var(--font-ui);
   text-align: left;
   cursor: pointer;
-  transition: background 140ms ease, box-shadow 140ms ease, padding-left 140ms ease;
+  transition: background-color 180ms ease, color 180ms ease;
 }
 
-/* `display: grid` tarayicinin [hidden] kuralini eziyor: kayit yokken
-   "Devam Et" gizlendigi halde listede duruyordu. */
+.menu-actions .menu-item:last-of-type { border-bottom: 1px solid var(--menu-line-soft); }
 .menu-item[hidden] { display: none; }
 
-.menu-actions .menu-item:not([hidden]):last-of-type { border-bottom: 1px solid var(--line); }
+/* Sol kenar isareti: hover ve odakta pirinc bir dikey hat yukselir. */
+.menu-item::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 2px;
+  height: 0;
+  background: var(--menu-accent);
+  box-shadow: 0 0 12px var(--menu-glow);
+  transform: translateY(-50%);
+  transition: height 220ms cubic-bezier(0.16, 0.84, 0.28, 1);
+}
 
 .menu-item b {
-  color: #eadfc4;
+  display: block;
   font-family: var(--font-display);
-  font-size: 20px;
+  font-size: clamp(17px, 1.5vw, 21px);
   font-weight: 400;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.01em;
+  transition: color 180ms ease;
 }
 
 .menu-item small {
-  color: var(--text-mute);
+  display: block;
+  margin-top: 2px;
+  color: var(--text-faint);
   font-size: var(--fs-sm);
-  line-height: 1.35;
+  letter-spacing: 0.03em;
 }
 
-/* Secili satir: soldan pirinc cubuk ve bordo yikama — defter basliklariyla
-   ayni dil (bkz. .ledger-head). */
 .menu-item:hover,
 .menu-item:focus-visible {
+  background: linear-gradient(90deg, var(--menu-wash) 0%, transparent 78%);
   outline: none;
-  padding-left: calc(var(--sp-4) + 6px);
-  background: linear-gradient(90deg, rgba(90, 24, 34, 0.72), rgba(9, 14, 17, 0.5) 78%);
-  box-shadow: inset 3px 0 0 var(--gold);
 }
 
+.menu-item:hover::before,
+.menu-item:focus-visible::before { height: 62%; }
 .menu-item:hover b,
-.menu-item:focus-visible b { color: #fff3d8; }
+.menu-item:focus-visible b { color: var(--menu-accent); }
+.menu-item:hover small,
+.menu-item:focus-visible small { color: var(--text-dim); }
 
-.menu-item.primary { background: rgba(74, 21, 32, 0.55); }
-.menu-item.primary b { color: var(--gold-bright); }
+/* Devam et: tek vurgulu satir. Renk degil, yalniz kalicı sol hat ve daha
+   parlak baslik — "birincil" olmak icin dugmenin sismesi gerekmiyor. */
+.menu-item.primary::before { height: 62%; }
+.menu-item.primary b { color: var(--menu-accent); }
 
-/* --- 18.3 Dunya kurulumu --- */
+.menu-item[disabled] { opacity: 0.4; cursor: default; }
+.menu-item[disabled]:hover { background: transparent; }
+.menu-item[disabled]:hover::before { height: 0; }
 
-.menu-setup {
-  display: grid;
-  gap: var(--sp-3);
-  padding: var(--sp-4);
-  border: 1px solid var(--line-strong);
-  background: rgba(9, 14, 17, 0.78);
-  box-shadow: var(--bevel);
+/* Satirlar kademeli girer: hepsi ayni anda gelince liste "zipliyor". */
+.menu:not(.hidden) .menu-actions .menu-item {
+  animation: menu-row-in 420ms cubic-bezier(0.16, 0.84, 0.28, 1) both;
 }
+
+.menu-actions .menu-item:nth-child(1) { animation-delay: 90ms; }
+.menu-actions .menu-item:nth-child(2) { animation-delay: 130ms; }
+.menu-actions .menu-item:nth-child(3) { animation-delay: 170ms; }
+.menu-actions .menu-item:nth-child(4) { animation-delay: 210ms; }
+.menu-actions .menu-item:nth-child(5) { animation-delay: 250ms; }
+.menu-actions .menu-item:nth-child(6) { animation-delay: 290ms; }
+.menu-actions .menu-item:nth-child(7) { animation-delay: 330ms; }
+
+@keyframes menu-row-in {
+  from { transform: translate3d(-10px, 0, 0); opacity: 0; }
+  to { transform: translate3d(0, 0, 0); opacity: 1; }
+}
+
+/* --- 18.6 Alt gorunumler: kurulum, ayarlar, kunye --- */
+
+.menu-setup,
+.menu-options,
+.menu-credits { gap: var(--sp-4); }
 
 .menu-field { display: grid; gap: var(--sp-1); }
 
 .menu-field > span {
   display: flex;
   justify-content: space-between;
-  gap: var(--sp-3);
+  gap: var(--sp-2);
   color: var(--text-mute);
   font-size: var(--fs-label);
-  font-weight: 650;
   letter-spacing: var(--ls-label);
   text-transform: uppercase;
 }
 
 .menu-field > span b {
-  color: var(--gold-bright);
-  font-variant-numeric: tabular-nums;
+  color: var(--menu-accent);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
   letter-spacing: 0;
   text-transform: none;
 }
 
-.menu-field input[type="text"] {
-  padding: var(--sp-2);
-  border: 1px solid var(--line-strong);
+.menu-field input[type="text"],
+.menu-field select {
+  width: 100%;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--menu-line-soft);
   border-radius: var(--radius);
-  background: var(--surface-sunken);
+  background: rgba(4, 7, 9, 0.55);
   color: var(--text);
-  font-family: var(--font-ui);
-  font-size: var(--fs-base);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  letter-spacing: 0.06em;
 }
 
-.menu-field input[type="text"]:focus-visible { outline: none; border-color: var(--gold); }
+.menu-field input[type="text"]:focus-visible,
+.menu-field select:focus-visible { outline: none; border-color: var(--menu-line); }
+.menu-field select[disabled] { opacity: 0.5; }
 
-/* Kaydirici: ince pirinc ray, bordo/pirinc topuz — butce defteriyle ayni. */
 .menu-field input[type="range"] {
+  width: 100%;
+  height: 18px;
+  margin: 0;
+  background: transparent;
   -webkit-appearance: none;
   appearance: none;
-  width: 100%;
-  height: 14px;
-  margin: 0;
-  background: none;
   cursor: pointer;
 }
 
 .menu-field input[type="range"]::-webkit-slider-runnable-track {
-  height: 3px;
-  background: linear-gradient(90deg, rgba(168, 138, 75, 0.25), rgba(168, 138, 75, 0.6), rgba(168, 138, 75, 0.25));
-  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.7);
+  height: 2px;
+  background: linear-gradient(90deg, var(--menu-line) 0%, var(--menu-line-soft) 100%);
 }
 
 .menu-field input[type="range"]::-moz-range-track {
-  height: 3px;
-  background: linear-gradient(90deg, rgba(168, 138, 75, 0.25), rgba(168, 138, 75, 0.6), rgba(168, 138, 75, 0.25));
+  height: 2px;
+  background: var(--menu-line-soft);
 }
 
 .menu-field input[type="range"]::-webkit-slider-thumb {
   -webkit-appearance: none;
-  width: 13px;
-  height: 13px;
+  appearance: none;
+  width: 12px;
+  height: 12px;
   margin-top: -5px;
-  border: 2px solid #a88a4b;
+  border: 1px solid var(--menu-line);
   border-radius: 50%;
-  background: radial-gradient(circle at 38% 32%, #7b2832, #4a1520 70%);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7);
+  background: var(--menu-accent);
+  box-shadow: 0 0 10px var(--menu-glow);
 }
 
 .menu-field input[type="range"]::-moz-range-thumb {
-  width: 11px;
-  height: 11px;
-  border: 2px solid #a88a4b;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--menu-line);
   border-radius: 50%;
-  background: radial-gradient(circle at 38% 32%, #7b2832, #4a1520 70%);
+  background: var(--menu-accent);
 }
 
-.menu-setup-buttons { display: flex; gap: var(--sp-2); justify-content: flex-end; }
+/* Sahne secici: kucuk etiketler. Acilir liste degil, cunku secenekler az ve
+   secim gorsel — tiklayinca sahne hemen degisir. */
+.menu-chips { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+
+.menu-chip {
+  padding: 4px 9px;
+  border: 1px solid var(--menu-line-soft);
+  border-radius: var(--radius);
+  background: rgba(4, 7, 9, 0.5);
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: color 140ms ease, border-color 140ms ease, background-color 140ms ease;
+}
+
+.menu-chip:hover,
+.menu-chip:focus-visible { color: var(--menu-accent); border-color: var(--menu-line); outline: none; }
+
+.menu-chip[aria-pressed="true"] {
+  color: var(--menu-accent);
+  border-color: var(--menu-line);
+  background: var(--menu-wash);
+}
+
+.menu-note {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.65;
+}
+
+.menu-note b { color: var(--text); font-weight: 600; }
+
+.menu-setup-buttons {
+  display: flex;
+  gap: var(--sp-2);
+  justify-content: flex-end;
+  margin-top: var(--sp-2);
+}
 
 .menu-btn {
-  padding: var(--sp-2) var(--sp-4);
-  border: 1px solid var(--line-strong);
+  padding: var(--sp-2) var(--sp-5);
+  border: 1px solid var(--menu-line-soft);
   border-radius: var(--radius);
-  background: var(--surface-2);
-  color: var(--text);
+  background: rgba(4, 7, 9, 0.5);
+  color: var(--text-dim);
   font-family: var(--font-display);
-  font-size: var(--fs-sm);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  font-size: var(--fs-base);
+  letter-spacing: 0.04em;
   cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, background-color 160ms ease;
 }
 
-.menu-btn:hover { border-color: var(--gold); color: var(--gold-bright); }
+.menu-btn:hover,
+.menu-btn:focus-visible { color: var(--menu-accent); border-color: var(--menu-line); outline: none; }
 
 .menu-btn.primary {
-  background: linear-gradient(180deg, #5a1822, #4a1520 55%, #3c1019);
-  border-color: rgba(168, 138, 75, 0.5);
-  color: #e8dcc2;
-  box-shadow: inset 0 1px 0 rgba(232, 220, 194, 0.12);
+  background: var(--menu-wash);
+  border-color: var(--menu-line);
+  color: var(--menu-accent);
 }
 
-.menu-btn.primary:hover { color: #fff3d8; border-color: rgba(168, 138, 75, 0.85); }
+.menu-btn.primary:hover { box-shadow: inset 0 0 22px var(--menu-glow); }
 
-/* Kurulum acikken eylem listesi solar: odak tek yerde kalsin. */
-.menu.setup-open .menu-actions { opacity: 0.38; }
-
-/* --- 18.4 Alt kunye --- */
+/* --- 18.7 Alt serit: araclar ve surum --- */
 
 .menu-foot {
+  flex: none;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-3);
   margin-top: auto;
-  color: var(--text-faint);
-  font-size: var(--fs-label);
-  letter-spacing: 0.04em;
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--menu-line-soft);
 }
 
-/* Ses dugmesi kunyenin sagina oturur: menunun isi degil, ayari. Bu yuzden
-   eylem listesinde degil altta ve sonuk durur; ancak uzerine gelince canlanir. */
-.menu-mute {
-  flex: none;
+.menu-tools { display: flex; gap: var(--sp-2); }
+
+/* Yardimci kontroller menunun ISI degil AYARI: eylem listesinde degil altta,
+   sonuk dururlar; ancak uzerine gelince canlanirlar. */
+.menu-tool {
   display: grid;
   place-items: center;
-  width: 34px;
-  height: 34px;
-  /* Panelin sag kenari dar ekranda ekranin kenari: yuvarlak dugme cerceveye
-     yapisik durmasin. */
-  margin-right: var(--sp-1);
+  width: 32px;
+  height: 32px;
   padding: 0;
-  border: 1px solid var(--line);
+  border: 1px solid var(--menu-line-soft);
   border-radius: 50%;
-  background: rgba(6, 10, 13, 0.45);
+  background: rgba(4, 7, 9, 0.5);
   color: var(--text-faint);
   cursor: pointer;
   transition: color 140ms ease, border-color 140ms ease;
 }
 
-.menu-mute svg {
-  width: 17px;
-  height: 17px;
+.menu-tool svg {
+  width: 16px;
+  height: 16px;
   fill: none;
   stroke: currentColor;
-  stroke-width: 1.4;
+  stroke-width: 1.3;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.menu-mute .mute-body { fill: currentColor; stroke-width: 1; }
-.menu-mute .mute-slash { opacity: 0; transition: opacity 140ms ease; }
+.menu-tool:hover,
+.menu-tool:focus-visible { color: var(--menu-accent); border-color: var(--menu-line); outline: none; }
 
-.menu-mute:hover,
-.menu-mute:focus-visible { color: var(--gold-bright); border-color: var(--gold); outline: none; }
+.menu-tool .mute-body { fill: currentColor; stroke-width: 1; }
+.menu-tool .mute-slash { opacity: 0; transition: opacity 140ms ease; }
 
 /* Sessizde dalgalar gider, cizgi gelir: iki durum bakisla ayrilir. */
-.menu-mute.is-muted .mute-wave { opacity: 0; }
-.menu-mute.is-muted .mute-slash { opacity: 1; }
-.menu-mute.is-muted { color: var(--text-faint); }
+.menu-tool.is-muted .mute-wave { opacity: 0; }
+.menu-tool.is-muted .mute-slash { opacity: 1; }
+
+.menu-build {
+  color: var(--text-faint);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.06em;
+}
+
+/* Kurulum acikken eylem listesi solar: odak tek yerde kalsin. */
+.menu.setup-open .menu-actions { opacity: 0.38; }
 
 /* Menu acikken arkadaki arayuz tamamen susar: perde saydam degil ama odak ve
    ekran okuyucu hala oraya kayabiliyordu. */
@@ -5569,21 +5820,50 @@ body.menu-open .notify-stack,
 body.menu-open .command-dock,
 body.menu-open .sheet { visibility: hidden; }
 
-/* Alcak ekranda baslik kuculur ve bosluklar daralir; menu kaydirilmasin. */
-@media (max-height: 620px) {
-  .menu-panel { gap: var(--sp-3); }
-  .menu-brand h1 { font-size: clamp(34px, 5vw, 46px); }
+/* --- 18.8 Uyarlama --- */
+
+/* Alcak ekranda motto ve alt yazilar gider, bosluklar daralir. */
+@media (max-height: 660px) {
+  .menu-rail { gap: var(--sp-3); padding-block: var(--sp-4); }
   .menu-tagline { display: none; }
-  .menu-item { padding-block: var(--sp-2); }
+  .menu-logo { width: 40px; }
+  .menu-brand h1 { font-size: clamp(26px, 3vw, 34px); }
+  .menu-item { padding-block: 6px; }
+  .menu-item small { display: none; }
 }
 
-/* Dar ekranda sutun ortalanir ve perde iki yandan kapatir. */
+/* Dar ekranda raf tam genislige yayilir ve sahne arkada kalir: 330px'lik
+   band telefonda ekranin yarisini yiyordu. */
 @media (max-width: 720px) {
-  .menu { justify-content: center; }
-  .menu-panel { margin-left: 0; width: min(470px, 92vw); }
+  .menu-rail {
+    width: 100%;
+    /* Raf tum ekrani kaplayinca sahne tamamen kayboluyordu; ton masaustundan
+       koyu ama opak degil — atmosfer telefonda da kalsin. */
+    background:
+      var(--ui-grain),
+      linear-gradient(180deg, rgba(6, 9, 12, 0.5) 0%, rgba(4, 7, 9, 0.72) 100%);
+  }
+  .menu-rail-edge { display: none; }
+  /* Perde hafif kalir: karartmayi artik rafin kendi cami yapiyor, ikisi ust
+     uste binince sahne tamamen kayboluyordu. */
   .menu-scrim {
     background:
-      linear-gradient(180deg, rgba(6, 10, 13, 0.72), rgba(6, 10, 13, 0.9)),
-      radial-gradient(120% 90% at 50% 50%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.6) 100%);
+      linear-gradient(180deg, rgba(5, 8, 11, 0.22), rgba(5, 8, 11, 0.46)),
+      radial-gradient(120% 90% at 50% 50%, rgba(0, 0, 0, 0) 40%, rgba(0, 0, 0, 0.5) 100%);
   }
+  .menu-fog {
+    -webkit-mask-image: linear-gradient(180deg, transparent 0%, #000 58%, #000 100%);
+    mask-image: linear-gradient(180deg, transparent 0%, #000 58%, #000 100%);
+  }
+}
+
+/* Hareket azaltma: genel kural sureyi 0.01ms'ye cekiyor, ama `infinite` bir
+   animasyonda bu "durmak" degil "cilgin hizda donmek" demek. Sis, nefes ve
+   giris hareketleri burada tamamen durur. */
+@media (prefers-reduced-motion: reduce) {
+  .menu-fog,
+  .menu-logo,
+  .menu-art,
+  .menu-rail,
+  .menu-actions .menu-item { animation: none !important; }
 }

@@ -189,10 +189,12 @@
     <div class="command-bar" id="command-bar" aria-label="Commanders"></div>
   </div>
 
-  <!-- Ana menü: açılış perdesi. Fon elle yapılmış mat resimdir; metin sütunu
-       solda durur ve altına koyu bir perde serilir (bkz. .menu-scrim) çünkü
-       resmin sol yarısı gemiyle dolu ve tek başına metni taşımaz. -->
-  <section class="menu hidden" id="menu" aria-hidden="true" aria-label="Main menu">
+  <!-- Ana menü: açılış perdesi.
+       Katman sırası (arkadan öne): sahne resmi → perde → sis → sol raf.
+       Raf soldan kayarak gelen yarı saydam cam paneldir; sahnenin sağ yarısı
+       hep açıkta kalır çünkü sahneler o yarıya kompoze edilmiştir.
+       Sahne + vurgu rengi `data-theme` ile değişir (bkz. mainMenu.js SCENES). -->
+  <section class="menu hidden" id="menu" data-theme="bombardment" aria-hidden="true" aria-label="Main menu">
     <img class="menu-art" id="menu-art" src="assets/menu/main-menu.jpg" alt="" decoding="async" />
     <i class="menu-scrim" aria-hidden="true"></i>
     <!-- Sürüklenen sis: aynı saydam doku iki katmanda, farklı hız ve
@@ -200,63 +202,131 @@
          birbirinin üstünden geçince derinlik doğuyor (bkz. .menu-fog). -->
     <i class="menu-fog menu-fog-far" aria-hidden="true"></i>
     <i class="menu-fog menu-fog-near" aria-hidden="true"></i>
-    <div class="menu-panel">
+
+    <aside class="menu-rail" id="menu-rail">
+      <i class="menu-rail-edge" aria-hidden="true"></i>
+
       <header class="menu-brand">
         <span class="menu-eyebrow">Grand Strategy · 1836</span>
-        <h1>HexWar</h1>
+        <div class="menu-mark">
+          <img class="menu-logo" id="menu-logo" src="assets/menu/eye-mark.png" alt="" decoding="async" />
+          <!-- Başlık tek yerden yazılır (mainMenu.js GAME_TITLE); ismi
+               değiştirmek için markup'a dokunmak gerekmez. -->
+          <h1 id="menu-title">Imperial Eye</h1>
+        </div>
         <p class="menu-tagline" id="menu-tagline">A coastline under the guns, an empire behind them.</p>
       </header>
 
-      <nav class="menu-actions" aria-label="Start">
-        <button class="menu-item primary" id="menu-resume" hidden>
-          <b>Continue</b><small id="menu-resume-note"></small>
-        </button>
-        <button class="menu-item" id="menu-create">
-          <b>New Campaign</b><small>shape the world — seed, size, land ratio</small>
-        </button>
-        <button class="menu-item" id="menu-random">
-          <b>Random World</b><small>start at once with the default settings</small>
-        </button>
-      </nav>
+      <div class="menu-body">
+        <nav class="menu-view menu-actions" id="menu-actions" aria-label="Start">
+          <button class="menu-item primary" id="menu-resume" hidden>
+            <b>Continue</b><small id="menu-resume-note"></small>
+          </button>
+          <button class="menu-item" id="menu-create">
+            <b>New Campaign</b><small>shape the world — seed, size, land ratio</small>
+          </button>
+          <button class="menu-item" id="menu-load" hidden>
+            <b>Load Game</b><small id="menu-load-note"></small>
+          </button>
+          <button class="menu-item" id="menu-random">
+            <b>Random World</b><small>start at once with the default settings</small>
+          </button>
+          <button class="menu-item" id="menu-settings">
+            <b>Settings</b><small>music, theme, motion</small>
+          </button>
+          <button class="menu-item" id="menu-credits">
+            <b>Credits</b><small>who built this world</small>
+          </button>
+          <button class="menu-item" id="menu-exit">
+            <b>Exit</b><small>leave the campaign map</small>
+          </button>
+        </nav>
 
-      <form class="menu-setup hidden" id="menu-setup" onsubmit="return false">
-        <label class="menu-field">
-          <span>World seed</span>
-          <input type="text" id="menu-seed" placeholder="leave blank for random" autocomplete="off" spellcheck="false" />
-        </label>
-        <label class="menu-field">
-          <span>Map size <b id="menu-size-label">160 × 96</b></span>
-          <input type="range" id="menu-size" min="60" max="220" step="4" value="160" />
-        </label>
-        <label class="menu-field">
-          <span>Continentality <b id="menu-cont-label">0.50</b></span>
-          <input type="range" id="menu-cont" min="0" max="1" step="0.05" value="0.5" />
-        </label>
-        <label class="menu-field">
-          <span>Land ratio <b id="menu-land-label">0.00</b></span>
-          <input type="range" id="menu-land" min="-0.5" max="0.5" step="0.05" value="0" />
-        </label>
-        <label class="menu-field">
-          <span>Great powers <b id="menu-nations-label">automatic</b></span>
-          <input type="range" id="menu-nations" min="0" max="30" step="1" value="0" />
-        </label>
-        <div class="menu-setup-buttons">
-          <button type="button" class="menu-btn" id="menu-back">Back</button>
-          <button type="button" class="menu-btn primary" id="menu-build">Generate World</button>
+        <form class="menu-view menu-setup hidden" id="menu-setup" onsubmit="return false">
+          <label class="menu-field">
+            <span>World seed</span>
+            <input type="text" id="menu-seed" placeholder="leave blank for random" autocomplete="off" spellcheck="false" />
+          </label>
+          <label class="menu-field">
+            <span>Map size <b id="menu-size-label">160 × 96</b></span>
+            <input type="range" id="menu-size" min="60" max="220" step="4" value="160" />
+          </label>
+          <label class="menu-field">
+            <span>Continentality <b id="menu-cont-label">0.50</b></span>
+            <input type="range" id="menu-cont" min="0" max="1" step="0.05" value="0.5" />
+          </label>
+          <label class="menu-field">
+            <span>Land ratio <b id="menu-land-label">0.00</b></span>
+            <input type="range" id="menu-land" min="-0.5" max="0.5" step="0.05" value="0" />
+          </label>
+          <label class="menu-field">
+            <span>Great powers <b id="menu-nations-label">automatic</b></span>
+            <input type="range" id="menu-nations" min="0" max="30" step="1" value="0" />
+          </label>
+          <div class="menu-setup-buttons">
+            <button type="button" class="menu-btn" id="menu-back">Back</button>
+            <button type="button" class="menu-btn primary" id="menu-build">Generate World</button>
+          </div>
+        </form>
+
+        <div class="menu-view menu-options hidden" id="menu-options">
+          <label class="menu-field">
+            <span>Music <b id="menu-volume-label">42%</b></span>
+            <input type="range" id="menu-volume" min="0" max="100" step="1" value="42" />
+          </label>
+          <div class="menu-field">
+            <span>Scene</span>
+            <div class="menu-chips" id="menu-theme-list"></div>
+          </div>
+          <label class="menu-field">
+            <span>Language</span>
+            <select id="menu-lang" disabled>
+              <option>English</option>
+            </select>
+          </label>
+          <p class="menu-note" id="menu-motion-note"></p>
+          <div class="menu-setup-buttons">
+            <button type="button" class="menu-btn" data-menu-back>Back</button>
+          </div>
         </div>
-      </form>
+
+        <div class="menu-view menu-credits hidden" id="menu-credits-view">
+          <p class="menu-note">
+            <b>Imperial Eye</b> — a hex grand-strategy sandbox built with no
+            dependencies and no build step: plain ES modules and Canvas2D.
+          </p>
+          <p class="menu-note">
+            World generation, economy, population and diplomacy are simulated
+            from a single seed. Every map you see was drawn by the generator in
+            about a tenth of a second.
+          </p>
+          <p class="menu-note" id="menu-credits-music"></p>
+          <div class="menu-setup-buttons">
+            <button type="button" class="menu-btn" data-menu-back>Back</button>
+          </div>
+        </div>
+      </div>
 
       <footer class="menu-foot">
-        <span>No dependencies · plain ES modules and Canvas2D</span>
-        <button class="menu-mute" id="menu-mute" type="button" aria-pressed="false" aria-label="Mute menu music">
-          <svg viewBox="0 0 16 16" aria-hidden="true">
-            <path class="mute-body" d="M3.5 6.2h2.2L8.8 3.6v8.8L5.7 9.8H3.5z" />
-            <path class="mute-wave" d="M10.8 6.1a2.7 2.7 0 0 1 0 3.8M12.6 4.4a5.2 5.2 0 0 1 0 7.2" />
-            <path class="mute-slash" d="M11 5.4 14.4 10.6" />
-          </svg>
-        </button>
+        <div class="menu-tools">
+          <button class="menu-tool" id="menu-mute" type="button" aria-pressed="false" aria-label="Mute menu music">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path class="mute-body" d="M3.5 6.2h2.2L8.8 3.6v8.8L5.7 9.8H3.5z" />
+              <path class="mute-wave" d="M10.8 6.1a2.7 2.7 0 0 1 0 3.8M12.6 4.4a5.2 5.2 0 0 1 0 7.2" />
+              <path class="mute-slash" d="M11 5.4 14.4 10.6" />
+            </svg>
+          </button>
+          <button class="menu-tool" id="menu-scene" type="button" aria-label="Next scene" title="Next scene">
+            <svg viewBox="0 0 16 16" aria-hidden="true">
+              <path d="M2.2 11.6 6 6.4l2.6 3.3 1.7-2.1 3.5 4z" />
+              <circle cx="11" cy="4.2" r="1.5" />
+              <rect x="1.5" y="2.5" width="13" height="11" rx="1" />
+            </svg>
+          </button>
+        </div>
+        <span class="menu-build" id="menu-build-info">—</span>
       </footer>
-    </div>
+    </aside>
   </section>
 
   <div class="sheet" id="sheet">
