@@ -5388,13 +5388,10 @@ body.screen-open .layer-menu { display: none; }
   flex-direction: column;
   gap: 2px;
   width: 66px;
-  max-height: 84vh;
   padding: var(--sp-3) 0;
-  /* Yatayda kirpar (kapali seritte adlar tasar), dikeyde kaydirir: telefonda
-     serit yuksekligi asinca alttaki araclar erisilemez kaliyordu. */
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-width: none;
+  /* Kirpma YOK: ad panelleri seridin disina tasar (bkz. .menu-text).
+     Telefonda serit satir icine acildigi icin orada kaydirma acilir. */
+  overflow: visible;
   background:
     var(--ui-grain),
     linear-gradient(180deg, var(--menu-rail-tint) 0%, var(--menu-rail-deep) 100%);
@@ -5403,14 +5400,9 @@ body.screen-open .layer-menu { display: none; }
   box-shadow:
     inset 0 1px rgba(255, 255, 255, 0.035),
     18px 0 48px rgba(0, 0, 0, 0.38);
-  transition: width 300ms cubic-bezier(0.16, 0.84, 0.28, 1);
 }
 
-.menu-rail::-webkit-scrollbar { display: none; }
 
-.menu-rail:hover,
-.menu-rail:focus-within,
-.menu.drawer-open .menu-rail { width: 292px; }
 
 /* Seridin sag kenari: sac teli pirinc hat + disa vuran cok yumusak parilti. */
 .menu-rail-edge {
@@ -5444,7 +5436,7 @@ body.screen-open .layer-menu { display: none; }
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  width: 292px;          /* acik genislik: kapaliyken tasan kisim kirpilir */
+  width: 66px;
   padding: var(--sp-2) var(--sp-3);
   border: 0;
   background: transparent;
@@ -5493,18 +5485,40 @@ body.screen-open .layer-menu { display: none; }
   stroke-linejoin: round;
 }
 
-/* Ad blogu serit kapaliyken gorunmez ama YERINDE durur: `display:none`
-   kullanilsaydi acilirken metin zipliyordu. */
+/* Ad paneli: seridin SAGINDAN, yalnizca ustune gelinen satir icin acilir.
+   Seridin tamamini acmak yedi adi birden getiriyordu; burada goz tek satirda
+   kalir. Panel seritle ayni camdan ve sol kenarliksiz: serit o satirda
+   yerel olarak uzamis gibi okunur. */
 .menu-text {
-  min-width: 0;
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  z-index: 1;
+  min-width: 208px;
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid var(--menu-line-soft);
+  border-left: 0;
+  background:
+    var(--ui-grain),
+    linear-gradient(180deg, var(--menu-rail-tint) 0%, var(--menu-rail-deep) 100%);
+  -webkit-backdrop-filter: blur(20px) saturate(0.8);
+  backdrop-filter: blur(20px) saturate(0.8);
+  box-shadow: 14px 0 34px rgba(0, 0, 0, 0.4);
   opacity: 0;
-  transform: translateX(-6px);
-  transition: opacity 200ms ease, transform 260ms cubic-bezier(0.16, 0.84, 0.28, 1);
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-50%) translateX(-10px);
+  transition: opacity 170ms ease, transform 240ms cubic-bezier(0.16, 0.84, 0.28, 1),
+    visibility 0s linear 170ms;
 }
 
-.menu-rail:hover .menu-text,
-.menu-rail:focus-within .menu-text,
-.menu.drawer-open .menu-text { opacity: 1; transform: none; }
+.menu-item:hover .menu-text,
+.menu-item:focus-visible .menu-text {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(-50%) translateX(0);
+  transition-delay: 0s;
+}
 
 .menu-text b {
   display: block;
@@ -5552,8 +5566,7 @@ body.screen-open .layer-menu { display: none; }
 .menu-item.is-active::before { height: 60%; }
 
 /* Serit araclari satirlarla ayni hizada durur; ayrac onlari isten ayirir. */
-/* Kapali seritte (66px) iki arac yan yana sigmiyor ve ikincisi kirpiliyordu:
-   kapaliyken alt alta, acilinca yan yana dizilirler. */
+/* Serit 66px oldugu icin araclar alt alta durur. */
 .menu-rail-tools {
   display: flex;
   flex-direction: column;
@@ -5562,12 +5575,7 @@ body.screen-open .layer-menu { display: none; }
   margin: var(--sp-2) 0 0 var(--sp-3);
   padding-top: var(--sp-3);
   border-top: 1px solid var(--menu-line-soft);
-  transition: width 300ms cubic-bezier(0.16, 0.84, 0.28, 1);
 }
-
-.menu-rail:hover .menu-rail-tools,
-.menu-rail:focus-within .menu-rail-tools,
-.menu.drawer-open .menu-rail-tools { flex-direction: row; width: 252px; }
 
 /* --- 18.5 Ust kimlik, merkez amblem, alt eylem --- */
 
@@ -5672,7 +5680,7 @@ body.screen-open .layer-menu { display: none; }
 }
 
 .menu-logo {
-  width: clamp(120px, 15vw, 208px);
+  width: clamp(134px, 16.8vw, 233px);
   height: auto;
   filter:
     drop-shadow(0 0 22px var(--menu-glow))
@@ -5693,7 +5701,9 @@ body.screen-open .layer-menu { display: none; }
   margin: 0;
   padding: var(--sp-2) var(--sp-5);
   max-width: 46ch;
-  color: var(--text);
+  /* Slogan degil atmosfer detayi: bir kademe sonuk renk + opaklik. */
+  color: var(--text-dim);
+  opacity: 0.82;
   font-family: var(--font-display);
   font-size: var(--fs-md);
   font-style: italic;
@@ -5725,9 +5735,12 @@ body.screen-open .layer-menu { display: none; }
 /* Tek birincil eylem: referanstaki "Continue Campaign" seridi gibi genis ve
    yatay. Menude ikinci bir birincil dugme YOK — geri kalani seritte. */
 .menu-cta {
-  display: block;
+  display: grid;
+  align-content: center;
+  gap: 1px;
   width: 100%;
-  padding: var(--sp-3) var(--sp-5);
+  min-height: 58px;
+  padding: var(--sp-2) var(--sp-5);
   border: 1px solid var(--menu-line);
   border-radius: var(--radius);
   background:
@@ -5752,7 +5765,6 @@ body.screen-open .layer-menu { display: none; }
 
 .menu-cta small {
   display: block;
-  margin-top: 3px;
   color: var(--text-faint);
   font-size: var(--fs-label);
   letter-spacing: 0.06em;
@@ -5788,7 +5800,7 @@ body.screen-open .layer-menu { display: none; }
   position: absolute;
   z-index: 2;
   top: 50%;
-  left: 292px;
+  left: 66px;
   transform: translateY(-50%);
   display: flex;
   flex-direction: column;
@@ -5809,6 +5821,9 @@ body.screen-open .layer-menu { display: none; }
 }
 
 .menu-drawer.hidden { display: none; }
+
+/* Cekmece acikken ucan panel onun ALTINDA kalirdi: serit satirlari one alinir. */
+.menu.drawer-open .menu-item:hover { z-index: 3; }
 .menu-drawer::-webkit-scrollbar { display: none; }
 
 @keyframes menu-drawer-in {
@@ -6072,11 +6087,25 @@ body.menu-open .sheet { visibility: hidden; }
   .menu-text small { display: none; }
 }
 
-/* Dokunmatikte hover YOKTUR: serit orada hep acik durur, yoksa simgeler ne
-   olduklarini hicbir zaman soylemez. */
+/* Dokunmatikte hover YOKTUR: ucan panel hicbir zaman acilmaz, o yuzden adlar
+   satir icine doner ve serit genis durur. */
 @media (hover: none) {
   .menu-rail { width: 292px; }
-  .menu-text { opacity: 1; transform: none; }
+  .menu-item { width: 100%; }
+  .menu-text {
+    position: static;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+  }
+  .menu-drawer { left: 292px; }
 }
 
 /* Dar ekran: serit tam genislige yayilir, amblem ve baslik kuculur. 292px'lik
@@ -6098,6 +6127,22 @@ body.menu-open .sheet { visibility: hidden; }
   .menu:not(.hidden) .menu-rail { animation: none; }
   .menu-item { width: 100%; }
   .menu-rail-edge { display: none; }
+  /* Alt sayfa yuksekligi asabilir; ucan panel olmadigi icin kirpma serbest. */
+  .menu-rail { overflow-y: auto; scrollbar-width: none; }
+  .menu-rail::-webkit-scrollbar { display: none; }
+  .menu-text {
+    position: static;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    box-shadow: none;
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+  }
 
   /* Amblem ustte kalan bosluga oturur; alt eylem seridin hemen ustunde. */
   .menu-emblem { top: 26%; width: 88vw; }
@@ -6131,16 +6176,10 @@ body.menu-open .sheet { visibility: hidden; }
   }
 }
 
-/* Orta genislikte acik serit (292px) + cekmece (392px) yan yana sigmiyor:
-   cekmece KAPALI seridin yanina oturur ve serit acilmaz. Acilsaydi ikisi ust
-   uste binip cekmece adlarin uzerine kapaniyordu. */
+/* Orta genislikte cekmece daralir; serit zaten 66px oldugu icin baska
+   duzeltme gerekmiyor. */
 @media (max-width: 1079px) and (min-width: 721px) {
-  .menu-drawer { left: 66px; width: min(360px, 52vw); }
-  .menu.drawer-open .menu-rail,
-  .menu.drawer-open .menu-rail:hover,
-  .menu.drawer-open .menu-rail:focus-within { width: 66px; }
-  .menu.drawer-open .menu-text { opacity: 0; transform: translateX(-6px); }
-  .menu.drawer-open .menu-rail-tools { flex-direction: column; width: 42px; }
+  .menu-drawer { width: min(360px, 52vw); }
 }
 
 /* Hareket azaltma: genel kural sureyi 0.01ms'ye cekiyor, ama `infinite` bir

@@ -30,7 +30,7 @@ import { MenuMusic } from './menuMusic.js';
  * ya da CSS'e dokunmak gerekmez.
  */
 export const GAME_TITLE = 'Imperial Eye';
-export const GAME_EYEBROW = 'Grand Strategy · 1836';
+export const GAME_EYEBROW = 'The Long Century · 1836';
 /** Alt şeritteki sürüm künyesi. Kayıt biçimi sürümü de burada okunur. */
 export const BUILD_LABEL = `v0.1.0 · save ${SAVE_VERSION}`;
 
