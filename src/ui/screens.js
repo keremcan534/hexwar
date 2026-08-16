@@ -305,6 +305,8 @@ export class Screens {
       this.refreshHandle = 0;
     }
     if (!this.active || !this.game.world) return;
+    // Ekran kurulumu büyük innerHTML yazımıdır; maliyeti ölçülür.
+    const t0 = performance.now();
     const me = this.me;
     const scroll = this.captureScroll();
     this.el.title.textContent = TITLES[this.active] ?? '—';
@@ -327,6 +329,7 @@ export class Screens {
         this.refresh();
       };
     }
+    this.game.perf?.add('ui.screen', performance.now() - t0);
   }
 
   /**

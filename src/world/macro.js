@@ -100,6 +100,20 @@ export function archetypePlan(rng) {
     {
       role: 'kistak-devleti', zone: 'kistak', provinces: rng.int(2, 4), dev: 0,
     },
+    // Doku kuyruğu: standart dünyayı ~70 devlete taşıyan küçük prenslikler.
+    // Vic2 yoğunluğu referansı — büyük güçler yerleştikten sonra doğdukları
+    // için harita rollerini bozmaz, diplomasiye yem ve tampon olurlar.
+    // Güney kıtasına BİLEREK dokunulmaz: orası kolonizasyon alanıdır ve
+    // audit:world içinin %70'inin gelişmemiş yerelde kalmasını şart koşar.
+    ...Array.from({ length: rng.int(3, 5) }, () => ({
+      role: 'bozkir-boyu', zone: 'kuzey-bozkiri', provinces: rng.int(2, 5), dev: 0,
+    })),
+    ...Array.from({ length: rng.int(3, 4) }, () => ({
+      role: 'dogu-koyu-beyligi', zone: 'dogu-ovasi', provinces: rng.int(2, 5), dev: 0,
+    })),
+    ...Array.from({ length: rng.int(2, 3) }, () => ({
+      role: 'kavsak-beyligi', zone: 'kavsak', provinces: rng.int(2, 4), dev: 0,
+    })),
   ];
 }
 

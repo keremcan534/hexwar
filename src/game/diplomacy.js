@@ -65,7 +65,9 @@ export function declareWar(game, a, b) {
   if (a === b || atWar(world, a, b)) return false;
   if (truceLeft(world, a, b, game.turns.turn) > 0) return false;
   setState(world, a, b, WAR, game.turns.turn);
-  game.renderer.invalidateCache();
+  // Savaş ilanının anlık harita izi yok (sınır rengi değişmez; işgal
+  // taraması ancak kareler el değiştirince başlar) — tam geçersizleme
+  // YZ'nin her ilanında tüm önbelleği boşuna yakıyordu.
   if (a === game.turns.playerNation || b === game.turns.playerNation) {
     const other = world.nations[a === game.turns.playerNation ? b : a];
     // Savaş ilanı kendiliğinden kapanmaz (NOTIFY.WAR ttl 0): görülmeden geçmemeli.
@@ -80,6 +82,7 @@ export function declareWar(game, a, b) {
 export function settleOccupations(game, a, b) {
   const world = game.world;
   let transferred = 0;
+  const changedTiles = [];
   for (const tile of world.tiles) {
     const controller = controllerOf(tile);
     const validTransfer = (tile.owner === a && controller === b)
@@ -94,8 +97,12 @@ export function settleOccupations(game, a, b) {
     tile.heldSince = game.turns.turn;
     if (tile.province) tile.province.control = 25;
     if (tile.city) tile.city.nationId = controller;
+    changedTiles.push(tile);
     transferred++;
   }
+  // Yalnız el değiştiren kareler mürekkeplenir; küme 512'yi aşarsa
+  // invalidateTiles kendisi tam pişirmeye düşer.
+  if (changedTiles.length) game.renderer.invalidateTiles(changedTiles);
   return transferred;
 }
 
@@ -110,7 +117,8 @@ export function makePeace(game, a, b, options = {}) {
   setState(world, a, b, PEACE, game.turns.turn, {
     truceUntil: game.turns.turn + TRUCE_TURNS,
   });
-  game.renderer.invalidateCache();
+  // Toprak devri settleOccupations/claimAtPeace içinde nokta geçersizleme
+  // ile işaretlendi; barışın kendisinin ayrıca harita izi yok.
   if (a === game.turns.playerNation || b === game.turns.playerNation) {
     const other = world.nations[a === game.turns.playerNation ? b : a];
     // `settle: false` geldiginde toprak devrini anlasma yapar; isgal sayisini

@@ -363,7 +363,9 @@ export function queueConstruction(game, nationId, regionId, typeId) {
     work: price, cost: price, funded: price,
     progress: 0, started: game.turns.turn,
   });
-  game.renderer.invalidateCache();
+  // Kuyruk değişimi harita görselini yalnız inşaat kipinde etkiler; tam
+  // geçersizleme YZ kuyruğu oynadıkça her tur tüm önbelleği yakıyordu.
+  game.renderer.invalidateConstruction?.();
   game.emit('construction', state);
   game.requestRender();
   return true;
@@ -392,7 +394,7 @@ export function cancelConstruction(game, nationId, projectId) {
     }
   }
   state.projects.splice(index, 1);
-  game.renderer.invalidateCache();
+  game.renderer.invalidateConstruction?.();
   game.emit('construction', state);
   game.requestRender();
   return true;
@@ -548,7 +550,10 @@ export function runConstruction(game) {
     if (completed || state.projects.length) changed = true;
   }
   if (changed) {
-    game.renderer.invalidateCache();
+    // `changed` kuyruğu olan her ulus için doğru — yani pratikte her tur.
+    // Tam geçersizleme buradan haftada bir tüm dünyayı yeniden pişirtiyordu;
+    // inşaatın harita izi yalnız inşaat kipindeki atlas/rozetlerdir.
+    game.renderer.invalidateConstruction?.();
     game.emit('construction', null);
     game.requestRender();
   }

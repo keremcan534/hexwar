@@ -2452,35 +2452,65 @@ function updatePrices(market) {
   market.totalGdp = totalGdp;
 }
 
-export function runEconomy(game) {
+/**
+ * Haftalık ekonomi üç adıma bölündü: beginEconomy → ulus başına
+ * runNationEconomy → finishEconomy. Neden: kapanışın en pahalı kalemi
+ * ekonomiydi (ölçüldü: 72 ms'lik turun 51 ms'i) ve maliyet tek bir sıcak
+ * noktada değil ulus sayısına yayılıyordu. Bölünmüş yapı, turn.js'in tur
+ * üretecinin ulusları KARE BÜTÇESİYLE dilimlemesine izin verir — mantık ve
+ * işlem sırası bire bir aynıdır, yalnız zamanlama kareler arasına yayılır.
+ * Piyasa akümülasyonu sıra-bağımsız tasarlandığı için (girdi bolluğu geçen
+ * haftadan okunur, bkz. inputAvailability) dilimleme sonucu değiştirmez.
+ */
+export function beginEconomy(game) {
   const world = game.world;
   ensureEconomy(world);
   const market = world.market;
+  const ctx = { world, market, profile: {} };
+  let markT = performance.now();
+  ctx.mark = (name) => {
+    const now = performance.now();
+    ctx.profile[name] = (ctx.profile[name] ?? 0) + (now - markT);
+    markT = now;
+  };
+  // Kareler arasında geçen duvar süresi profile karışmasın (bkz. turnSteps).
+  ctx.stamp = () => {
+    markT = performance.now();
+  };
   // Fabrikalar geçen haftanın küresel arz/talep gerçekleşmesine göre çalışır.
   // Bir haftalık gecikme bütün ülkeleri aynı oranda etkiler ve dizi sırasının
   // piyasada kimin girdiyi kapacağını belirlemesini engeller.
-  const inputAvailability = marketInputAvailability(market);
+  ctx.inputAvailability = marketInputAvailability(market);
   for (const state of Object.values(market.goods)) {
     state.supply = 0;
     state.demand = 0;
     state.traded = 0;
   }
+  ctx.mark('setup');
+  return ctx;
+}
 
-  for (const nation of world.nations) {
-    if (!nation.alive) continue;
+export function runNationEconomy(game, nation, ctx) {
+  if (!nation.alive) return;
+  const { world, market, inputAvailability, mark } = ctx;
+  ctx.stamp();
+  {
     // Geçen haftanın inşaat kuyruğunda biten tesisler önce gerçeğe dönüşür.
     commitCompletedProjects(game, nation);
     resetNationGoodsFlow(nation);
     updateClasses(world, nation);
+    mark('classes');
     const ownOutput = emptyGoods();
     const raw = rawProduction(world, nation, market);
     for (const [id, amount] of Object.entries(raw)) ownOutput[id] += amount;
     const baseOutputValue = Object.entries(raw)
       .reduce((sum, [id, amount]) => sum + priceOf(world, id) * amount, 0);
+    mark('raw');
     const industrialOutput = runFactories(world, nation, market, ownOutput, inputAvailability);
     // İşe alım ve seviye atlama aylıktır: bu haftanın kârı görüldükten sonra,
     // dört haftada bir. Sanayinin 100 yıla yayılmasını sağlayan tempo budur.
     if ((world.turn ?? 1) % HIRING_INTERVAL === 0) runFactoryEmployment(game, nation);
+    mark('factories');
     const military = ensureMilitaryEconomy(nation);
     // Stok yatırımının haftalık bütçesi: geçen haftanın gelirinin çeyreği ×
     // tedarik kaydırağı. Sınırsız hızda stoklama, kuruluş yıllarında bütün
@@ -2518,7 +2548,9 @@ export function runEconomy(game) {
       retainedBudget = Math.max(0, retainedBudget - retainedCost);
       nation.economy.procurementGold = (nation.economy.procurementGold ?? 0) + retainedCost;
     }
+    mark('military');
     populationDemand(world, nation, market);
+    mark('popDemand');
 
     // Çimento şantiyeye gider: inşaat kuyruğunda o hafta yapılan iş kadar
     // talep doğar. Çimento fabrikasının tek müşterisi budur ve aynı zamanda
@@ -2565,17 +2597,25 @@ export function runEconomy(game) {
     for (const [id, amount] of Object.entries(ownOutput)) {
       nation.economy.inventory[id] = amount;
     }
+    mark('fiscal');
     runPrivateSector(game, nation);
+    mark('privateSector');
     runEconomicAI(game, nation);
     // Bina kararı da bir harcamadır ve defter bu haftanın kaydını yazmadan
     // önce verilmeli; construction.js yalnız işi ilerletir.
     planConstructionAI(game, nation);
+    mark('econAI');
   }
+}
 
+export function finishEconomy(game, ctx) {
+  const { world, market, mark } = ctx;
+  ctx.stamp();
   // Dünya piyasasındaki gerçek alımlar stratejik stokları doldurur ve fiyatı
   // yukarı iter; böylece ekrandaki piyasa ile inşaat ekonomisi aynı sistemdir.
   procureStrategicGoods(world);
   settleGlobalTrade(world);
+  mark('trade');
   for (const nation of world.nations) {
     if (!nation.alive) continue;
     updateMilitaryAverages(nation);
@@ -2583,7 +2623,16 @@ export function runEconomy(game) {
   }
   updatePrices(market);
   market.lastUpdated = world.turn;
+  mark('ledger');
+  game.turns.lastEconomyProfile = ctx.profile;
   game.emit('economy', market);
+}
+
+/** Senkron kompozisyon: tanılama betikleri ve testler tek çağrıyla koşar. */
+export function runEconomy(game) {
+  const ctx = beginEconomy(game);
+  for (const nation of game.world.nations) runNationEconomy(game, nation, ctx);
+  finishEconomy(game, ctx);
 }
 
 export function formatPopulation(value) {

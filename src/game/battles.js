@@ -341,7 +341,9 @@ function finishBattle(game, battle, attackerWon) {
     );
   }
   game.emit('battles', battle);
-  game.renderer.invalidateCache();
+  // Tam geçersizleme kalktı: muharebe sonucunun harita izi işgaldir ve
+  // occupy() değişen kareleri zaten invalidateTiles ile işaretliyor. Savaş
+  // haftalarında her muharebe kapanışı tüm dünyayı yeniden pişirtiyordu.
 }
 
 /** Kayiplari tarafa gucu oraninda dagitir. */

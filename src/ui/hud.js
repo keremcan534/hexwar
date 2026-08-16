@@ -210,7 +210,11 @@ export class Hud {
     game.on('select', (tile) => this.showTile(tile));
     game.on('turn', () => { this.onTurn(); this.showWars(); });
     game.on('peace', () => this.showWars());
-    game.on('clock', () => this.onTurn());
+    // Gün tiki yalnız tarihi oynatır. Eskiden her gün tam onTurn koşuyordu:
+    // hız 8'de saniyede 8 kez skorbord + ordu toplamı + üç innerHTML bloğu
+    // (ölçüldü: tik başına ~1-2.4 ms + DOM çöpü). Haftalık kapanış zaten
+    // 'turn'/'economy' olaylarıyla tam tazeliyor.
+    game.on('clock', () => this.onDay());
     game.on('economy', () => this.onTurn());
     game.on('battles', () => {
       if (game.selected) this.showTile(game.selected);
@@ -535,9 +539,31 @@ export class Hud {
       : 'No save found. The game autosaves every ten weeks.';
   }
 
+  /** Gün tiki: yalnız tarih yazısı ve (değiştiyse) hız düğmeleri. */
+  onDay() {
+    const { turns, world, clock } = this.game;
+    if (!world) return;
+    const label = gameDate(turns.turn, clock.day);
+    if (label !== this.lastDateLabel) {
+      this.lastDateLabel = label;
+      this.el.turnValue.textContent = label;
+    }
+    if (clock.speed !== this.lastSpeedShown) {
+      this.lastSpeedShown = clock.speed;
+      for (const btn of document.querySelectorAll('.time-btn[data-speed]')) {
+        btn.classList.toggle('active', Number(btn.dataset.speed) === clock.speed);
+      }
+    }
+  }
+
   onTurn() {
     const { turns, world } = this.game;
     if (!world) return;
+    // Üst bar tazelemesi hem kare içinde (tur dilimi) hem kare dışında
+    // (saat tiki) tetiklenir; maliyeti iki durumda da ölçülür.
+    const t0 = performance.now();
+    this.lastDateLabel = gameDate(turns.turn, this.game.clock.day);
+    this.lastSpeedShown = this.game.clock.speed;
     this.el.turnValue.textContent = gameDate(turns.turn, this.game.clock.day);
     const me = world.nations[turns.playerNation];
     const alive = world.nations.filter((n) => n.alive).length;
@@ -584,6 +610,7 @@ export class Hud {
       this.el.topSub.textContent = 'eliminated';
     }
     if (!this.game.selected) this.showGuidance();
+    this.game.perf?.add('ui.hud', performance.now() - t0);
   }
 
   /** Oyuncunun boşta kaldığında okuyacağı tek, öncelikli karar özeti. */

@@ -812,16 +812,36 @@ function refreshOfficerCorps(game, nation, rng) {
   nation.generals.push(createGeneral(world, nation, rng));
 }
 
-export function runCommand(game) {
+/**
+ * Komuta fazının dilimlenebilir üçlüsü. Ölçüldü: atomik runCommand 62 uluslu
+ * dünyada 12-20 ms tutuyor ve turnSteps'in kare bütçesini (7 ms) tek başına
+ * aşıyordu — haftalık tikte görülen takılmanın en büyük tek parçasıydı.
+ * Sınır taraması bir kez yapılır (beginCommand), uluslar sırayla işlenir
+ * (runNationCommand) — işlem sırası senkron yolla birebir aynı, determinizm
+ * korunur.
+ */
+export function beginCommand(game) {
   const world = game.world;
   ensureCommand(world);
   reconcileCommand(world);
-  const borders = scanBorders(world);
-  const rng = game.turns.rng;
-  for (const nation of world.nations) {
-    if (!nation.alive) continue;
-    refreshOfficerCorps(game, nation, rng);
-    for (const general of generalsOf(nation)) runGroup(game, nation, general, borders);
+  return { borders: scanBorders(world), rng: game.turns.rng };
+}
+
+export function runNationCommand(game, nation, context) {
+  if (!nation.alive) return;
+  refreshOfficerCorps(game, nation, context.rng);
+  for (const general of generalsOf(nation)) {
+    runGroup(game, nation, general, context.borders);
   }
+}
+
+export function finishCommand(game) {
   game.emit('command', game.activeGeneral ?? null);
+}
+
+/** Senkron sarmalayıcı: tanılama betikleri ve testler için değişmedi. */
+export function runCommand(game) {
+  const context = beginCommand(game);
+  for (const nation of game.world.nations) runNationCommand(game, nation, context);
+  finishCommand(game);
 }

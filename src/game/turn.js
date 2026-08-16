@@ -19,9 +19,13 @@ import {
   CITY_COST, UNIT_COSTS, assignAllWorkers, canAfford, canFoundCity,
   cityName, collectProvinceTotals, createCity, growCities, nationBudget, pay,
 } from './cities.js';
-import { initEconomy, reconcilePopulation, runEconomy } from './economy.js';
+import {
+  beginEconomy, finishEconomy, initEconomy, reconcilePopulation, runNationEconomy,
+} from './economy.js';
 import { initBattles, removeFromBattles, runBattles } from './battles.js';
-import { initCommand, releaseArmy, runCommand, seedGenerals } from './command.js';
+import {
+  beginCommand, finishCommand, initCommand, releaseArmy, runNationCommand, seedGenerals,
+} from './command.js';
 import {
   initProvinces, provincePopulation, refreshProvinceOwner, runProvinces,
 } from './provinces.js';
@@ -48,6 +52,9 @@ export class TurnManager {
 
   /** Yeni dünyada başlangıç birimlerini kurar. */
   start(world) {
+    // Oyuncu, dünya kurulumunun seçtiği bitişik devlete oturur (bkz.
+    // nations.pickContiguousPlayer); eski dünyalarda 0'a düşer.
+    this.playerNation = world.playerNation ?? 0;
     // Kimlikler dunyaya ait olmali: sayac sifirlanmazsa ayni tohumla kurulan
     // ikinci dunya baska bir oyun olur (bkz. command.js advance faz notu).
     resetUnitIds(1);
@@ -280,24 +287,89 @@ export class TurnManager {
     }
     setController(tile, nationId, this.turn);
     if (tile.province) tile.province.control = tile.owner === nationId ? 70 : 10;
-    this.game.renderer.invalidateTiles([tile]);
+    // İşgal egemenlik değil kontrol değiştirir: etiket yerleşimi kaymaz.
+    this.game.renderer.invalidateTiles([tile], false);
     return true;
   }
 
+  /**
+   * Senkron hafta kapanışı: tanılama betikleri, denetimler ve kayıt öncesi
+   * boşaltma bunu kullanır. Canlı oyun döngüsü ise beginTurnJob/pumpTurn ile
+   * aynı adımları KARE BÜTÇESİNE bölerek işler — 60+ uluslu dünyada atomik
+   * kapanış ana thread'i 70-100 ms bloklayıp kaydırmayı donduruyordu
+   * (ölçüldü). Mantık ve işlem sırası iki yolda da birebir aynıdır.
+   */
   endTurn() {
+    const steps = this.turnJob ?? this.turnSteps();
+    this.turnJob = null;
+    let step = steps.next();
+    while (!step.done) step = steps.next();
+  }
+
+  /** Haftayı dilimli işlemeye başlar; pumpTurn kare başına ilerletir. */
+  beginTurnJob() {
+    if (!this.turnJob && !this.victory) this.turnJob = this.turnSteps();
+  }
+
+  /**
+   * Turu en fazla `budgetMs` kadar ilerletir; iş bittiyse true döner.
+   * Takvim (game.updateClock) iş sürerken yeni gün saymaz — hız, tur
+   * maliyetine göre kendiliğinden ölçeklenir ama kare hızı asla düşmez.
+   */
+  pumpTurn(budgetMs = 5.5) {
+    if (!this.turnJob) return true;
+    const start = performance.now();
+    let step = this.turnJob.next();
+    while (!step.done && performance.now() - start < budgetMs) {
+      step = this.turnJob.next();
+    }
+    if (step.done) this.turnJob = null;
+    return !this.turnJob;
+  }
+
+  * turnSteps() {
     const world = this.world;
     if (!world) return;
+
+    // Faz profili: haftalık kapanışın nereye gittiği her turda ölçülür.
+    // Donma şikayetleri "hangi faz?" sorusuna dönüşsün diye kalıcı —
+    // maliyeti tur başına birkaç performance.now çağrısı.
+    const profile = {};
+    let markT = performance.now();
+    const mark = (name) => {
+      const now = performance.now();
+      profile[name] = (profile[name] ?? 0) + (now - markT);
+      markT = now;
+    };
+    // Kareler arası duvar süresi profile karışmasın diye her yield'den sonra
+    // damga tazelenir.
+    const stamp = () => {
+      markT = performance.now();
+    };
 
     // Temas tablosu tur başında bir kez: her ülke için ayrı taramak pahalı.
     world.contacts = computeContacts(world);
     // Koalisyon YZ'den önce: şöhreti aşan ülke bu turda cephe bulsun.
     const joined = checkCoalitions(this.game, this.rng);
     if (joined) this.game.renderer.invalidateCache();
+    mark('contacts');
+    yield;
+    stamp();
 
+    let aiBatch = 0;
     for (const nation of world.nations) {
       if (nation.id === this.playerNation || !nation.alive) continue;
       runNationAI(this.game, nation, this.rng);
+      // YZ ulus başına bağımsız karar verir; 6'şarlı demetler kare bütçesine
+      // sığar. Sıra dizisi değişmez, determinizm korunur.
+      if (++aiBatch % 6 === 0) {
+        yield;
+        stamp();
+      }
     }
+    mark('ai');
+    yield;
+    stamp();
 
     this.turn++;
     world.turn = this.turn;
@@ -326,32 +398,78 @@ export class TurnManager {
       }
       advanceEntrenchment(unit, this.turn);
     }
+    mark('units');
     runReinforcements(this.game);
+    yield;
+    stamp();
     // Komuta emirleri yürüyüşten *önce* işlenir ki cepheye atanan tümenler
     // aynı hafta yola çıksın; sonra yürüyüş ilerler ve temas muharebe açar.
-    runCommand(this.game);
+    // Faz atomikken 12-20 ms tutup kare bütçesini aşıyordu (ölçüldü);
+    // sınır taraması bir dilim, uluslar 4'erli demetlerde işlenir.
+    const commandContext = beginCommand(this.game);
+    let commandBatch = 0;
+    for (const nation of world.nations) {
+      runNationCommand(this.game, nation, commandContext);
+      if (++commandBatch % 4 === 0) {
+        yield;
+        stamp();
+      }
+    }
+    finishCommand(this.game);
+    mark('command');
+    yield;
+    stamp();
     advanceMovement(this.game);
+    mark('movement');
     decayInfamy(world);
     // Sıra önemli: sahiplik savaşta değişmiş olabilir, önce işçiler yeniden dağıtılır.
     runProvinces(this.game);
+    mark('provinces');
     // Şehirler işçi dağıtımından önce büyür ki yeni nüfus aynı hafta bir kare işlesin.
     growCities(world);
     assignAllWorkers(world);
+    mark('workers');
+    yield;
+    stamp();
     this.produce();
+    mark('produce');
     // Ticaret üretimden sonra: bu turun fazlası satılabilsin.
     // Eski timber/iron takasi kaldirildi; tek kaynak gercegi economy.js pazari.
     this.lastTrade = [];
-    // Sınıflar, fabrikalar ve küresel fiyatlar haftalık ekonomik kapanışta çözülür.
-    runEconomy(this.game);
+    // Sınıflar, fabrikalar ve küresel fiyatlar haftalık ekonomik kapanışta
+    // çözülür. Ekonomi en pahalı fazdır ve maliyeti ulus sayısına yayılır:
+    // 6'şarlı demetler halinde dilimlenir (bkz. economy.js begin/finish notu).
+    const economyContext = beginEconomy(this.game);
+    let economyBatch = 0;
+    for (const nation of world.nations) {
+      runNationEconomy(this.game, nation, economyContext);
+      if (++economyBatch % 4 === 0) {
+        yield;
+        economyContext.stamp();
+        stamp();
+      }
+    }
+    finishEconomy(this.game, economyContext);
+    mark('economy');
+    yield;
+    stamp();
     // Ulusal insaat gucu haftalik kapanista kuyrugun en ustundeki projeye akar.
     runConstruction(this.game);
     runPolitics(this.game);
+    mark('construction');
     // Haritadaki ordular çarpıştıkları province üzerinde haftalık muharebe çözer.
     runBattles(this.game);
     this.checkElimination();
+    mark('battles');
     // Oyuncunun sürekli emirleri yeni turun hakkıyla işlensin: tur açıldığında
     // otomatik ve yol emirli birimler hamlelerini yapmış olur.
     executeOrders(this.game, this.playerNation, this.rng);
+    mark('orders');
+    this.lastProfile = profile;
+    // Bundan sonrası atomik kuyruk (zafer, autosave). İş kaydı burada
+    // bırakılır ki kuyruktaki autosave → endTurn zinciri hâlâ çalışan
+    // üretece yeniden girmeye kalkmasın (TypeError: already running).
+    this.turnJob = null;
 
     if (!this.victory) {
       const result = checkVictory(world, this.turn);

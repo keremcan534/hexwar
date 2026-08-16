@@ -15,72 +15,76 @@ export const TERRAIN = {
   // Deniz paleti soğuk, desatüre çelik mavisi ailesindendir ve üç kademe
   // birbirine yakın tutulur: derinlik bantları arasındaki sert kontrast
   // denizi hex hex bölüyordu (bkz. render/water.js — su malzemesi bu
-  // bantların üstüne binerek tek yüzey hissi verir).
+  // bantların üstüne binerek tek yüzey hissi verir; asıl derinlik geçişini
+  // orada kıyı-uzaklığı halkaları çizer).
   DEEP_OCEAN: {
-    id: 'DEEP_OCEAN', name: 'Deep Ocean', color: '#0f2e3b',
+    id: 'DEEP_OCEAN', name: 'Deep Ocean', color: '#0a2836',
     // Açık deniz pahalı: kıyı boyu seyretmek okyanusu kesmekten ucuz olsun.
     water: true, passable: false, navigable: true, seaCost: 2,
     moveCost: Infinity, defense: 0, yields: y({ food: 1, gold: 1 }),
   },
   OCEAN: {
-    id: 'OCEAN', name: 'Ocean', color: '#123746',
+    id: 'OCEAN', name: 'Ocean', color: '#103544',
     water: true, passable: false, navigable: true, seaCost: 1,
     moveCost: Infinity, defense: 0, yields: y({ food: 1, gold: 1 }),
   },
   COAST: {
-    id: 'COAST', name: 'Shallow Water', color: '#143c4b',
+    id: 'COAST', name: 'Shallow Water', color: '#153f4e',
     water: true, passable: false, navigable: true, seaCost: 1,
     moveCost: Infinity, defense: 0, yields: y({ food: 2, gold: 1 }),
   },
+  // Kara paleti eskitilmiş atlas mürekkebi: hiçbir ton tam doygun değil,
+  // komşu biyomlar parlaklık + sıcaklıkla ayrışır (yeşiller maviye, kurak
+  // tonlar toprağa çekilir). Ham doygun yeşil "oyuncak harita" okunuyordu.
   BEACH: {
-    id: 'BEACH', name: 'Beach', color: '#d9c489',
+    id: 'BEACH', name: 'Beach', color: '#d2bd85',
     water: false, passable: true, moveCost: 1, defense: 0,
     yields: y({ food: 1, gold: 1 }),
   },
   DESERT: {
-    id: 'DESERT', name: 'Desert', color: '#d7b667',
+    id: 'DESERT', name: 'Desert', color: '#cdac68',
     water: false, passable: true, moveCost: 1, defense: 0, yields: y({}),
   },
   PLAINS: {
-    id: 'PLAINS', name: 'Plains', color: '#8fae55',
+    id: 'PLAINS', name: 'Plains', color: '#97a45c',
     water: false, passable: true, moveCost: 1, defense: 0,
     yields: y({ food: 2, gold: 1 }),
   },
   GRASSLAND: {
-    id: 'GRASSLAND', name: 'Grassland', color: '#71a04a',
+    id: 'GRASSLAND', name: 'Grassland', color: '#6f9750',
     water: false, passable: true, moveCost: 1, defense: 0, yields: y({ food: 3 }),
   },
   FOREST: {
-    id: 'FOREST', name: 'Forest', color: '#3f7442',
+    id: 'FOREST', name: 'Forest', color: '#3d6b45',
     water: false, passable: true, moveCost: 2, defense: 0.25,
     yields: y({ food: 1, timber: 3 }),
   },
   JUNGLE: {
-    id: 'JUNGLE', name: 'Jungle', color: '#2f6b39',
+    id: 'JUNGLE', name: 'Jungle', color: '#2e603c',
     water: false, passable: true, moveCost: 2, defense: 0.25,
     yields: y({ food: 1, timber: 2 }),
   },
   HILLS: {
-    id: 'HILLS', name: 'Hills', color: '#8a8a55',
+    id: 'HILLS', name: 'Hills', color: '#8d855c',
     water: false, passable: true, moveCost: 2, defense: 0.35,
     yields: y({ food: 1, iron: 2 }),
   },
   MOUNTAIN: {
-    id: 'MOUNTAIN', name: 'Mountain', color: '#7d7268',
+    id: 'MOUNTAIN', name: 'Mountain', color: '#7a7166',
     water: false, passable: false, moveCost: Infinity, defense: 0.6,
     yields: y({ iron: 3 }),
   },
   SNOW_PEAK: {
-    id: 'SNOW_PEAK', name: 'Snowy Peak', color: '#e6e8ea',
+    id: 'SNOW_PEAK', name: 'Snowy Peak', color: '#e3e5e6',
     water: false, passable: false, moveCost: Infinity, defense: 0.6,
     yields: y({ iron: 1 }),
   },
   TUNDRA: {
-    id: 'TUNDRA', name: 'Tundra', color: '#9aa48c',
+    id: 'TUNDRA', name: 'Tundra', color: '#99a08d',
     water: false, passable: true, moveCost: 1, defense: 0, yields: y({ food: 1 }),
   },
   ICE: {
-    id: 'ICE', name: 'Ice Sheet', color: '#dfe9ef',
+    id: 'ICE', name: 'Ice Sheet', color: '#dce6ea',
     water: false, passable: false, moveCost: Infinity, defense: 0, yields: y({}),
   },
 };

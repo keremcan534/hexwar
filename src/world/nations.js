@@ -12,19 +12,31 @@ const TITLES = ['Kingdom', 'Empire', 'Republic', 'Principality', 'Duchy', 'Confe
 
 // Politik harita paleti. Renkler yalniz genel olarak farkli degil, asagidaki
 // komsuluk boyamasinda birbirine siniri olan ulkeler icin ozellikle ayrilir.
+//
+// Tasarim kurali (atlas baski murekkebi): PARLAKLIK 42-58 dar bandinda —
+// harita tek bir basili tabaka gibi okunur, hicbir ulke bembeyaz ya da
+// kapkara sicramaz. DOYGUNLUK 26-54 — kimlik tasiyacak kadar var, neon
+// olacak kadar yok. Ton aciları klasik atlas murekkep ailelerinden secildi
+// (venedik kirmizisi, prusya mavisi, okra, sienna, murdum...); komsu
+// ayrimi ton + parlaklik ikilisiyle kurulur, o yuzden acik/koyu degerler
+// donusumlu dizildi.
 const NATION_PALETTE = [
-  { hue: 4, sat: 74, light: 52 },
-  { hue: 211, sat: 72, light: 55 },
-  { hue: 111, sat: 58, light: 47 },
-  { hue: 48, sat: 80, light: 56 },
-  { hue: 282, sat: 64, light: 59 },
-  { hue: 174, sat: 64, light: 44 },
-  { hue: 326, sat: 70, light: 58 },
-  { hue: 27, sat: 84, light: 55 },
-  { hue: 239, sat: 58, light: 66 },
-  { hue: 84, sat: 64, light: 49 },
-  { hue: 195, sat: 82, light: 46 },
-  { hue: 350, sat: 52, light: 68 },
+  { hue: 5, sat: 50, light: 45 },    // venedik kirmizisi
+  { hue: 213, sat: 44, light: 48 },  // prusya mavisi
+  { hue: 95, sat: 34, light: 44 },   // avci yesili
+  { hue: 44, sat: 52, light: 54 },   // eski altin / okra
+  { hue: 355, sat: 36, light: 58 },  // gul kurusu
+  { hue: 200, sat: 40, light: 56 },  // acik celik mavisi
+  { hue: 26, sat: 54, light: 48 },   // sienna
+  { hue: 152, sat: 30, light: 46 },  // viridian
+  { hue: 268, sat: 26, light: 52 },  // murdum
+  { hue: 74, sat: 38, light: 52 },   // zeytin sarisi
+  { hue: 228, sat: 30, light: 58 },  // arduvaz leylagi
+  { hue: 16, sat: 44, light: 56 },   // terrakota
+  { hue: 178, sat: 34, light: 42 },  // petrol
+  { hue: 320, sat: 28, light: 50 },  // eski leylak-gul
+  { hue: 56, sat: 40, light: 46 },   // koyu hardal
+  { hue: 122, sat: 28, light: 54 },  // adacayi yesili
 ];
 
 function makeName(rng, used) {
@@ -40,11 +52,14 @@ function makeName(rng, used) {
   return `Nation-${used.size + 1}`;
 }
 
-/** Altın oran açısıyla dağıtılan ton: 20+ ülkede bile renkler karışmaz. */
+/** Altın oran açısıyla dağıtılan ton: 20+ ülkede bile renkler karışmaz.
+ *  Doygunluk ve parlaklık paletin bandında kalır (S 30-51, L 44-57) ki
+ *  taşma ülkeleri (palet bittiğinde üretilenler) baskı tabakasından
+ *  fırlamasın. */
 function makeColor(index, rng) {
   const hue = (index * 137.508 + rng.range(0, 40)) % 360;
-  const sat = 62 + ((index * 17) % 20);
-  const light = 48 + ((index * 11) % 16);
+  const sat = 30 + ((index * 17) % 22);
+  const light = 44 + ((index * 11) % 14);
   return { color: `hsl(${hue.toFixed(0)} ${sat}% ${light}%)`, hue, sat, light };
 }
 
@@ -99,10 +114,16 @@ function separateNeighborColors(world, nations, rng) {
 
   for (const nation of nations) {
     const base = NATION_PALETTE[assigned[nation.id]];
-    nation.hue = base.hue;
+    // Ayni palet tonunu paylasan uzak ulkeler birbirinin kopyasi olmasin:
+    // kimlikten tureyen kucuk nuans (±5° ton, ±2.4 parlaklik) her ulkeye
+    // kendi murekkep kisiligini verir; komsu ayrimini bozmayacak kadar
+    // kucuk, palet bandinin disina cikamayacak kadar kisitli.
+    const hue = (base.hue + ((nation.id * 47) % 11) - 5 + 360) % 360;
+    const light = Math.max(42, Math.min(58, base.light + (((nation.id * 31) % 9) - 4) * 0.6));
+    nation.hue = hue;
     nation.sat = base.sat;
-    nation.light = base.light;
-    nation.color = `hsl(${base.hue} ${base.sat}% ${base.light}%)`;
+    nation.light = light;
+    nation.color = `hsl(${Math.round(hue)} ${base.sat}% ${Math.round(light)}%)`;
     nation.flag = makeFlag(rng, base);
   }
 }
@@ -263,6 +284,13 @@ export function generateNations(world, options = {}) {
 
   fillRemaining(world, nations, rng, { graph, makeNation, claimCluster });
 
+  // Oyuncunun başlangıç devleti TEK PARÇA olmalı. Arketip planının amiral
+  // gemisi (denizaşırı kolonili imparatorluk) hep 0 numaraya doğar ve
+  // playerNation=0 sabitken oyuncu her dünyada "iki parça doğmuş" bir ülkeyle
+  // açılıyordu. Koloni tasarımı YZ imparatorlukları için kalır; oyuncuya kara
+  // komşuluğunda bitişik en büyük devlet atanır (bkz. TurnManager.start).
+  world.playerNation = pickContiguousPlayer(world, nations);
+
   separateNeighborColors(world, nations, rng);
   computeStats(world, nations);
 
@@ -333,6 +361,49 @@ const FILL_ROLE_ISLAND = 'ada-beyligi';
  * aşırı toprağı olur (çekirdek değil) — yoksa okyanus tek province'lik
  * mikro devletlerle dolardı.
  */
+/**
+ * Kara komşuluğunda (province.neighbors) tek parça olan en büyük devleti
+ * seçer. Parçalı devletler (koloni/ada imparatorlukları) YZ'ye kalır —
+ * oyuncunun açılış deneyimi bitişik bir anavatandır.
+ */
+function pickContiguousPlayer(world, nations) {
+  const owned = new Map();
+  for (const province of world.provinces) {
+    if (province.owner < 0) continue;
+    let list = owned.get(province.owner);
+    if (!list) {
+      list = [];
+      owned.set(province.owner, list);
+    }
+    list.push(province);
+  }
+  let best = 0;
+  let bestTiles = -1;
+  for (const nation of nations) {
+    const provinces = owned.get(nation.id) ?? [];
+    if (!provinces.length) continue;
+    const seen = new Set([provinces[0]]);
+    const queue = [provinces[0]];
+    while (queue.length) {
+      const province = queue.pop();
+      for (const idx of province.neighbors) {
+        const neighbor = world.provinces[idx];
+        if (neighbor?.owner === nation.id && !seen.has(neighbor)) {
+          seen.add(neighbor);
+          queue.push(neighbor);
+        }
+      }
+    }
+    if (seen.size !== provinces.length) continue;
+    const tiles = provinces.reduce((sum, province) => sum + province.tileIdx.length, 0);
+    if (tiles > bestTiles) {
+      bestTiles = tiles;
+      best = nation.id;
+    }
+  }
+  return best;
+}
+
 function fillRemaining(world, nations, rng, { graph, makeNation, claimCluster }) {
   const provinces = world.provinces;
   const free = provinces.filter((p) => p.owner === -1);

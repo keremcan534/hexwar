@@ -35,6 +35,25 @@ const RIPPLE_VEL = { x: 6.2, y: -3.4 };
 const RIPPLE_DETAIL_VEL = { x: 7.8, y: -1.8 };
 const SHIMMER_VEL = { x: 9.5, y: -7.4 };
 
+/**
+ * Deniz TABAN rengi: karaya uzaklığın (yumuşatılmış halka) fonksiyonu.
+ * Önceki sürüm derinliği alfa 0.02-0.11'lik overlay halkalarla anlatıyordu —
+ * koyu tabanda algı eşiğinin altında kalıyordu. Artık bantlar tabanın
+ * kendisidir: sığlık turkuaza açılır (L%27), açık deniz petrol lacivertine
+ * iner (L%9). ~18 puanlık gerçek değer aralığı + ton kayması; derinlik
+ * overlay'siz, ilk bakışta okunur.
+ *
+ * @param depth 0 (kıyı) .. 6 (abis), kesirli olabilir
+ * @param jitterStep −1..1 — kare başına kırıklık, mekanik bant izini bozar
+ */
+function seaShade(depth, jitterStep) {
+  const t = Math.min(1, depth / 5.5);
+  const hue = 189 + t * 24;                              // turkuaz → petrol
+  const sat = 34 + t * 14;
+  const light = 27.5 - t * 18 + jitterStep * 0.8;
+  return `hsl(${Math.round(hue)} ${Math.round(sat)}% ${(Math.round(light * 2) / 2).toFixed(1)}%)`;
+}
+
 function smoothstep(edge0, edge1, v) {
   const t = Math.min(1, Math.max(0, (v - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
@@ -94,32 +113,37 @@ function makeWaterCanvas(size, encode) {
 }
 
 /**
- * Üç döşenebilir su dokusu, açılışta bir kez, deterministik tohumlarla.
+ * Üç döşenebilir su dokusu, deterministik tohumlarla — her biri AYRI
+ * fonksiyon: üretim toplamda ~200 ms tutuyor (ölçüldü) ve tek parça hâlinde
+ * ilk kareyi donduruyordu. warmStep menü perdesi arkasında tek tek pişirir.
  * Hepsi alfa kanalında "sapma" taşır ve source-over ile basılır: soft-light
  * benzeri karışımlar mobil canvas'ta ölçülebilir derecede pahalıydı.
  */
-function buildTextures() {
+function buildSwellTexture() {
   // Geniş kabarma: çok düşük frekans, İKİ yönlü ton sapması (aydınlanan sırt
   // + gölgede kalan çukur). Yalnız aydınlatan tek yönlü doku suyu sütlü
   // gösteriyordu. 1024: döşeme tekrarını uzak zoomda bile seyrekleştirir.
   const ws = 1024;
   const swellField = normalized(fbm(ws, ws, [2, 3, 5], makeRng(180317)));
-  const swell = makeWaterCanvas(ws, (data) => {
+  return makeWaterCanvas(ws, (data) => {
     for (let i = 0; i < swellField.length; i++) {
       const d = Math.max(-0.5, Math.min(0.5, (swellField[i] - 0.5) * 1.35));
       const p = i * 4;
-      // Azami sapma ~%12, tipik ~%4: kabarma "ton dalgalanması" olarak
-      // hissedilmeli. İlk denemedeki 0.30'luk tavan denizi sisle kaplıyordu.
+      // Azami sapma ~%22: eski %12-15 koyu tabanda algı eşiğinin altında
+      // kalıyordu (görsel teşhis). 0.30 üstü hâlâ sise kaçar; bu bandın
+      // amacı boyanmış denizin geniş ton dalgalanması.
       if (d > 0) {
         data[p] = 150; data[p + 1] = 172; data[p + 2] = 182;
-        data[p + 3] = Math.round(d * 2 * 0.13 * 255);
+        data[p + 3] = Math.round(d * 2 * 0.22 * 255);
       } else {
-        data[p] = 5; data[p + 1] = 17; data[p + 2] = 24;
-        data[p + 3] = Math.round(-d * 2 * 0.15 * 255);
+        data[p] = 4; data[p + 1] = 14; data[p + 2] = 22;
+        data[p + 3] = Math.round(-d * 2 * 0.24 * 255);
       }
     }
   });
+}
 
+function buildRippleTexture() {
   // Kırışıklık: dalga yönünde uzatılmış, ayrı bir maskeyle KIRILAN parçalar.
   // Maske süreksizliği şart — kesintisiz çizgiler taranmış ekran gibi okunur.
   const rs = 512;
@@ -127,22 +151,26 @@ function buildTextures() {
     smearWrapped(fbm(rs, rs, [8, 16, 32], makeRng(551201)), rs, 3, -1, 4),
   );
   const rippleMask = normalized(fbm(rs, rs, [3, 5], makeRng(662311)));
-  const ripple = makeWaterCanvas(rs, (data) => {
+  return makeWaterCanvas(rs, (data) => {
     for (let i = 0; i < rippleField.length; i++) {
       const broken = smoothstep(0.34, 0.66, rippleMask[i]);
       const light = smoothstep(0.62, 0.82, rippleField[i]) * broken;
       const dark = smoothstep(0.36, 0.22, rippleField[i]) * broken;
       const p = i * 4;
+      // Tavanlar yükseltildi (0.34→0.48 / 0.24→0.34): kırışıklık artık
+      // yakın zoomda gerçekten okunan bir dalga dokusu.
       if (light >= dark) {
-        data[p] = 168; data[p + 1] = 188; data[p + 2] = 192;
-        data[p + 3] = Math.round(light * 0.34 * 255);
+        data[p] = 172; data[p + 1] = 192; data[p + 2] = 196;
+        data[p + 3] = Math.round(light * 0.48 * 255);
       } else {
-        data[p] = 10; data[p + 1] = 22; data[p + 2] = 30;
-        data[p + 3] = Math.round(dark * 0.24 * 255);
+        data[p] = 8; data[p + 1] = 20; data[p + 2] = 28;
+        data[p + 3] = Math.round(dark * 0.34 * 255);
       }
     }
   });
+}
 
+function buildShimmerTexture() {
   // Parıltı: ışık yönünde kuvvetle uzatılmış, yalnız tepe değerleri geçen
   // seyrek vurgular. Eşik yumuşak — ikili kesim neon beyaz çizgi üretir.
   // Saf beyaza yalnız en uç "spark" pikselleri yaklaşır.
@@ -151,7 +179,7 @@ function buildTextures() {
     smearWrapped(fbm(ss, ss, [6, 12, 24], makeRng(770129)), ss, 4, -3, 6),
   );
   const shimmerMask = normalized(fbm(ss, ss, [2, 4], makeRng(881407)));
-  const shimmer = makeWaterCanvas(ss, (data) => {
+  return makeWaterCanvas(ss, (data) => {
     for (let i = 0; i < shimmerField.length; i++) {
       // Maske TOPLANMAZ, ÇARPILIR: toplandığında geniş maske bölgeleri eşiği
       // topluca aşıyor ve deniz sise gömülüyordu. Çarpım yalnız bazı
@@ -166,11 +194,11 @@ function buildTextures() {
       data[p] = Math.round(139 + glow * 41 + spark * 43);
       data[p + 1] = Math.round(166 + glow * 24 + spark * 40);
       data[p + 2] = Math.round(173 + glow * 15 + spark * 39);
-      data[p + 3] = Math.round(Math.min(0.35, glow * 0.22 + spark * 0.18) * 255);
+      // Tavan 0.35→0.5: gümüş kıvrımlar "tarihi deniz resmi" parıltısı
+      // olarak seçilebilir olsun; seyreklik maskeleri neon'u zaten önlüyor.
+      data[p + 3] = Math.round(Math.min(0.5, glow * 0.3 + spark * 0.26) * 255);
     }
   });
-
-  return { swell, ripple, shimmer };
 }
 
 function scaleVel(vel, k) {
@@ -204,13 +232,46 @@ export class WaterLayer {
 
   ensurePatterns(ctx) {
     if (this.patterns) return this.patterns;
-    this.textures ??= buildTextures();
+    this.textures ??= {};
+    this.textures.swell ??= buildSwellTexture();
+    this.textures.ripple ??= buildRippleTexture();
+    this.textures.shimmer ??= buildShimmerTexture();
     this.patterns = {
       swell: ctx.createPattern(this.textures.swell, 'repeat'),
       ripple: ctx.createPattern(this.textures.ripple, 'repeat'),
       shimmer: ctx.createPattern(this.textures.shimmer, 'repeat'),
     };
     return this.patterns;
+  }
+
+  /** Desenler hazır mı? Değilse çizim atlanır, ısıtma tamamlar (bkz. warmStep). */
+  ready() {
+    return !!this.patterns;
+  }
+
+  /**
+   * Isıtma dilimi: bir çağrı en fazla bir doku üretir. Üç doku toplam ~200 ms
+   * (ölçüldü) — tek parça üretim ilk su karesini donduruyordu. true = iş kaldı.
+   */
+  warmStep(ctx) {
+    this.textures ??= {};
+    if (!this.textures.swell) {
+      this.textures.swell = buildSwellTexture();
+      return true;
+    }
+    if (!this.textures.ripple) {
+      this.textures.ripple = buildRippleTexture();
+      return true;
+    }
+    if (!this.textures.shimmer) {
+      this.textures.shimmer = buildShimmerTexture();
+      return true;
+    }
+    if (!this.patterns && ctx) {
+      this.ensurePatterns(ctx);
+      return false;
+    }
+    return !this.patterns;
   }
 
   hexPath(path, cx, cy) {
@@ -245,13 +306,24 @@ export class WaterLayer {
 
     const coastalSet = new Set();
     const foamByTile = new Map();
+    // Kıyının tam kenarı: köpükten farklı olarak KESİNTİSİZ segmentler.
+    // Eski atlasların mürekkep kıyı çizgisi buradan çizilir (drawCoastline).
+    const coastSegsByTile = new Map();
     for (const t of sea) {
       let segs = null;
+      let inkSegs = null;
       let nearLand = false;
       for (let side = 0; side < 6; side++) {
         const n = world.get(t.q + DIRS[side][0], t.r + DIRS[side][1]);
         if (!n || n.terrain.water) continue;
         nearLand = true;
+        {
+          const a = this.corners[side];
+          const b = this.corners[(side + 1) % 6];
+          (inkSegs ??= []).push({
+            x1: t.x + a[0], y1: t.y + a[1], x2: t.x + b[0], y2: t.y + b[1],
+          });
+        }
         // Kenarların bir kısmı hiç köpük almaz, kalanı kısaltılıp opaklık
         // katmanlarına dağıtılır: sürekli beyaz kontur "seçili hex" gibi
         // yapay durur, kırık parçalar kıyı çalkantısı gibi okunur.
@@ -283,7 +355,49 @@ export class WaterLayer {
       if (nearLand) {
         coastalSet.add(t);
         if (segs) foamByTile.set(t, segs);
+        if (inkSegs) coastSegsByTile.set(t, inkSegs);
       }
+    }
+
+    // Karaya uzaklık (hex halkası cinsinden), çok kaynaklı BFS. Halkalar
+    // derinlik bantlarını verir: kıyıda aydınlanan sığlık, açıkta koyulaşan
+    // abis. Eski gemici haritalarının derinlik konturlarıyla aynı okuma —
+    // arazi sınıflandırmasına dokunmadan yalnız boyamada kullanılır.
+    const depthOf = new Map();
+    let frontier = [...coastalSet];
+    for (const t of frontier) depthOf.set(t, 0);
+    let depth = 0;
+    while (frontier.length && depth < 6) {
+      depth++;
+      const next = [];
+      for (const t of frontier) {
+        for (let side = 0; side < 6; side++) {
+          const n = world.get(t.q + DIRS[side][0], t.r + DIRS[side][1]);
+          if (!n || !n.terrain.water || depthOf.has(n)) continue;
+          depthOf.set(n, depth);
+          next.push(n);
+        }
+      }
+      frontier = next;
+    }
+
+    // Taban rengi: kendi + komşu derinliklerinin ağırlıklı ortalaması bant
+    // sınırını kırar (sözde-gradyan). Çeyrek adıma yuvarlama + 3 kademeli
+    // jitter, renk çeşidini sınırlı tutar ki drawTerrain'in renge-göre
+    // gruplama yolu verimli kalsın (~40-60 ayrı dize).
+    const seaColorOf = new Map();
+    for (const t of sea) {
+      let sum = (depthOf.get(t) ?? 6) * 2;
+      let count = 2;
+      for (let side = 0; side < 6; side++) {
+        const n = world.get(t.q + DIRS[side][0], t.r + DIRS[side][1]);
+        if (!n?.terrain.water) continue;
+        sum += depthOf.get(n) ?? 6;
+        count++;
+      }
+      const smooth = Math.round(Math.min(6, sum / count) * 4) / 4;
+      const jitterStep = Math.floor(hash01(t.q, t.r, 11) * 3) - 1;
+      seaColorOf.set(t, seaShade(smooth, jitterStep));
     }
 
     // Deniz yolları 8 kolonluk bantlara bölünür: uzak zoom animasyonu her
@@ -313,13 +427,70 @@ export class WaterLayer {
     this.worldCache = {
       world,
       hasSea: sea.length > 0,
+      seaTiles: sea,
       seaPaths: this.chunkedPaths(sea),
       seaBands,
       coastalSet,
       coastalPaths: this.chunkedPaths([...coastalSet]),
       foamByTile,
+      coastSegsByTile,
+      depthOf,
+      seaColorOf,
+      abyssColor: seaShade(6, 0),
     };
     return this.worldCache;
+  }
+
+  /**
+   * Karenin taban deniz rengi (bkz. seaShade). Renderer geo kiplerinde dolgu
+   * için çağırır; seçim yüzeyi kipleri kendi düz sularını korur.
+   */
+  seaColor(world, tile) {
+    const cache = this.ensureWorld(world);
+    return cache.seaColorOf.get(tile.ghostOf ?? tile) ?? cache.abyssColor;
+  }
+
+  /**
+   * Boyanmış atlas kıyısı — üç geçiş, hepsi kıyının GERÇEK kenar geometrisini
+   * izler (hex dolgusu değil): yuvarlak uçlu geniş vuruşlar altıgen
+   * basamakları görsel olarak kırar.
+   *
+   *   1. Sığlık parlaması: geniş, soluk turkuaz — suya taşan kısmı sığ
+   *      şerit gibi okunur (kara tarafı kum halosunun altında kalır).
+   *   2. Kum halosu: orta genişlikte sıcak bant — kara tarafında plaj
+   *      çizgisi, su tarafında kumsal sığlığı.
+   *   3. Mürekkep: ince, koyu, kararlı kıyı çizgisi.
+   */
+  drawCoastline(ctx, cache, coastalVisible, zoom) {
+    const paths = [];
+    let path = null;
+    let count = 0;
+    for (const tile of coastalVisible) {
+      const segs = cache.coastSegsByTile.get(tile.ghostOf ?? tile);
+      if (!segs) continue;
+      const dx = tile.ghostOf ? tile.x - tile.ghostOf.x : 0;
+      for (const s of segs) {
+        if (count % FILL_CHUNK === 0) {
+          path = new Path2D();
+          paths.push(path);
+        }
+        count++;
+        path.moveTo(s.x1 + dx, s.y1);
+        path.lineTo(s.x2 + dx, s.y2);
+      }
+    }
+    if (!paths.length) return;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = Math.max(9, 11 / Math.sqrt(zoom));
+    ctx.strokeStyle = 'rgba(128, 198, 196, 0.14)';
+    for (const p of paths) ctx.stroke(p);
+    ctx.lineWidth = Math.max(3.6, 5 / Math.sqrt(zoom));
+    ctx.strokeStyle = 'rgba(219, 199, 150, 0.26)';
+    for (const p of paths) ctx.stroke(p);
+    ctx.lineWidth = Math.max(1.1, 1.6 / Math.sqrt(zoom));
+    ctx.strokeStyle = 'rgba(6, 15, 19, 0.62)';
+    for (const p of paths) ctx.stroke(p);
   }
 
   /**
@@ -339,7 +510,11 @@ export class WaterLayer {
     const period = this.textures[name].width * scale;
     const ox = (((time * vel.x) % period) + period) % period;
     const oy = (((time * vel.y) % period) + period) % period;
-    pattern.setTransform(new DOMMatrix([scale, 0, 0, scale, ox, oy]));
+    // Tek DOMMatrix örneği güncellenir: her katman her tikte yenisini
+    // ayırmak duraklatılmış oyunda dahi sürekli çöp üretiyordu.
+    const m = (this.matrix ??= new DOMMatrix());
+    m.a = scale; m.b = 0; m.c = 0; m.d = scale; m.e = ox; m.f = oy;
+    pattern.setTransform(m);
     ctx.globalAlpha = alpha;
     ctx.fillStyle = pattern;
     for (const path of paths) ctx.fill(path);
@@ -362,45 +537,48 @@ export class WaterLayer {
       ? { x: 0, y: this.env.lightDirection.y >= 0 ? 1 : -1 }
       : this.env.lightDirection;
     const k = this.env.lightIntensity;
+    // Alfalar eski sürümün ~iki katı: gök ışığı artık hissedilir bir
+    // kuzey-güney değer eğimi kurar, deniz tek düz yüzey gibi durmaz.
     const g = ctx.createLinearGradient(cx + L.x * r, cy + L.y * r, cx - L.x * r, cy - L.y * r);
-    g.addColorStop(0, `rgba(150, 168, 176, ${(0.07 * k).toFixed(3)})`);
-    g.addColorStop(0.55, 'rgba(120, 140, 150, 0.02)');
-    g.addColorStop(1, `rgba(6, 16, 24, ${(0.10 * k).toFixed(3)})`);
+    g.addColorStop(0, `rgba(156, 176, 182, ${(0.13 * k).toFixed(3)})`);
+    g.addColorStop(0.55, 'rgba(120, 140, 150, 0.035)');
+    g.addColorStop(1, `rgba(4, 12, 20, ${(0.18 * k).toFixed(3)})`);
     ctx.fillStyle = g;
     for (const path of paths) ctx.fill(path);
   }
 
   /**
-   * Yakın zoom su geçişi. `seaTiles`/`seaPaths` yalnız görünür kareleri
-   * içerir; pahalı topoloji worldCache'ten gelir. Katman sırası bilinçli:
-   * önce statik ton (gradyan, kıyı aydınlanması), sonra hareketli desenler,
-   * en üstte köpük ve yerel bozulmalar.
+   * Yakın zoomun STATİK su tabanı: yalnız gök gradyanı (derinlik zaten
+   * taban renklerinde, bkz. seaShade). Renderer'ın statik katman önbelleğine
+   * bir kez çizilir; her karede değil (bkz. renderer.buildStaticLayers).
    */
-  drawNear(ctx, world, seaTiles, seaPaths, zoom, time) {
+  paintStaticBase(ctx, world, seaTiles) {
+    if (!seaTiles.length || !this.debug.base) return;
+    this.ensureWorld(world);
+    this.fillSkyGradient(ctx, world, this.chunkedPaths(seaTiles));
+  }
+
+  /**
+   * Yakın zoomun HAREKETLİ katmanları: desenler, köpük, yerel bozulmalar.
+   * Su animasyonunun her tikinde yalnız bu çalışır — statik taban ve kıyı
+   * çizgisi önbellekten blit edilir. Eski drawNear'ın statik+animasyonu
+   * birlikte çizmesi, her tikte tüm boruyu ödetiyordu (ölçüldü: 1920px'te
+   * karede 12.4 ms; bunun ~0.5 ms'i gerçekten hareketliydi).
+   */
+  drawAnimated(ctx, world, seaTiles, seaPaths, zoom, time) {
     if (!seaTiles.length) return;
-    const cache = this.ensureWorld(world);
-    this.ensurePatterns(ctx);
+    this.ensureWorld(world);
+    // Dokular hazır değilse bu kare atlanır ama zincir canlı tutulur:
+    // ısıtma dilimleri (menü perdesi ya da su tikleri) birkaç adımda
+    // tamamlar. Senkron üretim ilk kareyi ~200 ms donduruyordu (ölçüldü).
+    if (!this.patterns) {
+      this.warmStep(ctx);
+      this.animatedThisFrame = true;
+      if (!this.patterns) return;
+    }
     const quality = this.quality;
     const dbg = this.debug;
     const wind = this.env.windStrength;
-
-    if (dbg.base) this.fillSkyGradient(ctx, world, seaPaths);
-
-    let coastalVisible = null;
-    if (quality !== 'low' && zoom >= FOAM_MIN_ZOOM) {
-      coastalVisible = [];
-      // Sarmal hayaletleri (bkz. renderer.visibleTiles) gerçek karesinden çözülür.
-      for (const t of seaTiles) if (cache.coastalSet.has(t.ghostOf ?? t)) coastalVisible.push(t);
-    }
-    if (dbg.base && coastalVisible?.length) {
-      // Kıyıda su hafifçe aydınlanır: sığlık, beyaz kontur çizmeden hissedilir.
-      // Alfa çok düşük tutulur — düz hex dolgusu güçlenince kıyı şeridi
-      // petek deseni olarak okunuyordu.
-      ctx.globalAlpha = 0.03;
-      ctx.fillStyle = '#9eb4b7';
-      for (const path of this.chunkedPaths(coastalVisible)) ctx.fill(path);
-      ctx.globalAlpha = 1;
-    }
 
     let animated = false;
     const P = world.wrapWidth ?? 0;
@@ -426,9 +604,25 @@ export class WaterLayer {
       this.fillPattern(ctx, 'shimmer', seaPaths, time, scaleVel(SHIMMER_VEL, wind), alpha, 1, P);
       animated = true;
     }
-    if (dbg.foam && coastalVisible?.length) {
-      this.drawFoam(ctx, cache, coastalVisible, zoom, time);
-      animated = true;
+    if (animated) this.animatedThisFrame = true;
+  }
+
+  /**
+   * Çizgi katmanının ÜSTÜNDE yaşayan hareketli su: kıyı köpüğü mürekkep
+   * hattının üzerinde nefes alır, bozulma halkaları her şeyin üstünde.
+   * Statik üst katman blitinden sonra çağrılır.
+   */
+  drawSurfaceAnim(ctx, world, seaTiles, zoom, time) {
+    const cache = this.ensureWorld(world);
+    const quality = this.quality;
+    const dbg = this.debug;
+    let animated = false;
+    if (quality !== 'low' && zoom >= FOAM_MIN_ZOOM && dbg.foam) {
+      const foam = this.foamFor(cache, seaTiles);
+      if (foam.count) {
+        this.drawFoam(ctx, foam.tiers, zoom, time);
+        animated = true;
+      }
     }
     if (quality === 'high' && dbg.disturbance) {
       animated = this.drawDisturbances(ctx, time) || animated;
@@ -436,11 +630,20 @@ export class WaterLayer {
     if (animated) this.animatedThisFrame = true;
   }
 
-  /** Köpük üç opaklık katmanına dağılır; katmanlar farklı fazda "nefes alır". */
-  drawFoam(ctx, cache, coastalVisible, zoom, time) {
+  /**
+   * Köpük yolları görünür deniz listesi başına BİR KEZ kurulur. Liste
+   * (renderer.visibleSeaProducts ürünü) kamera hücre değiştirene dek aynı
+   * nesne kaldığı için WeakMap anahtarı olarak yeter. Eskiden her su tikinde
+   * Path2D'ler baştan kuruluyordu — duraklatılmış oyunda ölçülen ~4 MB/sn
+   * çöpün ve GC mikro takılmalarının ana kaynağıydı.
+   */
+  foamFor(cache, seaTiles) {
+    this.foamCache ??= new WeakMap();
+    let foam = this.foamCache.get(seaTiles);
+    if (foam) return foam;
     const tiers = [[], [], []];
     const counts = [0, 0, 0];
-    for (const tile of coastalVisible) {
+    for (const tile of seaTiles) {
       const segs = cache.foamByTile.get(tile.ghostOf ?? tile);
       if (!segs) continue;
       // Hayalet karede parçalar gerçek karenin koordinatını taşır; periyot
@@ -456,9 +659,16 @@ export class WaterLayer {
         path.lineTo(s.x2 + dx, s.y2);
       }
     }
+    foam = { tiers, count: counts[0] + counts[1] + counts[2] };
+    this.foamCache.set(seaTiles, foam);
+    return foam;
+  }
+
+  /** Köpük üç opaklık katmanına dağılır; katmanlar farklı fazda "nefes alır". */
+  drawFoam(ctx, tiers, zoom, time) {
     ctx.lineCap = 'round';
     ctx.lineWidth = Math.max(1.0, 1.7 / Math.sqrt(zoom));
-    const base = [0.10, 0.15, 0.21];
+    const base = [0.14, 0.20, 0.28];
     for (let tier = 0; tier < 3; tier++) {
       if (!tiers[tier].length) continue;
       const breathe = 0.75 + 0.25 * Math.sin(time * 0.5 + tier * 2.1);
@@ -519,15 +729,12 @@ export class WaterLayer {
     if (!cache.hasSea) return;
     // Alt küme verilirse yalnız o kareler boyanır: sarmal önbelleğin kenar
     // geçişleri tüm denizi yeniden boyayıp alfayı katlamasın.
+    const seaTiles = tiles ?? cache.seaTiles;
     const seaPaths = tiles ? this.chunkedPaths(tiles) : cache.seaPaths;
-    const coastalPaths = tiles
-      ? this.chunkedPaths(tiles.filter((t) => cache.coastalSet.has(t.ghostOf ?? t)))
-      : cache.coastalPaths;
+    const coastal = seaTiles.filter((t) => cache.coastalSet.has(t.ghostOf ?? t));
     this.fillSkyGradient(ctx, world, seaPaths);
-    ctx.globalAlpha = 0.03;
-    ctx.fillStyle = '#9eb4b7';
-    for (const path of coastalPaths) ctx.fill(path);
-    ctx.globalAlpha = 1;
+    // Uzak zoomda köpük çizilmez; kıyıyı önbellekteki boyalı hat anlatır.
+    this.drawCoastline(ctx, cache, coastal, 1);
   }
 
   /**
@@ -537,7 +744,11 @@ export class WaterLayer {
   drawFar(ctx, world, time, rect = null) {
     const cache = this.ensureWorld(world);
     if (!cache.hasSea || !this.debug.swell) return;
-    this.ensurePatterns(ctx);
+    if (!this.patterns) {
+      this.warmStep(ctx);
+      this.animatedThisFrame = true;
+      if (!this.patterns) return;
+    }
     // Görünür dikdörtgen verilirse yalnız kesişen bantlar doldurulur.
     let paths = cache.seaPaths;
     if (rect) {

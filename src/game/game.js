@@ -15,6 +15,7 @@ import { TurnManager } from './turn.js';
 import { atWar, declareWar } from './diplomacy.js';
 import { signPeace } from './peace.js';
 import { NotificationCenter } from './notifications.js';
+import { PerfMonitor } from '../core/perf.js';
 
 /** Masadaki teklif bu kadar hafta cevapsız kalırsa geri çekilir. */
 const PEACE_OFFER_TTL = 6;
@@ -94,7 +95,11 @@ export class Game {
   constructor(canvas) {
     this.canvas = canvas;
     this.camera = new Camera();
+    // Ölçüm çekirdeği kare döngüsünden ÖNCE kurulur; renderer bölüm
+    // işaretlerini buraya yazar (bkz. core/perf.js).
+    this.perf = new PerfMonitor();
     this.renderer = new Renderer(canvas, this.camera);
+    this.renderer.perf = this.perf;
     this.world = null;
     this.selected = null;
     this.hovered = null;
@@ -117,7 +122,13 @@ export class Game {
     // Saat gün gün akar; oyunun sistemleri (ekonomi, muharebe, cephe) haftalık
     // çözülür. Böylece tarih akıcı ilerlerken denge haftalık kalır.
     this.clock = { speed: 0, accumulator: 0, lastTime: performance.now(), day: 0 };
-    this.clockTimer = setInterval(() => this.updateClock(), 100);
+    // Saat tiki rAF dışında koşar: pahalıya kaçarsa kare istatistiği görmez,
+    // olay günlüğü görür (paused takılma avı bunun üzerinden yürür).
+    this.clockTimer = setInterval(() => {
+      const t0 = performance.now();
+      this.updateClock();
+      this.perf?.event('clock-tick', performance.now() - t0);
+    }, 100);
 
     this.input = new PointerController(canvas, this.camera, {
       onTap: (x, y) => this.handleTap(x, y),
@@ -594,10 +605,28 @@ export class Game {
    */
   autosave() {
     if (!this.autosaveEnabled || !this.world) return;
+    // Anında yazılmaz: tüm dünyayı serileştirmek 100+ ms sürüyor ve turun
+    // kuyruğunda çağrıldığı için 10 haftada bir kaydırmayı donduruyordu.
+    // Bayrak bırakılır; oyuncu ~yarım saniye dinlenince yazılır
+    // (bkz. flushAutosave).
+    this.pendingAutosave = true;
+  }
+
+  /** Bekleyen otomatik kaydı oyuncu boştayken diske yazar. */
+  flushAutosave() {
+    if (!this.pendingAutosave || !this.world || this.turns.turnJob) return;
+    const r = this.renderer;
+    const idleFor = performance.now()
+      - Math.max(r.zoomStamp?.at ?? 0, r.moveStamp?.at ?? 0);
+    if (idleFor < 600) return;
+    this.pendingAutosave = false;
+    const t0 = performance.now();
     saveToStorage(this);
+    this.perf?.event('autosave', performance.now() - t0);
   }
 
   save() {
+    if (this.turns.turnJob) this.turns.endTurn();
     return saveToStorage(this);
   }
 
@@ -755,18 +784,49 @@ export class Game {
     const now = performance.now();
     const elapsed = Math.min(500, now - this.clock.lastTime);
     this.clock.lastTime = now;
+    // Bekleyen otomatik kayıt duraklatılmış oyunda da yazılabilsin diye
+    // hız kontrolünden önce denenir.
+    this.flushAutosave();
     if (!this.world || !this.clock.speed || this.turns.victory) return;
     this.clock.accumulator += elapsed;
     // Bir gün bu kadar sürer; hafta yedi günde bir kapanır.
     const stepMs = DAY_MS / this.clock.speed;
     let steps = 0;
     while (this.clock.accumulator >= stepMs && steps < 14) {
+      // Hafta hâlâ dilim dilim işleniyorsa takvim bekler: turlar üst üste
+      // binmez, yüksek hızda tempo tur maliyetine göre kendiliğinden ölçülür.
+      if (this.turns.turnJob) {
+        // Sekme gizliyken rAF donar; dilimler burada boşaltılır ki oyun
+        // zamanı (kısılmış tempoda) akmaya devam etsin. Görünürken pompayı
+        // YALNIZ kare zinciri yapar — setInterval içinde pompalamak kare
+        // zamanlamasından bağımsız 7-20 ms'lik stall üretiyordu (ölçüldü).
+        if (document.visibilityState === 'hidden') this.pumpTurnFrame();
+        break;
+      }
       this.clock.accumulator -= stepMs;
       this.clock.day++;
-      if (this.clock.day % DAYS_PER_WEEK === 0) this.endTurn();
-      else this.emit('clock', this.clock);
+      if (this.clock.day % DAYS_PER_WEEK === 0) {
+        // Atomik endTurn ana thread'i 70-100 ms kilitliyordu; kapanış artık
+        // kare bütçeli dilimlerle işlenir (bkz. TurnManager.pumpTurn) ve
+        // dilimler bir sonraki rAF karesinde başlar.
+        this.turns.beginTurnJob();
+        this.requestRender();
+      } else this.emit('clock', this.clock);
       steps++;
     }
+  }
+
+  /** Tur işini kare zincirine bağlar: her rAF karesi bir dilim işler. */
+  pumpTurnFrame() {
+    if (!this.turns.turnJob) return;
+    const t0 = performance.now();
+    const done = this.turns.pumpTurn(7);
+    this.perf?.add('sim', performance.now() - t0);
+    // Dilim dünya durumunu değiştirmiş olabilir; kare taze çizilsin ve
+    // zincir iş bitene dek sürsün.
+    this.dirty = true;
+    this.requestRender();
+    if (done) this.emit('clock', this.clock);
   }
 
   handleHover(sx, sy) {
@@ -804,12 +864,14 @@ export class Game {
     this.frameHandle = requestAnimationFrame(this.frame);
   }
 
-  frame = () => {
+  frame = (ts = performance.now()) => {
     this.frameHandle = 0;
+    this.perf?.beginFrame(ts);
     const moving = this.input.update();
     if (this.dirty || moving) {
       this.dirty = false;
       if (this.world) {
+        const t0 = performance.now();
         this.renderer.render(this.world, {
           selected: this.selected,
           hovered: this.hovered,
@@ -821,9 +883,18 @@ export class Game {
           marquee: this.marquee,
           reachable: this.reachable,
         });
+        this.perf?.add('render', performance.now() - t0);
       }
     }
+    // Bekleyen hafta dilimi bu karenin bütçesinden payını alır; zincir iş
+    // bitene dek tam kare hızında sürer, kaydırma/zoom akıcı kalır.
+    if (this.turns?.turnJob) this.pumpTurnFrame();
+    this.perf?.endFrame();
     if (moving) this.frameHandle = requestAnimationFrame(this.frame);
+    // Dilimli arka plan işi (statik katman, uzak önbellek) kaldıysa zincir
+    // sürsün: iş birkaç karede biter, yoksa bir sonraki etkileşime dek yarım
+    // kalıp kenarlarda boşluk bırakıyordu.
+    else if (this.renderer.hasPendingJobs()) this.requestRender();
     else if (this.renderer.waterActive()) this.scheduleWaterFrame();
   };
 
@@ -839,6 +910,12 @@ export class Game {
     if (this.waterTimer || this.frameHandle) return;
     // Eşik önbellek zoom'uyla senkron: uzak dalda su daha seyrek dürtülür.
     const interval = this.camera.zoom < CACHE_ZOOM ? 80 : 40;
+    // Faz kilidi: gecikme son su karesine GÖRE hesaplanır. Sabit "kare biti
+    // + interval" zamanlaması kare süresi ve zamanlayıcı sapmasıyla toplanıp
+    // 40 ms hedefte 33-104 ms arası düzensiz adımlar üretiyordu (ölçüldü);
+    // duraklatılmış oyunda hissedilen mikro takılmanın bir bileşeni buydu.
+    const since = performance.now() - (this.lastWaterAt ?? 0);
+    const delay = Math.max(0, interval - since);
     this.waterTimer = setTimeout(() => {
       this.waterTimer = 0;
       // Sekme gizliyken ya da ana menü haritayı örterken çizim boşa gider;
@@ -847,8 +924,11 @@ export class Game {
       const covered = document.visibilityState === 'hidden'
         || document.body.classList.contains('menu-open');
       if (covered) this.scheduleWaterFrame();
-      else this.requestRender();
-    }, interval);
+      else {
+        this.lastWaterAt = performance.now();
+        this.requestRender();
+      }
+    }, delay);
   }
 
   destroy() {
