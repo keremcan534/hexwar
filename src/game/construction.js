@@ -202,9 +202,12 @@ export function initConstruction(world) {
 
 export function constructionCount(nation, typeId, regionId = null) {
   const state = ensureConstruction(nation);
-  return state.buildings.filter((building) => (
-    building.typeId === typeId && (regionId == null || building.regionId === regionId)
-  )).length;
+  let count = 0;
+  for (const building of state.buildings) {
+    if (building.typeId === typeId
+      && (regionId == null || building.regionId === regionId)) count++;
+  }
+  return count;
 }
 
 /**

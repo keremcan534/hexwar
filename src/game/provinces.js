@@ -600,7 +600,9 @@ export function runProvinces(game) {
     atPeace[nation.id] = peace;
   }
 
-  for (const province of world.provinces ?? []) {
+  const provinces = world.provinces ?? [];
+  for (let p = 0; p < provinces.length; p++) {
+    const province = provinces[p];
     const econ = province.econ;
     if (!econ) continue;
     // Sahiplik türetmesi: savaşta üye kareler tek tek el değiştirir (hex hex
@@ -669,7 +671,8 @@ export function runProvinces(game) {
   }
   // Küme sayaçları: HUD ve hegemonya gerçek province sayısını okur.
   for (const nation of world.nations) nation.provinces = 0;
-  for (const province of world.provinces ?? []) {
+  for (let p = 0; p < provinces.length; p++) {
+    const province = provinces[p];
     if (province.owner >= 0 && world.nations[province.owner]) {
       world.nations[province.owner].provinces++;
     }
