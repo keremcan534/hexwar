@@ -609,12 +609,19 @@ export class Game {
     // kuyruğunda çağrıldığı için 10 haftada bir kaydırmayı donduruyordu.
     // Bayrak bırakılır; oyuncu ~yarım saniye dinlenince yazılır
     // (bkz. flushAutosave).
+    if (!this.pendingAutosave) this.pendingAutosaveAt = performance.now();
     this.pendingAutosave = true;
   }
 
   /** Bekleyen otomatik kaydı oyuncu boştayken diske yazar. */
   flushAutosave() {
     if (!this.pendingAutosave || !this.world || this.turns.turnJob) return;
+    // Zaman akarken yazmak 16-21 ms'lik tekrar eden takılmaydı (ölçüldü).
+    // Kayıt duraklamaya, sekmenin gizlenmesine ya da 60 sn'lik tavana
+    // ertelenir — hızlı oynatma sırasında dakikada en fazla bir yazım.
+    const pendingFor = performance.now() - (this.pendingAutosaveAt ?? 0);
+    if (this.clock.speed && document.visibilityState !== 'hidden'
+      && pendingFor < 60000) return;
     const r = this.renderer;
     const idleFor = performance.now()
       - Math.max(r.zoomStamp?.at ?? 0, r.moveStamp?.at ?? 0);
@@ -820,7 +827,10 @@ export class Game {
   pumpTurnFrame() {
     if (!this.turns.turnJob) return;
     const t0 = performance.now();
-    const done = this.turns.pumpTurn(7);
+    // 5 ms: 144 Hz'te kare bütçesi ~7 ms; 7 ms'lik dilim + çizim kareyi
+    // aşırıyordu (ölçüldü: sim dilimi p99 16.5 ms). Tur biraz daha çok
+    // kareye yayılır, hiçbir kare bütçeyi aşmaz.
+    const done = this.turns.pumpTurn(5);
     this.perf?.add('sim', performance.now() - t0);
     // Dilim dünya durumunu değiştirmiş olabilir; kare taze çizilsin ve
     // zincir iş bitene dek sürsün.
@@ -909,7 +919,11 @@ export class Game {
   scheduleWaterFrame() {
     if (this.waterTimer || this.frameHandle) return;
     // Eşik önbellek zoom'uyla senkron: uzak dalda su daha seyrek dürtülür.
-    const interval = this.camera.zoom < CACHE_ZOOM ? 80 : 40;
+    // Not: bu kadans yalnız DURAĞAN haritanın su tazelemesidir; etkileşim
+    // (pan/zoom/sim) kareleri rAF'ta sınırsız akar (144 Hz+). PC hedefi
+    // için boşta 25→30 fps'e çekildi; tam kare hızında boşta su, ambiyans
+    // için ölçüsüz CPU/pil maliyeti olur (bkz. CLAUDE.md rAF kuralı).
+    const interval = this.camera.zoom < CACHE_ZOOM ? 66 : 33;
     // Faz kilidi: gecikme son su karesine GÖRE hesaplanır. Sabit "kare biti
     // + interval" zamanlaması kare süresi ve zamanlayıcı sapmasıyla toplanıp
     // 40 ms hedefte 33-104 ms arası düzensiz adımlar üretiyordu (ölçüldü);

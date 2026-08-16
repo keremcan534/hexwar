@@ -493,13 +493,35 @@ export class WaterLayer {
     for (const p of paths) ctx.stroke(p);
   }
 
+  /** Desen katmanlarının birleştiği ara tuval (bkz. fillPattern dikiş notu). */
+  ensureFx(ctx) {
+    const w = ctx.canvas.width;
+    const h = ctx.canvas.height;
+    if (!this.fx || this.fx.canvas.width !== w || this.fx.canvas.height !== h) {
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      this.fx = { canvas, ctx: canvas.getContext('2d') };
+    }
+    return this.fx;
+  }
+
   /**
    * Desen dolgusu. Kaydırma pattern dönüşümüyle yapılır: doku dünya uzayında
    * durur, zaman yalnız dönüşümün öteleme bileşenini oynatır — her karede
    * yeni piksel üretilmez.
+   *
+   * Dikiş notu: yollar FILL_CHUNK'lık parçalardır ve komşu parçaların ortak
+   * hex kenarında kenar yumuşatma iki kez uygulanır. Opak dolguda görünmez;
+   * YARI SAYDAM desende alfa toplanıp denizde gezinen ince koyu çizgiler
+   * bırakıyordu (görsel hata raporu). Çare: parçalar ara tuvalde tam alfayla
+   * birleştirilir — ilk parça source-over, kalanlar destination-over (aynı
+   * deseni örneklediklerinden ortak kenar pikseli a·c + (1-a)·c = c olur,
+   * dikiş matematiksel olarak yok) — ve ana tuvale hedef alfayla TEK blit
+   * yapılır. Tek parçalık yol doğrudan çizilir.
    */
   fillPattern(ctx, name, paths, time, vel, alpha, scale = 1, wrapWidth = 0) {
-    if (alpha <= 0) return;
+    if (alpha <= 0 || !paths.length) return;
     const pattern = this.patterns[name];
     // Sarmal dünyada desen periyodu dünya periyodunu tam bölmeli; yoksa
     // dikişin iki yanındaki kopyalar aynı denizi farklı fazda gösterir.
@@ -515,10 +537,31 @@ export class WaterLayer {
     const m = (this.matrix ??= new DOMMatrix());
     m.a = scale; m.b = 0; m.c = 0; m.d = scale; m.e = ox; m.f = oy;
     pattern.setTransform(m);
+
+    if (paths.length === 1) {
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = pattern;
+      ctx.fill(paths[0]);
+      ctx.globalAlpha = 1;
+      return;
+    }
+
+    const fx = this.ensureFx(ctx);
+    const f = fx.ctx;
+    f.setTransform(1, 0, 0, 1, 0, 0);
+    f.clearRect(0, 0, fx.canvas.width, fx.canvas.height);
+    f.setTransform(ctx.getTransform());
+    f.fillStyle = pattern;
+    for (let i = 0; i < paths.length; i++) {
+      if (i === 1) f.globalCompositeOperation = 'destination-over';
+      f.fill(paths[i]);
+    }
+    f.globalCompositeOperation = 'source-over';
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.globalAlpha = alpha;
-    ctx.fillStyle = pattern;
-    for (const path of paths) ctx.fill(path);
-    ctx.globalAlpha = 1;
+    ctx.drawImage(fx.canvas, 0, 0);
+    ctx.restore();
   }
 
   /**

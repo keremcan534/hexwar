@@ -1,6 +1,7 @@
 # PERFORMANCE AUDIT — Imperial Eye
 
-Tarih: 2026-08-16 · Ortam: Chrome (Claude tarayıcı paneli), ~144 Hz ekran,
+Tarih: 2026-08-16 (2. tur güncellemesiyle) · Ortam: Chrome (Claude tarayıcı
+paneli), ~144 Hz ekran,
 800×757 görünüm, standart dünya 160×96 (15 360 hex, 62 ulus, ~655 tümen).
 Ölçüm aracı: `src/core/perf.js` + F3 kaplaması (`?perf=1`), otomasyon için
 `window.__perfReport()` / `__perfReset()`. Bütün sayılar gerçek tarayıcıda
@@ -131,6 +132,51 @@ Kabul ölçütlerine karşı:
 - ✅ Simülasyon doğruluğu: `audit:determinism` (5 koşu birebir aynı) ve
   `diagnose:command` GEÇTİ; kayıt/yükleme turu ve birimleri koruyor.
 - ✅ Kayıt uyumluluğu: mevcut kayıt yüklendi, tekrar kaydedildi.
+
+## 4b. İkinci tur (kullanıcı geri bildirimi üzerine) — ek düzeltmeler
+
+Bildirilen üç sorun ölçülüp çözüldü:
+
+1. **"Ani zoom'da binlerce isim patlıyor."** Kök: hızlı zoom, state (0.68) ve
+   şehir (0.78+) eşiklerini tek karede aşınca yüzlerce etiket AYNI karede
+   kabul ediliyor ve boşta kalmış fade saati (dt tavanı 0.1 sn) alfayı tek
+   adımda ~0.7'ye fırlatıyordu. Düzeltme: zoom jesti sürerken (son zoom
+   değişiminden 200 ms) HİÇBİR yeni etiket kabul edilmez — görünenler kalır
+   ve akar; jest yerleşince adlar rampayla döner. Fade dt tavanı 0.05'e
+   indirildi (boşta kadansta 2 tiklik "pat" açılma da gitti). Doğrulama:
+   0.5↔1.4 sürekli osilasyonda (eşikler saniyede ~2 kez aşılırken) ekran
+   görüntüleriyle sıfır isim patlaması; jest durunca etiketler normal döndü.
+2. **"Denizde/başka yerlerde çizgiler."** İki ayrı kusur: (a) su desen
+   dolguları yarı saydam ve 256'lık Path2D parçaları hâlinde — komşu
+   parçaların ortak hex kenarında AA iki kez uygulanıp alfa topluyor,
+   denizde kayan ince koyu çizgiler bırakıyordu. Düzeltme: parçalar ara
+   tuvalde tam alfayla birleştirilir (ilk parça source-over, kalanlar
+   destination-over: aynı deseni örneklediklerinden ortak kenar pikseli
+   a·c+(1-a)·c=c, dikiş matematiksel olarak yok) ve ana tuvale hedef alfayla
+   TEK blit yapılır; ölçülen ek maliyet ~0.1-0.2 ms/tik. (b) İlk turda
+   eklenen "zoom'da su katmanını atla" yolu desenleri jest boyunca söndürüp
+   yakıyordu — o da glitch gibi okunuyordu; şimdi jest sırasında SON kapsama
+   kullanılmaya devam eder, kurulum 150 ms'de bire sınırlıdır.
+3. **"Oyun ilerlerken spike'lar."** Adım telemetrisi eklendi
+   (`turns.lastWorstStep` faz adıyla, `world.commandWorst` grup dökümüyle).
+   Bulunanlar ve yapılanlar: pump bütçesi 7→5 ms (144 Hz bütçesi ~7 ms);
+   YZ demeti 6→4, ekonomi 4→3; movement/provinces/workers/construction/
+   battles fazları ayrı dilimlere bölündü (savaş haftasında tek dilim
+   30-40 ms olabiliyordu); komuta ulus başına DEĞİL general başına dilimlendi
+   ve `reconcileCommand`/`runGroup` içindeki O(tümen×birim) doğrusal
+   taramalar kimlik tablosuyla kaldırıldı. Sonuç: en pahalı komuta grubu
+   ölçümde 1.7 ms; kalan ~25 ms'lik tekil "dilim" süreleri saf hesap değil,
+   adımın ortasına denk gelen MAJÖR GC duraklaması (duvar saati) — kaynağı
+   madde 5.1'deki sim tahsisatı. Otomatik kayıt hızlı oynatmada 60 sn tavanla
+   ertelenir (16-21 ms'lik tekrarlayan yazım durak/gizlenme anına kayar).
+   Determinizm denetimi ve komuta tanılaması her değişiklikten sonra GEÇTİ.
+
+PC hedefi notu (min 144 FPS): etkileşim kareleri (pan/zoom/sim) zaten
+sınırsız rAF'ta akar — bu oturumda 98-144 FPS ölçüldü; 60 Hz bütçesinin
+değil ~7 ms'lik 144 Hz bütçesinin içinde kalmak için sim dilimi 5 ms'e
+çekildi. Boşta (durağan harita) su tazelemesi kasıtlı 30 fps'tir (66/33 ms
+faz kilitli kadans): ambiyans dokusu için tam kare hızı ölçüsüz CPU olur;
+etkileşim başlar başlamaz su da tam kare hızında akar.
 
 ## 5. Kalan darboğazlar ve öneriler (yapılMAdı — ölçüme dayalı sıralama)
 

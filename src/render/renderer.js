@@ -694,8 +694,17 @@ export class Renderer {
       if (rect.minX >= c.minX && rect.maxX <= c.maxX
         && rect.minY >= c.minY && rect.maxY <= c.maxY) return c.products;
     }
-    // onlyCached: aktif zoom jesti — kurulum yapılmaz (bkz. renderCopy).
-    if (onlyCached) return null;
+    // Aktif zoom jesti: kurulum ~150 ms'de bire sınırlanır ve aradaki
+    // karelerde SON kapsama kullanılır (yollar dünya-uzayı, her zoom'da
+    // geçerli; zoom-out'ta kenarlar bir sonraki kuruluma dek desensiz kalır).
+    // Tam atlama su katmanını jest boyunca "pat" diye söndürüyordu — o da
+    // ayrı bir görsel hata gibi okunuyordu.
+    if (onlyCached) {
+      const last = covers[covers.length - 1];
+      if (last && performance.now() - (this.seaFrame.builtAt ?? 0) < 150) {
+        return last.products;
+      }
+    }
     const padX = (rect.maxX - rect.minX) * 0.2;
     const padY = (rect.maxY - rect.minY) * 0.2;
     const cover = {
@@ -707,6 +716,7 @@ export class Renderer {
     cover.products = { tiles, paths: this.chunkedHexPaths(tiles, FILL_CHUNK) };
     covers.push(cover);
     if (covers.length > 4) covers.shift();
+    this.seaFrame.builtAt = performance.now();
     return cover.products;
   }
 
@@ -2568,7 +2578,10 @@ export class Renderer {
     // etiket kalıcı bir alfa taşır ve hedefine ~150 ms'de kayar — kararlar
     // aynı kalır, geçişler yumuşar. Sıfıra inen kayıt silinir; harita
     // sabitken döngü maliyeti yoktur.
-    const dt = Math.min(0.1, Math.max(0, this.waterTime - (this.labelClock ?? this.waterTime)));
+    // dt tavanı 0.05: boşta su kadansı 80 ms'yken 0.1'lik tavan fade'i iki
+    // tikte bitiriyordu — adlar "pat" diye açılıyordu. 0.05 ile geçiş her
+    // kadansta en az 3-4 adım sürer.
+    const dt = Math.min(0.05, Math.max(0, this.waterTime - (this.labelClock ?? this.waterTime)));
     this.labelClock = this.waterTime;
     this.labelAlpha ??= new Map();
     this.labelFadePending = false;
@@ -2582,12 +2595,19 @@ export class Renderer {
       return next;
     };
     const ramp = (v, lo, hi) => Math.max(0, Math.min(1, (v - lo) / (hi - lo)));
+    // Zoom jesti sürerken YENİ etiket kabul edilmez; görünenler kalır ve
+    // akar. Hızlı zoom z eşiklerini (state 0.68, şehir 0.78+) tek karede
+    // aşıyor ve yüzlerce ad aynı karede tam alfaya yakın beliriyordu —
+    // "patlama gibi binlerce isim, sonra geri çekiliyor" hatası buydu.
+    // Jest ~200 ms yerleşince kabul normale döner ve adlar rampayla gelir.
+    const zoomGesture = performance.now() - this.zoomStamp.at < 200;
     // Karar histerezisi: görünür etiketin kutusu %18 küçültülerek (zor
     // kovulur), görünmeyeninki %15 büyütülerek (zor girer) test edilir.
     // Tek eşikli karar sınır durumunda kare kare salınıyor, etiketler
     // "rastgele belirip gidiyordu". Ekrana talep gerçek kutuyla yazılır.
     const admits = (key, rx, ry, rw, rh) => {
       const wasOn = (this.labelAlpha.get(key) ?? 0) > 0.25;
+      if (zoomGesture && !wasOn) return false;
       const m = (wasOn ? -0.18 : 0.15) * Math.min(rw, rh);
       return !collides(rx - m, ry - m, rw + m * 2, rh + m * 2);
     };

@@ -268,14 +268,18 @@ export function releaseArmy(nation, armyId) {
  * birden cok yoldan yok olabiliyor (muharebe, kitlik, dagitim); tek tek
  * kancalamak yerine haftada bir toparlamak daha saglam.
  */
-export function reconcileCommand(world) {
+export function reconcileCommand(world, unitById = null) {
+  // Kimlik tablosu: `world.units.some` taraması O(tümen × birim) yapıyordu
+  // (ölçüldü: 655 birimlik dünyada komuta fazının görünür payı).
+  const lookup = unitById ?? new Map(world.units.map((unit) => [unit.id, unit]));
   let released = 0;
   for (const nation of world.nations) {
     for (const general of generalsOf(nation)) {
       const before = general.divisions.length;
-      general.divisions = general.divisions.filter(
-        (id) => world.units.some((unit) => unit.id === id && unit.nationId === nation.id),
-      );
+      general.divisions = general.divisions.filter((id) => {
+        const unit = lookup.get(id);
+        return !!unit && unit.nationId === nation.id;
+      });
       released += before - general.divisions.length;
     }
   }
@@ -738,13 +742,19 @@ function advance(game, general, divisions) {
 }
 
 /** Bir ordu grubunun haftalik isleyisi. */
-function runGroup(game, nation, general, borders) {
+function runGroup(game, nation, general, context) {
   const world = game.world;
   // Donanma cephe tutmaz: gemiler oyuncunun ve birim YZ'sinin elinde kalir.
-  const divisions = divisionsOf(world, general).filter(
-    (unit) => unit.hp > 0 && unit.type.domain === 'land' && !unit.embarked,
-  );
-  const front = frontFor(general, borders);
+  // Kimlik tablosundan cozulur: divisionsOf'un world.units.find'i general
+  // basina O(tumen × birim) tarama biriktiriyordu.
+  const divisions = [];
+  for (const id of general.divisions) {
+    const unit = context.unitById.get(id);
+    if (unit && unit.hp > 0 && unit.type.domain === 'land' && !unit.embarked) {
+      divisions.push(unit);
+    }
+  }
+  const front = frontFor(general, context.borders);
   general.front = front.map((tile) => ({ q: tile.q, r: tile.r }));
 
   if (!divisions.length) {
@@ -752,8 +762,14 @@ function runGroup(game, nation, general, borders) {
     return;
   }
 
+  // Hafif profil: turun en pahalı grubu parça dökümüyle kaydedilir
+  // (world.commandWorst; beginCommand sıfırlar). Donma avında "hangi general,
+  // hangi parça?" sorusunu tur başına birkaç performance.now ile yanıtlar.
+  const t0 = performance.now();
   assignPosts(world, divisions, front);
+  const t1 = performance.now();
   march(game, divisions);
+  const t2 = performance.now();
 
   // Plan, tumenler mevkilerine oturdukca olgunlasir. Hazirlik "beklemek" degil
   // "yerlesmek"tir; boylece gosterge oyuncuya hattin oturdugunu da soyler.
@@ -766,6 +782,13 @@ function runGroup(game, nation, general, borders) {
     + PLANNING_RATE * (settled / divisions.length) * (1 + staff)));
 
   if (general.stance === STANCE.ADVANCE) advance(game, general, divisions);
+  const t3 = performance.now();
+  if (!world.commandWorst || t3 - t0 > world.commandWorst.total) {
+    world.commandWorst = {
+      nation: nation.name, divisions: divisions.length, front: front.length,
+      assign: t1 - t0, march: t2 - t1, advance: t3 - t2, total: t3 - t0,
+    };
+  }
 }
 
 /**
@@ -823,16 +846,32 @@ function refreshOfficerCorps(game, nation, rng) {
 export function beginCommand(game) {
   const world = game.world;
   ensureCommand(world);
-  reconcileCommand(world);
-  return { borders: scanBorders(world), rng: game.turns.rng };
+  const unitById = new Map();
+  for (const unit of world.units) unitById.set(unit.id, unit);
+  reconcileCommand(world, unitById);
+  world.commandWorst = null;
+  return { borders: scanBorders(world), rng: game.turns.rng, unitById };
 }
 
-export function runNationCommand(game, nation, context) {
+/**
+ * General başına bir dilim: dev imparatorlukta TEK ulusun komuta fazı bile
+ * 20+ ms tutabiliyor (ölçüldü: lastWorstStep "command:Wynovia" 23.7 ms) —
+ * ilerleme emirleri (advance → orderMove) yol bulma maliyeti taşır ve
+ * generaller arası bağımlılık yoktur; sıra korunur, determinizm değişmez.
+ */
+export function* runNationCommandSteps(game, nation, context) {
   if (!nation.alive) return;
   refreshOfficerCorps(game, nation, context.rng);
   for (const general of generalsOf(nation)) {
-    runGroup(game, nation, general, context.borders);
+    runGroup(game, nation, general, context);
+    yield;
   }
+}
+
+export function runNationCommand(game, nation, context) {
+  // Senkron boşaltma: sıra ve sonuç dilimli yolla birebir aynı.
+  // eslint-disable-next-line no-unused-vars
+  for (const _ of runNationCommandSteps(game, nation, context)) { /* boşalt */ }
 }
 
 export function finishCommand(game) {

@@ -24,7 +24,7 @@ import {
 } from './economy.js';
 import { initBattles, removeFromBattles, runBattles } from './battles.js';
 import {
-  beginCommand, finishCommand, initCommand, releaseArmy, runNationCommand, seedGenerals,
+  beginCommand, finishCommand, initCommand, releaseArmy, runNationCommandSteps, seedGenerals,
 } from './command.js';
 import {
   initProvinces, provincePopulation, refreshProvinceOwner, runProvinces,
@@ -319,9 +319,23 @@ export class TurnManager {
   pumpTurn(budgetMs = 5.5) {
     if (!this.turnJob) return true;
     const start = performance.now();
+    // Adım süresi izlenir: bütçe aşımı hep TEK bir pahalı adımdan gelir;
+    // hangi fazın böldüğü lastWorstStep'te okunur (F3 kaplaması/konsol).
+    let stepStart = start;
     let step = this.turnJob.next();
+    let worst = performance.now() - stepStart;
+    let worstPhase = this.phase;
     while (!step.done && performance.now() - start < budgetMs) {
+      stepStart = performance.now();
       step = this.turnJob.next();
+      const ms = performance.now() - stepStart;
+      if (ms > worst) {
+        worst = ms;
+        worstPhase = this.phase;
+      }
+    }
+    if (!this.lastWorstStep || worst > this.lastWorstStep.ms) {
+      this.lastWorstStep = { ms: worst, phase: worstPhase };
     }
     if (step.done) this.turnJob = null;
     return !this.turnJob;
@@ -348,6 +362,7 @@ export class TurnManager {
     };
 
     // Temas tablosu tur başında bir kez: her ülke için ayrı taramak pahalı.
+    this.phase = 'contacts';
     world.contacts = computeContacts(world);
     // Koalisyon YZ'den önce: şöhreti aşan ülke bu turda cephe bulsun.
     const joined = checkCoalitions(this.game, this.rng);
@@ -359,10 +374,11 @@ export class TurnManager {
     let aiBatch = 0;
     for (const nation of world.nations) {
       if (nation.id === this.playerNation || !nation.alive) continue;
+      this.phase = `ai:${nation.name}`;
       runNationAI(this.game, nation, this.rng);
-      // YZ ulus başına bağımsız karar verir; 6'şarlı demetler kare bütçesine
-      // sığar. Sıra dizisi değişmez, determinizm korunur.
-      if (++aiBatch % 6 === 0) {
+      // YZ ulus başına bağımsız karar verir; 4'erli demetler 5 ms'lik kare
+      // bütçesine sığar. Sıra dizisi değişmez, determinizm korunur.
+      if (++aiBatch % 4 === 0) {
         yield;
         stamp();
       }
@@ -399,6 +415,7 @@ export class TurnManager {
       advanceEntrenchment(unit, this.turn);
     }
     mark('units');
+    this.phase = 'reinforcements';
     runReinforcements(this.game);
     yield;
     stamp();
@@ -406,11 +423,15 @@ export class TurnManager {
     // aynı hafta yola çıksın; sonra yürüyüş ilerler ve temas muharebe açar.
     // Faz atomikken 12-20 ms tutup kare bütçesini aşıyordu (ölçüldü);
     // sınır taraması bir dilim, uluslar 4'erli demetlerde işlenir.
+    // Ulus başına TEK dilim: savaş haftasında bir ulusun mevki dağıtımı
+    // (assignPosts, cephe uzunluğunun karesi) tek başına ~8 ms tutabiliyor;
+    // 3'lü demet 24 ms'lik dilim üretiyordu (lastWorstStep ile ölçüldü).
+    this.phase = 'command:begin';
     const commandContext = beginCommand(this.game);
-    let commandBatch = 0;
     for (const nation of world.nations) {
-      runNationCommand(this.game, nation, commandContext);
-      if (++commandBatch % 4 === 0) {
+      this.phase = `command:${nation.name}`;
+      // General başına bir dilim (bkz. command.runNationCommandSteps).
+      for (const _ of runNationCommandSteps(this.game, nation, commandContext)) {
         yield;
         stamp();
       }
@@ -419,18 +440,29 @@ export class TurnManager {
     mark('command');
     yield;
     stamp();
+    // Fazlar ayrı dilimlerde: eskiden yürüyüş+province+işçi tek dilimdi ve
+    // savaş haftalarında (yol bulma + sahiplik değişimi) tek başına 30-40 ms
+    // tutabiliyordu (ölçüldü). Sıra aynen korunur, determinizm değişmez.
+    this.phase = 'movement';
     advanceMovement(this.game);
     mark('movement');
+    yield;
+    stamp();
+    this.phase = 'provinces';
     decayInfamy(world);
     // Sıra önemli: sahiplik savaşta değişmiş olabilir, önce işçiler yeniden dağıtılır.
     runProvinces(this.game);
     mark('provinces');
+    yield;
+    stamp();
     // Şehirler işçi dağıtımından önce büyür ki yeni nüfus aynı hafta bir kare işlesin.
+    this.phase = 'workers';
     growCities(world);
     assignAllWorkers(world);
     mark('workers');
     yield;
     stamp();
+    this.phase = 'produce';
     this.produce();
     mark('produce');
     // Ticaret üretimden sonra: bu turun fazlası satılabilsin.
@@ -442,27 +474,34 @@ export class TurnManager {
     const economyContext = beginEconomy(this.game);
     let economyBatch = 0;
     for (const nation of world.nations) {
+      this.phase = `economy:${nation.name}`;
       runNationEconomy(this.game, nation, economyContext);
-      if (++economyBatch % 4 === 0) {
+      if (++economyBatch % 3 === 0) {
         yield;
         economyContext.stamp();
         stamp();
       }
     }
+    this.phase = 'economy:finish';
     finishEconomy(this.game, economyContext);
     mark('economy');
     yield;
     stamp();
     // Ulusal insaat gucu haftalik kapanista kuyrugun en ustundeki projeye akar.
+    this.phase = 'construction';
     runConstruction(this.game);
     runPolitics(this.game);
     mark('construction');
+    yield;
+    stamp();
     // Haritadaki ordular çarpıştıkları province üzerinde haftalık muharebe çözer.
+    this.phase = 'battles';
     runBattles(this.game);
     this.checkElimination();
     mark('battles');
     // Oyuncunun sürekli emirleri yeni turun hakkıyla işlensin: tur açıldığında
     // otomatik ve yol emirli birimler hamlelerini yapmış olur.
+    this.phase = 'orders+tail';
     executeOrders(this.game, this.playerNation, this.rng);
     mark('orders');
     this.lastProfile = profile;
