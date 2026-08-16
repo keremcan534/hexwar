@@ -449,6 +449,20 @@ function emptyGoods() {
   return Object.fromEntries(GOOD_IDS.map((id) => [id, 0]));
 }
 
+/**
+ * Eksik alanlari varsayilanla tamamlar, NESNEYI YERINDE birakir. ensureEconomy
+ * her hafta kosar ve eski `{ ...varsayilan, ...mevcut }` kalibi hicbir sey
+ * degismese de ulke basina onlarca yeni nesne uretiyordu (olculdu:
+ * ~2.4 MB/hafta). Deger davranisi spread ile birebir ayni: mevcut anahtar
+ * (undefined olsa bile) korunur, yalniz hic olmayan anahtar doldurulur.
+ */
+function fillMissing(target, defaults) {
+  for (const key in defaults) {
+    if (!(key in target)) target[key] = defaults[key];
+  }
+  return target;
+}
+
 function emptyGoodFlow() {
   return {
     production: 0,
@@ -534,6 +548,11 @@ export const MILITARY_FIELD = Object.fromEntries(MILITARY_EQUIPMENT_IDS.map((id)
   demand: `${id}Demand`,
   used: `${id}Used`,
 }]));
+
+// Yerinde doldurmanin (fillMissing) referans varsayilanlari. Yalniz okunur.
+const GOOD_FLOW_DEFAULTS = emptyGoodFlow();
+const TRADE_SUMMARY_DEFAULTS = emptyTradeSummary();
+const LEDGER_DEFAULTS = emptyLedger();
 
 export function ensureMilitaryEconomy(nation) {
   const military = nation.economy.military ?? {};
@@ -641,7 +660,46 @@ function initialProfessionCounts(population) {
 }
 
 function classPopulation(counts, classId) {
-  return CLASS_PROFESSIONS[classId].reduce((sum, id) => sum + (counts[id] ?? 0), 0);
+  const professions = CLASS_PROFESSIONS[classId];
+  let sum = 0;
+  for (let i = 0; i < professions.length; i++) sum += counts[professions[i]] ?? 0;
+  return sum;
+}
+
+const CLASS_IDS = Object.keys(CLASS_INFO);
+const PROFESSION_IDS = Object.keys(PROFESSION_INFO);
+// ensurePopulationModel'in yerinde doldurdugu alanlar; id ve population
+// sinifa/nufusa ozel oldugu icin ayri ele alinir.
+const CLASS_DEFAULTS = {
+  income: 0,
+  taxPaid: 0,
+  satisfaction: 0.62,
+  needsCost: 0,
+  needsBudget: 0,
+  canAffordNeeds: true,
+  hardshipWeeks: 0,
+};
+
+/**
+ * Sayim gecerliyse eski goc dongusu birebir ayni degerleri geri yazardi;
+ * bu denetim o dolambaci atlatir. Gecerli: butun meslekler tanimli, negatif
+ * degil, kohort katinda, fazladan anahtar yok ve en az bir deger pozitif
+ * (hepsi sifirsa eski yol initialProfessionCounts'a duserdi).
+ */
+function professionCountsValid(counts) {
+  let keys = 0;
+  let anyPositive = false;
+  for (const key in counts) {
+    keys++;
+    const value = counts[key];
+    if (!Number.isFinite(value) || value < 0 || value % POPULATION_COHORT !== 0) return false;
+    if (value > 0) anyPositive = true;
+  }
+  if (keys !== PROFESSION_IDS.length || !anyPositive) return false;
+  for (let i = 0; i < PROFESSION_IDS.length; i++) {
+    if (!(PROFESSION_IDS[i] in counts)) return false;
+  }
+  return true;
 }
 
 /** Ülkedeki toplam fabrika kadrosu — meslek dağılımının gerçek talebi. */
@@ -676,33 +734,49 @@ function automaticProfession(nation, classId) {
 
 function syncClassPopulations(nation) {
   const counts = nation.economy.professionCounts;
-  for (const classId of Object.keys(CLASS_INFO)) {
-    nation.economy.classes[classId].population = classPopulation(counts, classId);
+  let total = 0;
+  for (const classId of CLASS_IDS) {
+    const population = classPopulation(counts, classId);
+    nation.economy.classes[classId].population = population;
+    total += population;
   }
-  nation.economy.cohortPopulation = Object.values(counts).reduce((sum, value) => sum + value, 0);
+  nation.economy.cohortPopulation = total;
 }
 
 export function ensurePopulationModel(nation, population = nation?.economy?.population ?? 10000) {
   const economy = nation.economy;
   economy.classes ??= {};
-  for (const [classId, info] of Object.entries(CLASS_INFO)) {
-    economy.classes[classId] = {
-      id: classId,
-      population: Math.round(population * info.share),
-      income: 0,
-      taxPaid: 0,
-      satisfaction: 0.62,
-      needsCost: 0,
-      needsBudget: 0,
-      canAffordNeeds: true,
-      hardshipWeeks: 0,
-      ...(economy.classes[classId] ?? {}),
-    };
+  for (const classId of CLASS_IDS) {
+    const existing = economy.classes[classId];
+    if (!existing) {
+      economy.classes[classId] = {
+        id: classId,
+        population: Math.round(population * CLASS_INFO[classId].share),
+        income: 0,
+        taxPaid: 0,
+        satisfaction: 0.62,
+        needsCost: 0,
+        needsBudget: 0,
+        canAffordNeeds: true,
+        hardshipWeeks: 0,
+      };
+    } else {
+      // Eksik alan yalniz eski kayit gocunde cikar; haftalik yolda nesne
+      // yeniden kurulmaz (deger davranisi eski spread ile ayni).
+      fillMissing(existing, CLASS_DEFAULTS);
+      if (!('id' in existing)) existing.id = classId;
+      if (!('population' in existing)) {
+        existing.population = Math.round(population * CLASS_INFO[classId].share);
+      }
+    }
   }
   if (!economy.professionCounts) economy.professionCounts = initialProfessionCounts(population);
-  else {
+  else if (!professionCountsValid(economy.professionCounts)) {
+    // Goc yalniz bozuk/eksik sayimda kosar. Gecerli sayimda eski kod da
+    // birebir ayni degerleri geri yaziyordu; her hafta yeni nesne kurmak
+    // safi coptu.
     const migrated = emptyProfessionCounts();
-    for (const id of Object.keys(PROFESSION_INFO)) {
+    for (const id of PROFESSION_IDS) {
       const value = Math.max(0, economy.professionCounts[id] ?? 0);
       migrated[id] = Math.floor(value / POPULATION_COHORT) * POPULATION_COHORT;
     }
@@ -971,7 +1045,7 @@ export function ensureEconomy(world) {
   for (const nation of world.nations) {
     if (!nation.economy) initNationEconomy(world, nation);
     // Eski kayıtlar sosyal harcama alanını tanımıyor; eksik alan çökertmesin.
-    else nation.economy.social = { ...DEFAULT_SOCIAL, ...(nation.economy.social ?? {}) };
+    else fillMissing(nation.economy.social ??= {}, DEFAULT_SOCIAL);
     // Eski kayıt göçü: tek armySpending kaydıracı iki yeni kaydırağa açılır,
     // oyuncunun ayarı iki tarafta da korunmuş olur. Yönetim varsayılan tam.
     nation.economy.militaryWages ??= nation.economy.armySpending ?? 100;
@@ -981,23 +1055,26 @@ export function ensureEconomy(world) {
     for (const id of GOOD_IDS) nation.economy.inventory[id] ??= 0;
     nation.economy.goodsFlow ??= emptyGoodsFlow();
     for (const id of GOOD_IDS) {
-      nation.economy.goodsFlow[id] = {
-        ...emptyGoodFlow(),
-        ...(nation.economy.goodsFlow[id] ?? {}),
-      };
+      const flow = nation.economy.goodsFlow[id];
+      if (!flow) nation.economy.goodsFlow[id] = emptyGoodFlow();
+      else fillMissing(flow, GOOD_FLOW_DEFAULTS);
     }
-    nation.economy.trade = {
-      ...emptyTradeSummary(),
-      ...(nation.economy.trade ?? {}),
-    };
-    nation.economy.ledger = { ...emptyLedger(), ...(nation.economy.ledger ?? {}) };
+    if (!nation.economy.trade) nation.economy.trade = emptyTradeSummary();
+    else fillMissing(nation.economy.trade, TRADE_SUMMARY_DEFAULTS);
+    if (!nation.economy.ledger) nation.economy.ledger = emptyLedger();
+    else fillMissing(nation.economy.ledger, LEDGER_DEFAULTS);
     ensurePopulationModel(nation, populationOf(world, nation));
     ensureMilitaryEconomy(nation);
     ensureInitialMilitaryIndustry(world, nation);
     // Tanınmayan tür kayıttan düşer; çapası kurulamayan (toprağı kalmamış)
     // fabrika ise silinmez, yalnız state'siz kalır — kayıp veri sürprizi olmasın.
-    nation.economy.factories = (nation.economy.factories ?? [])
-      .filter((factory) => FACTORIES[factory.typeId]);
+    // Filtre yalnız gerçekten düşecek kayıt varsa kopyalar: her hafta yeni
+    // dizi kurmak boşuna çöptü.
+    nation.economy.factories ??= [];
+    if (nation.economy.factories.some((factory) => !FACTORIES[factory.typeId])) {
+      nation.economy.factories = nation.economy.factories
+        .filter((factory) => FACTORIES[factory.typeId]);
+    }
     for (const factory of nation.economy.factories) {
       ensureFactoryAnchor(world, nation, factory);
       ensureProductionLine(factory);
@@ -1317,23 +1394,51 @@ function addFlow(market, goodId, kind, amount) {
   market.goods[goodId][kind] += amount;
 }
 
+/**
+ * Akis nesneleri YERINDE sifirlanir, kimlikleri korunur: her hafta ulke basina
+ * 43 yeni nesne kurmak olculebilir cop uretiyordu (~1.8 MB/hafta) ve akislari
+ * elinde tutan hicbir okuyucu (UI, defter) taze nesne beklemiyor.
+ */
 function resetNationGoodsFlow(nation) {
-  const previous = nation.economy.goodsFlow ?? emptyGoodsFlow();
-  nation.economy.goodsFlow = Object.fromEntries(GOOD_IDS.map((id) => [id, {
-    ...emptyGoodFlow(),
+  const flows = nation.economy.goodsFlow ??= emptyGoodsFlow();
+  for (const id of GOOD_IDS) {
+    const flow = flows[id] ??= emptyGoodFlow();
     // This is last week's import reliance. Population prices use it until the
     // current week's world market has been cleared below.
-    importShare: clamp(previous[id]?.importShare ?? 0, 0, 1),
+    const importShare = clamp(flow.importShare ?? 0, 0, 1);
     // Geçen haftanın ülke bazlı karşılanma oranı. Şimdilik yalnız kayıt:
     // fabrika girdisine bağlamak iki kez denendi ve geri alındı (bkz.
     // runFactories'teki not) — dünya arzı yapısal olarak kıtken her ülkeyi
     // kronik cezalandırıyordu. Arz sorunu çözülünce (RGO kapasitesi) erişim
     // cezası buradan yeniden kurulmalı.
-    fulfilledShare: (previous[id]?.demand ?? 0) > 0
-      ? clamp((previous[id].fulfilled ?? 0) / previous[id].demand, 0, 1)
-      : 1,
-  }]));
-  nation.economy.trade = emptyTradeSummary();
+    const fulfilledShare = (flow.demand ?? 0) > 0
+      ? clamp((flow.fulfilled ?? 0) / flow.demand, 0, 1)
+      : 1;
+    flow.production = 0;
+    flow.demand = 0;
+    flow.retained = 0;
+    flow.domestic = 0;
+    flow.imports = 0;
+    flow.exports = 0;
+    flow.fulfilled = 0;
+    flow.shortage = 0;
+    flow.importShare = importShare;
+    flow.fulfilledShare = fulfilledShare;
+  }
+  resetTradeSummary(nation);
+}
+
+/** Ticaret ozetini yerinde sifirlar (bkz. resetNationGoodsFlow gerekcesi). */
+function resetTradeSummary(nation) {
+  const trade = nation.economy.trade ??= emptyTradeSummary();
+  trade.lastUpdated = 0;
+  trade.imports = 0;
+  trade.exports = 0;
+  trade.importValue = 0;
+  trade.exportValue = 0;
+  trade.balance = 0;
+  trade.tariffRevenue = 0;
+  return trade;
 }
 
 function addNationFlow(nation, goodId, kind, amount) {
@@ -2228,7 +2333,7 @@ function procureStrategicGoods(world) {
  */
 export function settleGlobalTrade(world) {
   const nations = world.nations.filter((nation) => nation.alive && nation.economy);
-  for (const nation of nations) nation.economy.trade = emptyTradeSummary();
+  for (const nation of nations) resetTradeSummary(nation);
 
   for (const id of GOOD_IDS) {
     const rows = nations.map((nation) => {
