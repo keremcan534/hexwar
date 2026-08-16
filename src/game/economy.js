@@ -512,10 +512,33 @@ function emptyLedger() {
   };
 }
 
+/**
+ * Anahtar listesi bir kez cikarilir: ensureMilitaryEconomy her stok
+ * okumasinda cagrilir ve Object.entries burada tek basina haftada ~10 MB
+ * gecici dizi uretiyordu (olculdu, bkz. alloc-audit).
+ */
+const DEFAULT_MILITARY_KEYS = Object.keys(DEFAULT_MILITARY);
+
+/**
+ * Ekipman basina alan adlari (`armsProduced` gibi) bir kez uretilir. Sicak
+ * dongulerde her erisimde sablon dizgi kurmak haftada yuz binlerce kisa
+ * omurlu string demekti; tablo hem burada hem reinforcement.js'te okunur.
+ */
+export const MILITARY_FIELD = Object.fromEntries(MILITARY_EQUIPMENT_IDS.map((id) => [id, {
+  produced: `${id}Produced`,
+  imported: `${id}Imported`,
+  producedAverage: `${id}ProducedAverage`,
+  importedAverage: `${id}ImportedAverage`,
+  supplyAverage: `${id}SupplyAverage`,
+  averageSamples: `${id}AverageSamples`,
+  demand: `${id}Demand`,
+  used: `${id}Used`,
+}]));
+
 export function ensureMilitaryEconomy(nation) {
   const military = nation.economy.military ?? {};
-  for (const [key, value] of Object.entries(DEFAULT_MILITARY)) {
-    if (!Number.isFinite(military[key])) military[key] = value;
+  for (const key of DEFAULT_MILITARY_KEYS) {
+    if (!Number.isFinite(military[key])) military[key] = DEFAULT_MILITARY[key];
   }
   for (const id of MILITARY_EQUIPMENT_IDS) {
     military[id] = Math.max(0, Math.min(MILITARY_EQUIPMENT[id].stockCap, military[id]));
@@ -569,21 +592,22 @@ export function setMilitaryProductionLine(game, nation, factoryId, equipmentId) 
 function updateMilitaryAverages(nation) {
   const military = ensureMilitaryEconomy(nation);
   for (const id of MILITARY_EQUIPMENT_IDS) {
-    const sampled = military[`${id}AverageSamples`] > 0;
+    const field = MILITARY_FIELD[id];
+    const sampled = military[field.averageSamples] > 0;
     const blend = (previous, current) => (sampled
       ? previous * 0.75 + current * 0.25
       : current);
-    military[`${id}ProducedAverage`] = blend(
-      military[`${id}ProducedAverage`],
-      military[`${id}Produced`],
+    military[field.producedAverage] = blend(
+      military[field.producedAverage],
+      military[field.produced],
     );
-    military[`${id}ImportedAverage`] = blend(
-      military[`${id}ImportedAverage`],
-      military[`${id}Imported`],
+    military[field.importedAverage] = blend(
+      military[field.importedAverage],
+      military[field.imported],
     );
-    military[`${id}SupplyAverage`] = military[`${id}ProducedAverage`]
-      + military[`${id}ImportedAverage`];
-    military[`${id}AverageSamples`]++;
+    military[field.supplyAverage] = military[field.producedAverage]
+      + military[field.importedAverage];
+    military[field.averageSamples]++;
   }
 }
 
@@ -2165,7 +2189,8 @@ function procureStrategicGoods(world) {
     const military = ensureMilitaryEconomy(nation);
     for (const id of MILITARY_EQUIPMENT_IDS) {
       const equipment = MILITARY_EQUIPMENT[id];
-      military[`${id}Imported`] = 0;
+      const field = MILITARY_FIELD[id];
+      military[field.imported] = 0;
       // Tedarik kaydırağı ithalat hedefini de ölçekler: %50 fonlanan ordu
       // yarım depoyla idare etmeye çalışır, hazine de yarım öder.
       const procurement = (nation.economy.militaryProcurement ?? 100) / 100;
@@ -2173,7 +2198,7 @@ function procureStrategicGoods(world) {
         equipment.stockCap,
         (equipment.reserve + Math.min(
           equipment.stockCap - equipment.reserve,
-          military[`${id}Demand`] ?? 0,
+          military[field.demand] ?? 0,
         )) * procurement,
       );
       const shortage = Math.max(0, target - equipmentStock(nation, id));
@@ -2185,7 +2210,7 @@ function procureStrategicGoods(world) {
       if (amount <= 0) continue;
       const cost = amount * unitPrice;
       setEquipmentStock(nation, id, equipmentStock(nation, id) + amount);
-      military[`${id}Imported`] = amount;
+      military[field.imported] = amount;
       nation.gold -= cost;
       nation.economy.importCost += cost;
       available[id] -= amount;
@@ -2530,11 +2555,12 @@ export function runNationEconomy(game, nation, ctx) {
       const affordable = retainedBudget / price;
       const retainedFactory = Math.min(factoryOutput, room, affordable);
       const retainedWorkshop = Math.min(workshopOutput, room - retainedFactory);
-      military[`${id}Produced`] = retainedFactory + retainedWorkshop;
+      const producedField = MILITARY_FIELD[id].produced;
+      military[producedField] = retainedFactory + retainedWorkshop;
       setEquipmentStock(
         nation,
         id,
-        equipmentStock(nation, id) + military[`${id}Produced`],
+        equipmentStock(nation, id) + military[producedField],
       );
       // Equipment retained by the state cannot also be sold on the market.
       market.goods[id].supply = Math.max(0, market.goods[id].supply - retainedFactory);

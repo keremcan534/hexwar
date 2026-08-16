@@ -2,7 +2,7 @@
 // gucu ise province nufusu ve Small Arms stogu olmadan yukselemez.
 
 import {
-  MILITARY_EQUIPMENT, MILITARY_EQUIPMENT_IDS, ensureMilitaryEconomy,
+  MILITARY_EQUIPMENT, MILITARY_EQUIPMENT_IDS, MILITARY_FIELD, ensureMilitaryEconomy,
   equipmentStock, setEquipmentStock, workshopArmsOutput,
 } from './economy.js';
 import { generalOfArmy, generalRecoveryBonus } from './command.js';
@@ -19,6 +19,15 @@ export const REINFORCEMENT_EQUIPMENT = {
   ARMOR: { arms: 0.001, tanks: 0.004 },
   AIRCRAFT: { arms: 0.0005, airplane: 0.004 },
 };
+// Sicak donguler tabloyu [id, miktar] cifti dizisi olarak okur: alay basina
+// Object.entries cagirmak haftada yuz binlerce gecici dizi uretiyordu.
+const REINFORCEMENT_EQUIPMENT_ENTRIES = Object.fromEntries(
+  Object.keys(REINFORCEMENT_EQUIPMENT).map(
+    (typeId) => [typeId, Object.entries(REINFORCEMENT_EQUIPMENT[typeId])],
+  ),
+);
+const DEFAULT_EQUIPMENT_ENTRIES = [['arms', 0.002]];
+
 function missingStrength(regiment) {
   return Math.max(0, (regiment.maxStrength ?? 0) - (regiment.strength ?? 0));
 }
@@ -97,8 +106,9 @@ export function reinforcementNeed(world, nation) {
       const missing = missingStrength(regiment);
       strength += missing;
       manpower += missing * menPerStrength(regiment);
-      const cost = REINFORCEMENT_EQUIPMENT[resolveTypeId(regiment.typeId)] ?? { arms: 0.002 };
-      for (const [id, amount] of Object.entries(cost)) equipment[id] += missing * amount;
+      const cost = REINFORCEMENT_EQUIPMENT_ENTRIES[resolveTypeId(regiment.typeId)]
+        ?? DEFAULT_EQUIPMENT_ENTRIES;
+      for (const [id, amount] of cost) equipment[id] += missing * amount;
     }
   }
   return {
@@ -160,8 +170,8 @@ function reinforceNation(game, nation) {
   military.reinforced = 0;
   military.manpowerUsed = 0;
   for (const id of MILITARY_EQUIPMENT_IDS) {
-    military[`${id}Demand`] = need.equipment[id] ?? 0;
-    military[`${id}Used`] = 0;
+    military[MILITARY_FIELD[id].demand] = need.equipment[id] ?? 0;
+    military[MILITARY_FIELD[id].used] = 0;
   }
 
   const units = world.units.filter((unit) => (
@@ -188,10 +198,13 @@ function reinforceNation(game, nation) {
       const missing = missingStrength(regiment);
       if (missing <= 0) continue;
       const typeId = resolveTypeId(regiment.typeId);
-      const equipmentCost = REINFORCEMENT_EQUIPMENT[typeId] ?? { arms: 0.002 };
-      const equipmentLimit = Math.min(...Object.entries(equipmentCost).map(
-        ([id, amount]) => equipmentStock(nation, id) / Math.max(0.0001, amount),
-      ));
+      const equipmentCost = REINFORCEMENT_EQUIPMENT_ENTRIES[typeId]
+        ?? DEFAULT_EQUIPMENT_ENTRIES;
+      let equipmentLimit = Infinity;
+      for (const [id, amount] of equipmentCost) {
+        const limit = equipmentStock(nation, id) / Math.max(0.0001, amount);
+        if (limit < equipmentLimit) equipmentLimit = limit;
+      }
       const wantedStrength = Math.floor(Math.min(
         missing,
         rate,
@@ -204,10 +217,10 @@ function reinforceNation(game, nation) {
       const gained = Math.min(wantedStrength, men / Math.max(0.0001, ratio));
       if (gained <= 0) continue;
       regiment.strength = Math.min(regiment.maxStrength, regiment.strength + gained);
-      for (const [id, amount] of Object.entries(equipmentCost)) {
+      for (const [id, amount] of equipmentCost) {
         const used = gained * amount;
         setEquipmentStock(nation, id, equipmentStock(nation, id) - used);
-        military[`${id}Used`] += used;
+        military[MILITARY_FIELD[id].used] += used;
       }
       military.reinforced += gained;
       military.manpowerUsed += men;
