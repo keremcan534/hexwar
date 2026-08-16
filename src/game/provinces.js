@@ -246,18 +246,36 @@ export function ensureProvinces(world) {
  * el değiştirebildiği için (hex hex işgal) küme geçici olarak karışık
  * kalabilir; ekonomi çoğunluğun devletine akar.
  */
+// Oy sayimi karalamasi: kume en cok 7 uyeli, Map kurmak haftada 658 kez
+// gereksiz tahsisti. Omru tek cagridir.
+const voteOwnersScratch = [];
+const voteCountsScratch = [];
+
 export function refreshProvinceOwner(world, province) {
-  const votes = new Map();
-  for (const idx of province.tileIdx) {
-    const owner = world.tiles[idx].owner;
-    votes.set(owner, (votes.get(owner) ?? 0) + 1);
+  const owners = voteOwnersScratch;
+  const counts = voteCountsScratch;
+  let distinct = 0;
+  for (let t = 0; t < province.tileIdx.length; t++) {
+    const owner = world.tiles[province.tileIdx[t]].owner;
+    let at = -1;
+    for (let i = 0; i < distinct; i++) {
+      if (owners[i] === owner) { at = i; break; }
+    }
+    if (at < 0) {
+      owners[distinct] = owner;
+      counts[distinct] = 1;
+      distinct++;
+    } else {
+      counts[at]++;
+    }
   }
+  // Ilk gorulme sirasi Map yineleme sirasiyla ayni: esitlik kirilimi degismez.
   let winner = -1;
   let winnerVotes = -1;
-  for (const [owner, count] of votes) {
-    if (count > winnerVotes || (count === winnerVotes && owner < winner)) {
-      winner = owner;
-      winnerVotes = count;
+  for (let i = 0; i < distinct; i++) {
+    if (counts[i] > winnerVotes || (counts[i] === winnerVotes && owners[i] < winner)) {
+      winner = owners[i];
+      winnerVotes = counts[i];
     }
   }
   province.owner = winner;
@@ -268,8 +286,8 @@ export function refreshProvinceOwner(world, province) {
 export function occupiedShareOf(world, province) {
   if (province.owner < 0) return 0;
   let occupied = 0;
-  for (const idx of province.tileIdx) {
-    if (controllerOf(world.tiles[idx]) !== province.owner) occupied++;
+  for (let t = 0; t < province.tileIdx.length; t++) {
+    if (controllerOf(world.tiles[province.tileIdx[t]]) !== province.owner) occupied++;
   }
   return occupied / Math.max(1, province.tileIdx.length);
 }
@@ -401,28 +419,62 @@ export function provinceRgoStatus(tile) {
   return rgoStatusOf(tile?.province);
 }
 
+// rgoStatusOf'un tahsis yapmayan tekil okumalari: sicak donguler (haftalik
+// uretim, dort haftalik goc) durum nesnesinin tek alanini istiyor; nesne
+// kurmak olculebilir cop uretiyordu. Deger tanimlari rgoStatusOf ile birebir.
+export function rgoUnemployedOf(econ) {
+  if (!econ || !RGO_TYPES[econ.rgo]) return 0;
+  return Math.max(0, econ.population - rgoJobsOf(econ));
+}
+
+export function rgoVacanciesOf(econ) {
+  if (!econ || !RGO_TYPES[econ.rgo]) return 0;
+  return Math.max(0, rgoJobsOf(econ) - econ.population);
+}
+
 /**
  * Kümenin haftalık ulusal bütçe katkısı. Çıktı üye sayısıyla (hexes) ölçekli:
  * eskiden her kare kendi RGO'suyla üretiyordu, şimdi tek RGO kümenin tüm
  * toprağını işliyor. Kısmi işgal üretimi payı kadar keser — hex hex ilerleyen
  * ordu ekonomiyi kademeli boğar, barış masasını beklemez.
  */
-export function provinceOutput(world, province) {
+/**
+ * Cikti nesnesinin olasi TUM anahtarlari (taban kalemler + butun RGO mallari).
+ * Karalama nesnesi geri kullanilirken onceki cagridan kalan anahtarlar bu
+ * listeyle sifirlanir; okuyucular 0 degeri zaten uretim yok sayar.
+ */
+const PROVINCE_OUTPUT_KEYS = [...new Set([
+  'gold', 'food', 'timber', 'iron', 'coal',
+  ...Object.values(RGO_TYPES).map((type) => type.goodId),
+])];
+
+export function provinceOutput(world, province, out = null) {
   const econ = province?.econ;
   // Üretmeyen küme de kendi malını anahtar olarak taşımalı: çağıran taraf
   // `output[rgo.goodId]` okuyor ve eksik anahtar undefined dönüyordu.
-  const output = { gold: 0, food: 0, timber: 0, iron: 0, coal: 0 };
+  // `out` verilirse tahsis yerine karalama nesnesi sifirlanip doldurulur —
+  // sicak toplayicilar (rawProduction, collectProvinceTotals) haftada binlerce
+  // kez cagirir. Karalamanin omru cagri anidir; referansi saklama.
+  let output;
+  if (out) {
+    output = out;
+    for (const key of PROVINCE_OUTPUT_KEYS) output[key] = 0;
+  } else {
+    output = { gold: 0, food: 0, timber: 0, iron: 0, coal: 0 };
+  }
   if (econ) output[RGO_TYPES[econ.rgo]?.goodId ?? 'food'] ??= 0;
   if (!econ || province.owner < 0) return output;
   const occupied = occupiedShareOf(world, province);
   if (occupied >= 1) return output;
   const control = clamp(econ.control / 100, 0, 1) * (1 - occupied);
-  const status = rgoStatusOf(econ);
-  if (!status.type) return output;
-  const development = econ[status.type.track] ?? 0;
-  output[status.type.goodId] = status.type.baseOutput
+  // rgoStatusOf kurmadan dogrudan okunur (ayni degerler): burasi haftada
+  // binlerce kez kosan bir sicak yol.
+  const type = RGO_TYPES[econ.rgo];
+  if (!type) return output;
+  const development = econ[type.track] ?? 0;
+  output[type.goodId] = type.baseOutput
     * econ.rgoQuality * (1 + development * 0.18)
-    * rgoLaborScale(econ, status.jobs) * control * econ.hexes;
+    * rgoLaborScale(econ, rgoJobsOf(econ)) * control * econ.hexes;
   // Vergi tabanı kare başına eski ölçekte: nüfus hex payına indirgenir,
   // toplam hex sayısıyla geri çarpılır.
   const taxpayerScale = clamp(econ.population / (7000 * econ.hexes), 0, 2.2);
@@ -472,14 +524,14 @@ export function runProvinceMigration(world, force = false) {
     }
     const cityOf = (province) => province.tileIdx.some((idx) => world.tiles[idx].city);
     const donors = provinces
-      .map((province) => ({ province, surplus: rgoStatusOf(province.econ).unemployed }))
+      .map((province) => ({ province, surplus: rgoUnemployedOf(province.econ) }))
       .filter((row) => row.surplus >= MIGRATION_COHORT)
       .sort((a, b) => b.surplus - a.surplus);
     const receivers = provinces.map((province) => ({
       province,
       city: cityOf(province),
       vacancies: province.econ.control >= 50
-        ? rgoStatusOf(province.econ).vacancies + (factoryVacancies.get(province.id) ?? 0)
+        ? rgoVacanciesOf(province.econ) + (factoryVacancies.get(province.id) ?? 0)
         : 0,
     }))
       .filter((row) => row.vacancies >= MIGRATION_COHORT)
@@ -501,7 +553,7 @@ export function runProvinceMigration(world, force = false) {
           receiverIndex++;
           continue;
         }
-        const open = rgoStatusOf(receiver.province.econ).vacancies
+        const open = rgoVacanciesOf(receiver.province.econ)
           + (factoryVacancies.get(receiver.province.id) ?? 0);
         const vacancies = Math.floor(open / MIGRATION_COHORT) * MIGRATION_COHORT;
         if (vacancies < MIGRATION_COHORT) {
@@ -526,10 +578,31 @@ export function runProvinceMigration(world, force = false) {
   return totalMoved;
 }
 
+// Ulus basina baris bayragi karalamasi; omru tek runProvinces cagrisidir.
+const atPeaceScratch = [];
+
 export function runProvinces(game) {
   const world = game.world;
 
-  for (const province of world.provinces ?? []) {
+  // Baris durumu ulus basina degismez; province basina butun uluslari
+  // taramak hem O(kume x ulus) fazladan is hem kapanis (closure) copuydu.
+  const atPeace = atPeaceScratch;
+  atPeace.length = world.nations.length;
+  for (const nation of world.nations) {
+    let peace = true;
+    for (const other of world.nations) {
+      if (!other.alive || other.id === nation.id) continue;
+      if (world.relations?.[nation.id]?.[other.id]?.state === 'war') {
+        peace = false;
+        break;
+      }
+    }
+    atPeace[nation.id] = peace;
+  }
+
+  const provinces = world.provinces ?? [];
+  for (let p = 0; p < provinces.length; p++) {
+    const province = provinces[p];
     const econ = province.econ;
     if (!econ) continue;
     // Sahiplik türetmesi: savaşta üye kareler tek tek el değiştirir (hex hex
@@ -556,10 +629,7 @@ export function runProvinces(game) {
       0,
       100,
     );
-    const peace = world.nations.every(
-      (other) => !other.alive || other.id === nation.id
-        || world.relations?.[nation.id]?.[other.id]?.state !== 'war',
-    );
+    const peace = atPeace[nation.id];
     // Sağlık harcaması büyümeyi hızlandırır (bkz. economy.js SOCIAL_PROGRAMS);
     // veri doğrudan okunuyor, economy.js'i import etmek katman döngüsü olurdu.
     const health = 1 + Math.min(100, nation.economy?.social?.health ?? 0) / 100 * 0.35;
@@ -601,7 +671,8 @@ export function runProvinces(game) {
   }
   // Küme sayaçları: HUD ve hegemonya gerçek province sayısını okur.
   for (const nation of world.nations) nation.provinces = 0;
-  for (const province of world.provinces ?? []) {
+  for (let p = 0; p < provinces.length; p++) {
+    const province = provinces[p];
     if (province.owner >= 0 && world.nations[province.owner]) {
       world.nations[province.owner].provinces++;
     }

@@ -153,10 +153,18 @@ export function strengthRatio(unit) {
   return soldiersOf(unit) / Math.max(1, maxHpOf(unit));
 }
 
+// refreshArmy'nin tur sayim karalamalari: birim basina haftada bir(den cok)
+// kosan bu yol Map + entries + sort kuruyordu. Omur tek cagri.
+const armyTypeScratch = [];
+const armyTypeCountScratch = [];
+
 /** Eski alanlari yeni ordu yiginiyla senkron tutar; UI ve butce tek veri gorur. */
 export function refreshArmy(unit) {
   if (!unit.regiments?.length) return unit;
-  const counts = new Map();
+  const typeIds = armyTypeScratch;
+  const typeCounts = armyTypeCountScratch;
+  let distinct = 0;
+  let maxHp = 0;
   for (const regiment of unit.regiments) {
     regiment.typeId = resolveTypeId(regiment.typeId);
     regiment.maxStrength = Math.max(1, regiment.maxStrength ?? 1000);
@@ -167,17 +175,36 @@ export function refreshArmy(unit) {
     ));
     // Eski save/UI okuyuculari morale bekliyor. Tek gercek organization'dir.
     regiment.morale = regiment.organization;
-    counts.set(regiment.typeId, (counts.get(regiment.typeId) ?? 0) + 1);
+    maxHp += regiment.maxStrength;
+    let at = -1;
+    for (let i = 0; i < distinct; i++) {
+      if (typeIds[i] === regiment.typeId) { at = i; break; }
+    }
+    if (at < 0) {
+      typeIds[distinct] = regiment.typeId;
+      typeCounts[distinct] = 1;
+      distinct++;
+    } else {
+      typeCounts[at]++;
+    }
   }
   // Yiginin simgesi en kalabalik koldur; topcu destek sinifi oldugu icin
-  // esitlikte one cikmaz, yigin "piyade" gorunur.
-  unit.type = UNIT_TYPES[[...counts.entries()].sort((a, b) => (
-    b[1] - a[1]
-    || (UNIT_TYPES[a[0]].support ? 1 : 0) - (UNIT_TYPES[b[0]].support ? 1 : 0)
-    || UNIT_TYPES[b[0]].attack - UNIT_TYPES[a[0]].attack
-  ))[0][0]];
+  // esitlikte one cikmaz, yigin "piyade" gorunur. Tarama, eski kararli
+  // siralamanin ilk elemanini birebir verir: yalniz KESIN daha iyi aday
+  // one gecer, tam esitlikte ilk gorulen kalir.
+  let best = 0;
+  for (let i = 1; i < distinct; i++) {
+    const a = UNIT_TYPES[typeIds[i]];
+    const b = UNIT_TYPES[typeIds[best]];
+    const byCount = typeCounts[i] - typeCounts[best];
+    const bySupport = (b.support ? 1 : 0) - (a.support ? 1 : 0);
+    const byAttack = a.attack - b.attack;
+    if (byCount > 0 || (byCount === 0 && (bySupport > 0
+      || (bySupport === 0 && byAttack > 0)))) best = i;
+  }
+  unit.type = UNIT_TYPES[typeIds[best]];
   unit.hp = soldiersOf(unit);
-  unit.maxHp = unit.regiments.reduce((sum, regiment) => sum + regiment.maxStrength, 0);
+  unit.maxHp = maxHp;
   unit.organization = organizationOf(unit);
   unit.morale = unit.organization;
   unit.tier = armyTier(unit);

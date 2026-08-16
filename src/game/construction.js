@@ -57,9 +57,15 @@ function chooseSeeds(world, clusters, capitalCluster, count) {
     let bestDistance = -1;
     for (const cluster of ordered) {
       if (seeds.includes(cluster)) continue;
-      const distance = Math.min(...seeds.map(
-        (seed) => world.wrapDistance(cluster.center.q, cluster.center.r, seed.center.q, seed.center.r),
-      ));
+      // Ic dongu tahsissiz: map + spread aday basina dizi kuruyordu ve bu
+      // fonksiyon atlas her tazelendiginde kosuyor.
+      let distance = Infinity;
+      for (let i = 0; i < seeds.length; i++) {
+        const next = world.wrapDistance(
+          cluster.center.q, cluster.center.r, seeds[i].center.q, seeds[i].center.r,
+        );
+        if (next < distance) distance = next;
+      }
       if (distance > bestDistance) {
         best = cluster;
         bestDistance = distance;
@@ -115,11 +121,29 @@ function normalizeProject(project) {
   const work = Number.isFinite(project.work)
     ? project.work
     : CONSTRUCTION_TYPES[project.typeId]?.cost ?? 0;
-  project.work = Math.max(1, work);
-  project.cost = Math.max(0, Number(project.cost) || 0);
-  project.funded = Math.max(0, Number(project.funded) || 0);
-  project.progress = Math.max(0, Number(project.progress) || 0);
+  // Yazim yalniz deger degisince: degismeyen ondalik alani her cagrida geri
+  // yazmak V8'de yeni HeapNumber kutulamasi demek (bkz. ensureConstruction).
+  const boundedWork = Math.max(1, work);
+  if (project.work !== boundedWork) project.work = boundedWork;
+  const cost = Math.max(0, Number(project.cost) || 0);
+  if (project.cost !== cost) project.cost = cost;
+  const funded = Math.max(0, Number(project.funded) || 0);
+  if (project.funded !== funded) project.funded = funded;
+  const progress = Math.max(0, Number(project.progress) || 0);
+  if (project.progress !== progress) project.progress = progress;
   return project;
+}
+
+function validBuilding(building) {
+  return Boolean(CONSTRUCTION_TYPES[building.typeId])
+    && (typeof building.regionId === 'string' || Number.isFinite(building.q));
+}
+
+function validProject(project) {
+  return project.kind && project.kind !== PROJECT_KIND.BUILDING
+    ? Number.isFinite(project.q)
+    : Boolean(CONSTRUCTION_TYPES[project.typeId])
+      && (typeof project.regionId === 'string' || Number.isFinite(project.q));
 }
 
 export function ensureConstruction(nation) {
@@ -127,17 +151,21 @@ export function ensureConstruction(nation) {
     nextId: 1, buildings: [], projects: [], completedFactories: [], lastCompleted: 0,
   };
   const state = nation.construction;
-  state.nextId = Math.max(1, Number(state.nextId) || 1);
-  state.buildings = (state.buildings ?? []).filter(
-    (building) => CONSTRUCTION_TYPES[building.typeId]
-      && (typeof building.regionId === 'string' || Number.isFinite(building.q)),
-  );
-  state.projects = (state.projects ?? []).filter(
-    (project) => (project.kind && project.kind !== PROJECT_KIND.BUILDING
-      ? Number.isFinite(project.q)
-      : CONSTRUCTION_TYPES[project.typeId]
-        && (typeof project.regionId === 'string' || Number.isFinite(project.q))),
-  ).map(normalizeProject);
+  if (!Number.isFinite(state.nextId) || state.nextId < 1) {
+    state.nextId = Math.max(1, Number(state.nextId) || 1);
+  }
+  // Bu fonksiyon her insaat okumasinda kosar; filtre/map her cagrida yeni
+  // dizi kuruyordu (olculdu: ~0.4 MB/hafta). Kopya yalniz gercekten dusecek
+  // kayit varken alinir; normalizeProject zaten yerinde duzeltir.
+  state.buildings ??= [];
+  if (!state.buildings.every(validBuilding)) {
+    state.buildings = state.buildings.filter(validBuilding);
+  }
+  state.projects ??= [];
+  if (!state.projects.every(validProject)) {
+    state.projects = state.projects.filter(validProject);
+  }
+  for (let i = 0; i < state.projects.length; i++) normalizeProject(state.projects[i]);
   state.completedFactories ??= [];
   state.lastCompleted ??= 0;
   return state;
@@ -174,9 +202,12 @@ export function initConstruction(world) {
 
 export function constructionCount(nation, typeId, regionId = null) {
   const state = ensureConstruction(nation);
-  return state.buildings.filter((building) => (
-    building.typeId === typeId && (regionId == null || building.regionId === regionId)
-  )).length;
+  let count = 0;
+  for (const building of state.buildings) {
+    if (building.typeId === typeId
+      && (regionId == null || building.regionId === regionId)) count++;
+  }
+  return count;
 }
 
 /**

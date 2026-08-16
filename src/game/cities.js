@@ -1,7 +1,6 @@
 // Şehirler ve ekonomi. Şehirler gelir üretir, birim satın alma noktasıdır,
 // düşman birimi girdiğinde el değiştirir.
 
-import { hexesInRange } from '../core/hex.js';
 import { CITY_CENTER_YIELD, RESOURCES } from '../world/terrain.js';
 import { tileEfficiency } from './infamy.js';
 import { provinceOutput } from './provinces.js';
@@ -241,6 +240,10 @@ function cityContext(world, city) {
  * Ağırlıklar ulusun o anki açığına göre gelir: erzak eksiyse tarlaya,
  * demir bitmişse madene yönelir. Elle atama kilidi varsa dokunmaz.
  */
+// assignWorkers'in karalama depolari (bkz. icindeki not); omru tek cagri.
+const workerCandidatesScratch = [];
+const workerRowPool = [];
+
 export function assignWorkers(world, city, weights) {
   if (city.manualWorkers) {
     // Elle atanmış kareler sahiplik değişmediyse korunur.
@@ -249,27 +252,49 @@ export function assignWorkers(world, city, weights) {
     for (const tile of city.worked) tile.workedBy = city;
     return;
   }
-  const candidates = [];
+  const candidates = workerCandidatesScratch;
+  candidates.length = 0;
   const ctx = cityContext(world, city);
-  for (const { q, r } of hexesInRange(city.tile.q, city.tile.r, WORK_RADIUS)) {
-    const tile = world.get(q, r);
-    if (!tile || tile === city.tile) continue;
-    if (tile.owner !== city.nationId || controllerOf(tile) !== city.nationId) continue;
-    // Başka şehrin işlediği kare paylaşılmaz.
-    if (tile.workedBy && tile.workedBy !== city) continue;
-    // İşçi taze işgal edilmiş kareye gitmez: orada verim sıfır.
-    const yields = tileYield(tile, ctx);
-    const score = yields.food * weights.food + yields.gold * weights.gold
-      + yields.timber * weights.timber + yields.iron * weights.iron;
-    if (score > 0) candidates.push({ tile, score });
+  // hexesInRange ile ayni gezinme sirasi, kare basina {q,r} nesnesi kurmadan.
+  for (let dq = -WORK_RADIUS; dq <= WORK_RADIUS; dq++) {
+    const lo = Math.max(-WORK_RADIUS, -dq - WORK_RADIUS);
+    const hi = Math.min(WORK_RADIUS, -dq + WORK_RADIUS);
+    for (let dr = lo; dr <= hi; dr++) {
+      const tile = world.get(city.tile.q + dq, city.tile.r + dr);
+      if (!tile || tile === city.tile) continue;
+      if (tile.owner !== city.nationId || controllerOf(tile) !== city.nationId) continue;
+      // Başka şehrin işlediği kare paylaşılmaz.
+      if (tile.workedBy && tile.workedBy !== city) continue;
+      // İşçi taze işgal edilmiş kareye gitmez: orada verim sıfır.
+      const yields = tileYield(tile, ctx);
+      const score = yields.food * weights.food + yields.gold * weights.gold
+        + yields.timber * weights.timber + yields.iron * weights.iron;
+      if (score <= 0) continue;
+      // Satir havuzu: ayni kayit nesneleri her cagrida yeniden kullanilir
+      // (kararli sort ayni ekleme sirasini gorur, sonuc birebir ayni).
+      let row = workerRowPool[candidates.length];
+      if (!row) {
+        row = { tile: null, score: 0 };
+        workerRowPool[candidates.length] = row;
+      }
+      row.tile = tile;
+      row.score = score;
+      candidates.push(row);
+    }
   }
   candidates.sort((a, b) => b.score - a.score);
 
   for (const tile of city.worked) {
     if (tile.workedBy === city) tile.workedBy = null;
   }
-  city.worked = candidates.slice(0, city.pop).map((c) => c.tile);
+  const worked = [];
+  const take = Math.min(city.pop, candidates.length);
+  for (let i = 0; i < take; i++) worked.push(candidates[i].tile);
+  city.worked = worked;
   for (const tile of city.worked) tile.workedBy = city;
+  // Karalamalar olu kare referansi tutmasin.
+  candidates.length = 0;
+  for (const row of workerRowPool) row.tile = null;
 }
 
 /**
@@ -317,6 +342,9 @@ export function cityProduction(city, world) {
  * Toplu çağıranlar (turn.produce, turns.start, recomputeEconomy) bunu bir
  * kez hesaplayıp parametre geçer.
  */
+// provinceOutput'un bu dosyadaki karalamasi; omru tek cagri, referans sizmaz.
+const provinceTotalsScratch = {};
+
 export function collectProvinceTotals(world) {
   const totals = world.nations.map(() => ({
     gold: 0, food: 0, timber: 0, iron: 0, provinces: 0,
@@ -328,7 +356,7 @@ export function collectProvinceTotals(world) {
     // Yönetim yükü kare sayısıyla kalibre edildi; küme sayısı değil hex
     // toplamı sayılır ki idari maliyet eski ölçekte kalsın.
     sum.provinces += province.tileIdx.length;
-    const out = provinceOutput(world, province);
+    const out = provinceOutput(world, province, provinceTotalsScratch);
     sum.gold += out.gold;
     sum.food += out.food;
     sum.timber += out.timber;
