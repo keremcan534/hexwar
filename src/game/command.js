@@ -509,18 +509,34 @@ export function refreshFront(world, general) {
  *      mesafesi en buyuk olan kare. Olcu mesafedir, hattaki sira degil; sinir
  *      ters siralansa bile sonuc ayni kalir.
  */
+// assignPosts'un karalama depolari: general basina haftada bir kosan bu
+// dagitim, cephe uzunlugu kadar Map/dizi kurup atiyordu (olculdu ~0.5 MB/
+// hafta). Omurleri TEK cagridir; cagri disina referans sizmaz.
+const postIndexScratch = new Map();
+const postCountScratch = [];
+const postGapScratch = [];
+const homelessScratch = [];
+
 function assignPosts(world, divisions, front) {
   if (!front.length) {
     for (const unit of divisions) unit.post = null;
     return;
   }
-  const index = new Map(front.map((tile, i) => [tile, i]));
+  const index = postIndexScratch;
+  index.clear();
+  for (let i = 0; i < front.length; i++) index.set(front[i], i);
   // Tumen sayisi cepheyi asarsa mevkiler katlanir; yigin tavani asilmaz.
   const capacity = Math.max(1, Math.min(MAX_STACK, Math.ceil(divisions.length / front.length)));
-  const count = new Array(front.length).fill(0);
-  // gap[i]: i numarali kareye en yakin *dolu* mevkinin uzakligi. Buyukse orasi
-  // cephenin zayif yeridir.
-  const gap = new Array(front.length).fill(SPREAD);
+  const count = postCountScratch;
+  const gap = postGapScratch;
+  count.length = front.length;
+  gap.length = front.length;
+  for (let i = 0; i < front.length; i++) {
+    count[i] = 0;
+    // gap[i]: i numarali kareye en yakin *dolu* mevkinin uzakligi. Buyukse
+    // orasi cephenin zayif yeridir.
+    gap[i] = SPREAD;
+  }
 
   const claim = (i) => {
     count[i]++;
@@ -532,7 +548,8 @@ function assignPosts(world, divisions, front) {
     }
   };
 
-  const homeless = [];
+  const homeless = homelessScratch;
+  homeless.length = 0;
   for (const unit of divisions) {
     const post = postTileOf(world, unit);
     const at = post ? index.get(post) : undefined;
@@ -560,6 +577,9 @@ function assignPosts(world, divisions, front) {
     claim(best);
     unit.post = { q: front[best].q, r: front[best].r };
   }
+  // Karalamalar olu birim/kare referansi tutmasin diye bosaltilir.
+  homeless.length = 0;
+  index.clear();
 }
 
 // --- Haftalik isleyis ------------------------------------------------------

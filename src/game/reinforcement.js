@@ -99,7 +99,8 @@ function drawManpower(world, nationId, regiment, requested) {
 export function reinforcementNeed(world, nation) {
   let strength = 0;
   let manpower = 0;
-  const equipment = Object.fromEntries(MILITARY_EQUIPMENT_IDS.map((id) => [id, 0]));
+  const equipment = {};
+  for (let i = 0; i < MILITARY_EQUIPMENT_IDS.length; i++) equipment[MILITARY_EQUIPMENT_IDS[i]] = 0;
   for (const unit of world.units) {
     if (unit.nationId !== nation.id || !unit.regiments?.length) continue;
     for (const regiment of unit.regiments) {
@@ -108,7 +109,7 @@ export function reinforcementNeed(world, nation) {
       manpower += missing * menPerStrength(regiment);
       const cost = REINFORCEMENT_EQUIPMENT_ENTRIES[resolveTypeId(regiment.typeId)]
         ?? DEFAULT_EQUIPMENT_ENTRIES;
-      for (const [id, amount] of cost) equipment[id] += missing * amount;
+      for (let c = 0; c < cost.length; c++) equipment[cost[c][0]] += missing * cost[c][1];
     }
   }
   return {
@@ -201,8 +202,9 @@ function reinforceNation(game, nation) {
       const equipmentCost = REINFORCEMENT_EQUIPMENT_ENTRIES[typeId]
         ?? DEFAULT_EQUIPMENT_ENTRIES;
       let equipmentLimit = Infinity;
-      for (const [id, amount] of equipmentCost) {
-        const limit = equipmentStock(nation, id) / Math.max(0.0001, amount);
+      for (let c = 0; c < equipmentCost.length; c++) {
+        const limit = equipmentStock(nation, equipmentCost[c][0])
+          / Math.max(0.0001, equipmentCost[c][1]);
         if (limit < equipmentLimit) equipmentLimit = limit;
       }
       const wantedStrength = Math.floor(Math.min(
@@ -217,8 +219,9 @@ function reinforceNation(game, nation) {
       const gained = Math.min(wantedStrength, men / Math.max(0.0001, ratio));
       if (gained <= 0) continue;
       regiment.strength = Math.min(regiment.maxStrength, regiment.strength + gained);
-      for (const [id, amount] of equipmentCost) {
-        const used = gained * amount;
+      for (let c = 0; c < equipmentCost.length; c++) {
+        const id = equipmentCost[c][0];
+        const used = gained * equipmentCost[c][1];
         setEquipmentStock(nation, id, equipmentStock(nation, id) - used);
         military[MILITARY_FIELD[id].used] += used;
       }

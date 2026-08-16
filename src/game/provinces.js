@@ -246,18 +246,36 @@ export function ensureProvinces(world) {
  * el değiştirebildiği için (hex hex işgal) küme geçici olarak karışık
  * kalabilir; ekonomi çoğunluğun devletine akar.
  */
+// Oy sayimi karalamasi: kume en cok 7 uyeli, Map kurmak haftada 658 kez
+// gereksiz tahsisti. Omru tek cagridir.
+const voteOwnersScratch = [];
+const voteCountsScratch = [];
+
 export function refreshProvinceOwner(world, province) {
-  const votes = new Map();
-  for (const idx of province.tileIdx) {
-    const owner = world.tiles[idx].owner;
-    votes.set(owner, (votes.get(owner) ?? 0) + 1);
+  const owners = voteOwnersScratch;
+  const counts = voteCountsScratch;
+  let distinct = 0;
+  for (let t = 0; t < province.tileIdx.length; t++) {
+    const owner = world.tiles[province.tileIdx[t]].owner;
+    let at = -1;
+    for (let i = 0; i < distinct; i++) {
+      if (owners[i] === owner) { at = i; break; }
+    }
+    if (at < 0) {
+      owners[distinct] = owner;
+      counts[distinct] = 1;
+      distinct++;
+    } else {
+      counts[at]++;
+    }
   }
+  // Ilk gorulme sirasi Map yineleme sirasiyla ayni: esitlik kirilimi degismez.
   let winner = -1;
   let winnerVotes = -1;
-  for (const [owner, count] of votes) {
-    if (count > winnerVotes || (count === winnerVotes && owner < winner)) {
-      winner = owner;
-      winnerVotes = count;
+  for (let i = 0; i < distinct; i++) {
+    if (counts[i] > winnerVotes || (counts[i] === winnerVotes && owners[i] < winner)) {
+      winner = owners[i];
+      winnerVotes = counts[i];
     }
   }
   province.owner = winner;
@@ -268,8 +286,8 @@ export function refreshProvinceOwner(world, province) {
 export function occupiedShareOf(world, province) {
   if (province.owner < 0) return 0;
   let occupied = 0;
-  for (const idx of province.tileIdx) {
-    if (controllerOf(world.tiles[idx]) !== province.owner) occupied++;
+  for (let t = 0; t < province.tileIdx.length; t++) {
+    if (controllerOf(world.tiles[province.tileIdx[t]]) !== province.owner) occupied++;
   }
   return occupied / Math.max(1, province.tileIdx.length);
 }
@@ -560,8 +578,27 @@ export function runProvinceMigration(world, force = false) {
   return totalMoved;
 }
 
+// Ulus basina baris bayragi karalamasi; omru tek runProvinces cagrisidir.
+const atPeaceScratch = [];
+
 export function runProvinces(game) {
   const world = game.world;
+
+  // Baris durumu ulus basina degismez; province basina butun uluslari
+  // taramak hem O(kume x ulus) fazladan is hem kapanis (closure) copuydu.
+  const atPeace = atPeaceScratch;
+  atPeace.length = world.nations.length;
+  for (const nation of world.nations) {
+    let peace = true;
+    for (const other of world.nations) {
+      if (!other.alive || other.id === nation.id) continue;
+      if (world.relations?.[nation.id]?.[other.id]?.state === 'war') {
+        peace = false;
+        break;
+      }
+    }
+    atPeace[nation.id] = peace;
+  }
 
   for (const province of world.provinces ?? []) {
     const econ = province.econ;
@@ -590,10 +627,7 @@ export function runProvinces(game) {
       0,
       100,
     );
-    const peace = world.nations.every(
-      (other) => !other.alive || other.id === nation.id
-        || world.relations?.[nation.id]?.[other.id]?.state !== 'war',
-    );
+    const peace = atPeace[nation.id];
     // Sağlık harcaması büyümeyi hızlandırır (bkz. economy.js SOCIAL_PROGRAMS);
     // veri doğrudan okunuyor, economy.js'i import etmek katman döngüsü olurdu.
     const health = 1 + Math.min(100, nation.economy?.social?.health ?? 0) / 100 * 0.35;

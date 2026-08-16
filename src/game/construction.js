@@ -57,9 +57,15 @@ function chooseSeeds(world, clusters, capitalCluster, count) {
     let bestDistance = -1;
     for (const cluster of ordered) {
       if (seeds.includes(cluster)) continue;
-      const distance = Math.min(...seeds.map(
-        (seed) => world.wrapDistance(cluster.center.q, cluster.center.r, seed.center.q, seed.center.r),
-      ));
+      // Ic dongu tahsissiz: map + spread aday basina dizi kuruyordu ve bu
+      // fonksiyon atlas her tazelendiginde kosuyor.
+      let distance = Infinity;
+      for (let i = 0; i < seeds.length; i++) {
+        const next = world.wrapDistance(
+          cluster.center.q, cluster.center.r, seeds[i].center.q, seeds[i].center.r,
+        );
+        if (next < distance) distance = next;
+      }
       if (distance > bestDistance) {
         best = cluster;
         bestDistance = distance;
