@@ -317,6 +317,9 @@ export function cityProduction(city, world) {
  * Toplu çağıranlar (turn.produce, turns.start, recomputeEconomy) bunu bir
  * kez hesaplayıp parametre geçer.
  */
+// provinceOutput'un bu dosyadaki karalamasi; omru tek cagri, referans sizmaz.
+const provinceTotalsScratch = {};
+
 export function collectProvinceTotals(world) {
   const totals = world.nations.map(() => ({
     gold: 0, food: 0, timber: 0, iron: 0, provinces: 0,
@@ -328,7 +331,7 @@ export function collectProvinceTotals(world) {
     // Yönetim yükü kare sayısıyla kalibre edildi; küme sayısı değil hex
     // toplamı sayılır ki idari maliyet eski ölçekte kalsın.
     sum.provinces += province.tileIdx.length;
-    const out = provinceOutput(world, province);
+    const out = provinceOutput(world, province, provinceTotalsScratch);
     sum.gold += out.gold;
     sum.food += out.food;
     sum.timber += out.timber;

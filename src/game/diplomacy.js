@@ -2,6 +2,7 @@
 // Herkesin doğuştan savaşta olması haritayı erken mop-up'a çeviriyordu;
 // barış varsayılan, savaş bir karar.
 
+import { DIRS } from '../core/hex.js';
 import { armyPower } from './units.js';
 import { captureConstructionAt } from './construction.js';
 import { controllerOf } from './control.js';
@@ -150,10 +151,14 @@ export function nationStrength(world, nation) {
 export function computeContacts(world) {
   const n = world.nations.length;
   const contacts = Array.from({ length: n }, () => new Int32Array(n));
+  // world.neighbors kare basina yeni dizi kurar; 15k+ hexlik haftalik tam
+  // taramada bu tek basina ~0.8 MB coptu (olculdu). Yon tablosuyla dogrudan
+  // gezilir, ziyaret sirasi birebir ayni.
   world.forEach((tile) => {
     if (tile.owner < 0) return;
-    for (const nb of world.neighbors(tile)) {
-      if (nb.owner >= 0 && nb.owner !== tile.owner) contacts[tile.owner][nb.owner]++;
+    for (let d = 0; d < DIRS.length; d++) {
+      const nb = world.get(tile.q + DIRS[d][0], tile.r + DIRS[d][1]);
+      if (nb && nb.owner >= 0 && nb.owner !== tile.owner) contacts[tile.owner][nb.owner]++;
     }
   });
   return contacts;

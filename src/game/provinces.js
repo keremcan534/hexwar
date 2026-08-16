@@ -401,28 +401,62 @@ export function provinceRgoStatus(tile) {
   return rgoStatusOf(tile?.province);
 }
 
+// rgoStatusOf'un tahsis yapmayan tekil okumalari: sicak donguler (haftalik
+// uretim, dort haftalik goc) durum nesnesinin tek alanini istiyor; nesne
+// kurmak olculebilir cop uretiyordu. Deger tanimlari rgoStatusOf ile birebir.
+export function rgoUnemployedOf(econ) {
+  if (!econ || !RGO_TYPES[econ.rgo]) return 0;
+  return Math.max(0, econ.population - rgoJobsOf(econ));
+}
+
+export function rgoVacanciesOf(econ) {
+  if (!econ || !RGO_TYPES[econ.rgo]) return 0;
+  return Math.max(0, rgoJobsOf(econ) - econ.population);
+}
+
 /**
  * Kümenin haftalık ulusal bütçe katkısı. Çıktı üye sayısıyla (hexes) ölçekli:
  * eskiden her kare kendi RGO'suyla üretiyordu, şimdi tek RGO kümenin tüm
  * toprağını işliyor. Kısmi işgal üretimi payı kadar keser — hex hex ilerleyen
  * ordu ekonomiyi kademeli boğar, barış masasını beklemez.
  */
-export function provinceOutput(world, province) {
+/**
+ * Cikti nesnesinin olasi TUM anahtarlari (taban kalemler + butun RGO mallari).
+ * Karalama nesnesi geri kullanilirken onceki cagridan kalan anahtarlar bu
+ * listeyle sifirlanir; okuyucular 0 degeri zaten uretim yok sayar.
+ */
+const PROVINCE_OUTPUT_KEYS = [...new Set([
+  'gold', 'food', 'timber', 'iron', 'coal',
+  ...Object.values(RGO_TYPES).map((type) => type.goodId),
+])];
+
+export function provinceOutput(world, province, out = null) {
   const econ = province?.econ;
   // Üretmeyen küme de kendi malını anahtar olarak taşımalı: çağıran taraf
   // `output[rgo.goodId]` okuyor ve eksik anahtar undefined dönüyordu.
-  const output = { gold: 0, food: 0, timber: 0, iron: 0, coal: 0 };
+  // `out` verilirse tahsis yerine karalama nesnesi sifirlanip doldurulur —
+  // sicak toplayicilar (rawProduction, collectProvinceTotals) haftada binlerce
+  // kez cagirir. Karalamanin omru cagri anidir; referansi saklama.
+  let output;
+  if (out) {
+    output = out;
+    for (const key of PROVINCE_OUTPUT_KEYS) output[key] = 0;
+  } else {
+    output = { gold: 0, food: 0, timber: 0, iron: 0, coal: 0 };
+  }
   if (econ) output[RGO_TYPES[econ.rgo]?.goodId ?? 'food'] ??= 0;
   if (!econ || province.owner < 0) return output;
   const occupied = occupiedShareOf(world, province);
   if (occupied >= 1) return output;
   const control = clamp(econ.control / 100, 0, 1) * (1 - occupied);
-  const status = rgoStatusOf(econ);
-  if (!status.type) return output;
-  const development = econ[status.type.track] ?? 0;
-  output[status.type.goodId] = status.type.baseOutput
+  // rgoStatusOf kurmadan dogrudan okunur (ayni degerler): burasi haftada
+  // binlerce kez kosan bir sicak yol.
+  const type = RGO_TYPES[econ.rgo];
+  if (!type) return output;
+  const development = econ[type.track] ?? 0;
+  output[type.goodId] = type.baseOutput
     * econ.rgoQuality * (1 + development * 0.18)
-    * rgoLaborScale(econ, status.jobs) * control * econ.hexes;
+    * rgoLaborScale(econ, rgoJobsOf(econ)) * control * econ.hexes;
   // Vergi tabanı kare başına eski ölçekte: nüfus hex payına indirgenir,
   // toplam hex sayısıyla geri çarpılır.
   const taxpayerScale = clamp(econ.population / (7000 * econ.hexes), 0, 2.2);
@@ -472,14 +506,14 @@ export function runProvinceMigration(world, force = false) {
     }
     const cityOf = (province) => province.tileIdx.some((idx) => world.tiles[idx].city);
     const donors = provinces
-      .map((province) => ({ province, surplus: rgoStatusOf(province.econ).unemployed }))
+      .map((province) => ({ province, surplus: rgoUnemployedOf(province.econ) }))
       .filter((row) => row.surplus >= MIGRATION_COHORT)
       .sort((a, b) => b.surplus - a.surplus);
     const receivers = provinces.map((province) => ({
       province,
       city: cityOf(province),
       vacancies: province.econ.control >= 50
-        ? rgoStatusOf(province.econ).vacancies + (factoryVacancies.get(province.id) ?? 0)
+        ? rgoVacanciesOf(province.econ) + (factoryVacancies.get(province.id) ?? 0)
         : 0,
     }))
       .filter((row) => row.vacancies >= MIGRATION_COHORT)
@@ -501,7 +535,7 @@ export function runProvinceMigration(world, force = false) {
           receiverIndex++;
           continue;
         }
-        const open = rgoStatusOf(receiver.province.econ).vacancies
+        const open = rgoVacanciesOf(receiver.province.econ)
           + (factoryVacancies.get(receiver.province.id) ?? 0);
         const vacancies = Math.floor(open / MIGRATION_COHORT) * MIGRATION_COHORT;
         if (vacancies < MIGRATION_COHORT) {

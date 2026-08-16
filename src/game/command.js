@@ -19,6 +19,7 @@
 //
 // Katman notu: burasi saf veri + hesap + emir. DOM'a dokunmaz.
 
+import { DIRS } from '../core/hex.js';
 import { atWar } from './diplomacy.js';
 import { MAX_ASSAULT_DIVISIONS, startBattle } from './battles.js';
 import { orderMove } from './movement.js';
@@ -428,6 +429,8 @@ function scanBorders(world) {
   const out = world.nations.map(() => ({
     byNation: new Map(), hostile: [], foreign: [], frontier: [],
   }));
+  // world.neighbors kare basina dizi kurar; haftalik tam taramada ~0.9 MB
+  // coptu (olculdu). Yon tablosu dogrudan gezilir, ziyaret sirasi ayni.
   world.forEach((tile) => {
     const owner = controllerOf(tile);
     if (owner < 0 || !tile.terrain.passable) return;
@@ -436,7 +439,9 @@ function scanBorders(world) {
     let foreign = false;
     let hostile = false;
     let frontier = false;
-    for (const near of world.neighbors(tile)) {
+    for (let d = 0; d < DIRS.length; d++) {
+      const near = world.get(tile.q + DIRS[d][0], tile.r + DIRS[d][1]);
+      if (!near) continue;
       const nearOwner = controllerOf(near);
       if (!near.terrain.passable || nearOwner === owner) continue;
       // Sahipsiz toprak da bir sinirdir: baristaki ordu grubunun ilerledigi yer.

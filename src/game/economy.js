@@ -555,14 +555,20 @@ const TRADE_SUMMARY_DEFAULTS = emptyTradeSummary();
 const LEDGER_DEFAULTS = emptyLedger();
 
 export function ensureMilitaryEconomy(nation) {
-  const military = nation.economy.military ?? {};
-  for (const key of DEFAULT_MILITARY_KEYS) {
+  const military = nation.economy.military ?? (nation.economy.military = {});
+  // Indeksli dongu bilerek: bu fonksiyon her stok okumasinda kosar ve for-of
+  // yineleyicisi bu kadar sicak bir yerde kacis analizinden kacabiliyor.
+  for (let i = 0; i < DEFAULT_MILITARY_KEYS.length; i++) {
+    const key = DEFAULT_MILITARY_KEYS[i];
     if (!Number.isFinite(military[key])) military[key] = DEFAULT_MILITARY[key];
   }
-  for (const id of MILITARY_EQUIPMENT_IDS) {
-    military[id] = Math.max(0, Math.min(MILITARY_EQUIPMENT[id].stockCap, military[id]));
+  for (let i = 0; i < MILITARY_EQUIPMENT_IDS.length; i++) {
+    const id = MILITARY_EQUIPMENT_IDS[i];
+    const clamped = Math.max(0, Math.min(MILITARY_EQUIPMENT[id].stockCap, military[id]));
+    // Yalniz gercekten kirpilan deger yazilir: degismeyen ondalik degeri her
+    // okumada geri yazmak V8'de yeni HeapNumber kutusu demekti (olculdu).
+    if (clamped !== military[id]) military[id] = clamped;
   }
-  nation.economy.military = military;
   return military;
 }
 
@@ -1459,8 +1465,14 @@ function updateClasses(world, nation) {
  * iron, karelerden coal) pazara giriyordu; artık RGO tablosundaki her mal
  * doğrudan buradan akar, yoksa yeni hammaddeler hiç üretilmemiş olurdu.
  */
-function rawProduction(world, nation, market) {
-  const output = emptyGoods();
+// provinceOutput icin tekrar kullanilan karalama nesnesi. Omru TEK
+// rawProduction cagrisiyla sinirlidir; disari referans verilmez.
+const provinceOutputScratch = {};
+
+// runNationEconomy'nin ulusal cikti biriktirici karalamasi (bkz. oradaki not).
+const nationOutputScratch = emptyGoods();
+
+function rawProduction(world, nation, market, output) {
   // Gübre tarımı besler: sanayi → tarım yönünde tek bağ budur ve gübre
   // fabrikasına gerçek bir müşteri kazandırır. Geçen haftanın karşılanma
   // oranı kullanılır, bu haftaki pazar henüz temizlenmedi.
@@ -1470,16 +1482,19 @@ function rawProduction(world, nation, market) {
   const farmBonus = 1 + fertilized * 0.25;
   for (const province of world.provinces ?? []) {
     if (province.owner !== nation.id || !province.econ) continue;
-    const produced = provinceOutput(world, province);
+    const produced = provinceOutput(world, province, provinceOutputScratch);
     const track = RGO_TYPES[province.econ.rgo]?.track;
-    for (const [id, amount] of Object.entries(produced)) {
+    for (const id in produced) {
+      const amount = produced[id];
       if (id === 'gold' || !GOODS[id] || !(amount > 0)) continue;
       output[id] += track === 'agriculture' ? amount * farmBonus : amount;
     }
   }
   // Talep, ekilen alana orantılı: büyük tarım ülkesi daha çok gübre ister.
-  const farmland = Object.entries(output).reduce((sum, [id, amount]) => (
-    AGRICULTURE_GOODS.has(id) ? sum + amount : sum), 0);
+  let farmland = 0;
+  for (const id in output) {
+    if (AGRICULTURE_GOODS.has(id)) farmland += output[id];
+  }
   // Katsayi 0.35'ten 0.06'ya: gubre verimi %25 artiran bir destektir, ekonominin
   // ana talep kalemi degil. 0.35'te tek basina 20+ birimlik karsilanamayan
   // talep yaratip fiyati tavana yapistiriyordu (olculdu: %2 karsilanma).
@@ -1495,7 +1510,8 @@ function rawProduction(world, nation, market) {
     (treaty) => treaty.type === 'CONCESSION' && (treaty.until ?? 0) > (world.turn ?? 0),
   );
   const holder = concession ? world.nations[concession.partner] : null;
-  for (const [id, amount] of Object.entries(output)) {
+  for (const id in output) {
+    const amount = output[id];
     if (!(amount > 0)) continue;
     const shipped = holder?.alive ? amount * 0.2 : 0;
     if (shipped > 0) {
@@ -1762,17 +1778,18 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
     // yılda %52'den %31-35 doluluğa geriliyordu. O bağ, arz sorunu (RGO
     // kapasitesi) çözüldükten sonra yeniden denenmeli; tarifenin sanayiye
     // maliyeti şimdilik yalnız girdi fiyatı kanalından (aşağıda tariffFactor).
-    const inputFulfillment = Object.keys(type.inputs).reduce(
-      (lowest, id) => Math.min(lowest, inputAvailability[id] ?? 1),
-      1,
-    );
+    let inputFulfillment = 1;
+    for (const id in type.inputs) {
+      inputFulfillment = Math.min(inputFulfillment, inputAvailability[id] ?? 1);
+    }
     const throughput = laborThroughput * inputFulfillment;
     factory.throughput = throughput;
     factory.inputFulfillment = inputFulfillment;
 
     let revenue = 0;
     let inputCost = 0;
-    for (const [id, amount] of Object.entries(type.inputs)) {
+    for (const id in type.inputs) {
+      const amount = type.inputs[id];
       const requested = amount * laborThroughput;
       const consumed = amount * throughput;
       // Fiyat, karşılanamayan talebi de görür; maliyet yalnız gerçekten kullanılan
@@ -1794,8 +1811,8 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
       line.lineOutput = 0;
     }
     const outputs = factoryOutputs(factory, type);
-    for (const [id, amount] of Object.entries(outputs)) {
-      const qty = amount * throughput;
+    for (const id in outputs) {
+      const qty = outputs[id] * throughput;
       addFlow(market, id, 'supply', qty);
       addNationFlow(nation, id, 'production', qty);
       ownOutput[id] = (ownOutput[id] ?? 0) + qty;
@@ -1826,6 +1843,12 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
   return industrialOutput;
 }
 
+// Sinif sepetlerinin onceden acilmis [goodId, need] listeleri: tablo statik,
+// her hafta ulke basina Object.entries kurmak bosuna coptu.
+const CLASS_NEEDS_ENTRIES = CLASS_IDS.map(
+  (classId) => [classId, Object.entries(CLASS_NEEDS[classId])],
+);
+
 function populationDemand(world, nation, market) {
   const economy = nation.economy;
   let totalCost = 0;
@@ -1833,7 +1856,7 @@ function populationDemand(world, nation, market) {
   let metWeighted = 0;
   const welfare = socialLevel(nation, 'welfare');
 
-  for (const [classId, needs] of Object.entries(CLASS_NEEDS)) {
+  for (const [classId, needsEntries] of CLASS_NEEDS_ENTRIES) {
     const socialClass = economy.classes[classId];
     const scale = socialClass.population / 10000;
     let basket = 0;
@@ -1845,9 +1868,8 @@ function populationDemand(world, nation, market) {
     // yani parasi olmayan hane ayni mali almaya devam ediyordu. Bu kopukluk
     // verginin, gumrugun, refahin ve kitligin butun asagi yonlu etkilerini
     // birden olduruyordu (bkz. SYSTEM_AUDIT_REPORT KRITIK-2).
-    const wanted = [];
     let onShelf = 0;
-    for (const [goodId, need] of Object.entries(needs)) {
+    for (const [goodId, need] of needsEntries) {
       const amount = needAmount(need, world.turn ?? 1);
       if (amount <= 0) continue;
       const quantity = amount * scale;
@@ -1858,7 +1880,6 @@ function populationDemand(world, nation, market) {
       const tariffFactor = 1 + (economy.tariff / 100) * importShare;
       const cost = priceOf(world, goodId) * quantity * tariffFactor;
       const baseCost = GOODS[goodId].basePrice * quantity;
-      wanted.push({ goodId, quantity });
       basket += cost;
       basketAtBase += baseCost;
       // Rafta var mi: gecen haftanin karsilanma orani (bu haftanin ticareti
@@ -1902,7 +1923,12 @@ function populationDemand(world, nation, market) {
     const affordShare = outOfPocket > 1e-9
       ? clamp(needsBudget / outOfPocket, 0, 1)
       : 1;
-    for (const { goodId, quantity } of wanted) {
+    // Ikinci gecis sepeti listeye biriktirmek yerine ayni tablodan yeniden
+    // yurur: amount * scale ayni carpim, sonuc bit bit ayni, gecici dizi yok.
+    for (const [goodId, need] of needsEntries) {
+      const amount = needAmount(need, world.turn ?? 1);
+      if (amount <= 0) continue;
+      const quantity = amount * scale;
       const bought = quantity * affordShare;
       addFlow(market, goodId, 'demand', bought);
       addNationFlow(nation, goodId, 'demand', bought);
@@ -2262,20 +2288,26 @@ function runEconomicAI(game, nation) {
  * Dışa açık çünkü ticaret defteri de okur: ekrandaki "ordu tüketimi" satırı
  * bu tablonun kendisinden gelir, kopyasından değil.
  */
+const ARMY_CONSUMPTION_RATES = {
+  arms: 0.08, groceries: 0.05, ammunition: 0.06, fuel: 0.04,
+};
+
 export function armyWeeklyDemand(world, nation) {
-  const landUnits = world.units
-    .filter((unit) => unit.nationId === nation.id && unit.type.domain === 'land')
-    .reduce((sum, unit) => sum + regimentCount(unit), 0);
+  let landUnits = 0;
+  for (const unit of world.units) {
+    if (unit.nationId === nation.id && unit.type.domain === 'land') {
+      landUnits += regimentCount(unit);
+    }
+  }
   const wartime = world.nations.some(
     (other) => other.alive && other.id !== nation.id && atWar(world, nation.id, other.id),
   );
   const tempo = wartime ? 1 : 0.35;
   const scale = (nation.economy?.militaryProcurement ?? 100) / 100;
-  const rates = { arms: 0.08, groceries: 0.05, ammunition: 0.06, fuel: 0.04 };
   const demand = {};
   const fullDemand = {};
-  for (const [id, rate] of Object.entries(rates)) {
-    const base = landUnits * rate * tempo;
+  for (const id in ARMY_CONSUMPTION_RATES) {
+    const base = landUnits * ARMY_CONSUMPTION_RATES[id] * tempo;
     fullDemand[id] = base;
     demand[id] = id === 'groceries' ? base * (0.5 + scale * 0.5) : base * scale;
   }
@@ -2335,8 +2367,20 @@ export function settleGlobalTrade(world) {
   const nations = world.nations.filter((nation) => nation.alive && nation.economy);
   for (const nation of nations) resetTradeSummary(nation);
 
+  // Mal basina ulke satirlari nesne dizisi olarak kuruluyordu (43 mal x ulke
+  // sayisi = haftada binlerce kisa omurlu kayit, olculdu ~0.9 MB/hafta).
+  // Ayni degerler tur boyunca geri kullanilan uc sutuna yazilir; islem ve
+  // toplama sirasi degismedigi icin sonuc bit bit aynidir.
+  const count = nations.length;
+  const domesticCol = new Float64Array(count);
+  const surplusCol = new Float64Array(count);
+  const bidCol = new Float64Array(count);
+
   for (const id of GOOD_IDS) {
-    const rows = nations.map((nation) => {
+    let totalSurplus = 0;
+    let totalBid = 0;
+    for (let i = 0; i < count; i++) {
+      const nation = nations[i];
       const flow = nation.economy.goodsFlow[id];
       const marketProduction = Math.max(0, flow.production - flow.retained);
       const domestic = Math.min(marketProduction, flow.demand);
@@ -2349,24 +2393,21 @@ export function settleGlobalTrade(world) {
       // NEGATIFE gidiyor. UI bandi (taban −50) bugun oraya girmiyor ama
       // matematiksel koruma bantla birlikte tasinmamali.
       const appetite = 1 / Math.max(0.05, 1 + (nation.economy.tariff / 100) * IMPORT_ELASTICITY);
-      return {
-        nation,
-        flow,
-        domestic,
-        surplus: Math.max(0, marketProduction - domestic),
-        deficit,
-        bid: deficit * appetite,
-      };
-    });
-    const totalSurplus = rows.reduce((sum, row) => sum + row.surplus, 0);
-    const totalBid = rows.reduce((sum, row) => sum + row.bid, 0);
+      domesticCol[i] = domestic;
+      surplusCol[i] = Math.max(0, marketProduction - domestic);
+      bidCol[i] = deficit * appetite;
+    }
+    // Toplamlar eski reduce ile ayni sirada birikir (ulke dizisi sirasi).
+    for (let i = 0; i < count; i++) totalSurplus += surplusCol[i];
+    for (let i = 0; i < count; i++) totalBid += bidCol[i];
     const crossBorderTrade = Math.min(totalSurplus, totalBid);
 
-    for (const row of rows) {
-      const { nation, flow } = row;
-      flow.domestic = row.domestic;
-      flow.exports = totalSurplus > 0 ? row.surplus * crossBorderTrade / totalSurplus : 0;
-      flow.imports = totalBid > 0 ? row.bid * crossBorderTrade / totalBid : 0;
+    for (let i = 0; i < count; i++) {
+      const nation = nations[i];
+      const flow = nation.economy.goodsFlow[id];
+      flow.domestic = domesticCol[i];
+      flow.exports = totalSurplus > 0 ? surplusCol[i] * crossBorderTrade / totalSurplus : 0;
+      flow.imports = totalBid > 0 ? bidCol[i] * crossBorderTrade / totalBid : 0;
       flow.fulfilled = Math.min(flow.demand, flow.domestic + flow.imports);
       flow.shortage = Math.max(0, flow.demand - flow.fulfilled);
       flow.importShare = flow.demand > 0 ? clamp(flow.imports / flow.demand, 0, 1) : 0;
@@ -2630,11 +2671,14 @@ export function runNationEconomy(game, nation, ctx) {
     resetNationGoodsFlow(nation);
     updateClasses(world, nation);
     mark('classes');
-    const ownOutput = emptyGoods();
-    const raw = rawProduction(world, nation, market);
-    for (const [id, amount] of Object.entries(raw)) ownOutput[id] += amount;
-    const baseOutputValue = Object.entries(raw)
-      .reduce((sum, [id, amount]) => sum + priceOf(world, id) * amount, 0);
+    // Ulusun haftalik toplam ciktisi (ham + sanayi) karalama nesnesinde
+    // birikir; omru bu fonksiyon cagrisi kadardir, kapanista inventory'ye
+    // DEGER olarak kopyalanir. Referansi disari verme.
+    const ownOutput = nationOutputScratch;
+    for (const id of GOOD_IDS) ownOutput[id] = 0;
+    rawProduction(world, nation, market, ownOutput);
+    let baseOutputValue = 0;
+    for (const id in ownOutput) baseOutputValue += priceOf(world, id) * ownOutput[id];
     mark('raw');
     const industrialOutput = runFactories(world, nation, market, ownOutput, inputAvailability);
     // İşe alım ve seviye atlama aylıktır: bu haftanın kârı görüldükten sonra,
@@ -2701,7 +2745,8 @@ export function runNationEconomy(game, nation, ctx) {
     const { demand: armyDemand, fullDemand } = armyWeeklyDemand(world, nation);
     let armySupplyWeighted = 0;
     let armySupplyTotal = 0;
-    for (const [id, amount] of Object.entries(armyDemand)) {
+    for (const id in armyDemand) {
+      const amount = armyDemand[id];
       addFlow(market, id, 'demand', amount);
       addNationFlow(nation, id, 'demand', amount);
       // Ordunun tükettiğini devlet öder: geçen haftanın karşılanma oranı
@@ -2725,8 +2770,8 @@ export function runNationEconomy(game, nation, ctx) {
     nation.economy.gdp = baseOutputValue + industrialOutput;
     fiscalBalance(nation, baseOutputValue, industrialOutput);
     runPopulationMobility(nation, world.turn);
-    for (const [id, amount] of Object.entries(ownOutput)) {
-      nation.economy.inventory[id] = amount;
+    for (const id in ownOutput) {
+      nation.economy.inventory[id] = ownOutput[id];
     }
     mark('fiscal');
     runPrivateSector(game, nation);
