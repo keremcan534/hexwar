@@ -19,6 +19,7 @@ Ekonomi denge simülasyonu:
 npm run diagnose:economy -- 30 VERIFY
 npm run diagnose:system -- VERIFY 250
 npm run diagnose:policy
+npm run diagnose:military
 ```
 
 ## Kontroller
@@ -218,6 +219,35 @@ Cephe yalnız kimin nerede duracağını ve ne zaman ilerleyeceğini yönetir;
 muharebenin kendisi hâlâ province muharebesidir. Ayrı bir soyut cephe gücü
 havuzu yoktur, savaş sonucu haritadaki ordulardan çıkar.
 
+### Askerî ekran ve eğitim kuyruğu
+
+Military ekranı üç sütundur: solda **komuta** (generaller, amiraller, seçili
+subayın çarpanları, otomatik kadro/atama anahtarları ve ulusal askerî
+göstergeler), ortada **kurulabilir kollar**, sağda **eğitim kuyruğu**. Altta
+ordunun künyesi durur: kol dağılımı, mevcut/organizasyon, haftalık takviye ve
+teçhizat stoğu.
+
+Alay artık düğmeye basılan hafta belirmez, **siparişe** dönüşür:
+
+- Altın ve teçhizat sıraya girerken düşer, insan gücü alay sahaya çıkarken
+  toplanır. İptal, harcanmamış payı geri verir.
+- Eğitim süresi kola göredir (piyade 8, süvari 10, topçu ve uçak 12, zırhlı 14,
+  gemi 16 hafta) ve **askerî bütçeyle ölçeklenir**: maaş ile ikmal tamsa ilan
+  edilen süre, ikisi de dipteyse iki katından fazlası.
+- Aynı anda kaç alayın eğitildiğini şehir sayısı belirler; sıradakiler bekler.
+  Öncelik okları kapasitenin kime gideceğini değiştirir.
+- Kuyruk kendiliğinden eyaletlere yayılır: bir kışlaya söz verilen asker bir
+  sonraki siparişte o kümeyi daha az çekici yapar.
+- Kurulamayan kol sebebini yazar — hangi teçhizat eksik, hazine kaç altın
+  yetmiyor, hangi antlaşma yasaklıyor, hangi yıl açılıyor.
+
+Subay kadrosunun iki kolu vardır: general cephe tutar, **amiral** filoya komuta
+eder ve cepheye sürüklenmez. Kadro yılda bir yenilenir (otomatik kadro açıkken),
+boştaki tümenler istenirse haftalık olarak en az yüklü subaya dağıtılır.
+
+Yapay zekâ aynı kuyruğu kullanır ve eğitimdeki alayları ordu hedefine sayar;
+yoksa sipariş sahaya çıkana kadar her hafta yeniden sipariş verirdi.
+
 Alay kurmak province nüfusundan asker alır: piyade 3000, süvari 2000, topçu 1500
 kişi. Asker çıkış province'i ve komşularından toplanır, dağıtımda hayatta kalanlar
 aynı yerlere döner, savaşta ölenler kalıcı kayıptır. Üst şeritteki **MANPOWER**
@@ -272,17 +302,21 @@ src/
     cities.js        şehir, işçi dağıtımı ve ulusal bilanço
     construction.js  eyalet bölgeleri, yapılar ve inşaat kuyruğu
     politics.js      partiler, seçim ve politika sınırları
-    command.js       generaller, ordu grupları ve cephe hattı
+    reforms.js       yasa merdivenleri, üst meclis oyu ve seçmen kütüğü
+    command.js       generaller, amiraller, ordu grupları ve cephe hattı
     battles.js       province muharebesi, moral ve geri çekilme
     reinforcement.js insan ve teçhizat takviyesi
-    recruitment.js   alay kurma ve province asker havuzu
+    recruitment.js   alay siparişi, eğitim kuyruğu ve province asker havuzu
+    military.js      askerî ekranın türetme katmanı (yalnız okur)
     control.js       hukuki sahiplik ile fiilî işgal ayrımı
     diplomacy.js     savaş, barış ve işgal tasfiyesi
     ai.js            ülke yapay zekâsı
     save.js          sürümlü kayıt
   ui/
     hud.js         üst çubuk, tarih, hız ve komuta paneli
-    screens.js     inşaat, üretim, bütçe, ticaret, nüfus ve siyaset ekranları
+    screens.js     inşaat, sanayi, lojistik, bütçe, ticaret, nüfus, siyaset ve ordu ekranları
+    politicsScreen.js  hükûmet, üst meclis ve yasa defterinin çizimi
+    militaryScreen.js  komuta, asker alımı ve eğitim kuyruğunun çizimi
 ```
 
 Katmanlar tek yönlüdür: `ui` ve `render`, `game` katmanını tanır; `world` ve

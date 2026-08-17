@@ -117,18 +117,47 @@ export function archetypePlan(rng) {
   ];
 }
 
-/** Bölge başına kültür sayısı: kimlik dokusunun yoğunluğu. */
+/**
+ * Bölge başına kültür sayısı: kimlik dokusunun yoğunluğu.
+ *
+ * Sayılar bilinçli olarak yüksek. Eskiden toplam 22 kültür vardı ve harita
+ * kocaman tek renk bloklar hâlinde okunuyordu; gerçek atlasta bir kıtada
+ * onlarca halk yaşar ve sınırlar onların üstünden geçer. Yoğun-batı en
+ * parçalı olan (Avrupa rolü), kavşak en karışık olan; kolonizasyon bölgeleri
+ * seyrek kalır. Tohum sayısı ayrıca bölgenin kara alanıyla kısılır, yani
+ * küçük haritada bu tavana ulaşılmaz (bkz. cultures.generateCultures).
+ */
 export const ZONE_CULTURES = {
-  'yogun-bati': 3,
-  'kuzey-bozkiri': 2,
-  'kavsak': 2,
-  'dogu-ovasi': 2,
-  'guney-yarimada': 2,
-  'yeni-kuzey': 1,
-  'yeni-guney': 2,
-  'guney-kita': 4,
-  'dogu-adalari': 1,
-  'kistak': 1,
-  'baharat-adalari': 1,
+  'yogun-bati': 6,
+  'kuzey-bozkiri': 3,
+  'kavsak': 4,
+  'dogu-ovasi': 3,
+  'guney-yarimada': 3,
+  'yeni-kuzey': 2,
+  'yeni-guney': 3,
+  'guney-kita': 7,
+  'dogu-adalari': 2,
+  'kistak': 2,
+  'baharat-adalari': 2,
   'korsan-adalari': 1,
+};
+
+/**
+ * Bölgenin dil ailesi. Aynı ailedeki halklar birbirine kolay karışır, yabancı
+ * aile zor (bkz. cultures.diffuse). Aile adı kültür adının da ekini belirler,
+ * böylece komşu halkların adları akraba duyulur.
+ */
+export const ZONE_FAMILY = {
+  'yogun-bati': 'Valdic',
+  'kuzey-bozkiri': 'Torvic',
+  'kavsak': 'Sarnic',
+  'dogu-ovasi': 'Eshan',
+  'guney-yarimada': 'Meridic',
+  'yeni-kuzey': 'Norric',
+  'yeni-guney': 'Aurenic',
+  'guney-kita': 'Zanhari',
+  'dogu-adalari': 'Kelani',
+  'kistak': 'Sarnic',
+  'baharat-adalari': 'Kelani',
+  'korsan-adalari': 'Aurenic',
 };

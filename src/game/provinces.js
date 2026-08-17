@@ -223,10 +223,111 @@ function ensureProvinceRgo(world, province) {
   return econ;
 }
 
+/**
+ * Bir RGO turunun dunyada bulunmasi gereken asgari kume sayisi.
+ *
+ * NEDEN: `weightedRgo` her kume icin BAGIMSIZ zar atar ve nadir kaynaklarin
+ * agirligi cok dusuktur (SULPHUR 0.15 taban, SILK 0.15). Zar kotu giderse bir
+ * mal butun dunyada TEK kumeye duser — ama o mala olan talep yapisaldir ve
+ * sanayilesmeyle buyur.
+ *
+ * Olculdu (260. hafta, 255 kume): kukurt **1 kume / 1 hex**, arz 0.2, talep
+ * 7.1, fiyat tabanin 8 kati; ipek **1 kume / 1 hex**. Buna karsilik tahil 123
+ * kume / 691 hex. Gelisim hizi bunu KURTARAMAZ: gelisim tavaninda bile tek
+ * hex 0.56 uretir, talep 7.1'dir. Beta'nin "dunya 70 yil sonra basindan daha
+ * cok kitliga sahip" bulgusunun yapisal kaynagi budur.
+ *
+ * Sayilar taleple orantili: kukurt/ipek gibi girdiler birkac tesisi besler,
+ * kauçuk ve tropik agac daha genis kullanilir.
+ */
+/**
+ * Deger = dunyadaki kumelerin ORANI, mutlak sayi degil.
+ *
+ * Mutlak sayi ilk denemede yaziliydi ve denetim haritasinda (255 kume) dogru
+ * calisti; sonra URUN haritasinda (160x96, ~1000 kume) olculunce komur ve
+ * kukurt yine 8 kata cikti — 11 kume 255'in %4.3'u ama 1000'in %1.1'i, oysa
+ * TALEP dunya buyuklugu ile birlikte buyuyor. Kitlik tabani da olcekle
+ * buyumeli.
+ *
+ * Oranlar denetim haritasindaki calisan degerlerden turetildi.
+ */
+const RGO_WORLD_MINIMUM_SHARE = {
+  SULPHUR: 0.043, SILK: 0.012, RUBBER: 0.020, DYE: 0.020,
+  OIL: 0.031, TROPICAL_WOOD: 0.024, COAL: 0.063,
+};
+
+/** Cok kucuk dunyada oran sifira yuvarlanmasin. */
+const RGO_MINIMUM_FLOOR = 2;
+
+/**
+ * Zarin ac biraktigi kaynaklari onarir: asgarinin altinda kalan her RGO turu
+ * icin, o kaynagin ARAZI OLARAK mumkun oldugu ve halihazirda BOL bir turden
+ * olan kumeler devralinir.
+ *
+ * Kural CLAUDE.md'deki cografya kuralinin ayni ruhu: sekli sablon belirler,
+ * gurultu bozar. Burada da dagilimi talep belirler, zar yalnizca yerini secer.
+ * Secim tamamen deterministiktir (kume merkezine bagli siralama).
+ */
+function repairRgoScarcity(world) {
+  const byType = new Map();
+  for (const province of world.provinces ?? []) {
+    if (!province.econ) continue;
+    const list = byType.get(province.econ.rgo);
+    if (list) list.push(province);
+    else byType.set(province.econ.rgo, [province]);
+  }
+  // Devralinabilir turler: asgarisi olmayan ve bol olanlar.
+  const total = (world.provinces ?? []).filter((p) => p.econ).length;
+  const minimumOf = (typeId) => {
+    const share = RGO_WORLD_MINIMUM_SHARE[typeId];
+    return share ? Math.max(RGO_MINIMUM_FLOOR, Math.round(share * total)) : 0;
+  };
+  const donorScore = (province) => {
+    const list = byType.get(province.econ.rgo) ?? [];
+    return list.length - minimumOf(province.econ.rgo);
+  };
+  for (const typeId of Object.keys(RGO_WORLD_MINIMUM_SHARE)) {
+    const have = byType.get(typeId) ?? [];
+    let missing = minimumOf(typeId) - have.length;
+    if (missing <= 0) continue;
+    // Aday: arazisi bu kaynaga uygun (agirligi > 0) ve verici turu bol olan.
+    const candidates = [];
+    for (const province of world.provinces ?? []) {
+      if (!province.econ || province.econ.rgo === typeId) continue;
+      if (donorScore(province) <= 1) continue;
+      const sample = world.tiles[province.tileIdx[0]];
+      const weight = rgoWeightsOf(sample).find(([id]) => id === typeId)?.[1] ?? 0;
+      if (weight <= 0) continue;
+      candidates.push({ province, weight });
+    }
+    // Deterministik siralama: once arazi uygunlugu, sonra verici bolluğu,
+    // sonra kume merkezi (kararli tie-break).
+    candidates.sort((a, b) => b.weight - a.weight
+      || donorScore(b.province) - donorScore(a.province)
+      || a.province.center.q - b.province.center.q
+      || a.province.center.r - b.province.center.r);
+    for (const { province } of candidates) {
+      if (missing <= 0) break;
+      const from = byType.get(province.econ.rgo);
+      if (from) from.splice(from.indexOf(province), 1);
+      province.econ.rgo = typeId;
+      const track = RGO_TYPES[typeId].track;
+      province.econ.rgoBaseDevelopment = track === 'agriculture'
+        ? province.econ.agriculture : province.econ.extraction;
+      (byType.get(typeId) ?? byType.set(typeId, []).get(typeId)).push(province);
+      missing--;
+    }
+  }
+}
+
 export function initProvinces(world) {
   world.forEach((tile) => { tile.province = null; });
   for (const province of world.provinces ?? []) {
     province.econ = initialProvinceEcon(world, province);
+  }
+  // Zar atildiktan SONRA: dunyayi yapisal kitliga mahkum eden dagilimlari onar.
+  repairRgoScarcity(world);
+  for (const province of world.provinces ?? []) {
     for (const idx of province.tileIdx) world.tiles[idx].province = province.econ;
   }
 }
@@ -349,6 +450,38 @@ export function provinceRgoJobs(tile) {
  */
 const RGO_DEVELOPMENT_PER_WEEK = 0.0011;
 const RGO_DEVELOPMENT_CAP = 10;
+
+/**
+ * FIYAT SINYALI: sermaye karli cikarima akar.
+ *
+ * Onceki gecis gelisimi zamana bagladi (baris + istikrar + nufus baskisi) ama
+ * FIYATA baglamadi: 8 kat fiyattaki kukurt madeni ile taban fiyattaki bugday
+ * tarlasi tam ayni hizda gelisiyordu. Sonucu olculdu (supply-response-audit,
+ * 520 hafta): kukurt %89.8, gubre %95.4, cimento %95.2 hafta boyunca fiyat
+ * TAVANINDA — gubre tesisi 34 tane kurulu ve marji %100 hafta pozitif oldugu
+ * halde arz 0.1'e karsi talep 37.6. Yani sorun yatirim istahi degildi;
+ * zincirin en ustundeki hammadde hic buyumuyordu.
+ *
+ * Beta raporunun istegi tam olarak buydu: *"coal at price ceiling for years +
+ * huge global unmet demand should eventually encourage more coal extraction."*
+ *
+ * Egri kasten ilimli: taban fiyatta carpan 1.0 (onceki davranis birebir
+ * korunur), tavanda 2.5, dip fiyatta 0.56 — yani ucuz mal yavaslar, pahali mal
+ * hizlanir ama hicbiri anlik denge kurmaz. Kitlik ve patlama iyidir; KALICI
+ * tavan degildir.
+ */
+const RGO_PRICE_DRIVE_MIN = 0.5;
+const RGO_PRICE_DRIVE_MAX = 2.5;
+
+function rgoPriceDrive(world, econ) {
+  const goodId = RGO_TYPES[econ.rgo]?.goodId;
+  const state = goodId ? world.market?.goods?.[goodId] : null;
+  if (!state) return 1;
+  // Eski kayitlarda basePrice yok: oran 1 kabul edilir (notr, eski davranis).
+  const base = state.basePrice ?? state.price;
+  if (!(base > 0)) return 1;
+  return clamp(0.5 + (state.price / base) * 0.5, RGO_PRICE_DRIVE_MIN, RGO_PRICE_DRIVE_MAX);
+}
 
 /**
  * Sepetinin bu oranindan azini alabilen nufus aclik cekmeye baslar. %50 bilerek
@@ -665,7 +798,8 @@ export function runProvinces(game) {
       econ[track] = Math.min(
         RGO_DEVELOPMENT_CAP,
         (econ[track] ?? 0)
-          + RGO_DEVELOPMENT_PER_WEEK * stability * (1 + pressure * 1.5),
+          + RGO_DEVELOPMENT_PER_WEEK * stability * (1 + pressure * 1.5)
+            * rgoPriceDrive(world, econ),
       );
     }
   }

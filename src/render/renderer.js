@@ -32,6 +32,34 @@ const MAX_DPR = 2;            // mobilde 3x DPR gereksiz pahalı
  * farklı orijinler kullanılırsa aradaki şerit hiçbir kopyaya düşmez.
  */
 const WRAP_X0 = -(SQRT3 * HEX_SIZE) / 2;
+/** Aynı satırdaki komşu hex merkezleri arasındaki yatay uzaklık. */
+const HEX_STEP = SQRT3 * HEX_SIZE;
+
+/**
+ * Bir satırdaki en geniş KESİNTİSİZ hex dizisi.
+ *
+ * Ülke etiketinin bandı bundan seçilir. Eskiden satırın yalnız en küçük ve en
+ * büyük x'i tutuluyordu; ülkenin aynı satırda iki ayrı parçası varsa (ada,
+ * boğazın iki yakası) "bant" aradaki YABANCI toprağı da kapsıyor ve ad o
+ * boşluğun üstünden geçip komşu ülkeye yazılıyordu. Kesinti bir hex adımının
+ * 1.5 katından büyük boşlukta sayılır — pay yuvarlama gürültüsü içindir.
+ */
+function widestRun(xs) {
+  if (!xs.length) return null;
+  xs.sort((a, b) => a - b);
+  let best = null;
+  let start = 0;
+  for (let i = 1; i <= xs.length; i++) {
+    if (i === xs.length || xs[i] - xs[i - 1] > HEX_STEP * 1.5) {
+      const width = xs[i - 1] - xs[start];
+      if (!best || width > best.width) {
+        best = { min: xs[start], max: xs[i - 1], width, count: i - start };
+      }
+      start = i;
+    }
+  }
+  return best;
+}
 /**
  * Önbellek dokusunun en uzun kenarı. 200x160 dünyada periyot ~9000 birim;
  * 2048 uzak zoomu fazla bulanıklaştırıyordu. 3072 RGBA ~27 MB — alloc
@@ -48,6 +76,13 @@ const CACHE_FALLBACK_SIDE = 2048;
  */
 const CACHE_COLLAR = 4;
 /**
+ * Hiçbir dokunun yetişmediği anda serilen son çare zemin: derin okyanus tonu
+ * (bkz. terrain.DEEP_OCEAN). Uygulama zemini siyaha yakındır ve orada
+ * göründüğünde "siyah kutu" hatası olarak okunur; harita rengi ise yalnız
+ * bir kare boyunca detaysız kalır.
+ */
+const VOID_FILL = '#0a2836';
+/**
  * Bu zoom altında tüm dünya önbellekten tek seferde basılır. 0.55'ten 0.45'e:
  * büyük haritada önbellek ölçeği düştü, 0.55'te büyütme bulanıklığı görünür
  * oluyordu; 0.45'te yakın dal telefonda ~1000 hex çizer, hala bütçede.
@@ -60,6 +95,38 @@ export const CACHE_ZOOM = 0.45;
  * önbellek) arasında görsel sıçrama yaratıyordu. Eski eşik korunur.
  */
 const GRID_MIN_ZOOM = 0.55;
+/**
+ * Azınlık taramasının eşikleri. Pay %15'in altındaysa çizgi haritayı
+ * kirletir, bilgi vermez; zoom 0.28'in altında çizgi aralığı piksel altına
+ * iner ve renkler çamura döner.
+ */
+const CULTURE_MINORITY_MIN = 0.10;
+const CULTURE_STRIPE_MIN_ZOOM = 0.28;
+
+/**
+ * Azınlık taramasının yoğunluk kademeleri: pay büyüdükçe çizgi sıklaşır ve
+ * kalınlaşır, yani haritanın kendisi "ne kadar karışık" olduğunu söyler.
+ *
+ * `period` iki çizgi arası, `width` çizgi kalınlığı (dünya birimi). Kaplama
+ * oranı = width / period ve EN YOĞUN kademede bile ~%25'te tutulur: taban
+ * renk daima görsel olarak kazanmalı, yoksa çoğunluk-azınlık ilişkisi ters
+ * okunur. İlk sürümde tek sabit kademe vardı (period 11, dikişle birlikte
+ * kalınlık 6) ve kaplama %55'e çıkıyordu — %24 azınlıklı bir küme mavi
+ * zemine turuncu çizgi değil, turuncu zemine mavi gibi görünüyordu.
+ */
+const CULTURE_STRIPE_BANDS = [
+  { upTo: 0.20, period: 26, width: 2.0 },
+  { upTo: 0.30, period: 22, width: 2.6 },
+  { upTo: 0.40, period: 18, width: 3.2 },
+  { upTo: 1.00, period: 15, width: 3.8 },
+];
+
+function stripeBand(share) {
+  for (let i = 0; i < CULTURE_STRIPE_BANDS.length; i++) {
+    if (share < CULTURE_STRIPE_BANDS[i].upTo) return i;
+  }
+  return CULTURE_STRIPE_BANDS.length - 1;
+}
 /** Tek `Path2D`ye eklenecek azami hex sayısı (bkz. chunkedHexPaths). */
 const PATH_CHUNK = 64;
 /**
@@ -93,6 +160,19 @@ const STATIC_MAG_MAX = 1.35;
 const STATIC_SETTLE_MS = 150;
 /** Statik katman dokusunun azami kenarı (piksel); pay gerekirse kısılır. */
 const STATIC_MAX_SIDE = 5120;
+/**
+ * Zoom jesti sürerken statik katmanın pişirme ölçeği bu çarpanın kuvvetlerine
+ * oturur (LOD kovası). Kova içinde katman HİÇ yeniden pişmez; ölçekli blit
+ * yeter, en fazla √1.6 = %26 büyütme/küçültme olur — jest sırasında kodun
+ * zaten kabul ettiği bant (mag 0.75-1.33). Jest yerleşince katman TAM zoom'da
+ * yeniden pişer, yani durağan haritada bulanıklık yoktur.
+ *
+ * Neden: sürekli zoomda `uncovered`/`mag` eşikleri her karede tetikleniyor ve
+ * 1461×1384 boyutlu KATMAN ÇİFTİ kare başına yeniden boyanıyordu. Ölçüldü
+ * (10 sn zoom taraması, aynı dünya): pişirme açıkken dt p99 51.9 ms / 26 kare
+ * >33 ms / 5.9 MB-sn çöp, pişirme kapatıldığında p99 7.5 ms / 0 kare >33 ms /
+ * 0.29 MB-sn. Yani zoom takılmasının TAMAMI bu yeniden pişirmeydi.
+ */
 
 /** Şehir ve birim aynı karede: biri yukarı, biri aşağı kaydırılır. */
 const CITY_OFFSET = 0.3;
@@ -398,6 +478,7 @@ export class Renderer {
     );
     this.drawTerrain(ctx, list, world, true);
     if (this.mapMode === 'political') this.drawOccupationOverlay(ctx, world, list, cache.scale);
+    if (this.mapMode === 'cultures') this.drawCultureMix(ctx, world, list, cache.scale);
     if (this.mapMode === 'construction') this.drawConstructionOverlay(ctx, world, list, cache.scale);
     if (this.showsPolitics()) this.drawBorders(ctx, world, list, cache.scale);
     ctx.restore();
@@ -791,13 +872,23 @@ export class Renderer {
       }
       return L;
     }
-    // Zoom değişti: jest sürerken katman ölçekli blitle idare eder, yeniden
-    // pişirme ancak büyütme okunmaz hâle gelince (±%25) ya da jest yerleşince
-    // başlar. Eski %8'lik bant sürekli tekerlekte saniyede ~2 tam pişirme +
-    // GPU doku yüklemesi üretiyordu (ölçüldü: 20 sn'de 46 GC düşüşü / 75 MB
-    // ve 30 uzun kare); hareket hâlindeki hafif bulanıklık ise görünmüyor.
+    // Zoom değişti. Jest SÜRERKEN katman yeniden pişmez: ölçekli blit yeter.
+    // Tek istisna kapsama kaybıdır — katman görüşü örtmüyorsa kenarda doku
+    // kalmaz ve altına zemin serilir, o zaman ertelenemez.
+    //
+    // Eskiden büyütme ±%25-33'ü aştığında da pişiriliyordu ve sürekli zoomda
+    // bu eşik her birkaç karede tetikleniyordu: 2 MP'lik katman ÇİFTİ yeniden
+    // boyanıp GPU'ya yükleniyordu. Ölçüldü (aynı dünya, 10 sn zoom taraması):
+    //
+    //   eşikli (eski)          dt p95 22.0 · p99 54.5 · max 131.6 · 37 kare >33 ms · 16.1 MB/sn
+    //   yalnız kapsama (yeni)  dt p95  7.2 · p99  7.4 · max  10.7 ·  0 kare >33 ms ·  1.1 MB/sn
+    //
+    // Yani ara pişirmeler tamamen israftı; jest boyunca ölçekli blit zaten
+    // yeterince iyi görünüyordu. Jest yerleşince (STATIC_SETTLE_MS) katman TAM
+    // zoom'da bir kez pişer, durağan haritada bulanıklık kalmaz.
     const settled = performance.now() - this.zoomStamp.at > STATIC_SETTLE_MS;
-    if (settled || mag < 0.75 || mag > 1.33) this.stepStaticJob(world);
+    const uncovered = Math.abs(dx) > slackX || Math.abs(dy) > slackY;
+    if (settled || uncovered) this.stepStaticJob(world);
     return this.staticLayers;
   }
 
@@ -910,6 +1001,7 @@ export class Renderer {
 
     // ÜST: işgal/inşaat taraması, ızgara, province kenarı, ülke sınırı.
     if (this.mapMode === 'political') this.drawOccupationOverlay(t, world, tiles, scale);
+    if (this.mapMode === 'cultures') this.drawCultureMix(t, world, tiles, scale);
     if (this.mapMode === 'construction') this.drawConstructionOverlay(t, world, tiles, scale);
     if (this.showGrid && scale >= GRID_MIN_ZOOM && this.mapMode !== 'geography') {
       this.drawGrid(t, tiles, scale);
@@ -1098,6 +1190,20 @@ export class Renderer {
     this.perf?.bump('copies', k1 - k0 + 1);
   }
 
+  /**
+   * Hiçbir dokunun yetişmediği alana serilen zemin: görünür dikdörtgenin
+   * dünya sınırlarıyla kesişimi, derin okyanus tonunda. Dikey kırpma şart —
+   * kutupların ötesi haritanın dışıdır ve orada uygulama zemini görünmelidir.
+   */
+  fillVoid(ctx, world, rect) {
+    const b = world.bounds;
+    const y0 = Math.max(rect.minY, b.minY);
+    const y1 = Math.min(rect.maxY, b.maxY);
+    if (y1 <= y0) return;
+    ctx.fillStyle = VOID_FILL;
+    ctx.fillRect(rect.minX, y0, rect.maxX - rect.minX, y1 - y0);
+  }
+
   /** Tek periyot kopyasının bütün dünya-uzayı katmanları. rect kopya-yereldir. */
   renderCopy(ctx, world, state, rect, copyK = 0) {
     const cam = this.camera;
@@ -1116,17 +1222,25 @@ export class Renderer {
           cache.canvas,
           cache.x - pad, cache.y, cache.w + pad * 2, cache.h,
         );
-      } else if (this.farJob?.canvas) {
+      } else {
         // Pişirme sürüyor: satır bantları yukarıdan aşağı dolar, hazır kısım
         // gösterilir. Donmuş kare yerine 3-4 karede akan bir dolum.
-        const j = this.farJob;
-        const b = world.bounds;
-        const pad = CACHE_COLLAR / j.scale;
-        ctx.imageSmoothingEnabled = true;
-        ctx.drawImage(
-          j.canvas,
-          WRAP_X0 - pad, b.minY, (world.wrapWidth ?? b.maxX - b.minX) + pad * 2, b.maxY - b.minY,
-        );
+        //
+        // Hazır OLMAYAN bantların altına önce deniz tonu serilir. Serilmezse o
+        // bantlar saydam kalıp uygulama zeminini gösteriyordu; kullanıcının
+        // gördüğü "siyah kutular" buydu (ölçüldü: uzak kola geçilen ilk karede
+        // örneklenen 576 pikselin 376'sı zemin rengindeydi).
+        this.fillVoid(ctx, world, rect);
+        if (this.farJob?.canvas) {
+          const j = this.farJob;
+          const b = world.bounds;
+          const pad = CACHE_COLLAR / j.scale;
+          ctx.imageSmoothingEnabled = true;
+          ctx.drawImage(
+            j.canvas,
+            WRAP_X0 - pad, b.minY, (world.wrapWidth ?? b.maxX - b.minX) + pad * 2, b.maxY - b.minY,
+          );
+        }
       }
       perf?.add('r.far', performance.now() - t0);
       t0 = performance.now();
@@ -1162,13 +1276,33 @@ export class Renderer {
       const viewH = cam.viewHeight / cam.zoom;
       const covered = Math.abs(ldx) <= (layers.w - viewW) / 2 + 1
         && Math.abs(cam.y - layers.cy) <= (layers.h - viewH) / 2 + 1;
-      if (!covered && this.cache) {
+      if (!covered) {
+        // Zemin ASLA boş bırakılmaz. Üç kademe: pişmiş uzak doku, yarım pişmiş
+        // iş tuvali, ikisi de yoksa düz derin su tonu.
+        //
+        // Eskiden yalnız ilk kademe vardı (`!covered && this.cache`) ve uzak
+        // önbellek henüz pişmemişse — yeni dünya, kip değişimi ya da herhangi
+        // bir invalidateCache'ten hemen sonra — kenarlarda uygulama zemini,
+        // yani SİYAH kutular görünüyordu. Kullanıcının bildirdiği hata buydu.
         const backdrop = this.cache;
-        const bpad = CACHE_COLLAR / backdrop.scale;
-        ctx.drawImage(
-          backdrop.canvas,
-          backdrop.x - bpad, backdrop.y, backdrop.w + bpad * 2, backdrop.h,
-        );
+        if (backdrop) {
+          const bpad = CACHE_COLLAR / backdrop.scale;
+          ctx.drawImage(
+            backdrop.canvas,
+            backdrop.x - bpad, backdrop.y, backdrop.w + bpad * 2, backdrop.h,
+          );
+        } else if (this.farJob?.canvas) {
+          const j = this.farJob;
+          const b = world.bounds;
+          const jpad = CACHE_COLLAR / j.scale;
+          ctx.drawImage(
+            j.canvas,
+            WRAP_X0 - jpad, b.minY,
+            (world.wrapWidth ?? b.maxX - b.minX) + jpad * 2, b.maxY - b.minY,
+          );
+        } else {
+          this.fillVoid(ctx, world, rect);
+        }
       }
       ctx.drawImage(layers.base, layers.x0 + shift, layers.y0, layers.w, layers.h);
       if (this.waterAnimatedMode()) {
@@ -1321,6 +1455,7 @@ export class Renderer {
     }
     this.drawTerrain(j.ctx, bakeTiles, world, true);
     if (this.mapMode === 'political') this.drawOccupationOverlay(j.ctx, world, bakeTiles, j.scale);
+    if (this.mapMode === 'cultures') this.drawCultureMix(j.ctx, world, bakeTiles, j.scale);
     if (this.mapMode === 'construction') {
       this.drawConstructionOverlay(j.ctx, world, bakeTiles, j.scale);
     }
@@ -1545,6 +1680,73 @@ export class Renderer {
   }
 
   /** Hukuki sinir sabit kalir; isgal edilen province controller renginde taranir. */
+  /**
+   * Kültür kipinde azınlık taraması — Victoria 2'nin çizgili eyaletleri.
+   *
+   * Taban renk ÇOĞUNLUĞUN, çizgiler en büyük AZINLIĞIN. Çoğunluk el
+   * değiştirince ikisi yer değiştirir, yani hangi halkın hâkim olduğu tek
+   * bakışta okunur. Küme başına tek azınlık çizilir: iki ayrı çizgi ailesi
+   * üst üste binince hangi rengin kime ait olduğu okunmaz oluyor.
+   *
+   * Yalnız yeterince yakında çizilir; uzak zoomda çizgi aralığı piksel altına
+   * inip moiré üretir ve renk çamura döner.
+   */
+  drawCultureMix(ctx, world, tiles, scale) {
+    if (scale < CULTURE_STRIPE_MIN_ZOOM) return;
+    const groups = new Map();
+    for (const tile of tiles) {
+      if (tile.terrain.water) continue;
+      const province = world.provinces?.[tile.provinceId];
+      const minority = province?.cultures?.[1];
+      if (!minority || minority.share < CULTURE_MINORITY_MIN) continue;
+      // Kümeler (azınlık kültürü × yoğunluk kademesi) çiftinde toplanır:
+      // aynı halkın %12'lik ve %45'lik azınlığı aynı sıklıkta çizilmemeli.
+      const band = stripeBand(minority.share);
+      const key = minority.id * 8 + band;
+      let group = groups.get(key);
+      if (!group) {
+        group = {
+          id: minority.id,
+          band,
+          path: new Path2D(),
+          minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity,
+        };
+        groups.set(key, group);
+      }
+      this.hexPath(group.path, tile.x, tile.y);
+      group.minX = Math.min(group.minX, tile.x - HEX_SIZE);
+      group.maxX = Math.max(group.maxX, tile.x + HEX_SIZE);
+      group.minY = Math.min(group.minY, tile.y - HEX_SIZE);
+      group.maxY = Math.max(group.maxY, tile.y + HEX_SIZE);
+    }
+    for (const group of groups.values()) {
+      const culture = world.cultures?.[group.id];
+      if (!culture) continue;
+      const { period, width } = CULTURE_STRIPE_BANDS[group.band];
+      ctx.save();
+      ctx.clip(group.path);
+      ctx.beginPath();
+      const height = group.maxY - group.minY;
+      for (let x = group.minX - height; x <= group.maxX + height; x += period) {
+        ctx.moveTo(x, group.minY);
+        ctx.lineTo(x + height, group.maxY);
+      }
+      // Çizgi önce ince bir koyu dikişle, sonra kültür rengiyle çizilir. Tek
+      // kat renk, tonu zemine yakın bir azınlıkta görünmez oluyordu (yeşil
+      // üstüne yeşil); dikiş çizgiyi hangi zeminde olursa olsun ayırır ama
+      // artık yalnız yarım piksellik bir kenar — eskiden çizgiden KALINDI ve
+      // kaplamanın çoğunu o yapıyordu.
+      ctx.lineWidth = (width + 1) / scale;
+      ctx.strokeStyle = 'rgba(8, 12, 14, 0.30)';
+      ctx.stroke();
+      ctx.lineWidth = width / scale;
+      ctx.strokeStyle = culture.color;
+      ctx.globalAlpha = 0.85;
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
   drawOccupationOverlay(ctx, world, tiles, scale) {
     const groups = new Map();
     for (const tile of tiles) {
@@ -2436,6 +2638,24 @@ export class Renderer {
    * Sarmal dünyada koordinatlar başkent-yerel çözülür: dikişi saran ülkenin
    * ortalaması haritanın öbür ucuna kaçamaz.
    */
+  /**
+   * Verilen kolondan `dir` yönünde kaç hex denize taşınabilir.
+   *
+   * Su ve kendi toprağımız geçilir, yabancı toprakta durulur. Tavan çağıran
+   * yerden gelir: daha fazlası adı kıyıdan koparıp açık denize düşürür.
+   */
+  seaRun(world, owner, row, col, dir, reach = 3) {
+    if (col == null) return 0;
+    let n = 0;
+    for (let i = 1; i <= reach; i++) {
+      const tile = world.tileAt(col + dir * i, row);
+      if (!tile) break;
+      if (!tile.terrain.water && ownerOf(tile, world) !== owner) break;
+      n = i;
+    }
+    return n;
+  }
+
   buildLabelLayout(world) {
     const P = world.wrapWidth || 0;
     const acc = new Map();
@@ -2457,12 +2677,13 @@ export class Renderer {
       a.sxx += x * x; a.syy += t.y * t.y; a.sxy += x * t.y;
       let r = a.rows.get(t.row);
       if (!r) {
-        r = { min: x, max: x, y: t.y, count: 0 };
+        r = { y: t.y, row: t.row, xs: [], cols: new Map() };
         a.rows.set(t.row, r);
       }
-      if (x < r.min) r.min = x;
-      if (x > r.max) r.max = x;
-      r.count++;
+      r.xs.push(x);
+      // Denize taşma payı için kolon gerekir: dizi uçlarından dışarı doğru
+      // yürünüp su karesi mi yabancı toprak mı olduğuna bakılır.
+      r.cols.set(x, t.col);
     }
 
     const list = [];
@@ -2485,52 +2706,108 @@ export class Renderer {
       let band = null;
       let bandScore = -Infinity;
       for (const r of a.rows.values()) {
-        if (r.count < 2 && a.n > 6) continue;
-        const score = (r.max - r.min) - Math.abs(r.y - my) * 1.35;
+        const run = widestRun(r.xs);
+        if (!run) continue;
+        if (run.count < 2 && a.n > 6) continue;
+        const score = run.width - Math.abs(r.y - my) * 1.35;
         if (score > bandScore) {
           bandScore = score;
-          band = r;
+          band = { ...run, y: r.y, row: r.row, cols: r.cols };
         }
       }
-      const bx = band ? (band.min + band.max) / 2 : mx;
+      // Denize taşma payı. Ad başka ÜLKEYE değmemeli; denize taşması ise
+      // atlasın kendi âdetidir ve kıyı ülkelerinin adını okunur tutar. Dizinin
+      // iki ucundan dışarı yürünür, su geçilir, yabancı toprakta durulur.
+      // Pay dizinin kendi boyuyla da sınırlı: iki hexlik bir ülke üç hexlik
+      // deniz payı alıp adını açık denize taşımasın.
+      let landMin = 0;
+      let landMax = 0;
+      if (band) {
+        landMin = band.min;
+        landMax = band.max;
+        const reach = Math.min(3, Math.ceil(band.count / 2));
+        band.min -= this.seaRun(world, owner, band.row, band.cols.get(band.min), -1, reach) * HEX_STEP;
+        band.max += this.seaRun(world, owner, band.row, band.cols.get(band.max), 1, reach) * HEX_STEP;
+      }
+      const bx = band ? (landMin + landMax) / 2 : mx;
       const by = band ? band.y : my;
-      const x = bx * 0.62 + mx * 0.38;
-      const y = by * 0.62 + my * 0.38;
+      // Çapa KENDİ toprağımızda kalmalı. Ağırlık merkezi harmanı atlas hissi
+      // verir ama L biçimli ya da dağınık ülkelerde çapayı komşunun içine
+      // sürükleyebiliyor — ölçüldü: bir ülkenin adı bütünüyle komşusunun
+      // üstüne düşüyordu. Harman kara dizisine, dikeyde de bant satırına
+      // kenetlenir.
+      const x = band
+        ? Math.max(landMin, Math.min(landMax, bx * 0.62 + mx * 0.38))
+        : mx;
+      const y = band
+        ? Math.max(by - HEX_SIZE * 0.75, Math.min(by + HEX_SIZE * 0.75, by * 0.62 + my * 0.38))
+        : my;
+
+      // Kullanılabilir genişlik, DÜNYA biriminde ve ÇAPANIN ETRAFINDA simetrik.
+      //
+      // Yazı çapada ortalanır, dolayısıyla kullanılabilir en, iki yandan kısa
+      // olanın iki katıdır — çapa bandın ortasından kaydığı için bandın tam
+      // eni yanıltıcıdır. min/max hex MERKEZLERİdir; gerçek toprak her uçta
+      // yarım hex daha uzanır, o yüzden yarım adım eklenir.
+      //
+      // Eski hesap `max(bantEni, yayılım * 2.6)` idi: yayılım terimi derli
+      // toplu ülkelerde bandı iki katına çıkarıyor ve ad komşuya taşıyordu.
+      // Çapa ağırlık merkezine doğru harmanlandığı için bandın DIŞINA düşebilir;
+      // o zaman simetrik pay eksiye iner ve sığdırma katsayısı negatif olurdu.
+      // Taban bir hex: ad ya oraya sığar ya da hiç yazılmaz.
       const spread = Math.sqrt(Math.max(cxx, cyy));
-      let avail = Math.max(band ? band.max - band.min : 0, spread * 2.6);
-      if (vertical) avail = Math.min(avail, spread * 1.8);
+      const avail = Math.max(HEX_STEP, band
+        ? 2 * Math.min(x - band.min, band.max - x) + HEX_STEP
+        : spread * 1.4);
 
       const name = nation.name.toUpperCase();
-      // Büyük ülke büyük yazılır; ad uzunluğu sığmıyorsa boyut iner, bolluk
-      // varsa harf aralığı açılıp ülkenin enine yayılır (atlas dizgisi).
-      // %118 pay: kıyı ülkesinde adın denize hafifçe taşmasına izin verir.
-      let size = Math.max(12, Math.min(32, 8.5 + Math.sqrt(a.n) * 1.15));
-      let spacing = size * 0.12;
-      const est = (s, sp) => name.length * s * 0.68 + sp * (name.length - 1);
-      while (size > 11 && est(size, spacing) > avail * 1.18) {
-        size -= 1;
-        spacing = size * 0.12;
-      }
-      if (est(size, spacing) < avail * 0.78) {
-        spacing = Math.min(
-          size * 0.45,
-          spacing + (avail * 0.78 - est(size, spacing)) / Math.max(1, name.length - 1),
-        );
-      }
-      list.push({ x, y, tilt, size, spacing, name, flag: nation.flag, priority: a.n });
+      // Büyük ülke büyük yazılır. Sığdırma BURADA yapılmaz: kutunun ekrandaki
+      // eni zoom'a bağlıdır, yerleşim ise zoomdan bağımsız kurulur (bkz.
+      // drawLabels — punto ve harf aralığı orada `avail * zoom`a göre kısılır).
+      const size = Math.max(11, Math.min(32, 8.5 + Math.sqrt(a.n) * 1.15));
+      list.push({
+        x, y, tilt, size, spacing: size * 0.12, avail, vertical,
+        name, flag: nation.flag, priority: a.n,
+      });
     }
     list.sort((a, b) => b.priority - a.priority);
     return list;
   }
 
-  /** Metin genişliği: ada 100px referansında bir kez ölçülür, boyutla ölçeklenir. */
+  /**
+   * Metin genişliği: ada 100px referansında bir kez ölçülür, boyutla ölçeklenir.
+   *
+   * Ölçüm çizim durumunu KİRLETMEZ — eskiden kirletiyordu ve haftalardır
+   * şikâyet edilen "adların bir kare dev olup küçülmesi" hatası buydu:
+   *
+   *   1. Önbellekte olmayan bir ad ölçülürken ctx.font 100px referansa
+   *      çekiliyor ve öyle bırakılıyordu.
+   *   2. State adları döngüsü fontu döngüden ÖNCE bir kez kuruyor (kare başına
+   *      tek atama, bilinçli bir perf kararı).
+   *   3. Sonuç: ilk kez ölçülen ad ve ondan SONRAKİ bütün state adları o kare
+   *      10.5px yerine 100px çiziliyordu. Ertesi kare ölçüm önbellekte olduğu
+   *      için her şey normale dönüyordu.
+   *
+   * Yeni ad ne zaman görünür? Kamera kaydırınca. Bu yüzden hata tam olarak
+   * sağa-sola kaydırırken, tek karelik bir parlama gibi görünüyordu (ölçüldü:
+   * önbellek boşaltılan karede 96 yazının 39'u 100px çizildi).
+   *
+   * Harf aralığı da ölçüm sırasında sıfırlanır: measureText onu genişliğe
+   * katıyor, oysa çağıran taraf aralığı ayrıca ekliyor (bkz. state döngüsü).
+   */
   measureLabel(ctx, refFont, text) {
     this.measureCache ??= new Map();
     const key = refFont + '|' + text;
     let w = this.measureCache.get(key);
     if (w === undefined) {
+      const font = ctx.font;
+      const spacing = ctx.letterSpacing;
+      const hasSpacing = typeof spacing === 'string';
       ctx.font = refFont;
+      if (hasSpacing) ctx.letterSpacing = '0px';
       w = ctx.measureText(text).width;
+      if (hasSpacing) ctx.letterSpacing = spacing;
+      ctx.font = font;
       this.measureCache.set(key, w);
     }
     return w;
@@ -2611,16 +2888,29 @@ export class Renderer {
       const m = (wasOn ? -0.18 : 0.15) * Math.min(rw, rh);
       return !collides(rx - m, ry - m, rw + m * 2, rh + m * 2);
     };
-    // Sarmal temsilcisi taraf değiştirince (dikişte soldan çıkıp sağdan
-    // girme) etiket ekranın öbür ucuna tam alfayla ışınlanıyordu; sıçrama
-    // yakalanırsa yeni yerinde sıfırdan erir.
+    // Çapa gerçekten yer değiştirdi mi? Ölçü DÜNYA koordinatındadır, ekran
+    // koordinatı değil.
+    //
+    // Ekranla ölçülüyordu ve bu yanlıştı: kaydırma, zoom ve sarmal temsilci
+    // değişimi etiketin ekran x'ini meşru şekilde oynatır, dünya çapasını
+    // oynatmaz. Sonuç sahte alarmdı — 60 karelik hızlı kaydırmada 174 kez
+    // "ışınlandı" denip görünen yazılar tam alfadan sıfıra kesiliyordu
+    // (ölçüldü). Patlamanın kaynağı buydu.
+    //
+    // Gerçek ışınlanma tek durumda olur: yerleşim yeniden kurulduğunda bir
+    // ülkenin ağırlık merkezi fetihle kayar. Dünya ölçüsü yalnız onu yakalar.
+    // Eşik yarım ekran genişliğinin dünya karşılığıdır; sarmalda periyoda
+    // normalize edilir, yoksa dikişin iki yakası hep sıçrama sayılır.
     this.labelPos ??= new Map();
-    const anchorJump = (key, x) => {
+    const P = world.wrapWidth || 0;
+    const jumpLimit = cam.viewWidth * 0.5 / cam.zoom;
+    const anchorJump = (key, worldX) => {
       const last = this.labelPos.get(key);
-      this.labelPos.set(key, x);
-      if (last !== undefined && Math.abs(x - last) > cam.viewWidth * 0.5) {
-        this.labelAlpha.set(key, 0);
-      }
+      this.labelPos.set(key, worldX);
+      if (last === undefined) return;
+      let d = worldX - last;
+      if (P) d -= P * Math.round(d / P);
+      if (Math.abs(d) > jumpLimit) this.labelAlpha.set(key, 0);
     };
 
     ctx.save();
@@ -2632,27 +2922,52 @@ export class Renderer {
     // boyu HUD yazısı gibi duruyordu) ama 0.8–1.2 bandında kalır.
     const zScale = 0.8 + 0.4 * Math.min(1, z);
     const countryAlpha = z <= 0.95 ? 1 : Math.max(0.55, 1 - (z - 0.95) * 0.5);
+    const countryFont = '600 100px Georgia, "Times New Roman", serif';
     for (const L of this.labelLayout.list) {
-      const size = L.size * zScale;
       const key = 'n' + L.name;
+      const w100 = this.measureLabel(ctx, countryFont, L.name);
+      const cos = Math.abs(Math.cos(L.tilt));
+      const sin = Math.abs(Math.sin(L.tilt));
+      // Nefes payı: kutular birbirine değebildiğinde iki komşu ülkenin adı
+      // tek kelime gibi okunuyordu (CORMARK+TURLAND). Yatayda yarım harf,
+      // dikeyde çeyrek satır tampon.
+      const boxWidth = (s, sp) => cos * ((w100 * s) / 100 + sp * L.name.length) + sin * s + s;
+
+      // SIĞDIRMA. Ülkenin o bandaki eni dünya birimindedir, yazı ise ekran
+      // pikseliyle ölçülür; ikisini ancak zoom bağlar. Sığdırma eskiden
+      // yerleşimde, yani zoom bilinmeden yapılıyordu — bu yüzden ölçü yalnız
+      // zoom=1'de doğruydu ve uzaklaştıkça ad ülkeyi taşıp komşuya giriyordu
+      // (ölçüldü: zoom 0.35'te adların %64'ü yabancı toprağa düşüyordu).
+      const availPx = L.avail * z;
+      let size = L.size * zScale;
+      let spacing = L.spacing * zScale;
+      const need = boxWidth(size, spacing);
+      if (need > availPx) {
+        // Punto ve harf aralığı AYNI oranda iner: dizgi orantısı bozulmasın.
+        const k = availPx / need;
+        size *= k;
+        spacing *= k;
+      } else {
+        // Bolluk varsa harf aralığı açılıp ad ülkenin enine yayılır (atlas
+        // dizgisi) — ama kutu ülkeyi yine aşmaz.
+        const room = availPx * 0.88 - need;
+        if (room > 0) {
+          spacing = Math.min(size * 0.45, spacing + room / (cos * Math.max(1, L.name.length)));
+        }
+      }
+      // Sığdırma sonrası okunmaz kalıyorsa ad hiç yazılmaz: Paradox düzeninde
+      // de sığmayan ad küçültülmez, gizlenir ve yakınlaşınca gelir.
       if (size < 8) {
         this.labelAlpha.delete(key);
         continue;
       }
       const p = cam.worldToScreenWrapped(L.x, L.y);
-      const spacing = L.spacing * zScale;
-      const w100 = this.measureLabel(ctx, '600 100px Georgia, "Times New Roman", serif', L.name);
       const w = (w100 * size) / 100 + spacing * L.name.length;
       if (p.x < -w || p.x > cam.viewWidth + w || p.y < -50 || p.y > cam.viewHeight + 50) {
         // Ekran dışı: alfa sıfırlanır ki dönüşte içeri "erirken" girsin.
         this.labelAlpha.delete(key);
         continue;
       }
-      const cos = Math.abs(Math.cos(L.tilt));
-      const sin = Math.abs(Math.sin(L.tilt));
-      // Nefes payı: kutular birbirine değebildiğinde iki komşu ülkenin adı
-      // tek kelime gibi okunuyordu (CORMARK+TURLAND). Yatayda yarım harf,
-      // dikeyde çeyrek satır tampon.
       const pad = size * 0.5;
       const bw = cos * w + sin * size + pad * 2;
       const bh = sin * w + size * 1.15 + pad * 0.6;
@@ -2660,7 +2975,7 @@ export class Renderer {
       const ry = p.y - bh / 2;
       // Küçük ulus keskin eşikte değil 8.5-10 px bandında erir.
       const sizeFactor = ramp(size, 8.5, 10);
-      anchorJump(key, p.x);
+      anchorJump(key, L.x);
       const fits = sizeFactor > 0.04 && admits(key, rx, ry, bw, bh);
       if (fits) placed.push({ x: rx, y: ry, w: bw, h: bh });
       const a = fade(key, fits ? countryAlpha * sizeFactor : 0);
@@ -2709,11 +3024,19 @@ export class Renderer {
         if (pr.owner < 0 && z < 1.1) continue;
         const p = cam.worldToScreenWrapped(pr.center.x, pr.center.y);
         if (p.x < -70 || p.x > cam.viewWidth + 70 || p.y < -20 || p.y > cam.viewHeight + 20) {
+          // Ekran dışı: alfa SIFIRLANIR. Bırakılınca ad 0.85'te donuyor ve
+          // görüşe geri girdiğinde erimeden, tam alfayla beliriyordu — ülke ve
+          // şehir döngüleri bunu zaten yapıyordu, eksik olan yalnız burasıydı
+          // (ölçüldü: tek zoom jestinde 20 ada varan "pat" giriş).
+          this.labelAlpha.delete('p' + pr.center.q + ':' + pr.center.r);
           continue;
         }
         visible.push({ pr, p });
       }
       visible.sort((a, b) => (b.pr.population ?? 0) - (a.pr.population ?? 0));
+      // Font kare başına TEK kez kurulur (yüzlerce state'te atama başına
+      // maliyet ölçülebilir). Döngü içindeki hiçbir yardımcı ctx.font'u
+      // değiştirmemeli — measureLabel bu yüzden durumu geri yazar.
       ctx.font = `400 small-caps ${size}px Georgia, "Times New Roman", serif`;
       ctx.letterSpacing = '1.1px';
       for (const { pr, p } of visible) {
@@ -2721,7 +3044,7 @@ export class Renderer {
         const w = (this.measureLabel(ctx, refFont, pr.name) * size) / 100 + pr.name.length * 1.1;
         const rx = p.x - w / 2 - 3;
         const ry = p.y - 8;
-        anchorJump(key, p.x);
+        anchorJump(key, pr.center.x);
         const fits = zoomAlpha > 0 && admits(key, rx, ry, w + 6, 16);
         if (fits) placed.push({ x: rx, y: ry, w: w + 6, h: 16 });
         const a = fade(key, fits ? zoomAlpha : 0);
@@ -2768,7 +3091,7 @@ export class Renderer {
         const w = (this.measureLabel(ctx, refFont, name) * size) / 100;
         const rx = p.x - w / 2 - 2;
         const ry = ly - 8;
-        anchorJump(key, p.x);
+        anchorJump(key, city.tile.x);
         const fits = target > 0 && admits(key, rx, ry, w + 4, 15);
         if (fits) placed.push({ x: rx, y: ry, w: w + 4, h: 15 });
         const a = fade(key, fits ? target : 0);

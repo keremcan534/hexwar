@@ -11,6 +11,7 @@ import {
   equipmentLogistics, reinforcementNeed, runReinforcements,
 } from '../src/game/reinforcement.js';
 import { applyArmyLosses, refreshArmy, soldiersOf } from '../src/game/units.js';
+import { provincePopulation } from '../src/game/provinces.js';
 
 function headless(seed) {
   const game = Object.create(Game.prototype);
@@ -145,9 +146,15 @@ const recruitMilitary = ensureMilitaryEconomy(recruitNation);
 recruitMilitary.arms = 10;
 const recruitArmsBefore = recruitMilitary.arms;
 const recruitMenBefore = nationManpower(recruitWorld, recruitNation.id);
+// Odenen bedel HAM nufustur; nationManpower ise kultur agirlikli bir HAVUZ
+// olcusudur (kabul edilmemis kulturde province basi %35, bkz. recruitment.js
+// provinceManpower). Alay kabul edilmemis kulturlu bir kumeden cikinca 3000
+// kisi gercekten dusuyor ama havuz olcusu yalniz 1050 iniyordu ve test
+// "nufus odenmedi" diyordu — olculen yanlis buyuklukmus.
+const recruitPopBefore = provincePopulation(recruitWorld, recruitNation.id);
 const recruited = recruit(recruitGame, recruitNation, 'INFANTRY');
-const populationPaid = nationManpower(recruitWorld, recruitNation.id)
-  <= recruitMenBefore - 3000;
+const populationPaid = provincePopulation(recruitWorld, recruitNation.id)
+  <= recruitPopBefore - 3000;
 const armsPaid = recruitMilitary.arms <= recruitArmsBefore - RECRUITMENT_ARMS.INFANTRY;
 
 applyArmyLosses(recruited, 100, 0);

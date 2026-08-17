@@ -19,6 +19,7 @@ import {
   generalSiegeRelief, generalVariance, planningBonus,
 } from './command.js';
 import { fortDefenseAt } from './construction.js';
+import { provinceName } from './provinces.js';
 import { MILITARY_EQUIPMENT, equipmentStock } from './economy.js';
 import { controllerOf } from './control.js';
 
@@ -331,7 +332,10 @@ function finishBattle(game, battle, attackerWon) {
     const me = game.turns.playerNation;
     const involved = battle.attackerNation === me || battle.defenderNation === me;
     game.turns.addLog(
-      `${nation.name} won the battle at ${battle.q}, ${battle.r}; the enemy was forced out.`,
+      // Yer adi ham koordinat yerine: harita zaten province adlariyla dolu ve
+      // oyuncu 7 yil boyunca "battle at 125, 52" okuyup hicbir muharebesini
+      // haritada bulamadi (BUG-011). Ad deterministiktir, kayit/ekran kaymaz.
+      `${nation.name} won the Battle of ${provinceName(tile)}; the enemy was forced out.`,
       {
         // Kazanan biz miyiz: zafer ve yenilgi aynı tonda görünmemeli.
         kind: nation.id === me ? 'FIELD_WIN' : 'BATTLE',

@@ -15,12 +15,16 @@
     "diagnose:production": "node scripts/production-line-diagnostic.mjs",
     "diagnose:population": "node scripts/population-diagnostic.mjs",
     "diagnose:politics": "node scripts/politics-diagnostic.mjs",
+    "diagnose:reforms": "node scripts/reforms-diagnostic.mjs",
+    "diagnose:reform-effect": "node scripts/reform-effect-diagnostic.mjs",
+    "diagnose:reform-gate": "node scripts/reform-gate-diagnostic.mjs",
     "diagnose:construction": "node scripts/construction-diagnostic.mjs",
     "diagnose:trade": "node scripts/trade-diagnostic.mjs",
     "diagnose:rgo": "node scripts/rgo-diagnostic.mjs",
     "diagnose:policy": "node scripts/policy-diagnostic.mjs",
     "diagnose:sink": "node scripts/sink-diagnostic.mjs",
     "diagnose:command": "node scripts/command-diagnostic.mjs",
+    "diagnose:military": "node scripts/military-diagnostic.mjs",
     "diagnose:combat-org": "node scripts/combat-organization-diagnostic.mjs",
     "diagnose:occupation": "node scripts/occupation-diagnostic.mjs",
     "diagnose:peace": "node scripts/peace-diagnostic.mjs",
@@ -52,6 +56,12 @@
     "audit:save": "node scripts/audit/save-audit.mjs",
     "audit:legacy": "node scripts/audit/legacy-audit.mjs",
     "audit:long-run": "node scripts/audit/long-run-audit.mjs",
-    "audit:geography": "node scripts/audit/geography-audit.mjs"
+    "audit:geography": "node scripts/audit/geography-audit.mjs",
+    "audit:culture": "node scripts/audit/culture-audit.mjs",
+    "audit:trade-consequence": "node scripts/audit/trade-consequence-audit.mjs",
+    "audit:peace-stakes": "node scripts/audit/peace-stakes-audit.mjs",
+    "audit:stability": "node scripts/audit/stability-audit.mjs",
+    "audit:military-strategy": "node scripts/audit/military-strategy-audit.mjs",
+    "audit:supply-response": "node scripts/audit/supply-response-audit.mjs"
   }
 }

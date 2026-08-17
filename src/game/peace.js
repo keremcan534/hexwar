@@ -175,6 +175,55 @@ export function concedeKeyForTile(world, tile, ownId) {
  * toprağın bedeli, elindeki warscore'u aşamaz. Verdiğin toprak bedeli düşürür,
  * yani kaybeden taraf da masaya bir şey koyarak anlaşma satın alabilir.
  */
+/**
+ * Teklifi ALAN tarafin masadan kalkma esigi. Kazanan taraf bedava imzalamaz;
+ * ikinci cephe, coken istikrar ve uzayan savas esigi gevsetir.
+ *
+ * Yorgunluk tavani 15 puan / 312 hafta (6 yil): boylece gercek bir tikanma
+ * eninde sonunda beyaz barisla kapanabilir (donmus savas gec oyunun en buyuk
+ * karar bosluguydu) ama TAZE bir zafer asla bedavaya geri verilmez.
+ */
+export function acceptanceTolerance(world, receiverId, proposerId) {
+  const receiver = world.nations[receiverId];
+  let fronts = 0;
+  for (const other of world.nations) {
+    if (other.alive && other.id !== receiverId && atWar(world, other.id, receiverId)) fronts++;
+  }
+  const rec = world.relations?.[receiverId]?.[proposerId];
+  const weeks = Math.max(0, (world.turn ?? 0) - (rec?.since ?? 0));
+  const weariness = clamp(weeks / 312, 0, 1) * 15;
+  const raw = 10 + Math.max(0, fronts - 1) * 15
+    + ((receiver?.economy?.stability ?? 0.6) < 0.4 ? 15 : 0)
+    + weariness;
+  // TAVAN: tolerans, kazanilan ustunlugun tamamini silemez.
+  //
+  // Bu kapi canli oyunda yakalandi (seed BETA1836, 1840, Vasheim-Draesh):
+  // Draesh 37-0 ondeydi ama iki cephede savasiyor ve istikrari %40'in
+  // altindaydi; tolerans 45.9'a cikip 37'lik ustunlugu tamamen yutuyor ve
+  // BEDAVA BEYAZ BARIS yine kabul ediliyordu — BUG-009 baska bir yoldan geri
+  // gelmisti. Yorgunluk talebi ucuzlatmali, SIFIRLAMAMALI.
+  //
+  // Kazanan taraf ustunlugunun en az %40'ini masada ister.
+  const lead = warScore(world, receiverId, proposerId);
+  return lead > 0 ? Math.min(raw, lead * 0.6) : raw;
+}
+
+/**
+ * Teklif, ALICININ beklentisini karsiliyor mu? Tek dogruluk kaynagi budur:
+ * oyuncu masasi ve YZ karari ayni fonksiyondan gecer.
+ *
+ * NEDEN TEK KAYNAK: iki ayri yol vardi. `ai.js` zaten "kazanan beyaz barisi
+ * reddeder" kuralini isletiyordu, ama YALNIZ YZ-YZ arasinda; oyuncunun
+ * masasindaki `offerRefusal` bedeli sifir olan her teklifi kosulsuz kabul
+ * ediyordu (`if (cost <= 0) return null`). Beta bunu tam olarak boyle yakaladi:
+ * -25 skorla, iki sehri isgal altindayken bedava beyaz baris.
+ */
+export function offerMeetsExpectation(world, receiverId, proposerId, offer) {
+  const hope = warScore(world, receiverId, proposerId);
+  const tolerance = acceptanceTolerance(world, receiverId, proposerId);
+  return offerValueFor(world, offer) >= hope - tolerance;
+}
+
 /** Teklifin neden reddedildiği; kabul edilirse null. */
 export function offerRefusal(world, a, b, offer) {
   const demands = offer?.demands ?? [];
@@ -187,9 +236,14 @@ export function offerRefusal(world, a, b, offer) {
     }
   }
   const cost = offerCost(world, offer);
-  if (cost <= 0) return null;
   const score = Math.max(0, warScore(world, a, b));
   if (cost > score) return `They refuse: the demand exceeds your war score by ${cost - score}.`;
+  if (!offerMeetsExpectation(world, b, a, offer)) {
+    const shortfall = Math.max(1, Math.ceil(
+      warScore(world, b, a) - acceptanceTolerance(world, b, a) + cost,
+    ));
+    return `They are winning and will not sign for nothing — they expect about ${shortfall} more at the table.`;
+  }
   return null;
 }
 

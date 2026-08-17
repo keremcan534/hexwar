@@ -119,8 +119,19 @@ Beklenen: ~1.300-1.500 province (2.675 yerine) ve ülke başına 3-35 bandı.
 
 ## Faz 5 — Kültür / çekirdek / kabul edilen kültür
 
-- Kültürler bölge ailelerinden doğar (bölge başına 1-3; guney-kita çok
-  parçalı). Ülkenin `culture` birincil kültürüdür.
+- Kültürler bölge ailelerinden doğar (bölge başına 1-7; guney-kita ve
+  yogun-bati en parçalı). Ülkenin `culture` birincil kültürüdür.
+- Her kültürün bir **dil ailesi** vardır (`culture.family`, bkz.
+  `macro.ZONE_FAMILY`): ad eki oradan gelir ve aynı ailenin halkları
+  birbirine kolay karışır.
+- Province tek kültür konuşmaz: `province.cultures` payları toplamı 1 olan
+  sıralı bir dağılımdır, `province.culture` ise onun çoğunluğudur. Dağılımı
+  iki geçiş kurar (bkz. `cultures.mixCultures`):
+  - **sızma** — komşu kümelerin halkı buraya da bulaşır, sınırlar gradyan olur;
+  - **kırılmış kültür** — bir zamanlar geniş olan birkaç halk yalnız iki-üç
+    kümede çoğunluk kalır, eski menzilinin kalanında azınlığa düşer.
+- Harita `cultures` kipinde çoğunluk taban rengi, en büyük azınlık (pay ≥%15)
+  çapraz tarama olarak çizilir — Victoria 2'nin çizgili eyaletleri.
 - Yeni alanlar: `nation.accepted: number[]` (birincil dahil),
   `province.coreOf: nationId | -1` (üretimde ev toprakları çekirdek,
   koloniler DEĞİL).

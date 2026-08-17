@@ -3,10 +3,10 @@
 import { makeRng } from '../core/rng.js';
 import {
   UNIT_TYPES, advanceEntrenchment, clearPath, createUnit, refreshArmy,
-  removeUnit, resetUnitIds, stackFull, unitAvailable,
+  removeUnit, resetUnitIds, stackFull,
 } from './units.js';
 import { advanceMovement } from './movement.js';
-import { recruit } from './recruitment.js';
+import { queueRecruit, recruit, runTraining } from './recruitment.js';
 import { runReinforcements } from './reinforcement.js';
 import { runNationAI } from './ai.js';
 import { atWar, computeContacts, initRelations } from './diplomacy.js';
@@ -16,7 +16,7 @@ import {
 import { checkVictory } from './hegemony.js';
 import { executeOrders } from './orders.js';
 import {
-  CITY_COST, UNIT_COSTS, assignAllWorkers, canAfford, canFoundCity,
+  CITY_COST, assignAllWorkers, canAfford, canFoundCity,
   cityName, collectProvinceTotals, createCity, growCities, nationBudget, pay,
 } from './cities.js';
 import {
@@ -32,7 +32,7 @@ import {
 import { initPolitics, runPolitics } from './politics.js';
 import { captureConstructionAt, initConstruction, runConstruction } from './construction.js';
 import { controllerOf, setController } from './control.js';
-import { expireTreaties, treatiesOf, underTreaty } from './peace.js';
+import { expireTreaties, treatiesOf } from './peace.js';
 
 /** Başlangıç stoku: ilk birkaç turda bir birim alacak kadar. */
 const STARTING_GOLD = 50;
@@ -127,25 +127,21 @@ export class TurnManager {
   }
 
   /**
-   * Alay kurar. Altın *ve* insan gücü ister: asker en kalabalık province'in
-   * nüfusundan çıkar, toplanma noktası varsa oraya yürür (bkz. recruitment.js).
+   * Alayı EĞİTİM SIRASINA sokar. Altın ve teçhizat siparişte düşer, insan gücü
+   * alay sahaya çıkarken toplanır (bkz. recruitment.js eğitim kuyruğu). Alay
+   * artık düğmeye basılan hafta belirmez: ordu kurmak zaman ister.
+   * @returns {object|null} kuyruk kaydı
    */
   buyUnit(nation, typeId) {
-    const cost = UNIT_COSTS[typeId];
-    if (!nation.alive || !cost || !canAfford(nation, cost)) return null;
-    // Askersizleştirme anlaşması süresince yeni tümen kurulamaz.
-    if (underTreaty(nation, 'DEMILITARIZE', this.turn)) return null;
-    // Tank ve uçak yüzyılın ortasında açılır; 1836'da kurulamaz.
-    if (!unitAvailable(typeId, this.turn)) return null;
-    const unit = recruit(this.game, nation, typeId);
-    if (!unit) return null;
-    pay(nation, cost);
+    if (!nation.alive) return null;
+    const item = queueRecruit(this.game, nation, typeId);
+    if (!item) return null;
     if (nation.id === this.playerNation) {
-      this.addLog(`${UNIT_TYPES[typeId].name} raised (${UNIT_TYPES[typeId].manpower} men).`,
+      this.addLog(`${UNIT_TYPES[item.typeId].name} ordered — ${item.weeks} weeks of training.`,
         { kind: 'ARMY' });
     }
     this.game.emit('units', this.game.selectedUnit);
-    return unit;
+    return item;
   }
 
   /** Birimin durduğu karede yeni şehir kurar. */
@@ -360,6 +356,22 @@ export class TurnManager {
     const stamp = () => {
       markT = performance.now();
     };
+    /**
+     * Dilim sınırı. `mark` + `yield` + `stamp` üçlüsünü TEK yerde birleştirir.
+     *
+     * Neden gerekli: eskiden dilim sınırları elle `yield; stamp();` yazılıyordu
+     * ve `stamp` damgayı ilerlettiği için o dilimde YAPILAN İŞ hiçbir kovaya
+     * yazılmıyordu. Yalnız süslemede değil ölçümün kendisinde hata: ulus başına
+     * yield eden fazlar (ai, komuta, ekonomi) neredeyse tamamen görünmezdi —
+     * profil komutayı 0.17 ms/hafta gösterirken tek bir generalin dilimi 25 ms
+     * ölçülüyordu (ölçüldü). Hafta 112 ms sürerken profilin toplamı 9.6 ms'ti;
+     * yani sıralama yanlış sistemi suçluyordu.
+     */
+    const pause = function* (name) {
+      mark(name);
+      yield;
+      stamp();
+    };
 
     // Temas tablosu tur başında bir kez: her ülke için ayrı taramak pahalı.
     this.phase = 'contacts';
@@ -367,9 +379,7 @@ export class TurnManager {
     // Koalisyon YZ'den önce: şöhreti aşan ülke bu turda cephe bulsun.
     const joined = checkCoalitions(this.game, this.rng);
     if (joined) this.game.renderer.invalidateCache();
-    mark('contacts');
-    yield;
-    stamp();
+    yield* pause('contacts');
 
     let aiBatch = 0;
     for (const nation of world.nations) {
@@ -378,14 +388,9 @@ export class TurnManager {
       runNationAI(this.game, nation, this.rng);
       // YZ ulus başına bağımsız karar verir; 4'erli demetler 5 ms'lik kare
       // bütçesine sığar. Sıra dizisi değişmez, determinizm korunur.
-      if (++aiBatch % 4 === 0) {
-        yield;
-        stamp();
-      }
+      if (++aiBatch % 4 === 0) yield* pause('ai');
     }
-    mark('ai');
-    yield;
-    stamp();
+    yield* pause('ai');
 
     this.turn++;
     world.turn = this.turn;
@@ -417,8 +422,12 @@ export class TurnManager {
     mark('units');
     this.phase = 'reinforcements';
     runReinforcements(this.game);
-    yield;
-    stamp();
+    yield* pause('reinforcements');
+    // Eğitim kuyruğu komutadan ÖNCE: bu hafta sahaya çıkan alay aynı hafta
+    // bir komutana bağlanıp mevkisine yürüsün, bir hafta boşta beklemesin.
+    this.phase = 'training';
+    runTraining(this.game);
+    yield* pause('training');
     // Komuta emirleri yürüyüşten *önce* işlenir ki cepheye atanan tümenler
     // aynı hafta yola çıksın; sonra yürüyüş ilerler ve temas muharebe açar.
     // Faz atomikken 12-20 ms tutup kare bütçesini aşıyordu (ölçüldü);
@@ -432,36 +441,27 @@ export class TurnManager {
       this.phase = `command:${nation.name}`;
       // General başına bir dilim (bkz. command.runNationCommandSteps).
       for (const _ of runNationCommandSteps(this.game, nation, commandContext)) {
-        yield;
-        stamp();
+        yield* pause('command');
       }
     }
     finishCommand(this.game);
-    mark('command');
-    yield;
-    stamp();
+    yield* pause('command');
     // Fazlar ayrı dilimlerde: eskiden yürüyüş+province+işçi tek dilimdi ve
     // savaş haftalarında (yol bulma + sahiplik değişimi) tek başına 30-40 ms
     // tutabiliyordu (ölçüldü). Sıra aynen korunur, determinizm değişmez.
     this.phase = 'movement';
     advanceMovement(this.game);
-    mark('movement');
-    yield;
-    stamp();
+    yield* pause('movement');
     this.phase = 'provinces';
     decayInfamy(world);
     // Sıra önemli: sahiplik savaşta değişmiş olabilir, önce işçiler yeniden dağıtılır.
     runProvinces(this.game);
-    mark('provinces');
-    yield;
-    stamp();
+    yield* pause('provinces');
     // Şehirler işçi dağıtımından önce büyür ki yeni nüfus aynı hafta bir kare işlesin.
     this.phase = 'workers';
     growCities(world);
     assignAllWorkers(world);
-    mark('workers');
-    yield;
-    stamp();
+    yield* pause('workers');
     this.phase = 'produce';
     this.produce();
     mark('produce');
@@ -472,28 +472,26 @@ export class TurnManager {
     // çözülür. Ekonomi en pahalı fazdır ve maliyeti ulus sayısına yayılır:
     // 6'şarlı demetler halinde dilimlenir (bkz. economy.js begin/finish notu).
     const economyContext = beginEconomy(this.game);
-    let economyBatch = 0;
     for (const nation of world.nations) {
       this.phase = `economy:${nation.name}`;
       runNationEconomy(this.game, nation, economyContext);
-      if (++economyBatch % 3 === 0) {
-        yield;
-        economyContext.stamp();
-        stamp();
-      }
+      // ULUS BAŞINA dilim. Eskiden üçerli demetlerdi ve tek demet 8.9 ms
+      // tutabiliyordu (ölçüldü): 5 ms'lik kare bütçesi BÖLÜNEMEYEN bir adımı
+      // bölemez, dolayısıyla demet ne kadar büyükse takılma o kadar kesindir.
+      // Sıra ve işlem dizisi aynı — determinizm etkilenmez.
+      mark('economy');
+      yield;
+      economyContext.stamp();
+      stamp();
     }
     this.phase = 'economy:finish';
     finishEconomy(this.game, economyContext);
-    mark('economy');
-    yield;
-    stamp();
+    yield* pause('economy');
     // Ulusal insaat gucu haftalik kapanista kuyrugun en ustundeki projeye akar.
     this.phase = 'construction';
     runConstruction(this.game);
     runPolitics(this.game);
-    mark('construction');
-    yield;
-    stamp();
+    yield* pause('construction');
     // Haritadaki ordular çarpıştıkları province üzerinde haftalık muharebe çözer.
     this.phase = 'battles';
     runBattles(this.game);

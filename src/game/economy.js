@@ -5,6 +5,11 @@
 import { canAfford, pay } from './cities.js';
 import { RGO_TYPES, provinceOutput, provincePopulation } from './provinces.js';
 import { atWar } from './diplomacy.js';
+import { controllerOf } from './control.js';
+import {
+  advanceResearch, ensureResearch, pickResearchAI, refreshTechModifiers,
+  startResearch, techUnlocksFactory,
+} from './technology.js';
 import { treatiesOf } from './peace.js';
 import { regimentCount } from './units.js';
 import {
@@ -15,6 +20,9 @@ import {
   constructionUpkeep, ensureConstruction, fundProject, planConstructionAI,
   queueIndustryProject, universityWorkforceBonus,
 } from './construction.js';
+import {
+  refreshReformModifiers, reformBudgetFactor, reformModifiers, reformMoodShift,
+} from './reforms.js';
 
 /**
  * Victoria 2'nin üretim zinciri. Mevcut kimlikler bilerek korundu (food =
@@ -205,8 +213,9 @@ export const FACTORIES = {
   // --- Askeri sanayi ---
   ARMS_FACTORY: {
     id: 'ARMS_FACTORY', name: 'Arms Industry', icon: '⚔',
-    // The military-only Production screen must not depend on a second, hidden
-    // industrial chain. Arms lines consume the raw market goods directly.
+    // Askeri uretim hatti ikinci bir gizli sanayi zincirine dayanmamali
+    // (bkz. Logistics ekranindaki hat secimi): hat ham pazar mallarini
+    // dogrudan tuketir.
     cost: { gold: 210 }, inputs: { iron: 1.5, coal: 0.5 }, outputs: { arms: 1.25 },
   },
   TANK_FACTORY: {
@@ -374,6 +383,71 @@ const PRICE_SPEED = 0.09;
 export const IMPORT_ELASTICITY = 1.6;
 
 /**
+ * Sanayi karinin sermayedar (ust sinif) gelirine akan payi.
+ *
+ * 1.0 degil cunku karin bir kismi zaten `privateCapital`e (yeniden yatirim
+ * fonu) yaziliyor ve tesisin kendi buyumesine gidiyor; hepsini haneye de
+ * yazmak ayni parayi iki kez saymak olurdu.
+ */
+export const PROFIT_TO_CAPITAL = 0.5;
+
+/**
+ * Hane birikimi (bkz. populationDemand).
+ *
+ * `DRAW_RATE` bir haftada birikimin ne kadarinin harcanabilecegi: yastik
+ * aniden bosalmasin, kriz haftalara yayilsin. `RATE` artan gelirin birikime
+ * giden payi. `CAP_WEEKS` tavan — yarim yillik sepet; olmasaydi ust sinif
+ * sonsuz yastik biriktirip kitliga tamamen bagisik olurdu.
+ */
+export const SAVINGS_DRAW_RATE = 0.25;
+export const SAVINGS_RATE = 0.5;
+export const SAVINGS_CAP_WEEKS = 26;
+
+/** Tam issizlikte alt sinif memnuniyetinden dusen puan (orta sinif yarisi). */
+export const UNEMPLOYMENT_MOOD = 0.22;
+
+/**
+ * Hane gecim butcesinin NET GELIRDEN gelen payi (kalani eski formul).
+ *
+ * 1.0 "butce tam olarak net gelirdir" demek olurdu — dogru model, ama iki
+ * formulun olcekleri farkli oldugu icin ani gecis butun butceleri birkac kat
+ * kaydirir ve aclik zincirini tetikler. Deger OLCULEREK secilir; bkz.
+ * BETA_REPAIR_LOG R-17 kalibrasyon tablosu.
+ */
+export const INCOME_BUDGET_WEIGHT = 0.35;
+
+/**
+ * Net dis dengenin hazineden gecen orani (bkz. settleGlobalTrade).
+ *
+ * Devlet, ulkenin dis pozisyonunun ARTIK finansorudur: acigin bir kismi
+ * hazineden kapanir, kalani ozel sermaye hareketi olarak sogurulur. 1.0
+ * "hazine butun hanelerin ithalat faturasini haftalik oder" demek olurdu ki
+ * fazla siddetli.
+ *
+ * Para yaratmaz/yok etmez: dunya ticareti sifir toplamli oldugu icin
+ * (`Simport == Sexport`, olculdu 2.3e-13) `Sbalance * oran` da her oranda
+ * sifirdir. Korunum ORANDAN BAGIMSIZDIR; oran yalnizca isirma siddetidir.
+ *
+ * Oran STANDART DUNYADA (160x96, 65 ulke, tohum BETA1836) olculerek secildi.
+ * Denetim haritasi (78x62, 31 ulke) baska bir cevap veriyordu (orada 0.5 en
+ * iyisiydi, 1.0 asiri duzeltiyordu) — URUN yapilandirmasi esas alindi:
+ *
+ *   oran  hf156 iflas  hf520 iflas  hf156 oran  hf520 oran
+ *   0.00  -            -            0.06        0.06   <- TERS (eski davranis)
+ *   0.50  0/65         6/65         0.81        1.05   <- yetersiz
+ *   1.00  1/65         4/65         5.90        2.95   <- secilen
+ *   1.50  5/65         8/65        12.32        4.36   <- iflas artiyor
+ *   2.00  9/65        12/65         6.31        3.18   <- bozuluyor
+ *
+ * ("oran" = ticaret fazlasi verenlerin ort. hazinesi / acik verenlerinki;
+ * 1'in altinda dis acik ODULLENDIRILIYOR demektir.)
+ *
+ * 1.0 hem isareti en net duzelten hem de 520. haftada EN AZ iflas ureten
+ * deger. Ayni zamanda ilkesel tavan: devlet fiili acigin fazlasini kapatamaz.
+ */
+export const EXTERNAL_SETTLEMENT = 1;
+
+/**
  * Sürekli sosyal harcamalar. Geç oyunda hazine doluyordu çünkü bütün giderler
  * tek seferlikti; bunlar nüfusla birlikte büyüyen, kapatılabilir ama kapatınca
  * bedeli olan kalemler. Maliyet 10.000 kişi başına, %100 seviyede haftalık.
@@ -490,6 +564,7 @@ function emptyTradeSummary() {
     exportValue: 0,
     balance: 0,
     tariffRevenue: 0,
+    settlement: 0,
   };
 }
 
@@ -918,6 +993,11 @@ function marketGood(id) {
   const good = GOODS[id];
   return {
     id,
+    // Taban fiyat piyasa durumunda da tasinir: provinces.js RGO gelisimini
+    // fiyat sinyaline baglarken orani buradan okur ve economy.js'i import
+    // etmek zorunda kalmaz (economy zaten provinces'i import ediyor — ters
+    // yon dongu olurdu).
+    basePrice: good.basePrice,
     price: good.basePrice,
     previousPrice: good.basePrice,
     supply: 0,
@@ -1200,18 +1280,70 @@ export function factoriesInRegion(world, nationId, regionId) {
     .map(([factory]) => factory);
 }
 
+/**
+ * "Bu state'te bu türden tesis var mı?" sorusunun O(1) dizini.
+ *
+ * Neden gerekli: soru bir kez değil, YATIRIM ARAMASI boyunca sorulur — özel
+ * sermaye ve YZ her hafta 29 tür × state sayısı kadar aday dener. Her aday
+ * `factoriesInRegion` çağırıyordu, o da ülkenin BÜTÜN fabrikaları üzerinde
+ * yeni bir Map kurup diziye yayıyordu. Ölçüldü (195 fabrikalı ülke, 11 state):
+ * aday başına 0.052 ms × 319 aday = tek ülke için 16.6 ms/hafta; ekonomi
+ * fazının %75'i (privateSector 17.2 + econAI 16.5 ms) buradan geliyordu.
+ *
+ * Dizin ulus başına haftada en fazla bir kez kurulur ve imzası değişene dek
+ * (fabrika ya da proje sayısı) yeniden kullanılır.
+ */
+const industryIndexCache = new WeakMap();
+
+function industryIndex(world, nation) {
+  const factories = nation.economy?.factories ?? [];
+  const projects = ensureConstruction(nation).projects;
+  const atlas = constructionAtlas(world, nation.id);
+  const signature = `${atlas.regions.length}:${factories.length}:${projects.length}`;
+  let perWorld = industryIndexCache.get(world);
+  if (!perWorld) {
+    perWorld = new Map();
+    industryIndexCache.set(world, perWorld);
+  }
+  const cached = perWorld.get(nation.id);
+  // Atlas kimliği de imzaya girer: sınır değişince bölgeler yeniden kurulur ve
+  // eski dizin yanlış state'i işaret eder.
+  if (cached && cached.signature === signature && cached.atlas === atlas) return cached.taken;
+  const taken = new Set();
+  for (const factory of factories) {
+    const tile = world.get(factory.q, factory.r);
+    const region = tile ? atlas.tileRegions.get(tile) : null;
+    if (region) taken.add(`${region.id}|${factory.typeId}`);
+  }
+  for (const project of projects) {
+    if (project.kind !== PROJECT_KIND.FACTORY) continue;
+    taken.add(`${project.regionId}|${project.typeId}`);
+  }
+  perWorld.set(nation.id, { signature, atlas, taken });
+  return taken;
+}
+
 /** O state'te aynı türde kurulmuş ya da kurulmakta olan tesis var mı. */
-function industryTaken(world, nation, regionId, typeId) {
-  const queued = ensureConstruction(nation).projects.some(
-    (project) => project.kind === PROJECT_KIND.FACTORY
-      && project.typeId === typeId && project.regionId === regionId,
-  );
-  return queued || factoriesInRegion(world, nation.id, regionId)
-    .some((factory) => factory.typeId === typeId);
+/**
+ * Bu state'te bu turden tesis (ya da kuyrukta projesi) var mi?
+ *
+ * DISA ACIK cunku insa menusu de bunu kullanmalidir. Eskiden ekran
+ * `factoriesInRegion` (factoryAtlas) ile suzuyor, motor ise burada
+ * `constructionAtlas` ile bakiyordu — IKI AYRI ATLAS. Anlasmazlik oldugunda
+ * ekran kart gosteriyor, `canBuildFactory` reddediyor ve kart tek kelimeye
+ * dusuyordu: "unavailable". Beta'nin "kapitalistler Steel Mill kuruyor ama
+ * bana yasak" celiskisi buydu (BUG-015).
+ */
+export function industryTaken(world, nation, regionId, typeId) {
+  return industryIndex(world, nation).has(`${regionId}|${typeId}`);
 }
 
 /** Tesis o tur kurulabilir mi? Otomobil fabrikasi 1836'da kurulamaz. */
-export function factoryUnlocked(typeId, turn) {
+export function factoryUnlocked(typeId, turn, nation = null) {
+  // Takvim UST SINIRDIR, tek belirleyici degil: arastirma tarihi one ceker.
+  // Ulke verilmezse eski davranis (saf takvim) korunur — cagri yerlerinin
+  // hepsi ayni anda guncellenmek zorunda kalmasin.
+  if (nation && techUnlocksFactory(nation, typeId)) return true;
   return (FACTORIES[typeId]?.availableFrom ?? 0) <= turn;
 }
 
@@ -1228,7 +1360,7 @@ export function industrialRightsOn(world, nation, ownerId) {
 export function canBuildFactory(world, nation, regionId, typeId, actor = 'state') {
   const type = FACTORIES[typeId];
   if (!type || !nation?.alive || !nation.economy) return false;
-  if (!factoryUnlocked(typeId, world.turn ?? 1)) return false;
+  if (!factoryUnlocked(typeId, world.turn ?? 1, nation)) return false;
   if (!canInvestInFactory(nation, 'build', actor)) return false;
   // Devlet parayı peşin öder; kapitalistler projeyi açıp sermayelerini
   // haftalar içinde akıtır, bu yüzden onlardan peşin tam bedel istenmez.
@@ -1403,7 +1535,8 @@ export function socialSpendingCost(nation) {
   for (const program of Object.values(SOCIAL_PROGRAMS)) {
     total += scale * socialLevel(nation, program.id) * program.rate;
   }
-  return total;
+  // Yasayla verilen hak kaydıraçtan ayrıdır ve kısılamaz.
+  return total + scale * reformModifiers(nation).socialBurden;
 }
 
 function addFlow(market, goodId, kind, amount) {
@@ -1456,6 +1589,7 @@ function resetTradeSummary(nation) {
   trade.exportValue = 0;
   trade.balance = 0;
   trade.tariffRevenue = 0;
+  trade.settlement = 0;
   return trade;
 }
 
@@ -1755,6 +1889,7 @@ function runFactoryEmployment(game, nation) {
 
 function runFactories(world, nation, market, ownOutput, inputAvailability) {
   const economy = nation.economy;
+  const reformMods = reformModifiers(nation);
   let totalProfit = 0;
   let industrialOutput = 0;
 
@@ -1796,7 +1931,8 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
     for (const id in type.inputs) {
       inputFulfillment = Math.min(inputFulfillment, inputAvailability[id] ?? 1);
     }
-    const throughput = laborThroughput * inputFulfillment;
+    // Çalışma saati / güvenlik / çocuk işçi yasaları üretimi bir miktar kısar.
+    const throughput = laborThroughput * inputFulfillment * reformMods.throughput;
     factory.throughput = throughput;
     factory.inputFulfillment = inputFulfillment;
 
@@ -1835,7 +1971,8 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
       if (factory.typeId === 'ARMS_FACTORY') factory.lineOutput += qty;
     }
     // İşçi, girdi kıtlığında üretim düşse de fabrikada kalır ve ücretini alır.
-    const wages = laborThroughput * WAGE_PER_THROUGHPUT;
+    // Reformun faturası burada somutlaşır: kâr daralır, üretim değil.
+    const wages = laborThroughput * WAGE_PER_THROUGHPUT * reformMods.wageCost;
     factory.profit = revenue - inputCost - wages;
     // Sübvansiyon: işaretli tesisin zararını devlet kapatır. Sahte sabit
     // maliyet yok — ödeme gerçekleşen zararın kendisidir ve kâr 0'a çekilir
@@ -1863,12 +2000,79 @@ const CLASS_NEEDS_ENTRIES = CLASS_IDS.map(
   (classId) => [classId, Object.entries(CLASS_NEEDS[classId])],
 );
 
+/**
+ * Istikrarin agirliklari. Hepsi ORANDIR (0-1) ve dogrudan istikrardan duser;
+ * boylece ekranda "isgal -12" gibi gercek bir kalem gosterilebilir.
+ */
+const STABILITY_WEIGHTS = {
+  occupation: 0.38,
+  war: 0.14,
+  unemployment: 0.22,
+};
+
+/**
+ * Ulusal istikrar ve NEDEN o seviyede oldugu.
+ *
+ * Eskiden tek satirdi: `stability = satisfactionWeighted / population`. Yani
+ * girdisi yalnizca hane memnuniyetiydi — ve memnuniyet de yavas hareket eden
+ * odenebilirlik/vergi teriminden geliyordu. Beta'nin gozlemi tam olarak bunun
+ * sonucu: **60 yil boyunca %44'te dondu**, uc esz amanli savas, isgal ve
+ * nufusun ucte ikisinin dusman kontrolunde olmasi hicbir sey degistirmedi.
+ * Isgal, savas yorgunlugu ve issizlik girdi DEGILDI.
+ *
+ * `breakdown` gercek simulasyon degerleridir (uydurma yok): butce/siyaset
+ * ekrani "WHY THE PRICE MOVES" kalibini buradan besler.
+ */
+/**
+ * Issizlik: sanayi kapasitesine gore is arayan var ama tezgah yok.
+ *
+ * TEK KAYNAK — hem istikrar hem hane memnuniyeti buradan okur. Iki yerde iki
+ * ayri formul olsaydi ekrandaki "issizlik -6" ile hanenin hissettigi issizlik
+ * birbirini tutmazdi.
+ */
+function unemploymentOf(nation) {
+  const economy = nation.economy;
+  const jobs = industrialJobs(nation);
+  const workers = economy.classes?.lower?.population ?? 0;
+  const employed = (economy.factories ?? []).reduce((s, f) => s + (f.employees ?? 0), 0);
+  const seeking = Math.max(0, Math.min(workers, jobs) - employed);
+  return { rate: jobs > 0 ? clamp(seeking / jobs, 0, 1) : 0, seeking };
+}
+
+function updateStability(world, nation, base) {
+  const economy = nation.economy;
+  const occupation = clamp(economy.occupiedShare ?? 0, 0, 1);
+  const war = clamp(economy.warStrain ?? 0, 0, 1);
+  const { rate: unemployment, seeking } = unemploymentOf(nation);
+
+  const occupationHit = -occupation * STABILITY_WEIGHTS.occupation;
+  const warHit = -war * STABILITY_WEIGHTS.war;
+  const unemploymentHit = -unemployment * STABILITY_WEIGHTS.unemployment;
+
+  economy.stability = clamp(base + occupationHit + warHit + unemploymentHit, 0.03, 0.98);
+  economy.stabilityBreakdown = {
+    base,
+    occupation: occupationHit,
+    war: warHit,
+    unemployment: unemploymentHit,
+    occupiedShare: occupation,
+    occupiedTiles: economy.occupiedTiles ?? 0,
+    warFronts: economy.warFronts ?? 0,
+    unemploymentShare: unemployment,
+    unemployed: Math.round(seeking),
+    total: economy.stability,
+  };
+}
+
 function populationDemand(world, nation, market) {
   const economy = nation.economy;
   let totalCost = 0;
   let satisfactionWeighted = 0;
   let metWeighted = 0;
   const welfare = socialLevel(nation, 'welfare');
+  // Sinif dongusunden ONCE: memnuniyet bunu okuyacak (istikrar da ayni
+  // fonksiyondan okur, bkz. unemploymentOf).
+  const { rate: unemployment } = unemploymentOf(nation);
 
   for (let c = 0; c < CLASS_NEEDS_ENTRIES.length; c++) {
     const classId = CLASS_NEEDS_ENTRIES[c][0];
@@ -1920,8 +2124,24 @@ function populationDemand(world, nation, market) {
     const priceLevel = basketAtBase > 0 ? basket / basketAtBase : 1;
     const wageIndex = 1 + (priceLevel - 1) * 0.6;
     const taxRate = economy.taxes[classId] / 100;
-    const needsBudget = scale * Math.max(0.35, wageIndex) * CLASS_NEEDS_BUDGET[classId]
-      * (1 - taxRate) * (1 + welfare * 0.22);
+    const formulaBudget = scale * Math.max(0.35, wageIndex) * CLASS_NEEDS_BUDGET[classId]
+      * (1 - taxRate) * (1 + welfare * 0.22)
+      // Asgari ücret / sendika yasası hanenin harcanabilir gelirini büyütür.
+      * reformBudgetFactor(nation, classId);
+    // GELIR BAGI: hanenin harcayabilecegi para gelirinden gelmeli.
+    //
+    // Eskiden `needsBudget` ile `income` BAGIMSIZ iki formuldu ve sinif geliri
+    // pratikte dekoratifti (yalnizca vergi matrahi). Olculdu
+    // (audit:population): butceler toplami gelirin 4.3 kati, en kotu sapma
+    // %2688. Yani hane, kazandigindan kat kat fazlasini harcayabiliyordu.
+    //
+    // Gelir GECEN HAFTANINDIR: `fiscalBalance` bu fonksiyondan SONRA kosar.
+    // Bir haftalik gecikme butun ulkeleri esit etkiler (ayni kalip fabrika
+    // girdi musaitliginde de kullaniliyor).
+    const netIncome = Math.max(0, (socialClass.income ?? 0) - (socialClass.taxPaid ?? 0));
+    const needsBudget = netIncome > 0
+      ? formulaBudget * (1 - INCOME_BUDGET_WEIGHT) + netIncome * INCOME_BUDGET_WEIGHT
+      : formulaBudget;
     // Refah sepetin bir kısmını devlet cebinden öder; parası zaten
     // socialSpendingCost ile hazineden çıkıyor. Bu bağ yokken sosyal harcama
     // memnuniyeti DÜŞÜRÜYORDU (0.50 -> 0.46, ölçüldü): para gidiyor, sepete
@@ -1937,9 +2157,28 @@ function populationDemand(world, nation, market) {
     // needsCost ve canAffordNeeds ISTENEN sepeti gostermeye devam eder: yoksa
     // ac kalan sinif "sepetini karsiliyor" gibi gorunur ve sinif dususu,
     // memnuniyet, hareketlilik zincirlerinin hepsi yanilir.
+    // BIRIKIM: iyi yillar kotu yillari tasir.
+    //
+    // Eskiden sinif her hafta sifirdan basliyordu: `savings`/`wealth` diye bir
+    // alan yoktu (audit:population HIGH). Sonucu iki yonluydu — gecmis refah
+    // gelecege tasinmiyor, ve kitlik "birikimi eriten" bir sey olmuyordu.
+    // Artik acik once birikimden kapanir; kapanmazsa sepet kisilir.
+    socialClass.savings = Number.isFinite(socialClass.savings) ? socialClass.savings : 0;
+    const gap = Math.max(0, outOfPocket - needsBudget);
+    const drawn = Math.min(socialClass.savings * SAVINGS_DRAW_RATE, gap);
+    const spendable = needsBudget + drawn;
     const affordShare = outOfPocket > 1e-9
-      ? clamp(needsBudget / outOfPocket, 0, 1)
+      ? clamp(spendable / outOfPocket, 0, 1)
       : 1;
+    // Artan gelirin bir kismi birikir; tavan ~yarim yillik sepettir, yoksa
+    // zengin sinif sonsuz bir yastik biriktirip kitliga bagisik olurdu.
+    const surplus = Math.max(0, needsBudget - outOfPocket);
+    socialClass.savings = clamp(
+      socialClass.savings - drawn + surplus * SAVINGS_RATE,
+      0,
+      outOfPocket * SAVINGS_CAP_WEEKS,
+    );
+    socialClass.savingsDrawn = drawn;
     // Ikinci gecis sepeti listeye biriktirmek yerine ayni tablodan yeniden
     // yurur: amount * scale ayni carpim, sonuc bit bit ayni, gecici dizi yok.
     for (let n = 0; n < needsEntries.length; n++) {
@@ -1966,8 +2205,17 @@ function populationDemand(world, nation, market) {
     // karşılayamıyorsa durum sınıf düşüşüne dönüşür. Lüks açığı memnuniyeti
     // azaltır fakat tek başına aristokrasiyi birkaç ayda yok etmez.
     socialClass.canAffordNeeds = needsBudget + 0.01 >= outOfPocket * 0.6;
+    // Issizlik memnuniyeti dusurur. Eskiden memnuniyet YALNIZ sepet fiyatina
+    // ve vergiye bakiyordu; olculdu (audit:population): istihdam %73.5 ->
+    // %64.0 dustugunde memnuniyet 0.68 -> 0.65, yani sanayi kapanmasi haneyi
+    // neredeyse hic etkilemiyordu. Bedel calisan siniflara biner —
+    // sermayedar issiz kalmaz, tesisi zarar edince KARINDAN kaybeder
+    // (bkz. PROFIT_TO_CAPITAL).
+    const joblessBite = classId === 'upper' ? 0
+      : unemployment * (classId === 'lower' ? UNEMPLOYMENT_MOOD : UNEMPLOYMENT_MOOD * 0.5);
     socialClass.satisfaction = clamp(
-      0.35 + affordability * 0.5 - taxRate * 0.28 + welfare * 0.14,
+      0.35 + affordability * 0.5 - taxRate * 0.28 + welfare * 0.14
+        + reformMoodShift(nation, classId) - joblessBite,
       0.08,
       0.95,
     );
@@ -1978,7 +2226,7 @@ function populationDemand(world, nation, market) {
 
   economy.standardOfLiving = 5 + 15 * (satisfactionWeighted / Math.max(1, economy.population))
     + socialLevel(nation, 'health') * 2.5;
-  economy.stability = satisfactionWeighted / Math.max(1, economy.population);
+  updateStability(world, nation, satisfactionWeighted / Math.max(1, economy.population));
   // Ulusal beslenme endeksi: sepetinin ne kadarini fiilen alabilen bir nufus.
   // provinces.js bunu okur (economy.js'i import etmek katman dongusu olurdu,
   // ayni kalip saglik harcamasinda da kullaniliyor).
@@ -1990,10 +2238,25 @@ function fiscalBalance(nation, baseOutputValue, industrialOutput) {
   const economy = nation.economy;
   const incomePool = Math.max(1, baseOutputValue * 0.18 + industrialOutput * 0.22);
   const incomeWeights = { lower: 0.42, middle: 0.33, upper: 0.25 };
+  // SANAYI KARI SERMAYEDARIN GELIRIDIR.
+  //
+  // Eskiden hicbir yere akmiyordu: `incomePool` yalnizca URETIM DEGERINDEN
+  // turuyordu, dolayisiyla zarar eden bir fabrika hane gelirine kârlı biri
+  // kadar katkı yapıyordu. Olculdu (audit:factory): haftada ¤1327.7 kar
+  // uretiliyor, hazineye 0, hane gelirine 0 gidiyor.
+  //
+  // Ucret ciktiya bagli kalir — isci fabrikanin kar/zararina bakmaksizin
+  // maasini alir, bu dogru. Degisen sey KARIN kendisi: sahibine gider.
+  // Zarar da simetriktir; surekli zarar eden sanayi ust sinifi yoksullastirir.
+  const profitShare = (economy.factoryProfit ?? 0) * PROFIT_TO_CAPITAL;
   let taxes = 0;
   for (const [classId, weight] of Object.entries(incomeWeights)) {
     const socialClass = economy.classes[classId];
-    socialClass.income = incomePool * weight;
+    socialClass.income = incomePool * weight
+      + (classId === 'upper' ? profitShare : 0);
+    // Zarar geliri negatife cekmesin: vergi matrahi negatif olamaz ve
+    // `needsBudget` zaten ayri bir kanaldan geliyor.
+    socialClass.income = Math.max(0, socialClass.income);
     socialClass.taxPaid = socialClass.income * (economy.taxes[classId] / 100);
     taxes += socialClass.taxPaid;
   }
@@ -2449,10 +2712,25 @@ export function settleGlobalTrade(world) {
     // geliri öldürüyordu (%50 tarife haftada 0.15 altın topluyordu, ölçüldü)
     // ve hane sepetine binen gümrük bedeli hazineye hiç ulaşmıyordu.
     trade.tariffRevenue = trade.importValue * (nation.economy.tariff / 100);
+    // DIS HESABIN KAPANISI. Gumruk tek basina TERS TESVIKTI: geliri ithalat
+    // HACMIYLE buyudugu icin cokmus, her seyi ithal eden ekonomi en zengin
+    // hazineyi topluyordu (olculdu: acik veren 12 ulke ort. 18.259 altin,
+    // fazla veren 17 ulke ort. 1.968 — dokuz kat). Karsi kalemi yoktu.
+    //
+    // Net dis denge artik hazineden gecer: devlet, ulkenin dis pozisyonunu
+    // kapatan taraftir (1836-1936 altin standardi hazinesinin fiili isi).
+    // Hane hala kendi sepetini oder; degisen sey GAYRISAFI degil NET akis.
+    //
+    // Bu para YARATMAZ: `crossBorderTrade = min(totalSurplus, totalBid)` ve
+    // iki taraf ayni fiyattan degerlenir, dolayisiyla dunya toplaminda
+    // `Simport == Sexport` (olculdu: 200. haftada fark 2.3e-13). Bir
+    // hazineden cikan, baska bir hazineye girer.
+    trade.settlement = trade.balance * EXTERNAL_SETTLEMENT;
     trade.lastUpdated = world.turn;
     nation.economy.tariffRevenue = trade.tariffRevenue;
-    nation.economy.fiscalNet += trade.tariffRevenue;
-    nation.gold += trade.tariffRevenue;
+    nation.economy.externalSettlement = trade.settlement;
+    nation.economy.fiscalNet += trade.tariffRevenue + trade.settlement;
+    nation.gold += trade.tariffRevenue + trade.settlement;
   }
 }
 
@@ -2546,6 +2824,10 @@ function updateLedger(nation, turn) {
   const budget = nation.budget ?? {};
   const cityRevenue = Math.max(0, budget.production?.gold ?? 0);
   const tariffRevenue = economy.tariffRevenue ?? 0;
+  // Dis hesap kapanisi: fazla gelirdir, acik giderdir. Ayri satir olarak
+  // tutulur cunku oyuncunun gormesi gereken sey "gumruk" degil, ULKENIN dis
+  // pozisyonunun hazineye ne yaptigi.
+  const externalSettlement = economy.externalSettlement ?? 0;
   const armyCost = Math.max(0, budget.armyGold ?? 0);
   const administrationCost = Math.max(0, budget.administration ?? 0);
   const socialCost = Math.max(0, economy.socialCost ?? 0);
@@ -2580,15 +2862,18 @@ function updateLedger(nation, turn) {
   economy.treasuryHistory.push(Number(nation.gold.toFixed(1)));
   if (economy.treasuryHistory.length > 52) economy.treasuryHistory.shift();
   const income = cityRevenue + (economy.taxRevenue ?? 0)
-    + Math.max(0, tariffRevenue) + treatyRevenue;
+    + Math.max(0, tariffRevenue) + treatyRevenue
+    + Math.max(0, externalSettlement);
   const expenses = armyCost + administrationCost + socialCost + importCost
     + constructionCost + treatyCost + outlayCost + procurementCost
-    + subsidyCost + projectCost + interestCost + Math.max(0, -tariffRevenue);
+    + subsidyCost + projectCost + interestCost + Math.max(0, -tariffRevenue)
+    + Math.max(0, -externalSettlement);
   economy.ledger = {
     lastUpdated: turn,
     cityRevenue,
     taxRevenue: economy.taxRevenue ?? 0,
     tariffRevenue,
+    externalSettlement,
     armyCost,
     administrationCost,
     socialCost,
@@ -2655,6 +2940,29 @@ function updatePrices(market) {
 export function beginEconomy(game) {
   const world = game.world;
   ensureEconomy(world);
+  // Yasa çarpanları haftada BİR KEZ, ekonomi fazının başında hesaplanır;
+  // sıcak yol sonra yalnız düz alan okur. Politika fazından çağırmak
+  // politics.js ile reforms.js arasında döngüsel içe aktarma kuruyordu.
+  for (const nation of world.nations) {
+    if (nation.alive && nation.politics) refreshReformModifiers(nation);
+  }
+  refreshNationalStrain(world);
+  // Egitim -> okuryazarlik -> arastirma puani -> teknoloji zinciri. Sira
+  // onemli: okuryazarlik once ilerler, arastirma o haftanin stogunu okur.
+  const year = 1836 + Math.floor(((world.turn ?? 1) - 1) * 7 / 365);
+  for (const nation of world.nations) {
+    if (!nation.alive || !nation.economy) continue;
+    advanceLiteracy(nation);
+    ensureResearch(nation);
+    if (!nation.economy.techMods) refreshTechModifiers(nation);
+    // YZ (ve henuz secim yapmamis oyuncu) bos durmasin: kuyruk bosalinca
+    // en ucuz erisilebilir teknoloji secilir.
+    if (!nation.research.current) {
+      const pick = pickResearchAI(nation, year);
+      if (pick) startResearch(nation, pick);
+    }
+    advanceResearch(nation, year, nation.rank ?? 0);
+  }
   const market = world.market;
   const ctx = { world, market, profile: {} };
   let markT = performance.now();
@@ -2679,6 +2987,77 @@ export function beginEconomy(game) {
   ctx.mark('setup');
   return ctx;
 }
+
+/**
+ * Isgal payi ve savas yuku: haftada BIR KEZ, TEK dunya taramasiyla.
+ *
+ * Neden burada: istikrarin girdisi olarak lazim ve ulke basina province
+ * taramasi yapilamaz (30 ulke x ~300 kume = haftada on binlerce yineleme,
+ * hazir optimize edilmis sicak yolu geri bozardi). Tek kare taramasi ~5K
+ * yineleme ve butun ulkeleri ayni gecisde doldurur.
+ */
+/**
+ * OKURYAZARLIK ARTIK BIR STOKTUR.
+ *
+ * Eskiden `census.literacyOf` saf bir formuldu — sinif × egitim yuzdesi ×
+ * sehirlesme — ve dosyanin kendi yorumu bunu itiraf ediyordu: *"Simule edilen
+ * bir istatistik DEGILDIR."* Biriktirmedigi icin egitim butcesi sabit
+ * kaldiginda carpan da sabit kaliyor, geriye yalnizca SINIF BILESIMI etkisi
+ * kaliyordu.
+ *
+ * Beta'nin 62 yillik gizemi tam olarak buydu (BUG-019): oyuncu egitimi %40'ta
+ * tuttu, sanayilesme koyluyu dusuk okuryazarlikli isci sinifina tasidi ve
+ * okuryazarlik %24 → %23 DUSTU. Para harcandi, hicbir sey birikmedi.
+ *
+ * Artik stok: egitim harcamasi ve universiteler bir HEDEF belirler, stok
+ * oraya yillar icinde yaklasir. Hedefe varis ~40 yil surer (yarilanma ~14
+ * yil) — bir insan omru boyunca gorunur, tek secimde donmez.
+ */
+const LITERACY_APPROACH = 0.001;
+
+function advanceLiteracy(nation) {
+  const economy = nation.economy;
+  const schooling = clamp(economy.social?.education ?? 0, 0, 100) / 100;
+  // Universite carpani: okul tabani kurar, universite tavani yukseltir —
+  // butce ekraninin uzun zamandir vaat ettigi cumle ("schools qualify
+  // workers; universities amplify it") ilk kez dogru.
+  const target = clamp(0.08 + schooling * 0.62 * (1 + universityWorkforceBonus(nation)), 0, 0.95);
+  const current = Number.isFinite(economy.literacy) ? economy.literacy : target * 0.35;
+  economy.literacy = current + (target - current) * LITERACY_APPROACH;
+  economy.literacyTarget = target;
+}
+
+function refreshNationalStrain(world) {
+  const occupied = OCCUPIED_SCRATCH;
+  occupied.length = world.nations.length;
+  occupied.fill(0);
+  world.forEach((tile) => {
+    if (tile.owner < 0 || !tile.terrain.passable) return;
+    if (controllerOf(tile) !== tile.owner) occupied[tile.owner]++;
+  });
+  const turn = world.turn ?? 0;
+  for (const nation of world.nations) {
+    if (!nation.alive || !nation.economy) continue;
+    const owned = Math.max(1, nation.tiles ?? 1);
+    nation.economy.occupiedTiles = occupied[nation.id] ?? 0;
+    nation.economy.occupiedShare = clamp((occupied[nation.id] ?? 0) / owned, 0, 1);
+    // Savas yuku: cephe sayisi ve suresi birlikte. Tek kisa savas kimseyi
+    // yildirmaz; uc yil suren iki cephe yildirir.
+    let strain = 0;
+    let fronts = 0;
+    for (const other of world.nations) {
+      if (!other.alive || other.id === nation.id) continue;
+      if (!atWar(world, nation.id, other.id)) continue;
+      fronts++;
+      const since = world.relations?.[nation.id]?.[other.id]?.since ?? turn;
+      strain += 0.35 + clamp((turn - since) / 156, 0, 1) * 0.65;
+    }
+    nation.economy.warFronts = fronts;
+    nation.economy.warStrain = clamp(strain / 2, 0, 1);
+  }
+}
+
+const OCCUPIED_SCRATCH = [];
 
 export function runNationEconomy(game, nation, ctx) {
   if (!nation.alive) return;

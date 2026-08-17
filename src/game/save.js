@@ -8,7 +8,8 @@
 import { createUnit, refreshArmy, resetUnitIds, resolveTypeId } from './units.js';
 import { createCity, englishCityName } from './cities.js';
 import { ensureEconomy } from './economy.js';
-import { ensureCommand } from './command.js';
+import { ensureCommand, ensureCommandOptions } from './command.js';
+import { ensureTraining } from './recruitment.js';
 import { ensureBattles } from './battles.js';
 import { ensureProvinces, refreshProvinceOwner } from './provinces.js';
 import { ensurePolitics } from './politics.js';
@@ -25,7 +26,10 @@ import { ensureConstruction } from './construction.js';
 // arketip ülke yerleşimi worldgen çıktısını kökten değiştirdi.
 // 12: fiziksel coğrafya yeniden yazıldı (geography.js: omurga tabanlı kıtalar)
 // ve standart dünya 160x96'ya sabitlendi — aynı seed başka bir dünya üretir.
-export const SAVE_VERSION = 12;
+// 13: alay artık anında belirmiyor, eğitim kuyruğuna giriyor (nation.training)
+// ve subayların bir kolu var (general.branch). İkisi de türetilemez durumdur:
+// yazılmazsa yüklemede sipariş edilmiş ordu ve amiraller buhar olur.
+export const SAVE_VERSION = 13;
 const STORAGE_KEY = 'hexwar.save';
 
 /**
@@ -96,8 +100,20 @@ export function serialize(game) {
     nations: world.nations.map((n) => {
       const out = {
         id: n.id, economy: n.economy, politics: n.politics,
+        // Arastirma: biriken puan + tamamlanan teknolojiler. Kayit disi
+        // kalirsa oyuncu yuzyillik teknoloji birikimini yuklemede kaybeder.
+        research: n.research ?? null,
         construction: ensureConstruction(n),
         rallyPoint: n.rallyPoint ?? null,
+        // Eğitim kuyruğu: ödenmiş sipariş. Kayıt dışı kalırsa oyuncu parasını
+        // ve teçhizatını yükleme ekranında kaybeder.
+        training: {
+          nextId: ensureTraining(n).nextId,
+          queue: ensureTraining(n).queue.map((item) => ({
+            ...item, equipment: { ...item.equipment },
+          })),
+        },
+        command: { ...ensureCommandOptions(n) },
         // Barış masasında imzalanan süreli şartlar. Türetilebilir veri değil:
         // yazılmazsa tazminat, vassallık ve silahsızlanma yüklemede buhar olur.
         treaties: (n.treaties ?? []).map((t) => ({ ...t })),
@@ -210,10 +226,24 @@ export function deserialize(game, data) {
     // taşımak yerine null bırakılır; ensurePolitics gerçek kayıt turuna göre
     // partileri ve bir sonraki seçimi yeniden kurar.
     nation.politics = saved.politics ?? null;
+    // Eski kayitta yok: ensureResearch bos kayitla kurar (teknoloji sifirdan
+    // baslar, takvim kapisi zaten calismaya devam eder).
+    nation.research = saved.research ?? null;
     nation.construction = saved.construction ?? null;
     ensureConstruction(nation);
     nation.rallyPoint = saved.rallyPoint ?? null;
     nation.treaties = (saved.treaties ?? []).map((t) => ({ ...t }));
+    nation.training = saved.training
+      ? {
+        nextId: saved.training.nextId ?? 1,
+        queue: (saved.training.queue ?? []).map((item) => ({
+          ...item, equipment: { ...(item.equipment ?? {}) },
+        })),
+      }
+      : null;
+    ensureTraining(nation);
+    nation.command = saved.command ? { ...saved.command } : null;
+    ensureCommandOptions(nation);
     nation.generals = (saved.generals ?? []).map((g) => ({
       ...g,
       traits: [...(g.traits ?? [])],

@@ -1,5 +1,15 @@
 // Hex ızgarada yol bulma. Arazi maliyetleri terrain.moveCost'tan gelir.
 // DOM'a dokunmaz; Node ile de test edilebilir.
+//
+// Komşu gezintisi `world.neighbors()` ÇAĞIRMAZ, yön tablosunu doğrudan gezer.
+// Sebep ölçüldü: neighbors kare başına yeni bir dizi kurar ve arama bir
+// aramada on binlerce kare açabiliyor. Haftalık tahsisat dökümünde komuta fazı
+// 8.25 MB/hafta ile birinci sıradaydı ve neredeyse tamamı cephe yürüyüşlerinin
+// yol aramasıydı (bir tanesi tek başına 5.4 ms + megabaytlarca çöp: ulaşılamaz
+// bir mevkiye giden arama düğüm tavanına kadar bütün haritayı açıyor).
+// Ziyaret SIRASI DIRS ile birebir aynı — determinizm korunur.
+
+import { DIRS } from './hex.js';
 
 /** Küçük ikili yığın. Dijkstra/A* kuyruğu. */
 class MinHeap {
@@ -64,7 +74,9 @@ export function reachable(world, start, budget, {
   while (heap.size) {
     const { tile, f } = heap.pop();
     if (f > (costs.get(tile) ?? Infinity)) continue; // eskimiş giriş
-    for (const n of world.neighbors(tile)) {
+    for (let d = 0; d < 6; d++) {
+      const n = world.get(tile.q + DIRS[d][0], tile.r + DIRS[d][1]);
+      if (!n) continue;
       if (!canEnter(n, tile)) continue;
       const next = f + costOf(n, tile);
       if (next > budget) continue;
@@ -112,7 +124,9 @@ export function findPath(world, start, goal, {
     if (tile === goal) return tracePath(prev, goal);
     if (++expanded > nodeCap) break;
     const cost = g.get(tile);
-    for (const n of world.neighbors(tile)) {
+    for (let d = 0; d < 6; d++) {
+      const n = world.get(tile.q + DIRS[d][0], tile.r + DIRS[d][1]);
+      if (!n) continue;
       if (n !== goal && !canEnter(n, tile)) continue;
       const next = cost + costOf(n, tile);
       if (!Number.isFinite(next)) continue;

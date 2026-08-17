@@ -6,8 +6,19 @@
  * Kart türleri. `ttl` 0 ise kart kendiliğinden kapanmaz: savaş ilanı ya da
  * kıtlık gibi oyuncunun görmeden geçmemesi gereken olaylar elle kapatılır.
  */
+/**
+ * `halt: true` olan tur oyunu DURDURUR.
+ *
+ * Beta testcisi savasta oldugunu fark etmedi: *"Draesh declared war on us!"*
+ * ile *"Clothing Factory reached level 6"* ayni yiginda, ayni bicimde
+ * duruyordu. Savasi dakikalar sonra, Fabrikalar ekraninda beliren bir
+ * *"Open peace talks with Draesh"* dugmesinden anladi (BUG-013).
+ *
+ * ttl 0 (kendiliğinden kapanmama) yetmedi — kart yine de akista kayboluyordu.
+ * Sonucu olan olay zamani durdurmali; bildirim akisi ile KARAR ani ayrilmali.
+ */
 export const NOTIFY = {
-  WAR: { icon: '⚔', tone: 'war', label: 'War', ttl: 0 },
+  WAR: { icon: '⚔', tone: 'war', label: 'War', ttl: 0, halt: true },
   PEACE: { icon: '🕊', tone: 'good', label: 'Peace', ttl: 12000 },
   DIPLOMACY: { icon: '📜', tone: 'info', label: 'Diplomacy', ttl: 10000 },
   BATTLE: { icon: '⚔', tone: 'bad', label: 'Battle', ttl: 9000 },
@@ -23,7 +34,7 @@ export const NOTIFY = {
   COMMANDER: { icon: '🎖', tone: 'good', label: 'Officer staff', ttl: 10000 },
   PROVINCE: { icon: '⛏', tone: 'info', label: 'Province', ttl: 9000 },
   POLITICS: { icon: '🗳', tone: 'info', label: 'Politics', ttl: 12000 },
-  CRISIS: { icon: '⚠', tone: 'bad', label: 'Crisis', ttl: 0 },
+  CRISIS: { icon: '⚠', tone: 'bad', label: 'Crisis', ttl: 0, halt: true },
   NATION: { icon: '☠', tone: 'bad', label: 'Nations', ttl: 12000 },
   HEGEMONY: { icon: '👑', tone: 'good', label: 'Hegemony', ttl: 0 },
   INFO: { icon: '❕', tone: 'info', label: 'Dispatch', ttl: 9000 },
@@ -91,6 +102,9 @@ export class NotificationCenter {
     };
     this.active.push(entry);
     if (this.active.length > MAX_ACTIVE) this.active.shift();
+    // Sonucu olan olay zamani durdurur. Yalnizca YENI kartta: tekrar eden
+    // olay (ayni anahtar) oyuncuyu tekrar tekrar duraklatmamali.
+    if (kind.halt) this.game.setSpeed?.(0);
     this.game.emit('notify', { entry, repeated: false });
     return entry;
   }

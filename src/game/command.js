@@ -19,7 +19,7 @@
 //
 // Katman notu: burasi saf veri + hesap + emir. DOM'a dokunmaz.
 
-import { DIRS } from '../core/hex.js';
+import { DIRS, hexesInRange } from '../core/hex.js';
 import { atWar } from './diplomacy.js';
 import { MAX_ASSAULT_DIVISIONS, startBattle } from './battles.js';
 import { orderMove } from './movement.js';
@@ -78,6 +78,23 @@ export const TRAITS = {
 
 export const TRAIT_IDS = Object.keys(TRAITS);
 
+/**
+ * Subayın kolu. Donanma cephe tutmaz (bkz. runGroup), bu yüzden amiral ayrı
+ * bir sistem değil aynı subayın deniz kadrosudur: filoya atanır, muharebe
+ * çarpanını aynı yoldan verir, ama kara cephesine sürüklenmez.
+ */
+export const BRANCH = { ARMY: 'army', NAVY: 'navy' };
+
+/**
+ * Denizde anlamı olan nitelikler. Süvari/topçu uzmanlığı ve istihkâm bir
+ * filoda karşılıksızdır; olmayan bonusu listelemektense havuz daraltılır.
+ */
+export const NAVAL_TRAIT_IDS = ['OFFENSIVE', 'DEFENSIVE', 'TRICKSTER', 'LOGISTICIAN', 'PLANNER'];
+
+export function branchOf(general) {
+  return general?.branch === BRANCH.NAVY ? BRANCH.NAVY : BRANCH.ARMY;
+}
+
 /** Yetenek tavani. Tecrube bu kademeleri doldurur. */
 export const MAX_SKILL = 5;
 const XP_PER_SKILL = 100;
@@ -113,15 +130,37 @@ const SPREAD = 99;
 
 // --- Kurulus ---------------------------------------------------------------
 
+/**
+ * Komuta tercihleri. Kadro yenilemesi ve boşta tümen dağıtımı oyuncunun
+ * elinde olmalı: ikisi de haftalık ve otomatik çalışır, ama açık kapalıdır.
+ */
+export function ensureCommandOptions(nation) {
+  const options = nation.command ?? (nation.command = {});
+  if (typeof options.autoCreate !== 'boolean') options.autoCreate = true;
+  if (typeof options.autoAssign !== 'boolean') options.autoAssign = false;
+  return options;
+}
+
+export function setCommandOption(nation, key, value) {
+  const options = ensureCommandOptions(nation);
+  if (key !== 'autoCreate' && key !== 'autoAssign') return null;
+  options[key] = Boolean(value);
+  return options[key];
+}
+
 export function initCommand(world) {
   world.commandSystem = { nextId: 1 };
-  for (const nation of world.nations) nation.generals = [];
+  for (const nation of world.nations) {
+    nation.generals = [];
+    ensureCommandOptions(nation);
+  }
 }
 
 export function ensureCommand(world) {
   if (!world.commandSystem) world.commandSystem = { nextId: 1 };
   for (const nation of world.nations) {
     if (!Array.isArray(nation.generals)) nation.generals = [];
+    ensureCommandOptions(nation);
     for (const general of nation.generals) {
       if (!Array.isArray(general.divisions)) general.divisions = [];
       if (!Array.isArray(general.front)) general.front = [];
@@ -129,17 +168,19 @@ export function ensureCommand(world) {
       if (general.target === undefined) general.target = null;
       if (typeof general.planning !== 'number') general.planning = 0;
       if (!Number.isFinite(general.nextAssaultAt)) general.nextAssaultAt = 0;
+      // Eski kayıtlarda kol yok: bütün subaylar karacıydı.
+      if (general.branch !== BRANCH.NAVY) general.branch = BRANCH.ARMY;
     }
   }
   return world.commandSystem;
 }
 
-export function createGeneral(world, nation, rng) {
+export function createGeneral(world, nation, rng, { branch = BRANCH.ARMY } = {}) {
   const system = ensureCommand(world);
   const skill = 1 + Math.floor(rng() * 3);
   // Nitelik sayisi yetenekle birlikte artar: iyi general hem guclu hem renkli.
   const count = skill >= 3 ? 2 : 1;
-  const pool = [...TRAIT_IDS];
+  const pool = branch === BRANCH.NAVY ? [...NAVAL_TRAIT_IDS] : [...TRAIT_IDS];
   const traits = [];
   for (let i = 0; i < count && pool.length; i++) {
     traits.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
@@ -147,6 +188,7 @@ export function createGeneral(world, nation, rng) {
   const general = {
     id: system.nextId++,
     nationId: nation.id,
+    branch: branch === BRANCH.NAVY ? BRANCH.NAVY : BRANCH.ARMY,
     name: `${FIRST[Math.floor(rng() * FIRST.length)]} ${LAST[Math.floor(rng() * LAST.length)]}`,
     skill,
     xp: 0,
@@ -180,6 +222,11 @@ export function seedGenerals(world, rng, perNation = 3) {
 
 export function generalsOf(nation) {
   return nation?.generals ?? [];
+}
+
+/** Tek kolun subayları. Kara komuta paneli amiralleri göstermemeli. */
+export function officersOf(nation, branch = BRANCH.ARMY) {
+  return generalsOf(nation).filter((general) => branchOf(general) === branch);
 }
 
 export function generalById(nation, generalId) {
@@ -582,6 +629,66 @@ function assignPosts(world, divisions, front) {
   index.clear();
 }
 
+// --- Suda kalan tumenin kurtarilmasi ---------------------------------------
+
+/** Cikarma noktasi bu yaricapa kadar aranir. */
+const STRAND_RESCUE_RADIUS = 6;
+
+/** Halka taramasi bosa cikarsa denenecek en yakin kendi-toprak sayisi. */
+const STRAND_RESCUE_FALLBACK = 12;
+
+/**
+ * Suda kalmis kara tumenini en yakin cikarma noktasina yonlendirir.
+ *
+ * NEDEN GEREKLI: `runGroup` embarked tumeni `divisions` listesine ALMAZ —
+ * hakli olarak, cunku denizdeki tumen cephe mevkisi tutamaz. Ama bunun yan
+ * etkisi sahiplenilmemis bir birimdi: `assignPosts` ona mevki vermiyor,
+ * `march` onu yurutmuyor, `advance` gormuyor. Yol bir kez dusunce
+ * (movement.js `reroute`, MAX_REROUTES sonrasi `clearPath`) tumen kalici
+ * olarak okyanusta kaliyordu.
+ *
+ * Olculdu (military-strategy-audit, 400 hafta): 17 tumen suda yetim, en uzun
+ * **277 hafta**, hepsinin generali vardi. Karaya donus emri bu dongunun tek
+ * cikisi.
+ */
+function rescueStranded(game, unit) {
+  const world = game.world;
+  const canEnter = game.canEnterFor(unit);
+  // Yakindan uzaga: ilk bulunan uygun kara karesi en yakin kiyidir.
+  for (let radius = 1; radius <= STRAND_RESCUE_RADIUS; radius++) {
+    let best = null;
+    let bestDistance = Infinity;
+    for (const { q, r } of hexesInRange(unit.tile.q, unit.tile.r, radius)) {
+      const tile = world.get(q, r);
+      if (!tile || tile.terrain.water || !tile.terrain.passable) continue;
+      if (!canEnter(tile)) continue;
+      const distance = world.wrapDistance(unit.tile.q, unit.tile.r, q, r);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = tile;
+      }
+    }
+    if (best && orderMove(game, unit, best)) return true;
+  }
+  // Yaricap icinde cikarma yeri yok. Olculen kalan vaka tam olarak buydu:
+  // tarafsiz bir ulkenin kiyisiyla cevrili korfezde embarked tumen — `allowed`
+  // baristaki topraga girisi (dogru sekilde) reddediyor, dolayisiyla hicbir
+  // komsu kare uygun degil. Cikis: kendi topragina donmek. Yalnizca halka
+  // taramasi basarisiz olunca kosar, yani pratikte cok seyrek.
+  const own = [];
+  world.forEach((tile) => {
+    if (tile.terrain.water || !tile.terrain.passable) return;
+    if (controllerOf(tile) !== unit.nationId) return;
+    own.push(tile);
+  });
+  own.sort((a, b) => world.wrapDistance(unit.tile.q, unit.tile.r, a.q, a.r)
+    - world.wrapDistance(unit.tile.q, unit.tile.r, b.q, b.r));
+  for (let i = 0; i < Math.min(own.length, STRAND_RESCUE_FALLBACK); i++) {
+    if (canEnter(own[i]) && orderMove(game, unit, own[i])) return true;
+  }
+  return false;
+}
+
 // --- Haftalik isleyis ------------------------------------------------------
 
 /** Yalniz gercekten muharebeye yazilacak, combat-width icindeki tumenlerin gucu. */
@@ -591,7 +698,16 @@ export function participatingAttackPower(units) {
     .reduce((sum, unit) => sum + armyPower(unit), 0);
 }
 
-/** Mevkisine yurumeyen tumenleri yola cikarir. */
+/**
+ * Mevkisine yurumeyen tumenleri yola cikarir.
+ *
+ * NOT (olculdu, denendi, GERI ALINDI): ulasilamaz bir mevkiye giden arama
+ * dugum tavanina kadar acilir ve tek basina 5.4 ms + megabaytlarca cop
+ * harcar; her hafta tekrarlanir. Aramaya 3000 dugumluk bir tavan koymak
+ * denendi — tahsisat DUSMEDI (19.3 MB/hafta) ama dunya durumu SAPTI: capsiz
+ * bulunabilen mesru yollar kayboldu, ordu bilesimi ve fabrika sayisi 530
+ * haftada farklilasti. Kazanci olmayan bir davranis degisikligi tutulmaz.
+ */
 function march(game, divisions) {
   for (const unit of divisions) {
     if (unit.battleId || (unit.retreatUntil ?? 0) > game.turns.turn) continue;
@@ -769,15 +885,27 @@ function advance(game, general, divisions) {
 /** Bir ordu grubunun haftalik isleyisi. */
 function runGroup(game, nation, general, context) {
   const world = game.world;
+  // Amiralin cephesi yok: filo sinir tutmaz. Hattini turetmek, haritada
+  // amirale ait olmayan bir kara cephesi cizdiriyordu.
+  if (branchOf(general) === BRANCH.NAVY) {
+    general.front = [];
+    general.planning = 0;
+    return;
+  }
   // Donanma cephe tutmaz: gemiler oyuncunun ve birim YZ'sinin elinde kalir.
   // Kimlik tablosundan cozulur: divisionsOf'un world.units.find'i general
   // basina O(tumen × birim) tarama biriktiriyordu.
   const divisions = [];
   for (const id of general.divisions) {
     const unit = context.unitById.get(id);
-    if (unit && unit.hp > 0 && unit.type.domain === 'land' && !unit.embarked) {
-      divisions.push(unit);
+    if (!unit || unit.hp <= 0 || unit.type.domain !== 'land') continue;
+    if (unit.embarked) {
+      // Denizdeki tumen cephe tutamaz ama sahipsiz de kalamaz: emri dusmusse
+      // karaya cikarilir (bkz. rescueStranded).
+      if (!isMoving(unit) && !unit.battleId) rescueStranded(game, unit);
+      continue;
     }
+    divisions.push(unit);
   }
   const front = frontFor(general, context.borders);
   general.front = front.map((tile) => ({ q: tile.q, r: tile.r }));
@@ -830,7 +958,23 @@ function runGroup(game, nation, general, context) {
  * ihtimali artar. YZ de tümen sayısına göre yeni subay yetiştirir.
  */
 const GENERAL_RETIRE_AGE = 30;
-const MAX_GENERALS = 8;
+export const MAX_GENERALS = 8;
+export const MAX_ADMIRALS = 4;
+
+/** Bir kolda kaç subay isteniyor: kadro emrettiği tümen sayısıyla büyür. */
+function wantedOfficers(world, nation, branch) {
+  let units = 0;
+  for (const unit of world.units) {
+    if (unit.nationId !== nation.id) continue;
+    const naval = unit.type.domain === 'sea';
+    if (naval === (branch === BRANCH.NAVY)) units++;
+  }
+  if (branch === BRANCH.NAVY) {
+    // Filosu olmayan ülke amiral yetiştirmez; deniz kadrosu donanmayı izler.
+    return units ? Math.min(MAX_ADMIRALS, Math.max(1, Math.ceil(units / 3))) : 0;
+  }
+  return Math.min(MAX_GENERALS, Math.max(2, Math.ceil(units / 4)));
+}
 
 function refreshOfficerCorps(game, nation, rng) {
   const world = game.world;
@@ -843,21 +987,64 @@ function refreshOfficerCorps(game, nation, rng) {
     for (const armyId of [...general.divisions]) releaseArmy(nation, armyId);
     nation.generals = generalsOf(nation).filter((other) => other.id !== general.id);
     if (nation.id === game.turns.playerNation) {
-      game.turns.addLog(`General ${general.name} retired after ${general.age} years.`,
+      const rank = branchOf(general) === BRANCH.NAVY ? 'Admiral' : 'General';
+      game.turns.addLog(`${rank} ${general.name} retired after ${general.age} years.`,
         { kind: 'COMMANDER' });
     }
   }
+  // Otomatik kadro kapalıysa boşalan yer boş kalır: subayı oyuncu yetiştirir.
+  if (!ensureCommandOptions(nation).autoCreate) return;
   // Komutasız tümen kalmasın: ordu büyüdükçe kadro da büyür.
-  const divisions = world.units.filter(
-    (unit) => unit.nationId === nation.id && unit.type.domain === 'land',
-  ).length;
-  const wanted = Math.min(MAX_GENERALS, Math.max(2, Math.ceil(divisions / 4)));
-  const cost = generalCost(nation);
-  if (generalsOf(nation).length >= wanted || nation.gold < cost.gold) return;
-  nation.gold -= cost.gold;
-  // Atama bedeli de deftere: bkz. cities.js pay() içindeki not.
-  if (nation.economy) nation.economy.outlayGold = (nation.economy.outlayGold ?? 0) + cost.gold;
-  nation.generals.push(createGeneral(world, nation, rng));
+  for (const branch of [BRANCH.ARMY, BRANCH.NAVY]) {
+    const wanted = wantedOfficers(world, nation, branch);
+    if (officersOf(nation, branch).length >= wanted) continue;
+    const cost = generalCost(nation);
+    if (nation.gold < cost.gold) return;
+    nation.gold -= cost.gold;
+    // Atama bedeli de deftere: bkz. cities.js pay() içindeki not.
+    if (nation.economy) nation.economy.outlayGold = (nation.economy.outlayGold ?? 0) + cost.gold;
+    nation.generals.push(createGeneral(world, nation, rng, { branch }));
+  }
+}
+
+/**
+ * Boşta kalan tümenleri kadroya dağıtır. Mikro yönetim mobilde en pahalı
+ * kalemdir (bkz. CLAUDE.md): yeni yetişen her alayı elle bir generale bağlamak
+ * kuyruk sisteminin kazandırdığı zamanı geri alırdı.
+ *
+ * Dağıtım deterministiktir — tümenler kimlik sırasıyla, en az yüklü subaya.
+ */
+/** Tek subayın komuta edebileceği tümen tavanı; otomatik dağıtım bunu aşmaz. */
+export const MAX_COMMAND_SIZE = 12;
+
+export function autoAssignCommands(world, nation, unitById = null) {
+  if (!ensureCommandOptions(nation).autoAssign) return 0;
+  const held = new Set();
+  for (const general of generalsOf(nation)) {
+    for (const id of general.divisions) held.add(id);
+  }
+  let assigned = 0;
+  for (const branch of [BRANCH.ARMY, BRANCH.NAVY]) {
+    const officers = officersOf(nation, branch);
+    if (!officers.length) continue;
+    const naval = branch === BRANCH.NAVY;
+    const loose = world.units
+      .filter((unit) => unit.nationId === nation.id && !held.has(unit.id)
+        && (unit.type.domain === 'sea') === naval)
+      .sort((a, b) => a.id - b.id);
+    for (const unit of loose) {
+      // Her seferinde en az tümeni olan subay; eşitlikte kimliği küçük olan.
+      const target = officers.reduce((best, other) => (
+        other.divisions.length < best.divisions.length ? other : best
+      ), officers[0]);
+      if (target.divisions.length >= MAX_COMMAND_SIZE) break;
+      assignDivisions(nation, target.id, [unit]);
+      held.add(unit.id);
+      assigned++;
+    }
+  }
+  if (assigned && unitById) reconcileCommand(world, unitById);
+  return assigned;
 }
 
 /**
@@ -887,6 +1074,7 @@ export function beginCommand(game) {
 export function* runNationCommandSteps(game, nation, context) {
   if (!nation.alive) return;
   refreshOfficerCorps(game, nation, context.rng);
+  autoAssignCommands(game.world, nation, context.unitById);
   for (const general of generalsOf(nation)) {
     runGroup(game, nation, general, context);
     yield;

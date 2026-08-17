@@ -223,7 +223,11 @@ function upkeepFactor(nation) {
 
 export function constructionPower(nation) {
   const sectorPower = constructionCount(nation, 'CONSTRUCTION_SECTOR') * 5;
-  return BASE_CONSTRUCTION_POWER + sectorPower * upkeepFactor(nation);
+  // Demiryolu teknolojileri insaat gucunu buyutur (Infrastructure klasoru).
+  // Duz alan okumasi: `economy.techMods` haftada bir kez kurulur, burasi
+  // sicak yoldur (bkz. technology.js refreshTechModifiers).
+  const tech = 1 + (nation.economy?.techMods?.constructionPower ?? 0);
+  return (BASE_CONSTRUCTION_POWER + sectorPower * upkeepFactor(nation)) * tech;
 }
 
 export function constructionUpkeep(nation) {
@@ -428,6 +432,29 @@ export function cancelConstruction(game, nationId, projectId) {
   game.renderer.invalidateConstruction?.();
   game.emit('construction', state);
   game.requestRender();
+  return true;
+}
+
+/**
+ * Projeyi kuyrugun basina ya da sonuna tasir.
+ *
+ * NEDEN AYRI BIR FIIL: tek adimlik ▲ ile 8 kalemlik kuyrugun basina cikmak
+ * ~20 tik ediyor ve satirlar her tiktan sonra imlecin altinda yeniden
+ * numaralaniyor. Beta testcisi bunu iki kez yanlis yapti — bir keresinde
+ * yukseltmeye calistigi kalemi DUSURDU — ve bunu oyundaki en kotu etkilesim
+ * olarak isaretledi (§7-1 SEVERE). Karar iyi, arac kotuydu; degisen yalniz
+ * arac.
+ */
+export function moveConstructionTo(game, nationId, projectId, edge) {
+  const nation = game.world.nations[nationId];
+  if (!nation) return false;
+  const state = ensureConstruction(nation);
+  const index = state.projects.findIndex((project) => project.id === projectId);
+  if (index < 0) return false;
+  const [project] = state.projects.splice(index, 1);
+  if (edge === 'top') state.projects.unshift(project);
+  else state.projects.push(project);
+  game.emit('construction', state);
   return true;
 }
 

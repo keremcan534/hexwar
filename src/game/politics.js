@@ -261,6 +261,45 @@ function collectPrivateCapital(nation) {
   );
 }
 
+/**
+ * Sandığı açar: en çok desteklenen parti iktidara gelir ve saat sıfırlanır.
+ * Haftalık tur da, oyuncunun erken seçim düğmesi de aynı yerden geçer —
+ * iki ayrı yazımda sonuçlar sessizce ayrışıyordu.
+ */
+function resolveElection(game, nation) {
+  const winner = [...nation.politics.parties].sort((a, b) => b.support - a.support)[0];
+  const previous = rulingParty(nation);
+  nation.politics.rulingPartyId = winner.id;
+  nation.politics.lastElectionTurn = game.world.turn;
+  nation.politics.nextElectionTurn = game.world.turn + nation.politics.electionInterval;
+  if (nation.id === game.turns.playerNation && previous?.id !== winner.id) {
+    game.turns.addLog(`${winner.name} won the election with ${Math.round(winner.support)}% support.`,
+      { kind: 'POLITICS' });
+  }
+  return winner;
+}
+
+/** Erken seçim penceresi, hafta. Vadeye bu kadar kalınca sandık açılabilir. */
+export const EARLY_ELECTION_WINDOW = 12;
+
+export function electionWindowOpen(world, nation) {
+  const next = nation?.politics?.nextElectionTurn;
+  return next != null && world.turn >= next - EARLY_ELECTION_WINDOW;
+}
+
+/**
+ * Oyuncunun sandığı erken açması. Vadeden çok önce çağrılırsa hiçbir şey
+ * olmaz: aksi halde beğenilmeyen sonuç tekrar tekrar atılabilirdi.
+ */
+export function holdElection(game, nation) {
+  if (!nation?.politics?.parties?.length) return false;
+  if (!electionWindowOpen(game.world, nation)) return false;
+  updatePoliticalSupport(game.world);
+  resolveElection(game, nation);
+  game.emit('politics', game.world.turn);
+  return true;
+}
+
 export function runPolitics(game) {
   const world = game.world;
   ensurePolitics(world);
@@ -270,15 +309,7 @@ export function runPolitics(game) {
     collectPrivateCapital(nation);
     applyGovernmentLimits(nation);
     if (world.turn < nation.politics.nextElectionTurn) continue;
-    const winner = [...nation.politics.parties].sort((a, b) => b.support - a.support)[0];
-    const previous = rulingParty(nation);
-    nation.politics.rulingPartyId = winner.id;
-    nation.politics.lastElectionTurn = world.turn;
-    nation.politics.nextElectionTurn = world.turn + nation.politics.electionInterval;
-    if (nation.id === game.turns.playerNation && previous?.id !== winner.id) {
-      game.turns.addLog(`${winner.name} won the election with ${Math.round(winner.support)}% support.`,
-        { kind: 'POLITICS' });
-    }
+    resolveElection(game, nation);
   }
   game.emit('politics', world.turn);
 }

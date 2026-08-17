@@ -90,12 +90,26 @@ export function locationName(tile) {
  * kohortun sınıfı ve karenin şehirleşmesi. Simüle edilen bir istatistik
  * DEĞİLDİR — eğitim bütçesinin defterde bir karşılığı olsun diye türetilir.
  */
-const CLASS_LITERACY = { lower: 0.13, middle: 0.61, upper: 0.92 };
+/**
+ * Sinifin ulusal okuryazarlik stoguna gore GORELI konumu. Aristokrasi her
+ * zaman ortalamanin uzerinde, isci her zaman altindadir; egitim ORTALAMAYI
+ * yukseltir, siniflar arasi mesafeyi degil.
+ */
+const CLASS_LITERACY_REL = { lower: 0.42, middle: 1.35, upper: 1.9 };
+
+/**
+ * Kohortun okuryazarligi. Artik ULUSAL STOKTAN turer (`economy.literacy`,
+ * bkz. economy.js `advanceLiteracy`) — eskiden egitim yuzdesinden dogrudan
+ * hesaplanan, hicbir sey biriktirmeyen saf bir formuldu.
+ */
 export function literacyOf(nation, cohort) {
-  const base = CLASS_LITERACY[cohort.classId] ?? 0.2;
-  const schooling = clamp(nation.economy?.social?.education ?? 0, 0, 100) / 100;
+  const stock = Number.isFinite(nation.economy?.literacy)
+    ? nation.economy.literacy
+    // Eski kayit / stok henuz kurulmadi: egitimden tek seferlik tahmin.
+    : 0.08 + clamp(nation.economy?.social?.education ?? 0, 0, 100) / 100 * 0.62 * 0.35;
+  const rel = CLASS_LITERACY_REL[cohort.classId] ?? 1;
   const urban = cohort.tile?.city ? 0.08 + cohort.tile.city.level * 0.02 : 0;
-  return clamp(base * (0.55 + 0.75 * schooling) + urban, 0, 0.99);
+  return clamp(stock * rel + urban, 0, 0.99);
 }
 
 /**

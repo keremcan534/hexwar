@@ -273,24 +273,30 @@ export function generateProvinces(world) {
 
   attachImpassableFringe(world, provinces);
 
-  // Kültür snap: province tek kültür konuşur (çoğunluk; eşitlikte küçük id).
-  // Sayaçlar yeniden kurulur ki cultureCounts gerçek dağılımı yansıtsın.
+  // Kültür bileşimi. `culture` hâlâ ÇOĞUNLUKTUR (eşitlikte küçük id) ve bütün
+  // oyun onu okur; yeni olan `cultures`, kümenin tam dağılımıdır.
+  //
+  // Eskiden oy sayımının yalnız kazananı saklanıyor, geri kalanı atılıyordu:
+  // iki halkın sınırından geçen bir küme %51/%49 bile olsa haritada tek renk
+  // görünüyordu. Dağılımı saklamak karışımı görünür kılar (bkz. cultures.js
+  // mixCultures ve renderer.drawCultureMix).
   for (const province of provinces) {
     const votes = new Map();
+    let total = 0;
     for (const idx of province.tileIdx) {
       const c = world.tiles[idx].culture;
-      if (c >= 0) votes.set(c, (votes.get(c) ?? 0) + 1);
+      if (c < 0) continue;
+      votes.set(c, (votes.get(c) ?? 0) + 1);
+      total++;
     }
-    let winner = -1;
-    let winnerVotes = -1;
-    for (const [c, v] of votes) {
-      if (v > winnerVotes || (v === winnerVotes && c < winner)) {
-        winner = c;
-        winnerVotes = v;
-      }
-    }
-    province.culture = winner;
-    for (const idx of province.tileIdx) world.tiles[idx].culture = winner;
+    const rows = total > 0
+      ? [...votes]
+        .map(([id, count]) => ({ id, share: count / total }))
+        .sort((a, b) => b.share - a.share || a.id - b.id)
+      : [];
+    province.cultures = rows;
+    province.culture = rows[0]?.id ?? -1;
+    for (const idx of province.tileIdx) world.tiles[idx].culture = province.culture;
   }
   if (world.cultures?.length) {
     for (const culture of world.cultures) culture.tiles = 0;

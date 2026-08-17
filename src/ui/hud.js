@@ -18,12 +18,12 @@ import { flagDataUrl } from '../render/flagPainter.js';
 import { Screens } from './screens.js';
 import { formatPopulation } from '../game/economy.js';
 import {
-  canRecruit, equipmentCostLabel, nationManpower, rallyTile, setRallyPoint,
+  canRecruit, equipmentCostLabel, nationManpower, rallyTile, setRallyPoint, trainingWeeks,
 } from '../game/recruitment.js';
 import {
-  MAX_SKILL, TRAITS, assignDivisions, commandSize, createGeneral, generalById,
-  aggressionInfo, borderNationIds, frontTilesOf, generalCost, generalOfArmy, generalsOf,
-  refreshFront, setAggression, unassignGeneral,
+  BRANCH, MAX_SKILL, TRAITS, assignDivisions, commandSize, createGeneral, generalById,
+  aggressionInfo, borderNationIds, frontTilesOf, generalCost, generalOfArmy,
+  officersOf, refreshFront, setAggression, unassignGeneral,
 } from '../game/command.js';
 import {
   RGO_TYPES, provinceOutput, provinceRgoStatus,
@@ -314,6 +314,14 @@ export class Hud {
         return;
       }
       if (event.code === 'Escape') {
+        // BUG-023: Escape hicbir seyi kapatmiyordu; oyuncu ✕'i aramak
+        // zorundaydi. Sira onemli — once ACIK PANEL kapanir, panel yoksa
+        // secim temizlenir. Tersi olsaydi panel acikken Escape sessizce
+        // secimi silip paneli birakirdi.
+        if (this.screens?.active) {
+          this.screens.close();
+          return;
+        }
         this.game.selectGeneral(null);
         this.game.selectUnits([]);
         return;
@@ -407,7 +415,9 @@ export class Hud {
     const { el, game } = this;
     const me = game.world?.nations[game.turns.playerNation];
     if (!me || !el.commandBar) return;
-    const generals = generalsOf(me);
+    // Yalniz kara kadrosu: bu serit cephe yonetimi icindir ve amiralin cephesi
+    // yoktur. Filo komutasi Military ekranindan verilir (bkz. militaryScreen).
+    const generals = officersOf(me, BRANCH.ARMY);
     const active = game.activeGeneral;
     const selected = game.selection.length;
 
@@ -626,7 +636,7 @@ export class Hud {
       battle.attackerNation === me.id || battle.defenderNation === me.id
     )) ?? [];
     const net = me.budget?.net ?? {};
-    let next = 'Review Production, Logistics or Construction before unpausing.';
+    let next = 'Review Military, Logistics or Construction before unpausing.';
     if (battles.length) next = 'A battle is active: select its army to inspect strength and organization.';
     else if (wars.length) next = 'Move an army onto an enemy army or province; defeated armies retreat.';
     this.el.sheetBody.innerHTML = `
@@ -670,7 +680,19 @@ export class Hud {
       ['Defense', `${Math.round(tile.terrain.defense * 100)}%`],
       ['Terrain', tile.terrain.name],
     ];
-    if (tile.culture >= 0) stats.push(['Culture', world.cultures[tile.culture].name]);
+    if (tile.culture >= 0) {
+      // Kümenin tam bileşimi: haritadaki çizgili tarama burada sayıya döner.
+      // Tek ad yazmak yanıltıcıydı — %51 çoğunluk da %100 gibi okunuyordu.
+      const mix = world.provinces?.[tile.provinceId]?.cultures ?? [];
+      const label = mix.length > 1
+        ? mix.filter((row) => row.share >= 0.05)
+          .map((row) => `${world.cultures[row.id]?.name ?? '?'} ${Math.round(row.share * 100)}%`)
+          .join(' · ')
+        : world.cultures[tile.culture].name;
+      stats.push(['Culture', label]);
+      const family = world.cultures[tile.culture].family;
+      if (family) stats.push(['Language', family]);
+    }
     // Fethin bedeli karede görünsün: işgal süresi ve verim kaybı.
     if (nation && tile.culture >= 0) {
       const held = (world.turn ?? 0) - (tile.heldSince ?? 0);
@@ -770,7 +792,10 @@ export class Hud {
         ([id]) => UNIT_TYPES[id].domain !== 'sea' || tile.coastal,
       ).map(([id, cost]) => {
         const disabled = canAfford(me, cost) && canRecruit(game.world, me, id) ? '' : 'disabled';
-        return `<button class="action" data-buy="${id}" ${disabled}>${UNIT_TYPES[id].name} · ${formatCost(cost)} · ${equipmentCostLabel(id)}</button>`;
+        // Alay artik siparistir: kac hafta egitildigi dugmede yazmali, yoksa
+        // oyuncu tikladiktan sonra haritada birim arar (bkz. recruitment.js).
+        return `<button class="action" data-buy="${id}" ${disabled}
+          title="Ordered into training; the full order book with reasons is on the Military screen.">${UNIT_TYPES[id].name} · ${formatCost(cost)} · ${equipmentCostLabel(id)} · ${trainingWeeks(id)}w</button>`;
       }).join('');
       // Nüfusun etnik bileşimi: yabancı halk payı ileride hoşnutsuzluğun ölçütü.
       const composition = Object.entries(city.pops)
@@ -902,7 +927,10 @@ export class Hud {
     const me = game.world.nations[game.turns.playerNation];
     const list = (Array.isArray(armies) ? armies : [armies]).filter(Boolean);
     const cost = generalCost(me);
-    const cards = generalsOf(me).map((general) => {
+    // Secim tamamen gemiyse amiral listesi acilir; karisik secimde kara kadrosu.
+    const branch = list.length && list.every((army) => army.type.domain === 'sea')
+      ? BRANCH.NAVY : BRANCH.ARMY;
+    const cards = officersOf(me, branch).map((general) => {
       const size = commandSize(general);
       const traits = general.traits
         .map((id) => `<em title="${escapeHtml(TRAITS[id].desc)}">${TRAITS[id].icon} ${escapeHtml(TRAITS[id].name)}</em>`)
@@ -942,7 +970,7 @@ export class Hud {
     if (train) {
       train.onclick = () => {
         if (!pay(me, generalCost(me))) return;
-        const general = createGeneral(game.world, me, game.turns.rng);
+        const general = createGeneral(game.world, me, game.turns.rng, { branch });
         game.turns.addLog(`${general.name} joined the officer staff.`);
         this.openGeneralPicker(list);
         this.showCommand();
@@ -1022,8 +1050,37 @@ function resourcesHtml(nation) {
   // Hazine binlik ayraçla okunur — dört haneden sonra ayraçsız sayı taranmıyor.
   return `
     <span title="treasury"><small>Treasury</small><b>¤${grouped(nation.gold)}${flow}</b></span>
-    <span title="national stability"><small>Stability</small><b>${stability}%</b></span>
+    <span title="${stabilityWhy(nation)}"><small>Stability</small><b>${stability}%</b></span>
     <span title="infamy — a coalition forms at ${INFAMY_COALITION}"><small>Infamy</small><b class="${infamyClass}">${infamy.toFixed(1)}</b></span>`;
+}
+
+/**
+ * "WHY STABILITY IS WHAT IT IS" — ticaret ekranindaki "WHY THE PRICE MOVES"
+ * kalibinin istikrara uygulanmis hali.
+ *
+ * Eski ipucu tam olarak sunu diyordu: "national stability". Yani etiketin
+ * kendisini. Beta bunu en yuksek deger/saat oranli eksiklik olarak isaretledi:
+ * oyuncu 60 yil boyunca istikrari neyin tuttugunu ogrenemedi.
+ *
+ * Sayilar UYDURULMAZ: hepsi `economy.stabilityBreakdown` icindeki gercek
+ * simulasyon kalemleridir ve toplamlari istikrara esittir.
+ */
+function stabilityWhy(nation) {
+  const bd = nation.economy?.stabilityBreakdown;
+  if (!bd) return 'national stability';
+  const pt = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1)}`;
+  const lines = [`Household satisfaction  ${pt(bd.base)}`];
+  if (bd.occupation < -0.0005) {
+    lines.push(`Occupied territory      ${pt(bd.occupation)}  (${Math.round(bd.occupiedShare * 100)}% of ${bd.occupiedTiles} hexes)`);
+  }
+  if (bd.war < -0.0005) {
+    lines.push(`War exhaustion          ${pt(bd.war)}  (${bd.warFronts} front${bd.warFronts === 1 ? '' : 's'})`);
+  }
+  if (bd.unemployment < -0.0005) {
+    lines.push(`Unemployment            ${pt(bd.unemployment)}  (${grouped(bd.unemployed)} without work)`);
+  }
+  lines.push(`= Stability             ${(bd.total * 100).toFixed(1)}%`);
+  return lines.join('\n');
 }
 
 /** Binlik ayraçlı tam sayı: 3847 → 3,847. */

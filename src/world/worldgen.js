@@ -10,7 +10,7 @@ import { makeRng } from '../core/rng.js';
 import { makeNoise2D, fbm } from '../core/noise.js';
 import { classify, SEA_LEVEL, TERRAIN } from './terrain.js';
 import { DIRS, SQRT3, axialToOffset, hexDistance, hexToPixel, offsetToAxial, wrapCol } from '../core/hex.js';
-import { generateCultures } from './cultures.js';
+import { generateCultures, mixCultures } from './cultures.js';
 import { generateProvinces } from './provinces-gen.js';
 import { buildGeography, zoneAnchors } from './geography.js';
 
@@ -187,6 +187,9 @@ export function generateWorld(seed, options = {}) {
   // Province bölümlemesi kültürden sonra: küme, üye çoğunluğunun kültürüne
   // "snap" eder. Kendi rng dalını kullanır, ana akışı kaydırmaz.
   generateProvinces(world);
+  // Karışım kümeler kurulduktan SONRA: sızma komşuluk üzerinden işler ve
+  // kırılmış kültürler küme küme azınlığa düşer (bkz. cultures.mixCultures).
+  mixCultures(world);
   // Kayıt yalnız üretilenden sapan kareleri yazar; taban kültür karşılaştırma için.
   world.forEach((t) => { t.baseCulture = t.culture; });
   // Arketip ülke yerleşimi bölge çapalarını arar (bkz. nations.js). Çapa

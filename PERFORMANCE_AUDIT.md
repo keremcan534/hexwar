@@ -392,3 +392,279 @@ taşınacak ilk adaylar, ölçülen CPU sırasıyla: **ekonomi kapanışı**
 O(cephe²) `wrapDistance` taraması — worker'dan önce algoritmik ucuzlatma
 denenmeli) ve **yol bulma**. Tahsisat temizliği sayesinde paylaşılacak
 durum artık SoA tampona kopyalanabilir boyutta.
+
+---
+
+## 9. CURRENT FULL PERFORMANCE WALK (4. tur — 2026-08-17)
+
+Kapsam: **mevcut HEAD**, bütün sistemler açık (askerî ekran + eğitim kuyruğu,
+kültür taraması, etiketler, animasyonlu su dahil). Eski commit'lere bakılmadı,
+özellik kapatılmadı, dünya küçültülmedi.
+
+Ortam: Chrome (Claude tarayıcı paneli), 961×910 CSS px görünüm, dpr 1,
+standart dünya 160×96 (15 360 hex, 64 ulus). Ölçüm iki ayaklı:
+
+- **Tarayıcı** — `scripts/perf-walk.js` (yeni): kareden BAĞIMSIZ bir rAF
+  gözcüsü + `PerformanceObserver('longtask')` + `core/perf.js` bölüm damgaları
+  + heap/GC. Gözcü şart: oyun duraklatılmışken su kadansında (33/66 ms) çizer,
+  yani oyunun kendi dt'si "kadans" ölçer, "takılma" ölçmez.
+- **Node** — `scripts/sim-profile.mjs` (yeni): aynı tohum + aynı ısıtma ile
+  haftalık faz sıralaması, **dilim dağılımı** ve tahsisat. Sunum hızından
+  bağımsız olduğu için optimizasyon öncesi/sonrası karşılaştırmasının tek
+  güvenilir yolu bu.
+
+> Ölçüm notu: tarayıcı paneli, önplanda sunum yapmadığı aralıklarda rAF'ı
+> ~1 Hz'e kısıyor. Bu duruma düşen koşular (dt ≈ 1000-4000 ms) rapora
+> ALINMADI; her sonuç, kare sayısı beklenen orana ulaşan koşulardan alındı.
+
+### 9.1 BASELINE — bu turdan önce (tur 471, 812 tümen, 2 266 tesis)
+
+| Test | fps | p50 | p95 | p99 | max | >33 ms | >50 ms | cpu ort | cpu max | MB/sn | GC |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| A duraklat, sabit (25 sn) | 143.5 | 7.0 | 7.9 | 8.0 | 75.7 | 1 | 1 | 0.56 | 1.6 | 0.02 | 0 |
+| B duraklat, kaydırma | 143.0 | 6.9 | 7.8 | 11.4 | 26.3 | 0 | 0 | 0.71 | 3.3 | 0.10 | 1 |
+| C duraklat, **zoom** | 116.8 | 7.0 | 19.0 | **46.2** | 66.1 | **45** | **15** | 0.95 | 5.9 | 0.61 | 7 |
+| D duraklat, kaydırma+zoom | 107.6 | 7.0 | 30.7 | **51.7** | 68.5 | **68** | **20** | 1.17 | 5.2 | 9.56 | 60 |
+| E hız 1 | 142.1 | 7.0 | 7.9 | 8.1 | 52.6 | 2 | 1 | 1.20 | **27.2** | 3.50 | 16 |
+| F hız 4 | 140.9 | 7.0 | 8.0 | 10.1 | 28.9 | 0 | 0 | 2.11 | **27.0** | 4.64 | 12 |
+| G hız 8 | 137.9 | 7.0 | 8.0 | 22.1 | 32.0 | 0 | 0 | 3.09 | **26.1** | 13.31 | 20 |
+| H hız 8 + kaydırma | 136.3 | 7.0 | 10.0 | 22.3 | 42.5 | 1 | 0 | 1.37 | 25.1 | **25.81** | 35 |
+| I hız 8 + zoom | 100.3 | 7.0 | 30.5 | **52.8** | **90.9** | **52** | **21** | 1.92 | 26.1 | **31.08** | 25 |
+| J hız 8 + kaydırma+zoom | 95.9 | 7.1 | 33.6 | **55.1** | 68.7 | **61** | **18** | 2.41 | 25.3 | 29.39 | 24 |
+
+Baseline'ın üç net sinyali:
+
+1. **Zoom** tek başına pacing'i bozuyor (p99 46-55 ms) ama `cpu` ≤6 ms ve
+   longtask sayısı **0** — yani suç JS kare geri çağrısında DEĞİL.
+2. Bütün hız testlerinde `cpu max` 25-27 ms: haftalık turun İÇİNDE bölünemeyen
+   bir adım 5 ms'lik dilim bütçesini beş katıyla aşıyor.
+3. Tahsisat hızla büyüyor: 13 → 26 → 31 MB/sn.
+
+### 9.2 Ölçüm hatası: faz profili yanlış sistemi suçluyordu (P0)
+
+`turnSteps` faz profili `mark(...); yield; stamp();` kalıbıyla yazılmıştı ve
+`stamp()` damgayı ilerlettiği için **dilim sınırında yapılan iş hiçbir kovaya
+yazılmıyordu**. Ulus başına yield eden fazlar (ai, komuta, ekonomi) neredeyse
+görünmezdi:
+
+| | hafta toplamı | profil toplamı | kapsama |
+|---|---|---|---|
+| önce | 112.1 ms | 9.6 ms | **9 %** |
+| sonra | 88.7 ms | 87.9 ms | **99 %** |
+
+Profil komutayı 0.17 ms/hafta gösterirken tek bir generalin dilimi 25 ms
+ölçülüyordu. Düzeltme: `pause(name)` üreteci (`yield* pause('economy')`) —
+mark+yield+stamp tek yerde, hiçbir iş kaybolmuyor. **Bu düzeltilmeden yapılan
+her sıralama yanlış olurdu.**
+
+### 9.3 GERÇEK haftalık sıralama (Node, 160×96, tur 531, 895 tümen, 2 134 tesis)
+
+| faz | ms/hafta | pay |
+|---|---|---|
+| **economy** | **21.59** | 53 % |
+| **command** | **8.85** | 22 % |
+| ai | 4.83 | 12 % |
+| reinforcements | 1.54 | |
+| contacts | 1.07 | |
+| produce · provinces · workers · construction · units · battles · movement · training · orders | ≤0.9 her biri | |
+| **toplam** | **40.76** | |
+
+Ekonomi içi: `econAI` 9.20 · `factories` 3.29 · `privateSector` 2.36 ·
+`fiscal` 2.24 · `raw` 1.26 · kalan ≤0.52.
+
+Tahsisat sıralaması (aynı dünya, `--expose-gc`): **command 8.25 MB/hafta**,
+**economy 7.22**, ai 1.70, workers 0.62, kalan ≤0.32 → toplam 18.8 MB/hafta.
+Hız 8'de bu ~21 MB/sn eder ve tarayıcıdaki 13-31 MB/sn ölçümüyle örtüşür.
+
+### 9.4 Darboğazlar — sıralı, her biri ölçülerek doğrulandı
+
+#### P0 · Zoom'da statik katmanın sürekli yeniden pişmesi
+`src/render/renderer.js` → `ensureStaticLayers`
+
+Karar kuralı `settled || uncovered || mag < 0.75 || mag > 1.33` idi. Sürekli
+zoomda büyütme eşiği her birkaç karede aşılıyor ve **1461×1384 boyutlu katman
+ÇİFTİ** yeniden boyanıp GPU'ya yükleniyordu. Kanıt (aynı dünya, 10 sn zoom
+taraması, yeniden pişirme tamamen kapatılarak):
+
+| | p95 | p99 | max | >33 ms | MB/sn |
+|---|---|---|---|---|---|
+| pişirme açık | 15.5 | **51.9** | 134.9 | 26 | 5.88 |
+| pişirme kapalı (deney) | 7.1 | **7.5** | 11.8 | **0** | 0.29 |
+
+Yani zoom takılmasının **tamamı** bu yeniden pişirmeydi.
+
+Denenen ve **GERİ ALINAN** çözüm: pişirmeyi LOD kovasına oturtmak. Kova
+değişiminde doku 1.6 kat büyüyor, her değişimde yeni tuval çifti ayrılıyordu:
+>50 ms kare 7'den 27'ye çıktı. Kayıt burada duruyor çünkü "mantıklı görünen"
+çözümün ölçümde kaybettiğinin kanıtı.
+
+Kabul edilen çözüm (kural C): **jest sürerken yalnız kapsama kaybında pişir**,
+jest yerleşince (150 ms) tam zoom'da bir kez. Aynı oturumda, aynı dünyada:
+
+| kural | p95 | p99 | max | >33 ms | >50 ms | MB/sn |
+|---|---|---|---|---|---|---|
+| eski (eşikli) | 22.0 | 54.5 | 131.6 | 37 | 20 | 16.12 |
+| kova (denendi) | 35.3 | 50.0 | 58.6 | 56 | 10 | 10.79 |
+| **C (kabul)** | **7.2** | **7.4** | **10.7** | **0** | **0** | **1.07** |
+
+Görsel doğrulama: jest bitince katman tam zoom'da pişiyor
+(`staticLayers.zoom === camera.zoom`), durağan haritada bulanıklık ve kenar
+boşluğu yok (ekran görüntüsüyle bakıldı).
+
+#### P1 · `industryTaken` her aday için bütün fabrikaları yeniden indeksliyordu
+`src/game/economy.js` → `industryTaken` / `factoriesInRegion` / `factoryAtlas`
+
+Özel sermaye ve YZ her hafta 29 tür × state sayısı kadar aday dener; her aday
+`factoriesInRegion` çağırıyor, o da ülkenin BÜTÜN fabrikaları üzerinde yeni bir
+`Map` kurup diziye yayıyordu. Ölçüldü (195 fabrikalı ülke, 11 state):
+`canBuildFactory` **0.052 ms/çağrı** × 319 aday = tek ülke için **16.6 ms/hafta**.
+
+Çözüm: ulus başına haftada bir kurulan `region|type` **Set** dizini (imza:
+bölge/fabrika/proje sayısı + atlas kimliği).
+
+| | ms/hafta |
+|---|---|
+| hafta toplamı | 40.76 → **33.50** (−18 %) |
+| economy | 21.59 → 16.21 |
+| economy.econAI | 9.20 → **5.87** (−36 %) |
+| economy.privateSector | 2.36 → 1.72 |
+
+Dünya durumu 530 hafta sonra **birebir aynı** (tur/tümen/tesis) → davranış
+değişmedi.
+
+#### P1 · Ekonomi dilimi üçer ulusluydu
+`src/game/turn.js` → ekonomi döngüsü
+
+5 ms'lik kare bütçesi **bölünemeyen** bir adımı bölemez; üçerli demet tek
+başına 8.9 ms tutabiliyordu. Ulus başına yield'e geçildi (sıra ve işlem dizisi
+aynı → determinizm etkilenmez):
+
+| | dilim/hafta | p95 | max | >5 ms dilim | hafta ms |
+|---|---|---|---|---|---|
+| önce | 347 | 0.36 | 8.85 | 47 | 31.01 |
+| sonra | 394 | 0.22 | 9.11 | **24** | 31.02 |
+
+#### P2 · Yol bulma kare başına dizi ayırıyordu
+`src/core/pathfind.js` → `findPath` / `reachable`
+
+`world.neighbors(tile)` kare başına yeni dizi kurar; ulaşılamaz bir mevkiye
+giden arama düğüm tavanına (19 200) kadar açılır. Ölçüldü: tek bir başarısız
+cephe yürüyüşü **5.4 ms**, ve mevki değişmediği için bu **her hafta** tekrar.
+Yön tablosu doğrudan gezilir hâle getirildi (ziyaret sırası DIRS ile birebir
+aynı):
+
+| | değer |
+|---|---|
+| command tahsisatı | 8.25 → **6.75 MB/hafta** |
+| command süresi | 7.98 → **6.71 ms/hafta** |
+| en kötü dilim | 9.11 → **7.52 ms** |
+| >5 ms dilim | 24 → **15** |
+| dünya durumu | **birebir aynı** |
+
+Denenen ve **GERİ ALINAN**: cephe yürüyüşüne 3000 düğümlük tavan. Tahsisat
+düşmedi (19.3 MB/hafta) ama dünya durumu SAPTI (tümen ve tesis sayıları 530
+haftada farklılaştı). Kazancı olmayan davranış değişikliği tutulmaz.
+
+#### P2 · Kapalı ekran DOM'da asılı kalıyordu
+`src/ui/screens.js` → `close()`
+
+Sekiz ekran yirmişer kez açılıp kapatıldığında belge **406 → 1049 düğüme**
+çıkıyor, son bakılan ekranın 635 düğümü (35 KB HTML) gizli hâlde asılı
+kalıyordu. Kapanışta gövde temizleniyor (açılış zaten `refresh()` ile baştan
+kuruyor):
+
+| | önce | sonra |
+|---|---|---|
+| 160 aç/kapat sonrası DOM büyümesi | +643 düğüm | **0** |
+| aç+kapat çevrimi | 11.8 ms | **7.5 ms** |
+
+Dinleyici sızıntısı YOK: bağlamalar `onclick =` atamasıyla yapılıyor, tekrar
+bağlama çoğaltmıyor (denetlendi).
+
+### 9.5 Duraklatılmış oyun denetimi (Faz 3)
+
+20 sn duraklat + sabit kamera, tur 1630:
+
+- simülasyon pompası: **0** (duraklat gerçekten duraklat)
+- yalnız su kadansı çiziyor: 14 kare/sn, kare başına cpu 0.71 ms
+- bölümler: `r.labels` 0.34 · `r.actors` 0.18 · `r.water` 0.15 · `r.static` 0.01
+- **tahsisat 0.08 MB/sn**, 20 saniyede **1** GC
+- dt p50 7.0 · p95 7.1 · p99 7.3
+
+Duraklatılmış oyunda mikro takılmanın kaynağı kalmadı.
+
+### 9.6 SONUÇ — walk sonrası (tur **1630**, baseline'dan çok daha ağır dünya)
+
+| Test | fps | p50 | p95 | p99 | max | >33 ms | >50 ms | cpu max | MB/sn |
+|---|---|---|---|---|---|---|---|---|---|
+| duraklat (panel çalkalamasından SONRA) | 142.0 | 7.0 | 7.1 | **7.2** | 161.5¹ | 1 | 1 | 1.1 | 0.12 |
+| kaydırma | 142.2 | 6.9 | 7.5 | 11.7 | 74.3¹ | 1 | 1 | 2.8 | 0.40 |
+| **zoom** | 142.0 | 7.0 | **7.2** | **8.9** | 49.3¹ | 2 | 0 | 0.9 | 0.95 |
+| hız 8 | 141.3 | 7.0 | 7.1 | 12.1 | 42.6 | 1 | 0 | **14.5** | 6.76 |
+| hız 8 + kaydırma | 141.5 | 6.9 | **9.1** | 13.7 | 27.5 | **0** | **0** | 13.9 | 20.73 |
+
+¹ Tek seferlik: koşu başında `reset()` zoom'u değiştiriyor ve yerleşme
+pişirmesi bir kez ödeniyor. Tekrarlayan değil.
+
+Faz 30 hedefleriyle karşılaştırma:
+
+| hedef | sonuç |
+|---|---|
+| duraklatılmışken mikro takılma yok | ✅ p99 7.2 ms · 0.12 MB/sn · 0 GC |
+| duraklatılmışken GC yok denecek kadar az | ✅ 12 sn'de 0 |
+| kaydırma akıcı | ✅ p95 7.5 |
+| zoom akıcı | ✅ p99 8.9 (hedef ≤25-30) |
+| hız 8 + kaydırma p95 ≤16 ms | ✅ **9.1** |
+| tekrarlayan 50+ ms kare yok | ✅ |
+| tekrarlayan 100+ ms donma yok | ✅ |
+
+Simülasyon tarafı (Node, aynı dünya, tur 531 — hepsi **birebir aynı dünya
+durumu** üretir):
+
+| | ms/hafta | en kötü dilim | >5 ms dilim | command MB/hafta |
+|---|---|---|---|---|
+| baseline | 40.76 | 8.85 | 47 | 8.25 |
+| + industry dizini | 33.50 | 8.85 | 47 | — |
+| + ulus başına ekonomi dilimi | 31.02 | 9.11 | 24 | — |
+| + yol bulma dizi temizliği | **30.64** | **7.52** | **15** | **6.75** |
+
+**Haftalık simülasyon −25 %, 5 ms'i aşan dilim sayısı −68 %.**
+
+### 9.7 Doğrulama
+
+- `audit:determinism` GEÇTİ (5 koşu + süreç izolasyonu; ayrı süreçlerde tam).
+- `audit:save` GEÇTİ (kaydet/yükle/100 hafta devam — alan alan aynı).
+- `diagnose:military` 29/29 GEÇTİ.
+- Her optimizasyon adımında dünya parmak izi (tur/tümen/tesis) 530 hafta sonra
+  karşılaştırıldı; sapan tek değişiklik (yol bulma tavanı) geri alındı.
+- Sekiz ekranın hepsi aç/kapat sonrası doğru çiziyor; konsol hatasız.
+
+### 9.8 Kalan darboğazlar ve öneriler
+
+1. **Hız 8 + kaydırmada 20.7 MB/sn tahsisat** (10 sn'de 38 GC). Pacing'i şu an
+   bozmuyor (p95 9.1 ms) ama en büyük kalan kalem. Ölçülen kaynak: economy
+   6.89 + command 6.65 MB/hafta. Sıradaki iş, `findPath` yığın nesnelerinin
+   (`{tile, f}`) havuzlanması ve ekonomi kapanışındaki geçici nesneler.
+2. **`cpu max` 13-14 ms** hız 8'de: en kötü dilim hâlâ tek bir ulusun ekonomisi
+   ya da bir generalin `march`ı. Bir sonraki adım ekonomi dilimini ulus İÇİNDE
+   bölmek (classes/raw/factories sınırları hazır).
+3. **Ulaşılamaz mevkiye giden yol araması** her hafta tekrarlanıyor. Tavan
+   koymak davranışı değiştirdiği için geri alındı; doğru çözüm mevki
+   seçiminde ulaşılabilirlik ön kontrolü (`assignPosts` tarafında).
+
+### 9.9 Worker kararı (Faz 32)
+
+**Şimdilik hayır.** Ölçüm: haftalık sim 30.6 ms, 394 dilime bölünmüş, en kötü
+dilim 7.5 ms; hız 8 + kaydırmada p95 9.1 ms ve >33 ms kare YOK. Simülasyon
+kamerayı/girişi maddi olarak bloklamıyor. Göç ancak şu eşiklerde gündeme
+gelir: dünya 2× büyürse, alt uç donanımda dilim bütçesi taşarsa ya da ekonomi
+tek ulus için 10 ms'i aşarsa. O gün ilk aday **ekonomi kapanışı** (begin/
+runNation/finish sınırı zaten hazır), ama paylaşılan dünya durumunu ağır
+mutasyona uğrattığı için risk yüksek, kazanç düşük.
+
+### 9.10 WebGL kararı (Faz 33)
+
+**Gerek yok.** Optimizasyon sonrası çizim tarafı kare başına 0.5-2.8 ms cpu
+harcıyor ve zoom'daki GPU maliyeti (katman yeniden yükleme) kaynağında
+çözüldü: zoom p99 8.9 ms. Canvas2D bu dünya boyutunda ölçülen bir darboğaz
+değil.
