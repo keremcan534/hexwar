@@ -65,6 +65,12 @@ for (const plan of PLANS) {
     const goods = Object.entries(world.market.goods);
     const ceiling = goods.filter(([id, g]) => g.price >= (GOODS[id].basePrice * 8) - 1e-9).length;
     const bankrupt = alive.filter((n) => (n.economy.creditPenalty ?? 0) > 0.3).length;
+    // YZ kendi tavanini (2 + fabrika/3, bkz. planConstructionAI) asiyor mu?
+    // Mutlak seviye olcut DEGIL: taban cizgide de buyuk imparatorluk 68
+    // sektor biriktiriyordu ve odeyebiliyordu. Hata olan tavan ihlalidir;
+    // kuyruktaki projelerin tamamlanma payi icin +2 tolerans.
+    const ceilingBreach = Math.max(0, ...alive.map((n) => investmentLevel(n, 'CONSTRUCTION_CAPACITY')
+      - (2 + Math.floor((n.economy.factories?.length ?? 0) / 3) + 2)));
     const stabilityAvg = alive.reduce((s, n) => s + (n.economy.stability ?? 0), 0)
       / Math.max(1, alive.length);
     const wars = alive.filter((n) => world.nations.some((o) => o.alive && o.id !== n.id
@@ -88,6 +94,7 @@ for (const plan of PLANS) {
       overThresholdWeeks,
       ceiling,
       bankrupt,
+      ceilingBreach,
       stabilityAvg,
       wars,
     };
@@ -128,10 +135,10 @@ for (const row of summaryRows) {
       'planConstructionAI ilk seviyeyi her ulkede kurmali',
       `${row.weeks} haftada toplam kapasite 0`, '');
   }
-  if (row.capacityMax > 25) {
-    finding('MEDIUM', `Kapasite patlamasi (${row.seed})`,
-      'artan fiyat + bakim yigmayi frenlenmeli',
-      `tek ulkede seviye ${row.capacityMax}`, '');
+  if (row.ceilingBreach > 0) {
+    finding('MEDIUM', `Kapasite tavan ihlali (${row.seed})`,
+      'YZ, planConstructionAI tavanini (2 + fabrika/3) asmamali',
+      `en kotu ulke tavani ${row.ceilingBreach} seviye asiyor`, '');
   }
   if (row.warships === 0 && row.weeks >= 520) {
     finding('MEDIUM', `Donanma hic kurulmuyor (${row.seed})`,
