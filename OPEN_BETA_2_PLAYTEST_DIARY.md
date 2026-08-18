@@ -413,3 +413,42 @@ Her sey gercek menu → gercek UI → gercek zaman akisi. Ben oyuncuyum.
   Baris zamani tamamen ilgisiz — ordum hasarsizken bos tablo.
 - REACTION: refah **SATISFYING** · arastirma korlugu **FRUSTRATING** ·
   "paranin isi bitti" hissi **TEDIOUS aday** (gec oyun sorusu buyuyor)
+
+## FEB 1851 → OCT 1854 — DORDUNCU ULHEIM SAVASI: Rovans
+
+Kampanyanin en buyuk savasi — ve ilk komuta ettigim savas. Uc yil surdu.
+
+- **Acilis (1851):** Ulheim dorduncu kez saldirdi (skor −4). Bu kez farkli:
+  7 alay, kale, ¤92k, 206K insan gucu. Seferberlik: 6 birim kuyruk, tedarik
+  %60 (100 istedim, 60'a SNAPLENDI — sessiz sinir yine), cephe hatti kuruldu.
+- **Cephe sistemi kendini gosterdi:** general sec → TARGET (cephe secimi) →
+  STANCE 1/2/3 → birakirsin, cephe YZ'si haftalik muharebeleri yonetir.
+  Kalici "BATTLE — Ulheim engaged at 27,23" bildirimleri, canli muharebe
+  kartlari (round X/20, STR/ORG), "Friendly divisions share provinces
+  without merging" kurali. Delegasyon iyi calisiyor — mikro yok.
+- **Iki yillik acmaz (1851-53):** Skor −18'de dondu. Stance 3'e cektim —
+  degisim yok. MEGER: general panelinde **"Start Offensive"** dugmesi
+  varmis (PLANNING %100 dolunca basiliyor). Stance ayari taarruzu
+  BASLATMIYOR; dugme baslatiyor. Iki yil bunu bilmeden savastim. Dugmeyi
+  kesfedince skor −18 → −8 → **+27**'ye ucstu. Cephe YZ'si Ironport'u
+  isgal etti ("CONQUEST — sovereignty will be decided at peace" bildirimi),
+  eski Torford'umu geri aldi.
+- **Dunya canli:** savasin ortasinda "DISPATCH — Quengard imposed terms on
+  Wynovik" haberi dustu; dunya liderligi Corya'dan Yarmark'a (1231!) gecti;
+  Gororland infamy 91 ile kuduruyor. Kendi infamy'm isgallerle 7/22'ye
+  cikti — "coalition at 22" esigi acikca yazili. SAVUNMA savasinda bile
+  isgal infamy'si birikmesi ilginc (dusunulmus mu?).
+- **Baris masasi dersi:** +9'da Torford'u istedim: "They will not cede an
+  inch: your war score buys no territory yet" — puan esitligi yetmiyor,
+  MARJ gerek. +27'de yeniden: Torford kirmizi (ISGAL ETTIGIM icin talep
+  edilebilir — kural: ancak fiilen tuttugun yeri alirsin, cok mantikli),
+  Haldburg/Pellholm gri (isgalim yok). "They will sign this treaty" canli
+  geri bildirimi mukemmel. Imzaladim: **TORFORD (ve petrolu) GERI DONDU.**
+- **Bilanco:** ~3 yil, nufus 712K→677K, istikrar 69→62, hazine 92k→80k,
+  ordu 7K→18.8K, iki yeni suvari generali otomatik atandi (auto-create
+  calisiyor).
+- REACTION: savas kavisi ve baris pazarligi **SATISFYING** (kampanyanin
+  zirvesi) · "Start Offensive" kesfedilebilirligi **CONFUSING → FRUSTRATING**
+  (B-025: stance ayari ile taarruz baslatma ayrimi hicbir yerde anlatilmiyor;
+  iki yillik acmazin sebebi ogretim eksigi) · tedarik kaydiraci sessiz
+  snap **CONFUSING** (B-026)

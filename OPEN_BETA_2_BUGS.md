@@ -269,3 +269,31 @@ REPRODUCIBILITY. Konsol hatasi sayaci ayrica en altta.
   normal harita tiklamasi RGO'yu gosteriyor, baris masasi secimi gostermiyor.
 - PLAYER IMPACT: Stratejik degeri olculemeyen tavizler.
 - REPRODUCIBILITY: %100.
+
+## B-024 · INCONCLUSIVE — Donanma "ORDER" ilk denemelerde tutmadi
+
+- DATE: 1843, 1849
+- NOT: Sonunda kartin kendisine tiklayinca calisti ([data-military-build]).
+  Ilk basarisizliklar buyuk olasilikla test surucusunun metin-tabanli
+  tiklamasindandi; oyun hatasi olarak SAYILMAYABILIR. Kayit durustluk icin.
+
+## B-025 · MAJOR — "Start Offensive" mekanigi kesfedilemez
+
+- DATE: 1851-1853 (iki yillik acmaz)
+- CONTEXT: Stance 1/2/3 + Offensive secili oldugu halde cephe iki yil kimildamadi.
+- EXPECTED: Stance "Offensive" ise taarruzlar kendiliginden planlanip
+  baslamali; ya da "planlama %100 — taarruzu baslat" cagrisi bir bildirimle
+  oyuncuya soylenmali.
+- ACTUAL: Taarruz yalnizca general panelindeki "Start Offensive" dugmesiyle
+  basliyor; bunu soyleyien hicbir ogretici/bildirim yok. Dugmeyi tesadufen
+  buldum; skor aninda −18'den +27'ye dondu.
+- PLAYER IMPACT: Cok yuksek — savasin kaderini belirleyen tek dugme gizli.
+- REPRODUCIBILITY: %100.
+
+## B-026 · MINOR — Butce kaydiraclarinda sessiz uc deger yuvarlamasi
+
+- DATE: 1851
+- ACTUAL: Tedarik/maas kaydiragi 100 istenince 60'a, Welfare 20 istenince
+  25'e yuvarlandi; adim/uc deger kurali gorunmuyor.
+- PLAYER IMPACT: Dusuk-orta; niyet ile sonuc farkli, sebep yazmiyor.
+- REPRODUCIBILITY: %100.
