@@ -452,3 +452,44 @@ Kampanyanin en buyuk savasi — ve ilk komuta ettigim savas. Uc yil surdu.
   (B-025: stance ayari ile taarruz baslatma ayrimi hicbir yerde anlatilmiyor;
   iki yillik acmazin sebebi ogretim eksigi) · tedarik kaydiraci sessiz
   snap **CONFUSING** (B-026)
+
+---
+
+# ✦ KONTROL NOKTASI: %25 (10 MAY 1861)
+
+- **CURRENT GOAL:** Kaybedilen kuzeybatiyi (Haldburg/Pellholm) geri almak
+  icin ikinci bir firsat savasi; iceride Coke Smelting → celik sanayi.
+  Acilistaki "sanayi devi" tutkusu geri geldi — artik hayal degil plan.
+- **BIGGEST PROBLEM:** Arastirma korlugu (5. kez bos, 1165 RP banka — on
+  yillik arastirma sessizce boşa aktı, B-018). Ikincisi: butce kaydiraclarim
+  hala kalici degil (Health/Welfare ayarlarim yine silinmisti).
+- **MOST INTERESTING DECISION:** Beyaz barisi REDDEDIP Torford icin savasi
+  uzatmak — ve kazanmak. Ilk kez oyun bana "kumar oynadin ve tuttu" hissi
+  verdi.
+- **MOST BORING TASK:** Hiz 8'de dakikalarca bos bekleyis (sakin yillarda
+  yapacak SEY yok: devlet sanayi yasak, egitim tavanli, reform yilda bir).
+  1857-1861 arasi neredeyse hic karar vermedim.
+- **MECHANICS MOST USED:** cephe/taarruz sistemi, baris masasi, butce
+  defteri, teknoloji ekrani (mecburen — idle nobetciligi).
+- **MECHANICS MOST IGNORED:** Logistics (baris zamani bos), subvansiyon
+  (hic gerekmedi), donanma (1 gemi — kullanacak savas yok), Trade tarife
+  ayari (gorunmez el yuzunden), HOLD ELECTION dugmesi (dokunmadim).
+- **ECONOMIC:** GDP 836 (basangictaki 463'un 1.8×). Hazine ¤87k AMA
+  −129/hafta: refah paradoksu — needs met %97 olan halk ithalata boguldu
+  (ithalat ¤257 vs ihracat ¤90), ihracat fazlasi eridi. Issizlik 209K→120K.
+  Kapitalist sinif %5.5'e cikti. Fabrika: 8 tesis / 42 seviye / 80K isci.
+- **POLITICAL:** Sosyalist diktatorluk 20. yilinda. Yillik "secimler"
+  sonuc degistirmiyor (0 kayitli secmen!). Reform temposu yilda 1.
+  Istikrar %76 (rekor).
+- **MILITARY:** 19K ordu, 5 general (biri 4★), 1 savas gemisi, 1 kale.
+  4 savasin bilancosu: 3 yenilgi (6 eyalet), 1 zafer (Torford geri).
+- **TECH:** 5 tamamlandi (hepsi sanayi agaci). Okuryazarlik %23 (0'dan).
+  Coke Smelting simdi basladi (banka sayesinde aninda bitecek).
+- **WORLD:** Dunya ticareti ¤34k (4.5× buyudu) — kuresel sanayi devrimi
+  suruyor; en kit mal KOMUR. Hegemon: Yarmark (1231). Gororland infamy 91
+  ile dunya dusmani. Ulke sayisi 64'e dustu.
+- **PERFORMANCE:** Hiz 8 = 0.4 hafta/sn (1841'de 0.72 idi — dunya
+  buyudukce yavasliyor, B-014 kalici egilim). UI hala akici, konsol temiz.
+- **WOULD I KEEP PLAYING? → YES** — ama sakin donem doldurucusu yok:
+  savas ve kriz muhtesem, baris TEDIOUS. "Bir sonraki hedefim ne" sorusuna
+  oyun yardim etmiyor (gorev/odak sistemi yok); hedefi ben uyduruyorum.
