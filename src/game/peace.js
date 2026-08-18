@@ -11,6 +11,7 @@
 import { atWar, makePeace, nationStrength, warLossesOf } from './diplomacy.js';
 import { controllerOf } from './control.js';
 import { soldiersOf } from './units.js';
+import { annexInfamy } from './infamy.js';
 
 /** Warscore 0-100 arasıdır; 100 tam teslimiyet demektir. */
 export const MAX_WAR_SCORE = 100;
@@ -620,12 +621,17 @@ export function signPeace(game, a, b, offer) {
   if (!offerAcceptable(world, a, b, offer)) return false;
 
   const transfer = (keys, from, to) => {
+    const taken = [];
     for (const key of keys ?? []) {
       const province = provinceFromKey(world, key);
       if (!province || province.owner !== from) continue;
+      taken.push(province);
       // Devir küme bütünüyle: sınır hiçbir kümeyi ikiye bölmez.
       game.turns.claimAtPeace(province.center, to);
     }
+    // Fethin KALICI diplomatik bedeli masada ödenir. İşgal şöhreti yerinde
+    // kalır ama asıl kaynak burasıdır — bkz. infamy.annexInfamy.
+    annexInfamy(world, world.nations[to], taken);
   };
   transfer(offer?.demands, b, a);
   transfer(offer?.concessions, a, b);

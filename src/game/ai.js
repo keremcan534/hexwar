@@ -5,7 +5,8 @@ import {
   CITY_COST, UNIT_COSTS, canAfford, canFoundCity,
 } from './cities.js';
 import {
-  MIN_WAR_TURNS, atWar, declareWar, nationStrength, relation, truceLeft,
+  MIN_WAR_TURNS, atWar, attackerCount, declareWar, nationStrength, recordWarProgress,
+  relation, truceLeft,
 } from './diplomacy.js';
 import {
   buildOffer, demandLimit, occupiedProvincesOf, offerCost, offerMeetsExpectation, provinceKeyOf,
@@ -27,6 +28,32 @@ import { rulingParty } from './politics.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
 const WAR_THRESHOLD = 1.4;
+
+/**
+ * ZATEN SAVAŞTA olan bir ülkeye saldırmak için gereken üstünlük ve sınır.
+ *
+ * NEDEN VAR: eski kural "zaten savaşan ülkeye çullanılmaz"dı ve hedefe
+ * uygulanıyordu. Amacı (kurbanı bekleyen kuyruğu kırmak) doğruydu ama yan
+ * etkisi ölçüldü — Open Beta 3, 23.400 komşu-değerlendirmesi: SÜREKLİ SAVAŞAN
+ * BİR ÜLKE SÜREKLİ DOKUNULMAZDI. Oyuncu 64 yıl boyunca her yıl savaş açtı ve
+ * o yıllarda YZ için geçerli bir hedef bile olmadı; 27 savaşın 26'sı onun
+ * ilanıydı. Salam taktiği hem toprak hem saldırılmazlık satın alıyordu.
+ *
+ * Artık ikinci cephe MÜMKÜN ama ucuz değil: sıradan bir üstünlük yetmez,
+ * açık ara güç ve gerçek bir sınır ister. Üçüncü saldırgana hiç izin yok —
+ * savaş zincirinin asıl sebebi oydu.
+ */
+const SECOND_FRONT_THRESHOLD = 2.2;
+const SECOND_FRONT_CONTACT = 3;
+const MAX_ATTACKERS = 2;
+
+/**
+ * Kazanan tarafın masaya oturmadan önce savaşı taşıması gereken asgari süre ve
+ * cephenin "durdu" sayılması için gereken durgunluk. İlk ucuz küme
+ * karşılanabilir olur olmaz imzalanan barış, savaşa gövde bırakmıyordu.
+ */
+const WAR_MIN_BODY = 26;
+const WAR_STALL_WEEKS = 18;
 
 /** Aylık hazırlık kontrolünün ilan aşamasına gelme ihtimali. */
 const DECLARE_CHANCE = 0.03;
@@ -116,6 +143,12 @@ function diplomacy(game, nation, rng) {
         appetite: 0.75 + rng() * 0.25,
         termShare: rng() < 0.35 ? 0.5 : 0,
       });
+      // SAVAŞIN GÖVDESİ. Kazanan taraf, ilk ucuz küme karşılanabilir olur olmaz
+      // masaya oturmaz: ya cephe durmuş olmalı, ya talep tavana dayanmalı.
+      // Beta 3'te bu kapı yoktu ve savaşların ortancası 12 haftaydı.
+      const stalled = recordWarProgress(world, nation.id, foe.id, score);
+      const saturated = offer.demands.length >= demandLimit(score);
+      const bodied = game.turns.turn - rec.since >= WAR_MIN_BODY;
       // ELİ BOŞ MASAYA OTURMAZ. Ölçümde savaşların tamamı tam böyle
       // kapanıyordu: kazanan taraf hiçbir şey isteyemediği için beyaz barış
       // teklif ediyor, 68 yılda tek bir sınır değişmiyordu. Talebi
@@ -124,7 +157,10 @@ function diplomacy(game, nation, rng) {
       // Tek istisna donmuş savaş: sekiz yılı geçmiş bir tıkanma kapanabilmeli,
       // yoksa cephe sonsuza kilitlenir (gec oyunun eski karar boşluğu).
       const stale = game.turns.turn - rec.since > 8 * 52;
-      if (offerCost(world, offer) > 0 || stale) offerPeace(game, nation, foe, offer, rng);
+      const ripe = stale || (bodied && (saturated || stalled >= WAR_STALL_WEEKS));
+      if ((offerCost(world, offer) > 0 || stale) && ripe) {
+        offerPeace(game, nation, foe, offer, rng);
+      }
     } else if (score <= PEACE_LOSS_SCORE
       || myPower < nationStrength(world, foe) * 0.6) {
       offerPeace(game, nation, foe, surrenderOffer(world, nation, foe), rng);
@@ -153,18 +189,17 @@ function diplomacy(game, nation, rng) {
   for (const other of world.nations) {
     if (!other.alive || other.id === nation.id) continue;
     if (atWar(world, other.id, nation.id)) continue;
-    // Zaten savaşan ülkeye çullanılmaz. Savaş zincirinin asıl sebebi buydu:
-    // bir ülke zayıflar zayıflamaz bütün komşuları üstüne biniyor, o da
-    // çökünce sıradakine geçiyordu. Kurbanı bekleyen kuyruk kalkar.
-    const busy = world.nations.some(
-      (third) => third.alive && third.id !== other.id && atWar(world, third.id, other.id),
-    );
-    if (busy) continue;
     const contact = contacts[nation.id][other.id];
     if (!contact) continue;
     if (truceLeft(world, nation.id, other.id, game.turns.turn) > 0) continue;
     const ratio = myPower / Math.max(1, nationStrength(world, other));
     if (ratio < WAR_THRESHOLD) continue;
+    // Çullanma sınırı: üçüncü saldırgan hiç binmez, ikincisi ancak açık ara
+    // üstünlük ve gerçek bir sınırla biner (bkz. SECOND_FRONT_THRESHOLD).
+    const fronts = attackerCount(world, other.id);
+    if (fronts >= MAX_ATTACKERS) continue;
+    if (fronts > 0
+      && (ratio < SECOND_FRONT_THRESHOLD || contact < SECOND_FRONT_CONTACT)) continue;
     // Uzun sınır + zayıf komşu = cazip hedef.
     const score = ratio * Math.log(1 + contact);
     if (score > bestScore) {

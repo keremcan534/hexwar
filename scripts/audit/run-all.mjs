@@ -30,6 +30,8 @@ const AUDITS = [
   ['save', 'Y. Kayit / yukleme'],
   ['legacy', 'Z. Eski sistemler'],
   ['war-outcome', 'Savas sonucu ve toprak devri'],
+  ['war-pressure', 'Stratejik baski: savas suresi, sohret, cullanma'],
+  ['war-declaration-guard', 'Savas ilani nihai kapisi'],
   ['border-change', '50 yilda sinir degisimi'],
   ['long-run', 'Uzun kosu dunya testleri'],
 ];

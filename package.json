@@ -61,6 +61,8 @@
     "audit:trade-consequence": "node scripts/audit/trade-consequence-audit.mjs",
     "audit:peace-stakes": "node scripts/audit/peace-stakes-audit.mjs",
     "audit:war-outcome": "node scripts/audit/war-outcome-audit.mjs",
+    "audit:war-pressure": "node scripts/audit/war-pressure-audit.mjs",
+    "audit:war-guard": "node scripts/audit/war-declaration-guard-audit.mjs",
     "audit:borders": "node scripts/audit/border-change-audit.mjs",
     "audit:stability": "node scripts/audit/stability-audit.mjs",
     "audit:military-strategy": "node scripts/audit/military-strategy-audit.mjs",

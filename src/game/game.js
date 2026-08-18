@@ -674,7 +674,8 @@ export class Game {
   }
 
   declareWarOn(nationId) {
-    const ok = declareWar(this, this.turns.playerNation, nationId);
+    // Oyuncunun kendi karari: merkezi kapi bunu istemsiz ilandan ayirir.
+    const ok = declareWar(this, this.turns.playerNation, nationId, { manual: true });
     if (ok) {
       this.selectUnit(this.selectedUnit);
       this.emit('units', this.selectedUnit);

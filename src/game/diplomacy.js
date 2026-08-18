@@ -10,14 +10,44 @@ import { controllerOf } from './control.js';
 export const WAR = 'war';
 export const PEACE = 'peace';
 
-/** Barış görüşmesi için savaşın en az sürmesi gereken tur sayısı. */
-export const MIN_WAR_TURNS = 8;
+/**
+ * Barış görüşmesi için savaşın en az sürmesi gereken tur sayısı.
+ *
+ * 8'den 16'ya. Open Beta 3'te ölçüldü: savaşların ORTANCASI 12 hafta, %69'u
+ * 16 haftanın altındaydı — oyuncunun 25 savaşının ortalaması 11,4 hafta ve
+ * 4 muharebeydi. Bunlar savaş değil baskındı; masa açılana kadar cephe diye
+ * bir şey kurulmuyordu. Dört ay, seferberliğin ve ilk kuşatmanın sığdığı
+ * asgari gövdedir.
+ */
+export const MIN_WAR_TURNS = 16;
 
 /**
  * Barıştan sonra yeniden savaş ilan edilemeyen tur sayısı. Ateşkes olmadan
  * barış yapıp ertesi tur yeniden saldırmak serbestti; tempoyu bu tutuyor.
  */
 export const TRUCE_TURNS = 40;
+
+/**
+ * Ateşkes, AYNI kurbana tekrarlanan her savaşla uzar.
+ *
+ * NEDEN: Open Beta 3'te salam taktiği baskın stratejiydi ve ölçüldü — oyuncu
+ * aynı komşuya her yıl saldırıp 1-3 küme aldı (Turesh 1855-56-57-58, Kazyldor
+ * 1859-60-61-62-64-65), YZ de aynısını yaptı (bir çift 64 yılda 14 kez
+ * savaştı). Sabit 40 haftalık ateşkes bir yıllık döngüye tam oturuyordu.
+ *
+ * Artık ilk savaş 40 hafta, ikincisi 72, üçüncüsü 104... dört yılda tavanlanır.
+ * İlk savaşın temposu değişmez; tekrarlayan yağma pahalılaşır.
+ */
+export const TRUCE_REPEAT_STEP = 0.8;
+export const TRUCE_MAX_TURNS = 208;
+
+export function truceLengthFor(repeats) {
+  const previous = Math.max(0, (repeats ?? 1) - 1);
+  return Math.min(
+    TRUCE_MAX_TURNS,
+    Math.round(TRUCE_TURNS * (1 + previous * TRUCE_REPEAT_STEP)),
+  );
+}
 
 /**
  * Simetrik ilişki tablosu: world.relations[a][b] ile [b][a] *aynı* nesnedir.
@@ -72,6 +102,36 @@ export function warLossesOf(world, a, b) {
   return relation(world, a, b)?.losses ?? {};
 }
 
+/**
+ * `a`nın bu savaştaki en iyi skoru ne zamandır kımıldamıyor?
+ *
+ * Savaşa bir gövde vermek için gerekli: kazanan taraf cephe hâlâ ilerlerken
+ * masaya oturmamalı. Dönen sayı, skorun son anlamlı iyileşmesinden bu yana
+ * geçen hafta sayısıdır.
+ */
+export function recordWarProgress(world, a, b, score) {
+  const rec = relation(world, a, b);
+  if (!rec || rec.state !== WAR) return 0;
+  const turn = world.turn ?? 0;
+  const peaks = rec.peaks ?? (rec.peaks = {});
+  const entry = peaks[a] ?? (peaks[a] = { best: score, turn });
+  // Gürültü eşiği: bir-iki puanlık salınım "ilerleme" sayılmaz.
+  if (score > entry.best + 2) {
+    entry.best = score;
+    entry.turn = turn;
+  }
+  return Math.max(0, turn - entry.turn);
+}
+
+/** Bu ulusa şu an kaç ayrı ülke saldırıyor? Çullanma sınırının ölçütü. */
+export function attackerCount(world, nationId) {
+  let count = 0;
+  for (const other of world.nations) {
+    if (other.alive && other.id !== nationId && atWar(world, other.id, nationId)) count++;
+  }
+  return count;
+}
+
 /** Ateşkes sürüyorsa savaş ilan edilemez. */
 export function truceLeft(world, a, b, turn) {
   const rec = relation(world, a, b);
@@ -79,11 +139,50 @@ export function truceLeft(world, a, b, turn) {
   return Math.max(0, (rec.truceUntil ?? 0) - turn);
 }
 
-export function declareWar(game, a, b) {
+/**
+ * Bir ulusa aynı anda binebilecek azami saldırgan — MERKEZÎ TAVAN.
+ *
+ * NEDEN BURADA: tavan önce yalnız `ai.js`'in hedef seçme döngüsündeydi ve
+ * `checkCoalitions` o kapıdan geçmiyordu. Ölçüldü (tohum OB3-1836, tur 755):
+ * oyuncu üç cephedeyken koalisyon dördüncüyü ekledi. Kural, kuralı çiğneyecek
+ * her yolun ORTAK geçtiği yerde durmalı — o yer burasıdır.
+ */
+export const MAX_ATTACKERS_ON_TARGET = 3;
+
+/**
+ * Oyuncunun İSTEMSİZ taşıyabileceği azami cephe. Kendi ilan ettiği savaşlar
+ * bu tavana takılmaz: oyuncu kendi mezarını kazabilir, ama dünya oyuncuyu
+ * haberi olmadan dört cepheye sokamaz.
+ */
+export const MAX_PLAYER_INVOLUNTARY_FRONTS = 2;
+
+/**
+ * Savaş ilanı. `manual: true` yalnız OYUNCUNUN kendi kararı için geçilir;
+ * YZ ve koalisyon bu bayrağı asla kullanmaz.
+ *
+ * Buradaki üç kapı nihai kapılardır — `ai.js`'teki kontroller ucuz erken
+ * çıkışlardır, güvenlik onlara emanet değildir.
+ */
+export function declareWar(game, a, b, options = {}) {
   const world = game.world;
+  const manual = options.manual === true;
   if (a === b || atWar(world, a, b)) return false;
   if (truceLeft(world, a, b, game.turns.turn) > 0) return false;
-  setState(world, a, b, WAR, game.turns.turn);
+
+  const player = game.turns?.playerNation;
+  // 1) Oyuncu ADINA otomatik savaş ilan edilemez. Koalisyon oyuncuya KARŞI
+  //    kurulabilir; oyuncuyu üye yapamaz. (İleride bu bir UI kararı olabilir.)
+  if (a === player && !manual) return false;
+  // 2) Çullanma tavanı: hiçbir ulusun üstüne üçten fazla saldırgan binmez.
+  if (attackerCount(world, b) >= MAX_ATTACKERS_ON_TARGET) return false;
+  // 3) Oyuncuya istemsiz açılan cephe sayısı ayrıca dardır.
+  if (b === player && !manual
+    && attackerCount(world, player) >= MAX_PLAYER_INVOLUNTARY_FRONTS) return false;
+
+  // Kaçıncı savaş: ateşkes uzunluğu buna bakar, o yüzden barış kaydından
+  // savaş kaydına taşınmalı (setState yeni bir nesne kurar).
+  const wars = (relation(world, a, b)?.wars ?? 0) + 1;
+  setState(world, a, b, WAR, game.turns.turn, { wars });
   // Savaş ilanının anlık harita izi yok (sınır rengi değişmez; işgal
   // taraması ancak kareler el değiştirince başlar) — tam geçersizleme
   // YZ'nin her ilanında tüm önbelleği boşuna yakıyordu.
@@ -133,8 +232,10 @@ export function makePeace(game, a, b, options = {}) {
   const world = game.world;
   if (!atWar(world, a, b)) return false;
   const transferred = options.settle === false ? 0 : settleOccupations(game, a, b);
+  const wars = relation(world, a, b)?.wars ?? 1;
   setState(world, a, b, PEACE, game.turns.turn, {
-    truceUntil: game.turns.turn + TRUCE_TURNS,
+    truceUntil: game.turns.turn + truceLengthFor(wars),
+    wars,
   });
   // Toprak devri settleOccupations/claimAtPeace içinde nokta geçersizleme
   // ile işaretlendi; barışın kendisinin ayrıca harita izi yok.
