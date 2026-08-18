@@ -189,7 +189,7 @@ by selecting something else.
 
 ---
 
-## B2-025 — CRITICAL — Late-game simulation collapses to ~0.1 weeks/second and 0.3 fps
+## B2-025 — ~~CRITICAL~~ **RETRACTED / MINOR** — late-game slowdown was mostly my test environment
 
 **Date/context:** measured repeatedly 1903, seed 8V9X3W, 105 divisions, 112 factories,
 at war and then at peace.
@@ -211,6 +211,23 @@ divisions arrived.
 
 **Player impact:** the campaign ends here. This is the single reason the blind campaign
 stopped at year 68 of 100.
+
+**RETRACTION (second session).** I regenerated the *same seed* in the same browser and
+measured a **fresh 1836 world with 2 divisions**:
+
+| state | fps | big rAF gaps | worst thing the game's own profiler saw |
+|---|---|---|---|
+| 1903, 105 divisions | 0.3 | ~2000 ms | frame 34-42 ms |
+| **1836, 2 divisions** | **0.6** | **1617 / 1994 / 1994 / 2004 ms** | `clock-tick` 33.5 ms, `sim` 20.1 ms, autosave 24.1 ms, HUD 12.7 ms |
+
+An empty 1836 world stalls **exactly the same way** as the 1903 one, and nothing the game
+does exceeds 34 ms in either. The ~2-second stalls are the automation/headless-browser
+environment, not Imperial Eye.
+
+**Therefore the in-browser figures in this entry do not measure the game and must not be
+acted on.** My original diagnosis was wrong, and so was the army-size hypothesis.
+
+What survives, from the headless bench (no browser at all):
 
 **PHASE B calibration — partly the game, partly my harness.**
 
@@ -239,9 +256,9 @@ session. **I cannot attribute the 0.06 wk/s figure entirely to the game.** What 
 the measured 10× headless cost growth by 1900, and the in-browser fall from 2.3 → 1.17 →
 ~0.1 weeks/second over the campaign.
 
-Army size (26 → 105 divisions between 1896 and 1900) fits the timing and is the best
-remaining candidate for the game-side component — but it is a hypothesis, not a
-measurement.
+**Army size is NOT the cause** — retracted above. The only real, game-side late-game
+finding is the headless cost curve: ~23 ms/week at 1836 rising to ~222 ms/week at 1900.
+That is worth investigating; the 0.06 wk/s figure is not.
 
 ---
 

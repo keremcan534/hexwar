@@ -234,14 +234,18 @@ rendering:
 | **1900** | **222.2** | **4.5** |
 | 1936 | 90.1 | 11.1 |
 
-The simulation genuinely gets **~10× more expensive by 1900**. In the browser I fell from
-2.3 → 1.17 → ~0.1 weeks per real second and the campaign became unplayable at 1903.
+The simulation genuinely gets **~10× more expensive by 1900**. That much is the game's own.
 
-But the game's own profiler at that moment reported **34–42 ms frames** (render 1.2 ms),
-and with the game **paused** the tab still delivered only 1.4 fps with regular ~2000 ms
-stalls that appear nowhere in its instrumentation. Those stalls are most likely my test
-harness. **I will not claim the full 0.06 wk/s figure is the game's fault.** The 10×
-headless cost growth is the game's; the rest is unresolved.
+**My in-browser figures were not.** In a second session I regenerated the same seed and
+measured a **fresh 1836 world with two divisions**: 0.6 fps, with rAF stalls of
+1617 / 1994 / 1994 / 2004 ms — while the game's profiler recorded nothing worse than
+`clock-tick` 33.5 ms, `sim` 20.1 ms, autosave 24.1 ms. An empty 1836 world stalls
+*identically* to the 1903 one. The ~2-second stalls are the automation environment.
+
+So I **retract** the in-browser collapse as evidence against the game, and I retract the
+army-scale hypothesis with it. My stated reason for stopping the blind campaign at 1904
+was wrong. The late-game performance question is **INCONCLUSIVE in the browser** and needs
+re-measuring on real hardware; only the headless curve stands.
 
 ---
 
@@ -310,9 +314,11 @@ crises, no diplomacy. Twenty-seven consecutive years of my campaign contained no
 could make that would change my situation. Reform support permanently at 100% and frozen
 population ideology are the same problem in the political layer.
 
-**5. The late game gets ~10× more expensive by 1900**, and there is no way to reduce your
-army once you have raised it. Whatever else is true about my harness, the headless curve is
-the game's own.
+**5. The late game gets ~10× more expensive by 1900** on the headless bench (22.8 →
+222.2 ms/week). That curve is the game's own and is worth profiling. *(My in-browser
+0.06 wk/s figure is retracted — it reproduced identically on an empty 1836 world, so it
+was the test environment.)* Separately, and still true: there is no way to reduce an army
+once raised.
 
 *(Honourable mention: the Construction screen is the one place in this build that disables
 a control without saying why — and it cost me the entire construction pillar for

@@ -328,21 +328,25 @@ sixteen *seconds*. Digging into it in Phase B:
   2–15 ms normally, punctuated by regular **~2000 ms stalls** that appear nowhere in the
   game's own frame or event instrumentation.
 
-**Honest conclusion:** the ~2-second stalls are outside the game's measured work and are
-most likely an artefact of the automated test harness driving this session. I therefore
-**cannot** attribute my final 0.06 wk/s figure entirely to Imperial Eye. What I *can*
-state:
+**RESOLVED IN A SECOND SESSION — the browser figures were my environment, not the game.**
+I regenerated the *same seed* and measured a **fresh 1836 world with 2 divisions**:
+**0.6 fps**, with rAF stalls of 1617 / 1994 / 1994 / 2004 ms — while the game's own
+profiler recorded nothing worse than `clock-tick` 33.5 ms, `sim` 20.1 ms, autosave
+24.1 ms, HUD 12.7 ms. An empty 1836 world stalls **identically** to the 1903 one.
+
+So the ~2-second stalls are the automation/headless-browser environment. **The in-browser
+throughput column above does not measure Imperial Eye and should be disregarded**, and the
+army-scale hypothesis is withdrawn. What I *can* state:
 
 1. The simulation genuinely gets **~10× more expensive by 1900** (headless, measured).
-2. In-browser throughput genuinely fell **2.3 → 1.17 → ~0.1 weeks/second** across my
-   campaign, and the game was unplayable at the end of my session.
-3. Test #1 stopped at 1905 for session reasons; I stopped at 1904 because the clock
-   stopped moving. Both campaigns died at the same point in the calendar for related but
-   not identical reasons.
+2. My session became unplayable at 1904, but **for environmental reasons** — so my stated
+   reason for stopping the blind campaign was wrong.
+3. Test #1's measured 2.9 → 1.15 wk/s across 1836–1850 is a real player-side curve and is
+   **not contradicted** by anything I measured; my own 1836 → 1863 figures (2.3 → 1.17)
+   reproduce it closely before the environment degraded.
 
-The **army-scale** hypothesis (26 → 105 divisions) fits the timing and remains the best
-candidate for the game-side component, and it is untested by Test #1 because that
-campaign's army decayed to 5,000 men. But it is a hypothesis, not a measurement.
+Verdict on late-game performance: **INCONCLUSIVE in the browser, REGRESSED on the
+headless bench** (~10× cost growth by 1900). Re-measure on real hardware before acting.
 
 ---
 
