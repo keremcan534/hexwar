@@ -321,3 +321,74 @@ Her sey gercek menu → gercek UI → gercek zaman akisi. Ben oyuncuyum.
 - **WOULD I KEEP PLAYING? → YES.** Cokusum ADIL hissettirdi (zayifsan
   yenirsin) ve "kulden donus" kancasi gercek. Ama iletisim korlugu yuzunden
   "oyunla savasarak" ogreniyorum, oyunla oynayarak degil.
+
+## 18 MAR 1842 — Kullerden dogus: hazine ¤1,018
+
+- WHAT HAPPENED: 11 ayda ¤0/−18'den **¤1,018/+79'a**. Fabrikalar acildi,
+  tazminat bitti, borc kendini kapatti (¤0, faiz %9.4'e indi). GDP 175→256.
+  Ithal ikamesi stratejim CALISTI.
+- WHAT I DID: Buyuk alisveris: egitim 40 denemesi, 4 piyade (IN TRAINING 4),
+  kapasite seviye 2 (¤135), sinira kale (¤70, Raygarde — Ulheim kamasinin
+  dibine). "Kale neden buraya" sorusunun cevabi bu kampanyada NET: uc kez
+  ayni yoldan geldiler.
+- REACTION: toparlanma dongusunun hissi **SATISFYING** — cokus ve donus
+  kavisi su ana kadar kampanyanin en iyi hikayesi.
+
+## 22 MAR 1842 — Sessiz devrim: hanlik gitmis, sosyalist diktatorluk gelmis
+
+- WHAT HAPPENED: Fabrika kurmak istedim: her satirda "**policy forbids
+  state industry**". Meger ekonomi politikasi Interventionism olmus. Nasil?
+  Politics: **PRESIDENTIAL DICTATORSHIP — Social Democratic Party — ust
+  kamara %100 Sosyalist — Pacifism savas politikasi**. Mutlak monarsim,
+  ben defterlerle bogusurken sessiz bir devrimle yikilmis. (%34 ihtiyac
+  karsilanmasiyla %37 sosyalist olan halk kendi tarihini yazmis.)
+- WHY IT MATTERED: Iki yuzu var: (1) SIMULASYON DERIN — rejim, parti,
+  politika ekseni gercekten oynuyor ve "reform merdiveni bos" notuna
+  ragmen PARTI POLITIKASI ekonomiyi gercekten kisitliyor (devlet fabrikasi
+  yasak!). (2) ILETISIM SIFIR — REJIMIM DEGISTI ve ben aylar sonra fabrika
+  menususunden ogrendim. Ayrica eski savas banner'i hala ekranda asili
+  ("Ulheim declared war on us!" — baristan 1 yil sonra).
+- REACTION: derinlik **SATISFYING** · sessizlik **CONFUSING** (B-021,
+  B-020) · devlet sanayiciligimin kaybi uzucu ama MESRU his — secmenin
+  (ya da darbecinin) iradesi.
+
+## 22 MAR 1842 — Egitim %40 duvari: gorunmez tavan
+
+- WHAT I DID: HE seviye 2 icin egitim butcesini 40'a cektim (3. deneme).
+- WHAT HAPPENED: Kaydirak 40'ta DURUYOR ama yanindaki etiket 30'da kaliyor;
+  hafta gecince de degismiyor. Yani gorunmez bir tavan var (%30) ve UI bunu
+  hicbir yerde soylemiyor. Higher Education seviye 2 su an ulasilamaz.
+- REACTION: **FRUSTRATING** (B-022) — bayrak hedefim bir "gizli duvar"a
+  bagli.
+
+## 22 MAR 1842 — Torford dersi: petrolumu bilmeden verdim
+
+- Kaleyi yerlestirirken yanlislikla eski Torford'uma tikladim: dossier
+  "RGO: Oil Derricks" diyor. Baris masasinda eyaletlerin NE URETTIGI
+  gosterilmiyordu; meger tek petrol kaynagimi vermisim (1870'te rafineriler
+  aciliyor — gelecekteki yakitim gitti). Acitici ama IYI tasarlanmis bir
+  ders olurdu — EGER masada bilgi olsaydi. Simdi sadece bilgi eksikligi.
+- REACTION: **CONFUSING/painful** (B-023: baris masasinda eyalet RGO/deger
+  bilgisi yok)
+
+## 10 FEB 1843 → 9 FEB 1844 — Ihracat kaplani
+
+- WHAT HAPPENED: Hazine ¤4.8k → **¤12.3k (+284/hafta)**. Ticaret tersine
+  dondu: ihracat ¤346 / ithalat ¤74, **net +¤272**. GDP 567 (acilisin
+  ustunde). NEEDS MET **%89** (34'ten!) — halkim actan refaha gecti.
+  Ordu 7K, kale kuruldu, istikrar %67.
+- WHAT I DID: Ikinci reform (Acceptable School System), kapasite bir seviye
+  daha, 2 piyade + 1 topcu, savas gemisi denemesi (sessizce tutmadi — B-024
+  aday), arastirmaya Stationary Steam Engine.
+- WHY IT MATTERED: 1837'deki somurge tuzagindan 1844'te ihracat fazlasina.
+  Kampanyanin buyuk kavisi (cokus → temerrut → sanayilesme → refah) tamamen
+  MEKANIK olarak insa edildi — senaryo yok, kural var. Bu, oyunun en guclu
+  yani.
+- Ama golgeler: (1) arastirma YINE bos kalmis (232 RP banka — B-018 bu
+  kampanyada bana toplam ~3.5 yil arastirma kaybettirdi), (2) issizlik hala
+  209K/%30 — refah ithalatla degil istihdamla gelmeliydi hissi, (3) nufus
+  hala yavas eriyor (685K) ve neden gorunmuyor, (4) devlet sanayi yasagi +
+  egitim tavani hedeflerimi kitliyor.
+- REACTION: buyume dongusu **SATISFYING** · arastirma korlugu ikinci kez
+  **FRUSTRATING** (artik her duraklamada tech ekrani acmak zorundayim —
+  gereksiz mikro yonetim)

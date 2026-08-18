@@ -229,3 +229,43 @@ REPRODUCIBILITY. Konsol hatasi sayaci ayrica en altta.
 - CONTEXT: Population ekrani LITERACY %11; Technology ekrani LITERACY %14.
 - PLAYER IMPACT: Hangisi dogru? Egitim ilerlememi olcemiyorum.
 - REPRODUCIBILITY: %100 (ayni anda iki deger).
+
+## B-020 · MINOR — Savas banner'i baristan sonra temizlenmiyor
+
+- DATE: fark edilis 22 MAR 1842 (baris 23 APR 1841'de)
+- ACTUAL: "⚔ 3 WAR — Ulheim declared war on us!" banner'i baristan ~1 yil
+  sonra hala ekranda (✕ ile elle kapatilabilir).
+- EXPECTED: Baris imzalaninca kendiliginden kalkmali.
+- REPRODUCIBILITY: %100 (bu kosuda).
+
+## B-021 · MAJOR — Rejim/hukumet degisikligi tamamen sessiz
+
+- DATE: 1841-42 arasi bir noktada
+- CONTEXT: ABSOLUTE MONARCHY → PRESIDENTIAL DICTATORSHIP; iktidar
+  Conservative Union → Social Democratic Party; 4 politika ekseni degisti
+  (Interventionism devlet sanayimi yasakladi, Pacifism savas politikam).
+- EXPECTED: Buyuk olay sunumu (rejim dususu bir kampanyanin kirilma ani).
+- ACTUAL: Sifir bildirim; fabrika kurma menusundeki kisittan geriye dogru
+  kesfettim.
+- PLAYER IMPACT: Cok yuksek — oyunun EN ETKILI politik olayi gorunmez.
+- REPRODUCIBILITY: bu kosuda 1/1 (dogasi geregi tekrar zor).
+
+## B-022 · MAJOR — Egitim butcesi gorunmez tavana (%30) sikismis; kaydirak-etiket desync
+
+- DATE: 22 MAR 1842 (3 ayri denemede)
+- ACTION: Egitim kaydiragini 40'a cektim (kriz yokken de).
+- EXPECTED: %40 olmali ya da UI tavani ve nedenini soylemeli ("idari
+  kapasite %30 ile sinirliyor" gibi).
+- ACTUAL: Kaydirak 40'ta durur, efektif etiket 30'da kalir; Higher
+  Education seviye 2 ("needs 40%") kalici kilitli.
+- PLAYER IMPACT: Yuksek — ana hedef yolu aciklamasiz kapali; oyuncu
+  kendini UI hatasiyla mi mekanikle mi bogusuyor bilmiyor.
+- REPRODUCIBILITY: %100.
+
+## B-023 · MINOR — Baris masasi eyalet karti RGO/uretim gostermiyor
+
+- DATE: 23 APR 1841 (fark edilis 22 MAR 1842)
+- CONTEXT: Torford'u devrederken petrol kuyulari oldugunu bilmiyordum;
+  normal harita tiklamasi RGO'yu gosteriyor, baris masasi secimi gostermiyor.
+- PLAYER IMPACT: Stratejik degeri olculemeyen tavizler.
+- REPRODUCIBILITY: %100.
