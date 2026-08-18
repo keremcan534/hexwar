@@ -487,6 +487,21 @@ export function prioritizeTraining(nation, itemId, delta) {
   return true;
 }
 
+/**
+ * Kaydi kuyrugun basina/sonuna tasir. Insaat kuyruguna R-11 ile gelen tek-tik
+ * ziplatmanin egitim kuyrugundaki karsiligi: 20 kayitlik kuyrukta tek adimlik
+ * ▲ ile basa cikmak 19 tikti (ayni SEVERE bulgu, ayni ilac).
+ */
+export function moveTrainingTo(nation, itemId, edge) {
+  const queue = trainingQueue(nation);
+  const index = queue.findIndex((item) => item.id === Number(itemId));
+  if (index < 0) return false;
+  const [item] = queue.splice(index, 1);
+  if (edge === 'top') queue.unshift(item);
+  else queue.push(item);
+  return true;
+}
+
 /** Bir kaydın bitmesine kalan hafta; hız sıfırlanamaz, bölme güvenlidir. */
 export function weeksLeft(nation, item) {
   return Math.max(0, Math.ceil((item.weeks - item.progress) / trainingSpeed(nation)));

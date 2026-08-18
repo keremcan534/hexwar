@@ -138,7 +138,11 @@ const SPREAD = 99;
 export function ensureCommandOptions(nation) {
   const options = nation.command ?? (nation.command = {});
   if (typeof options.autoCreate !== 'boolean') options.autoCreate = true;
-  if (typeof options.autoAssign !== 'boolean') options.autoAssign = false;
+  // autoAssign VARSAYILAN ACIK. Kapali varsayilan, mobil-once bir oyunda her
+  // yeni alayi elle generale baglamak demekti; beta kampanyayi 57 komutasiz
+  // tumenle bitirdi ve "yanlis varsayilan" diye isaretledi (B2 §7-2, §24).
+  // Elle yonetmek isteyen tek tikla kapatir; kayittaki acik tercih korunur.
+  if (typeof options.autoAssign !== 'boolean') options.autoAssign = true;
   return options;
 }
 

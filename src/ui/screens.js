@@ -36,14 +36,14 @@ import {
   setMilitaryProductionLine, socialSpendingCost, ensureProductionLine, supportProject, upgradeOutlook,
 } from '../game/economy.js';
 import { MAX_ROUNDS, battleSides, battlesFor } from '../game/battles.js';
-import { cancelTraining, prioritizeTraining } from '../game/recruitment.js';
+import { cancelTraining, moveTrainingTo, prioritizeTraining } from '../game/recruitment.js';
 import { equipmentLogistics } from '../game/reinforcement.js';
 import {
   armyComposition, commandRoster, militaryStats, militarySummary, recruitOptions,
   trainingRows, unassignedDivisions,
 } from '../game/military.js';
 import {
-  BRANCH, assignDivisions, createGeneral, generalCost, officersOf, setCommandOption,
+  BRANCH, assignDivisions, createGeneral, generalCost, officersOf, setCommandOption, setStance,
   unassignGeneral,
 } from '../game/command.js';
 import { militaryScreen } from './militaryScreen.js';
@@ -1249,9 +1249,42 @@ export class Screens {
       };
     }
     for (const btn of body.querySelectorAll('[data-military-build]')) {
-      btn.onclick = () => {
+      btn.onclick = (event) => {
         // buyUnit artık siparişi kuyruğa yazar (bkz. recruitment.js).
-        if (game.turns.buyUnit(me, btn.dataset.militaryBuild)) this.refresh();
+        // Shift = 5 siparis: "on iki alay, on iki tik" beta'nin en net tekrarli
+        // is bulgusuydu — KARAR (egitim yuvasi/techizat kisiti) aynen duruyor,
+        // yalniz AYNI tiklamanin tekrarina gerek kalmiyor. Kisit dolunca
+        // dongü kendiliginden durur (buyUnit reddeder).
+        const wanted = event.shiftKey ? 5 : 1;
+        let ordered = 0;
+        for (let i = 0; i < wanted; i++) {
+          if (!game.turns.buyUnit(me, btn.dataset.militaryBuild)) break;
+          ordered++;
+        }
+        if (ordered) this.refresh();
+      };
+    }
+    for (const btn of body.querySelectorAll('[data-military-top]')) {
+      btn.onclick = () => {
+        if (moveTrainingTo(me, btn.dataset.militaryTop, 'top')) this.refresh();
+      };
+    }
+    for (const btn of body.querySelectorAll('[data-military-all-stance]')) {
+      btn.onclick = () => {
+        // Tiyatro emri: tek tikla butun kara komutalari. Yedi generalin yedi
+        // ayri "Start Offensive" dugmesi beta'nin 3 numarali mikro bulgusuydu.
+        const stance = btn.dataset.militaryAllStance;
+        let changed = 0;
+        for (const general of officersOf(me, BRANCH.ARMY)) {
+          if (general.divisions.length && setStance(game.world, general, stance) === stance) changed++;
+        }
+        if (changed) {
+          game.turns.addLog(`${changed} command${changed === 1 ? '' : 's'} ordered to ${
+            stance === 'advance' ? 'advance' : 'hold'}.`);
+          game.emit('command', game.activeGeneral ?? null);
+          game.requestRender();
+        }
+        this.refresh();
       };
     }
     for (const btn of body.querySelectorAll('[data-military-cancel]')) {
@@ -1423,7 +1456,13 @@ export class Screens {
         <header class="ledger-head">Weekly Expenses</header>
         ${expRow('Industrial Subsidies', ledger.subsidyCost ?? 0, {
     picto: PICTO.factory,
-    note: subsidyNote(me) || 'mark plants on the Factories screen to cover their losses',
+    note: `${subsidyNote(me) || 'covers the losses of marked plants'}
+      <select data-subsidy-policy title="Manual: only the plants you mark on the Factories screen. Strategic: arms and ammunition plants are covered while at war, released at peace. None: every subsidy is cancelled.">
+        ${['manual', 'strategic', 'none'].map((id) => `<option value="${id}"
+          ${(economy.subsidyPolicy ?? 'manual') === id ? 'selected' : ''}>${
+  id === 'manual' ? 'Manual marks' : id === 'strategic' ? 'War industries at war' : 'No subsidies'
+}</option>`).join('')}
+      </select>`,
   })}
         ${expRow('Military Procurement', ledger.procurementCost ?? 0, {
     policy: 'militaryProcurement',
@@ -2160,8 +2199,10 @@ export class Screens {
     for (const btn of this.el.body.querySelectorAll('[data-factory]')) {
       btn.onclick = () => {
         if (!buildFactory(game, me, btn.dataset.region, btn.dataset.factory)) return;
-        // Kurulunca pencere kapanır: aynı state'e ikinci kez aynı tür zaten girmez.
-        this.industryPicker = null;
+        // Pencere ACIK KALIR: kurulan tur listeden zaten duser, oyuncu ayni
+        // state'e pes pese birkac tesis kurabilir. Eski davranis (her alimda
+        // kapanan modal) 75 fabrikalik bir kurulumu ~160 tika cikariyordu
+        // (Beta 2 §7-4); karar sayisi ayni, tik sayisi tesise iner.
         this.refresh();
       };
     }
@@ -2208,6 +2249,14 @@ export class Screens {
         if (setMilitaryProductionLine(
           game, me, btn.dataset.productionLine, btn.dataset.equipment,
         )) this.refresh();
+      };
+    }
+    const subsidyPolicy = this.el.body.querySelector('[data-subsidy-policy]');
+    if (subsidyPolicy) {
+      subsidyPolicy.onchange = () => {
+        setFiscalPolicy(me, 'subsidyPolicy', subsidyPolicy.value);
+        game.emit('economy', me.economy);
+        this.refresh();
       };
     }
     for (const input of this.el.body.querySelectorAll('[data-policy]')) {

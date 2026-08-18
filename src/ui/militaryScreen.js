@@ -101,6 +101,12 @@ function headerStrip(summary) {
 function leaderRow(leader, selected) {
   const stars = '★'.repeat(leader.skill) + '☆'.repeat(Math.max(0, 5 - leader.skill));
   const traits = leader.traits.map((trait) => trait.name).join(' · ') || 'no traits';
+  // Durus SATIRDA gorunur: beta iki ekranin celisen cevap verdigini yazdi
+  // ("panel ADVANCING diyor, komut holding'e donmus", B2-021) — tek bakista
+  // dogru durum her subayin kendi satirinda durursa celiski kalmaz.
+  const stance = leader.branch === 'navy' || !leader.divisions ? ''
+    : `<em class="mil-stance ${leader.stance === 'advance' ? 'hot' : ''}">${
+      leader.stance === 'advance' ? '➤ adv' : '■ hold'}</em>`;
   return `<button class="mil-leader ${selected ? 'is-open' : ''} ${leader.divisions ? '' : 'is-idle'}"
     data-military-leader="${leader.id}"
     title="${esc(`${leader.rank} ${leader.name} — ${traits}`)}">
@@ -111,6 +117,7 @@ function leaderRow(leader, selected) {
     </span>
     <span class="mil-leader-side">
       <em class="mil-stars">${stars}</em>
+      ${stance}
       <small>${esc(leader.assignment)}</small>
     </span>
   </button>`;
@@ -188,6 +195,13 @@ function commandColumn(state, roster, looseByBranch, trainCost, canTrain) {
     <div class="mil-leader-list">${rows}</div>
     ${leaderDetail(selected, loose)}
     <div class="mil-command-actions">
+      ${branch === 'navy' ? '' : `<div class="mil-theater" role="group" aria-label="All commands">
+        <small>All commands</small>
+        <button class="mil-btn" data-military-all-stance="advance"
+          title="Order every army command to advance. One click instead of one per general; individual commands can still be overridden.">➤ Advance</button>
+        <button class="mil-btn" data-military-all-stance="hold"
+          title="Order every army command to hold its front.">■ Hold</button>
+      </div>`}
       <button class="mil-btn wide" data-military-train="${branch}" ${canTrain ? '' : 'disabled'}
         title="${esc(canTrain
     ? `Trains a new officer for ${trainCost} gold. Each addition to the staff costs more.`
@@ -256,7 +270,9 @@ function buildRow(option, state) {
       <span class="mil-build-kit">${equipment || '<em class="void">—</em>'}</span>
     </div>
     <button class="mil-btn build" data-military-build="${option.id}" ${blocked ? 'disabled' : ''}
-      title="${esc(blocked ? option.blockers.map((b) => b.text).join('\n') : `Order one ${option.name} regiment.`)}">
+      title="${esc(blocked ? option.blockers.map((b) => b.text).join('\n')
+    : `Order one ${option.name} regiment. Shift+click orders five —`
+      + ' training slots, equipment and manpower still limit throughput.')}">
       ${blocked ? 'Blocked' : 'Order'}</button>
     ${blocked ? `<p class="mil-blocked-why">${esc(option.blockers[0].text)}</p>` : ''}
   </div>`;
@@ -308,6 +324,8 @@ function queueRow(row) {
       <small class="mil-queue-state">${pct(row.share)} · ${esc(state)}</small>
     </div>
     <div class="mil-queue-tools">
+      <button class="mil-icon" data-military-top="${row.id}" ${row.first ? 'disabled' : ''}
+        title="Move to the top of the queue in one click.">⤒</button>
       <button class="mil-icon" data-military-up="${row.id}" ${row.first ? 'disabled' : ''}
         title="Move up: the training slots go to the top of the queue first.">▲</button>
       <button class="mil-icon" data-military-down="${row.id}" ${row.last ? 'disabled' : ''}

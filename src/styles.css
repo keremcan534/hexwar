@@ -7256,6 +7256,42 @@ body.menu-open .sheet { visibility: hidden; }
 .mil-detail-actions,
 .mil-command-actions { display: flex; flex-wrap: wrap; gap: 3px; padding: 0 4px 5px; }
 
+/* Tiyatro emri: tek tikla butun komutalar (bkz. militaryScreen commandColumn). */
+.mil-theater {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+.mil-theater small {
+  color: var(--text-mute);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+.mil-theater .mil-btn { flex: 1; }
+
+/* Subay satirindaki durus rozeti: iki ekran ayni cevabi versin (B2-021). */
+.mil-stance {
+  font-style: normal;
+  font-size: var(--fs-label);
+  color: var(--text-mute);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+.mil-stance.hot { color: var(--amber); }
+
+/* Butce ekranindaki subvansiyon politikasi secimi. */
+.ledger-note select {
+  margin-top: 2px;
+  background: var(--panel, #10181c);
+  color: var(--text, #d9d1bd);
+  border: 1px solid var(--line-gold, #6b5a36);
+  border-radius: 2px;
+  font-size: var(--fs-sm);
+  padding: 1px 4px;
+}
+
 .mil-detail-actions { padding: 2px 0 0; }
 
 .mil-btn {

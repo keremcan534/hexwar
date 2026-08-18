@@ -313,6 +313,13 @@ export class Hud {
         this.game.stepSpeed(-1);
         return;
       }
+      if (event.code === 'KeyN') {
+        // "Siradaki bosta birim": fonksiyon bastan beri vardi (selectNextIdle),
+        // hicbir tus/dugme cagirmiyordu. HOLD emirli birimler dongude gorunmez.
+        event.preventDefault();
+        this.game.selectNextIdle();
+        return;
+      }
       if (event.code === 'Escape') {
         // BUG-023: Escape hicbir seyi kapatmiyordu; oyuncu ✕'i aramak
         // zorundaydi. Sira onemli — once ACIK PANEL kapanir, panel yoksa
@@ -854,17 +861,26 @@ export class Hud {
     }
 
     // Ordu emri: uzun yürüyüş devam eder; savaş ve geri çekilme otomatik çözülür.
+    // AUTO/HOLD ILK KEZ ERISILEBILIR: orders.js bastan beri devretme katmani
+    // olarak duruyordu (CLAUDE.md'nin cekirdek mobil kurali) ama hicbir dugme
+    // ORDER.AUTO/HOLD gondermiyordu — katman olu UI'ydi. Secili TUM tumenlere
+    // uygulanir; donanma icin ozellikle degerli (filonun baska devir yolu yok).
     const own = tile.unit && tile.unit.nationId === game.turns.playerNation ? tile.unit : null;
     if (own) {
       const label = ORDER_LABELS[own.order?.type];
+      const selectedCount = Math.max(1, game.selection.length);
       rows.push(`<div class="action-row">
         <div class="k">army orders — ${own.battleId ? 'fighting'
     : (own.retreatUntil ?? 0) > game.turns.turn ? 'retreating'
       : (own.attackReadyAt ?? 0) > game.turns.turn ? 'reorganizing'
         : label ?? 'awaiting destination'}</div>
+        <button class="action" data-order="${ORDER.AUTO}"
+          title="Delegate the ${selectedCount} selected unit(s) to the AI: they pick targets and fight on their own until you cancel.">Delegate (AUTO)</button>
+        <button class="action" data-order="${ORDER.HOLD}"
+          title="Hold position: the selected unit(s) stand fast and leave the next-idle cycle.">Hold</button>
         ${own.order
     ? '<button class="action" data-order="clear">Cancel Orders</button>'
-    : '<span class="order-help">Select the division, then tap a province. Friendly divisions share the province; enemy divisions start a battle.</span>'}
+    : ''}
       </div>`);
     }
 
@@ -982,7 +998,13 @@ export class Hud {
     const { game } = this;
     const me = game.world.nations[game.turns.playerNation];
     for (const btn of this.el.sheetBody.querySelectorAll('[data-buy]')) {
-      btn.onclick = () => game.turns.buyUnit(me, btn.dataset.buy);
+      // Shift = 5 siparis (askeri ekranla ayni kural); kisitlar durdurunca biter.
+      btn.onclick = (event) => {
+        const wanted = event.shiftKey ? 5 : 1;
+        for (let i = 0; i < wanted; i++) {
+          if (!game.turns.buyUnit(me, btn.dataset.buy)) break;
+        }
+      };
     }
     const found = this.el.sheetBody.querySelector('[data-found]');
     if (found) found.onclick = () => game.turns.foundCity(game.selectedUnit);
@@ -1026,10 +1048,17 @@ export class Hud {
       };
     }
     for (const btn of this.el.sheetBody.querySelectorAll('[data-order]')) {
-      const unit = game.selected?.unit;
-      btn.onclick = () => (btn.dataset.order === 'clear'
-        ? game.clearUnitOrder(unit)
-        : game.setUnitOrder(unit, btn.dataset.order));
+      btn.onclick = () => {
+        // Emir SECIME uygulanir, tek kareye degil: bes tumen sectiysen bes
+        // tumen devredilir. Secim bossa karedeki birim esas alinir.
+        const units = game.selection.length ? game.selection
+          : (game.selected?.unit ? [game.selected.unit] : []);
+        for (const unit of units) {
+          if (btn.dataset.order === 'clear') game.clearUnitOrder(unit);
+          else game.setUnitOrder(unit, btn.dataset.order);
+        }
+        this.showTile(game.selected);
+      };
     }
   }
 }

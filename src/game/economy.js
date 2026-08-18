@@ -1529,7 +1529,35 @@ export function setFiscalPolicy(nation, key, value, classId = null) {
     nation.economy.social[classId] = clamp(Math.round(value), 0, 100);
     return true;
   }
+  if (key === 'subsidyPolicy' && SUBSIDY_POLICIES.includes(value)) {
+    nation.economy.subsidyPolicy = value;
+    return true;
+  }
   return false;
+}
+
+/**
+ * Subvansiyon POLITIKASI: tesisi tek tek isaretleme yerine niyet.
+ *
+ * Beta olcumu: tesis basina ¤ dugmesi haftalik bir bakim isiydi (isaretle,
+ * unut, hazine sessizce akar — YZ'nin kendi temizleyicisi vardi, oyuncunun
+ * yoktu). "manual" eski davranistir; "strategic" savas sanayisini savasta
+ * korur ve son subvansiyonlari kendi kaldirir; "none" hepsini kapatir.
+ * Tekil isaretleme "manual"da aynen durur — anlamli tekil karar korunur.
+ */
+export const SUBSIDY_POLICIES = ['manual', 'strategic', 'none'];
+const STRATEGIC_FACTORY_TYPES = new Set(['ARMS_FACTORY', 'AMMUNITION_FACTORY']);
+
+function applySubsidyPolicy(world, nation) {
+  const policy = nation.economy.subsidyPolicy ?? 'manual';
+  if (policy === 'manual') return;
+  const wartime = world.nations.some(
+    (other) => other.alive && other.id !== nation.id && atWar(world, nation.id, other.id),
+  );
+  for (const factory of nation.economy.factories ?? []) {
+    factory.subsidized = policy === 'strategic'
+      && wartime && STRATEGIC_FACTORY_TYPES.has(factory.typeId);
+  }
 }
 
 /** Sosyal programların bu haftaki toplam altın gideri. */
@@ -3119,6 +3147,8 @@ export function runNationEconomy(game, nation, ctx) {
   {
     // Geçen haftanın inşaat kuyruğunda biten tesisler önce gerçeğe dönüşür.
     commitCompletedProjects(game, nation);
+    // Subvansiyon politikasi (yalniz oyuncu: YZ kendi maliyesinde yonetiyor).
+    if (nation.id === game.turns.playerNation) applySubsidyPolicy(world, nation);
     resetNationGoodsFlow(nation);
     updateClasses(world, nation);
     mark('classes');
