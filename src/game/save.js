@@ -277,7 +277,6 @@ export function deserialize(game, data) {
       world, tile, saved.nationId, englishCityName(saved.name), saved.level, saved.pop,
     );
     city.pops = { ...saved.pops };
-    city.foodStore = 0;
     city.manualWorkers = false;
   }
 

@@ -207,11 +207,8 @@ function applyGovernmentLimits(nation) {
   if (!nation.economy) return;
   const limits = fiscalPolicyLimits(nation);
   nation.economy.tariff = Math.max(limits.tariffMin, Math.min(limits.tariffMax, nation.economy.tariff));
-  nation.economy.armySpending = Math.max(
-    limits.armySpendingMin,
-    Math.min(limits.armySpendingMax, nation.economy.armySpending),
-  );
-  // İki yeni ordu kaydıracı da aynı parti sınırına tabidir.
+  // İki ordu kaydıracı da aynı parti sınırına tabidir. (Eski tek armySpending
+  // alanı kaldırıldı; setFiscalPolicy'nin geriye dönük dalı iki kaydıracı sürer.)
   for (const key of ['militaryWages', 'militaryProcurement']) {
     nation.economy[key] = Math.max(
       limits.armySpendingMin,

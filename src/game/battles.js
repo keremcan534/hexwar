@@ -104,8 +104,14 @@ export function battleUnitPower(world, unit, defending, relief = 0) {
   const reserve = Math.max(1, MILITARY_EQUIPMENT.arms.reserve);
   const readiness = Math.max(0, Math.min(1, equipmentStock(nation, 'arms') / reserve));
   const general = generalOfArmy(nation, unit);
+  // Ekran yillardir "piyade savunmada arazi bonusunu iki kat kullanir" diyordu
+  // ama muharebe `entrenched` bayragini hic okumuyordu (olculdu: olu bayrak).
+  // Vaat artik gercek: hat piyadesi savunurken arazi/tahkimat katkisini iki
+  // kat alir. Piyadeyi "her zaman dogru cevap" olmaktan cikaran karsi agirlik
+  // da ayni haftada geldi (bkz. sidePower destek kolu carpani).
+  const terrainScale = unit.type?.entrenched ? 2 : 1;
   const terrain = defending
-    ? (1 + terrainDefense(world, unit) * (1 - relief)) * (1 + (unit.entrenchment ?? 0))
+    ? (1 + terrainDefense(world, unit) * terrainScale * (1 - relief)) * (1 + (unit.entrenchment ?? 0))
     : 1;
   return armyPower(unit)
     * (0.55 + funding * 0.45)
@@ -116,7 +122,15 @@ export function battleUnitPower(world, unit, defending, relief = 0) {
 }
 
 function sidePower(world, units, defending, relief) {
-  return units.reduce((sum, unit) => sum + battleUnitPower(world, unit, defending, relief), 0);
+  // Destek kolu (topcu, hava) tek basina kirilgandir, hat birligiyle yiginda
+  // belirleyicidir — UNIT_ROLE bunu bastan beri vaat ediyordu, simulasyonda
+  // karsiligi yoktu. Carpani taraf bilesiminden turetiyoruz: yalniz destek
+  // kolundan kurulmus taraf zayif dovusur, karma yiginda destek kolu parlar.
+  const hasLine = units.some((unit) => !unit.type?.support);
+  return units.reduce((sum, unit) => {
+    const arm = unit.type?.support ? (hasLine ? 1.2 : 0.65) : 1;
+    return sum + battleUnitPower(world, unit, defending, relief) * arm;
+  }, 0);
 }
 
 /**

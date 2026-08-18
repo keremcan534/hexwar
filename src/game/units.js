@@ -14,38 +14,14 @@ export const ENTRENCHMENT_RATE = 0.05;
 export const MAX_ENTRENCHMENT = 0.35;
 
 /**
- * Techizat kademeleri. Gec oyunda ulke butun teknolojiyi bitirdikten sonra
- * altinini harcayacak yer bulamiyordu; modernizasyon hem tek seferlik hem de
- * *kalici* bir gider acar. Bakim carpani gucten daha hizli buyur: ust kademe
- * ordu tutmak bilincli bir butce tercihi olsun, otomatik dogru cevap olmasin.
+ * Ordunun altin bakimi: alay sayisi. Eski techizat kademeleri (Levy/Regular/
+ * Drilled/Modern) kaldirildi — hicbir yol kademeyi 1'in ustune cikarmiyordu ve
+ * carpanlarin tamami olu agirlikti (olculdu: 300 haftada 246 tumenin hepsi
+ * kademe 1). Modernizasyon geri gelirse tumen basina tiklanan bir alim degil,
+ * ulusal bir doktrin/teknoloji sonucu olarak gelmeli.
  */
-export const EQUIPMENT_TIERS = [
-  { level: 1, name: 'Levy', power: 1, upkeep: 1, cost: null },
-  { level: 2, name: 'Regular', power: 1.15, upkeep: 1.6, cost: { gold: 45, iron: 2 } },
-  { level: 3, name: 'Drilled', power: 1.32, upkeep: 2.4, cost: { gold: 95, iron: 4 } },
-  { level: 4, name: 'Modern', power: 1.52, upkeep: 3.6, cost: { gold: 185, iron: 7 } },
-];
-
-export const MAX_TIER = EQUIPMENT_TIERS.length;
-
-export function tierInfo(level) {
-  return EQUIPMENT_TIERS[Math.max(0, Math.min(MAX_TIER, Math.round(level ?? 1)) - 1)];
-}
-
-export function regimentTier(regiment) {
-  return Math.max(1, Math.min(MAX_TIER, Math.round(regiment?.tier ?? 1)));
-}
-
-/** Ordunun en dusuk kademesi: modernizasyon hep en geriden ilerler. */
-export function armyTier(unit) {
-  if (!unit?.regiments?.length) return 1;
-  return Math.min(...unit.regiments.map(regimentTier));
-}
-
-/** Ordunun altin bakimi, alay sayisi yerine techizat agirligiyla olculur. */
 export function upkeepWeight(unit) {
-  if (!unit?.regiments?.length) return tierInfo(unit?.tier ?? 1).upkeep;
-  return unit.regiments.reduce((sum, regiment) => sum + tierInfo(regimentTier(regiment)).upkeep, 0);
+  return unit?.regiments?.length ?? 1;
 }
 
 /**
@@ -207,7 +183,6 @@ export function refreshArmy(unit) {
   unit.maxHp = maxHp;
   unit.organization = organizationOf(unit);
   unit.morale = unit.organization;
-  unit.tier = armyTier(unit);
   return unit;
 }
 
@@ -224,7 +199,6 @@ function createRegiment(typeId, nation, home = null) {
     maxStrength,
     organization: 100,
     morale: 100,
-    tier: 1,
     manpower: UNIT_TYPES[id].manpower,
     home: home ? { q: home.q, r: home.r } : null,
   };
@@ -242,9 +216,8 @@ export function armyPower(unit) {
   return unit.regiments.reduce((sum, regiment) => {
     const type = UNIT_TYPES[regiment.typeId];
     const strength = regiment.strength / Math.max(1, regiment.maxStrength);
-    const equipment = tierInfo(regimentTier(regiment)).power;
     const organization = regiment.organization ?? regiment.morale ?? 100;
-    return sum + type.attack * strength * (0.45 + organization / 180) * equipment;
+    return sum + type.attack * strength * (0.45 + organization / 180);
   }, 0);
 }
 

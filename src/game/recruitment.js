@@ -22,7 +22,10 @@ export const RECRUITMENT_EQUIPMENT = {
   INFANTRY: { arms: 4 },
   CAVALRY: { arms: 6 },
   ARTILLERY: { arms: 2, artillery: 4 },
-  WARSHIP: { arms: 10, steamers: 6 },
+  // Gemi yelkenli konvoyla kurulur: 1836'da donanma kurmak artik mumkun.
+  // Eski `steamers: 6` sarti, vapur tersanesi 1850'ye kilitli oldugu icin
+  // donanmayi ilk 14 yil yapisal olarak imkansiz kiliyordu (P2-7).
+  WARSHIP: { arms: 8, clippers: 6 },
   ARMOR: { arms: 2, tanks: 5 },
   AIRCRAFT: { arms: 1, airplane: 5 },
 };

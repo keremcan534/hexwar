@@ -40,9 +40,6 @@ export const IRON_UPKEEP_TYPES = { CAVALRY: 1, ARTILLERY: 2, WARSHIP: 1 };
 /** İşçi başına tüketim. İşçi net katkısı azalsın ki nüfus sonsuz büyümesin. */
 export const WORKER_FOOD = 2;
 
-/** Yeni şehir bu kadar erzakla başlar: kötü arazide doğan ülke ilk turda çökmesin. */
-export const STARTING_FOOD_STORE = 60;
-
 export function emptyPool() {
   return { gold: 0, food: 0, timber: 0, iron: 0 };
 }
@@ -120,7 +117,8 @@ export function createCity(world, tile, nationId, name, level = 1, pop = 2) {
     // toprakta yabancı halkla yaşamak zorunda kalmak tasarımın çekirdeği.
     pops: { [tile.culture]: pop },
     worked: [],     // işlenen kareler; uzunluğu pop kadar
-    foodStore: STARTING_FOOD_STORE,
+    // foodStore kaldirildi: yazilan ama hicbir sistemin okumadigi olu alandi
+    // (olculdu: 300 hafta boyunca butun sehirlerde baslangic degerinde kaldi).
     manualWorkers: false, // elle atama geldiğinde otomatik dağıtımı kilitler
   };
   tile.city = city;

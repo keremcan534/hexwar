@@ -120,10 +120,10 @@ export const PEACE_TERMS = {
     id: 'CONCESSION', name: 'Resource Concession', icon: '⛏', cost: 20, turns: 312,
     desc: 'A fifth of their raw production is shipped to you for six years.',
   },
-  FACTORY_RIGHTS: {
-    id: 'FACTORY_RIGHTS', name: 'Industrial Rights', icon: '🏭', cost: 14, turns: 312,
-    desc: 'Your capital may open factories in their states for six years.',
-  },
+  // FACTORY_RIGHTS kaldirildi: sart satin alinabiliyordu ama hicbir sistem
+  // okumuyordu (industrialRightsOn'un tuketicisi yoktu) — warscore karsiligi
+  // hicbir sey vermeyen bir tuzakti. Yabanci toprakta yatirim gercekten
+  // kurulursa sart geri gelir.
   LIBERATE: {
     id: 'LIBERATE', name: 'Liberate Minorities', icon: '⚑', cost: 35,
     desc: 'Provinces of a culture foreign to them break away and become independent.',
@@ -491,7 +491,7 @@ export function occupiedProvincesOf(world, a, b) {
  * denenir; bütçe yetmezse süreli olanlara düşülür.
  */
 const TERM_PRIORITY = [
-  'VASSALIZE', 'LIBERATE', 'REPARATIONS', 'CONCESSION', 'FACTORY_RIGHTS', 'DEMILITARIZE',
+  'VASSALIZE', 'LIBERATE', 'REPARATIONS', 'CONCESSION', 'DEMILITARIZE',
 ];
 
 /**

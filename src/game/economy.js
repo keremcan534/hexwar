@@ -61,7 +61,6 @@ export const GOODS = {
   tools: { id: 'tools', name: 'Machine Parts', icon: '⚙', basePrice: 18, category: 'industrial' },
   electric_gear: { id: 'electric_gear', name: 'Electric Gear', icon: '⚡', basePrice: 20, category: 'industrial' },
   fuel: { id: 'fuel', name: 'Fuel', icon: '⛽', basePrice: 10, category: 'industrial' },
-  synthetic_oil: { id: 'synthetic_oil', name: 'Synthetic Oil', icon: '🧪', basePrice: 12, category: 'industrial' },
   fertilizer: { id: 'fertilizer', name: 'Fertilizer', icon: '🧫', basePrice: 8, category: 'industrial' },
   ammunition: { id: 'ammunition', name: 'Ammunition', icon: '🔩', basePrice: 10, category: 'industrial' },
   explosives: { id: 'explosives', name: 'Explosives', icon: '💥', basePrice: 14, category: 'industrial' },
@@ -177,7 +176,11 @@ export const FACTORIES = {
   },
   SYNTHETIC_OIL_PLANT: {
     id: 'SYNTHETIC_OIL_PLANT', availableFrom: 3341, name: 'Synthetic Oil Plant', icon: '🧪',
-    cost: { gold: 220 }, inputs: { coal: 2 }, outputs: { synthetic_oil: 1 },
+    // Cikti artik dogrudan yakit: eski `synthetic_oil` mali hicbir tuketiciye
+    // baglanmamisti ve bosluga uretiliyordu (olculdu: 300 turda ne uretim ne
+    // talep). Tesisin stratejik anlami korunur — petrolsuz ulke komurden
+    // yakit yapar — ama zincir gercek tuketiciye (ordu yakiti) baglanir.
+    cost: { gold: 220 }, inputs: { coal: 2 }, outputs: { fuel: 0.8 },
   },
   FERTILIZER_PLANT: {
     id: 'FERTILIZER_PLANT', name: 'Fertilizer Plant', icon: '🧫',
@@ -492,6 +495,14 @@ export const MILITARY_EQUIPMENT = {
   steamers: {
     id: 'steamers', name: 'Steamer Convoys', icon: '🚢', stockCap: 16, defaultStock: 2,
     factoryRate: 0.6, importLimit: 1, reserve: 3,
+  },
+  // Yelkenli konvoylar: 1836'nin donanmasi bununla kurulur. Eskiden savas
+  // gemisi vapur konvoyu istiyor ve vapur tersanesi 1850'ye kilitli oldugu
+  // icin donanma ilk 14 yil YAPISAL olarak imkansizdi (bkz. P2-7) — ekran da
+  // nedenini soylemiyordu. Clippers ayrica CLIPPER_YARD'in gercek tuketicisi.
+  clippers: {
+    id: 'clippers', name: 'Clipper Convoys', icon: '⛵', stockCap: 16, defaultStock: 4,
+    factoryRate: 0.6, importLimit: 1.2, reserve: 3,
   },
 };
 export const MILITARY_EQUIPMENT_IDS = Object.keys(MILITARY_EQUIPMENT);
@@ -1039,9 +1050,6 @@ export function initNationEconomy(world, nation) {
     social: { ...DEFAULT_SOCIAL },
     socialCost: 0,
     tariff: 10,
-    // Eski tek kaydıraç: yalnız geriye dönük kayıtlar için duruyor, hiçbir
-    // sistem artık okumuyor (bkz. militaryWages / militaryProcurement).
-    armySpending: 100,
     // Ordu bütçesi iki ayrı karardır: maaş (muharebe gücü, moral, toparlanma)
     // ve tedarik (devletin piyasadan fiilen satın aldığı mühimmat/yiyecek/
     // yakıt). Tek kaydıraç ikisini birden oynatıyordu ve "ordu güçlü ama
@@ -1055,7 +1063,6 @@ export function initNationEconomy(world, nation) {
     professionCounts: initialProfessionCounts(population),
     cohortPopulation: Math.max(10, Math.floor(population / POPULATION_COHORT)) * POPULATION_COHORT,
     mobility: { lastUpdated: 0, demotedUpper: 0, demotedMiddle: 0 },
-    inventory: emptyGoods(),
     goodsFlow: emptyGoodsFlow(),
     trade: emptyTradeSummary(),
     ledger: emptyLedger(),
@@ -1138,6 +1145,11 @@ export function initEconomy(world) {
 export function ensureEconomy(world) {
   if (!world.market?.goods) initMarket(world);
   for (const id of GOOD_IDS) world.market.goods[id] ??= marketGood(id);
+  // Katalogdan cikmis mal (orn. synthetic_oil) eski kayittan gelirse dusulur:
+  // updatePrices bilinmeyen malin taban fiyatini bulamayip cokuyordu.
+  for (const id of Object.keys(world.market.goods)) {
+    if (!GOODS[id]) delete world.market.goods[id];
+  }
   for (const nation of world.nations) {
     if (!nation.economy) initNationEconomy(world, nation);
     // Eski kayıtlar sosyal harcama alanını tanımıyor; eksik alan çökertmesin.
@@ -1147,11 +1159,12 @@ export function ensureEconomy(world) {
     nation.economy.militaryWages ??= nation.economy.armySpending ?? 100;
     nation.economy.militaryProcurement ??= nation.economy.armySpending ?? 100;
     nation.economy.adminFunding ??= 100;
-    nation.economy.inventory ??= emptyGoods();
+    // `inventory` kaldirildi: her hafta yazilan ama hicbir sistemin okumadigi
+    // olu bir kopyaydi (olculdu). Eski kayittan gelirse dusurulur.
+    delete nation.economy.inventory;
     nation.economy.goodsFlow ??= emptyGoodsFlow();
     for (let i = 0; i < GOOD_IDS.length; i++) {
       const id = GOOD_IDS[i];
-      nation.economy.inventory[id] ??= 0;
       const flow = nation.economy.goodsFlow[id];
       if (!flow) nation.economy.goodsFlow[id] = emptyGoodFlow();
       else fillMissing(flow, GOOD_FLOW_DEFAULTS);
@@ -1345,16 +1358,6 @@ export function factoryUnlocked(typeId, turn, nation = null) {
   // hepsi ayni anda guncellenmek zorunda kalmasin.
   if (nation && techUnlocksFactory(nation, typeId)) return true;
   return (FACTORIES[typeId]?.availableFrom ?? 0) <= turn;
-}
-
-/** Sanayi hakki anlasmasi: baska ulkenin topraginda fabrika kurabilmek. */
-export function industrialRightsOn(world, nation, ownerId) {
-  if (nation.id === ownerId) return true;
-  const owner = world.nations[ownerId];
-  return treatiesOf(owner).some(
-    (treaty) => treaty.type === 'FACTORY_RIGHTS' && treaty.partner === nation.id
-      && (treaty.until ?? 0) > (world.turn ?? 0),
-  );
 }
 
 export function canBuildFactory(world, nation, regionId, typeId, actor = 'state') {
@@ -2570,14 +2573,26 @@ function runEconomicAI(game, nation) {
  * bu tablonun kendisinden gelir, kopyasından değil.
  */
 const ARMY_CONSUMPTION_RATES = {
-  arms: 0.08, groceries: 0.05, ammunition: 0.06, fuel: 0.04,
+  // Patlayici da eklendi: EXPLOSIVES_FACTORY kurulabiliyordu ama malin hicbir
+  // tuketicisi yoktu (olculdu) — ordu istihkam/kusatma isinde patlayici yakar.
+  arms: 0.08, groceries: 0.05, ammunition: 0.06, fuel: 0.04, explosives: 0.02,
 };
+
+/**
+ * Bindirilmis (denizdeki) alay basina haftalik konvoy gideri. Vapur
+ * konvoylarinin gercek tuketicisi budur: orduyu denizden tasimak filo ister.
+ * Bu bag yokken `steamers` yalniz gemi insasinda bir kez harcaniyordu ve
+ * uretim hatti kurulu ulkede stok tavanda curuyordu.
+ */
+const CONVOY_PER_EMBARKED_REGIMENT = 0.15;
 
 export function armyWeeklyDemand(world, nation) {
   let landUnits = 0;
+  let embarked = 0;
   for (const unit of world.units) {
     if (unit.nationId === nation.id && unit.type.domain === 'land') {
       landUnits += regimentCount(unit);
+      if (unit.embarked) embarked += regimentCount(unit);
     }
   }
   const wartime = world.nations.some(
@@ -2585,12 +2600,21 @@ export function armyWeeklyDemand(world, nation) {
   );
   const tempo = wartime ? 1 : 0.35;
   const scale = (nation.economy?.militaryProcurement ?? 100) / 100;
+  // Demiryolu/ikmal teknolojileri tuketimi dusurur (negatif toplam).
+  const supplyTech = clamp(1 + (nation.economy?.techMods?.supplyConsumption ?? 0), 0.5, 1);
   const demand = {};
   const fullDemand = {};
   for (const id in ARMY_CONSUMPTION_RATES) {
-    const base = landUnits * ARMY_CONSUMPTION_RATES[id] * tempo;
+    const base = landUnits * ARMY_CONSUMPTION_RATES[id] * tempo * supplyTech;
     fullDemand[id] = base;
     demand[id] = id === 'groceries' ? base * (0.5 + scale * 0.5) : base * scale;
+  }
+  // Denizdeki ordu konvoy tuketir; tempo carpani yok — tasima baris/savas
+  // ayirmaz, gemideki tumen her hafta beslenir.
+  if (embarked > 0) {
+    const convoys = embarked * CONVOY_PER_EMBARKED_REGIMENT * supplyTech;
+    fullDemand.steamers = (fullDemand.steamers ?? 0) + convoys;
+    demand.steamers = (demand.steamers ?? 0) + convoys * scale;
   }
   return { demand, fullDemand, landUnits, wartime };
 }
@@ -3169,9 +3193,6 @@ export function runNationEconomy(game, nation, ctx) {
     nation.economy.gdp = baseOutputValue + industrialOutput;
     fiscalBalance(nation, baseOutputValue, industrialOutput);
     runPopulationMobility(nation, world.turn);
-    for (const id in ownOutput) {
-      nation.economy.inventory[id] = ownOutput[id];
-    }
     mark('fiscal');
     runPrivateSector(game, nation);
     mark('privateSector');
