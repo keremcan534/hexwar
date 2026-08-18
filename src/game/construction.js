@@ -378,8 +378,14 @@ export function constructionAtlas(world, nationId) {
   }
 
   // Bina/proje listeleri atlas içinde okunduğu için imzaya onlar da girer.
+  // HAFTA da girer: atlas bolge nufusunu kurulus aninda donduruyor; imza
+  // haftasiz olunca icerik CAGRI GECMISINE bagliydi — kesintisiz kosu eski
+  // nufus goruntusuyle, yuklenen kosu taze goruntuyle siralama yapiyor ve
+  // yatirim bolgesi secimi dallaniyordu (save-audit'in son kacagi). Haftalik
+  // yeniden kurulum iki yolda da ayni goruntuyu garanti eder; hafta icinde
+  // onbellek aynen calisir.
   const state = ensureConstruction(nation);
-  const signature = `${territorySignature(owned)}:${state.buildings.length}:${state.projects.length}`;
+  const signature = `${territorySignature(owned)}:${state.buildings.length}:${state.projects.length}:${world.turn ?? 0}`;
   if (!atlasCache.has(world)) atlasCache.set(world, new Map());
   const perWorld = atlasCache.get(world);
   const cached = perWorld.get(nationId);

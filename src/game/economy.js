@@ -2302,24 +2302,30 @@ function populationDemand(world, nation, market) {
     // ciddi kıtlıkta bütün sınıflar iflas eder. Ölçüldü: üst sınıf tamamen
     // yok oluyor, dolayısıyla kapitalist ve özel sermaye de kalmıyordu.
     // Katsayı 1 değil 0.6: enflasyon hâlâ acıtır, ama yok etmez.
-    const priceLevel = basketAtBase > 0 ? basket / basketAtBase : 1;
-    const wageIndex = 1 + (priceLevel - 1) * 0.6;
-    const taxRate = economy.taxes[classId] / 100;
-    const formulaBudget = scale * Math.max(0.35, wageIndex) * CLASS_NEEDS_BUDGET[classId]
-      * (1 - taxRate) * (1 + welfare * 0.22)
-      // Asgari ücret / sendika yasası hanenin harcanabilir gelirini büyütür.
-      * reformBudgetFactor(nation, classId);
     // HANE KIMLIGI: butce = net gelir + BEYAN EDILMIS gecimlik. Baska kanal
-    // yok — harman (INCOME_BUDGET_WEIGHT) kalkti; para ya kazanilmistir ya
-    // ayni-gecimliktir (kirsalin kendi urettigini tuketmesi; sinif payi
-    // SUBSISTENCE_SHARE'de, ust sinifta sifir). `subsistence` alani denetim
-    // ve ekran icin acikta durur — famineDeaths gibi kayitli bir kanaldir.
+    // yok; para ya kazanilmistir ya ayni-gecimliktir. `subsistence` alani
+    // denetim ve ekran icin acikta durur — famineDeaths gibi kayitli kanal.
+    //
+    // GECIMLIK GERCEGE DEMIRLIDIR: sinif, kendi sepetinin sabit bir REEL
+    // payini (SUBSISTENCE_SHARE) kendi uretiminden karsilar — para degeri
+    // guncel sepet fiyatiyla olur. Eski hali ucret-endeksli formul butcesine
+    // carpandi ve fiyatla birlikte SONUYORDU; 100 yillik kosuda bu, deflasyon
+    // sarmalina donustu (olculdu: GSYH 16k→2.6k, needsMet 0.43→0.26, 37 mal
+    // fiyat TABANINDA acliga ragmen — parasal talep gelirle birlikte cokuyor,
+    // geliri fiyat, fiyati talep belirliyor, demir yoktu). Sepet-payli
+    // gecimlik reel talebe taban koyar: fiyat duserse ayni reel pay daha az
+    // paraya karsilanir, sarmal kirilir. Vergi/refah/reform etkileri artik
+    // butceye GERCEK kanallardan girer (vergi net geliri, reform ucreti,
+    // refah cepten cikani degistirir) — eski formul carpanlari kalkti.
     //
     // Gelir GECEN HAFTANINDIR: `fiscalBalance` bu fonksiyondan SONRA kosar.
     // Bir haftalik gecikme butun ulkeleri esit etkiler (ayni kalip fabrika
     // girdi musaitliginde de kullaniliyor).
     const netIncome = Math.max(0, (socialClass.income ?? 0) - (socialClass.taxPaid ?? 0));
-    const subsistence = formulaBudget * (SUBSISTENCE_SHARE[classId] ?? 0);
+    // Vergi orani asagida ruh haline (memnuniyet) girer; butceye etkisi
+    // zaten taxPaid uzerinden net gelirde.
+    const taxRate = economy.taxes[classId] / 100;
+    const subsistence = basket * (SUBSISTENCE_SHARE[classId] ?? 0);
     socialClass.subsistence = subsistence;
     const needsBudget = netIncome + subsistence;
     // Refah sepetin bir kısmını devlet cebinden öder; parası zaten
@@ -2490,8 +2496,14 @@ function adjustSocialAI(nation) {
  * önce gelir. Seviye atlatma burada yok — o kadro dolunca kendiliğinden olur.
  */
 function investmentTargets(world, nation) {
-  return constructionAtlas(world, nation.id).regions
-    .sort((a, b) => b.population - a.population);
+  // KOPYA + DETERMINISTIK ESITLIK BOZUCU. Eski hali atlasin KENDI dizisini
+  // yerinde siraliyordu ve esit nufuslu bolgelerde sira, onceki cagrilarin
+  // birakigi dizilime bagliydi — yuklenen oyunda atlas taze kuruldugu icin
+  // ayni durumdaki iki kosu FARKLI bolgeye yatirim seciyordu (olculdu:
+  // save-audit dallanmasi, +77. haftada ¤229'luk CANNERY baska state'e).
+  return [...constructionAtlas(world, nation.id).regions]
+    .sort((a, b) => b.population - a.population
+      || String(a.id).localeCompare(String(b.id)));
 }
 
 /**

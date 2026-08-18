@@ -98,8 +98,13 @@ export function serialize(game) {
     market: world.market,
     battleSystem: {
       nextId: world.battleSystem?.nextId ?? 1,
-      // Aktif muharebeler yüklemede iptal edilir; ordu kimlikleri yeniden üretilir.
-      battles: [],
+      // Aktif muharebeler ARTIK kayda girer. Eskiden bilerek dusuruluyordu
+      // ("yuklemede iptal edilir") ve bu, muharebe ortasinda alinan kaydi
+      // kesintisiz kosudan DALLANDIRIYORDU (save-audit bunu yakaladi: ayni
+      // tohumda 100 hafta sonra hazine/fiyat farki). Muharebe nesnesi saf
+      // veridir (kimlikler + sayaclar); birim kimlikleri kayittan aynen
+      // dondugu icin uyelik yeniden baglanabilir (bkz. deserialize).
+      battles: (world.battleSystem?.battles ?? []).map((battle) => ({ ...battle })),
     },
     commandSystem: { nextId: world.commandSystem?.nextId ?? 1 },
     tiles,
@@ -137,7 +142,13 @@ export function serialize(game) {
     relations: world.relations.map((row, a) => row.map((rec, b) => (
       // Dorduncu alan savasin kayip defteri: warscore'un yipranma bileseni
       // ona bakar, kaydedilmezse yuklenen savas "hic kan dokulmemis" olur.
-      b <= a || !rec ? null : [rec.state, rec.since, rec.truceUntil ?? 0, rec.losses ?? null]
+      // Besinci/altinci alan: tekrarlanan savas sayaci (repeatScale/ateskes
+      // suresi buna bakar) ve savas-ilerleme zirveleri (stall olcumu).
+      // Ikisi de dusurulunce yuklenen oyunda kazanan MASAYA BASKA HAFTA
+      // oturuyordu — olculdu: +77. haftada tek seferlik ¤229 tazminat farki,
+      // kaydet-yukle dallanmasinin son kaynagi buydu.
+      b <= a || !rec ? null : [rec.state, rec.since, rec.truceUntil ?? 0, rec.losses ?? null,
+        rec.wars ?? 0, rec.peaks ?? null]
     ))),
     cities: world.cities.map((c) => ({
       name: c.name,
@@ -275,6 +286,8 @@ export function deserialize(game, data) {
       if (!entry) continue;
       const rec = { state: entry[0], since: entry[1], truceUntil: entry[2] };
       if (entry[3]) rec.losses = { ...entry[3] };
+      if (entry[4]) rec.wars = entry[4];
+      if (entry[5]) rec.peaks = { ...entry[5] };
       world.relations[a][b] = rec;
       world.relations[b][a] = rec;
     }
@@ -363,7 +376,22 @@ export function deserialize(game, data) {
     ensureEconomy(world);
   }
   ensureBattles(world);
-  if (data.battleSystem) world.battleSystem = data.battleSystem;
+  if (data.battleSystem) {
+    world.battleSystem = data.battleSystem;
+    // Muharebe uyeligini yeniden bagla: birimler kimlikleriyle dondu, ama
+    // unit.battleId kayitta tasinmiyor. Kayipsiz kural: iki tarafi da hala
+    // var olan muharebe surer, tek tarafi kalmayan dusurulur.
+    const byId = new Map(world.units.map((unit) => [unit.id, unit]));
+    world.battleSystem.battles = (world.battleSystem.battles ?? []).filter((battle) => {
+      battle.attackers = (battle.attackers ?? []).filter((id) => byId.has(id));
+      battle.defenders = (battle.defenders ?? []).filter((id) => byId.has(id));
+      if (!battle.attackers.length || !battle.defenders.length) return false;
+      for (const id of [...battle.attackers, ...battle.defenders]) {
+        byId.get(id).battleId = battle.id;
+      }
+      return true;
+    });
+  }
   if (data.commandSystem) world.commandSystem = data.commandSystem;
   else if (data.generalSystem) world.commandSystem = { ...data.generalSystem };
   ensureCommand(world);

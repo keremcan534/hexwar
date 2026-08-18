@@ -54,6 +54,15 @@ tarayici) dogruladi.
 Ek guvence: `audit:determinism` (ayni tohum → ayni dunya) ve `audit:save`
 (kaydet-yukle-kosuya-devam = kesintisiz kosu) bu dal uzerinde geciyor.
 
+## Yeniden kanit (cekirdek stabilizasyon gecisi sonrasi)
+
+Muhasebe duzeltmeleri (isci korunumu, hayalet nufus, hane defteri) dunya
+durumunu degistirdigi icin esdegerlik yeniden olculdu — ayni duzenek,
+ayni tohum: dort kontrol noktasinin dordunde yine birebir
+(`148a42ed / da2fe5bc / 3d65c327 / 7f2cbb2b`). Hiz: bassiz 53.7 hf/s,
+tarayici 42.0 hf/s — muhasebe temizligi simulasyonu ~2 kat hizlandirdi
+(kucuk ama gercek ekonomi, daha az hayalet is).
+
 ## Sinirlar
 
 - Olcum tam-YZ kosusu: oyuncu girdisi olan oturumlarda esdegerlik girdinin
