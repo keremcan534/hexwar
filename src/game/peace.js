@@ -621,8 +621,11 @@ export function signPeace(game, a, b, offer) {
   if (!offerAcceptable(world, a, b, offer)) return false;
 
   // Ayni kurbana kacinci savas? Seri yagma masada pahalilasir (salam freni).
+  // Tavan x2.5: sinirsiz birakinca 14-tekrarli ciftler x7.5'e cikip kacak
+  // dongu kuruyordu (koalisyon savasi -> ilhak -> daha cok sohret; olculdu:
+  // zirve 286, esik ustu 1175 ulke-hafta/520hf). Fren isirmali, dunyayi yakmamali.
   const repeats = relation(world, a, b)?.wars ?? 1;
-  const repeatScale = 1 + 0.5 * Math.max(0, repeats - 1);
+  const repeatScale = Math.min(2.5, 1 + 0.5 * Math.max(0, repeats - 1));
   const transfer = (keys, from, to) => {
     const taken = [];
     for (const key of keys ?? []) {

@@ -742,22 +742,32 @@ export function planConstructionAI(game, nation) {
       || project.kind === PROJECT_KIND.NATIONAL,
   ).length;
   if (pendingBuildings) return;
+  // Yalniz FONLANMIS is sayilir: kapitalistin parasiz projesi guc TUKETEMEZ
+  // (runConstruction odenmemis payi atlar). Fonlanmamis isi saymak YZ'yi
+  // surekli "bogulmus" gosterdi ve kapasite yigmasina yol acti (olculdu:
+  // 520 haftada seviye 26-33, bakim bataryasi 19/30 ulkeyi iflasa surdu).
   const queuedWork = state.projects.reduce(
-    (sum, project) => sum + Math.max(0, project.work - project.progress), 0,
+    (sum, project) => sum + Math.max(
+      0, Math.min(project.work, project.work * projectFundingRatio(project)) - project.progress,
+    ), 0,
   );
   // Hazine sisiyorsa asil darbogaz insaat gucudur: sanayi kuyrukta bekler,
   // para harcanacak yer bulamaz. Fazla altin kapasiteye gider; artan bakim
   // gideri de biriken parayi geri emer.
   const starved = queuedWork > constructionPower(nation) * 12 || nation.gold > 900;
   const capacity = investmentLevel(nation, 'CONSTRUCTION_CAPACITY');
+  // YZ tavani: kapasite sanayinin OLCEGIYLE buyur. Eski bolge-yuvasi freninin
+  // ulusal karsiligi — sinirsiz birakinca zengin YZ bakim bataryasi kuruyordu.
+  const capacityCeiling = 2 + Math.floor((nation.economy?.factories?.length ?? 0) / 3);
 
   // 1) Ilk kapasite seviyesi her seyden once: taban 5/hafta ile ulke yasayamaz.
   if (capacity < 1 && canQueueInvestment(nation, 'CONSTRUCTION_CAPACITY')) {
     queueInvestment(game, nation.id, 'CONSTRUCTION_CAPACITY');
     return;
   }
-  // 2) Kuyruk bogulduysa (ya da para birikiyorsa) kapasite buyur.
-  if (starved && nation.gold > 400 && canQueueInvestment(nation, 'CONSTRUCTION_CAPACITY')) {
+  // 2) Kuyruk bogulduysa (ya da para birikiyorsa) kapasite buyur — tavana dek.
+  if (starved && capacity < capacityCeiling && nation.gold > 400
+    && canQueueInvestment(nation, 'CONSTRUCTION_CAPACITY')) {
     queueInvestment(game, nation.id, 'CONSTRUCTION_CAPACITY');
     return;
   }

@@ -29,12 +29,18 @@ export const INFAMY = {
    */
   DECAY_PER_TURN: 0.05,
   /**
-   * 0.03'ten 0.02'ye. Denge noktası kazanç/oran olduğu için 0.03, eşiğe
-   * ulaşmayı ~0.95 kare/tur sürekli işgale bağlıyordu; savaş WW1 hızına
-   * çekildikten sonra bu tempoya kimse ulaşamıyor (ölçüldü: 6 tohumda zirve
-   * 11-24, koalisyon hiç kurulmadı).
+   * 0.02'den 0.012'ye. Salam denge hesabi: yillik tek-kume barisi (ilhak ~7 x
+   * tekrar carpani <=2.5 + isgal izi ~8) 0.02'de ~14'luk bir dengeye oturuyor
+   * ve esik (22) HIC dolmuyordu (Beta 3 I-1: 40 yil seri fetih, zirve 6.5).
+   * 0.012 ile seri saldirganin dengesi ~30'a cikar (fren isirir), tek savaslik
+   * "bir sehir + cevresi" ~18'de kalir (guvenli kural korunur).
+   *
+   * NOT: "savasta oransal azalma dursun" denendi ve GERI ALINDI — donmus
+   * savaslar on yillarca "savas hali" sayildigi icin sohret sinirsiz birikti
+   * (olculdu: zirve 519-1141, esik ustu 4.7k-13k ulke-hafta, cullanma 6'ya
+   * cikti). Azalma her hafta isler; fren orani, durdurma degil.
    */
-  DECAY_RATIO: 0.02,
+  DECAY_RATIO: 0.012,
 };
 
 /**
@@ -131,12 +137,7 @@ export function decayInfamy(world) {
   for (const nation of world.nations) {
     if (!nation.alive) continue;
     const current = nation.infamy ?? 0;
-    // Savas surerken dunya unutmaz: oransal azalma yalniz gercek bariste
-    // isler. Yillik salam savaslarinda azalma pencereleri esigi hep bosaltip
-    // freni olu birakiyordu (Beta 3 I-1: 40 yillik seri fetihte zirve 6.5/22).
-    const atWarNow = world.nations.some((other) => other.alive
-      && other.id !== nation.id && atWar(world, nation.id, other.id));
-    const rate = INFAMY.DECAY_PER_TURN + (atWarNow ? 0 : current * INFAMY.DECAY_RATIO);
+    const rate = INFAMY.DECAY_PER_TURN + current * INFAMY.DECAY_RATIO;
     addInfamy(nation, -rate);
   }
 }
