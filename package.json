@@ -66,6 +66,7 @@
     "audit:borders": "node scripts/audit/border-change-audit.mjs",
     "audit:stability": "node scripts/audit/stability-audit.mjs",
     "audit:military-strategy": "node scripts/audit/military-strategy-audit.mjs",
-    "audit:supply-response": "node scripts/audit/supply-response-audit.mjs"
+    "audit:supply-response": "node scripts/audit/supply-response-audit.mjs",
+    "audit:tech-effect": "node scripts/audit/tech-effect-audit.mjs"
   }
 }

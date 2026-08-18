@@ -8,7 +8,7 @@ import { atWar } from './diplomacy.js';
 import { controllerOf } from './control.js';
 import {
   advanceResearch, ensureResearch, pickResearchAI, refreshTechModifiers,
-  startResearch, techUnlocksFactory,
+  startResearch, techById, techUnlocksFactory,
 } from './technology.js';
 import { treatiesOf } from './peace.js';
 import { regimentCount } from './units.js';
@@ -1934,15 +1934,24 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
     for (const id in type.inputs) {
       inputFulfillment = Math.min(inputFulfillment, inputAvailability[id] ?? 1);
     }
-    // Çalışma saati / güvenlik / çocuk işçi yasaları üretimi bir miktar kısar.
-    const throughput = laborThroughput * inputFulfillment * reformMods.throughput;
+    // Çalışma saati / güvenlik / çocuk işçi yasaları üretimi bir miktar kısar;
+    // teknoloji buyutur. `factoryThroughput` hesaplanip hic okunmuyordu (P1-6).
+    const techMods = economy.techMods ?? null;
+    const throughput = laborThroughput * inputFulfillment * reformMods.throughput
+      * (1 + (techMods?.factoryThroughput ?? 0));
     factory.throughput = throughput;
     factory.inputFulfillment = inputFulfillment;
+
+    // Girdi verimi: ayni cikti daha az hammaddeyle. Bu ayni zamanda P1-1b'nin
+    // talep-tarafi adayi — sanayi buyudukce girdi talebi CIKTIDAN yavas
+    // buyusun diye tam bu kanal onerilmisti. Tavan 0.5: verim girdiyi yaridan
+    // fazla silemez, yoksa zincirin alt katmani issiz kalir.
+    const inputScale = clamp(1 - (techMods?.inputEfficiency ?? 0), 0.5, 1);
 
     let revenue = 0;
     let inputCost = 0;
     for (const id in type.inputs) {
-      const amount = type.inputs[id];
+      const amount = type.inputs[id] * inputScale;
       const requested = amount * laborThroughput;
       const consumed = amount * throughput;
       // Fiyat, karşılanamayan talebi de görür; maliyet yalnız gerçekten kullanılan
@@ -2979,13 +2988,23 @@ export function beginEconomy(game) {
     advanceLiteracy(nation);
     ensureResearch(nation);
     if (!nation.economy.techMods) refreshTechModifiers(nation);
-    // YZ (ve henuz secim yapmamis oyuncu) bos durmasin: kuyruk bosalinca
-    // en ucuz erisilebilir teknoloji secilir.
-    if (!nation.research.current) {
+    // YZ bos durmasin: kuyruk bosalinca en ucuz erisilebilir teknoloji secilir.
+    // OYUNCUNUN yonu artik otomatik secilmez: eski davranis oyuncunun secimini
+    // yarisla eziyordu ve tamamlanma bildirimi olmadigi icin oyuncu masaya hic
+    // cagrilmiyordu — arastirma karari fiilen yok olmustu (olculdu). Puan
+    // birikir, secim bekler; hicbir sey ziyan olmaz.
+    const isPlayer = nation.id === game.turns.playerNation;
+    if (!nation.research.current && !isPlayer) {
       const pick = pickResearchAI(nation, year);
       if (pick) startResearch(nation, pick);
     }
-    advanceResearch(nation, year, nation.rank ?? 0);
+    const done = advanceResearch(nation, year);
+    if (done && isPlayer) {
+      game.turns.addLog(
+        `${techById(done)?.tech.name ?? done} researched — pick the next field on the Technology screen.`,
+        { kind: 'RESEARCH' },
+      );
+    }
   }
   const market = world.market;
   const ctx = { world, market, profile: {} };

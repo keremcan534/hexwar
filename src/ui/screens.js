@@ -1754,7 +1754,7 @@ export class Screens {
       category: this.techCategory ?? 'industry',
       selected: this.techSelected ?? null,
       year,
-      rate: researchPointsOf(me, me.rank ?? 0),
+      rate: researchPointsOf(me),
     });
   }
 

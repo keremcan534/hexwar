@@ -605,9 +605,13 @@ export function provinceOutput(world, province, out = null) {
   const type = RGO_TYPES[econ.rgo];
   if (!type) return output;
   const development = econ[type.track] ?? 0;
+  // Teknoloji RGO verimini buyutur. `rgoOutput` degistiricisi hesaplanip
+  // hicbir yerde okunmuyordu (olculdu, P1-6); tuketicisi burasi. Duz alan
+  // okumasi — technology.js import edilmez (katman: world -> game yasak).
+  const tech = 1 + (world.nations?.[province.owner]?.economy?.techMods?.rgoOutput ?? 0);
   output[type.goodId] = type.baseOutput
     * econ.rgoQuality * (1 + development * 0.18)
-    * rgoLaborScale(econ, rgoJobsOf(econ)) * control * econ.hexes;
+    * rgoLaborScale(econ, rgoJobsOf(econ)) * control * econ.hexes * tech;
   // Vergi tabanı kare başına eski ölçekte: nüfus hex payına indirgenir,
   // toplam hex sayısıyla geri çarpılır.
   const taxpayerScale = clamp(econ.population / (7000 * econ.hexes), 0, 2.2);
