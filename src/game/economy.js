@@ -858,6 +858,46 @@ function syncClassPopulations(nation) {
   nation.economy.cohortPopulation = total;
 }
 
+/**
+ * ISCI KORUNUMU: Σfabrika kadrosu ≤ professionCounts.workers.
+ *
+ * Ise alim bu tavani zaten uygular ama sayaci SONRADAN dusuren uc yol
+ * (reconcilePopulation kucultmesi, sinif yukselmesi, kurulus sanayisinin
+ * sayaca hic sorulmamis kadrosu) tesis kadrosuna dokunmuyordu — olculdu:
+ * 1. haftada 5000 kadro / 4000 isci, 260. haftada ulusal fark 4900'e
+ * kadar cikiyor, denetimde 8690 kisi "iki yerde birden" sayiliyordu.
+ *
+ * Iki adim: (1) fiilen fabrikada calisan nufus ISCIDIR — acik once ciftci
+ * kohortundan kapanir (ayni sinif, sinif toplamlari degismez; bosalan isi
+ * baska bir koylu alir). (2) Alt sinifta insan kalmadiysa kadro kuculur:
+ * olen ya da yukselen calisani tesis tutamaz.
+ */
+function alignWorkforce(nation) {
+  const economy = nation.economy;
+  const counts = economy?.professionCounts;
+  if (!counts) return;
+  const factories = economy.factories ?? [];
+  const employed = factories.reduce((sum, factory) => sum + (factory.employees ?? 0), 0);
+  if (employed <= (counts.workers ?? 0)) return;
+  const deficit = employed - (counts.workers ?? 0);
+  const move = Math.min(
+    Math.ceil(deficit / POPULATION_COHORT),
+    Math.floor((counts.farmers ?? 0) / POPULATION_COHORT),
+  ) * POPULATION_COHORT;
+  if (move > 0) {
+    counts.farmers -= move;
+    counts.workers = (counts.workers ?? 0) + move;
+  }
+  const workers = counts.workers ?? 0;
+  if (employed > workers) {
+    const scale = workers / employed;
+    for (const factory of factories) {
+      factory.employees = (factory.employees ?? 0) * scale;
+    }
+  }
+  syncClassPopulations(nation);
+}
+
 export function ensurePopulationModel(nation, population = nation?.economy?.population ?? 10000) {
   const economy = nation.economy;
   economy.classes ??= {};
@@ -926,6 +966,9 @@ export function reconcilePopulation(nation, population) {
     current -= POPULATION_COHORT;
   }
   syncClassPopulations(nation);
+  // Kucultme en kalabalik meslekten kohort dusurur — cogu zaman 'workers'.
+  // Kadro sayaca uymali, yoksa ayni insan iki yerde sayilir.
+  alignWorkforce(nation);
 }
 
 /**
@@ -1010,6 +1053,9 @@ export function runPopulationMobility(nation, turn) {
     socialClass.hardshipWeeks = 0;
   }
   syncClassPopulations(nation);
+  // Yukselen kohort 'workers' sayacindan cikmis olabilir (en kalabalik
+  // meslek kuralı); kadro korunumu burada da kapanmali.
+  alignWorkforce(nation);
   return economy.mobility;
 }
 
@@ -1124,6 +1170,9 @@ function ensureInitialMilitaryIndustry(world, nation) {
       } : {}),
     });
   }
+  // Kurulus kadrosu meslek sayacina HIC sorulmuyordu: 1. haftada 5000
+  // kadro / 4000 isci ile dogan cift sayim buradan basliyordu.
+  alignWorkforce(nation);
 }
 
 /**
@@ -1955,6 +2004,39 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
       // Kapasite de yazılır: POP kohortları işçiyi işin OLDUĞU yere dağıtır,
       // dolu kadroya göre değil (bkz. population.js weightOf).
       tile.province.industrialJobs += Math.max(0, factoryJobs(factory));
+    }
+  }
+
+  // BANLIYO DUZELTMESI. Kadro ULUSAL havuzdan dolar ama tamamı fabrika
+  // province'ine yazilir; kadro yerel nufusu asinca (olculdu: 12.797 kadro /
+  // 8.989 nufus) fazlasi baska provinslerde oturan insanlardir. Eskiden bu
+  // fazla HICBIR yerden dusulmuyordu: fabrika province'inin kirsali sifira
+  // kirpilirken komsu provinsler tam kirsal nufusla RGO isletiyordu — emek
+  // yoktan var oluyordu. Fazla, ulkenin diger provinslerine nufus oraninda
+  // "banliyoculuk" olarak yazilir; provinces.js kirsali hesaplarken duser.
+  {
+    const mine = (world.provinces ?? [])
+      .filter((province) => province.owner === nation.id && province.econ)
+      .map((province) => province.econ);
+    for (const econ of mine) econ.industrialCommuters = 0;
+    const overfull = new Set();
+    let overflow = 0;
+    for (const factory of economy.factories) {
+      const econ = world.get(factory.q, factory.r)?.province;
+      if (econ && !overfull.has(econ)
+        && econ.industrialEmployees > Math.max(0, econ.population)) {
+        overfull.add(econ);
+        overflow += econ.industrialEmployees - Math.max(0, econ.population);
+      }
+    }
+    if (overflow > 0) {
+      const hosts = mine.filter((econ) => !overfull.has(econ));
+      const totalPop = hosts.reduce((sum, econ) => sum + Math.max(0, econ.population), 0);
+      if (totalPop > 0) {
+        for (const econ of hosts) {
+          econ.industrialCommuters = overflow * (Math.max(0, econ.population) / totalPop);
+        }
+      }
     }
   }
 

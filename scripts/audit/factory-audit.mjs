@@ -95,19 +95,27 @@ sub('Isci muhasebesi: kadro > nufus mumkun mu, ayni isci iki tesise sayiliyor mu
       if (f.employees > factoryJobs(f) + 1e-6) overJobs = Math.max(overJobs, f.employees - factoryJobs(f));
     }
   }
-  world.forEach((tile) => {
-    const p = tile.province;
-    if (!p?.industrialEmployees) return;
-    const excess = p.industrialEmployees - p.population;
-    if (!worstProvince || excess > worstProvince.excess) {
-      worstProvince = { q: tile.q, r: tile.r, excess, emp: p.industrialEmployees, pop: p.population };
-    }
-  });
+  // Mekansal korunum: kadronun yerel nufusu asan kismi BANLIYOCULUKTUR ve
+  // ayni ulkenin diger provinslerinden dusulmelidir (economy.runFactories
+  // banliyo duzeltmesi). Eski "kadro ≤ yerel nufus" beklentisi yanlis
+  // degismezdi: kadro ulusal havuzdan dolar, fazlanin kaybolmamasi gerekir.
+  // DUNYA duzeyinde olculur: isgal altindaki karede yabanci fabrika, fazlayi
+  // KENDI ulkesinin provinslerine banliyo olarak yazar — ulke bazli gruplama
+  // bu karisimda yaniltici. Emegin korunmasi kuresel bir kimliktir:
+  // Σ(yerel nufusu asan kadro) = Σ(banliyoculuk).
+  let overflow = 0;
+  let commuters = 0;
+  for (const province of world.provinces ?? []) {
+    const econ = province.econ;
+    if (!econ) continue;
+    overflow += Math.max(0, (econ.industrialEmployees ?? 0) - Math.max(0, econ.population));
+    commuters += Math.max(0, econ.industrialCommuters ?? 0);
+  }
+  const mismatch = Math.abs(overflow - commuters);
   console.log(`  fabrika kadrosu > seviye kapasitesi: en kotu ${n2(overJobs)} kisi`);
   console.log(`  ulusal fabrika kadrosu > 'workers' meslek sayaci: en kotu ${n0(doubleCount)} kisi`);
-  console.log(`  en kotu province: ${worstProvince ? `${worstProvince.q}:${worstProvince.r}`
-    + ` sanayiKadro ${n0(worstProvince.emp)} vs nufus ${n0(worstProvince.pop)}`
-    + ` (fazla ${n0(worstProvince.excess)})` : 'yok'}`);
+  console.log(`  yerel nufusu asan kadro ${n0(overflow)} kisi vs banliyoculuk ${n0(commuters)}`
+    + ` (sapma ${n2(mismatch)})`);
   if (overJobs > 1e-6) {
     finding('HIGH', 'Fabrika kadrosu kapasiteyi asiyor', 'employees <= level*2000', `${n2(overJobs)} fazla`, '');
   }
@@ -115,12 +123,12 @@ sub('Isci muhasebesi: kadro > nufus mumkun mu, ayni isci iki tesise sayiliyor mu
     finding('HIGH', 'Ayni isci birden fazla yerde sayiliyor',
       'toplam fabrika kadrosu ulusal isci sayacini asamaz', `${n0(doubleCount)} kisi fazla`, '');
   }
-  if (worstProvince && worstProvince.excess > 0) {
-    finding('MEDIUM', 'Province sanayi kadrosu yerel nufusu asiyor',
-      'bir karedeki fabrika kadrosu o karenin nufusundan buyuk olamaz',
-      `${worstProvince.q}:${worstProvince.r} -> ${n0(worstProvince.emp)} isci, ${n0(worstProvince.pop)} nufus`,
-      'kadro ULUSAL havuzdan dagitilir ama province.industrialEmployees yerel nufusa karsi'
-      + ' dogrulanmaz; rgoLaborScale bunu kirsal nufustan dusuyor, negatif olabilir');
+  // Tolerans nufus adimlarindan: hafta icinde nufus/kadro degisir, banliyo
+  // haftada bir runFactories'te tazelenir — bir haftalik kayma normaldir.
+  if (mismatch > Math.max(500, overflow * 0.1)) {
+    finding('HIGH', 'Banliyo emegi korunmuyor',
+      'yerel nufusu asan kadro toplami = banliyoculuk toplami (dunya)',
+      `fazla ${n0(overflow)} vs banliyo ${n0(commuters)}`, '');
   }
 }
 

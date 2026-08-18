@@ -515,11 +515,24 @@ const RGO_LABOR_FALLOFF = 0.75;
  * arzı +%14, sanayi talebi +%489; bütün hammaddeler fiyat tavanına yapışıyor,
  * girdisi 8 katına çıkan fabrikalar işçi alamıyordu (bkz. market-diagnostic).
  */
+/**
+ * Kirsal (RGO'da calisabilecek) nufus. Fabrikada calisan tarlada calismaz;
+ * yerel kadro yerel nufusla SINIRLI dusulur, fazlasi banliyoculuk olarak
+ * fabrikanin bulunmadigi provinslerden duser (bkz. economy.runFactories
+ * banliyo duzeltmesi). Eski hali fazlayi hicbir yerden dusmuyordu.
+ */
+export function ruralPopulation(econ) {
+  const population = Math.max(0, econ?.population ?? 0);
+  const local = Math.min(Math.max(0, econ?.industrialEmployees ?? 0), population);
+  const commuters = Math.max(0, econ?.industrialCommuters ?? 0);
+  return Math.max(0, population - local - commuters);
+}
+
 export function rgoLaborScale(province, jobs) {
   if (!province || jobs <= 0) return 0;
   // Fabrikada çalışan tarlada çalışmıyor. Bu ayrım olmadan şehir province'i
   // nüfusuyla birlikte hem sanayi hem hammadde üretiyor gibi görünüyordu.
-  const rural = Math.max(0, province.population - (province.industrialEmployees ?? 0));
+  const rural = ruralPopulation(province);
   // Ölçü *kuruluş* kadrosudur, güncel kadro değil. Güncel kadroya bölünürken
   // gelişme çıktıya hiç yansımıyordu: kapasite artıyor, göç kırsal nüfusu yeni
   // kadroya eşitliyor, oran 1'de kalıyor, üretim yerinde sayıyordu.
@@ -797,7 +810,7 @@ export function runProvinces(game) {
       // Nüfus baskısı gelişmeyi hızlandırır: kadroyu aşan her el yeni tarla
       // açar, yeni kuyu kazar (gerekçe ölçümleri için git geçmişine bakınız).
       const jobs = rgoJobsOf(econ);
-      const rural = Math.max(0, econ.population - (econ.industrialEmployees ?? 0));
+      const rural = ruralPopulation(econ);
       const pressure = jobs > 0 ? clamp(rural / jobs - 1, 0, 2) : 0;
       econ[track] = Math.min(
         RGO_DEVELOPMENT_CAP,
