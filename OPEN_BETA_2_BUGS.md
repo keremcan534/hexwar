@@ -297,3 +297,11 @@ REPRODUCIBILITY. Konsol hatasi sayaci ayrica en altta.
   25'e yuvarlandi; adim/uc deger kurali gorunmuyor.
 - PLAYER IMPACT: Dusuk-orta; niyet ile sonuc farkli, sebep yazmiyor.
 - REPRODUCIBILITY: %100.
+
+## B-010 EK KANIT (1861-1867) — tarife kaydiragi baris/refah doneminde de reverte ediyor
+
+- 1861'de tarife 10→25 yaptim; 1867'de yine 10. Kriz yokken de (hazine
+  ¤85k, istikrar %78) oyuncunun tarife karari tutmuyor. Public Health/
+  Welfare ayarlarim da iki kez silindi. Kalici tutulan kaydiraclar:
+  egitim (tavana kadar), tedarik, maas. Tutulmayanlar: tarife, saglik,
+  refah, vergiler(kismen). Hangi kaydiragin "benim" oldugu belirsiz.
