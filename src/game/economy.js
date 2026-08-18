@@ -386,6 +386,16 @@ const PRICE_SPEED = 0.09;
 export const IMPORT_ELASTICITY = 1.6;
 
 /**
+ * Yuksek gumrugun IHRACAT bedeli: kapali ekonomiden kimse mal almak istemez —
+ * ticaret ortaklari once acik ekonomilerden alir. %100 tarife ihracat payini
+ * ~%33 dusurur (1/(1+0.5)). Bu katsayi olmadan %100 tarife OLCULEN bir bedava
+ * paraydi (YUKSEK-4: 200 haftada +10.872 altin, sifir bedel; YZ uluslarin
+ * %99'u tavanda). Keyfi bir istikrar cezasi degil, gercek iktisadi kanal:
+ * misilleme/pazar erisimi.
+ */
+export const EXPORT_RETALIATION = 0.5;
+
+/**
  * Sanayi karinin sermayedar (ust sinif) gelirine akan payi.
  *
  * 1.0 degil cunku karin bir kismi zaten `privateCapital`e (yeniden yatirim
@@ -2746,8 +2756,12 @@ export function settleGlobalTrade(world) {
       // NEGATIFE gidiyor. UI bandi (taban −50) bugun oraya girmiyor ama
       // matematiksel koruma bantla birlikte tasinmamali.
       const appetite = 1 / Math.max(0.05, 1 + (nation.economy.tariff / 100) * IMPORT_ELASTICITY);
+      // Yuksek tarifeli ulkenin ihracat erisimi kisilir (bkz. EXPORT_RETALIATION).
+      // Fiziksel mal yok olmaz: satilamayan fazla, zaten satilamayan fazlanin
+      // yanina duser (crossBorderTrade = min(surplus, bid) korunumu bozulmaz).
+      const access = 1 / (1 + Math.max(0, nation.economy.tariff / 100) * EXPORT_RETALIATION);
       domesticCol[i] = domestic;
-      surplusCol[i] = Math.max(0, marketProduction - domestic);
+      surplusCol[i] = Math.max(0, marketProduction - domestic) * access;
       bidCol[i] = deficit * appetite;
     }
     // Toplamlar eski reduce ile ayni sirada birikir (ulke dizisi sirasi).

@@ -104,12 +104,19 @@ export function provinceAnnexInfamy(world, province, nation) {
  * Baris masasinda devredilen kumelerin sohret bedelini uygular.
  * `signPeace` bunu devirden HEMEN SONRA cagirir; donen sayi toplam bedeldir.
  */
-export function annexInfamy(world, nation, provinces) {
+/**
+ * @param {number} repeatScale Ayni kurbana TEKRARLANAN savasin carpani.
+ *   Salam taktiginin olculen deligi buydu: yillik tek-kume barislari (~7 puan)
+ *   baris donemi azalmasiyla tamamen siliniyor, esik (22) hic dolmuyordu.
+ *   Dunya seri saldirgani hatirlar: ikinci savas x1.5, ucuncusu x2...
+ */
+export function annexInfamy(world, nation, provinces, repeatScale = 1) {
   if (!nation) return 0;
   let total = 0;
   for (const province of provinces ?? []) {
     total += provinceAnnexInfamy(world, province, nation);
   }
+  total *= Math.max(1, repeatScale);
   if (total > 0) addInfamy(nation, total);
   return total;
 }
@@ -124,7 +131,12 @@ export function decayInfamy(world) {
   for (const nation of world.nations) {
     if (!nation.alive) continue;
     const current = nation.infamy ?? 0;
-    const rate = INFAMY.DECAY_PER_TURN + current * INFAMY.DECAY_RATIO;
+    // Savas surerken dunya unutmaz: oransal azalma yalniz gercek bariste
+    // isler. Yillik salam savaslarinda azalma pencereleri esigi hep bosaltip
+    // freni olu birakiyordu (Beta 3 I-1: 40 yillik seri fetihte zirve 6.5/22).
+    const atWarNow = world.nations.some((other) => other.alive
+      && other.id !== nation.id && atWar(world, nation.id, other.id));
+    const rate = INFAMY.DECAY_PER_TURN + (atWarNow ? 0 : current * INFAMY.DECAY_RATIO);
     addInfamy(nation, -rate);
   }
 }
@@ -202,6 +214,15 @@ export function checkCoalitions(game, rng) {
       if (declareWar(game, other.id, target.id, { reason: 'coalition' })) {
         declared++;
         fronts++;
+        // Koalisyon OYUNCUYA karsi kurulduysa bu bir KRIZDIR: oyun durur.
+        // CRISIS turu bastan beri tanimliydi ve hicbir yerden yayilmiyordu;
+        // "esik 22, sohretim 33, hicbir sey olmadi" bulgusunun gorunur yuzu.
+        if (target.id === game.turns?.playerNation) {
+          game.turns.addLog(
+            `${world.nations[other.id].name} joined a coalition against us — our infamy has united our neighbours.`,
+            { kind: 'CRISIS' },
+          );
+        }
       }
     }
   }

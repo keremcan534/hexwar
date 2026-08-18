@@ -8,7 +8,7 @@
 //
 // Katman notu: saf hesap. DOM'a dokunmaz, çizim bilmez.
 
-import { atWar, makePeace, nationStrength, warLossesOf } from './diplomacy.js';
+import { atWar, makePeace, nationStrength, relation, warLossesOf } from './diplomacy.js';
 import { controllerOf } from './control.js';
 import { soldiersOf } from './units.js';
 import { annexInfamy } from './infamy.js';
@@ -620,6 +620,9 @@ export function signPeace(game, a, b, offer) {
   if (!atWar(world, a, b)) return false;
   if (!offerAcceptable(world, a, b, offer)) return false;
 
+  // Ayni kurbana kacinci savas? Seri yagma masada pahalilasir (salam freni).
+  const repeats = relation(world, a, b)?.wars ?? 1;
+  const repeatScale = 1 + 0.5 * Math.max(0, repeats - 1);
   const transfer = (keys, from, to) => {
     const taken = [];
     for (const key of keys ?? []) {
@@ -631,7 +634,7 @@ export function signPeace(game, a, b, offer) {
     }
     // Fethin KALICI diplomatik bedeli masada ödenir. İşgal şöhreti yerinde
     // kalır ama asıl kaynak burasıdır — bkz. infamy.annexInfamy.
-    annexInfamy(world, world.nations[to], taken);
+    annexInfamy(world, world.nations[to], taken, repeatScale);
   };
   transfer(offer?.demands, b, a);
   transfer(offer?.concessions, a, b);
