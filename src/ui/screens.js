@@ -58,10 +58,10 @@ import { politicsScreen } from './politicsScreen.js';
 import { technologyScreen } from './technologyScreen.js';
 import { researchPointsOf, startResearch } from '../game/technology.js';
 import {
-  CONSTRUCTION_TYPES, cancelConstruction, canQueueConstruction, constructionAtlas,
-  constructionPower, constructionUpkeep, ensureConstruction, moveConstructionTo,
-  prioritizeConstruction,
-  queueConstruction,
+  CONSTRUCTION_TYPES, NATIONAL_INVESTMENTS, cancelConstruction, canQueueConstruction,
+  constructionAtlas, constructionPower, constructionUpkeep, ensureConstruction,
+  investmentBlocker, investmentCost, investmentLevel, moveConstructionTo,
+  prioritizeConstruction, queueConstruction, queueInvestment,
 } from '../game/construction.js';
 
 const TITLES = {
@@ -244,8 +244,11 @@ export class Screens {
       const me = this.me;
       if (this.constructionType && tile?.owner === me?.id) {
         const region = constructionAtlas(game.world, me.id).tileRegions.get(tile);
-        if (region && queueConstruction(game, me.id, region.id, this.constructionType)) {
-          game.turns.addLog(`${CONSTRUCTION_TYPES[this.constructionType].name} queued in ${region.name}.`);
+        // Tiklanan kare CAPA olur: kalenin etkisi artik o noktaya bagli
+        // (bkz. construction.fortDefenseAt), yani haritadan yer secmek gercek
+        // bir karardir — dag gecidine kale, ovaya kale ayni sey degil.
+        if (region && queueConstruction(game, me.id, region.id, this.constructionType, tile)) {
+          game.turns.addLog(`${CONSTRUCTION_TYPES[this.constructionType].name} queued at ${provinceName(tile)}.`);
         }
       }
       this.refresh();
@@ -726,10 +729,38 @@ export class Screens {
     const buildPalette = Object.values(CONSTRUCTION_TYPES).map((type) => `
       <button class="construction-build${this.constructionType === type.id ? ' selected' : ''}"
         data-construction-type="${type.id}" title="${esc(type.desc)}">
-        <i>${type.icon}</i><span><b>${esc(type.name)}</b><small>${type.cost} points · −¤${type.upkeep}/week</small></span>
+        <i>${type.icon}</i><span><b>${esc(type.name)}</b><small>¤${type.cost} · −¤${type.upkeep}/week</small></span>
       </button>`).join('');
+    // Ulusal yatirimlar: eski bina spam'inin kurum hali. Bir kart = bir
+    // seviye + bir sonraki seviyenin bedeli + (kapaliysa) NEDENI.
+    const investmentCards = Object.values(NATIONAL_INVESTMENTS).map((info) => {
+      const level = investmentLevel(me, info.id);
+      const pending = state.projects.filter(
+        (project) => project.kind === 'national' && project.typeId === info.id,
+      ).length;
+      const blocked = investmentBlocker(me, info.id);
+      const cost = investmentCost(me, info.id);
+      const levelName = info.levels
+        ? info.levels[Math.min(level, info.levels.length - 1)]
+        : `level ${level}`;
+      const capped = info.max != null && level + pending >= info.max;
+      return `<div class="construction-invest card" title="${esc(info.desc)}">
+        <i>${info.icon}</i>
+        <span class="grow"><b>${esc(info.name)}</b>
+          <small>${esc(levelName)}${pending ? ` · ${pending} in queue` : ''}${
+  info.id === 'CONSTRUCTION_CAPACITY' ? ` · +${5 * level}/wk` : ''}</small>
+          ${blocked && !capped ? `<small class="res-warn">${esc(blocked)}</small>` : ''}
+        </span>
+        <button class="action" data-invest="${info.id}" ${blocked ? 'disabled' : ''}
+          title="${esc(blocked ?? `Invest ¤${cost}: enters the construction queue and adds −¤${info.upkeep}/week upkeep.`)}">
+          ${capped ? 'Max' : `Invest · ¤${cost}`}</button>
+      </div>`;
+    }).join('');
+    // Siralama KARARLI: ad alfabetik. Eski "bos yuvaya gore" siralama satirlari
+    // her hafta yer degistirtiyordu ve oyuncu ayni state'e iki kez tiklayamiyordu
+    // (P2-3'un insaat ekranindaki kardesi).
     const regions = [...atlas.regions]
-      .sort((a, b) => b.free - a.free || a.name.localeCompare(b.name));
+      .sort((a, b) => a.name.localeCompare(b.name));
     const stateRows = regions.map((region) => {
       const status = region.status === 'full'
         ? 'Full'
@@ -757,10 +788,10 @@ export class Screens {
     }).join('');
     let cumulative = 0;
     const queueRows = state.projects.map((project, index) => {
-      // Kuyrukta artık fabrika ve seviye projeleri de var; tip araması iki
-      // tabloya birden bakmalı, yoksa sanayi projesi ekranı çökertir.
-      const type = CONSTRUCTION_TYPES[project.typeId] ?? FACTORIES[project.typeId]
-        ?? { name: project.typeId, icon: '🏭' };
+      // Kuyrukta bina, fabrika, seviye VE ulusal yatirim projeleri var; tip
+      // aramasi uc tabloya birden bakmali, yoksa ekran cokertir.
+      const type = CONSTRUCTION_TYPES[project.typeId] ?? NATIONAL_INVESTMENTS[project.typeId]
+        ?? FACTORIES[project.typeId] ?? { name: project.typeId, icon: '🏭' };
       const work = project.work ?? type.cost ?? 1;
       const remaining = Math.max(0, work - project.progress);
       cumulative += remaining;
@@ -791,10 +822,11 @@ export class Screens {
         <span><small>Building upkeep</small><b>−¤${upkeep.toFixed(1)}</b></span>
         <span class="construction-free-total"><small>Available slots</small><b>${atlas.free}<em> / ${atlas.slots}</em></b></span>
       </div>
+      <div class="construction-invest-row">${investmentCards}</div>
       <div class="construction-build-palette">${buildPalette}</div>
       <div class="construction-placement-hint ${selected ? 'active' : ''}">
-        ${selected ? `<b>${selected.icon} ${esc(selected.name)} selected</b><span>Click a state row or one of your states on the map to add it to the queue.</span>`
-    : '<b>Select a building icon</b><span>Then click a state row or the map to start construction.</span>'}
+        ${selected ? `<b>${selected.icon} ${esc(selected.name)} selected</b><span>Click one of your hexes on the map — the fort defends that hex and its 2-hex surroundings. A state row places it at the state centre.</span>`
+    : '<b>National investments above; the fort is placed on the map</b><span>Select the fort, then click the hex it should defend — a pass, a capital approach, a border city.</span>'}
       </div>
       <div class="construction-legend">
         <span><i class="legend-green"></i><b>More free slots</b></span>
@@ -1422,7 +1454,7 @@ export class Screens {
     classId: 'education',
     current: economy.social.education ?? 0,
     picto: PICTO.book,
-    note: 'schools qualify workers; universities amplify it',
+    note: 'schools qualify workers; Higher Education (Construction screen) amplifies it and gates its next level on this budget',
   })}
         ${expRow('Public Health', socialShare(me, 'health'), {
     policy: 'social',
@@ -1951,6 +1983,14 @@ export class Screens {
       btn.onclick = () => {
         this.constructionType = this.constructionType === btn.dataset.constructionType
           ? null : btn.dataset.constructionType;
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-invest]')) {
+      btn.onclick = () => {
+        if (queueInvestment(game, me.id, btn.dataset.invest)) {
+          game.turns.addLog(`${NATIONAL_INVESTMENTS[btn.dataset.invest].name} investment queued.`);
+        }
         this.refresh();
       };
     }

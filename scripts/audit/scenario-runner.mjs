@@ -138,23 +138,11 @@ const MUTATIONS = {
       province.econ.population = Math.max(0, Math.round(province.econ.population * factor));
     }
   },
-  /** Insaat sektoru kuyruga ekler (bedava: kapasitenin etkisini izole etmek icin). */
+  /** Insaat kapasitesi seviyesi verir (bedava: kapasitenin etkisini izole etmek icin). */
   grantConstructionSectors(game, { nationId, count }) {
     const nation = game.world.nations[nationId];
     const state = ensureConstruction(nation);
-    const atlas = constructionAtlas(game.world, nationId);
-    let added = 0;
-    for (const region of atlas.regions) {
-      for (let i = 0; i < 3 && added < count; i++) {
-        state.buildings.push({
-          id: `audit-cs-${added}`, typeId: 'CONSTRUCTION_SECTOR',
-          regionId: region.id, regionName: region.name,
-          q: region.center.q, r: region.center.r, completed: game.world.turn,
-        });
-        added++;
-      }
-      if (added >= count) break;
-    }
+    state.capacity.construction += count;
   },
   /** Izlenen ulkeye savas acar (en yakin temasli komsu). */
   forceWar(game, { nationId, foes = 1 }) {
@@ -336,7 +324,8 @@ if (spec.measure?.includes('construction')) {
       progress: p.progress, cost: p.cost, funded: p.funded,
     })),
     buildings: state.buildings.length,
-    sectors: state.buildings.filter((b) => b.typeId === 'CONSTRUCTION_SECTOR').length,
+    sectors: state.capacity.construction ?? 0,
+    education: state.capacity.education ?? 0,
     upkeep: nation.economy.constructionUpkeep ?? 0,
   };
 }

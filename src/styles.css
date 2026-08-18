@@ -2204,6 +2204,27 @@ body.screen-open .layer-menu { display: none; }
 .legend-yellow { background: var(--amber); }
 .legend-blue { background: var(--cyan); }
 
+/* Ulusal yatirim kartlari: seviye + bedel + (kapaliysa) neden. */
+.construction-invest-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: var(--sp-2);
+}
+
+.construction-invest {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-3);
+}
+
+.construction-invest > i { font-size: 20px; }
+.construction-invest .grow { display: grid; gap: 2px; min-width: 0; }
+.construction-invest b { color: var(--text); font-size: var(--fs-md); }
+.construction-invest small { color: var(--text-mute); font-size: var(--fs-sm); }
+.construction-invest small.res-warn { color: var(--amber); }
+.construction-invest .action { white-space: nowrap; }
+
 .construction-build-palette {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(94px, 1fr));

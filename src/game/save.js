@@ -13,7 +13,7 @@ import { ensureTraining } from './recruitment.js';
 import { ensureBattles } from './battles.js';
 import { ensureProvinces, refreshProvinceOwner } from './provinces.js';
 import { ensurePolitics } from './politics.js';
-import { ensureConstruction } from './construction.js';
+import { ensureConstruction, migrateConstructionV14 } from './construction.js';
 
 // Ordu sistemi yeniden yazıldı: cephe artık saklanmıyor (sınırdan türetiliyor),
 // komuta tek listede toplandı ve muharebe kare anahtarlı oldu. v8'de kaldırılan
@@ -29,7 +29,13 @@ import { ensureConstruction } from './construction.js';
 // 13: alay artık anında belirmiyor, eğitim kuyruğuna giriyor (nation.training)
 // ve subayların bir kolu var (general.branch). İkisi de türetilemez durumdur:
 // yazılmazsa yüklemede sipariş edilmiş ordu ve amiraller buhar olur.
-export const SAVE_VERSION = 14;
+// 14: (önceki sürüm) dört yerleşik bina tipi.
+// 15: bina donusumu — Construction Sector / University / Administration yerlesik
+// binalari ulusal kurumlara cevrildi (nation.construction.capacity). v14
+// kayitlari migrateConstructionV14 ile KAYIPSIZ yuklenir (bkz. construction.js).
+export const SAVE_VERSION = 15;
+/** Gocu bilinen eski surumler: deserialize bunlari da kabul eder. */
+const MIGRATABLE_VERSIONS = new Set([14]);
 const STORAGE_KEY = 'hexwar.save';
 
 /**
@@ -174,7 +180,9 @@ export function serialize(game) {
  */
 export function deserialize(game, data) {
   // Rework sirasinda dunya semasi degisti; eski surumler guvenle acilamaz.
-  if (!data || data.version !== SAVE_VERSION) return false;
+  if (!data || (data.version !== SAVE_VERSION && !MIGRATABLE_VERSIONS.has(data.version))) {
+    return false;
+  }
 
   // 1) Aynı seed ve ayarlarla dünyayı yeniden kur (arazi, iklim, kültür aynı).
   game.newWorld(data.seed, data.options);
@@ -232,6 +240,9 @@ export function deserialize(game, data) {
     // baslar, takvim kapisi zaten calismaya devam eder).
     nation.research = saved.research ?? null;
     nation.construction = saved.construction ?? null;
+    // v14 gocu ensure'dan ONCE: ensure eski bina tiplerini tanimayip atardi,
+    // goc ham kayittan sayar (bkz. construction.migrateConstructionV14).
+    if (data.version === 14 && nation.construction) migrateConstructionV14(nation);
     ensureConstruction(nation);
     nation.rallyPoint = saved.rallyPoint ?? null;
     nation.treaties = (saved.treaties ?? []).map((t) => ({ ...t }));

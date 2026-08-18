@@ -1872,6 +1872,21 @@ export class Renderer {
       ctx.font = `${8 / scale}px ui-monospace, monospace`;
       ctx.fillText(`${region.free} free`, tile.x, tile.y + 7 / scale);
     }
+    // Kale capalari: etki artik yerel oldugu icin (bkz. fortDefenseAt) kalenin
+    // NEREDE durdugu bilgi tasiyan bir isaret — bolge rozetinin susu degil.
+    const nation = world.nations?.[this.constructionNation];
+    if (nation?.construction?.buildings?.length) {
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.font = `${12 / scale}px ui-monospace, monospace`;
+      for (const building of nation.construction.buildings) {
+        if (building.typeId !== 'FORT' || !Number.isFinite(building.q)) continue;
+        const anchor = world.get(building.q, building.r);
+        if (!anchor || anchor.x < rect.minX || anchor.x > rect.maxX
+          || anchor.y < rect.minY || anchor.y > rect.maxY) continue;
+        ctx.fillText('🛡', anchor.x, anchor.y);
+      }
+    }
   }
 
 

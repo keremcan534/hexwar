@@ -12,28 +12,54 @@ const MAX_REGIONS = 12;
 
 export const BASE_CONSTRUCTION_POWER = 5;
 
+/**
+ * YERLESIK YAPI TABLOSUNDA YALNIZ KALE KALDI.
+ *
+ * Eski dort yapinin ucu (Construction Sector, Administration, University)
+ * KONUM TESTINI gecemiyordu: etkileri `constructionCount` uzerinden ULUSAL
+ * birer sayacti, secilen bolgenin hicbir onemi yoktu ve iki beta boyunca
+ * tek bir oyuncu bile Sector disinda bir sey kurmadi. Ucu de ulusal kurum/
+ * kapasite olarak devam ediyor (bkz. NATIONAL_INVESTMENTS ve economy.js
+ * taxEfficiency): kavram duruyor, harita spam'i gitti.
+ *
+ * Kale kaliyor cunku konum GERCEKTEN fark yaratabilir — ve artik yaratiyor:
+ * etkisi bolge geneli bir yuzde degil, CAPA KARESI cevresindeki yerel bir
+ * savunma katkisi (bkz. fortDefenseAt). "Nereye kale?" ilk kez bir karar.
+ */
 export const CONSTRUCTION_TYPES = {
-  CONSTRUCTION_SECTOR: {
-    id: 'CONSTRUCTION_SECTOR', name: 'Construction Sector', icon: '🏗',
-    // Bakım 6'dan 4'e: fabrikalar da bu güçle kurulduğu için ülkeler artık çok
-    // daha fazla şantiyeye ihtiyaç duyuyor, 6'da bütçe onları taşıyamıyordu.
-    cost: 100, upkeep: 4, maxPerRegion: 3,
-    desc: '+5 weekly construction power. Expensive to maintain.',
-  },
   FORT: {
     id: 'FORT', name: 'Fort', icon: '🛡',
     cost: 70, upkeep: 1.5, maxPerRegion: 3,
-    desc: '+8% defender power in this state per level.',
+    desc: '+10% defender power on and around the fort hex (2-hex radius).',
   },
-  ADMINISTRATION: {
-    id: 'ADMINISTRATION', name: 'Administration', icon: '⚖',
-    cost: 80, upkeep: 2, maxPerRegion: 2,
-    desc: '+4% national tax collection per building.',
+};
+
+/**
+ * ULUSAL YATIRIMLAR: eski bina spam'inin kurum hali. Iki kural:
+ *   1. Yatirim da insaat kuyruguna girer ve ayni insaat gucunu tuketir —
+ *      "kapasiteye mi, fabrikaya mi" firsat maliyeti aynen korunur.
+ *   2. Maliyet seviyeyle buyur: sinirsiz kapasite yigmak dogru cevap olamaz
+ *      (eski bolge-yuvasi freninin ulusal karsiligi artan fiyat + bakim).
+ */
+export const NATIONAL_INVESTMENTS = {
+  CONSTRUCTION_CAPACITY: {
+    id: 'CONSTRUCTION_CAPACITY', name: 'Construction Capacity', icon: '🏗',
+    field: 'construction',
+    baseCost: 100, costGrowth: 0.35, upkeep: 4, max: null,
+    desc: '+5 weekly construction power per level. Each level costs more and adds upkeep.',
   },
-  UNIVERSITY: {
-    id: 'UNIVERSITY', name: 'University', icon: '🎓',
-    cost: 100, upkeep: 3, maxPerRegion: 2,
-    desc: 'Improves education spending and industrial workforce.',
+  HIGHER_EDUCATION: {
+    id: 'HIGHER_EDUCATION', name: 'Higher Education', icon: '🎓',
+    field: 'education',
+    baseCost: 120, costGrowth: 0.6, upkeep: 3, max: 4,
+    // Seviye adlari ekranda: kurum bir sayac degil, ulkenin egitim iskeleti.
+    levels: ['No organised higher education', 'Limited Academies',
+      'Regional Colleges', 'National University Network', 'Research Institutions'],
+    // Bir sonraki seviyeye YATIRIM YAPABILMEK icin gereken egitim butcesi:
+    // universite okulsuz olmaz. Kaydiraca ilk kez max-disi bir anlami olan
+    // gercek bir esik baglanmis oluyor.
+    educationFloor: [0, 25, 40, 55, 70],
+    desc: 'Qualifies the industrial workforce and raises the literacy ceiling; feeds research through literacy.',
   },
 };
 
@@ -109,7 +135,11 @@ function displayCenter(world, tiles) {
  * Bina projeleri yalniz is ister; fabrika projeleri hem is hem para ister ve
  * odenmemis kismin otesine ilerleyemez.
  */
-export const PROJECT_KIND = { BUILDING: 'building', FACTORY: 'factory', UPGRADE: 'upgrade' };
+export const PROJECT_KIND = {
+  BUILDING: 'building', FACTORY: 'factory', UPGRADE: 'upgrade',
+  /** Ulusal yatirim: bolgesiz proje, tamamlaninca kapasite seviyesi artar. */
+  NATIONAL: 'national',
+};
 
 /**
  * Yerinde düzeltir, kopya üretmez. Kopyalasaydı ensureConstruction'ın her
@@ -140,6 +170,9 @@ function validBuilding(building) {
 }
 
 function validProject(project) {
+  if (project.kind === PROJECT_KIND.NATIONAL) {
+    return Boolean(NATIONAL_INVESTMENTS[project.typeId]);
+  }
   return project.kind && project.kind !== PROJECT_KIND.BUILDING
     ? Number.isFinite(project.q)
     : Boolean(CONSTRUCTION_TYPES[project.typeId])
@@ -148,9 +181,17 @@ function validProject(project) {
 
 export function ensureConstruction(nation) {
   nation.construction ??= {
-    nextId: 1, buildings: [], projects: [], completedFactories: [], lastCompleted: 0,
+    nextId: 1,
+    buildings: [],
+    projects: [],
+    completedFactories: [],
+    lastCompleted: 0,
+    capacity: { construction: 0, education: 0 },
   };
   const state = nation.construction;
+  state.capacity ??= { construction: 0, education: 0 };
+  if (!Number.isFinite(state.capacity.construction)) state.capacity.construction = 0;
+  if (!Number.isFinite(state.capacity.education)) state.capacity.education = 0;
   if (!Number.isFinite(state.nextId) || state.nextId < 1) {
     state.nextId = Math.max(1, Number(state.nextId) || 1);
   }
@@ -196,7 +237,13 @@ export function projectFundingRatio(project) {
 
 export function initConstruction(world) {
   for (const nation of world.nations) {
-    nation.construction = { nextId: 1, buildings: [], projects: [], lastCompleted: 0 };
+    nation.construction = {
+      nextId: 1,
+      buildings: [],
+      projects: [],
+      lastCompleted: 0,
+      capacity: { construction: 0, education: 0 },
+    };
   }
 }
 
@@ -221,38 +268,88 @@ function upkeepFactor(nation) {
   return 1 - clamp(nation.economy?.creditPenalty ?? 0, 0, 0.85);
 }
 
+/** Ulusal yatirim seviyesi (bkz. NATIONAL_INVESTMENTS). */
+export function investmentLevel(nation, investmentId) {
+  const info = NATIONAL_INVESTMENTS[investmentId];
+  if (!info) return 0;
+  return ensureConstruction(nation).capacity[info.field] ?? 0;
+}
+
+/** Kuyruktaki (tamamlanmamis) ayni yatirim sayisi: ust uste seviye pahalanir. */
+function pendingInvestments(nation, investmentId) {
+  return ensureConstruction(nation).projects.filter(
+    (project) => project.kind === PROJECT_KIND.NATIONAL && project.typeId === investmentId,
+  ).length;
+}
+
+/** Bir sonraki seviyenin bedeli. Kuyruktakiler de sayilir: fiyat kacirilamaz. */
+export function investmentCost(nation, investmentId) {
+  const info = NATIONAL_INVESTMENTS[investmentId];
+  if (!info) return Infinity;
+  const level = investmentLevel(nation, investmentId) + pendingInvestments(nation, investmentId);
+  return Math.round(info.baseCost * (1 + level * info.costGrowth));
+}
+
 export function constructionPower(nation) {
-  const sectorPower = constructionCount(nation, 'CONSTRUCTION_SECTOR') * 5;
+  const capacity = investmentLevel(nation, 'CONSTRUCTION_CAPACITY') * 5;
   // Demiryolu teknolojileri insaat gucunu buyutur (Infrastructure klasoru).
   // Duz alan okumasi: `economy.techMods` haftada bir kez kurulur, burasi
   // sicak yoldur (bkz. technology.js refreshTechModifiers).
   const tech = 1 + (nation.economy?.techMods?.constructionPower ?? 0);
-  return (BASE_CONSTRUCTION_POWER + sectorPower * upkeepFactor(nation)) * tech;
+  return (BASE_CONSTRUCTION_POWER + capacity * upkeepFactor(nation)) * tech;
 }
 
 export function constructionUpkeep(nation) {
-  return ensureConstruction(nation).buildings.reduce(
+  const state = ensureConstruction(nation);
+  const buildings = state.buildings.reduce(
     (sum, building) => sum + (CONSTRUCTION_TYPES[building.typeId]?.upkeep ?? 0), 0,
   );
+  let capacity = 0;
+  for (const info of Object.values(NATIONAL_INVESTMENTS)) {
+    capacity += (state.capacity[info.field] ?? 0) * info.upkeep;
+  }
+  return buildings + capacity;
 }
 
-export function constructionTaxMultiplier(nation) {
-  return 1 + Math.min(0.24, constructionCount(nation, 'ADMINISTRATION') * 0.04)
+/**
+ * Yuksekogretim kurumunun isgucu/okuryazarlik katkisi. Eski universite
+ * binasinin ulusal sayaci (6 bina x %4 = %24 tavan) seviye esdegerine
+ * cevrildi: 4. seviye ayni %24 tavani verir — gocte deger kaybi yok.
+ */
+export function higherEducationBonus(nation) {
+  return Math.min(0.24, investmentLevel(nation, 'HIGHER_EDUCATION') * 0.06)
     * upkeepFactor(nation);
 }
 
-export function universityWorkforceBonus(nation) {
-  return Math.min(0.24, constructionCount(nation, 'UNIVERSITY') * 0.04) * upkeepFactor(nation);
-}
+/** Kale etki yaricapi (hex) ve kale basina savunma katkisi. */
+export const FORT_RADIUS = 2;
+export const FORT_DEFENSE = 0.10;
+const FORT_DEFENSE_CAP = 0.24;
 
+/**
+ * Karedeki tahkimat katkisi: capa karesine FORT_RADIUS icindeki kaleler.
+ *
+ * IKI KASITLI DEGISIKLIK:
+ *   1. Etki artik bolge-geneli bir sayac degil, kalenin DIKILDIGI yere bagli.
+ *      "Nereye kale?" sorusunun cevabi ilk kez haritada okunuyor.
+ *   2. Atlas kullanilmiyor. Eski yol `constructionAtlas` uzerinden gidiyordu
+ *      ve isgalli bolge atlastan dustugu icin kalenin bonusu TAM kendi bolgesi
+ *      istila edildiginde buharlasiyordu — kale en cok gerektigi anda yok
+ *      oluyordu (denetim bulgusu). Capa dogrudan cozulur; kale ancak capa
+ *      karesi fiilen dusman eline gecince (captureConstructionAt) el degistirir.
+ */
 export function fortDefenseAt(world, nationId, tile) {
   if (!tile || tile.owner !== nationId) return 0;
   const nation = world.nations[nationId];
   if (!nation) return 0;
-  const region = constructionAtlas(world, nationId).tileRegions.get(tile);
-  if (!region) return 0;
-  return region.buildings.filter((building) => building.typeId === 'FORT').length
-    * 0.08 * upkeepFactor(nation);
+  const state = ensureConstruction(nation);
+  let defense = 0;
+  for (const building of state.buildings) {
+    if (building.typeId !== 'FORT' || !Number.isFinite(building.q)) continue;
+    if (world.wrapDistance(building.q, building.r, tile.q, tile.r) > FORT_RADIUS) continue;
+    defense += FORT_DEFENSE;
+  }
+  return Math.min(FORT_DEFENSE_CAP, defense) * upkeepFactor(nation);
 }
 
 /**
@@ -381,18 +478,27 @@ export function canQueueConstruction(world, nation, regionId, typeId) {
   return sameType < type.maxPerRegion;
 }
 
-export function queueConstruction(game, nationId, regionId, typeId) {
+/**
+ * @param {object|null} anchor Kale icin secilen kare. Kalenin etkisi capaya
+ *   bagli oldugu icin (bkz. fortDefenseAt) oyuncu haritada gercek bir kare
+ *   secebilir; verilmezse bolge merkezine oturur (ekran satirindan kuyruk).
+ */
+export function queueConstruction(game, nationId, regionId, typeId, anchor = null) {
   const nation = game.world.nations[nationId];
   if (!canQueueConstruction(game.world, nation, regionId, typeId)) return false;
   const state = ensureConstruction(nation);
-  const region = constructionAtlas(game.world, nationId).regions.find((item) => item.id === regionId);
+  const atlas = constructionAtlas(game.world, nationId);
+  const region = atlas.regions.find((item) => item.id === regionId);
+  // Capa ancak o bolgenin kendi karesi olabilir; yoksa merkez.
+  const anchorTile = anchor && atlas.tileRegions.get(anchor)?.id === regionId
+    ? anchor : region.center;
   const price = CONSTRUCTION_TYPES[typeId].cost;
   nation.gold -= price;
   // Insaat kalemine yazilir (bkz. economy.js updateLedger projectCost).
   if (nation.economy) nation.economy.projectGold = (nation.economy.projectGold ?? 0) + price;
   state.projects.push({
     id: state.nextId++, typeId, regionId, regionName: region.name,
-    q: region.center.q, r: region.center.r,
+    q: anchorTile.q, r: anchorTile.r,
     // Is ve para ayri iki sayidir: `work` haftalik insaat gucuyle, `cost`
     // hazineyle odenir. Pesin odendigi icin `funded` bastan doludur.
     work: price, cost: price, funded: price,
@@ -401,6 +507,55 @@ export function queueConstruction(game, nationId, regionId, typeId) {
   // Kuyruk değişimi harita görselini yalnız inşaat kipinde etkiler; tam
   // geçersizleme YZ kuyruğu oynadıkça her tur tüm önbelleği yakıyordu.
   game.renderer.invalidateConstruction?.();
+  game.emit('construction', state);
+  game.requestRender();
+  return true;
+}
+
+/**
+ * Ulusal yatirimin kuyruga girememe nedeni; null = girebilir. Ekran nedeni
+ * yazar (kapali dugme sebepsiz olmaz — bu oyunun tek sert UI kuralidir).
+ */
+export function investmentBlocker(nation, investmentId) {
+  const info = NATIONAL_INVESTMENTS[investmentId];
+  if (!nation?.alive || !info) return 'unavailable';
+  const level = investmentLevel(nation, investmentId) + pendingInvestments(nation, investmentId);
+  if (info.max != null && level >= info.max) return 'already at the highest level';
+  if (info.educationFloor) {
+    const need = info.educationFloor[Math.min(level + 1, info.educationFloor.length - 1)];
+    const education = nation.economy?.social?.education ?? 0;
+    if (education < need) {
+      return `needs the education budget at ${need}% (now ${education}%)`;
+    }
+  }
+  const cost = investmentCost(nation, investmentId);
+  if ((nation.gold ?? 0) < cost) {
+    return `treasury short by ¤${Math.ceil(cost - (nation.gold ?? 0))}`;
+  }
+  return null;
+}
+
+export function canQueueInvestment(nation, investmentId) {
+  return investmentBlocker(nation, investmentId) === null;
+}
+
+/** Ulusal yatirimi kuyruga sokar: bedel pesin, is insaat gucunden. */
+export function queueInvestment(game, nationId, investmentId) {
+  const nation = game.world.nations[nationId];
+  if (!nation || !canQueueInvestment(nation, investmentId)) return false;
+  const info = NATIONAL_INVESTMENTS[investmentId];
+  const state = ensureConstruction(nation);
+  const price = investmentCost(nation, investmentId);
+  nation.gold -= price;
+  if (nation.economy) nation.economy.projectGold = (nation.economy.projectGold ?? 0) + price;
+  state.projects.push({
+    id: state.nextId++,
+    kind: PROJECT_KIND.NATIONAL,
+    typeId: investmentId,
+    regionName: info.name,
+    work: price, cost: price, funded: price,
+    progress: 0, started: game.turns.turn,
+  });
   game.emit('construction', state);
   game.requestRender();
   return true;
@@ -504,6 +659,20 @@ export function captureConstructionAt(world, tile, newNationId) {
  */
 function completeProject(game, nation, project) {
   const state = ensureConstruction(nation);
+  if (project.kind === PROJECT_KIND.NATIONAL) {
+    const info = NATIONAL_INVESTMENTS[project.typeId];
+    // Tavanli yatirim tavani asamaz (gocten gelen fazla proje sessizce biter).
+    if (info && (info.max == null || (state.capacity[info.field] ?? 0) < info.max)) {
+      state.capacity[info.field] = (state.capacity[info.field] ?? 0) + 1;
+      if (nation.id === game.turns.playerNation) {
+        const level = state.capacity[info.field];
+        const name = info.levels?.[Math.min(level, (info.levels?.length ?? 1) - 1)] ?? `level ${level}`;
+        game.turns.addLog(`${info.name} reached ${info.levels ? name : `level ${level}`}.`,
+          { kind: 'BUILDING' });
+      }
+    }
+    return;
+  }
   if (project.kind !== PROJECT_KIND.BUILDING) {
     state.completedFactories.push(project);
     return;
@@ -530,42 +699,146 @@ function completeProject(game, nation, project) {
  * cagrildiginda harcama updateLedger'dan sonra oluyor ve haftalik muhasebe
  * kimligi tam bina bedeli kadar sapiyordu (olculdu: en kotu sapma 100.00).
  */
+/**
+ * YZ'nin kale yeri: savastigi (yoksa herhangi bir yabanci) sinira bakan kendi
+ * karesi; sehir yakini one gecer. Tam dunya taramasi bilerek burada — yalniz
+ * kale kararina gelindiginde kosar, haftalik sicak yolda degil.
+ */
+function frontierFortAnchor(game, nation) {
+  const world = game.world;
+  let best = null;
+  let bestScore = -Infinity;
+  world.forEach((tile) => {
+    if (tile.owner !== nation.id || !tile.terrain.passable) return;
+    let border = 0;
+    let hostile = 0;
+    for (const near of world.neighbors(tile)) {
+      const owner = controllerOf(near);
+      if (owner < 0 || owner === nation.id || !near.terrain.passable) continue;
+      border++;
+      // atWar import edilmez: diplomacy.js bu dosyayi import ediyor, ters yon
+      // dongu olurdu. Iliski kaydi dogrudan okunur (ayni tanim: state==='war').
+      if (world.relations?.[nation.id]?.[owner]?.state === 'war') hostile++;
+    }
+    if (!border) return;
+    // Var olan kalenin yaricapina ikinci kale dikilmez: etki zaten tavanli.
+    const covered = fortDefenseAt(world, nation.id, tile) > 0;
+    const score = hostile * 40 + border * 10 + (tile.city ? 25 : 0) - (covered ? 100 : 0);
+    if (score > bestScore) {
+      bestScore = score;
+      best = tile;
+    }
+  });
+  return bestScore > 0 ? best : null;
+}
+
 export function planConstructionAI(game, nation) {
   const state = ensureConstruction(nation);
   if (nation.id === game.turns.playerNation || nation.gold < 180) return;
-  // Yalnız bina projeleri sayılır: fabrika kuyruğu dolu diye ülke bir daha
-  // hiç kışla ya da üniversite yapamaz hale gelmemeli.
+  // Yalniz bina/yatirim projeleri sayilir: fabrika kuyrugu dolu diye ulke
+  // kapasiteye yatirim yapamaz hale gelmemeli.
   const pendingBuildings = state.projects.filter(
-    (project) => project.kind === PROJECT_KIND.BUILDING,
+    (project) => project.kind === PROJECT_KIND.BUILDING
+      || project.kind === PROJECT_KIND.NATIONAL,
   ).length;
   if (pendingBuildings) return;
-  // Hazine şişiyorsa asıl darboğaz inşaat gücüdür: sanayi kuyrukta bekler,
-  // para harcanacak yer bulamaz. Fazla altın yeni şantiyeye gider; bakım
-  // gideri de biriken parayı geri emer.
-  const sectors = constructionCount(nation, 'CONSTRUCTION_SECTOR');
   const queuedWork = state.projects.reduce(
     (sum, project) => sum + Math.max(0, project.work - project.progress), 0,
   );
-  // Hazine şişmişse de yeni şantiye açılır: laissez-faire'de devlet fabrika
-  // kuramadığı için kuyruğu hiç dolmaz, `starved` tetiklenmez ve para
-  // harcanacak yer bulamazdı. Kapasite, kapitalistlerin projelerini de hızlandırır.
+  // Hazine sisiyorsa asil darbogaz insaat gucudur: sanayi kuyrukta bekler,
+  // para harcanacak yer bulamaz. Fazla altin kapasiteye gider; artan bakim
+  // gideri de biriken parayi geri emer.
   const starved = queuedWork > constructionPower(nation) * 12 || nation.gold > 900;
-  const desired = sectors < 1
-    ? 'CONSTRUCTION_SECTOR'
-    : constructionCount(nation, 'ADMINISTRATION') < 1
-      ? 'ADMINISTRATION'
-      : constructionCount(nation, 'UNIVERSITY') < 1
-        ? 'UNIVERSITY'
-        : (starved && nation.gold > 400)
-          ? 'CONSTRUCTION_SECTOR'
-          : constructionCount(nation, 'FORT') < 2 ? 'FORT' : null;
-  if (!desired) return;
-  const regions = constructionAtlas(game.world, nation.id).regions
-    .sort((a, b) => b.free - a.free || b.population - a.population);
-  const region = regions.find((candidate) => (
-    canQueueConstruction(game.world, nation, candidate.id, desired)
-  ));
-  if (region) queueConstruction(game, nation.id, region.id, desired);
+  const capacity = investmentLevel(nation, 'CONSTRUCTION_CAPACITY');
+
+  // 1) Ilk kapasite seviyesi her seyden once: taban 5/hafta ile ulke yasayamaz.
+  if (capacity < 1 && canQueueInvestment(nation, 'CONSTRUCTION_CAPACITY')) {
+    queueInvestment(game, nation.id, 'CONSTRUCTION_CAPACITY');
+    return;
+  }
+  // 2) Kuyruk bogulduysa (ya da para birikiyorsa) kapasite buyur.
+  if (starved && nation.gold > 400 && canQueueInvestment(nation, 'CONSTRUCTION_CAPACITY')) {
+    queueInvestment(game, nation.id, 'CONSTRUCTION_CAPACITY');
+    return;
+  }
+  // 3) Zengin ve okullu ulke yuksekogretime yatirir (YZ mutevazi: 2 seviye).
+  if (nation.gold > 500 && investmentLevel(nation, 'HIGHER_EDUCATION') < 2
+    && canQueueInvestment(nation, 'HIGHER_EDUCATION')) {
+    queueInvestment(game, nation.id, 'HIGHER_EDUCATION');
+    return;
+  }
+  // 4) Kale: siniri olan ulke iki kaleye kadar tahkim eder — ve artik yerini
+  //    SECEREK: dusman sinirina, sehre yakin (bkz. frontierFortAnchor).
+  if (constructionCount(nation, 'FORT') < 2) {
+    const anchor = frontierFortAnchor(game, nation);
+    if (!anchor) return;
+    const regionId = constructionAtlas(game.world, nation.id).tileRegions.get(anchor)?.id;
+    if (regionId && canQueueConstruction(game.world, nation, regionId, 'FORT')) {
+      queueConstruction(game, nation.id, regionId, 'FORT', anchor);
+    }
+  }
+}
+
+/**
+ * v14 -> v15 kayit gocu: yerlesik bina spam'i ulusal kurumlara cevrilir.
+ * OYUNCUNUN YATIRIMI KAYBOLMAZ:
+ *   - Construction Sector sayisi -> Construction Capacity seviyesi (1:1 —
+ *     guc esdegeri birebir: sektor basina +5, seviye basina +5).
+ *   - University sayisi -> Higher Education seviyesi (6 bina %24 tavani
+ *     4. seviyenin %24 tavanina esner: level = ceil(uni * 2/3), tavan 4).
+ *   - Administration binalari geri odenir (bedelin tamami hazineye):
+ *     etkisi (+%4 vergi) taxEfficiency'ye katildigi icin ayri kurum yok;
+ *     tipik 1 binali ulkede bakim tasarrufu kaybi asagi yukari karsilar.
+ *   - Kuyruktaki eski tip projeler ayni kurala gore ya ulusal yatirima
+ *     cevrilir ya iade edilir. Kaleler ve fabrika projeleri aynen kalir.
+ */
+export function migrateConstructionV14(nation) {
+  // DIKKAT: ensureConstruction'dan ONCE kosmali. ensure, tabloda olmayan
+  // tipleri (eski Sector/University/Administration kayitlari) filtreleyip
+  // atar — goc once HAM kayittan saymali, temizlik sonra gelmeli.
+  const state = nation.construction ?? (nation.construction = {});
+  const buildings = Array.isArray(state.buildings) ? state.buildings : [];
+  const projects = Array.isArray(state.projects) ? state.projects : [];
+  state.capacity ??= { construction: 0, education: 0 };
+  const count = (typeId) => buildings.filter((b) => b.typeId === typeId).length;
+  const sectors = count('CONSTRUCTION_SECTOR');
+  const universities = count('UNIVERSITY');
+  const administrations = count('ADMINISTRATION');
+  state.capacity.construction = (state.capacity.construction ?? 0) + sectors;
+  state.capacity.education = Math.min(4,
+    (state.capacity.education ?? 0) + Math.ceil((universities * 2) / 3));
+  if (administrations > 0) nation.gold = (nation.gold ?? 0) + administrations * 80;
+  state.buildings = buildings.filter((b) => CONSTRUCTION_TYPES[b.typeId]);
+
+  const converted = [];
+  for (const project of projects) {
+    if (project.kind && project.kind !== PROJECT_KIND.BUILDING) {
+      converted.push(project);
+      continue;
+    }
+    if (project.typeId === 'CONSTRUCTION_SECTOR' || project.typeId === 'UNIVERSITY') {
+      converted.push({
+        ...project,
+        kind: PROJECT_KIND.NATIONAL,
+        typeId: project.typeId === 'UNIVERSITY' ? 'HIGHER_EDUCATION' : 'CONSTRUCTION_CAPACITY',
+        regionId: undefined,
+        q: undefined,
+        r: undefined,
+        regionName: project.typeId === 'UNIVERSITY' ? 'Higher Education' : 'Construction Capacity',
+      });
+      continue;
+    }
+    if (project.typeId === 'ADMINISTRATION') {
+      // Insa edilmemis pay iade edilir (cancelConstruction ile ayni kural).
+      const done = project.work > 0 ? clamp(project.progress / project.work, 0, 1) : 1;
+      nation.gold += Math.max(0, (project.funded ?? 0) * (1 - done));
+      continue;
+    }
+    converted.push(project);
+  }
+  state.projects = converted;
+  ensureConstruction(nation);
+  return state;
 }
 
 export function runConstruction(game) {
@@ -584,7 +857,7 @@ export function runConstruction(game) {
     // 2600 altın, 5 bekleyen proje, 6 fabrika). Sıralama kararlıdır; geri kalan
     // projeler oyuncunun verdiği öncelik sırasını korur.
     const ordered = [...state.projects].sort(
-      (a, b) => (b.typeId === 'CONSTRUCTION_SECTOR') - (a.typeId === 'CONSTRUCTION_SECTOR'),
+      (a, b) => (b.typeId === 'CONSTRUCTION_CAPACITY') - (a.typeId === 'CONSTRUCTION_CAPACITY'),
     );
     // Finansmanı bekleyen proje kuyruğu tıkamaz, sıradakine geçilir: kapitalist
     // parasını toplayana kadar devletin kışlası beklemek zorunda değil.

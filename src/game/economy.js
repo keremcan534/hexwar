@@ -16,9 +16,9 @@ import {
   canInvestInFactory, factoryInvestmentRules, fiscalPolicyLimits, policyOf,
 } from './politics.js';
 import {
-  PROJECT_KIND, constructionAtlas, constructionPower, constructionTaxMultiplier,
-  constructionUpkeep, ensureConstruction, fundProject, planConstructionAI,
-  queueIndustryProject, universityWorkforceBonus,
+  PROJECT_KIND, constructionAtlas, constructionPower,
+  constructionUpkeep, ensureConstruction, fundProject, higherEducationBonus,
+  planConstructionAI, queueIndustryProject,
 } from './construction.js';
 import {
   refreshReformModifiers, reformBudgetFactor, reformModifiers, reformMoodShift,
@@ -500,9 +500,12 @@ export const MILITARY_EQUIPMENT = {
   // gemisi vapur konvoyu istiyor ve vapur tersanesi 1850'ye kilitli oldugu
   // icin donanma ilk 14 yil YAPISAL olarak imkansizdi (bkz. P2-7) — ekran da
   // nedenini soylemiyordu. Clippers ayrica CLIPPER_YARD'in gercek tuketicisi.
+  // defaultStock BIR GEMIYE YETMELI (kurulus 6 konvoy): baslangic stogu 4
+  // olarak denendi ve kilitlendi — tedarik hedefi ihtiyatta (3) durdugu icin
+  // stok hic 6'ya cikmiyor, hicbir ulke ILK gemisini kuramiyordu (olculdu).
   clippers: {
-    id: 'clippers', name: 'Clipper Convoys', icon: '⛵', stockCap: 16, defaultStock: 4,
-    factoryRate: 0.6, importLimit: 1.2, reserve: 3,
+    id: 'clippers', name: 'Clipper Convoys', icon: '⛵', stockCap: 16, defaultStock: 8,
+    factoryRate: 0.6, importLimit: 1.2, reserve: 4,
   },
 };
 export const MILITARY_EQUIPMENT_IDS = Object.keys(MILITARY_EQUIPMENT);
@@ -1841,9 +1844,10 @@ function runFactoryEmployment(game, nation) {
     economy.industrialLayoffs += laid;
   }
 
-  // Eğitim ve üniversite işgücünü niteliklendirir: aynı nüfus daha hızlı akar.
+  // Eğitim ve yüksekögretim kurumu işgücünü niteliklendirir: aynı nüfus daha
+  // hızlı akar (eski üniversite binasının sayacı kurum seviyesine taşındı).
   const schooling = 1 + socialLevel(nation, 'education') * 0.25
-    + universityWorkforceBonus(nation);
+    + higherEducationBonus(nation);
   const lower = Math.max(0, economy.classes.lower.population);
   const employed = factories.reduce((sum, factory) => sum + factory.employees, 0);
   // Kırdan sanayiye geçiş: açık kadro varsa ayda bir kohort çiftçi işçiye
@@ -2273,9 +2277,10 @@ function fiscalBalance(nation, baseOutputValue, industrialOutput) {
     taxes += socialClass.taxPaid;
   }
   const social = socialSpendingCost(nation);
-  taxes *= constructionTaxMultiplier(nation);
-  // Tahsilat verimi yönetim bütçesine bağlıdır: %100'te tam, %30'da %68.
-  // Gizli ceza değil — bütçe ekranı bu oranı açıkça gösterir.
+  // Tahsilat verimi yönetim bütçesine bağlıdır (%100'te tam, %30'da %68) —
+  // eski Administration binasinin +%4'luk ulusal sayaci buraya katildi:
+  // yonetim tek bir kavram, tek bir kaldiractir (bkz. cities.administrationCost:
+  // gideri artik nufusla buyur, yani kaydiraci dusurmenin gercek bir getirisi var).
   taxes *= taxEfficiency(nation);
   const construction = constructionUpkeep(nation);
   economy.taxRevenue = taxes;
@@ -2423,6 +2428,9 @@ function adjustWarFiscalAI(nation) {
     }
     drift('militaryProcurement', wartime ? 60 : 40);
     drift('militaryWages', wartime ? limits.armySpendingMax : 60);
+    // Kriz yonetimi idareyi de kisar: tahsilat duser ama gider de duser —
+    // yonetim butcesi artik nufusla buyudugu icin bu gercek bir tasarruf.
+    drift('adminFunding', 60);
     return;
   }
 
@@ -2446,6 +2454,8 @@ function adjustWarFiscalAI(nation) {
   // stratejik olmayanlar bırakılır.
   drift('militaryProcurement', 65);
   drift('militaryWages', Math.min(limits.armySpendingMax, 85));
+  // Baris ve bolluk idareyi tam fonlamaya geri getirir.
+  if (nation.gold > 200) drift('adminFunding', 100);
   if (nation.gold > 400) {
     const education = economy.social.education ?? 0;
     if (education < 60) setFiscalPolicy(nation, 'social', education + 10, 'education');
@@ -3064,7 +3074,7 @@ function advanceLiteracy(nation) {
   // Universite carpani: okul tabani kurar, universite tavani yukseltir —
   // butce ekraninin uzun zamandir vaat ettigi cumle ("schools qualify
   // workers; universities amplify it") ilk kez dogru.
-  const target = clamp(0.08 + schooling * 0.62 * (1 + universityWorkforceBonus(nation)), 0, 0.95);
+  const target = clamp(0.08 + schooling * 0.62 * (1 + higherEducationBonus(nation)), 0, 0.95);
   const current = Number.isFinite(economy.literacy) ? economy.literacy : target * 0.35;
   economy.literacy = current + (target - current) * LITERACY_APPROACH;
   economy.literacyTarget = target;

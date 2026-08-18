@@ -192,16 +192,26 @@ const ADMIN_FREE_PROVINCES = 120;
 /** Başkente bu mesafeden uzak şehir ayrıca idari yük getirir. */
 const ADMIN_FREE_DISTANCE = 6;
 
+/** Bu nufusun uzeri idari yuk uretir; alti kucuk devletin taban aygitidir. */
+const ADMIN_FREE_POPULATION = 250000;
+
 /**
  * İdari gider: imparatorluk büyüdükçe artan *görünür* bir altın kalemi.
  * Yolsuzluk geliri yalnızca oransal kısıyordu, bu yüzden büyümenin bütçede
  * okunabilir bir bedeli yoktu ve geç oyunda altın birikip duruyordu.
- * Şehir sayısı süperdoğrusal, taşra ve başkente uzaklık doğrusal artar.
+ * Şehir sayısı süperdoğrusal, taşra/nüfus ve başkente uzaklık doğrusal artar.
+ *
+ * NUFUS TERIMI SONRADAN EKLENDI: README bastan beri "imparatorluk buyudukce
+ * idari gider buyur" diyordu ama olculen gider 0.03-0.10 altindi (ORTA-18) —
+ * yani adminFunding kaydiraci tek dogru cevapli sahte bir secimdi (%100'un
+ * maliyeti yoktu). Gider nufusla buyuyunce kaydirac gercek bir denge olur:
+ * dusuk fonlama tahsilati keser AMA buyuk ulkede gercek para biriktirir.
  */
-function administrationCost(cityCount, provinceCount, distanceLoad) {
+function administrationCost(cityCount, provinceCount, distanceLoad, population = 0) {
   const scale = Math.max(0, cityCount - ADMIN_FREE_CITIES) ** 1.45 * 0.9;
   const provinces = Math.max(0, provinceCount - ADMIN_FREE_PROVINCES) * 0.06;
-  return Math.round((scale + provinces + distanceLoad) * 10) / 10;
+  const people = Math.max(0, population - ADMIN_FREE_POPULATION) / 10000 * 0.06;
+  return Math.round((scale + provinces + distanceLoad + people) * 10) / 10;
 }
 
 /**
@@ -424,7 +434,9 @@ export function nationBudget(world, nation, provinceTotals = null) {
   // Yönetim gideri bütçelenen kadarıyla ödenir; verimi de o oran belirler
   // (bkz. fiscalBalance'taki tahsilat verimi).
   const adminFunding = (nation.economy?.adminFunding ?? 100) / 100;
-  const administration = administrationCost(cityCount, provinceCount, distanceLoad) * adminFunding;
+  const administration = administrationCost(
+    cityCount, provinceCount, distanceLoad, nation.economy?.population ?? 0,
+  ) * adminFunding;
   upkeep.gold = armyGold + administration;
   upkeep.food = army * UNIT_UPKEEP.food + workers * WORKER_FOOD;
   upkeep.iron = armyIron;
