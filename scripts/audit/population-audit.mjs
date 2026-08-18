@@ -110,6 +110,9 @@ sub('Haftalik denklem: onceki + buyume - askerAlimi + terhis = simdiki (60 hafta
     );
     rows.push({
       week: world.turn, pop, army, total, growth, famine,
+      // runPeaceful savasi ancak tur SONRASI bastirir: parlamali haftada
+      // gercek muharebe olumleri olur — o hafta "barisci" sayilmaz.
+      warFlash: game.lastWeekWarFlash === true,
       rate: growth / Math.max(1, prevTotal),
     });
     worstDrift = Math.max(worstDrift, Math.abs(growth) / Math.max(1, prevTotal));
@@ -127,8 +130,10 @@ sub('Haftalik denklem: onceki + buyume - askerAlimi + terhis = simdiki (60 hafta
   // Kitlik olumleri BELGELENMIS bir kanaldir (provinces.js famine, ekrana ve
   // sayaca "famineDeaths" olarak yazilir): denklem onlari dusukten dusuyor.
   // Yalniz kitligin ACIKLAYAMADIGI kayip bulgu sayilir.
-  const negatives = rows.filter((r) => r.growth + r.famine < -1);
+  const negatives = rows.filter((r) => !r.warFlash && r.growth + r.famine < -1);
   const famineWeeks = rows.filter((r) => r.growth < 0 && r.growth + r.famine >= -1).length;
+  const flashWeeks = rows.filter((r) => r.warFlash && r.growth < 0).length;
+  if (flashWeeks) console.log(`  savas parlamasi (bir haftalik, denklemin disinda): ${flashWeeks} hafta`);
   console.log(`\n  60 haftada toplam dusen hafta: ${rows.filter((r) => r.growth < 0).length}`
     + ` (kitlikla aciklanan: ${famineWeeks})`
     + (negatives.length ? ` · ACIKLANAMAYAN kayip haftasi: ${negatives.length}` : ''));
@@ -231,7 +236,18 @@ section('L. HANE (POP) EKONOMISI');
 sub('Temsili kohortlarin gelir/vergi/tuketim/artik defteri (200 hafta)');
 {
   const game = headless(SEED);
-  runPeaceful(game, 200);
+  runPeaceful(game, 199);
+  // Kimlik GECIKMELIDIR: populationDemand butceyi GECEN haftanin net
+  // geliriyle kurar (fiscalBalance ayni hafta daha sonra kosar). Onceki
+  // haftanin gelir/vergi anlik goruntusu alinir, bir hafta ilerletilir,
+  // kimlik o cifte karsi SIKI dogrulanir.
+  const lagNation = pickNation(game);
+  const previousNet = {};
+  for (const classId of Object.keys(lagNation.economy.classes)) {
+    const socialClass = lagNation.economy.classes[classId];
+    previousNet[classId] = Math.max(0, (socialClass.income ?? 0) - (socialClass.taxPaid ?? 0));
+  }
+  runPeaceful(game, 1);
   const nation = pickNation(game);
   const cohorts = nationCohorts(game.world, nation);
   const sample = [];
@@ -254,18 +270,22 @@ sub('Temsili kohortlarin gelir/vergi/tuketim/artik defteri (200 hafta)');
     { label: 'istihdam', get: (c) => (c.employed == null ? '-' : `${n0(c.employed)}/${n0(c.size)}`) },
   ]));
 
-  // Kimlik kontrolu: gecim butcesi net gelirle ilgili mi?
-  const worst = sample.reduce((m, c) => {
-    const net = c.income - c.taxPaid;
-    return Math.max(m, net > 0 ? Math.abs(c.disposable - net) / net : 0);
-  }, 0);
-  console.log(`\n  "brut gelir - vergi = gecim butcesi" kimligi: en kotu sapma ${pct(worst)}`);
-  if (worst < 0.25) console.log('  OK  gelir ve gecim butcesi ayni kaynaktan turuyor.');
+  // KIMLIK (siki): butce = GECEN haftanin net geliri + BEYAN EDILMIS
+  // gecimlik (socialClass.subsistence — famineDeaths gibi kayitli kanal).
+  // Baska hicbir kaynak yok; sapma parasal uydurma demektir.
+  let worst = 0;
+  for (const classId of Object.keys(nation.economy.classes)) {
+    const socialClass = nation.economy.classes[classId];
+    const expected = (previousNet[classId] ?? 0) + (socialClass.subsistence ?? 0);
+    const budget = socialClass.needsBudget ?? 0;
+    worst = Math.max(worst, Math.abs(budget - expected) / Math.max(1, expected));
+  }
+  console.log(`\n  "butce = onceki net gelir + gecimlik" kimligi: en kotu sapma ${pct(worst)}`);
+  if (worst < 0.01) console.log('  OK  hane defteri tek hikaye: gelir + kayitli gecimlik.');
   else finding('HIGH', 'POP gelir defteri kendi icinde tutarsiz',
-    'gecim butcesi (needsBudget) net gelirden (income - taxPaid) turemeli',
-    `iki sayi birbirinden BAGIMSIZ hesaplaniyor; en kotu sapma ${pct(worst)}`,
-    'income = incomePool x agirlik (uretim degerinden), needsBudget = nufus x sabit sepet'
-    + ' x ucret endeksi x (1 - vergi) — ikisi ayni hanenin iki farkli hikayesi');
+    'needsBudget = oncekiNetGelir + subsistence (kayitli ayni-gecimlik kanali)',
+    `en kotu sapma ${pct(worst)}`,
+    'butceye gelir ve beyan edilmis gecimlik disinda bir kaynak sizmis');
 
   const totalIncome = Object.keys(nation.economy.classes)
     .reduce((s, id) => s + nation.economy.classes[id].income, 0);

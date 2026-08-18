@@ -69,14 +69,24 @@ export function run(game, weeks) {
  */
 export function runPeaceful(game, weeks) {
   const world = game.world;
+  // Savas ancak TUR SONRASI bastirilabiliyor: bir haftalik "savas parlamasi"
+  // icinde gercek muharebe olumleri yasanabilir. Cagiran, hangi haftalarin
+  // gercekten barisci olmadigini bilsin diye sayac tutulur.
+  game.peacefulWarFlashes = 0;
   for (let i = 0; i < weeks; i++) {
     game.turns.endTurn();
+    let flash = world.battleSystem?.battles?.length ? 1 : 0;
     for (let a = 0; a < world.nations.length; a++) {
       for (let b = a + 1; b < world.nations.length; b++) {
         const rec = world.relations[a]?.[b];
-        if (rec && rec.state === 'war') rec.state = 'peace';
+        if (rec && rec.state === 'war') {
+          rec.state = 'peace';
+          flash = 1;
+        }
       }
     }
+    game.peacefulWarFlashes += flash;
+    game.lastWeekWarFlash = flash > 0;
     if (world.battleSystem?.battles?.length) {
       for (const battle of world.battleSystem.battles) {
         for (const id of [...battle.attackers, ...battle.defenders]) {

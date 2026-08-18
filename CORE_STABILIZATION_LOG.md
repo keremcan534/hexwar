@@ -113,3 +113,44 @@ DEGISIKLIK / DEGISMEZ / TEST / ONCE / SONRA / KALAN RISK)
 - **SONRA:** 4/60 dusus haftasinin 4'u de kitlikla birebir aciklandi;
   bulgu kapandi. Sayac UI'ya da acik (ileride gosterilebilir).
 - **KALAN RISK:** yok — kanal kayitli, denklem siki (tolerans ±1).
+  (Ek: runPeaceful savasi tur SONRASI bastiriyor; bir haftalik "savas
+  parlamasi" olumleri artik isaretlenir ve baris denkleminin disindadir.)
+
+### 4. POP gelir defteri: tek hikaye (FAZ 3) — YUKSEK kapandi
+
+- **PROBLEM:** `income` ile `needsBudget` bagimsiz iki formul (harman %35);
+  kimlik sapmasi %658; hane gelirinin 7-9 katini harciyordu. Dunya
+  butceleri (14k/hf) dunya GSYH'sinin (9.2k/hf) 1.5 kati — para yoktan.
+- **ETKI:** Sinif geliri dekoratifti; talep uretim degerinden kopuk (fiyat
+  tavani kilitlerinin beslemesi); vergi matrahi ile tuketim ayri evrenler.
+- **KOK NEDEN:** uc kopukluk: (1) fabrika ucretleri kardan dusuluyor ama
+  KIMSEYE odenmiyordu (WAGE_PER_THROUGHPUT=1.2, katma degerin %2.5'i —
+  para imha); (2) sanayi geliri hayali havuz payi (0.22×industrialOutput);
+  (3) butce nufus×sabit-sepet formulu, gelire yalniz %35 harmanla bagli.
+- **DOSYALAR:** `src/game/economy.js`, `scripts/audit/population-audit.mjs`,
+  `scripts/audit/harness.mjs`.
+- **DEGISIKLIK:** GELIR uc GERCEK kanal: kirsal pazarlanan pay
+  (0.35×baseOutput; sanayi terimi kalkti), BORDRO (katma deger ×
+  LABOR_SHARE, %80 alt / %20 orta sinifa — runFactories'te birikir,
+  fiscalBalance'ta odenir), sermaye kari (mevcut PROFIT_TO_CAPITAL).
+  BUTCE = net gelir + BEYAN EDILMIS gecimlik (SUBSISTENCE_SHARE
+  {alt .30, orta .15, ust 0} × formul butcesi; `socialClass.subsistence`
+  alaninda acik). INCOME_BUDGET_WEIGHT ve WAGE_PER_THROUGHPUT silindi;
+  expectedMargin emek payi sonrasi kar uzerinden.
+- **DEGISMEZ:** butce_t = netGelir_{t-1} + gecimlik_t (birebir; gelir bir
+  hafta geriden gelir cunku fiscalBalance populationDemand'den sonra kosar).
+  Denetim bu kimligi SIKI (%1) dogrular — olculen sapma %0.0.
+- **KALIBRASYON (A/B, 2 tohum, 120/260 hafta, taban agacla):** LABOR_SHARE
+  taramasi 0.45/0.55/0.65 → 0.55 IC OPTIMUM (iki yonde de fabrika sayisi
+  ve needsMet dusuyor; ekonomi talep-kisitli — ucret, sanayiyi besleyen
+  talebin kendisi). Sonuclar (tohum-2 @260h taban → yeni):
+  needsMet 0.844→0.875 · istikrar 0.392→0.486 · kitlik olumu/hf 625→453
+  (120h) · TAVAN MAL 7→3 (120h'de 14→7) · fabrika 673→490 (−%27) ·
+  GSYH 13.2k→8.5k. Sanayi kuculmesi "hasar" degil DURUST OLCEK: eski
+  buyukluk hayalet talep parasiyla sisirilmisti; fiyat kilitlerinin
+  yarilanmasi ayni duzeltmenin obur yuzu.
+- **ONCE:** kimlik %658, harcama/gelir 7-9x. **SONRA:** kimlik %0.0;
+  butun harcamanin kaynagi ya gelir ya kayitli gecimlik.
+- **KALAN RISK:** sanayilesme temposu dustu — 100 yillik kosuda (FAZ 10)
+  izlenecek; gerekirse LABOR_SHARE tek durust kaldiractir. Gecimlik payi
+  formul-butcesine carpan (vergi/ucret endeksi tasir) — kaba ama beyanli.

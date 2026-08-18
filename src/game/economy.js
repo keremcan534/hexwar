@@ -276,7 +276,7 @@ const MAX_WORKER_SHARE = 0.4;
  */
 const EXPANSION_FILL_FLOOR = 0.7;
 /** Bir birim throughput'un ücret maliyeti; kâr hesabıyla beklenen marj paylaşır. */
-const WAGE_PER_THROUGHPUT = 1.2;
+
 
 // Zarar eden fabrika işçi salar. Serbest kalan işgücü aynı ay kârlı olana akar.
 const LAYOFF_RATE = 0.06;
@@ -420,14 +420,33 @@ export const SAVINGS_CAP_WEEKS = 26;
 export const UNEMPLOYMENT_MOOD = 0.22;
 
 /**
- * Hane gecim butcesinin NET GELIRDEN gelen payi (kalani eski formul).
+ * HANE DEFTERI ARTIK TEK HIKAYE: butce = net gelir + BEYAN EDILMIS gecimlik.
  *
- * 1.0 "butce tam olarak net gelirdir" demek olurdu — dogru model, ama iki
- * formulun olcekleri farkli oldugu icin ani gecis butun butceleri birkac kat
- * kaydirir ve aclik zincirini tetikler. Deger OLCULEREK secilir; bkz.
- * BETA_REPAIR_LOG R-17 kalibrasyon tablosu.
+ * Eski model iki bagimsiz formulun harmaniydi (INCOME_BUDGET_WEIGHT = 0.35):
+ * kimlik denetimi %658 sapiyor, hane gelirinin 7-9 katini harciyordu —
+ * dunya butceleri (14k/hf) dunya GSYH'sinin (9.2k/hf) 1.5 kati, yani para
+ * yoktan varoluyordu. R-17'nin "ani gecis aclik zinciri tetikler" bulgusu
+ * dogruydu; cozum gecisi yumusatmak degil GELIR TARAFINI gercek yapmakti:
+ * fabrika ucretleri artik katma degerden odeniyor (LABOR_SHARE) ve sinif
+ * gelirine akiyor; kirsalin kendi urettigini tuketmesi ise acik bir ayni
+ * (in-kind) kanal olarak beyan ediliyor — famineDeaths gibi denetlenebilir.
+ *
+ * SUBSISTENCE_SHARE: formul butcesinin ne kadari parasal olmayan gecimlik
+ * sayilir. Ust sinifin gecimligi yoktur (parasi vardir); orta sinifin kucuk
+ * bir zanaat/takas payi, alt sinifin tarla payi vardir.
  */
-export const INCOME_BUDGET_WEIGHT = 0.35;
+export const SUBSISTENCE_SHARE = { lower: 0.30, middle: 0.15, upper: 0 };
+
+/**
+ * Fabrika katma degerinin emege giden payi. Eski sabit ucret
+ * (WAGE_PER_THROUGHPUT = 1.2) katma degerin %2.5'iydi ve ODENMIYORDU:
+ * kardan dusuluyor ama hicbir sinifin gelirine yazilmiyordu — para imha.
+ * Pay modeli fiyat seviyesiyle kendiliginden olceklenir (taban fiyatta
+ * kucuk ucret, tavan fiyatta buyuk) ve isci/katip gelirine gercekten akar.
+ */
+export const LABOR_SHARE = 0.55;
+/** Ucret bordrosunun sinif dagilimi: gövde isci (alt), beyaz yaka (orta). */
+export const WAGE_SPLIT = { lower: 0.8, middle: 0.2 };
 
 /**
  * Net dis dengenin hazineden gecen orani (bkz. settleGlobalTrade).
@@ -1904,7 +1923,9 @@ function expectedMargin(world, nation, factory) {
     const importShare = clamp(nation.economy.goodsFlow?.[id]?.importShare ?? 0, 0, 1);
     cost += priceOf(world, id) * amount * (1 + (nation.economy.tariff / 100) * importShare);
   }
-  return (revenue - cost - WAGE_PER_THROUGHPUT) / revenue;
+  // Beklenen marj emek payindan SONRAKI kar: ise alim/buyume kararlari
+  // sahibin eline gecen parayla ayni olcutu kullansin.
+  return ((revenue - cost) * (1 - LABOR_SHARE)) / revenue;
 }
 
 /**
@@ -1999,6 +2020,8 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
   const reformMods = reformModifiers(nation);
   let totalProfit = 0;
   let industrialOutput = 0;
+  // Bordro bu hafta sifirdan birikir; fiscalBalance sinif gelirine dagitir.
+  economy.wagesPaid = 0;
 
   // Kentli işgücü province'e yazılır: provinces.js RGO çıktısını *kırsal*
   // nüfusla ölçer ve economy.js'i import edemez (katman döngüsü olurdu).
@@ -2121,7 +2144,11 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
     }
     // İşçi, girdi kıtlığında üretim düşse de fabrikada kalır ve ücretini alır.
     // Reformun faturası burada somutlaşır: kâr daralır, üretim değil.
-    const wages = laborThroughput * WAGE_PER_THROUGHPUT * reformMods.wageCost;
+    // Ucret = katma degerin emek payi (bkz. LABOR_SHARE): fiyat seviyesiyle
+    // olceklenir ve fiscalBalance'ta sinif gelirine GERCEKTEN odenir.
+    const valueAdded = Math.max(0, revenue - inputCost);
+    const wages = valueAdded * Math.min(0.85, LABOR_SHARE * reformMods.wageCost);
+    economy.wagesPaid += wages;
     factory.profit = revenue - inputCost - wages;
     // Sübvansiyon: işaretli tesisin zararını devlet kapatır. Sahte sabit
     // maliyet yok — ödeme gerçekleşen zararın kendisidir ve kâr 0'a çekilir
@@ -2277,20 +2304,19 @@ function populationDemand(world, nation, market) {
       * (1 - taxRate) * (1 + welfare * 0.22)
       // Asgari ücret / sendika yasası hanenin harcanabilir gelirini büyütür.
       * reformBudgetFactor(nation, classId);
-    // GELIR BAGI: hanenin harcayabilecegi para gelirinden gelmeli.
-    //
-    // Eskiden `needsBudget` ile `income` BAGIMSIZ iki formuldu ve sinif geliri
-    // pratikte dekoratifti (yalnizca vergi matrahi). Olculdu
-    // (audit:population): butceler toplami gelirin 4.3 kati, en kotu sapma
-    // %2688. Yani hane, kazandigindan kat kat fazlasini harcayabiliyordu.
+    // HANE KIMLIGI: butce = net gelir + BEYAN EDILMIS gecimlik. Baska kanal
+    // yok — harman (INCOME_BUDGET_WEIGHT) kalkti; para ya kazanilmistir ya
+    // ayni-gecimliktir (kirsalin kendi urettigini tuketmesi; sinif payi
+    // SUBSISTENCE_SHARE'de, ust sinifta sifir). `subsistence` alani denetim
+    // ve ekran icin acikta durur — famineDeaths gibi kayitli bir kanaldir.
     //
     // Gelir GECEN HAFTANINDIR: `fiscalBalance` bu fonksiyondan SONRA kosar.
     // Bir haftalik gecikme butun ulkeleri esit etkiler (ayni kalip fabrika
     // girdi musaitliginde de kullaniliyor).
     const netIncome = Math.max(0, (socialClass.income ?? 0) - (socialClass.taxPaid ?? 0));
-    const needsBudget = netIncome > 0
-      ? formulaBudget * (1 - INCOME_BUDGET_WEIGHT) + netIncome * INCOME_BUDGET_WEIGHT
-      : formulaBudget;
+    const subsistence = formulaBudget * (SUBSISTENCE_SHARE[classId] ?? 0);
+    socialClass.subsistence = subsistence;
+    const needsBudget = netIncome + subsistence;
     // Refah sepetin bir kısmını devlet cebinden öder; parası zaten
     // socialSpendingCost ile hazineden çıkıyor. Bu bağ yokken sosyal harcama
     // memnuniyeti DÜŞÜRÜYORDU (0.50 -> 0.46, ölçüldü): para gidiyor, sepete
@@ -2385,23 +2411,25 @@ function populationDemand(world, nation, market) {
 
 function fiscalBalance(nation, baseOutputValue, industrialOutput) {
   const economy = nation.economy;
-  const incomePool = Math.max(1, baseOutputValue * 0.18 + industrialOutput * 0.22);
+  // GELIR ARTIK UC GERCEK KANALDIR:
+  //   1. Kirsal/temel uretimin pazarlanan payi (incomePool) — RGO degeri.
+  //      Sanayi terimi (eski 0.22×industrialOutput) KALKTI: sanayinin haneye
+  //      akan parasi artik gercek bordro, hayali bir pay degil.
+  //   2. Bordro (economy.wagesPaid, runFactories katma deger × LABOR_SHARE):
+  //      govde isciye (alt), beyaz yaka katibe (orta) — bkz. WAGE_SPLIT.
+  //   3. Sanayi kari sermayedara (PROFIT_TO_CAPITAL, ustte).
+  // Taban pay 0.18 → 0.35: sanayi payinin cikmasiyla kirsal gelirin
+  // pazarlanan payi gercekci olcege cekildi (kalibrasyon: needsMet bandi
+  // korunacak sekilde olculdu, bkz. CORE_STABILIZATION_LOG FAZ 3).
+  const incomePool = Math.max(1, baseOutputValue * 0.35);
   const incomeWeights = { lower: 0.42, middle: 0.33, upper: 0.25 };
-  // SANAYI KARI SERMAYEDARIN GELIRIDIR.
-  //
-  // Eskiden hicbir yere akmiyordu: `incomePool` yalnizca URETIM DEGERINDEN
-  // turuyordu, dolayisiyla zarar eden bir fabrika hane gelirine kârlı biri
-  // kadar katkı yapıyordu. Olculdu (audit:factory): haftada ¤1327.7 kar
-  // uretiliyor, hazineye 0, hane gelirine 0 gidiyor.
-  //
-  // Ucret ciktiya bagli kalir — isci fabrikanin kar/zararina bakmaksizin
-  // maasini alir, bu dogru. Degisen sey KARIN kendisi: sahibine gider.
-  // Zarar da simetriktir; surekli zarar eden sanayi ust sinifi yoksullastirir.
+  const wagesPaid = Math.max(0, economy.wagesPaid ?? 0);
   const profitShare = (economy.factoryProfit ?? 0) * PROFIT_TO_CAPITAL;
   let taxes = 0;
   for (const [classId, weight] of Object.entries(incomeWeights)) {
     const socialClass = economy.classes[classId];
     socialClass.income = incomePool * weight
+      + wagesPaid * (WAGE_SPLIT[classId] ?? 0)
       + (classId === 'upper' ? profitShare : 0);
     // Zarar geliri negatife cekmesin: vergi matrahi negatif olamaz ve
     // `needsBudget` zaten ayri bir kanaldan geliyor.
