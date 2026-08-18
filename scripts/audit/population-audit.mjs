@@ -105,7 +105,13 @@ sub('Haftalik denklem: onceki + buyume - askerAlimi + terhis = simdiki (60 hafta
     const total = pop + army;
     const prevTotal = prevPop + prevArmy;
     const growth = total - prevTotal;
-    rows.push({ week: world.turn, pop, army, total, growth, rate: growth / Math.max(1, prevTotal) });
+    const famine = world.nations.reduce(
+      (sum, nation) => sum + (nation.economy?.famineDeaths ?? 0), 0,
+    );
+    rows.push({
+      week: world.turn, pop, army, total, growth, famine,
+      rate: growth / Math.max(1, prevTotal),
+    });
     worstDrift = Math.max(worstDrift, Math.abs(growth) / Math.max(1, prevTotal));
     prevPop = pop;
     prevArmy = army;
@@ -118,16 +124,21 @@ sub('Haftalik denklem: onceki + buyume - askerAlimi + terhis = simdiki (60 hafta
     { label: 'haftalikDegisim', get: (r) => n0(r.growth) },
     { label: 'oran', get: (r) => pct(r.rate) },
   ]));
-  const negatives = rows.filter((r) => r.growth < 0);
-  console.log(`\n  60 haftada toplam nufus DUSEN hafta sayisi: ${negatives.length}`
-    + (negatives.length ? ` (en buyuk dusus ${n0(Math.min(...negatives.map((r) => r.growth)))})` : ''));
+  // Kitlik olumleri BELGELENMIS bir kanaldir (provinces.js famine, ekrana ve
+  // sayaca "famineDeaths" olarak yazilir): denklem onlari dusukten dusuyor.
+  // Yalniz kitligin ACIKLAYAMADIGI kayip bulgu sayilir.
+  const negatives = rows.filter((r) => r.growth + r.famine < -1);
+  const famineWeeks = rows.filter((r) => r.growth < 0 && r.growth + r.famine >= -1).length;
+  console.log(`\n  60 haftada toplam dusen hafta: ${rows.filter((r) => r.growth < 0).length}`
+    + ` (kitlikla aciklanan: ${famineWeeks})`
+    + (negatives.length ? ` · ACIKLANAMAYAN kayip haftasi: ${negatives.length}` : ''));
   console.log(`  ortalama haftalik buyume orani: ${pct(rows.reduce((s, r) => s + r.rate, 0) / rows.length)}`);
   if (negatives.length) {
-    finding('MEDIUM', 'Barista nufus kaybolabiliyor',
-      'savas yokken toplam insan sayisi (province + ordu) azalmamali',
-      `${negatives.length}/60 haftada toplam dustu, en buyugu ${n0(Math.min(...negatives.map((r) => r.growth)))} kisi`,
-      'olasi kaynak: alay kurulurken cekilen insan ile alayin tasidigi draws kaydi'
-      + ' arasindaki fark, ya da province kaybinda silinen draws');
+    finding('MEDIUM', 'Barista nufus KAYNAKSIZ kayboluyor',
+      'savas yokken kayip = kayitli kitlik olumleri olmali',
+      `${negatives.length}/60 haftada aciklanamayan kayip, en buyugu ${
+        n0(Math.min(...negatives.map((r) => r.growth + r.famine)))} kisi`,
+      'olasi kaynak: alay draws kaydi ile cekilen insan farki ya da province kaybinda silinen draws');
   }
 }
 

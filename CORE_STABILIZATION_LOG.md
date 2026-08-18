@@ -72,3 +72,44 @@ DEGISIKLIK / DEGISMEZ / TEST / ONCE / SONRA / KALAN RISK)
 - **KALAN RISK:** banliyo bir haftalik tazeleme kaymasi tasir (olculen sapma
   4.192'de 358, tolerans %10); ayni econ'a iki AYRI ulkenin fabrikasi
   yazarsa son yazan kazanir (onceden de boyleydi, nadir).
+
+### 2. Hayalet nufus tabani (FAZ 2) — YUKSEK kapandi
+
+- **PROBLEM:** "Kohort muhasebesi tutmuyor: en kotu sapma 5-6.000 kisi."
+- **ETKI:** Sayac 10.000 kisi gosterirken kohort katmani 0 kisi turetiyordu;
+  kucuk uluslarin nufusu sisirilmis, topraksiz devlet sonsuza dek hayalet
+  vergi tabani/ordu havuzu tasiyordu.
+- **KOK NEDEN:** `populationOf` = `max(10000, kareToplami)` — her ulusa
+  10.000 kisilik SERT taban. Topraksiz kalinti devlet (olculdu: Yarimark,
+  0 kare, alive) 10.000 hayalet insanla yasiyordu; `reconcilePopulation` ve
+  `initialProfessionCounts` icindeki `max(10, ...)` kohort tabanlari ayni
+  hayaleti sayaclara isliyordu. Kohort katmani dagitacak kare bulamayinca
+  sapma tam sayac buyuklugu oluyordu.
+- **DOSYALAR:** `src/game/economy.js`, `src/game/population.js`,
+  `src/game/provinces.js`, `scripts/audit/population-audit.mjs`.
+- **DEGISIKLIK:** (a) taban kalkti: nufus = kare toplami (payda tuketiciler
+  zaten `max(1,...)` korumali); kohort hedefi gercek nufusun karsiligi
+  (nufus>0 ise en az 1 kohort). (b) `professionCountsValid` tamamen-sifir
+  sayaci yapisal gecerli sayar (sifir nufuslu ulkede haftalik bosuna
+  yeniden kurulum donuyordu). (c) `ownedProvinces` kalinti-devlet yedegi:
+  cogunluk sahipligi olmayan ama kare tutan ulke, kare sahibi oldugu
+  kumeler uzerinden dagitilir (gercek kalinti icin gerekli).
+- **DEGISMEZ:** kohort toplami = meslek sayaclari = sinif toplamlari
+  (denetim bolumu 1); nufus tabani uydurulamaz.
+- **ONCE:** en kotu sapma 6.000. **SONRA:** 0.
+- **KALAN RISK:** cok kucuk (<1000 kisi) gercek nufus 1 kohorta yuvarlanir
+  (≤1000 kisilik fark, LOW yuvarlama bulgusunun icinde).
+
+### 3. Kitlik olumleri kayitli kanal oldu (FAZ 2) — ORTA kapandi
+
+- **PROBLEM:** "Barista nufus kaybolabiliyor: 4/60 haftada dusus, −227."
+- **KOK NEDEN:** kayip degil KASITLI mekanik: `needsMet < 0.5` kitlik
+  olumleri (provinces.js famine, olcumle eklenmis). Denetimin korunum
+  denkleminde bu kanalin karsiligi yoktu — olumler "kaybolan insan"
+  goruluyordu.
+- **DEGISIKLIK:** olumler artik ACIK sayac: `economy.famineDeaths`
+  (haftalik, provinces.js buyume adiminda birikir). Denetim denklemi
+  kanali dusuyor; yalniz kitligin ACIKLAYAMADIGI kayip bulgu.
+- **SONRA:** 4/60 dusus haftasinin 4'u de kitlikla birebir aciklandi;
+  bulgu kapandi. Sayac UI'ya da acik (ileride gosterilebilir).
+- **KALAN RISK:** yok — kanal kayitli, denklem siki (tolerans ±1).

@@ -751,6 +751,11 @@ export function runProvinces(game) {
   }
 
   const provinces = world.provinces ?? [];
+  // Kitlik olumleri ACIK bir muhasebe kanalidir: nufus dususu "kayip insan"
+  // degil kayitli olumdur — korunum denetimi ve ekran bu sayaci okur.
+  for (const nation of world.nations) {
+    if (nation.economy) nation.economy.famineDeaths = 0;
+  }
   for (let p = 0; p < provinces.length; p++) {
     const province = provinces[p];
     const econ = province.econ;
@@ -799,10 +804,14 @@ export function runProvinces(game) {
       * (peace ? 1 : 0.55) * (0.45 + stability) * health
       * (0.25 + 0.75 * nourishment)) * (1 - occupied)
       - famine * FAMINE_DECLINE;
+    const previousPopulation = econ.population;
     econ.population = Math.max(
       0,
       Math.round(econ.population * (1 + weeklyGrowth)),
     );
+    if (econ.population < previousPopulation && nation.economy) {
+      nation.economy.famineDeaths += previousPopulation - econ.population;
+    }
 
     // Gelişme yalnız düzenin oturduğu yerde birikir: savaş, işgal ve kaos durdurur.
     const track = RGO_TYPES[econ.rgo]?.track;

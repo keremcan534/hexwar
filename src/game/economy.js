@@ -764,7 +764,11 @@ function distributeClassPopulation(counts, classId, population) {
 
 function initialProfessionCounts(population) {
   const counts = emptyProfessionCounts();
-  const chunks = Math.max(10, Math.floor(population / POPULATION_COHORT));
+  // Taban GERCEK nufustur. Eski `max(10, ...)` tabani nufusu 10.000'in
+  // altindaki her ulkeye hayalet insan uyduruyordu; topraksiz kalinti devlet
+  // sonsuza dek 10.000 kisilik sayac tasiyordu (olculdu: kohort katmani 0
+  // kisi gosterirken sayac 10.000 — "6.000 kisilik sapma" bu hayaletti).
+  const chunks = Math.max(population > 0 ? 1 : 0, Math.floor(population / POPULATION_COHORT));
   const lowerChunks = Math.floor(chunks * CLASS_INFO.lower.share);
   const middleChunks = Math.floor(chunks * CLASS_INFO.middle.share);
   const upperChunks = Math.max(0, chunks - lowerChunks - middleChunks);
@@ -803,14 +807,15 @@ const CLASS_DEFAULTS = {
  */
 function professionCountsValid(counts) {
   let keys = 0;
-  let anyPositive = false;
   for (const key in counts) {
     keys++;
     const value = counts[key];
     if (!Number.isFinite(value) || value < 0 || value % POPULATION_COHORT !== 0) return false;
-    if (value > 0) anyPositive = true;
   }
-  if (keys !== PROFESSION_IDS.length || !anyPositive) return false;
+  // Tamamen sifir sayac YAPISAL olarak gecerlidir (topraksiz devlet):
+  // reconcilePopulation zaten nufusa gore doldurur. Eski "en az bir pozitif"
+  // sarti sifir nufuslu ulkede her hafta bosuna yeniden kurulum yapiyordu.
+  if (keys !== PROFESSION_IDS.length) return false;
   for (let i = 0; i < PROFESSION_IDS.length; i++) {
     if (!(PROFESSION_IDS[i] in counts)) return false;
   }
@@ -951,7 +956,10 @@ export function ensurePopulationModel(nation, population = nation?.economy?.popu
 
 export function reconcilePopulation(nation, population) {
   const counts = ensurePopulationModel(nation, population);
-  const target = Math.max(10, Math.floor(population / POPULATION_COHORT)) * POPULATION_COHORT;
+  // Ayni hayalet-taban kurali (bkz. initialProfessionCounts): hedef gercek
+  // nufusun kohort karsiligidir, 10 kohortluk uydurma taban degil.
+  const target = Math.max(population > 0 ? 1 : 0, Math.floor(population / POPULATION_COHORT))
+    * POPULATION_COHORT;
   let current = Object.values(counts).reduce((sum, value) => sum + value, 0);
   while (current < target) {
     counts[automaticProfession(nation, 'lower')] += POPULATION_COHORT;
@@ -1087,7 +1095,12 @@ export function initMarket(world) {
 }
 
 export function populationOf(world, nation) {
-  return Math.max(10000, provincePopulation(world, nation.id));
+  // Taban YOK: nufus kare toplamidir. Eski `max(10000, ...)` tabani her
+  // kucuk ulkeye ve ozellikle TOPRAKSIZ kalinti devlete 10.000 hayalet insan
+  // uyduruyordu; sayac-kohort sapmasi denetimindeki "6.000 kisilik" YUKSEK
+  // bulgu tamamen bu hayaletlerdi (kohort katmani dagitacak kare bulamiyor,
+  // sayac dolu goruluyordu). Payda kullanan tuketiciler max(1,...) korumali.
+  return Math.max(0, provincePopulation(world, nation.id));
 }
 
 export function initNationEconomy(world, nation) {
