@@ -2279,7 +2279,11 @@ function populationDemand(world, nation, market) {
       // week's share is used because this week's trade clears after all
       // nations have submitted supply and demand.
       const importShare = clamp(economy.goodsFlow?.[goodId]?.importShare ?? 0, 0, 1);
-      const tariffFactor = 1 + (economy.tariff / 100) * importShare;
+      // Taban 0: UI bandi disindan (raw) yazilan asiri negatif tarife sepet
+      // bedelini eksiye cevirebiliyordu — eksi bedel, eksi gecimlik ve eksi
+      // butce demekti (boundary denetimi yakaladi). Subvansiyon bedava
+      // yapabilir, PARA ODEYEN sepet yapamaz.
+      const tariffFactor = Math.max(0, 1 + (economy.tariff / 100) * importShare);
       const cost = priceOf(world, goodId) * quantity * tariffFactor;
       const baseCost = GOODS[goodId].basePrice * quantity;
       basket += cost;

@@ -169,3 +169,41 @@ DEGISIKLIK / DEGISMEZ / TEST / ONCE / SONRA / KALAN RISK)
 - NOT (FAZ 11'e devir): tarife→girdi faturasi kanali yeni ekonomide
   zayifladi (%12.3 → %1.8, tariff-audit ORTA) — fiyat/ithalat dengesi
   degisti; pazar sagligi fazinda yeniden bakilacak.
+
+### 6. Deflasyon sarmali → gecimlik GERCEGE demirlendi (FAZ 10 buldu)
+
+- **PROBLEM (100 yillik kosu, ilk surum):** GSYH 16k→2.6k, needsMet
+  0.43→0.26, 37 mal fiyat TABANINDA acliga ragmen, kapasite 165→6,
+  temerrut 24/31 — yoksulluk-tuzagi dengesi.
+- **KOK NEDEN:** gelir ∝ uretim DEGERI = miktar × fiyat; fiyat ∝ parasal
+  talep ∝ gelir — carpimsal dongu, demir yok. Ilk gecimlik formulu
+  ucret-endeksliydi ve fiyatla birlikte sonuyordu; eski hayalet-butce
+  modeli bu donguyu istemeden demirliyordu (o yuzden gorulmemisti).
+- **DEGISIKLIK:** gecimlik = SUBSISTENCE_SHARE × GUNCEL SEPET BEDELI —
+  sinif kendi sepetinin sabit bir REEL payini kendi uretiminden karsilar;
+  para degeri fiyatla oynar, reel taban oynamaz. formulaBudget tamamen
+  kalkti (vergi/reform/refah etkileri gercek kanallardan: vergi net
+  gelirden, reform ucretten, refah cepten-cikandan).
+- **SONRA (ayni 100 yillik tohum):** needsMet yuzyil boyunca 0.42-0.46
+  sabit; istikrar 0.36-0.41; fabrika 384→1177 buyumeye devam; 31 ulke
+  canli, hegemonya 0.26; savaslar kapaniyor (136 kapanis, ortanca 25hf).
+  Kalan pazar sorunu tersine dondu: gec oyunda 30-39 mal fiyat TABANINDA
+  (sanayi, paralilasan talebi asiyor) — ESKI tavan kilidinin yerine gecen,
+  FAZ 11 / REMAINING konusu.
+
+### 7. Kaydet-yukle dallanmasi kokten kapandi (FAZ 8 on kosulu)
+
+- **PROBLEM:** save-audit: ayni tohum, kayit-yukle sonrasi 100. haftada
+  hazine/fiyat farki (YUKSEK). Bisect: +77. haftada tek seferlik ¤229
+  devlet fabrika yatirimi yalniz kesintisiz kosuda.
+- **KOK NEDEN (uc kacak):** (1) aktif muharebeler kayitta bilerek
+  dusuruluyordu; (2) iliskilerin `wars`/`peaks` alanlari (tekrar-savas
+  sayaci, stall olcumu) kayda girmiyordu; (3) constructionAtlas onbellegi
+  bolge nufusunu kurulus aninda donduruyor, imzada hafta yoktu — icerik
+  CAGRI GECMISINE bagliydi, yatirim bolgesi secimini dallandiriyordu
+  (investmentTargets ustelik atlasin dizisini yerinde sortluyordu).
+- **DEGISIKLIK:** muharebeler kayda girer ve yuklemede yeniden baglanir;
+  `wars`/`peaks` kayitta; atlas imzasina hafta eklendi; investmentTargets
+  kopya + (nufus, id) esitlik bozucu.
+- **SONRA:** bisect yukleme aninda ve 100 hafta boyunca birebir;
+  save/determinism/esdegerlik (4 kontrol noktasi) temiz.
