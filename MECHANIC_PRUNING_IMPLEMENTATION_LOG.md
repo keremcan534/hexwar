@@ -184,6 +184,43 @@ yakaladi ve ikisi de duzeltildi:
    dusurulerek (0.012) hedeflenen davranis saglandi — tek savas guvenli,
    seri yagma esigi asar. Olcum dogrulama raporunda.
 
+Tam uzunluktaki kosu (5x1300 + 3x2600 + 1x5740) hizli kosunun goremedigi
+bir sarmali daha yakaladi: 1300. haftada 19/26 ulke kalici kredi cezasinda
+(taban cizgi ayni tohumda 2/26). Kok neden zinciri defter kiyasiyla izlendi
+(`ledger-probe`, `war-state-probe`) ve DORT duzeltmeyle kapatildi:
+
+3. **Donmus savas kacagi (ai.js):** barisi yalniz kazanan (skor ≥ +30) ya da
+   kaybeden (≤ −30 / cok zayif) teklif ediyordu; koalisyonun actigi uzak,
+   cephesiz 0-0 savasin teklif vereni HIC yoktu — 1186 haftalik savaslar
+   olculdu, savas maliyesi (tedarik %60-100) onyillarca acik kaliyordu.
+   Duzeltme: 156 haftadir sonuc uretmeyen iki-esik-arasi savas beyaz baris
+   teklif eder; kabul karari yine peace.js beklenti/yorgunluk kapisindan
+   gecer (onde olan bedava imzalamaz). Sonuc: pv-1'de 9 donmus cift → 1;
+   war-pressure'da donmus 9/4/3 → 1/0/3, kapanan savas 100/101.
+4. **YZ yatirim disiplini (construction.js):** yatirim tetigi hazine STOGUNA
+   bakiyordu (savas kasasi "zenginlik" sayiliyordu); yeni kosul temerrut izi
+   yok + borc < yarim yillik gelir + haftalik net arti. Kriz modu ise STOK
+   eritir: bakim gelirin %25'ini asarken haftada bir seviye lagvedilir
+   (derin krizde son seviye dahil); `runEconomicAI`nin sehirsiz-devlet erken
+   cikisi maliye YZ'sinin ustunden alindi (kalinti devletler hic kriz moduna
+   giremiyordu). Oyuncuya ayni cikis UI'da: yatirim kartinda − (lagvet,
+   iade yok) — tek yonlu tuzak kalmadi.
+5. **Borc yeniden yapilandirma (economy.js):** ceza borc kapasitesini
+   kuculttugu icin eski savas borcu matematiksel olarak odenemez hale
+   geliyordu (cikissiz kilit). Temerrutteki devletin kapasite USTU borcu
+   haftada %2 silinir; bedel zaten yuksek cezada (faiz +%10, kapasite %15'e
+   dusuk, kurum verimi kirik). Sonuc: takili borc stoklari 2600 → ~60.
+6. **Kriz terhisi (ai.js):** `desiredArmy` maliyeye bakmiyordu; yenilgiden
+   cikan devlet gelirinin katini maas+tedarike verip her hafta kucuk kucuk
+   temerrude dusuyordu. Bariste, agir kredi cezasindaki YZ haftada bir birim
+   terhis eder (iki alaylik cekirdek kalir).
+
+Toplam etki (pv-1, 1300. hafta): kalici kredi cezasi 19/26 → 11/26 (taban
+2/26; pv-3'te taban 6/26'ya karsi 7/25 — tohuma gore taban cizgiyle ayni
+banda dondu), ortalama borc taban cizginin ALTINDA (459 vs 885), kapasite
+toplami taban cizgiyle ayni bantta. Kalan tasiyicilar sehirsiz kalinti
+devletler — REMAINING_MECHANIC_DEBT'te.
+
 ---
 
 ## TESTLER
