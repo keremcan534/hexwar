@@ -59,7 +59,8 @@ import { technologyScreen } from './technologyScreen.js';
 import { researchPointsOf, startResearch } from '../game/technology.js';
 import {
   CONSTRUCTION_TYPES, NATIONAL_INVESTMENTS, cancelConstruction, canQueueConstruction,
-  constructionAtlas, constructionPower, constructionUpkeep, ensureConstruction,
+  constructionAtlas, constructionPower, constructionUpkeep, divestInvestment,
+  ensureConstruction,
   investmentBlocker, investmentCost, investmentLevel, moveConstructionTo,
   prioritizeConstruction, queueConstruction, queueInvestment,
 } from '../game/construction.js';
@@ -754,6 +755,8 @@ export class Screens {
         <button class="action" data-invest="${info.id}" ${blocked ? 'disabled' : ''}
           title="${esc(blocked ?? `Invest ¤${cost}: enters the construction queue and adds −¤${info.upkeep}/week upkeep.`)}">
           ${capped ? 'Max' : `Invest · ¤${cost}`}</button>
+        ${level > 0 ? `<button class="action" data-divest="${info.id}"
+          title="Dissolve one level. No refund — you only shed the ¤${info.upkeep}/week upkeep.">−</button>` : ''}
       </div>`;
     }).join('');
     // Siralama KARARLI: ad alfabetik. Eski "bos yuvaya gore" siralama satirlari
@@ -2029,6 +2032,14 @@ export class Screens {
       btn.onclick = () => {
         if (queueInvestment(game, me.id, btn.dataset.invest)) {
           game.turns.addLog(`${NATIONAL_INVESTMENTS[btn.dataset.invest].name} investment queued.`);
+        }
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-divest]')) {
+      btn.onclick = () => {
+        if (divestInvestment(game, me.id, btn.dataset.divest)) {
+          game.turns.addLog(`${NATIONAL_INVESTMENTS[btn.dataset.divest].name} level dissolved.`);
         }
         this.refresh();
       };

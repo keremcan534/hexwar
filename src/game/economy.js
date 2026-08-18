@@ -17,8 +17,8 @@ import {
 } from './politics.js';
 import {
   PROJECT_KIND, constructionAtlas, constructionPower,
-  constructionUpkeep, ensureConstruction, fundProject, higherEducationBonus,
-  planConstructionAI, queueIndustryProject,
+  constructionUpkeep, dropInvestmentLevel, ensureConstruction, fundProject,
+  higherEducationBonus, planConstructionAI, queueIndustryProject,
 } from './construction.js';
 import {
   refreshReformModifiers, reformBudgetFactor, reformModifiers, reformMoodShift,
@@ -2469,6 +2469,25 @@ function adjustWarFiscalAI(nation) {
     // Kriz yonetimi idareyi de kisar: tahsilat duser ama gider de duser —
     // yonetim butcesi artik nufusla buyudugu icin bu gercek bir tasarruf.
     drift('adminFunding', 60);
+    // TASFIYE: akis kisintisi yetmiyorsa STOK erir. Zengin donemde kurulan
+    // kapasite/egitim seviyeleri sabit bakimdir; dunya fakirlesince bu yuk
+    // temerrut sarmalina donusuyordu (olculdu: 1300. haftada 19/26 ulke
+    // kalici kredi cezasinda, cikis yolu yok). Haftada en fazla bir seviye,
+    // bakim gelirin %25'inin altina inince durur; son kapasite seviyesi ve
+    // ilk egitim kademesi korunur (kurumlar tamamen silinmez).
+    const income = Math.max(1, economy.ledger?.income ?? 0);
+    if (constructionUpkeep(nation) > income * 0.25) {
+      const state = ensureConstruction(nation);
+      // Derin krizde (bakim gelirin yarisini yiyor — sehirsiz kalinti devlet)
+      // son seviye de gider: taban insaat gucu (5) zaten seviyesiz yasar,
+      // toparlanan ulke ilk kapasite kuralindan yeniden baslar.
+      const floor = constructionUpkeep(nation) > income * 0.5 ? 0 : 1;
+      if ((state.capacity.construction ?? 0) > floor) {
+        dropInvestmentLevel(nation, 'CONSTRUCTION_CAPACITY');
+      } else if ((state.capacity.education ?? 0) > floor) {
+        dropInvestmentLevel(nation, 'HIGHER_EDUCATION');
+      }
+    }
     return;
   }
 
@@ -2543,8 +2562,6 @@ function runPrivateSector(game, nation) {
 function runEconomicAI(game, nation) {
   if (nation.id === game.turns.playerNation || !nation.alive) return;
   const economy = nation.economy;
-  const regions = investmentTargets(game.world, nation);
-  if (!regions.length) return;
   // Maliye YZ'sinin savaş/barış kararı için: economy dünyayı bilmez, bağ
   // burada kurulur.
   economy.atWarCache = game.world.nations.some(
@@ -2553,6 +2570,12 @@ function runEconomicAI(game, nation) {
   );
   adjustSocialAI(nation);
   adjustFiscalAI(nation);
+  // Yatirim hedefi kalmamis (sehirsiz) devlet MALIYESIZ kalmasin: erken cikis
+  // fiscal YZ'nin ustundeyken kriz modu hic kosmuyordu — kalinti devlet eski
+  // bolluk gunlerinin kapasite bakimini odemeye devam edip kalici temerrutte
+  // kilitleniyordu (olculdu: 1300. haftada 12 kalintinin cogu bu yuzden).
+  const regions = investmentTargets(game.world, nation);
+  if (!regions.length) return;
 
   const military = ensureMilitaryEconomy(nation);
   const equipmentPriority = MILITARY_EQUIPMENT_IDS.map((id) => {
@@ -2885,6 +2908,14 @@ function settleDebt(nation) {
         0,
         0.85,
       );
+      // YENIDEN YAPILANDIRMA: temerrutteki devletin kapasite ustu borcu
+      // yavasca silinir (alacakli zarari yazar; bedeli zaten yuksek cezada).
+      // Bu kapi olmadan cikis yoktu: ceza kapasiteyi kuculttugu icin eski
+      // savas borcu sonsuza dek odenemez kaliyordu — gold 0'da cokelen ulke
+      // ne ceza eritebiliyor ne borc odeyebiliyordu (olculdu: 1300. haftada
+      // 13/26 ulke bu kilitte; taban cizgide ayni kilit 2/26'ydi).
+      const excess = nation.debt - debtCapacity(nation);
+      if (excess > 0) nation.debt -= excess * 0.02;
     }
   } else if (nation.debt > 0 && nation.gold > DEBT_CUSHION) {
     // Geri ödeme otomatik ve ılımlı: hazine yastığın üstündeyse fazlanın

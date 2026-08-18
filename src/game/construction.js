@@ -561,6 +561,30 @@ export function queueInvestment(game, nationId, investmentId) {
   return true;
 }
 
+/**
+ * Bir yatirim seviyesini LAGVEDER: iade yok, yalniz bakim yuku duser.
+ * Kurumu dagitmak paranin geri gelmesi degildir — ama tek yonlu bir tuzak
+ * da degildir: mali kriz kapasiteyi tasfiye ederek asilabilmeli (hem YZ'nin
+ * temerrut sarmalindan cikisi hem oyuncunun "yanlis yatirdim" pismanligi).
+ */
+export function dropInvestmentLevel(nation, investmentId) {
+  const info = NATIONAL_INVESTMENTS[investmentId];
+  if (!nation || !info) return false;
+  const state = ensureConstruction(nation);
+  if ((state.capacity[info.field] ?? 0) <= 0) return false;
+  state.capacity[info.field] -= 1;
+  return true;
+}
+
+/** Ayni tasfiye, UI yolu: olay + kare istegiyle. */
+export function divestInvestment(game, nationId, investmentId) {
+  const nation = game.world.nations[nationId];
+  if (!nation || !dropInvestmentLevel(nation, investmentId)) return false;
+  game.emit('construction', ensureConstruction(nation));
+  game.requestRender();
+  return true;
+}
+
 export function cancelConstruction(game, nationId, projectId) {
   const nation = game.world.nations[nationId];
   if (!nation) return false;
@@ -735,6 +759,14 @@ function frontierFortAnchor(game, nation) {
 export function planConstructionAI(game, nation) {
   const state = ensureConstruction(nation);
   if (nation.id === game.turns.playerNation || nation.gold < 180) return;
+  // Mali sagligi bozuk ulke yeni bakim yuku ALMAZ: temerrut izi tasiyan ya da
+  // yarim yillik gelirinden fazla borcu olan YZ once toparlanir. Hazine stogu
+  // tek basina yaniltici — savas kasasi biriktiren ulke "zengin" gorunuyordu,
+  // yeni seviyenin bakimi baris gelirini asiyordu (bkz. adjustWarFiscalAI
+  // tasfiye notu: ayni sarmalin onleyici yuzu).
+  const ledger = nation.economy?.ledger;
+  if ((nation.economy?.creditPenalty ?? 0) > 0.05) return;
+  if ((nation.debt ?? 0) > Math.max(50, (ledger?.income ?? 0) * 13)) return;
   // Yalniz bina/yatirim projeleri sayilir: fabrika kuyrugu dolu diye ulke
   // kapasiteye yatirim yapamaz hale gelmemeli.
   const pendingBuildings = state.projects.filter(
@@ -754,7 +786,10 @@ export function planConstructionAI(game, nation) {
   // Hazine sisiyorsa asil darbogaz insaat gucudur: sanayi kuyrukta bekler,
   // para harcanacak yer bulamaz. Fazla altin kapasiteye gider; artan bakim
   // gideri de biriken parayi geri emer.
-  const starved = queuedWork > constructionPower(nation) * 12 || nation.gold > 900;
+  // "Para birikiyor" sinyali tek basina akis saglikliysa gecerli: haftalik
+  // net eksideyken hazine stoguna bakip kapasite almak bakim tuzagi kurmakti.
+  const starved = queuedWork > constructionPower(nation) * 12
+    || (nation.gold > 900 && (ledger?.net ?? 0) > 0);
   const capacity = investmentLevel(nation, 'CONSTRUCTION_CAPACITY');
   // YZ tavani: kapasite sanayinin OLCEGIYLE buyur. Eski bolge-yuvasi freninin
   // ulusal karsiligi — sinirsiz birakinca zengin YZ bakim bataryasi kuruyordu.
