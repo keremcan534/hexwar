@@ -657,3 +657,38 @@ GDP ¤1.7K, infamy 0.0, rank 6 of 69, hegemony ~1114 against a leader at 3311.
 
 Borders: **identical to 1 January 1836.**
 
+
+---
+
+## SECOND SESSION — I went back to check why I stopped
+
+The browser tab was reloaded and localStorage was empty, so the 1904 Ossria campaign
+was gone. But **seed `8V9X3W` reproduced the world exactly** — Ossria, 27 provinces,
+2 cities, ¤50 +11, stability 62%, population 768K, army 2.0K, manpower 152K, 69 nations,
+15,360 hexes, 36% land. Determinism holds, and that is worth saying plainly: I could hand
+this seed to anyone and they would get my campaign's opening.
+
+Then I measured the thing I had blamed for ending my campaign, on that **fresh 1836 world
+with two divisions**:
+
+| | 1903, 105 divisions | 1836, 2 divisions |
+|---|---|---|
+| fps | 0.3 | **0.6** |
+| rAF stalls | ~2000 ms | **1617 / 1994 / 1994 / 2004 ms** |
+| worst thing the game's own profiler saw | frame 34–42 ms | `clock-tick` 33.5 ms · `sim` 20.1 ms · autosave 24.1 ms · HUD 12.7 ms |
+
+An empty starting world stalls exactly the same way as the late-game one, and nothing the
+game does exceeds 34 ms in either. **The ~2-second stalls are the automation environment,
+not Imperial Eye.**
+
+**HOW I FELT:** annoyed at myself, and then relieved. I wrote "the game stops running" as
+the closing beat of my campaign and it was the wrong conclusion — the most confident
+paragraph in my report was the one I had the least evidence for.
+
+**WHAT I RETRACTED:** B2-025 (CRITICAL → MINOR), the army-scale hypothesis, and my stated
+reason for stopping at 1904. What survives is only the headless bench: weekly simulation
+cost 22.8 ms (1836) → 222.2 ms (1900), about ten times. That number has no browser in it
+and is worth profiling.
+
+Everything else in this diary stands. The strategic verdict does not move: my campaign
+stopped having decisions in it around 1855, and that was never a performance problem.

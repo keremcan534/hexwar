@@ -402,3 +402,51 @@ Checked specifically against the brief's list.
 | Reform button, queue reorder, tab title, power ratio, floats | **FIXED** |
 | Terminology, country selection, navy, per-good policy, duplicate names, `100% met` shortage | **UNCHANGED** |
 | Late-game performance | **REGRESSED** under army scale |
+
+---
+
+## 12. THE FULL CENTURY — seed 8V9X3W simulated to the real end date
+
+My blind campaign stopped at 1904, so I ran the *same seed* headlessly to **1936** to
+answer the one question it could not. This is simulation output, not player experience —
+Ossria is AI-driven here. Wars, borders, market and economy are the world's own.
+
+| era | nations alive | eliminated | changed size | at war | goods at ceiling | in shortage |
+|---|---|---|---|---|---|---|
+| 1836 | 69 | 0 | 0 | 0 | 0 | 0 |
+| 1850 | 69 | 0 | 10 | 16 | 12 | 15 |
+| 1875 | 69 | 0 | 11 | 12 | 9 | 16 |
+| 1900 | 69 | 0 | 14 | 21 | 11 | 20 |
+| **1936** | **69** | **0** | 16 | **22** | **13** | **17** |
+
+Three findings, and they all confirm the blind campaign rather than soften it:
+
+**1. The world never resolves.** A hundred years, sixty-nine nations, **not one
+eliminated**. The three largest powers are the same size on the last day as the first:
+Ossria 308 tiles, Ossmark 290, Feneesh 249 — **unchanged in 1836, 1850, 1875, 1900 and
+1936**. Sixteen nations shift size at the margins; the shape of the world does not move.
+My "no border changed in 68 years" was not a fluke of my passivity — it is what the
+simulation does when left alone for a century.
+
+**2. War is permanent background weather.** From 0 nations at war in 1836 to **16 by 1850
+and 22 by 1936**, sustained the whole time — and it changes nothing. This is Test #1's
+*"continuous war as ambient weather"* complaint reproduced exactly, at the end date, with
+the player removed from the equation.
+
+**3. The market never converges.** Thirteen goods pinned at the price ceiling and
+seventeen in shortage on the final day, versus twelve and fifteen in 1850. Eighty-six
+years of global industrialisation moved the shortage count from 15 to 17. This is P1-1b's
+compound-demand-vs-linear-supply problem playing out to its conclusion.
+
+Two smaller notes:
+
+- **AI Ossria ends the century in permanent debt** — ¤13,520 at 1900 and ¤13,519 at 1936,
+  stability 39–40%, having never repaid it. The post-repair economy bites the AI too, and
+  it does not recover. Worth checking against the "AI economies bankrupting themselves"
+  risk: it is not a collapse, but it is a sixty-year debt it never clears.
+- **The AI army is frozen at 40 units from 1850 to 1936.** Eighty-six years, no growth,
+  no decay.
+
+**Verdict on late game, with the end date now in evidence: it does not die — it was never
+alive.** Nothing about 1936 differs in kind from 1875. No nation was conquered, no border
+of consequence moved, no shortage resolved, no army changed size.

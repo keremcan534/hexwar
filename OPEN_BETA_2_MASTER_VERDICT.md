@@ -216,6 +216,16 @@ observe.
 **Yes — strategically for certain, and performance-wise to a degree I could measure but
 not fully attribute.**
 
+**Now confirmed at the real end date.** I ran the same seed headlessly to **1936**:
+69 nations alive, **zero eliminated in a hundred years**, and the three largest powers the
+same size on the last day as the first (Ossria 308 tiles, Ossmark 290, Feneesh 249 —
+identical at 1836, 1850, 1875, 1900 and 1936). Wars run permanently in the background —
+22 nations at war in 1936 — and resolve nothing. Thirteen goods sit at the price ceiling
+and seventeen in shortage on the final day, against twelve and fifteen in 1850.
+
+So the honest answer is sharper than "the late game dies": **nothing about 1936 differs in
+kind from 1875.** It was never alive.
+
 **Strategically: dead, and in the same way as Test #1.** By 1880 money was solved,
 stability was solved, employment was solved, literacy was solved, technology was
 irrelevant, diplomacy did not exist, war could not change a border, and the map had not
