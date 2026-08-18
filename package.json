@@ -60,6 +60,8 @@
     "audit:culture": "node scripts/audit/culture-audit.mjs",
     "audit:trade-consequence": "node scripts/audit/trade-consequence-audit.mjs",
     "audit:peace-stakes": "node scripts/audit/peace-stakes-audit.mjs",
+    "audit:war-outcome": "node scripts/audit/war-outcome-audit.mjs",
+    "audit:borders": "node scripts/audit/border-change-audit.mjs",
     "audit:stability": "node scripts/audit/stability-audit.mjs",
     "audit:military-strategy": "node scripts/audit/military-strategy-audit.mjs",
     "audit:supply-response": "node scripts/audit/supply-response-audit.mjs"

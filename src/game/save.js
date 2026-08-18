@@ -29,7 +29,7 @@ import { ensureConstruction } from './construction.js';
 // 13: alay artık anında belirmiyor, eğitim kuyruğuna giriyor (nation.training)
 // ve subayların bir kolu var (general.branch). İkisi de türetilemez durumdur:
 // yazılmazsa yüklemede sipariş edilmiş ordu ve amiraller buhar olur.
-export const SAVE_VERSION = 13;
+export const SAVE_VERSION = 14;
 const STORAGE_KEY = 'hexwar.save';
 
 /**
@@ -129,7 +129,9 @@ export function serialize(game) {
       return out;
     }),
     relations: world.relations.map((row, a) => row.map((rec, b) => (
-      b <= a || !rec ? null : [rec.state, rec.since, rec.truceUntil ?? 0]
+      // Dorduncu alan savasin kayip defteri: warscore'un yipranma bileseni
+      // ona bakar, kaydedilmezse yuklenen savas "hic kan dokulmemis" olur.
+      b <= a || !rec ? null : [rec.state, rec.since, rec.truceUntil ?? 0, rec.losses ?? null]
     ))),
     cities: world.cities.map((c) => ({
       name: c.name,
@@ -261,6 +263,7 @@ export function deserialize(game, data) {
       const entry = data.relations[a][b];
       if (!entry) continue;
       const rec = { state: entry[0], since: entry[1], truceUntil: entry[2] };
+      if (entry[3]) rec.losses = { ...entry[3] };
       world.relations[a][b] = rec;
       world.relations[b][a] = rec;
     }

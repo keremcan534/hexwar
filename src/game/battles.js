@@ -9,7 +9,7 @@
 //
 // Denge WW1'e bakar: muharebe uzun surer, moral yavas kirilir, savunan ustundur.
 
-import { atWar } from './diplomacy.js';
+import { atWar, recordWarCasualties } from './diplomacy.js';
 import {
   MAX_STACK, applyArmyLosses, armyPower, clearPath, organizationOf, placeUnit, recoverArmy,
   resetEntrenchment, soldiersOf, stackFull, unitsOn,
@@ -402,6 +402,10 @@ function resolveRound(game, battle) {
   battle.rounds++;
   battle.attackerLosses += Math.round(attackerCasualties);
   battle.defenderLosses += Math.round(defenderCasualties);
+  // Yok edilen ordu barış masasında sayılmalı: warscore'un yıpranma bileşeni
+  // bu deftere bakar (bkz. peace.warScore).
+  recordWarCasualties(world, battle.attackerNation, battle.defenderNation,
+    attackerCasualties, defenderCasualties);
   battle.lastRoll = { attacker: attackerRoll, defender: defenderRoll, turn: game.turns.turn };
 
   // Sifirlanan tumen bir sonraki raundun sayi/casualty carpaninda kalmasin.

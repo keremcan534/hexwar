@@ -54,6 +54,24 @@ function setState(world, a, b, state, turn, extra = {}) {
   world.relations[b][a] = rec;
 }
 
+/**
+ * Bu savaşta iki tarafın kaybettiği asker. Kayıt ilişki kaydında durur: savaş
+ * ilanı yeni bir kayıt kurduğu için sayaç her savaşta kendiliğinden sıfırlanır
+ * ve barıştan sonra geçmiş savaşın kanı yeni savaşa taşınmaz.
+ */
+export function recordWarCasualties(world, a, b, aLoss, bLoss) {
+  const rec = relation(world, a, b);
+  if (!rec || rec.state !== WAR) return;
+  const losses = rec.losses ?? (rec.losses = {});
+  losses[a] = (losses[a] ?? 0) + Math.max(0, aLoss);
+  losses[b] = (losses[b] ?? 0) + Math.max(0, bLoss);
+}
+
+/** Savaşın kayıp defteri; savaş yoksa boş. */
+export function warLossesOf(world, a, b) {
+  return relation(world, a, b)?.losses ?? {};
+}
+
 /** Ateşkes sürüyorsa savaş ilan edilemez. */
 export function truceLeft(world, a, b, turn) {
   const rec = relation(world, a, b);

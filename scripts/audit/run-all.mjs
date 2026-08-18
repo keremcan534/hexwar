@@ -29,6 +29,8 @@ const AUDITS = [
   ['boundary', 'X. Sinir degerleri'],
   ['save', 'Y. Kayit / yukleme'],
   ['legacy', 'Z. Eski sistemler'],
+  ['war-outcome', 'Savas sonucu ve toprak devri'],
+  ['border-change', '50 yilda sinir degisimi'],
   ['long-run', 'Uzun kosu dunya testleri'],
 ];
 

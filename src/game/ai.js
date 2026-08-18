@@ -8,7 +8,7 @@ import {
   MIN_WAR_TURNS, atWar, declareWar, nationStrength, relation, truceLeft,
 } from './diplomacy.js';
 import {
-  MAX_DEMAND_PROVINCES, buildOffer, occupiedProvincesOf, offerMeetsExpectation, provinceKeyOf,
+  buildOffer, demandLimit, occupiedProvincesOf, offerCost, offerMeetsExpectation, provinceKeyOf,
   signPeace, warScore,
 } from './peace.js';
 import { INFAMY_COALITION } from './infamy.js';
@@ -63,7 +63,10 @@ function acceptsOffer(game, receiver, proposer, offer, rng) {
  * barış kazanan tarafa artık yetmiyor.
  */
 function surrenderOffer(world, nation, foe) {
-  const lost = occupiedProvincesOf(world, foe.id, nation.id).slice(0, MAX_DEMAND_PROVINCES);
+  // Kaç küme bırakılacağını KAZANANIN skoru belirler: teslim olan taraf da
+  // üstünlüğün satın alabileceğinden fazlasını masaya koymaz.
+  const limit = demandLimit(warScore(world, foe.id, nation.id));
+  const lost = occupiedProvincesOf(world, foe.id, nation.id).slice(0, limit);
   return { demands: [], concessions: lost.map(({ province }) => provinceKeyOf(province)), terms: [] };
 }
 
@@ -109,10 +112,19 @@ function diplomacy(game, nation, rng) {
       // Kazanan taraf son kuruşuna kadar dayatmaz; bütçenin bir kısmı masada
       // kalır. Ülkelerin bir kısmı toprak yerine tazminat/imtiyaz ister ki
       // her barış aynı görünmesin.
-      offerPeace(game, nation, foe, buildOffer(world, nation.id, foe.id, {
-        appetite: 0.6 + rng() * 0.4,
+      const offer = buildOffer(world, nation.id, foe.id, {
+        appetite: 0.75 + rng() * 0.25,
         termShare: rng() < 0.35 ? 0.5 : 0,
-      }), rng);
+      });
+      // ELİ BOŞ MASAYA OTURMAZ. Ölçümde savaşların tamamı tam böyle
+      // kapanıyordu: kazanan taraf hiçbir şey isteyemediği için beyaz barış
+      // teklif ediyor, 68 yılda tek bir sınır değişmiyordu. Talebi
+      // karşılanmayan kazanan cephede kalır.
+      //
+      // Tek istisna donmuş savaş: sekiz yılı geçmiş bir tıkanma kapanabilmeli,
+      // yoksa cephe sonsuza kilitlenir (gec oyunun eski karar boşluğu).
+      const stale = game.turns.turn - rec.since > 8 * 52;
+      if (offerCost(world, offer) > 0 || stale) offerPeace(game, nation, foe, offer, rng);
     } else if (score <= PEACE_LOSS_SCORE
       || myPower < nationStrength(world, foe) * 0.6) {
       offerPeace(game, nation, foe, surrenderOffer(world, nation, foe), rng);
