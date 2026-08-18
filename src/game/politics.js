@@ -250,6 +250,10 @@ export function updatePoliticalSupport(world) {
 function collectPrivateCapital(nation) {
   const upper = nation.economy?.classes?.upper;
   if (!upper) return;
+  // Korunum notu: 0.08 = economy.PROFIT_TO_REINVEST (import katman dongusu
+  // yaratirdi, sabit burada tekrarlanir — ledger-audit esitligi dogrular).
+  // Hane artigi da bolusulmus bir akistir: SAVINGS_RATE birikime, 0.22
+  // yatirima, kalani tuketime — ayni artik iki kez harcanmaz.
   const householdSurplus = Math.max(0, (upper.needsBudget ?? 0) - (upper.needsCost ?? 0));
   const industrialReturn = Math.max(0, nation.economy?.factoryProfit ?? 0);
   nation.politics.privateCapital = Math.min(

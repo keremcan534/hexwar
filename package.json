@@ -68,6 +68,7 @@
     "audit:military-strategy": "node scripts/audit/military-strategy-audit.mjs",
     "audit:supply-response": "node scripts/audit/supply-response-audit.mjs",
     "audit:tech-effect": "node scripts/audit/tech-effect-audit.mjs",
-    "audit:labor": "node scripts/audit/labor-audit.mjs"
+    "audit:labor": "node scripts/audit/labor-audit.mjs",
+    "audit:ledger": "node scripts/audit/ledger-audit.mjs"
   }
 }

@@ -154,3 +154,18 @@ DEGISIKLIK / DEGISMEZ / TEST / ONCE / SONRA / KALAN RISK)
 - **KALAN RISK:** sanayilesme temposu dustu — 100 yillik kosuda (FAZ 10)
   izlenecek; gerekirse LABOR_SHARE tek durust kaldiractir. Gecimlik payi
   formul-butcesine carpan (vergi/ucret endeksi tasir) — kaba ama beyanli.
+
+### 5. Para korunumu kimlikleri + yeni `audit:ledger` (FAZ 4-5)
+
+- Fabrika/sermayedar: VA = ucret + kar tesis tesis dogrulanabilir
+  (`factory.wages` alani); kar beyani 0.50 hane + 0.08 yeniden-yatirim
+  (PROFIT_TO_REINVEST sabiti; politics tarafindaki 0.08 esitligi denetimde),
+  kalan 0.42 BEYANLI yipranma bataktir — para iki kez dogmaz.
+- Vergi: taxRevenue = Σ taxPaid × taxEfficiency (sapma %0.00; verim kaybi
+  beyanli tahsilat-kaybi kanalidir). Gumruk: gelir = ithalat degeri ×
+  tarife birebir (tariff-audit 0.00).
+- Yeni denetim `audit:ledger` (L1-L5) + `ACCOUNTING_INVARIANTS.md` yayimlandi:
+  butun korunum yasalari tek tabloda, her biri bir denetime bagli.
+- NOT (FAZ 11'e devir): tarife→girdi faturasi kanali yeni ekonomide
+  zayifladi (%12.3 → %1.8, tariff-audit ORTA) — fiyat/ithalat dengesi
+  degisti; pazar sagligi fazinda yeniden bakilacak.

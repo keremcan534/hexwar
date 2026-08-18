@@ -396,13 +396,15 @@ export const IMPORT_ELASTICITY = 1.6;
 export const EXPORT_RETALIATION = 0.5;
 
 /**
- * Sanayi karinin sermayedar (ust sinif) gelirine akan payi.
- *
- * 1.0 degil cunku karin bir kismi zaten `privateCapital`e (yeniden yatirim
- * fonu) yaziliyor ve tesisin kendi buyumesine gidiyor; hepsini haneye de
- * yazmak ayni parayi iki kez saymak olurdu.
+ * Sanayi karinin BEYANLI dagilimi (korunum: kaynak yaratilamaz):
+ *   0.50 → sermayedar hanesine (asagida, fiscalBalance)
+ *   0.08 → privateCapital yeniden-yatirim fonuna (politics.collectPrivateCapital)
+ *   0.42 → beyanli YIPRANMA/ithal makine sogurmasi — modellenmeyen gider.
+ * Toplam ≤ 1: para iki kez dogmaz; kalan kasitli bir BATAKTIR (kaynak degil
+ * gider — korunum yonunden guvenli taraf) ve ledger-audit bunu dogrular.
  */
 export const PROFIT_TO_CAPITAL = 0.5;
+export const PROFIT_TO_REINVEST = 0.08;
 
 /**
  * Hane birikimi (bkz. populationDemand).
@@ -2149,6 +2151,9 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
     const valueAdded = Math.max(0, revenue - inputCost);
     const wages = valueAdded * Math.min(0.85, LABOR_SHARE * reformMods.wageCost);
     economy.wagesPaid += wages;
+    // Tesis basina bordro sahada dursun: denetim VA = ucret + kar kimligini
+    // tesis tesis dogrulayabilir, ekran "ucret gideri" gosterebilir.
+    factory.wages = wages;
     factory.profit = revenue - inputCost - wages;
     // Sübvansiyon: işaretli tesisin zararını devlet kapatır. Sahte sabit
     // maliyet yok — ödeme gerçekleşen zararın kendisidir ve kâr 0'a çekilir
@@ -3418,6 +3423,9 @@ export function runNationEconomy(game, nation, ctx) {
     );
 
     nation.economy.gdp = baseOutputValue + industrialOutput;
+    // Korunum denetimi gelir bilesimini yeniden hesaplayabilsin diye taban
+    // uretim degeri ayrica saklanir (gdp = taban + sanayi tek basina yetmez).
+    nation.economy.baseOutputValue = baseOutputValue;
     fiscalBalance(nation, baseOutputValue, industrialOutput);
     runPopulationMobility(nation, world.turn);
     mark('fiscal');
