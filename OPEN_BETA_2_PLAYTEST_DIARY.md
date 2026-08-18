@@ -392,3 +392,24 @@ Her sey gercek menu → gercek UI → gercek zaman akisi. Ben oyuncuyum.
 - REACTION: buyume dongusu **SATISFYING** · arastirma korlugu ikinci kez
   **FRUSTRATING** (artik her duraklamada tech ekrani acmak zorundayim —
   gereksiz mikro yonetim)
+
+## 16 MAR 1849 — Zenginlik, sagliksiz sessizlik ve ilk gemi
+
+- WHAT HAPPENED: 5 sakin yil: hazine **¤80.7k (+164)**, GDP 728, nufus
+  YENIDEN BUYUYOR (705K), istikrar %67. Para anlamini yitirdi: devlet
+  sanayi yasak, egitim tavanli, ordu ucuz — ¤80k'yi harcayacak yer yok.
+  "Kartopu" sorusunun oyuncu cevabi: para birikiyor ama GUC birikmiyor;
+  kisitlar (politika/tavan) parayi gucse cevirmemi engelliyor. Ilginc
+  bir denge ama "zenginligin odulu yok" hissi de var.
+- Arastirma UCUNCU kez bos bulundu (349 RP banka — toplamda ~8 yillik
+  arastirma suresi sessiz bosta gecti). Artik her duraklamada teknoloji
+  ekranini ritüel gibi aciyorum. B-018 bu kampanyanin en pahali UI hatasi.
+- WHAT I DID: Basic Mechanization basladi; Public Health %60 + Welfare %25
+  actim (hic kullanmadigim kaldiraclar — nufus buyumesine yatirim);
+  ilk SAVAS GEMISI kuyrukta (Garland tersanesi, 22 hafta). Donanma
+  emelim 13 yil sonra basliyor.
+- Logistics ekranini ilk kez actim: stok/ihtiyac/denge + uretim hatti
+  verimliligi ("hat degistirmek verimi %50'ye dusurur" kurali guzel).
+  Baris zamani tamamen ilgisiz — ordum hasarsizken bos tablo.
+- REACTION: refah **SATISFYING** · arastirma korlugu **FRUSTRATING** ·
+  "paranin isi bitti" hissi **TEDIOUS aday** (gec oyun sorusu buyuyor)
