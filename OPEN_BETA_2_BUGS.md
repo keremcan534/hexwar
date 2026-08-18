@@ -305,3 +305,18 @@ REPRODUCIBILITY. Konsol hatasi sayaci ayrica en altta.
   Welfare ayarlarim da iki kez silindi. Kalici tutulan kaydiraclar:
   egitim (tavana kadar), tedarik, maas. Tutulmayanlar: tarife, saglik,
   refah, vergiler(kismen). Hangi kaydiragin "benim" oldugu belirsiz.
+
+## B-027 · MAJOR — Ozel sermaye en karli kitlik mallarina hic yatirim yapmiyor
+
+- DATE: 1836-1872 boyunca (36 yil gozlem)
+- CONTEXT: Fertilizer %16 karsilanmis, 8× taban fiyat, 8.7/hafta acik;
+  Iron %80, 5× taban. Fertilizer Plant 1836'dan beri kurulabilir durumda
+  (benim modali acikta gordugum secenek). Ozel sermaye Interventionism
+  altinda tek yatirimci — ve 36 yilda TEK fertilizer/iron yatirimi yok;
+  luks mobilya/giyim gibi mallara gidiyor.
+- KARSIT KANIT: Benim 1836 Winery'm sarabi ¤80'den ¤4.5'e dusurdu — arz
+  mekanigi calisiyor; sorun yatirim SECIMI.
+- PLAYER IMPACT: Yapisal ithalat kanamasi (−282/hafta) oyuncunun
+  cozemedigi bir YZ yatirim koru yuzunden; devlet miudahalesi de politika
+  yasagiyla kapali. Oyuncu seyirci.
+- REPRODUCIBILITY: Kampanya boyu surekli.
