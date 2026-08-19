@@ -16,9 +16,9 @@ import {
   canInvestInFactory, factoryInvestmentRules, fiscalPolicyLimits, policyOf,
 } from './politics.js';
 import {
-  PROJECT_KIND, constructionAtlas, constructionPower,
+  NATIONAL_INVESTMENTS, PROJECT_KIND, constructionAtlas, constructionPower,
   constructionUpkeep, dropInvestmentLevel, ensureConstruction, fundProject,
-  higherEducationBonus, planConstructionAI, queueIndustryProject,
+  higherEducationBonus, investmentLevel, planConstructionAI, queueIndustryProject,
 } from './construction.js';
 import {
   refreshReformModifiers, reformBudgetFactor, reformModifiers, reformMoodShift,
@@ -1635,7 +1635,12 @@ export function setFiscalPolicy(nation, key, value, classId = null) {
     return true;
   }
   if (key === 'social' && SOCIAL_PROGRAMS[classId]) {
-    nation.economy.social[classId] = clamp(Math.round(value), 0, 100);
+    // Taban: satin alinmis yuksekogretim kurumu egitim butcesini bagliyor
+    // (bkz. socialFloorOf). Bu yol oyuncuyu VE kriz dalini baglar; haftalik
+    // YZ cirti `economy.social`a dogrudan yazdigi icin oraya AYRICA kondu.
+    nation.economy.social[classId] = clamp(
+      Math.round(value), socialFloorOf(nation, classId), 100,
+    );
     return true;
   }
   if (key === 'subsidyPolicy' && SUBSIDY_POLICIES.includes(value)) {
@@ -1670,6 +1675,45 @@ function applySubsidyPolicy(world, nation) {
 }
 
 /** Sosyal programların bu haftaki toplam altın gideri. */
+/**
+ * YAKIT DUZELTMESI — A/B bayragi.
+ *
+ * Olculdu (audit:research, A kolu): 1860'tan sonra ulkelerin %60-85'i egitim
+ * harcamasinda SIFIRDA kaliyor, egitim IQR'i alti onyil-tohumda tam sifira
+ * yozlasiyor ve 1900 medyan okuryazarligi %8.5-10.7'ye iniyor. Okuryazarlik
+ * arastirma puaninin ana terimi oldugu icin (technology.js `researchPointsOf`)
+ * bu, teknolojinin yakit deposunun kurumasi demek: hicbir YZ teknoloji lideri
+ * olamiyor.
+ *
+ * Bayrak, A/B'nin TEK farki olsun diye var (`audit:research --no-fuel-fix`).
+ */
+export const FUEL_FIX = process.env.HEXWAR_NO_FUEL_FIX !== '1';
+
+/**
+ * Bir sosyal programin ALT SINIRI.
+ *
+ * Fikir: `educationFloor` bugun bir GIRIS kapisi (universite acmak icin
+ * egitim butcesi sarti, construction.js `investmentBlocker`). Ayni esigi
+ * CIKIS kapisi da yapiyoruz — satin alinan kurum yapiskanlasir. Boylece
+ * taban DUZ degil, ulkenin kendi yatirim gecmisine gore FARKLILASIR.
+ *
+ * Duz taban yanlis cozumdu ve olculdu: %70'lik duz taban okuryazarligi
+ * ikiye katliyor ama teknolojik yayilimi 6'dan 3'e, farkli teknoloji kumesi
+ * sayisini 7'den 4'e cokertiyor — yakiti tektiplestirmek sonucu
+ * tektiplestiriyor.
+ *
+ * Kredi cezasi altindaki devlet muaftir: geri kalan DUSEBILMELI, yoksa
+ * "teknoloji lideri olmak" risksiz bir bahis olur.
+ */
+export function socialFloorOf(nation, programId) {
+  if (!FUEL_FIX || programId !== 'education') return 0;
+  if ((nation?.economy?.creditPenalty ?? 0) > 0.05) return 0;
+  const floors = NATIONAL_INVESTMENTS.HIGHER_EDUCATION?.educationFloor;
+  if (!floors?.length) return 0;
+  const level = investmentLevel(nation, 'HIGHER_EDUCATION');
+  return floors[Math.min(Math.max(0, level), floors.length - 1)] ?? 0;
+}
+
 export function socialSpendingCost(nation) {
   const economy = nation?.economy;
   if (!economy) return 0;
@@ -2551,26 +2595,62 @@ function fiscalBalance(nation, baseOutputValue, industrialOutput) {
 }
 
 /**
+ * Kesme sirasi. Refah once, egitim EN SON gider: egitim tek basina
+ * arastirmanin yakitidir (okuryazarlik -> researchPointsOf) ve bir kez
+ * sifirlandiginda okuryazarlik stogu insan omru olceginde geri gelir.
+ */
+const CUT_ORDER = ['welfare', 'health', 'education'];
+
+/**
  * Hazine biriktikçe açılan sosyal harcama. YZ oyuncuyla aynı kaldıraçları
  * kullanmazsa geç oyunda tek başına para yığar; istikrar düşükse refah,
  * hazine bolsa eğitim/sağlık açar, para biterse kısar.
  */
 function adjustSocialAI(nation) {
   const economy = nation.economy;
-  const rich = nation.gold > 200;
   // fiscalNet tek başına yanıltıcı: şehir bütçesi ayrı bir gelir kalemi.
   // Sosyal harcamayı ölçerken haftalık *toplam* değişime bakılmalı.
   const weekly = (nation.budget?.net?.gold ?? 0) + economy.fiscalNet;
-  const broke = nation.gold < 60 || weekly < 0;
+  let rich;
+  let broke;
+  if (FUEL_FIX) {
+    // CIRT KIRILDI. Eski esikler MUTLAKTI (`gold > 200` / `gold < 60`) ve
+    // asimetrikti: `weekli < 0` TEK BASINA kesmeye yetiyordu, yani herhangi
+    // bir kotu hafta on iyi haftanin kazanimini geri aliyordu. Olcum: 1860'ta
+    // medyan egitim 0'a iniyor ve yuzyilin kalanini orada geciriyordu.
+    // Yeni esik ULKENIN KENDI OLCEGINE gore: sekiz haftalik sosyal gider.
+    const reserve = 8 * socialSpendingCost(nation);
+    broke = nation.gold < reserve * 0.25 || (weekly < 0 && nation.gold < reserve);
+    rich = nation.gold > reserve * 2 && weekly > 0;
+  } else {
+    rich = nation.gold > 200;
+    broke = nation.gold < 60 || weekly < 0;
+  }
   const step = broke ? -10 : rich ? 10 : 0;
   if (!step) return;
-  const priority = economy.stability < 0.5
+  // Yukseltme sirasi istikrara gore degisir. KESME sirasi ise artik sabittir:
+  // eskiden yukseltme sirasi ters cevrilerek turetiliyordu ve bu, istikrar
+  // 0.5'in altindayken EGITIMI ILK kesiyordu — yani ulke tam da zordayken.
+  const raiseOrder = economy.stability < 0.5
     ? ['welfare', 'health', 'education']
     : ['education', 'health', 'welfare'];
-  for (const id of broke ? [...priority].reverse() : priority) {
+  const order = broke
+    ? (FUEL_FIX ? CUT_ORDER : [...raiseOrder].reverse())
+    : raiseOrder;
+  for (const id of order) {
     const current = economy.social[id] ?? 0;
     if (step > 0 && current < 100) { economy.social[id] = current + step; return; }
-    if (step < 0 && current > 0) { economy.social[id] = current + step; return; }
+    if (step < 0) {
+      const floor = FUEL_FIX ? socialFloorOf(nation, id) : 0;
+      if (current > floor) {
+        economy.social[id] = Math.max(floor, current + step);
+        return;
+      }
+      // Tabandaysa ATLA, `return` etme: yoksa egitim tabanina oturunca
+      // adjustSocialAI haftalik bir no-op'a doner ve mali YZ kaldiracini
+      // tumden kaybeder.
+      continue;
+    }
   }
 }
 
