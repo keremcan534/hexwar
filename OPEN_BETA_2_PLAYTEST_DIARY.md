@@ -559,3 +559,26 @@ Kampanyanin en buyuk savasi — ve ilk komuta ettigim savas. Uc yil surdu.
 - REACTION: baris maddelerinin derinligi **SATISFYING** · felaket
   sessizligi (üçüncü kez) **FRUSTRATING** — bu kampanyanin tartismasiz
   1 numarali tasarim dersi: OLAY BILDIRIM SISTEMI YOK (B-013/B-016 ailesi).
+
+## 15 SEPT 1899 — Besinci savas, ucuncu harac: Irgard beni ciftlik yapti
+
+- WHAT HAPPENED: 1890 baris imzamdan sonraki hizli akista Irgard EN AZ BIR
+  savas daha acmis (17 eyalete dusmusum — haberim yok), 1899'da yine savas:
+  skor −64, ordularinin ~25 tumeni topragimda geziyor. Eski Ilmstead'im
+  onlarin "colonial" pamuk plantasyonu olmus. Dunya lideri Yarmark 3918
+  hegemonyada — bir super-imparatorluk dogmus.
+- WHAT I DID: Baris masasi: "18 puan isterler". Caldreach (10) + Asterstead
+  (9) verdim. 15 eyalet kaldi. Baskent hala "Lost".
+- WHY IT MATTERED: Oyun sonu sorusu ("SIRADAKI HEDEFIM NE?") artik acikca:
+  SADECE HAYATTA KALMAK. Ve bunun icin oyun bana TEK arac veriyor: toprak
+  odeyerek baris satin almak. Tarihte kucuk devletlerin yaptigi sey —
+  ITTIFAK — bu oyunda YOK: diplomasi panelinde savas ilani ve baris disinda
+  hicbir arac gormedim (garanti, ittifak, vasallik, koruma, pakt... hicbiri).
+  Zayifin diplomasisi olmayinca zayifin oyunu da olmuyor. **B-028 MISSING
+  MECHANIC (buyuk).**
+- HOW I FELT: Care yokluguna kizginlik ama hikayeye saygi: "hasta adam"
+  donemi yasiyorum ve oyun bunu tutarli sekilde isletiyor. Yillik ritim:
+  savas ilani → harac → 5 yil nefes → tekrar.
+- REACTION: yem dongusu (farming) **TEDIOUS-ACIMASIZ** ama tutarli ·
+  ittifaksizlik **MISSING** · "colonial" toprak etiketi, Liberate
+  Minorities gibi dokular **SATISFYING**
