@@ -8119,3 +8119,41 @@ body.menu-open .sheet { visibility: hidden; }
 /* Odak/ihmal renkleri: pahali-ucuz bilgisi ekranda, yalnizca tooltipte degil. */
 .tech-step.is-focus > button { border-left: 2px solid var(--gold); }
 .tech-step.is-neglect > button { opacity: 0.72; }
+
+/* --- Dosya kimligi: karakter satiri + kimlik tablosu + hafiza --- */
+.dossier-line {
+  margin: var(--sp-2) 0 var(--sp-1);
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--text-dim);
+  border-left: 2px solid var(--frame-brass);
+  padding-left: var(--sp-2);
+}
+.dossier-identity {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--sp-1) var(--sp-3);
+  margin-top: var(--sp-1);
+  font-size: var(--fs-sm);
+}
+.dossier-identity span {
+  display: block;
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.dossier-identity small { display: block; color: var(--text-mute); }
+.dossier-memory {
+  margin: var(--sp-1) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+.dossier-memory em {
+  font-style: normal;
+  color: var(--gold);
+  margin-right: var(--sp-1);
+}
+.factory-context { display: block; color: var(--text-mute); margin-top: 2px; }

@@ -55,6 +55,7 @@ import { TIER, announce, chronicleYear, ensureChronicle, memoryOf } from '../gam
 import {
   allianceAppeal, alliesOf, breakAlliance, formAlliance, isAllied,
 } from '../game/alliances.js';
+import { characterLine, techStanding } from '../game/identity.js';
 import {
   electorate, enactReform, governmentType, reformBoard,
 } from '../game/reforms.js';
@@ -153,6 +154,27 @@ const PICTO = {
  * bölüşüm seviye oranıyla yapılır (ayrı ayrı ölçülmüyor). Kabuk aşaması için
  * yeterli — üç kaydıraç da aynı gerçek toplamı paylaşır.
  */
+/**
+ * "Borc neden buyuyor?" dokumu — debtInterestRate'in GERCEK terimleri
+ * (taban + doluluk + kredi cezasi) ve haftalik defter net'i.
+ */
+function debtWhy(me) {
+  const debt = Math.max(0, me.debt ?? 0);
+  const capacity = debtCapacity(me);
+  const load = capacity > 0 ? Math.min(1, debt / capacity) : 0;
+  const credit = Math.min(0.85, Math.max(0, me.economy?.creditPenalty ?? 0));
+  const net = me.economy?.ledger?.net ?? 0;
+  const interest = me.economy?.interestGold ?? 0;
+  return [
+    `Base rate  =  4.0%`,
+    `Capacity used ${(load * 100).toFixed(0)}% × 8  =  +${(load * 8).toFixed(1)}%`,
+    credit > 0 ? `Default record × 10  =  +${(credit * 10).toFixed(1)}%` : 'Default record  =  +0.0%',
+    `Interest this week  =  ¤${interest.toFixed(1)}`,
+    `Ledger net  =  ${net >= 0 ? '+' : ''}¤${net.toFixed(1)}/wk`,
+    net < 0 ? 'The deficit itself is what feeds the debt.' : 'The debt shrinks while the ledger stays positive.',
+  ].join('\n');
+}
+
 function socialShare(me, programId) {
   const social = me.economy?.social ?? {};
   const total = Object.values(SOCIAL_PROGRAMS)
@@ -467,6 +489,7 @@ export class Screens {
         <div><span>Cities</span><b>${cities}</b></div>
         <div><span>Industry</span><b>${factories} levels</b></div>
       </div>
+      ${this.dossierIdentity(world, target)}
     </div>
     ${offer ? this.peaceOfferCard(offer) : ''}
     <div class="card">
@@ -1157,6 +1180,56 @@ export class Screens {
     </div>`;
   }
 
+  /**
+   * (bkz. debtWhy — modul duzeyinde, bank-line'daki why balonunun metni)
+   *
+   * Dosyanin kimlik bolumu: karakter satiri, teknolojik konum, ne uretir /
+   * neye bagimli, muttefikler ve hafiza. HER SAYI gercek durumdan turer
+   * (goodsFlow, research.done, treaties, memory) — anlati degeri uydurulmaz.
+   */
+  dossierIdentity(world, target) {
+    const flow = target.economy?.goodsFlow ?? {};
+    const producers = Object.entries(flow)
+      .filter(([, f]) => (f?.production ?? 0) > 0.5)
+      .sort((a, b) => (b[1].production ?? 0) - (a[1].production ?? 0))
+      .slice(0, 3)
+      .map(([id]) => `${GOODS[id]?.icon ?? ''} ${GOODS[id]?.name ?? id}`);
+    const imports = Object.entries(flow)
+      .filter(([, f]) => (f?.imports ?? 0) > 0.2 && (f?.demand ?? 0) > 0)
+      .sort((a, b) => (b[1].imports / Math.max(0.01, b[1].demand))
+        - (a[1].imports / Math.max(0.01, a[1].demand)))
+      .slice(0, 3)
+      .map(([id, f]) => `${GOODS[id]?.icon ?? ''} ${GOODS[id]?.name ?? id} (${Math.round((f.imports / Math.max(0.01, f.demand)) * 100)}%)`);
+    const standing = techStanding(world, target);
+    const allies = alliesOf(target)
+      .map((id) => world.nations[id])
+      .filter((n) => n?.alive)
+      .map((n) => esc(n.name));
+    const rival = target.rivalId != null ? world.nations[target.rivalId] : null;
+    const memoryRows = memoryOf(target).slice(-3).reverse().map((m) => {
+      const year = 1836 + Math.floor(((m.turn ?? 1) - 1) * 7 / 365);
+      const other = esc(world.nations[m.other]?.name ?? '?');
+      const text = {
+        war_with: `war with ${other}`,
+        took_land_from: `took land from ${other}`,
+        lost_land_to: `lost land to ${other}`,
+        allied: `allied with ${other}`,
+        alliance_broken: `broke with ${other}`,
+        honored_call: `honored the call of ${other}`,
+      }[m.kind] ?? `${m.kind} ${other}`;
+      return `<li><em>${year}</em> ${text}</li>`;
+    }).join('');
+    return `<p class="dossier-line">${esc(characterLine(world, target))}</p>
+      <div class="dossier-identity">
+        <div><span>Technology</span><b>${esc(standing.label)}</b><small>${standing.research} researched · #${standing.rank ?? '—'} of ${standing.of ?? '—'}</small></div>
+        <div><span>Produces</span><b>${producers.length ? producers.join(' · ') : 'little of note'}</b></div>
+        <div><span>Depends on</span><b>${imports.length ? imports.join(' · ') : 'no major imports'}</b></div>
+        <div><span>Allies</span><b>${allies.length ? allies.join(', ') : 'none'}</b></div>
+        <div><span>Rival</span><b>${rival?.alive ? esc(rival.name) : 'none declared'}</b></div>
+      </div>
+      ${memoryRows ? `<ul class="dossier-memory">${memoryRows}</ul>` : ''}`;
+  }
+
   factoryRow(me, factory) {
     const type = FACTORIES[factory.typeId];
     const jobs = factoryJobs(factory);
@@ -1186,7 +1259,33 @@ export class Screens {
       <div class="factory-chain"><span>${esc(inputs)}</span><strong>→</strong><span>${esc(outputs)}</span></div>
       <div class="meter"><i style="width:${Math.max(0, Math.min(100, employment))}%"></i></div>
       <small class="factory-status">${esc(status)}</small>
+      ${this.factoryContext(me, type)}
     </div>`;
+  }
+
+  /**
+   * Tesisin ULUSAL baglami — yalniz gercek akislardan (goodsFlow) turen
+   * cumleler: girdinin ne kadari ithal, ciktinin ne kadari ihrac. Tesis
+   * basina pay UYDURULMAZ (uretim tesise paylastirilamiyor; ulusal rakam
+   * acikca "national" diye etiketlenir).
+   */
+  factoryContext(me, type) {
+    const flow = me.economy?.goodsFlow ?? {};
+    const parts = [];
+    for (const id of Object.keys(type.inputs ?? {})) {
+      const f = flow[id];
+      if (!f || (f.demand ?? 0) <= 0.05) continue;
+      const share = Math.round(((f.imports ?? 0) / f.demand) * 100);
+      if (share >= 25) parts.push(`${GOODS[id]?.name ?? id} is ${share}% imported nationally`);
+    }
+    for (const id of Object.keys(type.outputs ?? {})) {
+      const f = flow[id];
+      if (!f || (f.production ?? 0) <= 0.05) continue;
+      const share = Math.round(((f.exports ?? 0) / f.production) * 100);
+      if (share >= 25) parts.push(`${share}% of national ${GOODS[id]?.name ?? id} is exported`);
+    }
+    return parts.length
+      ? `<small class="factory-context">${esc(parts.slice(0, 2).join(' · '))}</small>` : '';
   }
 
   /**
@@ -1490,7 +1589,9 @@ export class Screens {
             <span>Available credit</span><b>¤${Math.round(Math.max(0, debtCapacity(me) - (me.debt ?? 0)))}</b></div>
           <div class="bank-line"><span>Total debt</span>
             <b class="${(me.debt ?? 0) > 0 ? 'neg' : ''}">¤${Math.round(me.debt ?? 0)}</b>
-            <span>Interest</span><b>${(debtInterestRate(me) * 100).toFixed(1)}%</b></div>
+            <span class="stat-why" role="button" tabindex="0" data-why="debt"
+              data-why-text="${esc(debtWhy(me))}" title="Click for the breakdown">Interest</span>
+            <b>${(debtInterestRate(me) * 100).toFixed(1)}%</b></div>
           <table class="bank-table">
             <tr><th>Creditor</th><th>Amount</th></tr>
             ${(me.debt ?? 0) > 0

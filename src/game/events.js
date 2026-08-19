@@ -15,6 +15,7 @@ import { governmentType } from './reforms.js';
 import { rulingParty } from './politics.js';
 import { controllerOf } from './control.js';
 import { regimentCount } from './units.js';
+import { scoreboard } from './hegemony.js';
 
 /** Kredinin bu kadari tukendiyse borc "kritik" sayilir. */
 const DEBT_CRITICAL = 0.75;
@@ -267,4 +268,59 @@ export function runNationalEvents(game, nation) {
     }
   }
   state.regiments = regiments;
+}
+
+// --------------------------------------------------------- DUNYA HABERLERI ---
+// Kuresel gelismeler: buyuk guc giris/cikisi, yeni sanayi lideri, devlet
+// cokusu. GECIS tetikler, durum degil — ilk kosu TABAN alir, duyurmaz
+// (kayittan yukleme sonrasi da boyle: onbellek kayda girmez, sessiz kurulur).
+// Amac gurultu degil "durun, onlara ne oldu?" ani; 13 haftada bir bakilir.
+
+const STORY_EVERY = 13;
+
+export function runWorldStories(game) {
+  const world = game.world;
+  const turn = world.turn ?? 0;
+  if (turn % STORY_EVERY !== 0) return;
+  const board = scoreboard(world);
+  const greats = board.slice(0, 3).map((row) => row.nation.id);
+  let topIndustry = null;
+  let topLevels = 0;
+  const aliveIds = [];
+  for (const nation of world.nations) {
+    if (!nation.alive) continue;
+    aliveIds.push(nation.id);
+    const levels = (nation.economy?.factories ?? []).reduce((s, f) => s + (f.level ?? 1), 0);
+    if (levels > topLevels || (levels === topLevels && topIndustry != null && nation.id < topIndustry)) {
+      topLevels = levels;
+      topIndustry = nation.id;
+    }
+  }
+  const prev = world.storyState;
+  world.storyState = { greats, topIndustry, alive: aliveIds };
+  if (!prev) return; // taban — duyuru yok
+
+  const say = (text, key) => game.turns.addLog(text, { kind: 'NATION', key });
+  // Buyuk guc degisimi: ilk uce giren/cikan.
+  for (const id of greats) {
+    if (!prev.greats.includes(id)) {
+      say(`${world.nations[id]?.name} now stands among the great powers.`, `story-gp:${id}`);
+    }
+  }
+  for (const id of prev.greats) {
+    if (!greats.includes(id) && world.nations[id]?.alive) {
+      say(`${world.nations[id]?.name} has slipped from the ranks of the great powers.`, `story-gp:${id}`);
+    }
+  }
+  // Sanayi liderligi el degistirdi.
+  if (prev.topIndustry != null && topIndustry != null
+    && prev.topIndustry !== topIndustry && topLevels > 10) {
+    say(`${world.nations[topIndustry]?.name} is now the world's first industrial power.`, 'story-industry');
+  }
+  // Cokus: gecen bakista canli olan devlet artik yok.
+  for (const id of prev.alive) {
+    if (!aliveIds.includes(id)) {
+      say(`${world.nations[id]?.name} has ceased to exist as a state.`, `story-dead:${id}`);
+    }
+  }
 }

@@ -33,7 +33,7 @@ import {
 import { initPolitics, runPolitics } from './politics.js';
 import { captureConstructionAt, initConstruction, runConstruction } from './construction.js';
 import { controllerOf, setController } from './control.js';
-import { runNationalEvents } from './events.js';
+import { runNationalEvents, runWorldStories } from './events.js';
 import { expireTreaties, treatiesOf } from './peace.js';
 
 /** Başlangıç stoku: ilk birkaç turda bir birim alacak kadar. */
@@ -515,6 +515,9 @@ export class TurnManager {
     // gecisleri oyuncunun ekranini bolmez (bkz. events.js).
     const player = world.nations[this.playerNation];
     if (player) runNationalEvents(this.game, player);
+    // Dunya haberleri: buyuk guc giris/cikisi, sanayi liderligi, cokus.
+    // Gecis tetikler; ic frekansi 13 hafta (bkz. events.runWorldStories).
+    runWorldStories(this.game);
     // Bundan sonrası atomik kuyruk (zafer, autosave). İş kaydı burada
     // bırakılır ki kuyruktaki autosave → endTurn zinciri hâlâ çalışan
     // üretece yeniden girmeye kalkmasın (TypeError: already running).
