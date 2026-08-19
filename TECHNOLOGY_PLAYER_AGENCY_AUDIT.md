@@ -20,23 +20,32 @@ Bugunun hukmu farkli ve daha dar:
 > **Teknoloji sistemi VAR, calisiyor ve durust. Ama yakiti 1860'ta kuruyor,
 > yonu yok, ve yuzyilin son 40 yilinda arastirilacak hicbir sey kalmiyor.**
 
-Uc olculen gercek:
+Dort olculen gercek:
 
 1. **Yakit collapse'i.** 1860'ta medyan ulkenin egitim harcamasi **0**'a
    iner ve **kalan 85 yil boyunca orada kalir**. Okuryazarlik hedefi %8
-   tabanina cakilir; arastirma hizi 2.0'dan 1.4'e duser. Arastirma motoru
-   yuzyilin dortte ucunu bos depoyla gecirir.
-2. **Yon yok, yalniz hiz var.** YZ **en ucuz** teknolojiyi secer
-   (`technology.js:278`). Butun ulkeler ayni merdiveni ayni sirada tirmanir;
-   ayrisma "kim daha ileri" ile sinirlidir, "kim farkli" degil.
-3. **Icerik yuzyili kapatmiyor.** Yazilmis 30 teknolojinin tamami `industry`
-   kategorisinde ve **1836-1905** araligini kapsar. Askeri, denizci, ticari
-   ve kulturel kategoriler **bos**. 1905-1945 arasi (40 yil) teknolojik
-   olarak **bostur**.
+   tabanina cakilir; arastirma hizi 2.0'dan 1.4'e duser.
+2. **Ama motor durmuyor — sabit bir taban hizda kaliyor.** Formulde bir
+   `+ 1` terimi var (`technology.js:222`): okuryazarligi sifir olan ulke bile
+   haftada ~1.4 RP kazanir. Yani YZ ilerlemeye devam eder — **yatirimdan
+   tamamen bagimsiz olarak**. Sonuc collapse'tan daha kotu: egitim, YZ'nin
+   teknolojik hizini fiilen **etkilemez**.
+3. **Yon yok, yalniz hiz var.** YZ **en ucuz** teknolojiyi secer
+   (`technology.js:278`). Butun ulkeler ayni merdiveni ayni sirada tirmanir.
+4. **Icerik yuzyili kapatmiyor ve icinde olu uclar var.** 30 teknolojinin
+   tamami `industry`'de, **1836-1905** arasi. Dort kategori bos. Ustelik
+   yedi fabrika kilidinin **biri olu**, **ikisi takvimden GEC** tarihli ve
+   `inputEfficiency`in **%17'si tavana carpip bosa gidiyor** (§4b).
 
 Oyuncu etkisi acisindan: secim **mevcut** (oyuncu teknolojiyi elle secer,
 puan birikir, otomatik secilmez) ama secim **anlamsiz** — tek kategori,
 tek merdiven, agirlikli olarak yuzdesel degistiriciler.
+
+> **OLCUM UYARISI.** `harness.headless()` standart dunyayi degil **78×62**
+> haritayi kurar (`harness.mjs:35`; standart 160×96, bkz. CLAUDE.md).
+> Asagidaki mutlak sayilar (ulke sayisi, teknoloji adedi) bu kucuk haritaya
+> aittir; **desen** haritadan bagimsiz beklenir ama yakit collapse'i standart
+> haritada ayrica dogrulanmaktadir.
 
 ---
 
@@ -177,7 +186,11 @@ Bir de **`unlock`** alani: 30 teknolojinin **7**'si fabrika acar.
 
 ### 9. Hangi etkilerin gercek tuketicisi var?
 
-**Altisinin da var — olu degistirici YOK:**
+**Altisinin da var — olu DEGISTIRICI yok.** Ama olu **uc** var: bir kilit
+hicbir sey acmiyor, iki kilit takvimden gec tarihli, bir degistiricinin
+%17'si tavana carpiyor, bir disa aktarimin cagirani yok. Ayrinti §4b.
+
+Degistirici → tuketici haritasi:
 
 | Anahtar | Tuketici |
 |---|---|
@@ -210,6 +223,21 @@ Yedi: `STEEL_MILL`, `MACHINE_PARTS_FACTORY`, `REFINERY`,
 
 Yani askeri teknoloji **yoktur**. Bu, brief'in "1836 savasi 1905 savasi gibi
 olmamali" hedefinin onundeki birinci engeldir.
+
+**Modul kendi sozlesmesini ihlal ediyor:** `technology.js:7-13` arastirmanin
+`availableFrom`i **hem `economy.js` hem `units.js`** icinde one cektigini
+soyler; yalnizca fabrika yarisi yazilmis. Somut sacmalik: `alloy_steel`
+`TANK_FACTORY`yi 16 yil erken acabilir, ama `units.js:53-55`'e gore o
+fabrikanin tek musterisi zirhli tumenlerdir ve `ARMOR` yalniz takvimle
+(tur 4176 ≈ 1916) gelir — **ulke tank fabrikasini, tank uretilebilmesinden
+yillar once kurabilir.**
+
+`supplyConsumption`in etkisi de dolayidir: `economy.js:2911-2917` `demand` ile
+`fullDemand`i **ayni** carpanla olcekler, dolayisiyla `:3521-3525`'teki
+tedarik **orani** degismez. Kazanc ikinci derecedir (daha kucuk mal faturasi →
+piyasada daha az kitlik → daha yuksek karsilanma → daha hizli takviye).
+Muharebe gucune, moral veya organizasyona **dogrudan dokunan hicbir teknoloji
+yok**.
 
 ### 12. Ulkeler teknolojik olarak ayrisiyor mu?
 
@@ -338,6 +366,87 @@ TOTAL: 30 teknoloji · yil araligi 1836-1905 · 7'si fabrika aciyor
 - Olcum bunu dogrular: 1925→1945 arasinda medyan yalniz 16-20'den 18-22'ye
   cikar; merdivenin ustu bitmistir.
 
+## 4b. VERI HATALARI VE OLU UCLAR (hepsi bagimsiz dogrulandi)
+
+Bunlar tasarim tercihi degil, **kusur**. Hicbiri `audit:tech-effect`in
+gorebilecegi turden degil (o, degistiricinin tuketicisi var mi diye bakar;
+degerin tavana carpip carpmadigina veya kilidin bir sey acip acmadigina
+bakmaz).
+
+### (a) Olu kilit — `coke_smelting → STEEL_MILL`
+
+`STEEL_MILL`'in `availableFrom` alani **yok**, yani `(undefined ?? 0) <= turn`
+ilk haftadan itibaren dogru: fabrika **herkese bastan aciktir**. Teknolojiyi
+arastirmak kilit kanalinda **hicbir sey** kazandirmaz — ama ekran hala
+"Unlocks steel mill" yazar (`technologyScreen.js:39-42`). Dogrudan bir
+**sahte etki**.
+
+### (b) Takvimden GEC tarihli iki kilit
+
+Modulun sozlesmesi (`technology.js:7-13`): arastirma takvimi **one ceker**.
+Iki teknoloji bunu ihlal eder — kendi acacagi fabrikadan **sonraya**
+tarihlenmis:
+
+| Fabrika | Teknoloji yili | Takvim yili | Sonuc |
+|---|---|---|---|
+| `ELECTRIC_GEAR_FACTORY` | 1875 | **1870** | arastirma 5 yil **geride** |
+| `MACHINE_PARTS_FACTORY` | 1855 | **1850** | arastirma 5 yil **geride** |
+
+Kalan dordu dogru yonde: TANK +16y, SYNTHETIC_OIL +12y, REFINERY +10y,
+AUTOMOBILE +5y.
+
+### (c) `inputEfficiency`in son %17'si bosa gidiyor
+
+Agac toplam **0.60** dagitir; tuketici tabanı 0.5'te kirpar:
+
+```js
+// economy.js:2190
+const inputScale = clamp(1 - (techMods?.inputEfficiency ?? 0), 0.5, 1);
+```
+
+0.50'nin ustundeki **0.10** hicbir sey satin almaz — oyundaki butun
+`inputEfficiency` arastirmasinin **%17'si**. `audit:tech-effect` bunu
+goremez cunku tek bir 0.3 seviyesini yoklar, tavanin cok altinda.
+
+### (d) Kilitsiz kalan dort takvim fabrikasi
+
+Teknolojiyle **hic** baglanmamis, yalniz takvimle acilanlar:
+`STEAMER_YARD` (1850), `TELEPHONE_FACTORY` (1880), `RADIO_FACTORY` (1900),
+`AIRCRAFT_FACTORY` (1906). Kor beta'nin "telefon ve radyo sahneye cikti"
+gozlemi tam olarak bu dort binadir — **oyuncunun hicbir etkisi olmadan**.
+
+### (e) Neredeyse olu kanal — `researchRate`
+
+Butun agacta **tek** teknoloji tasir (`electricity`, +0.08). Arastirma
+hizini arastirmayla hizlandirma fikri fiilen yok.
+
+### (f) Olu disa aktarim — `techModifiers()`
+
+`technology.js:245-247`. `src/` ve `scripts/` altinda **sifir cagiran**.
+Sicak yollar dogrudan alan okumaya gecince geride kalmis.
+
+### (g) Ulasilamaz okuryazarlik tavani
+
+`advanceLiteracy` hedefi `clamp(0.08 + schooling*0.62*(1+higherEducationBonus), 0, 0.95)`.
+`higherEducationBonus` tavani **0.24** (`construction.js:319-321`, `max: 4` × 0.06),
+dolayisiyla ulasilabilir azami hedef `0.08 + 0.62*1.24 = ` **0.8488**.
+`0.95` kirpmasi **olu**.
+
+### (h) Yuksekogretim sessizce odeme gucune bagli
+
+`higherEducationBonus` `upkeepFactor(nation)` ile carpilir ve o da
+`1 - clamp(creditPenalty, 0, 0.85)`'tir (`construction.js:267-269`).
+**Temerrude dusen devlet yuksekogretim katkisinin %85'ine kadarini
+kaybeder** — yakit collapse'ini bilesik faizle buyuten ikinci carpan.
+
+### (i) Iki bayat yorum (belge dogrulugu)
+
+- `technology.js:205` formulu hala *"okuryazarlik + egitimli orta sinif +
+  **ulusal rutbe**"* diye anlatir; `nation.rank` terimi `:219-221`'de
+  **silindi** ve yerine sabit `1` kondu.
+- `units.js:96-98` HP tavaninin *"zirh teknolojisiyle uretilen birimlerde"*
+  yuksek oldugunu soyler; **hicbir teknoloji `maxHp`e dokunmaz**.
+
 ## 5. SINIFLANDIRMA
 
 | Parca | Sinif | Gerekce |
@@ -358,7 +467,15 @@ TOTAL: 30 teknoloji · yil araligi 1836-1905 · 7'si fabrika aciyor
 | `pickResearchAI` (en ucuz) | **REDESIGN** | Brief'in acik yasagi; ayrismayi sahte kilan tek satir |
 | Kategori icerigi (4 bos + 1905 sonrasi) | **REDESIGN** | Secim tek sutuna sikismis; yuzyilin son 40 yili bos |
 | Etki paleti (6 yuzdesel knob) | **REDESIGN** | Brief: "+2% throughput teknoloji sistemi OLAMAZ" |
-| — | **REMOVE** | **Yok.** Olu kod, olu degistirici, sahte etki bulunamadi. |
+| Arastirma formulundeki `+1` tabani | **REDESIGN** | Yatirimdan bagimsiz sabit ilerleme; egitimi YZ icin anlamsiz kiliyor |
+| `coke_smelting → STEEL_MILL` kilidi | **FIX** | Olu kilit + ekranda sahte "Unlocks" vaadi (§4b-a) |
+| `ELECTRIC_GEAR` / `MACHINE_PARTS` tech yillari | **FIX** | Takvimden gec tarihli; modulun kendi sozlesmesini ihlal (§4b-b) |
+| `inputEfficiency` toplami (0.60 vs 0.50 tavan) | **FIX** | Arastirmanin %17'si bosa gidiyor (§4b-c) |
+| `techModifiers()` disa aktarimi | **REMOVE** | Sifir cagiran (§4b-f) |
+| `advanceLiteracy`'deki `0.95` kirpmasi | **REMOVE** | Ulasilamaz; gercek tavan 0.8488 (§4b-g) |
+| `technology.js:205` ve `units.js:96` yorumlari | **FIX** | Ikisi de olmayan mekanik anlatiyor (§4b-i) |
+| `STEAMER_YARD`/`TELEPHONE`/`RADIO`/`AIRCRAFT` | **CONNECT** | Yuzyilin en gorunur teknolojileri, oyuncunun sifir etkisi (§4b-d) |
+| `researchRate` kanali (tek teknoloji, 0.08) | **CONNECT** | Kanal var, icerigi yok |
 | Yon secimi (oncelik/program) | **MISSING** | Oyuncu "sirada ne" secer, "ne tur ulke olacagim" secemez |
 | Askeri teknoloji | **MISSING** | Hicbir askeri yetenek teknolojiye bagli degil |
 | Ulkeler arasi yayilim | **MISSING** | Yakalanmanin tek yolu takvim |
