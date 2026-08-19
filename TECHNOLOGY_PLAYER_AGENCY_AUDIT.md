@@ -448,6 +448,28 @@ Sicak yollar dogrudan alan okumaya gecince geride kalmis.
 dolayisiyla ulasilabilir azami hedef `0.08 + 0.62*1.24 = ` **0.8488**.
 `0.95` kirpmasi **olu**.
 
+### (h2) CIFT KILIT — yuksekogretim acilis penceresinde donuyor
+
+Egitim 0'a inince `investmentBlocker` (`construction.js:530-536`)
+`educationFloor[1] = 25` yuzunden `HIGHER_EDUCATION`i **kalici** kapatir;
+`planConstructionAI`in 3. adimi (`construction.js:816-819`) bir daha kosamaz.
+
+Olctum (2 tohum, 78×62) — sonuc "hic kurulmuyor"dan **daha ilginc**:
+
+| Yil | HE ≥1 olan | azami seviye | toplam seviye | egitimi ≥%25 olan |
+|---|---|---|---|---|
+| 1850 | **16/33 · 19/29** | 2 | 28 · 32 | 9 · 12 |
+| 1870 | 11 · 18 | 2 | 20 · 34 | 4 · 13 |
+| 1900 | 10 · 16 | 2 | 13 · 26 | 1 · 11 |
+| 1945 | 10 · 16 | 2 | **14 · 27** | 3 · 12 |
+
+- Yuksekogretim **acilis penceresinde** (1836-1850, egitim hala fonluyken)
+  kurulur; collapse'tan sonra **yeni kurulum durur** ve mevcut seviyeler
+  **erir** (28→14, 32→27 toplam).
+- `heMax` her yil **2** — YZ kendini `investmentLevel < 2` ile sinirliyor
+  (`construction.js:816`); bu kilit degil, tasarim.
+- Seviye 3-4 (taban %55/%70) **fiilen hic kimse icin ulasilamaz**.
+
 ### (h) Yuksekogretim sessizce odeme gucune bagli
 
 `higherEducationBonus` `upkeepFactor(nation)` ile carpilir ve o da
