@@ -25,8 +25,24 @@ degil, tikanma).
 > yeniden kosuldu.
 
 **Gecis sonrasi:** `audit:save` temiz · `audit:determinism` temiz ·
-`audit:private` **0 bulgu** · `audit:events` **0 bulgu** · `audit:all`
-0 KRITIK.
+`audit:private` **0 bulgu** · `audit:events` **0 bulgu** ·
+`audit:all` **0 KRITIK · 5 YUKSEK · 10 ORTA · 5 DUSUK**.
+
+Bes YUKSEK'in tamami A/B testiyle (eski `economy.js` yerine konup denetim
+yeniden kosuldu) tek tek acildi — ayrinti
+`COMMUNICATION_PASS_FINAL_REPORT.md` §G:
+
+| Bulgu | Hukum |
+|---|---|
+| fiyat bandi (%57.1) | belgelenmis non-target, degismedi |
+| kartopu ×2 (war-pressure %37.2 · border-change %36.0-41.5) | belgelenmis non-target; war-pressure degeri %33.0'dan kaydi, border-change **iyilesti** (%41.9-46.8 → %34.2-41.5) |
+| cullanma (azami 4) | `CORE_STABILIZATION_LOG.md:15`'te **onceden olculmus**; esik civari titreme (3 ↔ 4) |
+| Egitim → sanayi isgucu (%2.4) | **denetimin kendi hatasi**: `Math.abs` esigi isaret koru; eski kod beklentiyi ters yonde %11.9 ihlal edip `OK` basiyordu |
+
+Savas sayilarini P0 duzeltmesi oynatti (ozel sektor insa etmeye baslayinca YZ
+sanayisi ve askeri kapasitesi buyudu); savas kodu **hic degistirilmedi** ve
+dunya kartopu olmuyor — 17 uzun kosuda 0 degismez ihlali, 1040. haftada hala
+27-28 canli ulke, savasan ulke orani %24.2 → %18.2 **duşuyor**.
 
 ---
 

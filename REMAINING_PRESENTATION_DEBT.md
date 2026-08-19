@@ -102,12 +102,39 @@ dogrulama eksiktir**.
 
 ## OLCULEN, KAPATILMAYAN CEKIRDEK BULGULAR (degismedi)
 
-`audit:all` iki YUKSEK bulguyla geliyor ve **ikisine de bilerek
-dokunulmadi**:
+Gecis sonrasi tam takim: **0 KRITIK · 5 YUKSEK · 10 ORTA · 5 DUSUK**.
+Bes YUKSEK'in tamami tek tek acildi (`COMMUNICATION_PASS_FINAL_REPORT.md` §G);
+**hicbirine dokunulmadi**:
 
-1. **Fiyat bandi / uzun kosu deflasyonu** — pazar mimarisi isi.
-2. **Kartopu / sinir devri** (%41.9-46.8) — esik tanisal, oynanis deseni
-   bozuk degil.
+1. **Fiyat bandi / uzun kosu deflasyonu** (%57.1) — pazar mimarisi isi,
+   brief'in 1. non-target'i.
+2. **Kartopu / kume devri** — war-pressure %37.2 **ve** border-change
+   %36.0-41.5, ayni bulgu iki denetimde. Brief'in 2. non-target'i.
+3. **Cullanma** — azami eszamanli saldirgan 4 (esik 3).
 
-Bunlar `REMAINING_CORE_HIGH_ISSUES.md`de karakterize edilmis durumda ve bu
-gecisin kapsamina alinmadi.
+Bunlar `REMAINING_CORE_HIGH_ISSUES.md` ve `CORE_STABILIZATION_LOG.md`de
+karakterize edilmis durumda ve bu gecisin kapsamina alinmadi.
+
+**Onemli kayit — savas sayilarini P0 duzeltmesi oynatti.** A/B ile olculdu
+(eski `economy.js` yerine konup denetim yeniden kosuldu): kartopu %33.0 →
+%37.2, cullanma 3·3·3 → 3·3·4. Sebep basit — ozel sektor gercekten insa
+etmeye baslayinca YZ sanayisi ve askeri kapasitesi buyudu; eski dunya
+herkesin sanayisi dondugu icin yapay olarak sakindi. Savas kodu bu geciste
+**hic degistirilmedi**, ve dunya kartopu olmuyor: 17 uzun kosuda 0 degismez
+ihlali, 1040. haftada hala 27-28 canli ulke, savasan ulke orani duşuyor
+(%24.2 → %18.2). Bu sayilari geri cekmek savas dengesini ayarlamak olurdu —
+brief'in acikca yasakladigi sey.
+
+## AYRICA: denetim harness'inde bir tanisal hata (oyun kodunda degil)
+
+`scripts/audit/budget-audit.mjs:164` egitimin sanayi isgucune etkisini
+`Math.abs(dEmpFar) < 0.05` ile olcuyor — yani **buyuklugu** olcuyor,
+**yonu** degil. A/B testi bunu kanitladi: P0 oncesi kod beklentiyi
+(*"egitim isealimi hizlandirmali"*) **ters yonde %11.9 ihlal ediyor** ve tam
+da bu buyukluk sayesinde `OK` basiyordu; simdiki kod **dogru yonde +%2.4**
+veriyor ve `[HIGH]` aliyor.
+
+Yani bu YUKSEK, gecmisten **daha iyi** bir dunyayi raporluyor. Duzeltmesi tek
+satirlik (`dEmpFar < 0.05` — isaretli karsilastirma) ama bu bir **denetim**
+duzeltmesidir, sunum degil; brief "THEN STOP" dedigi icin bir sonraki mekanik
+turuna birakildi.
