@@ -43,7 +43,7 @@ import {
 const EVENTS = [
   'select', 'world', 'turn', 'units', 'clock', 'economy', 'battles',
   'provinces', 'construction', 'victory', 'selection', 'command', 'peace',
-  'nation', 'politics', 'notify', 'notify-clear',
+  'nation', 'politics', 'notify', 'notify-clear', 'notify-dismiss',
 ];
 
 /** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */

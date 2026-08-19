@@ -115,6 +115,14 @@ export function serialize(game) {
         // kalirsa oyuncu yuzyillik teknoloji birikimini yuklemede kaybeder.
         research: n.research ?? null,
         construction: ensureConstruction(n),
+        // Ulusal vakayiname ve olay durum makinesi. Turetilemez veri:
+        // yazilmazsa yuklemeden sonra oyun ayni borcu/rejimi ikinci kez
+        // duyurur ve kampanyanin tarihi silinir (bkz. chronicle.js).
+        chronicle: (n.chronicle ?? []).map((entry) => ({ ...entry })),
+        events: n.events ? { ...n.events, said: { ...(n.events.said ?? {}) } } : null,
+        // Acilis kesiti: kapanis ekraninin "nereden nereye" olcusu. Bir kez
+        // yazilir; kayit disi kalirsa yuzyilin baslangici kaybolur.
+        opening: n.opening ? { ...n.opening } : null,
         rallyPoint: n.rallyPoint ?? null,
         // Eğitim kuyruğu: ödenmiş sipariş. Kayıt dışı kalırsa oyuncu parasını
         // ve teçhizatını yükleme ekranında kaybeder.
@@ -255,6 +263,14 @@ export function deserialize(game, data) {
     // goc ham kayittan sayar (bkz. construction.migrateConstructionV14).
     if (data.version === 14 && nation.construction) migrateConstructionV14(nation);
     ensureConstruction(nation);
+    // Eski kayitta yoktur: bos tarih ve bos durum makinesiyle baslar. Durum
+    // makinesi bos oldugunda ilk hafta mevcut durumu "baslangic" sayar,
+    // dolayisiyla yuklemeden sonra sahte olay uretmez.
+    nation.chronicle = (saved.chronicle ?? []).map((entry) => ({ ...entry }));
+    nation.events = saved.events
+      ? { ...saved.events, said: { ...(saved.events.said ?? {}) } }
+      : null;
+    nation.opening = saved.opening ? { ...saved.opening } : null;
     nation.rallyPoint = saved.rallyPoint ?? null;
     nation.treaties = (saved.treaties ?? []).map((t) => ({ ...t }));
     nation.training = saved.training

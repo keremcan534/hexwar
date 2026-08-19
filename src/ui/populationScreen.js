@@ -507,7 +507,11 @@ function totalsBar(census, tree, visible) {
     ${cell('Unemployed', formatPopulation(census.unemployed))}
     ${/* Boş seçimde ortalama diye bir şey yok; "%100 karşılandı" yalan olurdu. */ ''}
     ${cell('Needs met', census.total ? `${Math.round(census.needs * 100)}%` : '—')}
-    ${cell('Literacy', census.total ? `${Math.round(census.literacy * 100)}%` : '—')}
+    ${/* Ulusal okuryazarlik stogu DEGIL: secili kohortlarin sinif agirlikli
+       ortalamasi (bkz. census.literacyOf). Iki sayi yapisal olarak farklidir,
+       o yuzden adlari da farkli — kor beta testcisi %16 ile %26'yi ayni sey
+       sanip hangisine guvenecegini bilememisti (B-019). */ ''}
+    ${cell('Literate pops', census.total ? `${Math.round(census.literacy * 100)}%` : '—')}
     ${cell('Income', `¤${census.income.toFixed(1)}`)}
     ${cell('Tax', `¤${census.taxPaid.toFixed(1)}`)}
   </div>`;

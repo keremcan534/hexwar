@@ -275,6 +275,22 @@ const MAX_WORKER_SHARE = 0.4;
  * işgücünün hızıyla artar.
  */
 const EXPANSION_FILL_FLOOR = 0.7;
+
+/**
+ * Kapitalistin aynı anda yürüttüğü şantiye sayısı. Sınır SERMAYENİN gerçekten
+ * aktığı projeleri sayar: parası akmayan proje şantiye değil, niyettir.
+ *
+ * Eski sürüm açık projelerin hepsini sayıyordu ve `autoUpgradeFactory` kuyruğa
+ * sınırsız yükseltme koyabiliyordu. Tavana dayanmış yedi tesis yedi yükseltme
+ * açıyor, hiçbiri bitmiyor, kapı bir daha açılmıyordu: kör beta kampanyasında
+ * ölçülen sonuç 60 yıl boyunca sabit 7 tesisti (bkz.
+ * PRIVATE_INVESTMENT_DEADLOCK_REPORT.md).
+ */
+const PRIVATE_ACTIVE_LIMIT = 2;
+/** Uyuyanlar dâhil kuyruk tavanı: kuyruk da sınırsız büyümemeli. */
+const PRIVATE_QUEUE_LIMIT = 6;
+/** Bu kadar hafta hiç para akmayan özel proje uykuya geçer. */
+const PRIVATE_STALL_WEEKS = 52;
 /** Bir birim throughput'un ücret maliyeti; kâr hesabıyla beklenen marj paylaşır. */
 
 
@@ -1837,6 +1853,11 @@ function autoUpgradeFactory(game, nation, factory) {
   // doldukça akıtır. Devlet ise peşin öder, ödeyemiyorsa proje açılmaz.
   const actor = rules.privateExpand ? 'private' : rules.stateExpand ? 'state' : null;
   if (!actor) return false;
+  // Kuyruk tavanı yükseltmeler için de geçerli: tavana dayanmış her tesis
+  // kuyruğa bir yükseltme koyarsa kuyruk sınırsız büyür ve sermaye dağılır.
+  if (actor === 'private' && state.projects.filter(
+    (project) => project.actor === 'private',
+  ).length >= PRIVATE_QUEUE_LIMIT) return false;
   if (actor === 'state' && !payFactoryCost(nation, cost, 'state')) return false;
   queueIndustryProject(game, nation, {
     kind: PROJECT_KIND.UPGRADE,
@@ -1856,15 +1877,70 @@ function autoUpgradeFactory(game, nation, factory) {
 /**
  * Kapitalistler açtıkları projelere her hafta ellerindeki sermayeyi akıtır.
  * Para bitince proje durur ve oyuncunun desteğini bekler (bkz. supportProject).
+ *
+ * Sıra KUYRUK sırası değil, BİTMEYE KALAN sırasıdır. Kuyruk sırasıyla dağıtan
+ * eski sürümde baştaki pahalı yükseltme (kalan ¤218, haftalık sermaye ~¤0.17)
+ * arkasındaki her projeyi aç bırakıyordu: kör betada oyuncunun sanayisi 20.
+ * yıldan 80. yıla kadar 7 tesiste dondu. Ucuzu önce bitirmek her hafta bir
+ * şeyin BİTMESİNİ garanti eder; toplam harcanan sermaye aynıdır.
  */
-function fundPrivateProjects(nation) {
+function fundPrivateProjects(nation, turn) {
   const state = ensureConstruction(nation);
-  for (const project of state.projects) {
-    if (project.actor !== 'private' || project.funded >= project.cost) continue;
+  const open = state.projects
+    .filter((project) => project.actor === 'private' && project.funded < project.cost)
+    .sort((a, b) => (a.cost - a.funded) - (b.cost - b.funded) || a.id - b.id);
+  for (const project of open) {
     const available = Math.max(0, nation.politics?.privateCapital ?? 0);
     if (available <= 0) break;
-    nation.politics.privateCapital -= fundProject(project, available);
+    const paid = fundProject(project, available);
+    if (paid <= 0) continue;
+    nation.politics.privateCapital -= paid;
+    project.fundedTurn = turn;
+    project.dormant = false;
   }
+  // Uyuyan proje kuyrukta kalır (oyuncu supportProject ile uyandırabilir) ama
+  // şantiye sayılmaz: parası akmayan proje "açık şantiye" değildir.
+  for (const project of state.projects) {
+    if (project.actor !== 'private') continue;
+    const stalled = privateStalled(project, turn);
+    if (Boolean(project.dormant) !== stalled) project.dormant = stalled;
+  }
+}
+
+/** Bir yıldır tek kuruş akmamış özel proje: uykuda. */
+function privateStalled(project, turn) {
+  if (project.funded >= project.cost) return false;
+  return turn - (project.fundedTurn ?? project.started ?? 0) >= PRIVATE_STALL_WEEKS;
+}
+
+/**
+ * Hedefi kalmamış sanayi projesini kuyruktan düşürür, ödenmiş parayı sahibine
+ * iade eder. Yoksa kaybolan bir tesisin yükseltmesi (savaşta el değiştiren
+ * bölge, satılan tesis) şantiye slotunu sonsuza kadar tutar.
+ */
+function dropInvalidProjects(nation) {
+  const state = ensureConstruction(nation);
+  const factories = nation.economy?.factories ?? [];
+  let dropped = 0;
+  for (let i = state.projects.length - 1; i >= 0; i--) {
+    const project = state.projects[i];
+    const industrial = project.kind === PROJECT_KIND.UPGRADE
+      || project.kind === PROJECT_KIND.FACTORY;
+    if (!industrial) continue;
+    const orphanUpgrade = project.kind === PROJECT_KIND.UPGRADE
+      && !factories.some((factory) => factory.id === project.factoryId);
+    if (!orphanUpgrade && FACTORIES[project.typeId]) continue;
+    if (project.funded > 0) {
+      if (project.actor === 'private' && nation.politics) {
+        nation.politics.privateCapital = (nation.politics.privateCapital ?? 0) + project.funded;
+      } else {
+        nation.gold += project.funded;
+      }
+    }
+    state.projects.splice(i, 1);
+    dropped++;
+  }
+  return dropped;
 }
 
 /**
@@ -1881,6 +1957,9 @@ export function supportProject(game, nation, projectId, options = {}) {
   if (amount <= 0) return false;
   const paid = fundProject(project, amount);
   nation.gold -= paid;
+  // Hazine desteği projeyi uyandırır: oyuncunun parası da "sermaye akışı"dır.
+  project.fundedTurn = game.world.turn;
+  project.dormant = false;
   // Proje desteği inşaat kalemine yazılır (bkz. updateLedger projectCost).
   nation.economy.projectGold = (nation.economy.projectGold ?? 0) + paid;
   game.emit('construction', state);
@@ -2672,20 +2751,24 @@ function adjustWarFiscalAI(nation) {
 function runPrivateSector(game, nation) {
   if (!nation.alive || !nation.politics) return;
   nation.politics.lastPrivateInvestment = null;
+  // Hedefi kalmamış proje her şeyden önce kuyruktan düşer: ölü bir şantiye
+  // hem parayı hem slotu tutar.
+  dropInvalidProjects(nation);
   // Açık projeler politikadan bağımsız beslenir. Aksi halde seçim ekonomiyi
   // planlıya çevirdiğinde önceki hükümetten kalan şantiyeler kuyrukta sonsuza
   // kadar yarım kalırdı.
-  fundPrivateProjects(nation);
+  fundPrivateProjects(nation, game.world.turn);
   const rules = factoryInvestmentRules(nation);
   if (!rules.privateBuild) return;
   const economy = nation.economy;
   const regions = investmentTargets(game.world, nation);
   if (!regions.length) return;
-  // Kapitalistler sınırsız şantiye açmaz; açık proje varken yenisine girmez.
-  const openPrivate = ensureConstruction(nation).projects.filter(
+  // Kapitalistler sınırsız şantiye açmaz; ama UYUYAN proje kapıyı tutmaz.
+  const projects = ensureConstruction(nation).projects.filter(
     (project) => project.actor === 'private',
-  ).length;
-  if (openPrivate >= 2) return;
+  );
+  const active = projects.filter((project) => !project.dormant).length;
+  if (active >= PRIVATE_ACTIVE_LIMIT || projects.length >= PRIVATE_QUEUE_LIMIT) return;
 
   const options = investmentOptions(game.world, nation);
   for (const option of options) {
@@ -3227,9 +3310,12 @@ export function beginEconomy(game) {
     }
     const done = advanceResearch(nation, year);
     if (done && isPlayer) {
+      // Arastirma bitisi hiz 8'de 11 saniyelik bir toast'ta kayboluyordu:
+      // kor beta kampanyasinda dokuz kez fark edilmedi ve 5671 RP bosta
+      // bekledi (B-018). Kart artik KALICI (ttl 0) — okunana kadar durur.
       game.turns.addLog(
         `${techById(done)?.tech.name ?? done} researched — pick the next field on the Technology screen.`,
-        { kind: 'RESEARCH' },
+        { kind: 'RESEARCH', ttl: 0, key: 'research-done' },
       );
     }
   }

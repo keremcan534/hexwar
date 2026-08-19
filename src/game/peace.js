@@ -608,7 +608,7 @@ function applyTerms(game, a, b, terms) {
       type: termId, partner: a, since: turn, until: turn + (term.turns ?? 0),
     });
   }
-  game.turns.addLog?.(`${winner.name} imposed terms on ${loser.name}.`);
+  game.turns.addLog?.(`${winner.name} imposed terms on ${loser.name}.`, { silent: true });
 }
 
 /**
@@ -651,6 +651,27 @@ export function signPeace(game, a, b, offer) {
     if ((tile.owner === a && controller === b) || (tile.owner === b && controller === a)) {
       tile.controller = tile.owner;
     }
+  }
+  // Baris bir SONUCTUR: kim ne aldi, ne odedi. Tek satirlik "terms imposed"
+  // kor beta testcisine savasin nasil bittigini soylemiyordu.
+  const player = game.turns.playerNation;
+  if (a === player || b === player) {
+    const other = world.nations[a === player ? b : a];
+    const gained = (offer?.demands ?? []).length;
+    const given = (offer?.concessions ?? []).length;
+    const parts = [];
+    if (a === player ? gained : given) parts.push(`${a === player ? gained : given} provinces annexed`);
+    if (a === player ? given : gained) parts.push(`${a === player ? given : gained} provinces ceded`);
+    for (const termId of offer?.terms ?? []) {
+      const term = PEACE_TERMS[termId];
+      if (term) parts.push(term.name.toLowerCase());
+    }
+    game.turns.addLog(`Peace signed with ${other?.name ?? 'a rival'}.`, {
+      kind: 'PEACE',
+      tier: 2,
+      title: `Peace with ${other?.name ?? 'a rival'}`,
+      body: parts.length ? `${parts.join(' · ')}.` : 'A white peace: the borders stand as they are.',
+    });
   }
   return makePeace(game, a, b, { settle: false });
 }

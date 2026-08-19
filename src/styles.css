@@ -7767,3 +7767,267 @@ body.menu-open .sheet { visibility: hidden; }
   .tech-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .tech-cats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+
+/* ==========================================================================
+   ULUSAL OLAY SUNUMU — tek kabuk, agirliga gore varyant
+   ==========================================================================
+   Kor Beta #2'nin hukmu "iyi simulasyon, sessiz oyun"du: borc, temerrut,
+   rejim degisimi ve baskent kaybi hicbir gorsel agirlik tasimadan akip
+   gidiyordu. Yeni bir bilesim ailesi KURULMADI — ayni bildirim karti
+   tier'ine gore agirlasir. Boylece rutin bildirim rutin kalir. */
+
+/* Tier 2: ulusal olay. Baslik serif ve buyuk, sol kenar pirinc bant. */
+.notify-major {
+  border-left-width: 4px;
+  border-color: var(--line-strong);
+  background:
+    linear-gradient(180deg, rgba(150, 122, 69, 0.10), transparent 60%),
+    var(--surface-2);
+  box-shadow: var(--frame-brass);
+}
+
+.notify-major .notify-title,
+.notify-existential .notify-title {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  line-height: var(--lh-tight);
+  color: var(--text);
+  margin: 1px 0 3px;
+}
+
+.notify-major .notify-body,
+.notify-existential .notify-body { color: var(--text-dim); }
+
+/* Tier 3: varolussal. Zaten zamani durdurur; gorsel olarak da kagittan
+   cikmis bir ilan gibi durur — ince pirinc cerceve, ustte ve altta hat. */
+.notify-existential {
+  border: 1px solid var(--line-gold);
+  border-left: 4px solid var(--red);
+  background:
+    linear-gradient(180deg, rgba(169, 94, 74, 0.14), transparent 55%),
+    var(--surface-1);
+  box-shadow: var(--frame-brass);
+}
+
+.notify-existential .notify-title {
+  font-size: var(--fs-lg);
+  color: var(--gold-bright);
+  letter-spacing: 0.01em;
+}
+
+/* Olay turune gore kenar rengi: savas tugla, baris zeytin, siyaset pirinc. */
+.notify-major.notify-war,
+.notify-existential.notify-war { border-left-color: var(--red); }
+.notify-major.notify-good { border-left-color: var(--green); }
+.notify-major.notify-info { border-left-color: var(--gold); }
+
+/* --- "NEDEN" balonu: hover tooltip'in tiklanabilir ikizi ----------------- */
+.stat-why { cursor: help; }
+.stat-why:hover b { color: var(--gold-bright); }
+.stat-why:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
+
+.why-pop {
+  position: fixed;
+  z-index: var(--z-notify);
+  max-width: min(360px, 92vw);
+  padding: var(--sp-3);
+  border: 1px solid var(--line-gold);
+  border-radius: var(--radius);
+  background: var(--surface-1);
+  box-shadow: var(--frame-brass);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+  white-space: pre-line;
+}
+
+/* --- Parti bandi: kaydiracin altinda gerekce ----------------------------- */
+.ledger-limit {
+  display: block;
+  font-size: var(--fs-label);
+  letter-spacing: 0.02em;
+  color: var(--gold);
+}
+
+/* Defter bakiyesi artik "gecen hafta" oldugunu soyluyor. */
+.ledger-balance small {
+  display: block;
+  font-size: var(--fs-label);
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+}
+
+/* --- Ulusal vakayiname: kampanyanin hafizasi ---------------------------- */
+.chronicle { padding: var(--sp-2) 0; }
+
+.chron-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--sp-1);
+}
+
+.chron-row {
+  display: grid;
+  grid-template-columns: 4.5rem 1fr;
+  gap: var(--sp-3);
+  align-items: baseline;
+  padding: var(--sp-2) var(--sp-3);
+  border-left: 2px solid var(--line);
+  background: var(--surface-2);
+}
+
+.chron-year {
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  color: var(--gold-bright);
+  letter-spacing: 0.02em;
+}
+
+.chron-text { display: grid; gap: 2px; min-width: 0; }
+.chron-text b { font-size: var(--fs-base); color: var(--text); font-weight: 600; }
+.chron-text small { font-size: var(--fs-sm); color: var(--text-dim); line-height: var(--lh-body); }
+
+/* Varolussal olaylar tarihte de daha agir basar. */
+.chron-row.tier-3 { border-left-color: var(--red); background: var(--surface-3); }
+.chron-row.tier-3 .chron-text b { color: var(--gold-bright); }
+
+/* ==========================================================================
+   KAMPANYA SONU — yuzyilin son sayfasi
+   ==========================================================================
+   Gosterge tahtasi degil, tarih cildinin kapanis sayfasi: kagit zemin, ince
+   pirinc hatlar, serif baslik. */
+
+.epilogue {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-menu);
+  display: grid;
+  place-items: center;
+  padding: var(--sp-4);
+  background: rgba(7, 12, 14, 0.92);
+  overflow: auto;
+}
+
+.epilogue-sheet {
+  width: min(720px, 100%);
+  padding: var(--sp-6) var(--sp-6) var(--sp-5);
+  border: 1px solid var(--line-gold);
+  background:
+    linear-gradient(180deg, rgba(150, 122, 69, 0.08), transparent 40%),
+    var(--surface-1);
+  box-shadow: var(--frame-brass);
+}
+
+.epilogue-head { text-align: center; padding-bottom: var(--sp-4); }
+
+.epilogue-head small {
+  display: block;
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+
+.epilogue-head h1 {
+  margin: var(--sp-2) 0 var(--sp-1);
+  font-family: var(--font-display);
+  font-size: var(--fs-title);
+  font-weight: 400;
+  color: var(--text);
+  letter-spacing: 0.01em;
+}
+
+.epilogue-span {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  color: var(--gold-bright);
+}
+
+/* Kapanis cumlesi: sayfanin tek serif paragrafi. */
+.epilogue-line {
+  margin: 0 0 var(--sp-5);
+  padding: var(--sp-4) 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  line-height: var(--lh-body);
+  color: var(--text);
+  text-align: center;
+}
+
+.epilogue-metrics { display: grid; gap: 1px; margin-bottom: var(--sp-5); }
+
+.epilogue-metric {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: var(--sp-3);
+  align-items: baseline;
+  padding: var(--sp-2) var(--sp-1);
+  background: var(--surface-2);
+}
+
+.epilogue-metric > span {
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+
+.epilogue-metric b { font-size: var(--fs-base); color: var(--text-dim); font-weight: 500; }
+.epilogue-metric em { color: var(--text-faint); font-style: normal; }
+.epilogue-metric b.to { color: var(--gold-bright); font-weight: 600; }
+
+.epilogue-timeline h2 {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--text-mute);
+}
+
+.epilogue-timeline ol { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-1); }
+
+.epilogue-event {
+  display: grid;
+  grid-template-columns: 4rem 1fr;
+  gap: var(--sp-3);
+  align-items: baseline;
+  padding: var(--sp-1) 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.epilogue-event b { font-family: var(--font-display); color: var(--gold); }
+.epilogue-event span { font-size: var(--fs-base); color: var(--text-dim); }
+.epilogue-event.tier-3 span { color: var(--text); }
+
+.epilogue-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line-strong);
+}
+
+.epilogue-foot p {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-base);
+  color: var(--text-mute);
+}
+
+/* Kapat dugmesi satiri yutmasin: metin solda, dugme kendi genisliginde. */
+.epilogue-foot .action { flex: 0 0 auto; min-width: 9rem; }
+
+@media (max-width: 620px) {
+  .epilogue-sheet { padding: var(--sp-4); }
+  .epilogue-metric { grid-template-columns: 1fr; gap: 2px; }
+  .epilogue-foot { flex-direction: column; align-items: stretch; }
+}

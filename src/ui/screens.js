@@ -51,6 +51,7 @@ import {
   EARLY_ELECTION_WINDOW, electionWindowOpen, factoryInvestmentRules,
   fiscalPolicyLimits, holdElection, policyLabel, rulingParty,
 } from '../game/politics.js';
+import { chronicleYear, ensureChronicle } from '../game/chronicle.js';
 import {
   electorate, enactReform, governmentType, reformBoard,
 } from '../game/reforms.js';
@@ -78,6 +79,7 @@ const TITLES = {
   diplomacy: 'Diplomacy',
   dossier: 'Foreign Power',
   trade: 'Trade',
+  chronicle: 'National Chronicle',
 };
 
 function esc(s) {
@@ -449,7 +451,7 @@ export class Screens {
       </div>
       <div class="dossier-facts">
         <div><span>Population</span><b>${formatPopulation(populationOf(world, target))}</b></div>
-        <div><span>Provinces</span><b>${target.tiles}</b></div>
+        <div><span>Territory</span><b>${target.tiles}</b><small>hexes</small></div>
         <div><span>Cities</span><b>${cities}</b></div>
         <div><span>Industry</span><b>${factories} levels</b></div>
       </div>
@@ -654,6 +656,29 @@ export class Screens {
   }
 
   // --- Ülke özeti: bayrağa dokununca açılan stratejik durum ekranı ---
+  /**
+   * Ulusal vakayiname: kampanyanin hafizasi. Hizli oynayan oyuncu 11 saniyelik
+   * bir toast'i kacirinca tarihini kaybediyordu (kor beta B-013). Burada
+   * yalnizca ULUSAL (tier 2+) olaylar durur — her fabrika, her fiyat degil.
+   */
+  render_chronicle(me) {
+    const entries = ensureChronicle(me);
+    if (!entries.length) {
+      return `<p class="empty">Nothing of national consequence has been recorded yet.
+        Wars, treaties, debt, defaults and changes of government are written here.</p>`;
+    }
+    // En yeni ustte: oyuncu once "az once ne oldu" diye bakar.
+    const rows = [...entries].reverse().map((entry) => `
+      <li class="chron-row tier-${entry.tier ?? 2}">
+        <b class="chron-year">${chronicleYear(entry.turn)}</b>
+        <span class="chron-text">
+          <b>${esc(entry.title)}</b>
+          ${entry.detail ? `<small>${esc(entry.detail)}</small>` : ''}
+        </span>
+      </li>`).join('');
+    return `<div class="chronicle"><ol class="chron-list">${rows}</ol></div>`;
+  }
+
   render_nation(me) {
     const world = this.game.world;
     const cities = this.myCities(me);
@@ -690,7 +715,7 @@ export class Screens {
       </div>
       <div class="overview-stats">
         <div><span>Hegemony</span><b>${score?.total ?? 0}</b><small>Rank ${rank || '—'} · leader ${board[0]?.total ?? 0}</small></div>
-        <div><span>Territory</span><b>${me.tiles}</b><small>provinces</small></div>
+        <div><span>Territory</span><b>${me.tiles}</b><small>hexes</small></div>
         <div><span>Population</span><b>${formatPopulation(population)}</b><small>${cities.length} ${cities.length === 1 ? 'city' : 'cities'}</small></div>
         <div><span>Armed Forces</span><b>${units.length}</b><small>power ${nationStrength(world, me).toFixed(1)}</small></div>
         <div><span>Internal Cohesion</span><b>${100 - foreignPct}%</b><small>${foreignPct}% foreign population</small></div>
@@ -821,7 +846,7 @@ export class Screens {
         <em>MAP MODE ACTIVE</em>
       </div>
       <div class="construction-kpis">
-        <span><small>Build power</small><b>${power}/wk</b></span>
+        <span><small>Build power</small><b>${power.toFixed(1)}/wk</b></span>
         <span><small>Building upkeep</small><b>−¤${upkeep.toFixed(1)}</b></span>
         <span class="construction-free-total"><small>Available slots</small><b>${atlas.free}<em> / ${atlas.slots}</em></b></span>
       </div>
@@ -1397,15 +1422,24 @@ export class Screens {
       </div>`;
     };
 
+    // İktidar partisinin izin verdiği bant. Kör beta testçisi kaydıracı 100'e
+    // çekip 60'a düşünce oyunun ayarını "arkasından değiştirdiğini" sandı:
+    // aslında pasifist partinin tavanıydı ve HİÇBİR YERDE yazmıyordu. Bant
+    // kaydıracın kendisinde zaten uygulanıyor (min/max), eksik olan gerekçe.
+    const party = rulingParty(me);
+    const bandNote = (min, max) => (min <= 0 && max >= 100 ? ''
+      : `<small class="ledger-limit">${esc(party?.name ?? 'The ruling party')} allows ${min}–${max}%</small>`);
+
     // Gider satırı: piktogram + kaydıraç (varsa) + bağlam notu + değer kutusu.
     const expRow = (label, value, options = {}) => {
       const { policy = null, current = 0, min = 0, max = 100, classId = null,
-        note = '', picto = '' } = options;
+        note = '', picto = '', band = false } = options;
       return `<div class="ledger-row">
         <span class="ledger-picto">${picto}</span>
         <span class="ledger-mid">
           <span class="ledger-label">${esc(label)}${policy ? `<b>${current}%</b>` : ''}</span>
           ${policy ? hslider(policy, current, min, max, 5, classId) : ''}
+          ${band ? bandNote(min, max) : ''}
           ${note ? `<small class="ledger-note">${note}</small>` : ''}
         </span>
         ${vbox(-Math.abs(value), value > 0.05 ? 'neg' : '')}
@@ -1472,6 +1506,7 @@ export class Screens {
     current: economy.militaryProcurement ?? 100,
     min: limits.armySpendingMin,
     max: limits.armySpendingMax,
+    band: true,
     picto: PICTO.stockpile,
     note: `army supply ${supply}% · reinforcement ${Math.round(Math.max(25, economy.militaryProcurement ?? 100) * Math.max(0.4, (economy.military?.supplyIndex ?? 1)))}%`,
   })}
@@ -1480,6 +1515,7 @@ export class Screens {
     current: economy.militaryWages ?? 100,
     min: limits.armySpendingMin,
     max: limits.armySpendingMax,
+    band: true,
     picto: PICTO.soldier,
     note: `combat power ${Math.round(55 + (economy.militaryWages ?? 100) * 0.45)}% · recovery ${Math.round((0.6 + 0.4 * (economy.militaryWages ?? 100) / 100) * 100)}%`,
   })}
@@ -1540,6 +1576,7 @@ export class Screens {
           <span class="ledger-mid">
             <span class="ledger-label">Tariffs<b>${economy.tariff}%</b></span>
             ${hslider('tariff', economy.tariff, limits.tariffMin, limits.tariffMax)}
+            ${bandNote(limits.tariffMin, limits.tariffMax)}
             <small class="ledger-note">${economy.tariff >= 0
     ? `import prices +${economy.tariff}% · protects domestic industry`
     : `treasury subsidises imports by ${-economy.tariff}%`}</small>
@@ -1573,7 +1610,7 @@ export class Screens {
   })()}
         ${this.warBudgetPanel(me, ledger)}
         <div class="ledger-balance">
-          <span>Projected weekly balance</span>
+          <span>Last week's balance<small>closed accounts, not a forecast</small></span>
           <span class="vbox ${ledger.net >= 0 ? 'pos' : 'neg'} hero">${money(ledger.net ?? 0)}</span>
         </div>
       </section>
@@ -1934,7 +1971,7 @@ export class Screens {
           <img class="flag" src="${flagDataUrl(n)}" alt="">
           <button class="grow rel-open" data-nation="${n.id}" title="Open dossier">
             <div class="name">${esc(n.name)} ${tag}</div>
-            <div class="meta">${n.tiles} provinces · ${strengthPhrase(myPower, power)} · infamy ${Math.round(n.infamy ?? 0)}</div>
+            <div class="meta">${n.tiles} hexes · ${strengthPhrase(myPower, power)} · infamy ${Math.round(n.infamy ?? 0)}</div>
           </button>
           ${action}
         </div>
@@ -2271,8 +2308,13 @@ export class Screens {
       };
     }
     for (const input of this.el.body.querySelectorAll('[data-policy]')) {
+      // Sürüklerken sayı ANINDA oynar. Eski seçici (`.policy-slider` /
+      // `[data-policy-value]`) defter tasarımıyla birlikte ölmüştü: kaydıraç
+      // 40'a gidiyor, yanındaki rakam 30'da donuyordu — kör beta testçisi
+      // bunu "görünmez bir tavan" sandı (B-022). Canlı rakam artık satırın
+      // kendi etiketindedir.
       input.oninput = () => {
-        const label = input.closest('.policy-slider')?.querySelector('[data-policy-value]');
+        const label = input.closest('.ledger-mid')?.querySelector('.ledger-label b');
         if (label) label.textContent = `${input.value}%`;
       };
       input.onchange = () => {
