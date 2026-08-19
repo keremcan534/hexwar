@@ -93,7 +93,11 @@ export function speedOf(unit) {
   return unit.type.moves;
 }
 
-/** Can tavani: zirh teknolojisiyle birlikte uretilen birimlerde daha yuksek. */
+/**
+ * Can tavani. Yorum uzun sure "zirh teknolojisiyle uretilen birimlerde daha
+ * yuksek" diyordu — **hicbir teknoloji `maxHp`e dokunmuyor**. Deger yalnizca
+ * alay bilesiminden (createUnit) ya da kayittan gelir.
+ */
 export function maxHpOf(unit) {
   return unit.maxHp ?? unit.type.hp;
 }

@@ -41,8 +41,8 @@ export const TECH_FOLDERS = {
  * Degistirici anahtarlari. Her teknoloji EN AZ birini tasimali — beta raporu
  * "+%2'lik dolgu dugmeler" istemedigini acikca yazdi.
  *
- * Hepsi TOPLANIR (additive) ve `techModifiers` tek bir duz nesne dondurur;
- * sicak yol yalnizca alan okur.
+ * Hepsi TOPLANIR (additive); `refreshTechModifiers` haftada bir kez toplayip
+ * `economy.techMods` duz nesnesine yazar, sicak yol yalnizca o alani okur.
  */
 // `literacyCap` ve `morale` anahtarlari silindi: hicbir teknoloji tasimiyordu
 // ve hicbir sistem okumuyordu — sifir tuketicili degistirici tutulmaz (P1-6).
@@ -84,20 +84,30 @@ export const TECHNOLOGIES = {
       t('stationary_steam_engine', 'Stationary Steam Engine', 1840, { factoryThroughput: 0.08 }),
       t('mechanical_production', 'Mechanical Production', 1850, { factoryThroughput: 0.10 }),
       t('compound_engines', 'Compound Steam Engines', 1860, { factoryThroughput: 0.10, inputEfficiency: 0.04 }),
-      t('electrical_power', 'Electrical Power Generation', 1875, { factoryThroughput: 0.12, unlock: ['ELECTRIC_GEAR_FACTORY'] }),
+      // 1875 -> 1866: kilit acacagi fabrikanin takviminden (1870) SONRAYA
+      // tarihlenmisti, yani arastirmak hicbir zaman one gecirmiyordu —
+      // modulun kendi sozlesmesinin (bkz. dosya basi) ihlaliydi. 1866 hem
+      // sirayi bozmaz (1860 < 1866 < 1895) hem tarihsel (Siemens dinamosu).
+      t('electrical_power', 'Electrical Power Generation', 1866, { factoryThroughput: 0.12, unlock: ['ELECTRIC_GEAR_FACTORY'] }),
       t('combustion_engine', 'Combustion Engine', 1895, { factoryThroughput: 0.12, unlock: ['AUTOMOBILE_FACTORY'] }),
     ],
     'Mechanization': [
       t('basic_mechanization', 'Basic Mechanization', 1836, { factoryThroughput: 0.06 }),
       t('interchangeable_parts', 'Interchangeable Parts', 1845, { inputEfficiency: 0.06 }),
-      t('precision_work', 'Precision Work', 1855, { inputEfficiency: 0.06, unlock: ['MACHINE_PARTS_FACTORY'] }),
+      // 1855 -> 1848: ayni hata (fabrika takvimi 1850). 1845 < 1848 < 1870.
+      t('precision_work', 'Precision Work', 1848, { inputEfficiency: 0.06, unlock: ['MACHINE_PARTS_FACTORY'] }),
       t('assembly_line', 'Assembly Line', 1870, { factoryThroughput: 0.14 }),
       t('scientific_management', 'Scientific Management', 1885, { factoryThroughput: 0.10, inputEfficiency: 0.05 }),
       t('mass_production', 'Mass Production', 1900, { factoryThroughput: 0.16, inputEfficiency: 0.06 }),
     ],
     'Metallurgy': [
       t('publishing_industry', 'Charcoal Smelting', 1836, { rgoOutput: 0.05 }),
-      t('coke_smelting', 'Coke Smelting', 1842, { rgoOutput: 0.08, unlock: ['STEEL_MILL'] }),
+      // `unlock: ['STEEL_MILL']` KALDIRILDI: STEEL_MILL'in `availableFrom`u
+      // yok, yani ilk haftadan herkese acik — kilit hicbir sey acmiyordu ama
+      // ekran "Unlocks steel mill" diye SAHTE bir vaat basiyordu. Fabrikaya
+      // takvim vermek yerine vaadi kaldirmak secildi: kilit eklemek butun
+      // sanayi zamanlamasini (ve piyasa taban cizgisini) oynatirdi.
+      t('coke_smelting', 'Coke Smelting', 1842, { rgoOutput: 0.08 }),
       t('bessemer_process', 'Bessemer Process', 1855, { inputEfficiency: 0.08 }),
       t('open_hearth', 'Open Hearth Furnace', 1868, { factoryThroughput: 0.10 }),
       t('electric_furnace', 'Electric Furnace', 1885, { factoryThroughput: 0.10, inputEfficiency: 0.06 }),
@@ -202,7 +212,10 @@ export function techCost(techId, year) {
 /**
  * Haftalik arastirma puani. Vic2 formulunun bizdeki karsiligi:
  *
- *   RP = (okuryazarlik + egitimli orta sinif + ulusal rutbe) x (1 + teknoloji)
+ *   RP = (okuryazarlik + egitimli orta sinif + sabit taban) x (1 + teknoloji)
+ *
+ * ("ulusal rutbe" terimi kaldirildi — bkz. asagidaki not; formul metni
+ * uzun sure silinmis bir terimi anlatmaya devam etmisti.)
  *
  * Okuryazarlik ARTIK BIR STOK (bkz. economy.js `advanceLiteracy`); bu bag
  * olmadan arastirma sabit bir sayiya baglanirdi ve egitim yine olu kalirdi.
@@ -242,9 +255,9 @@ export function refreshTechModifiers(nation) {
   return mods;
 }
 
-export function techModifiers(nation) {
-  return nation.economy?.techMods ?? null;
-}
+// `techModifiers(nation)` KALDIRILDI: sicak yollar (provinces.js, economy.js,
+// construction.js) katman kurali geregi `economy.techMods` alanini dogrudan
+// okuyor; sarmalayicinin src/ ve scripts/ altinda tek cagirani kalmamisti.
 
 export function startResearch(nation, techId) {
   if (!canResearch(nation, techId)) return false;
