@@ -11,6 +11,20 @@ import { UNIT_TYPES, refreshArmy, resolveTypeId } from './units.js';
 import { occupiedShareOf } from './provinces.js';
 
 export const BASE_REINFORCEMENT_RATE = 24;
+
+/**
+ * Haftalik takviye hizi (disa acik: tech-effect denetimi saf yoklar).
+ * Tedarik + fon + komutan + teknoloji (Army Doctrine `reinforcementRate`,
+ * ornegin askeri tip ve sahra telgrafi — yarali geri doner, emir erken ulasir).
+ */
+export function reinforcementRateOf(nation, general = null) {
+  const supply = Math.max(0.4, nation.economy?.military?.supplyIndex ?? 1);
+  const funding = Math.max(0.25, (nation.economy?.militaryProcurement ?? 100) / 100) * supply;
+  return BASE_REINFORCEMENT_RATE
+    * (0.25 + funding * 0.75)
+    * (1 + generalRecoveryBonus(general))
+    * (1 + (nation.economy?.techMods?.reinforcementRate ?? 0));
+}
 export const REINFORCEMENT_EQUIPMENT = {
   INFANTRY: { arms: 0.002 },
   CAVALRY: { arms: 0.0025 },
@@ -189,13 +203,9 @@ function reinforceNation(game, nation) {
   // Takviye hızını TEDARİK belirler: adam maaşla değil, mühimmat ve ikmalle
   // cepheye taşınır. Uzayan kıtlık da yavaşça bastırır (supplyIndex, EMA) —
   // tek kötü hafta değil, süregiden açlık hissedilsin.
-  const supply = Math.max(0.4, nation.economy.military?.supplyIndex ?? 1);
-  const funding = Math.max(0.25, (nation.economy.militaryProcurement ?? 100) / 100) * supply;
   for (const unit of units) {
     const general = generalOfArmy(nation, unit);
-    const rate = BASE_REINFORCEMENT_RATE
-      * (0.25 + funding * 0.75)
-      * (1 + generalRecoveryBonus(general));
+    const rate = reinforcementRateOf(nation, general);
     for (const regiment of unit.regiments) {
       const missing = missingStrength(regiment);
       if (missing <= 0) continue;

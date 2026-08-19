@@ -409,11 +409,14 @@ export class Hud {
         `${list.length} ${list.length === 1 ? 'division' : 'divisions'} selected`;
       el.divisionsBody.innerHTML = list.map((unit) => {
         const general = generalOfArmy(me, unit);
-        const state = unit.battleId ? 'in battle'
-          : (unit.retreatUntil ?? 0) > game.turns.turn ? 'retreating'
-            : (unit.attackReadyAt ?? 0) > game.turns.turn ? 'reorganizing'
-              : isMoving(unit) ? `marching (${unit.path.length} left)`
-                : 'holding';
+        // Denizdeki tumen SAVASAMAZ ve konvoy tuketir — bu iki gercek
+        // ekranda hic soylenmiyordu (survey: SURFACE karari).
+        const state = unit.embarked ? 'at sea — cannot fight, consumes convoys'
+          : unit.battleId ? 'in battle'
+            : (unit.retreatUntil ?? 0) > game.turns.turn ? 'retreating'
+              : (unit.attackReadyAt ?? 0) > game.turns.turn ? 'reorganizing'
+                : isMoving(unit) ? `marching (${unit.path.length} left)`
+                  : 'holding';
         return `<div class="division-row">
           <button class="division-main" data-focus-unit="${unit.id}">
             <span class="unit-badge" style="background:${me.color}">${unit.type.glyph}</span>
@@ -989,11 +992,16 @@ export class Hud {
     const target = general.target == null
       ? 'all active borders'
       : this.game.world.nations[general.target]?.name ?? 'unknown nation';
+    // Saldiri temposu GORUNUR olsun: aggression kadansi manuel taarruzu da
+    // kitliyordu ve hicbir yer soylemiyordu (olculdu — sahte-yokluk hissi).
+    const nextAssault = Math.max(0, (general.nextAssaultAt ?? 0) - this.game.turns.turn);
+    const cadence = nextAssault > 0 ? ` · next assault in ${nextAssault}w` : '';
     return `<div class="action-row">
       <div class="k">front — ${attack ? 'advancing' : 'holding'} against ${escapeHtml(target)} ·
-        ${front.length} provinces · ${commandSize(general)} divisions · planning ${ready}%</div>
+        ${front.length} provinces · ${commandSize(general)} divisions · planning ${ready}%${cadence}</div>
       <div class="meter"><i style="width:${ready}%"></i></div>
-      <button class="action" data-command-stance="${general.id}">
+      <button class="action" data-command-stance="${general.id}"
+        title="${attack ? 'Halting resets accumulated planning — the army regroups.' : 'Planning accumulated while holding carries into the offensive.'}">
         ${attack ? 'Halt Offensive' : 'Start Offensive'}</button>
     </div>`;
   }

@@ -1223,6 +1223,8 @@ body.screen-open .layer-menu { display: none; }
 .tag.war { color: var(--red); border-color: var(--red); }
 .tag.peace { color: var(--green); border-color: var(--green); }
 .tag.truce { color: var(--amber); border-color: var(--amber); }
+.tag.ally { color: var(--gold-bright); border-color: var(--frame-brass); }
+.tag.rival { color: var(--red); border-color: var(--surface-3); }
 
 /* --- Tooltip. Tek bir bileşen: `data-tooltip` taşıyan her öğe kullanır.
        Uzun açıklamaları satır içine sıkıştırmak yerine üstte gösterir. --- */
@@ -8030,4 +8032,136 @@ body.menu-open .sheet { visibility: hidden; }
   .epilogue-sheet { padding: var(--sp-4); }
   .epilogue-metric { grid-template-columns: 1fr; gap: 2px; }
   .epilogue-foot { flex-direction: column; align-items: stretch; }
+}
+
+/* --- Ulusal Program (teknoloji ekrani) — defter dili: pirinc cerceve,
+   koseli, fildisi metin; SaaS karti degil. --- */
+.tech-programme {
+  margin: var(--sp-2) 0;
+  border: 1px solid var(--frame-brass);
+  background: var(--surface-1);
+  padding: var(--sp-2) var(--sp-3);
+}
+.tech-programme header {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+}
+.tech-programme header i { font-style: normal; }
+.tech-programme header b {
+  font-family: var(--font-display);
+  font-size: var(--fs-md);
+  color: var(--gold-bright);
+}
+.tech-programme header span {
+  margin-left: auto;
+  font-size: var(--fs-sm);
+  color: var(--text-mute);
+}
+.tech-programme-line {
+  margin: 2px 0 var(--sp-1);
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--text-dim);
+}
+.tech-programme-terms {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+  font-size: var(--fs-sm);
+}
+.tech-programme-terms small {
+  display: block;
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  font-size: var(--fs-label);
+  color: var(--text-faint);
+}
+.tech-programme-abandon {
+  margin-top: var(--sp-1);
+  background: none;
+  border: 1px solid var(--surface-3);
+  color: var(--text-mute);
+  padding: 2px var(--sp-2);
+  cursor: pointer;
+  font-size: var(--fs-sm);
+}
+.tech-programme-abandon:hover { border-color: var(--red); color: var(--red); }
+.tech-programme.choose header b { color: var(--text); }
+.tech-programme-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+.tech-programme-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  text-align: left;
+  border: 1px solid var(--surface-3);
+  background: var(--surface-2);
+  color: var(--text);
+  padding: var(--sp-2);
+  cursor: pointer;
+}
+.tech-programme-card:hover { border-color: var(--frame-brass); }
+.tech-programme-card i { font-style: normal; }
+.tech-programme-card b { font-family: var(--font-display); }
+.tech-programme-card span { font-size: var(--fs-sm); color: var(--text-dim); }
+.tech-programme-card em {
+  font-style: normal;
+  font-size: var(--fs-label);
+  color: var(--text-mute);
+  letter-spacing: var(--ls-label);
+}
+/* Odak/ihmal renkleri: pahali-ucuz bilgisi ekranda, yalnizca tooltipte degil. */
+.tech-step.is-focus > button { border-left: 2px solid var(--gold); }
+.tech-step.is-neglect > button { opacity: 0.72; }
+
+/* --- Dosya kimligi: karakter satiri + kimlik tablosu + hafiza --- */
+.dossier-line {
+  margin: var(--sp-2) 0 var(--sp-1);
+  font-family: var(--font-display);
+  font-style: italic;
+  color: var(--text-dim);
+  border-left: 2px solid var(--frame-brass);
+  padding-left: var(--sp-2);
+}
+.dossier-identity {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--sp-1) var(--sp-3);
+  margin-top: var(--sp-1);
+  font-size: var(--fs-sm);
+}
+.dossier-identity span {
+  display: block;
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.dossier-identity small { display: block; color: var(--text-mute); }
+.dossier-memory {
+  margin: var(--sp-1) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+}
+.dossier-memory em {
+  font-style: normal;
+  color: var(--gold);
+  margin-right: var(--sp-1);
+}
+.factory-context { display: block; color: var(--text-mute); margin-top: 2px; }
+
+/* Kampanya sonu: sayac satiri (savas / zirve hazine / en kotu borc) */
+.epilogue-tally {
+  text-align: center;
+  color: var(--text-mute);
+  font-size: var(--fs-sm);
+  margin: calc(-1 * var(--sp-1)) 0 var(--sp-2);
 }

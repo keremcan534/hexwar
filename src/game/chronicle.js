@@ -107,6 +107,33 @@ export function captureOpening(world, nation, governmentLabel) {
     provinces: nation.provinces ?? 0,
     government: governmentLabel ?? '',
     factories: nation.economy?.factories?.length ?? 0,
+    // Kapanistaki "teknolojik konum" satirinin baslangic ucu.
+    research: nation.research?.done?.length ?? 0,
   };
   return nation.opening;
+}
+
+// ------------------------------------------------------------- HAFIZA ---
+// Diplomatik hafiza burada durur cunku bu dosya hicbir sey import etmez:
+// diplomacy/peace/alliances hepsinin cagirabilecegi dongusuz tek merkez.
+
+const MEMORY_LIMIT = 24;
+
+/**
+ * Sinirli ulusal hafiza: ulke panelinin "bu ulkeyi ne tanimlar" sorusunun
+ * ham maddesi. Ayni (kind, other) cifti ust uste yazilmaz — savas uc yil
+ * surdu diye uc kayit olmaz. Butun uluslar icin tutulur (vakayiname yalniz
+ * oyuncu icindir; hafiza dunyanin geri kalanina kimlik verir).
+ */
+export function remember(nation, turn, kind, otherId) {
+  if (!nation) return;
+  nation.memory ??= [];
+  const last = nation.memory[nation.memory.length - 1];
+  if (last && last.kind === kind && last.other === otherId) return;
+  nation.memory.push({ turn, kind, other: otherId });
+  if (nation.memory.length > MEMORY_LIMIT) nation.memory.shift();
+}
+
+export function memoryOf(nation) {
+  return nation?.memory ?? [];
 }

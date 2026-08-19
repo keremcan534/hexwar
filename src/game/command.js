@@ -349,15 +349,18 @@ export function setAggression(general, level) {
 }
 
 /**
- * Duruş degisimi plani sifirlar: yeni durus yeniden hazirlanmali. Ilerlemeden
- * tutmaya donmek de plani harcar, yoksa oyuncu taarruzu acip kapatarak
- * hazirligi bedavaya biriktirebiliyordu.
+ * ILERLEMEDEN tutmaya donmek plani sifirlar (yeniden toparlanma). TUTMADAN
+ * ilerlemeye gecmek plani KORUR: bekleyip hazirlanan ordunun taarruza
+ * biriktirdigiyle girmesi tam da planlama sayacinin vaadidir — eski hali her
+ * gecisi sifirlayip HOLD'da biriken plani asla odetmiyordu (sayac sahte umut
+ * satiyordu). Ac-kapa istismari yine olmaz: ADVANCE->HOLD sifirladigindan
+ * dongu her turda birikimi yakar, bedavaya stok yapilamaz.
  */
 export function setStance(world, general, stance) {
   if (!general || !Object.values(STANCE).includes(stance)) return null;
   if (general.stance === stance) return general.stance;
   general.stance = stance;
-  general.planning = 0;
+  if (stance === STANCE.HOLD) general.planning = 0;
   return general.stance;
 }
 
@@ -716,6 +719,11 @@ export function participatingAttackPower(units) {
 function march(game, divisions) {
   for (const unit of divisions) {
     if (unit.battleId || (unit.retreatUntil ?? 0) > game.turns.turn) continue;
+    // HOLD emri komutani da baglar: "yerinde dur" diyen oyuncunun tumenini
+    // general ertesi hafta cepheye geri yuruyordu — dugmenin vaadi sahteydi.
+    // ('hold' degismezi orders.js ORDER.HOLD'dur; import etmek orders->ai->
+    // command dongusu kurar, tek dizgi burada belgelenerek kullanilir.)
+    if (unit.order?.type === 'hold') continue;
     const post = postTileOf(game.world, unit);
     if (!post || unit.tile === post) continue;
     // Zaten oraya yuruyorsa yolu yeniden kurmayiz: her hafta yeni yol vermek

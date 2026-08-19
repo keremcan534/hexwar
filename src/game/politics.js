@@ -232,6 +232,16 @@ function supportScore(nation, party) {
     }
     score += socialClass.population * affinity;
   }
+  // SAVAS SIYASETE DOKUNUR (eksikti — olculdu: warStrain yalnizca stability'ye
+  // akiyordu ve stability'yi hicbir siyaset kodu okumuyordu; kaybedilen savas
+  // iktidara hic fatura kesmiyordu). Yipratan savas ve isgal IKTIDAR partisini
+  // asindirir: hane muhasebesine dokunmadan, dogrudan siyasi katmanda.
+  const ruling = rulingParty(nation);
+  if (ruling && party.id === ruling.id) {
+    const strain = Math.max(0, Math.min(1, nation.economy?.warStrain ?? 0));
+    const occupied = Math.max(0, Math.min(1, nation.economy?.occupiedShare ?? 0));
+    score *= 1 - Math.min(0.45, strain * 0.3 + occupied * 0.4);
+  }
   return score * party.popularity;
 }
 

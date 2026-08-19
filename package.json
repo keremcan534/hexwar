@@ -71,6 +71,7 @@
     "audit:labor": "node scripts/audit/labor-audit.mjs",
     "audit:ledger": "node scripts/audit/ledger-audit.mjs",
     "audit:private": "node scripts/audit/private-investment-audit.mjs",
-    "audit:events": "node scripts/audit/event-communication-audit.mjs"
+    "audit:events": "node scripts/audit/event-communication-audit.mjs",
+    "audit:research": "node scripts/audit/research-audit.mjs"
   }
 }

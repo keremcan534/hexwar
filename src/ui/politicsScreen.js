@@ -288,7 +288,8 @@ function reformNote(board, house, houseLaw) {
     return `<p class="pol-note">A law is enacted one step at a time and never repealed.
       The step opens when the ideologies that want it hold more than half of the upper
       house — and the composition of that house is itself the Upper House law.
-      <em>Enacted laws are recorded and shown here; they do not yet feed the economy.</em></p>`;
+      <em>Enacted laws feed the economy: wages, factory output, class mood and the
+      social budget all move with them.</em></p>`;
   }
   const top = house[0];
   const appointed = houseLaw === 'party_appointed' || houseLaw === 'appointed';

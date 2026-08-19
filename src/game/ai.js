@@ -213,8 +213,11 @@ function diplomacy(game, nation, rng) {
     if (fronts >= MAX_ATTACKERS) continue;
     if (fronts > 0
       && (ratio < SECOND_FRONT_THRESHOLD || contact < SECOND_FRONT_CONTACT)) continue;
-    // Uzun sınır + zayıf komşu = cazip hedef.
-    const score = ratio * Math.log(1 + contact);
+    // Uzun sınır + zayıf komşu = cazip hedef. Rakip (nation.rivalId) daha
+    // cazip: stratejik dusmanlik hedef secimini yonlendirir — mana degil,
+    // agirlik (bkz. alliances.refreshRivals).
+    const score = ratio * Math.log(1 + contact)
+      * (other.id === nation.rivalId ? 1.35 : 1);
     if (score > bestScore) {
       bestScore = score;
       bestTarget = other;
@@ -246,7 +249,7 @@ function affordableUnit(game, nation, army) {
     // Tarihsel acilis burada sorulur. Sorulmadigi surece YZ 1836'da tanki
     // "karsilanabilir" sayip siraya sokmayi deniyor, buyUnit reddediyor ve
     // haftanin butun alim dongusu kiriliyordu (her ucuncu alayda).
-    if (!unitAvailable(id, game.turns.turn)) continue;
+    if (!unitAvailable(id, game.turns.turn, nation)) continue;
     if (canAfford(nation, UNIT_COSTS[id]) && canRecruit(world, nation, id)) return id;
   }
   return null;

@@ -9,6 +9,7 @@ import { advanceMovement } from './movement.js';
 import { queueRecruit, recruit, runTraining } from './recruitment.js';
 import { runReinforcements } from './reinforcement.js';
 import { runNationAI } from './ai.js';
+import { runDiplomacyAI } from './alliances.js';
 import { atWar, computeContacts, initRelations } from './diplomacy.js';
 import {
   INFAMY, addInfamy, checkCoalitions, decayInfamy, tileInfamy,
@@ -32,7 +33,7 @@ import {
 import { initPolitics, runPolitics } from './politics.js';
 import { captureConstructionAt, initConstruction, runConstruction } from './construction.js';
 import { controllerOf, setController } from './control.js';
-import { runNationalEvents } from './events.js';
+import { runNationalEvents, runWorldStories } from './events.js';
 import { expireTreaties, treatiesOf } from './peace.js';
 
 /** Başlangıç stoku: ilk birkaç turda bir birim alacak kadar. */
@@ -391,6 +392,11 @@ export class TurnManager {
       // bütçesine sığar. Sıra dizisi değişmez, determinizm korunur.
       if (++aiBatch % 4 === 0) yield* pause('ai');
     }
+    // Diplomasi YZ'si savas ilanlarindan SONRA: cagri-ile-savas kuyrugu
+    // bosaltilir (muttefikler saldirgana kendi savaslarini acar), ittifak
+    // taramasi ve rakip tazeleme kendi ic frekanslarinda kosar.
+    this.phase = 'diplomacy';
+    runDiplomacyAI(this.game);
     yield* pause('ai');
 
     this.turn++;
@@ -509,6 +515,9 @@ export class TurnManager {
     // gecisleri oyuncunun ekranini bolmez (bkz. events.js).
     const player = world.nations[this.playerNation];
     if (player) runNationalEvents(this.game, player);
+    // Dunya haberleri: buyuk guc giris/cikisi, sanayi liderligi, cokus.
+    // Gecis tetikler; ic frekansi 13 hafta (bkz. events.runWorldStories).
+    runWorldStories(this.game);
     // Bundan sonrası atomik kuyruk (zafer, autosave). İş kaydı burada
     // bırakılır ki kuyruktaki autosave → endTurn zinciri hâlâ çalışan
     // üretece yeniden girmeye kalkmasın (TypeError: already running).

@@ -348,7 +348,10 @@ export function trainingCapacity(world, nation) {
   for (const city of world.cities ?? []) {
     if (city.nationId === nation.id && controllerOf(city.tile) === nation.id) cities++;
   }
-  return Math.max(1, Math.min(12, BASE_TRAINING_CAPACITY + Math.floor(cities / 2)));
+  // Askeri doktrin teknolojileri (Army Doctrine) DUZ slot ekler — yuzde
+  // degil: subay okulu acmak, bir sehir kazanmakla ayni cinsten bir genisleme.
+  const tech = Math.round(nation.economy?.techMods?.trainingCapacity ?? 0);
+  return Math.max(1, Math.min(12, BASE_TRAINING_CAPACITY + Math.floor(cities / 2) + tech));
 }
 
 /**
@@ -384,9 +387,10 @@ export function recruitBlockers(game, nation, typeId, options = {}) {
   // birden soruyor; hesabı bir kez yapıp buraya vermek taramayı yarıya indirir.
   const source = 'source' in options ? options.source : recruitmentSource(world, nation, id);
   const blockers = [];
-  if (!unitAvailable(id, turn)) {
+  if (!unitAvailable(id, turn, nation)) {
     const year = 1836 + Math.floor(((UNIT_TYPES[id].availableFrom ?? 1) - 1) * 7 / 365);
-    blockers.push({ id: 'era', text: `Not fielded before ${year}.` });
+    // Kapali dugme sebepsiz olmaz: takvim TEK yol degil, arastirma da acar.
+    blockers.push({ id: 'era', text: `Not fielded before ${year} — or research it first.` });
   }
   if (underTreaty(nation, 'DEMILITARIZE', turn)) {
     blockers.push({ id: 'treaty', text: 'A peace treaty forbids raising new divisions.' });

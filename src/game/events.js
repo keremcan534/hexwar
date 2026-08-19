@@ -15,6 +15,8 @@ import { governmentType } from './reforms.js';
 import { rulingParty } from './politics.js';
 import { controllerOf } from './control.js';
 import { regimentCount } from './units.js';
+import { scoreboard } from './hegemony.js';
+import { atWar } from './diplomacy.js';
 
 /** Kredinin bu kadari tukendiyse borc "kritik" sayilir. */
 const DEBT_CRITICAL = 0.75;
@@ -51,8 +53,6 @@ function money(value) {
  * bes kez tekrarlanmasi tarih degil gurultudur.
  */
 const REPEAT_COOLDOWN = 156;
-/** Ayni hukumet bicimine donus bu sure boyunca tarih sayilmaz (on yil). */
-const REGIME_COOLDOWN = 520;
 
 function throttled(state, key, turn, cooldown = REPEAT_COOLDOWN) {
   state.said ??= {};
@@ -167,10 +167,43 @@ export function runNationalEvents(game, nation) {
   // karsilastirabilsin (bkz. ui/endScreen.js).
   captureOpening(world, nation, governmentType(nation));
 
+  // --- KAMPANYA SAYACLARI ------------------------------------------------
+  // Kapanis ekraninin "savas sayisi / zirve hazine / en kotu borc" satirlari
+  // icin ucuz, haftalik sayaclar (REMAINING_PRESENTATION_DEBT #3'un cozumu:
+  // uydurma sayi gostermek yerine sayac tutuluyor). ~10 satir, kayda ~40 bayt.
+  const tally = nation.tally ??= { warsFought: 0, peakGold: 0, worstDebt: 0 };
+  tally.peakGold = Math.max(tally.peakGold, Math.round(nation.gold ?? 0));
+  tally.worstDebt = Math.max(tally.worstDebt, Math.round(nation.debt ?? 0));
+  state.atWarWith ??= {};
+  for (const other of world.nations) {
+    if (!other.alive || other.id === nation.id) continue;
+    const fighting = atWar(world, nation.id, other.id);
+    if (fighting && !state.atWarWith[other.id]) {
+      state.atWarWith[other.id] = true;
+      tally.warsFought++;
+    } else if (!fighting && state.atWarWith[other.id]) {
+      state.atWarWith[other.id] = false;
+    }
+  }
+
   // --- BORC / TEMERRUT ---------------------------------------------------
   const phase = debtPhase(nation);
   if (state.debt !== null && phase !== state.debt) announceDebt(game, nation, state, state.debt, phase);
   state.debt = phase;
+
+  // --- ULUSAL PROGRAM DAVETI ---------------------------------------------
+  // Programsiz oyuncu masaya cagrilir (kalici kart, durdurmaz). Sik degil:
+  // ayni davet uc yilda bir. Fesih sogumasi bitmeden davet edilmez.
+  const research = nation.research;
+  if (research && !research.programme
+    && (world.turn ?? 0) >= (research.programmeCooldown ?? 0)
+    && !throttled(state, 'programme-prompt', world.turn ?? 0)) {
+    announce(game, nation, {
+      kind: 'POLITICS', tier: TIER.IMPORTANT, key: 'programme-prompt', ttl: 0,
+      title: 'The nation has no programme',
+      detail: 'Proclaim a National Programme on the Technology screen to set a direction for the decade.',
+    });
+  }
 
   // --- REJIM -------------------------------------------------------------
   const form = governmentType(nation);
@@ -183,14 +216,23 @@ export function runNationalEvents(game, nation) {
   // tekrarlar ve vakayiname bir sarkac gunlugune doner (olculdu: yuzyilda 6
   // kez ayni satir). Ayni bicime donus on yil boyunca sessizdir; tek yonlu
   // gercek bir degisim ise aninda duyurulur.
-  if (state.government && form !== state.government
-    && !throttled(state, `regime:${form}`, world.turn ?? 0, REGIME_COOLDOWN)) {
-    announce(game, nation, {
-      kind: 'POLITICS', tier: TIER.MAJOR, key: 'regime',
-      title: `${state.government} → ${form}`,
-      detail: `The state now operates as a ${form.toLowerCase()} under the ${party?.name ?? 'ruling party'}. Fiscal limits follow its policy.`,
-      halt: true, ttl: 0,
-    });
+  // Sogutma anahtari YON GOZETMEZ: A→B ve B→A ayni cift, ayni fren. Savas→
+  // siyaset baglantisi hukumetleri gercekten dusurmeye baslayinca salinim iki
+  // AYRI anahtardan gecip yilasir olmustu (olculdu: ayni baslik yuzyilda 10
+  // kez). Ayni ciftin gidis-gelisi TEK hikayedir ("istikrarsiz hukumet"),
+  // dokuz ayri manset degil.
+  if (state.government && form !== state.government) {
+    const pair = [state.government, form].sort().join('|');
+    // Ceyrek yuzyil: ayni ciftin ikinci flip'i tarih, besincisi gurultu
+    // (butce: ayni baslik yuzyilda ≤4 — audit:events TEST 2, 100 yil olcer).
+    if (!throttled(state, `regime:${pair}`, world.turn ?? 0, 1300)) {
+      announce(game, nation, {
+        kind: 'POLITICS', tier: TIER.MAJOR, key: 'regime',
+        title: `${state.government} → ${form}`,
+        detail: `The state now operates as a ${form.toLowerCase()} under the ${party?.name ?? 'ruling party'}. Fiscal limits follow its policy.`,
+        halt: true, ttl: 0,
+      });
+    }
   }
   state.government = form;
   state.party = party?.id ?? null;
@@ -253,4 +295,59 @@ export function runNationalEvents(game, nation) {
     }
   }
   state.regiments = regiments;
+}
+
+// --------------------------------------------------------- DUNYA HABERLERI ---
+// Kuresel gelismeler: buyuk guc giris/cikisi, yeni sanayi lideri, devlet
+// cokusu. GECIS tetikler, durum degil — ilk kosu TABAN alir, duyurmaz
+// (kayittan yukleme sonrasi da boyle: onbellek kayda girmez, sessiz kurulur).
+// Amac gurultu degil "durun, onlara ne oldu?" ani; 13 haftada bir bakilir.
+
+const STORY_EVERY = 13;
+
+export function runWorldStories(game) {
+  const world = game.world;
+  const turn = world.turn ?? 0;
+  if (turn % STORY_EVERY !== 0) return;
+  const board = scoreboard(world);
+  const greats = board.slice(0, 3).map((row) => row.nation.id);
+  let topIndustry = null;
+  let topLevels = 0;
+  const aliveIds = [];
+  for (const nation of world.nations) {
+    if (!nation.alive) continue;
+    aliveIds.push(nation.id);
+    const levels = (nation.economy?.factories ?? []).reduce((s, f) => s + (f.level ?? 1), 0);
+    if (levels > topLevels || (levels === topLevels && topIndustry != null && nation.id < topIndustry)) {
+      topLevels = levels;
+      topIndustry = nation.id;
+    }
+  }
+  const prev = world.storyState;
+  world.storyState = { greats, topIndustry, alive: aliveIds };
+  if (!prev) return; // taban — duyuru yok
+
+  const say = (text, key) => game.turns.addLog(text, { kind: 'NATION', key });
+  // Buyuk guc degisimi: ilk uce giren/cikan.
+  for (const id of greats) {
+    if (!prev.greats.includes(id)) {
+      say(`${world.nations[id]?.name} now stands among the great powers.`, `story-gp:${id}`);
+    }
+  }
+  for (const id of prev.greats) {
+    if (!greats.includes(id) && world.nations[id]?.alive) {
+      say(`${world.nations[id]?.name} has slipped from the ranks of the great powers.`, `story-gp:${id}`);
+    }
+  }
+  // Sanayi liderligi el degistirdi.
+  if (prev.topIndustry != null && topIndustry != null
+    && prev.topIndustry !== topIndustry && topLevels > 10) {
+    say(`${world.nations[topIndustry]?.name} is now the world's first industrial power.`, 'story-industry');
+  }
+  // Cokus: gecen bakista canli olan devlet artik yok.
+  for (const id of prev.alive) {
+    if (!aliveIds.includes(id)) {
+      say(`${world.nations[id]?.name} has ceased to exist as a state.`, `story-dead:${id}`);
+    }
+  }
 }

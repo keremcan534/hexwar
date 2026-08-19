@@ -51,13 +51,20 @@ import {
   EARLY_ELECTION_WINDOW, electionWindowOpen, factoryInvestmentRules,
   fiscalPolicyLimits, holdElection, policyLabel, rulingParty,
 } from '../game/politics.js';
-import { chronicleYear, ensureChronicle } from '../game/chronicle.js';
+import { TIER, announce, chronicleYear, ensureChronicle, memoryOf } from '../game/chronicle.js';
+import {
+  allianceAppeal, alliesOf, breakAlliance, formAlliance, isAllied,
+} from '../game/alliances.js';
+import { characterLine, techStanding } from '../game/identity.js';
 import {
   electorate, enactReform, governmentType, reformBoard,
 } from '../game/reforms.js';
 import { politicsScreen } from './politicsScreen.js';
 import { technologyScreen } from './technologyScreen.js';
-import { researchPointsOf, startResearch } from '../game/technology.js';
+import {
+  PROGRAMMES, adoptProgramme, abandonProgramme, effectiveTechCost,
+  researchPointsOf, startResearch,
+} from '../game/technology.js';
 import {
   CONSTRUCTION_TYPES, NATIONAL_INVESTMENTS, cancelConstruction, canQueueConstruction,
   constructionAtlas, constructionPower, constructionUpkeep, divestInvestment,
@@ -147,6 +154,27 @@ const PICTO = {
  * bölüşüm seviye oranıyla yapılır (ayrı ayrı ölçülmüyor). Kabuk aşaması için
  * yeterli — üç kaydıraç da aynı gerçek toplamı paylaşır.
  */
+/**
+ * "Borc neden buyuyor?" dokumu — debtInterestRate'in GERCEK terimleri
+ * (taban + doluluk + kredi cezasi) ve haftalik defter net'i.
+ */
+function debtWhy(me) {
+  const debt = Math.max(0, me.debt ?? 0);
+  const capacity = debtCapacity(me);
+  const load = capacity > 0 ? Math.min(1, debt / capacity) : 0;
+  const credit = Math.min(0.85, Math.max(0, me.economy?.creditPenalty ?? 0));
+  const net = me.economy?.ledger?.net ?? 0;
+  const interest = me.economy?.interestGold ?? 0;
+  return [
+    `Base rate  =  4.0%`,
+    `Capacity used ${(load * 100).toFixed(0)}% × 8  =  +${(load * 8).toFixed(1)}%`,
+    credit > 0 ? `Default record × 10  =  +${(credit * 10).toFixed(1)}%` : 'Default record  =  +0.0%',
+    `Interest this week  =  ¤${interest.toFixed(1)}`,
+    `Ledger net  =  ${net >= 0 ? '+' : ''}¤${net.toFixed(1)}/wk`,
+    net < 0 ? 'The deficit itself is what feeds the debt.' : 'The debt shrinks while the ledger stays positive.',
+  ].join('\n');
+}
+
 function socialShare(me, programId) {
   const social = me.economy?.social ?? {};
   const total = Object.values(SOCIAL_PROGRAMS)
@@ -429,9 +457,15 @@ export class Screens {
       (entry) => entry.from === target.id && entry.to === me.id,
     );
 
-    const status = war ? '<span class="tag war">at war</span>'
-      : truce ? `<span class="tag truce">truce ${truce}w</span>`
-        : '<span class="tag peace">at peace</span>';
+    const allied = isAllied(me, target.id);
+    const status = [
+      war ? '<span class="tag war">at war</span>'
+        : truce ? `<span class="tag truce">truce ${truce}w</span>`
+          : '<span class="tag peace">at peace</span>',
+      allied ? '<span class="tag ally">ally</span>' : '',
+      me.rivalId === target.id ? '<span class="tag rival">our rival</span>' : '',
+      target.rivalId === me.id ? '<span class="tag rival">sees us as the rival</span>' : '',
+    ].filter(Boolean).join(' ');
 
     return `<div class="card nation-dossier">
       <div class="dossier-head">
@@ -455,6 +489,7 @@ export class Screens {
         <div><span>Cities</span><b>${cities}</b></div>
         <div><span>Industry</span><b>${factories} levels</b></div>
       </div>
+      ${this.dossierIdentity(world, target)}
     </div>
     ${offer ? this.peaceOfferCard(offer) : ''}
     <div class="card">
@@ -465,7 +500,10 @@ export class Screens {
       <div class="row-buttons dossier-actions">
         ${war
     ? `<button class="action" data-peace="${target.id}" ${locked ? 'disabled' : ''}>Peace Talks${locked ? ` (${MIN_WAR_TURNS - (turn - rec.since)}w)` : ''}</button>`
-    : `<button class="action" data-war="${target.id}" ${truce ? 'disabled' : ''}>Declare War</button>`}
+    : allied
+      ? `<button class="action" data-break-alliance="${target.id}">Break Alliance</button>`
+      : `<button class="action" data-war="${target.id}" ${truce ? 'disabled' : ''}>Declare War</button>
+         <button class="action" data-ally="${target.id}">Propose Alliance</button>`}
         <button class="action" data-locate="${target.id}">Show on map</button>
       </div>
     </div>`;
@@ -1142,6 +1180,56 @@ export class Screens {
     </div>`;
   }
 
+  /**
+   * (bkz. debtWhy — modul duzeyinde, bank-line'daki why balonunun metni)
+   *
+   * Dosyanin kimlik bolumu: karakter satiri, teknolojik konum, ne uretir /
+   * neye bagimli, muttefikler ve hafiza. HER SAYI gercek durumdan turer
+   * (goodsFlow, research.done, treaties, memory) — anlati degeri uydurulmaz.
+   */
+  dossierIdentity(world, target) {
+    const flow = target.economy?.goodsFlow ?? {};
+    const producers = Object.entries(flow)
+      .filter(([, f]) => (f?.production ?? 0) > 0.5)
+      .sort((a, b) => (b[1].production ?? 0) - (a[1].production ?? 0))
+      .slice(0, 3)
+      .map(([id]) => `${GOODS[id]?.icon ?? ''} ${GOODS[id]?.name ?? id}`);
+    const imports = Object.entries(flow)
+      .filter(([, f]) => (f?.imports ?? 0) > 0.2 && (f?.demand ?? 0) > 0)
+      .sort((a, b) => (b[1].imports / Math.max(0.01, b[1].demand))
+        - (a[1].imports / Math.max(0.01, a[1].demand)))
+      .slice(0, 3)
+      .map(([id, f]) => `${GOODS[id]?.icon ?? ''} ${GOODS[id]?.name ?? id} (${Math.round((f.imports / Math.max(0.01, f.demand)) * 100)}%)`);
+    const standing = techStanding(world, target);
+    const allies = alliesOf(target)
+      .map((id) => world.nations[id])
+      .filter((n) => n?.alive)
+      .map((n) => esc(n.name));
+    const rival = target.rivalId != null ? world.nations[target.rivalId] : null;
+    const memoryRows = memoryOf(target).slice(-3).reverse().map((m) => {
+      const year = 1836 + Math.floor(((m.turn ?? 1) - 1) * 7 / 365);
+      const other = esc(world.nations[m.other]?.name ?? '?');
+      const text = {
+        war_with: `war with ${other}`,
+        took_land_from: `took land from ${other}`,
+        lost_land_to: `lost land to ${other}`,
+        allied: `allied with ${other}`,
+        alliance_broken: `broke with ${other}`,
+        honored_call: `honored the call of ${other}`,
+      }[m.kind] ?? `${m.kind} ${other}`;
+      return `<li><em>${year}</em> ${text}</li>`;
+    }).join('');
+    return `<p class="dossier-line">${esc(characterLine(world, target))}</p>
+      <div class="dossier-identity">
+        <div><span>Technology</span><b>${esc(standing.label)}</b><small>${standing.research} researched · #${standing.rank ?? '—'} of ${standing.of ?? '—'}</small></div>
+        <div><span>Produces</span><b>${producers.length ? producers.join(' · ') : 'little of note'}</b></div>
+        <div><span>Depends on</span><b>${imports.length ? imports.join(' · ') : 'no major imports'}</b></div>
+        <div><span>Allies</span><b>${allies.length ? allies.join(', ') : 'none'}</b></div>
+        <div><span>Rival</span><b>${rival?.alive ? esc(rival.name) : 'none declared'}</b></div>
+      </div>
+      ${memoryRows ? `<ul class="dossier-memory">${memoryRows}</ul>` : ''}`;
+  }
+
   factoryRow(me, factory) {
     const type = FACTORIES[factory.typeId];
     const jobs = factoryJobs(factory);
@@ -1171,7 +1259,33 @@ export class Screens {
       <div class="factory-chain"><span>${esc(inputs)}</span><strong>→</strong><span>${esc(outputs)}</span></div>
       <div class="meter"><i style="width:${Math.max(0, Math.min(100, employment))}%"></i></div>
       <small class="factory-status">${esc(status)}</small>
+      ${this.factoryContext(me, type)}
     </div>`;
+  }
+
+  /**
+   * Tesisin ULUSAL baglami — yalniz gercek akislardan (goodsFlow) turen
+   * cumleler: girdinin ne kadari ithal, ciktinin ne kadari ihrac. Tesis
+   * basina pay UYDURULMAZ (uretim tesise paylastirilamiyor; ulusal rakam
+   * acikca "national" diye etiketlenir).
+   */
+  factoryContext(me, type) {
+    const flow = me.economy?.goodsFlow ?? {};
+    const parts = [];
+    for (const id of Object.keys(type.inputs ?? {})) {
+      const f = flow[id];
+      if (!f || (f.demand ?? 0) <= 0.05) continue;
+      const share = Math.round(((f.imports ?? 0) / f.demand) * 100);
+      if (share >= 25) parts.push(`${GOODS[id]?.name ?? id} is ${share}% imported nationally`);
+    }
+    for (const id of Object.keys(type.outputs ?? {})) {
+      const f = flow[id];
+      if (!f || (f.production ?? 0) <= 0.05) continue;
+      const share = Math.round(((f.exports ?? 0) / f.production) * 100);
+      if (share >= 25) parts.push(`${share}% of national ${GOODS[id]?.name ?? id} is exported`);
+    }
+    return parts.length
+      ? `<small class="factory-context">${esc(parts.slice(0, 2).join(' · '))}</small>` : '';
   }
 
   /**
@@ -1475,7 +1589,9 @@ export class Screens {
             <span>Available credit</span><b>¤${Math.round(Math.max(0, debtCapacity(me) - (me.debt ?? 0)))}</b></div>
           <div class="bank-line"><span>Total debt</span>
             <b class="${(me.debt ?? 0) > 0 ? 'neg' : ''}">¤${Math.round(me.debt ?? 0)}</b>
-            <span>Interest</span><b>${(debtInterestRate(me) * 100).toFixed(1)}%</b></div>
+            <span class="stat-why" role="button" tabindex="0" data-why="debt"
+              data-why-text="${esc(debtWhy(me))}" title="Click for the breakdown">Interest</span>
+            <b>${(debtInterestRate(me) * 100).toFixed(1)}%</b></div>
           <table class="bank-table">
             <tr><th>Creditor</th><th>Amount</th></tr>
             ${(me.debt ?? 0) > 0
@@ -1860,12 +1976,18 @@ export class Screens {
 
   // --- Teknoloji: arastirma merdiveni (bkz. technologyScreen.js) ---
   render_technology(me) {
-    const year = 1836 + Math.floor(((this.game.world.turn ?? 1) - 1) * 7 / 365);
+    const world = this.game.world;
+    const year = 1836 + Math.floor(((world.turn ?? 1) - 1) * 7 / 365);
     return technologyScreen(me, {
       category: this.techCategory ?? 'industry',
       selected: this.techSelected ?? null,
       year,
+      turn: world.turn ?? 0,
       rate: researchPointsOf(me),
+      // SERT KURAL: ekran ETKIN maliyeti gosterir (program indirimi +
+      // yayilim). Liste fiyati basmak, motorun dusecegi sayiyla celisir ve
+      // UI_TRUTH_FIXES'in kapattigi hata sinifini yeniden acardi.
+      costOf: (techId) => effectiveTechCost(world, me, techId, year),
     });
   }
 
@@ -2120,8 +2242,70 @@ export class Screens {
     }
     for (const btn of this.el.body.querySelectorAll('[data-start-research]')) {
       btn.onclick = () => {
-        // Yon secimi OYUNCUNUN: bu cagri YZ'nin en-ucuz secimini ezer.
+        // Yon secimi OYUNCUNUN: bu cagri programin otomatik akisini ezer.
         startResearch(me, btn.dataset.startResearch);
+        this.refresh();
+      };
+    }
+    for (const el of this.el.body.querySelectorAll('[data-why-text]')) {
+      // hud.toggleWhy'in ekran-ici esi: metni oge kendi tasir, ekran yalniz
+      // acip kapatir (dokunmatikte hover yok — istikrar dokumleriyle ayni ders).
+      const toggle = () => {
+        if (this.whyPop?.isConnected && this.whyPop.dataset.anchor === el.dataset.why) {
+          this.whyPop.remove();
+          return;
+        }
+        this.whyPop?.remove();
+        const pop = document.createElement('div');
+        pop.className = 'why-pop';
+        pop.dataset.anchor = el.dataset.why ?? '';
+        pop.textContent = el.dataset.whyText;
+        const rect = el.getBoundingClientRect();
+        pop.style.top = `${Math.round(rect.bottom + 6)}px`;
+        pop.style.left = `${Math.round(rect.left)}px`;
+        document.body.append(pop);
+        this.whyPop = pop;
+        setTimeout(() => document.addEventListener('click', (ev) => {
+          if (!pop.contains(ev.target) && this.whyPop === pop) pop.remove();
+        }, { once: true }), 0);
+      };
+      el.onclick = toggle;
+      el.onkeydown = (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        toggle();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-proclaim]')) {
+      btn.onclick = () => {
+        const id = btn.dataset.proclaim;
+        if (adoptProgramme(me, id, game.world.turn ?? 0)) {
+          const programme = PROGRAMMES[id];
+          // Taahhut ANINDA baglar: kart "egitim >= %25" diyorsa kaydirac o
+          // hafta oraya cikar — sonraki dokunusa kadar 0'da kalmasi vaadi
+          // bosa cikarirdi. setFiscalPolicy tabani zaten biliyor.
+          setFiscalPolicy(me, 'social',
+            Math.max(me.economy.social?.education ?? 0, programme.floor), 'education');
+          // Ilan buyuk bir ulusal taahhuttur: vakayinameye girer (tier 2),
+          // zaman DURMAZ — karari zaten oyuncu verdi.
+          announce(game, me, {
+            kind: 'POLITICS', tier: TIER.MAJOR, key: 'programme',
+            title: `${programme.name} proclaimed`,
+            detail: `${programme.line} Education bound at ${programme.floor}%.`,
+          });
+        }
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-abandon-programme]')) {
+      btn.onclick = () => {
+        if (abandonProgramme(me, game.world.turn ?? 0, 'abandoned')) {
+          announce(game, me, {
+            kind: 'POLITICS', tier: TIER.MAJOR, key: 'programme',
+            title: 'The national programme is wound up',
+            detail: 'Half the accumulated research bank is forfeit; no new proclamation for a year.',
+          });
+        }
         this.refresh();
       };
     }
@@ -2325,6 +2509,41 @@ export class Screens {
     }
     for (const btn of this.el.body.querySelectorAll('[data-war]')) {
       btn.onclick = () => { game.declareWarOn(Number(btn.dataset.war)); this.refresh(); };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-ally]')) {
+      btn.onclick = () => {
+        const targetId = Number(btn.dataset.ally);
+        const target = game.world.nations[targetId];
+        // YZ, oyuncunun teklifini KENDI olcusuyle tartar (allianceAppeal —
+        // YZ-YZ taramasiyla birebir ayni fonksiyon; oyuncuya torpil yok).
+        const appeal = allianceAppeal(game.world, target, me);
+        if (appeal >= 1.5 && formAlliance(game.world, me.id, targetId, game.world.turn ?? 0)) {
+          announce(game, me, {
+            kind: 'PEACE', tier: TIER.MAJOR, key: `ally:${targetId}`,
+            title: `Alliance with ${target.name}`,
+            detail: 'An attack on one is a call to the other.',
+          });
+        } else {
+          game.turns.addLog(`${target.name} declines the alliance.`, {
+            kind: 'DIPLOMACY', key: `ally-no:${targetId}`,
+          });
+        }
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-break-alliance]')) {
+      btn.onclick = () => {
+        const targetId = Number(btn.dataset.break_alliance ?? btn.dataset.breakAlliance);
+        const target = game.world.nations[targetId];
+        if (breakAlliance(game.world, me.id, targetId, game.world.turn ?? 0)) {
+          announce(game, me, {
+            kind: 'DIPLOMACY', tier: TIER.MAJOR, key: `ally:${targetId}`,
+            title: `The alliance with ${target?.name ?? '?'} is dissolved`,
+            detail: 'Former partners remember such things.',
+          });
+        }
+        this.refresh();
+      };
     }
     // Eskiden bu düğme tek tıkla işgalleri devreden otomatik barışı yapıyordu.
     // Artık oyuncunun tek barış yolu var: masa.
