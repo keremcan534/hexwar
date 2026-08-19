@@ -43,9 +43,9 @@ tek merdiven, agirlikli olarak yuzdesel degistiriciler.
 
 > **OLCUM UYARISI.** `harness.headless()` standart dunyayi degil **78×62**
 > haritayi kurar (`harness.mjs:35`; standart 160×96, bkz. CLAUDE.md).
-> Asagidaki mutlak sayilar (ulke sayisi, teknoloji adedi) bu kucuk haritaya
-> aittir; **desen** haritadan bagimsiz beklenir ama yakit collapse'i standart
-> haritada ayrica dogrulanmaktadir.
+> Teknoloji temposu sayilari (§2 soru 12) bu kucuk haritaya aittir.
+> **Yakit collapse'i standart 160×96 haritada ayrica dogrulandi** (§3) ve
+> orada daha siddetli cikti.
 
 ---
 
@@ -310,6 +310,22 @@ Olcum (2 tohum, medyan degerler, 1836→1945):
 | 1900 | 0 | 22 / 27 | %8 | %12.3 | 0.65 |
 | 1920 | 0 | 22 / 26 | %8 | %9.5 | 0.67 |
 | 1945 | **0** | **22/26 · 27/30** | **%8** | **%8.4** | 0.61 |
+
+**STANDART DUNYADA DOGRULAMA (160×96, ~65 ulke, 2 tohum).** Kucuk haritanin
+artifakti degil — daha siddetli:
+
+| Yil | egitim (medyan) | egitimi 0 olan | okuryazarlik hedefi | okuryazarlik |
+|---|---|---|---|---|
+| 1840 | **100** | 6 / 11 | **%73.7** | %10 |
+| 1860 | **0** | 43 / 42 | **%8** | %18-20 |
+| 1880 | 10 / 0 | 29 / 49 | %14.9 / %8 | %17-19 |
+| 1900 | 0 | 37 / 53 | %8 | %12-21 |
+| 1945 | **0** | **42/63 · 53/64** | **%8** | %8.4-10.5 |
+
+Iki not: (a) 1860'ta cokus **her iki haritada da ayni yil** olur; (b) STD1'de
+1880'de kismi bir toparlanma gorunur (medyan 10) — yani durum tam soguran
+degil, ama medyan hizla sifira geri doner. 1945'te ulkelerin **ucte ikisi
+ile dortte ucu** egitimde sifirdadir.
 
 **Kok neden — `adjustSocialAI` (`economy.js:2558-2575`):**
 
