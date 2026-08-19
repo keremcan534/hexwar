@@ -506,9 +506,16 @@ tesis seviyesi yakinsadi (eskiden 107 vs 109, simdi 98 vs 99) ve istihdam da
 onunla yakinsadi. Egitimin isealim carpani (`x1.25`) **kod olarak
 dokunulmadi**.
 
-**Karar: dokunulmadi.** Testin isaret korlugu gercek bir tanisal hatadir ama
-oyun kodunda degil, denetim harness'indedir; bu gecis bir iletisim gecisidir ve
-brief "THEN STOP" diyor. Bir sonraki mekanik turuna kayit dusuldu.
+**Karar (bu gecis): dokunulmadi.** Testin isaret korlugu gercek bir tanisal
+hatadir ama oyun kodunda degil, denetim harness'indedir; bu gecis bir iletisim
+gecisidir ve brief "THEN STOP" diyor. Bir sonraki tura kayit dusuldu.
+
+> **SONRAKI TURDA DUZELTILDI.** Harness hatasi ayri bir adimda giderildi:
+> olcum yonlu hale getirildi, etkinin gorulebildigi ufuga (260 hafta) tasindi ve
+> tek tohum yerine panel ortalamasina baglandi (olculen sapma bunu zorunlu
+> kildi: 1040 haftada 6 tohumun 3'u negatif). `audit:all` 5 YUKSEK → **4
+> YUKSEK**; **oyun kodu degismedi** (`git diff -- src/` bos). Tam gerekce ve
+> once/sonra: `AUDIT_HARNESS_CORRECTION.md`.
 
 ---
 

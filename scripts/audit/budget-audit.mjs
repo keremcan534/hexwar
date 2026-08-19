@@ -161,18 +161,97 @@ sub('Egitim 0 / 50 / 100');
   console.log(`  1040 haftada: orta sinif farki ${pct(dFar)},`
     + ` sanayi kadrosu farki ${pct(dEmpFar)},`
     + ` tesis seviyesi ${far.lo.snap.factoryLevels} -> ${far.hi.snap.factoryLevels}`);
-  if (Math.abs(dEmpFar) < 0.05) {
-    finding('HIGH', 'Egitim -> sanayi isgucu', 'egitim isealimi hizlandirmali',
-      `1040 haftada bile kadro farki yalniz ${pct(dEmpFar)}`, '');
-  } else {
-    console.log('  OK  egitim sanayi isgucunu uzun vadede belirgin buyutuyor.');
-  }
 
-  finding('LOW', 'Okuryazarlik/nitelik degiskeni yok',
-    'egitim bir nitelik stogu biriktirmeli (Vic2 okuryazarligi)',
-    'sistemde literacy/qualification diye saklanan hicbir alan yok; egitim yalniz'
-    + ' iki carpandir (isealim x1.25, promosyon x1.5) ve gecmisi tutulmaz',
-    'kaydirac kapatilinca birikmis nitelik de aninda kaybolur — yatirim niteligi tasimiyor');
+  // ------------------------------------------------------------------
+  // EGITIM -> SANAYI ISGUCU: neden panel ortalamasi, neden 260 hafta
+  //
+  // Mekanizma bir AKIS carpanidir, stok degil (economy.js `schooling`,
+  // isealim HAVUZUNU carpar). Havuz ise stok tavaniyla kirpilir:
+  //   min(workers, lower * MAX_WORKER_SHARE) - employed
+  // Yani uzun ufukta istihdami fabrika kadrosu ve isci stogu belirler;
+  // akis carpani yalnizca o tavana VARMA HIZINI degistirir. Etkinin
+  // 1040 haftada sonmesi bu yuzden DOGRU davranistir, kusur degil.
+  //
+  // Ikinci karistirici: %100 egitim haftada ~28 daha pahalidir; hazineyi
+  // bosaltir, insaati yavaslatir, tesis sayisini dusurur. Uzun ufuk
+  // olcumu bu NEGATIF terimi de icerir — yani saf carpani olcmez.
+  //
+  // OLCULDU (6 tohum x 3 ufuk, 0% vs 100% egitim):
+  //     ufuk        ortalama   sapma     aralik            negatif
+  //     260 hafta    +%4.7     %7.2     -%4.0 .. +%16.4     2/6
+  //     520 hafta    -%3.2     %6.9    -%17.1 .. +%5.7      5/6
+  //    1040 hafta    +%0.8     %3.2     -%3.5 .. +%6.1      3/6
+  //
+  // Sonuc: 1040 haftada TEK TOHUM bir tahmin edici degil — isaret bile
+  // kararsiz. Eski kontrol (`Math.abs(dEmpFar) < 0.05`) hem isaret koru
+  // hem tek tohumluydu: ters yonde %11.9'luk bir IHLALI "OK" sayarken
+  // dogru yondeki %2.4'u HIGH yapiyordu. Yerine:
+  //   - asil sav, etkinin GORULEBILDIGI ufukta (260 hafta) ve PANEL
+  //     ortalamasiyla olculur,
+  //   - yon onemlidir: ceza yalnizca ISGUCUNU AZALTAN egitime verilir,
+  //   - uzun ufuk yukarida bilgi olarak basilir, uzerinden hukum verilmez.
+  // ------------------------------------------------------------------
+  const EDU_PANEL = [SEED, 'edu-A', 'edu-B'];
+  const panel = EDU_PANEL.map((seed) => {
+    const arm = (value) => runScenario({
+      seed, warmup: WARMUP, weeks: WEEKS, peaceful: true,
+      levers: [{ key: 'social', value, classId: 'education' }],
+    });
+    const pLo = arm(0);
+    const pHi = arm(100);
+    return {
+      seed,
+      d: relDelta(pLo.snap.employees, pHi.snap.employees),
+      empLo: pLo.snap.employees,
+      empHi: pHi.snap.employees,
+      goldLo: pLo.snap.gold,
+      goldHi: pHi.snap.gold,
+    };
+  });
+  console.log(`\n  panel: egitim %0 vs %100, ${WEEKS} hafta, ${panel.length} tohum`);
+  console.log(table(panel, [
+    { label: 'tohum', get: (x) => x.seed, right: false },
+    { label: 'kadro@0%', get: (x) => n0(x.empLo) },
+    { label: 'kadro@100%', get: (x) => n0(x.empHi) },
+    { label: 'fark', get: (x) => pct(x.d) },
+    { label: 'hazine@0%', get: (x) => n0(x.goldLo) },
+    { label: 'hazine@100%', get: (x) => n0(x.goldHi) },
+  ]));
+  const dEmpMean = panel.reduce((s, x) => s + x.d, 0) / panel.length;
+  console.log(`  panel ortalamasi: ${pct(dEmpMean)}`
+    + ` (tohum basina: ${panel.map((x) => pct(x.d).trim()).join(' · ')})`);
+
+  if (dEmpMean < 0) {
+    // Gercek kusur: egitim isealimini HIZLANDIRMASI gerekirken yavaslatiyor.
+    finding('HIGH', 'Egitim -> sanayi isgucu',
+      'egitim isealimini hizlandirmali (economy.js `schooling` carpani)',
+      `${panel.length} tohumlu panelde ${WEEKS} haftada ortalama fark ${pct(dEmpMean)}`
+      + ' — egitim isgucunu AZALTIYOR',
+      'akis carpani ters yonde ya da mali yuk carpani tamamen yutuyor');
+  } else if (dEmpMean < 0.02) {
+    finding('MEDIUM', 'Egitim -> sanayi isgucu',
+      'egitim isealiminde olculebilir bir hizlanma uretmeli',
+      `${panel.length} tohumlu panelde ${WEEKS} haftada ortalama fark yalniz ${pct(dEmpMean)}`,
+      'yon dogru ama buyukluk tohum gurultusunun altinda');
+  } else {
+    console.log(`  OK  egitim isealimi hizlandiriyor (${WEEKS} hafta, panel ortalamasi).`);
+  }
+  console.log('  NOT: uzun ufukta (1040 hafta) fark sonuyor — akis carpani stok'
+    + ' tavanina carpar. Beklenen davranis; uzerinden hukum verilmiyor.');
+
+  // ESKI BULGU DUZELTILDI: "sistemde literacy diye saklanan hicbir alan yok"
+  // artik DOGRU DEGIL. `economy.literacy` bir stoktur (economy.js
+  // `advanceLiteracy`), haftada LITERACY_APPROACH=0.001 ile hedefe yaklasir
+  // ve `economy` butun halinde serialize edildigi icin kayda girer. Kaydirac
+  // kapatilinca da aninda kaybolmaz — ayni yavaslikla geri iner.
+  // Geriye KALAN gercek bosluk daha dar: nitelik kanali hala durumsuz.
+  finding('LOW', 'Isgucu niteligi hala durumsuz bir carpan',
+    'egitim isgucu niteliginde de birikimli bir stok kurmali',
+    'okuryazarlik STOK oldu (advanceLiteracy) ve arastirmayi besliyor'
+    + ' (technology.js researchPointsOf), ama isealim/promosyon kanali hala'
+    + ' anlik carpandir: schooling = 1 + egitim x 0.25 (+ yuksekogretim)',
+    'kaydirac dususu isealim carpanini AYNI HAFTA sifirlar; okuryazarlik'
+    + ' stogunun tersine burada birikmis bir yatirim tasinmaz');
 }
 
 // --------------------------------------------------------- SAGLIK ---

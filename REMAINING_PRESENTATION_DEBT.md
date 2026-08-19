@@ -134,7 +134,14 @@ brief'in acikca yasakladigi sey.
 da bu buyukluk sayesinde `OK` basiyordu; simdiki kod **dogru yonde +%2.4**
 veriyor ve `[HIGH]` aliyor.
 
-Yani bu YUKSEK, gecmisten **daha iyi** bir dunyayi raporluyor. Duzeltmesi tek
-satirlik (`dEmpFar < 0.05` — isaretli karsilastirma) ama bu bir **denetim**
-duzeltmesidir, sunum degil; brief "THEN STOP" dedigi icin bir sonraki mekanik
-turuna birakildi.
+Yani bu YUKSEK, gecmisten **daha iyi** bir dunyayi raporluyordu.
+
+**DURUM: KAPANDI** (bu gecisin disinda, ayri bir harness adiminda). Duzeltme
+tek satirdan buyuk cikti: olcum yonlu yapildi, etkinin **gorulebildigi** ufuga
+(260 hafta) tasindi ve tek tohum yerine **panel ortalamasina** baglandi —
+cunku olcum, 1040 haftada tek tohumun bir tahmin edici olmadigini gosterdi
+(6 tohum: ortalama +%0.8, sapma %3.2, ucu negatif). Ayni blokta bayat bir
+`[LOW]` da duzeltildi: okuryazarlik artik gercekten bir stok ve kayda giriyor.
+
+`audit:all` 5 YUKSEK → **4 YUKSEK**; **oyun kodu degismedi**. Tam gerekce:
+`AUDIT_HARNESS_CORRECTION.md`.
