@@ -107,6 +107,8 @@ export function captureOpening(world, nation, governmentLabel) {
     provinces: nation.provinces ?? 0,
     government: governmentLabel ?? '',
     factories: nation.economy?.factories?.length ?? 0,
+    // Kapanistaki "teknolojik konum" satirinin baslangic ucu.
+    research: nation.research?.done?.length ?? 0,
   };
   return nation.opening;
 }

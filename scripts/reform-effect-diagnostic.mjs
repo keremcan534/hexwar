@@ -81,10 +81,8 @@ const results = {
       && reformed.mods.throughput <= plain.mods.throughput,
   },
   consequences: {
-    // Kazanan isci. Butce iddiasi KOSULLU: onu yukselten yasa asgari
-    // ucret/sendikadir ve meclis her kosuda gecirmez.
-    lowerBudgetUp: reformed.mods.lowerBudget > plain.mods.lowerBudget
-      ? d('lowerBudget') > 0 : true,
+    // lowerBudget/middleBudget anahtarlari SILINDI (tuketicisiz degistirici);
+    // butce iddiasi artik olculmuyor — hane butcesi reform terimi tasimiyor.
     lowerSatisfactionUp: d('lowerSat') > 0,
     // Kaybeden sermaye.
     upperSatisfactionDown: d('upperSat') < 0,

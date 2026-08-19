@@ -25,7 +25,7 @@ import {
   higherEducationBonus, investmentLevel, planConstructionAI, queueIndustryProject,
 } from './construction.js';
 import {
-  refreshReformModifiers, reformBudgetFactor, reformModifiers, reformMoodShift,
+  refreshReformModifiers, reformModifiers, reformMoodShift,
 } from './reforms.js';
 
 /**

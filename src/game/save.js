@@ -119,7 +119,15 @@ export function serialize(game) {
         // yazilmazsa yuklemeden sonra oyun ayni borcu/rejimi ikinci kez
         // duyurur ve kampanyanin tarihi silinir (bkz. chronicle.js).
         chronicle: (n.chronicle ?? []).map((entry) => ({ ...entry })),
-        events: n.events ? { ...n.events, said: { ...(n.events.said ?? {}) } } : null,
+        events: n.events
+          ? {
+            ...n.events,
+            said: { ...(n.events.said ?? {}) },
+            atWarWith: { ...(n.events.atWarWith ?? {}) },
+          }
+          : null,
+        // Kampanya sayaclari: kapanis ekraninin savas/zirve/borc satirlari.
+        tally: n.tally ? { ...n.tally } : null,
         // Acilis kesiti: kapanis ekraninin "nereden nereye" olcusu. Bir kez
         // yazilir; kayit disi kalirsa yuzyilin baslangici kaybolur.
         opening: n.opening ? { ...n.opening } : null,
@@ -278,6 +286,7 @@ export function deserialize(game, data) {
     nation.opening = saved.opening ? { ...saved.opening } : null;
     nation.rivalId = saved.rivalId ?? null;
     nation.memory = (saved.memory ?? []).map((entry) => ({ ...entry }));
+    nation.tally = saved.tally ? { ...saved.tally } : null;
     nation.rallyPoint = saved.rallyPoint ?? null;
     nation.treaties = (saved.treaties ?? []).map((t) => ({ ...t }));
     nation.training = saved.training

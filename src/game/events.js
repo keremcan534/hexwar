@@ -16,6 +16,7 @@ import { rulingParty } from './politics.js';
 import { controllerOf } from './control.js';
 import { regimentCount } from './units.js';
 import { scoreboard } from './hegemony.js';
+import { atWar } from './diplomacy.js';
 
 /** Kredinin bu kadari tukendiyse borc "kritik" sayilir. */
 const DEBT_CRITICAL = 0.75;
@@ -167,6 +168,25 @@ export function runNationalEvents(game, nation) {
   // Acilis kesiti ilk taramada alinir: kapanis ekrani yuzyilin iki ucunu
   // karsilastirabilsin (bkz. ui/endScreen.js).
   captureOpening(world, nation, governmentType(nation));
+
+  // --- KAMPANYA SAYACLARI ------------------------------------------------
+  // Kapanis ekraninin "savas sayisi / zirve hazine / en kotu borc" satirlari
+  // icin ucuz, haftalik sayaclar (REMAINING_PRESENTATION_DEBT #3'un cozumu:
+  // uydurma sayi gostermek yerine sayac tutuluyor). ~10 satir, kayda ~40 bayt.
+  const tally = nation.tally ??= { warsFought: 0, peakGold: 0, worstDebt: 0 };
+  tally.peakGold = Math.max(tally.peakGold, Math.round(nation.gold ?? 0));
+  tally.worstDebt = Math.max(tally.worstDebt, Math.round(nation.debt ?? 0));
+  state.atWarWith ??= {};
+  for (const other of world.nations) {
+    if (!other.alive || other.id === nation.id) continue;
+    const fighting = atWar(world, nation.id, other.id);
+    if (fighting && !state.atWarWith[other.id]) {
+      state.atWarWith[other.id] = true;
+      tally.warsFought++;
+    } else if (!fighting && state.atWarWith[other.id]) {
+      state.atWarWith[other.id] = false;
+    }
+  }
 
   // --- BORC / TEMERRUT ---------------------------------------------------
   const phase = debtPhase(nation);

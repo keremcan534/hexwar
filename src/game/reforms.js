@@ -886,8 +886,12 @@ export function releasableNations(world, nation) {
  */
 const modsByNation = new WeakMap();
 
+// `lowerBudget`/`middleBudget` SILINDI: hesaplaniyordu ama tek erisimcisi
+// (reformBudgetFactor) hicbir yerden cagrilmiyordu — hane butcesi
+// needsBudget = netIncome + subsistence formulunde reform terimi yok.
+// Tuketicisiz degistirici tutulmaz (P1-6). Baglamak hane muhasebesini
+// (dondurulmus cekirdek) yeniden acmak olurdu; kayit REMAINING listesinde.
 export const NEUTRAL_MODIFIERS = Object.freeze({
-  lowerBudget: 1, middleBudget: 1,
   lowerMood: 0, middleMood: 0, upperMood: 0,
   throughput: 1, wageCost: 1, socialBurden: 0,
 });
@@ -930,9 +934,6 @@ export function refreshReformModifiers(nation) {
   const press = p('press_rights');
 
   const mods = {
-    // Hane: asgari ücret ve sendika alt sınıfın harcanabilir gelirini büyütür.
-    lowerBudget: 1 + wage * 0.16 + unions * 0.05,
-    middleBudget: 1 + pension * 0.05,
     // Memnuniyet — omurgaya doğrudan bağlanan terim: memnuniyet → stability
     // → parti desteği → seçim. Reformun siyasi sonucu budur.
     //
@@ -970,13 +971,8 @@ export function reformModifiers(nation) {
   return modsByNation.get(nation) ?? NEUTRAL_MODIFIERS;
 }
 
-/** Sınıfa göre hane bütçesi çarpanı; üst sınıfın bütçesine yasa dokunmaz. */
-export function reformBudgetFactor(nation, classId) {
-  const mods = reformModifiers(nation);
-  if (classId === 'lower') return mods.lowerBudget;
-  if (classId === 'middle') return mods.middleBudget;
-  return 1;
-}
+// `reformBudgetFactor` SILINDI: sifir cagirani vardi (bkz. NEUTRAL_MODIFIERS
+// notu). Ekranin vaadi ile motorun gercegi ayni olsun.
 
 /** Sınıfa göre memnuniyet kayması. */
 export function reformMoodShift(nation, classId) {

@@ -12,6 +12,7 @@ import { chronicleYear, ensureChronicle } from '../game/chronicle.js';
 import { governmentType } from '../game/reforms.js';
 import { scoreboard } from '../game/hegemony.js';
 import { formatPopulation } from '../game/economy.js';
+import { techStanding } from '../game/identity.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -92,14 +93,24 @@ export function showEndScreen(game, result) {
       <span>${esc(entry.title)}</span>
     </li>`).join('') || '<li class="epilogue-event empty"><span>A century without recorded upheaval.</span></li>';
 
+  // Teknoloji satiri: acilis kesiti + guncel konum (identity.techStanding).
+  const standing = techStanding(world, nation);
   const metrics = opening ? [
     metricRow('Population', formatPopulation(opening.population), formatPopulation(nation.economy?.population ?? 0)),
     metricRow('Territory', `${opening.tiles} hexes`, `${nation.tiles} hexes`),
     metricRow('Industry', `${opening.factories} plants`, `${nation.economy?.factories?.length ?? 0} plants`),
     metricRow('Literacy', `${Math.round(opening.literacy * 100)}%`, `${Math.round((nation.economy?.literacy ?? 0) * 100)}%`),
+    metricRow('Technology', `${opening.research ?? 0} researched`,
+      `${standing.research} · ${standing.label.toLowerCase()}`),
     metricRow('Government', opening.government, governmentType(nation)),
     metricRow('Standing', `rank ${(board.findIndex((row) => row.nation.id === nation.id) + 1) || '—'}`, `rank ${rank + 1} of ${board.length}`),
   ].join('') : '';
+  // Kampanya sayaclari (nation.tally, haftalik tutulur — uydurma yok).
+  // Sayac yoksa satir da yok: eski kayitta tally birikmemis olabilir.
+  const tally = nation.tally;
+  const tallyLine = tally && tally.warsFought > 0
+    ? `<p class="epilogue-tally">${tally.warsFought} wars fought · peak treasury ¤${(tally.peakGold ?? 0).toLocaleString('en-US')} · worst debt ¤${(tally.worstDebt ?? 0).toLocaleString('en-US')}</p>`
+    : '';
 
   const host = document.createElement('div');
   host.id = 'epilogue';
@@ -113,6 +124,7 @@ export function showEndScreen(game, result) {
       </header>
       <p class="epilogue-line">${esc(closingLine(nation, opening, board))}</p>
       <section class="epilogue-metrics">${metrics}</section>
+      ${tallyLine}
       <section class="epilogue-timeline">
         <h2>The century in brief</h2>
         <ol>${timeline}</ol>

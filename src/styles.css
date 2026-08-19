@@ -8157,3 +8157,11 @@ body.menu-open .sheet { visibility: hidden; }
   margin-right: var(--sp-1);
 }
 .factory-context { display: block; color: var(--text-mute); margin-top: 2px; }
+
+/* Kampanya sonu: sayac satiri (savas / zirve hazine / en kotu borc) */
+.epilogue-tally {
+  text-align: center;
+  color: var(--text-mute);
+  font-size: var(--fs-sm);
+  margin: calc(-1 * var(--sp-1)) 0 var(--sp-2);
+}

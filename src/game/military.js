@@ -363,15 +363,11 @@ export function militaryStats(world, nation) {
   );
   const bestPlanning = Math.max(0, ...generalsOf(nation).map((g) => g.planning ?? 0));
 
+  // "War Exhaustion" satiri KALDIRILDI: 'Not simulated' diye gri bir olu
+  // gosterge tasiyordu. Savasin bedeli zaten hazine/insan/istikrar ve
+  // warStrain -> iktidar destegi kanallarindan akiyor; olu metre sahte
+  // derinlikti. (Ayri bir yorgunluk sayaci istenirse kaynagi once kurulmali.)
   return [
-    {
-      id: 'exhaustion',
-      label: 'War Exhaustion',
-      value: '—',
-      live: false,
-      note: 'Not simulated. War already costs treasury, manpower and stability;'
-        + ' a separate exhaustion meter has no source yet.',
-    },
     {
       id: 'supply',
       label: 'Supply Consumption',
