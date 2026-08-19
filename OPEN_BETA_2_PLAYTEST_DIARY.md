@@ -582,3 +582,38 @@ Kampanyanin en buyuk savasi — ve ilk komuta ettigim savas. Uc yil surdu.
 - REACTION: yem dongusu (farming) **TEDIOUS-ACIMASIZ** ama tutarli ·
   ittifaksizlik **MISSING** · "colonial" toprak etiketi, Liberate
   Minorities gibi dokular **SATISFYING**
+
+---
+
+# ✦ KONTROL NOKTASI: %75 (11 NOV 1910)
+
+- **CURRENT GOAL:** 1936'ya kadar HAYATTA KALMAK. Ikincil: bu kucuk sanayi
+  devletinin kendine yeni bir kimlik bulmasini izlemek.
+- **BIGGEST PROBLEM:** Oyuncu ajansi fiilen sifir: para yok (surekli ¤0),
+  devlet yatirimi yasak, kaydiraclar el koyulmus, ordu sembolik. Son 20
+  yilda verdigim tek gercek karar baris masalarinda hangi eyaleti
+  feda edecegim.
+- **MOST INTERESTING DECISION:** 1899 barisinda Caldreach+Asterstead'i
+  secmek (10+9 puanla tam 18'lik istegi karsilamak) — kucuk ama gercek
+  bir optimizasyon ani.
+- **MOST BORING TASK:** Arastirma nobetciligi (9. kez bos; banka 5671 RP
+  — artik parodi düzeyinde, B-018).
+- **ECONOMIC:** Kalinti devlet SANAYILESTI: 13 fabrika / 66 seviye / 96K
+  isci (alt sinifin %40'i!), issizlik %45 (ilhaklarin biraktigi multeci
+  emek), needs met %92, GDP 118. Ozel sermaye kuculen ulkede bile insaata
+  devam ediyor — sim canli.
+- **POLITICAL:** 75 yillik sosyalist diktatorluk. Istikrar %68 —
+  kuculdukce huzur.
+- **MILITARY:** 2K ordu, 0 amiral, 1 gemi (1849'dan beri — hicbir zaman
+  kullanilamadi). 6 savasin ozeti: 2 galibiyet sayilir (Torford rovansi +
+  bu kez yem olmadan sag cikma), 4 agir kayip.
+- **TECH:** Okuryazarlik %27 (tech ekrani) ama nufus ekrani %16 —
+  ilhaklar egitimli bolgelerimi goturdu. Iki gosterge hala celisiyor
+  (B-019).
+- **WORLD:** Yarmark super-imparatorlugu (3918+) dunyayi domine ediyor;
+  ben Rank ~24/64'te "tarihsel kalinti" statusundeyim.
+- **PERFORMANCE:** Hiz 8 = 0.45 hafta/sn — 1887'deki 0.25'ten IYILESTI
+  (dunya konsolide oldukca sim hafifliyor). UI akici, konsol temiz.
+- **WOULD I KEEP PLAYING? → MAYBE→YES (sirf bitisi gormek icin).**
+  Oyunun bana verdigi son 25 yillik icerik "izle ve dayan"dan ibaretti;
+  ama kampanyanin BITISINI gormek istiyorum — bu da bir cekim gucu.
