@@ -617,3 +617,32 @@ Kampanyanin en buyuk savasi — ve ilk komuta ettigim savas. Uc yil surdu.
 - **WOULD I KEEP PLAYING? → MAYBE→YES (sirf bitisi gormek icin).**
   Oyunun bana verdigi son 25 yillik icerik "izle ve dayan"dan ibaretti;
   ama kampanyanin BITISINI gormek istiyorum — bu da bir cekim gucu.
+
+---
+
+# ⚠ TEST CONTAMINATION — kampanyanin zorunlu sonu (7 JUL 1916)
+
+- **NE OLDU:** Test altyapisi (uzak konteyner) yeniden baslatildi; gelistirme
+  sunucusu ve tarayici oturumu birlikte oldu. Kampanya boyunca oyun ici
+  kayit ALMAMISTIM (kor oyuncu olarak hic ihtiyac hissettirilmedi — otomatik
+  kayit uyarisi da yok, bkz. B-029) ve tarayici profili gecici oldugu icin
+  1836'dan beri suren dunya geri getirilemez sekilde kayboldu.
+- **SON DOGRULANMIS DURUM (7 JUL 1916):** 15 eyalet · 0 sehir · baskent
+  kayip · nufus 303K (buyuyor) · GDP ¤120 · hazine ¤0 (−29) · istikrar %71
+  · ordu 2K · 17 yillik baris. Kampanyanin %80.5'i oynandi (80.5/100 yil).
+- **OYUN HATASI DEGIL:** Bu kesinti oyunun degil test ortaminin
+  arizasidir. Oyunun kendi kaydet/yukle sistemi onceki testlerde birebir
+  calisiyordu.
+- **EN KUCUK CALISMA YOLU (protokol geregi):** Kampanya 1916'da biter kabul
+  edildi; "son on yil" ve "kampanya bitis sunumu" gozlemleri NOT OBSERVED
+  olarak isaretlendi (rapor bunu acikca soyleyecek; bitis mekanizmasi Faz
+  C'de koddan dogrulanacak ama "oyunda tanik olunmadi" etiketiyle).
+- **B-029 · MINOR (bu vesileyle):** 80 yillik oturumda oyun beni BIR KEZ
+  olsun kayit almaya tesvik etmedi (otomatik kayit ya da "uzun suredir
+  kayit yok" hatirlatmasi yok). Gercek oyuncunun elektrik kesintisi de
+  ayni sonucu dogururdu.
+
+**Kampanyanin tek cumlelik ozeti:** Sifir okuryazar bir hanligi sanayi
+gucune donusturme hayali; iki iflas, alti savas, bir sosyalist devrim,
+bir rovanş zaferi ve iki parcalanmadan sonra — baskentsiz ama ayakta,
+kucuk bir fabrika-devleti olarak bitti.
