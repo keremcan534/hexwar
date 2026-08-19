@@ -493,3 +493,44 @@ Kampanyanin en buyuk savasi — ve ilk komuta ettigim savas. Uc yil surdu.
 - **WOULD I KEEP PLAYING? → YES** — ama sakin donem doldurucusu yok:
   savas ve kriz muhtesem, baris TEDIOUS. "Bir sonraki hedefim ne" sorusuna
   oyun yardim etmiyor (gorev/odak sistemi yok); hedefi ben uyduruyorum.
+
+---
+
+# ✦ KONTROL NOKTASI: %50 (3 JUN 1887)
+
+- **CURRENT GOAL:** Irgard savasini kayipsiz atlatmak; devletin ikinci
+  iflasini yonetmek (yine ¤0, borc %20.5'te yeniden yapilandirilmis).
+- **BIGGEST PROBLEM:** Yapisal celiski: ULUS zengin (needs met %97,
+  issizlik 91K'ya dustu, kapitalistler nufusun %8.4'u) ama DEVLET surekli
+  iflasta — ithalat kanamasi (−284/hafta net) tarife/vergiyle
+  durdurulamiyor (kaydiraclar reverte ediyor) ve devlet sanayi kurma
+  yetkisi 45 yildir yasak. Oyuncu buyuk stratejik resmi SEYREDIYOR.
+- **MOST INTERESTING DECISION:** (bu cheyrekte karar azdi) 1876'da
+  zenginlere %40 vergi denemesi — kismi tutundu, iflasi 3 yil erteledi.
+- **MOST BORING TASK:** Iflas seyri. Sakin yillar hala bos; "devlet
+  batiyor ama halk zengin" ironisi ilginc bir HIKAYE fakat oynanacak
+  DUGME yok.
+- **MECHANICS MOST USED:** teknoloji ekrani (idle nobetciligi — 8. kez!),
+  butce defteri, ticaret dokumu.
+- **MECHANICS MOST IGNORED:** donanma (1 gemi, hicbir islevi gorulmedi),
+  Logistics, subvansiyonlar, HOLD ELECTION.
+- **ECONOMIC:** GDP 528'e geriledi (1872 zirvesi 946 — nominal gerileme;
+  fiyatlar mi hacim mu ekrandan ayirt EDILEMIYOR). Ithalat ¤487 / ihracat
+  ¤202. Borc ¤465 @%20.5, kredi 0.
+- **POLITICAL:** Sosyalist diktatorluk 45. yilinda; yillik secim ritueli
+  sonucsuz (0 kayitli secmen). Istikrar %59'a indi (savas + kemer sikma).
+- **MILITARY:** Irgard savasi: skor −22 aleyhimize, ordu 19K→13.5K,
+  Moreau kusagi OLMUS — 2 genc general kaldi (¤0 yuzunden yenisi
+  atanamiyor: para yoklugu komuta kadrosunu kilitliyor — ilginc ve sert).
+- **TECH:** Arastirma bankasi 2864 RP'ye sisti (bir secimim on-kosul
+  yuzunden sessizce bosa dusmustu — B-018 + oyuncu hatasi karisimi;
+  oyun 10 yil "arastirman yok" demedi). Early Railways simdi basladi.
+  Okuryazarlik %26.
+- **WORLD:** Irgard yeniden saldirgan; dunya ekonomisi buyumeye devam
+  (dunya ticareti ¤34k+). Infamy 4.7 (cephe YZ'min isgalleri).
+- **PERFORMANCE:** Hiz 8 = **0.25 hafta/sn** (1841: 0.72 → 1861: 0.4 →
+  1887: 0.25 — dogrusal yavasma, gec oyunda bekleme suresi 3×).
+- **WOULD I KEEP PLAYING? → MAYBE.** Savas/kriz anlari hala iyi; ama
+  oyuncu ajansinin azala azala "izleyici devlet baskani"na donusmesi
+  yoruyor. Kalan yuzyilin sorusu: elimde kalan tek buyuk kaldirac
+  (ordu + baris masasi) yeterli mi?
