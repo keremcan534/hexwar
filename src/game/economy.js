@@ -1691,7 +1691,10 @@ function applySubsidyPolicy(world, nation) {
  *
  * Bayrak, A/B'nin TEK farki olsun diye var (`audit:research --no-fuel-fix`).
  */
-export const FUEL_FIX = process.env.HEXWAR_NO_FUEL_FIX !== '1';
+// Tarayicida `process` YOKTUR — dogrudan process.env okumak butun oyunu
+// acilista dusuruyordu (Chromium smoke yakaladi; bassiz denetim yakalayamaz).
+export const FUEL_FIX = typeof process === 'undefined'
+  || process.env?.HEXWAR_NO_FUEL_FIX !== '1';
 
 /**
  * Bir sosyal programin ALT SINIRI.
@@ -2673,9 +2676,12 @@ function adjustSocialAI(nation) {
     // bir kotu hafta on iyi haftanin kazanimini geri aliyordu. Olcum: 1860'ta
     // medyan egitim 0'a iniyor ve yuzyilin kalanini orada geciriyordu.
     // Yeni esik ULKENIN KENDI OLCEGINE gore: sekiz haftalik sosyal gider.
+    // Ikinci ayar (on-kayitli plan: "(a) duser, (k) gecerse once reserve/rich
+    // duyarliligi"): savas-yogun tohumlarda weekly<0 tek basina cok sik ates
+    // ediyordu — kesme kosulu yari rezerve, yukselme esigi 1.5x'e cekildi.
     const reserve = 8 * socialSpendingCost(nation);
-    broke = nation.gold < reserve * 0.25 || (weekly < 0 && nation.gold < reserve);
-    rich = nation.gold > reserve * 2 && weekly > 0;
+    broke = nation.gold < reserve * 0.25 || (weekly < 0 && nation.gold < reserve * 0.5);
+    rich = nation.gold > reserve * 1.5 && weekly > 0;
   } else {
     rich = nation.gold > 200;
     broke = nation.gold < 60 || weekly < 0;
@@ -3465,6 +3471,10 @@ export function beginEconomy(game) {
       const pick = scoreProgrammes(nation, programmeContext(world, nation));
       if (pick && pick !== nation.research.programme) {
         adoptProgramme(nation, pick, world.turn ?? 0);
+        // Taahhut aninda baglar (oyuncu tarafiyla ayni kural).
+        setFiscalPolicy(nation, 'social',
+          Math.max(nation.economy.social?.education ?? 0, PROGRAMMES[pick]?.floor ?? 0),
+          'education');
       } else if (nation.research.programme) {
         // Ayni program yeniden taahhut edildi: vade tazelenir.
         nation.research.programmeSince = world.turn ?? 0;

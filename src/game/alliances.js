@@ -26,8 +26,9 @@ export function alliesOf(nation) {
     .map((t) => t.partner);
 }
 
-export function isAllied(a, b) {
-  return treatiesOf(a).some((t) => t.type === ALLIANCE && t.partner === b?.id);
+/** Ulus nesnesi + ORTAK ID'si (butun cagri yerleri boyle kullanir). */
+export function isAllied(nation, partnerId) {
+  return treatiesOf(nation).some((t) => t.type === ALLIANCE && t.partner === partnerId);
 }
 
 function addAllianceEntry(nation, partnerId, turn) {

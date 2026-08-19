@@ -53,8 +53,6 @@ function money(value) {
  * bes kez tekrarlanmasi tarih degil gurultudur.
  */
 const REPEAT_COOLDOWN = 156;
-/** Ayni hukumet bicimine donus bu sure boyunca tarih sayilmaz (on yil). */
-const REGIME_COOLDOWN = 520;
 
 function throttled(state, key, turn, cooldown = REPEAT_COOLDOWN) {
   state.said ??= {};
@@ -218,14 +216,23 @@ export function runNationalEvents(game, nation) {
   // tekrarlar ve vakayiname bir sarkac gunlugune doner (olculdu: yuzyilda 6
   // kez ayni satir). Ayni bicime donus on yil boyunca sessizdir; tek yonlu
   // gercek bir degisim ise aninda duyurulur.
-  if (state.government && form !== state.government
-    && !throttled(state, `regime:${form}`, world.turn ?? 0, REGIME_COOLDOWN)) {
-    announce(game, nation, {
-      kind: 'POLITICS', tier: TIER.MAJOR, key: 'regime',
-      title: `${state.government} → ${form}`,
-      detail: `The state now operates as a ${form.toLowerCase()} under the ${party?.name ?? 'ruling party'}. Fiscal limits follow its policy.`,
-      halt: true, ttl: 0,
-    });
+  // Sogutma anahtari YON GOZETMEZ: A→B ve B→A ayni cift, ayni fren. Savas→
+  // siyaset baglantisi hukumetleri gercekten dusurmeye baslayinca salinim iki
+  // AYRI anahtardan gecip yilasir olmustu (olculdu: ayni baslik yuzyilda 10
+  // kez). Ayni ciftin gidis-gelisi TEK hikayedir ("istikrarsiz hukumet"),
+  // dokuz ayri manset degil.
+  if (state.government && form !== state.government) {
+    const pair = [state.government, form].sort().join('|');
+    // Ceyrek yuzyil: ayni ciftin ikinci flip'i tarih, besincisi gurultu
+    // (butce: ayni baslik yuzyilda ≤4 — audit:events TEST 2, 100 yil olcer).
+    if (!throttled(state, `regime:${pair}`, world.turn ?? 0, 1300)) {
+      announce(game, nation, {
+        kind: 'POLITICS', tier: TIER.MAJOR, key: 'regime',
+        title: `${state.government} → ${form}`,
+        detail: `The state now operates as a ${form.toLowerCase()} under the ${party?.name ?? 'ruling party'}. Fiscal limits follow its policy.`,
+        halt: true, ttl: 0,
+      });
+    }
   }
   state.government = form;
   state.party = party?.id ?? null;

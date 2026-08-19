@@ -2281,6 +2281,11 @@ export class Screens {
         const id = btn.dataset.proclaim;
         if (adoptProgramme(me, id, game.world.turn ?? 0)) {
           const programme = PROGRAMMES[id];
+          // Taahhut ANINDA baglar: kart "egitim >= %25" diyorsa kaydirac o
+          // hafta oraya cikar — sonraki dokunusa kadar 0'da kalmasi vaadi
+          // bosa cikarirdi. setFiscalPolicy tabani zaten biliyor.
+          setFiscalPolicy(me, 'social',
+            Math.max(me.economy.social?.education ?? 0, programme.floor), 'education');
           // Ilan buyuk bir ulusal taahhuttur: vakayinameye girer (tier 2),
           // zaman DURMAZ — karari zaten oyuncu verdi.
           announce(game, me, {
