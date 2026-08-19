@@ -123,6 +123,11 @@ export function serialize(game) {
         // Acilis kesiti: kapanis ekraninin "nereden nereye" olcusu. Bir kez
         // yazilir; kayit disi kalirsa yuzyilin baslangici kaybolur.
         opening: n.opening ? { ...n.opening } : null,
+        // Diplomatik kimlik: rakip + sinirli hafiza. Kayit disi kalirsa
+        // yukleme sonrasi rakipler tazelenene kadar bos gorunur ve "kime
+        // toprak kaybetti" tarihi silinirdi.
+        rivalId: n.rivalId ?? null,
+        memory: (n.memory ?? []).map((entry) => ({ ...entry })),
         rallyPoint: n.rallyPoint ?? null,
         // Eğitim kuyruğu: ödenmiş sipariş. Kayıt dışı kalırsa oyuncu parasını
         // ve teçhizatını yükleme ekranında kaybeder.
@@ -271,6 +276,8 @@ export function deserialize(game, data) {
       ? { ...saved.events, said: { ...(saved.events.said ?? {}) } }
       : null;
     nation.opening = saved.opening ? { ...saved.opening } : null;
+    nation.rivalId = saved.rivalId ?? null;
+    nation.memory = (saved.memory ?? []).map((entry) => ({ ...entry }));
     nation.rallyPoint = saved.rallyPoint ?? null;
     nation.treaties = (saved.treaties ?? []).map((t) => ({ ...t }));
     nation.training = saved.training

@@ -1223,6 +1223,8 @@ body.screen-open .layer-menu { display: none; }
 .tag.war { color: var(--red); border-color: var(--red); }
 .tag.peace { color: var(--green); border-color: var(--green); }
 .tag.truce { color: var(--amber); border-color: var(--amber); }
+.tag.ally { color: var(--gold-bright); border-color: var(--frame-brass); }
+.tag.rival { color: var(--red); border-color: var(--surface-3); }
 
 /* --- Tooltip. Tek bir bileşen: `data-tooltip` taşıyan her öğe kullanır.
        Uzun açıklamaları satır içine sıkıştırmak yerine üstte gösterir. --- */

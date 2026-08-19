@@ -51,7 +51,10 @@ import {
   EARLY_ELECTION_WINDOW, electionWindowOpen, factoryInvestmentRules,
   fiscalPolicyLimits, holdElection, policyLabel, rulingParty,
 } from '../game/politics.js';
-import { TIER, announce, chronicleYear, ensureChronicle } from '../game/chronicle.js';
+import { TIER, announce, chronicleYear, ensureChronicle, memoryOf } from '../game/chronicle.js';
+import {
+  allianceAppeal, alliesOf, breakAlliance, formAlliance, isAllied,
+} from '../game/alliances.js';
 import {
   electorate, enactReform, governmentType, reformBoard,
 } from '../game/reforms.js';
@@ -432,9 +435,15 @@ export class Screens {
       (entry) => entry.from === target.id && entry.to === me.id,
     );
 
-    const status = war ? '<span class="tag war">at war</span>'
-      : truce ? `<span class="tag truce">truce ${truce}w</span>`
-        : '<span class="tag peace">at peace</span>';
+    const allied = isAllied(me, target.id);
+    const status = [
+      war ? '<span class="tag war">at war</span>'
+        : truce ? `<span class="tag truce">truce ${truce}w</span>`
+          : '<span class="tag peace">at peace</span>',
+      allied ? '<span class="tag ally">ally</span>' : '',
+      me.rivalId === target.id ? '<span class="tag rival">our rival</span>' : '',
+      target.rivalId === me.id ? '<span class="tag rival">sees us as the rival</span>' : '',
+    ].filter(Boolean).join(' ');
 
     return `<div class="card nation-dossier">
       <div class="dossier-head">
@@ -468,7 +477,10 @@ export class Screens {
       <div class="row-buttons dossier-actions">
         ${war
     ? `<button class="action" data-peace="${target.id}" ${locked ? 'disabled' : ''}>Peace Talks${locked ? ` (${MIN_WAR_TURNS - (turn - rec.since)}w)` : ''}</button>`
-    : `<button class="action" data-war="${target.id}" ${truce ? 'disabled' : ''}>Declare War</button>`}
+    : allied
+      ? `<button class="action" data-break-alliance="${target.id}">Break Alliance</button>`
+      : `<button class="action" data-war="${target.id}" ${truce ? 'disabled' : ''}>Declare War</button>
+         <button class="action" data-ally="${target.id}">Propose Alliance</button>`}
         <button class="action" data-locate="${target.id}">Show on map</button>
       </div>
     </div>`;
@@ -2391,6 +2403,41 @@ export class Screens {
     }
     for (const btn of this.el.body.querySelectorAll('[data-war]')) {
       btn.onclick = () => { game.declareWarOn(Number(btn.dataset.war)); this.refresh(); };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-ally]')) {
+      btn.onclick = () => {
+        const targetId = Number(btn.dataset.ally);
+        const target = game.world.nations[targetId];
+        // YZ, oyuncunun teklifini KENDI olcusuyle tartar (allianceAppeal —
+        // YZ-YZ taramasiyla birebir ayni fonksiyon; oyuncuya torpil yok).
+        const appeal = allianceAppeal(game.world, target, me);
+        if (appeal >= 1.5 && formAlliance(game.world, me.id, targetId, game.world.turn ?? 0)) {
+          announce(game, me, {
+            kind: 'PEACE', tier: TIER.MAJOR, key: `ally:${targetId}`,
+            title: `Alliance with ${target.name}`,
+            detail: 'An attack on one is a call to the other.',
+          });
+        } else {
+          game.turns.addLog(`${target.name} declines the alliance.`, {
+            kind: 'DIPLOMACY', key: `ally-no:${targetId}`,
+          });
+        }
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-break-alliance]')) {
+      btn.onclick = () => {
+        const targetId = Number(btn.dataset.break_alliance ?? btn.dataset.breakAlliance);
+        const target = game.world.nations[targetId];
+        if (breakAlliance(game.world, me.id, targetId, game.world.turn ?? 0)) {
+          announce(game, me, {
+            kind: 'DIPLOMACY', tier: TIER.MAJOR, key: `ally:${targetId}`,
+            title: `The alliance with ${target?.name ?? '?'} is dissolved`,
+            detail: 'Former partners remember such things.',
+          });
+        }
+        this.refresh();
+      };
     }
     // Eskiden bu düğme tek tıkla işgalleri devreden otomatik barışı yapıyordu.
     // Artık oyuncunun tek barış yolu var: masa.

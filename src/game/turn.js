@@ -9,6 +9,7 @@ import { advanceMovement } from './movement.js';
 import { queueRecruit, recruit, runTraining } from './recruitment.js';
 import { runReinforcements } from './reinforcement.js';
 import { runNationAI } from './ai.js';
+import { runDiplomacyAI } from './alliances.js';
 import { atWar, computeContacts, initRelations } from './diplomacy.js';
 import {
   INFAMY, addInfamy, checkCoalitions, decayInfamy, tileInfamy,
@@ -391,6 +392,11 @@ export class TurnManager {
       // bütçesine sığar. Sıra dizisi değişmez, determinizm korunur.
       if (++aiBatch % 4 === 0) yield* pause('ai');
     }
+    // Diplomasi YZ'si savas ilanlarindan SONRA: cagri-ile-savas kuyrugu
+    // bosaltilir (muttefikler saldirgana kendi savaslarini acar), ittifak
+    // taramasi ve rakip tazeleme kendi ic frekanslarinda kosar.
+    this.phase = 'diplomacy';
+    runDiplomacyAI(this.game);
     yield* pause('ai');
 
     this.turn++;

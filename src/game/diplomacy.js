@@ -6,6 +6,7 @@ import { DIRS } from '../core/hex.js';
 import { armyPower } from './units.js';
 import { captureConstructionAt } from './construction.js';
 import { controllerOf } from './control.js';
+import { remember } from './chronicle.js';
 
 export const WAR = 'war';
 export const PEACE = 'peace';
@@ -168,6 +169,13 @@ export function declareWar(game, a, b, options = {}) {
   const manual = options.manual === true;
   if (a === b || atWar(world, a, b)) return false;
   if (truceLeft(world, a, b, game.turns.turn) > 0) return false;
+  // Ittifak/vasallik ciftler arasinda ilan YOK — once bozmak gerekir.
+  // (VASSALIZE kartinin "kalici baris" vaadi bu satira kadar SAHTEYDI:
+  // hicbir sey baris tarafini uygulamiyordu, yalniz haraci.)
+  const boundTo = (n, pid) => (n?.treaties ?? []).some((t) =>
+    (t.type === 'ALLIANCE' || t.type === 'VASSALIZE') && t.partner === pid
+    && (t.until ?? Infinity) > game.turns.turn);
+  if (boundTo(world.nations[a], b) || boundTo(world.nations[b], a)) return false;
 
   const player = game.turns?.playerNation;
   // 1) Oyuncu ADINA otomatik savaş ilan edilemez. Koalisyon oyuncuya KARŞI
@@ -183,6 +191,14 @@ export function declareWar(game, a, b, options = {}) {
   // savaş kaydına taşınmalı (setState yeni bir nesne kurar).
   const wars = (relation(world, a, b)?.wars ?? 0) + 1;
   setState(world, a, b, WAR, game.turns.turn, { wars });
+  remember(world.nations[a], game.turns.turn, 'war_with', b);
+  remember(world.nations[b], game.turns.turn, 'war_with', a);
+  // Cagri-ile-savas KUYRUGA yazilir, burada cozulmez: alliances.js bu
+  // dosyayi import eder, ters yon dongu olurdu. turn.js kuyrugu YZ evresi
+  // sonunda bosaltir. Cagriyla acilan savas yeni cagri dogurmaz (zincir yok).
+  if (options.reason !== 'alliance') {
+    (world.pendingWarCalls ??= []).push({ aggressor: a, defender: b });
+  }
   // Savaş ilanının anlık harita izi yok (sınır rengi değişmez; işgal
   // taraması ancak kareler el değiştirince başlar) — tam geçersizleme
   // YZ'nin her ilanında tüm önbelleği boşuna yakıyordu.
@@ -200,6 +216,8 @@ export function declareWar(game, a, b, options = {}) {
 export function settleOccupations(game, a, b) {
   const world = game.world;
   let transferred = 0;
+  let aTook = 0;
+  let bTook = 0;
   const changedTiles = [];
   for (const tile of world.tiles) {
     const controller = controllerOf(tile);
@@ -216,7 +234,17 @@ export function settleOccupations(game, a, b) {
     if (tile.province) tile.province.control = 25;
     if (tile.city) tile.city.nationId = controller;
     changedTiles.push(tile);
+    if (controller === a) aTook++; else bTook++;
     transferred++;
+  }
+  // Toprak devri diplomatik hafizaya gecer: ulke paneli "kime toprak
+  // kaybetti, kimden aldi" diyebilsin (yalniz NET yon, iki uc da yazilmaz).
+  if (aTook > bTook) {
+    remember(world.nations[a], game.turns.turn, 'took_land_from', b);
+    remember(world.nations[b], game.turns.turn, 'lost_land_to', a);
+  } else if (bTook > aTook) {
+    remember(world.nations[b], game.turns.turn, 'took_land_from', a);
+    remember(world.nations[a], game.turns.turn, 'lost_land_to', b);
   }
   // Yalnız el değiştiren kareler mürekkeplenir; küme 512'yi aşarsa
   // invalidateTiles kendisi tam pişirmeye düşer.
