@@ -534,3 +534,28 @@ Kampanyanin en buyuk savasi — ve ilk komuta ettigim savas. Uc yil surdu.
   oyuncu ajansinin azala azala "izleyici devlet baskani"na donusmesi
   yoruyor. Kalan yuzyilin sorusu: elimde kalan tek buyuk kaldirac
   (ordu + baris masasi) yeterli mi?
+
+## 1887-1890 — IKINCI YIKIM: Irgard felaketi ve Kartaca barisi
+
+- WHAT HAPPENED: Irgard savasini hiz 8'de akitirken ordum (14 tumen) YINE
+  sessizce yok edildi — skor −22'den **−92'ye** dustu, GDP 528→163 (ulkenin
+  cogu isgal altinda), istikrar %33.
+- Baris sartlari tarihi felaket: 6 eyalet Irgard'a (sanayi kalbim Elmreach,
+  sarap fabrikam, komurlu Ravgarde + KALEM, Ilmstead★ sehri) + "⚑ Liberate
+  Minorities" maddesi — TUM azinlik eyaletlerim (Branar/Ozriel) bagimsiz
+  birakildi. Kabul ettim: elimde **23 eyalet, 0 sehir** kaldi ve Nation
+  Overview su satiri yaziyor: **"CAPITAL: Lost."** Baskentim dusman elinde.
+- Ic uyum %100, yabanci nufus %0 — etnik olarak saf, sehirsiz, baskentiz
+  bir kalinti hanlık. (Onceki stabilizasyon raporlarindaki "sehirsiz
+  kalinti devlet" sinifina KENDIM dustum.)
+- WHY IT MATTERED: Kampanya artik iki yukselis-iki cokus destani. Cokusun
+  MANTIGI yine kusursuz (ordusuz+parasiz devlet → yem) ve baris masasi
+  "Liberate Minorities" gibi tarihsel dokulu maddelerle cok iyi. Ama YINE
+  tamamen sessiz yasandi: ordumun oldugunu, -92'ye dusuldugunu hicbir
+  bildirim soylemedi. Hizli oynatma + bildirimsizlik = felaketleri hep
+  SONUCTAN ogreniyorum.
+- HOW I FELT: Yikim + tuhaf bir hayranlik. "The Long Century"nin son 46
+  yilinda hedefim artik tek: HAYATTA KAL ve mumkunse Whitehill'i geri al.
+- REACTION: baris maddelerinin derinligi **SATISFYING** · felaket
+  sessizligi (üçüncü kez) **FRUSTRATING** — bu kampanyanin tartismasiz
+  1 numarali tasarim dersi: OLAY BILDIRIM SISTEMI YOK (B-013/B-016 ailesi).
