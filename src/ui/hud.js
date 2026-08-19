@@ -16,6 +16,7 @@ import { scoreboard } from '../game/hegemony.js';
 import { ORDER } from '../game/orders.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { Screens } from './screens.js';
+import { showEndScreen } from './endScreen.js';
 import { formatPopulation } from '../game/economy.js';
 import {
   canRecruit, equipmentCostLabel, nationManpower, rallyTile, setRallyPoint, trainingWeeks,
@@ -115,6 +116,9 @@ export class Hud {
       (other) => other.alive && other.id !== me.id && atWar(world, me.id, other.id),
     );
     bar.classList.toggle('hidden', wars.length === 0);
+    // Savaş bittiyse savaş kartı da biter. Kart `ttl: 0` ile kalıcıdır ve
+    // kendiliğinden kapanmaz; barış onu geçersiz kılan tek olaydır.
+    if (!wars.length) this.game.notifications?.dismissKind('WAR');
     bar.innerHTML = wars.map((other) => {
       const score = warScore(world, me.id, other.id);
       const tone = score > 8 ? 'winning' : score < -8 ? 'losing' : 'even';
@@ -216,6 +220,28 @@ export class Hud {
     // 'turn'/'economy' olaylarıyla tam tazeliyor.
     game.on('clock', () => this.onDay());
     game.on('economy', () => this.onTurn());
+    // İnşaat/yatırım kararı hazineden ANINDA para düşer ama haftalık tik
+    // gelene kadar üst çubuk eski rakamı gösteriyordu: oyuncu ¤220 sanıp
+    // ¤0 ile karar veriyordu (kör beta B-006). Ekonomi ekranı bu olayı zaten
+    // dinliyordu; üst çubuk dinlemiyordu.
+    game.on('construction', () => this.onTurn());
+    // Kampanya sonu (1945) tek satirlik bir metinle geciyordu; 'victory'
+    // olayinin hicbir dinleyicisi yoktu. Artik yuzyilin kapanis sayfasi acilir.
+    game.on('victory', (result) => showEndScreen(game, result));
+    // "WHY THE PRICE MOVES" kalibi istikrara: dokum vardi ama YALNIZ hover
+    // tooltip'inde duruyordu — kor beta testcisi 80 yil boyunca bulamadi
+    // (B-003). Tiklama da ayni metni acar; tooltip ikincil yol olarak kalir.
+    this.el.resources.addEventListener('click', (event) => {
+      const cell = event.target.closest?.('[data-why="stability"]');
+      if (cell) this.toggleWhy(cell, stabilityWhy(this.game.world?.nations[this.game.turns.playerNation]));
+    });
+    this.el.resources.addEventListener('keydown', (event) => {
+      if (event.key !== 'Enter' && event.key !== ' ') return;
+      const cell = event.target.closest?.('[data-why="stability"]');
+      if (!cell) return;
+      event.preventDefault();
+      this.toggleWhy(cell, stabilityWhy(this.game.world?.nations[this.game.turns.playerNation]));
+    });
     game.on('battles', () => {
       if (game.selected) this.showTile(game.selected);
       this.onTurn();
@@ -311,6 +337,13 @@ export class Hud {
       if (event.key === '-' || event.key === '_' || event.code === 'NumpadSubtract') {
         event.preventDefault();
         this.game.stepSpeed(-1);
+        return;
+      }
+      if (event.code === 'KeyN') {
+        // "Siradaki bosta birim": fonksiyon bastan beri vardi (selectNextIdle),
+        // hicbir tus/dugme cagirmiyordu. HOLD emirli birimler dongude gorunmez.
+        event.preventDefault();
+        this.game.selectNextIdle();
         return;
       }
       if (event.code === 'Escape') {
@@ -542,11 +575,46 @@ export class Hud {
         : `<p class="hegemony-leader">Leader: <b>${escapeHtml(leader.nation.name)}</b> ${leader.total}</p>`}`;
   }
 
+  /**
+   * Kucuk "neden" balonu. Yeni bir gosterge tahtasi degil: ayni metni
+   * tiklamayla da erisilir kilar (dokunmatik ve hizli oyunda hover yoktur).
+   */
+  toggleWhy(anchor, text) {
+    if (this.whyPop?.isConnected && this.whyPop.dataset.anchor === anchor.dataset.why) {
+      this.whyPop.remove();
+      return;
+    }
+    this.whyPop?.remove();
+    if (!text) return;
+    const pop = document.createElement('div');
+    pop.className = 'why-pop';
+    pop.dataset.anchor = anchor.dataset.why;
+    pop.textContent = text;
+    const rect = anchor.getBoundingClientRect();
+    pop.style.top = `${Math.round(rect.bottom + 6)}px`;
+    pop.style.left = `${Math.round(rect.left)}px`;
+    document.body.append(pop);
+    this.whyPop = pop;
+    // Bir sonraki tiklama kapatir; balon kendi tiklamasiyla kapanmaz.
+    setTimeout(() => {
+      const close = (event) => {
+        if (pop.contains(event.target)) return;
+        pop.remove();
+        document.removeEventListener('pointerdown', close);
+      };
+      document.addEventListener('pointerdown', close);
+    }, 0);
+  }
+
   refreshSaveInfo() {
     const info = savedInfo();
+    // Otomatik kayit VAR ama kendini hic tanitmiyordu: ilk kayittan sonra
+    // "autosave" kelimesi bir daha ekranda gecmiyor, oyuncu 80 yil boyunca
+    // kaydi olmadigini saniyordu (kor beta B-029). Tarih ve "autosave"
+    // kelimesi artik satirda kaliyor.
     this.el.saveInfo.textContent = info
-      ? `Save: ${info.seed} · week ${info.turn}`
-      : 'No save found. The game autosaves every ten weeks.';
+      ? `Autosave · ${info.seed} · ${gameDate(info.turn)}`
+      : 'No save yet. The game autosaves every ten weeks.';
   }
 
   /** Gün tiki: yalnız tarih yazısı ve (değiştiyse) hız düğmeleri. */
@@ -854,17 +922,26 @@ export class Hud {
     }
 
     // Ordu emri: uzun yürüyüş devam eder; savaş ve geri çekilme otomatik çözülür.
+    // AUTO/HOLD ILK KEZ ERISILEBILIR: orders.js bastan beri devretme katmani
+    // olarak duruyordu (CLAUDE.md'nin cekirdek mobil kurali) ama hicbir dugme
+    // ORDER.AUTO/HOLD gondermiyordu — katman olu UI'ydi. Secili TUM tumenlere
+    // uygulanir; donanma icin ozellikle degerli (filonun baska devir yolu yok).
     const own = tile.unit && tile.unit.nationId === game.turns.playerNation ? tile.unit : null;
     if (own) {
       const label = ORDER_LABELS[own.order?.type];
+      const selectedCount = Math.max(1, game.selection.length);
       rows.push(`<div class="action-row">
         <div class="k">army orders — ${own.battleId ? 'fighting'
     : (own.retreatUntil ?? 0) > game.turns.turn ? 'retreating'
       : (own.attackReadyAt ?? 0) > game.turns.turn ? 'reorganizing'
         : label ?? 'awaiting destination'}</div>
+        <button class="action" data-order="${ORDER.AUTO}"
+          title="Delegate the ${selectedCount} selected unit(s) to the AI: they pick targets and fight on their own until you cancel.">Delegate (AUTO)</button>
+        <button class="action" data-order="${ORDER.HOLD}"
+          title="Hold position: the selected unit(s) stand fast and leave the next-idle cycle.">Hold</button>
         ${own.order
     ? '<button class="action" data-order="clear">Cancel Orders</button>'
-    : '<span class="order-help">Select the division, then tap a province. Friendly divisions share the province; enemy divisions start a battle.</span>'}
+    : ''}
       </div>`);
     }
 
@@ -982,7 +1059,13 @@ export class Hud {
     const { game } = this;
     const me = game.world.nations[game.turns.playerNation];
     for (const btn of this.el.sheetBody.querySelectorAll('[data-buy]')) {
-      btn.onclick = () => game.turns.buyUnit(me, btn.dataset.buy);
+      // Shift = 5 siparis (askeri ekranla ayni kural); kisitlar durdurunca biter.
+      btn.onclick = (event) => {
+        const wanted = event.shiftKey ? 5 : 1;
+        for (let i = 0; i < wanted; i++) {
+          if (!game.turns.buyUnit(me, btn.dataset.buy)) break;
+        }
+      };
     }
     const found = this.el.sheetBody.querySelector('[data-found]');
     if (found) found.onclick = () => game.turns.foundCity(game.selectedUnit);
@@ -1026,10 +1109,17 @@ export class Hud {
       };
     }
     for (const btn of this.el.sheetBody.querySelectorAll('[data-order]')) {
-      const unit = game.selected?.unit;
-      btn.onclick = () => (btn.dataset.order === 'clear'
-        ? game.clearUnitOrder(unit)
-        : game.setUnitOrder(unit, btn.dataset.order));
+      btn.onclick = () => {
+        // Emir SECIME uygulanir, tek kareye degil: bes tumen sectiysen bes
+        // tumen devredilir. Secim bossa karedeki birim esas alinir.
+        const units = game.selection.length ? game.selection
+          : (game.selected?.unit ? [game.selected.unit] : []);
+        for (const unit of units) {
+          if (btn.dataset.order === 'clear') game.clearUnitOrder(unit);
+          else game.setUnitOrder(unit, btn.dataset.order);
+        }
+        this.showTile(game.selected);
+      };
     }
   }
 }
@@ -1050,7 +1140,8 @@ function resourcesHtml(nation) {
   // Hazine binlik ayraçla okunur — dört haneden sonra ayraçsız sayı taranmıyor.
   return `
     <span title="treasury"><small>Treasury</small><b>¤${grouped(nation.gold)}${flow}</b></span>
-    <span title="${stabilityWhy(nation)}"><small>Stability</small><b>${stability}%</b></span>
+    <span class="stat-why" role="button" tabindex="0" data-why="stability"
+      title="${stabilityWhy(nation)}"><small>Stability</small><b>${stability}%</b></span>
     <span title="infamy — a coalition forms at ${INFAMY_COALITION}"><small>Infamy</small><b class="${infamyClass}">${infamy.toFixed(1)}</b></span>`;
 }
 

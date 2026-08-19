@@ -163,13 +163,11 @@ export function goodDossierPanel(dossier) {
        ${stockpile.used != null ? kv('Used by reinforcement', `−${qty(stockpile.used)}`, stockpile.used > 0 ? 'neg' : '') : ''}`
     : '<p class="trade-empty">No state stockpile — civilian goods clear on the weekly market.</p>';
 
-  const policy = `<div class="trade-policy" title="Reserved: trade clears automatically for now. Policy levers are not wired to the simulation yet.">
-      <button class="on" disabled>Auto</button>
-      <button disabled>Import priority</button>
-      <button disabled>Export priority</button>
-      <button disabled>Strategic reserve</button>
-    </div>
-    <p class="trade-policy-note">Trade clears automatically. Per-good policy is a reserved shell — not wired yet.</p>`;
+  // Dort kapali dugmelik "rezerve kabuk" kaldirildi: iki beta boyunca hicbir
+  // sey yapamayan kontroller "olmayan dugme koymayiz" ilkesini ihlal ediyordu.
+  // Mal bazli politika gercekten kurulursa dugmeleriyle birlikte geri gelir.
+  const policy = `<p class="trade-policy-note">Trade clears automatically on the
+    weekly world market; there is no per-good order to place.</p>`;
 
   return `<aside class="trade-detail">
     <header class="trade-detail-head">

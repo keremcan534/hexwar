@@ -66,6 +66,11 @@
     "audit:borders": "node scripts/audit/border-change-audit.mjs",
     "audit:stability": "node scripts/audit/stability-audit.mjs",
     "audit:military-strategy": "node scripts/audit/military-strategy-audit.mjs",
-    "audit:supply-response": "node scripts/audit/supply-response-audit.mjs"
+    "audit:supply-response": "node scripts/audit/supply-response-audit.mjs",
+    "audit:tech-effect": "node scripts/audit/tech-effect-audit.mjs",
+    "audit:labor": "node scripts/audit/labor-audit.mjs",
+    "audit:ledger": "node scripts/audit/ledger-audit.mjs",
+    "audit:private": "node scripts/audit/private-investment-audit.mjs",
+    "audit:events": "node scripts/audit/event-communication-audit.mjs"
   }
 }

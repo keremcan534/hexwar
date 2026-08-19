@@ -17,27 +17,31 @@
  * ttl 0 (kendiliğinden kapanmama) yetmedi — kart yine de akista kayboluyordu.
  * Sonucu olan olay zamani durdurmali; bildirim akisi ile KARAR ani ayrilmali.
  */
+/**
+ * `tier` sunumun agirligini belirler (bkz. chronicle.js TIER):
+ * 0 akista gecer · 1 belirgin kart · 2 ulusal olay kartı + vakayiname ·
+ * 3 varolussal, zamani durdurur. Cagiran `meta.tier` ile tek bir olayi
+ * yukseltebilir: ayni tur (ARMY) hem "bir alay dustu" hem "ordu yok oldu"
+ * olabilir.
+ */
 export const NOTIFY = {
-  WAR: { icon: '⚔', tone: 'war', label: 'War', ttl: 0, halt: true },
-  PEACE: { icon: '🕊', tone: 'good', label: 'Peace', ttl: 12000 },
-  DIPLOMACY: { icon: '📜', tone: 'info', label: 'Diplomacy', ttl: 10000 },
-  BATTLE: { icon: '⚔', tone: 'bad', label: 'Battle', ttl: 9000 },
-  FIELD_WIN: { icon: '🎖', tone: 'good', label: 'Battle won', ttl: 10000 },
-  CONQUEST: { icon: '🏴', tone: 'war', label: 'Conquest', ttl: 14000 },
-  CITY: { icon: '🏛', tone: 'good', label: 'City', ttl: 11000 },
-  GROWTH: { icon: '👥', tone: 'info', label: 'Growth', ttl: 8000 },
-  BUILDING: { icon: '🏗', tone: 'info', label: 'Construction', ttl: 10000 },
-  INDUSTRY: { icon: '🏭', tone: 'info', label: 'Industry', ttl: 10000 },
-  INFRA: { icon: '🛤', tone: 'info', label: 'Infrastructure', ttl: 8000 },
-  RESEARCH: { icon: '🔬', tone: 'good', label: 'Research', ttl: 11000 },
-  ARMY: { icon: '🛡', tone: 'info', label: 'Army', ttl: 8000 },
-  COMMANDER: { icon: '🎖', tone: 'good', label: 'Officer staff', ttl: 10000 },
-  PROVINCE: { icon: '⛏', tone: 'info', label: 'Province', ttl: 9000 },
-  POLITICS: { icon: '🗳', tone: 'info', label: 'Politics', ttl: 12000 },
-  CRISIS: { icon: '⚠', tone: 'bad', label: 'Crisis', ttl: 0, halt: true },
-  NATION: { icon: '☠', tone: 'bad', label: 'Nations', ttl: 12000 },
-  HEGEMONY: { icon: '👑', tone: 'good', label: 'Hegemony', ttl: 0 },
-  INFO: { icon: '❕', tone: 'info', label: 'Dispatch', ttl: 9000 },
+  WAR: { icon: '⚔', tone: 'war', label: 'War', ttl: 0, halt: true, tier: 2 },
+  PEACE: { icon: '🕊', tone: 'good', label: 'Peace', ttl: 0, tier: 2 },
+  DIPLOMACY: { icon: '📜', tone: 'info', label: 'Diplomacy', ttl: 10000, tier: 1 },
+  BATTLE: { icon: '⚔', tone: 'bad', label: 'Battle', ttl: 9000, tier: 0 },
+  FIELD_WIN: { icon: '🎖', tone: 'good', label: 'Battle won', ttl: 10000, tier: 1 },
+  CONQUEST: { icon: '🏴', tone: 'war', label: 'Conquest', ttl: 14000, tier: 2 },
+  CITY: { icon: '🏛', tone: 'good', label: 'City', ttl: 11000, tier: 1 },
+  BUILDING: { icon: '🏗', tone: 'info', label: 'Construction', ttl: 10000, tier: 0 },
+  INDUSTRY: { icon: '🏭', tone: 'info', label: 'Industry', ttl: 10000, tier: 0 },
+  RESEARCH: { icon: '🔬', tone: 'good', label: 'Research', ttl: 0, tier: 1 },
+  ARMY: { icon: '🛡', tone: 'info', label: 'Army', ttl: 8000, tier: 1 },
+  COMMANDER: { icon: '🎖', tone: 'good', label: 'Officer staff', ttl: 10000, tier: 0 },
+  POLITICS: { icon: '🗳', tone: 'info', label: 'Politics', ttl: 12000, tier: 1 },
+  CRISIS: { icon: '⚠', tone: 'bad', label: 'Crisis', ttl: 0, halt: true, tier: 2 },
+  NATION: { icon: '☠', tone: 'bad', label: 'Nations', ttl: 12000, tier: 1 },
+  HEGEMONY: { icon: '👑', tone: 'good', label: 'Hegemony', ttl: 0, tier: 2 },
+  INFO: { icon: '❕', tone: 'info', label: 'Dispatch', ttl: 9000, tier: 0 },
 };
 
 /**
@@ -86,6 +90,7 @@ export class NotificationCenter {
       return existing;
     }
 
+    const tier = meta.tier ?? kind.tier ?? 0;
     const entry = {
       id: this.nextId++,
       key,
@@ -95,6 +100,11 @@ export class NotificationCenter {
       label: meta.label ?? kind.label,
       ttl: meta.ttl ?? kind.ttl,
       text,
+      tier,
+      // Ulusal olayin basligi ile govdesi ayri tutulur: kart basligi buyuk,
+      // sonuc cumlesi altinda okunur (bkz. ui/notifications.js).
+      title: meta.title ?? null,
+      body: meta.body ?? null,
       tile: meta.tile ?? null,
       turn: this.game.turns?.turn ?? 0,
       count: 1,
@@ -103,8 +113,10 @@ export class NotificationCenter {
     this.active.push(entry);
     if (this.active.length > MAX_ACTIVE) this.active.shift();
     // Sonucu olan olay zamani durdurur. Yalnizca YENI kartta: tekrar eden
-    // olay (ayni anahtar) oyuncuyu tekrar tekrar duraklatmamali.
-    if (kind.halt) this.game.setSpeed?.(0);
+    // olay (ayni anahtar) oyuncuyu tekrar tekrar duraklatmamali. Varolussal
+    // olay (tier 3) turu ne olursa olsun durdurur.
+    const halt = meta.halt ?? (kind.halt || tier >= 3);
+    if (halt) this.game.setSpeed?.(0);
     this.game.emit('notify', { entry, repeated: false });
     return entry;
   }
@@ -112,6 +124,20 @@ export class NotificationCenter {
   /** Kart ekrandan kalktı: bundan sonrası yeni kart açar, eskiye eklenmez. */
   release(entry) {
     this.active = this.active.filter((item) => item !== entry);
+  }
+
+  /**
+   * Konusu kapanan kartları düşürür. Savaş ilanı kartı `ttl: 0` ile kalıcıdır
+   * (görülmeden geçmesin diye) ama barış imzalandıktan sonra ekranda durması
+   * yalan söylemektir: kör beta testçisi barıştan bir yıl sonra hâlâ "Ulheim
+   * declared war on us!" kartına bakıyordu (B-020).
+   */
+  dismissKind(kindId) {
+    const doomed = this.active.filter((entry) => entry.kind === kindId);
+    if (!doomed.length) return 0;
+    this.active = this.active.filter((entry) => entry.kind !== kindId);
+    this.game.emit('notify-dismiss', doomed);
+    return doomed.length;
   }
 
   clear() {

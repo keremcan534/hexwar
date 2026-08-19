@@ -32,6 +32,7 @@ import {
 import { initPolitics, runPolitics } from './politics.js';
 import { captureConstructionAt, initConstruction, runConstruction } from './construction.js';
 import { controllerOf, setController } from './control.js';
+import { runNationalEvents } from './events.js';
 import { expireTreaties, treatiesOf } from './peace.js';
 
 /** Başlangıç stoku: ilk birkaç turda bir birim alacak kadar. */
@@ -503,6 +504,11 @@ export class TurnManager {
     executeOrders(this.game, this.playerNation, this.rng);
     mark('orders');
     this.lastProfile = profile;
+    // Ulusal donum noktalari HAFTANIN SONUNDA taranir: borc kapanmis, savas
+    // cozulmus, sinirlar oturmus olur. Yalnizca oyuncunun ulkesi — YZ'nin ic
+    // gecisleri oyuncunun ekranini bolmez (bkz. events.js).
+    const player = world.nations[this.playerNation];
+    if (player) runNationalEvents(this.game, player);
     // Bundan sonrası atomik kuyruk (zafer, autosave). İş kaydı burada
     // bırakılır ki kuyruktaki autosave → endTurn zinciri hâlâ çalışan
     // üretece yeniden girmeye kalkmasın (TypeError: already running).

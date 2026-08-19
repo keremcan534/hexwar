@@ -99,7 +99,13 @@ export function technologyScreen(nation, view) {
     const state = stateOf(nation, selected, research.current);
     const cost = techCost(selected.id, view.year);
     const early = (selected.year ?? 0) > view.year;
-    const weeks = view.rate > 0 ? Math.ceil((cost - (state === 'active' ? research.points : 0)) / view.rate) : null;
+    // Biriken puan HANGI teknolojiye baslanirsa baslansin gecerlidir
+    // (advanceResearch puani secimden ONCE toplar), dolayisiyla tahmin de
+    // onu dusmelidir. Eskiden yalniz YURUYEN teknoloji icin dusuluyordu:
+    // 693 RP biriken oyuncuya her aday "191 hafta" diyordu (kor beta B-018).
+    const weeks = view.rate > 0
+      ? Math.max(0, Math.ceil((cost - research.points) / view.rate))
+      : null;
     const action = state === 'done'
       ? '<button class="action" disabled>Researched</button>'
       : state === 'active'
@@ -130,7 +136,7 @@ export function technologyScreen(nation, view) {
       <span><small>Current research</small><b>${esc(currentName)}</b></span>
       <span><small>Research points</small><b>${Math.round(research.points)}</b></span>
       <span title="Literacy is the main source of research points"><small>Per week</small><b>${view.rate.toFixed(2)}</b></span>
-      <span><small>Literacy</small><b>${Math.round((nation.economy?.literacy ?? 0) * 100)}%</b></span>
+      <span title="National schooling level. The Population screen shows the class-weighted share of literate pops, which is a different measure."><small>National literacy</small><b>${Math.round((nation.economy?.literacy ?? 0) * 100)}%</b></span>
     </div>
     <div class="tech-cats">${bars}</div>
     <div class="tech-body">

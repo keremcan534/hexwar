@@ -207,11 +207,8 @@ function applyGovernmentLimits(nation) {
   if (!nation.economy) return;
   const limits = fiscalPolicyLimits(nation);
   nation.economy.tariff = Math.max(limits.tariffMin, Math.min(limits.tariffMax, nation.economy.tariff));
-  nation.economy.armySpending = Math.max(
-    limits.armySpendingMin,
-    Math.min(limits.armySpendingMax, nation.economy.armySpending),
-  );
-  // İki yeni ordu kaydıracı da aynı parti sınırına tabidir.
+  // İki ordu kaydıracı da aynı parti sınırına tabidir. (Eski tek armySpending
+  // alanı kaldırıldı; setFiscalPolicy'nin geriye dönük dalı iki kaydıracı sürer.)
   for (const key of ['militaryWages', 'militaryProcurement']) {
     nation.economy[key] = Math.max(
       limits.armySpendingMin,
@@ -253,6 +250,10 @@ export function updatePoliticalSupport(world) {
 function collectPrivateCapital(nation) {
   const upper = nation.economy?.classes?.upper;
   if (!upper) return;
+  // Korunum notu: 0.08 = economy.PROFIT_TO_REINVEST (import katman dongusu
+  // yaratirdi, sabit burada tekrarlanir — ledger-audit esitligi dogrular).
+  // Hane artigi da bolusulmus bir akistir: SAVINGS_RATE birikime, 0.22
+  // yatirima, kalani tuketime — ayni artik iki kez harcanmaz.
   const householdSurplus = Math.max(0, (upper.needsBudget ?? 0) - (upper.needsCost ?? 0));
   const industrialReturn = Math.max(0, nation.economy?.factoryProfit ?? 0);
   nation.politics.privateCapital = Math.min(

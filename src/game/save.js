@@ -13,7 +13,7 @@ import { ensureTraining } from './recruitment.js';
 import { ensureBattles } from './battles.js';
 import { ensureProvinces, refreshProvinceOwner } from './provinces.js';
 import { ensurePolitics } from './politics.js';
-import { ensureConstruction } from './construction.js';
+import { ensureConstruction, migrateConstructionV14 } from './construction.js';
 
 // Ordu sistemi yeniden yazıldı: cephe artık saklanmıyor (sınırdan türetiliyor),
 // komuta tek listede toplandı ve muharebe kare anahtarlı oldu. v8'de kaldırılan
@@ -29,7 +29,13 @@ import { ensureConstruction } from './construction.js';
 // 13: alay artık anında belirmiyor, eğitim kuyruğuna giriyor (nation.training)
 // ve subayların bir kolu var (general.branch). İkisi de türetilemez durumdur:
 // yazılmazsa yüklemede sipariş edilmiş ordu ve amiraller buhar olur.
-export const SAVE_VERSION = 14;
+// 14: (önceki sürüm) dört yerleşik bina tipi.
+// 15: bina donusumu — Construction Sector / University / Administration yerlesik
+// binalari ulusal kurumlara cevrildi (nation.construction.capacity). v14
+// kayitlari migrateConstructionV14 ile KAYIPSIZ yuklenir (bkz. construction.js).
+export const SAVE_VERSION = 15;
+/** Gocu bilinen eski surumler: deserialize bunlari da kabul eder. */
+const MIGRATABLE_VERSIONS = new Set([14]);
 const STORAGE_KEY = 'hexwar.save';
 
 /**
@@ -92,8 +98,13 @@ export function serialize(game) {
     market: world.market,
     battleSystem: {
       nextId: world.battleSystem?.nextId ?? 1,
-      // Aktif muharebeler yüklemede iptal edilir; ordu kimlikleri yeniden üretilir.
-      battles: [],
+      // Aktif muharebeler ARTIK kayda girer. Eskiden bilerek dusuruluyordu
+      // ("yuklemede iptal edilir") ve bu, muharebe ortasinda alinan kaydi
+      // kesintisiz kosudan DALLANDIRIYORDU (save-audit bunu yakaladi: ayni
+      // tohumda 100 hafta sonra hazine/fiyat farki). Muharebe nesnesi saf
+      // veridir (kimlikler + sayaclar); birim kimlikleri kayittan aynen
+      // dondugu icin uyelik yeniden baglanabilir (bkz. deserialize).
+      battles: (world.battleSystem?.battles ?? []).map((battle) => ({ ...battle })),
     },
     commandSystem: { nextId: world.commandSystem?.nextId ?? 1 },
     tiles,
@@ -104,6 +115,14 @@ export function serialize(game) {
         // kalirsa oyuncu yuzyillik teknoloji birikimini yuklemede kaybeder.
         research: n.research ?? null,
         construction: ensureConstruction(n),
+        // Ulusal vakayiname ve olay durum makinesi. Turetilemez veri:
+        // yazilmazsa yuklemeden sonra oyun ayni borcu/rejimi ikinci kez
+        // duyurur ve kampanyanin tarihi silinir (bkz. chronicle.js).
+        chronicle: (n.chronicle ?? []).map((entry) => ({ ...entry })),
+        events: n.events ? { ...n.events, said: { ...(n.events.said ?? {}) } } : null,
+        // Acilis kesiti: kapanis ekraninin "nereden nereye" olcusu. Bir kez
+        // yazilir; kayit disi kalirsa yuzyilin baslangici kaybolur.
+        opening: n.opening ? { ...n.opening } : null,
         rallyPoint: n.rallyPoint ?? null,
         // Eğitim kuyruğu: ödenmiş sipariş. Kayıt dışı kalırsa oyuncu parasını
         // ve teçhizatını yükleme ekranında kaybeder.
@@ -131,7 +150,13 @@ export function serialize(game) {
     relations: world.relations.map((row, a) => row.map((rec, b) => (
       // Dorduncu alan savasin kayip defteri: warscore'un yipranma bileseni
       // ona bakar, kaydedilmezse yuklenen savas "hic kan dokulmemis" olur.
-      b <= a || !rec ? null : [rec.state, rec.since, rec.truceUntil ?? 0, rec.losses ?? null]
+      // Besinci/altinci alan: tekrarlanan savas sayaci (repeatScale/ateskes
+      // suresi buna bakar) ve savas-ilerleme zirveleri (stall olcumu).
+      // Ikisi de dusurulunce yuklenen oyunda kazanan MASAYA BASKA HAFTA
+      // oturuyordu — olculdu: +77. haftada tek seferlik ¤229 tazminat farki,
+      // kaydet-yukle dallanmasinin son kaynagi buydu.
+      b <= a || !rec ? null : [rec.state, rec.since, rec.truceUntil ?? 0, rec.losses ?? null,
+        rec.wars ?? 0, rec.peaks ?? null]
     ))),
     cities: world.cities.map((c) => ({
       name: c.name,
@@ -174,7 +199,9 @@ export function serialize(game) {
  */
 export function deserialize(game, data) {
   // Rework sirasinda dunya semasi degisti; eski surumler guvenle acilamaz.
-  if (!data || data.version !== SAVE_VERSION) return false;
+  if (!data || (data.version !== SAVE_VERSION && !MIGRATABLE_VERSIONS.has(data.version))) {
+    return false;
+  }
 
   // 1) Aynı seed ve ayarlarla dünyayı yeniden kur (arazi, iklim, kültür aynı).
   game.newWorld(data.seed, data.options);
@@ -232,7 +259,18 @@ export function deserialize(game, data) {
     // baslar, takvim kapisi zaten calismaya devam eder).
     nation.research = saved.research ?? null;
     nation.construction = saved.construction ?? null;
+    // v14 gocu ensure'dan ONCE: ensure eski bina tiplerini tanimayip atardi,
+    // goc ham kayittan sayar (bkz. construction.migrateConstructionV14).
+    if (data.version === 14 && nation.construction) migrateConstructionV14(nation);
     ensureConstruction(nation);
+    // Eski kayitta yoktur: bos tarih ve bos durum makinesiyle baslar. Durum
+    // makinesi bos oldugunda ilk hafta mevcut durumu "baslangic" sayar,
+    // dolayisiyla yuklemeden sonra sahte olay uretmez.
+    nation.chronicle = (saved.chronicle ?? []).map((entry) => ({ ...entry }));
+    nation.events = saved.events
+      ? { ...saved.events, said: { ...(saved.events.said ?? {}) } }
+      : null;
+    nation.opening = saved.opening ? { ...saved.opening } : null;
     nation.rallyPoint = saved.rallyPoint ?? null;
     nation.treaties = (saved.treaties ?? []).map((t) => ({ ...t }));
     nation.training = saved.training
@@ -264,6 +302,8 @@ export function deserialize(game, data) {
       if (!entry) continue;
       const rec = { state: entry[0], since: entry[1], truceUntil: entry[2] };
       if (entry[3]) rec.losses = { ...entry[3] };
+      if (entry[4]) rec.wars = entry[4];
+      if (entry[5]) rec.peaks = { ...entry[5] };
       world.relations[a][b] = rec;
       world.relations[b][a] = rec;
     }
@@ -277,7 +317,6 @@ export function deserialize(game, data) {
       world, tile, saved.nationId, englishCityName(saved.name), saved.level, saved.pop,
     );
     city.pops = { ...saved.pops };
-    city.foodStore = 0;
     city.manualWorkers = false;
   }
 
@@ -353,7 +392,22 @@ export function deserialize(game, data) {
     ensureEconomy(world);
   }
   ensureBattles(world);
-  if (data.battleSystem) world.battleSystem = data.battleSystem;
+  if (data.battleSystem) {
+    world.battleSystem = data.battleSystem;
+    // Muharebe uyeligini yeniden bagla: birimler kimlikleriyle dondu, ama
+    // unit.battleId kayitta tasinmiyor. Kayipsiz kural: iki tarafi da hala
+    // var olan muharebe surer, tek tarafi kalmayan dusurulur.
+    const byId = new Map(world.units.map((unit) => [unit.id, unit]));
+    world.battleSystem.battles = (world.battleSystem.battles ?? []).filter((battle) => {
+      battle.attackers = (battle.attackers ?? []).filter((id) => byId.has(id));
+      battle.defenders = (battle.defenders ?? []).filter((id) => byId.has(id));
+      if (!battle.attackers.length || !battle.defenders.length) return false;
+      for (const id of [...battle.attackers, ...battle.defenders]) {
+        byId.get(id).battleId = battle.id;
+      }
+      return true;
+    });
+  }
   if (data.commandSystem) world.commandSystem = data.commandSystem;
   else if (data.generalSystem) world.commandSystem = { ...data.generalSystem };
   ensureCommand(world);

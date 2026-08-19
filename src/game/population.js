@@ -118,7 +118,26 @@ function ownedProvinces(world, nation) {
       anchor: cityTile ?? province.center,
     });
   }
-  return list;
+  if (list.length) return list;
+  // KALINTI DEVLET: province sahipligi COGUNLUKLA belirlenir; birkac kareye
+  // dusen ulke hicbir kumenin cogunlugunu tutmayabilir. Ekonomisi (tile
+  // tabanli nufus, meslek sayaclari) yasarken kohort katmani bombos
+  // kaliyordu — olculdu: 10.000 kisilik ulkede kohort toplami 0, "6.000
+  // kisilik sapma". Kismi sahiplik burada zemin olur: ulkenin kare sahibi
+  // oldugu kumeler uzerinden dagitilir ki turetilen toplam sayaci tutsun.
+  const partial = new Map();
+  for (const tile of world.tiles) {
+    if (tile.owner !== nation.id || tile.provinceId == null || tile.provinceId < 0) continue;
+    const province = world.provinces?.[tile.provinceId];
+    if (!province?.econ) continue;
+    const entry = partial.get(province.id) ?? { province, city: null, anchor: tile };
+    if (tile.city && !entry.city) {
+      entry.city = tile.city;
+      entry.anchor = tile;
+    }
+    partial.set(province.id, entry);
+  }
+  return [...partial.values()];
 }
 
 /**

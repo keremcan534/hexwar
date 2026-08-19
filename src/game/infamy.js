@@ -29,12 +29,18 @@ export const INFAMY = {
    */
   DECAY_PER_TURN: 0.05,
   /**
-   * 0.03'ten 0.02'ye. Denge noktası kazanç/oran olduğu için 0.03, eşiğe
-   * ulaşmayı ~0.95 kare/tur sürekli işgale bağlıyordu; savaş WW1 hızına
-   * çekildikten sonra bu tempoya kimse ulaşamıyor (ölçüldü: 6 tohumda zirve
-   * 11-24, koalisyon hiç kurulmadı).
+   * 0.02'den 0.012'ye. Salam denge hesabi: yillik tek-kume barisi (ilhak ~7 x
+   * tekrar carpani <=2.5 + isgal izi ~8) 0.02'de ~14'luk bir dengeye oturuyor
+   * ve esik (22) HIC dolmuyordu (Beta 3 I-1: 40 yil seri fetih, zirve 6.5).
+   * 0.012 ile seri saldirganin dengesi ~30'a cikar (fren isirir), tek savaslik
+   * "bir sehir + cevresi" ~18'de kalir (guvenli kural korunur).
+   *
+   * NOT: "savasta oransal azalma dursun" denendi ve GERI ALINDI — donmus
+   * savaslar on yillarca "savas hali" sayildigi icin sohret sinirsiz birikti
+   * (olculdu: zirve 519-1141, esik ustu 4.7k-13k ulke-hafta, cullanma 6'ya
+   * cikti). Azalma her hafta isler; fren orani, durdurma degil.
    */
-  DECAY_RATIO: 0.02,
+  DECAY_RATIO: 0.012,
 };
 
 /**
@@ -104,12 +110,19 @@ export function provinceAnnexInfamy(world, province, nation) {
  * Baris masasinda devredilen kumelerin sohret bedelini uygular.
  * `signPeace` bunu devirden HEMEN SONRA cagirir; donen sayi toplam bedeldir.
  */
-export function annexInfamy(world, nation, provinces) {
+/**
+ * @param {number} repeatScale Ayni kurbana TEKRARLANAN savasin carpani.
+ *   Salam taktiginin olculen deligi buydu: yillik tek-kume barislari (~7 puan)
+ *   baris donemi azalmasiyla tamamen siliniyor, esik (22) hic dolmuyordu.
+ *   Dunya seri saldirgani hatirlar: ikinci savas x1.5, ucuncusu x2...
+ */
+export function annexInfamy(world, nation, provinces, repeatScale = 1) {
   if (!nation) return 0;
   let total = 0;
   for (const province of provinces ?? []) {
     total += provinceAnnexInfamy(world, province, nation);
   }
+  total *= Math.max(1, repeatScale);
   if (total > 0) addInfamy(nation, total);
   return total;
 }
@@ -202,6 +215,15 @@ export function checkCoalitions(game, rng) {
       if (declareWar(game, other.id, target.id, { reason: 'coalition' })) {
         declared++;
         fronts++;
+        // Koalisyon OYUNCUYA karsi kurulduysa bu bir KRIZDIR: oyun durur.
+        // CRISIS turu bastan beri tanimliydi ve hicbir yerden yayilmiyordu;
+        // "esik 22, sohretim 33, hicbir sey olmadi" bulgusunun gorunur yuzu.
+        if (target.id === game.turns?.playerNation) {
+          game.turns.addLog(
+            `${world.nations[other.id].name} joined a coalition against us — our infamy has united our neighbours.`,
+            { kind: 'CRISIS' },
+          );
+        }
       }
     }
   }

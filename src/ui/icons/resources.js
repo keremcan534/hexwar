@@ -46,7 +46,6 @@ export const RESOURCE_ART = {
   cement: 'cement',
   clothes: 'regular_clothes',
   luxuries: 'luxury_clothes',
-  synthetic_oil: 'synthetic_oil',
   fuel: 'fuel',
   explosives: 'explosives',
 };

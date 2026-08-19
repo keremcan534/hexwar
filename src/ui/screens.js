@@ -36,14 +36,14 @@ import {
   setMilitaryProductionLine, socialSpendingCost, ensureProductionLine, supportProject, upgradeOutlook,
 } from '../game/economy.js';
 import { MAX_ROUNDS, battleSides, battlesFor } from '../game/battles.js';
-import { cancelTraining, prioritizeTraining } from '../game/recruitment.js';
+import { cancelTraining, moveTrainingTo, prioritizeTraining } from '../game/recruitment.js';
 import { equipmentLogistics } from '../game/reinforcement.js';
 import {
   armyComposition, commandRoster, militaryStats, militarySummary, recruitOptions,
   trainingRows, unassignedDivisions,
 } from '../game/military.js';
 import {
-  BRANCH, assignDivisions, createGeneral, generalCost, officersOf, setCommandOption,
+  BRANCH, assignDivisions, createGeneral, generalCost, officersOf, setCommandOption, setStance,
   unassignGeneral,
 } from '../game/command.js';
 import { militaryScreen } from './militaryScreen.js';
@@ -51,6 +51,7 @@ import {
   EARLY_ELECTION_WINDOW, electionWindowOpen, factoryInvestmentRules,
   fiscalPolicyLimits, holdElection, policyLabel, rulingParty,
 } from '../game/politics.js';
+import { chronicleYear, ensureChronicle } from '../game/chronicle.js';
 import {
   electorate, enactReform, governmentType, reformBoard,
 } from '../game/reforms.js';
@@ -58,10 +59,11 @@ import { politicsScreen } from './politicsScreen.js';
 import { technologyScreen } from './technologyScreen.js';
 import { researchPointsOf, startResearch } from '../game/technology.js';
 import {
-  CONSTRUCTION_TYPES, cancelConstruction, canQueueConstruction, constructionAtlas,
-  constructionPower, constructionUpkeep, ensureConstruction, moveConstructionTo,
-  prioritizeConstruction,
-  queueConstruction,
+  CONSTRUCTION_TYPES, NATIONAL_INVESTMENTS, cancelConstruction, canQueueConstruction,
+  constructionAtlas, constructionPower, constructionUpkeep, divestInvestment,
+  ensureConstruction,
+  investmentBlocker, investmentCost, investmentLevel, moveConstructionTo,
+  prioritizeConstruction, queueConstruction, queueInvestment,
 } from '../game/construction.js';
 
 const TITLES = {
@@ -77,6 +79,7 @@ const TITLES = {
   diplomacy: 'Diplomacy',
   dossier: 'Foreign Power',
   trade: 'Trade',
+  chronicle: 'National Chronicle',
 };
 
 function esc(s) {
@@ -244,8 +247,11 @@ export class Screens {
       const me = this.me;
       if (this.constructionType && tile?.owner === me?.id) {
         const region = constructionAtlas(game.world, me.id).tileRegions.get(tile);
-        if (region && queueConstruction(game, me.id, region.id, this.constructionType)) {
-          game.turns.addLog(`${CONSTRUCTION_TYPES[this.constructionType].name} queued in ${region.name}.`);
+        // Tiklanan kare CAPA olur: kalenin etkisi artik o noktaya bagli
+        // (bkz. construction.fortDefenseAt), yani haritadan yer secmek gercek
+        // bir karardir — dag gecidine kale, ovaya kale ayni sey degil.
+        if (region && queueConstruction(game, me.id, region.id, this.constructionType, tile)) {
+          game.turns.addLog(`${CONSTRUCTION_TYPES[this.constructionType].name} queued at ${provinceName(tile)}.`);
         }
       }
       this.refresh();
@@ -445,7 +451,7 @@ export class Screens {
       </div>
       <div class="dossier-facts">
         <div><span>Population</span><b>${formatPopulation(populationOf(world, target))}</b></div>
-        <div><span>Provinces</span><b>${target.tiles}</b></div>
+        <div><span>Territory</span><b>${target.tiles}</b><small>hexes</small></div>
         <div><span>Cities</span><b>${cities}</b></div>
         <div><span>Industry</span><b>${factories} levels</b></div>
       </div>
@@ -650,6 +656,29 @@ export class Screens {
   }
 
   // --- Ülke özeti: bayrağa dokununca açılan stratejik durum ekranı ---
+  /**
+   * Ulusal vakayiname: kampanyanin hafizasi. Hizli oynayan oyuncu 11 saniyelik
+   * bir toast'i kacirinca tarihini kaybediyordu (kor beta B-013). Burada
+   * yalnizca ULUSAL (tier 2+) olaylar durur — her fabrika, her fiyat degil.
+   */
+  render_chronicle(me) {
+    const entries = ensureChronicle(me);
+    if (!entries.length) {
+      return `<p class="empty">Nothing of national consequence has been recorded yet.
+        Wars, treaties, debt, defaults and changes of government are written here.</p>`;
+    }
+    // En yeni ustte: oyuncu once "az once ne oldu" diye bakar.
+    const rows = [...entries].reverse().map((entry) => `
+      <li class="chron-row tier-${entry.tier ?? 2}">
+        <b class="chron-year">${chronicleYear(entry.turn)}</b>
+        <span class="chron-text">
+          <b>${esc(entry.title)}</b>
+          ${entry.detail ? `<small>${esc(entry.detail)}</small>` : ''}
+        </span>
+      </li>`).join('');
+    return `<div class="chronicle"><ol class="chron-list">${rows}</ol></div>`;
+  }
+
   render_nation(me) {
     const world = this.game.world;
     const cities = this.myCities(me);
@@ -686,7 +715,7 @@ export class Screens {
       </div>
       <div class="overview-stats">
         <div><span>Hegemony</span><b>${score?.total ?? 0}</b><small>Rank ${rank || '—'} · leader ${board[0]?.total ?? 0}</small></div>
-        <div><span>Territory</span><b>${me.tiles}</b><small>provinces</small></div>
+        <div><span>Territory</span><b>${me.tiles}</b><small>hexes</small></div>
         <div><span>Population</span><b>${formatPopulation(population)}</b><small>${cities.length} ${cities.length === 1 ? 'city' : 'cities'}</small></div>
         <div><span>Armed Forces</span><b>${units.length}</b><small>power ${nationStrength(world, me).toFixed(1)}</small></div>
         <div><span>Internal Cohesion</span><b>${100 - foreignPct}%</b><small>${foreignPct}% foreign population</small></div>
@@ -726,10 +755,40 @@ export class Screens {
     const buildPalette = Object.values(CONSTRUCTION_TYPES).map((type) => `
       <button class="construction-build${this.constructionType === type.id ? ' selected' : ''}"
         data-construction-type="${type.id}" title="${esc(type.desc)}">
-        <i>${type.icon}</i><span><b>${esc(type.name)}</b><small>${type.cost} points · −¤${type.upkeep}/week</small></span>
+        <i>${type.icon}</i><span><b>${esc(type.name)}</b><small>¤${type.cost} · −¤${type.upkeep}/week</small></span>
       </button>`).join('');
+    // Ulusal yatirimlar: eski bina spam'inin kurum hali. Bir kart = bir
+    // seviye + bir sonraki seviyenin bedeli + (kapaliysa) NEDENI.
+    const investmentCards = Object.values(NATIONAL_INVESTMENTS).map((info) => {
+      const level = investmentLevel(me, info.id);
+      const pending = state.projects.filter(
+        (project) => project.kind === 'national' && project.typeId === info.id,
+      ).length;
+      const blocked = investmentBlocker(me, info.id);
+      const cost = investmentCost(me, info.id);
+      const levelName = info.levels
+        ? info.levels[Math.min(level, info.levels.length - 1)]
+        : `level ${level}`;
+      const capped = info.max != null && level + pending >= info.max;
+      return `<div class="construction-invest card" title="${esc(info.desc)}">
+        <i>${info.icon}</i>
+        <span class="grow"><b>${esc(info.name)}</b>
+          <small>${esc(levelName)}${pending ? ` · ${pending} in queue` : ''}${
+  info.id === 'CONSTRUCTION_CAPACITY' ? ` · +${5 * level}/wk` : ''}</small>
+          ${blocked && !capped ? `<small class="res-warn">${esc(blocked)}</small>` : ''}
+        </span>
+        <button class="action" data-invest="${info.id}" ${blocked ? 'disabled' : ''}
+          title="${esc(blocked ?? `Invest ¤${cost}: enters the construction queue and adds −¤${info.upkeep}/week upkeep.`)}">
+          ${capped ? 'Max' : `Invest · ¤${cost}`}</button>
+        ${level > 0 ? `<button class="action" data-divest="${info.id}"
+          title="Dissolve one level. No refund — you only shed the ¤${info.upkeep}/week upkeep.">−</button>` : ''}
+      </div>`;
+    }).join('');
+    // Siralama KARARLI: ad alfabetik. Eski "bos yuvaya gore" siralama satirlari
+    // her hafta yer degistirtiyordu ve oyuncu ayni state'e iki kez tiklayamiyordu
+    // (P2-3'un insaat ekranindaki kardesi).
     const regions = [...atlas.regions]
-      .sort((a, b) => b.free - a.free || a.name.localeCompare(b.name));
+      .sort((a, b) => a.name.localeCompare(b.name));
     const stateRows = regions.map((region) => {
       const status = region.status === 'full'
         ? 'Full'
@@ -757,10 +816,10 @@ export class Screens {
     }).join('');
     let cumulative = 0;
     const queueRows = state.projects.map((project, index) => {
-      // Kuyrukta artık fabrika ve seviye projeleri de var; tip araması iki
-      // tabloya birden bakmalı, yoksa sanayi projesi ekranı çökertir.
-      const type = CONSTRUCTION_TYPES[project.typeId] ?? FACTORIES[project.typeId]
-        ?? { name: project.typeId, icon: '🏭' };
+      // Kuyrukta bina, fabrika, seviye VE ulusal yatirim projeleri var; tip
+      // aramasi uc tabloya birden bakmali, yoksa ekran cokertir.
+      const type = CONSTRUCTION_TYPES[project.typeId] ?? NATIONAL_INVESTMENTS[project.typeId]
+        ?? FACTORIES[project.typeId] ?? { name: project.typeId, icon: '🏭' };
       const work = project.work ?? type.cost ?? 1;
       const remaining = Math.max(0, work - project.progress);
       cumulative += remaining;
@@ -787,14 +846,15 @@ export class Screens {
         <em>MAP MODE ACTIVE</em>
       </div>
       <div class="construction-kpis">
-        <span><small>Build power</small><b>${power}/wk</b></span>
+        <span><small>Build power</small><b>${power.toFixed(1)}/wk</b></span>
         <span><small>Building upkeep</small><b>−¤${upkeep.toFixed(1)}</b></span>
         <span class="construction-free-total"><small>Available slots</small><b>${atlas.free}<em> / ${atlas.slots}</em></b></span>
       </div>
+      <div class="construction-invest-row">${investmentCards}</div>
       <div class="construction-build-palette">${buildPalette}</div>
       <div class="construction-placement-hint ${selected ? 'active' : ''}">
-        ${selected ? `<b>${selected.icon} ${esc(selected.name)} selected</b><span>Click a state row or one of your states on the map to add it to the queue.</span>`
-    : '<b>Select a building icon</b><span>Then click a state row or the map to start construction.</span>'}
+        ${selected ? `<b>${selected.icon} ${esc(selected.name)} selected</b><span>Click one of your hexes on the map — the fort defends that hex and its 2-hex surroundings. A state row places it at the state centre.</span>`
+    : '<b>National investments above; the fort is placed on the map</b><span>Select the fort, then click the hex it should defend — a pass, a capital approach, a border city.</span>'}
       </div>
       <div class="construction-legend">
         <span><i class="legend-green"></i><b>More free slots</b></span>
@@ -1217,9 +1277,42 @@ export class Screens {
       };
     }
     for (const btn of body.querySelectorAll('[data-military-build]')) {
-      btn.onclick = () => {
+      btn.onclick = (event) => {
         // buyUnit artık siparişi kuyruğa yazar (bkz. recruitment.js).
-        if (game.turns.buyUnit(me, btn.dataset.militaryBuild)) this.refresh();
+        // Shift = 5 siparis: "on iki alay, on iki tik" beta'nin en net tekrarli
+        // is bulgusuydu — KARAR (egitim yuvasi/techizat kisiti) aynen duruyor,
+        // yalniz AYNI tiklamanin tekrarina gerek kalmiyor. Kisit dolunca
+        // dongü kendiliginden durur (buyUnit reddeder).
+        const wanted = event.shiftKey ? 5 : 1;
+        let ordered = 0;
+        for (let i = 0; i < wanted; i++) {
+          if (!game.turns.buyUnit(me, btn.dataset.militaryBuild)) break;
+          ordered++;
+        }
+        if (ordered) this.refresh();
+      };
+    }
+    for (const btn of body.querySelectorAll('[data-military-top]')) {
+      btn.onclick = () => {
+        if (moveTrainingTo(me, btn.dataset.militaryTop, 'top')) this.refresh();
+      };
+    }
+    for (const btn of body.querySelectorAll('[data-military-all-stance]')) {
+      btn.onclick = () => {
+        // Tiyatro emri: tek tikla butun kara komutalari. Yedi generalin yedi
+        // ayri "Start Offensive" dugmesi beta'nin 3 numarali mikro bulgusuydu.
+        const stance = btn.dataset.militaryAllStance;
+        let changed = 0;
+        for (const general of officersOf(me, BRANCH.ARMY)) {
+          if (general.divisions.length && setStance(game.world, general, stance) === stance) changed++;
+        }
+        if (changed) {
+          game.turns.addLog(`${changed} command${changed === 1 ? '' : 's'} ordered to ${
+            stance === 'advance' ? 'advance' : 'hold'}.`);
+          game.emit('command', game.activeGeneral ?? null);
+          game.requestRender();
+        }
+        this.refresh();
       };
     }
     for (const btn of body.querySelectorAll('[data-military-cancel]')) {
@@ -1329,15 +1422,24 @@ export class Screens {
       </div>`;
     };
 
+    // İktidar partisinin izin verdiği bant. Kör beta testçisi kaydıracı 100'e
+    // çekip 60'a düşünce oyunun ayarını "arkasından değiştirdiğini" sandı:
+    // aslında pasifist partinin tavanıydı ve HİÇBİR YERDE yazmıyordu. Bant
+    // kaydıracın kendisinde zaten uygulanıyor (min/max), eksik olan gerekçe.
+    const party = rulingParty(me);
+    const bandNote = (min, max) => (min <= 0 && max >= 100 ? ''
+      : `<small class="ledger-limit">${esc(party?.name ?? 'The ruling party')} allows ${min}–${max}%</small>`);
+
     // Gider satırı: piktogram + kaydıraç (varsa) + bağlam notu + değer kutusu.
     const expRow = (label, value, options = {}) => {
       const { policy = null, current = 0, min = 0, max = 100, classId = null,
-        note = '', picto = '' } = options;
+        note = '', picto = '', band = false } = options;
       return `<div class="ledger-row">
         <span class="ledger-picto">${picto}</span>
         <span class="ledger-mid">
           <span class="ledger-label">${esc(label)}${policy ? `<b>${current}%</b>` : ''}</span>
           ${policy ? hslider(policy, current, min, max, 5, classId) : ''}
+          ${band ? bandNote(min, max) : ''}
           ${note ? `<small class="ledger-note">${note}</small>` : ''}
         </span>
         ${vbox(-Math.abs(value), value > 0.05 ? 'neg' : '')}
@@ -1391,13 +1493,20 @@ export class Screens {
         <header class="ledger-head">Weekly Expenses</header>
         ${expRow('Industrial Subsidies', ledger.subsidyCost ?? 0, {
     picto: PICTO.factory,
-    note: subsidyNote(me) || 'mark plants on the Factories screen to cover their losses',
+    note: `${subsidyNote(me) || 'covers the losses of marked plants'}
+      <select data-subsidy-policy title="Manual: only the plants you mark on the Factories screen. Strategic: arms and ammunition plants are covered while at war, released at peace. None: every subsidy is cancelled.">
+        ${['manual', 'strategic', 'none'].map((id) => `<option value="${id}"
+          ${(economy.subsidyPolicy ?? 'manual') === id ? 'selected' : ''}>${
+  id === 'manual' ? 'Manual marks' : id === 'strategic' ? 'War industries at war' : 'No subsidies'
+}</option>`).join('')}
+      </select>`,
   })}
         ${expRow('Military Procurement', ledger.procurementCost ?? 0, {
     policy: 'militaryProcurement',
     current: economy.militaryProcurement ?? 100,
     min: limits.armySpendingMin,
     max: limits.armySpendingMax,
+    band: true,
     picto: PICTO.stockpile,
     note: `army supply ${supply}% · reinforcement ${Math.round(Math.max(25, economy.militaryProcurement ?? 100) * Math.max(0.4, (economy.military?.supplyIndex ?? 1)))}%`,
   })}
@@ -1406,6 +1515,7 @@ export class Screens {
     current: economy.militaryWages ?? 100,
     min: limits.armySpendingMin,
     max: limits.armySpendingMax,
+    band: true,
     picto: PICTO.soldier,
     note: `combat power ${Math.round(55 + (economy.militaryWages ?? 100) * 0.45)}% · recovery ${Math.round((0.6 + 0.4 * (economy.militaryWages ?? 100) / 100) * 100)}%`,
   })}
@@ -1422,7 +1532,7 @@ export class Screens {
     classId: 'education',
     current: economy.social.education ?? 0,
     picto: PICTO.book,
-    note: 'schools qualify workers; universities amplify it',
+    note: 'schools qualify workers; Higher Education (Construction screen) amplifies it and gates its next level on this budget',
   })}
         ${expRow('Public Health', socialShare(me, 'health'), {
     policy: 'social',
@@ -1466,6 +1576,7 @@ export class Screens {
           <span class="ledger-mid">
             <span class="ledger-label">Tariffs<b>${economy.tariff}%</b></span>
             ${hslider('tariff', economy.tariff, limits.tariffMin, limits.tariffMax)}
+            ${bandNote(limits.tariffMin, limits.tariffMax)}
             <small class="ledger-note">${economy.tariff >= 0
     ? `import prices +${economy.tariff}% · protects domestic industry`
     : `treasury subsidises imports by ${-economy.tariff}%`}</small>
@@ -1499,7 +1610,7 @@ export class Screens {
   })()}
         ${this.warBudgetPanel(me, ledger)}
         <div class="ledger-balance">
-          <span>Projected weekly balance</span>
+          <span>Last week's balance<small>closed accounts, not a forecast</small></span>
           <span class="vbox ${ledger.net >= 0 ? 'pos' : 'neg'} hero">${money(ledger.net ?? 0)}</span>
         </div>
       </section>
@@ -1754,7 +1865,7 @@ export class Screens {
       category: this.techCategory ?? 'industry',
       selected: this.techSelected ?? null,
       year,
-      rate: researchPointsOf(me, me.rank ?? 0),
+      rate: researchPointsOf(me),
     });
   }
 
@@ -1860,7 +1971,7 @@ export class Screens {
           <img class="flag" src="${flagDataUrl(n)}" alt="">
           <button class="grow rel-open" data-nation="${n.id}" title="Open dossier">
             <div class="name">${esc(n.name)} ${tag}</div>
-            <div class="meta">${n.tiles} provinces · ${strengthPhrase(myPower, power)} · infamy ${Math.round(n.infamy ?? 0)}</div>
+            <div class="meta">${n.tiles} hexes · ${strengthPhrase(myPower, power)} · infamy ${Math.round(n.infamy ?? 0)}</div>
           </button>
           ${action}
         </div>
@@ -1951,6 +2062,22 @@ export class Screens {
       btn.onclick = () => {
         this.constructionType = this.constructionType === btn.dataset.constructionType
           ? null : btn.dataset.constructionType;
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-invest]')) {
+      btn.onclick = () => {
+        if (queueInvestment(game, me.id, btn.dataset.invest)) {
+          game.turns.addLog(`${NATIONAL_INVESTMENTS[btn.dataset.invest].name} investment queued.`);
+        }
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-divest]')) {
+      btn.onclick = () => {
+        if (divestInvestment(game, me.id, btn.dataset.divest)) {
+          game.turns.addLog(`${NATIONAL_INVESTMENTS[btn.dataset.divest].name} level dissolved.`);
+        }
         this.refresh();
       };
     }
@@ -2120,8 +2247,10 @@ export class Screens {
     for (const btn of this.el.body.querySelectorAll('[data-factory]')) {
       btn.onclick = () => {
         if (!buildFactory(game, me, btn.dataset.region, btn.dataset.factory)) return;
-        // Kurulunca pencere kapanır: aynı state'e ikinci kez aynı tür zaten girmez.
-        this.industryPicker = null;
+        // Pencere ACIK KALIR: kurulan tur listeden zaten duser, oyuncu ayni
+        // state'e pes pese birkac tesis kurabilir. Eski davranis (her alimda
+        // kapanan modal) 75 fabrikalik bir kurulumu ~160 tika cikariyordu
+        // (Beta 2 §7-4); karar sayisi ayni, tik sayisi tesise iner.
         this.refresh();
       };
     }
@@ -2170,9 +2299,22 @@ export class Screens {
         )) this.refresh();
       };
     }
+    const subsidyPolicy = this.el.body.querySelector('[data-subsidy-policy]');
+    if (subsidyPolicy) {
+      subsidyPolicy.onchange = () => {
+        setFiscalPolicy(me, 'subsidyPolicy', subsidyPolicy.value);
+        game.emit('economy', me.economy);
+        this.refresh();
+      };
+    }
     for (const input of this.el.body.querySelectorAll('[data-policy]')) {
+      // Sürüklerken sayı ANINDA oynar. Eski seçici (`.policy-slider` /
+      // `[data-policy-value]`) defter tasarımıyla birlikte ölmüştü: kaydıraç
+      // 40'a gidiyor, yanındaki rakam 30'da donuyordu — kör beta testçisi
+      // bunu "görünmez bir tavan" sandı (B-022). Canlı rakam artık satırın
+      // kendi etiketindedir.
       input.oninput = () => {
-        const label = input.closest('.policy-slider')?.querySelector('[data-policy-value]');
+        const label = input.closest('.ledger-mid')?.querySelector('.ledger-label b');
         if (label) label.textContent = `${input.value}%`;
       };
       input.onchange = () => {

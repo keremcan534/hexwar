@@ -15,7 +15,8 @@ export const REINFORCEMENT_EQUIPMENT = {
   INFANTRY: { arms: 0.002 },
   CAVALRY: { arms: 0.0025 },
   ARTILLERY: { arms: 0.001, artillery: 0.003 },
-  WARSHIP: { arms: 0.005, steamers: 0.003 },
+  // Gemi kurulusla ayni malzemeyle onarilir (bkz. recruitment.js WARSHIP).
+  WARSHIP: { arms: 0.005, clippers: 0.003 },
   ARMOR: { arms: 0.001, tanks: 0.004 },
   AIRCRAFT: { arms: 0.0005, airplane: 0.004 },
 };

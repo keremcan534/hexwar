@@ -44,15 +44,22 @@ export const TECH_FOLDERS = {
  * Hepsi TOPLANIR (additive) ve `techModifiers` tek bir duz nesne dondurur;
  * sicak yol yalnizca alan okur.
  */
+// `literacyCap` ve `morale` anahtarlari silindi: hicbir teknoloji tasimiyordu
+// ve hicbir sistem okumuyordu — sifir tuketicili degistirici tutulmaz (P1-6).
+// Kalan altisinin HEPSININ gercek tuketicisi var:
+//   rgoOutput          -> provinces.provinceOutput
+//   constructionPower  -> construction.constructionPower
+//   factoryThroughput  -> economy.runFactories
+//   inputEfficiency    -> economy.runFactories (girdi tuketimi)
+//   researchRate       -> researchPointsOf (asagida)
+//   supplyConsumption  -> economy.armyWeeklyDemand
 export const TECH_MODS = {
   rgoOutput: 'RGO output',
   constructionPower: 'Construction power',
   factoryThroughput: 'Factory throughput',
   inputEfficiency: 'Factory input efficiency',
   researchRate: 'Research speed',
-  literacyCap: 'Literacy ceiling',
   supplyConsumption: 'Army supply consumption',
-  morale: 'Army morale',
 };
 
 /** `t(...)` kisa yazim: teknoloji kaydi. */
@@ -200,7 +207,7 @@ export function techCost(techId, year) {
  * Okuryazarlik ARTIK BIR STOK (bkz. economy.js `advanceLiteracy`); bu bag
  * olmadan arastirma sabit bir sayiya baglanirdi ve egitim yine olu kalirdi.
  */
-export function researchPointsOf(nation, rank = 0) {
+export function researchPointsOf(nation) {
   const economy = nation.economy;
   if (!economy) return 0;
   const literacy = clamp(economy.literacy ?? 0, 0, 1);
@@ -209,9 +216,10 @@ export function researchPointsOf(nation, rank = 0) {
   // okuryazarlik yeterliyse sayilir (Vic2'de esik %50).
   const middleShare = clamp((economy.classes?.middle?.population ?? 0) / population, 0, 1);
   const clerks = literacy >= 0.5 ? middleShare * 2 : 0;
-  // Ulusal rutbe: buyuk guc daha cok bilim uretir (kurum, akademi, cekim).
-  const rankBonus = rank > 0 && rank <= 8 ? 1.5 : rank > 0 && rank <= 16 ? 1.25 : 1;
-  const base = literacy * 4 + middleShare * 1.5 + clerks + rankBonus;
+  // Eski "ulusal rutbe" bonusu kaldirildi: `nation.rank` hicbir yerde
+  // atanmiyordu, carpan her zaman 1'di (olu buyuk-guc terimi). Sabit 1 taban
+  // olarak korunur ki puan uretimi degismesin.
+  const base = literacy * 4 + middleShare * 1.5 + clerks + 1;
   return base * (1 + (economy.techMods?.researchRate ?? 0));
 }
 
@@ -248,9 +256,9 @@ export function startResearch(nation, techId) {
  * Bir haftalik arastirma. Puan birikir; secili teknolojinin maliyeti dolunca
  * tamamlanir ve artan puan bir sonrakine devreder (puan bosa gitmez).
  */
-export function advanceResearch(nation, year, rank = 0) {
+export function advanceResearch(nation, year) {
   const research = ensureResearch(nation);
-  research.points += researchPointsOf(nation, rank);
+  research.points += researchPointsOf(nation);
   const techId = research.current;
   if (!techId) return null;
   const cost = techCost(techId, year);

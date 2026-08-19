@@ -16,7 +16,7 @@ import { INFAMY_COALITION } from './infamy.js';
 import { isMoving, regimentCount, unitAvailable, unitsOn } from './units.js';
 import { destinationOf, orderMove } from './movement.js';
 import { controllerOf } from './control.js';
-import { canRecruit, trainingCount } from './recruitment.js';
+import { canRecruit, disband, trainingCount } from './recruitment.js';
 import {
   BRANCH, STANCE, assignDivisions, commandSize, generalOfArmy, officersOf, setStance,
 } from './command.js';
@@ -68,6 +68,10 @@ const PEACE_WIN_SCORE = 25;
 
 /** Bu warscore'un altında YZ savaşı ne pahasına olursa olsun kesmeye çalışır. */
 const PEACE_LOSS_SCORE = -30;
+// Uc yil sonuc uretmeyen savas masaya beyaz baris koyar (bkz. asagida
+// donmus-savas dali). 8 yillik `stale` kapisi yalniz KAZANAN dalinda
+// yasiyordu; 0-0 savasin teklif vereni hic yoktu.
+const FROZEN_WAR_WEEKS = 156;
 
 /**
  * Teklifi alan tarafın kararı. Ölçüt tek: masada verdiğim, cephede
@@ -164,6 +168,15 @@ function diplomacy(game, nation, rng) {
     } else if (score <= PEACE_LOSS_SCORE
       || myPower < nationStrength(world, foe) * 0.6) {
       offerPeace(game, nation, foe, surrenderOffer(world, nation, foe), rng);
+    } else if (game.turns.turn - rec.since >= FROZEN_WAR_WEEKS) {
+      // DONMUS SAVAS KACAGI: iki esik arasinda sikisan savasin (kimse ±30'a
+      // ulasamiyor, guc dengesi yakin) HIC teklif vereni yoktu — koalisyonun
+      // actigi uzak, cephesiz savaslar boyle onyillarca acik kaliyordu
+      // (olculdu: 1300. haftada 1186 haftalik savas; savas maliyesi 17/26
+      // ulkeyi kalici temerrutte tutuyordu). Uc yildir sonuc uretmeyen savas
+      // beyaz baris teklif eder; alici onde ise peace.js beklentisi korur,
+      // yorgunluk toleransi zamanla masayi kapatir.
+      offerPeace(game, nation, foe, { demands: [], concessions: [], terms: [] }, rng);
     }
   }
 
@@ -246,6 +259,27 @@ function affordableUnit(game, nation, army) {
 function spend(game, nation) {
   const world = game.world;
   const cities = world.cities.filter((c) => c.nationId === nation.id).length;
+
+  // SEFERBERLIKTEN DONUS: temerrutteki devlet bariste ordusunu kucultur.
+  // desiredArmy maliyeye bakmaz; yenilgiden cikan kalinti devlet gelirinin
+  // katini maas+tedarike verip her hafta kucuk kucuk temerrude dusuyordu —
+  // alim kapilari kapaliyken eldeki stok kimseye sorulmadan duruyordu.
+  // Haftada bir birim, iki alaylik cekirdek savunma korunur.
+  if ((nation.economy?.creditPenalty ?? 0) > 0.3
+    && !world.nations.some((other) => other.alive && other.id !== nation.id
+      && atWar(world, other.id, nation.id))) {
+    const units = world.units
+      .filter((u) => u.nationId === nation.id && u.type.domain !== 'sea');
+    const total = units.reduce((sum, unit) => sum + regimentCount(unit), 0);
+    if (total > 2) {
+      const weakest = units.reduce(
+        (worst, unit) => (regimentCount(unit) < regimentCount(worst) ? unit : worst),
+        units[0],
+      );
+      if (weakest) disband(game, weakest);
+    }
+    return;
+  }
 
   const militaryLines = (nation.economy?.factories ?? [])
     .filter((factory) => factory.typeId === 'ARMS_FACTORY')

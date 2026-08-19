@@ -8,7 +8,7 @@
 //
 // Katman notu: saf hesap. DOM'a dokunmaz, çizim bilmez.
 
-import { atWar, makePeace, nationStrength, warLossesOf } from './diplomacy.js';
+import { atWar, makePeace, nationStrength, relation, warLossesOf } from './diplomacy.js';
 import { controllerOf } from './control.js';
 import { soldiersOf } from './units.js';
 import { annexInfamy } from './infamy.js';
@@ -120,10 +120,10 @@ export const PEACE_TERMS = {
     id: 'CONCESSION', name: 'Resource Concession', icon: '⛏', cost: 20, turns: 312,
     desc: 'A fifth of their raw production is shipped to you for six years.',
   },
-  FACTORY_RIGHTS: {
-    id: 'FACTORY_RIGHTS', name: 'Industrial Rights', icon: '🏭', cost: 14, turns: 312,
-    desc: 'Your capital may open factories in their states for six years.',
-  },
+  // FACTORY_RIGHTS kaldirildi: sart satin alinabiliyordu ama hicbir sistem
+  // okumuyordu (industrialRightsOn'un tuketicisi yoktu) — warscore karsiligi
+  // hicbir sey vermeyen bir tuzakti. Yabanci toprakta yatirim gercekten
+  // kurulursa sart geri gelir.
   LIBERATE: {
     id: 'LIBERATE', name: 'Liberate Minorities', icon: '⚑', cost: 35,
     desc: 'Provinces of a culture foreign to them break away and become independent.',
@@ -491,7 +491,7 @@ export function occupiedProvincesOf(world, a, b) {
  * denenir; bütçe yetmezse süreli olanlara düşülür.
  */
 const TERM_PRIORITY = [
-  'VASSALIZE', 'LIBERATE', 'REPARATIONS', 'CONCESSION', 'FACTORY_RIGHTS', 'DEMILITARIZE',
+  'VASSALIZE', 'LIBERATE', 'REPARATIONS', 'CONCESSION', 'DEMILITARIZE',
 ];
 
 /**
@@ -608,7 +608,7 @@ function applyTerms(game, a, b, terms) {
       type: termId, partner: a, since: turn, until: turn + (term.turns ?? 0),
     });
   }
-  game.turns.addLog?.(`${winner.name} imposed terms on ${loser.name}.`);
+  game.turns.addLog?.(`${winner.name} imposed terms on ${loser.name}.`, { silent: true });
 }
 
 /**
@@ -620,6 +620,12 @@ export function signPeace(game, a, b, offer) {
   if (!atWar(world, a, b)) return false;
   if (!offerAcceptable(world, a, b, offer)) return false;
 
+  // Ayni kurbana kacinci savas? Seri yagma masada pahalilasir (salam freni).
+  // Tavan x2.5: sinirsiz birakinca 14-tekrarli ciftler x7.5'e cikip kacak
+  // dongu kuruyordu (koalisyon savasi -> ilhak -> daha cok sohret; olculdu:
+  // zirve 286, esik ustu 1175 ulke-hafta/520hf). Fren isirmali, dunyayi yakmamali.
+  const repeats = relation(world, a, b)?.wars ?? 1;
+  const repeatScale = Math.min(2.5, 1 + 0.5 * Math.max(0, repeats - 1));
   const transfer = (keys, from, to) => {
     const taken = [];
     for (const key of keys ?? []) {
@@ -631,7 +637,7 @@ export function signPeace(game, a, b, offer) {
     }
     // Fethin KALICI diplomatik bedeli masada ödenir. İşgal şöhreti yerinde
     // kalır ama asıl kaynak burasıdır — bkz. infamy.annexInfamy.
-    annexInfamy(world, world.nations[to], taken);
+    annexInfamy(world, world.nations[to], taken, repeatScale);
   };
   transfer(offer?.demands, b, a);
   transfer(offer?.concessions, a, b);
@@ -645,6 +651,27 @@ export function signPeace(game, a, b, offer) {
     if ((tile.owner === a && controller === b) || (tile.owner === b && controller === a)) {
       tile.controller = tile.owner;
     }
+  }
+  // Baris bir SONUCTUR: kim ne aldi, ne odedi. Tek satirlik "terms imposed"
+  // kor beta testcisine savasin nasil bittigini soylemiyordu.
+  const player = game.turns.playerNation;
+  if (a === player || b === player) {
+    const other = world.nations[a === player ? b : a];
+    const gained = (offer?.demands ?? []).length;
+    const given = (offer?.concessions ?? []).length;
+    const parts = [];
+    if (a === player ? gained : given) parts.push(`${a === player ? gained : given} provinces annexed`);
+    if (a === player ? given : gained) parts.push(`${a === player ? given : gained} provinces ceded`);
+    for (const termId of offer?.terms ?? []) {
+      const term = PEACE_TERMS[termId];
+      if (term) parts.push(term.name.toLowerCase());
+    }
+    game.turns.addLog(`Peace signed with ${other?.name ?? 'a rival'}.`, {
+      kind: 'PEACE',
+      tier: 2,
+      title: `Peace with ${other?.name ?? 'a rival'}`,
+      body: parts.length ? `${parts.join(' · ')}.` : 'A white peace: the borders stand as they are.',
+    });
   }
   return makePeace(game, a, b, { settle: false });
 }

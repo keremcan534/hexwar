@@ -27,6 +27,10 @@ export class Notifications {
       repeated ? this.bump(entry) : this.add(entry)
     ));
     game.on('notify-clear', () => this.clear());
+    // Konusu kapanan kartlar (barışan savaş gibi) ekrandan da kalkar.
+    game.on('notify-dismiss', (entries) => {
+      for (const entry of entries ?? []) this.remove(entry);
+    });
     // Yeni dünya eski dünyanın kartlarıyla açılmasın.
     game.on('world', () => this.clear());
   }
@@ -53,7 +57,7 @@ export class Notifications {
       return;
     }
     const { card } = state;
-    card.querySelector('.notify-body').textContent = entry.text;
+    card.querySelector('.notify-body').textContent = entry.title ? (entry.body ?? '') : entry.text;
     const count = card.querySelector('.notify-count');
     count.textContent = entry.count > 1 ? String(entry.count) : '';
     count.classList.toggle('shown', entry.count > 1);
@@ -66,15 +70,25 @@ export class Notifications {
 
   build(entry) {
     const card = document.createElement('article');
-    card.className = `notify-card notify-${entry.tone}${entry.ttl ? '' : ' notify-sticky'}`;
+    // Ulusal olay (tier 2+) kendi ağırlığında görünür: başlık serif ve büyük,
+    // sonuç cümlesi altında. Rutin bildirim eskisi gibi tek satır kalır —
+    // her olayı büyütmek "bildirim cehennemi"dir (bkz. EVENT_COMMUNICATION_SYSTEM).
+    const tier = entry.tier ?? 0;
+    const weight = tier >= 3 ? ' notify-existential' : tier >= 2 ? ' notify-major' : '';
+    card.className = `notify-card notify-${entry.tone}${entry.ttl ? '' : ' notify-sticky'}${weight}`;
     card.style.setProperty('--notify-ttl', `${entry.ttl || 0}ms`);
+    const headline = entry.title
+      ? `<b class="notify-title">${escapeHtml(entry.title)}</b>`
+      : '';
+    const body = entry.title ? (entry.body ?? '') : entry.text;
     card.innerHTML = `
       <span class="notify-icon" aria-hidden="true">${entry.icon}
         <b class="notify-count${entry.count > 1 ? ' shown' : ''}">${entry.count > 1 ? entry.count : ''}</b>
       </span>
       <span class="notify-text">
         <small>${escapeHtml(entry.label)}</small>
-        <span class="notify-body">${escapeHtml(entry.text)}</span>
+        ${headline}
+        <span class="notify-body">${escapeHtml(body)}</span>
       </span>
       <button class="notify-close" aria-label="Dismiss">✕</button>
       <i class="notify-timer" aria-hidden="true"></i>`;

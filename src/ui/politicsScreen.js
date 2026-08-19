@@ -12,7 +12,7 @@
 
 import {
   REFORM_CATEGORIES, canEnactCategory, electorate, importantIssues, peopleMix,
-  reformMovements, reformValue, releasableNations, upperHouse, voterMix,
+  reformMovements, reformValue, upperHouse, voterMix,
 } from '../game/reforms.js';
 import { IDEOLOGIES, POLITICAL_POLICIES, rulingParty } from '../game/politics.js';
 import { formatPopulation } from '../game/economy.js';
@@ -343,48 +343,17 @@ export function movementsTab({ militancy, movements }) {
   </div>`;
 }
 
-export function decisionsTab() {
-  return `<div class="pol-tab-empty">${band('Decisions')}
-    <p>No decisions are available.</p>
-    <p class="pol-note">Decisions are one-off acts of state offered by events and by
-      the situation on the map. <em>The event system is not built yet, so this
-      register stays empty rather than showing invented entries.</em></p>
-  </div>`;
-}
-
-export function releaseTab(rows) {
-  if (!rows.length) {
-    return `<div class="pol-tab-empty">${band('Release Nations')}
-      <p>Every province you hold speaks your own culture. There is nothing to release.</p>
-    </div>`;
-  }
-  const list = rows.map((row) => `<div class="pol-release">
-    <i class="pol-release-flag" style="background:${row.color}"></i>
-    <div class="pol-release-body">
-      <b>${esc(row.name)}</b>
-      <small>${row.provinces} ${row.provinces === 1 ? 'province' : 'provinces'} ·
-        ${formatPopulation(row.population)} people</small>
-    </div>
-    <button class="pol-release-btn" disabled title="Releasing nations is not implemented yet.">Release</button>
-  </div>`).join('');
-  return `<div class="pol-releases">
-    ${band('Release Nations', `${rows.length} foreign ${rows.length === 1 ? 'culture' : 'cultures'} under your rule`)}
-    ${list}
-    <p class="pol-note">These are the cultures living inside your borders, counted from
-      the provinces you actually hold. <em>Releasing them as client states is not
-      implemented, so the buttons stay closed.</em></p>
-  </div>`;
-}
-
 /* --------------------------------------------------------------------------
    ÇERÇEVE
    -------------------------------------------------------------------------- */
 
+// "Decisions" (bos kayit defteri) ve "Release Nations" (kalici kapali
+// dugmeler) sekmeleri kaldirildi: iki beta boyunca oyuncuya tek bir eylem
+// sunmadilar. Olay sistemi ya da ulus-birakma gercekten kurulunca sekmeleri
+// icerikleriyle birlikte geri gelir.
 export const POLITICS_TABS = [
   ['reforms', 'Reforms'],
   ['movements', 'Movements'],
-  ['decisions', 'Decisions'],
-  ['release', 'Release Nations'],
 ];
 
 function tabBar(active) {
@@ -419,9 +388,7 @@ export function politicsScreen(world, nation, state, board) {
   };
 
   const body = state.tab === 'movements' ? movementsTab(movements)
-    : state.tab === 'decisions' ? decisionsTab()
-      : state.tab === 'release' ? releaseTab(releasableNations(world, nation))
-        : reformsTab(board, house, reformValue(nation, 'upper_house'));
+    : reformsTab(board, house, reformValue(nation, 'upper_house'));
 
   return `<div class="pol">
     <aside class="pol-left">
