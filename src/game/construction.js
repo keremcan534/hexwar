@@ -812,8 +812,13 @@ export function planConstructionAI(game, nation) {
     queueInvestment(game, nation.id, 'CONSTRUCTION_CAPACITY');
     return;
   }
-  // 3) Zengin ve okullu ulke yuksekogretime yatirir (YZ mutevazi: 2 seviye).
-  if (nation.gold > 500 && investmentLevel(nation, 'HIGHER_EDUCATION') < 2
+  // 3) Zengin ve okullu ulke yuksekogretime yatirir. YZ mutevazi (2 seviye) —
+  // AMA Ulusal Egitim programini ilan etmis ulke tavana kadar gider: program
+  // %55 egitim tabani tasiyor, kurumsuz taban odemek sacma olurdu. YZ boylece
+  // oyuncuyla ayni sistemi ayni hirsla kullanir (teknoloji.js alanini dogrudan
+  // okur; import yok, dongu yok).
+  const heAmbition = nation.research?.programme === 'NATIONAL_INSTRUCTION' ? 4 : 2;
+  if (nation.gold > 500 && investmentLevel(nation, 'HIGHER_EDUCATION') < heAmbition
     && canQueueInvestment(nation, 'HIGHER_EDUCATION')) {
     queueInvestment(game, nation.id, 'HIGHER_EDUCATION');
     return;

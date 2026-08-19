@@ -172,6 +172,20 @@ export function runNationalEvents(game, nation) {
   if (state.debt !== null && phase !== state.debt) announceDebt(game, nation, state, state.debt, phase);
   state.debt = phase;
 
+  // --- ULUSAL PROGRAM DAVETI ---------------------------------------------
+  // Programsiz oyuncu masaya cagrilir (kalici kart, durdurmaz). Sik degil:
+  // ayni davet uc yilda bir. Fesih sogumasi bitmeden davet edilmez.
+  const research = nation.research;
+  if (research && !research.programme
+    && (world.turn ?? 0) >= (research.programmeCooldown ?? 0)
+    && !throttled(state, 'programme-prompt', world.turn ?? 0)) {
+    announce(game, nation, {
+      kind: 'POLITICS', tier: TIER.IMPORTANT, key: 'programme-prompt', ttl: 0,
+      title: 'The nation has no programme',
+      detail: 'Proclaim a National Programme on the Technology screen to set a direction for the decade.',
+    });
+  }
+
   // --- REJIM -------------------------------------------------------------
   const form = governmentType(nation);
   const party = rulingParty(nation);

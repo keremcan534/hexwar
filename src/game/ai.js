@@ -246,7 +246,7 @@ function affordableUnit(game, nation, army) {
     // Tarihsel acilis burada sorulur. Sorulmadigi surece YZ 1836'da tanki
     // "karsilanabilir" sayip siraya sokmayi deniyor, buyUnit reddediyor ve
     // haftanin butun alim dongusu kiriliyordu (her ucuncu alayda).
-    if (!unitAvailable(id, game.turns.turn)) continue;
+    if (!unitAvailable(id, game.turns.turn, nation)) continue;
     if (canAfford(nation, UNIT_COSTS[id]) && canRecruit(world, nation, id)) return id;
   }
   return null;

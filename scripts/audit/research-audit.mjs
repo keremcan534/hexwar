@@ -47,9 +47,19 @@ function runSeed(seed) {
     const he = live.map((n) => investmentLevel(n, 'HIGHER_EDUCATION'));
     // Ayrisma olcusu: kac FARKLI teknoloji kumesi var? (sira duyarsiz)
     const sets = new Set(live.map((n) => (n.research?.done ?? []).slice().sort().join(',')));
+    const progHist = {};
+    let abandoned = 0;
+    for (const n of live) {
+      const p = n.research?.programme ?? 'NONE';
+      progHist[p] = (progHist[p] ?? 0) + 1;
+      abandoned += (n.research?.programmeHistory ?? [])
+        .filter((h) => h.reason === 'crisis' || h.reason === 'abandoned').length;
+    }
     marks.push({
       year: DECADES[next],
       nations: live.length,
+      progHist,
+      abandonedTotal: abandoned,
       eduMed: quantile(edu, 0.5),
       eduAt0: edu.filter((v) => v === 0).length,
       eduIqr: quantile(edu, 0.75) - quantile(edu, 0.25),
@@ -224,7 +234,34 @@ const some = (fn) => runs.some(fn);
   console.log('  (h) yakalama (catch-up)   : ulus kimligi izlenmedigi icin bu kosuda OLCULMEDI');
 }
 
-console.log('\n  NOT: (i) fesih sayisi ve program histogrami, program mekanigi');
-console.log('  uygulandiginda eklenecek. Bu kosu A KOLUDUR (mevcut davranis).');
+// (i) fesih ve program dagilimi
+sub('Ulusal programlar');
+for (const run of runs) {
+  console.log(`\n  [${run.seed}]`);
+  console.log(table(run.marks, [
+    { label: 'yil', get: (m) => m.year },
+    { label: 'programlar', get: (m) => Object.entries(m.progHist ?? {}).sort().map(([k, v]) => `${k.slice(0, 4)}:${v}`).join(' '), right: false },
+    { label: 'fesih(kumulatif)', get: (m) => m.abandonedTotal ?? 0 },
+  ]));
+}
+{
+  // Tek program dunyayi yutmasin: 1900'de en yaygin program (NONE haric)
+  // canli ulkelerin %70'ini gecmesin. "YZ hep ayni yolu secer" yasagi.
+  const bad = [];
+  for (const run of runs) {
+    const m = at(run, 1900);
+    if (!m?.progHist) continue;
+    const withProg = Object.entries(m.progHist).filter(([k]) => k !== 'NONE');
+    const total = withProg.reduce((s, [, v]) => s + v, 0);
+    const top = Math.max(0, ...withProg.map(([, v]) => v));
+    if (total > 0 && top / total > 0.7) bad.push(`${run.seed}: ${top}/${total}`);
+  }
+  console.log(`  (i2) tek program tekeli yok : ${bad.length ? 'KALDI' : 'GECTI'}${bad.length ? ` (${bad.join(' · ')})` : ''}`);
+  if (bad.length) {
+    finding('MEDIUM', 'YZ program cesitliligi yetersiz',
+      '1900\'de tek bir program, program sahibi ulkelerin %70\'inden fazlasini tutmamali',
+      bad.join(' · '), 'scoreProgrammes agirliklari tekduzelesiyor olabilir');
+  }
+}
 
 reportFindings();

@@ -5,6 +5,7 @@
 // dunya nesnesi disinda bagimlilik yok.
 
 import { controllerOf } from './control.js';
+import { techUnlocksUnit } from './technology.js';
 
 /** Kara birimi denize girdiginde bu hizla yol alir (bindirilmis hali). */
 export const EMBARKED_MOVES = 4;
@@ -66,8 +67,13 @@ export const UNIT_TYPES = {
   },
 };
 
-/** Bu tur o birim tipi kurulabilir mi? (tarihsel acilis) */
-export function unitAvailable(typeId, turn) {
+/**
+ * Bu tur o birim tipi kurulabilir mi? Takvim UST SINIRDIR: arastirma tarihi
+ * one ceker (economy.js `factoryUnlocked` ile ayni VEYA kalibi). `nation`
+ * verilmezse saf takvim — eski cagri yerleri kirilmasin.
+ */
+export function unitAvailable(typeId, turn, nation = null) {
+  if (nation && techUnlocksUnit(nation, typeId)) return true;
   return (UNIT_TYPES[typeId]?.availableFrom ?? 0) <= turn;
 }
 

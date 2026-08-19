@@ -9,9 +9,14 @@ import {
   headless, pickNation, section, sub, table, finding, reportFindings, n1, n2,
 } from './harness.mjs';
 import { TECH_MODS, refreshTechModifiers } from '../../src/game/technology.js';
-import { armyWeeklyDemand, runEconomy } from '../../src/game/economy.js';
+import {
+  armyWeeklyDemand, debtCapacity, literacyTargetOf, runEconomy,
+} from '../../src/game/economy.js';
 import { constructionPower } from '../../src/game/construction.js';
 import { provinceOutput } from '../../src/game/provinces.js';
+import { trainingCapacity } from '../../src/game/recruitment.js';
+import { reinforcementRateOf } from '../../src/game/reinforcement.js';
+import { unitAvailable } from '../../src/game/units.js';
 
 const SEED = 'tech-effect';
 
@@ -83,6 +88,20 @@ const factoryProbe = (mods) => probe(mods, () => {
   const off = probe({}, inputDemand);
   const on = probe({ inputEfficiency: 0.3 }, inputDemand);
   rows.push({ key: 'inputEfficiency', level: 0.3, off, on, delta: off ? (on - off) / off : 0, unit: 'girdi talebi' });
+}
+// Yeni anahtarlar — hepsi SAF fonksiyon uzerinden (tam kosu gurultusu yok).
+check('literacyReach', 0.15, () => literacyTargetOf(nation), 'okuryazarlik hedefi');
+check('debtCapacityBonus', 0.5, () => debtCapacity(nation), 'borc kapasitesi');
+check('trainingCapacity', 2, () => trainingCapacity(world, nation), 'egitim kadrosu');
+check('reinforcementRate', 0.3, () => reinforcementRateOf(nation), 'takviye hizi');
+// Birim kilidi: arastirmasiz ARMOR 1836'da kapali, arastirmayla ACIK olmali.
+{
+  const offAvail = unitAvailable('ARMOR', 1, nation) ? 1 : 0;
+  const saved = nation.research ? { ...nation.research, done: [...nation.research.done] } : null;
+  nation.research = { points: 0, current: null, done: ['armoured_warfare'] };
+  const onAvail = unitAvailable('ARMOR', 1, nation) ? 1 : 0;
+  nation.research = saved;
+  rows.push({ key: 'unlockUnit(ARMOR)', level: 1, off: offAvail, on: onAvail, delta: onAvail - offAvail, unit: 'erisim (0/1)' });
 }
 
 console.log(table(rows, [

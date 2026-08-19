@@ -51,13 +51,16 @@ import {
   EARLY_ELECTION_WINDOW, electionWindowOpen, factoryInvestmentRules,
   fiscalPolicyLimits, holdElection, policyLabel, rulingParty,
 } from '../game/politics.js';
-import { chronicleYear, ensureChronicle } from '../game/chronicle.js';
+import { TIER, announce, chronicleYear, ensureChronicle } from '../game/chronicle.js';
 import {
   electorate, enactReform, governmentType, reformBoard,
 } from '../game/reforms.js';
 import { politicsScreen } from './politicsScreen.js';
 import { technologyScreen } from './technologyScreen.js';
-import { researchPointsOf, startResearch } from '../game/technology.js';
+import {
+  PROGRAMMES, adoptProgramme, abandonProgramme, effectiveTechCost,
+  researchPointsOf, startResearch,
+} from '../game/technology.js';
 import {
   CONSTRUCTION_TYPES, NATIONAL_INVESTMENTS, cancelConstruction, canQueueConstruction,
   constructionAtlas, constructionPower, constructionUpkeep, divestInvestment,
@@ -1860,12 +1863,18 @@ export class Screens {
 
   // --- Teknoloji: arastirma merdiveni (bkz. technologyScreen.js) ---
   render_technology(me) {
-    const year = 1836 + Math.floor(((this.game.world.turn ?? 1) - 1) * 7 / 365);
+    const world = this.game.world;
+    const year = 1836 + Math.floor(((world.turn ?? 1) - 1) * 7 / 365);
     return technologyScreen(me, {
       category: this.techCategory ?? 'industry',
       selected: this.techSelected ?? null,
       year,
+      turn: world.turn ?? 0,
       rate: researchPointsOf(me),
+      // SERT KURAL: ekran ETKIN maliyeti gosterir (program indirimi +
+      // yayilim). Liste fiyati basmak, motorun dusecegi sayiyla celisir ve
+      // UI_TRUTH_FIXES'in kapattigi hata sinifini yeniden acardi.
+      costOf: (techId) => effectiveTechCost(world, me, techId, year),
     });
   }
 
@@ -2120,8 +2129,65 @@ export class Screens {
     }
     for (const btn of this.el.body.querySelectorAll('[data-start-research]')) {
       btn.onclick = () => {
-        // Yon secimi OYUNCUNUN: bu cagri YZ'nin en-ucuz secimini ezer.
+        // Yon secimi OYUNCUNUN: bu cagri programin otomatik akisini ezer.
         startResearch(me, btn.dataset.startResearch);
+        this.refresh();
+      };
+    }
+    for (const el of this.el.body.querySelectorAll('[data-why-text]')) {
+      // hud.toggleWhy'in ekran-ici esi: metni oge kendi tasir, ekran yalniz
+      // acip kapatir (dokunmatikte hover yok — istikrar dokumleriyle ayni ders).
+      const toggle = () => {
+        if (this.whyPop?.isConnected && this.whyPop.dataset.anchor === el.dataset.why) {
+          this.whyPop.remove();
+          return;
+        }
+        this.whyPop?.remove();
+        const pop = document.createElement('div');
+        pop.className = 'why-pop';
+        pop.dataset.anchor = el.dataset.why ?? '';
+        pop.textContent = el.dataset.whyText;
+        const rect = el.getBoundingClientRect();
+        pop.style.top = `${Math.round(rect.bottom + 6)}px`;
+        pop.style.left = `${Math.round(rect.left)}px`;
+        document.body.append(pop);
+        this.whyPop = pop;
+        setTimeout(() => document.addEventListener('click', (ev) => {
+          if (!pop.contains(ev.target) && this.whyPop === pop) pop.remove();
+        }, { once: true }), 0);
+      };
+      el.onclick = toggle;
+      el.onkeydown = (event) => {
+        if (event.key !== 'Enter' && event.key !== ' ') return;
+        event.preventDefault();
+        toggle();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-proclaim]')) {
+      btn.onclick = () => {
+        const id = btn.dataset.proclaim;
+        if (adoptProgramme(me, id, game.world.turn ?? 0)) {
+          const programme = PROGRAMMES[id];
+          // Ilan buyuk bir ulusal taahhuttur: vakayinameye girer (tier 2),
+          // zaman DURMAZ — karari zaten oyuncu verdi.
+          announce(game, me, {
+            kind: 'POLITICS', tier: TIER.MAJOR, key: 'programme',
+            title: `${programme.name} proclaimed`,
+            detail: `${programme.line} Education bound at ${programme.floor}%.`,
+          });
+        }
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-abandon-programme]')) {
+      btn.onclick = () => {
+        if (abandonProgramme(me, game.world.turn ?? 0, 'abandoned')) {
+          announce(game, me, {
+            kind: 'POLITICS', tier: TIER.MAJOR, key: 'programme',
+            title: 'The national programme is wound up',
+            detail: 'Half the accumulated research bank is forfeit; no new proclamation for a year.',
+          });
+        }
         this.refresh();
       };
     }

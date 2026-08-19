@@ -223,7 +223,7 @@ export function recruitOptions(game, nation) {
       support: Boolean(type.support),
       entrenched: Boolean(type.entrenched),
       upkeep: UNIT_UPKEEP.gold,
-      available: unitAvailable(id, turn),
+      available: unitAvailable(id, turn, nation),
       blockers,
       canBuild: blockers.length === 0,
       source: source ? placeOf(world, nation.id, source, atlas) : null,
