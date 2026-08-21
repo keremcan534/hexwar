@@ -60,6 +60,14 @@ import {
   electorate, enactReform, governmentType, reformBoard,
 } from '../game/reforms.js';
 import { politicsScreen } from './politicsScreen.js';
+import { exchangeScreen } from './exchangeScreen.js';
+import {
+  DELEGATION_AREAS, DELEGATION_IDS, isDelegated, lastDelegatedAction, setDelegation,
+} from '../game/delegation.js';
+import {
+  SECTORS, buyShares, companyDossier, exchangeRows, financeProfile, findCompany,
+  nationalize, opennessOf, portfolioOf, foreignPresenceOf, sellShares, SEIZURE_MODES,
+} from '../game/companies.js';
 import { technologyScreen } from './technologyScreen.js';
 import {
   PROGRAMMES, adoptProgramme, abandonProgramme, effectiveTechCost,
@@ -86,6 +94,7 @@ const TITLES = {
   diplomacy: 'Diplomacy',
   dossier: 'Foreign Power',
   trade: 'Trade',
+  exchange: 'Companies & Exchange',
   chronicle: 'National Chronicle',
 };
 
@@ -125,6 +134,7 @@ const SCROLL_KEEPERS = [
   '.census-scroll', '.census-browser-list', '.trade-goods-scroll', '.trade-detail',
   '.pol-left', '.pol-panel', '.pol-issues-scroll',
   '.mil-leader-list', '.mil-build-list', '.mil-queue-list', '.mil-left',
+  '.xch-list', '.xch-dossier',
 ];
 
 /**
@@ -404,8 +414,12 @@ export class Screens {
     this.el.res.innerHTML = !me ? ''
       : this.active === 'industry' ? this.industryTabs(me)
         : this.active !== 'construction' ? this.resourceLine(me) : '';
+    // AUTO seridi TEK YERDEN eklenir: alti ekranin her birine ayri ayri
+    // yazmak, birini unutmanin ve iki farkli kalip cikmasinin garantisiydi.
+    const autoArea = DELEGATION_IDS.find((id) => DELEGATION_AREAS[id].screen === this.active);
     this.el.body.innerHTML = me
-      ? (this[`render_${this.active}`]?.(me) ?? '')
+      ? (autoArea ? this.autoStrip(me, autoArea) : '')
+        + (this[`render_${this.active}`]?.(me) ?? '')
       : '<p class="empty">Your nation has been eliminated.</p>';
     this.bind();
     this.restoreScroll(scroll);
@@ -1213,6 +1227,8 @@ export class Screens {
         war_with: `war with ${other}`,
         took_land_from: `took land from ${other}`,
         lost_land_to: `lost land to ${other}`,
+        industry_seized_by: `industry seized by ${other}`,
+        seized_industry_of: `seized ${other}'s industry`,
         allied: `allied with ${other}`,
         alliance_broken: `broke with ${other}`,
         honored_call: `honored the call of ${other}`,
@@ -1227,7 +1243,40 @@ export class Screens {
         <div><span>Allies</span><b>${allies.length ? allies.join(', ') : 'none'}</b></div>
         <div><span>Rival</span><b>${rival?.alive ? esc(rival.name) : 'none declared'}</b></div>
       </div>
+      ${this.dossierFinance(target)}
       ${memoryRows ? `<ul class="dossier-memory">${memoryRows}</ul>` : ''}`;
+  }
+
+  /**
+   * Ulke panelinin maliye blogu. Uc satir, hepsi tiklanabilir: paneli
+   * sismanlatmadan borsaya bir kapi acar. Amac kesif — "bu ulkenin sanayisinin
+   * ucte biri yabanciya ait" cumlesi oyuncuyu Exchange'e goturur.
+   */
+  dossierFinance(target) {
+    const world = this.game.world;
+    const profile = financeProfile(world, target);
+    const money = (v) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toFixed(0));
+    if (!profile.largest.length && profile.abroad.stakes === 0) return '';
+    const rows = [];
+    rows.push(`<div><span>Investment regime</span><b>${esc(profile.openness.name)}</b>
+      <small>${profile.presence.share > 0.0005
+        ? `${(profile.presence.share * 100).toFixed(0)}% of its industry is foreign-held`
+        : 'no foreign capital in its industry'}</small></div>`);
+    if (profile.abroad.stakes) {
+      rows.push(`<div><span>Assets abroad</span><b>¤${money(profile.abroad.value)}</b>
+        <small>${profile.abroad.stakes} foreign position${profile.abroad.stakes > 1 ? 's' : ''}</small></div>`);
+    }
+    if (profile.largest.length) {
+      rows.push(`<div><span>Largest companies</span><b>${profile.largest.map((c) => `<button
+        class="link" data-open-company="${esc(c.id)}">${esc(c.name)}</button>`).join(' · ')}</b>
+        <small>${profile.largest.map((c) => `¤${money(c.value)}`).join(' · ')}</small></div>`);
+    }
+    if (profile.topInvestors.length) {
+      rows.push(`<div><span>Largest foreign investors</span>
+        <b>${profile.topInvestors.map((i) => esc(i.name)).join(' · ')}</b>
+        <small>${profile.topInvestors.map((i) => `¤${money(i.value)}`).join(' · ')}</small></div>`);
+    }
+    return `<div class="dossier-identity dossier-finance">${rows.join('')}</div>`;
   }
 
   factoryRow(me, factory) {
@@ -2154,6 +2203,53 @@ export class Screens {
    * seçimi tutar. Sağ panel hiç boş açılmaz: seçim yoksa dünyanın en çok baskı
    * altındaki malı seçilir.
    */
+  /**
+   * AUTO seridi. Ekranin ustunde tek satir: alanin adi, anahtar ve hukumetin
+   * son anlamli eylemi. Otomasyon gunlugu DEGILDIR — alan basina tek satir.
+   */
+  autoStrip(me, areaId) {
+    const area = DELEGATION_AREAS[areaId];
+    if (!area) return '';
+    const on = isDelegated(me, areaId);
+    const last = on ? lastDelegatedAction(me, areaId) : null;
+    return `<div class="auto-strip${on ? ' on' : ''}">
+      <span class="auto-label">${esc(area.name)}</span>
+      <button class="auto-toggle${on ? ' on' : ''}" data-auto="${areaId}"
+        aria-pressed="${on}">AUTO <b>${on ? 'ON' : 'OFF'}</b></button>
+      <span class="auto-desc">${on ? esc(area.desc) : 'You hold this portfolio yourself.'}</span>
+      ${last ? `<span class="auto-last"><b>${esc(last.text)}</b>
+        <em>${esc(last.reason)}</em></span>` : ''}
+    </div>`;
+  }
+
+  render_exchange(me) {
+    const world = this.game.world;
+    const rows = exchangeRows(world, me);
+    if (!rows.length) {
+      return `<p class="empty">No company has been floated yet. Companies appear as
+        nations build industry or open mines.</p>`;
+    }
+    const state = this.exchange ??= { filter: 'all', country: '', sector: '', sort: 'value', dir: 'desc', selected: null };
+    const visible = new Set(rows.map((row) => row.id));
+    if (!state.selected || !visible.has(state.selected)) {
+      state.selected = rows.filter((row) => row.stake > 0)
+        .sort((a, b) => b.value - a.value)[0]?.id
+        ?? [...rows].sort((a, b) => b.value - a.value)[0].id;
+    }
+    const countries = [...new Map(rows.map((row) => [row.home, row.homeName])).entries()]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    return exchangeScreen({
+      rows,
+      portfolio: portfolioOf(world, me),
+      presence: foreignPresenceOf(me),
+      openness: opennessOf(me),
+      countries,
+      sectors: Object.values(SECTORS).map((sector) => ({ id: sector.id, name: sector.name })),
+      dossier: companyDossier(world, me, state.selected),
+    }, state);
+  }
+
   render_trade(me) {
     const world = this.game.world;
     if (!world.market?.goods) return '<p class="empty">The world market is not initialized.</p>';
@@ -2171,6 +2267,79 @@ export class Screens {
     }, this.tradeGood);
   }
 
+  /**
+   * Borsanin etkilesimleri. Alim/satim/kamulastirma OYUNUN kendi
+   * fonksiyonlarindan gecer; ekran hicbir sahiplik ya da para hesabi yapmaz.
+   */
+  bindExchange() {
+    const { game } = this;
+    const me = this.me;
+    const state = this.exchange;
+    if (!me || !state) return;
+    for (const row of this.el.body.querySelectorAll('[data-company]')) {
+      if (row.tagName !== 'TR') continue;
+      const open = () => { state.selected = row.dataset.company; this.refresh(); };
+      row.onclick = open;
+      row.onkeydown = (event) => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
+      };
+    }
+    for (const th of this.el.body.querySelectorAll('[data-sort]')) {
+      th.onclick = () => {
+        const key = th.dataset.sort;
+        if (state.sort === key) state.dir = state.dir === 'asc' ? 'desc' : 'asc';
+        else { state.sort = key; state.dir = key === 'name' || key === 'home' || key === 'sector' ? 'asc' : 'desc'; }
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-filter]')) {
+      btn.onclick = () => { state.filter = btn.dataset.filter; this.refresh(); };
+    }
+    const country = this.el.body.querySelector('[data-country]');
+    if (country) country.onchange = () => { state.country = country.value; this.refresh(); };
+    const sector = this.el.body.querySelector('[data-sector]');
+    if (sector) sector.onchange = () => { state.sector = sector.value; this.refresh(); };
+
+    for (const btn of this.el.body.querySelectorAll('[data-buy-share]')) {
+      btn.onclick = () => {
+        const company = findCompany(game.world, btn.dataset.company);
+        if (!company) return;
+        const done = buyShares(game, me, company, Number(btn.dataset.buyShare));
+        game.turns.addLog(done
+          ? `Bought ${(done.share * 100).toFixed(1)}% of ${company.name} for ¤${done.cost.toFixed(0)}.`
+          : `The purchase of ${company.name} shares could not be settled.`,
+        { kind: 'ECONOMY' });
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-sell-share]')) {
+      btn.onclick = () => {
+        const company = findCompany(game.world, btn.dataset.company);
+        if (!company) return;
+        const done = sellShares(game, me, company, Number(btn.dataset.sellShare));
+        game.turns.addLog(done
+          ? `Sold ${(done.share * 100).toFixed(1)}% of ${company.name} for ¤${done.proceeds.toFixed(0)}.`
+          : `Domestic capital in ${company.name}'s home country cannot absorb the sale.`,
+        { kind: 'ECONOMY' });
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-seize]')) {
+      btn.onclick = () => {
+        const company = findCompany(game.world, btn.dataset.company);
+        if (!company) return;
+        const mode = btn.dataset.seize;
+        const done = nationalize(game, me, company, mode);
+        game.turns.addLog(done
+          ? `${company.name}: ${(done.share * 100).toFixed(1)}% of foreign holdings taken`
+            + ` (${SEIZURE_MODES[mode].name.toLowerCase()}, ¤${done.paid.toFixed(0)} paid).`
+          : `The treasury cannot cover compensation for ${company.name}.`,
+        { kind: done ? 'POLITICS' : 'ECONOMY' });
+        this.refresh();
+      };
+    }
+  }
+
   /** Ekranlardaki eylemleri oyunun mevcut fonksiyonlarına bağlar. */
   bind() {
     const { game } = this;
@@ -2179,6 +2348,30 @@ export class Screens {
 
     if (this.active === 'population') this.bindCensus();
     if (this.active === 'military') this.bindMilitary();
+    if (this.active === 'exchange') this.bindExchange();
+
+    // AUTO anahtarlari her ekranda ayni kalipla baglanir.
+    for (const btn of this.el.body.querySelectorAll('[data-open-company]')) {
+      btn.onclick = () => {
+        this.exchange ??= { filter: 'all', country: '', sector: '', sort: 'value', dir: 'desc', selected: null };
+        this.exchange.selected = btn.dataset.openCompany;
+        this.exchange.filter = 'all';
+        this.open('exchange');
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-auto]')) {
+      btn.onclick = () => {
+        const areaId = btn.dataset.auto;
+        const next = !isDelegated(me, areaId);
+        if (setDelegation(game, me, areaId, next)) {
+          game.turns.addLog(next
+            ? `${DELEGATION_AREAS[areaId].name} delegated to the government.`
+            : `${DELEGATION_AREAS[areaId].name} back under our own hand.`,
+          { kind: 'POLITICS' });
+        }
+        this.refresh();
+      };
+    }
 
     for (const btn of this.el.body.querySelectorAll('[data-construction-type]')) {
       btn.onclick = () => {

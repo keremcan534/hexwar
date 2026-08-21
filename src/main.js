@@ -6,6 +6,7 @@ import { MainMenu } from './ui/mainMenu.js';
 import { Notifications } from './ui/notifications.js';
 import { PerfOverlay } from './ui/perfOverlay.js';
 import { materials } from './render/textures.js';
+import * as companies from './game/companies.js';
 
 // Yüzey dokuları bir kez üretilip CSS'e verilir. Çalışma anında hesaplandığı
 // için depoda ikili dosya, indirilen görsel ya da derleme adımı yok
@@ -62,3 +63,6 @@ new PerfOverlay(game);
 // Hata ayıklama için konsoldan erişim.
 window.game = game;
 window.menu = menu;
+// Konsoldan sirket/borsa incelemesi (bkz. CLAUDE.md "Test"): `window.game`
+// ile ayni gerekce — tarayici konsolu bu projenin tek hata ayiklama araci.
+window.companies = companies;

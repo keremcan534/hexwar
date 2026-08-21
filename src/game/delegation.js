@@ -32,10 +32,14 @@ export const DELEGATION_AREAS = {
     desc: 'State investment and public works are planned for you.',
   },
   research: {
+    // ADI DAR TUTULDU. Bos arastirma kuyrugunu programa gore doldurmak zaten
+    // OYUNCU ICIN DE calisiyor (bkz. economy.js nextTechFor — kor beta B-018'in
+    // cozumu) ve AUTO'dan bagimsizdir. Devredilen tek sey PROGRAM ilanidir;
+    // "Research AUTO" demek, kapaliyken hicbir sey secilmiyor sanmaya yol acardi.
     id: 'research',
-    name: 'Research',
+    name: 'Research programme',
     screen: 'technology',
-    desc: 'The national programme is declared and renewed for you.',
+    desc: 'The eight-year national programme is declared and renewed for you. Individual technologies stay yours to steer.',
   },
   diplomacy: {
     id: 'diplomacy',
@@ -47,7 +51,10 @@ export const DELEGATION_AREAS = {
     id: 'recruitment',
     name: 'Recruitment',
     screen: 'military',
-    desc: 'The general staff orders regiments and founds cities.',
+    // Uyarı dürüst olsun: `spend()` temerrütteki barış ordusunu KÜÇÜLTÜR
+    // (bkz. ai.js) ve oyuncunun elinde bir "terhis" düğmesi yok. Devir bu
+    // yetkiyi de verir; yazmamak sürpriz olurdu.
+    desc: 'The general staff orders regiments and founds cities — and disbands regiments if the treasury defaults in peacetime.',
   },
 };
 

@@ -78,3 +78,29 @@ siddette olculdu.
 3. Orta katman sanayi YZ'si (1): girdisi kit mallara tesis secimi.
 4. Cullanma sayacina koalisyon istisnasini kapat (6).
 5. Reform merdivenlerini baglama turu (12): basamak basina tek gercek etki.
+
+---
+
+## Sirket / borsa gecisinden kalanlar (bkz. COMPANIES_AND_DELEGATION_REPORT.md)
+
+Asagidakilerin hicbiri sirket katmaninin hatasi degildir; o gecisin denetimi
+yazilirken **mevcut** borc olarak ortaya ciktilar.
+
+1. **YUKSEK — kaydet/yukle bes tohumun dordunde dallaniyor.** Degistirilmemis
+   HEAD kodunda da ayni sekilde. Sebep lokalize edildi: `general.front`
+   bilerek kaydedilmiyor, yuklemeden sonraki ilk hafta mevki dagitimi
+   kesintisiz kosudan ayriliyor, bir kara tumeni bir hafta erken/gec denize
+   biniyor ve haftalik konvoy tedariki (~¤27-36) kayiyor; oradan butun ekonomi
+   ayriliyor. `audit:save` bunu kacirir cunku temiz tohumla (`SAVE-1`) kosar.
+   Cephe/mevki katmanini kaydetmek savas davranisini etkiler, o yuzden ayri
+   bir is olarak birakildi.
+2. **ORTA — fabrikalar fetihte el degistirmiyor.** `economy.factories` yeni
+   sahibine devredilmiyor ve `runFactories`in sahiplik kontrolu yok; dusman
+   toprakta kalan tesis uretmeye ve (artik) temettu odemeye devam ediyor.
+3. **DUSUK — sirket bazli borc/iflas mimaride yok.** Cokus deger erimesi,
+   temettunun kesilmesi ve genislemenin durmasi olarak isliyor; sahte bir borc
+   sutunu koymamak icin alan hic eklenmedi.
+4. **DUSUK — cok uluslu sirket yok.** Sirketler yalniz kendi ulkelerinde varlik
+   tutar; sinir otesi dogrudan yatirim ekonomiyi yeniden yazmayi gerektirirdi.
+5. **DUSUK — bildirim yigini tam ekranlarin sag panelini ortuyor** (Trade ve
+   Exchange). Mevcut z-duzeni sorunu; bildirimler kendiliginden kapaniyor.

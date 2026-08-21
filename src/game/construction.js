@@ -606,7 +606,11 @@ export function cancelConstruction(game, nationId, projectId) {
   const refund = Math.max(0, (project.funded ?? 0) * (1 - done));
   if (refund > 0) {
     if (project.actor === 'private' && nation.politics) {
-      nation.politics.privateCapital = Math.min(1200, (nation.politics.privateCapital ?? 0) + refund);
+      // Tavan yalniz BU iadenin kendisine uygulanir (politics.collectPrivateCapital
+      // ile ayni kural): havuz zaten tavani asmissa `min` farki YOK EDERDI ve
+      // para kaybetmek de bir korunum ihlalidir.
+      const pool = Math.max(0, nation.politics.privateCapital ?? 0);
+      nation.politics.privateCapital = pool + Math.min(refund, Math.max(0, 1200 - pool));
     } else {
       nation.gold += refund;
       if (nation.economy) {

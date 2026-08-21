@@ -8165,3 +8165,373 @@ body.menu-open .sheet { visibility: hidden; }
   font-size: var(--fs-sm);
   margin: calc(-1 * var(--sp-1)) 0 var(--sp-2);
 }
+
+/* ==========================================================================
+   22. EKRAN: BORSA (exchange) + AUTO SERIDI
+   ==========================================================================
+   Referans yuzyil basi bir borsa bulteni: kotasyon defteri solda, sirket
+   dosyasi sagda. Butun renkler token'dan; ham hex yok. Yuvarlak kart yigini,
+   neon ve "portfoyunuz bugun %2.3 artti" seridi YOK — bu bir defterdir.
+   ========================================================================== */
+
+/* --- AUTO seridi: alti yonetim ekraninin ustunde tek satir --------------- */
+.auto-strip {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  flex-wrap: wrap;
+  padding: var(--sp-2) var(--sp-3);
+  margin-bottom: var(--sp-3);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-left: 2px solid var(--line-strong);
+}
+.auto-strip.on { border-left-color: var(--gold); }
+.auto-label {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+.auto-toggle {
+  padding: 2px var(--sp-2);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.08em;
+  cursor: pointer;
+}
+.auto-toggle b { color: var(--text); }
+.auto-toggle.on { border-color: var(--gold); color: var(--gold-bright); }
+.auto-toggle.on b { color: var(--gold-bright); }
+.auto-desc { font-size: var(--fs-sm); color: var(--text-dim); }
+.auto-last {
+  margin-left: auto;
+  font-size: var(--fs-sm);
+  color: var(--text-dim);
+  text-align: right;
+}
+.auto-last b { color: var(--text); font-weight: 650; display: block; }
+.auto-last em { font-style: italic; color: var(--text-mute); }
+
+/* --- Borsa kabugu ------------------------------------------------------- */
+.exchange { display: flex; flex-direction: column; gap: var(--sp-3); }
+
+.xch-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-4);
+  flex-wrap: wrap;
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--line-strong);
+}
+.xch-title span {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.14em;
+  color: var(--gold);
+}
+.xch-title h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-xl);
+  font-weight: 500;
+  color: var(--text);
+}
+.xch-summary { display: flex; gap: var(--sp-5); flex-wrap: wrap; }
+.xch-summary span { display: flex; flex-direction: column; }
+.xch-summary small {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+.xch-summary b {
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.xch-filters {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  align-items: center;
+}
+.xch-filters .chip { padding: 2px var(--sp-2); font-size: var(--fs-label); }
+.xch-filters .chip.active {
+  border-color: var(--gold);
+  color: var(--gold-bright);
+  background: var(--gold-wash);
+}
+.xch-filters select {
+  padding: 2px var(--sp-2);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+}
+
+.xch-body {
+  display: grid;
+  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr);
+  gap: var(--sp-4);
+  align-items: start;
+}
+.xch-list { max-height: 62vh; overflow: auto; }
+.xch-dossier {
+  max-height: 62vh;
+  overflow: auto;
+  padding-left: var(--sp-4);
+  border-left: 1px solid var(--line-strong);
+}
+
+/* --- Kotasyon defteri --------------------------------------------------- */
+.xch-table { width: 100%; }
+.xch-table th { cursor: pointer; white-space: nowrap; }
+.xch-table th.sorted { color: var(--gold-bright); }
+.xch-table th.sorted.desc::after { content: ' ▾'; }
+.xch-table th.sorted.asc::after { content: ' ▴'; }
+.xch-row { cursor: pointer; }
+.xch-row:hover td { background: var(--gold-wash); }
+.xch-row.selected td {
+  background: var(--gold-wash);
+  box-shadow: inset 2px 0 var(--gold);
+}
+.xch-row.home .xch-name b { color: var(--gold-bright); }
+.xch-name { min-width: 190px; }
+.xch-name .tag { margin-left: var(--sp-2); font-size: 10px; }
+.xch-sector { color: var(--text-mute); font-size: var(--fs-sm); }
+.xch-table td.own { color: var(--gold-bright); }
+.t-up { color: var(--green); font-style: normal; }
+.t-down { color: var(--red); font-style: normal; }
+.t-flat { color: var(--text-faint); font-style: normal; }
+
+/* --- Sirket dosyasi ----------------------------------------------------- */
+.xch-file-head {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  align-items: flex-start;
+  padding-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--line-strong);
+}
+.xch-file-head h3 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 500;
+  color: var(--text);
+}
+.xch-sub { margin: 2px 0 0; font-size: var(--fs-sm); color: var(--text-mute); }
+.xch-quote { text-align: right; }
+.xch-quote b {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-lg);
+  font-variant-numeric: tabular-nums;
+  color: var(--gold-bright);
+}
+.xch-quote small {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-mute);
+}
+.xch-spark { display: block; width: 108px; height: 28px; margin-top: var(--sp-1); }
+.xch-spark .spark-line { fill: none; stroke-width: 1.4; vector-effect: non-scaling-stroke; }
+.xch-spark.up .spark-line { stroke: var(--green); }
+.xch-spark.down .spark-line { stroke: var(--red); }
+
+.xch-kv {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  gap: var(--sp-2) var(--sp-3);
+  margin: var(--sp-3) 0;
+}
+.xch-kv span { display: flex; flex-direction: column; }
+.xch-kv small {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-mute);
+}
+.xch-kv b {
+  font-family: var(--font-mono);
+  font-size: var(--fs-md);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+.xch-block { margin-top: var(--sp-4); }
+.xch-block h4 {
+  margin: 0 0 var(--sp-2);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--gold);
+  border-bottom: 1px solid var(--line);
+  padding-bottom: 2px;
+}
+.xch-line { margin: 0 0 var(--sp-2); font-size: var(--fs-base); color: var(--text-dim); }
+.xch-line b { color: var(--text); }
+.xch-line.dim { color: var(--text-mute); }
+.xch-line.warn { color: var(--amber); }
+.xch-fine { font-size: var(--fs-sm); color: var(--text-mute); }
+.xch-note { margin: 0 0 var(--sp-2); font-size: var(--fs-sm); color: var(--text-dim); }
+.xch-note.war {
+  padding: var(--sp-2);
+  border-left: 2px solid var(--red);
+  background: var(--red-wash);
+}
+
+/* Sahiplik cubugu: yuzdeler %100 eder, cubuk da oyle. */
+.xch-ownbar {
+  display: flex;
+  height: 10px;
+  margin-bottom: var(--sp-2);
+  border: 1px solid var(--line);
+  background: var(--surface-sunken);
+}
+.xch-ownbar span { display: block; }
+.own-domestic { background: var(--bar-shade); }
+.own-state { background: var(--metal-mid); }
+.own-foreign { background: var(--cyan); }
+.own-you { background: var(--gold-bright); }
+.xch-owners { margin: 0; padding: 0; list-style: none; font-size: var(--fs-sm); }
+.xch-owners li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 2px 0;
+  color: var(--text-dim);
+  border-bottom: 1px solid var(--line);
+}
+.xch-owners li.you { color: var(--gold-bright); }
+.xch-owners li b {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.xch-owners .key { width: 8px; height: 8px; flex: none; }
+.xch-owners em { font-style: italic; }
+
+.xch-goods, .xch-sites { margin: 0; padding: 0; list-style: none; font-size: var(--fs-sm); }
+.xch-goods li, .xch-sites li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: 2px 0;
+  border-bottom: 1px solid var(--line);
+  color: var(--text-dim);
+}
+.xch-goods li svg, .xch-goods li img { width: 16px; height: 16px; flex: none; }
+.xch-goods b {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.xch-goods em {
+  font-style: normal;
+  font-family: var(--font-mono);
+  color: var(--text-mute);
+  min-width: 56px;
+  text-align: right;
+}
+.xch-sites li b { color: var(--text); font-weight: 650; }
+.xch-sites li span { margin-left: auto; color: var(--text-mute); }
+
+/* --- Emir kutusu -------------------------------------------------------- */
+.xch-deal { margin-top: var(--sp-2); }
+.xch-deal-head {
+  display: flex;
+  gap: var(--sp-4);
+  padding: var(--sp-2);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+}
+.xch-deal-head span { display: flex; flex-direction: column; }
+.xch-deal-head small {
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  text-transform: uppercase;
+  color: var(--text-mute);
+}
+.xch-deal-head b {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.xch-deal-row {
+  display: flex;
+  gap: var(--sp-2);
+  flex-wrap: wrap;
+  margin: var(--sp-2) 0;
+}
+.xch-deal-row button {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line-strong);
+  background: var(--surface-2);
+  color: var(--text);
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.xch-deal-row button:hover { border-color: var(--gold); color: var(--gold-bright); }
+.xch-deal-row button small {
+  display: block;
+  font-size: var(--fs-label);
+  color: var(--text-mute);
+}
+.xch-deal-row button.ghost { background: transparent; color: var(--text-dim); }
+.xch-deal-row button.danger { border-color: var(--red); color: var(--red); }
+.xch-deal-row button.danger:hover { background: var(--red-wash); color: var(--red); }
+.xch-blocked { font-size: var(--fs-sm); color: var(--text-faint); align-self: center; }
+.xch-seize { margin-top: var(--sp-4); padding-top: var(--sp-2); border-top: 1px solid var(--line); }
+.xch-seize h4 {
+  margin: 0 0 var(--sp-1);
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+
+/* Ulke panelindeki maliye blogu ve borsaya giden kapi. */
+.dossier-finance button.link {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--gold-bright);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+/* --- Dar ekran: defter tek sutuna iner --------------------------------- */
+@media (max-width: 900px) {
+  .xch-body { grid-template-columns: minmax(0, 1fr); }
+  .xch-dossier {
+    max-height: none;
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px solid var(--line-strong);
+    padding-top: var(--sp-3);
+  }
+  .xch-list { max-height: 46vh; }
+  .xch-table th:nth-child(9), .xch-table td:nth-child(9) { display: none; }
+  .auto-last { margin-left: 0; text-align: left; width: 100%; }
+}

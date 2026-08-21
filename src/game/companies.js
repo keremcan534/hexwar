@@ -943,3 +943,164 @@ export function runInvestmentAI(game, nation) {
 function relationWars(world, a, b) {
   return world.relations?.[a]?.[b]?.wars ?? 0;
 }
+
+/* ==========================================================================
+   11. EKRAN TURETME — yalniz OKUR, haftalik dongude cagrilmaz
+   ==========================================================================
+   Kalip tradeLedger.js ile ayni: butun sayilar burada cikarilir, ui/ katmani
+   yalniz cizer. Boylece ekran ile simulasyon ayni halkin iki farkli
+   hikayesini anlatmaz.
+   ========================================================================== */
+
+/** Deger egilimi: 13 hafta once neredeydi? */
+function trendOf(company) {
+  const history = company.history ?? [];
+  if (history.length < 4) return 0;
+  const past = history[Math.max(0, history.length - 14)];
+  if (!(past > 0)) return 0;
+  return (company.value - past) / past;
+}
+
+/**
+ * Borsa listesi. Sutunlar gorevin istedigi kadar; UYDURMA SUTUN YOK — borc
+ * gibi bu mimaride karsiligi olmayan alanlar hic gosterilmez.
+ */
+export function exchangeRows(world, viewer) {
+  const rows = [];
+  for (const host of world.nations) {
+    if (!host.alive) continue;
+    for (const company of companiesOf(host)) {
+      const stake = stakeOf(company, viewer.id);
+      const foreign = foreignShare(company);
+      rows.push({
+        id: company.id,
+        name: company.name,
+        home: host.id,
+        homeName: host.name,
+        sector: company.sector,
+        sectorName: SECTORS[company.sector].short,
+        value: company.value,
+        profit: company.capitalReturn,
+        profitAvg: company.profitAvg,
+        dividend: company.dividend,
+        dividendYield: company.value > 0 ? (company.dividend * 52) / company.value : 0,
+        foreign,
+        stake,
+        employees: company.employees,
+        trend: trendOf(company),
+        defunct: Boolean(company.defunct),
+        failing: (company.failingWeeks ?? 0) > 26,
+        domestic: host.id === viewer.id,
+        atWar: host.id !== viewer.id && atWar(world, host.id, viewer.id),
+        frozen: Boolean(company.frozen) && stake > 0,
+        cap: foreignOwnershipCap(host, company.sector),
+        room: purchasableShare(world, viewer, company),
+        goods: Object.keys(company.outputs).filter((id) => company.outputs[id] > 0),
+      });
+    }
+  }
+  return rows;
+}
+
+/** Tek sirketin dosyasi: "ne sahibim, ne uretiyor, kim sahip, ne odiyor". */
+export function companyDossier(world, viewer, companyId) {
+  const company = findCompany(world, companyId);
+  if (!company) return null;
+  const host = world.nations[company.home];
+  const stake = stakeOf(company, viewer.id);
+  const foreign = foreignShare(company);
+  const holders = Object.keys(company.owners).map(Number)
+    .filter((id) => company.owners[id] > 0)
+    .sort((a, b) => (company.owners[b] - company.owners[a]) || (a - b))
+    .map((id) => ({
+      id,
+      name: world.nations[id]?.name ?? '?',
+      share: company.owners[id],
+      you: id === viewer.id,
+      frozen: id !== company.home && atWar(world, id, company.home),
+    }));
+  const outputs = Object.keys(company.outputs)
+    .filter((id) => company.outputs[id] > 0)
+    .sort((a, b) => company.outputs[b] - company.outputs[a])
+    .map((id) => ({
+      id,
+      qty: company.outputs[id],
+      value: company.outputs[id] * priceOf(world, id),
+      access: viewer.economy?.priorityAccess?.[id] ?? 0,
+    }));
+  return {
+    id: company.id,
+    name: company.name,
+    home: company.home,
+    homeName: host?.name ?? '?',
+    sector: company.sector,
+    sectorName: SECTORS[company.sector].name,
+    founded: company.founded,
+    value: company.value,
+    cash: company.cash,
+    book: company.book,
+    revenue: company.revenue,
+    grossProfit: company.grossProfit,
+    profit: company.capitalReturn,
+    profitAvg: company.profitAvg,
+    margin: company.revenue > 0 ? company.capitalReturn / company.revenue : 0,
+    dividend: company.dividend,
+    dividendYield: company.value > 0 ? (company.dividend * 52) / company.value : 0,
+    yourDividend: company.dividend * stake,
+    employees: company.employees,
+    levels: company.levels,
+    trend: trendOf(company),
+    history: [...(company.history ?? [])],
+    stake,
+    foreign,
+    domesticHolders: domesticShare(company),
+    cap: foreignOwnershipCap(host, company.sector),
+    openness: opennessOf(host),
+    float: freeFloat(company),
+    room: purchasableShare(world, viewer, company),
+    unitPrice: sharePrice(company, 0.01) * (1 + SPREAD),
+    // Hazine ekrana GELIR: "neden alamiyorum" sorusunun cevabi dugmenin
+    // yaninda dursun (BUG-015: sebebi yazilmayan kapali dugme).
+    treasury: viewer.gold ?? 0,
+    sellerPool: host?.politics?.privateCapital ?? 0,
+    holders,
+    outputs,
+    sites: companySites(world, host, company),
+    threat: inputThreatOf(host, company),
+    lastInvestment: company.lastInvestment,
+    lastSeizure: company.lastSeizure,
+    defunct: Boolean(company.defunct),
+    failingWeeks: company.failingWeeks ?? 0,
+    atWar: company.home !== viewer.id && atWar(world, company.home, viewer.id),
+    frozen: Boolean(company.frozen),
+    isHome: company.home === viewer.id,
+    seizable: company.home === viewer.id && foreign > 0.001,
+    distrust: host?.economy?.investmentDistrust ?? 0,
+  };
+}
+
+/**
+ * Ulke panelinin sikistirilmis maliye blogu. Uc soru: bu ulke disarida neye
+ * sahip, sanayisinin ne kadari yabanciya ait, en buyuk sirketleri kim.
+ */
+export function financeProfile(world, nation) {
+  const abroad = portfolioOf(world, nation);
+  const presence = foreignPresenceOf(nation);
+  const largest = [...companiesOf(nation)]
+    .sort((a, b) => b.value - a.value)
+    .slice(0, 3)
+    .map((c) => ({ id: c.id, name: c.name, value: c.value, foreign: foreignShare(c) }));
+  const investors = new Map();
+  for (const company of companiesOf(nation)) {
+    for (const key in company.owners) {
+      const id = Number(key);
+      if (id === nation.id) continue;
+      investors.set(id, (investors.get(id) ?? 0) + sharePrice(company, company.owners[key]));
+    }
+  }
+  const topInvestors = [...investors.entries()]
+    .sort((a, b) => (b[1] - a[1]) || (a[0] - b[0]))
+    .slice(0, 3)
+    .map(([id, value]) => ({ id, name: world.nations[id]?.name ?? '?', value }));
+  return { abroad, presence, largest, topInvestors, openness: opennessOf(nation) };
+}

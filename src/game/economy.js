@@ -32,7 +32,7 @@ import {
   higherEducationBonus, investmentLevel, planConstructionAI, queueIndustryProject,
 } from './construction.js';
 import {
-  refreshReformModifiers, reformModifiers, reformMoodShift,
+  decayReformCounters, refreshReformModifiers, reformModifiers, reformMoodShift,
 } from './reforms.js';
 
 /**
@@ -3248,7 +3248,15 @@ function procureStrategicGoods(world) {
       const tariffFactor = 1 + nation.economy.tariff / 100;
       const unitPrice = priceOf(world, id) * tariffFactor;
       const affordable = nation.gold / Math.max(0.01, unitPrice);
-      const amount = Math.min(equipment.importLimit, shortage, available[id], affordable);
+      // AYRICALIKLI ERISIM BURADA DA GECERLI. Stratejik techizat kuyrugu
+      // paylasilan tek bir havuzdan ulke sirasiyla dagitiliyor; o sirketin
+      // ortagi olan ulke haftalik parcasini daha buyuk cekebilir. Havuzun
+      // kendisi (`available[id]`) degismez, yani mal YARATILMAZ — onde
+      // olanin aldigini arkadaki alamaz. Bedel yine tam fiyat + gumruktur.
+      const priority = 1 + (nation.economy.priorityAccess?.[id] ?? 0);
+      const amount = Math.min(
+        equipment.importLimit * priority, shortage, available[id], affordable,
+      );
       if (amount <= 0) continue;
       const cost = amount * unitPrice;
       setEquipmentStock(nation, id, equipmentStock(nation, id) + amount);
@@ -3649,7 +3657,11 @@ export function beginEconomy(game) {
   // sıcak yol sonra yalnız düz alan okur. Politika fazından çağırmak
   // politics.js ile reforms.js arasında döngüsel içe aktarma kuruyordu.
   for (const nation of world.nations) {
-    if (nation.alive && nation.politics) refreshReformModifiers(nation);
+    if (!nation.alive || !nation.politics) continue;
+    // Sayac erimesi ulus basina haftada TAM BIR KEZ, burada (bkz.
+    // reforms.decayReformCounters — kaydet/yukle dallanmasinin sebebiydi).
+    decayReformCounters(nation);
+    refreshReformModifiers(nation);
   }
   refreshNationalStrain(world);
   // Egitim -> okuryazarlik -> arastirma puani -> teknoloji zinciri. Sira
