@@ -5,7 +5,9 @@
 // şeyler saklanır. Bu, kaydı küçük tutar ama bir bedeli var: worldgen
 // değişirse eski kayıtlar geçersizleşir, o yüzden SAVE_VERSION var.
 
-import { createUnit, refreshArmy, resetUnitIds, resolveTypeId } from './units.js';
+import {
+  createUnit, refreshArmy, resetUnitIds, resolveTypeId, unitIdCursor,
+} from './units.js';
 import { createCity, englishCityName } from './cities.js';
 import { ensureEconomy } from './economy.js';
 import { ensureCommand, ensureCommandOptions } from './command.js';
@@ -14,6 +16,7 @@ import { ensureBattles } from './battles.js';
 import { ensureProvinces, refreshProvinceOwner } from './provinces.js';
 import { ensurePolitics } from './politics.js';
 import { ensureConstruction, migrateConstructionV14 } from './construction.js';
+import { ensureDelegation, restoreDelegation } from './delegation.js';
 
 // Ordu sistemi yeniden yazıldı: cephe artık saklanmıyor (sınırdan türetiliyor),
 // komuta tek listede toplandı ve muharebe kare anahtarlı oldu. v8'de kaldırılan
@@ -107,6 +110,8 @@ export function serialize(game) {
       battles: (world.battleSystem?.battles ?? []).map((battle) => ({ ...battle })),
     },
     commandSystem: { nextId: world.commandSystem?.nextId ?? 1 },
+    // Birim kimlik sayaci (bkz. units.unitIdCursor).
+    unitSystem: { nextId: unitIdCursor() },
     tiles,
     nations: world.nations.map((n) => {
       const out = {
@@ -137,6 +142,10 @@ export function serialize(game) {
         rivalId: n.rivalId ?? null,
         memory: (n.memory ?? []).map((entry) => ({ ...entry })),
         rallyPoint: n.rallyPoint ?? null,
+        // AUTO anahtarlari ve her alanin son otomatik eylemi. Turetilemez
+        // veri: yazilmazsa yuklenen oyun butun devirleri kapali baslatir ve
+        // oyuncu devrettigini sandigi bakanligi sessizce geri alir.
+        delegation: ensureDelegation(n),
         // Eğitim kuyruğu: ödenmiş sipariş. Kayıt dışı kalırsa oyuncu parasını
         // ve teçhizatını yükleme ekranında kaybeder.
         training: {
@@ -190,6 +199,13 @@ export function serialize(game) {
       maxHp: u.maxHp,
       path: u.path?.map((tile) => ({ q: tile.q, r: tile.r })) ?? null,
       progress: u.progress ?? 0,
+      // Yeniden-yol sayaci. Turetilemez ve KAYIT DISI KALIRSA OYUNU
+      // DALLANDIRIR: yuklenen birim taze bir yeniden-hesap butcesiyle
+      // baslar, kapali yolu tekrar dener ve kesintisiz kosunun secmedigi
+      // rotayi (orn. deniz gecisi) secer. Olculdu (tohum CO-8, 5. ulke,
+      // 181. hafta): yuklenmis kosuda bir kara tumeni denize biniyor ve
+      // haftalik konvoy tedariki ¤27 fazla yaziliyordu.
+      reroutes: u.reroutes ?? 0,
       embarked: u.embarked,
       order: u.order
         ? { type: u.order.type, tq: u.order.target?.q, tr: u.order.target?.r }
@@ -288,6 +304,8 @@ export function deserialize(game, data) {
     nation.memory = (saved.memory ?? []).map((entry) => ({ ...entry }));
     nation.tally = saved.tally ? { ...saved.tally } : null;
     nation.rallyPoint = saved.rallyPoint ?? null;
+    // Eski kayitta yok: butun alanlar kapali baslar (guvenli varsayilan).
+    restoreDelegation(nation, saved.delegation);
     nation.treaties = (saved.treaties ?? []).map((t) => ({ ...t }));
     nation.training = saved.training
       ? {
@@ -349,6 +367,7 @@ export function deserialize(game, data) {
     unit.path = saved.path?.map((step) => world.get(step.q, step.r)).filter(Boolean) ?? null;
     if (!unit.path?.length) unit.path = null;
     unit.progress = saved.progress ?? 0;
+    unit.reroutes = saved.reroutes ?? 0;
     unit.embarked = saved.embarked;
     if (saved.regiments?.length) {
       unit.regiments = saved.regiments.map((regiment) => ({
@@ -377,7 +396,10 @@ export function deserialize(game, data) {
   }
   // Sayac kayittaki en buyuk kimligin uzerine kurulur ki yeni alaylar
   // yuklenmis olanlarla carpismasin.
-  resetUnitIds(world.units.reduce((max, unit) => Math.max(max, unit.id), 0) + 1);
+  resetUnitIds(Math.max(
+    data.unitSystem?.nextId ?? 0,
+    world.units.reduce((max, unit) => Math.max(max, unit.id), 0) + 1,
+  ));
   // Emirler birimler yerleştikten sonra: hedef karesi çözülebilsin.
   for (const [unit, order] of pendingOrders) {
     const target = order.tq === undefined ? null : world.get(order.tq, order.tr);

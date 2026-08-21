@@ -3,6 +3,7 @@
 
 import { occupiedShareOf, provinceName } from './provinces.js';
 import { controllerOf } from './control.js';
+import { delegationActive, noteDelegated } from './delegation.js';
 
 // Birim artık 2-7 hexlik province KÜMESİDİR (bkz. world/provinces-gen.js):
 // state başına ~3 küme ≈ eski 14 karelik hedefle aynı yüzölçümü.
@@ -764,7 +765,12 @@ function frontierFortAnchor(game, nation) {
 
 export function planConstructionAI(game, nation) {
   const state = ensureConstruction(nation);
-  if (nation.id === game.turns.playerNation || nation.gold < 180) return;
+  if (nation.gold < 180) return;
+  // Oyuncunun ulkesi yalniz insaat devredildiyse buradan gecer. Kapilar ayni:
+  // hazine esigi, kredi cezasi, borc tavani ve `canQueueInvestment` hepsi
+  // oyuncu icin de birebir uygulanir (bkz. delegation.js).
+  const player = nation.id === game.turns.playerNation;
+  if (player && !delegationActive(nation, 'construction', game.world.turn ?? 0)) return;
   // Mali sagligi bozuk ulke yeni bakim yuku ALMAZ: temerrut izi tasiyan ya da
   // yarim yillik gelirinden fazla borcu olan YZ once toparlanir. Hazine stogu
   // tek basina yaniltici — savas kasasi biriktiren ulke "zengin" gorunuyordu,
@@ -804,12 +810,20 @@ export function planConstructionAI(game, nation) {
   // 1) Ilk kapasite seviyesi her seyden once: taban 5/hafta ile ulke yasayamaz.
   if (capacity < 1 && canQueueInvestment(nation, 'CONSTRUCTION_CAPACITY')) {
     queueInvestment(game, nation.id, 'CONSTRUCTION_CAPACITY');
+    if (player) {
+      noteDelegated(game, nation, 'construction', 'Construction Sector expansion queued.',
+        'The nation had no construction capacity of its own.');
+    }
     return;
   }
   // 2) Kuyruk bogulduysa (ya da para birikiyorsa) kapasite buyur — tavana dek.
   if (starved && capacity < capacityCeiling && nation.gold > 400
     && canQueueInvestment(nation, 'CONSTRUCTION_CAPACITY')) {
     queueInvestment(game, nation.id, 'CONSTRUCTION_CAPACITY');
+    if (player) {
+      noteDelegated(game, nation, 'construction', 'Construction Sector expansion queued.',
+        'The build queue was outrunning national construction power.');
+    }
     return;
   }
   // 3) Zengin ve okullu ulke yuksekogretime yatirir. YZ mutevazi (2 seviye) —

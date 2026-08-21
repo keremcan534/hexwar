@@ -25,6 +25,7 @@ import {
 } from './economy.js';
 import { desiredIndex, enactReform, reformBoard } from './reforms.js';
 import { rulingParty } from './politics.js';
+import { delegationActive, noteDelegated } from './delegation.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
 const WAR_THRESHOLD = 1.4;
@@ -223,7 +224,13 @@ function diplomacy(game, nation, rng) {
       bestTarget = other;
     }
   }
-  if (bestTarget) declareWar(game, nation.id, bestTarget.id);
+  // Devredilmis diplomasi oyuncu adina ilan verebilir; YZ icin bayrak
+  // etkisizdir (zaten oyuncu degil).
+  const delegated = nation.id === game.turns.playerNation;
+  if (bestTarget && declareWar(game, nation.id, bestTarget.id, { delegated })) {
+    noteDelegated(game, nation, 'diplomacy', `War declared on ${bestTarget.name}.`,
+      'The ministry judged them weaker and the border long.');
+  }
 }
 
 /**
@@ -528,5 +535,52 @@ export function runNationAI(game, nation, rng) {
   // Kara tümenleri komuta katmanından yönetilir; burada yalnız donanma kalır.
   for (const unit of [...world.units]) {
     if (unit.nationId === nation.id && unit.type.domain === 'sea') runUnitAI(game, unit, rng);
+  }
+}
+
+/**
+ * OYUNCUNUN DEVREDİLMİŞ ALANLARI. `runNationAI`in aynı fonksiyonları çağrılır;
+ * ayrı bir "oyuncu otomasyonu" yazılmadı çünkü yazılsaydı iki davranış
+ * sessizce ayrışır ve biri diğerinden avantajlı olurdu.
+ *
+ * Yasa (`reformAgenda`) ve ordu komutası (`manageCommand`) DEVREDİLMEZ: ikisi
+ * de altı alanın dışında ve oyunun asıl kararları. Komuta zaten kendi
+ * otomatik anahtarlarını taşıyor (bkz. command.js ensureCommandOptions).
+ */
+export function runDelegatedAI(game, nation, rng) {
+  if (!nation?.alive) return;
+  const turn = game.world.turn ?? 0;
+  if (delegationActive(nation, 'diplomacy', turn)) {
+    answerPeaceOffers(game, nation, rng);
+    diplomacy(game, nation, rng);
+  }
+  if (delegationActive(nation, 'recruitment', turn)) {
+    const before = trainingCount(nation);
+    spend(game, nation);
+    const after = trainingCount(nation);
+    if (after > before) {
+      noteDelegated(game, nation, 'recruitment',
+        `${after - before} new regiment${after - before > 1 ? 's' : ''} ordered.`,
+        'The standing army was below the staff’s target.');
+    }
+  }
+}
+
+/**
+ * Masadaki teklifleri hükûmet cevaplar. Ölçüt YZ'nin kendi ölçütüyle aynı:
+ * `offerMeetsExpectation`. Oyuncuya özel bir gevşeklik yoktur — kabul de
+ * ret de gerçek `resolvePeaceOffer` kapısından geçer.
+ */
+function answerPeaceOffers(game, nation, rng) {
+  const pending = (game.pendingPeace?.() ?? []).filter((entry) => entry.to === nation.id);
+  for (const entry of pending) {
+    const proposer = game.world.nations[entry.from];
+    if (!proposer?.alive) continue;
+    const accept = acceptsOffer(game, nation, proposer, entry.offer, rng);
+    game.resolvePeaceOffer(entry.id, accept);
+    noteDelegated(game, nation, 'diplomacy',
+      accept ? `Peace signed with ${proposer.name}.` : `${proposer.name}'s terms rejected.`,
+      accept ? 'The terms were no worse than the front promised.'
+        : 'The terms cost more than the war does.');
   }
 }
