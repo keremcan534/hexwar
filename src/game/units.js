@@ -285,6 +285,17 @@ let nextId = 1;
  * bekleyen her sey (kayit turu, komuta baglari) bundan etkilenir. Yeni dunya
  * ve kayit yukleme bu yuzden sayaci acikca kurar.
  */
+/**
+ * Sayacin ANLIK degeri. Kayda girer: yuklenen oyun sayaci "en buyuk yasayan
+ * kimlik + 1"den kurarsa, olmus birimlerin biraktigi bosluk yuzunden sayac
+ * kesintisiz kosudan GERI kalir ve yeni alaylar farkli kimlik alir. Kimlik
+ * sirasi komuta dagitimini ve dolayisiyla yuruyusu etkiledigi icin bu, kaydet
+ * -yukle ile kesintisiz kosuyu haftalarca kaydiran sessiz bir dallanmadir.
+ */
+export function unitIdCursor() {
+  return nextId;
+}
+
 export function resetUnitIds(next = 1) {
   nextId = Math.max(1, Math.floor(next));
 }

@@ -39,13 +39,17 @@ console.log('='.repeat(74));
     const pool = Math.max(1, (economy.baseOutputValue ?? 0) * 0.35);
     const wagesPaid = Math.max(0, economy.wagesPaid ?? 0);
     const profitShare = (economy.factoryProfit ?? 0) * PROFIT_TO_CAPITAL;
+    // Sirket temettusu bir TRANSFERDIR: yabanci ortaga odenen tutar ayni hafta
+    // ust sinif gelirinden dusulur (bkz. companies.js). Kimlik o yuzden bu
+    // terimi tasimali; tasimasaydi denetim gercek bir korunumu ihlal sayardi.
+    const withheld = Math.max(0, economy.capitalWithheld ?? 0);
     const weights = { lower: 0.42, middle: 0.33, upper: 0.25 };
     let taxes = 0;
     for (const [classId, weight] of Object.entries(weights)) {
       const socialClass = economy.classes[classId];
       const expected = Math.max(0, pool * weight
         + wagesPaid * (WAGE_SPLIT[classId] ?? 0)
-        + (classId === 'upper' ? profitShare : 0));
+        + (classId === 'upper' ? profitShare - withheld : 0));
       worstL1 = Math.max(worstL1, Math.abs((socialClass.income ?? 0) - expected)
         / Math.max(1, expected));
       taxes += socialClass.taxPaid ?? 0;

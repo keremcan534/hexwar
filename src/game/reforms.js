@@ -912,14 +912,33 @@ function ladderProgress(reforms, groupId) {
  * Yürürlükteki yasaların sayısal karşılığını hesaplar ve ulusa yazar.
  * Haftalık siyaset fazından ve yasa çıkarıldığı anda çağrılır.
  */
+/**
+ * Yasa sayaclarinin haftalik erimesi. AYRI BIR FONKSIYON, cunku yan etkisi
+ * olan bir "hesapla" fonksiyonu kaydet/yukle'yi dallandiriyordu:
+ *
+ * Eskiden bu iki azaltma `refreshReformModifiers` icindeydi ve `enactReform`
+ * onu `if (modsByNation.has(nation))` kosuluyla cagiriyor. `modsByNation` bir
+ * WeakMap'tir, KAYDA GIRMEZ: kesintisiz kosuda sicaktir (yasa cikaran ulke o
+ * hafta IKI kez erir), yuklenmis kosuda bostur (BIR kez erir). Sonuc, yasa
+ * takviminin bir hafta kaymasi ve oradan butun ekonominin ayrilmasidir.
+ * Olculdu: CO-8 tohumu, 181. hafta, yasa cikaran iki ulkede reformCooldown
+ * 50/51 ve reformFatigue 23.8/24.4. Bes tohumun dordu dallaniyordu.
+ *
+ * Artik erime YALNIZ haftalik fazdan, ulus basina tam bir kez kosar;
+ * `refreshReformModifiers` saf bir yeniden-hesaptir.
+ */
+export function decayReformCounters(nation) {
+  const politics = nation?.politics;
+  if (!politics) return;
+  if (politics.reformCooldown > 0) politics.reformCooldown -= 1;
+  if (politics.reformFatigue > 0) {
+    politics.reformFatigue = Math.max(0, politics.reformFatigue - 0.6);
+  }
+}
+
 export function refreshReformModifiers(nation) {
   const reforms = ensureReforms(nation);
   if (!reforms) return NEUTRAL_MODIFIERS;
-  // Haftalık sayaçlar burada işler: bu fonksiyon ulus başına haftada tam bir
-  // kez çağrılıyor (bkz. economy.beginEconomy), ayrı bir faz açmaya gerek yok.
-  const politics = nation.politics;
-  if (politics.reformCooldown > 0) politics.reformCooldown -= 1;
-  if (politics.reformFatigue > 0) politics.reformFatigue = Math.max(0, politics.reformFatigue - 0.6);
   const p = (id) => ladderProgress(reforms, id);
   const wage = p('minimum_wage');
   const hours = p('work_hours');

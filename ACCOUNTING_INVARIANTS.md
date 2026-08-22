@@ -29,6 +29,28 @@ alan olarak kayitli, denetimin okudugu, ekranin gosterebilecegi akis.
 | L8 | gumruk geliri = ithalat degeri × tarife (birebir); ic tuketim gumruklenmez | tariff (sapma 0.00) |
 | L9 | Δhazine = defter net + borclanilan − odenen + temerrut (bilanco kimligi) | updateLedger + save |
 
+## Sirket / borsa (audit:companies)
+
+| # | yasa | denetim |
+|---|---|---|
+| L10 | temettu TRANSFERDIR: yabanci ortaga odenen tutar ayni hafta ev sahibi ust sinifin gelirinden dusulur (`economy.capitalWithheld`); Σodenen = Σalinan | companies K3 (sapma 0.00) |
+| L11 | hisse bedeli TRANSFERDIR: alici hazinesi −X, ev sahibinin `politics.privateCapital` +X; **sirketin kasasi degismez** | companies K2 (dunya serveti Δ=0) |
+| L12 | ayricalikli erisim MAL YARATMAZ: `crossBorderTrade` AGIRLIKSIZ teklif toplamindan hesaplanir, tahsis iki gecisli su-doldurmayla tam kapanir, dolayisiyla dunya toplaminda Σithalat degeri = Σihracat degeri ve dis hesap kapanisi sifirlanir | companies K4 + K5 |
+| L13 | yeniden-yatirim payi (0.08) IKI KEZ yazilmaz: sirket kasasina giden kisim `economy.reinvestToCompanies` olarak beyan edilir ve ulusal havuzdan tam o kadar dusulur | ledger L3 + companies K2 |
+| L14 | kamulastirma tazminati TRANSFERDIR ve hazine ortulemedigi kademeyi secemez (`due > gold` on kontrolu) | companies K6 (dunya serveti Δ=0) |
+
+Sirket kari YENI BIR GELIR DEGILDIR: sanayide `factory.profit × PROFIT_TO_CAPITAL`,
+cikarimda `tabanUretim × INCOME_POOL_SHARE × INCOME_WEIGHTS.upper` — ikisi de
+zaten ust sinifa akan kanallardir, sirket katmani yalniz onlara SAHIP verir.
+
+## Para KAYBETMEK de ihlaldir
+
+`politics.privateCapital` tavani (1200) bir zamanlar `min(1200, havuz + akis)`
+seklindeydi ve havuz tavani astiginda farki YOK EDIYORDU. Hisse satisi buyuk ve
+ani bir girdi oldugu icin bu yol artik sik kullaniliyor; her iki yazim yeri
+(`politics.collectPrivateCapital`, `construction` iadesi) tavani YALNIZ
+AKISA uygular. Havuz <= 1200 iken iki yazim birebir ayni sonucu verir.
+
 ## Beyanli olmayan tek bataklar (bilerek, kaynak degil GIDER yonunde)
 
 - Kar 0.42 payi: yipranma / ithal makine sogurmasi (L3).

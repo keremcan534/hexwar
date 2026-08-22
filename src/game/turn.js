@@ -8,7 +8,7 @@ import {
 import { advanceMovement } from './movement.js';
 import { queueRecruit, recruit, runTraining } from './recruitment.js';
 import { runReinforcements } from './reinforcement.js';
-import { runNationAI } from './ai.js';
+import { runDelegatedAI, runNationAI } from './ai.js';
 import { runDiplomacyAI } from './alliances.js';
 import { atWar, computeContacts, initRelations } from './diplomacy.js';
 import {
@@ -382,6 +382,14 @@ export class TurnManager {
     const joined = checkCoalitions(this.game, this.rng);
     if (joined) this.game.renderer.invalidateCache();
     yield* pause('contacts');
+
+    // Devredilmis alanlar oyuncu icin AYNI evrede, AYNI sirada kosar: zar
+    // dizisi degismesin diye ulke sirasinin basinda (oyuncu 0. ulkedir degil,
+    // ama sira sabittir) — determinizm tek kurala baglidir: her hafta ayni
+    // sirayla ayni sayida zar cekilir. runDelegatedAI zar cekmedigi haftalarda
+    // hic dokunmaz (diplomacy kendi ic frekansini uygular).
+    const delegate = world.nations[this.playerNation];
+    if (delegate?.alive) runDelegatedAI(this.game, delegate, this.rng);
 
     let aiBatch = 0;
     for (const nation of world.nations) {

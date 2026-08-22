@@ -44,6 +44,8 @@ const EVENTS = [
   'select', 'world', 'turn', 'units', 'clock', 'economy', 'battles',
   'provinces', 'construction', 'victory', 'selection', 'command', 'peace',
   'nation', 'politics', 'notify', 'notify-clear', 'notify-dismiss',
+  // Sirket/borsa katmani ve AUTO devri (bkz. companies.js, delegation.js).
+  'companies', 'delegation',
 ];
 
 /** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */

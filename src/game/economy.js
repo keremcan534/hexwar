@@ -3,7 +3,14 @@
 // fiyatlanan mallara, sınıf gelirlerine ve sanayi kârına dönüştürür.
 
 import { canAfford, pay } from './cities.js';
-import { RGO_TYPES, provinceOutput, provincePopulation } from './provinces.js';
+import {
+  RGO_TYPES, provinceOutput, provincePopulation, rgoJobsOf,
+} from './provinces.js';
+import {
+  companyById, companyForFactoryType, refreshPriorityAccess, runCompanies,
+  runInvestmentAI,
+} from './companies.js';
+import { delegationActive, noteDelegated } from './delegation.js';
 import { atWar } from './diplomacy.js';
 import { controllerOf } from './control.js';
 import {
@@ -25,7 +32,7 @@ import {
   higherEducationBonus, investmentLevel, planConstructionAI, queueIndustryProject,
 } from './construction.js';
 import {
-  refreshReformModifiers, reformModifiers, reformMoodShift,
+  decayReformCounters, refreshReformModifiers, reformModifiers, reformMoodShift,
 } from './reforms.js';
 
 /**
@@ -655,6 +662,9 @@ function emptyLedger() {
     subsidyCost: 0,
     projectCost: 0,
     interestCost: 0,
+    dividendRevenue: 0,
+    shareCost: 0,
+    shareRevenue: 0,
     borrowed: 0,
     repaid: 0,
     defaulted: 0,
@@ -1512,10 +1522,15 @@ export function buildFactory(game, nation, regionId, typeId, options = {}) {
   const cost = factoryCost(nation, typeId);
   // Devlet bedeli peşin yatırır; özel sermaye projeye haftalar içinde akar.
   if (actor !== 'private' && !payFactoryCost(nation, cost, actor)) return false;
+  // Ozel yatirimin YUZU: proje bir sirkete yazilir. "Ozel sermaye bir celik
+  // fabrikasi kurdu" yerine "Aldemar Steel Union Torford'da celik fabrikasi
+  // acti" denebilmesinin tek sebebi bu satirdir.
+  const owner = actor === 'private' ? companyForFactoryType(nation, typeId) : null;
   queueIndustryProject(game, nation, {
     kind: PROJECT_KIND.FACTORY,
     typeId,
     regionId,
+    companyId: owner?.id ?? null,
     regionName: region.name,
     q: region.center.q,
     r: region.center.r,
@@ -1525,7 +1540,8 @@ export function buildFactory(game, nation, regionId, typeId, options = {}) {
     actor,
   });
   if (nation.id === game.turns.playerNation) {
-    game.turns.addLog(`${region.name}: ${type.name} started${actor === 'private' ? ' by private investors' : ''}.`,
+    const by = owner ? ` by ${owner.name}` : actor === 'private' ? ' by private investors' : '';
+    game.turns.addLog(`${region.name}: ${type.name} started${by}.`,
       { kind: 'INDUSTRY' });
     game.emit('economy', nation.economy);
   }
@@ -1551,8 +1567,11 @@ function commitCompletedProjects(game, nation) {
       factory.fundedBy = project.actor;
       factory.lastUpgrade = game.world.turn;
       if (nation.id === game.turns.playerNation) {
-        game.turns.addLog(`${FACTORIES[factory.typeId].name} reached level ${factory.level}.`,
-          { kind: 'INDUSTRY' });
+        const owner = companyById(nation, project.companyId);
+        game.turns.addLog(owner
+          ? `${owner.name} expanded its ${FACTORIES[factory.typeId].name} to level ${factory.level}.`
+          : `${FACTORIES[factory.typeId].name} reached level ${factory.level}.`,
+        { kind: 'INDUSTRY' });
       }
       continue;
     }
@@ -1573,8 +1592,12 @@ function commitCompletedProjects(game, nation) {
       } : {}),
     });
     if (nation.id === game.turns.playerNation) {
-      game.turns.addLog(`${FACTORIES[project.typeId].name} opened in ${project.regionName}.`,
-        { kind: 'INDUSTRY' });
+      // Ozel yatirimin sahibi varsa haber onun adiyla verilir.
+      const owner = companyById(nation, project.companyId);
+      game.turns.addLog(owner
+        ? `${owner.name} opened a ${FACTORIES[project.typeId].name} in ${project.regionName}.`
+        : `${FACTORIES[project.typeId].name} opened in ${project.regionName}.`,
+      { kind: 'INDUSTRY' });
     }
   }
 }
@@ -1870,16 +1893,36 @@ function rawProduction(world, nation, market, output) {
   const fertilized = fertilizer?.demand > 0
     ? clamp((fertilizer.fulfilled ?? 0) / fertilizer.demand, 0, 1) : 0;
   const farmBonus = 1 + fertilized * 0.25;
+  // Cikarim isletmelerinin haftalik pazar degeri. Sirket katmani madenlerin
+  // sahibini buradan okur (bkz. companies.measureCompany): ayri bir tarama
+  // yapilmaz, zaten donulen kumeler uzerinde tek carpim biriktirilir.
+  const extraction = nation.economy.extraction
+    ?? (nation.economy.extraction = { value: 0, jobs: 0, count: 0, byGood: {} });
+  extraction.value = 0;
+  extraction.jobs = 0;
+  extraction.count = 0;
+  for (const id in extraction.byGood) extraction.byGood[id] = 0;
+
   const provinces = world.provinces ?? [];
   for (let p = 0; p < provinces.length; p++) {
     const province = provinces[p];
     if (province.owner !== nation.id || !province.econ) continue;
     const produced = provinceOutput(world, province, provinceOutputScratch);
     const track = RGO_TYPES[province.econ.rgo]?.track;
+    const mine = track === 'extraction';
+    if (mine) {
+      extraction.count++;
+      extraction.jobs += rgoJobsOf(province.econ);
+    }
     for (const id in produced) {
       const amount = produced[id];
       if (id === 'gold' || !GOODS[id] || !(amount > 0)) continue;
       output[id] += track === 'agriculture' ? amount * farmBonus : amount;
+      if (mine) {
+        const value = amount * priceOf(world, id);
+        extraction.value += value;
+        extraction.byGood[id] = (extraction.byGood[id] ?? 0) + amount;
+      }
     }
   }
   // Talep, ekilen alana orantılı: büyük tarım ülkesi daha çok gübre ister.
@@ -1964,6 +2007,7 @@ function autoUpgradeFactory(game, nation, factory) {
     kind: PROJECT_KIND.UPGRADE,
     typeId: factory.typeId,
     factoryId: factory.id,
+    companyId: actor === 'private' ? companyForFactoryType(nation, factory.typeId)?.id ?? null : null,
     regionName: FACTORIES[factory.typeId].name,
     q: factory.q,
     r: factory.r,
@@ -1991,8 +2035,22 @@ function fundPrivateProjects(nation, turn) {
     .filter((project) => project.actor === 'private' && project.funded < project.cost)
     .sort((a, b) => (a.cost - a.funded) - (b.cost - b.funded) || a.id - b.id);
   for (const project of open) {
+    // ONCE SIRKET KASASI. Karli sirket kendi santiyesini kendi parasiyla
+    // yurutur; ulusal havuz onun icin beklemez. Bu ikinci bir sermaye
+    // ekonomisi degildir: kasadaki para zaten havuza gitmeyen yeniden-yatirim
+    // payidir (bkz. companies.runCompanies ve politics.collectPrivateCapital).
+    const company = companyById(nation, project.companyId);
+    if (company && company.cash > 0) {
+      const own = fundProject(project, company.cash);
+      if (own > 0) {
+        company.cash -= own;
+        project.fundedTurn = turn;
+        project.dormant = false;
+      }
+    }
+    if (project.funded >= project.cost) continue;
     const available = Math.max(0, nation.politics?.privateCapital ?? 0);
-    if (available <= 0) break;
+    if (available <= 0) continue;
     const paid = fundProject(project, available);
     if (paid <= 0) continue;
     nation.politics.privateCapital -= paid;
@@ -2033,7 +2091,11 @@ function dropInvalidProjects(nation) {
     if (!orphanUpgrade && FACTORIES[project.typeId]) continue;
     if (project.funded > 0) {
       if (project.actor === 'private' && nation.politics) {
-        nation.politics.privateCapital = (nation.politics.privateCapital ?? 0) + project.funded;
+        // Iade sahibine gider: sirket parasi sirkete, havuz parasi havuza.
+        // Ayrimi tutmasak iade sessiz bir sermaye transferi olurdu.
+        const company = companyById(nation, project.companyId);
+        if (company) company.cash += project.funded;
+        else nation.politics.privateCapital = (nation.politics.privateCapital ?? 0) + project.funded;
       } else {
         nation.gold += project.funded;
       }
@@ -2604,6 +2666,15 @@ function populationDemand(world, nation, market) {
   return totalCost;
 }
 
+/**
+ * Kirsal/temel uretimin haneye akan payi ve sinif agirliklari. Sabit olarak
+ * DISARI ACILDI: sirket katmani cikarim sahibinin hakkini ayni sayidan
+ * turetir (bkz. companies.RGO_CAPITAL_SHARE). Iki yerde ayri ayri yazilsaydi
+ * biri kayinca temettu ust sinif gelirinden farkli bir tutar duserdi.
+ */
+export const INCOME_POOL_SHARE = 0.35;
+export const INCOME_WEIGHTS = { lower: 0.42, middle: 0.33, upper: 0.25 };
+
 function fiscalBalance(nation, baseOutputValue, industrialOutput) {
   const economy = nation.economy;
   // GELIR ARTIK UC GERCEK KANALDIR:
@@ -2616,16 +2687,21 @@ function fiscalBalance(nation, baseOutputValue, industrialOutput) {
   // Taban pay 0.18 → 0.35: sanayi payinin cikmasiyla kirsal gelirin
   // pazarlanan payi gercekci olcege cekildi (kalibrasyon: needsMet bandi
   // korunacak sekilde olculdu, bkz. CORE_STABILIZATION_LOG FAZ 3).
-  const incomePool = Math.max(1, baseOutputValue * 0.35);
-  const incomeWeights = { lower: 0.42, middle: 0.33, upper: 0.25 };
+  const incomePool = Math.max(1, baseOutputValue * INCOME_POOL_SHARE);
+  const incomeWeights = INCOME_WEIGHTS;
   const wagesPaid = Math.max(0, economy.wagesPaid ?? 0);
   const profitShare = (economy.factoryProfit ?? 0) * PROFIT_TO_CAPITAL;
+  // SIRKET TEMETTUSU BIR TRANSFERDIR. Yabanci ortaga bu hafta odenen tutar
+  // (runCompanies zaten odedi) sermayedarin gelirinden DUSULUR; yoksa ayni
+  // para hem yurt ici uste sinifta hem yabanci hazinede olurdu. Sifir ise
+  // hesap birebir eski davranistir (bkz. companies.js korunum notu).
+  const withheld = Math.max(0, economy.capitalWithheld ?? 0);
   let taxes = 0;
   for (const [classId, weight] of Object.entries(incomeWeights)) {
     const socialClass = economy.classes[classId];
     socialClass.income = incomePool * weight
       + wagesPaid * (WAGE_SPLIT[classId] ?? 0)
-      + (classId === 'upper' ? profitShare : 0);
+      + (classId === 'upper' ? profitShare - withheld : 0);
     // Zarar geliri negatife cekmesin: vergi matrahi negatif olamaz ve
     // `needsBudget` zaten ayri bir kanaldan geliyor.
     socialClass.income = Math.max(0, socialClass.income);
@@ -2663,7 +2739,7 @@ const CUT_ORDER = ['welfare', 'health', 'education'];
  * kullanmazsa geç oyunda tek başına para yığar; istikrar düşükse refah,
  * hazine bolsa eğitim/sağlık açar, para biterse kısar.
  */
-function adjustSocialAI(nation) {
+function adjustSocialAI(nation, report = null) {
   const economy = nation.economy;
   // fiscalNet tek başına yanıltıcı: şehir bütçesi ayrı bir gelir kalemi.
   // Sosyal harcamayı ölçerken haftalık *toplam* değişime bakılmalı.
@@ -2699,11 +2775,21 @@ function adjustSocialAI(nation) {
     : raiseOrder;
   for (const id of order) {
     const current = economy.social[id] ?? 0;
-    if (step > 0 && current < 100) { economy.social[id] = current + step; return; }
+    if (step > 0 && current < 100) {
+      economy.social[id] = current + step;
+      report?.('budget', `${SOCIAL_PROGRAMS[id]?.name ?? id} spending ${current}% \u2192 ${current + step}%.`,
+        'The treasury could afford more.');
+      return;
+    }
     if (step < 0) {
       const floor = FUEL_FIX ? socialFloorOf(nation, id) : 0;
       if (current > floor) {
-        economy.social[id] = Math.max(floor, current + step);
+        const next = Math.max(floor, current + step);
+        economy.social[id] = next;
+        if (next !== current) {
+          report?.('budget', `${SOCIAL_PROGRAMS[id]?.name ?? id} spending ${current}% \u2192 ${next}%.`,
+            'The treasury was under strain.');
+        }
         return;
       }
       // Tabandaysa ATLA, `return` etme: yoksa egitim tabanina oturunca
@@ -2764,12 +2850,12 @@ function investmentOptions(world, nation) {
  * kullanıyordu. Artık YZ de krizde vergi artırır, bollukta indirir ve ticaret
  * politikasına göre gümrüğünü ayarlar.
  */
-function adjustFiscalAI(nation) {
+function adjustFiscalAI(nation, areas = FULL_FISCAL) {
   const economy = nation.economy;
   const weekly = (nation.budget?.net?.gold ?? 0) + economy.fiscalNet;
   const broke = nation.gold < 80 || weekly < 0;
   const rich = nation.gold > 600 && weekly > 0;
-  if (broke || rich) {
+  if (areas.budget && (broke || rich)) {
     // Vergiyi önce en varlıklı sınıftan artır, indirirken en yoksuldan başla:
     // hem gelir hem memnuniyet açısından en ucuz sıra budur.
     const order = broke ? ['upper', 'middle', 'lower'] : ['lower', 'middle', 'upper'];
@@ -2786,19 +2872,42 @@ function adjustFiscalAI(nation) {
       // Tavanlar düşük tutuldu: yüksek vergi sınıfı eritir (bkz. CLASS_NEEDS_BUDGET).
       const limit = classId === 'lower' ? 35 : classId === 'middle' ? 42 : 45;
       const next = clamp(current + step, 5, limit);
-      if (next !== current) { economy.taxes[classId] = next; break; }
+      if (next !== current) {
+        economy.taxes[classId] = next;
+        areas.report?.('budget',
+          `${CLASS_INFO[classId]?.name ?? classId} tax ${current}% \u2192 ${next}%.`,
+          broke ? 'Treasury reserves were falling.' : 'The treasury could afford relief.');
+        break;
+      }
     }
   }
   // Korumacı hükümet sanayisini kollar, serbest ticaretçi gümrüğü SIFIRA
   // indirir — tabana değil. Taban artık −50 (ithalat sübvansiyonu) ve oraya
   // sürüklenen YZ hazinesini kalıcı olarak ithalata akıtıyordu.
-  const limits = fiscalPolicyLimits(nation);
-  const wanted = policyOf(nation, 'trade') === 'protectionism' ? limits.tariffMax : 0;
-  const drift = Math.sign(wanted - economy.tariff) * 2;
-  if (drift) economy.tariff = clamp(economy.tariff + drift, limits.tariffMin, limits.tariffMax);
-
-  adjustWarFiscalAI(nation);
+  if (areas.trade) {
+    const limits = fiscalPolicyLimits(nation);
+    const wanted = policyOf(nation, 'trade') === 'protectionism' ? limits.tariffMax : 0;
+    // SALINIM FRENI. Gumruk haftada en fazla iki puan surunur. AUTO acildiginda
+    // oyuncunun kurdugu %30 bir haftada %80'e sicramaz; hukumet aylar icinde
+    // kendi doktrinine kayar ve oyuncu her an anahtari kapatip yerinde durdurur.
+    const drift = Math.sign(wanted - economy.tariff) * 2;
+    if (drift) {
+      const before = economy.tariff;
+      economy.tariff = clamp(economy.tariff + drift, limits.tariffMin, limits.tariffMax);
+      if (economy.tariff !== before) {
+        areas.report?.('trade',
+          `Tariff ${before}% \u2192 ${economy.tariff}%.`,
+          policyOf(nation, 'trade') === 'protectionism'
+            ? 'The government protects domestic industry.'
+            : 'The government is opening the ports.');
+      }
+    }
+  }
+  if (areas.budget) adjustWarFiscalAI(nation);
 }
+
+/** YZ ulkeleri her kaldiraci kullanir; devirde alanlar ayri ayri acilir. */
+const FULL_FISCAL = { budget: true, trade: true, report: null };
 
 /**
  * Savaş/barış/kriz maliyesi. Kusursuz değil, makul: savaşta ordu fonlanır ve
@@ -2929,16 +3038,45 @@ function runPrivateSector(game, nation) {
     if (!region) continue;
     if (buildFactory(game, nation, region.id, option.typeId, { actor: 'private' })) {
       const factory = economy.factories[economy.factories.length - 1];
+      const owner = companyForFactoryType(nation, option.typeId);
       nation.politics.lastPrivateInvestment = {
-        action: 'build', factoryId: factory.id, typeId: option.typeId,
+        action: 'build',
+        factoryId: factory.id,
+        typeId: option.typeId,
+        companyId: owner?.id ?? null,
+        companyName: owner?.name ?? null,
+        regionName: region.name,
       };
+      if (owner) {
+        owner.lastInvestment = {
+          turn: game.world.turn ?? 0, typeId: option.typeId, regionName: region.name,
+        };
+      }
       return;
     }
   }
 }
 
+/**
+ * Ulusal ekonomi yonetimi. YZ ulkeleri icin hepsi, oyuncu icin YALNIZ
+ * devredilmis alanlar kosar (bkz. delegation.js).
+ *
+ * OYUNCUYA GIZLI BONUS YOKTUR: burada cagrilan her fonksiyon ayni hazineyi,
+ * ayni yasa tavanlarini (fiscalPolicyLimits), ayni insaat kapisini
+ * (canBuildFactory) ve ayni teçhizat kisitini kullanir. Devir bir kolaylik,
+ * bir avantaj degil.
+ */
 function runEconomicAI(game, nation) {
-  if (nation.id === game.turns.playerNation || !nation.alive) return;
+  if (!nation.alive) return;
+  const player = nation.id === game.turns.playerNation;
+  const turn = game.world.turn ?? 0;
+  const budget = !player || delegationActive(nation, 'budget', turn);
+  const trade = !player || delegationActive(nation, 'trade', turn);
+  const construction = !player || delegationActive(nation, 'construction', turn);
+  if (!budget && !trade && !construction) return;
+  const report = player
+    ? (areaId, text, reason) => noteDelegated(game, nation, areaId, text, reason)
+    : null;
   const economy = nation.economy;
   // Maliye YZ'sinin savaş/barış kararı için: economy dünyayı bilmez, bağ
   // burada kurulur.
@@ -2949,8 +3087,9 @@ function runEconomicAI(game, nation) {
   // Kriz dalindaki program feshi tur numarasi ister; economy dunyayi
   // tutmadigi icin atWarCache ile ayni kalipla burada baglanir.
   economy.turnCache = game.world.turn ?? 0;
-  adjustSocialAI(nation);
-  adjustFiscalAI(nation);
+  if (budget) adjustSocialAI(nation, report);
+  adjustFiscalAI(nation, { budget, trade, report });
+  if (!construction) return;
   // Yatirim hedefi kalmamis (sehirsiz) devlet MALIYESIZ kalmasin: erken cikis
   // fiscal YZ'nin ustundeyken kriz modu hic kosmuyordu — kalinti devlet eski
   // bolluk gunlerinin kapasite bakimini odemeye devam edip kalici temerrutte
@@ -3109,7 +3248,15 @@ function procureStrategicGoods(world) {
       const tariffFactor = 1 + nation.economy.tariff / 100;
       const unitPrice = priceOf(world, id) * tariffFactor;
       const affordable = nation.gold / Math.max(0.01, unitPrice);
-      const amount = Math.min(equipment.importLimit, shortage, available[id], affordable);
+      // AYRICALIKLI ERISIM BURADA DA GECERLI. Stratejik techizat kuyrugu
+      // paylasilan tek bir havuzdan ulke sirasiyla dagitiliyor; o sirketin
+      // ortagi olan ulke haftalik parcasini daha buyuk cekebilir. Havuzun
+      // kendisi (`available[id]`) degismez, yani mal YARATILMAZ — onde
+      // olanin aldigini arkadaki alamaz. Bedel yine tam fiyat + gumruktur.
+      const priority = 1 + (nation.economy.priorityAccess?.[id] ?? 0);
+      const amount = Math.min(
+        equipment.importLimit * priority, shortage, available[id], affordable,
+      );
       if (amount <= 0) continue;
       const cost = amount * unitPrice;
       setEquipmentStock(nation, id, equipmentStock(nation, id) + amount);
@@ -3141,11 +3288,21 @@ export function settleGlobalTrade(world) {
   const domesticCol = new Float64Array(count);
   const surplusCol = new Float64Array(count);
   const bidCol = new Float64Array(count);
+  // AYRICALIKLI ERISIM. Yabanci sirkette hissesi olan ulke, o sirketin
+  // MALINDA sirada one gecer. Dikkat: bu, AYNI ticaret hacminin yeniden
+  // dagitimidir — `crossBorderTrade` hala AGIRLIKSIZ teklif toplamindan
+  // hesaplanir, dolayisiyla tek gram mal yaratilmaz. Ayricalikli ulkenin
+  // fazladan aldigi, digerlerinin alamadigidir; ustelik kendi talebinden
+  // (bidCol) fazlasini asla alamaz. Mal yine PIYASA FIYATINDAN odenir.
+  const weightCol = new Float64Array(count);
+  const allocCol = new Float64Array(count);
+  const priority = world.market.hasPriority === true;
 
   for (let g = 0; g < GOOD_IDS.length; g++) {
     const id = GOOD_IDS[g];
     let totalSurplus = 0;
     let totalBid = 0;
+    let totalWeight = 0;
     for (let i = 0; i < count; i++) {
       const nation = nations[i];
       const flow = nation.economy.goodsFlow[id];
@@ -3167,18 +3324,59 @@ export function settleGlobalTrade(world) {
       domesticCol[i] = domestic;
       surplusCol[i] = Math.max(0, marketProduction - domestic) * access;
       bidCol[i] = deficit * appetite;
+      weightCol[i] = priority
+        ? bidCol[i] * (1 + (nation.economy.priorityAccess?.[id] ?? 0))
+        : bidCol[i];
     }
     // Toplamlar eski reduce ile ayni sirada birikir (ulke dizisi sirasi).
     for (let i = 0; i < count; i++) totalSurplus += surplusCol[i];
     for (let i = 0; i < count; i++) totalBid += bidCol[i];
+    for (let i = 0; i < count; i++) totalWeight += weightCol[i];
     const crossBorderTrade = Math.min(totalSurplus, totalBid);
+
+    // ITHALAT TAHSISI — iki gecisli su-doldurma.
+    //
+    // NEDEN IKI GECIS: dis hesap kapanisi (trade.settlement) dunya toplaminda
+    // Sithalat == Sihracat oldugu icin para yaratmaz. Oncelik agirligi tek
+    // gecisle uygulaninca ayricalikli ulkenin payi KENDI talebini asiyor,
+    // fazlasi kirpiliyor ve Sithalat < Sihracat kaliyordu — aradaki fark
+    // hazinelere NET POZITIF olarak dagiliyordu, yani sifirdan para. Denetim
+    // bunu yakaladi (audit:companies K5).
+    //
+    // Ikinci gecis kirpilan artigi hala talebi karsilanmamis ulkeler arasinda
+    // bosluklari oraninda dagitir. Artik <= toplam bosluk oldugu icin (Steklif
+    // >= crossBorderTrade) tek ek gecis TAM kapanir: Stahsis === crossBorderTrade.
+    //
+    // Ayricalik yokken birinci gecis zaten kirpmaz (raw <= teklif), artik
+    // sifirdir ve ikinci gecis etkisizdir — eski davranis bit bit korunur.
+    if (crossBorderTrade > 0 && totalWeight > 0) {
+      let allocated = 0;
+      for (let i = 0; i < count; i++) {
+        const raw = weightCol[i] * crossBorderTrade / totalWeight;
+        allocCol[i] = raw < bidCol[i] ? raw : bidCol[i];
+        allocated += allocCol[i];
+      }
+      let leftover = crossBorderTrade - allocated;
+      if (leftover > 1e-12) {
+        let headroom = 0;
+        for (let i = 0; i < count; i++) headroom += bidCol[i] - allocCol[i];
+        if (headroom > 1e-12) {
+          if (leftover > headroom) leftover = headroom;
+          for (let i = 0; i < count; i++) {
+            allocCol[i] += leftover * (bidCol[i] - allocCol[i]) / headroom;
+          }
+        }
+      }
+    } else {
+      for (let i = 0; i < count; i++) allocCol[i] = 0;
+    }
 
     for (let i = 0; i < count; i++) {
       const nation = nations[i];
       const flow = nation.economy.goodsFlow[id];
       flow.domestic = domesticCol[i];
       flow.exports = totalSurplus > 0 ? surplusCol[i] * crossBorderTrade / totalSurplus : 0;
-      flow.imports = totalBid > 0 ? bidCol[i] * crossBorderTrade / totalBid : 0;
+      flow.imports = allocCol[i];
       flow.fulfilled = Math.min(flow.demand, flow.domestic + flow.imports);
       flow.shortage = Math.max(0, flow.demand - flow.fulfilled);
       flow.importShare = flow.demand > 0 ? clamp(flow.imports / flow.demand, 0, 1) : 0;
@@ -3354,6 +3552,15 @@ function updateLedger(nation, turn) {
   // "State purchases" birim/sehir/general, "Project funding" santiyedir.
   const projectCost = Math.max(0, economy.projectGold ?? 0);
   economy.projectGold = 0;
+  // SIRKET KANALLARI (bkz. companies.js, ACCOUNTING_INVARIANTS L10-L12).
+  // Ucu de TRANSFERDIR, uretim degil: temettu yabanci ust sinifin gelirinden
+  // dusuldu, hisse bedeli karsi tarafin ozel sermaye havuzuna gitti.
+  const dividendRevenue = Math.max(0, economy.dividendGold ?? 0);
+  economy.dividendGold = 0;
+  const shareCost = Math.max(0, economy.shareCostGold ?? 0);
+  economy.shareCostGold = 0;
+  const shareRevenue = Math.max(0, economy.shareSaleGold ?? 0);
+  economy.shareSaleGold = 0;
   // Borç kapanışı gelir/gider bilinmeden ÖNCE koşamaz (kapasite gelire
   // bakar) ama defter yazılmadan önce koşmalı ki faiz ve finansman satırları
   // bu haftanın kaydına girsin.
@@ -3365,10 +3572,11 @@ function updateLedger(nation, turn) {
   if (economy.treasuryHistory.length > 52) economy.treasuryHistory.shift();
   const income = cityRevenue + (economy.taxRevenue ?? 0)
     + Math.max(0, tariffRevenue) + treatyRevenue
-    + Math.max(0, externalSettlement);
+    + Math.max(0, externalSettlement) + dividendRevenue + shareRevenue;
   const expenses = armyCost + administrationCost + socialCost + importCost
     + constructionCost + treatyCost + outlayCost + procurementCost
-    + subsidyCost + projectCost + interestCost + Math.max(0, -tariffRevenue)
+    + subsidyCost + projectCost + interestCost + shareCost
+    + Math.max(0, -tariffRevenue)
     + Math.max(0, -externalSettlement);
   economy.ledger = {
     lastUpdated: turn,
@@ -3388,6 +3596,9 @@ function updateLedger(nation, turn) {
     subsidyCost,
     projectCost,
     interestCost,
+    dividendRevenue,
+    shareCost,
+    shareRevenue,
     // Finansman satırları gelir/gider DEĞİLDİR (bilanço hareketi): kimlik
     // Δhazine = net + borçlanılan − ödenen şeklinde kapanır.
     borrowed: economy.borrowedGold ?? 0,
@@ -3446,7 +3657,11 @@ export function beginEconomy(game) {
   // sıcak yol sonra yalnız düz alan okur. Politika fazından çağırmak
   // politics.js ile reforms.js arasında döngüsel içe aktarma kuruyordu.
   for (const nation of world.nations) {
-    if (nation.alive && nation.politics) refreshReformModifiers(nation);
+    if (!nation.alive || !nation.politics) continue;
+    // Sayac erimesi ulus basina haftada TAM BIR KEZ, burada (bkz.
+    // reforms.decayReformCounters — kaydet/yukle dallanmasinin sebebiydi).
+    decayReformCounters(nation);
+    refreshReformModifiers(nation);
   }
   refreshNationalStrain(world);
   // Egitim -> okuryazarlik -> arastirma puani -> teknoloji zinciri. Sira
@@ -3467,10 +3682,19 @@ export function beginEconomy(game) {
     const isPlayer = nation.id === game.turns.playerNation;
     // YZ program secimi: vade doldugunda ya da program yokken. Oyuncu kendi
     // ilanini verir; suresi dolan programi surdurmek de mesru bir tercihtir.
-    if (!isPlayer && programmeLapsed(nation, world.turn ?? 0)) {
+    // Program secimi: YZ her zaman, oyuncu YALNIZ arastirma devredildiyse.
+    // AUTO kapaliyken oyuncunun programi kendiliginden degismez; suresi dolan
+    // programi surdurmek ya da degistirmek onun karari kalir.
+    const autoResearch = !isPlayer
+      || delegationActive(nation, 'research', world.turn ?? 0);
+    if (autoResearch && programmeLapsed(nation, world.turn ?? 0)) {
       const pick = scoreProgrammes(nation, programmeContext(world, nation));
       if (pick && pick !== nation.research.programme) {
         adoptProgramme(nation, pick, world.turn ?? 0);
+        if (isPlayer) {
+          noteDelegated(game, nation, 'research', `National programme: ${PROGRAMMES[pick]?.name ?? pick}.`,
+            'The previous commitment had run its term.');
+        }
         // Taahhut aninda baglar (oyuncu tarafiyla ayni kural).
         setFiscalPolicy(nation, 'social',
           Math.max(nation.economy.social?.education ?? 0, PROGRAMMES[pick]?.floor ?? 0),
@@ -3737,6 +3961,10 @@ export function runNationEconomy(game, nation, ctx) {
     // Korunum denetimi gelir bilesimini yeniden hesaplayabilsin diye taban
     // uretim degeri ayrica saklanir (gdp = taban + sanayi tek basina yetmez).
     nation.economy.baseOutputValue = baseOutputValue;
+    // Sirket kapanisi maliyeden ONCE: bu haftanin tesis kari ve ham uretim
+    // degeri belli, defter daha yazilmadi. Yabanci ortaga odenen temettu
+    // burada odenir ve `capitalWithheld` olarak fiscalBalance'a birakilir.
+    runCompanies(game, nation);
     fiscalBalance(nation, baseOutputValue, industrialOutput);
     runPopulationMobility(nation, world.turn);
     mark('fiscal');
@@ -3756,10 +3984,16 @@ export function finishEconomy(game, ctx) {
   // Dünya piyasasındaki gerçek alımlar stratejik stokları doldurur ve fiyatı
   // yukarı iter; böylece ekrandaki piyasa ile inşaat ekonomisi aynı sistemdir.
   procureStrategicGoods(world);
+  // Ayricalikli erisim tablosu ticaretten hemen once tazelenir: hafta icinde
+  // alinan hisse ayni haftanin ithalat sirasini etkilesin.
+  refreshPriorityAccess(world);
   settleGlobalTrade(world);
   mark('trade');
   for (const nation of world.nations) {
     if (!nation.alive) continue;
+    // Yabanci hisse alimi defterden ONCE: haftanin harcamasi ayni haftanin
+    // kaydina girsin. Ulke sirasi sabit, karar deterministik (zar yok).
+    runInvestmentAI(game, nation);
     updateMilitaryAverages(nation);
     updateLedger(nation, world.turn);
   }

@@ -179,8 +179,12 @@ export function declareWar(game, a, b, options = {}) {
 
   const player = game.turns?.playerNation;
   // 1) Oyuncu ADINA otomatik savaş ilan edilemez. Koalisyon oyuncuya KARŞI
-  //    kurulabilir; oyuncuyu üye yapamaz. (İleride bu bir UI kararı olabilir.)
-  if (a === player && !manual) return false;
+  //    kurulabilir; oyuncuyu üye yapamaz.
+  //    TEK ISTISNA: oyuncu diplomasiyi KENDI ELIYLE devrettiyse (AUTO ON,
+  //    bkz. delegation.js) disisleri bakanligi onun adina ilan verebilir.
+  //    Bayrak ayri tutuldu — `manual` "oyuncu dugmeye basti" demektir ve iki
+  //    yolun karistirilmasi izni sessizce genisletirdi.
+  if (a === player && !manual && options.delegated !== true) return false;
   // 2) Çullanma tavanı: hiçbir ulusun üstüne üçten fazla saldırgan binmez.
   if (attackerCount(world, b) >= MAX_ATTACKERS_ON_TARGET) return false;
   // 3) Oyuncuya istemsiz açılan cephe sayısı ayrıca dardır.

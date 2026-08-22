@@ -266,10 +266,21 @@ function collectPrivateCapital(nation) {
   // yatirima, kalani tuketime — ayni artik iki kez harcanmaz.
   const householdSurplus = Math.max(0, (upper.needsBudget ?? 0) - (upper.needsCost ?? 0));
   const industrialReturn = Math.max(0, nation.economy?.factoryProfit ?? 0);
-  nation.politics.privateCapital = Math.min(
-    1200,
-    nation.politics.privateCapital + householdSurplus * 0.22 + industrialReturn * 0.08,
+  // Sirket katmani ayni 0.08'lik yeniden-yatirim payinin bir kismini dogrudan
+  // sahibi sirketin kasasina yazdi (bkz. companies.runCompanies). O tutar
+  // havuza IKINCI KEZ yazilmaz; toplam akis degismez, yalnizca kimin elinde
+  // durdugu degisir.
+  const claimed = Math.min(
+    industrialReturn * 0.08,
+    Math.max(0, nation.economy?.reinvestToCompanies ?? 0),
   );
+  const inflow = householdSurplus * 0.22 + industrialReturn * 0.08 - claimed;
+  // Tavan yalniz BU HAFTANIN akisina uygulanir. Eski yazim `min(1200, p+inflow)`
+  // idi ve p tavani astiginda (hisse satisi buyuk bir tek seferlik girdidir)
+  // farki sessizce YOK EDIYORDU — para kaybetmek de bir korunum ihlalidir.
+  // p <= 1200 iken iki yazim birebir ayni sonucu verir.
+  const room = Math.max(0, 1200 - nation.politics.privateCapital);
+  nation.politics.privateCapital += Math.min(Math.max(0, inflow), room);
 }
 
 /**

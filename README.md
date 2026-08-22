@@ -279,6 +279,47 @@ inşaat sektörü (inşaat gücü), tahkimat (bölgede savunma), idare (vergi ta
 ve üniversite (sanayi işgücü niteliği). Yapı bölge merkezinde haritada görünür ve
 o kare fethedilirse bölgenin yapıları yeni sahibe geçer.
 
+### Şirketler ve küresel borsa
+
+Fabrikaların ve madenlerin bir **sahibi** vardır. Her ülkede en çok beş şirket
+kurulur (tüketim, ağır sanayi, taşıma, silah, madencilik) ve bunlar mevcut
+tesisleri toplar; ayrı bir ekonomi kurulmaz. "Özel sermaye bir çelik fabrikası
+kurdu" cümlesi artık **"Aldemar Steel Union Torford'da çelik fabrikası açtı"**
+olur.
+
+Şirketin kârı uydurulmaz: sanayide tesis kârının sermayedara düşen payı,
+madencilikte ham üretim değerinin üst sınıfa düşen payıdır — ikisi de zaten
+var olan kanallardır. Değerleme gerçek kârdan ve varlıktan türer ve
+yumuşatılır; rastgele fiyat hareketi yoktur.
+
+**Exchange** ekranından yabancı şirketlere ortak olunabilir. Hisse bedeli
+hazineden çıkar, ev sahibi ülkenin özel sermaye havuzuna girer — şirket bu
+paranın hiçbirini almaz. Temettü gerçek kârdan gelir ve ödeyen ülkenin
+sermayedar gelirinden düşülür.
+
+Yabancı sahiplik tavanı ayrı bir yasa değildir: iktidar partisinin ekonomi ve
+ticaret politikasından türer (planlı ekonomi kapalı, laissez-faire açık) ve
+sektöre göre daralır — silah sanayisi %10, tüketim sanayisi %49. Milliyetçi
+bir hükûmet seçilince tavan düşer ve fazla pay yavaşça elden çıkarılır.
+
+**Sahiplik bedava mal vermez.** %30 hisse %30 demir değildir; verdiği şey dünya
+pazarında **sırada önceliktir** (pay × 0.35, mal başına en çok %20). Mal yine
+piyasa fiyatından alınır. Savaş çıkarsa temettü ve öncelik donar, pay durur.
+Kamulaştırma mümkündür ve bedeli şöhrettir: tazminatsız el koymak bir şehir
+fethi kadar itibar yakar ve ülkeye yıllarca yabancı sermaye girmez.
+
+### Yönetimi devretme (AUTO)
+
+Altı alan — bütçe, ticaret, inşaat, araştırma programı, diplomasi, asker alımı
+— tek bir **AUTO ON/OFF** anahtarıyla hükûmete devredilebilir. Ekranın üstünde
+tek satırlık bir şerit anahtarı, bir cümlelik açıklamayı ve hükûmetin son
+anlamlı eylemini gerekçesiyle gösterir.
+
+AUTO açıkken çalışan şey, yapay zekâ ülkelerinin kullandığı fonksiyonun ta
+kendisidir; ayrı bir "oyuncu otomasyonu" yoktur. Hazine, yasa tavanları,
+inşaat gücü ve teçhizat kısıtları aynıdır — devir bir kolaylıktır, bir bonus
+değil. Anahtar kapandığı hafta kontrol geri döner.
+
 ### Kaynak ekonomisi
 
 Ülke kereste ya da demir stoklamaz: bütün hammadde province RGO'larından
@@ -311,11 +352,14 @@ src/
     control.js       hukuki sahiplik ile fiilî işgal ayrımı
     diplomacy.js     savaş, barış ve işgal tasfiyesi
     ai.js            ülke yapay zekâsı
+    companies.js     şirketler, küresel borsa, yabancı sahiplik ve temettü
+    delegation.js    yönetim alanlarının AUTO ON/OFF devri
     save.js          sürümlü kayıt
   ui/
     hud.js         üst çubuk, tarih, hız ve komuta paneli
     screens.js     inşaat, sanayi, lojistik, bütçe, ticaret, nüfus, siyaset ve ordu ekranları
     politicsScreen.js  hükûmet, üst meclis ve yasa defterinin çizimi
+    exchangeScreen.js  borsa bülteni: kotasyon defteri ve şirket dosyası
     militaryScreen.js  komuta, asker alımı ve eğitim kuyruğunun çizimi
 ```
 
@@ -360,6 +404,8 @@ Yeni işler:
   bir düşman düşüyor)
 - Savaş sıklığının yeni muharebe modeline göre yeniden ayarlanması
 - Nüfus sınıfları arasında meslek ve toplumsal hareketlilik
-- Dünya pazarı için ülke bazlı ihracat önceliği ve ambargo
-- Fabrika rezervleri, ücret politikası ve iflas/kapanma
+- Dünya pazarı için ambargo (ithalat önceliği şirket sahipliğiyle geldi)
+- Şirket bazlı borç ve iflas (şirket katmanı var, borç kalemi yok)
+- Ücret politikası
+- Şirketlerin yurt dışında varlık edinmesi (çok uluslu şirket)
 - İttifaklar ve savaşa çağrı
