@@ -208,8 +208,6 @@ export function runFactories(world, nation, market, ownOutput, availability, mod
   economy.factoryProfit = totalProfit;
   economy.industrialOutput = industrialOutput;
   economy.laborShare = laborShare;
-  economy.wageRate = economy.industrialEmployed > 0
-    ? economy.wagesPaid / economy.industrialEmployed : 0;
   return industrialOutput;
 }
 

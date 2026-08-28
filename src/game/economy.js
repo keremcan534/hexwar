@@ -69,7 +69,7 @@ import {
 import {
   CLASS_IDS, INCOME_POOL_SHARE, INCOME_WEIGHTS, PROFIT_TO_CAPITAL, WAGE_SPLIT,
   WORKFORCE_RATE, distributeIncome, ensurePopulation, enforceWorkforceCap,
-  LABOR_SHARE, costOfLivingOf, hiringHeadroom, householdBreakdown, householdDemand,
+  LABOR_SHARE, hiringHeadroom, householdBreakdown, householdDemand,
   industrialEmployedOf,
   professionCountsOf, runClassMobility, setPopulation, updateEmployment,
   updateStability,
@@ -96,7 +96,7 @@ export {
   PROFESSION_INFO, PROFESSION_SHARES, SOCIAL_PROGRAMS, WORKERS_PER_LEVEL, needAmount,
   PRICE_HISTORY, initMarket, priceOf, priceExplain,
   CLASS_IDS, INCOME_POOL_SHARE, INCOME_WEIGHTS, PROFIT_TO_CAPITAL, WAGE_SPLIT,
-  WORKFORCE_RATE, LABOR_SHARE, householdBreakdown, professionCountsOf, costOfLivingOf,
+  WORKFORCE_RATE, LABOR_SHARE, householdBreakdown, professionCountsOf,
   ensureProductionLine, expectedMargin, factoryAtCapacity, factoryBreakdown,
   factoryJobs, factoryMargin, factoryVacancies, industrialJobs, laborFill,
   EXPORT_RETALIATION, EXTERNAL_SETTLEMENT, IMPORT_ELASTICITY, settleGlobalTrade,
@@ -369,6 +369,8 @@ const LEGACY_ECONOMY_FIELDS = [
   'professionCounts', 'cohortPopulation', 'inventory', 'fiscalNet',
   'outlayGold', 'procurementGold', 'subsidyGold', 'projectGold', 'dividendGold',
   'shareCostGold', 'shareSaleGold', 'borrowedGold', 'repaidGold', 'defaultedGold',
+  'interestGold', 'defaultedTurn', 'externalSettlement', 'tariffRevenue',
+  'importCost', 'socialCost', 'constructionUpkeep',
 ];
 const LEGACY_CLASS_FIELDS = [
   'savings', 'savingsDrawn', 'hardshipWeeks', 'prosperityWeeks',
@@ -1321,7 +1323,6 @@ function settleDebt(nation) {
 
   const interest = Math.max(0, (nation.debt ?? 0) * rate / 52);
   spend(nation, 'interestCost', interest);
-  economy.interestGold = interest;
 
   if (nation.gold < 0) {
     const need = -nation.gold;
@@ -1334,7 +1335,6 @@ function settleDebt(nation) {
       const written = -nation.gold;
       declareDefault(nation, written);
       economy.creditPenalty = clamp((economy.creditPenalty ?? 0) + 0.15, 0, 0.85);
-      economy.defaultedTurn = nation.economy.ledger?.lastUpdated ?? 0;
     }
   } else if ((nation.debt ?? 0) > 0 && nation.gold > DEBT_CUSHION) {
     repay(nation, Math.min(nation.debt, nation.gold - DEBT_CUSHION));
@@ -1475,21 +1475,16 @@ export function beginEconomy(game) {
  */
 function refreshLabor(world) {
   for (const nation of world.nations) {
-    if (nation.economy) nation.economy.rgoJobs = 0;
+    if (nation.economy) nation.economy.ruralCapacity = 0;
   }
   for (const province of world.provinces ?? []) {
     if (province.owner < 0 || !province.econ) continue;
     const economy = world.nations[province.owner]?.economy;
-    if (economy) economy.rgoJobs += rgoJobsOf(province.econ);
-  }
-  for (const nation of world.nations) {
-    const economy = nation.economy;
-    if (!economy) continue;
     // RGO kadrosu KİŞİ ölçeğinde tanımlıdır (`rgoLaborScale` kırsal NÜFUSA
     // böler). İşgücü tavanına çevirmek için aynı orana indirilir; yoksa tarla
     // bütün işgücünü soğurur ve işsizlik yapısal olarak sıfır kalır (ölçüldü:
-    // rgoJobs/işgücü = 1.9).
-    economy.ruralCapacity = (economy.rgoJobs ?? 0) * WORKFORCE_RATE;
+    // RGO kadrosu / işgücü = 1.9).
+    if (economy) economy.ruralCapacity += rgoJobsOf(province.econ) * WORKFORCE_RATE;
   }
 }
 
@@ -1504,12 +1499,10 @@ function payGovernment(nation) {
   earn(nation, 'cityRevenue', Math.max(0, budget.production?.gold ?? 0));
   spend(nation, 'armyCost', Math.max(0, budget.armyGold ?? 0));
   spend(nation, 'administrationCost', Math.max(0, budget.administration ?? 0));
-  const social = socialSpendingCost(nation);
-  nation.economy.socialCost = social;
-  spend(nation, 'socialCost', social);
-  const construction = constructionUpkeep(nation);
-  nation.economy.constructionUpkeep = construction;
-  spend(nation, 'constructionCost', construction);
+  // Tutar AYRICA saklanmaz: defterin kendisi tek temsildir (ekran
+  // `ledger.socialCost` / `ledger.constructionCost` okur).
+  spend(nation, 'socialCost', socialSpendingCost(nation));
+  spend(nation, 'constructionCost', constructionUpkeep(nation));
 }
 
 export function runNationEconomy(game, nation, ctx) {

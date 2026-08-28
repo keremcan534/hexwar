@@ -763,7 +763,6 @@ export function nationalize(game, nation, company, modeId = 'compensated') {
     remember(owner, world.turn ?? 0, 'industry_seized_by', nation.id);
     remember(nation, world.turn ?? 0, 'seized_industry_of', id);
   }
-  if (paid > 0) nation.economy.outlayGold = (nation.economy.outlayGold ?? 0) + paid;
   // Dünyanın tepkisi: şöhret. Tazminatsız el koyan ülke koalisyon eşiğine
   // yaklaşır; tazminatlı devralma neredeyse bedelsizdir.
   if (mode.infamy > 0) addInfamy(nation, mode.infamy);

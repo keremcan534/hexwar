@@ -230,17 +230,8 @@ export function distributeIncome(nation, baseOutputValue, taxEfficiency = 1) {
     socialClass.taxPaid = socialClass.income * (economy.taxes[id] / 100);
     taxes += socialClass.taxPaid;
   }
-  economy.incomePool = pool;
   economy.taxRevenue = taxes * taxEfficiency;
   return economy.taxRevenue;
-}
-
-/**
- * Geçim maliyeti: alt sınıfın kişi başına haftalık sepeti. Yalnız ekran ve
- * rapor için — "ücret geçimi karşılıyor mu" sorusunun ölçüsü.
- */
-export function costOfLivingOf(nation) {
-  return nation.economy?.costOfLiving ?? 0;
 }
 
 /**
@@ -265,7 +256,6 @@ export function householdDemand(world, nation, market, welfare = 0, moodShift = 
   let satisfactionWeighted = 0;
   let metWeighted = 0;
   let foodWeighted = 0;
-  let lowerBasket = 0;
 
   for (let c = 0; c < NEEDS_ENTRIES.length; c++) {
     const classId = NEEDS_ENTRIES[c][0];
@@ -362,7 +352,6 @@ export function householdDemand(world, nation, market, welfare = 0, moodShift = 
     );
 
     basketTotal += basket;
-    if (classId === 'lower') lowerBasket = basket;
     satisfactionWeighted += socialClass.satisfaction * socialClass.population;
     metWeighted += socialClass.needsMet * socialClass.population;
     foodWeighted += socialClass.foodMet * socialClass.population;
@@ -375,10 +364,6 @@ export function householdDemand(world, nation, market, welfare = 0, moodShift = 
   economy.foodMet = clamp(foodWeighted / population, 0, 1);
   economy.satisfaction = clamp(satisfactionWeighted / population, 0, 1);
   economy.standardOfLiving = 5 + 15 * economy.satisfaction;
-  economy.basketCost = basketTotal;
-  // Kişi başına alt sınıf sepeti: ücretin izlediği geçim maliyeti.
-  const lowerPop = Math.max(1, economy.classes.lower.population);
-  economy.costOfLiving = lowerBasket / lowerPop;
   return basketTotal;
 }
 

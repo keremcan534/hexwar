@@ -8535,3 +8535,47 @@ body.menu-open .sheet { visibility: hidden; }
   .xch-table th:nth-child(9), .xch-table td:nth-child(9) { display: none; }
   .auto-last { margin-left: 0; text-align: left; width: 100%; }
 }
+
+/* --------------------------------------------------------------------------
+   TESİS KAPANIŞI — dört satırlık defter.
+   Oyuncunun "bu fabrika neden zarar ediyor" sorusunun cevabı, simülasyonun
+   kendi defterinden okunur (bkz. econ/industry.js factoryBreakdown). Ayrı bir
+   kutu DEĞİL: kart yüzeyinin devamı, yalnız ince bir ayraçla bölünmüş.
+   -------------------------------------------------------------------------- */
+.factory-ledger {
+  display: grid;
+  gap: 1px;
+  margin: 6px 0 4px;
+  padding-top: 5px;
+  border-top: 1px solid var(--rule, rgba(0, 0, 0, 0.14));
+}
+
+.fledger-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.fledger-row > span {
+  display: grid;
+  gap: 0;
+  min-width: 0;
+}
+
+.fledger-row small {
+  font-size: 9px;
+  opacity: 0.6;
+}
+
+.fledger-row b {
+  font-variant-numeric: tabular-nums;
+}
+
+.fledger-row.total {
+  margin-top: 3px;
+  padding-top: 3px;
+  border-top: 1px solid var(--rule, rgba(0, 0, 0, 0.14));
+  font-weight: 600;
+}
