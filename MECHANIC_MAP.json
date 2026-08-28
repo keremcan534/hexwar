@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "repo": "hexwar",
-  "note": "Machine-readable mechanic map. One entry per analysed mechanic so a future agent does not have to rediscover the codebase. Line ranges verified against the tree at the time of writing; re-verify with grep before relying on them. Companions: MECHANIC_FINDINGS.md (report), MECHANIC_ATLAS.html (interactive). Amended after an adversarial verification pass: the 'protectionism protects industry' reading was WRONG and has been corrected.",
+  "note": "Machine-readable mechanic map. One entry per analysed mechanic so a future agent does not have to rediscover the codebase. Line ranges verified against the tree at the time of writing; re-verify with grep before relying on them. Companions: MECHANIC_FINDINGS.md (report), MECHANIC_ATLAS.html (interactive). Analysed so far: budget, trade. Amended after an adversarial verification pass: the 'protectionism protects industry' reading was WRONG and has been corrected.",
   "mechanics": [
     {
       "mechanic": "budget",
@@ -1018,6 +1018,504 @@
         "may_read": "any system may read nation.gold, economy.ledger, economy.stability, creditPenalty and the dial values",
         "must_not_write": "no system outside economy.js/setFiscalPolicy may write the nine dials; only the 13 listed sites may write nation.gold; nothing outside settleDebt may write nation.debt or creditPenalty",
         "phase_order": "produce() -> economy(begin -> per-nation -> finish) -> construction+politics. Read economy.fiscalNet only AFTER finishEconomy, or you get the pre-tariff value."
+      }
+    },
+    {
+      "mechanic": "trade",
+      "status": "analysed",
+      "one_line": "A single anonymous world pool cleared once a week. No partners, no geography, no player decision - the only lever is the tariff, which belongs to Budget.",
+      "structural_fact": "settleGlobalTrade() 3279-3422 never names a counterparty. Exports = surplusCol[i] * crossBorderTrade / totalSurplus (3376); imports = a weighted share of the same crossBorderTrade = min(totalSurplus, totalBid) (3351). Distance, adjacency, coast, ports, sea lanes and blockades are absent from the trade path entirely.",
+      "inputs": [
+        {
+          "id": "tariff",
+          "field": "nation.economy.tariff",
+          "actor": "player+ai",
+          "note": "the ONLY player input that changes a trade outcome; owned and clamped by Budget/politics. Enters trade at 3319 (import appetite), 3323 (export access), 3401 (revenue), and is charged to households at 2528-2529 and to factories at 2371-2372."
+        },
+        {
+          "id": "what-you-build",
+          "field": "factory type / production line",
+          "actor": "player",
+          "note": "indirect: buildFactory() 1515-1554 and setMilitaryProductionLine() 762-776 change what the country offers the pool"
+        },
+        {
+          "id": "priorityAccess",
+          "field": "nation.economy.priorityAccess[good]",
+          "actor": "player via companies",
+          "note": "weights the import bid at 3327-3329; cannot create goods (two-pass allocation)"
+        }
+      ],
+      "state": [
+        {
+          "field": "world.market.goods[id]",
+          "kind": "stored-canonical",
+          "writers": [
+            "addFlow() 1809-1812 (supply/demand)",
+            "updatePrices() 3620-3641 (price, previousPrice, history, trend, traded)",
+            "runNationEconomy() 3905 (supply decrement for retained equipment)"
+          ],
+          "readers": [
+            "priceOf() 1335-1337",
+            "marketInputAvailability() 3424-3430",
+            "settleGlobalTrade()",
+            "tradeLedger.js"
+          ],
+          "note": "price, previousPrice, supply, demand, history[60], trend, traded"
+        },
+        {
+          "field": "nation.economy.goodsFlow[id]",
+          "kind": "derived-cached",
+          "writers": [
+            "resetNationGoodsFlow() 1819-1847 (weekly reset)",
+            "addNationFlow() 1863-1867",
+            "settleGlobalTrade() 3374-3380"
+          ],
+          "readers": [
+            "runFactories() 2371 importShare",
+            "populationDemand() 2528 importShare",
+            "tradeLedger.js goodRow() 51-97",
+            "rawProduction() 1892-1894 fertilizer feedback"
+          ],
+          "note": "production, demand, retained, domestic, imports, exports, fulfilled, shortage, importShare"
+        },
+        {
+          "field": "nation.economy.trade",
+          "kind": "derived-cached",
+          "writers": [
+            "resetTradeSummary() 1850-1861",
+            "settleGlobalTrade() 3384-3418"
+          ],
+          "readers": [
+            "updateLedger() 3526",
+            "tradeLedger.js tradeSummary() 104-127",
+            "ui/screens.js budget screen"
+          ],
+          "note": "imports, exports, importValue, exportValue, balance, tariffRevenue, settlement, lastUpdated"
+        },
+        {
+          "field": "civilian inventory",
+          "kind": "dead",
+          "writers": [],
+          "readers": [],
+          "note": "THERE IS NONE. economy.inventory was deliberately removed (ensureEconomy 1288-1290) and only MILITARY_EQUIPMENT has stock (equipmentStock 729-739). All unsold civilian output is discarded at the end of the week."
+        }
+      ],
+      "derived": [
+        {
+          "name": "import appetite",
+          "site": "economy.js 3319",
+          "expr": "1 / max(0.05, 1 + (tariff/100) * IMPORT_ELASTICITY)",
+          "IMPORT_ELASTICITY": 1.6
+        },
+        {
+          "name": "export access",
+          "site": "economy.js 3323",
+          "expr": "1 / (1 + max(0, tariff/100) * EXPORT_RETALIATION)",
+          "EXPORT_RETALIATION": 0.5
+        },
+        {
+          "name": "cross-border trade",
+          "site": "economy.js 3351",
+          "expr": "min(totalSurplus, totalBid) per good, then two-pass water-filling allocation 3351-3370"
+        },
+        {
+          "name": "exports",
+          "site": "economy.js 3376",
+          "expr": "surplusCol[i] * crossBorderTrade / totalSurplus  -- pro rata, no counterparty"
+        },
+        {
+          "name": "price update",
+          "site": "economy.js 3634",
+          "expr": "price = clamp(price * (1 + ((demand-supply)/(demand+supply)) * PRICE_SPEED), base*0.12, base*8)",
+          "PRICE_SPEED": 0.09,
+          "note": "max +-9%/week; the floor is 12% of base and the ceiling 8x"
+        },
+        {
+          "name": "input fulfilment",
+          "site": "economy.js 3424-3430 read at 2338-2341",
+          "expr": "min over a factory's inputs of clamp(worldSupply/worldDemand, 0, 1)",
+          "note": "NATION-BLIND and one week stale by design"
+        },
+        {
+          "name": "factory throughput",
+          "site": "economy.js 2343-2345",
+          "expr": "laborThroughput * inputFulfillment * reformMods.throughput * (1 + techMods.factoryThroughput)"
+        },
+        {
+          "name": "tariff on a household basket",
+          "site": "economy.js 2528-2529",
+          "expr": "price * quantity * (1 + (tariff/100) * importShare)"
+        },
+        {
+          "name": "tariff on a factory input",
+          "site": "economy.js 2371-2372",
+          "expr": "price * consumed * (1 + (tariff/100) * importShare)"
+        },
+        {
+          "name": "tariff revenue",
+          "site": "economy.js 3401",
+          "expr": "trade.importValue * tariff/100"
+        },
+        {
+          "name": "external settlement",
+          "site": "economy.js 3411",
+          "expr": "trade.balance * EXTERNAL_SETTLEMENT, and EXTERNAL_SETTLEMENT === 1 (509) - an identity multiplier"
+        }
+      ],
+      "outputs": [
+        {
+          "value": "tariffRevenue + settlement",
+          "consumers": [
+            "economy.js 3419-3420 -> fiscalNet and nation.gold"
+          ]
+        },
+        {
+          "value": "inputAvailability",
+          "consumers": [
+            "runFactories() 2338-2341 - throttles every factory in the world by the same ratio"
+          ]
+        },
+        {
+          "value": "price",
+          "consumers": [
+            "runFactories() 2372/2385 input cost and revenue",
+            "fiscalBalance() 2691 via baseOutputValue - THE ENTIRE TAX BASE",
+            "factoryMargin() 1339-1347 -> investmentOptions AI signal",
+            "rawProduction() 1922-1926 extraction.value -> companies"
+          ]
+        },
+        {
+          "value": "flow.shortage / needsAvailable",
+          "consumers": [
+            "populationDemand() ~2630 -> needsMet -> satisfaction -> stability -> elections",
+            "provinces.js 796 nourishment -> weekly population growth and famine"
+          ]
+        }
+      ],
+      "player_agency": {
+        "direct_decisions": 0,
+        "detail": "tradeScreen.js's only interactive element is data-trade-good (line 78), handled at screens.js 2598-2601, which selects which good's dossier to display. Verified absent by grep across src/: embargo, trade agreement, tradeDeal, tradeRoute, blockade, sanction, trade pact, stockpile order, speculation. The only lever is the tariff and it is rendered on the Budget screen.",
+        "indirect": [
+          "what factories you build",
+          "military production line",
+          "company shares -> priorityAccess"
+        ]
+      },
+      "measurements": {
+        "protocol": "scratchpad/trade-runner.mjs via the audit harness; process-isolated; seeds tx-a/b/c; warmup 60 weeks; horizons 260 / 1300 / 2600 / 5200 weeks; wars suppressed; 22 scenarios, 0 errors",
+        "conservation": "EXACT - world import value == world export value, gap 0.000000000 in 22/22 runs; sum of settlements 0",
+        "supply_shock_turn1361_2seed_median": {
+          "control": {
+            "worldGdp": 13878,
+            "goodsAtCeiling": 9,
+            "noProduction": 11,
+            "inputFulfil": 0.618,
+            "needsMet": 0.917,
+            "factoryLevels": 130,
+            "population": 1038121
+          },
+          "coal_x0": {
+            "worldGdp": 8160,
+            "goodsAtCeiling": 17,
+            "noProduction": 18,
+            "inputFulfil": 0.542,
+            "needsMet": 0.66,
+            "factoryLevels": 75,
+            "population": 1014244
+          },
+          "iron_x0": {
+            "worldGdp": 10044,
+            "goodsAtCeiling": 16,
+            "noProduction": 16,
+            "inputFulfil": 0.454,
+            "needsMet": 0.875,
+            "factoryLevels": 104,
+            "population": 1038549
+          },
+          "cotton_x0": {
+            "worldGdp": 8600,
+            "goodsAtCeiling": 12,
+            "noProduction": 12,
+            "inputFulfil": 0.577,
+            "needsMet": 0.69,
+            "factoryLevels": 78,
+            "population": 781249
+          }
+        },
+        "tariff_turn2661_2seed_median": {
+          "-15": {
+            "imports": 95.1,
+            "importValue": 916,
+            "exports": 35.5,
+            "tariffRevenue": -57.7,
+            "needsMet": 1.0,
+            "factories": 60,
+            "factoryLevels": 255,
+            "gold": 1210171
+          },
+          "0": {
+            "imports": 75.6,
+            "importValue": 646,
+            "exports": 29.9,
+            "tariffRevenue": 0,
+            "needsMet": 0.999,
+            "factories": 47,
+            "factoryLevels": 182,
+            "gold": 1022554
+          },
+          "50": {
+            "imports": 39.1,
+            "importValue": 373,
+            "exports": 28.6,
+            "tariffRevenue": 186,
+            "needsMet": 0.947,
+            "factories": 49,
+            "factoryLevels": 244,
+            "gold": 1980533
+          },
+          "100": {
+            "imports": 32.1,
+            "importValue": 488,
+            "exports": 25.6,
+            "tariffRevenue": 488,
+            "needsMet": 0.924,
+            "factories": 50,
+            "factoryLevels": 237,
+            "gold": 1938247
+          }
+        },
+        "price_deflation": {
+          "turn321": {
+            "activeGoods": 29,
+            "avgPriceOverBase": 1.68,
+            "worldProduction": 1038,
+            "worldDemand": 796,
+            "sd": 1.3,
+            "tradedVolume": 702,
+            "unmetDemand": 233
+          },
+          "turn2661": {
+            "activeGoods": 34,
+            "avgPriceOverBase": 1.175,
+            "worldProduction": 1764,
+            "worldDemand": 1268,
+            "sd": 1.39,
+            "tradedVolume": 1095,
+            "unmetDemand": 388
+          },
+          "turn5261": {
+            "activeGoods": 37,
+            "avgPriceOverBase": 0.123,
+            "worldProduction": 3432,
+            "worldDemand": 1554,
+            "sd": 2.21,
+            "tradedVolume": 1554,
+            "unmetDemand": 330
+          },
+          "note": "VOLUMES DOUBLE WHILE PRICES COLLAPSE. By turn 5261, 34-38 of 42 goods are pinned at the 0.12x floor and 33-39 have not moved 2% in 60 weeks - consistent across 3 seeds. The measured nation had MORE factories, MORE people, inputFulfil ~1.0 and needsMet 0.90-0.99, while market.totalGdp fell 90% (10914 -> 966) and its own economy.gdp fell 2629 -> 207. This is a price-system collapse, not a production collapse."
+        },
+        "verdicts": {
+          "supply_chain": {
+            "verdict": "STRONG",
+            "evidence": "cutting one raw good costs 28-41% of world GDP; cotton costs 25% of the nation's population over 25 years via cotton->fabric->clothes->needsMet->provinces.js:796"
+          },
+          "tariff_trade_side": {
+            "verdict": "MODERATE",
+            "evidence": "import volume 95.1 -> 32.1 across the band and 7.6 points of needsMet, but the factory/level columns point the WRONG way (60/255 at -15 vs 50/237 at 100)"
+          },
+          "price_system": {
+            "verdict": "DEGENERATES",
+            "evidence": "avg price/base 1.680 -> 1.175 -> 0.123 across the century; the nominal economy and therefore the tax base deflate with it"
+          },
+          "player_agency": {
+            "verdict": "NONE",
+            "evidence": "zero controls on the trade screen; one slider on another screen"
+          }
+        }
+      },
+      "findings": [
+        {
+          "kind": "no-player-decision",
+          "claim": "Trade has zero direct player decisions",
+          "proof": "tradeScreen.js's only interactive element is data-trade-good (78) handled at screens.js 2598-2601 - it selects a table row. grep across src/ finds no embargo, trade agreement, tradeRoute, blockade, sanction or trade pact.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "hidden",
+          "claim": "Trade is an anonymous pool - no nation ever trades with another nation",
+          "proof": "settleGlobalTrade 3351 crossBorderTrade = min(totalSurplus, totalBid); 3376 exports = surplusCol[i] * crossBorderTrade / totalSurplus. No counterparty is ever identified.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "hidden",
+          "claim": "Geography does not affect trade at all",
+          "proof": "no distance, adjacency, coast, port, sea-lane or blockade term appears anywhere in settleGlobalTrade 3279-3422 or its inputs",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "hidden",
+          "claim": "Factory throughput is gated by the WORLD supply/demand ratio, identically for every nation",
+          "proof": "marketInputAvailability 3424-3430 returns clamp(worldSupply/worldDemand,0,1); runFactories 2338-2341 takes the min over inputs; the comment at 2331-2337 records that a per-nation version was tried twice and reverted. A self-sufficient nation is throttled exactly as much as an import-dependent one.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "hidden",
+          "claim": "All unsold civilian output is destroyed every week",
+          "proof": "economy.inventory deleted at ensureEconomy 1288-1290; only MILITARY_EQUIPMENT has stock (equipmentStock 729-739). At turn 5261 the world produced 3432 units against 1554 of demand and still left 330 unmet.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "low-value",
+          "claim": "The price system deflates to the floor over a century and takes the nominal economy with it",
+          "proof": "measured: avg price/base 1.680 (t321) -> 1.175 (t2661) -> 0.123 (t5261), 34-38 of 42 goods pinned at the floor, 3 seeds. Volumes DOUBLE over the same span. baseOutputValue = sum(price x output) feeds fiscalBalance 2691, so the tax base deflates with the price level; factoryMargin 1339-1347 and investmentOptions degenerate at the same time.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "dead",
+          "claim": "EXTERNAL_SETTLEMENT is an identity multiplier",
+          "proof": "declared 1 at economy.js 509; used only at 3411 as trade.settlement = trade.balance * EXTERNAL_SETTLEMENT",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "conservation-risk",
+          "claim": "NOT FOUND - conservation is exact",
+          "proof": "world import value == world export value, gap 0.000000000 in 22/22 measured runs; the two-pass water-filling at 3351-3370 is what guarantees it and its comment cites the audit (companies K5) that caught the single-pass version creating money",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "phase-order-trap",
+          "claim": "flow.importShare is one week stale where the tariff is charged",
+          "proof": "set by settleGlobalTrade 3380 in finishEconomy; read by runFactories 2371 and populationDemand 2528 in the NEXT week's runNationEconomy. Deliberate (beginEconomy header documents order-independence) but easy to misread.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "hidden",
+          "claim": "A high tariff withholds your own goods from the world pool",
+          "proof": "surplus = (marketProduction - domestic) * access, access = 1/(1+t*0.5) at 3323/3325. The slider note mentions imports only.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "low-value",
+          "claim": "The price rule has NO ANCHOR - basePrice appears in updatePrices only as the two clamp arguments, so a price is a pure multiplicative walk that ratchets into a band edge and stays",
+          "proof": "economy.js 3623 and 3634 are the only uses of basePrice inside updatePrices; grep shows its other uses are the GOODS catalogue, marketGood() 1129-1131 initialisation, priceOf()'s fallback 1336 and a baseCost at 2530. Nothing pulls a price toward base. Measured: 25 of 42 goods already pinned at a band edge by turn 321, 34-38 by turn 5261.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "hidden",
+          "claim": "settleGlobalTrade never writes to world.market.goods, so prices cannot learn that trade failed to clear",
+          "proof": "grep over economy.js 3279-3422 finds exactly one market reference, world.market.hasPriority. The clearing outcome (imports, exports, shortage) never feeds back into price; only the accumulated supply/demand asked for does.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "hidden",
+          "claim": "War has no effect on trade whatsoever - two nations in total war supply each other's markets on unchanged terms",
+          "proof": "settleGlobalTrade 3279-3422 never reads atWar, relations or any diplomatic state (verified by grep over the whole function). No blockade, embargo or wartime premium exists anywhere in src/.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "ui-rederives-formula",
+          "claim": "The trade screen's 'World trade' figure is world GDP, not world trade",
+          "proof": "tradeLedger.js 120 worldTrade: market.totalGdp; updatePrices 3637 sets totalGdp = sum(traded x price) over ALL goods including purely domestic volume",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "phase-order-trap",
+          "claim": "Everything in a week transacts at last week's price, and the price history is itself one week stale",
+          "proof": "updatePrices runs last in finishEconomy (4000). Within it, 3628-3629 pushes state.price to history BEFORE 3634 updates it, so the sparkline's last plotted point and trendOver(history,36) always describe weeks t-36..t-1.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "dead",
+          "claim": "PRICE_HISTORY is exported to nobody",
+          "proof": "economy.js 3618 export const PRICE_HISTORY = 60; used at 3629 inside the same file and imported nowhere in the repo",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "low-value",
+          "claim": "Four market-state fields plus market.totalGdp are display-only",
+          "proof": "previousPrice, trend, traded, history and market.totalGdp are read by no file under src/game/ other than updatePrices itself and the tradeLedger/UI layer",
+          "confidence": "LIKELY"
+        },
+        {
+          "kind": "clamp-swallows-input",
+          "claim": "Factory input demand is price-blind",
+          "proof": "runFactories 2363 books requested = inputs * inputScale * laborThroughput regardless of what the input costs, and books it even for the portion the factory cannot afford or receive",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "duplicate-constant",
+          "claim": "The code comments claim 43 goods; GOODS holds 42",
+          "proof": "comments at economy.js 397, 1209, 1816, 3283 and 3632 say 43; GOOD_IDS.length measured 42 in every run",
+          "confidence": "CERTAIN"
+        }
+      ],
+      "simplification_candidates": [
+        {
+          "target": "updatePrices' missing mean-reversion term",
+          "move": "ADD, do not simplify",
+          "note": "the single highest-leverage line in the mechanic: no anchor means every price is a one-way walk into a clamp, and the tax base, factory margins, the AI investment signal and company valuations all inherit it. Measure before/after with scratchpad/trade-runner.mjs at a 5200-week horizon.",
+          "depth_lost": "NEGATIVE - this would ADD depth"
+        },
+        {
+          "target": "EXTERNAL_SETTLEMENT",
+          "move": "REMOVE",
+          "depth_lost": "none - identity multiplier"
+        },
+        {
+          "target": "flow.domestic / flow.fulfilled",
+          "move": "DERIVE",
+          "depth_lost": "none - recomputable from the other flow fields"
+        },
+        {
+          "target": "the trade screen's framing as a mechanic",
+          "move": "KEEP as a readout",
+          "depth_lost": "none - it is an excellent dashboard; only the label is wrong"
+        },
+        {
+          "target": "the price floor",
+          "move": "KEEP but investigate",
+          "depth_lost": "NEGATIVE - this is the one place where a change would ADD depth; 34-38 of 42 goods pin to it by 1936"
+        },
+        {
+          "target": "per-nation input access",
+          "move": "DO NOT re-add before fixing world supply",
+          "depth_lost": "the comment at 2331-2337 records two failed attempts"
+        }
+      ],
+      "do_not_touch": [
+        "the two-pass water-filling allocation 3351-3370 - it is what makes sum(imports) == sum(exports) exact, measured clean in 22/22 runs",
+        "the supply-shock chain - cutting one raw good costs 28-41% of world GDP and up to 25% of a nation's population",
+        "tradeLedger.js - priceReasons() 273-327 explains a price from real state and derives the consumer breakdown from the simulation's own tables with an explicit Other row; it is the best information layer in the project and the model the Budget screen should copy",
+        "households AND factories both paying the tariff (2528, 2371) - this is what keeps tariff revenue honest money rather than invented money"
+      ],
+      "ai_context_cost": {
+        "score": 2,
+        "scale": "0-5, higher is harder",
+        "modules_to_read": 4,
+        "relevant_functions": 12,
+        "flow_writer_sites": 10,
+        "top_traps": [
+          "marketInputAvailability reads LAST week's market - deliberate, so that per-nation slicing stays order-independent (documented in beginEconomy's header)",
+          "flow.importShare is likewise one week stale where runFactories 2371 and populationDemand 2528 charge the tariff",
+          "'supply' and 'demand' on world.market are weekly ACCUMULATORS reset by resetNationGoodsFlow 1819-1847, not stocks"
+        ]
+      },
+      "contract": {
+        "inputs": "nation.economy.tariff (owned by Budget); indirectly what the player builds; priorityAccess from companies",
+        "canonical_state": "world.market.goods[id].{price, supply, demand, history}",
+        "derived": "nation.economy.goodsFlow[id], nation.economy.trade",
+        "outputs": "tariffRevenue + settlement into the treasury; inputAvailability into every factory on earth; price into the entire tax base; shortage into needsMet",
+        "invariants": [
+          "sum over nations of trade.importValue == sum of trade.exportValue (measured 0.000000000)",
+          "sum of trade.settlement == 0",
+          "crossBorderTrade == min(totalSurplus, totalBid) and the allocation closes exactly (two passes)",
+          "priority access reorders the queue and never creates goods",
+          "there is no civilian inventory - unsold output is discarded weekly",
+          "settleGlobalTrade never writes world.market.goods - clearing has no same-week price feedback"
+        ],
+        "may_read": "world.market.goods, nation.economy.goodsFlow, nation.economy.trade",
+        "must_not_write": "only addFlow/addNationFlow may write market flows; only updatePrices may write a price; only settleGlobalTrade may write imports/exports/shortage",
+        "phase_order": "runNationEconomy accumulates supply and demand per nation -> finishEconomy: procureStrategicGoods -> refreshPriorityAccess -> settleGlobalTrade -> updateLedger -> updatePrices. Read a price or an availability only with the knowledge that it is last week's."
       }
     }
   ]

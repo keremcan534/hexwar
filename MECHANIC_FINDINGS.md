@@ -780,3 +780,412 @@ flowchart TD
 
 *Budget analysis complete. Stopping here as instructed — no changes made to game
 code, no balance touched, no refactor performed.*
+
+---
+
+# TRADE
+
+## WHAT IT DOES
+
+Trade is a **single anonymous world pool**, cleared once a week, in which no
+nation ever trades with another nation.
+
+Every country pours its unsold surplus into one bucket per good and draws from
+that bucket in proportion to its bid. `settleGlobalTrade()` (`economy.js
+3279-3422`) never names a counterparty: exports are
+`surplusCol[i] × crossBorderTrade / totalSurplus` (`:3376`) and imports are a
+weighted share of the same `crossBorderTrade = min(totalSurplus, totalBid)`
+(`:3351`). There are no trade partners, no routes, no bilateral balances.
+
+**Geography does not exist in the trade path.** Distance, adjacency, coastline,
+sea lanes, ports and blockades are absent — in a hex strategy game, a landlocked
+inland province sells into the same global bucket, at the same price, as a port.
+Verified by grep: no `embargo`, `trade agreement`, `tradeRoute`, `blockade`,
+`sanction`, or `trade pact` anywhere in `src/`. (`convoy` exists, but only as
+`CONVOY_PER_EMBARKED_REGIMENT` — steamers consumed by troops at sea.)
+
+**The player makes no trade decisions.** The trade screen's only interactive
+element is `data-trade-good` (`tradeScreen.js:78`), a button that selects which
+good's dossier to read (`screens.js:2598-2601`). It is a reading room, not a
+control panel. The one lever that changes a trade outcome is the **tariff** —
+and it lives on the Budget screen and was mapped in the Budget section.
+
+What Trade actually owns: `world.market.goods[id]` (price, supply, demand,
+history) and `nation.economy.goodsFlow[id]` (production, demand, imports,
+exports, shortage, importShare). Everything else passes through.
+
+## CODE PATH
+
+| Role | File | Function | Lines | What it does |
+|---|---|---|---|---|
+| Market clearing | `src/game/economy.js` | `settleGlobalTrade` | 3279-3422 | surplus/bid, appetite, retaliation, two-pass allocation, tariff, settlement |
+| Price update | `src/game/economy.js` | `updatePrices` | 3620-3641 | the entire price system, 22 lines |
+| Input gate | `src/game/economy.js` | `marketInputAvailability` | 3424-3430 | last week's world `supply/demand` per good |
+| Raw supply | `src/game/economy.js` | `rawProduction` | 1888-1960 | RGO output per province, fertilizer bonus |
+| Industry | `src/game/economy.js` | `runFactories` | 2262-2418 | throughput, input demand, output supply, tariff on inputs |
+| Household demand | `src/game/economy.js` | `populationDemand` | 2490-2667 | class baskets; **pays the tariff at :2528-2529** |
+| Army demand | `src/game/economy.js` | `armyWeeklyDemand` | 3189-3220 | weekly consumption rates |
+| State purchases | `src/game/economy.js` | `procureStrategicGoods` | 3222-3271 | equipment imports at `price × (1 + tariff/100)` |
+| Flow writers | `src/game/economy.js` | `addFlow` / `addNationFlow` | 1809-1812 / 1863-1867 | the only two doors into the market |
+| Derivation layer | `src/game/tradeLedger.js` | `goodRow` … `tradeStructure` | 51-421 | everything the trade screen reads |
+| Screen | `src/ui/tradeScreen.js` | — | 1-303 | draws it; one control, and it only selects a row |
+
+### The complete list of what the market can see
+
+Ten call sites, and that is all:
+
+| Site | Flow | What |
+|---|---|---|
+| `1938-1939` | demand | fertilizer, from farmland |
+| `1956-1957` | supply | RGO output |
+| `2363-2364` | demand | factory inputs (**requested**, not consumed — so shortage still moves the price**)** |
+| `2382-2383` | supply | factory output |
+| `2622-2623` | demand | household baskets |
+| `3267-3268` | demand | state strategic imports |
+| `3906` | retained | military equipment held back from the market |
+| `3931-3932` | demand | cement, from the construction queue |
+| `3940-3941` | demand | army weekly consumption |
+
+## WHAT ACTUALLY MATTERS
+
+### 1. The supply chain is genuinely load-bearing
+
+Cut one good's world RGO production to zero and hold it there. 2-seed medians at
+turn 1361 (~year 1861):
+
+| shock | world GDP | goods at ceiling | goods with no production | input fulfilment | needsMet | factory levels | population |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| control | 13,878 | 9 | 11 | 0.618 | 0.917 | 130 | 1,038,121 |
+| **coal ×0** | **8,160** | 17 | 18 | 0.542 | **0.660** | **75** | 1,014,244 |
+| **iron ×0** | 10,044 | 16 | 16 | **0.454** | 0.875 | 104 | 1,038,549 |
+| **cotton ×0** | 8,600 | 12 | 12 | 0.577 | 0.690 | 78 | **781,249** |
+
+Removing cotton costs the nation **25% of its population** over 25 years — the
+chain `cotton → fabric → clothes → needsMet → provinces.js:796 nourishment →
+weeklyGrowth` is fully connected and severe. Removing coal halves industry.
+This is the best thing about the mechanic: shocks propagate, and they hurt.
+
+### 2. The tariff is a consumption tax, correctly funded
+
+The Budget section established that a tariff cannot help domestic producers.
+The rest of the chain is real and correctly plumbed:
+
+- **Households pay it**: `populationDemand():2528-2529`,
+  `cost = price × qty × (1 + tariff/100 × importShare)`.
+- **Factories pay it**: `runFactories():2371-2372`, same shape on imported input
+  share — which is why a tariff *shrinks* import-dependent industry.
+- **The treasury collects it**: `:3401`, `importValue × tariff/100`.
+
+So no money is created. Measured at turn 2661 (2-seed medians):
+
+| tariff | imports (units) | import value | exports (units) | balance | tariff revenue | needsMet | factories | levels | treasury |
+|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| −15 | **95.1** | 916 | 35.5 | 500 | −57.7 | **1.000** | **60** | **255** | 1,210,171 |
+| 0 | 75.6 | 646 | 29.9 | 403 | 0 | 0.999 | 47 | 182 | 1,022,554 |
+| 50 | 39.1 | 373 | 28.6 | 756 | 186 | 0.947 | 49 | 244 | 1,980,533 |
+| 100 | **32.1** | 488 | 25.6 | 804 | **488** | **0.924** | 50 | 237 | 1,938,247 |
+
+A century of maximum protection cuts import **volume** by two thirds and costs
+7.6 points of `needsMet` — and ends with *fewer* factories and *fewer* levels
+than free trade. The direction of the industry column is the opposite of the
+slider's promise, at every horizon measured.
+
+### 3. Conservation is exact
+
+Σ world import value = Σ world export value, **gap 0.000000000 in 22 of 22
+runs**, and Σ settlement = 0. The two-pass water-filling allocation at
+`:3351-3370` is what guarantees it, and the comment there records the audit
+(`audit:companies K5`) that caught the single-pass version creating money.
+
+## WHAT DOES NOT MATTER
+
+### The price system deflates to the floor over a century
+
+This is the mechanic's largest problem, and it is not visible at short horizons.
+Same seed, three horizons:
+
+| turn (≈year) | active goods | **avg price / base** | world production | world demand | S/D | traded volume | unmet demand |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 321 (1842) | 29 | **1.680** | 1,038 | 796 | 1.30 | 702 | 233 |
+| 2,661 (1887) | 34 | **1.175** | 1,764 | 1,268 | 1.39 | 1,095 | 388 |
+| 5,261 (1936) | 37 | **0.123** | 3,432 | 1,554 | 2.21 | 1,554 | 330 |
+
+Read the columns carefully, because the headline is counter-intuitive:
+**volumes more than double while prices collapse to 12% of base.** By 1936,
+**34–38 of 42 goods sit pinned at the price floor** and 33–39 have not moved
+more than 2% in sixty weeks. Consistent across all three seeds.
+
+**The mechanism is that the price rule has no anchor.** `basePrice` appears in
+`updatePrices()` only as the two clamp arguments (`:3623, :3634`) — grep confirms
+its only other uses are the catalogue, `marketGood()`'s initialisation
+(`1129-1131`) and `priceOf`'s fallback (`:1336`). **Nothing pulls a price back
+toward base.** A price is a pure multiplicative random walk that keeps moving in
+whichever direction the imbalance last pushed it, until it hits a wall and stays
+there. Pinning therefore starts early — 25 of 42 goods were already at a band
+edge at turn 321 — and is one-way.
+
+Two further facts make the walk impossible to correct:
+
+- **`settleGlobalTrade` never writes to `world.market.goods`.** Grep across
+  `3279-3422` finds exactly one market reference, `world.market.hasPriority`.
+  So the clearing outcome cannot feed back into price: the market never learns
+  that trade *failed to clear*, only what was asked for and offered.
+- **Everything in a week transacts at last week's price**, because
+  `updatePrices` runs last in `finishEconomy` (`:4000`). With the ±9%/week cap,
+  there is a minimum two-step lag between a shortage appearing and its price
+  responding.
+
+The real economy is *fine* — better than fine. At turn 5261 the measured nation
+has more factories (43 → 57/114/72), more people (1.20M → 1.64M), input
+fulfilment near 1.0 (from 0.695) and `needsMet` 0.90–0.99 (from 0.785). What
+dies is the **price system**: production grows 3.3× while demand grows 2×, S/D
+reaches 2.21, and `updatePrices():3634` — `price × (1 + imbalance × 0.09)`,
+clamped to `[base × 0.12, base × 8]` — ratchets every oversupplied good down to
+the floor and leaves it there.
+
+The consequence runs straight back into every other mechanic, because nominal
+value is priced off these numbers:
+
+- `market.totalGdp` falls **90%** (10,914 → 966) purely on the price term.
+- The nation's own `economy.gdp` falls 2,629 → 207 while its industry grows.
+- `fiscalBalance():2691` builds class income from
+  `baseOutputValue × INCOME_POOL_SHARE`, and `baseOutputValue` is
+  `Σ price × output` — so **the whole tax base deflates with the price level**.
+- `factoryMargin()` (`1339-1347`) and the AI's `investmentOptions()` filter on
+  `margin > 0` computed from floor prices, so the industrial investment signal
+  degenerates at exactly the point the catalogue finally unlocks.
+
+A player who reaches 1900 finds a large, well-fed, fully-employed economy whose
+every number reads as worthless.
+
+### War does not affect trade at all
+
+`settleGlobalTrade()` (`3279-3422`) never reads `atWar`, `relations` or any
+diplomatic state — verified by grep over the whole function. **Two nations in
+total war go on supplying each other's markets on completely unchanged terms.**
+There is no blockade, no embargo, no wartime premium, and no way for a player to
+cut an enemy off. War's only effect on civilian trade is the incidental loss of a
+company's queue-jump bonus.
+
+### Simultaneous world glut and national shortage
+
+At turn 5261 the world produces 3,432 units against 1,554 of demand — and still
+leaves **330 units of demand unmet**. Two structural reasons, both in
+`settleGlobalTrade`:
+
+1. Exportable surplus is scaled down by retaliation before it is offered:
+   `surplus = (marketProduction − domestic) × access`, `access = 1/(1 + t·0.5)`
+   (`:3323, :3325`). A protectionist nation's goods are withheld from the pool.
+2. There is **no civilian inventory anywhere in the game**.
+   `economy.inventory` was deliberately removed (`ensureEconomy():1288-1290`)
+   and only `MILITARY_EQUIPMENT` has a stock (`equipmentStock():729-739`).
+   Unsold output is simply discarded at the end of the week.
+
+So goods are destroyed in one country in the same week another country goes
+short of them, permanently, with no mechanism that could ever connect the two.
+
+### Factory throughput is gated by the *world*, not by your country
+
+`runFactories():2338-2341`:
+`inputFulfillment = min over inputs of inputAvailability[id]`, where
+`marketInputAvailability():3424-3430` is `clamp(worldSupply / worldDemand, 0, 1)`.
+
+Every nation's factories are throttled by the **same global ratio**. A country
+that mines all its own iron is penalised exactly as much as one that imports
+every gram. The comment at `:2331-2337` says a per-nation version was tried
+twice and reverted because chronic world scarcity punished everyone.
+
+This is the deepest reason trade policy cannot protect industry: the shortage
+channel is nation-blind by construction. It also means one more thing worth
+stating plainly — **a supply shortage is not a strategic problem you can solve
+for your own country.** You can only hope the world fixes it.
+
+## CONNECTIONS
+
+### Trade → outward
+
+| To | Value | Writer | Reader | Effect |
+|---|---|---|---|---|
+| Budget | `trade.tariffRevenue`, `trade.settlement` | `settleGlobalTrade():3401,3411` | `:3419-3420` | straight into `fiscalNet` and `nation.gold` |
+| Industry | `inputAvailability[id]` | `marketInputAvailability():3424-3430` | `runFactories():2338-2341` | linear throttle on every factory in the world |
+| Industry | `priceOf(world, id)` | `updatePrices():3634` | `runFactories():2372, 2385` | input cost and revenue → `factory.profit` → layoffs |
+| Population | `flow.shortage` / `needsAvailable` | `settleGlobalTrade():3382` | `populationDemand():~2630` | `needsMet` → satisfaction → stability → elections |
+| Population | `needsMet` | `populationDemand()` | `provinces.js:796` | nourishment term of weekly population growth; famine below threshold |
+| Military | market supply of equipment | `settleGlobalTrade` | `procureStrategicGoods():3222-3271` | what the state can buy, capped by `nation.gold` |
+| Budget | `baseOutputValue = Σ price × output` | `runNationEconomy():3872` | `fiscalBalance():2691` | **the entire tax base is priced off world prices** |
+| Companies | `extraction.value = Σ amount × price` | `rawProduction():1922-1926` | `companies.js measureCompany` | mine valuations |
+
+### Reverse — what feeds Trade
+
+| From | Value | Producer | Consumed at |
+|---|---|---|---|
+| Provinces | RGO output | `rawProduction():1888-1960` via `provinces.js provinceOutput() 597-637` | `addFlow(supply)` `:1956` |
+| Industry | factory output | `runFactories():2382-2383` | `addFlow(supply)` |
+| Population | class baskets | `populationDemand():2622-2623` | `addFlow(demand)` |
+| Military | consumption + stockpiling | `armyWeeklyDemand():3189-3220`, `:3940-3941` | `addFlow(demand)` |
+| Construction | cement | `runNationEconomy():3931-3932` | `addFlow(demand)` |
+| Agriculture | fertilizer | `rawProduction():1938-1939` | `addFlow(demand)`; feeds back as `farmBonus` ×1.25 |
+| Budget | `economy.tariff` | `setFiscalPolicy():1636` | appetite, retaliation, household and factory cost |
+| Technology | factory unlocks | `factoryUnlocked():1481-1487` | which goods can exist at all |
+| Companies | `priorityAccess` | `refreshPriorityAccess` | import queue weight `:3327-3329` |
+
+## PLAYER-VISIBLE GAPS
+
+Credit where due: **`tradeLedger.js` is the best information layer in the
+codebase.** `priceReasons():273-327` explains a price from the real state — it
+names the pin, the world gap, domestic coverage, expensive inputs, the import
+share and the tariff's contribution, and it derives the consumer breakdown from
+the simulation's own tables (`CLASS_NEEDS`, `armyWeeklyDemand`, factory inputs)
+rather than a copy, dropping the remainder into an explicit "Other" row so the
+total always ties out. The Budget screen should be rebuilt to this standard.
+
+What is still missing or wrong:
+
+| Item | Class | Evidence |
+|---|---|---|
+| Price, supply, demand, coverage, status, 60-week history per good | VISIBLE AND EXPLAINED | `goodRow():51-97`, `goodDossier():333-387` |
+| Producers and consumers of a good | VISIBLE AND EXPLAINED | `producersOf():138-187`, `consumersOf():195-267` |
+| **That trade is a pool with no partners** | HIDDEN BUT MEANINGFUL | nothing in the UI says who you trade with, because there is no answer |
+| **That your factories are throttled by world supply you cannot influence** | HIDDEN BUT MEANINGFUL | `marketInputAvailability():3424-3430`; no screen shows `inputFulfillment` |
+| **That unsold output is destroyed every week** | HIDDEN BUT MEANINGFUL | no inventory exists (`:1288-1290`); the surplus row says "spare X/wk" as if it were kept |
+| `trade.settlement` as a treasury line | VISIBLE NOT EXPLAINED | budget screen shows "External settlement" but nothing explains it is the whole trade balance passing through the treasury |
+| The tariff's effect on *export access* | HIDDEN BUT MEANINGFUL | `EXPORT_RETALIATION` at `:3323`; the slider note mentions imports only |
+| `EXTERNAL_SETTLEMENT = 1` (`:509`) | DEAD (as a multiplier) | `trade.settlement = trade.balance × 1` — an identity multiplier |
+| **"World trade" on the trade screen is world GDP** | VISIBLE AND WRONG | `tradeLedger.js:120` `worldTrade: market.totalGdp` — `totalGdp` is `Σ traded × price` over all goods, not cross-border trade |
+| The price *rule* — that a 34% imbalance means +3% a week | VISIBLE NOT EXPLAINED | `priceReasons()` states the imbalance but never the rule, so the player cannot convert one into the other |
+| `trade.imports` / `trade.exports` (physical quantities) | HIDDEN, not dead | written weekly at `:3384-3385`, reach no screen |
+| Price history is one week stale | HIDDEN LOW VALUE | `:3628` pushes the price *before* `:3634` updates it, so the sparkline's last point is always week t−1 |
+
+## SIMPLIFICATION CANDIDATES
+
+| # | Target | Move | Why | Depth lost |
+|---|---|---|---|---|
+| 1 | The trade **screen** as a "mechanic" | **KEEP as a readout, stop calling it a system** | it has zero controls; it is a very good dashboard for the economy, not a mechanic | none — renaming it costs nothing |
+| 2 | `EXTERNAL_SETTLEMENT` | **REMOVE** | an identity multiplier at its only value | none |
+| 3 | The price floor/ceiling band | **KEEP, but the floor is doing damage** | 34–38 of 42 goods pin to it by 1936 and take the whole nominal economy with them | this is the one place where a change would *add* depth |
+| 4 | `flow.domestic` / `flow.fulfilled` | **DERIVE** | both are recomputable from the other flow fields | none |
+| 5 | Per-nation input access | **do NOT re-add without fixing supply first** | the comment at `:2331-2337` records two failed attempts; the finding stands | — |
+
+**The honest structural note.** Trade is currently *simulation depth without
+player depth*: an exact, conserving, shock-propagating world market that the
+player can observe in excellent detail and influence through exactly one slider
+on another screen. That is a legitimate design — a living world the player reads
+rather than plays — but it should be a deliberate choice, not an accident, and
+the "protects domestic industry" label suggests it was meant to be a lever.
+
+## DO NOT TOUCH
+
+- **The two-pass allocation** (`:3351-3370`). It is what makes Σimports ≡ Σexports
+  exact, it is commented with the audit that caught the bug, and it measured
+  clean in 22 of 22 runs.
+- **The shock chain.** Cutting one raw good costs 28–41% of world GDP and up to
+  25% of a nation's population. That is real, propagating depth.
+- **`tradeLedger.js`.** The best explanation layer in the project.
+- **Households and factories both paying the tariff** (`:2528`, `:2371`). This is
+  what keeps the tariff honest money rather than invented money.
+
+## FINAL TRADE VERDICT
+
+### Is the mechanic real?
+
+**As a simulation, yes and it is good. As a player-facing mechanic, no.** The
+market clears exactly, conserves exactly, and propagates shocks hard enough to
+cost a quarter of a nation's population. But the player has no trade decision at
+all: the trade screen contains one button and it selects a table row.
+
+### Strongest effect
+
+**Raw-material supply.** Losing coal, iron or cotton costs 28–41% of world GDP,
+halves industry and, for cotton, a quarter of the population.
+
+### Weakest effect
+
+**The tariff, on the trade side.** It moves import volume by 3× but its industry
+column points the wrong way, and it has **zero direct effect on any world price**
+— `settleGlobalTrade` never writes to `market.goods`, so appetite and retaliation
+change quantities without ever touching the number everything else is priced
+off.
+
+### Hidden connection
+
+**Your factories are throttled by a world supply/demand ratio you cannot
+influence** (`marketInputAvailability` → `inputFulfillment` → `throughput`).
+Nothing in the UI shows `inputFulfillment`, and no policy can change it.
+
+Runner-up, and it is the only cross-nation causal channel in the whole system:
+**your tariff shrinks the world's supply of everything you export**
+(`access = 1/(1 + t·0.5)`, `:3323`), so a large protectionist economy quietly
+raises scarcity for every other importer — with nothing anywhere attributing the
+effect to its cause.
+
+### Unnecessary complexity
+
+Very little — this is a lean mechanic. `EXTERNAL_SETTLEMENT` is a no-op
+multiplier, `PRICE_HISTORY` is exported to nobody, four market fields
+(`previousPrice`, `trend`, `traded`, `history`) plus `market.totalGdp` are
+display-only, and two flow fields are re-derivable. The problem is not excess
+complexity; it is **absent player agency** and a **price rule with no anchor**
+that pins most of the catalogue to a band edge and takes the nominal economy
+with it.
+
+### The single change with the highest leverage
+
+Not a simplification — an addition. `updatePrices():3634` has no mean-reversion
+term, so every price is a one-way walk into a clamp. Everything downstream of a
+price (the tax base, factory margins, the AI's investment signal, company
+valuations) inherits that. If one thing in Trade is worth changing, it is this
+line, and it is worth measuring before and after with
+`scratchpad/trade-runner.mjs` at a 5,200-week horizon.
+
+### Keep
+
+The two-pass allocation, the shock chain, `tradeLedger.js`, and the fact that
+households and factories genuinely pay the tariff.
+
+### Simplify
+
+Remove `EXTERNAL_SETTLEMENT`. Derive `flow.domestic` and `flow.fulfilled`.
+
+### Remove
+
+Nothing is dead here beyond the identity multiplier — a notably clean module.
+
+### AI context cost
+
+**Score: 2 / 5** — much easier than Budget. One clearing function, one price
+function, ten flow-writer call sites, and a derivation layer that is explicitly
+read-only and documented as such. The two traps: `marketInputAvailability` reads
+**last week's** market (documented at `beginEconomy`'s header as deliberate, so
+that per-nation slicing stays order-independent), and `flow.importShare` is
+likewise one week stale where `runFactories():2371` and `populationDemand():2528`
+charge the tariff.
+
+### Trade in one diagram
+
+```mermaid
+flowchart LR
+  classDef pool fill:#3a3226,stroke:#c9a227,color:#f5ead2
+  classDef src  fill:#2c4a52,stroke:#7fc8d8,color:#e8f4f8
+  classDef sink fill:#2f2a3d,stroke:#9b8bc4,color:#ece8f6
+  classDef bad  fill:#3a2a2a,stroke:#a05a5a,color:#f2e0e0
+
+  RGO["Provinces / RGO"]:::src --> POOL
+  FAC["Factories"]:::src --> POOL
+  POOL[("ONE WORLD POOL&lt;br/&gt;no partners · no geography&lt;br/&gt;min(surplus, bid)")]:::pool
+  POOL --> HH["Households"]:::sink
+  POOL --> FAC2["Factory inputs"]:::sink
+  POOL --> ARMY["Army &amp; stockpiles"]:::sink
+  POOL --> CEM["Construction (cement)"]:::sink
+
+  TAR["Tariff&lt;br/&gt;the ONLY lever, on the Budget screen"]:::src
+  TAR -->|"appetite 1/(1+1.6t)"| POOL
+  TAR -->|"access 1/(1+0.5t)"| POOL
+  TAR -->|"+t x importShare on the basket"| HH
+  TAR -->|"+t x importShare on inputs"| FAC2
+  TAR -->|"importValue x t"| TREAS["Treasury"]:::sink
+
+  POOL -->|"worldSupply / worldDemand&lt;br/&gt;NATION-BLIND"| THR["inputFulfillment&lt;br/&gt;throttles every factory on earth"]:::bad
+  POOL -->|"price x output"| BASE["baseOutputValue&lt;br/&gt;the whole tax base"]:::bad
+  BASE -->|"deflates to the floor by 1936"| DEAD["34-42 goods pinned at 0.12x base&lt;br/&gt;nominal GDP -90% while volumes double"]:::bad
+  POOL -->|"unsold output destroyed weekly&lt;br/&gt;no civilian inventory"| VOID["discarded"]:::bad
+```
