@@ -1,0 +1,1024 @@
+{
+  "schema": 1,
+  "repo": "hexwar",
+  "note": "Machine-readable mechanic map. One entry per analysed mechanic so a future agent does not have to rediscover the codebase. Line ranges verified against the tree at the time of writing; re-verify with grep before relying on them. Companions: MECHANIC_FINDINGS.md (report), MECHANIC_ATLAS.html (interactive). Amended after an adversarial verification pass: the 'protectionism protects industry' reading was WRONG and has been corrected.",
+  "mechanics": [
+    {
+      "mechanic": "budget",
+      "status": "analysed",
+      "one_line": "Weekly closing of nation.gold plus the nine policy dials that steer it; owns the dials, collects everything else.",
+      "structural_fact": "TWO parallel accounting objects both write nation.gold: nation.budget (cities.js nationBudget, crown gold + army wages + administration) and nation.economy (fiscalBalance, taxes + tariffs + social + construction + debt). updateLedger re-imports three lines from the first into the second so the screen shows one statement.",
+      "inputs": [
+        {
+          "id": "taxes",
+          "field": "nation.economy.taxes.{lower,middle,upper}",
+          "range": "0-100",
+          "actor": "player+ai",
+          "writer": "economy.js setFiscalPolicy() 1629-1678",
+          "ai_writer": "economy.js adjustFiscalAI() 2853-2907 (own ceilings: lower 35, middle 42, upper 45)"
+        },
+        {
+          "id": "tariff",
+          "field": "nation.economy.tariff",
+          "range": "free_trade -50..25, otherwise -15..100",
+          "actor": "player+ai",
+          "writer": "setFiscalPolicy() 1636-1639",
+          "clamp": "politics.js fiscalPolicyLimits() 193-204, re-applied weekly by applyGovernmentLimits() 206-218"
+        },
+        {
+          "id": "militaryWages",
+          "field": "nation.economy.militaryWages",
+          "range": "25..(60 pacifism | 75 anti_military | 100)",
+          "actor": "player+ai",
+          "writer": "setFiscalPolicy() 1640-1647"
+        },
+        {
+          "id": "militaryProcurement",
+          "field": "nation.economy.militaryProcurement",
+          "range": "same band as militaryWages",
+          "actor": "player+ai",
+          "writer": "setFiscalPolicy() 1640-1647"
+        },
+        {
+          "id": "adminFunding",
+          "field": "nation.economy.adminFunding",
+          "range": "30-100",
+          "actor": "player+ai",
+          "writer": "setFiscalPolicy() 1648-1652"
+        },
+        {
+          "id": "social",
+          "field": "nation.economy.social.{education,health,welfare}",
+          "range": "0-100, education floored",
+          "actor": "player+ai",
+          "writer": "setFiscalPolicy() 1663-1672",
+          "floor": "economy.js socialFloorOf() 1738-1754 = max(NATIONAL_INVESTMENTS.HIGHER_EDUCATION.educationFloor[level], technology.js programmeFloorOf() 469-471)",
+          "ai_writer": "economy.js adjustSocialAI() 2742-2801 writes economy.social[id] DIRECTLY, bypassing setFiscalPolicy"
+        },
+        {
+          "id": "subsidyPolicy",
+          "field": "nation.economy.subsidyPolicy",
+          "range": "'manual'|'strategic'|'none'",
+          "actor": "player only",
+          "writer": "setFiscalPolicy() 1673-1676",
+          "applier": "economy.js applySubsidyPolicy() 1692-1702, called from runNationEconomy() 3857 ONLY for the player nation"
+        },
+        {
+          "id": "armySpending",
+          "field": "legacy key",
+          "note": "setFiscalPolicy() 1656-1662 drives both military dials; kept for old saves/scripts"
+        }
+      ],
+      "state": [
+        {
+          "field": "nation.gold",
+          "kind": "stored-canonical",
+          "writers": [
+            "turn.js produce() 563",
+            "turn.js payTreaties() 599-600",
+            "economy.js fiscalBalance() 2727",
+            "economy.js settleGlobalTrade() 3420",
+            "economy.js settleDebt() 3467,3479,3488,3509",
+            "economy.js procureStrategicGoods() 3264",
+            "economy.js runFactories() 2407",
+            "economy.js supportProject() 2122",
+            "economy.js dropInvalidProjects() 2100",
+            "economy.js runNationEconomy() 3912,3947",
+            "construction.js 503,556,615,884,908",
+            "command.js 1019-1020",
+            "companies.js 437-439,469,648,759-760",
+            "recruitment.js 475",
+            "turn.js 86 STARTING_GOLD"
+          ],
+          "warning": "13+ write sites across 6 modules; fiscalBalance is only one of them"
+        },
+        {
+          "field": "nation.debt",
+          "kind": "stored-canonical",
+          "writers": [
+            "economy.js settleDebt() 3478,3488,3502,3508"
+          ]
+        },
+        {
+          "field": "nation.economy.creditPenalty",
+          "kind": "stored-canonical",
+          "writers": [
+            "economy.js settleDebt() 3492,3515"
+          ],
+          "readers": [
+            "economy.js debtCapacity() 3440",
+            "economy.js debtInterestRate() 3453",
+            "economy.js socialFloorOf() 1740",
+            "construction.js upkeepFactor() 269",
+            "construction.js 784",
+            "companies.js 901",
+            "ai.js 278",
+            "identity.js 41",
+            "ui/screens.js 175"
+          ]
+        },
+        {
+          "field": "nation.economy.fiscalNet",
+          "kind": "derived-cached",
+          "warning": "TWO MEANINGS. fiscalBalance() 2726 sets it to taxes-social-construction; settleGlobalTrade() 3419 adds tariff+settlement in finishEconomy. runEconomicAI() reads it at runNationEconomy() 3973, i.e. PRE-TARIFF. Measured: 7.76 pre vs 33.76 post on a 100% tariff nation."
+        },
+        {
+          "field": "nation.economy.ledger",
+          "kind": "derived-cached",
+          "writer": "economy.js updateLedger() 3522-3615",
+          "note": "25 line items. Invariant L9 (delta gold = net + borrowed - repaid + defaulted) measured exact (0.00 over 12 weeks) on the hot path, but it is NOT enforced in src/ and four refund paths bypass it - see measurements.ledger_identity_L9."
+        },
+        {
+          "field": "nation.economy.taxRevenue",
+          "kind": "derived-cached",
+          "writer": "fiscalBalance() 2720"
+        },
+        {
+          "field": "nation.economy.tariffRevenue",
+          "kind": "derived-cached",
+          "writers": [
+            "fiscalBalance() 2722 (zeroes it)",
+            "settleGlobalTrade() 3417 (fills it)"
+          ]
+        },
+        {
+          "field": "nation.economy.socialCost",
+          "kind": "derived-cached",
+          "writer": "fiscalBalance() 2723 from socialSpendingCost() 1797-1807"
+        },
+        {
+          "field": "nation.economy.constructionUpkeep",
+          "kind": "derived-cached",
+          "writer": "fiscalBalance() 2724 from construction.js constructionUpkeep() 303-313",
+          "note": "one week stale: runConstruction runs after the economy phase"
+        },
+        {
+          "field": "nation.economy.treasuryHistory",
+          "kind": "dead",
+          "writer": "updateLedger() 3569-3572",
+          "proof": "grep treasuryHistory src/ui/ index.html -> no match; its own comment claims the budget screen graph is drawn from it"
+        },
+        {
+          "field": "nation.budget",
+          "kind": "derived-cached",
+          "writer": "cities.js nationBudget() 381-457 via turn.js produce() 554-565",
+          "note": "separate object; supplies cityRevenue, armyCost, administrationCost to the ledger"
+        },
+        {
+          "field": "read-then-zeroed accumulators",
+          "kind": "derived-cached",
+          "fields": [
+            "outlayGold",
+            "procurementGold",
+            "subsidyGold",
+            "projectGold",
+            "dividendGold",
+            "shareCostGold",
+            "shareSaleGold",
+            "importCost"
+          ],
+          "writer": "various; all consumed and reset in updateLedger() 3532-3562"
+        }
+      ],
+      "derived": [
+        {
+          "name": "taxEfficiency",
+          "site": "economy.js 1325-1328",
+          "expr": "0.55 + 0.45 * clamp(adminFunding/100, 0.3, 1)"
+        },
+        {
+          "name": "socialSpendingCost",
+          "site": "economy.js 1797-1807",
+          "expr": "sum over programs of (population/10000) * level * rate  + (population/10000) * reformModifiers.socialBurden",
+          "rates": {
+            "education": 0.34,
+            "health": 0.3,
+            "welfare": 0.46
+          }
+        },
+        {
+          "name": "class income",
+          "site": "economy.js fiscalBalance() 2698-2707",
+          "expr": "incomePool*INCOME_WEIGHTS[c] + wagesPaid*WAGE_SPLIT[c] + (upper ? factoryProfit*0.5 - capitalWithheld : 0); incomePool = baseOutputValue*0.35",
+          "constants": {
+            "INCOME_POOL_SHARE": 0.35,
+            "INCOME_WEIGHTS": {
+              "lower": 0.42,
+              "middle": 0.33,
+              "upper": 0.25
+            },
+            "WAGE_SPLIT": {
+              "lower": 0.8,
+              "middle": 0.2
+            },
+            "PROFIT_TO_CAPITAL": 0.5
+          }
+        },
+        {
+          "name": "tax collected",
+          "site": "economy.js 2708-2716",
+          "expr": "sum(class.income * taxes[c]/100) * taxEfficiency"
+        },
+        {
+          "name": "tariff revenue",
+          "site": "economy.js settleGlobalTrade() 3401",
+          "expr": "trade.importValue * tariff/100"
+        },
+        {
+          "name": "import appetite",
+          "site": "economy.js 3319",
+          "expr": "1 / max(0.05, 1 + (tariff/100) * IMPORT_ELASTICITY)",
+          "IMPORT_ELASTICITY": 1.6
+        },
+        {
+          "name": "export access",
+          "site": "economy.js 3323",
+          "expr": "1 / (1 + max(0, tariff/100) * EXPORT_RETALIATION)",
+          "EXPORT_RETALIATION": 0.5
+        },
+        {
+          "name": "debtCapacity",
+          "site": "economy.js 3436-3447",
+          "expr": "max(50, ledger.income * 26 * (1 - creditPenalty) * (1 + techMods.debtCapacityBonus))"
+        },
+        {
+          "name": "debtInterestRate",
+          "site": "economy.js 3450-3455",
+          "expr": "0.04 + 0.08*clamp(debt/capacity,0,1) + 0.10*creditPenalty"
+        },
+        {
+          "name": "administrationCost",
+          "site": "cities.js 210-215 x adminFunding at 436-439",
+          "expr": "((cities-3)^1.45*0.9 + max(0,provinces-120)*0.06 + distanceLoad + max(0,pop-250000)/10000*0.06) * adminFunding/100"
+        },
+        {
+          "name": "army wages cost",
+          "site": "cities.js 433",
+          "expr": "armyWeight * UNIT_UPKEEP.gold * militaryWages/100"
+        },
+        {
+          "name": "combat power funding term",
+          "site": "battles.js battleUnitPower() 98,116",
+          "expr": "0.55 + (militaryWages/100) * 0.45"
+        },
+        {
+          "name": "reinforcement rate",
+          "site": "reinforcement.js reinforcementRateOf() 20-27",
+          "expr": "BASE * (0.25 + (max(0.25, proc/100)*supplyIndex) * 0.75) * (1+generalBonus) * (1+techMods)"
+        },
+        {
+          "name": "training speed",
+          "site": "recruitment.js trainingSpeed() 362-366",
+          "expr": "0.45 + 0.4*wages + 0.15*supplyIndex"
+        },
+        {
+          "name": "organisation recovery",
+          "site": "turn.js 419-423",
+          "expr": "(0.6 + 0.4*wages) * (0.7 + 0.3*supplyIndex)"
+        },
+        {
+          "name": "class satisfaction",
+          "site": "economy.js populationDemand() 2648-2652",
+          "expr": "clamp(0.35 + affordability*0.5 - taxRate*0.28 + welfare*0.14 + reformMoodShift - joblessBite, 0.08, 0.95)"
+        },
+        {
+          "name": "welfare relief",
+          "site": "economy.js 2582-2583",
+          "expr": "outOfPocket = basket * (1 - welfare * reliefRate); reliefRate = lower 0.35 | middle 0.12 | upper 0"
+        },
+        {
+          "name": "literacy target",
+          "site": "economy.js literacyTargetOf() 3804-3809",
+          "expr": "clamp(0.08 + education/100 * 0.62 * (1+higherEducationBonus) + techMods.literacyReach, 0, 0.95); approach 0.001/week (LITERACY_APPROACH 3796)"
+        },
+        {
+          "name": "standardOfLiving",
+          "site": "economy.js 2659-2660",
+          "expr": "5 + 15*avgSatisfaction + socialLevel(health)*2.5"
+        },
+        {
+          "name": "province growth health term",
+          "site": "provinces.js 790",
+          "expr": "1 + min(100, social.health)/100 * 0.35",
+          "warning": "reads the raw field, NOT socialLevel() - a grep for socialLevel misses it"
+        }
+      ],
+      "outputs": [
+        {
+          "value": "nation.gold delta",
+          "consumers": [
+            "construction.js canQueueConstruction() 480 (HARD gate)",
+            "construction.js investmentBlocker() 539 (HARD gate)",
+            "economy.js canPayFactoryCost() 1376 (HARD gate)",
+            "command.js 1019 (unit purchase, HARD gate)",
+            "companies.js 437,899 (HARD gate)",
+            "economy.js procureStrategicGoods() 3250 (affordability caps equipment imports)",
+            "economy.js settleDebt() 3475 (deficit -> borrow -> default)",
+            "ai.js 197,339 / construction.js 772,808,824,839 / economy.js 3146 (AI spending thresholds)"
+          ]
+        },
+        {
+          "value": "class satisfaction / needsMet",
+          "consumers": [
+            "politics.js supportScore() (party support -> election -> new fiscalPolicyLimits)",
+            "economy.js updateStability() 2465-2488",
+            "provinces.js 796 (nourishment -> population growth/famine)",
+            "economy.js runPromotion() 1045-1078 (class mobility)",
+            "population.js 178-182",
+            "tradeLedger.js 230"
+          ]
+        },
+        {
+          "value": "economy.stability",
+          "consumers": [
+            "economy.js adjustSocialAI() 2770 (AI raise order)",
+            "provinces.js 800 (growth)",
+            "provinces.js 819 (RGO development)"
+          ]
+        },
+        {
+          "value": "creditPenalty",
+          "consumers": [
+            "construction.js upkeepFactor() 269 (construction power x (1-penalty))",
+            "construction.js 784",
+            "companies.js 901",
+            "ai.js 278",
+            "identity.js 41",
+            "economy.js socialFloorOf() 1740"
+          ]
+        }
+      ],
+      "connections": [
+        {
+          "to": "trade",
+          "value": "economy.tariff",
+          "writer": "setFiscalPolicy() 1636",
+          "reader": "settleGlobalTrade() 3319,3323,3401",
+          "effect": "import volume, export access, tariff revenue",
+          "kind": "CROSS_SYSTEM"
+        },
+        {
+          "to": "trade",
+          "value": "tariff (again)",
+          "writer": "setFiscalPolicy()",
+          "reader": "procureStrategicGoods() 3244",
+          "effect": "HIDDEN: the state's own military imports are priced at price*(1+tariff/100)",
+          "kind": "CROSS_SYSTEM"
+        },
+        {
+          "to": "population",
+          "value": "taxes[c] and class.taxPaid",
+          "writer": "fiscalBalance() 2708",
+          "reader": "populationDemand() 2570,2573,2649",
+          "effect": "net household budget and satisfaction (-rate*0.28); reads LAST week's income",
+          "kind": "CROSS_SYSTEM"
+        },
+        {
+          "to": "population",
+          "value": "social.welfare",
+          "writer": "setFiscalPolicy()",
+          "reader": "populationDemand() 2583,2649",
+          "effect": "treasury pays 35% of the poor's basket; +0.14 satisfaction",
+          "kind": "CROSS_SYSTEM"
+        },
+        {
+          "to": "population",
+          "value": "social.health",
+          "writer": "setFiscalPolicy()",
+          "reader": "provinces.js 790 (raw) and economy.js 2660",
+          "effect": "weekly population growth x up to 1.35; standardOfLiving +2.5",
+          "kind": "CROSS_SYSTEM"
+        },
+        {
+          "to": "politics",
+          "value": "class satisfaction",
+          "writer": "populationDemand() 2648",
+          "reader": "politics.js supportScore()",
+          "effect": "party support -> election -> different fiscalPolicyLimits -> the player's tariff and army dials are re-clamped",
+          "kind": "CROSS_SYSTEM"
+        },
+        {
+          "to": "military",
+          "value": "militaryWages",
+          "writer": "setFiscalPolicy() 1640",
+          "reader": "battles.js 98/116, turn.js 421, recruitment.js 363, cities.js 433, military.js 169",
+          "effect": "combat power, org recovery, training speed, wage bill",
+          "kind": "CROSS_SYSTEM"
+        },
+        {
+          "to": "military",
+          "value": "militaryProcurement",
+          "writer": "setFiscalPolicy() 1640",
+          "reader": "reinforcement.js 22, economy.js 726/3222/3878, military.js 170",
+          "effect": "stockpile budget, supply index, reinforcement rate, equipment imports",
+          "kind": "CROSS_SYSTEM"
+        },
+        {
+          "to": "construction",
+          "value": "nation.gold, creditPenalty",
+          "writer": "many",
+          "reader": "construction.js 269,480,539,772-839",
+          "effect": "hard gate on every building and national investment; construction power scaled by credit",
+          "kind": "CROSS_SYSTEM"
+        },
+        {
+          "to": "technology",
+          "value": "social.education",
+          "writer": "setFiscalPolicy()",
+          "reader": "literacyTargetOf() 3806 -> technology.js researchPointsOf() 337-351; construction.js investmentBlocker() 531-536",
+          "effect": "research rate (weak) and the Higher Education investment gate (strong)",
+          "kind": "CROSS_SYSTEM"
+        },
+        {
+          "to": "industry",
+          "value": "factory.subsidized",
+          "writer": "player marks / applySubsidyPolicy() 1692-1702",
+          "reader": "runFactories() 2404-2410",
+          "effect": "state absorbs the loss, profit set to 0, which stops layoffs in runFactoryEmployment() 2193-2197",
+          "kind": "CROSS_SYSTEM"
+        },
+        {
+          "to": "cities",
+          "value": "adminFunding",
+          "writer": "setFiscalPolicy() 1648",
+          "reader": "cities.js 436-439",
+          "effect": "administration cost scales linearly",
+          "kind": "CROSS_SYSTEM"
+        }
+      ],
+      "reverse_connections": [
+        {
+          "from": "provinces/rgo",
+          "value": "baseOutputValue",
+          "producer": "economy.js rawProduction() 1888",
+          "consumed": "fiscalBalance() 2691 incomePool"
+        },
+        {
+          "from": "industry",
+          "value": "wagesPaid, factoryProfit",
+          "producer": "runFactories() 2394,2415",
+          "consumed": "fiscalBalance() 2696,2705"
+        },
+        {
+          "from": "companies",
+          "value": "capitalWithheld",
+          "producer": "runCompanies()",
+          "consumed": "fiscalBalance() 2701 (deducted from upper-class income)"
+        },
+        {
+          "from": "cities/provinces",
+          "value": "budget.production.gold",
+          "producer": "cities.js nationBudget() 399-409",
+          "consumed": "updateLedger() 3524 as cityRevenue"
+        },
+        {
+          "from": "military",
+          "value": "armyWeight",
+          "producer": "cities.js 410-424",
+          "consumed": "cities.js 433 army wage bill"
+        },
+        {
+          "from": "population",
+          "value": "economy.population",
+          "producer": "reconcilePopulation()",
+          "consumed": "socialSpendingCost() 1800, cities.js administrationCost() 213"
+        },
+        {
+          "from": "reforms",
+          "value": "reformModifiers().socialBurden",
+          "producer": "reforms.js 979",
+          "consumed": "socialSpendingCost() 1806 - an uncuttable social floor"
+        },
+        {
+          "from": "peace",
+          "value": "treatyCost / treatyRevenue",
+          "producer": "turn.js payTreaties() 570-604",
+          "consumed": "updateLedger() 3536-3537",
+          "note": "reparations are a share of budget.net.gold ONLY, not of total income"
+        },
+        {
+          "from": "politics",
+          "value": "ruling party doctrine",
+          "producer": "politics.js fiscalPolicyLimits() 193-204",
+          "consumed": "applyGovernmentLimits() 206-218 every week, player included"
+        }
+      ],
+      "phase_order": [
+        "turn.js turnSteps(): contacts -> ai -> diplomacy -> reinforcements -> training -> command -> movement -> provinces -> workers(growCities) -> produce(nationBudget, gold += budget.net.gold, payTreaties) -> economy(beginEconomy -> runNationEconomy per nation -> finishEconomy) -> construction + runPolitics -> battles -> orders",
+        "TRAP: economy.fiscalNet is pre-tariff inside runNationEconomy and post-tariff after finishEconomy; runEconomicAI() 3973 reads the pre-tariff value",
+        "populationDemand() reads class income/taxPaid from LAST week (fiscalBalance runs after it) - documented at 2566-2569",
+        "constructionUpkeep read in fiscalBalance is one week stale (runConstruction runs after the economy phase)",
+        "applyGovernmentLimits runs after the economy, so a party change re-clamps dials for NEXT week"
+      ],
+      "code_sites": [
+        {
+          "role": "player sets any dial",
+          "file": "src/ui/screens.js",
+          "fn": "render_budget + handlers",
+          "lines": "1549-1780, 2600-2700"
+        },
+        {
+          "role": "single write door",
+          "file": "src/game/economy.js",
+          "fn": "setFiscalPolicy",
+          "lines": "1629-1678"
+        },
+        {
+          "role": "party band",
+          "file": "src/game/politics.js",
+          "fn": "fiscalPolicyLimits",
+          "lines": "193-204"
+        },
+        {
+          "role": "weekly re-clamp",
+          "file": "src/game/politics.js",
+          "fn": "applyGovernmentLimits",
+          "lines": "206-218 (called 332)"
+        },
+        {
+          "role": "core equation",
+          "file": "src/game/economy.js",
+          "fn": "fiscalBalance",
+          "lines": "2678-2728"
+        },
+        {
+          "role": "collection efficiency",
+          "file": "src/game/economy.js",
+          "fn": "taxEfficiency",
+          "lines": "1325-1328"
+        },
+        {
+          "role": "social bill",
+          "file": "src/game/economy.js",
+          "fn": "socialSpendingCost",
+          "lines": "1797-1807"
+        },
+        {
+          "role": "education floor",
+          "file": "src/game/economy.js",
+          "fn": "socialFloorOf",
+          "lines": "1738-1754"
+        },
+        {
+          "role": "tariff revenue",
+          "file": "src/game/economy.js",
+          "fn": "settleGlobalTrade",
+          "lines": "3279-3422"
+        },
+        {
+          "role": "debt close",
+          "file": "src/game/economy.js",
+          "fn": "settleDebt",
+          "lines": "3463-3517"
+        },
+        {
+          "role": "ledger",
+          "file": "src/game/economy.js",
+          "fn": "updateLedger",
+          "lines": "3522-3615"
+        },
+        {
+          "role": "city/army budget",
+          "file": "src/game/cities.js",
+          "fn": "nationBudget",
+          "lines": "381-457"
+        },
+        {
+          "role": "admin cost",
+          "file": "src/game/cities.js",
+          "fn": "administrationCost",
+          "lines": "210-215"
+        },
+        {
+          "role": "applied to treasury",
+          "file": "src/game/turn.js",
+          "fn": "produce",
+          "lines": "554-565"
+        },
+        {
+          "role": "AI fiscal",
+          "file": "src/game/economy.js",
+          "fn": "adjustFiscalAI",
+          "lines": "2853-2907"
+        },
+        {
+          "role": "AI war/crisis fiscal",
+          "file": "src/game/economy.js",
+          "fn": "adjustWarFiscalAI",
+          "lines": "2917-3009"
+        },
+        {
+          "role": "AI social",
+          "file": "src/game/economy.js",
+          "fn": "adjustSocialAI",
+          "lines": "2742-2801"
+        },
+        {
+          "role": "delegation gate",
+          "file": "src/game/economy.js",
+          "fn": "runEconomicAI",
+          "lines": "3069-3157"
+        }
+      ],
+      "measurements": {
+        "protocol": "scripts/audit/harness.mjs; process-isolated scenarios; seeds ix-a/ix-b/ix-c; warmup 60 weeks as AI then 260 measured weeks as player; wars suppressed unless noted; lever re-applied weekly; medians reported",
+        "control_integrity": "PASS - every dial set once at week 0 on a player nation is unchanged after 260 weeks. On an AI nation all dials drift to doctrine (tax.lower 0->35, tariff 0->100, admin 30->100, wages 25->85, proc 25->65, edu 90->100, welfare 100->0). The AI never touches the player's budget unless delegation('budget'|'trade') is on; delegation defaults to false (delegation.js emptyDelegation).",
+        "ledger_identity_L9": "PASS ON THE HOT PATH - deviation 0.00 for 12 consecutive weeks. BUT L9 is asserted only in ACCOUNTING_INVARIANTS.md and scripts/audit/, never checked in src/, and FOUR refund paths credit the treasury without booking a ledger entry: economy.js dropInvalidProjects 2100 (state branch; the private branch 2097-2099 is correct - asymmetry inside one if/else), recruitment.js cancelTraining 475 (no outlayGold decrement), construction.js cancelConstruction 615-617 (correction clamped at 0 while projectGold is zeroed weekly at 3554), construction.js 906-909 (no correction at all). None fired in the measured window.",
+        "verdicts": {
+          "tariff": {
+            "verdict": "STRONG",
+            "evidence": "treasury 2,482 (-15%) -> 53,022 (50%) = 21x; needsMet 0.943 -> 0.700; revenue saturates near 50%. CORRECTION: the tariff does NOT protect domestic industry. settleGlobalTrade() 3310 fixes domestic = min(marketProduction, demand) BEFORE the tariff is read; the tariff only scales the import bid and the export surplus, and producers are paid the bare world price. Factory levels measured 40/39/39/40 across tariff 0..100 - flat. The 32-level outlier is the -15 run whose treasury was drained to 2,482 with a weekly net of -11, so it could not pay construction's hard gold gate. Causal chain is tariff -> treasury -> construction budget, not tariff -> price protection."
+          },
+          "tax.lower": {
+            "verdict": "STRONG",
+            "evidence": "0 vs 100: revenue 16.3 -> 145.6, needsMet 0.686 -> 0.389, stability 0.676 -> 0.487, population 927k -> 844k"
+          },
+          "tax.upper": {
+            "verdict": "STRONG",
+            "evidence": "0 vs 100: upper population 34,000 -> 0, privateCapital 1200 -> 679, middle 150k -> 183k"
+          },
+          "tax.middle": {
+            "verdict": "MODERATE",
+            "evidence": "0 vs 100: middle population 152k -> 105k, satisfaction 0.695 -> 0.431; distinct from the other two only in weight, but the demotion outcome differs MECHANISM IS SHARED: the only middle-specific constants in the whole budget path are the welfare relief rate (economy.js 2582, lower 0.35 / middle 0.12 / upper 0) and the AI tax ceiling (2873, 35/42/45). Everything else is one code path parameterised by a table. Middle is also the only class whose share of the tax base shrinks as the country industrialises (WAGE_SPLIT gives it 0.2 of payroll; all factory profit goes to upper)."
+          },
+          "militaryWages": {
+            "verdict": "STRONG",
+            "evidence": "25 vs 60: army power 47.9 -> 59.3, defence 63.1 -> 78.2, cost 2.25 -> 5.40; in war soldiers 7,906 -> 8,550"
+          },
+          "militaryProcurement": {
+            "verdict": "STRONG",
+            "evidence": "25 vs 60: supplyIndex 0.133 -> 0.228, arms 23.8 -> 27.4; cross-test wages100/proc25 vs wages25/proc100 gives completely different states, so the two are NOT one axis"
+          },
+          "welfare": {
+            "verdict": "STRONG",
+            "evidence": "0 vs 100: lower satisfaction 0.580 -> 0.807, stability 0.544 -> 0.760, GDP 788 -> 843, and the treasury ends HIGHER (56,723 -> 57,880)"
+          },
+          "education": {
+            "verdict": "NEGLIGIBLE",
+            "evidence": "30-year run: literacy 0.195 -> 0.514 (2.6x), research points 2.00 -> 3.57 (+79%), technologies completed 8 -> 9. One extra tech in 30 years for 40% of the treasury and 11% of GDP. Mathematically large, strategically flat. The discrete education GATE (construction.js investmentBlocker 531-536) is the part that matters."
+          },
+          "adminFunding": {
+            "verdict": "WEAK",
+            "evidence": "every non-fiscal outcome byte-identical across 30-100. Marginal revenue 0.45*grossTax = 16.83 vs marginal cost 5.00. 100 is optimal unless gross tax < 11.1/week or population > ~2.9M (measured nation: 919,187)."
+          },
+          "health": {
+            "verdict": "WEAK",
+            "evidence": "0 vs 100: +34 gold/week for +0.66% population over 5 years and zero city growth; standardOfLiving 15.06 -> 17.43"
+          },
+          "subsidyPolicy": {
+            "verdict": "NOT_A_LEVER",
+            "evidence": "manual/strategic/none are bit-identical in peacetime (subsidised plants 0, cost 0, GDP 792, treasury 52,404 in all three). Subsidies themselves work: force-marking all plants gives +12% employment, +3.8% GDP for 1.6% of the treasury."
+          },
+          "treasury_as_constraint": {
+            "verdict": "FLOOR_ONLY",
+            "evidence": "held at 0 gold: factory levels 40 -> 24, GDP 792 -> 597. Given +100,000 gold: identical industry, GDP and project count. Peaceful treasuries reach 52k-250k with no sink. With wars enabled over 50 years: 29/29 nations borrowed, 27/29 defaulted, 10.46% of nation-weeks borrowing."
+          }
+        }
+      },
+      "findings": [
+        {
+          "kind": "dead",
+          "claim": "fiscalBalance's third parameter industrialOutput is never read",
+          "proof": "declared economy.js:2678, body 2678-2728 contains no reference outside a comment; still passed at 3968",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "dead",
+          "claim": "corruption(cityCount, nation) never uses nation",
+          "proof": "cities.js 182-185",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "dead",
+          "claim": "economy.treasuryHistory is written weekly and never rendered",
+          "proof": "updateLedger 3569-3572; no match in src/ui/ or index.html",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "phase-order-trap",
+          "claim": "economy.fiscalNet has two values per week; the fiscal AI reads the pre-tariff one",
+          "proof": "set at 2726, augmented at 3419 (finishEconomy), read at 2746/2855 via runEconomicAI 3973 (runNationEconomy). Measured 7.76 vs 33.76; AI's weekly 35.76 vs real 61.76 = 42% under-read",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "ui-rederives-formula",
+          "claim": "HUD 'weekly gold' overstates the real weekly balance by 47%",
+          "proof": "hud.js 1137 and screens.js 698 compute budget.net.gold + fiscalNet, which omits procurement, subsidies, project funding, purchases, interest, imports and share costs. Measured over 12 weeks: shown 105.46 vs real 71.88; ledger.net was exact",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "ui-rederives-formula",
+          "claim": "the reinforcement percentage on the budget screen misstates the mechanic",
+          "proof": "screens.js 1676 shows max(25,proc)*max(0.4,supply); reinforcement.js 22-25 uses BASE*(0.25 + funding*0.75). At proc 25 the UI says 25% where the real relative rate is 43.75%",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "duplicate-formula",
+          "claim": "the combat-power constants are hand-copied into the UI",
+          "proof": "screens.js 1685 '55 + wages*0.45' vs battles.js 116 '0.55 + funding*0.45' - numerically correct today, silently wrong if battles.js changes",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "duplicate-formula",
+          "claim": "the literacy constants exist in three places",
+          "proof": "economy.js literacyTargetOf 3806, census.js 109, and the education gate table construction.js 62",
+          "confidence": "LIKELY"
+        },
+        {
+          "kind": "clamp-swallows-input",
+          "claim": "the player cannot set education below the programme/investment floor",
+          "proof": "socialFloorOf 1738-1754; measured: requesting education 0 yielded an effective 25 in every seed",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "clamp-swallows-input",
+          "claim": "the war-budget proposal can silently fail to apply its education cut",
+          "proof": "screens.js 1797 proposes min(education,60) but setFiscalPolicy clamps up to socialFloorOf; screens.js 1828 also caps socialScale at min(1,...) so the projection can never show an increase",
+          "confidence": "LIKELY"
+        },
+        {
+          "kind": "hidden",
+          "claim": "raising the tariff also taxes the state's own military imports",
+          "proof": "procureStrategicGoods 3244 tariffFactor = 1 + tariff/100; no UI line connects them",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "hidden",
+          "claim": "social.health is read raw in provinces.js, bypassing socialLevel()",
+          "proof": "provinces.js 790 vs economy.js socialLevel 1331-1334; a grep for socialLevel( finds only economy.js sites",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "low-value",
+          "claim": "subsidyPolicy's three options are indistinguishable in peacetime",
+          "proof": "measured: identical subsidised count (0), cost (0), GDP (792) and treasury (52,404); applySubsidyPolicy 1692-1702 only acts when at war and only for 'strategic'",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "over-granular",
+          "claim": "education's 0-100 slider resolves to one extra technology per 30 years",
+          "proof": "long-horizon table above; LITERACY_APPROACH 0.001/week",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "low-value",
+          "claim": "adminFunding has one correct answer at realistic nation sizes",
+          "proof": "marginal revenue 16.83 vs marginal cost 5.00; break-even at population ~2.9M",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "ai-overrides-player",
+          "claim": "NOT FOUND - the AI does not touch the player's budget",
+          "proof": "runEconomicAI 3072-3076 gates every branch on delegationActive; delegation defaults to false; drift test confirmed all 8 dials unchanged after 260 weeks",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "low-value",
+          "claim": "the AI's private tax ceilings are far below the player's",
+          "proof": "adjustFiscalAI 2874 caps at lower 35 / middle 42 / upper 45 while setFiscalPolicy allows 100",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "low-value",
+          "claim": "Protectionism does not protect domestic industry - there is no mechanism by which a tariff raises domestic sales or the price a domestic producer receives",
+          "proof": "settleGlobalTrade() 3310 domestic = min(marketProduction, flow.demand) is computed BEFORE the tariff; appetite (3319) scales only bidCol (imports), access (3323) only surplusCol (exports). Measured factory levels flat at 40/39/39/40 across tariff 0..100. The screens.js:1746 slider note claims otherwise.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "ui-rederives-formula",
+          "claim": "Both party trade tooltips quote the wrong tariff caps",
+          "proof": "politics.js 25-26 say free trade caps at 10% and protectionism reaches 50%; fiscalPolicyLimits() 195-198 enforces 25% and 100%",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "hidden",
+          "claim": "A subsidised factory can never level up",
+          "proof": "economy.js 2409 sets factory.profit = 0 for a subsidised plant; autoUpgradeFactory() 1985 is `if (factory.profit <= 0) return false;`. The tooltip promises loss cover and does not mention the freeze.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "ui-rederives-formula",
+          "claim": "Every per-programme social cost figure on the budget screen is wrong",
+          "proof": "screens.js socialShare() 188-194 splits ledger.socialCost by SLIDER VALUE share; socialSpendingCost() 1797-1807 weights each programme by its own rate (education 0.34, health 0.30, welfare 0.46) and adds reformModifiers.socialBurden, which belongs to no slider",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "ui-rederives-formula",
+          "claim": "The three per-class tax boxes do not sum into the Total income line beside them",
+          "proof": "socialClass.taxPaid is set at economy.js 2708 BEFORE taxes *= taxEfficiency(nation) at 2716; screens.js taxRow() 1571-1586 renders the pre-efficiency value. At adminFunding 30 the boxes overstate by 1/0.685 = 1.46x",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "ui-rederives-formula",
+          "claim": "The budget screen's 'recovery' note drops the supply term of the real formula",
+          "proof": "screens.js 1685 shows 0.6 + 0.4*wages/100; turn.js 419-423 uses (0.6+0.4*wages)*(0.7+0.3*supplyIndex). Measured supplyIndex is 0.13-0.25, so the UI overstates recovery in the normal case.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "duplicate-formula",
+          "claim": "cities.js's comment claims army upkeep is equipment-weighted; upkeepWeight and regimentCount are byte-identical",
+          "proof": "units.js upkeepWeight() 24-26 and regimentCount() 111-113 both return unit?.regiments?.length ?? 1. nationBudget() accumulates the same number into `army` and `armyWeight`.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "dead",
+          "claim": "CLASS_NEEDS_BUDGET has zero readers",
+          "proof": "declared economy.js 355; its only other occurrence in the tree is inside a comment at 2872",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "dead",
+          "claim": "socialClass.savingsDrawn is written every week for every class and read by nothing",
+          "proof": "written economy.js 2613; no other occurrence in src/, scripts/ or index.html",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "dead",
+          "claim": "ledger.creditPenalty has no reader (economy.creditPenalty, the live field, has many - do not confuse them)",
+          "proof": "grep for ledger.creditPenalty across src/ returns only the write in updateLedger",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "dead",
+          "claim": "nation.economy.armySpending is dead in live play",
+          "proof": "written by setFiscalPolicy's legacy branch 1656-1662; the only read is the ??= migration at ensureEconomy 1287-1288, which cannot fire once the two modern fields exist",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "ai-overrides-player",
+          "claim": "Delegating 'Budget' hands over four portfolios the label does not mention",
+          "proof": "delegation.js 16-21 describes 'class taxes, social spending and the war budget'. runEconomicAI 3078-3092 enables adjustFiscalAI, which calls adjustWarFiscalAI 2906. That function moves adminFunding (2952, 2998), every factory.subsidized flag including the player's own marks (2945, 2986-2988, 3003-3007), the research programme (abandonProgramme 2941) and purchased investment levels (dropInvestmentLevel 2969-2971).",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "hidden",
+          "claim": "The tariff is rendered on the Budget screen but delegated by the Trade switch",
+          "proof": "slider at screens.js 1743; delegation area 'trade' in delegation.js 22-26 with screen:'trade'. A player holding Budget themselves sees the tariff drift +-2/week via adjustFiscalAI 2896 with no explanation on the screen the slider lives on.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "low-value",
+          "claim": "The AI's 'do not tax a suffering class' brake is weakest for the lower class",
+          "proof": "runPopulationMobility() 1089 accumulates hardshipWeeks only for ['middle','upper'], so it is permanently 0 for lower; adjustFiscalAI 2874 reads it for all three",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "phase-order-trap",
+          "claim": "debtCapacity scores this week's borrowing against last week's income",
+          "proof": "settleDebt is called from inside updateLedger at 3567, fourteen lines before the new ledger object is assigned at 3581, and debtCapacity() 3437 reads nation.economy.ledger.income",
+          "confidence": "LIKELY"
+        },
+        {
+          "kind": "low-value",
+          "claim": "Nothing political, diplomatic or reform-side reacts to sovereign default",
+          "proof": "creditPenalty's consumers are all economic (debtCapacity, debtInterestRate, socialFloorOf, construction upkeepFactor/784, companies 901, ai 278, identity 41). No stability, legitimacy, alliance, infamy or peace-term effect.",
+          "confidence": "LIKELY"
+        },
+        {
+          "kind": "dead",
+          "claim": "economy.literacyTarget is written every week for every nation and read by nothing",
+          "proof": "written economy.js 3816; grep across src/, scripts/ and index.html returns only that line (literacyTargetOf, the function, is alive)",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "hidden",
+          "claim": "city.growth is never serialised, so every save/load discards accumulated city growth",
+          "proof": "cities.js growCities() 159-163 accumulates city.growth; save.js 189-190 persists pop and pops only, and the load path at 353 restores pops. Up to a full population point is lost per save.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "hidden",
+          "claim": "warStrain cuts the ruling party's support by up to 45% and no UI surface names that channel",
+          "proof": "politics.js 238-244 `score *= 1 - Math.min(0.45, strain*0.3 + occupied*0.4)`. hud.js stabilityWhy() 1167-1183 shows war exhaustion's effect on STABILITY only; this is a separate channel straight into elections.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "hidden",
+          "claim": "With all three social sliders at 0 but social laws enacted, the budget screen shows 0 on all three rows while the treasury pays the reform burden",
+          "proof": "socialSpendingCost() 1806 adds scale * reformModifiers(nation).socialBurden; screens.js socialShare() 190-192 returns 0 when the slider total is 0, and the burden has no row of its own",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "duplicate-formula",
+          "claim": "Welfare reaches the same province-growth endpoint the UI attributes exclusively to health",
+          "proof": "welfare -> economy.js 2583 outOfPocket -> 2633 needsMet -> provinces.js 796 nourishment, the (0.25 + 0.75*nourishment) term of the same weeklyGrowth formula health multiplies at 790. Welfare also adds ~+2.69 to standardOfLiving via satisfaction vs health's flat +2.50.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "phase-order-trap",
+          "claim": "growCities runs before the economy phase, so both its gates are one week stale",
+          "proof": "turn.js turnSteps(): workers/growCities is phase 9, economy is phase 11. growCities() 154-157 reads standardOfLiving and budget.net.food, both written later in the same week.",
+          "confidence": "CERTAIN"
+        }
+      ],
+      "simplification_candidates": [
+        {
+          "target": "subsidyPolicy (3 options)",
+          "move": "MERGE",
+          "to": "a single on/off toggle",
+          "depth_lost": "none measured"
+        },
+        {
+          "target": "social.education 0-100 slider",
+          "move": "DERIVE",
+          "to": "the discrete 25/40/55/70 investment gates it already gates",
+          "depth_lost": "none measured; keep the gates"
+        },
+        {
+          "target": "adminFunding",
+          "move": "AUTOMATE",
+          "to": "always fund, or fold into administration cost",
+          "depth_lost": "none - one correct answer"
+        },
+        {
+          "target": "social.health",
+          "move": "MERGE",
+          "to": "welfare",
+          "depth_lost": "thin. Welfare already drives the same province-growth term via needsMet -> nourishment (provinces.js 796) and adds more standardOfLiving per gold. The only honest distinction is saturation: welfare's growth channel clamps at nourishment 1.0, health's x1.35 never does."
+        },
+        {
+          "target": "fiscalBalance industrialOutput param, corruption nation param",
+          "move": "REMOVE",
+          "depth_lost": "none"
+        },
+        {
+          "target": "economy.fiscalNet two-phase meaning",
+          "move": "DERIVE",
+          "to": "two named values, or move the tariff add before the AI reads it",
+          "depth_lost": "none - it is a defect"
+        },
+        {
+          "target": "HUD/economy 'weekly balance'",
+          "move": "DERIVE",
+          "to": "ledger.net",
+          "depth_lost": "none - removes a 47% error"
+        },
+        {
+          "target": "economy.treasuryHistory",
+          "move": "REMOVE",
+          "alt": "or finally draw the graph it was written for",
+          "depth_lost": "none"
+        },
+        {
+          "target": "UI formula copies (screens.js 1676, 1685; census.js 109)",
+          "move": "DERIVE",
+          "to": "export the engine functions",
+          "depth_lost": "none"
+        },
+        {
+          "target": "nation.budget / nation.economy split",
+          "move": "MERGE",
+          "size": "large",
+          "depth_lost": "none measured - but this is the expensive one"
+        },
+        {
+          "target": "the four ledger-bypassing refund paths + the unenforced L9 identity",
+          "move": "KEEP+GUARD",
+          "note": "add a runtime assertion rather than a rewrite; the identity is the budget's single most valuable property",
+          "depth_lost": "none"
+        }
+      ],
+      "do_not_touch": [
+        "tariff band + IMPORT_ELASTICITY 1.6 + EXPORT_RETALIATION 0.5 - the only genuine strategic dilemma in the budget, and party-dependent",
+        "the three class tax sliders - three different failure modes (starvation / demotion / class annihilation)",
+        "the militaryWages vs militaryProcurement split - proven distinct by cross-test",
+        "welfare - strongest stability lever measured",
+        "settleDebt + creditPenalty - inert in peace, decisive in war (27/29 nations default over 50 years); 6 consumers outside economy.js",
+        "updateLedger's L9 identity - exact to 0.00 on the hot path and the only thing making the budget auditable. Keep it, but note it is asserted in markdown, not enforced in code, and four refund paths bypass it.",
+        "hud.js stabilityWhy() 1167-1183 - a model of exposing a hidden calculation"
+      ],
+      "ai_context_cost": {
+        "score": 4,
+        "scale": "0-5, higher is harder",
+        "modules_to_read": 8,
+        "relevant_functions": 28,
+        "mutable_state_fields": 40,
+        "gold_write_sites": 13,
+        "duplicate_formulas": 4,
+        "phase_order_dependencies": 4,
+        "read_then_zeroed_accumulators": 8,
+        "top_traps": [
+          "economy.fiscalNet is not one number - its value depends on the phase you read it in, and both meanings are live",
+          "nation.gold has no single owner - grepping fiscalBalance finds 1 of 13 writers",
+          "policy fields are read three different ways (socialLevel() accessor, raw economy.social.x in provinces.js, economy.social.x in screens.js) so an accessor grep misses two thirds of consumers"
+        ]
+      },
+      "contract": {
+        "inputs": "nation.economy.{taxes.{lower,middle,upper}, tariff, militaryWages, militaryProcurement, adminFunding, social.{education,health,welfare}, subsidyPolicy}",
+        "canonical_state": "nation.gold, nation.debt, nation.economy.creditPenalty, and the nine input fields above. Everything else is recomputed weekly.",
+        "derived": "economy.{fiscalNet, taxRevenue, tariffRevenue, socialCost, constructionUpkeep, ledger}, nation.budget",
+        "outputs": "weekly nation.gold delta; class income/taxPaid/satisfaction; creditPenalty",
+        "invariants": [
+          "delta nation.gold == ledger.net + ledger.borrowed - ledger.repaid + ledger.defaulted (L9, verified 0.00)",
+          "tax revenue == sum(class.income * rate) * taxEfficiency (L4)",
+          "tariff revenue == importValue * tariff/100 (L8); domestic consumption is never tariffed",
+          "nation.gold >= 0 after settleDebt (the deficit becomes debt, then default)",
+          "a dial is only ever written through setFiscalPolicy - except adjustSocialAI 2742-2801, which writes economy.social directly"
+        ],
+        "may_read": "any system may read nation.gold, economy.ledger, economy.stability, creditPenalty and the dial values",
+        "must_not_write": "no system outside economy.js/setFiscalPolicy may write the nine dials; only the 13 listed sites may write nation.gold; nothing outside settleDebt may write nation.debt or creditPenalty",
+        "phase_order": "produce() -> economy(begin -> per-nation -> finish) -> construction+politics. Read economy.fiscalNet only AFTER finishEconomy, or you get the pre-tariff value."
+      }
+    }
+  ]
+}
