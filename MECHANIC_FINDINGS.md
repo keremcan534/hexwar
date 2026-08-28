@@ -958,6 +958,37 @@ value is priced off these numbers:
 A player who reaches 1900 finds a large, well-fed, fully-employed economy whose
 every number reads as worthless.
 
+### Three chains that are wired but do nothing
+
+**The fertilizer → agriculture bonus is dead, and the cause is a one-field
+phase-order slip.** `rawProduction():1892-1894` computes
+`fertilized = fertilizer.demand > 0 ? fulfilled / demand : 0`, but
+`resetNationGoodsFlow()` runs eight lines earlier in the same function
+(`runNationEconomy:3860` vs `:3868`) and sets **both** `flow.demand` and
+`flow.fulfilled` to 0. So the test is always `0 > 0`, `fertilized` is always 0,
+and `farmBonus` is always exactly **1.0**. Fertilizer never raises a single unit
+of food, cotton or silk.
+
+The reset even preserves what the calculation needs: `:1844` stores last week's
+ratio as `flow.fulfilledShare` immediately before zeroing the two fields.
+`rawProduction` simply reads the wrong pair. This is the game's only
+industry → agriculture link, and it has never fired.
+
+**Cement demand has no consequence.** The construction queue books cement demand
+every week (`runNationEconomy:3931-3932`) — but `grep cement src/game/construction.js`
+returns nothing. Building never slows, stops or costs more for want of cement.
+The cement factory has a customer that cannot tell whether it was supplied.
+
+**A starved factory bids full, forever.** `runFactories():2359-2363` books
+`requested = amount × laborThroughput` — labour capacity, *not* `throughput`,
+which is the input-throttled figure one line below. The comment says this is
+deliberate so that "price sees unmet demand too". The consequence is that a
+factory which never receives its input keeps bidding its full theoretical demand
+every week for the rest of the game, which pins that good at the **8× ceiling
+permanently**. This is the mirror image of the floor problem, and it is exactly
+what the turn-321 measurement shows: `fuel` at 8× base with production 0.00 and
+demand 2.25, alongside `cement`, `fertilizer` and `explosives`.
+
 ### War does not affect trade at all
 
 `settleGlobalTrade()` (`3279-3422`) never reads `atWar`, `relations` or any
@@ -1055,6 +1086,9 @@ What is still missing or wrong:
 | The price *rule* — that a 34% imbalance means +3% a week | VISIBLE NOT EXPLAINED | `priceReasons()` states the imbalance but never the rule, so the player cannot convert one into the other |
 | `trade.imports` / `trade.exports` (physical quantities) | HIDDEN, not dead | written weekly at `:3384-3385`, reach no screen |
 | Price history is one week stale | HIDDEN LOW VALUE | `:3628` pushes the price *before* `:3634` updates it, so the sparkline's last point is always week t−1 |
+| **Fertilizer's yield bonus** | DEAD | `farmBonus` is always 1.0 — see above |
+| **Cement supply** | DEAD as a consequence | booked as demand, read by nothing |
+| `workshopArmsOutput()` (`725-728`) | HIDDEN | creates small arms from nothing weekly — no input, no cost, no market presence. A deliberate floor so a nation cannot be permanently unable to field an army, but nothing says so |
 
 ## SIMPLIFICATION CANDIDATES
 

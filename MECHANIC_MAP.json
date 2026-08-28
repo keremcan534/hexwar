@@ -1447,6 +1447,42 @@
           "claim": "The code comments claim 43 goods; GOODS holds 42",
           "proof": "comments at economy.js 397, 1209, 1816, 3283 and 3632 say 43; GOOD_IDS.length measured 42 in every run",
           "confidence": "CERTAIN"
+        },
+        {
+          "kind": "phase-order-trap",
+          "claim": "The fertilizer -> agriculture yield bonus is DEAD: farmBonus is always exactly 1.0",
+          "proof": "rawProduction 1892-1894 reads fertilizer.demand and .fulfilled, but resetNationGoodsFlow zeroes BOTH (1836, 1841) and runs earlier in the same function (runNationEconomy 3860 vs 3868). The test is always 0 > 0. The reset even preserves the ratio it needs as flow.fulfilledShare at 1844 - rawProduction reads the wrong pair. This is the game's only industry->agriculture link and it has never fired.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "dead",
+          "claim": "Cement demand has no consequence - construction never reads it",
+          "proof": "runNationEconomy 3931-3932 books cement demand from the build queue every week; grep cement src/game/construction.js returns nothing. Building never slows, stops or costs more for want of cement.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "clamp-swallows-input",
+          "claim": "A starved factory bids its full labour-capacity demand forever, pinning the good at the 8x ceiling permanently",
+          "proof": "runFactories 2359 requested = amount * laborThroughput (labour capacity), not throughput (the input-throttled figure at 2360). Measured at turn 321: fuel at 8x base with production 0.00 and demand 2.25, alongside cement, fertilizer and explosives.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "hidden",
+          "claim": "workshopArmsOutput creates small arms from nothing every week - no input, no cost, no market presence",
+          "proof": "economy.js 725-728 returns 0.08 * (0.5 + militaryProcurement/200); consumed as retainedWorkshop at 3897 and excluded from retainedCost at 3910. A deliberate floor so a nation cannot be permanently unable to field an army, but nothing in the UI says so.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "low-value",
+          "claim": "needAmount does NOT grow with the turn - there is no hidden century-long demand inflation",
+          "proof": "economy.js needAmount() 400-403 is a step function: turn >= need.from ? need.amount : 0. Goods switch on at a threshold; per-capita amounts never scale.",
+          "confidence": "CERTAIN"
+        },
+        {
+          "kind": "dead",
+          "claim": "State stockpiling is measured at 0.0% of world demand in peacetime",
+          "proof": "procureStrategicGoods is the only demand source with a supply gate and switches itself off once stocks reach cap; measured importCost 0 in every peaceful run of the budget matrix and 0.0% of world demand at turns 121/201/401/801",
+          "confidence": "CERTAIN"
         }
       ],
       "simplification_candidates": [

@@ -1607,6 +1607,32 @@ finishEconomy     procureStrategicGoods → refreshPriorityAccess
   </div>
 
   <div class="note bad">
+    <div class="t">Three chains that are wired but do nothing</div>
+    <p><b>The fertilizer → agriculture bonus is dead.</b>
+    <code>rawProduction():1892-1894</code> computes
+    <code>fertilized = fertilizer.demand &gt; 0 ? fulfilled / demand : 0</code>,
+    but <code>resetNationGoodsFlow()</code> runs eight lines earlier in the same
+    function (<code>3860</code> vs <code>3868</code>) and zeroes <b>both</b>
+    fields. The test is always <code>0 &gt; 0</code>, so <code>farmBonus</code> is
+    always exactly <b>1.0</b> and fertilizer never raises a single unit of food.
+    The reset even preserves the ratio the calculation needs, as
+    <code>flow.fulfilledShare</code> at <code>:1844</code> — <code>rawProduction</code>
+    reads the wrong pair. This is the game's only industry → agriculture link.</p>
+    <p><b>Cement demand has no consequence.</b> The build queue books it weekly
+    (<code>3931-3932</code>), and <code>grep cement src/game/construction.js</code>
+    returns nothing. Building never slows for want of cement.</p>
+    <p><b>A starved factory bids full, forever.</b>
+    <code>runFactories():2359</code> books
+    <code>requested = amount × laborThroughput</code> — labour capacity, not the
+    input-throttled <code>throughput</code> one line below. A factory that never
+    receives its input keeps bidding full demand for the rest of the game, which
+    pins that good at the <b>8× ceiling permanently</b>. That is the mirror of the
+    floor problem, and exactly what turn 321 shows: <code>fuel</code> at 8× base
+    with production 0.00 and demand 2.25, beside <code>cement</code>,
+    <code>fertilizer</code> and <code>explosives</code>.</p>
+  </div>
+
+  <div class="note bad">
     <div class="t">Simultaneous world glut and national shortage</div>
     <p>At turn 5261 the world produces 3,432 units against 1,554 of demand — and
     still leaves <b>330 units of demand unmet</b>. Two structural reasons, both in
