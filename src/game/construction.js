@@ -4,6 +4,7 @@
 import { occupiedShareOf, provinceName } from './provinces.js';
 import { controllerOf } from './control.js';
 import { delegationActive, noteDelegated } from './delegation.js';
+import { earn, refund as refundGold, spend } from './econ/budget.js';
 
 // Birim artık 2-7 hexlik province KÜMESİDİR (bkz. world/provinces-gen.js):
 // state başına ~3 küme ≈ eski 14 karelik hedefle aynı yüzölçümü.
@@ -500,9 +501,7 @@ export function queueConstruction(game, nationId, regionId, typeId, anchor = nul
   const anchorTile = anchor && atlas.tileRegions.get(anchor)?.id === regionId
     ? anchor : region.center;
   const price = CONSTRUCTION_TYPES[typeId].cost;
-  nation.gold -= price;
-  // Insaat kalemine yazilir (bkz. economy.js updateLedger projectCost).
-  if (nation.economy) nation.economy.projectGold = (nation.economy.projectGold ?? 0) + price;
+  spend(nation, 'projectCost', price);
   state.projects.push({
     id: state.nextId++, typeId, regionId, regionName: region.name,
     q: anchorTile.q, r: anchorTile.r,
@@ -553,8 +552,7 @@ export function queueInvestment(game, nationId, investmentId) {
   const info = NATIONAL_INVESTMENTS[investmentId];
   const state = ensureConstruction(nation);
   const price = investmentCost(nation, investmentId);
-  nation.gold -= price;
-  if (nation.economy) nation.economy.projectGold = (nation.economy.projectGold ?? 0) + price;
+  spend(nation, 'projectCost', price);
   state.projects.push({
     id: state.nextId++,
     kind: PROJECT_KIND.NATIONAL,
@@ -611,12 +609,7 @@ export function cancelConstruction(game, nationId, projectId) {
       // para kaybetmek de bir korunum ihlalidir.
       const pool = Math.max(0, nation.politics.privateCapital ?? 0);
       nation.politics.privateCapital = pool + Math.min(refund, Math.max(0, 1200 - pool));
-    } else {
-      nation.gold += refund;
-      if (nation.economy) {
-        nation.economy.projectGold = Math.max(0, (nation.economy.projectGold ?? 0) - refund);
-      }
-    }
+    } else refundGold(nation, 'projectCost', refund);
   }
   state.projects.splice(index, 1);
   game.renderer.invalidateConstruction?.();
@@ -881,7 +874,8 @@ export function migrateConstructionV14(nation) {
   state.capacity.construction = (state.capacity.construction ?? 0) + sectors;
   state.capacity.education = Math.min(4,
     (state.capacity.education ?? 0) + Math.ceil((universities * 2) / 3));
-  if (administrations > 0) nation.gold = (nation.gold ?? 0) + administrations * 80;
+  // Eski ADMINISTRATION binalarinin iadesi (tek seferlik kayit gocu).
+  if (administrations > 0) earn(nation, 'cityRevenue', administrations * 80);
   state.buildings = buildings.filter((b) => CONSTRUCTION_TYPES[b.typeId]);
 
   const converted = [];
@@ -905,7 +899,7 @@ export function migrateConstructionV14(nation) {
     if (project.typeId === 'ADMINISTRATION') {
       // Insa edilmemis pay iade edilir (cancelConstruction ile ayni kural).
       const done = project.work > 0 ? clamp(project.progress / project.work, 0, 1) : 1;
-      nation.gold += Math.max(0, (project.funded ?? 0) * (1 - done));
+      refundGold(nation, 'projectCost', Math.max(0, (project.funded ?? 0) * (1 - done)));
       continue;
     }
     converted.push(project);

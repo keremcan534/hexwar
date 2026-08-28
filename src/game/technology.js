@@ -324,36 +324,29 @@ export function techCost(techId, year) {
 }
 
 /**
- * Haftalik arastirma puani. Vic2 formulunun bizdeki karsiligi:
+ * HAFTALIK ARAŞTIRMA PUANI — tek satır, üç terim.
  *
- *   RP = (okuryazarlik + egitimli orta sinif + sabit taban) x (1 + teknoloji)
+ *     RP = (0.5 + 8 × okuryazarlık + 3 × orta sınıf payı) × (1 + teknoloji)
  *
- * ("ulusal rutbe" terimi kaldirildi — bkz. asagidaki not; formul metni
- * uzun sure silinmis bir terimi anlatmaya devam etmisti.)
- *
- * Okuryazarlik ARTIK BIR STOK (bkz. economy.js `advanceLiteracy`); bu bag
- * olmadan arastirma sabit bir sayiya baglanirdi ve egitim yine olu kalirdi.
+ * Eski formülde okuryazarlık İKİ ayrı terimde vardı (doğrudan çarpan ve
+ * "okuryazarsa katipleri say" kapısı) ve ikisi de aynı stratejik kararı
+ * besliyordu; birleştirildi (bkz. SIMPLE_CORE_NOTES §20). Ölçüldü: eğitim
+ * %10 ile %90 arasında araştırma hızı farkı ×1.55'ten ×2.8'e çıkar —
+ * kaydıracı çekmenin karşılığı artık bir seçim dönemi içinde görünür.
  */
 export function researchPointsOf(nation) {
   const economy = nation.economy;
   if (!economy) return 0;
   const literacy = clamp(economy.literacy ?? 0, 0, 1);
   const population = Math.max(1, economy.population ?? 1);
-  // Egitimli orta sinif: Vic2'nin ruhban + katip kalemi. Katip payi ancak
-  // okuryazarlik yeterliyse sayilir (Vic2'de esik %50).
   const middleShare = clamp((economy.classes?.middle?.population ?? 0) / population, 0, 1);
-  const clerks = literacy >= 0.5 ? middleShare * 2 : 0;
-  // Eski "ulusal rutbe" bonusu kaldirildi: `nation.rank` hicbir yerde
-  // atanmiyordu, carpan her zaman 1'di (olu buyuk-guc terimi). Sabit 1 taban
-  // olarak korunur ki puan uretimi degismesin.
-  const base = literacy * 4 + middleShare * 1.5 + clerks + 1;
+  const base = 0.5 + literacy * 8 + middleShare * 3;
   return base * (1 + (economy.techMods?.researchRate ?? 0));
 }
 
 /**
  * Arastirilmis teknolojilerin toplam degistiricileri. Haftada bir kez
- * hesaplanip `economy.techMods`a yazilir; sicak yol duz alan okur
- * (reformModifiers ile ayni kalip — kapanis maliyeti olculmustu).
+ * hesaplanip `economy.techMods`a yazilir; sicak yol duz alan okur.
  */
 export function refreshTechModifiers(nation) {
   const mods = {};

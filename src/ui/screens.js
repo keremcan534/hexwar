@@ -695,7 +695,7 @@ export class Screens {
   }
 
   resourceLine(me) {
-    const weekly = (me.budget?.net?.gold ?? 0) + (me.economy?.fiscalNet ?? 0);
+    const weekly = me.economy?.ledger?.net ?? 0;
     const sign = `${weekly >= 0 ? '+' : ''}${Math.round(weekly)}`;
     return `<span>¤ <b>${Math.round(me.gold)}</b> ${sign}</span>
       <span>GDP <b>¤${Math.round(me.economy?.gdp ?? 0)}</b></span>
@@ -779,7 +779,7 @@ export class Screens {
           <span><small>Treasury</small><b>¤${Math.round(me.gold)}</b></span>
           <span><small>GDP</small><b>¤${Math.round(me.economy?.gdp ?? 0)}</b></span>
           <span><small>Tax revenue</small><b>¤${(me.economy?.taxRevenue ?? 0).toFixed(1)}</b></span>
-          <span><small>Weekly balance</small><b class="${(me.economy?.fiscalNet ?? 0) < 0 ? 'res-neg' : 'res-pos'}">${(me.economy?.fiscalNet ?? 0) >= 0 ? '+' : ''}¤${(me.economy?.fiscalNet ?? 0).toFixed(1)}</b></span>
+          <span><small>Weekly balance</small><b class="${(me.economy?.ledger?.net ?? 0) < 0 ? 'res-neg' : 'res-pos'}">${(me.economy?.ledger?.net ?? 0) >= 0 ? '+' : ''}¤${(me.economy?.ledger?.net ?? 0).toFixed(1)}</b></span>
         </div>
       </div>
       <div class="card">

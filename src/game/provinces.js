@@ -516,16 +516,18 @@ const RGO_LABOR_FALLOFF = 0.75;
  * girdisi 8 katına çıkan fabrikalar işçi alamıyordu (bkz. market-diagnostic).
  */
 /**
- * Kirsal (RGO'da calisabilecek) nufus. Fabrikada calisan tarlada calismaz;
- * yerel kadro yerel nufusla SINIRLI dusulur, fazlasi banliyoculuk olarak
- * fabrikanin bulunmadigi provinslerden duser (bkz. economy.runFactories
- * banliyo duzeltmesi). Eski hali fazlayi hicbir yerden dusmuyordu.
+ * Kırsal (RGO'da çalışabilecek) nüfus. Fabrikada çalışan tarlada çalışmaz.
+ *
+ * `industrialEmployees` artık kümenin ULUSAL sanayi işgücündeki payıdır
+ * (economy.js her hafta nüfus oranıyla yazar), yani tanım gereği kümenin
+ * kendi nüfusundan küçüktür. Eski model kadroyu fabrikanın bulunduğu kümeye
+ * yazıyor, taşan kısmı "banliyöcülük" diye komşu kümelere dağıtıyordu —
+ * 40 satırlık bir onarım. Payla yazınca taşma YAPISAL olarak imkânsız.
  */
 export function ruralPopulation(econ) {
   const population = Math.max(0, econ?.population ?? 0);
-  const local = Math.min(Math.max(0, econ?.industrialEmployees ?? 0), population);
-  const commuters = Math.max(0, econ?.industrialCommuters ?? 0);
-  return Math.max(0, population - local - commuters);
+  const industrial = Math.min(Math.max(0, econ?.industrialEmployees ?? 0), population);
+  return Math.max(0, population - industrial);
 }
 
 export function rgoLaborScale(province, jobs) {
@@ -788,12 +790,11 @@ export function runProvinces(game) {
     // Sağlık harcaması büyümeyi hızlandırır (bkz. economy.js SOCIAL_PROGRAMS);
     // veri doğrudan okunuyor, economy.js'i import etmek katman döngüsü olurdu.
     const health = 1 + Math.min(100, nation.economy?.social?.health ?? 0) / 100 * 0.35;
-    // Beslenme: sepetinin ne kadarini fiilen alabildigi (bkz. economy.js
-    // populationDemand). Bu bag yokken kitligin nufusta hicbir karsiligi
-    // yoktu — dunya tahil uretimi TAMAMEN kesildiginde bile 120 haftalik
-    // nufus farki %0.0 olcusundeydi. Ac nufus once buyumeyi durdurur, uzayan
-    // aclik ise nufusu eritir.
-    const nourishment = clamp(nation.economy?.needsMet ?? 1, 0, 1);
+    // BESLENME YALNIZ GIDADAN GELİR (bkz. econ/pop.js `foodMet`). Eski model
+    // bütün sepete bakıyordu: karşılanamayan bir lüks — şarap, telefon —
+    // beslenme endeksini düşürüp nüfusu eritebiliyordu. Gıda dışı kıtlık artık
+    // memnuniyeti ve istikrarı vurur, açlığı değil.
+    const nourishment = clamp(nation.economy?.foodMet ?? 1, 0, 1);
     const famine = nourishment < FAMINE_THRESHOLD
       ? (FAMINE_THRESHOLD - nourishment) / FAMINE_THRESHOLD : 0;
     // Taban Vic2 ölçeğinde: en iyi koşulda yılda ~%0.9, yüzyılda ~2.3 kat

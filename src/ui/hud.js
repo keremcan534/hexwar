@@ -1134,7 +1134,7 @@ export class Hud {
 
 /** Üst çubuk yalnız yeni makro ekonomiyi gösterir; eski ham stoklar kaldırıldı. */
 function resourcesHtml(nation) {
-  const weekly = (nation.budget?.net?.gold ?? 0) + (nation.economy?.fiscalNet ?? 0);
+  const weekly = nation.economy?.ledger?.net ?? 0;
   // Akış ayrı bir <em>: değerin içine ikinci bir <b> koymak geçersiz iç içe
   // yapıydı ve akışı ana rakamla aynı ağırlıkta gösteriyordu.
   const flowClass = weekly < 0 ? 'res-neg' : weekly > 0 ? 'res-pos' : '';

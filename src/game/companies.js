@@ -30,6 +30,7 @@ import {
   FACTORIES, INCOME_POOL_SHARE, INCOME_WEIGHTS, PROFIT_TO_CAPITAL, PROFIT_TO_REINVEST,
   priceOf,
 } from './economy.js';
+import { earn, spend } from './econ/budget.js';
 
 /* ==========================================================================
    1. SEKTÖRLER VE YABANCI SAHİPLİK TAVANLARI
@@ -436,8 +437,7 @@ export function buyShares(game, buyer, company, requested) {
   const cost = sharePrice(company, share) * (1 + SPREAD);
   if (!(cost > 0) || buyer.gold < cost) return null;
 
-  buyer.gold -= cost;
-  buyer.economy.shareCostGold = (buyer.economy.shareCostGold ?? 0) + cost;
+  spend(buyer, 'shareCost', cost);
   creditSellerPool(home, cost);
 
   company.owners[buyer.id] = clamp(stakeOf(company, buyer.id) + share, 0, 1);
@@ -466,8 +466,7 @@ export function sellShares(game, seller, company, requested) {
   const proceeds = unit * share;
 
   home.politics.privateCapital = Math.max(0, pool - proceeds);
-  seller.gold += proceeds;
-  seller.economy.shareSaleGold = (seller.economy.shareSaleGold ?? 0) + proceeds;
+  earn(seller, 'shareRevenue', proceeds);
 
   const left = clamp(held - share, 0, 1);
   if (left < 0.0005) delete company.owners[seller.id];
@@ -645,8 +644,7 @@ export function runCompanies(game, nation) {
       budget -= amount;
       economy.capitalWithheld += amount;
       economy.dividendsOut += amount;
-      owner.gold += amount;
-      owner.economy.dividendGold = (owner.economy.dividendGold ?? 0) + amount;
+      earn(owner, 'dividendRevenue', amount);
     }
     enforceOwnershipCaps(game, nation, company);
   }
@@ -756,9 +754,8 @@ export function nationalize(game, nation, company, modeId = 'compensated') {
     delete company.owners[id];
     if (!owner?.alive) continue;
     if (amount > 0) {
-      nation.gold -= amount;
-      owner.gold += amount;
-      owner.economy.dividendGold = (owner.economy.dividendGold ?? 0) + amount;
+      spend(nation, 'shareCost', amount);
+      earn(owner, 'shareRevenue', amount);
       paid += amount;
     }
     // Diplomatik hafıza: mağdurun ülke paneli bunu yıllarca gösterir. Ayrı

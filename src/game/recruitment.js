@@ -17,6 +17,7 @@ import { UNIT_COSTS, canAfford, pay } from './cities.js';
 import { underTreaty } from './peace.js';
 import { controllerOf } from './control.js';
 import { occupiedShareOf } from './provinces.js';
+import { refund as refundGold } from './econ/budget.js';
 
 export const RECRUITMENT_EQUIPMENT = {
   INFANTRY: { arms: 4 },
@@ -472,7 +473,7 @@ export function cancelTraining(game, nation, itemId) {
   if (index < 0) return false;
   const [item] = training.queue.splice(index, 1);
   const share = Math.max(0, 1 - item.progress / Math.max(1, item.weeks));
-  nation.gold = (nation.gold ?? 0) + Math.floor((item.gold ?? 0) * share);
+  refundGold(nation, 'outlayCost', Math.floor((item.gold ?? 0) * share));
   for (const [equipmentId, amount] of Object.entries(item.equipment ?? {})) {
     setEquipmentStock(
       nation, equipmentId, equipmentStock(nation, equipmentId) + amount * share,
