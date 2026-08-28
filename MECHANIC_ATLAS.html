@@ -1,0 +1,2082 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Imperial Eye Mechanic Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:opsz,wght@6..96,400;6..96,600;6..96,700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap">
+<style>
+/* ============================================================ TOKENS ===
+   Light  = ledger paper.   Dark = X-ray plate.
+   Full palette on bare :root so the un-stamped (system) state is complete. */
+:root {
+  --ground:      #efe9db;
+  --surface:     #f7f3e9;
+  --surface-2:   #e7e0cf;
+  --ink:         #1b2226;
+  --ink-2:       #4a555b;
+  --ink-3:       #77828a;
+  --rule:        #d3cab5;
+  --rule-strong: #b9ae94;
+  --brass:       #8a6d12;
+  --brass-bright:#a8850f;
+  --strong:      #2f6f56;
+  --moderate:    #6b6a2c;
+  --weak:        #9a6218;
+  --none:        #9a4438;
+  --strong-bg:   #dfe9e2;
+  --moderate-bg: #e8e7d6;
+  --weak-bg:     #f0e3d1;
+  --none-bg:     #f2dfd9;
+  --code-bg:     #e9e3d4;
+  --code-ink:    #2a3236;
+  --shadow:      0 1px 0 rgba(27,34,38,.06), 0 10px 28px -22px rgba(27,34,38,.55);
+  --node:        #e7e0cf;
+  --node-ink:    #1b2226;
+  --wire:        #a2977d;
+
+  --f-display: "Bodoni Moda", "Didot", Georgia, serif;
+  --f-body: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground:      #10161a;
+    --surface:     #161e23;
+    --surface-2:   #1d272d;
+    --ink:         #e6ece9;
+    --ink-2:       #a6b4b8;
+    --ink-3:       #74848a;
+    --rule:        #26333a;
+    --rule-strong: #3a4b53;
+    --brass:       #c9a227;
+    --brass-bright:#e0b93c;
+    --strong:      #6fc19f;
+    --moderate:    #c3c06a;
+    --weak:        #dda05a;
+    --none:        #d4776a;
+    --strong-bg:   #142a23;
+    --moderate-bg: #262713;
+    --weak-bg:     #2c2114;
+    --none-bg:     #2c1815;
+    --code-bg:     #0d1418;
+    --code-ink:    #cdd8d6;
+    --shadow:      0 1px 0 rgba(0,0,0,.35), 0 14px 34px -24px rgba(0,0,0,.9);
+    --node:        #1d272d;
+    --node-ink:    #e6ece9;
+    --wire:        #46585f;
+  }
+}
+:root[data-theme="dark"] {
+  --ground:      #10161a;
+  --surface:     #161e23;
+  --surface-2:   #1d272d;
+  --ink:         #e6ece9;
+  --ink-2:       #a6b4b8;
+  --ink-3:       #74848a;
+  --rule:        #26333a;
+  --rule-strong: #3a4b53;
+  --brass:       #c9a227;
+  --brass-bright:#e0b93c;
+  --strong:      #6fc19f;
+  --moderate:    #c3c06a;
+  --weak:        #dda05a;
+  --none:        #d4776a;
+  --strong-bg:   #142a23;
+  --moderate-bg: #262713;
+  --weak-bg:     #2c2114;
+  --none-bg:     #2c1815;
+  --code-bg:     #0d1418;
+  --code-ink:    #cdd8d6;
+  --shadow:      0 1px 0 rgba(0,0,0,.35), 0 14px 34px -24px rgba(0,0,0,.9);
+  --node:        #1d272d;
+  --node-ink:    #e6ece9;
+  --wire:        #46585f;
+}
+
+/* ============================================================== BASE === */
+* { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--f-body);
+  font-size: 15px;
+  line-height: 1.6;
+  font-feature-settings: "kern" 1;
+}
+a { color: var(--brass); text-decoration-thickness: 1px; text-underline-offset: 2px; }
+:focus-visible { outline: 2px solid var(--brass-bright); outline-offset: 2px; border-radius: 2px; }
+@media (prefers-reduced-motion: reduce) { * { animation: none !important; transition: none !important; } }
+
+.wrap { display: grid; grid-template-columns: 250px minmax(0, 1fr); gap: 0; min-height: 100vh; }
+.wrap > * { min-width: 0; }
+@media (max-width: 900px) { .wrap { grid-template-columns: minmax(0, 1fr); } }
+
+/* ============================================================== RAIL === */
+.rail {
+  border-right: 1px solid var(--rule);
+  background: var(--surface);
+  padding: 26px 20px 40px;
+  position: sticky; top: 0; align-self: start; max-height: 100vh; overflow-y: auto;
+}
+@media (max-width: 900px) { .rail { position: static; max-height: none; border-right: 0; border-bottom: 1px solid var(--rule); } }
+.mark { font-family: var(--f-display); font-size: 25px; line-height: 1.12; font-weight: 700; letter-spacing: -.01em; margin: 0 0 2px; }
+.mark em { font-style: italic; color: var(--brass); }
+.mark-sub { font-size: 11px; letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3); margin: 0 0 24px; }
+.rail h3 { font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--ink-3); margin: 22px 0 9px; font-weight: 600; }
+.mech { display: flex; align-items: baseline; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--rule); font-size: 14px; width: 100%; text-align: left; background: none; border-left: 0; border-right: 0; border-top: 0; font-family: inherit; color: inherit; }
+button.mech { cursor: pointer; }
+button.mech:hover { color: var(--ink); }
+button.mech[aria-current="true"] { color: var(--brass); }
+button.mech[aria-current="true"] .tick { color: var(--brass); }
+.mech.done { color: var(--ink); font-weight: 600; }
+.mech.todo { color: var(--ink-3); }
+.mech .tick { font-family: var(--f-mono); font-size: 10px; color: var(--brass); }
+.mech.todo .tick { color: var(--ink-3); }
+.navlist { list-style: none; margin: 0; padding: 0; }
+.navlist button {
+  width: 100%; text-align: left; background: none; border: 0; cursor: pointer;
+  font: inherit; font-size: 13.5px; color: var(--ink-2); padding: 6px 10px;
+  border-left: 2px solid transparent; border-radius: 0 3px 3px 0;
+}
+.navlist button:hover { color: var(--ink); background: var(--surface-2); }
+.navlist button[aria-current="true"] { color: var(--ink); border-left-color: var(--brass); background: var(--surface-2); font-weight: 600; }
+
+/* =========================================================== CONTENT === */
+main { padding: 40px 40px 96px; max-width: 1180px; min-width: 0; overflow-x: clip; }
+.rail { min-width: 0; }
+@media (max-width: 700px) { main { padding: 26px 18px 64px; } }
+.eyebrow { font-family: var(--f-mono); font-size: 11px; letter-spacing: .15em; text-transform: uppercase; color: var(--brass); margin: 0 0 8px; }
+h1 { font-family: var(--f-display); font-weight: 700; font-size: clamp(38px, 6vw, 62px); line-height: 1.02; letter-spacing: -.02em; margin: 0 0 14px; text-wrap: balance; }
+h2 { font-family: var(--f-display); font-weight: 600; font-size: clamp(24px, 3.2vw, 32px); line-height: 1.14; letter-spacing: -.01em; margin: 0 0 6px; text-wrap: balance; }
+h3 { font-size: 15px; font-weight: 700; letter-spacing: .01em; margin: 30px 0 8px; }
+h4 { font-size: 12px; font-weight: 600; letter-spacing: .11em; text-transform: uppercase; color: var(--ink-3); margin: 26px 0 8px; }
+p { margin: 0 0 14px; max-width: 68ch; }
+.lede { font-size: 17px; color: var(--ink-2); max-width: 66ch; }
+hr.rule { border: 0; border-top: 1px solid var(--rule); margin: 34px 0; }
+
+.panel { display: none; }
+.panel.on { display: block; animation: fade .18s ease-out; }
+@keyframes fade { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+
+/* ============================================================= CHIPS === */
+.chip {
+  display: inline-flex; align-items: center; gap: 5px; white-space: nowrap;
+  font-family: var(--f-mono); font-size: 10px; font-weight: 600; letter-spacing: .08em;
+  text-transform: uppercase; padding: 2px 7px; border-radius: 2px; border: 1px solid;
+}
+.v-strong   { color: var(--strong);   background: var(--strong-bg);   border-color: var(--strong); }
+.v-moderate { color: var(--moderate); background: var(--moderate-bg); border-color: var(--moderate); }
+.v-weak     { color: var(--weak);     background: var(--weak-bg);     border-color: var(--weak); }
+.v-none     { color: var(--none);     background: var(--none-bg);     border-color: var(--none); }
+.v-neutral  { color: var(--ink-3);    background: var(--surface-2);   border-color: var(--rule-strong); }
+
+/* ============================================================ TABLES === */
+.scroller { overflow-x: auto; margin: 0 0 20px; border: 1px solid var(--rule); border-radius: 3px; background: var(--surface); box-shadow: var(--shadow); }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+caption { caption-side: top; text-align: left; padding: 11px 14px 9px; font-size: 12px; color: var(--ink-2); border-bottom: 1px solid var(--rule); background: var(--surface-2); }
+caption b { color: var(--ink); }
+th, td { padding: 7px 12px; text-align: left; border-bottom: 1px solid var(--rule); vertical-align: top; }
+thead th { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 600; white-space: nowrap; background: var(--surface-2); }
+tbody tr:last-child td { border-bottom: 0; }
+tbody tr:hover td { background: var(--surface-2); }
+td.num, th.num { text-align: right; font-family: var(--f-mono); font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.site { font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
+tr.hl td { background: var(--surface-2); }
+tr.hl td:first-child { box-shadow: inset 3px 0 0 var(--brass); }
+
+code, kbd { font-family: var(--f-mono); font-size: .9em; background: var(--code-bg); color: var(--code-ink); padding: 1px 5px; border-radius: 2px; }
+pre { margin: 0 0 20px; overflow-x: auto; background: var(--code-bg); color: var(--code-ink); border: 1px solid var(--rule); border-radius: 3px; padding: 14px 16px; font-family: var(--f-mono); font-size: 12.5px; line-height: 1.62; }
+pre code { background: none; padding: 0; }
+pre .cm { color: var(--ink-3); font-style: italic; }
+pre .hi { color: var(--brass-bright); font-weight: 600; }
+
+.src { display: block; font-family: var(--f-mono); font-size: 11px; color: var(--ink-3); letter-spacing: .02em; margin: 0 0 6px; }
+
+/* ============================================================= CARDS === */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(212px, 1fr)); gap: 12px; margin: 0 0 24px; }
+.card { border: 1px solid var(--rule); border-radius: 3px; background: var(--surface); padding: 14px 15px; box-shadow: var(--shadow); }
+.card .k { font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); margin-bottom: 6px; }
+.card .v { font-family: var(--f-display); font-size: 30px; line-height: 1; font-weight: 700; letter-spacing: -.02em; }
+.card .v small { font-family: var(--f-body); font-size: 13px; font-weight: 500; letter-spacing: 0; color: var(--ink-2); }
+.card .n { font-size: 12px; color: var(--ink-2); margin-top: 7px; line-height: 1.45; }
+
+.note { border-left: 2px solid var(--brass); background: var(--surface); padding: 12px 16px; margin: 0 0 20px; border-radius: 0 3px 3px 0; }
+.note p:last-child { margin-bottom: 0; }
+.note .t { font-size: 10px; letter-spacing: .13em; text-transform: uppercase; color: var(--brass); font-weight: 600; margin-bottom: 5px; }
+.note.bad { border-left-color: var(--none); }
+.note.bad .t { color: var(--none); }
+.note.good { border-left-color: var(--strong); }
+.note.good .t { color: var(--strong); }
+
+/* ======================================================= CONNECTIONS === */
+.conns { display: grid; gap: 7px; margin: 0 0 22px; }
+details.conn { border: 1px solid var(--rule); border-radius: 3px; background: var(--surface); overflow: hidden; }
+details.conn[open] { border-color: var(--rule-strong); box-shadow: var(--shadow); }
+details.conn summary {
+  cursor: pointer; padding: 10px 14px; display: grid; align-items: center; gap: 10px;
+  grid-template-columns: minmax(0,1fr) auto; list-style: none; font-size: 14px;
+}
+details.conn summary::-webkit-details-marker { display: none; }
+details.conn summary:hover { background: var(--surface-2); }
+.conn .path { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; }
+.conn .from, .conn .to { font-weight: 600; }
+.conn .to { color: var(--brass); }
+.conn .arr { font-family: var(--f-mono); color: var(--ink-3); }
+.conn .val { font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-2); }
+.conn .body { padding: 2px 14px 14px; border-top: 1px solid var(--rule); }
+.conn dl { display: grid; grid-template-columns: 92px minmax(0,1fr); gap: 4px 14px; margin: 12px 0 0; font-size: 13px; }
+.conn dt { font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); padding-top: 3px; }
+.conn dd { margin: 0; }
+.conn dd.mono { font-family: var(--f-mono); font-size: 11.5px; color: var(--ink-2); }
+
+/* =========================================================== DIAGRAM === */
+.figure { border: 1px solid var(--rule); border-radius: 3px; background: var(--surface); box-shadow: var(--shadow); margin: 0 0 12px; }
+.figure .cap { padding: 11px 14px; border-bottom: 1px solid var(--rule); background: var(--surface-2); font-size: 12px; color: var(--ink-2); }
+.figure .cap b { color: var(--ink); }
+.figbox { overflow-x: auto; padding: 18px 14px; }
+.figbox svg { display: block; width: 100%; min-width: 900px; height: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: 8px 18px; padding: 10px 14px; border-top: 1px solid var(--rule); font-size: 11.5px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.legend i { width: 22px; height: 0; border-top-width: 2px; display: inline-block; }
+.svg-n { font-family: var(--f-body); font-size: 12px; font-weight: 600; fill: var(--node-ink); }
+.svg-s { font-family: var(--f-mono); font-size: 9.5px; fill: var(--ink-3); }
+.svg-e { font-family: var(--f-mono); font-size: 9px; fill: var(--ink-3); }
+.svg-h { font-family: var(--f-mono); font-size: 9.5px; letter-spacing: .14em; fill: var(--ink-3); text-transform: uppercase; }
+
+pre.mermaid { background: var(--code-bg); color: var(--code-ink); }
+
+.foot { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--rule); font-size: 12.5px; color: var(--ink-3); max-width: 72ch; }
+.tag { display: inline-block; font-family: var(--f-mono); font-size: 10px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); border: 1px solid var(--rule-strong); border-radius: 2px; padding: 1px 6px; margin-right: 6px; }
+ul.tight { margin: 0 0 16px; padding-left: 20px; max-width: 68ch; }
+ul.tight li { margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<aside class="rail">
+  <p class="mark">Mechanic <em>Atlas</em></p>
+  <p class="mark-sub">Imperial Eye · hexwar</p>
+
+  <h3>Mechanics</h3>
+  <div id="mechs">
+    <button class="mech done" data-m="budget" aria-current="true"><span class="tick">■</span> Budget</button>
+    <button class="mech done" data-m="trade"><span class="tick">■</span> Trade</button>
+    <span class="mech todo"><span class="tick">□</span> Population</span>
+    <span class="mech todo"><span class="tick">□</span> Politics</span>
+    <span class="mech todo"><span class="tick">□</span> Military</span>
+    <span class="mech todo"><span class="tick">□</span> Construction</span>
+    <span class="mech todo"><span class="tick">□</span> Technology</span>
+  </div>
+
+  <h3 id="navhead">Budget sections</h3>
+  <ul class="navlist" id="nav"></ul>
+
+  <h3>Method</h3>
+  <p style="font-size:12px;color:var(--ink-3);line-height:1.5;margin:0">
+    Static read of <code>src/</code> plus process-isolated scenario runs through
+    <code>scripts/audit/harness.mjs</code>. Seeds <code>ix-a/b/c</code>, 60 warm-up
+    weeks as AI then 260 measured weeks as player, wars suppressed unless stated,
+    lever re-applied weekly. Figures are 3-seed medians. No game code was modified.
+  </p>
+</aside>
+
+<main>
+
+<!-- ================================================== OVERVIEW ======== -->
+<section class="panel on" id="p-budget-overview">
+  <p class="eyebrow">Mechanic X-ray · 01</p>
+  <h1>Budget</h1>
+  <p class="lede">The weekly closing of <code>nation.gold</code> and the nine dials
+  that steer it. Budget owns almost none of the numbers it spends — it is a
+  collection point and a rationing device. Every claim below is tied to a file,
+  a function and a line range, and every behavioural claim to a measurement.</p>
+
+  <div class="cards">
+    <div class="card"><div class="k">Strongest dial</div><div class="v">21×</div>
+      <div class="n">treasury swing across the tariff band — larger than every other dial combined</div></div>
+    <div class="card"><div class="k">Weakest dial</div><div class="v">+1 <small>tech / 30 yrs</small></div>
+      <div class="n">what education 25 → 90 actually buys, for 40% of the treasury</div></div>
+    <div class="card"><div class="k">Treasury writers</div><div class="v">13</div>
+      <div class="n"><code>nation.gold</code> write sites, across 6 modules. One of them is the budget.</div></div>
+    <div class="card"><div class="k">AI context cost</div><div class="v">4<small> / 5</small></div>
+      <div class="n">8 modules, 28 functions, 4 phase-order traps to read one number correctly</div></div>
+  </div>
+
+  <h3>The structural fact: there are two budgets</h3>
+  <p>This is the thing to understand before anything else. Two independent
+  accounting objects both write the treasury, and the ledger re-imports three
+  lines from the first into the second so the screen can show one statement.</p>
+
+  <div class="scroller">
+    <table>
+      <caption>Two parallel accounting systems, one <b>nation.gold</b></caption>
+      <thead><tr><th></th><th><code>nation.budget</code></th><th><code>nation.economy</code></th></tr></thead>
+      <tbody>
+        <tr><td>Built by</td><td class="site">cities.js nationBudget() 381-457</td><td class="site">economy.js fiscalBalance() 2678-2728</td></tr>
+        <tr><td>Holds</td><td>crown / city / province gold, food, timber, iron; army <b>wages</b>; administration</td><td>class taxes, tariffs, social spending, construction upkeep, debt</td></tr>
+        <tr><td>Applied to gold</td><td class="site">turn.js produce() 563</td><td class="site">economy.js 2727</td></tr>
+        <tr><td>Reported as</td><td><code>cityRevenue</code>, <code>armyCost</code>, <code>administrationCost</code></td><td>the other 22 ledger lines</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>The nine dials, ranked by measured consequence</h3>
+  <div class="scroller">
+    <table>
+      <caption>Verdicts are measured, not inferred. <b>Reachable range</b> is what the code allows after every clamp — not what the slider shows.</caption>
+      <thead><tr><th>Dial</th><th>Field</th><th>Reachable range</th><th>Verdict</th><th>What it actually buys</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td><b>Tariff</b></td><td class="site">economy.tariff</td><td class="site">−50…25 free trade<br>−15…100 otherwise</td><td><span class="chip v-strong">Strong</span></td><td>21× treasury vs <code>needsMet</code> 0.94 → 0.70. It does <b>not</b> protect industry — see Sensitivity</td></tr>
+        <tr><td><b>Tax · lower</b></td><td class="site">economy.taxes.lower</td><td class="site">0–100</td><td><span class="chip v-strong">Strong</span></td><td>revenue 16 → 146, but −9% national population and −16 stability</td></tr>
+        <tr><td><b>Tax · upper</b></td><td class="site">economy.taxes.upper</td><td class="site">0–100</td><td><span class="chip v-strong">Strong</span></td><td>at 100 the upper class reaches <b>zero</b>; private capital 1200 → 679</td></tr>
+        <tr><td><b>Military wages</b></td><td class="site">economy.militaryWages</td><td class="site">25 … 60 / 75 / 100<br>by party doctrine</td><td><span class="chip v-strong">Strong</span></td><td>combat power +24%, organisation recovery, training speed</td></tr>
+        <tr><td><b>Military procurement</b></td><td class="site">economy.militaryProcurement</td><td class="site">same band</td><td><span class="chip v-strong">Strong</span></td><td>supply index 0.13 → 0.23, stockpiles, reinforcement rate</td></tr>
+        <tr><td><b>Welfare</b></td><td class="site">economy.social.welfare</td><td class="site">0–100</td><td><span class="chip v-strong">Strong</span></td><td>+22 stability and it <b>ends richer</b> than welfare 0</td></tr>
+        <tr><td><b>Tax · middle</b></td><td class="site">economy.taxes.middle</td><td class="site">0–100</td><td><span class="chip v-moderate">Moderate</span></td><td>−30% middle-class population by demotion; GDP rises</td></tr>
+        <tr><td><b>Public health</b></td><td class="site">economy.social.health</td><td class="site">0–100</td><td><span class="chip v-weak">Weak</span></td><td>+0.66% population over 5 years for +34 gold/week</td></tr>
+        <tr><td><b>Administration</b></td><td class="site">economy.adminFunding</td><td class="site">30–100</td><td><span class="chip v-weak">Weak</span></td><td>one correct answer (100) below ~2.9M population</td></tr>
+        <tr><td><b>Education</b></td><td class="site">economy.social.education</td><td class="site">floor…100<br><b>floored</b> by programme</td><td><span class="chip v-none">Negligible</span></td><td>+79% research points → <b>one extra technology in 30 years</b></td></tr>
+        <tr><td><b>Subsidy policy</b></td><td class="site">economy.subsidyPolicy</td><td class="site">manual / strategic / none</td><td><span class="chip v-none">Not a lever</span></td><td>all three are bit-identical in peacetime</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note good">
+    <div class="t">Control integrity — passed</div>
+    <p>Every dial set once at week 0 on a player nation was still exactly there
+    260 weeks later. The AI never touches the player's budget: every branch in
+    <code>runEconomicAI() 3072-3076</code> is gated on <code>delegationActive</code>,
+    and delegation defaults to <code>false</code>. On an AI nation the same dials
+    all drift to doctrine — tariff 0 → 100, admin 30 → 100, welfare 100 → 0.
+    The one thing that <em>does</em> move a player's dial uninvited is
+    <code>politics.js applyGovernmentLimits() 206-218</code>, which re-clamps the
+    tariff and both army dials to the ruling party's band every week.</p>
+  </div>
+
+  <div class="note bad">
+    <div class="t">The treasury binds downward only</div>
+    <p>Holding a nation at zero gold costs it 40% of its industry (factory levels
+    40 → 24, GDP 792 → 597) because construction is a hard gate. But giving a
+    nation <b>+100,000 gold changes nothing at all</b> — identical industry, GDP
+    and project count. A peaceful treasury climbs to 52k–250k with no sink, and
+    from there every dial is a preference rather than a decision. War restores the
+    pressure, and only war: over a 50-year campaign with wars enabled,
+    <b>29/29 nations borrowed and 27/29 defaulted</b>.</p>
+  </div>
+</section>
+
+<!-- =================================================== CODE MAP ======= -->
+<section class="panel" id="p-budget-codemap">
+  <p class="eyebrow">Budget · 02</p>
+  <h2>Code map</h2>
+  <p class="lede">Where every part of the mechanic lives. Line ranges verified
+  against the tree at the time of writing.</p>
+
+  <div class="scroller">
+    <table>
+      <caption>Budget code sites — <b>role → file → function → lines</b></caption>
+      <thead><tr><th>Role</th><th>File</th><th>Function</th><th class="num">Lines</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr><td>Player sets a dial</td><td class="site">src/ui/screens.js</td><td class="site">render_budget + handlers</td><td class="num">1549-1780<br>2600-2700</td><td>sliders emit <code>data-policy</code>, handler calls <code>setFiscalPolicy</code></td></tr>
+        <tr class="hl"><td><b>Single write door</b></td><td class="site">src/game/economy.js</td><td class="site">setFiscalPolicy</td><td class="num">1629-1678</td><td>clamps and stores; the only sanctioned writer of the nine dials</td></tr>
+        <tr><td>Party band</td><td class="site">src/game/politics.js</td><td class="site">fiscalPolicyLimits</td><td class="num">193-204</td><td>tariff and army-spending min/max from the ruling party</td></tr>
+        <tr><td>Weekly re-clamp</td><td class="site">src/game/politics.js</td><td class="site">applyGovernmentLimits</td><td class="num">206-218</td><td>re-clamps tariff + both army dials every week, <b>player included</b></td></tr>
+        <tr><td>Education floor</td><td class="site">src/game/economy.js</td><td class="site">socialFloorOf</td><td class="num">1738-1754</td><td><code>max(HIGHER_EDUCATION floor, programmeFloorOf)</code></td></tr>
+        <tr class="hl"><td><b>Core equation</b></td><td class="site">src/game/economy.js</td><td class="site">fiscalBalance</td><td class="num">2678-2728</td><td>class income → tax → <code>fiscalNet</code> → <code>nation.gold</code></td></tr>
+        <tr><td>Collection efficiency</td><td class="site">src/game/economy.js</td><td class="site">taxEfficiency</td><td class="num">1325-1328</td><td><code>0.55 + 0.45·clamp(adminFunding/100, 0.3, 1)</code></td></tr>
+        <tr><td>Social bill</td><td class="site">src/game/economy.js</td><td class="site">socialSpendingCost</td><td class="num">1797-1807</td><td><code>Σ (pop/10000)·level·rate</code> + reform burden</td></tr>
+        <tr><td>Tariff revenue</td><td class="site">src/game/economy.js</td><td class="site">settleGlobalTrade</td><td class="num">3279-3422</td><td><code>importValue × tariff/100</code>, added to <code>fiscalNet</code> <em>and</em> to gold</td></tr>
+        <tr><td>Debt close</td><td class="site">src/game/economy.js</td><td class="site">settleDebt</td><td class="num">3463-3517</td><td>interest, borrow, default, restructure, repay</td></tr>
+        <tr><td>Ledger</td><td class="site">src/game/economy.js</td><td class="site">updateLedger</td><td class="num">3522-3615</td><td>25 line items and the balance-sheet identity</td></tr>
+        <tr><td>City / army budget</td><td class="site">src/game/cities.js</td><td class="site">nationBudget</td><td class="num">381-457</td><td>crown gold, army <b>wages</b>, administration</td></tr>
+        <tr><td>Admin cost</td><td class="site">src/game/cities.js</td><td class="site">administrationCost</td><td class="num">210-215</td><td><code>(cities−3)^1.45·0.9 + provinces·0.06 + distance + (pop−250k)/10k·0.06</code></td></tr>
+        <tr><td>Applied to treasury</td><td class="site">src/game/turn.js</td><td class="site">produce</td><td class="num">554-565</td><td><code>nation.gold += budget.net.gold</code></td></tr>
+        <tr><td>AI fiscal</td><td class="site">src/game/economy.js</td><td class="site">adjustFiscalAI</td><td class="num">2853-2907</td><td>±5 tax in a broke/rich band; ±2 tariff drift toward doctrine</td></tr>
+        <tr><td>AI war / crisis</td><td class="site">src/game/economy.js</td><td class="site">adjustWarFiscalAI</td><td class="num">2917-3009</td><td>war, peace and crisis fiscal programmes</td></tr>
+        <tr><td>AI social</td><td class="site">src/game/economy.js</td><td class="site">adjustSocialAI</td><td class="num">2742-2801</td><td>raises/cuts one programme by 10 — writes <code>economy.social</code> <b>directly</b></td></tr>
+        <tr><td>Delegation gate</td><td class="site">src/game/economy.js</td><td class="site">runEconomicAI</td><td class="num">3069-3157</td><td><code>budget = !player || delegationActive(nation,'budget')</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>The weekly treasury identity</h3>
+  <p>Execution order inside one <code>endTurn()</code>. Thirteen write sites across
+  six modules; only <code>fiscalBalance</code> is what a reader would call
+  &ldquo;the budget&rdquo;.</p>
+<pre><code>produce()          nation.gold += budget.net.gold          <span class="cm">// cities.js: crown gold − army wages − administration</span>
+payTreaties()      nation.gold −= due / += due             <span class="cm">// turn.js 599-600: reparations, vassal tribute</span>
+runNationEconomy() nation.gold −= retainedCost             <span class="cm">// 3912  military stockpiling</span>
+                   nation.gold −= consumptionCost          <span class="cm">// 3947  army weekly consumption</span>
+                   nation.gold −= support                  <span class="cm">// 2407  factory subsidies</span>
+                   <span class="hi">nation.gold += economy.fiscalNet</span>       <span class="cm">// 2727  taxes − social − construction upkeep</span>
+finishEconomy()    nation.gold −= cost                     <span class="cm">// 3264  strategic equipment imports</span>
+                   nation.gold += tariffRevenue+settlement <span class="cm">// 3420</span>
+                   settleDebt()                            <span class="cm">// 3467/3479/3488/3509 interest, borrow, default, repay</span>
+construction/AI    nation.gold −= price                    <span class="cm">// construction.js 503,556 · command.js 1020 · companies.js 439</span></code></pre>
+
+  <div class="note good">
+    <div class="t">Invariant L9 — verified exact</div>
+    <p><code>Δgold == ledger.net + borrowed − repaid + defaulted</code>. Measured
+    over 12 consecutive weeks: deviation <b>0.00 every single week</b>. On the hot
+    path the ledger is trustworthy — which makes it the right source for every
+    number the UI shows (see <em>Simplification</em>, where two of the three UI
+    balances are not).</p>
+    <p><b>But L9 is asserted, not enforced.</b> Nothing in <code>src/</code> checks
+    it; the identity lives only in <code>ACCOUNTING_INVARIANTS.md</code> and in
+    <code>scripts/audit/</code>, which the game never runs. Four refund paths credit
+    the treasury without booking a ledger entry, and break L9 in any week they fire:
+    <code>economy.js dropInvalidProjects 2100</code> (the state branch — the private
+    branch three lines above is correct, so the asymmetry sits inside one
+    <code>if/else</code>), <code>recruitment.js cancelTraining 475</code>,
+    <code>construction.js cancelConstruction 615-617</code> (its correction is
+    clamped at 0 while <code>projectGold</code> is zeroed weekly at 3554), and
+    <code>construction.js 906-909</code> (no correction at all). None fired in the
+    measured window — which is the point: the invariant holds by luck of the hot
+    path, not by construction.</p>
+  </div>
+
+  <h3>Weekly phase order</h3>
+<pre><code>contacts → ai → diplomacy → reinforcements → training → command → movement
+→ provinces → workers(growCities) → <span class="hi">produce</span>(nationBudget, gold += budget.net.gold, payTreaties)
+→ <span class="hi">economy</span>(beginEconomy → runNationEconomy ×N → finishEconomy)
+→ construction + runPolitics(applyGovernmentLimits, elections) → battles → orders</code></pre>
+  <ul class="tight">
+    <li><b>Trap.</b> <code>economy.fiscalNet</code> is pre-tariff inside <code>runNationEconomy</code> and post-tariff after <code>finishEconomy</code>. <code>runEconomicAI</code> at line 3973 reads the pre-tariff value.</li>
+    <li><code>populationDemand</code> reads class income and <code>taxPaid</code> from <em>last</em> week — <code>fiscalBalance</code> runs after it (documented at 2566-2569).</li>
+    <li><code>constructionUpkeep</code> read in <code>fiscalBalance</code> is one week stale.</li>
+    <li><code>applyGovernmentLimits</code> runs after the economy, so a party change re-clamps dials for <em>next</em> week.</li>
+  </ul>
+</section>
+
+<!-- ==================================================== GRAPH ========= -->
+<section class="panel" id="p-budget-graph">
+  <p class="eyebrow">Budget · 03</p>
+  <h2>Causal graph</h2>
+  <p class="lede">Only verified edges. Dial colour encodes the measured verdict;
+  line style encodes the edge kind.</p>
+
+  <div class="figure">
+    <div class="cap"><b>Budget causal graph</b> — nine dials, one treasury, and the feedback loop through Politics that re-clamps two of the dials.</div>
+    <div class="figbox">
+      <svg viewBox="0 0 980 748" role="img" aria-label="Causal graph of the Budget mechanic. Nine player dials feed the treasury on the left-hand bus and reach their own consumers on the right. Politics feeds back and re-clamps the tariff and army dials every week.">
+        <defs>
+          <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--wire)"/></marker>
+          <marker id="ahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--brass)"/></marker>
+        </defs>
+
+        <text class="svg-h" x="46" y="24">Player dials</text>
+        <text class="svg-h" x="692" y="24">What each dial reaches directly</text>
+
+        <g fill="none" stroke="var(--brass)" stroke-width="1.5" opacity=".85">
+          <path d="M24,57 L24,486 L316,486"/>
+        </g>
+        <g fill="none" stroke="var(--brass)" stroke-width="1.1" opacity=".7">
+          <path d="M46,57 L24,57"/>
+          <path d="M46,99 L24,99"/>
+          <path d="M46,141 L24,141"/>
+          <path d="M46,183 L24,183"/>
+          <path d="M46,225 L24,225"/>
+          <path d="M46,267 L24,267"/>
+          <path d="M46,309 L24,309"/>
+          <path d="M46,351 L24,351"/>
+          <path d="M46,393 L24,393"/>
+        </g>
+        <circle cx="24" cy="486" r="2.6" fill="var(--brass)"/>
+        <text class="svg-e" x="34" y="478" fill="var(--brass)">every dial moves gold</text>
+
+        <rect x="46" y="40" width="246" height="34" rx="3" fill="var(--strong-bg)" stroke="var(--strong)"/>
+        <text class="svg-n" x="57" y="55">Tariff</text>
+        <text class="svg-s" x="57" y="67">21x treasury · the strongest dial</text>
+        <rect x="46" y="82" width="246" height="34" rx="3" fill="var(--strong-bg)" stroke="var(--strong)"/>
+        <text class="svg-n" x="57" y="97">Tax — lower / middle / upper</text>
+        <text class="svg-s" x="57" y="109">three distinct failure modes</text>
+        <rect x="46" y="124" width="246" height="34" rx="3" fill="var(--strong-bg)" stroke="var(--strong)"/>
+        <text class="svg-n" x="57" y="139">Welfare</text>
+        <text class="svg-s" x="57" y="151">+22 stability, pays for itself</text>
+        <rect x="46" y="166" width="246" height="34" rx="3" fill="var(--weak-bg)" stroke="var(--weak)"/>
+        <text class="svg-n" x="57" y="181">Public health</text>
+        <text class="svg-s" x="57" y="193">+0.66% population / 5 yrs</text>
+        <rect x="46" y="208" width="246" height="34" rx="3" fill="var(--strong-bg)" stroke="var(--strong)"/>
+        <text class="svg-n" x="57" y="223">Military wages</text>
+        <text class="svg-s" x="57" y="235">combat power 0.55 + f·0.45</text>
+        <rect x="46" y="250" width="246" height="34" rx="3" fill="var(--strong-bg)" stroke="var(--strong)"/>
+        <text class="svg-n" x="57" y="265">Military procurement</text>
+        <text class="svg-s" x="57" y="277">supply · stockpile · reinforce</text>
+        <rect x="46" y="292" width="246" height="34" rx="3" fill="var(--weak-bg)" stroke="var(--weak)"/>
+        <text class="svg-n" x="57" y="307">Administration</text>
+        <text class="svg-s" x="57" y="319">one correct answer: 100</text>
+        <rect x="46" y="334" width="246" height="34" rx="3" fill="var(--none-bg)" stroke="var(--none)"/>
+        <text class="svg-n" x="57" y="349">Education</text>
+        <text class="svg-s" x="57" y="361">+1 technology / 30 years</text>
+        <rect x="46" y="376" width="246" height="34" rx="3" fill="var(--none-bg)" stroke="var(--none)"/>
+        <text class="svg-n" x="57" y="391">Subsidy policy</text>
+        <text class="svg-s" x="57" y="403">3 options, 1 outcome</text>
+
+        <rect x="316" y="440" width="330" height="92" rx="3" fill="var(--surface-2)" stroke="var(--brass)" stroke-width="2"/>
+        <text class="svg-n" x="332" y="464" style="font-size:14px">nation.gold</text>
+        <text class="svg-s" x="332" y="480">13 write sites, 6 modules — fiscalBalance is one</text>
+        <text class="svg-e" x="332" y="498">taxes × taxEfficiency − social − construction</text>
+        <text class="svg-e" x="332" y="512">+ tariff + settlement ← added LATE (finishEconomy)</text>
+        <text class="svg-e" x="332" y="526" fill="var(--brass)">Δgold = ledger.net ± financing   (exact, 0.00)</text>
+
+        <g fill="none" stroke="var(--wire)" stroke-width="1.4" marker-end="url(#ah)">
+          <path d="M292,57 C442,57 540,55 690,55"/>
+          <path d="M292,99 C442,99 540,96 690,96"/>
+          <path d="M292,141 C442,141 540,108 690,108"/>
+          <path d="M292,183 C442,183 540,120 690,120"/>
+          <path d="M292,225 C442,225 540,204 690,204"/>
+          <path d="M292,267 C442,267 540,222 690,222"/>
+          <path d="M292,351 C442,351 540,267 690,267"/>
+          <path d="M292,393 C442,393 540,320 690,320"/>
+        </g>
+        <g fill="none" stroke="var(--wire)" stroke-width="1.4" stroke-dasharray="5 4">
+          <path d="M292,351 C442,351 540,267 690,267" stroke="var(--none)" opacity=".9"/>
+        </g>
+
+        <rect x="692" y="36" width="256" height="38" rx="3" fill="var(--node)" stroke="var(--rule-strong)"/>
+        <text class="svg-n" x="704" y="54">Trade</text>
+        <text class="svg-s" x="704" y="67">import appetite · export access</text>
+        <rect x="692" y="86" width="256" height="44" rx="3" fill="var(--node)" stroke="var(--rule-strong)"/>
+        <text class="svg-n" x="704" y="104">Population</text>
+        <text class="svg-s" x="704" y="117">satisfaction · needsMet · growth</text>
+        <rect x="692" y="142" width="256" height="38" rx="3" fill="var(--node)" stroke="var(--rule-strong)"/>
+        <text class="svg-n" x="704" y="160">Politics</text>
+        <text class="svg-s" x="704" y="173">party support → election</text>
+        <rect x="692" y="192" width="256" height="44" rx="3" fill="var(--node)" stroke="var(--rule-strong)"/>
+        <text class="svg-n" x="704" y="210">Military</text>
+        <text class="svg-s" x="704" y="223">power · supply · training</text>
+        <rect x="692" y="248" width="256" height="38" rx="3" fill="var(--node)" stroke="var(--rule-strong)"/>
+        <text class="svg-n" x="704" y="266">Technology</text>
+        <text class="svg-s" x="704" y="279">literacy → research points</text>
+        <rect x="692" y="298" width="256" height="44" rx="3" fill="var(--node)" stroke="var(--rule-strong)"/>
+        <text class="svg-n" x="704" y="316">Industry &amp; Construction</text>
+        <text class="svg-s" x="704" y="329">HARD gold gate</text>
+        <rect x="692" y="354" width="256" height="38" rx="3" fill="var(--node)" stroke="var(--rule-strong)"/>
+        <text class="svg-n" x="704" y="372">Debt</text>
+        <text class="svg-s" x="704" y="385">27/29 nations default in war</text>
+
+        <path d="M732,130 L732,140" fill="none" stroke="var(--wire)" stroke-width="1.4" marker-end="url(#ah)"/>
+        <g fill="none" stroke="var(--wire)" stroke-width="1.6" marker-end="url(#ah)">
+          <path d="M646,470 C668,470 664,350 690,338"/>
+          <path d="M646,498 C672,498 668,396 690,380"/>
+        </g>
+        <text class="svg-e" x="656" y="432">hard gate</text>
+
+        <path d="M948,373 C966,373 968,560 700,560 L660,566 C650,566 648,556 648,538"
+              fill="none" stroke="var(--wire)" stroke-width="1.4" stroke-dasharray="4 4" marker-end="url(#ah)"/>
+        <text class="svg-e" x="352" y="580">war and default are the only forces that make the treasury bind</text>
+
+        <path d="M948,152 C972,152 976,10 900,10 L172,10 C168,10 166,18 166,38"
+              fill="none" stroke="var(--brass)" stroke-width="1.8" stroke-dasharray="2 4" marker-end="url(#ahb)"/>
+        <text class="svg-e" x="196" y="22" fill="var(--brass)">election → new fiscalPolicyLimits → re-clamps tariff + army dials, weekly</text>
+        <path d="M166,74 L166,206" fill="none" stroke="var(--brass)" stroke-width="1.2" stroke-dasharray="2 4" opacity=".55" marker-end="url(#ahb)"/>
+
+        <line x1="46" y1="606" x2="948" y2="606" stroke="var(--rule)"/>
+        <text class="svg-h" x="46" y="626">Hidden edges a player never sees</text>
+        <text class="svg-e" x="46" y="642">Tariff → procureStrategicGoods() 3244 · the state pays price × (1 + tariff/100) on its OWN military imports</text>
+        <text class="svg-e" x="46" y="656">Tax(upper) → fiscalBalance() 2696 → politics.privateCapital · at 100% the pool falls 1200 → 679 and private factories stop</text>
+        <text class="svg-e" x="46" y="670">Tax(any) → populationDemand() 2649 · satisfaction −= rate × 0.28, on top of the income loss</text>
+        <text class="svg-e" x="46" y="684">Subsidy → profit = 0 stops layoffs (2405 → 2193) but ALSO freezes the plant: autoUpgradeFactory() 1985 needs profit &gt; 0</text>
+        <text class="svg-e" x="46" y="698">creditPenalty → construction.js upkeepFactor() 269 · construction power scaled by (1 − penalty)</text>
+        <text class="svg-e" x="46" y="712">Health → provinces.js 790 · read RAW, bypassing socialLevel() — an accessor grep misses it entirely</text>
+        <text class="svg-e" x="46" y="732" fill="var(--brass)">fiscalNet has two values per week: 7.76 when the AI reads it, 33.76 when the ledger does — the AI misses 42% of its income.</text>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i style="border-top-style:solid;border-color:var(--wire)"></i> verified read / write</span>
+      <span><i style="border-top-style:dashed;border-color:var(--wire)"></i> weak or conditional edge</span>
+      <span><i style="border-top-style:dotted;border-color:var(--brass)"></i> feedback: politics re-clamps the dials</span>
+      <span><span class="chip v-strong">Strong</span> <span class="chip v-weak">Weak</span> <span class="chip v-none">Negligible</span> measured verdict</span>
+    </div>
+  </div>
+
+  <h3>Mermaid source</h3>
+  <p>Renders as a diagram where Mermaid is available; kept here as source so the
+  graph stays editable and diffable alongside the code.</p>
+<pre class="mermaid">flowchart TD
+  classDef player fill:#2c4a52,stroke:#7fc8d8,color:#e8f4f8
+  classDef state  fill:#3a3226,stroke:#c9a227,color:#f5ead2
+  classDef sink   fill:#2f2a3d,stroke:#9b8bc4,color:#ece8f6
+  classDef weak   fill:#3a2a2a,stroke:#a05a5a,color:#f2e0e0,stroke-dasharray:4 3
+
+  TARIFF["Tariff&lt;br/&gt;21x treasury swing"]:::player
+  TAX["Class taxes x3&lt;br/&gt;3 distinct failure modes"]:::player
+  MIL["Wages · Procurement&lt;br/&gt;two real axes"]:::player
+  WEL["Welfare&lt;br/&gt;+22 stability, pays for itself"]:::player
+  EDU["Education&lt;br/&gt;+1 tech / 30 yrs"]:::weak
+  ADM["Admin funding&lt;br/&gt;100 always wins"]:::weak
+  SUB["Subsidy policy&lt;br/&gt;3 options, 1 outcome"]:::weak
+
+  TREASURY[("nation.gold&lt;br/&gt;13 writers, 6 modules")]:::state
+
+  TARIFF --&gt;|"importValue x rate"| TREASURY
+  TARIFF --&gt;|"appetite 1/(1+1.6t)"| POP
+  TAX --&gt;|"taxPaid x taxEfficiency"| TREASURY
+  TAX --&gt;|"- rate x 0.28"| POP
+  WEL --&gt;|"relief 0.35 + mood 0.14"| POP
+  ADM --&gt;|"0.55 + 0.45f"| TREASURY
+  MIL --&gt; ARMY
+  SUB -.-&gt;|"only if plants marked"| IND
+  EDU -.-&gt;|"literacy 0.001/wk"| TECH
+
+  POP["Population&lt;br/&gt;satisfaction · needsMet"]:::sink
+  POP --&gt; POLITICS["Politics&lt;br/&gt;party support - election"]:::sink
+  POLITICS --&gt;|"new fiscalPolicyLimits"| TARIFF
+  POLITICS --&gt;|"army band 25-60/75/100"| MIL
+
+  TREASURY --&gt;|"hard gate"| IND["Industry &amp; Construction"]:::sink
+  TREASURY --&gt;|"borrow - default"| DEBT["Debt&lt;br/&gt;27/29 nations default in war"]:::sink
+  DEBT --&gt;|"creditPenalty"| IND
+  ARMY["Military"]:::sink --&gt; WAR["War"]:::sink
+  WAR --&gt;|"the only real gold sink"| TREASURY
+  TECH["Technology"]:::sink
+  IND --&gt;|"wages + profit"| TAX</pre>
+</section>
+
+<!-- ======================================================= IO ========= -->
+<section class="panel" id="p-budget-io">
+  <p class="eyebrow">Budget · 04</p>
+  <h2>Inputs, state, derived, outputs</h2>
+  <p class="lede">What Budget owns, what it merely reports, and what nothing reads at all.</p>
+
+  <h4>Stored canonical state — the only things that must persist</h4>
+  <div class="scroller">
+    <table>
+      <thead><tr><th>Field</th><th>Written by</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td class="site">nation.gold</td><td class="site">13 sites, 6 modules</td><td>turn.js 563 · turn.js 599 · economy.js 2100/2122/2407/2727/3264/3420/3467/3912/3947 · construction.js 503/556/615/884/908 · command.js 1020 · companies.js 439/469/648/759 · recruitment.js 475</td></tr>
+        <tr><td class="site">nation.debt</td><td class="site">settleDebt() 3478-3508</td><td>never written anywhere else</td></tr>
+        <tr><td class="site">economy.creditPenalty</td><td class="site">settleDebt() 3492, 3515</td><td>6 consumers outside economy.js — real teeth</td></tr>
+        <tr><td class="site">economy.taxes.{lower,middle,upper}</td><td class="site">setFiscalPolicy() 1631 · adjustFiscalAI() 2874</td><td>AI's private ceilings are 35 / 42 / 45 — far below the player's 100</td></tr>
+        <tr><td class="site">economy.tariff</td><td class="site">setFiscalPolicy() 1636 · adjustFiscalAI() 2896</td><td>re-clamped weekly by applyGovernmentLimits()</td></tr>
+        <tr><td class="site">economy.militaryWages / militaryProcurement</td><td class="site">setFiscalPolicy() 1640</td><td>party band 25 … 60 / 75 / 100</td></tr>
+        <tr><td class="site">economy.adminFunding</td><td class="site">setFiscalPolicy() 1648</td><td>clamped 30–100</td></tr>
+        <tr><td class="site">economy.social.{education,health,welfare}</td><td class="site">setFiscalPolicy() 1663 · <b>adjustSocialAI() 2779 writes it directly</b></td><td>the direct write bypasses <code>socialFloorOf</code> on the way up</td></tr>
+        <tr><td class="site">economy.subsidyPolicy</td><td class="site">setFiscalPolicy() 1673</td><td>applied only for the player, runNationEconomy() 3857</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>Derived, recomputed every week</h4>
+  <div class="scroller">
+    <table>
+      <thead><tr><th>Name</th><th>Site</th><th>Expression</th></tr></thead>
+      <tbody>
+        <tr><td>taxEfficiency</td><td class="site">economy.js 1325-1328</td><td class="site">0.55 + 0.45 · clamp(adminFunding/100, 0.3, 1)</td></tr>
+        <tr><td>class income</td><td class="site">fiscalBalance() 2698-2707</td><td class="site">incomePool·WEIGHT[c] + wagesPaid·SPLIT[c] + (upper ? profit·0.5 − withheld : 0)</td></tr>
+        <tr><td>tax collected</td><td class="site">fiscalBalance() 2708-2716</td><td class="site">Σ(income · rate) × taxEfficiency</td></tr>
+        <tr><td>tariff revenue</td><td class="site">settleGlobalTrade() 3401</td><td class="site">importValue × tariff/100</td></tr>
+        <tr><td>import appetite</td><td class="site">economy.js 3319</td><td class="site">1 / max(0.05, 1 + (tariff/100)·1.6)</td></tr>
+        <tr><td>export access</td><td class="site">economy.js 3323</td><td class="site">1 / (1 + max(0, tariff/100)·0.5)</td></tr>
+        <tr><td>debtCapacity</td><td class="site">economy.js 3436-3447</td><td class="site">max(50, ledger.income × 26 × (1 − creditPenalty) × techBonus)</td></tr>
+        <tr><td>debtInterestRate</td><td class="site">economy.js 3450-3455</td><td class="site">0.04 + 0.08·load + 0.10·creditPenalty</td></tr>
+        <tr><td>administrationCost</td><td class="site">cities.js 210-215 × 436</td><td class="site">((cities−3)^1.45·0.9 + provinces·0.06 + distance + (pop−250k)/10k·0.06) × funding</td></tr>
+        <tr><td>combat power term</td><td class="site">battles.js 98, 116</td><td class="site">0.55 + (militaryWages/100)·0.45</td></tr>
+        <tr><td>reinforcement rate</td><td class="site">reinforcement.js 20-27</td><td class="site">BASE · (0.25 + max(0.25, proc/100)·supply · 0.75) · generalBonus · techBonus</td></tr>
+        <tr><td>class satisfaction</td><td class="site">populationDemand() 2648-2652</td><td class="site">clamp(0.35 + afford·0.5 − <b>taxRate·0.28</b> + <b>welfare·0.14</b> + reformMood − jobless, 0.08, 0.95)</td></tr>
+        <tr><td>literacy target</td><td class="site">literacyTargetOf() 3804-3809</td><td class="site">clamp(0.08 + edu/100·0.62·(1+HE) + reach, 0, 0.95), approached at 0.001/week</td></tr>
+        <tr><td>province growth · health</td><td class="site">provinces.js 790</td><td class="site">1 + min(100, social.health)/100 · 0.35 &nbsp;<span class="chip v-weak">raw read</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>Dead — verified by grep across <code>src/</code>, <code>scripts/</code> and <code>index.html</code></h4>
+  <div class="scroller">
+    <table>
+      <thead><tr><th>Item</th><th>Site</th><th>Proof</th></tr></thead>
+      <tbody>
+        <tr><td><code>fiscalBalance</code>'s 3rd parameter <code>industrialOutput</code></td><td class="site">economy.js 2678</td><td>never read in the body 2678-2728; only mentioned in a comment saying the industry term was removed. Still passed at 3968.</td></tr>
+        <tr><td><code>corruption()</code>'s 2nd parameter <code>nation</code></td><td class="site">cities.js 182-185</td><td>body uses only <code>cityCount</code></td></tr>
+        <tr><td><code>economy.treasuryHistory</code></td><td class="site">updateLedger() 3569-3572</td><td>52-week series written every turn; no match in <code>src/ui/</code> or <code>index.html</code>. Its own comment claims the budget-screen graph is drawn from it. There is no such graph.</td></tr>
+        <tr><td><code>CLASS_NEEDS_BUDGET</code></td><td class="site">economy.js 355</td><td>a three-entry constant with a justification comment; its only other occurrence in the tree is <em>inside a comment</em> at 2872</td></tr>
+        <tr><td><code>socialClass.savingsDrawn</code></td><td class="site">economy.js 2613</td><td>written for every class every week, read by nothing</td></tr>
+        <tr><td><code>ledger.creditPenalty</code></td><td class="site">updateLedger() 3607</td><td>the ledger's <em>copy</em> has no reader. <code>economy.creditPenalty</code>, the live field, has many — do not confuse them</td></tr>
+        <tr><td><code>nation.economy.armySpending</code></td><td class="site">setFiscalPolicy() 1656-1662</td><td>the legacy branch writes it; the only read is the <code>??=</code> migration at <code>ensureEconomy() 1287-1288</code>, which cannot fire once the two modern fields exist</td></tr>
+        <tr><td><code>economy.literacyTarget</code></td><td class="site">economy.js 3816</td><td>written every week for every nation, read by nothing. (<code>literacyTargetOf()</code>, the function, is very much alive — the cached field is not.)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>One save/load discontinuity</h4>
+  <p><code>city.growth</code> is the sub-integer accumulator that turns standard of
+  living into city population (<code>cities.js growCities() 159-163</code>).
+  <code>save.js:189-190</code> persists <code>pop</code> and <code>pops</code> but
+  <b>not <code>growth</code></b>, and the load path at <code>:353</code> never
+  restores it. Every save/load silently discards up to a full population point of
+  accumulated growth — at the measured rate, several years of health spending on
+  that city.</p>
+
+  <div class="note">
+    <div class="t">Hidden is not dead</div>
+    <p><code>dividendRevenue</code>, <code>shareCost</code>, <code>shareRevenue</code>,
+    <code>borrowed</code>, <code>repaid</code>, <code>defaulted</code> and
+    <code>creditPenalty</code> have no row on the budget screen — but they are all
+    summed into totals the player <em>does</em> see. They are hidden, not dead.
+    A player who defaults sees the treasury stop falling and the interest rate
+    climb, with no line saying why.</p>
+  </div>
+</section>
+
+<!-- ================================================ SENSITIVITY ======= -->
+<section class="panel" id="p-budget-sens">
+  <p class="eyebrow">Budget · 05</p>
+  <h2>Sensitivity</h2>
+  <p class="lede">Controlled single-variable runs. Same seed, same nation, same
+  everything else; only the named dial moves. <b>Effective</b> values are shown
+  wherever a clamp altered the request — a matrix that measures a clamp instead of
+  a dial is worthless.</p>
+
+  <h3>Tariff — the strongest dial in the game</h3>
+  <div class="scroller">
+    <table>
+      <caption>3-seed medians, 260 weeks. Requests of −50 land at <b>−15</b>: the party band. Revenue <b>saturates near 50%</b> — the last 50 points buy nothing and cost 5 points of <code>needsMet</code>.</caption>
+      <thead><tr><th class="num">tariff</th><th class="num">revenue</th><th class="num">treasury</th><th class="num">imports</th><th class="num">exports</th><th class="num">needsMet</th><th class="num">factory levels</th><th class="num">GDP</th></tr></thead>
+      <tbody>
+        <tr><td class="num">−15 <span class="chip v-neutral">clamped</span></td><td class="num">−29.5</td><td class="num">2,482</td><td class="num">38.8</td><td class="num">19.7</td><td class="num"><b>0.943</b></td><td class="num">32</td><td class="num">644</td></tr>
+        <tr><td class="num">0</td><td class="num">0</td><td class="num">13,897</td><td class="num">29.0</td><td class="num">17.1</td><td class="num">0.951</td><td class="num">40</td><td class="num">826</td></tr>
+        <tr><td class="num">25</td><td class="num">25.0</td><td class="num">22,930</td><td class="num">20.5</td><td class="num">13.0</td><td class="num">0.850</td><td class="num">39</td><td class="num">785</td></tr>
+        <tr class="hl"><td class="num">50</td><td class="num"><b>46.5</b></td><td class="num"><b>53,022</b></td><td class="num">19.4</td><td class="num">12.3</td><td class="num">0.750</td><td class="num">39</td><td class="num">824</td></tr>
+        <tr><td class="num">100</td><td class="num">45.4</td><td class="num">52,404</td><td class="num">12.7</td><td class="num">9.8</td><td class="num"><b>0.700</b></td><td class="num">40</td><td class="num">792</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Both sides of the trade-off are real code: <code>settleGlobalTrade() 3319</code>
+  cuts import appetite by <code>1/(1+t·1.6)</code>, and <code>:3323</code> cuts export
+  access by <code>1/(1+t·0.5)</code>.</p>
+
+  <div class="note bad">
+    <div class="t">Correction — protectionism does not protect domestic industry</div>
+    <p>The slider's own note says <em>&ldquo;protects domestic industry&rdquo;</em>
+    and the factory-level column looks like it agrees. It does not.
+    <code>settleGlobalTrade():3310</code> computes
+    <code>domestic = min(marketProduction, demand)</code> <b>before</b> the tariff is
+    consulted; the tariff only scales the import <em>bid</em> and the export
+    <em>surplus</em>. Domestic producers already sell everything they can sell at
+    home, and are paid the bare world price either way.</p>
+    <p>Read the column again: factory levels are <b>40 / 39 / 39 / 40</b> across
+    tariffs 0 → 100 — flat. The only outlier is the −15 row (32), the run whose
+    treasury was drained to 2,482 at −11/week; that nation stopped building because
+    construction is a hard gold gate. The chain is
+    <code>tariff → treasury → construction budget</code>, not price protection.</p>
+    <p>Both party tooltips are wrong too: <code>politics.js:25-26</code> promise caps
+    of 10% and 50%; <code>fiscalPolicyLimits():195-198</code> enforces 25% and 100%.</p>
+  </div>
+  <p>What remains is still a genuine trade-off and still the mechanic's best
+  feature: <b>revenue and the ability to build, against a fed population</b>
+  (which feeds province growth at <code>provinces.js:796</code>), with a
+  party-dependent band. <b>Keep the mechanism; fix the label.</b></p>
+
+  <h3>Class taxation — three sliders, three different punishments</h3>
+  <div class="scroller">
+    <table>
+      <caption>The middle slider is <em>not</em> a third copy: each class fails differently.</caption>
+      <thead><tr><th>case</th><th class="num">revenue</th><th class="num">treasury</th><th class="num">needsMet</th><th class="num">stability</th><th class="num">population</th><th class="num">upper pop</th><th class="num">privateCapital</th></tr></thead>
+      <tbody>
+        <tr><td>lower 0</td><td class="num">16.3</td><td class="num">28,080</td><td class="num">0.686</td><td class="num">0.676</td><td class="num">927,270</td><td class="num">33,000</td><td class="num">1200</td></tr>
+        <tr><td>lower 100</td><td class="num">145.6</td><td class="num">92,201</td><td class="num"><b>0.389</b></td><td class="num"><b>0.487</b></td><td class="num"><b>843,623</b></td><td class="num">33,000</td><td class="num">1200</td></tr>
+        <tr><td>middle 100</td><td class="num">124.1</td><td class="num">71,711</td><td class="num">0.644</td><td class="num">0.567</td><td class="num">923,235</td><td class="num">31,000</td><td class="num">1200</td></tr>
+        <tr class="hl"><td>upper 100</td><td class="num">129.7</td><td class="num">79,293</td><td class="num">0.694</td><td class="num">0.586</td><td class="num">924,761</td><td class="num"><b>0</b></td><td class="num"><b>679</b></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <ul class="tight">
+    <li><b>Lower at 100</b> — 9% of the national population and 16 points of stability. <code>needsMet</code> collapses, which starves province growth.</li>
+    <li><b>Middle at 100</b> — the middle class shrinks 30% by demotion; GDP actually <em>rises</em>.</li>
+    <li><b>Upper at 100</b> — the upper class reaches literal zero and private capital halves. The middle class swells 149k → 183k to absorb them.</li>
+    <li><b>The mechanism is shared, though.</b> The only middle-specific constants in the whole budget path are the welfare relief rate (<code>:2582</code> — lower 0.35 / middle 0.12 / upper 0) and the AI tax ceiling (<code>:2873</code> — 35 / 42 / 45). Everything else is one code path parameterised by a table; the distinct outcomes come from where each class sits in it. <b>Middle is the weakest of the three</b> — the only class whose share of the tax base shrinks as the country industrialises.</li>
+    <li><b>But</b> every setting still ends with a <em>larger</em> treasury. Because gold has few sinks, the punishment rarely bites the player.</li>
+    <li><b>An asymmetry worth naming:</b> <code>runPopulationMobility():1089</code> accumulates <code>hardshipWeeks</code> only for <code>['middle','upper']</code>, so it is permanently 0 for the lower class — while <code>adjustFiscalAI():2874</code> reads it for all three as its &ldquo;do not tax a suffering class&rdquo; brake. The brake is weakest for the class least able to pay.</li>
+  </ul>
+
+  <h3>Education — the mathematically-large, strategically-flat case</h3>
+  <div class="scroller">
+    <table>
+      <caption><b>30-year</b> horizon (1,560 weeks) — necessary because <code>LITERACY_APPROACH = 0.001</code>/week means 260 weeks covers only 23% of the gap to target. Requests of 0 land at <b>25</b>: the national-programme floor.</caption>
+      <thead><tr><th class="num">education</th><th class="num">literacy</th><th class="num">research pts/wk</th><th class="num">technologies</th><th class="num">treasury</th><th class="num">GDP</th></tr></thead>
+      <tbody>
+        <tr><td class="num">25 <span class="chip v-neutral">floored</span></td><td class="num">0.195</td><td class="num">2.00</td><td class="num"><b>8</b> <span class="svg-s">(8..8)</span></td><td class="num">252,432</td><td class="num">1038</td></tr>
+        <tr><td class="num">45</td><td class="num">0.293</td><td class="num">2.39</td><td class="num"><b>8</b> <span class="svg-s">(8..9)</span></td><td class="num">253,475</td><td class="num">1152</td></tr>
+        <tr class="hl"><td class="num">90</td><td class="num"><b>0.514</b></td><td class="num"><b>3.57</b></td><td class="num"><b>9</b> <span class="svg-s">(9..9)</span></td><td class="num">151,446</td><td class="num">923</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note bad">
+    <div class="t">Mathematically different · gameplay-meaningfully identical</div>
+    <p>Literacy 2.6×. Research points <b>+79%</b>. Actual consequence over three
+    decades: <b>one extra technology</b>, bought with 40% of the treasury and 11%
+    of GDP. Every other measured outcome is flat or worse at education 90. The
+    chain <code>education → literacyTargetOf → advanceLiteracy → researchPointsOf →
+    tech</code> is real and correctly wired — it is simply too slow and too weakly
+    geared to change a campaign.</p>
+    <p>Education's <em>other</em> role is genuinely load-bearing:
+    <code>construction.js investmentBlocker() 531-536</code> requires education
+    ≥ 25/40/55/70 to buy the next Higher Education level. That is a discrete,
+    legible decision. <b>The gate matters; the continuous slider behind it does not.</b></p>
+  </div>
+
+  <h3>Administration — a dial with one correct answer</h3>
+  <div class="scroller">
+    <table>
+      <caption>Every non-fiscal outcome is <b>byte-identical</b> across the whole range, so the dial reduces to arithmetic.</caption>
+      <thead><tr><th class="num">adminFunding</th><th class="num">tax efficiency</th><th class="num">tax revenue</th><th class="num">admin cost</th><th class="num">needsMet</th><th class="num">stability</th><th class="num">GDP</th></tr></thead>
+      <tbody>
+        <tr><td class="num">30</td><td class="num">0.685</td><td class="num">50.0</td><td class="num">2.10</td><td class="num">0.700</td><td class="num">0.645</td><td class="num">792</td></tr>
+        <tr><td class="num">50</td><td class="num">0.775</td><td class="num">56.5</td><td class="num">3.50</td><td class="num">0.700</td><td class="num">0.622</td><td class="num">792</td></tr>
+        <tr><td class="num">75</td><td class="num">0.887</td><td class="num">64.8</td><td class="num">5.25</td><td class="num">0.700</td><td class="num">0.616</td><td class="num">792</td></tr>
+        <tr class="hl"><td class="num">100</td><td class="num">1.000</td><td class="num">73.0</td><td class="num">7.00</td><td class="num">0.700</td><td class="num">0.645</td><td class="num">792</td></tr>
+      </tbody>
+    </table>
+  </div>
+<pre><code>marginal revenue = 0.45 × grossTax   = 0.45 × 37.40 = <span class="hi">16.83</span>
+marginal cost    = administrationCost(100%)         = <span class="hi"> 5.00</span>
+break-even       : grossTax &lt; 7.00/0.45 = 11.1 gold/week
+                   or population ≈ <span class="hi">2,890,884</span>     (measured nation: 919,187)</code></pre>
+  <p>The comment at <code>cities.js:198-208</code> says this dial was reworked
+  precisely so it would stop being <em>&ldquo;sahte bir seçim&rdquo;</em> — a fake
+  choice. The rework halved the gap; it did not close it. At realistic nation sizes
+  100% still wins by 3.4×.</p>
+
+  <h3>Military — two dials, genuinely two axes</h3>
+  <div class="scroller">
+    <table>
+      <caption>The cross-test settles the merge question. Requests of 100 land at <b>60</b> under this nation's party (pacifism).</caption>
+      <thead><tr><th>case</th><th class="num">wage cost</th><th class="num">proc cost</th><th class="num">attack power</th><th class="num">defence</th><th class="num">supplyIndex</th><th class="num">arms stock</th></tr></thead>
+      <tbody>
+        <tr><td>wages 25</td><td class="num">2.25</td><td class="num">3.54</td><td class="num">47.9</td><td class="num">63.1</td><td class="num">0.228</td><td class="num">27.4</td></tr>
+        <tr><td>wages 60</td><td class="num">5.40</td><td class="num">3.54</td><td class="num"><b>59.3</b></td><td class="num"><b>78.2</b></td><td class="num">0.228</td><td class="num">27.4</td></tr>
+        <tr><td>procurement 25</td><td class="num">5.40</td><td class="num">1.63</td><td class="num">59.3</td><td class="num">78.2</td><td class="num"><b>0.133</b></td><td class="num"><b>23.8</b></td></tr>
+        <tr><td>procurement 60</td><td class="num">5.40</td><td class="num">3.54</td><td class="num">59.3</td><td class="num">78.2</td><td class="num">0.228</td><td class="num">27.4</td></tr>
+        <tr class="hl"><td>wages 100 / proc 25</td><td class="num">5.40</td><td class="num">1.63</td><td class="num">59.3</td><td class="num">78.2</td><td class="num">0.133</td><td class="num">23.8</td></tr>
+        <tr class="hl"><td>wages 25 / proc 100</td><td class="num">2.25</td><td class="num">3.54</td><td class="num">47.9</td><td class="num">63.1</td><td class="num">0.228</td><td class="num">27.4</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>The two cross cases end in <b>completely different states</b>. Wages drive
+  combat power (<code>battles.js:116</code>), organisation recovery
+  (<code>turn.js:421</code>) and training speed (<code>recruitment.js:364</code>).
+  Procurement drives stockpiles, supply index and reinforcement rate
+  (<code>reinforcement.js:22</code>). In a 156-week forced war, wages 25 → 60
+  raises army power 45.2 → 59.3 and reduces losses (7,906 → 8,550 soldiers) for
+  about 9 gold a week. <b>Two axes. Keep both.</b></p>
+
+  <h3>Welfare and health</h3>
+  <div class="scroller">
+    <table>
+      <caption>Welfare is the strongest stability lever measured — and it ends <em>richer</em> than welfare 0. Health has the weakest gold-to-consequence ratio of any dial.</caption>
+      <thead><tr><th>case</th><th class="num">social cost</th><th class="num">lower satisfaction</th><th class="num">stability</th><th class="num">population</th><th class="num">std of living</th><th class="num">GDP</th><th class="num">treasury</th></tr></thead>
+      <tbody>
+        <tr><td>welfare 0</td><td class="num">17.3</td><td class="num">0.580</td><td class="num">0.544</td><td class="num">922,927</td><td class="num">13.79</td><td class="num">788</td><td class="num">56,723</td></tr>
+        <tr class="hl"><td>welfare 100</td><td class="num">60.1</td><td class="num"><b>0.807</b></td><td class="num"><b>0.760</b></td><td class="num">928,250</td><td class="num">16.98</td><td class="num"><b>843</b></td><td class="num"><b>57,880</b></td></tr>
+        <tr><td>health 0</td><td class="num">20.0</td><td class="num">0.678</td><td class="num">0.645</td><td class="num">924,966</td><td class="num">15.06</td><td class="num">792</td><td class="num">52,404</td></tr>
+        <tr><td>health 100</td><td class="num">53.9</td><td class="num">0.665</td><td class="num">0.628</td><td class="num">931,057</td><td class="num">17.43</td><td class="num">781</td><td class="num">48,726</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Welfare works through two channels: <code>populationDemand() 2583</code> pays
+  35% of the poor's basket out of the treasury, and <code>:2649</code> adds
+  <code>welfare × 0.14</code> straight to satisfaction. Meanwhile
+  <code>adjustWarFiscalAI() 2981</code> cuts welfare in war and the drift test shows
+  AI nations converge to <b>welfare 0</b> — they are leaving the strongest
+  stability lever on the floor.</p>
+
+  <h3>Subsidies — three options, one outcome</h3>
+  <div class="scroller">
+    <table>
+      <caption>The three policy options are <b>bit-identical</b>. Subsidies themselves work; the player-facing control does not.</caption>
+      <thead><tr><th>policy</th><th class="num">plants subsidised</th><th class="num">cost</th><th class="num">employees</th><th class="num">fill</th><th class="num">GDP</th><th class="num">treasury</th></tr></thead>
+      <tbody>
+        <tr><td>manual</td><td class="num">0</td><td class="num">0</td><td class="num">70,840</td><td class="num">0.841</td><td class="num">792</td><td class="num">52,404</td></tr>
+        <tr><td>strategic</td><td class="num">0</td><td class="num">0</td><td class="num">70,840</td><td class="num">0.841</td><td class="num">792</td><td class="num">52,404</td></tr>
+        <tr><td>none</td><td class="num">0</td><td class="num">0</td><td class="num">70,840</td><td class="num">0.841</td><td class="num">792</td><td class="num">52,404</td></tr>
+        <tr class="hl"><td><em>all plants force-marked</em></td><td class="num">13</td><td class="num">14.36</td><td class="num"><b>79,477</b></td><td class="num"><b>0.922</b></td><td class="num"><b>822</b></td><td class="num">51,542</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p><code>manual</code> only acts on plants the player marked one-by-one;
+  <code>strategic</code> (<code>applySubsidyPolicy() 1692-1702</code>) only marks
+  anything while at war; <code>none</code> cancels a set that is already empty. The
+  mechanism itself is real — <code>runFactories() 2404-2410</code> absorbs the loss
+  and sets <code>profit = 0</code>, which stops <code>runFactoryEmployment() 2193</code>
+  laying workers off — worth +12% employment and +3.8% GDP for 1.6% of the treasury.
+  But reaching it requires exactly the per-factory micromanagement that
+  <code>CLAUDE.md</code> says the delegation layer exists to remove.</p>
+  <div class="note bad">
+    <div class="t">And the subsidy has an undisclosed cost</div>
+    <p><code>autoUpgradeFactory():1985</code> is
+    <code>if (factory.profit &lt;= 0) return false;</code> — while <code>:2409</code>
+    sets a subsidised plant's profit to exactly 0. <b>A subsidised plant can
+    therefore never level up while the subsidy is on.</b> The tooltip promises the
+    state covers the losses; nothing says it also freezes the plant.</p>
+  </div>
+
+  <h3>Does the treasury bind?</h3>
+  <div class="scroller">
+    <table>
+      <caption>A floor constraint, not a ceiling one.</caption>
+      <thead><tr><th>case</th><th class="num">treasury</th><th class="num">factory levels</th><th class="num">GDP</th><th class="num">projects</th></tr></thead>
+      <tbody>
+        <tr><td>default</td><td class="num">52,404</td><td class="num">40</td><td class="num">792</td><td class="num">6</td></tr>
+        <tr><td>held at 0 gold every week</td><td class="num">0</td><td class="num"><b>24</b></td><td class="num"><b>597</b></td><td class="num">0</td></tr>
+        <tr class="hl"><td>started with +100,000 gold</td><td class="num">152,209</td><td class="num">40</td><td class="num">792</td><td class="num">6</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Starving a nation costs it 40% of its industry — construction is a hard gate
+  at <code>construction.js:480</code>, <code>:539</code> and
+  <code>economy.js:1376</code>. Giving one an extra 100,000 gold changes
+  <em>nothing</em>. War is what restores the pressure: over a 50-year campaign with
+  wars enabled (29 nations, 2,600 weeks) <b>29/29 borrowed, 27/29 defaulted</b>,
+  10.46% of all nation-weeks involved borrowing, and 7 nations ended pinned at
+  <code>creditPenalty 0.85</code> with capacity at its floor of 50.</p>
+</section>
+
+<!-- ================================================ CONNECTIONS ======= -->
+<section class="panel" id="p-budget-conn">
+  <p class="eyebrow">Budget · 06</p>
+  <h2>Connections</h2>
+  <p class="lede">Verified edges only. Click any connection for the value that
+  crosses it, who writes it, who reads it, and what happens when it changes.</p>
+
+  <h4>Budget → outward</h4>
+  <div class="conns" id="conns-out"></div>
+
+  <div class="note bad">
+    <div class="t">Delegating &ldquo;Budget&rdquo; hands over more than the label says</div>
+    <p><code>delegation.js:16-21</code> describes the portfolio as <em>&ldquo;class
+    taxes, social spending and the war budget&rdquo;</em>. What
+    <code>runEconomicAI():3078-3092</code> actually enables is
+    <code>adjustSocialAI</code> plus <code>adjustFiscalAI</code> — and
+    <code>adjustFiscalAI():2906</code> calls <code>adjustWarFiscalAI()</code>, which
+    additionally moves <b>adminFunding</b> (<code>:2952</code>, <code>:2998</code>),
+    <b>every factory's <code>subsidized</code> flag</b> including the player's own
+    per-plant marks (<code>:2945</code>, <code>:2986-2988</code>,
+    <code>:3003-3007</code>), the <b>national research programme</b>
+    (<code>abandonProgramme :2941</code>) and <b>purchased investment levels</b>
+    (<code>dropInvestmentLevel :2969-2971</code> — it can sell off Construction
+    Capacity and Higher Education).</p>
+    <p>The tariff is the mirror-image surprise: it is <em>rendered</em> on the Budget
+    screen but <em>delegated</em> by the Trade switch, so a player who holds Budget
+    themselves can watch the tariff drift ±2 every week
+    (<code>adjustFiscalAI():2896</code>) with no explanation on the screen where the
+    slider lives.</p>
+  </div>
+
+  <h4>What feeds Budget</h4>
+  <div class="conns" id="conns-in"></div>
+</section>
+
+<!-- =============================================== SIMPLIFICATION ==== -->
+<section class="panel" id="p-budget-simpl">
+  <p class="eyebrow">Budget · 07</p>
+  <h2>Simplification</h2>
+  <p class="lede">Ordered by code and state removed ÷ gameplay lost. Nothing here
+  is an instruction to act — this is the shortlist for review. Complexity that
+  produces different strategies is marked <b>keep</b> even where the code is messy.</p>
+
+  <div class="scroller">
+    <table>
+      <caption>Candidates — <b>depth lost</b> is measured, not estimated</caption>
+      <thead><tr><th class="num">#</th><th>Target</th><th>Move</th><th>Why</th><th>Depth lost</th></tr></thead>
+      <tbody>
+        <tr><td class="num">1</td><td><code>subsidyPolicy</code> (3 options)</td><td><span class="chip v-neutral">Merge</span></td><td>manual / strategic / none are bit-identical in peace; only the marking matters</td><td>none measured</td></tr>
+        <tr><td class="num">2</td><td><code>social.education</code> 0–100 slider</td><td><span class="chip v-neutral">Derive</span></td><td>25 / 45 / 90 differ by one technology per 30 years; the real decisions are the 25/40/55/70 investment gates</td><td>none measured — <b>keep the gates</b></td></tr>
+        <tr><td class="num">3</td><td><code>adminFunding</code></td><td><span class="chip v-neutral">Automate</span></td><td>100 dominates below ~2.9M population; zero non-fiscal effect</td><td>none — it is a solved dial</td></tr>
+        <tr><td class="num">4</td><td><code>social.health</code></td><td><span class="chip v-neutral">Merge</span></td><td>one growth multiplier at ×1.35 max; costliest gold-per-consequence</td><td>little — welfare already carries satisfaction</td></tr>
+        <tr><td class="num">5</td><td>dead parameters</td><td><span class="chip v-neutral">Remove</span></td><td><code>fiscalBalance</code>'s <code>industrialOutput</code>, <code>corruption</code>'s <code>nation</code></td><td>none</td></tr>
+        <tr><td class="num">6</td><td><code>fiscalNet</code>'s two-phase meaning</td><td><span class="chip v-neutral">Derive</span></td><td>the AI decides broke/rich from a figure that is 42% short</td><td>none — it is a defect</td></tr>
+        <tr><td class="num">7</td><td>HUD &ldquo;weekly gold&rdquo;</td><td><span class="chip v-neutral">Derive</span></td><td>one expression, one truth; removes a 47% error</td><td>none</td></tr>
+        <tr><td class="num">8</td><td><code>economy.treasuryHistory</code></td><td><span class="chip v-neutral">Remove</span></td><td>written weekly, never read — or finally draw the graph it was written for</td><td>none</td></tr>
+        <tr><td class="num">9</td><td>UI formula copies</td><td><span class="chip v-neutral">Derive</span></td><td><code>screens.js 1676, 1685</code>, <code>census.js 109</code> — three drift risks, one already misleading</td><td>none</td></tr>
+        <tr class="hl"><td class="num">10</td><td><code>nation.budget</code> / <code>nation.economy</code> split</td><td><span class="chip v-neutral">Merge (large)</span></td><td>two accounting systems, 13 gold write sites, six modules</td><td>none measured — but this is the expensive one</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Player-visible gaps</h3>
+  <div class="scroller">
+    <table>
+      <caption>Three places claim to show the weekly balance. Measured against the real <b>Δgold</b> over 12 consecutive weeks.</caption>
+      <thead><tr><th>Where</th><th>Expression</th><th class="num">shown</th><th class="num">real</th><th class="num">error</th></tr></thead>
+      <tbody>
+        <tr><td>Budget screen — &ldquo;Last week's balance&rdquo;</td><td class="site">ledger.net · screens.js 1780</td><td class="num">71.88</td><td class="num">71.88</td><td class="num"><span class="chip v-strong">0.00</span></td></tr>
+        <tr><td>Economy screen — &ldquo;Weekly balance&rdquo;</td><td class="site">economy.fiscalNet · screens.js 782</td><td class="num">78.76</td><td class="num">71.88</td><td class="num"><span class="chip v-weak">+6.88</span></td></tr>
+        <tr class="hl"><td><b>HUD — &ldquo;weekly gold&rdquo;</b></td><td class="site">budget.net.gold + fiscalNet · hud.js 1137, screens.js 698</td><td class="num">105.46</td><td class="num">71.88</td><td class="num"><span class="chip v-none">+47%</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>The budget screen's own footer is exact. The other number — the one always on
+  screen — overstates the weekly balance by 47% because it omits every one-off and
+  market purchase: strategic imports, state purchases, military procurement,
+  subsidies, project funding, debt interest and share purchases.</p>
+  <div class="note bad">
+    <div class="t">Both appear on the budget screen at the same time</div>
+    <p><code>resourceLine()</code> renders on every screen except construction
+    (<code>screens.js:416</code>), so the header strip prints <b>105.46</b> while
+    the ledger footer on the same page prints <b>71.88</b> for the same week. A
+    fourth variant — <code>budget.net.gold</code> alone — appears elsewhere in the
+    UI. The fix is already imported and unused: <code>screens.js:36</code> imports
+    <code>socialSpendingCost</code>, the exact function that would also make the
+    per-programme split correct, and never calls it.</p>
+  </div>
+
+  <div class="note bad">
+    <div class="t"><code>economy.fiscalNet</code> means two different things</div>
+<pre style="margin:8px 0 10px"><code>after runNationEconomy   fiscalNet =  7.76   <span class="cm">← what adjustFiscalAI / adjustSocialAI see</span>
+after finishEconomy      fiscalNet = 33.76   <span class="cm">← what the ledger and the UI see</span>
+
+AI's "weekly" = 35.76        real "weekly" = 61.76        <span class="hi">the AI misses 42% of its income</span></code></pre>
+    <p><code>fiscalBalance() 2726</code> sets it; <code>settleGlobalTrade() 3419</code>
+    adds tariff and settlement — but that runs in <code>finishEconomy</code>,
+    <em>after</em> <code>runEconomicAI</code> has already read it at
+    <code>runNationEconomy() 3973</code>. Both AI branches decide broke/rich from the
+    pre-tariff figure, so <b>the more protectionist or export-heavy a nation is, the
+    poorer its own AI believes it to be</b>.</p>
+  </div>
+
+  <h3>The UI re-derives engine formulas by hand</h3>
+  <div class="scroller">
+    <table>
+      <thead><tr><th>UI site</th><th>Copy</th><th>Engine truth</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr><td class="site">screens.js 1685</td><td class="site">55 + wages × 0.45</td><td class="site">battles.js 116 · 0.55 + funding × 0.45</td><td><b>Correct today</b>, hand-copied into a second file</td></tr>
+        <tr class="hl"><td class="site">screens.js 1676</td><td class="site">max(25, proc) × max(0.4, supply)</td><td class="site">reinforcement.js 22-25 · BASE × (0.25 + funding × 0.75)</td><td><b>Misleading</b>: at proc 25 the UI says 25% where the real relative rate is 43.75%</td></tr>
+        <tr><td class="site">census.js 109</td><td class="site">0.08 + edu/100 × 0.62 × 0.35</td><td class="site">literacyTargetOf 3806</td><td>third copy of the literacy constants</td></tr>
+        <tr><td class="site">screens.js 1834</td><td class="site">tariffThen = revenue × (new/old)</td><td class="site">revenue saturates near 50% (measured)</td><td>over-projects high-tariff revenue</td></tr>
+        <tr><td class="site">screens.js 1828</td><td class="site">socialScale capped by min(1, …)</td><td class="site">ignores socialFloorOf 1738-1754</td><td>the war-budget proposal can silently fail to apply its education cut</td></tr>
+        <tr class="hl"><td class="site">screens.js socialShare() 188-194</td><td class="site">splits socialCost by <b>slider value</b></td><td class="site">socialSpendingCost() 1797-1807 weights by each programme's own rate (0.34 / 0.30 / 0.46) plus reformModifiers.socialBurden</td><td><b>Every per-programme ¤ figure is wrong.</b> Welfare costs 1.35× education at the same slider position; the reform burden belongs to no slider at all</td></tr>
+        <tr class="hl"><td class="site">screens.js taxRow() 1571-1586</td><td class="site">shows socialClass.taxPaid</td><td class="site">taxPaid is set at 2708, <b>before</b> taxes *= taxEfficiency at 2716</td><td><b>The three class boxes do not sum into the Total income line beside them.</b> At adminFunding 30 they overstate by 1/0.685 ≈ 1.46×</td></tr>
+        <tr><td class="site">screens.js 1685 (2nd half)</td><td class="site">recovery = 0.6 + 0.4 × wages/100</td><td class="site">turn.js 419-423 · (0.6+0.4w)×(0.7+0.3·supply)</td><td><b>Drops the supply term</b> — overstates recovery whenever supply is short, which is the normal state (supplyIndex measured 0.13–0.25)</td></tr>
+        <tr><td class="site">politics.js 25-26 (party tooltips)</td><td class="site">"capped at 10%" / "may reach 50%"</td><td class="site">fiscalPolicyLimits() 195-198 · 25% and 100%</td><td>both tariff caps quoted to the player are wrong</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Do not touch</h3>
+  <ul class="tight">
+    <li><b>The tariff band and its two elasticities.</b> The only place in the budget with a genuine strategic dilemma — revenue and industry against a fed population — and the party band makes different governments play it differently.</li>
+    <li><b>Per-class taxation.</b> Three sliders, three distinct failure modes: starvation, demotion, class annihilation. Depth, not duplication.</li>
+    <li><b>The wages / procurement split.</b> Proven distinct by cross-test; the &ldquo;strong but unsupplied army&rdquo; state only exists because they are separate.</li>
+    <li><b><code>settleDebt</code> and <code>creditPenalty</code>.</b> Inert in peace, decisive in war, and <code>creditPenalty</code> has six consumers outside <code>economy.js</code>.</li>
+    <li><b><code>updateLedger</code>'s L9 identity.</b> Exact to 0.00 on the hot path and the only thing making the budget auditable at all. Keep the identity — but it is asserted in a markdown file, not enforced in code, and four refund paths bypass it. It deserves a runtime guard, not a rewrite.</li>
+    <li><b><code>hud.js stabilityWhy() 1167-1183</code>.</b> A model of how to expose a hidden calculation — the pattern the rest of the budget should copy.</li>
+  </ul>
+
+  <h3>AI context cost — 4 / 5</h3>
+  <div class="cards">
+    <div class="card"><div class="k">Modules to read</div><div class="v">8</div><div class="n">economy, cities, turn, politics, construction, technology, provinces, reforms</div></div>
+    <div class="card"><div class="k">Functions</div><div class="v">28</div><div class="n">to trace one budget number end to end</div></div>
+    <div class="card"><div class="k">Mutable state fields</div><div class="v">40</div><div class="n">including 25 ledger lines and 8 read-then-zeroed accumulators</div></div>
+    <div class="card"><div class="k">Phase-order traps</div><div class="v">4</div><div class="n">and one of them changes a number's value by 42%</div></div>
+  </div>
+  <p>The three traps that will actually catch a coding agent:</p>
+  <ul class="tight">
+    <li><b><code>fiscalNet</code> is not one number.</b> Its value depends on which phase reads it, and both meanings are live simultaneously.</li>
+    <li><b><code>nation.gold</code> has no single owner.</b> Grepping <code>fiscalBalance</code> finds one of thirteen writers.</li>
+    <li><b>Policy fields are read three different ways</b> — <code>socialLevel(nation,'health')</code> in <code>economy.js</code>, raw <code>nation.economy.social.health</code> in <code>provinces.js</code>, <code>economy.social.health</code> in <code>screens.js</code>. An accessor grep misses two thirds of the consumers. This is exactly how the <code>provinces.js</code> health channel was nearly missed in this audit.</li>
+  </ul>
+</section>
+
+<!-- ================================================== EXCERPTS ======== -->
+<section class="panel" id="p-budget-code">
+  <p class="eyebrow">Budget · 08</p>
+  <h2>Code excerpts</h2>
+  <p class="lede">The load-bearing lines only.</p>
+
+  <span class="src">src/game/economy.js · fiscalBalance() · 2708-2727 — the whole equation</span>
+<pre><code>  socialClass.taxPaid = socialClass.income * (economy.taxes[classId] / 100);
+  taxes += socialClass.taxPaid;
+}
+const social = socialSpendingCost(nation);
+<span class="hi">taxes *= taxEfficiency(nation);</span>
+const construction = constructionUpkeep(nation);
+economy.taxRevenue = taxes;
+<span class="hi">economy.tariffRevenue = 0;</span>            <span class="cm">// settleGlobalTrade fills it, LATER</span>
+economy.socialCost = social;
+economy.constructionUpkeep = construction;
+<span class="hi">economy.fiscalNet = taxes - social - construction;</span>
+nation.gold += economy.fiscalNet;</code></pre>
+
+  <span class="src">src/game/economy.js · settleGlobalTrade() · 3401, 3417-3420 — where the tariff lands</span>
+<pre><code>trade.tariffRevenue = trade.importValue * (nation.economy.tariff / 100);
+...
+nation.economy.tariffRevenue = trade.tariffRevenue;
+nation.economy.externalSettlement = trade.settlement;
+<span class="hi">nation.economy.fiscalNet += trade.tariffRevenue + trade.settlement;</span>
+nation.gold += trade.tariffRevenue + trade.settlement;</code></pre>
+  <p style="margin-top:-8px"><span class="tag">trap</span> This runs in
+  <code>finishEconomy</code> — after <code>runEconomicAI</code> has already read
+  <code>fiscalNet</code>.</p>
+
+  <span class="src">src/game/economy.js · taxEfficiency() · 1325-1328 — the entire administration mechanic</span>
+<pre><code>export function taxEfficiency(nation) {
+  const funding = clamp((nation.economy?.adminFunding ?? 100) / 100, 0.3, 1);
+  return 0.55 + 0.45 * funding;
+}</code></pre>
+
+  <span class="src">src/game/economy.js · settleGlobalTrade() · 3319-3323 — what makes protectionism real</span>
+<pre><code>const appetite = 1 / Math.max(0.05, 1 + (nation.economy.tariff / 100) * IMPORT_ELASTICITY);
+const access   = 1 / (1 + Math.max(0, nation.economy.tariff / 100) * EXPORT_RETALIATION);
+<span class="cm">// IMPORT_ELASTICITY = 1.6 (line 413) · EXPORT_RETALIATION = 0.5 (line 423)</span></code></pre>
+
+  <span class="src">src/game/economy.js · populationDemand() · 2648-2652 — where taxes and welfare hit the household</span>
+<pre><code>socialClass.satisfaction = clamp(
+  0.35 + affordability * 0.5 <span class="hi">- taxRate * 0.28</span> <span class="hi">+ welfare * 0.14</span>
+    + reformMoodShift(nation, classId) - joblessBite,
+  0.08,
+  0.95,
+);</code></pre>
+
+  <span class="src">src/game/economy.js · runFactories() · 2404-2410 — what a subsidy actually prevents</span>
+<pre><code>factory.subsidyPaid = 0;
+if (factory.subsidized &amp;&amp; factory.profit &lt; 0) {
+  const support = -factory.profit;
+  nation.gold -= support;
+  economy.subsidyGold = (economy.subsidyGold ?? 0) + support;
+  factory.subsidyPaid = support;
+  <span class="hi">factory.profit = 0;</span>   <span class="cm">// → profitTrend stops falling → runFactoryEmployment 2193 stops the layoffs</span>
+}</code></pre>
+
+  <span class="src">src/game/economy.js · procureStrategicGoods() · 3244-3250 — the hidden tariff on your own army</span>
+<pre><code><span class="hi">const tariffFactor = 1 + nation.economy.tariff / 100;</span>
+const unitPrice = priceOf(world, id) * tariffFactor;
+const affordable = nation.gold / Math.max(0.01, unitPrice);   <span class="cm">// a HARD gold constraint</span></code></pre>
+
+  <span class="src">src/game/provinces.js · 790 — health, read raw, invisible to a socialLevel() grep</span>
+<pre><code>const health = 1 + Math.min(100, <span class="hi">nation.economy?.social?.health</span> ?? 0) / 100 * 0.35;
+...
+const weeklyGrowth = ((0.00006 + econ.agriculture * 0.00003)
+  * (peace ? 1 : 0.55) * (0.45 + stability) * <span class="hi">health</span>
+  * (0.25 + 0.75 * nourishment)) * (1 - occupied) - famine * FAMINE_DECLINE;</code></pre>
+
+  <span class="src">src/game/politics.js · fiscalPolicyLimits() 193-204 + applyGovernmentLimits() 206-218 — the one uninvited write on a player's budget</span>
+<pre><code>return {
+  tariffMin: trade === 'free_trade' ? -50 : -15,
+  tariffMax: trade === 'free_trade' ?  25 : 100,
+  armySpendingMin: 25,
+  armySpendingMax: military === 'pacifism' ? 60 : military === 'anti_military' ? 75 : 100,
+};
+<span class="cm">// applyGovernmentLimits re-clamps tariff + both army dials EVERY WEEK,</span>
+<span class="cm">// for the player too (called from runPolitics, turn phase 'construction').</span></code></pre>
+</section>
+
+<!-- ================================================== CONTRACT ======== -->
+<section class="panel" id="p-budget-contract">
+  <p class="eyebrow">Budget · 09</p>
+  <h2>Contract</h2>
+  <p class="lede">The cheat sheet. If you read nothing else before touching the
+  budget, read this.</p>
+
+<pre><code><span class="hi">BUDGET CONTRACT</span>
+
+Inputs      economy.{taxes.{lower,middle,upper}, tariff, militaryWages,
+            militaryProcurement, adminFunding, social.{education,health,welfare},
+            subsidyPolicy}
+Canonical   nation.gold · nation.debt · economy.creditPenalty · the nine dials.
+            Everything else is recomputed weekly.
+Derived     economy.{fiscalNet, taxRevenue, tariffRevenue, socialCost,
+            constructionUpkeep, ledger} · nation.budget
+Outputs     weekly nation.gold delta · class income / taxPaid / satisfaction
+            · creditPenalty
+
+<span class="hi">Must always be true</span>
+  Δgold == ledger.net + borrowed − repaid + defaulted        <span class="cm">(L9, verified 0.00)</span>
+  taxRevenue == Σ(class.income × rate) × taxEfficiency       <span class="cm">(L4)</span>
+  tariffRevenue == importValue × tariff/100; domestic consumption is never tariffed
+  nation.gold ≥ 0 after settleDebt — the deficit becomes debt, then default
+  a dial is written only through setFiscalPolicy
+    <span class="cm">— except adjustSocialAI() 2742-2801, which writes economy.social directly</span>
+
+<span class="hi">Others may read</span>   nation.gold · economy.ledger · economy.stability · creditPenalty · dial values
+<span class="hi">Others must NOT write</span>  the nine dials (use setFiscalPolicy) · nation.debt · creditPenalty
+<span class="hi">Phase order</span>   produce() → economy(begin → per-nation → finish) → construction + politics
+              Read economy.fiscalNet only AFTER finishEconomy, or you get the
+              pre-tariff value.</code></pre>
+
+  <div class="note">
+    <div class="t">Reproducing the measurements</div>
+<pre style="margin:8px 0 0"><code>node -e "import('./scripts/audit/harness.mjs').then(async h =&gt; {
+  const r = h.runScenario({ seed:'ix-a', label:'A', warmup:60, weeks:260, peaceful:true,
+    levers:[{key:'tariff', value:50}], measure:['taxEfficiency','army','control'] });
+  console.log(JSON.stringify(r.snap));
+})"</code></pre>
+  </div>
+
+  <p class="foot">
+    <span class="tag">scope</span> This page covers <b>Budget</b>; Trade is analysed on its own tab.
+    Population, Politics, Military, Construction and Technology are listed in the rail as pending. No game code was modified, no values balanced, no bugs fixed, no
+    refactor performed — this atlas is a description of what the code does today.
+  </p>
+</section>
+
+
+<!-- ================================================ TRADE · OVERVIEW ==== -->
+<section class="panel" id="p-trade-overview">
+  <p class="eyebrow">Mechanic X-ray · 02</p>
+  <h1>Trade</h1>
+  <p class="lede">A single anonymous world pool, cleared once a week, in which
+  no nation ever trades with another nation. The simulation is exact and its
+  shocks are severe. The player has no trade decision at all.</p>
+
+  <div class="cards">
+    <div class="card"><div class="k">Player decisions</div><div class="v">0</div>
+      <div class="n">the trade screen's one control selects which row to read</div></div>
+    <div class="card"><div class="k">Conservation</div><div class="v">0.00</div>
+      <div class="n">Σ world imports − Σ world exports, in 22 of 22 runs</div></div>
+    <div class="card"><div class="k">Cotton removed</div><div class="v">−25%</div>
+      <div class="n">of the nation's population over 25 years — the chain is real</div></div>
+    <div class="card"><div class="k">Prices by 1936</div><div class="v">0.12×</div>
+      <div class="n">of base, on 34–38 of 42 goods, while volumes double</div></div>
+  </div>
+
+  <h3>The structural fact: there are no trade partners</h3>
+  <p><code>settleGlobalTrade()</code> never names a counterparty. Every country
+  pours unsold surplus into one bucket per good and draws from that bucket in
+  proportion to its bid.</p>
+<pre><code>crossBorderTrade = <span class="hi">min(totalSurplus, totalBid)</span>                 <span class="cm">// 3351, per good</span>
+flow.exports     = surplusCol[i] * crossBorderTrade / totalSurplus  <span class="cm">// 3376, pro rata</span>
+flow.imports     = allocCol[i]   <span class="cm">// a weighted share of the same bucket, two-pass</span></code></pre>
+  <p><b>Geography does not exist in the trade path.</b> Distance, adjacency,
+  coastline, ports, sea lanes and blockades are absent. A landlocked inland
+  province sells into the same bucket, at the same price, as a deep-water port.
+  Verified by grep across <code>src/</code>: no <code>embargo</code>,
+  <code>trade agreement</code>, <code>tradeRoute</code>, <code>blockade</code>,
+  <code>sanction</code> or <code>trade pact</code>. (<code>convoy</code> exists,
+  but only as <code>CONVOY_PER_EMBARKED_REGIMENT</code> — steamers burned by
+  troops at sea.)</p>
+
+  <div class="note bad">
+    <div class="t">The player makes no trade decisions</div>
+    <p>The trade screen's only interactive element is
+    <code>data-trade-good</code> (<code>tradeScreen.js:78</code>), handled at
+    <code>screens.js:2598-2601</code>: it selects which good's dossier to
+    display. It is a reading room, not a control panel. The single lever that
+    changes a trade outcome is the <b>tariff</b> — and it is rendered on the
+    <em>Budget</em> screen.</p>
+  </div>
+
+  <div class="note bad">
+    <div class="t">War does not affect trade at all</div>
+    <p><code>settleGlobalTrade()</code> never reads <code>atWar</code>,
+    <code>relations</code> or any diplomatic state — verified by grep over the
+    whole function (<code>3279-3422</code>). <b>Two nations in total war go on
+    supplying each other's markets on completely unchanged terms.</b> There is no
+    blockade, no embargo, no wartime premium, and no way for a player to cut an
+    enemy off.</p>
+  </div>
+
+  <div class="note good">
+    <div class="t">What the mechanic does extremely well</div>
+    <p>Conservation is exact (Σ imports ≡ Σ exports, gap 0 in every run), supply
+    shocks propagate hard enough to cost a quarter of a nation's population, and
+    <code>tradeLedger.js</code> is the best information layer in the project —
+    <code>priceReasons() 273-327</code> explains a price from real state and
+    derives the consumer breakdown from the simulation's own tables with an
+    explicit &ldquo;Other&rdquo; row so the total always ties out. <b>The Budget
+    screen should be rebuilt to this standard.</b></p>
+  </div>
+</section>
+
+<!-- ================================================= TRADE · CODE MAP === -->
+<section class="panel" id="p-trade-codemap">
+  <p class="eyebrow">Trade · 02</p>
+  <h2>Code map</h2>
+  <p class="lede">A lean mechanic: one clearing function, one price function, ten
+  flow-writer call sites and a read-only derivation layer.</p>
+
+  <div class="scroller">
+    <table>
+      <caption>Trade code sites — <b>role → file → function → lines</b></caption>
+      <thead><tr><th>Role</th><th>File</th><th>Function</th><th class="num">Lines</th><th>What it does</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td><b>Market clearing</b></td><td class="site">src/game/economy.js</td><td class="site">settleGlobalTrade</td><td class="num">3279-3422</td><td>surplus/bid, appetite, retaliation, two-pass allocation, tariff, settlement</td></tr>
+        <tr class="hl"><td><b>Price update</b></td><td class="site">src/game/economy.js</td><td class="site">updatePrices</td><td class="num">3620-3641</td><td>the entire price system, in 22 lines</td></tr>
+        <tr><td>Input gate</td><td class="site">src/game/economy.js</td><td class="site">marketInputAvailability</td><td class="num">3424-3430</td><td>last week's world <code>supply/demand</code> per good</td></tr>
+        <tr><td>Raw supply</td><td class="site">src/game/economy.js</td><td class="site">rawProduction</td><td class="num">1888-1960</td><td>RGO output per province, ×1.25 fertilizer bonus</td></tr>
+        <tr><td>Industry</td><td class="site">src/game/economy.js</td><td class="site">runFactories</td><td class="num">2262-2418</td><td>throughput, input demand, output supply, tariff on inputs</td></tr>
+        <tr><td>Household demand</td><td class="site">src/game/economy.js</td><td class="site">populationDemand</td><td class="num">2490-2667</td><td>class baskets — <b>pays the tariff at 2528-2529</b></td></tr>
+        <tr><td>Army demand</td><td class="site">src/game/economy.js</td><td class="site">armyWeeklyDemand</td><td class="num">3189-3220</td><td>weekly consumption rates</td></tr>
+        <tr><td>State purchases</td><td class="site">src/game/economy.js</td><td class="site">procureStrategicGoods</td><td class="num">3222-3271</td><td>equipment imports at <code>price × (1 + tariff/100)</code></td></tr>
+        <tr><td>Flow doors</td><td class="site">src/game/economy.js</td><td class="site">addFlow / addNationFlow</td><td class="num">1809-1812<br>1863-1867</td><td>the only two ways anything enters the market</td></tr>
+        <tr><td>Derivation layer</td><td class="site">src/game/tradeLedger.js</td><td class="site">goodRow … tradeStructure</td><td class="num">51-421</td><td>everything the trade screen reads; explicitly read-only</td></tr>
+        <tr><td>Screen</td><td class="site">src/ui/tradeScreen.js</td><td class="site">—</td><td class="num">1-303</td><td>draws it; one control, and it only selects a row</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Everything the market can see — ten call sites, and that is all</h3>
+  <div class="scroller">
+    <table>
+      <thead><tr><th class="num">Line</th><th>Flow</th><th>What</th></tr></thead>
+      <tbody>
+        <tr><td class="num">1938-1939</td><td>demand</td><td>fertilizer, scaled by farmland</td></tr>
+        <tr><td class="num">1956-1957</td><td>supply</td><td>RGO output</td></tr>
+        <tr><td class="num">2363-2364</td><td>demand</td><td>factory inputs — <b>requested</b>, not consumed, so a shortage still moves the price</td></tr>
+        <tr><td class="num">2382-2383</td><td>supply</td><td>factory output</td></tr>
+        <tr><td class="num">2622-2623</td><td>demand</td><td>household baskets</td></tr>
+        <tr><td class="num">3267-3268</td><td>demand</td><td>state strategic imports</td></tr>
+        <tr><td class="num">3906</td><td>retained</td><td>military equipment held back from the market</td></tr>
+        <tr><td class="num">3931-3932</td><td>demand</td><td>cement, from the construction queue</td></tr>
+        <tr><td class="num">3940-3941</td><td>demand</td><td>army weekly consumption</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Phase order</h3>
+<pre><code>runNationEconomy  <span class="cm">per nation: rawProduction → runFactories → populationDemand → army</span>
+                  <span class="cm">           all of it only ACCUMULATES market supply and demand</span>
+finishEconomy     procureStrategicGoods → refreshPriorityAccess
+                  → <span class="hi">settleGlobalTrade</span> → updateLedger → <span class="hi">updatePrices</span></code></pre>
+  <ul class="tight">
+    <li><code>marketInputAvailability</code> reads <b>last week's</b> market — deliberate, so that slicing the per-nation loop across frames stays order-independent (documented in <code>beginEconomy</code>'s header).</li>
+    <li><code>flow.importShare</code> is likewise one week stale where <code>runFactories:2371</code> and <code>populationDemand:2528</code> charge the tariff.</li>
+    <li><code>market.goods[id].supply</code> and <code>.demand</code> are weekly <b>accumulators</b> reset by <code>resetNationGoodsFlow() 1819-1847</code>, not stocks.</li>
+  </ul>
+</section>
+
+<!-- ==================================================== TRADE · GRAPH === -->
+<section class="panel" id="p-trade-graph">
+  <p class="eyebrow">Trade · 03</p>
+  <h2>Causal graph</h2>
+  <p class="lede">One pool, four sinks, one lever — and three structural
+  consequences the player never sees.</p>
+
+  <div class="figure">
+    <div class="cap"><b>Trade causal graph</b> — everything flows through a single anonymous bucket per good.</div>
+    <div class="figbox">
+      <svg viewBox="0 0 980 560" role="img" aria-label="Trade causal graph: provinces and factories feed one anonymous world pool per good; households, factory inputs, the army and construction draw from it; the tariff is the only lever and it acts on four places at once; three structural consequences follow.">
+        <defs>
+          <marker id="tah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--wire)"/></marker>
+          <marker id="tahb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--brass)"/></marker>
+          <marker id="tahr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="var(--none)"/></marker>
+        </defs>
+
+        <text class="svg-h" x="20" y="24">Supply</text>
+        <text class="svg-h" x="368" y="24">The pool</text>
+        <text class="svg-h" x="700" y="24">Demand</text>
+
+        <!-- supply -->
+        <rect x="20" y="60" width="210" height="40" rx="3" fill="var(--strong-bg)" stroke="var(--strong)"/>
+        <text class="svg-n" x="32" y="78">Provinces · RGO</text><text class="svg-s" x="32" y="91">rawProduction() 1888-1960</text>
+        <rect x="20" y="112" width="210" height="40" rx="3" fill="var(--strong-bg)" stroke="var(--strong)"/>
+        <text class="svg-n" x="32" y="130">Factories</text><text class="svg-s" x="32" y="143">runFactories() 2382-2383</text>
+
+        <!-- pool -->
+        <rect x="326" y="60" width="290" height="104" rx="3" fill="var(--surface-2)" stroke="var(--brass)" stroke-width="2"/>
+        <text class="svg-n" x="340" y="84" style="font-size:14px">ONE WORLD POOL, per good</text>
+        <text class="svg-s" x="340" y="100">no partners · no geography · no routes</text>
+        <text class="svg-e" x="340" y="118">crossBorderTrade = min(totalSurplus, totalBid)</text>
+        <text class="svg-e" x="340" y="132">exports = surplus × trade / totalSurplus (pro rata)</text>
+        <text class="svg-e" x="340" y="152" fill="var(--brass)">Σ imports ≡ Σ exports · gap 0.000000000 in 22/22</text>
+
+        <!-- demand -->
+        <rect x="700" y="52" width="260" height="34" rx="3" fill="var(--node)" stroke="var(--rule-strong)"/>
+        <text class="svg-n" x="712" y="68">Households</text><text class="svg-s" x="712" y="80">class baskets · 2622-2623</text>
+        <rect x="700" y="94" width="260" height="34" rx="3" fill="var(--node)" stroke="var(--rule-strong)"/>
+        <text class="svg-n" x="712" y="110">Factory inputs</text><text class="svg-s" x="712" y="122">requested, not consumed · 2363</text>
+        <rect x="700" y="136" width="260" height="34" rx="3" fill="var(--node)" stroke="var(--rule-strong)"/>
+        <text class="svg-n" x="712" y="152">Army &amp; stockpiles</text><text class="svg-s" x="712" y="164">3940-3941 · 3267-3268</text>
+        <rect x="700" y="178" width="260" height="34" rx="3" fill="var(--node)" stroke="var(--rule-strong)"/>
+        <text class="svg-n" x="712" y="194">Construction</text><text class="svg-s" x="712" y="206">cement · 3931-3932</text>
+
+        <g fill="none" stroke="var(--wire)" stroke-width="1.5" marker-end="url(#tah)">
+          <path d="M230,80  C278,80  288,92  324,96"/>
+          <path d="M230,132 C278,132 290,120 324,116"/>
+          <path d="M616,92  C654,92  664,70  698,69"/>
+          <path d="M616,104 C654,104 666,110 698,111"/>
+          <path d="M616,124 C656,124 668,150 698,153"/>
+          <path d="M616,140 C658,140 670,192 698,195"/>
+        </g>
+
+        <!-- tariff -->
+        <rect x="330" y="238" width="270" height="40" rx="3" fill="var(--weak-bg)" stroke="var(--weak)"/>
+        <text class="svg-n" x="346" y="256">Tariff — the only lever</text>
+        <text class="svg-s" x="346" y="269">and it is rendered on the Budget screen</text>
+        <g fill="none" stroke="var(--brass)" stroke-width="1.5" stroke-dasharray="3 3" marker-end="url(#tahb)">
+          <path d="M420,236 L420,168"/>
+          <path d="M600,250 C664,250 682,86 698,74"/>
+          <path d="M600,264 C668,264 684,126 698,118"/>
+          <path d="M330,258 C250,258 232,300 232,318"/>
+        </g>
+        <text class="svg-e" x="330" y="196" fill="var(--brass)">appetite 1/(1+1.6t) · access 1/(1+0.5t)</text>
+        <text class="svg-e" x="628" y="286" fill="var(--brass)">+t × importShare on the basket (2528) and on inputs (2371)</text>
+
+        <rect x="20" y="318" width="210" height="40" rx="3" fill="var(--node)" stroke="var(--rule-strong)"/>
+        <text class="svg-n" x="32" y="336">Treasury</text><text class="svg-s" x="32" y="349">importValue × t + settlement · 3420</text>
+
+        <!-- structural consequences -->
+        <line x1="20" y1="392" x2="960" y2="392" stroke="var(--rule)"/>
+        <text class="svg-h" x="20" y="412">Three structural consequences the player never sees</text>
+
+        <rect x="20" y="424" width="300" height="60" rx="3" fill="var(--none-bg)" stroke="var(--none)"/>
+        <text class="svg-n" x="32" y="442">Nation-blind throttle</text>
+        <text class="svg-e" x="32" y="457">inputFulfillment = worldSupply / worldDemand</text>
+        <text class="svg-e" x="32" y="470">a self-sufficient country is throttled exactly</text>
+        <text class="svg-e" x="32" y="480">as much as an import-dependent one · 2338-2341</text>
+
+        <rect x="340" y="424" width="300" height="60" rx="3" fill="var(--none-bg)" stroke="var(--none)"/>
+        <text class="svg-n" x="352" y="442">Price deflation</text>
+        <text class="svg-e" x="352" y="457">avg price/base 1.68 → 1.18 → 0.123 over the century</text>
+        <text class="svg-e" x="352" y="470">baseOutputValue = Σ price × output feeds</text>
+        <text class="svg-e" x="352" y="480">fiscalBalance 2691 — the tax base deflates too</text>
+
+        <rect x="660" y="424" width="300" height="60" rx="3" fill="var(--none-bg)" stroke="var(--none)"/>
+        <text class="svg-n" x="672" y="442">Surplus is destroyed</text>
+        <text class="svg-e" x="672" y="457">no civilian inventory exists (1288-1290)</text>
+        <text class="svg-e" x="672" y="470">t5261: 3,432 produced vs 1,554 demanded —</text>
+        <text class="svg-e" x="672" y="480">and still 330 units of demand unmet</text>
+
+        <g fill="none" stroke="var(--none)" stroke-width="1.4" stroke-dasharray="4 3" marker-end="url(#tahr)">
+          <path d="M400,166 C300,200 180,340 170,420"/>
+          <path d="M470,166 C480,240 486,360 490,420"/>
+          <path d="M540,166 C700,220 800,340 810,420"/>
+        </g>
+
+        <text class="svg-e" x="20" y="512">Cut one raw good's world output to zero: coal −41% world GDP · iron −28% · cotton −38% and −25% of the nation's population over 25 years.</text>
+        <text class="svg-e" x="20" y="528" fill="var(--brass)">The simulation is exact and its shocks are severe. What is missing is any decision the player can make about it.</text>
+      </svg>
+    </div>
+    <div class="legend">
+      <span><i style="border-top-style:solid;border-color:var(--wire)"></i> goods flow</span>
+      <span><i style="border-top-style:dashed;border-color:var(--brass)"></i> the tariff, acting in four places at once</span>
+      <span><i style="border-top-style:dashed;border-color:var(--none)"></i> structural consequence, invisible to the player</span>
+    </div>
+  </div>
+
+  <h3>Mermaid source</h3>
+<pre class="mermaid">flowchart LR
+  classDef pool fill:#3a3226,stroke:#c9a227,color:#f5ead2
+  classDef src  fill:#2c4a52,stroke:#7fc8d8,color:#e8f4f8
+  classDef sink fill:#2f2a3d,stroke:#9b8bc4,color:#ece8f6
+  classDef bad  fill:#3a2a2a,stroke:#a05a5a,color:#f2e0e0
+
+  RGO["Provinces / RGO"]:::src --&gt; POOL
+  FAC["Factories"]:::src --&gt; POOL
+  POOL[("ONE WORLD POOL&lt;br/&gt;no partners · no geography&lt;br/&gt;min(surplus, bid)")]:::pool
+  POOL --&gt; HH["Households"]:::sink
+  POOL --&gt; FAC2["Factory inputs"]:::sink
+  POOL --&gt; ARMY["Army and stockpiles"]:::sink
+  POOL --&gt; CEM["Construction (cement)"]:::sink
+
+  TAR["Tariff&lt;br/&gt;the ONLY lever, on the Budget screen"]:::src
+  TAR --&gt;|"appetite 1/(1+1.6t)"| POOL
+  TAR --&gt;|"access 1/(1+0.5t)"| POOL
+  TAR --&gt;|"+t x importShare on the basket"| HH
+  TAR --&gt;|"+t x importShare on inputs"| FAC2
+  TAR --&gt;|"importValue x t"| TREAS["Treasury"]:::sink
+
+  POOL --&gt;|"worldSupply / worldDemand&lt;br/&gt;NATION-BLIND"| THR["inputFulfillment&lt;br/&gt;throttles every factory on earth"]:::bad
+  POOL --&gt;|"price x output"| BASE["baseOutputValue&lt;br/&gt;the whole tax base"]:::bad
+  BASE --&gt;|"deflates to the floor by 1936"| DEAD["34-38 of 42 goods at 0.12x base&lt;br/&gt;nominal GDP -90% while volumes double"]:::bad
+  POOL --&gt;|"unsold output destroyed weekly"| VOID["discarded"]:::bad</pre>
+</section>
+
+<!-- ======================================================= TRADE · IO === -->
+<section class="panel" id="p-trade-io">
+  <p class="eyebrow">Trade · 04</p>
+  <h2>Inputs &amp; outputs</h2>
+
+  <h4>What Trade owns</h4>
+  <div class="scroller">
+    <table>
+      <thead><tr><th>Field</th><th>Kind</th><th>Written by</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td class="site">world.market.goods[id]</td><td>stored-canonical</td><td class="site">addFlow() 1809-1812 · updatePrices() 3620-3641 · runNationEconomy() 3905</td><td>price, previousPrice, supply, demand, history[60], trend, traded. <b>supply and demand are weekly accumulators, not stocks.</b></td></tr>
+        <tr><td class="site">nation.economy.goodsFlow[id]</td><td>derived-cached</td><td class="site">resetNationGoodsFlow() 1819-1847 · addNationFlow() 1863-1867 · settleGlobalTrade() 3374-3380</td><td>production, demand, retained, domestic, imports, exports, fulfilled, shortage, importShare</td></tr>
+        <tr><td class="site">nation.economy.trade</td><td>derived-cached</td><td class="site">resetTradeSummary() 1850-1861 · settleGlobalTrade() 3384-3418</td><td>imports, exports, importValue, exportValue, balance, tariffRevenue, settlement</td></tr>
+        <tr><td class="site"><b>civilian inventory</b></td><td><span class="chip v-none">does not exist</span></td><td class="site">—</td><td><code>economy.inventory</code> was deliberately removed (<code>ensureEconomy() 1288-1290</code>); only <code>MILITARY_EQUIPMENT</code> has stock (<code>equipmentStock() 729-739</code>). Unsold civilian output is discarded weekly.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>The formulas, in full</h4>
+  <div class="scroller">
+    <table>
+      <thead><tr><th>Name</th><th>Site</th><th>Expression</th></tr></thead>
+      <tbody>
+        <tr><td>import appetite</td><td class="site">3319</td><td class="site">1 / max(0.05, 1 + (tariff/100) × 1.6)</td></tr>
+        <tr><td>export access</td><td class="site">3323</td><td class="site">1 / (1 + max(0, tariff/100) × 0.5)</td></tr>
+        <tr><td>cross-border trade</td><td class="site">3351</td><td class="site">min(totalSurplus, totalBid), then two-pass water-filling 3351-3370</td></tr>
+        <tr><td>exports</td><td class="site">3376</td><td class="site">surplusCol[i] × crossBorderTrade / totalSurplus &nbsp;<span class="chip v-neutral">no counterparty</span></td></tr>
+        <tr class="hl"><td>price update</td><td class="site">3634</td><td class="site">clamp(price × (1 + ((demand−supply)/(demand+supply)) × 0.09), base×0.12, base×8)</td></tr>
+        <tr class="hl"><td>input fulfilment</td><td class="site">3424-3430 → 2338-2341</td><td class="site">min over a factory's inputs of clamp(worldSupply/worldDemand, 0, 1) &nbsp;<span class="chip v-none">nation-blind</span></td></tr>
+        <tr><td>factory throughput</td><td class="site">2343-2345</td><td class="site">laborThroughput × inputFulfillment × reformMods.throughput × (1 + techMods)</td></tr>
+        <tr><td>tariff on a basket</td><td class="site">2528-2529</td><td class="site">price × quantity × (1 + (tariff/100) × importShare)</td></tr>
+        <tr><td>tariff on an input</td><td class="site">2371-2372</td><td class="site">price × consumed × (1 + (tariff/100) × importShare)</td></tr>
+        <tr><td>tariff revenue</td><td class="site">3401</td><td class="site">trade.importValue × tariff/100</td></tr>
+        <tr><td>external settlement</td><td class="site">3411</td><td class="site">trade.balance × EXTERNAL_SETTLEMENT, and EXTERNAL_SETTLEMENT ≡ 1 (509) &nbsp;<span class="chip v-none">identity</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================== TRADE · SENSITIVITY === -->
+<section class="panel" id="p-trade-sens">
+  <p class="eyebrow">Trade · 05</p>
+  <h2>Sensitivity</h2>
+  <p class="lede">22 process-isolated scenarios, seeds <code>tx-a/b/c</code>,
+  horizons from 260 to 5,200 weeks. Zero errors, and conservation exact in every
+  one.</p>
+
+  <h3>The supply chain is genuinely load-bearing</h3>
+  <div class="scroller">
+    <table>
+      <caption>One good's world RGO output cut to zero and held there. 2-seed medians at turn 1361 (≈1861).</caption>
+      <thead><tr><th>shock</th><th class="num">world GDP</th><th class="num">goods at ceiling</th><th class="num">no production</th><th class="num">input fulfilment</th><th class="num">needsMet</th><th class="num">factory levels</th><th class="num">population</th></tr></thead>
+      <tbody>
+        <tr><td>control</td><td class="num">13,878</td><td class="num">9</td><td class="num">11</td><td class="num">0.618</td><td class="num">0.917</td><td class="num">130</td><td class="num">1,038,121</td></tr>
+        <tr class="hl"><td><b>coal ×0</b></td><td class="num"><b>8,160</b></td><td class="num">17</td><td class="num">18</td><td class="num">0.542</td><td class="num"><b>0.660</b></td><td class="num"><b>75</b></td><td class="num">1,014,244</td></tr>
+        <tr><td><b>iron ×0</b></td><td class="num">10,044</td><td class="num">16</td><td class="num">16</td><td class="num"><b>0.454</b></td><td class="num">0.875</td><td class="num">104</td><td class="num">1,038,549</td></tr>
+        <tr class="hl"><td><b>cotton ×0</b></td><td class="num">8,600</td><td class="num">12</td><td class="num">12</td><td class="num">0.577</td><td class="num">0.690</td><td class="num">78</td><td class="num"><b>781,249</b></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Removing cotton costs the nation <b>25% of its population</b> over 25 years —
+  the chain <code>cotton → fabric → clothes → needsMet → provinces.js:796
+  nourishment → weeklyGrowth</code> is fully connected and severe. Removing coal
+  halves industry. <b>This is the best thing about the mechanic.</b></p>
+
+  <h3>The tariff, on the trade side</h3>
+  <div class="scroller">
+    <table>
+      <caption>Turn 2661 (≈1887), 2-seed medians. Note the direction of the last two industry columns.</caption>
+      <thead><tr><th class="num">tariff</th><th class="num">imports (units)</th><th class="num">import value</th><th class="num">exports</th><th class="num">tariff revenue</th><th class="num">needsMet</th><th class="num">factories</th><th class="num">levels</th><th class="num">treasury</th></tr></thead>
+      <tbody>
+        <tr class="hl"><td class="num">−15</td><td class="num"><b>95.1</b></td><td class="num">916</td><td class="num">35.5</td><td class="num">−57.7</td><td class="num"><b>1.000</b></td><td class="num"><b>60</b></td><td class="num"><b>255</b></td><td class="num">1,210,171</td></tr>
+        <tr><td class="num">0</td><td class="num">75.6</td><td class="num">646</td><td class="num">29.9</td><td class="num">0</td><td class="num">0.999</td><td class="num">47</td><td class="num">182</td><td class="num">1,022,554</td></tr>
+        <tr><td class="num">50</td><td class="num">39.1</td><td class="num">373</td><td class="num">28.6</td><td class="num">186</td><td class="num">0.947</td><td class="num">49</td><td class="num">244</td><td class="num">1,980,533</td></tr>
+        <tr><td class="num">100</td><td class="num"><b>32.1</b></td><td class="num">488</td><td class="num">25.6</td><td class="num"><b>488</b></td><td class="num"><b>0.924</b></td><td class="num">50</td><td class="num">237</td><td class="num">1,938,247</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>A century of maximum protection cuts import <em>volume</em> by two thirds
+  and costs 7.6 points of <code>needsMet</code> — and ends with <b>fewer</b>
+  factories and <b>fewer</b> levels than free trade. The industry column points
+  the opposite way to the slider's promise, at every horizon measured.</p>
+
+  <h3>The price system deflates to the floor over a century</h3>
+  <div class="scroller">
+    <table>
+      <caption>Same seed, three horizons. Read the columns carefully — the headline is counter-intuitive.</caption>
+      <thead><tr><th>turn (≈year)</th><th class="num">active goods</th><th class="num">avg price / base</th><th class="num">world production</th><th class="num">world demand</th><th class="num">S/D</th><th class="num">traded volume</th><th class="num">unmet demand</th></tr></thead>
+      <tbody>
+        <tr><td>321 (1842)</td><td class="num">29</td><td class="num"><b>1.680</b></td><td class="num">1,038</td><td class="num">796</td><td class="num">1.30</td><td class="num">702</td><td class="num">233</td></tr>
+        <tr><td>2,661 (1887)</td><td class="num">34</td><td class="num"><b>1.175</b></td><td class="num">1,764</td><td class="num">1,268</td><td class="num">1.39</td><td class="num">1,095</td><td class="num">388</td></tr>
+        <tr class="hl"><td>5,261 (1936)</td><td class="num">37</td><td class="num"><b>0.123</b></td><td class="num">3,432</td><td class="num">1,554</td><td class="num">2.21</td><td class="num"><b>1,554</b></td><td class="num">330</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note bad">
+    <div class="t">Volumes double while prices collapse to 12% of base</div>
+    <p>By 1936, <b>34–38 of 42 goods sit pinned at the price floor</b> and 33–39
+    have not moved more than 2% in sixty weeks. Consistent across all three
+    seeds. The real economy is <em>fine</em>: at turn 5261 the measured nation
+    has more factories (43 → 57/114/72), more people (1.20M → 1.64M), input
+    fulfilment near 1.0 (from 0.695) and <code>needsMet</code> 0.90–0.99 (from
+    0.785).</p>
+    <p><b>The mechanism is that the price rule has no anchor.</b>
+    <code>basePrice</code> appears in <code>updatePrices()</code> only as the two
+    clamp arguments (<code>:3623, :3634</code>) — its only other uses anywhere are
+    the catalogue, <code>marketGood()</code>'s initialisation and
+    <code>priceOf</code>'s fallback. Nothing pulls a price back toward base, so a
+    price is a pure multiplicative walk that keeps going in whichever direction
+    the imbalance last pushed it until it hits a wall and stays there. Pinning
+    starts early — <b>25 of 42 goods were already at a band edge at turn 321</b> —
+    and it is one-way. Two further facts make it uncorrectable:
+    <code>settleGlobalTrade</code> <b>never writes to
+    <code>world.market.goods</code></b> (grep over 3279-3422 finds only
+    <code>hasPriority</code>), so the market never learns that trade failed to
+    clear; and everything in a week transacts at <em>last</em> week's price,
+    because <code>updatePrices</code> runs last.</p>
+    <p>What dies is the price system. Production grows 3.3× while demand grows
+    2×, S/D reaches 2.21, and <code>updatePrices():3634</code> ratchets every
+    oversupplied good down to the floor and leaves it there. The consequence runs
+    straight into every other mechanic, because nominal value is priced off these
+    numbers: <code>market.totalGdp</code> falls <b>90%</b> (10,914 → 966); the
+    nation's own <code>economy.gdp</code> falls 2,629 → 207 <em>while its
+    industry grows</em>; and <code>fiscalBalance():2691</code> builds class income
+    from <code>baseOutputValue = Σ price × output</code>, so <b>the entire tax
+    base deflates with the price level</b>. A player who reaches 1900 finds a
+    large, well-fed, fully-employed economy whose every number reads as
+    worthless.</p>
+  </div>
+
+  <div class="note bad">
+    <div class="t">Three chains that are wired but do nothing</div>
+    <p><b>The fertilizer → agriculture bonus is dead.</b>
+    <code>rawProduction():1892-1894</code> computes
+    <code>fertilized = fertilizer.demand &gt; 0 ? fulfilled / demand : 0</code>,
+    but <code>resetNationGoodsFlow()</code> runs eight lines earlier in the same
+    function (<code>3860</code> vs <code>3868</code>) and zeroes <b>both</b>
+    fields. The test is always <code>0 &gt; 0</code>, so <code>farmBonus</code> is
+    always exactly <b>1.0</b> and fertilizer never raises a single unit of food.
+    The reset even preserves the ratio the calculation needs, as
+    <code>flow.fulfilledShare</code> at <code>:1844</code> — <code>rawProduction</code>
+    reads the wrong pair. This is the game's only industry → agriculture link.</p>
+    <p><b>Cement demand has no consequence.</b> The build queue books it weekly
+    (<code>3931-3932</code>), and <code>grep cement src/game/construction.js</code>
+    returns nothing. Building never slows for want of cement.</p>
+    <p><b>A starved factory bids full, forever.</b>
+    <code>runFactories():2359</code> books
+    <code>requested = amount × laborThroughput</code> — labour capacity, not the
+    input-throttled <code>throughput</code> one line below. A factory that never
+    receives its input keeps bidding full demand for the rest of the game, which
+    pins that good at the <b>8× ceiling permanently</b>. That is the mirror of the
+    floor problem, and exactly what turn 321 shows: <code>fuel</code> at 8× base
+    with production 0.00 and demand 2.25, beside <code>cement</code>,
+    <code>fertilizer</code> and <code>explosives</code>.</p>
+  </div>
+
+  <div class="note bad">
+    <div class="t">Simultaneous world glut and national shortage</div>
+    <p>At turn 5261 the world produces 3,432 units against 1,554 of demand — and
+    still leaves <b>330 units of demand unmet</b>. Two structural reasons, both in
+    <code>settleGlobalTrade</code>: exportable surplus is scaled down by
+    retaliation <em>before</em> it is offered (<code>:3323, :3325</code>), and
+    there is no civilian inventory anywhere in the game, so unsold output is
+    discarded at the end of the week. Goods are destroyed in one country in the
+    same week another goes short of them.</p>
+  </div>
+</section>
+
+<!-- ================================================ TRADE · CONNECTIONS = -->
+<section class="panel" id="p-trade-conn">
+  <p class="eyebrow">Trade · 06</p>
+  <h2>Connections</h2>
+  <p class="lede">Click any connection for the value that crosses it, who writes
+  it, who reads it, and what happens when it changes.</p>
+
+  <h4>Trade → outward</h4>
+  <div class="conns" id="tconns-out"></div>
+
+  <h4>What feeds Trade</h4>
+  <div class="conns" id="tconns-in"></div>
+</section>
+
+<!-- ============================================= TRADE · SIMPLIFICATION = -->
+<section class="panel" id="p-trade-simpl">
+  <p class="eyebrow">Trade · 07</p>
+  <h2>Simplification</h2>
+  <p class="lede">There is very little excess complexity here. The problem is the
+  opposite: absent player agency, and a price floor that swallows the nominal
+  economy.</p>
+
+  <div class="scroller">
+    <table>
+      <thead><tr><th class="num">#</th><th>Target</th><th>Move</th><th>Why</th><th>Depth lost</th></tr></thead>
+      <tbody>
+        <tr><td class="num">1</td><td>The trade screen's framing as a <em>mechanic</em></td><td><span class="chip v-strong">Keep as a readout</span></td><td>it has zero controls; it is an excellent dashboard for the economy, not a system the player operates</td><td>none — only the label is wrong</td></tr>
+        <tr><td class="num">2</td><td><code>EXTERNAL_SETTLEMENT</code></td><td><span class="chip v-neutral">Remove</span></td><td>an identity multiplier at its only value</td><td>none</td></tr>
+        <tr class="hl"><td class="num">3</td><td>The price floor</td><td><span class="chip v-none">Investigate</span></td><td>34–38 of 42 goods pin to it by 1936 and take the whole nominal economy with them</td><td><b>negative</b> — this is the one place a change would <em>add</em> depth</td></tr>
+        <tr><td class="num">4</td><td><code>flow.domestic</code> / <code>flow.fulfilled</code></td><td><span class="chip v-neutral">Derive</span></td><td>both recomputable from the other flow fields</td><td>none</td></tr>
+        <tr><td class="num">5</td><td>Per-nation input access</td><td><span class="chip v-weak">Do not re-add yet</span></td><td>the comment at <code>2331-2337</code> records two failed attempts; chronic world scarcity punished everyone</td><td>—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="note bad">
+    <div class="t">The single change with the highest leverage — an addition, not a simplification</div>
+    <p><code>updatePrices():3634</code> has no mean-reversion term, so every price
+    is a one-way walk into a clamp. Everything downstream of a price — the tax
+    base (<code>fiscalBalance:2691</code>), factory margins, the AI's investment
+    signal, company valuations — inherits that. If one thing in Trade is worth
+    changing, it is this line, and it is worth measuring before and after with
+    <code>scratchpad/trade-runner.mjs</code> at a 5,200-week horizon.</p>
+  </div>
+
+  <div class="note">
+    <div class="t">The honest structural note</div>
+    <p>Trade is currently <b>simulation depth without player depth</b>: an exact,
+    conserving, shock-propagating world market that the player can observe in
+    excellent detail and influence through exactly one slider on another screen.
+    That is a legitimate design — a living world the player reads rather than
+    plays — but it should be a deliberate choice, not an accident. The
+    &ldquo;protects domestic industry&rdquo; label suggests it was meant to be a
+    lever.</p>
+  </div>
+
+  <h3>Player-visible gaps</h3>
+  <div class="scroller">
+    <table>
+      <thead><tr><th>Item</th><th>Class</th><th>Evidence</th></tr></thead>
+      <tbody>
+        <tr><td>Price, supply, demand, coverage, status, 60-week history per good</td><td><span class="chip v-strong">Visible &amp; explained</span></td><td class="site">goodRow() 51-97 · goodDossier() 333-387</td></tr>
+        <tr><td>Producers and consumers of a good</td><td><span class="chip v-strong">Visible &amp; explained</span></td><td class="site">producersOf() 138-187 · consumersOf() 195-267</td></tr>
+        <tr class="hl"><td>That trade is a pool with no partners</td><td><span class="chip v-weak">Hidden</span></td><td>nothing in the UI says who you trade with — because there is no answer</td></tr>
+        <tr class="hl"><td>That your factories are throttled by world supply you cannot influence</td><td><span class="chip v-weak">Hidden</span></td><td class="site">marketInputAvailability() 3424-3430; no screen shows inputFulfillment</td></tr>
+        <tr class="hl"><td>That unsold output is destroyed every week</td><td><span class="chip v-weak">Hidden</span></td><td>no inventory exists (<code>1288-1290</code>); the surplus row reads &ldquo;spare X/wk&rdquo; as if it were kept</td></tr>
+        <tr><td><code>trade.settlement</code> as a treasury line</td><td><span class="chip v-weak">Visible, unexplained</span></td><td>the budget screen shows &ldquo;External settlement&rdquo; but never says it is the whole trade balance passing through the treasury</td></tr>
+        <tr><td>The tariff's effect on <em>export access</em></td><td><span class="chip v-weak">Hidden</span></td><td class="site">EXPORT_RETALIATION at 3323; the slider note mentions imports only</td></tr>
+        <tr><td><code>EXTERNAL_SETTLEMENT = 1</code></td><td><span class="chip v-none">Dead as a multiplier</span></td><td class="site">509 → 3411</td></tr>
+        <tr class="hl"><td>&ldquo;World trade&rdquo; on the trade screen <b>is world GDP</b></td><td><span class="chip v-none">Visible and wrong</span></td><td class="site">tradeLedger.js:120 <code>worldTrade: market.totalGdp</code> — Σ traded × price over all goods, including purely domestic volume</td></tr>
+        <tr><td>The price <em>rule</em> — that a 34% imbalance means +3% a week</td><td><span class="chip v-weak">Visible, unexplained</span></td><td><code>priceReasons()</code> states the imbalance but never the rule, so a player cannot convert one into the other</td></tr>
+        <tr><td><code>trade.imports</code> / <code>trade.exports</code> (physical quantities)</td><td><span class="chip v-weak">Hidden, not dead</span></td><td class="site">written at 3384-3385, reach no screen</td></tr>
+        <tr><td><code>PRICE_HISTORY</code></td><td><span class="chip v-none">Dead export</span></td><td class="site">3618 — used at 3629 in the same file, imported nowhere</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Do not touch</h3>
+  <ul class="tight">
+    <li><b>The two-pass water-filling allocation</b> (<code>3351-3370</code>). It is what makes Σimports ≡ Σexports exact, it carries the comment naming the audit that caught the single-pass version creating money, and it measured clean in 22 of 22 runs.</li>
+    <li><b>The shock chain.</b> Cutting one raw good costs 28–41% of world GDP and up to a quarter of a nation's population.</li>
+    <li><b><code>tradeLedger.js</code>.</b> The best information layer in the project — and the model the Budget screen should be rebuilt to.</li>
+    <li><b>Households <em>and</em> factories both paying the tariff</b> (<code>2528</code>, <code>2371</code>). This is what keeps tariff revenue honest money rather than invented money.</li>
+  </ul>
+
+  <h3>AI context cost — 2 / 5</h3>
+  <div class="cards">
+    <div class="card"><div class="k">Modules to read</div><div class="v">4</div><div class="n">economy, tradeLedger, tradeScreen, provinces</div></div>
+    <div class="card"><div class="k">Functions</div><div class="v">12</div><div class="n">against Budget's 28</div></div>
+    <div class="card"><div class="k">Flow-writer sites</div><div class="v">10</div><div class="n">the complete list of what the market can see</div></div>
+    <div class="card"><div class="k">Phase traps</div><div class="v">2</div><div class="n">both deliberate and both documented</div></div>
+  </div>
+  <p>Much easier than Budget. One clearing function, one price function, a
+  documented read-only derivation layer. The two traps —
+  <code>marketInputAvailability</code> and <code>flow.importShare</code> both read
+  last week — are deliberate and recorded in <code>beginEconomy</code>'s header.
+  The one genuine surprise for a reader is that <code>market.goods[].supply</code>
+  and <code>.demand</code> are weekly <em>accumulators</em>, not stocks.</p>
+</section>
+
+<!-- ================================================== TRADE · EXCERPTS == -->
+<section class="panel" id="p-trade-code">
+  <p class="eyebrow">Trade · 08</p>
+  <h2>Code excerpts</h2>
+
+  <span class="src">src/game/economy.js · settleGlobalTrade() · 3309-3327 — the whole market, in one loop body</span>
+<pre><code>const marketProduction = Math.max(0, flow.production - flow.retained);
+<span class="hi">const domestic = Math.min(marketProduction, flow.demand);</span>   <span class="cm">// fixed BEFORE the tariff</span>
+const deficit  = Math.max(0, flow.demand - domestic);
+const appetite = 1 / Math.max(0.05, 1 + (nation.economy.tariff / 100) * IMPORT_ELASTICITY);
+const access   = 1 / (1 + Math.max(0, nation.economy.tariff / 100) * EXPORT_RETALIATION);
+surplusCol[i] = Math.max(0, marketProduction - domestic) * access;
+bidCol[i]     = deficit * appetite;</code></pre>
+  <p style="margin-top:-8px"><span class="tag">why it matters</span> <code>domestic</code>
+  is settled before the tariff is read, and producers are paid the bare world
+  price — which is why a tariff cannot protect domestic industry.</p>
+
+  <span class="src">src/game/economy.js · settleGlobalTrade() · 3351, 3376 — no counterparty, ever</span>
+<pre><code>const crossBorderTrade = <span class="hi">Math.min(totalSurplus, totalBid);</span>
+...
+flow.exports = totalSurplus > 0 ? <span class="hi">surplusCol[i] * crossBorderTrade / totalSurplus</span> : 0;
+flow.imports = allocCol[i];   <span class="cm">// a weighted share of the same bucket</span></code></pre>
+
+  <span class="src">src/game/economy.js · updatePrices() · 3630-3636 — the entire price system</span>
+<pre><code>const total = Math.max(1, state.supply + state.demand);
+const imbalance = (state.demand - state.supply) / total;
+state.price = clamp(state.price * (1 + imbalance * PRICE_SPEED), <span class="hi">base * 0.12</span>, base * 8);
+state.trend  = state.price - state.previousPrice;
+state.traded = Math.min(state.supply, state.demand);
+<span class="cm">// PRICE_SPEED = 0.09 → at most ±9% a week. The 0.12 floor is where</span>
+<span class="cm">// 34-38 of 42 goods end up by 1936.</span></code></pre>
+
+  <span class="src">src/game/economy.js · runFactories() · 2338-2345 — the nation-blind throttle</span>
+<pre><code>let inputFulfillment = 1;
+for (const id in type.inputs) {
+  inputFulfillment = Math.min(inputFulfillment, <span class="hi">inputAvailability[id]</span> ?? 1);
+}
+const throughput = laborThroughput * <span class="hi">inputFulfillment</span> * reformMods.throughput
+  * (1 + (techMods?.factoryThroughput ?? 0));
+<span class="cm">// inputAvailability = clamp(WORLD supply / WORLD demand, 0, 1)  — 3424-3430.</span>
+<span class="cm">// A self-sufficient nation is throttled exactly as much as an importer.</span></code></pre>
+
+  <span class="src">src/game/economy.js · 2528-2529 and 2371-2372 — who actually pays the tariff</span>
+<pre><code><span class="cm">// households:</span>
+const tariffFactor = Math.max(0, 1 + (economy.tariff / 100) * importShare);
+const cost = priceOf(world, goodId) * quantity * tariffFactor;
+
+<span class="cm">// factories, on their imported input share:</span>
+const tariffFactor = 1 + (economy.tariff / 100) * importShare;
+inputCost += priceOf(world, id) * consumed * tariffFactor;</code></pre>
+  <p style="margin-top:-8px"><span class="tag">conservation</span> Both sides pay,
+  so tariff revenue is transferred money, not invented money.</p>
+
+  <span class="src">src/game/tradeLedger.js · priceReasons() · 273-289 — the standard the Budget screen should meet</span>
+<pre><code>if (row.pinned === 'ceiling') {
+  reasons.push({ tone: 'bad', text: 'Price is pinned at the ceiling — world supply cannot reach this demand.' });
+} else if (row.pinned === 'floor') {
+  reasons.push({ tone: 'dim', text: 'Price sits at the floor — almost nobody wants this good.' });
+}
+if (Math.abs(worldGap) / worldTotal > 0.15) { ... }
+if (row.coverage != null &amp;&amp; row.coverage &lt; 0.925 &amp;&amp; ...) { ... }
+<span class="cm">// then: expensive inputs, import share and the tariff's share of the cost,</span>
+<span class="cm">// each derived from real state rather than a copied constant.</span></code></pre>
+</section>
+
+<!-- ================================================== TRADE · CONTRACT == -->
+<section class="panel" id="p-trade-contract">
+  <p class="eyebrow">Trade · 09</p>
+  <h2>Contract</h2>
+
+<pre><code><span class="hi">TRADE CONTRACT</span>
+
+Inputs      nation.economy.tariff (owned by Budget) · what the player builds
+            · priorityAccess from companies
+Canonical   world.market.goods[id].{price, supply, demand, history}
+            NOTE: supply and demand are WEEKLY ACCUMULATORS, not stocks
+Derived     nation.economy.goodsFlow[id] · nation.economy.trade
+Outputs     tariffRevenue + settlement → treasury
+            inputAvailability → every factory on earth
+            price → baseOutputValue → the entire tax base
+            shortage → needsMet → population growth and politics
+
+<span class="hi">Must always be true</span>
+  Σ trade.importValue == Σ trade.exportValue            <span class="cm">(measured 0.000000000)</span>
+  Σ trade.settlement == 0
+  crossBorderTrade == min(totalSurplus, totalBid), and the two-pass
+    allocation closes it exactly
+  priority access reorders the queue and NEVER creates goods
+  there is no civilian inventory — unsold output is discarded weekly
+
+<span class="hi">Others may read</span>   world.market.goods · goodsFlow · economy.trade
+<span class="hi">Others must NOT write</span>  market flows except through addFlow/addNationFlow
+                       a price except through updatePrices
+                       imports/exports/shortage except through settleGlobalTrade
+<span class="hi">Phase order</span>   runNationEconomy accumulates → finishEconomy:
+              procureStrategicGoods → refreshPriorityAccess → settleGlobalTrade
+              → updateLedger → updatePrices
+            Any price or availability you read is LAST week's.</code></pre>
+
+  <div class="note">
+    <div class="t">Reproducing the measurements</div>
+<pre style="margin:8px 0 0"><code><span class="cm">// scratchpad/trade-runner.mjs dumps the whole world market for one scenario</span>
+node trade-runner.mjs '{"seed":"tx-a","warmup":60,"weeks":5200,"peaceful":true}'
+
+<span class="cm">// supply shock: cut one good's world RGO output to zero and hold it</span>
+'{"seed":"tx-a","weeks":1300,"mutations":[{"name":"rgoScale","args":{"goodId":"cotton","factor":0}}],
+  "repeatMutations":[{"name":"rgoScale","args":{"goodId":"cotton","factor":0}}]}'</code></pre>
+  </div>
+
+  <p class="foot">
+    <span class="tag">scope</span> Budget and Trade are analysed. Population,
+    Politics, Military, Construction and Technology are listed as pending in the
+    rail. No game code was modified, no values balanced, no bugs fixed, no
+    refactor performed — this atlas describes what the code does today.
+  </p>
+</section>
+
+</main>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ------------------------------------------------ mechanics + tabs --- */
+  var MECH = {
+    budget: { label: 'Budget', sections: [
+      ['overview','Overview'],['codemap','Code map'],['graph','Causal graph'],
+      ['io','Inputs & outputs'],['sens','Sensitivity'],['conn','Connections'],
+      ['simpl','Simplification'],['code','Code excerpts'],['contract','Contract']] },
+    trade: { label: 'Trade', sections: [
+      ['overview','Overview'],['codemap','Code map'],['graph','Causal graph'],
+      ['io','Inputs & outputs'],['sens','Sensitivity'],['conn','Connections'],
+      ['simpl','Simplification'],['code','Code excerpts'],['contract','Contract']] },
+  };
+  var nav = document.getElementById('nav');
+  var navhead = document.getElementById('navhead');
+  var mechs = document.getElementById('mechs');
+  var current = { m: 'budget', s: 'overview' };
+
+  function paintNav() {
+    var secs = MECH[current.m].sections;
+    nav.innerHTML = secs.map(function (x) {
+      return '<li><button data-p="' + x[0] + '"' +
+        (x[0] === current.s ? ' aria-current="true"' : '') + '>' + x[1] + '</button></li>';
+    }).join('');
+    navhead.textContent = MECH[current.m].label + ' sections';
+    var ms = mechs.querySelectorAll('button.mech');
+    for (var i = 0; i < ms.length; i++) {
+      ms[i].setAttribute('aria-current', String(ms[i].dataset.m === current.m));
+    }
+  }
+  function show(m, sec) {
+    if (!MECH[m]) return;
+    if (!document.getElementById('p-' + m + '-' + sec)) sec = MECH[m].sections[0][0];
+    current = { m: m, s: sec };
+    var panels = document.querySelectorAll('.panel');
+    for (var i = 0; i < panels.length; i++) {
+      panels[i].classList.toggle('on', panels[i].id === 'p-' + m + '-' + sec);
+    }
+    paintNav();
+    if (location.hash !== '#' + m + '/' + sec) history.replaceState(null, '', '#' + m + '/' + sec);
+    window.scrollTo({ top: 0, behavior: 'auto' });
+  }
+  nav.addEventListener('click', function (e) {
+    var b = e.target.closest('button');
+    if (b) show(current.m, b.dataset.p);
+  });
+  mechs.addEventListener('click', function (e) {
+    var b = e.target.closest('button.mech');
+    if (b) show(b.dataset.m, 'overview');
+  });
+  var want = (location.hash || '').slice(1).split('/');
+  show(MECH[want[0]] ? want[0] : 'budget', want[1] || 'overview');
+
+  /* --------------------------------------------------- connections --- */
+  var OUT = [
+    { from: 'Budget', to: 'Trade', value: 'economy.tariff',
+      writer: 'economy.js setFiscalPolicy() 1636', reader: 'economy.js settleGlobalTrade() 3319, 3323, 3401',
+      effect: 'Sets import appetite 1/(1+t·1.6), export access 1/(1+t·0.5) and the tariff revenue itself. Measured: the treasury swings 21× across the reachable band while needsMet falls 0.94 → 0.70.', kind: 'CROSS-SYSTEM' },
+    { from: 'Budget', to: 'Trade', value: 'economy.tariff (again — hidden)',
+      writer: 'economy.js setFiscalPolicy() 1636', reader: 'economy.js procureStrategicGoods() 3244',
+      effect: 'The state’s OWN military imports are priced at price × (1 + tariff/100). A protectionist wartime government pays double for the rifles it imports, and no UI line connects the two.', kind: 'HIDDEN' },
+    { from: 'Budget', to: 'Population', value: 'classes[c].taxPaid and taxes[c]/100',
+      writer: 'economy.js fiscalBalance() 2708', reader: 'economy.js populationDemand() 2570, 2573, 2649',
+      effect: 'Two channels: net household budget (income − taxPaid) and a direct satisfaction penalty of rate × 0.28. Reads LAST week’s income — fiscalBalance runs after populationDemand.', kind: 'CROSS-SYSTEM' },
+    { from: 'Budget', to: 'Population', value: 'economy.social.welfare',
+      writer: 'economy.js setFiscalPolicy() 1663', reader: 'economy.js 2583 (relief) and 2649 (mood)',
+      effect: 'The treasury pays 35% of the poor’s basket (12% middle, 0% upper) and adds welfare × 0.14 to satisfaction. Measured: welfare 0 → 100 lifts stability 0.544 → 0.760 and the run ends RICHER.', kind: 'CROSS-SYSTEM' },
+    { from: 'Budget', to: 'Population', value: 'economy.social.health',
+      writer: 'economy.js setFiscalPolicy() 1663', reader: 'provinces.js 790 (RAW read) and economy.js 2660',
+      effect: 'Multiplies weekly province population growth by up to 1.35 and adds 2.5 to standardOfLiving, which gates city growth at cities.js 154-160. Measured: +0.66% population over 5 years for +34 gold/week. NOTE the provinces.js read bypasses socialLevel(), so an accessor grep misses it.', kind: 'HIDDEN' },
+    { from: 'Budget', to: 'Politics', value: 'economy.warStrain (hidden second channel)',
+      writer: 'economy.js refreshNationalStrain() 3819-3847', reader: 'politics.js supportScore() 238-244',
+      effect: 'score *= 1 − min(0.45, warStrain·0.3 + occupiedShare·0.4). A long two-front war can strip 45% of the ruling party’s support, straight in the political layer. The HUD’s stabilityWhy() shows war exhaustion’s effect on STABILITY — this is a different channel, into elections, and nothing names it.', kind: 'HIDDEN' },
+    { from: 'Budget', to: 'Politics', value: 'class satisfaction',
+      writer: 'economy.js populationDemand() 2648', reader: 'politics.js supportScore()',
+      effect: 'Satisfaction drives party support, which drives elections, which change fiscalPolicyLimits — which re-clamps the player’s tariff and army dials the following week. This is the mechanic’s only genuine feedback loop.', kind: 'FEEDBACK' },
+    { from: 'Budget', to: 'Military', value: 'economy.militaryWages',
+      writer: 'economy.js setFiscalPolicy() 1640', reader: 'battles.js 98/116 · turn.js 421 · recruitment.js 364 · cities.js 433',
+      effect: 'Combat power × (0.55 + f·0.45), organisation recovery × (0.6 + 0.4f), training speed 0.45 + 0.4f, and the wage bill itself. Measured 25 → 60: attack power 47.9 → 59.3, defence 63.1 → 78.2, cost 2.25 → 5.40.', kind: 'CROSS-SYSTEM' },
+    { from: 'Budget', to: 'Military', value: 'economy.militaryProcurement',
+      writer: 'economy.js setFiscalPolicy() 1640', reader: 'reinforcement.js 22 · economy.js 726, 3222, 3878',
+      effect: 'Scales the weekly stockpiling budget, the equipment import target and the reinforcement rate. Measured 25 → 60: supplyIndex 0.133 → 0.228, arms 23.8 → 27.4. Cross-tested as a genuinely separate axis from wages.', kind: 'CROSS-SYSTEM' },
+    { from: 'Budget', to: 'Construction', value: 'nation.gold',
+      writer: '13 sites', reader: 'construction.js canQueueConstruction() 480 · investmentBlocker() 539 · economy.js canPayFactoryCost() 1376',
+      effect: 'A HARD gate: short gold blocks the purchase outright rather than pushing the treasury negative. Measured: a nation held at 0 gold ends with 24 factory levels instead of 40 and GDP 597 instead of 792.', kind: 'CROSS-SYSTEM' },
+    { from: 'Budget', to: 'Construction', value: 'economy.creditPenalty',
+      writer: 'economy.js settleDebt() 3492', reader: 'construction.js upkeepFactor() 269 and 784',
+      effect: 'Construction power is scaled by (1 − penalty), and investment planning stops above 0.05. A defaulting nation literally builds more slowly. Nothing in the UI names the penalty.', kind: 'HIDDEN' },
+    { from: 'Budget', to: 'Technology', value: 'economy.social.education',
+      writer: 'economy.js setFiscalPolicy() 1663', reader: 'economy.js literacyTargetOf() 3806 → technology.js researchPointsOf() 337-351; construction.js investmentBlocker() 531-536',
+      effect: 'TWO ROLES, very different weights. As a RATE it is negligible: +79% research points buys one extra technology in 30 years. As a GATE it is decisive: education must be ≥ 25/40/55/70 to buy the next Higher Education level.', kind: 'CROSS-SYSTEM' },
+    { from: 'Budget', to: 'Industry', value: 'factory.subsidized',
+      writer: 'player marks / applySubsidyPolicy() 1692-1702', reader: 'economy.js runFactories() 2404-2410',
+      effect: 'The state absorbs the loss and sets profit = 0, which stops runFactoryEmployment() 2193-2197 laying workers off. Worth +12% employment and +3.8% GDP for 1.6% of the treasury — but only reachable through per-factory marking.', kind: 'HIDDEN' },
+    { from: 'Budget', to: 'Cities', value: 'economy.adminFunding',
+      writer: 'economy.js setFiscalPolicy() 1648', reader: 'cities.js 436-439',
+      effect: 'Administration cost scales linearly with the dial while tax efficiency scales at 0.45×. Marginal revenue 16.83 vs marginal cost 5.00 on the measured nation — so 100 wins unless population reaches ~2.9M.', kind: 'CROSS-SYSTEM' }
+  ];
+
+  var IN = [
+    { from: 'Provinces / RGO', to: 'Budget', value: 'baseOutputValue',
+      writer: 'economy.js rawProduction() 1888', reader: 'economy.js fiscalBalance() 2691',
+      effect: 'The marketed share of rural output (INCOME_POOL_SHARE 0.35) is the base of every class income, split 0.42 / 0.33 / 0.25. This is the single largest input to the tax base.', kind: 'READ' },
+    { from: 'Industry', to: 'Budget', value: 'economy.wagesPaid · economy.factoryProfit',
+      writer: 'economy.js runFactories() 2394, 2415', reader: 'economy.js fiscalBalance() 2696, 2705',
+      effect: 'Payroll goes to lower (0.8) and middle (0.2); half of factory profit goes to the upper class. Industry therefore widens the tax base of every class it employs.', kind: 'READ' },
+    { from: 'Companies', to: 'Budget', value: 'economy.capitalWithheld',
+      writer: 'game/companies.js runCompanies()', reader: 'economy.js fiscalBalance() 2701',
+      effect: 'Dividends already paid to a foreign partner are deducted from domestic upper-class income, so the same money is not taxed at home and banked abroad (invariant L10).', kind: 'READ' },
+    { from: 'Cities / Provinces', to: 'Budget', value: 'budget.production.gold',
+      writer: 'cities.js nationBudget() 399-409', reader: 'economy.js updateLedger() 3524 as cityRevenue',
+      effect: 'Crown land, customs houses and city trade — about 19% of a typical nation’s income, and the second, parallel accounting object described in the overview.', kind: 'READ' },
+    { from: 'Military', to: 'Budget', value: 'armyWeight',
+      writer: 'cities.js nationBudget() 410-424', reader: 'cities.js 433',
+      effect: 'The wage bill is armyWeight × UNIT_UPKEEP.gold × militaryWages/100 — equipment weight, not regiment count, so modernising the army is a late-game expense.', kind: 'READ' },
+    { from: 'Population', to: 'Budget', value: 'economy.population',
+      writer: 'economy.js reconcilePopulation()', reader: 'economy.js socialSpendingCost() 1800 · cities.js administrationCost() 213',
+      effect: 'Both the social bill and the administration bill scale with population, so a growing empire pays more for the same policy. This is what stops adminFunding from being free — though not by enough (break-even ≈ 2.9M).', kind: 'READ' },
+    { from: 'Reforms', to: 'Budget', value: 'reformModifiers().socialBurden',
+      writer: 'reforms.js 979', reader: 'economy.js socialSpendingCost() 1806',
+      effect: 'Social LAW is a commitment separate from the slider and cannot be cut. dole·0.10 + pension·0.12 + health·0.10 + school·0.09 — an uncuttable floor under the social bill.', kind: 'READ' },
+    { from: 'Peace', to: 'Budget', value: 'economy.treatyCost / treatyRevenue',
+      writer: 'turn.js payTreaties() 570-604', reader: 'economy.js updateLedger() 3536-3537',
+      effect: 'Reparations are 20% and vassal tribute 15% — but of budget.net.gold ONLY, not of total income. A nation with high tax revenue and low crown revenue pays almost nothing.', kind: 'READ' },
+    { from: 'Politics', to: 'Budget', value: 'ruling party doctrine',
+      writer: 'politics.js fiscalPolicyLimits() 193-204', reader: 'politics.js applyGovernmentLimits() 206-218, every week',
+      effect: 'The tariff band and both army-dial ceilings come from the ruling party. This is the ONLY thing that changes a player’s budget without their consent — and it closes the feedback loop from satisfaction through elections.', kind: 'FEEDBACK' }
+  ];
+
+  function render(list, host) {
+    var frag = document.createDocumentFragment();
+    list.forEach(function (c) {
+      var d = document.createElement('details');
+      d.className = 'conn';
+      var kindClass = c.kind === 'HIDDEN' ? 'v-weak' : c.kind === 'FEEDBACK' ? 'v-moderate' : 'v-neutral';
+      d.innerHTML =
+        '<summary><span class="path">' +
+          '<span class="from">' + c.from + '</span>' +
+          '<span class="arr">→</span>' +
+          '<span class="to">' + c.to + '</span>' +
+          '<span class="val">' + c.value + '</span>' +
+        '</span><span class="chip ' + kindClass + '">' + c.kind + '</span></summary>' +
+        '<div class="body"><dl>' +
+          '<dt>Value</dt><dd class="mono">' + c.value + '</dd>' +
+          '<dt>Writer</dt><dd class="mono">' + c.writer + '</dd>' +
+          '<dt>Reader</dt><dd class="mono">' + c.reader + '</dd>' +
+          '<dt>Effect</dt><dd>' + c.effect + '</dd>' +
+        '</dl></div>';
+      frag.appendChild(d);
+    });
+    host.appendChild(frag);
+  }
+  render(OUT, document.getElementById('conns-out'));
+  render(IN, document.getElementById('conns-in'));
+
+  /* ------------------------------------------------ trade connections --- */
+  var TOUT = [
+    { from: 'Trade', to: 'Budget', value: 'trade.tariffRevenue + trade.settlement',
+      writer: 'economy.js settleGlobalTrade() 3401, 3411', reader: 'economy.js 3419-3420',
+      effect: 'Both go straight into fiscalNet and nation.gold. The settlement is the WHOLE trade balance passing through the treasury — measured at 364/week on one nation against 25 of tariff revenue, so the external account can dwarf the tariff it sits next to.', kind: 'CROSS-SYSTEM' },
+    { from: 'Trade', to: 'Industry', value: 'inputAvailability[good]',
+      writer: 'economy.js marketInputAvailability() 3424-3430', reader: 'economy.js runFactories() 2338-2341',
+      effect: 'clamp(WORLD supply / WORLD demand, 0, 1), taken as a min over each factory\u2019s inputs and multiplied straight into throughput. It is NATION-BLIND: a country that mines all its own iron is throttled exactly as much as one that imports every gram. The comment at 2331-2337 records that a per-nation version was tried twice and reverted.', kind: 'HIDDEN' },
+    { from: 'Trade', to: 'Budget', value: 'price → baseOutputValue',
+      writer: 'economy.js updatePrices() 3634', reader: 'runNationEconomy() 3872 → fiscalBalance() 2691',
+      effect: 'baseOutputValue = \u03a3 price \u00d7 output is the base of every class income and therefore of the entire tax base. When 34-38 of 42 goods deflate to the 0.12\u00d7 floor by 1936, the tax base deflates with them — the measured nation\u2019s GDP fell 2,629 \u2192 207 while its industry grew.', kind: 'HIDDEN' },
+    { from: 'Trade', to: 'Industry', value: 'priceOf(world, id)',
+      writer: 'economy.js updatePrices() 3634', reader: 'runFactories() 2372 (input cost) and 2385 (revenue)',
+      effect: 'Sets factory.profit, which drives layoffs (runFactoryEmployment 2193) and, through factoryMargin() 1339-1347, the AI\u2019s investmentOptions filter. Floor prices degenerate the investment signal at exactly the point the tech-gated catalogue finally unlocks.', kind: 'CROSS-SYSTEM' },
+    { from: 'Trade', to: 'Population', value: 'flow.shortage / needsAvailable',
+      writer: 'economy.js settleGlobalTrade() 3382', reader: 'populationDemand() ~2630',
+      effect: 'needsMet = affordShare \u00d7 availability. Feeds satisfaction \u2192 stability \u2192 party support, and provinces.js:796 nourishment \u2192 weekly population growth with a famine term below threshold. Measured: removing cotton costs 25% of the nation\u2019s population over 25 years.', kind: 'CROSS-SYSTEM' },
+    { from: 'Trade', to: 'Military', value: 'market supply of equipment',
+      writer: 'settleGlobalTrade()', reader: 'procureStrategicGoods() 3222-3271',
+      effect: 'What the state can actually buy, priced at price \u00d7 (1 + tariff/100) and hard-capped by nation.gold. A protectionist wartime government pays double for the rifles it imports.', kind: 'HIDDEN' },
+    { from: 'Trade', to: 'Companies', value: 'extraction.value = \u03a3 amount \u00d7 price',
+      writer: 'economy.js rawProduction() 1922-1926', reader: 'companies.js measureCompany',
+      effect: 'Mine valuations are priced off the world market, so the same century-long deflation shrinks every extraction company on the exchange.', kind: 'CROSS-SYSTEM' }
+  ];
+  var TIN = [
+    { from: 'Provinces', to: 'Trade', value: 'RGO output',
+      writer: 'economy.js rawProduction() 1888-1960 via provinces.js provinceOutput() 597-637', reader: 'addFlow(supply) 1956-1957',
+      effect: 'The base of the whole pool. Agricultural output additionally carries a \u00d71.25 fertilizer bonus — the one industry \u2192 agriculture link in the game.', kind: 'READ' },
+    { from: 'Industry', to: 'Trade', value: 'factory output',
+      writer: 'economy.js runFactories() 2382-2383', reader: 'addFlow(supply)',
+      effect: 'Scaled by throughput, which is itself gated by the world availability ratio — so industry both feeds and is fed by the pool.', kind: 'READ' },
+    { from: 'Population', to: 'Trade', value: 'class baskets',
+      writer: 'economy.js populationDemand() 2622-2623', reader: 'addFlow(demand)',
+      effect: 'The largest demand source. Households pay the tariff on their imported share at 2528-2529, which is what makes the tariff honest money.', kind: 'READ' },
+    { from: 'Military', to: 'Trade', value: 'consumption and stockpiling',
+      writer: 'armyWeeklyDemand() 3189-3220 and runNationEconomy() 3940-3941', reader: 'addFlow(demand)',
+      effect: 'Peace armies drill, war armies burn ammunition — the multiplier is what stops the supply bill doubling a nation\u2019s income in peacetime.', kind: 'READ' },
+    { from: 'Construction', to: 'Trade', value: 'cement',
+      writer: 'economy.js runNationEconomy() 3931-3932', reader: 'addFlow(demand)',
+      effect: 'The cement factory\u2019s only customer, and the second link between industrialisation and the build queue.', kind: 'READ' },
+    { from: 'Budget', to: 'Trade', value: 'economy.tariff',
+      writer: 'economy.js setFiscalPolicy() 1636', reader: '3319 appetite · 3323 access · 3401 revenue · 2528 basket · 2371 inputs',
+      effect: 'The only lever, acting in five places at once. It cannot raise domestic sales — domestic is fixed at 3310 before the tariff is read.', kind: 'PLAYER' },
+    { from: 'Technology', to: 'Trade', value: 'factory unlocks',
+      writer: 'economy.js factoryUnlocked() 1481-1487', reader: 'canBuildFactory() 1489',
+      effect: 'Decides which goods can exist at all. REFINERY is availableFrom TURN 1776 (\u2248 1870), so at turn 260 the oil \u2192 fuel chain is simply not open yet — a short-horizon reading mistakes that for a broken chain.', kind: 'CROSS-SYSTEM' },
+    { from: 'Companies', to: 'Trade', value: 'priorityAccess[good]',
+      writer: 'companies.js refreshPriorityAccess', reader: 'settleGlobalTrade() 3327-3329',
+      effect: 'Weights the import bid. The two-pass allocation guarantees it can only reorder the queue, never create goods — what a privileged nation takes, the one behind it does not get.', kind: 'CROSS-SYSTEM' }
+  ];
+  if (document.getElementById('tconns-out')) {
+    render(TOUT, document.getElementById('tconns-out'));
+    render(TIN, document.getElementById('tconns-in'));
+  }
+
+})();
+</script>
+</body>
+</html>
