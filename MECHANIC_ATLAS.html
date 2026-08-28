@@ -1,0 +1,1500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Budget Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans+Condensed:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&display=swap" />
+<style>
+/* ============================================================================
+   MECHANIC ATLAS — Budget.
+   Visual system inherited from src/styles.css: 19th-century military map room.
+   Charcoal and dark navy surfaces, matte brass accent, off-white text.
+   Brass is load-bearing, never decorative. No glow. Hierarchy by whitespace,
+   typography and hairline, not by nested boxes.
+   Deliberately single-theme: this document lives inside the game's own world.
+   ========================================================================= */
+:root {
+  --surface-0: #090e11;
+  --surface-1: #0d1518;
+  --surface-2: #111b1f;
+  --surface-3: #182328;
+  --surface-sunken: #070c0e;
+
+  --text: #d9d1bd;
+  --text-dim: #989486;
+  --text-faint: #6f7778;
+
+  --line: rgba(174, 139, 74, 0.14);
+  --line-strong: rgba(174, 139, 74, 0.34);
+
+  --gold: #967a45;
+  --gold-bright: #baa064;
+  --gold-dark: #59482a;
+  --green: #839a6b;
+  --red: #a95e4a;
+  --amber: #b78e48;
+  --slate: #7e8d92;
+
+  --ink-on-brass: #16110a;
+
+  --measure: 74ch;
+  --page: 1180px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--surface-0);
+  color: var(--text);
+  font-family: "IBM Plex Serif", Georgia, "Times New Roman", serif;
+  font-size: 16px;
+  line-height: 1.62;
+  /* Kağıt dokusu değil, ışık: harita odasında tek bir lamba. */
+  background-image: radial-gradient(120% 60% at 50% -10%, rgba(150, 122, 69, 0.07), transparent 60%);
+  background-repeat: no-repeat;
+}
+
+.wrap { max-width: var(--page); margin: 0 auto; padding: 0 28px 140px; }
+
+/* ---------------------------------------------------------------- TYPE --- */
+
+h1, h2, h3, h4, .label, .chip, th, .num {
+  font-family: "IBM Plex Sans Condensed", "Helvetica Neue", Arial, sans-serif;
+}
+
+h1 {
+  font-size: clamp(2.1rem, 5vw, 3.3rem);
+  font-weight: 700;
+  line-height: 1.02;
+  letter-spacing: -0.015em;
+  margin: 0;
+  text-wrap: balance;
+}
+
+h2 {
+  font-size: clamp(1.35rem, 2.6vw, 1.85rem);
+  font-weight: 600;
+  line-height: 1.12;
+  letter-spacing: -0.008em;
+  margin: 0 0 4px;
+  text-wrap: balance;
+}
+
+h3 {
+  font-size: 1.08rem;
+  font-weight: 600;
+  letter-spacing: 0.005em;
+  margin: 38px 0 10px;
+  color: var(--text);
+  text-wrap: balance;
+}
+
+h4 {
+  font-size: 0.82rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--gold-bright);
+  margin: 30px 0 8px;
+}
+
+p { margin: 0 0 15px; max-width: var(--measure); }
+p.wide { max-width: none; }
+
+a { color: var(--gold-bright); text-decoration-color: var(--gold-dark); text-underline-offset: 2px; }
+a:focus-visible, button:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
+
+strong { color: var(--text); font-weight: 600; }
+em { color: var(--text-dim); }
+
+code, .mono, .num {
+  font-family: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  font-size: 0.845em;
+  font-variant-numeric: tabular-nums;
+}
+
+code {
+  color: var(--gold-bright);
+  background: var(--surface-sunken);
+  border: 1px solid var(--line);
+  border-radius: 2px;
+  padding: 0.08em 0.34em;
+  white-space: nowrap;
+}
+
+.label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-faint);
+}
+
+/* -------------------------------------------------------------- HEADER --- */
+
+.masthead {
+  border-bottom: 1px solid var(--line-strong);
+  padding: 64px 0 30px;
+  margin-bottom: 44px;
+}
+
+.masthead .kicker {
+  display: flex;
+  gap: 14px;
+  align-items: baseline;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.masthead .lede {
+  font-size: 1.16rem;
+  line-height: 1.55;
+  color: var(--text-dim);
+  max-width: 62ch;
+  margin: 20px 0 0;
+}
+
+.rule-brass {
+  height: 2px;
+  background: linear-gradient(90deg, var(--gold) 0%, var(--gold-dark) 42%, transparent 100%);
+  margin: 26px 0 0;
+}
+
+.meta-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  margin-top: 34px;
+}
+
+.meta-grid > div { background: var(--surface-1); padding: 13px 16px; }
+.meta-grid dt { font-size: 0.68rem; letter-spacing: 0.15em; text-transform: uppercase; color: var(--text-faint); font-family: "IBM Plex Sans Condensed", sans-serif; font-weight: 600; }
+.meta-grid dd { margin: 4px 0 0; font-size: 0.84rem; color: var(--text); font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; line-height: 1.4; }
+
+/* ------------------------------------------------------------- SECTION --- */
+
+section { margin: 0 0 76px; scroll-margin-top: 20px; }
+
+.sec-head {
+  display: grid;
+  grid-template-columns: 74px 1fr;
+  gap: 18px;
+  align-items: start;
+  border-top: 1px solid var(--line-strong);
+  padding-top: 18px;
+  margin-bottom: 26px;
+}
+
+.sec-head .part {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--gold);
+  padding-top: 6px;
+  white-space: nowrap;
+}
+
+.sec-head .sub { color: var(--text-dim); font-size: 0.95rem; margin: 6px 0 0; max-width: 66ch; }
+
+/* --------------------------------------------------------------- TABLE --- */
+
+.tw { overflow-x: auto; margin: 20px 0 8px; border: 1px solid var(--line); background: var(--surface-1); }
+
+table { border-collapse: collapse; width: 100%; font-size: 0.845rem; min-width: 640px; }
+
+th {
+  text-align: left;
+  font-size: 0.68rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--line-strong);
+  background: var(--surface-sunken);
+  white-space: nowrap;
+  vertical-align: bottom;
+}
+
+td {
+  padding: 10px 13px;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+  color: var(--text-dim);
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  font-size: 0.88rem;
+  line-height: 1.45;
+}
+
+tr:last-child td { border-bottom: 0; }
+td:first-child { color: var(--text); font-weight: 500; }
+td.n, th.n { text-align: right; font-family: "IBM Plex Mono", monospace; font-variant-numeric: tabular-nums; white-space: nowrap; }
+td.src { font-family: "IBM Plex Mono", monospace; font-size: 0.76rem; color: var(--text-faint); white-space: nowrap; }
+tbody tr:hover td { background: rgba(150, 122, 69, 0.035); }
+
+caption {
+  caption-side: bottom;
+  text-align: left;
+  font-size: 0.78rem;
+  color: var(--text-faint);
+  padding: 10px 13px 2px;
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+}
+
+.pos { color: var(--green); }
+.neg { color: var(--red); }
+.warn { color: var(--amber); }
+.dim { color: var(--text-faint); }
+
+/* ---------------------------------------------------------------- CHIP --- */
+
+.chip {
+  display: inline-block;
+  font-size: 0.66rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.11em;
+  padding: 3px 7px 2px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  white-space: nowrap;
+  line-height: 1.3;
+}
+
+.chip.keep    { color: var(--green); }
+.chip.simplify{ color: var(--amber); }
+.chip.merge   { color: var(--slate); }
+.chip.auto    { color: var(--slate); }
+.chip.remove  { color: var(--red); }
+.chip.strong  { color: var(--green); }
+.chip.weak    { color: var(--amber); }
+.chip.hidden  { color: var(--slate); }
+.chip.solid   { background: var(--gold); color: var(--ink-on-brass); border-color: var(--gold); }
+
+/* ------------------------------------------------------------- CALLOUT --- */
+
+.callout {
+  border-left: 2px solid var(--gold);
+  background: var(--surface-1);
+  padding: 16px 20px;
+  margin: 24px 0;
+  max-width: var(--measure);
+}
+.callout.warnbox { border-left-color: var(--red); }
+.callout p:last-child { margin-bottom: 0; }
+.callout .label { display: block; margin-bottom: 6px; color: var(--gold-bright); }
+.callout.warnbox .label { color: var(--red); }
+
+/* -------------------------------------------------------------- FIGURE --- */
+
+figure { margin: 30px 0; }
+figure svg { display: block; width: 100%; max-width: 100%; height: auto; color: var(--text-dim); }
+.figframe { border: 1px solid var(--line); background: var(--surface-1); padding: 22px 20px 14px; overflow-x: auto; }
+figcaption {
+  font-size: 0.8rem;
+  color: var(--text-faint);
+  margin-top: 12px;
+  font-family: "IBM Plex Sans Condensed", sans-serif;
+  max-width: 78ch;
+  line-height: 1.5;
+}
+svg text { font-family: "IBM Plex Sans Condensed", sans-serif; }
+svg .mono { font-family: "IBM Plex Mono", monospace; }
+
+/* ------------------------------------------------------------ S/N BARS --- */
+
+.snr { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); margin: 22px 0 8px; }
+.snr-row { display: grid; grid-template-columns: 150px 1fr 92px; gap: 14px; align-items: center; background: var(--surface-1); padding: 9px 14px; }
+.snr-name { font-family: "IBM Plex Sans Condensed", sans-serif; font-size: 0.85rem; font-weight: 500; color: var(--text); }
+.snr-track { position: relative; height: 13px; background: var(--surface-sunken); border: 1px solid var(--line); }
+.snr-fill { position: absolute; inset: 0 auto 0 0; background: var(--gold-dark); }
+.snr-fill.over { background: var(--green); }
+.snr-fill.under { background: var(--red); }
+.snr-floor { position: absolute; top: -4px; bottom: -4px; width: 2px; background: var(--surface-0); box-shadow: 0 0 0 1px var(--gold-bright); }
+.snr-val { font-family: "IBM Plex Mono", monospace; font-size: 0.78rem; text-align: right; color: var(--text-dim); font-variant-numeric: tabular-nums; }
+.snr-legend { font-size: 0.76rem; color: var(--text-faint); font-family: "IBM Plex Sans Condensed", sans-serif; }
+
+/* --------------------------------------------------------------- LISTS --- */
+
+ul, ol { max-width: var(--measure); padding-left: 20px; margin: 0 0 16px; }
+li { margin-bottom: 7px; }
+li::marker { color: var(--gold-dark); }
+
+.plain { list-style: none; padding-left: 0; }
+.plain li { padding-left: 17px; position: relative; }
+.plain li::before { content: "—"; position: absolute; left: 0; color: var(--gold-dark); }
+
+/* ------------------------------------------------------------- VERDICT --- */
+
+.verdict { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line-strong); margin: 26px 0; }
+.verdict > div { background: var(--surface-1); padding: 17px 20px; }
+.verdict dt { font-size: 0.7rem; text-transform: uppercase; letter-spacing: 0.15em; color: var(--gold-bright); font-family: "IBM Plex Sans Condensed", sans-serif; font-weight: 600; }
+.verdict dd { margin: 7px 0 0; color: var(--text-dim); max-width: 74ch; }
+.verdict dd strong { color: var(--text); }
+
+.two { display: grid; grid-template-columns: repeat(auto-fit, minmax(310px, 1fr)); gap: 26px; align-items: start; }
+.two > * { min-width: 0; }
+
+footer { border-top: 1px solid var(--line-strong); margin-top: 60px; padding-top: 20px; font-size: 0.8rem; color: var(--text-faint); font-family: "IBM Plex Sans Condensed", sans-serif; }
+
+@media (max-width: 680px) {
+  body { font-size: 15px; }
+  .wrap { padding: 0 17px 90px; }
+  .sec-head { grid-template-columns: 1fr; gap: 4px; }
+  .sec-head .part { padding-top: 0; }
+  .snr-row { grid-template-columns: 106px 1fr 74px; gap: 9px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <div class="kicker">
+    <span class="label">Mechanic Atlas</span>
+    <span class="label" style="color:var(--gold)">Domain 01 &middot; Budget</span>
+    <span class="label">Analysis &amp; proposal only &mdash; nothing implemented</span>
+  </div>
+  <h1>The Budget Nobody Has&nbsp;to&nbsp;Balance</h1>
+  <div class="rule-brass"></div>
+  <p class="lede">Imperial Eye&rsquo;s budget has nine sliders, twenty-four treasury writers and a
+  thirty-five line ledger. Measured across a hundred and twenty headless campaigns, most of it does not reach
+  the player. This is what the code does today, what the numbers say about it, and the simplest
+  model that keeps the strategy.</p>
+
+  <dl class="meta-grid">
+    <div><dt>Evidence</dt><dd>120 headless runs</dd></div>
+    <div><dt>Horizons</dt><dd>160 / 300 / 700 / 900 wk</dd></div>
+    <div><dt>Seeds</dt><dd>32 distinct</dd></div>
+    <div><dt>Noise floor</dt><dd>treasury CV 50.8%</dd></div>
+    <div><dt>Harness</dt><dd>audit/harness.mjs</dd></div>
+    <div><dt>Verdict</dt><dd style="color:var(--gold-bright)">SIMPLIFY</dd></div>
+  </dl>
+</header>
+
+<div class="callout">
+  <span class="label">How every number here was produced</span>
+  <p>Each claim comes from <code>runScenario()</code> in <code>scripts/audit/harness.mjs</code>: one
+  isolated child process per scenario, identical seed and warm-up across a matrix, one lever moved at
+  a time, war suppressed unless the experiment is about war. Levers are re-applied every week so the
+  fiscal AI and the ruling party&rsquo;s bands cannot drag them back. Headline claims were repeated on
+  two or more seeds.</p>
+  <p>One caveat that cost a correction: <code>snapshotNation</code> exposes individual expense lines
+  but omits <code>projectCost</code> and <code>shareCost</code>, which on two of three seeds carry
+  <strong>27.6&ndash;33.3%</strong> of all outflow. Composition figures here use
+  <code>ledger.income</code> and <code>ledger.expenses</code>, which are complete; any audit that sums
+  the exposed lines instead will understate spending by roughly a third.</p>
+  <p>Before any lever was judged, the <strong>noise floor</strong> was measured: six seeds, 160 weeks,
+  default settings, nothing touched. Treasury varies <strong>50.8%</strong> seed to seed, needsMet
+  <strong>26.5%</strong>, stability <strong>5.5%</strong>. A lever whose entire range moves a metric
+  less than that metric&rsquo;s noise floor cannot be perceived in play, whatever the formula says.</p>
+</div>
+
+<!-- ============================================================ PART 1 === -->
+<section id="p1">
+  <div class="sec-head">
+    <div class="part">PART 1</div>
+    <div>
+      <h2>What the budget actually is</h2>
+      <p class="sub">Reverse-engineered from source. This section describes current code, not
+      intended design; where a comment and the code disagree, the code is reported.</p>
+    </div>
+  </div>
+
+  <h3>There is no budget module</h3>
+  <p>The first thing to know is structural: <strong>the budget is not one system, it is two
+  half-systems and a reconstruction.</strong></p>
+
+  <div class="tw">
+  <table>
+    <caption>The three representations of a nation&rsquo;s weekly finances. All three are live at once.</caption>
+    <thead><tr><th>Pipeline</th><th>Computes</th><th>Writes treasury</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>A &mdash; <code>nationBudget()</code></td>
+        <td>City + province gold production, army <em>wages</em>, administration, corruption</td>
+        <td class="mono"><span class="pos">gold += budget.net.gold</span></td>
+        <td class="src">cities.js:381&ndash;457 &rarr; turn.js:563</td>
+      </tr>
+      <tr>
+        <td>B &mdash; <code>fiscalBalance()</code></td>
+        <td>Class income, three class taxes, tax efficiency, social programmes, construction upkeep</td>
+        <td class="mono"><span class="pos">gold += economy.fiscalNet</span></td>
+        <td class="src">economy.js:2678&ndash;2728</td>
+      </tr>
+      <tr>
+        <td>C &mdash; <code>updateLedger()</code></td>
+        <td>Re-reads A and B plus 12 side channels and rebuilds a 35-key record for the screen</td>
+        <td class="dim">none &mdash; pure derivation</td>
+        <td class="src">economy.js:3522&ndash;3614</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>Nothing forces A and B to agree, and nothing but C ever adds them up. The fiscal AI has to do
+  the addition by hand every week &mdash; <code>const weekly = (nation.budget?.net?.gold ?? 0) +
+  economy.fiscalNet</code> appears verbatim in two different functions
+  (<span class="mono">economy.js:2746</span> and <span class="mono">economy.js:2855</span>) with a
+  comment explaining that <code>fiscalNet</code> alone is misleading. That comment is the system
+  apologising for its own shape.</p>
+
+  <p>Beyond A and B, <strong>24 call sites across six modules mutate <code>nation.gold</code>
+  directly.</strong> Construction refunds, factory support, unit purchases, treaty tribute, company
+  share sales, nationalisation, tariff settlement, interest, borrowing, repayment and default all
+  write the treasury on their own, then separately deposit a number into an <code>economy.*Gold</code>
+  scratch field that <code>updateLedger</code> drains and zeroes once a week.</p>
+
+  <h3>Canonical state</h3>
+  <div class="tw">
+  <table>
+    <caption>The fiscal fields on <code>nation.economy</code>. Levers are player-writable; outputs are recomputed every week and stored anyway.</caption>
+    <thead><tr><th>Field</th><th>Kind</th><th>Range</th><th>Written by</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td><code>taxes.lower/middle/upper</code></td><td>lever &times;3</td><td class="n">0&ndash;100</td><td>player slider; <code>adjustFiscalAI</code> (capped 5&ndash;35/42/45)</td><td class="src">economy.js:1631, 2861&ndash;2877</td></tr>
+      <tr><td><code>tariff</code></td><td>lever</td><td class="n">&minus;50&ndash;100</td><td>player; AI drifts &plusmn;2/wk toward party doctrine</td><td class="src">economy.js:1635, 2887&ndash;2904</td></tr>
+      <tr><td><code>social.education/health/welfare</code></td><td>lever &times;3</td><td class="n">floor&ndash;100</td><td>player; <code>adjustSocialAI</code> &plusmn;10/wk <em>unclamped</em></td><td class="src">economy.js:1664, 2777&ndash;2790</td></tr>
+      <tr><td><code>militaryWages</code></td><td>lever</td><td class="n">25&ndash;100</td><td>player; <code>adjustWarFiscalAI</code></td><td class="src">economy.js:1640, 2951</td></tr>
+      <tr><td><code>militaryProcurement</code></td><td>lever</td><td class="n">25&ndash;100</td><td>player; <code>adjustWarFiscalAI</code></td><td class="src">economy.js:1640, 2950</td></tr>
+      <tr><td><code>adminFunding</code></td><td>lever</td><td class="n">30&ndash;100</td><td>player only &mdash; no AI writer</td><td class="src">economy.js:1649&ndash;1652</td></tr>
+      <tr><td><code>subsidyPolicy</code></td><td>lever</td><td class="n">3 values</td><td>player; applied for player only</td><td class="src">economy.js:1673, 3859</td></tr>
+      <tr><td><code>armySpending</code></td><td class="warn">legacy alias</td><td class="n">25&ndash;100</td><td>writes both military levers; kept for old saves</td><td class="src">economy.js:1654&ndash;1662</td></tr>
+      <tr><td><code>taxRevenue, tariffRevenue, socialCost, constructionUpkeep, fiscalNet</code></td><td class="dim">derived, stored</td><td class="dim">&mdash;</td><td>overwritten every week by <code>fiscalBalance</code></td><td class="src">economy.js:2718&ndash;2726</td></tr>
+      <tr><td><code>ledger</code> (35 keys)</td><td class="dim">derived, stored</td><td class="dim">&mdash;</td><td>rebuilt wholesale every week</td><td class="src">economy.js:3581&ndash;3614</td></tr>
+      <tr><td><code>classes[c].income / taxPaid / satisfaction / needsBudget / savings</code></td><td class="dim">derived, stored</td><td class="dim">&mdash;</td><td><code>fiscalBalance</code>, <code>populationDemand</code></td><td class="src">economy.js:2702&ndash;2709, 2600&ndash;2654</td></tr>
+      <tr><td><code>nation.gold</code>, <code>nation.debt</code></td><td>canonical</td><td class="dim">&mdash;</td><td class="neg">24 call sites, 6 modules</td><td class="src">see above</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>The formulas</h3>
+  <p>Every number the budget produces, transcribed literally. Input count is the number of
+  independent quantities that can change the result.</p>
+
+  <div class="tw">
+  <table>
+    <caption>Budget formulas as written. Nothing here is paraphrased.</caption>
+    <thead><tr><th>Output</th><th>Expression</th><th class="n">Inputs</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>Class income</td><td class="mono">incomePool&times;weight + wagesPaid&times;split + (upper: profit&times;0.5 &minus; withheld)</td><td class="n">7</td><td class="src">economy.js:2700&ndash;2707</td></tr>
+      <tr><td>Tax collected</td><td class="mono">&Sigma; income<sub>c</sub> &times; taxes<sub>c</sub>/100 &times; taxEfficiency</td><td class="n">4</td><td class="src">economy.js:2708&ndash;2716</td></tr>
+      <tr><td>Tax efficiency</td><td class="mono">0.55 + 0.45 &times; clamp(adminFunding/100, 0.3, 1)</td><td class="n">1</td><td class="src">economy.js:1325&ndash;1328</td></tr>
+      <tr><td>Social cost</td><td class="mono">(pop/10000) &times; &Sigma;(level<sub>p</sub> &times; rate<sub>p</sub>) + (pop/10000) &times; socialBurden</td><td class="n">5</td><td class="src">economy.js:1797&ndash;1807</td></tr>
+      <tr><td>Administration cost</td><td class="mono">((cities&minus;free)<sup>1.45</sup>&times;0.9 + provinces&times;0.06 + distance + (pop&minus;free)/10000&times;0.06) &times; adminFunding</td><td class="n">5</td><td class="src">cities.js:210&ndash;215, 437&ndash;439</td></tr>
+      <tr><td>Army wages</td><td class="mono">armyWeight &times; UNIT_UPKEEP.gold &times; militaryWages/100</td><td class="n">3</td><td class="src">cities.js:430&ndash;433</td></tr>
+      <tr><td>Combat power</td><td class="mono">armyPower &times; (0.55 + wages&times;0.45) &times; (0.65 + readiness&times;0.35) &times; terrain &times; general &times; planning</td><td class="n">6</td><td class="src">battles.js:117&ndash;122</td></tr>
+      <tr><td>Training speed</td><td class="mono">0.45 + 0.4&times;wages + 0.15&times;supply</td><td class="n">2</td><td class="src">recruitment.js:363&ndash;367</td></tr>
+      <tr><td>Org. recovery</td><td class="mono">(0.6 + 0.4&times;wages) &times; (0.7 + 0.3&times;supply)</td><td class="n">2</td><td class="src">turn.js:421&ndash;425</td></tr>
+      <tr><td>Reinforcement rate</td><td class="mono">BASE &times; (0.25 + funding&times;0.75) &times; (1+general) &times; (1+tech), funding = max(0.25, proc)&times;supply</td><td class="n">5</td><td class="src">reinforcement.js:21&ndash;27</td></tr>
+      <tr><td>Class satisfaction</td><td class="mono">0.35 + afford&times;0.5 &minus; taxRate&times;0.28 + welfare&times;0.14 + reformMood &minus; joblessBite</td><td class="n">6</td><td class="src">economy.js:2649&ndash;2654</td></tr>
+      <tr><td>Literacy target</td><td class="mono">clamp(0.08 + education&times;0.62&times;(1+higherEd) + literacyReach, 0, 0.95)</td><td class="n">3</td><td class="src">economy.js:3804&ndash;3809</td></tr>
+      <tr><td>Literacy stock</td><td class="mono">literacy += (target &minus; literacy) &times; 0.001 &nbsp;&larr; per week</td><td class="n">2</td><td class="src">economy.js:3796, 3811&ndash;3817</td></tr>
+      <tr><td>Research points</td><td class="mono">(literacy&times;4 + middleShare&times;1.5 + clerks + 1) &times; (1 + researchRate)</td><td class="n">4</td><td class="src">technology.js:337&ndash;352</td></tr>
+      <tr><td>Population growth</td><td class="mono">&hellip; &times; (1 + health/100&times;0.35) &times; nourishment &hellip;</td><td class="n">2+</td><td class="src">provinces.js:790</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>Only two of these formulas &mdash; tax efficiency and literacy stock &mdash; are within the
+  Constitution&rsquo;s preferred budget of three primary inputs. Class income needs seven, and it is
+  the base of everything: it decides tax revenue, household budgets, satisfaction, stability and
+  ultimately party support.</p>
+</section>
+
+<figure>
+  <div class="figframe">
+  <svg viewBox="0 0 1160 486" role="img" aria-label="The current budget has nine player levers feeding four separate computation paths, twenty-four write sites into one treasury, and a thirty-five key ledger rebuilt every week so the screen can show a balance nothing actually computed.">
+    <defs>
+      <marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+      </marker>
+      <marker id="ahg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#baa064"/>
+      </marker>
+    </defs>
+
+    <!-- band labels -->
+    <text x="14" y="16" font-size="10.5" letter-spacing="1.6" fill="#6f7778">PLAYER</text>
+    <text x="14" y="108" font-size="10.5" letter-spacing="1.6" fill="#6f7778">COMPUTE</text>
+    <text x="14" y="238" font-size="10.5" letter-spacing="1.6" fill="#baa064">STATE</text>
+    <text x="14" y="342" font-size="10.5" letter-spacing="1.6" fill="#6f7778">DERIVE</text>
+    <text x="14" y="440" font-size="10.5" letter-spacing="1.6" fill="#6f7778">DISPLAY</text>
+
+    <!-- ============ levers ============ -->
+    <g font-size="11.5" text-anchor="middle" fill="#d9d1bd">
+      <rect x="86"  y="24" width="76"  height="26" fill="none" stroke="currentColor" stroke-opacity=".45"/><text x="124" y="41">tax &times;3</text>
+      <rect x="170" y="24" width="62"  height="26" fill="none" stroke="currentColor" stroke-opacity=".45"/><text x="201" y="41">tariff</text>
+      <rect x="240" y="24" width="80"  height="26" fill="none" stroke="currentColor" stroke-opacity=".45"/><text x="280" y="41">education</text>
+      <rect x="328" y="24" width="64"  height="26" fill="none" stroke="currentColor" stroke-opacity=".45"/><text x="360" y="41">health</text>
+      <rect x="400" y="24" width="72"  height="26" fill="none" stroke="currentColor" stroke-opacity=".45"/><text x="436" y="41">welfare</text>
+      <rect x="480" y="24" width="84"  height="26" fill="none" stroke="currentColor" stroke-opacity=".45"/><text x="522" y="41">mil. wages</text>
+      <rect x="572" y="24" width="98"  height="26" fill="none" stroke="currentColor" stroke-opacity=".45"/><text x="621" y="41">mil. procure</text>
+      <rect x="678" y="24" width="98"  height="26" fill="none" stroke="currentColor" stroke-opacity=".45"/><text x="727" y="41">adminFunding</text>
+      <rect x="784" y="24" width="96"  height="26" fill="none" stroke="currentColor" stroke-opacity=".45"/><text x="832" y="41">subsidy policy</text>
+    </g>
+    <text x="896" y="41" font-size="10.5" fill="#6f7778">9 controls &middot; screens.js:1549</text>
+
+    <!-- lever -> compute wires -->
+    <g stroke="currentColor" stroke-opacity=".38" fill="none" marker-end="url(#ah)">
+      <path d="M124 50 L124 68 L200 68 L200 116"/>       <!-- tax -> B -->
+      <path d="M280 50 L280 68 L214 68 L214 116"/>       <!-- education -> B -->
+      <path d="M360 50 L360 68 L228 68 L228 116"/>       <!-- health -> B -->
+      <path d="M436 50 L436 68 L242 68 L242 116"/>       <!-- welfare -> B -->
+      <path d="M201 50 L201 60 L560 60 L560 116"/>       <!-- tariff -> C -->
+      <path d="M522 50 L522 78 L86 78 L86 116"/>         <!-- wages -> A -->
+      <path d="M727 50 L727 88 L100 88 L100 116"/>       <!-- admin -> A -->
+      <path d="M727 50 L727 68 L256 68 L256 116"/>       <!-- admin -> B (taxEfficiency) -->
+      <path d="M621 50 L621 96 L800 96 L800 116"/>       <!-- procurement -> side -->
+      <path d="M832 50 L832 96 L850 96 L850 116"/>       <!-- subsidy -> side -->
+    </g>
+
+    <!-- ============ compute ============ -->
+    <g fill="none" stroke="currentColor" stroke-opacity=".55">
+      <rect x="60"  y="116" width="118" height="52"/>
+      <rect x="192" y="116" width="140" height="52"/>
+      <rect x="346" y="116" width="150" height="52"/>
+      <rect x="510" y="116" width="150" height="52"/>
+      <rect x="700" y="116" width="200" height="52"/>
+    </g>
+    <g font-size="11.5" text-anchor="middle" fill="#d9d1bd">
+      <text x="119" y="139">nationBudget()</text>
+      <text x="262" y="139">fiscalBalance()</text>
+      <text x="421" y="139">populationDemand()</text>
+      <text x="585" y="139">settleGlobalTrade()</text>
+      <text x="800" y="139">22 other write sites</text>
+    </g>
+    <g font-size="9" text-anchor="middle" fill="#6f7778" class="mono">
+      <text x="119" y="156">cities.js:381</text>
+      <text x="262" y="156">economy.js:2678</text>
+      <text x="421" y="156">economy.js:2490</text>
+      <text x="585" y="156">economy.js:3417</text>
+      <text x="800" y="156">construction &middot; command &middot; companies</text>
+    </g>
+
+    <!-- what each computes -->
+    <g font-size="9.5" text-anchor="middle" fill="#989486">
+      <text x="119" y="184">city gold, army wages,</text><text x="119" y="196">administration</text>
+      <text x="262" y="184">class income, tax,</text><text x="262" y="196">social, construction</text>
+      <text x="421" y="184">household baskets,</text><text x="421" y="196">satisfaction (no gold)</text>
+      <text x="585" y="184">tariff revenue,</text><text x="585" y="196">external settlement</text>
+      <text x="800" y="184">refunds, purchases, tribute,</text><text x="800" y="196">shares, interest, borrowing</text>
+    </g>
+
+    <!-- compute -> treasury -->
+    <g stroke="#baa064" fill="none" marker-end="url(#ahg)">
+      <path d="M119 206 L119 222 L300 222 L300 250"/>
+      <path d="M262 206 L262 226 L420 226 L420 250"/>
+      <path d="M585 206 L585 226 L700 226 L700 250"/>
+      <path d="M800 206 L800 222 L820 222 L820 250"/>
+    </g>
+    <!-- populationDemand does NOT write gold -->
+    <g stroke="#6f7778" stroke-dasharray="3 3" fill="none">
+      <path d="M421 206 L421 232"/>
+    </g>
+    <text x="421" y="245" font-size="9.5" text-anchor="middle" fill="#6f7778">writes no gold</text>
+
+    <!-- ============ treasury ============ -->
+    <rect x="180" y="250" width="700" height="54" fill="none" stroke="#baa064" stroke-width="1.6"/>
+    <text x="530" y="273" font-size="14" text-anchor="middle" fill="#baa064" letter-spacing="1.2">TREASURY</text>
+    <text x="530" y="292" font-size="10" text-anchor="middle" fill="#989486">nation.gold &middot; nation.debt &mdash; 24 write sites across 6 modules</text>
+
+    <!-- treasury -> ledger -->
+    <g stroke="currentColor" stroke-opacity=".5" fill="none" marker-end="url(#ah)">
+      <path d="M530 304 L530 348"/>
+    </g>
+
+    <!-- ============ ledger ============ -->
+    <rect x="300" y="348" width="460" height="46" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+    <text x="530" y="368" font-size="12" text-anchor="middle" fill="#d9d1bd">updateLedger() &rarr; economy.ledger</text>
+    <text x="530" y="384" font-size="9.5" text-anchor="middle" fill="#6f7778" class="mono">economy.js:3522 &mdash; 35 keys, rebuilt wholesale every week</text>
+
+    <g stroke="currentColor" stroke-opacity=".5" fill="none" marker-end="url(#ah)">
+      <path d="M530 394 L530 424"/>
+    </g>
+
+    <!-- ============ screen ============ -->
+    <rect x="300" y="424" width="460" height="44" fill="none" stroke="currentColor" stroke-opacity=".55"/>
+    <text x="530" y="443" font-size="12" text-anchor="middle" fill="#d9d1bd">Budget screen</text>
+    <text x="530" y="459" font-size="9" text-anchor="middle" fill="#a95e4a">re-derives 3 simulation formulas &mdash; 2 of them disagree with the sim</text>
+
+    <!-- side note on the ordering trap -->
+    <path d="M660 168 L660 214 L900 214 L900 258" stroke="#a95e4a" stroke-dasharray="4 3" fill="none" marker-end="url(#ah)" opacity=".9"/>
+    <text x="912" y="252" font-size="10" fill="#a95e4a">ordering trap:</text>
+    <text x="912" y="266" font-size="9.5" fill="#989486">fiscalBalance zeroes</text>
+    <text x="912" y="278" font-size="9.5" fill="#989486">tariffRevenue (:2722)</text>
+    <text x="912" y="290" font-size="9.5" fill="#989486">before trade refills it</text>
+    <text x="912" y="302" font-size="9.5" fill="#989486">(:3417) &mdash; the fiscal AI</text>
+    <text x="912" y="314" font-size="9.5" fill="#989486">reads 0 in between</text>
+  </svg>
+  </div>
+  <figcaption><strong>CURRENT &mdash; the plumbing.</strong> Nine controls feed four unconnected
+  computation paths. Two of them add money to the treasury independently and never see each other&rsquo;s
+  result; a third settles trade after the fiscal week has already closed its books; twenty-two further
+  sites write <code>nation.gold</code> on their own. Because no single function ever computes a
+  balance, a fourth pass has to reconstruct one from thirty-five separate fields so the screen has
+  something to print &mdash; and the screen then re-derives three simulation formulas by hand, getting
+  two of them wrong.</figcaption>
+</figure>
+
+<!-- ========================================================= PART 1 cont === -->
+<section id="p1b">
+  <div class="sec-head">
+    <div class="part">PART 1 &middot; ii</div>
+    <div>
+      <h2>Three balances, none of them agreed</h2>
+      <p class="sub">The clearest evidence that the budget has no single owner is that the game
+      cannot tell the player what their balance is.</p>
+    </div>
+  </div>
+
+  <div class="tw">
+  <table>
+    <caption>Three numbers, three formulas, all presented to the player as the weekly balance.</caption>
+    <thead><tr><th>Where the player sees it</th><th>What is computed</th><th>What it leaves out</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Top bar, next to the treasury</td>
+        <td class="mono">budget.net.gold + fiscalNet</td>
+        <td>procurement, subsidies, project funding, state purchases, interest, treaty tribute, strategic imports</td>
+        <td class="src">hud.js:1137</td>
+      </tr>
+      <tr>
+        <td>Nation card, labelled &ldquo;Weekly balance&rdquo;</td>
+        <td class="mono">fiscalNet <span class="neg">alone</span></td>
+        <td>all of the above, <em>plus</em> city and province revenue, army wages and administration</td>
+        <td class="src">screens.js:782</td>
+      </tr>
+      <tr>
+        <td>Budget screen, &ldquo;Last week&rsquo;s balance&rdquo;</td>
+        <td class="mono">ledger.net</td>
+        <td class="pos">nothing &mdash; this is the real one</td>
+        <td class="src">screens.js:1778, economy.js:3613</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>The same panel also fails to add up internally. <code>fiscalBalance</code> stores each
+  class&rsquo;s <code>taxPaid</code> <strong>gross</strong> (<span class="mono">economy.js:2708</span>)
+  and multiplies only the <em>sum</em> by tax efficiency
+  (<span class="mono">:2716</span>). The budget screen prints the gross figure on each of the three tax
+  rows (<span class="mono">screens.js:1584</span>) and the post-efficiency figure in
+  &ldquo;Total income&rdquo; (<span class="mono">:1633</span>). At the 30% administration floor the
+  three rows sum to <strong>1.46&times;</strong> the revenue the treasury actually books, in the same
+  panel, eighty pixels apart.</p>
+
+  <div class="callout warnbox">
+    <span class="label">The ordering trap</span>
+    <p><code>economy.fiscalNet</code> holds two different quantities within one week.
+    <code>fiscalBalance</code> assigns <code>fiscalNet = taxes &minus; social &minus; construction</code>
+    (<span class="mono">:2725</span>) and deliberately zeroes <code>tariffRevenue</code>
+    (<span class="mono">:2722</span>). Much later, <code>settleGlobalTrade</code> adds the tariff
+    income back (<span class="mono">:3417&ndash;3420</span>). The fiscal AI runs
+    <em>between</em> those two writes.</p>
+    <p>Tariffs are one of the two largest revenue lines &mdash; <strong>41&ndash;51%</strong> of income
+    for the measured nation at week 201, and 30.7% against direct taxation&rsquo;s 34.4% across a
+    30-nation world at week 161. Either way it is comparable to all three tax sliders combined. So every week, every AI government judges
+    whether it is solvent while looking at a number that excludes half its income. A protectionist
+    nation with a full treasury can conclude it is broke and start cutting schools.</p>
+  </div>
+
+  <h3>Expenses the player is never shown</h3>
+  <p>The &ldquo;Weekly Expenses&rdquo; column does not sum to <code>ledger.expenses</code>, and the
+  gaps are not small.</p>
+  <div class="tw">
+  <table>
+    <caption>Outflow the budget screen omits, misattributes, or prints below its own total.</caption>
+    <thead><tr><th>Line</th><th>What happens</th><th>Size</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>External settlement (negative)</td><td>Counted in <code>expenses</code> but rendered under a separate &ldquo;Tariffs&rdquo; header <em>below</em> the Total expenses figure</td><td class="n">7.4&ndash;12.5% of all outflow &mdash; more than administration, subsidies and interest combined</td><td class="src">economy.js:3579&ndash;3580 vs screens.js:1756&ndash;1774</td></tr>
+      <tr><td><code>shareCost</code></td><td>Foreign share purchases have no row on the screen at all</td><td class="n dim">&mdash;</td><td class="src">screens.js:1616&ndash;1737 (11 rows, none for it)</td></tr>
+      <tr><td>Per-programme social cost</td><td><code>socialShare()</code> splits one total by <em>slider level</em>, ignoring the per-programme rates 0.34 / 0.30 / 0.46. Education and Welfare both at 100 display an equal split when the true ratio is 0.34 : 0.46</td><td class="n">up to 35% misattribution between rows</td><td class="src">screens.js:188&ndash;194 vs economy.js:1800&ndash;1806</td></tr>
+      <tr><td>Reform-mandated social burden</td><td>With all three sliders at 0 but reforms imposing a burden, every social row reads <strong>0</strong> while the money is still spent</td><td class="n neg">6 of 27 nations at week 520; one paying 8.52 gold/week invisibly</td><td class="src">screens.js:191&ndash;193</td></tr>
+      <tr><td><code>projectCost</code></td><td>Forts, national investments, state factories and project top-ups. The screen merges it into &ldquo;Construction&rdquo; correctly &mdash; but the audit harness does not expose it, so every measurement built on <code>snapshotNation</code> is blind to it</td><td class="n">10.5&ndash;17.0% of cumulative outflow</td><td class="src">harness.mjs:150&ndash;157; economy.js:3553&ndash;3554</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h3>Two promises the code does not keep</h3>
+  <p>Both are cases where a comment or a UI string describes a mechanic that was never implemented or
+  has since been deleted underneath it.</p>
+  <ul class="plain">
+    <li><strong>Army upkeep is not equipment-weighted.</strong> <span class="mono">cities.js:431&ndash;432</span>
+    states that upkeep depends on equipment weight rather than regiment count, &ldquo;so army
+    modernisation becomes the real late-game expense&rdquo;. <code>upkeepWeight()</code> returns
+    <code>unit.regiments.length</code> (<span class="mono">units.js:24&ndash;26</span>; the
+    equipment tiers the comment refers to were deleted). Army wages are a flat <strong>1 gold per regiment per
+    week</strong> times the slider. There is no modernisation cost channel at all.</li>
+    <li><strong>Reparations collect nothing.</strong> <code>PEACE_TERMS.REPARATIONS</code> promises
+    &ldquo;a share of their treasury income&rdquo; (<span class="mono">peace.js:111&ndash;114</span>),
+    but <code>payTreaties</code> charges 20% of <code>budget.net.gold</code>
+    (<span class="mono">turn.js:594&ndash;598</span>) &mdash; city and province gold minus army wages
+    minus administration, which excludes tax, tariffs and settlement entirely. Median
+    <code>ledger.income</code> is 44.8&ndash;48.6 while median <code>budget.net.gold</code> is
+    6.2&ndash;10.5 and negative for some nations, where <code>max(0, &hellip;)</code> makes the payment
+    exactly zero. Over a 520-week run, <code>treatyCost</code> was <strong>0 for every nation in every
+    measured window</strong>. Winning a war and imposing reparations transfers nothing.</li>
+  </ul>
+
+  <div class="callout warnbox">
+    <span class="label">The one expense that cannot be switched off</span>
+    <p>Three things buy military goods, and they check three different things before spending.
+    Strategic imports clamp against money on hand &mdash;
+    <code>affordable = nation.gold / unitPrice</code> (<span class="mono">economy.js:3250</span>).
+    Retained factory equipment clamps against <code>retainedBudget / price</code>
+    (<span class="mono">:3894</span>), a budget derived from <em>last week&rsquo;s</em>
+    <code>ledger.income</code> rather than from the treasury. Army weekly consumption
+    (<span class="mono">:3947</span>) checks <strong>nothing at all</strong>: it subtracts from
+    <code>nation.gold</code> unconditionally and pushes it negative, straight into the
+    borrow-or-default branch. Combined with the procurement floor of 25 and the groceries floor at
+    50%, this is the one outflow a player in a fiscal crisis has no lever against.</p>
+    <p>It is also, by late game, the <em>largest</em> outflow: <code>procurementCost</code> was
+    <strong>39.6%</strong> of all spending in weeks 417&ndash;520 against army wages&rsquo; 9.9%, and
+    within it the split between state-retained factory output and the army simply eating groceries and
+    ammunition at market price flips from 76/24 in the first century to <strong>5/95</strong>
+    thereafter. What the budget screen calls &ldquo;Military Procurement&rdquo; is, eventually, the
+    grocery bill.</p>
+  </div>
+
+  <h3>Phase-order dependencies</h3>
+  <p>Reordering any of these silently changes the simulation rather than breaking it &mdash; which is
+  the expensive kind of coupling.</p>
+  <ul class="plain">
+    <li><code>populationDemand</code> runs <em>before</em> <code>fiscalBalance</code>, so household
+    budgets always spend last week&rsquo;s income (<span class="mono">economy.js:2570</span>, comment
+    at 2567).</li>
+    <li>Household baskets are priced with <em>last week&rsquo;s</em> import share, because this
+    week&rsquo;s trade has not cleared (<span class="mono">economy.js:2523&ndash;2529</span>).</li>
+    <li><code>settleDebt</code> is called inside <code>updateLedger</code> at
+    <span class="mono">:3567</span>, but <code>economy.ledger</code> is not reassigned until
+    <span class="mono">:3581</span> &mdash; so borrowing capacity is computed against last week&rsquo;s
+    income (<span class="mono">:3436</span>).</li>
+    <li><code>nation.budget</code> is computed in <code>produce()</code>
+    (<span class="mono">turn.js:559</span>) and consumed by <code>fiscalBalance</code>&rsquo;s callers
+    much later; treaty tribute is charged as a share of it
+    (<span class="mono">turn.js:597</span>) before the fiscal week runs at all.</li>
+  </ul>
+
+  <h3>Dead and vestigial state</h3>
+  <div class="tw">
+  <table>
+    <caption>Budget state that exists but does nothing, or does something other than what it says.</caption>
+    <thead><tr><th>Item</th><th>Status</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td><code>fiscalBalance(nation, base, industrialOutput)</code></td><td>Third parameter is never referenced in the body. Industrial value reaches income only via <code>wagesPaid</code> and <code>factoryProfit</code>.</td><td class="src">economy.js:2678</td></tr>
+      <tr><td><code>economy.armySpending</code></td><td>Write-only inside the game. Only writer is the legacy setter branch; only reader is a <code>??=</code> migration that never fires. Serialised anyway.</td><td class="src">economy.js:1654&ndash;1662, 1285&ndash;1286</td></tr>
+      <tr><td><code>FUEL_FIX</code></td><td>Presented as an A/B flag. Unconditionally <code>true</code> in the browser; the entire else branch is unreachable in the shipped game.</td><td class="src">economy.js:1719&ndash;1720</td></tr>
+      <tr><td><code>economy.subsidyPolicy</code></td><td>Applied for the human player only. AI nations set <code>factory.subsidized</code> through a different code path, so the same stored field means two different things.</td><td class="src">economy.js:3858&ndash;3859 vs 2984&ndash;3007</td></tr>
+      <tr><td><code>INCOME_WEIGHTS</code> = 0.42 / 0.33 / 0.25</td><td>Fixed forever, never reconciled with actual class populations even though those move every week. A nation whose upper class has collapsed to 1% of the population still books 25% of the income pool to it.</td><td class="src">economy.js:2676, 2700&ndash;2709</td></tr>
+      <tr><td><code>cancelTraining</code> refund</td><td class="neg">Breaks the project&rsquo;s own accounting law L9. The refund is added to <code>nation.gold</code> (<span class="mono">recruitment.js:475</span>) without reversing the <code>outlayGold</code> the order recorded &mdash; the decrement that <span class="mono">economy.js:1388</span> performs for the analogous factory case is simply missing. Reproduced: order infantry for 25, cancel, and the following week &Delta;treasury exceeds the ledger&rsquo;s prediction by exactly 25.000. The audit for L9 cannot catch it because it runs with <code>playerNation = -1</code> and never cancels an order.</td><td class="src">recruitment.js:469&ndash;481</td></tr>
+      <tr><td>Education slider minimum</td><td>UI renders <code>min="0"</code>; the engine floors education at 25/40/55/70 depending on Higher Education level. Dragging to zero snaps back with no explanation &mdash; the band note is wired only to tariff and the two army sliders.</td><td class="src">screens.js:1598&ndash;1600, 1694&ndash;1714 vs economy.js:1664&ndash;1671</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<!-- ============================================================ PART 5/6 === -->
+<section id="p56">
+  <div class="sec-head">
+    <div class="part">PARTS 5&ndash;6</div>
+    <div>
+      <h2>Which levers can actually be felt</h2>
+      <p class="sub">Every control driven to both extremes on identical seeds, then compared against
+      the measured seed-to-seed noise floor for the metric it is supposed to move.</p>
+    </div>
+  </div>
+
+  <p>A lever is only perceivable if moving it across its whole range changes an outcome by more than
+  that outcome varies <em>by itself</em> between campaigns. The floor is not a rhetorical device: it
+  was measured first, on six seeds with nothing touched.</p>
+
+  <div class="snr">
+    <div class="snr-row">
+      <div class="snr-name">Tax &times;3 &nbsp;<span class="dim" style="font-size:.75rem">0&rarr;100</span></div>
+      <div class="snr-track"><div class="snr-fill over" style="width:96.0%"></div><div class="snr-floor" style="left:66.7%"></div></div>
+      <div class="snr-val">7.6&times;</div>
+    </div>
+    <div class="snr-row">
+      <div class="snr-name">Welfare &nbsp;<span class="dim" style="font-size:.75rem">0&rarr;100</span></div>
+      <div class="snr-track"><div class="snr-fill over" style="width:89.3%"></div><div class="snr-floor" style="left:66.7%"></div></div>
+      <div class="snr-val">4.8&times;</div>
+    </div>
+    <div class="snr-row">
+      <div class="snr-name">Tariff &nbsp;<span class="dim" style="font-size:.75rem">0&rarr;100</span></div>
+      <div class="snr-track"><div class="snr-fill under" style="width:61.5%"></div><div class="snr-floor" style="left:66.7%"></div></div>
+      <div class="snr-val">0.70&times;</div>
+    </div>
+    <div class="snr-row">
+      <div class="snr-name">Public Health &nbsp;<span class="dim" style="font-size:.75rem">0&rarr;100</span></div>
+      <div class="snr-track"><div class="snr-fill under" style="width:21.0%"></div><div class="snr-floor" style="left:66.7%"></div></div>
+      <div class="snr-val">0.043&times;</div>
+    </div>
+    <div class="snr-row">
+      <div class="snr-name">adminFunding &nbsp;<span class="dim" style="font-size:.75rem">30&rarr;100</span></div>
+      <div class="snr-track"><div class="snr-fill under" style="width:2.7%"></div><div class="snr-floor" style="left:66.7%"></div></div>
+      <div class="snr-val">0.012&times;</div>
+    </div>
+  </div>
+  <p class="snr-legend">Effect of the lever&rsquo;s full range &divide; the noise floor of the metric it
+  moves, logarithmic. The brass line is the floor: anything to its left cannot be distinguished from
+  a different random seed. Metrics: tax and welfare on lower-class satisfaction (floor 5.3%), tariff on
+  lower-class satisfaction, health on population (floor 39.1%), administration on treasury (floor 50.8%).
+  The two military levers are excluded here because a peaceful run cannot judge them &mdash; see below.</p>
+
+  <h3>Taxation &mdash; a real cost attached to a benefit nobody needs</h3>
+  <div class="tw">
+  <table>
+    <caption>All three class taxes moved together. Seed tx-a, 40-week warm-up, 160 weeks, peaceful. Seed tx-b confirms every direction.</caption>
+    <thead><tr><th class="n">Tax</th><th class="n">Tax revenue</th><th class="n">Treasury</th><th class="n">needsMet</th><th class="n">Lower sat.</th><th class="n">Stability</th><th class="n">Population</th></tr></thead>
+    <tbody>
+      <tr><td class="n">0%</td><td class="n">0.00</td><td class="n">38,186</td><td class="n">0.789</td><td class="n">0.695</td><td class="n">0.641</td><td class="n">941,533</td></tr>
+      <tr><td class="n">10%</td><td class="n">94.42</td><td class="n">48,725</td><td class="n">0.788</td><td class="n">0.666</td><td class="n">0.604</td><td class="n">939,973</td></tr>
+      <tr><td class="n">50%</td><td class="n">444.76</td><td class="n">85,876</td><td class="n">0.747</td><td class="n">0.557</td><td class="n">0.504</td><td class="n">931,833</td></tr>
+      <tr><td class="n">90%</td><td class="n">763.96</td><td class="n">116,981</td><td class="n">0.568</td><td class="n">0.433</td><td class="n">0.374</td><td class="n">901,395</td></tr>
+      <tr><td class="n">100%</td><td class="n">883.33</td><td class="n">131,500</td><td class="n">0.257</td><td class="n">0.399</td><td class="n">0.335</td><td class="n">848,537</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>The damage is real and legible: starve your population and it shrinks, gets miserable, and
+  destabilises. But look at the second column of the first row. <strong>A nation that collects no tax
+  at all for 160 weeks finishes with 38,186 gold, and rising.</strong> The benefit side of taxation
+  is buying a resource the player already has in unusable quantity.</p>
+
+  <div class="callout warnbox">
+    <span class="label">Why no lever can matter yet</span>
+    <p>Measured against the full ledger totals across three 200-week worlds, the large
+    factory-rich nation &mdash; the one a player is most likely to be running &mdash; spends
+    <strong>21&ndash;51% of its income</strong>. The world&rsquo;s <em>median</em> nation spends
+    <strong>76&ndash;95%</strong>. The player&rsquo;s treasury ends up worth tens to hundreds of weeks
+    of net flow, so whatever a slider does to the flow is absorbed by the stock before it can be
+    seen.</p>
+    <p>The distribution is bimodal and that is the whole problem: median treasury across 31 nations is
+    <strong>45</strong> gold on a median weekly net of <strong>+0.5</strong>, while five runaway
+    nations sit on 21,000&ndash;22,000. The budget constraint binds hard on small AI states and
+    not at all on the one nation with all the sliders. <em>Simplifying the formulas will not fix
+    this.</em> Until expenses scale with the empire, the budget is a decoration for exactly the player
+    who is asked to manage it.</p>
+  </div>
+
+  <h3>The satisfaction of the dead</h3>
+  <p>At 100% tax the numbers stop being monotone, and the reason is a real defect rather than a
+  balance question.</p>
+  <div class="tw">
+  <table>
+    <caption>Upper class under rising taxation. Seed tx-a, 160 weeks.</caption>
+    <thead><tr><th class="n">Tax</th><th class="n">Upper population</th><th class="n">Upper basket cost</th><th class="n">Upper satisfaction</th></tr></thead>
+    <tbody>
+      <tr><td class="n">50%</td><td class="n">27,000</td><td class="n">60.43</td><td class="n">0.268</td></tr>
+      <tr><td class="n">80%</td><td class="n">17,000</td><td class="n">43.21</td><td class="n">0.179</td></tr>
+      <tr><td class="n">90%</td><td class="n">11,000</td><td class="n">26.13</td><td class="n">0.154</td></tr>
+      <tr><td class="n">95%</td><td class="n">7,000</td><td class="n">16.31</td><td class="n">0.140</td></tr>
+      <tr><td class="n">100%</td><td class="n"><span class="neg">0</span></td><td class="n"><span class="neg">0.0000</span></td><td class="n"><span class="neg">0.578</span></td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p><code>affordShare = outOfPocket &gt; 1e-9 ? clamp(spendable / outOfPocket, 0, 1) : 1</code>
+  (<span class="mono">economy.js:2602&ndash;2604</span>). A class with no members has no basket, and a
+  basket of zero is trivially affordable, so the fallback branch awards full affordability. Satisfaction
+  becomes <code>0.35 + 1&times;0.5 &minus; 1&times;0.28 = 0.57</code> &mdash; matching the measured 0.578.
+  <strong>An extinct class reports the highest satisfaction in the matrix</strong>, and that figure
+  feeds stability and the display.</p>
+
+  <h3>Administration &mdash; a 46% number attached to a 0.6% outcome</h3>
+  <div class="tw">
+  <table>
+    <caption>adminFunding across its whole legal range. Seed adm-a, 160 weeks. &ldquo;Net gain&rdquo; is extra tax collected minus extra administration paid, against the 30% floor.</caption>
+    <thead><tr><th class="n">adminFunding</th><th class="n">taxEfficiency</th><th class="n">Admin cost</th><th class="n">Tax revenue</th><th class="n">Net gain</th><th class="n">Treasury</th><th class="n">Control</th><th class="n">Stability</th></tr></thead>
+    <tbody>
+      <tr><td class="n">30%</td><td class="n">0.685</td><td class="n">5.19</td><td class="n">25.38</td><td class="n">&mdash;</td><td class="n">16,351</td><td class="n">100.000</td><td class="n">0.548</td></tr>
+      <tr><td class="n">50%</td><td class="n">0.775</td><td class="n">8.65</td><td class="n">28.71</td><td class="n neg">&minus;0.13</td><td class="n">16,379</td><td class="n">100.000</td><td class="n">0.548</td></tr>
+      <tr><td class="n">70%</td><td class="n">0.865</td><td class="n">12.11</td><td class="n">32.05</td><td class="n neg">&minus;0.25</td><td class="n">16,407</td><td class="n">100.000</td><td class="n">0.548</td></tr>
+      <tr><td class="n">85%</td><td class="n">0.933</td><td class="n">14.71</td><td class="n">34.55</td><td class="n neg">&minus;0.35</td><td class="n">16,427</td><td class="n">100.000</td><td class="n">0.548</td></tr>
+      <tr><td class="n">100%</td><td class="n">1.000</td><td class="n">17.30</td><td class="n">37.05</td><td class="n neg">&minus;0.44</td><td class="n">16,448</td><td class="n">100.000</td><td class="n">0.548</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>The budget screen advertises this lever with &ldquo;tax efficiency 68% &hellip; 100%&rdquo;
+  (<span class="mono">screens.js:1693</span>) &mdash; a 46% swing in a number the player can watch move.
+  After 160 weeks the treasury differs by <strong>0.6%</strong>, province control is identical to three
+  decimals, stability is identical to three decimals, and on this seed raising the slider is
+  <em>net negative</em>. On the second seed it is net positive by 6.5 gold a week. The sign of the
+  optimum is not stable across seeds, which means there is no strategy to learn.</p>
+  <p>This is the textbook case the brief describes: <strong>mathematically different, strategically
+  identical.</strong> All 31 AI nations in a 200-week world sit at exactly 100.</p>
+  <p>At the shipped world size it is weaker still. All four terms of
+  <code>administrationCost</code> are floored at zero
+  (<span class="mono">cities.js:210&ndash;215</span>) and the median nation clears none of the
+  thresholds &mdash; 3 free cities, 120 free provinces, 250,000 free people. On a standard
+  160&times;96 map only <strong>35&ndash;38 of 65 nations pay anything at all</strong>, and the median
+  bill is <strong>0.1&ndash;0.3 gold a week</strong> against a median income of 38&ndash;71: under
+  half a percent. The slider&rsquo;s advertised benefit is worth about 46% of tax revenue. A control
+  whose cost is a rounding error and whose benefit is a third of income has exactly one correct
+  setting.</p>
+  <p>The comment at <span class="mono">cities.js:204&ndash;208</span> says the population term was
+  added precisely so that &ldquo;the slider becomes a real balance&rdquo;. Measured at product scale,
+  it did not.</p>
+
+  <h3>Public Health &mdash; wired to something real, but too small to notice</h3>
+  <p>Health has exactly two consumers in the whole codebase: a population growth multiplier
+  <code>1 + health/100 &times; 0.35</code> (<span class="mono">provinces.js:790</span>) and a
+  <code>+2.5</code> term on <code>standardOfLiving</code> (<span class="mono">economy.js:2660</span>),
+  which feeds city growth. Given 700 weeks &mdash; thirteen game years, far longer than a player will
+  wait &mdash; to express a 35% growth bonus:</p>
+  <div class="tw">
+  <table>
+    <caption>Public Health at 0 vs 100, two seeds, 700 weeks, peaceful.</caption>
+    <thead><tr><th>Seed</th><th class="n">Health</th><th class="n">Population</th><th class="n">Treasury</th><th class="n">Weekly social cost</th></tr></thead>
+    <tbody>
+      <tr><td>h1</td><td class="n">0</td><td class="n">2,400,838</td><td class="n">144,124</td><td class="n">27.61</td></tr>
+      <tr><td>h1</td><td class="n">100</td><td class="n pos">2,448,103 <span class="dim">(+2.0%)</span></td><td class="n neg">80,153 <span class="dim">(&minus;44%)</span></td><td class="n">101.60</td></tr>
+      <tr><td>h2</td><td class="n">0</td><td class="n">1,003,665</td><td class="n">63,287</td><td class="n">17.76</td></tr>
+      <tr><td>h2</td><td class="n">100</td><td class="n pos">1,017,244 <span class="dim">(+1.4%)</span></td><td class="n neg">45,820 <span class="dim">(&minus;28%)</span></td><td class="n">48.52</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Maximum public health for thirteen years buys <strong>1.4&ndash;2.0% more people</strong> for
+  <strong>28&ndash;44% of the treasury</strong>. Population varies 39.1% between seeds on its own.</p>
+
+  <h3>Education &mdash; a chain that terminates in a number nothing spends</h3>
+  <p>Education is the one lever with a genuinely interesting causal chain: spending raises the literacy
+  <em>target</em>, literacy is a stock that creeps toward it at
+  <code>0.001</code> of the gap per week (<span class="mono">economy.js:3796</span>), literacy drives
+  research points, research points buy technologies. Every link works. The last one does not convert.</p>
+  <div class="tw">
+  <table>
+    <caption>Education 25 (its effective floor) vs 100, three seeds, 900 weeks &mdash; seventeen game years.</caption>
+    <thead><tr><th>Seed</th><th class="n">Education</th><th class="n">Literacy</th><th class="n">Research pts/wk</th><th class="n">Technologies</th><th class="n">Unspent points</th><th class="n">Treasury</th></tr></thead>
+    <tbody>
+      <tr><td>L1</td><td class="n">25</td><td class="n">0.154</td><td class="n">1.835</td><td class="n">5</td><td class="n">23</td><td class="n">101,955</td></tr>
+      <tr><td>L1</td><td class="n">100</td><td class="n">0.430</td><td class="n">2.943</td><td class="n">5</td><td class="n neg">477</td><td class="n">86,067</td></tr>
+      <tr><td>L2</td><td class="n">25</td><td class="n">0.154</td><td class="n">1.893</td><td class="n">6</td><td class="n">243</td><td class="n">128,059</td></tr>
+      <tr><td>L2</td><td class="n">100</td><td class="n">0.430</td><td class="n">2.994</td><td class="n pos">7</td><td class="n">63</td><td class="n">110,876</td></tr>
+      <tr><td>L3</td><td class="n">25</td><td class="n">0.154</td><td class="n">1.839</td><td class="n">5</td><td class="n">35</td><td class="n">33,719</td></tr>
+      <tr><td>L3</td><td class="n">100</td><td class="n">0.430</td><td class="n">2.940</td><td class="n">5</td><td class="n neg">456</td><td class="n neg">3,261</td></tr>
+    </tbody>
+  </table>
+  </div>
+  <p>Literacy nearly triples. Research output rises <strong>60%</strong>. Technologies completed rise
+  by <strong>0.33 on average</strong> &mdash; one extra technology across three seventeen-year
+  campaigns &mdash; because <code>techCost</code> applies an early-research penalty of up to
+  4&times; against the activation year (<span class="mono">technology.js:317&ndash;327</span>) and
+  prerequisites gate the rest. The surplus simply accumulates: <strong>477 and 456 unspent points</strong>
+  on two of the three seeds, nearly two technologies&rsquo; worth, sitting idle. On seed L3 the same
+  spending removed 90% of the treasury and bought nothing.</p>
+  <p>This is the brief&rsquo;s own worked example, found in the wild: mathematically a 60% improvement,
+  strategically no improvement at all.</p>
+</section>
+
+<section id="mil">
+  <div class="sec-head">
+    <div class="part">PARTS 5&ndash;6 &middot; ii</div>
+    <div>
+      <h2>The military levers, tested where they belong</h2>
+      <p class="sub">A peaceful run cannot judge a war budget. Measured under a forced war, six seeds,
+      110 weeks after a peaceful warm-up.</p>
+    </div>
+  </div>
+
+  <p>These two sliders carry the <strong>largest multipliers in the entire budget domain</strong>, and
+  unlike the social programmes their effects are immediate rather than century-scale:</p>
+  <div class="tw">
+  <table>
+    <caption>Analytic range of the military levers between their real floor (25) and ceiling (100), at full supply.</caption>
+    <thead><tr><th>Effect</th><th>Formula</th><th class="n">at 25%</th><th class="n">at 100%</th><th class="n">Swing</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr><td>Combat power</td><td class="mono">0.55 + wages&times;0.45</td><td class="n">0.663</td><td class="n">1.000</td><td class="n pos">1.51&times;</td><td class="src">battles.js:118</td></tr>
+      <tr><td>Training speed</td><td class="mono">0.45 + 0.4&times;wages + 0.15&times;supply</td><td class="n">0.700</td><td class="n">1.000</td><td class="n pos">1.43&times;</td><td class="src">recruitment.js:365</td></tr>
+      <tr><td>Org. recovery</td><td class="mono">(0.6 + 0.4&times;wages) &times; (0.7 + 0.3&times;supply)</td><td class="n">0.700</td><td class="n">1.000</td><td class="n pos">1.43&times;</td><td class="src">turn.js:423</td></tr>
+      <tr><td>Reinforcement rate</td><td class="mono">0.25 + (max(0.25, proc)&times;supply)&times;0.75</td><td class="n">0.438</td><td class="n">1.000</td><td class="n pos">2.29&times;</td><td class="src">reinforcement.js:22&ndash;24</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="tw">
+  <table>
+    <caption>Military wages 25 vs 100 under a forced war. Six seeds, means. Procurement held at 100.</caption>
+    <thead><tr><th>Metric</th><th class="n">wages 25</th><th class="n">wages 100 (requested)</th><th class="n">Change</th></tr></thead>
+    <tbody>
+      <tr><td>Effective wages reached</td><td class="n">25.0</td><td class="n warn">65.0</td><td class="n">clamped by ruling party</td></tr>
+      <tr><td>Army attack power</td><td class="n">28.94</td><td class="n">36.31</td><td class="n pos">+20.3%</td></tr>
+      <tr><td>Organisation</td><td class="n">100.00</td><td class="n">100.00</td><td class="n dim">0.0%</td></tr>
+      <tr><td>Strength ratio</td><td class="n">1.00</td><td class="n">1.00</td><td class="n dim">0.0%</td></tr>
+      <tr><td>Tiles occupied by us</td><td class="n">0.00</td><td class="n">0.00</td><td class="n dim">0.0%</td></tr>
+      <tr><td>Territory held</td><td class="n">122.50</td><td class="n">122.50</td><td class="n dim">identical, every seed</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <p>Two honest conclusions and one non-conclusion.</p>
+  <ul>
+    <li><strong>The effect on paper is real and consistent.</strong> Attack power rose on all six
+    seeds, by 20.3% on average, tracking the analytic prediction for the range actually reached.</li>
+    <li><strong>The player cannot reach the top of the slider.</strong> Asking for 100 produced an
+    effective 60 on four seeds and 75 on two &mdash; exactly the pacifist and anti-military ceilings in <code>fiscalPolicyLimits.armySpendingMax</code>
+    (<span class="mono">politics.js:202</span>), re-clamped every week by
+    <code>applyGovernmentLimits</code> (<span class="mono">politics.js:206&ndash;218</span>). The
+    budget screen does label this band, which is more than the social sliders manage.</li>
+    <li><strong>Whether it changes who wins is untested.</strong> In these runs no territory changed
+    hands in either arm, so a 20% power gap produced no measurable outcome difference. That is a
+    limit of the experiment, not evidence the lever is dead. It needs a harness that reliably produces
+    front movement before anyone can claim either way.</li>
+  </ul>
+
+  <div class="callout">
+    <span class="label">The decisive design point does not depend on that</span>
+    <p>Both military sliders push in the same direction: pay more, the army works better. There is no
+    game state in which LOW is the right answer, except conserving gold &mdash; and gold is the one
+    thing the player has in unusable surplus. A control with a single dominant setting is not a
+    decision; it is a tax on attention. Two of them is the same tax charged twice.</p>
+  </div>
+</section>
+
+<!-- ============================================================ PART 2 === -->
+<section id="p2">
+  <div class="sec-head">
+    <div class="part">PARTS 2 &amp; 12</div>
+    <div>
+      <h2>Which of these are decisions</h2>
+      <p class="sub">A control is a decision only if the player can see it, moving it beats the noise
+      floor, and there is a game state where LOW is correct and another where HIGH is.</p>
+    </div>
+  </div>
+
+  <div class="tw">
+  <table>
+    <caption>All ten budget controls, classified against measured evidence.</caption>
+    <thead><tr><th>Control</th><th>Class</th><th>Evidence</th><th>Action</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Tax &mdash; lower</td><td><span class="chip strong">STRONG</span></td>
+        <td>7.6&times; the noise floor on satisfaction; drives population, stability and party support. But the revenue it earns is worthless while the treasury is slack, so the honest optimum is always &ldquo;low&rdquo;.</td>
+        <td><span class="chip keep">KEEP</span></td>
+      </tr>
+      <tr>
+        <td>Tax &mdash; middle</td><td><span class="chip weak">WEAK</span></td>
+        <td>Same formula, same slope, different constant. <code>INCOME_WEIGHTS</code> are fixed at 0.42/0.33/0.25 and never reconciled with actual class populations, so the three sliders are one slider with three weights.</td>
+        <td><span class="chip merge">MERGE</span></td>
+      </tr>
+      <tr>
+        <td>Tax &mdash; upper</td><td><span class="chip weak">WEAK</span></td>
+        <td>As above. The only distinguishing behaviour at the extreme is a defect: at 100% the class dies and reports maximum satisfaction.</td>
+        <td><span class="chip merge">MERGE</span></td>
+      </tr>
+      <tr>
+        <td>Tariff</td><td><span class="chip strong">STRONG</span> <span class="chip hidden">DOMINANT</span></td>
+        <td>One of the two largest revenue lines (41&ndash;51% of income for a large nation; 30.7% world-wide against taxation&rsquo;s 34.4%). All 31 nations in a 200-week world converge to 100. Its measured cost is 0.70&times; the noise floor &mdash; below perception.</td>
+        <td><span class="chip simplify">SIMPLIFY</span></td>
+      </tr>
+      <tr>
+        <td>Education</td><td><span class="chip weak">WEAK</span></td>
+        <td>Chain works link by link and converts to nothing: +60% research, +0.33 technologies per 900 weeks, hundreds of points left unspent. Bottom quarter of the slider is inert &mdash; the engine floors it at 25.</td>
+        <td><span class="chip keep">KEEP</span> <span class="chip simplify">FIX THE SINK</span></td>
+      </tr>
+      <tr>
+        <td>Public Health</td><td><span class="chip weak">WEAK</span></td>
+        <td>Two consumers in the whole codebase. 700 weeks at maximum buys 1.4&ndash;2.0% population for 28&ndash;44% of the treasury. 0.043&times; the noise floor.</td>
+        <td><span class="chip merge">MERGE into Welfare</span></td>
+      </tr>
+      <tr>
+        <td>Welfare</td><td><span class="chip strong">STRONG</span></td>
+        <td>The best lever in the budget: 4.8&times; the noise floor on satisfaction, 4.6&times; on stability, at a treasury cost the player can feel (&minus;48.6%). A genuine trade-off with two right answers.</td>
+        <td><span class="chip keep">KEEP</span></td>
+      </tr>
+      <tr>
+        <td>Military Wages</td><td><span class="chip strong">STRONG</span> <span class="chip hidden">DOMINANT</span></td>
+        <td>Largest analytic multipliers in the budget (1.43&ndash;1.51&times;), +20.3% measured attack power. But no state makes LOW correct, and the top of the range is unreachable under most governments.</td>
+        <td><span class="chip merge">MERGE</span></td>
+      </tr>
+      <tr>
+        <td>Military Procurement</td><td><span class="chip strong">STRONG</span> <span class="chip hidden">DOMINANT</span></td>
+        <td>2.29&times; on reinforcement rate. Points the same direction as Wages, costs the same currency, is capped by the same party band, and is moved together with Wages by the AI and by the game&rsquo;s own &ldquo;War Budget&rdquo; preset.</td>
+        <td><span class="chip merge">MERGE with Wages</span></td>
+      </tr>
+      <tr>
+        <td>adminFunding</td><td><span class="chip remove">REDUNDANT</span></td>
+        <td>0.012&times; the noise floor. Treasury differs 0.6% across the whole range; control and stability identical to three decimals; the sign of the optimum flips between seeds. All 31 AI nations sit at 100. No AI writer exists for it at all.</td>
+        <td><span class="chip remove">REMOVE</span></td>
+      </tr>
+      <tr>
+        <td>Subsidy policy</td><td><span class="chip hidden">HIDDEN</span></td>
+        <td>Applies only to the human player (<span class="mono">economy.js:3859</span>); AI nations reach the same outcome through a different code path. The same stored field means two different things depending on who owns the nation.</td>
+        <td><span class="chip auto">AUTOMATE</span></td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout">
+    <span class="label">The game already agrees with this</span>
+    <p>Two features in the shipped build are admissions that ten controls is too many. The budget
+    screen has a <strong>&ldquo;War Budget&hellip;&rdquo;</strong> button
+    (<span class="mono">screens.js:1790</span>) that moves five levers at once to a preset. And the
+    whole domain is already delegable &mdash; <code>DELEGATION_AREAS.budget</code>, &ldquo;the treasury
+    sets class taxes, social spending and the war budget&rdquo;
+    (<span class="mono">delegation.js:16&ndash;20</span>). A mechanic that ships with a &ldquo;do it
+    for me&rdquo; button and an autopilot is telling you which parts were never decisions.</p>
+  </div>
+</section>
+
+<!-- ============================================================ PART 7 === -->
+<section id="p7">
+  <div class="sec-head">
+    <div class="part">PARTS 7 &amp; 13</div>
+    <div>
+      <h2>The simplest budget that keeps the strategy</h2>
+      <p class="sub">Five controls instead of ten, one treasury instead of twenty-four writers, one
+      balance instead of three &mdash; with the causal network left intact.</p>
+    </div>
+  </div>
+
+  <div class="tw">
+  <table>
+    <caption>Proposed model. Each lever has one primary benefit, one primary cost, one secondary consequence.</caption>
+    <thead><tr><th>Lever</th><th class="pos">Primary benefit</th><th class="neg">Primary cost</th><th>Secondary consequence</th><th>Replaces</th></tr></thead>
+    <tbody>
+      <tr><td>Taxation</td><td class="pos">Revenue</td><td class="neg">Satisfaction &darr;</td><td>&rarr; stability &rarr; party support</td><td>3 class sliders</td></tr>
+      <tr><td>Tariff</td><td class="pos">Revenue</td><td class="neg">Import prices &uarr;</td><td>&rarr; retaliation &rarr; exports &darr;</td><td>unchanged</td></tr>
+      <tr><td>Army</td><td class="pos">Readiness</td><td class="neg">Treasury</td><td>&rarr; war outcome</td><td>Wages + Procurement</td></tr>
+      <tr><td>Education</td><td class="pos">Research</td><td class="neg">Treasury</td><td>&rarr; literacy &rarr; industry</td><td>unchanged</td></tr>
+      <tr><td>Welfare</td><td class="pos">Satisfaction</td><td class="neg">Treasury</td><td>&rarr; population growth</td><td>Welfare + Health</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<figure>
+  <div class="figframe">
+  <svg viewBox="0 0 1160 430" role="img" aria-label="The proposed budget: the treasury on the left, five levers in the middle each with exactly one money edge and one consequence edge, and on the right three preserved causal chains — satisfaction to stability to party support, readiness to war outcome, and research to technology to industry, which loops back to widen the tax base.">
+    <defs>
+      <marker id="pa" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+      </marker>
+      <marker id="pg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#839a6b"/>
+      </marker>
+      <marker id="pr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#a95e4a"/>
+      </marker>
+      <marker id="pb" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#baa064"/>
+      </marker>
+    </defs>
+
+    <text x="16" y="18" font-size="10.5" letter-spacing="1.6" fill="#baa064">ONE TREASURY</text>
+    <text x="300" y="18" font-size="10.5" letter-spacing="1.6" fill="#6f7778">FIVE CONTROLS</text>
+    <text x="556" y="18" font-size="10.5" letter-spacing="1.6" fill="#6f7778">CAUSAL CHAINS &mdash; UNCHANGED</text>
+
+    <!-- treasury -->
+    <rect x="16" y="170" width="204" height="64" fill="none" stroke="#baa064" stroke-width="1.6"/>
+    <text x="118" y="196" font-size="14.5" text-anchor="middle" fill="#baa064" letter-spacing="1.2">TREASURY</text>
+    <text x="118" y="216" font-size="9.5" text-anchor="middle" fill="#989486">one writer &middot; one balance</text>
+
+    <!-- levers -->
+    <g fill="none" stroke="currentColor" stroke-opacity=".6">
+      <rect x="300" y="34" width="140" height="42"/>
+      <rect x="300" y="104" width="140" height="42"/>
+      <rect x="300" y="174" width="140" height="42"/>
+      <rect x="300" y="244" width="140" height="42"/>
+      <rect x="300" y="314" width="140" height="42"/>
+    </g>
+    <g font-size="13" text-anchor="middle" fill="#d9d1bd">
+      <text x="370" y="60">Taxation</text>
+      <text x="370" y="130">Tariff</text>
+      <text x="370" y="200">Army</text>
+      <text x="370" y="270">Education</text>
+      <text x="370" y="340">Welfare</text>
+    </g>
+
+    <!-- money edges: lever -> treasury (leftward) -->
+    <g fill="none" stroke-width="1.3">
+      <path d="M300 55 L258 55 L258 178 L224 178" stroke="#839a6b" marker-end="url(#pg)"/>
+      <path d="M300 125 L248 125 L248 190 L224 190" stroke="#839a6b" marker-end="url(#pg)"/>
+      <path d="M300 195 L238 195 L238 202 L224 202" stroke="#a95e4a" marker-end="url(#pr)"/>
+      <path d="M300 265 L248 265 L248 214 L224 214" stroke="#a95e4a" marker-end="url(#pr)"/>
+      <path d="M300 335 L258 335 L258 226 L224 226" stroke="#a95e4a" marker-end="url(#pr)"/>
+    </g>
+    <g font-size="10" text-anchor="end">
+      <text x="296" y="49" fill="#839a6b">+ revenue</text>
+      <text x="296" y="119" fill="#839a6b">+ revenue</text>
+      <text x="296" y="189" fill="#a95e4a">&minus; cost</text>
+      <text x="296" y="259" fill="#a95e4a">&minus; cost</text>
+      <text x="296" y="329" fill="#a95e4a">&minus; cost</text>
+    </g>
+
+    <!-- consequence edges: lever -> chain (rightward) -->
+    <g fill="none" stroke-width="1.2">
+      <path d="M440 55 L520 55 L520 52 L552 52" stroke="#a95e4a" marker-end="url(#pr)"/>
+      <path d="M440 125 L490 125 L490 62 L552 62" stroke="#a95e4a" marker-end="url(#pr)"/>
+      <path d="M440 195 L552 195" stroke="#839a6b" marker-end="url(#pg)"/>
+      <path d="M440 265 L512 265 L512 330 L552 330" stroke="#839a6b" marker-end="url(#pg)"/>
+      <path d="M440 335 L482 335 L482 72 L552 72" stroke="#839a6b" marker-end="url(#pg)"/>
+    </g>
+    <g font-size="10">
+      <text x="446" y="28" fill="#a95e4a">&minus; satisfaction</text>
+      <text x="500" y="118" fill="#a95e4a">&minus; import prices &uarr;</text>
+      <text x="492" y="189" fill="#839a6b">+ readiness</text>
+      <text x="524" y="259" fill="#839a6b">+ research</text>
+      <text x="446" y="350" fill="#839a6b">+ satisfaction</text>
+    </g>
+
+    <!-- chain 1 -->
+    <g fill="none" stroke="currentColor" stroke-opacity=".6">
+      <rect x="552" y="42" width="132" height="38"/>
+      <rect x="722" y="42" width="112" height="38"/>
+      <rect x="872" y="42" width="150" height="38"/>
+    </g>
+    <g font-size="12" text-anchor="middle" fill="#d9d1bd">
+      <text x="618" y="66">Satisfaction</text><text x="778" y="66">Stability</text><text x="947" y="66">Party support</text>
+    </g>
+    <g fill="none" stroke="currentColor" stroke-opacity=".55" marker-end="url(#pa)">
+      <path d="M684 61 L718 61"/><path d="M834 61 L868 61"/>
+    </g>
+
+    <!-- chain 2 -->
+    <g fill="none" stroke="currentColor" stroke-opacity=".6">
+      <rect x="552" y="177" width="132" height="38"/>
+      <rect x="722" y="177" width="132" height="38"/>
+    </g>
+    <g font-size="12" text-anchor="middle" fill="#d9d1bd">
+      <text x="618" y="201">Readiness</text><text x="788" y="201">War outcome</text>
+    </g>
+    <path d="M684 196 L718 196" fill="none" stroke="currentColor" stroke-opacity=".55" marker-end="url(#pa)"/>
+
+    <!-- chain 3 -->
+    <g fill="none" stroke="currentColor" stroke-opacity=".6">
+      <rect x="552" y="311" width="132" height="38"/>
+      <rect x="722" y="311" width="122" height="38"/>
+      <rect x="882" y="311" width="122" height="38"/>
+    </g>
+    <g font-size="12" text-anchor="middle" fill="#d9d1bd">
+      <text x="618" y="335">Research</text><text x="783" y="335">Technology</text><text x="943" y="335">Industry</text>
+    </g>
+    <g fill="none" stroke="currentColor" stroke-opacity=".55" marker-end="url(#pa)">
+      <path d="M684 330 L718 330"/><path d="M844 330 L878 330"/>
+    </g>
+
+    <!-- feedback loop -->
+    <path d="M943 349 L943 400 L118 400 L118 238" fill="none" stroke="#baa064" stroke-dasharray="5 4" marker-end="url(#pb)"/>
+    <text x="530" y="394" font-size="10.5" fill="#baa064" text-anchor="middle">industry widens the tax base &mdash; the loop that makes the budget worth playing</text>
+  </svg>
+  </div>
+  <figcaption><strong>PROPOSED.</strong> Every lever has exactly one money edge and one consequence
+  edge, so a player can read the whole domain off the diagram. Nothing in the causal network is
+  deleted: satisfaction still drives stability and politics, education still reaches industry through
+  research, army spending still decides wars. What is removed is the plumbing between the lever and
+  the consequence &mdash; the second pipeline, the reconstructed ledger, the third balance, and the
+  four controls that measurement shows nobody can feel.</figcaption>
+</figure>
+
+<section id="struct">
+  <div class="sec-head">
+    <div class="part">PART 7 &middot; ii</div>
+    <div>
+      <h2>The structural half of the change</h2>
+      <p class="sub">Removing four sliders is the visible part. These five changes are where the
+      complexity actually lives.</p>
+    </div>
+  </div>
+
+  <h4>1 &middot; One treasury writer</h4>
+  <p>Replace 24 scattered <code>nation.gold +=</code> sites with a single
+  <code>settle(nation, line, amount)</code> that moves gold <em>and</em> records the ledger line in the
+  same statement. That deletes the eleven <code>economy.*Gold</code> scratch fields
+  (<code>outlayGold</code>, <code>procurementGold</code>, <code>subsidyGold</code>,
+  <code>projectGold</code>, <code>dividendGold</code>, <code>shareCostGold</code>,
+  <code>shareSaleGold</code>, <code>interestGold</code>, <code>borrowedGold</code>,
+  <code>repaidGold</code>, <code>defaultedGold</code>) together with the drain-and-zero pass that
+  reads them, and makes the ledger canonical instead of a weekly reconstruction.</p>
+
+  <h4>2 &middot; One weekly balance</h4>
+  <p>Fold the gold half of <code>nationBudget()</code> into <code>fiscalBalance()</code> so city
+  revenue, army wages and administration are computed alongside taxes, social spending and
+  construction. This is what removes the three disagreeing balances, the two hand-written copies of
+  <code>budget.net.gold + fiscalNet</code>, and the ordering trap in which the fiscal AI judges
+  solvency without seeing half the nation&rsquo;s income.</p>
+
+  <h4>3 &middot; Progressivity becomes a policy, not three numbers</h4>
+  <p>One tax rate. Who pays it is decided by a government policy (regressive / flat / progressive)
+  which sets the incidence split &mdash; a real, legible political choice instead of three sliders
+  that share a formula. This also forces the fix that <code>INCOME_WEIGHTS</code> needs anyway:
+  incidence must track actual class populations rather than the frozen 0.42/0.33/0.25.</p>
+
+  <h4>4 &middot; Make research convertible</h4>
+  <p>Education&rsquo;s chain is the best-designed thing in the domain and it terminates in a pile of
+  unspent points. Either let surplus research buy the next available technology, or soften the up-to-4&times;
+  early-research penalty (<span class="mono">technology.js:317&ndash;327</span>). Until then, no
+  simplification of the education formula changes anything, because the formula was never the
+  problem.</p>
+
+  <div class="callout warnbox">
+    <span class="label">5 &middot; Make the constraint bind &mdash; this one is not optional</span>
+    <p>Income runs 2&ndash;4&times; expenses for a large nation, forever. A player who never touches a
+    slider ends 160 weeks with tens of thousands of gold. <strong>No amount of formula simplification
+    creates a decision when the resource being budgeted is not scarce.</strong></p>
+    <p>The good news is that the measurements point at the fix. Administration is the one expense
+    already written to scale with the empire &mdash; <code>(cities &minus; 3)<sup>1.45</sup></code>
+    plus a per-population term (<span class="mono">cities.js:210&ndash;215</span>) &mdash; and in the
+    31-nation run it was 33% of expenses for the largest nation against 6% for a small one. That shape
+    is correct; it is simply too small, and the slider that scales it is the one lever nobody can
+    feel. Grow the empire-scaling expenses until equilibrium income &asymp; expenses, and every
+    surviving lever becomes a decision <em>without changing a single formula</em>.</p>
+  </div>
+</section>
+
+<!-- =========================================================== PART 15 === -->
+<section id="p15">
+  <div class="sec-head">
+    <div class="part">PARTS 15 &amp; 16</div>
+    <div>
+      <h2>What this costs an agent to understand</h2>
+      <p class="sub">Counted in the repository, not estimated.</p>
+    </div>
+  </div>
+
+  <div class="tw">
+  <table>
+    <caption>Context cost of the budget domain, current and proposed.</caption>
+    <thead><tr><th>Measure</th><th class="n">Now</th><th class="n">Proposed</th><th>How counted / what removes it</th></tr></thead>
+    <tbody>
+      <tr><td>Modules touching a budget lever</td><td class="n">14</td><td class="n">8</td><td class="src">grep <code>economy?.(taxes|tariff|social|adminFunding|militaryWages|militaryProcurement|armySpending|subsidyPolicy)</code></td></tr>
+      <tr><td>Modules reading <code>militaryWages</code> alone</td><td class="n">7</td><td class="n">5</td><td>battles, recruitment, reinforcement, turn, cities, economy, screens</td></tr>
+      <tr><td>Treasury write sites</td><td class="n neg">24</td><td class="n pos">1</td><td>single <code>settle()</code> choke point</td></tr>
+      <tr><td>Mutable budget fields</td><td class="n">10 levers + 11 scratch + 35 ledger</td><td class="n">5 + 0 + 1 ledger</td><td>scratch fields and the reconstruction both disappear</td></tr>
+      <tr><td>Formulas producing a budget number</td><td class="n">15</td><td class="n">9</td><td>tax efficiency, health growth, the second military path, two of three balances</td></tr>
+      <tr><td>Phase-order dependencies</td><td class="n">4 known</td><td class="n">1</td><td>merging the two pipelines removes the tariff-zeroing trap</td></tr>
+      <tr><td>Named tuning constants</td><td class="n">25</td><td class="n">~18</td><td>3 of the 25 are visible anywhere in the UI</td></tr>
+      <tr><td>Duplicated calculations</td><td class="n neg">5</td><td class="n pos">0</td><td>2 UI copies of sim formulas (one of them wrong by 3.25&times;), 2 copies of the weekly-balance expression, <code>floorCost</code> re-deriving <code>socialSpendingCost</code></td></tr>
+      <tr><td>UI numbers that disagree with the sim</td><td class="n neg">3</td><td class="n pos">0</td><td>reinforcement note, recovery note, gross-vs-net tax rows</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="two">
+    <div>
+      <h4>AI context cost &mdash; now</h4>
+      <p style="font-family:'IBM Plex Sans Condensed',sans-serif;font-size:2.6rem;line-height:1;color:var(--red);margin:4px 0 10px">4 / 5</p>
+      <p>To change one budget rule correctly you must read <code>economy.js</code> (4,018 lines),
+      <code>cities.js</code>, <code>turn.js</code>, <code>politics.js</code> and the budget screen,
+      and you must know that two pipelines write the treasury independently, that
+      <code>fiscalNet</code> means two different things depending on when you read it, and that the
+      screen re-derives three formulas by hand. Nothing warns you.</p>
+    </div>
+    <div>
+      <h4>AI context cost &mdash; proposed</h4>
+      <p style="font-family:'IBM Plex Sans Condensed',sans-serif;font-size:2.6rem;line-height:1;color:var(--green);margin:4px 0 10px">2 / 5</p>
+      <p>One function computes the balance, one function writes the treasury, one record is the
+      ledger. A change to a lever is local to <code>fiscalBalance</code> and its consumer. The
+      remaining cost is inherent: the budget genuinely reaches politics, population, military and
+      technology, and that reach is the game.</p>
+    </div>
+  </div>
+</section>
+
+<!-- =========================================================== PART 18 === -->
+<section id="p18">
+  <div class="sec-head">
+    <div class="part">PART 18</div>
+    <div>
+      <h2>Verdict</h2>
+      <p class="sub">Analysis only. Nothing in this document has been implemented.</p>
+    </div>
+  </div>
+
+  <dl class="verdict">
+    <div><dt>The current budget in one sentence</dt>
+      <dd>Ten controls feed two independent pipelines and twenty-two side writers into one treasury
+      that is never empty, after which a third pass reconstructs a balance for a screen that shows
+      three different versions of it.</dd></div>
+
+    <div><dt>What actually creates strategy</dt>
+      <dd><strong>Welfare</strong> &mdash; the only lever with a benefit and a cost the player can both
+      feel (4.8&times; the noise floor on satisfaction, &minus;48.6% treasury). <strong>Taxation</strong>
+      &mdash; a genuine, legible harm chain running income &rarr; basket &rarr; satisfaction &rarr;
+      stability &rarr; politics. <strong>Tariff</strong> &mdash; carrying as much of the budget as all
+      three tax sliders together. And <strong>the causal network itself</strong>, which is well built: education really
+      does reach industry, taxation really does reach party support.</dd></div>
+
+    <div><dt>What is mathematical noise</dt>
+      <dd><code>adminFunding</code> at 0.012&times; the noise floor, sold to the player with a 46%
+      efficiency readout. <code>health</code> at 0.043&times;. The split between three class taxes, which
+      share one formula and a frozen weight table. The split between two military sliders, which push
+      the same way at the same cost under the same cap. Education&rsquo;s 60% research gain, which buys
+      0.33 technologies per seventeen years. And <code>armySpending</code>, which nothing in
+      <code>src/</code> reads.</dd></div>
+
+    <div><dt>Simplest version that preserves the strategy</dt>
+      <dd>Five levers &mdash; <strong>Taxation, Tariff, Army, Education, Welfare</strong> &mdash; each
+      with one benefit, one cost and one downstream consequence; one function that computes the
+      balance; one function that writes the treasury; one ledger that is canonical rather than
+      reconstructed.</dd></div>
+
+    <div><dt>Remove</dt>
+      <dd><code>adminFunding</code> and <code>taxEfficiency</code> with it &mdash; measurably inert, no AI
+      writer, and the source of the gross-versus-net inconsistency on the budget screen.
+      <code>armySpending</code> &mdash; dead state. The unreachable else branch of <code>FUEL_FIX</code>.
+      The dead <code>industrialOutput</code> parameter. The eleven <code>*Gold</code> scratch fields.</dd></div>
+
+    <div><dt>Merge</dt>
+      <dd>Three class taxes &rarr; one rate plus a progressivity <em>policy</em>. Military Wages +
+      Procurement &rarr; one Army budget. Public Health &rarr; Welfare, carrying its growth term with
+      it. Subsidy policy &rarr; automatic, since it already only exists for the player.</dd></div>
+
+    <div><dt>What must stay</dt>
+      <dd>Every causal chain in the right-hand half of the proposed diagram. The point of this pass is
+      to delete plumbing, not consequences. Tax &rarr; satisfaction &rarr; stability &rarr; politics and
+      education &rarr; research &rarr; technology &rarr; industry are the reason the domain is worth
+      keeping at all.</dd></div>
+
+    <div><dt>Expected gameplay loss</dt>
+      <dd><span class="chip solid">LOW</span> &nbsp;Four of the removed or merged controls measure below
+      the noise floor of the metric they are supposed to move; two more are dominated settings with a
+      single correct answer. Nothing a player can currently perceive is lost.</dd></div>
+
+    <div><dt>Expected complexity reduction</dt>
+      <dd><span class="chip solid">HIGH</span> &nbsp;24 treasury writers &rarr; 1. Three balances &rarr; 1.
+      Ten controls &rarr; 5. 56 mutable budget fields &rarr; 6. Five duplicated calculations &rarr; 0.
+      Context cost 4/5 &rarr; 2/5.</dd></div>
+
+    <div><dt>Recommendation</dt>
+      <dd><span class="chip solid">SIMPLIFY</span>
+      <p style="margin:10px 0 0">But the ordering matters, and it is the opposite of the obvious one.
+      Cutting sliders first would produce a smaller budget that is still not a decision, because the
+      thing preventing decisions is not the number of controls &mdash; it is that
+      <strong>the treasury is never scarce.</strong> Make the constraint bind first; then remove the
+      controls that measurement shows nobody can feel; then collapse the plumbing. Done in that order,
+      each step is verifiable with the harness already in the repository.</p></dd></div>
+  </dl>
+
+  <div class="callout">
+    <span class="label">Confidence and limits</span>
+    <p>Every table here comes from runs that can be reproduced from
+    <code>scripts/audit/harness.mjs</code>. Two claims are explicitly <em>not</em> settled: whether the
+    military levers change who wins a war (no territory changed hands in either arm of a six-seed
+    test, so the outcome-level question is untested), and whether tariff retaliation bites, which was
+    not isolated here. Neither affects the structural findings.</p>
+  </div>
+</section>
+
+<footer>
+  <p>Mechanic Atlas &middot; Domain 01, Budget &middot; Analysis and proposal only.
+  Evidence: 120 headless scenario runs across 32 seeds, horizons of 160 to 900 weeks, produced with
+  <code>scripts/audit/harness.mjs</code>. Companion to <code>MECHANIC_CUT_PLAN.md</code> and
+  <code>ACCOUNTING_INVARIANTS.md</code>.</p>
+</footer>
+
+</div>
+</body>
+</html>
