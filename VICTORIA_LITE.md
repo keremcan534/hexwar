@@ -73,15 +73,31 @@ Oyun ikiye ayrılmış durumda ve bütün matematik bir yarıda:
 
 | Küme | Sim | UI | Etkileşim | Durum |
 |---|---|---|---|---|
-| **Sanayi + Şirketler** | ~1.900 | ~810 | 21 | tesis tesis işletme |
+| **Sanayi (fabrikalar)** | ~800 | ~450 | 8 | tesis tesis işletme |
 | **Ticaret / piyasa** | ~420 | ~790 | 1 | salt okunur tablo |
 | **Nüfus / sayım** | ~740 | ~590 | 7 | salt okunur tablo |
 | Reform · Ordu · İnşaat · Teknoloji | ~4.300 | ~1.180 | 30 | gerçek karar, dokunma |
 | Bütçe | — | 115 | 5 | **bitti** |
+| ~~Şirketler / borsa~~ | ~1.100 | ~360 | 13 | **paralel dalda kaldırılıyor** |
 
-İlk üç küme ~3.000 sim + ~2.200 UI satırıyla 29 etkileşim üretiyor ve
+İlk üç küme ~2.000 sim + ~1.830 UI satırıyla 16 etkileşim üretiyor ve
 bunların çoğu mikro iş. Geçiş sırası buradan çıkar; her biri ayrı bir pass,
 ayrı bir dal, ayrı bir rapor — bütçede olduğu gibi.
+
+### Şirketler: bu belgenin en iyi kanıtı
+
+Şirket katmanı `master`'da duruyor ve çalışıyor — ölçüldü: 120 haftada 30
+ülkenin hepsinde toplam **89 şirket** kuruluyor, Exchange ekranı portföy,
+temettü ve "sanayimizin yabancı payı" gösteriyor. Buna rağmen oyunun kendi
+geliştiricisi mekaniği "oyunda yok" sanıyordu; kaldırma işi paralel bir dalda
+kalmış, ana hatta inmemişti.
+
+Bir mekanik, onu yazdıran kişinin bile varlığını unutacak kadar görünmezse,
+"matematik cehennemi" tam olarak budur: haftada ~1.100 satır çalışıyor, hiç
+kimseye ulaşmıyor. Gürültü testi bunu sayıyla yakalar; bu vaka sayıya gerek
+bile bırakmıyor.
+
+**Bu geçişin kapsamı dışındadır** — paralel dalda ele alınıyor, dokunulmaz.
 
 ## Yöntem (bütçede denendi, tekrarlanır)
 
