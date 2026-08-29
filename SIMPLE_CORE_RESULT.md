@@ -403,6 +403,25 @@ davranışını sınıyordu, gevşetilmediler, **kanalları değiştirildi**:
 
 ---
 
+## Ekranda görünen dökümler (§22)
+
+Hiçbiri yeniden hesaplanmaz; hepsi simülasyonun kendi defterinden okunur.
+
+```
+FABRİKA (kart)              HANE SEPETİ (alt sınıf)        NÜFUS ARTIŞI (küme ipucu)
+Gelir        45.2           İstenen sepet  182.9           Taban       %0.0090
+Girdi       −18.1             gıda payı     13.6           Savaş        ×1.00
+Ücret       −12.0           Net gelir       87.3           İstikrar     ×1.01
+────────────────           Geçimlik       +54.9           Sağlık       ×1.00
+Kâr         +15.1           Bütçe          123.1           Beslenme     ×1.00
+                            Karşılanan       %67           İşgal        ×1.00
+VERGİ (bütçe satırı)          sepet 0.55                   Kıtlık      %0.0000
+matrah ¤214 × %25             gıda  0.96                  ─────────────────────
+× %95 tahsilat                                             Toplam    %0.0091/hf
+```
+
+---
+
 ## Bilinen sorunlar
 
 - **Sanayileşme ~%24 daha yavaş.** İşgücü tavanı (`MAX_INDUSTRIAL_SHARE = 0.7`,
@@ -447,6 +466,7 @@ davranışını sınıyordu, gevşetilmediler, **kanalları değiştirildi**:
 | Nüfusun neden değiştiğini anlayabilir | ✅ büyüme `taban × barış × istikrar × sağlık × beslenme − kıtlık`, beslenme yalnız gıdadan |
 | İşçilerin nereden geldiğini anlayabilir | ✅ `nüfus × 0.45` → istihdam tüketir, yaratmaz |
 | Fabrikanın neden kâr/zarar ettiğini anlayabilir | ✅ kartta dört satır: gelir − girdi − ücret = kâr |
+| Nüfus artışının dökümü görünür | ✅ küme ipucunda `%0.009/hafta · food ×0.82 · stability ×0.91` |
 | İthalat/ihracatı anlayabilir | ✅ üretim + ithalat − ihracat = mevcut, tek eşleşme |
 | Hazinenin neden değiştiğini anlayabilir | ✅ defter = kategorilerin toplamı, kimlik yapı gereği doğru |
 | Eğitim %10 vs %90 belirgin fark | ✅ araştırma ×1.55 → **×2.56**, teknoloji ×1.73 → **×1.89**, gider ×1.91 → **×3.88** |

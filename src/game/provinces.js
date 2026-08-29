@@ -804,10 +804,26 @@ export function runProvinces(game) {
     // (1836-1936 gerçeği ~1.75 kat). Eski katsayılar yüzyılda ~4.6 kat
     // veriyordu ve hiçbir RGO kapasitesi bunu kovalayamıyordu (ölçüldü,
     // bkz. market-diagnostic). İşgal payı büyümeyi de payı kadar keser.
-    const weeklyGrowth = ((0.00006 + econ.agriculture * 0.00003)
-      * (peace ? 1 : 0.55) * (0.45 + stability) * health
-      * (0.25 + 0.75 * nourishment)) * (1 - occupied)
-      - famine * FAMINE_DECLINE;
+    // DÖKÜM AYRI TUTULUR: oyuncunun "nüfusum neden büyümüyor" sorusunun
+    // cevabı çarpan çarpan ekranda okunabilsin (bkz. SIMPLE_CORE_RESULT §22).
+    const base = 0.00006 + econ.agriculture * 0.00003;
+    const warFactor = peace ? 1 : 0.55;
+    const stabilityFactor = 0.45 + stability;
+    const foodFactor = 0.25 + 0.75 * nourishment;
+    const famineLoss = famine * FAMINE_DECLINE;
+    const weeklyGrowth = base * warFactor * stabilityFactor * health * foodFactor
+      * (1 - occupied) - famineLoss;
+    econ.growth = weeklyGrowth;
+    econ.growthBreakdown = {
+      base,
+      war: warFactor,
+      stability: stabilityFactor,
+      health,
+      food: foodFactor,
+      occupied: 1 - occupied,
+      famine: -famineLoss,
+      total: weeklyGrowth,
+    };
     const previousPopulation = econ.population;
     econ.population = Math.max(
       0,
