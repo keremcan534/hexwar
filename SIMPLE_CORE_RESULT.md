@@ -325,6 +325,15 @@ bağlamda**:
 hiçbir şeyi içe aktarmaz. Ticareti değiştirmek için siyaseti, bütçeyi
 değiştirmek için fabrikaları okumak gerekmiyor.
 
+**Hız** (28 ülkelik denetim haritası, 100 hafta, aynı donanım)
+
+| | ESKİ | BASİT ÇEKİRDEK |
+| --- | --- | --- |
+| Tur maliyeti | 35.0 ms/hafta | **33.5 ms/hafta** |
+| Ekonominin `fiscal` fazı | 11.4 ms | **1.2 ms** |
+
+Sadeleştirme hızdan ödün vermedi; maliye fazı tek başına 9 kat ucuzladı.
+
 **Diğer ölçüler**
 
 | | ÖNCE | SONRA |
