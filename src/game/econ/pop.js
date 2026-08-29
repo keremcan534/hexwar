@@ -468,7 +468,6 @@ export function professionCountsOf(nation, extractionShare = 0.3) {
 export function householdBreakdown(nation, classId) {
   const socialClass = nation?.economy?.classes?.[classId];
   if (!socialClass) return null;
-  const gross = socialClass.needsCost / Math.max(1e-9, 1);
   return {
     classId,
     population: socialClass.population,
@@ -480,6 +479,7 @@ export function householdBreakdown(nation, classId) {
     needsMet: socialClass.needsMet,
     foodMet: socialClass.foodMet,
     satisfaction: socialClass.satisfaction,
-    gross,
+    // Sepetin gıda kısmı ayrı: "önce karnını doyurur" kuralı ekranda görünsün.
+    foodCost: socialClass.foodCost ?? 0,
   };
 }
