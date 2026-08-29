@@ -419,7 +419,7 @@ export class TurnManager {
         // ikmalsiz ordu daha da yavaş. Tabanlar (0.6/0.7) kademeli tutar —
         // felaket cezası yok, süregiden ihmal hissedilir (bkz. supplyIndex).
         const economy = world.nations[unit.nationId]?.economy;
-        const wages = (economy?.militaryWages ?? 100) / 100;
+        const wages = (economy?.armyFunding ?? 100) / 100;
         const supply = economy?.military?.supplyIndex ?? 1;
         const fundingFactor = (0.6 + 0.4 * wages) * (0.7 + 0.3 * supply);
         const organizationRecovery = ((unit.retreatUntil ?? 0) > this.turn ? 6 : 10)

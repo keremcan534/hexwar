@@ -361,7 +361,7 @@ export function trainingCapacity(world, nation) {
  * Tam bütçe + tam ikmal = 1.0, yani ilan edilen süre.
  */
 export function trainingSpeed(nation) {
-  const wages = Math.max(0, Math.min(1, (nation.economy?.militaryWages ?? 100) / 100));
+  const wages = Math.max(0, Math.min(1, (nation.economy?.armyFunding ?? 100) / 100));
   const supply = Math.max(0, Math.min(1, nation.economy?.military?.supplyIndex ?? 1));
   return 0.45 + 0.4 * wages + 0.15 * supply;
 }

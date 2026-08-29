@@ -441,7 +441,7 @@ export function nationBudget(world, nation, provinceTotals = null) {
   const upkeep = emptyPool();
   // Bu kalem MAAŞTIR: asker/subay ücreti. Tedarik (mühimmat, yiyecek, yakıt)
   // ayrı bir kalemdir ve piyasadan gerçek fiyatla alınır (economy.js).
-  const armyFunding = (nation.economy?.militaryWages ?? 100) / 100;
+  const armyFunding = (nation.economy?.armyFunding ?? 100) / 100;
   // Bakım artık alay *sayısına* değil teçhizat ağırlığına bağlı: modern ordu
   // sürekli para yer, ordu modernizasyonu geç oyunun asıl gider kalemi olur.
   const armyGold = Math.max(0, armyWeight * UNIT_UPKEEP.gold * armyFunding);

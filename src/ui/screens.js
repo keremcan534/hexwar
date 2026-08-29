@@ -32,7 +32,7 @@ import {
   SOCIAL_PROGRAMS, buildFactory,
   canBuildFactory, factoriesInRegion, factoryAtlas, factoryCost, factoryJobs, industryTaken,
   debtCapacity, debtInterestRate, factoryMargin, formatPopulation, populationOf,
-  setFiscalPolicy, weeklyBalanceOf,
+  budgetBreakdown, setBudgetPolicy, weeklyBalanceOf,
   setMilitaryProductionLine, socialSpendingCost, ensureProductionLine, supportProject, upgradeOutlook,
 } from '../game/economy.js';
 import { MAX_ROUNDS, battleSides, battlesFor } from '../game/battles.js';
@@ -183,14 +183,6 @@ function debtWhy(me) {
     `Ledger net  =  ${net >= 0 ? '+' : ''}¤${net.toFixed(1)}/wk`,
     net < 0 ? 'The deficit itself is what feeds the debt.' : 'The debt shrinks while the ledger stays positive.',
   ].join('\n');
-}
-
-function socialShare(me, programId) {
-  const social = me.economy?.social ?? {};
-  const total = Object.values(SOCIAL_PROGRAMS)
-    .reduce((sum, program) => sum + (social[program.id] ?? 0), 0);
-  if (total <= 0) return 0;
-  return (me.economy.ledger?.socialCost ?? 0) * ((social[programId] ?? 0) / total);
 }
 
 /** Bütçe: bu hafta ithal edilen askeri mallar — "ammunition 4.2 · fuel 2.0". */
@@ -1546,338 +1538,130 @@ export class Screens {
    * 1080p'de kaydırmasız tek pano. Kabuk aşaması — hesap değişmedi, bütün
    * değerler mevcut defterden okunur.
    */
+  /**
+   * BUTCE — bes kontrol, tek defter.
+   *
+   * Bu ekran HICBIR simulasyon formulunu yeniden kurmaz: butun sayilar
+   * `budgetBreakdown()` uzerinden gelir. Eski surumde ekran uc formulu elle
+   * kopyalamisti ve ikisi simulasyondan sapmisti (takviye notu 3.25 kat
+   * yanlisti). Tek kaynak varsa sapma mumkun degildir.
+   */
   render_budget(me) {
-    const economy = me.economy;
-    if (!economy) return '<p class="empty">Fiscal institutions are not initialized.</p>';
-    const ledger = economy.ledger?.lastUpdated ? economy.ledger : { net: 0 };
-    const limits = fiscalPolicyLimits(me);
-    const money = (value) => `${value >= 0 ? '+' : '−'}¤${Math.abs(value).toFixed(1)}`;
-
-    // Değer kutusu: gömme parşömen alan, tabular rakam.
-    const vbox = (value, tone = null) => {
-      const cls = tone ?? (value > 0.05 ? 'pos' : value < -0.05 ? 'neg' : '');
-      return `<span class="vbox ${cls}">${Math.abs(value).toFixed(1)}¤</span>`;
+    const view = budgetBreakdown(this.game.world, me);
+    if (!view) return '<p class="empty">Fiscal institutions are not initialized.</p>';
+    const c = view.controls;
+    const money = (v) => `${v >= 0 ? '+' : '\u2212'}\u00a4${Math.abs(v).toFixed(1)}`;
+    const vbox = (v, tone = null) => {
+      const cls = tone ?? (v > 0.05 ? 'pos' : v < -0.05 ? 'neg' : '');
+      return `<span class="vbox ${cls}">${Math.abs(v).toFixed(1)}\u00a4</span>`;
     };
-
-    // Tarihi kaydıraç: pirinç ray + uç kapaklarını sarmalayıcı çizer,
-    // data-policy mevcut bağlayıcıya aynen gider.
-    const hslider = (policy, current, min, max, step = 5, classId = null) => `
+    const hslider = (policy, current, min, max, step = 5) => `
       <span class="hslider"><i class="cap"></i><input type="range"
         min="${min}" max="${max}" step="${step}" value="${current}"
-        data-policy="${policy}" ${classId ? `data-class="${classId}"` : ''}><i class="cap"></i></span>`;
+        data-policy="${policy}"><i class="cap"></i></span>`;
 
-    // Sınıf vergi satırı: pasta + piktogram + kaydıraç + değer kutusu.
-    const taxRow = (classId, label, picto) => {
-      const socialClass = economy.classes[classId];
-      const total = Math.max(1, Object.values(economy.classes)
-        .reduce((sum, c) => sum + c.population, 0));
-      const share = (socialClass.population / total) * 100;
-      const info = CLASS_INFO[classId];
-      return `<div class="ledger-row tax">
-        <i class="ledger-pie" style="background:conic-gradient(${info.color} 0 ${share.toFixed(1)}%, #10181c ${share.toFixed(1)}% 100%)"
-          title="${share.toFixed(1)}% of population"></i>
-        <span class="ledger-picto">${picto}</span>
-        <span class="ledger-mid">
-          <span class="ledger-label">${esc(label)}<b>${economy.taxes[classId]}%</b></span>
-          ${hslider('tax', economy.taxes[classId], 0, 100, 5, classId)}
-        </span>
-        ${vbox(socialClass.taxPaid ?? 0, 'pos')}
-      </div>`;
-    };
-
-    // İktidar partisinin izin verdiği bant. Kör beta testçisi kaydıracı 100'e
-    // çekip 60'a düşünce oyunun ayarını "arkasından değiştirdiğini" sandı:
-    // aslında pasifist partinin tavanıydı ve HİÇBİR YERDE yazmıyordu. Bant
-    // kaydıracın kendisinde zaten uygulanıyor (min/max), eksik olan gerekçe.
     const party = rulingParty(me);
-    const bandNote = (min, max) => (min <= 0 && max >= 100 ? ''
-      : `<small class="ledger-limit">${esc(party?.name ?? 'The ruling party')} allows ${min}–${max}%</small>`);
+    const band = (min, max, lo = 0, hi = 100) => (min <= lo && max >= hi ? ''
+      : `<small class="ledger-limit">${esc(party?.name ?? 'The ruling party')} allows ${min}\u2013${max}%</small>`);
 
-    // Gider satırı: piktogram + kaydıraç (varsa) + bağlam notu + değer kutusu.
-    const expRow = (label, value, options = {}) => {
-      const { policy = null, current = 0, min = 0, max = 100, classId = null,
-        note = '', picto = '', band = false } = options;
-      return `<div class="ledger-row">
+    /** Bir kontrol satiri: kaydirac + GERCEK dokum + haftalik tutar. */
+    const control = (policy, label, picto, cfg, amount, breakdown) => `
+      <div class="ledger-row">
         <span class="ledger-picto">${picto}</span>
         <span class="ledger-mid">
-          <span class="ledger-label">${esc(label)}${policy ? `<b>${current}%</b>` : ''}</span>
-          ${policy ? hslider(policy, current, min, max, 5, classId) : ''}
-          ${band ? bandNote(min, max) : ''}
+          <span class="ledger-label">${esc(label)}<b>${cfg.value}%</b></span>
+          ${hslider(policy, cfg.value, cfg.min, cfg.max)}
+          ${band(cfg.min, cfg.max)}
+          <small class="ledger-note">${breakdown}</small>
+        </span>
+        ${vbox(amount)}
+      </div>`;
+
+    const row = (label, amount, note = '') => `
+      <div class="ledger-row">
+        <span class="ledger-mid">
+          <span class="ledger-label">${esc(label)}</span>
           ${note ? `<small class="ledger-note">${note}</small>` : ''}
         </span>
-        ${vbox(-Math.abs(value), value > 0.05 ? 'neg' : '')}
+        ${vbox(amount)}
       </div>`;
-    };
 
-    const supply = Math.round((economy.military?.supplyIndex ?? 1) * 100);
-    const trade = economy.trade ?? {};
+    const taxRows = c.taxRate.classes.map((k) => `
+      <div class="tax-class"><span>${esc(k.name)}</span>
+        <b>${k.rate.toFixed(0)}%</b>
+        <span>of \u00a4${k.income.toFixed(1)}</span>
+        <b class="pos">\u00a4${k.collected.toFixed(1)}</b></div>`).join('');
 
     return `<div class="ledger">
       <section class="ledger-col">
-        <header class="ledger-head">Weekly Income</header>
-        ${taxRow('lower', 'Tax (Lower)', PICTO.lower)}
-        ${taxRow('middle', 'Tax (Middle)', PICTO.middle)}
-        ${taxRow('upper', 'Tax (Upper)', PICTO.upper)}
-        <div class="ledger-row">
-          <span class="ledger-picto">${PICTO.city}</span>
-          <span class="ledger-mid"><span class="ledger-label">Provinces &amp; Cities</span>
-            <small class="ledger-note">crown land, customs houses, city trade</small></span>
-          ${vbox(ledger.cityRevenue ?? 0, 'pos')}
-        </div>
-        ${(ledger.treatyRevenue ?? 0) > 0 ? `<div class="ledger-row">
-          <span class="ledger-picto">${PICTO.document}</span>
-          <span class="ledger-mid"><span class="ledger-label">War reparations</span></span>
-          ${vbox(ledger.treatyRevenue, 'pos')}
-        </div>` : ''}
-        <div class="ledger-total"><span>Total income</span>
-          <span class="vbox pos big">${(ledger.income ?? 0).toFixed(1)}¤</span></div>
+        <header class="ledger-head">Revenue</header>
 
-        <header class="ledger-head sub">National Bank</header>
-        <div class="bank-rows">
-          <div class="bank-line"><span>Treasury</span><b>¤${Math.round(me.gold)}</b>
-            <span>Available credit</span><b>¤${Math.round(Math.max(0, debtCapacity(me) - (me.debt ?? 0)))}</b></div>
-          <div class="bank-line"><span>Total debt</span>
-            <b class="${(me.debt ?? 0) > 0 ? 'neg' : ''}">¤${Math.round(me.debt ?? 0)}</b>
-            <span class="stat-why" role="button" tabindex="0" data-why="debt"
-              data-why-text="${esc(debtWhy(me))}" title="Click for the breakdown">Interest</span>
-            <b>${(debtInterestRate(me) * 100).toFixed(1)}%</b></div>
-          <table class="bank-table">
-            <tr><th>Creditor</th><th>Amount</th></tr>
-            ${(me.debt ?? 0) > 0
-    ? `<tr><td>National bond issue</td><td>¤${Math.round(me.debt)}</td></tr>`
-    : '<tr><td class="dim" colspan="2">No outstanding loans</td></tr>'}
-          </table>
-          <div class="bank-buttons">
-            <button class="action" disabled title="Borrowing is automatic: deficits draw on credit, surpluses repay.">Take Loan</button>
-            <button class="action" disabled title="Repayment is automatic from surplus above the cushion.">Repay Loan</button>
-          </div>
-        </div>
+        ${control('taxRate', 'Taxation', PICTO.lower, c.taxRate,
+    c.taxRate.collected,
+    `base \u00a4${c.taxRate.base.toFixed(0)} \u00d7 ${c.taxRate.value}% = \u00a4${c.taxRate.collected.toFixed(1)}`
+        + ` \u00b7 <b>${esc(c.taxRate.structure)}</b> (set by the government)`)}
+        <div class="tax-classes">${taxRows}</div>
+
+        ${control('tariff', 'Tariff', PICTO.crate, c.tariff, c.tariff.revenue,
+    `imports \u00a4${c.tariff.imports.toFixed(1)} \u00b7 revenue \u00a4${c.tariff.revenue.toFixed(1)}`
+        + ` \u00b7 imported goods cost <b>+${c.tariff.priceEffect}%</b>`)}
+
+        ${view.incomeRows.filter((r) => r.id !== 'tax' && r.id !== 'tariff')
+    .map((r) => row(r.label, r.amount)).join('')}
+
+        <div class="ledger-total"><span>Total income</span>
+          <span class="vbox pos big">${view.income.toFixed(1)}\u00a4</span></div>
       </section>
 
       <section class="ledger-col">
-        <header class="ledger-head">Weekly Expenses</header>
-        ${expRow('Industrial Subsidies', ledger.subsidyCost ?? 0, {
-    picto: PICTO.factory,
-    note: `${subsidyNote(me) || 'covers the losses of marked plants'}
-      <select data-subsidy-policy title="Manual: only the plants you mark on the Factories screen. Strategic: arms and ammunition plants are covered while at war, released at peace. None: every subsidy is cancelled.">
-        ${['manual', 'strategic', 'none'].map((id) => `<option value="${id}"
-          ${(economy.subsidyPolicy ?? 'manual') === id ? 'selected' : ''}>${
-  id === 'manual' ? 'Manual marks' : id === 'strategic' ? 'War industries at war' : 'No subsidies'
-}</option>`).join('')}
-      </select>`,
-  })}
-        ${expRow('Military Procurement', ledger.procurementCost ?? 0, {
-    policy: 'militaryProcurement',
-    current: economy.militaryProcurement ?? 100,
-    min: limits.armySpendingMin,
-    max: limits.armySpendingMax,
-    band: true,
-    picto: PICTO.stockpile,
-    note: `army supply ${supply}% · reinforcement ${Math.round(Math.max(25, economy.militaryProcurement ?? 100) * Math.max(0.4, (economy.military?.supplyIndex ?? 1)))}%`,
-  })}
-        ${expRow('Military Wages', ledger.armyCost ?? 0, {
-    policy: 'militaryWages',
-    current: economy.militaryWages ?? 100,
-    min: limits.armySpendingMin,
-    max: limits.armySpendingMax,
-    band: true,
-    picto: PICTO.soldier,
-    note: `combat power ${Math.round(55 + (economy.militaryWages ?? 100) * 0.45)}% · recovery ${Math.round((0.6 + 0.4 * (economy.militaryWages ?? 100) / 100) * 100)}%`,
-  })}
-        ${expRow('Administration', ledger.administrationCost ?? 0, {
-    policy: 'adminFunding',
-    current: economy.adminFunding ?? 100,
-    min: 30,
-    max: 100,
-    picto: PICTO.document,
-    note: `tax efficiency ${Math.round(taxEfficiency(me) * 100)}%`,
-  })}
-        ${expRow('Education', socialShare(me, 'education'), {
-    policy: 'social',
-    classId: 'education',
-    current: economy.social.education ?? 0,
-    picto: PICTO.book,
-    note: 'schools qualify workers; Higher Education (Construction screen) amplifies it and gates its next level on this budget',
-  })}
-        ${expRow('Public Health', socialShare(me, 'health'), {
-    policy: 'social',
-    classId: 'health',
-    current: economy.social.health ?? 0,
-    picto: PICTO.health,
-    note: 'supports population growth',
-  })}
-        ${expRow('Welfare', socialShare(me, 'welfare'), {
-    policy: 'social',
-    classId: 'welfare',
-    current: economy.social.welfare ?? 0,
-    picto: PICTO.welfare,
-    note: 'subsidises the household basket of the poor',
-  })}
-        ${expRow('Construction', (ledger.constructionCost ?? 0) + (ledger.projectCost ?? 0), {
-    picto: PICTO.construction,
-    note: (ledger.projectCost ?? 0) > 0
-      ? `sectors −${(ledger.constructionCost ?? 0).toFixed(1)} · projects −${ledger.projectCost.toFixed(1)}`
-      : 'sector upkeep of the build queue',
-  })}
-        ${expRow('Strategic Imports', ledger.importCost ?? 0, {
-    picto: PICTO.crate, note: strategicImportNote(me),
-  })}
-        ${(ledger.outlayCost ?? 0) > 0 ? expRow('State purchases', ledger.outlayCost, {
-    picto: PICTO.crate, note: 'units raised, cities founded this week',
-  }) : ''}
-        ${(ledger.interestCost ?? 0) > 0 ? expRow('Debt Interest', ledger.interestCost, {
-    picto: PICTO.document,
-    note: `debt ¤${Math.round(ledger.debt ?? 0)} at ${(debtInterestRate(me) * 100).toFixed(1)}%/year`,
-  }) : ''}
-        ${(ledger.treatyCost ?? 0) > 0 ? expRow('Treaty obligations', ledger.treatyCost, {
-    picto: PICTO.document, note: 'reparations imposed at a peace table',
-  }) : ''}
-        <div class="ledger-total"><span>Total expenses</span>
-          <span class="vbox neg big">${(ledger.expenses ?? 0).toFixed(1)}¤</span></div>
+        <header class="ledger-head">Spending</header>
 
-        <header class="ledger-head sub">Tariffs</header>
-        <div class="ledger-row">
-          <span class="ledger-picto">${PICTO.crate}</span>
-          <span class="ledger-mid">
-            <span class="ledger-label">Tariffs<b>${economy.tariff}%</b></span>
-            ${hslider('tariff', economy.tariff, limits.tariffMin, limits.tariffMax)}
-            ${bandNote(limits.tariffMin, limits.tariffMax)}
-            <small class="ledger-note">${economy.tariff >= 0
-    ? `import prices +${economy.tariff}% · protects domestic industry`
-    : `treasury subsidises imports by ${-economy.tariff}%`}</small>
-          </span>
-          ${vbox(ledger.tariffRevenue ?? 0)}
+        ${control('armyFunding', 'Army', PICTO.soldier, c.armyFunding, -c.armyFunding.cost,
+    `combat power <b>\u00d7${c.armyFunding.combatPower.toFixed(2)}</b>`
+        + ` \u00b7 reinforcement <b>\u00d7${c.armyFunding.reinforcement.toFixed(2)}</b>`
+        + ` \u00b7 training <b>\u00d7${c.armyFunding.training.toFixed(2)}</b>`
+        + ` \u00b7 supply ${Math.round(c.armyFunding.supply * 100)}%`)}
+
+        ${control('education', 'Education', PICTO.book, c.education, -c.education.cost,
+    `literacy ${(c.education.literacy * 100).toFixed(1)}% \u2192 target`
+        + ` <b>${(c.education.literacyTarget * 100).toFixed(0)}%</b>`
+        + ` \u00b7 research <b>${c.education.researchPoints.toFixed(2)}</b>/wk`)}
+
+        ${control('welfare', 'Welfare', PICTO.welfare, c.welfare, -c.welfare.cost,
+    `satisfaction <b>+${(c.welfare.satisfaction * 100).toFixed(1)}</b>`
+        + ` \u00b7 population growth <b>\u00d7${c.welfare.growth.toFixed(2)}</b>`)}
+
+        ${view.expenseRows.filter((r) => !['army', 'procurement', 'education', 'welfare'].includes(r.id))
+    .map((r) => row(r.label, r.amount, r.id === 'administration'
+      ? 'automatic: grows with cities, provinces and population' : '')).join('')}
+
+        <div class="ledger-total"><span>Total spending</span>
+          <span class="vbox neg big">${view.expenses.toFixed(1)}\u00a4</span></div>
+
+        <header class="ledger-head sub">National Bank</header>
+        <div class="bank-rows">
+          <div class="bank-line"><span>Treasury</span><b>\u00a4${Math.round(view.treasury)}</b>
+            <span>Available credit</span><b>\u00a4${Math.round(Math.max(0, debtCapacity(me) - view.debt))}</b></div>
+          <div class="bank-line"><span>Total debt</span>
+            <b class="${view.debt > 0 ? 'neg' : ''}">\u00a4${Math.round(view.debt)}</b>
+            <span>Interest</span><b>${(debtInterestRate(me) * 100).toFixed(1)}%/yr</b></div>
         </div>
-        <div class="trade-mini">
-          <span>Imports <b class="neg">−¤${(trade.importValue ?? 0).toFixed(1)}</b></span>
-          <span>Exports <b class="pos">+¤${(trade.exportValue ?? 0).toFixed(1)}</b></span>
-          <span>Net <b class="${(trade.balance ?? 0) >= 0 ? 'pos' : 'neg'}">${money(trade.balance ?? 0)}</b></span>
-        </div>
-        ${(() => {
-    // Dis hesabin kapanisi AYRI bir satirdir ve dengeye GIRER. Beta'nin en
-    // agir sikayeti buydu: gayrisafi ticaret rakamlari "Tariffs" basligi
-    // altinda, projeksiyonun hemen ustunde gosteriliyor ama hicbiri hesaba
-    // katilmiyordu (`Net -823.8` yaninda `balance +184.0`). Artik net denge
-    // hazineden geciyor; satir da bunu soyluyor.
-    const settle = ledger.externalSettlement ?? 0;
-    const sign = settle >= 0 ? 'pos' : 'neg';
-    const note = settle >= 0
-      ? 'export surplus settles into the treasury'
-      : 'import deficit is settled out of the treasury';
-    return `<div class="ledger-row">
-          <span class="ledger-picto">${PICTO.crate}</span>
-          <span class="ledger-mid">
-            <span class="ledger-label">External settlement</span>
-            <small class="ledger-note">${note}</small>
-          </span>
-          <span class="vbox ${sign}">${money(settle)}</span>
-        </div>`;
-  })()}
-        ${this.warBudgetPanel(me, ledger)}
+        ${view.financingRows.length
+    ? view.financingRows.map((r) => row(r.label, r.amount)).join('') : ''}
+
         <div class="ledger-balance">
-          <span>Last week's balance<small>closed accounts, not a forecast</small></span>
-          <span class="vbox ${ledger.net >= 0 ? 'pos' : 'neg'} hero">${money(ledger.net ?? 0)}</span>
+          <span>Last week&rsquo;s balance<small>closed accounts, not a forecast</small></span>
+          <span class="vbox ${view.balance >= 0 ? 'pos' : 'neg'} hero">${money(view.balance)}</span>
         </div>
+        ${Math.abs(view.unreconciled) > 0.005
+    ? `<div class="ledger-row"><span class="ledger-mid"><span class="ledger-label neg">Unreconciled</span>
+           <small class="ledger-note">a treasury movement was not booked \u2014 this is a bug</small></span>
+           ${vbox(view.unreconciled, 'neg')}</div>` : ''}
       </section>
     </div>`;
   }
 
-  warBudgetPanel(me, ledger) {
-    const economy = me.economy;
-    const limits = fiscalPolicyLimits(me);
-    if (!this.warBudgetOpen) {
-      return `<div class="row-buttons fiscal-war-row">
-        <button class="action" data-war-budget-open="1">War Budget…</button>
-      </div>`;
-    }
-    const proposal = {
-      militaryWages: limits.armySpendingMax,
-      militaryProcurement: limits.armySpendingMax,
-      welfare: Math.min(economy.social.welfare ?? 0, 30),
-      education: Math.min(economy.social.education ?? 0, 60),
-      tariff: Math.max(economy.tariff, Math.min(limits.tariffMax, 25)),
-    };
-    // Gercek degisiklik listesi. "Apply hicbir sey yapmadi" en sik sikayetti:
-    // maas/tedarik zaten tavandaysa ve sosyal zaten sifirsa oneri no-op olur —
-    // bunu soylemek yerine sessiz kalmak "calismiyor" hissi veriyordu.
-    const current = {
-      militaryWages: economy.militaryWages ?? 100,
-      militaryProcurement: economy.militaryProcurement ?? 100,
-      welfare: economy.social.welfare ?? 0,
-      education: economy.social.education ?? 0,
-      tariff: economy.tariff,
-    };
-    const labels = {
-      militaryWages: 'Military wages',
-      militaryProcurement: 'Military procurement',
-      welfare: 'Welfare',
-      education: 'Education',
-      tariff: 'Tariffs',
-    };
-    const changes = Object.keys(proposal)
-      .filter((key) => proposal[key] !== current[key]);
 
-    // Tahmin: mevcut defter kalemleri yeni orana dogrusal olceklenir; savas
-    // temposu (0.35 -> 1) tedarige uygulanir. Bu bir niyet tahminidir.
-    const scaleOr = (cost, from, to) => (from > 0 ? cost * (to / from) : cost);
-    const wagesCost = scaleOr(ledger.armyCost ?? 0, current.militaryWages, proposal.militaryWages);
-    const procurementCost = scaleOr(ledger.procurementCost ?? 0,
-      current.militaryProcurement, proposal.militaryProcurement)
-      / (this.atWarNow(me) ? 1 : 0.35);
-    const socialNow = ledger.socialCost ?? 0;
-    const socialScale = ((proposal.welfare + proposal.education + (economy.social.health ?? 0))
-      / Math.max(1, current.welfare + current.education + (economy.social.health ?? 0)));
-    const socialThen = socialNow * Math.min(1, socialScale);
-    const tariffThen = (ledger.tariffRevenue ?? 0)
-      * (current.tariff !== 0 ? proposal.tariff / current.tariff : 1);
-    const projected = (ledger.net ?? 0)
-      - (wagesCost - (ledger.armyCost ?? 0))
-      - (procurementCost - (ledger.procurementCost ?? 0))
-      - (socialThen - socialNow)
-      + (tariffThen - (ledger.tariffRevenue ?? 0));
-    const weeks = projected < -0.05
-      ? Math.max(1, Math.floor((me.gold + Math.max(0, debtCapacity(me) - (me.debt ?? 0)))
-        / -projected))
-      : null;
-
-    const row = (key) => `<div class="warbudget-row${changes.includes(key) ? '' : ' unchanged'}">
-      <span>${esc(labels[key])}</span>
-      <em>${current[key]}% ${changes.includes(key) ? `→ <b>${proposal[key]}%</b>` : '· unchanged'}</em>
-    </div>`;
-    return `<div class="warbudget">
-      <div class="card-head"><h3>War Budget proposal</h3>
-        <small>estimate at wartime consumption — market prices will move</small></div>
-      ${Object.keys(proposal).map(row).join('')}
-      <div class="fiscal-balance">
-        <span>Projected weekly balance (wartime)</span>
-        <b class="${projected >= 0 ? 'res-pos' : 'res-neg'}">${projected >= 0 ? '+' : ''}¤${projected.toFixed(1)}</b>
-      </div>
-      <p class="hint">${weeks
-    ? `Treasury and borrowing could sustain this for about <b>${weeks} weeks</b> of war.`
-    : 'This allocation pays for itself even at wartime tempo.'}</p>
-      ${changes.length === 0
-    ? '<p class="hint res-warn">Already at war footing — every slider is at its proposed value; the party caps the rest.</p>'
-    : ''}
-      <div class="row-buttons">
-        <button class="action" data-war-budget-apply="1" ${changes.length ? '' : 'disabled'}>Apply War Budget</button>
-        <button class="action" data-war-budget-close="1">Cancel</button>
-      </div>
-    </div>`;
-  }
-
-  /** Şu an herhangi bir savaşta mıyız? (tempo tahmini için) */
-  atWarNow(me) {
-    const world = this.game.world;
-    return world.nations.some(
-      (other) => other.alive && other.id !== me.id && atWar(world, me.id, other.id),
-    );
-  }
-
-  /**
-   * Nüfus: Victoria 2'nin sayım defteri düzeni — solda ülke → state → province
-   * tarayıcısı, üstte altı dağılım pastası, altta yoğun POP tablosu. Bütün
-   * sayılar game/census.js'ten hazır gelir; burası yalnız durumu tutar.
-   */
   render_population(me) {
     if (!me.economy?.classes) return '<p class="empty">Population records are not initialized.</p>';
     const world = this.game.world;
@@ -2476,9 +2260,9 @@ export class Screens {
           const programme = PROGRAMMES[id];
           // Taahhut ANINDA baglar: kart "egitim >= %25" diyorsa kaydirac o
           // hafta oraya cikar — sonraki dokunusa kadar 0'da kalmasi vaadi
-          // bosa cikarirdi. setFiscalPolicy tabani zaten biliyor.
-          setFiscalPolicy(me, 'social',
-            Math.max(me.economy.social?.education ?? 0, programme.floor), 'education');
+          // bosa cikarirdi. setBudgetPolicy tabani zaten biliyor.
+          setBudgetPolicy(me, 'education',
+            Math.max(me.economy.social?.education ?? 0, programme.floor));
           // Ilan buyuk bir ulusal taahhuttur: vakayinameye girer (tier 2),
           // zaman DURMAZ — karari zaten oyuncu verdi.
           announce(game, me, {
@@ -2631,25 +2415,6 @@ export class Screens {
         this.refresh();
       };
     }
-    const warOpen = this.el.body.querySelector('[data-war-budget-open]');
-    if (warOpen) warOpen.onclick = () => { this.warBudgetOpen = true; this.refresh(); };
-    const warClose = this.el.body.querySelector('[data-war-budget-close]');
-    if (warClose) warClose.onclick = () => { this.warBudgetOpen = false; this.refresh(); };
-    const warApply = this.el.body.querySelector('[data-war-budget-apply]');
-    if (warApply) {
-      warApply.onclick = () => {
-        const limits = fiscalPolicyLimits(me);
-        setFiscalPolicy(me, 'militaryWages', limits.armySpendingMax);
-        setFiscalPolicy(me, 'militaryProcurement', limits.armySpendingMax);
-        setFiscalPolicy(me, 'social', Math.min(me.economy.social.welfare ?? 0, 30), 'welfare');
-        setFiscalPolicy(me, 'social', Math.min(me.economy.social.education ?? 0, 60), 'education');
-        setFiscalPolicy(me, 'tariff', Math.max(me.economy.tariff, Math.min(limits.tariffMax, 25)));
-        this.warBudgetOpen = false;
-        game.recomputeEconomy?.();
-        game.emit('economy', me.economy);
-        this.refresh();
-      };
-    }
     for (const btn of this.el.body.querySelectorAll('[data-subsidize]')) {
       btn.onclick = (event) => {
         // Kutucuk tıklaması başka işler de yapabilir; düğme kendi başına.
@@ -2676,14 +2441,6 @@ export class Screens {
         )) this.refresh();
       };
     }
-    const subsidyPolicy = this.el.body.querySelector('[data-subsidy-policy]');
-    if (subsidyPolicy) {
-      subsidyPolicy.onchange = () => {
-        setFiscalPolicy(me, 'subsidyPolicy', subsidyPolicy.value);
-        game.emit('economy', me.economy);
-        this.refresh();
-      };
-    }
     for (const input of this.el.body.querySelectorAll('[data-policy]')) {
       // Sürüklerken sayı ANINDA oynar. Eski seçici (`.policy-slider` /
       // `[data-policy-value]`) defter tasarımıyla birlikte ölmüştü: kaydıraç
@@ -2695,7 +2452,8 @@ export class Screens {
         if (label) label.textContent = `${input.value}%`;
       };
       input.onchange = () => {
-        setFiscalPolicy(me, input.dataset.policy, Number(input.value), input.dataset.class);
+        // TEK AYAR KAPISI — YZ de ayni fonksiyonu cagirir (bkz. §23/§24).
+        setBudgetPolicy(me, input.dataset.policy, Number(input.value));
         game.recomputeEconomy();
         game.emit('economy', me.economy);
       };

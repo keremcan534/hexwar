@@ -14,7 +14,7 @@ import {
   scanInvariants,
 } from './harness.mjs';
 import {
-  FACTORIES, factoryJobs, factoryMargin, priceOf, setFiscalPolicy, taxEfficiency,
+  FACTORIES, factoryJobs, factoryMargin, priceOf, setBudgetPolicy,
 } from '../../src/game/economy.js';
 import { RGO_TYPES } from '../../src/game/provinces.js';
 import { rulingParty } from '../../src/game/politics.js';
@@ -210,7 +210,7 @@ function applyLevers(nation, levers) {
       // Politika bandini asan SINIR testleri icin dogrudan yazim.
       nation.economy[l.key] = l.value;
     } else {
-      setFiscalPolicy(nation, l.key, l.value, l.classId ?? null);
+      setBudgetPolicy(nation, l.key, l.value);
     }
   }
 }
@@ -333,7 +333,6 @@ if (spec.measure?.includes('nations')) {
   out.nations = world.nations.filter((n) => n.alive && n.economy)
     .map((n) => snapshotNation(world, n));
 }
-if (spec.measure?.includes('taxEfficiency')) out.taxEfficiency = taxEfficiency(nation);
 if (spec.measure?.includes('control')) {
   let sum = 0;
   let count = 0;

@@ -95,7 +95,7 @@ function leadGeneral(world, units) {
 export function battleUnitPower(world, unit, defending, relief = 0) {
   const nation = world.nations[unit.nationId];
   // Maaş muharebe iradesini alır: aç asker savaşmaz.
-  const funding = (nation.economy?.militaryWages ?? 100) / 100;
+  const funding = (nation.economy?.armyFunding ?? 100) / 100;
   // Cephanesi olmayan ordu dövüşemez. Ölçüt ihtiyat stoğudur: stok ihtiyatın
   // altına inince güç doğrusal olarak düşer. Bu bağ yokken teçhizat muharebeye
   // hiç girmiyordu — stoğu sıfır olan ve askerî sanayisi tamamen kapalı bir

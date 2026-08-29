@@ -16,7 +16,7 @@ import { controllerOf } from './control.js';
 import {
   PROGRAMMES, abandonProgramme, adoptProgramme, advanceResearch, ensureResearch,
   nextTechFor, programmeFloorOf, programmeLapsed, programmeOf, refreshDiffusion,
-  refreshTechModifiers, scoreProgrammes, startResearch, techById,
+  refreshTechModifiers, researchPointsOf, scoreProgrammes, startResearch, techById,
   techUnlocksFactory,
 } from './technology.js';
 import { TIER, announce } from './chronicle.js';
@@ -35,7 +35,8 @@ import {
   decayReformCounters, refreshReformModifiers, reformModifiers, reformMoodShift,
 } from './reforms.js';
 import {
-  closeWeek, emptyLedger, openWeek, settle, settleAffordable, weekTotals,
+  LEDGER_LINES, closeWeek, emptyLedger, openWeek, settle, settleAffordable,
+  weekTotals,
 } from './treasury.js';
 
 /**
@@ -706,7 +707,7 @@ export function ensureMilitaryEconomy(nation) {
 }
 
 export function workshopArmsOutput(nation) {
-  return 0.08 * (0.5 + (nation.economy.militaryProcurement ?? 100) / 200);
+  return 0.08 * (0.5 + (nation.economy.armyFunding ?? 100) / 200);
 }
 
 export function equipmentStock(nation, equipmentId) {
@@ -1152,18 +1153,16 @@ export function initNationEconomy(world, nation) {
       canAffordNeeds: true,
       hardshipWeeks: 0,
     }])),
-    taxes: { ...DEFAULT_TAXES },
+    // TEK VERGI ORANI. Kimin odedigini iktidarin ideolojisi belirler
+    // (bkz. taxStructureOf) — uc ayri kaydirac ayni formulun uc kopyasiydi.
+    taxRate: 25,
     social: { ...DEFAULT_SOCIAL },
     socialCost: 0,
     tariff: 10,
-    // Ordu bütçesi iki ayrı karardır: maaş (muharebe gücü, moral, toparlanma)
-    // ve tedarik (devletin piyasadan fiilen satın aldığı mühimmat/yiyecek/
-    // yakıt). Tek kaydıraç ikisini birden oynatıyordu ve "ordu güçlü ama
-    // ikmalsiz" gibi bir durum kurulamıyordu.
-    militaryWages: 100,
-    militaryProcurement: 100,
-    // Yönetim bütçesi: vergi tahsilat verimi ve province kontrol desteği.
-    adminFunding: 100,
+    // TEK ORDU BUTCESI. Maas ve tedarik ayri kaydiraclardi ama ikisi de ayni
+    // yone bakiyor, ayni parayla odeniyor, ayni parti bandina takiliyordu:
+    // iki kaydirac tek karardi.
+    armyFunding: 100,
     military: { ...DEFAULT_MILITARY },
     factories: [],
     professionCounts: initialProfessionCounts(population),
@@ -1264,9 +1263,8 @@ export function ensureEconomy(world) {
     else fillMissing(nation.economy.social ??= {}, DEFAULT_SOCIAL);
     // Eski kayıt göçü: tek armySpending kaydıracı iki yeni kaydırağa açılır,
     // oyuncunun ayarı iki tarafta da korunmuş olur. Yönetim varsayılan tam.
-    nation.economy.militaryWages ??= nation.economy.armySpending ?? 100;
-    nation.economy.militaryProcurement ??= nation.economy.armySpending ?? 100;
-    nation.economy.adminFunding ??= 100;
+    nation.economy.armyFunding ??= 100;
+    nation.economy.taxRate ??= 25;
     // `inventory` kaldirildi: her hafta yazilan ama hicbir sistemin okumadigi
     // olu bir kopyaydi (olculdu). Eski kayittan gelirse dusurulur.
     delete nation.economy.inventory;
@@ -1301,15 +1299,6 @@ export function ensureEconomy(world) {
       ensureProductionLine(factory);
     }
   }
-}
-
-/**
- * Vergi tahsilat verimi: yönetim bütçesinin görünür sonucu. %100 fonlama tam
- * tahsilat, taban %30 fonlama ~%68 verir. Bütçe ekranı bu sayıyı gösterir.
- */
-export function taxEfficiency(nation) {
-  const funding = clamp((nation.economy?.adminFunding ?? 100) / 100, 0.3, 1);
-  return 0.55 + 0.45 * funding;
 }
 
 /** Sosyal programın 0–1 aralığındaki etkin seviyesi. */
@@ -1605,78 +1594,233 @@ export function upgradeOutlook(nation, factory) {
   };
 }
 
-export function setFiscalPolicy(nation, key, value, classId = null) {
-  if (!nation?.economy) return false;
-  if (key === 'tax' && CLASS_INFO[classId]) {
-    nation.economy.taxes[classId] = clamp(Math.round(value), 0, 100);
-    return true;
-  }
-  if (key === 'tariff') {
-    const limits = fiscalPolicyLimits(nation);
-    nation.economy.tariff = clamp(Math.round(value), limits.tariffMin, limits.tariffMax);
-    return true;
-  }
-  if (key === 'militaryWages' || key === 'militaryProcurement') {
-    const limits = fiscalPolicyLimits(nation);
-    // İki kaydıraç da parti askerî politikasının sınırına tabidir: pasifist
-    // hükümet ne maaşı ne tedariki tavana çekebilir.
-    nation.economy[key] = clamp(
-      Math.round(value), limits.armySpendingMin, limits.armySpendingMax,
-    );
-    return true;
-  }
-  if (key === 'adminFunding') {
-    // Tabanda %30: devlet aygıtı tamamen kapatılamaz, sadece ihmal edilir.
-    nation.economy.adminFunding = clamp(Math.round(value), 30, 100);
-    return true;
-  }
-  if (key === 'armySpending') {
-    // Eski anahtar iki yeni kaydıracı birden sürer: tek kaydıraç dönemine
-    // yazılmış çağrılar (eski YZ/betikler) davranış kaybetmesin.
-    const limits = fiscalPolicyLimits(nation);
-    const level = clamp(Math.round(value), limits.armySpendingMin, limits.armySpendingMax);
-    nation.economy.armySpending = level;
-    nation.economy.militaryWages = level;
-    nation.economy.militaryProcurement = level;
-    return true;
-  }
-  if (key === 'social' && SOCIAL_PROGRAMS[classId]) {
-    // Taban: satin alinmis yuksekogretim kurumu egitim butcesini bagliyor
-    // (bkz. socialFloorOf). Bu yol oyuncuyu VE kriz dalini baglar; haftalik
-    // YZ cirti `economy.social`a dogrudan yazdigi icin oraya AYRICA kondu.
-    nation.economy.social[classId] = clamp(
-      Math.round(value), socialFloorOf(nation, classId), 100,
-    );
-    return true;
-  }
-  if (key === 'subsidyPolicy' && SUBSIDY_POLICIES.includes(value)) {
-    nation.economy.subsidyPolicy = value;
-    return true;
-  }
-  return false;
+/**
+ * ============================ BUTCE SOZLESMESI ============================
+ *
+ * BUTCE SAHIPTIR      taxRate, tariff, armyFunding, social.education,
+ *                     social.welfare
+ * BUTCE OKUR          vergi matrahi (sinif gelirleri), ithalat degeri, nufus,
+ *                     ordu olcegi, hukumet kisitlari (politics)
+ * BUTCE URETIR        vergi geliri, gumruk geliri, program giderleri, ordu
+ *                     gideri, idari gider, haftalik bakiye, hazine islemleri
+ * BUTCE SAHIP DEGILDIR nufus, arastirma ilerlemesi, askeri birimler, piyasa
+ *                     fiyatlari, siyasi destek
+ *
+ * BES KONTROL, her birinin BIR faydasi ve BIR bedeli var:
+ *   taxRate    + gelir            - memnuniyet
+ *   tariff     + gelir            - ithal mal pahalilanir
+ *   armyFunding+ hazirlik         - hazine
+ *   education  + arastirma        - hazine
+ *   welfare    + memnuniyet/buyume- hazine
+ * ==========================================================================
+ */
+export const BUDGET_POLICIES = ['taxRate', 'tariff', 'armyFunding', 'education', 'welfare'];
+
+/**
+ * VERGI YAPISI = "KIMIN odedigi". Oran "NE KADAR"i, yapi "KIM"i belirler.
+ *
+ * Ayri bir kaydirac DEGIL, iktidarin ideolojisinden turer: politics.js'te
+ * vergi ekseni yok ve mimarisini degistirmek bu gecisin kapsami disinda.
+ * Boylece secim sonucu butceye dogrudan dokunur — oran ayni kalsa bile
+ * yuku kimin tasidigi degisir.
+ */
+export const TAX_STRUCTURES = {
+  progressive: { id: 'progressive', label: 'Progressive', weights: { lower: 0.45, middle: 0.95, upper: 1.85 } },
+  flat: { id: 'flat', label: 'Flat', weights: { lower: 1, middle: 1, upper: 1 } },
+  regressive: { id: 'regressive', label: 'Regressive', weights: { lower: 1.4, middle: 1.1, upper: 0.5 } },
+};
+
+const IDEOLOGY_TAX_STRUCTURE = {
+  socialist: 'progressive',
+  communist: 'progressive',
+  liberal: 'flat',
+  conservative: 'regressive',
+  reactionary: 'regressive',
+  fascist: 'regressive',
+};
+
+export function taxStructureOf(nation) {
+  const ideology = rulingParty(nation)?.ideology ?? 'conservative';
+  return TAX_STRUCTURES[IDEOLOGY_TAX_STRUCTURE[ideology] ?? 'flat'];
+}
+
+/** Bir sinifin fiilen odedigi oran (%). */
+export function classTaxRate(nation, classId) {
+  const rate = nation?.economy?.taxRate ?? 0;
+  const weight = taxStructureOf(nation).weights[classId] ?? 1;
+  return clamp(rate * weight, 0, 100);
 }
 
 /**
- * Subvansiyon POLITIKASI: tesisi tek tek isaretleme yerine niyet.
- *
- * Beta olcumu: tesis basina ¤ dugmesi haftalik bir bakim isiydi (isaretle,
- * unut, hazine sessizce akar — YZ'nin kendi temizleyicisi vardi, oyuncunun
- * yoktu). "manual" eski davranistir; "strategic" savas sanayisini savasta
- * korur ve son subvansiyonlari kendi kaldirir; "none" hepsini kapatir.
- * Tekil isaretleme "manual"da aynen durur — anlamli tekil karar korunur.
+ * BES KONTROLUN SINIRLARI — TEK YER. Oyuncu ve YZ ayni kapidan gecer; eskiden
+ * YZ'nin kendi tavanlari (vergi 35/42/45) yalnizca adjustFiscalAI'nin icinde
+ * yasiyordu ve oyuncunun kaydiraci 0-100'du. Artik boyle bir ayrim yok.
  */
-export const SUBSIDY_POLICIES = ['manual', 'strategic', 'none'];
+export function budgetPolicyLimits(nation) {
+  const party = fiscalPolicyLimits(nation);
+  return {
+    taxRate: { min: 0, max: 100 },
+    tariff: { min: party.tariffMin, max: party.tariffMax },
+    armyFunding: { min: party.armySpendingMin, max: party.armySpendingMax },
+    education: { min: socialFloorOf(nation, 'education'), max: 100 },
+    welfare: { min: socialFloorOf(nation, 'welfare'), max: 100 },
+  };
+}
+
+/**
+ * TEK AYAR KAPISI. Arayuz de YZ de burayi cagirir; alan dogrudan yazilmaz.
+ * @returns {boolean} deger degisti mi
+ */
+export function setBudgetPolicy(nation, policy, value) {
+  if (!nation?.economy || !BUDGET_POLICIES.includes(policy)) return false;
+  const limits = budgetPolicyLimits(nation)[policy];
+  const next = clamp(Math.round(value), limits.min, limits.max);
+  if (policy === 'education' || policy === 'welfare') {
+    if (nation.economy.social[policy] === next) return false;
+    nation.economy.social[policy] = next;
+    return true;
+  }
+  if (nation.economy[policy] === next) return false;
+  nation.economy[policy] = next;
+  return true;
+}
+
+/**
+ * BUTCE DOKUMU — ekranin okudugu TEK kaynak.
+ *
+ * Arayuz burada hicbir formulu yeniden kurmaz. Eski surumde kuruyordu ve
+ * ikisi ayrisiyordu: takviye notu `max(25,tedarik) x ikmal` yaziyordu, oysa
+ * simulasyon `0.25 + fon x 0.75` kullaniyor — ekran %10 diyorken gercek %32.5
+ * idi. Iyilesme notu ise ikmal terimini tamamen atlamisti.
+ *
+ * Her kontrol icin: NE DEGISTIRIR, NEYE MAL OLUR, NEYI IYILESTIRIR.
+ */
+export function budgetBreakdown(world, nation) {
+  const economy = nation?.economy;
+  if (!economy) return null;
+  const ledger = economy.ledger ?? emptyLedger();
+  const structure = taxStructureOf(nation);
+  const limits = budgetPolicyLimits(nation);
+  const scale = (economy.population ?? 0) / 10000;
+
+  // --- vergi: matrah x oran, sinif sinif -------------------------------------
+  const classes = Object.keys(CLASS_INFO).map((id) => {
+    const socialClass = economy.classes?.[id] ?? {};
+    return {
+      id,
+      name: CLASS_INFO[id]?.name ?? id,
+      population: socialClass.population ?? 0,
+      income: socialClass.income ?? 0,
+      rate: classTaxRate(nation, id),
+      // Beyan edilen tutar TAM OLARAK hazineye giren tutardir; eskiden sinif
+      // satirlari brut, gelir toplami netti ve ikisi tutmuyordu.
+      collected: socialClass.taxPaid ?? 0,
+    };
+  });
+  const taxBase = classes.reduce((sum, c) => sum + c.income, 0);
+  const collected = classes.reduce((sum, c) => sum + c.collected, 0);
+
+  // --- ordu: tek fon, uc gorunur sonuc --------------------------------------
+  const funding = (economy.armyFunding ?? 100) / 100;
+  const supply = clamp(economy.military?.supplyIndex ?? 1, 0, 1);
+
+  // --- egitim: okuryazarlik stogu ve arastirma ------------------------------
+  const educationLevel = socialLevel(nation, 'education');
+  const literacy = clamp(economy.literacy ?? 0, 0, 1);
+
+  const line = (id) => ledger[id] ?? 0;
+  const rows = (kind) => Object.entries(LEDGER_LINES)
+    .filter(([, meta]) => meta.kind === kind)
+    .map(([id, meta]) => ({ id, label: meta.label, amount: line(id) }))
+    .filter((row) => Math.abs(row.amount) > 0.005);
+
+  return {
+    treasury: nation.gold ?? 0,
+    debt: nation.debt ?? 0,
+    balance: ledger.net ?? 0,
+    income: ledger.income ?? 0,
+    expenses: ledger.expenses ?? 0,
+    unreconciled: ledger.unreconciled ?? 0,
+    incomeRows: rows('income'),
+    expenseRows: rows('expense'),
+    financingRows: rows('financing'),
+    controls: {
+      taxRate: {
+        value: economy.taxRate ?? 0,
+        ...limits.taxRate,
+        structure: structure.label,
+        structureId: structure.id,
+        base: taxBase,
+        collected,
+        classes,
+      },
+      tariff: {
+        value: economy.tariff ?? 0,
+        ...limits.tariff,
+        imports: economy.trade?.importValue ?? 0,
+        revenue: line('tariff'),
+        // Ithal malin sepetteki fiyatini bu kadar buyutur (populationDemand).
+        priceEffect: economy.tariff ?? 0,
+      },
+      armyFunding: {
+        value: economy.armyFunding ?? 100,
+        ...limits.armyFunding,
+        cost: Math.abs(line('army')) + Math.abs(line('procurement')),
+        supply,
+        // GERCEK formuller (battles.js, reinforcement.js, turn.js, recruitment.js)
+        combatPower: 0.55 + funding * 0.45,
+        reinforcement: 0.25 + Math.max(0.25, funding) * supply * 0.75,
+        training: 0.45 + 0.4 * funding + 0.15 * supply,
+      },
+      education: {
+        value: economy.social?.education ?? 0,
+        ...limits.education,
+        cost: programmeCost(nation, 'education'),
+        literacy,
+        literacyTarget: literacyTargetOf(nation),
+        researchPoints: researchPointsOf(nation),
+      },
+      welfare: {
+        value: economy.social?.welfare ?? 0,
+        ...limits.welfare,
+        cost: programmeCost(nation, 'welfare'),
+        // Memnuniyet formulundeki gercek terim (populationDemand).
+        satisfaction: socialLevel(nation, 'welfare') * 0.14,
+        // Nufus buyume carpani (provinces.js).
+        growth: 1 + socialLevel(nation, 'welfare') * 0.35,
+      },
+    },
+    scale,
+  };
+}
+
+/** Bir politikanin su anki degeri (arayuz ve YZ ayni okumayi paylassin). */
+export function budgetPolicyValue(nation, policy) {
+  if (policy === 'education' || policy === 'welfare') return nation?.economy?.social?.[policy] ?? 0;
+  return nation?.economy?.[policy] ?? 0;
+}
+
+/**
+ * SUBVANSIYON — TEK KURAL, IKI TARAF ICIN AYNI.
+ *
+ * Eskiden oyuncunun bir acilir menusu (`subsidyPolicy`), YZ'nin ise bambaska
+ * bir kod yolu vardi: ayni saklanan alan sahibine gore FARKLI anlama geliyordu.
+ * Ustelik butcesini devreden oyuncunun sectigi politika ayni fonksiyon
+ * cagrisinda YZ tarafindan eziliyordu.
+ *
+ * Kural artik tek cumle: savasta silah ve muhimmat fabrikalari zarar
+ * ediyorsa desteklenir, baris gelince destek kalkar. Kaydirac degil, devlet
+ * refleksi. Tekil isaretleme Fabrikalar ekranindan yapilmaya devam eder.
+ */
 const STRATEGIC_FACTORY_TYPES = new Set(['ARMS_FACTORY', 'AMMUNITION_FACTORY']);
 
 function applySubsidyPolicy(world, nation) {
-  const policy = nation.economy.subsidyPolicy ?? 'manual';
-  if (policy === 'manual') return;
   const wartime = world.nations.some(
     (other) => other.alive && other.id !== nation.id && atWar(world, nation.id, other.id),
   );
   for (const factory of nation.economy.factories ?? []) {
-    factory.subsidized = policy === 'strategic'
-      && wartime && STRATEGIC_FACTORY_TYPES.has(factory.typeId);
+    if (!STRATEGIC_FACTORY_TYPES.has(factory.typeId)) continue;
+    factory.subsidized = wartime && factory.profit < 0;
   }
 }
 
@@ -2546,7 +2690,7 @@ function populationDemand(world, nation, market) {
     const netIncome = Math.max(0, (socialClass.income ?? 0) - (socialClass.taxPaid ?? 0));
     // Vergi orani asagida ruh haline (memnuniyet) girer; butceye etkisi
     // zaten taxPaid uzerinden net gelirde.
-    const taxRate = economy.taxes[classId] / 100;
+    const taxRate = classTaxRate(nation, classId) / 100;
     const subsistence = basket * (SUBSISTENCE_SHARE[classId] ?? 0);
     socialClass.subsistence = subsistence;
     const needsBudget = netIncome + subsistence;
@@ -2633,7 +2777,7 @@ function populationDemand(world, nation, market) {
   }
 
   economy.standardOfLiving = 5 + 15 * (satisfactionWeighted / Math.max(1, economy.population))
-    + socialLevel(nation, 'health') * 2.5;
+    + socialLevel(nation, 'welfare') * 2.5;
   updateStability(world, nation, satisfactionWeighted / Math.max(1, economy.population));
   // Ulusal beslenme endeksi: sepetinin ne kadarini fiilen alabilen bir nufus.
   // provinces.js bunu okur (economy.js'i import etmek katman dongusu olurdu,
@@ -2681,7 +2825,7 @@ function fiscalBalance(nation, baseOutputValue, industrialOutput) {
     // Zarar geliri negatife cekmesin: vergi matrahi negatif olamaz ve
     // `needsBudget` zaten ayri bir kanaldan geliyor.
     socialClass.income = Math.max(0, socialClass.income);
-    socialClass.taxPaid = socialClass.income * (economy.taxes[classId] / 100);
+    socialClass.taxPaid = socialClass.income * (classTaxRate(nation, classId) / 100);
     taxes += socialClass.taxPaid;
   }
   // Tahsilat verimi ARTIK YOK. Eski `taxEfficiency` bir kaydiracin (adminFunding)
@@ -2832,7 +2976,7 @@ function investmentOptions(world, nation) {
 /**
  * Maliye politikası. Ölçümde 15 ülkenin hepsi 109 yıl boyunca aynı varsayılan
  * değerlerde kalıyordu (vergi 20/15/10, tarife %10): kodda YZ tarafında hiç
- * `setFiscalPolicy` çağrısı yoktu, yani ekonomik kaldıraçları yalnız oyuncu
+ * `setBudgetPolicy` çağrısı yoktu, yani ekonomik kaldıraçları yalnız oyuncu
  * kullanıyordu. Artık YZ de krizde vergi artırır, bollukta indirir ve ticaret
  * politikasına göre gümrüğünü ayarlar.
  */
@@ -2845,29 +2989,20 @@ function adjustFiscalAI(nation, areas = FULL_FISCAL) {
   // yalniz birine uygulanmisti. Ikisi de artik ayni fonksiyonu cagirir.
   const { broke, rich } = fiscalStance(nation);
   if (areas.budget && (broke || rich)) {
-    // Vergiyi önce en varlıklı sınıftan artır, indirirken en yoksuldan başla:
-    // hem gelir hem memnuniyet açısından en ucuz sıra budur.
-    const order = broke ? ['upper', 'middle', 'lower'] : ['lower', 'middle', 'upper'];
-    const step = broke ? 5 : -5;
-    for (const classId of order) {
-      const socialClass = economy.classes[classId];
-      // Zorlanan sınıfın vergisi artırılmaz. Bu fren olmadan YZ hazine
-      // sıkışınca doğrudan tavana çıkıyor ve üst sınıfı 200 turda tamamen
-      // eritiyordu (ölçüldü) — sonra da kapitalist ve özel sermaye kalmıyor.
-      if (step > 0 && (!socialClass.canAffordNeeds || (socialClass.hardshipWeeks ?? 0) > 0)) {
-        continue;
-      }
-      const current = economy.taxes[classId];
-      // Tavanlar düşük tutuldu: yüksek vergi sınıfı eritir (bkz. CLASS_NEEDS_BUDGET).
-      const limit = classId === 'lower' ? 35 : classId === 'middle' ? 42 : 45;
-      const next = clamp(current + step, 5, limit);
-      if (next !== current) {
-        economy.taxes[classId] = next;
-        areas.report?.('budget',
-          `${CLASS_INFO[classId]?.name ?? classId} tax ${current}% \u2192 ${next}%.`,
-          broke ? 'Treasury reserves were falling.' : 'The treasury could afford relief.');
-        break;
-      }
+    // TEK ORAN, OYUNCUYLA AYNI KAPI. Eskiden YZ'nin kendine ozel tavanlari
+    // vardi (alt 35 / orta 42 / ust 45) ve bunlar YALNIZCA bu fonksiyonun
+    // icinde yasiyordu; oyuncunun kaydiraci 0-100'du. Ayni kurallar.
+    const current = economy.taxRate ?? 0;
+    // Ezilen hane varken vergi artirilmaz: bu fren olmadan YZ hazine sikisinca
+    // tavana cikip sinifi eritiyordu (olculdu).
+    const strained = Object.values(economy.classes ?? {}).some(
+      (c) => !c.canAffordNeeds || (c.hardshipWeeks ?? 0) > 0,
+    );
+    const step = broke ? (strained ? 0 : 5) : -5;
+    if (step && setBudgetPolicy(nation, 'taxRate', current + step)) {
+      areas.report?.('budget',
+        `Tax rate ${current}% \u2192 ${economy.taxRate}%.`,
+        broke ? 'Treasury reserves were falling.' : 'The treasury could afford relief.');
     }
   }
   // Korumacı hükümet sanayisini kollar, serbest ticaretçi gümrüğü SIFIRA
@@ -2882,7 +3017,7 @@ function adjustFiscalAI(nation, areas = FULL_FISCAL) {
     const drift = Math.sign(wanted - economy.tariff) * 2;
     if (drift) {
       const before = economy.tariff;
-      economy.tariff = clamp(economy.tariff + drift, limits.tariffMin, limits.tariffMax);
+      setBudgetPolicy(nation, 'tariff', economy.tariff + drift);
       if (economy.tariff !== before) {
         areas.report?.('trade',
           `Tariff ${before}% \u2192 ${economy.tariff}%.`,
@@ -2914,7 +3049,7 @@ function adjustWarFiscalAI(nation) {
   const drift = (key, target, step = 5) => {
     const current = economy[key] ?? 100;
     if (Math.abs(current - target) < step) return;
-    setFiscalPolicy(nation, key, current + Math.sign(target - current) * step);
+    setBudgetPolicy(nation, key, current + Math.sign(target - current) * step);
   };
 
   if (crisis) {
@@ -2931,16 +3066,11 @@ function adjustWarFiscalAI(nation) {
     }
     // Önce isteğe bağlı harcamalar: sübvansiyonlar kapanır, sosyal kısılır,
     // tedarik tabana iner. Vergi tarafını mevcut "broke" dalı zaten sıkıyor.
-    for (const factory of economy.factories ?? []) factory.subsidized = false;
     for (const programId of Object.keys(economy.social ?? {})) {
       const level = economy.social[programId] ?? 0;
-      if (level > 0) setFiscalPolicy(nation, 'social', level - 10, programId);
+      if (level > 0) setBudgetPolicy(nation, programId, level - 10);
     }
-    drift('militaryProcurement', wartime ? 60 : 40);
-    drift('militaryWages', wartime ? limits.armySpendingMax : 60);
-    // Kriz yonetimi idareyi de kisar: tahsilat duser ama gider de duser —
-    // yonetim butcesi artik nufusla buyudugu icin bu gercek bir tasarruf.
-    drift('adminFunding', 60);
+    drift('armyFunding', wartime ? limits.armySpendingMax : 45);
     // TASFIYE: akis kisintisi yetmiyorsa STOK erir. Zengin donemde kurulan
     // kapasite/egitim seviyeleri sabit bakimdir; dunya fakirlesince bu yuk
     // temerrut sarmalina donusuyordu (olculdu: 1300. haftada 19/26 ulke
@@ -2964,36 +3094,20 @@ function adjustWarFiscalAI(nation) {
   }
 
   if (wartime) {
-    drift('militaryWages', limits.armySpendingMax);
-    drift('militaryProcurement', limits.armySpendingMax);
+    drift('armyFunding', limits.armySpendingMax);
     // Sosyal harcama savaşta yarıya süzülür; barış gelince zenginlik geri açar.
     const welfare = economy.social.welfare ?? 0;
-    if (welfare > 30) setFiscalPolicy(nation, 'social', welfare - 10, 'welfare');
-    // Savaş kasası: yalnız stratejik tesisler (silah/mühimmat) desteklenir.
-    for (const factory of economy.factories ?? []) {
-      const strategic = factory.typeId === 'ARMS_FACTORY'
-        || factory.typeId === 'AMMUNITION_FACTORY';
-      if (strategic && factory.profit < 0) factory.subsidized = true;
-    }
+    if (welfare > 30) setBudgetPolicy(nation, 'welfare', welfare - 10);
     return;
   }
 
   // Barış: tedarik %60-75 bandına gevşer (stoklar doluysa para israfıdır),
   // zengin hazine eğitimi besler, her fabrika sübvansiyonu kalkmaz ama
   // stratejik olmayanlar bırakılır.
-  drift('militaryProcurement', 65);
-  drift('militaryWages', Math.min(limits.armySpendingMax, 85));
-  // Baris ve bolluk idareyi tam fonlamaya geri getirir.
-  if (nation.gold > 200) drift('adminFunding', 100);
+  drift('armyFunding', Math.min(limits.armySpendingMax, 75));
   if (nation.gold > 400) {
     const education = economy.social.education ?? 0;
-    if (education < 60) setFiscalPolicy(nation, 'social', education + 10, 'education');
-  }
-  for (const factory of economy.factories ?? []) {
-    if (factory.subsidized && factory.typeId !== 'ARMS_FACTORY'
-      && factory.typeId !== 'AMMUNITION_FACTORY') {
-      factory.subsidized = false;
-    }
+    if (education < 60) setBudgetPolicy(nation, 'education', education + 10);
   }
 }
 
@@ -3188,7 +3302,7 @@ export function armyWeeklyDemand(world, nation) {
     (other) => other.alive && other.id !== nation.id && atWar(world, nation.id, other.id),
   );
   const tempo = wartime ? 1 : 0.35;
-  const scale = (nation.economy?.militaryProcurement ?? 100) / 100;
+  const scale = (nation.economy?.armyFunding ?? 100) / 100;
   // Demiryolu/ikmal teknolojileri tuketimi dusurur (negatif toplam).
   const supplyTech = clamp(1 + (nation.economy?.techMods?.supplyConsumption ?? 0), 0.5, 1);
   const demand = {};
@@ -3224,7 +3338,7 @@ function procureStrategicGoods(world) {
       military[field.imported] = 0;
       // Tedarik kaydırağı ithalat hedefini de ölçekler: %50 fonlanan ordu
       // yarım depoyla idare etmeye çalışır, hazine de yarım öder.
-      const procurement = (nation.economy.militaryProcurement ?? 100) / 100;
+      const procurement = (nation.economy.armyFunding ?? 100) / 100;
       const target = Math.min(
         equipment.stockCap,
         (equipment.reserve + Math.min(
@@ -3607,9 +3721,8 @@ export function beginEconomy(game) {
             'The previous commitment had run its term.');
         }
         // Taahhut aninda baglar (oyuncu tarafiyla ayni kural).
-        setFiscalPolicy(nation, 'social',
-          Math.max(nation.economy.social?.education ?? 0, PROGRAMMES[pick]?.floor ?? 0),
-          'education');
+        setBudgetPolicy(nation, 'education',
+          Math.max(nation.economy.social?.education ?? 0, PROGRAMMES[pick]?.floor ?? 0));
       } else if (nation.research.programme) {
         // Ayni program yeniden taahhut edildi: vade tazelenir.
         nation.research.programmeSince = world.turn ?? 0;
@@ -3767,7 +3880,8 @@ export function runNationEconomy(game, nation, ctx) {
     // Geçen haftanın inşaat kuyruğunda biten tesisler önce gerçeğe dönüşür.
     commitCompletedProjects(game, nation);
     // Subvansiyon politikasi (yalniz oyuncu: YZ kendi maliyesinde yonetiyor).
-    if (nation.id === game.turns.playerNation) applySubsidyPolicy(world, nation);
+    // Herkes icin ayni: sahibine gore degisen bir kural degil.
+    applySubsidyPolicy(world, nation);
     resetNationGoodsFlow(nation);
     updateClasses(world, nation);
     mark('classes');
@@ -3792,7 +3906,7 @@ export function runNationEconomy(game, nation, ctx) {
     // kapasitede, ortalama hazine −652). Bütçeyi aşan üretim depoya değil
     // piyasaya gider — silahlanma bir on yıla yayılır, bir yıla değil.
     let retainedBudget = Math.max(2, (nation.economy.ledger?.income ?? 20) * 0.25)
-      * ((nation.economy.militaryProcurement ?? 100) / 100);
+      * ((nation.economy.armyFunding ?? 100) / 100);
     for (let e = 0; e < MILITARY_EQUIPMENT_IDS.length; e++) {
       const id = MILITARY_EQUIPMENT_IDS[e];
       const equipment = MILITARY_EQUIPMENT[id];

@@ -203,18 +203,18 @@ export function fiscalPolicyLimits(nation) {
   };
 }
 
+/**
+ * Hukumet degisince butce kaydiraclari yeni bandin icine cekilir. Ordu ve
+ * gumruk partinin doktrinine tabidir; oran ve sosyal harcama serbesttir.
+ */
 function applyGovernmentLimits(nation) {
   if (!nation.economy) return;
   const limits = fiscalPolicyLimits(nation);
   nation.economy.tariff = Math.max(limits.tariffMin, Math.min(limits.tariffMax, nation.economy.tariff));
-  // İki ordu kaydıracı da aynı parti sınırına tabidir. (Eski tek armySpending
-  // alanı kaldırıldı; setFiscalPolicy'nin geriye dönük dalı iki kaydıracı sürer.)
-  for (const key of ['militaryWages', 'militaryProcurement']) {
-    nation.economy[key] = Math.max(
-      limits.armySpendingMin,
-      Math.min(limits.armySpendingMax, nation.economy[key] ?? 100),
-    );
-  }
+  nation.economy.armyFunding = Math.max(
+    limits.armySpendingMin,
+    Math.min(limits.armySpendingMax, nation.economy.armyFunding ?? 100),
+  );
 }
 
 function supportScore(nation, party) {

@@ -787,7 +787,10 @@ export function runProvinces(game) {
     const peace = atPeace[nation.id];
     // Sağlık harcaması büyümeyi hızlandırır (bkz. economy.js SOCIAL_PROGRAMS);
     // veri doğrudan okunuyor, economy.js'i import etmek katman döngüsü olurdu.
-    const health = 1 + Math.min(100, nation.economy?.social?.health ?? 0) / 100 * 0.35;
+    // Saglik refaha katildi: buyume carpani artik refah butcesinden gelir
+  // (bkz. economy.js SOCIAL_PROGRAMS notu). Veri dogrudan okunuyor, economy.js
+  // import etmek katman dongusu olurdu.
+  const health = 1 + Math.min(100, nation.economy?.social?.welfare ?? 0) / 100 * 0.35;
     // Beslenme: sepetinin ne kadarini fiilen alabildigi (bkz. economy.js
     // populationDemand). Bu bag yokken kitligin nufusta hicbir karsiligi
     // yoktu — dunya tahil uretimi TAMAMEN kesildiginde bile 120 haftalik

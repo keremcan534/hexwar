@@ -19,7 +19,7 @@ export const BASE_REINFORCEMENT_RATE = 24;
  */
 export function reinforcementRateOf(nation, general = null) {
   const supply = Math.max(0.4, nation.economy?.military?.supplyIndex ?? 1);
-  const funding = Math.max(0.25, (nation.economy?.militaryProcurement ?? 100) / 100) * supply;
+  const funding = Math.max(0.25, (nation.economy?.armyFunding ?? 100) / 100) * supply;
   return BASE_REINFORCEMENT_RATE
     * (0.25 + funding * 0.75)
     * (1 + generalRecoveryBonus(general))
