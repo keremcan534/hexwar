@@ -107,6 +107,26 @@ for (const group of ladders) {
   probe(group.id, set(bottom), set(top));
 }
 
+// ================================================= BILESIK KARARLAR
+sub('Bilesik kararlar — bir karari birlikte olusturan merdivenler');
+{
+  // Bes siyasi merdiven TEK bir karardir ("devletim ne kadar temsil ediyor").
+  // Tek tek olcmek her birini bilesigin beste biri gosterir; oyuncunun verdigi
+  // karar ise hepsi birden. Bilesigi de ayrica olceriz.
+  const POLITICAL = ['vote_franchise', 'voting_system', 'political_parties',
+    'upper_house', 'public_meetings'];
+  const setAll = (which) => (nation) => {
+    for (const id of POLITICAL) {
+      const grp = ladders.find((g) => g.id === id);
+      if (!grp) continue;
+      const step = which === 'top' ? grp.steps[grp.steps.length - 1] : grp.steps[0];
+      nation.politics.reforms[id] = step.id;
+    }
+    refreshReformModifiers(nation);
+  };
+  probe('TEMSIL (5 merdiven)', setAll('bottom'), setAll('top'));
+}
+
 // ============================================================ BUTCE
 sub('Butce kaldiraclari — kontrol grubu (bunlarin calistigi ayrica dogrulandi)');
 const budget = [

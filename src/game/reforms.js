@@ -104,12 +104,6 @@ export const REFORMS = [
     ['acceptable_schools', 'Acceptable School System', 'Compulsory schooling in the towns.'],
     ['good_schools', 'Good School System', 'A literate nation, funded out of taxes.'],
   ], { liberal: 0.90, conservative: 0.50, fascist: 0.70, reactionary: 0.15 }),
-  ladder('penal_system', 'Penal System', 'social', 'penal', [
-    ['capital_punishment', 'Capital Punishment', 'The gallows answers most crimes.'],
-    ['transportation', 'Transportation', 'Convicts are shipped out of sight.'],
-    ['incarceration', 'Incarceration', 'Prisons replace the rope.'],
-    ['rehabilitation', 'Rehabilitation', 'Punishment aims at return, not removal.'],
-  ], { liberal: 0.75, conservative: 0.25, fascist: 0, reactionary: 0, socialist: 0.85, communist: 0.70 }),
 
   // --- Siyasi reformlar: sandık, meclis, ordu, basın ------------------------
   ladder('political_parties', 'Political Parties', 'political', 'party', [
@@ -151,12 +145,6 @@ export const REFORMS = [
     ['non_socialist_unions', 'Non-Socialist Allowed', 'Organise, but not under the red flag.'],
     ['all_trade_unions', 'All Allowed', 'Labour may organise as it pleases.'],
   ], { reactionary: 0, conservative: 0.20, fascist: 0.35, liberal: 0.55, socialist: 1, communist: 1 }),
-  ladder('debt_law', 'Debt Law', 'political', 'debt', [
-    ['serfdom', 'Serfdom', 'The debtor belongs to the land and to the creditor.'],
-    ['peonage', 'Peonage', 'Debt is worked off, generation by generation.'],
-    ['debtors_prisons', "Debtor's Prisons", 'The insolvent are jailed, not freed.'],
-    ['bankruptcy', 'Bankruptcy', 'Debt can be discharged; capital takes the risk.'],
-  ], { reactionary: 0.10, conservative: 0.55, fascist: 0.50, liberal: 1, socialist: 0.90, communist: 0.80 }),
   ladder('slavery', 'Slavery', 'political', 'slavery', [
     ['yes_slavery', 'Allowed', 'Persons are property.'],
     ['freedom_of_womb', 'Freedom of Womb', 'Those born from now on are born free.'],
@@ -178,11 +166,6 @@ export const REFORMS = [
     ['cultural_rights', 'Cultural Rights', 'Minorities keep their language and schools.'],
     ['all_allowed_rights', 'All Allowed Rights', 'Rights do not ask where you were born.'],
   ], { conservative: 0.30, fascist: 0, liberal: 0.90 }),
-  ladder('border_policy', 'Border Policy', 'state', 'border', [
-    ['closed_borders', 'Closed Borders', 'Nobody enters, nobody leaves.'],
-    ['immigration_quotas', 'Immigration Quotas', 'A measured stream, counted at the port.'],
-    ['open_borders', 'Open Borders', 'Migration follows work.'],
-  ], { reactionary: 0.10, conservative: 0.40, fascist: 0, liberal: 1, socialist: 0.70, communist: 0.60 }),
   ladder('press_rights', 'Press Rights', 'state', 'press', [
     ['state_press', 'State Press Only', 'One printer, one voice.'],
     ['censored_press', 'Censored Press', 'Print freely, then submit the proofs.'],
@@ -894,6 +877,8 @@ const modsByNation = new WeakMap();
 export const NEUTRAL_MODIFIERS = Object.freeze({
   lowerMood: 0, middleMood: 0, upperMood: 0,
   throughput: 1, wageCost: 1, socialBurden: 0,
+  // Askerlik yasasinin insan gucu carpani (recruitment.js okur).
+  manpower: 1,
 });
 
 /** Kademe sırasının 0–1'e indirgenmiş hâli; merdiven boyları farklı. */
@@ -952,6 +937,25 @@ export function refreshReformModifiers(nation) {
   const rights = p('political_rights');
   const press = p('press_rights');
 
+  // TEMSIL — bes siyasi merdivenin TEK ortak ciktisi. Bunlar daha once
+  // hicbir seye baglanmiyordu: olculdu (audit:mechanics), tabandan tavana
+  // cekildiklerinde alti olcutun altisi da bit bit ayni kaliyordu. Oyuncu
+  // siyasi bedel odeyip hicbir sey almiyordu.
+  //
+  // Bes ayri kanal ACILMADI, tek kavram acildi: devlet ne kadar temsil
+  // ediyorsa halk o kadar memnun, seckin o kadar rahatsiz. Victoria'nin
+  // siyasi merdivenlerinin zaten anlattigi sey budur.
+  const representation = (p('vote_franchise') + p('voting_system')
+    + p('political_parties') + p('upper_house') + p('public_meetings')) / 5;
+
+  // ASKERLIK — merdiven TERS yonludur: 0 = herkesi al, 1 = gonullu ordu.
+  // Tam askerlik daha cok insan gucu verir ama halk bunu sever mi, hayir.
+  const draft = 1 - p('conscription');
+
+  // KOLELIK — 0 = serbest, 1 = yasak. Serbest kolelik ucreti ucuzlatir ve
+  // alt sinifi ezer; kaldirmak bunun tam tersidir.
+  const slaveryFree = 1 - p('slavery');
+
   const mods = {
     // Memnuniyet — omurgaya doğrudan bağlanan terim: memnuniyet → stability
     // → parti desteği → seçim. Reformun siyasi sonucu budur.
@@ -962,14 +966,23 @@ export function refreshReformModifiers(nation) {
     // yıllarca aşındırıyordu. Yani "işçiyi koruyan yasa işçiyi vurur"
     // tuzağıydı; doğrudan kazanım dolaylı sürüklemeyi açıkça geçmeli.
     lowerMood: hours * 0.13 + safety * 0.07 + dole * 0.12 + pension * 0.10
-      + health * 0.10 + child * 0.06,
-    middleMood: rights * 0.02 + press * 0.02 + health * 0.02,
-    // Üst sınıf faturayı öder.
-    upperMood: -(wage * 0.05 + safety * 0.03 + unions * 0.04),
+      + health * 0.10 + child * 0.06
+      // Temsil ve ozgurluk: halk oy hakkindan ve serbest toplanmadan memnun,
+      // zorunlu askerlikten ve kolelikten degil.
+      + representation * 0.22 - draft * 0.06 - slaveryFree * 0.08,
+    // Hak ve basin: orta sinifin siyasi kanali. Eski katsayilar 0.02'ydi ve
+    // olculdu — butun menzil gurultunun 0.13 kati, yani yoktu.
+    middleMood: rights * 0.09 + press * 0.07 + health * 0.02
+      + representation * 0.16,
+    // Üst sınıf faturayı öder — temsil de bir faturadir.
+    upperMood: -(wage * 0.05 + safety * 0.03 + unions * 0.04
+      + representation * 0.12),
     // Sanayi: ceza KÜÇÜK. Fatura toplam üretimde değil sermayenin kârında
     // olmalı, yoksa üretim düşüşü bileşiklenip işçiyi de vuruyor.
     throughput: 1 - hours * 0.03 - safety * 0.012 - child * 0.012,
-    wageCost: 1 + wage * 0.14 + unions * 0.05 + hours * 0.06 + safety * 0.04,
+    // Kolelik serbestken emek ucuzdur; kaldirmak sanayinin bordrosunu buyutur.
+    wageCost: 1 + wage * 0.14 + unions * 0.05 + hours * 0.06 + safety * 0.04
+      - slaveryFree * 0.10,
     // Sosyal yasa KAYDIRAÇTAN AYRI bir taahhüttür: kaydıraç isteğe bağlı
     // harcama, yasa kısılamaz.
     // Katsayilar kaydirac oranlarinin ucte biri mertebesinde. Ilk yazimda
@@ -977,6 +990,9 @@ export function refreshReformModifiers(nation) {
     // 52 haftada hazinesini tamamen tuketiyordu (-%100). Yasa anlamli bir
     // taahhut olmali, yikici degil.
     socialBurden: dole * 0.10 + pension * 0.12 + health * 0.10 + school * 0.09,
+    // Askerlik yasasi seferberlik havuzunu belirler: tam askerlikte 1.30,
+    // gonullu orduda 0.85. Tek carpan, tek okuyucu (recruitment.js).
+    manpower: 0.85 + draft * 0.45,
   };
   modsByNation.set(nation, mods);
   return mods;
