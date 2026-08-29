@@ -1,7 +1,11 @@
 # HexWar — geliştirme notları
 
-Mobil öncelikli hex strateji oyunu. Bağımlılık ve derleme adımı **yok**: saf ES
-modülleri + Canvas2D. Bu kısıtı koru; kütüphane eklemeden önce sor.
+**PC için** hex strateji oyunu — masaüstü tarayıcı, fare ve klavye. Bağımlılık
+ve derleme adımı **yok**: saf ES modülleri + Canvas2D. Bu kısıtı koru; kütüphane
+eklemeden önce sor.
+
+Hedef kitle PC olduğu için hover ile açılan tooltip meşru bir anlatım aracıdır;
+dokunmatik için ayrı yol yazmaya gerek yok.
 
 Mimari ve tasarım kararları için [README.md](README.md).
 
@@ -21,7 +25,9 @@ Mimari ve tasarım kararları için [README.md](README.md).
   zoomda eski görüntü kalır.
 - Sürekli `requestAnimationFrame` döngüsü açma; `game.requestRender()` kullan.
 - Oyuncuya birim başına iş çıkaran her özellik, `orders.js` üzerinden
-  devredilebilir olmalı. Mikro yönetim mobilde en hızlı büyüyen maliyet.
+  devredilebilir olmalı. Mikro yönetim, oyuncunun sahip olduğu nesne sayısıyla
+  büyüyen tek maliyettir; kırk fabrikada kırk tık ise o mekanik politikaya
+  çevrilmeli (bkz. [VICTORIA_LITE.md](VICTORIA_LITE.md) "ev ödevi testi").
 
 ## Test
 
@@ -35,4 +41,16 @@ game.world.nations.map(n => [n.name, n.tiles]);
 game.renderer.lastDrawn;   // son karede çizilen hex sayısı
 ```
 
-Performans hedefi (mobil): kare süresi uzak zoomda < 2 ms, yakın zoomda < 5 ms.
+Performans hedefi: kare süresi uzak zoomda < 2 ms, yakın zoomda < 5 ms.
+
+## Mekanik eklemeden önce
+
+Bu depoya mekanik EKLEMEK varsayılan değildir. Yeni bir mekanik önermeden önce
+[VICTORIA_LITE.md](VICTORIA_LITE.md) okunmalı; ölçüt orada. Bir mekaniğin
+çalıştığı varsayılmaz, ÖLÇÜLÜR:
+
+    npm run audit:mechanics        # her kaldıraç: çalışıyor / hissedilmiyor / ölü
+    npm run audit:budget-contract  # bütçe sözleşmesi değişmezleri
+
+Son tarama: 26 mekanikten 10'u ölü, 5'i gürültü tabanının altında. Yani bu
+depoda asıl risk eksik mekanik değil, **çalışmayan mekanik**.

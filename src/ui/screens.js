@@ -1564,12 +1564,22 @@ export class Screens {
     const band = (min, max, lo = 0, hi = 100) => (min <= lo && max >= hi ? ''
       : `<small class="ledger-limit">${esc(party?.name ?? 'The ruling party')} allows ${min}\u2013${max}%</small>`);
 
-    /** Bir kontrol satiri: kaydirac + GERCEK dokum + haftalik tutar. */
+    /**
+     * Bir kontrol satiri: kaydirac + GERCEK dokum + haftalik tutar.
+     *
+     * Baslik `data-tooltip` tasir: uzerine gelince (ya da dokununca —
+     * bilesen :focus-within destekliyor) mekanigin ne yaptigi DUZ CUMLEYLE
+     * cikar. Cumle de sayilar da `budgetBreakdown`dan gelir; ekran hicbirini
+     * kendisi yazmaz, dolayisiyla anlatim simulasyondan sapamaz.
+     */
     const control = (policy, label, picto, cfg, amount, breakdown) => `
       <div class="ledger-row">
         <span class="ledger-picto">${picto}</span>
         <span class="ledger-mid">
-          <span class="ledger-label">${esc(label)}<b>${cfg.value}%</b></span>
+          <span class="ledger-label">
+            <span class="ledger-what" data-tooltip="${esc(cfg.explain ?? '')}" tabindex="0"
+              >${esc(label)}<i class="ledger-hint" aria-hidden="true">?</i></span>
+            <b>${cfg.value}%</b></span>
           ${hslider(policy, cfg.value, cfg.min, cfg.max)}
           ${band(cfg.min, cfg.max)}
           <small class="ledger-note">${breakdown}</small>

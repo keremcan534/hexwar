@@ -5600,6 +5600,39 @@ body.screen-open .layer-menu { display: none; }
 
 .ledger-label b { color: #d6b574; font-variant-numeric: tabular-nums; font-weight: 600; }
 
+/* Kontrolun adi + soru isareti: tooltip'i tasiyan parca. Ad ile deger
+   arasindaki flex bosluguna girmesin diye ikisi ayri cocuk. */
+.ledger-what {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+/* Soru isareti: mekanigin bir aciklamasi oldugunu SOYLEYEN isaret. Olmazsa
+   oyuncu uzerine gelmeyi denemez; tooltip varligini duyurmayan tooltip
+   yoktur sayilir. */
+.ledger-hint {
+  font-style: normal;
+  font-size: 9px;
+  line-height: 1;
+  padding: 2px 3px 1px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  color: var(--text-faint);
+  transform: translateY(-1px);
+}
+
+.ledger-what:hover .ledger-hint,
+.ledger-what:focus .ledger-hint,
+.ledger-what:focus-within .ledger-hint {
+  color: var(--gold-bright);
+  border-color: var(--gold);
+}
+
+.ledger-what:focus { outline: none; }
+.ledger-what:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
+
 .ledger-note {
   color: var(--text-dim);
   font-size: 10.5px;

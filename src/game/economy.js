@@ -1752,6 +1752,11 @@ export function budgetBreakdown(world, nation) {
       taxRate: {
         value: economy.taxRate ?? 0,
         ...limits.taxRate,
+        // Oyuncuya duz cumle. Sayilar canli, cumle sabit: ikisi de buradan
+        // gelir, ekran hicbirini uydurmaz.
+        explain: 'Every class pays this share of its income. Raising it fills the '
+          + 'treasury and makes people poorer and angrier; lowering it does the '
+          + 'reverse. Who pays most is decided by your government, not by you.',
         structure: structure.label,
         structureId: structure.id,
         base: taxBase,
@@ -1761,6 +1766,10 @@ export function budgetBreakdown(world, nation) {
       tariff: {
         value: economy.tariff ?? 0,
         ...limits.tariff,
+        explain: 'A tax on imported goods. It earns money, but every factory and '
+          + 'household that buys from abroad pays more — so factories that depend '
+          + 'on imports earn less. A negative tariff subsidises imports instead: '
+          + 'the treasury pays, and import-dependent factories earn more.',
         imports: economy.trade?.importValue ?? 0,
         revenue: line('tariff'),
         // Ithal malin sepetteki fiyatini bu kadar buyutur (populationDemand).
@@ -1769,6 +1778,9 @@ export function budgetBreakdown(world, nation) {
       armyFunding: {
         value: economy.armyFunding ?? 100,
         ...limits.armyFunding,
+        explain: 'Soldier pay and supply. Higher funding means your divisions fight '
+          + 'harder, recover faster and train quicker — and cost more every week. '
+          + 'Your government sets the legal ceiling.',
         cost: Math.abs(line('army')) + Math.abs(line('procurement')),
         supply,
         // GERCEK formuller (battles.js, reinforcement.js, turn.js, recruitment.js)
@@ -1779,6 +1791,9 @@ export function budgetBreakdown(world, nation) {
       education: {
         value: economy.social?.education ?? 0,
         ...limits.education,
+        explain: 'Schools. Literacy climbs slowly toward the target this budget '
+          + 'sets, and literacy is what produces research. More research means '
+          + 'technology arrives earlier. The cost grows with your population.',
         cost: programmeCost(nation, 'education'),
         literacy,
         literacyTarget: literacyTargetOf(nation),
@@ -1787,6 +1802,9 @@ export function budgetBreakdown(world, nation) {
       welfare: {
         value: economy.social?.welfare ?? 0,
         ...limits.welfare,
+        explain: 'Relief and public health. People are more satisfied and the '
+          + 'population grows faster. Satisfaction holds the country stable and '
+          + 'keeps your government in power. The cost grows with your population.',
         cost: programmeCost(nation, 'welfare'),
         // Memnuniyet formulundeki gercek terim (populationDemand).
         satisfaction: socialLevel(nation, 'welfare') * 0.14,
