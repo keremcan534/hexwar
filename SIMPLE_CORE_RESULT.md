@@ -228,15 +228,16 @@ Hiçbir iç duruma elle müdahale yok; senaryolar oyunun kendi kaldıraçlarıyl
 
 | Senaryo | Sonuç |
 | --- | --- |
-| **A. Kömür kıtlığı → çelik → silah** | 41 kömür kümesi kısıldı → kömür **0.14× → 8.00×** (tavan), çelik arzı **11.0 → 0.7**, silah **0.12× → 1.89×**, silah arzı **46.2 → 8.7** |
-| **B. Kömür geri geliyor** | kömür 6.72×'e geriledi, silah arzı **8.7 → 20.7** |
-| **C. Eğitim %10 → %90** | okuryazarlık 0.094 → 0.425, sosyal gider **¤6.3 → ¤33.1**, teknoloji 3 → 5 |
-| **D. Vergi %10 → %90** | vergi geliri ×13, alt sınıf memnuniyeti 0.52 → 0.29 |
-| **E. Gümrük %0 → %80** | ithalat **¤13.2 → ¤5.6**, gümrük geliri **¤0.0 → ¤4.5** |
+| **A. Kömür kıtlığı → çelik → silah** | 41 kömür kümesi kısıldı → kömür **0.13× → 8.00×** (tavan), çelik arzı **6.0 → 0.4**, silah **0.12× → 6.88×**, silah arzı **42.2 → 7.0** |
+| **B. Kömür geri geliyor** | kömür arzı 17.6 → 114.6, silah arzı **7.0 → 41.9**, silah fiyatı 6.88× → 0.72× |
+| **C. Eğitim %10 → %90** | okuryazarlık 0.094 → 0.425, sosyal gider **¤6.4 → ¤33.5**, teknoloji 3 → 5 |
+| **D. Vergi %10 → %90** | vergi geliri ×9, alt sınıf memnuniyeti 0.54 → 0.26 |
+| **E. Gümrük %0 → %80** | ithalat **¤13.9 → ¤4.9**, gümrük geliri **¤0.0 → ¤3.9** |
 | **F. Savaş** | `warStrain` hem ithalat iştahını hem ihracat erişimini kısıyor (tek satır, `WAR_TRADE_PENALTY`) |
+| **Yönetilmeyen ülke** | oyuncu ülkesi 260 hafta boyunca 5 tesiste kaldı, hazine tükendi, işsizlik %19'da sabit — kimse kaydıraçlara dokunmadığı için (`runEconomicAI` oyuncu için koşmaz). Aynı desen eski çekirdekte de var; aşağıya bakınız. |
 | **Ekranlar** | Budget · Factories · Population · Trade · Politics · Technology · Military · Exchange — sekizi de açıldı |
 | **Konsol** | tek hata: favicon 404 |
-| **Değişmezler (755. hafta)** | ihlal **0** · geçersiz fiyat **0** · hazine kapanışı sapması **%0.79** |
+| **Değişmezler (755. hafta)** | ihlal **0** · geçersiz fiyat **0** · hazine kapanışı sapması **%0.90** |
 
 Zincir gerçekten işliyor: kömürü kesince çelik ölüyor, silah pahalanıyor;
 kömür dönünce silah üretimi toparlanıyor.
