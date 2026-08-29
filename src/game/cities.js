@@ -6,6 +6,7 @@ import { tileEfficiency } from './infamy.js';
 import { provinceOutput } from './provinces.js';
 import { regimentCount, upkeepWeight } from './units.js';
 import { controllerOf } from './control.js';
+import { settle } from './treasury.js';
 
 /** Yeni şehir kurma bedeli ve şehirler arası asgari mesafe. */
 export const CITY_COST = { gold: 60 };
@@ -50,14 +51,14 @@ export function canAfford(nation, cost) {
   );
 }
 
-export function pay(nation, cost) {
+export function pay(nation, cost, line = 'outlay') {
   if (!canAfford(nation, cost)) return false;
-  for (const [resource, amount] of Object.entries(cost ?? {})) nation[resource] -= amount;
-  // Tek seferlik alımlar (birim, şehir, devlet fabrikası) bütçe defterine
-  // yazılır; yoksa defter haftanın gerçek altın değişimini tutmaz (ölçüldü:
-  // %83 sapma, bkz. mechanics-audit). Kalem updateLedger'da okunup sıfırlanır.
-  if (cost?.gold && nation.economy) {
-    nation.economy.outlayGold = (nation.economy.outlayGold ?? 0) + cost.gold;
+  for (const [resource, amount] of Object.entries(cost ?? {})) {
+    // ALTIN TEK KAPIDAN. Bu dongu eskiden altini da dogrudan dususuyordu ve
+    // hicbir `.gold -=` aramasi burayi bulamiyordu — 27 hazine yazicisindan
+    // gorunmeyeni tam olarak buydu.
+    if (resource === 'gold') settle(nation, line, -amount);
+    else nation[resource] -= amount;
   }
   return true;
 }

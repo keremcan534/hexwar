@@ -14,6 +14,7 @@ import {
   MILITARY_EQUIPMENT, ensureMilitaryEconomy, equipmentStock, setEquipmentStock,
 } from './economy.js';
 import { UNIT_COSTS, canAfford, pay } from './cities.js';
+import { settle } from './treasury.js';
 import { underTreaty } from './peace.js';
 import { controllerOf } from './control.js';
 import { occupiedShareOf } from './provinces.js';
@@ -472,7 +473,10 @@ export function cancelTraining(game, nation, itemId) {
   if (index < 0) return false;
   const [item] = training.queue.splice(index, 1);
   const share = Math.max(0, 1 - item.progress / Math.max(1, item.weeks));
-  nation.gold = (nation.gold ?? 0) + Math.floor((item.gold ?? 0) * share);
+  // IADE DEFTERLIDIR. Eski surumde bu satir hazineyi buyutuyor ama `pay()`in
+  // yazdigi kalemi geri almiyordu; olculdu: 25 altinlik bir siparis iptali
+  // haftalik Δhazine kimligini tam 25.000 kadar bozuyordu (L9 ihlali).
+  settle(nation, 'outlay', Math.floor((item.gold ?? 0) * share));
   for (const [equipmentId, amount] of Object.entries(item.equipment ?? {})) {
     setEquipmentStock(
       nation, equipmentId, equipmentStock(nation, equipmentId) + amount * share,

@@ -21,6 +21,7 @@
 // yumuşatılır. "randomEvent = -%12" diye bir kanal yok.
 
 import { makeRng } from '../core/rng.js';
+import { settle } from './treasury.js';
 import { RGO_TYPES, provinceName } from './provinces.js';
 import { atWar } from './diplomacy.js';
 import { addInfamy } from './infamy.js';
@@ -436,8 +437,7 @@ export function buyShares(game, buyer, company, requested) {
   const cost = sharePrice(company, share) * (1 + SPREAD);
   if (!(cost > 0) || buyer.gold < cost) return null;
 
-  buyer.gold -= cost;
-  buyer.economy.shareCostGold = (buyer.economy.shareCostGold ?? 0) + cost;
+  settle(buyer, 'share', -cost);
   creditSellerPool(home, cost);
 
   company.owners[buyer.id] = clamp(stakeOf(company, buyer.id) + share, 0, 1);
@@ -466,8 +466,7 @@ export function sellShares(game, seller, company, requested) {
   const proceeds = unit * share;
 
   home.politics.privateCapital = Math.max(0, pool - proceeds);
-  seller.gold += proceeds;
-  seller.economy.shareSaleGold = (seller.economy.shareSaleGold ?? 0) + proceeds;
+  settle(seller, 'share', proceeds);
 
   const left = clamp(held - share, 0, 1);
   if (left < 0.0005) delete company.owners[seller.id];
@@ -645,8 +644,7 @@ export function runCompanies(game, nation) {
       budget -= amount;
       economy.capitalWithheld += amount;
       economy.dividendsOut += amount;
-      owner.gold += amount;
-      owner.economy.dividendGold = (owner.economy.dividendGold ?? 0) + amount;
+      settle(owner, 'dividend', amount);
     }
     enforceOwnershipCaps(game, nation, company);
   }
@@ -756,9 +754,9 @@ export function nationalize(game, nation, company, modeId = 'compensated') {
     delete company.owners[id];
     if (!owner?.alive) continue;
     if (amount > 0) {
-      nation.gold -= amount;
-      owner.gold += amount;
-      owner.economy.dividendGold = (owner.economy.dividendGold ?? 0) + amount;
+      // Kamulastirma tazminati bir TRANSFERDIR: iki tarafi da defterli.
+      settle(nation, 'share', -amount);
+      settle(owner, 'share', amount);
       paid += amount;
     }
     // Diplomatik hafıza: mağdurun ülke paneli bunu yıllarca gösterir. Ayrı
@@ -766,7 +764,6 @@ export function nationalize(game, nation, company, modeId = 'compensated') {
     remember(owner, world.turn ?? 0, 'industry_seized_by', nation.id);
     remember(nation, world.turn ?? 0, 'seized_industry_of', id);
   }
-  if (paid > 0) nation.economy.outlayGold = (nation.economy.outlayGold ?? 0) + paid;
   // Dünyanın tepkisi: şöhret. Tazminatsız el koyan ülke koalisyon eşiğine
   // yaklaşır; tazminatlı devralma neredeyse bedelsizdir.
   if (mode.infamy > 0) addInfamy(nation, mode.infamy);

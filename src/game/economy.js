@@ -34,6 +34,9 @@ import {
 import {
   decayReformCounters, refreshReformModifiers, reformModifiers, reformMoodShift,
 } from './reforms.js';
+import {
+  closeWeek, emptyLedger, openWeek, settle, settleAffordable, weekTotals,
+} from './treasury.js';
 
 /**
  * Victoria 2'nin üretim zinciri. Mevcut kimlikler bilerek korundu (food =
@@ -515,20 +518,28 @@ export const EXTERNAL_SETTLEMENT = 1;
  */
 export const SOCIAL_PROGRAMS = {
   education: {
-    id: 'education', name: 'Education', rate: 0.34,
-    desc: 'Trains the workforce so factories can hire and operate more efficiently.',
+    id: 'education', name: 'Education', rate: 0.34, ledgerLine: 'education',
+    desc: 'Schools raise literacy, and literacy is what produces research.',
   },
-  health: {
-    id: 'health', name: 'Public Health', rate: 0.30,
-    desc: 'Raises the standard of living and speeds up population growth.',
-  },
+  // SAGLIK REFAHA KATILDI (silinmedi, BIRLESTIRILDI). Tek gercek tuketicileri
+  // nufus buyume carpani (provinces.js) ve `standardOfLiving` terimiydi;
+  // olculdu: 700 haftada tam fonlama %1.4-2.0 nufus getiriyor, nufusun kendi
+  // tohum gurultusu ise %39.1 — kaydiracin butun menzili gurultunun yirmide
+  // biri. Iki etki de refaha tasindi, oran ikisinin toplami (0.30 + 0.46).
   welfare: {
-    id: 'welfare', name: 'Welfare', rate: 0.46,
-    desc: 'Cushions household budgets: every class gains satisfaction.',
+    id: 'welfare', name: 'Welfare', rate: 0.76, ledgerLine: 'welfare',
+    desc: 'Relief and public health: satisfaction, wellbeing and population growth.',
   },
 };
 
-const DEFAULT_SOCIAL = { education: 0, health: 0, welfare: 0 };
+const DEFAULT_SOCIAL = { education: 0, welfare: 0 };
+
+/** Tek bir programin bu haftaki altin gideri. */
+export function programmeCost(nation, programId) {
+  const program = SOCIAL_PROGRAMS[programId];
+  if (!program || !nation?.economy) return 0;
+  return (nation.economy.population / 10000) * socialLevel(nation, programId) * program.rate;
+}
 export const MILITARY_EQUIPMENT = {
   arms: {
     id: 'arms', name: 'Small Arms', icon: '⚔', stockCap: 40, defaultStock: 16,
@@ -644,37 +655,9 @@ function emptyProfessionCounts() {
   return Object.fromEntries(Object.keys(PROFESSION_INFO).map((id) => [id, 0]));
 }
 
-function emptyLedger() {
-  return {
-    lastUpdated: 0,
-    cityRevenue: 0,
-    taxRevenue: 0,
-    tariffRevenue: 0,
-    armyCost: 0,
-    administrationCost: 0,
-    socialCost: 0,
-    importCost: 0,
-    constructionCost: 0,
-    treatyCost: 0,
-    treatyRevenue: 0,
-    outlayCost: 0,
-    procurementCost: 0,
-    subsidyCost: 0,
-    projectCost: 0,
-    interestCost: 0,
-    dividendRevenue: 0,
-    shareCost: 0,
-    shareRevenue: 0,
-    borrowed: 0,
-    repaid: 0,
-    defaulted: 0,
-    creditPenalty: 0,
-    debt: 0,
-    income: 0,
-    expenses: 0,
-    net: 0,
-  };
-}
+// `emptyLedger` artik treasury.js'ten gelir: defterin sekli defteri YAZAN
+// modulun sorumlulugudur, iki yerde ayri ayri tanimlanirsa kacinilmaz olarak
+// ayrisir (eski surumde tam olarak bu olmustu).
 
 /**
  * Anahtar listesi bir kez cikarilir: ensureMilitaryEconomy her stok
@@ -1194,7 +1177,6 @@ export function initNationEconomy(world, nation) {
     tariffRevenue: 0,
     importCost: 0,
     factoryProfit: 0,
-    fiscalNet: 0,
     standardOfLiving: 10,
     stability: 0.62,
   };
@@ -1299,6 +1281,9 @@ export function ensureEconomy(world) {
     else fillMissing(nation.economy.trade, TRADE_SUMMARY_DEFAULTS);
     if (!nation.economy.ledger) nation.economy.ledger = emptyLedger();
     else fillMissing(nation.economy.ledger, LEDGER_DEFAULTS);
+    // Haftalik toplayici ve acilis isareti: ilk haftadan itibaren
+    // `ledger.unreconciled` anlamli olsun diye burada kurulur.
+    if (!nation.economy.ledgerWeek) openWeek(nation);
     ensurePopulationModel(nation, populationOf(world, nation));
     ensureMilitaryEconomy(nation);
     ensureInitialMilitaryIndustry(world, nation);
@@ -1380,15 +1365,9 @@ function canPayFactoryCost(nation, cost, actor) {
 
 function payFactoryCost(nation, cost, actor) {
   if (actor !== 'private') {
-    if (!pay(nation, cost)) return false;
-    // pay() tutari outlayGold'a yazdi; devlet fabrika yatirimi insaat
-    // kalemidir — dogru satira tasinir (cifte sayim yok, aktarim).
-    const gold = cost.gold ?? 0;
-    if (gold && nation.economy) {
-      nation.economy.outlayGold = Math.max(0, (nation.economy.outlayGold ?? 0) - gold);
-      nation.economy.projectGold = (nation.economy.projectGold ?? 0) + gold;
-    }
-    return true;
+    // Devlet fabrika yatirimi bir INSAAT kalemidir; `pay()` hangi satira
+    // yazacagini artik parametreden ogrenir, sonradan duzeltme gerekmez.
+    return pay(nation, cost, 'construction');
   }
   if (!canPayFactoryCost(nation, cost, actor)) return false;
   nation.politics.privateCapital -= cost.gold ?? 0;
@@ -1716,9 +1695,6 @@ function applySubsidyPolicy(world, nation) {
  */
 // Tarayicida `process` YOKTUR — dogrudan process.env okumak butun oyunu
 // acilista dusuruyordu (Chromium smoke yakaladi; bassiz denetim yakalayamaz).
-export const FUEL_FIX = typeof process === 'undefined'
-  || process.env?.HEXWAR_NO_FUEL_FIX !== '1';
-
 /**
  * Bir sosyal programin ALT SINIRI.
  *
@@ -1736,7 +1712,7 @@ export const FUEL_FIX = typeof process === 'undefined'
  * "teknoloji lideri olmak" risksiz bir bahis olur.
  */
 export function socialFloorOf(nation, programId) {
-  if (!FUEL_FIX || programId !== 'education') return 0;
+  if (programId !== 'education') return 0;
   if ((nation?.economy?.creditPenalty ?? 0) > 0.05) return 0;
   const floors = NATIONAL_INVESTMENTS.HIGHER_EDUCATION?.educationFloor;
   let floor = 0;
@@ -2097,7 +2073,9 @@ function dropInvalidProjects(nation) {
         if (company) company.cash += project.funded;
         else nation.politics.privateCapital = (nation.politics.privateCapital ?? 0) + project.funded;
       } else {
-        nation.gold += project.funded;
+        // Iade defterli: eski surumde bu satir hazineyi buyutuyor ama
+        // hicbir kaleme yazmiyordu ve L9 kimligi tam iade kadar bozuluyordu.
+        settle(nation, 'construction', project.funded);
       }
     }
     state.projects.splice(i, 1);
@@ -2119,12 +2097,11 @@ export function supportProject(game, nation, projectId, options = {}) {
   const amount = Math.min(wanted, remaining, nation.gold);
   if (amount <= 0) return false;
   const paid = fundProject(project, amount);
-  nation.gold -= paid;
+  settle(nation, 'construction', -paid);
   // Hazine desteği projeyi uyandırır: oyuncunun parası da "sermaye akışı"dır.
   project.fundedTurn = game.world.turn;
   project.dormant = false;
-  // Proje desteği inşaat kalemine yazılır (bkz. updateLedger projectCost).
-  nation.economy.projectGold = (nation.economy.projectGold ?? 0) + paid;
+  // Proje desteği inşaat kalemine yazılır (settle: 'construction').
   game.emit('construction', state);
   game.emit('economy', nation.economy);
   return true;
@@ -2404,8 +2381,7 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
     factory.subsidyPaid = 0;
     if (factory.subsidized && factory.profit < 0) {
       const support = -factory.profit;
-      nation.gold -= support;
-      economy.subsidyGold = (economy.subsidyGold ?? 0) + support;
+      settle(nation, 'subsidy', -support);
       factory.subsidyPaid = support;
       factory.profit = 0;
     }
@@ -2708,23 +2684,50 @@ function fiscalBalance(nation, baseOutputValue, industrialOutput) {
     socialClass.taxPaid = socialClass.income * (economy.taxes[classId] / 100);
     taxes += socialClass.taxPaid;
   }
-  const social = socialSpendingCost(nation);
-  // Tahsilat verimi yönetim bütçesine bağlıdır (%100'te tam, %30'da %68) —
-  // eski Administration binasinin +%4'luk ulusal sayaci buraya katildi:
-  // yonetim tek bir kavram, tek bir kaldiractir (bkz. cities.administrationCost:
-  // gideri artik nufusla buyur, yani kaydiraci dusurmenin gercek bir getirisi var).
-  taxes *= taxEfficiency(nation);
+  // Tahsilat verimi ARTIK YOK. Eski `taxEfficiency` bir kaydiracin (adminFunding)
+  // ciktisiydi ve olculdu: butun menzili hazineyi %0.6 oynatiyordu, yani gurultu
+  // tabaninin 85 kati altinda. Ustelik hane BRUT vergiyi dususuyor, hazine ise
+  // net aliyordu; aradaki %0-31.5 modelden sessizce siliniyordu ve ekranda
+  // sinif satirlari toplami gelir satirini tutmuyordu. Vergi artik ne
+  // toplaniyorsa odur.
   const construction = constructionUpkeep(nation);
   economy.taxRevenue = taxes;
-  // Trade is cleared after every country has submitted its weekly orders.
-  // Tariff income is applied by settleGlobalTrade so domestic consumption is
-  // never taxed as an import.
-  economy.tariffRevenue = 0;
-  economy.socialCost = social;
   economy.constructionUpkeep = construction;
-  economy.fiscalNet = taxes - social - construction;
-  // Kelepçe yok: açık görünür kalır, kapanışta borçlanma devralır (settleDebt).
-  nation.gold += economy.fiscalNet;
+
+  // TEK PARA YOLU. Her kalem kendi defter satirina yazilir; `fiscalNet` diye
+  // ikinci bir bakiye tanimi YOK — bakiye haftalik kapanista tek yerde cikar.
+  settle(nation, 'tax', taxes);
+  settle(nation, 'construction', -construction);
+  for (const program of Object.values(SOCIAL_PROGRAMS)) {
+    const cost = programmeCost(nation, program.id);
+    if (cost > 0) settle(nation, program.ledgerLine, -cost);
+  }
+  // Yasayla verilen hak kaydiractan ayridir ve kisilamaz; refah satirina yazilir.
+  const mandated = (economy.population / 10000) * reformModifiers(nation).socialBurden;
+  if (mandated > 0) settle(nation, 'welfare', -mandated);
+  economy.socialCost = socialSpendingCost(nation);
+}
+
+/** TEK BAKIYE TANIMI (dis dunya icin de: bkz. treasury.weeklyBalance). */
+export function weeklyBalanceOf(nation) {
+  return nation?.economy?.ledger?.net ?? 0;
+}
+
+/**
+ * IFLAS/BOLLUK TANIMI — TEK YER. Esik ULKENIN KENDI OLCEGINE goredir: mutlak
+ * bir `gold < 80` esigi buyuk ulkeyi asla, kucuk ulkeyi surekli tetikliyordu.
+ * Olcut sekiz haftalik sosyal gider; boylece "iki haftalik rezervim kalmadi"
+ * her olcekte ayni anlama gelir.
+ */
+export function fiscalStance(nation) {
+  const weekly = weeklyBalanceOf(nation);
+  const reserve = Math.max(8 * socialSpendingCost(nation), 40);
+  return {
+    weekly,
+    reserve,
+    broke: nation.gold < reserve * 0.25 || (weekly < 0 && nation.gold < reserve * 0.5),
+    rich: nation.gold > reserve * 1.5 && weekly > 0,
+  };
 }
 
 /**
@@ -2732,7 +2735,7 @@ function fiscalBalance(nation, baseOutputValue, industrialOutput) {
  * arastirmanin yakitidir (okuryazarlik -> researchPointsOf) ve bir kez
  * sifirlandiginda okuryazarlik stogu insan omru olceginde geri gelir.
  */
-const CUT_ORDER = ['welfare', 'health', 'education'];
+const CUT_ORDER = ['welfare', 'education'];
 
 /**
  * Hazine biriktikçe açılan sosyal harcama. YZ oyuncuyla aynı kaldıraçları
@@ -2741,38 +2744,21 @@ const CUT_ORDER = ['welfare', 'health', 'education'];
  */
 function adjustSocialAI(nation, report = null) {
   const economy = nation.economy;
-  // fiscalNet tek başına yanıltıcı: şehir bütçesi ayrı bir gelir kalemi.
-  // Sosyal harcamayı ölçerken haftalık *toplam* değişime bakılmalı.
-  const weekly = (nation.budget?.net?.gold ?? 0) + economy.fiscalNet;
-  let rich;
-  let broke;
-  if (FUEL_FIX) {
-    // CIRT KIRILDI. Eski esikler MUTLAKTI (`gold > 200` / `gold < 60`) ve
-    // asimetrikti: `weekli < 0` TEK BASINA kesmeye yetiyordu, yani herhangi
-    // bir kotu hafta on iyi haftanin kazanimini geri aliyordu. Olcum: 1860'ta
-    // medyan egitim 0'a iniyor ve yuzyilin kalanini orada geciriyordu.
-    // Yeni esik ULKENIN KENDI OLCEGINE gore: sekiz haftalik sosyal gider.
-    // Ikinci ayar (on-kayitli plan: "(a) duser, (k) gecerse once reserve/rich
-    // duyarliligi"): savas-yogun tohumlarda weekly<0 tek basina cok sik ates
-    // ediyordu — kesme kosulu yari rezerve, yukselme esigi 1.5x'e cekildi.
-    const reserve = 8 * socialSpendingCost(nation);
-    broke = nation.gold < reserve * 0.25 || (weekly < 0 && nation.gold < reserve * 0.5);
-    rich = nation.gold > reserve * 1.5 && weekly > 0;
-  } else {
-    rich = nation.gold > 200;
-    broke = nation.gold < 60 || weekly < 0;
-  }
+  // TEK BAKIYE. Gecen haftanin KAPANMIS net'i okunur — bilerek. Eski kod
+  // `budget.net.gold + fiscalNet` topluyordu ve o toplam gumruk gelirini
+  // GORMUYORDU (fiscalBalance tariffRevenue'yu sifirliyor, ticaret sonra
+  // dolduruyordu, YZ tam arada kosuyordu). Gumruk gelirin ~%40'iydi: korumaci
+  // bir YZ dolu hazineyle kendini iflas etmis sanip okullari kesiyordu.
+  const { broke, rich } = fiscalStance(nation);
   const step = broke ? -10 : rich ? 10 : 0;
   if (!step) return;
   // Yukseltme sirasi istikrara gore degisir. KESME sirasi ise artik sabittir:
   // eskiden yukseltme sirasi ters cevrilerek turetiliyordu ve bu, istikrar
   // 0.5'in altindayken EGITIMI ILK kesiyordu — yani ulke tam da zordayken.
   const raiseOrder = economy.stability < 0.5
-    ? ['welfare', 'health', 'education']
-    : ['education', 'health', 'welfare'];
-  const order = broke
-    ? (FUEL_FIX ? CUT_ORDER : [...raiseOrder].reverse())
-    : raiseOrder;
+    ? ['welfare', 'education']
+    : ['education', 'welfare'];
+  const order = broke ? CUT_ORDER : raiseOrder;
   for (const id of order) {
     const current = economy.social[id] ?? 0;
     if (step > 0 && current < 100) {
@@ -2782,7 +2768,7 @@ function adjustSocialAI(nation, report = null) {
       return;
     }
     if (step < 0) {
-      const floor = FUEL_FIX ? socialFloorOf(nation, id) : 0;
+      const floor = socialFloorOf(nation, id);
       if (current > floor) {
         const next = Math.max(floor, current + step);
         economy.social[id] = next;
@@ -2852,9 +2838,12 @@ function investmentOptions(world, nation) {
  */
 function adjustFiscalAI(nation, areas = FULL_FISCAL) {
   const economy = nation.economy;
-  const weekly = (nation.budget?.net?.gold ?? 0) + economy.fiscalNet;
-  const broke = nation.gold < 80 || weekly < 0;
-  const rich = nation.gold > 600 && weekly > 0;
+  const weekly = weeklyBalanceOf(nation);
+  // IFLAS TANIMI TEK. Eskiden adjustSocialAI olcek-goreli (ulkenin kendi
+  // sosyal giderine gore), adjustFiscalAI ise MUTLAK (gold < 80) tanimliyordu;
+  // aradaki not mutlak esiklerin OLCULEN hata oldugunu yaziyordu ama duzeltme
+  // yalniz birine uygulanmisti. Ikisi de artik ayni fonksiyonu cagirir.
+  const { broke, rich } = fiscalStance(nation);
   if (areas.budget && (broke || rich)) {
     // Vergiyi önce en varlıklı sınıftan artır, indirirken en yoksuldan başla:
     // hem gelir hem memnuniyet açısından en ucuz sıra budur.
@@ -3261,7 +3250,7 @@ function procureStrategicGoods(world) {
       const cost = amount * unitPrice;
       setEquipmentStock(nation, id, equipmentStock(nation, id) + amount);
       military[field.imported] = amount;
-      nation.gold -= cost;
+      settle(nation, 'imports', -cost);
       nation.economy.importCost += cost;
       available[id] -= amount;
       addFlow(world.market, id, 'demand', amount);
@@ -3416,8 +3405,10 @@ export function settleGlobalTrade(world) {
     trade.lastUpdated = world.turn;
     nation.economy.tariffRevenue = trade.tariffRevenue;
     nation.economy.externalSettlement = trade.settlement;
-    nation.economy.fiscalNet += trade.tariffRevenue + trade.settlement;
-    nation.gold += trade.tariffRevenue + trade.settlement;
+    // (Defter satiri asagida `settle('settlement', ...)` ile yazilir; bu alan
+    // yalnizca ticaret ekraninin gosterdigi ham dis pozisyondur.)
+    settle(nation, 'tariff', trade.tariffRevenue);
+    settle(nation, 'settlement', trade.settlement);
   }
 }
 
@@ -3434,6 +3425,10 @@ function marketInputAvailability(market) {
  * çünkü faizi ödeyecek olan hazinedir; zengin ama vergisiz ülke borç bulamaz.
  */
 export function debtCapacity(nation) {
+  // GECEN HAFTANIN KAPANMIS geliri — bilerek. Yarim kalmis bir haftanin
+  // toplamini okumak, kapasiteyi cagri yerine gore degistirirdi (eski surumde
+  // tam bu oluyordu: settleDebt bir vintage, ekran baska bir vintage
+  // goruyordu). Kapanmis defter her yerde ayni sayidir.
   const weekly = Math.max(0, nation.economy?.ledger?.income ?? 0);
   // Temerrude dusen devlete daha az borc verilir. Bu carpan olmadan iflasin
   // hicbir bedeli olmuyordu (bkz. settleDebt).
@@ -3464,29 +3459,25 @@ function settleDebt(nation) {
   const economy = nation.economy;
   nation.debt = Math.max(0, nation.debt ?? 0);
   const interest = nation.debt * debtInterestRate(nation) / 52;
-  nation.gold -= interest;
-  economy.interestGold = interest;
-  economy.borrowedGold = 0;
-  economy.repaidGold = 0;
-
-  economy.defaultedGold = 0;
+  settle(nation, 'interest', -interest);
+  let defaulted = 0;
   economy.creditPenalty = clamp(economy.creditPenalty ?? 0, 0, 0.85);
 
   if (nation.gold < 0) {
     const room = Math.max(0, debtCapacity(nation) - nation.debt);
     const borrow = Math.min(-nation.gold, room);
     nation.debt += borrow;
-    nation.gold += borrow;
-    economy.borrowedGold = borrow;
+    settle(nation, 'borrow', borrow);
     // Kapasite dolduysa devlet TEMERRUDE duser: kalan acik odenmez, hazine
     // sifira oturur. Eskiden bu acik hazinede sinirsiz negatif olarak
     // birikiyordu (olculdu: -23.350 altin, geri donusu olmayan bir cukur;
     // 1040. haftada ulkelerin %30'u oradaydi). Temerrut bedavaya degildir:
     // kredi itibari duser, kapasite daralir, faiz tirmanir.
     if (nation.gold < 0) {
-      const defaulted = -nation.gold;
-      nation.gold = 0;
-      economy.defaultedGold = defaulted;
+      defaulted = -nation.gold;
+      // Temerrut BIR BILANCO HAREKETIDIR: odenmeyen acik hazineyi sifira
+      // cikarir ve defterde kendi satirinda gorunur.
+      settle(nation, 'default', defaulted);
       economy.creditPenalty = clamp(
         economy.creditPenalty + defaulted / Math.max(1, debtCapacity(nation)),
         0,
@@ -3506,12 +3497,11 @@ function settleDebt(nation) {
     // çeyreği borca gider. Oyuncu isterse bütçeyi sıkıp hızlandırır.
     const repay = Math.min(nation.debt, (nation.gold - DEBT_CUSHION) * 0.25);
     nation.debt -= repay;
-    nation.gold -= repay;
-    economy.repaidGold = repay;
+    settle(nation, 'repay', -repay);
   }
   // Itibar borcunu odeyen ulkede yavasca geri gelir: temerrut kalici bir olum
   // cezasi degil, yillar suren bir bedeldir (yarilanma ~70 hafta).
-  if (economy.defaultedGold <= 0 && nation.gold > DEBT_CUSHION) {
+  if (defaulted <= 0 && nation.gold > DEBT_CUSHION) {
     economy.creditPenalty = Math.max(0, economy.creditPenalty - 0.01);
   }
 }
@@ -3519,99 +3509,20 @@ function settleDebt(nation) {
 /** Geri ödemeye başlamadan önce hazinede tutulan yastık. */
 const DEBT_CUSHION = 25;
 
-function updateLedger(nation, turn) {
-  const economy = nation.economy;
-  const budget = nation.budget ?? {};
-  const cityRevenue = Math.max(0, budget.production?.gold ?? 0);
-  const tariffRevenue = economy.tariffRevenue ?? 0;
-  // Dis hesap kapanisi: fazla gelirdir, acik giderdir. Ayri satir olarak
-  // tutulur cunku oyuncunun gormesi gereken sey "gumruk" degil, ULKENIN dis
-  // pozisyonunun hazineye ne yaptigi.
-  const externalSettlement = economy.externalSettlement ?? 0;
-  const armyCost = Math.max(0, budget.armyGold ?? 0);
-  const administrationCost = Math.max(0, budget.administration ?? 0);
-  const socialCost = Math.max(0, economy.socialCost ?? 0);
-  const importCost = Math.max(0, economy.importCost ?? 0);
-  const constructionCost = Math.max(0, economy.constructionUpkeep ?? 0);
-  // Barış anlaşmalarının para tarafı: ödenen tazminat/haraç gider, alınan gelir.
-  const treatyCost = Math.max(0, economy.treatyCost ?? 0);
-  const treatyRevenue = Math.max(0, economy.treatyRevenue ?? 0);
-  // Haftanın tek seferlik alımları (birim, şehir, general, proje desteği).
-  // Biriktirme satın alma anında yapılır (bkz. cities.js pay); burada okunur
-  // ve sıfırlanır ki her hafta yalnız kendi harcamasını göstersin.
-  const outlayCost = Math.max(0, economy.outlayGold ?? 0);
-  economy.outlayGold = 0;
-  // Askeri tedarik: alıkonan teçhizat + ordunun haftalık tüketimi, piyasa
-  // fiyatından. armyCost yalnız MAAŞTIR; ikisini ayırmak "ordu neden pahalı"
-  // sorusunun cevabını ekranda görünür kılar.
-  const procurementCost = Math.max(0, economy.procurementGold ?? 0);
-  economy.procurementGold = 0;
-  const subsidyCost = Math.max(0, economy.subsidyGold ?? 0);
-  economy.subsidyGold = 0;
-  // Devlet insaat/fabrika fonlamasi tek seferlik alimlardan ayri gosterilir:
-  // "State purchases" birim/sehir/general, "Project funding" santiyedir.
-  const projectCost = Math.max(0, economy.projectGold ?? 0);
-  economy.projectGold = 0;
-  // SIRKET KANALLARI (bkz. companies.js, ACCOUNTING_INVARIANTS L10-L12).
-  // Ucu de TRANSFERDIR, uretim degil: temettu yabanci ust sinifin gelirinden
-  // dusuldu, hisse bedeli karsi tarafin ozel sermaye havuzuna gitti.
-  const dividendRevenue = Math.max(0, economy.dividendGold ?? 0);
-  economy.dividendGold = 0;
-  const shareCost = Math.max(0, economy.shareCostGold ?? 0);
-  economy.shareCostGold = 0;
-  const shareRevenue = Math.max(0, economy.shareSaleGold ?? 0);
-  economy.shareSaleGold = 0;
-  // Borç kapanışı gelir/gider bilinmeden ÖNCE koşamaz (kapasite gelire
-  // bakar) ama defter yazılmadan önce koşmalı ki faiz ve finansman satırları
-  // bu haftanın kaydına girsin.
+/**
+ * HAFTALIK KAPANIS. Defteri KURMAZ, TOPLAR.
+ *
+ * Eski `updateLedger` haftanin gercegini on bir ayri cizik alandan yeniden
+ * insa etmeye calisiyordu; her unutulan karsi kayit sessiz bir sapmaydi.
+ * Artik her para hareketi olustugu anda `settle()` ile kendi satirina yazildi,
+ * burada yalnizca toplanir. `ledger.unreconciled` sifirdan farkliysa bir yerde
+ * hazineye settle() disindan dokunulmus demektir.
+ */
+function closeNationWeek(nation, turn) {
+  // Borc kapanisi defterden ONCE: faiz, borclanma ve geri odeme bu haftanin
+  // kaydina girsin.
   settleDebt(nation);
-  const interestCost = Math.max(0, economy.interestGold ?? 0);
-  // 52 haftalık hazine izi: bütçe ekranındaki grafik buradan çizilir.
-  economy.treasuryHistory ??= [];
-  economy.treasuryHistory.push(Number(nation.gold.toFixed(1)));
-  if (economy.treasuryHistory.length > 52) economy.treasuryHistory.shift();
-  const income = cityRevenue + (economy.taxRevenue ?? 0)
-    + Math.max(0, tariffRevenue) + treatyRevenue
-    + Math.max(0, externalSettlement) + dividendRevenue + shareRevenue;
-  const expenses = armyCost + administrationCost + socialCost + importCost
-    + constructionCost + treatyCost + outlayCost + procurementCost
-    + subsidyCost + projectCost + interestCost + shareCost
-    + Math.max(0, -tariffRevenue)
-    + Math.max(0, -externalSettlement);
-  economy.ledger = {
-    lastUpdated: turn,
-    cityRevenue,
-    taxRevenue: economy.taxRevenue ?? 0,
-    tariffRevenue,
-    externalSettlement,
-    armyCost,
-    administrationCost,
-    socialCost,
-    importCost,
-    constructionCost,
-    treatyCost,
-    treatyRevenue,
-    outlayCost,
-    procurementCost,
-    subsidyCost,
-    projectCost,
-    interestCost,
-    dividendRevenue,
-    shareCost,
-    shareRevenue,
-    // Finansman satırları gelir/gider DEĞİLDİR (bilanço hareketi): kimlik
-    // Δhazine = net + borçlanılan − ödenen şeklinde kapanır.
-    borrowed: economy.borrowedGold ?? 0,
-    repaid: economy.repaidGold ?? 0,
-    // Odenmeyen acik da bir bilanco hareketidir: kimlik
-    // Δhazine = net + borclanilan − odenen + temerrut.
-    defaulted: economy.defaultedGold ?? 0,
-    creditPenalty: economy.creditPenalty ?? 0,
-    debt: nation.debt ?? 0,
-    income,
-    expenses,
-    net: income - expenses,
-  };
+  closeWeek(nation, turn);
 }
 
 /** Fiyat grafiginin tuttugu ornek sayisi (haftalik). */
@@ -3909,9 +3820,8 @@ export function runNationEconomy(game, nation, ctx) {
       // (runFactories bütün çıktıyı fiyatlandırır) ama karşısında hiçbir
       // ödeme yoktu — bütçe ile sanayi arasındaki delik buydu.
       const retainedCost = retainedFactory * price;
-      nation.gold -= retainedCost;
+      settle(nation, 'procurement', -retainedCost);
       retainedBudget = Math.max(0, retainedBudget - retainedCost);
-      nation.economy.procurementGold = (nation.economy.procurementGold ?? 0) + retainedCost;
     }
     mark('military');
     populationDemand(world, nation, market);
@@ -3944,8 +3854,10 @@ export function runNationEconomy(game, nation, ctx) {
       // ödenmez ama ikmal endeksini düşürür.
       const fulfilled = clamp(nation.economy.goodsFlow?.[id]?.fulfilledShare ?? 1, 0, 1);
       const consumptionCost = amount * fulfilled * priceOf(world, id);
-      nation.gold -= consumptionCost;
-      nation.economy.procurementGold = (nation.economy.procurementGold ?? 0) + consumptionCost;
+      // ZORUNLU GIDER, bilerek: ordu yedigini yer. Hazine yetmezse hafta
+      // eksiye doner ve borclanma devralir (settleDebt) — sessizce kirpmak
+      // "ordum neden acti" sorusunu cevapsiz birakirdi.
+      settle(nation, 'procurement', -consumptionCost);
       armySupplyWeighted += fulfilled * amount;
       armySupplyTotal += fullDemand[id] ?? amount;
     }
@@ -3995,7 +3907,7 @@ export function finishEconomy(game, ctx) {
     // kaydina girsin. Ulke sirasi sabit, karar deterministik (zar yok).
     runInvestmentAI(game, nation);
     updateMilitaryAverages(nation);
-    updateLedger(nation, world.turn);
+    closeNationWeek(nation, world.turn);
   }
   updatePrices(market);
   market.lastUpdated = world.turn;

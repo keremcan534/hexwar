@@ -1,6 +1,7 @@
 // Tur döngüsü: oyuncu hamlesini bitirir -> yapay zekâ oynar -> yeni tur başlar.
 
 import { makeRng } from '../core/rng.js';
+import { settle } from './treasury.js';
 import {
   UNIT_TYPES, advanceEntrenchment, clearPath, createUnit, refreshArmy,
   removeUnit, resetUnitIds, stackFull,
@@ -559,8 +560,13 @@ export class TurnManager {
       const budget = nationBudget(world, nation, totals);
       nation.budget = budget;
 
+      // UC AYRI KALEM, tek bir "net" degil. Eskiden bu uc sey `budget.net.gold`
+      // icinde toplanip hazineye tek satirda ekleniyordu; oyuncu ordusunun mu
+      // yoksa yonetiminin mi pahali oldugunu defterden goremiyordu.
       // Kelepçe yok: açık borçlanmayla kapanır (economy.js settleDebt).
-      nation.gold += budget.net.gold;
+      settle(nation, 'state', budget.production.gold);
+      settle(nation, 'army', -budget.armyGold);
+      settle(nation, 'administration', -budget.administration);
     }
     this.payTreaties();
   }
@@ -582,11 +588,6 @@ export class TurnManager {
     // Sıfırlama ayrı geçiştir: alacaklı ülkeye yazılan geliri, ana döngü ona
     // sıra gelince silerdi.
     for (const nation of world.nations) {
-      if (!nation.economy) continue;
-      nation.economy.treatyCost = 0;
-      nation.economy.treatyRevenue = 0;
-    }
-    for (const nation of world.nations) {
       if (!nation.alive) continue;
       for (const treaty of treatiesOf(nation)) {
         const holder = world.nations[treaty.partner];
@@ -594,12 +595,17 @@ export class TurnManager {
         const share = treaty.type === 'VASSALIZE' ? 0.15
           : treaty.type === 'REPARATIONS' ? 0.2 : 0;
         if (!share) continue;
-        const due = Math.max(0, (nation.budget?.net?.gold ?? 0)) * share;
+        // TABAN DUZELTILDI. peace.js "a share of their treasury income" vaat
+        // ediyor; eski kod `budget.net.gold` uzerinden hesapliyordu ve o sayi
+        // vergiyi, gumrugu ve dis hesabi HARIC tutuyordu. Olculdu: 520 haftalik
+        // kosuda treatyCost her ulkede tam olarak 0'di — savasi kazanip
+        // tazminat dayatmak hicbir sey transfer etmiyordu. Artik defterin
+        // kapanmis GELIR satiri esas alinir: vaat edilen sey buydu.
+        const base = Math.max(0, nation.economy?.ledger?.income ?? 0);
+        const due = base * share;
         if (due <= 0) continue;
-        nation.gold -= due;
-        holder.gold += due;
-        if (nation.economy) nation.economy.treatyCost += due;
-        if (holder.economy) holder.economy.treatyRevenue = (holder.economy.treatyRevenue ?? 0) + due;
+        settle(nation, 'treaty', -due);
+        settle(holder, 'treaty', due);
       }
     }
   }

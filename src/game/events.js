@@ -80,7 +80,7 @@ function regimentsOf(world, nationId) {
  * ucusmaz) hem de olayi gercekten haber degeri olan yere baglar.
  */
 function debtPhase(nation) {
-  if ((nation.economy?.defaultedGold ?? 0) > 0.01) return 'default';
+  if ((nation.economy?.ledger?.default ?? 0) > 0.01) return 'default';
   const debt = Math.max(0, nation.debt ?? 0);
   if (debt <= 0.01) return 'clear';
   const monthlyIncome = Math.max(0, nation.economy?.ledger?.income ?? 0) * 4;
@@ -91,7 +91,7 @@ function debtPhase(nation) {
 function announceDebt(game, nation, state, from, to) {
   const ledger = nation.economy?.ledger ?? {};
   const weekly = ledger.net ?? 0;
-  const interest = nation.economy?.interestGold ?? 0;
+  const interest = Math.abs(nation.economy?.ledger?.interest ?? 0);
   const line = `Debt ${money(nation.debt ?? 0)} · weekly ${weekly >= 0 ? '+' : ''}${money(weekly)} · interest ${money(interest)}/wk`;
   // 'minor' gecis konusmaz: kucuk acik gelir gider, haber degeri yoktur.
   if (to === 'minor') return;

@@ -20,6 +20,7 @@
 // Katman notu: burasi saf veri + hesap + emir. DOM'a dokunmaz.
 
 import { DIRS, hexesInRange } from '../core/hex.js';
+import { settle } from './treasury.js';
 import { atWar } from './diplomacy.js';
 import { MAX_ASSAULT_DIVISIONS, startBattle } from './battles.js';
 import { orderMove } from './movement.js';
@@ -1017,9 +1018,7 @@ function refreshOfficerCorps(game, nation, rng) {
     if (officersOf(nation, branch).length >= wanted) continue;
     const cost = generalCost(nation);
     if (nation.gold < cost.gold) return;
-    nation.gold -= cost.gold;
-    // Atama bedeli de deftere: bkz. cities.js pay() içindeki not.
-    if (nation.economy) nation.economy.outlayGold = (nation.economy.outlayGold ?? 0) + cost.gold;
+    settle(nation, 'outlay', -cost.gold);
     nation.generals.push(createGeneral(world, nation, rng, { branch }));
   }
 }
