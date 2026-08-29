@@ -26,8 +26,10 @@ function scenario(label, levers) {
 const at = (r, week) => (week >= WEEKS ? { ...r.snap, cohorts: r.cohorts }
   : r.trace.find((t) => t.week === WARMUP + 1 + week) ?? r.trace[Math.floor(week / TRACE) - 1]);
 
-const taxAll = (v) => ['lower', 'middle', 'upper'].map((c) => ({ key: 'tax', value: v, classId: c }));
-const taxOne = (c, v) => [{ key: 'tax', value: v, classId: c }];
+// TEK ORAN: sinif basina kaydirac kalmadi. "Kim oder" iktidarin
+// ideolojisinden turer (economy.js TAX_STRUCTURES), oran herkes icin ayni.
+const taxAll = (v) => [{ key: 'taxRate', value: v }];
+const taxOne = (c, v) => [{ key: 'taxRate', value: v }];
 
 function row(label, m, cohorts) {
   return {

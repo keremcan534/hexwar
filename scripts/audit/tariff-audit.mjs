@@ -13,7 +13,7 @@ import {
   runScenario, section, sub, table, finding, reportFindings, n1, n2, n0, pct, relDelta,
 } from './harness.mjs';
 import { headless, run } from './harness.mjs';
-import { setFiscalPolicy } from '../../src/game/economy.js';
+import { setBudgetPolicy } from '../../src/game/economy.js';
 import { policyOf, rulingParty } from '../../src/game/politics.js';
 
 const SEED = 'tariff-audit';
@@ -147,9 +147,9 @@ const at = (t) => runs.find((r) => r.tariff === t);
   if (other) rulingParty(other).policies.trade = 'free_trade';
   const probe = (nation) => {
     if (!nation) return 'yok';
-    setFiscalPolicy(nation, 'tariff', 999);
+    setBudgetPolicy(nation, 'tariff', 999);
     const hi = nation.economy.tariff;
-    setFiscalPolicy(nation, 'tariff', -999);
+    setBudgetPolicy(nation, 'tariff', -999);
     const lo = nation.economy.tariff;
     return `${lo}..${hi}`;
   };

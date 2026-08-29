@@ -10,7 +10,7 @@ import { Game } from '../src/game/game.js';
 import { TurnManager } from '../src/game/turn.js';
 import { generateWorld } from '../src/world/worldgen.js';
 import { generateNations } from '../src/world/nations.js';
-import { setFiscalPolicy } from '../src/game/economy.js';
+import { setBudgetPolicy } from '../src/game/economy.js';
 
 function headless(seed) {
   const game = Object.create(Game.prototype);
@@ -41,7 +41,7 @@ function runScenario(lowerTax) {
   const world = game.world;
   const nation = world.nations.find((n) => n.alive && n.economy);
   game.turns.playerNation = nation.id;
-  setFiscalPolicy(nation, 'tax', lowerTax, 'lower');
+  setBudgetPolicy(nation, 'tax', lowerTax, 'lower');
 
   let consumption = 0;
   let taxRevenue = 0;
@@ -49,10 +49,10 @@ function runScenario(lowerTax) {
   for (let week = 0; week < WEEKS; week++) {
     game.turns.endTurn();
     // YZ'nin dokunmadigindan emin ol: oyuncu ulkesi her hafta sabit kalmali.
-    setFiscalPolicy(nation, 'tax', lowerTax, 'lower');
+    setBudgetPolicy(nation, 'tax', lowerTax, 'lower');
     const lower = nation.economy.classes.lower;
     consumption += lower.needsCost ?? 0;
-    taxRevenue += nation.economy.ledger?.taxRevenue ?? 0;
+    taxRevenue += nation.economy.ledger?.tax ?? 0;
     samples++;
   }
 

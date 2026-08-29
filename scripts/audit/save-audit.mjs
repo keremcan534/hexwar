@@ -32,7 +32,7 @@ function fingerprint(game) {
     n.economy.factories.reduce((s, f) => s + f.level, 0),
     Number(n.economy.factories.reduce((s, f) => s + f.employees, 0).toFixed(2)),
     Number((n.economy.stability ?? 0).toFixed(6)),
-    n.economy.taxes.lower, n.economy.taxes.middle, n.economy.taxes.upper,
+    n.economy.taxRate, n.economy.armyFunding,
     n.economy.tariff,
     (n.construction?.projects ?? []).length,
     (n.construction?.buildings ?? []).length,

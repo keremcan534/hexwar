@@ -25,7 +25,7 @@ function snapshot(nation) {
     upperSat: c.upper?.satisfaction ?? 0,
     lowerBudget: c.lower?.needsBudget ?? 0,
     factoryProfit: e?.factoryProfit ?? 0,
-    socialCost: e?.ledger?.socialCost ?? 0,
+    socialCost: e?.ledger?.welfare ?? 0,
     radicalSupport: nation.politics?.parties
       ?.filter((p) => ['socialist', 'communist'].includes(p.ideology))
       .reduce((s, p) => s + p.support, 0) ?? 0,

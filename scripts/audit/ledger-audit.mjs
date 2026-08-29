@@ -11,7 +11,7 @@
 
 import { headless, pickNation } from './harness.mjs';
 import {
-  LABOR_SHARE, PROFIT_TO_CAPITAL, PROFIT_TO_REINVEST, WAGE_SPLIT, taxEfficiency,
+  LABOR_SHARE, PROFIT_TO_CAPITAL, PROFIT_TO_REINVEST, WAGE_SPLIT,
 } from '../../src/game/economy.js';
 
 const findings = [];
@@ -58,7 +58,7 @@ console.log('='.repeat(74));
       .reduce((sum, factory) => sum + (factory.wages ?? 0), 0);
     worstL2 = Math.max(worstL2, Math.abs(factoryWages - wagesPaid));
     worstL4 = Math.max(worstL4, Math.abs((economy.taxRevenue ?? 0)
-      - taxes * taxEfficiency(nation)) / Math.max(1, taxes * taxEfficiency(nation)));
+      - taxes) / Math.max(1, taxes));
     const subsidyPaid = (economy.factories ?? [])
       .reduce((sum, factory) => sum + (factory.subsidyPaid ?? 0), 0);
     // subsidyGold updateLedger'da sifirlanir; haftalik birikim tesislerin

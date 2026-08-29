@@ -56,8 +56,8 @@ console.log(`  tohum ${SEED} · isitma ${WARMUP} hafta · savas 80 hafta · her 
 sub('Askeri maaş: taban (25%) vs tavan (100%) — ayni savas');
 {
   const rows = [
-    war('maas=taban', { levers: [{ key: 'militaryWages', value: 0 }] }),
-    war('maas=tavan', { levers: [{ key: 'militaryWages', value: 100 }] }),
+    war('maas=taban', { levers: [{ key: 'armyFunding', value: 0 }] }),
+    war('maas=tavan', { levers: [{ key: 'armyFunding', value: 100 }] }),
   ];
   console.log(table(rows, WAR_COLS));
   const d = relDelta(rows[0].army.power, rows[1].army.power);
@@ -73,8 +73,8 @@ sub('Askeri maaş: taban (25%) vs tavan (100%) — ayni savas');
 sub('Askeri tedarik: taban vs tavan — ayni savas');
 {
   const rows = [
-    war('tedarik=taban', { levers: [{ key: 'militaryProcurement', value: 0 }] }),
-    war('tedarik=tavan', { levers: [{ key: 'militaryProcurement', value: 100 }] }),
+    war('tedarik=taban', { levers: [{ key: 'armyFunding', value: 0 }] }),
+    war('tedarik=tavan', { levers: [{ key: 'armyFunding', value: 100 }] }),
   ];
   console.log(table(rows, WAR_COLS));
   const dSupply = relDelta(rows[0].snap.supplyIndex, rows[1].snap.supplyIndex);

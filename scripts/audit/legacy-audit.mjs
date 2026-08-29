@@ -12,7 +12,7 @@ import {
 } from './harness.mjs';
 import { IRON_UPKEEP_TYPES, nationBudget } from '../../src/game/cities.js';
 import { RESOURCES } from '../../src/world/terrain.js';
-import { setFiscalPolicy } from '../../src/game/economy.js';
+import { setBudgetPolicy } from '../../src/game/economy.js';
 
 const SEED = 'legacy-audit';
 
@@ -57,13 +57,13 @@ sub('2. Eski kaynak havuzu: food / timber / iron');
 }
 
 // ------------------------------------------- 3) ESKI KAYDIRAC UYUMLULUGU ---
-sub("3. setFiscalPolicy('armySpending') geriye donuk davranisi");
+sub("3. setBudgetPolicy('armySpending') geriye donuk davranisi");
 {
   const before = {
     wages: nation.economy.militaryWages,
     procurement: nation.economy.militaryProcurement,
   };
-  setFiscalPolicy(nation, 'armySpending', 55);
+  setBudgetPolicy(nation, 'armySpending', 55);
   const drivesBoth = nation.economy.militaryWages === 55
     && nation.economy.militaryProcurement === 55;
   console.log(`  armySpending=55 -> wages ${nation.economy.militaryWages},`
@@ -72,8 +72,8 @@ sub("3. setFiscalPolicy('armySpending') geriye donuk davranisi");
     finding('LOW', 'Eski armySpending anahtari iki kaydiraci surmuyor',
       'geriye donuk API iki yeni kaydiraci birden kurmali', '', '');
   }
-  setFiscalPolicy(nation, 'militaryWages', before.wages);
-  setFiscalPolicy(nation, 'militaryProcurement', before.procurement);
+  setBudgetPolicy(nation, 'armyFunding', before.wages);
+  setBudgetPolicy(nation, 'armyFunding', before.procurement);
 }
 
 // ------------------------------------------- 4) ESKI BIRIM TIPLERI ---

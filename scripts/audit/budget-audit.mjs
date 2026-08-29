@@ -28,7 +28,7 @@ console.log(`  tohum ${SEED} · isitma ${WARMUP} · olcum ${WEEKS} hafta · sava
 // ------------------------------------------------------- ASKERI MAAS ---
 sub('Askeri maaş (militaryWages)');
 {
-  const rows = LEVELS.map((v) => ({ v, r: scenario(`wages${v}`, [{ key: 'militaryWages', value: v }]) }));
+  const rows = LEVELS.map((v) => ({ v, r: scenario(`wages${v}`, [{ key: 'armyFunding', value: v }]) }));
   console.log(table(rows, [
     { label: 'istenen%', get: (x) => x.v },
     { label: 'gecerli%', get: (x) => x.r.snap.militaryWages },
@@ -60,7 +60,7 @@ sub('Askeri tedarik (militaryProcurement) — ordusu hasarli, barista');
 {
   const rows = LEVELS.map((v) => ({
     v,
-    r: scenario(`proc${v}`, [{ key: 'militaryProcurement', value: v }], {
+    r: scenario(`proc${v}`, [{ key: 'armyFunding', value: v }], {
       // Takviye hizini olcmek icin ordu bilerek yaralanir; saglam orduda
       // reinforcementNeed 0 olur ve kaydirac hicbir sey yapmiyor gorunur.
       mutations: [{ name: 'damageArmy', args: { ratio: 0.4 } }],
@@ -302,7 +302,7 @@ sub('Refah 0 / 50 / 100');
 // ------------------------------------------------------ YONETIM ---
 sub('Yonetim butcesi 30..100');
 {
-  const rows = [30, 50, 75, 100].map((v) => ({ v, r: scenario(`adm${v}`, [{ key: 'adminFunding', value: v }]) }));
+  const rows = [30, 50, 75, 100].map((v) => ({ v, r: scenario(`adm${v}`, [{ key: 'armyFunding', value: v }]) }));
   console.log(table(rows, [
     { label: 'yonetim%', get: (x) => x.v },
     { label: 'tahsilatVerimi', get: (x) => pct(x.r.taxEfficiency) },
@@ -333,15 +333,15 @@ sub('Yonetim butcesi 30..100');
 section('F. SIFIR HARCAMA DEVLETI');
 const zeroLevers = [
   ...Object.keys(SOCIAL_PROGRAMS).map((id) => ({ key: 'social', value: 0, classId: id })),
-  { key: 'militaryWages', value: 0 },
-  { key: 'militaryProcurement', value: 0 },
-  { key: 'adminFunding', value: 0 },
+  { key: 'armyFunding', value: 0 },
+  { key: 'armyFunding', value: 0 },
+  { key: 'armyFunding', value: 0 },
 ];
 const maxLevers = [
   ...Object.keys(SOCIAL_PROGRAMS).map((id) => ({ key: 'social', value: 100, classId: id })),
-  { key: 'militaryWages', value: 100 },
-  { key: 'militaryProcurement', value: 100 },
-  { key: 'adminFunding', value: 100 },
+  { key: 'armyFunding', value: 100 },
+  { key: 'armyFunding', value: 100 },
+  { key: 'armyFunding', value: 100 },
 ];
 const base = scenario('base', []);
 const zero = scenario('zero', zeroLevers);

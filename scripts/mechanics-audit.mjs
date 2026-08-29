@@ -16,7 +16,7 @@ import { TurnManager } from '../src/game/turn.js';
 import { generateWorld } from '../src/world/worldgen.js';
 import { generateNations } from '../src/world/nations.js';
 import {
-  FACTORIES, SOCIAL_PROGRAMS, populationOf, setFiscalPolicy, socialSpendingCost,
+  FACTORIES, SOCIAL_PROGRAMS, populationOf, setBudgetPolicy, socialSpendingCost,
 } from '../src/game/economy.js';
 import { computeContacts, declareWar, nationStrength } from '../src/game/diplomacy.js';
 import { setAggression, STANCE } from '../src/game/command.js';
@@ -110,8 +110,8 @@ lever({
   name: 'Vergi orani -> hazine geliri',
   area: 'maliye',
   values: [0, 90],
-  setup: (g, v) => { for (const c of ['lower', 'middle', 'upper']) setFiscalPolicy(me(g), 'tax', v, c); },
-  measure: (g) => me(g).economy.ledger?.taxRevenue ?? 0,
+  setup: (g, v) => { for (const c of ['lower', 'middle', 'upper']) setBudgetPolicy(me(g), 'tax', v, c); },
+  measure: (g) => me(g).economy.ledger?.tax ?? 0,
   unit: 'altin/hafta',
   expect: 'up',
   asPlayer: true,
@@ -124,7 +124,7 @@ lever({
   area: 'maliye',
   weeks: 1,
   values: [0, 100],
-  setup: (g, v) => { for (const p of Object.values(SOCIAL_PROGRAMS)) setFiscalPolicy(me(g), 'social', v, p.id); },
+  setup: (g, v) => { for (const p of Object.values(SOCIAL_PROGRAMS)) setBudgetPolicy(me(g), 'social', v, p.id); },
   measure: (g) => socialSpendingCost(me(g)),
   unit: 'altin/hafta',
   expect: 'up',
@@ -135,7 +135,7 @@ lever({
   name: 'Sosyal harcama -> alt sinif memnuniyeti',
   area: 'maliye',
   values: [0, 100],
-  setup: (g, v) => { for (const p of Object.values(SOCIAL_PROGRAMS)) setFiscalPolicy(me(g), 'social', v, p.id); },
+  setup: (g, v) => { for (const p of Object.values(SOCIAL_PROGRAMS)) setBudgetPolicy(me(g), 'social', v, p.id); },
   measure: (g) => me(g).economy.classes.lower.satisfaction ?? 0,
   unit: 'memnuniyet',
   expect: 'up',
@@ -146,7 +146,7 @@ lever({
   name: 'Ordu butcesi -> muharebe gucu',
   area: 'maliye',
   values: [0, 100],
-  setup: (g, v) => setFiscalPolicy(me(g), 'armySpending', v),
+  setup: (g, v) => setBudgetPolicy(me(g), 'armySpending', v),
   measure: (g) => {
     const n = me(g);
     return (n.economy.armySpending ?? 0) / 100 * nationStrength(g.world, n);
@@ -161,7 +161,7 @@ lever({
   area: 'maliye',
   weeks: 30,
   values: [25, 100],
-  setup: (g, v) => setFiscalPolicy(me(g), 'militaryProcurement', v),
+  setup: (g, v) => setBudgetPolicy(me(g), 'armyFunding', v),
   measure: (g) => me(g).economy.military?.supplyIndex ?? 1,
   unit: 'endeks',
   expect: 'up',
@@ -172,8 +172,8 @@ lever({
   name: 'Yonetim butcesi -> vergi geliri',
   area: 'maliye',
   values: [30, 100],
-  setup: (g, v) => setFiscalPolicy(me(g), 'adminFunding', v),
-  measure: (g) => me(g).economy.ledger?.taxRevenue ?? 0,
+  setup: (g, v) => setBudgetPolicy(me(g), 'adminFunding', v),
+  measure: (g) => me(g).economy.ledger?.tax ?? 0,
   unit: 'altin/hafta',
   expect: 'up',
   asPlayer: true,
@@ -216,18 +216,18 @@ invariant({
     g.turns.playerNation = n.id;
     n.gold = -200;            // acik: borclanma tetiklensin
     g.turns.endTurn();
-    const borrowed = n.economy.ledger?.borrowed ?? 0;
+    const borrowed = n.economy.ledger?.borrow ?? 0;
     let interest = 0;
     for (let i = 0; i < 6; i++) {
       g.turns.endTurn();
-      interest += n.economy.ledger?.interestCost ?? 0;
+      interest += n.economy.ledger?.interest ?? 0;
     }
     const debtAfter = n.debt ?? 0;
     n.gold = 800;             // bolluk: geri odeme calissin
     let repaid = 0;
     for (let i = 0; i < 10; i++) {
       g.turns.endTurn();
-      repaid += n.economy.ledger?.repaid ?? 0;
+      repaid += n.economy.ledger?.repay ?? 0;
     }
     return {
       ok: borrowed > 0 && interest > 0 && repaid > 0 && (n.debt ?? 0) < debtAfter,
@@ -243,7 +243,7 @@ lever({
   name: 'Tarife -> hazine geliri',
   area: 'ticaret',
   values: [0, 50],
-  setup: (g, v) => setFiscalPolicy(me(g), 'tariff', v),
+  setup: (g, v) => setBudgetPolicy(me(g), 'tariff', v),
   measure: (g) => me(g).economy.tariffRevenue ?? 0,
   unit: 'altin/hafta',
   expect: 'up',
@@ -254,7 +254,7 @@ lever({
   name: 'Tarife -> ithalat MIKTARI (korumacilik koruyor mu)',
   area: 'ticaret',
   values: [0, 50],
-  setup: (g, v) => setFiscalPolicy(me(g), 'tariff', v),
+  setup: (g, v) => setBudgetPolicy(me(g), 'tariff', v),
   measure: (g) => me(g).economy.trade?.imports ?? 0,
   unit: 'birim/hafta',
   expect: 'down',
@@ -293,7 +293,7 @@ lever({
     }
     return best;
   },
-  setup: (g, v) => setFiscalPolicy(me(g), 'tariff', v),
+  setup: (g, v) => setBudgetPolicy(me(g), 'tariff', v),
   measure: (g) => me(g).economy.factoryProfit ?? 0,
   unit: 'altin/hafta',
   asPlayer: true,
@@ -470,7 +470,7 @@ invariant({
     run(g, 60);
     const n = me(g);
     const parti = rulingParty(n);
-    setFiscalPolicy(n, 'armySpending', 100);
+    setBudgetPolicy(n, 'armySpending', 100);
     const kisitli = n.economy.armySpending < 100;
     return {
       ok: Boolean(parti) && (kisitli || policyOf(n, 'military') !== 'pacifism'),

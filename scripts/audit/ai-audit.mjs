@@ -86,8 +86,8 @@ console.log(`  tarife      ${dist('tariff', [-50, -10, 0, 25, 50, 99])}`);
 console.log(`  egitim      ${dist('education', [0, 20, 40, 60, 100])}`);
 console.log(`  saglik      ${dist('health', [0, 20, 40, 60, 100])}`);
 console.log(`  refah       ${dist('welfare', [0, 20, 40, 60, 100])}`);
-console.log(`  askeriMaas  ${dist('militaryWages', [25, 50, 75, 100])}`);
-console.log(`  tedarik     ${dist('militaryProcurement', [25, 50, 75, 100])}`);
+console.log(`  askeriMaas  ${dist('armyFunding', [25, 50, 75, 100])}`);
+console.log(`  tedarik     ${dist('armyFunding', [25, 50, 75, 100])}`);
 console.log(`  yonetim     ${dist('adminFunding', [30, 50, 75, 100])}`);
 
 sub('En kotu 12 ulke (borc yuku)');

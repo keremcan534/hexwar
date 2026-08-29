@@ -5,7 +5,7 @@ import { Game } from '../src/game/game.js';
 import { TurnManager } from '../src/game/turn.js';
 import { generateWorld } from '../src/world/worldgen.js';
 import { generateNations } from '../src/world/nations.js';
-import { setFiscalPolicy } from '../src/game/economy.js';
+import { setBudgetPolicy } from '../src/game/economy.js';
 
 function headless(seed) {
   const game = Object.create(Game.prototype);
@@ -29,10 +29,10 @@ function headless(seed) {
 function configure(game, { tax, tariff, army }) {
   const nation = game.world.nations[0];
   for (const classId of ['lower', 'middle', 'upper']) {
-    setFiscalPolicy(nation, 'tax', tax, classId);
+    setBudgetPolicy(nation, 'tax', tax, classId);
   }
-  setFiscalPolicy(nation, 'tariff', tariff);
-  setFiscalPolicy(nation, 'armySpending', army);
+  setBudgetPolicy(nation, 'tariff', tariff);
+  setBudgetPolicy(nation, 'armySpending', army);
 }
 
 function run(policy) {

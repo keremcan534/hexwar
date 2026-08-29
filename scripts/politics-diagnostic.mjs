@@ -7,7 +7,7 @@ import {
   rulingParty,
 } from '../src/game/politics.js';
 import {
-  FACTORIES, buildFactory, canBuildFactory, runEconomy, setFiscalPolicy,
+  FACTORIES, buildFactory, canBuildFactory, runEconomy, setBudgetPolicy,
 } from '../src/game/economy.js';
 import { constructionAtlas, ensureConstruction } from '../src/game/construction.js';
 import { deserialize, serialize } from '../src/game/save.js';
@@ -89,8 +89,8 @@ const treasuryAfterBuild = nation.gold;
 runEconomy(game);
 const capitalAfter = nation.politics.privateCapital;
 
-setFiscalPolicy(nation, 'tariff', 50);
-setFiscalPolicy(nation, 'armySpending', 100);
+setBudgetPolicy(nation, 'tariff', 50);
+setBudgetPolicy(nation, 'armySpending', 100);
 const limits = fiscalPolicyLimits(nation);
 
 const socialist = nation.politics.parties.find((party) => party.ideology === 'socialist');

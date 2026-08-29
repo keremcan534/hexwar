@@ -30,9 +30,9 @@ sub('Her hafta hazineyi bosalt: borc, faiz, kapasite nasil davraniyor (150 hafta
         debt: nation.debt ?? 0,
         capacity: debtCapacity(nation),
         rate: debtInterestRate(nation),
-        interest: nation.economy.ledger?.interestCost ?? 0,
-        borrowed: nation.economy.ledger?.borrowed ?? 0,
-        defaulted: nation.economy.ledger?.defaulted ?? 0,
+        interest: Math.abs(nation.economy.ledger?.interest ?? 0),
+        borrowed: nation.economy.ledger?.borrow ?? 0,
+        defaulted: nation.economy.ledger?.default ?? 0,
         credit: nation.economy.ledger?.creditPenalty ?? 0,
         income: nation.economy.ledger?.income ?? 0,
       });
@@ -75,23 +75,23 @@ sub('Faiz gercekten isliyor mu, bolluk borcu kapatiyor mu');
   game.turns.playerNation = nation.id;
   nation.gold = -600;
   runPeaceful(game, 1);
-  const borrowed = nation.economy.ledger?.borrowed ?? 0;
+  const borrowed = nation.economy.ledger?.borrow ?? 0;
   const debtAfter = nation.debt ?? 0;
   let interest = 0;
   let repaid = 0;
   const peakDebt = nation.debt ?? 0;
   for (let i = 0; i < 20; i++) {
     runPeaceful(game, 1);
-    interest += nation.economy.ledger?.interestCost ?? 0;
+    interest += Math.abs(nation.economy.ledger?.interest ?? 0);
     // Geri odeme bu dongude de olabilir (hazine yastigin ustundeyse);
     // ayri saymak "hic geri odenmedi" gibi yanlis bir tani veriyordu.
-    repaid += nation.economy.ledger?.repaid ?? 0;
+    repaid += Math.abs(nation.economy.ledger?.repay ?? 0);
   }
   const debtBeforeRepay = nation.debt ?? 0;
   nation.gold = 5000;
   for (let i = 0; i < 40; i++) {
     runPeaceful(game, 1);
-    repaid += nation.economy.ledger?.repaid ?? 0;
+    repaid += Math.abs(nation.economy.ledger?.repay ?? 0);
   }
   console.log(`  borc zirvesi ${n1(peakDebt)}`);
   console.log(`  borclanilan ${n1(borrowed)} · 20 haftalik faiz ${n2(interest)}`
@@ -125,7 +125,7 @@ sub('Borclan-geri ode dongusu para uretiyor mu (200 salinim)');
   console.log(`  ${cycles} salinim · net varlik (hazine - borc) ${n1(startNet)} -> ${n1(endNet)}`);
   console.log(`  NOT: hazine her salinimda elle set edildigi icin mutlak deger anlamli degil;`
     + ' bakilan sey borcun dongude eriyip erimedigi.');
-  console.log(`  son borc ${n1(nation.debt ?? 0)} · son faiz ${n2(nation.economy.ledger?.interestCost ?? 0)}`);
+  console.log(`  son borc ${n1(nation.debt ?? 0)} · son faiz ${n2(Math.abs(nation.economy.ledger?.interest ?? 0))}`);
 }
 
 // -------------------------------------------- 4) NEGATIF/SONSUZ DEGERLER ---
@@ -176,7 +176,7 @@ sub('400 hafta sonra dunyadaki borc dagilimi (YZ)');
     capacity: debtCapacity(n),
     load: (n.debt ?? 0) / Math.max(1, debtCapacity(n)),
     rate: debtInterestRate(n),
-    interest: n.economy.ledger?.interestCost ?? 0,
+    interest: Math.abs(n.economy.ledger?.interest ?? 0),
     income: n.economy.ledger?.income ?? 0,
     net: n.economy.ledger?.net ?? 0,
   })).sort((a, b) => b.load - a.load);

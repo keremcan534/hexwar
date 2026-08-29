@@ -22,8 +22,8 @@ const social = (e, h, w) => [
   { key: 'social', value: w, classId: 'welfare' },
 ];
 const army = (wage, proc) => [
-  { key: 'militaryWages', value: wage },
-  { key: 'militaryProcurement', value: proc },
+  { key: 'armyFunding', value: wage },
+  { key: 'armyFunding', value: proc },
 ];
 
 const STRATEGIES = [
@@ -41,22 +41,22 @@ const STRATEGIES = [
   { label: 'yalniz refah %100', levers: social(0, 0, 100) },
   { label: 'sifir ordu', levers: army(0, 0) },
   { label: 'tam ordu', levers: army(100, 100) },
-  { label: 'yonetim %30', levers: [{ key: 'adminFunding', value: 30 }] },
-  { label: 'yonetim %100', levers: [{ key: 'adminFunding', value: 100 }] },
+  { label: 'yonetim %30', levers: [{ key: 'armyFunding', value: 30 }] },
+  { label: 'yonetim %100', levers: [{ key: 'armyFunding', value: 100 }] },
   { label: 'tam subvansiyon', levers: [], repeatMutations: [{ name: 'subsidizeAll' }] },
   {
     label: 'OPTIMAL AVI: tavan vergi + tavan tarife + sifir sosyal + sifir ordu',
     levers: [...tax(100, 100, 100), { key: 'tariff', value: 100, raw: true },
-      ...social(0, 0, 0), ...army(0, 0), { key: 'adminFunding', value: 100 }],
+      ...social(0, 0, 0), ...army(0, 0), { key: 'armyFunding', value: 100 }],
   },
   {
     label: 'DENGELI: YZ vergi + tarife %50 + refah %60 + egitim %60',
     levers: [...tax(35, 42, 45), { key: 'tariff', value: 50, raw: true },
-      ...social(60, 30, 60), ...army(75, 65), { key: 'adminFunding', value: 100 }],
+      ...social(60, 30, 60), ...army(75, 65), { key: 'armyFunding', value: 100 }],
   },
   {
     label: 'REFAH DEVLETI: dusuk vergi + tam sosyal',
-    levers: [...tax(10, 15, 20), ...social(100, 100, 100), { key: 'adminFunding', value: 100 }],
+    levers: [...tax(10, 15, 20), ...social(100, 100, 100), { key: 'armyFunding', value: 100 }],
   },
   {
     label: 'INSAAT: 12 santiye + tavan vergi + tavan tarife',
