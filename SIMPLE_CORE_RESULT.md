@@ -242,6 +242,30 @@ Hiçbir iç duruma elle müdahale yok; senaryolar oyunun kendi kaldıraçlarıyl
 Zincir gerçekten işliyor: kömürü kesince çelik ölüyor, silah pahalanıyor;
 kömür dönünce silah üretimi toparlanıyor.
 
+### Aynı betik, aynı tohum, aynı tarayıcı — ESKİ ÇEKİRDEĞE karşı
+
+`master` ayrı bir sunucuda (`:5174`) açılıp **birebir aynı senaryolar** oynandı:
+
+| | ESKİ ÇEKİRDEK | BASİT ÇEKİRDEK |
+| --- | --- | --- |
+| Oyuncu ülkesi nüfusu (t1 → t261) | 967k → **890k (−%8)** | 967k → **988k (+%2)** |
+| Sepet karşılanması (t261) | 0.43 | **0.52** |
+| Beslenme | *(kavram yok — sepetin tamamı)* | **1.00** |
+| İşsizlik | %0.0 (ölü kaldıraç) | **%19.4** (gerçek sayı) |
+| Kömür şoku: kömür | 0.83× → 8.00× | 0.13× → 8.00× |
+| Kömür şoku: silah | 0.18× → 8.00× | 0.12× → 6.88× |
+| **Kömür dönünce: kömür** | **8.00× (tavanda kalıyor)** | **7.55× (geriliyor)** |
+| **Kömür dönünce: silah** | **8.00× · arz 19.7** | **0.72× · arz 41.9** |
+| Eğitim %10→%90: okuryazarlık | 0.051 → 0.135 (×2.6) | 0.094 → **0.425 (×4.5)** |
+| Eğitim %10→%90: teknoloji | 3 → 4 | 3 → **5** |
+
+En çarpıcı fark **toparlanma**: eski çekirdekte kömür üretimi geri geldiğinde
+kömür ve silah fiyatı **tavanda kalıyor**, çelik arzı 0.0'da donuyor — şok
+kalıcı. Yeni çekirdekte kömür geriliyor, silah arzı 7.0 → 41.9'a çıkıyor ve
+fiyat tabana yakın bir yere düşüyor. Aynı şey nüfusta da görünüyor: eski
+modelde oyuncu ülkesi 100 yılda %8 küçülüyor (lüks kıtlığı beslenme sayılıyor),
+yenisinde büyüyor ve halkı doyuyor.
+
 ---
 
 ## 100 yıllık karşılaştırma (aynı tohum, aynı dünya)
