@@ -109,9 +109,34 @@ export class TurnManager {
     initEconomy(world);
     for (const nation of world.nations) {
       if (!nation.alive) continue;
-      for (const typeId of ['INFANTRY', 'CAVALRY']) {
+      // BASLANGIC ORDUSU ULKENIN BOYUNA GORE.
+      //
+      // Eskiden herkes 1 piyade + 1 suvari ile basliyordu: uc eyaletli minor de,
+      // yirmi dort eyaletli imparatorluk da. Sonucu buyuk ulkenin sinirini
+      // savunamamasiydi -- iki tumen yirmi dort eyaletin cevresine dagilamaz,
+      // dolayisiyla imparatorluk ilk savasta kagit gibi yiritiliyordu ve
+      // oyuncunun bunu duzeltmek icin once yillarca asker toplamasi gerekiyordu.
+      //
+      // Olcek eyalet sayisi: oyuncunun haritada gordugu, sinir uzunluguyla
+      // dogru orantili ve kayda giren tek sayi. Tavan var, cunku baslangic
+      // ordusu bakim gideri demek (cities.js UNIT_UPKEEP: 1.4 altin + 1 gida
+      // tumen basi) ve devasa bir ulke kendini ilk haftada iflas ettirmemeli.
+      // `nation.provinces` sayaci ilk province gecisinden SONRA yazilir; bu
+      // kurulum aninda henuz 0'dir, o yuzden kumeler dogrudan sayilir.
+      const size = Math.max(1, (world.provinces ?? [])
+        .filter((p) => p.owner === nation.id && p.econ).length);
+      const count = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
+      const plan = [
+        ...Array(count(size / 4, 2, 8)).fill('INFANTRY'),
+        ...Array(count(size / 10, 1, 3)).fill('CAVALRY'),
+      ];
+      for (const typeId of plan) {
+        // recruit() insan gucu havuzundan ceker ve havuz bitince null doner:
+        // plan bir HEDEFTIR, garanti degil. Nufusu yetmeyen ulke daha az
+        // tumenle baslar -- dogrusu da budur.
         const unit = recruit(this.game, nation, typeId)
           ?? this.spawnAt(nation, typeId, { fallbackToCapital: true });
+        if (!unit) break;
         // Only an emergency fallback can lack province draws. Mark it
         // explicitly so disbanding can never create population from nothing.
         if (unit?.regiments?.[0] && !unit.regiments[0].draws) unit.regiments[0].draws = [];

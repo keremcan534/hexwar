@@ -485,17 +485,28 @@ function rgoPriceDrive(world, econ) {
 }
 
 /**
- * Sepetinin bu oranindan azini alabilen nufus aclik cekmeye baslar. %50 bilerek
- * comert: eksik luks tuketim olum demek degildir, asil kirilma temel gidanin
- * alinamamasidir.
+ * ACLIKTAN OLUM KALDIRILDI — Victoria'da boyle bir sey yok.
+ *
+ * Eski kural: `needsMet` (BUTUN sepetin karsilanma orani) 0.5'in altina
+ * duserse nufus haftada `famine * 0.0012` oraninda ERIYORDU. Iki ayri hatasi
+ * vardi ve ikisi de olculdu:
+ *
+ *   1. Yanlis kapi. Sepet gida + giyim + likor + mobilya + telefon demekti.
+ *      Sarap alamayan ulke "aclik" sayiliyordu. (economy.js FOOD_GOODS artik
+ *      gida yarisini ayiriyor ve hane once onu aliyor.)
+ *   2. Yanlis sonuc. Erime MONOTONDU: taban yoktu, bir kez cizginin altina
+ *      dusen ulke geri donemiyordu. 110 haftalik kampanyada dunya nufusu
+ *      %62-70 eriyor, son haftada hala dusuyordu.
+ *
+ * Yerine Victoria'nin yaptigi sey: karsilanmayan ihtiyac nufusu OLDURMEZ,
+ * buyumeyi durdurur ve sinif atlamayi (promotion) askiya alir. Yoksul ulke
+ * buyumez ve yerinde sayar; nufusunu kaybetmez. Nufus kaybi artik yalnizca
+ * savas ve isgal yoluyla olur — yani oyuncunun gorebildigi bir sebeple.
+ *
+ * `famineDeaths` alani KORUNUR: savas/isgal kaynakli dusus hala oraya yazilir
+ * ve ekran onu okur.
  */
-const FAMINE_THRESHOLD = 0.5;
-/**
- * Tam aclikta haftalik nufus kaybi. 0.0012 ile bes yillik (260 hafta) toplam
- * aclik nufusu ~%27 eritir: gorunur ve geri donulebilir bir felaket, anlik
- * cokus degil.
- */
-const FAMINE_DECLINE = 0.0012;
+const FOOD_FLOOR = 0.25;
 
 /**
  * Fazla nüfusun RGO çıktısını ne kadar büyütebileceğinin tavanı. Sınırsız
@@ -807,17 +818,18 @@ export function runProvinces(game) {
     // yoktu — dunya tahil uretimi TAMAMEN kesildiginde bile 120 haftalik
     // nufus farki %0.0 olcusundeydi. Ac nufus once buyumeyi durdurur, uzayan
     // aclik ise nufusu eritir.
-    const nourishment = clamp(nation.economy?.needsMet ?? 1, 0, 1);
-    const famine = nourishment < FAMINE_THRESHOLD
-      ? (FAMINE_THRESHOLD - nourishment) / FAMINE_THRESHOLD : 0;
+    // GIDA, sepet degil (bkz. economy.js FOOD_GOODS / foodMet).
+    const nourishment = clamp(nation.economy?.foodMet ?? 1, 0, 1);
     // Taban Vic2 ölçeğinde: en iyi koşulda yılda ~%0.9, yüzyılda ~2.3 kat
     // (1836-1936 gerçeği ~1.75 kat). Eski katsayılar yüzyılda ~4.6 kat
     // veriyordu ve hiçbir RGO kapasitesi bunu kovalayamıyordu (ölçüldü,
     // bkz. market-diagnostic). İşgal payı büyümeyi de payı kadar keser.
+    // Buyume ASLA EKSIYE DUSMEZ. Ac ulke buyumez, erimez: carpan 0'a yaklasir.
+    // FOOD_FLOOR bilerek 0: gidasi hic karsilanmayan ulke tamamen durur.
+    const foodFactor = Math.max(0, nourishment - FOOD_FLOOR) / (1 - FOOD_FLOOR);
     const weeklyGrowth = ((0.00006 + econ.agriculture * 0.00003)
       * (peace ? 1 : 0.55) * (0.45 + stability) * health
-      * (0.25 + 0.75 * nourishment)) * (1 - occupied)
-      - famine * FAMINE_DECLINE;
+      * foodFactor) * (1 - occupied);
     const previousPopulation = econ.population;
     econ.population = Math.max(
       0,

@@ -169,6 +169,29 @@ export class Hud {
 
     $('opt-grid').onchange = (e) => this.setLayer('showGrid', e.target.checked);
     $('opt-labels').onchange = (e) => this.setLayer('showLabels', e.target.checked);
+    // CANLI DENIZ — kare suresinin tek en buyuk kalemi.
+    //
+    // Olculdu: uzak zoomda kare suresinin %97'si su katmani (47 ms; hedef 2 ms),
+    // ve duraklatilmis oyunda bile ana thread'in %64'u denizi ciziyordu.
+    // Kalite anahtari `WaterLayer` icinde zaten vardi ama yalnizca konsoldan
+    // erisiliyordu (water.js: "Gelistirici anahtarlari; oyuncu arayuzunde yok"),
+    // yani yavas makinedeki oyuncunun eline hicbir zaman gecmiyordu.
+    // 'low' taban + kabarmayi birakir, kirisik/parilti/kopugu keser.
+    const water = game.renderer?.water;
+    if (water) {
+      $('opt-live-sea').onchange = (e) => {
+        water.quality = e.target.checked ? 'high' : 'low';
+        // `swell` DE kapanmali. Uzak zoomun pahali yolu (`drawFar`) yalnizca
+        // `debug.swell`e bakar, `quality`ye DEGIL: kalite 'low' yapilsa bile
+        // desen dolgusu -- maliyetin tamami -- yine calisiyordu. `base` acik
+        // kalir, yani deniz duruyor; yalnizca canlanmiyor.
+        for (const key of ['swell', 'ripple', 'shimmer', 'foam', 'disturbance']) {
+          water.debug[key] = e.target.checked;
+        }
+        game.renderer.invalidateCache();
+        game.requestRender();
+      };
+    }
 
     el.seedChip.onclick = () => this.copySeed();
 
@@ -1193,7 +1216,14 @@ function grouped(value) {
 export function gameDate(turn, day = 0) {
   const date = new Date(Date.UTC(1836, 0, 1));
   // Hafta sistemin adımı, gün ise saatin adımı: tarih gün gün ilerler.
-  date.setUTCDate(date.getUTCDate() + Math.max(0, day || (turn - 1) * 7));
+  //
+  // `day || (turn-1)*7` DEGIL, ikisinin BUYUGU. Eski hali `day` sifirdan
+  // farkli olur olmaz tur sayacini tamamen devre disi birakiyordu ve
+  // `game.clock` kayda girmedigi icin (save.js) yuklemeden sonra day 0'dan,
+  // turn 305'ten basliyordu: oyuncu oynat'a bastigi ilk saniyede day 1 olunca
+  // takvim 2 OCAK 1836'ya cokuyor ve oturumun sonuna kadar orada kaliyordu.
+  // Tur her zaman bir TABAN verir; gun yalnizca hafta icini ilerletir.
+  date.setUTCDate(date.getUTCDate() + Math.max(0, day, (turn - 1) * 7));
   return date.toLocaleDateString('en-GB', {
     day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
   }).toUpperCase();

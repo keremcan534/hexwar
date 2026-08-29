@@ -7,14 +7,26 @@ import { atPeace } from './diplomacy.js';
 
 /**
  * Oyun 1836'da başlar, bir tur bir haftadır ve 1945'te biter: 5740. tur
- * 28 Aralık 1945'e denk gelir (bkz. hud.js tarih hesabı).
+ * 28 Aralık 1945'e denk gelirdi (bkz. hud.js tarih hesabı).
  *
  * Erken zafer yoktur. Eskiden bir puan eşiğine ilk ulaşan oyunu bitiriyordu;
  * bu, güçlü ülkenin yüzyılın ortasında masayı toplamasına ve geri kalan
  * onlarca yılın hiç oynanmamasına yol açıyordu. Artık tek kural son turda en
- * yüksek puana sahip olmaktır — bütün yüz yıl oynanır.
+ * yüksek puana sahip olmaktır.
+ *
+ * KAMPANYA 1900'DE BITER (5740 -> 3340 hafta). Sebep tasarım değil ÖLÇÜM:
+ * 110 yıllık kampanyanın son 45 yılı ölçülebilir biçimde boştu.
+ *   - Harita 1910'dan sonra donuyordu: ömür boyu sınır değişiminin 649/668'i
+ *     1910'dan önce oluyor, sonrasında dört tohumda da 25-32 yıllık kesintisiz
+ *     "tek hex el değiştirmedi" pencereleri var.
+ *   - Teknoloji ağacının SON düğümü zaten 1912; lider ulus 1899-1902'de
+ *     65/65'i bitiriyor. Sonrası için araştırma ekranında gösterilecek şey yok.
+ *   - Oyuncunun önüne gelen karar sayısı geç oyunda sıfıra yaklaşıyordu.
+ * Yani kesilen 45 yıl oynanan bir şey değildi, izlenen bir şeydi. 1836-1900
+ * arası ~64 yıl, oyunun içeriğinin bittiği yere denk düşer ve tek oturumda
+ * bitirilebilir bir kampanya olur.
  */
-export const FINAL_TURN = 5740;
+export const FINAL_TURN = 3340;
 
 /**
  * Kurulu sanayi kapasitesinin puan ağırlığı. Ham üretim ve prestij yüzyıl

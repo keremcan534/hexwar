@@ -105,6 +105,18 @@ export const GOODS = {
 
 export const GOOD_IDS = Object.keys(GOODS);
 
+/**
+ * SEPETIN GIDA YARISI. Hane parasi yetmedigi zaman once bunlari alir.
+ *
+ * Bu ayrim olmadan model soyle davraniyordu: sepetin karsilanma orani TEK bir
+ * sayiydi (`needsMet`) ve nufus buyumesi onu okuyordu — yani sarap ya da
+ * telefon alamayan ulke ACLIKTAN oluyordu. Victoria'da boyle bir sey yok;
+ * karsilanmayan ihtiyac nufusu oldurmez, sinif atlamayi ve buyumeyi yavaslatir.
+ *
+ * `tradeLedger.js` ayni kumeyi zaten bagimlilik hesabinda kullaniyor.
+ */
+export const FOOD_GOODS = new Set(['food', 'fish', 'cattle', 'fruit', 'groceries']);
+
 /** Gubrenin besledigi kalemler (RGO_TYPES'taki 'agriculture' izi). */
 const AGRICULTURE_GOODS = new Set(
   Object.values(RGO_TYPES).filter((r) => r.track === 'agriculture').map((r) => r.goodId),
@@ -509,8 +521,26 @@ export const WAGE_SPLIT = { lower: 0.8, middle: 0.2 };
  *
  * 1.0 hem isareti en net duzelten hem de 520. haftada EN AZ iflas ureten
  * deger. Ayni zamanda ilkesel tavan: devlet fiili acigin fazlasini kapatamaz.
+ *
+ * --- 1.0 -> 0.25 (gida onceligi geldikten sonra yeniden olculdu) ---
+ *
+ * Yukaridaki tablo, hanenin sepetinin ancak %40'ini aldigi bir dunyada
+ * olculmustu. `FOOD_GOODS` onceligi gelince hane once EKMEGINI aliyor ve onu
+ * TAM aliyor: gercek ithalat faturasi buyudu. 1.0'da bunun tamami hazineden
+ * cikiyor, yani devlet herkesin market alisverisini oduyor. Olculdu (120 hafta,
+ * hic dokunulmayan oyuncu ulusu + dunya):
+ *
+ *   oran   oyuncu hazine/borc      dunya medyan altin   batik ulke   medyan foodMet
+ *   1.00   0 / 692-912             70-72                3/29-31      0.80-0.84
+ *   0.50   0 / 802-1377            75-88                1/29-31      0.86-0.93
+ *   0.25   221 ve 18 / 0 ve 13     63-118               1/29-31      0.84-0.92
+ *
+ * 0.25 tek basina "daha zengin dunya" demek DEGIL — medyan haftalik net her uc
+ * oranda ayni (2.3-3.7). Degisen tek sey hazinenin dis acigin ne kadarini
+ * ustlendigi. Hanenin ekmegini devlet degil hane oder; geri kalani ozel sermaye
+ * hareketi olarak sogurulur. Korunum yine oranin disindadir (Simport==Sexport).
  */
-export const EXTERNAL_SETTLEMENT = 1;
+export const EXTERNAL_SETTLEMENT = 0.25;
 
 /**
  * Sürekli sosyal harcamalar. Geç oyunda hazine doluyordu çünkü bütün giderler
@@ -1733,8 +1763,17 @@ export function budgetBreakdown(world, nation) {
   const literacy = clamp(economy.literacy ?? 0, 0, 1);
 
   const line = (id) => ledger[id] ?? 0;
+  // GELIR/GIDER AYRIMI ISARETE GORE, BEYANA GORE DEGIL — `closeWeek` de aynisini
+  // yapar (treasury.js: financing kind'a gore, gerisi `value >= 0` ile). Ikisi
+  // ayrilinca ekran defterle tutmuyordu: `settlement` satiri "income" beyan
+  // edilmisti ama dis denge EKSIYE de duser; eksi degerdeki satir gelir
+  // toplamini dusuruyor, gider toplamina ise hic girmiyordu. Olculdu (butce
+  // sozlesmesi §5): iki tarafta da 0.94 sapma. Tek kavramin tek dogrusu olur.
   const rows = (kind) => Object.entries(LEDGER_LINES)
-    .filter(([, meta]) => meta.kind === kind)
+    .filter(([id, meta]) => (kind === 'financing'
+      ? meta.kind === 'financing'
+      : meta.kind !== 'financing'
+        && (kind === 'income' ? line(id) >= 0 : line(id) < 0)))
     .map(([id, meta]) => ({ id, label: meta.label, amount: line(id) }))
     .filter((row) => Math.abs(row.amount) > 0.005);
 
@@ -2634,6 +2673,7 @@ function populationDemand(world, nation, market) {
   let totalCost = 0;
   let satisfactionWeighted = 0;
   let metWeighted = 0;
+  let foodWeighted = 0;
   const welfare = socialLevel(nation, 'welfare');
   // Sinif dongusunden ONCE: memnuniyet bunu okuyacak (istikrar da ayni
   // fonksiyondan okur, bkz. unemploymentOf).
@@ -2654,6 +2694,10 @@ function populationDemand(world, nation, market) {
     // verginin, gumrugun, refahin ve kitligin butun asagi yonlu etkilerini
     // birden olduruyordu (bkz. SYSTEM_AUDIT_REPORT KRITIK-2).
     let onShelf = 0;
+    // Gida yarisi ayri tutulur: hane once bunu alir (bkz. FOOD_GOODS).
+    let foodCost = 0;
+    let foodAtBase = 0;
+    let foodOnShelf = 0;
     for (let n = 0; n < needsEntries.length; n++) {
       const goodId = needsEntries[n][0];
       const amount = needAmount(needsEntries[n][1], world.turn ?? 1);
@@ -2672,6 +2716,7 @@ function populationDemand(world, nation, market) {
       const baseCost = GOODS[goodId].basePrice * quantity;
       basket += cost;
       basketAtBase += baseCost;
+      if (FOOD_GOODS.has(goodId)) { foodCost += cost; foodAtBase += baseCost; }
       // Rafta var mi: gecen haftanin karsilanma orani (bu haftanin ticareti
       // henuz kapanmadi). Parasi yetmek ile mal BULMAK ayri seylerdir; dunya
       // tahil uretimi tamamen kesildiginde hane hala "karsilayabiliyor"
@@ -2682,9 +2727,12 @@ function populationDemand(world, nation, market) {
       // sepetin %17'sini kapliyor, tabana cakili tahil ise %0.8'e dusuyordu:
       // beslenme endeksi fiyat bandinin patolojisini (bkz. rapor YUKSEK-16)
       // miras aliyordu. Taban fiyat sepetin TASARLANMIS bilesimidir.
-      onShelf += baseCost * clamp(economy.goodsFlow?.[goodId]?.fulfilledShare ?? 1, 0, 1);
+      const shelf = baseCost * clamp(economy.goodsFlow?.[goodId]?.fulfilledShare ?? 1, 0, 1);
+      onShelf += shelf;
+      if (FOOD_GOODS.has(goodId)) foodOnShelf += shelf;
     }
     const availability = basketAtBase > 1e-9 ? clamp(onShelf / basketAtBase, 0, 1) : 1;
+    const foodAvailability = foodAtBase > 1e-9 ? clamp(foodOnShelf / foodAtBase, 0, 1) : 1;
     // Ücretler fiyatları kısmen takip eder. Etmezse: geçim bütçesi sabit bir
     // sayı, geçim masrafı ise fiyatla 8 katına çıkabilen bir sayı olur ve ilk
     // ciddi kıtlıkta bütün sınıflar iflas eder. Ölçüldü: üst sınıf tamamen
@@ -2744,6 +2792,22 @@ function populationDemand(world, nation, market) {
     const affordShare = outOfPocket > 1e-9
       ? clamp(spendable / outOfPocket, 0, 1)
       : 1;
+    // ONCE EKMEK. Eski kod tek bir `affordShare`i butun sepete ESIT
+    // uyguluyordu, dolayisiyla parasi %60 yeten hane ekmeginin de %60'ini,
+    // sarabinin da %60'ini aliyordu — ve "beslenme" endeksi sarabin
+    // eksikliginden dusuyordu. Artik butce once gida kalemlerine gider,
+    // ARTAN gerisine. Bu, sepetin toplam karsilanmasini degistirmez
+    // (`affordShare` ayni kalir), yalnizca ICINDEKI dagilimi duzeltir.
+    const foodOutOfPocket = outOfPocket * (basket > 1e-9 ? foodCost / basket : 0);
+    const restOutOfPocket = Math.max(0, outOfPocket - foodOutOfPocket);
+    const foodAfford = foodOutOfPocket > 1e-9
+      ? clamp(spendable / foodOutOfPocket, 0, 1)
+      : 1;
+    const restAfford = restOutOfPocket > 1e-9
+      ? clamp(Math.max(0, spendable - foodOutOfPocket * foodAfford) / restOutOfPocket, 0, 1)
+      : 1;
+    // Karnin doymasi iki kapiya birden bakar: parasi yetti mi, mal var miydi.
+    socialClass.foodMet = foodAfford * foodAvailability;
     // Artan gelirin bir kismi birikir; tavan ~yarim yillik sepettir, yoksa
     // zengin sinif sonsuz bir yastik biriktirip kitliga bagisik olurdu.
     const surplus = Math.max(0, needsBudget - outOfPocket);
@@ -2760,7 +2824,7 @@ function populationDemand(world, nation, market) {
       const amount = needAmount(needsEntries[n][1], world.turn ?? 1);
       if (amount <= 0) continue;
       const quantity = amount * scale;
-      const bought = quantity * affordShare;
+      const bought = quantity * (FOOD_GOODS.has(goodId) ? foodAfford : restAfford);
       addFlow(market, goodId, 'demand', bought);
       addNationFlow(nation, goodId, 'demand', bought);
     }
@@ -2796,6 +2860,7 @@ function populationDemand(world, nation, market) {
     totalCost += basket;
     satisfactionWeighted += socialClass.satisfaction * socialClass.population;
     metWeighted += socialClass.needsMet * socialClass.population;
+    foodWeighted += (socialClass.foodMet ?? 1) * socialClass.population;
   }
 
   economy.standardOfLiving = 5 + 15 * (satisfactionWeighted / Math.max(1, economy.population))
@@ -2805,6 +2870,9 @@ function populationDemand(world, nation, market) {
   // provinces.js bunu okur (economy.js'i import etmek katman dongusu olurdu,
   // ayni kalip saglik harcamasinda da kullaniliyor).
   economy.needsMet = clamp(metWeighted / Math.max(1, economy.population), 0, 1);
+  // Nufus buyumesinin okudugu SAYI budur, `needsMet` degil (provinces.js).
+  // Karsilanmayan luks buyumeyi yavaslatmaz; karsilanmayan GIDA yavaslatir.
+  economy.foodMet = clamp(foodWeighted / Math.max(1, economy.population), 0, 1);
   return totalCost;
 }
 

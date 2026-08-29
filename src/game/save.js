@@ -100,6 +100,10 @@ export function serialize(game) {
     provinces,
     turn: turns.turn,
     playerNation: turns.playerNation,
+    // Saatin gun sayaci. Yazilmazsa yuklemeden sonra takvim hafta icinde geri
+    // kayar (bkz. hud.js gameDate notu); tur tabani artik korusa da dogru
+    // gunu geri getirmenin tek yolu bunu kaydetmektir.
+    clockDay: game?.clock?.day ?? 0,
     // Tur zarinin durumu. Yazilmazsa yukleme zari basa sarar; savas ilanlari,
     // muharebe zarlari ve koalisyon kontrolleri bastan baska sonuc verir.
     rngState: turns.rng.state(),
@@ -424,6 +428,9 @@ export function deserialize(game, data) {
   // 8) Tur durumu
   turns.turn = data.turn;
   world.turn = data.turn;
+  // Saatin gun sayaci geri gelmezse takvim hafta icinde geri kayar
+  // (bkz. serialize `clockDay` ve hud.js gameDate).
+  if (game.clock) game.clock.day = data.clockDay ?? (data.turn - 1) * 7;
   turns.playerNation = data.playerNation;
   // Eski kayitlarda bu alan yok: o zaman zar taze baslar, yani bugunku davranis.
   if (Number.isFinite(data.rngState)) turns.rng.seedState(data.rngState);
