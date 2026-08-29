@@ -5,6 +5,12 @@
 // konsol hataları hem ekranın gösterdiği sayılar toplanır.
 //
 // Kullanım: node scripts/dev-server.mjs &  →  node scripts/audit/browser-play.mjs
+//
+// BAĞIMLILIK NOTU: oyunun kendisi bağımlılıksız kalır (saf ES modülleri +
+// Canvas2D, derleme adımı yok — bkz. CLAUDE.md). `playwright` YALNIZCA bu
+// doğrulama betiği için `devDependencies`tedir; `npm install --omit=dev` ile
+// kurulan üründe yoktur ve `src/` altından hiçbir dosya onu içe aktarmaz.
+// Tarayıcı ikilisi ortamda hazır kurulu (PLAYWRIGHT_BROWSERS_PATH), indirme yok.
 
 import { chromium } from 'playwright';
 import { existsSync, mkdirSync, readdirSync } from 'node:fs';

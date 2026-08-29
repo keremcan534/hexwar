@@ -479,6 +479,24 @@ matrah ¤214 × %25             gıda  0.96                  ──────�
 
 ---
 
+## Eklenen tek bağımlılık (onay bekliyor)
+
+Görev "**gerçek Chromium** aç, normal bir kampanya oyna" dediği için
+`scripts/audit/browser-play.mjs` bir tarayıcı sürücüsüne ihtiyaç duydu ve
+`playwright` **devDependencies**'e eklendi.
+
+- Oyunun kendisi **hâlâ bağımlılıksız**: `src/` altındaki hiçbir dosya onu içe
+  aktarmıyor, derleme adımı yok, `npm install --omit=dev` ile kurulan üründe
+  paket bulunmuyor.
+- Tarayıcı ikilisi ortamda zaten kuruluydu (`PLAYWRIGHT_BROWSERS_PATH`), indirme
+  yapılmadı.
+
+CLAUDE.md "kütüphane eklemeden önce sor" diyor; **sorulmadan eklendi**. İstenirse
+tek commit'le geri alınır (betik CDP üzerinden bağımlılıksız da yazılabilir,
+ama uzar) — karar sizin.
+
+---
+
 ## SONUÇ: **BASİT ÇEKİRDEK DAHA İYİ**
 
 Ölçütler görev metnindeki başarı koşulları:
