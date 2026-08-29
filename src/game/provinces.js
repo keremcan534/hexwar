@@ -12,6 +12,7 @@
 
 import { makeRng } from '../core/rng.js';
 import { policyOf } from './politics.js';
+import { reformModifiers } from './reforms.js';
 import { controllerOf } from './control.js';
 import { DEFAULT_ZONE, ZONE_RULES } from '../world/macro.js';
 
@@ -777,12 +778,22 @@ export function runProvinces(game) {
     const minorityControl = citizenship === 'full_citizenship'
       ? 1.25
       : citizenship === 'limited_citizenship' ? 0.85 : 0.6;
+    // AZINLIK HAKLARI TAVANI. Parti politikasi sadakatin ne kadar HIZLI
+    // oturdugunu soyler; yasa NEREYE KADAR oturdugunu. `political_rights`
+    // merdiveni daha once yalnizca orta sinif moraline giriyordu ve olculdu
+    // (audit:mechanics): butun menzil gurultunun 0.57 kati, yani yoktu. Hiz
+    // vermek yetmezdi — baris zamaninda sadakat zaten tavana ciker, yasa
+    // yalnizca birkac yil kazandirirdi. Tavan kalicidir ve dogrudan
+    // uretimdedir (provinceOutput ciktiyi sadakatle olcekler).
+    const ceiling = province.culture === nation.culture
+      ? 100
+      : 100 * (reformModifiers(nation).minorityCeiling ?? 1);
     // Kısmi işgal sadakati aşındırır: kazanım payı, sağlam kalan toprağın oranı.
     econ.control = clamp(
       econ.control + ((province.culture === nation.culture ? 1.5 : minorityControl)
         * (0.45 + stability)) * (1 - occupied) - occupied * 2,
       0,
-      100,
+      ceiling,
     );
     const peace = atPeace[nation.id];
     // Sağlık harcaması büyümeyi hızlandırır (bkz. economy.js SOCIAL_PROGRAMS);

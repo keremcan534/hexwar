@@ -879,6 +879,12 @@ export const NEUTRAL_MODIFIERS = Object.freeze({
   throughput: 1, wageCost: 1, socialBurden: 0,
   // Askerlik yasasinin insan gucu carpani (recruitment.js okur).
   manpower: 1,
+  // Okul yasasinin okuryazarlik TABANI (economy.js `literacyTargetOf` okur).
+  literacyFloor: 0,
+  // Basin ozgurlugunun arastirma carpani (technology.js okur).
+  researchRate: 0,
+  // Azinlik haklarinin tasra sadakat TAVANI (provinces.js okur).
+  minorityCeiling: 1,
 });
 
 /** Kademe sırasının 0–1'e indirgenmiş hâli; merdiven boyları farklı. */
@@ -965,8 +971,14 @@ export function refreshReformModifiers(nation) {
     // memnuniyetsiz çıkıyordu, çünkü sanayinin kısılması ücret tabanını
     // yıllarca aşındırıyordu. Yani "işçiyi koruyan yasa işçiyi vurur"
     // tuzağıydı; doğrudan kazanım dolaylı sürüklemeyi açıkça geçmeli.
+    // ASGARI UCRET VE SENDIKA BURAYA EKLENDI. Ikisi de yalnizca `wageCost`
+    // (sanayinin bordrosu) ve `upperMood` (seckinin faturasi) terimlerindeydi:
+    // yani isciyi korumak icin cikarilan yasa isciye HICBIR duygu vermiyor,
+    // yalnizca sanayiyi sikiyordu. Ustelik bordro kanali alt sinifin ancak
+    // fabrikada calisan kismina ulasir; kirsal cogunluk yasayi hic hissetmez.
+    // Olculdu (audit:mechanics): minimum_wage 0.25x, trade_unions 0.50x.
     lowerMood: hours * 0.13 + safety * 0.07 + dole * 0.12 + pension * 0.10
-      + health * 0.10 + child * 0.06
+      + health * 0.10 + child * 0.06 + wage * 0.11 + unions * 0.07
       // Temsil ve ozgurluk: halk oy hakkindan ve serbest toplanmadan memnun,
       // zorunlu askerlikten ve kolelikten degil.
       + representation * 0.22 - draft * 0.06 - slaveryFree * 0.08,
@@ -993,6 +1005,28 @@ export function refreshReformModifiers(nation) {
     // Askerlik yasasi seferberlik havuzunu belirler: tam askerlikte 1.30,
     // gonullu orduda 0.85. Tek carpan, tek okuyucu (recruitment.js).
     manpower: 0.85 + draft * 0.45,
+
+    // --- Asagidaki uc terim, gurultu tabaninin altinda kalan uc merdivenin
+    // --- bagli oldugu KANALLARDIR. Uc merdiven de eskiden yalnizca bir mood
+    // --- ya da butce terimine giriyordu; olculdu (audit:mechanics): butun
+    // --- menzilleri sirasiyla gurultunun 0.90 / 0.57 / 0.44 kati, yani
+    // --- oyuncu icin yoktular. Her birine AYRI ve adi konabilir bir kanal
+    // --- acildi; katsayi buyutmek degil, bagli olmadiklari yere baglamak.
+
+    // OKUL YASASI — butce TAVANI belirler, yasa TABANI. Zorunlu okul,
+    // hazine egitime sifir harcasa bile okuryazarligi bu seviyenin altina
+    // birakmaz. Ikisi TOPLANMAZ: yasa bir taban, butce bir hedeftir.
+    literacyFloor: school * 0.35,
+    // BASIN — fikrin dolasim hizi. Sansurlu ulke ayni okuryazarlikla daha az
+    // arastirir. Basin merdiveninin tek, tarif edilebilir bedeli budur.
+    researchRate: press * 0.25,
+    // AZINLIK HAKLARI — yabanci kulturlu tasranin ULASABILECEGI EN YUKSEK
+    // sadakat. Hiz degil TAVAN: hiz olsaydi sadakat yine 100'e cikardi,
+    // yalnizca birkac yil gec — yani baris zamaninda gorunmez bir mekanik.
+    // Tavan kalicidir ve dogrudan uretimdedir (provinces.js `provinceOutput`
+    // ciktiyi sadakatle olcekler): kisitli haklarla yabanci kulturlu tasra
+    // uretiminin %70'ini verir, tam haklarla tamamini.
+    minorityCeiling: 0.7 + rights * 0.3,
   };
   modsByNation.set(nation, mods);
   return mods;

@@ -3866,7 +3866,13 @@ export function literacyTargetOf(nation) {
   const economy = nation.economy;
   const schooling = clamp(economy.social?.education ?? 0, 0, 100) / 100;
   const reach = economy.techMods?.literacyReach ?? 0;
-  return clamp(0.08 + schooling * 0.62 * (1 + higherEducationBonus(nation)) + reach, 0, 0.95);
+  const budgeted = 0.08 + schooling * 0.62 * (1 + higherEducationBonus(nation));
+  // OKUL YASASI BIR TABANDIR, BIR KALEM DEGIL. Butce ile TOPLANMAZ: zorunlu
+  // egitim yasasi cikaran ulke, hazinesi egitime sifir ayirsa bile bu
+  // seviyenin altina dusmez. Boylece yasa ile kaydirac ayni sayiyi iki kez
+  // odemez ve ikisinin cumlesi ayri kalir: yasa tabani, butce hedefi.
+  const floor = reformModifiers(nation).literacyFloor ?? 0;
+  return clamp(Math.max(budgeted, floor) + reach, 0, 0.95);
 }
 
 function advanceLiteracy(nation) {
