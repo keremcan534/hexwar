@@ -5,6 +5,7 @@ import { CITY_CENTER_YIELD, RESOURCES } from '../world/terrain.js';
 import { tileEfficiency } from './infamy.js';
 import { provinceOutput } from './provinces.js';
 import { regimentCount, upkeepWeight } from './units.js';
+import { spend } from './econ/budget.js';
 import { controllerOf } from './control.js';
 
 /** Yeni şehir kurma bedeli ve şehirler arası asgari mesafe. */
@@ -50,14 +51,16 @@ export function canAfford(nation, cost) {
   );
 }
 
+/**
+ * Tek seferlik alım (birim, şehir, general). Altın `spend` üzerinden çıkar:
+ * hazinenin tek yazarı odur, dolayısıyla harcama deftere yazılmadan HAZİNEDEN
+ * ÇIKAMAZ (bkz. econ/budget.js).
+ */
 export function pay(nation, cost) {
   if (!canAfford(nation, cost)) return false;
-  for (const [resource, amount] of Object.entries(cost ?? {})) nation[resource] -= amount;
-  // Tek seferlik alımlar (birim, şehir, devlet fabrikası) bütçe defterine
-  // yazılır; yoksa defter haftanın gerçek altın değişimini tutmaz (ölçüldü:
-  // %83 sapma, bkz. mechanics-audit). Kalem updateLedger'da okunup sıfırlanır.
-  if (cost?.gold && nation.economy) {
-    nation.economy.outlayGold = (nation.economy.outlayGold ?? 0) + cost.gold;
+  for (const [resource, amount] of Object.entries(cost ?? {})) {
+    if (resource === 'gold') spend(nation, 'outlayCost', amount);
+    else nation[resource] -= amount;
   }
   return true;
 }

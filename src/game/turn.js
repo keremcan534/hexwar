@@ -21,7 +21,7 @@ import {
   cityName, collectProvinceTotals, createCity, growCities, nationBudget, pay,
 } from './cities.js';
 import {
-  beginEconomy, finishEconomy, initEconomy, reconcilePopulation, runNationEconomy,
+  beginEconomy, earn, finishEconomy, initEconomy, runNationEconomy, setPopulation, spend,
 } from './economy.js';
 import { initBattles, removeFromBattles, runBattles } from './battles.js';
 import {
@@ -115,8 +115,9 @@ export class TurnManager {
         // explicitly so disbanding can never create population from nothing.
         if (unit?.regiments?.[0] && !unit.regiments[0].draws) unit.regiments[0].draws = [];
       }
-      nation.economy.population = provincePopulation(world, nation.id);
-      reconcilePopulation(nation, nation.economy.population);
+      // Askere alım province nüfusunu düşürdü: ulusal nüfus tek gerçeğinden
+      // yeniden okunur (bkz. econ/pop.js setPopulation).
+      setPopulation(nation, provincePopulation(world, nation.id));
     }
     initPolitics(world);
     initConstruction(world);
@@ -556,11 +557,11 @@ export class TurnManager {
     const totals = collectProvinceTotals(world);
     for (const nation of world.nations) {
       if (!nation.alive) continue;
-      const budget = nationBudget(world, nation, totals);
-      nation.budget = budget;
-
-      // Kelepçe yok: açık borçlanmayla kapanır (economy.js settleDebt).
-      nation.gold += budget.net.gold;
+      // Bütçe artık HAZİNEYE DOKUNMAZ: şehir geliri, ordu maaşı ve yönetim
+      // gideri ekonominin bütçe fazında tek deftere yazılır (bkz. economy.js
+      // payGovernment). Eskiden burada uygulanan `net.gold`, defterde ayrıca
+      // kalem kalem yeniden kuruluyordu — aynı gerçeğin iki temsili.
+      nation.budget = nationBudget(world, nation, totals);
     }
     this.payTreaties();
   }
@@ -596,8 +597,8 @@ export class TurnManager {
         if (!share) continue;
         const due = Math.max(0, (nation.budget?.net?.gold ?? 0)) * share;
         if (due <= 0) continue;
-        nation.gold -= due;
-        holder.gold += due;
+        spend(nation, 'treatyCost', due);
+        earn(holder, 'treatyRevenue', due);
         if (nation.economy) nation.economy.treatyCost += due;
         if (holder.economy) holder.economy.treatyRevenue = (holder.economy.treatyRevenue ?? 0) + due;
       }

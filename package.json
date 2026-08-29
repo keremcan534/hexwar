@@ -74,5 +74,8 @@
     "audit:events": "node scripts/audit/event-communication-audit.mjs",
     "audit:research": "node scripts/audit/research-audit.mjs",
     "audit:companies": "node scripts/audit/companies-audit.mjs"
+  },
+  "devDependencies": {
+    "playwright": "^1.49.1"
   }
 }

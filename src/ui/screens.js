@@ -31,7 +31,8 @@ import {
   MILITARY_EQUIPMENT, PROFESSION_INFO,
   SOCIAL_PROGRAMS, buildFactory,
   canBuildFactory, factoriesInRegion, factoryAtlas, factoryCost, factoryJobs, industryTaken,
-  debtCapacity, debtInterestRate, factoryMargin, formatPopulation, populationOf,
+  debtCapacity, debtInterestRate, factoryBreakdown, factoryMargin, formatPopulation,
+  householdBreakdown, populationOf,
   setFiscalPolicy, taxEfficiency,
   setMilitaryProductionLine, socialSpendingCost, ensureProductionLine, supportProject, upgradeOutlook,
 } from '../game/economy.js';
@@ -174,7 +175,7 @@ function debtWhy(me) {
   const load = capacity > 0 ? Math.min(1, debt / capacity) : 0;
   const credit = Math.min(0.85, Math.max(0, me.economy?.creditPenalty ?? 0));
   const net = me.economy?.ledger?.net ?? 0;
-  const interest = me.economy?.interestGold ?? 0;
+  const interest = me.economy?.ledger?.interestCost ?? 0;
   return [
     `Base rate  =  4.0%`,
     `Capacity used ${(load * 100).toFixed(0)}% × 8  =  +${(load * 8).toFixed(1)}%`,
@@ -695,7 +696,7 @@ export class Screens {
   }
 
   resourceLine(me) {
-    const weekly = (me.budget?.net?.gold ?? 0) + (me.economy?.fiscalNet ?? 0);
+    const weekly = me.economy?.ledger?.net ?? 0;
     const sign = `${weekly >= 0 ? '+' : ''}${Math.round(weekly)}`;
     return `<span>¤ <b>${Math.round(me.gold)}</b> ${sign}</span>
       <span>GDP <b>¤${Math.round(me.economy?.gdp ?? 0)}</b></span>
@@ -779,7 +780,7 @@ export class Screens {
           <span><small>Treasury</small><b>¤${Math.round(me.gold)}</b></span>
           <span><small>GDP</small><b>¤${Math.round(me.economy?.gdp ?? 0)}</b></span>
           <span><small>Tax revenue</small><b>¤${(me.economy?.taxRevenue ?? 0).toFixed(1)}</b></span>
-          <span><small>Weekly balance</small><b class="${(me.economy?.fiscalNet ?? 0) < 0 ? 'res-neg' : 'res-pos'}">${(me.economy?.fiscalNet ?? 0) >= 0 ? '+' : ''}¤${(me.economy?.fiscalNet ?? 0).toFixed(1)}</b></span>
+          <span><small>Weekly balance</small><b class="${(me.economy?.ledger?.net ?? 0) < 0 ? 'res-neg' : 'res-pos'}">${(me.economy?.ledger?.net ?? 0) >= 0 ? '+' : ''}¤${(me.economy?.ledger?.net ?? 0).toFixed(1)}</b></span>
         </div>
       </div>
       <div class="card">
@@ -1306,9 +1307,33 @@ export class Screens {
         <span><small>Margin</small><b>${Math.round(factory.margin * 100)}%</b></span>
       </div>
       <div class="factory-chain"><span>${esc(inputs)}</span><strong>→</strong><span>${esc(outputs)}</span></div>
+      ${this.factoryLedger(factory)}
       <div class="meter"><i style="width:${Math.max(0, Math.min(100, employment))}%"></i></div>
       <small class="factory-status">${esc(status)}</small>
       ${this.factoryContext(me, type)}
+    </div>`;
+  }
+
+  /**
+   * TESİS KAPANIŞI — dört satır, hiçbiri burada yeniden hesaplanmaz.
+   * Simülasyonun defterinden (`factoryBreakdown`) birebir okunur:
+   *
+   *     Gelir  −  Girdi  =  Katma değer  −  Ücret  =  Kâr
+   */
+  factoryLedger(factory) {
+    const row = factoryBreakdown(factory);
+    const money = (value) => `${value >= 0 ? '+' : '−'}¤${Math.abs(value).toFixed(1)}`;
+    const line = (label, value, note = '') => `<div class="fledger-row">
+      <span>${label}${note ? `<small>${esc(note)}</small>` : ''}</span>
+      <b class="${value >= 0 ? 'res-pos' : 'res-neg'}">${money(value)}</b></div>`;
+    return `<div class="factory-ledger">
+      ${line('Revenue', row.revenue, `${Math.round(row.throughput * 100)}% throughput`)}
+      ${line('Inputs', row.inputCost, row.inputFulfillment < 0.999
+    ? `${Math.round(row.inputFulfillment * 100)}% of inputs available` : 'fully supplied')}
+      ${line('Wages', row.wages, `${formatPopulation(row.employees)} workers`)}
+      ${row.subsidy > 0 ? line('Subsidy', row.subsidy, 'state covers the loss') : ''}
+      <div class="fledger-row total"><span>Profit</span>
+        <b class="${row.profit >= 0 ? 'res-pos' : 'res-neg'}">${money(row.profit)}</b></div>
     </div>`;
   }
 
@@ -1580,10 +1605,23 @@ export class Screens {
         <span class="ledger-mid">
           <span class="ledger-label">${esc(label)}<b>${economy.taxes[classId]}%</b></span>
           ${hslider('tax', economy.taxes[classId], 0, 100, 5, classId)}
+          <small class="ledger-note">${taxNote(classId)}</small>
         </span>
         ${vbox(socialClass.taxPaid ?? 0, 'pos')}
       </div>`;
     };
+
+    // VERGİ DÖKÜMÜ: matrah × oran × tahsilat verimi. Üç sayı, üçü de gerçek —
+    // "vergi geliri nereden çıktı" sorusunun cevabı satırın altında durur.
+    function taxNote(classId) {
+      const socialClass = economy.classes[classId];
+      const base = socialClass.income ?? 0;
+      const met = Math.round((socialClass.needsMet ?? 0) * 100);
+      const food = Math.round((socialClass.foodMet ?? 1) * 100);
+      return `base ¤${base.toFixed(1)} × ${economy.taxes[classId]}%`
+        + ` × ${Math.round(taxEfficiency(me) * 100)}% collection`
+        + ` · basket ${met}% met, food ${food}%`;
+    }
 
     // İktidar partisinin izin verdiği bant. Kör beta testçisi kaydıracı 100'e
     // çekip 60'a düşünce oyunun ayarını "arkasından değiştirdiğini" sandı:

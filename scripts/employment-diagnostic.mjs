@@ -2,7 +2,7 @@
 //
 // Iki ayri sinir var ve hangisinin bagladigi disaridan gorunmuyor:
 //   akis  = lower * MONTHLY_HIRE_RATE * schooling * willingness   (aylik ise alim)
-//   stok  = min(professionCounts.workers, lower * MAX_WORKER_SHARE) - employed
+//   stok  = isgucu * MAX_INDUSTRIAL_SHARE - employed   (basit cekirdek)
 // Ustune ayda yalnizca bir POPULATION_COHORT ciftci isciye donuyor. Fabrika
 // kurulusu bu akistan hizliysa kadro hicbir zaman dolmaz.
 
@@ -11,6 +11,7 @@ import { TurnManager } from '../src/game/turn.js';
 import { generateWorld } from '../src/world/worldgen.js';
 import { generateNations } from '../src/world/nations.js';
 import { industrialJobs } from '../src/game/economy.js';
+import { professionCountsOf } from '../src/game/economy.js';
 
 function headless(seed) {
   const game = Object.create(Game.prototype);
@@ -35,7 +36,7 @@ function snapshot(nation) {
   const factories = economy.factories ?? [];
   const jobs = industrialJobs(nation);
   const employees = factories.reduce((sum, f) => sum + (f.employees ?? 0), 0);
-  const counts = economy.professionCounts ?? {};
+  const counts = professionCountsOf(nation);
   const lower = economy.classes?.lower?.population ?? 0;
   return {
     factories: factories.length,

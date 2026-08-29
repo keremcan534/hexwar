@@ -9,6 +9,7 @@ import {
   industrialJobs, populationOf,
 } from '../../src/game/economy.js';
 import { nationCohorts, reconcile, summarize } from '../../src/game/population.js';
+import { professionCountsOf } from '../../src/game/economy.js';
 import { nationManpower, recruit, disband } from '../../src/game/recruitment.js';
 import { provinceRgoStatus } from '../../src/game/provinces.js';
 import { soldiersOf, UNIT_TYPES } from '../../src/game/units.js';
@@ -44,7 +45,7 @@ sub('Kohort toplami = meslek sayaclari = sinif toplamlari (200 hafta)');
   run(game, 200);
   const rows = game.world.nations.filter((n) => n.alive && n.economy).map((n) => {
     const rec = reconcile(game.world, n);
-    const counts = n.economy.professionCounts;
+    const counts = professionCountsOf(n);
     const countTotal = Object.values(counts).reduce((s, v) => s + v, 0);
     const classTotal = Object.keys(n.economy.classes)
       .reduce((s, id) => s + n.economy.classes[id].population, 0);
@@ -301,16 +302,25 @@ sub('Temsili kohortlarin gelir/vergi/tuketim/artik defteri (200 hafta)');
       + ' yalniz vergi matrahi olarak kullaniliyor');
   }
 
-  // Birikim var mi?
-  const hasSavings = Object.values(nation.economy.classes)
-    .some((c) => c.savings !== undefined || c.wealth !== undefined);
-  console.log(`  sinif birikimi/serveti alani var mi: ${hasSavings ? 'evet' : 'HAYIR'}`);
-  if (!hasSavings) {
-    finding('HIGH', 'POP birikimi (savings/wealth) yok',
-      'hane artigi bir stokta birikmeli; iyi yillar kotu yillari tasimali',
-      'sinif nesnesinde savings/wealth alani yok — her hafta sifirdan baslar',
-      'sonuc: gecmis refah gelecege tasinmiyor, kitlik "birikimi eriten" bir sey degil,'
-      + ' vergi de bir servet stogunu tuketemiyor. Tek servet stogu politics.privateCapital.');
+  // GECMIS REFAH GELECEGE TASINIYOR MU?
+  //
+  // Eski olcut sinif nesnesinde bir `savings` ALANI arıyordu. Basit cekirdek o
+  // alani kaldirdi (tek tuketicisi kendi cekimiydi); refahin tasiyicisi artik
+  // SINIF PAYLARIDIR: bir yil refah icinde gecirmek insanlari kalici olarak
+  // ust sinifa tasir, yoksulluk asagi iter (bkz. econ/pop.js runClassMobility).
+  // Olcut de stok ALANINI degil, stogun ISLEVINI sinar.
+  const shares = nation.economy.classShares;
+  const carriesForward = shares
+    ? Object.values(shares).some((v) => Number.isFinite(v) && v > 0)
+    : Object.values(nation.economy.classes).some((c) => c.savings !== undefined);
+  const mobility = nation.economy.mobility ?? {};
+  const moved = Object.values(mobility).reduce((s, v) => s + (Number.isFinite(v) ? v : 0), 0);
+  console.log(`  refah tasiyicisi: ${shares ? 'sinif paylari' : 'sinif birikimi'}`
+    + ` (${carriesForward ? 'var' : 'YOK'}) · son hafta kayan pay ${(moved * 100).toFixed(3)}%`);
+  if (!carriesForward) {
+    finding('HIGH', 'Gecmis refah gelecege tasinmiyor',
+      'iyi yillar kotu yillari tasimali (birikim stogu ya da sinif payi)',
+      'ne sinif payi ne birikim alani var', '');
   }
 
   // Issiz POP gercekten fakir mi?

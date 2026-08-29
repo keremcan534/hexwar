@@ -784,6 +784,16 @@ export class Hud {
       const clusterRec = world.provinces?.[tile.provinceId];
       const rgoOutput = rgo.type && clusterRec
         ? (provinceOutput(world, clusterRec)[rgo.type.goodId] ?? 0) : 0;
+      // NÜFUS ARTIŞI ÇARPAN ÇARPAN: "neden büyümüyor" sorusunun cevabı
+      // simülasyonun kendi dökümünden okunur (bkz. provinces.js growthBreakdown).
+      const growth = tile.province.growthBreakdown;
+      const weak = growth ? [
+        growth.food < 0.99 ? `food ×${growth.food.toFixed(2)}` : null,
+        growth.stability < 1 ? `stability ×${growth.stability.toFixed(2)}` : null,
+        growth.war < 1 ? `war ×${growth.war.toFixed(2)}` : null,
+        growth.occupied < 1 ? `occupied ×${growth.occupied.toFixed(2)}` : null,
+        growth.famine < 0 ? `famine ${(growth.famine * 100).toFixed(3)}%` : null,
+      ].filter(Boolean) : [];
       stats.unshift(
         ['Population', formatPopulation(tile.province.population)],
         ['RGO', rgo.type ? `${rgo.type.icon} ${rgo.type.name}` : '—'],
@@ -792,6 +802,12 @@ export class Hud {
         ['Unemployed', formatPopulation(rgo.unemployed)],
         ['Control', `${Math.round(tile.province.control)}%`],
       );
+      if (growth) {
+        stats.splice(1, 0, [
+          'Growth',
+          `${(growth.total * 100).toFixed(3)}%/wk${weak.length ? ` · ${weak.join(' · ')}` : ''}`,
+        ]);
+      }
       if (tile.province.migration) {
         stats.splice(5, 0, [
           'Migration',
@@ -1134,7 +1150,7 @@ export class Hud {
 
 /** Üst çubuk yalnız yeni makro ekonomiyi gösterir; eski ham stoklar kaldırıldı. */
 function resourcesHtml(nation) {
-  const weekly = (nation.budget?.net?.gold ?? 0) + (nation.economy?.fiscalNet ?? 0);
+  const weekly = nation.economy?.ledger?.net ?? 0;
   // Akış ayrı bir <em>: değerin içine ikinci bir <b> koymak geçersiz iç içe
   // yapıydı ve akışı ana rakamla aynı ağırlıkta gösteriyordu.
   const flowClass = weekly < 0 ? 'res-neg' : weekly > 0 ? 'res-pos' : '';

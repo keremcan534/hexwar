@@ -4,7 +4,7 @@
 // kurulmuş bir türetme katmanıdır ve iki kaynağı birleştirir:
 //
 //   province.population        — nerede (kare başına gerçek nüfus)
-//   economy.professionCounts   — ne iş (ulusal meslek sayaçları)
+//   professionCountsOf()       — ne iş (gerçek istihdamdan TÜRETİLİR)
 //   tile.culture               — hangi kültür (kare başına)
 //
 // Neden türetme: ikinci bir nüfus deposu tutmak, iki sayacın zamanla
@@ -21,7 +21,7 @@
 // Katman notu: yalnız okur. Simülasyonu değiştirmez, DOM bilmez.
 
 import {
-  CLASS_INFO, PROFESSION_INFO, factoryJobs,
+  CLASS_INFO, PROFESSION_INFO, factoryJobs, professionCountsOf,
 } from './economy.js';
 import { RGO_TYPES, rgoStatusOf } from './provinces.js';
 
@@ -191,16 +191,19 @@ function cohortEconomics(nation, classId, size, share) {
  */
 export function nationCohorts(world, nation) {
   const economy = nation?.economy;
-  if (!economy?.professionCounts) return [];
+  if (!economy?.classes) return [];
   const entries = ownedProvinces(world, nation);
   if (!entries.length) return [];
+  // Meslek sayaçları artık DEPO DEĞİL: gerçek istihdamdan türetiliyorlar
+  // (bkz. econ/pop.js). Toplamları tanım gereği nüfusa eşittir.
+  const professionCounts = professionCountsOf(nation);
 
   // Once butun kohortlar ve istihdamlari kurulur; gelir dagitimi ancak sinifin
   // TOPLAM etkinlik agirligi bilindiginde yapilabilir (yoksa paylar toplami
   // 1 etmez ve sinif geliri sizar).
   const draft = [];
   for (const [professionId, profession] of Object.entries(PROFESSION_INFO)) {
-    const total = Math.max(0, Math.round(economy.professionCounts[professionId] ?? 0));
+    const total = Math.max(0, Math.round(professionCounts[professionId] ?? 0));
     if (total <= 0) continue;
     const basis = BASIS[professionId] ?? 'population';
     let weights = entries.map((entry) => weightOf(entry, basis));
@@ -294,6 +297,7 @@ function cohortEmployment(world, nation, entry, professionId, size) {
 export function reconcile(world, nation) {
   const cohorts = nationCohorts(world, nation);
   const economy = nation.economy ?? {};
+  const professionCounts = professionCountsOf(nation);
   const byProfession = {};
   const byClass = {};
   let total = 0;
@@ -304,7 +308,7 @@ export function reconcile(world, nation) {
   }
   const professionDrift = Object.entries(PROFESSION_INFO).map(([id]) => ({
     id,
-    expected: Math.round(economy.professionCounts?.[id] ?? 0),
+    expected: Math.round(professionCounts[id] ?? 0),
     actual: byProfession[id] ?? 0,
   }));
   const classDrift = Object.keys(CLASS_INFO).map((id) => ({
@@ -315,7 +319,7 @@ export function reconcile(world, nation) {
   return {
     cohorts: cohorts.length,
     total,
-    cohortPopulation: Math.round(economy.cohortPopulation ?? 0),
+    cohortPopulation: Math.round(economy.population ?? 0),
     professionDrift,
     classDrift,
     worstDrift: Math.max(

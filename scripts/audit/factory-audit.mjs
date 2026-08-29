@@ -88,9 +88,10 @@ sub('Isci muhasebesi: kadro > nufus mumkun mu, ayni isci iki tesise sayiliyor mu
     if (!nation.alive) continue;
     const factories = nation.economy.factories ?? [];
     const employed = factories.reduce((s, f) => s + f.employees, 0);
-    const workers = nation.economy.professionCounts.workers ?? 0;
-    // Ulusal: fabrika kadrosu 'workers' meslek sayacini asamaz.
-    if (employed > workers + 1) doubleCount = Math.max(doubleCount, employed - workers);
+    // Ulusal: fabrika kadrosu ISGUCUNU asamaz (basit cekirdek: meslek
+    // sayaci artik depo degil turetme, tavan dogrudan isgucudur).
+    const workforce = nation.economy.workforce ?? 0;
+    if (employed > workforce + 1) doubleCount = Math.max(doubleCount, employed - workforce);
     for (const f of factories) {
       if (f.employees > factoryJobs(f) + 1e-6) overJobs = Math.max(overJobs, f.employees - factoryJobs(f));
     }

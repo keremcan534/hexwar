@@ -11,19 +11,20 @@
 // Bütün sayılar gerçek simülasyon durumundan gelir (bkz. denetim):
 // world.market.goods (fiyat/arz/talep/geçmiş), nation.economy.goodsFlow
 // (üretim/talep/ithalat/ihracat/karşılanma), economy.trade, askeri stoklar.
-// Tüketici kırılımı simülasyonun KENDİ tablolarından türetilir — CLASS_NEEDS,
-// armyWeeklyDemand, fabrika girdileri — kopyalarından değil; bilinemeyen pay
-// "Other" satırına düşer ki toplam her zaman gerçek talebi tutsun.
+// Tüketici ve üretici kırılımı SİMÜLASYONUN DEFTERİNDEN okunur: piyasa her
+// arzı ve talebi kaynağıyla kaydeder (`supplyBy` / `demandBy`, bkz.
+// econ/market.js). Eskiden burada sınıf sepetleri, ordu tüketimi ve inşaat
+// çimentosu paralel olarak yeniden hesaplanıyordu — aynı gerçeğin ikinci bir
+// temsili. Yalnız tesis TÜRÜ kırılımı türetilir (defter sanayiyi tek kalemde
+// tutar); onun da kalanı açıkça yazılır.
 //
 // Katman notu: yalnız okur. DOM bilmez, Node'da sınanabilir.
 
 import {
-  CLASS_NEEDS, FACTORIES, GOODS, GOOD_IDS, IMPORT_ELASTICITY,
-  MILITARY_EQUIPMENT, MILITARY_EQUIPMENT_IDS, WORKERS_PER_LEVEL,
-  armyWeeklyDemand, equipmentStock, needAmount, workshopArmsOutput,
+  FACTORIES, GOODS, GOOD_IDS, IMPORT_ELASTICITY,
+  MILITARY_EQUIPMENT, MILITARY_EQUIPMENT_IDS, WORKERS_PER_LEVEL, equipmentStock,
 } from './economy.js';
-import { RGO_TYPES, provinceOutput } from './provinces.js';
-import { constructionPower, ensureConstruction } from './construction.js';
+import { RGO_TYPES } from './provinces.js';
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
 
@@ -130,28 +131,35 @@ export function tradeSummary(world, nation, rows) {
 const laborThroughput = (factory) => (factory.employees ?? 0) / WORKERS_PER_LEVEL;
 
 /**
- * Seçili malın yerli üreticileri. Üç gerçek kaynak: RGO'lar (provinceOutput),
+ * Seçili malın yerli üreticileri. Üç gerçek kaynak: RGO'lar (defterden),
  * fabrikalar (tür başına toplanır) ve silah atölyeleri. Kalan fark — gübre
  * verim bonusu, barış anlaşması sevkiyatı — "Other" satırına düşer ki liste
  * toplamı goodsFlow.production'ı tutsun.
  */
 function producersOf(world, nation, id, flow) {
   const rows = [];
-  let rgoAmount = 0;
-  let rgoProvinces = 0;
-  let rgoName = null;
-  for (const province of world.provinces ?? []) {
-    if (province.owner !== nation.id || !province.econ) continue;
-    const type = RGO_TYPES[province.econ.rgo];
-    if (type?.goodId !== id) continue;
-    rgoProvinces++;
-    rgoName = type.name;
-    rgoAmount += provinceOutput(world, province)[id] ?? 0;
-  }
-  if (rgoProvinces > 0) {
-    rows.push({ name: rgoName, amount: rgoAmount, note: `${rgoProvinces} provinces` });
+  // RGO toplamı SİMÜLASYONUN DEFTERİNDEN gelir (`supplyBy.rgo`); province
+  // taraması yalnız *adı* ve kaç kümenin ürettiğini bulmak için.
+  const rgoAmount = flow.supplyBy?.rgo ?? 0;
+  if (rgoAmount > 0.001) {
+    let provinces = 0;
+    let name = null;
+    for (const province of world.provinces ?? []) {
+      if (province.owner !== nation.id || !province.econ) continue;
+      const type = RGO_TYPES[province.econ.rgo];
+      if (type?.goodId !== id) continue;
+      provinces++;
+      name = type.name;
+    }
+    rows.push({
+      name: name ?? 'Provinces',
+      amount: rgoAmount,
+      note: provinces > 1 ? `${provinces} provinces` : 'province',
+    });
   }
 
+  // Fabrika kırılımı tesis TÜRÜNE göre: defter sanayiyi tek kalemde tutar,
+  // oyuncunun görmek istediği hangi tesisin ürettiğidir.
   const byType = new Map();
   for (const factory of nation.economy?.factories ?? []) {
     const type = FACTORIES[factory.typeId];
@@ -174,9 +182,10 @@ function producersOf(world, nation, id, flow) {
       note: entry.count > 1 ? `${entry.count} plants` : 'factory',
     });
   }
-  if (id === 'arms') {
-    const workshop = workshopArmsOutput(nation);
-    if (workshop > 0.001) rows.push({ name: 'State workshops', amount: workshop, note: 'floor output' });
+
+  const workshop = flow.supplyBy?.workshop ?? 0;
+  if (workshop > 0.001) {
+    rows.push({ name: 'State workshops', amount: workshop, note: 'floor output' });
   }
 
   const known = rows.reduce((sum, row) => sum + row.amount, 0);
@@ -187,17 +196,22 @@ function producersOf(world, nation, id, flow) {
 }
 
 /**
- * Seçili malın yerli tüketicileri. Her satır simülasyonun kendi formülünün
- * okunuşudur: fabrika talebi runFactories'in girdi isteği, nüfus talebi
- * populationDemand'ın sepet × ödeyebilme payı, ordu armyWeeklyDemand,
- * çimento inşaat kuyruğunun bu haftaki işi. Bilinmeyen pay "Other".
+ * Seçili malın yerli tüketicileri.
+ *
+ * ARTIK YENİDEN HESAPLANMIYOR. Piyasa her talebi KAYNAĞIYLA kaydediyor
+ * (`flow.demandBy`, bkz. econ/market.js), ekran da o defteri okuyor. Eskiden
+ * burada sınıf sepetleri, ordu tüketimi ve inşaat çimentosu simülasyonun
+ * formülleriyle *paralel olarak* yeniden hesaplanıyordu: aynı gerçeğin ikinci
+ * bir temsili, kayması an meselesi (ve kalanı "Other" satırına düşüyordu).
+ * Tek kırılım hâlâ türetilir — hangi TESİS TÜRÜNÜN ne kadar girdi istediği,
+ * çünkü defter sanayiyi tek kalemde tutar.
  */
 function consumersOf(world, nation, id, flow) {
   const rows = [];
-  const economy = nation.economy ?? {};
+  const demandBy = flow.demandBy ?? {};
 
   const byType = new Map();
-  for (const factory of economy.factories ?? []) {
+  for (const factory of nation.economy?.factories ?? []) {
     const type = FACTORIES[factory.typeId];
     const need = type?.inputs?.[id];
     if (!need) continue;
@@ -208,7 +222,9 @@ function consumersOf(world, nation, id, flow) {
     entry.count++;
     byType.set(type.name, entry);
   }
+  let factoryKnown = 0;
   for (const entry of byType.values()) {
+    factoryKnown += entry.amount;
     rows.push({
       name: entry.name,
       amount: entry.amount,
@@ -216,52 +232,29 @@ function consumersOf(world, nation, id, flow) {
       group: 'factories',
     });
   }
-
-  // Nüfus: istenen miktar × ödeyebilme payı (needsMet = öde × bul; buradan
-  // yalnız ödeme kapısı geri çıkarılır çünkü talep yalnız onunla kısılır).
-  let population = 0;
-  for (const [classId, needs] of Object.entries(CLASS_NEEDS)) {
-    const need = needs[id];
-    if (!need) continue;
-    const socialClass = economy.classes?.[classId];
-    if (!socialClass) continue;
-    const amount = needAmount(need, world.turn ?? 1) * (socialClass.population / 10000);
-    const availability = socialClass.needsAvailable ?? 1;
-    const afford = availability > 0 ? clamp01((socialClass.needsMet ?? 1) / availability) : 1;
-    population += amount * afford;
-  }
-  if (population > 0.001) {
-    rows.push({ name: 'Population', amount: population, note: 'household baskets', group: 'population' });
-  }
-
-  const army = armyWeeklyDemand(world, nation).demand[id] ?? 0;
-  if (army > 0.001) rows.push({ name: 'Army upkeep', amount: army, note: 'weekly consumption', group: 'government' });
-
-  const imported = economy.military?.[`${id}Imported`] ?? 0;
-  if (imported > 0.001) {
-    rows.push({ name: 'Strategic procurement', amount: imported, note: 'stockpile imports', group: 'government' });
-  }
-
-  if (id === 'cement') {
-    const power = constructionPower(nation);
-    const buildWork = ensureConstruction(nation).projects.reduce(
-      (sum, project) => sum + Math.min(power, Math.max(0, project.work - project.progress)),
-      0,
-    );
-    const cement = Math.min(buildWork, power) * 0.06;
-    if (cement > 0.001) rows.push({ name: 'Construction sites', amount: cement, note: 'building queue', group: 'government' });
-  }
-
-  const known = rows.reduce((sum, row) => sum + row.amount, 0);
-  const residual = (flow.demand ?? 0) - known;
-  if (residual > 0.05) {
+  // Tesis kırılımının toplamı defterdeki sanayi talebini tutmuyorsa (gübre
+  // gibi tarımsal girdiler) fark açıkça yazılır.
+  const industryRest = (demandBy.industry ?? 0) - factoryKnown;
+  if (industryRest > 0.05) {
     rows.push({
-      name: id === 'fertilizer' ? 'Agriculture' : 'Other',
-      amount: residual,
-      note: id === 'fertilizer' ? 'farm demand' : 'indirect demand',
-      group: 'other',
+      name: id === 'fertilizer' ? 'Agriculture' : 'Other industry',
+      amount: industryRest,
+      note: id === 'fertilizer' ? 'farm demand' : 'indirect input demand',
+      group: 'factories',
     });
   }
+
+  const entries = [
+    ['households', 'Population', 'household baskets', 'population'],
+    ['army', 'Army upkeep', 'weekly consumption', 'government'],
+    ['construction', 'Construction sites', 'building queue', 'government'],
+    ['state', 'Strategic procurement', 'stockpile purchases', 'government'],
+  ];
+  for (const [key, name, note, group] of entries) {
+    const amount = demandBy[key] ?? 0;
+    if (amount > 0.001) rows.push({ name, amount, note, group });
+  }
+
   rows.sort((a, b) => b.amount - a.amount);
   return rows;
 }

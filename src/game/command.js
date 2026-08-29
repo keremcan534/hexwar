@@ -26,6 +26,7 @@ import { orderMove } from './movement.js';
 import { controllerOf } from './control.js';
 import { MAX_STACK, armyPower, isMoving, unitsOn } from './units.js';
 import { fortDefenseAt } from './construction.js';
+import { spend } from './econ/budget.js';
 
 const FIRST = [
   'Aleron', 'Bertran', 'Casimir', 'Dorian', 'Edric', 'Faelan', 'Gideon', 'Halvard',
@@ -1017,9 +1018,7 @@ function refreshOfficerCorps(game, nation, rng) {
     if (officersOf(nation, branch).length >= wanted) continue;
     const cost = generalCost(nation);
     if (nation.gold < cost.gold) return;
-    nation.gold -= cost.gold;
-    // Atama bedeli de deftere: bkz. cities.js pay() içindeki not.
-    if (nation.economy) nation.economy.outlayGold = (nation.economy.outlayGold ?? 0) + cost.gold;
+    spend(nation, 'outlayCost', cost.gold);
     nation.generals.push(createGeneral(world, nation, rng, { branch }));
   }
 }

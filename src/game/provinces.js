@@ -203,6 +203,9 @@ function initialProvinceEcon(world, province) {
 }
 
 function ensureProvinceRgo(world, province) {
+  // Basit çekirdeğe geçişte düşen alan: sanayi işgücü artık nüfus payıyla
+  // yazılıyor, "banliyöcülük" onarımına gerek kalmadı (bkz. ruralPopulation).
+  if (province.econ) delete province.econ.industrialCommuters;
   const econ = province.econ;
   if (!econ) return null;
   const selected = weightedRgo(world, province);
@@ -516,16 +519,18 @@ const RGO_LABOR_FALLOFF = 0.75;
  * girdisi 8 katına çıkan fabrikalar işçi alamıyordu (bkz. market-diagnostic).
  */
 /**
- * Kirsal (RGO'da calisabilecek) nufus. Fabrikada calisan tarlada calismaz;
- * yerel kadro yerel nufusla SINIRLI dusulur, fazlasi banliyoculuk olarak
- * fabrikanin bulunmadigi provinslerden duser (bkz. economy.runFactories
- * banliyo duzeltmesi). Eski hali fazlayi hicbir yerden dusmuyordu.
+ * Kırsal (RGO'da çalışabilecek) nüfus. Fabrikada çalışan tarlada çalışmaz.
+ *
+ * `industrialEmployees` artık kümenin ULUSAL sanayi işgücündeki payıdır
+ * (economy.js her hafta nüfus oranıyla yazar), yani tanım gereği kümenin
+ * kendi nüfusundan küçüktür. Eski model kadroyu fabrikanın bulunduğu kümeye
+ * yazıyor, taşan kısmı "banliyöcülük" diye komşu kümelere dağıtıyordu —
+ * 40 satırlık bir onarım. Payla yazınca taşma YAPISAL olarak imkânsız.
  */
 export function ruralPopulation(econ) {
   const population = Math.max(0, econ?.population ?? 0);
-  const local = Math.min(Math.max(0, econ?.industrialEmployees ?? 0), population);
-  const commuters = Math.max(0, econ?.industrialCommuters ?? 0);
-  return Math.max(0, population - local - commuters);
+  const industrial = Math.min(Math.max(0, econ?.industrialEmployees ?? 0), population);
+  return Math.max(0, population - industrial);
 }
 
 export function rgoLaborScale(province, jobs) {
@@ -788,22 +793,37 @@ export function runProvinces(game) {
     // Sağlık harcaması büyümeyi hızlandırır (bkz. economy.js SOCIAL_PROGRAMS);
     // veri doğrudan okunuyor, economy.js'i import etmek katman döngüsü olurdu.
     const health = 1 + Math.min(100, nation.economy?.social?.health ?? 0) / 100 * 0.35;
-    // Beslenme: sepetinin ne kadarini fiilen alabildigi (bkz. economy.js
-    // populationDemand). Bu bag yokken kitligin nufusta hicbir karsiligi
-    // yoktu — dunya tahil uretimi TAMAMEN kesildiginde bile 120 haftalik
-    // nufus farki %0.0 olcusundeydi. Ac nufus once buyumeyi durdurur, uzayan
-    // aclik ise nufusu eritir.
-    const nourishment = clamp(nation.economy?.needsMet ?? 1, 0, 1);
+    // BESLENME YALNIZ GIDADAN GELİR (bkz. econ/pop.js `foodMet`). Eski model
+    // bütün sepete bakıyordu: karşılanamayan bir lüks — şarap, telefon —
+    // beslenme endeksini düşürüp nüfusu eritebiliyordu. Gıda dışı kıtlık artık
+    // memnuniyeti ve istikrarı vurur, açlığı değil.
+    const nourishment = clamp(nation.economy?.foodMet ?? 1, 0, 1);
     const famine = nourishment < FAMINE_THRESHOLD
       ? (FAMINE_THRESHOLD - nourishment) / FAMINE_THRESHOLD : 0;
     // Taban Vic2 ölçeğinde: en iyi koşulda yılda ~%0.9, yüzyılda ~2.3 kat
     // (1836-1936 gerçeği ~1.75 kat). Eski katsayılar yüzyılda ~4.6 kat
     // veriyordu ve hiçbir RGO kapasitesi bunu kovalayamıyordu (ölçüldü,
     // bkz. market-diagnostic). İşgal payı büyümeyi de payı kadar keser.
-    const weeklyGrowth = ((0.00006 + econ.agriculture * 0.00003)
-      * (peace ? 1 : 0.55) * (0.45 + stability) * health
-      * (0.25 + 0.75 * nourishment)) * (1 - occupied)
-      - famine * FAMINE_DECLINE;
+    // DÖKÜM AYRI TUTULUR: oyuncunun "nüfusum neden büyümüyor" sorusunun
+    // cevabı çarpan çarpan ekranda okunabilsin (bkz. SIMPLE_CORE_RESULT §22).
+    const base = 0.00006 + econ.agriculture * 0.00003;
+    const warFactor = peace ? 1 : 0.55;
+    const stabilityFactor = 0.45 + stability;
+    const foodFactor = 0.25 + 0.75 * nourishment;
+    const famineLoss = famine * FAMINE_DECLINE;
+    const weeklyGrowth = base * warFactor * stabilityFactor * health * foodFactor
+      * (1 - occupied) - famineLoss;
+    econ.growth = weeklyGrowth;
+    econ.growthBreakdown = {
+      base,
+      war: warFactor,
+      stability: stabilityFactor,
+      health,
+      food: foodFactor,
+      occupied: 1 - occupied,
+      famine: -famineLoss,
+      total: weeklyGrowth,
+    };
     const previousPopulation = econ.population;
     econ.population = Math.max(
       0,
