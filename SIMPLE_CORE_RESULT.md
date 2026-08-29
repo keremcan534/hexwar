@@ -353,6 +353,41 @@ Sadeleştirme, eski modelde sessizce ölü olan üç bağı ortaya çıkardı:
 
 ---
 
+## Mevcut denetim ailesi (`audit:*`) — eski çekirdekle yan yana
+
+Aynı seed, aynı komutlar; solda `master`, sağda bu dal:
+
+| denetim | ESKİ | BASİT ÇEKİRDEK |
+| --- | --- | --- |
+| `ledger` | temiz | temiz |
+| `labor` | temiz | temiz (I1…I5 = 0) |
+| `debt` · `private` · `research` · `companies` · `construction` · `stability` · `legacy` | temiz | temiz |
+| `budget` | temiz | temiz |
+| `tariff` | temiz | temiz *(kimlik sapması 0.00 — bkz. aşağıdaki gümrük hatası)* |
+| `factory` | 2 MEDIUM | 2 MEDIUM (aynı ikisi) |
+| `market` | 2 MEDIUM | 3 MEDIUM (`groceries` kıtlığı eklendi) |
+| `population` | 1 LOW | 1 MEDIUM *(aşağıya bakınız)* |
+| `tax` | 1 MEDIUM | 1 MEDIUM |
+
+`factory`, `population` ve `labor` denetimleri silinmiş `professionCounts`
+deposunu okuduğu için çöküyordu; türetmeye (`professionCountsOf`) bağlandılar.
+
+**İki denetim ölçütü yeniden hedeflendi** — ikisi de eski modelin *kaldırılan*
+davranışını sınıyordu, gevşetilmediler, **kanalları değiştirildi**:
+
+- `tax` — "%100 vergi bedelsiz" ölçütü yalnız NÜFUS kaybına bakıyordu ve eski
+  çekirdek onu ancak **açlıktan** geçiyordu (bir lükse parası yetmeyen hane
+  "beslenemiyor" sayılıyordu). Bu dal o kanalı bilerek kapattı; ölçüt artık
+  toplumsal bedeli de kabul ediyor. Ölçülen: %0 → %100 vergide istikrar
+  **0.72 → 0.35**, memnuniyet **0.74 → 0.37**, sepet **0.54 → 0.27**, nüfus
+  −%1.6 — yani bedel duruyor, yalnız açlıktan değil.
+- `population` — "birikim var mı" ölçütü sınıf nesnesinde bir `savings`
+  ALANI arıyordu. Refahın taşıyıcısı artık sınıf paylarıdır (bir yıl refah
+  içinde geçirmek insanları kalıcı olarak üst sınıfa taşır); ölçüt stok
+  alanını değil stoğun **işlevini** sınıyor.
+
+---
+
 ## Bilinen sorunlar
 
 - **Sanayileşme ~%24 daha yavaş.** İşgücü tavanı (`MAX_INDUSTRIAL_SHARE = 0.7`,
@@ -368,6 +403,14 @@ Sadeleştirme, eski modelde sessizce ölü olan üç bağı ortaya çıkardı:
 - **16 "sahipsiz tesis"** (çapası artık ülkenin olmayan karede duran fabrika)
   156 haftada ölçüldü. Bu kasıtlı: savaşta el değiştiren kare fabrikayı
   silmiyor (`ensureFactoryAnchor` notu). Bulgu değil, ölçüm olarak raporlanıyor.
+- **Askere alım nüfusun üçte ikisini kayıtsız yutuyor** — `units.js` bir piyade
+  alayı için province'ten **3.000** kişi çekiyor (`manpower: 3000`) ama alayın
+  gücü **1.000** (`maxStrength`). Aradaki 2.000 kişi hiçbir kanalda görünmüyor.
+  Bu **eski çekirdekte de aynen var** (aynı probe: eski 19/60 hafta, yeni 18/60);
+  orada büyük açlık ölümleri (haftada ~2.400) denklemi kapattığı için
+  görünmüyordu. Açlık sahte kanalı kapanınca ortaya çıktı. Düzeltmesi
+  `recruitment.js`/`units.js`'te ve bu dalın kapsamı dışında (askerî sistem
+  yeniden yazılmayacaktı) — bilerek dokunulmadı, burada kayda geçiriliyor.
 - **`npm run audit:budget` bu donanımda çok yavaş** (senaryo başına ayrı süreç
   açıyor). Sonunda koştu ve **bulgu üretmedi**; eğitim 0→100 ölçümü:
   orta sınıf **+%15.6**, fabrika kadrosu **+%5.6**, bedel **11.14 → 32.84/hafta**.

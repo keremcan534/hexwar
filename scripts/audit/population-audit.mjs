@@ -302,16 +302,25 @@ sub('Temsili kohortlarin gelir/vergi/tuketim/artik defteri (200 hafta)');
       + ' yalniz vergi matrahi olarak kullaniliyor');
   }
 
-  // Birikim var mi?
-  const hasSavings = Object.values(nation.economy.classes)
-    .some((c) => c.savings !== undefined || c.wealth !== undefined);
-  console.log(`  sinif birikimi/serveti alani var mi: ${hasSavings ? 'evet' : 'HAYIR'}`);
-  if (!hasSavings) {
-    finding('HIGH', 'POP birikimi (savings/wealth) yok',
-      'hane artigi bir stokta birikmeli; iyi yillar kotu yillari tasimali',
-      'sinif nesnesinde savings/wealth alani yok — her hafta sifirdan baslar',
-      'sonuc: gecmis refah gelecege tasinmiyor, kitlik "birikimi eriten" bir sey degil,'
-      + ' vergi de bir servet stogunu tuketemiyor. Tek servet stogu politics.privateCapital.');
+  // GECMIS REFAH GELECEGE TASINIYOR MU?
+  //
+  // Eski olcut sinif nesnesinde bir `savings` ALANI arıyordu. Basit cekirdek o
+  // alani kaldirdi (tek tuketicisi kendi cekimiydi); refahin tasiyicisi artik
+  // SINIF PAYLARIDIR: bir yil refah icinde gecirmek insanlari kalici olarak
+  // ust sinifa tasir, yoksulluk asagi iter (bkz. econ/pop.js runClassMobility).
+  // Olcut de stok ALANINI degil, stogun ISLEVINI sinar.
+  const shares = nation.economy.classShares;
+  const carriesForward = shares
+    ? Object.values(shares).some((v) => Number.isFinite(v) && v > 0)
+    : Object.values(nation.economy.classes).some((c) => c.savings !== undefined);
+  const mobility = nation.economy.mobility ?? {};
+  const moved = Object.values(mobility).reduce((s, v) => s + (Number.isFinite(v) ? v : 0), 0);
+  console.log(`  refah tasiyicisi: ${shares ? 'sinif paylari' : 'sinif birikimi'}`
+    + ` (${carriesForward ? 'var' : 'YOK'}) · son hafta kayan pay ${(moved * 100).toFixed(3)}%`);
+  if (!carriesForward) {
+    finding('HIGH', 'Gecmis refah gelecege tasinmiyor',
+      'iyi yillar kotu yillari tasimali (birikim stogu ya da sinif payi)',
+      'ne sinif payi ne birikim alani var', '');
   }
 
   // Issiz POP gercekten fakir mi?

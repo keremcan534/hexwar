@@ -191,12 +191,23 @@ section('C. TANI');
   console.log(`  tavan verginin 260 haftalik bedeli: nufus ${pct(popCost)},`
     + ` istikrar ${n2(a.stability)} -> ${n2(b.stability)}, sanayi ${a.factories}/${a.factoryLevels}`
     + ` -> ${b.factories}/${b.factoryLevels}, hazine +${n0(goldGain)}`);
-  if (goldGain > 0 && popCost < 0.03) {
+  // TAVAN VERGININ BEDELI IKI KANALDAN OLCULUR.
+  //
+  // Eski olcut YALNIZ nufus kaybina bakiyordu ve eski cekirdek onu ancak
+  // ACLIKTAN gecerdi: bir lukse parasi yetmeyen hane "beslenemiyor" sayilip
+  // nufus eriyordu. Basit cekirdek o kanali BILEREK kapatti (beslenme yalniz
+  // gidadan gelir, bkz. SIMPLE_CORE_NOTES §8); dolayisiyla vergi artik aclikla
+  // degil TOPLUMSAL olarak odetir. Olcut de onu olcmeli: sepetin karsilanmasi,
+  // memnuniyet ve istikrar. Nufus kanali not olarak kalir.
+  const wellbeingCost = 1 - (b.stability ?? 0) / Math.max(1e-9, a.stability ?? 0);
+  console.log(`  toplumsal bedel: istikrar ${pct(-wellbeingCost)},`
+    + ` sepet ${n2(a.lowerMet ?? 0)} -> ${n2(b.lowerMet ?? 0)}`);
+  if (goldGain > 0 && popCost < 0.03 && wellbeingCost < 0.2) {
     finding('HIGH', '%100 vergi neredeyse bedelsiz',
-      'tavan vergi nufus/sanayi tarafinda gorunur bir bedel odemeli',
-      `260 haftada hazine +${n0(goldGain)}, nufus farki yalniz ${pct(popCost)}`,
-      `tek gorunur bedel istikrar (${n2(a.stability)} -> ${n2(b.stability)})`
-      + ` ve ust sinifin erimesi (${n0(a.upperPop)} -> ${n0(b.upperPop)})`);
+      'tavan vergi ya nufusta ya toplumsal tarafta gorunur bedel odemeli',
+      `260 haftada hazine +${n0(goldGain)}, nufus ${pct(popCost)},`
+      + ` istikrar ${pct(-wellbeingCost)}`,
+      `ust sinif ${n0(a.upperPop)} -> ${n0(b.upperPop)}`);
   }
   if (b.lowerBudget < 0) {
     finding('HIGH', '%100 vergide hane butcesi negatif', 'butce 0 tabanina oturmali',
