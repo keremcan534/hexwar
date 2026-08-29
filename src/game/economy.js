@@ -1089,10 +1089,16 @@ function rawProduction(world, nation, market, output) {
   extraction.count = 0;
   for (const id in extraction.byGood) extraction.byGood[id] = 0;
 
+  // Sanayi işgücünün nüfustaki payı: kırsal nüfus bundan düşer. AYRI bir
+  // province taraması açmamak için üretim döngüsüne katıldı (ulus × province
+  // taraması haftada on binlerce yineleme demek).
+  const industrialShare = clamp(nation.economy.industrialShare ?? 0, 0, 1);
   const provinces = world.provinces ?? [];
   for (let p = 0; p < provinces.length; p++) {
     const province = provinces[p];
     if (province.owner !== nation.id || !province.econ) continue;
+    province.econ.industrialJobs = 0;
+    province.econ.industrialEmployees = Math.max(0, province.econ.population) * industrialShare;
     const produced = provinceOutput(world, province, provinceOutputScratch);
     const track = RGO_TYPES[province.econ.rgo]?.track;
     const mine = track === 'extraction';
@@ -1138,23 +1144,17 @@ function rawProduction(world, nation, market, output) {
 }
 
 /**
- * Sanayi işgücünün haritaya yazılması. İki AYRI sayı, iki AYRI iş:
+ * Tesis kadrosunun haritaya yazılması. Kümenin İKİ sanayi sayısı vardır:
  *
  *   `industrialJobs`      tesislerin GERÇEKTEN bulunduğu yerdeki kadro —
- *                         kohort yerleşimi ve göç çekimi bunu okur.
+ *                         kohort yerleşimi ve göç çekimi bunu okur (burası).
  *   `industrialEmployees` kümenin ULUSAL sanayi işgücündeki nüfus PAYI —
- *                         kırsal nüfus bundan düşer (bkz. ruralPopulation).
+ *                         kırsal nüfus bundan düşer (rawProduction yazar).
  *
  * Payla yazmak emeğin iki kez sayılmasını yapısal olarak imkânsız kılar:
  * hiçbir kümenin sanayi payı kendi nüfusunu aşamaz.
  */
-function writeProvinceLabor(world, nation) {
-  const share = clamp(nation.economy.industrialShare ?? 0, 0, 1);
-  for (const province of world.provinces ?? []) {
-    if (province.owner !== nation.id || !province.econ) continue;
-    province.econ.industrialJobs = 0;
-    province.econ.industrialEmployees = Math.max(0, province.econ.population) * share;
-  }
+function writeProvinceJobs(world, nation) {
   for (const factory of nation.economy.factories) {
     const econ = world.get(factory.q, factory.r)?.province;
     if (econ) econ.industrialJobs += Math.max(0, factoryJobs(factory));
@@ -1536,7 +1536,7 @@ export function runNationEconomy(game, nation, ctx) {
     runHiring(world, nation, schoolingOf(nation),
       (factory) => autoUpgradeFactory(game, nation, factory));
   }
-  writeProvinceLabor(world, nation);
+  writeProvinceJobs(world, nation);
   mark('production');
 
   // 4. TALEP — devlet, ordu, şantiye, hane.
