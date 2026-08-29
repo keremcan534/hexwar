@@ -203,6 +203,9 @@ function initialProvinceEcon(world, province) {
 }
 
 function ensureProvinceRgo(world, province) {
+  // Basit çekirdeğe geçişte düşen alan: sanayi işgücü artık nüfus payıyla
+  // yazılıyor, "banliyöcülük" onarımına gerek kalmadı (bkz. ruralPopulation).
+  if (province.econ) delete province.econ.industrialCommuters;
   const econ = province.econ;
   if (!econ) return null;
   const selected = weightedRgo(world, province);

@@ -9,6 +9,7 @@ import {
   industrialJobs, populationOf,
 } from '../../src/game/economy.js';
 import { nationCohorts, reconcile, summarize } from '../../src/game/population.js';
+import { professionCountsOf } from '../../src/game/economy.js';
 import { nationManpower, recruit, disband } from '../../src/game/recruitment.js';
 import { provinceRgoStatus } from '../../src/game/provinces.js';
 import { soldiersOf, UNIT_TYPES } from '../../src/game/units.js';
@@ -44,7 +45,7 @@ sub('Kohort toplami = meslek sayaclari = sinif toplamlari (200 hafta)');
   run(game, 200);
   const rows = game.world.nations.filter((n) => n.alive && n.economy).map((n) => {
     const rec = reconcile(game.world, n);
-    const counts = n.economy.professionCounts;
+    const counts = professionCountsOf(n);
     const countTotal = Object.values(counts).reduce((s, v) => s + v, 0);
     const classTotal = Object.keys(n.economy.classes)
       .reduce((s, id) => s + n.economy.classes[id].population, 0);

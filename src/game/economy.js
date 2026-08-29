@@ -1180,19 +1180,19 @@ function retainEquipment(world, nation, market, ownOutput) {
   for (const id of MILITARY_EQUIPMENT_IDS) {
     const equipment = MILITARY_EQUIPMENT[id];
     const factoryOutput = Math.max(0, ownOutput[id] ?? 0);
-    // Küçük bir atölye tabanı: ilk askerî fabrikasından önce ordu kuramamak
-    // kalıcı bir kilit olurdu.
+    // Küçük bir DEVLET atölyesi tabanı: ilk askerî fabrikasından önce ordu
+    // kuramamak kalıcı bir kilit olurdu. Atölye devletin kendi üretimidir —
+    // pazara girmez, pazardan satın alınmaz, dolayısıyla bedeli de yoktur.
     const workshopOutput = id === 'arms' ? workshopArmsOutput(nation) : 0;
-    if (workshopOutput > 0) addSupply(market, nation, id, 'workshop', workshopOutput);
     const room = Math.max(0, equipment.stockCap - equipmentStock(nation, id));
     const price = Math.max(0.01, priceOf(world, id));
-    const affordable = budget / price;
-    const fromFactory = Math.min(factoryOutput, room, affordable);
+    const fromFactory = Math.min(factoryOutput, room, budget / price);
     const fromWorkshop = Math.min(workshopOutput, Math.max(0, room - fromFactory));
     military[MILITARY_FIELD[id].produced] = fromFactory + fromWorkshop;
     setEquipmentStock(nation, id, equipmentStock(nation, id) + fromFactory + fromWorkshop);
-    retain(market, nation, id, fromFactory + fromWorkshop);
-    const cost = (fromFactory + fromWorkshop) * price;
+    // Yalnız FABRİKA çıktısı pazardan çekilir ve ödenir.
+    retain(market, nation, id, fromFactory);
+    const cost = fromFactory * price;
     spend(nation, 'procurementCost', cost);
     budget = Math.max(0, budget - cost);
   }

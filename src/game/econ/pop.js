@@ -34,8 +34,13 @@ export const WORKFORCE_RATE = 0.45;
 /**
  * Sanayinin işgücünden alabileceği en büyük pay. Tarla ve maden de işçi
  * ister; bu tavan olmadan sanayi bütün işgücünü yutar ve hammadde biter.
+ *
+ * 0.7 = nüfusun ~%31'i (0.7 × WORKFORCE_RATE). Eski modelin tavanı "alt
+ * sınıfın %40'ı" = nüfusun ~%31'iydi; aynı yere denk gelsin diye ölçüldü.
+ * 0.55 ile 100 yıllık koşuda kurulu tesis sayısı 1065'te kalıyordu (eski
+ * çekirdek 1468) — sanayileşme tavana çarpıyordu, iştahsızlıktan değil.
  */
-export const MAX_INDUSTRIAL_SHARE = 0.55;
+export const MAX_INDUSTRIAL_SHARE = 0.7;
 
 /** Sınıf tavanları: yukarı geçiş serbest kalırsa alt sınıf (işgücü) erir. */
 export const CLASS_CEILING = { middle: 0.34, upper: 0.11 };

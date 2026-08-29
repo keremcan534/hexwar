@@ -80,6 +80,15 @@ head('1. DEGISMEZLER');
     if (!finite(nation.gold)) { nan++; nanWhere.push(`${nation.name}.gold`); }
   }
 
+  // Sahipsiz tesis: capasi artik ulkenin olmayan kare uzerinde duran fabrika.
+  let orphanFactories = 0;
+  for (const nation of nations) {
+    for (const factory of nation.economy.factories ?? []) {
+      const tile = world.get(factory.q, factory.r);
+      if (!tile || tile.owner !== nation.id) orphanFactories++;
+    }
+  }
+
   let badPrice = 0;
   let badFlow = 0;
   for (const id of GOOD_IDS) {
@@ -99,6 +108,7 @@ head('1. DEGISMEZLER');
   console.log(`  sonsuz/NaN ekonomi alani  : ${nan}${nanWhere.length ? ` (${nanWhere.join(', ')})` : ''}`);
   console.log(`  gecersiz fiyat            : ${badPrice}/${GOOD_IDS.length}`);
   console.log(`  gecersiz piyasa akisi     : ${badFlow}`);
+  console.log(`  sahipsiz tesis            : ${orphanFactories}`);
 
   if (worstPopDrift > 0.01) {
     fail('HIGH', 'Ulusal nufus province toplamindan sapiyor',
@@ -111,6 +121,9 @@ head('1. DEGISMEZLER');
   if (nan) fail('HIGH', 'Sonsuz/NaN ekonomi degeri', '0', String(nan));
   if (badPrice) fail('HIGH', 'Gecersiz fiyat', '0', String(badPrice));
   if (badFlow) fail('HIGH', 'Gecersiz piyasa akisi', '0', String(badFlow));
+  // Sahipsiz tesis bir BULGU degil olcumdur: savasta el degistiren kare
+  // fabrikayi silmez (kayip veri surprizi olmasin diye, bkz. ensureFactoryAnchor).
+
 }
 
 // ------------------------------------------------- 2. PARA KORUNUMU -------
