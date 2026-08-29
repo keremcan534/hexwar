@@ -367,7 +367,7 @@ Aynı seed, aynı komutlar; solda `master`, sağda bu dal:
 | `factory` | 2 MEDIUM | 2 MEDIUM (aynı ikisi) |
 | `market` | 2 MEDIUM | 3 MEDIUM (`groceries` kıtlığı eklendi) |
 | `population` | 1 LOW | 1 MEDIUM *(aşağıya bakınız)* |
-| `tax` | 1 MEDIUM | 1 MEDIUM |
+| `tax` | 1 MEDIUM | 1 MEDIUM (aynısı: "sıfır vergi devleti iflas etmiyor") |
 
 `factory`, `population` ve `labor` denetimleri silinmiş `professionCounts`
 deposunu okuduğu için çöküyordu; türetmeye (`professionCountsOf`) bağlandılar.
@@ -378,9 +378,14 @@ davranışını sınıyordu, gevşetilmediler, **kanalları değiştirildi**:
 - `tax` — "%100 vergi bedelsiz" ölçütü yalnız NÜFUS kaybına bakıyordu ve eski
   çekirdek onu ancak **açlıktan** geçiyordu (bir lükse parası yetmeyen hane
   "beslenemiyor" sayılıyordu). Bu dal o kanalı bilerek kapattı; ölçüt artık
-  toplumsal bedeli de kabul ediyor. Ölçülen: %0 → %100 vergide istikrar
-  **0.72 → 0.35**, memnuniyet **0.74 → 0.37**, sepet **0.54 → 0.27**, nüfus
-  −%1.6 — yani bedel duruyor, yalnız açlıktan değil.
+  toplumsal bedeli de kabul ediyor. Denetimin kendi ölçtüğü rakam: %0 → %100
+  vergide **istikrar 0.71 → 0.17 (−%75)**, sepet **0.80 → 0.25**, nüfus −%0.9.
+  Bağımsız ölçüm (aynı tohum, 260 hafta, bütün ülkeler): memnuniyet
+  **0.74 → 0.37**, istikrar **0.72 → 0.35**, sepet **0.54 → 0.27**, nüfus −%1.6,
+  hazine **+%4042**, kurulu tesis **+%111**. Bedel duruyor ve büyük — ama
+  açlıktan değil, toplumsal huzurdan ödeniyor. *Hazine kazancının sanayiyi iki
+  katına çıkarabilmesi ayrı bir denge sorusudur ve bu dalın kapsamı dışındadır
+  (vergi bandını iktidar partisi zaten sınırlıyor).*
 - `population` — "birikim var mı" ölçütü sınıf nesnesinde bir `savings`
   ALANI arıyordu. Refahın taşıyıcısı artık sınıf paylarıdır (bir yıl refah
   içinde geçirmek insanları kalıcı olarak üst sınıfa taşır); ölçüt stok
