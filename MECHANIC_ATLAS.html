@@ -653,15 +653,16 @@ footer { border-top: 1px solid var(--line-strong); margin-top: 60px; padding-top
   <div class="sec-head">
     <div class="part">PART 1 &middot; ii</div>
     <div>
-      <h2>Three balances, none of them agreed</h2>
+      <h2>Four balances, none of them agreed</h2>
       <p class="sub">The clearest evidence that the budget has no single owner is that the game
-      cannot tell the player what their balance is.</p>
+      cannot tell the player what their balance is. Four figures are on screen, computed four
+      different ways.</p>
     </div>
   </div>
 
   <div class="tw">
   <table>
-    <caption>Three numbers, three formulas, all presented to the player as the weekly balance.</caption>
+    <caption>Four numbers, four formulas, all presented to the player as the weekly balance.</caption>
     <thead><tr><th>Where the player sees it</th><th>What is computed</th><th>What it leaves out</th><th>Source</th></tr></thead>
     <tbody>
       <tr>
@@ -675,6 +676,12 @@ footer { border-top: 1px solid var(--line-strong); margin-top: 60px; padding-top
         <td class="mono">fiscalNet <span class="neg">alone</span></td>
         <td>all of the above, <em>plus</em> city and province revenue, army wages and administration</td>
         <td class="src">screens.js:782</td>
+      </tr>
+      <tr>
+        <td>Decision card, labelled &ldquo;weekly gold&rdquo;</td>
+        <td class="mono">budget.net.gold <span class="neg">alone</span></td>
+        <td>the mirror image of the row above &mdash; taxes, social spending and construction, but it does keep city revenue and army wages</td>
+        <td class="src">hud.js:719</td>
       </tr>
       <tr>
         <td>Budget screen, &ldquo;Last week&rsquo;s balance&rdquo;</td>
@@ -769,8 +776,10 @@ footer { border-top: 1px solid var(--line-strong); margin-top: 60px; padding-top
   </div>
 
   <h3>Phase-order dependencies</h3>
-  <p>Reordering any of these silently changes the simulation rather than breaking it &mdash; which is
-  the expensive kind of coupling.</p>
+  <p>A full read of <code>turn.js:342&ndash;547</code> and <code>economy.js:3653&ndash;4005</code>
+  yields roughly <strong>thirty ordering constraints</strong> that the budget slice depends on.
+  Reordering any of them silently changes the simulation rather than breaking it &mdash; which is the
+  expensive kind of coupling. A representative few:</p>
   <ul class="plain">
     <li><code>populationDemand</code> runs <em>before</em> <code>fiscalBalance</code>, so household
     budgets always spend last week&rsquo;s income (<span class="mono">economy.js:2570</span>, comment
@@ -785,7 +794,25 @@ footer { border-top: 1px solid var(--line-strong); margin-top: 60px; padding-top
     (<span class="mono">turn.js:559</span>) and consumed by <code>fiscalBalance</code>&rsquo;s callers
     much later; treaty tribute is charged as a share of it
     (<span class="mono">turn.js:597</span>) before the fiscal week runs at all.</li>
+    <li><code>settleDebt</code> is reached from two phases and reads a different vintage of
+    <code>ledger.income</code> from each &mdash; last week&rsquo;s when called at
+    <span class="mono">:3567</span>, this week&rsquo;s when called from
+    <code>runNationalEvents</code> (<span class="mono">turn.js:525</span>) or the UI.</li>
   </ul>
+
+  <div class="callout warnbox">
+    <span class="label">Conquest is invisible to the week that won it</span>
+    <p><code>produce()</code> runs at <span class="mono">turn.js:481</span>. <code>runBattles</code>
+    runs at <span class="mono">:512</span> and <code>executeOrders</code> at
+    <span class="mono">:518</span> &mdash; both of which flip <code>nation.tiles</code>,
+    <code>tile.controller</code> and <code>province.econ.control</code>. <strong>A week in which five
+    provinces change hands books none of them in that week&rsquo;s taxes, RGO output or administration
+    cost.</strong> Then <code>checkVictory</code> at <span class="mono">:535</span> scores the
+    pre-battle <code>nation.budget</code> against the post-battle <code>nation.tiles</code> in the same
+    expression.</p>
+    <p>This is also the most likely reason the six-seed war test found a 20% attack-power difference
+    and zero economic difference: within a single week, winning does not reach the budget at all.</p>
+  </div>
 
   <h3>Dead and vestigial state</h3>
   <div class="tw">
@@ -799,6 +826,7 @@ footer { border-top: 1px solid var(--line-strong); margin-top: 60px; padding-top
       <tr><td><code>economy.subsidyPolicy</code></td><td>Applied for the human player only. AI nations set <code>factory.subsidized</code> through a different code path, so the same stored field means two different things.</td><td class="src">economy.js:3858&ndash;3859 vs 2984&ndash;3007</td></tr>
       <tr><td><code>INCOME_WEIGHTS</code> = 0.42 / 0.33 / 0.25</td><td>Fixed forever, never reconciled with actual class populations even though those move every week. A nation whose upper class has collapsed to 1% of the population still books 25% of the income pool to it.</td><td class="src">economy.js:2676, 2700&ndash;2709</td></tr>
       <tr><td><code>cancelTraining</code> refund</td><td class="neg">Breaks the project&rsquo;s own accounting law L9. The refund is added to <code>nation.gold</code> (<span class="mono">recruitment.js:475</span>) without reversing the <code>outlayGold</code> the order recorded &mdash; the decrement that <span class="mono">economy.js:1388</span> performs for the analogous factory case is simply missing. Reproduced: order infantry for 25, cancel, and the following week &Delta;treasury exceeds the ledger&rsquo;s prediction by exactly 25.000. The audit for L9 cannot catch it because it runs with <code>playerNation = -1</code> and never cancels an order.</td><td class="src">recruitment.js:469&ndash;481</td></tr>
+      <tr><td><code>dropInvalidProjects</code> refund</td><td class="neg">The same defect a second time. <code>nation.gold += project.funded</code> (<span class="mono">economy.js:2100</span>) with no <code>projectGold</code> decrement &mdash; while <code>cancelConstruction</code> in the sibling module performs exactly that counter-entry (<span class="mono">construction.js:615&ndash;617</span>). Two of the three refund paths in the codebase are unbooked; the third shows how it should be done.</td><td class="src">economy.js:2092&ndash;2102</td></tr>
       <tr><td>Education slider minimum</td><td>UI renders <code>min="0"</code>; the engine floors education at 25/40/55/70 depending on Higher Education level. Dragging to zero snaps back with no explanation &mdash; the band note is wired only to tariff and the two army sliders.</td><td class="src">screens.js:1598&ndash;1600, 1694&ndash;1714 vs economy.js:1664&ndash;1671</td></tr>
     </tbody>
   </table>
@@ -1149,6 +1177,64 @@ footer { border-top: 1px solid var(--line-strong); margin-top: 60px; padding-top
   </div>
 </section>
 
+<section id="asym">
+  <div class="sec-head">
+    <div class="part">PART 14 &middot; RULE 8</div>
+    <div>
+      <h2>The AI does not play the same game</h2>
+      <p class="sub">&ldquo;AI and player should operate under the same core rules.&rdquo; Four places
+      where they do not, all verified in source.</p>
+    </div>
+  </div>
+
+  <div class="tw">
+  <table>
+    <caption>Asymmetries between the player&rsquo;s reachable state and the AI&rsquo;s.</caption>
+    <thead><tr><th>Rule</th><th>Player</th><th>AI</th><th>Source</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>Tax ceiling</td>
+        <td>slider runs 0&ndash;100; may tax any class at 100% indefinitely</td>
+        <td class="warn">hard-capped at 35 / 42 / 45 per class, floored at 5 &mdash; caps that exist only inside <code>adjustFiscalAI</code>, not in the setter</td>
+        <td class="src">economy.js:2873&ndash;2874 vs screens.js:1582</td>
+      </tr>
+      <tr>
+        <td>Social spending ceiling</td>
+        <td>setter clamps to 100</td>
+        <td class="warn">writes <code>social[id]</code> directly and unclamped, parking at 105 &mdash; 21 of 31 nations</td>
+        <td class="src">economy.js:2777&ndash;2790 vs 1664&ndash;1671</td>
+      </tr>
+      <tr>
+        <td>Factory build gate</td>
+        <td><code>canBuildFactory</code> checks unlock date, party policy, cash, region and one-per-state &mdash; <strong>never labour</strong></td>
+        <td class="warn">additionally gated on <code>gold &gt; 170</code> and <code>laborFill &ge; 0.7</code>; a player can build at 0% employment, the AI cannot</td>
+        <td class="src">economy.js:1489&ndash;1505 vs 3146&ndash;3149</td>
+      </tr>
+      <tr>
+        <td>Subsidy policy</td>
+        <td>picks a policy from a dropdown</td>
+        <td class="warn">for a player who also delegates the budget, <code>adjustWarFiscalAI</code> overwrites <code>factory.subsidized</code> later in the <em>same function call</em> &mdash; the chosen policy is silently discarded</td>
+        <td class="src">economy.js:3859 then 3973 &rarr; 2945 / 2987 / 3006</td>
+      </tr>
+    </tbody>
+  </table>
+  </div>
+
+  <div class="callout warnbox">
+    <span class="label">The fiscal AI contradicts itself about what &ldquo;broke&rdquo; means</span>
+    <p><code>adjustSocialAI</code> defines insolvency relative to the nation&rsquo;s own scale &mdash;
+    <code>gold &lt; 8&times;socialSpendingCost&times;0.25</code>
+    (<span class="mono">economy.js:2759</span>). <code>adjustFiscalAI</code>, forty lines later,
+    defines it absolutely: <code>gold &lt; 80 || weekly &lt; 0</code>
+    (<span class="mono">:2856</span>).</p>
+    <p>A large nation holding &curren;300 against a &curren;200/week social bill is broke socially and
+    solvent fiscally. A small nation holding &curren;70 against a &curren;5/week bill is the reverse.
+    The comment at <span class="mono">:2750&ndash;2757</span> records that the absolute thresholds
+    were the <em>measured bug</em> &mdash; median education collapsing to 0 by 1860 and staying there.
+    The fix was applied to one of the two functions.</p>
+  </div>
+</section>
+
 <!-- ============================================================ PART 7 === -->
 <section id="p7">
   <div class="sec-head">
@@ -1156,7 +1242,7 @@ footer { border-top: 1px solid var(--line-strong); margin-top: 60px; padding-top
     <div>
       <h2>The simplest budget that keeps the strategy</h2>
       <p class="sub">Five controls instead of ten, one treasury instead of twenty-four writers, one
-      balance instead of three &mdash; with the causal network left intact.</p>
+      balance instead of four &mdash; with the causal network left intact.</p>
     </div>
   </div>
 
@@ -1295,7 +1381,7 @@ footer { border-top: 1px solid var(--line-strong); margin-top: 60px; padding-top
   edge, so a player can read the whole domain off the diagram. Nothing in the causal network is
   deleted: satisfaction still drives stability and politics, education still reaches industry through
   research, army spending still decides wars. What is removed is the plumbing between the lever and
-  the consequence &mdash; the second pipeline, the reconstructed ledger, the third balance, and the
+  the consequence &mdash; the second pipeline, the reconstructed ledger, the three surplus balances, and the
   four controls that measurement shows nobody can feel.</figcaption>
 </figure>
 
@@ -1373,11 +1459,13 @@ footer { border-top: 1px solid var(--line-strong); margin-top: 60px; padding-top
       <tr><td>Modules reading <code>militaryWages</code> alone</td><td class="n">7</td><td class="n">5</td><td>battles, recruitment, reinforcement, turn, cities, economy, screens</td></tr>
       <tr><td>Treasury write sites</td><td class="n neg">24</td><td class="n pos">1</td><td>single <code>settle()</code> choke point</td></tr>
       <tr><td>Mutable budget fields</td><td class="n">10 levers + 11 scratch + 35 ledger</td><td class="n">5 + 0 + 1 ledger</td><td>scratch fields and the reconstruction both disappear</td></tr>
-      <tr><td>Formulas producing a budget number</td><td class="n">15</td><td class="n">9</td><td>tax efficiency, health growth, the second military path, two of three balances</td></tr>
-      <tr><td>Phase-order dependencies</td><td class="n">4 known</td><td class="n">1</td><td>merging the two pipelines removes the tariff-zeroing trap</td></tr>
+      <tr><td>Formulas producing a budget number</td><td class="n">15</td><td class="n">9</td><td>tax efficiency, health growth, the second military path, three of four balances</td></tr>
+      <tr><td>Phase-order dependencies</td><td class="n neg">~30</td><td class="n">~12</td><td>counted by reading turn.js:342&ndash;547 and economy.js:3653&ndash;4005 end to end; merging the two pipelines removes the tariff-zeroing trap and the two <code>fiscalNet</code> vintages</td></tr>
       <tr><td>Named tuning constants</td><td class="n">25</td><td class="n">~18</td><td>3 of the 25 are visible anywhere in the UI</td></tr>
       <tr><td>Duplicated calculations</td><td class="n neg">5</td><td class="n pos">0</td><td>2 UI copies of sim formulas (one of them wrong by 3.25&times;), 2 copies of the weekly-balance expression, <code>floorCost</code> re-deriving <code>socialSpendingCost</code></td></tr>
       <tr><td>UI numbers that disagree with the sim</td><td class="n neg">3</td><td class="n pos">0</td><td>reinforcement note, recovery note, gross-vs-net tax rows</td></tr>
+      <tr><td>Conflicting displays of one concept</td><td class="n neg">4 balances</td><td class="n pos">1</td><td>hud.js:719, hud.js:1137, screens.js:782, screens.js:1778</td></tr>
+      <tr><td>Unbooked treasury refunds</td><td class="n neg">2 of 3</td><td class="n pos">0</td><td>a single <code>settle()</code> makes the counter-entry structural rather than remembered</td></tr>
     </tbody>
   </table>
   </div>
@@ -1464,9 +1552,9 @@ footer { border-top: 1px solid var(--line-strong); margin-top: 60px; padding-top
       single correct answer. Nothing a player can currently perceive is lost.</dd></div>
 
     <div><dt>Expected complexity reduction</dt>
-      <dd><span class="chip solid">HIGH</span> &nbsp;24 treasury writers &rarr; 1. Three balances &rarr; 1.
+      <dd><span class="chip solid">HIGH</span> &nbsp;24 treasury writers &rarr; 1. Four balances &rarr; 1.
       Ten controls &rarr; 5. 56 mutable budget fields &rarr; 6. Five duplicated calculations &rarr; 0.
-      Context cost 4/5 &rarr; 2/5.</dd></div>
+      About thirty ordering constraints down to roughly twelve. Context cost 4/5 &rarr; 2/5.</dd></div>
 
     <div><dt>Recommendation</dt>
       <dd><span class="chip solid">SIMPLIFY</span>
