@@ -198,24 +198,36 @@ econ/budget.js    → payGold/earnGold (nation.gold'un TEK yazarı),
 
 **İşgücü** `workforce = population × 0.45`
 **İstihdam** `unemployed = workforce − (fabrika kadrosu + RGO kadrosu)`
+**RGO kadro tavanı** `rgoJobs × 0.45` — RGO kadrosu KİŞİ ölçeğinde tanımlı
+(`rgoLaborScale` kırsal nüfusa böler); işgücü tavanına çevrilmezse tarla bütün
+işgücünü soğurur ve işsizlik yapısal olarak sıfır kalır (ölçüldü: oran 1.9)
+**Sanayi tavanı** `workforce × 0.7` ≈ nüfusun %31'i
 
-**Talep** `demand[g] = Σ_sınıf (classPop/10000) × need[g] × affordShare`
-**Karşılanabilirlik** `affordShare = clamp(income / basketCost, 0, 1)`
-**Beslenme** `foodMet = alınan gıda / istenen gıda` — **yalnız gıda malları**
+**Talep** `demand[g] = (classPop/10000) × need[g] × pay`
+**Bütçe** `net gelir + sepet × geçimlik payı`
+**Karşılanabilirlik** önce gıda: `foodPay = min(1, bütçe/gıdaBedeli)`,
+kalanı gıda dışına: `restPay = min(1, kalan/gıdaDışıBedel)`
+**Beslenme** `foodMet = foodPay × gıdanın raf oranı` — **yalnız `food` + `fish`**
 **Memnuniyet** `0.35 + 0.5×needsMet − 0.28×vergi + 0.14×refah + reform − işsizlik×0.22`
 
 **Fiyat** `price × (1 + 0.09 × (talep − mevcut)/(talep + mevcut))`, bant `×[0.12, 8]`
 **Mevcut** `available = üretim + ithalat − ihracat`
 
-**Ücret** `wages = employees × wageRate`, `wageRate = 1.1 × altSınıfKişiBaşıSepet`
-**Kâr** `revenue − inputCost − wages`
+**Ücret** `wages = katmaDeğer × 0.55 × reformÜcretPayı` (tavan 0.85)
+**Kâr** `gelir − girdi − ücret` · işçi başına ücret ekranda türetilir
+
+> Kişi başına sabit "geçim ücreti" denendi ve ÖLÇÜLEREK geri alındı: bu ölçekte
+> bir işçinin ürettiği katma değer geçim sepetinin çok üstünde, sabit ücret
+> bordroyu katma değerin %4'üne indiriyor, kârın tamamı üst sınıfa gidiyor ve
+> tüketici talebi ölüyordu (156. hafta: bordro 26, kâr 618; 42 malın 22'si
+> fiyat tabanında). Pay modeli hem tek satır hem fiyat seviyesiyle ölçekleniyor.
 
 **Vergi** `Σ sınıfGeliri × oran × yönetimVerimi`
 **Gümrük** `ithalatDeğeri × tarife`
 **Hazine** `Δgold = Σ gelir kategorileri − Σ gider kategorileri` (tek kapanış)
 
 **Okuryazarlık** hedefe haftada `0.006` yaklaşır (yarılanma ~2.2 yıl)
-**Araştırma** `(2 + 8×okuryazarlık + 4×ortaSınıfPayı) × (1 + techBonus)`
+**Araştırma** `(0.5 + 8×okuryazarlık + 3×ortaSınıfPayı) × (1 + techBonus)`
 
 ### 2.4 Faz sırası (yeni, açıkça basılabilir)
 

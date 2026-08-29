@@ -19,7 +19,7 @@
 
 import { GOOD_IDS } from './content.js';
 import { priceOf } from './market.js';
-import { earn, settle } from './budget.js';
+import { settle } from './budget.js';
 
 /**
  * Gümrüğün ithalat iştahını kısma katsayısı. %10 tarife iştahı ~%14, %50
@@ -178,7 +178,9 @@ export function settleGlobalTrade(world) {
     trade.tariffRevenue = trade.importValue * ((economy.tariff ?? 0) / 100);
     trade.settlement = trade.balance * EXTERNAL_SETTLEMENT;
     trade.lastUpdated = world.turn;
-    earn(nation, 'tariffRevenue', trade.tariffRevenue);
+    // Gümrük İŞARETLİ geçer: eksi tarife bir ithalat sübvansiyonudur ve
+    // hazineden ödenir (bkz. econ/budget.js SIGNED_KEYS).
+    settle(nation, 'tariffRevenue', trade.tariffRevenue);
     settle(nation, 'externalSettlement', trade.settlement);
   }
 }

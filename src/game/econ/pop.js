@@ -438,25 +438,40 @@ export function runClassMobility(nation, schooling = 0) {
 /**
  * MESLEK SAYAÇLARI — türetme, depo değil.
  *
- * Gerçek istihdamı bilinen meslekler işin kendisinden gelir (işçi = fabrika
- * kadrosu, çiftçi/madenci = RGO kadrosu payı); kalanı sabit paylarla bölünür.
- * Toplam her zaman nüfusa eşittir, çünkü nüfustan bölünüyor.
+ * Gerçek istihdamı bilinen meslek işin kendisinden gelir (işçi = fabrika
+ * kadrosu); kalanı sabit paylarla bölünür. Her sınıfın artığı son mesleğe
+ * yazılır, dolayısıyla **Σ sayaç = Σ sınıf nüfusu** tam sayıda da korunur —
+ * kohort katmanı (population.js) bu toplamı bölüştürdüğü için sapma imkânsız.
  */
 export function professionCountsOf(nation, extractionShare = 0.3) {
   const economy = nation.economy;
   const counts = {};
   for (const id of PROFESSION_IDS) counts[id] = 0;
-  const lower = Math.max(0, economy.classes?.lower?.population ?? 0);
-  const workers = Math.min(lower, Math.max(0, economy.industrialEmployed ?? 0));
+
+  // ALT SINIF — gerçek istihdam: fabrikada çalışan işçidir, kalanı tarla ve
+  // maden arasında bölünür.
+  const lower = Math.max(0, Math.round(economy.classes?.lower?.population ?? 0));
+  const workers = Math.min(lower, Math.round(industrialEmployedOf(nation)));
   const rest = Math.max(0, lower - workers);
+  const laborers = Math.round(rest * clamp(extractionShare, 0, 1));
   counts.workers = workers;
-  counts.laborers = rest * clamp(extractionShare, 0, 1);
-  counts.farmers = rest - counts.laborers;
+  counts.laborers = laborers;
+  // Artık ÇİFTÇİYE yazılır: sınıf toplamı tanım gereği korunur, yuvarlama
+  // kimseyi buharlaştırmaz.
+  counts.farmers = rest - laborers;
+
+  // ORTA VE ÜST SINIF — sabit paylar, en büyük artık yöntemiyle tam sayıya
+  // indirilir; artık son mesleğe yazılır ki toplam sınıf nüfusunu tutsun.
   for (const classId of ['middle', 'upper']) {
-    const population = Math.max(0, economy.classes?.[classId]?.population ?? 0);
-    for (const id of CLASS_PROFESSIONS[classId]) {
-      counts[id] = population * (PROFESSION_SHARES[classId][id] ?? 0);
+    const population = Math.max(0, Math.round(economy.classes?.[classId]?.population ?? 0));
+    const professions = CLASS_PROFESSIONS[classId];
+    let assigned = 0;
+    for (let i = 0; i < professions.length - 1; i++) {
+      const id = professions[i];
+      counts[id] = Math.round(population * (PROFESSION_SHARES[classId][id] ?? 0));
+      assigned += counts[id];
     }
+    counts[professions[professions.length - 1]] = Math.max(0, population - assigned);
   }
   return counts;
 }

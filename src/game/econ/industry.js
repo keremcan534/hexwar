@@ -140,7 +140,7 @@ export function factoryMargin(world, typeId, nation = null) {
  * `mods` dışarıdan gelir: `{ throughput, wageCost }` reformlardan,
  * `techMods` ekonomiden okunur. Başka çarpan yoktur.
  */
-export function runFactories(world, nation, market, ownOutput, availability, mods) {
+export function runFactories(world, nation, market, ownOutput, availability, mods, subsidise = null) {
   const economy = nation.economy;
   const techMods = economy.techMods ?? null;
   const throughputMod = (mods?.throughput ?? 1) * (1 + (techMods?.factoryThroughput ?? 0));
@@ -200,7 +200,16 @@ export function runFactories(world, nation, market, ownOutput, availability, mod
     // İşçi başına haftalık ücret: ekranda "bu tesis ne ödüyor" sorusunun cevabı.
     factory.wagePerWorker = factory.employees > 0 ? wages / factory.employees : 0;
     factory.profit = revenue - inputCost - wages;
+
+    // SÜBVANSİYON: işaretli tesisin zararını devlet kapatır. Ödeme sahte bir
+    // sabit maliyet değil, GERÇEKLEŞEN zararın kendisidir; kâr 0'a çekilir ki
+    // kâr eğilimi (işten çıkarma) tesisi desteklenmiş görsün. Bedel deftere
+    // `subsidyCost` olarak düşer — çağıran taraf öder, bu modül hazineyi bilmez.
     factory.subsidyPaid = 0;
+    if (subsidise && factory.subsidized && factory.profit < 0) {
+      factory.subsidyPaid = subsidise(-factory.profit);
+      factory.profit += factory.subsidyPaid;
+    }
     factory.margin = revenue > 0 ? factory.profit / revenue : 0;
     totalProfit += factory.profit;
   }

@@ -16,7 +16,7 @@
 
 /** Gelir kalemleri — ekran bu adları okuyor, bilerek korundu. */
 export const REVENUE_KEYS = [
-  'cityRevenue', 'taxRevenue', 'tariffRevenue', 'treatyRevenue',
+  'cityRevenue', 'taxRevenue', 'treatyRevenue',
   'dividendRevenue', 'shareRevenue',
 ];
 
@@ -28,11 +28,17 @@ export const EXPENSE_KEYS = [
 ];
 
 /**
- * Dış hesabın kapanışı işaretlidir: fazla gelirdir, açık giderdir. Tek satır
- * olarak durur çünkü oyuncunun görmesi gereken şey gayrisafi ithalat/ihracat
- * değil, ülkenin dış pozisyonunun hazineye ne yaptığıdır.
+ * İŞARETLİ kalemler: artı gelir, eksi giderdir.
+ *
+ *   `externalSettlement`  dış hesabın kapanışı — fazla gelir, açık gider.
+ *     Ayrı satır çünkü oyuncunun görmesi gereken şey gayrisafi ithalat/ihracat
+ *     değil, ülkenin dış pozisyonunun hazineye ne yaptığıdır.
+ *   `tariffRevenue`  gümrük NEGATİF olabilir: eksi tarife bir ithalat
+ *     sübvansiyonudur ve hazineden ÖDENİR. `earn` pozitif olmayanı düşürdüğü
+ *     için bu kalem oradan geçemez — sübvansiyon bedava olurdu (ölçüldü:
+ *     audit:tariff "gumruk geliri kimligi").
  */
-const SIGNED_KEYS = ['externalSettlement'];
+const SIGNED_KEYS = ['externalSettlement', 'tariffRevenue'];
 
 const ALL_KEYS = [...REVENUE_KEYS, ...EXPENSE_KEYS, ...SIGNED_KEYS];
 
@@ -139,13 +145,15 @@ export function declareDefault(nation, amount) {
 export function closeTreasury(nation, turn) {
   const economy = nation.economy;
   const book = ensureBook(nation);
-  const settlement = book.externalSettlement;
   let income = 0;
   for (const key of REVENUE_KEYS) income += book[key];
-  income += Math.max(0, settlement);
   let expenses = 0;
   for (const key of EXPENSE_KEYS) expenses += book[key];
-  expenses += Math.max(0, -settlement);
+  // İşaretli kalemler yönlerine göre iki tarafa dağılır.
+  for (const key of SIGNED_KEYS) {
+    income += Math.max(0, book[key]);
+    expenses += Math.max(0, -book[key]);
+  }
 
   const ledger = economy.ledger ?? (economy.ledger = {});
   ledger.lastUpdated = turn;
@@ -184,9 +192,9 @@ export function ledgerBreakdown(nation) {
   for (const key of REVENUE_KEYS) {
     if (ledger[key]) rows.push({ key, kind: 'revenue', amount: ledger[key] });
   }
-  const settlement = ledger.externalSettlement ?? 0;
-  if (settlement) {
-    rows.push({ key: 'externalSettlement', kind: settlement >= 0 ? 'revenue' : 'expense', amount: settlement });
+  for (const key of SIGNED_KEYS) {
+    const amount = ledger[key] ?? 0;
+    if (amount) rows.push({ key, kind: amount >= 0 ? 'revenue' : 'expense', amount });
   }
   for (const key of EXPENSE_KEYS) {
     if (ledger[key]) rows.push({ key, kind: 'expense', amount: -ledger[key] });

@@ -1529,6 +1529,7 @@ export function runNationEconomy(game, nation, ctx) {
   const baseOutputValue = rawProduction(world, nation, market, ownOutput);
   const industrialOutput = runFactories(
     world, nation, market, ownOutput, availability, reformModifiers(nation),
+    (amount) => spend(nation, 'subsidyCost', amount),
   );
   // İşe alım ve seviye atlama aylıktır: sanayileşmenin temposu budur.
   if ((world.turn ?? 1) % HIRING_INTERVAL === 0) {
