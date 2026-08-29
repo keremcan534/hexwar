@@ -17,7 +17,7 @@ import { ORDER } from '../game/orders.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { Screens } from './screens.js';
 import { showEndScreen } from './endScreen.js';
-import { formatPopulation } from '../game/economy.js';
+import { formatPopulation, weeklyBalanceOf } from '../game/economy.js';
 import {
   canRecruit, equipmentCostLabel, nationManpower, rallyTile, setRallyPoint, trainingWeeks,
 } from '../game/recruitment.js';
@@ -716,7 +716,7 @@ export class Hud {
         <h3>${escapeHtml(next)}</h3>
         <p>Province → population and raw goods → factories and taxes → army and world prices.</p>
         <div class="decision-kpis">
-          <span><b>${net.gold >= 0 ? '+' : ''}${Math.round(net.gold ?? 0)}</b><small>weekly gold</small></span>
+          <span><b>${weeklyBalanceOf(me) >= 0 ? '+' : ''}${Math.round(weeklyBalanceOf(me))}</b><small>weekly balance</small></span>
           <span><b>${battles.length}</b><small>active battles</small></span>
         </div>
       </div>`;
@@ -1134,7 +1134,10 @@ export class Hud {
 
 /** Üst çubuk yalnız yeni makro ekonomiyi gösterir; eski ham stoklar kaldırıldı. */
 function resourcesHtml(nation) {
-  const weekly = (nation.budget?.net?.gold ?? 0) + (nation.economy?.fiscalNet ?? 0);
+  // TEK BAKIYE: kapanmis defterin net'i. Eskiden bu satir ile karar
+  // kartindaki "weekly gold" ve butce ekranindaki iki sayi birbirini
+  // tutmuyordu — dort farkli tanim vardi.
+  const weekly = weeklyBalanceOf(nation);
   // Akış ayrı bir <em>: değerin içine ikinci bir <b> koymak geçersiz iç içe
   // yapıydı ve akışı ana rakamla aynı ağırlıkta gösteriyordu.
   const flowClass = weekly < 0 ? 'res-neg' : weekly > 0 ? 'res-pos' : '';

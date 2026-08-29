@@ -32,7 +32,7 @@ import {
   SOCIAL_PROGRAMS, buildFactory,
   canBuildFactory, factoriesInRegion, factoryAtlas, factoryCost, factoryJobs, industryTaken,
   debtCapacity, debtInterestRate, factoryMargin, formatPopulation, populationOf,
-  setFiscalPolicy, taxEfficiency,
+  setFiscalPolicy, weeklyBalanceOf,
   setMilitaryProductionLine, socialSpendingCost, ensureProductionLine, supportProject, upgradeOutlook,
 } from '../game/economy.js';
 import { MAX_ROUNDS, battleSides, battlesFor } from '../game/battles.js';
@@ -174,7 +174,7 @@ function debtWhy(me) {
   const load = capacity > 0 ? Math.min(1, debt / capacity) : 0;
   const credit = Math.min(0.85, Math.max(0, me.economy?.creditPenalty ?? 0));
   const net = me.economy?.ledger?.net ?? 0;
-  const interest = me.economy?.interestGold ?? 0;
+  const interest = Math.abs(me.economy?.ledger?.interest ?? 0);
   return [
     `Base rate  =  4.0%`,
     `Capacity used ${(load * 100).toFixed(0)}% × 8  =  +${(load * 8).toFixed(1)}%`,
@@ -695,7 +695,7 @@ export class Screens {
   }
 
   resourceLine(me) {
-    const weekly = (me.budget?.net?.gold ?? 0) + (me.economy?.fiscalNet ?? 0);
+    const weekly = weeklyBalanceOf(me);
     const sign = `${weekly >= 0 ? '+' : ''}${Math.round(weekly)}`;
     return `<span>¤ <b>${Math.round(me.gold)}</b> ${sign}</span>
       <span>GDP <b>¤${Math.round(me.economy?.gdp ?? 0)}</b></span>
@@ -779,7 +779,7 @@ export class Screens {
           <span><small>Treasury</small><b>¤${Math.round(me.gold)}</b></span>
           <span><small>GDP</small><b>¤${Math.round(me.economy?.gdp ?? 0)}</b></span>
           <span><small>Tax revenue</small><b>¤${(me.economy?.taxRevenue ?? 0).toFixed(1)}</b></span>
-          <span><small>Weekly balance</small><b class="${(me.economy?.fiscalNet ?? 0) < 0 ? 'res-neg' : 'res-pos'}">${(me.economy?.fiscalNet ?? 0) >= 0 ? '+' : ''}¤${(me.economy?.fiscalNet ?? 0).toFixed(1)}</b></span>
+          <span><small>Weekly balance</small><b class="${weeklyBalanceOf(me) < 0 ? 'res-neg' : 'res-pos'}">${weeklyBalanceOf(me) >= 0 ? '+' : ''}¤${weeklyBalanceOf(me).toFixed(1)}</b></span>
         </div>
       </div>
       <div class="card">

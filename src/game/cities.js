@@ -29,7 +29,10 @@ export const UNIT_COSTS = {
 };
 
 /** Birim başına tur bakımı. Ordunun asıl freni artık erzak. */
-export const UNIT_UPKEEP = { gold: 1, food: 1 };
+// Altin bakimi 1 -> 1.4: ordu gercek bir butce kalemi olsun. Eski deger
+// 27 alaylik bir imparatorluga haftada 27 altina mal oluyordu, yani 198
+// altinlik gelirin %14'u — "ordu mu okul mu" diye bir soru dogmuyordu.
+export const UNIT_UPKEEP = { gold: 1.4, food: 1 };
 
 /**
  * Ağır birimlerin demir gideri. Ölçümde demirin hiç sürekli gideri yoktu:
@@ -185,34 +188,44 @@ function corruption(cityCount, nation) {
   return base / (base + Math.max(0, cityCount - 1));
 }
 
-/** İdari giderin ilk kaç şehri bedava saydığı. Küçük ülke boğulmasın. */
-const ADMIN_FREE_CITIES = 3;
-// Ülkeler zaten ~85 province ile başlıyor; eşik bunun üstünde olmalı ki
-// idari gider erken oyunun sabit vergisi değil, genişlemenin bedeli olsun.
-const ADMIN_FREE_PROVINCES = 120;
+/** Baskent bedava yonetilir; ikinci sehirden itibaren aygit buyur. */
+const ADMIN_FREE_CITIES = 1;
 /** Başkente bu mesafeden uzak şehir ayrıca idari yük getirir. */
 const ADMIN_FREE_DISTANCE = 6;
 
-/** Bu nufusun uzeri idari yuk uretir; alti kucuk devletin taban aygitidir. */
-const ADMIN_FREE_POPULATION = 250000;
-
 /**
- * İdari gider: imparatorluk büyüdükçe artan *görünür* bir altın kalemi.
- * Yolsuzluk geliri yalnızca oransal kısıyordu, bu yüzden büyümenin bütçede
- * okunabilir bir bedeli yoktu ve geç oyunda altın birikip duruyordu.
- * Şehir sayısı süperdoğrusal, taşra/nüfus ve başkente uzaklık doğrusal artar.
+ * IDARI GIDER — imparatorlugun otomatik bedeli.
  *
- * NUFUS TERIMI SONRADAN EKLENDI: README bastan beri "imparatorluk buyudukce
- * idari gider buyur" diyordu ama olculen gider 0.03-0.10 altindi (ORTA-18) —
- * yani adminFunding kaydiraci tek dogru cevapli sahte bir secimdi (%100'un
- * maliyeti yoktu). Gider nufusla buyuyunce kaydirac gercek bir denge olur:
- * dusuk fonlama tahsilati keser AMA buyuk ulkede gercek para biriktirir.
+ * Bu artik bir kaydirac DEGILDIR. Eski `adminFunding` olculdu: butun menzili
+ * (30-100) hazineyi %0.6 oynatiyordu, yani gurultu tabaninin 85 kati altinda,
+ * ve butun YZ ulkeleri istisnasiz %100'de oturuyordu — tek dogru cevabi olan
+ * bir secim, yani secim degil. Kaldirac gitti, GIDER kaldi.
+ *
+ * Sekil bilerek KADEMELI: uc terim de imparatorlugun olcegine baglidir ama
+ * sehir sayisi superdogrusaldir. Boylece tek sehirli minor devlet neredeyse
+ * hic odemez (olculdu: gelirinin ~%12'si), alti sehirli imparatorluk
+ * gelirinin dortte birini yonetime verir. Buyumenin gorunur bir bedeli olur
+ * ve "her seyi ayni anda maksimize etme" secenegi kendiliginden kapanir.
+ *
+ * Uc girdi, hepsi oyuncunun ekranda gordugu seyler: sehir, tasra, nufus.
  */
+// Kalibrasyon notu: ilk deneme (3.2 / 0.03 / 2.2) DUNYAYI FAKIRLESTIRDI —
+// medyan gelir 29.6'dan 15.5'e dustu, cunku nufus terimi ve ordu bakimi
+// birinci haftadan itibaren HERKESI vergilendiriyordu ve kimse buyuyemiyordu.
+// Gider OLCEGI cezalandirmali, varolmayi degil: agirlik sehir sayisina
+// (superdogrusal) kaydirildi, nufus ve tasra terimleri kucultuldu. Boylece
+// tek sehirli minor gelirinin ~%5'ini, alti sehirli imparatorluk ~%30'unu oder.
+const ADMIN_CITY_RATE = 4.0;
+const ADMIN_PROVINCE_RATE = 0.02;
+const ADMIN_POPULATION_RATE = 0.8;
+
 function administrationCost(cityCount, provinceCount, distanceLoad, population = 0) {
-  const scale = Math.max(0, cityCount - ADMIN_FREE_CITIES) ** 1.45 * 0.9;
-  const provinces = Math.max(0, provinceCount - ADMIN_FREE_PROVINCES) * 0.06;
-  const people = Math.max(0, population - ADMIN_FREE_POPULATION) / 10000 * 0.06;
-  return Math.round((scale + provinces + distanceLoad + people) * 10) / 10;
+  const cities = Math.max(0, cityCount - ADMIN_FREE_CITIES) ** 1.6 * ADMIN_CITY_RATE;
+  const provinces = Math.max(0, provinceCount) * ADMIN_PROVINCE_RATE;
+  // Nufus terimi ALTDOGRUSAL: kalabalik ulke daha fazla oder ama nufusla
+  // birebir degil, yoksa 1.9M nufuslu tek ulke tek basina iflas ederdi.
+  const people = (Math.max(0, population) / 100000) ** 0.75 * ADMIN_POPULATION_RATE;
+  return Math.round((cities + provinces + distanceLoad + people) * 10) / 10;
 }
 
 /**
@@ -434,10 +447,9 @@ export function nationBudget(world, nation, provinceTotals = null) {
   const armyGold = Math.max(0, armyWeight * UNIT_UPKEEP.gold * armyFunding);
   // Yönetim gideri bütçelenen kadarıyla ödenir; verimi de o oran belirler
   // (bkz. fiscalBalance'taki tahsilat verimi).
-  const adminFunding = (nation.economy?.adminFunding ?? 100) / 100;
   const administration = administrationCost(
     cityCount, provinceCount, distanceLoad, nation.economy?.population ?? 0,
-  ) * adminFunding;
+  );
   upkeep.gold = armyGold + administration;
   upkeep.food = army * UNIT_UPKEEP.food + workers * WORKER_FOOD;
   upkeep.iron = armyIron;
