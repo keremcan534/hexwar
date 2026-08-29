@@ -1673,6 +1673,10 @@ export function budgetPolicyLimits(nation) {
  */
 export function setBudgetPolicy(nation, policy, value) {
   if (!nation?.economy || !BUDGET_POLICIES.includes(policy)) return false;
+  // NaN/Infinity SESSIZCE GECMEZ. `clamp(Math.round(NaN))` NaN dondurur ve
+  // deger alana oyle yazilirdi; oradan sonra butun butce NaN olurdu. Bozuk
+  // girdi degeri hic degistirmez (sozlesme denetimi bunu yakaladi).
+  if (!Number.isFinite(value)) return false;
   const limits = budgetPolicyLimits(nation)[policy];
   const next = clamp(Math.round(value), limits.min, limits.max);
   if (policy === 'education' || policy === 'welfare') {
