@@ -181,6 +181,36 @@ The class tax rows sum **exactly** to the collected total (18.8 + 10.6 + 3.9 = 3
 3. **`audit:budget` still reports 2 LOW findings** inherited from the old model (workforce quality is a stateless multiplier; administration never had a province-control channel). Neither is a regression.
 4. Tax incidence is derived from party ideology rather than a first-class policy axis, because `politics.js` has no tax axis and §2 forbids redesigning it. It works, but it is a derived rule rather than an explicit one.
 5. Education's payoff is still slower than one campaign-quarter: at 520 weeks it is +1 technology, at 1500 weeks +10. That is a deliberate long-investment shape, but a player checking after two game years sees mostly cost.
+6. **MEASURED REGRESSION vs `master`: population falls 3–5× faster.** Same seed,
+   2000 weeks, `master` worktree vs this branch:
+
+   | seed | master | this branch |
+   |---|---|---|
+   | pop-A | −3.2% | **−19.9%** |
+   | pop-B | −7.0% | **−33.8%** |
+
+   Mechanism, measured — not the reform wiring (disabling `minorityCeiling` did not
+   help: −15.2% / −44.2%). It is phase D interacting with a rule phase D never
+   touched. Administration (`ledger.administration`, median 1.1–1.3/wk) and booked
+   army upkeep (`ledger.army`, median 5.3/wk) are new *by design*: "the constraint
+   binds". But nations that are poorer buy less, `needsMet` slips under
+   `FAMINE_THRESHOLD` (0.5, `provinces.js:492`), and `famine * FAMINE_DECLINE`
+   (0.0012, `:498`) exceeds the growth floor `0.00006 + agriculture * 0.00003`
+   (`provinces.js:817`). Below that line population decline is monotonic with no
+   basin — the famine rule was written for a world where nobody stayed poor, and
+   phase D made nations stay poor.
+
+   `master` is not a clean baseline either: on seed pop-B its median `needsMet` is
+   **0** with median income 6.8 and 17/27 nations at zero gold, yet population only
+   falls 7% — i.e. on `master` starvation barely touches population at all. So this
+   is two rules that were never calibrated against each other, now meeting.
+
+   Not fixed here, deliberately. The lever is one constant (`FAMINE_THRESHOLD` or
+   `FAMINE_DECLINE`) or the administration weights, and this file already records
+   two blind balance changes that had to be reverted (`cities.js`). It needs the
+   same treatment the rest of this pass got: measure first, one variable at a time.
+   Reproduce with `scripts` in the report thread, or: run the same seed for 2000
+   weeks on both trees and compare total population and median `needsMet`.
 
 ## FINAL VERDICT
 
@@ -191,3 +221,9 @@ The accounting is now true by construction rather than by reconstruction: one wr
 The constraint binds for a normally playing nation, and Education — the one chain the analysis showed was strategically dead — now converts research into technology at double the rate when funded.
 
 The two honest gaps: a deliberately austere state can still hoard, and the reason is trade income the budget does not own. That is the next mechanic to look at, not this one.
+
+**One caveat found at merge time and not resolved:** making the constraint bind
+(phase D) collapses population 3–5× faster than `master` over 2000 weeks, because
+the famine rule in `provinces.js` was calibrated for a world where nations never
+stayed poor. See KNOWN PROBLEMS §6 for the measurement and the mechanism. The
+budget work stands; the famine constant is the next thing to measure.
