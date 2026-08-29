@@ -215,6 +215,17 @@ const ADMIN_FREE_DISTANCE = 6;
 // Gider OLCEGI cezalandirmali, varolmayi degil: agirlik sehir sayisina
 // (superdogrusal) kaydirildi, nufus ve tasra terimleri kucultuldu. Boylece
 // tek sehirli minor gelirinin ~%5'ini, alti sehirli imparatorluk ~%30'unu oder.
+// UC KALIBRASYON DENEMESI YAPILDI, IKISI GERI ALINDI — kayit icin:
+//   (a) 3.2 / 0.03 / 2.2 + ordu 1.8: dunyayi fakirlestirdi, medyan gelir
+//       29.6'dan 15.5'e dustu; nufus terimi birinci haftadan itibaren
+//       HERKESI vergilendiriyor, kimse buyuyemiyordu.
+//   (c) 4.0 / 0.05 / 1.5 (^0.85): daha da kotu. Nufus agirlikli gider buyuk
+//       ekonomileri cokertti (bir ulke 249.7 gelirden 37.0'a dustu) ve 300.
+//       haftada temerrutler basladi.
+// Kalan (b) secildi: agirlik superdogrusal SEHIR teriminde, nufus ve tasra
+// hafif. Dunya saglikli kaliyor, imparatorluk gelirinin ~%25'ini yonetime
+// veriyor. Bilinen artik: cok nufuslu ama az sehirli ulke sekli hala
+// gelirinin altinda gider oduyor (bkz. rapor "Bilinen sorunlar").
 const ADMIN_CITY_RATE = 4.0;
 const ADMIN_PROVINCE_RATE = 0.02;
 const ADMIN_POPULATION_RATE = 0.8;

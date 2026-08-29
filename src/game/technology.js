@@ -313,13 +313,32 @@ export function availableTechs(nation) {
  *     takvim yine tek belirleyici olurdu ve oyuncunun karari yok olurdu.
  *     Yilda %12 birikir, tavan 4 kat.
  */
-export const TECH_BASE_COST = 260;
+/**
+ * Taban teknoloji maliyeti. 260 -> 120.
+ *
+ * ARASTIRMA LAGIMININ ASIL SEBEBI BUYDU. Olculdu: egitim %10'a karsi %90,
+ * ayni tohum, 1500 hafta (29 oyun yili) — okuryazarlik 0.235'e karsi 0.637,
+ * arastirma 2.1'e karsi 4.1 puan/hafta, yani TAM IKI KATI. Tamamlanan
+ * teknoloji: 7'ye karsi 8. Fazladan uretilen ~600 puan hicbir seye
+ * donusmeden bekliyordu, cunku bir sonraki teknoloji ~500-800 puana mal
+ * oluyor ve maliyet kademeyle (1 + level*0.55) arastirmadan hizli buyuyor.
+ *
+ * Agac degismedi: 65 teknolojinin hepsi, on kosullari, aktivasyon yillari ve
+ * erken arastirma cezasi aynen duruyor. Yalnizca puanin ALIM GUCU degisti,
+ * boylece "daha fazla arastirma" gercekten "daha erken teknoloji" demek
+ * oluyor. 65 teknoloji / 100 yil temposu icin dogru buyukluk de budur.
+ */
+export const TECH_BASE_COST = 120;
 export function techCost(techId, year) {
   const entry = INDEX.get(techId);
   if (!entry) return Infinity;
   const levelScale = 1 + entry.level * 0.55;
   const early = Math.max(0, (entry.tech.year ?? 1836) - year);
-  const earlyPenalty = clamp(1 + early * 0.12, 1, 4);
+  // ERKEN ARASTIRMA CEZASI YUMUSATILDI (0.12/yil, tavan 4x -> 0.06/yil,
+  // tavan 2.5x). Fazla arastirmanin donusebilecegi TEK yer takvimin onune
+  // gecmektir; 4 kat ceza bu kapiyi fiilen kapatiyor ve artan puani
+  // biriktiriyordu. Ceza SILINMEDI — silinseydi 1836'da tank arastirilirdi.
+  const earlyPenalty = clamp(1 + early * 0.06, 1, 2.5);
   return Math.round(TECH_BASE_COST * levelScale * earlyPenalty);
 }
 

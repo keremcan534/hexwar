@@ -36,7 +36,13 @@ import { ensureDelegation, restoreDelegation } from './delegation.js';
 // 15: bina donusumu — Construction Sector / University / Administration yerlesik
 // binalari ulusal kurumlara cevrildi (nation.construction.capacity). v14
 // kayitlari migrateConstructionV14 ile KAYIPSIZ yuklenir (bkz. construction.js).
-export const SAVE_VERSION = 15;
+// 16: butce yeniden yapilandirildi. economy.taxes -> taxRate,
+// militaryWages/militaryProcurement -> armyFunding, adminFunding ve
+// subsidyPolicy kaldirildi, social.health refaha katildi, defter satirlari
+// yeniden adlandirildi (treasury.js LEDGER_LINES) ve on bir *Gold cizik alani
+// silindi. Eski kayitlar TEMIZ REDDEDILIR — deneysel dalda karmasik goc
+// yazmak, sessizce bozuk bir defterden iyidir.
+export const SAVE_VERSION = 16;
 /** Gocu bilinen eski surumler: deserialize bunlari da kabul eder. */
 const MIGRATABLE_VERSIONS = new Set([14]);
 const STORAGE_KEY = 'hexwar.save';

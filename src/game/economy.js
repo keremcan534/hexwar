@@ -3817,7 +3817,22 @@ export function beginEconomy(game) {
  * oraya yillar icinde yaklasir. Hedefe varis ~40 yil surer (yarilanma ~14
  * yil) — bir insan omru boyunca gorunur, tek secimde donmez.
  */
-const LITERACY_APPROACH = 0.001;
+/**
+ * Okuryazarlik stogunun hedefe yaklasma hizi (haftalik pay).
+ *
+ * 0.001 -> 0.004. ESKI DEGER EGITIMI OLU BIR KALDIRAC YAPIYORDU: yarilanma
+ * ~693 hafta, yani 13 oyun yili. Olculdu (egitim %100'de sabit, 360 hafta):
+ * okuryazarlik ancak 0.21'e cikiyor, arastirma 2.06/hafta kaliyor ve en ucuz
+ * teknoloji 215 puana mal oldugu icin BIR teknoloji 105 hafta suruyordu.
+ * Egitimi %25'ten %100'e cikarmak 900 haftada ortalama +0.33 teknoloji
+ * getiriyordu — matematiksel olarak %60 daha fazla arastirma, stratejik
+ * olarak hicbir sey.
+ *
+ * Yeni deger yarilanmayi ~173 haftaya (3.3 oyun yili) indirir: hala uzun
+ * vadeli bir yatirim, ama SONUCU AYNI KAMPANYADA gorunur. Teknoloji agacina,
+ * maliyetlere ve on kosullara dokunulmadi — tikanan tek halka buydu.
+ */
+const LITERACY_APPROACH = 0.004;
 
 /**
  * Okuryazarlik HEDEFI (disa acik: tech-effect denetimi saf yoklar).
