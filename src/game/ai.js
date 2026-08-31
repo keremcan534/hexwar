@@ -10,7 +10,7 @@ import {
 } from './diplomacy.js';
 import {
   buildOffer, demandLimit, occupiedProvincesOf, offerCost, offerMeetsExpectation, provinceKeyOf,
-  signPeace, warScore,
+  signPeace, suggestWarGoal, warScore,
 } from './peace.js';
 import { INFAMY_COALITION } from './infamy.js';
 import { isMoving, regimentCount, unitAvailable, unitsOn } from './units.js';
@@ -227,7 +227,12 @@ function diplomacy(game, nation, rng) {
   // Devredilmis diplomasi oyuncu adina ilan verebilir; YZ icin bayrak
   // etkisizdir (zaten oyuncu degil).
   const delegated = nation.id === game.turns.playerNation;
-  if (bestTarget && declareWar(game, nation.id, bestTarget.id, { delegated })) {
+  // YZ de hedefsiz savasa girmez: sinirina komsu, en degerli kumeyi hedefler
+  // (bkz. peace.js suggestWarGoal). Boylece oyuncu masada karsi tarafin ne
+  // istedigini de gorebilir.
+  const goal = bestTarget ? suggestWarGoal(game.world, nation.id, bestTarget.id) : null;
+  if (bestTarget && declareWar(game, nation.id, bestTarget.id,
+    { delegated, goal: goal?.id ?? null })) {
     noteDelegated(game, nation, 'diplomacy', `War declared on ${bestTarget.name}.`,
       'The ministry judged them weaker and the border long.');
   }

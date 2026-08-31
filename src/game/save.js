@@ -187,8 +187,10 @@ export function serialize(game) {
       // Ikisi de dusurulunce yuklenen oyunda kazanan MASAYA BASKA HAFTA
       // oturuyordu — olculdu: +77. haftada tek seferlik ¤229 tazminat farki,
       // kaydet-yukle dallanmasinin son kaynagi buydu.
+      // Yedinci alan: savas hedefleri (bkz. peace.js warGoalOf). Yazilmazsa
+      // yuklenen savasin masasi "bu savas neydi" sorusunu cevaplayamaz.
       b <= a || !rec ? null : [rec.state, rec.since, rec.truceUntil ?? 0, rec.losses ?? null,
-        rec.wars ?? 0, rec.peaks ?? null]
+        rec.wars ?? 0, rec.peaks ?? null, rec.goals ?? null]
     ))),
     cities: world.cities.map((c) => ({
       name: c.name,
@@ -348,6 +350,7 @@ export function deserialize(game, data) {
       if (entry[3]) rec.losses = { ...entry[3] };
       if (entry[4]) rec.wars = entry[4];
       if (entry[5]) rec.peaks = { ...entry[5] };
+      if (entry[6]) rec.goals = { ...entry[6] };
       world.relations[a][b] = rec;
       world.relations[b][a] = rec;
     }

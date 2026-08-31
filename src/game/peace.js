@@ -33,6 +33,54 @@ export const MAX_DEMAND_PROVINCES = 6;
  * kazanılan üstünlükle büyür; 10'un altında hiç toprak yoktur (sınır kımıldatan
  * her savaş "kazanılmış" sayılmasın).
  */
+/**
+ * SAVAS HEDEFI (wargoal) — Victoria'nin savas amaci, HexWar olceginde.
+ *
+ * Bir savasin NEDEN acildigi hicbir yerde yaziyordu. Ilan ediliyor, yillarca
+ * suruyor, masaya oturuluyor ve masada "ne istiyordum?" sorusunun cevabi
+ * yoktu; oyuncu isgal ettigi kumelere bakip o an karar veriyordu. Hedef, bu
+ * soruyu savasin BASINDA sorar ve masada geri gosterir.
+ *
+ * Kapsam bilerek dar: bir savasin bir hedefi olur ve o hedef bir KUMEDIR.
+ * Vic2'nin CB agaci (humiliate, dismantle, free peoples...) burada yok --
+ * `PEACE_TERMS` zaten o isi goruyor. Hedef yalnizca "bu savas su topragi
+ * almak icin acildi" der ve masada birinci sirada durur.
+ *
+ * Saklama yeri iliskinin kendisi: savas biterken hedef de silinir.
+ */
+export function setWarGoal(world, a, b, provinceId) {
+  const rec = relation(world, a, b);
+  if (!rec) return false;
+  (rec.goals ??= {})[a] = provinceId ?? null;
+  return true;
+}
+
+/** Bu savasta `a`nin hedefledigi kume (yoksa null). */
+export function warGoalOf(world, a, b) {
+  const id = relation(world, a, b)?.goals?.[a];
+  return id == null ? null : (world.provinces?.[id] ?? null);
+}
+
+/**
+ * YZ ve "hedefsiz ilan" icin makul bir hedef secer: kendi sinirina KOMSU,
+ * dusmanin en degerli kumesi. Komsu yoksa en degerlisi.
+ */
+export function suggestWarGoal(world, a, b) {
+  const mine = new Set();
+  for (const province of world.provinces ?? []) {
+    if (province.owner === a) for (const id of province.neighbors ?? []) mine.add(id);
+  }
+  let best = null;
+  let bestScore = -Infinity;
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== b || !province.econ) continue;
+    // Bitisik kume daha degerli: alindiginda harita temiz kalir.
+    const score = provinceValue(world, province) * (mine.has(province.id) ? 2 : 1);
+    if (score > bestScore) { bestScore = score; best = province; }
+  }
+  return best;
+}
+
 export function demandLimit(score) {
   const s = Math.max(0, score);
   if (s < 10) return 0;

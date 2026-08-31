@@ -8,8 +8,9 @@
 import { canAfford, formatCost, pay } from '../game/cities.js';
 import { MIN_WAR_TURNS, atWar, nationStrength, relation, truceLeft } from '../game/diplomacy.js';
 import {
-  MAX_DEMAND_PROVINCES, PEACE_TERMS, concedeKeyForTile, demandKeyForTile, offerCost,
-  offerRefusal, provinceFromKey, provinceWarCost, signPeace, termAvailable, warScore,
+  MAX_DEMAND_PROVINCES, PEACE_TERMS, concedeKeyForTile, demandKeyForTile,
+  occupiedProvincesOf, offerCost, offerRefusal, provinceFromKey, provinceKeyOf,
+  provinceWarCost, signPeace, termAvailable, warGoalOf, warScore,
 } from '../game/peace.js';
 import { INFAMY_COALITION } from '../game/infamy.js';
 import { maxHpOf, organizationOf, soldiersOf } from '../game/units.js';
@@ -572,6 +573,7 @@ export class Screens {
     const refusal = offerRefusal(world, me.id, target.id, offer);
     const acceptable = refusal === null;
     const budget = Math.max(0, score);
+    const cost0 = cost;
     const list = (keys, kind) => (keys.length ? keys.map((key) => {
       const province = provinceFromKey(world, key);
       if (!province) return '';
@@ -581,10 +583,74 @@ export class Screens {
         <b>${provinceWarCost(world, province)}</b>
         <button class="peace-drop" data-drop-tile="${esc(key)}" data-drop-kind="${kind}" title="Remove">✕</button>
       </div>`;
-    }).join('') : '<p class="empty">Click provinces on the map.</p>');
+    }).join('') : '');
+
+    /**
+     * ALINABILECEKLER LISTESI.
+     *
+     * Eski ekran yalnizca SECILENLERI gosteriyordu; secilecek bir sey yoksa
+     * tek yazdigi "Click provinces on the map." idi. Yani oyuncuya masada ne
+     * oldugu hic soylenmiyordu: 160x96'lik haritada kirmizi kume aramak,
+     * hangisinin kac ettigini tek tek tiklayarak ogrenmek zorundaydi.
+     * Isgal edilmis kumeler zaten hesaplanıyor (peace.js occupiedProvincesOf);
+     * ekran artik onu basiyor.
+     */
+    const takeable = () => {
+      const held = occupiedProvincesOf(world, me.id, target.id)
+        .filter((entry) => !selection.demands.has(provinceKeyOf(entry.province)));
+      if (!held.length) {
+        return `<p class="empty">${offer.demands.length
+          ? 'Every occupied province is already on the table.'
+          : `Nothing to demand yet — occupy ${esc(target.name)}'s provinces first.`}</p>`;
+      }
+      // Kendi sinirima komsu olan kume once gelir: bitisik alinan toprak
+      // haritayi temiz birakir (bkz. peace.js contiguousPick).
+      const mineAdjacent = (province) => (province.neighbors ?? [])
+        .some((id) => world.provinces[id]?.owner === me.id
+          || selection.demands.has(provinceKeyOf(world.provinces[id] ?? {})));
+      return held.map(({ province, cost, share }) => {
+        const key = provinceKeyOf(province);
+        const starred = province.tileIdx.some((idx) => world.tiles[idx].city);
+        const near = mineAdjacent(province);
+        const afford = cost <= budget - cost0;
+        return `<button class="peace-offer-row${near ? ' adjacent' : ''}"
+          data-take-tile="${esc(key)}" title="${esc(province.name)} — ${cost} war score">
+          <span class="por-name">${esc(province.name)}${starred ? ' ★' : ''}</span>
+          <span class="por-meta">${province.tileIdx.length} hex · ${Math.round(share * 100)}% held${
+  near ? ' · borders you' : ''}</span>
+          <b class="por-cost${afford ? '' : ' res-neg'}">${cost}</b>
+        </button>`;
+      }).join('');
+    };
 
     const tab = ['give', 'terms'].includes(this.peaceTab) ? this.peaceTab : 'take';
+    // SAVAS HEDEFI MASANIN BASINDA. Bu savas neden acildi, hedef elimde mi,
+    // masaya koydum mu -- uc soru, tek satir. Hedefsiz savas (eski kayitlar,
+    // cagriyla acilmis savas) bandi hic gostermez.
+    const goal = warGoalOf(world, me.id, target.id);
+    const goalBand = (() => {
+      if (!goal) return '';
+      const key = provinceKeyOf(goal);
+      const onTable = selection.demands.has(key);
+      const held = occupiedProvincesOf(world, me.id, target.id)
+        .some((entry) => entry.province.id === goal.id);
+      const lost = goal.owner !== target.id;
+      const state = lost
+        ? { cls: 'done', text: 'already yours' }
+        : onTable ? { cls: 'done', text: 'on the table' }
+          : held ? { cls: 'ready', text: 'occupied — demand it' }
+            : { cls: 'open', text: 'not occupied yet' };
+      return `<div class="peace-goal ${state.cls}">
+        <span class="pg-label">War goal</span>
+        <b class="pg-name">${esc(goal.name)}</b>
+        <span class="pg-state">${state.text}</span>
+        ${!onTable && held && !lost
+    ? `<button class="pg-add" data-take-tile="${esc(key)}">Add</button>` : ''}
+      </div>`;
+    })();
+
     return `<div class="card peace-head">
+      ${goalBand}
       <div class="peace-score">
         <span><small>War score against ${esc(target.name)}</small>
           <b class="${score >= 0 ? 'res-pos' : 'res-neg'}">${score >= 0 ? '+' : ''}${score}</b></span>
@@ -610,11 +676,15 @@ export class Screens {
       <div class="card-head"><h3>${tab === 'take' ? `Demands from ${esc(target.name)}`
     : tab === 'give' ? 'Provinces you offer' : 'Additional terms'}</h3>
         <small>${tab === 'take'
-    ? `click their red provinces on the map · at most ${MAX_DEMAND_PROVINCES} provinces per treaty`
+    ? `at most ${MAX_DEMAND_PROVINCES} provinces · click a row or the map`
     : tab === 'give' ? 'giving land lowers the price of the treaty'
       : 'terms that do not move borders'}</small></div>
       ${tab === 'terms' ? this.peaceTermList(world, me, target)
-    : tab === 'take' ? list(offer.demands, 'take') : list(offer.concessions, 'give')}
+    : tab === 'give' ? (list(offer.concessions, 'give')
+      || '<p class="empty">Click your own provinces on the map to offer them.</p>')
+      : `${list(offer.demands, 'take')}
+         <div class="peace-avail-head">Occupied — available to demand</div>
+         ${takeable()}`}
     </div>`;
   }
 
@@ -2357,6 +2427,16 @@ export class Screens {
         const set = btn.dataset.dropKind === 'give'
           ? this.peaceSelection.concessions : this.peaceSelection.demands;
         set.delete(btn.dataset.dropTile);
+        game.renderer.updatePeaceSelection(this.peaceSelection);
+        game.requestRender();
+        this.refresh();
+      };
+    }
+    // Listeden tek tikla masaya koy. Harita tiklamasi da duruyor; ikisi ayni
+    // secim kumesine yazar, oyuncu hangisini isterse onu kullanir.
+    for (const btn of this.el.body.querySelectorAll('[data-take-tile]')) {
+      btn.onclick = () => {
+        this.peaceSelection.demands.add(btn.dataset.takeTile);
         game.renderer.updatePeaceSelection(this.peaceSelection);
         game.requestRender();
         this.refresh();

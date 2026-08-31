@@ -8568,3 +8568,83 @@ body.menu-open .sheet { visibility: hidden; }
   .xch-table th:nth-child(9), .xch-table td:nth-child(9) { display: none; }
   .auto-last { margin-left: 0; text-align: left; width: 100%; }
 }
+
+/* --- Baris masasi: alinabilecek kumeler listesi ------------------------- */
+/* Eski ekranda yalnizca SECILENLER yaziyordu; oyuncu neyi alabilecegini
+   haritada kirmizi kume arayarak bulmak zorundaydi. */
+.peace-avail-head {
+  margin: 10px 0 6px;
+  font: 600 10px/1.6 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  color: var(--ink-dim, #8b8578);
+  border-top: 1px solid var(--rule, #2a2a26);
+  padding-top: 8px;
+}
+.peace-offer-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas: "name cost" "meta cost";
+  gap: 0 10px;
+  width: 100%;
+  padding: 6px 8px;
+  margin-bottom: 2px;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  text-align: left;
+  cursor: pointer;
+  color: inherit;
+}
+.peace-offer-row:hover { background: var(--raise, #1e1e1a); border-color: var(--rule, #2a2a26); }
+.peace-offer-row:focus-visible { outline: 2px solid var(--accent, #c8933a); outline-offset: 1px; }
+.peace-offer-row .por-name { grid-area: name; font-weight: 600; }
+.peace-offer-row .por-meta {
+  grid-area: meta;
+  font-size: 11px;
+  color: var(--ink-dim, #8b8578);
+}
+.peace-offer-row .por-cost {
+  grid-area: cost;
+  align-self: center;
+  font-variant-numeric: tabular-nums;
+}
+/* Kendi sinirina komsu olan kume: bitisik alinan toprak haritayi temiz birakir. */
+.peace-offer-row.adjacent { border-left: 2px solid var(--accent, #c8933a); }
+
+/* --- Baris masasi: savas hedefi bandi ---------------------------------- */
+/* Bir savasin NEDEN acildigi hicbir yerde yazmiyordu; masada "ne istiyordum?"
+   sorusunun cevabi yoktu. Band masanin basinda durur. */
+.peace-goal {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 7px 10px;
+  margin-bottom: 10px;
+  border-radius: 3px;
+  border-left: 3px solid var(--accent, #c8933a);
+  background: var(--raise, #1e1e1a);
+}
+.peace-goal .pg-label {
+  font: 600 9.5px/1.6 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ink-dim, #8b8578);
+}
+.peace-goal .pg-name { font-size: 14px; }
+.peace-goal .pg-state { font-size: 11px; color: var(--ink-dim, #8b8578); }
+.peace-goal.ready { border-left-color: var(--good, #6bbf59); }
+.peace-goal.ready .pg-state { color: var(--good, #6bbf59); }
+.peace-goal.done { border-left-color: var(--ink-dim, #8b8578); opacity: .75; }
+.peace-goal .pg-add {
+  margin-left: auto;
+  padding: 2px 10px;
+  font-size: 11px;
+  border-radius: 3px;
+  border: 1px solid var(--accent, #c8933a);
+  background: none;
+  color: var(--accent, #c8933a);
+  cursor: pointer;
+}
+.peace-goal .pg-add:hover { background: var(--accent, #c8933a); color: var(--paper, #14140f); }

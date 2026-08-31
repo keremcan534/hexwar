@@ -13,7 +13,9 @@ import { armyPower, clearPath, placeUnit, speedOf, stackFull, unitsOn } from './
 import { orderMove } from './movement.js';
 import { TurnManager } from './turn.js';
 import { atWar, declareWar } from './diplomacy.js';
-import { signPeace } from './peace.js';
+import {
+  signPeace, suggestWarGoal,
+} from './peace.js';
 import { NotificationCenter } from './notifications.js';
 import { PerfMonitor } from '../core/perf.js';
 
@@ -675,9 +677,15 @@ export class Game {
     return next;
   }
 
-  declareWarOn(nationId) {
+  declareWarOn(nationId, goalProvinceId = undefined) {
     // Oyuncunun kendi karari: merkezi kapi bunu istemsiz ilandan ayirir.
-    const ok = declareWar(this, this.turns.playerNation, nationId, { manual: true });
+    // Hedef verilmezse makul bir tane onerilir (sinira komsu, en degerli
+    // kume) -- boylece hicbir savas hedefsiz baslamaz ve baris masasi her
+    // zaman "bu savas neydi" sorusunu cevaplayabilir.
+    const goal = goalProvinceId !== undefined
+      ? goalProvinceId
+      : suggestWarGoal(this.world, this.turns.playerNation, nationId)?.id ?? null;
+    const ok = declareWar(this, this.turns.playerNation, nationId, { manual: true, goal });
     if (ok) {
       this.selectUnit(this.selectedUnit);
       this.emit('units', this.selectedUnit);

@@ -195,6 +195,15 @@ export function declareWar(game, a, b, options = {}) {
   // savaş kaydına taşınmalı (setState yeni bir nesne kurar).
   const wars = (relation(world, a, b)?.wars ?? 0) + 1;
   setState(world, a, b, WAR, game.turns.turn, { wars });
+  // SAVAS HEDEFI. Bir savasin NEDEN acildigi hicbir yerde yazmiyordu; masada
+  // "ne istiyordum?" sorusunun cevabi yoktu. Hedef kume ilan aninda saklanir
+  // ve baris masasinda birinci sirada gosterilir (bkz. peace.js warGoalOf).
+  // Alan burada yaziliyor cunku peace.js bu dosyayi import ediyor -- ters
+  // yon dongu olurdu. peace.js yalnizca OKUR.
+  if (options.goal != null) {
+    const rec = relation(world, a, b);
+    if (rec) (rec.goals ??= {})[a] = options.goal;
+  }
   remember(world.nations[a], game.turns.turn, 'war_with', b);
   remember(world.nations[b], game.turns.turn, 'war_with', a);
   // Cagri-ile-savas KUYRUGA yazilir, burada cozulmez: alliances.js bu
