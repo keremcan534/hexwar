@@ -224,6 +224,48 @@ export class TurnManager {
   }
 
   /**
+   * SAHIPSIZ TOPRAK YALNIZ SINIRDAN YERLESILIR — "border gore"un asil kaynagi.
+   *
+   * Bir ulke elendiginde butun topragi sahipsizlesir (checkElimination) ve
+   * eski kod sahipsiz kareyi oradan GECEN herhangi bir orduya aninda
+   * veriyordu. Yani bir devlet olunce topragi yagmaya aciliyor, derine dalmis
+   * ordular anavatandan kopuk cepler kapiyordu.
+   *
+   * Olculdu (800 hafta, iki tohum): savasli dunyada ulke basina ortalama
+   * parca sayisi 1.89-2.38, barisci dunyada 1.18-1.40. Once baris masasini
+   * suclu sandik ve toprak talebine bitisiklik kurali koyduk; ama barista HIC
+   * toprak alinmayan kontrol kosusunda parcalanma AYNI kaldi (1.79-2.56).
+   * Yani suclu masa degil, bu satirdi.
+   *
+   * Yeni kural: sahipsiz kumeye ancak KENDI toprağina komsuysan yerlesirsin.
+   * Hic topragi olmayan (surgun) ulke muaftir, yoksa asla geri donemezdi.
+   * Sinira bitisik olmayan sahipsiz toprak oylece durur; komsusu genisledikce
+   * sirayla dolar. Bu ayni zamanda somurgelesmenin dogru sekli: disaridan
+   * iceri degil, sinirdan disari.
+   */
+  canSettle(tile, nationId) {
+    const world = this.world;
+    const nation = world.nations[nationId];
+    if (!nation || nation.tiles === 0) return true;
+    const province = world.provinces?.[tile.provinceId];
+    if (!province) {
+      // Kumesiz kare: kendi komsu karesi yeter.
+      return world.neighbors(tile).some((n) => n.owner === nationId);
+    }
+    if ((province.neighbors ?? []).some((id) => world.provinces[id]?.owner === nationId)) {
+      return true;
+    }
+    // Kume komsulugu tutmadiysa kare komsulugu: dar bogazlarda kume grafi
+    // ile harita komsulugu ayrisabiliyor.
+    for (const idx of province.tileIdx) {
+      for (const near of world.neighbors(world.tiles[idx])) {
+        if (near.owner === nationId) return true;
+      }
+    }
+    return false;
+  }
+
+  /**
    * Toprak alımı KÜME bütünüyledir (CK3 kuralı): sınır hiçbir province'i
    * ikiye bölmez. Verilen kare kümenin herhangi bir üyesi olabilir; alınabilir
    * üyelerin tamamı (sahipsiz ya da savaşılan düşmanın) el değiştirir.
@@ -295,11 +337,14 @@ export class TurnManager {
 
   /**
    * Savas sirasinda egemenlik degismez; yalniz askeri kontrol el degistirir.
-   * Sahipsiz province ise isgal degil yerlesimdir ve dogrudan claim edilir.
+   * Sahipsiz province ise isgal degil YERLESIMDIR — ama yalnizca kendi
+   * sinirina bitisikse (bkz. canSettle).
    */
   occupy(tile, nationId) {
     if (!tile?.terrain.passable) return false;
-    if (tile.owner < 0) return this.claim(tile, nationId);
+    if (tile.owner < 0) {
+      return this.canSettle(tile, nationId) ? this.claim(tile, nationId) : false;
+    }
     const previousController = controllerOf(tile);
     if (previousController === nationId) return false;
     if (!atWar(this.world, previousController, nationId)

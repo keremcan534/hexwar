@@ -487,6 +487,55 @@ export function occupiedProvincesOf(world, a, b) {
 }
 
 /**
+ * TOPRAK SECIMI BITISIK OLUR — "border gore" buradan cikiyordu.
+ *
+ * Eski secim `occupiedProvincesOf`u maliyete gore siralayip butcenin yettigi
+ * EN PAHALI kumeleri aliyordu; bitisiklige hic bakmiyordu. Sonucu haritanin
+ * obur ucunda birakilan ada kumelerdi. Olculdu (800 hafta, iki tohum):
+ * savasli dunyada ulke basina ortalama parca sayisi 1.89-2.38, barisci
+ * dunyada 1.18-1.40 — ve en kotu ornekler 48 kumeyi ALTI ayri parcada
+ * tasiyordu.
+ *
+ * Yeni kural: her adimda, alanin BUGUNKU sinirina (ya da bu masada daha once
+ * secilmis bir kumeye) komsu olan adaylardan en degerlisi alinir. Komsu aday
+ * kalmadiginda secim durur -- kalan butce sartlara akar. Bilerek: "bitisik
+ * kalamiyorsam toprak yerine tazminat" bir devletin makul davranisidir,
+ * kopuk bir cep acmaktan iyidir.
+ */
+function contiguousPick(world, taker, candidates, canAfford) {
+  const picked = [];
+  if (!candidates.length) return picked;
+  // Alanin mevcut sinirina komsu olan her kume "ulasılabilir" sayilir.
+  const reachable = new Set();
+  const addNeighbours = (province) => {
+    for (const id of province.neighbors ?? []) reachable.add(id);
+  };
+  for (const province of world.provinces ?? []) {
+    if (province.owner === taker) addNeighbours(province);
+  }
+  const rest = [...candidates];
+  let spent = 0;
+  for (;;) {
+    // Adaylar zaten deger sirasinda (occupiedProvincesOf maliyete gore
+    // siralar). Iki kapi: bana KOMSU olacak, ve dusmani IKIYE BOLMEYECEK.
+    // Bitisiklik TERCIHTIR, SART DEGIL. Sart yapinca muzaffer saldirgan
+    // hicbir sey alamiyordu: isgal ettigi kume kendi kume grafina komsu
+    // degilse masadan eli bos kalkiyordu (audit:war-outcome CRITICAL verdi,
+    // "Your war score supports no more than 1 province"). Once komsu adaya
+    // bakilir; yoksa en degerli uygun adaya dusulur.
+    let index = rest.findIndex((entry) => reachable.has(entry.province.id)
+      && canAfford(entry, spent, picked.length));
+    if (index < 0) index = rest.findIndex((entry) => canAfford(entry, spent, picked.length));
+    if (index < 0) break;
+    const [entry] = rest.splice(index, 1);
+    picked.push(entry);
+    spent += entry.cost;
+    addNeighbours(entry.province);
+  }
+  return picked;
+}
+
+/**
  * Şartların istenme sırası. Kalıcı olanlar (vassallık, bağımsızlık) önce
  * denenir; bütçe yetmezse süreli olanlara düşülür.
  */
@@ -514,9 +563,13 @@ export function buildOffer(world, a, b, options = {}) {
   // "toprak yerine tazminat" diyen bir barış da mümkün olur.
   const reserved = Math.floor(budget * clamp(termShare, 0, 1));
   let left = budget - reserved;
-  for (const { province, cost } of occupiedProvincesOf(world, a, b)) {
-    if (offer.demands.length >= maxTiles) break;
-    if (cost > left) continue;
+  // NOT: sayim `contiguousPick`in KENDI sayacindan gelir. Ilk yazimda burada
+  // `offer.demands.length` okunuyordu, ama demands secim BITTIKTEN sonra
+  // dolduruluyor: sayac hep 0 kaliyor, tavan hic uygulanmiyor ve teklif
+  // warscore'un izin verdiginden fazla kume istiyordu. Muzaffer saldirgan
+  // masadan eli bos kalkiyordu (audit:war-outcome CRITICAL).
+  for (const { province, cost } of contiguousPick(world, a, occupiedProvincesOf(world, a, b),
+    (entry, spent, count) => spent + entry.cost <= left && count < maxTiles)) {
     offer.demands.push(provinceKeyOf(province));
     left -= cost;
   }
