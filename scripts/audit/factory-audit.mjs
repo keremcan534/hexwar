@@ -6,7 +6,7 @@ import {
 } from './harness.mjs';
 import {
   FACTORIES, MAX_FACTORY_LEVEL, WORKERS_PER_LEVEL, expansionCost, factoryCost,
-  factoryJobs, factoryMargin, priceOf,
+  factoryJobs, factoryMargin, jobTotalsOf, priceOf,
 } from '../../src/game/economy.js';
 
 const SEED = 'factory-audit';
@@ -88,7 +88,7 @@ sub('Isci muhasebesi: kadro > nufus mumkun mu, ayni isci iki tesise sayiliyor mu
     if (!nation.alive) continue;
     const factories = nation.economy.factories ?? [];
     const employed = factories.reduce((s, f) => s + f.employees, 0);
-    const workers = nation.economy.professionCounts.workers ?? 0;
+    const workers = jobTotalsOf(game.world, nation).workers ?? 0;
     // Ulusal: fabrika kadrosu 'workers' meslek sayacini asamaz.
     if (employed > workers + 1) doubleCount = Math.max(doubleCount, employed - workers);
     for (const f of factories) {

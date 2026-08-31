@@ -4,7 +4,8 @@
 // kurulmuş bir türetme katmanıdır ve iki kaynağı birleştirir:
 //
 //   province.population        — nerede (kare başına gerçek nüfus)
-//   economy.professionCounts   — ne iş (ulusal meslek sayaçları)
+//   jobTotalsOf(world, nation)  — ne iş (TÜRETİLİR: gerçek tesis kadrosu ve
+//                                 gerçek RGO istihdamı; saklanan sayaç yok)
 //   tile.culture               — hangi kültür (kare başına)
 //
 // Neden türetme: ikinci bir nüfus deposu tutmak, iki sayacın zamanla
@@ -21,7 +22,7 @@
 // Katman notu: yalnız okur. Simülasyonu değiştirmez, DOM bilmez.
 
 import {
-  CLASS_INFO, PROFESSION_INFO, factoryJobs,
+  CLASS_INFO, PROFESSION_INFO, factoryJobs, jobTotalsOf,
 } from './economy.js';
 import { RGO_TYPES, rgoStatusOf } from './provinces.js';
 
@@ -191,16 +192,20 @@ function cohortEconomics(nation, classId, size, share) {
  */
 export function nationCohorts(world, nation) {
   const economy = nation?.economy;
-  if (!economy?.professionCounts) return [];
+  if (!economy?.classes) return [];
   const entries = ownedProvinces(world, nation);
   if (!entries.length) return [];
+  // Ulusal is dagilimi TURETILIR. Eskiden saklanan sayaclardan okunuyordu ve
+  // o sayaclar sanayilesmeyi gormuyordu: dunya yedi kat sanayilesirken ciftci
+  // payi %50'den %62'ye CIKIYORDU (bkz. economy.js jobTotalsOf notu).
+  const jobTotals = jobTotalsOf(world, nation);
 
   // Once butun kohortlar ve istihdamlari kurulur; gelir dagitimi ancak sinifin
   // TOPLAM etkinlik agirligi bilindiginde yapilabilir (yoksa paylar toplami
   // 1 etmez ve sinif geliri sizar).
   const draft = [];
   for (const [professionId, profession] of Object.entries(PROFESSION_INFO)) {
-    const total = Math.max(0, Math.round(economy.professionCounts[professionId] ?? 0));
+    const total = Math.max(0, Math.round(jobTotals[professionId] ?? 0));
     if (total <= 0) continue;
     const basis = BASIS[professionId] ?? 'population';
     let weights = entries.map((entry) => weightOf(entry, basis));
@@ -302,9 +307,12 @@ export function reconcile(world, nation) {
     byClass[cohort.classId] = (byClass[cohort.classId] ?? 0) + cohort.size;
     total += cohort.size;
   }
+  // Meslek sapmasi artik TANIM GEREGI sifirdir: kohortlar da, beklenen toplam
+  // da ayni turetmeden (jobTotalsOf) gelir. Alan denetim uyumu icin duruyor.
+  const expectedJobs = jobTotalsOf(world, nation);
   const professionDrift = Object.entries(PROFESSION_INFO).map(([id]) => ({
     id,
-    expected: Math.round(economy.professionCounts?.[id] ?? 0),
+    expected: Math.round(expectedJobs[id] ?? 0),
     actual: byProfession[id] ?? 0,
   }));
   const classDrift = Object.keys(CLASS_INFO).map((id) => ({

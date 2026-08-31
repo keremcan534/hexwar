@@ -1,7 +1,7 @@
 // Isgucu korunumu denetimi — cift sayimin geri donmemesi icin bekci.
 //
 // Degismezler (her hafta, her ulke):
-//   I1  Σfactory.employees ≤ professionCounts.workers            (cift sayim)
+//   I1  Sfactory.employees <= alt sinifin calisabilir payi        (cift sayim)
 //   I2  factory.employees ≤ factoryJobs(factory)                 (kapasite)
 //   I3  factory.employees ≥ 0, butun meslek sayaclari ≥ 0        (negatif emek)
 //   I4  Σcounts = cohortPopulation                               (sinif esitligi)
@@ -12,7 +12,7 @@
 // issizlik (F), emek kitligi (G).
 
 import { headless } from './harness.mjs';
-import { factoryJobs } from '../../src/game/economy.js';
+import { LOWER_WORKFORCE_SHARE, factoryJobs, jobTotalsOf } from '../../src/game/economy.js';
 
 const findings = [];
 const finding = (level, title, expected, measured, note) => {
@@ -30,7 +30,7 @@ const employedOf = (nation) => (nation.economy?.factories ?? [])
 function checkInvariants(world, label, worst) {
   for (const nation of world.nations) {
     if (!nation.alive || !nation.economy) continue;
-    const counts = nation.economy.professionCounts ?? {};
+    const counts = jobTotalsOf(world, nation);
     const employed = employedOf(nation);
     const workers = counts.workers ?? 0;
     if (employed - workers > 1) {
@@ -125,7 +125,7 @@ console.log('='.repeat(74));
   // A notu: fabrikasiz birakilan ulkeyi ensureInitialMilitaryIndustry BILEREK
   // yeniden cekirdekler (bkz. economy.js) — "sonsuza dek fabrikasiz" diye bir
   // durum yok. A'nin sinadigi sey yeniden cekirdeklemede korunum (I1) olur.
-  const overC = employedOf(c) - (c.economy.professionCounts.workers ?? 0);
+  const overC = employedOf(c) - ((c.economy.classes?.lower?.population ?? 0) * LOWER_WORKFORCE_SHARE);
   console.log(`  A yeniden cekirdeklendi (beklenen): kadro=${n0(employedOf(a))}`
     + ` · C kitlikta asim=${n0(Math.max(0, overC))}`
     + ` · I1=${n0(worst.I1 ?? 0)} I5=${n0(worst.I5 ?? 0)}`);

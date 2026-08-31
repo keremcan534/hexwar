@@ -6,7 +6,7 @@ import {
 } from './harness.mjs';
 import {
   CLASS_PROFESSIONS, POPULATION_COHORT, PROFESSION_INFO, factoryJobs,
-  industrialJobs, populationOf,
+  industrialJobs, jobTotalsOf, populationOf,
 } from '../../src/game/economy.js';
 import { nationCohorts, reconcile, summarize } from '../../src/game/population.js';
 import { nationManpower, recruit, disband } from '../../src/game/recruitment.js';
@@ -38,13 +38,17 @@ function armyManpower(world) {
 section('K. NUFUS MUHASEBESI');
 
 // --------------------------------------- 1) KOHORT / SINIF / SAYAC TUTARLILIGI ---
-sub('Kohort toplami = meslek sayaclari = sinif toplamlari (200 hafta)');
+// MESLEK SAYACLARI KALKTI: is dagilimi artik saklanmiyor, gercek tesis
+// kadrosundan ve RGO istihdamindan TURETILIYOR (economy.js jobTotalsOf).
+// Dolayisiyla "sayac = sinif" diye bir kimlik de yok; kalan kimlik
+// kohort toplami = turetilen is toplami = sinif toplami.
+sub('Kohort toplami = turetilen is toplami = sinif toplamlari (200 hafta)');
 {
   const game = headless(SEED);
   run(game, 200);
   const rows = game.world.nations.filter((n) => n.alive && n.economy).map((n) => {
     const rec = reconcile(game.world, n);
-    const counts = n.economy.professionCounts;
+    const counts = jobTotalsOf(game.world, n);
     const countTotal = Object.values(counts).reduce((s, v) => s + v, 0);
     const classTotal = Object.keys(n.economy.classes)
       .reduce((s, id) => s + n.economy.classes[id].population, 0);
@@ -62,7 +66,7 @@ sub('Kohort toplami = meslek sayaclari = sinif toplamlari (200 hafta)');
   console.log(table(rows, [
     { label: 'ulke', get: (r) => r.id },
     { label: 'provinceNufus', get: (r) => n0(r.province) },
-    { label: 'meslekToplami', get: (r) => n0(r.countTotal) },
+    { label: 'isToplami', get: (r) => n0(r.countTotal) },
     { label: 'sinifToplami', get: (r) => n0(r.classTotal) },
     { label: 'kohortToplami', get: (r) => n0(r.cohortSum) },
     { label: 'enKotuSapma', get: (r) => n0(r.worstDrift) },
@@ -71,8 +75,11 @@ sub('Kohort toplami = meslek sayaclari = sinif toplamlari (200 hafta)');
   const worst = Math.max(...rows.map((r) => r.worstDrift));
   const gapPct = Math.max(...rows.map((r) => Math.abs(r.roundingGap) / Math.max(1, r.province)));
   console.log(`\n  en kotu kohort sapmasi: ${n0(worst)} kisi · en kotu yuvarlama farki: ${pct(gapPct)}`);
-  if (worst > 0) {
-    finding('HIGH', 'Kohort muhasebesi tutmuyor', 'kohort toplami meslek sayaclarina esit olmali',
+  // Tolerans: is dagilimi artik SUREKLI (kohort kuantumu yok), dolayisiyla
+  // kume kume dagitimda kisi basi yuvarlama artigi kalir. Ulke basina birkac
+  // kisi muhasebe hatasi degil, tam sayiya yuvarlamadir.
+  if (worst > rows.length) {
+    finding('HIGH', 'Kohort muhasebesi tutmuyor', 'kohort toplami turetilen is toplamina esit olmali',
       `en kotu sapma ${n0(worst)} kisi`, '');
   } else {
     console.log('  OK  kohort/meslek/sinif toplamlari birebir tutuyor (hayalet nufus yok).');

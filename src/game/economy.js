@@ -814,40 +814,21 @@ function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function distributeClassPopulation(counts, classId, population) {
-  const professions = CLASS_PROFESSIONS[classId];
-  let remaining = Math.max(0, Math.floor(population / POPULATION_COHORT)) * POPULATION_COHORT;
-  professions.forEach((id, index) => {
-    const amount = index === professions.length - 1
-      ? remaining
-      : Math.floor((population * PROFESSION_SHARES[classId][id]) / POPULATION_COHORT)
-        * POPULATION_COHORT;
-    counts[id] += Math.min(remaining, amount);
-    remaining -= Math.min(remaining, amount);
-  });
+/** Kurulu sanayinin toplam kadro kapasitesi (dolu olsun olmasin). */
+export function industrialJobs(nation) {
+  return (nation.economy?.factories ?? []).reduce(
+    (sum, factory) => sum + (factory.jobs ?? factory.level * WORKERS_PER_LEVEL), 0,
+  );
 }
 
-function initialProfessionCounts(population) {
-  const counts = emptyProfessionCounts();
-  // Taban GERCEK nufustur. Eski `max(10, ...)` tabani nufusu 10.000'in
-  // altindaki her ulkeye hayalet insan uyduruyordu; topraksiz kalinti devlet
-  // sonsuza dek 10.000 kisilik sayac tasiyordu (olculdu: kohort katmani 0
-  // kisi gosterirken sayac 10.000 — "6.000 kisilik sapma" bu hayaletti).
-  const chunks = Math.max(population > 0 ? 1 : 0, Math.floor(population / POPULATION_COHORT));
-  const lowerChunks = Math.floor(chunks * CLASS_INFO.lower.share);
-  const middleChunks = Math.floor(chunks * CLASS_INFO.middle.share);
-  const upperChunks = Math.max(0, chunks - lowerChunks - middleChunks);
-  distributeClassPopulation(counts, 'lower', lowerChunks * POPULATION_COHORT);
-  distributeClassPopulation(counts, 'middle', middleChunks * POPULATION_COHORT);
-  distributeClassPopulation(counts, 'upper', upperChunks * POPULATION_COHORT);
-  return counts;
-}
-
-function classPopulation(counts, classId) {
-  const professions = CLASS_PROFESSIONS[classId];
-  let sum = 0;
-  for (let i = 0; i < professions.length; i++) sum += counts[professions[i]] ?? 0;
-  return sum;
+/** Kadronun ne kadari dolu. 1 = butun tezgahlar calisiyor. */
+export function laborFill(nation) {
+  const jobs = industrialJobs(nation);
+  if (jobs <= 0) return 1;
+  const employed = (nation.economy?.factories ?? []).reduce(
+    (sum, factory) => sum + (factory.employees ?? 0), 0,
+  );
+  return employed / jobs;
 }
 
 const CLASS_IDS = Object.keys(CLASS_INFO);
@@ -865,107 +846,108 @@ const CLASS_DEFAULTS = {
 };
 
 /**
- * Sayim gecerliyse eski goc dongusu birebir ayni degerleri geri yazardi;
- * bu denetim o dolambaci atlatir. Gecerli: butun meslekler tanimli, negatif
- * degil, kohort katinda, fazladan anahtar yok ve en az bir deger pozitif
- * (hepsi sifirsa eski yol initialProfessionCounts'a duserdi).
+ * ISLER ARTIK SAKLANMIYOR, ZEMINDEN TURETILIYOR.
+ *
+ * Eskiden `economy.professionCounts` diye sekiz ulusal sayac vardi ve sinif
+ * nufuslari ONLARDAN turetiliyordu (`syncClassPopulations`). Sayaclari nufusla
+ * hizada tutmak dokuz ayri fonksiyon gerektiriyordu ve — asil sorun — sayaclar
+ * SANAYILESMEYI GORMUYORDU. Olculdu (3340 hafta, tek tohum):
+ *
+ *   dunyada tesis      135 -> 659   (toplam seviye 135 -> 956, yedi kat)
+ *   ciftci payi      %50.0 -> %61.6   ARTIYOR
+ *   fabrika iscisi   %24.2 -> %21.6   DUSUYOR
+ *
+ * Yani dunya yedi kat sanayilesirken nufus ekrani oyuncuya ulkenin
+ * TARIMSALLASTIGINI soyluyordu. Sayaclar kaymiyordu (sinif sapmasi her
+ * kontrolde tam 0) — dogru calisiyor ama yanlis seyi anlatiyorlardi.
+ *
+ * Yeni kural tek cumle: **is, insanin uzerindeki etiket degil, bulundugu
+ * yerin ozelligidir.** Madencilik kumesindeki alt sinif madencidir, fabrikali
+ * sehirdeki fabrika iscisidir. Saklanan sey UC SINIFTIR; meslek dagilimi her
+ * sorulduğunda gercek fabrika kadrosundan ve gercek RGO istihdamindan
+ * hesaplanir. Boylece sayim tablosu YAPISI GEREGI yalan soyleyemez.
  */
-function professionCountsValid(counts) {
-  let keys = 0;
-  for (const key in counts) {
-    keys++;
-    const value = counts[key];
-    if (!Number.isFinite(value) || value < 0 || value % POPULATION_COHORT !== 0) return false;
-  }
-  // Tamamen sifir sayac YAPISAL olarak gecerlidir (topraksiz devlet):
-  // reconcilePopulation zaten nufusa gore doldurur. Eski "en az bir pozitif"
-  // sarti sifir nufuslu ulkede her hafta bosuna yeniden kurulum yapiyordu.
-  if (keys !== PROFESSION_IDS.length) return false;
-  for (let i = 0; i < PROFESSION_IDS.length; i++) {
-    if (!(PROFESSION_IDS[i] in counts)) return false;
-  }
-  return true;
-}
 
-/** Ülkedeki toplam fabrika kadrosu — meslek dağılımının gerçek talebi. */
-export function industrialJobs(nation) {
-  return (nation.economy?.factories ?? []).reduce(
-    (sum, factory) => sum + (factory.jobs ?? factory.level * WORKERS_PER_LEVEL), 0,
-  );
-}
+/** Orta ve ust sinifin ic dagilimi. Bunlarin zemini yok: hicbirinin mekanik
+ *  etkisi yoktur ve oyuncu hicbirini secmez, o yuzden sabit pay durustur. */
+const DERIVED_SHARES = {
+  middle: { clerks: 0.45, artisans: 0.35, officers: 0.20 },
+  upper: { capitalists: 0.45, aristocrats: 0.55 },
+};
 
-/** Mevcut tesislerin kadro doluluğu (0-1). Kadro yoksa 1: kısıt yok demektir. */
-export function laborFill(nation) {
-  const jobs = industrialJobs(nation);
-  if (jobs <= 0) return 1;
-  const employed = (nation.economy?.factories ?? []).reduce(
-    (sum, factory) => sum + (factory.employees ?? 0), 0,
-  );
-  return employed / jobs;
-}
+/**
+ * Ulusun is dagilimi — TURETILIR, saklanmaz.
+ * @returns {Record<string, number>} meslek -> kisi
+ */
+export function jobTotalsOf(world, nation) {
+  const economy = nation?.economy;
+  const out = Object.fromEntries(PROFESSION_IDS.map((id) => [id, 0]));
+  if (!economy?.classes) return out;
 
-function automaticProfession(nation, classId) {
-  if (classId === 'lower') {
-    // Yeni nüfus, fabrikaların *gerçekten* açık kadrosu varsa işçi olur.
-    // Eskiden burada seviye sayısından türetilen bir tahmin vardı ve
-    // professionCounts.workers ile factory.employees birbirinden bağımsız
-    // sürükleniyordu: ekranda 300 bin işçi, meslek tablosunda 80 bin.
-    const workers = nation.economy.professionCounts.workers ?? 0;
-    return workers < industrialJobs(nation) ? 'workers' : 'farmers';
+  // --- ALT SINIF: gercek isten okunur ---------------------------------------
+  const lower = Math.max(0, economy.classes.lower?.population ?? 0);
+  // Fabrikada FIILEN calisan. Tek kaynak: tesisin kendi kadrosu.
+  const inFactories = Math.min(lower, (economy.factories ?? [])
+    .reduce((sum, factory) => sum + (factory.employees ?? 0), 0));
+  // Fabrika disinda kalan alt sinif, kirin IKI kolu arasinda GERCEK is
+  // kapasitesi oraninda bolunur: tarim kumeleri ciftci, maden/kesim kumeleri
+  // amele. Oran sabit degil, ulkenin kendi cografyasidir -- madenli bir ulke
+  // gercekten daha cok ameleye sahip olur.
+  //
+  // "Once amele dolsun, ciftci artik kalsin" YAPILMADI: o sekil ameleyi
+  // kapasitesine kadar doldurup ciftciyi kalana indirirdi, yani ciftci sayisi
+  // maden kapasitesinin golgesi olurdu. Oransal bolme ikisini de kendi
+  // zemininde tutar.
+  let agJobs = 0;
+  let exJobs = 0;
+  for (const province of world?.provinces ?? []) {
+    if (province.owner !== nation.id || !province.econ) continue;
+    const track = RGO_TYPES[province.econ.rgo]?.track;
+    if (track === 'agriculture') agJobs += rgoJobsOf(province.econ);
+    else if (track === 'extraction') exJobs += rgoJobsOf(province.econ);
   }
-  if (classId === 'middle') return 'clerks';
-  return 'capitalists';
-}
+  const rural = Math.max(0, lower - inFactories);
+  const ruralJobs = agJobs + exJobs;
+  out.workers = inFactories;
+  // Zemini hic olmayan ulkede (butun kumeler isgal altinda vb.) herkes koyde.
+  out.laborers = ruralJobs > 0 ? rural * (exJobs / ruralJobs) : 0;
+  out.farmers = rural - out.laborers;
 
-function syncClassPopulations(nation) {
-  const counts = nation.economy.professionCounts;
-  let total = 0;
-  for (const classId of CLASS_IDS) {
-    const population = classPopulation(counts, classId);
-    nation.economy.classes[classId].population = population;
-    total += population;
+  // --- ORTA VE UST SINIF: sabit pay ----------------------------------------
+  for (const classId of ['middle', 'upper']) {
+    const population = Math.max(0, economy.classes[classId]?.population ?? 0);
+    for (const [id, share] of Object.entries(DERIVED_SHARES[classId])) {
+      out[id] = population * share;
+    }
   }
-  nation.economy.cohortPopulation = total;
+  return out;
 }
 
 /**
- * ISCI KORUNUMU: Σfabrika kadrosu ≤ professionCounts.workers.
+ * ISCI TAVANI. Alt sinifin bu payindan fazlasi fabrikada calisamaz: kalanlar
+ * tarlada, madende, evde. Eskiden tavan `professionCounts.workers` sayaciydi;
+ * ayni sayi, artik sinftan dogrudan.
+ */
+export const LOWER_WORKFORCE_SHARE = 0.23;
+
+/**
+ * ISCI KORUNUMU: Sfabrika kadrosu <= alt sinifin calisabilir payi.
  *
- * Ise alim bu tavani zaten uygular ama sayaci SONRADAN dusuren uc yol
- * (reconcilePopulation kucultmesi, sinif yukselmesi, kurulus sanayisinin
- * sayaca hic sorulmamis kadrosu) tesis kadrosuna dokunmuyordu — olculdu:
- * 1. haftada 5000 kadro / 4000 isci, 260. haftada ulusal fark 4900'e
- * kadar cikiyor, denetimde 8690 kisi "iki yerde birden" sayiliyordu.
- *
- * Iki adim: (1) fiilen fabrikada calisan nufus ISCIDIR — acik once ciftci
- * kohortundan kapanir (ayni sinif, sinif toplamlari degismez; bosalan isi
- * baska bir koylu alir). (2) Alt sinifta insan kalmadiysa kadro kuculur:
- * olen ya da yukselen calisani tesis tutamaz.
+ * Ise alim tavani zaten uygular ama nufusu SONRADAN dusuren yollar (nufus
+ * kucultmesi, sinif yukselmesi, kurulusta acilan kadro) tesis kadrosuna
+ * dokunmuyordu — olculdu: 1. haftada 5000 kadro / 4000 isci, 260. haftada
+ * ulusal fark 4900. Kadro artik sinif nufusuna gore kirpilir; olen ya da
+ * yukselen calisani tesis tutamaz.
  */
 function alignWorkforce(nation) {
-  const economy = nation.economy;
-  const counts = economy?.professionCounts;
-  if (!counts) return;
+  const economy = nation?.economy;
+  if (!economy?.classes) return;
   const factories = economy.factories ?? [];
   const employed = factories.reduce((sum, factory) => sum + (factory.employees ?? 0), 0);
-  if (employed <= (counts.workers ?? 0)) return;
-  const deficit = employed - (counts.workers ?? 0);
-  const move = Math.min(
-    Math.ceil(deficit / POPULATION_COHORT),
-    Math.floor((counts.farmers ?? 0) / POPULATION_COHORT),
-  ) * POPULATION_COHORT;
-  if (move > 0) {
-    counts.farmers -= move;
-    counts.workers = (counts.workers ?? 0) + move;
-  }
-  const workers = counts.workers ?? 0;
-  if (employed > workers) {
-    const scale = workers / employed;
-    for (const factory of factories) {
-      factory.employees = (factory.employees ?? 0) * scale;
-    }
-  }
-  syncClassPopulations(nation);
+  const cap = Math.max(0, economy.classes.lower?.population ?? 0) * LOWER_WORKFORCE_SHARE;
+  if (employed <= cap || employed <= 0) return;
+  const scale = cap / employed;
+  for (const factory of factories) factory.employees = (factory.employees ?? 0) * scale;
 }
 
 export function ensurePopulationModel(nation, population = nation?.economy?.population ?? 10000) {
@@ -995,52 +977,53 @@ export function ensurePopulationModel(nation, population = nation?.economy?.popu
       }
     }
   }
-  if (!economy.professionCounts) economy.professionCounts = initialProfessionCounts(population);
-  else if (!professionCountsValid(economy.professionCounts)) {
-    // Goc yalniz bozuk/eksik sayimda kosar. Gecerli sayimda eski kod da
-    // birebir ayni degerleri geri yaziyordu; her hafta yeni nesne kurmak
-    // safi coptu.
-    const migrated = emptyProfessionCounts();
-    for (const id of PROFESSION_IDS) {
-      const value = Math.max(0, economy.professionCounts[id] ?? 0);
-      migrated[id] = Math.floor(value / POPULATION_COHORT) * POPULATION_COHORT;
-    }
-    economy.professionCounts = migrated;
-    if (!Object.values(migrated).some((value) => value > 0)) {
-      economy.professionCounts = initialProfessionCounts(population);
-    }
-  }
+  // ESKI KAYIT GOCU: `professionCounts` artik yok. Kayitta varsa sessizce
+  // atilir -- sinif nufuslari zaten kayitta ve kanonik olan onlar.
+  if (economy.professionCounts) delete economy.professionCounts;
   economy.mobility ??= {
     lastUpdated: 0,
     demotedUpper: 0,
     demotedMiddle: 0,
   };
-  syncClassPopulations(nation);
-  return economy.professionCounts;
+  economy.cohortPopulation = CLASS_IDS.reduce(
+    (sum, id) => sum + (economy.classes[id]?.population ?? 0), 0,
+  );
+  return economy.classes;
 }
 
 export function reconcilePopulation(nation, population) {
-  const counts = ensurePopulationModel(nation, population);
-  // Ayni hayalet-taban kurali (bkz. initialProfessionCounts): hedef gercek
-  // nufusun kohort karsiligidir, 10 kohortluk uydurma taban degil.
-  const target = Math.max(population > 0 ? 1 : 0, Math.floor(population / POPULATION_COHORT))
-    * POPULATION_COHORT;
-  let current = Object.values(counts).reduce((sum, value) => sum + value, 0);
-  while (current < target) {
-    counts[automaticProfession(nation, 'lower')] += POPULATION_COHORT;
-    current += POPULATION_COHORT;
+  ensurePopulationModel(nation, population);
+  const economy = nation.economy;
+  // KOHORT KUANTUMU KALKTI. Sinif nufusu artik 1000'lik bloklarda degil, tam
+  // sayida tutulur. Kuantum meslek sayaclari icin vardi (kohortlar meslekler
+  // arasinda blok blok tasiniyordu); sayaclar gidince tek etkisi sinif
+  // toplamini gercek nufustan 999'a kadar geride birakmakti. Olculdu:
+  // kur/dagit dongusu 200 turda 3.000 kisi kaybediyor, kume nufusu ile sinif
+  // toplami arasindaki fark %7.3'e cikiyordu. Sinif atlamasi hala 1000
+  // kisilik adimlarla olur (POPULATION_COHORT) -- orada kuantum bir TASARIM
+  // karari, burada ise sadece hataydi.
+  const target = Math.max(0, Math.round(population));
+  const classes = economy.classes;
+  let current = CLASS_IDS.reduce((sum, id) => sum + (classes[id].population ?? 0), 0);
+  if (current <= 0) {
+    for (const id of CLASS_IDS) classes[id].population = Math.round(target * CLASS_INFO[id].share);
+  } else if (target !== current) {
+    // Olcekleme SINIF PAYLARINI KORUR: nufus dususu/artisi siniflari
+    // birbirine cevirmez. Sinif degistiren tek yol hareketliliktir
+    // (runPopulationMobility) -- orada da sebebi vardir.
+    const scale = target / current;
+    let assigned = 0;
+    for (let i = 0; i < CLASS_IDS.length; i++) {
+      const id = CLASS_IDS[i];
+      if (i === CLASS_IDS.length - 1) classes[id].population = Math.max(0, target - assigned);
+      else {
+        classes[id].population = Math.max(0, Math.round(classes[id].population * scale));
+        assigned += classes[id].population;
+      }
+    }
   }
-  while (current > target) {
-    const removable = Object.keys(counts)
-      .filter((id) => counts[id] >= POPULATION_COHORT)
-      .sort((a, b) => counts[b] - counts[a])[0];
-    if (!removable) break;
-    counts[removable] -= POPULATION_COHORT;
-    current -= POPULATION_COHORT;
-  }
-  syncClassPopulations(nation);
-  // Kucultme en kalabalik meslekten kohort dusurur — cogu zaman 'workers'.
-  // Kadro sayaca uymali, yoksa ayni insan iki yerde sayilir.
+  economy.cohortPopulation = CLASS_IDS.reduce((sum, id) => sum + classes[id].population, 0);
+  // Nufus kuculduyse tesis kadrosu da kuculmeli: ayni insan iki yerde sayilmaz.
   alignWorkforce(nation);
 }
 
@@ -1058,7 +1041,6 @@ const CLASS_CEILING = { middle: 0.34, upper: 0.11 };
  */
 function runPromotion(nation, mobility) {
   const economy = nation.economy;
-  const counts = economy.professionCounts;
   const total = Math.max(1, economy.cohortPopulation);
   // Eğitim niteliği artırır: okullu nüfus daha kolay sınıf atlar.
   const schooling = 1 + socialLevel(nation, 'education') * 0.5;
@@ -1079,12 +1061,8 @@ function runPromotion(nation, mobility) {
       ? (source.prosperityWeeks ?? 0) + schooling
       : Math.max(0, (source.prosperityWeeks ?? 0) - 2);
     if (source.prosperityWeeks < 8) continue;
-    const from = CLASS_PROFESSIONS[sourceClass]
-      .filter((id) => counts[id] >= POPULATION_COHORT)
-      .sort((a, b) => counts[b] - counts[a])[0];
-    if (!from) continue;
-    counts[from] -= POPULATION_COHORT;
-    counts[automaticProfession(nation, targetClass)] += POPULATION_COHORT;
+    source.population -= POPULATION_COHORT;
+    target.population += POPULATION_COHORT;
     mobility[key] = POPULATION_COHORT;
     source.prosperityWeeks = 0;
   }
@@ -1116,18 +1094,16 @@ export function runPopulationMobility(nation, turn) {
     const socialClass = economy.classes[sourceClass];
     if (socialClass.canAffordNeeds || socialClass.hardshipWeeks < 4
       || socialClass.population < POPULATION_COHORT) continue;
-    const source = CLASS_PROFESSIONS[sourceClass]
-      .filter((id) => economy.professionCounts[id] >= POPULATION_COHORT)
-      .sort((a, b) => economy.professionCounts[b] - economy.professionCounts[a])[0];
-    if (!source) continue;
-    economy.professionCounts[source] -= POPULATION_COHORT;
-    economy.professionCounts[automaticProfession(nation, targetClass)] += POPULATION_COHORT;
+    socialClass.population -= POPULATION_COHORT;
+    economy.classes[targetClass].population += POPULATION_COHORT;
     economy.mobility[mobilityKey] = POPULATION_COHORT;
     socialClass.hardshipWeeks = 0;
   }
-  syncClassPopulations(nation);
-  // Yukselen kohort 'workers' sayacindan cikmis olabilir (en kalabalik
-  // meslek kuralı); kadro korunumu burada da kapanmali.
+  economy.cohortPopulation = CLASS_IDS.reduce(
+    (sum, id) => sum + (economy.classes[id].population ?? 0), 0,
+  );
+  // Alt siniftan yukselen insan fabrikadan da cikmis olabilir; kadro
+  // korunumu burada da kapanmali.
   alignWorkforce(nation);
   return economy.mobility;
 }
@@ -1195,7 +1171,6 @@ export function initNationEconomy(world, nation) {
     armyFunding: 100,
     military: { ...DEFAULT_MILITARY },
     factories: [],
-    professionCounts: initialProfessionCounts(population),
     cohortPopulation: Math.max(10, Math.floor(population / POPULATION_COHORT)) * POPULATION_COHORT,
     mobility: { lastUpdated: 0, demotedUpper: 0, demotedMiddle: 0 },
     goodsFlow: emptyGoodsFlow(),
@@ -1209,7 +1184,7 @@ export function initNationEconomy(world, nation) {
     standardOfLiving: 10,
     stability: 0.62,
   };
-  syncClassPopulations(nation);
+  ensurePopulationModel(nation, population);
   return nation.economy;
 }
 
@@ -2397,21 +2372,17 @@ function runFactoryEmployment(game, nation) {
     + higherEducationBonus(nation);
   const lower = Math.max(0, economy.classes.lower.population);
   const employed = factories.reduce((sum, factory) => sum + factory.employees, 0);
-  // Kırdan sanayiye geçiş: açık kadro varsa ayda bir kohort çiftçi işçiye
-  // döner. Fabrika istihdamı artık bu havuzdan beslenir, havadan değil.
-  const counts = economy.professionCounts;
-  if ((counts.workers ?? 0) < industrialJobs(nation)
-    && (counts.farmers ?? 0) >= POPULATION_COHORT) {
-    counts.farmers -= POPULATION_COHORT;
-    counts.workers += POPULATION_COHORT;
-    syncClassPopulations(nation);
-  }
+  // KIRDAN SANAYIYE GECIS ARTIK BIR SAYAC ISLEMI DEGIL. Eskiden burada
+  // `farmers` sayacindan bir kohort dusup `workers` sayacina ekleniyordu;
+  // artik ciftci ile isciyi ayiran sey tesisin kendi kadrosudur (jobTotalsOf).
+  // Ise alim tesise adam yazar, ciftci sayisi kendiliginden azalir.
   // Memnuniyetsiz nüfus fabrikaya akmaz; açlık sınırındaki işçi göç eder.
   const willingness = 0.65 + (economy.classes.lower.satisfaction ?? 0.6) * 0.5;
   const pool = Math.max(0, Math.min(
     lower * MONTHLY_HIRE_RATE * schooling * willingness,
     // Tavan artık soyut bir oran değil, gerçekten işçi olan nüfus.
-    Math.min(counts.workers ?? 0, lower * MAX_WORKER_SHARE) - employed,
+    // Tavan iki kapinin dari: sinifin calisabilir payi ve mutlak tavan.
+    Math.min(lower * LOWER_WORKFORCE_SHARE, lower * MAX_WORKER_SHARE) - employed,
   ));
   if (pool <= 0) return;
 
