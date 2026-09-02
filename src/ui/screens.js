@@ -542,6 +542,60 @@ export class Screens {
    * kırmızı, istediklerin yeşil, verdiklerin turuncu. Her karenin bir bedeli
    * vardır ve toplam bedel warscore'unu aşamaz (bkz. peace.js).
    */
+  /**
+   * Ulke panelinin kimlik blogu: karakter cumlesi, teknoloji duzeyi, urettigi
+   * ve bagimli oldugu mallar, muttefik/rakip ve son hatiralar.
+   *
+   * Sirket katmani sokulurken bu metod da yanlisikla gitmisti; cagrisi
+   * `render_dossier` icinde kaldigi icin yabanci province'e her sag tik
+   * TypeError ile bos bir "Foreign Power" paneli aciyordu (Open Beta 4, B-1).
+   * Maliye blogu (borsa kapisi) bilerek geri gelmedi: dayandigi katman yok.
+   */
+  dossierIdentity(world, target) {
+    const flow = target.economy?.goodsFlow ?? {};
+    const producers = Object.entries(flow)
+      .filter(([, f]) => (f?.production ?? 0) > 0.5)
+      .sort((a, b) => (b[1].production ?? 0) - (a[1].production ?? 0))
+      .slice(0, 3)
+      .map(([id]) => `${GOODS[id]?.icon ?? ''} ${GOODS[id]?.name ?? id}`);
+    const imports = Object.entries(flow)
+      .filter(([, f]) => (f?.imports ?? 0) > 0.2 && (f?.demand ?? 0) > 0)
+      .sort((a, b) => (b[1].imports / Math.max(0.01, b[1].demand))
+        - (a[1].imports / Math.max(0.01, a[1].demand)))
+      .slice(0, 3)
+      .map(([id, f]) => `${GOODS[id]?.icon ?? ''} ${GOODS[id]?.name ?? id} (${Math.round((f.imports / Math.max(0.01, f.demand)) * 100)}%)`);
+    const standing = techStanding(world, target);
+    const allies = alliesOf(target)
+      .map((id) => world.nations[id])
+      .filter((n) => n?.alive)
+      .map((n) => esc(n.name));
+    const rival = target.rivalId != null ? world.nations[target.rivalId] : null;
+    const memoryRows = memoryOf(target).slice(-3).reverse().map((m) => {
+      const year = 1836 + Math.floor(((m.turn ?? 1) - 1) * 7 / 365);
+      const other = esc(world.nations[m.other]?.name ?? '?');
+      const text = {
+        war_with: `war with ${other}`,
+        took_land_from: `took land from ${other}`,
+        lost_land_to: `lost land to ${other}`,
+        industry_seized_by: `industry seized by ${other}`,
+        seized_industry_of: `seized ${other}'s industry`,
+        allied: `allied with ${other}`,
+        alliance_broken: `broke with ${other}`,
+        honored_call: `honored the call of ${other}`,
+      }[m.kind] ?? `${m.kind} ${other}`;
+      return `<li><em>${year}</em> ${text}</li>`;
+    }).join('');
+    return `<p class="dossier-line">${esc(characterLine(world, target))}</p>
+      <div class="dossier-identity">
+        <div><span>Technology</span><b>${esc(standing.label)}</b><small>${standing.research} researched · #${standing.rank ?? '—'} of ${standing.of ?? '—'}</small></div>
+        <div><span>Produces</span><b>${producers.length ? producers.join(' · ') : 'little of note'}</b></div>
+        <div><span>Depends on</span><b>${imports.length ? imports.join(' · ') : 'no major imports'}</b></div>
+        <div><span>Allies</span><b>${allies.length ? allies.join(', ') : 'none'}</b></div>
+        <div><span>Rival</span><b>${rival?.alive ? esc(rival.name) : 'none declared'}</b></div>
+      </div>
+      ${memoryRows ? `<ul class="dossier-memory">${memoryRows}</ul>` : ''}`;
+  }
+
   render_peace(me) {
     const world = this.game.world;
     const target = world.nations[this.peaceTarget];

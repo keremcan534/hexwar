@@ -134,6 +134,27 @@ function sidePower(world, units, defending, relief) {
 }
 
 /**
+ * YZ'nin bir taarruzu tartarken gorecegi guc: muharebenin KENDI terazisi, zar
+ * haric. Komuta katmani eskiden kendi tahminini kuruyordu ve iki hakikat
+ * sapmisti — tahmin savunana arazi ve siperi sayarken saldirana general, plan
+ * ve butce carpanlarini hic vermiyordu. Combat width 3 ile es kalitede
+ * tumenlerde oran hicbir durusta 0.9'u gecemiyor, siperlenmis es-genislikte
+ * yigin hicbir zaman saldirilmiyordu (olculdu: 11 tumen vs 3, 30 hafta, 0
+ * muharebe; bkz. OPEN_BETA_4_PLAYTEST.md B-2).
+ *
+ * Taraflar muharebeye girecekleri gibi kirpilir: saldiran combat width,
+ * savunan yigin tavani. Zar araligi bilerek disarida; YZ ortalamayi tartar.
+ */
+export function estimateBattle(world, attackers, defenders) {
+  const front = attackers.slice(0, MAX_ASSAULT_DIVISIONS);
+  const relief = generalSiegeRelief(leadGeneral(world, front));
+  return {
+    attack: sidePower(world, front, false, 0),
+    defense: sidePower(world, defenders.slice(0, MAX_DEFENSE_DIVISIONS), true, relief),
+  };
+}
+
+/**
  * Bir tumeni muharebeye sokar. Karede zaten bir muharebe varsa ona katilir —
  * cephe boyunca gelen takviyeler ayri muharebeler acmasin.
  * @returns {boolean} muharebeye girildi mi

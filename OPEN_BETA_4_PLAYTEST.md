@@ -166,7 +166,53 @@ Politika/reform/seçim etkileri; ikinci savaş ve YZ generalinin "All active
 fronts" davranışı; kayıt-yükle; ana menüye dönüş; tooltip taraması; 1280×720'de
 inşaat harita kipi ve ticaret ekranının tam gövdesi.
 
-## 8. Önerilen sıra
+## 8. Düzeltmeler (bu dalda)
+
+**B-1 — dossier.** `dossierIdentity` geri geldi (`src/ui/screens.js`); maliye
+bloğu (`dossierFinance`) bilerek gelmedi, dayandığı şirket katmanı yok.
+Tarayıcıda yabancı province'e gerçek sağ tık: panel 497 karakter, Declare War /
+Propose Alliance / Show on map düğmeleri var, sayfa hatası 0.
+
+**B-2 — taarruz kapısı.** `command.js` artık kendi savunma tahminini kurmuyor;
+`battles.estimateBattle` muharebenin kendi terazisini (`sidePower`: bütçe,
+teçhizat, arazi, siper, general, plan) zar hariç veriyor. Taraflar muharebeye
+girecekleri gibi kırpılıyor (saldıran combat width, savunan yığın tavanı). Eski
+tahmin savunana arazi+siperi sayıp saldırana general/plan/bütçe çarpanlarını
+vermiyordu; iki hakikat ayrışmıştı (VICTORIA_LITE değişmez 2).
+
+Aynı senaryo (`FABLE-1`, 11 tümen vs siperli 3), başsız:
+
+| duruş | eski oran (18 / 21.6 × risk) | yeni oran (taarruz generalinin grubu) | sonuç |
+|---|---|---|---|
+| Careful 1.6 | 0.83 → tutar | 1.04 → tutar | muharebe yok |
+| Balanced 1.2 | 0.83 → tutar | 1.04 → tutar | muharebe yok |
+| Aggressive 0.9 | 0.83 → **tutar** | 1.04 → **saldırır** | 17. hafta muharebe, yığın 16 → 6 güce düşüp çekildi |
+
+Eski terazide hiçbir duruş 0.9'u geçemiyordu; yenisinde duruş merdiveni gerçek:
+denk kuvvete yalnız Aggressive dalar, Balanced üstünlük bekler. Gerçek
+arayüzde (savaş ilanı, general, hedef, Offensive, duruş 3): 18. haftada
+muharebe, war score +19'da donmak yerine +36, 30. haftada Irheim'den barış
+teklifi.
+
+Dünya davranışı değişti mi? Aynı denetimler düzeltme öncesi (`f3f6e6b`,
+ayrı worktree) ve sonrası:
+
+| denetim | önce | sonra |
+|---|---|---|
+| `audit:determinism` | — | ayrı süreçlerde determinizm TAM |
+| `audit:war-outcome` | bulgu yok | bulgu yok |
+| `audit:war-pressure` | çullanma azami 5 · kartopu %33.2 · ortanca savaş 33.3 hf | çullanma azami 5 · kartopu %33.3 · ortanca savaş 34.3 hf |
+| `audit:military-strategy` | atıl ordu en uzun 157 hf | atıl ordu en uzun 137 hf |
+| `diagnose:command` | `offensive.attackIssued: false` (kırmızı) | aynı (kırmızı) |
+
+YZ-YZ savaşlarında ölçülebilir kayma yok; kapı yalnız denk kuvvete
+Aggressive'in dalmasına izin veriyor. `diagnose:command`'ın taarruz senaryosu
+düzeltmeden önce de kırmızıydı ve bu kapıyla ilgisi yok: senaryoda komşu
+düşman kareleri boş (savunan 0) ama hedef ülke başka olduğu için
+`pickOperation` onları eliyor, `pickFrontierTarget` ise sahipli toprağa hiç
+yürümüyor. Ayrı bir iş.
+
+## 9. Önerilen sıra
 
 1. B-1 (tek satır: silinen metodu geri getir ya da çağrıyı kaldır).
 2. B-2: `pickOperation`'da savunmayı da combat width'e kırp ya da toplam

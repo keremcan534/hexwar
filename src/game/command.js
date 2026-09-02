@@ -22,11 +22,10 @@
 import { DIRS, hexesInRange } from '../core/hex.js';
 import { settle } from './treasury.js';
 import { atWar } from './diplomacy.js';
-import { MAX_ASSAULT_DIVISIONS, startBattle } from './battles.js';
+import { MAX_ASSAULT_DIVISIONS, estimateBattle, startBattle } from './battles.js';
 import { hasDirective, orderMove } from './movement.js';
 import { controllerOf } from './control.js';
 import { MAX_STACK, armyPower, isMoving, unitsOn } from './units.js';
-import { fortDefenseAt } from './construction.js';
 
 const FIRST = [
   'Aleron', 'Bertran', 'Casimir', 'Dorian', 'Edric', 'Faelan', 'Gideon', 'Halvard',
@@ -754,19 +753,6 @@ function operationParticipants(game, divisions, target) {
     .slice(0, MAX_ASSAULT_DIVISIONS);
 }
 
-/** AI'nin gorebildigi savunma: arazi, sehir ve gercek tahkimat. */
-function estimatedDefense(world, tile, defenders) {
-  // Kale artik yerel (capa yaricapi) oldugu icin YZ de onu GORMELI: tahkimli
-  // gecide dalmakla acik ovaya dalmak ayni hesaba cikmamali.
-  const fortOwner = tile.owner >= 0 ? tile.owner : null;
-  const cover = (tile.terrain.defense ?? 0)
-    + (tile.city ? 0.12 + tile.city.level * 0.04 : 0)
-    + (fortOwner != null ? fortDefenseAt(world, fortOwner, tile) : 0);
-  return defenders.reduce((sum, unit) => (
-    sum + armyPower(unit) * (1 + cover) * (1 + (unit.entrenchment ?? 0))
-  ), 0);
-}
-
 /**
  * Bir general cadence penceresinde yalniz bir dusman province'ine operasyon
  * acar. Devam eden savasa yeni bir "hayali" paket hesaplanmaz.
@@ -795,8 +781,14 @@ function pickOperation(game, general, divisions, info) {
     if (!participants.length) continue;
     const defenders = unitsOn(tile).filter((unit) => unit.nationId !== general.nationId);
     if (defenders.some((unit) => !atWar(world, unit.nationId, general.nationId))) continue;
-    const defense = estimatedDefense(world, tile, defenders);
-    if (defense > 0 && participatingAttackPower(participants) < defense * info.risk) continue;
+    // Tartma muharebenin kendi terazisiyle yapilir (bkz. battles.estimateBattle):
+    // ayri bir tahmin savunana arazi ve siperi sayip saldirana general, plan ve
+    // butce carpanlarini vermiyordu; es-genislikte siperli yigin hicbir durusta
+    // saldirilamaz oluyordu.
+    const { attack, defense } = defenders.length
+      ? estimateBattle(world, participants, defenders)
+      : { attack: 0, defense: 0 };
+    if (defense > 0 && attack < defense * info.risk) continue;
 
     const ring = world.neighbors(tile).filter((near) => near.terrain.passable);
     const targetController = controllerOf(tile);
