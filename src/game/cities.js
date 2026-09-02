@@ -76,6 +76,9 @@ export function formatCost(cost) {
 
 const NAME_A = ['White', 'Black', 'Blue', 'New', 'Old', 'Salt', 'Iron', 'High', 'Grand', 'Red'];
 const NAME_B = ['haven', 'keep', 'port', 'bridge', 'pass', 'watch', 'field', 'hill', 'spring', 'wall'];
+/** Ikinci havuz: ilk yuz ad bitince sirayla (bkz. cityName). */
+const NAME_C = ['Green', 'Stone', 'Gold', 'Silver', 'Ash', 'Oak', 'Elm', 'Fair', 'Long', 'North'];
+const NAME_D = ['ford', 'gate', 'mouth', 'mere', 'wick', 'stead', 'dale', 'moor', 'burgh', 'march'];
 const LEGACY_NAME_A = new Map([
   ['Ak', 'White'], ['Kara', 'Black'], ['Gök', 'Blue'], ['Yeni', 'New'], ['Eski', 'Old'],
   ['Tuz', 'Salt'], ['Demir', 'Iron'], ['Alt', 'High'], ['Yüce', 'Grand'], ['Kızıl', 'Red'],
@@ -92,6 +95,28 @@ export function cityName(rng, used) {
     if (!used.has(name)) {
       used.add(name);
       return name;
+    }
+  }
+  // Rastgele deneme havuz dolmadan pes ediyordu ve 66 ulkeli standart dunya
+  // "City-101" gibi adlarla doluyordu (Open Beta 4, B-13). Kalan havuz sirayla
+  // taranir (RNG tuketmez, eski tohumlarin dizilimi degismez), sonra ikinci
+  // havuz; ancak ikisi de bitince numara.
+  for (const a of NAME_A) {
+    for (const b of NAME_B) {
+      const name = a + b;
+      if (!used.has(name)) {
+        used.add(name);
+        return name;
+      }
+    }
+  }
+  for (const a of NAME_C) {
+    for (const b of NAME_D) {
+      const name = a + b;
+      if (!used.has(name)) {
+        used.add(name);
+        return name;
+      }
     }
   }
   return `City-${used.size + 1}`;

@@ -190,11 +190,23 @@ export function createGeneral(world, nation, rng, { branch = BRANCH.ARMY } = {})
   for (let i = 0; i < count && pool.length; i++) {
     traits.push(pool.splice(Math.floor(rng() * pool.length), 1)[0]);
   }
+  // Komuta paneli yalniz ILK adi basar; iki "Kastor" ayirt edilemiyordu
+  // (Open Beta 4, B-12). Kadro icinde once ilk ad, sonra tam ad tekil olsun;
+  // havuz biterse (24 ad) tekrar kabul edilir, oyun durmaz.
+  const taken = new Set((nation.generals ?? []).map((g) => g.name));
+  const takenFirst = new Set([...taken].map((full) => full.split(' ')[0]));
+  let name = null;
+  for (let attempt = 0; attempt < 40 && !name; attempt++) {
+    const candidate = `${FIRST[Math.floor(rng() * FIRST.length)]} ${LAST[Math.floor(rng() * LAST.length)]}`;
+    const first = candidate.split(' ')[0];
+    if (attempt < 24 ? !takenFirst.has(first) : !taken.has(candidate)) name = candidate;
+  }
+  name ??= `${FIRST[Math.floor(rng() * FIRST.length)]} ${LAST[Math.floor(rng() * LAST.length)]}`;
   const general = {
     id: system.nextId++,
     nationId: nation.id,
     branch: branch === BRANCH.NAVY ? BRANCH.NAVY : BRANCH.ARMY,
-    name: `${FIRST[Math.floor(rng() * FIRST.length)]} ${LAST[Math.floor(rng() * LAST.length)]}`,
+    name,
     skill,
     xp: 0,
     traits,
@@ -1022,7 +1034,10 @@ function refreshOfficerCorps(game, nation, rng) {
     const cost = generalCost(nation);
     if (nation.gold < cost.gold) return;
     settle(nation, 'outlay', -cost.gold);
-    nation.generals.push(createGeneral(world, nation, rng, { branch }));
+    // createGeneral kadroya kendisi yazar; burada ikinci kez push edilince
+    // ayni subay listede iki kez duruyordu — dockta "JORUND / JORUND" ve
+    // subay sayisinin fazla gorunmesi buradandi (Open Beta 4, B-12).
+    createGeneral(world, nation, rng, { branch });
   }
 }
 

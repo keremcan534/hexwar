@@ -487,8 +487,16 @@ export class Game {
     const city = tile.city;
     if (conquered && city && city.nationId !== unit.nationId) {
       // Sehir hukuken eski ulkede kalir; baris antlasmasi devri kesinlestirir.
-      this.turns.addLog(`${city.name} occupied; sovereignty will be decided at peace.`,
-        { kind: 'CONQUEST', tile: city.tile });
+      // Haber aktorunu soyler ve kart yalniz oyuncunun savasinda acilir:
+      // baristaki oyuncu "Bluehill occupied" kartini kendi sehri dusmus gibi
+      // okuyordu (Open Beta 4, B-11). Muharebe kartlariyla ayni kural.
+      const nations = this.world.nations;
+      const player = this.turns.playerNation;
+      const mine = unit.nationId === player || city.nationId === player;
+      this.turns.addLog(
+        `${nations[unit.nationId]?.name ?? '?'} occupies ${city.name} (${nations[city.nationId]?.name ?? '?'}); sovereignty will be decided at peace.`,
+        { kind: 'CONQUEST', tile: city.tile, silent: !mine },
+      );
     }
     return conquered;
   }

@@ -1803,7 +1803,10 @@ body.screen-open .layer-menu { display: none; }
   width: min(var(--sheet-width), calc(100vw - var(--sp-6)));
   /* Yükseklik kalan boşluğa göre: üstte sekme çubuğu, altta province penceresi
      var. Sabit oran verilirse dar ekranda ikisinden birine giriyor. */
-  max-height: calc(100vh - var(--safe-top) - 140px - var(--sheet-max) - var(--safe-bottom) - var(--sp-6));
+  /* Baslik yuksekligi olculur (hud.js trackHeaderHeight --header-bottom):
+     savas seridi acilinca baslik uzar, sabit tahmin listeyi cipin ustune
+     bindiriyordu. */
+  max-height: calc(100vh - var(--header-bottom, 140px) - var(--sheet-max) - var(--safe-bottom) - var(--sp-6));
   border: 1px solid var(--line);
   border-radius: var(--radius);
   background: var(--ui-grain), var(--panel-tone), var(--surface-1);
@@ -3823,7 +3826,10 @@ body.screen-open .layer-menu { display: none; }
 
 .pop-donut.empty { background: var(--surface-3); }
 .pop-chart { display: flex; gap: var(--sp-2); align-items: center; flex-wrap: wrap; }
-.pop-legend { display: grid; gap: 1px; min-width: 0; flex: 1; }
+/* Lejant sifira kadar buzulmesin: 1280 genislikte kultur/ideoloji halkasinin
+   yaninda 20px kalip "S… 36.8%" diye kirpiliyordu (Open Beta 4, B-14). Yer
+   yoksa halkanin altina sarar (.pop-chart flex-wrap). */
+.pop-legend { display: grid; gap: 1px; min-width: 140px; flex: 1; }
 
 .pop-legend-row {
   display: grid;
@@ -10339,4 +10345,11 @@ button[data-tip]:hover,
 
 @media (prefers-reduced-motion: reduce) {
   .tip-card { animation: none; }
+}
+
+/* Alcak ekranda (1280x720 dizustu) province penceresi 64vh ile 460px alip
+   tumen listesine 31px birakiyordu (Open Beta 4, B-14). Yarim ekran yeter;
+   liste ile pencere ikisi de okunur kalir. */
+@media (max-height: 760px) {
+  :root { --sheet-max: min(50vh, 640px); }
 }

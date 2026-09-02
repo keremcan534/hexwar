@@ -93,7 +93,7 @@ function announceDebt(game, nation, state, from, to) {
   // BUGUNKU evre durur, 1839'un temerrut karti 1865'te durmaz (B-5). Anahtarlar
   // ulkeler arasi ortak; yalniz oyuncunun kendi kartlari dusurulur.
   if (nation.id === game.turns?.playerNation) {
-    game.notifications?.dismissKeys(['debt-begins', 'debt-critical', 'debt-default']);
+    game.notifications?.dismissKeys?.(['debt-begins', 'debt-critical', 'debt-default']);
   }
   const ledger = nation.economy?.ledger ?? {};
   const weekly = ledger.net ?? 0;
@@ -214,7 +214,7 @@ export function runNationalEvents(game, nation) {
   // Program ilan edilince davet karti duser; ilan edilmis programin yaninda
   // "The nation has no programme" durmasi yalan (B-5).
   if (research?.programme && nation.id === game.turns?.playerNation) {
-    game.notifications?.dismissKeys('programme-prompt');
+    game.notifications?.dismissKeys?.('programme-prompt');
   }
 
   // --- REJIM -------------------------------------------------------------

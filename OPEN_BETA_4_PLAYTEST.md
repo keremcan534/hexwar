@@ -255,6 +255,20 @@ geçirgen yapmak reddedildi: kart okunmadan kaybolur ya da yine örter.
 Kalıcı kalanlar bilerek: araştırma kartı (B-018: okunana kadar durur, artık
 doğru metinle), hegemonya ve savaş ilanı (barışta zaten düşüyor).
 
+### Kalan beş (dördüncü commit)
+
+| # | değişiklik | doğrulama |
+|---|---|---|
+| B-8 | `technology.js`: araştırmayla açılan tesis/birim ancak teknolojisinin DEVRİ gelince (`yearOfTurn(turn) >= tech.year`); takvim yine üst sınır. `factoryUnlocked` ve `unitAvailable` turu geçirir. | Alloy Steel 1857'de: Tank Factory kapalı, 1916'da teknolojisiz açık; ARMOR 1857'de kapalı, 1912'de açık |
+| B-11 | `game.js enterTile`: haber aktörü ve mağduru söyler ("Ravania occupies Stonemere (Yaria)"), kart yalnız oyuncunun savaşında; muharebe kartlarıyla aynı kural | 30 yıl `FABLE-1`: 269 işgal haberi, oyuncuya açılan kart 0 (hiçbirinde taraf değildi) |
+| B-12 | Asıl neden ad havuzu değildi: `command.js` otomatik kadro `createGeneral`'in zaten kadroya yazdığı subayı ikinci kez push ediyordu; aynı subay listede iki kez duruyordu. Push kalktı; ayrıca kadro içinde ilk ad tekil seçilir (dock yalnız ilk adı basar) | 30 yıl, 66 ülke, 266 subay: aynı kadroda tekrar eden ilk ad 0 (önce 29) |
+| B-13 | `cities.js cityName`: rastgele deneme pes edince kalan havuz sırayla taranır (RNG tüketmez), sonra ikinci havuz (Green/Stone… × ford/gate…); numara ancak 200 ad bitince | 30 yıl: 192 şehir, "City-N" 0, tekrar 0 |
+| B-14 | `hud.js` ölçülen başlık yüksekliğini `--header-bottom` olarak yazar, tümen listesi ona göre yer bulur; `--sheet-max` 760px'ten alçak ekranda 50vh; `.pop-legend` 140px altına buzulmaz | 1280×720: lejantta kırpılan etiket 0/13 (önce 4); savaş çipi altı 176, liste üstü 206 (binmiyor); liste yüksekliği 31 → 132 px. Military sol sütunu zaten kendi içinde kayıyor (ölçüldü: sh 719 / ch 267), dokunulmadı |
+
+Sonrası: `audit:determinism` ve `audit:war-outcome` bulgusuz, `audit:military-strategy`
+atıl ordu 136 hafta (öncekiyle aynı bant). Subay çift kaydı YZ ülkelerini de
+etkiliyordu (kadro sayısı fazla görünüyordu); ölçülebilir kayma yok.
+
 ## Ek: 65 yıllık `LONG-1` koşusu (başsız, el sürülmeden, 66 ülke)
 
 | yıl | dünya GSYH | fabrika | seviye | nüfus (M) | okuryazar | canlı | altın>0 | borçlu | savaş | en büyük (hex) | ms/hafta |

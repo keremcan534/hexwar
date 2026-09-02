@@ -270,9 +270,24 @@ export function hasTech(nation, techId) {
  * Fabrika tipi arastirmayla ERKEN acildi mi?
  * economy.js `factoryUnlocked` bunu takvimin YANINA koyar, yerine degil.
  */
-export function techUnlocksFactory(nation, typeId) {
+/** Turun takvim yili; teknoloji devri kapisi ve erken arastirma cezasi bunu okur. */
+export function yearOfTurn(turn) {
+  return 1836 + Math.floor((Math.max(1, turn ?? 1) - 1) * 7 / 365);
+}
+
+/**
+ * Arastirmayla acilan tesis ancak teknolojisinin DEVRI gelince kurulur.
+ * Erken arastirma (cezali) teknolojinin carpanlarini erken verir; tesisi
+ * takvimden (1916) teknolojinin kendi yilina (1900) kadar one ceker, daha
+ * one degil. Aksi halde %100 egitimle 1858'de Alloy Steel alan ulke o yil
+ * Tank Factory kuruyordu (Open Beta 4, B-8). `turn` verilmezse eski
+ * davranis (yalniz arastirma) korunur.
+ */
+export function techUnlocksFactory(nation, typeId, turn = null) {
   const techId = UNLOCKS.get(typeId);
-  return techId ? hasTech(nation, techId) : false;
+  if (!techId || !hasTech(nation, techId)) return false;
+  const year = INDEX.get(techId)?.tech.year;
+  return turn == null || year == null || yearOfTurn(turn) >= year;
 }
 
 /**
@@ -281,9 +296,12 @@ export function techUnlocksFactory(nation, typeId) {
  * dosya basindaki sozlesmesi ("economy.js/units.js") ilk kez iki yariyla da
  * dogru: tank fabrikasini erken kuran ulke tanki da erken egitebilir.
  */
-export function techUnlocksUnit(nation, typeId) {
+export function techUnlocksUnit(nation, typeId, turn = null) {
   const techId = UNLOCKS_UNIT.get(typeId);
-  return techId ? hasTech(nation, techId) : false;
+  if (!techId || !hasTech(nation, techId)) return false;
+  // Fabrikayla ayni devir kurali (bkz. techUnlocksFactory).
+  const year = INDEX.get(techId)?.tech.year;
+  return turn == null || year == null || yearOfTurn(turn) >= year;
 }
 
 /**

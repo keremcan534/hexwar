@@ -1518,7 +1518,7 @@ export function factoryUnlocked(typeId, turn, nation = null) {
   // Takvim UST SINIRDIR, tek belirleyici degil: arastirma tarihi one ceker.
   // Ulke verilmezse eski davranis (saf takvim) korunur — cagri yerlerinin
   // hepsi ayni anda guncellenmek zorunda kalmasin.
-  if (nation && techUnlocksFactory(nation, typeId)) return true;
+  if (nation && techUnlocksFactory(nation, typeId, turn)) return true;
   return (FACTORIES[typeId]?.availableFrom ?? 0) <= turn;
 }
 

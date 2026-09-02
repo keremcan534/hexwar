@@ -312,6 +312,10 @@ export class Hud {
       screen.style.top = `${top}px`;
       screen.style.maxHeight = `calc(100vh - ${top}px - 12px)`;
       if (notify) notify.style.top = `${top}px`;
+      // Tumen listesi de baslik yuksekligine gore yer bulur: sabit 140px
+      // tahmini, savas seridi acilinca listeyi cipin ustune bindiriyordu
+      // (1280x720, Open Beta 4 B-14).
+      document.documentElement.style.setProperty('--header-bottom', `${top}px`);
     };
     apply();
     if (typeof ResizeObserver === 'function') {

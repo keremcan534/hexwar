@@ -73,7 +73,7 @@ export const UNIT_TYPES = {
  * verilmezse saf takvim — eski cagri yerleri kirilmasin.
  */
 export function unitAvailable(typeId, turn, nation = null) {
-  if (nation && techUnlocksUnit(nation, typeId)) return true;
+  if (nation && techUnlocksUnit(nation, typeId, turn)) return true;
   return (UNIT_TYPES[typeId]?.availableFrom ?? 0) <= turn;
 }
 
