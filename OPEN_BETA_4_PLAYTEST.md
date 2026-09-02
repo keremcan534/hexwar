@@ -269,6 +269,55 @@ Sonrası: `audit:determinism` ve `audit:war-outcome` bulgusuz, `audit:military-s
 atıl ordu 136 hafta (öncekiyle aynı bant). Subay çift kaydı YZ ülkelerini de
 etkiliyordu (kadro sayısı fazla görünüyordu); ölçülebilir kayma yok.
 
+### Tasarım bulgularının izi (beşinci commit)
+
+**"Kapitalistler 1837'den sonra hiç kurmuyor, havuz ¤1.200'de donuyor."**
+Başsız iz, `IND-1`, oyuncu ülkesi, her kapı ayrı ayrı:
+
+| yıl | ekonomi politikası | özel kurabilir | havuz | akış/hf | tesis | kapıyı kapatan |
+|---|---|---|---|---|---|---|
+| 1836 | state_capitalism | evet | 0 | 0.0 | 5 | maliyet > ufuk (en ucuz 350) |
+| 1838 | planned_economy | **hayır** | 1.200 | 26.8 | 8 | politika |
+| 1840-1864 | planned_economy | hayır | 1.200 | 3-10 | 8 | politika |
+| 1866 | planned_economy | hayır | 142 | 12.1 | 11 | politika |
+
+Kilit değil, **politika**: 1837 seçimini kazanan Workers Party planlı
+ekonomiye geçmiş; `factoryInvestmentRules` özel kurmayı kapatıyor, havuz
+`politics.js` tavanına (1.200) kadar dolup duruyor. Sanayici bunu 22 yıl
+boyunca ekranda göremedi: kart "Private capital ¤1.20K · +¤19.6/week" diyor,
+"planlı ekonomide özel sermaye kuramaz" demiyor. Düzeltme: Factories özet
+şeridi iktidarın yatırım kuralını cümleyle yazar, özel kurma yasakken akış
+satırı "idle under planned economy" der, katalogdaki "Policy forbids state
+industry" politikanın adını söyler. Havuz tavanı ve politika kuralı
+değişmedi; bu bir iletişim düzeltmesi.
+
+**"AUTO bütçe üst sınıfı %100 vergiyle eritiyor."** Başsız iz, `IND-1`,
+1839'da bütçe devri:
+
+| yıl | altın | haftalık | duruş | vergi alt/orta/üst | üst sınıf |
+|---|---|---|---|---|---|
+| 1839 | 0 | −17 | broke | 20/25/30 | 18K |
+| 1842 | 803 | +35 | rich | 22/30/39 | 7K |
+| 1854 | 325 | −10 | mid | 22/30/39 | 35K |
+| 1857 | 35 | +6 | mid | 71/72/60 | 41K |
+| 1866 | 173 | −10 | mid | 55/82/100 | 40K |
+
+Mekanizma bir **cırcır**: `adjustFiscalAI` yalnız `broke` iken +5/hafta
+yükseltir, yalnız `rich` iken (altın > 1.5 × rezerv VE haftalık > 0) −5
+indirir; arada hiçbir şey yapmaz. Kısa bir iflas dalgası oranları yukarı
+sürükler, "rich" eşiği nadiren tutunca geri inmez ve son commit'te YZ'nin
+kendi tavanları (35/42/45) bilerek kaldırıldığı için üst oran 100'e dayanır.
+Üst sınıfın 7K'ya inişi ise vergiden önce, 1839 krizinde (ihtiyaç
+karşılanmayınca sınıf düşüşü). Bu bir YZ ayarı: iniş koşulunu "haftalık > 0
+ve altın > rezerv" gibi simetrik yapmak ya da sınıf başına makul bir YZ
+tavanı koymak çözer; bu geçişte dokunulmadı, karar sahibine bırakıldı.
+
+**"Sanayi kurmak ekonomiyi oynatmıyor"** büyük ölçüde yukarıdaki ikisinin
+sonucu: planlı ekonomide özel kanal kapalı, devlet fabrikaları oyuncunun
+elle kurduğu 9 tesis; dünya fiyatları tabanda olduğu için (deflasyon, bilinen
+#1) çıktının parasal karşılığı küçük. Deflasyon `REMAINING_CORE_HIGH_ISSUES`
+#1 olarak sahibinin kararıyla kapsam dışı.
+
 ## Ek: 65 yıllık `LONG-1` koşusu (başsız, el sürülmeden, 66 ülke)
 
 | yıl | dünya GSYH | fabrika | seviye | nüfus (M) | okuryazar | canlı | altın>0 | borçlu | savaş | en büyük (hex) | ms/hafta |

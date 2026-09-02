@@ -2618,7 +2618,8 @@ body.screen-open .layer-menu { display: none; }
 
 .ind-summary {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  /* Yedinci hucre: iktidarin yatirim kurali ("Who may build"). */
+  grid-template-columns: repeat(7, minmax(0, 1fr));
   gap: var(--sp-2);
   padding: var(--sp-2) var(--sp-3);
   border: 1px solid var(--line-strong);

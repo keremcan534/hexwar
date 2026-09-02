@@ -17,10 +17,37 @@ import {
   factoryAtlas, factoryCost, factoryJobs, factoryMargin, factoryOutputs,
   industryTaken, marketInputAvailability, priceOf, upgradeOutlook,
 } from './economy.js';
-import { factoryInvestmentRules } from './politics.js';
+import { POLITICAL_POLICIES, factoryInvestmentRules } from './politics.js';
 import {
   PROJECT_KIND, constructionAtlas, constructionPower, ensureConstruction,
 } from './construction.js';
+
+/** Iktidarin ekonomi politikasinin adi ("Planned Economy"); tanimsizsa kimligi. */
+function policyNameOf(nation) {
+  const rules = factoryInvestmentRules(nation);
+  return POLITICAL_POLICIES.economy[rules.policy]?.name ?? rules.policy;
+}
+
+/**
+ * Yatirim kuralinin cumlesi. Sayi degil karar bilgisi: oyuncu Factories'i
+ * acinca devletin mi, kapitalistin mi, ikisinin mi kurabildigini okur.
+ */
+function investmentRuleOf(nation) {
+  const rules = factoryInvestmentRules(nation);
+  const policy = POLITICAL_POLICIES.economy[rules.policy];
+  const who = rules.stateBuild && rules.privateBuild ? 'the state and investors found factories'
+    : rules.stateBuild ? 'the state alone founds factories; investors may not'
+      : rules.privateBuild ? `investors found factories; the state may ${rules.stateExpand ? 'only expand' : 'neither found nor expand'}`
+        : 'nobody may found factories';
+  return {
+    policy: rules.policy,
+    name: policy?.name ?? rules.policy,
+    desc: policy?.desc ?? '',
+    who,
+    stateBuild: rules.stateBuild,
+    privateBuild: rules.privateBuild,
+  };
+}
 
 /** Tur numarasindan yil. Ekranla ayni formul — tek yerde durur. */
 function eraYear(turn) {
@@ -351,6 +378,10 @@ export function industryOverview(world, nation) {
       hiredPerMonth: economy.industrialHiring ?? 0,
       privateCapital: nation.politics?.privateCapital ?? 0,
       privateInflow: nation.politics?.privateInflow ?? 0,
+      // Iktidarin yatirim kurali cumleyle: sanayici 22 yil boyunca havuzun
+      // neden ¤1.200'de durdugunu ekrandan okuyamadi — planli ekonomide ozel
+      // sermaye kuramaz, kart ise yalniz "+¤19.6/week" diyordu (Open Beta 4).
+      investmentRule: investmentRuleOf(nation),
       freeSlots: states.reduce((sum, state) => sum + state.free, 0),
       totalSlots: states.length * industrySlots,
       buildPower: power,
@@ -382,7 +413,7 @@ export function factoryBuildOptions(world, nation, regionId) {
     const blocked = enabled ? null
       : taken ? 'Already present in this state'
         : locked ? `Not yet invented — available from ${eraYear(era)}`
-          : !rules.stateBuild ? 'Policy forbids state industry'
+          : !rules.stateBuild ? `${policyNameOf(nation)} forbids state industry`
             : (nation.gold ?? 0) < gold ? `Treasury short by ¤${Math.ceil(gold - (nation.gold ?? 0))}`
               : region.free <= 0 ? 'No free industrial slot in this state'
                 : 'Unavailable';

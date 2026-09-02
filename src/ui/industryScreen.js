@@ -89,9 +89,18 @@ function summaryStrip(summary) {
     ${cell('Weekly profit', signed(summary.weeklyProfit), '', tone(summary.weeklyProfit))}
     ${cell('Hired per month', `+${people(summary.hiredPerMonth)}`)}
     ${cell('Private capital', `¤${money(summary.privateCapital)}`,
-    `+¤${summary.privateInflow.toFixed(1)} / week`,
-    '', 'Money investors have on hand for factory construction and expansion.')}
+    summary.investmentRule?.privateBuild === false
+      ? `+¤${summary.privateInflow.toFixed(1)} / week · idle under ${esc(summary.investmentRule.name)}`
+      : `+¤${summary.privateInflow.toFixed(1)} / week`,
+    '', summary.investmentRule?.privateBuild === false
+      ? `${summary.investmentRule.name}: ${summary.investmentRule.desc} The pool fills to its ceiling and waits for a change of policy.`
+      : 'Money investors have on hand for factory construction and expansion.')}
     ${cell('Open slots', `${summary.freeSlots} / ${summary.totalSlots}`)}
+    ${summary.investmentRule ? `<span class="ind-sum-cell ind-sum-rule" title="${esc(summary.investmentRule.desc)}">
+      <small>Who may build</small>
+      <b>${esc(summary.investmentRule.name)}</b>
+      <em>${esc(summary.investmentRule.who)}</em>
+    </span>` : ''}
   </header>`;
 }
 
