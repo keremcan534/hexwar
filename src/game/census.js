@@ -295,6 +295,15 @@ export function cohortPolitics(nation, cohort) {
   return classPolitics(nation, cohort.classId).display;
 }
 
+/**
+ * Bir sınıfın siyasi karışımı. Nüfus ekranı da bunu okur (populationView):
+ * ideoloji ve mesele ağırlıkları TEK yerde kurulur, ikinci bir kopya
+ * zamanla sapardı.
+ */
+export function classPoliticsOf(nation, classId) {
+  return classPolitics(nation, classId);
+}
+
 /** Politika seçeneğinin okunur adı; hangi eksende olduğunu aramaya gerek yok. */
 export function issueName(id) {
   for (const axis of ISSUE_AXES) {

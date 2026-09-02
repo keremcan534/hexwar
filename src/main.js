@@ -2,11 +2,12 @@
 
 import { Game } from './game/game.js';
 import { Hud } from './ui/hud.js';
+import { mountTooltips } from './ui/tooltip.js';
+import { registerTooltips } from './ui/tooltipData.js';
 import { MainMenu } from './ui/mainMenu.js';
 import { Notifications } from './ui/notifications.js';
 import { PerfOverlay } from './ui/perfOverlay.js';
 import { materials } from './render/textures.js';
-import * as companies from './game/companies.js';
 
 // Yüzey dokuları bir kez üretilip CSS'e verilir. Çalışma anında hesaplandığı
 // için depoda ikili dosya, indirilen görsel ya da derleme adımı yok
@@ -23,6 +24,12 @@ const canvas = document.getElementById('map');
 const game = new Game(canvas);
 const hud = new Hud(game);
 new Notifications(game);
+
+// Gecikmeli bilgi kartlari TEK yerden kurulur (bkz. ui/tooltip.js): ekranlar
+// her tazelemede innerHTML'i bastan yazdigi icin dinleyici koktedir, ogeler
+// yalniz `data-tip` ozniteligi tasir.
+mountTooltips();
+registerTooltips(game);
 
 // URL'de ?seed=ABC123 varsa o dünyayı aç (paylaşılabilir haritalar).
 // Yoksa kaldığı yerden devam et: 300 turluk oyun tek oturumda bitmez.
@@ -63,6 +70,3 @@ new PerfOverlay(game);
 // Hata ayıklama için konsoldan erişim.
 window.game = game;
 window.menu = menu;
-// Konsoldan sirket/borsa incelemesi (bkz. CLAUDE.md "Test"): `window.game`
-// ile ayni gerekce — tarayici konsolu bu projenin tek hata ayiklama araci.
-window.companies = companies;

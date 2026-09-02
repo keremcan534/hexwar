@@ -40,7 +40,7 @@ console.log('='.repeat(74));
     const wagesPaid = Math.max(0, economy.wagesPaid ?? 0);
     const profitShare = (economy.factoryProfit ?? 0) * PROFIT_TO_CAPITAL;
     // Sirket temettusu bir TRANSFERDIR: yabanci ortaga odenen tutar ayni hafta
-    // ust sinif gelirinden dusulur (bkz. companies.js). Kimlik o yuzden bu
+    // ust sinif gelirinden dusulur (kaldirilan sirket katmani). Kimlik o yuzden bu
     // terimi tasimali; tasimasaydi denetim gercek bir korunumu ihlal sayardi.
     const withheld = Math.max(0, economy.capitalWithheld ?? 0);
     const weights = { lower: 0.42, middle: 0.33, upper: 0.25 };

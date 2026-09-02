@@ -16,8 +16,49 @@ import {
 } from '../game/reforms.js';
 import { IDEOLOGIES, POLITICAL_POLICIES, rulingParty } from '../game/politics.js';
 import { formatPopulation } from '../game/economy.js';
-import { pieChart, pieLegend } from './populationScreen.js';
 import { gameDate } from './hud.js';
+
+/* --------------------------------------------------------------------------
+   PASTA — konik gradyan, dilimler arasinda ince koyu dikis. Nufus ekrani
+   yeniden yazilinca (donut'a gecti) buranin tek tuketicisi kaldi; ortak
+   dosyada durmasinin bir sebebi yok.
+   -------------------------------------------------------------------------- */
+const PIE_SEAM = '#0a0f12';
+
+export function pieChart(slices, { size = 70, colorOf = () => '#7b7568' } = {}) {
+  const usable = slices.filter((slice) => slice.share > 0.0005);
+  if (!usable.length) {
+    return `<i class="pie empty" style="--pie-size:${size}px" aria-hidden="true"></i>`;
+  }
+  const stops = [];
+  let at = 0;
+  for (const slice of usable) {
+    const from = at * 100;
+    const to = Math.min(100, (at + slice.share) * 100);
+    // Dikis dilimin basindadir; tek dilimlik pastada gereksiz gurultu olur.
+    if (usable.length > 1) stops.push(`${PIE_SEAM} ${from.toFixed(3)}% ${(from + 0.4).toFixed(3)}%`);
+    stops.push(`${colorOf(slice.id)} ${(from + (usable.length > 1 ? 0.4 : 0)).toFixed(3)}% ${to.toFixed(3)}%`);
+    at += slice.share;
+  }
+  return `<i class="pie" style="--pie-size:${size}px;
+    background:conic-gradient(from -90deg, ${stops.join(', ')})" aria-hidden="true"></i>`;
+}
+
+/** Pasta lejanti: renk kutucugu, ad, pay. */
+export function pieLegend(slices, { colorOf = () => '#7b7568', limit = 7 } = {}) {
+  const usable = slices.filter((slice) => slice.share > 0.0005);
+  const shown = usable.slice(0, limit);
+  const rest = usable.slice(limit);
+  const restShare = rest.reduce((sum, slice) => sum + slice.share, 0);
+  const row = (color, name, share, title) => `<span class="pie-legend-row" title="${esc(title ?? name)}">
+    <i style="background:${color}"></i><em>${esc(name)}</em><b>${(share * 100).toFixed(1)}%</b></span>`;
+  if (!usable.length) return '<span class="pie-legend-row empty"><em>no returns</em></span>';
+  return shown.map((slice) => row(colorOf(slice.id), slice.name, slice.share)).join('')
+    + (rest.length
+      ? row('#5d5a52', `Other (${rest.length})`, restShare,
+        rest.map((slice) => `${slice.name} ${(slice.share * 100).toFixed(1)}%`).join(' · '))
+      : '');
+}
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -107,7 +148,7 @@ function upperHouseBlock(house, gates) {
     ${band('Upperhouse', 'seats by ideology')}
     <div class="pol-house-body">
       ${pieChart(house, { size: 78, colorOf: ideologyColor })}
-      <div class="census-legend">${pieLegend(house, { colorOf: ideologyColor, limit: 6 })}</div>
+      <div class="pie-legend">${pieLegend(house, { colorOf: ideologyColor, limit: 6 })}</div>
     </div>
     <div class="pol-gates">${row('social', gates.social)}${row('political', gates.political)}</div>
   </section>`;

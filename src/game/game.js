@@ -10,7 +10,7 @@ import { pixelToHex } from '../core/hex.js';
 import { randomSeed } from '../core/rng.js';
 import { reachable } from '../core/pathfind.js';
 import { armyPower, clearPath, placeUnit, speedOf, stackFull, unitsOn } from './units.js';
-import { orderMove } from './movement.js';
+import { orderMove, setDirective } from './movement.js';
 import { TurnManager } from './turn.js';
 import { atWar, declareWar } from './diplomacy.js';
 import {
@@ -46,8 +46,8 @@ const EVENTS = [
   'select', 'world', 'turn', 'units', 'clock', 'economy', 'battles',
   'provinces', 'construction', 'victory', 'selection', 'command', 'peace',
   'nation', 'politics', 'notify', 'notify-clear', 'notify-dismiss',
-  // Sirket/borsa katmani ve AUTO devri (bkz. companies.js, delegation.js).
-  'companies', 'delegation',
+  // AUTO devri (bkz. delegation.js).
+  'delegation',
 ];
 
 /** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */
@@ -296,8 +296,12 @@ export class Game {
         )).slice(0, MAX_ASSAULT_DIVISIONS);
         for (const unit of participants) {
           const adjacent = this.world.wrapDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) === 1;
-          if (adjacent && this.attack(unit, tile)) issued++;
-          else if (orderMove(this, unit, tile)) issued++;
+          // Emir tumenin ustunde kalir: yol duserse general onu geri cagirmak
+          // yerine hedefe yeniden yollar (bkz. movement.resumeDirectives).
+          const ok = adjacent ? this.attack(unit, tile) : orderMove(this, unit, tile);
+          if (!ok) continue;
+          setDirective(unit, tile);
+          issued++;
         }
       } else {
         // Bos dusman province'i bir tikla yalniz bir tumen alir; toplu secim
@@ -309,7 +313,10 @@ export class Game {
           - this.world.wrapDistance(b.tile.q, b.tile.r, tile.q, tile.r)
           || armyPower(b) - armyPower(a) || a.id - b.id
         ));
-        if (candidates[0] && orderMove(this, candidates[0], tile)) issued = 1;
+        if (candidates[0] && orderMove(this, candidates[0], tile)) {
+          setDirective(candidates[0], tile);
+          issued = 1;
+        }
       }
       this.selected = tile;
       this.emit('select', tile);
@@ -332,10 +339,11 @@ export class Game {
           && atWar(this.world, other.nationId, unit.nationId)
         ));
         if (enemy && this.world.wrapDistance(unit.tile.q, unit.tile.r, target.q, target.r) === 1) {
-          if (this.attack(unit, target)) issued++;
+          if (this.attack(unit, target)) { setDirective(unit, target); issued++; }
           break;
         }
         if (this.canEnterFor(unit)(target) && orderMove(this, unit, target)) {
+          setDirective(unit, target);
           issued++;
           break;
         }
@@ -458,6 +466,7 @@ export class Game {
   moveUnit(unit, tile) {
     if (unit.battleId || (unit.retreatUntil ?? 0) > this.turns.turn) return false;
     if (!orderMove(this, unit, tile)) return false;
+    setDirective(unit, tile);
     this.emit('units', unit);
     this.requestRender();
     return true;

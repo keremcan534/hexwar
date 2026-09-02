@@ -28,8 +28,11 @@ const at = (r, week) => (week >= WEEKS ? { ...r.snap, cohorts: r.cohorts }
 
 // TEK ORAN: sinif basina kaydirac kalmadi. "Kim oder" iktidarin
 // ideolojisinden turer (economy.js TAX_STRUCTURES), oran herkes icin ayni.
-const taxAll = (v) => [{ key: 'taxRate', value: v }];
-const taxOne = (c, v) => [{ key: 'taxRate', value: v }];
+// Vergi artik uc sinif orani (economy.tax). `taxAll` ucunu birden, `taxOne`
+// yalniz istenen sinifi oynatir — sinif basina kanal boylece olculebilir.
+const TAX_KEY = { lower: 'taxLower', middle: 'taxMiddle', upper: 'taxUpper' };
+const taxAll = (v) => Object.values(TAX_KEY).map((key) => ({ key, value: v }));
+const taxOne = (c, v) => [{ key: TAX_KEY[c] ?? 'taxLower', value: v }];
 
 function row(label, m, cohorts) {
   return {

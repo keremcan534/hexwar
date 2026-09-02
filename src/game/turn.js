@@ -6,7 +6,7 @@ import {
   UNIT_TYPES, advanceEntrenchment, clearPath, createUnit, refreshArmy,
   removeUnit, resetUnitIds, stackFull,
 } from './units.js';
-import { advanceMovement } from './movement.js';
+import { advanceMovement, resumeDirectives } from './movement.js';
 import { queueRecruit, recruit, runTraining } from './recruitment.js';
 import { runReinforcements } from './reinforcement.js';
 import { runDelegatedAI, runNationAI } from './ai.js';
@@ -536,6 +536,8 @@ export class TurnManager {
     // savaş haftalarında (yol bulma + sahiplik değişimi) tek başına 30-40 ms
     // tutabiliyordu (ölçüldü). Sıra aynen korunur, determinizm değişmez.
     this.phase = 'movement';
+    // Yolu dusmus ama emri duran tumenler once yeniden yola cikar.
+    resumeDirectives(this.game);
     advanceMovement(this.game);
     yield* pause('movement');
     this.phase = 'provinces';

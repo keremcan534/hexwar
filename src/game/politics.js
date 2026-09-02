@@ -142,6 +142,8 @@ export function ensurePolitics(world) {
       initialized.push(nation);
     }
     nation.politics.privateCapital = Math.max(0, nation.politics.privateCapital ?? 0);
+    // Eski kayitta yok; ilk hafta olcumuyle dolar (bkz. collectPrivateCapital).
+    nation.politics.privateInflow = Math.max(0, nation.politics.privateInflow ?? 0);
     nation.politics.electionInterval ??= 48;
     nation.politics.nextElectionTurn ??= (world.turn ?? 1) + nation.politics.electionInterval;
     for (const party of nation.politics.parties) {
@@ -257,30 +259,38 @@ export function updatePoliticalSupport(world) {
   }
 }
 
+/**
+ * economy.PROFIT_TO_REINVEST'in kopyasi. Dogrudan import edilirse economy.js ile
+ * politics.js karsilikli import halkasina girer; tek yer yerine iki yer olmasi
+ * pahasina halka kirilir. Ikisi ayrisirsa ledger-audit yakalar.
+ */
+const REINVEST_SHARE = 0.30;
+
 function collectPrivateCapital(nation) {
   const upper = nation.economy?.classes?.upper;
   if (!upper) return;
-  // Korunum notu: 0.08 = economy.PROFIT_TO_REINVEST (import katman dongusu
-  // yaratirdi, sabit burada tekrarlanir — ledger-audit esitligi dogrular).
-  // Hane artigi da bolusulmus bir akistir: SAVINGS_RATE birikime, 0.22
-  // yatirima, kalani tuketime — ayni artik iki kez harcanmaz.
+  // Korunum notu: REINVEST_SHARE = economy.PROFIT_TO_REINVEST (import katman
+  // dongusu yaratirdi, sabit burada tekrarlanir — ledger-audit esitligi
+  // dogrular). Hane artigi da bolusulmus bir akistir: SAVINGS_RATE birikime,
+  // 0.22 yatirima, kalani tuketime — ayni artik iki kez harcanmaz.
   const householdSurplus = Math.max(0, (upper.needsBudget ?? 0) - (upper.needsCost ?? 0));
   const industrialReturn = Math.max(0, nation.economy?.factoryProfit ?? 0);
-  // Sirket katmani ayni 0.08'lik yeniden-yatirim payinin bir kismini dogrudan
-  // sahibi sirketin kasasina yazdi (bkz. companies.runCompanies). O tutar
-  // havuza IKINCI KEZ yazilmaz; toplam akis degismez, yalnizca kimin elinde
-  // durdugu degisir.
-  const claimed = Math.min(
-    industrialReturn * 0.08,
-    Math.max(0, nation.economy?.reinvestToCompanies ?? 0),
-  );
-  const inflow = householdSurplus * 0.22 + industrialReturn * 0.08 - claimed;
+  const inflow = householdSurplus * 0.22 + industrialReturn * REINVEST_SHARE;
   // Tavan yalniz BU HAFTANIN akisina uygulanir. Eski yazim `min(1200, p+inflow)`
   // idi ve p tavani astiginda (hisse satisi buyuk bir tek seferlik girdidir)
   // farki sessizce YOK EDIYORDU — para kaybetmek de bir korunum ihlalidir.
   // p <= 1200 iken iki yazim birebir ayni sonucu verir.
   const room = Math.max(0, 1200 - nation.politics.privateCapital);
   nation.politics.privateCapital += Math.min(Math.max(0, inflow), room);
+  // KAPITALISTIN GUCU BAKIYE DEGIL AKISTIR. Havuz her hafta bosaliyor (gelen
+  // para ayni hafta santiyeye gidiyor), dolayisiyla bakiyeye bakan bir kapi
+  // ulkeyi surekli "bes parasiz" okur ve kapitalist ne kadar kazanirsa kazansin
+  // hicbir sey acamaz. Yatirim kapisi (economy.runPrivateSector) bunu okur.
+  // Ceyrek yillik duzlestirme: tek haftanin kar sicramasi taahhut ettirmesin.
+  const smoothed = nation.politics.privateInflow;
+  nation.politics.privateInflow = Number.isFinite(smoothed) && smoothed > 0
+    ? smoothed + (inflow - smoothed) / 12
+    : Math.max(0, inflow);
 }
 
 /**

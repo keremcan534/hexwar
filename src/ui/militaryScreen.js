@@ -356,7 +356,7 @@ function queueColumn(rows, summary) {
    ALT BANT — kuvvet künyesi
    -------------------------------------------------------------------------- */
 
-function dispositionBand(summary, composition, logistics) {
+function dispositionBand(summary, composition, logistics, spent) {
   const arms = composition.map((entry) => `<span title="${esc(`${entry.count} ${entry.name} regiments`)}">
     <i aria-hidden="true">${counter(entry.id)}</i>${entry.count}</span>`).join('')
     || '<span class="void">no regiments</span>';
@@ -383,7 +383,9 @@ function dispositionBand(summary, composition, logistics) {
     <div class="mil-disp-cell">
       <small>Reinforcement</small>
       <b>${formatPopulation(summary.reinforced)} men last week</b>
-      <em>${formatPopulation(summary.reinforcementDemand)} still missing from the ranks</em>
+      <em>${formatPopulation(summary.reinforcementDemand)} still missing from the ranks${spent
+    ? ` · cost ${spent.arms.toFixed(1)} small arms, ${spent.artillery.toFixed(1)} artillery`
+    : ''}</em>
     </div>
     <div class="mil-disp-cell">
       <small>Stockpile</small>
@@ -413,6 +415,6 @@ export function militaryScreen(state, data) {
       ${buildColumn(state, data.options, data.summary)}
       ${queueColumn(data.queue, data.summary)}
     </div>
-    ${dispositionBand(data.summary, data.composition, data.logistics)}
+    ${dispositionBand(data.summary, data.composition, data.logistics, data.spent)}
   </div>`;
 }

@@ -8,11 +8,15 @@
 // normal hâli. Yolu `movement.js` haftalık olarak ilerletir.
 
 import { runUnitAI } from './ai.js';
+import { clearDirective } from './movement.js';
 import { isMoving } from './units.js';
 
 export const ORDER = { AUTO: 'auto', HOLD: 'hold' };
 
 export function setOrder(unit, type, target = null) {
+  // HOLD ve AUTO oyuncunun onceki hedefini gecersiz kilar: "dur" diyen de
+  // "sen bilirsin" diyen de o emirden vazgecmis demektir.
+  clearDirective(unit);
   unit.order = type ? { type, target, blocked: 0 } : null;
   return unit.order;
 }

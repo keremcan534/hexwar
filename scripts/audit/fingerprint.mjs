@@ -39,18 +39,6 @@ export function worldFingerprint(game) {
     }
   }
   const cities = world.cities.map((c) => `${c.name}:${c.nationId}:${c.pop}`).sort().join('|');
-  // Sirket katmani parmak ize GIRER. Girmezse yesil bir audit:determinism /
-  // audit:save kosusu bu katmanin deterministik oldugunun KANITI OLMAZ:
-  // deger, sahiplik ve kasa hicbir sutunda gorunmezdi (import yok, alanlar
-  // duz veri — modul saf kalir).
-  const companies = world.nations
-    .filter((n) => n.alive)
-    .flatMap((n) => (n.economy?.companies ?? []).map((c) => [
-      c.id, n2(c.value), n2(c.cash), n2(c.capitalReturn),
-      Object.keys(c.owners ?? {}).sort()
-        .map((k) => `${k}=${(c.owners[k] ?? 0).toFixed(6)}`).join(','),
-    ].join(':')))
-    .join('|');
   // AUTO anahtarlari: yalniz oyuncunun ulkesinde anlamli ama kayittan
   // dondugu icin parmak ize girer.
   const delegation = world.nations
@@ -66,7 +54,6 @@ export function worldFingerprint(game) {
     `wars=${wars}`,
     `prices=${prices}`,
     `battles=${world.battleSystem?.battles?.length ?? 0}`,
-    `companies=${companies}`,
     `delegation=${delegation}`,
   ].join('\n');
 }

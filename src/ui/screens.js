@@ -15,26 +15,22 @@ import {
 import { INFAMY_COALITION } from '../game/infamy.js';
 import { maxHpOf, organizationOf, soldiersOf } from '../game/units.js';
 import { provinceName } from '../game/provinces.js';
-import { censusFor, censusSource, censusTree } from '../game/census.js';
-import {
-  censusRows, defaultSortDir, popRowWindow, popRowsHtml, populationScreen,
-} from './populationScreen.js';
+import { populationGroupDetail, populationOverview } from '../game/populationView.js';
+import { populationScreen } from './populationScreen.js';
 import {
   goodDossier, goodRows, tradeStructure, tradeSummary,
 } from '../game/tradeLedger.js';
 import { tradeScreen } from './tradeScreen.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { hegemonyScore, scoreboard } from '../game/hegemony.js';
-import { factoryOptionCard } from './factoryCard.js';
-import { factoryEmblem, resourceGlyph } from './icons/index.js';
+import { resourceGlyph } from './icons/index.js';
 import {
-  CLASS_INFO, FACTORIES, GOODS, GOOD_IDS, MAX_FACTORY_LEVEL,
-  MILITARY_EQUIPMENT, PROFESSION_INFO,
-  SOCIAL_PROGRAMS, buildFactory,
-  canBuildFactory, factoriesInRegion, factoryAtlas, factoryCost, factoryJobs, industryTaken,
-  debtCapacity, debtInterestRate, factoryMargin, formatPopulation, populationOf,
+  CLASS_INFO, FACTORIES, GOODS, GOOD_IDS,
+  MILITARY_EQUIPMENT,
+  SOCIAL_PROGRAMS, buildFactory, closeFactory, factoryAtlas, upgradeFactory,
+  debtCapacity, debtInterestRate, formatPopulation, populationOf,
   budgetBreakdown, setBudgetPolicy, weeklyBalanceOf,
-  setMilitaryProductionLine, socialSpendingCost, ensureProductionLine, supportProject, upgradeOutlook,
+  setMilitaryProductionLine, socialSpendingCost, ensureProductionLine, supportProject,
 } from '../game/economy.js';
 import { MAX_ROUNDS, battleSides, battlesFor } from '../game/battles.js';
 import { cancelTraining, moveTrainingTo, prioritizeTraining } from '../game/recruitment.js';
@@ -49,7 +45,7 @@ import {
 } from '../game/command.js';
 import { militaryScreen } from './militaryScreen.js';
 import {
-  EARLY_ELECTION_WINDOW, electionWindowOpen, factoryInvestmentRules,
+  EARLY_ELECTION_WINDOW, electionWindowOpen,
   fiscalPolicyLimits, holdElection, policyLabel, rulingParty,
 } from '../game/politics.js';
 import { TIER, announce, chronicleYear, ensureChronicle, memoryOf } from '../game/chronicle.js';
@@ -61,15 +57,12 @@ import {
   electorate, enactReform, governmentType, reformBoard,
 } from '../game/reforms.js';
 import { politicsScreen } from './politicsScreen.js';
-import { exchangeScreen } from './exchangeScreen.js';
 import {
   DELEGATION_AREAS, DELEGATION_IDS, isDelegated, lastDelegatedAction, setDelegation,
 } from '../game/delegation.js';
-import {
-  SECTORS, buyShares, companyDossier, exchangeRows, financeProfile, findCompany,
-  nationalize, opennessOf, portfolioOf, foreignPresenceOf, sellShares, SEIZURE_MODES,
-} from '../game/companies.js';
 import { technologyScreen } from './technologyScreen.js';
+import { industryScreen } from './industryScreen.js';
+import { factoryBuildOptions, industryOverview } from '../game/industryView.js';
 import {
   PROGRAMMES, adoptProgramme, abandonProgramme, effectiveTechCost,
   researchPointsOf, startResearch,
@@ -91,11 +84,10 @@ const TITLES = {
   population: 'Population',
   politics: 'Politics',
   peace: 'Peace Talks',
-  logistics: 'Logistics',
   diplomacy: 'Diplomacy',
   dossier: 'Foreign Power',
   trade: 'Trade',
-  exchange: 'Companies & Exchange',
+  technology: 'Technology',
   chronicle: 'National Chronicle',
 };
 
@@ -109,10 +101,6 @@ function esc(s) {
  * `availableFrom` tur numarasini takvim yilina cevirir. Cag kapisi turla
  * saklanir ama oyuncu yil dusunur; recruitment.js ile ayni donusum.
  */
-function eraYear(turn) {
-  return 1836 + Math.floor(((turn ?? 1) - 1) * 7 / 365);
-}
-
 /**
  * Guc karsilastirmasini duz dille yazar.
  *
@@ -220,8 +208,19 @@ export class Screens {
     this.refreshHandle = 0;
     this.previousMapMode = null;
     this.constructionType = null;
-    this.industryTab = 'plants';
-    this.industryPicker = null;
+    // Sanayi ekraninin butun durumu tek nesnede: secili state, iki suzgec,
+    // arama, kategori sekmesi, acik ⋯ menusu, acik katalog ve kapatma onayi.
+    this.industry = {
+      selected: null,
+      stateFilter: 'all',
+      stateQuery: '',
+      category: 'all',
+      filter: 'all',
+      menu: null,
+      picker: null,
+      buildCategory: 'all',
+      confirm: null,
+    };
     this.tradeGood = null;
     // Siyaset ekranının açık sekmesi (Reforms / Movements / Decisions / Release).
     this.politicsTab = 'reforms';
@@ -232,20 +231,15 @@ export class Screens {
     this.nationTarget = null;
     this.peaceTab = 'take';
     this.peaceSelection = { demands: new Set(), concessions: new Set(), terms: new Set() };
-    // Sayım ekranının durumu. `touched` olmadan iki davranış çakışıyordu:
-    // fethedilen toprak seçime kendiliğinden girmeli, ama "Deselect All"
-    // dedikten sonra hiçbir şey geri gelmemeli. Oyuncu seçime dokunana kadar
-    // seçim ülkenin tamamını izler; dokunduktan sonra seçim onundur.
-    this.census = {
-      nationId: null,
-      world: null,
-      touched: false,
-      selection: new Set(),
+    // Nufus ekraninin butun durumu tek nesnede: acik sekme, secili state,
+    // acik agac dugumleri, iki arama kutusu ve secili grup.
+    this.population = {
+      tab: 'overview',
+      selected: null,
       expanded: new Set(),
-      trades: new Set(Object.keys(PROFESSION_INFO)),
-      sort: { key: 'size', dir: -1 },
-      // Tablonun kaydırma penceresi: yalnız görünen satırlar çizilir.
-      view: { scrollTop: 0, height: 640 },
+      query: '',
+      group: null,
+      groupQuery: '',
     };
     this.el = {
       root: document.getElementById('screen'),
@@ -401,12 +395,10 @@ export class Screens {
     this.el.title.textContent = TITLES[this.active] ?? '—';
     // Construction artik eski sehir kaynaklariyla degil state-slot kapasitesiyle
     // calisir; eski gold/food/timber/iron seridi bu ekranda gosterilmez.
-    // Sanayi ekranı Victoria 2 gibi alt sekmelidir: başlık şeridi kaynak
-    // satırı yerine sekmeleri taşır, böylece tesisler ve şantiyeler tek uzun
-    // sayfada alt alta kaydırılmak yerine ayrı pencerelerde durur.
-    this.el.res.innerHTML = !me ? ''
-      : this.active === 'industry' ? this.industryTabs(me)
-        : this.active !== 'construction' ? this.resourceLine(me) : '';
+    // Sanayi ekraninin alt sekmeleri de kalkti: santiyeler artik ayri bir
+    // pencerede degil, ekranin sag rayinda duruyor (bkz. industryScreen).
+    this.el.res.innerHTML = !me || this.active === 'construction' || this.active === 'industry'
+      ? '' : this.resourceLine(me);
     // AUTO seridi TEK YERDEN eklenir: alti ekranin her birine ayri ayri
     // yazmak, birini unutmanin ve iki farkli kalip cikmasinin garantisiydi.
     const autoArea = DELEGATION_IDS.find((id) => DELEGATION_AREAS[id].screen === this.active);
@@ -416,12 +408,6 @@ export class Screens {
       : '<p class="empty">Your nation has been eliminated.</p>';
     this.bind();
     this.restoreScroll(scroll);
-    for (const btn of this.el.res.querySelectorAll('[data-industry-tab]')) {
-      btn.onclick = () => {
-        this.industryTab = btn.dataset.industryTab;
-        this.refresh();
-      };
-    }
     this.game.perf?.add('ui.screen', performance.now() - t0);
   }
 
@@ -742,20 +728,6 @@ export class Screens {
     </div>`;
   }
 
-  /** Sanayi ekranının alt sekmeleri. Vic2'deki gibi sayı rozetiyle. */
-  industryTabs(me) {
-    const building = ensureConstruction(me).projects.filter(
-      (project) => project.kind && project.kind !== 'building',
-    ).length;
-    const tabs = [
-      ['plants', 'Factories', me.economy?.factories?.length ?? 0],
-      ['projects', 'Under Construction', building],
-    ];
-    return `<div class="sub-tabs">${tabs.map(([id, label, count]) => `
-      <button data-industry-tab="${id}" class="${this.industryTab === id ? 'active' : ''}">
-        ${label}<em>${count}</em></button>`).join('')}</div>`;
-  }
-
   resourceLine(me) {
     const weekly = weeklyBalanceOf(me);
     const sign = `${weekly >= 0 ? '+' : ''}${Math.round(weekly)}`;
@@ -928,8 +900,15 @@ export class Screens {
         <strong><b>${region.free}</b><small>free</small></strong>
       </button>`;
     }).join('');
+    // DEVLET KUYRUGU YALNIZ DEVLETIN ISIDIR. Ozel sermayenin santiyeleri de
+    // ayni dizide duruyor ama oyuncunun verebilecegi bir emir yok: sirasini
+    // degistiremez, iptal edemez, parasini o odemiyor. Ayni listede gosterilince
+    // oyuncu kendi kuyrugunu okuyamiyordu (olculdu: alti satirin altisi ozel).
+    // Ozel santiyeler asagida ayri, salt okunur bir seritte durur.
+    const stateProjects = state.projects.filter((project) => project.actor !== 'private');
+    const privateProjects = state.projects.filter((project) => project.actor === 'private');
     let cumulative = 0;
-    const queueRows = state.projects.map((project, index) => {
+    const queueRows = stateProjects.map((project, index) => {
       // Kuyrukta bina, fabrika, seviye VE ulusal yatirim projeleri var; tip
       // aramasi uc tabloya birden bakmali, yoksa ekran cokertir.
       const type = CONSTRUCTION_TYPES[project.typeId] ?? NATIONAL_INVESTMENTS[project.typeId]
@@ -948,8 +927,8 @@ export class Screens {
         <span class="construction-project-actions">
           <button data-project-top="${project.id}" ${index === 0 ? 'disabled' : ''} title="Move to top of queue">⤒</button>
           <button data-project-up="${project.id}" ${index === 0 ? 'disabled' : ''} title="Move up one place">▲</button>
-          <button data-project-down="${project.id}" ${index === state.projects.length - 1 ? 'disabled' : ''} title="Move down one place">▼</button>
-          <button data-project-bottom="${project.id}" ${index === state.projects.length - 1 ? 'disabled' : ''} title="Move to bottom of queue">⤓</button>
+          <button data-project-down="${project.id}" ${index === stateProjects.length - 1 ? 'disabled' : ''} title="Move down one place">▼</button>
+          <button data-project-bottom="${project.id}" ${index === stateProjects.length - 1 ? 'disabled' : ''} title="Move to bottom of queue">⤓</button>
           <button data-project-cancel="${project.id}" title="Cancel">✕</button>
         </span>
       </div>`;
@@ -982,397 +961,59 @@ export class Screens {
       ${stateRows}
     </div>`;
 
+    // Ozel sermayenin santiyeleri: tek satir, emirsiz. Oyuncunun burada
+    // yapabilecegi tek sey kendi hazinesinden destek vermek (Factories ekrani);
+    // dolayisiyla burada yalniz "kim, nerede, ne kadari odendi" yazar.
+    const privateStrip = privateProjects.length ? `<div class="construction-private">
+      <div class="construction-private-head">
+        <span><small>PRIVATE CAPITAL</small><b>Investor Sites</b></span>
+        <em>${privateProjects.length} site${privateProjects.length === 1 ? '' : 's'}
+          · ¤${(me.politics?.privateInflow ?? 0).toFixed(1)}/wk raised</em>
+      </div>
+      ${privateProjects.map((project) => {
+    const type = FACTORIES[project.typeId] ?? { name: project.typeId, icon: '🏭' };
+    const paid = project.cost > 0 ? Math.round((project.funded / project.cost) * 100) : 100;
+    const label = project.kind === 'upgrade' ? `${type.name} expansion` : type.name;
+    return `<div class="construction-private-row${project.dormant ? ' dormant' : ''}">
+          <i>${type.icon}</i>
+          <span><b>${esc(label)}</b><small>${esc(project.regionName ?? '')}</small></span>
+          <span class="construction-private-bar"><i style="width:${paid}%"></i></span>
+          <em>${paid}% paid</em>
+        </div>`;
+  }).join('')}
+      <p class="hint">Investors pay for these themselves and choose their own order.
+        The Factories screen can top one up from the treasury.</p>
+    </div>` : '';
+
     return `${constructionOverview}<div class="construction-queue">
-        <div class="construction-queue-head"><span><small>NATIONAL PRIORITY</small><b>Construction Queue</b></span><em>${state.projects.length} active</em></div>
+        <div class="construction-queue-head"><span><small>NATIONAL PRIORITY</small><b>Construction Queue</b></span><em>${stateProjects.length} active</em></div>
         ${queueRows || `<div class="construction-queue-empty"><b>No active projects</b><p>Select a building above, then choose a state.</p></div>`}
-      </div>${regionOverview}`;
+      </div>${privateStrip}${regionOverview}`;
   }
 
   /**
-   * Sanayi ekranı state eksenlidir: her state'te türü başına tek tesis olur ve
-   * o tesis kadrosunu doldurdukça kendi kendine seviye atlar. Oyuncunun tek
-   * kararı nereye ne dikeceği; büyüme kararı ekonomiye aittir.
+   * SANAYI EKRANI — uc sutun, tek kaynak.
+   *
+   * Ekran hicbir sey hesaplamaz: butun sayilar, uyari esikleri ve "kar neden
+   * boyle" cumlesi `game/industryView.js`ten gelir (bkz. oradaki katman notu).
+   * Cizim `ui/industryScreen.js`te; burasi yalnizca durumu tasir.
    */
   render_industry(me) {
     const world = this.game.world;
-    const economy = me.economy;
-    if (!economy) return '<p class="empty">This nation has no economy.</p>';
-    const { atlas, regions } = factoryAtlas(world, me.id);
-    const byRegion = new Map(atlas.regions.map((region) => [region.id, []]));
-    for (const [factory, region] of regions) byRegion.get(region.id)?.push(factory);
-    // İşgal altındaki state atlasa girmez; oradaki tesis yok sayılmamalı, yoksa
-    // ülke toprağını geri alana kadar sanayisini ekranda hiç göremez.
-    // İşgal altındaki state atlasa girmez. Oradaki tesisleri ayrı bir bölüme
-    // sürmek yerine aynı tabloda kırmızı isimle göster: sanayi tek listede kalsın.
-    const stranded = economy.factories.filter((factory) => !regions.has(factory));
-    const occupied = new Map();
-    for (const factory of stranded) {
-      const tile = world.get(factory.q, factory.r);
-      const name = tile ? provinceName(tile) : 'Lost territory';
-      if (!occupied.has(name)) occupied.set(name, []);
-      occupied.get(name).push(factory);
+    if (!me.economy) return '<p class="empty">This nation has no economy.</p>';
+    const view = industryOverview(world, me);
+    if (!view) return '<p class="empty">This nation has no economy.</p>';
+    const state = this.industry;
+    // Secili state kaybolduysa (isgal, baris) en karli olana duser; ekran bos
+    // kalmasin diye ilk acilista da secim yapilir.
+    if (!state.selected || !view.states.some((row) => row.id === state.selected)) {
+      state.selected = view.states[0]?.id ?? null;
     }
-    if (!atlas.regions.length && !stranded.length) {
-      return '<p class="empty">No industry yet, and no state is under your control.</p>';
-    }
-
-    const totalLevels = economy.factories.reduce((sum, factory) => sum + factory.level, 0);
-    const employed = economy.factories.reduce((sum, factory) => sum + factory.employees, 0);
-    const lower = economy.classes.lower.population;
-    const rules = factoryInvestmentRules(me);
-    // Tek şerit özet: rakamlar yan yana, açıklama hover'da. Ayrı kart + başlık
-    // + paragraf, ekranın üçte birini tek cümle için harcıyordu.
-    const summary = `<div class="industry-summary"
-      title="Factories hire once a month from the lower class. A plant that fills every post and turns a profit upgrades itself; an unprofitable one sheds workers.">
-      <span><small>levels</small><b>${totalLevels}</b></span>
-      <span><small>workers</small><b>${formatPopulation(employed)}</b></span>
-      <span><small>of lower class</small><b>${lower ? ((employed / lower) * 100).toFixed(1) : '0.0'}%</b></span>
-      <span><small>hired/month</small><b class="res-pos">+${formatPopulation(economy.industrialHiring ?? 0)}</b></span>
-      <span><small>¤/week</small><b class="${economy.factoryProfit >= 0 ? 'res-pos' : 'res-neg'}">${economy.factoryProfit >= 0 ? '+' : ''}${(economy.factoryProfit ?? 0).toFixed(1)}</b></span>
-      ${/* Özel sermaye eskiden siyaset ekranındaydı; o ekran Vic2 düzenine
-           geçince buraya taşındı — parayı harcayan yer burasıdır. */ ''}
-      <span><small>private capital</small><b>¤${(me.politics?.privateCapital ?? 0).toFixed(1)}</b></span>
-      <span class="industry-policy">${esc(policyLabel('economy', rules.policy))} · upgrades by ${
-  rules.privateExpand && rules.stateExpand ? 'private capital, then treasury'
-    : rules.privateExpand ? 'private capital' : rules.stateExpand ? 'treasury' : 'nobody'
-}</span>
-    </div>`;
-
-    // Victoria 2 düzeni: her state tek bir satırdır — solda adı ve sayıları,
-    // sağda o state'teki tesisler yan yana kutucuklar halinde.
-    const slots = Object.keys(FACTORIES).length;
-    const stateRows = atlas.regions.map((region) => {
-      const built = byRegion.get(region.id) ?? [];
-      const staff = built.reduce((sum, factory) => sum + factory.employees, 0);
-      const profit = built.reduce((sum, factory) => sum + factory.profit, 0);
-      const tiles = built.map((factory) => this.factoryTile(me, factory)).join('');
-      // Tür sayısı 29'a çıkınca her satıra yirmi küsur soluk boş kutu dizmek
-      // satırı okunmaz hale getiriyordu. Yerine tek bir "+" durur; seçim
-      // ayrı bir pencerede, zinciri ve maliyeti okunur şekilde yapılır.
-      const free = Object.values(FACTORIES).filter(
-        (type) => !built.some((factory) => factory.typeId === type.id),
-      );
-      const options = free.length
-        ? `<button class="factory-slot add" data-add-region="${esc(region.id)}"
-            title="Build a new industry in ${esc(region.name)} — ${free.length} types available">+</button>`
-        : '';
-      // Sütun başlıkları satırın üstünde bir kez duruyor; hücrede birim
-      // tekrarlamak satır yüksekliğini iki katına çıkarıyordu.
-      return `<div class="state-row">
-        <div class="state-cell state-name">${esc(region.name)}</div>
-        <div class="state-cell num dim">${formatPopulation(region.population)}</div>
-        <div class="state-cell num">${built.length}/${slots}</div>
-        <div class="state-cell num">${formatPopulation(staff)}</div>
-        <div class="state-cell num ${profit >= 0 ? 'res-pos' : 'res-neg'}">${profit >= 0 ? '+' : ''}${profit.toFixed(1)}</div>
-        <div class="state-slots">${tiles}${options}</div>
-      </div>`;
-    }).join('');
-
-    const occupiedRows = [...occupied].map(([name, built]) => {
-      const staff = built.reduce((sum, factory) => sum + factory.employees, 0);
-      const profit = built.reduce((sum, factory) => sum + factory.profit, 0);
-      return `<div class="state-row" title="Occupied — these plants keep producing, but you cannot invest here until the state is back under your control.">
-        <div class="state-cell state-name res-neg">${esc(name)}</div>
-        <div class="state-cell num dim">—</div>
-        <div class="state-cell num">${built.length}</div>
-        <div class="state-cell num">${formatPopulation(staff)}</div>
-        <div class="state-cell num ${profit >= 0 ? 'res-pos' : 'res-neg'}">${profit >= 0 ? '+' : ''}${profit.toFixed(1)}</div>
-        <div class="state-slots">${built.map((factory) => this.factoryTile(me, factory)).join('')}</div>
-      </div>`;
-    }).join('');
-
-    const stateCards = `<div class="industry-states">
-      <div class="state-row state-head">
-        <div class="state-cell">State</div>
-        <div class="state-cell num">Pop</div>
-        <div class="state-cell num">Plants</div>
-        <div class="state-cell num">Workers</div>
-        <div class="state-cell num">¤/week</div>
-        <div class="state-slots">Industry</div>
-      </div>
-      ${stateRows}${occupiedRows}
-    </div>`;
-
-    // Özet her sekmede kalır; altında yalnız seçili panel çizilir.
-    if (this.industryTab === 'projects') return summary + this.industryProjects(me);
-    return summary + this.factoryPicker(me, world) + stateCards;
+    const catalogue = state.picker
+      ? factoryBuildOptions(world, me, state.picker) : null;
+    return industryScreen(view, state, catalogue);
   }
 
-  /**
-   * "+" ile açılan tesis seçimi. Izgaradaki kutucuk yalnız ikon taşıyabilir;
-   * hangi tesisin ne tükettiğine burada, tam adı ve zinciriyle bakılır.
-   */
-  factoryPicker(me, world) {
-    if (!this.industryPicker) return '';
-    const region = constructionAtlas(world, me.id).regions
-      .find((candidate) => candidate.id === this.industryPicker);
-    if (!region) return '';
-    const existing = factoriesInRegion(world, me.id, region.id).map((f) => f.typeId);
-    const stateMayBuild = factoryInvestmentRules(me).stateBuild;
-    // Oyun verisi kart sözleşmesine burada çevrilir; görsel tamamen
-    // factoryCard.js'te yaşar (bkz. oradaki sözleşme notu).
-    // Suzgec motorun kendi dizininden gecer: `existing` (factoryAtlas) ile
-    // `industryTaken` (constructionAtlas) ayrisabiliyordu ve ayristiginda
-    // kart gosterilip insa reddediliyordu. Tek kaynak.
-    const options = Object.values(FACTORIES)
-      .filter((type) => !existing.includes(type.id)
-        && !industryTaken(world, me, region.id, type.id))
-      .map((type) => {
-        const enabled = canBuildFactory(world, me, region.id, type.id);
-        const cost = factoryCost(me, type.id);
-        // Gri bir düğme sebebini söylemezse oyuncu neyi bekleyeceğini bilemez.
-        // BUG-015: sebep zincirinde CAG KAPISI yoktu, dolayisiyla Steel Mill /
-        // Machine Parts / Electric Gear / Oil Refinery / Synthetic Oil tek
-        // kelimeye dusuyordu: "unavailable". Oyuncu oyunun en karli binasinin
-        // (Oil Refinery, +61.3/seviye) neyle acildigini 70 yilda ogrenemedi.
-        // Tarih zaten biliniyor — soylenmesi yetiyor.
-        const era = type.availableFrom ?? 0;
-        const locked = era > (world.turn ?? 1);
-        const blocked = enabled ? '' : locked
-          ? `not yet invented — available from ${eraYear(era)}`
-          : !stateMayBuild ? 'policy forbids state industry'
-            : me.gold < (cost.gold ?? 0) ? `treasury short by ¤${Math.ceil((cost.gold ?? 0) - me.gold)}`
-              : 'unavailable';
-        const io = (table) => Object.entries(table)
-          .map(([id, amount]) => ({ id, name: GOODS[id].name, amount }));
-        return factoryOptionCard({
-          typeId: type.id,
-          name: type.name,
-          cost: cost.gold ?? 0,
-          inputs: io(type.inputs),
-          outputs: io(type.outputs),
-          perLevel: factoryMargin(world, type.id),
-          blocked,
-          region: region.id,
-        });
-      }).join('');
-    // Popup: "+" ekranın üstünde açılınca sürekli kaydırmak gerekiyordu.
-    // Kaplama tıklaması da kapatır (bkz. bindScreenActions).
-    return `<div class="picker-overlay" data-picker-overlay="1">
-      <div class="card factory-picker">
-        <div class="card-head"><h3>Build in ${esc(region.name)}</h3>
-          <small>treasury ¤${Math.round(me.gold)} · ${esc(policyLabel('economy', factoryInvestmentRules(me).policy))}</small>
-          <button class="action" data-close-picker="1">Close</button></div>
-        <div class="fcard-grid">${options || '<p class="empty">Every industry is already present here.</p>'}</div>
-      </div>
-    </div>`;
-  }
-
-  /**
-   * Kurulmakta olan tesisler. Kapitalist projeleri Victoria 2'deki gibi para
-   * biriktirerek ilerler; oyuncu hazineden destek vererek hızlandırabilir.
-   */
-  industryProjects(me) {
-    const projects = ensureConstruction(me).projects.filter(
-      (project) => project.kind && project.kind !== 'building',
-    );
-    if (!projects.length) {
-      return `<div class="card"><p class="empty">Nothing under construction.
-        Start a plant from the Factories tab, or wait for private investors.</p></div>`;
-    }
-    const rows = projects.map((project) => {
-      const type = FACTORIES[project.typeId];
-      const built = Math.round((project.progress / project.work) * 100);
-      const paid = project.cost > 0 ? Math.round((project.funded / project.cost) * 100) : 100;
-      const owed = Math.max(0, project.cost - project.funded);
-      const isPrivate = project.actor === 'private';
-      // Para bekleyen proje inşaat gücü alsa da ilerleyemez; oyuncuya neyi
-      // beklediğini söylemek, boşuna kuyruk sırası değiştirmesini önler.
-      const waiting = owed > 0 && project.progress >= project.work * (project.funded / Math.max(1, project.cost));
-      return `<div class="industry-project ${waiting ? 'stalled' : ''}">
-        <span class="project-icon">${factoryEmblem(project.typeId, Object.keys(type?.outputs ?? {})[0] ?? null)}</span>
-        <span class="project-name"><b>${esc(type?.name ?? project.typeId)}</b>
-          <small>${project.kind === 'upgrade' ? 'expansion' : 'new plant'} · ${esc(project.regionName ?? '')} · ${isPrivate ? 'private' : 'state'}</small></span>
-        <span class="project-meters">
-          <span class="meter" title="Construction ${built}%"><i style="width:${Math.min(100, built)}%"></i></span>
-          <span class="meter funding" title="Funding ${paid}%"><i style="width:${Math.min(100, paid)}%"></i></span>
-        </span>
-        <span class="project-owed">${owed > 0 ? `¤${owed.toFixed(0)} short` : 'fully funded'}</span>
-        ${owed > 0 && isPrivate ? `<button class="action project-support" data-support="${project.id}"
-          ${me.gold <= 0 ? 'disabled' : ''}
-          title="Click to contribute a quarter of what is missing. Shift+click to pay as much of it as the treasury allows.">¤ support</button>` : '<span></span>'}
-      </div>`;
-    }).join('');
-    return `<div class="card industry-projects">
-      <div class="card-head"><h3>Under construction</h3>
-        <small>national construction power ${constructionPower(me).toFixed(0)}/week</small></div>
-      ${rows}
-    </div>`;
-  }
-
-  /**
-   * Victoria 2'nin fabrika kutucuğu: ikon, köşede seviye, altında istihdam
-   * çubuğu ve haftalık kâr. Ayrıntı hover'daki başlıkta durur — ızgara tek
-   * bakışta "hangi tesis dolu, hangisi para kaybediyor" sorusunu cevaplar.
-   */
-  factoryTile(me, factory) {
-    const type = FACTORIES[factory.typeId];
-    const jobs = factoryJobs(factory);
-    const employment = jobs ? (factory.employees / jobs) * 100 : 0;
-    const outlook = upgradeOutlook(me, factory);
-    const profitable = factory.profit >= 0;
-    const chain = `${Object.entries(type.inputs).map(([id, amount]) => `${amount} ${GOODS[id].name}`).join(' + ') || 'nothing'} → ${Object.entries(type.outputs).map(([id, amount]) => `${amount} ${GOODS[id].name}`).join(' + ')}`;
-    const status = outlook.maxed ? 'Fully developed'
-      : factory.profit < 0 ? 'Losing money, sheds workers'
-        : !outlook.profitable ? 'Idle'
-          : !outlook.ready ? 'Hiring'
-            : outlook.funded ? `Upgrading to level ${factory.level + 1}`
-              : `Full staff, waiting for ${formatCost(outlook.cost)}`;
-    // Victoria 2 kutucuğunun düzeni: üstte seviye + ürettiği mal, altında
-    // tükettiği malların ikonları, onun altında her girdinin tedarik çubuğu,
-    // en altta haftalık kâr. Çubuk kısaysa o girdi bulunamıyor demektir.
-    // Emoji yerine birleşik ikon sistemi: silah fabrikası seçili hattın
-    // ekipman ikonunu, digerleri ürünün madalyonunu/glifini gösterir.
-    const outputs = factory.typeId === 'ARMS_FACTORY'
-      ? [resourceGlyph(factory.lineEquipment ?? 'arms')]
-      : Object.keys(type.outputs).map((id) => resourceGlyph(id));
-    const inputs = Object.keys(type.inputs);
-    const supplyOf = (goodId) => {
-      const flow = me.economy?.goodsFlow?.[goodId];
-      if (!flow || !(flow.demand > 0)) return 1;
-      return Math.max(0, Math.min(1, (flow.fulfilled ?? 0) / flow.demand));
-    };
-    const inputIcons = inputs.map((id) => `<i>${resourceGlyph(id)}</i>`).join('') || '<i>·</i>';
-    const inputBars = inputs.map((id) => {
-      const supply = supplyOf(id);
-      return `<i class="${supply < 0.75 ? 'short' : ''}" style="height:${Math.round(supply * 100)}%"
-        title="${esc(GOODS[id].name)} supply ${Math.round(supply * 100)}%"></i>`;
-    }).join('') || '<i style="height:100%"></i>';
-    return `<div class="factory-slot ${profitable ? 'profitable' : 'unprofitable'}"
-      title="${esc(type.name)} · level ${factory.level}/${MAX_FACTORY_LEVEL} · ${formatPopulation(factory.employees)}/${formatPopulation(jobs)} workers&#10;${esc(chain)}&#10;${esc(status)}">
-      <span class="factory-slot-head"><i class="factory-level">${factory.level}</i>
-        <b>${outputs.join('')}</b></span>
-      <span class="factory-goods">${inputIcons}</span>
-      <span class="factory-supply">${inputBars}</span>
-      <span class="meter"><i style="width:${Math.max(0, Math.min(100, employment))}%"></i></span>
-      <span class="factory-slot-foot">
-        <span class="factory-slot-profit ${profitable ? 'res-pos' : 'res-neg'}">${profitable ? '+' : ''}${factory.profit.toFixed(1)}</span>
-        <button class="factory-subsidy${factory.subsidized ? ' on' : ''}"
-          data-subsidize="${esc(factory.id)}"
-          title="${factory.subsidized
-    ? `Subsidised — treasury covered −¤${(factory.subsidyPaid ?? 0).toFixed(1)} this week. Click to stop.`
-    : 'Subsidise: the treasury covers this plant’s losses so it keeps its workers.'}">¤</button>
-      </span>
-    </div>`;
-  }
-
-  /**
-   * (bkz. debtWhy — modul duzeyinde, bank-line'daki why balonunun metni)
-   *
-   * Dosyanin kimlik bolumu: karakter satiri, teknolojik konum, ne uretir /
-   * neye bagimli, muttefikler ve hafiza. HER SAYI gercek durumdan turer
-   * (goodsFlow, research.done, treaties, memory) — anlati degeri uydurulmaz.
-   */
-  dossierIdentity(world, target) {
-    const flow = target.economy?.goodsFlow ?? {};
-    const producers = Object.entries(flow)
-      .filter(([, f]) => (f?.production ?? 0) > 0.5)
-      .sort((a, b) => (b[1].production ?? 0) - (a[1].production ?? 0))
-      .slice(0, 3)
-      .map(([id]) => `${GOODS[id]?.icon ?? ''} ${GOODS[id]?.name ?? id}`);
-    const imports = Object.entries(flow)
-      .filter(([, f]) => (f?.imports ?? 0) > 0.2 && (f?.demand ?? 0) > 0)
-      .sort((a, b) => (b[1].imports / Math.max(0.01, b[1].demand))
-        - (a[1].imports / Math.max(0.01, a[1].demand)))
-      .slice(0, 3)
-      .map(([id, f]) => `${GOODS[id]?.icon ?? ''} ${GOODS[id]?.name ?? id} (${Math.round((f.imports / Math.max(0.01, f.demand)) * 100)}%)`);
-    const standing = techStanding(world, target);
-    const allies = alliesOf(target)
-      .map((id) => world.nations[id])
-      .filter((n) => n?.alive)
-      .map((n) => esc(n.name));
-    const rival = target.rivalId != null ? world.nations[target.rivalId] : null;
-    const memoryRows = memoryOf(target).slice(-3).reverse().map((m) => {
-      const year = 1836 + Math.floor(((m.turn ?? 1) - 1) * 7 / 365);
-      const other = esc(world.nations[m.other]?.name ?? '?');
-      const text = {
-        war_with: `war with ${other}`,
-        took_land_from: `took land from ${other}`,
-        lost_land_to: `lost land to ${other}`,
-        industry_seized_by: `industry seized by ${other}`,
-        seized_industry_of: `seized ${other}'s industry`,
-        allied: `allied with ${other}`,
-        alliance_broken: `broke with ${other}`,
-        honored_call: `honored the call of ${other}`,
-      }[m.kind] ?? `${m.kind} ${other}`;
-      return `<li><em>${year}</em> ${text}</li>`;
-    }).join('');
-    return `<p class="dossier-line">${esc(characterLine(world, target))}</p>
-      <div class="dossier-identity">
-        <div><span>Technology</span><b>${esc(standing.label)}</b><small>${standing.research} researched · #${standing.rank ?? '—'} of ${standing.of ?? '—'}</small></div>
-        <div><span>Produces</span><b>${producers.length ? producers.join(' · ') : 'little of note'}</b></div>
-        <div><span>Depends on</span><b>${imports.length ? imports.join(' · ') : 'no major imports'}</b></div>
-        <div><span>Allies</span><b>${allies.length ? allies.join(', ') : 'none'}</b></div>
-        <div><span>Rival</span><b>${rival?.alive ? esc(rival.name) : 'none declared'}</b></div>
-      </div>
-      ${this.dossierFinance(target)}
-      ${memoryRows ? `<ul class="dossier-memory">${memoryRows}</ul>` : ''}`;
-  }
-
-  /**
-   * Ulke panelinin maliye blogu. Uc satir, hepsi tiklanabilir: paneli
-   * sismanlatmadan borsaya bir kapi acar. Amac kesif — "bu ulkenin sanayisinin
-   * ucte biri yabanciya ait" cumlesi oyuncuyu Exchange'e goturur.
-   */
-  dossierFinance(target) {
-    const world = this.game.world;
-    const profile = financeProfile(world, target);
-    const money = (v) => (Math.abs(v) >= 1000 ? `${(v / 1000).toFixed(1)}k` : v.toFixed(0));
-    if (!profile.largest.length && profile.abroad.stakes === 0) return '';
-    const rows = [];
-    rows.push(`<div><span>Investment regime</span><b>${esc(profile.openness.name)}</b>
-      <small>${profile.presence.share > 0.0005
-        ? `${(profile.presence.share * 100).toFixed(0)}% of its industry is foreign-held`
-        : 'no foreign capital in its industry'}</small></div>`);
-    if (profile.abroad.stakes) {
-      rows.push(`<div><span>Assets abroad</span><b>¤${money(profile.abroad.value)}</b>
-        <small>${profile.abroad.stakes} foreign position${profile.abroad.stakes > 1 ? 's' : ''}</small></div>`);
-    }
-    if (profile.largest.length) {
-      rows.push(`<div><span>Largest companies</span><b>${profile.largest.map((c) => `<button
-        class="link" data-open-company="${esc(c.id)}">${esc(c.name)}</button>`).join(' · ')}</b>
-        <small>${profile.largest.map((c) => `¤${money(c.value)}`).join(' · ')}</small></div>`);
-    }
-    if (profile.topInvestors.length) {
-      rows.push(`<div><span>Largest foreign investors</span>
-        <b>${profile.topInvestors.map((i) => esc(i.name)).join(' · ')}</b>
-        <small>${profile.topInvestors.map((i) => `¤${money(i.value)}`).join(' · ')}</small></div>`);
-    }
-    return `<div class="dossier-identity dossier-finance">${rows.join('')}</div>`;
-  }
-
-  factoryRow(me, factory) {
-    const type = FACTORIES[factory.typeId];
-    const jobs = factoryJobs(factory);
-    const employment = jobs ? (factory.employees / jobs) * 100 : 0;
-    const outlook = upgradeOutlook(me, factory);
-    const profitable = factory.profit >= 0;
-    const inputs = Object.entries(type.inputs)
-      .map(([id, amount]) => `${amount} ${GOODS[id].icon}`).join(' ') || '—';
-    const outputs = Object.entries(type.outputs)
-      .map(([id, amount]) => `${amount} ${GOODS[id].icon}`).join(' ');
-    // Tesisin bir sonraki adımı: neyi beklediğini açıkça söyle ki oyuncu
-    // büyümeyen fabrikanın sebebini ekranda görsün.
-    const status = outlook.maxed ? 'Fully developed'
-      : factory.profit < 0 ? 'Losing money — no investor will expand it'
-        : !outlook.profitable ? 'Idle — no output priced yet'
-          : !outlook.ready ? `Hiring · ${formatCost(outlook.cost)} needed at full staff`
-            : outlook.funded ? `Upgrading to level ${factory.level + 1} this month`
-              : `Full staff · waiting for ${formatCost(outlook.cost)}`;
-    return `<div class="factory-card ${profitable ? 'profitable' : 'unprofitable'}">
-      <div class="factory-head"><span>${type.icon} <b>${esc(type.name)}</b></span>
-        <em>level ${factory.level}${outlook.maxed ? '' : `/${MAX_FACTORY_LEVEL}`}</em></div>
-      <div class="factory-kpis">
-        <span><small>Workers</small><b>${formatPopulation(factory.employees)} / ${formatPopulation(jobs)}</b></span>
-        <span><small>Weekly profit</small><b class="${profitable ? 'res-pos' : 'res-neg'}">${profitable ? '+' : ''}¤${factory.profit.toFixed(1)}</b></span>
-        <span><small>Margin</small><b>${Math.round(factory.margin * 100)}%</b></span>
-      </div>
-      <div class="factory-chain"><span>${esc(inputs)}</span><strong>→</strong><span>${esc(outputs)}</span></div>
-      <div class="meter"><i style="width:${Math.max(0, Math.min(100, employment))}%"></i></div>
-      <small class="factory-status">${esc(status)}</small>
-      ${this.factoryContext(me, type)}
-    </div>`;
-  }
 
   /**
    * Tesisin ULUSAL baglami — yalniz gercek akislardan (goodsFlow) turen
@@ -1457,6 +1098,14 @@ export class Screens {
       stats: militaryStats(world, me),
       composition: armyComposition(world, me.id),
       logistics: equipmentLogistics(world, me),
+      // Lojistik ekrani kaldirildi (Military'nin alt bandi ayni stok tablosunu
+      // zaten gosteriyordu). Ekranin tek ozgun bilgisi buydu: denge tablosu
+      // STOKU anlatir, bu satir AKISI — stok dusuyorsa sebebi budur.
+      spent: {
+        manpower: me.economy?.military?.manpowerUsed ?? 0,
+        arms: me.economy?.military?.armsUsed ?? 0,
+        artillery: me.economy?.military?.artilleryUsed ?? 0,
+      },
       loose: {
         army: loose.filter((unit) => unit.type.domain !== 'sea').length,
         navy: loose.filter((unit) => unit.type.domain === 'sea').length,
@@ -1625,10 +1274,15 @@ export class Screens {
       const cls = tone ?? (v > 0.05 ? 'pos' : v < -0.05 ? 'neg' : '');
       return `<span class="vbox ${cls}">${Math.abs(v).toFixed(1)}\u00a4</span>`;
     };
-    const hslider = (policy, current, min, max, step = 5) => `
-      <span class="hslider"><i class="cap"></i><input type="range"
+    // `--fill` kaydiracin DOLU kismini boyar. Saf CSS ile bir range girdisinin
+    // degerine gore yatak boyanamaz; oran burada yaziliir, boyama CSS'te kalir.
+    const hslider = (policy, current, min, max, step = 5) => {
+      const fill = max > min ? ((current - min) / (max - min)) * 100 : 0;
+      return `<span class="hslider"><i class="cap"></i><input type="range"
         min="${min}" max="${max}" step="${step}" value="${current}"
+        style="--fill:${fill.toFixed(1)}%"
         data-policy="${policy}"><i class="cap"></i></span>`;
+    };
 
     const party = rulingParty(me);
     const band = (min, max, lo = 0, hi = 100) => (min <= lo && max >= hi ? ''
@@ -1647,7 +1301,7 @@ export class Screens {
         <span class="ledger-picto">${picto}</span>
         <span class="ledger-mid">
           <span class="ledger-label">
-            <span class="ledger-what" data-tooltip="${esc(cfg.explain ?? '')}" tabindex="0"
+            <span class="ledger-what" data-tip="budget" data-tip-arg="${esc(policy)}" tabindex="0"
               >${esc(label)}<i class="ledger-hint" aria-hidden="true">?</i></span>
             <b>${cfg.value}%</b></span>
           ${hslider(policy, cfg.value, cfg.min, cfg.max)}
@@ -1666,21 +1320,31 @@ export class Screens {
         ${vbox(amount)}
       </div>`;
 
-    const taxRows = c.taxRate.classes.map((k) => `
-      <div class="tax-class"><span>${esc(k.name)}</span>
-        <b>${k.rate.toFixed(0)}%</b>
-        <span>of \u00a4${k.income.toFixed(1)}</span>
-        <b class="pos">\u00a4${k.collected.toFixed(1)}</b></div>`).join('');
+    // UC SINIF, UC KAYDIRAC. Her satir kendi kaydiracini, kendi matrahini ve
+    // kendi tahsilatini gosterir; ekran hicbirini hesaplamaz (budgetBreakdown).
+    const TAX_POLICIES = [
+      ['taxLower', 'Lower class tax'],
+      ['taxMiddle', 'Middle class tax'],
+      ['taxUpper', 'Upper class tax'],
+    ];
+    const taxControls = TAX_POLICIES.map(([policy, label]) => {
+      const cfg = c[policy];
+      if (!cfg) return '';
+      return control(policy, label, PICTO.lower, cfg, cfg.collected,
+        `${formatPopulation(cfg.population)} people \u00b7 income \u00a4${cfg.base.toFixed(1)}`
+        + ` \u00d7 ${cfg.value}% = \u00a4${cfg.collected.toFixed(1)}`);
+    }).join('');
+    const taxSummary = c.taxSummary;
 
     return `<div class="ledger">
       <section class="ledger-col">
         <header class="ledger-head">Revenue</header>
 
-        ${control('taxRate', 'Taxation', PICTO.lower, c.taxRate,
-    c.taxRate.collected,
-    `base \u00a4${c.taxRate.base.toFixed(0)} \u00d7 ${c.taxRate.value}% = \u00a4${c.taxRate.collected.toFixed(1)}`
-        + ` \u00b7 <b>${esc(c.taxRate.structure)}</b> (set by the government)`)}
-        <div class="tax-classes">${taxRows}</div>
+        ${taxControls}
+        <div class="tax-summary">
+          <span>Tax system</span><b>${esc(taxSummary.structure)}</b>
+          <small>\u00a4${taxSummary.collected.toFixed(1)} collected of \u00a4${taxSummary.base.toFixed(0)} income</small>
+        </div>
 
         ${control('tariff', 'Tariff', PICTO.crate, c.tariff, c.tariff.revenue,
     `imports \u00a4${c.tariff.imports.toFixed(1)} \u00b7 revenue \u00a4${c.tariff.revenue.toFixed(1)}`
@@ -1718,7 +1382,7 @@ export class Screens {
         <div class="ledger-total"><span>Total spending</span>
           <span class="vbox neg big">${view.expenses.toFixed(1)}\u00a4</span></div>
 
-        <header class="ledger-head sub">National Bank</header>
+        <header class="ledger-head sub" data-tip="treasury" tabindex="0">National Bank</header>
         <div class="bank-rows">
           <div class="bank-line"><span>Treasury</span><b>\u00a4${Math.round(view.treasury)}</b>
             <span>Available credit</span><b>\u00a4${Math.round(Math.max(0, debtCapacity(me) - view.debt))}</b></div>
@@ -1742,150 +1406,93 @@ export class Screens {
   }
 
 
+  /**
+   * NUFUS EKRANI — tesis panosu.
+   *
+   * Ekran hicbir sey hesaplamaz: butun sayilar, uyari esikleri ve "bu grup
+   * neden mutsuz" cumlesi `game/populationView.js`ten gelir. Cizim
+   * `ui/populationScreen.js`te; burasi yalnizca durumu tasir.
+   */
   render_population(me) {
     if (!me.economy?.classes) return '<p class="empty">Population records are not initialized.</p>';
-    const world = this.game.world;
-    // Kohortlar bir kez üretilir: ağaç da dağılımlar da aynı deftere baksın.
-    const source = censusSource(world, me);
-    // Ağaç `bind` tarafından da okunur; iki kez kurmak bütün kareleri iki kez
-    // taramak demek olurdu.
-    const tree = censusTree(world, me, source);
-    this.censusTreeView = tree;
-    this.syncCensusSelection(me, tree);
-    if (!tree.keys.length) return '<p class="empty">This nation holds no populated province.</p>';
-    const census = censusFor(world, me, source, this.census.selection);
-    // Satırlar `bind` tarafından da okunur: kaydırma sırasında yalnız gövde
-    // yeniden çizilir, liste baştan türetilip sıralanmaz.
-    this.censusRowView = censusRows(world, me, census, this.census);
-    return populationScreen(world, me, tree, census, this.census, this.censusRowView);
+    const view = populationOverview(this.game.world, me);
+    if (!view || !view.states.length) {
+      return '<p class="empty">This nation holds no populated province.</p>';
+    }
+    const state = this.population;
+    // Kaybedilen state secimden duser; oyuncu hic dokunmadiysa ulke geneli acilir.
+    if (state.selected && !view.states.some((row) => row.id === state.selected)) {
+      state.selected = null;
+    }
+    if (!state.expanded.size) {
+      // Ilk acilista en kalabalik state acik gelir: sutun bos gorunmesin.
+      state.expanded.add(view.states[0].id);
+    }
+    if (state.group && !view.groups.some((row) => row.id === state.group)) state.group = null;
+    const detail = state.group ? populationGroupDetail(view, state.group) : null;
+    return populationScreen(view, state, detail);
   }
 
-  /**
-   * Seçimi mevcut toprağa oturtur. Kaybedilen province seçimden düşer; oyuncu
-   * seçime hiç dokunmadıysa yeni topraklar da kendiliğinden girer.
-   */
-  syncCensusSelection(me, tree) {
-    const state = this.census;
-    const world = this.game.world;
-    // Dünya da kimliğe dahil. Oyuncunun ülke id'si dünyalar arasında aynı
-    // kaldığı için yalnız ona bakmak yetmiyordu: yeni dünyada eski seçim
-    // korunuyor, eski province anahtarları yeni haritada bulunmadığı için
-    // aşağıdaki budama seçimi tamamen boşaltıyor ve defter bomboş açılıyordu.
-    if (state.nationId !== me.id || state.world !== world) {
-      state.nationId = me.id;
-      state.world = world;
-      state.touched = false;
-      state.view.scrollTop = 0;
-      // State'ler açık başlar. Ülkenin on kadar state'i var; kapalıyken
-      // tarayıcı on satırda bitiyor ve sütunun geri kalanı boş kalıyordu —
-      // üstelik province düzeyi okun arkasında görünmez oluyordu.
-      state.expanded = new Set(tree.states.map((entry) => entry.id));
+  /** Nufus ekraninin etkilesimleri. */
+  bindPopulation() {
+    const state = this.population;
+    for (const btn of this.el.body.querySelectorAll('[data-pop-tab]')) {
+      btn.onclick = () => { state.tab = btn.dataset.popTab; this.refresh(); };
     }
-    if (!state.touched) {
-      state.selection = new Set(tree.keys);
-      return;
-    }
-    const live = new Set(tree.keys);
-    for (const key of state.selection) if (!live.has(key)) state.selection.delete(key);
-  }
-
-  /** Bir state'in bütün province'lerini seçer ya da hepsini bırakır. */
-  toggleCensusState(tree, stateId) {
-    const state = this.census;
-    const target = tree.states.find((entry) => entry.id === stateId);
-    if (!target) return;
-    const keys = target.provinces.map((province) => province.key);
-    const all = keys.every((key) => state.selection.has(key));
-    for (const key of keys) {
-      if (all) state.selection.delete(key);
-      else state.selection.add(key);
-    }
-  }
-
-  /** Sayım defterinin etkileşimleri: ağaç, süzgeçler, sıralama. */
-  bindCensus() {
-    const state = this.census;
-    const tree = this.censusTreeView;
-    if (!tree) return;
-    // Seçime dokunulduğu an seçim oyuncunundur: yeni fethedilen toprak artık
-    // kendiliğinden eklenmez (bkz. syncCensusSelection).
-    const touch = (mutate) => {
-      state.touched = true;
-      mutate();
-      this.refresh();
-    };
-
-    for (const btn of this.el.body.querySelectorAll('[data-census-toggle]')) {
-      btn.onclick = () => {
-        const id = btn.dataset.censusToggle.slice('state:'.length);
+    for (const btn of this.el.body.querySelectorAll('[data-pop-expand]')) {
+      btn.onclick = (event) => {
+        // Ucgen state'i acar/kapatir ama SECMEZ: ikisi ayri niyet.
+        event.stopPropagation();
+        const id = btn.dataset.popExpand;
         if (state.expanded.has(id)) state.expanded.delete(id);
         else state.expanded.add(id);
         this.refresh();
       };
     }
-    for (const btn of this.el.body.querySelectorAll('[data-census-pick]')) {
-      btn.onclick = () => touch(() => {
-        const id = btn.dataset.censusPick;
-        if (id === 'country') {
-          const whole = tree.keys.every((key) => state.selection.has(key));
-          state.selection = whole ? new Set() : new Set(tree.keys);
-        } else if (btn.dataset.censusKind === 'state') {
-          this.toggleCensusState(tree, id.slice('state:'.length));
-        } else {
-          const key = id.slice('prov:'.length);
-          if (state.selection.has(key)) state.selection.delete(key);
-          else state.selection.add(key);
+    for (const el of this.el.body.querySelectorAll('[data-pop-state]')) {
+      el.onclick = () => {
+        state.selected = el.dataset.popState || null;
+        if (state.selected) state.expanded.add(state.selected);
+        this.refresh();
+      };
+    }
+    for (const row of this.el.body.querySelectorAll('[data-pop-group]')) {
+      const open = () => { state.group = row.dataset.popGroup; this.refresh(); };
+      row.onclick = open;
+      row.onkeydown = (event) => {
+        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-pop-alert]')) {
+      btn.onclick = () => {
+        // Uyari NEREYE goturecegini bilir: en cok etkilenen state secilir.
+        const target = btn.dataset.popAlertState;
+        if (target) {
+          state.selected = target;
+          state.expanded.add(target);
         }
-      });
-    }
-    const selectAll = this.el.body.querySelector('[data-census-all]');
-    if (selectAll) selectAll.onclick = () => touch(() => { state.selection = new Set(tree.keys); });
-    const selectNone = this.el.body.querySelector('[data-census-none]');
-    if (selectNone) selectNone.onclick = () => touch(() => { state.selection = new Set(); });
-
-    for (const btn of this.el.body.querySelectorAll('[data-census-trade]')) {
-      btn.onclick = () => {
-        const id = btn.dataset.censusTrade;
-        if (state.trades.has(id)) state.trades.delete(id);
-        else state.trades.add(id);
+        state.tab = 'states';
         this.refresh();
       };
     }
-    // Kaydırma: tablo sanallaştırılmış, yalnız görünen pencere çizilidir.
-    // Pencere blok sınırında kaydığında gövde yeniden yazılır — ekranın
-    // tamamı değil, çünkü ağaç ve pastalar kaydırmadan etkilenmiyor.
-    const scroll = this.el.body.querySelector('.census-scroll');
-    const tbody = scroll?.querySelector('tbody');
-    if (scroll && tbody) {
-      // Yükseklik ölçülür: sabit tahmin pencereyi eksik ya da fazla çizdirir.
-      state.view.height = scroll.clientHeight || state.view.height;
-      let drawn = popRowWindow(this.censusRowView.length, state.view).first;
-      let pending = 0;
-      scroll.onscroll = () => {
-        state.view.scrollTop = scroll.scrollTop;
-        if (pending) return;
-        pending = requestAnimationFrame(() => {
-          pending = 0;
-          if (!tbody.isConnected) return;
-          const { first } = popRowWindow(this.censusRowView.length, state.view);
-          if (first === drawn) return;
-          drawn = first;
-          tbody.innerHTML = popRowsHtml(this.censusRowView, state.view);
-        });
+    const search = this.el.body.querySelector('[data-pop-search]');
+    if (search) {
+      search.oninput = () => {
+        state.query = search.value;
+        this.refresh();
+        this.el.body.querySelector('[data-pop-search]')?.focus();
       };
     }
-
-    for (const btn of this.el.body.querySelectorAll('[data-census-sort]')) {
-      btn.onclick = () => {
-        const key = btn.dataset.censusSort;
-        // Aynı sütuna ikinci tıklama yönü çevirir; yeni sütun kendi doğal
-        // yönünde başlar (metin A→Z, sayı büyükten küçüğe).
-        state.sort = state.sort.key === key
-          ? { key, dir: -state.sort.dir } : { key, dir: defaultSortDir(key) };
+    const groupSearch = this.el.body.querySelector('[data-pop-group-search]');
+    if (groupSearch) {
+      groupSearch.oninput = () => {
+        state.groupQuery = groupSearch.value;
         this.refresh();
+        this.el.body.querySelector('[data-pop-group-search]')?.focus();
       };
     }
   }
+
 
   // --- Teknoloji: arastirma merdiveni (bkz. technologyScreen.js) ---
   render_technology(me) {
@@ -1924,63 +1531,6 @@ export class Screens {
   }
 
   // --- Diplomasi: ilişki listesi ve savaş/barış eylemleri ---
-  render_logistics(me) {
-    const equipment = equipmentLogistics(this.game.world, me);
-    const amount = (value) => (Math.abs(value) < 1
-      ? value.toFixed(2)
-      : value.toFixed(1));
-    const signed = (value) => `${value >= 0 ? '+' : ''}${amount(value)}`;
-    const eta = (days) => {
-      if (days == null) return 'no recovery at the current supply rate';
-      if (days <= 14) return `about ${days} day${days === 1 ? '' : 's'}`;
-      if (days <= 84) return `about ${(days / 7).toFixed(1)} weeks`;
-      return `about ${(days / 30.4).toFixed(1)} months`;
-    };
-    const rows = equipment.map((item) => {
-      const shortage = item.balance < -0.005;
-      const tooltip = shortage
-        ? `${amount(-item.balance)} ${item.name} missing. Average supply is ${amount(item.supplyPerDay)} per day (${amount(item.producedPerDay)} produced and ${amount(item.importedPerDay)} imported). The gap will close in ${eta(item.etaDays)} if supply and losses stay unchanged.`
-        : `${amount(item.balance)} ${item.name} remain after all current replacement requirements are covered.`;
-      return `<tr class="equipment-row ${shortage ? 'shortage' : 'surplus'}">
-        <td><span class="equipment-name"><i>${item.icon}</i><b>${esc(item.name)}</b></span></td>
-        <td class="num">${amount(item.stock)}</td>
-        <td class="num">${amount(item.required)}</td>
-        <td class="num logistics-balance ${shortage ? 'res-neg' : 'res-pos'}"
-          tabindex="0" data-tooltip="${esc(tooltip)}">${signed(item.balance)}</td>
-        <td class="num"><b>${amount(item.producedPerDay)}</b><small>${amount(item.importedPerDay)} imported</small></td>
-      </tr>`;
-    }).join('');
-    const shortages = equipment.filter((item) => item.balance < -0.005);
-    const dailyProduction = equipment.reduce((sum, item) => sum + item.producedPerDay, 0);
-    const dailyImports = equipment.reduce((sum, item) => sum + item.importedPerDay, 0);
-
-    // Bu hafta cepheye ne gitti. Denge tablosu STOKU anlatır, bu satır AKIŞI:
-    // stok düşüyorsa sebebi burada yazar (eskiden Production ekranındaydı).
-    const military = me.economy?.military ?? {};
-    const spent = `This week reinforcements consumed ${formatPopulation(military.manpowerUsed ?? 0)}`
-      + ` people, ${(military.armsUsed ?? 0).toFixed(2)} Small Arms and`
-      + ` ${(military.artilleryUsed ?? 0).toFixed(2)} Artillery Equipment,`
-      + ` returning ${formatPopulation(military.reinforced ?? 0)} men to the ranks.`;
-
-    return `<div class="card logistics-hero ${shortages.length ? 'has-shortage' : ''}">
-        <div><small>Equipment status</small><b>${shortages.length ? `${shortages.length} shortage` : 'All requirements covered'}</b></div>
-        <div><small>Average daily production</small><b>${amount(dailyProduction)}</b></div>
-        <div><small>Average daily imports</small><b>${amount(dailyImports)}</b></div>
-      </div>
-      <div class="card logistics-card">
-        <div class="card-head"><h3>Equipment Logistics</h3>
-          <small>rolling average supply; red balances are active shortages</small></div>
-        <div class="logistics-table-wrap"><table class="data-table logistics-table">
-          <tr><th>equipment</th><th class="num">stock</th><th class="num">need</th>
-            <th class="num">balance</th><th class="num">prod/day</th></tr>
-          ${rows}
-        </table></div>
-        <p class="hint">Balance is stockpile minus the equipment needed to restore damaged divisions. Hover or focus a red balance to see the estimated time to close the gap.</p>
-        <p class="hint">${spent}</p>
-      </div>
-      ${this.militaryLines(me)}`;
-  }
-
   render_diplomacy(me) {
     const world = this.game.world;
     const turn = this.game.turns.turn;
@@ -2086,34 +1636,6 @@ export class Screens {
     </div>`;
   }
 
-  render_exchange(me) {
-    const world = this.game.world;
-    const rows = exchangeRows(world, me);
-    if (!rows.length) {
-      return `<p class="empty">No company has been floated yet. Companies appear as
-        nations build industry or open mines.</p>`;
-    }
-    const state = this.exchange ??= { filter: 'all', country: '', sector: '', sort: 'value', dir: 'desc', selected: null };
-    const visible = new Set(rows.map((row) => row.id));
-    if (!state.selected || !visible.has(state.selected)) {
-      state.selected = rows.filter((row) => row.stake > 0)
-        .sort((a, b) => b.value - a.value)[0]?.id
-        ?? [...rows].sort((a, b) => b.value - a.value)[0].id;
-    }
-    const countries = [...new Map(rows.map((row) => [row.home, row.homeName])).entries()]
-      .map(([id, name]) => ({ id, name }))
-      .sort((a, b) => a.name.localeCompare(b.name));
-    return exchangeScreen({
-      rows,
-      portfolio: portfolioOf(world, me),
-      presence: foreignPresenceOf(me),
-      openness: opennessOf(me),
-      countries,
-      sectors: Object.values(SECTORS).map((sector) => ({ id: sector.id, name: sector.name })),
-      dossier: companyDossier(world, me, state.selected),
-    }, state);
-  }
-
   render_trade(me) {
     const world = this.game.world;
     if (!world.market?.goods) return '<p class="empty">The world market is not initialized.</p>';
@@ -2131,98 +1653,16 @@ export class Screens {
     }, this.tradeGood);
   }
 
-  /**
-   * Borsanin etkilesimleri. Alim/satim/kamulastirma OYUNUN kendi
-   * fonksiyonlarindan gecer; ekran hicbir sahiplik ya da para hesabi yapmaz.
-   */
-  bindExchange() {
-    const { game } = this;
-    const me = this.me;
-    const state = this.exchange;
-    if (!me || !state) return;
-    for (const row of this.el.body.querySelectorAll('[data-company]')) {
-      if (row.tagName !== 'TR') continue;
-      const open = () => { state.selected = row.dataset.company; this.refresh(); };
-      row.onclick = open;
-      row.onkeydown = (event) => {
-        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
-      };
-    }
-    for (const th of this.el.body.querySelectorAll('[data-sort]')) {
-      th.onclick = () => {
-        const key = th.dataset.sort;
-        if (state.sort === key) state.dir = state.dir === 'asc' ? 'desc' : 'asc';
-        else { state.sort = key; state.dir = key === 'name' || key === 'home' || key === 'sector' ? 'asc' : 'desc'; }
-        this.refresh();
-      };
-    }
-    for (const btn of this.el.body.querySelectorAll('[data-filter]')) {
-      btn.onclick = () => { state.filter = btn.dataset.filter; this.refresh(); };
-    }
-    const country = this.el.body.querySelector('[data-country]');
-    if (country) country.onchange = () => { state.country = country.value; this.refresh(); };
-    const sector = this.el.body.querySelector('[data-sector]');
-    if (sector) sector.onchange = () => { state.sector = sector.value; this.refresh(); };
-
-    for (const btn of this.el.body.querySelectorAll('[data-buy-share]')) {
-      btn.onclick = () => {
-        const company = findCompany(game.world, btn.dataset.company);
-        if (!company) return;
-        const done = buyShares(game, me, company, Number(btn.dataset.buyShare));
-        game.turns.addLog(done
-          ? `Bought ${(done.share * 100).toFixed(1)}% of ${company.name} for ¤${done.cost.toFixed(0)}.`
-          : `The purchase of ${company.name} shares could not be settled.`,
-        { kind: 'ECONOMY' });
-        this.refresh();
-      };
-    }
-    for (const btn of this.el.body.querySelectorAll('[data-sell-share]')) {
-      btn.onclick = () => {
-        const company = findCompany(game.world, btn.dataset.company);
-        if (!company) return;
-        const done = sellShares(game, me, company, Number(btn.dataset.sellShare));
-        game.turns.addLog(done
-          ? `Sold ${(done.share * 100).toFixed(1)}% of ${company.name} for ¤${done.proceeds.toFixed(0)}.`
-          : `Domestic capital in ${company.name}'s home country cannot absorb the sale.`,
-        { kind: 'ECONOMY' });
-        this.refresh();
-      };
-    }
-    for (const btn of this.el.body.querySelectorAll('[data-seize]')) {
-      btn.onclick = () => {
-        const company = findCompany(game.world, btn.dataset.company);
-        if (!company) return;
-        const mode = btn.dataset.seize;
-        const done = nationalize(game, me, company, mode);
-        game.turns.addLog(done
-          ? `${company.name}: ${(done.share * 100).toFixed(1)}% of foreign holdings taken`
-            + ` (${SEIZURE_MODES[mode].name.toLowerCase()}, ¤${done.paid.toFixed(0)} paid).`
-          : `The treasury cannot cover compensation for ${company.name}.`,
-        { kind: done ? 'POLITICS' : 'ECONOMY' });
-        this.refresh();
-      };
-    }
-  }
-
   /** Ekranlardaki eylemleri oyunun mevcut fonksiyonlarına bağlar. */
   bind() {
     const { game } = this;
     const me = this.me;
     if (!me) return;
 
-    if (this.active === 'population') this.bindCensus();
+    if (this.active === 'population') this.bindPopulation();
     if (this.active === 'military') this.bindMilitary();
-    if (this.active === 'exchange') this.bindExchange();
 
     // AUTO anahtarlari her ekranda ayni kalipla baglanir.
-    for (const btn of this.el.body.querySelectorAll('[data-open-company]')) {
-      btn.onclick = () => {
-        this.exchange ??= { filter: 'all', country: '', sector: '', sort: 'value', dir: 'desc', selected: null };
-        this.exchange.selected = btn.dataset.openCompany;
-        this.exchange.filter = 'all';
-        this.open('exchange');
-      };
-    }
     for (const btn of this.el.body.querySelectorAll('[data-auto]')) {
       btn.onclick = () => {
         const areaId = btn.dataset.auto;
@@ -2475,23 +1915,99 @@ export class Screens {
         this.refresh();
       };
     }
+    // --- Sanayi ekrani: state secimi, suzgecler, kart eylemleri -------------
+    const industry = this.industry;
+    for (const btn of this.el.body.querySelectorAll('[data-industry-state]')) {
+      btn.onclick = () => {
+        industry.selected = btn.dataset.industryState;
+        industry.menu = null;
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-state-filter]')) {
+      btn.onclick = () => { industry.stateFilter = btn.dataset.stateFilter; this.refresh(); };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-industry-filter]')) {
+      btn.onclick = () => { industry.filter = btn.dataset.industryFilter; this.refresh(); };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-industry-category]')) {
+      btn.onclick = () => { industry.category = btn.dataset.industryCategory; this.refresh(); };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-build-category]')) {
+      btn.onclick = () => { industry.buildCategory = btn.dataset.buildCategory; this.refresh(); };
+    }
+    const search = this.el.body.querySelector('[data-state-search]');
+    if (search) {
+      // Yeniden cizim girdiyi degistirdigi icin imlec sona kayar; arama kutusu
+      // kisa oldugundan bu kabul edilebilir, odak korunur.
+      search.oninput = () => {
+        industry.stateQuery = search.value;
+        this.refresh();
+        const next = this.el.body.querySelector('[data-state-search]');
+        next?.focus();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-factory-menu]')) {
+      btn.onclick = (event) => {
+        event.stopPropagation();
+        const id = btn.dataset.factoryMenu;
+        industry.menu = industry.menu === id ? null : id;
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-upgrade-factory]')) {
+      btn.onclick = () => {
+        const blocked = upgradeFactory(game, me, btn.dataset.upgradeFactory);
+        // Reddin SEBEBI soylenir; sessizce olu duran dugme oyuncuya hicbir sey
+        // ogretmez (bkz. exchange dosyasindaki ayni kural).
+        if (blocked) game.turns.addLog(blocked, { kind: 'INDUSTRY' });
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-cancel-expansion]')) {
+      btn.onclick = () => {
+        // Iade muhasebesi construction.cancelConstruction'in kendisidir; ekran
+        // ikinci bir hesap kurmaz.
+        cancelConstruction(game, me.id, Number(btn.dataset.cancelExpansion));
+        industry.menu = null;
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-close-factory]')) {
+      btn.onclick = () => {
+        industry.confirm = btn.dataset.closeFactory;
+        industry.menu = null;
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-close-cancel]')) {
+      btn.onclick = () => { industry.confirm = null; this.refresh(); };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-close-confirm]')) {
+      btn.onclick = () => {
+        closeFactory(game, me, btn.dataset.closeConfirm);
+        industry.confirm = null;
+        this.refresh();
+      };
+    }
     for (const btn of this.el.body.querySelectorAll('[data-add-region]')) {
       btn.onclick = () => {
-        this.industryPicker = this.industryPicker === btn.dataset.addRegion
-          ? null : btn.dataset.addRegion;
+        const region = btn.dataset.addRegion;
+        if (!region) return;
+        industry.picker = industry.picker === region ? null : region;
         this.refresh();
       };
     }
     for (const btn of this.el.body.querySelectorAll('[data-close-picker]')) {
-      btn.onclick = () => { this.industryPicker = null; this.refresh(); };
+      btn.onclick = () => { industry.picker = null; this.refresh(); };
     }
     // Modalın dışına tıklamak da kapatır; içeriye tıklama kabarcıklanınca
     // hedef kontrolüyle ayrılır.
-    const overlay = this.el.body.querySelector('[data-picker-overlay]');
-    if (overlay) {
+    for (const overlay of this.el.body.querySelectorAll('[data-picker-overlay], [data-close-overlay]')) {
       overlay.onclick = (event) => {
         if (event.target !== overlay) return;
-        this.industryPicker = null;
+        industry.picker = null;
+        industry.confirm = null;
         this.refresh();
       };
     }
@@ -2513,6 +2029,7 @@ export class Screens {
           .find((candidate) => candidate.id === btn.dataset.subsidize);
         if (!factory) return;
         factory.subsidized = !factory.subsidized;
+        this.industry.menu = null;
         this.refresh();
       };
     }
@@ -2540,6 +2057,12 @@ export class Screens {
       input.oninput = () => {
         const label = input.closest('.ledger-mid')?.querySelector('.ledger-label b');
         if (label) label.textContent = `${input.value}%`;
+        // Dolgu da suruklerken oynar; yoksa yatak degeri bir kare geriden takip
+        // ederdi (sayi ilerler, dolgu yerinde durur).
+        const min = Number(input.min) || 0;
+        const max = Number(input.max) || 100;
+        const fill = max > min ? ((Number(input.value) - min) / (max - min)) * 100 : 0;
+        input.style.setProperty('--fill', `${fill.toFixed(1)}%`);
       };
       input.onchange = () => {
         // TEK AYAR KAPISI — YZ de ayni fonksiyonu cagirir (bkz. §23/§24).

@@ -7,6 +7,7 @@
 
 import { findPath } from '../core/pathfind.js';
 import { atWar } from './diplomacy.js';
+import { controllerOf } from './control.js';
 import { startBattle } from './battles.js';
 import { generalMarchBonus, generalOfArmy } from './command.js';
 import {
@@ -15,6 +16,79 @@ import {
 
 /** Yol tikaninca bu kadar kez yeniden hesaplanir, sonra emir duser. */
 const MAX_REROUTES = 2;
+
+/**
+ * OYUNCUNUN EMRI (directive). Ordunun yolu birçok sebeple düşer: hedefe giden
+ * güzergâh kapanır, `MAX_REROUTES` tükenir, adım "blocked" döner. Yol düşünce
+ * emir de unutuluyordu — general ertesi hafta tümeni kendi mevkisine, çoğu
+ * zaman HEDEFİN TERS YÖNÜNE geri yürütüyordu.
+ *
+ * Ölçüldü (tohum war-probe): oyuncu 15 kare ötedeki düşman karesine taarruz
+ * emri verdi, tümen 4 hafta yürüdü, 27. haftada yolu düştü ve 12 hafta boyunca
+ * hedeften UZAKLAŞARAK mevkisine gitti. Hedef hiç alınmadı.
+ *
+ * Emir artık tümenin üstünde durur: yol düşse de hedef durur, ertesi hafta
+ * yeniden yol kurulur ve komuta katmanı bu tümene karışmaz (bkz.
+ * command.runGroup). Hedefe varınca ya da denetim bize geçince kendiliğinden
+ * düşer; ulaşılamıyorsa `DIRECTIVE_TRIES` hafta sonra bırakılır.
+ */
+const DIRECTIVE_TRIES = 6;
+
+/** Oyuncunun sürekli hedefi. `null` tile emri kaldırır. */
+export function setDirective(unit, tile) {
+  if (!unit) return;
+  if (!tile) { unit.directive = null; return; }
+  unit.directive = { q: tile.q, r: tile.r, tries: 0 };
+}
+
+export function clearDirective(unit) {
+  if (unit) unit.directive = null;
+}
+
+/** Tümen oyuncunun verdiği bir emri yürütüyor mu? */
+export function hasDirective(unit) {
+  return Boolean(unit?.directive);
+}
+
+/**
+ * Yolu düşmüş ama emri duran tümenleri yeniden yola çıkarır. Yürüyüşten ÖNCE
+ * çağrılır ki emir aynı hafta yol alsın.
+ */
+export function resumeDirectives(game) {
+  const world = game.world;
+  for (const unit of world.units) {
+    const directive = unit.directive;
+    if (!directive) continue;
+    if (unit.hp <= 0) { unit.directive = null; continue; }
+    const tile = world.get(directive.q, directive.r);
+    // Hedef bizim olduysa emir tamamlanmistir: tumen generaline geri doner.
+    if (!tile || unit.tile === tile || controllerOf(tile) === unit.nationId) {
+      unit.directive = null;
+      continue;
+    }
+    if (unit.battleId || (unit.retreatUntil ?? 0) > game.turns.turn) continue;
+    if (isMoving(unit)) { directive.tries = 0; continue; }
+    // Bitisikteki dusmana yuruyusle degil taarruzla girilir.
+    if (world.wrapDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) === 1
+      && unitsOn(tile).some((other) => other.nationId !== unit.nationId)) {
+      if (game.attack(unit, tile)) { directive.tries = 0; continue; }
+      // Cadence/organizasyon hazir degil: emir DUSMEZ, hafta beklenir.
+      directive.tries++;
+    } else if (orderMove(game, unit, tile)) {
+      directive.tries = 0;
+      continue;
+    } else {
+      directive.tries++;
+    }
+    if (directive.tries >= DIRECTIVE_TRIES) {
+      unit.directive = null;
+      if (unit.nationId === game.turns.playerNation) {
+        game.turns.addLog(`${unit.type.name} cannot reach its objective and has been released to its command.`,
+          { kind: 'MILITARY' });
+      }
+    }
+  }
+}
 
 /** Ordunun hedefi: yolun son karesi. */
 export function destinationOf(unit) {

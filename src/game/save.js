@@ -42,9 +42,14 @@ import { ensureDelegation, restoreDelegation } from './delegation.js';
 // yeniden adlandirildi (treasury.js LEDGER_LINES) ve on bir *Gold cizik alani
 // silindi. Eski kayitlar TEMIZ REDDEDILIR — deneysel dalda karmasik goc
 // yazmak, sessizce bozuk bir defterden iyidir.
-export const SAVE_VERSION = 16;
+// 17: vergi tek orandan UC SINIF ORANINA acildi. economy.taxRate ->
+// economy.tax = { lower, middle, upper }. v16 kayitlari KAYIPSIZ yuklenir:
+// eski tek oran, o kaydin hukumet yapisindaki agirliklarla uc orana bolunur
+// (bkz. economy.js ensure + taxWeightsFor), yani yuklenen ulke ayni vergiyi
+// ayni siniflardan toplamaya devam eder.
+export const SAVE_VERSION = 17;
 /** Gocu bilinen eski surumler: deserialize bunlari da kabul eder. */
-const MIGRATABLE_VERSIONS = new Set([14]);
+const MIGRATABLE_VERSIONS = new Set([14, 16]);
 const STORAGE_KEY = 'hexwar.save';
 
 /**

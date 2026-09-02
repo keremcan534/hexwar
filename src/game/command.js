@@ -23,7 +23,7 @@ import { DIRS, hexesInRange } from '../core/hex.js';
 import { settle } from './treasury.js';
 import { atWar } from './diplomacy.js';
 import { MAX_ASSAULT_DIVISIONS, startBattle } from './battles.js';
-import { orderMove } from './movement.js';
+import { hasDirective, orderMove } from './movement.js';
 import { controllerOf } from './control.js';
 import { MAX_STACK, armyPower, isMoving, unitsOn } from './units.js';
 import { fortDefenseAt } from './construction.js';
@@ -933,24 +933,35 @@ function runGroup(game, nation, general, context) {
     return;
   }
 
+  // OYUNCUNUN EMRI KOMUTANI BAGLAR. Emir yuruten tumen mevki dagitimina da
+  // yuruyuse de girmez: `assignPosts` onu her hafta "mevkisiz" sayip cepheye
+  // geri postalıyor, `march` da oraya yürütüyordu — oyuncunun hedefi bir daha
+  // hic denenmiyordu (bkz. movement.resumeDirectives'teki olcum).
+  const directed = [];
+  const managed = [];
+  for (const unit of divisions) {
+    if (hasDirective(unit)) { unit.post = null; directed.push(unit); }
+    else managed.push(unit);
+  }
+
   // Hafif profil: turun en pahalı grubu parça dökümüyle kaydedilir
   // (world.commandWorst; beginCommand sıfırlar). Donma avında "hangi general,
   // hangi parça?" sorusunu tur başına birkaç performance.now ile yanıtlar.
   const t0 = performance.now();
-  assignPosts(world, divisions, front);
+  assignPosts(world, managed, front);
   const t1 = performance.now();
-  march(game, divisions);
+  march(game, managed);
   const t2 = performance.now();
 
   // Plan, tumenler mevkilerine oturdukca olgunlasir. Hazirlik "beklemek" degil
   // "yerlesmek"tir; boylece gosterge oyuncuya hattin oturdugunu da soyler.
-  const settled = divisions.filter((unit) => {
+  const settled = managed.filter((unit) => {
     const post = postTileOf(world, unit);
     return post && unit.tile === post && !unit.battleId;
   }).length;
   const staff = traitSum(general, 'planning');
   general.planning = Math.max(0, Math.min(1, (general.planning ?? 0)
-    + PLANNING_RATE * (settled / divisions.length) * (1 + staff)));
+    + PLANNING_RATE * (settled / Math.max(1, managed.length)) * (1 + staff)));
 
   if (general.stance === STANCE.ADVANCE) advance(game, general, divisions);
   const t3 = performance.now();

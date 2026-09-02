@@ -14,9 +14,15 @@ import { FACTORY_PATHS } from './factories.js';
 
 const ART_BASE = 'assets/icons/resources';
 
-/** Ortak SVG kabuğu: 24 birimlik kare, çizgi üslubu. */
+/**
+ * Ortak SVG kabuğu: 24 birimlik kare, çizgi üslubu.
+ *
+ * `res-glyph` sınıfı sunum normalizasyonunun kancasıdır: boyası olmayan mal
+ * CSS'te aynı emaye diske oturtulur (bkz. styles.css §25) ki çizgi ikon,
+ * boyalı madalyonların yanında "başka setten yapıştırılmış" durmasın.
+ */
 function shell(inner, viewBox = '0 0 24 24') {
-  return `<svg viewBox="${viewBox}" fill="none" stroke="currentColor"
+  return `<svg class="res-glyph" viewBox="${viewBox}" fill="none" stroke="currentColor"
     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"
     aria-hidden="true">${inner}</svg>`;
 }
@@ -44,7 +50,12 @@ export function resourceArtRinged(goodId) {
 /** Mal ikonu: boyalı madalyon ya da çizgi-SVG. Satır içi kullanım. */
 export function resourceGlyph(goodId) {
   const art = RESOURCE_ART[goodId];
-  if (art) return `<img src="${ART_BASE}/${art}.png" alt="" loading="lazy" decoding="async">`;
+  // Sınıflar sunum içindir: `ringed` madalyon halkasını sanatın kendisi
+  // taşır, `plain` ise halkayı CSS'ten alır — iki paket tek sette buluşur.
+  if (art) {
+    const ring = RINGED_ART.has(goodId) ? 'ringed' : 'plain';
+    return `<img class="res-art ${ring}" src="${ART_BASE}/${art}.png" alt="" loading="lazy" decoding="async">`;
+  }
   return shell(RESOURCE_PATHS[goodId] ?? FALLBACK_RESOURCE);
 }
 

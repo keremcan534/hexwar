@@ -28,8 +28,6 @@ export const LEDGER_LINES = {
   tariff: { kind: 'income', label: 'Tariffs' },
   state: { kind: 'income', label: 'State production' },
   settlement: { kind: 'income', label: 'External settlement' },
-  dividend: { kind: 'income', label: 'Company dividends' },
-  share: { kind: 'income', label: 'Share dealings' },
   treaty: { kind: 'income', label: 'Treaty obligations' },
 
   army: { kind: 'expense', label: 'Army' },

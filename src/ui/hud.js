@@ -15,6 +15,7 @@ import { savedInfo } from '../game/save.js';
 import { scoreboard } from '../game/hegemony.js';
 import { ORDER } from '../game/orders.js';
 import { flagDataUrl } from '../render/flagPainter.js';
+import { bindMacroCards } from './macroCard.js';
 import { Screens } from './screens.js';
 import { showEndScreen } from './endScreen.js';
 import { formatPopulation, weeklyBalanceOf } from '../game/economy.js';
@@ -689,10 +690,11 @@ export class Hud {
         .filter((unit) => unit.nationId === me.id && unit.type.domain === 'land')
         .reduce((sum, unit) => sum + soldiersOf(unit), 0);
       this.el.macroStats.innerHTML = `
-        <span title="Population"><small>Population</small><b>${formatPopulation(me.economy?.population ?? 0)}</b></span>
+        <span class="macro-live" data-macro="population"><small>Population</small><b>${formatPopulation(me.economy?.population ?? 0)}</b></span>
         <span title="Standing army"><small>Army</small><b>${formatNumber(army)}</b></span>
         <span title="Recruitable population left in your provinces"><small>Manpower</small><b>${formatPopulation(nationManpower(world, me.id))}</b></span>
-        <span title="Gross domestic product"><small>GDP</small><b>¤${formatNumber(Math.round(me.economy?.gdp ?? 0))}</b></span>`;
+        <span class="macro-live" data-macro="gdp"><small>GDP</small><b>¤${formatNumber(Math.round(me.economy?.gdp ?? 0))}</b></span>`;
+      this.ensureMacroCards();
       this.el.topFlag.src = flagDataUrl(me);
       this.el.topNation.textContent = me.name;
       // Savaş durumu künyedeki tek renkli öğe; gerisi soluk kalır. Ayraç
@@ -730,7 +732,7 @@ export class Hud {
       battle.attackerNation === me.id || battle.defenderNation === me.id
     )) ?? [];
     const net = me.budget?.net ?? {};
-    let next = 'Review Military, Logistics or Construction before unpausing.';
+    let next = 'Review Military, Factories or Construction before unpausing.';
     if (battles.length) next = 'A battle is active: select its army to inspect strength and organization.';
     else if (wars.length) next = 'Move an army onto an enemy army or province; defeated armies retreat.';
     this.el.sheetBody.innerHTML = `
@@ -858,16 +860,77 @@ export class Hud {
       ? `<img class="flag" src="${flagDataUrl(nation)}" alt="">`
       : `<span class="swatch" style="background:${color}"></span>`;
 
+    // KUTU KAYDIRILMAZ. Eski dizilim on iki eşit kutucuktu; uzun değerler üç
+    // satıra sarıyor, kutu `--sheet-max`ı aşıyor ve yanında bir kaydırma
+    // çubuğu beliriyordu. Bilgi artık ÖNEME göre üç kademeye ayrılır:
+    //   1. üç ana ölçü      — nüfus, denetim, savunma
+    //   2. RGO bloğu        — tek satır: ne, ne kadar, kaç kişiyle
+    //   3. künye satırı     — kültür/dil/boyut gibi bağlam, tam satır metin
+    // Aynı bilgi, üçte bir yükseklik.
+    const take = (key) => {
+      const at = stats.findIndex(([k]) => k === key);
+      return at < 0 ? null : stats.splice(at, 1)[0][1];
+    };
+    const province = take('Province');
+    const population = take('Population');
+    const control = take('Control');
+    const defense = take('Defense');
+    const rgoName = take('RGO');
+    const rgoOut = take('RGO Output');
+    const rgoWork = take('RGO Workforce');
+    const unemployed = take('Unemployed');
+    // Arazi zaten baslik alt satirinda yaziyor (bkz. `sub`); ikinci kez
+    // basmak "Hills - 97,63 - Hills" gibi bir tekrar uretiyordu.
+    take('Terrain');
+    const culture = take('Culture');
+    const language = take('Language');
+    const size = take('Nation Size');
+    const migration = take('Migration');
+
+    // `tip` verilirse olcu gecikmeli bilgi karti tasir (bkz. ui/tooltip.js).
+    const metric = (label, value, tip = '') => (value == null ? ''
+      : `<span class="pv-metric"${tip ? ` data-tip="${tip}" tabindex="0"` : ''}
+          ><small>${label}</small><b>${value}</b></span>`);
+    const line = (label, value) => (value == null ? ''
+      : `<span class="pv-line"><small>${label}</small><b>${escapeHtml(String(value))}</b></span>`);
+
+    // Artakalan durum bilgileri (Status, Territory, Occupation, Worked By):
+    // seyrek ama önemli — kendi uyarı satırlarında durur.
+    const notes = stats.map(([k, v]) => `<span class="pv-note"><small>${k}</small>${v}</span>`).join('');
+
     body.innerHTML = unitBlock + this.actionsHtml(tile) + `
-      <div class="tile-head">
-        ${emblem}
-        <div>
-          <div class="tile-title">${escapeHtml(title)}</div>
-          <div class="tile-sub">${escapeHtml(sub)}</div>
+      <div class="province-view">
+        <div class="tile-head">
+          ${emblem}
+          <div>
+            <div class="tile-title">${escapeHtml(title)}</div>
+            <div class="tile-sub">${escapeHtml(sub)}</div>
+          </div>
         </div>
-      </div>
-      <div class="stats">
-        ${stats.map(([k, v]) => `<div class="stat"><div class="k">${k}</div><div class="v">${v}</div></div>`).join('')}
+
+        <div class="pv-metrics">
+          ${metric('Population', population)}
+          ${metric('Control', control, 'control')}
+          ${metric('Defense', defense, 'defense')}
+        </div>
+
+        ${rgoName ? `<div class="pv-rgo" data-tip="rgo" tabindex="0">
+          <span class="pv-rgo-name">${rgoName}</span>
+          <span class="pv-rgo-out">${rgoOut ?? '—'}</span>
+          <span class="pv-rgo-work">${rgoWork ?? '—'}</span>
+          ${unemployed && unemployed !== '0' ? `<em>${unemployed} unemployed</em>` : ''}
+        </div>` : ''}
+
+        ${notes ? `<div class="pv-notes">${notes}</div>` : ''}
+
+        <div class="pv-lines">
+          ${line('Province', province)}
+          ${culture == null ? '' : `<span class="pv-line" data-tip="culture" tabindex="0">
+            <small>Culture</small><b>${escapeHtml(String(culture))}</b></span>`}
+          ${line('Language', language)}
+          ${migration ? line('Migration', migration) : ''}
+          ${line('Nation', size)}
+        </div>
       </div>`;
 
     this.bindActions();
@@ -897,13 +960,17 @@ export class Hud {
         .map(([id, n]) => `${n} ${escapeHtml(game.world.cultures[id]?.name ?? '?')}`)
         .join(' · ');
 
+      // Alim listesi KATLI acilir. Alti alay dugmesi kutuyu tek basina ~180px
+      // sisiriyor ve baskent karesinde bilgi kismini ekranin disina itiyordu;
+      // buyruk kutusunun asil isi "burada ne var" demektir, siparis vermek
+      // Military ekraninin isidir. Islev duruyor, yalnizca katlanmis.
       rows.push(`<div class="action-row">
         <div class="k">${escapeHtml(city.name)} — population: ${composition}</div>
       </div>
-      <div class="action-row">
-        <div class="k">Recruitment · ${escapeHtml(city.name)}</div>
-        ${buttons}
-      </div>`);
+      <details class="sheet-fold">
+        <summary>Recruit in ${escapeHtml(city.name)}</summary>
+        <div class="action-row">${buttons}</div>
+      </details>`);
     }
 
     // Yabancı toprak/birim: savaş ilanı ya da barış teklifi.
@@ -1084,6 +1151,39 @@ export class Hud {
         this.showCommand();
       };
     }
+  }
+
+  /**
+   * Ust cubuktaki Population/GDP olculerini gecikmeli bilgi kartina baglar.
+   * BIR KEZ baglanir: serit her hafta yeniden cizilir ama olay dinleyicisi
+   * seridin KENDISINDE degil, kapsayicisindadir (olay delegasyonu).
+   */
+  ensureMacroCards() {
+    if (this.macroCards) return;
+    const { game } = this;
+    this.macroCards = bindMacroCards(this.el.macroStats, {
+      playerId: () => game.turns.playerNation,
+      /** Gecmis izi: `economy.popHistory` (bkz. economy.recordPopulationTrend). */
+      series: (metric) => {
+        const me = game.world.nations[game.turns.playerNation];
+        const history = me?.economy?.popHistory ?? [];
+        const key = metric === 'gdp' ? 'gdp' : 'pop';
+        return {
+          samples: history.map((row) => row[key] ?? 0),
+          current: metric === 'gdp' ? (me?.economy?.gdp ?? 0) : (me?.economy?.population ?? 0),
+        };
+      },
+      /** Siralama CANLI durumdan turer; ayri bir tablo saklanmaz. */
+      ranking: (metric) => game.world.nations
+        .filter((nation) => nation.alive && nation.economy)
+        .map((nation) => ({
+          id: nation.id,
+          name: nation.name,
+          value: metric === 'gdp' ? (nation.economy.gdp ?? 0) : (nation.economy.population ?? 0),
+        }))
+        .sort((a, b) => b.value - a.value)
+        .map((row, index) => ({ ...row, rank: index + 1 })),
+    });
   }
 
   bindActions() {

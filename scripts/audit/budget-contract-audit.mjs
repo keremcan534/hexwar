@@ -11,6 +11,7 @@ import {
 } from '../../src/game/treasury.js';
 import {
   BUDGET_POLICIES, budgetBreakdown, budgetPolicyLimits, setBudgetPolicy,
+  budgetPolicyValue,
 } from '../../src/game/economy.js';
 
 const WEEKS = 60;
@@ -88,8 +89,9 @@ sub('4. Politika sinirlari ve saglamlik');
     const limits = budgetPolicyLimits(nation)[policy];
     for (const attempt of [-9999, -1, 0, 50, 101, 9999, Number.NaN, Infinity]) {
       setBudgetPolicy(nation, policy, attempt);
-      const value = policy === 'education' || policy === 'welfare'
-        ? nation.economy.social[policy] : nation.economy[policy];
+      // Deger okumasi TEK KAPIDAN: alanin nerede durdugunu (economy.tax.*,
+      // economy.social.*, economy.*) denetim degil, alan katmani bilir.
+      const value = budgetPolicyValue(nation, policy);
       if (!Number.isFinite(value) || value < limits.min || value > limits.max) {
         violations++;
         finding('HIGH', `Sinir: ${policy}`, `${limits.min}-${limits.max} araliginda kalmali`,
@@ -122,11 +124,11 @@ sub('5. Ekran dokumu simulasyonla ayni sayiyi veriyor');
   // Sinif vergi satirlari toplami TAM OLARAK tahsil edileni vermeli: eski
   // ekranda satirlar brut, toplam netti ve %30 idari fonlamada 1.46 kat
   // sapiyordu.
-  const classSum = view.controls.taxRate.classes.reduce((s, c) => s + c.collected, 0);
-  console.log(`  sinif satirlari ${n2(classSum)} vs tahsilat ${n2(view.controls.taxRate.collected)}`);
-  if (Math.abs(classSum - view.controls.taxRate.collected) > 1e-6) {
+  const classSum = view.controls.taxSummary.classes.reduce((s, c) => s + c.collected, 0);
+  console.log(`  sinif satirlari ${n2(classSum)} vs tahsilat ${n2(view.controls.taxSummary.collected)}`);
+  if (Math.abs(classSum - view.controls.taxSummary.collected) > 1e-6) {
     finding('HIGH', 'Vergi satirlari', 'satirlar toplami = tahsilat',
-      `${classSum} vs ${view.controls.taxRate.collected}`);
+      `${classSum} vs ${view.controls.taxSummary.collected}`);
   }
 }
 
@@ -144,23 +146,23 @@ sub('6. Her kaldirac dogru yone hareket ediyor');
     const view = budgetBreakdown(game.world, nation);
     return { nation, view, e: nation.economy };
   };
-  const lo = probe([['taxRate', 5], ['education', 0], ['welfare', 0], ['armyFunding', 25]]);
-  const hi = probe([['taxRate', 70], ['education', 100], ['welfare', 100], ['armyFunding', 100]]);
+  const lo = probe([['taxLower', 5], ['taxMiddle', 5], ['taxUpper', 5], ['education', 0], ['welfare', 0], ['armyFunding', 25]]);
+  const hi = probe([['taxLower', 70], ['taxMiddle', 70], ['taxUpper', 70], ['education', 100], ['welfare', 100], ['armyFunding', 100]]);
 
   // VERGI IZOLE OLCULUR: yukaridaki iki kol refahi da oynatiyor ve refahin
   // +0.14'luk memnuniyet terimi verginin -0.28'lik terimini maskeliyordu.
-  const taxLo = probe([['taxRate', 5], ['education', 0], ['welfare', 0], ['armyFunding', 25]]);
-  const taxHi = probe([['taxRate', 70], ['education', 0], ['welfare', 0], ['armyFunding', 25]]);
+  const taxLo = probe([['taxLower', 5], ['taxMiddle', 5], ['taxUpper', 5], ['education', 0], ['welfare', 0], ['armyFunding', 25]]);
+  const taxHi = probe([['taxLower', 70], ['taxMiddle', 70], ['taxUpper', 70], ['education', 0], ['welfare', 0], ['armyFunding', 25]]);
   const satLo = taxLo.e.classes.lower.satisfaction;
   const satHi = taxHi.e.classes.lower.satisfaction;
   console.log(`  vergi IZOLE: %5 -> %70 · alt sinif memnuniyeti ${n2(satLo)} -> ${n2(satHi)}`
-    + ` · tahsilat ${n2(taxLo.view.controls.taxRate.collected)} -> ${n2(taxHi.view.controls.taxRate.collected)}`);
+    + ` · tahsilat ${n2(taxLo.view.controls.taxSummary.collected)} -> ${n2(taxHi.view.controls.taxSummary.collected)}`);
   if (!(satHi < satLo)) {
     finding('HIGH', 'Verginin bedeli', 'yuksek vergi memnuniyeti DUSURMELI', `${satLo} -> ${satHi}`);
   }
 
   const rows = [
-    ['vergi geliri', lo.view.controls.taxRate.collected, hi.view.controls.taxRate.collected, 'up'],
+    ['vergi geliri', lo.view.controls.taxSummary.collected, hi.view.controls.taxSummary.collected, 'up'],
     ['egitim gideri', lo.view.controls.education.cost, hi.view.controls.education.cost, 'up'],
     ['okuryazarlik hedefi', lo.view.controls.education.literacyTarget, hi.view.controls.education.literacyTarget, 'up'],
     ['refah gideri', lo.view.controls.welfare.cost, hi.view.controls.welfare.cost, 'up'],
@@ -202,7 +204,7 @@ sub('8. Kaldirilan alanlar geri gelmemis');
 {
   const game = headless('contract-h');
   runPeaceful(game, 20);
-  const dead = ['taxes', 'militaryWages', 'militaryProcurement', 'adminFunding',
+  const dead = ['taxes', 'taxRate', 'militaryWages', 'militaryProcurement', 'adminFunding',
     'armySpending', 'subsidyPolicy', 'fiscalNet', 'outlayGold', 'procurementGold',
     'subsidyGold', 'projectGold', 'dividendGold', 'shareCostGold', 'shareSaleGold',
     'interestGold', 'borrowedGold', 'repaidGold', 'defaultedGold'];

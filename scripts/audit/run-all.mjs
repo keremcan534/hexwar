@@ -34,7 +34,6 @@ const AUDITS = [
   ['war-declaration-guard', 'Savas ilani nihai kapisi'],
   ['border-change', '50 yilda sinir degisimi'],
   ['long-run', 'Uzun kosu dunya testleri'],
-  ['companies', 'Sirketler, borsa, yabanci sahiplik ve AUTO devri'],
 ];
 
 const filter = process.argv.slice(2).map((s) => s.toLowerCase());
