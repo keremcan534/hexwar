@@ -1,8 +1,9 @@
 # HexWar
 
-Hex tabanlı, prosedürel dünya üreten, mobil öncelikli gerçek zamanlı strateji
-oyunu prototipi. Bağımlılık yok: saf ES modülleri ve Canvas2D; derleme adımı
-gerekmez.
+Hex tabanlı, prosedürel dünya üreten, **PC için** (masaüstü tarayıcı, fare ve
+klavye) gerçek zamanlı strateji oyunu prototipi. Bağımlılık yok: saf ES
+modülleri ve Canvas2D; derleme adımı gerekmez. Dokunmatik girdi çalışır ama
+tasarım hedefi değildir (bkz. CLAUDE.md).
 
 ## Çalıştırma
 
@@ -57,9 +58,10 @@ Zafer eleme değil üstünlüktür. Her ülkenin haftalık bir hegemonya puanı 
 ham üretim ve kurulu sanayi kapasitesi **ekonomi**, şehirler ile barışçı
 ilişkiler ve toprak **prestij** bileşenini oluşturur.
 
-Oyun 1836'da başlar, bir tur bir haftadır ve **1945'te biter** (5740. tur =
-28 Aralık 1945). **Erken zafer yoktur**: kazanan, son turda en yüksek puana
-sahip ülkedir. Eskiden bir puan eşiğine ilk ulaşan oyunu bitiriyordu; bu, güçlü
+Oyun 1836'da başlar, bir tur bir haftadır ve **1900'de biter** (`FINAL_TURN`
+3340; eskiden 1945'ti, ölçüm son 45 yılın boş olduğunu gösterdi, bkz.
+`src/game/hegemony.js`). **Erken zafer yoktur**: kazanan, son turda en yüksek
+puana sahip ülkedir. Eskiden bir puan eşiğine ilk ulaşan oyunu bitiriyordu; bu, güçlü
 ülkenin yüzyılın ortasında masayı toplamasına ve kalan onlarca yılın hiç
 oynanmamasına yol açıyordu.
 

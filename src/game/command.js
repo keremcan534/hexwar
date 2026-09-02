@@ -822,6 +822,53 @@ function pickOperation(game, general, divisions, info) {
   return best;
 }
 
+/**
+ * Ilerleyen generalin onundeki savunulan hedefe bakisi: ekran icin.
+ * pickOperation'la AYNI terazi (estimateBattle) ve ayni durus riski; ekran
+ * kendi hesabini kurmaz. Planlama %100 gorunurken generalin neden dalmadigi
+ * hicbir yerde yazmiyordu (Open Beta 4): "odds 1.04, Balanced needs 1.2".
+ * Savunulan hedef yoksa null; oran ve esik ekranda cumleye doner.
+ */
+export function assaultOutlook(world, general, turn = world.turn ?? 0) {
+  if (!general || general.stance !== STANCE.ADVANCE) return null;
+  const nation = world.nations[general.nationId];
+  const divisions = general.divisions
+    .map((id) => world.units.find((unit) => unit.id === id))
+    .filter((unit) => unit && unit.hp > 0 && unit.type.domain === 'land');
+  const ready = (unit) => !unit.battleId && !isMoving(unit) && !unit.embarked
+    && (unit.retreatUntil ?? 0) <= turn && (unit.attackReadyAt ?? 0) <= turn;
+  const info = aggressionInfo(general.aggression);
+  let best = null;
+  for (const unit of divisions) {
+    for (const tile of world.neighbors(unit.tile)) {
+      const controller = controllerOf(tile);
+      if (!tile.terrain.passable || controller < 0 || controller === nation.id) continue;
+      if (general.target != null && controller !== general.target) continue;
+      if (!atWar(world, controller, nation.id)) continue;
+      const defenders = unitsOn(tile).filter((other) => other.nationId !== nation.id);
+      if (!defenders.length) continue;
+      // pickOperation ile ayni katilimci kurali: bitisik, hazir, combat width.
+      const participants = divisions
+        .filter((other) => ready(other)
+          && world.wrapDistance(other.tile.q, other.tile.r, tile.q, tile.r) === 1)
+        .sort((a, b) => armyPower(b) - armyPower(a) || a.id - b.id)
+        .slice(0, MAX_ASSAULT_DIVISIONS);
+      if (!participants.length) continue;
+      const { attack, defense } = estimateBattle(world, participants, defenders);
+      const ratio = defense > 0 ? attack / defense : Infinity;
+      if (!best || ratio > best.ratio) {
+        best = {
+          tile, defenders: defenders.length, attackers: participants.length,
+          ratio, needed: info.risk, posture: info.label,
+          ready: general.planning >= MIN_ASSAULT_PLANNING
+            && turn >= (general.nextAssaultAt ?? 0),
+        };
+      }
+    }
+  }
+  return best;
+}
+
 function pickFrontierTarget(world, unit, reserved) {
   let best = null;
   let bestScore = -Infinity;

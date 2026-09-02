@@ -13,7 +13,8 @@ import { warScore } from '../game/peace.js';
 import { INFAMY_COALITION, OCCUPATION_TURNS, tileEfficiency } from '../game/infamy.js';
 import { savedInfo } from '../game/save.js';
 import { scoreboard } from '../game/hegemony.js';
-import { ORDER } from '../game/orders.js';
+import { ORDER, idleUnits } from '../game/orders.js';
+import { ensureConstruction, investmentLevel } from '../game/construction.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { bindMacroCards } from './macroCard.js';
 import { Screens } from './screens.js';
@@ -236,7 +237,9 @@ export class Hud {
 
     game.on('world', (world) => { this.onWorld(world); this.showWars(); });
     game.on('select', (tile) => this.showTile(tile));
-    game.on('turn', () => { this.onTurn(); this.showWars(); });
+    // Hafta damgasi yalniz gercek tur olayinda: onTurn ekonomi/insaat
+    // olaylarinda da kosar, oradan sayilsaydi efektif hiz sisiyordu.
+    game.on('turn', () => { (this.weekStamps ??= []).push(performance.now()); this.onTurn(); this.showWars(); });
     game.on('peace', () => this.showWars());
     // Gün tiki yalnız tarihi oynatır. Eskiden her gün tam onTurn koşuyordu:
     // hız 8'de saniyede 8 kez skorbord + ordu toplamı + üç innerHTML bloğu
@@ -603,10 +606,14 @@ export class Hud {
     // Etiket/değer düzeni: tek satır serbest metin yerine taranabilir hücreler.
     el.innerHTML = `
       <div class="hegemony-row">
-        <span><small>Hegemony</small><b>${me.total}<em>/${leader.total}</em></b></span>
-        <span><small>Rank</small><b>${rank}<em>/${board.length}</em></b></span>
-        <span><small>Economy</small><b>${me.economy}</b></span>
-        <span><small>Prestige</small><b>${me.prestige}</b></span>
+        <span title="Economy + Prestige. The nation with the highest score on the last turn (1900) wins; there is no early victory.">
+          <small>Hegemony</small><b>${me.total}<em>/${leader.total}</em></b></span>
+        <span title="Your place among ${board.length} living nations. The leader's score is the denominator on the left.">
+          <small>Rank</small><b>${rank}<em>/${board.length}</em></b></span>
+        <span title="Raw production (gold, food, timber, iron) × 1.2, plus every factory level weighted by the era: industry counts for more as the century advances. Build and expand factories to move it.">
+          <small>Economy</small><b>${me.economy}</b></span>
+        <span title="Cities (2 each, plus size), nations at peace with you (2 each) and territory (0.04 per hex). Found cities, keep the peace, hold land.">
+          <small>Prestige</small><b>${me.prestige}</b></span>
       </div>
       <span class="bar"><i style="width:${Math.min(100, (me.total / Math.max(1, leader.total)) * 100)}%"></i></span>
       ${leader.nation.id === me.nation.id
@@ -665,12 +672,43 @@ export class Hud {
       this.lastDateLabel = label;
       this.el.turnValue.textContent = label;
     }
+    this.showEffectiveSpeed();
     if (clock.speed !== this.lastSpeedShown) {
       this.lastSpeedShown = clock.speed;
+      this.speedSince = performance.now();
+      this.weekStamps = [];
       for (const btn of document.querySelectorAll('.time-btn[data-speed]')) {
         btn.classList.toggle('active', Number(btn.dataset.speed) === clock.speed);
       }
     }
+  }
+
+  /**
+   * Yuksek hizda saat kendini tur maliyetine gore kisar (game.js pumpTurnFrame:
+   * hafta 5 ms'lik dilimlerle islenir) ve bunu kimseye soylemiyordu: 8x'te
+   * 8 saniyede 2 hafta gecince oyuncu 2x sandi (Open Beta 4). Son bes saniyede
+   * kapanan hafta sayisindan efektif carpan turetilir; nominalin %80'inin
+   * altina dusunce tarih rozetinin yaninda yazar.
+   */
+  showEffectiveSpeed() {
+    const { clock } = this.game;
+    if (!this.effEl) {
+      this.effEl = document.createElement('small');
+      this.effEl.className = 'turn-effective';
+      this.effEl.title = 'Effective speed: the simulation could not keep up with the clock this second.';
+      this.el.turnValue.after(this.effEl);
+    }
+    const now = performance.now();
+    // On saniyelik pencere: 8x'te bile hafta 0.9 s surer, bes saniyede
+    // yalniz bir-iki hafta kapanir ve olcum gurultuye bogulur.
+    const stamps = (this.weekStamps ??= []).filter((t) => now - t <= 10000);
+    this.weekStamps = stamps;
+    const nominal = clock.speed / 7;           // hafta/sn: gun = 1000 ms / hiz
+    const effective = stamps.length / 10;
+    const running = clock.speed >= 2 && now - (this.speedSince ?? 0) > 10000;
+    const throttled = running && effective < nominal * 0.8;
+    const text = throttled ? `effective ×${(effective * 7).toFixed(1)}` : '';
+    if (this.effEl.textContent !== text) this.effEl.textContent = text;
   }
 
   onTurn() {
@@ -743,15 +781,57 @@ export class Hud {
     const battles = world.battleSystem?.battles?.filter((battle) => (
       battle.attackerNation === me.id || battle.defenderNation === me.id
     )) ?? [];
-    const net = me.budget?.net ?? {};
-    let next = 'Review Military, Factories or Construction before unpausing.';
-    if (battles.length) next = 'A battle is active: select its army to inspect strength and organization.';
-    else if (wars.length) next = 'Move an army onto an enemy army or province; defeated armies retreat.';
+    // Kart devletin O ANKI haline gore konusur. Eskiden uc cumlesi vardi
+    // (baris/savas/muharebe) ve temerrutteki devlete alti yil boyunca
+    // "Review Military..." diyordu (Open Beta 4). Sira onemli: muharebe >
+    // savas > ilk hafta > butce acigi > egitim > program > bos tumen >
+    // bos insaat gucu > kitlik > rutin. Sayilar simulasyonun kendi
+    // alanlaridir, kart hicbir seyi yeniden hesaplamaz.
+    const balance = weeklyBalanceOf(me);
+    const education = me.economy?.social?.education ?? 0;
+    const research = me.research;
+    const idle = idleUnits(world, me.id);
+    const capacityIdle = investmentLevel(me, 'CONSTRUCTION_CAPACITY') > 0
+      && !ensureConstruction(me).projects.some((p) => p.kind !== 'national');
+    const flow = me.economy?.goodsFlow ?? {};
+    const shortages = Object.values(flow).filter((f) => (f?.demand ?? 0) > 0.005
+      && (f.fulfilled ?? 0) / f.demand < 0.925).length;
+    let next;
+    let why = 'Province → population and raw goods → factories and taxes → army and world prices.';
+    if (battles.length) {
+      next = 'A battle is active: select its army to inspect strength and organization.';
+    } else if (wars.length) {
+      next = 'Move an army onto an enemy army or province; defeated armies retreat.';
+      why = 'Set a general\'s target and posture in the command dock; Aggressive assaults at even odds.';
+    } else if (turns.turn <= 1) {
+      next = 'Unpause for one week: the books open after the first weekly tick.';
+      why = 'Income, prices and factory output all read zero until the market clears once.';
+    } else if ((me.debt ?? 0) > 0 || balance < 0) {
+      next = `Spending exceeds revenue (${balance >= 0 ? '+' : ''}${Math.round(balance)}/week): open Budget.`;
+      why = 'Raise a class tax or the tariff, or lower army funding; every ledger line says what it is.';
+    } else if (education < 25) {
+      next = `Education is at ${education}%: raise it past 25% in Budget to unlock a National Programme.`;
+      why = 'Literacy feeds research; the programme sets its direction for eight years.';
+    } else if (research && !research.programme && (world.turn ?? 0) >= (research.programmeCooldown ?? 0)) {
+      next = 'Proclaim a National Programme on the Technology screen.';
+      why = 'Direction, price and an education floor for eight years; click a card twice.';
+    } else if (idle.length) {
+      next = `${idle.length} ${idle.length === 1 ? 'division has' : 'divisions have'} no orders: press N to cycle through them.`;
+      why = 'A division under a general holds the border by itself; loose ones stand still.';
+    } else if (capacityIdle) {
+      next = 'Construction power is idle: queue a project on the Construction screen or dissolve a level.';
+      why = 'Capacity upkeep runs every week whether or not anything is being built.';
+    } else if (shortages) {
+      next = `${shortages} goods are in shortage: the Trade screen shows which plant would pay.`;
+      why = 'A plant covering an import bill earns from the first week.';
+    } else {
+      next = 'Books balanced, programme set, army posted: expand a profitable factory or review Trade.';
+    }
     this.el.sheetBody.innerHTML = `
       <div class="decision-card">
         <small>NEXT MEANINGFUL DECISION</small>
         <h3>${escapeHtml(next)}</h3>
-        <p>Province → population and raw goods → factories and taxes → army and world prices.</p>
+        <p>${escapeHtml(why)}</p>
         <div class="decision-kpis">
           <span><b>${weeklyBalanceOf(me) >= 0 ? '+' : ''}${Math.round(weeklyBalanceOf(me))}</b><small>weekly balance</small></span>
           <span><b>${battles.length}</b><small>active battles</small></span>

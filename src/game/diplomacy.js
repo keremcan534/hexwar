@@ -6,7 +6,7 @@ import { DIRS } from '../core/hex.js';
 import { armyPower } from './units.js';
 import { captureConstructionAt } from './construction.js';
 import { controllerOf } from './control.js';
-import { remember } from './chronicle.js';
+import { TIER, announce, remember } from './chronicle.js';
 
 export const WAR = 'war';
 export const PEACE = 'peace';
@@ -218,9 +218,18 @@ export function declareWar(game, a, b, options = {}) {
   if (a === game.turns.playerNation || b === game.turns.playerNation) {
     const other = world.nations[a === game.turns.playerNation ? b : a];
     // Savaş ilanı kendiliğinden kapanmaz (NOTIFY.WAR ttl 0): görülmeden geçmemeli.
-    game.turns.addLog(a === game.turns.playerNation
-      ? `War declared on ${other.name}.`
-      : `${other.name} declared war on us!`, { kind: 'WAR' });
+    // Ulusal olay olarak duyurulur ki VAKAYINAMEYE girsin: 39. haftada
+    // vakayinamede yalniz "The treasury borrows" vardi, ilk savas yoktu
+    // (Open Beta 4). Baris zaten "Peace with X" diye kaydediliyor.
+    const me = world.nations[game.turns.playerNation];
+    const attacked = b === game.turns.playerNation;
+    announce(game, me, {
+      kind: 'WAR', tier: TIER.MAJOR, key: `war-${other.id}`, ttl: 0,
+      title: attacked ? `${other.name} declares war on us` : `War declared on ${other.name}`,
+      detail: attacked
+        ? 'Their armies may cross the border at once; hold the line or take theirs.'
+        : 'The peace table opens once provinces are held; each taken province costs infamy.',
+    });
   }
   return true;
 }

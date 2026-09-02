@@ -202,7 +202,9 @@ export function startBattle(game, attacker, tile) {
   const mine = attacker.nationId === game.turns.playerNation
     || defenderNation === game.turns.playerNation;
   game.turns.addLog(
-    `${world.nations[attacker.nationId].name} engaged at ${tile.q}, ${tile.r}.`,
+    // Koordinat degil province adi: "engaged at 132, 7" oyuncuya bir yer
+    // soylemiyordu (Open Beta 4); kazanma satiri zaten "Battle of Pellvale" der.
+    `${world.nations[attacker.nationId].name} engaged at ${provinceName(tile)}.`,
     { kind: 'BATTLE', silent: !mine, tile },
   );
   game.emit('battles', battle);

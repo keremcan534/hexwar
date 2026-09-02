@@ -614,6 +614,16 @@ select:focus-visible {
   text-align: right;
 }
 
+/* Saat kendini kistiginda tarihin altinda efektif carpan (hud.js showEffectiveSpeed). */
+.turn-effective {
+  display: block;
+  color: var(--text-dim);
+  font-size: var(--fs-xs, 0.7rem);
+  letter-spacing: 0.04em;
+  min-height: 0.9em;
+}
+.turn-effective:empty { display: none; }
+
 /* Tarih görsel olarak önemli ama başlık kadar büyük değil. */
 .turn-badge b {
   display: block;
@@ -8342,6 +8352,11 @@ body.menu-open .sheet { visibility: hidden; }
   cursor: pointer;
 }
 .tech-programme-card:hover { border-color: var(--frame-brass); }
+/* Ilk tik: kart onay bekler, ikinci tik ilan eder (screens.js data-proclaim). */
+.tech-programme-card.confirming { border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright) inset; }
+.tech-programme-card.confirming em { color: var(--gold-bright); }
+/* Komutanin taarruz bakisi: neden saldirdigi ya da saldirmadigi (military.js assaultLine). */
+.mil-assault { margin: 4px 8px 6px; color: var(--text-dim); font-size: var(--fs-sm); line-height: 1.35; }
 .tech-programme-card i { font-style: normal; }
 .tech-programme-card b { font-family: var(--font-display); }
 .tech-programme-card span { font-size: var(--fs-sm); color: var(--text-dim); }

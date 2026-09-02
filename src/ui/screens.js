@@ -917,12 +917,17 @@ export class Screens {
         ? info.levels[Math.min(level, info.levels.length - 1)]
         : `level ${level}`;
       const capped = info.max != null && level + pending >= info.max;
+      // Bos kuyrukla calisan insaat gucu para kuyusudur: sanayici 14 seviye
+      // alip 12 yil bos kuyrukla bakim odedi, hicbir sey uyarmadi (Open Beta 4).
+      const idlePower = info.id === 'CONSTRUCTION_CAPACITY' && level > 0
+        && !state.projects.some((project) => project.kind !== 'national' || project.typeId !== info.id);
       return `<div class="construction-invest card" title="${esc(info.desc)}">
         <i>${info.icon}</i>
         <span class="grow"><b>${esc(info.name)}</b>
           <small>${esc(levelName)}${pending ? ` · ${pending} in queue` : ''}${
   info.id === 'CONSTRUCTION_CAPACITY' ? ` · +${5 * level}/wk` : ''}</small>
           ${blocked && !capped ? `<small class="res-warn">${esc(blocked)}</small>` : ''}
+          ${idlePower ? `<small class="res-warn">Build power idle: nothing is queued, upkeep −¤${info.upkeep * level}/week still runs. Queue a project or dissolve a level.</small>` : ''}
         </span>
         <button class="action" data-invest="${info.id}" ${blocked ? 'disabled' : ''}
           title="${esc(blocked ?? `Invest ¤${cost}: enters the construction queue and adds −¤${info.upkeep}/week upkeep.`)}">
@@ -1372,6 +1377,21 @@ export class Screens {
         ${vbox(amount)}
       </div>`;
 
+    // Kaydiraci olmayan kalemlerin cumlesi. Iki oyuncu da iflasin en buyuk iki
+    // kalemini ("Strategic imports", "External settlement") okuyamadi; sayi
+    // vardi, anlami yoktu (Open Beta 4). Metin defter satirinin ne oldugunu
+    // soyler, tutari yeniden hesaplamaz.
+    const LEDGER_NOTES = {
+      state: 'what state-owned factories and provincial raw output pay the treasury',
+      settlement: 'cash settled with the world market this week: goods sold abroad minus goods bought',
+      treaty: 'indemnities and tribute owed or received under signed treaties',
+      administration: 'automatic: grows with cities, provinces and population',
+      construction: 'upkeep of construction capacity, forts, offices and universities',
+      subsidy: 'treasury support paid to subsidised factories',
+      imports: 'arms, shells and fuel bought abroad for the army; falls as your own plants make them',
+      outlay: 'one-off state purchases this week: factories, regiments, officers',
+      interest: 'interest on the national debt; rises with the credit penalty',
+    };
     const row = (label, amount, note = '') => `
       <div class="ledger-row">
         <span class="ledger-mid">
@@ -1412,7 +1432,7 @@ export class Screens {
         + ` \u00b7 imported goods cost <b>+${c.tariff.priceEffect}%</b>`)}
 
         ${view.incomeRows.filter((r) => r.id !== 'tax' && r.id !== 'tariff')
-    .map((r) => row(r.label, r.amount)).join('')}
+    .map((r) => row(r.label, r.amount, LEDGER_NOTES[r.id] ?? '')).join('')}
 
         <div class="ledger-total"><span>Total income</span>
           <span class="vbox pos big">${view.income.toFixed(1)}\u00a4</span></div>
@@ -1437,8 +1457,7 @@ export class Screens {
         + ` \u00b7 population growth <b>\u00d7${c.welfare.growth.toFixed(2)}</b>`)}
 
         ${view.expenseRows.filter((r) => !['army', 'procurement', 'education', 'welfare'].includes(r.id))
-    .map((r) => row(r.label, r.amount, r.id === 'administration'
-      ? 'automatic: grows with cities, provinces and population' : '')).join('')}
+    .map((r) => row(r.label, r.amount, LEDGER_NOTES[r.id] ?? '')).join('')}
 
         <div class="ledger-total"><span>Total spending</span>
           <span class="vbox neg big">${view.expenses.toFixed(1)}\u00a4</span></div>
@@ -1562,6 +1581,7 @@ export class Screens {
     return technologyScreen(me, {
       category: this.techCategory ?? 'industry',
       selected: this.techSelected ?? null,
+      confirm: this.techConfirm ?? null,
       year,
       turn: world.turn ?? 0,
       rate: researchPointsOf(me),
@@ -1837,6 +1857,13 @@ export class Screens {
     for (const btn of this.el.body.querySelectorAll('[data-proclaim]')) {
       btn.onclick = () => {
         const id = btn.dataset.proclaim;
+        // Ilk tik onay ister, ikinci tik ilan eder (bkz. technologyScreen kart).
+        if (this.techConfirm !== id) {
+          this.techConfirm = id;
+          this.refresh();
+          return;
+        }
+        this.techConfirm = null;
         if (adoptProgramme(me, id, game.world.turn ?? 0)) {
           const programme = PROGRAMMES[id];
           // Taahhut ANINDA baglar: kart "egitim >= %25" diyorsa kaydirac o

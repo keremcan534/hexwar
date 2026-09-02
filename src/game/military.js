@@ -15,6 +15,7 @@
 import {
   BRANCH, MAX_COMMAND_SIZE, TRAITS, aggressionInfo, branchOf, commandSize,
   ensureCommandOptions, generalsOf, officersOf,
+  assaultOutlook,
 } from './command.js';
 import { MAX_ASSAULT_DIVISIONS, MAX_DEFENSE_DIVISIONS } from './battles.js';
 import {
@@ -283,6 +284,24 @@ function traitSum(general, key) {
  * yeniden yorumlanmaz, yalnız okunur hâle getirilir: yetenek kademe başına
  * %6, nitelikler kendi alanlarında ekler.
  */
+/**
+ * Taarruz bakisini cumleye cevirir. Oran ve esik pickOperation'in kullandigi
+ * sayilardir; "planning 100%" gorunurken generalin neden dalmadigi bu
+ * satirdan okunur (Open Beta 4).
+ */
+function assaultLine(world, general) {
+  const look = assaultOutlook(world, general);
+  if (!look) return null;
+  const odds = look.ratio === Infinity ? '∞' : look.ratio.toFixed(2);
+  const where = provinceName(look.tile);
+  if (look.ratio >= look.needed) {
+    return look.ready
+      ? `Assault on ${where} is on: odds ${odds} against ${look.defenders} defending, ${look.posture} needs ${look.needed}.`
+      : `Assault on ${where} waits for the plan to mature (odds ${odds}, ${look.posture} needs ${look.needed}).`;
+  }
+  return `Holding before ${where}: odds ${odds} with ${look.attackers} in the line against ${look.defenders} dug in; ${look.posture} needs ${look.needed}. Raise the posture, bring artillery or wait for them to weaken.`;
+}
+
 export function commandRoster(world, nation) {
   const build = (general) => {
     const divisions = [];
@@ -312,6 +331,9 @@ export function commandRoster(world, nation) {
       target,
       planning: general.planning ?? 0,
       front: general.front?.length ?? 0,
+      // Ilerleyen komutanin onundeki savunulan hedefe bakisi: ekran "neden
+      // saldirmiyor" sorusuna cevap verebilsin (bkz. command.assaultOutlook).
+      assault: naval ? null : assaultLine(world, general),
       // Muharebe çarpanları: yüzde puanı olarak.
       attack: general.skill * 0.06 + traitSum(general, 'attack'),
       defense: general.skill * 0.06 + traitSum(general, 'defense'),

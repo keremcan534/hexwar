@@ -79,12 +79,17 @@ function programmePanel(nation, view) {
       <p>No national programme. After the last winding-up, none may be proclaimed before ${year}.</p>
     </div>`;
   }
+  // Iki tik: ilki karti "onay bekliyor" yapar, ikincisi ilan eder. Tek tikla
+  // sekiz yillik taahhut yeni oyuncuyu sasirtti (Open Beta 4); ayri bir
+  // iletisim kutusu yok, kartin kendisi soruyu sorar.
   const cards = Object.values(PROGRAMMES).map((p) => `
-    <button class="tech-programme-card" data-proclaim="${esc(p.id)}"
+    <button class="tech-programme-card${view.confirm === p.id ? ' confirming' : ''}" data-proclaim="${esc(p.id)}"
       title="${esc(p.line)} Binds education at ${p.floor}%.">
       <i>${p.icon}</i><b>${esc(p.name)}</b>
       <span>${p.focus.map(([, f]) => f).join(' · ')}</span>
-      <em>education ≥ ${p.floor}%</em>
+      <em>${view.confirm === p.id
+    ? 'click again to proclaim: eight years, education bound at ' + p.floor + '%'
+    : 'education ≥ ' + p.floor + '%'}</em>
     </button>`).join('');
   return `<div class="tech-programme choose">
     <header><b>Proclaim a National Programme</b>

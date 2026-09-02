@@ -341,6 +341,21 @@ elle kurduğu 9 tesis; dünya fiyatları tabanda olduğu için (deflasyon, bilin
 #1) çıktının parasal karşılığı küçük. Deflasyon `REMAINING_CORE_HIGH_ISSUES`
 #1 olarak sahibinin kararıyla kapsam dışı.
 
+### İletişim maddeleri (yedinci commit)
+
+| madde | değişiklik | doğrulama |
+|---|---|---|
+| Rehber kartı üç cümleydi | `hud.js showGuidance` devletin o anki haline göre konuşur: ilk hafta / bütçe açığı / eğitim < %25 / program yok / emirsiz tümen / boş inşaat gücü / kıtlık / rutin; ikinci satır ne yapılacağını söyler | T1 "Unpause for one week…", T7 "Education is at 0%…", borçta "Spending exceeds revenue (−2/week): open Budget." |
+| Hegemonya açıklamasız | Dört hücrede `title`: puanın bileşimi, sıralama, ekonomi (ham üretim × 1.2 + fabrika seviyesi, devirle ağırlık), prestij (şehir, barış ortağı, toprak) | 4 başlık |
+| "Strategic imports", "External settlement" anlamsız | Bütçede kaydıraçsız her kalemin altında bir cümle (`LEDGER_NOTES`, 9 kalem) | ekranda 2 not (o hafta var olan kalemler) |
+| Program tek tıkla sekiz yıl | İlk tık kartı "click again to proclaim…" yapar, ikinci tık ilan eder | 1. tık: confirming 1, program null; 2. tık: IRON_AND_RAIL |
+| General neden saldırmıyor | `command.assaultOutlook` (pickOperation ile aynı terazi) → `military.assaultLine` → Military'de cümle | "Holding before Pellvale: odds 1.01 with 3 in the line against 3 dug in; Balanced needs 1.2. Raise the posture, bring artillery or wait…" |
+| Savaş vakayinameye girmiyor | `diplomacy.declareWar` `announce` (tier MAJOR) | Chronicle 1836: "War declared on Irheim" |
+| Muharebe logu koordinat | `battles.js` "engaged at Pellvale" | — |
+| Boş kuyrukla kapasite bakımı | Construction kartında "Build power idle: nothing is queued, upkeep −¤X/week still runs" | — |
+| Efektif hız gizli | `hud.showEffectiveSpeed`: on saniyelik pencerede kapanan hafta, nominalin %80'inin altına düşünce tarih altında "effective ×N" | başsız Chromium 8x: 15. saniyede "effective ×1.4" |
+| README 1945 / mobil | 1900 ve PC | — |
+
 ## Ek: 65 yıllık `LONG-1` koşusu (başsız, el sürülmeden, 66 ülke)
 
 | yıl | dünya GSYH | fabrika | seviye | nüfus (M) | okuryazar | canlı | altın>0 | borçlu | savaş | en büyük (hex) | ms/hafta |

@@ -158,6 +158,7 @@ function leaderDetail(leader, loose) {
       ${leader.branch === 'navy' ? '' : `<span class="mil-plan" title="A matured plan is worth up to +25% in the attack.">
         planning <i><b style="width:${Math.round(leader.planning * 100)}%"></b></i>${pct(leader.planning)}</span>`}
     </div>
+    ${leader.assault ? `<p class="mil-assault">${esc(leader.assault)}</p>` : ''}
     <div class="mil-detail-actions">
       ${loose > 0 && !leader.full ? `<button class="mil-btn" data-military-assign="${leader.id}"
         title="${esc(`Put every ${leader.branch === 'navy' ? 'ship' : 'division'} without a commander under this officer.`)}">
