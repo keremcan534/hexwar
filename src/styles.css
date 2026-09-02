@@ -5408,6 +5408,37 @@ body.screen-open .layer-menu { display: none; }
 }
 
 .notify-sticky .notify-timer { display: none; }
+
+/* Ekran acikken yigin tek bir sayaca cekilir: kartlar ekranin sag sutununu
+   ortup Build/Close dugmelerini ve kaydiraclari yutuyordu (Open Beta 4, B-3).
+   Pilin ustune gelince ya da tiklaninca kartlar altinda acilir; ekran
+   kapaninca kurallar devreden cikar, kartlar eski yerinde. */
+.notify-tray {
+  display: none;
+  align-self: flex-end;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-left: 3px solid var(--gold-dark);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  box-shadow: var(--shadow-float);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  cursor: pointer;
+  pointer-events: auto;
+}
+.notify-tray.notify-alert { border-left-color: var(--red); }
+.notify-tray.bump { animation: notify-bump 0.4s ease; }
+.notify-tray[hidden] { display: none !important; }
+body.screen-open .notify-tray { display: inline-flex; }
+body.screen-open .notify-stack .notify-card { display: none; }
+body.screen-open .notify-stack:hover,
+body.screen-open .notify-stack.open { pointer-events: auto; }
+body.screen-open .notify-stack:hover .notify-card,
+body.screen-open .notify-stack.open .notify-card { display: grid; }
 /* Imlec yiginin ustundeyken sayac durur; serit de durmali. */
 .notify-stack.paused .notify-timer { animation-play-state: paused; }
 

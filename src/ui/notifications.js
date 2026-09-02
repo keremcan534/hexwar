@@ -33,11 +33,36 @@ export class Notifications {
     });
     // Yeni dünya eski dünyanın kartlarıyla açılmasın.
     game.on('world', () => this.clear());
+
+    // Ekran acikken yigin tek bir sayaca cekilir (bkz. styles.css .notify-tray):
+    // kalici kartlar Build/Close dugmelerini ve kaydiraclari ortup tiklamayi
+    // yutuyordu (Open Beta 4, B-3). Uzerine gelince ya da tiklaninca acilir;
+    // ekran kapaninca kartlar eski yerine doner.
+    this.tray = document.createElement('button');
+    this.tray.type = 'button';
+    this.tray.className = 'notify-tray';
+    this.tray.setAttribute('aria-label', 'Notifications');
+    this.tray.onclick = () => this.root.classList.toggle('open');
+    this.root.prepend(this.tray);
+    new MutationObserver(() => {
+      if (!document.body.classList.contains('screen-open')) this.root.classList.remove('open');
+    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    this.updateTray();
+  }
+
+  /** Sayac: kart sayisi ve en agir ton. Kart yoksa pil de yok. */
+  updateTray() {
+    if (!this.tray) return;
+    const count = this.cards.size;
+    const alert = [...this.cards.keys()].some((entry) => entry.tone === 'bad' || entry.tone === 'war');
+    this.tray.hidden = count === 0;
+    this.tray.textContent = `🔔 ${count}`;
+    this.tray.classList.toggle('notify-alert', alert);
   }
 
   add(entry) {
     const card = this.build(entry);
-    this.root.prepend(card);
+    this.tray.after(card);
     this.cards.set(entry, {
       card,
       remaining: entry.ttl,
@@ -47,6 +72,11 @@ export class Notifications {
     this.mount(card);
     this.startTimer(entry);
     this.trim();
+    this.updateTray();
+    // Ekran acikken gelen kart gorunmez; pil bir kez ziplasin.
+    this.tray.classList.remove('bump');
+    void this.tray.offsetWidth;
+    this.tray.classList.add('bump');
   }
 
   /** Aynı olay yine geldi: sayacı büyüt, metni tazele, kartı bir kez zıplat. */
@@ -112,6 +142,10 @@ export class Notifications {
    */
   mount(card) {
     const height = card.offsetHeight;
+    // Ekran acikken kart gizli (display: none) dogar: yukseklik 0 olculur,
+    // gecis hic bitmez ve kart sonradan acilinca 0px'te kalirdi. Gizli kart
+    // animasyonsuz kalir; ekran kapaninca dogal boyuyla gorunur.
+    if (!height) return;
     card.style.height = '0px';
     card.style.marginBottom = '0px';
     card.classList.add('notify-enter');
@@ -135,6 +169,7 @@ export class Notifications {
     this.cards.delete(entry);
     this.game.notifications?.release(entry);
     clearTimeout(state.timer);
+    this.updateTray();
 
     const { card } = state;
     // Çıkarken de yükseklik kapanır ki alttaki kartlar yukarı kayarken akmasın.

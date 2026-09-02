@@ -140,6 +140,21 @@ export class NotificationCenter {
     return doomed.length;
   }
 
+  /**
+   * Kosulu biten kalici kartlar anahtara gore duser. Kalici (ttl 0) kart
+   * "okunana kadar durur" diye tasarlandi (B-018) ama kosulu bittikten sonra
+   * durmasi yalan soyler: 1839'un "The state defaults" karti 1865'te borc
+   * sifirken hala ekrandaydi (Open Beta 4, B-5).
+   */
+  dismissKeys(keys) {
+    const wanted = new Set(Array.isArray(keys) ? keys : [keys]);
+    const doomed = this.active.filter((entry) => wanted.has(entry.key));
+    if (!doomed.length) return 0;
+    this.active = this.active.filter((entry) => !wanted.has(entry.key));
+    this.game.emit('notify-dismiss', doomed);
+    return doomed.length;
+  }
+
   clear() {
     this.active = [];
     this.game.emit('notify-clear', null);

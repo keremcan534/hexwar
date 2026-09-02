@@ -241,6 +241,20 @@ HIGH'ı ve fazladan bir MEDIUM'u ("araştırma hızında ayrışma yok") veriyor
 Yani ikisi de eski bulgu, bu düzeltmelerin işi değil; MEDIUM sonrasında
 kayboldu (p90/p10 2.6 · 1.7 · 1.8 eşiğin üstüne çıktı).
 
+### Bildirim yığını: B-3 ve B-5 birlikte (üçüncü commit)
+
+Karar iki kural: **ekran açıkken yığın tek bir sayaca çekilir**, **kalıcı kart
+koşulu bitince düşer**. Yığını ekrandan tümden kaldırmak ya da tıklamaya
+geçirgen yapmak reddedildi: kart okunmadan kaybolur ya da yine örter.
+
+| değişiklik | doğrulama (tarayıcı, `FABLE-1`) |
+|---|---|
+| `ui/notifications.js` + `styles.css`: `body.screen-open` iken kartlar gizli, sağ üstte "🔔 N" pili; üzerine gelince ya da tıklayınca kartlar altında açılır, ekran kapanınca eski yerine döner. Gizli doğan kart animasyonsuz (yükseklik 0 tuzağı). | Factories açık: kartlar `display: none`, pil "🔔 2"; Upgrade düğmesinin ortasında `elementFromPoint` düğmenin kendisi. Pile gelince kartlar `grid`, ayrılınca gizli; Escape sonrası kartlar haritada, pil yok. |
+| `game/notifications.js dismissKeys` + `events.js`: borç evresi değişince önceki evrenin kriz kartı düşer (ekranda hep bugünkü evre), program ilan edilince "The nation has no programme" düşer. Anahtarlar ortak olduğu için yalnız oyuncunun kartları. | borç 3000 → `debt-critical`; borç 0 → yalnız `debt-clear`. `programme-prompt` var → Iron & Rail ilanı + 1 hafta → yok. Sayfa hatası 0. |
+
+Kalıcı kalanlar bilerek: araştırma kartı (B-018: okunana kadar durur, artık
+doğru metinle), hegemonya ve savaş ilanı (barışta zaten düşüyor).
+
 ## Ek: 65 yıllık `LONG-1` koşusu (başsız, el sürülmeden, 66 ülke)
 
 | yıl | dünya GSYH | fabrika | seviye | nüfus (M) | okuryazar | canlı | altın>0 | borçlu | savaş | en büyük (hex) | ms/hafta |

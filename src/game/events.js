@@ -89,6 +89,12 @@ function debtPhase(nation) {
 }
 
 function announceDebt(game, nation, state, from, to) {
+  // Borc evresi degisince onceki evrenin kalici karti duser: ekranda hep
+  // BUGUNKU evre durur, 1839'un temerrut karti 1865'te durmaz (B-5). Anahtarlar
+  // ulkeler arasi ortak; yalniz oyuncunun kendi kartlari dusurulur.
+  if (nation.id === game.turns?.playerNation) {
+    game.notifications?.dismissKeys(['debt-begins', 'debt-critical', 'debt-default']);
+  }
   const ledger = nation.economy?.ledger ?? {};
   const weekly = ledger.net ?? 0;
   const interest = Math.abs(nation.economy?.ledger?.interest ?? 0);
@@ -203,6 +209,12 @@ export function runNationalEvents(game, nation) {
       title: 'The nation has no programme',
       detail: 'Proclaim a National Programme on the Technology screen to set a direction for the decade.',
     });
+  }
+
+  // Program ilan edilince davet karti duser; ilan edilmis programin yaninda
+  // "The nation has no programme" durmasi yalan (B-5).
+  if (research?.programme && nation.id === game.turns?.playerNation) {
+    game.notifications?.dismissKeys('programme-prompt');
   }
 
   // --- REJIM -------------------------------------------------------------
