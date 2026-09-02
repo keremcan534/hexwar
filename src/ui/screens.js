@@ -322,6 +322,13 @@ export class Screens {
   close() {
     if (this.active === 'construction' || this.active === 'peace') this.restoreMapMode();
     this.constructionType = null;
+    // Sanayi ekraninin gecici katmanlari da kapanir: katalog, ⋯ menusu ve
+    // kapatma onayi. Kalsalardi Factories her acilista acik katalogla geliyor
+    // ve Upgrade/Subsidise satirini ortuyordu (Open Beta 4, B-10). Secili
+    // state ve suzgecler bilerek korunur; oyuncu kaldigi yere doner.
+    this.industry.picker = null;
+    this.industry.menu = null;
+    this.industry.confirm = null;
     this.active = null;
     delete this.el.root.dataset.screen;
     document.body.classList.remove('screen-open');

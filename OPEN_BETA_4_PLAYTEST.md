@@ -224,6 +224,23 @@ yürümüyor. Ayrı bir iş.
 5. Sonra tasarım: kapitalist yatırım kilidi (¤1.200), AUTO bütçenin üst sınıfı
    eritmesi, açılış haftası, rehber kartı.
 
+### Beş küçük düzeltme (aynı dal, ikinci commit)
+
+| # | değişiklik | doğrulama |
+|---|---|---|
+| B-4 | `economy.js`: biten teknolojiden sonra kuyruk hemen doldurulur, kart ondan sonra yazılır | `FABLE-1`, eğitim %60, 5 yıl: 5 tamamlanma, 5 "continuing with …", 0 "nothing left" |
+| B-6 | `tradeLedger.js`: kıtlık yalnız karşılanma oranından; tavan fiyat tek başına "severe" vermez | tavan + %100 karşılanan + ihraç edilen Sulphur → `export surplus`; tavan + %40 → `severe` |
+| B-7 | `economy.js adjustSocialAI`: sosyal harcama artışı 100'de kırpılır | AUTO bütçe + zengin hazine, eğitim 95'ten: azami 100 (önce 105) |
+| B-9 | `hud.js` Escape: province seçimi de temizlenir, `select(null)` yayınlanır | tarayıcı: province tıkla → kart yok; Escape → "NEXT MEANINGFUL DECISION" geri, `game.selected` null |
+| B-10 | `screens.js close()`: katalog, ⋯ menüsü ve onay sıfırlanır; seçili state korunur | tarayıcı: katalog açıkken Escape, 4 hafta, Factories tekrar → katalog kapalı, sekme vurgusu doğru |
+
+Sonrası: `audit:determinism` bulgusuz, `audit:budget-contract` bulgusuz.
+`audit:research` iki HIGH bulgu veriyor (eğitim sıfıra yapışıyor; teknolojik
+ayrışma düzleşti); aynı denetim düzeltme öncesi kodda da (`f3f6e6b`) aynı iki
+HIGH'ı ve fazladan bir MEDIUM'u ("araştırma hızında ayrışma yok") veriyor.
+Yani ikisi de eski bulgu, bu düzeltmelerin işi değil; MEDIUM sonrasında
+kayboldu (p90/p10 2.6 · 1.7 · 1.8 eşiğin üstüne çıktı).
+
 ## Ek: 65 yıllık `LONG-1` koşusu (başsız, el sürülmeden, 66 ülke)
 
 | yıl | dünya GSYH | fabrika | seviye | nüfus (M) | okuryazar | canlı | altın>0 | borçlu | savaş | en büyük (hex) | ms/hafta |

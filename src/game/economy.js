@@ -3134,8 +3134,11 @@ function adjustSocialAI(nation, report = null) {
   for (const id of order) {
     const current = economy.social[id] ?? 0;
     if (step > 0 && current < 100) {
-      economy.social[id] = current + step;
-      report?.('budget', `${SOCIAL_PROGRAMS[id]?.name ?? id} spending ${current}% \u2192 ${current + step}%.`,
+      // Kaydiracin tavani 100; YZ 95'ten 105'e cikabiliyordu ve ekran
+      // "Education 105%" yaziyordu (Open Beta 4, B-7). Ayni kapi, ayni sinir.
+      const next = Math.min(100, current + step);
+      economy.social[id] = next;
+      report?.('budget', `${SOCIAL_PROGRAMS[id]?.name ?? id} spending ${current}% \u2192 ${next}%.`,
         'The treasury could afford more.');
       return;
     }
@@ -4017,6 +4020,14 @@ export function beginEconomy(game) {
       if (pick) startResearch(nation, pick);
     }
     const done = advanceResearch(nation, year, world);
+    if (done && !nation.research.current) {
+      // Biten teknoloji kuyrugu BOSALTIR; yukaridaki doldurma advanceResearch'ten
+      // once kostugu icin burada doldurulmazsa asagidaki kart her seferinde
+      // "nothing left to research" der (olculdu: 56 kartta 56, agac doluyken)
+      // ve puan bir hafta bosta birikir.
+      const pick = nextTechFor(nation, year, world);
+      if (pick) startResearch(nation, pick);
+    }
     if (done && isPlayer) {
       const entry = techById(done);
       const next = nation.research.current

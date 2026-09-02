@@ -59,8 +59,13 @@ export function goodRow(world, nation, id) {
   const active = demand > 0.005 || production > 0.005;
 
   let status;
+  // Kitlik ULKENIN karsilanma oranindan okunur, dunya fiyatindan degil: tavana
+  // yapismis bir mal bu ulkede %100 karsilaniyor ve ihrac ediliyor olabilir.
+  // Tavan tek basina "severe" verince Sulphur "SEVERE SHORTAGE · 100% met"
+  // diye listeleniyor, en buyuk ihracat kalemi kitlik sayisina giriyordu
+  // (Open Beta 4, B-6). Fiyat sutunu tavani zaten gosterir.
   if (!active) status = { id: 'idle', label: 'inactive' };
-  else if (pinned === 'ceiling' || (coverage != null && coverage < 0.55)) {
+  else if (coverage != null && coverage < 0.55) {
     status = { id: 'severe', label: 'severe shortage' };
   } else if (coverage != null && coverage < 0.925) {
     status = { id: 'short', label: 'shortage' };

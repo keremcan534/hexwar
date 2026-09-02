@@ -381,6 +381,14 @@ export class Hud {
         }
         this.game.selectGeneral(null);
         this.game.selectUnits([]);
+        // Province secimi de kalkar: kalmasaydi sol alttaki rehber karti ilk
+        // harita tikindan sonra bir daha hic gorunmuyordu (Open Beta 4, B-9).
+        // `select` olayi null ile yayinlanir; HUD onu showGuidance'a cevirir.
+        if (this.game.selected) {
+          this.game.selected = null;
+          this.game.emit('select', null);
+          this.game.requestRender();
+        }
         return;
       }
       const pan = PAN_KEYS[event.code];
