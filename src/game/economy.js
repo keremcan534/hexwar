@@ -3099,6 +3099,17 @@ export function fiscalStance(nation) {
     reserve,
     broke: nation.gold < reserve * 0.25 || (weekly < 0 && nation.gold < reserve * 0.5),
     rich: nation.gold > reserve * 1.5 && weekly > 0,
+    // Vergi GEVSETME esigi `rich`ten dusuk: rezerv doldu ve butce BELIRGIN
+    // fazla veriyorsa oranlar iner. Yalniz `rich`te inen vergi bir circir
+    // kuruyordu — kisa bir iflas dalgasi +5/hafta ile oranlari yukari
+    // surukluyor, 1.5 × rezerv esigi nadiren tutunca geri inmiyor ve ust oran
+    // 100'e dayaniyordu (olculdu: IND-1 devredilmis butce, 1866'da 55/82/100;
+    // bkz. OPEN_BETA_4_PLAYTEST.md). Fazla marji sart: "haftalik > 0" ile
+    // gevseyen YZ gumruk geliri yettigi icin oranlari sifira kadar indiriyor
+    // ve on yil sifir vergiyle oturuyordu (olculdu). Rezervin %5'i/hafta,
+    // rezervi yirmi haftada bir daha dolduran fazladir. Histerezis korunur:
+    // 0.5 × rezervde artar, 1 × rezervde iner, arada durur.
+    easing: nation.gold > reserve && weekly > reserve * 0.05,
   };
 }
 
@@ -3218,8 +3229,8 @@ function adjustFiscalAI(nation, areas = FULL_FISCAL) {
   // sosyal giderine gore), adjustFiscalAI ise MUTLAK (gold < 80) tanimliyordu;
   // aradaki not mutlak esiklerin OLCULEN hata oldugunu yaziyordu ama duzeltme
   // yalniz birine uygulanmisti. Ikisi de artik ayni fonksiyonu cagirir.
-  const { broke, rich } = fiscalStance(nation);
-  if (areas.budget && (broke || rich)) {
+  const { broke, rich, easing } = fiscalStance(nation);
+  if (areas.budget && (broke || rich || easing)) {
     // OYUNCUYLA AYNI KAPI. Eskiden YZ'nin kendine ozel tavanlari vardi
     // (alt 35 / orta 42 / ust 45) ve bunlar YALNIZCA bu fonksiyonun icinde
     // yasiyordu; oyuncunun kaydiraci 0-100'du. Ayni kurallar, uc kaydirac.

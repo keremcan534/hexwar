@@ -308,9 +308,32 @@ indirir; arada hiçbir şey yapmaz. Kısa bir iflas dalgası oranları yukarı
 sürükler, "rich" eşiği nadiren tutunca geri inmez ve son commit'te YZ'nin
 kendi tavanları (35/42/45) bilerek kaldırıldığı için üst oran 100'e dayanır.
 Üst sınıfın 7K'ya inişi ise vergiden önce, 1839 krizinde (ihtiyaç
-karşılanmayınca sınıf düşüşü). Bu bir YZ ayarı: iniş koşulunu "haftalık > 0
-ve altın > rezerv" gibi simetrik yapmak ya da sınıf başına makul bir YZ
-tavanı koymak çözer; bu geçişte dokunulmadı, karar sahibine bırakıldı.
+karşılanmayınca sınıf düşüşü). Sınıf başına YZ tavanı VICTORIA_LITE'ın
+"gizli YZ tavanı yok" değişmezini bozar; seçilen çözüm iniş koşulu
+(altıncı commit): `fiscalStance.easing` = altın > rezerv VE haftalık fazla >
+rezervin %5'i. Histerezis duruyor (0.5 × rezervde artar, 1 × rezervde iner).
+Marj şart: yalnız "haftalık > 0" ile denendi, YZ gümrük geliri yettiği için
+oranları sıfıra indirip on yıl sıfır vergiyle oturdu (ölçüldü: 1845-1857
+0/0/0). Aynı iz, marjlı kural:
+
+| yıl | altın | haftalık | vergi alt/orta/üst | üst sınıf |
+|---|---|---|---|---|
+| 1842 | 36 | +4 | 36/65/100 | 2K |
+| 1845 | 70 | +11 | 8/20/36 | 4K |
+| 1851 | 66 | −3 | 12/30/54 | 15K |
+| 1860 | 20 | −2 | 16/40/72 | 30K |
+| 1866 | 24 | −0.4 | 12/30/54 | 41K |
+
+Üst oran iflas dalgasında yine 100'e çıkıyor (niyet bu) ama artık geri
+iniyor; 25 yıl 100'de yapışmak bitti. Dünya çapı (66 YZ ülkesi, 30 yıl, iki
+tohum, ayrı worktree ile önce/sonra): ortalama vergi 86.7 → 69.3 (IND-1) ve
+75.9 → 70.5 (FABLE-1); bir sınıfı ≥%90 vergileyen ülke 55 → 41 ve 46 → 43;
+fabrika 1.781 → 1.515 ve 1.837 → 1.635 (devlet daha az biriktirip daha az
+kuruyor, bedel bu); GSYH ve borçlu sayısı gürültü bandında. Dünyanın
+üçte ikisinin hâlâ %90'a dayanması cırcırdan değil, deflasyon yüzünden
+kronik iflastan: `broke` iken +5/hafta kuralı niyet gereği duruyor.
+`audit:determinism`, `audit:budget` ve `audit:ai` bulguları önce/sonra aynı
+sınıfta ("YZ taşıyamayacağı ordu kuruyor" 19% → 15%).
 
 **"Sanayi kurmak ekonomiyi oynatmıyor"** büyük ölçüde yukarıdaki ikisinin
 sonucu: planlı ekonomide özel kanal kapalı, devlet fabrikaları oyuncunun
