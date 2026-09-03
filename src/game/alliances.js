@@ -10,7 +10,7 @@
 // Katman: game — DOM yok. diplomacy/peace'e dayanir; onlar bunu import etmez.
 
 import { remember } from './chronicle.js';
-import { atWar, declareWar, relation } from './diplomacy.js';
+import { atWar, attackerCount, declareWar, relation } from './diplomacy.js';
 import { treatiesOf } from './peace.js';
 
 export const ALLIANCE = 'ALLIANCE';
@@ -203,6 +203,9 @@ export function callAlliesToWar(game, aggressorId, defenderId) {
     const ally = world.nations[allyId];
     if (!ally?.alive || allyId === aggressorId) continue;
     if (atWar(world, allyId, aggressorId)) continue;
+    // Iki cephesi olan muttefik cagriya gelmez: ai.js ve koalisyonla ayni
+    // kural; olculdu, altinci savas buradan geliyordu (audit:war-pressure).
+    if (attackerCount(world, allyId) >= 2) continue;
     if (allyId === player) {
       const aggressor = world.nations[aggressorId];
       game.turns.addLog(

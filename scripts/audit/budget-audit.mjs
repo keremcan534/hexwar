@@ -118,13 +118,9 @@ sub('Egitim 0 / 50 / 100');
   const dEmp = relDelta(lo.snap.employees, hi.snap.employees);
   console.log(`\n  egitim 0->100 (${WEEKS} hafta): orta sinif ${pct(dMid)},`
     + ` fabrika kadrosu ${pct(dEmp)}, bedel ${n2(lo.snap.socialCost)} -> ${n2(hi.snap.socialCost)}/hafta`);
-  if (Math.abs(dMid) < 0.05) {
-    finding('MEDIUM', 'Egitim -> sinif hareketliligi',
-      'egitim sinif atlamayi hizlandirmali (runPromotion schooling x1.5)',
-      `${WEEKS} haftada orta sinif farki ${pct(dMid)}`,
-      'promosyon kapisi (satisfaction > 0.55 VE artik > sepetin %35\'i) egitimden ONCE geliyor;'
-      + ' kapi kapaliysa schooling carpani hicbir sey yapmaz');
-  }
+  // Sinif atlama okuryazarlik STOGUNDAN surulur (runPromotion); stok 260
+  // haftada az kimildar. Hukum uzun ufukta (asagida, 1040 hafta).
+  if (Math.abs(dMid) < 0.05) console.log('  NOT: 260 hafta stok icin kisa; sinif hukmu uzun ufukta.');
   // Kadro etkisi YAVAS bir kaldiractir: isealim havuzu ayrica ciftci->isci
   // donusum hiziyla (4 haftada bir kohort) sinirli oldugu icin 260 haftada
   // maskelenebilir. Bu yuzden asil olcum uzun ufukta (asagida).
@@ -161,6 +157,14 @@ sub('Egitim 0 / 50 / 100');
   console.log(`  1040 haftada: orta sinif farki ${pct(dFar)},`
     + ` sanayi kadrosu farki ${pct(dEmpFar)},`
     + ` tesis seviyesi ${far.lo.snap.factoryLevels} -> ${far.hi.snap.factoryLevels}`);
+  // Ust ve orta sinifin toplam payi: okuryazar ulke sinif atlar.
+  const dFarUpper = relDelta(far.lo.snap.upperPop, far.hi.snap.upperPop);
+  console.log(`  1040 haftada ust sinif farki ${pct(dFarUpper)}`);
+  if (Math.abs(dFar) < 0.03 && Math.abs(dFarUpper) < 0.05) {
+    finding('MEDIUM', 'Egitim -> sinif hareketliligi',
+      'egitim uzun ufukta sinif atlamayi gorunur olcude hizlandirmali',
+      `1040 haftada orta sinif farki ${pct(dFar)}, ust sinif farki ${pct(dFarUpper)}`, '');
+  }
 
   // ------------------------------------------------------------------
   // EGITIM -> SANAYI ISGUCU: neden panel ortalamasi, neden 260 hafta

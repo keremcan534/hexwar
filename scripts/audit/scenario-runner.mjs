@@ -214,7 +214,9 @@ function applyLevers(nation, levers) {
       // `{key:'tax', classId:'lower'}` bicimiyle de verir; setBudgetPolicy
       // yalniz duz politika adini tanir. Eskiden bu satir sessizce false
       // donuyordu ve egitim 0/50/100 senaryolari birebir ayni cikiyordu.
-      const policy = l.key === 'social' && l.classId ? l.classId
+      // Saglik programi refaha KATILDI (economy.js SOCIAL_PROGRAMS).
+      const classId = l.classId === 'health' ? 'welfare' : l.classId;
+      const policy = l.key === 'social' && classId ? classId
         : l.key === 'tax' && l.classId
           ? `tax${l.classId[0].toUpperCase()}${l.classId.slice(1)}`
           : l.key;
