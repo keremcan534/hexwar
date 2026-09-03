@@ -276,20 +276,25 @@ export class WaterGL {
      *   game.renderer.waterGL.tune.abyss = [0.05, 0.12, 0.15]
      *   game.renderer.waterGL.draw(game.camera, performance.now()/1000, true)
      */
-    // Varsayılan: referans #3 ve #4'ün ORTAK belirleyici özelliği — kıyıya
-    // oturan aydınlık turkuaz şelf + koyu açık deniz. Aradaki fark derecedir:
-    // #4 abisi neredeyse siyaha, #3 daha aydınlık bir tealde tutar. Bu ayar
-    // ikisinin arasındadır; abis siyaha çakılmadığı için uzak zoomda açık
-    // denizde de yapı okunur.
+    /**
+     * Varsayılan palet REFERANSLARDAN okundu (FENESHGARD ve KAZYLSTAN
+     * kareleri): açık deniz KOYU DEĞİL, orta tonda aydınlık bir teal; kıyıda
+     * belirgin daha parlak bir şelf; derinlik farkı renkle de anlatılıyor.
+     *
+     * Not: bu, ikinci brifingin "deep petrol / charcoal cyan, parlak camgöbeği
+     * YOK" yönergesinden bilinçli bir sapmadır. O yönergeye göre ayarlanan
+     * palet (abis 0.025/0.066/0.086) referansların yanında ölü kalıyordu —
+     * seçim referans karelerinden yana yapıldı.
+     */
     this.tune = {
-      shallow: [0.185, 0.420, 0.412],
-      teal: [0.085, 0.225, 0.245],
-      petrol: [0.042, 0.112, 0.138],
-      abyss: [0.025, 0.066, 0.086],
-      shelf: 0.95,
-      spec: 1.00,
-      fresnel: 2.20,
-      foam: 0.66,
+      shallow: [0.290, 0.560, 0.570],
+      teal: [0.165, 0.335, 0.365],
+      petrol: [0.108, 0.240, 0.272],
+      abyss: [0.078, 0.180, 0.210],
+      shelf: 1.15,
+      spec: 1.15,
+      fresnel: 2.40,
+      foam: 0.70,
     };
 
     const prog = gl.createProgram();
