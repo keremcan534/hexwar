@@ -937,7 +937,8 @@ export class Hud {
       <div class="unit-row">
         <span class="unit-badge" style="background:${world.nations[unit.nationId].color}">${unit.type.glyph}</span>
         <div style="flex:1;min-width:0">
-          <div class="tile-title">${regimentCount(unit)}-regiment Army${unit.nationId === this.game.turns.playerNation ? '' : ' (enemy)'}</div>
+          <div class="tile-title">${regimentCount(unit)}-regiment Army${unit.nationId === this.game.turns.playerNation ? '' : ' (enemy)'}${
+  this.game.selection.length > 1 ? `<small class="tile-more"> · ${this.game.selection.length} divisions selected, showing the first</small>` : ''}</div>
           <div class="tile-sub">${formatPopulation(soldiersOf(unit))} soldiers · STR ${Math.round(strengthRatio(unit) * 100)}% · ORG ${Math.round(organizationOf(unit))}% · speed ${speedOf(unit)}${isMoving(unit) ? ` · MARCHING (${unit.path.length} left)` : ''}${unit.battleId ? ' · IN BATTLE' : ''}${(unit.retreatUntil ?? 0) > this.game.turns.turn ? ' · RETREATING' : ''}</div>
           <div class="army-composition">${Object.entries(unit.regiments?.reduce((out, regiment) => {
             out[regiment.typeId] = (out[regiment.typeId] ?? 0) + 1;
@@ -1367,7 +1368,7 @@ function resourcesHtml(nation) {
   return `
     <span title="treasury"><small>Treasury</small><b>¤${grouped(nation.gold)}${flow}</b></span>
     <span class="stat-why" role="button" tabindex="0" data-why="stability"
-      title="${stabilityWhy(nation)}"><small>Stability</small><b>${stability}%</b></span>
+      title="${(nation.budget ? stabilityWhy(nation) : 'Measured after the first weekly tick; the opening value is a placeholder.')}"><small>Stability</small><b>${nation.budget ? `${stability}%` : '—'}</b></span>
     <span title="infamy — a coalition forms at ${INFAMY_COALITION}"><small>Infamy</small><b class="${infamyClass}">${infamy.toFixed(1)}</b></span>`;
 }
 
