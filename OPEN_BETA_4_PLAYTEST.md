@@ -429,7 +429,31 @@ aksi hâlde mekanik düzeltildi.
 
 Ölçüm: `npm run audit:all` (aşağıda özet).
 
-AUDIT_ALL_SUMMARY_PLACEHOLDER
+**Son ölçüm** (`audit:all` + hedefli yeniden koşular, son commit):
+
+| denetim | önce | sonra |
+|---|---|---|
+| `save` | HIGH: 100 hafta sonra nüfus/hazine/fiyat farklı | **farklı alan YOK** |
+| `diagnose:command` | `attackIssued` false | passed |
+| `ai` | 302/302 devlet %99+ gümrükte; ordu > nüfusun %15'i: 13% | 0/302; **10%** (MEDIUM kalıyor, eşik %5) |
+| `research` | eğitimde sıfır 1870 %61 / 1900 %83; eğitim yozlaşmış (IQR 0) | %46 / %68; IQR bulgusu kapandı; HIGH kalıyor (temerrüt → deflasyon, kapsam dışı) |
+| `budget` | eğitim → sınıf 0.0%, işgücü 0.0%, sağlık 0, yönetim 0 | kaldıraç senaryoda hiç uygulanmıyormuş (harness); düzeltince 1040 haftada **üst sınıf +23-29%**, kadro +14%; sağlık/yönetim bölümleri kaldırılan kaydıraç olarak kapandı |
+| `factory` | sübvansiyon 0.00 (girdisiz tesis) | ödeniyor (LUMBER_MILL 1.48/hafta); HIGH kapandı, "fiyat/performans" MEDIUM |
+| `market`, `tax` | erzak → nüfus, %100 vergi bedelsiz (HIGH) | tasarıma hizalandı (büyüme durur, ölüm yok); bulgu yok / sıfır vergi MEDIUM |
+| `boundary`, `legacy` | −62.5 tanımsız; armySpending | bulgu yok |
+| `war-pressure` | çullanma 4; kartopu 33.3% | kartopu **28-32%** (kapandı); çullanma 3·3·3 bir koşuda, son koşuda 3·4·4 (kaotik, eşik sınırında) |
+| `borders` | BORDER3 44.1% | 38.2 / 26.9 / 30.4 — bir tohum hâlâ eşiğin üstünde |
+| `strategy` | Laffer yok | matrah −7.1% sanayi, −10.2% GSYH; bulgu yok |
+| `determinism` | temiz | temiz |
+
+Kalan kırmızılar ve dürüst durum: (1) `research` eğitim sıfırı ve `long-run` fiyat
+bandı kapsam dışı deflasyonun sonucu; (2) `borders`/`war-pressure` kartopu ve
+çullanma eşiğin bir-iki puan çevresinde tohuma göre salınıyor — talep tavanı
+6 → 3, savaş eşiği 1.4 → 1.6, ateşkes 40 → 52 ve üç ilan yolunda "iki cephesi
+olan binmez" kuralı bunları 44 → 30-38 ve 6 → 3-4'e çekti, sıfırlamadı;
+(3) `military-strategy` atıl ordu 155 hafta (önce 136), YZ generalinin barışta
+bekleme davranışı; (4) `ai` ordu/nüfus %13 → %10, eşik %5.
+
 
 ## Ek: 65 yıllık `LONG-1` koşusu (başsız, el sürülmeden, 66 ülke)
 
