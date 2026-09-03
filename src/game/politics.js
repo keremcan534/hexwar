@@ -1,4 +1,43 @@
 import { makeRng } from '../core/rng.js';
+import { TIER, announce } from './chronicle.js';
+
+/**
+ * Secmen agirliklari: reforms.js FRANCHISE_WEIGHTS'in kopyasi (reforms ->
+ * politics import halkasi yuzunden buraya tekrar yazildi; ikisi ayrisirsa
+ * politics-play olcumu yakalar). Sandik yalniz oy hakki olan siniflari
+ * sayar. Eskiden bir hafta ekranda "Voters' ideologies · 0 enrolled"
+ * yazarken ayni hafta secim yapiliyor ve hukumet degisiyordu; "Only Landed"
+ * ile alt sinif seçim kazandiriyordu (Open Beta 4 politika kesfi: 30 yilda
+ * 32 secim, hepsi oy hakki yokken).
+ */
+const FRANCHISE_VOTE_WEIGHTS = {
+  none_voting: { lower: 0, middle: 0, upper: 0 },
+  landed_voting: { lower: 0, middle: 0, upper: 1 },
+  weighted_wealth_voting: { lower: 0, middle: 1, upper: 3 },
+  wealth_voting: { lower: 0, middle: 1, upper: 1 },
+  weighted_universal_voting: { lower: 1, middle: 2, upper: 3 },
+  universal_voting: { lower: 1, middle: 1, upper: 1 },
+};
+
+function voteWeightsOf(nation) {
+  const franchise = nation.politics?.reforms?.vote_franchise;
+  return FRANCHISE_VOTE_WEIGHTS[franchise] ?? FRANCHISE_VOTE_WEIGHTS.none_voting;
+}
+
+/** Oy hakki olan tek sinif bile yoksa sandik kurulmaz. */
+export function hasElectorate(nation) {
+  const w = voteWeightsOf(nation);
+  return w.lower + w.middle + w.upper > 0;
+}
+
+/**
+ * Iktidari devirmek icin gereken fark (puan). Duz cogunluk 33.3'e 32.8 ile
+ * hukumeti her secimde ceviriyordu: 30 yilda 20 devir, her biri ekonomi
+ * politikasini ve kaydirac bantlarini yaniyla surukluyordu (olculdu).
+ * Meydan okuyan iktidari ancak bu kadar farkla gecerse kazanir; mali
+ * YZ'deki histerezisle ayni fikir.
+ */
+const INCUMBENCY_MARGIN = 3;
 
 export const IDEOLOGIES = {
   conservative: { id: 'conservative', name: 'Conservative', color: '#8b8065' },
@@ -22,8 +61,8 @@ export const POLITICAL_POLICIES = {
     planned_economy: { id: 'planned_economy', name: 'Planned Economy', desc: 'Only the state may build and expand factories.' },
   },
   trade: {
-    free_trade: { id: 'free_trade', name: 'Free Trade', desc: 'Open imports; the tariff slider is capped at 10%.' },
-    protectionism: { id: 'protectionism', name: 'Protectionism', desc: 'Protect domestic production; the tariff slider may reach 50%.' },
+    free_trade: { id: 'free_trade', name: 'Free Trade', desc: 'Open ports: the tariff slider is capped at 25% and import subsidies may go to −50%.' },
+    protectionism: { id: 'protectionism', name: 'Protectionism', desc: 'Protect domestic production: the tariff slider may reach 100%; a delegated government settles at 50%.' },
   },
   military: {
     pacifism: { id: 'pacifism', name: 'Pacifism', desc: 'The army-spending slider is capped at 60%.' },
@@ -209,21 +248,45 @@ export function fiscalPolicyLimits(nation) {
  * Hukumet degisince butce kaydiraclari yeni bandin icine cekilir. Ordu ve
  * gumruk partinin doktrinine tabidir; oran ve sosyal harcama serbesttir.
  */
-function applyGovernmentLimits(nation) {
+function applyGovernmentLimits(nation, game = null) {
   if (!nation.economy) return;
   const limits = fiscalPolicyLimits(nation);
-  nation.economy.tariff = Math.max(limits.tariffMin, Math.min(limits.tariffMax, nation.economy.tariff));
-  nation.economy.armyFunding = Math.max(
-    limits.armySpendingMin,
-    Math.min(limits.armySpendingMax, nation.economy.armyFunding ?? 100),
-  );
+  // Kirpma ISTENEN degere uygulanir, yerinde ezmez: Workers Party orduyu
+  // 75'e kirpip gidince oyuncunun 100'u bir daha geri gelmiyordu ve hicbir
+  // sey soylemiyordu (Open Beta 4 politika kesfi). Istenen deger
+  // setBudgetPolicy'de yazilir (economy.*Wanted); band genisleyince geri doner.
+  const economy = nation.economy;
+  const before = { tariff: economy.tariff, armyFunding: economy.armyFunding ?? 100 };
+  economy.tariff = Math.max(limits.tariffMin,
+    Math.min(limits.tariffMax, economy.tariffWanted ?? economy.tariff));
+  economy.armyFunding = Math.max(limits.armySpendingMin,
+    Math.min(limits.armySpendingMax, economy.armyFundingWanted ?? economy.armyFunding ?? 100));
+  if (!game || nation.id !== game.turns?.playerNation) return;
+  const party = rulingParty(nation);
+  if (economy.armyFunding !== before.armyFunding
+    && economy.armyFunding !== (economy.armyFundingWanted ?? before.armyFunding)) {
+    announce(game, nation, {
+      kind: 'POLITICS', tier: TIER.IMPORTANT, key: 'band-army',
+      title: `${party?.name ?? 'The government'} holds army funding at ${economy.armyFunding}%`,
+      detail: `Its war policy allows ${limits.armySpendingMin}–${limits.armySpendingMax}%; your ${economy.armyFundingWanted}% returns when the band widens.`,
+    });
+  }
+  if (economy.tariff !== before.tariff
+    && economy.tariff !== (economy.tariffWanted ?? before.tariff)) {
+    announce(game, nation, {
+      kind: 'POLITICS', tier: TIER.IMPORTANT, key: 'band-tariff',
+      title: `${party?.name ?? 'The government'} holds the tariff at ${economy.tariff}%`,
+      detail: `Its trade policy allows ${limits.tariffMin}–${limits.tariffMax}%; your ${economy.tariffWanted}% returns when the band widens.`,
+    });
+  }
 }
 
 function supportScore(nation, party) {
   let score = 0;
+  const weights = voteWeightsOf(nation);
   for (const classId of ['lower', 'middle', 'upper']) {
     const socialClass = nation.economy?.classes?.[classId];
-    if (!socialClass) continue;
+    if (!socialClass || !weights[classId]) continue;
     let affinity = CLASS_IDEOLOGY[classId][party.ideology] ?? 0.02;
     const satisfaction = socialClass.satisfaction ?? 0.5;
     if (satisfaction < 0.4 && ['socialist', 'communist', 'fascist'].includes(party.ideology)) {
@@ -232,7 +295,7 @@ function supportScore(nation, party) {
     if (satisfaction > 0.58 && ['liberal', 'conservative'].includes(party.ideology)) {
       affinity *= 1 + (satisfaction - 0.58) * 1.4;
     }
-    score += socialClass.population * affinity;
+    score += socialClass.population * affinity * weights[classId];
   }
   // SAVAS SIYASETE DOKUNUR (eksikti — olculdu: warStrain yalnizca stability'ye
   // akiyordu ve stability'yi hicbir siyaset kodu okumuyordu; kaybedilen savas
@@ -299,15 +362,30 @@ function collectPrivateCapital(nation) {
  * iki ayrı yazımda sonuçlar sessizce ayrışıyordu.
  */
 function resolveElection(game, nation) {
-  const winner = [...nation.politics.parties].sort((a, b) => b.support - a.support)[0];
+  const ranked = [...nation.politics.parties].sort((a, b) => b.support - a.support);
   const previous = rulingParty(nation);
+  // Iktidar, meydan okuyan onu INCUMBENCY_MARGIN puan gecmedikce kalir.
+  const challenger = ranked[0];
+  const winner = previous && challenger.id !== previous.id
+    && challenger.support < previous.support + INCUMBENCY_MARGIN
+    ? previous : challenger;
   nation.politics.rulingPartyId = winner.id;
   nation.politics.lastElectionTurn = game.world.turn;
   nation.politics.nextElectionTurn = game.world.turn + nation.politics.electionInterval;
-  if (nation.id === game.turns.playerNation && previous?.id !== winner.id) {
-    game.turns.addLog(`${winner.name} won the election with ${Math.round(winner.support)}% support.`,
-      { kind: 'POLITICS' });
-  }
+  // Sonuc her zaman haber: "Hold Election" tiklayip hicbir sey gormemek
+  // oyuncuya dugmenin bozuk oldugunu dusundurtuyordu. Hukumet DEGISIMI
+  // vakayinameye girer (MAJOR) — 30 yilda 20 hukumetin hicbiri tarihte yoktu;
+  // iktidarin kalmasi yalniz karttir, yoksa yillik secim tarihi doldurur.
+  const retained = previous?.id === winner.id;
+  announce(game, nation, {
+    kind: 'POLITICS', tier: retained ? TIER.IMPORTANT : TIER.MAJOR, key: 'election',
+    title: retained
+      ? `${winner.name} retained power with ${Math.round(winner.support)}% support`
+      : `${winner.name} won the election with ${Math.round(winner.support)}% support`,
+    detail: retained && challenger.id !== winner.id
+      ? `${challenger.name} polled ${Math.round(challenger.support)}%, short of the ${INCUMBENCY_MARGIN}-point lead needed to unseat a government.`
+      : retained ? 'The government continues with its policies.' : 'Fiscal bands and economic policy now follow the new party.',
+  });
   return winner;
 }
 
@@ -326,6 +404,7 @@ export function electionWindowOpen(world, nation) {
 export function holdElection(game, nation) {
   if (!nation?.politics?.parties?.length) return false;
   if (!electionWindowOpen(game.world, nation)) return false;
+  if (!hasElectorate(nation)) return false;
   updatePoliticalSupport(game.world);
   resolveElection(game, nation);
   game.emit('politics', game.world.turn);
@@ -339,8 +418,14 @@ export function runPolitics(game) {
   for (const nation of world.nations) {
     if (!nation.alive) continue;
     collectPrivateCapital(nation);
-    applyGovernmentLimits(nation);
+    applyGovernmentLimits(nation, game);
     if (world.turn < nation.politics.nextElectionTurn) continue;
+    // Secmeni olmayan ulkede sandik kurulmaz; vade yine ilerler ki ekrandaki
+    // "next election due" ve erken secim penceresi bayat kalmasin.
+    if (!hasElectorate(nation)) {
+      nation.politics.nextElectionTurn = world.turn + nation.politics.electionInterval;
+      continue;
+    }
     resolveElection(game, nation);
   }
   game.emit('politics', world.turn);

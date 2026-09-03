@@ -356,6 +356,72 @@ elle kurduğu 9 tesis; dünya fiyatları tabanda olduğu için (deflasyon, bilin
 | Efektif hız gizli | `hud.showEffectiveSpeed`: on saniyelik pencerede kapanan hafta, nominalin %80'inin altına düşünce tarih altında "effective ×N" | başsız Chromium 8x: 15. saniyede "effective ×1.4" |
 | README 1945 / mobil | 1900 ve PC | — |
 
+### Siyaset ve nüfus (sekizinci commit)
+
+Kaynak: siyaset oyun-keşfi ajanı (`POL-1`, 30 yıl tek ülke, her yasa ve seçim
+izlendi) + başsız doğrulama betikleri (`scratchpad/fix/pol-*.mjs`).
+
+| bulgu | değişiklik | doğrulama |
+|---|---|---|
+| Seçmensiz rejimde ("No Voting") her 48 haftada sandık kuruluyor, ekran tarih veriyordu | `politics.hasElectorate`: seçmen yoksa seçim yok, vade yine ilerler; kart "No elections: no electorate under the current franchise"; erken seçim düğmesi kapalı | başsız: `none_voting` altında vade dolunca iktidar aynı, vade ilerledi, vakayinamede seçim yok |
+| Oy hakkı yasası seçimi etkilemiyordu (kütük yalnız ekranda) | `supportScore` sınıf ağırlığını `vote_franchise` tablosundan alır (`FRANCHISE_VOTE_WEIGHTS`) | Toprak sahipli oyda üst sınıf ağırlığı 1, alt 0 |
+| 30 yılda 20 hükûmet: her seçim en yüksek desteğe geçiyordu | `INCUMBENCY_MARGIN` 3 puan: meydan okuyan iktidarı 3 puan geçmedikçe kalır | 30 yılda 4 değişim (`POLVERIFY`); `COMMDUP` 100 yıl 0 değişim (liberal %35 / muhafazakâr %34.5, marj içinde) |
+| Seçim sonucu ve yasa ilanı hiçbir yerde yazmıyordu | `resolveElection` ve `enactReform` `announce`: hükûmet değişimi MAJOR (vakayiname), iktidarın kalması IMPORTANT (yalnız kart), yasa MAJOR | vakayiname: "Trinket Minimum Wage enacted", "Conservative Union retained power with 54% support" |
+| Parti bandı ordu fonunu 75'e kırpıp gidince oyuncunun 100'ü geri gelmiyordu, sessizdi | `setBudgetPolicy` istenen değeri `economy.armyFundingWanted/tariffWanted` olarak saklar; `applyGovernmentLimits` istenen değeri banda kırpar, band genişleyince geri döner; kırpma kart olur ("holds army funding at 60%; your 100% returns when the band widens") | başsız: pasifist parti → 60/istenen 100; parti değişince → 100 |
+| "Meclis geçirmez" notu bekleme süresinde de çıkıyor, oyuncu boşuna seçim kovalıyordu | `reformNote` bekleme ile destek eksiğini ayırır: "Institutions are still adjusting… next law can pass in about 12 months; 13 steps already have the chamber's support"; kapı ipucu da iki nedeni sayar | tarayıcı: yasa ilan edildi → not "adjusting", 12 ay |
+| Yasanın etkisi yalnız kilitli basamakta yazıyordu | `blockReason` her sonraki basamağa "Effect: …" satırı ekler | tarayıcı: düğme başlığında etki cümlesi |
+| Nüfus ekranı "Ideology" çarkı parti oyundan geliyordu: %100 muhafazakâr | `populationView` `peopleMix(nation)` (sınıf karışımı) kullanır; başlık "of the people" | çark: Socialist 30 / Conservative 25 / Liberal 20 / … |
+| Grup tablosu sıralanamıyordu; "State" sütunu province adı taşıyordu; huzursuzluk 0–10 ölçeği %'siz | başlık tıklanır (`state.sort`, ok işareti, ikinci tık yönü çevirir); sütun "Home"; kart `unrest.toFixed(1)`; "Cohorts" sekmesi kaldırıldı (boştu); altı sağlık kartında `title` ipucu | tarayıcı: Literacy ↓ 13/10/9 → ↑ 1/3/6; Group A→Z |
+
+### Kaydet-yükle dallanması ve komuta tanısı (dokuzuncu commit)
+
+`audit:save` üçüncü testi kırmızıydı: kaydedip yüklenen oyun 100 hafta sonra
+kesintisiz koşudan ayrılıyordu (nüfus, hazine, fiyat). Denetimin kanıt satırı
+eski bir sebebi (birim kimlikleri) anlatıyordu; asıl sebepler bellek grafiğini
+derin karşılaştıran bir sondayla (`scratchpad/fix/save-diff.mjs`) bulundu:
+
+| kayıt dışı kalan | etkisi | düzeltme |
+|---|---|---|
+| Şehrin işlediği kareler (`city.worked`) | yüklemede yeniden seçiliyordu: 21 kare başka şehre çalışıyor, ilk hafta hasat farklı | `serialize` kareleri, `growth` sayacını ve `manualWorkers`'ı yazar; `deserialize` geri bağlar; `recomputeEconomy({keepWorkers})` dağıtımı yenilemez |
+| Aynı karedeki yığın sırası (`tile.units`) | yükleme kimlik sırasına diziyordu, 9 karede savunan tümen değişiyordu | birim kaydına `stack` indeksi; yüklemede yığın o sıraya dizilir |
+| Haftalık bütçe (`nation.budget`) | üretim fazında hesaplanır; yüklemede hafta SONU durumundan yeniden kurulunca bir ülkede net erzak −3 yerine −4 çıktı ve işçi ağırlıkları o sayıyı okuyor | bütçe kayda girer, `recomputeEconomy({keepBudgets})` |
+| Yasa çarpanları (`reforms.js modsByNation`, WeakMap) | yüklemede boş: tasra fazı ilk hafta nötr tavan okudu, azınlık tavanı 70 olan province'te sadakat 70.55'e çıktı | `deserialize` her ülke için `refreshReformModifiers` (saf yeniden hesap) |
+
+Sonuç: `audit:save` "farklı alanlar: YOK · OK kayıt/yükleme geleceği
+değiştirmiyor". Derin sonda 3 hafta sonra yalnız profil sayaçlarını ve bir
+yeni birimin kimliğini (205/206: iki birim aynı hafta doğuyor, sıra farklı)
+farklı görüyor; kimlik yalnız eşitlik bozucudur, denetimin 100 haftası bunu
+hissetmiyor. Tarayıcıda `game.save()/load()` yeni alanlarla temiz.
+
+`diagnose:command` tek kırmızı satırı (`offensive.attackIssued`) betiğin
+kendisindeydi: tanı, oyuncu ülkesi için `declareWar`'ı `manual` bayrağı
+olmadan çağırıyordu ve oyun kural gereği oyuncu adına otomatik ilanı reddeder
+(savaş hiç başlamamış, general saldıracak düşman bulamamıştı). Betik düzeltildi;
+tanı `passed: true`.
+
+### Yapay zekâ maliyesi (aynı commit)
+
+| bulgu | değişiklik | ölçüm |
+|---|---|---|
+| `audit:ai` patoloji taraması: 302 YZ devletinin 298'i %99+ gümrükte; korumacı YZ kaydıracın fiziksel tavanına (%100) sürünüyordu, ithalat üçte ikiye iniyordu | `PROTECTIONIST_TARIFF = 50`: korumacı hükûmet doktrin düzeyinde durur; oyuncunun bandı değişmez, YZ aynı `setBudgetPolicy`'den geçer; parti açıklamaları gerçek bantla eşlendi (eskiden "10%/50%" yazıyor, kod 25/100 uyguluyordu) | `audit:ai` yeniden: %99+ gümrükte 302/302 → **0/302**; hazinesi −50 altında 0/302 (değişmedi); borç kapasitesinin %95'inde 12 → 21 (daha fazla okul, daha az gümrük: bedeli bu); 520. haftada iflas 0/147 |
+| `audit:research` HIGH: 1870 sonrası ülkelerin %48-83'ü eğitimde sıfırda — `adjustSocialAI` yalnız `rich`te (1.5 × rezerv) yükseltiyor, `broke` kolay; bir kez sıfırlanan eğitim on yıllarca kalıyor | yükseltme kapısı vergiyle aynı `easing` eşiği (rezerv dolu + belirgin fazla); histerezis korunur | `audit:research` yeniden: sıfırdaki ülke payı 1870 %61 → %46, 1900 %83 → %68, 1910 %83 → %64; "eğitim harcaması yozlaşmış" (IQR 0) bulgusu kapandı. HIGH **kalıyor**: 1890'da hâlâ %86 — sıfırda kalan ülkeler temerrütte (`socialFloorOf` kredi cezasında tabanı kaldırır) ve temerrüt, kapsam dışı bırakılan yüzyıl deflasyonunun sonucu. Fiyat ölçeği düzelmeden bu kırmızı kalkmaz |
+
+### Bilerek bırakılanlar (ölçüldü, dokunulmadı)
+
+`audit:all` taramasının kalan kırmızıları ve neden burada durdukları:
+
+| denetim | bulgu | neden bırakıldı |
+|---|---|---|
+| `war-pressure` | çullanma azami 4 (tavan 3) | `attackerCount` hedefin **kendi** açtığı savaşı da sayar; dördüncü savaş kurbanın kendi ilanı. Tavan saldırganlara işliyor; tasarım sorusu, hata değil |
+| `war-pressure`, `borders` | kartopu %33.3 / %36.4 (eşik "üçte birden fazla") | eşiğin üstünde bir puan; 50 yılda haritanın üçte biri el değiştiriyor. Denge ayarı, kullanıcı kararı |
+| `factory` | sübvansiyon bedeli tahsil edilmiyor | denetimin diktiği tesisler (TANK, AIRCRAFT…) girdi bulamayıp üretmiyor: kâr 0, zarar 0, ödenecek bir şey yok. Mekanik "gerçekleşen zararı öder" ve doğru; denetim sabit maliyet varsayıyor |
+| `market`, `tax` | erzak karşılanma %0 → nüfus yalnız %1 düşüyor; %100 vergi neredeyse bedelsiz | ikisi de "ihtiyaç → nüfus" bağının zayıflığı. Kıtlık ölüm hızını artırmak bütün YZ dünyasını boşaltır; fiyat ölçeğiyle birlikte ele alınmalı (kapsam dışı kararı) |
+| `budget` | eğitim → sınıf hareketliliği / sanayi işgücü 0; sağlık → nüfus 0; yönetim → kontrol kanalı yok | ölü kaldıraçlar (MEKANIK_KILAVUZU'nda kayıtlı). Yeni kanal açmak mekanik eklemektir, VICTORIA_LITE ölçütünden geçmeli |
+| `research` | teknolojik ayrışma düz (5-11 küme, 9 bekleniyor) | `nextTechFor` aynı programda aynı sırayı seçer; ülkeye özgü tercih = yeni mekanik |
+| `legacy` | eski `armySpending` anahtarı iki kaydıracı sürmüyor | denetim var olmayan `militaryWages/procurement` kaydıraçlarını bekliyor; tek `armyFunding` var. Denetim bayat |
+| `boundary` | ithalat iştahı −62.5'te tanımsız | kaydıracın tabanı −50, erişilemez |
+| `events` | "retained power" kartı yılda bir | 48 haftalık seçim aralığı tasarımdır; kart IMPORTANT (vakayinameye girmez), aynı anahtarla yenisi eskisini düşürür |
+
 ## Ek: 65 yıllık `LONG-1` koşusu (başsız, el sürülmeden, 66 ülke)
 
 | yıl | dünya GSYH | fabrika | seviye | nüfus (M) | okuryazar | canlı | altın>0 | borçlu | savaş | en büyük (hex) | ms/hafta |

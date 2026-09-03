@@ -15,6 +15,7 @@ import { ensureTraining } from './recruitment.js';
 import { ensureBattles } from './battles.js';
 import { ensureProvinces, refreshProvinceOwner } from './provinces.js';
 import { ensurePolitics } from './politics.js';
+import { refreshReformModifiers } from './reforms.js';
 import { ensureConstruction, migrateConstructionV14 } from './construction.js';
 import { ensureDelegation, restoreDelegation } from './delegation.js';
 
@@ -134,6 +135,11 @@ export function serialize(game) {
         // Arastirma: biriken puan + tamamlanan teknolojiler. Kayit disi
         // kalirsa oyuncu yuzyillik teknoloji birikimini yuklemede kaybeder.
         research: n.research ?? null,
+        // Haftalik butce uretim fazinda hesaplanir; yuklemede hafta SONU
+        // durumundan yeniden kurmak baska bir sayi veriyordu (olculdu: bir
+        // ulkede net erzak -3'e karsi -4) ve isci agirliklari o sayiyi
+        // okudugu icin ilk hafta baska kareler isleniyordu (save-audit).
+        budget: n.budget ?? null,
         construction: ensureConstruction(n),
         // Ulusal vakayiname ve olay durum makinesi. Turetilemez veri:
         // yazilmazsa yuklemeden sonra oyun ayni borcu/rejimi ikinci kez
@@ -205,6 +211,14 @@ export function serialize(game) {
       level: c.level,
       pop: c.pop,
       pops: c.pops,
+      // Islenen kareler ve buyume sayaci kayda girer. Yuklemede yeniden
+      // secilen kareler kesintisiz kosudan farkli cikiyordu (olculdu: 21 kare
+      // yuklemenin ilk haftasinda baska sehre calisiyordu, bir hafta sonra
+      // 25 ulkenin hazinesi ayrismisti); buyume sayaci sifirlaninca da
+      // sehirler yuklemeden sonra bir donem gec buyuyordu.
+      worked: (c.worked ?? []).map((t) => [t.q, t.r]),
+      growth: c.growth ?? 0,
+      manualWorkers: c.manualWorkers === true,
     })),
     units: world.units.map((u) => ({
       id: u.id,
@@ -212,6 +226,10 @@ export function serialize(game) {
       nationId: u.nationId,
       q: u.tile.q,
       r: u.tile.r,
+      // Ayni karedeki yigin sirasi: tile.unit = yiginin ilk uyesi; savunmayi
+      // ve ekranda gorunen tumeni o belirler. Yazilmazsa yukleme kimlik
+      // sirasina dizer ve kesintisiz kosudan ayrilir (olculdu: 9 karede).
+      stack: Math.max(0, (u.tile.units ?? []).indexOf(u)),
       hp: u.hp,
       maxHp: u.maxHp,
       path: u.path?.map((tile) => ({ q: tile.q, r: tile.r })) ?? null,
@@ -323,6 +341,7 @@ export function deserialize(game, data) {
     nation.rallyPoint = saved.rallyPoint ?? null;
     // Eski kayitta yok: butun alanlar kapali baslar (guvenli varsayilan).
     restoreDelegation(nation, saved.delegation);
+    nation.budget = saved.budget ? JSON.parse(JSON.stringify(saved.budget)) : null;
     nation.treaties = (saved.treaties ?? []).map((t) => ({ ...t }));
     nation.training = saved.training
       ? {
@@ -369,7 +388,13 @@ export function deserialize(game, data) {
       world, tile, saved.nationId, englishCityName(saved.name), saved.level, saved.pop,
     );
     city.pops = { ...saved.pops };
-    city.manualWorkers = false;
+    city.manualWorkers = saved.manualWorkers === true;
+    city.growth = saved.growth ?? 0;
+    // Eski kayitta kare listesi yok: ilk haftalik dagitim yeniden secer.
+    city.worked = (saved.worked ?? [])
+      .map(([q, r]) => world.get(q, r))
+      .filter((t) => t && t.owner === city.nationId && !t.workedBy);
+    for (const t of city.worked) t.workedBy = city;
   }
 
   // 7) Birimler
@@ -412,6 +437,13 @@ export function deserialize(game, data) {
     if (saved.id != null) unitIds.set(saved.id, unit.id);
     if (saved.order) pendingOrders.push([unit, saved.order]);
   }
+  // Yigin sirasi kayittan gelir: placeUnit yukleme sirasina (kimlik) dizmisti.
+  const stackOf = new Map(data.units.filter((s) => s.id != null).map((s) => [s.id, s.stack ?? 0]));
+  world.forEach((tile) => {
+    if (!Array.isArray(tile.units) || tile.units.length < 2) return;
+    tile.units.sort((a, b) => (stackOf.get(a.id) ?? 0) - (stackOf.get(b.id) ?? 0));
+    tile.unit = tile.units[0] ?? null;
+  });
   // Sayac kayittaki en buyuk kimligin uzerine kurulur ki yeni alaylar
   // yuklenmis olanlarla carpismasin.
   resetUnitIds(Math.max(
@@ -446,6 +478,14 @@ export function deserialize(game, data) {
   ensureEconomy(world);
   ensurePolitics(world);
   ensureProvinces(world);
+  // Yasa carpanlari WeakMap'te yasar, kayda girmez (bkz. reforms.js
+  // modsByNation). Yuklemede bos kalinca tasra fazi ilk hafta NOTR tavani
+  // okuyordu (olculdu: azinlik tavani 70 olan province'te sadakat 70'te
+  // duracakken 70.55'e cikti) ve ekonomi oradan ayriliyordu. Saf yeniden
+  // hesap: sayaclara dokunmaz, sicak kosuyla ayni tabloyu kurar.
+  for (const nation of world.nations) {
+    if (nation.alive && nation.politics) refreshReformModifiers(nation);
+  }
   if (data.market) {
     world.market = data.market;
     ensureEconomy(world);
@@ -484,7 +524,11 @@ export function deserialize(game, data) {
   game.selected = null;
   game.activeGeneral = null;
   game.selectUnit(null);
-  game.recomputeEconomy();
+  // Eski kayitta kare listesi yoksa dagitim yeniden yapilir (tek secenek).
+  game.recomputeEconomy({
+    keepWorkers: (data.cities ?? []).some((c) => Array.isArray(c.worked)),
+    keepBudgets: data.nations.some((n) => n.budget != null),
+  });
   game.renderer.invalidateCache();
   game.emit('world', world);
   game.emit('turn', turns.turn);

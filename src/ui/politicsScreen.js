@@ -113,15 +113,22 @@ const band = (title, note = '') => `<h4 class="pol-band">${esc(title)}${
  * reforms.governmentType) — sandık ve parti yasası neye izin veriyorsa rejimin
  * adı odur. Seçim tarihi hafta sayısından değil, oyunun takviminden gelir.
  */
-function governmentBlock(nation, world, { government, register, militancy }) {
+function governmentBlock(nation, world, { government, register, militancy, hasElectorate = true }) {
   const politics = nation.politics;
   const weeks = Math.max(0, politics.nextElectionTurn - world.turn);
+  // Secmeni olmayan rejimde sandik kurulmaz; tarih yazmak oyuncuya bos yere
+  // bir secim bekletiyordu (Open Beta 4 politika kesfi).
+  const due = hasElectorate
+    ? `Next election is due:
+        <b>${esc(gameDate(politics.nextElectionTurn))}</b>
+        <em>${weeks} ${weeks === 1 ? 'week' : 'weeks'}</em>`
+    : `No elections:
+        <b>no electorate</b>
+        <em title="Widen the Vote Franchise law to create voters">under the current franchise</em>`;
   return `<section class="pol-gov">
     ${band(government)}
     <div class="pol-gov-line">
-      <span class="pol-gov-date">Next election is due:
-        <b>${esc(gameDate(politics.nextElectionTurn))}</b>
-        <em>${weeks} ${weeks === 1 ? 'week' : 'weeks'}</em></span>
+      <span class="pol-gov-date">${due}</span>
       <span class="pol-gov-stats">
         <i class="pol-mini" title="Share of the population enrolled in the electorate — set by the Vote Franchise law">
           ${glyph('franchise')}<b>${Math.round(register.share * 100)}%</b></i>
@@ -141,7 +148,7 @@ function upperHouseBlock(house, gates) {
   const row = (category, allowed) => `<span class="pol-gate ${allowed ? 'ok' : 'no'}"
     title="${allowed
     ? `At least one ${REFORM_CATEGORIES[category].name.toLowerCase()} law has a majority in the upper house.`
-    : `No ${REFORM_CATEGORIES[category].name.toLowerCase()} law can pass the upper house at present.`}">
+    : `No ${REFORM_CATEGORIES[category].name.toLowerCase()} law can pass at present — the chamber lacks a majority, or institutions are still adjusting to the last reform (see the note below the ladders).`}">
     <i aria-hidden="true">${allowed ? '✓' : '✕'}</i>${
   allowed ? 'Can enact' : "Can't enact"} ${esc(REFORM_CATEGORIES[category].name.toLowerCase())}</span>`;
   return `<section class="pol-house">
@@ -270,6 +277,11 @@ function blockReason(status) {
   }
   if (pressure.length) lines.push(`Pressure: ${pressure.join(' · ')}`);
 
+  // Yasanin NE YAPTIGI dugmenin uzerinde yazar. Eskiden etki cumlesi yalniz
+  // tiklanamayan basamaklarda vardi; oyuncu bedelini bilmeden ilan ediyordu
+  // (Open Beta 4 politika kesfi: Good Health Care refah −2.4 → −11.9/hafta).
+  if (status.next.effect) lines.push(`Effect: ${status.next.effect}`);
+
   if (status.blocked === 'cooldown') {
     lines.push(`Institutions are still adjusting to the previous reform — ${waitLabel(status.cooldownLeft)}`);
   } else if (status.blocked === 'support') {
@@ -331,6 +343,19 @@ function reformNote(board, house, houseLaw) {
       house — and the composition of that house is itself the Upper House law.
       <em>Enacted laws feed the economy: wages, factory output, class mood and the
       social budget all move with them.</em></p>`;
+  }
+  // Bekleme suresi siyasi kilit DEGILDIR: kurumlar son yasayi sindiriyordur.
+  // Eskiden ikisi ayni "meclis gecirmez" cumlesiyle anlatiliyordu ve oyuncu
+  // bos yere secim kovaliyordu (Open Beta 4 politika kesfi).
+  const pending = board.filter((row) => !row.complete && row.blocked === 'cooldown');
+  if (pending.length) {
+    const soonest = Math.min(...pending.map((row) => row.cooldownLeft));
+    const withSupport = pending.filter((row) => row.support >= row.threshold).length;
+    return `<p class="pol-note waiting"><b>Institutions are still adjusting to the last reform.</b>
+      The next law can pass in ${esc(waitLabel(soonest))}${withSupport
+      ? `; ${withSupport} step${withSupport === 1 ? ' already has' : 's already have'} the chamber's support and will open then.`
+      : '. No step has a majority yet, so use the time to shift the chamber.'}
+      <em>Severe unrest shortens the wait.</em></p>`;
   }
   const top = house[0];
   const appointed = houseLaw === 'party_appointed' || houseLaw === 'appointed';
@@ -436,6 +461,7 @@ export function politicsScreen(world, nation, state, board) {
     <aside class="pol-left">
       ${governmentBlock(nation, world, {
     government: state.government, register, militancy: movements.militancy,
+    hasElectorate: state.hasElectorate,
   })}
       ${upperHouseBlock(house, gates)}
       ${rulingBlock(ruler, election)}

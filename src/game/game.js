@@ -662,12 +662,19 @@ export class Game {
     return loadFromStorage(this);
   }
 
-  /** İşçileri ve bütçeleri baştan hesaplar; kayıt yüklendikten sonra gerekir. */
-  recomputeEconomy() {
+  /**
+   * İşçileri ve bütçeleri baştan hesaplar; kayıt yüklendikten sonra gerekir.
+   * `keepWorkers`: kayıt işlenen kareleri taşıyorsa dağıtım YENİDEN yapılmaz.
+   * Yüklemede yeniden dağıtmak hafta sonu ağırlıklarıyla başka kareler
+   * seçiyor ve kesintisiz koşudan ayrılıyordu (save-audit: 100 hafta sonra
+   * nüfus/hazine/fiyat farklı).
+   */
+  recomputeEconomy({ keepWorkers = false, keepBudgets = false } = {}) {
     if (!this.world) return;
-    assignAllWorkers(this.world);
+    if (!keepWorkers) assignAllWorkers(this.world);
     const totals = collectProvinceTotals(this.world);
     for (const nation of this.world.nations) {
+      if (keepBudgets && nation.budget) continue;
       nation.budget = nationBudget(this.world, nation, totals);
     }
   }

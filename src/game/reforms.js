@@ -11,15 +11,20 @@
 // "Based on Population" halkı yansıtır. Yani yasa yasayı açar — ekranın
 // gerçek mekaniği budur.
 //
-// Bu dosya DOM bilmez ve ekonomiye DOKUNMAZ. Yasaların iktisadi karşılığını
-// bağlama denemesi ölçümle geri alındı: haftalık tahsisat 8.7 MB'den
-// 32.6 MB'ye, tur süresi 22 ms'den 43 ms'ye çıkıyordu (bkz.
-// AUTONOMOUS_DEV_REPORT.md). Bağ, sıcak yol maliyeti çözüldükten sonra
-// yeniden kurulmalı.
+// Bu dosya DOM bilmez. Ekonomiye DOĞRUDAN dokunmaz ama haftalık bir çarpan
+// katmanı yazar (refreshReformModifiers, dosyanın sonu): ücret, tesis
+// verimi, sınıf ruh hâli, sosyal yük, okuryazarlık ve asker alımı bu
+// çarpanları economy.js, technology.js, provinces.js ve recruitment.js'ten
+// okur. İlk bağlama denemesi sıcak yolda ölçülüp geri alınmıştı (haftalık
+// tahsisat 8.7 → 32.6 MB, tur 22 → 43 ms, bkz. AUTONOMOUS_DEV_REPORT.md);
+// şimdiki katman yasa değişince BİR KEZ hesaplanır, haftada okunur.
+// Ölçüldü (Open Beta 4, POL-1 A/B): tek yasa beş yılda her izlenen sayıyı
+// oynatıyor (Good Health Care: huzursuzluk 4.06 → 3.20, refah −2.4 → −11.9/hf).
 //
 // Katman: game/politics.js'ten okur, kimse buradan politics.js'e dönmez.
 
 import { makeRng } from '../core/rng.js';
+import { TIER, announce } from './chronicle.js';
 import { CLASS_IDEOLOGY, IDEOLOGIES, POLITICAL_POLICIES, rulingParty } from './politics.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -640,8 +645,14 @@ export function enactReform(game, nation, groupId) {
   // Çarpanlar hemen tazelenir: haftalık faz beklenirse yasa bir hafta
   // boyunca yürürlükte ama etkisiz görünür.
   if (modsByNation.has(nation)) refreshReformModifiers(nation);
-  if (game && nation.id === game.turns?.playerNation) {
-    game.turns.addLog(`${status.next.name} enacted (${status.group.name}).`, { kind: 'POLITICS' });
+  // Yasa ulusal olaydir: vakayinameye girer (her ulke icin, YZ tarihi de),
+  // kart yalniz oyuncuya. 30 yilda 8 yasanin hicbiri tarihte yoktu (Open Beta 4).
+  if (game) {
+    announce(game, nation, {
+      kind: 'POLITICS', tier: TIER.MAJOR, key: `reform-${groupId}`,
+      title: `${status.next.name} enacted`,
+      detail: `${status.group.name}. ${status.next.effect ?? ''}`.trim(),
+    });
   }
   game?.emit?.('politics', game.world?.turn);
   return true;

@@ -177,7 +177,9 @@ results.peaceTarget = {
   )),
 };
 
-declareWar(game, nation.id, foreign.id);
+// Oyuncu ulkesi adina otomatik ilan REDDEDILIR (diplomacy.declareWar kural 1);
+// tani, dugmeye basan oyuncuyu temsil eder.
+declareWar(game, nation.id, foreign.id, { manual: true });
 runCommand(game);
 const front = frontTilesOf(world, general);
 const firstPosts = new Map(lineDivisions.map((unit) => [

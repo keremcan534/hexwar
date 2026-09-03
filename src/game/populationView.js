@@ -12,6 +12,7 @@
 // Burası `game` katmanıdır: DOM'a dokunmaz, Node'da tek başına çalışır.
 
 import { IDEOLOGIES } from './politics.js';
+import { peopleMix } from './reforms.js';
 import { formatPopulation, populationOf, weightedNeedsMet } from './economy.js';
 import {
   CONFESSIONS, censusSource, censusTree, classPoliticsOf, confessionOf,
@@ -306,10 +307,12 @@ export function populationOverview(world, nation) {
   const classNames = new Map(cohorts.map((c) => [c.classId, c.className]));
 
   const parties = [...(nation.politics?.parties ?? [])].sort((a, b) => b.support - a.support);
+  // Halkin ideolojisi parti OYUNDAN degil sinif karisimindan okunur: oy hakki
+  // darken parti destegi secmen kutugunu yansitir, halki degil (Open Beta 4
+  // politika kesfi: cark %100 muhafazakar gorunuyordu, halk oyle degildi).
   const ideologyMap = new Map();
-  for (const party of parties) {
-    ideologyMap.set(party.ideology,
-      (ideologyMap.get(party.ideology) ?? 0) + party.support * total / 100);
+  for (const slice of peopleMix(nation)) {
+    ideologyMap.set(slice.id, slice.share * total);
   }
 
   return {

@@ -1778,6 +1778,13 @@ export function setBudgetPolicy(nation, policy, value) {
     nation.economy.social[policy] = next;
     return true;
   }
+  // Istenen deger bandin disinda da hatirlanir: parti bandi daralip geri
+  // genisleyince kaydirac oyuncunun/YZ'nin secimine doner (politics.js
+  // applyGovernmentLimits). Bant disi istek kaydiracin mutlak araliginda
+  // tutulur; efektif deger yine banttan gecer.
+  if (policy === 'armyFunding' || policy === 'tariff') {
+    nation.economy[`${policy}Wanted`] = clamp(Math.round(value), policy === 'tariff' ? -50 : 0, 100);
+  }
   if (nation.economy[policy] === next) return false;
   nation.economy[policy] = next;
   return true;
@@ -1951,6 +1958,9 @@ export function budgetPolicyValue(nation, policy) {
  * refleksi. Tekil isaretleme Fabrikalar ekranindan yapilmaya devam eder.
  */
 const STRATEGIC_FACTORY_TYPES = new Set(['ARMS_FACTORY', 'AMMUNITION_FACTORY']);
+
+/** Korumaci YZ hukumetinin surundugu gumruk (%). */
+const PROTECTIONIST_TARIFF = 50;
 
 function applySubsidyPolicy(world, nation) {
   const wartime = world.nations.some(
@@ -3132,8 +3142,14 @@ function adjustSocialAI(nation, report = null) {
   // GORMUYORDU (fiscalBalance tariffRevenue'yu sifirliyor, ticaret sonra
   // dolduruyordu, YZ tam arada kosuyordu). Gumruk gelirin ~%40'iydi: korumaci
   // bir YZ dolu hazineyle kendini iflas etmis sanip okullari kesiyordu.
-  const { broke, rich } = fiscalStance(nation);
-  const step = broke ? -10 : rich ? 10 : 0;
+  // Yukseltme kapisi vergiyle AYNI gevseme esigidir (fiscalStance.easing):
+  // yalniz `rich`te (1.5 × rezerv) acilan egitim bir circir kuruyordu — kisa
+  // bir darlik egitimi sifira indiriyor, rezerv bir daha 1.5 katina cikmadigi
+  // icin on yillarca orada kaliyordu (audit:research: 1870 sonrasi
+  // onyillarda ulkelerin %48-83'u egitimde sifirda). Rezerv dolu ve butce
+  // belirgin fazla veriyorsa okul acilir; histerezis korunur.
+  const { broke, rich, easing } = fiscalStance(nation);
+  const step = broke ? -10 : (rich || easing) ? 10 : 0;
   if (!step) return;
   // Yukseltme sirasi istikrara gore degisir. KESME sirasi ise artik sabittir:
   // eskiden yukseltme sirasi ters cevrilerek turetiliyordu ve bu, istikrar
@@ -3263,8 +3279,13 @@ function adjustFiscalAI(nation, areas = FULL_FISCAL) {
   // indirir — tabana değil. Taban artık −50 (ithalat sübvansiyonu) ve oraya
   // sürüklenen YZ hazinesini kalıcı olarak ithalata akıtıyordu.
   if (areas.trade) {
+    // Korumaci hedef doktrinin duzeyidir, kaydiracin fiziksel tavani degil:
+    // tavana (%100) suruklenen YZ ithalati ucte ikiye kesiyor ve 302 YZ
+    // devletinin 298'i ayni %99+ gumrukte donuyordu (ai-audit patoloji
+    // taramasi). Oyuncunun bandi degismez; YZ ayni setBudgetPolicy'den gecer.
     const limits = fiscalPolicyLimits(nation);
-    const wanted = policyOf(nation, 'trade') === 'protectionism' ? limits.tariffMax : 0;
+    const wanted = policyOf(nation, 'trade') === 'protectionism'
+      ? Math.min(PROTECTIONIST_TARIFF, limits.tariffMax) : 0;
     // SALINIM FRENI. Gumruk haftada en fazla iki puan surunur. AUTO acildiginda
     // oyuncunun kurdugu %30 bir haftada %80'e sicramaz; hukumet aylar icinde
     // kendi doktrinine kayar ve oyuncu her an anahtari kapatip yerinde durdurur.

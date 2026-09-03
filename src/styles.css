@@ -4471,6 +4471,7 @@ body.screen-open .layer-menu { display: none; }
 
 .pol-note em { color: var(--text-faint); font-style: italic; }
 .pol-note b { color: var(--text); font-weight: 650; }
+.pol-note.waiting { border-left-color: var(--gold); }
 .pol-note.blocked { border-left-color: var(--red); background: var(--red-wash); }
 
 /* --- 17.4 Movements / Decisions / Release Nations --- */
@@ -8949,6 +8950,11 @@ body.menu-open .sheet { visibility: hidden; }
   background-image: linear-gradient(180deg, var(--surface-3), var(--surface-2));
   box-shadow: inset 0 -1px 0 rgba(190, 158, 96, 0.22), 0 2px 6px rgba(0, 0, 0, 0.35);
 }
+
+/* Basliklar tiklanir: siralama sutunu altin, ok yonu gosterir. */
+.pop-table thead th[data-pop-sort] { cursor: pointer; user-select: none; }
+.pop-table thead th[data-pop-sort]:hover { color: var(--text); }
+.pop-table thead th.sorted { color: var(--gold); }
 
 /* --------------------------------------------------------------------------
    ARAMA KUTUSU — çukur cam

@@ -40,7 +40,8 @@ export const POP_TABS = {
   religion: 'Religion',
   politics: 'Politics',
   states: 'States',
-  cohorts: 'Cohorts',
+  // "Cohorts" sekmesi kaldirildi: bos bir orta panel cizip alttaki grup
+  // tablosunu tekrar ediyordu (Open Beta 4). Gruplar zaten her sekmenin altinda.
 };
 
 /* ==========================================================================
@@ -120,8 +121,10 @@ function sparkline(samples, { width = 260, height = 74 } = {}) {
    ========================================================================== */
 
 function healthCards(summary) {
-  const card = (label, value, note, noteTone = '') => `
-    <div class="pop-card">
+  // Her kartin ustunde NE oldugu ve NEYIN oynattigi yazar; rakam tek basina
+  // "buna ne yapmaliyim" sorusunu cevaplamiyordu (Open Beta 4 nufus kesfi).
+  const card = (label, value, note, noteTone = '', tip = '') => `
+    <div class="pop-card" ${tip ? `title="${esc(tip)}"` : ''}>
       <small>${esc(label)}</small>
       <b>${value}</b>
       <em class="${noteTone}">${note}</em>
@@ -130,18 +133,24 @@ function healthCards(summary) {
     ? 'no history yet'
     : `${summary.monthlyPeople >= 0 ? '+' : '−'}${people(Math.abs(summary.monthlyPeople))} / month`;
   return `<header class="pop-cards">
-    ${card('Total population', people(summary.total), growthNote, arrow(summary.growth))}
+    ${card('Total population', people(summary.total), growthNote, arrow(summary.growth),
+    'Everyone living in your provinces. The note is the change over the last month.')}
     ${card('Growth', summary.growth == null ? '—' : `${summary.growth >= 0 ? '+' : '−'}${Math.abs(summary.growth * 100).toFixed(2)}%`,
-    'per month', arrow(summary.growth))}
+    'per month', arrow(summary.growth),
+    'Monthly change of the whole population. Needs met, health care and war move it.')}
     ${card('Employment', pct(summary.employment),
     summary.unemployed > 0 ? `${people(summary.unemployed)} unemployed` : 'everyone in work',
-    summary.unemployed > 0 ? 'down' : 'up')}
-    ${card('Needs met', pct(summary.needs), pp(summary.needsChange), arrow(summary.needsChange))}
+    summary.unemployed > 0 ? 'down' : 'up',
+    'Share of working people with a job. Idle hands mean too few factories or fields — build, or let capital build.')}
+    ${card('Needs met', pct(summary.needs), pp(summary.needsChange), arrow(summary.needsChange),
+    'How much of what your people want they can afford at current prices. Falling needs breed unrest; the note is the change over the last year.')}
     ${card('Literacy', pct(summary.literacy), `${pp(summary.literacyChange)} this year`,
-    arrow(summary.literacyChange))}
-    ${card('Unrest', pct(summary.unrestShare),
+    arrow(summary.literacyChange),
+    'Share of adults who can read. Education spending and schools raise it; it feeds research and lets people move up a class.')}
+    ${card('Unrest', summary.unrest.toFixed(1),
     summary.unrest > 5 ? 'severe' : summary.unrest > 3.5 ? 'rising' : 'low',
-    summary.unrest > 3.5 ? 'down' : 'up')}
+    summary.unrest > 3.5 ? 'down' : 'up',
+    'Average militancy on a 0–10 scale, driven by hunger and unemployment. Above 3.5 provinces radicalise; above 5 it is a crisis.')}
   </header>`;
 }
 
@@ -251,7 +260,7 @@ function overviewPanels(view) {
       <div class="pop-legend">${legend(d.professions)}</div>`)}
     ${panel('Culture', 'by population', `
       <div class="pop-chart">${donut(d.cultures)}<div class="pop-legend">${legend(d.cultures)}</div></div>`)}
-    ${panel('Ideology', 'party support', `
+    ${panel('Ideology', 'of the people', `
       <div class="pop-chart">${donut(d.ideologies)}<div class="pop-legend">${legend(d.ideologies)}</div></div>`)}
     ${panel('Employment and needs', '', `
       ${meter('Employment', s.employment, pct(s.employment))}
@@ -275,6 +284,15 @@ function overviewPanels(view) {
    TABLOLAR
    ========================================================================== */
 
+/** Sutun basligi → satirdaki deger. Metin sutunlari harf sirasi, sayilar buyukluk. */
+function sortValue(row, key) {
+  switch (key) {
+    case 'name': return `${row.culture} ${row.profession}`;
+    case 'alert': return row.alert ? row.alert.weight ?? 0 : -1;
+    default: return row[key] ?? null;
+  }
+}
+
 export function filterGroups(view, state) {
   let rows = view.groups;
   if (state.selected) {
@@ -286,13 +304,29 @@ export function filterGroups(view, state) {
   if (query) {
     rows = rows.filter((row) => `${row.culture} ${row.profession}`.toLowerCase().includes(query));
   }
+  // Baslik tiklaninca siralanir; varsayilan buyukten kucuge nufus. Sayisal
+  // sutunlarda bos deger ("—") her zaman sona duser.
+  const sort = state.sort ?? { key: 'size', dir: -1 };
+  const dir = sort.dir ?? -1;
+  rows = [...rows].sort((a, b) => {
+    const va = sortValue(a, sort.key);
+    const vb = sortValue(b, sort.key);
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    if (typeof va === 'string' || typeof vb === 'string') {
+      return String(va).localeCompare(String(vb)) * dir;
+    }
+    return (va - vb) * dir;
+  });
   return rows;
 }
 
 const GROUP_COLUMNS = [
   { key: 'name', label: 'Group', align: '' },
   { key: 'size', label: 'Size', align: 'num' },
-  { key: 'home', label: 'State', align: '' },
+  // Sutun bir province adi tasir (grubun en kalabalik yurdu), state degil.
+  { key: 'home', label: 'Home', align: '' },
   { key: 'className', label: 'Class', align: '' },
   { key: 'culture', label: 'Culture', align: '' },
   { key: 'employment', label: 'Employment', align: 'num' },
@@ -304,8 +338,13 @@ const GROUP_COLUMNS = [
 
 function groupTable(view, state) {
   const rows = filterGroups(view, state);
-  const head = GROUP_COLUMNS.map((column) => `<th class="${column.align}"
-    data-pop-sort="${column.key}">${esc(column.label)}</th>`).join('');
+  const sort = state.sort ?? { key: 'size', dir: -1 };
+  const head = GROUP_COLUMNS.map((column) => {
+    const on = sort.key === column.key;
+    const arrowMark = on ? (sort.dir < 0 ? ' ▼' : ' ▲') : '';
+    return `<th class="${column.align}${on ? ' sorted' : ''}" data-pop-sort="${column.key}"
+    title="Sort by ${esc(column.label.toLowerCase())}">${esc(column.label)}${arrowMark}</th>`;
+  }).join('');
   const body = rows.map((row) => `<tr class="${state.group === row.id ? 'on' : ''}"
     data-pop-group="${esc(row.id)}" tabindex="0">
     <td><b>${esc(row.culture)} ${esc(row.profession)}</b></td>
@@ -366,7 +405,7 @@ function cultureTab(view) {
       <th class="num">Share</th><th>Largest state</th>
       <th class="num">Unrest</th></tr></thead><tbody>${rows}</tbody></table>
      <p class="hint">Unrest is measured from unmet needs and unemployment
-       (see the Cohorts tab for the groups behind each figure).</p>`, 'wide');
+       (the groups behind each figure are listed below).</p>`, 'wide');
 }
 
 function religionTab(view) {
@@ -396,7 +435,7 @@ function politicsTab(view) {
   return `<div class="pop-panels two">
     ${panel('Party support', 'national return', parties)}
     ${panel('Dominant issues', 'what the country argues about', issues)}
-    ${panel('Ideology', 'by population', `
+    ${panel('Ideology', 'of the people, not the electorate', `
       <div class="pop-chart">${donut(view.distributions.ideologies)}
       <div class="pop-legend">${legend(view.distributions.ideologies)}</div></div>`)}
   </div>`;

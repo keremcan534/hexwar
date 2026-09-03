@@ -240,6 +240,7 @@ export class Screens {
       query: '',
       group: null,
       groupQuery: '',
+      sort: { key: 'size', dir: -1 },
     };
     this.el = {
       root: document.getElementById('screen'),
@@ -1552,6 +1553,18 @@ export class Screens {
           state.expanded.add(target);
         }
         state.tab = 'states';
+        this.refresh();
+      };
+    }
+    for (const th of this.el.body.querySelectorAll('[data-pop-sort]')) {
+      th.onclick = () => {
+        // Ayni basliga ikinci tik yonu cevirir; yeni baslik metinde A→Z,
+        // sayida buyukten kucuge baslar.
+        const key = th.dataset.popSort;
+        const numeric = th.classList.contains('num') || key === 'alert';
+        state.sort = state.sort?.key === key
+          ? { key, dir: -state.sort.dir }
+          : { key, dir: numeric ? -1 : 1 };
         this.refresh();
       };
     }
