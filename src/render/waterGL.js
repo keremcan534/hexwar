@@ -54,6 +54,18 @@ uniform vec2 uFieldSpan;    // uDist dokusunun dünya en/boyu
 uniform float uDistMax;     // uDist'in kodladığı azami uzaklık
 uniform float uDetail;      // 0..1, zoom LOD
 
+// Palet CANLI AYARLANABİLİR (bkz. WaterGL.tune). Denizin karakteri saf ayar
+// meselesi ve her denemede sayfayı yeniden yükleyip dünyayı yeniden pişirmek
+// 25 saniye tutuyordu; uniform olarak saniyeler içinde denenebiliyor.
+uniform vec3 uShallow;
+uniform vec3 uTeal;
+uniform vec3 uPetrol;
+uniform vec3 uAbyss;
+uniform float uShelf;       // sığlık erimi çarpanı
+uniform float uSpecAmp;
+uniform float uFresAmp;
+uniform float uFoamAmp;
+
 uniform sampler2D uHex;     // R8, NEAREST — 1 = su
 uniform sampler2D uDist;    // R8, LINEAR  — kıyıya uzaklık / uDistMax
 uniform sampler2D uWave;    // RGBA8, LINEAR, tekrar — RG normal.xy, B/A yükseklik
@@ -113,14 +125,10 @@ void main() {
   // --- DERİNLİK PALETİ ---
   // Kıyıdan açığa: kısık turkuaz-yeşil → derin teal → petrol → siyaha yakın
   // lacivert-teal. Parlak camgöbeği ve tropik doygunluk YOK.
-  float t = clamp(dist / (uHexSize * 9.0), 0.0, 1.0);
-  vec3 cShallow = vec3(0.114, 0.235, 0.227);
-  vec3 cTeal    = vec3(0.082, 0.196, 0.212);
-  vec3 cPetrol  = vec3(0.043, 0.118, 0.145);
-  vec3 cAbyss   = vec3(0.027, 0.075, 0.098);
-  vec3 base = mix(cShallow, cTeal, smoothstep(0.0, 0.24, t));
-  base = mix(base, cPetrol, smoothstep(0.20, 0.55, t));
-  base = mix(base, cAbyss, smoothstep(0.48, 1.0, t));
+  float t = clamp(dist / (uHexSize * 9.0 * uShelf), 0.0, 1.0);
+  vec3 base = mix(uShallow, uTeal, smoothstep(0.0, 0.24, t));
+  base = mix(base, uPetrol, smoothstep(0.20, 0.55, t));
+  base = mix(base, uAbyss, smoothstep(0.48, 1.0, t));
   // Geniş yapı TOPLANARAK biner, çarpılarak değil. Koyu bir tabanda çarpım
   // hiçbir şey yapmaz: 0.03 tabanın %20'si 0.006, yani algı eşiğinin çok
   // altı. Canvas2D geçişinde aynı hataya düşülmüştü; burada da aynı ders.
@@ -153,7 +161,7 @@ void main() {
   // Yansıma tonu SOĞUK ve koyu: gökyüzü değil, kurşuni bir gün ışığı. Ayna
   // yansıması yok, yalnız ıslaklık izlenimi.
   vec3 skyTone = vec3(0.176, 0.235, 0.267);
-  vec3 col3 = mix(base, skyTone, clamp(fres * 2.10, 0.0, 0.60));
+  vec3 col3 = mix(base, skyTone, clamp(fres * uFresAmp, 0.0, 0.60));
 
   // --- YÖNLÜ SPEKÜLAR ---
   // Tek küresel ışık. Üs düşük tutulur: geniş ve yumuşak vurgu, kıvılcım
@@ -168,7 +176,7 @@ void main() {
   float spec = pow(max(dot(N, H), 0.0), 60.0);
   // Seyreklik: yalnız geniş ölçekli alanın aydınlık kuşaklarında görünür.
   spec *= 0.35 + 0.65 * smoothstep(-0.25, 0.55, broad);
-  col3 += vec3(0.50, 0.56, 0.57) * spec * 0.90 * (0.45 + 0.55 * uDetail);
+  col3 += vec3(0.50, 0.56, 0.57) * spec * uSpecAmp * (0.45 + 0.55 * uDetail);
 
   // --- KIYI ---
   // LAND → dar koyu temas kenarı → KIRIK soluk köpük → sığ teal → derin su.
@@ -193,7 +201,7 @@ void main() {
   float gate = 0.52 + 0.19 * (wave(world, 940.0, vec2(0.8, -0.5), 1.4).b - 0.5) * 2.0;
   float foam = band * smoothstep(gate, gate + 0.11, chop);
   foam *= 0.6 + 0.4 * uDetail;
-  col3 = mix(col3, vec3(0.58, 0.64, 0.63), clamp(foam * 0.78, 0.0, 0.58));
+  col3 = mix(col3, vec3(0.58, 0.64, 0.63), clamp(foam * uFoamAmp, 0.0, 0.62));
 
   fragColor = vec4(col3, 1.0);
 }`;
@@ -263,6 +271,26 @@ export class WaterGL {
     this.resScale = 0.75;
     this.lastDraw = 0;
     this.debug = { enabled: true };
+    /**
+     * Denizin karakteri. Konsoldan canlı değiştirilebilir:
+     *   game.renderer.waterGL.tune.abyss = [0.05, 0.12, 0.15]
+     *   game.renderer.waterGL.draw(game.camera, performance.now()/1000, true)
+     */
+    // Varsayılan: referans #3 ve #4'ün ORTAK belirleyici özelliği — kıyıya
+    // oturan aydınlık turkuaz şelf + koyu açık deniz. Aradaki fark derecedir:
+    // #4 abisi neredeyse siyaha, #3 daha aydınlık bir tealde tutar. Bu ayar
+    // ikisinin arasındadır; abis siyaha çakılmadığı için uzak zoomda açık
+    // denizde de yapı okunur.
+    this.tune = {
+      shallow: [0.185, 0.420, 0.412],
+      teal: [0.085, 0.225, 0.245],
+      petrol: [0.042, 0.112, 0.138],
+      abyss: [0.025, 0.066, 0.086],
+      shelf: 0.95,
+      spec: 1.00,
+      fresnel: 2.20,
+      foam: 0.66,
+    };
 
     const prog = gl.createProgram();
     gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
@@ -276,7 +304,9 @@ export class WaterGL {
     this.u = {};
     for (const name of ['uViewport', 'uDpr', 'uCam', 'uZoom', 'uTime', 'uWrap',
       'uGrid', 'uHexSize', 'uFieldOrigin', 'uFieldSpan', 'uDistMax', 'uDetail',
-      'uHex', 'uDist', 'uWave']) {
+      'uHex', 'uDist', 'uWave',
+      'uShallow', 'uTeal', 'uPetrol', 'uAbyss', 'uShelf',
+      'uSpecAmp', 'uFresAmp', 'uFoamAmp']) {
       this.u[name] = gl.getUniformLocation(prog, name);
     }
 
@@ -384,6 +414,15 @@ export class WaterGL {
     gl.uniform1f(u.uDistMax, DIST_MAX);
     // LOD: yakınlaştıkça ince kırışıklık ve spekülar payı açılır.
     gl.uniform1f(u.uDetail, Math.max(0, Math.min(1, (camera.zoom - 0.35) / 1.1)));
+    const T = this.tune;
+    gl.uniform3fv(u.uShallow, T.shallow);
+    gl.uniform3fv(u.uTeal, T.teal);
+    gl.uniform3fv(u.uPetrol, T.petrol);
+    gl.uniform3fv(u.uAbyss, T.abyss);
+    gl.uniform1f(u.uShelf, T.shelf);
+    gl.uniform1f(u.uSpecAmp, T.spec);
+    gl.uniform1f(u.uFresAmp, T.fresnel);
+    gl.uniform1f(u.uFoamAmp, T.foam);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.hexTex);
