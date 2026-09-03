@@ -6,6 +6,7 @@
 import {
   runScenario, section, sub, table, finding, reportFindings, n1, n2, n0, pct,
 } from './harness.mjs';
+import { IMPORT_ELASTICITY, importAppetite } from '../../src/game/economy.js';
 
 const SEED = 'boundary-audit';
 
@@ -127,19 +128,22 @@ section('X. TANI');
   }
 
   // Gumruk formulunun matematiksel tanim araligi
-  const IMPORT_ELASTICITY = 1.6;
-  const appetite = (t) => 1 / (1 + (t / 100) * IMPORT_ELASTICITY);
-  console.log(`\n  ithalat istahi formulu 1/(1 + tarife/100 x ${IMPORT_ELASTICITY}):`);
+  // Motorun kendi fonksiyonu (payda 0.05'te tabanli); kopya formul -62.5'te
+  // sonsuz veriyordu, motor hic vermiyordu.
+  const appetite = importAppetite;
+  console.log(`\n  ithalat istahi formulu 1/max(0.05, 1 + tarife/100 x ${IMPORT_ELASTICITY}):`);
   console.log(table([-1000, -100, -62.5, -50, 0, 100, 1000].map((t) => ({ t, a: appetite(t) })), [
     { label: 'tarife%', get: (r) => r.t },
     { label: 'istah', get: (r) => (Number.isFinite(r.a) ? n2(r.a) : String(r.a)) },
     { label: 'gecerli', get: (r) => (Number.isFinite(r.a) && r.a > 0 ? 'evet' : 'HAYIR') },
   ]));
-  finding('LOW', 'Ithalat istahi formulu -%62.5\'te tanimsiz',
-    'formul butun sayi araliginda pozitif ve sonlu olmali',
-    `tarife = -62.5 -> istah = ${appetite(-62.5)}; -62.5'in altinda istah NEGATIF olur`,
-    'UI bandi (-50 taban) bugun bu bolgeye girmiyor, ama settleGlobalTrade'
-    + ' matematiksel korumaya sahip degil: bant genisletilirse ithalat negatife doner');
+  const bad = [-1000, -100, -62.5, -50, 0, 100, 1000].filter((t) => !(Number.isFinite(appetite(t)) && appetite(t) > 0));
+  if (bad.length) {
+    finding('LOW', 'Ithalat istahi formulu tanimsiz',
+      'formul butun sayi araliginda pozitif ve sonlu olmali', `tarife ${bad.join(', ')}`, '');
+  } else {
+    console.log('  OK  istah her tarifede pozitif ve sonlu.');
+  }
 
   const manyFactories = results.find((x) => x.label === 'yuzlerce fabrika (x40)');
   console.log(`  x40 fabrika senaryosu: tesis ${manyFactories.r.snap.factories},`

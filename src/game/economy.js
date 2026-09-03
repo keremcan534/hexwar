@@ -466,6 +466,15 @@ const PRICE_SPEED = 0.09;
 export const IMPORT_ELASTICITY = 1.6;
 
 /**
+ * Gumrugun ithalat istahi. Payda 0.05'te tabanlanir: -62.5'te payda sifir,
+ * altinda negatif olurdu (audit:boundary). Denetim de bu fonksiyonu okur,
+ * kendi kopyasini tutmaz.
+ */
+export function importAppetite(tariff) {
+  return 1 / Math.max(0.05, 1 + ((tariff ?? 0) / 100) * IMPORT_ELASTICITY);
+}
+
+/**
  * Yuksek gumrugun IHRACAT bedeli: kapali ekonomiden kimse mal almak istemez —
  * ticaret ortaklari once acik ekonomilerden alir. %100 tarife ihracat payini
  * ~%33 dusurur (1/(1+0.5)). Bu katsayi olmadan %100 tarife OLCULEN bir bedava
@@ -1088,8 +1097,13 @@ const CLASS_CEILING = { middle: 0.34, upper: 0.11 };
 function runPromotion(nation, mobility) {
   const economy = nation.economy;
   const total = Math.max(1, economy.cohortPopulation);
-  // Eğitim niteliği artırır: okullu nüfus daha kolay sınıf atlar.
-  const schooling = 1 + socialLevel(nation, 'education') * 0.5;
+  // Egitim niteligi artirir: okullu nufus daha kolay sinif atlar. Carpan
+  // artik okuryazarlik STOGUNDAN gelir (advanceLiteracy), kaydiracin anlik
+  // degerinden degil: kaydirac kapanınca nesil okumayi unutmaz. Olculdu
+  // (audit:budget): anlik carpanla egitim 0 ve 100 arasinda 260 haftada orta
+  // sinif farki %0.0 — kapi (asagida) hic acilmadigi icin carpan bosa donuyordu.
+  const literacy = clamp(economy.literacy ?? 0, 0, 1);
+  const schooling = 1 + literacy * 1.0 + socialLevel(nation, 'education') * 0.25;
   for (const [sourceClass, targetClass, key] of [
     ['lower', 'middle', 'promotedLower'],
     ['middle', 'upper', 'promotedMiddle'],
@@ -1101,8 +1115,11 @@ function runPromotion(nation, mobility) {
     if (target.population / total >= CLASS_CEILING[targetClass]) continue;
     // Yükselmenin şartı: hem geçimini karşılamak hem gerçek artık bırakmak.
     const surplus = (source.needsBudget ?? 0) - (source.needsCost ?? 0);
-    const thriving = source.canAffordNeeds && surplus > (source.needsCost ?? 0) * 0.35
-      && (source.satisfaction ?? 0) > 0.55;
+    // Okuryazar sinif daha kucuk artikla yukselir: Victoria'da sinif
+    // atlamanin asil kapisi okuryazarliktir, servet degil.
+    const surplusNeeded = 0.35 * (1 - literacy * 0.6);
+    const thriving = source.canAffordNeeds && surplus > (source.needsCost ?? 0) * surplusNeeded
+      && (source.satisfaction ?? 0) > 0.55 - literacy * 0.15;
     source.prosperityWeeks = thriving
       ? (source.prosperityWeeks ?? 0) + schooling
       : Math.max(0, (source.prosperityWeeks ?? 0) - 2);
@@ -1760,6 +1777,8 @@ export function budgetPolicyLimits(nation) {
  * @returns {boolean} deger degisti mi
  */
 export function setBudgetPolicy(nation, policy, value) {
+  // Eski betikler icin takma ad: iki askeri kaydirac tek `armyFunding` oldu.
+  if (policy === 'armySpending') policy = 'armyFunding';
   if (!nation?.economy || !BUDGET_POLICIES.includes(policy)) return false;
   // NaN/Infinity SESSIZCE GECMEZ. `clamp(Math.round(NaN))` NaN dondurur ve
   // deger alana oyle yazilirdi; oradan sonra butun butce NaN olurdu. Bozuk
@@ -2550,7 +2569,9 @@ function runFactoryEmployment(game, nation) {
 
   // Eğitim ve yüksekögretim kurumu işgücünü niteliklendirir: aynı nüfus daha
   // hızlı akar (eski üniversite binasının sayacı kurum seviyesine taşındı).
-  const schooling = 1 + socialLevel(nation, 'education') * 0.25
+  // Okuryazarlik stogu ise alimi da surer (bkz. runPromotion notu).
+  const schooling = 1 + clamp(economy.literacy ?? 0, 0, 1) * 0.5
+    + socialLevel(nation, 'education') * 0.25
     + higherEducationBonus(nation);
   const lower = Math.max(0, economy.classes.lower.population);
   const employed = factories.reduce((sum, factory) => sum + factory.employees, 0);
@@ -3686,7 +3707,7 @@ export function settleGlobalTrade(world) {
       // Payda 0.05'in altina inemez: formul −%62.5 tarifede sonsuza, altinda
       // NEGATIFE gidiyor. UI bandi (taban −50) bugun oraya girmiyor ama
       // matematiksel koruma bantla birlikte tasinmamali.
-      const appetite = 1 / Math.max(0.05, 1 + (nation.economy.tariff / 100) * IMPORT_ELASTICITY);
+      const appetite = importAppetite(nation.economy.tariff);
       // Yuksek tarifeli ulkenin ihracat erisimi kisilir (bkz. EXPORT_RETALIATION).
       // Fiziksel mal yok olmaz: satilamayan fazla, zaten satilamayan fazlanin
       // yanina duser (crossBorderTrade = min(surplus, bid) korunumu bozulmaz).

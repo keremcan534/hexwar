@@ -6,7 +6,7 @@ import {
 } from './harness.mjs';
 import {
   FACTORIES, MAX_FACTORY_LEVEL, WORKERS_PER_LEVEL, expansionCost, factoryCost,
-  factoryJobs, factoryMargin, jobTotalsOf, priceOf,
+  factoryJobs, factoryMargin, factoryUnlocked, jobTotalsOf, priceOf,
 } from '../../src/game/economy.js';
 
 const SEED = 'factory-audit';
@@ -209,7 +209,13 @@ sub('Kasten zararli tesisler kur, sübvansiyonu ac, 100 hafta isle');
 
   // Kasten zararli tesis: girdi/cikti orani kotu olan turlerden secilir ve
   // seviyesi yukseltilir ki zarar buyusun.
+  // Yalniz ACIK ve girdisi piyasada bulunan turler: kilitli ya da girdisiz
+  // tesis hic uretmez, zarar da etmez, subvansiyon da odenmez — eski secim
+  // (TANK, AIRCRAFT, TELEPHONE, RADIO) tam bu yuzden 0.00 olcuyordu.
+  const supplied = (typeId) => Object.keys(FACTORIES[typeId].inputs ?? {})
+    .every((goodId) => (world.market.goods[goodId]?.supply ?? 0) > 0);
   const worst = Object.keys(FACTORIES)
+    .filter((typeId) => factoryUnlocked(typeId, world.turn, nation) && supplied(typeId))
     .map((typeId) => ({ typeId, m: factoryMargin(world, typeId) }))
     .sort((a, b) => a.m - b.m).slice(0, 4);
   const capital = world.cities.find((c) => c.nationId === nation.id);

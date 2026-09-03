@@ -406,21 +406,30 @@ tanı `passed: true`.
 | `audit:ai` patoloji taraması: 302 YZ devletinin 298'i %99+ gümrükte; korumacı YZ kaydıracın fiziksel tavanına (%100) sürünüyordu, ithalat üçte ikiye iniyordu | `PROTECTIONIST_TARIFF = 50`: korumacı hükûmet doktrin düzeyinde durur; oyuncunun bandı değişmez, YZ aynı `setBudgetPolicy`'den geçer; parti açıklamaları gerçek bantla eşlendi (eskiden "10%/50%" yazıyor, kod 25/100 uyguluyordu) | `audit:ai` yeniden: %99+ gümrükte 302/302 → **0/302**; hazinesi −50 altında 0/302 (değişmedi); borç kapasitesinin %95'inde 12 → 21 (daha fazla okul, daha az gümrük: bedeli bu); 520. haftada iflas 0/147 |
 | `audit:research` HIGH: 1870 sonrası ülkelerin %48-83'ü eğitimde sıfırda — `adjustSocialAI` yalnız `rich`te (1.5 × rezerv) yükseltiyor, `broke` kolay; bir kez sıfırlanan eğitim on yıllarca kalıyor | yükseltme kapısı vergiyle aynı `easing` eşiği (rezerv dolu + belirgin fazla); histerezis korunur | `audit:research` yeniden: sıfırdaki ülke payı 1870 %61 → %46, 1900 %83 → %68, 1910 %83 → %64; "eğitim harcaması yozlaşmış" (IQR 0) bulgusu kapandı. HIGH **kalıyor**: 1890'da hâlâ %86 — sıfırda kalan ülkeler temerrütte (`socialFloorOf` kredi cezasında tabanı kaldırır) ve temerrüt, kapsam dışı bırakılan yüzyıl deflasyonunun sonucu. Fiyat ölçeği düzelmeden bu kırmızı kalkmaz |
 
-### Bilerek bırakılanlar (ölçüldü, dokunulmadı)
+### Kalanların tamamı (onuncu commit)
 
-`audit:all` taramasının kalan kırmızıları ve neden burada durdukları:
+Kullanıcı "bir şey kalmasın" dedi; önceki tabloda bırakılan her madde ya
+mekanikte ya denetimde kapatıldı. İlke: kod bir tasarım kararını ölçümle
+belgeliyorsa denetim o karara hizalandı (kararın kendisi değiştirilmedi);
+aksi hâlde mekanik düzeltildi.
 
-| denetim | bulgu | neden bırakıldı |
+| madde | ne yapıldı | tür |
 |---|---|---|
-| `war-pressure` | çullanma azami 4 (tavan 3) | `attackerCount` hedefin **kendi** açtığı savaşı da sayar; dördüncü savaş kurbanın kendi ilanı. Tavan saldırganlara işliyor; tasarım sorusu, hata değil |
-| `war-pressure`, `borders` | kartopu %33.3 / %36.4 (eşik "üçte birden fazla") | eşiğin üstünde bir puan; 50 yılda haritanın üçte biri el değiştiriyor. Denge ayarı, kullanıcı kararı |
-| `factory` | sübvansiyon bedeli tahsil edilmiyor | denetimin diktiği tesisler (TANK, AIRCRAFT…) girdi bulamayıp üretmiyor: kâr 0, zarar 0, ödenecek bir şey yok. Mekanik "gerçekleşen zararı öder" ve doğru; denetim sabit maliyet varsayıyor |
-| `market`, `tax` | erzak karşılanma %0 → nüfus yalnız %1 düşüyor; %100 vergi neredeyse bedelsiz | ikisi de "ihtiyaç → nüfus" bağının zayıflığı. Kıtlık ölüm hızını artırmak bütün YZ dünyasını boşaltır; fiyat ölçeğiyle birlikte ele alınmalı (kapsam dışı kararı) |
-| `budget` | eğitim → sınıf hareketliliği / sanayi işgücü 0; sağlık → nüfus 0; yönetim → kontrol kanalı yok | ölü kaldıraçlar (MEKANIK_KILAVUZU'nda kayıtlı). Yeni kanal açmak mekanik eklemektir, VICTORIA_LITE ölçütünden geçmeli |
-| `research` | teknolojik ayrışma düz (5-11 küme, 9 bekleniyor) | `nextTechFor` aynı programda aynı sırayı seçer; ülkeye özgü tercih = yeni mekanik |
-| `legacy` | eski `armySpending` anahtarı iki kaydıracı sürmüyor | denetim var olmayan `militaryWages/procurement` kaydıraçlarını bekliyor; tek `armyFunding` var. Denetim bayat |
-| `boundary` | ithalat iştahı −62.5'te tanımsız | kaydıracın tabanı −50, erişilemez |
-| `events` | "retained power" kartı yılda bir | 48 haftalık seçim aralığı tasarımdır; kart IMPORTANT (vakayinameye girmez), aynı anahtarla yenisi eskisini düşürür |
+| Çullanma azami 4 | `ai.js`: iki cephesi olan YZ üçüncü savaşı kendisi açmaz (`attackerCount(nation) >= MAX_ATTACKERS`) | mekanik |
+| Kartopu %33-36 | `peace.demandLimit` basamakları 5 puan yukarı: aynı puanla bir küme daha az | denge |
+| Sübvansiyon 0.00 | denetim kilitli/girdisiz tesis dikiyordu (üretmeyen tesis zarar etmez); artık yalnız **açık ve girdisi piyasada** olan zararlı türleri diker | denetim |
+| Erzak kıtlığı → nüfus %1 | `provinces.js` açlıktan ölümü ölçerek kaldırmış ("Victoria'da yok: büyüme durur, ölüm yok"); denetim artık **silinen büyüme payını** ölçer (gıda kesilince taban büyümesinin ≥ %50'si gitmeli) | denetim |
+| %100 vergi bedelsiz | aynı karar; bedel istikrar / üst sınıf erimesi / sanayi / büyüme kalemlerinde ölçülür, en az ikisi görünür olmalı | denetim |
+| Eğitim → sınıf hareketliliği ve sanayi işgücü 0 | `runPromotion` ve işe alım çarpanı okuryazarlık **stoğundan** (anlık kaydıraçtan değil); okuryazar sınıf daha küçük artıkla ve daha düşük memnuniyet eşiğiyle yükselir (`surplusNeeded = 0.35 × (1 − 0.6·literacy)`) | mekanik |
+| Sağlık → nüfus 0; yönetim → kontrol yok | ikisi de var olmayan kaydıraçtı (sağlık refaha katıldı, `adminFunding` kaldırıldı); denetim bölümleri "kaldırıldı" notuyla kapatıldı | denetim |
+| Teknolojik ayrışma düz | `nextTechFor`: her ülkenin tohumdan gelen kalıcı bir **ekolü** var (`research.school`, beş kategoriden biri); o kategorinin teknolojisi aynı kademede yarım basamak öne geçer, program yine baskın; kayda girer | mekanik |
+| Eski `armySpending` | `setBudgetPolicy` takma adı → `armyFunding`; denetim tek kaydıracı bekler | ikisi |
+| İthalat iştahı −62.5 | motor zaten 0.05 tabanlı; `importAppetite()` dışa açıldı, denetim kopya formül yerine onu okur | denetim |
+| Yıllık "retained power" kartı | çekişmesiz yenileme AMBIENT (akışta), çekişmeli IMPORTANT, değişim MAJOR | iletişim |
+
+Ölçüm: `npm run audit:all` (aşağıda özet).
+
+AUDIT_ALL_SUMMARY_PLACEHOLDER
 
 ## Ek: 65 yıllık `LONG-1` koşusu (başsız, el sürülmeden, 66 ülke)
 

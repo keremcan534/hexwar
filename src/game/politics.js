@@ -377,8 +377,12 @@ function resolveElection(game, nation) {
   // vakayinameye girer (MAJOR) — 30 yilda 20 hukumetin hicbiri tarihte yoktu;
   // iktidarin kalmasi yalniz karttir, yoksa yillik secim tarihi doldurur.
   const retained = previous?.id === winner.id;
+  // Cekismesiz yenileme (meydan okuyan yok ya da uzak) yalniz akista gorunur;
+  // yillik "retained power" karti gurultuydu (audit:events).
+  const contested = retained && challenger.id !== winner.id;
   announce(game, nation, {
-    kind: 'POLITICS', tier: retained ? TIER.IMPORTANT : TIER.MAJOR, key: 'election',
+    kind: 'POLITICS', key: 'election',
+    tier: !retained ? TIER.MAJOR : contested ? TIER.IMPORTANT : TIER.AMBIENT,
     title: retained
       ? `${winner.name} retained power with ${Math.round(winner.support)}% support`
       : `${winner.name} won the election with ${Math.round(winner.support)}% support`,

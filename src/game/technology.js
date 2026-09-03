@@ -15,6 +15,7 @@
 // Katman notu: saf veri + hesap. DOM yok, economy.js'i IMPORT ETMEZ
 // (economy bunu import eder; ters yon dongu olurdu).
 
+import { makeRng } from '../core/rng.js';
 import { reformModifiers } from './reforms.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -718,12 +719,23 @@ export function nextTechFor(nation, year, world) {
   const candidates = availableTechs(nation);
   if (!candidates.length) return null;
   const programme = programmeOf(nation);
+  // EKOL. Ayni programdaki her ulke ayni merdiveni ayni sirayla tirmaniyordu
+  // (audit:research: 1945'te 60 ulkede 5-11 farkli teknoloji kumesi). Her
+  // ulkenin tohumdan gelen kalici bir egilimi var: o kategorinin teknolojisi
+  // ayni kademede yarim basamak one gecer. Program (oyuncunun ilani) yine
+  // baskin; ekol yalniz esitleri ayirir. Kayda research ile girer.
+  const research = ensureResearch(nation);
+  if (!research.school && world?.seed != null) {
+    const ids = Object.keys(TECH_CATEGORIES);
+    research.school = makeRng(`${world.seed}-school-${nation.id}`).pick(ids);
+  }
   const tierOf = (entry) => {
-    if (!programme) return 1;
+    const lean = entry.categoryId === research.school ? -0.5 : 0;
+    if (!programme) return 1 + lean;
     const match = (list) => list.some(([cat, folder]) => cat === entry.categoryId && folder === entry.folder);
-    if (match(programme.focus)) return 0;
-    if (match(programme.neglect)) return 2;
-    return 1;
+    if (match(programme.focus)) return 0 + lean;
+    if (match(programme.neglect)) return 2 + lean;
+    return 1 + lean;
   };
   let best = null;
   let bestKey = null;

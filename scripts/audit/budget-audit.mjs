@@ -255,26 +255,12 @@ sub('Egitim 0 / 50 / 100');
 }
 
 // --------------------------------------------------------- SAGLIK ---
-sub('Saglik 0 / 50 / 100');
-{
-  const rows = [0, 50, 100].map((v) => ({ v, r: scenario(`hea${v}`, [{ key: 'social', value: v, classId: 'health' }]) }));
-  console.log(table(rows, [
-    { label: 'saglik%', get: (x) => x.v },
-    { label: 'sosyalGider', get: (x) => n2(x.r.snap.socialCost) },
-    { label: 'nufus', get: (x) => n0(x.r.snap.population) },
-    { label: 'yasamStandardi', get: (x) => n2(x.r.snap.standardOfLiving) },
-    { label: 'hazine', get: (x) => n0(x.r.snap.gold) },
-  ]));
-  const d = relDelta(rows[0].r.snap.population, rows[2].r.snap.population);
-  console.log(`\n  saglik 0->100: nufus ${n0(rows[0].r.snap.population)} -> ${n0(rows[2].r.snap.population)}`
-    + ` (${pct(d)}) — ${WEEKS} haftada, haftalik bedel ${n2(rows[2].r.snap.socialCost)}`);
-  if (Math.abs(d) < 0.02) {
-    finding('MEDIUM', 'Saglik -> nufus', 'saglik nufus buyumesini hizlandirmali',
-      `${WEEKS} haftada fark yalnizca ${pct(d)}`,
-      'weeklyGrowth carpani (1 + saglik x 0.35) taban buyume ~%0.006/hafta uzerinde calisiyor;'
-      + ' olumluluk/hastalik diye ayri bir mekanik yok');
-  }
-}
+// Saglik kaydiraci REFAHA KATILDI (economy.js SOCIAL_PROGRAMS: olculdu,
+// kaydiracin butun menzili nufus gurultusunun yirmide biriydi). Ayri bir
+// kaydirac yok; nufus buyumesi refah bolumunde olculur.
+sub('Saglik — refaha katildi (ayri kaydirac yok)');
+console.log('  saglik harcamasi economy.social.welfare icinde; bkz. refah bolumu.');
+
 
 // --------------------------------------------------------- REFAH ---
 sub('Refah 0 / 50 / 100');
@@ -300,34 +286,11 @@ sub('Refah 0 / 50 / 100');
 }
 
 // ------------------------------------------------------ YONETIM ---
-sub('Yonetim butcesi 30..100');
-{
-  const rows = [30, 50, 75, 100].map((v) => ({ v, r: scenario(`adm${v}`, [{ key: 'armyFunding', value: v }]) }));
-  console.log(table(rows, [
-    { label: 'yonetim%', get: (x) => x.v },
-    { label: 'tahsilatVerimi', get: (x) => pct(x.r.taxEfficiency) },
-    { label: 'vergiGeliri', get: (x) => n2(x.r.snap.taxRevenue) },
-    { label: 'yonetimGideri', get: (x) => n2(x.r.snap.administrationCost) },
-    { label: 'ortProvinceKontrol', get: (x) => n1(x.r.control) },
-    { label: 'hazine', get: (x) => n0(x.r.snap.gold) },
-  ]));
-  const dControl = relDelta(rows[0].r.control, rows[3].r.control);
-  const net = (x) => x.r.snap.taxRevenue - x.r.snap.administrationCost;
-  console.log(`\n  yonetim 30 -> 100: net (vergi - yonetimGideri) ${n2(net(rows[0]))} -> ${n2(net(rows[3]))}`);
-  if (Math.abs(dControl) < 0.02) {
-    finding('LOW', 'Yonetim butcesi -> province kontrolu',
-      'kod yorumu "vergi tahsilat verimi VE province kontrol destegi" diyor',
-      `kontrol farki ${pct(dControl)} — kontrol kanali hic kurulmamis`,
-      'adminFunding yalniz taxEfficiency ve nationBudget yonetim giderinde okunuyor');
-  }
-  if (net(rows[3]) > net(rows[0])) {
-    finding('MEDIUM', 'Yonetim butcesi tek yonlu optimal',
-      'kaydiragin dusuk ucu bir senaryoda dogru cevap olmali',
-      `%100 fonlama %30'a gore net +${n2(net(rows[3]) - net(rows[0]))}/hafta getiriyor;`
-      + ` gider farki yalniz ${n2(rows[3].r.snap.administrationCost - rows[0].r.snap.administrationCost)}`,
-      'kaydiraci kismak HER ZAMAN yanlis — bu bir tercih degil, gizli bir ceza');
-  }
-}
+// Yonetim kaydiraci (adminFunding) KALDIRILDI: tahsilat verimi artik yok
+// (economy.js notu) ve yonetim gideri butcenin turetilmis kalemi. Eski bolum
+// armyFunding'i yonetim sanip olcuyordu.
+sub('Yonetim butcesi — kaydirac kaldirildi');
+console.log('  yonetim gideri turetilir (nationBudget.administration); ayarlanacak kaydirac yok.');
 
 // ------------------------------------------------------------ F. SIFIR ---
 section('F. SIFIR HARCAMA DEVLETI');

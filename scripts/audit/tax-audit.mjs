@@ -196,12 +196,20 @@ section('C. TANI');
   console.log(`  tavan verginin 260 haftalik bedeli: nufus ${pct(popCost)},`
     + ` istikrar ${n2(a.stability)} -> ${n2(b.stability)}, sanayi ${a.factories}/${a.factoryLevels}`
     + ` -> ${b.factories}/${b.factoryLevels}, hazine +${n0(goldGain)}`);
-  if (goldGain > 0 && popCost < 0.03) {
+  // TASARIM: yoksulluk nufusu oldurmez (provinces.js). Tavan verginin bedeli
+  // istikrar, ust sinifin erimesi, sanayi ve buyume tarafinda odenir; olcut
+  // bunlardan en az ikisinin gorunur olmasidir.
+  const costs = [];
+  if (a.stability - b.stability >= 0.1) costs.push(`istikrar ${n2(a.stability)} -> ${n2(b.stability)}`);
+  if (a.upperPop > 0 && (a.upperPop - b.upperPop) / a.upperPop >= 0.1) costs.push(`ust sinif ${n0(a.upperPop)} -> ${n0(b.upperPop)}`);
+  if (a.factoryLevels - b.factoryLevels >= 2) costs.push(`sanayi ${a.factoryLevels} -> ${b.factoryLevels} seviye`);
+  if (popCost >= 0.01) costs.push(`nufus ${pct(popCost)}`);
+  console.log(`  gorunur bedeller: ${costs.length ? costs.join(' · ') : 'YOK'}`);
+  if (goldGain > 0 && costs.length < 2) {
     finding('HIGH', '%100 vergi neredeyse bedelsiz',
-      'tavan vergi nufus/sanayi tarafinda gorunur bir bedel odemeli',
-      `260 haftada hazine +${n0(goldGain)}, nufus farki yalniz ${pct(popCost)}`,
-      `tek gorunur bedel istikrar (${n2(a.stability)} -> ${n2(b.stability)})`
-      + ` ve ust sinifin erimesi (${n0(a.upperPop)} -> ${n0(b.upperPop)})`);
+      'tavan vergi istikrar/sinif/sanayi/buyume tarafinda en az iki gorunur bedel odemeli',
+      `260 haftada hazine +${n0(goldGain)}, gorunur bedel: ${costs.length ? costs.join(', ') : 'yok'}`,
+      `nufus farki ${pct(popCost)} — tasarim geregi yoksulluk oldurmez`);
   }
   if (b.lowerBudget < 0) {
     finding('HIGH', '%100 vergide hane butcesi negatif', 'butce 0 tabanina oturmali',

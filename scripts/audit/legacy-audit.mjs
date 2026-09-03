@@ -59,20 +59,16 @@ sub('2. Eski kaynak havuzu: food / timber / iron');
 // ------------------------------------------- 3) ESKI KAYDIRAC UYUMLULUGU ---
 sub("3. setBudgetPolicy('armySpending') geriye donuk davranisi");
 {
-  const before = {
-    wages: nation.economy.militaryWages,
-    procurement: nation.economy.militaryProcurement,
-  };
+  // Iki askeri kaydirac tek `armyFunding` oldu; eski anahtar takma addir.
+  const before = nation.economy.armyFunding;
   setBudgetPolicy(nation, 'armySpending', 55);
-  const drivesBoth = nation.economy.militaryWages === 55
-    && nation.economy.militaryProcurement === 55;
-  console.log(`  armySpending=55 -> wages ${nation.economy.militaryWages},`
-    + ` procurement ${nation.economy.militaryProcurement} (eski betikler icin surer)`);
-  if (!drivesBoth) {
-    finding('LOW', 'Eski armySpending anahtari iki kaydiraci surmuyor',
-      'geriye donuk API iki yeni kaydiraci birden kurmali', '', '');
+  const drives = nation.economy.armyFunding === 55;
+  console.log(`  armySpending=55 -> armyFunding ${nation.economy.armyFunding} (eski betikler icin surer)`);
+  if (!drives) {
+    finding('LOW', 'Eski armySpending anahtari armyFunding kaydiracini surmuyor',
+      'geriye donuk API yeni kaydiraci kurmali', '', '');
   }
-  setBudgetPolicy(nation, 'armyFunding', before.wages);
+  setBudgetPolicy(nation, 'armyFunding', before);
   setBudgetPolicy(nation, 'armyFunding', before.procurement);
 }
 

@@ -214,6 +214,7 @@ function supplyShock(goodId, factor, weeks = 120, nationId = null) {
   // Olculecek ulke SOKTAN ONCE ve sabit kimlikle secilir. pickNation'i sonda
   // cagirmak senaryolar arasinda farkli ulkeleri karsilastirmaya yol aciyordu.
   const watched = nationId == null ? pickNation(game).id : nationId;
+  const populationStart = world.nations[watched].economy.population;
   // Kume dongusu: paylasilan econ'da kare basina `*=` carpani uye sayisi
   // kadar uygulanip kaliteyi factor^hexes'e cekiyordu.
   for (const province of world.provinces ?? []) {
@@ -253,6 +254,7 @@ function supplyShock(goodId, factor, weeks = 120, nationId = null) {
     lowerSat: nation.economy.classes.lower.satisfaction,
     stability: nation.economy.stability,
     population: nation.economy.population,
+    populationStart,
     lowerCost: nation.economy.classes.lower.needsCost,
     lowerBudget: nation.economy.classes.lower.needsBudget,
     migration: nation.economy.lastInternalMigration ?? 0,
@@ -292,11 +294,19 @@ for (const goodId of ['food', 'clothes', 'groceries']) {
   // Esik duz degil: bedel malin SEPETTEKI PAYIYLA orantili olmali. Tahil alt
   // sinif sepetinin (taban fiyatlarla) ~%35'i, konserve ~%28, kiyafet ~%24 —
   // yani tahil kaybi en agir bedeli odetmeli. Olculen: -%8.1 / -%2.8 / -%3.3.
-  const EXPECTED_DROP = { food: 0.05, clothes: 0.02, groceries: 0.02 };
-  if (popDrop < (EXPECTED_DROP[goodId] ?? 0.03) && zero.fulfilled < 0.5) {
-    finding(goodId === 'food' ? 'HIGH' : 'MEDIUM', `${goodId} kitligi -> nufus`,
-      'temel malin tamamen kesilmesi nufusta gorunur bir bedel yaratmali',
-      `karsilanma ${pct(zero.fulfilled)}'e dustu ama nufus farki sadece ${pct(popDrop)}`,
+  // TASARIM: kitlik nufusu OLDURMEZ, buyumeyi durdurur ve sinif atlamayi
+  // askiya alir (provinces.js "ACLIKTAN OLUM KALDIRILDI"). Olcut bu yuzden
+  // mutlak nufus dususu degil, taban kosunun buyumesinin ne kadarinin
+  // silindigidir: gida kesilince buyumenin en az yarisi gitmeli.
+  const baseGrowth = (base.population - base.populationStart) / Math.max(1, base.populationStart);
+  const zeroGrowth = (zero.population - zero.populationStart) / Math.max(1, zero.populationStart);
+  const halted = baseGrowth > 0 ? 1 - zeroGrowth / baseGrowth : 0;
+  console.log(`  buyume: taban ${pct(baseGrowth)} · kitlik ${pct(zeroGrowth)} · silinen pay ${pct(halted)}`);
+  const EXPECTED_HALT = { food: 0.5, clothes: 0.15, groceries: 0.15 };
+  if (zero.fulfilled < 0.5 && baseGrowth > 0 && halted < (EXPECTED_HALT[goodId] ?? 0.2)) {
+    finding(goodId === 'food' ? 'HIGH' : 'MEDIUM', `${goodId} kitligi -> nufus buyumesi`,
+      'temel malin kesilmesi nufus buyumesini gorunur olcude durdurmali',
+      `karsilanma ${pct(zero.fulfilled)}'e dustu ama buyumenin yalniz ${pct(halted)}'i silindi`,
       `hane sepeti ${n1(base.lowerCost)} -> ${n1(zero.lowerCost)}, memnuniyet ${n2(base.lowerSat)} -> ${n2(zero.lowerSat)}`);
   }
   const abundant = rows[2];

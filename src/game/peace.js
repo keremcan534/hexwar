@@ -83,12 +83,15 @@ export function suggestWarGoal(world, a, b) {
 
 export function demandLimit(score) {
   const s = Math.max(0, score);
-  if (s < 10) return 0;
-  if (s < 20) return 1;
-  if (s < 35) return 2;
-  if (s < 55) return 3;
-  if (s < 75) return 4;
-  if (s < 90) return 5;
+  // Basamaklar bes puan yukari cekildi: 50 yilda haritanin %33-36'si el
+  // degistiriyordu (audit:war-pressure / borders "kartopu" esigi ucte bir).
+  // Kazanan hala kazanir, ama ayni puanla bir kume daha az alir.
+  if (s < 12) return 0;
+  if (s < 25) return 1;
+  if (s < 40) return 2;
+  if (s < 60) return 3;
+  if (s < 80) return 4;
+  if (s < 95) return 5;
   return MAX_DEMAND_PROVINCES;
 }
 

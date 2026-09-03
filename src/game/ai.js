@@ -198,6 +198,10 @@ function diplomacy(game, nation, rng) {
   // Şöhreti kirlenmiş ülke yeni savaş açmaz: koalisyon riski taşıyor.
   if ((nation.infamy ?? 0) > INFAMY_COALITION * 0.6) return;
 
+  // Iki cephesi olan devlet ucuncusunu kendisi acmaz: cullanma tavani
+  // saldirganlari sayiyordu ama kurbanin KENDI ilani dorduncu savasi
+  // dogurabiliyordu (audit:war-pressure: azami eszamanli saldirgan 4).
+  if (attackerCount(world, nation.id) >= MAX_ATTACKERS) return;
   let bestTarget = null;
   let bestScore = 0;
   for (const other of world.nations) {
