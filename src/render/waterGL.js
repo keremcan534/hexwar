@@ -65,6 +65,9 @@ uniform float uShelf;       // sığlık erimi çarpanı
 uniform float uSpecAmp;
 uniform float uFresAmp;
 uniform float uFoamAmp;
+uniform float uWaveAmp;     // normal eğimi
+uniform float uWaveShade;   // dalganın ALBEDO'ya katkısı (görünür kabarma)
+uniform float uRefract;     // sığlıkta kırılma payı
 
 uniform sampler2D uHex;     // R8, NEAREST — 1 = su
 uniform sampler2D uDist;    // R8, LINEAR  — kıyıya uzaklık / uDistMax
@@ -110,8 +113,33 @@ void main() {
   float isWater = texture(uHex, (vec2(col, row) + 0.5) / uGrid).r;
   if (isWater < 0.5) discard;
 
-  // --- KIYI UZAKLIĞI ---
-  vec2 fuv = (world - uFieldOrigin) / uFieldSpan;
+  // --- DALGALAR (uzaklıktan ÖNCE: sığlık onların üstünden kırılacak) ---
+  // ÜÇ oktav. İkiyle yetinildiğinde deniz "düz" kalıyordu: iki frekans
+  // yalnız geniş bir kabarma veriyor, gözün dalga saydığı orta ve ince
+  // ölçek eksik kalıyordu.
+  vec4 w1 = wave(world, 980.0, vec2(4.2, -2.6), 0.0);
+  vec4 w2 = wave(world, 330.0, vec2(-7.5, 4.4), 1.05);
+  vec4 w3 = wave(world, 118.0, vec2(11.0, -6.5), 2.35);
+  vec2 n1 = (w1.rg - 0.5) * 2.0;
+  vec2 n2 = (w2.rg - 0.5) * 2.0;
+  vec2 n3 = (w3.rg - 0.5) * 2.0;
+  vec2 nxy = n1 + n2 * (0.55 + 0.35 * uDetail) + n3 * (0.15 + 0.55 * uDetail);
+
+  // DALGA YÜKSEKLİĞİ. Asıl eksik buydu: normaller yalnız Fresnel ve
+  // spekülara giriyordu, yani sadece IŞIĞI taşıyorlardı. Dalganın kendisi
+  // ancak taban rengi oynayınca görünür — sırt açılır, çukur koyulaşır.
+  float hgt = (w1.b - 0.5) * 1.00
+            + (w2.b - 0.5) * 0.62
+            + (w3.a - 0.5) * 0.38;
+
+  // --- KIYI UZAKLIĞI (dalga eğimiyle KIRILMIŞ) ---
+  // Sığ suda dip, yüzeydeki eğim yüzünden kaymış görünür. Uzaklık alanını
+  // normalle ötelemek bunun ucuz karşılığı: sığlık sınırı dalgayla oynar,
+  // düz bir kontur olmaktan çıkar. Derinde etkisi sönümlenir.
+  float t0 = clamp(texture(uDist, (world - uFieldOrigin) / uFieldSpan).r
+                   * uDistMax / (uHexSize * 9.0 * uShelf), 0.0, 1.0);
+  vec2 refr = nxy * uHexSize * uRefract * (1.0 - smoothstep(0.0, 0.55, t0));
+  vec2 fuv = (world + refr - uFieldOrigin) / uFieldSpan;
   float dist = texture(uDist, fuv).r * uDistMax;
 
   // --- ÇOK GENİŞ ÖLÇEKLİ YAPI ---
@@ -133,24 +161,15 @@ void main() {
   // hiçbir şey yapmaz: 0.03 tabanın %20'si 0.006, yani algı eşiğinin çok
   // altı. Canvas2D geçişinde aynı hataya düşülmüştü; burada da aynı ders.
   base += broad * vec3(0.014, 0.024, 0.028);
+  // Sırt/çukur doğrudan tabana biner. Çarpım oranı korur (koyu su koyu
+  // kalır), küçük toplam ise sırtlara hafif bir ışık payı verir.
+  base *= 1.0 + hgt * uWaveShade;
+  base += vec3(0.016, 0.030, 0.033) * max(0.0, hgt) * uWaveShade;
 
-  // --- HAREKETLİ NORMALLER ---
-  // İki frekans, ayrı ölçek/yön/hız. Tek doku kaydırmak "kayan fotoğraf"
-  // okunur; iki farklı hızda katman ise ışığın SUYUN ÜZERİNDE gezdiği
-  // izlenimini verir.
-  vec4 w1 = wave(world, 620.0, vec2(6.0, -3.6), 0.0);
-  vec4 w2 = wave(world, 190.0, vec2(-9.5, 5.2), 1.05);
-  vec2 n1 = (w1.rg - 0.5) * 2.0;
-  vec2 n2 = (w2.rg - 0.5) * 2.0;
-  // İnce kırışıklık yalnız yakında: uzakta piksel altına iner, moiré üretir.
-  vec2 nxy = n1 * 0.75 + n2 * (0.30 + 0.55 * uDetail);
+  // --- NORMAL ---
   // Sığlıkta dalga sönümlenir; dip sürtünmesinin ucuz taklidi.
-  nxy *= mix(0.55, 1.0, smoothstep(0.0, 0.35, t));
-  // Eğim payı 0.55 -> 1.35. Ölçüldü: 0.55'te normalin sapması o kadar küçük
-  // kalıyordu ki Fresnel (1-dot)^3 ≈ 0.014, yani su 24 saniyede 1/255
-  // değişiyordu — hareket eden ışık YOKTU. Dalgalar görünsün diye eğim gerçek
-  // olmalı; yüzey yine de düz kalır, çünkü N.z baskın.
-  vec3 N = normalize(vec3(nxy * 1.35, 1.0));
+  nxy *= mix(0.50, 1.0, smoothstep(0.0, 0.30, t));
+  vec3 N = normalize(vec3(nxy * uWaveAmp, 1.0));
 
   // --- FRESNEL (taklit) ---
   // Tepeden bakılan bir haritada gerçek bakış açısı yok; sanal olarak hafif
@@ -223,10 +242,48 @@ function compile(gl, type, src) {
  * alanı. Normal CPU'da sonlu farkla çıkarılır — shader'da her karede türev
  * almaktan çok daha ucuz ve doku zaten döşenebilir.
  */
+/**
+ * Alanı verilen yönde sarmalı olarak yayar: tepeler o yönde UZAR.
+ *
+ * İzotropik gürültü denizde "leke" okunur; gerçek dalganın sırtı yayılma
+ * yönüne dik uzun bir çizgidir. Yayma, dokuyu döşenebilir bırakarak bu
+ * uzamayı verir — gerçekçiliğin tek en büyük kaldıracı bu.
+ */
+function smear(src, size, dx, dy, taps) {
+  const out = new Float32Array(src.length);
+  const n = taps * 2 + 1;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      let sum = 0;
+      for (let k = -taps; k <= taps; k++) {
+        const sx = (((x + k * dx) % size) + size) % size;
+        const sy = (((y + k * dy) % size) + size) % size;
+        sum += src[sy * size + sx];
+      }
+      out[y * size + x] = sum / n;
+    }
+  }
+  return out;
+}
+
 function buildWaveTexture() {
   const size = WAVE_SIZE;
-  const h = fbm(size, size, [4, 8, 16, 32], makeRng(20260903));
-  const h2 = fbm(size, size, [3, 7, 15], makeRng(77120451));
+  // İki alan, İKİ AYRI yönde yayılmış: üst üste bindiklerinde tek yönlü bir
+  // tarama deseni değil, kesişen kabarma aileleri çıkar.
+  const h = smear(fbm(size, size, [4, 8, 16, 32], makeRng(20260903)), size, 3, -1, 5);
+  const h2 = smear(fbm(size, size, [3, 7, 15], makeRng(77120451)), size, 1, 3, 4);
+  // Yayma değer aralığını daraltır; eşikler ve eğimler anlamlı kalsın diye
+  // her iki alan 0..1'e geri gerilir.
+  for (const f of [h, h2]) {
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < f.length; i++) {
+      if (f[i] < lo) lo = f[i];
+      if (f[i] > hi) hi = f[i];
+    }
+    const span = Math.max(1e-6, hi - lo);
+    for (let i = 0; i < f.length; i++) f[i] = (f[i] - lo) / span;
+  }
   const data = new Uint8Array(size * size * 4);
   const at = (x, y) => h[(((y % size) + size) % size) * size + (((x % size) + size) % size)];
   for (let y = 0; y < size; y++) {
@@ -292,9 +349,21 @@ export class WaterGL {
       petrol: [0.108, 0.240, 0.272],
       abyss: [0.078, 0.180, 0.210],
       shelf: 1.15,
-      spec: 1.15,
-      fresnel: 2.40,
+      spec: 0.55,
+      fresnel: 1.90,
       foam: 0.70,
+      /**
+       * Dalganın görünürlüğü. `waveShade` TABAN RENGİ oynatır (asıl kabarma),
+       * `waveAmp` normal eğimi (ışık), `refract` sığlıktaki kırılma.
+       *
+       * Ayarlar yüksekken (shade 0.60 / amp 1.70 / spec 1.15) deniz "sis
+       * bankası" okunuyordu: güçlü normaller speküları sırtlar boyunca sürekli
+       * ateşliyor ve beyaz şeritler çıkıyordu. Kabarmanın görünmesi için
+       * gereken şey parlaklık değil, taban renginin oynaması.
+       */
+      waveAmp: 1.15,
+      waveShade: 0.26,
+      refract: 0.60,
     };
 
     const prog = gl.createProgram();
@@ -311,7 +380,8 @@ export class WaterGL {
       'uGrid', 'uHexSize', 'uFieldOrigin', 'uFieldSpan', 'uDistMax', 'uDetail',
       'uHex', 'uDist', 'uWave',
       'uShallow', 'uTeal', 'uPetrol', 'uAbyss', 'uShelf',
-      'uSpecAmp', 'uFresAmp', 'uFoamAmp']) {
+      'uSpecAmp', 'uFresAmp', 'uFoamAmp',
+      'uWaveAmp', 'uWaveShade', 'uRefract']) {
       this.u[name] = gl.getUniformLocation(prog, name);
     }
 
@@ -428,6 +498,9 @@ export class WaterGL {
     gl.uniform1f(u.uSpecAmp, T.spec);
     gl.uniform1f(u.uFresAmp, T.fresnel);
     gl.uniform1f(u.uFoamAmp, T.foam);
+    gl.uniform1f(u.uWaveAmp, T.waveAmp);
+    gl.uniform1f(u.uWaveShade, T.waveShade);
+    gl.uniform1f(u.uRefract, T.refract);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.hexTex);
