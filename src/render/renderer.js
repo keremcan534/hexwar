@@ -13,6 +13,7 @@ import { RGO_TYPES } from '../game/provinces.js';
 import { controllerOf, isOccupied } from '../game/control.js';
 import { materials } from './textures.js';
 import { WaterLayer } from './water.js';
+import { LandMaterial } from './material.js';
 
 /**
  * Karenin GÖRÜNEN sahibi. Geçilmez arazi (dağ, zirve, buz) hiçbir province'e
@@ -338,6 +339,8 @@ export class Renderer {
     // Deniz yüzeyi ayrı bir katman nesnesidir: dokular, kıyı topolojisi ve
     // yerel bozulmalar orada yaşar (bkz. water.js).
     this.water = new WaterLayer();
+    // Kara yüzeyinin malzemesi: ışık alanı + kabartma + pigment (bkz. material.js).
+    this.material = new LandMaterial();
     this.waterTime = 0;
     // Yakın-dal statik katman önbelleği (bkz. STATIC_PAD ve ensureStaticLayers).
     this.staticLayers = null;
@@ -392,6 +395,9 @@ export class Renderer {
       this.water.ensureWorld(world);
       return true;
     }
+    // Kara malzemesi de perde arkasında pişer: ışık alanı + iki doku birlikte
+    // ~150 ms tutuyor ve ilk statik katmanda tek karede ödenirse takılıyor.
+    if (this.material.warmStep(this.ctx, world)) return true;
     if (this.water.warmStep(this.ctx)) return true;
     if (!this.cache) {
       this.stepCacheBuild(world, 10);
@@ -516,6 +522,12 @@ export class Renderer {
       (maxX - minX) + HEX_SIZE * 4, (maxY - minY) + HEX_SIZE * 4,
     );
     this.drawTerrain(ctx, list, world, true);
+    // Onarılan bölge kırpma yolunun İÇİNDE baştan boyanır; malzeme burada
+    // dilimlenmediği için dikiş sorunu yoktur (bkz. stepFarBake iki süpürme).
+    this.material.paint(ctx, world, {
+      minX: minX - HEX_SIZE * 2, maxX: maxX + HEX_SIZE * 2,
+      minY: minY - HEX_SIZE * 2, maxY: maxY + HEX_SIZE * 2,
+    }, 1);
     if (this.mapMode === 'political') this.drawOccupationOverlay(ctx, world, list, cache.scale);
     if (this.mapMode === 'cultures') this.drawCultureMix(ctx, world, list, cache.scale);
     if (this.mapMode === 'construction') this.drawConstructionOverlay(ctx, world, list, cache.scale);
@@ -623,9 +635,14 @@ export class Renderer {
     // 0.62'lik doygunluk sıkıştırması 0.78'e gevşetildi ve parlaklık
     // [34, 60] baskı bandına kenetlendi: dolgular pastel sise gömülmeden
     // kimlik taşır, ama hiçbir ülke tabakadan fırlamaz.
-    const base = this.mineralize(owner.hue, owner.sat * 0.78, owner.light * shade * 0.9);
-    const light = Math.max(34, Math.min(60, base.light + step * 1.5));
-    const sat = Math.max(12, base.sat + step * 0.8);
+    const base = this.mineralize(owner.hue, owner.sat * 0.86, owner.light * shade * 0.9);
+    // Aralık genişletildi (34-60 → 27-64). Dar bant bütün ülkeleri aynı
+    // orta tona sıkıştırıyor ve harita "pastel çıkartma seti" okunuyordu:
+    // §11'in dediği gibi zenginlik doygunluktan değil YEREL KONTRASTTAN
+    // gelir, ama bunun için renklerin gerçekten farklı açıklıkta olması
+    // gerekir. Alt sınır siyah değil: ülke rengi hâlâ ayırt edilmeli.
+    const light = Math.max(27, Math.min(64, base.light + step * 1.5));
+    const sat = Math.max(16, base.sat + step * 0.8);
     color = `hsl(${Math.round(base.hue)} ${Math.round(sat)}% ${Math.round(light)}%)`;
     this.tintCache.set(key, color);
     return color;
@@ -1036,6 +1053,10 @@ export class Renderer {
       for (const tile of tiles) (tile.terrain.water ? sea : land).push(tile);
       this.paintShore(b, world, land);
       this.water.paintStaticBase(b, world, sea);
+      // MALZEME: ışık alanı, kabartma ve kâğıt greni. Dolgunun üstüne,
+      // kıyı mürekkebinin altına biner — düz poligon burada yüzey olur.
+      // Deniz tekselleri nötr olduğu için suya dokunmaz (bkz. material.js).
+      this.material.paint(b, world, rect, scale);
       // ÜST: kıyı mürekkebi çizgi katmanının en altına.
       if (sea.length) {
         const cache = this.water.ensureWorld(world);
@@ -1467,6 +1488,8 @@ export class Renderer {
       world, canvas, ctx, scale, widthPx, heightPx,
       row: 0, step: Math.max(8, Math.ceil(world.rows / 8)),
       mode: this.mapMode,
+      // 'fill' -> zemin süpürmesi, 'ink' -> tarama/sınır süpürmesi.
+      phase: 'fill',
     };
   }
 
@@ -1498,23 +1521,57 @@ export class Renderer {
         bakeTiles.push({ ...t, x: t.x + P, ghostOf: t });
       }
     }
-    this.drawTerrain(j.ctx, bakeTiles, world, true);
-    if (this.mapMode === 'political') this.drawOccupationOverlay(j.ctx, world, bakeTiles, j.scale);
-    if (this.mapMode === 'cultures') this.drawCultureMix(j.ctx, world, bakeTiles, j.scale);
-    if (this.mapMode === 'construction') {
-      this.drawConstructionOverlay(j.ctx, world, bakeTiles, j.scale);
+    // İKİ SÜPÜRME. Önce bütün bantların zemini, sonra TEK geçişte malzeme,
+    // sonra bütün bantların mürekkebi (tarama, sınır).
+    //
+    // Neden: malzeme bant bant sürülünce her bandın kırpma sınırında soluk
+    // bir yatay dikiş kalıyordu — kenar yumuşatma ortak pikselde iki kez
+    // uygulanıyor ve overlay orayı bir tık koyulaştırıyordu (ölçüldü: yalnız
+    // ışık alanı açıkken de çıkıyor, yani gren değil kırpmanın kendisi).
+    // Dikişsiz tek çare malzemeyi hiç dilimlememek. Toplam iş aynı, sıra
+    // değişti; katman sözleşmesi de korunur (malzeme sınırın ALTINDA).
+    if (j.phase === 'fill') {
+      this.drawTerrain(j.ctx, bakeTiles, world, true);
+    } else {
+      if (this.mapMode === 'political') this.drawOccupationOverlay(j.ctx, world, bakeTiles, j.scale);
+      if (this.mapMode === 'cultures') this.drawCultureMix(j.ctx, world, bakeTiles, j.scale);
+      if (this.mapMode === 'construction') {
+        this.drawConstructionOverlay(j.ctx, world, bakeTiles, j.scale);
+      }
+      if (this.showsPolitics()) this.drawBorders(j.ctx, world, bakeTiles, j.scale);
     }
-    if (this.showsPolitics()) this.drawBorders(j.ctx, world, bakeTiles, j.scale);
     j.row = endRow;
     if (j.row >= world.rows) {
-      const b = world.bounds;
-      this.cache = {
-        canvas: j.canvas, x: WRAP_X0, y: b.minY, w: P,
-        h: b.maxY - b.minY, scale: j.scale, widthPx: j.widthPx, heightPx: j.heightPx,
-      };
-      this.farJob = null;
+      if (j.phase === 'fill') {
+        this.material.paint(j.ctx, world, this.bakeRect(world, j.scale), 1);
+        j.phase = 'ink';
+        j.row = 0;
+      } else {
+        const b = world.bounds;
+        this.cache = {
+          canvas: j.canvas, x: WRAP_X0, y: b.minY, w: P,
+          h: b.maxY - b.minY, scale: j.scale, widthPx: j.widthPx, heightPx: j.heightPx,
+        };
+        this.farJob = null;
+      }
     }
     return true;
+  }
+
+  /**
+   * Uzak dokunun kapsadığı dünya dikdörtgeni — yakası dahil. Yaka olmadan
+   * dikiş sütunları malzemesiz kalır ve kopya sınırında soluk bir şerit
+   * görünür (bkz. CACHE_COLLAR).
+   */
+  bakeRect(world, scale) {
+    const b = world.bounds;
+    const pad = CACHE_COLLAR / scale;
+    return {
+      minX: WRAP_X0 - pad,
+      maxX: WRAP_X0 + (world.wrapWidth ?? b.maxX - b.minX) + pad,
+      minY: b.minY,
+      maxY: b.maxY,
+    };
   }
 
   /**
@@ -1572,35 +1629,56 @@ export class Renderer {
    * mürekkebi (water.drawCoastline) bu açıklıkla kontrast kazanır.
    */
   paintShore(ctx, world, landTiles) {
-    const shoreSet = this.shoreSetOf(world);
-    const shore = [];
+    const rings = this.shoreSetOf(world);
+    const first = [];
+    const second = [];
     for (const t of landTiles) {
-      if (shoreSet.has(t.ghostOf ?? t)) shore.push(t);
+      const real = t.ghostOf ?? t;
+      if (rings.first.has(real)) first.push(t);
+      else if (rings.second.has(real)) second.push(t);
     }
-    if (!shore.length) return;
-    // 0.06 algı eşiğinin altındaydı; 0.11 kıyı şeridini "güneş almış"
-    // gösterir ama kum rengine boyamaz.
-    ctx.globalAlpha = 0.11;
-    ctx.fillStyle = '#f0dfae';
-    for (const path of this.chunkedHexPaths(shore, FILL_CHUNK)) ctx.fill(path);
+    if (!first.length && !second.length) return;
+    // İKİ HALKA, azalan güçte: kıyı bir çizgi değil bir GEÇİŞ olmalı (§13).
+    // Tek halka (eski hâli) kıyıyı bir hex genişliğinde sert bir şeride
+    // çeviriyordu; ikinci, yarı güçteki halka onu içeriye doğru söndürür ve
+    // kara "kesilmiş kâğıt" gibi kenarında aydınlanır.
+    ctx.fillStyle = '#f4e3b2';
+    if (second.length) {
+      ctx.globalAlpha = 0.06;
+      for (const path of this.chunkedHexPaths(second, FILL_CHUNK)) ctx.fill(path);
+    }
+    if (first.length) {
+      ctx.globalAlpha = 0.15;
+      for (const path of this.chunkedHexPaths(first, FILL_CHUNK)) ctx.fill(path);
+    }
     ctx.globalAlpha = 1;
   }
 
-  /** Denize komşu kara kareleri; dünya başına bir kez çıkarılır. */
+  /**
+   * Kıyı halkaları: denize komşu kara kareleri (`first`) ve onların bir kare
+   * gerisi (`second`). Dünya başına bir kez çıkarılır.
+   */
   shoreSetOf(world) {
-    if (this.shoreCache?.world === world) return this.shoreCache.set;
-    const set = new Set();
+    if (this.shoreCache?.world === world) return this.shoreCache.rings;
+    const first = new Set();
     for (const t of world.tiles) {
       if (!t || t.terrain.water) continue;
       for (const n of world.neighbors(t)) {
         if (n.terrain.water) {
-          set.add(t);
+          first.add(t);
           break;
         }
       }
     }
-    this.shoreCache = { world, set };
-    return set;
+    const second = new Set();
+    for (const t of first) {
+      for (const n of world.neighbors(t)) {
+        if (!n.terrain.water && !first.has(n)) second.add(n);
+      }
+    }
+    const rings = { first, second };
+    this.shoreCache = { world, rings };
+    return rings;
   }
 
   /** Doku desenleri dünya uzayına sabitlenir; bir kez üretilip saklanır. */
@@ -1940,7 +2018,14 @@ export class Renderer {
     // Hex ızgarası artık en alt kademe: üstünde province kenarı, onun
     // üstünde ülke sınırı var. Saf siyah değil koyu toprak tonu; üç kademeli
     // hiyerarşi (ızgara < province < ülke) için en sessiz seviye.
-    ctx.strokeStyle = 'rgba(8, 12, 12, 0.10)';
+    //
+    // Opaklık ZOOMA BAĞLI. Sabit 0.10'da ızgara haritanın hâkim dokusuydu:
+    // oyuncu önce peteği, sonra ülkeyi görüyordu (§15'in tersi). Yakında
+    // ızgara bir araçtır — hangi kareye tıklayacağını söyler — ama orta
+    // mesafede yalnız bir doku ipucu olmalı, uzakta hiç olmamalı. Eşiğin
+    // hemen üstünde (0.55) neredeyse yok, 1.6'da tam gücünde.
+    const strength = 0.028 + 0.085 * Math.max(0, Math.min(1, (scale - 0.55) / 1.05));
+    ctx.strokeStyle = `rgba(8, 12, 12, ${strength.toFixed(3)})`;
     // Deniz ızgara dışıdır: hex kenarları suyu petekli bir zemine çeviriyordu.
     // Su malzemesi komşu deniz hexlerini tek yüzeye köprüler; ızgara bunu bozar.
     const land = tiles.filter((t) => !t.terrain.water);

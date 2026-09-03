@@ -48,9 +48,14 @@ const SHIMMER_VEL = { x: 9.5, y: -7.4 };
  */
 function seaShade(depth, jitterStep) {
   const t = Math.min(1, depth / 5.5);
-  const hue = 189 + t * 24;                              // turkuaz → petrol
-  const sat = 34 + t * 14;
-  const light = 27.5 - t * 18 + jitterStep * 0.8;
+  // Aralık genişletildi: 27.5→9.5 idi, yakın zoomda (görülen su çoğunlukla
+  // 0-3 bandında) toplam oynama ~10 puanda kalıyor ve deniz TEK DÜZ bir
+  // yüzey okunuyordu — §7'nin ilk sorusu "does water feel deep?" için hayır.
+  // 32→7 ile sığlık gerçekten sığ, abis gerçekten dip olur; ton kayması da
+  // büyütüldü, böylece derinlik yalnız parlaklıkla değil RENKLE de anlatılır.
+  const hue = 186 + t * 31;                              // turkuaz → petrol
+  const sat = 40 + t * 16;
+  const light = 32 - t * 25 + jitterStep * 0.8;
   return `hsl(${Math.round(hue)} ${Math.round(sat)}% ${(Math.round(light * 2) / 2).toFixed(1)}%)`;
 }
 
@@ -387,13 +392,23 @@ export class WaterLayer {
     // gruplama yolu verimli kalsın (~40-60 ayrı dize).
     const seaColorOf = new Map();
     for (const t of sea) {
-      let sum = (depthOf.get(t) ?? 6) * 2;
-      let count = 2;
+      // İKİ halka. Tek halkalık ortalama, derinlik aralığı 10 puanken yetiyordu;
+      // aralık 25 puana açılınca komşu hexler arasındaki adım gözle görünür
+      // oldu ve deniz PETEK gibi okunmaya başladı. İkinci halka adımı yarıya
+      // indirir: derinlik okuması aynı kalır, altıgen basamak kaybolur.
+      let sum = (depthOf.get(t) ?? 6) * 3;
+      let count = 3;
       for (let side = 0; side < 6; side++) {
         const n = world.get(t.q + DIRS[side][0], t.r + DIRS[side][1]);
         if (!n?.terrain.water) continue;
-        sum += depthOf.get(n) ?? 6;
-        count++;
+        sum += (depthOf.get(n) ?? 6) * 2;
+        count += 2;
+        for (let s2 = 0; s2 < 6; s2++) {
+          const m = world.get(n.q + DIRS[s2][0], n.r + DIRS[s2][1]);
+          if (!m?.terrain.water || m === t) continue;
+          sum += depthOf.get(m) ?? 6;
+          count++;
+        }
       }
       const smooth = Math.round(Math.min(6, sum / count) * 4) / 4;
       const jitterStep = Math.floor(hash01(t.q, t.r, 11) * 3) - 1;
@@ -482,14 +497,22 @@ export class WaterLayer {
     if (!paths.length) return;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.lineWidth = Math.max(9, 11 / Math.sqrt(zoom));
-    ctx.strokeStyle = 'rgba(128, 198, 196, 0.14)';
+    // Dört kademe, dıştan içe daralarak: geniş ve soluk sığlıktan ince ve
+    // koyu mürekkebe. Üç kademeliydi ve aradaki sıçrama fazlaydı — kıyı ya
+    // "soluk bir bulanıklık" ya "sert bir çizgi" okunuyordu. Dördüncü, dar
+    // ve daha parlak turkuaz kademesi ikisini bağlar: §13'ün istediği
+    // "çevresel kontrastla aydınlanmış kıyı", neon bir kontur değil.
+    ctx.lineWidth = Math.max(15, 19 / Math.sqrt(zoom));
+    ctx.strokeStyle = 'rgba(122, 190, 190, 0.075)';
+    for (const p of paths) ctx.stroke(p);
+    ctx.lineWidth = Math.max(8, 10 / Math.sqrt(zoom));
+    ctx.strokeStyle = 'rgba(140, 214, 208, 0.13)';
     for (const p of paths) ctx.stroke(p);
     ctx.lineWidth = Math.max(3.6, 5 / Math.sqrt(zoom));
-    ctx.strokeStyle = 'rgba(219, 199, 150, 0.26)';
+    ctx.strokeStyle = 'rgba(221, 203, 156, 0.28)';
     for (const p of paths) ctx.stroke(p);
     ctx.lineWidth = Math.max(1.1, 1.6 / Math.sqrt(zoom));
-    ctx.strokeStyle = 'rgba(6, 15, 19, 0.62)';
+    ctx.strokeStyle = 'rgba(6, 15, 19, 0.66)';
     for (const p of paths) ctx.stroke(p);
   }
 

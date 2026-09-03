@@ -1,6 +1,6 @@
 import { createServer } from "node:http";
-import { readFile, stat } from "node:fs/promises";
-import { extname, resolve, sep } from "node:path";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
+import { basename, extname, resolve, sep } from "node:path";
 
 const root = resolve(process.cwd());
 const port = Number.parseInt(process.env.PORT ?? "5173", 10);
@@ -29,8 +29,31 @@ function localPath(url) {
   return candidate;
 }
 
+/**
+ * Geliştirme kancası: maplab.html tuvali PNG olarak `.shots/` altına yazar.
+ * Görsel yineleme döngüsü (çiz → bak → düzelt) ekran görüntüsünü tam
+ * çözünürlükte diske ister; önizleme penceresi görüntüyü yarıya küçültüyor.
+ * Yalnız geliştirme sunucusunda, yalnız bu tek uç nokta.
+ */
+async function saveShot(request, response) {
+  const chunks = [];
+  for await (const chunk of request) chunks.push(chunk);
+  const payload = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  const name = basename(String(payload.name ?? "shot")).replace(/[^\w.-]/g, "_");
+  const data = String(payload.png ?? "").replace(/^data:image\/png;base64,/, "");
+  const dir = resolve(root, ".shots");
+  await mkdir(dir, { recursive: true });
+  const file = resolve(dir, name.endsWith(".png") ? name : `${name}.png`);
+  await writeFile(file, Buffer.from(data, "base64"));
+  response.writeHead(200, { "Content-Type": "text/plain" }).end(file);
+}
+
 const server = createServer(async (request, response) => {
   try {
+    if (request.method === "POST" && (request.url ?? "").startsWith("/__shot")) {
+      await saveShot(request, response);
+      return;
+    }
     let filePath = localPath(request.url ?? "/");
     if (!filePath) {
       response.writeHead(403).end("Forbidden");
