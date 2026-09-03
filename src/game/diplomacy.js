@@ -26,7 +26,9 @@ export const MIN_WAR_TURNS = 16;
  * Barıştan sonra yeniden savaş ilan edilemeyen tur sayısı. Ateşkes olmadan
  * barış yapıp ertesi tur yeniden saldırmak serbestti; tempoyu bu tutuyor.
  */
-export const TRUCE_TURNS = 40;
+// 40 -> 52: ayni ciftin bir yil icinde yeniden savasmasi kartopunu
+// besliyordu (audit:borders).
+export const TRUCE_TURNS = 52;
 
 /**
  * Ateşkes, AYNI kurbana tekrarlanan her savaşla uzar.

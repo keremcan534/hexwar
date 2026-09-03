@@ -28,7 +28,9 @@ import { rulingParty } from './politics.js';
 import { delegationActive, noteDelegated } from './delegation.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
-const WAR_THRESHOLD = 1.4;
+// 1.4 -> 1.6: 50 yilda haritanin ucte birinden fazlasi el degistiriyordu
+// (audit:borders %35-39); daha kesin ustunluk ister, daha az savas acar.
+const WAR_THRESHOLD = 1.6;
 
 /**
  * ZATEN SAVAŞTA olan bir ülkeye saldırmak için gereken üstünlük ve sınır.
@@ -248,7 +250,12 @@ function diplomacy(game, nation, rng) {
  * şimdi ülkeleri savunmasız bırakıp savaş zincirini tetikliyordu.
  */
 function desiredArmy(nation) {
-  return 4 + Math.floor(nation.tiles / 12);
+  const byLand = 4 + Math.floor(nation.tiles / 12);
+  // Nufus tavani: genis ama seyrek ulke toprak sayisiyla ordu kuruyor ve
+  // nufusunun %15'inden buyuk bir orduyu besleyemiyordu (audit:ai 13%).
+  // Tumen ~3.000 kisi; ordu nufusun onda birini gecmez, iki tumen taban.
+  const byPeople = Math.floor((nation.economy?.population ?? 0) * 0.10 / 3000);
+  return Math.max(2, Math.min(byLand, byPeople || byLand));
 }
 
 /**

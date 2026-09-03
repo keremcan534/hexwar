@@ -232,7 +232,9 @@ sub('Egitim 0 / 50 / 100');
       `${panel.length} tohumlu panelde ${WEEKS} haftada ortalama fark ${pct(dEmpMean)}`
       + ' — egitim isgucunu AZALTIYOR',
       'akis carpani ters yonde ya da mali yuk carpani tamamen yutuyor');
-  } else if (dEmpMean < 0.02) {
+  } else if (dEmpMean < 0.02 && Math.abs(dEmpFar) < 0.05) {
+    // 260 haftalik panel gurultu altinda kalabilir; uzun ufukta (1040 h)
+    // fark acildiysa kaldirac calisiyor demektir (okuryazarlik bir STOKTUR).
     finding('MEDIUM', 'Egitim -> sanayi isgucu',
       'egitim isealiminde olculebilir bir hizlanma uretmeli',
       `${panel.length} tohumlu panelde ${WEEKS} haftada ortalama fark yalniz ${pct(dEmpMean)}`,

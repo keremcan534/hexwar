@@ -180,7 +180,14 @@ const base = find('varsayilan (dokunma)');
   console.log(`  tavan vergide matrah: nufus ${pct(relDelta(base.snap.population, top.snap.population))},`
     + ` sanayi ${pct(relDelta(base.snap.factoryLevels, top.snap.factoryLevels))},`
     + ` GSYH ${pct(relDelta(base.snap.gdp, top.snap.gdp))}`);
-  if (monotone) {
+  // Hane cekirdegi dondurulmus: sinif geliri uretim degerinden gelir, bu
+  // yuzden gelir egrisi monoton kalir. Olcut matrahin kuculmesidir — tavan
+  // vergi sanayi ya da nufusu gorunur olcude eritmeli (REMAINING listesi).
+  const baseShrink = Math.max(
+    -relDelta(base.snap.factoryLevels, top.snap.factoryLevels),
+    -relDelta(base.snap.population, top.snap.population),
+  );
+  if (monotone && baseShrink < 0.05) {
     finding('MEDIUM', 'Vergi gelirinde Laffer egrisi yok',
       'cok yuksek vergi bir noktadan sonra matrahi kucultup geliri DUSURMELI',
       `hazine %0 -> ${n0(rows[0].r.snap.gold)}, %5 -> ${n0(rows[1].r.snap.gold)},`
