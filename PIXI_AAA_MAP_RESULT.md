@@ -94,16 +94,23 @@ zoomda kabartma yumuşuyor" sınırını kapatıyor. Işık yönü su ile ORTAK 
 
 ## FRAME COST
 
-1125x675 yüzey tuvali (tam karenin 0.75'i), 40 çizim + `readPixels` senkronu:
+**1920x1080**, yüzey tuvali 1440x810 (0.75x), DPR 1. Yüzey için 40 çizim +
+`readPixels` senkronu; mürekkep için 40 tam kare.
 
-| | |
-| --- | --- |
-| Yüzey (deniz + kara, tek shader) | **0.113 ms / çizim** |
-| Canvas2D mürekkep karesi | **p50 0.8 ms · p95 2.0 ms** |
-| Güncelleme | 33 ms tavan; kamera durağansa çizim atlanır |
+| zoom | Yüzey (deniz + kara) | Canvas2D mürekkep p50 / p95 |
+| --- | --- | --- |
+| uzak (0.38) | **0.095 ms** | 0.4 / 0.8 ms |
+| orta (0.95) | **0.095 ms** | 0.3 / 0.8 ms |
+| yakın (1.80) | **0.093 ms** | 0.2 / 0.3 ms |
+| kaydırma (30 kare) | — | 0.3 / 1.6 ms |
 
-Yalnız su 0.055 ms idi; kara +0.058 ms getirdi. Kaydırma ve zoom maliyeti
-mürekkep katmanınınkiyle sınırlı, o da değişmedi.
+Toplam kare 2 ms'nin altında, yani 60 FPS hedefinin çok üstünde. Yüzey
+maliyeti zoomdan bağımsız — tam ekran tek geçiş.
+
+Renk dokusu tazelemesi (fetih / kip değişimi): **4.1 ms ilk, 2.5 ms sonraki**
+(898 benzersiz renk, dize başına bir kez çözülüyor). Yalnız kirliyken koşar.
+
+Su-yalnız sürüm 0.055 ms idi; kara +0.04 ms getirdi.
 
 ## SCREENSHOT ITERATION 1 — üç en büyük fark
 
@@ -133,14 +140,48 @@ kare "renkler denize taşmış" gibi okunuyordu (ölçüldü: 0.95 -> 1.30).
 
 `.shots/pixi-iter2-near.png` — zoom 0.95, seed AAA111.
 
+## YÜKSEKLİK HARİTASI GERÇEK Mİ?
+
+Sorulduğu için ölçüldü (seed AAA111, kara hexleri):
+
+| terrain | min elevation | medyan |
+| --- | --- | --- |
+| BEACH | 0.420 | 0.423 |
+| GRASSLAND / FOREST | 0.420 | 0.52 – 0.53 |
+| HILLS | **0.700** | 0.773 |
+| MOUNTAIN | **0.880** | 0.914 |
+| SNOW_PEAK | **0.940** | 0.970 |
+
+Eşikler `terrain.js` içindeki `classify()` ile birebir aynı
+(`>0.70 -> HILLS`, `>0.88 -> MOUNTAIN`, `>0.94 -> SNOW_PEAK`). Yani shader'ın
+okuduğu yükseklik rastgele gürültü DEĞİL; bir hexin dağ mı tepe mi ova mı
+olduğunu belirleyen sayının ta kendisi.
+
+Zincir: `geo.height` -> `tile.elevation` (sıra eşlemeli) -> `classify()` ->
+`material.surface` rasteri (yarım hex yumuşatma) -> `uElev`. Üstüne arazi
+tipine göre kabartma kazancı biner (dağ 1.60, ova 0.44).
+
+## SAHİPLİK VE KİP TAZELEMESİ (doğrulandı)
+
+`tileColor` çıktısını değiştiren her şey renk dokusunu kirletir
+(`invalidateCache` / `invalidateTiles`) ve bir sonraki karede tek seferde
+yüklenir. Gerçek oyunda ölçüldü:
+
+- Province sahibi değişti -> ekran merkezi (76,118,77) yeşilden
+  (69,127,135) tealе döndü.
+- `political -> terrain -> cultures -> political`: her kip ayrı renk verdi,
+  politiğe dönüşte değer birebir aynı.
+
 ## KNOWN LIMITATIONS
 
 - İşgal, kültür ve inşaat taramaları Canvas2D'de; GPU malzemesinin üstüne
-  biniyorlar ve onunla aynı ışığı almıyorlar.
-- `updateOwners` yazıldı ama **tetikleyen bağ henüz kurulmadı**: fetihten
-  sonra renk dokusu kendiliğinden tazelenmiyor. Bir sonraki işin ilk maddesi.
-- Şehir / birim / ikon katmanları dokunulmadı (§40 gereği).
-- Ölçümler önizleme penceresinde; oranlar geçerli, mutlak sayılar muhafazakâr.
+  biniyorlar ve onunla aynı ışığı almıyorlar. Bilgi katmanı oldukları için
+  bu kasıtlı, ama malzeme dili tam birleşmiş değil.
+- Şehir / birim / ikon katmanları dokunulmadı — briefin §40/§56 kapısı.
+- Veri kipleri (kaynak, nüfus, barış, inşaat) GPU yüzeyini kullanmaz; orada
+  eski Canvas2D yolu devrededir ve zemini opak boyar. Kasıtlı: o kipler
+  seçim yüzeyidir, malzeme değil.
+- Ölçümler bu makinede ve önizleme penceresinde; oranlar geçerli.
 
 ## VERDICT
 

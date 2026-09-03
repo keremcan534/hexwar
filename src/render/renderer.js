@@ -496,24 +496,59 @@ export class Renderer {
   surfaceOwnerData(world) {
     const cols = world.cols;
     const rows = world.rows;
-    let c = this.ownerScratch;
-    if (!c || c.width !== cols || c.height !== rows) {
-      c = document.createElement('canvas');
-      c.width = cols;
-      c.height = rows;
-      this.ownerScratch = c;
+    const out = new Uint8Array(cols * rows * 4);
+    for (let i = 0; i < cols * rows; i++) {
+      const tile = world.tiles[i];
+      if (!tile || tile.terrain.water) continue;
+      const rgb = this.cssToRgb(this.tileColor(tile, world));
+      const p = i * 4;
+      out[p] = rgb[0];
+      out[p + 1] = rgb[1];
+      out[p + 2] = rgb[2];
+      out[p + 3] = 255;
     }
-    const g = c.getContext('2d', { willReadFrequently: true });
-    g.clearRect(0, 0, cols, rows);
-    for (let row = 0; row < rows; row++) {
-      for (let col = 0; col < cols; col++) {
-        const tile = world.tiles[row * cols + col];
-        if (!tile || tile.terrain.water) continue;
-        g.fillStyle = this.tileColor(tile, world);
-        g.fillRect(col, row, 1, 1);
-      }
+    return out;
+  }
+
+  /**
+   * CSS renk dizesi -> RGB, BENZERSİZ dize başına bir kez.
+   *
+   * `tileColor` zaten sınırlı sayıda dize döndürür (bkz. tintCache): 15360
+   * hex için birkaç yüz farklı renk. Her hex için tuvale boyayıp okumak
+   * yerine dize başına bir kez çözülür — sahiplik tazelemesi böylece bir
+   * kare bütçesinin altında kalır.
+   */
+  cssToRgb(css) {
+    this.rgbCache ??= new Map();
+    const hit = this.rgbCache.get(css);
+    if (hit) return hit;
+    if (!this.rgbProbe) {
+      const k = document.createElement('canvas');
+      k.width = 1;
+      k.height = 1;
+      this.rgbProbe = k.getContext('2d', { willReadFrequently: true });
     }
-    return new Uint8Array(g.getImageData(0, 0, cols, rows).data.buffer.slice(0));
+    const g = this.rgbProbe;
+    g.clearRect(0, 0, 1, 1);
+    g.fillStyle = css;
+    g.fillRect(0, 0, 1, 1);
+    const d = g.getImageData(0, 0, 1, 1).data;
+    const rgb = [d[0], d[1], d[2]];
+    this.rgbCache.set(css, rgb);
+    return rgb;
+  }
+
+  /**
+   * Yüzeyin renk dokusunu tazeler. Fetih, harita kipi değişimi, işgal — hepsi
+   * `tileColor`ın çıktısını değiştirir ve GPU o çıktıyı bir dokudan okur;
+   * doku tazelenmezse harita ESKİ sahibi göstermeye devam eder. Bu kozmetik
+   * değil, yanlış bilgi.
+   *
+   * Yalnız BAYRAK kaldırılır; asıl yükleme bir sonraki karede yapılır ki aynı
+   * tikte gelen onlarca değişiklik tek tazelemeye düşsün.
+   */
+  invalidateSurfaceColors() {
+    this.surfaceColorsDirty = true;
   }
 
   /** Hex başına arazi karakteri: R kabartma kazancı, G gren, B sıcaklık. */
@@ -605,6 +640,8 @@ export class Renderer {
    * Yeniden kurma maliyeti önemsiz — ülke × arazi × kademe, birkaç yüz girdi.
    */
   invalidateCache() {
+    // Kip değişimi, dünya değişimi, sahiplik — hepsi buradan geçer.
+    this.surfaceColorsDirty = true;
     this.cache = null;
     this.constructionCache = null;
     this.tintCache.clear();
@@ -639,6 +676,7 @@ export class Renderer {
    * değişen kareler (+1 komşu halkası) yeniden mürekkeplenir.
    */
   invalidateTiles(tiles, ownershipChanged = true) {
+    if (ownershipChanged) this.surfaceColorsDirty = true;
     // Etiket çapaları yalnız EGEMENLİK değişince kayar (ownerOf owner'a
     // bakar, controller'a değil). İşgal (occupy) controller değiştirir;
     // onun için yerleşimi kirletmek, savaş haftalarında her turda 15k karelik
@@ -1392,7 +1430,15 @@ export class Renderer {
     this.waterTime = performance.now() / 1000;
     // Su önce çizilir: ayrı bir tuval olduğu için sıra bileşimi değiştirmez,
     // ama kamera değerleri Canvas2D karesiyle BİREBİR aynı kalır.
-    if (this.glWater()) this.waterGL.draw(cam, this.waterTime);
+    if (this.glWater()) {
+      if (this.surfaceColorsDirty) {
+        this.surfaceColorsDirty = false;
+        const t = performance.now();
+        this.waterGL.updateOwners(this.surfaceOwnerData(world));
+        this.perf?.add('r.surfacecolors', performance.now() - t);
+      }
+      this.waterGL.draw(cam, this.waterTime);
+    }
     this.water.animatedThisFrame = false;
     // Kopya döngüsünden önce sıfırlanır; yakın dal atlarsa yeniden kurar.
     this.waterSkipped = false;
