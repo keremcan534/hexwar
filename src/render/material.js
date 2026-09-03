@@ -502,10 +502,12 @@ export class LandMaterial {
 
     this.cache = {
       world, light: B.lightCanvas, sea: seaCanvas, w, h,
-      // Kıyı uzaklığı alanı SAKLANIR: WebGL su katmanı aynı alanı doku olarak
-      // yükler (bkz. waterGL.setWorld). Chamfer dönüşümünü iki kez koşmanın
-      // anlamı yok ve iki katmanın kıyısı böylece bit bit aynı yerde durur.
+      // Kıyı uzaklığı alanı ve yükseklik yüzeyi SAKLANIR: WebGL yüzey katmanı
+      // ikisini de doku olarak yükler (bkz. surfaceGL.setWorld). Chamfer
+      // dönüşümünü ve yükseklik rasterini iki kez kurmanın anlamı yok, ayrıca
+      // iki katmanın kıyısı böylece bit bit aynı yerde durur.
       toLand,
+      surface: B.surface,
       x0: WRAP_X0,
       y0: -ROW_H / 2,
       width: cols * HEX_STEP,

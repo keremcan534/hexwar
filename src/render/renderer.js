@@ -14,7 +14,7 @@ import { controllerOf, isOccupied } from '../game/control.js';
 import { materials } from './textures.js';
 import { WaterLayer } from './water.js';
 import { LandMaterial } from './material.js';
-import { WaterGL } from './waterGL.js';
+import { SurfaceGL } from './surfaceGL.js';
 
 /**
  * Karenin GÖRÜNEN sahibi. Geçilmez arazi (dağ, zirve, buz) hiçbir province'e
@@ -176,6 +176,27 @@ const STATIC_MAX_SIDE = 5120;
  * >33 ms / 5.9 MB-sn çöp, pişirme kapatıldığında p99 7.5 ms / 0 kare >33 ms /
  * 0.29 MB-sn. Yani zoom takılmasının TAMAMI bu yeniden pişirmeydi.
  */
+
+/**
+ * Arazi karakteri — WebGL yüzey katmanına hex başına doku olarak gider.
+ * `relief` eğimin ışığa katkısı, `grain` yerel kırıklık, `warm` sıcaklığa
+ * çekiş. material.js'teki CHARACTER ile aynı ailedendir; orası Canvas2D
+ * yedeği için duruyor, burası GPU yolu içindir.
+ */
+const SURFACE_CHARACTER = {
+  SNOW_PEAK: { relief: 1.55, grain: 0.30, warm: 0.08 },
+  MOUNTAIN: { relief: 1.60, grain: 0.38, warm: 0.04 },
+  HILLS: { relief: 1.15, grain: 0.32, warm: 0.10 },
+  FOREST: { relief: 0.62, grain: 0.52, warm: -0.18 },
+  JUNGLE: { relief: 0.62, grain: 0.56, warm: -0.22 },
+  GRASSLAND: { relief: 0.50, grain: 0.22, warm: -0.04 },
+  PLAINS: { relief: 0.44, grain: 0.16, warm: 0.06 },
+  DESERT: { relief: 0.46, grain: 0.11, warm: 0.28 },
+  BEACH: { relief: 0.34, grain: 0.13, warm: 0.24 },
+  TUNDRA: { relief: 0.52, grain: 0.24, warm: -0.02 },
+  ICE: { relief: 0.70, grain: 0.15, warm: 0.02 },
+};
+const SURFACE_DEFAULT = { relief: 0.5, grain: 0.2, warm: 0 };
 
 /** Şehir ve birim aynı karede: biri yukarı, biri aşağı kaydırılır. */
 const CITY_OFFSET = 0.3;
@@ -419,7 +440,7 @@ export class Renderer {
    */
   attachWaterCanvas(canvas) {
     if (!canvas) return false;
-    this.waterGL = WaterGL.create(canvas);
+    this.waterGL = SurfaceGL.create(canvas);
     if (!this.waterGL) return false;
     // resize BURADA çağrılmaz: kurucu, düzen (layout) oturmadan çalışıyor ve
     // tuval o anda 0x0 ölçülüyor. Ölçüyü Game ilk kareden sonra verir.
@@ -436,9 +457,80 @@ export class Renderer {
     return this.waterAnimatedMode() && !this.waterGL?.debug.enabled;
   }
 
-  /** WebGL su katmanı bu karede geçerli mi? */
+  /** WebGL yüzey katmanı bu karede geçerli mi? */
   glWater() {
-    return this.waterAnimatedMode() && !!this.waterGL?.debug.enabled;
+    return this.waterAnimatedMode() && !!this.waterGL?.debug.enabled
+      && !!this.waterGL?.world;
+  }
+
+  /** Okunurluk için takma ad; yüzey artık karayı da çiziyor. */
+  glSurface() {
+    return this.glWater();
+  }
+
+  /**
+   * A/B anahtarı (deney dalı boyunca): 'gpu' WebGL yüzeyi, 'classic' eski
+   * Canvas2D borusu. Konsoldan:  game.renderer.setSurfaceMode('classic')
+   *
+   * Eski yol SİLİNMEDİ; iki sunum yan yana karşılaştırılabilsin diye duruyor.
+   */
+  setSurfaceMode(mode) {
+    if (!this.waterGL) return 'classic';
+    this.waterGL.debug.enabled = mode !== 'classic';
+    this.invalidateCache();
+    this.staticLayers = null;
+    this.staticDirty = true;
+    this.requestFrame?.();
+    return this.waterGL.debug.enabled ? 'gpu' : 'classic';
+  }
+
+  /**
+   * Hex başına TABAN RENK, oyunun kendi renk borusundan.
+   *
+   * `tileColor` ne döndürüyorsa o: harita kipi, işgal, kültür, barış masası —
+   * hepsi orada karara bağlanır ve shader kendi doğrusunu KURMAZ. Renk CSS
+   * dizesi olduğu için cols×rows'luk bir tuvale hex başına bir piksel
+   * boyanır ve tek `getImageData` ile okunur; 15360 hex için ~10 ms, dünya
+   * başına ya da sahiplik değişince bir kez.
+   */
+  surfaceOwnerData(world) {
+    const cols = world.cols;
+    const rows = world.rows;
+    let c = this.ownerScratch;
+    if (!c || c.width !== cols || c.height !== rows) {
+      c = document.createElement('canvas');
+      c.width = cols;
+      c.height = rows;
+      this.ownerScratch = c;
+    }
+    const g = c.getContext('2d', { willReadFrequently: true });
+    g.clearRect(0, 0, cols, rows);
+    for (let row = 0; row < rows; row++) {
+      for (let col = 0; col < cols; col++) {
+        const tile = world.tiles[row * cols + col];
+        if (!tile || tile.terrain.water) continue;
+        g.fillStyle = this.tileColor(tile, world);
+        g.fillRect(col, row, 1, 1);
+      }
+    }
+    return new Uint8Array(g.getImageData(0, 0, cols, rows).data.buffer.slice(0));
+  }
+
+  /** Hex başına arazi karakteri: R kabartma kazancı, G gren, B sıcaklık. */
+  surfaceCharacterData(world) {
+    const cols = world.cols;
+    const rows = world.rows;
+    const out = new Uint8Array(cols * rows * 4);
+    for (let i = 0; i < cols * rows; i++) {
+      const tile = world.tiles[i];
+      const ch = SURFACE_CHARACTER[tile?.terrain?.id] ?? SURFACE_DEFAULT;
+      const p = i * 4;
+      out[p] = Math.round(Math.min(1, ch.relief / 2) * 255);
+      out[p + 1] = Math.round(ch.grain * 255);
+      out[p + 2] = Math.round((ch.warm * 0.5 + 0.5) * 255);
+      out[p + 3] = 255;
+    }
+    return out;
   }
 
   /** Game bir sonraki animasyon karesini zamanlasın mı (bkz. Game.scheduleWaterFrame). */
@@ -479,7 +571,10 @@ export class Renderer {
     if (this.material.warmStep(this.ctx, world)) return true;
     // WebGL su katmanı, malzemenin kıyı uzaklığı alanını doku olarak alır.
     if (this.waterGL && this.waterGL.world !== world) {
-      this.waterGL.setWorld(world, this.material.cache);
+      this.waterGL.setWorld(world, this.material.cache, {
+        owner: this.surfaceOwnerData(world),
+        character: this.surfaceCharacterData(world),
+      });
       return true;
     }
     if (this.water.warmStep(this.ctx)) return true;
@@ -1137,12 +1232,9 @@ export class Renderer {
     }
     const tiles = this.visibleTiles(world, rect);
 
-    if (this.glWater()) {
-      // Deniz WebGL'de: yalnız kara boyanır, gerisi saydam kalır.
-      const land = tiles.filter((tile) => !tile.terrain.water);
-      this.paintTileFills(b, land, world);
-      this.paintShore(b, world, land);
-      this.maskToLand(b, () => this.material.paint(b, world, rect, scale));
+    if (this.glSurface()) {
+      // ZEMİN HİÇ BOYANMAZ. Deniz de kara da WebGL yüzey katmanından gelir;
+      // bu katmana yalnız mürekkep (tarama, ızgara, kenar, sınır) düşer.
     } else if (this.waterAnimatedMode()) {
       const land = [];
       const sea = [];
@@ -1662,13 +1754,10 @@ export class Renderer {
       if (water) this.water.bakeCoastline(j.ctx, world, bakeTiles.filter((t) => t.terrain.water));
       if (this.showsPolitics()) this.drawBorders(j.ctx, world, bakeTiles, j.scale);
     } else if (!water) {
-      // GL su devredeyken deniz kareleri hiç boyanmaz: uzak doku da o alanda
-      // saydam kalır ve altındaki WebGL katmanı görünür.
-      const fills = this.glWater()
-        ? bakeTiles.filter((t) => !t.terrain.water)
-        : bakeTiles;
-      if (j.phase === 'sea') this.paintTileFills(j.ctx, fills, world);
-      else if (this.glWater()) this.paintShore(j.ctx, world, fills);
+      // GL yüzey devredeyken uzak doku da zemin taşımaz: yalnız mürekkep.
+      if (!this.glSurface() && j.phase === 'sea') {
+        this.paintTileFills(j.ctx, bakeTiles, world);
+      }
     } else {
       const land = [];
       const sea = [];
@@ -1690,19 +1779,14 @@ export class Renderer {
       if (water) {
         this.material.paintSea(j.ctx, world, rect);
         j.phase = 'land';
-      } else if (this.glWater()) {
-        // Kıyı yıkaması ayrı bir süpürmede: malzeme onun ÜSTÜNE binmeli.
-        j.phase = 'land';
+      } else if (this.glSurface()) {
+        j.phase = 'ink';
       } else {
         this.material.paint(j.ctx, world, rect, j.scale);
         j.phase = 'ink';
       }
     } else if (j.phase === 'land') {
-      if (this.glWater()) {
-        this.maskToLand(j.ctx, () => this.material.paint(j.ctx, world, rect, j.scale));
-      } else {
-        this.material.paint(j.ctx, world, rect, j.scale);
-      }
+      this.material.paint(j.ctx, world, rect, j.scale);
       j.phase = 'ink';
     } else {
       const b = world.bounds;
@@ -1764,13 +1848,7 @@ export class Renderer {
    * dilimlenirse kırpma sınırında dikiş bırakır.
    */
   drawTerrain(ctx, tiles, world, rect = null) {
-    if (this.glWater()) {
-      const land = tiles.filter((t) => !t.terrain.water);
-      this.paintTileFills(ctx, land, world);
-      this.paintShore(ctx, world, land);
-      if (rect) this.maskToLand(ctx, () => this.material.paint(ctx, world, rect, 1));
-      return;
-    }
+    if (this.glSurface()) return;   // zemin GPU'da
     if (!this.waterAnimatedMode()) {
       this.paintTileFills(ctx, tiles, world);
       return;

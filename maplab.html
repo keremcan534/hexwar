@@ -165,6 +165,12 @@ tag.textContent = `${game.world.seed} · zoom ${cam.zoom.toFixed(2)} · ${r.mapM
  * görüntü ekranda görülenden farklı olur.
  */
 async function shot(name = 'shot') {
+  // Kamera KİLİTLENİR: GL yüzeyi ile Canvas2D mürekkebi AYNI kameradan
+  // çizilmeli. Önizleme penceresi arada sentetik tekerlek olayı gönderiyor;
+  // kilitlenmezse yüzey bir zoomda, sınır/etiket başka zoomda çıkıyor ve
+  // kare "renkler denize taşmış" gibi okunuyor (ölçüldü: 0.95 -> 1.30).
+  lockCamera();
+  r.render(game.world, {});
   const out = document.createElement('canvas');
   out.width = canvas.width;
   out.height = canvas.height;

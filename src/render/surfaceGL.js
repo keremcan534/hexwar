@@ -1,17 +1,22 @@
-// DENİZ — WebGL2 katmanı (hibrit).
+// DÜNYA YÜZEYİ — WebGL2 katmanı (hibrit).
 //
-// Haritanın geri kalanı Canvas2D'de kalır: kara, ülke, sınır, ızgara, etiket,
-// birim, seçim, arayüz. Bu dosya YALNIZ suyu çizer ve Canvas2D tuvalinin
-// ALTINDAKİ ayrı bir tuvale çizer. Canvas2D tarafı deniz karelerini boş
-// bırakır (bkz. renderer.glWater), su oradan görünür ve kara doğal olarak
-// suyun üstünü kapatır — kare başına binlerce hexlik kırpma yolu yok.
+// Bu dosya haritanın MALZEMESİNİ çizer: deniz ve kara. Canvas2D'de yalnız
+// MÜREKKEP ve bilgi katmanları kalır — ülke sınırı, province kenarı, hex
+// ızgarası, etiket, şehir, birim, seçim, taramalar ve bütün arayüz.
 //
-// Neden GPU'ya taşındı: Canvas2D'de su malzemesi ancak ÖNCEDEN PİŞMİŞ bir
-// rastere yazılabiliyordu, yani çözünürlüğü sabitti (hex başına 4 teksel) ve
-// hareket ancak doku kaydırmakla taklit edilebiliyordu. Işığın dalga
-// eğiminden hesaplanması — Fresnel, spekülar, hareketli normaller — piksel
-// başına iş ister; bu, fragment shader'ın tam olarak var olduğu şeydir.
-// Kara malzemesi için aynı gerekçe YOKTU ve orası Canvas2D'de kaldı.
+// Yüzey, Canvas2D tuvalinin ALTINDAKİ ayrı bir tuvale çizilir; Canvas2D
+// tarafı zemin dolgularını hiç boyamaz (bkz. renderer.glSurface) ve o alan
+// saydam kalır. Yüzey alttan görünür, çizgiler üstünde durur — kare başına
+// binlerce hexlik kırpma yolu yok.
+//
+// Neden GPU: hem su hem kara için eksik olan şey PİKSEL BAŞINA ışıktı.
+// Canvas2D'de malzeme ancak önceden pişmiş bir rastere yazılabiliyordu, yani
+// çözünürlüğü sabitti (hex başına 4 teksel) ve ışık eğim bilgisinden
+// hesaplanamıyordu. Fragment shader tam olarak bunun için var.
+//
+// Oyun durumu KOPYALANMAZ. Ülke rengi, sahiplik ve arazi shader'a hex başına
+// birer dokudan girer; renkleri üreten yer hâlâ renderer.tileColor'dır, yani
+// harita kipleri, işgal ve kültür mantığı tek yerde kalır.
 //
 // Katman notu: DOM ve GPU'ya dokunur, oyun durumuna dokunmaz.
 
@@ -71,6 +76,13 @@ uniform float uRefract;     // sığlıkta kırılma payı
 
 uniform sampler2D uHex;     // R8, NEAREST — 1 = su
 uniform sampler2D uDist;    // R8, LINEAR  — kıyıya uzaklık / uDistMax
+uniform sampler2D uOwner;   // RGBA8, NEAREST — hex basina taban renk (oyundan)
+uniform sampler2D uChar;    // RGBA8, NEAREST — R kabartma, G gren, B sicaklik
+uniform sampler2D uElev;    // R8,    LINEAR  — yukseklik rasteri
+uniform vec2 uElevSize;     // yukseklik dokusunun teksel sayisi
+uniform float uLandRelief;  // kabartma siddeti
+uniform float uLandGrain;   // pigment siddeti
+uniform float uGrade;       // kuresel derecelendirme siddeti
 uniform sampler2D uWave;    // RGBA8, LINEAR, tekrar — RG normal.xy, B/A yükseklik
 
 const float SQ3 = 1.7320508;
@@ -98,6 +110,85 @@ vec4 wave(vec2 w, float scale, vec2 vel, float rot) {
   return texture(uWave, uv);
 }
 
+/** Ucuz hash tabanli deger gurultusu; dunya uzayinda, cozunurlukten bagimsiz. */
+float hash21(vec2 p) {
+  p = fract(p * vec2(123.34, 456.21));
+  p += dot(p, p + 45.32);
+  return fract(p.x * p.y);
+}
+
+float vnoise(vec2 p) {
+  vec2 i = floor(p), f = fract(p);
+  f = f * f * (3.0 - 2.0 * f);
+  float a = hash21(i), b = hash21(i + vec2(1, 0));
+  float c = hash21(i + vec2(0, 1)), d = hash21(i + vec2(1, 1));
+  return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+}
+
+/** Uc oktav. Piksel basina hesaplandigi icin her zoomda ayni keskinlikte. */
+float pigmentNoise(vec2 p) {
+  float v = vnoise(p) * 0.55;
+  v += vnoise(p * 2.13 + 17.3) * 0.30;
+  v += vnoise(p * 4.31 + 41.7) * 0.15;
+  return v;
+}
+
+/** Yukseklik rasterinden egim; teksel adimiyla merkezi fark. */
+vec2 elevGrad(vec2 uv, out float h) {
+  vec2 tx = 1.0 / uElevSize;
+  h = texture(uElev, uv).r;
+  float l = texture(uElev, uv - vec2(tx.x, 0.0)).r;
+  float r = texture(uElev, uv + vec2(tx.x, 0.0)).r;
+  float u = texture(uElev, uv - vec2(0.0, tx.y)).r;
+  float d = texture(uElev, uv + vec2(0.0, tx.y)).r;
+  return vec2(l - r, u - d);
+}
+
+/**
+ * KARA MALZEMESI.
+ *
+ *   ulke rengi (oyundan)  x  pigment  x  kabartma isigi  x  kuresel derece
+ *
+ * Ulke rengi NEAREST okunur: hex kenari tam kalir, siyasi okuma bozulmaz.
+ * Kabartma gercek yukseklik rasterinden gelir (uydurma dag golgesi yok) ve
+ * isik yonu SU ile aynidir — iki yuzey ayni dunyada gibi dursun (§22).
+ */
+vec3 landColor(vec2 world, vec2 cell, vec3 Ldir) {
+  vec3 base = texture(uOwner, (cell + 0.5) / uGrid).rgb;
+  vec4 ch = texture(uChar, (cell + 0.5) / uGrid);
+  float reliefGain = ch.r * 2.0;
+  float grainAmt = ch.g;
+  float warmth = (ch.b - 0.5) * 2.0;
+
+  // --- KABARTMA ---
+  vec2 uv = (world - uFieldOrigin) / uFieldSpan;
+  float h;
+  vec2 g = elevGrad(uv, h);
+  // Egim dunya birimine cevrilir, sonra araziye gore olceklenir.
+  vec3 N = normalize(vec3(g * uLandRelief * reliefGain * 18.0, 1.0));
+  float lam = dot(N, Ldir);
+  // Yumusak yarim-Lambert: golge tarafi olmez, sirt yine one cikar.
+  float shade = lam * 0.5 + 0.5;
+  shade = pow(clamp(shade, 0.0, 1.0), 1.35);
+
+  // --- PIGMENT ---
+  // Uc olcek: genis boya kalinligi, orta leke, ince gren. Ince olan arazi
+  // karakterine gore aciliyor (orman lekeli, col duz).
+  float pg = pigmentNoise(world * 0.0055) - 0.5;
+  float pf = pigmentNoise(world * 0.031) - 0.5;
+  float pm = pigmentNoise(world * 0.11) - 0.5;
+  float pig = pg * 0.55 + pf * 0.30 + pm * grainAmt * 0.55;
+
+  vec3 col = base;
+  // Kabartma CARPARAK biner: koyu ulke koyu kalir, oran korunur.
+  col *= mix(1.0, shade * 1.55, uLandRelief > 0.0 ? 0.72 : 0.0);
+  col *= 1.0 + pig * uLandGrain;
+  // Isik/golge rengi: sirt sicak, cukur soguk (§23).
+  float t = (shade - 0.5) * 2.0 + warmth * 0.35;
+  col += vec3(0.028, 0.014, -0.020) * t * 0.55;
+  return col;
+}
+
 void main() {
   vec2 px = gl_FragCoord.xy / uDpr;
   // Canvas2D ile aynı eksen: y aşağı.
@@ -110,8 +201,18 @@ void main() {
   float row = cr.y;
   if (uWrap > 0.0) col = mod(col, uGrid.x);
   if (row < 0.0 || row > uGrid.y - 1.0) discard;
-  float isWater = texture(uHex, (vec2(col, row) + 0.5) / uGrid).r;
-  if (isWater < 0.5) discard;
+  vec2 cell = vec2(col, row);
+  float isWater = texture(uHex, (cell + 0.5) / uGrid).r;
+  // Isik yonu SU ile ORTAK: iki yuzeyin ayni dunyada olmasi buna bagli.
+  vec3 Ldir = normalize(vec3(-0.55, -0.68, 0.48));
+  if (isWater < 0.5) {
+    vec3 land = landColor(world, cell, Ldir);
+    // Kuresel derece: orta ton cevresinde S egrisi + soguk golge/sicak isik.
+    vec3 gr = land * land * (3.0 - 2.0 * land);
+    land = mix(land, gr, uGrade);
+    fragColor = vec4(clamp(land, 0.0, 1.0), 1.0);
+    return;
+  }
 
   // --- DALGALAR (uzaklıktan ÖNCE: sığlık onların üstünden kırılacak) ---
   // ÜÇ oktav. İkiyle yetinildiğinde deniz "düz" kalıyordu: iki frekans
@@ -185,7 +286,6 @@ void main() {
   // --- YÖNLÜ SPEKÜLAR ---
   // Tek küresel ışık. Üs düşük tutulur: geniş ve yumuşak vurgu, kıvılcım
   // değil. Parıldayan okyanus istenmiyor.
-  vec3 Ldir = normalize(vec3(-0.55, -0.68, 0.48));
   vec3 H = normalize(Ldir + V);
   // ÜS YÜKSEK OLMALI. Tepeden bakılan bir haritada hem ışık hem bakış dikeye
   // yakındır, dolayısıyla H de dikeydir: DÜZ su bile dot(N,H)≈0.93 verir.
@@ -301,7 +401,7 @@ function buildWaveTexture() {
   return { data, size };
 }
 
-export class WaterGL {
+export class SurfaceGL {
   /** WebGL2 yoksa null döner: çağıran Canvas2D suyuna geri düşer. */
   static create(canvas) {
     const gl = canvas.getContext('webgl2', {
@@ -310,7 +410,7 @@ export class WaterGL {
     });
     if (!gl) return null;
     try {
-      return new WaterGL(canvas, gl);
+      return new SurfaceGL(canvas, gl);
     } catch {
       return null;
     }
@@ -364,6 +464,11 @@ export class WaterGL {
       waveAmp: 1.15,
       waveShade: 0.26,
       refract: 0.60,
+      // KARA. `relief` yükseklik eğiminin ışığa katkısı, `grain` pigmentin
+      // gücü, `grade` küresel S eğrisinin payı.
+      relief: 1.0,
+      grain: 0.55,
+      grade: 0.30,
     };
 
     const prog = gl.createProgram();
@@ -381,7 +486,9 @@ export class WaterGL {
       'uHex', 'uDist', 'uWave',
       'uShallow', 'uTeal', 'uPetrol', 'uAbyss', 'uShelf',
       'uSpecAmp', 'uFresAmp', 'uFoamAmp',
-      'uWaveAmp', 'uWaveShade', 'uRefract']) {
+      'uWaveAmp', 'uWaveShade', 'uRefract',
+      'uOwner', 'uChar', 'uElev', 'uElevSize',
+      'uLandRelief', 'uLandGrain', 'uGrade']) {
       this.u[name] = gl.getUniformLocation(prog, name);
     }
 
@@ -390,6 +497,9 @@ export class WaterGL {
       gl.LINEAR, gl.REPEAT);
     this.hexTex = null;
     this.distTex = null;
+    this.ownerTex = null;
+    this.charTex = null;
+    this.elevTex = null;
   }
 
   makeTex(internal, format, w, h, data, filter, wrap, wrapT = wrap) {
@@ -412,9 +522,9 @@ export class WaterGL {
    * gelir (bkz. material.js) — aynı işi iki kez yapmanın anlamı yok ve iki
    * katmanın kıyısı böylece bit bit aynı yerde.
    */
-  setWorld(world, coast) {
+  setWorld(world, coast, surfaceData) {
     if (this.world === world && this.hexTex && this.distTex) return true;
-    if (!coast?.toLand) return false;
+    if (!coast?.toLand || !coast?.surface || !surfaceData) return false;
     const gl = this.gl;
     const cols = world.cols;
     const rows = world.rows;
@@ -437,6 +547,30 @@ export class WaterGL {
     this.distTex = this.makeTex(gl.R8, gl.RED, w, h, dist,
       gl.LINEAR, gl.REPEAT, gl.CLAMP_TO_EDGE);
 
+    // --- KARA DOKULARI ---
+    // Taban renk OYUNDAN gelir: renderer.tileColor her hex için ne
+    // döndürüyorsa o. Harita kipleri, işgal, kültür — hepsi tek yerde kalır,
+    // shader kendi doğrusunu kurmaz.
+    if (this.ownerTex) gl.deleteTexture(this.ownerTex);
+    this.ownerTex = this.makeTex(gl.RGBA8, gl.RGBA, cols, rows, surfaceData.owner,
+      gl.NEAREST, gl.REPEAT, gl.CLAMP_TO_EDGE);
+    if (this.charTex) gl.deleteTexture(this.charTex);
+    this.charTex = this.makeTex(gl.RGBA8, gl.RGBA, cols, rows, surfaceData.character,
+      gl.NEAREST, gl.REPEAT, gl.CLAMP_TO_EDGE);
+
+    // Yükseklik: material.js'in zaten kurduğu yumuşatılmış raster (hex başına
+    // 4 teksel). LINEAR örneklenir ve eğim shader'da alınır — kabartma böylece
+    // ekran çözünürlüğünden bağımsız olur, önceden pişmiş bir gölge değildir.
+    const surf = coast.surface;
+    const elev = new Uint8Array(surf.length);
+    for (let i = 0; i < surf.length; i++) {
+      elev[i] = Math.max(0, Math.min(255, Math.round(surf[i] * 255)));
+    }
+    if (this.elevTex) gl.deleteTexture(this.elevTex);
+    this.elevTex = this.makeTex(gl.R8, gl.RED, coast.w, coast.h, elev,
+      gl.LINEAR, gl.REPEAT, gl.CLAMP_TO_EDGE);
+    this.elevSize = { w: coast.w, h: coast.h };
+
     this.world = world;
     this.grid = { cols, rows };
     this.field = {
@@ -444,6 +578,20 @@ export class WaterGL {
       spanX: cols * HEX_STEP, spanY: rows * ROW_H,
     };
     return true;
+  }
+
+  /**
+   * Sahiplik değişince YALNIZ renk dokusu tazelenir (§33). Yükseklik, kıyı
+   * alanı ve arazi karakteri coğrafyaya bağlıdır, dokunulmaz.
+   */
+  updateOwners(ownerData) {
+    if (!this.ownerTex || !this.world) return;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.ownerTex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.grid.cols, this.grid.rows,
+      gl.RGBA, gl.UNSIGNED_BYTE, ownerData);
+    this.lastDraw = 0;
   }
 
   resize(cssW, cssH, dpr) {
@@ -501,6 +649,10 @@ export class WaterGL {
     gl.uniform1f(u.uWaveAmp, T.waveAmp);
     gl.uniform1f(u.uWaveShade, T.waveShade);
     gl.uniform1f(u.uRefract, T.refract);
+    gl.uniform1f(u.uLandRelief, T.relief);
+    gl.uniform1f(u.uLandGrain, T.grain);
+    gl.uniform1f(u.uGrade, T.grade);
+    gl.uniform2f(u.uElevSize, this.elevSize.w, this.elevSize.h);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.hexTex);
@@ -511,6 +663,15 @@ export class WaterGL {
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, this.waveTex);
     gl.uniform1i(u.uWave, 2);
+    gl.activeTexture(gl.TEXTURE3);
+    gl.bindTexture(gl.TEXTURE_2D, this.ownerTex);
+    gl.uniform1i(u.uOwner, 3);
+    gl.activeTexture(gl.TEXTURE4);
+    gl.bindTexture(gl.TEXTURE_2D, this.charTex);
+    gl.uniform1i(u.uChar, 4);
+    gl.activeTexture(gl.TEXTURE5);
+    gl.bindTexture(gl.TEXTURE_2D, this.elevTex);
+    gl.uniform1i(u.uElev, 5);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     return true;
