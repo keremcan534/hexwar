@@ -454,13 +454,20 @@ export class Renderer {
    * kalır. Tek karar noktası burasıdır; çağıran taraflar bunu sorar.
    */
   canvasWater() {
-    return this.waterAnimatedMode() && !this.waterGL?.debug.enabled;
+    return this.waterAnimatedMode() && !this.glSurface();
   }
 
-  /** WebGL yüzey katmanı bu karede geçerli mi? */
+  /**
+   * WebGL yüzey katmanı bu karede geçerli mi?
+   *
+   * HARİTA KİPİNDEN BAĞIMSIZ. Eskiden yalnız "su animasyonlu" kiplerde
+   * açılıyordu; kaynak/nüfus/barış/inşaat kiplerinde eski Canvas2D yoluna
+   * düşülüyor ve harita bambaşka bir sunuma dönüyordu — aynı oyunda iki ayrı
+   * sanat yönetimi. Artık zemin her kipte GPU'dan gelir; kipe göre değişen
+   * tek şey denizin MALZEMELİ mi düz mü çizileceğidir (bkz. uSeaMaterial).
+   */
   glWater() {
-    return this.waterAnimatedMode() && !!this.waterGL?.debug.enabled
-      && !!this.waterGL?.world;
+    return !!this.waterGL?.debug.enabled && !!this.waterGL?.world;
   }
 
   /** Okunurluk için takma ad; yüzey artık karayı da çiziyor. */
@@ -499,7 +506,8 @@ export class Renderer {
     const out = new Uint8Array(cols * rows * 4);
     for (let i = 0; i < cols * rows; i++) {
       const tile = world.tiles[i];
-      if (!tile || tile.terrain.water) continue;
+      if (!tile) continue;
+      // Deniz de yazılır: düz-deniz kiplerinde shader rengi buradan okur.
       const rgb = this.cssToRgb(this.tileColor(tile, world));
       const p = i * 4;
       out[p] = rgb[0];
@@ -549,6 +557,24 @@ export class Renderer {
    */
   invalidateSurfaceColors() {
     this.surfaceColorsDirty = true;
+  }
+
+  /** Hex başına işgal: RGB işgalcinin mürekkebi, A bayrak. */
+  surfaceOverlayData(world) {
+    const n = world.cols * world.rows;
+    const out = new Uint8Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      const tile = world.tiles[i];
+      if (!tile || tile.terrain.water || !isOccupied(tile)) continue;
+      const holder = world.nations[controllerOf(tile)];
+      const rgb = this.cssToRgb(holder ? this.nationInk(holder) : '#999999');
+      const p = i * 4;
+      out[p] = rgb[0];
+      out[p + 1] = rgb[1];
+      out[p + 2] = rgb[2];
+      out[p + 3] = 255;
+    }
+    return out;
   }
 
   /** Hex başına arazi karakteri: R kabartma kazancı, G gren, B sıcaklık. */
@@ -745,7 +771,9 @@ export class Renderer {
       minX: minX - HEX_SIZE * 2, maxX: maxX + HEX_SIZE * 2,
       minY: minY - HEX_SIZE * 2, maxY: maxY + HEX_SIZE * 2,
     });
-    if (this.mapMode === 'political') this.drawOccupationOverlay(ctx, world, list, cache.scale);
+    if (this.mapMode === 'political' && !this.glSurface()) {
+      this.drawOccupationOverlay(ctx, world, list, cache.scale);
+    }
     if (this.mapMode === 'cultures') this.drawCultureMix(ctx, world, list, cache.scale);
     if (this.mapMode === 'construction') this.drawConstructionOverlay(ctx, world, list, cache.scale);
     if (this.showsPolitics()) this.drawBorders(ctx, world, list, cache.scale);
@@ -1303,7 +1331,11 @@ export class Renderer {
     }
 
     // ÜST: işgal/inşaat taraması, ızgara, province kenarı, ülke sınırı.
-    if (this.mapMode === 'political') this.drawOccupationOverlay(t, world, tiles, scale);
+    // İşgal taraması GPU yüzeyinde (bkz. surfaceGL uOverlay); Canvas2D yalnız
+    // yedek yolda çizer, yoksa iki kez binip alfası katlanır.
+    if (this.mapMode === 'political' && !this.glSurface()) {
+      this.drawOccupationOverlay(t, world, tiles, scale);
+    }
     if (this.mapMode === 'cultures') this.drawCultureMix(t, world, tiles, scale);
     if (this.mapMode === 'construction') this.drawConstructionOverlay(t, world, tiles, scale);
     if (this.showGrid && scale >= GRID_MIN_ZOOM && this.mapMode !== 'geography') {
@@ -1431,10 +1463,13 @@ export class Renderer {
     // Su önce çizilir: ayrı bir tuval olduğu için sıra bileşimi değiştirmez,
     // ama kamera değerleri Canvas2D karesiyle BİREBİR aynı kalır.
     if (this.glWater()) {
+      this.waterGL.seaMaterial = this.waterAnimatedMode();
+      this.waterGL.overlayOn = this.mapMode === 'political';
       if (this.surfaceColorsDirty) {
         this.surfaceColorsDirty = false;
         const t = performance.now();
         this.waterGL.updateOwners(this.surfaceOwnerData(world));
+        this.waterGL.updateOverlay(this.surfaceOverlayData(world));
         this.perf?.add('r.surfacecolors', performance.now() - t);
       }
       this.waterGL.draw(cam, this.waterTime);
@@ -1791,7 +1826,9 @@ export class Renderer {
     // taşar, üstünü kara dolgusu kapatır (bkz. paintStaticContent).
     const water = this.canvasWater();
     if (j.phase === 'ink') {
-      if (this.mapMode === 'political') this.drawOccupationOverlay(j.ctx, world, bakeTiles, j.scale);
+      if (this.mapMode === 'political' && !this.glSurface()) {
+        this.drawOccupationOverlay(j.ctx, world, bakeTiles, j.scale);
+      }
       if (this.mapMode === 'cultures') this.drawCultureMix(j.ctx, world, bakeTiles, j.scale);
       if (this.mapMode === 'construction') {
         this.drawConstructionOverlay(j.ctx, world, bakeTiles, j.scale);

@@ -172,15 +172,43 @@ yüklenir. Gerçek oyunda ölçüldü:
 - `political -> terrain -> cultures -> political`: her kip ayrı renk verdi,
   politiğe dönüşte değer birebir aynı.
 
+## BÜTÜN KİPLER TEK YÜZEYDE (son geçiş)
+
+Yüzey artık harita kipinden BAĞIMSIZ çalışıyor. Eskiden yalnız "su
+animasyonlu" kiplerde açılıyor, kaynak/nüfus/barış/inşaat kiplerinde eski
+Canvas2D yoluna düşülüyordu — aynı oyunda iki ayrı sanat yönetimi. Kipe göre
+değişen tek şey kaldı:
+
+| | deniz | kara |
+| --- | --- | --- |
+| political / terrain / cultures | tam malzeme | tam kabartma + pigment |
+| resources / population / peace / construction | düz ton (`uSeaMaterial=0`) | kabartma ve pigment %28'e kısık |
+
+Veri kipleri seçim yüzeyidir: malzeme bilginin önüne geçmemeli, ama yüzey de
+bambaşka bir sunuma dönmemeli. Kısılır, kapatılmaz.
+
+Gerçek oyunda ölçüldü — aynı kara hexi, dört kip, dört ayrı renk:
+political (136,133,65) · terrain (196,203,176) · resources (164,97,77) ·
+population (213,217,106).
+
+## İŞGAL TARAMASI DA GPU'DA
+
+`uOverlay` dokusu (RGB işgalcinin mürekkebi, A bayrak) + ekran uzayında
+prosedürel çapraz çizgi. Canvas2D'deki okuma korundu (%46 mürekkep + açık
+çizgiler) ama artık yüzeyin ışığını alıyor ve her zoomda keskin.
+
+Doğrulandı: bir province'in kontrolü değiştirildiğinde ekran merkezi
+(128,78,108) -> (164,81,104) kaydı ve satır boyunca kenar sayısı 6 -> 51
+çıktı (tarama gerçekten çiziliyor). Canvas2D yolu yedekte, GL açıkken
+çizmiyor — yoksa alfa iki kez binerdi.
+
 ## KNOWN LIMITATIONS
 
-- İşgal, kültür ve inşaat taramaları Canvas2D'de; GPU malzemesinin üstüne
-  biniyorlar ve onunla aynı ışığı almıyorlar. Bilgi katmanı oldukları için
-  bu kasıtlı, ama malzeme dili tam birleşmiş değil.
-- Şehir / birim / ikon katmanları dokunulmadı — briefin §40/§56 kapısı.
-- Veri kipleri (kaynak, nüfus, barış, inşaat) GPU yüzeyini kullanmaz; orada
-  eski Canvas2D yolu devrededir ve zemini opak boyar. Kasıtlı: o kipler
-  seçim yüzeyidir, malzeme değil.
+- Şehir / birim / ikon katmanları Canvas2D'de — briefin §40/§56 kapısı.
+  Bunlar sprite; GPU'ya taşımanın görsel karşılığı yok, kazanç ancak çok
+  sayıda birimde batching olurdu.
+- Kültür ve inşaat taramaları hâlâ Canvas2D'de (işgal taşındı). Aynı yol
+  onlar için de açık, yalnız veri dokusu eklenmesi gerekir.
 - Ölçümler bu makinede ve önizleme penceresinde; oranlar geçerli.
 
 ## VERDICT

@@ -83,6 +83,13 @@ uniform vec2 uElevSize;     // yukseklik dokusunun teksel sayisi
 uniform float uLandRelief;  // kabartma siddeti
 uniform float uLandGrain;   // pigment siddeti
 uniform float uGrade;       // kuresel derecelendirme siddeti
+// 1 = denize tam malzeme (dalga, Fresnel, kopuk). 0 = duz ton.
+// Veri kipleri (kaynak, nufus, baris, insaat) haritayi bir SECIM YUZEYINE
+// cevirir; orada kipirdayan deniz bilgiyi bastirir. Ayni shader, tek anahtar.
+uniform float uSeaMaterial;
+uniform sampler2D uOverlay;  // RGBA8, NEAREST — RGB isgalcinin murekkebi, A bayrak
+uniform float uOverlayOn;    // 1 = isgal taramasi cizilsin
+uniform float uDataMode;     // 1 = veri/secim kipi: kabartma ve pigment kisilir
 uniform sampler2D uWave;    // RGBA8, LINEAR, tekrar — RG normal.xy, B/A yükseklik
 
 const float SQ3 = 1.7320508;
@@ -180,12 +187,32 @@ vec3 landColor(vec2 world, vec2 cell, vec3 Ldir) {
   float pig = pg * 0.55 + pf * 0.30 + pm * grainAmt * 0.55;
 
   vec3 col = base;
+  // Veri kiplerinde (kaynak, nufus, baris, insaat) harita bir SECIM YUZEYIDIR:
+  // orada kabartma ve pigment bilginin onune gecmemeli, ama yuzey de bambaska
+  // bir sunuma donmemeli. Kisilir, kapatilmaz.
+  float damp = mix(1.0, 0.28, uDataMode);
   // Kabartma CARPARAK biner: koyu ulke koyu kalir, oran korunur.
-  col *= mix(1.0, shade * 1.55, uLandRelief > 0.0 ? 0.72 : 0.0);
-  col *= 1.0 + pig * uLandGrain;
+  col *= mix(1.0, shade * 1.55, 0.72 * damp);
+  col *= 1.0 + pig * uLandGrain * damp;
   // Isik/golge rengi: sirt sicak, cukur soguk (§23).
   float t = (shade - 0.5) * 2.0 + warmth * 0.35;
-  col += vec3(0.028, 0.014, -0.020) * t * 0.55;
+  col += vec3(0.028, 0.014, -0.020) * t * 0.55 * damp;
+
+  // --- ISGAL TARAMASI ---
+  // Canvas2D'deki ile ayni okuma (%46 murekkep + acik capraz cizgiler), ama
+  // artik YUZEYIN ISIGINI aliyor ve her zoomda keskin: cizgi ekran uzayinda
+  // hesaplaniyor, onceden pismis bir dokudan gelmiyor.
+  if (uOverlayOn > 0.5) {
+    vec4 ov = texture(uOverlay, (cell + 0.5) / uGrid);
+    if (ov.a > 0.5) {
+      col = mix(col, ov.rgb, 0.46);
+      float sp = 9.0 * uDpr;
+      float wd = 2.2 * uDpr;
+      float f = mod(gl_FragCoord.x + gl_FragCoord.y, sp);
+      float line = 1.0 - smoothstep(wd * 0.5 - 0.9, wd * 0.5 + 0.9, abs(f - sp * 0.5));
+      col = mix(col, vec3(0.839, 0.784, 0.659), line * 0.5);
+    }
+  }
   return col;
 }
 
@@ -203,6 +230,11 @@ void main() {
   if (row < 0.0 || row > uGrid.y - 1.0) discard;
   vec2 cell = vec2(col, row);
   float isWater = texture(uHex, (cell + 0.5) / uGrid).r;
+  if (isWater >= 0.5 && uSeaMaterial < 0.5) {
+    // Duz deniz: rengi de oyunun kendi borusundan gelir (uOwner).
+    fragColor = vec4(texture(uOwner, (cell + 0.5) / uGrid).rgb, 1.0);
+    return;
+  }
   // Isik yonu SU ile ORTAK: iki yuzeyin ayni dunyada olmasi buna bagli.
   vec3 Ldir = normalize(vec3(-0.55, -0.68, 0.48));
   if (isWater < 0.5) {
@@ -428,6 +460,11 @@ export class SurfaceGL {
     this.resScale = 0.75;
     this.lastDraw = 0;
     this.debug = { enabled: true };
+    /** Deniz malzemeli mi cizilsin? Renderer harita kipine gore ayarlar. */
+    this.seaMaterial = true;
+    /** Isgal taramasi (yalniz siyasi kipte). */
+    this.overlayOn = false;
+    this.overlayTex = null;
     /**
      * Denizin karakteri. Konsoldan canlı değiştirilebilir:
      *   game.renderer.waterGL.tune.abyss = [0.05, 0.12, 0.15]
@@ -488,7 +525,8 @@ export class SurfaceGL {
       'uSpecAmp', 'uFresAmp', 'uFoamAmp',
       'uWaveAmp', 'uWaveShade', 'uRefract',
       'uOwner', 'uChar', 'uElev', 'uElevSize',
-      'uLandRelief', 'uLandGrain', 'uGrade']) {
+      'uLandRelief', 'uLandGrain', 'uGrade', 'uSeaMaterial',
+      'uOverlay', 'uOverlayOn', 'uDataMode']) {
       this.u[name] = gl.getUniformLocation(prog, name);
     }
 
@@ -584,6 +622,21 @@ export class SurfaceGL {
    * Sahiplik değişince YALNIZ renk dokusu tazelenir (§33). Yükseklik, kıyı
    * alanı ve arazi karakteri coğrafyaya bağlıdır, dokunulmaz.
    */
+  /** İşgal taraması dokusu; sahiplik/kontrol değişince tazelenir. */
+  updateOverlay(overlayData) {
+    const gl = this.gl;
+    if (!this.overlayTex) {
+      this.overlayTex = this.makeTex(gl.RGBA8, gl.RGBA, this.grid.cols, this.grid.rows,
+        overlayData, gl.NEAREST, gl.REPEAT, gl.CLAMP_TO_EDGE);
+    } else {
+      gl.bindTexture(gl.TEXTURE_2D, this.overlayTex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.grid.cols, this.grid.rows,
+        gl.RGBA, gl.UNSIGNED_BYTE, overlayData);
+    }
+    this.lastDraw = 0;
+  }
+
   updateOwners(ownerData) {
     if (!this.ownerTex || !this.world) return;
     const gl = this.gl;
@@ -652,6 +705,9 @@ export class SurfaceGL {
     gl.uniform1f(u.uLandRelief, T.relief);
     gl.uniform1f(u.uLandGrain, T.grain);
     gl.uniform1f(u.uGrade, T.grade);
+    gl.uniform1f(u.uSeaMaterial, this.seaMaterial ? 1 : 0);
+    gl.uniform1f(u.uOverlayOn, this.overlayOn && this.overlayTex ? 1 : 0);
+    gl.uniform1f(u.uDataMode, this.seaMaterial ? 0 : 1);
     gl.uniform2f(u.uElevSize, this.elevSize.w, this.elevSize.h);
 
     gl.activeTexture(gl.TEXTURE0);
@@ -672,6 +728,9 @@ export class SurfaceGL {
     gl.activeTexture(gl.TEXTURE5);
     gl.bindTexture(gl.TEXTURE_2D, this.elevTex);
     gl.uniform1i(u.uElev, 5);
+    gl.activeTexture(gl.TEXTURE6);
+    gl.bindTexture(gl.TEXTURE_2D, this.overlayTex ?? this.ownerTex);
+    gl.uniform1i(u.uOverlay, 6);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     return true;
