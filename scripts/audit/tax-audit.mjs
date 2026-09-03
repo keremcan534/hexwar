@@ -221,11 +221,17 @@ section('C. TANI');
   const a = all0.snap;
   console.log(`  butun vergiler %0 iken hazine ${n0(a.gold)}, borc ${n0(a.debt)},`
     + ` sehir geliri ${n2(a.cityRevenue)}/hafta (vergiden bagimsiz)`);
-  if (a.gold > 0 && a.debt <= 0) {
-    finding('MEDIUM', 'Sifir vergi devleti iflas etmiyor',
-      'butun vergileri kapatmak hazineyi borca surmeli',
-      `260 hafta boyunca vergi geliri 0 iken hazine ${n0(a.gold)} ve borc yok`,
-      `province altin geliri (${n2(a.cityRevenue)}/hafta) vergi kaydiraciyla hic ilgili degil`);
+  // Devletin vergi disi geliri (province altini, devlet tesisi, gumruk)
+  // tasarimdir; sifir vergi iflas ettirmek zorunda degil ama hazineyi
+  // BELIRGIN yoksullastirmali: tavan senaryonun en cok ucte biri.
+  const b = all100.snap;
+  const share = b.gold > 0 ? a.gold / b.gold : 0;
+  console.log(`  sifir vergi hazinesi tavan senaryonun ${pct(share)}'i`);
+  if (a.gold > 0 && a.debt <= 0 && share > 0.34) {
+    finding('MEDIUM', 'Sifir vergi neredeyse bedelsiz',
+      'vergisiz hazine tavan senaryonun ucte birini gecmemeli',
+      `260 haftada sifir vergi ${n0(a.gold)} vs tavan ${n0(b.gold)} (${pct(share)})`,
+      `vergi disi gelir (province altini ${n2(a.cityRevenue)}/hafta) tek basina yetiyor`);
   }
 }
 

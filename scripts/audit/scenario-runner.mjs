@@ -210,7 +210,18 @@ function applyLevers(nation, levers) {
       // Politika bandini asan SINIR testleri icin dogrudan yazim.
       nation.economy[l.key] = l.value;
     } else {
-      setBudgetPolicy(nation, l.key, l.value);
+      // Denetimler kaldiraci `{key:'social', classId:'education'}` ya da
+      // `{key:'tax', classId:'lower'}` bicimiyle de verir; setBudgetPolicy
+      // yalniz duz politika adini tanir. Eskiden bu satir sessizce false
+      // donuyordu ve egitim 0/50/100 senaryolari birebir ayni cikiyordu.
+      const policy = l.key === 'social' && l.classId ? l.classId
+        : l.key === 'tax' && l.classId
+          ? `tax${l.classId[0].toUpperCase()}${l.classId.slice(1)}`
+          : l.key;
+      const ok = setBudgetPolicy(nation, policy, l.value);
+      if (!ok && !l.optional) {
+        throw new Error(`kaldirac uygulanamadi: ${JSON.stringify(l)} (politika ${policy})`);
+      }
     }
   }
 }

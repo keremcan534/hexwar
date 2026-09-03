@@ -242,7 +242,7 @@ sub('Kasten zararli tesisler kur, sübvansiyonu ac, 100 hafta isle');
       }
     }
     game.turns.endTurn();
-    paid += nation.economy.ledger?.subsidyCost ?? 0;
+    paid += Math.abs(nation.economy.ledger?.subsidy ?? 0);
     for (const f of nation.economy.factories) {
       if (!f.id.startsWith('audit-')) continue;
       const t = FACTORIES[f.typeId];
@@ -288,7 +288,7 @@ sub('YZ subvansiyon davranisi (400 hafta, butun uluslar)');
     id: n.id,
     factories: n.economy.factories.length,
     subsidized: n.economy.factories.filter((f) => f.subsidized).length,
-    subsidyCost: n.economy.ledger?.subsidyCost ?? 0,
+    subsidyCost: Math.abs(n.economy.ledger?.subsidy ?? 0),
     gold: n.gold,
     debt: n.debt ?? 0,
     atWar: game.world.nations.some((o) => o.alive && o.id !== n.id

@@ -8,7 +8,7 @@
 // Bir ülkeyi yutmak ~70, dünyayı üstüne çeker.
 
 import {
-  MAX_ATTACKERS_ON_TARGET, atWar, declareWar, nationStrength,
+  MAX_ATTACKERS_ON_TARGET, atWar, declareWar, nationStrength, attackerCount,
 } from './diplomacy.js';
 import { isOccupied } from './control.js';
 
@@ -207,6 +207,9 @@ export function checkCoalitions(game, rng) {
       // kurulabilir — hedef dongusu oyuncuyu haric tutmaz.
       if (other.id === game.turns?.playerNation) continue;
       if (atWar(world, other.id, target.id)) continue;
+      // Iki cephesi olan devlet koalisyona da binmez: ai.js'teki ayni kural,
+      // yoksa ucuncu-dorduncu savas buradan geliyordu (audit:war-pressure).
+      if (attackerCount(world, other.id) >= 2) continue;
       if (fronts >= MAX_COALITION_ATTACKERS) break;
       if (!contacts[other.id][target.id]) continue;
       // Umutsuz derecede zayıf olan katılmaz; koalisyon intihar değil.

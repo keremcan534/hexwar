@@ -21,7 +21,7 @@ export const MAX_WAR_SCORE = 100;
  * Fiilen bağlayan sınır `demandLimit(score)`tur; bu sabit yalnız hiçbir
  * anlaşmanın aşamayacağı üst çizgidir.
  */
-export const MAX_DEMAND_PROVINCES = 6;
+export const MAX_DEMAND_PROVINCES = 4;
 
 /**
  * Warscore'un satın alabileceği küme sayısı. Victoria'da savaşlar ülke
@@ -86,12 +86,12 @@ export function demandLimit(score) {
   // Basamaklar bes puan yukari cekildi: 50 yilda haritanin %33-36'si el
   // degistiriyordu (audit:war-pressure / borders "kartopu" esigi ucte bir).
   // Kazanan hala kazanir, ama ayni puanla bir kume daha az alir.
+  // Tavan 6'dan 4'e: 50 yilda uc tohumdan birinde haritanin %44'u el
+  // degistiriyordu (audit:borders). Savas sinir duzeltir, ulke yutmaz.
   if (s < 12) return 0;
   if (s < 25) return 1;
-  if (s < 40) return 2;
-  if (s < 60) return 3;
-  if (s < 80) return 4;
-  if (s < 95) return 5;
+  if (s < 45) return 2;
+  if (s < 70) return 3;
   return MAX_DEMAND_PROVINCES;
 }
 
