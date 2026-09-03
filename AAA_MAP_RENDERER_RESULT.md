@@ -214,3 +214,157 @@ Taban katmanlar (su, kara malzemesi, ızgara, renk boru hattı) hedefe doğru
 GEÇİLMEDİ (§26 kapısı): kıyı ve küresel derecelendirme hedefin gerisinde.
 Bir sonraki geçiş bu ikisi olmalı — üçüncü bir görsel yineleme, yeni mekanik
 değil.
+
+---
+---
+
+# GEÇİŞ #2 — hedefe yaklaşma (target match)
+
+Hedef görsel netleşti: **ikinci ekran görüntüsü**. Birinci geçişin belirsizliği
+kapandı, ölçüt artık o kare.
+
+Birinci geçişin sonucu teknik olarak çalışıyordu ama görsel olarak "hexlerin
+üstüne püskürtülmüş pastel bulutlar" okunuyordu. Bu geçiş yeni özellik
+EKLEMEDİ; malzemenin karakterini değiştirdi.
+
+## Ne değişti
+
+**Kıyı uzaklığı artık gerçek bir alan.** Hex halkaları (BFS) yerine iki
+geçişli chamfer uzaklık dönüşümü, teksel başına DÜNYA BİRİMİNDE uzaklık
+veriyor (yatay sarmal için süpürme iki kez koşuyor). Üstüne iki frekansta
+gürültü biniyor: şelf artık her kıyıyı saran eşit genişlikte bir hale değil,
+yer yer açılıp yer yer kaybolan düzensiz bir sahanlık.
+
+**Deniz tamamen rasterden geliyor.** Üç bölge: sığlık (kısık turkuaz) →
+geçiş (kırık köpük, yalnız gürültü eşiğini aşan noktalarda) → abis (koyu
+petrol). Hex başına tek ton olan eski yol yalnız rasterin altında, onun
+paletiyle hizalı bir taban olarak kaldı.
+
+  Sıralama hilesi: raster deniz dolgusunun ÜSTÜNE, kara dolgusunun ALTINA
+  serilir. Yumuşatılmış kenarı karaya taşar, üstünü kara dolgusu kapatır —
+  binlerce hexlik kırpma yolu (bu borunun ölçülmüş en pahalı işlemi) hiç
+  gerekmiyor.
+
+**Kabartma yapısal oldu.** Alan çözünürlüğü hex başına 2×2'den **4×4**'e
+çıktı ve sıra tersine döndü: önce yükseklik rasteri kurulup yumuşatılıyor,
+eğim ondan SONRA hesaplanıyor. Eskiden eğim hex başına hesaplanıp sonuç
+yumuşatılıyordu — bu tam olarak sırt yapısını silip yerine yumuşak lekeler
+bırakan işlemdi. Sert kesme yerine `tanh` yumuşak sıkıştırma: en dik yamaç
+bile detayını koruyor (ölçüldü: eski tavanda tekselin %2.2'si üstte, %2.6'sı
+altta düzleşiyordu).
+
+**Gürültü tabi kılındı.** Geniş rastgele aydınlanmanın ağırlığı 0.46 → 0.13.
+Fiziksel ipucu (eğim) 1.0. §11'in istediği sıra.
+
+**Küresel derecelendirme renk borusunun kaynağında.** Saydam siyah dikdörtgen
+yok: ülke açıklık bandı 27-64'ten **22-53**'e indi, orta ton çevresinde 1.16
+kat açıldı, doygunluk parlaklıkla birlikte düştü. Tek tutarlı dönüşüm, ülke
+başına ayrı filtre değil.
+
+**Kıyı halesi kaldırıldı.** Dört kademeli turkuaz vuruş yerine iki kademe
+kaldı: kara tarafında dar sıcak pay, üstünde ince koyu mürekkep. Işık değil
+kontrast.
+
+**Su animasyonu yeni tabana göre kısıldı.** Koyulaşan denizde eski alfalar
+(swell 0.22, ripple 0.48, shimmer tavanı 0.65) oransal olarak birkaç kat
+güçlü düşüyor ve okyanusu gri bulut tarlasına çeviriyordu. Sırasıyla 0.065 /
+0.20 / 0.30.
+
+**Uzak/yakın dal aynı dili konuşuyor.** Eski `paintAtlas` kâğıt yolu (ve onun
+`patterns` yardımcısı) SİLİNDİ; uzak dal artık yakın dalın aynı rasterlerini
+kullanıyor. Uzak pişirme üç süpürmeye ayrıldı — deniz dolgusu → [deniz
+rasteri, tek geçiş] → kara dolgusu → [ışık alanı, tek geçiş] → mürekkep —
+çünkü rasterler dilimlenirse kırpma sınırında dikiş bırakıyor.
+
+**Izgara daha da çekildi** (0.028-0.113 → 0.012-0.074, rampa 0.7'de başlıyor),
+**sınır mürekkebi** saf siyahtan uzaklaştı (0.90 → 0.82 opak, hafif soğuk) ve
+iç sıcak hat 0.10 → 0.16'ya çıktı, **etiketler** kâğıda basılmış hâle geldi
+(hale 4 → 2.5 blur, kontur inceldi ve koyulaştı, mürekkep ısındı, geniş
+ülkelerde harf aralığı tavanı 0.45 → 0.62).
+
+## Ekran görüntüsü yinelemesi
+
+**İterasyon A** (`.shots/p2-iterA-near.png`) — üç en büyük boşluk:
+1. Okyanusta geniş soluk gri lekeler — su animasyonu eski parlak tabana göre
+   ayarlıydı, koyu zeminde sis gibi düşüyordu.
+2. Şelf hâlâ "genişliği değişen düzgün bir hale" — geniş bozucu (±2.1 hex,
+   ~14 hex periyot) baskındı, ince bozucu görünmüyordu.
+3. Abis %7.5 parlaklıkta ezikti ve ±4.2'lik salınım o tabanda oransal olarak
+   devasaydı — su "koyu bulutlar" gibi lekeleniyordu.
+
+**İterasyon B** (`.shots/p2-iterB-near.png`, `.shots/p2-final-near.png`) —
+üçü de kapatıldı (frekans dengesi ince bozucu lehine çevrildi, abis tabanı
+10.5'e çıktı, salınım 2.0'a indi, animasyon alfaları kısıldı). Kalan üç
+boşluk:
+1. Kabartma yakın zoomda hâlâ ölçülü — alan 4 teksel/hex'te sınırlı.
+2. Uzak zoomda açık okyanus çok koyu; yapı neredeyse görünmüyor.
+3. Ülke içi ince doku hedeften biraz daha seyrek (hedefte ikon yoğunluğu da
+   katkı veriyor; ikonlar bu geçişin kapsamı dışında).
+
+## §14 soruları
+
+| | |
+| --- | --- |
+| A. Deniz pahalı görünüyor mu? | **Evet** — koyu petrol, düzensiz şelf, hale yok |
+| B. Kara fiziksel arazi gibi mi? | **Büyük ölçüde** — eğim yapısal, ama yakın zoomda ölçülü |
+| C. Kıyı parlamak yerine doğal mı? | **Evet** — turkuaz aura kaldırıldı |
+| D. Dünya pastel yerine koyu/zengin mi? | **Evet** |
+| E. Aynı dil zoom boyunca yaşıyor mu? | **Evet** — eski uzak-zoom yolu silindi |
+
+## Performans
+
+Ölçüm: 1600×900, seed AAA111, 80 kare/örnek, yazılım rasterleştiren pencere.
+
+| | |
+| --- | --- |
+| Yakın kare (zoom 1.15) | **p50 1.0 ms · p95 1.7 ms · max 1.9 ms** |
+| Uzak kare (zoom 0.38) | **p50 2.3 ms · p95 3.5 ms** |
+| Malzemenin çizim maliyeti | **1.5 ms**, statik katman pişirmesi başına |
+| Alan pişirme (dünya başına bir kez) | 138-207 ms — **dört aşamaya bölündü** |
+
+Kare bütçesi korundu (`CLAUDE.md` hedefi: uzak < 2 ms, yakın < 5 ms) ve
+mimari avantaj duruyor: malzeme kare başına değil, katman pişerken ödeniyor.
+
+Alan pişirme tek parça hâlinde 207 ms tutuyordu — görünür bir takılma. `water.js`'in
+doku üretimindeki kalıp izlendi ve dört aşamaya bölündü (raster → gürültü +
+uzaklık → ışık → deniz); ölçülen aşama süreleri **38 / 53.5 / 24.7 / 21.8 ms**.
+En kötü tek dilim 53.5 ms.
+
+Oyunun kendisi ayrıca doğrulandı: iki zoom dalı da kuruluyor, uzak önbellek 7
+dilimde tamamlanıyor, konsol hatası yok.
+
+## §17 KARAR KAPISI
+
+**YES — mevcut mimariyle devam.**
+
+Kanıt: bu geçişte hedefe yaklaştıran her şey — gerçek kıyı uzaklığı alanı,
+yükseklik türevli tepe gölgelemesi, üç bölgeli su, tek tutarlı derecelendirme,
+zoom boyunca aynı malzeme — **önbelleğe pişmiş raster + karışım kipi** ile
+çıktı ve kare başına maliyeti 1.0 ms p50. Kalan boşluklar da aynı cinsten:
+daha ince alan, daha fazla frekans, daha iyi ayar. Hiçbiri API değişikliği
+istemiyor.
+
+WebGL2'yi gerçekten gerektirecek nitelikler ayrı ve şu an İSTENMİYOR:
+kare başına piksel başına iş — normal haritalı gerçek su ışıklandırması,
+gerçek zamanlı değişen ışık yönü, ekran uzayında kırılma/parallaks, ya da
+piksel başına LUT ton eşlemesi. Bunlar §15'in açıkça yasakladığı efekt
+sınıfı.
+
+Tek dürüst sınır: ışık alanı hex başına 4×4 teksel. Maksimum zoomda (3.5)
+bir teksel ~39×34 ekran pikseli, yani çok yakında kabartma yumuşar. Bunun
+çaresi de WebGL değil, `SUB` sabitini yükseltmek (bellek karşılığı) ya da
+ince ölçekli deseni güçlendirmek.
+
+## KNOWN LIMITATIONS (geçiş #2 sonrası)
+
+- Uzak zoomda açık okyanus çok koyu; abis hâkim ama yapı okunmuyor.
+- Çok yakın zoomda (>2×) ışık alanının çözünürlüğü görünür hale gelir.
+- Şehir/kaynak ikonları ve birim sunumu bu geçişin kapsamı dışında bırakıldı
+  (§15) — hedefteki doku yoğunluğunun bir kısmı onlardan geliyor.
+- Ölçümler yazılım rasterleştiren önizleme penceresinde; oranlar geçerli,
+  mutlak sayılar muhafazakâr.
+
+**VERDICT: CONTINUE** — taban beş nitelikte (koyu derin su, doğal kıyı,
+fiziksel kabartma, olgun pigment, tek tutarlı derecelendirme) hedefe yaklaştı.
+Birim/atmosfer cilası hâlâ sırada değil; sıradaki iş varsa uzak-zoom deniz
+yapısı ve yakın-zoom alan çözünürlüğüdür.

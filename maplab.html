@@ -69,12 +69,24 @@ cam.zoom = num('zoom', 0.9);
 if (q.has('cx') || q.has('cy')) {
   cam.centerOn(num('cx', cam.x), num('cy', cam.y));
 } else if (q.has('nation')) {
-  const want = q.get('nation').toLowerCase();
-  const n = game.world.nations.find((x) => x.name.toLowerCase() === want)
+  const wanted = q.get('nation').toLowerCase();
+  const n = game.world.nations.find((x) => x.name.toLowerCase() === wanted)
     ?? game.world.nations[0];
   cam.centerOn(n.capital.x, n.capital.y);
 }
 cam.clamp?.();
+
+// Kamera KİLİTLENİR. Önizleme penceresi sayfaya ara sıra sentetik tekerlek
+// olayı gönderiyor; PointerController onu meşru bir zoom sanıp kamerayı
+// kaydırıyor ve ekran görüntüsü istenen kadrajdan başka bir yerden çıkıyordu
+// (ölçüldü: istenen 1.15, çekilen 0.36). Karşılaştırma döngüsünün tek şartı
+// AYNI kadraj olduğu için istenen değerler her karede geri yazılır.
+const want = { zoom: cam.zoom, x: cam.x, y: cam.y };
+function lockCamera() {
+  cam.zoom = want.zoom;
+  cam.x = want.x;
+  cam.y = want.y;
+}
 
 /**
  * Bütün gecikmeli iş bitene dek sür: su dokuları, uzak pişirme, statik katman
@@ -91,11 +103,13 @@ async function settle(maxMs = 25000) {
   while (r.warmup(game.world) && performance.now() - t0 < maxMs) guard++;
   const tick = () => new Promise((done) => setTimeout(done, 60));
   for (let i = 0; i < 40; i++) {
+    lockCamera();
     r.render(game.world, {});
     await tick();
     const quiet = !r.hasPendingJobs() && !r.waterActive() && i > 8;
     if (quiet || performance.now() - t0 > maxMs) break;
   }
+  lockCamera();
   r.render(game.world, {});
   return { warmSteps: guard, ms: Math.round(performance.now() - t0) };
 }
@@ -152,7 +166,15 @@ async function shot(name = 'shot') {
   return res.text();
 }
 
-window.lab = { game, r, cam, settle, bench, tag, shot, canvas };
+/** Kadrajı değiştirir ve kilidi yeni değere taşır. */
+function setView({ zoom, x, y } = {}) {
+  if (zoom !== undefined) want.zoom = zoom;
+  if (x !== undefined) want.x = x;
+  if (y !== undefined) want.y = y;
+  lockCamera();
+}
+
+window.lab = { game, r, cam, settle, bench, tag, shot, canvas, setView, want };
 document.title = 'Map Lab READY';
 </script>
 </body>

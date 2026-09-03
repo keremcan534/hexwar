@@ -521,13 +521,12 @@ export class Renderer {
       minX - HEX_SIZE * 2, minY - HEX_SIZE * 2,
       (maxX - minX) + HEX_SIZE * 4, (maxY - minY) + HEX_SIZE * 4,
     );
-    this.drawTerrain(ctx, list, world, true);
     // Onarılan bölge kırpma yolunun İÇİNDE baştan boyanır; malzeme burada
-    // dilimlenmediği için dikiş sorunu yoktur (bkz. stepFarBake iki süpürme).
-    this.material.paint(ctx, world, {
+    // dilimlenmediği için dikiş sorunu yoktur (bkz. stepFarBake üç süpürme).
+    this.drawTerrain(ctx, list, world, {
       minX: minX - HEX_SIZE * 2, maxX: maxX + HEX_SIZE * 2,
       minY: minY - HEX_SIZE * 2, maxY: maxY + HEX_SIZE * 2,
-    }, 1);
+    });
     if (this.mapMode === 'political') this.drawOccupationOverlay(ctx, world, list, cache.scale);
     if (this.mapMode === 'cultures') this.drawCultureMix(ctx, world, list, cache.scale);
     if (this.mapMode === 'construction') this.drawConstructionOverlay(ctx, world, list, cache.scale);
@@ -635,14 +634,22 @@ export class Renderer {
     // 0.62'lik doygunluk sıkıştırması 0.78'e gevşetildi ve parlaklık
     // [34, 60] baskı bandına kenetlendi: dolgular pastel sise gömülmeden
     // kimlik taşır, ama hiçbir ülke tabakadan fırlamaz.
-    const base = this.mineralize(owner.hue, owner.sat * 0.86, owner.light * shade * 0.9);
-    // Aralık genişletildi (34-60 → 27-64). Dar bant bütün ülkeleri aynı
-    // orta tona sıkıştırıyor ve harita "pastel çıkartma seti" okunuyordu:
-    // §11'in dediği gibi zenginlik doygunluktan değil YEREL KONTRASTTAN
-    // gelir, ama bunun için renklerin gerçekten farklı açıklıkta olması
-    // gerekir. Alt sınır siyah değil: ülke rengi hâlâ ayırt edilmeli.
-    const light = Math.max(27, Math.min(64, base.light + step * 1.5));
-    const sat = Math.max(16, base.sat + step * 0.8);
+    const base = this.mineralize(owner.hue, owner.sat * 0.80, owner.light * shade * 0.9);
+    // KÜRESEL DERECELENDİRME BURADA. Saydam siyah bir dikdörtgen sermek
+    // yerine renk borusunun kaynağında bir eğri uygulanır: bant hem AŞAĞI
+    // kaydırılır (dünya koyulaşır) hem de orta ton çevresinde açılır (yerel
+    // kontrast artar). Sonuç tek tutarlı bir tabaka — her ülkeye ayrı filtre
+    // değil.
+    //
+    // 34-60 → 27-64 → 22-53. İkinci aralık dünyayı yeterince koyulaştırmadı:
+    // ekranda hâlâ pastel okunuyordu. Alt sınır siyah değil, üst sınır
+    // kâğıt beyazı değil: ne ezilmiş gölge ne yanmış highlight.
+    const PIVOT = 44;
+    const graded = PIVOT + (base.light - PIVOT) * 1.16 - 8.5;
+    const light = Math.max(22, Math.min(53, graded + step * 1.4));
+    // Doygunluk parlaklıkla birlikte düşer: koyu bir yüzey aynı doygunlukta
+    // kalırsa neon okunur. Olgun mineral pigment tam tersidir.
+    const sat = Math.max(14, Math.min(42, base.sat * 0.92 + step * 0.8));
     color = `hsl(${Math.round(base.hue)} ${Math.round(sat)}% ${Math.round(light)}%)`;
     this.tintCache.set(key, color);
     return color;
@@ -1045,17 +1052,24 @@ export class Renderer {
     }
     const tiles = this.visibleTiles(world, rect);
 
-    // TABAN: zemin dolguları + kıyı karası ışığı + statik su tabanı.
-    this.paintTileFills(b, tiles, world);
     if (this.waterAnimatedMode()) {
       const land = [];
       const sea = [];
       for (const tile of tiles) (tile.terrain.water ? sea : land).push(tile);
+      // SIRA KRİTİK. Deniz derinliği artık hex başına bir ton değil, sürekli
+      // bir kıyı-uzaklığı rasteri (bkz. material.paintSea). O raster
+      // yumuşatılarak büyütüldüğü için kenarı yarım teksel karaya taşar;
+      // ARAYA GİRME sırası bunu bedavaya çözer:
+      //   deniz dolgusu → deniz rasteri → KARA dolgusu (taşmayı kapatır)
+      // Alternatifi binlerce hexlik kırpma yoluydu; bu borunun ölçülmüş en
+      // pahalı işlemi tam olarak odur.
+      this.paintTileFills(b, sea, world);
+      this.material.paintSea(b, world, rect);
+      this.paintTileFills(b, land, world);
       this.paintShore(b, world, land);
       this.water.paintStaticBase(b, world, sea);
       // MALZEME: ışık alanı, kabartma ve kâğıt greni. Dolgunun üstüne,
       // kıyı mürekkebinin altına biner — düz poligon burada yüzey olur.
-      // Deniz tekselleri nötr olduğu için suya dokunmaz (bkz. material.js).
       this.material.paint(b, world, rect, scale);
       // ÜST: kıyı mürekkebi çizgi katmanının en altına.
       if (sea.length) {
@@ -1063,6 +1077,8 @@ export class Renderer {
         const coastal = sea.filter((tile) => cache.coastalSet.has(tile.ghostOf ?? tile));
         if (coastal.length) this.water.drawCoastline(t, cache, coastal, scale);
       }
+    } else {
+      this.paintTileFills(b, tiles, world);
     }
 
     // ÜST: işgal/inşaat taraması, ızgara, province kenarı, ülke sınırı.
@@ -1488,8 +1504,8 @@ export class Renderer {
       world, canvas, ctx, scale, widthPx, heightPx,
       row: 0, step: Math.max(8, Math.ceil(world.rows / 8)),
       mode: this.mapMode,
-      // 'fill' -> zemin süpürmesi, 'ink' -> tarama/sınır süpürmesi.
-      phase: 'fill',
+      // 'sea' -> deniz dolgusu, 'land' -> kara dolgusu, 'ink' -> tarama/sınır.
+      phase: 'sea',
     };
   }
 
@@ -1521,39 +1537,67 @@ export class Renderer {
         bakeTiles.push({ ...t, x: t.x + P, ghostOf: t });
       }
     }
-    // İKİ SÜPÜRME. Önce bütün bantların zemini, sonra TEK geçişte malzeme,
-    // sonra bütün bantların mürekkebi (tarama, sınır).
+    // ÜÇ SÜPÜRME, aralarında dilimlenmeyen TEK geçişler:
     //
-    // Neden: malzeme bant bant sürülünce her bandın kırpma sınırında soluk
-    // bir yatay dikiş kalıyordu — kenar yumuşatma ortak pikselde iki kez
-    // uygulanıyor ve overlay orayı bir tık koyulaştırıyordu (ölçüldü: yalnız
-    // ışık alanı açıkken de çıkıyor, yani gren değil kırpmanın kendisi).
-    // Dikişsiz tek çare malzemeyi hiç dilimlememek. Toplam iş aynı, sıra
-    // değişti; katman sözleşmesi de korunur (malzeme sınırın ALTINDA).
-    if (j.phase === 'fill') {
-      this.drawTerrain(j.ctx, bakeTiles, world, true);
-    } else {
+    //   sea  : bütün bantların deniz dolgusu   → [deniz rasteri, tek geçiş]
+    //   land : bütün bantların kara dolgusu    → [ışık alanı + gren, tek geçiş]
+    //   ink  : bütün bantların taraması/sınırı
+    //
+    // Neden dilimlenmiyor: malzeme bant bant sürülünce her bandın kırpma
+    // sınırında soluk bir yatay dikiş kalıyordu — kenar yumuşatma ortak
+    // pikselde iki kez uygulanıyor ve overlay orayı bir tık koyulaştırıyordu
+    // (ölçüldü: yalnız ışık alanı açıkken de çıkıyor, yani gren değil
+    // kırpmanın kendisi). Toplam iş aynı, sıra değişti.
+    //
+    // Deniz rasteri kara dolgusundan ÖNCE gelir: yumuşatılmış kenarı karaya
+    // taşar, üstünü kara dolgusu kapatır (bkz. paintStaticContent).
+    const water = this.waterAnimatedMode();
+    if (j.phase === 'ink') {
       if (this.mapMode === 'political') this.drawOccupationOverlay(j.ctx, world, bakeTiles, j.scale);
       if (this.mapMode === 'cultures') this.drawCultureMix(j.ctx, world, bakeTiles, j.scale);
       if (this.mapMode === 'construction') {
         this.drawConstructionOverlay(j.ctx, world, bakeTiles, j.scale);
       }
+      // Kıyı hattı mürekkep süpürmesinde: kara dolgusundan SONRA gelmeli.
+      if (water) this.water.bakeCoastline(j.ctx, world, bakeTiles.filter((t) => t.terrain.water));
       if (this.showsPolitics()) this.drawBorders(j.ctx, world, bakeTiles, j.scale);
+    } else if (!water) {
+      this.paintTileFills(j.ctx, bakeTiles, world);
+    } else {
+      const land = [];
+      const sea = [];
+      for (const t of bakeTiles) (t.terrain.water ? sea : land).push(t);
+      if (j.phase === 'sea') {
+        this.paintTileFills(j.ctx, sea, world);
+        this.water.bakeStatic(j.ctx, world, sea, { coastline: false });
+      } else {
+        this.paintTileFills(j.ctx, land, world);
+        this.paintShore(j.ctx, world, land);
+      }
     }
     j.row = endRow;
-    if (j.row >= world.rows) {
-      if (j.phase === 'fill') {
-        this.material.paint(j.ctx, world, this.bakeRect(world, j.scale), 1);
-        j.phase = 'ink';
-        j.row = 0;
+    if (j.row < world.rows) return true;
+
+    const rect = this.bakeRect(world, j.scale);
+    j.row = 0;
+    if (j.phase === 'sea') {
+      if (water) {
+        this.material.paintSea(j.ctx, world, rect);
+        j.phase = 'land';
       } else {
-        const b = world.bounds;
-        this.cache = {
-          canvas: j.canvas, x: WRAP_X0, y: b.minY, w: P,
-          h: b.maxY - b.minY, scale: j.scale, widthPx: j.widthPx, heightPx: j.heightPx,
-        };
-        this.farJob = null;
+        this.material.paint(j.ctx, world, rect, j.scale);
+        j.phase = 'ink';
       }
+    } else if (j.phase === 'land') {
+      this.material.paint(j.ctx, world, rect, j.scale);
+      j.phase = 'ink';
+    } else {
+      const b = world.bounds;
+      this.cache = {
+        canvas: j.canvas, x: WRAP_X0, y: b.minY, w: P,
+        h: b.maxY - b.minY, scale: j.scale, widthPx: j.widthPx, heightPx: j.heightPx,
+      };
+      this.farJob = null;
     }
     return true;
   }
@@ -1578,9 +1622,6 @@ export class Renderer {
    * Zemin dolgusu. Kipe göre renk seçilir ama çizim tek geçişte, renge göre
    * gruplanarak yapılır (binlerce hex için tek fill çağrısı başına bir path).
    *
-   * Kâğıt dokusunun kara/deniz yolları YALNIZ önbellek pişirilirken kurulur.
-   * Önceden her karede kuruluyordu ama `paintAtlas` canlı karede hiçbir şey
-   * çizmiyor: 3243 hex için karede 15.5 ms tamamen boşa gidiyordu (ölçüldü).
    */
   /** Zemin dolgularının kendisi: renge göre grupla, parçalı yollarla doldur. */
   paintTileFills(ctx, tiles, world) {
@@ -1600,27 +1641,29 @@ export class Renderer {
     }
   }
 
-  drawTerrain(ctx, tiles, world, baking = false) {
-    this.paintTileFills(ctx, tiles, world);
-    // Canlı yakın dal artık buradan geçmez: statik katman kurucusu dolgu,
-    // kıyı ve su tabanını kendi çizer (bkz. buildStaticLayers). Bu yol
-    // yalnız uzak-zoom önbelleği pişirilirken/onarılırken kullanılır.
-    if (!baking) return;
+  /**
+   * Zemin + malzeme, TEK kırpma bölgesi için sırasıyla. Yalnız uzak
+   * önbelleğin ONARIM yolu kullanır (repaintTiles): orada kirli kareler tek
+   * bir kırpma yolunun içinde baştan boyanır, dolayısıyla dilimleme yoktur.
+   *
+   * Uzak önbelleğin ilk PİŞİRMESİ bu yoldan geçmez; orada aynı sıra üç
+   * süpürmeye yayılır (bkz. stepFarBake), çünkü malzeme rasterleri
+   * dilimlenirse kırpma sınırında dikiş bırakır.
+   */
+  drawTerrain(ctx, tiles, world, rect = null) {
+    if (!this.waterAnimatedMode()) {
+      this.paintTileFills(ctx, tiles, world);
+      return;
+    }
     const land = [];
     const sea = [];
     for (const t of tiles) (t.terrain.water ? sea : land).push(t);
-    if (this.waterAnimatedMode()) this.paintShore(ctx, world, land);
-    this.paintAtlas(
-      ctx,
-      this.chunkedHexPaths(land, FILL_CHUNK),
-      this.chunkedHexPaths(sea, FILL_CHUNK),
-      true,
-    );
-    // Suyun statik tabanı (gök gradyanı, kıyı aydınlanması) önbelleğe bir
-    // kez pişer; hareketli katmanlar canlı karede üstüne biner (drawFar).
-    // Yalnız verilen karelerin tabanı boyanır: sarmal hayaletler de payını
-    // alır ama hiçbir kare iki kez boyanıp alfasını katlamaz.
-    if (this.waterAnimatedMode()) this.water.bakeStatic(ctx, world, sea);
+    this.paintTileFills(ctx, sea, world);
+    if (rect) this.material.paintSea(ctx, world, rect);
+    this.paintTileFills(ctx, land, world);
+    this.paintShore(ctx, world, land);
+    this.water.bakeStatic(ctx, world, sea);
+    if (rect) this.material.paint(ctx, world, rect, 1);
   }
 
   /**
@@ -1680,52 +1723,6 @@ export class Renderer {
     this.shoreCache = { world, rings };
     return rings;
   }
-
-  /** Doku desenleri dünya uzayına sabitlenir; bir kez üretilip saklanır. */
-  patterns(ctx) {
-    if (!this.texturePatterns) {
-      const mat = materials();
-      this.texturePatterns = {
-        atlas: ctx.createPattern(mat.mapAtlas, 'repeat'),
-        ocean: ctx.createPattern(mat.oceanInk, 'repeat'),
-      };
-    }
-    return this.texturePatterns;
-  }
-
-  /**
-   * Atlas baskısı. Desen dünya uzayına sabitlendiği için ülke sınırlarında
-   * kesilip yeniden başlamaz: tek parça bir kâğıt yüzeyi gibi davranır.
-   *
-   * Performans notu: kara ve deniz için iki ayrı `fill(Path2D)` çağrısı,
-   * binlerce hex'ten oluşan birleşik yolu `soft-light` ile taramak demekti ve
-   * yakın zoomda kareye ~43 ms ekliyordu. Kâğıt zaten tüm dünyayı kaplayan tek
-   * bir yüzey olduğu için tek dikdörtgen yeterli; deniz kendi malzemesini
-   * yalnız önbellek pişirilirken (uzak zoom) alır, orada maliyet bir kez ödenir.
-   *
-   * `land` ve `sea` parça listeleridir (bkz. chunkedHexPaths): tek yolda
-   * 4836 hex kurmak pişirmenin 36.6 ms'ini tek başına yiyordu. Desen zaten
-   * soft-light ile çok soluk bindiği için parça sınırlarındaki dikiş görünmez.
-   */
-  paintAtlas(ctx, land, sea, baking = false) {
-    const { atlas, ocean } = this.patterns(ctx);
-    if (!atlas) return;
-    ctx.save();
-    // soft-light: altındaki rengi yok etmeden yoğunluğunu dalgalandırır.
-    ctx.globalCompositeOperation = 'soft-light';
-    if (baking) {
-      // Önbellek pişirilirken maliyet bir kez ödenir: kara ve deniz kendi
-      // malzemesini alır.
-      if (ocean) {
-        ctx.fillStyle = ocean;
-        for (const path of sea) ctx.fill(path);
-      }
-      ctx.fillStyle = atlas;
-      for (const path of land) ctx.fill(path);
-    }
-    ctx.restore();
-  }
-
 
   /** Kaynak kipi: her province yalnız kendi RGO rengini taşır. */
   resourceTint(tile) {
@@ -2024,7 +2021,7 @@ export class Renderer {
     // ızgara bir araçtır — hangi kareye tıklayacağını söyler — ama orta
     // mesafede yalnız bir doku ipucu olmalı, uzakta hiç olmamalı. Eşiğin
     // hemen üstünde (0.55) neredeyse yok, 1.6'da tam gücünde.
-    const strength = 0.028 + 0.085 * Math.max(0, Math.min(1, (scale - 0.55) / 1.05));
+    const strength = 0.012 + 0.062 * Math.max(0, Math.min(1, (scale - 0.7) / 1.1));
     ctx.strokeStyle = `rgba(8, 12, 12, ${strength.toFixed(3)})`;
     // Deniz ızgara dışıdır: hex kenarları suyu petekli bir zemine çeviriyordu.
     // Su malzemesi komşu deniz hexlerini tek yüzeye köprüler; ızgara bunu bozar.
@@ -2196,14 +2193,19 @@ export class Renderer {
     // "kalın bant" değil "net mürekkep hattı" okunur; kenar gölgesi
     // kalınlık hissini zaten veriyor.
     ctx.lineWidth = 3.4 / scale;
-    ctx.strokeStyle = 'rgba(6, 9, 10, 0.9)';
+    // Saf siyahtan biraz uzak, hafif soğuk bir mürekkep: dünya koyulaştıktan
+    // sonra 0.9 opak kömür siyahı sınırı haritadan KOPARIYORDU (§9 "avoid
+    // excessive uniform black"). Kalınlık aynı, karakter yumuşak.
+    ctx.strokeStyle = 'rgba(9, 13, 15, 0.82)';
     for (const path of byColor.values()) ctx.stroke(path);
 
     // İç hat: çok ince, düşük opaklıkta sıcak highlight. Neon bir dış çizgi
     // değil, baskıda hattın iç kenarında kalan açık mürekkep payı.
     ctx.lineWidth = (cultureMode ? 2 : 1.1) / scale;
     for (const [color, path] of byColor) {
-      ctx.strokeStyle = cultureMode ? color : 'rgba(203, 178, 122, 0.1)';
+      // İç hat biraz güçlendi (0.10 → 0.16): koyu zeminde sınırın kendi
+      // kalınlığı okunsun, ama sıcak pay bir ışık çizgisine dönüşmesin.
+      ctx.strokeStyle = cultureMode ? color : 'rgba(206, 181, 126, 0.16)';
       ctx.stroke(path);
     }
   }
@@ -3241,9 +3243,9 @@ export class Renderer {
       } else {
         // Bolluk varsa harf aralığı açılıp ad ülkenin enine yayılır (atlas
         // dizgisi) — ama kutu ülkeyi yine aşmaz.
-        const room = availPx * 0.88 - need;
+        const room = availPx * 0.82 - need;
         if (room > 0) {
-          spacing = Math.min(size * 0.45, spacing + room / (cos * Math.max(1, L.name.length)));
+          spacing = Math.min(size * 0.62, spacing + room / (cos * Math.max(1, L.name.length)));
         }
       }
       // Sığdırma sonrası okunmaz kalıyorsa ad hiç yazılmaz: Paradox düzeninde
@@ -3278,18 +3280,20 @@ export class Renderer {
       ctx.globalAlpha = a;
       ctx.font = `600 ${size.toFixed(1)}px Georgia, "Times New Roman", serif`;
       ctx.letterSpacing = spacing.toFixed(2) + 'px';
-      // Yumuşak zemin ayrımı: sert siyah kontur yerine gölge + yarı saydam
-      // ince kontur — yazı haritanın mürekkebi gibi, HUD çıkartması değil.
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
-      ctx.shadowBlur = 4;
+      // Kâğıda BASILMIŞ his: gölge daralır (blur 4 → 2.5), kontur incelir ve
+      // koyulaşır. Geniş bir hale yazıyı zeminden koparıp "üstte yüzen HTML"
+      // gibi gösteriyordu; dar ve koyu bir kontur ise harfi haritanın içine
+      // oturtur. Mürekkep de ısıtıldı: nötr fildişi yerine hafif sıcak.
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+      ctx.shadowBlur = 2.5;
       ctx.shadowOffsetY = 1;
       ctx.lineJoin = 'round';
-      ctx.lineWidth = Math.max(1.6, size * 0.1);
-      ctx.strokeStyle = 'rgba(10, 13, 13, 0.42)';
+      ctx.lineWidth = Math.max(1.2, size * 0.075);
+      ctx.strokeStyle = 'rgba(8, 10, 11, 0.55)';
       ctx.strokeText(L.name, 0, 0);
       ctx.shadowBlur = 0;
       ctx.shadowOffsetY = 0;
-      ctx.fillStyle = 'rgba(236, 227, 205, 0.96)';
+      ctx.fillStyle = 'rgba(240, 229, 200, 0.97)';
       ctx.fillText(L.name, 0, 0);
       ctx.letterSpacing = '0px';
       ctx.restore();

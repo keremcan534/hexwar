@@ -48,14 +48,15 @@ const SHIMMER_VEL = { x: 9.5, y: -7.4 };
  */
 function seaShade(depth, jitterStep) {
   const t = Math.min(1, depth / 5.5);
-  // Aralık genişletildi: 27.5→9.5 idi, yakın zoomda (görülen su çoğunlukla
-  // 0-3 bandında) toplam oynama ~10 puanda kalıyor ve deniz TEK DÜZ bir
-  // yüzey okunuyordu — §7'nin ilk sorusu "does water feel deep?" için hayır.
-  // 32→7 ile sığlık gerçekten sığ, abis gerçekten dip olur; ton kayması da
-  // büyütüldü, böylece derinlik yalnız parlaklıkla değil RENKLE de anlatılır.
-  const hue = 186 + t * 31;                              // turkuaz → petrol
-  const sat = 40 + t * 16;
-  const light = 32 - t * 25 + jitterStep * 0.8;
+  // Derinliğin ASIL anlatıcısı artık bu değil: sürekli bir kıyı-uzaklığı
+  // rasteri denizin tamamını boyuyor (bkz. material.paintSea). Bu dolgu onun
+  // ALTINDA kalır ve yalnız rasterin yumuşatılmış kenarında görünür — bu
+  // yüzden rasterin paletiyle HİZALI tutulur, yoksa kıyıda ince bir renk
+  // uyuşmazlığı şeridi kalır. Hex başına tek ton olduğu için burada geniş bir
+  // aralık tutmanın bedeli petek görünümüydü; aralık kasten dar.
+  const hue = 186 + t * 12;
+  const sat = 26 + t * 8;
+  const light = 22 - t * 14 + jitterStep * 0.5;
   return `hsl(${Math.round(hue)} ${Math.round(sat)}% ${(Math.round(light * 2) / 2).toFixed(1)}%)`;
 }
 
@@ -137,12 +138,16 @@ function buildSwellTexture() {
       // Azami sapma ~%22: eski %12-15 koyu tabanda algı eşiğinin altında
       // kalıyordu (görsel teşhis). 0.30 üstü hâlâ sise kaçar; bu bandın
       // amacı boyanmış denizin geniş ton dalgalanması.
+      // Alfa ve aydınlık uç KISILDI (0.22 → 0.10). Deniz tabanı artık çok
+      // daha koyu; aynı yıkama o zeminde oransal olarak birkaç kat güçlü
+      // düşüyor ve okyanusu "gri bulut tarlası"na çeviriyordu (görsel
+      // teşhis). Koyu uç neredeyse aynı kaldı: derinliği bozmuyor.
       if (d > 0) {
-        data[p] = 150; data[p + 1] = 172; data[p + 2] = 182;
-        data[p + 3] = Math.round(d * 2 * 0.22 * 255);
+        data[p] = 118; data[p + 1] = 142; data[p + 2] = 152;
+        data[p + 3] = Math.round(d * 2 * 0.065 * 255);
       } else {
         data[p] = 4; data[p + 1] = 14; data[p + 2] = 22;
-        data[p + 3] = Math.round(-d * 2 * 0.24 * 255);
+        data[p + 3] = Math.round(-d * 2 * 0.22 * 255);
       }
     }
   });
@@ -165,11 +170,11 @@ function buildRippleTexture() {
       // Tavanlar yükseltildi (0.34→0.48 / 0.24→0.34): kırışıklık artık
       // yakın zoomda gerçekten okunan bir dalga dokusu.
       if (light >= dark) {
-        data[p] = 172; data[p + 1] = 192; data[p + 2] = 196;
-        data[p + 3] = Math.round(light * 0.48 * 255);
+        data[p] = 138; data[p + 1] = 160; data[p + 2] = 166;
+        data[p + 3] = Math.round(light * 0.20 * 255);
       } else {
         data[p] = 8; data[p + 1] = 20; data[p + 2] = 28;
-        data[p + 3] = Math.round(dark * 0.34 * 255);
+        data[p + 3] = Math.round(dark * 0.30 * 255);
       }
     }
   });
@@ -199,9 +204,9 @@ function buildShimmerTexture() {
       data[p] = Math.round(139 + glow * 41 + spark * 43);
       data[p + 1] = Math.round(166 + glow * 24 + spark * 40);
       data[p + 2] = Math.round(173 + glow * 15 + spark * 39);
-      // Tavan 0.35→0.5: gümüş kıvrımlar "tarihi deniz resmi" parıltısı
-      // olarak seçilebilir olsun; seyreklik maskeleri neon'u zaten önlüyor.
-      data[p + 3] = Math.round(Math.min(0.5, glow * 0.3 + spark * 0.26) * 255);
+      // Tavan 0.5 → 0.26: koyulaşan denizde aynı parıltı beyaz bir sis
+      // tabakası gibi okunuyordu. Seyrek gümüş kıvrım kalsın, tabaka değil.
+      data[p + 3] = Math.round(Math.min(0.26, glow * 0.14 + spark * 0.18) * 255);
     }
   });
 }
@@ -502,17 +507,17 @@ export class WaterLayer {
     // "soluk bir bulanıklık" ya "sert bir çizgi" okunuyordu. Dördüncü, dar
     // ve daha parlak turkuaz kademesi ikisini bağlar: §13'ün istediği
     // "çevresel kontrastla aydınlanmış kıyı", neon bir kontur değil.
-    ctx.lineWidth = Math.max(15, 19 / Math.sqrt(zoom));
-    ctx.strokeStyle = 'rgba(122, 190, 190, 0.075)';
+    // KIYI HALESİ KALDIRILDI. Geniş turkuaz vuruşlar her kıyıyı aynı
+    // genişlikte saran bir aura yapıyordu ve oyuncu "kıyı parlaması"nı
+    // BİLİNÇLİ olarak görüyordu (§4). Sığlığın kendisi artık kıyı-uzaklığı
+    // rasterinin işi — düzensiz, yer yer kaybolan bir şelf. Burada kalan
+    // yalnız hattın KENDİSİ: ince koyu bir mürekkep ve onun kara tarafında
+    // dar, sıcak bir pay. İkisi de kontrast üretir, ışık değil.
+    ctx.lineWidth = Math.max(2.6, 3.4 / Math.sqrt(zoom));
+    ctx.strokeStyle = 'rgba(214, 196, 152, 0.16)';
     for (const p of paths) ctx.stroke(p);
-    ctx.lineWidth = Math.max(8, 10 / Math.sqrt(zoom));
-    ctx.strokeStyle = 'rgba(140, 214, 208, 0.13)';
-    for (const p of paths) ctx.stroke(p);
-    ctx.lineWidth = Math.max(3.6, 5 / Math.sqrt(zoom));
-    ctx.strokeStyle = 'rgba(221, 203, 156, 0.28)';
-    for (const p of paths) ctx.stroke(p);
-    ctx.lineWidth = Math.max(1.1, 1.6 / Math.sqrt(zoom));
-    ctx.strokeStyle = 'rgba(6, 15, 19, 0.66)';
+    ctx.lineWidth = Math.max(1.1, 1.5 / Math.sqrt(zoom));
+    ctx.strokeStyle = 'rgba(5, 12, 16, 0.72)';
     for (const p of paths) ctx.stroke(p);
   }
 
@@ -603,12 +608,16 @@ export class WaterLayer {
       ? { x: 0, y: this.env.lightDirection.y >= 0 ? 1 : -1 }
       : this.env.lightDirection;
     const k = this.env.lightIntensity;
-    // Alfalar eski sürümün ~iki katı: gök ışığı artık hissedilir bir
-    // kuzey-güney değer eğimi kurar, deniz tek düz yüzey gibi durmaz.
+    // Alfalar KISILDI. Deniz tabanı artık çok daha koyu (bkz. seaShade ve
+    // material.paintSea): açık uçtaki 0.13'lük gümüş yıkama, koyu bir zeminde
+    // orantısal olarak devasa bir kaldırma demek ve haritanın kuzeyini pus
+    // içinde bırakıyordu (görsel teşhis: Zeniov kıyısı boydan boya soluk).
+    // "Geniş organik değişim" görevini de artık deniz rasteri üstleniyor;
+    // buraya kalan yalnız hafif bir kutup-kutup eğimi.
     const g = ctx.createLinearGradient(cx + L.x * r, cy + L.y * r, cx - L.x * r, cy - L.y * r);
-    g.addColorStop(0, `rgba(156, 176, 182, ${(0.13 * k).toFixed(3)})`);
-    g.addColorStop(0.55, 'rgba(120, 140, 150, 0.035)');
-    g.addColorStop(1, `rgba(4, 12, 20, ${(0.18 * k).toFixed(3)})`);
+    g.addColorStop(0, `rgba(150, 172, 180, ${(0.045 * k).toFixed(3)})`);
+    g.addColorStop(0.55, 'rgba(120, 140, 150, 0.012)');
+    g.addColorStop(1, `rgba(4, 12, 20, ${(0.10 * k).toFixed(3)})`);
     ctx.fillStyle = g;
     for (const path of paths) ctx.fill(path);
   }
@@ -665,7 +674,7 @@ export class WaterLayer {
       // Parıltı aralıklıdır: iki yavaş salınımın toplamı bazen sönükleşir,
       // bazen belirginleşir — "her yerde sürekli parlayan" denizden kaçınılır.
       const pulse = 0.45 + 0.35 * Math.sin(time * 0.21) + 0.3 * Math.sin(time * 0.073 + 1.7);
-      const alpha = Math.max(0.12, Math.min(0.65, pulse))
+      const alpha = Math.max(0.08, Math.min(0.30, pulse))
         * this.env.lightIntensity * (1 - this.env.storminess * 0.6);
       this.fillPattern(ctx, 'shimmer', seaPaths, time, scaleVel(SHIMMER_VEL, wind), alpha, 1, P);
       animated = true;
@@ -790,17 +799,29 @@ export class WaterLayer {
    * Uzak-zoom önbelleğine giren statik su tabanı. Hareketli katmanlar burada
    * pişirilmez; onlar canlı karede önbelleğin üstüne biner (bkz. drawFar).
    */
-  bakeStatic(ctx, world, tiles = null) {
+  bakeStatic(ctx, world, tiles = null, { coastline = true } = {}) {
     const cache = this.ensureWorld(world);
     if (!cache.hasSea) return;
     // Alt küme verilirse yalnız o kareler boyanır: sarmal önbelleğin kenar
     // geçişleri tüm denizi yeniden boyayıp alfayı katlamasın.
     const seaTiles = tiles ?? cache.seaTiles;
     const seaPaths = tiles ? this.chunkedPaths(tiles) : cache.seaPaths;
-    const coastal = seaTiles.filter((t) => cache.coastalSet.has(t.ghostOf ?? t));
     this.fillSkyGradient(ctx, world, seaPaths);
+    // Kıyı hattı ÇAĞIRANIN sırasına bırakılabilir: uzak önbellek artık deniz
+    // ve kara dolgusunu ayrı süpürmelerde basıyor (bkz. renderer.stepFarBake)
+    // ve burada çizilen hat kara dolgusunun altında kalırdı.
+    if (!coastline) return;
+    const coastal = seaTiles.filter((t) => cache.coastalSet.has(t.ghostOf ?? t));
     // Uzak zoomda köpük çizilmez; kıyıyı önbellekteki boyalı hat anlatır.
     this.drawCoastline(ctx, cache, coastal, 1);
+  }
+
+  /** Yalnız kıyı hattı; uzak önbelleğin mürekkep süpürmesinde çağrılır. */
+  bakeCoastline(ctx, world, tiles) {
+    const cache = this.ensureWorld(world);
+    if (!cache.hasSea) return;
+    const coastal = tiles.filter((t) => cache.coastalSet.has(t.ghostOf ?? t));
+    if (coastal.length) this.drawCoastline(ctx, cache, coastal, 1);
   }
 
   /**
