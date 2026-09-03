@@ -14,6 +14,7 @@ import { controllerOf, isOccupied } from '../game/control.js';
 import { materials } from './textures.js';
 import { WaterLayer } from './water.js';
 import { LandMaterial } from './material.js';
+import { WaterGL } from './waterGL.js';
 
 /**
  * Karenin GÖRÜNEN sahibi. Geçilmez arazi (dağ, zirve, buz) hiçbir province'e
@@ -308,7 +309,9 @@ function tileStep(tile) {
 export class Renderer {
   constructor(canvas, camera) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d', { alpha: false });
+    // Saydamlık AÇIK: hibrit su devredeyken deniz alanı boş bırakılır ve
+    // alttaki WebGL tuvali oradan görünür (bkz. waterGL).
+    this.ctx = canvas.getContext('2d', { alpha: true });
     this.camera = camera;
     this.dpr = 1;
     // Kunyeler gelince pisirilmis sayaclar gecersizdir: onbellek bosaltilir
@@ -341,6 +344,13 @@ export class Renderer {
     this.water = new WaterLayer();
     // Kara yüzeyinin malzemesi: ışık alanı + kabartma + pigment (bkz. material.js).
     this.material = new LandMaterial();
+    /**
+     * HİBRİT SU. Doluysa deniz WebGL2'de, ALTTAKİ ayrı tuvale çizilir ve
+     * Canvas2D tarafı deniz karelerini hiç boyamaz — su oradan görünür, kara
+     * dolgusu üstünü doğal olarak kapatır. Null ise (WebGL2 yok, ya da
+     * kapatıldı) her şey eskisi gibi Canvas2D'de kalır.
+     */
+    this.waterGL = null;
     this.waterTime = 0;
     // Yakın-dal statik katman önbelleği (bkz. STATIC_PAD ve ensureStaticLayers).
     this.staticLayers = null;
@@ -367,11 +377,80 @@ export class Renderer {
       || this.mapMode === 'geography' || this.mapMode === 'cultures';
   }
 
+  /**
+   * Malzeme geçişinden sonra DENİZİ yeniden saydam yapar.
+   *
+   * Neden gerekli: `material.paint` tek dikdörtgen olarak `overlay` ile
+   * biner. Saydam bir hedefe karışım uygulanınca sonuç kaynağın kendisidir
+   * (arka plan alfası 0 → karışım = kaynak, source-over ile opak biner), yani
+   * deniz alanı ORTA GRİ boyanıyordu — hibrit suda ilk gözlenen hata buydu.
+   *
+   * Çare: malzemeden ÖNCE katmanın alfası anlık kopyalanır, sonra
+   * `destination-in` ile geri uygulanır. Kaynak gerçek hex dolgusudur, yani
+   * maske tam kenarlıdır; binlerce hexlik kırpma yolu kurmaya gerek yok.
+   * Maliyet katman başına iki tam boy blit ve yalnız pişirmede ödenir.
+   */
+  maskToLand(ctx, paint) {
+    const canvas = ctx.canvas;
+    let scratch = this.landMaskScratch;
+    if (!scratch || scratch.width !== canvas.width || scratch.height !== canvas.height) {
+      scratch = document.createElement('canvas');
+      scratch.width = canvas.width;
+      scratch.height = canvas.height;
+      this.landMaskScratch = scratch;
+    }
+    const sc = scratch.getContext('2d');
+    sc.setTransform(1, 0, 0, 1, 0, 0);
+    sc.clearRect(0, 0, scratch.width, scratch.height);
+    sc.drawImage(canvas, 0, 0);
+    paint();
+    const t = ctx.getTransform();
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(scratch, 0, 0);
+    ctx.restore();
+    ctx.setTransform(t);
+  }
+
+  /**
+   * Hibrit su tuvalini bağlar. WebGL2 yoksa sessizce vazgeçilir ve her şey
+   * Canvas2D'de kalır — katman silinmez, yalnız devreye girmez.
+   */
+  attachWaterCanvas(canvas) {
+    if (!canvas) return false;
+    this.waterGL = WaterGL.create(canvas);
+    if (!this.waterGL) return false;
+    // resize BURADA çağrılmaz: kurucu, düzen (layout) oturmadan çalışıyor ve
+    // tuval o anda 0x0 ölçülüyor. Ölçüyü Game ilk kareden sonra verir.
+    this.invalidateCache();
+    return true;
+  }
+
+  /**
+   * Deniz Canvas2D'de mi çizilecek? WebGL katmanı devredeyken HAYIR: dolgu,
+   * malzeme, gök gradyanı, desen ve kıyı hattı atlanır ve o alan SAYDAM
+   * kalır. Tek karar noktası burasıdır; çağıran taraflar bunu sorar.
+   */
+  canvasWater() {
+    return this.waterAnimatedMode() && !this.waterGL?.debug.enabled;
+  }
+
+  /** WebGL su katmanı bu karede geçerli mi? */
+  glWater() {
+    return this.waterAnimatedMode() && !!this.waterGL?.debug.enabled;
+  }
+
   /** Game bir sonraki animasyon karesini zamanlasın mı (bkz. Game.scheduleWaterFrame). */
   waterActive() {
     // Etiket erimesi de kare ister: su çizmeyen kiplerde yarıda donmasın.
     // waterSkipped: zoom jesti deniz katmanını atlattı — zincir sürsün ki
     // jest bitince su kendiliğinden geri gelsin.
+    // GL su kendi zamanına göre akar; kare zinciri onu beslemek için sürer.
+    // Ayrı bir rAF döngüsü AÇILMADI (bkz. CLAUDE.md): kamera senkronu tek
+    // yerden gelsin diye su, haritanın kendi karesinde güncelleniyor. Canvas
+    // tarafı bu karelerde yalnız hazır katmanları blit eder (p50 1.0 ms).
+    if (this.glWater()) return true;
     return this.water.animatedThisFrame || this.water.disturbances.length > 0
       || this.labelFadePending === true || this.waterSkipped === true;
   }
@@ -398,6 +477,11 @@ export class Renderer {
     // Kara malzemesi de perde arkasında pişer: ışık alanı + iki doku birlikte
     // ~150 ms tutuyor ve ilk statik katmanda tek karede ödenirse takılıyor.
     if (this.material.warmStep(this.ctx, world)) return true;
+    // WebGL su katmanı, malzemenin kıyı uzaklığı alanını doku olarak alır.
+    if (this.waterGL && this.waterGL.world !== world) {
+      this.waterGL.setWorld(world, this.material.cache);
+      return true;
+    }
     if (this.water.warmStep(this.ctx)) return true;
     if (!this.cache) {
       this.stepCacheBuild(world, 10);
@@ -409,6 +493,7 @@ export class Renderer {
   resize() {
     const rect = this.canvas.getBoundingClientRect();
     const dpr = Math.min(MAX_DPR, window.devicePixelRatio || 1);
+    this.waterGL?.resize(rect.width, rect.height, dpr);
     this.dpr = dpr;
     this.canvas.width = Math.round(rect.width * dpr);
     this.canvas.height = Math.round(rect.height * dpr);
@@ -1052,7 +1137,13 @@ export class Renderer {
     }
     const tiles = this.visibleTiles(world, rect);
 
-    if (this.waterAnimatedMode()) {
+    if (this.glWater()) {
+      // Deniz WebGL'de: yalnız kara boyanır, gerisi saydam kalır.
+      const land = tiles.filter((tile) => !tile.terrain.water);
+      this.paintTileFills(b, land, world);
+      this.paintShore(b, world, land);
+      this.maskToLand(b, () => this.material.paint(b, world, rect, scale));
+    } else if (this.waterAnimatedMode()) {
       const land = [];
       const sea = [];
       for (const tile of tiles) (tile.terrain.water ? sea : land).push(tile);
@@ -1207,6 +1298,9 @@ export class Renderer {
     const cam = this.camera;
     // Geçen zaman kare sayısından bağımsız: animasyon her FPS'te aynı hızda akar.
     this.waterTime = performance.now() / 1000;
+    // Su önce çizilir: ayrı bir tuval olduğu için sıra bileşimi değiştirmez,
+    // ama kamera değerleri Canvas2D karesiyle BİREBİR aynı kalır.
+    if (this.glWater()) this.waterGL.draw(cam, this.waterTime);
     this.water.animatedThisFrame = false;
     // Kopya döngüsünden önce sıfırlanır; yakın dal atlarsa yeniden kurar.
     this.waterSkipped = false;
@@ -1219,9 +1313,14 @@ export class Renderer {
       this.moveStamp = { x: cam.x, y: cam.y, at: performance.now() };
     }
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    // Harita zemini arayüz paletiyle aynı kömür-lacivert tonda.
-    ctx.fillStyle = '#0b1115';
-    ctx.fillRect(0, 0, cam.viewWidth, cam.viewHeight);
+    if (this.glWater()) {
+      // Zemin BOŞALTILIR: su alttaki WebGL tuvalinden gelir.
+      ctx.clearRect(0, 0, cam.viewWidth, cam.viewHeight);
+    } else {
+      // Harita zemini arayüz paletiyle aynı kömür-lacivert tonda.
+      ctx.fillStyle = '#0b1115';
+      ctx.fillRect(0, 0, cam.viewWidth, cam.viewHeight);
+    }
 
     // Silindir dünya: görünür pencereye düşen her periyot kopyası ayrı çizilir.
     // Kopya başına yalnız görünür kareler işlendiğinden toplam maliyet sabittir.
@@ -1278,6 +1377,7 @@ export class Renderer {
    * kutupların ötesi haritanın dışıdır ve orada uygulama zemini görünmelidir.
    */
   fillVoid(ctx, world, rect) {
+    if (this.glWater()) return;
     const b = world.bounds;
     const y0 = Math.max(rect.minY, b.minY);
     const y1 = Math.min(rect.maxY, b.maxY);
@@ -1326,7 +1426,7 @@ export class Renderer {
       }
       perf?.add('r.far', performance.now() - t0);
       t0 = performance.now();
-      if (this.cache && this.waterAnimatedMode()) {
+      if (this.cache && this.canvasWater()) {
         this.water.drawFar(ctx, world, this.waterTime, rect);
       }
       perf?.add('r.water', performance.now() - t0);
@@ -1387,7 +1487,7 @@ export class Renderer {
         }
       }
       ctx.drawImage(layers.base, layers.x0 + shift, layers.y0, layers.w, layers.h);
-      if (this.waterAnimatedMode()) {
+      if (this.canvasWater()) {
         // Aktif zoom jestinde deniz yolları yeniden KURULMAZ: görünür rect her
         // karede değiştiği için önbellek anahtarı sürekli kaçıyor ve yol
         // kurulumu kare başına yüzlerce KB çöp üretiyordu (ölçüldü ~8 MB/sn).
@@ -1551,7 +1651,7 @@ export class Renderer {
     //
     // Deniz rasteri kara dolgusundan ÖNCE gelir: yumuşatılmış kenarı karaya
     // taşar, üstünü kara dolgusu kapatır (bkz. paintStaticContent).
-    const water = this.waterAnimatedMode();
+    const water = this.canvasWater();
     if (j.phase === 'ink') {
       if (this.mapMode === 'political') this.drawOccupationOverlay(j.ctx, world, bakeTiles, j.scale);
       if (this.mapMode === 'cultures') this.drawCultureMix(j.ctx, world, bakeTiles, j.scale);
@@ -1562,7 +1662,13 @@ export class Renderer {
       if (water) this.water.bakeCoastline(j.ctx, world, bakeTiles.filter((t) => t.terrain.water));
       if (this.showsPolitics()) this.drawBorders(j.ctx, world, bakeTiles, j.scale);
     } else if (!water) {
-      this.paintTileFills(j.ctx, bakeTiles, world);
+      // GL su devredeyken deniz kareleri hiç boyanmaz: uzak doku da o alanda
+      // saydam kalır ve altındaki WebGL katmanı görünür.
+      const fills = this.glWater()
+        ? bakeTiles.filter((t) => !t.terrain.water)
+        : bakeTiles;
+      if (j.phase === 'sea') this.paintTileFills(j.ctx, fills, world);
+      else if (this.glWater()) this.paintShore(j.ctx, world, fills);
     } else {
       const land = [];
       const sea = [];
@@ -1584,12 +1690,19 @@ export class Renderer {
       if (water) {
         this.material.paintSea(j.ctx, world, rect);
         j.phase = 'land';
+      } else if (this.glWater()) {
+        // Kıyı yıkaması ayrı bir süpürmede: malzeme onun ÜSTÜNE binmeli.
+        j.phase = 'land';
       } else {
         this.material.paint(j.ctx, world, rect, j.scale);
         j.phase = 'ink';
       }
     } else if (j.phase === 'land') {
-      this.material.paint(j.ctx, world, rect, j.scale);
+      if (this.glWater()) {
+        this.maskToLand(j.ctx, () => this.material.paint(j.ctx, world, rect, j.scale));
+      } else {
+        this.material.paint(j.ctx, world, rect, j.scale);
+      }
       j.phase = 'ink';
     } else {
       const b = world.bounds;
@@ -1651,6 +1764,13 @@ export class Renderer {
    * dilimlenirse kırpma sınırında dikiş bırakır.
    */
   drawTerrain(ctx, tiles, world, rect = null) {
+    if (this.glWater()) {
+      const land = tiles.filter((t) => !t.terrain.water);
+      this.paintTileFills(ctx, land, world);
+      this.paintShore(ctx, world, land);
+      if (rect) this.maskToLand(ctx, () => this.material.paint(ctx, world, rect, 1));
+      return;
+    }
     if (!this.waterAnimatedMode()) {
       this.paintTileFills(ctx, tiles, world);
       return;

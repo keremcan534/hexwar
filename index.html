@@ -10,6 +10,11 @@
   <link rel="stylesheet" href="src/styles.css" />
 </head>
 <body>
+  <!-- Hibrit su: WebGL2 katmanı haritanın ALTINDA. Canvas2D deniz karelerini
+       boş bırakır, su buradan görünür, kara dolgusu üstünü kapatır
+       (bkz. src/render/waterGL.js). WebGL2 yoksa bu tuval boş kalır ve
+       renderer eski Canvas2D suyuna geri düşer. -->
+  <canvas id="map-water"></canvas>
   <canvas id="map"></canvas>
 
   <!-- Haritanın malzeme katmanı: ince film greni, sıcak derecelendirme ve

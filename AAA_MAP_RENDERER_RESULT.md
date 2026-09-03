@@ -368,3 +368,138 @@ ince ölçekli deseni güçlendirmek.
 fiziksel kabartma, olgun pigment, tek tutarlı derecelendirme) hedefe yaklaştı.
 Birim/atmosfer cilası hâlâ sırada değil; sıradaki iş varsa uzak-zoom deniz
 yapısı ve yakın-zoom alan çözünürlüğüdür.
+
+---
+---
+
+# GEÇİŞ #3 — HİBRİT SU (WebGL2)
+
+Karar değişti: su GPU'ya taşındı, haritanın geri kalanı Canvas2D'de kaldı.
+Kapsam yalnız SU — kara, ülke, sınır, ızgara, etiket, birim, seçim, arayüz
+hiç değişmedi.
+
+## IMPLEMENTATION
+
+`src/render/waterGL.js` — WebGL2, tek tam ekran üçgeni, tek shader.
+
+**Yerleşim.** `#map-water` tuvali `#map`'in ALTINDA (z-index 0 / 1). Canvas2D
+tarafı hibrit açıkken deniz karelerini hiç boyamaz ve o alan saydam kalır; su
+alttan görünür, kara dolgusu üstünü doğal olarak kapatır. Etiket, birim ve
+seçim Canvas2D'de olduğu için suyun ÜSTÜNDE kalır — ayrı bir sıralama işi
+gerekmedi.
+
+**Kara maskesi ANALİTİK.** Shader dünya noktasından hexi kendisi hesaplar
+(piksel→axial + küp yuvarlama), sonra `cols × rows` boyutunda NEAREST bir
+dokudan o hexin su olup olmadığını okur. Sonuç TAM hex kenarıdır: ne
+çözünürlük kaybı, ne yumuşak sınır, ne de binlerce hexlik kırpma yolu.
+Karadaki fragmanlar `discard` edilir.
+
+**Tek anahtar.** `renderer.glWater()` / `canvasWater()` — bütün Canvas2D deniz
+geçişleri (dolgu, deniz rasteri, gök gradyanı, desenler, kıyı hattı, uzak
+pişirmenin deniz süpürmesi, `fillVoid`, zemin dolgusu) bu tek karardan geçer.
+WebGL2 yoksa `WaterGL.create` null döner ve her şey eskisi gibi Canvas2D'de
+çalışır — katman silinmedi, yalnız devreye girmiyor.
+
+## GPU COST
+
+Ölçüm: 40 çizim + tek `readPixels` (gerçek senkron), önizleme penceresi.
+
+| | |
+| --- | --- |
+| Su çizimi (721×686 = tam karenin 0.75'i) | **0.047 ms / çizim** |
+| Aynı, uzak zoom (0.38) | **0.047 ms / çizim** |
+| Doku örneği / piksel | 6 (hex, uzaklık, 4× dalga) |
+| Güncelleme hızı | 33 ms tavan; kamera durağansa çizim ATLANIR |
+| Çözünürlük | tam karenin 0.75'i |
+
+Kare bütçesine etkisi ölçüm gürültüsünün içinde. Canvas2D tarafı değişmedi.
+
+## COAST FIELD METHOD
+
+Komşu halkası KULLANILMADI. `material.js`'in geçiş #2'de kurduğu **iki geçişli
+chamfer uzaklık dönüşümü** yeniden kullanılıyor: teksel başına dünya biriminde
+kıyı uzaklığı, yatay sarmal için süpürme iki kez. Alan artık malzeme
+önbelleğinde saklanıyor (`cache.toLand`) ve WebGL katmanı onu R8 dokuya
+yüklüyor (LINEAR, x'te REPEAT). Aynı işi iki kez yapmamanın yanında iki
+katmanın kıyısı da bit bit aynı yerde duruyor.
+
+Alan şunları sürüyor: köpük bandı, sığlık rengi, kıyı geçişi, derin su geçişi.
+Coğrafya değişene kadar önbellekte.
+
+## WATER SHADER LAYERS
+
+```
+1  kara maskesi      analitik hex + NEAREST doku  → discard
+2  kıyı uzaklığı     chamfer alanı (LINEAR)
+3  geniş yapı        domain-warp'lı iki düşük frekans, TOPLAMLA binen
+4  derinlik paleti   sığ turkuaz → teal → petrol → siyaha yakın lacivert
+5  hareketli normal  iki frekans, ayrı ölçek/yön/hız
+6  Fresnel (taklit)  sanal eğik bakış; eğim arttıkça soğuk yansıma
+7  yönlü spekülar    tek ışık, üs 60, geniş yapıyla seyrekleştirilmiş
+8  temas kenarı      kıyıda dar koyulaşma
+9  kırık köpük       band × gürültü, eşiği gürültüyle oynatılmış
+```
+
+## SCREENSHOT COMPARISON
+
+`.shots/gl-iter1..4`, `.shots/gl-final-near.png`, `.shots/gl-final-far.png`.
+
+**iter1 — su simsiyah.** Geniş yapı ÇARPILARAK biniyordu; 0.03'lük bir tabanın
+%20'si 0.006, yani algı eşiğinin altı. (Canvas2D geçişinde birebir aynı hata
+yapılmıştı.) Çare: toplamla binen yapı.
+
+**iter2 — okyanusun tamamı soluk lekelerle doldu.** Spekülar üssü 22'ydi;
+tepeden bakılan bir haritada hem ışık hem bakış dikeye yakın olduğu için DÜZ
+su bile `dot(N,H) ≈ 0.93` veriyor ve 0.93²² = 0.20 çıkıyordu. Üs 60-80'e
+çıkarıldı: düz su 0.003'e indi.
+
+**iter3 — kıyıyı saran kesintisiz soluk hale.** Köpük eşiği 0.40'tı ve
+gürültünün (ortalama 0.5) yarısı geçiyordu. Eşik 0.60'a çıkarıldı, band
+1.6 hex'ten 1.05 hex'e indi.
+
+**iter4 — köpük bu kez neredeyse yok.** Eşik 0.52'ye dengelendi.
+
+**final — hareket ölçüldü.** Tek piksel örneği 30 saniyede 2/255 değişiyordu:
+normal eğimi (0.55) o kadar küçüktü ki Fresnel (1−dot)³ ≈ 0.014 veriyordu —
+yani "ıslak yüzey" hiç yoktu. Eğim 1.35'e, Fresnel üssü 2'ye çıkarıldı.
+Tam kare farkı ölçümü:
+
+    saniyede ortalama 3.86/255 (su pikseli başına), yerel tepe 232/255
+
+Yani ortalama kıpırtı bilinçaltı, vurgular ise gerçekten geziyor — briefin
+istediği "moving light on water, not moving texture".
+
+**Referans testi (yalnız SU):**
+
+| | |
+| --- | --- |
+| Derin okyanusta okunur yapı var mı? | **Evet** — domain-warp'lı geniş kuşaklar |
+| Yüzey ıslak görünüyor mu? | **Evet** — Fresnel + spekülar |
+| Işık suyun üzerinde geziyor mu? | **Evet** (ölçüldü) |
+| Sığlık doğal geçiyor mu? | **Evet** — düzensiz, yer yer kesilen şelf |
+| Kıyılar düzensiz ve güzel mi? | **Büyük ölçüde**; köpük en zayıf halka |
+| Karadan uzakta da iyi mi? | **Evet** |
+
+## Yol boyunca çıkan üç gerçek hata
+
+1. **Malzeme saydam denize gri boyuyordu.** `material.paint` tek dikdörtgen
+   olarak `overlay` ile biniyor; saydam bir hedefe karışım uygulanınca sonuç
+   kaynağın kendisi oluyor ve deniz ORTA GRİ doluyordu. Çare: malzemeden önce
+   katmanın alfası kopyalanıp sonra `destination-in` ile geri uygulanıyor
+   (`maskToLand`) — maske gerçek hex dolgusu olduğu için tam kenarlı.
+2. **Spekülar üssü** (yukarıda).
+3. **`requestAnimationFrame` gizli pencerede duraklıyor.** Kurucudan sonraki
+   ölçüm rAF'a bağlıydı ve tezgâh sayfası hiç hazır olmuyordu; zamanlayıcıya
+   çevrildi (oyunda da aynı düzeltme).
+
+## VERDICT
+
+**EVET — WebGL su katmanı, haritanın geri kalanı mevcut renderer'da kalırken
+hedef su kalitesine ulaşabiliyor.**
+
+Maliyet ihmal edilebilir (0.047 ms/çizim, 30 FPS tavan, durağan kamerada
+çizim yok), mimari ayrışma temiz (tek anahtar, tek shader, altı doku örneği),
+ve Canvas2D yolu kaldırılmadı — WebGL2 yoksa oyun eskisi gibi çalışıyor.
+
+**En zayıf halka köpük**: kırılma var ama karakteri hâlâ ayar meselesi.
+**Sonraki adım yok** — brief burada durmayı istiyor.

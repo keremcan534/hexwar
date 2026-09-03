@@ -242,6 +242,21 @@ body::before {
   height: 100%;
   display: block;
   touch-action: none;
+  /* Hibrit suyun ÜSTÜNDE: kara, sınır, etiket, birim hepsi burada ve suyu
+     doğal olarak kapatır (bkz. #map-water). */
+  z-index: 1;
+}
+
+/* Hibrit su katmanı: WebGL2, haritanın hemen altında. Fare olaylarını
+   almaz — girişin tek muhatabı #map'tir. */
+#map-water {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  z-index: 0;
+  pointer-events: none;
 }
 
 /* Haritanın üstündeki malzeme katmanı. Üç bileşen: ince film greni

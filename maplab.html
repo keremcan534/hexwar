@@ -16,7 +16,9 @@
 -->
 <style>
   html, body { margin: 0; height: 100%; background: #0b1115; overflow: hidden; }
-  #map { display: block; width: 100vw; height: 100vh; }
+  #map, #map-water { position: fixed; inset: 0; display: block; width: 100vw; height: 100vh; }
+  #map { z-index: 1; }
+  #map-water { z-index: 0; pointer-events: none; }
   /* index.html'deki .map-film ile aynı: film greni + vinyet + sıcak derece. */
   .map-film {
     position: fixed; inset: 0; z-index: 2; pointer-events: none;
@@ -33,9 +35,23 @@
 </style>
 </head>
 <body>
+<canvas id="map-water"></canvas>
 <canvas id="map"></canvas>
 <div class="map-film" id="map-film" aria-hidden="true"></div>
 <div id="tag"></div>
+<script>
+// Modül hatası sessizce ölmesin: tezgâhta hata GÖRÜNÜR olmalı, yoksa sayfa
+// "READY" olmadan takılıyor ve sebebi ancak tahmin edilebiliyor.
+window.__labError = null;
+const showErr = (msg) => {
+  window.__labError = String(msg);
+  const el = document.getElementById('tag');
+  if (el) el.textContent = 'ERROR: ' + msg;
+};
+window.addEventListener('error', (e) => showErr(e.message + ' @ ' + (e.filename || '') + ':' + e.lineno));
+window.addEventListener('unhandledrejection', (e) => showErr((e.reason?.message ?? e.reason) + ' | ' + (e.reason?.stack ?? '').split('
+')[1]));
+</script>
 <script type="module">
 import { Game } from './src/game/game.js';
 import { materials } from './src/render/textures.js';
@@ -61,6 +77,8 @@ game.newWorld(q.get('seed') || 'AAA111');
 
 const r = game.renderer;
 r.setMapMode(q.get('mode') || 'political');
+// ?gl=0 hibrit suyu kapatır: A/B karşılaştırması için.
+if (q.get('gl') === '0' && r.waterGL) r.waterGL.debug.enabled = false;
 if (q.has('grid')) r.showGrid = q.get('grid') !== '0';
 if (q.has('labels')) r.showLabels = q.get('labels') !== '0';
 
@@ -127,6 +145,15 @@ function bench(n = 60) {
   return { n, p50: at(0.5), p95: at(0.95), max: +times[n - 1].toFixed(2), hex: r.lastDrawn };
 }
 
+// Düzen oturana kadar bekle, sonra ölç. requestAnimationFrame KULLANILMAZ:
+// önizleme penceresi gizliyken rAF duraklatılır ve bekleme hiç bitmez
+// (ölçüldü: sayfa READY olmadan takılıyordu). Zamanlayıcı gizli belgede de
+// çalışır ve düzen zaten bu görev bittiğinde oturmuş olur.
+await new Promise((done) => setTimeout(done, 0));
+r.resize();
+cam.setViewport(canvas.getBoundingClientRect().width, canvas.getBoundingClientRect().height);
+lockCamera();
+
 const info = await settle();
 const tag = document.getElementById('tag');
 tag.textContent = `${game.world.seed} · zoom ${cam.zoom.toFixed(2)} · ${r.mapMode}`
@@ -142,6 +169,16 @@ async function shot(name = 'shot') {
   out.width = canvas.width;
   out.height = canvas.height;
   const g = out.getContext('2d');
+  // Hibrit su ALTTAKİ tuvalde; ekran görüntüsü ikisini aynı sırayla birleştirir.
+  g.fillStyle = '#0b1115';
+  g.fillRect(0, 0, out.width, out.height);
+  // WebGL çizim tamponu sunumdan sonra temizlenir (preserveDrawingBuffer
+  // kapalı); bu yüzden kopyalamadan HEMEN ÖNCE, aynı görevde yeniden çizilir.
+  const wc = document.getElementById('map-water');
+  if (wc && wc.width > 1) {
+    r.waterGL?.draw(cam, performance.now() / 1000, true);
+    g.drawImage(wc, 0, 0, out.width, out.height);
+  }
   g.drawImage(canvas, 0, 0);
   if (document.getElementById('map-film').style.display !== 'none') {
     const w = out.width;
