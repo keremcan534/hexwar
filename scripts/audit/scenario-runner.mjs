@@ -14,7 +14,7 @@ import {
   scanInvariants,
 } from './harness.mjs';
 import {
-  FACTORIES, factoryJobs, factoryMargin, priceOf, setBudgetPolicy,
+  FACTORIES, factoryJobs, factoryMargin, priceOf, setBudgetPolicy, BUDGET_POLICIES,
 } from '../../src/game/economy.js';
 import { RGO_TYPES } from '../../src/game/provinces.js';
 import { rulingParty } from '../../src/game/politics.js';
@@ -218,10 +218,12 @@ function applyLevers(nation, levers) {
         : l.key === 'tax' && l.classId
           ? `tax${l.classId[0].toUpperCase()}${l.classId.slice(1)}`
           : l.key;
-      const ok = setBudgetPolicy(nation, policy, l.value);
-      if (!ok && !l.optional) {
+      // setBudgetPolicy degismeyen degerde de false doner; hata yalniz
+      // TANINMAYAN politika icindir.
+      if (!BUDGET_POLICIES.includes(policy) && policy !== 'armySpending') {
         throw new Error(`kaldirac uygulanamadi: ${JSON.stringify(l)} (politika ${policy})`);
       }
+      setBudgetPolicy(nation, policy, l.value);
     }
   }
 }
