@@ -17,8 +17,8 @@ import { industryOverview } from '../game/industryView.js';
 import { provinceRgoStatus } from '../game/provinces.js';
 
 const pct = (v, d = 0) => `${((v ?? 0) * 100).toFixed(d)}%`;
-const coin = (v) => `¤${(v ?? 0).toFixed(1)}`;
-const signed = (v) => `${v >= 0 ? '+' : '−'}¤${Math.abs(v ?? 0).toFixed(1)}`;
+const coin = (v) => `£${(v ?? 0).toFixed(1)}`;
+const signed = (v) => `${v >= 0 ? '+' : '−'}£${Math.abs(v ?? 0).toFixed(1)}`;
 
 /**
  * Sağlayıcıları kurar. Oyun nesnesini kapatma (closure) ile taşır ki
@@ -123,15 +123,15 @@ export function registerTooltips(game) {
     return {
       type: 'breakdown',
       title: 'Treasury',
-      value: `¤${Math.round(view.treasury)}`,
+      value: `£${Math.round(view.treasury)}`,
       text: 'Last week\'s closed balance, not a forecast. '
         + `Income and spending are settled once a week.`,
       rows: [
         { label: 'Income', value: coin(view.income), tone: 'good' },
         { label: 'Spending', value: coin(view.expenses), tone: 'bad' },
         { label: 'Balance', value: signed(view.balance), tone: view.balance >= 0 ? 'good' : 'bad' },
-        { label: 'Debt', value: `¤${Math.round(view.debt)}` },
-        { label: 'Borrowing room', value: `¤${Math.round(Math.max(0, debtCapacity(nation) - view.debt))}` },
+        { label: 'Debt', value: `£${Math.round(view.debt)}` },
+        { label: 'Borrowing room', value: `£${Math.round(Math.max(0, debtCapacity(nation) - view.debt))}` },
       ],
     };
   });
@@ -214,7 +214,7 @@ export function registerTooltips(game) {
       : {
         type: 'breakdown',
         title: `Expand to level ${row.level + 1}`,
-        value: `¤${Math.round(row.upgradeCost)}`,
+        value: `£${Math.round(row.upgradeCost)}`,
         text: 'The treasury pays up front and the work enters the construction queue.',
         rows: [
           { label: 'New capacity', value: formatPopulation(row.jobs / row.level * (row.level + 1)) },
@@ -245,10 +245,10 @@ export function registerTooltips(game) {
     return {
       type: 'breakdown',
       title: good.name,
-      value: `¤${priceOf(game.world, goodId).toFixed(2)}`,
+      value: `£${priceOf(game.world, goodId).toFixed(2)}`,
       text: `A ${good.category} good. Its price moves with world supply and demand.`,
       rows: state ? [
-        { label: 'Base price', value: `¤${good.basePrice.toFixed(2)}` },
+        { label: 'Base price', value: `£${good.basePrice.toFixed(2)}` },
         { label: 'World supply', value: state.supply.toFixed(1) },
         { label: 'World demand', value: state.demand.toFixed(1) },
       ] : [],

@@ -581,6 +581,8 @@ export function reformStatus(nation, groupId, climate = null) {
     cooldownLeft,
     emergency,
     contributions,
+    // Ekranin "bu adim ne verir" seridi; sayilar motorun kendi katsayilarindan.
+    preview: reformPreview(nation, group.id),
     pressure: { militancy: env.militancy, movement, heat, fatigue: env.fatigue, government },
   };
 }
@@ -927,8 +929,16 @@ export function decayReformCounters(nation) {
   }
 }
 
-export function refreshReformModifiers(nation) {
-  const reforms = ensureReforms(nation);
+/**
+ * SAF CEKIRDEK: yalnizca `reforms` nesnesini okur, hicbir sey saklamaz.
+ *
+ * Ayrildi cunku ekranin "bu adim ne verir" sorusunu cevaplayabilmesi icin
+ * VARSAYIMSAL bir merdiven durumu hesaplanabilmeli. Onceki yazimda hesap
+ * nation'a kilitliydi ve onizleme ancak katsayilari EKRANDA tekrar yazarak
+ * yapilabilirdi — yani ekranin vaadi ile motorun gercegi ilk degisiklikte
+ * ayrisirdi.
+ */
+export function computeReformModifiers(reforms) {
   if (!reforms) return NEUTRAL_MODIFIERS;
   const p = (id) => ladderProgress(reforms, id);
   const wage = p('minimum_wage');
@@ -1028,6 +1038,14 @@ export function refreshReformModifiers(nation) {
     // uretiminin %70'ini verir, tam haklarla tamamini.
     minorityCeiling: 0.7 + rights * 0.3,
   };
+  return mods;
+}
+
+/** Ulusun guncel katsayilarini hesaplar ve haftalik onbellege yazar. */
+export function refreshReformModifiers(nation) {
+  const reforms = ensureReforms(nation);
+  if (!reforms) return NEUTRAL_MODIFIERS;
+  const mods = computeReformModifiers(reforms);
   modsByNation.set(nation, mods);
   return mods;
 }
@@ -1042,6 +1060,41 @@ export function reformModifiers(nation) {
 
 // `reformBudgetFactor` SILINDI: sifir cagirani vardi (bkz. NEUTRAL_MODIFIERS
 // notu). Ekranin vaadi ile motorun gercegi ayni olsun.
+
+/**
+ * BU ADIM NE VERİR — ölçülmüş cevap.
+ *
+ * Bir sonraki basamak çıkarılmış gibi katsayılar yeniden hesaplanır ve
+ * bugünküyle FARKI döndürülür. Ekran hiçbir katsayı bilmez; bilseydi ilk
+ * denge değişikliğinde ekranın vaadi motorun gerçeğinden ayrılırdı — bu
+ * depoda tekrar tekrar düzeltilen hata tam olarak budur.
+ *
+ * Dönen her alan, simülasyonun GERÇEK bir okuyucusu olan bir kanaldır:
+ *   lowerMood/middleMood/upperMood — memnuniyet (→ istikrar → parti desteği)
+ *   throughput  — fabrika üretimi çarpanı
+ *   wageCost    — sanayinin bordrosu
+ *   socialBurden— hazineye binen kısılamaz taahhüt
+ *   manpower    — seferberlik havuzu
+ *   literacyFloor / researchRate / minorityCeiling — okul, basın, azınlık
+ */
+export function reformPreview(nation, groupId) {
+  const reforms = ensureReforms(nation);
+  const group = REFORM_BY_ID[groupId];
+  if (!reforms || !group) return null;
+  const index = group.steps.findIndex((step) => step.id === reforms[groupId]);
+  const next = group.steps[index + 1];
+  if (!next) return null;
+
+  const now = computeReformModifiers(reforms);
+  const after = computeReformModifiers({ ...reforms, [groupId]: next.id });
+  const delta = {};
+  for (const key of Object.keys(after)) {
+    const change = (after[key] ?? 0) - (now[key] ?? 0);
+    // Gurultu tabani: yuvarlamadan dogan tozu satir olarak gostermeyiz.
+    if (Math.abs(change) > 0.0005) delta[key] = change;
+  }
+  return { step: next, delta };
+}
 
 /** Sınıfa göre memnuniyet kayması. */
 export function reformMoodShift(nation, classId) {

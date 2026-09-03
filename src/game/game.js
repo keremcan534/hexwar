@@ -103,6 +103,10 @@ export class Game {
     // işaretlerini buraya yazar (bkz. core/perf.js).
     this.perf = new PerfMonitor();
     this.renderer = new Renderer(canvas, this.camera);
+    // Birim künyeleri geç yüklenir; geldiklerinde tek kare istenir.
+    this.renderer.onPlatesReady = () => this.requestRender();
+    // Dilimli statik pişirme kendi karelerini ister; yoksa iş yarım kalır.
+    this.renderer.requestFrame = () => this.requestRender();
     this.renderer.perf = this.perf;
     this.world = null;
     this.selected = null;

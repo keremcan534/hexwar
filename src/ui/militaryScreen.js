@@ -24,13 +24,19 @@ const pct = (share) => `${Math.round(share * 100)}%`;
    SİMGE — birim rozetleri harita sayacı dilinde: çerçeve + kolun işareti.
    Figüratif asker resmi yerine sayaç, çünkü ekran bir savaş odası masasıdır.
    -------------------------------------------------------------------------- */
-const COUNTER = {
-  INFANTRY: '<rect x="2.2" y="4.4" width="11.6" height="7.2"/><path d="m2.2 4.4 11.6 7.2M13.8 4.4 2.2 11.6"/>',
-  CAVALRY: '<rect x="2.2" y="4.4" width="11.6" height="7.2"/><path d="m2.2 11.6 11.6-7.2"/>',
-  ARTILLERY: '<rect x="2.2" y="4.4" width="11.6" height="7.2"/><circle cx="8" cy="8" r="1.5" fill="currentColor" stroke="none"/>',
-  ARMOR: '<rect x="2.2" y="4.4" width="11.6" height="7.2"/><ellipse cx="8" cy="8" rx="3.6" ry="2.2"/>',
-  AIRCRAFT: '<rect x="2.2" y="4.4" width="11.6" height="7.2"/><path d="M8 5.6v4.8M5.4 6.6c1.4 0 2.6.6 2.6 1.4M10.6 9.4c-1.4 0-2.6-.6-2.6-1.4"/>',
-  WARSHIP: '<rect x="2.2" y="4.4" width="11.6" height="7.2"/><path d="M4.6 9.2h6.8l-1 1.6H5.6zM8 5.4v3.8M6.4 6.8h3.2"/>',
+/**
+ * Birim sayaclari: pirinc kunye seti (assets/icons/units). Sembol dili NATO
+ * karsiliklarindan gelir — X piyade, capraz suvari, oval zirhli, nokta-hat
+ * topcu, capa donanma, V hava. Cizgi-SVG sayaclarinin yerini aldilar; kunye
+ * cubugu ve defter madalyonlariyla ayni sette dursunlar diye.
+ */
+const COUNTER_ART = {
+  INFANTRY: 'infantry',
+  CAVALRY: 'cavalry',
+  ARMOR: 'armor',
+  ARTILLERY: 'artillery',
+  WARSHIP: 'warship',
+  AIRCRAFT: 'aircraft',
 };
 
 const MARK = {
@@ -44,9 +50,8 @@ const MARK = {
   shield: '<path d="M8 2.4 13 4.4v3.4c0 2.9-2.1 4.7-5 5.8-2.9-1.1-5-2.9-5-5.8V4.4z"/>',
 };
 
-const counter = (typeId) => `<svg class="mil-counter" viewBox="0 0 16 16" fill="none"
-  stroke="currentColor" stroke-width="1.2" stroke-linejoin="round"
-  aria-hidden="true">${COUNTER[typeId] ?? COUNTER.INFANTRY}</svg>`;
+const counter = (typeId) => `<img class="mil-counter" alt="" loading="lazy" decoding="async"
+  src="assets/icons/units/${COUNTER_ART[typeId] ?? COUNTER_ART.INFANTRY}.png">`;
 
 const mark = (id) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
   stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"
@@ -88,9 +93,9 @@ function headerStrip(summary) {
     `${summary.trainingCapacity} can train at once · ${formatPopulation(summary.trainingManpower)}`
       + ' men committed when they march out')}
     ${figure('flag', 'Wars', `${summary.wars.length}`, wars, summary.wars.length ? 'hot' : '')}
-    ${figure('coin', 'Upkeep', `${summary.upkeepGold.toFixed(1)}¤`,
+    ${figure('coin', 'Upkeep', `${summary.upkeepGold.toFixed(1)}£`,
     `${summary.upkeepGold.toFixed(1)} gold and ${Math.round(summary.upkeepFood)} food a week`
-      + ` · procurement ${summary.procurementCost.toFixed(1)}¤ · wages at ${summary.wages}%`)}
+      + ` · procurement ${summary.procurementCost.toFixed(1)}£ · wages at ${summary.wages}%`)}
   </header>`;
 }
 
@@ -206,7 +211,7 @@ function commandColumn(state, roster, looseByBranch, trainCost, canTrain) {
         title="${esc(canTrain
     ? `Trains a new officer for ${trainCost} gold. Each addition to the staff costs more.`
     : `The treasury cannot cover the ${trainCost} gold this commission costs.`)}">
-        ${branch === 'navy' ? 'Create Admiral' : 'Create General'} · ${trainCost}¤</button>
+        ${branch === 'navy' ? 'Create Admiral' : 'Create General'} · ${trainCost}£</button>
       ${toggle('autoCreate', 'Auto-create leaders', roster.options.autoCreate,
     'The staff renews itself once a year: retirements are replaced and the corps grows'
     + ' with the army, paid from the treasury.')}
@@ -264,7 +269,7 @@ function buildRow(option, state) {
     </div>
     <div class="mil-build-cost">
       <span title="Training time at full military funding.">${option.weeks}w</span>
-      <span title="Paid from the treasury when the order is placed.">${option.gold}¤</span>
+      <span title="Paid from the treasury when the order is placed.">${option.gold}£</span>
       <span title="Drawn from the province population when the unit marches out.">
         ${option.manpower.toLocaleString('en-US')}</span>
       <span class="mil-build-kit">${equipment || '<em class="void">—</em>'}</span>

@@ -189,7 +189,7 @@ function factoryRow(world, nation, availability, factory, region, expansions, na
     : expansion ? 'An expansion is already under way'
       : !factoryInvestmentRules(nation).stateExpand ? 'Policy forbids state investment'
         : (nation.gold ?? 0) < cost
-          ? `Treasury short by ¤${Math.ceil(cost - (nation.gold ?? 0))}`
+          ? `Treasury short by £${Math.ceil(cost - (nation.gold ?? 0))}`
           : null;
   return {
     id: factory.id,
@@ -383,7 +383,7 @@ export function factoryBuildOptions(world, nation, regionId) {
       : taken ? 'Already present in this state'
         : locked ? `Not yet invented — available from ${eraYear(era)}`
           : !rules.stateBuild ? 'Policy forbids state industry'
-            : (nation.gold ?? 0) < gold ? `Treasury short by ¤${Math.ceil(gold - (nation.gold ?? 0))}`
+            : (nation.gold ?? 0) < gold ? `Treasury short by £${Math.ceil(gold - (nation.gold ?? 0))}`
               : region.free <= 0 ? 'No free industrial slot in this state'
                 : 'Unavailable';
     const margin = factoryMargin(world, type.id);

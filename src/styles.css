@@ -170,6 +170,10 @@
   --sheet-max: min(64vh, 640px);
   --topbar-height: 74px;
   --tabbar-height: 54px;
+  /* Künye yüksekliği çubuktan küçük: plakanın üstünde ve altında nefes
+     kalmazsa şerit tek parça pirinç levhaya dönüyor. Dokuz künyenin toplam
+     genişliğini de bu belirler (42px'te ~1410px, 1440'lık ekrana sığar). */
+  --tab-plate-h: 42px;
   /* Üst çubuğun ölçülen yüksekliği (bkz. hud.js trackHeaderHeight). Sabit bir
      tahmin yerine gerçek ölçü: çubuk bir, iki ya da üç satır olabiliyor.
      Fallback yalnız ilk boyamada geçerlidir. */
@@ -509,6 +513,29 @@ select:focus-visible {
 
 /* Hücre ritmi: eşit nefes payı, ince pirinç ayraç. 26px sabit dolgu geniş
    ekranda dağınık, dar ekranda taşkındı — clamp iki ucu da toparlar. */
+/* Hazine okumasi paranin kendi madalyonunu tasir: ust barda tek boyali
+   oge odur ve goz once oraya gider. Satir ici sayilarda hala '£' KARAKTERI
+   kullanilir — 240px'lik madalyon 13px metin icinde lapaya doner. */
+/* Madalyonlu okuma yatay: ama yan dolgusu kısılır, yoksa üst bar şeridi
+   taşıp "Stability" etiketini kırpıyor. */
+.res-strip span.res-money {
+  flex-direction: row;
+  gap: 6px;
+  padding-inline: var(--sp-3);
+}
+.res-strip .res-money > span { display: grid; gap: 2px; justify-items: center; }
+
+.res-coin,
+.head-coin {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  filter: saturate(0.84) contrast(1.05) brightness(0.97)
+    drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+
+.head-coin { width: 22px; height: 22px; vertical-align: -6px; margin-right: var(--sp-2); }
+
 .res-strip span,
 .macro-strip span {
   display: flex;
@@ -664,7 +691,8 @@ select:focus-visible {
   position: relative;
   z-index: 0;
   display: flex;
-  gap: 0;
+  align-items: center;
+  gap: var(--sp-1);
   height: var(--tabbar-height);
   padding: 0 var(--sp-4);
   overflow-x: auto;
@@ -672,10 +700,14 @@ select:focus-visible {
   border: 0;
   border-bottom: 1px solid rgba(190, 158, 96, 0.14);
   border-radius: 0;
-  /* Üst çubukla aynı cam, bir kademe koyu: iki şerit tek gövde okunur. */
+  /* Künyeler bir DUVARA asılıdır: arkada Victoria duvar kâğıdı, üstünde koyu
+     bir perde. Perde olmadan desen pirinç çerçevelerle yarışıyor; perdesiz
+     bırakmak da şeridi bir kumaş parçasına çeviriyordu. Desen okunacak kadar
+     var, künyeyi bastıracak kadar değil. */
   background:
     var(--ui-grain),
-    linear-gradient(180deg, rgba(10, 14, 17, 0.78) 0%, rgba(6, 9, 11, 0.86) 100%);
+    linear-gradient(180deg, rgba(10, 14, 17, 0.62) 0%, rgba(6, 9, 11, 0.78) 100%),
+    url('../assets/ui/wallpaper.jpg') center / 420px repeat;
   -webkit-backdrop-filter: var(--glass-blur);
   backdrop-filter: var(--glass-blur);
   box-shadow: inset 0 1px rgba(232, 210, 160, 0.04), 0 6px 18px rgba(0, 0, 0, 0.3);
@@ -683,73 +715,55 @@ select:focus-visible {
 
 .tab-bar::-webkit-scrollbar { display: none; }
 
+/* Sekmenin tüm yüzü tek resim. Yükseklik sabit, GENİŞLİK oranla gelir:
+   künyeyi kelime uzunluğu belirledi, dokuzunu eşit genişliğe zorlamak ya
+   kısa adları boş emayede yüzdürür ya uzunları ezerdi. */
 .tab-bar button {
   position: relative;
-  display: flex;
   flex: 0 0 auto;
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  gap: var(--sp-2);
-  min-width: 0;
-  height: 100%;
-  padding: 0 var(--sp-5);
+  height: var(--tab-plate-h);
+  align-self: center;
+  padding: 0;
   border: 0;
-  background: none;
+  background: center / contain no-repeat var(--plate);
   box-shadow: none;
-  color: var(--text-dim);
-  font-size: var(--fs-base);
-  font-weight: 400;
-  letter-spacing: 0.02em;
-  text-transform: none;
   cursor: pointer;
+  /* Pasif künye geri çekilir; parlaklık üç durumun tek kaldıracı, bu yüzden
+     hover ve aktif için ayrı resim üretmek gerekmiyor. */
+  filter: brightness(0.78) saturate(0.86);
+  transition: filter 120ms ease-out;
 }
 
-/* Hover: menü satırlarındaki pirinç yıkamanın sekme karşılığı. */
-.tab-bar button:hover {
-  color: var(--text);
-  background: linear-gradient(180deg, rgba(190, 158, 96, 0.07), transparent 70%);
-}
-
-/* Simgeler tek renk, aynı çizgi kalınlığı, aynı boy — yazıyla aynı tonda. */
-.tab-bar button span {
-  display: grid;
-  place-items: center;
-  font-size: 0;
-  line-height: 0;
-}
-
-.tab-bar button svg {
-  width: 16px;
-  height: 16px;
-  stroke: currentColor;
-  fill: none;
-  stroke-width: 1.4;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-}
-
-/* Aktif sekme paletteki beş pirinç yerinden biri: metin ve simge parlak
-   pirinç, zeminde yukarıdan sızan altın yıkama. */
-.tab-bar button.active {
-  color: var(--gold-bright);
-  background: linear-gradient(180deg,
-    rgba(190, 158, 96, 0.13) 0%, rgba(190, 158, 96, 0.03) 55%, transparent 100%);
-  box-shadow: none;
-}
-
-/* Alt çizgi ayrı bir katman: aktif sekmeyi kutuya çevirmeden işaretler.
-   Uçları eriyen pirinç tel — düz blok çizgi web sekmesi gibi duruyordu. */
-.tab-bar button.active::after {
-  content: "";
+/* Etiket DOM'da kalır, ekranda kalmaz: ad resmin içinde kazılı. */
+.tab-bar button b {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  height: 2px;
-  background: linear-gradient(90deg,
-    transparent, var(--gold) 18%, var(--gold-bright) 50%, var(--gold) 82%, transparent);
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
+
+.tab-bar button:hover { filter: brightness(0.96) saturate(0.94); }
+
+/* Aktif künye tam parlaklıkta ve bir tık büyük: pirinç, ışığa dönmüş plaka. */
+.tab-bar button.active {
+  filter: brightness(1.14) saturate(1.02)
+    drop-shadow(0 0 6px rgba(190, 158, 96, 0.22));
+}
+
+.tab-bar button[data-screen="construction"] { --plate: url('../assets/tabs/construction.png'); aspect-ratio: 676 / 152; }
+.tab-bar button[data-screen="industry"]     { --plate: url('../assets/tabs/industry.png');     aspect-ratio: 575 / 156; }
+.tab-bar button[data-screen="trade"]        { --plate: url('../assets/tabs/trade.png');        aspect-ratio: 469 / 154; }
+.tab-bar button[data-screen="budget"]       { --plate: url('../assets/tabs/budget.png');       aspect-ratio: 487 / 154; }
+.tab-bar button[data-screen="military"]     { --plate: url('../assets/tabs/military.png');     aspect-ratio: 555 / 154; }
+.tab-bar button[data-screen="population"]   { --plate: url('../assets/tabs/population.png');   aspect-ratio: 601 / 155; }
+.tab-bar button[data-screen="politics"]     { --plate: url('../assets/tabs/politics.png');     aspect-ratio: 506 / 156; }
+.tab-bar button[data-screen="technology"]   { --plate: url('../assets/tabs/technology.png');   aspect-ratio: 626 / 153; }
+.tab-bar button[data-screen="chronicle"]    { --plate: url('../assets/tabs/chronicle.png');    aspect-ratio: 572 / 154; }
+
+/* Künyeye geçince alt çizgi kaldırıldı: plakanın kendi pirinç çerçevesi
+   zaten bir sınır çiziyor, ikinci işaret kutuyu iki kez kutuluyordu. */
 
 /* ==========================================================================
    6. EKRAN KABUĞU — soldan açılan tam boy yönetim paneli
@@ -776,7 +790,15 @@ select:focus-visible {
   border-top: 1px solid rgba(174, 139, 74, 0.34);
   border-right: 1px solid rgba(174, 139, 74, 0.34);
   border-left: 1px solid rgba(174, 139, 74, 0.34);
-  background: var(--ui-grain), var(--panel-tone), var(--surface-1);
+  /* Victoria dokusu EN ALT katman: üstündeki koyu zemin onu neredeyse
+     tamamen yutar, geriye yalnız kâğıdın kabartması kalır. Doku okunurluğun
+     üstüne çıkarsa tablo okunmaz olur — o yüzden desen değil, DERİ. */
+  background:
+    var(--ui-grain),
+    var(--panel-tone),
+    linear-gradient(rgba(11, 18, 21, 0.80), rgba(11, 18, 21, 0.80)),
+    url('../assets/ui/wallpaper.jpg') center / 460px repeat,
+    var(--surface-1);
   box-shadow: var(--frame-brass);
   opacity: 1;
   visibility: visible;
@@ -2071,22 +2093,30 @@ body.screen-open .layer-menu { display: none; }
 
 .nation-hero {
   display: grid;
-  grid-template-columns: 62px 1fr;
-  gap: var(--sp-2);
+  grid-template-columns: 210px 1fr;
+  gap: var(--sp-4);
   align-items: center;
   border-color: var(--line-gold);
   background: linear-gradient(120deg, var(--gold-wash), transparent 52%), var(--surface-3);
 }
 
-.nation-flag-large {
-  width: 62px;
-  height: 41px;
-  border: 2px solid var(--metal-edge);
-  border-radius: 1px;
-  outline: 1px solid var(--line-gold);
-  outline-offset: 2px;
-  object-fit: cover;
+/* --- Bayrak: bez gibi görünmesi -------------------------------------------
+   Dalgalanma ve kumaş dokusu artık CANVAS'ta (bkz. render/flagWave.js): SVG
+   displacement filtresi tek bir donmuş deformasyon veriyordu ve kıvrım
+   gölgesi bezle birlikte kaymıyordu — sabit bir doku fotoğrafı altında
+   bükülmüş resim gibi duruyordu.
+   Burada kalan yalnız kutu ve gölge; kenarda ÇERÇEVE yok, çünkü dalgalanan
+   kenara düz çizgi yapıştırılmış gibi duruyor. */
+.flag-hero {
+  position: relative;
+  display: block;
+  width: 210px;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.55));
 }
+
+.flag-hero.small { width: 96px; }
+
+.flag-canvas { display: block; }
 
 .nation-identity { min-width: 0; }
 
@@ -4579,7 +4609,10 @@ body.screen-open .layer-menu { display: none; }
 .screen-body > .trade {
   flex: 1 1 auto;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  /* Dort satir: kunye, suzgec, katalog+dosya (esneyen), yapi seridi.
+     Suzgec seridi eklenince ucuncu tanim yoktu ve esneyen satir SUZGECE
+     dusuyordu; katalog kendi boyunda kalip alt seridin altina giriyordu. */
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 5px;
   min-height: 0;
 }
@@ -4674,6 +4707,9 @@ body.screen-open .layer-menu { display: none; }
 .trade-main {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 396px;
+  /* TEK SATIR, ESNEK: satir tanimi olmayinca ic sutunlar kendi boylarina
+     buyuyup kutuyu tasiyordu ve katalog alt seridin uzerine biniyordu. */
+  grid-template-rows: minmax(0, 1fr);
   gap: 5px;
   min-height: 0;
 }
@@ -4693,9 +4729,9 @@ body.screen-open .layer-menu { display: none; }
 
 .trade-cat-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(158px, 1fr));
-  gap: 3px;
-  margin-top: 4px;
+  grid-template-columns: repeat(auto-fill, minmax(244px, 1fr));
+  gap: var(--sp-1);
+  margin-top: var(--sp-1);
 }
 
 /* Mal karosu: simge + ad + fiyat + karsilanma cubugu + durum. Kart degil,
@@ -4942,7 +4978,7 @@ body.screen-open .layer-menu { display: none; }
 
 .trade-structure {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 5px;
 }
 
@@ -4952,7 +4988,7 @@ body.screen-open .layer-menu { display: none; }
 /* Dar ekran: dosya paneli daralir, alt serit ikiye katlanir, karolar kuculur. */
 @media (max-width: 1360px) {
   .trade-main { grid-template-columns: minmax(0, 1fr) 340px; }
-  .trade-cat-grid { grid-template-columns: repeat(auto-fill, minmax(146px, 1fr)); }
+  .trade-cat-grid { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); }
 }
 
 @media (max-width: 1050px) {
@@ -4976,8 +5012,6 @@ body.screen-open .layer-menu { display: none; }
     border-color: var(--gold);
     filter: brightness(1.12);
   }
-
-  .tab-bar button:hover { color: var(--text); background-color: var(--surface-3); }
 
   .building-option:not([disabled]):hover,
   .action:not([disabled]):hover,
@@ -5059,6 +5093,7 @@ body.screen-open .layer-menu { display: none; }
   .nation-text b,
   .nation-text small { max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
 
+  .flag-hero { width: 150px; }
   .flag-frame { width: 40px; height: 30px; }
   .flag-frame .flag { width: 34px; height: 24px; }
   .res-strip span,
@@ -5069,7 +5104,9 @@ body.screen-open .layer-menu { display: none; }
   .time-btn { min-width: 26px; height: 28px; }
   .topbar .icon-btn { width: 38px; height: 38px; align-self: start; }
   .tab-bar { left: var(--sp-1); max-width: calc(100vw - var(--sp-2)); }
-  .tab-bar button { min-width: 70px; padding-inline: var(--sp-2); }
+  /* Dar ekranda künye küçülür — genişlik orana bağlı, elle verilen
+     min-width ve yan dolgu resmi kutunun içinde ezerdi. */
+  .tab-bar { --tab-plate-h: 34px; }
 }
 
 @media (max-width: 560px) {
@@ -5728,6 +5765,17 @@ body.screen-open .layer-menu { display: none; }
 .ledger-picto { color: #a88a4b; display: grid; place-items: center; }
 .ledger-picto svg { width: 17px; height: 17px; }
 
+/* Boyalı defter madalyonu. Çizgi PICTO'sundan büyük: madalyonun içindeki
+   sahne 17px'te okunmuyor, kaydıraç satırı da ona yer verecek kadar yüksek.
+   Renk düzeltmesi mal ikonlarıyla AYNI (bkz. §25 img.res-art) — iki set aynı
+   ışıkta dursun. */
+.ledger-picto .ledger-art {
+  width: 34px;
+  height: 34px;
+  filter: saturate(0.84) contrast(1.05) brightness(0.97)
+    drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
+
 .ledger-mid { display: grid; gap: 1px; min-width: 0; }
 
 .ledger-label {
@@ -5785,11 +5833,40 @@ body.screen-open .layer-menu { display: none; }
 
 /* --- Tarihi kaydirac: ince pirinc ray, uc kapaklari, bordo/pirinc topuz --- */
 .hslider {
+  position: relative;
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
   gap: 3px;
 }
+
+
+/* --- Vergi esikleri -------------------------------------------------------
+   Kaydiracin uzerinde iki ince cubuk: yesil "sepetini tamamen karsilar",
+   kirmizi "gecim tabanina son". Ikisi de TIKLANABILIR ve orani oraya oturtur.
+   Amac suslemek degil, hesabi oyuncunun kafasindan almak: uc sinif icin ayri
+   ayri "kac olmali" sorusu, kirk fabrikada kirk tik ile ayni cinsten yuktur.
+   Cubuk ince ve kisa: kaydiracin kendi topuzuyla yarismamali. */
+.tax-mark {
+  position: absolute;
+  top: 50%;
+  width: 3px;
+  height: 15px;
+  margin: 0;
+  padding: 0;
+  transform: translate(-50%, -50%);
+  border: 0;
+  border-radius: 1px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.65);
+  cursor: pointer;
+  transition: height 110ms ease-out, filter 110ms ease-out;
+}
+
+.tax-mark.safe { background: var(--green); }
+.tax-mark.edge { background: var(--red); }
+
+.tax-mark:hover,
+.tax-mark:focus-visible { height: 21px; filter: brightness(1.35); }
 
 .hslider .cap {
   width: 7px;
@@ -7600,7 +7677,15 @@ body.menu-open .sheet { visibility: hidden; }
   color: #a98f5c;
 }
 
-.mil-counter { width: 26px; height: 26px; }
+/* Sayaç artık boyalı künye: çizgi-SVG'den büyük olmalı, yoksa perçinler ve
+   çerçeve lapaya döner. Renk düzeltmesi mal madalyonlarıyla aynı. */
+.mil-counter {
+  width: 40px;
+  height: 28px;
+  object-fit: contain;
+  filter: saturate(0.84) contrast(1.05) brightness(0.97)
+    drop-shadow(0 1px 1px rgba(0, 0, 0, 0.45));
+}
 
 .mil-build-text { display: grid; gap: 1px; min-width: 0; }
 
@@ -10309,3 +10394,557 @@ button[data-tip]:hover,
 @media (prefers-reduced-motion: reduce) {
   .tip-card { animation: none; }
 }
+
+
+/* --- İnşaat ekranı: okunurluk onarımı ------------------------------------
+   KPI şeridinin kendi kuralı YOKTU: seçici listesi bir üstteki bloğa yapışmış,
+   `.construction-kpis` yalnız `grid-template-columns` alıyordu ve etiketle
+   değer yan yana yapışık çıkıyordu ("Build power27.5/wk"). Tarihî seçici
+   yığınını çözmek dört ekranı birden riske atardı; şerit kendi kuralını alır. */
+.construction-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.construction-kpis > span {
+  display: grid;
+  gap: 1px;
+  align-content: start;
+}
+
+/* Amblem kutusu: kuyruk, özel şantiye ve yatırım kartı aynı ölçüyü paylaşır,
+   yoksa boyalı madalyon çizgi glifinin yanında zıplıyor. */
+.build-emblem {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  color: #c6b183;
+}
+
+.build-emblem img, .build-emblem svg { width: 24px; height: 24px; }
+.construction-state-buildings .build-emblem { width: 15px; height: 15px; }
+.construction-state-buildings .build-emblem svg { width: 14px; height: 14px; }
+
+/* Kuyruğun devamı: satır değil düğme — kuyruğun uzunluğu zaten başlıkta. */
+.construction-queue-more {
+  width: 100%;
+  margin-top: var(--sp-1);
+  padding: var(--sp-2);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.construction-queue-more:hover { color: var(--gold-bright); border-color: var(--gold); }
+
+/* İki emir, yazıyla: ok yığını hangi düğmenin ne yaptığını gizliyordu. */
+.construction-project-actions button {
+  padding: 0 var(--sp-2);
+  font-size: var(--fs-label);
+  letter-spacing: 0.04em;
+}
+
+.construction-project-actions .danger { color: var(--red); }
+
+
+/* --- Bildirimler: açık ekranı kapatmasınlar -------------------------------
+   Yığın sağ üstte duruyordu ve yönetim ekranı pencerenin %97'sini kapladığı
+   için doğrudan panelin üstüne biniyordu (kullanıcı bildirimi: "sağdaki
+   popuplar ekranımı kapatıyor"). Ekran açıkken yığın sağ ALTA iner ve
+   daralır: harita kontrollerinin üstünde, panelin dışında bir şerit. */
+body.screen-open .notify-stack {
+  /* `!important` bilerek: hud.js yiginin `top`unu SATIR ICI stile olcup
+     yaziyor (trackHeaderHeight) ve normal kural ona yenilir. Ekran acikken
+     yigin panelin ustune biniyordu — kullanicinin sikayeti buydu. */
+  top: auto !important;
+  bottom: calc(var(--sp-3) + 46px);
+  right: var(--sp-3);
+  width: min(268px, calc(100vw - var(--sp-3) * 2));
+  max-height: 42vh;
+  overflow: hidden;
+}
+
+/* Ekran açıkken kart sıkışır ama METNİ KALIR: uyarının gövdesini gizlemek
+   bildirimi süse çevirirdi. Kısalan şey satır sayısı, cümle değil. */
+body.screen-open .notify-card { padding: var(--sp-2); }
+body.screen-open .notify-body {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: var(--fs-sm);
+}
+
+
+/* --- Satır içi sikke ------------------------------------------------------
+   Paranın işareti metin değil madalyon. Yalnız defterin GÖRÜNÜR tutarlarında
+   kullanılır: 240px'lik madalyon 13px akış metninde lapaya döner, orada
+   '£' karakteri hem keskin hem aynı semboldür. Taban çizgisine oturur ve
+   satır yüksekliğini büyütmez. */
+.coin {
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.22em;
+  margin-right: 0.12em;
+  filter: saturate(0.84) contrast(1.05) brightness(0.97);
+}
+
+.vbox.big .coin { width: 1.05em; height: 1.05em; }
+
+
+/* ==========================================================================
+   UYARI SERIDI — suren durumlar
+   Baloncuk gecer, bu durur. Sol kenarda, sekme cubugunun altinda dikey bir
+   ikon dizisi; tiklayinca yanindan kucuk bir pencere acilir. Harita
+   kontrolleri ve hegemonya kartiyla cakismasin diye SOL UST secildi.
+   ========================================================================== */
+.alert-strip {
+  position: fixed;
+  top: calc(var(--hud-top) + var(--tabbar-height) + var(--sp-3));
+  left: var(--sp-3);
+  z-index: var(--z-notify);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  pointer-events: none;
+}
+
+.alert-strip > * { pointer-events: auto; }
+
+/* Ekran açıkken şerit kaybolmaz ama geri çekilir: panel zaten haritayı
+   kapatıyor, uyarı orada yalnızca gürültü olur. */
+body.screen-open .alert-strip { opacity: 0.3; }
+body.screen-open .alert-strip:hover { opacity: 1; }
+
+/* Panel acikken pencere ACILMAZ: uyari haritayla ilgilidir ve panelin
+   ustune binmesi kullanicinin sikayet ettigi seydir. Ikon durur, tiklama
+   ekrani kapatinca ise yarar. */
+body.screen-open .alert-pop { display: none; }
+
+.alert-item { position: relative; display: flex; align-items: flex-start; }
+
+.alert-pin {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent),
+    var(--surface-2);
+  color: var(--text-dim);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+}
+
+.alert-pin svg { width: 17px; height: 17px; }
+.alert-pin:hover { color: var(--text); border-color: var(--gold); }
+
+/* Ton anlam tasir: kirmizi varolussal, kehribar ciddi, celik bilgilendirici. */
+.alert-item.bad .alert-pin { color: var(--red); border-color: rgba(169, 94, 74, 0.55); }
+.alert-item.warn .alert-pin { color: var(--amber); border-color: rgba(183, 142, 72, 0.5); }
+.alert-item.info .alert-pin { color: var(--cyan); }
+.alert-item.open .alert-pin { border-color: var(--gold-bright); color: var(--gold-bright); }
+
+/* Pencere ikonun YANINDA acilir, ustunde degil: sirali ikonlarda ustte
+   acilan pencere bir sonrakini kapatiyordu. */
+.alert-pop {
+  width: 290px;
+  margin-left: var(--sp-2);
+  padding: var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--ui-grain), var(--surface-1);
+  box-shadow: var(--frame-brass);
+}
+
+.alert-pop header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: var(--sp-1);
+}
+
+.alert-pop small {
+  color: var(--text-mute);
+  font-size: var(--fs-label);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.alert-mute {
+  padding: 0 var(--sp-1);
+  border: 0;
+  background: none;
+  color: var(--text-faint);
+  cursor: pointer;
+}
+
+.alert-mute:hover { color: var(--red); }
+
+.alert-pop b {
+  display: block;
+  margin-bottom: var(--sp-2);
+  color: var(--gold-bright);
+  font-size: var(--fs-md);
+  font-weight: 650;
+}
+
+.alert-pop p {
+  margin: 0 0 var(--sp-2);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  line-height: var(--lh-body);
+}
+
+/* Çare ayrı tonda: sebep okunur, çare yapılır. */
+.alert-pop .alert-remedy {
+  margin: 0;
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+  color: var(--text);
+}
+
+.alert-restore {
+  width: 32px;
+  height: 24px;
+  padding: 0;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-faint);
+  font-size: var(--fs-label);
+  cursor: pointer;
+}
+
+.alert-restore:hover { color: var(--gold-bright); border-color: var(--gold); }
+
+
+/* ==========================================================================
+   TICARET KATALOGU — yeniden duzen
+   Karo dort satirdan ikiye indi: rozet ne oldugunu, duz cumle neden oldugunu
+   soyler. Sayilar sag paneldeki dosyada. Madalyon buyudu; kirk iki mali
+   tararken gozun tutundugu sey ADA degil SIMGEYE oluyor.
+   ========================================================================== */
+.trade-good {
+  grid-template-columns: 44px minmax(0, 1fr) !important;
+  grid-template-rows: auto auto !important;
+  gap: 2px 10px !important;
+  align-items: center;
+  padding: var(--sp-2) var(--sp-2) !important;
+  border-radius: var(--radius);
+}
+
+.trade-good .tg-glyph {
+  grid-row: 1 / span 2;
+  width: 44px !important;
+  height: 44px !important;
+}
+
+.trade-good .tg-glyph img, .trade-good .tg-glyph svg { width: 40px !important; height: 40px !important; }
+
+/* Iki SATIR, her satir kendi icinde iki uca yaslanir. Izgara hucresi dar
+   kalinca rozetle cumle ust uste biniyordu; akis duzeni tasmayi kirpar. */
+.trade-good .tg-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.trade-good .tg-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: var(--fs-base);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.trade-good .tg-price { flex: none; }
+
+/* Rozet: dolu blok degil, ince cerceveli kucuk kunye — satirda bagirmasin. */
+.tg-badge {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  font-size: var(--fs-label);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+.trade-good.st-severe .tg-badge, .trade-good.st-short .tg-badge { color: var(--red); }
+.trade-good.st-surplus .tg-badge, .trade-good.st-export .tg-badge { color: var(--green); }
+.trade-good.st-balanced .tg-badge { color: var(--text-mute); }
+.trade-good.st-idle .tg-badge { color: var(--text-faint); }
+
+.tg-reason {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-mute);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-sm);
+  text-align: right;
+}
+
+/* Suzgec cipleri: katalogun ustunde tek satir. */
+.trade-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  margin-bottom: var(--sp-2);
+}
+
+.trade-filter {
+  padding: 3px var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: none;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.trade-filter:hover { color: var(--text); border-color: var(--gold); }
+.trade-filter.on {
+  color: var(--gold-bright);
+  border-color: var(--gold);
+  background: var(--gold-wash);
+}
+
+/* Ureticiler ve tuketiciler yan yana: ayni sorunun iki yuzu, alt alta
+   konunca aralarindaki kiyas kayboluyordu. */
+.trade-two-col {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: var(--sp-3);
+}
+
+/* Ikincil olculer katlanir: mockup'in sakinligi varsayilan, ayrinti tek tik. */
+.trade-deeper > summary {
+  margin-top: var(--sp-3);
+  padding: var(--sp-2) 0;
+  border-top: 1px solid var(--line);
+  color: var(--text-mute);
+  font-size: var(--fs-sm);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.trade-deeper > summary:hover { color: var(--gold-bright); }
+
+.trade-side { display: flex; flex-direction: column; gap: var(--sp-3); min-width: 0; }
+.trade-national { min-width: 0; }
+
+
+/* Karo govdesinin iki satiri: ad|fiyat ve rozet|cumle. */
+.trade-good .tg-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+
+/* Sag sutun kendi icinde kayar: dosya + ulusal ozet birlikte katalogdan uzun
+   olabiliyor ve tasma alt serit uzerine biniyordu. */
+.trade-side {
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-color: var(--gold) var(--surface-sunken);
+  scrollbar-width: thin;
+}
+
+
+/* Dosyanin kapanis cumlesi: sayilarin altinda tek satirlik karakter tesbiti. */
+.dossier-character {
+  margin: var(--sp-2) 0 0;
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  font-style: italic;
+  line-height: var(--lh-body);
+}
+
+
+/* ==========================================================================
+   GORSEL ONARIMLAR — kullanici isaretlemesi
+   ========================================================================== */
+
+/* 1. Kar sutunundaki not, yanindaki dugmelerin ALTINDA kaliyordu: hucrenin
+      min-width'i yoktu, metin 152px'i asip komsunun uzerine tasiyordu. */
+.fac-profit { min-width: 0; }
+
+.fac-profit em {
+  overflow-wrap: anywhere;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+/* 2. Uretim zinciri sarinca ok girdilerle ciktilar arasinda ORTADA kalip
+      yalniz basina bir satira dusuyordu. Ok artik ciktilarla ayni parcada. */
+.fac-chain { row-gap: 3px; }
+.fac-chain > span { min-width: 0; }
+
+/* 3. Yatirim kartindaki dugmeler `.action`in `flex: 1 1 auto`ini miras
+      aliyordu: kucucuk "2" isareti Invest kadar genis bir kutuya
+      yayiliyordu. Ikisi de icerigi kadar yer kaplar. */
+.construction-invest .action { flex: 0 0 auto; }
+.construction-invest .action[data-divest] { width: 34px; padding-inline: 0; text-align: center; }
+
+/* 4. Insa paletinde TEK tur var (Fort) ve `auto-fit` + `1fr` onu butun
+      genislige yayiyordu: koca bos bir blok. Kart artik kendi boyunda durur. */
+.construction-build-palette {
+  grid-template-columns: repeat(auto-fill, minmax(104px, 132px));
+  justify-content: start;
+}
+
+
+/* Hukumet atama seridi: partiler kendi renklerinde birer kunye. Sandigi
+   kaldirmadigimiz icin satir bir SECIM degil bir ATAMA gibi okunmali —
+   dugmeler kucuk, destek yuzdesi yaninda. */
+.pol-appoint-row {
+  display: grid;
+  gap: var(--sp-1);
+  margin-top: var(--sp-2);
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--line);
+}
+
+.pol-appoint-row > small {
+  color: var(--text-mute);
+  font-size: var(--fs-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.pol-appoint-list { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
+
+.pol-appoint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.pol-appoint > i {
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--party-color);
+}
+
+.pol-appoint > em { color: var(--text-mute); font-style: normal; }
+.pol-appoint:hover { color: var(--text); border-color: var(--gold); }
+
+.pol-appoint.on {
+  color: var(--gold-bright);
+  border-color: var(--gold);
+  background: var(--gold-wash);
+  cursor: default;
+}
+
+
+/* --- Reform etki seridi ---------------------------------------------------
+   Merdivenin altinda, bir sonraki basamagin GERCEK bedeli ve kazanci.
+   Sayilar motorun katsayilarindan geliyor (reforms.reformPreview); ekran
+   yalnizca adlandirip isaretini boyuyor. Renk "artmasi iyi mi" sorusuna
+   bakar, degerin isaretine degil — ucret faturasinin artmasi yesil olsaydi
+   tablo yalan soylerdi. */
+.reform-effects {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px var(--sp-2);
+  margin-top: var(--sp-1);
+  padding-top: var(--sp-1);
+  border-top: 1px solid var(--line);
+}
+
+.reform-eff {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.reform-eff small {
+  color: var(--text-mute);
+  font-size: var(--fs-label);
+  white-space: nowrap;
+}
+
+.reform-eff b { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
+.reform-eff.up b { color: var(--green); }
+.reform-eff.down b { color: var(--red); }
+
+
+/* --- Vergi esigine kilitleme ---------------------------------------------
+   Iki kucuk anahtar: "hold" yesil esikte tutar, "max" kirmizida. Esikler her
+   hafta oynadigi icin elle kurulan oran sessizce kirmizinin ustune kayabiliyor;
+   kilit oyuncunun niyetini korur. Kaydiracin ustundeki isaret de kilitliyken
+   dolgunlasir, boylece hangi esigin tutuldugu tek bakista okunur. */
+.tax-hold-row { display: inline-flex; gap: 3px; margin-left: var(--sp-2); }
+
+.tax-hold {
+  padding: 0 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  background: none;
+  color: var(--text-faint);
+  font-size: var(--fs-label);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.tax-hold:hover { color: var(--text); }
+.tax-hold.safe.on { color: var(--green); border-color: var(--green); }
+.tax-hold.edge.on { color: var(--red); border-color: var(--red); }
+
+.tax-mark.held {
+  width: 5px;
+  height: 21px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75), 0 0 5px rgba(255, 255, 255, 0.28);
+}
+
+
+/* Orduyu dagit: satirin sagina yaslanan, dikkat cekmeyen ama bulunabilir bir
+   dugme. Kirmizi degil — dagitmak bir hata degil, bir karardir. */
+.unit-disband {
+  flex: none;
+  align-self: center;
+  padding: 3px var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+
+.unit-disband:hover:not([disabled]) { color: var(--red); border-color: var(--red); }
+.unit-disband[disabled] { opacity: 0.4; cursor: default; }

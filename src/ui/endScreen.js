@@ -109,7 +109,7 @@ export function showEndScreen(game, result) {
   // Sayac yoksa satir da yok: eski kayitta tally birikmemis olabilir.
   const tally = nation.tally;
   const tallyLine = tally && tally.warsFought > 0
-    ? `<p class="epilogue-tally">${tally.warsFought} wars fought · peak treasury ¤${(tally.peakGold ?? 0).toLocaleString('en-US')} · worst debt ¤${(tally.worstDebt ?? 0).toLocaleString('en-US')}</p>`
+    ? `<p class="epilogue-tally">${tally.warsFought} wars fought · peak treasury £${(tally.peakGold ?? 0).toLocaleString('en-US')} · worst debt £${(tally.worstDebt ?? 0).toLocaleString('en-US')}</p>`
     : '';
 
   const host = document.createElement('div');
