@@ -17,7 +17,7 @@ import { LandMaterial } from './material.js';
 import { SurfaceGL } from './surfaceGL.js';
 
 /**
- * Karenin GÖRÜNEN sahibi. Geçilmez arazi (dağ, zirve, buz) hiçbir province'e
+ * Karenin GÖRÜNEN sahibi. Geçilmez arazi (artık yalnız buz) hiçbir province'e
  * üye olmadığı için `owner` alanı hep -1'dir; bağlı olduğu province'in sahibini
  * gösteririz (bkz. provinces-gen.attachImpassableFringe). Böylece ülkelerin
  * ortasında gri delik kalmaz ve fetihten sonra da doğru kalır.

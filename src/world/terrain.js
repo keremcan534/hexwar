@@ -4,8 +4,14 @@
 // İki ayrı geçilebilirlik var: `passable` kara birimleri, `navigable` deniz
 // yolu içindir. Kara birimi denize girince "bindirilmiş" (embarked) sayılır.
 //
-// `yield` bir işçinin o kareden çıkardığıdır (docs/tasarim.md). Dağ geçilmez
-// ama işlenebilir: demirin ana kaynağı orasıdır.
+// `yield` bir işçinin o kareden çıkardığıdır (docs/tasarim.md).
+//
+// Geçilmez kara artık YALNIZ buz sahanlığıdır. Dağ ve zirve uzun süre
+// `passable: false` idi ve bu, karanın %10.9'unu (standart dünyada 606 kare)
+// oyunun tamamen dışında bırakıyordu: province'e girmiyor, nüfus taşımıyor,
+// işlenmiyor, asker almıyordu. `MOUNTAIN.yields.iron = 3` satırı da bu yüzden
+// ölü veriydi — "demirin ana kaynağı orasıdır" diyen yorumun aksine hiçbir
+// demir oradan çıkmıyordu. Dağ artık normal bir kare: pahalı ve savunmalı.
 
 /** Boş verim; eksik alan yazmamak için taban olarak kullanılır. */
 const NO_YIELD = { food: 0, timber: 0, iron: 0, gold: 0 };
@@ -69,14 +75,24 @@ export const TERRAIN = {
     water: false, passable: true, moveCost: 2, defense: 0.35,
     yields: y({ food: 1, iron: 2 }),
   },
+  // Maliyet 2'yi GEÇEMEZ: en yavaş birim topçudur ve hareket bütçesi 2'dir
+  // (units.js UNIT_TYPES.artillery.moves). pathfind `next > budget` ile eler,
+  // yani 3 maliyetli bir dağ topçuya hâlâ duvar olurdu — duvarı kaldırıp
+  // yalnız bir kola geri koymak en kötüsü. Dağın karakteri hızda değil
+  // savunmada: oyunun en yüksek arazi savunması burada.
+  //
+  // `highland`: province tohumu OLMAZ, komşusuna katılır. Bir sıradağ siyasi
+  // birim değildir, vadinin arka bahçesidir. Bayrak olmadan dağlar kendi
+  // province'lerini kuruyor ve en büyük çekirdek 33'ten 37'ye çıkıp
+  // audit:world'ün okunurluk bandını deviriyordu (ölçüldü).
   MOUNTAIN: {
     id: 'MOUNTAIN', name: 'Mountain', color: '#7a7166',
-    water: false, passable: false, moveCost: Infinity, defense: 0.6,
+    water: false, passable: true, moveCost: 2, defense: 0.6, highland: true,
     yields: y({ iron: 3 }),
   },
   SNOW_PEAK: {
     id: 'SNOW_PEAK', name: 'Snowy Peak', color: '#e3e5e6',
-    water: false, passable: false, moveCost: Infinity, defense: 0.6,
+    water: false, passable: true, moveCost: 2, defense: 0.6, highland: true,
     yields: y({ iron: 1 }),
   },
   TUNDRA: {

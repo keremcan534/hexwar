@@ -55,7 +55,11 @@ function gridSeeds(world, rng) {
           const col = cc * SEED_CELL + dc;
           if (col >= world.cols) break;
           const t = world.tiles[row * world.cols + col];
-          if (t.terrain.passable) bucket.push(t);
+          // Dağlık kare tohum olmaz (terrain.highland): province'i vadi kurar,
+          // dağ ona katılır. Bütünüyle dağlık bir hücre tohumsuz kalır ve
+          // repairOrphans onu komşu province'e bağlar; hiç komşusu yoksa
+          // zaten kendi bileşeni olarak kurulur (izole masif).
+          if (t.terrain.passable && !t.terrain.highland) bucket.push(t);
         }
       }
       if (!bucket.length) continue;
@@ -311,9 +315,10 @@ export function generateProvinces(world) {
 }
 
 /**
- * Geçilmez kara (dağ, zirve, buz) hiçbir province'e üye olmaz: ne nüfus taşır
- * ne işlenir ne de asker girer. Ama SAHİPSİZ de görünmemeli — politik haritada
- * ülkelerin ortasında gri delikler açıyordu.
+ * Geçilmez kara (artık yalnız buz sahanlığı; dağ ve zirve province üyesidir)
+ * hiçbir province'e üye olmaz: ne nüfus taşır ne işlenir ne de asker girer.
+ * Ama SAHİPSİZ de görünmemeli — politik haritada ülkelerin ortasında gri
+ * delikler açıyordu.
  *
  * Çözüm: her geçilmez kare en yakın province'e "etek" (fringe) olarak bağlanır.
  * Ekonomiye girmez (tileIdx'e eklenmez), yalnız boyama ve sınır çizimi onu

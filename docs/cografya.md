@@ -152,8 +152,9 @@ Değişen, yüksekliğin **nereden geldiği**:
 - Sıradağlar şablondan gelir: yarımada seddi, geçit sırtı, doğu sıradağları,
   Yeni Dünya kordilyeri ve güney sırtı, güney kıtası doğu yamacı.
 - **Geçit gürültüsü** zincir boyunca yüksekliği dalgalandırır: kesintisiz bir
-  sıradağ geçilmez olduğu için kıtayı ikiye bölerdi. Ölçüldü: her büyük kütlenin
-  geçilebilir alanının %99-100'ü tek parça kalıyor.
+  sıradağ ova şeridini ikiye bölerdi. Ölçüldü: her büyük kütlenin geçilebilir
+  alanının %99-100'ü tek parça kalıyor. (Dağ artık geçilebilir — maliyet 2,
+  savunma %60 — ama zincir yine de ucuz yolu kıvrandırır, iş görür.)
 - Deniz: kıyıdan uzaklığa göre sahanlık → açık deniz → derin bantları
   (bant kenarı gürültüyle tırtıklanır, mükemmel halka oluşmaz).
 
