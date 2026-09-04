@@ -172,7 +172,7 @@ sub('TEST 3 — vatandaslik politikasi huzursuzlugu oynatiyor mu?');
     const target = world2.nations.find((n) => n.name === multiNation?.name);
     if (!target) break;
     probe.turns.playerNation = target.id;
-    for (let i = 0; i < 260; i++) {
+    for (let i = 0; i < 520; i++) {
       // Politika her hafta yeniden yazilir: runPolitics YZ tercihine geri ceker.
       forcePolicy(target, 'citizenship', policy);
       probe.turns.endTurn();
@@ -253,7 +253,7 @@ sub('TEST 6 — kulturu kabul etmek huzursuzlugu dusuruyor mu?');
     console.log('  ATLANDI — cok kulturlu aday yok');
   } else {
     probe.turns.playerNation = target.id;
-    for (let i = 0; i < 260; i++) {
+    for (let i = 0; i < 520; i++) {
       forcePolicy(target, 'citizenship', 'limited_citizenship');
       probe.turns.endTurn();
     }

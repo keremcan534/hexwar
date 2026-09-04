@@ -232,6 +232,10 @@ function initialProvinceEcon(world, province) {
     ) * 100 * POPULATION_SCALE),
     rgoBaseDevelopment: track === 'agriculture' ? agriculture : extraction,
     migration: 0,
+    // Kultur sayaclari (bkz. culture.js). Kurulusta SIFIR: 1836 imparatorlugu
+    // oturmus bir dunyadir, huzursuzluk oyun boyunca birikir.
+    unrest: 0,
+    revoltWeeks: 0,
     // Silah altindaki insan. Nufusun ICINDE durur, ondan DUSULMEZ: asker de
     // vatandastir. Bu sayac yalnizca "bu insanlar simdilik baska bir ise
     // bagli" der — ne tarlada calisir ne ikinci kez askere alinabilir.

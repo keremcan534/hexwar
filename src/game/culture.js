@@ -33,6 +33,8 @@ import { TIER, announce } from './chronicle.js';
 export const CULTURE = {
   /** Huzursuzluk olcegi 0-10 (nufus ekranindaki militanlikla ayni dil). */
   MAX_UNREST: 10,
+  /** Yabanci payin huzursuzluga cevrilme katsayisi (bkz. unrestBreakdown). */
+  CULTURE_WEIGHT: 6,
   /** Haftalik yaklasma: huzursuzluk zirvelemez, birikir (~yarilanma 34 hafta). */
   APPROACH: 0.02,
   /** Bu esigin ustunde gecen her hafta isyan sayacini buyutur. */
@@ -42,7 +44,14 @@ export const CULTURE = {
   /** Isyan icin kabul EDILMEYEN halkin asgari payi. Tek kulturlu devlet muaf. */
   REVOLT_FOREIGN_MIN: 0.5,
   /** Kopan kume bu huzursuzlukla devralinir: geri alan hemen ayni sorunu bulur. */
-  AFTER_REVOLT_UNREST: 5,
+  AFTER_REVOLT_UNREST: 3,
+  /**
+   * Ayaklanan kume bu kadar hafta yeniden ayaklanamaz. Sogumasiz surumde
+   * olculdu: kume ~66 haftada bir yeniden kopuyor, 520 haftada dunya capinda
+   * 107 isyan cikiyor ve sinirlar titriyordu. Iki yil, yeni sahibin (ya da
+   * geri alanin) haklari tanimasina ve asimilasyonun tutmasina yeter.
+   */
+  REVOLT_COOLDOWN: 104,
   /** Sadakat kazancindan huzursuzluk basina dusen pay. */
   CONTROL_DRAG: 0.15,
 
@@ -130,7 +139,17 @@ export function unrestBreakdown(world, province, nation, { occupied = 0, turn = 
   const foreign = foreignShareOf(province, nation);
   const era = nationalismEra(turn);
   // ANA KAYNAK: yabanci pay x haklar x cag. Tek kulturlu kumede sifirdir.
-  const culture = foreign * CULTURE.MAX_UNREST * rightsWeight(nation) * era;
+  //
+  // Katsayi MAX_UNREST (10) degil CULTURE_WEIGHT (6). 10 ile olculdu ve iki
+  // sey birden bozuluyordu: (a) residency altinda hedef 10'a, yani TAVANA
+  // dayaniyor ve refah/haklar/cag hicbir sey degistiremiyordu — vatandaslik
+  // kaldiraci olculemedi (4.56 vs 4.64); (b) tamamen yabanci her kume
+  // esigi ~60 haftada asiyor, ~86. haftada kopuyor ve isyandan sonra 66
+  // haftada bir yeniden kopuyordu (520 haftada 203 isyan / 263 kume).
+  // 6 ile taban durum ESIGIN ALTINDA kalir: yabanci tasra pahalidir ama
+  // ayaklanmaz. Onu esigin USTUNE tasiyan sey taze fetih, savas, ya da
+  // milliyetcilik cagi olur — yani bir OLAY, bir sabit degil.
+  const culture = foreign * CULTURE.CULTURE_WEIGHT * rightsWeight(nation) * era;
   // TAZE FETIH: sadakati oturmamis toprak. Kendi halkini kurtarmak neredeyse
   // bedava (0.3), yabanci halki fethetmek pahali (1.0).
   const conquest = (1 - Math.max(0, Math.min(1, (econ.control ?? 100) / 100)))
@@ -216,7 +235,13 @@ export function runProvinceCulture(world, province, nation, { occupied, turn }) 
   const econ = province.econ;
   if (!econ) return { recolored: false, revolt: false };
   const { target } = unrestBreakdown(world, province, nation, { occupied, turn });
-  const current = Number.isFinite(econ.unrest) ? econ.unrest : target;
+  // ILK DOKUNUSTA SIFIRDAN BASLA, HEDEFTEN DEGIL. Once `?? target` yaziliydi
+  // ve 1836 dunyasi ilk haftada tam huzursuzlukla aciliyordu: tarayicida
+  // olculdu, 31. haftada dunya capinda 106 kume ayaklanmisti. Imparatorluk
+  // oyunun basinda oturmustur; huzursuzluk BIRIKIR — hedefe ~60 haftada
+  // yaklasir, isyan sayaci ondan sonra isler, yani ilk kopus en erken
+  // 1838-40 civaridir.
+  const current = Number.isFinite(econ.unrest) ? econ.unrest : 0;
   econ.unrest = Math.max(0, Math.min(
     CULTURE.MAX_UNREST,
     current + (target - current) * CULTURE.APPROACH,
@@ -225,7 +250,8 @@ export function runProvinceCulture(world, province, nation, { occupied, turn }) 
   const foreign = foreignShareOf(province, nation);
   const boiling = econ.unrest >= CULTURE.REVOLT_UNREST
     && foreign >= CULTURE.REVOLT_FOREIGN_MIN
-    && occupied <= 0;
+    && occupied <= 0
+    && turn >= (econ.revoltCooldown ?? 0);
   // Sayac iki yonlu: bastirilan huzursuzluk iki kat hizli soner, yoksa tek
   // bir kotu yil kalici bir isyan borcu birakirdi.
   econ.revoltWeeks = boiling
@@ -278,6 +304,7 @@ function secede(game, province, nation) {
   econ.control = 55;
   econ.unrest = CULTURE.AFTER_REVOLT_UNREST;
   econ.revoltWeeks = 0;
+  econ.revoltCooldown = (game.turns?.turn ?? world.turn ?? 0) + CULTURE.REVOLT_COOLDOWN;
   // Kosu sayaci: denetim "isyan gercekten oluyor mu" sorusunu savas kaynakli
   // sahiplik degisiminden ayirabilsin. Kayda girmez, bir istatistiktir.
   world.cultureRevolts = (world.cultureRevolts ?? 0) + 1;
