@@ -731,6 +731,14 @@ seferberlikle %28/34/32 → bu bölümle %25/27/48. Denenip GERİ ALINANLAR:
 savunma genişliği 3 ve siperli arazi çarpanı 1.5 (saldırı açıldı ama
 kartopu %42–50), yürüyüşe "iki dost kenar" şartı (fark yok).
 
+**Bombardıman.** İlerleme duruşundaki grup giremediği savunulan kareye bitişik
+durduğu her hafta savunanın siperini aşındırır: hat birliği başına 0.006,
+destek kolu (topçu, hava) başına 0.012, siper 0 olana kadar. Siperi tamamen
+silmek savunmayı ~%26 düşürür, yani 0.66'lık bir şansı 0.89'a taşır —
+saldırgan duruşun eşiğine. Bombardıman hattı KIRMAZ, kırılabilir hale getirir;
+topçusuz ordu bunu üç kat yavaş yapar. Dar cephede donan savaşların çözümü bu:
+`bully` senaryosunda BULLY-1 savaşı 104 hafta donup beyaz barışla bitiyordu.
+
 **Pratikte** — bir kareyi iki-üç yandan sar: genişlik 3'ten 5–7'ye çıkar ve
 sayı üstünlüğün nihayet muharebeye girer. Sağ tıkın sonucu her zaman tek
 satırla yazılır ("Order recorded… consolidating 1 more week"); sessiz tık

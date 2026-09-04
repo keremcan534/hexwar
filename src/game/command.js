@@ -949,6 +949,50 @@ function pickWalkInTarget(world, unit, reserved, { general = null, enemy = false
  */
 const STALL_ESCALATION_WEEKS = Infinity;
 
+/**
+ * Siper asindirmasi. Ilerleme durusundaki grup, giremedigi savunulan kareye
+ * bitisik durdugu her hafta savunanin `entrenchment` degerini asindirir.
+ *
+ * Hat piyadesinin siperi savunmaya (1 + entrenchment) carpani verir ve tavani
+ * MAX_ENTRENCHMENT'tir; siperi tamamen silmek savunmayi ~%26 dusurur, yani
+ * 0.66'lik bir sansi 0.89'a tasir — saldirgan duruşun (risk 0.9) esigine.
+ * Yani bombardiman tek basina hatti kirmaz, KIRILABILIR hale getirir.
+ *
+ * Hiz destek koluna baglidir: topcusuz piyade hattı zar zor tirmalar.
+ */
+const BOMBARD_BASE = 0.006;
+const BOMBARD_PER_GUN = 0.012;
+
+function bombard(game, general, divisions) {
+  const world = game.world;
+  const ready = divisions.filter((unit) => readyForOperation(game, unit));
+  if (!ready.length) return;
+  const targets = new Map();
+  for (const unit of ready) {
+    for (const tile of world.neighbors(unit.tile)) {
+      const controller = controllerOf(tile);
+      if (!tile.terrain.passable || controller < 0 || controller === unit.nationId) continue;
+      if (general.target != null && controller !== general.target) continue;
+      if (!atWar(world, controller, unit.nationId)) continue;
+      if (!unitsOn(tile).some((other) => other.nationId !== unit.nationId)) continue;
+      const entry = targets.get(tile) ?? { guns: 0, men: 0 };
+      // Destek kolu (topcu, hava) bombardimanin kendisidir; hat birligi
+      // yalnizca baski kurar.
+      if (unit.type?.support) entry.guns++; else entry.men++;
+      targets.set(tile, entry);
+    }
+  }
+  for (const [tile, entry] of targets) {
+    const rate = BOMBARD_BASE * Math.min(3, entry.men) + BOMBARD_PER_GUN * entry.guns;
+    if (rate <= 0) continue;
+    for (const unit of unitsOn(tile)) {
+      if (unit.nationId === general.nationId) continue;
+      if (!(unit.entrenchment > 0)) continue;
+      unit.entrenchment = Math.max(0, unit.entrenchment - rate);
+    }
+  }
+}
+
 function advance(game, general, divisions) {
   const world = game.world;
   const stalled = (general.stalledWeeks ?? 0) >= STALL_ESCALATION_WEEKS;
@@ -990,6 +1034,13 @@ function advance(game, general, divisions) {
   if (opened) general.stalledWeeks = 0;
   else if (assaultOutlook(world, general, game.turns.turn)) {
     general.stalledWeeks = (general.stalledWeeks ?? 0) + 1;
+    // BOMBARDIMAN. Dalinamayan hat SESSIZCE DONUYORDU: dar (3 hexlik) bir
+    // cephede dolu, siperli yigin 2:1 sayisal ustunlukle bile kirilmiyor
+    // (olculdu: sans 0.66-0.71, gereken 1.2) ve savas iki yil sonra beyaz
+    // barisla kapaniyordu. Topcu tam bunun icin vardir: giremedigin hatti
+    // dovarsin, siper cokene kadar. Siperi asindirmak SAYIYI degil KONUMU
+    // yipratir — kayip vermeden, ama zaman ve topcu isteyerek.
+    bombard(game, general, divisions);
   } else general.stalledWeeks = 0;
 
   // YURUYUS: sahipsiz toprak ve savunmasiz dusman karesi. Tempo YALNIZ

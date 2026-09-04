@@ -171,9 +171,19 @@ function leaderDetail(leader, loose) {
       ${loose > 0 && !leader.full ? `<button class="mil-btn" data-military-assign="${leader.id}"
         title="${esc(`Put every ${leader.branch === 'navy' ? 'ship' : 'division'} without a commander under this officer.`)}">
         Take ${loose} loose ${loose === 1 ? 'unit' : 'units'}</button>` : ''}
-      ${leader.divisions ? `<button class="mil-btn" data-military-dismiss="${leader.id}"
-        title="Release this command; the divisions stay on the map without an officer.">
-        Release command</button>` : ''}
+      ${/* HER ZAMAN GORUNUR, gerekirse devre disi. Once yalnizca tumeni olan
+            subayda ciziliyordu ve dugme "yok olan" bir dugmeydi: oyuncu
+            "Release Command diye bir sey bulamadim" diye yazdi. Ad da
+            belirsizdi — subayi mi gorevden aliyoruz, tumenleri mi? Etiket
+            artik SAYIYI soyluyor. */''}
+      <button class="mil-btn" data-military-dismiss="${leader.id}"
+        ${leader.divisions ? '' : 'disabled'}
+        title="${esc(leader.divisions
+    ? `Take the ${leader.divisions} ${leader.branch === 'navy' ? 'ship(s)' : 'division(s)'}`
+      + ' away from this officer. They stay on the map without a commander and'
+      + ' can be handed to someone else (or picked up automatically).'
+    : 'This officer has nothing to release.')}">
+        Release ${leader.divisions || ''} ${leader.branch === 'navy' ? 'ships' : 'divisions'}</button>
     </div>
   </div>`;
 }
