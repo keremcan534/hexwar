@@ -550,7 +550,16 @@ export function borderNationIds(world, nationId) {
 function frontFor(general, borders) {
   const entry = borders[general.nationId];
   if (!entry) return [];
-  if (general.target != null) return entry.byNation.get(general.target) ?? [];
+  if (general.target != null) {
+    const facing = entry.byNation.get(general.target);
+    if (facing?.length) return facing;
+    // HEDEFLE KARA SINIRIMIZ YOK (denizasiri savas, ya da arada tampon bir
+    // ulke). Eski kural burada BOS DONUYORDU ve bos cephe butun grubu
+    // mevkisiz birakiyordu: `assignPosts` erken cikiyor, `march` yurutmuyor,
+    // `advance` gormuyor. Olculdu (military-strategy-audit): savastaki
+    // uluslarda 45 tumen >=8 haftadir atil, en uzunu 78 hafta. Hedefi
+    // tutamayan grup en azindan kendi sinirini tutar.
+  }
   if (entry.hostile.length) return entry.hostile;
   return entry.foreign.concat(entry.frontier);
 }
@@ -638,7 +647,13 @@ function assignPosts(world, divisions, front) {
       }
     }
     if (best < 0) {
-      unit.post = null;
+      // IKINCI HAT. Cephe dolduysa tumen mevkisiz kalıyordu ve mevkisiz tumen
+      // yuruyusten de taarruzdan da dusuyordu: denetim 45 tumeni ">=8 haftadir
+      // atil", en uzunu 78 hafta diye yakaladi (military-strategy-audit).
+      // Seferberlik bunu buyuttu — dar bir cepheye otuz tumen sigmaz. Artik
+      // fazlalik cephenin GERISINE, kendi topragimizda cepheye komsu bir
+      // kareye mevkilenir: yedek bekler, hat kirilinca yerindedir.
+      unit.post = reservePostFor(world, unit, front) ?? null;
       continue;
     }
     claim(best);
@@ -647,6 +662,27 @@ function assignPosts(world, divisions, front) {
   // Karalamalar olu birim/kare referansi tutmasin diye bosaltilir.
   homeless.length = 0;
   index.clear();
+}
+
+/**
+ * Cepheye komsu, kendi kontrolumuzdeki en yakin kare. Yigin dolulugu burada
+ * SORULMAZ: mevki bir niyettir, `march` zaten dolu kareye giremez ve tumen
+ * bir kare geride durur — mevkisiz birakmaktan her hali iyidir.
+ */
+function reservePostFor(world, unit, front) {
+  let best = null;
+  let bestDistance = Infinity;
+  for (const tile of front) {
+    for (const near of world.neighbors(tile)) {
+      if (!near.terrain.passable || controllerOf(near) !== unit.nationId) continue;
+      const distance = world.wrapDistance(unit.tile.q, unit.tile.r, near.q, near.r);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        best = near;
+      }
+    }
+  }
+  return best ? { q: best.q, r: best.r } : null;
 }
 
 // --- Suda kalan tumenin kurtarilmasi ---------------------------------------
