@@ -8,22 +8,38 @@
 // bordro) sinif geliri ON KAT, vergi dokuz kat eriyordu. "Oyunun orta oyunu
 // yok" bulgusunun sebebi buydu.
 //
-// Uc test:
+// Dort test:
 //   1. Fiyat endeksi bir DENGEYE oturmali (surekli asagi kaymamali).
 //   2. Mallarin cogu bantta cakili kalmamali.
 //   3. Nominal gelir yuzyilin ikinci yarisinda cokmemeli.
+//   4. REEL kisi basi tuketim buyumeli. (2026-09-04 eklendi.)
 //
-// ACIK KALAN (bu denetim OLCER, cozmez): dunya uretim kapasitesi tuketimin
-// ~1.9 kati. Fiyat capasi bunu bir DENGEYE cevirir ama dengenin yeri taban
-// fiyatin yarisidir. Gercek bir BUYUME egrisi icin RGO verimi / kisi basi
-// sepet / sanayinin emisi birlikte kalibre edilmeli — ayri bir pass.
+// TEST 4 NEDEN GEREKTI. Ilk uc test 2026-09-04'te hepsi YESILDI ve ekonomi yine
+// de bozuktu: fiyat oturuyor, gelir ayakta, ama insanlar her yil biraz daha az
+// tuketiyordu. Sebep, olculen sayinin NOMINAL olmasiydi — 100 yillik kosuda
+// reel takas 1.32 katina cikarken nominal 2376'dan 524'e iniyor. Nominal seri
+// hacim artisi ile fiyat dususunu birbirine goturur, yani buyumeyi tanim
+// geregi gosteremez. "Buyume egrisi yok" bulgusunun yillarca fiyat cokusuyle
+// karismasinin sebebi tam olarak buydu.
+//
+// ACIK KALAN (bu denetim artik OLCER ve BULGU YAZAR, ama cozmez): dunya uretim
+// kapasitesi tuketimini asiyor ve makas aciliyor (30. yilda ~1.9, 100. yilda
+// 3.2-3.7). Fiyat capasi bunu bir DENGEYE cevirir ama dengenin yeri taban
+// fiyatin yarisidir. Kok sebep talep tarafinda: `bought = quantity * afford`
+// ve afford <= 1, yani talep SABIT sepetin (CLASS_NEEDS) uzerine cikamaz.
+// Gelir arttiginda talep artmaz. Victoria 3'te bu ok vardir (gelir -> yasam
+// standardi -> ihtiyac -> talep); bizde yok. Gercek bir BUYUME egrisi icin RGO
+// verimi / kisi basi sepet / sanayinin emisi birlikte kalibre edilmeli — ayri
+// bir pass.
 //
 // Bu dosya URETIM KODU DEGILDIR ve src/ altina hicbir sey sizdirmaz.
 
 import {
   headless, runPeaceful, pickNation, section, sub, table, n2, finding, reportFindings,
 } from './harness.mjs';
-import { GOODS } from '../../src/game/economy.js';
+import {
+  GOODS, MILITARY_EQUIPMENT_IDS, PRICE_ANCHOR, PRICE_SPEED,
+} from '../../src/game/economy.js';
 
 // 1560 hafta (30 yil). KISA UFUK YANILTIR: dunya yapay olarak yuksek
 // fiyatlarla acilir (1836'da hicbir fabrika yok, her mal kit) ve denge
@@ -42,20 +58,49 @@ function marketSlice(world) {
   let index = 0;
   let counted = 0;
   let pinned = 0;
+  // Fiilen el degistiren mal, SABIT fiyatla: reel tuketim budur. Cari fiyatla
+  // olcmek daireseldir — fiyat zaten fazlanin sonucu.
+  let realTraded = 0;
+  // Fazlanin ne kadari, bu arenada tuketicisi olmayan askeri mallarda? Sayi
+  // ELLE YAZILMAZ: rapor metni bunu kosuda hesaplayip basar.
+  let askeriFazla = 0;
+  let toplamFazla = 0;
   for (const [id, good] of Object.entries(world.market.goods)) {
     const base = good.basePrice ?? GOODS[id]?.basePrice ?? 0;
     if (!(base > 0)) continue;
     supply += good.supply * base;
     demand += good.demand * base;
+    const fazla = Math.max(0, good.supply - good.demand) * base;
+    toplamFazla += fazla;
+    if (MILITARY_EQUIPMENT_IDS.includes(id)) askeriFazla += fazla;
+    realTraded += Math.min(good.supply, good.demand) * base;
     index += good.price / base;
     counted++;
     if (good.price <= base * 0.12 + 1e-6 || good.price >= base * 8 - 1e-6) pinned++;
   }
+  // Reel URETIM ulke defterinden gelir (economy.js realGdp): katma deger,
+  // taban fiyatlarla. Reel TUKETIM piyasadan. Ikisi ayri sorulara cevaptir ve
+  // aralarindaki makas tam olarak "asiri kapasite"nin tanimidir.
+  let realOutput = 0;
+  for (const nation of world.nations) {
+    if (nation.alive && nation.economy) realOutput += nation.economy.realGdp ?? 0;
+  }
+  // Payda DUNYA nufusudur (sahipsiz province dahil), pay ise yalniz yasayan
+  // ulkelerin defteri. Kolonilesme paydayi buyutmeden payi buyutur, yani
+  // sapma buyume LEHINEDIR: test bu yuzden temkinli, yanlis alarm vermez.
+  let population = 0;
+  for (const province of world.provinces ?? []) {
+    population += province.econ?.population ?? 0;
+  }
+  const people = Math.max(1, population);
   return {
+    askeriFazlaPayi: toplamFazla > 1e-9 ? askeriFazla / toplamFazla : 0,
     index: counted > 0 ? index / counted : 0,
     pinned,
     goods: counted,
     ratio: demand > 0 ? supply / demand : 0,
+    realOutputPerCapita: realOutput / people,
+    realTradedPerCapita: realTraded / people,
   };
 }
 
@@ -66,6 +111,8 @@ for (const seed of SEEDS) {
   runPeaceful(game, 60);
   const nation = pickNation(game);
   game.turns.playerNation = nation.id;
+  // Buyume bir SEVIYE degil bir ORANDIR: baslangic kesiti olmadan olculemez.
+  const start = marketSlice(world);
   const half = Math.floor(WEEKS / 2);
   runPeaceful(game, half);
   const mid = marketSlice(world);
@@ -80,9 +127,14 @@ for (const seed of SEEDS) {
     kayma: end.index - mid.index,
     cakili: `${end.pinned}/${end.goods}`,
     arzTalep: end.ratio,
+    askeriFazlaPayi: end.askeriFazlaPayi,
     ortaGelir: midIncome,
     sonGelir: endIncome,
     gelirOran: midIncome > 0 ? endIncome / midIncome : 0,
+    reelUretimBuyume: start.realOutputPerCapita > 0
+      ? end.realOutputPerCapita / start.realOutputPerCapita : 0,
+    reelTuketimBuyume: start.realTradedPerCapita > 0
+      ? end.realTradedPerCapita / start.realTradedPerCapita : 0,
   });
 }
 
@@ -97,6 +149,8 @@ console.log(table(rows, [
   { label: 'gelir(orta)', get: (r) => n2(r.ortaGelir) },
   { label: 'gelir(son)', get: (r) => n2(r.sonGelir) },
   { label: 'gelir orani', get: (r) => n2(r.gelirOran) },
+  { label: 'reel uretim/kisi', get: (r) => n2(r.reelUretimBuyume) },
+  { label: 'reel tuketim/kisi', get: (r) => n2(r.reelTuketimBuyume) },
 ]));
 
 sub('TEST 1 — fiyat endeksi bir dengeye oturuyor mu?');
@@ -141,14 +195,68 @@ sub('TEST 3 — nominal gelir cokuyor mu?');
   }
 }
 
+sub('TEST 4 — reel buyume egrisi var mi?');
+{
+  // BU TESTIN OLCTUGU SEY NOMINAL DEGILDIR ve olmamalidir. Nominal seride
+  // hacim artisi ile fiyat dususu birbirini goturur: 100 yillik kosuda reel
+  // takas 1.32 katina cikarken nominal 2376'dan 524'e iniyordu. "Buyume yok"
+  // bulgusunun yillarca fiyat cokusuyle karismasinin sebebi buydu.
+  //
+  // Iki ayri oran, cunku iki ayri soru:
+  //   uretim/kisi  — ulke defterindeki reel katma deger (economy.js realGdp)
+  //   tuketim/kisi — piyasada fiilen el degistiren mal
+  // Uretim buyurken tuketim buyumuyorsa aradaki makas ASIRI KAPASITEDIR.
+  const enKotuUretim = rows.reduce((a, b) => (b.reelUretimBuyume < a.reelUretimBuyume ? b : a));
+  const enKotuTuketim = rows.reduce((a, b) => (b.reelTuketimBuyume < a.reelTuketimBuyume ? b : a));
+  console.log(`  reel uretim/kisi  en dusuk ${n2(enKotuUretim.reelUretimBuyume)}x (${enKotuUretim.seed})`);
+  console.log(`  reel tuketim/kisi en dusuk ${n2(enKotuTuketim.reelTuketimBuyume)}x (${enKotuTuketim.seed})`);
+  // Olcut: BARIS icinde gecen ~30 yilda insanlar daha iyi yasamali. Duz bir
+  // cizgi bile basarisizliktir — Victoria kalibinda bu donem sanayi devrimidir.
+  if (enKotuTuketim.reelTuketimBuyume < 1) {
+    finding('HIGH', 'reel buyume',
+      `${WEEKS} haftalik barista reel kisi basi tuketim en az 1.00x olmali`,
+      `${n2(enKotuTuketim.reelTuketimBuyume)}x (${enKotuTuketim.seed})`,
+      'kalibrasyon acigi: RGO verimi + kisi basi sepet + sanayinin emisi'
+        + ' birlikte ayarlanmadikca talep sabit sepet tavanina yaslanir'
+        + ' (bkz. CLASS_NEEDS, CLASS_CEILING) ve arz onu gecer');
+  } else {
+    console.log('  -> Reel kisi basi tuketim buyuyor. DOGRU.');
+  }
+}
+
 sub('ACIK BULGU — yapisal asiri kapasite');
 {
   const avg = rows.reduce((s, r) => s + r.arzTalep, 0) / Math.max(1, rows.length);
+  const askeriFazlaPayi = rows.reduce((s, r) => s + (r.askeriFazlaPayi ?? 0), 0)
+    / Math.max(1, rows.length);
   console.log(`  dunya arzi / talebi (taban fiyatla): ${n2(avg)}`);
   console.log('  Bu bir DENGE sorunu degil KALIBRASYON sorunudur: fiyat capasi');
-  console.log('  cokusu durdurur ama dengenin yeri taban fiyatin yarisidir.');
-  console.log('  Gercek buyume egrisi RGO verimi / kisi basi sepet / sanayinin');
-  console.log('  emisinin birlikte kalibre edilmesini ister (ayri pass).');
+  console.log('  cokusu durdurur ama dengenin YERINI arz fazlasi belirler.');
+  // SABIT ELLE YAZILMAZ, ICE AKTARILIR. Burada "K = 5" gomuluydu; PRICE_ANCHOR
+  // 0.018'den 0.060'a kalibre edilince gercek K 1.5 oldu ve denetim yuzyildir
+  // ESKI sayiyi rapor ediyordu. Ayni ailenin dorduncu vakasi (bkz. ledger L1/L5).
+  const K = PRICE_SPEED / PRICE_ANCHOR;
+  // r = arz/talep icin denge fiyati; metin artik kendi formulunu KOSTURUR.
+  const denge = (r) => 1 - K * (r - 1) / (r + 1);
+  const yariyaDusuren = (() => {
+    // x = 0.5 veren r'yi coz: 0.5 = 1 - K(r-1)/(r+1)  ->  r = (K+0.5)/(K-0.5)
+    if (K <= 0.5) return null;
+    return (K + 0.5) / (K - 0.5);
+  })();
+  console.log(`  Denge kapali formda: x = 1 - K(r-1)/(r+1), K = PRICE_SPEED /`);
+  console.log(`  PRICE_ANCHOR = ${n2(PRICE_SPEED)}/${n2(PRICE_ANCHOR)} = ${n2(K)}.`);
+  console.log(`  Olculen ${n2(avg)}x fazla icin denge fiyati: ${n2(denge(avg))}`);
+  if (yariyaDusuren) {
+    console.log(`  Fiyati YARIYA indiren fazla: ${n2(yariyaDusuren)}x`);
+  } else {
+    console.log(`  Bu K ile fiyat hicbir fazlada yariya inmez (taban ${n2(denge(1e9))}).`);
+  }
+  // UYARI METNI DE OLCULUR. Once "fazlanin ~%30'u askeri mallarda" yaziyordu;
+  // sayi elle yazilmisti ve olcum onu dogrulamadi. Artik kosuda hesaplanir.
+  console.log(`  UYARI: bu oran, tuketicisi arenada bulunmayan mallarla kirlenir.`);
+  console.log(`  Askeri mallarin (${MILITARY_EQUIPMENT_IDS.join(', ')}) fazladaki payi:`
+    + ` %${n2(100 * askeriFazlaPayi)}`);
+  console.log('  Buyume icin bakilacak sayi TEST 4\'tur, bu oran degil.');
 }
 
 reportFindings();

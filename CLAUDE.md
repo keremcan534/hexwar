@@ -54,7 +54,7 @@ Bu depoya mekanik EKLEMEK varsayılan değildir. Yeni bir mekanik önermeden ön
 
 İlk tarama: 26 mekanikten 10'u ölü, 5'i gürültü tabanının altındaydı. Yani bu
 depoda asıl risk eksik mekanik değil, **çalışmayan mekanik**.
-Son tarama: 24 mekanik · çalışıyor 22 · gürültü altı 1 · **ölü 0** · savaş
+Son tarama: 26 mekanik · çalışıyor 24 · gürültü altı 1 · **ölü 0** · savaş
 kaldıracı 1 (barış arenasında ölçülemez).
 
 Her mekaniğin formülü, kodu, "çalışıyor mu" testi ve pratikte ne yaptığı:

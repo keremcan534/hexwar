@@ -290,7 +290,10 @@ export const HIRING_INTERVAL = 4;
 // 0.0008 -> 0.0018: nüfus artışı Vic2 ölçeğine (yüzyılda ~2 kat) inince eski
 // akış sanayiyi açlıktan öldürüyordu — doluluk 40. yılda %38'e düşmüştü.
 // Sanayileşme artık doğum fazlasından değil, kırdan gelen göçten beslenir.
-const MONTHLY_HIRE_RATE = 0.0018;
+// 0.0018 -> 0.0012: okuryazarlık çarpanı üstel olunca (schooling) geç yüzyıl
+// akışı zaten hızlanıyor; taban akış düşmezse erken yüzyıl da hızlı kalıyor ve
+// eğrinin biçimi yine düzleşiyordu.
+const MONTHLY_HIRE_RATE = 0.0012;
 /** Tek tesisin ayda alabilecegi kadro payi: sifirdan tam kadro en az ~10 ay. */
 const FACTORY_HIRE_CAP = 0.10;
 // Sanayi fakir nüfusun tamamını yutamaz: tarla ve maden de işçi ister.
@@ -501,13 +504,32 @@ export function needAmount(need, turn) {
 }
 
 const DEFAULT_TAXES = { lower: 20, middle: 15, upper: 10 };
-const PRICE_SPEED = 0.09;
+export const PRICE_SPEED = 0.09;
 /**
- * Fiyatin taban fiyatina donme hizi (bkz. updatePrices). PRICE_SPEED'in
- * besde biri: dengesizlik hep kazanir, ama yalnizca SUREKLI oldugu surece.
- * Bir mali tabanda tutmak icin gereken kalici arz fazlasi ~%20'dir.
+ * Fiyatin taban fiyatina donme hizi (bkz. updatePrices).
+ *
+ * DENGE KAPALI FORMDA. `dengesizlik x PRICE_SPEED + capa = 0` cozulurse,
+ * r = arz/talep ve x = fiyat/taban icin:
+ *     x = 1 - K (r-1)/(r+1),   K = PRICE_SPEED / PRICE_ANCHOR
+ * Yani K, kalici bir arz fazlasinin fiyati ne kadar ezdigini belirleyen TEK
+ * sayidir (17 malda gozlenen fiyata karsi RMS hata 0.06 ile dogrulandi).
+ *
+ * 0.018 -> 0.060, yani K 5'ten 1.5'e. Eski deger "%22 kalici fazla fiyati
+ * YARIYA indirir, %50 fazla mali banda civiler" demekti ve dengenin taban
+ * fiyatin yarisinda kurulmasinin sebebi buydu; gelir nominal oldugu icin
+ * (RGO degeri x pay + bordro) hanenin alim gucu de oradan asagi cekiliyordu.
+ *
+ * KITLIK MEKANIGI OLMEDI: gercek bir kitlikta dengesizlik sinyali +0.09'a
+ * kadar cikar, capa ise tavanda en fazla ((1-8)/8) x 0.06 = -0.053 ceker —
+ * fiyat hala tavana tasinabilir. Capa kitligi degil, KALICI FAZLANIN
+ * biriktirdigi cokusu sinirlar.
+ *
+ * Olculdu (`npm run audit:growth`, 100 yil x 2 tohum, INCOME_POOL_SHARE 0.70
+ * ile birlikte): H1 0.94/1.01 -> 1.03/1.05 · H2 %5.85/%3.84 -> %13.83/%11.63.
+ * Tek basina degil, gelir payiyla BIRLIKTE kalibre edildi — tek tek denenen
+ * her kaldirac daha once elenmisti (bkz. MEKANIK_KILAVUZU 4.3).
  */
-const PRICE_ANCHOR = 0.018;
+export const PRICE_ANCHOR = 0.060;
 
 /**
  * Gümrüğün ithalat iştahını ne kadar kıstığı. %10 tarife iştahı ~%14, %50
@@ -1196,9 +1218,17 @@ function runPromotion(nation, mobility) {
       ? (source.prosperityWeeks ?? 0) + schooling
       : Math.max(0, (source.prosperityWeeks ?? 0) - 2);
     if (source.prosperityWeeks < 8) continue;
-    source.population -= POPULATION_COHORT;
-    target.population += POPULATION_COHORT;
-    mobility[key] = POPULATION_COHORT;
+    // KOHORT SABIT DEGIL. 10.000 kisilik sabit akis, yuzyilda iki kat buyuyen
+    // bir nufusta oran olarak surekli KUCULUR. Ikinci carpan okuryazarliktir:
+    // Vic2'de katip ve memur sanayi ve okulla birlikte gelir, o yuzden orta
+    // sinif yuzyilin ikinci yarisinda hizlanir.
+    const kohort = Math.max(
+      POPULATION_COHORT,
+      source.population * 0.0025 * (0.25 + literacy * 3.5),
+    );
+    source.population -= kohort;
+    target.population += kohort;
+    mobility[key] = kohort;
     source.prosperityWeeks = 0;
   }
 }
@@ -1229,9 +1259,15 @@ export function runPopulationMobility(nation, turn) {
     const socialClass = economy.classes[sourceClass];
     if (socialClass.canAffordNeeds || socialClass.hardshipWeeks < 4
       || socialClass.population < POPULATION_COHORT) continue;
-    socialClass.population -= POPULATION_COHORT;
-    economy.classes[targetClass].population += POPULATION_COHORT;
-    economy.mobility[mobilityKey] = POPULATION_COHORT;
+    // DUSUS DE ORANSAL. Terfi oransal, dusus sabit kalsaydi denge yapay
+    // olarak yukari kayardi; ayni olcek iki yonde de gecerli.
+    const dusen = Math.min(
+      socialClass.population,
+      Math.max(POPULATION_COHORT, socialClass.population * 0.0025),
+    );
+    socialClass.population -= dusen;
+    economy.classes[targetClass].population += dusen;
+    economy.mobility[mobilityKey] = dusen;
     socialClass.hardshipWeeks = 0;
   }
   economy.cohortPopulation = CLASS_IDS.reduce(
@@ -1314,6 +1350,7 @@ export function initNationEconomy(world, nation) {
     trade: emptyTradeSummary(),
     ledger: emptyLedger(),
     gdp: 0,
+    realGdp: 0,
     taxRevenue: 0,
     tariffRevenue: 0,
     importCost: 0,
@@ -1346,8 +1383,16 @@ function ensureInitialMilitaryIndustry(world, nation) {
       q: city.tile.q,
       r: city.tile.r,
       level: 1,
-      // Kuruluş tesisleri yarı kadro başlar: ilk yıllarda üretim var ama az.
-      employees: WORKERS_PER_LEVEL * 0.5,
+      // Kuruluş tesisleri KADROSUZA YAKIN doğar. Yarı kadro ölçüldü ve
+      // 1836'da ulusal doluluğu %61'e çıkarıyordu: sanayi daha ilk haftada
+      // dolu görünüyor, yüzyıl boyunca yalnız seyreliyordu (H4 = 0.89x).
+      // Vic2'de 1836 sanayisi cılızdır; doluluk okuryazarlıkla sonradan gelir.
+      //
+      // 0.15 -> 0.05: 1836 doluluğu %33'ten %28'e iner. Daha aşağısı ÖLÇÜLDÜ
+      // ve alınmadı — işe alım eğrisini de yavaşlatan varyantlar başlangıcı
+      // %8-15'e indiriyor ama orta+üst sınıfı %20'den %13'e düşürüyor: erken
+      // sanayi ücretleri refahın, refah da terfinin tek kaynağı. Takas gerçek.
+      employees: WORKERS_PER_LEVEL * 0.05,
       profit: 0,
       margin: 0,
       throughput: 0,
@@ -1467,6 +1512,16 @@ export function priceOf(world, goodId) {
   return world.market?.goods?.[goodId]?.price ?? GOODS[goodId]?.basePrice ?? 0;
 }
 
+/**
+ * Malın SABIT (taban) fiyatı — reel değerleme için. Cari fiyat serbest
+ * değişken olduğu için nominal bir toplam büyümeyi ölçemez: hacim %30 artarken
+ * fiyat yarıya inince sayı düşer. Reel seri bu yüzden ayrı bir fonksiyondan
+ * okunur; ikisi karışırsa "büyüme" ölçüsü yine fiyata bağlanır.
+ */
+export function basePriceOf(goodId) {
+  return GOODS[goodId]?.basePrice ?? 0;
+}
+
 export function factoryMargin(world, typeId) {
   const type = FACTORIES[typeId];
   if (!type) return 0;
@@ -1489,10 +1544,26 @@ export function factoryCost(nation, typeId) {
   const type = FACTORIES[typeId];
   if (!type) return null;
   const built = nation.economy?.factories?.length ?? 0;
-  // Katsayı 0.12'den 0.05'e indi: tesis türü 7'den 29'a çıkınca kurulu sayı da
-  // çok arttı ve eski eğim 40. fabrikada maliyeti 5 katına çıkarıp
-  // sanayileşmeyi tamamen durduruyordu.
-  const scale = 1 + built * 0.05;
+  // Katsayı 0.12 -> 0.05 -> 0.035. Aynı sebep her seferinde: eğim kurulu sayıyla
+  // çarpıldığı için sanayileşmeyi kendi başarısı durduruyor.
+  //
+  // 0.05 -> 0.035 OLCULDU (audit:growth + tarama). Kapitalistin bütçesi
+  // (`privateCommitRoom` = akış × PRIVATE_FUNDING_HORIZON) fiyat seviyesiyle
+  // birlikte düşerken bedel kurulu sayıyla tırmanıyordu; makas 1838-46 arasında
+  // kapanıyor ve bir daha açılmıyordu — 1838'de 27 ülkenin 24'ü fabrika
+  // açabiliyorken 1846'da SIFIR. 20 fabrikalı bir ülkede çarpan 2.0x yerine
+  // 1.4x olur.
+  //
+  // DEGER FIYAT KARARLILIGIYLA SINIRLI. Egim ne kadar ucuzsa o kadar cok
+  // fabrika, o kadar cok arz — ve arz fazlasi tam da kapatmaya calistigimiz
+  // sey. Olculdu (100 yil x 2 tohum, audit:growth + audit:price-stability):
+  //   0.02  -> uc hedef yesil AMA fiyat capasi testi KALIYOR (kayma -0.29)
+  //   0.03  -> H1 kaciyor (0.99) ve capa testi yine kaliyor
+  //   0.035 -> uc hedef yesil VE capa testi temiz  <-- secilen
+  //     H1 1.19/1.14 · H2 %12.99/%13.25 · H3 1.34x/1.30x
+  // 0.01 daha cok tesis verir (624) ama arz/talep'i 2.03'e iter: fazla ucuz
+  // fabrika, kapatmaya calistigimiz makasi yeniden acar.
+  const scale = 1 + built * 0.035;
   return Object.fromEntries(
     Object.entries(type.cost).map(([resource, amount]) => [resource, Math.round(amount * scale)]),
   );
@@ -2504,6 +2575,39 @@ export function closeFactory(game, nation, factoryId) {
   return true;
 }
 
+/**
+ * OLU TESISI TASFIYE ET. `closeFactory` yalnizca oyuncunun ekranindan
+ * cagriliyordu; YZ'nin kapatma yolu YOKTU. Sonuc olculdu (2 tohum, 1936):
+ * dunyadaki 550 tesisin 350'si beklenen marji <= 0 oldugu icin ise alima
+ * kapaliydi, ortalama %32 doluluktaydi ve kapasitenin %57'sini tutuyordu.
+ * Ulusal dolulugun yuzyil boyunca %45'te takilmasinin sebebi buydu: paydada
+ * hic dolmayacak kapasite birikiyordu (H4).
+ *
+ * Kapanma kosulu iki katli — tesis hem SURELI zararda hem de BOS olmali.
+ * Tek kosul yetmez: yeni biten tesis kadrosuz dogar (bos ama olu degil),
+ * gecici fiyat cukurunda kalan dolu tesis de zararda olabilir.
+ */
+const DEAD_FACTORY_MONTHS = 240;
+const DEAD_FACTORY_FILL = 0.05;
+
+function retireDeadFactories(game, nation) {
+  const factories = nation.economy?.factories ?? [];
+  let closed = 0;
+  for (const factory of [...factories]) {
+    const jobs = factoryJobs(factory);
+    const bos = (factory.employees ?? 0) <= jobs * DEAD_FACTORY_FILL;
+    if (!bos || expectedMargin(game.world, nation, factory) > 0) {
+      factory.deadMonths = 0;
+      continue;
+    }
+    factory.deadMonths = (factory.deadMonths ?? 0) + 1;
+    // Ayda en fazla bir tasfiye: bir ulkenin sanayisi tek ayda cokmesin.
+    // Sirada bekleyen tesis sayacini tutar, gelecek ay kapanir.
+    if (factory.deadMonths < DEAD_FACTORY_MONTHS || closed) continue;
+    if (closeFactory(game, nation, factory.id)) closed++;
+  }
+}
+
 function autoUpgradeFactory(game, nation, factory) {
   if (factory.level >= MAX_FACTORY_LEVEL || !factoryAtCapacity(factory)) return false;
   // Zarar eden tesise kimse sermaye koymaz.
@@ -2712,6 +2816,9 @@ function runFactoryEmployment(game, nation) {
   economy.industrialLayoffs = 0;
   if (!factories.length) return;
 
+  // Once tasfiye: kapanan tesisin kapasitesi bu ayin doluluk hesabina girmesin.
+  retireDeadFactories(game, nation);
+
   // İşten çıkarma da işe alımla aynı sinyale bakar. Eskiden alım ileriye
   // dönük beklenen marja, çıkarma tek ayın gerçekleşen kârına bakıyordu:
   // aynı tesis aynı ay hem "kârlı" diye doluyor hem "zararda" diye
@@ -2740,7 +2847,11 @@ function runFactoryEmployment(game, nation) {
   // Eğitim ve yüksekögretim kurumu işgücünü niteliklendirir: aynı nüfus daha
   // hızlı akar (eski üniversite binasının sayacı kurum seviyesine taşındı).
   // Okuryazarlik stogu ise alimi da surer (bkz. runPromotion notu).
-  const schooling = 1 + clamp(economy.literacy ?? 0, 0, 1) * 0.5
+  // Okuryazarlık DOĞRUSAL değil ÜSTEL sürer. Doğrusal çarpanla (1 + oku×0.5)
+  // cahil ülke de işçi akıtıyordu; Vic2'de fabrikaya adam gelmesi
+  // okuryazarlık eşiğini geçince ivmelenir. Kare alınca ilk yarım yüzyıl
+  // yavaş, sonrası hızlı olur — reel GSYH eğrisiyle aynı biçim.
+  const schooling = 1 + clamp(economy.literacy ?? 0, 0, 1) ** 2 * 2.5
     + socialLevel(nation, 'education') * 0.25
     + higherEducationBonus(nation);
   const lower = civilianLower(economy);
@@ -2796,7 +2907,17 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
   const economy = nation.economy;
   const reformMods = reformModifiers(nation);
   let totalProfit = 0;
-  let industrialOutput = 0;
+  // SANAYININ GSYH'YE KATKISI KATMA DEGERDIR, HASILAT DEGIL. Eskiden burada
+  // `industrialOutput += fiyat × miktar` birikiyordu, yani fabrika hasilatinin
+  // tamami. Demir cevheri RGO'da bir kez, celigin hasilatinda bir daha, aletin
+  // hasilatinda bir daha sayiliyordu — klasik cift sayim. Olculdu (2 tohum,
+  // 30 yil): GSYH 1.64x/1.69x sisiyor, sanayinin payi 6.65x/7.61x abartiliyor
+  // ve buyuk guc siralamasinda 16/31 ve 13/26 ulke yer degistiriyor. Dogru
+  // sayi (`valueAdded`) zaten asagida hesaplaniyordu ve yalnizca bordroda
+  // kullaniliyordu.
+  let industrialValueAdded = 0;
+  // Ayni toplam TABAN fiyatlarla: buyume egrisini ancak reel seri gosterir.
+  let industrialReal = 0;
   // Bordro bu hafta sifirdan birikir; fiscalBalance sinif gelirine dagitir.
   economy.wagesPaid = 0;
 
@@ -2887,9 +3008,31 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
 
     let revenue = 0;
     let inputCost = 0;
+    // Reel ikizler TABAN fiyatla degerlenir ve TARIFE ICERMEZ: gumruk bir
+    // transferdir, uretilen mal degil. Nominal maliyet tarifeyi icermeye devam
+    // eder cunku bordronun tabani odur (bkz. valueAdded) ve o dengeye dokunmak
+    // bu duzeltmenin isi degil.
+    let realRevenue = 0;
+    let realInputCost = 0;
+    // TALEP ILE ARZ AYNI CARPANI GORMELI.
+    //
+    // Asagidaki yorumun soyledigi niyet suydu: "fiyat karsilanamayan talebi de
+    // gorur, maliyet yalniz gercekten kullanilani". Yani talep ile tuketim
+    // arasindaki tek fark KITLIK olmaliydi. Ama `laborThroughput` kitlikla
+    // birlikte REFORM ve TEKNOLOJI carpanlarini da dusuruyordu; cikti ise
+    // `throughput` ile yaziliyordu. Sonuc: fabrika teknoloji kadar cok girdi
+    // TUKETIYOR (maliyete yaziliyor) ama pazardan o kadar ISTEMIYOR.
+    //
+    // Olculdu (100 yil, gozlemci, taban fiyatla): 1936'da teknoloji ciktiyi
+    // 2.16 kat buyuturken girdiyi 0.535'e kisiyor — bilesik 4.03 kat. Fabrika
+    // girdi talebi 75.5'te yatay kalirken fabrika arzi 496'ya cikiyordu.
+    // Duzeltince girdi talebi 190'a, dunya arz/talep orani 2.95'ten 2.05'e indi.
+    const wantedThroughput = laborThroughput * reformMods.throughput
+      * (1 + (techMods?.factoryThroughput ?? 0));
     for (const id in type.inputs) {
       const amount = type.inputs[id] * inputScale;
-      const requested = amount * laborThroughput;
+      // Talep KITLIGI gormez (niyeti gosterir), tuketim gorur.
+      const requested = amount * wantedThroughput;
       const consumed = amount * throughput;
       // Fiyat, karşılanamayan talebi de görür; maliyet yalnız gerçekten kullanılan
       // girdiye yazılır. Böylece kıtlık fiyatı yükseltirken hayali üretim yaratmaz.
@@ -2903,6 +3046,7 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
       const importShare = clamp(economy.goodsFlow?.[id]?.importShare ?? 0, 0, 1);
       const tariffFactor = 1 + (economy.tariff / 100) * importShare;
       inputCost += priceOf(world, id) * consumed * tariffFactor;
+      realInputCost += basePriceOf(id) * consumed;
     }
     if (factory.typeId === 'ARMS_FACTORY') {
       const line = ensureProductionLine(factory);
@@ -2916,7 +3060,7 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
       addNationFlow(nation, id, 'production', qty);
       ownOutput[id] = (ownOutput[id] ?? 0) + qty;
       revenue += priceOf(world, id) * qty;
-      industrialOutput += priceOf(world, id) * qty;
+      realRevenue += basePriceOf(id) * qty;
       if (factory.typeId === 'ARMS_FACTORY') factory.lineOutput += qty;
     }
     // İşçi, girdi kıtlığında üretim düşse de fabrikada kalır ve ücretini alır.
@@ -2924,6 +3068,10 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
     // Ucret = katma degerin emek payi (bkz. LABOR_SHARE): fiyat seviyesiyle
     // olceklenir ve fiscalBalance'ta sinif gelirine GERCEKTEN odenir.
     const valueAdded = Math.max(0, revenue - inputCost);
+    // TEK TANIM: ayni katma deger hem bordronun tabani hem GSYH'nin sanayi
+    // terimi. Iki ayri yerde yazilsaydi biri kayinca ekran defteri tutmazdi.
+    industrialValueAdded += valueAdded;
+    industrialReal += Math.max(0, realRevenue - realInputCost);
     const wages = valueAdded * Math.min(0.85, LABOR_SHARE * reformMods.wageCost);
     economy.wagesPaid += wages;
     // Tesis basina bordro sahada dursun: denetim VA = ucret + kar kimligini
@@ -2946,7 +3094,7 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
   }
 
   economy.factoryProfit = totalProfit;
-  return industrialOutput;
+  return { value: industrialValueAdded, real: industrialReal };
 }
 
 // Sinif sepetlerinin onceden acilmis [goodId, need] listeleri: tablo statik,
@@ -3257,11 +3405,31 @@ function populationDemand(world, nation, market) {
  * DISARI ACILDI: sirket katmani cikarim sahibinin hakkini ayni sayidan
  * turetir. Iki yerde ayri ayri yazilsaydi
  * biri kayinca temettu ust sinif gelirinden farkli bir tutar duserdi.
+ *
+ * 0.35 -> 0.70. GEREKCE MUHASEBEDIR, ayar degil: bu sayi kirsal uretimin
+ * PAZARLANAN payidir, `SUBSISTENCE_SHARE.lower` (0.30) ise hanenin kendi
+ * uretiminden karsiladigi paydir. Ikisi ayni bolusumun iki yarisi oldugu
+ * halde toplamlari 0.65 tutuyordu; kalan %35 ne pazara ne haneye yaziliyordu.
+ * 0.70 + 0.30 = 1.00 ile bolusum kapaniyor.
+ *
+ * BU SAYI DAHA ONCE YANLIS METRIKLE ELENMISTI. d9d05e9 0.35 -> 0.6 denemis ve
+ * "GSYH ayni kaldi" diye reddetmisti; oysa GSYH'nin degismemesi BEKLENEN
+ * seydir — havuz bir transferdir, uretim yaratmaz. Reel olcutlerle (bkz.
+ * audit:growth) ayni kaldirac uc hedefi de iyilestiriyor ve sanayiyi en cok
+ * buyuten varyant cikiyor.
+ *
+ * Olculdu (100 yil x 2 tohum, PRICE_ANCHOR 0.060 ile BIRLIKTE):
+ *   H1 reel tuketim/kisi   0.94 / 1.01  ->  1.03 / 1.05   (gecti)
+ *   H2 orta+ust payi       %5.85 / %3.84 -> %13.83 / %11.63 (gecti)
+ *   H3 tesis buyumesi      1.12x / 1.03x ->  1.19x / 1.16x  (hala kirmizi)
+ * H3 ACIK KALIYOR ve kilidi burada degil: yeni tesisin bedeli kurulu sayiyla
+ * tirmanirken kapitalistin butcesi fiyatla birlikte cokuyor (bkz. factoryCost
+ * ve privateCommitRoom).
  */
-export const INCOME_POOL_SHARE = 0.35;
+export const INCOME_POOL_SHARE = 0.70;
 export const INCOME_WEIGHTS = { lower: 0.42, middle: 0.33, upper: 0.25 };
 
-function fiscalBalance(nation, baseOutputValue, industrialOutput) {
+function fiscalBalance(nation, baseOutputValue) {
   const economy = nation.economy;
   // GELIR ARTIK UC GERCEK KANALDIR:
   //   1. Kirsal/temel uretimin pazarlanan payi (incomePool) — RGO degeri.
@@ -4482,10 +4650,18 @@ export function runNationEconomy(game, nation, ctx) {
     const ownOutput = nationOutputScratch;
     for (let i = 0; i < GOOD_IDS.length; i++) ownOutput[GOOD_IDS[i]] = 0;
     rawProduction(world, nation, market, ownOutput);
+    // RGO'nun katma degeri brut ciktisina esittir: bu modelde tarlanin
+    // piyasadan aldigi bir girdi yok (gubre TALEP olarak yazilir ama RGO'ya
+    // maliyet olarak islenmez). Sanayi icin ayni sey DOGRU DEGILDIR — bkz.
+    // runFactories.
     let baseOutputValue = 0;
-    for (const id in ownOutput) baseOutputValue += priceOf(world, id) * ownOutput[id];
+    let baseOutputReal = 0;
+    for (const id in ownOutput) {
+      baseOutputValue += priceOf(world, id) * ownOutput[id];
+      baseOutputReal += basePriceOf(id) * ownOutput[id];
+    }
     mark('raw');
-    const industrialOutput = runFactories(world, nation, market, ownOutput, inputAvailability);
+    const industry = runFactories(world, nation, market, ownOutput, inputAvailability);
     // İşe alım ve seviye atlama aylıktır: bu haftanın kârı görüldükten sonra,
     // dört haftada bir. Sanayinin 100 yıla yayılmasını sağlayan tempo budur.
     if ((world.turn ?? 1) % HIRING_INTERVAL === 0) runFactoryEmployment(game, nation);
@@ -4574,11 +4750,16 @@ export function runNationEconomy(game, nation, ctx) {
       (military.supplyIndex ?? 1) * 0.85 + weekSupply * 0.15, 0, 1,
     );
 
-    nation.economy.gdp = baseOutputValue + industrialOutput;
+    // GSYH = RGO katma degeri + SANAYI KATMA DEGERI. Cari fiyatlarla.
+    nation.economy.gdp = baseOutputValue + industry.value;
+    // REEL GSYH ayni toplam TABAN fiyatlarla. Buyume egrisini yalniz bu
+    // gosterebilir: nominal seride hacim artisi ile fiyat dususu birbirini
+    // goturuyor ve "buyume yok" bulgusu yillarca fiyat cokusuyle karisti.
+    nation.economy.realGdp = baseOutputReal + industry.real;
     // Korunum denetimi gelir bilesimini yeniden hesaplayabilsin diye taban
     // uretim degeri ayrica saklanir (gdp = taban + sanayi tek basina yetmez).
     nation.economy.baseOutputValue = baseOutputValue;
-    fiscalBalance(nation, baseOutputValue, industrialOutput);
+    fiscalBalance(nation, baseOutputValue);
     runPopulationMobility(nation, world.turn);
     mark('fiscal');
     runPrivateSector(game, nation);

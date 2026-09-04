@@ -249,14 +249,21 @@ sub('Temsili kohortlarin gelir/vergi/tuketim/artik defteri (200 hafta)');
   // geliriyle kurar (fiscalBalance ayni hafta daha sonra kosar). Onceki
   // haftanin gelir/vergi anlik goruntusu alinir, bir hafta ilerletilir,
   // kimlik o cifte karsi SIKI dogrulanir.
+  // ULKE BIR KEZ SECILIR VE KIMLIGIYLE TASINIR. `pickNation` en cok fabrikasi
+  // olan ulkeyi dondurur; iki ayri haftada iki kez cagrilirsa arada bir tesis
+  // tamamlandiginda BASKA ulke doner ve kimlik A'nin gelirini B'nin butcesiyle
+  // kiyaslar. Olculdu: fabrika bedeli ucuzlayip insaat siklasinca sapma %0.0'dan
+  // %57.6'ya firladi — kimlik degil, OLCUM bozuktu. (Ayni kusur market-audit'te
+  // de vardi, bkz. supplyShock.)
   const lagNation = pickNation(game);
+  const watchedId = lagNation.id;
   const previousNet = {};
   for (const classId of Object.keys(lagNation.economy.classes)) {
     const socialClass = lagNation.economy.classes[classId];
     previousNet[classId] = Math.max(0, (socialClass.income ?? 0) - (socialClass.taxPaid ?? 0));
   }
   runPeaceful(game, 1);
-  const nation = pickNation(game);
+  const nation = game.world.nations[watchedId];
   const cohorts = nationCohorts(game.world, nation);
   const sample = [];
   for (const professionId of Object.keys(PROFESSION_INFO)) {

@@ -40,9 +40,23 @@ for (let w = 0; w < WEEKS; w++) {
     const L = nation.economy.ledger ?? {};
     const before = prev.get(nation.id) ?? 0;
     const after = nation.gold;
-    // Kimlik: dHazine = net + borclanilan - odenen + temerrut
-    const expected = (L.net ?? 0) + (L.borrowed ?? 0) - (L.repaid ?? 0) + (L.defaulted ?? 0);
-    const drift = Math.abs((after - before) - expected);
+    // KIMLIK URETIM KODUNDAN OKUNUR, ELDE YENIDEN KURULMAZ.
+    //
+    // Burada `L.borrowed`, `L.repaid`, `L.defaulted` okunuyordu; DEFTERDEKI
+    // KALEMLERIN ADI `borrow`, `repay`, `default`. Ucu de sessizce 0 donuyor,
+    // yani kimlik yillardir yalnizca `net` ile kiyaslaniyordu ve borclanan ya
+    // da temerrude dusen HER ULKE HER HAFTA "ihlal" sayiliyordu. Testin
+    // kirmizisi simulasyonun degil, uc yazim hatasinin sonucuydu.
+    // (Ayni aile: ledger L1'de gomulu sabit, L5'te var olmayan alan adlari,
+    // price-stability'de elle yazilmis K.)
+    //
+    // `closeWeek` kimligi zaten kuruyor: delta = net + financing, ve kendi
+    // sapmasini `unreconciled` olarak yayinliyor. Denetim ikisini de kullanir.
+    const expected = L.delta ?? 0;
+    const drift = Math.max(
+      Math.abs((after - before) - expected),
+      Math.abs(L.unreconciled ?? 0),
+    );
     if (drift > 0.5) {
       identityBreaks++;
       worstBreak = Math.max(worstBreak, drift);
@@ -123,6 +137,13 @@ console.log(`\n  Acik veren ${deficit.length} ulke: ort. hazine ${n0(avg(deficit
   + `ort. net ${n1(avg(deficit, 'net'))}, ort. borc ${n0(avg(deficit, 'debt'))}`);
 console.log(`  Fazla veren ${surplus.length} ulke: ort. hazine ${n0(avg(surplus, 'gold'))}, `
   + `ort. net ${n1(avg(surplus, 'net'))}, ort. borc ${n0(avg(surplus, 'debt'))}`);
+// TANI: mutlak borc OLCEKLE karisir. Buyuk sanayi ulkesi fazla verirken insaat
+// icin cok borclanabilir; bu, borcun "yanlis tarafta" oldugu anlamina gelmez.
+// Olcekten arindirilmis hali de basilir ki hukum dogru sayiya dayansin.
+const borcOran = (list) => (list.length
+  ? list.reduce((s, r) => s + (r.debt ?? 0) / Math.max(1, r.gdp ?? 1), 0) / list.length : 0);
+console.log(`  Olcekten arindirilmis: acik borc/GSYH ${n1(borcOran(deficit))}, `
+  + `fazla borc/GSYH ${n1(borcOran(surplus))}`);
 
 // ASIL SINAV, GORELI: fazla veren ulke acik verenden mali olarak daha iyi
 // durumda olmali. Mutlak esik ("acigin neti negatif olsun") yanlis testti —
@@ -138,10 +159,21 @@ if (deficit.length >= 3 && surplus.length >= 3) {
   } else {
     console.log(`\n  Fazla/acik hazine orani ${goldRatio.toFixed(2)}x — yon dogru.`);
   }
-  if (avg(deficit, 'debt') < avg(surplus, 'debt')) {
+  // HUKUM OLCEKTEN ARINDIRILMIS SAYIYA DAYANIR. Once MUTLAK borc kiyaslaniyordu
+  // ve o sayi ULKE BUYUKLUGUYLE karisir: fazla veren sanayi devi, insaat icin
+  // acik veren kucuk ulkeden cok daha fazla borclanir; bu borcun "yanlis
+  // tarafta" oldugu anlamina gelmez. Olculdu (160x96, 520 hafta): mutlak borc
+  // acik 254 / fazla 548 (tersine donmus GORUNUYOR) ama borc/GSYH acik 11.7 /
+  // fazla 2.4 — yani acik verenler ekonomilerine oranla BES KAT borclu. Iddia
+  // dogruydu, olcusu yanlisti. Iki sayi da yukarida basilir.
+  if (borcOran(deficit) < borcOran(surplus)) {
     finding('HIGH', 'borcun dagilimi',
-      'borc yuku agirlikla acik verenlerde olmali',
-      `acik ort. borc ${n0(avg(deficit, 'debt'))} < fazla ort. borc ${n0(avg(surplus, 'debt'))}`);
+      'borc yuku (GSYH\'ye oranla) agirlikla acik verenlerde olmali',
+      `acik ${n1(borcOran(deficit))} < fazla ${n1(borcOran(surplus))}`,
+      `mutlak borc: acik ${n0(avg(deficit, 'debt'))} vs fazla ${n0(avg(surplus, 'debt'))}`);
+  } else {
+    console.log(`  Borc yuku acik verenlerde: ${n1(borcOran(deficit) / Math.max(0.01, borcOran(surplus)))}x`
+      + ` daha agir (GSYH'ye oranla) — yon dogru.`);
   }
 }
 

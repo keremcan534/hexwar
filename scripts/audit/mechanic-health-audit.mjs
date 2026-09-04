@@ -34,7 +34,18 @@ const WEEKS = 120;
 const WARMUP = 30;
 const SEEDS = ['mh1', 'mh2', 'mh3'];
 
-/** Gurultu tabani — butce gecisinde 6 tohumla olculdu. */
+/**
+ * Gurultu tabani — butce gecisinde 6 tohumla olculdu.
+ *
+ * DIKKAT, `gdp` esigi BAYAT: 51.9 sayisi GSYH brut ciktiyken olculmustu.
+ * 2026-09-04'te GSYH katma degere cevrildi (bkz. economy.js runFactories,
+ * ACCOUNTING_INVARIANTS L15) ve sanayinin GSYH icindeki agirligi %46'dan
+ * %11'e indi, yani seriden seriye yayilim da degismis olabilir. Bu kosuda
+ * hicbir kaldiracin verdictini GSYH belirlemedi (hepsinin en guclu olcutu
+ * sat/stab/rp/gold/lit) — o yuzden hukumler etkilenmedi. Yine de esik
+ * yeniden olculmeli; olculene kadar GSYH ile verilen bir hukum supheli
+ * sayilmalidir.
+ */
 const NOISE = {
   gold: 50.8, gdp: 51.9, pop: 39.1, needs: 26.5, stab: 5.5, sat: 5.3,
   lit: 5.0, tech: 20.2, rp: 5.0,

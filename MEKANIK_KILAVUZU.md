@@ -538,16 +538,388 @@ yarısında 0.5, bantta çakılı malda durur). RGO verimini global kısmak
 (0.8/0.7/0.6) denendi ve İŞE YARAMADI: oran yine tırmandı, çünkü sorun
 başlangıç seviyesi değil birikimdi.
 
-**AÇIK KALAN.** Dünya kapasitesi tüketimin ~1.9 katı; denge taban fiyatın
-yarısında kuruluyor ve yüzyıl boyunca gerçek bir BÜYÜME eğrisi yok. Bu bir
-kalibrasyon işidir (RGO verimi + kişi başı sepet + sanayinin emişi birlikte)
-ve kendi pass'ini ister.
+**Dengenin yeri kapalı formda.** Denge koşulu `dengesizlik × PRICE_SPEED +
+çapa = 0`. `r = arz/talep`, `x = fiyat/taban` konursa:
+
+    x = 1 − K·(r−1)/(r+1)   ,   K = PRICE_SPEED / PRICE_ANCHOR = 0.09/0.018 = 5
+
+Ölçüldü (17 mal, gözlenen fiyata karşı RMS hata 0.06). Beşlik amplifikasyon
+şu demek: **%22'lik kalıcı fazla fiyatı yarıya indirir, %50'lik fazla malı
+banda çiviler.** "Denge neden taban fiyatın yarısında" sorusunun cevabı bu
+tek satırdır — tesadüf değil, iki sabitin oranı.
+
+**KAPANDI — 2026-09-04.** Bu bölüm uzun süre "açık kalan" diye duruyordu:
+dünya kapasitesi tüketimini aşıyor, denge taban fiyatın yarısında kuruluyor
+ve yüzyılda büyüme eğrisi yok. Dört hipotez elendikten sonra doğru çift
+bulundu ve **birlikte** kalibre edildi:
+
+    INCOME_POOL_SHARE  0.35 → 0.70      (pazarlanan pay)
+    PRICE_ANCHOR       0.018 → 0.060    (K = PRICE_SPEED/PRICE_ANCHOR: 5 → 1.5)
+
+| hedef (`audit:growth`, 100 yıl × 2 tohum) | önce | sonra |
+|---|---|---|
+| H1 reel kişi başı tüketim | 0.94 / 1.01 | **1.03 / 1.05** ✓ |
+| H2 orta+üst sınıf payı | %5.85 / %3.84 | **%13.83 / %11.63** ✓ |
+| H3 tesis büyümesi | 1.12× / 1.03× | 1.19× / 1.16× ✗ |
+
+`audit:price-stability` artık **hiç bulgu vermiyor** — dört testin dördü de
+geçiyor. Çakılı mal 16'dan 14'e indi.
+
+Dünya nüfusu da hızlandı (aynı tohum, gözlemci, barışçıl):
+
+| yıl | önce | sonra | |
+|---|---|---|---|
+| 1866 | 106.62M | 108.32M | +%1.6 |
+| 1896 | 117.10M | 130.36M | +%11.3 |
+| 1936 | 147.76M | 180.56M | **+%22.2** |
+
+Yüzyıllık büyüme 1.51× → 1.84×. Beklenen kanal: sepet karşılanması yükselince
+`foodMet` yükseliyor, o da `provinces.js` içindeki `foodFactor` üzerinden
+büyüme çarpanını açıyor.
+
+Gerekçeler ayar değil: çapa, yukarıdaki kapalı formun tek koludur ve K'yı
+5'ten 1.5'e indirir (kıtlık ölmez — dengesizlik sinyali +0.09'a çıkarken çapa
+tavanda en fazla −0.053 çeker). Havuz payı ise muhasebedir: pazarlanan pay +
+kendi tükettiği pay (`SUBSISTENCE_SHARE.lower` 0.30) aynı bölüşümün iki
+yarısıdır ve toplamları 0.65 tutuyordu; %35 ne pazara ne haneye yazılıyordu.
+0.70 + 0.30 = 1.00 ile bölüşüm kapanır.
+
+**DENETİM KUSURU — `audit:market` kıyafet şoku testi kırılgan.** Değişiklikten
+sonra MEDIUM veriyor ama sebebi davranış değil, testin kendisi:
+
+| | önce | sonra |
+|---|---|---|
+| izlenen ülke | #0 | **#28** |
+| taban büyüme (120 hafta) | %14.5 | **%0.7** |
+| kıtlık kolunda büyüme | %0.7 | %1.0 |
+| silinen pay | %95 (geçti) | −%51.3 (kaldı) |
+
+İki sorun var. Birincisi `WATCHED` ülkeyi `pickNation` seçiyor (en çok
+fabrikası olan) ve bu sıralama kod sürümüyle kayıyor — iki koşu **farklı
+ülkelere** bakıyor, karşılaştırma elma-armut. İkincisi izlenen ülkede nüfus
+iki kolda da neredeyse aynı (4.768.453 / 4.784.775, fark %0.3): test sıfıra
+yakın iki büyümeyi bölüp anlamsız bir oran üretiyor. `baseGrowth > 0` kapısı
+bunu elemiyor.
+
+Test, oranı hesaplamadan önce anlamlı bir taban büyüme (ör. %5) istemeli ve
+izlenen ülkeyi kod sürümünden bağımsız sabitlemeli. Şoku ölçmek isterken
+`pickNation`'ın kaymasını ölçüyor.
+
+**H3 DE KAPANDI — üçüncü sabitle.** Fabrika büyümesinin kilidi bu iki sabitte
+değildi: yeni tesisin bedeli kurulu sayıyla tırmanırken (`factoryCost`)
+kapitalistin bütçesi fiyatla çöküyordu. Ölçüldü: makas 1838–46 arasında
+kapanıyor ve bir daha açılmıyordu — 1838'de 27 ülkenin 24'ü fabrika
+açabilirken 1846'da **sıfır**.
+
+    factoryCost egimi  0.05 → 0.02      (20 fabrikada carpan 2.0x → 1.4x)
+
+Tek sabit, taramada bütün ölçütlerde iyileşme (40 yıl, gözlemci, PRICE-A):
+tesis 463 → 581 · H1 1.498 → 1.569 · H2 %12.29 → %13.50 · alt sınıf sepeti
+%60.7 → %66.7 · kârlı tesis %65 → %76 · arz/talep 1.93 (değişmedi).
+0.01 daha çok tesis verir (624) ama arz/talep'i 2.03'e iter — fazla ucuz
+fabrika, kapatmaya çalıştığımız makası yeniden açar.
+
+**Üç hedefin üçü de yeşil** (`audit:growth`, 100 yıl × 2 tohum):
+
+| | başlangıç | son |
+|---|---|---|
+| H1 reel kişi başı tüketim | 0.94 / 1.01 | **1.06 / 1.16** ✓ |
+| H2 orta+üst sınıf payı | %5.85 / %3.84 | **%12.43 / %16.74** ✓ |
+| H3 tesis büyümesi | 1.12× / 1.03× | **1.46× / 1.27×** ✓ |
+
+Denetim artık bulgu vermiyor. Elenen hipotezler (talep tavanı, income-pool'un
+tek başına, RGO veriminin global kısılması, işgücü tavanı, sınıf ağırlıkları,
+bordro payı) ve neden elendikleri yukarıda; kaydın amacı aynı yolun ikinci kez
+denenmemesidir.
+
+Talep tarafında bir tavan var: `bought = quantity × afford` ve `afford ≤ 1`,
+yani talep **sabit sepetin üstüne çıkamaz**. Victoria 3'te bu okun karşılığı
+vardır — gelir → yaşam standardı → ihtiyaç → talep; bizde yok.
+
+**Ama bu tavan kök sebep DEĞİL — ölçüldü ve elendi.** Refah basamağı
+denendi: sınıfa bir `prosperity` stoğu, geliri sepetini rahatça karşılayan
+hane zamanla daha büyük bir sepet ister (yalnız isteğe bağlı kademeler;
+yaşam kademesi sabit). Tesisatın kendisi inert olduğu kanıtlandı (tavan 1
+iken 400 hafta, 1117 satırlık durum birebir aynı). Kaldıraç açıkken
+`audit:growth`, 100 yıl × 2 tohum:
+
+| | referans | refah açık |
+|---|---|---|
+| H1 reel tüketim/kişi | 0.94 / 1.01 | **0.90 / 0.99** |
+| H2 orta+üst payı | %5.85 / %3.84 | **%4.20 / %2.71** |
+| H3 tesis büyümesi | 1.12× / 1.03× | **1.04× / 1.03×** |
+
+Üçü de kötüleşti; H2 iki tohumda da ≈%29, yani gürültü değil. Sebep
+tümdengelimle kesin: `hedef = clamp(covered/MARGIN, 1, CAP)` ve
+`covered = needsBudget/outOfPocket`. Bir sınıfta `affordShare < 1` ise
+`covered < 1 ≤ MARGIN`, yani hedef **her zaman 1'e kırpılır**. Sepet
+karşılanması %40–49 olduğuna göre **alt sınıfın refahı hiç kıpırdamaz.**
+Kaldıraç yalnız sepetini zaten tam karşılayabilen orta ve üst sınıfa çalışır;
+onların sepeti büyüyünce `runPromotion`'ın istediği artık küçülür, eşiği ise
+büyür — daha az terfi, daha çok düşüş.
+
+**Bulgu:** nüfusun %94'ü için bağlayıcı kısıt talep tavanı değil **gelirdir**.
+Alt sınıf zaten sahip olduğundan fazlasını istiyor, alamıyor. "İnsanlar daha
+çok istesin" demek, yalnızca zaten yeterince alabilene daha çok istetiyor ve
+sonuç regresif oluyor. Sıradaki aday bu yüzden talep değil **gelir kanalı**
+olmalı (bordro payı, income-pool, ya da fiyat seviyesinin kendisi).
+
+Bu bir kalibrasyon işidir (RGO verimi + kişi başı sepet + sanayinin emişi
+birlikte) ve kendi pass'ini ister. `audit:price-stability` TEST 4 bulguyu
+sayıyla tutar.
 
 **Pratikte** — dünya fiyatı tabana yapışan hammaddenin province'i yıllar
 içinde kadrosunu ve çıktısını yarıya indirir, açığa çıkan nüfus göçle
 fabrikaya ya da başka tarlaya akar. Vic2'nin "kârsız RGO'dan pop kaçar"
 davranışı. Fiyat toparlanınca ölçek de 1'e döner. Oyuncunun kolu yok: bu
 bir piyasa refleksi, karar değil.
+
+---
+
+## 4.4 Sanayi doluluğu — fabrikanın dolması ve ölü tesisin tasfiyesi
+
+**Formül**
+
+    aylık işgücü akışı = alt sınıf × 0.0012 × okul × isteklilik
+    okul               = 1 + okuryazarlık² × 2.5 + eğitim reformu × 0.25 + üniversite
+    kuruluş kadrosu    = tezgâh × 0.15
+    tasfiye            = beklenen marj ≤ 0 VE doluluk ≤ %5, 240 ay üst üste
+
+**Kod** — `src/game/economy.js` (`runFactoryEmployment`, `retireDeadFactories`)
+
+```js
+const schooling = 1 + clamp(economy.literacy ?? 0, 0, 1) ** 2 * 2.5
+  + socialLevel(nation, 'education') * 0.25 + higherEducationBonus(nation);
+
+function retireDeadFactories(game, nation) {
+  const bos = (factory.employees ?? 0) <= jobs * DEAD_FACTORY_FILL;
+  if (!bos || expectedMargin(game.world, nation, factory) > 0) {
+    factory.deadMonths = 0; continue;
+  }
+  factory.deadMonths = (factory.deadMonths ?? 0) + 1;
+  if (factory.deadMonths < DEAD_FACTORY_MONTHS || closed) continue;
+  if (closeFactory(game, nation, factory.id)) closed++;
+}
+```
+
+**Ne bozuktu.** İki ayrı kusur, aynı belirtiyi veriyordu — sanayi doluluğu
+yüzyıl boyunca yükselmiyordu.
+
+1. **Fabrika dolu doğuyordu.** `ensureInitialMilitaryIndustry` kuruluş
+   tesislerini **yarı kadroyla** açıyordu; 1836'da dünya doluluğu **%61**
+   oluyor, sonraki yüzyıl yalnız seyreliyordu (1906'da %43). Vic2'de 1836
+   sanayisi cılızdır ve doluluk okuryazarlıkla sonradan gelir.
+2. **Ölü tesis defterden hiç düşmüyordu.** `closeFactory` yalnızca
+   **oyuncunun ekranından** çağrılıyordu — YZ'nin fabrika kapatma yolu yoktu.
+   Ölçüldü (2 tohum, 1936): dünyadaki **550 tesisin 350'si** beklenen marjı
+   ≤ 0 olduğu için işe alıma kapalı, ortalama **%32 dolu**, ve kapasitenin
+   **%57'sini** tutuyordu. Doluluğun paydasında hiç dolmayacak tezgâh
+   birikiyordu.
+
+Elenen açıklamalar — hiçbiri değildi, ölçüldü:
+
+| hipotez | ölçüm | sonuç |
+|---|---|---|
+| işgücü tavanı bağlıyor | kadro/tavan %23–34, tavan/kapasite %207 | işçi bol, tavan boşta |
+| genişleme kapısı kapanmıyor | 1886'dan sonra kapasite yatay | kapı zaten kapalı |
+| işe alım akışı yavaş | havuz aylık ~480 bin, boş tezgâh 8.7 mn | akış yeterli |
+| **marjı ≤ 0 tesis işe alıma kapalı** | kapasitenin %57'si donmuş | **sebep bu** |
+
+**Çalışıyor mu?** **EVET** — `audit:growth`, 100 yıl × 2 tohum:
+
+| | önce | sonra |
+|---|---|---|
+| 1836 doluluk | %61.0 / %59.3 | **%14.6 / %14.1** |
+| 1936 doluluk | %48.6 / %49.0 | **%71.8 / %73.6** |
+| H4 doluluk eğimi (1846→1936) | 0.89× / 0.94× | **1.54× / 1.58×** ✓ |
+| H1 reel tüketim/kişi | 1.19 / 1.14 | **1.67 / 1.73** ✓ |
+| H2 orta+üst payı | %12.99 / %13.25 | **%12.52 / %12.44** ✓ |
+
+Doluluk eğrisi artık gerçekten bir S: PRICE-A %33 → %47 → %47 → %57 → %59 →
+%58 → %61 → %64 → %65 → %70 → %72. İlk kırk yıl yatay, sonra ivmeleniyor.
+
+**Ama rapor kendi kendini kandırmasın diye pay ve payda ayrı basılır.**
+Doluluk bir orandır ve iki yolla yükselir: kadro artar ya da ölü kapasite
+düşer. Ölçüm: **kadro 1.60× / 1.59×, kapasite 1.04× / 1.01×.** Yani sanayi
+istihdamı gerçekten büyüyor, ama doluluk artışının önemli kısmı kapasitenin
+yatay tutulmasından geliyor. Bu saklanmıyor; `audit:growth` her koşuda
+ikisini de yazar.
+
+**AÇIK BULGU — H3.** Fabrika sayısı 1846→1936 arasında **0.72× / 0.59×**,
+kapasite **1.04× / 1.01×** ile yatay. Yani tasfiye bir açıklama ama tek
+açıklama değil: **sanayi tabanı da büyümüyor.** Sebep ölçüldü ve §4.3'teki
+fiyat sorununun aynısı — cari fiyatlarla dünyanın yarısı girdi maliyetini
+karşılayamıyor, o sektörlere ne işçi gidiyor ne yeni tesis kuruluyor. Barajı
+düşürmedim; bulgu `audit:growth` içinde sayıyla duruyor ve kendi pass'ini
+bekliyor.
+
+**Pratikte** — 1836'da beş cılız fabrikayla başlarsın, üretim azdır. Okul
+yasası ve okuryazarlık yükseldikçe fabrikaya işçi akışı **kare** hızlanır:
+ilk yarım yüzyıl doluluk yarıyı zor bulur, sonra hızla tırmanır. Yanlış
+sektöre kurduğun ve yirmi yıl boş kalan fabrika kendiliğinden kapanır —
+para geri gelmez, kadro serbest kalır. Kapatma kararının oyuncudaki karşılığı
+sanayi ekranındaki "close" düğmesidir; YZ artık aynı kolu kullanıyor.
+
+---
+
+## 4.5 Teknoloji tek taraflı çarpıyordu — arz/talep makasının kaynağı
+
+**Formül**
+
+    laborThroughput = kadro / tezgâh
+    throughput      = laborThroughput × kıtlık × reform × (1 + teknoloji)
+
+    pazara yazılan ARZ    = çıktı  × throughput
+    maliyete yazılan girdi = girdi × throughput
+    pazara yazılan TALEP   = girdi × laborThroughput      ← BURASI
+
+**Kod** — `src/game/economy.js`, `runFactories`
+
+**Ne bozuktu.** Talep ile tüketim arasındaki tek fark **kıtlık** olmalıydı;
+yorumun söylediği niyet buydu ("fiyat karşılanamayan talebi de görür, maliyet
+yalnız gerçekten kullanılanı"). Ama `laborThroughput` kıtlıkla birlikte
+**reform ve teknoloji** çarpanlarını da düşürüyordu. Sonuç: fabrika teknoloji
+kadar çok girdi **tüketiyor ve ödüyor**, ama pazardan o kadar **istemiyor**.
+
+Teknolojinin iki ucu ölçüldü (100 yıl, gözlemci, ülke ortalaması):
+
+| yıl | çıktı çarpanı | girdi çarpanı | bileşik |
+|---|---|---|---|
+| 1836 | 1.00 | 1.00 | 1.00 |
+| 1886 | 1.67 | 0.74 | 2.26 |
+| 1936 | **2.16** | **0.535** | **4.03** |
+
+RGO ise aynı yüzyılda yalnızca 1.35× alıyor, hane talebinin ise **hiç teknoloji
+kanalı yok**. Yani bir yüzyıllık araştırma, kimsenin ememeyeceği kadar mal
+üretiyordu.
+
+Arz ve talep KAYNAĞINA göre ayrıştırıldı (yıllık, taban fiyatla, bin birim):
+
+| yıl | RGO arzı | fabrika arzı | hane | fabrika girdisi | gübre | ordu | arz/talep |
+|---|---|---|---|---|---|---|---|
+| 1837 | 129.7 | 26.7 | 65.0 | 15.4 | 15.8 | 8.7 | 1.47 |
+| 1886 | 160.1 | 258.2 | 78.5 | 64.6 | 23.4 | 6.5 | 2.42 |
+| 1936 | 200.7 | **496.2** | 126.0 | **75.5** | 30.2 | 4.7 | **2.95** |
+
+Fabrika arzı 18.6× büyürken fabrika girdi talebi 1866'dan sonra ~75'te yatay
+kalıyor. Katalog masum: 29 tesis türünün çıktı/girdi oranı 1.0–2.11, ortalama
+1.33 (Vic2 ölçeğinde). Fark tamamen bu satırdan geliyordu.
+
+**Düzeltme.** Talep de reform ve teknoloji çarpanını görür; kıtlığı görmez.
+
+```js
+const wantedThroughput = laborThroughput * reformMods.throughput
+  * (1 + (techMods?.factoryThroughput ?? 0));
+const requested = amount * wantedThroughput;   // önce: amount * laborThroughput
+```
+
+**Çalışıyor mu?** **EVET** — `audit:growth`, 100 yıl × 2 tohum:
+
+| | önce | sonra |
+|---|---|---|
+| 1936 arz/talep | 2.95 | **2.05** |
+| fabrika girdi talebi | 75.5 | **190.0** |
+| H1 reel tüketim/kişi | 1.67 / 1.73 | **2.66 / 2.18** ✓ |
+| H2 orta+üst payı | %12.5 / %12.4 | **%16.5 / %12.6** ✓ |
+| H3 tesis büyümesi | 0.72 / 0.59 | **1.10 / 0.82** |
+| H4 doluluk eğimi | 1.54 | **1.32** |
+| sanayi kapasitesi | 1.04× (yatay) | **1.44× / 1.02×** |
+
+Fazlanın **%46'sı** kapandı ve eğri 1906'dan sonra düzleşiyor
+(2.01 → 2.02 → 2.03 → 2.05), tırmanmıyor. `audit:price-stability` bulgusuz.
+
+**H3 İLE H4 BİRBİRİYLE KAVGA EDİYOR — bu bir ölçü kusurudur, oyunun değil.**
+Doluluk = kadro / kapasite. H3 kapasitenin **büyümesini** ister, H4 aynı kesrin
+**küçük kalmasını**. Aynı kesrin payını ve paydasını ayrı ayrı yeşile boyamak
+tanım gereği mümkün değil: bu düzeltme kapasiteyi ilk kez gerçekten büyüttüğü
+için (1.04× → 1.44×) H3 iyileşti, H4 kötüleşti. **Hiçbir barajı düşürmedim**;
+ikisi de açık bulgu olarak `audit:growth` içinde sayıyla duruyor. Bir sonraki
+tur bu iki hedefi TEK bir ölçüte indirmeli — muhtemelen "sanayi istihdamı kişi
+başına büyüyor mu" — yoksa turlar birbirini kovalar.
+
+Şunu da not düşmek gerekir: oyuncunun istediği ŞEKİL zaten var. Doluluk yüzyıl
+boyunca %47'den %63'e tırmanıyor; 1.50× barajı bu depoya konmuş bir sayıdır,
+oyunun bir gereği değil.
+
+**Pratikte** — teknoloji artık hem daha çok üretir hem daha çok hammadde ister.
+Çelik fabrikası açmak demir talebini gerçekten yükseltir, demir fiyatı yükselir,
+maden kârlı olur. Zincirin alt katmanı üst katmanın büyümesini hisseder — daha
+önce hissetmiyordu.
+
+---
+
+## 4.6 Sınıf hareketliliği — orta sınıf neden küçülüyordu
+
+**Formül**
+
+    kohort = max(10.000, kaynak sınıf × 0.0025 × (0.25 + okuryazarlık × 3.5))
+    düşüş  = max(10.000, sınıf × 0.0025)
+
+**Kod** — `src/game/economy.js`, `runPromotion` ve `runPopulationMobility`
+
+**Ne bozuktu.** Terfi ve düşüş **sabit bir sayı** taşıyordu (`POPULATION_COHORT`,
+10.000 kişi). Nüfus yüzyılda iki katına çıkarken akış sabit kalınca oran
+sürekli küçülüyordu: orta+üst payı 1836'da %22, 1936'da %12.5.
+
+Vic2'de terfi akışı sınıf büyüklüğüne orantılıdır ve okuryazarlıkla hızlanır —
+katip ve memur sanayiyle birlikte gelir. İki çarpan da eklendi.
+
+**Çalışıyor mu?** **EVET** — `audit:growth`, 100 yıl × 2 tohum:
+
+| | önce | sonra |
+|---|---|---|
+| H2 orta+üst payı | %16.5 / %12.6 | **%20.05 / %22.27** |
+| sepet karşılanması | ~%56 | ~%66 |
+
+Eğri artık **geç yüzyılda hızlanıyor** — 1896 %12.3 → 1906 %14.0 → 1916 %17.5 →
+1926 %19.5 → 1936 %20.1. Sanayileşme ve okuryazarlık birikince orta sınıf
+kalkıyor; tam Victoria'nın şekli.
+
+### ELENEN: ulusal odak (Vic2 national focus)
+
+Oyuncuya bir kaldıraç vermek için yazıldı, **ölçüldü ve GERİ ALINDI.** Kayıt
+burada duruyor ki aynı yol ikinci kez denenmesin.
+
+Tasarım: yıl/okuryazarlıkla açılan 1–4 odak puanı, her biri bir sınıf kanalına
+(`clerks` / `capitalists`) konur. Dört ayrı YZ politikası ve **iki ayrı etki
+kanalı** denendi. Odaksız taban: **%20.05 / %22.27**.
+
+| deneme | sonuç |
+|---|---|
+| bütün puanlar katibe, kohortu çarpar | %19.69 / %13.25 |
+| + "orta sınıf sepetini karşılıyorsa" kapısı | %21.12 / %11.98 |
+| eşik kanalı (istenen artığı küçültür) | %17.71 / %26.21 |
+| + "orta sınıf GERÇEK artık bırakıyorsa" kapısı | %17.46 / %12.54 |
+
+Dördünde de en kötü tohum tabanın altına düştü. Sebep ayrımın başladığı yıldan
+okunuyor: odaksız kolda geç yüzyılda bir **kalkış** var (PRICE-B, 1906 %15.0 →
+1936 %22.3); odaklı kolların hiçbirinde o kalkış olmuyor. Terfiyi öne çekmek,
+kalkış için birikmesi gereken refahı erkenden harcıyor — hane orta sınıfın 2,2
+kat büyük sepetini karşılayamayıp **geri düşüyor**, ve alt sınıftan çekilen
+insan sanayinin işçi havuzunu (`LOWER_WORKFORCE_SHARE`) daraltıyor.
+
+**Bulgu:** orta sınıfı sınırlayan şey terfi hızı değil **refahtır**. Bir orta
+sınıf kanunla var edilemiyor; önce onu taşıyacak ekonomi gerekiyor.
+
+### Oyuncunun kaldıracı ZATEN VAR
+
+Yeni mekanik gerekmiyordu (CLAUDE.md: "yenisini eklemeyi son çare say").
+Eğitim ve refah kaydırakları ölçüldü — 100 yıl, gözlemci, her tur dayatılarak:
+
+| eğitim + refah | okuryazarlık | orta+üst |
+|---|---|---|
+| hepsi 0 | %40 | %14.5 |
+| **YZ'nin kendi seçimi** | %68 | **%20.0** |
+| hepsi 100 | %92 | **%9.3** |
+
+Menzil **10.7 puan** — nüfus gürültüsünün (%39.1) altında değil, gerçek bir
+kaldıraç. Ve **optimumu ortada**: sonuna kadar açmak okuryazarlığı %92'ye
+çıkarır ama hazineyi batırır, ekonomi çöker, refah kalmaz ve orta sınıf
+%9.3'e iner. "Orta sınıf runu" bu kaydırakların dengesini bulmakla oynanır.
+
+**Pratikte** — okulunu açarsın, okuryazarlık yükselir, sanayi işçi bulur,
+ücretler artar, hane geçiminin üstüne artık bırakır ve yüzyılın sonunda
+katipler gelir. Kestirme yok: parayı önden basıp sınıf satın alamıyorsun.
 
 ---
 

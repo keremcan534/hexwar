@@ -16,7 +16,7 @@ import {
   headless, run, pickNation, section, sub, table, finding, reportFindings,
   n1, n2, n0, pct, GOOD_IDS, GOODS,
 } from './harness.mjs';
-import { FACTORIES, priceOf } from '../../src/game/economy.js';
+import { FACTORIES, FOOD_GOODS, priceOf } from '../../src/game/economy.js';
 import { RGO_TYPES } from '../../src/game/provinces.js';
 
 const SEED = 'market-audit';
@@ -215,6 +215,14 @@ function supplyShock(goodId, factor, weeks = 120, nationId = null) {
   // cagirmak senaryolar arasinda farkli ulkeleri karsilastirmaya yol aciyordu.
   const watched = nationId == null ? pickNation(game).id : nationId;
   const populationStart = world.nations[watched].economy.population;
+  // SOK DUNYA CAPINDA UYGULANIR, o yuzden buyume olcutu de DUNYA nufusudur.
+  // Tek ulkeye bakmak iki yonden kirilgandi: (1) izlenen ulkeyi `pickNation`
+  // secer ve kod degisince ulke kayar — olculdu, ayni test once #0'i sonra
+  // #28'i izliyordu; (2) tek ulkenin 120 haftalik buyumesi %0.7 gibi sifira
+  // yakin cikabilir ve iki sifira yakin sayinin orani gurultudur (olculdu:
+  // "silinen pay -%51.3"). Dunya toplaminda ikisi de olmaz.
+  const worldPopulationStart = world.nations
+    .reduce((sum, n) => sum + (n.alive ? (n.economy?.population ?? 0) : 0), 0);
   // Kume dongusu: paylasilan econ'da kare basina `*=` carpani uye sayisi
   // kadar uygulanip kaliteyi factor^hexes'e cekiyordu.
   for (const province of world.provinces ?? []) {
@@ -259,6 +267,9 @@ function supplyShock(goodId, factor, weeks = 120, nationId = null) {
     lowerBudget: nation.economy.classes.lower.needsBudget,
     migration: nation.economy.lastInternalMigration ?? 0,
     factories: nation.economy.factories.length,
+    worldPopulationStart,
+    worldPopulation: world.nations
+      .reduce((sum, n) => sum + (n.alive ? (n.economy?.population ?? 0) : 0), 0),
   };
 }
 
@@ -298,16 +309,64 @@ for (const goodId of ['food', 'clothes', 'groceries']) {
   // askiya alir (provinces.js "ACLIKTAN OLUM KALDIRILDI"). Olcut bu yuzden
   // mutlak nufus dususu degil, taban kosunun buyumesinin ne kadarinin
   // silindigidir: gida kesilince buyumenin en az yarisi gitmeli.
-  const baseGrowth = (base.population - base.populationStart) / Math.max(1, base.populationStart);
-  const zeroGrowth = (zero.population - zero.populationStart) / Math.max(1, zero.populationStart);
+  const baseGrowth = (base.worldPopulation - base.worldPopulationStart)
+    / Math.max(1, base.worldPopulationStart);
+  const zeroGrowth = (zero.worldPopulation - zero.worldPopulationStart)
+    / Math.max(1, zero.worldPopulationStart);
   const halted = baseGrowth > 0 ? 1 - zeroGrowth / baseGrowth : 0;
-  console.log(`  buyume: taban ${pct(baseGrowth)} · kitlik ${pct(zeroGrowth)} · silinen pay ${pct(halted)}`);
-  const EXPECTED_HALT = { food: 0.5, clothes: 0.15, groceries: 0.15 };
-  if (zero.fulfilled < 0.5 && baseGrowth > 0 && halted < (EXPECTED_HALT[goodId] ?? 0.2)) {
-    finding(goodId === 'food' ? 'HIGH' : 'MEDIUM', `${goodId} kitligi -> nufus buyumesi`,
-      'temel malin kesilmesi nufus buyumesini gorunur olcude durdurmali',
-      `karsilanma ${pct(zero.fulfilled)}'e dustu ama buyumenin yalniz ${pct(halted)}'i silindi`,
-      `hane sepeti ${n1(base.lowerCost)} -> ${n1(zero.lowerCost)}, memnuniyet ${n2(base.lowerSat)} -> ${n2(zero.lowerSat)}`);
+  console.log(`  DUNYA buyumesi: taban ${pct(baseGrowth)} · kitlik ${pct(zeroGrowth)}`
+    + ` · silinen pay ${pct(halted)}`);
+
+  // OLCUT SOKUN NASIL UYGULANDIGINA GORE AYRILIR — bu testin gizli degiskeni.
+  // `supplyShock` iki farkli sey yapar:
+  //   RGO mali     -> province.econ.rgoQuality *= factor   (isgucu YERINDE kalir)
+  //   fabrika mali -> factory.employees *= factor          (ISGUCU SERBEST KALIR)
+  // Ikincisinde serbest kalan kadro kirsala doner, tahil uretimi artar,
+  // `foodMet` YUKSELIR ve nufus buyumesi HIZLANIR. Yani fabrika mallarinda
+  // olculen sey "kitlik" degil "sanayi kapanmasi"dir ve buyume okumasi
+  // yorumlanamaz. Olculdu: kiyafet -%51.3, konserve -%23.2 — ikisi de eksi,
+  // yani kitlik buyumeyi artiriyor gibi gorunuyor.
+  //
+  // Bir de tasarim tarafi: `provinces.js` buyumeyi `foodMet`ten okur ve
+  // "karsilanmayan luks buyumeyi yavaslatmaz, karsilanmayan GIDA yavaslatir".
+  // Kiyafet zaten FOOD_GOODS icinde degildir.
+  //
+  // Bu yuzden BUYUME olcutu yalnizca RGO mallarina uygulanir (sok temiz);
+  // fabrika mallari HANE kanalindan sinanir. Konserve FOOD_GOODS icinde
+  // olmasina ragmen fabrika malidir — ayrimi FOOD_GOODS degil, sokun bicimi
+  // belirler.
+  const rgoUretimi = Object.values(RGO_TYPES).some((r) => r.goodId === goodId);
+  if (rgoUretimi) {
+    // ORAN OLU BIR DUNYAYI BOLMEZ. Esik yalnizca gercekten durmus bir dunyaya
+    // karsi korur; DUNYA toplaminda %0.8 buyume zaten milyonlarca kisidir ve
+    // oran temiz cikar (olculdu: gida %101.0, konserve %64.7, kiyafet -%1.1).
+    // Esik onceki surumde 0.02'ydi ve TEK ULKE olcutunun gurultusune gore
+    // secilmisti; dunya olcutunde ayni esik gida testini bosuna atliyordu.
+    const GROWTH_FLOOR = 0.002;
+    const EXPECTED_HALT = { food: 0.5 };
+    if (baseGrowth <= GROWTH_FLOOR) {
+      console.log(`  NOT: taban buyume ${pct(baseGrowth)} <= ${pct(GROWTH_FLOOR)};`
+        + ' oran gurultu olurdu, buyume olcutu bu kosuda ATLANDI.');
+    } else if (zero.fulfilled < 0.5 && halted < (EXPECTED_HALT[goodId] ?? 0.2)) {
+      finding(goodId === 'food' ? 'HIGH' : 'MEDIUM', `${goodId} kitligi -> nufus buyumesi`,
+        'GIDA malinin kesilmesi nufus buyumesini gorunur olcude durdurmali',
+        `karsilanma ${pct(zero.fulfilled)}'e dustu ama buyumenin yalniz ${pct(halted)}'i silindi`,
+        `hane sepeti ${n1(base.lowerCost)} -> ${n1(zero.lowerCost)}, memnuniyet ${n2(base.lowerSat)} -> ${n2(zero.lowerSat)}`);
+    }
+  } else {
+    // FABRIKA MALI: buyume okumasi isgucu kaymasiyla kirlendigi icin bedel
+    // HANEDE olculur. Kitlik sepeti pahalilastirmali ya da memnuniyeti
+    // dusurmeli; tasarimin bu mal icin verdigi soz budur.
+    const costUp = base.lowerCost > 1e-9 ? zero.lowerCost / base.lowerCost : 1;
+    const satDrop = base.lowerSat - zero.lowerSat;
+    console.log(`  hane bedeli: sepet ${n1(base.lowerCost)} -> ${n1(zero.lowerCost)}`
+      + ` (${n2(costUp)}x) · memnuniyet ${n2(base.lowerSat)} -> ${n2(zero.lowerSat)}`);
+    if (zero.fulfilled < 0.5 && costUp < 1.2 && satDrop < 0.02) {
+      finding('MEDIUM', `${goodId} kitligi -> hane`,
+        'gida disi temel malin kesilmesi sepeti pahalilastirmali ya da memnuniyeti dusurmeli',
+        `sepet ${n2(costUp)}x, memnuniyet farki ${n2(satDrop)}`,
+        `karsilanma ${pct(base.fulfilled)} -> ${pct(zero.fulfilled)}`);
+    }
   }
   const abundant = rows[2];
   if (abundant.ratio <= 0.13) {
