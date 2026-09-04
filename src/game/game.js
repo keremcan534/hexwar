@@ -13,6 +13,7 @@ import { armyPower, clearPath, placeUnit, speedOf, stackFull, unitsOn } from './
 import { orderMove, setDirective } from './movement.js';
 import { TurnManager } from './turn.js';
 import { atWar, declareWar } from './diplomacy.js';
+import { demobilize, isMobilized, mobilize } from './mobilization.js';
 import {
   signPeace, suggestWarGoal,
 } from './peace.js';
@@ -724,6 +725,21 @@ export class Game {
     const ok = declareWar(this, this.turns.playerNation, nationId, { manual: true, goal });
     if (ok) {
       this.selectUnit(this.selectedUnit);
+      this.emit('units', this.selectedUnit);
+      this.requestRender();
+    }
+    return ok;
+  }
+
+  /**
+   * Seferberlik anahtarı: tek ulusal karar, YZ ile aynı kapı (mobilization.js).
+   * Açık ise kapatır; kapalı ise açmayı dener (ültimatom/savaş şartı orada).
+   */
+  toggleMobilization() {
+    const me = this.world.nations[this.turns.playerNation];
+    if (!me?.alive) return false;
+    const ok = isMobilized(me) ? demobilize(this, me) : mobilize(this, me);
+    if (ok) {
       this.emit('units', this.selectedUnit);
       this.requestRender();
     }

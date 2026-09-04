@@ -11,7 +11,7 @@ import {
   offerRefusal, offerMeetsExpectation, warScore, acceptanceTolerance,
   occupiedProvincesOf, provinceKeyOf, MAX_DEMAND_PROVINCES,
 } from '../../src/game/peace.js';
-import { declareWar, atWar } from '../../src/game/diplomacy.js';
+import { declareWarNow, atWar } from '../../src/game/diplomacy.js';
 import { controllerOf } from '../../src/game/control.js';
 
 section('BARIS BEDELI / SAVAS STAKE DENETIMI');
@@ -24,7 +24,7 @@ const alive = world.nations.filter((n) => n.alive && n.tiles > 4);
 const [aggressor, victim] = alive;
 
 // --- Kurulum: saldirgan kurbanin topragini isgal eder ---
-if (!atWar(world, aggressor.id, victim.id)) declareWar(game, aggressor.id, victim.id);
+if (!atWar(world, aggressor.id, victim.id)) declareWarNow(game, aggressor.id, victim.id);
 // Kurbanin kareleri saldirganin kontrolune gecirilir (cephe simulasyonu yerine
 // dogrudan kontrol atamasi: bu test BARIS KAPISINI olcer, savasi degil).
 let seized = 0;
@@ -163,7 +163,7 @@ const savedSince2 = relAg.since;
 relAg.since = (world.turn ?? 0) - 8 * 52; // 8 yil savas: yorgunluk tavanda
 // Ucuncu bir dusman: "ikinci cephe" toleransini da ac.
 const third = alive.find((n) => n.id !== aggressor.id && n.id !== victim.id);
-if (third && !atWar(world, aggressor.id, third.id)) declareWar(game, aggressor.id, third.id);
+if (third && !atWar(world, aggressor.id, third.id)) declareWarNow(game, aggressor.id, third.id);
 
 const lead = warScore(world, aggressor.id, victim.id);
 const tol = acceptanceTolerance(world, aggressor.id, victim.id);

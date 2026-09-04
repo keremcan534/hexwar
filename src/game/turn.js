@@ -13,7 +13,8 @@ import { disband, queueRecruit, recruit, runTraining } from './recruitment.js';
 import { runReinforcements } from './reinforcement.js';
 import { runDelegatedAI, runNationAI } from './ai.js';
 import { runDiplomacyAI } from './alliances.js';
-import { atWar, computeContacts, initRelations } from './diplomacy.js';
+import { atWar, computeContacts, initRelations, resolveCrises } from './diplomacy.js';
+import { runMobilization } from './mobilization.js';
 import {
   INFAMY, addInfamy, checkCoalitions, decayInfamy, tileInfamy,
 } from './infamy.js';
@@ -479,6 +480,9 @@ export class TurnManager {
     // bosaltilir (muttefikler saldirgana kendi savaslarini acar), ittifak
     // taramasi ve rakip tazeleme kendi ic frekanslarinda kosar.
     this.phase = 'diplomacy';
+    // Suresi dolan ultimatomlar savasa doner; muttefik cagrilari (ayni
+    // hafta ilan edilenler dahil) hemen ardindan islenir.
+    if (resolveCrises(this.game)) this.game.renderer.invalidateCache();
     runDiplomacyAI(this.game);
     yield* pause('ai');
 
@@ -517,6 +521,8 @@ export class TurnManager {
     // bir komutana bağlanıp mevkisine yürüsün, bir hafta boşta beklemesin.
     this.phase = 'training';
     runTraining(this.game);
+    // Seferber alaylar da ayni hafta komutaya girsin (bkz. mobilization.js).
+    runMobilization(this.game);
     yield* pause('training');
     // Komuta emirleri yürüyüşten *önce* işlenir ki cepheye atanan tümenler
     // aynı hafta yola çıksın; sonra yürüyüş ilerler ve temas muharebe açar.

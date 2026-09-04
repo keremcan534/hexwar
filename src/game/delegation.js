@@ -65,7 +65,7 @@ export const DELEGATION_AREAS = {
     // Uyarı dürüst olsun: `spend()` temerrütteki barış ordusunu KÜÇÜLTÜR
     // (bkz. ai.js) ve oyuncunun elinde bir "terhis" düğmesi yok. Devir bu
     // yetkiyi de verir; yazmamak sürpriz olurdu.
-    desc: 'The general staff orders regiments and founds cities — and disbands regiments if the treasury defaults in peacetime.',
+    desc: 'The general staff orders regiments, founds cities, mobilizes the reserve when an enemy outweighs the army — and disbands regiments if the treasury defaults in peacetime.',
   },
 };
 

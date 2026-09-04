@@ -78,7 +78,9 @@ function partitionChecksum(world) {
 }
 
 /** Ulusun tur içinde değişen alanları. */
-const NATION_FIELDS = ['gold', 'infamy', 'alive', 'debt'];
+// `mobilization` kucuk bir nesnedir ({active, since, target}); yazilmazsa
+// yuklenen oyunda seferber ordu "duzenli" sayilir ve baristа hic terhis olmaz.
+const NATION_FIELDS = ['gold', 'infamy', 'alive', 'debt', 'mobilization'];
 
 export function serialize(game) {
   const world = game.world;
@@ -210,8 +212,12 @@ export function serialize(game) {
       // kaydet-yukle dallanmasinin son kaynagi buydu.
       // Yedinci alan: savas hedefleri (bkz. peace.js warGoalOf). Yazilmazsa
       // yuklenen savasin masasi "bu savas neydi" sorusunu cevaplayamaz.
+      // Sekizinci/dokuzuncu/onuncu alan: ultimatom (savasin baslayacagi hafta),
+      // ilan sebebi ve saldirgan. Yazilmazsa yuklenen ultimatom asla savasa
+      // donusmez (warAt yok -> 0 -> hemen baslar) ve masa kimin actigini bilmez.
       b <= a || !rec ? null : [rec.state, rec.since, rec.truceUntil ?? 0, rec.losses ?? null,
-        rec.wars ?? 0, rec.peaks ?? null, rec.goals ?? null]
+        rec.wars ?? 0, rec.peaks ?? null, rec.goals ?? null, rec.warAt ?? 0,
+        rec.reason ?? null, rec.aggressor ?? null]
     ))),
     cities: world.cities.map((c) => ({
       name: c.name,
@@ -385,6 +391,9 @@ export function deserialize(game, data) {
       if (entry[4]) rec.wars = entry[4];
       if (entry[5]) rec.peaks = { ...entry[5] };
       if (entry[6]) rec.goals = { ...entry[6] };
+      if (entry[7]) rec.warAt = entry[7];
+      if (entry[8]) rec.reason = entry[8];
+      if (entry[9] != null) rec.aggressor = entry[9];
       world.relations[a][b] = rec;
       world.relations[b][a] = rec;
     }
@@ -507,10 +516,22 @@ export function deserialize(game, data) {
     // unit.battleId kayitta tasinmiyor. Kayipsiz kural: iki tarafi da hala
     // var olan muharebe surer, tek tarafi kalmayan dusurulur.
     const byId = new Map(world.units.map((unit) => [unit.id, unit]));
+    // Kimlikler kayittakiyle AYNI DEGIL: createUnit surec sayacindan yeni
+    // kimlik verir, `unitIds` eskiyi yeniye baglar (generaller icin asagida
+    // ayni tablo kullaniliyor). Muharebe uyeligi ham kimlikle bakiyordu ve
+    // dizide bosluk olunca (seferberlikle kurulup dagitilan alaylar) muharebe
+    // yuklemede dusuyordu (save-audit: kayit 2, yukleme 1).
+    const remap = (id) => unitIds.get(id) ?? id;
     world.battleSystem.battles = (world.battleSystem.battles ?? []).filter((battle) => {
-      battle.attackers = (battle.attackers ?? []).filter((id) => byId.has(id));
-      battle.defenders = (battle.defenders ?? []).filter((id) => byId.has(id));
-      if (!battle.attackers.length || !battle.defenders.length) return false;
+      const attackers = (battle.attackers ?? []).map(remap);
+      const defenders = (battle.defenders ?? []).map(remap);
+      // Uyesi kayitta olmayan muharebe bozuktur, dusurulur. TEK TARAFI BOS
+      // muharebe ise dusurulmez: canli simulasyon da onu bir hafta tasir ve
+      // runBattles kapatir; yuklemede silmek kesintisiz kosudan dallandiriyordu
+      // (save-audit: kayit 2 muharebe, yukleme 1).
+      if (!attackers.every((id) => byId.has(id)) || !defenders.every((id) => byId.has(id))) return false;
+      battle.attackers = attackers;
+      battle.defenders = defenders;
       for (const id of [...battle.attackers, ...battle.defenders]) {
         byId.get(id).battleId = battle.id;
       }

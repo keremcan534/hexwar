@@ -5,15 +5,18 @@ import {
   CITY_COST, UNIT_COSTS, canAfford, canFoundCity,
 } from './cities.js';
 import {
-  MIN_WAR_TURNS, atWar, attackerCount, declareWar, nationStrength, recordWarProgress,
-  relation, truceLeft,
+  MIN_WAR_TURNS, atWar, attackerCount, declareWar, hostile, hostileNations, nationStrength,
+  recordWarProgress, relation, truceLeft,
 } from './diplomacy.js';
+import { manageMobilization } from './mobilization.js';
 import {
   buildOffer, demandLimit, occupiedProvincesOf, offerCost, offerMeetsExpectation, provinceKeyOf,
   signPeace, suggestWarGoal, warScore,
 } from './peace.js';
 import { INFAMY_COALITION } from './infamy.js';
-import { UNIT_TYPES, isMoving, regimentCount, unitAvailable, unitsOn } from './units.js';
+import {
+  UNIT_TYPES, isConscript, isMoving, regimentCount, unitAvailable, unitsOn,
+} from './units.js';
 import { destinationOf, orderMove } from './movement.js';
 import { controllerOf } from './control.js';
 import { canRecruit, disband, trainingCount } from './recruitment.js';
@@ -208,7 +211,7 @@ function diplomacy(game, nation, rng) {
   let bestScore = 0;
   for (const other of world.nations) {
     if (!other.alive || other.id === nation.id) continue;
-    if (atWar(world, other.id, nation.id)) continue;
+    if (hostile(world, other.id, nation.id)) continue;
     const contact = contacts[nation.id][other.id];
     if (!contact) continue;
     if (truceLeft(world, nation.id, other.id, game.turns.turn) > 0) continue;
@@ -336,8 +339,10 @@ function spend(game, nation) {
   // Eğitimdeki alaylar da orduya sayılır. Sayılmasaydı YZ, sipariş sahaya
   // çıkana kadar (8-16 hafta) her hafta yeniden sipariş verir ve kuyruğu
   // hazinesinin yettiği kadar şişirirdi — kuyruğun getirdiği ilk risk budur.
+  // Seferber alaylar sayılmaz: yedek geçicidir, barışta eve döner. Sayılsaydı
+  // seferber devlet savaş boyunca tek bir düzenli alay kurmazdı.
   let army = world.units
-    .filter((u) => u.nationId === nation.id)
+    .filter((u) => u.nationId === nation.id && !isConscript(u))
     .reduce((sum, unit) => sum + regimentCount(unit), 0)
     + trainingCount(nation);
   const canFeed = () => true;
@@ -500,7 +505,9 @@ function manageCommand(game, nation) {
     assignDivisions(nation, host.id, [unit]);
   }
 
-  const foes = world.nations.filter((other) => other.alive && atWar(world, other.id, nation.id));
+  // Ültimatomdaki düşman da cephe ister: gruplar sınıra o hafta yerleşir,
+  // savaş başlayınca yürüyüşle vakit kaybetmez. İlerleme ise yalnız savaşta.
+  const foes = hostileNations(world, nation.id);
   const myPower = nationStrength(world, nation);
   generals.forEach((general, index) => {
     if (!general.divisions.length) return;
@@ -515,7 +522,7 @@ function manageCommand(game, nation) {
     // Üstünsek ilerle, değilsek tut. Barışta ilerleme sahipsiz toprağa genişlemektir.
     const foe = wanted == null ? null : world.nations[wanted];
     const advancing = foe
-      ? myPower > nationStrength(world, foe) * 0.9
+      ? atWar(world, foe.id, nation.id) && myPower > nationStrength(world, foe) * 0.9
       : true;
     setStance(world, general, advancing ? STANCE.ADVANCE : STANCE.HOLD);
   });
@@ -549,6 +556,7 @@ function reformAgenda(game, nation) {
 export function runNationAI(game, nation, rng) {
   const world = game.world;
   diplomacy(game, nation, rng);
+  manageMobilization(game, nation);
   spend(game, nation);
   reformAgenda(game, nation);
   manageCommand(game, nation);
@@ -589,6 +597,12 @@ export function runDelegatedAI(game, nation, rng) {
     }
   }
   if (delegationActive(nation, 'recruitment', turn)) {
+    const mobilizedBefore = Boolean(nation.mobilization?.active);
+    if (manageMobilization(game, nation)) {
+      noteDelegated(game, nation, 'recruitment',
+        mobilizedBefore ? 'The reserve was stood down.' : 'The reserve was mobilized.',
+        mobilizedBefore ? 'No enemy remains.' : 'The enemy in the field outweighs the standing army.');
+    }
     const before = trainingCount(nation);
     spend(game, nation);
     const after = trainingCount(nation);

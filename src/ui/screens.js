@@ -6,7 +6,9 @@
 // var olan fonksiyonlara bağlandı (yeni oyun mantığı yazılmadı).
 
 import { canAfford, formatCost, pay } from '../game/cities.js';
-import { MIN_WAR_TURNS, atWar, nationStrength, relation, truceLeft } from '../game/diplomacy.js';
+import {
+  MIN_WAR_TURNS, atWar, crisisLeft, nationStrength, relation, truceLeft,
+} from '../game/diplomacy.js';
 import {
   MAX_DEMAND_PROVINCES, PEACE_TERMS, concedeKeyForTile, demandKeyForTile,
   occupiedProvincesOf, offerCost, offerRefusal, provinceFromKey, provinceKeyOf,
@@ -467,6 +469,7 @@ export class Screens {
     }
     const turn = this.game.turns.turn;
     const war = atWar(world, me.id, target.id);
+    const crisis = crisisLeft(world, me.id, target.id, turn);
     const truce = truceLeft(world, me.id, target.id, turn);
     const rec = relation(world, me.id, target.id);
     const locked = war && turn - rec.since < MIN_WAR_TURNS;
@@ -485,8 +488,9 @@ export class Screens {
     const allied = isAllied(me, target.id);
     const status = [
       war ? '<span class="tag war">at war</span>'
-        : truce ? `<span class="tag truce">truce ${truce}w</span>`
-          : '<span class="tag peace">at peace</span>',
+        : crisis ? `<span class="tag crisis">war in ${crisis}w</span>`
+          : truce ? `<span class="tag truce">truce ${truce}w</span>`
+            : '<span class="tag peace">at peace</span>',
       allied ? '<span class="tag ally">ally</span>' : '',
       me.rivalId === target.id ? '<span class="tag rival">our rival</span>' : '',
       target.rivalId === me.id ? '<span class="tag rival">sees us as the rival</span>' : '',
@@ -1318,6 +1322,14 @@ export class Screens {
         if (moveTrainingTo(me, btn.dataset.militaryTop, 'top')) this.refresh();
       };
     }
+    const mobilizeBtn = body.querySelector('[data-military-mobilize]');
+    if (mobilizeBtn) {
+      mobilizeBtn.onclick = () => {
+        // Tek ulusal anahtar; sart ve engel game/mobilization.js'te.
+        game.toggleMobilization();
+        this.refresh();
+      };
+    }
     for (const btn of body.querySelectorAll('[data-military-all-stance]')) {
       btn.onclick = () => {
         // Tiyatro emri: tek tikla butun kara komutalari. Yedi generalin yedi
@@ -1790,16 +1802,20 @@ export class Screens {
     const myPower = nationStrength(world, me);
     const rows = others.map((n) => {
       const war = atWar(world, n.id, me.id);
+      const crisis = crisisLeft(world, n.id, me.id, turn);
       const rec = relation(world, n.id, me.id);
       const truce = truceLeft(world, n.id, me.id, turn);
       const locked = war && turn - rec.since < MIN_WAR_TURNS;
       const power = nationStrength(world, n);
       const tag = war ? '<span class="tag war">war</span>'
-        : truce ? `<span class="tag truce">truce ${truce}</span>`
-          : '<span class="tag peace">peace</span>';
+        : crisis ? `<span class="tag crisis">war in ${crisis}w</span>`
+          : truce ? `<span class="tag truce">truce ${truce}</span>`
+            : '<span class="tag peace">peace</span>';
       const action = war
         ? `<button class="action" data-peace="${n.id}" ${locked ? 'disabled' : ''}>Offer Peace${locked ? ` (${MIN_WAR_TURNS - (turn - rec.since)})` : ''}</button>`
-        : `<button class="action" data-war="${n.id}" ${truce ? 'disabled' : ''}>Declare War</button>`;
+        : crisis
+          ? `<button class="action" disabled title="The ultimatum runs out in ${crisis} weeks; mobilize from the Military screen.">Ultimatum (${crisis}w)</button>`
+          : `<button class="action" data-war="${n.id}" ${truce ? 'disabled' : ''}>Declare War</button>`;
 
       return `<div class="card">
         <div class="rel-row">

@@ -21,7 +21,7 @@ import { rulingParty } from '../../src/game/politics.js';
 import { battleUnitPower } from '../../src/game/battles.js';
 import { reinforcementNeed } from '../../src/game/reinforcement.js';
 import { nationManpower } from '../../src/game/recruitment.js';
-import { declareWar } from '../../src/game/diplomacy.js';
+import { declareWarNow } from '../../src/game/diplomacy.js';
 import { ensureConstruction, queueConstruction, constructionAtlas, constructionPower } from '../../src/game/construction.js';
 
 const spec = JSON.parse(process.argv[2]);
@@ -156,7 +156,7 @@ const MUTATIONS = {
       const touching = world.tiles.some((t) => t.owner === nationId
         && world.neighbors(t).some((nb) => nb.owner === other.id));
       if (!touching) continue;
-      declareWar(game, nationId, other.id);
+      declareWarNow(game, nationId, other.id);
       opened++;
     }
   },

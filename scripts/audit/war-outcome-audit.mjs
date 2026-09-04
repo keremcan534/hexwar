@@ -22,7 +22,7 @@ import {
   MAX_WAR_SCORE, buildOffer, demandLimit, offerCost, offerRefusal, provinceKeyOf,
   provinceWarCost, signPeace, warExpectation, warScore,
 } from '../../src/game/peace.js';
-import { atWar, declareWar, recordWarCasualties } from '../../src/game/diplomacy.js';
+import { atWar, declareWarNow, recordWarCasualties } from '../../src/game/diplomacy.js';
 
 section('SAVAS SONUCU / TOPRAK DEVRI DENETIMI');
 
@@ -49,7 +49,7 @@ function occupiedWar(seed, share, weeks = 40) {
   }
   if (!pair) pair = [ranked[0], ranked[1]];
   const [aggressor, victim] = pair;
-  if (!atWar(world, aggressor.id, victim.id)) declareWar(game, aggressor.id, victim.id);
+  if (!atWar(world, aggressor.id, victim.id)) declareWarNow(game, aggressor.id, victim.id);
 
   const theirs = world.provinces.filter((p) => p.owner === victim.id && p.econ);
   const wanted = Math.max(1, Math.round(theirs.length * share));

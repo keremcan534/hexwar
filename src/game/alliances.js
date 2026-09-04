@@ -10,7 +10,7 @@
 // Katman: game — DOM yok. diplomacy/peace'e dayanir; onlar bunu import etmez.
 
 import { remember } from './chronicle.js';
-import { atWar, attackerCount, declareWar, relation } from './diplomacy.js';
+import { atWar, attackerCount, declareWar, hostile, relation } from './diplomacy.js';
 import { treatiesOf } from './peace.js';
 
 export const ALLIANCE = 'ALLIANCE';
@@ -193,7 +193,7 @@ function notifyPlayerAllianceEvent(game, a, b, what) {
  * karar karti duser, ilan oyuncunun fiilidir (manual). Zincir yok: cagriyla
  * acilan savas yeni cagri dogurmaz.
  */
-export function callAlliesToWar(game, aggressorId, defenderId) {
+export function callAlliesToWar(game, aggressorId, defenderId, warAt = undefined) {
   const world = game.world;
   const turn = game.turns.turn ?? 0;
   const defender = world.nations[defenderId];
@@ -202,7 +202,7 @@ export function callAlliesToWar(game, aggressorId, defenderId) {
   for (const allyId of [...alliesOf(defender)].sort((x, y) => x - y)) {
     const ally = world.nations[allyId];
     if (!ally?.alive || allyId === aggressorId) continue;
-    if (atWar(world, allyId, aggressorId)) continue;
+    if (hostile(world, allyId, aggressorId)) continue;
     // Iki cephesi olan muttefik cagriya gelmez: ai.js ve koalisyonla ayni
     // kural; olculdu, altinci savas buradan geliyordu (audit:war-pressure).
     if (attackerCount(world, allyId) >= 2) continue;
@@ -214,7 +214,8 @@ export function callAlliesToWar(game, aggressorId, defenderId) {
       );
       continue;
     }
-    declareWar(game, allyId, aggressorId, { reason: 'alliance', calledBy: defenderId });
+    // Muttefigin ultimatomu saldirganinkiyle ayni hafta biter: cephe birlikte acilir.
+    declareWar(game, allyId, aggressorId, { reason: 'alliance', calledBy: defenderId, warAt });
     remember(ally, turn, 'honored_call', defenderId);
   }
 }
@@ -283,8 +284,8 @@ export function runDiplomacyAI(game) {
   const calls = world.pendingWarCalls;
   if (calls?.length) {
     world.pendingWarCalls = [];
-    for (const { aggressor, defender } of calls) {
-      callAlliesToWar(game, aggressor, defender);
+    for (const { aggressor, defender, warAt } of calls) {
+      callAlliesToWar(game, aggressor, defender, warAt);
     }
   }
   reviewAlliances(game);

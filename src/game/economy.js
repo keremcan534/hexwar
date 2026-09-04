@@ -4420,6 +4420,10 @@ function refreshNationalStrain(world) {
       const since = world.relations?.[nation.id]?.[other.id]?.since ?? turn;
       strain += 0.35 + clamp((turn - since) / 156, 0, 1) * 0.65;
     }
+    // Seferberlik tek basina bir yuktur: tarla ve tezgah bosalir, halk
+    // silah altindadir. Savas olmasa da (ultimatom) hissedilir; bu yuzden
+    // seferberligi barista acik birakmak bedava degildir.
+    if (nation.mobilization?.active) strain += 0.35;
     nation.economy.warFronts = fronts;
     nation.economy.warStrain = clamp(strain / 2, 0, 1);
   }

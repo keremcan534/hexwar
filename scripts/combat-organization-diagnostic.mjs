@@ -10,7 +10,7 @@ import {
 import {
   createUnit, organizationOf, soldiersOf, strengthRatio,
 } from '../src/game/units.js';
-import { declareWar } from '../src/game/diplomacy.js';
+import { declareWarNow } from '../src/game/diplomacy.js';
 
 function headless(seed) {
   const game = Object.create(Game.prototype);
@@ -83,7 +83,7 @@ function scenario(seed, connectedRetreat) {
   const attacker = createUnit('INFANTRY', attackerNation.id, approach, attackerNation);
   const defender = createUnit('INFANTRY', defenderNation.id, target, defenderNation);
   world.units.push(attacker, defender);
-  declareWar(game, attackerNation.id, defenderNation.id);
+  declareWarNow(game, attackerNation.id, defenderNation.id);
   game.turns.turn = 10;
   const started = startBattle(game, attacker, target);
   let rounds = 0;

@@ -5,7 +5,7 @@ import { TurnManager } from '../src/game/turn.js';
 import { generateWorld } from '../src/world/worldgen.js';
 import { generateNations } from '../src/world/nations.js';
 import { controllerOf, isOccupied } from '../src/game/control.js';
-import { declareWar, makePeace } from '../src/game/diplomacy.js';
+import { declareWarNow, makePeace } from '../src/game/diplomacy.js';
 import { placeUnit, unitsOn } from '../src/game/units.js';
 import { provinceOutput } from '../src/game/provinces.js';
 import { deserialize, serialize } from '../src/game/save.js';
@@ -57,7 +57,7 @@ function borderScenario(seed) {
   placeUnit(pair.attacker, pair.origin);
   const attackerId = pair.origin.owner;
   const defenderId = pair.target.owner;
-  declareWar(game, attackerId, defenderId);
+  declareWarNow(game, attackerId, defenderId);
   return { game, world, attackerId, defenderId, ...pair };
 }
 

@@ -18,7 +18,7 @@ import { generateNations } from '../src/world/nations.js';
 import {
   FACTORIES, SOCIAL_PROGRAMS, populationOf, setBudgetPolicy, socialSpendingCost,
 } from '../src/game/economy.js';
-import { computeContacts, declareWar, nationStrength } from '../src/game/diplomacy.js';
+import { computeContacts, declareWarNow, nationStrength } from '../src/game/diplomacy.js';
 import { setAggression, STANCE } from '../src/game/command.js';
 import { policyOf, rulingParty } from '../src/game/politics.js';
 import { provinceRgoJobs, rgoLaborScale } from '../src/game/provinces.js';
@@ -395,7 +395,7 @@ lever({
       }
     }
     if (!pair) return;
-    declareWar(g, pair[0], pair[1]);
+    declareWarNow(g, pair[0], pair[1]);
     g.turns.turn += 20;
     const theirs = w.tiles.filter((t) => t.owner === pair[1] && t.terrain.passable);
     theirs.slice(0, Math.floor(theirs.length * v)).forEach((t) => { t.controller = pair[0]; });

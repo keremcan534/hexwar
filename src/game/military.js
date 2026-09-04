@@ -28,6 +28,11 @@ import {
   trainingWeeks, weeksLeft,
 } from './recruitment.js';
 import { BASE_REINFORCEMENT_RATE, reinforcementNeed } from './reinforcement.js';
+import {
+  MOBILIZATION, conscriptUnits, isMobilized, mobilizationBlockers, mobilizationTarget,
+} from './mobilization.js';
+import { CONSCRIPT_POWER } from './units.js';
+import { crisisLeft, inCrisis } from './diplomacy.js';
 import { UNIT_COSTS, UNIT_UPKEEP } from './cities.js';
 import {
   MILITARY_EQUIPMENT, MILITARY_EQUIPMENT_IDS, MILITARY_FIELD, equipmentStock,
@@ -130,7 +135,13 @@ export function militarySummary(world, nation) {
   const wars = world.nations.filter(
     (other) => other.alive && other.id !== nation.id && atWar(world, nation.id, other.id),
   );
+  const turn = world.turn ?? 0;
+  const crises = world.nations.filter(
+    (other) => other.alive && other.id !== nation.id && inCrisis(world, nation.id, other.id),
+  );
   const need = reinforcementNeed(world, nation);
+  const mobilized = isMobilized(nation);
+  const conscripts = conscriptUnits(world, nation.id).length;
   const officers = officersOf(nation, BRANCH.ARMY);
   const admirals = officersOf(nation, BRANCH.NAVY);
   const commanded = new Set();
@@ -163,6 +174,20 @@ export function militarySummary(world, nation) {
     ),
     queueLimit: MAX_TRAINING_QUEUE,
     wars: wars.map((other) => ({ id: other.id, name: other.name })),
+    // Ültimatomlar: ilan edilmiş, henüz başlamamış savaşlar ve kalan hafta.
+    crises: crises.map((other) => ({
+      id: other.id, name: other.name, left: crisisLeft(world, nation.id, other.id, turn),
+    })),
+    // Seferberlik: tek anahtar, ekran yalnız durumu ve engeli yazar.
+    mobilization: {
+      active: mobilized,
+      conscripts,
+      target: mobilized ? (nation.mobilization?.target ?? 0) : mobilizationTarget(world, nation),
+      blockers: mobilized ? [] : mobilizationBlockers(world, nation, turn),
+      weeks: MOBILIZATION.RAISE_WEEKS,
+      share: MOBILIZATION.SHARE,
+      power: CONSCRIPT_POWER,
+    },
     upkeepGold: nation.budget?.armyGold ?? 0,
     upkeepFood: nation.budget?.army ?? 0,
     armyCost: nation.economy?.ledger?.armyCost ?? 0,

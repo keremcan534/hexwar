@@ -1252,6 +1252,7 @@ body.screen-open .layer-menu { display: none; }
 }
 
 .tag.war { color: var(--red); border-color: var(--red); }
+.tag.crisis { color: var(--amber); border-color: var(--red); }
 .tag.peace { color: var(--green); border-color: var(--green); }
 .tag.truce { color: var(--amber); border-color: var(--amber); }
 .tag.ally { color: var(--gold-bright); border-color: var(--frame-brass); }
@@ -5282,6 +5283,14 @@ body.screen-open .layer-menu { display: none; }
 .war-chip.winning .war-score { color: var(--viz-pos); }
 .war-chip.losing .war-score { color: var(--viz-neg); }
 
+/* Ultimatom: savas henuz yok, geri sayim var. Kirmizi nabiz atmaz, kehribar durur. */
+.war-chip.crisis {
+  border-color: var(--amber);
+  background: var(--gold-wash, var(--red-wash));
+  animation: none;
+}
+.war-chip.crisis .war-score { color: var(--amber); }
+
 /* Bekleyen teklif savas rengini birakir: bu kutucuk artik bir karar bekliyor. */
 .war-chip.offered {
   border-color: var(--gold);
@@ -7586,6 +7595,25 @@ body.menu-open .sheet { visibility: hidden; }
   text-transform: uppercase;
 }
 .mil-theater .mil-btn { flex: 1; }
+
+/* Seferberlik satiri: dugme + tek cumlelik durum (bkz. militaryScreen mobilizationRow). */
+.mil-mobilize { margin-top: 3px; }
+.mil-mobilize .mil-btn { flex: 0 0 auto; }
+.mil-mobilize em {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-style: normal;
+  font-size: var(--fs-label);
+  color: var(--text-mute);
+}
+.mil-btn.on {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: linear-gradient(180deg, #2b2415, #1c1810);
+}
 
 /* Subay satirindaki durus rozeti: iki ekran ayni cevabi versin (B2-021). */
 .mil-stance {

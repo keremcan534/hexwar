@@ -8,7 +8,9 @@ import {
   UNIT_TYPES, isMoving, maxHpOf, menUnderArms, organizationOf, regimentCount, soldiersOf,
   speedOf, strengthRatio,
 } from '../game/units.js';
-import { MIN_WAR_TURNS, atWar, relation, truceLeft } from '../game/diplomacy.js';
+import {
+  MIN_WAR_TURNS, atWar, crisisLeft, inCrisis, relation, truceLeft,
+} from '../game/diplomacy.js';
 import { warScore } from '../game/peace.js';
 import { INFAMY_COALITION, OCCUPATION_TURNS, tileEfficiency } from '../game/infamy.js';
 import { savedInfo } from '../game/save.js';
@@ -119,11 +121,31 @@ export class Hud {
     const wars = world.nations.filter(
       (other) => other.alive && other.id !== me.id && atWar(world, me.id, other.id),
     );
-    bar.classList.toggle('hidden', wars.length === 0);
+    // Ültimatomlar da çubukta durur: savaş henüz yok ama geri sayım var ve
+    // seferberlik kararı bu pencerede verilir.
+    const crises = world.nations.filter(
+      (other) => other.alive && other.id !== me.id && inCrisis(world, me.id, other.id),
+    );
+    bar.classList.toggle('hidden', wars.length + crises.length === 0);
     // Savaş bittiyse savaş kartı da biter. Kart `ttl: 0` ile kalıcıdır ve
-    // kendiliğinden kapanmaz; barış onu geçersiz kılan tek olaydır.
+    // kendiliğinden kapanmaz; barış onu geçersiz kılan tek olaydır. İlan
+    // kartı da ültimatom bitince düşer (anahtar `crisis-<id>`; CRISIS türü
+    // borç kartlarıyla paylaşıldığından türe göre değil anahtara göre).
     if (!wars.length) this.game.notifications?.dismissKind('WAR');
-    bar.innerHTML = wars.map((other) => {
+    const openCrisis = new Set(crises.map((other) => `crisis-${other.id}`));
+    const staleCrisis = (this.game.notifications?.active ?? [])
+      .filter((entry) => entry.key?.startsWith('crisis-') && !openCrisis.has(entry.key))
+      .map((entry) => entry.key);
+    if (staleCrisis.length) this.game.notifications.dismissKeys(staleCrisis);
+    const crisisChips = crises.map((other) => {
+      const left = crisisLeft(world, me.id, other.id, this.game.turns.turn);
+      return `<button class="war-chip crisis" data-crisis-target="${other.id}"
+        title="Ultimatum: war with ${escapeHtml(other.name)} begins in ${left} weeks. Mobilize from the Military screen.">
+        <span class="war-name">⏳ ${escapeHtml(other.name)}</span>
+        <b class="war-score">${left}w</b>
+      </button>`;
+    }).join('');
+    bar.innerHTML = crisisChips + wars.map((other) => {
       const score = warScore(world, me.id, other.id);
       const tone = score > 8 ? 'winning' : score < -8 ? 'losing' : 'even';
       // Bekleyen teklif menude kaybolmamali: savas kutucugu zaten ustte duruyor.
@@ -141,6 +163,9 @@ export class Hud {
       chip.onclick = () => (this.game.hasPeaceOffer(me.id, id)
         ? this.screens.open('diplomacy')
         : this.screens.openPeaceTalks(id));
+    }
+    for (const chip of bar.querySelectorAll('[data-crisis-target]')) {
+      chip.onclick = () => this.screens.open('military');
     }
   }
 
@@ -1084,15 +1109,21 @@ export class Hud {
     if (foreign >= 0 && game.world.nations[foreign].alive) {
       const other = game.world.nations[foreign];
       const war = atWar(game.world, foreign, game.turns.playerNation);
+      const crisis = crisisLeft(game.world, foreign, game.turns.playerNation, game.turns.turn);
       const rec = relation(game.world, foreign, game.turns.playerNation);
       const locked = war && game.turns.turn - rec.since < MIN_WAR_TURNS;
       const truce = truceLeft(game.world, foreign, game.turns.playerNation, game.turns.turn);
+      const state = war ? 'at war'
+        : crisis ? `war in ${crisis} weeks`
+          : truce ? `truce (${truce} turns)` : 'at peace';
       rows.push(`<div class="action-row">
-        <div class="k">${escapeHtml(other.name)} — ${war ? 'at war' : truce ? `truce (${truce} turns)` : 'at peace'}</div>
+        <div class="k">${escapeHtml(other.name)} — ${state}</div>
         <button class="action wide" data-dossier="${foreign}">Open ${escapeHtml(other.name)} Dossier</button>
         ${war
     ? `<button class="action wide" data-peace="${foreign}" ${locked ? 'disabled' : ''}>Offer Peace${locked ? ` (${MIN_WAR_TURNS - (game.turns.turn - rec.since)} weeks)` : ''}</button>`
-    : `<button class="action wide" data-war="${foreign}" ${truce ? 'disabled' : ''}>Declare War${truce ? ` (${truce} turns)` : ''}</button>`}
+    : crisis
+      ? `<button class="action wide" disabled title="The ultimatum runs out in ${crisis} weeks; mobilize from the Military screen.">Ultimatum (${crisis} weeks)</button>`
+      : `<button class="action wide" data-war="${foreign}" ${truce ? 'disabled' : ''}>Declare War${truce ? ` (${truce} turns)` : ''}</button>`}
       </div>`);
     }
 

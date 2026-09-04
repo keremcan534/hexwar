@@ -257,6 +257,17 @@ function createRegiment(typeId, nation, home = null) {
  * Tumenin ham muharebe gucu. Alay basina: kol saldirisi × mevcut × moral ×
  * techizat. Arazi, general ve plan carpanlari battles.js'te uygulanir.
  */
+/**
+ * Seferber alayin muharebe carpani. Yedek, kislada yetismis alay degildir:
+ * ayni adam sayisi, daha az ates gucu. 0.7 Vic2'nin "mobilized brigade"
+ * hissi — sayica cok, tek tek zayif (bkz. mobilization.js).
+ */
+export const CONSCRIPT_POWER = 0.7;
+
+export function isConscript(unit) {
+  return Boolean(unit?.regiments?.some((regiment) => regiment.conscript));
+}
+
 export function armyPower(unit) {
   if (!unit) return 0;
   if (!unit.regiments?.length) {
@@ -266,7 +277,8 @@ export function armyPower(unit) {
     const type = UNIT_TYPES[regiment.typeId];
     const strength = regiment.strength / Math.max(1, regiment.maxStrength);
     const organization = regiment.organization ?? regiment.morale ?? 100;
-    return sum + type.attack * strength * (0.45 + organization / 180);
+    const quality = regiment.conscript ? CONSCRIPT_POWER : 1;
+    return sum + type.attack * strength * (0.45 + organization / 180) * quality;
   }, 0);
 }
 

@@ -13,7 +13,7 @@ import {
   participatingAttackPower, refreshFront, runCommand, setStance, setTarget,
 } from '../src/game/command.js';
 import { advanceMovement, destinationOf, orderMove } from '../src/game/movement.js';
-import { atWar, declareWar } from '../src/game/diplomacy.js';
+import { atWar, declareWarNow } from '../src/game/diplomacy.js';
 import { deserialize, serialize } from '../src/game/save.js';
 import { battleUnitPower, runBattles, startBattle } from '../src/game/battles.js';
 import {
@@ -179,7 +179,7 @@ results.peaceTarget = {
 
 // Oyuncu ulkesi adina otomatik ilan REDDEDILIR (diplomacy.declareWar kural 1);
 // tani, dugmeye basan oyuncuyu temsil eder.
-declareWar(game, nation.id, foreign.id, { manual: true });
+declareWarNow(game, nation.id, foreign.id, { manual: true });
 runCommand(game);
 const front = frontTilesOf(world, general);
 const firstPosts = new Map(lineDivisions.map((unit) => [
@@ -366,7 +366,7 @@ const fullyEntrenchedDefense = battleUnitPower(fixWorld, defender, true);
 combatTiles.foreign.terrain = defenderTerrain;
 combatTiles.foreign.city = defenderCity;
 
-declareWar(fixGame, attackerNationId, defenderNationId);
+declareWarNow(fixGame, attackerNationId, defenderNationId);
 attacker.entrenchment = MAX_ENTRENCHMENT;
 const manualAttackWorks = startBattle(fixGame, attacker, combatTiles.foreign);
 const attackingReset = attacker.entrenchment === 0;

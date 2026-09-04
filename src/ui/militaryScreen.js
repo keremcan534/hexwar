@@ -73,8 +73,10 @@ function figure(icon, label, value, note, tone = '') {
 }
 
 function headerStrip(summary) {
-  const wars = summary.wars.length
-    ? summary.wars.map((war) => war.name).join(', ')
+  const crises = (summary.crises ?? [])
+    .map((crisis) => `${crisis.name} (war in ${crisis.left}w)`);
+  const wars = summary.wars.length || crises.length
+    ? summary.wars.map((war) => war.name).concat(crises).join(', ')
     : 'At peace';
   return `<header class="mil-head">
     ${figure('sword', 'Standing army', `${summary.divisions}`,
@@ -92,7 +94,8 @@ function headerStrip(summary) {
     ${figure('hourglass', 'In training', `${summary.training}`,
     `${summary.trainingCapacity} can train at once · ${formatPopulation(summary.trainingManpower)}`
       + ' men committed when they march out')}
-    ${figure('flag', 'Wars', `${summary.wars.length}`, wars, summary.wars.length ? 'hot' : '')}
+    ${figure('flag', 'Wars', `${summary.wars.length}${crises.length ? ` +${crises.length}` : ''}`, wars,
+    summary.wars.length ? 'hot' : crises.length ? 'warn' : '')}
     ${figure('coin', 'Upkeep', `${summary.upkeepGold.toFixed(1)}£`,
     `${summary.upkeepGold.toFixed(1)} gold and ${Math.round(summary.upkeepFood)} food a week`
       + ` · procurement ${summary.procurementCost.toFixed(1)}£ · wages at ${summary.wages}%`)}
@@ -175,7 +178,31 @@ function leaderDetail(leader, loose) {
   </div>`;
 }
 
-function commandColumn(state, roster, looseByBranch, trainCost, canTrain) {
+/**
+ * Seferberlik satırı: tek düğme, tek cümle. Neden kapalıysa yazar (engel
+ * listesi game/mobilization.js'ten gelir; ekran eşik hesaplamaz).
+ */
+function mobilizationRow(m) {
+  if (!m) return '';
+  const note = m.active
+    ? `${m.conscripts} of ${m.target} conscript regiments under arms. They fight at ${Math.round(m.power * 100)}%,`
+      + ' cost normal upkeep, strain stability, and go home when the last war ends.'
+    : m.blockers.length
+      ? `${m.blockers.join(' ')} Would raise ${m.target} conscript regiments over ${m.weeks} weeks.`
+      : `Raise ${m.target} conscript regiments over ${m.weeks} weeks (${Math.round(m.share * 100)}% of the`
+        + ` manpower pool). They fight at ${Math.round(m.power * 100)}% and leave farms and factories short.`;
+  const status = m.active
+    ? `${m.conscripts}/${m.target} conscript ${m.target === 1 ? 'regiment' : 'regiments'}`
+    : m.blockers.length ? m.blockers[0] : `${m.target} regiments in ${m.weeks} weeks`;
+  return `<div class="mil-theater mil-mobilize" role="group" aria-label="Mobilization" title="${esc(note)}">
+    <small>Reserve</small>
+    <button class="mil-btn ${m.active ? 'on' : ''}" data-military-mobilize
+      ${!m.active && m.blockers.length ? 'disabled' : ''}>${m.active ? '■ Demobilize' : '⚑ Mobilize'}</button>
+    <em>${esc(status)}</em>
+  </div>`;
+}
+
+function commandColumn(state, roster, looseByBranch, trainCost, canTrain, mobilization = null) {
   const branch = state.branch === 'navy' ? 'navy' : 'army';
   const list = branch === 'navy' ? roster.navy : roster.army;
   // Amiral gemi alır, general tümen: "boşta" sayısı da kola göre okunur.
@@ -207,7 +234,7 @@ function commandColumn(state, roster, looseByBranch, trainCost, canTrain) {
           title="Order every army command to advance. One click instead of one per general; individual commands can still be overridden.">➤ Advance</button>
         <button class="mil-btn" data-military-all-stance="hold"
           title="Order every army command to hold its front.">■ Hold</button>
-      </div>`}
+      </div>${mobilizationRow(mobilization)}`}
       <button class="mil-btn wide" data-military-train="${branch}" ${canTrain ? '' : 'disabled'}
         title="${esc(canTrain
     ? `Trains a new officer for ${trainCost} gold. Each addition to the staff costs more.`
@@ -415,7 +442,8 @@ export function militaryScreen(state, data) {
     ${headerStrip(data.summary)}
     <div class="mil-cols">
       <div class="mil-left">
-        ${commandColumn(state, data.roster, data.loose, data.trainCost, data.canTrain)}
+        ${commandColumn(state, data.roster, data.loose, data.trainCost, data.canTrain,
+    data.summary.mobilization)}
         ${statsBox(data.stats)}
       </div>
       ${buildColumn(state, data.options, data.summary)}

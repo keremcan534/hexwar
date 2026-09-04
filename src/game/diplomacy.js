@@ -10,6 +10,16 @@ import { TIER, announce, remember } from './chronicle.js';
 
 export const WAR = 'war';
 export const PEACE = 'peace';
+/**
+ * ÜLTİMATOM: savaş ilan edilmiş ama ordular henüz sınırı geçemez. Vic2'nin
+ * "ilan → seferberlik → ilk çatışma" gövdesi. İlan anında savaşa girmek
+ * ölçüldü (bully senaryosu, 3 tohum): 2.5-3.4× üstün komşu ilk haftadan
+ * saldırıyor, kurbanın ordusu savaş boyunca HİÇ büyümüyordu (3→3 alay). İki
+ * tarafa da hazırlık süresi verilir; seferberlik tam bu pencereye sığar
+ * (bkz. mobilization.js RAISE_WEEKS).
+ */
+export const CRISIS = 'crisis';
+export const ULTIMATUM_WEEKS = 8;
 
 /**
  * Barış görüşmesi için savaşın en az sürmesi gereken tur sayısı.
@@ -81,6 +91,31 @@ export function atPeace(world, a, b) {
   return a !== b && !atWar(world, a, b);
 }
 
+/** İlan edilmiş ama henüz başlamamış savaş. */
+export function inCrisis(world, a, b) {
+  return relation(world, a, b)?.state === CRISIS;
+}
+
+/** Savaş YA DA ültimatom: ordu hazırlığı isteyen her ilişki. */
+export function hostile(world, a, b) {
+  const state = relation(world, a, b)?.state;
+  return state === WAR || state === CRISIS;
+}
+
+/** Ültimatomun bitmesine kaç hafta var; ültimatom yoksa 0. */
+export function crisisLeft(world, a, b, turn) {
+  const rec = relation(world, a, b);
+  if (!rec || rec.state !== CRISIS) return 0;
+  return Math.max(0, (rec.warAt ?? 0) - turn);
+}
+
+/** Bu ulusla savaşta ya da ültimatomda olan canlı ülkeler. */
+export function hostileNations(world, nationId) {
+  return world.nations.filter(
+    (other) => other.alive && other.id !== nationId && hostile(world, nationId, other.id),
+  );
+}
+
 function setState(world, a, b, state, turn, extra = {}) {
   const rec = { state, since: turn, ...extra };
   world.relations[a][b] = rec;
@@ -130,7 +165,9 @@ export function recordWarProgress(world, a, b, score) {
 export function attackerCount(world, nationId) {
   let count = 0;
   for (const other of world.nations) {
-    if (other.alive && other.id !== nationId && atWar(world, other.id, nationId)) count++;
+    // Ültimatom da sayılır: ilan edilmiş cephe, açılmış cephedir. Sayılmasa
+    // çullanma tavanı sekiz haftalık pencerede delinirdi.
+    if (other.alive && other.id !== nationId && hostile(world, other.id, nationId)) count++;
   }
   return count;
 }
@@ -169,7 +206,7 @@ export const MAX_PLAYER_INVOLUNTARY_FRONTS = 2;
 export function declareWar(game, a, b, options = {}) {
   const world = game.world;
   const manual = options.manual === true;
-  if (a === b || atWar(world, a, b)) return false;
+  if (a === b || hostile(world, a, b)) return false;
   if (truceLeft(world, a, b, game.turns.turn) > 0) return false;
   // Ittifak/vasallik ciftler arasinda ilan YOK — once bozmak gerekir.
   // (VASSALIZE kartinin "kalici baris" vaadi bu satira kadar SAHTEYDI:
@@ -196,7 +233,15 @@ export function declareWar(game, a, b, options = {}) {
   // Kaçıncı savaş: ateşkes uzunluğu buna bakar, o yüzden barış kaydından
   // savaş kaydına taşınmalı (setState yeni bir nesne kurar).
   const wars = (relation(world, a, b)?.wars ?? 0) + 1;
-  setState(world, a, b, WAR, game.turns.turn, { wars });
+  // İlan savaşı BAŞLATMAZ, ültimatomu başlatır: ordular ULTIMATUM_WEEKS
+  // boyunca sınırı geçemez, iki taraf da seferber olabilir. Çağrıyla açılan
+  // savaş (müttefik) saldırganla aynı takvime biner ki cephe birlikte açılsın.
+  const warAt = options.reason === 'alliance' && Number.isFinite(options.warAt)
+    ? options.warAt
+    : game.turns.turn + ULTIMATUM_WEEKS;
+  setState(world, a, b, CRISIS, game.turns.turn, {
+    wars, warAt, reason: options.reason ?? null, aggressor: a,
+  });
   // SAVAS HEDEFI. Bir savasin NEDEN acildigi hicbir yerde yazmiyordu; masada
   // "ne istiyordum?" sorusunun cevabi yoktu. Hedef kume ilan aninda saklanir
   // ve baris masasinda birinci sirada gosterilir (bkz. peace.js warGoalOf).
@@ -211,29 +256,89 @@ export function declareWar(game, a, b, options = {}) {
   // Cagri-ile-savas KUYRUGA yazilir, burada cozulmez: alliances.js bu
   // dosyayi import eder, ters yon dongu olurdu. turn.js kuyrugu YZ evresi
   // sonunda bosaltir. Cagriyla acilan savas yeni cagri dogurmaz (zincir yok).
+  // Müttefikler ilanla birlikte çağrılır ki ültimatom süresince onlar da
+  // hazırlansın; kendi ültimatomları saldırganınkiyle aynı hafta biter.
   if (options.reason !== 'alliance') {
-    (world.pendingWarCalls ??= []).push({ aggressor: a, defender: b });
+    (world.pendingWarCalls ??= []).push({ aggressor: a, defender: b, warAt });
   }
   // Savaş ilanının anlık harita izi yok (sınır rengi değişmez; işgal
   // taraması ancak kareler el değiştirince başlar) — tam geçersizleme
   // YZ'nin her ilanında tüm önbelleği boşuna yakıyordu.
   if (a === game.turns.playerNation || b === game.turns.playerNation) {
     const other = world.nations[a === game.turns.playerNation ? b : a];
-    // Savaş ilanı kendiliğinden kapanmaz (NOTIFY.WAR ttl 0): görülmeden geçmemeli.
-    // Ulusal olay olarak duyurulur ki VAKAYINAMEYE girsin: 39. haftada
-    // vakayinamede yalniz "The treasury borrows" vardi, ilk savas yoktu
-    // (Open Beta 4). Baris zaten "Peace with X" diye kaydediliyor.
+    // İlan kartı kendiliğinden kapanmaz (NOTIFY.CRISIS ttl 0): görülmeden
+    // geçmemeli. Ulusal olay olarak duyurulur ki VAKAYINAMEYE girsin (Open
+    // Beta 4'te ilk savaş vakayinamede yoktu). Savaşın fiilen başlaması ayrı
+    // bir kart alır (bkz. resolveCrises).
     const me = world.nations[game.turns.playerNation];
     const attacked = b === game.turns.playerNation;
     announce(game, me, {
-      kind: 'WAR', tier: TIER.MAJOR, key: `war-${other.id}`, ttl: 0,
-      title: attacked ? `${other.name} declares war on us` : `War declared on ${other.name}`,
+      kind: 'CRISIS', tier: TIER.MAJOR, key: `crisis-${other.id}`, ttl: 0,
+      title: attacked
+        ? `${other.name} declares war on us — ${ULTIMATUM_WEEKS} weeks to prepare`
+        : `War declared on ${other.name} — armies march in ${ULTIMATUM_WEEKS} weeks`,
       detail: attacked
-        ? 'Their armies may cross the border at once; hold the line or take theirs.'
-        : 'The peace table opens once provinces are held; each taken province costs infamy.',
+        ? 'Mobilize now: the reserve arms within the ultimatum. Their armies cross once it expires.'
+        : 'Both sides may mobilize. The border opens when the ultimatum runs out; taken provinces cost infamy.',
     });
   }
   return true;
+}
+
+/**
+ * Ültimatomsuz savaş: ilan ve aynı hafta açık cephe. Denetim ve tanılama
+ * betikleri içindir ("bu savaşın masası ne verir" sorusu sekiz hafta
+ * beklemeden sorulabilsin); oyunun kendisi her ilanı ültimatomdan geçirir
+ * (YZ, koalisyon, oyuncu — hepsi `declareWar`).
+ */
+export function declareWarNow(game, a, b, options = {}) {
+  if (!declareWar(game, a, b, options)) return false;
+  const rec = relation(game.world, a, b);
+  if (rec) rec.warAt = game.turns.turn;
+  resolveCrises(game);
+  return atWar(game.world, a, b);
+}
+
+/**
+ * Süresi dolan ültimatomları savaşa çevirir. Kayıt YERİNDE değişir: `wars`,
+ * `goals`, `aggressor` savaşa taşınır; `since` savaşın gerçek başlangıcıdır
+ * (MIN_WAR_TURNS ve savaş yükü buna bakar).
+ * @returns {number} bu hafta başlayan savaş sayısı
+ */
+export function resolveCrises(game) {
+  const world = game.world;
+  const turn = game.turns.turn;
+  const n = world.nations.length;
+  let started = 0;
+  for (let a = 0; a < n; a++) {
+    for (let b = a + 1; b < n; b++) {
+      const rec = world.relations[a]?.[b];
+      if (!rec || rec.state !== CRISIS || turn < (rec.warAt ?? 0)) continue;
+      // Ölen taraf: ültimatom sessizce düşer, savaş hiç başlamaz.
+      if (!world.nations[a]?.alive || !world.nations[b]?.alive) {
+        setState(world, a, b, PEACE, turn, { wars: rec.wars ?? 0 });
+        continue;
+      }
+      rec.state = WAR;
+      rec.since = turn;
+      delete rec.warAt;
+      started++;
+      const player = game.turns.playerNation;
+      if (a === player || b === player) {
+        const me = world.nations[player];
+        const other = world.nations[a === player ? b : a];
+        const attacked = rec.aggressor !== player;
+        announce(game, me, {
+          kind: 'WAR', tier: TIER.MAJOR, key: `war-${other.id}`, ttl: 0,
+          title: attacked ? `${other.name}'s armies cross the border` : `War with ${other.name} begins`,
+          detail: attacked
+            ? 'The ultimatum has expired; hold the line or take theirs.'
+            : 'The peace table opens once provinces are held; each taken province costs infamy.',
+        });
+      }
+    }
+  }
+  return started;
 }
 
 /** Baris masasi: yalniz karsi taraftan fiilen isgal edilen province'ler devredilir. */

@@ -9,7 +9,7 @@ import { Game } from '../src/game/game.js';
 import { TurnManager } from '../src/game/turn.js';
 import { generateWorld } from '../src/world/worldgen.js';
 import { generateNations } from '../src/world/nations.js';
-import { computeContacts, declareWar } from '../src/game/diplomacy.js';
+import { computeContacts, declareWarNow } from '../src/game/diplomacy.js';
 import { controllerOf } from '../src/game/control.js';
 import {
   MAX_DEMAND_PROVINCES, PEACE_TERMS, buildOffer, occupiedProvincesOf, offerAcceptable,
@@ -49,7 +49,7 @@ function occupiedWar(seed, held = 5) {
     if (near) pair = { a: tile.owner, b: near.owner };
   });
   if (!pair) throw new Error('Sinir komsusu bulunamadi.');
-  declareWar(game, pair.a, pair.b);
+  declareWarNow(game, pair.a, pair.b);
   game.turns.turn += 20;   // MIN_WAR_TURNS gecsin
 
   const theirs = world.tiles.filter((t) => t.owner === pair.b && t.terrain.passable);
@@ -235,7 +235,7 @@ section('YZ savaslari masada bitiyor (elle baslatilan savaslar, 150 hafta)');
   for (let a = 0; a < world.nations.length && started < 4; a++) {
     for (let b = a + 1; b < world.nations.length && started < 4; b++) {
       if (!contacts[a]?.[b]) continue;
-      if (declareWar(game, a, b)) started++;
+      if (declareWarNow(game, a, b)) started++;
     }
   }
   console.log(`  ${started} savas elle baslatildi`);

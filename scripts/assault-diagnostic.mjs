@@ -13,7 +13,7 @@ import {
 } from '../src/game/battles.js';
 import { createUnit, placeUnit } from '../src/game/units.js';
 import { advanceMovement, destinationOf, orderMove } from '../src/game/movement.js';
-import { declareWar } from '../src/game/diplomacy.js';
+import { declareWarNow } from '../src/game/diplomacy.js';
 import { hexDistance } from '../src/core/hex.js';
 
 function headless(seed) {
@@ -86,7 +86,7 @@ function assaultScenario(seed, planning = 0.5) {
     nextAssaultAt: 0,
     aggression: 2,
   });
-  declareWar(game, nation.id, foe.id);
+  declareWarNow(game, nation.id, foe.id);
   game.turns.turn = 10;
   return { game, world, nation, foe, target, attackers, defender, general };
 }
