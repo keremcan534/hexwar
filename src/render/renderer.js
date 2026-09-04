@@ -669,6 +669,7 @@ export class Renderer {
   invalidateCache() {
     // Kip değişimi, dünya değişimi, sahiplik — hepsi buradan geçer.
     this.surfaceColorsDirty = true;
+    this.surfaceOverlayDirty = true;
     this.cache = null;
     this.constructionCache = null;
     this.tintCache.clear();
@@ -704,6 +705,14 @@ export class Renderer {
    */
   invalidateTiles(tiles, ownershipChanged = true) {
     if (ownershipChanged) this.surfaceColorsDirty = true;
+    // İŞGAL DOKUSU HER ZAMAN KİRLENİR — sahiplik bayrağına BAĞLANAMAZ.
+    // occupy() bilerek `ownershipChanged: false` geçer (etiket yerleşimi
+    // kaymasın diye) ve işgal taraması GPU'ya taşındığında doku bu bayrağa
+    // bağlanmıştı: yani savaşta değişen tek şey olan işgal, dokuyu hiç
+    // tazelemiyordu. Sonuç sahada iki türlü görünüyordu — yeni işgal edilen
+    // province boyanmıyor, çoktan kurtulmuş bir yer ise hâlâ taralı duruyordu.
+    // Canvas2D yolu bu hatayı yapamazdı çünkü her kare canlı durumdan çizerdi.
+    this.surfaceOverlayDirty = true;
     // Etiket çapaları yalnız EGEMENLİK değişince kayar (ownerOf owner'a
     // bakar, controller'a değil). İşgal (occupy) controller değiştirir;
     // onun için yerleşimi kirletmek, savaş haftalarında her turda 15k karelik
@@ -1466,12 +1475,21 @@ export class Renderer {
     if (this.glWater()) {
       this.waterGL.seaMaterial = this.waterAnimatedMode();
       this.waterGL.overlayOn = this.mapMode === 'political';
+      // İki doku, iki ayrı ömür: taban rengi yalnız sahiplik/kip değişince,
+      // işgal taraması ise kontrol her değiştiğinde tazelenir. Aynı bayrağa
+      // bağlamak savaşta ya bedava tam tarama ya da bayat işgal demekti.
       if (this.surfaceColorsDirty) {
         this.surfaceColorsDirty = false;
+        this.surfaceOverlayDirty = false;
         const t = performance.now();
         this.waterGL.updateOwners(this.surfaceOwnerData(world));
         this.waterGL.updateOverlay(this.surfaceOverlayData(world));
         this.perf?.add('r.surfacecolors', performance.now() - t);
+      } else if (this.surfaceOverlayDirty) {
+        this.surfaceOverlayDirty = false;
+        const t = performance.now();
+        this.waterGL.updateOverlay(this.surfaceOverlayData(world));
+        this.perf?.add('r.surfaceoverlay', performance.now() - t);
       }
       this.waterGL.draw(cam, this.waterTime);
     }
