@@ -103,7 +103,15 @@ export class Game {
     // işaretlerini buraya yazar (bkz. core/perf.js).
     this.perf = new PerfMonitor();
     this.renderer = new Renderer(canvas, this.camera);
+    // Birim künyeleri geç yüklenir; geldiklerinde tek kare istenir.
+    this.renderer.onPlatesReady = () => this.requestRender();
+    // Dilimli statik pişirme kendi karelerini ister; yoksa iş yarım kalır.
+    this.renderer.requestFrame = () => this.requestRender();
     this.renderer.perf = this.perf;
+    // Hibrit su katmanı: varsa haritanın altındaki WebGL tuvaline bağlanır.
+    // Yoksa (WebGL2 desteklenmiyor) renderer Canvas2D suyunu kullanmaya
+    // devam eder; çağrı başarısız olursa hiçbir şey değişmez.
+    this.renderer.attachWaterCanvas(document.getElementById('map-water'));
     this.world = null;
     this.selected = null;
     this.hovered = null;
@@ -160,6 +168,10 @@ export class Game {
     };
     window.addEventListener('resize', this.onResize);
     window.addEventListener('orientationchange', this.onResize);
+    // Kurucu düzen oturmadan çalışabilir: tuvaller o anda 0x0 ölçülür. Bu
+    // görev bittiğinde bir kez daha ölçülür. requestAnimationFrame DEĞİL:
+    // sekme/pencere gizliyken rAF duraklatılır ve ölçüm hiç yapılmazdı.
+    setTimeout(() => this.onResize(), 0);
   }
 
   /**

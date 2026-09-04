@@ -159,7 +159,7 @@ const OCCUPATION_GAIN = 1.8;
 /** Toprak dışı talepler. Hepsinin gerçek bir oyun etkisi vardır. */
 export const PEACE_TERMS = {
   REPARATIONS: {
-    id: 'REPARATIONS', name: 'War Reparations', icon: '¤', cost: 18, turns: 260,
+    id: 'REPARATIONS', name: 'War Reparations', icon: '£', cost: 18, turns: 260,
     desc: 'They pay you a share of their treasury income for five years.',
   },
   DEMILITARIZE: {

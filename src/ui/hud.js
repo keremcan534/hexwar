@@ -16,12 +16,14 @@ import { scoreboard } from '../game/hegemony.js';
 import { ORDER, idleUnits } from '../game/orders.js';
 import { ensureConstruction, investmentLevel } from '../game/construction.js';
 import { flagDataUrl } from '../render/flagPainter.js';
+import { mountFlag } from '../render/flagWave.js';
 import { bindMacroCards } from './macroCard.js';
 import { Screens } from './screens.js';
 import { showEndScreen } from './endScreen.js';
 import { formatPopulation, weeklyBalanceOf } from '../game/economy.js';
 import {
-  canRecruit, equipmentCostLabel, nationManpower, rallyTile, setRallyPoint, trainingWeeks,
+  canRecruit, disband, equipmentCostLabel, nationManpower, rallyTile, setRallyPoint,
+  trainingWeeks,
 } from '../game/recruitment.js';
 import {
   BRANCH, MAX_SKILL, TRAITS, assignDivisions, commandSize, createGeneral, generalById,
@@ -248,8 +250,8 @@ export class Hud {
     game.on('clock', () => this.onDay());
     game.on('economy', () => this.onTurn());
     // İnşaat/yatırım kararı hazineden ANINDA para düşer ama haftalık tik
-    // gelene kadar üst çubuk eski rakamı gösteriyordu: oyuncu ¤220 sanıp
-    // ¤0 ile karar veriyordu (kör beta B-006). Ekonomi ekranı bu olayı zaten
+    // gelene kadar üst çubuk eski rakamı gösteriyordu: oyuncu £220 sanıp
+    // £0 ile karar veriyordu (kör beta B-006). Ekonomi ekranı bu olayı zaten
     // dinliyordu; üst çubuk dinlemiyordu.
     game.on('construction', () => this.onTurn());
     // Kampanya sonu (1945) tek satirlik bir metinle geciyordu; 'victory'
@@ -743,9 +745,10 @@ export class Hud {
         <span class="macro-live" data-macro="population"><small>Population</small><b>${formatPopulation(me.economy?.population ?? 0)}</b></span>
         <span title="Standing army"><small>Army</small><b>${formatNumber(army)}</b></span>
         <span title="Recruitable population left in your provinces"><small>Manpower</small><b>${formatPopulation(nationManpower(world, me.id))}</b></span>
-        <span class="macro-live" data-macro="gdp"><small>GDP</small><b>¤${formatNumber(Math.round(me.economy?.gdp ?? 0))}</b></span>`;
+        <span class="macro-live" data-macro="gdp"><small>GDP</small><b>£${formatNumber(Math.round(me.economy?.gdp ?? 0))}</b></span>`;
       this.ensureMacroCards();
-      this.el.topFlag.src = flagDataUrl(me);
+      // Künyedeki bayrak canlı bez: kaynak bir kez pişer, şeritler kayar.
+      mountFlag(this.el.topFlag, me, 44, 28);
       this.el.topNation.textContent = me.name;
       // Savaş durumu künyedeki tek renkli öğe; gerisi soluk kalır. Ayraç
       // elmas: orta nokta tarihî künyede fazla "web" duruyordu.
@@ -946,6 +949,11 @@ export class Hud {
           }, {}) ?? { [unit.type.id]: 1 }).map(([id, count]) => `${count}× ${UNIT_TYPES[id].name}`).join(' · ')}</div>
           <div class="hp-bar"><i style="width:${Math.max(0, (unit.hp / maxHpOf(unit)) * 100)}%"></i></div>
         </div>
+        ${unit.nationId === this.game.turns.playerNation ? `<button class="unit-disband"
+          data-disband="${unit.id}" ${unit.battleId ? 'disabled' : ''}
+          title="${unit.battleId ? 'A division in battle cannot be disbanded.'
+    : 'Disband this army. Survivors walk home: their manpower returns to the provinces that raised them, and the upkeep stops. The dead do not come back.'}"
+          >Disband</button>` : ''}
       </div>` : '';
 
     // Ülke varsa bayrağı, yoksa arazi rengi göster.
@@ -1282,6 +1290,21 @@ export class Hud {
   bindActions() {
     const { game } = this;
     const me = game.world.nations[game.turns.playerNation];
+    // ORDUYU DAGIT. `disband()` zaten vardi ve hayatta kalanlarin insan gucunu
+    // TOPLANDIKLARI province'lere iade ediyordu — eksik olan sadece dugmeydi,
+    // yani oyuncunun elinde ordu kucultme araci hic yoktu (kullanici bildirimi).
+    for (const btn of this.el.sheetBody.querySelectorAll('[data-disband]')) {
+      btn.onclick = () => {
+        // `dataset` her zaman DIZE dondurur; birim kimligi sayi olabilir.
+        const unit = game.world.units.find((u) => String(u.id) === btn.dataset.disband);
+        if (!unit || unit.battleId) return;
+        if (disband(game, unit)) {
+          game.selectedUnit = null;
+          this.showTile(game.selected);
+          game.requestRender();
+        }
+      };
+    }
     for (const btn of this.el.sheetBody.querySelectorAll('[data-buy]')) {
       // Shift = 5 siparis (askeri ekranla ayni kural); kisitlar durdurunca biter.
       btn.onclick = (event) => {
@@ -1366,7 +1389,9 @@ function resourcesHtml(nation) {
   // Etiketler Title Case: her şeyin versal olması üst barı bağırtıyordu.
   // Hazine binlik ayraçla okunur — dört haneden sonra ayraçsız sayı taranmıyor.
   return `
-    <span title="treasury"><small>Treasury</small><b>¤${grouped(nation.gold)}${flow}</b></span>
+    <span class="res-money" title="treasury">
+      <img class="res-coin" src="assets/icons/budget/treasury.png" alt="" decoding="async">
+      <span><small>Treasury</small><b>£${grouped(nation.gold)}${flow}</b></span></span>
     <span class="stat-why" role="button" tabindex="0" data-why="stability"
       title="${(nation.budget ? stabilityWhy(nation) : 'Measured after the first weekly tick; the opening value is a placeholder.')}"><small>Stability</small><b>${nation.budget ? `${stability}%` : '—'}</b></span>
     <span title="infamy — a coalition forms at ${INFAMY_COALITION}"><small>Infamy</small><b class="${infamyClass}">${infamy.toFixed(1)}</b></span>`;

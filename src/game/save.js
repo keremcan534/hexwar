@@ -196,7 +196,7 @@ export function serialize(game) {
       // Besinci/altinci alan: tekrarlanan savas sayaci (repeatScale/ateskes
       // suresi buna bakar) ve savas-ilerleme zirveleri (stall olcumu).
       // Ikisi de dusurulunce yuklenen oyunda kazanan MASAYA BASKA HAFTA
-      // oturuyordu — olculdu: +77. haftada tek seferlik ¤229 tazminat farki,
+      // oturuyordu — olculdu: +77. haftada tek seferlik £229 tazminat farki,
       // kaydet-yukle dallanmasinin son kaynagi buydu.
       // Yedinci alan: savas hedefleri (bkz. peace.js warGoalOf). Yazilmazsa
       // yuklenen savasin masasi "bu savas neydi" sorusunu cevaplayamaz.
@@ -239,7 +239,7 @@ export function serialize(game) {
       // baslar, kapali yolu tekrar dener ve kesintisiz kosunun secmedigi
       // rotayi (orn. deniz gecisi) secer. Olculdu (tohum CO-8, 5. ulke,
       // 181. hafta): yuklenmis kosuda bir kara tumeni denize biniyor ve
-      // haftalik konvoy tedariki ¤27 fazla yaziliyordu.
+      // haftalik konvoy tedariki £27 fazla yaziliyordu.
       reroutes: u.reroutes ?? 0,
       embarked: u.embarked,
       order: u.order

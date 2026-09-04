@@ -216,7 +216,7 @@ function factoryRow(world, nation, availability, factory, region, expansions, na
     : expansion ? 'An expansion is already under way'
       : !factoryInvestmentRules(nation).stateExpand ? 'Policy forbids state investment'
         : (nation.gold ?? 0) < cost
-          ? `Treasury short by ¤${Math.ceil(cost - (nation.gold ?? 0))}`
+          ? `Treasury short by £${Math.ceil(cost - (nation.gold ?? 0))}`
           : null;
   return {
     id: factory.id,
@@ -379,8 +379,8 @@ export function industryOverview(world, nation) {
       privateCapital: nation.politics?.privateCapital ?? 0,
       privateInflow: nation.politics?.privateInflow ?? 0,
       // Iktidarin yatirim kurali cumleyle: sanayici 22 yil boyunca havuzun
-      // neden ¤1.200'de durdugunu ekrandan okuyamadi — planli ekonomide ozel
-      // sermaye kuramaz, kart ise yalniz "+¤19.6/week" diyordu (Open Beta 4).
+      // neden £1.200'de durdugunu ekrandan okuyamadi — planli ekonomide ozel
+      // sermaye kuramaz, kart ise yalniz "+£19.6/week" diyordu (Open Beta 4).
       investmentRule: investmentRuleOf(nation),
       freeSlots: states.reduce((sum, state) => sum + state.free, 0),
       totalSlots: states.length * industrySlots,
@@ -414,7 +414,7 @@ export function factoryBuildOptions(world, nation, regionId) {
       : taken ? 'Already present in this state'
         : locked ? `Not yet invented — available from ${eraYear(era)}`
           : !rules.stateBuild ? `${policyNameOf(nation)} forbids state industry`
-            : (nation.gold ?? 0) < gold ? `Treasury short by ¤${Math.ceil(gold - (nation.gold ?? 0))}`
+            : (nation.gold ?? 0) < gold ? `Treasury short by £${Math.ceil(gold - (nation.gold ?? 0))}`
               : region.free <= 0 ? 'No free industrial slot in this state'
                 : 'Unavailable';
     const margin = factoryMargin(world, type.id);

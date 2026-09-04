@@ -483,8 +483,8 @@ function detailPanel(detail) {
       ${stat('Literacy', pct(detail.literacy))}
       ${stat('Unrest', detail.unrest == null ? '—' : detail.unrest.toFixed(1),
     detail.unrest > 3.5 ? 'bad' : '')}
-      ${stat('Weekly income', `¤${detail.income.toFixed(1)}`)}
-      ${stat('Tax paid', `¤${detail.taxPaid.toFixed(1)}`)}
+      ${stat('Weekly income', `£${detail.income.toFixed(1)}`)}
+      ${stat('Tax paid', `£${detail.taxPaid.toFixed(1)}`)}
     </div>
     <section class="pop-detail-block">
       <b>Political leaning</b>

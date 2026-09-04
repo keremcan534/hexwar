@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<title>Map Lab</title>
+<!--
+  HARİTA LABORATUVARI — yalnız dünya katmanı, arayüz yok.
+
+  Neden ayrı sayfa: index.html'in arayüzü 23 ayrı `backdrop-filter` taşır ve
+  yazılım rasterleştiren bir önizleme penceresinde kare tamamlanmıyor; ayrıca
+  görsel hedefin ölçüsü "arayüz kapalıyken dünya nasıl görünüyor" sorusudur.
+  Burada Game kurulur ama KARE ZİNCİRİ kurulmaz: render elle, tek tek çağrılır,
+  böylece sayfa boşta durur ve ekran görüntüsü kararlı çıkar.
+
+  Simülasyona hiç dokunmaz; yalnız Renderer'ı çağırır.
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #0b1115; overflow: hidden; }
+  #map, #map-water { position: fixed; inset: 0; display: block; width: 100vw; height: 100vh; }
+  #map { z-index: 1; }
+  #map-water { z-index: 0; pointer-events: none; }
+  /* index.html'deki .map-film ile aynı: film greni + vinyet + sıcak derece. */
+  .map-film {
+    position: fixed; inset: 0; z-index: 2; pointer-events: none;
+    background:
+      var(--map-grain, none),
+      radial-gradient(ellipse 78% 72% at 50% 48%, transparent 42%, rgba(3, 6, 8, 0.34) 100%),
+      linear-gradient(0deg, rgba(122, 96, 52, 0.05), rgba(122, 96, 52, 0.05));
+  }
+  #tag {
+    position: fixed; left: 8px; bottom: 6px; z-index: 5;
+    font: 11px monospace; color: rgba(255,255,255,0.5); pointer-events: none;
+  }
+  body.bare .map-film, body.bare #tag { display: none; }
+</style>
+</head>
+<body>
+<canvas id="map-water"></canvas>
+<canvas id="map"></canvas>
+<div class="map-film" id="map-film" aria-hidden="true"></div>
+<div id="tag"></div>
+<script>
+// Modül hatası sessizce ölmesin: tezgâhta hata GÖRÜNÜR olmalı, yoksa sayfa
+// "READY" olmadan takılıyor ve sebebi ancak tahmin edilebiliyor.
+window.__labError = null;
+const showErr = (msg) => {
+  window.__labError = String(msg);
+  const el = document.getElementById('tag');
+  if (el) el.textContent = 'ERROR: ' + msg;
+};
+window.addEventListener('error', (e) => showErr(e.message + ' @ ' + (e.filename || '') + ':' + e.lineno));
+window.addEventListener('unhandledrejection', (e) => showErr((e.reason?.message ?? e.reason) + ' | ' + (e.reason?.stack ?? '').split('
+')[1]));
+</script>
+<script type="module">
+import { Game } from './src/game/game.js';
+import { materials } from './src/render/textures.js';
+
+const q = new URLSearchParams(location.search);
+const num = (k, d) => (q.has(k) ? Number(q.get(k)) : d);
+
+document.documentElement.style.setProperty(
+  '--map-grain', `url("${materials().filmGrain.toDataURL('image/png')}")`,
+);
+if (q.get('film') === '0') document.getElementById('map-film').style.display = 'none';
+if (q.get('bare') === '1') document.body.classList.add('bare');
+
+const canvas = document.getElementById('map');
+const game = new Game(canvas);
+
+// Kare zinciri KAPALI: bu sayfa boşta durmalı ki ekran görüntüsü kararlı olsun.
+// (Su animasyonu ve dilimli işler kendiliğinden yeni kare istiyor.)
+game.requestRender = () => {};
+game.scheduleWaterFrame = () => {};
+
+game.newWorld(q.get('seed') || 'AAA111');
+
+const r = game.renderer;
+r.setMapMode(q.get('mode') || 'political');
+// ?gl=0 hibrit suyu kapatır: A/B karşılaştırması için.
+if (q.get('gl') === '0' && r.waterGL) r.waterGL.debug.enabled = false;
+if (q.has('grid')) r.showGrid = q.get('grid') !== '0';
+if (q.has('labels')) r.showLabels = q.get('labels') !== '0';
+
+const cam = game.camera;
+cam.zoom = num('zoom', 0.9);
+if (q.has('cx') || q.has('cy')) {
+  cam.centerOn(num('cx', cam.x), num('cy', cam.y));
+} else if (q.has('nation')) {
+  const wanted = q.get('nation').toLowerCase();
+  const n = game.world.nations.find((x) => x.name.toLowerCase() === wanted)
+    ?? game.world.nations[0];
+  cam.centerOn(n.capital.x, n.capital.y);
+}
+cam.clamp?.();
+
+// Kamera KİLİTLENİR. Önizleme penceresi sayfaya ara sıra sentetik tekerlek
+// olayı gönderiyor; PointerController onu meşru bir zoom sanıp kamerayı
+// kaydırıyor ve ekran görüntüsü istenen kadrajdan başka bir yerden çıkıyordu
+// (ölçüldü: istenen 1.15, çekilen 0.36). Karşılaştırma döngüsünün tek şartı
+// AYNI kadraj olduğu için istenen değerler her karede geri yazılır.
+const want = { zoom: cam.zoom, x: cam.x, y: cam.y };
+function lockCamera() {
+  cam.zoom = want.zoom;
+  cam.x = want.x;
+  cam.y = want.y;
+}
+
+/**
+ * Bütün gecikmeli iş bitene dek sür: su dokuları, uzak pişirme, statik katman
+ * dilimleri VE zamana bağlı yumuşatmalar.
+ *
+ * Kareler GERÇEK zamana yayılır (sıkı döngüyle değil): etiketlerin erime payı
+ * ve statik katmanın "jest yerleşti" kararı `performance.now()` farkına bakar.
+ * Sıkı döngüde 60 kare birkaç milisaniyede biter, etiket alfası 0'da kalır ve
+ * ekran görüntüsünde ülke adları hiç görünmez (ölçüldü).
+ */
+async function settle(maxMs = 25000) {
+  const t0 = performance.now();
+  let guard = 0;
+  while (r.warmup(game.world) && performance.now() - t0 < maxMs) guard++;
+  const tick = () => new Promise((done) => setTimeout(done, 60));
+  for (let i = 0; i < 40; i++) {
+    lockCamera();
+    r.render(game.world, {});
+    await tick();
+    const quiet = !r.hasPendingJobs() && !r.waterActive() && i > 8;
+    if (quiet || performance.now() - t0 > maxMs) break;
+  }
+  lockCamera();
+  r.render(game.world, {});
+  return { warmSteps: guard, ms: Math.round(performance.now() - t0) };
+}
+
+// Ölçüm: aynı kareyi n kez çizip süre dağılımını çıkarır (p50/p95).
+function bench(n = 60) {
+  const times = [];
+  for (let i = 0; i < n; i++) {
+    const t = performance.now();
+    r.render(game.world, {});
+    times.push(performance.now() - t);
+  }
+  times.sort((a, b) => a - b);
+  const at = (p) => +times[Math.min(times.length - 1, Math.floor(n * p))].toFixed(2);
+  return { n, p50: at(0.5), p95: at(0.95), max: +times[n - 1].toFixed(2), hex: r.lastDrawn };
+}
+
+// Düzen oturana kadar bekle, sonra ölç. requestAnimationFrame KULLANILMAZ:
+// önizleme penceresi gizliyken rAF duraklatılır ve bekleme hiç bitmez
+// (ölçüldü: sayfa READY olmadan takılıyordu). Zamanlayıcı gizli belgede de
+// çalışır ve düzen zaten bu görev bittiğinde oturmuş olur.
+await new Promise((done) => setTimeout(done, 0));
+r.resize();
+cam.setViewport(canvas.getBoundingClientRect().width, canvas.getBoundingClientRect().height);
+lockCamera();
+
+const info = await settle();
+const tag = document.getElementById('tag');
+tag.textContent = `${game.world.seed} · zoom ${cam.zoom.toFixed(2)} · ${r.mapMode}`
+  + ` · ${r.lastDrawn} hex · settle ${info.ms}ms`;
+
+/**
+ * Kareyi tam çözünürlükte diske yazar (bkz. dev-server `/__shot`). Film
+ * katmanı DOM'da yaşadığı için tuvale elle bindirilir — yoksa kaydedilen
+ * görüntü ekranda görülenden farklı olur.
+ */
+async function shot(name = 'shot') {
+  // Kamera KİLİTLENİR: GL yüzeyi ile Canvas2D mürekkebi AYNI kameradan
+  // çizilmeli. Önizleme penceresi arada sentetik tekerlek olayı gönderiyor;
+  // kilitlenmezse yüzey bir zoomda, sınır/etiket başka zoomda çıkıyor ve
+  // kare "renkler denize taşmış" gibi okunuyor (ölçüldü: 0.95 -> 1.30).
+  lockCamera();
+  r.render(game.world, {});
+  const out = document.createElement('canvas');
+  out.width = canvas.width;
+  out.height = canvas.height;
+  const g = out.getContext('2d');
+  // Hibrit su ALTTAKİ tuvalde; ekran görüntüsü ikisini aynı sırayla birleştirir.
+  g.fillStyle = '#0b1115';
+  g.fillRect(0, 0, out.width, out.height);
+  // WebGL çizim tamponu sunumdan sonra temizlenir (preserveDrawingBuffer
+  // kapalı); bu yüzden kopyalamadan HEMEN ÖNCE, aynı görevde yeniden çizilir.
+  const wc = document.getElementById('map-water');
+  if (wc && wc.width > 1) {
+    r.waterGL?.draw(cam, performance.now() / 1000, true);
+    g.drawImage(wc, 0, 0, out.width, out.height);
+  }
+  g.drawImage(canvas, 0, 0);
+  if (document.getElementById('map-film').style.display !== 'none') {
+    const w = out.width;
+    const h = out.height;
+    const grain = materials().filmGrain;
+    const vig = g.createRadialGradient(w / 2, h * 0.48, Math.min(w, h) * 0.42,
+      w / 2, h * 0.48, Math.max(w, h) * 0.78);
+    vig.addColorStop(0, 'rgba(3,6,8,0)');
+    vig.addColorStop(1, 'rgba(3,6,8,0.34)');
+    g.fillStyle = vig;
+    g.fillRect(0, 0, w, h);
+    g.fillStyle = 'rgba(122,96,52,0.05)';
+    g.fillRect(0, 0, w, h);
+    const pat = g.createPattern(grain, 'repeat');
+    if (pat) { g.fillStyle = pat; g.fillRect(0, 0, w, h); }
+  }
+  const png = out.toDataURL('image/png');
+  const res = await fetch('/__shot', {
+    method: 'POST',
+    body: JSON.stringify({ name, png }),
+  });
+  return res.text();
+}
+
+/** Kadrajı değiştirir ve kilidi yeni değere taşır. */
+function setView({ zoom, x, y } = {}) {
+  if (zoom !== undefined) want.zoom = zoom;
+  if (x !== undefined) want.x = x;
+  if (y !== undefined) want.y = y;
+  lockCamera();
+}
+
+window.lab = { game, r, cam, settle, bench, tag, shot, canvas, setView, want };
+document.title = 'Map Lab READY';
+</script>
+</body>
+</html>

@@ -418,31 +418,61 @@ const CLASS_NEEDS_BUDGET = { lower: 4, middle: 8, upper: 11 };
  * uydurma bir pay değil, populationDemand'ın kullandığı tablonun kendisinden
  * türetilsin (aynı gerekçe: CLASS_IDEOLOGY, bkz. politics.js).
  */
+/**
+ * UC KADEME: yasam, gunluk, luks.
+ *
+ * Victoria'nin asil mekanigi budur ve eksik olan da buydu. Para yetmeyince
+ * kesinti butun sepete ESIT uygulaniyordu; yani vergiyi tavana ceken oyuncu
+ * hanenin sarabini degil EKMEGINI de kesiyor, `canAffordNeeds` deviriliyor ve
+ * sinif dort hafta sonra kalici olarak dusuyordu. Olculdu: tam vergiyle 400
+ * haftada ust sinif 45.6K'dan 9.0K'ya iniyordu ve "hicbir sey yapmamak" iyi
+ * oynamayi yeniyordu.
+ *
+ * Simdi butce SIRAYLA harcanir: once yasam, sonra gunluk, en son luks.
+ * Yuksek vergi artik once luksu, sonra gunlugu yer — bedeli MORAL'dir,
+ * nufus imhasi degil. Gecim tabani (`canAffordNeeds`) yalniz YASAM kademesine
+ * bakar; ekmegi varsa sinif dusmez.
+ */
+export const NEED_TIERS = ['life', 'everyday', 'luxury'];
+
 export const CLASS_NEEDS = {
   lower: {
-    food: 0.26, fish: 0.02, groceries: 0.07, clothes: 0.04, liquor: 0.02,
+    food: { amount: 0.26, tier: 'life' },
+    fish: { amount: 0.02, tier: 'life' },
+    groceries: { amount: 0.07, tier: 'everyday' },
+    clothes: { amount: 0.04, tier: 'everyday' },
+    liquor: { amount: 0.02, from: 624, tier: 'luxury' },
   },
   middle: {
-    food: 0.2,
-    groceries: 0.12,
-    clothes: 0.08,
-    furniture: 0.04,
-    paper: 0.03,
-    wine: 0.02,
-    telephone: { amount: 0.012, from: 2297 },
-    radio: { amount: 0.012, from: 3341 },
+    food: { amount: 0.2, tier: 'life' },
+    groceries: { amount: 0.12, tier: 'everyday' },
+    clothes: { amount: 0.08, tier: 'everyday' },
+    furniture: { amount: 0.04, from: 728, tier: 'everyday' },
+    paper: { amount: 0.03, tier: 'everyday' },
+    wine: { amount: 0.02, from: 728, tier: 'luxury' },
+    telephone: { amount: 0.012, from: 2297, tier: 'luxury' },
+    radio: { amount: 0.012, from: 3341, tier: 'luxury' },
   },
   upper: {
-    groceries: 0.15,
-    clothes: 0.1,
-    furniture: 0.07,
-    wine: 0.05,
-    luxuries: 0.05,
-    luxury_furniture: 0.035,
-    automobile: { amount: 0.02, from: 3341 },
-    telephone: { amount: 0.02, from: 2297 },
+    // Yasam kademesi DUZ YIYECEKTIR. Once `groceries` (konserve) atanmisti ve
+    // bu iki kez yanlisti: konserve 1836'da yok, ve bir malikanenin ekmegi
+    // fabrika mali degil. Konserve gunluk kademeye indi.
+    food: { amount: 0.12, tier: 'life' },
+    groceries: { amount: 0.15, tier: 'everyday' },
+    clothes: { amount: 0.1, tier: 'everyday' },
+    furniture: { amount: 0.07, from: 728, tier: 'everyday' },
+    wine: { amount: 0.05, from: 728, tier: 'luxury' },
+    luxuries: { amount: 0.05, from: 988, tier: 'luxury' },
+    luxury_furniture: { amount: 0.035, from: 1248, tier: 'luxury' },
+    automobile: { amount: 0.02, from: 3341, tier: 'luxury' },
+    telephone: { amount: 0.02, from: 2297, tier: 'luxury' },
   },
 };
+
+/** Kalemin kademesi; belirtilmemisse gunluk sayilir. */
+export function needTier(need) {
+  return (typeof need === 'object' && need?.tier) || 'everyday';
+}
 
 /**
  * Bir ihtiyacin o hafta gecerli miktari. Telefon/radyo/otomobil 1836'da
@@ -493,8 +523,8 @@ export const EXPORT_RETALIATION = 0.5;
  * gider — korunum yonunden guvenli taraf) ve ledger-audit bunu dogrular.
  *
  * YENIDEN-YATIRIM PAYI 0.08 -> 0.30. Olculdu (tohum ui-opening, 52 hafta, 27
- * ulus): 0.08 ile ulusal sermaye olusumu ~1.2/hafta iken en ucuz tesis ¤113,
- * en ucuz seviye atlatma ¤145 idi. Yani kapitalist bir tesisi ancak ~120
+ * ulus): 0.08 ile ulusal sermaye olusumu ~1.2/hafta iken en ucuz tesis £113,
+ * en ucuz seviye atlatma £145 idi. Yani kapitalist bir tesisi ancak ~120
  * haftada odeyebiliyordu ve odeme gucu kapisi konunca HICBIR SEY insa
  * edemez hale geldi — dunyada 52 haftada biten fabrika zaten 1 taneydi.
  * Fark BATAKTAN karsilanir (0.42 -> 0.20), sermayedar hanesine dokunulmaz:
@@ -535,7 +565,13 @@ export const UNEMPLOYMENT_MOOD = 0.22;
  * sayilir. Ust sinifin gecimligi yoktur (parasi vardir); orta sinifin kucuk
  * bir zanaat/takas payi, alt sinifin tarla payi vardir.
  */
-export const SUBSISTENCE_SHARE = { lower: 0.30, middle: 0.15, upper: 0 };
+// UST SINIFIN GECIMLIGI SIFIR DEGIL. Eski yorum "ust sinifin gecimligi yoktur
+// (parasi vardir)" diyordu; bu modern bir varsayim. 19. yuzyilin toprakli
+// seckini kendi malikanesinden beslenir ve bu gelir vergilendirilemez.
+// Olculdu: pay 0 iken %100 vergide ust sinifin butcesi TAM OLARAK sifir
+// oluyor, yasam kademesi karsilanamiyor ve sinif dort haftada dusuyordu —
+// yani kaydiracin en ust ucu bir yok etme dugmesiydi.
+export const SUBSISTENCE_SHARE = { lower: 0.30, middle: 0.15, upper: 0.12 };
 
 /**
  * Fabrika katma degerinin emege giden payi. Eski sabit ucret
@@ -1819,6 +1855,98 @@ export function setBudgetPolicy(nation, policy, value) {
  *
  * Her kontrol icin: NE DEGISTIRIR, NEYE MAL OLUR, NEYI IYILESTIRIR.
  */
+/**
+ * BIR SINIFIN VERGI ESIKLERI — iki sayi, ikisi de modelden turer, hicbiri
+ * uydurulmaz.
+ *
+ *   survival — sinifin sepetinin %60 tabanini hala karsilayabildigi EN YUKSEK
+ *              oran. Tabani `canAffordNeeds` koyar (needsBudget >= needsCost
+ *              * 0.6); altina dusen sinif "sinif dususu" koluna girer.
+ *   comfort  — sepetin TAMAMINI karsilayabildigi en yuksek oran, yani sinifin
+ *              olagan hayatini surdurdugu tavan.
+ *
+ * Turetme: hane butcesi = net gelir + gecimlik; net gelir = gelir - vergi ve
+ * vergi = gelir x oran (bkz. socialClass.taxPaid). Butceyi hedefe esitleyen
+ * orani cozersen:
+ *
+ *     oran = (gelir - (hedef - gecimlik)) / gelir
+ *
+ * Geliri olmayan sinifta oran anlamsizdir; o durumda null doner ve ekran
+ * isaret koymaz.
+ */
+/**
+ * VERGI TUTMA KIPI — kaydiraci esige kilitler.
+ *
+ *   'safe' — yesil isaret: sinif sepetinin TAMAMINI karsilayabildigi en yuksek
+ *            oran. Hazine az kazanir, nufus yukselir.
+ *   'edge' — kirmizi isaret: gecim tabanini hala tutturabildigi en yuksek oran.
+ *            Hazine cok kazanir, sinif dusmez ama zenginlesmez de.
+ *
+ * Neden gerekli: esikler her hafta oynuyor (sepet fiyati, gelir, refah), yani
+ * elle kurulan bir oran birkac hafta sonra kirmizinin ustune kayabiliyor ve
+ * oyuncu bunu ancak sinif dustugunde fark ediyordu (olculdu: tam vergiyle
+ * 400 haftada ust sinif 45.6K -> 9.0K). Kilit, oyuncunun niyetini koruyor.
+ *
+ * Devirden AYRIDIR: Budget AUTO butun defteri YZ'ye verir, bu yalniz bir
+ * kaydiraci bir esige baglar.
+ */
+export const TAX_HOLD_MODES = ['safe', 'edge'];
+
+export function taxHold(nation, classId) {
+  return nation?.economy?.taxHold?.[classId] ?? null;
+}
+
+export function setTaxHold(nation, classId, mode) {
+  if (!nation?.economy) return false;
+  const holds = nation.economy.taxHold ?? (nation.economy.taxHold = {});
+  holds[classId] = TAX_HOLD_MODES.includes(mode) ? mode : null;
+  return true;
+}
+
+/** Kilitli kaydiraclari bu haftanin esigine cek. Haftalik fazdan cagrilir. */
+export function applyTaxHolds(nation) {
+  const holds = nation?.economy?.taxHold;
+  if (!holds) return;
+  for (const [classId, mode] of Object.entries(holds)) {
+    if (!mode) continue;
+    const th = classTaxThresholds(nation, classId);
+    if (!th) continue;
+    const reachable = mode === 'safe' ? th.comfortReachable : th.survivalReachable;
+    if (!reachable) continue;
+    const policy = Object.keys(TAX_POLICY_CLASS).find((id) => TAX_POLICY_CLASS[id] === classId);
+    if (policy) setBudgetPolicy(nation, policy, mode === 'safe' ? th.comfort : th.survival);
+  }
+}
+
+export function classTaxThresholds(nation, classId) {
+  const socialClass = nation?.economy?.classes?.[classId];
+  const income = socialClass?.income ?? 0;
+  if (!socialClass || income <= 0) return null;
+  const need = socialClass.needsCost ?? 0;
+  const subsistence = socialClass.subsistence ?? 0;
+  const limits = budgetPolicyLimits(nation);
+  const policy = Object.keys(TAX_POLICY_CLASS).find((id) => TAX_POLICY_CLASS[id] === classId);
+  const span = limits[policy] ?? { min: 0, max: 100 };
+  const rateFor = (target) => {
+    const netNeeded = Math.max(0, target - subsistence);
+    return Math.floor(((income - netNeeded) / income) * 100);
+  };
+  const survivalRaw = rateFor(need * 0.6);
+  const comfortRaw = rateFor(need);
+  // ULASILABILIRLIK. Vergiyi sifira indirmek bile esigi tutturmuyorsa vergi
+  // O SINIF ICIN KALDIRAC DEGILDIR: sepetin kendisi gelirin ustundedir.
+  // Olculdu (hafta 26, 29 ulus): orta sinifin butcesi sepetinin %45'i,
+  // yani her iki esik de tabana cakili cikiyordu. Iki isareti solda ust uste
+  // gostermek oyuncuya "surekli acliktan oluyorlar ve suc sende" diyordu;
+  // dogrusu "bu kaydiracin buraya gucu yetmez"tir.
+  return {
+    survival: clamp(survivalRaw, span.min, span.max),
+    comfort: clamp(comfortRaw, span.min, span.max),
+    survivalReachable: survivalRaw >= span.min,
+    comfortReachable: comfortRaw >= span.min,
+  };
+}
+
 export function budgetBreakdown(world, nation) {
   const economy = nation?.economy;
   if (!economy) return null;
@@ -1894,6 +2022,9 @@ export function budgetBreakdown(world, nation) {
           base: row?.income ?? 0,
           collected: row?.collected ?? 0,
           population: row?.population ?? 0,
+          // Kaydiracin uzerine konan iki isaret; ekran bunlari hesaplamaz.
+          thresholds: classTaxThresholds(nation, id),
+          hold: taxHold(nation, id),
         }];
       })),
       taxSummary: {
@@ -2284,7 +2415,7 @@ export function upgradeFactory(game, nation, factoryId) {
   if (!factoryInvestmentRules(nation).stateExpand) return 'Policy forbids state investment';
   const cost = expansionCost(factory);
   if ((nation.gold ?? 0) < (cost.gold ?? 0)) {
-    return `Treasury short by ¤${Math.ceil((cost.gold ?? 0) - (nation.gold ?? 0))}`;
+    return `Treasury short by £${Math.ceil((cost.gold ?? 0) - (nation.gold ?? 0))}`;
   }
   if (!payFactoryCost(nation, cost, 'state')) return 'The treasury could not pay';
   queueIndustryProject(game, nation, {
@@ -2358,8 +2489,8 @@ function autoUpgradeFactory(game, nation, factory) {
     (project) => project.actor === 'private',
   ).length >= PRIVATE_QUEUE_LIMIT) return false;
   // Odeme gucu kapisi yukseltmede de gecerli — olculdu: kuyrugu dolduran sey
-  // yeni tesis degil, tam da bu yukseltmelerdi (3 proje, ¤435 defter, haftalik
-  // sermaye ¤0.58 → 750 hafta).
+  // yeni tesis degil, tam da bu yukseltmelerdi (3 proje, £435 defter, haftalik
+  // sermaye £0.58 → 750 hafta).
   if (actor === 'private' && (cost.gold ?? 0) > privateCommitRoom(nation)) return false;
   if (actor === 'state' && !payFactoryCost(nation, cost, 'state')) return false;
   queueIndustryProject(game, nation, {
@@ -2382,7 +2513,7 @@ function autoUpgradeFactory(game, nation, factory) {
  * Para bitince proje durur ve oyuncunun desteğini bekler (bkz. supportProject).
  *
  * Sıra KUYRUK sırası değil, BİTMEYE KALAN sırasıdır. Kuyruk sırasıyla dağıtan
- * eski sürümde baştaki pahalı yükseltme (kalan ¤218, haftalık sermaye ~¤0.17)
+ * eski sürümde baştaki pahalı yükseltme (kalan £218, haftalık sermaye ~£0.17)
  * arkasındaki her projeyi aç bırakıyordu: kör betada oyuncunun sanayisi 20.
  * yıldan 80. yıla kadar 7 tesiste dondu. Ucuzu önce bitirmek her hafta bir
  * şeyin BİTMESİNİ garanti eder; toplam harcanan sermaye aynıdır.
@@ -2860,6 +2991,8 @@ function populationDemand(world, nation, market) {
     const scale = socialClass.population / 10000;
     let basket = 0;
     let basketAtBase = 0;
+    // Kademe basina PARA maliyeti; butce bu sirayla harcanir.
+    const tierCost = { life: 0, everyday: 0, luxury: 0 };
     // BIRINCI GECIS: sepetin *istenen* hali. Pazara henuz hicbir sey yazilmaz —
     // ne kadarini karsilayabildigini bilmeden talebi yazmak, tuketimi butceden
     // tamamen kopariyordu. Olculdu: alt sinif vergisi %0 -> %100 arasinda gecim
@@ -2874,7 +3007,8 @@ function populationDemand(world, nation, market) {
     let foodOnShelf = 0;
     for (let n = 0; n < needsEntries.length; n++) {
       const goodId = needsEntries[n][0];
-      const amount = needAmount(needsEntries[n][1], world.turn ?? 1);
+      const need = needsEntries[n][1];
+      const amount = needAmount(need, world.turn ?? 1);
       if (amount <= 0) continue;
       const quantity = amount * scale;
       // Tariffs only raise the imported share of a household basket. Last
@@ -2890,6 +3024,7 @@ function populationDemand(world, nation, market) {
       const baseCost = GOODS[goodId].basePrice * quantity;
       basket += cost;
       basketAtBase += baseCost;
+      tierCost[needTier(need)] += cost;
       if (FOOD_GOODS.has(goodId)) { foodCost += cost; foodAtBase += baseCost; }
       // Rafta var mi: gecen haftanin karsilanma orani (bu haftanin ticareti
       // henuz kapanmadi). Parasi yetmek ile mal BULMAK ayri seylerdir; dunya
@@ -2966,20 +3101,32 @@ function populationDemand(world, nation, market) {
     const affordShare = outOfPocket > 1e-9
       ? clamp(spendable / outOfPocket, 0, 1)
       : 1;
-    // ONCE EKMEK. Eski kod tek bir `affordShare`i butun sepete ESIT
-    // uyguluyordu, dolayisiyla parasi %60 yeten hane ekmeginin de %60'ini,
-    // sarabinin da %60'ini aliyordu — ve "beslenme" endeksi sarabin
-    // eksikliginden dusuyordu. Artik butce once gida kalemlerine gider,
-    // ARTAN gerisine. Bu, sepetin toplam karsilanmasini degistirmez
-    // (`affordShare` ayni kalir), yalnizca ICINDEKI dagilimi duzeltir.
+    // UC KADEMELI SELALE: once yasam, sonra gunluk, en son luks.
+    //
+    // Eskiden iki kova vardi (gida / gerisi) ve `canAffordNeeds` BUTUN sepetin
+    // %60'ina bakiyordu; yani vergiyi tavana ceken oyuncu sinifi dogrudan
+    // geciminin altina itiyordu. Victoria'da boyle degildi: yuksek vergi once
+    // luksu, sonra gunluk ihtiyaci yerdi, bedeli MORAL'di. Selale o davranisi
+    // geri getirir — sirasi bozulmadikca ekmek en son kesilir.
+    const rate = (cost) => (cost > 1e-9 ? clamp(spendable / cost, 0, 1) : 1);
+    const share = (cost) => (basket > 1e-9 ? outOfPocket * (cost / basket) : 0);
+    const lifeCost = share(tierCost.life);
+    const dayCost = share(tierCost.everyday);
+    const luxCost = share(tierCost.luxury);
+    const lifeAfford = rate(lifeCost);
+    let left = Math.max(0, spendable - lifeCost * lifeAfford);
+    const dayAfford = dayCost > 1e-9 ? clamp(left / dayCost, 0, 1) : 1;
+    left = Math.max(0, left - dayCost * dayAfford);
+    const luxAfford = luxCost > 1e-9 ? clamp(left / luxCost, 0, 1) : 1;
+    socialClass.tierMet = { life: lifeAfford, everyday: dayAfford, luxury: luxAfford };
+    // Beslenme endeksi yasam kademesinden okunur; gida kalemleri orada.
     const foodOutOfPocket = outOfPocket * (basket > 1e-9 ? foodCost / basket : 0);
-    const restOutOfPocket = Math.max(0, outOfPocket - foodOutOfPocket);
-    const foodAfford = foodOutOfPocket > 1e-9
-      ? clamp(spendable / foodOutOfPocket, 0, 1)
-      : 1;
-    const restAfford = restOutOfPocket > 1e-9
-      ? clamp(Math.max(0, spendable - foodOutOfPocket * foodAfford) / restOutOfPocket, 0, 1)
-      : 1;
+    const foodAfford = foodOutOfPocket > 1e-9 ? Math.min(1, lifeAfford) : 1;
+    const restAfford = clamp(
+      (dayCost * dayAfford + luxCost * luxAfford) / Math.max(1e-9, dayCost + luxCost),
+      0,
+      1,
+    );
     // Karnin doymasi iki kapiya birden bakar: parasi yetti mi, mal var miydi.
     socialClass.foodMet = foodAfford * foodAvailability;
     // Artan gelirin bir kismi birikir; tavan ~yarim yillik sepettir, yoksa
@@ -3016,7 +3163,16 @@ function populationDemand(world, nation, market) {
     // Sepet tam yaşam standardını temsil eder; sınıf bunun temel %60'ını dahi
     // karşılayamıyorsa durum sınıf düşüşüne dönüşür. Lüks açığı memnuniyeti
     // azaltır fakat tek başına aristokrasiyi birkaç ayda yok etmez.
-    socialClass.canAffordNeeds = needsBudget + 0.01 >= outOfPocket * 0.6;
+    // GECIM TABANI ARTIK YASAM KADEMESIDIR. Eskiden butun sepetin %60'iydi:
+    // yani sarabini alamayan aristokrat da "gecim altinda" sayilip sinif
+    // dusuyordu. Victoria'da olcut yasam ihtiyaclariydi ve dogrusu budur —
+    // ekmegi varsa sinif dusmez, yalnizca kufreder (memnuniyet duser).
+    // Pay 0.95: son kirinti icin sinif dusurmek gurultuye ceza kesmek olur.
+    // Iki kapi birden: PARASI yetti mi ve MAL var miydi. Yalniz odenebilirlige
+    // bakinca dunyada tahil kalmadiginda bile hicbir sinif dusmuyordu — aclik
+    // bir basarisizlik bicimi olarak tamamen kaybolmustu. Vergi artik sinif
+    // dusurmez (o moral ve istikrar bedeli oder), ama GERCEK kitlik dusurur.
+    socialClass.canAffordNeeds = (socialClass.tierMet?.life ?? 1) * foodAvailability >= 0.95;
     // Issizlik memnuniyeti dusurur. Eskiden memnuniyet YALNIZ sepet fiyatina
     // ve vergiye bakiyordu; olculdu (audit:population): istihdam %73.5 ->
     // %64.0 dustugunde memnuniyet 0.68 -> 0.65, yani sanayi kapanmasi haneyi
@@ -3218,7 +3374,7 @@ function investmentTargets(world, nation) {
   // yerinde siraliyordu ve esit nufuslu bolgelerde sira, onceki cagrilarin
   // birakigi dizilime bagliydi — yuklenen oyunda atlas taze kuruldugu icin
   // ayni durumdaki iki kosu FARKLI bolgeye yatirim seciyordu (olculdu:
-  // save-audit dallanmasi, +77. haftada ¤229'luk CANNERY baska state'e).
+  // save-audit dallanmasi, +77. haftada £229'luk CANNERY baska state'e).
   return [...constructionAtlas(world, nation.id).regions]
     .sort((a, b) => b.population - a.population
       || String(a.id).localeCompare(String(b.id)));
@@ -3469,6 +3625,9 @@ function runEconomicAI(game, nation) {
   if (!nation.alive) return;
   const player = nation.id === game.turns.playerNation;
   const turn = game.world.turn ?? 0;
+  // Kilitler HER ZAMAN once uygulanir: devir kapaliyken de oyuncunun kendi
+  // niyeti korunmali, acikken de YZ kilitlenmis kaydiraci bulmali.
+  applyTaxHolds(nation);
   const budget = !player || delegationActive(nation, 'budget', turn);
   const trade = !player || delegationActive(nation, 'trade', turn);
   const construction = !player || delegationActive(nation, 'construction', turn);

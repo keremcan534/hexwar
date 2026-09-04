@@ -168,8 +168,35 @@ const AXIS_LABEL = {
   military: 'War Policy',
 };
 
+/**
+ * HÜKÜMETİ ATA.
+ *
+ * Sandık kaldırılmaz: atanan parti bir SONRAKİ seçime kadar yönetir, orada
+ * halk karar verir. Bedel modelin içinde zaten var — desteği düşük bir partiyi
+ * atamak, vade gelince onu kaybetmek demektir; satır bunu yüzde olarak
+ * gösterir ki oyuncu neyi göze aldığını bilsin.
+ */
+function appointRow(ruler, parties) {
+  if (!parties.length) return '';
+  const buttons = [...parties]
+    .sort((a, b) => b.support - a.support)
+    .map((party) => {
+      const info = IDEOLOGIES[party.ideology];
+      const now = party.id === ruler.id;
+      return `<button class="pol-appoint${now ? ' on' : ''}" data-appoint="${esc(party.id)}"
+        ${now ? 'disabled' : ''} style="--party-color:${info?.color ?? 'var(--gold)'}"
+        title="${esc(`${party.name} — ${info?.name ?? party.ideology} · ${party.support.toFixed(1)}% support`)}">
+        <i aria-hidden="true"></i><span>${esc(party.name)}</span>
+        <em>${party.support.toFixed(0)}%</em></button>`;
+    }).join('');
+  return `<div class="pol-appoint-row">
+    <small>Appoint a government — the next election still decides who keeps it</small>
+    <div class="pol-appoint-list">${buttons}</div>
+  </div>`;
+}
+
 /** İktidar partisi ve programı — referanstaki politika tablosunun karşılığı. */
-function rulingBlock(ruler, election) {
+function rulingBlock(ruler, election, parties = []) {
   const info = IDEOLOGIES[ruler.ideology];
   const rows = Object.entries(ruler.policies).map(([axis, value]) => {
     const policy = POLITICAL_POLICIES[axis]?.[value];
@@ -186,6 +213,7 @@ function rulingBlock(ruler, election) {
     <button class="pol-election" data-hold-election ${election.allowed ? '' : 'disabled'}
       title="${esc(election.note)}">Hold Election</button>
     <table class="pol-policies">${rows}</table>
+    ${appointRow(ruler, parties)}
   </section>`;
 }
 
@@ -320,7 +348,55 @@ export function reformLadder(status) {
     <header class="reform-head"><i class="reform-icon">${glyph(group.icon)}</i>
       <h5>${esc(group.name)}</h5></header>
     <ol class="reform-steps">${steps}</ol>
+    ${effectStrip(status.preview)}
   </article>`;
+}
+
+/**
+ * BIR ADIMIN BEDELI VE KAZANCI — motordan gelen fark.
+ *
+ * Sayilarin hicbiri burada uretilmez: `reformPreview` bir sonraki basamak
+ * cikarilmis gibi katsayilari yeniden hesaplayip FARKI verir. Ekranin isi
+ * yalnizca o farki adlandirmak ve isaretini boyamak.
+ *
+ * `good` alani "artmasi iyi mi": memnuniyet ve okuryazarlik artsin isteriz,
+ * bordro ve hazine yuku artmasin. Renk buradan gelir, degerin isaretinden
+ * degil — ucret faturasinin artmasi yesil olsaydi tablo yalan soylerdi.
+ */
+const EFFECT_LABEL = {
+  lowerMood: { name: 'Workers', good: true, kind: 'mood' },
+  middleMood: { name: 'Middle class', good: true, kind: 'mood' },
+  upperMood: { name: 'Elite', good: true, kind: 'mood' },
+  throughput: { name: 'Industry output', good: true, kind: 'pct' },
+  wageCost: { name: 'Wage bill', good: false, kind: 'pct' },
+  socialBurden: { name: 'Treasury commitment', good: false, kind: 'pct' },
+  manpower: { name: 'Manpower pool', good: true, kind: 'pct' },
+  literacyFloor: { name: 'Literacy floor', good: true, kind: 'pct' },
+  researchRate: { name: 'Research', good: true, kind: 'pct' },
+  minorityCeiling: { name: 'Minority loyalty', good: true, kind: 'pct' },
+};
+
+/** Etkiyi ORAN olarak yazar; ruh hali puan, gerisi yuzde. */
+function effectValue(key, value) {
+  const meta = EFFECT_LABEL[key];
+  if (meta?.kind === 'mood') return `${value >= 0 ? '+' : '−'}${Math.abs(value * 100).toFixed(1)}`;
+  return `${value >= 0 ? '+' : '−'}${Math.abs(value * 100).toFixed(1)}%`;
+}
+
+function effectStrip(preview) {
+  if (!preview) return '';
+  const rows = Object.entries(preview.delta)
+    .filter(([key]) => EFFECT_LABEL[key])
+    // Buyukten kucuge: oyuncunun once gormesi gereken en agir sonuctur.
+    .sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))
+    .map(([key, value]) => {
+      const meta = EFFECT_LABEL[key];
+      const helps = meta.good ? value > 0 : value < 0;
+      return `<span class="reform-eff ${helps ? 'up' : 'down'}">
+        <small>${esc(meta.name)}</small><b>${effectValue(key, value)}</b></span>`;
+    }).join('');
+  if (!rows) return '';
+  return `<div class="reform-effects" title="Measured from the engine: the same coefficients the simulation reads.">${rows}</div>`;
 }
 
 function reformColumn(category, board) {
@@ -464,7 +540,7 @@ export function politicsScreen(world, nation, state, board) {
     hasElectorate: state.hasElectorate,
   })}
       ${upperHouseBlock(house, gates)}
-      ${rulingBlock(ruler, election)}
+      ${rulingBlock(ruler, election, nation.politics?.parties ?? [])}
       ${mixesBlock(voterMix(nation), peopleMix(nation), register)}
       ${issuesBlock(importantIssues(nation, { board }), state.hasElectorate)}
     </aside>

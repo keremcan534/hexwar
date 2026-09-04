@@ -5,6 +5,7 @@ import { HEX_CORNERS, SQRT3, DIRS, wrapCol } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { englishCityName } from '../game/cities.js';
 import { drawFlag } from './flagPainter.js';
+import { atWar } from '../game/diplomacy.js';
 import { maxHpOf, organizationOf, soldiersOf, unitsOn } from '../game/units.js';
 import { terrainShade } from '../world/terrain.js';
 import { constructionAtlas } from '../game/construction.js';
@@ -12,6 +13,8 @@ import { RGO_TYPES } from '../game/provinces.js';
 import { controllerOf, isOccupied } from '../game/control.js';
 import { materials } from './textures.js';
 import { WaterLayer } from './water.js';
+import { LandMaterial } from './material.js';
+import { SurfaceGL } from './surfaceGL.js';
 
 /**
  * Karenin GÖRÜNEN sahibi. Geçilmez arazi (dağ, zirve, buz) hiçbir province'e
@@ -174,12 +177,64 @@ const STATIC_MAX_SIDE = 5120;
  * 0.29 MB-sn. Yani zoom takılmasının TAMAMI bu yeniden pişirmeydi.
  */
 
+/**
+ * Arazi karakteri — WebGL yüzey katmanına hex başına doku olarak gider.
+ * `relief` eğimin ışığa katkısı, `grain` yerel kırıklık, `warm` sıcaklığa
+ * çekiş. material.js'teki CHARACTER ile aynı ailedendir; orası Canvas2D
+ * yedeği için duruyor, burası GPU yolu içindir.
+ */
+const SURFACE_CHARACTER = {
+  SNOW_PEAK: { relief: 1.55, grain: 0.30, warm: 0.08 },
+  MOUNTAIN: { relief: 1.60, grain: 0.38, warm: 0.04 },
+  HILLS: { relief: 1.15, grain: 0.32, warm: 0.10 },
+  FOREST: { relief: 0.62, grain: 0.52, warm: -0.18 },
+  JUNGLE: { relief: 0.62, grain: 0.56, warm: -0.22 },
+  GRASSLAND: { relief: 0.50, grain: 0.22, warm: -0.04 },
+  PLAINS: { relief: 0.44, grain: 0.16, warm: 0.06 },
+  DESERT: { relief: 0.46, grain: 0.11, warm: 0.28 },
+  BEACH: { relief: 0.34, grain: 0.13, warm: 0.24 },
+  TUNDRA: { relief: 0.52, grain: 0.24, warm: -0.02 },
+  ICE: { relief: 0.70, grain: 0.15, warm: 0.02 },
+};
+const SURFACE_DEFAULT = { relief: 0.5, grain: 0.2, warm: 0 };
+
 /** Şehir ve birim aynı karede: biri yukarı, biri aşağı kaydırılır. */
 const CITY_OFFSET = 0.3;
 const UNIT_ON_CITY_OFFSET = 0.22;
 
 /** Emir rozetleri; orders.js'teki ORDER değerleriyle eşleşir. */
 const ORDER_BADGE = { auto: '⚙', hold: '⏸' };
+
+/**
+ * Birim kunyeleri: pirinc plakalar (assets/icons/units). Sayacin ortasindaki
+ * cizili NATO cercevesinin yerini aldilar — ayni sembol dili, ama arayuzun
+ * geri kalaniyla (sekme kunyeleri, defter madalyonlari) ayni set.
+ *
+ * Yukleme ASENKRON, sprite pisirme SENKRON: goruntu hazir degilse sayac eski
+ * cizimle piser ve resim gelince onbellek bosaltilir. Boylece ilk kare
+ * bosluk beklemez, sonraki kareler kunyeyi alir.
+ */
+const UNIT_PLATE_FILES = {
+  INFANTRY: 'infantry', CAVALRY: 'cavalry', ARTILLERY: 'artillery',
+  WARSHIP: 'warship', ARMOR: 'armor', AIRCRAFT: 'aircraft',
+};
+const unitPlates = new Map();
+let unitPlatesPending = 0;
+
+function loadUnitPlates(onReady) {
+  if (unitPlates.size || unitPlatesPending) return;
+  for (const [typeId, file] of Object.entries(UNIT_PLATE_FILES)) {
+    const image = new Image();
+    unitPlatesPending++;
+    image.decoding = 'async';
+    image.addEventListener('load', () => {
+      unitPlates.set(typeId, image);
+      if (--unitPlatesPending === 0) onReady?.();
+    }, { once: true });
+    image.addEventListener('error', () => { unitPlatesPending--; }, { once: true });
+    image.src = `assets/icons/units/${file}.png`;
+  }
+}
 
 /** Sayaç tip kısaltmaları (bkz. paintCounterSprite). */
 const TYPE_CODE = {
@@ -275,9 +330,18 @@ function tileStep(tile) {
 export class Renderer {
   constructor(canvas, camera) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d', { alpha: false });
+    // Saydamlık AÇIK: hibrit su devredeyken deniz alanı boş bırakılır ve
+    // alttaki WebGL tuvali oradan görünür (bkz. waterGL).
+    this.ctx = canvas.getContext('2d', { alpha: true });
     this.camera = camera;
     this.dpr = 1;
+    // Kunyeler gelince pisirilmis sayaclar gecersizdir: onbellek bosaltilir
+    // ve bir kare istenir, yoksa plakalar ilk zoom degisimine kadar cikmaz.
+    loadUnitPlates(() => {
+      this.unitSprites?.clear();
+      this.invalidateCache();
+      this.onPlatesReady?.();
+    });
     this.showGrid = true;
     this.showLabels = true;
     /**
@@ -299,6 +363,15 @@ export class Renderer {
     // Deniz yüzeyi ayrı bir katman nesnesidir: dokular, kıyı topolojisi ve
     // yerel bozulmalar orada yaşar (bkz. water.js).
     this.water = new WaterLayer();
+    // Kara yüzeyinin malzemesi: ışık alanı + kabartma + pigment (bkz. material.js).
+    this.material = new LandMaterial();
+    /**
+     * HİBRİT SU. Doluysa deniz WebGL2'de, ALTTAKİ ayrı tuvale çizilir ve
+     * Canvas2D tarafı deniz karelerini hiç boyamaz — su oradan görünür, kara
+     * dolgusu üstünü doğal olarak kapatır. Null ise (WebGL2 yok, ya da
+     * kapatıldı) her şey eskisi gibi Canvas2D'de kalır.
+     */
+    this.waterGL = null;
     this.waterTime = 0;
     // Yakın-dal statik katman önbelleği (bkz. STATIC_PAD ve ensureStaticLayers).
     this.staticLayers = null;
@@ -325,11 +398,212 @@ export class Renderer {
       || this.mapMode === 'geography' || this.mapMode === 'cultures';
   }
 
+  /**
+   * Malzeme geçişinden sonra DENİZİ yeniden saydam yapar.
+   *
+   * Neden gerekli: `material.paint` tek dikdörtgen olarak `overlay` ile
+   * biner. Saydam bir hedefe karışım uygulanınca sonuç kaynağın kendisidir
+   * (arka plan alfası 0 → karışım = kaynak, source-over ile opak biner), yani
+   * deniz alanı ORTA GRİ boyanıyordu — hibrit suda ilk gözlenen hata buydu.
+   *
+   * Çare: malzemeden ÖNCE katmanın alfası anlık kopyalanır, sonra
+   * `destination-in` ile geri uygulanır. Kaynak gerçek hex dolgusudur, yani
+   * maske tam kenarlıdır; binlerce hexlik kırpma yolu kurmaya gerek yok.
+   * Maliyet katman başına iki tam boy blit ve yalnız pişirmede ödenir.
+   */
+  maskToLand(ctx, paint) {
+    const canvas = ctx.canvas;
+    let scratch = this.landMaskScratch;
+    if (!scratch || scratch.width !== canvas.width || scratch.height !== canvas.height) {
+      scratch = document.createElement('canvas');
+      scratch.width = canvas.width;
+      scratch.height = canvas.height;
+      this.landMaskScratch = scratch;
+    }
+    const sc = scratch.getContext('2d');
+    sc.setTransform(1, 0, 0, 1, 0, 0);
+    sc.clearRect(0, 0, scratch.width, scratch.height);
+    sc.drawImage(canvas, 0, 0);
+    paint();
+    const t = ctx.getTransform();
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.globalCompositeOperation = 'destination-in';
+    ctx.drawImage(scratch, 0, 0);
+    ctx.restore();
+    ctx.setTransform(t);
+  }
+
+  /**
+   * Hibrit su tuvalini bağlar. WebGL2 yoksa sessizce vazgeçilir ve her şey
+   * Canvas2D'de kalır — katman silinmez, yalnız devreye girmez.
+   */
+  attachWaterCanvas(canvas) {
+    if (!canvas) return false;
+    this.waterGL = SurfaceGL.create(canvas);
+    if (!this.waterGL) return false;
+    // resize BURADA çağrılmaz: kurucu, düzen (layout) oturmadan çalışıyor ve
+    // tuval o anda 0x0 ölçülüyor. Ölçüyü Game ilk kareden sonra verir.
+    this.invalidateCache();
+    return true;
+  }
+
+  /**
+   * Deniz Canvas2D'de mi çizilecek? WebGL katmanı devredeyken HAYIR: dolgu,
+   * malzeme, gök gradyanı, desen ve kıyı hattı atlanır ve o alan SAYDAM
+   * kalır. Tek karar noktası burasıdır; çağıran taraflar bunu sorar.
+   */
+  canvasWater() {
+    return this.waterAnimatedMode() && !this.glSurface();
+  }
+
+  /**
+   * WebGL yüzey katmanı bu karede geçerli mi?
+   *
+   * HARİTA KİPİNDEN BAĞIMSIZ. Eskiden yalnız "su animasyonlu" kiplerde
+   * açılıyordu; kaynak/nüfus/barış/inşaat kiplerinde eski Canvas2D yoluna
+   * düşülüyor ve harita bambaşka bir sunuma dönüyordu — aynı oyunda iki ayrı
+   * sanat yönetimi. Artık zemin her kipte GPU'dan gelir; kipe göre değişen
+   * tek şey denizin MALZEMELİ mi düz mü çizileceğidir (bkz. uSeaMaterial).
+   */
+  glWater() {
+    return !!this.waterGL?.debug.enabled && !!this.waterGL?.world;
+  }
+
+  /** Okunurluk için takma ad; yüzey artık karayı da çiziyor. */
+  glSurface() {
+    return this.glWater();
+  }
+
+  /**
+   * A/B anahtarı (deney dalı boyunca): 'gpu' WebGL yüzeyi, 'classic' eski
+   * Canvas2D borusu. Konsoldan:  game.renderer.setSurfaceMode('classic')
+   *
+   * Eski yol SİLİNMEDİ; iki sunum yan yana karşılaştırılabilsin diye duruyor.
+   */
+  setSurfaceMode(mode) {
+    if (!this.waterGL) return 'classic';
+    this.waterGL.debug.enabled = mode !== 'classic';
+    this.invalidateCache();
+    this.staticLayers = null;
+    this.staticDirty = true;
+    this.requestFrame?.();
+    return this.waterGL.debug.enabled ? 'gpu' : 'classic';
+  }
+
+  /**
+   * Hex başına TABAN RENK, oyunun kendi renk borusundan.
+   *
+   * `tileColor` ne döndürüyorsa o: harita kipi, işgal, kültür, barış masası —
+   * hepsi orada karara bağlanır ve shader kendi doğrusunu KURMAZ. Renk CSS
+   * dizesi olduğu için cols×rows'luk bir tuvale hex başına bir piksel
+   * boyanır ve tek `getImageData` ile okunur; 15360 hex için ~10 ms, dünya
+   * başına ya da sahiplik değişince bir kez.
+   */
+  surfaceOwnerData(world) {
+    const cols = world.cols;
+    const rows = world.rows;
+    const out = new Uint8Array(cols * rows * 4);
+    for (let i = 0; i < cols * rows; i++) {
+      const tile = world.tiles[i];
+      if (!tile) continue;
+      // Deniz de yazılır: düz-deniz kiplerinde shader rengi buradan okur.
+      const rgb = this.cssToRgb(this.tileColor(tile, world));
+      const p = i * 4;
+      out[p] = rgb[0];
+      out[p + 1] = rgb[1];
+      out[p + 2] = rgb[2];
+      out[p + 3] = 255;
+    }
+    return out;
+  }
+
+  /**
+   * CSS renk dizesi -> RGB, BENZERSİZ dize başına bir kez.
+   *
+   * `tileColor` zaten sınırlı sayıda dize döndürür (bkz. tintCache): 15360
+   * hex için birkaç yüz farklı renk. Her hex için tuvale boyayıp okumak
+   * yerine dize başına bir kez çözülür — sahiplik tazelemesi böylece bir
+   * kare bütçesinin altında kalır.
+   */
+  cssToRgb(css) {
+    this.rgbCache ??= new Map();
+    const hit = this.rgbCache.get(css);
+    if (hit) return hit;
+    if (!this.rgbProbe) {
+      const k = document.createElement('canvas');
+      k.width = 1;
+      k.height = 1;
+      this.rgbProbe = k.getContext('2d', { willReadFrequently: true });
+    }
+    const g = this.rgbProbe;
+    g.clearRect(0, 0, 1, 1);
+    g.fillStyle = css;
+    g.fillRect(0, 0, 1, 1);
+    const d = g.getImageData(0, 0, 1, 1).data;
+    const rgb = [d[0], d[1], d[2]];
+    this.rgbCache.set(css, rgb);
+    return rgb;
+  }
+
+  /**
+   * Yüzeyin renk dokusunu tazeler. Fetih, harita kipi değişimi, işgal — hepsi
+   * `tileColor`ın çıktısını değiştirir ve GPU o çıktıyı bir dokudan okur;
+   * doku tazelenmezse harita ESKİ sahibi göstermeye devam eder. Bu kozmetik
+   * değil, yanlış bilgi.
+   *
+   * Yalnız BAYRAK kaldırılır; asıl yükleme bir sonraki karede yapılır ki aynı
+   * tikte gelen onlarca değişiklik tek tazelemeye düşsün.
+   */
+  invalidateSurfaceColors() {
+    this.surfaceColorsDirty = true;
+  }
+
+  /** Hex başına işgal: RGB işgalcinin mürekkebi, A bayrak. */
+  surfaceOverlayData(world) {
+    const n = world.cols * world.rows;
+    const out = new Uint8Array(n * 4);
+    for (let i = 0; i < n; i++) {
+      const tile = world.tiles[i];
+      if (!tile || tile.terrain.water || !isOccupied(tile)) continue;
+      const holder = world.nations[controllerOf(tile)];
+      const rgb = this.cssToRgb(holder ? this.nationInk(holder) : '#999999');
+      const p = i * 4;
+      out[p] = rgb[0];
+      out[p + 1] = rgb[1];
+      out[p + 2] = rgb[2];
+      out[p + 3] = 255;
+    }
+    return out;
+  }
+
+  /** Hex başına arazi karakteri: R kabartma kazancı, G gren, B sıcaklık. */
+  surfaceCharacterData(world) {
+    const cols = world.cols;
+    const rows = world.rows;
+    const out = new Uint8Array(cols * rows * 4);
+    for (let i = 0; i < cols * rows; i++) {
+      const tile = world.tiles[i];
+      const ch = SURFACE_CHARACTER[tile?.terrain?.id] ?? SURFACE_DEFAULT;
+      const p = i * 4;
+      out[p] = Math.round(Math.min(1, ch.relief / 2) * 255);
+      out[p + 1] = Math.round(ch.grain * 255);
+      out[p + 2] = Math.round((ch.warm * 0.5 + 0.5) * 255);
+      out[p + 3] = 255;
+    }
+    return out;
+  }
+
   /** Game bir sonraki animasyon karesini zamanlasın mı (bkz. Game.scheduleWaterFrame). */
   waterActive() {
     // Etiket erimesi de kare ister: su çizmeyen kiplerde yarıda donmasın.
     // waterSkipped: zoom jesti deniz katmanını atlattı — zincir sürsün ki
     // jest bitince su kendiliğinden geri gelsin.
+    // GL su kendi zamanına göre akar; kare zinciri onu beslemek için sürer.
+    // Ayrı bir rAF döngüsü AÇILMADI (bkz. CLAUDE.md): kamera senkronu tek
+    // yerden gelsin diye su, haritanın kendi karesinde güncelleniyor. Canvas
+    // tarafı bu karelerde yalnız hazır katmanları blit eder (p50 1.0 ms).
+    if (this.glWater()) return true;
     return this.water.animatedThisFrame || this.water.disturbances.length > 0
       || this.labelFadePending === true || this.waterSkipped === true;
   }
@@ -353,6 +627,17 @@ export class Renderer {
       this.water.ensureWorld(world);
       return true;
     }
+    // Kara malzemesi de perde arkasında pişer: ışık alanı + iki doku birlikte
+    // ~150 ms tutuyor ve ilk statik katmanda tek karede ödenirse takılıyor.
+    if (this.material.warmStep(this.ctx, world)) return true;
+    // WebGL su katmanı, malzemenin kıyı uzaklığı alanını doku olarak alır.
+    if (this.waterGL && this.waterGL.world !== world) {
+      this.waterGL.setWorld(world, this.material.cache, {
+        owner: this.surfaceOwnerData(world),
+        character: this.surfaceCharacterData(world),
+      });
+      return true;
+    }
     if (this.water.warmStep(this.ctx)) return true;
     if (!this.cache) {
       this.stepCacheBuild(world, 10);
@@ -364,6 +649,7 @@ export class Renderer {
   resize() {
     const rect = this.canvas.getBoundingClientRect();
     const dpr = Math.min(MAX_DPR, window.devicePixelRatio || 1);
+    this.waterGL?.resize(rect.width, rect.height, dpr);
     this.dpr = dpr;
     this.canvas.width = Math.round(rect.width * dpr);
     this.canvas.height = Math.round(rect.height * dpr);
@@ -380,6 +666,8 @@ export class Renderer {
    * Yeniden kurma maliyeti önemsiz — ülke × arazi × kademe, birkaç yüz girdi.
    */
   invalidateCache() {
+    // Kip değişimi, dünya değişimi, sahiplik — hepsi buradan geçer.
+    this.surfaceColorsDirty = true;
     this.cache = null;
     this.constructionCache = null;
     this.tintCache.clear();
@@ -414,6 +702,7 @@ export class Renderer {
    * değişen kareler (+1 komşu halkası) yeniden mürekkeplenir.
    */
   invalidateTiles(tiles, ownershipChanged = true) {
+    if (ownershipChanged) this.surfaceColorsDirty = true;
     // Etiket çapaları yalnız EGEMENLİK değişince kayar (ownerOf owner'a
     // bakar, controller'a değil). İşgal (occupy) controller değiştirir;
     // onun için yerleşimi kirletmek, savaş haftalarında her turda 15k karelik
@@ -476,8 +765,15 @@ export class Renderer {
       minX - HEX_SIZE * 2, minY - HEX_SIZE * 2,
       (maxX - minX) + HEX_SIZE * 4, (maxY - minY) + HEX_SIZE * 4,
     );
-    this.drawTerrain(ctx, list, world, true);
-    if (this.mapMode === 'political') this.drawOccupationOverlay(ctx, world, list, cache.scale);
+    // Onarılan bölge kırpma yolunun İÇİNDE baştan boyanır; malzeme burada
+    // dilimlenmediği için dikiş sorunu yoktur (bkz. stepFarBake üç süpürme).
+    this.drawTerrain(ctx, list, world, {
+      minX: minX - HEX_SIZE * 2, maxX: maxX + HEX_SIZE * 2,
+      minY: minY - HEX_SIZE * 2, maxY: maxY + HEX_SIZE * 2,
+    });
+    if (this.mapMode === 'political' && !this.glSurface()) {
+      this.drawOccupationOverlay(ctx, world, list, cache.scale);
+    }
     if (this.mapMode === 'cultures') this.drawCultureMix(ctx, world, list, cache.scale);
     if (this.mapMode === 'construction') this.drawConstructionOverlay(ctx, world, list, cache.scale);
     if (this.showsPolitics()) this.drawBorders(ctx, world, list, cache.scale);
@@ -584,9 +880,22 @@ export class Renderer {
     // 0.62'lik doygunluk sıkıştırması 0.78'e gevşetildi ve parlaklık
     // [34, 60] baskı bandına kenetlendi: dolgular pastel sise gömülmeden
     // kimlik taşır, ama hiçbir ülke tabakadan fırlamaz.
-    const base = this.mineralize(owner.hue, owner.sat * 0.78, owner.light * shade * 0.9);
-    const light = Math.max(34, Math.min(60, base.light + step * 1.5));
-    const sat = Math.max(12, base.sat + step * 0.8);
+    const base = this.mineralize(owner.hue, owner.sat * 0.80, owner.light * shade * 0.9);
+    // KÜRESEL DERECELENDİRME BURADA. Saydam siyah bir dikdörtgen sermek
+    // yerine renk borusunun kaynağında bir eğri uygulanır: bant hem AŞAĞI
+    // kaydırılır (dünya koyulaşır) hem de orta ton çevresinde açılır (yerel
+    // kontrast artar). Sonuç tek tutarlı bir tabaka — her ülkeye ayrı filtre
+    // değil.
+    //
+    // 34-60 → 27-64 → 22-53. İkinci aralık dünyayı yeterince koyulaştırmadı:
+    // ekranda hâlâ pastel okunuyordu. Alt sınır siyah değil, üst sınır
+    // kâğıt beyazı değil: ne ezilmiş gölge ne yanmış highlight.
+    const PIVOT = 44;
+    const graded = PIVOT + (base.light - PIVOT) * 1.16 - 8.5;
+    const light = Math.max(22, Math.min(53, graded + step * 1.4));
+    // Doygunluk parlaklıkla birlikte düşer: koyu bir yüzey aynı doygunlukta
+    // kalırsa neon okunur. Olgun mineral pigment tam tersidir.
+    const sat = Math.max(14, Math.min(42, base.sat * 0.92 + step * 0.8));
     color = `hsl(${Math.round(base.hue)} ${Math.round(sat)}% ${Math.round(light)}%)`;
     this.tintCache.set(key, color);
     return color;
@@ -962,6 +1271,12 @@ export class Renderer {
       };
       if (old) this.staticSpare = { base: old.base, top: old.top };
       this.staticJob = null;
+    } else {
+      // IS BITMEDIYSE KENDI KARESINI ISTER. Dilimli pisirme kare basina bir
+      // adim atiyor, ama render ISTEGE BAGLI: fetihten sonra tek kare cizilip
+      // is yarim kaliyordu ve sinir, oyuncu zoom yapip yeni kare tetikleyene
+      // kadar eski halinde donuyordu (kullanici bildirimi).
+      this.requestFrame?.();
     }
   }
 
@@ -983,24 +1298,44 @@ export class Renderer {
     }
     const tiles = this.visibleTiles(world, rect);
 
-    // TABAN: zemin dolguları + kıyı karası ışığı + statik su tabanı.
-    this.paintTileFills(b, tiles, world);
-    if (this.waterAnimatedMode()) {
+    if (this.glSurface()) {
+      // ZEMİN HİÇ BOYANMAZ. Deniz de kara da WebGL yüzey katmanından gelir;
+      // bu katmana yalnız mürekkep (tarama, ızgara, kenar, sınır) düşer.
+    } else if (this.waterAnimatedMode()) {
       const land = [];
       const sea = [];
       for (const tile of tiles) (tile.terrain.water ? sea : land).push(tile);
+      // SIRA KRİTİK. Deniz derinliği artık hex başına bir ton değil, sürekli
+      // bir kıyı-uzaklığı rasteri (bkz. material.paintSea). O raster
+      // yumuşatılarak büyütüldüğü için kenarı yarım teksel karaya taşar;
+      // ARAYA GİRME sırası bunu bedavaya çözer:
+      //   deniz dolgusu → deniz rasteri → KARA dolgusu (taşmayı kapatır)
+      // Alternatifi binlerce hexlik kırpma yoluydu; bu borunun ölçülmüş en
+      // pahalı işlemi tam olarak odur.
+      this.paintTileFills(b, sea, world);
+      this.material.paintSea(b, world, rect);
+      this.paintTileFills(b, land, world);
       this.paintShore(b, world, land);
       this.water.paintStaticBase(b, world, sea);
+      // MALZEME: ışık alanı, kabartma ve kâğıt greni. Dolgunun üstüne,
+      // kıyı mürekkebinin altına biner — düz poligon burada yüzey olur.
+      this.material.paint(b, world, rect, scale);
       // ÜST: kıyı mürekkebi çizgi katmanının en altına.
       if (sea.length) {
         const cache = this.water.ensureWorld(world);
         const coastal = sea.filter((tile) => cache.coastalSet.has(tile.ghostOf ?? tile));
         if (coastal.length) this.water.drawCoastline(t, cache, coastal, scale);
       }
+    } else {
+      this.paintTileFills(b, tiles, world);
     }
 
     // ÜST: işgal/inşaat taraması, ızgara, province kenarı, ülke sınırı.
-    if (this.mapMode === 'political') this.drawOccupationOverlay(t, world, tiles, scale);
+    // İşgal taraması GPU yüzeyinde (bkz. surfaceGL uOverlay); Canvas2D yalnız
+    // yedek yolda çizer, yoksa iki kez binip alfası katlanır.
+    if (this.mapMode === 'political' && !this.glSurface()) {
+      this.drawOccupationOverlay(t, world, tiles, scale);
+    }
     if (this.mapMode === 'cultures') this.drawCultureMix(t, world, tiles, scale);
     if (this.mapMode === 'construction') this.drawConstructionOverlay(t, world, tiles, scale);
     if (this.showGrid && scale >= GRID_MIN_ZOOM && this.mapMode !== 'geography') {
@@ -1125,6 +1460,20 @@ export class Renderer {
     const cam = this.camera;
     // Geçen zaman kare sayısından bağımsız: animasyon her FPS'te aynı hızda akar.
     this.waterTime = performance.now() / 1000;
+    // Su önce çizilir: ayrı bir tuval olduğu için sıra bileşimi değiştirmez,
+    // ama kamera değerleri Canvas2D karesiyle BİREBİR aynı kalır.
+    if (this.glWater()) {
+      this.waterGL.seaMaterial = this.waterAnimatedMode();
+      this.waterGL.overlayOn = this.mapMode === 'political';
+      if (this.surfaceColorsDirty) {
+        this.surfaceColorsDirty = false;
+        const t = performance.now();
+        this.waterGL.updateOwners(this.surfaceOwnerData(world));
+        this.waterGL.updateOverlay(this.surfaceOverlayData(world));
+        this.perf?.add('r.surfacecolors', performance.now() - t);
+      }
+      this.waterGL.draw(cam, this.waterTime);
+    }
     this.water.animatedThisFrame = false;
     // Kopya döngüsünden önce sıfırlanır; yakın dal atlarsa yeniden kurar.
     this.waterSkipped = false;
@@ -1137,9 +1486,14 @@ export class Renderer {
       this.moveStamp = { x: cam.x, y: cam.y, at: performance.now() };
     }
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    // Harita zemini arayüz paletiyle aynı kömür-lacivert tonda.
-    ctx.fillStyle = '#0b1115';
-    ctx.fillRect(0, 0, cam.viewWidth, cam.viewHeight);
+    if (this.glWater()) {
+      // Zemin BOŞALTILIR: su alttaki WebGL tuvalinden gelir.
+      ctx.clearRect(0, 0, cam.viewWidth, cam.viewHeight);
+    } else {
+      // Harita zemini arayüz paletiyle aynı kömür-lacivert tonda.
+      ctx.fillStyle = '#0b1115';
+      ctx.fillRect(0, 0, cam.viewWidth, cam.viewHeight);
+    }
 
     // Silindir dünya: görünür pencereye düşen her periyot kopyası ayrı çizilir.
     // Kopya başına yalnız görünür kareler işlendiğinden toplam maliyet sabittir.
@@ -1196,6 +1550,7 @@ export class Renderer {
    * kutupların ötesi haritanın dışıdır ve orada uygulama zemini görünmelidir.
    */
   fillVoid(ctx, world, rect) {
+    if (this.glWater()) return;
     const b = world.bounds;
     const y0 = Math.max(rect.minY, b.minY);
     const y1 = Math.min(rect.maxY, b.maxY);
@@ -1244,7 +1599,7 @@ export class Renderer {
       }
       perf?.add('r.far', performance.now() - t0);
       t0 = performance.now();
-      if (this.cache && this.waterAnimatedMode()) {
+      if (this.cache && this.canvasWater()) {
         this.water.drawFar(ctx, world, this.waterTime, rect);
       }
       perf?.add('r.water', performance.now() - t0);
@@ -1305,7 +1660,7 @@ export class Renderer {
         }
       }
       ctx.drawImage(layers.base, layers.x0 + shift, layers.y0, layers.w, layers.h);
-      if (this.waterAnimatedMode()) {
+      if (this.canvasWater()) {
         // Aktif zoom jestinde deniz yolları yeniden KURULMAZ: görünür rect her
         // karede değiştiği için önbellek anahtarı sürekli kaçıyor ve yol
         // kurulumu kare başına yüzlerce KB çöp üretiyordu (ölçüldü ~8 MB/sn).
@@ -1363,7 +1718,7 @@ export class Renderer {
       // muharebe de siyasettir (bkz. mapMode yorumu).
       this.drawFronts(ctx, world, state);
       this.drawMovement(ctx, world, state.selectedUnit, state.playerNation);
-      this.drawUnitCounters(ctx, world, state.selectedUnit, rect);
+      this.drawUnitCounters(ctx, world, state.selectedUnit, rect, state.playerNation);
       this.drawBattles(ctx, world, rect);
     }
     this.drawSelection(ctx, state.selection);
@@ -1422,6 +1777,8 @@ export class Renderer {
       world, canvas, ctx, scale, widthPx, heightPx,
       row: 0, step: Math.max(8, Math.ceil(world.rows / 8)),
       mode: this.mapMode,
+      // 'sea' -> deniz dolgusu, 'land' -> kara dolgusu, 'ink' -> tarama/sınır.
+      phase: 'sea',
     };
   }
 
@@ -1453,15 +1810,68 @@ export class Renderer {
         bakeTiles.push({ ...t, x: t.x + P, ghostOf: t });
       }
     }
-    this.drawTerrain(j.ctx, bakeTiles, world, true);
-    if (this.mapMode === 'political') this.drawOccupationOverlay(j.ctx, world, bakeTiles, j.scale);
-    if (this.mapMode === 'cultures') this.drawCultureMix(j.ctx, world, bakeTiles, j.scale);
-    if (this.mapMode === 'construction') {
-      this.drawConstructionOverlay(j.ctx, world, bakeTiles, j.scale);
+    // ÜÇ SÜPÜRME, aralarında dilimlenmeyen TEK geçişler:
+    //
+    //   sea  : bütün bantların deniz dolgusu   → [deniz rasteri, tek geçiş]
+    //   land : bütün bantların kara dolgusu    → [ışık alanı + gren, tek geçiş]
+    //   ink  : bütün bantların taraması/sınırı
+    //
+    // Neden dilimlenmiyor: malzeme bant bant sürülünce her bandın kırpma
+    // sınırında soluk bir yatay dikiş kalıyordu — kenar yumuşatma ortak
+    // pikselde iki kez uygulanıyor ve overlay orayı bir tık koyulaştırıyordu
+    // (ölçüldü: yalnız ışık alanı açıkken de çıkıyor, yani gren değil
+    // kırpmanın kendisi). Toplam iş aynı, sıra değişti.
+    //
+    // Deniz rasteri kara dolgusundan ÖNCE gelir: yumuşatılmış kenarı karaya
+    // taşar, üstünü kara dolgusu kapatır (bkz. paintStaticContent).
+    const water = this.canvasWater();
+    if (j.phase === 'ink') {
+      if (this.mapMode === 'political' && !this.glSurface()) {
+        this.drawOccupationOverlay(j.ctx, world, bakeTiles, j.scale);
+      }
+      if (this.mapMode === 'cultures') this.drawCultureMix(j.ctx, world, bakeTiles, j.scale);
+      if (this.mapMode === 'construction') {
+        this.drawConstructionOverlay(j.ctx, world, bakeTiles, j.scale);
+      }
+      // Kıyı hattı mürekkep süpürmesinde: kara dolgusundan SONRA gelmeli.
+      if (water) this.water.bakeCoastline(j.ctx, world, bakeTiles.filter((t) => t.terrain.water));
+      if (this.showsPolitics()) this.drawBorders(j.ctx, world, bakeTiles, j.scale);
+    } else if (!water) {
+      // GL yüzey devredeyken uzak doku da zemin taşımaz: yalnız mürekkep.
+      if (!this.glSurface() && j.phase === 'sea') {
+        this.paintTileFills(j.ctx, bakeTiles, world);
+      }
+    } else {
+      const land = [];
+      const sea = [];
+      for (const t of bakeTiles) (t.terrain.water ? sea : land).push(t);
+      if (j.phase === 'sea') {
+        this.paintTileFills(j.ctx, sea, world);
+        this.water.bakeStatic(j.ctx, world, sea, { coastline: false });
+      } else {
+        this.paintTileFills(j.ctx, land, world);
+        this.paintShore(j.ctx, world, land);
+      }
     }
-    if (this.showsPolitics()) this.drawBorders(j.ctx, world, bakeTiles, j.scale);
     j.row = endRow;
-    if (j.row >= world.rows) {
+    if (j.row < world.rows) return true;
+
+    const rect = this.bakeRect(world, j.scale);
+    j.row = 0;
+    if (j.phase === 'sea') {
+      if (water) {
+        this.material.paintSea(j.ctx, world, rect);
+        j.phase = 'land';
+      } else if (this.glSurface()) {
+        j.phase = 'ink';
+      } else {
+        this.material.paint(j.ctx, world, rect, j.scale);
+        j.phase = 'ink';
+      }
+    } else if (j.phase === 'land') {
+      this.material.paint(j.ctx, world, rect, j.scale);
+      j.phase = 'ink';
+    } else {
       const b = world.bounds;
       this.cache = {
         canvas: j.canvas, x: WRAP_X0, y: b.minY, w: P,
@@ -1473,12 +1883,25 @@ export class Renderer {
   }
 
   /**
+   * Uzak dokunun kapsadığı dünya dikdörtgeni — yakası dahil. Yaka olmadan
+   * dikiş sütunları malzemesiz kalır ve kopya sınırında soluk bir şerit
+   * görünür (bkz. CACHE_COLLAR).
+   */
+  bakeRect(world, scale) {
+    const b = world.bounds;
+    const pad = CACHE_COLLAR / scale;
+    return {
+      minX: WRAP_X0 - pad,
+      maxX: WRAP_X0 + (world.wrapWidth ?? b.maxX - b.minX) + pad,
+      minY: b.minY,
+      maxY: b.maxY,
+    };
+  }
+
+  /**
    * Zemin dolgusu. Kipe göre renk seçilir ama çizim tek geçişte, renge göre
    * gruplanarak yapılır (binlerce hex için tek fill çağrısı başına bir path).
    *
-   * Kâğıt dokusunun kara/deniz yolları YALNIZ önbellek pişirilirken kurulur.
-   * Önceden her karede kuruluyordu ama `paintAtlas` canlı karede hiçbir şey
-   * çizmiyor: 3243 hex için karede 15.5 ms tamamen boşa gidiyordu (ölçüldü).
    */
   /** Zemin dolgularının kendisi: renge göre grupla, parçalı yollarla doldur. */
   paintTileFills(ctx, tiles, world) {
@@ -1498,27 +1921,30 @@ export class Renderer {
     }
   }
 
-  drawTerrain(ctx, tiles, world, baking = false) {
-    this.paintTileFills(ctx, tiles, world);
-    // Canlı yakın dal artık buradan geçmez: statik katman kurucusu dolgu,
-    // kıyı ve su tabanını kendi çizer (bkz. buildStaticLayers). Bu yol
-    // yalnız uzak-zoom önbelleği pişirilirken/onarılırken kullanılır.
-    if (!baking) return;
+  /**
+   * Zemin + malzeme, TEK kırpma bölgesi için sırasıyla. Yalnız uzak
+   * önbelleğin ONARIM yolu kullanır (repaintTiles): orada kirli kareler tek
+   * bir kırpma yolunun içinde baştan boyanır, dolayısıyla dilimleme yoktur.
+   *
+   * Uzak önbelleğin ilk PİŞİRMESİ bu yoldan geçmez; orada aynı sıra üç
+   * süpürmeye yayılır (bkz. stepFarBake), çünkü malzeme rasterleri
+   * dilimlenirse kırpma sınırında dikiş bırakır.
+   */
+  drawTerrain(ctx, tiles, world, rect = null) {
+    if (this.glSurface()) return;   // zemin GPU'da
+    if (!this.waterAnimatedMode()) {
+      this.paintTileFills(ctx, tiles, world);
+      return;
+    }
     const land = [];
     const sea = [];
     for (const t of tiles) (t.terrain.water ? sea : land).push(t);
-    if (this.waterAnimatedMode()) this.paintShore(ctx, world, land);
-    this.paintAtlas(
-      ctx,
-      this.chunkedHexPaths(land, FILL_CHUNK),
-      this.chunkedHexPaths(sea, FILL_CHUNK),
-      true,
-    );
-    // Suyun statik tabanı (gök gradyanı, kıyı aydınlanması) önbelleğe bir
-    // kez pişer; hareketli katmanlar canlı karede üstüne biner (drawFar).
-    // Yalnız verilen karelerin tabanı boyanır: sarmal hayaletler de payını
-    // alır ama hiçbir kare iki kez boyanıp alfasını katlamaz.
-    if (this.waterAnimatedMode()) this.water.bakeStatic(ctx, world, sea);
+    this.paintTileFills(ctx, sea, world);
+    if (rect) this.material.paintSea(ctx, world, rect);
+    this.paintTileFills(ctx, land, world);
+    this.paintShore(ctx, world, land);
+    this.water.bakeStatic(ctx, world, sea);
+    if (rect) this.material.paint(ctx, world, rect, 1);
   }
 
   /**
@@ -1527,82 +1953,57 @@ export class Renderer {
    * mürekkebi (water.drawCoastline) bu açıklıkla kontrast kazanır.
    */
   paintShore(ctx, world, landTiles) {
-    const shoreSet = this.shoreSetOf(world);
-    const shore = [];
+    const rings = this.shoreSetOf(world);
+    const first = [];
+    const second = [];
     for (const t of landTiles) {
-      if (shoreSet.has(t.ghostOf ?? t)) shore.push(t);
+      const real = t.ghostOf ?? t;
+      if (rings.first.has(real)) first.push(t);
+      else if (rings.second.has(real)) second.push(t);
     }
-    if (!shore.length) return;
-    // 0.06 algı eşiğinin altındaydı; 0.11 kıyı şeridini "güneş almış"
-    // gösterir ama kum rengine boyamaz.
-    ctx.globalAlpha = 0.11;
-    ctx.fillStyle = '#f0dfae';
-    for (const path of this.chunkedHexPaths(shore, FILL_CHUNK)) ctx.fill(path);
+    if (!first.length && !second.length) return;
+    // İKİ HALKA, azalan güçte: kıyı bir çizgi değil bir GEÇİŞ olmalı (§13).
+    // Tek halka (eski hâli) kıyıyı bir hex genişliğinde sert bir şeride
+    // çeviriyordu; ikinci, yarı güçteki halka onu içeriye doğru söndürür ve
+    // kara "kesilmiş kâğıt" gibi kenarında aydınlanır.
+    ctx.fillStyle = '#f4e3b2';
+    if (second.length) {
+      ctx.globalAlpha = 0.06;
+      for (const path of this.chunkedHexPaths(second, FILL_CHUNK)) ctx.fill(path);
+    }
+    if (first.length) {
+      ctx.globalAlpha = 0.15;
+      for (const path of this.chunkedHexPaths(first, FILL_CHUNK)) ctx.fill(path);
+    }
     ctx.globalAlpha = 1;
   }
 
-  /** Denize komşu kara kareleri; dünya başına bir kez çıkarılır. */
+  /**
+   * Kıyı halkaları: denize komşu kara kareleri (`first`) ve onların bir kare
+   * gerisi (`second`). Dünya başına bir kez çıkarılır.
+   */
   shoreSetOf(world) {
-    if (this.shoreCache?.world === world) return this.shoreCache.set;
-    const set = new Set();
+    if (this.shoreCache?.world === world) return this.shoreCache.rings;
+    const first = new Set();
     for (const t of world.tiles) {
       if (!t || t.terrain.water) continue;
       for (const n of world.neighbors(t)) {
         if (n.terrain.water) {
-          set.add(t);
+          first.add(t);
           break;
         }
       }
     }
-    this.shoreCache = { world, set };
-    return set;
-  }
-
-  /** Doku desenleri dünya uzayına sabitlenir; bir kez üretilip saklanır. */
-  patterns(ctx) {
-    if (!this.texturePatterns) {
-      const mat = materials();
-      this.texturePatterns = {
-        atlas: ctx.createPattern(mat.mapAtlas, 'repeat'),
-        ocean: ctx.createPattern(mat.oceanInk, 'repeat'),
-      };
-    }
-    return this.texturePatterns;
-  }
-
-  /**
-   * Atlas baskısı. Desen dünya uzayına sabitlendiği için ülke sınırlarında
-   * kesilip yeniden başlamaz: tek parça bir kâğıt yüzeyi gibi davranır.
-   *
-   * Performans notu: kara ve deniz için iki ayrı `fill(Path2D)` çağrısı,
-   * binlerce hex'ten oluşan birleşik yolu `soft-light` ile taramak demekti ve
-   * yakın zoomda kareye ~43 ms ekliyordu. Kâğıt zaten tüm dünyayı kaplayan tek
-   * bir yüzey olduğu için tek dikdörtgen yeterli; deniz kendi malzemesini
-   * yalnız önbellek pişirilirken (uzak zoom) alır, orada maliyet bir kez ödenir.
-   *
-   * `land` ve `sea` parça listeleridir (bkz. chunkedHexPaths): tek yolda
-   * 4836 hex kurmak pişirmenin 36.6 ms'ini tek başına yiyordu. Desen zaten
-   * soft-light ile çok soluk bindiği için parça sınırlarındaki dikiş görünmez.
-   */
-  paintAtlas(ctx, land, sea, baking = false) {
-    const { atlas, ocean } = this.patterns(ctx);
-    if (!atlas) return;
-    ctx.save();
-    // soft-light: altındaki rengi yok etmeden yoğunluğunu dalgalandırır.
-    ctx.globalCompositeOperation = 'soft-light';
-    if (baking) {
-      // Önbellek pişirilirken maliyet bir kez ödenir: kara ve deniz kendi
-      // malzemesini alır.
-      if (ocean) {
-        ctx.fillStyle = ocean;
-        for (const path of sea) ctx.fill(path);
+    const second = new Set();
+    for (const t of first) {
+      for (const n of world.neighbors(t)) {
+        if (!n.terrain.water && !first.has(n)) second.add(n);
       }
-      ctx.fillStyle = atlas;
-      for (const path of land) ctx.fill(path);
     }
-    ctx.restore();
+    const rings = { first, second };
+    this.shoreCache = { world, rings };
+    return rings;
   }
-
 
   /** Kaynak kipi: her province yalnız kendi RGO rengini taşır. */
   resourceTint(tile) {
@@ -1895,7 +2296,14 @@ export class Renderer {
     // Hex ızgarası artık en alt kademe: üstünde province kenarı, onun
     // üstünde ülke sınırı var. Saf siyah değil koyu toprak tonu; üç kademeli
     // hiyerarşi (ızgara < province < ülke) için en sessiz seviye.
-    ctx.strokeStyle = 'rgba(8, 12, 12, 0.10)';
+    //
+    // Opaklık ZOOMA BAĞLI. Sabit 0.10'da ızgara haritanın hâkim dokusuydu:
+    // oyuncu önce peteği, sonra ülkeyi görüyordu (§15'in tersi). Yakında
+    // ızgara bir araçtır — hangi kareye tıklayacağını söyler — ama orta
+    // mesafede yalnız bir doku ipucu olmalı, uzakta hiç olmamalı. Eşiğin
+    // hemen üstünde (0.55) neredeyse yok, 1.6'da tam gücünde.
+    const strength = 0.012 + 0.062 * Math.max(0, Math.min(1, (scale - 0.7) / 1.1));
+    ctx.strokeStyle = `rgba(8, 12, 12, ${strength.toFixed(3)})`;
     // Deniz ızgara dışıdır: hex kenarları suyu petekli bir zemine çeviriyordu.
     // Su malzemesi komşu deniz hexlerini tek yüzeye köprüler; ızgara bunu bozar.
     const land = tiles.filter((t) => !t.terrain.water);
@@ -2066,14 +2474,19 @@ export class Renderer {
     // "kalın bant" değil "net mürekkep hattı" okunur; kenar gölgesi
     // kalınlık hissini zaten veriyor.
     ctx.lineWidth = 3.4 / scale;
-    ctx.strokeStyle = 'rgba(6, 9, 10, 0.9)';
+    // Saf siyahtan biraz uzak, hafif soğuk bir mürekkep: dünya koyulaştıktan
+    // sonra 0.9 opak kömür siyahı sınırı haritadan KOPARIYORDU (§9 "avoid
+    // excessive uniform black"). Kalınlık aynı, karakter yumuşak.
+    ctx.strokeStyle = 'rgba(9, 13, 15, 0.82)';
     for (const path of byColor.values()) ctx.stroke(path);
 
     // İç hat: çok ince, düşük opaklıkta sıcak highlight. Neon bir dış çizgi
     // değil, baskıda hattın iç kenarında kalan açık mürekkep payı.
     ctx.lineWidth = (cultureMode ? 2 : 1.1) / scale;
     for (const [color, path] of byColor) {
-      ctx.strokeStyle = cultureMode ? color : 'rgba(203, 178, 122, 0.1)';
+      // İç hat biraz güçlendi (0.10 → 0.16): koyu zeminde sınırın kendi
+      // kalınlığı okunsun, ama sıcak pay bir ışık çizgisine dönüşmesin.
+      ctx.strokeStyle = cultureMode ? color : 'rgba(206, 181, 126, 0.16)';
       ctx.stroke(path);
     }
   }
@@ -2359,8 +2772,11 @@ export class Renderer {
    * Sprite yalnız durum değişince yeniden pişer (mevcut/çubuklar haftalık,
    * seçim/muharebe anlık, zoom kovası ~%25 adımda).
    */
-  drawUnitCounters(ctx, world, selectedUnit, rect) {
+  drawUnitCounters(ctx, world, selectedUnit, rect, playerNation = null) {
     if (!world.units?.length) return;
+    // Sprite onbellegi bunlari okur; her karede bir atama, ayri bir kanal degil.
+    this.viewWorld = world;
+    this.playerNationId = playerNation;
     const zoom = this.camera.zoom;
     const width = HEX_SIZE * 1.56;
     const height = HEX_SIZE * 1.08;
@@ -2380,20 +2796,62 @@ export class Renderer {
       // Uzak LOD: bu ölçekte sayaç ~7 px — köşe yuvarlağı, gradyan ve
       // çubuklar okunmaz ama maliyeti okunur (ölçüldü: 655 birimlik dünyada
       // su tiki başına ~2.7 ms). Plaka + kimlik şeridi yeter.
+      // Uzakta sayac ~7 px: rakam da tur glifi de okunmuyor, geriye tek soru
+      // kaliyor — "bu kimin ordusu". Cevabi en hizli veren sey ulusun
+      // BAYRAGIDIR; renk seridi yalnizca paletten hatirlayabilene calisiyordu.
+      // Bayrak ulus basina bir kez pisip blit edilir (bkz. flagSprite).
       if (zoom < 0.34) {
         const off = 1.5 / zoom;
         ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
         ctx.fillRect(left + off * 0.4, top + off, width, height);
-        ctx.fillStyle = unit.battleId ? '#3a2018' : '#131a20';
-        ctx.fillRect(left, top, width, height);
-        ctx.fillStyle = this.nationBand(nation);
-        ctx.fillRect(left, top, width, height * 0.3);
+        const flag = this.flagSprite(nation, width, height);
+        if (flag) ctx.drawImage(flag, left, top, width, height);
+        else {
+          ctx.fillStyle = '#131a20';
+          ctx.fillRect(left, top, width, height);
+          ctx.fillStyle = this.nationBand(nation);
+          ctx.fillRect(left, top, width, height * 0.3);
+        }
+        // Muharebedeki birim: bayragin uzerine ince kizil hat. Zemini
+        // kizartmak bayragi yutuyordu, kimlik ikinci kez kaybolurdu.
+        if (unit.battleId) {
+          ctx.strokeStyle = '#c2604a';
+          ctx.lineWidth = 1.6 / zoom;
+          ctx.strokeRect(left, top, width, height);
+        }
         continue;
       }
 
       const sprite = this.unitSprite(unit, nation, Math.min(stack.length, 9), unit === selectedUnit);
       ctx.drawImage(sprite.canvas, left - sprite.margin, top - sprite.margin, sprite.w, sprite.h);
     }
+  }
+
+  /**
+   * Uzak zoom icin ulus bayragi sprite'i. Bayrak tarifi prosedureldir ve
+   * dokuz fillRect'e kadar cikar; 655 birimlik dunyada bunu her karede
+   * cizmek sayacin kendisinden pahali olurdu. Ulus + olcek basamagi basina
+   * bir kez pisip blit edilir.
+   */
+  flagSprite(nation, width, height) {
+    if (!nation?.flag) return null;
+    // unitSprite ile ayni kova mantigi: 1.25 adimli olcek basamagi.
+    const bucket = Math.max(-6, Math.min(10,
+      Math.round(Math.log(this.camera.zoom * this.dpr) / Math.log(1.25))));
+    const key = `${nation.id}|${bucket}`;
+    this.flagSprites ??= new Map();
+    const hit = this.flagSprites.get(key);
+    if (hit) return hit;
+
+    const scale = Math.pow(1.25, bucket);
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.max(2, Math.ceil(width * scale));
+    canvas.height = Math.max(2, Math.ceil(height * scale));
+    const ctx = canvas.getContext('2d');
+    ctx.scale(canvas.width / width, canvas.height / height);
+    drawFlag(ctx, nation.flag, 0, 0, width, height);
+    this.flagSprites.set(key, canvas);
+    return canvas;
   }
 
   /** Sayaç sprite önbelleği; anahtar görsel durumun tamamını taşır. */
@@ -2407,13 +2865,22 @@ export class Renderer {
     );
     const orgQ = Math.round(Math.max(0, Math.min(100, organizationOf(unit))) / 5);
     const soldiers = compactSoldiers(unit);
+    // KIMIN ORDUSU: kunye cercevesi bunu soyler. Ulus rengi seridi tek basina
+    // yetmiyordu — elli beş ulusun paleti birbirine yakin ve oyuncu kendi
+    // birimini dusmanininkinden ayiramiyordu (kullanici bildirimi).
+    const me = this.playerNationId;
+    const allegiance = me == null ? 'other'
+      : unit.nationId === me ? 'own'
+        : this.viewWorld && atWar(this.viewWorld, unit.nationId, me) ? 'hostile' : 'other';
     const key = `${bucket}|${nation.id}|${unit.type.id}|${soldiers}|${strengthQ}|${orgQ}|`
-      + `${unit.battleId ? 1 : 0}|${selected ? 1 : 0}|${stackLen}|${unit.order?.type ?? ''}`;
+      + `${unit.battleId ? 1 : 0}|${selected ? 1 : 0}|${stackLen}|${unit.order?.type ?? ''}|`
+      + `${unitPlates.size}|${allegiance}`;
     this.unitSprites ??= new Map();
     let sprite = this.unitSprites.get(key);
     if (sprite) return sprite;
     sprite = this.paintCounterSprite(Math.pow(1.25, bucket), {
       nation,
+      allegiance,
       typeId: unit.type.id,
       soldiers,
       strength: strengthQ / 20,
@@ -2465,20 +2932,54 @@ export class Renderer {
     // (bkz. drawCities'teki aynı dönüşüm); kaydırılmış koyu blok yeter.
     ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
     ctx.fillRect(left + off * 0.4, top + off, width, height);
-    // Plaka düz renk değil: üstten alta hafif koyulaşan boyalı metal.
-    if (detailed) {
-      const plate = ctx.createLinearGradient(left, top, left, top + height);
-      plate.addColorStop(0, '#1a2228');
-      plate.addColorStop(1, '#0e1417');
-      ctx.fillStyle = plate;
-    } else ctx.fillStyle = '#141b20';
-    ctx.fill(outer);
+
+    // KIMIN ORDUSU — KUNYENIN ARKASINDAN. Once ince bir kontur denendi, ama
+    // pirinc kunyenin KENDI cercevesi resmin icinde oldugu icin ustune cizilen
+    // 1-2 piksellik hat kayboluyordu. Hale plakanin disina tasar ve uzaktan da
+    // okunur: benimki fildisi-pirinc, dusman tugla kirmizisi, ucuncu taraf yok.
+    const halo = spec.allegiance === 'own' ? 'rgba(214, 186, 122, 0.85)'
+      : spec.allegiance === 'hostile' ? 'rgba(169, 94, 74, 0.9)' : null;
+    if (halo) {
+      const pad = Math.max(1.6 / zoom, height * 0.075);
+      ctx.fillStyle = halo;
+      ctx.fill(roundedRectPath(new Path2D(),
+        left - pad, top - pad, width + pad * 2, height + pad * 2,
+        radius + pad * 0.6));
+    }
+    // SAYACIN GOVDESI KUNYENIN KENDISIDIR. Once kunye sayacin icine kucuk bir
+    // rozet olarak konmustu; o zaman ekranda iki cerceve ust uste biniyordu ve
+    // pirinc plaka koyu bir kutunun icinde kayboluyordu. Kunye artik ayaki
+    // izini tamamen kaplar; koyu plaka yalniz resim yuklenmediginde cizilir.
+    const plateArt = unitPlates.get(spec.typeId);
+    if (plateArt) {
+      ctx.save();
+      ctx.clip(outer);
+      ctx.drawImage(plateArt, left, top, width, height);
+      ctx.restore();
+    } else {
+      if (detailed) {
+        const plate = ctx.createLinearGradient(left, top, left, top + height);
+        plate.addColorStop(0, '#1a2228');
+        plate.addColorStop(1, '#0e1417');
+        ctx.fillStyle = plate;
+      } else ctx.fillStyle = '#141b20';
+      ctx.fill(outer);
+    }
     // Cerceve ulke renginden alinmaz: doygun uluslarda neon turkuaz bir
     // kutuya donuyordu. Secili birim pirinc, muharebedeki tugla kirmizisi,
     // gerisi mat kirik beyaz.
-    ctx.lineWidth = (spec.battle || spec.selected ? 2.4 : 1.4) / zoom;
-    ctx.strokeStyle = spec.selected ? '#d0ae62'
-      : spec.battle ? '#a95e4a' : 'rgba(206, 196, 172, 0.5)';
+    // Cerceve kalinligi ve rengi TEK bir soruyu cevaplar: bu kim?
+    //   secili  — parlak pirinc, kalin
+    //   benim   — fildisi-pirinc, orta
+    //   dusman  — tugla kirmizisi, kalin
+    //   ucuncu  — soluk, ince
+    const own = spec.allegiance === 'own';
+    const hostile = spec.allegiance === 'hostile';
+    ctx.lineWidth = (spec.selected || hostile || spec.battle ? 2.4 : own ? 1.9 : 1.2) / zoom;
+    ctx.strokeStyle = spec.selected ? '#e8c98a'
+      : hostile ? '#a95e4a'
+        : own ? '#c6b183'
+          : spec.battle ? '#a95e4a' : 'rgba(206, 196, 172, 0.34)';
     ctx.stroke(outer);
 
     // Ulke rengi yalniz ust kimlik seridinde: counter haritaya karismaz.
@@ -2486,8 +2987,11 @@ export class Renderer {
     ctx.clip(outer);
     // Kimlik şeridi ülkenin haritadaki mineral tonunu kullanır; ham palet
     // rengi kartı dijital bir rozete çeviriyordu.
+    // Kimlik seridi kunyenin ustunde ince bir bant: kalin bant plakanin
+    // pirinc cercevesini yiyordu, ama serit olmadan "kimin ordusu" gitmis olur.
+    const bandHeight = plateArt ? height * 0.15 : height * 0.25;
     ctx.fillStyle = this.nationBand(nation);
-    ctx.fillRect(left, top, width, height * 0.25);
+    ctx.fillRect(left, top, width, bandHeight);
     ctx.fillStyle = 'rgba(226, 214, 186, 0.14)';
     ctx.fillRect(left, top, width, Math.max(0.8 / zoom, height * 0.045));
     // İç gölge: plaka gömülü dursun.
@@ -2499,25 +3003,35 @@ export class Renderer {
     if (detailed) {
       ctx.font = `800 ${Math.round(HEX_SIZE * 0.2)}px ui-sans-serif, system-ui, sans-serif`;
       ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#081017';
-      ctx.textAlign = 'left';
-      ctx.fillText(TYPE_CODE[spec.typeId] ?? 'DIV', left + width * 0.08, top + height * 0.135);
       ctx.textAlign = 'right';
-      ctx.fillText(spec.soldiers, left + width * 0.92, top + height * 0.135);
+      if (plateArt) {
+        // Kunye tur bilgisini SEMBOLLE veriyor; 'INF' yazisi ayni seyi ikinci
+        // kez soyluyordu. Geriye yalniz mevcut kalir ve okunsun diye koyu
+        // golgeyle basilir — pirinc zemin acik.
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        ctx.fillText(spec.soldiers, left + width * 0.93, top + height * 0.115);
+        ctx.fillStyle = '#f0e2bd';
+        ctx.fillText(spec.soldiers, left + width * 0.92, top + height * 0.1);
+      } else {
+        ctx.fillStyle = '#081017';
+        ctx.textAlign = 'left';
+        ctx.fillText(TYPE_CODE[spec.typeId] ?? 'DIV', left + width * 0.08, top + height * 0.135);
+        ctx.textAlign = 'right';
+        ctx.fillText(spec.soldiers, left + width * 0.92, top + height * 0.135);
 
-      // NATO cercevesi ve sinif sembolu koyu govdede acik renkle okunur.
-      const symbolWidth = width * 0.58;
-      const symbolHeight = height * 0.38;
-      const symbolY = top + height * 0.48;
-      ctx.lineWidth = 1.15 / zoom;
-      ctx.strokeStyle = 'rgba(214, 200, 168, 0.8)';
-      ctx.strokeRect(x - symbolWidth / 2, symbolY - symbolHeight / 2, symbolWidth, symbolHeight);
-      const symbol = new Path2D();
-      natoSymbol(symbol, spec.typeId, x, symbolY, height * 0.2);
-      ctx.lineWidth = Math.max(1.15 / zoom, height * 0.055);
-      ctx.lineCap = 'round';
-      ctx.strokeStyle = '#d9d1bd';
-      ctx.stroke(symbol);
+        const symbolWidth = width * 0.58;
+        const symbolHeight = height * 0.38;
+        const symbolY = top + height * 0.48;
+        ctx.lineWidth = 1.15 / zoom;
+        ctx.strokeStyle = 'rgba(214, 200, 168, 0.8)';
+        ctx.strokeRect(x - symbolWidth / 2, symbolY - symbolHeight / 2, symbolWidth, symbolHeight);
+        const symbol = new Path2D();
+        natoSymbol(symbol, spec.typeId, x, symbolY, height * 0.2);
+        ctx.lineWidth = Math.max(1.15 / zoom, height * 0.055);
+        ctx.lineCap = 'round';
+        ctx.strokeStyle = '#d9d1bd';
+        ctx.stroke(symbol);
+      }
     }
 
     // STR ve ORG iki ayri durum cubugudur; her zaman gorunur.
@@ -2593,31 +3107,58 @@ export class Renderer {
         .map((id) => unitById.get(id)).filter(Boolean);
       const defenders = (battle.defenders ?? [])
         .map((id) => unitById.get(id)).filter(Boolean);
-      const width = 88 / zoom;
-      const height = 28 / zoom;
-      const half = width / 2;
-      // Mineral mürekkep: ham palet iki neon bloğa dönüşüyordu.
-      ctx.fillStyle = this.nationInk(world.nations[battle.attackerNation]);
-      ctx.fillRect(x - half, y - height / 2, half, height);
-      ctx.fillStyle = this.nationInk(world.nations[battle.defenderNation]);
-      ctx.fillRect(x, y - height / 2, half, height);
-      ctx.lineWidth = 2 / zoom;
-      ctx.strokeStyle = 'rgba(5,10,14,0.9)';
-      ctx.strokeRect(x - half, y - height / 2, width, height);
-
-      ctx.font = `700 ${10 / zoom}px system-ui, sans-serif`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#fff';
-      ctx.shadowColor = '#000';
-      ctx.shadowBlur = 3 / zoom;
       const aSoldiers = attackers.reduce((sum, army) => sum + soldiersOf(army), 0);
       const dSoldiers = defenders.reduce((sum, army) => sum + soldiersOf(army), 0);
-      const a = aSoldiers ? `${(aSoldiers / 1000).toFixed(1)}K` : '0';
-      const d = dSoldiers ? `${(dSoldiers / 1000).toFixed(1)}K` : '0';
-      ctx.fillText(`${a}  ⚔  ${d}`, x, y);
-      ctx.shadowBlur = 0;
 
+      // UZAK LOD: rakam okunmuyor, kalabalik okunuyor. Kirmizi bir nisan yeter;
+      // tam kunye o olcekte hexleri yutup "haritayi kapatan ikon" oluyordu.
+      // Esik birim sayaclariyla AYNI (0.34): iki ayri sinir olunca birimler
+      // kunye, savas nisan biciminde cizilip harita iki dile bolunuyordu.
+      // Olculdu: varsayilan oturma zoomu 0.287, yani 0.42 esigi normal oyunda
+      // savasi HEP kompakt bicime dusuruyordu.
+      if (zoom < 0.34) {
+        const r = 7 / zoom;
+        ctx.beginPath();
+        ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y);
+        ctx.closePath();
+        ctx.fillStyle = '#7d2f22';
+        ctx.fill();
+        ctx.lineWidth = 1.6 / zoom;
+        ctx.strokeStyle = '#d9b877';
+        ctx.stroke();
+        continue;
+      }
+
+      // YAKIN: koyu emaye kunye, pirinc cerceve. Iki ulusun rengi UCLARDA ince
+      // birer serit olarak durur — eskiden kunyenin tamami iki duz renk blogu
+      // idi ve arayuzun geri kalanindaki pirinc/emaye diliyle akraba degildi.
+      const width = 74 / zoom;
+      const height = 22 / zoom;
+      const half = width / 2;
+      const left = x - half;
+      const top = y - height / 2;
+      const strip = 6 / zoom;
+      const radius = 3 / zoom;
+
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.4)';
+      ctx.fillRect(left + 1.2 / zoom, top + 2 / zoom, width, height);
+
+      const plate = roundedRectPath(new Path2D(), left, top, width, height, radius);
+      const body = ctx.createLinearGradient(0, top, 0, top + height);
+      body.addColorStop(0, '#1c242a');
+      body.addColorStop(1, '#0d1417');
+      ctx.fillStyle = body;
+      ctx.fill(plate);
+
+      ctx.save();
+      ctx.clip(plate);
+      ctx.fillStyle = this.nationInk(world.nations[battle.attackerNation]);
+      ctx.fillRect(left, top, strip, height);
+      ctx.fillStyle = this.nationInk(world.nations[battle.defenderNation]);
+      ctx.fillRect(left + width - strip, top, strip, height);
+
+      // Orgutlenme dengesi: kunyenin DIBINDE ince bir cubuk. Eski sari dikme
+      // rakamlarin ustunden geciyordu ve neyi olctugu okunmuyordu.
       const aOrganization = aSoldiers > 0 ? attackers.reduce(
         (sum, army) => sum + organizationOf(army) * soldiersOf(army), 0,
       ) / aSoldiers : 0;
@@ -2625,9 +3166,27 @@ export class Renderer {
         (sum, army) => sum + organizationOf(army) * soldiersOf(army), 0,
       ) / dSoldiers : 0;
       const organizationTotal = Math.max(1, aOrganization + dOrganization);
-      const markerX = x - half + (aOrganization / organizationTotal) * width;
-      ctx.fillStyle = '#f5d58c';
-      ctx.fillRect(markerX - 1.5 / zoom, y - height / 2 - 4 / zoom, 3 / zoom, height + 8 / zoom);
+      const barY = top + height - 3 / zoom;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.55)';
+      ctx.fillRect(left, barY, width, 3 / zoom);
+      ctx.fillStyle = '#baa064';
+      ctx.fillRect(left, barY, (aOrganization / organizationTotal) * width, 3 / zoom);
+      ctx.restore();
+
+      ctx.lineWidth = 1.3 / zoom;
+      ctx.strokeStyle = 'rgba(190, 158, 96, 0.75)';
+      ctx.stroke(plate);
+
+      ctx.font = `650 ${10.5 / zoom}px ui-sans-serif, system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      const a = aSoldiers ? `${(aSoldiers / 1000).toFixed(1)}K` : '0';
+      const d = dSoldiers ? `${(dSoldiers / 1000).toFixed(1)}K` : '0';
+      const textY = y - 1.5 / zoom;
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+      ctx.fillText(`${a} ⚔ ${d}`, x + 0.7 / zoom, textY + 0.7 / zoom);
+      ctx.fillStyle = '#e9dcc0';
+      ctx.fillText(`${a} ⚔ ${d}`, x, textY);
     }
   }
 
@@ -2965,9 +3524,9 @@ export class Renderer {
       } else {
         // Bolluk varsa harf aralığı açılıp ad ülkenin enine yayılır (atlas
         // dizgisi) — ama kutu ülkeyi yine aşmaz.
-        const room = availPx * 0.88 - need;
+        const room = availPx * 0.82 - need;
         if (room > 0) {
-          spacing = Math.min(size * 0.45, spacing + room / (cos * Math.max(1, L.name.length)));
+          spacing = Math.min(size * 0.62, spacing + room / (cos * Math.max(1, L.name.length)));
         }
       }
       // Sığdırma sonrası okunmaz kalıyorsa ad hiç yazılmaz: Paradox düzeninde
@@ -3002,18 +3561,20 @@ export class Renderer {
       ctx.globalAlpha = a;
       ctx.font = `600 ${size.toFixed(1)}px Georgia, "Times New Roman", serif`;
       ctx.letterSpacing = spacing.toFixed(2) + 'px';
-      // Yumuşak zemin ayrımı: sert siyah kontur yerine gölge + yarı saydam
-      // ince kontur — yazı haritanın mürekkebi gibi, HUD çıkartması değil.
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.55)';
-      ctx.shadowBlur = 4;
+      // Kâğıda BASILMIŞ his: gölge daralır (blur 4 → 2.5), kontur incelir ve
+      // koyulaşır. Geniş bir hale yazıyı zeminden koparıp "üstte yüzen HTML"
+      // gibi gösteriyordu; dar ve koyu bir kontur ise harfi haritanın içine
+      // oturtur. Mürekkep de ısıtıldı: nötr fildişi yerine hafif sıcak.
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+      ctx.shadowBlur = 2.5;
       ctx.shadowOffsetY = 1;
       ctx.lineJoin = 'round';
-      ctx.lineWidth = Math.max(1.6, size * 0.1);
-      ctx.strokeStyle = 'rgba(10, 13, 13, 0.42)';
+      ctx.lineWidth = Math.max(1.2, size * 0.075);
+      ctx.strokeStyle = 'rgba(8, 10, 11, 0.55)';
       ctx.strokeText(L.name, 0, 0);
       ctx.shadowBlur = 0;
       ctx.shadowOffsetY = 0;
-      ctx.fillStyle = 'rgba(236, 227, 205, 0.96)';
+      ctx.fillStyle = 'rgba(240, 229, 200, 0.97)';
       ctx.fillText(L.name, 0, 0);
       ctx.letterSpacing = '0px';
       ctx.restore();

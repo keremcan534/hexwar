@@ -393,6 +393,36 @@ function resolveElection(game, nation) {
   return winner;
 }
 
+/**
+ * PARTİYİ DOĞRUDAN ATA.
+ *
+ * Oyuncu hükümeti kendi seçer; sandık kaldırılmaz. Atanan parti bir sonraki
+ * seçime kadar iktidardadır ve o seçimde HALK karar verir — desteği düşük bir
+ * partiyi atamak, seçim vadesi geldiğinde onu kaybetmek demektir. Yani bedel
+ * modelin kendi içinde zaten var; ayrı bir ceza mekaniği eklenmedi.
+ *
+ * Seçim saati SIFIRLANMAZ: atama bir seçim değildir. Sıfırlansaydı oyuncu her
+ * atamada kendine tam bir dönem hediye eder, sandık anlamını yitirirdi.
+ */
+export function appointParty(game, nation, partyId) {
+  const parties = nation?.politics?.parties;
+  if (!parties?.length) return false;
+  const party = parties.find((item) => item.id === partyId);
+  if (!party || nation.politics.rulingPartyId === partyId) return false;
+  const previous = rulingParty(nation);
+  nation.politics.rulingPartyId = party.id;
+  // Yeni hükümetin kendi tavanları hemen bağlar (vergi, tarife, ordu fonu).
+  applyGovernmentLimits(nation);
+  if (nation.id === game.turns?.playerNation) {
+    game.turns.addLog(
+      `${party.name} appointed to govern${previous ? `, replacing ${previous.name}` : ''}.`,
+      { kind: 'POLITICS' },
+    );
+  }
+  game.emit?.('politics', game.world?.turn);
+  return true;
+}
+
 /** Erken seçim penceresi, hafta. Vadeye bu kadar kalınca sandık açılabilir. */
 export const EARLY_ELECTION_WINDOW = 12;
 

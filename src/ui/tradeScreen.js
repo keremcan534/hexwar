@@ -61,33 +61,76 @@ export function priceSparkline(history, base) {
       <path class="spark-area" d="${line} L${w},${h} L0,${h} Z"></path>
       <path class="spark-line" d="${line}"></path>
     </svg>
-    <div class="trade-spark-foot"><small>last ${history.length} weeks</small><small>base ¤${base}</small></div>`;
+    <div class="trade-spark-foot"><small>last ${history.length} weeks</small><small>base £${base}</small></div>`;
 }
 
 /* --------------------------------------------------------------------------
    KATALOG — kategori blokları ve mal karoları
    -------------------------------------------------------------------------- */
 
-/** Tek mal karosu: simge, ad, fiyat+eğilim, karşılanma çubuğu, durum. */
+/**
+ * Tek mal karosu.
+ *
+ * Eskiden karoda dört sey vardi: ad, fiyat, karsilanma cubugu ve icinde sayi
+ * gecen bir durum satiri. Kirk iki malin hepsinde dort sey okumak katalogu
+ * taranamaz yapiyordu. Simdi ikisi: ROZET (ne durumda) ve DUZ CUMLE (neden).
+ * Sayilar sag panelde, secilen malin dosyasinda duruyor — katalog tarama,
+ * dosya inceleme icindir.
+ */
+const BADGE = {
+  severe: 'Shortage', short: 'Shortage', export: 'Surplus',
+  surplus: 'Surplus', balanced: 'Stable', idle: 'Idle',
+};
+
 export function goodTile(row, selected) {
-  const coverage = row.coverage != null ? Math.round(row.coverage * 100) : null;
-  const bar = row.active
-    ? `<span class="tg-bar st-${row.status.id}"><i style="width:${coverage ?? 100}%"></i></span>`
-    : '<span class="tg-bar idle"></span>';
   return `<button class="trade-good st-${row.status.id}${selected ? ' selected' : ''}"
     data-trade-good="${row.id}"
     title="${esc(row.name)} — made ${qty(row.flow.production)} · needs ${qty(row.flow.demand)} · in ${qty(row.flow.imports)} · out ${qty(row.flow.exports)}">
     <i class="tg-glyph">${resourceGlyph(row.id)}</i>
-    <span class="tg-name">${esc(row.name)}</span>
-    <span class="tg-price">¤${row.price.toFixed(2)}${trendArrow(row.trend)}</span>
-    ${bar}
-    <span class="tg-status">${esc(row.status.label)}${row.detail ? ` <em>${esc(row.detail)}</em>` : ''}</span>
+    <span class="tg-body">
+      <span class="tg-row">
+        <span class="tg-name">${esc(row.name)}</span>
+        <span class="tg-price">£${row.price.toFixed(2)}${trendArrow(row.trend)}</span>
+      </span>
+      <span class="tg-row">
+        <span class="tg-badge">${esc(BADGE[row.status.id] ?? row.status.label)}</span>
+        <small class="tg-reason">${esc(row.reason ?? '')}</small>
+      </span>
+    </span>
   </button>`;
 }
 
-export function goodsCatalog(rows, selectedId) {
+/** Katalog suzgecleri. Kategori bloklari duruyor; suzgec onlari daraltir. */
+export const TRADE_FILTERS = {
+  all: { id: 'all', label: 'All goods', test: () => true },
+  shortage: {
+    id: 'shortage',
+    label: 'Shortages',
+    test: (row) => row.status.id === 'severe' || row.status.id === 'short',
+  },
+  imported: {
+    id: 'imported', label: 'Import dependent', test: (row) => (row.importShare ?? 0) > 0.35,
+  },
+  surplus: {
+    id: 'surplus',
+    label: 'Surplus',
+    test: (row) => row.status.id === 'surplus' || row.status.id === 'export',
+  },
+  military: { id: 'military', label: 'Military', test: (row) => row.category === 'military' },
+};
+
+export function tradeFilterBar(activeId) {
+  return `<div class="trade-filters">${Object.values(TRADE_FILTERS).map((filter) => `
+    <button class="trade-filter${filter.id === activeId ? ' on' : ''}"
+      data-trade-filter="${filter.id}">${esc(filter.label)}</button>`).join('')}</div>`;
+}
+
+export function goodsCatalog(rows, selectedId, filterId = 'all') {
+  const filter = TRADE_FILTERS[filterId] ?? TRADE_FILTERS.all;
+  const kept = rows.filter((row) => filter.test(row));
+  if (!kept.length) return '<p class="trade-empty">No goods match this filter.</p>';
   return Object.entries(GOOD_CATEGORIES).map(([categoryId, title]) => {
-    const inCategory = rows.filter((row) => row.category === categoryId);
+    const inCategory = kept.filter((row) => row.category === categoryId);
     if (!inCategory.length) return '';
     return `<section class="trade-cat">
       <h4>${esc(title)}<em>${inCategory.length} goods</em></h4>
@@ -173,41 +216,43 @@ export function goodDossierPanel(dossier) {
     <header class="trade-detail-head">
       <i class="tg-glyph">${resourceGlyph(row.id)}</i>
       <div class="tdh-name"><b>${esc(row.name)}</b><small>${esc(GOOD_CATEGORIES[row.category] ?? row.category)}</small></div>
-      <div class="tdh-price"><b>¤${row.price.toFixed(2)}</b><small>${(row.price / row.base).toFixed(2)}× base ${trend36}</small></div>
+      <div class="tdh-price"><b>£${row.price.toFixed(2)}</b><small>${(row.price / row.base).toFixed(2)}× base ${trend36}</small></div>
     </header>
     ${priceSparkline(dossier.history, row.base)}
 
-    ${strip('Balance Sheet', 'weekly')}
+    ${strip('Domestic market', 'weekly')}
     <div class="trade-kv-grid">
-      ${kv('Production', qty(flow.production))}
+      ${kv('Produced', qty(flow.production))}
       ${kv('Demand', qty(flow.demand))}
-      ${kv('Imports', qty(flow.imports), flow.imports > 0.05 ? 'neg' : '')}
-      ${kv('Exports', qty(flow.exports), flow.exports > 0.05 ? 'pos' : '')}
-      ${kv('Net trade', `${net >= 0 ? '+' : ''}${qty(net)}`, net >= 0 ? 'pos' : 'neg')}
+      ${kv('Imported', qty(flow.imports), flow.imports > 0.05 ? 'neg' : '')}
+      ${kv('Exported', qty(flow.exports), flow.exports > 0.05 ? 'pos' : '')}
+      ${kv('Unmet demand', qty(flow.shortage), (flow.shortage ?? 0) > 0.05 ? 'neg' : '')}
       ${kv('Coverage', coverage, row.status.id === 'severe' || row.status.id === 'short' ? 'neg' : '')}
-      ${kv('Unmet', qty(flow.shortage), (flow.shortage ?? 0) > 0.05 ? 'neg' : '')}
-      ${kv('Sold at home', qty(flow.domestic))}
     </div>
 
     ${strip('Why the price moves')}
     <ul class="trade-why">${reasons}</ul>
 
-    ${strip('Producers', 'domestic, weekly')}
-    <div class="trade-flow-list">${flowRows(dossier.producers, 'Nothing produced at home.')}</div>
+    <div class="trade-two-col">
+      <section>${strip('Main producers', 'domestic')}
+        <div class="trade-flow-list">${flowRows(dossier.producers, 'Nothing produced at home.')}</div></section>
+      <section>${strip('Main consumers', 'domestic')}
+        <div class="trade-flow-list">${flowRows(dossier.consumers, 'No domestic buyers this week.')}</div></section>
+    </div>
 
-    ${strip('Consumers', 'domestic, weekly')}
-    <div class="trade-flow-list">${flowRows(dossier.consumers, 'No domestic buyers this week.')}</div>
+    <details class="trade-deeper">
+      <summary>Deeper figures</summary>
 
     ${strip('Demand by source')}
     <div class="trade-flow-list">${needsBreakdown(dossier.consumers, flow.demand ?? 0)}</div>
 
     ${strip('Tariff at the border')}
     <div class="trade-kv-grid">
-      ${kv('World price', `¤${tariffView.worldPrice.toFixed(2)}`)}
+      ${kv('World price', `£${tariffView.worldPrice.toFixed(2)}`)}
       ${kv('Tariff rate', `${tariffView.tariff}%`)}
       ${kv('On imported share', `${Math.round(tariffView.importShare * 100)}% of demand`)}
-      ${kv('Tariff adds', `+¤${tariffView.tariffAdd.toFixed(2)}`, tariffView.tariffAdd > 0.01 ? 'neg' : '')}
-      ${kv('Cost at home', `¤${tariffView.domesticPrice.toFixed(2)}`)}
+      ${kv('Tariff adds', `+£${tariffView.tariffAdd.toFixed(2)}`, tariffView.tariffAdd > 0.01 ? 'neg' : '')}
+      ${kv('Cost at home', `£${tariffView.domesticPrice.toFixed(2)}`)}
       ${kv('Import appetite', `${Math.round(tariffView.appetite * 100)}%`)}
     </div>
 
@@ -226,6 +271,7 @@ export function goodDossierPanel(dossier) {
 
     ${strip('Trade policy')}
     ${policy}
+    </details>
   </aside>`;
 }
 
@@ -234,18 +280,18 @@ export function goodDossierPanel(dossier) {
    -------------------------------------------------------------------------- */
 
 export function tradeSummaryBar(summary) {
+  // BES HUCRE. Eskiden sekiz kucuk cip vardi ve hicbiri one cikmiyordu; sekiz
+  // esit agirlikli sayi, sifir sayi demektir. Kalanlar (dunya ticareti, tarife
+  // orani, en yuksek baski) alt seritteki ulusal ozette zaten duruyor.
   const cell = (label, value, cls = '') => `<span class="trade-total${cls ? ` ${cls}` : ''}">
     <small>${esc(label)}</small><b>${value}</b></span>`;
   const balance = summary.balance;
   return `<div class="trade-totals">
-    ${cell('Trade balance', `${balance >= 0 ? '+' : ''}¤${balance.toFixed(1)}`, balance >= 0 ? 'pos' : 'neg')}
-    ${cell('Exports', `¤${summary.exportValue.toFixed(1)}`)}
-    ${cell('Imports', `¤${summary.importValue.toFixed(1)}`)}
-    ${cell('Tariff take', `¤${summary.tariffRevenue.toFixed(1)}`)}
-    ${cell('World trade', `¤${Math.round(summary.worldTrade)}`)}
-    ${cell('Tariff', `${summary.tariff}%`)}
-    ${cell('Shortages', String(summary.shortages), summary.shortages ? 'neg' : '')}
-    ${summary.pressure ? cell('Highest pressure', esc(summary.pressure.name), 'wide') : ''}
+    ${cell('Trade balance', `${balance >= 0 ? '+' : ''}£${balance.toFixed(1)}`, balance >= 0 ? 'pos' : 'neg')}
+    ${cell('Imports', `£${summary.importValue.toFixed(1)}`)}
+    ${cell('Exports', `£${summary.exportValue.toFixed(1)}`)}
+    ${cell('Tariff income', `£${summary.tariffRevenue.toFixed(1)}`)}
+    ${cell('Critical shortages', String(summary.shortages), summary.shortages ? 'neg' : '')}
     ${summary.awaiting ? '<span class="trade-await">market clears on the next weekly tick</span>' : ''}
   </div>`;
 }
@@ -254,13 +300,16 @@ function structureList(title, rows, kind) {
   const body = rows.length
     ? rows.map((row) => `<div class="trade-flow-row">
         <span class="tf-name">${esc(row.name)}</span>
-        <b class="tf-qty">¤${row[kind].toFixed(1)}</b>
+        <b class="tf-qty">£${row[kind].toFixed(1)}</b>
       </div>`).join('')
     : '<p class="trade-empty">none</p>';
   return `<section class="trade-struct-block">${strip(title, 'weekly value')}${body}</section>`;
 }
 
-export function tradeStructureStrip(structure, summary) {
+export function tradeStructureStrip(structure) {
+  // UC BLOK. Ulusal ozet buradan alinip secili malin dosyasinin dibine
+  // tasindi: serit dort esit kutuya bolununce hicbiri okunmuyordu ve ozet,
+  // mala degil ULKEYE ait oldugu icin dosyanin sonunda daha dogru duruyor.
   const dep = (label, value) => `<div class="trade-flow-row">
     <span class="tf-name">${esc(label)}</span>
     <span class="tf-bar dim"><i style="width:${value != null ? (value * 100).toFixed(0) : 0}%"></i></span>
@@ -274,30 +323,38 @@ export function tradeStructureStrip(structure, summary) {
       ${dep('Food supply', structure.dependency.food)}
       ${dep('Military goods', structure.dependency.military)}
     </section>
-    <section class="trade-struct-block">${strip('National summary')}
-      <div class="trade-kv-grid">
-        ${kv('Imports', `¤${summary.importValue.toFixed(1)}`)}
-        ${kv('Exports', `¤${summary.exportValue.toFixed(1)}`)}
-        ${kv('Balance', `${summary.balance >= 0 ? '+' : ''}¤${summary.balance.toFixed(1)}`, summary.balance >= 0 ? 'pos' : 'neg')}
-        ${kv('Critical shortages', String(summary.shortages), summary.shortages ? 'neg' : '')}
-        ${kv('Export surpluses', String(summary.exportables), summary.exportables ? 'pos' : '')}
-        ${kv('Tariff income', `¤${summary.tariffRevenue.toFixed(1)}`)}
-      </div>
-    </section>
   </div>`;
+}
+
+/** Ulusal ozet: mala degil ulkeye ait; secili malin dosyasinin dibinde durur. */
+export function tradeNationalSummary(summary) {
+  return `<section class="trade-national">${strip('National summary')}
+    <div class="trade-kv-grid">
+      ${kv('Imports', `£${summary.importValue.toFixed(1)}`)}
+      ${kv('Exports', `£${summary.exportValue.toFixed(1)}`)}
+      ${kv('Balance', `${summary.balance >= 0 ? '+' : ''}£${summary.balance.toFixed(1)}`, summary.balance >= 0 ? 'pos' : 'neg')}
+      ${kv('Critical shortages', String(summary.shortages), summary.shortages ? 'neg' : '')}
+      ${kv('Export surpluses', String(summary.exportables), summary.exportables ? 'pos' : '')}
+      ${kv('Tariff income', `£${summary.tariffRevenue.toFixed(1)}`)}
+    </div>
+  </section>`;
 }
 
 /* --------------------------------------------------------------------------
    ÇERÇEVE
    -------------------------------------------------------------------------- */
 
-export function tradeScreen(data, selectedId) {
+export function tradeScreen(data, selectedId, filterId = 'all') {
   return `<div class="trade">
     ${tradeSummaryBar(data.summary)}
+    ${tradeFilterBar(filterId)}
     <div class="trade-main">
-      <div class="trade-goods-scroll">${goodsCatalog(data.rows, selectedId)}</div>
-      ${goodDossierPanel(data.dossier)}
+      <div class="trade-goods-scroll">${goodsCatalog(data.rows, selectedId, filterId)}</div>
+      <div class="trade-side">
+        ${goodDossierPanel(data.dossier)}
+        ${tradeNationalSummary(data.summary)}
+      </div>
     </div>
-    ${tradeStructureStrip(data.structure, data.summary)}
+    ${tradeStructureStrip(data.structure)}
   </div>`;
 }

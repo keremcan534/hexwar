@@ -44,7 +44,7 @@ function ensureEventState(nation) {
 }
 
 function money(value) {
-  return `¤${Math.round(value).toLocaleString('en-US')}`;
+  return `£${Math.round(value).toLocaleString('en-US')}`;
 }
 
 /**
@@ -75,7 +75,7 @@ function regimentsOf(world, nationId) {
  * Borc durumu: temiz → borclu → kritik → temerrut. Yalnizca gecis konusur;
  * "borcun var" diye her hafta uyarmak bildirim cehennemidir.
  *
- * Esik ANLAMLI olmali: bir haftalik ¤7'lik acik ulusal olay degildir. Bir
+ * Esik ANLAMLI olmali: bir haftalik £7'lik acik ulusal olay degildir. Bir
  * aylik gelir esigi hem histerezis saglar (kucuk acik gidip gelirken kart
  * ucusmaz) hem de olayi gercekten haber degeri olan yere baglar.
  */

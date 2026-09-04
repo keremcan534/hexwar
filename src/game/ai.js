@@ -559,9 +559,14 @@ export function runNationAI(game, nation, rng) {
  * ayrı bir "oyuncu otomasyonu" yazılmadı çünkü yazılsaydı iki davranış
  * sessizce ayrışır ve biri diğerinden avantajlı olurdu.
  *
- * Yasa (`reformAgenda`) ve ordu komutası (`manageCommand`) DEVREDİLMEZ: ikisi
- * de altı alanın dışında ve oyunun asıl kararları. Komuta zaten kendi
- * otomatik anahtarlarını taşıyor (bkz. command.js ensureCommandOptions).
+ * Ordu komutası (`manageCommand`) DEVREDİLMEZ; kendi otomatik anahtarlarını
+ * zaten taşıyor (bkz. command.js ensureCommandOptions).
+ *
+ * Yasa (`reformAgenda`) ARTIK DEVREDİLİR. Eski gerekçe "oyunun asıl kararı"
+ * idi; pratikte öyle çıkmadı — merdiven bekleme süresi dolunca tek bir açık
+ * basamak sunuyor, oyuncu de ne verdiğini bilmeden tıklıyordu. Devredilen
+ * ajanda YZ'nin kendi fonksiyonudur; ayrı bir "oyuncu otomasyonu" yazılmadı
+ * ki iki davranış sessizce ayrışmasın.
  */
 export function runDelegatedAI(game, nation, rng) {
   if (!nation?.alive) return;
@@ -569,6 +574,15 @@ export function runDelegatedAI(game, nation, rng) {
   if (delegationActive(nation, 'diplomacy', turn)) {
     answerPeaceOffers(game, nation, rng);
     diplomacy(game, nation, rng);
+  }
+  if (delegationActive(nation, 'reforms', turn)) {
+    const before = reformBoard(nation).filter((row) => row.complete).length;
+    reformAgenda(game, nation);
+    const after = reformBoard(nation).filter((row) => row.complete).length;
+    if (after > before) {
+      noteDelegated(game, nation, 'reforms', 'A reform was enacted.',
+        'The chamber allowed it and the ruling party wanted it.');
+    }
   }
   if (delegationActive(nation, 'recruitment', turn)) {
     const before = trainingCount(nation);

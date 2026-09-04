@@ -28,7 +28,7 @@ const money = (v) => {
   if (a >= 100) return `${Math.round(v ?? 0)}`;
   return (v ?? 0).toFixed(a >= 10 ? 0 : 1);
 };
-const signed = (v) => `${v >= 0 ? '+' : '−'}¤${money(Math.abs(v))}`;
+const signed = (v) => `${v >= 0 ? '+' : '−'}£${money(Math.abs(v))}`;
 const people = (v) => {
   const n = Math.round(v ?? 0);
   if (n >= 1000000) return `${(n / 1000000).toFixed(2)}M`;
@@ -88,10 +88,10 @@ function summaryStrip(summary) {
     ${cell('Workers', `${people(summary.workers)} / ${people(summary.jobs)}`)}
     ${cell('Weekly profit', signed(summary.weeklyProfit), '', tone(summary.weeklyProfit))}
     ${cell('Hired per month', `+${people(summary.hiredPerMonth)}`)}
-    ${cell('Private capital', `¤${money(summary.privateCapital)}`,
+    ${cell('Private capital', `£${money(summary.privateCapital)}`,
     summary.investmentRule?.privateBuild === false
-      ? `+¤${summary.privateInflow.toFixed(1)} / week · idle under ${esc(summary.investmentRule.name)}`
-      : `+¤${summary.privateInflow.toFixed(1)} / week`,
+      ? `+£${summary.privateInflow.toFixed(1)} / week · idle under ${esc(summary.investmentRule.name)}`
+      : `+£${summary.privateInflow.toFixed(1)} / week`,
     '', summary.investmentRule?.privateBuild === false
       ? `${summary.investmentRule.name}: ${summary.investmentRule.desc} The pool fills to its ceiling and waits for a change of policy.`
       : 'Money investors have on hand for factory construction and expansion.')}
@@ -166,16 +166,18 @@ export function filterFactories(factories, state) {
 }
 
 /**
- * SORUNLU OLAN ÖNCE — AMA KARARLI.
+ * SIRA SABİTTİR — DURUM SÜTUNDA DURUR, SIRADA DEĞİL.
  *
- * Sıra yalnız DURUM KATEGORİSİ ile kurulur, kârla değil: kâra göre sıralayınca
- * kartlar her haftalık tik'te küçük kâr oynamalarıyla yer değiştiriyor, oyuncu
- * tıklamak üzere olduğu tesisi kaybediyordu. Kart ancak durumu gerçekten
- * değişince yer değiştirir; aynı durumdakiler ADA göre sabit durur.
+ * Önce kâra göre sıralanıyordu; kâr her tik oynadığı için kartlar zıplıyordu.
+ * Sonra "durum kategorisi" ile sıralandı, ama o da çözmedi: bir tesis girdi
+ * kıtlığına girip çıktıkça listenin tepesiyle ortası arasında gidip geliyor,
+ * oyuncu tıklamak üzere olduğu kartı kaybediyordu (kullanıcı bildirimi).
+ *
+ * Sorunluyu öne çıkarma işi zaten SÜZGECİN: başlıkta "Needs attention",
+ * "Losing money" çipleri var. Sıra artık yalnız ada bakar ve hiç oynamaz.
  */
 export function sortFactories(rows) {
-  return [...rows].sort((a, b) => (b.status.weight ?? 0) - (a.status.weight ?? 0)
-    || a.name.localeCompare(b.name)
+  return [...rows].sort((a, b) => a.name.localeCompare(b.name)
     || String(a.id).localeCompare(String(b.id)));
 }
 
@@ -191,7 +193,7 @@ function factoryCard(row, openMenu) {
   if (row.expansion) {
     menu.push(`<button data-cancel-expansion="${row.expansion.projectId}"
       title="Stop the expansion. ${row.expansion.refund > 0.05
-    ? `¤${money(row.expansion.refund)} of unspent money comes back`
+    ? `£${money(row.expansion.refund)} of unspent money comes back`
     : 'Nothing comes back — the work is already paid for'}.">Cancel expansion</button>`);
   }
   if (row.subsidized) {
@@ -255,11 +257,11 @@ function closeConfirm(row) {
           leaves the national supply.</li>
         <li>The plant is dismantled. <b>Nothing is refunded</b> — the money spent building it is gone.</li>
         ${row.expansion ? `<li class="bad">Its expansion is cancelled too;
-          <b>¤${money(row.expansion.refund)}</b> of unspent money comes back.</li>` : ''}
+          <b>£${money(row.expansion.refund)}</b> of unspent money comes back.</li>` : ''}
         ${row.subsidized ? '<li>The subsidy on it ends.</li>' : ''}
         ${row.profit < 0 ? `<li class="good">It is currently losing
-          <b>¤${money(Math.abs(row.profit))}</b> a week.</li>`
-    : `<li class="bad">It is currently earning <b>¤${money(row.profit)}</b> a week.</li>`}
+          <b>£${money(Math.abs(row.profit))}</b> a week.</li>`
+    : `<li class="bad">It is currently earning <b>£${money(row.profit)}</b> a week.</li>`}
       </ul>
       <div class="fac-confirm-row">
         <button class="action" data-close-cancel="1">Keep it open</button>
@@ -343,10 +345,10 @@ function railColumn(view) {
       <span class="ind-project-bar"><i style="width:${project.percent}%"></i></span>
       <em>${project.percent}%</em>
       <small class="ind-project-eta">${project.stalled
-    ? `stalled — ¤${money(project.owed)} unpaid`
+    ? `stalled — £${money(project.owed)} unpaid`
     : `${project.weeksLeft} week${project.weeksLeft === 1 ? '' : 's'} remaining`}</small>
       ${project.owed > 0.05 ? `<button class="ind-project-fund" data-support="${project.id}"
-        title="Pay ¤${money(project.owed)} from the treasury to finish it sooner. Shift-click pays the remainder in full.">\u{1F3DB}</button>` : ''}
+        title="Pay £${money(project.owed)} from the treasury to finish it sooner. Shift-click pays the remainder in full.">\u{1F3DB}</button>` : ''}
     </div>`).join('');
   return `<aside class="ind-rail">
     <div class="ind-rail-head"><span>Under construction</span><b>${projects.length}</b></div>
@@ -365,7 +367,9 @@ export function buildCatalogue(catalogue, state) {
   const category = state.buildCategory ?? 'all';
   const options = catalogue.options
     .filter((option) => category === 'all' || option.category === category)
-    .sort((a, b) => Number(b.enabled) - Number(a.enabled) || b.margin - a.margin);
+    // Marja göre sıralamak inşa listesini de her tik zıplatıyordu; marj
+    // satırın kendisinde zaten yazılı.
+    .sort((a, b) => Number(b.enabled) - Number(a.enabled) || a.name.localeCompare(b.name));
   const tabs = Object.entries(CATEGORY_TABS).map(([id, label]) => `
     <button class="ind-tab${category === id ? ' on' : ''}"
       data-build-category="${id}">${esc(label)}</button>`).join('');
@@ -385,20 +389,20 @@ export function buildCatalogue(catalogue, state) {
       </div>
       <div class="build-facts">
         <span><small>workers</small><b>${people(option.workers)}</b></span>
-        <span><small>cost</small><b>¤${Math.round(option.cost)}</b></span>
+        <span><small>cost</small><b>£${Math.round(option.cost)}</b></span>
         <span><small>market</small><b class="${option.margin > 0 ? 'good' : 'bad'}">${esc(option.market)}</b></span>
         ${option.eraLabel ? `<span><small>invented</small><b>${esc(option.eraLabel)}</b></span>` : ''}
       </div>
       ${option.enabled
     ? `<button class="action build-go" data-factory="${esc(option.typeId)}"
-        data-region="${esc(catalogue.region.id)}">Build ¤${Math.round(option.cost)}</button>`
+        data-region="${esc(catalogue.region.id)}">Build £${Math.round(option.cost)}</button>`
     : `<span class="build-blocked">${esc(option.blocked)}</span>`}
     </article>`).join('');
   return `<div class="picker-overlay" data-picker-overlay="1">
     <div class="card build-catalogue">
       <div class="card-head">
         <h3>Build in ${esc(catalogue.region.name)}</h3>
-        <small>treasury ¤${Math.round(catalogue.treasury)}</small>
+        <small>treasury £${Math.round(catalogue.treasury)}</small>
         <button class="action" data-close-picker="1">Close</button>
       </div>
       <div class="ind-tabs">${tabs}</div>

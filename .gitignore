@@ -5,3 +5,6 @@ dist/
 
 # Denetim kosularinin gecici ciktisi (bkz. scripts/audit/).
 scripts/audit/_tmp/
+
+# Gorsel yineleme dongusunun ciktisi (bkz. maplab.html).
+.shots/

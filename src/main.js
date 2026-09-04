@@ -6,6 +6,7 @@ import { mountTooltips } from './ui/tooltip.js';
 import { registerTooltips } from './ui/tooltipData.js';
 import { MainMenu } from './ui/mainMenu.js';
 import { Notifications } from './ui/notifications.js';
+import { AlertStrip } from './ui/alerts.js';
 import { PerfOverlay } from './ui/perfOverlay.js';
 import { materials } from './render/textures.js';
 
@@ -24,6 +25,15 @@ const canvas = document.getElementById('map');
 const game = new Game(canvas);
 const hud = new Hud(game);
 new Notifications(game);
+
+// Sürekli uyarı şeridi: baloncuktan farkı, DURUM sürdükçe durmasıdır.
+// Haftalık kapanışta ve dünya değişince yeniden ölçülür; içerik değişmediyse
+// DOM'a hiç dokunmaz (bkz. AlertStrip.refresh).
+const alerts = new AlertStrip(game);
+for (const event of ['turn', 'economy', 'politics', 'world', 'provinces']) {
+  game.on?.(event, () => alerts.refresh());
+}
+alerts.refresh();
 
 // Gecikmeli bilgi kartlari TEK yerden kurulur (bkz. ui/tooltip.js): ekranlar
 // her tazelemede innerHTML'i bastan yazdigi icin dinleyici koktedir, ogeler

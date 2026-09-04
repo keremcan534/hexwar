@@ -48,6 +48,13 @@ export const RESOURCE_ART = {
   luxuries: 'luxury_clothes',
   fuel: 'fuel',
   explosives: 'explosives',
+  // Paket 3: askerî ve deniz malları; halkası sanatın içinde (paket 1 gibi).
+  arms: 'small_arms',
+  artillery: 'artillery',
+  tanks: 'tanks',
+  airplane: 'aeroplane',
+  clippers: 'clipper_convoy',
+  steamers: 'steamer_convoy',
 };
 
 /**
@@ -58,19 +65,13 @@ export const RINGED_ART = new Set([
   'food', 'fish', 'cattle', 'fruit', 'timber', 'paper', 'coal', 'iron',
   'steel', 'fabric', 'dye', 'glass', 'fertilizer', 'ammunition', 'oil',
   'rubber', 'tools', 'electric_gear', 'radio', 'automobile',
+  'arms', 'artillery', 'tanks', 'airplane', 'clippers', 'steamers',
 ]);
 
 /**
  * Çizgi-SVG yedekler (24x24 stroke). Boyası gelen mal bu tablodan silinip
- * RESOURCE_ART'a taşınır; kalanlar üçüncü paketi bekleyen askeri/deniz
- * malları ve telefon.
+ * RESOURCE_ART'a taşınır; geriye yalnız telefon kaldı.
  */
 export const RESOURCE_PATHS = {
-  arms: '<path d="M4 16l12-9 3 4-9 7H6z"/><path d="M13 18l4 3M6 13l-3 4"/>',
-  tanks: '<path d="M5 14h14a3 3 0 0 1-3 4H8a3 3 0 0 1-3-4z"/><path d="M9 14v-3h5l2 3M14 11l6-3"/>',
-  airplane: '<path d="M12 4v16M12 9l-8 4v2l8-2 8 2v-2z"/><path d="M9 20l3-2 3 2"/>',
-  artillery: '<path d="M5 17l10-10 3 3-10 10z"/><circle cx="7" cy="18" r="2.4"/>',
-  clippers: '<path d="M4 17h16l-2 4H6z"/><path d="M12 17V4M12 5c4 1 6 4 6 8h-6M12 7c-3 1-4 3-4 6h4"/>',
-  steamers: '<path d="M4 17h16l-2 4H6z"/><path d="M7 17v-5h10v5M10 12V9h4v3M15 9V6"/>',
   telephone: '<path d="M6 8a12 12 0 0 1 12 0l-2 3a8 8 0 0 0-8 0z"/><path d="M12 12v5M9 20h6M10 17h4"/>',
 };

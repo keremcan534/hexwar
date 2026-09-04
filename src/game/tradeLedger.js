@@ -82,10 +82,25 @@ export function goodRow(world, nation, id) {
       : status.id === 'surplus' ? `spare ${Math.max(0, production - demand).toFixed(1)}/wk`
         : status.id === 'balanced' && coverage != null ? `${Math.round(coverage * 100)}% met` : '';
 
+  // DUZ CUMLE: rozetin altinda "neden boyle" tek satirda durur. Sayilar
+  // `detail`de; burasi oyuncunun rakama bakmadan anlayacagi hal. Cumle de
+  // sayi da AYNI olculerden turer, ekran hicbirini kendisi yazmaz.
+  const importShare = demand > 0.005 ? (flow.imports ?? 0) / demand : 0;
+  const reason = !active ? 'No domestic use'
+    : status.id === 'severe' ? (importShare > 0.35
+      ? 'Imports cannot cover the gap' : 'Demand far exceeds supply')
+      : status.id === 'short' ? (importShare > 0.35
+        ? 'Import dependent' : 'Demand exceeds supply')
+        : status.id === 'export' ? 'Strong exports'
+          : status.id === 'surplus' ? 'Strong domestic output'
+            : importShare > 0.35 ? 'Balanced, but bought abroad' : 'Balanced market';
+
   return {
     id,
     name: good.name,
     category: good.category,
+    reason,
+    importShare,
     price: state.price,
     base: good.basePrice,
     trend: state.trend ?? 0,

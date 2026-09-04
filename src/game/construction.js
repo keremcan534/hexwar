@@ -537,7 +537,7 @@ export function investmentBlocker(nation, investmentId) {
   }
   const cost = investmentCost(nation, investmentId);
   if ((nation.gold ?? 0) < cost) {
-    return `treasury short by ¤${Math.ceil(cost - (nation.gold ?? 0))}`;
+    return `treasury short by £${Math.ceil(cost - (nation.gold ?? 0))}`;
   }
   return null;
 }

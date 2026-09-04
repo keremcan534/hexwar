@@ -111,14 +111,22 @@ export function drawFlag(ctx, flag, x, y, w, h) {
   ctx.strokeRect(x, y, w, h);
 }
 
-/** HUD'da <img> olarak kullanmak için bayrağı bir kez pişirir. */
+/**
+ * HUD'da <img> olarak kullanmak için bayrağı bir kez pişirir.
+ *
+ * Önbellek anahtarı BOYUTU içerir: tek anahtar kullanılırken ilk çağıran
+ * boyutu kilitliyordu, yani rozet 36x24'ü pişirdikten sonra ulus kartı
+ * büyük bayrak istese de o küçük kopyayı alıp esnetiyordu.
+ */
 export function flagDataUrl(nation, width = 36, height = 24) {
-  if (nation.flagUrl) return nation.flagUrl;
+  const key = `${width}x${height}`;
+  const cache = nation.flagUrls ?? (nation.flagUrls = {});
+  if (cache[key]) return cache[key];
   const canvas = document.createElement('canvas');
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext('2d');
   drawFlag(ctx, nation.flag, 0, 0, width, height);
-  nation.flagUrl = canvas.toDataURL();
-  return nation.flagUrl;
+  cache[key] = canvas.toDataURL();
+  return cache[key];
 }
