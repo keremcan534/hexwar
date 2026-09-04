@@ -565,6 +565,18 @@ bulundu ve **birlikte** kalibre edildi:
 `audit:price-stability` artık **hiç bulgu vermiyor** — dört testin dördü de
 geçiyor. Çakılı mal 16'dan 14'e indi.
 
+Dünya nüfusu da hızlandı (aynı tohum, gözlemci, barışçıl):
+
+| yıl | önce | sonra | |
+|---|---|---|---|
+| 1866 | 106.62M | 108.32M | +%1.6 |
+| 1896 | 117.10M | 130.36M | +%11.3 |
+| 1936 | 147.76M | 180.56M | **+%22.2** |
+
+Yüzyıllık büyüme 1.51× → 1.84×. Beklenen kanal: sepet karşılanması yükselince
+`foodMet` yükseliyor, o da `provinces.js` içindeki `foodFactor` üzerinden
+büyüme çarpanını açıyor.
+
 Gerekçeler ayar değil: çapa, yukarıdaki kapalı formun tek koludur ve K'yı
 5'ten 1.5'e indirir (kıtlık ölmez — dengesizlik sinyali +0.09'a çıkarken çapa
 tavanda en fazla −0.053 çeker). Havuz payı ise muhasebedir: pazarlanan pay +
