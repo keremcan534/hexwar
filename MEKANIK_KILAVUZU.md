@@ -848,6 +848,81 @@ maden kârlı olur. Zincirin alt katmanı üst katmanın büyümesini hisseder �
 
 ---
 
+## 4.6 Sınıf hareketliliği — orta sınıf neden küçülüyordu
+
+**Formül**
+
+    kohort = max(10.000, kaynak sınıf × 0.0025 × (0.25 + okuryazarlık × 3.5))
+    düşüş  = max(10.000, sınıf × 0.0025)
+
+**Kod** — `src/game/economy.js`, `runPromotion` ve `runPopulationMobility`
+
+**Ne bozuktu.** Terfi ve düşüş **sabit bir sayı** taşıyordu (`POPULATION_COHORT`,
+10.000 kişi). Nüfus yüzyılda iki katına çıkarken akış sabit kalınca oran
+sürekli küçülüyordu: orta+üst payı 1836'da %22, 1936'da %12.5.
+
+Vic2'de terfi akışı sınıf büyüklüğüne orantılıdır ve okuryazarlıkla hızlanır —
+katip ve memur sanayiyle birlikte gelir. İki çarpan da eklendi.
+
+**Çalışıyor mu?** **EVET** — `audit:growth`, 100 yıl × 2 tohum:
+
+| | önce | sonra |
+|---|---|---|
+| H2 orta+üst payı | %16.5 / %12.6 | **%20.05 / %22.27** |
+| sepet karşılanması | ~%56 | ~%66 |
+
+Eğri artık **geç yüzyılda hızlanıyor** — 1896 %12.3 → 1906 %14.0 → 1916 %17.5 →
+1926 %19.5 → 1936 %20.1. Sanayileşme ve okuryazarlık birikince orta sınıf
+kalkıyor; tam Victoria'nın şekli.
+
+### ELENEN: ulusal odak (Vic2 national focus)
+
+Oyuncuya bir kaldıraç vermek için yazıldı, **ölçüldü ve GERİ ALINDI.** Kayıt
+burada duruyor ki aynı yol ikinci kez denenmesin.
+
+Tasarım: yıl/okuryazarlıkla açılan 1–4 odak puanı, her biri bir sınıf kanalına
+(`clerks` / `capitalists`) konur. Dört ayrı YZ politikası ve **iki ayrı etki
+kanalı** denendi. Odaksız taban: **%20.05 / %22.27**.
+
+| deneme | sonuç |
+|---|---|
+| bütün puanlar katibe, kohortu çarpar | %19.69 / %13.25 |
+| + "orta sınıf sepetini karşılıyorsa" kapısı | %21.12 / %11.98 |
+| eşik kanalı (istenen artığı küçültür) | %17.71 / %26.21 |
+| + "orta sınıf GERÇEK artık bırakıyorsa" kapısı | %17.46 / %12.54 |
+
+Dördünde de en kötü tohum tabanın altına düştü. Sebep ayrımın başladığı yıldan
+okunuyor: odaksız kolda geç yüzyılda bir **kalkış** var (PRICE-B, 1906 %15.0 →
+1936 %22.3); odaklı kolların hiçbirinde o kalkış olmuyor. Terfiyi öne çekmek,
+kalkış için birikmesi gereken refahı erkenden harcıyor — hane orta sınıfın 2,2
+kat büyük sepetini karşılayamayıp **geri düşüyor**, ve alt sınıftan çekilen
+insan sanayinin işçi havuzunu (`LOWER_WORKFORCE_SHARE`) daraltıyor.
+
+**Bulgu:** orta sınıfı sınırlayan şey terfi hızı değil **refahtır**. Bir orta
+sınıf kanunla var edilemiyor; önce onu taşıyacak ekonomi gerekiyor.
+
+### Oyuncunun kaldıracı ZATEN VAR
+
+Yeni mekanik gerekmiyordu (CLAUDE.md: "yenisini eklemeyi son çare say").
+Eğitim ve refah kaydırakları ölçüldü — 100 yıl, gözlemci, her tur dayatılarak:
+
+| eğitim + refah | okuryazarlık | orta+üst |
+|---|---|---|
+| hepsi 0 | %40 | %14.5 |
+| **YZ'nin kendi seçimi** | %68 | **%20.0** |
+| hepsi 100 | %92 | **%9.3** |
+
+Menzil **10.7 puan** — nüfus gürültüsünün (%39.1) altında değil, gerçek bir
+kaldıraç. Ve **optimumu ortada**: sonuna kadar açmak okuryazarlığı %92'ye
+çıkarır ama hazineyi batırır, ekonomi çöker, refah kalmaz ve orta sınıf
+%9.3'e iner. "Orta sınıf runu" bu kaydırakların dengesini bulmakla oynanır.
+
+**Pratikte** — okulunu açarsın, okuryazarlık yükselir, sanayi işçi bulur,
+ücretler artar, hane geçiminin üstüne artık bırakır ve yüzyılın sonunda
+katipler gelir. Kestirme yok: parayı önden basıp sınıf satın alamıyorsun.
+
+---
+
 # 5. DEVLET — imparatorluğun otomatik bedelleri
 
 ## 5.1 İdari gider

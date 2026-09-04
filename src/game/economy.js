@@ -1218,9 +1218,17 @@ function runPromotion(nation, mobility) {
       ? (source.prosperityWeeks ?? 0) + schooling
       : Math.max(0, (source.prosperityWeeks ?? 0) - 2);
     if (source.prosperityWeeks < 8) continue;
-    source.population -= POPULATION_COHORT;
-    target.population += POPULATION_COHORT;
-    mobility[key] = POPULATION_COHORT;
+    // KOHORT SABIT DEGIL. 10.000 kisilik sabit akis, yuzyilda iki kat buyuyen
+    // bir nufusta oran olarak surekli KUCULUR. Ikinci carpan okuryazarliktir:
+    // Vic2'de katip ve memur sanayi ve okulla birlikte gelir, o yuzden orta
+    // sinif yuzyilin ikinci yarisinda hizlanir.
+    const kohort = Math.max(
+      POPULATION_COHORT,
+      source.population * 0.0025 * (0.25 + literacy * 3.5),
+    );
+    source.population -= kohort;
+    target.population += kohort;
+    mobility[key] = kohort;
     source.prosperityWeeks = 0;
   }
 }
@@ -1251,9 +1259,15 @@ export function runPopulationMobility(nation, turn) {
     const socialClass = economy.classes[sourceClass];
     if (socialClass.canAffordNeeds || socialClass.hardshipWeeks < 4
       || socialClass.population < POPULATION_COHORT) continue;
-    socialClass.population -= POPULATION_COHORT;
-    economy.classes[targetClass].population += POPULATION_COHORT;
-    economy.mobility[mobilityKey] = POPULATION_COHORT;
+    // DUSUS DE ORANSAL. Terfi oransal, dusus sabit kalsaydi denge yapay
+    // olarak yukari kayardi; ayni olcek iki yonde de gecerli.
+    const dusen = Math.min(
+      socialClass.population,
+      Math.max(POPULATION_COHORT, socialClass.population * 0.0025),
+    );
+    socialClass.population -= dusen;
+    economy.classes[targetClass].population += dusen;
+    economy.mobility[mobilityKey] = dusen;
     socialClass.hardshipWeeks = 0;
   }
   economy.cohortPopulation = CLASS_IDS.reduce(
@@ -1373,7 +1387,12 @@ function ensureInitialMilitaryIndustry(world, nation) {
       // 1836'da ulusal doluluğu %61'e çıkarıyordu: sanayi daha ilk haftada
       // dolu görünüyor, yüzyıl boyunca yalnız seyreliyordu (H4 = 0.89x).
       // Vic2'de 1836 sanayisi cılızdır; doluluk okuryazarlıkla sonradan gelir.
-      employees: WORKERS_PER_LEVEL * 0.15,
+      //
+      // 0.15 -> 0.05: 1836 doluluğu %33'ten %28'e iner. Daha aşağısı ÖLÇÜLDÜ
+      // ve alınmadı — işe alım eğrisini de yavaşlatan varyantlar başlangıcı
+      // %8-15'e indiriyor ama orta+üst sınıfı %20'den %13'e düşürüyor: erken
+      // sanayi ücretleri refahın, refah da terfinin tek kaynağı. Takas gerçek.
+      employees: WORKERS_PER_LEVEL * 0.05,
       profit: 0,
       margin: 0,
       throughput: 0,
