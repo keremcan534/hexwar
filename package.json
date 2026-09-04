@@ -76,6 +76,7 @@
     "audit:budget-contract": "node scripts/audit/budget-contract-audit.mjs",
     "audit:mechanics": "node scripts/audit/mechanic-health-audit.mjs",
     "audit:culture-unrest": "node scripts/audit/culture-unrest-audit.mjs",
-    "audit:price-stability": "node scripts/audit/price-stability-audit.mjs"
+    "audit:price-stability": "node scripts/audit/price-stability-audit.mjs",
+    "audit:growth": "node scripts/audit/growth-audit.mjs"
   }
 }
