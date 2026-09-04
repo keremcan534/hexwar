@@ -3,11 +3,13 @@
 import { makeRng } from '../core/rng.js';
 import { settle } from './treasury.js';
 import {
-  UNIT_TYPES, advanceEntrenchment, clearPath, createUnit, refreshArmy,
+  UNIT_TYPES, advanceEntrenchment, clearPath, createUnit, placeUnit, refreshArmy,
   removeUnit, resetUnitIds, stackFull,
 } from './units.js';
-import { advanceMovement, resumeDirectives } from './movement.js';
-import { queueRecruit, recruit, runTraining } from './recruitment.js';
+import {
+  advanceMovement, clearDirective, orderMove, resumeDirectives,
+} from './movement.js';
+import { disband, queueRecruit, recruit, runTraining } from './recruitment.js';
 import { runReinforcements } from './reinforcement.js';
 import { runDelegatedAI, runNationAI } from './ai.js';
 import { runDiplomacyAI } from './alliances.js';
@@ -591,6 +593,11 @@ export class TurnManager {
     // otomatik ve yol emirli birimler hamlelerini yapmış olur.
     this.phase = 'orders+tail';
     executeOrders(this.game, this.playerNation, this.rng);
+    // HAFTANIN SONUNDA: baris bu hafta nerede imzalandiysa (diplomasi YZ'si,
+    // baris masasi, ateskes) tarama ondan SONRA kosar. Diplomasi fazina
+    // konuldugunda olculdu: masada imzalanan barislarin birlikleri bir hafta
+    // gecikiyordu (yabanci toprakta ortalama 1.35 tumen kaliyordu).
+    this.withdrawTrespassers();
     mark('orders');
     this.lastProfile = profile;
     // Ulusal donum noktalari HAFTANIN SONUNDA taranir: borc kapanmis, savas
@@ -731,6 +738,57 @@ export class TurnManager {
     this.log.unshift(`T${this.turn}: ${text}`);
     if (this.log.length > 30) this.log.pop();
     this.game.notifications?.push(text, meta);
+  }
+
+  /**
+   * Barista yabanci toprakta tumen duramaz.
+   *
+   * makePeace toprak devrini ve ateskesi yapiyordu ama BIRLIKLERI hic
+   * kimildatmiyordu: savas bitince ordu dusmanin ortasinda kaliyor, oradan
+   * ne yurumesine izin var (canEnterFor barista yabanci topraga girisi
+   * dogru sekilde reddediyor) ne de geri cagriliyordu. Sonuc, oyuncunun
+   * "savas sonrasi dusmanin icinde kalabiliyoruz" dedigi kilitlenmeydi.
+   *
+   * Olay degil DEGISMEZ olarak yazildi: her hafta bakilir. Boylece ucuncu
+   * bir tarafin altimizdaki topragi almasi ya da ateskesin baska yoldan
+   * baslamasi da ayni kapidan gecer.
+   *
+   * Once yuruyus denenir (yol varsa ordu geri cekiliyor gorunur); yol yoksa
+   * en yakin kendi karesine dogrudan konur. Vic2 da boyle yapar: baris
+   * anlasmasi orduyu ait oldugu yere koyar.
+   */
+  withdrawTrespassers() {
+    const world = this.world;
+    for (const unit of world.units) {
+      if (unit.type.domain !== 'land' || unit.embarked || unit.battleId) continue;
+      const tile = unit.tile;
+      if (!tile) continue;
+      const holder = controllerOf(tile);
+      if (holder < 0 || holder === unit.nationId) continue;
+      if (atWar(world, holder, unit.nationId)) continue;
+
+      let best = null;
+      let bestDistance = Infinity;
+      let home = 0;
+      world.forEach((candidate) => {
+        if (candidate.terrain.water || !candidate.terrain.passable) return;
+        if (controllerOf(candidate) !== unit.nationId) return;
+        home++;
+        if (stackFull(candidate)) return;
+        const distance = world.wrapDistance(tile.q, tile.r, candidate.q, candidate.r);
+        if (distance < bestDistance) { bestDistance = distance; best = candidate; }
+      });
+      // Topragi HIC kalmamis devletin ordusu yabanci toprakta duramaz ve
+      // donecek yeri de yoktur: dagilir. Olculdu, kalan vakalarin cogu buydu
+      // (2/3). disband insan gucunu de birakir, yani adamlar kaybolmaz.
+      if (!home) { disband(this.game, unit); continue; }
+      if (!best) continue;
+
+      unit.post = null;
+      clearDirective(unit);
+      if (!orderMove(this.game, unit, best)) placeUnit(unit, best);
+      this.game.renderer.invalidateTiles([tile, best], false);
+    }
   }
 
   killUnit(unit) {
