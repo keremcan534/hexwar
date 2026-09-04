@@ -676,6 +676,92 @@ bir piyasa refleksi, karar değil.
 
 ---
 
+## 4.4 Sanayi doluluğu — fabrikanın dolması ve ölü tesisin tasfiyesi
+
+**Formül**
+
+    aylık işgücü akışı = alt sınıf × 0.0012 × okul × isteklilik
+    okul               = 1 + okuryazarlık² × 2.5 + eğitim reformu × 0.25 + üniversite
+    kuruluş kadrosu    = tezgâh × 0.15
+    tasfiye            = beklenen marj ≤ 0 VE doluluk ≤ %5, 240 ay üst üste
+
+**Kod** — `src/game/economy.js` (`runFactoryEmployment`, `retireDeadFactories`)
+
+```js
+const schooling = 1 + clamp(economy.literacy ?? 0, 0, 1) ** 2 * 2.5
+  + socialLevel(nation, 'education') * 0.25 + higherEducationBonus(nation);
+
+function retireDeadFactories(game, nation) {
+  const bos = (factory.employees ?? 0) <= jobs * DEAD_FACTORY_FILL;
+  if (!bos || expectedMargin(game.world, nation, factory) > 0) {
+    factory.deadMonths = 0; continue;
+  }
+  factory.deadMonths = (factory.deadMonths ?? 0) + 1;
+  if (factory.deadMonths < DEAD_FACTORY_MONTHS || closed) continue;
+  if (closeFactory(game, nation, factory.id)) closed++;
+}
+```
+
+**Ne bozuktu.** İki ayrı kusur, aynı belirtiyi veriyordu — sanayi doluluğu
+yüzyıl boyunca yükselmiyordu.
+
+1. **Fabrika dolu doğuyordu.** `ensureInitialMilitaryIndustry` kuruluş
+   tesislerini **yarı kadroyla** açıyordu; 1836'da dünya doluluğu **%61**
+   oluyor, sonraki yüzyıl yalnız seyreliyordu (1906'da %43). Vic2'de 1836
+   sanayisi cılızdır ve doluluk okuryazarlıkla sonradan gelir.
+2. **Ölü tesis defterden hiç düşmüyordu.** `closeFactory` yalnızca
+   **oyuncunun ekranından** çağrılıyordu — YZ'nin fabrika kapatma yolu yoktu.
+   Ölçüldü (2 tohum, 1936): dünyadaki **550 tesisin 350'si** beklenen marjı
+   ≤ 0 olduğu için işe alıma kapalı, ortalama **%32 dolu**, ve kapasitenin
+   **%57'sini** tutuyordu. Doluluğun paydasında hiç dolmayacak tezgâh
+   birikiyordu.
+
+Elenen açıklamalar — hiçbiri değildi, ölçüldü:
+
+| hipotez | ölçüm | sonuç |
+|---|---|---|
+| işgücü tavanı bağlıyor | kadro/tavan %23–34, tavan/kapasite %207 | işçi bol, tavan boşta |
+| genişleme kapısı kapanmıyor | 1886'dan sonra kapasite yatay | kapı zaten kapalı |
+| işe alım akışı yavaş | havuz aylık ~480 bin, boş tezgâh 8.7 mn | akış yeterli |
+| **marjı ≤ 0 tesis işe alıma kapalı** | kapasitenin %57'si donmuş | **sebep bu** |
+
+**Çalışıyor mu?** **EVET** — `audit:growth`, 100 yıl × 2 tohum:
+
+| | önce | sonra |
+|---|---|---|
+| 1836 doluluk | %61.0 / %59.3 | **%14.6 / %14.1** |
+| 1936 doluluk | %48.6 / %49.0 | **%71.8 / %73.6** |
+| H4 doluluk eğimi (1846→1936) | 0.89× / 0.94× | **1.54× / 1.58×** ✓ |
+| H1 reel tüketim/kişi | 1.19 / 1.14 | **1.67 / 1.73** ✓ |
+| H2 orta+üst payı | %12.99 / %13.25 | **%12.52 / %12.44** ✓ |
+
+Doluluk eğrisi artık gerçekten bir S: PRICE-A %33 → %47 → %47 → %57 → %59 →
+%58 → %61 → %64 → %65 → %70 → %72. İlk kırk yıl yatay, sonra ivmeleniyor.
+
+**Ama rapor kendi kendini kandırmasın diye pay ve payda ayrı basılır.**
+Doluluk bir orandır ve iki yolla yükselir: kadro artar ya da ölü kapasite
+düşer. Ölçüm: **kadro 1.60× / 1.59×, kapasite 1.04× / 1.01×.** Yani sanayi
+istihdamı gerçekten büyüyor, ama doluluk artışının önemli kısmı kapasitenin
+yatay tutulmasından geliyor. Bu saklanmıyor; `audit:growth` her koşuda
+ikisini de yazar.
+
+**AÇIK BULGU — H3.** Fabrika sayısı 1846→1936 arasında **0.72× / 0.59×**,
+kapasite **1.04× / 1.01×** ile yatay. Yani tasfiye bir açıklama ama tek
+açıklama değil: **sanayi tabanı da büyümüyor.** Sebep ölçüldü ve §4.3'teki
+fiyat sorununun aynısı — cari fiyatlarla dünyanın yarısı girdi maliyetini
+karşılayamıyor, o sektörlere ne işçi gidiyor ne yeni tesis kuruluyor. Barajı
+düşürmedim; bulgu `audit:growth` içinde sayıyla duruyor ve kendi pass'ini
+bekliyor.
+
+**Pratikte** — 1836'da beş cılız fabrikayla başlarsın, üretim azdır. Okul
+yasası ve okuryazarlık yükseldikçe fabrikaya işçi akışı **kare** hızlanır:
+ilk yarım yüzyıl doluluk yarıyı zor bulur, sonra hızla tırmanır. Yanlış
+sektöre kurduğun ve yirmi yıl boş kalan fabrika kendiliğinden kapanır —
+para geri gelmez, kadro serbest kalır. Kapatma kararının oyuncudaki karşılığı
+sanayi ekranındaki "close" düğmesidir; YZ artık aynı kolu kullanıyor.
+
+---
+
 # 5. DEVLET — imparatorluğun otomatik bedelleri
 
 ## 5.1 İdari gider

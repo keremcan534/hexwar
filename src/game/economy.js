@@ -290,7 +290,10 @@ export const HIRING_INTERVAL = 4;
 // 0.0008 -> 0.0018: nüfus artışı Vic2 ölçeğine (yüzyılda ~2 kat) inince eski
 // akış sanayiyi açlıktan öldürüyordu — doluluk 40. yılda %38'e düşmüştü.
 // Sanayileşme artık doğum fazlasından değil, kırdan gelen göçten beslenir.
-const MONTHLY_HIRE_RATE = 0.0018;
+// 0.0018 -> 0.0012: okuryazarlık çarpanı üstel olunca (schooling) geç yüzyıl
+// akışı zaten hızlanıyor; taban akış düşmezse erken yüzyıl da hızlı kalıyor ve
+// eğrinin biçimi yine düzleşiyordu.
+const MONTHLY_HIRE_RATE = 0.0012;
 /** Tek tesisin ayda alabilecegi kadro payi: sifirdan tam kadro en az ~10 ay. */
 const FACTORY_HIRE_CAP = 0.10;
 // Sanayi fakir nüfusun tamamını yutamaz: tarla ve maden de işçi ister.
@@ -1366,8 +1369,11 @@ function ensureInitialMilitaryIndustry(world, nation) {
       q: city.tile.q,
       r: city.tile.r,
       level: 1,
-      // Kuruluş tesisleri yarı kadro başlar: ilk yıllarda üretim var ama az.
-      employees: WORKERS_PER_LEVEL * 0.5,
+      // Kuruluş tesisleri KADROSUZA YAKIN doğar. Yarı kadro ölçüldü ve
+      // 1836'da ulusal doluluğu %61'e çıkarıyordu: sanayi daha ilk haftada
+      // dolu görünüyor, yüzyıl boyunca yalnız seyreliyordu (H4 = 0.89x).
+      // Vic2'de 1836 sanayisi cılızdır; doluluk okuryazarlıkla sonradan gelir.
+      employees: WORKERS_PER_LEVEL * 0.15,
       profit: 0,
       margin: 0,
       throughput: 0,
@@ -2550,6 +2556,39 @@ export function closeFactory(game, nation, factoryId) {
   return true;
 }
 
+/**
+ * OLU TESISI TASFIYE ET. `closeFactory` yalnizca oyuncunun ekranindan
+ * cagriliyordu; YZ'nin kapatma yolu YOKTU. Sonuc olculdu (2 tohum, 1936):
+ * dunyadaki 550 tesisin 350'si beklenen marji <= 0 oldugu icin ise alima
+ * kapaliydi, ortalama %32 doluluktaydi ve kapasitenin %57'sini tutuyordu.
+ * Ulusal dolulugun yuzyil boyunca %45'te takilmasinin sebebi buydu: paydada
+ * hic dolmayacak kapasite birikiyordu (H4).
+ *
+ * Kapanma kosulu iki katli — tesis hem SURELI zararda hem de BOS olmali.
+ * Tek kosul yetmez: yeni biten tesis kadrosuz dogar (bos ama olu degil),
+ * gecici fiyat cukurunda kalan dolu tesis de zararda olabilir.
+ */
+const DEAD_FACTORY_MONTHS = 240;
+const DEAD_FACTORY_FILL = 0.05;
+
+function retireDeadFactories(game, nation) {
+  const factories = nation.economy?.factories ?? [];
+  let closed = 0;
+  for (const factory of [...factories]) {
+    const jobs = factoryJobs(factory);
+    const bos = (factory.employees ?? 0) <= jobs * DEAD_FACTORY_FILL;
+    if (!bos || expectedMargin(game.world, nation, factory) > 0) {
+      factory.deadMonths = 0;
+      continue;
+    }
+    factory.deadMonths = (factory.deadMonths ?? 0) + 1;
+    // Ayda en fazla bir tasfiye: bir ulkenin sanayisi tek ayda cokmesin.
+    // Sirada bekleyen tesis sayacini tutar, gelecek ay kapanir.
+    if (factory.deadMonths < DEAD_FACTORY_MONTHS || closed) continue;
+    if (closeFactory(game, nation, factory.id)) closed++;
+  }
+}
+
 function autoUpgradeFactory(game, nation, factory) {
   if (factory.level >= MAX_FACTORY_LEVEL || !factoryAtCapacity(factory)) return false;
   // Zarar eden tesise kimse sermaye koymaz.
@@ -2758,6 +2797,9 @@ function runFactoryEmployment(game, nation) {
   economy.industrialLayoffs = 0;
   if (!factories.length) return;
 
+  // Once tasfiye: kapanan tesisin kapasitesi bu ayin doluluk hesabina girmesin.
+  retireDeadFactories(game, nation);
+
   // İşten çıkarma da işe alımla aynı sinyale bakar. Eskiden alım ileriye
   // dönük beklenen marja, çıkarma tek ayın gerçekleşen kârına bakıyordu:
   // aynı tesis aynı ay hem "kârlı" diye doluyor hem "zararda" diye
@@ -2786,7 +2828,11 @@ function runFactoryEmployment(game, nation) {
   // Eğitim ve yüksekögretim kurumu işgücünü niteliklendirir: aynı nüfus daha
   // hızlı akar (eski üniversite binasının sayacı kurum seviyesine taşındı).
   // Okuryazarlik stogu ise alimi da surer (bkz. runPromotion notu).
-  const schooling = 1 + clamp(economy.literacy ?? 0, 0, 1) * 0.5
+  // Okuryazarlık DOĞRUSAL değil ÜSTEL sürer. Doğrusal çarpanla (1 + oku×0.5)
+  // cahil ülke de işçi akıtıyordu; Vic2'de fabrikaya adam gelmesi
+  // okuryazarlık eşiğini geçince ivmelenir. Kare alınca ilk yarım yüzyıl
+  // yavaş, sonrası hızlı olur — reel GSYH eğrisiyle aynı biçim.
+  const schooling = 1 + clamp(economy.literacy ?? 0, 0, 1) ** 2 * 2.5
     + socialLevel(nation, 'education') * 0.25
     + higherEducationBonus(nation);
   const lower = civilianLower(economy);

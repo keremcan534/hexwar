@@ -11,6 +11,7 @@
 // Kontrollu tek-tesis senaryosu: bilinen kadro/uretimle VA = ucret + kar.
 
 import { headless, pickNation } from './harness.mjs';
+import { reformModifiers } from '../../src/game/reforms.js';
 import {
   INCOME_POOL_SHARE, INCOME_WEIGHTS,
   LABOR_SHARE, PROFIT_TO_CAPITAL, PROFIT_TO_REINVEST, WAGE_SPLIT,
@@ -133,19 +134,24 @@ console.log('='.repeat(74));
     const va = factory.profit + factory.wages;
     // Subvansiyonlu tesiste kar 0'a cekilir; o durumda kimlik gecerli degil.
     const subsidized = (factory.subsidyPaid ?? 0) > 0;
-    const expectedWages = Math.max(0, va) * Math.min(0.85, LABOR_SHARE
-      * (factory.wages > 0 && va > 0 ? factory.wages / (Math.max(0, va) * LABOR_SHARE) : 1));
+    // BEKLENEN PAYI DENETIM UYDURMAZ, URETIM KODUNDAN TURETIR. Once
+    // `ucret/VA >= LABOR_SHARE` araligi araniyordu; o aralik reform carpaninin
+    // yalnizca YUKARI esneyebilecegini varsayiyordu. Ucreti UCUZLATAN reform
+    // (wageCost < 1) mesru olarak payi 0.55'in altina indirir ve denetim
+    // saglam bir sim'i "sapmis" ilan ediyordu — olculdu: HEAD'de %53.2,
+    // kimlik ise tam tutuyordu. Kimlik artik BIREBIR dogrulanir.
+    const wageCost = reformModifiers(nation)?.wageCost ?? 1;
+    const expectedShare = Math.min(0.85, LABOR_SHARE * wageCost);
     const shareObserved = va > 0 ? factory.wages / va : 0;
     console.log(`  tek tesis (${factory.typeId}): VA=${n2(va)} ucret=${n2(factory.wages)}`
       + ` kar=${n2(factory.profit)} emekPayi=${(shareObserved * 100).toFixed(1)}%`
+      + ` (beklenen ${(expectedShare * 100).toFixed(1)}%, reform carpani ${wageCost.toFixed(3)})`
       + `${subsidized ? ' (subvansiyonlu)' : ''}`);
-    if (!subsidized && va > 1 && (shareObserved < LABOR_SHARE * 0.99 - 1e-6
-      || shareObserved > 0.85 + 1e-6)) {
+    if (!subsidized && va > 1 && Math.abs(shareObserved - expectedShare) > 0.005) {
       finding('HIGH', 'Tesis emek payi beyanla uyusmuyor',
-        `ucret/VA ∈ [${LABOR_SHARE}, 0.85] (reform carpani dahil)`,
+        `ucret/VA = min(0.85, ${LABOR_SHARE} × reform.wageCost) = ${(expectedShare * 100).toFixed(1)}%`,
         `${(shareObserved * 100).toFixed(1)}%`, '');
     }
-    void expectedWages;
   }
 }
 

@@ -30,6 +30,10 @@
 // tesislerle aciliyor ve insaat ise alimdan hizli oldugu icin doluluk yalniz
 // SEYRELIYOR. Tek bir doluluk seviyesi bu kusuru gostermez; ORAN gosterir.
 //
+// ORANIN IKI YOLU VAR: kadro artar ya da olu kapasite defterden duser. Rapor
+// ikisini de basar (kadro Nx · kapasite Nx), cunku yalniz orani yazan bir
+// hedef, paydayi kucultup kendini gecirebilir.
+//
 // Kullanim:
 //   npm run audit:growth              -> referans cizgiyle karsilastir
 //   npm run audit:growth -- --write   -> mevcut durumu referans cizgi YAP
@@ -124,6 +128,11 @@ function slice(world, year) {
     // arttikca isci akisi hizlanir, ilk yarim yuzyilda yariya bile ulasilmaz,
     // sonra ivmelenir. Olcut bu EGRIDIR, tek bir seviye degil.
     doluluk: kapasite > 0 ? 100 * kadro / kapasite : 0,
+    // DOLULUK BIR ORANDIR VE PAYDASI DA DEGISIR. Olu tesis defterden dusunce
+    // doluluk isci gelmeden de yukselir; bu yuzden pay (kadro) ile payda
+    // (kapasite) AYRICA raporlanir, yoksa H4 kendini kandirabilir.
+    kadro,
+    kapasite,
   };
 }
 
@@ -307,14 +316,25 @@ sub('HEDEFLER — bu pass\'in isi');
         oran: erken.doluluk > 0 ? gec.doluluk / erken.doluluk : 0 };
     });
     const worst = oran.reduce((a, b) => (b.oran < a.oran ? b : a));
-    console.log(`  en kotu tohumda 1846 %${n2(worst.erken)} -> ${worst.gec.toFixed(0)}`
-      + `%${n2(worst.gec)} = ${n2(worst.oran)}x (${worst.seed})`);
+    console.log(`  en kotu tohumda 1846 %${n2(worst.erken)} -> %${n2(worst.gec)}`
+      + ` = ${n2(worst.oran)}x (${worst.seed})`);
+    // ORANIN NEREDEN GELDIGI YAZILIR. Doluluk hem isci gelince hem olu
+    // kapasite dusunce yukselir; ikisi ayni sey degildir ve rapor bunu
+    // saklarsa hedef kendi kendini gecirir.
+    for (const s2 of SEEDS) {
+      const marks = current[s2.trim()];
+      const erken = marks.find((m) => m.year === 1846) ?? marks[0];
+      const gec = marks[marks.length - 1];
+      console.log(`      ${s2.trim()}: kadro ${n2(gec.kadro / Math.max(1, erken.kadro))}x`
+        + ` · kapasite ${n2(gec.kapasite / Math.max(1, erken.kapasite))}x`
+        + ` (1846 kadro ${(erken.kadro / 1e6).toFixed(2)}mn -> ${(gec.kadro / 1e6).toFixed(2)}mn)`);
+    }
     if (worst.oran < 1.5) {
       finding('HIGH', 'H4 sanayi dolulugu yukselmiyor',
         '1846\'dan yuzyil sonuna doluluk en az 1.50x artmali',
         `${n2(worst.oran)}x (${worst.seed})`,
-        'kurulus tesisleri yari kadro dogar (ensureInitialMilitaryIndustry) ve'
-          + ' insaat ise alimdan hizli oldugu icin doluluk yalniz SEYRELIR');
+        'dunyanin yarisi beklenen marji <= 0 oldugu icin ISE ALIMA KAPALI:'
+          + ' kadro o tesislere hic akmaz, kapasite paydada oturur');
     } else {
       console.log('  -> H4 gecti: sanayi yuzyil icinde doluyor.');
     }
@@ -325,7 +345,10 @@ sub('HEDEFLER — bu pass\'in isi');
     finding('HIGH', 'H3 sanayi taslasiyor',
       '1846-1936 arasi fabrika sayisi en az 1.20x buyumeli',
       `${n2(w3.h3)}x (${w3.seed})`,
-      'yeni tesis kapitalistin butcesine, seviye atlama kar etmeye bagli');
+      'olculdu (2 tohum, 1936): kapasite 1.01-1.04x ile YATAY, sanayi istihdami'
+        + ' 1.59x. Tesis sayisi olu tesis tasfiyesiyle duser (retireDeadFactories)'
+        + ' ama SANAYI TABANI da buyumuyor: cari fiyatlarla dunyanin yarisi'
+        + ' girdi maliyetini karsilamiyor. Bu fiyat yapisinin isi, ayri bir pass.');
   } else {
     console.log('  -> H3 gecti: sanayi yuzyil boyunca buyuyor.');
   }
