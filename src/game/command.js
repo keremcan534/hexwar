@@ -869,11 +869,14 @@ export function assaultOutlook(world, general, turn = world.turn ?? 0) {
   return best;
 }
 
-function pickFrontierTarget(world, unit, reserved) {
+function pickWalkInTarget(world, unit, reserved) {
   let best = null;
   let bestScore = -Infinity;
   for (const tile of world.neighbors(unit.tile)) {
-    // Sahipli toprak ancak savasla alinir; sahipsiz topraga yurunur.
+    // Sahipli toprak ancak operasyonla alinir (bkz. pickOperation); burasi
+    // yalnizca SAHIPSIZ topragin yerlesimidir. Dusman topragini da bu pasa
+    // acmak denendi ve OLCULDU: kartopu %39.8 -> %58.7, yani hat kirilinca
+    // kazanan tarafin sureklesi bir supurmeye donusuyordu (audit:borders).
     if (!tile.terrain.passable || controllerOf(tile) >= 0 || reserved.has(tile)) continue;
     // Barista oldugumuz birinin tumeni oradaysa gecemeyiz.
     const defenders = unitsOn(tile).filter((other) => other.nationId !== unit.nationId);
@@ -895,6 +898,18 @@ function pickFrontierTarget(world, unit, reserved) {
 /**
  * Taarruz. Hat itilmez — tumen onundeki province'e yurur. Orayi alinca sinir
  * kendiliginden ilerler ve gelecek hafta mevkisi yeniden ileriye dagitilir.
+ *
+ * IKI AYRI IS, IKI AYRI TEMPO — ve bunlar uzun sure ayni gemdeydi:
+ *   1. YURUYUS: sahipsiz toprak ya da dusmanin SAVUNMASIZ karesi. Hazirlik
+ *      istemez; bos araziye yurumek icin plan olgunlastirmanin anlami yok.
+ *   2. TAARRUZ: savunulan hat. Plan ister (MIN_ASSAULT_PLANNING), cadence'e
+ *      tabidir ve grup basina haftada tek operasyondur — bilerek kit.
+ *
+ * Eskiden savunmasiz dusman karesi de (2)'nin icindeydi: cephe bombos olsa
+ * bile ordu grubu 0.32 plan biriktirmeyi bekliyor, sonra cadence basina TEK
+ * hex aliyordu. Ustelik hazirliksiz baslayan taarruzda `maturity` cadence'i
+ * 2'den 4'e cikardigi icin en agresif durusta bile dort haftada bir hex
+ * dusuyordu. "Cephe bos ama ilerlemiyoruz" sikayetinin koku buydu.
  */
 function advance(game, general, divisions) {
   const world = game.world;
@@ -906,10 +921,14 @@ function advance(game, general, divisions) {
 
   // Siperli hatta once plan olgunlasir, sonra general tek bir yerel operasyon
   // acar. Birlik kimliklerini degistirerek ayni hafta ek taarruz acilamaz.
-  if (general.planning >= MIN_ASSAULT_PLANNING
-    && game.turns.turn >= (general.nextAssaultAt ?? 0)) {
+  // HAZIRLIK SARTI YALNIZ SAVUNULAN HEDEF ICINDIR. Savunmasiz bir kareye
+  // girmek icin plan olgunlastirmak, cephe bombosken orduyu haftalarca
+  // bekletiyordu; ustelik hazirliksiz baslayan taarruzda `maturity` cadence'i
+  // 2'den 4'e cikardigi icin en agresif durusta bile dort haftada bir hex
+  // dusuyordu. Bos kare artik yalniz TEMPOYA tabidir.
+  if (game.turns.turn >= (general.nextAssaultAt ?? 0)) {
     const operation = pickOperation(game, general, divisions, info);
-    if (operation) {
+    if (operation && (!operation.held || general.planning >= MIN_ASSAULT_PLANNING)) {
       const [lead, ...support] = operation.participants;
       const ok = operation.held
         ? startBattle(game, lead, operation.tile)
@@ -922,13 +941,19 @@ function advance(game, general, divisions) {
           }
         }
         for (const unit of committed) unit.post = { q: operation.tile.q, r: operation.tile.r };
-        general.nextAssaultAt = game.turns.turn + cadence;
+        // Ayni kareyi asagidaki yuruyus pasi de secmesin.
+        reserved.add(operation.tile);
+        // Bos kareyi almak hazirlik harcamaz: bir sonraki firsat ham
+        // agresiflik temposunda gelir, plan olgunlugu cezasi yoktur.
+        general.nextAssaultAt = game.turns.turn
+          + (operation.held ? cadence : info.cadence);
       }
     }
   }
 
-  // Sahipsiz toprak askeri operasyondan ayridir; eski dalgali yerlesim temposu
-  // korunur ve iki tumen ayni bos province'i rezerve edemez.
+  // YURUYUS: sahipsiz toprak ve savunmasiz dusman karesi. Tempo YALNIZ
+  // agresiflikten gelir — `maturity` burada YOK, cunku hazirlik savunulan
+  // hatta girmenin bedelidir, bos araziye yurumenin degil.
   for (let index = 0; index < divisions.length; index++) {
     const unit = divisions[index];
     if (!readyForOperation(game, unit)) continue;
@@ -939,11 +964,9 @@ function advance(game, general, divisions) {
     // sona baska bir oyun oluyordu (olculdu: ayni tohumdan 5 farkli sonuc).
     // Kayittan yuklemek de kimlikleri yeniden urettigi icin ayni dallanmayi
     // yaratiyordu. Sira ise dunyaya aittir: kayitta korunur, surecten bagimsizdir.
-    if ((game.turns.turn + index) % cadence !== 0) continue;
-    const target = pickFrontierTarget(world, unit, reserved);
+    if ((game.turns.turn + index) % info.cadence !== 0) continue;
+    const target = pickWalkInTarget(world, unit, reserved);
     if (!target) continue;
-    // Savunulan kareye yuruyusle girilmez (yol bulma dolu kareyi kapali sayar);
-    // orasi dogrudan muharebedir. Bos kareye ise yurunur ve isgal edilir.
     if (!orderMove(game, unit, target)) continue;
     reserved.add(target);
     // Mevki ileri tasinir, yoksa tumen aldigi kareden hemen geri cagriliyordu.
