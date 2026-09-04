@@ -6,6 +6,7 @@
 //   L3  kar dagitim beyani: haneye 0.5 + yatirima 0.08 ≤ 1 (kaynak yaratma yok)
 //   L4  vergi: taxRevenue = Σ sinif.taxPaid × taxEfficiency (odeyen var)
 //   L5  subvansiyon: Σ factory.subsidyPaid = haftalik subsidyGold birikimi
+//   L15 GSYH cift saymaz: gdp = tabanUretim + Σ tesis KATMA DEGERI
 //
 // Kontrollu tek-tesis senaryosu: bilinen kadro/uretimle VA = ucret + kar.
 
@@ -32,7 +33,7 @@ console.log('='.repeat(74));
   const game = headless('LGR-1');
   for (let i = 0; i < 150; i++) game.turns.endTurn();
   const world = game.world;
-  let worstL1 = 0; let worstL2 = 0; let worstL4 = 0; let worstL5 = 0;
+  let worstL1 = 0; let worstL2 = 0; let worstL4 = 0; let worstL5 = 0; let worstL15 = 0;
   for (const nation of world.nations) {
     if (!nation.alive || !nation.economy) continue;
     const economy = nation.economy;
@@ -66,6 +67,19 @@ console.log('='.repeat(74));
     // yuzden yalniz "tesis > kayit" yonu (odeme kayda gecmemis) sinanir.
     const recorded = Math.max(economy.subsidyGold ?? 0, economy.ledger?.subsidyCost ?? 0);
     if (subsidyPaid > recorded + 0.01) worstL5 = Math.max(worstL5, subsidyPaid - recorded);
+    // L15 — GSYH CIFT SAYMAZ. Sanayi terimi KATMA DEGERDIR, hasilat degil.
+    // Tesis alanlarindan geri turetilir: VA = kar + ucret − subvansiyon
+    //   subvansiyonsuz: kar = VA − ucret            -> kar + ucret = VA
+    //   subvansiyonlu : kar = 0, subvansiyon = ucret − VA -> ayni sonuc
+    // VA'nin kendisi 0'da kirpildigi icin (zarar eden tesis GSYH'ye eksi
+    // yazmaz) toplamda da ayni kirpma uygulanir.
+    const industrialVa = (economy.factories ?? []).reduce(
+      (sum, factory) => sum + Math.max(0, (factory.profit ?? 0) + (factory.wages ?? 0)
+        - (factory.subsidyPaid ?? 0)), 0,
+    );
+    const expectedGdp = (economy.baseOutputValue ?? 0) + industrialVa;
+    worstL15 = Math.max(worstL15, Math.abs((economy.gdp ?? 0) - expectedGdp)
+      / Math.max(1, expectedGdp));
   }
   console.log(`  L1 gelir bilesimi en kotu sapma: ${(worstL1 * 100).toFixed(2)}%`);
   console.log(`  L2 bordro toplami sapmasi: ${n2(worstL2)}`);
@@ -73,6 +87,7 @@ console.log('='.repeat(74));
     + ` = ${PROFIT_TO_CAPITAL + PROFIT_TO_REINVEST} ≤ 1 ${PROFIT_TO_CAPITAL + PROFIT_TO_REINVEST <= 1 ? 'OK' : 'IHLAL'}`);
   console.log(`  L4 vergi kimligi en kotu sapma: ${(worstL4 * 100).toFixed(2)}%`);
   console.log(`  L5 kayitsiz subvansiyon: ${n2(worstL5)}`);
+  console.log(`  L15 GSYH = taban + sanayi KATMA DEGERI, en kotu sapma: ${(worstL15 * 100).toFixed(2)}%`);
   if (worstL1 > 0.01) {
     finding('HIGH', 'Sinif geliri beyanli kanallardan sapmis',
       'income = 0.35×taban×pay + bordro×pay (+ kar payi)', `${(worstL1 * 100).toFixed(2)}%`, '');
@@ -89,6 +104,12 @@ console.log('='.repeat(74));
   if (worstL5 > 1) {
     finding('HIGH', 'Subvansiyon odemesi deftere gecmemis',
       'tesislere odenen destek defterde gorunmeli', n2(worstL5), '');
+  }
+  if (worstL15 > 0.01) {
+    finding('HIGH', 'GSYH cift sayiyor',
+      'gdp = tabanUretim + Σ tesis katma degeri (hasilat DEGIL)',
+      `${(worstL15 * 100).toFixed(2)}%`,
+      'ara mal hem kendi basina hem alt zincirin hasilatinda sayiliyor');
   }
 }
 

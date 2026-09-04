@@ -28,6 +28,8 @@ alan olarak kayitli, denetimin okudugu, ekranin gosterebilecegi akis.
 | L7 | hane artigi bolusumu: birikim 0.50 + ozel sermaye 0.22 ≤ 1 | sabitler (politics not) |
 | L8 | gumruk geliri = ithalat degeri × tarife (birebir); ic tuketim gumruklenmez | tariff (sapma 0.00) |
 | L9 | Δhazine = defter net + borclanilan − odenen + temerrut (bilanco kimligi) | updateLedger + save |
+| L15 | GSYH CIFT SAYMAZ: `gdp` = tabanUretim + Σ tesis KATMA DEGERI (hasilat degil); ara mal alt zincirin hasilatinda ikinci kez sayilmaz | ledger L15 (sapma %0.00) |
+| L16 | REEL seri ayridir: `realGdp` ayni toplam TABAN fiyatlarla. Buyume yalniz burada okunur — nominal seride hacim artisi fiyat dususuyle sifirlanir | price-stability TEST 4 |
 
 ## Sirket / borsa (audit:companies)
 

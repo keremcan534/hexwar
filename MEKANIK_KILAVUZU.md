@@ -538,10 +538,35 @@ yarısında 0.5, bantta çakılı malda durur). RGO verimini global kısmak
 (0.8/0.7/0.6) denendi ve İŞE YARAMADI: oran yine tırmandı, çünkü sorun
 başlangıç seviyesi değil birikimdi.
 
-**AÇIK KALAN.** Dünya kapasitesi tüketimin ~1.9 katı; denge taban fiyatın
-yarısında kuruluyor ve yüzyıl boyunca gerçek bir BÜYÜME eğrisi yok. Bu bir
-kalibrasyon işidir (RGO verimi + kişi başı sepet + sanayinin emişi birlikte)
-ve kendi pass'ini ister.
+**Dengenin yeri kapalı formda.** Denge koşulu `dengesizlik × PRICE_SPEED +
+çapa = 0`. `r = arz/talep`, `x = fiyat/taban` konursa:
+
+    x = 1 − K·(r−1)/(r+1)   ,   K = PRICE_SPEED / PRICE_ANCHOR = 0.09/0.018 = 5
+
+Ölçüldü (17 mal, gözlenen fiyata karşı RMS hata 0.06). Beşlik amplifikasyon
+şu demek: **%22'lik kalıcı fazla fiyatı yarıya indirir, %50'lik fazla malı
+banda çiviler.** "Denge neden taban fiyatın yarısında" sorusunun cevabı bu
+tek satırdır — tesadüf değil, iki sabitin oranı.
+
+**AÇIK KALAN.** Dünya kapasitesi tüketimini aşıyor ve makas açılıyor (30.
+yılda ~1.9, 100. yılda 3.2–3.7). Denge taban fiyatın yarısında kuruluyor ve
+yüzyıl boyunca gerçek bir BÜYÜME eğrisi yok — ölçüldü, 2 tohum, 100 yıl:
+reel kişi başı tüketim **0.85× ve 0.93×**, yani büyüme yok değil, hafif
+küçülme var. Fabrika seviyeleri 1856'da donuyor (562 → 562, 90 yıl) çünkü
+`autoUpgradeFactory`'nin iki kapısı (`profit <= 0`, `laborFill < 0.7`) bir
+daha açılmıyor; işgücü tavanı ise hiç bağlamıyor (yüzyıl boyunca tavanın
+%16–18'i kullanılıyor, 6–7 milyon kadro boş duruyor).
+
+Kök sebep talep tarafında: `bought = quantity × afford` ve `afford ≤ 1`, yani
+talep **sabit sepetin üstüne çıkamaz**. Gelir artınca talep artmaz; fazla
+gelir `savings` tavanında kaybolur. Tek büyüme kanalı sınıf atlama, o da
+`CLASS_CEILING` ile kilitli (tavanda bile kişi başı sepet 1.84×). Victoria
+3'te bu ok vardır — gelir → yaşam standardı → ihtiyaç → talep; bizde yok.
+Bu modelde büyüme ölçülemiyor değil, **imkânsız**.
+
+Bu bir kalibrasyon işidir (RGO verimi + kişi başı sepet + sanayinin emişi
+birlikte) ve kendi pass'ini ister. `audit:price-stability` TEST 4 bulguyu
+sayıyla tutar.
 
 **Pratikte** — dünya fiyatı tabana yapışan hammaddenin province'i yıllar
 içinde kadrosunu ve çıktısını yarıya indirir, açığa çıkan nüfus göçle

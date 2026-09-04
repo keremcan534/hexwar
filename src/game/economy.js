@@ -1314,6 +1314,7 @@ export function initNationEconomy(world, nation) {
     trade: emptyTradeSummary(),
     ledger: emptyLedger(),
     gdp: 0,
+    realGdp: 0,
     taxRevenue: 0,
     tariffRevenue: 0,
     importCost: 0,
@@ -1465,6 +1466,16 @@ export function socialLevel(nation, programId) {
 
 export function priceOf(world, goodId) {
   return world.market?.goods?.[goodId]?.price ?? GOODS[goodId]?.basePrice ?? 0;
+}
+
+/**
+ * Malın SABIT (taban) fiyatı — reel değerleme için. Cari fiyat serbest
+ * değişken olduğu için nominal bir toplam büyümeyi ölçemez: hacim %30 artarken
+ * fiyat yarıya inince sayı düşer. Reel seri bu yüzden ayrı bir fonksiyondan
+ * okunur; ikisi karışırsa "büyüme" ölçüsü yine fiyata bağlanır.
+ */
+export function basePriceOf(goodId) {
+  return GOODS[goodId]?.basePrice ?? 0;
 }
 
 export function factoryMargin(world, typeId) {
@@ -2796,7 +2807,17 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
   const economy = nation.economy;
   const reformMods = reformModifiers(nation);
   let totalProfit = 0;
-  let industrialOutput = 0;
+  // SANAYININ GSYH'YE KATKISI KATMA DEGERDIR, HASILAT DEGIL. Eskiden burada
+  // `industrialOutput += fiyat × miktar` birikiyordu, yani fabrika hasilatinin
+  // tamami. Demir cevheri RGO'da bir kez, celigin hasilatinda bir daha, aletin
+  // hasilatinda bir daha sayiliyordu — klasik cift sayim. Olculdu (2 tohum,
+  // 30 yil): GSYH 1.64x/1.69x sisiyor, sanayinin payi 6.65x/7.61x abartiliyor
+  // ve buyuk guc siralamasinda 16/31 ve 13/26 ulke yer degistiriyor. Dogru
+  // sayi (`valueAdded`) zaten asagida hesaplaniyordu ve yalnizca bordroda
+  // kullaniliyordu.
+  let industrialValueAdded = 0;
+  // Ayni toplam TABAN fiyatlarla: buyume egrisini ancak reel seri gosterir.
+  let industrialReal = 0;
   // Bordro bu hafta sifirdan birikir; fiscalBalance sinif gelirine dagitir.
   economy.wagesPaid = 0;
 
@@ -2887,6 +2908,12 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
 
     let revenue = 0;
     let inputCost = 0;
+    // Reel ikizler TABAN fiyatla degerlenir ve TARIFE ICERMEZ: gumruk bir
+    // transferdir, uretilen mal degil. Nominal maliyet tarifeyi icermeye devam
+    // eder cunku bordronun tabani odur (bkz. valueAdded) ve o dengeye dokunmak
+    // bu duzeltmenin isi degil.
+    let realRevenue = 0;
+    let realInputCost = 0;
     for (const id in type.inputs) {
       const amount = type.inputs[id] * inputScale;
       const requested = amount * laborThroughput;
@@ -2903,6 +2930,7 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
       const importShare = clamp(economy.goodsFlow?.[id]?.importShare ?? 0, 0, 1);
       const tariffFactor = 1 + (economy.tariff / 100) * importShare;
       inputCost += priceOf(world, id) * consumed * tariffFactor;
+      realInputCost += basePriceOf(id) * consumed;
     }
     if (factory.typeId === 'ARMS_FACTORY') {
       const line = ensureProductionLine(factory);
@@ -2916,7 +2944,7 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
       addNationFlow(nation, id, 'production', qty);
       ownOutput[id] = (ownOutput[id] ?? 0) + qty;
       revenue += priceOf(world, id) * qty;
-      industrialOutput += priceOf(world, id) * qty;
+      realRevenue += basePriceOf(id) * qty;
       if (factory.typeId === 'ARMS_FACTORY') factory.lineOutput += qty;
     }
     // İşçi, girdi kıtlığında üretim düşse de fabrikada kalır ve ücretini alır.
@@ -2924,6 +2952,10 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
     // Ucret = katma degerin emek payi (bkz. LABOR_SHARE): fiyat seviyesiyle
     // olceklenir ve fiscalBalance'ta sinif gelirine GERCEKTEN odenir.
     const valueAdded = Math.max(0, revenue - inputCost);
+    // TEK TANIM: ayni katma deger hem bordronun tabani hem GSYH'nin sanayi
+    // terimi. Iki ayri yerde yazilsaydi biri kayinca ekran defteri tutmazdi.
+    industrialValueAdded += valueAdded;
+    industrialReal += Math.max(0, realRevenue - realInputCost);
     const wages = valueAdded * Math.min(0.85, LABOR_SHARE * reformMods.wageCost);
     economy.wagesPaid += wages;
     // Tesis basina bordro sahada dursun: denetim VA = ucret + kar kimligini
@@ -2946,7 +2978,7 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
   }
 
   economy.factoryProfit = totalProfit;
-  return industrialOutput;
+  return { value: industrialValueAdded, real: industrialReal };
 }
 
 // Sinif sepetlerinin onceden acilmis [goodId, need] listeleri: tablo statik,
@@ -3261,7 +3293,7 @@ function populationDemand(world, nation, market) {
 export const INCOME_POOL_SHARE = 0.35;
 export const INCOME_WEIGHTS = { lower: 0.42, middle: 0.33, upper: 0.25 };
 
-function fiscalBalance(nation, baseOutputValue, industrialOutput) {
+function fiscalBalance(nation, baseOutputValue) {
   const economy = nation.economy;
   // GELIR ARTIK UC GERCEK KANALDIR:
   //   1. Kirsal/temel uretimin pazarlanan payi (incomePool) — RGO degeri.
@@ -4482,10 +4514,18 @@ export function runNationEconomy(game, nation, ctx) {
     const ownOutput = nationOutputScratch;
     for (let i = 0; i < GOOD_IDS.length; i++) ownOutput[GOOD_IDS[i]] = 0;
     rawProduction(world, nation, market, ownOutput);
+    // RGO'nun katma degeri brut ciktisina esittir: bu modelde tarlanin
+    // piyasadan aldigi bir girdi yok (gubre TALEP olarak yazilir ama RGO'ya
+    // maliyet olarak islenmez). Sanayi icin ayni sey DOGRU DEGILDIR — bkz.
+    // runFactories.
     let baseOutputValue = 0;
-    for (const id in ownOutput) baseOutputValue += priceOf(world, id) * ownOutput[id];
+    let baseOutputReal = 0;
+    for (const id in ownOutput) {
+      baseOutputValue += priceOf(world, id) * ownOutput[id];
+      baseOutputReal += basePriceOf(id) * ownOutput[id];
+    }
     mark('raw');
-    const industrialOutput = runFactories(world, nation, market, ownOutput, inputAvailability);
+    const industry = runFactories(world, nation, market, ownOutput, inputAvailability);
     // İşe alım ve seviye atlama aylıktır: bu haftanın kârı görüldükten sonra,
     // dört haftada bir. Sanayinin 100 yıla yayılmasını sağlayan tempo budur.
     if ((world.turn ?? 1) % HIRING_INTERVAL === 0) runFactoryEmployment(game, nation);
@@ -4574,11 +4614,16 @@ export function runNationEconomy(game, nation, ctx) {
       (military.supplyIndex ?? 1) * 0.85 + weekSupply * 0.15, 0, 1,
     );
 
-    nation.economy.gdp = baseOutputValue + industrialOutput;
+    // GSYH = RGO katma degeri + SANAYI KATMA DEGERI. Cari fiyatlarla.
+    nation.economy.gdp = baseOutputValue + industry.value;
+    // REEL GSYH ayni toplam TABAN fiyatlarla. Buyume egrisini yalniz bu
+    // gosterebilir: nominal seride hacim artisi ile fiyat dususu birbirini
+    // goturuyor ve "buyume yok" bulgusu yillarca fiyat cokusuyle karisti.
+    nation.economy.realGdp = baseOutputReal + industry.real;
     // Korunum denetimi gelir bilesimini yeniden hesaplayabilsin diye taban
     // uretim degeri ayrica saklanir (gdp = taban + sanayi tek basina yetmez).
     nation.economy.baseOutputValue = baseOutputValue;
-    fiscalBalance(nation, baseOutputValue, industrialOutput);
+    fiscalBalance(nation, baseOutputValue);
     runPopulationMobility(nation, world.turn);
     mark('fiscal');
     runPrivateSector(game, nation);

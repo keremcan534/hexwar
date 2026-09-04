@@ -207,6 +207,9 @@ export function snapshotNation(world, nation) {
     fill: jobs > 0 ? employees / jobs : 1,
     factoryProfit: e.factoryProfit ?? 0,
     gdp: e.gdp ?? 0,
+    // Reel GSYH taban fiyatlarla: buyume ancak bu seride okunur (bkz.
+    // economy.js basePriceOf). Nominal seri fiyat seviyesiyle birlikte kayar.
+    realGdp: e.realGdp ?? 0,
     subsidized: factories.filter((f) => f.subsidized).length,
     // --- ticaret ---
     imports: trade.imports ?? 0,
