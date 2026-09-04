@@ -548,14 +548,57 @@ başlangıç seviyesi değil birikimdi.
 banda çiviler.** "Denge neden taban fiyatın yarısında" sorusunun cevabı bu
 tek satırdır — tesadüf değil, iki sabitin oranı.
 
-**AÇIK KALAN.** Dünya kapasitesi tüketimini aşıyor ve makas açılıyor (30.
-yılda ~1.9, 100. yılda 3.2–3.7). Denge taban fiyatın yarısında kuruluyor ve
-yüzyıl boyunca gerçek bir BÜYÜME eğrisi yok — ölçüldü, 2 tohum, 100 yıl:
-reel kişi başı tüketim **0.85× ve 0.93×**, yani büyüme yok değil, hafif
-küçülme var. Fabrika seviyeleri 1856'da donuyor (562 → 562, 90 yıl) çünkü
-`autoUpgradeFactory`'nin iki kapısı (`profit <= 0`, `laborFill < 0.7`) bir
-daha açılmıyor; işgücü tavanı ise hiç bağlamıyor (yüzyıl boyunca tavanın
-%16–18'i kullanılıyor, 6–7 milyon kadro boş duruyor).
+**KAPANDI — 2026-09-04.** Bu bölüm uzun süre "açık kalan" diye duruyordu:
+dünya kapasitesi tüketimini aşıyor, denge taban fiyatın yarısında kuruluyor
+ve yüzyılda büyüme eğrisi yok. Dört hipotez elendikten sonra doğru çift
+bulundu ve **birlikte** kalibre edildi:
+
+    INCOME_POOL_SHARE  0.35 → 0.70      (pazarlanan pay)
+    PRICE_ANCHOR       0.018 → 0.060    (K = PRICE_SPEED/PRICE_ANCHOR: 5 → 1.5)
+
+| hedef (`audit:growth`, 100 yıl × 2 tohum) | önce | sonra |
+|---|---|---|
+| H1 reel kişi başı tüketim | 0.94 / 1.01 | **1.03 / 1.05** ✓ |
+| H2 orta+üst sınıf payı | %5.85 / %3.84 | **%13.83 / %11.63** ✓ |
+| H3 tesis büyümesi | 1.12× / 1.03× | 1.19× / 1.16× ✗ |
+
+`audit:price-stability` artık **hiç bulgu vermiyor** — dört testin dördü de
+geçiyor. Çakılı mal 16'dan 14'e indi.
+
+Gerekçeler ayar değil: çapa, yukarıdaki kapalı formun tek koludur ve K'yı
+5'ten 1.5'e indirir (kıtlık ölmez — dengesizlik sinyali +0.09'a çıkarken çapa
+tavanda en fazla −0.053 çeker). Havuz payı ise muhasebedir: pazarlanan pay +
+kendi tükettiği pay (`SUBSISTENCE_SHARE.lower` 0.30) aynı bölüşümün iki
+yarısıdır ve toplamları 0.65 tutuyordu; %35 ne pazara ne haneye yazılıyordu.
+0.70 + 0.30 = 1.00 ile bölüşüm kapanır.
+
+**DENETİM KUSURU — `audit:market` kıyafet şoku testi kırılgan.** Değişiklikten
+sonra MEDIUM veriyor ama sebebi davranış değil, testin kendisi:
+
+| | önce | sonra |
+|---|---|---|
+| izlenen ülke | #0 | **#28** |
+| taban büyüme (120 hafta) | %14.5 | **%0.7** |
+| kıtlık kolunda büyüme | %0.7 | %1.0 |
+| silinen pay | %95 (geçti) | −%51.3 (kaldı) |
+
+İki sorun var. Birincisi `WATCHED` ülkeyi `pickNation` seçiyor (en çok
+fabrikası olan) ve bu sıralama kod sürümüyle kayıyor — iki koşu **farklı
+ülkelere** bakıyor, karşılaştırma elma-armut. İkincisi izlenen ülkede nüfus
+iki kolda da neredeyse aynı (4.768.453 / 4.784.775, fark %0.3): test sıfıra
+yakın iki büyümeyi bölüp anlamsız bir oran üretiyor. `baseGrowth > 0` kapısı
+bunu elemiyor.
+
+Test, oranı hesaplamadan önce anlamlı bir taban büyüme (ör. %5) istemeli ve
+izlenen ülkeyi kod sürümünden bağımsız sabitlemeli. Şoku ölçmek isterken
+`pickNation`'ın kaymasını ölçüyor.
+
+**H3 AÇIK KALIYOR.** Fabrika sayısı 1846'dan sonra hâlâ yeterince büyümüyor.
+Kilidi bu iki sabitte değil: yeni tesisin bedeli kurulu sayıyla tırmanırken
+(`factoryCost`: `1 + kuruluSayı × 0.05`) kapitalistin bütçesi fiyatla
+çöküyor (`privateCommitRoom`). Ölçüldü: makas 1838–46 arasında kapanıyor ve
+bir daha açılmıyor — 1838'de 27 ülkenin 24'ü fabrika açabilirken 1846'da
+sıfır. Ayrı bir tur.
 
 Talep tarafında bir tavan var: `bought = quantity × afford` ve `afford ≤ 1`,
 yani talep **sabit sepetin üstüne çıkamaz**. Victoria 3'te bu okun karşılığı
