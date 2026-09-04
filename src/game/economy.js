@@ -1519,10 +1519,23 @@ export function factoryCost(nation, typeId) {
   const type = FACTORIES[typeId];
   if (!type) return null;
   const built = nation.economy?.factories?.length ?? 0;
-  // Katsayı 0.12'den 0.05'e indi: tesis türü 7'den 29'a çıkınca kurulu sayı da
-  // çok arttı ve eski eğim 40. fabrikada maliyeti 5 katına çıkarıp
-  // sanayileşmeyi tamamen durduruyordu.
-  const scale = 1 + built * 0.05;
+  // Katsayı 0.12 -> 0.05 -> 0.02. Aynı sebep her seferinde: eğim kurulu sayıyla
+  // çarpıldığı için sanayileşmeyi kendi başarısı durduruyor.
+  //
+  // 0.05 -> 0.02 OLCULDU (audit:growth + tarama). Kapitalistin bütçesi
+  // (`privateCommitRoom` = akış × PRIVATE_FUNDING_HORIZON) fiyat seviyesiyle
+  // birlikte düşerken bedel kurulu sayıyla tırmanıyordu; makas 1838-46 arasında
+  // kapanıyor ve bir daha açılmıyordu — 1838'de 27 ülkenin 24'ü fabrika
+  // açabiliyorken 1846'da SIFIR. 20 fabrikalı bir ülkede çarpan 2.0x yerine
+  // 1.4x olur.
+  //
+  // Tek sabit, bütün ölçütlerde iyileşme (40 yıl, gözlemci, PRICE-A):
+  //   tesis 463 -> 581 · H1 1.498 -> 1.569 · H2 %12.29 -> %13.50
+  //   alt sınıf sepeti %60.7 -> %66.7 · kârlı tesis %65 -> %76
+  //   arz/talep 1.93 -> 1.93 (değişmedi)
+  // 0.01 daha çok tesis verir (624) ama arz/talep'i 2.03'e iter: fazla ucuz
+  // fabrika, kapatmaya çalıştığımız makası yeniden açar.
+  const scale = 1 + built * 0.02;
   return Object.fromEntries(
     Object.entries(type.cost).map(([resource, amount]) => [resource, Math.round(amount * scale)]),
   );

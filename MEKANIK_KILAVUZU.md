@@ -605,12 +605,32 @@ Test, oranı hesaplamadan önce anlamlı bir taban büyüme (ör. %5) istemeli v
 izlenen ülkeyi kod sürümünden bağımsız sabitlemeli. Şoku ölçmek isterken
 `pickNation`'ın kaymasını ölçüyor.
 
-**H3 AÇIK KALIYOR.** Fabrika sayısı 1846'dan sonra hâlâ yeterince büyümüyor.
-Kilidi bu iki sabitte değil: yeni tesisin bedeli kurulu sayıyla tırmanırken
-(`factoryCost`: `1 + kuruluSayı × 0.05`) kapitalistin bütçesi fiyatla
-çöküyor (`privateCommitRoom`). Ölçüldü: makas 1838–46 arasında kapanıyor ve
-bir daha açılmıyor — 1838'de 27 ülkenin 24'ü fabrika açabilirken 1846'da
-sıfır. Ayrı bir tur.
+**H3 DE KAPANDI — üçüncü sabitle.** Fabrika büyümesinin kilidi bu iki sabitte
+değildi: yeni tesisin bedeli kurulu sayıyla tırmanırken (`factoryCost`)
+kapitalistin bütçesi fiyatla çöküyordu. Ölçüldü: makas 1838–46 arasında
+kapanıyor ve bir daha açılmıyordu — 1838'de 27 ülkenin 24'ü fabrika
+açabilirken 1846'da **sıfır**.
+
+    factoryCost egimi  0.05 → 0.02      (20 fabrikada carpan 2.0x → 1.4x)
+
+Tek sabit, taramada bütün ölçütlerde iyileşme (40 yıl, gözlemci, PRICE-A):
+tesis 463 → 581 · H1 1.498 → 1.569 · H2 %12.29 → %13.50 · alt sınıf sepeti
+%60.7 → %66.7 · kârlı tesis %65 → %76 · arz/talep 1.93 (değişmedi).
+0.01 daha çok tesis verir (624) ama arz/talep'i 2.03'e iter — fazla ucuz
+fabrika, kapatmaya çalıştığımız makası yeniden açar.
+
+**Üç hedefin üçü de yeşil** (`audit:growth`, 100 yıl × 2 tohum):
+
+| | başlangıç | son |
+|---|---|---|
+| H1 reel kişi başı tüketim | 0.94 / 1.01 | **1.06 / 1.16** ✓ |
+| H2 orta+üst sınıf payı | %5.85 / %3.84 | **%12.43 / %16.74** ✓ |
+| H3 tesis büyümesi | 1.12× / 1.03× | **1.46× / 1.27×** ✓ |
+
+Denetim artık bulgu vermiyor. Elenen hipotezler (talep tavanı, income-pool'un
+tek başına, RGO veriminin global kısılması, işgücü tavanı, sınıf ağırlıkları,
+bordro payı) ve neden elendikleri yukarıda; kaydın amacı aynı yolun ikinci kez
+denenmemesidir.
 
 Talep tarafında bir tavan var: `bought = quantity × afford` ve `afford ≤ 1`,
 yani talep **sabit sepetin üstüne çıkamaz**. Victoria 3'te bu okun karşılığı
