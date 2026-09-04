@@ -5,7 +5,7 @@
 import { canAfford, pay } from './cities.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import {
-  RGO_TYPES, provinceOutput, provincePopulation, rgoJobsOf,
+  RGO_TYPES, provinceOutput, provincePopulation, provinceSoldiers, rgoJobsOf,
 } from './provinces.js';
 import { delegationActive, noteDelegated } from './delegation.js';
 import { atWar } from './diplomacy.js';
@@ -1036,6 +1036,18 @@ export function jobTotalsOf(world, nation) {
 export const LOWER_WORKFORCE_SHARE = 0.23;
 
 /**
+ * Sanayiye adam verebilecek alt sinif: silah altindakiler DUSULUR. Askerler
+ * artik nufusun icinde sayildigi icin (bkz. provinces.claimSoldiers) tavan
+ * onlari da kapsardi ve seferber olmus bir ulke, olmayan isciyi ise
+ * alabilirdi. Asker ordunun tamamina yakini alt siniftandir; pay ayirmak
+ * yerine tamami alt siniftan dusulur — fark gurultu, kural okunur kalir.
+ */
+function civilianLower(economy) {
+  const lower = Math.max(0, economy?.classes?.lower?.population ?? 0);
+  return Math.max(0, lower - Math.max(0, economy?.soldiersUnderArms ?? 0));
+}
+
+/**
  * ISCI KORUNUMU: Sfabrika kadrosu <= alt sinifin calisabilir payi.
  *
  * Ise alim tavani zaten uygular ama nufusu SONRADAN dusuren yollar (nufus
@@ -1049,7 +1061,7 @@ function alignWorkforce(nation) {
   if (!economy?.classes) return;
   const factories = economy.factories ?? [];
   const employed = factories.reduce((sum, factory) => sum + (factory.employees ?? 0), 0);
-  const cap = Math.max(0, economy.classes.lower?.population ?? 0) * LOWER_WORKFORCE_SHARE;
+  const cap = civilianLower(economy) * LOWER_WORKFORCE_SHARE;
   if (employed <= cap || employed <= 0) return;
   const scale = cap / employed;
   for (const factory of factories) factory.employees = (factory.employees ?? 0) * scale;
@@ -2304,6 +2316,9 @@ function updateClasses(world, nation) {
   const economy = nation.economy;
   const population = populationOf(world, nation);
   economy.population = population;
+  // Silah altindakiler nufusun ICINDEDIR; isgucu tavani icin ayrica bilinir
+  // (bkz. civilianLower). Asker tarlada da fabrikada da calismaz.
+  economy.soldiersUnderArms = provinceSoldiers(world, nation.id);
   reconcilePopulation(nation, population);
 }
 
@@ -2720,7 +2735,7 @@ function runFactoryEmployment(game, nation) {
   const schooling = 1 + clamp(economy.literacy ?? 0, 0, 1) * 0.5
     + socialLevel(nation, 'education') * 0.25
     + higherEducationBonus(nation);
-  const lower = Math.max(0, economy.classes.lower.population);
+  const lower = civilianLower(economy);
   const employed = factories.reduce((sum, factory) => sum + factory.employees, 0);
   // KIRDAN SANAYIYE GECIS ARTIK BIR SAYAC ISLEMI DEGIL. Eskiden burada
   // `farmers` sayacindan bir kohort dusup `workers` sayacina ekleniyordu;

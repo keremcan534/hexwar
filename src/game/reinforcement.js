@@ -8,7 +8,7 @@ import {
 import { generalOfArmy, generalRecoveryBonus } from './command.js';
 import { nationManpower, provinceManpower } from './recruitment.js';
 import { UNIT_TYPES, refreshArmy, resolveTypeId } from './units.js';
-import { occupiedShareOf } from './provinces.js';
+import { claimSoldiers, occupiedShareOf } from './provinces.js';
 
 export const BASE_REINFORCEMENT_RATE = 24;
 
@@ -103,7 +103,7 @@ function drawManpower(world, nationId, regiment, requested) {
     if (remaining <= 0) break;
     const take = Math.min(remaining, provinceManpower(world, tile));
     if (take <= 0) continue;
-    tile.province.population -= take;
+    claimSoldiers(tile.province, take);
     appendDraw(regiment, tile, take);
     drawn += take;
     remaining -= take;

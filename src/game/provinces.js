@@ -201,6 +201,10 @@ function initialProvinceEcon(world, province) {
     ) * 100 * POPULATION_SCALE),
     rgoBaseDevelopment: track === 'agriculture' ? agriculture : extraction,
     migration: 0,
+    // Silah altindaki insan. Nufusun ICINDE durur, ondan DUSULMEZ: asker de
+    // vatandastir. Bu sayac yalnizca "bu insanlar simdilik baska bir ise
+    // bagli" der — ne tarlada calisir ne ikinci kez askere alinabilir.
+    soldiers: 0,
     industrialEmployees: 0,
     industrialJobs: 0,
   };
@@ -429,6 +433,39 @@ export function provincePopulation(world, nationId) {
 }
 
 /** Küme econ'unun RGO kadrosu; gelişim kadroyu 500'lük adımlarla açar. */
+/**
+ * Bir ulusun silah altindaki toplam insani. Nufusun ICINDEDIR; sivil nufus
+ * istendiginde nufustan bu cikarilir (bkz. economy.js isgucu tavani).
+ */
+export function provinceSoldiers(world, nationId) {
+  let total = 0;
+  for (const province of world.provinces ?? []) {
+    if (province.owner === nationId && province.econ) total += province.econ.soldiers ?? 0;
+  }
+  return Math.round(total);
+}
+
+/**
+ * Alayin bir province'ten TUTTUGU insan sayisini artirir. Nufusa dokunmaz:
+ * askere alma bir insani yok etmez, yalnizca ne is yaptigini degistirir.
+ */
+export function claimSoldiers(econ, men) {
+  if (!econ || !(men > 0)) return;
+  econ.soldiers = (econ.soldiers ?? 0) + men;
+}
+
+/**
+ * Tutulan insanlari birakir. `died` ise adam gercekten olmustur ve nufustan
+ * da duser — muharebe kaybi artik ulusal nufus sayacinda GORUNUR (eskiden
+ * askerler zaten nufusun disindaydi, yani ordunun yok olmasi ulke nufusunu
+ * hic degistirmiyordu).
+ */
+export function releaseSoldiers(econ, men, died = false) {
+  if (!econ || !(men > 0)) return;
+  econ.soldiers = Math.max(0, (econ.soldiers ?? 0) - men);
+  if (died) econ.population = Math.max(0, (econ.population ?? 0) - men);
+}
+
 export function rgoJobsOf(econ) {
   const type = RGO_TYPES[econ?.rgo];
   if (!econ || !type) return 0;
@@ -545,7 +582,11 @@ export function ruralPopulation(econ) {
   const population = Math.max(0, econ?.population ?? 0);
   const local = Math.min(Math.max(0, econ?.industrialEmployees ?? 0), population);
   const commuters = Math.max(0, econ?.industrialCommuters ?? 0);
-  return Math.max(0, population - local - commuters);
+  // Silah altindaki adam tarlada da degildir: seferberlik uretimi DUSURUR.
+  // Modelin dogru olan tarafi buydu ve korunuyor; yanlis olan tarafi
+  // (adami nufustan silmek) kaldirildi.
+  const armed = Math.max(0, econ?.soldiers ?? 0);
+  return Math.max(0, population - local - commuters - armed);
 }
 
 export function rgoLaborScale(province, jobs) {

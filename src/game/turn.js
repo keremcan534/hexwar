@@ -29,7 +29,8 @@ import {
   beginCommand, finishCommand, initCommand, releaseArmy, runNationCommandSteps, seedGenerals,
 } from './command.js';
 import {
-  initProvinces, provincePopulation, refreshProvinceOwner, runProvinces,
+  initProvinces, provincePopulation, provinceSoldiers, refreshProvinceOwner,
+  releaseSoldiers, runProvinces,
 } from './provinces.js';
 import { initPolitics, runPolitics } from './politics.js';
 import { captureConstructionAt, initConstruction, runConstruction } from './construction.js';
@@ -142,6 +143,7 @@ export class TurnManager {
         if (unit?.regiments?.[0] && !unit.regiments[0].draws) unit.regiments[0].draws = [];
       }
       nation.economy.population = provincePopulation(world, nation.id);
+      nation.economy.soldiersUnderArms = provinceSoldiers(world, nation.id);
       reconcilePopulation(nation, nation.economy.population);
     }
     initPolitics(world);
@@ -446,15 +448,6 @@ export class TurnManager {
       stamp();
     };
 
-    // Yurdunu kaybetmis alayin dagilmasiyla kaybolan insan gucu ACIK bir
-    // kanaldir (recruitment.js disband -> economy.strandedManpower). Sayac
-    // haftanin EN BASINDA sifirlanir: karar YZ evresinde veriliyor, province
-    // ekonomisi ise cok sonra kosuyor — orada sifirlansa hafta boyunca hep 0
-    // okunur ve nufus muhasebesi kaydi kayipa yazardi.
-    for (const nation of world.nations) {
-      if (nation.economy) nation.economy.strandedManpower = 0;
-    }
-
     // Temas tablosu tur başında bir kez: her ülke için ayrı taramak pahalı.
     this.phase = 'contacts';
     world.contacts = computeContacts(world);
@@ -741,6 +734,15 @@ export class TurnManager {
   }
 
   killUnit(unit) {
+    // Yok edilen (ya da teslim olan) tumende hala tutulan adamlar KAYIPTIR:
+    // nufustan da duserler. Kalan tutma birakilmazsa o insanlar sonsuza dek
+    // "askerde" gorunur ve province bir daha onlari asker olarak veremezdi.
+    for (const regiment of unit.regiments ?? []) {
+      for (const draw of regiment.draws ?? []) {
+        releaseSoldiers(this.world.get(draw.q, draw.r)?.province, draw.men ?? 0, true);
+      }
+      regiment.draws = [];
+    }
     // Muharebe kare anahtarlıdır: ölen tümen taraf listelerinden düşer, muharebe
     // kendisi sürer. Tarafı boşalırsa bir sonraki raund onu kapatır.
     removeFromBattles(this.world, unit);

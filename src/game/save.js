@@ -54,7 +54,11 @@ import { ensureDelegation, restoreDelegation } from './delegation.js';
 // kadrosu, RGO kotasi) ESKI olcektedir; goc yazilsa on yerde bir alani
 // atlamak yarim goc etmis bir kayit birakirdi ve yarim kayit reddedilen
 // kayittan daha kotudur. v17 bilerek gocurulmez.
-export const SAVE_VERSION = 18;
+// 19: ASKER ARTIK NUFUSTAN SILINMIYOR. Askere alma province nufusundan adam
+// cikariyordu; province.econ artik `soldiers` sayaciyla yalnizca "silah
+// altinda" isaretler. v18 kayitlarinda nufus askerleri ICERMEZ ve `soldiers`
+// alani yoktur; yuklenirse ulke nufusu oldugundan az gorunurdu.
+export const SAVE_VERSION = 19;
 /** Gocu bilinen eski surumler: deserialize bunlari da kabul eder. */
 const MIGRATABLE_VERSIONS = new Set([14, 16]);
 const STORAGE_KEY = 'hexwar.save';

@@ -388,11 +388,11 @@ function finishBattle(game, battle, attackerWon) {
 }
 
 /** Kayiplari tarafa gucu oraninda dagitir. */
-function distributeLosses(units, casualties, organizationLoss) {
+function distributeLosses(units, casualties, organizationLoss, world) {
   const total = units.reduce((sum, unit) => sum + armyPower(unit), 0);
   for (const unit of units) {
     const share = total > 0 ? armyPower(unit) / total : 1 / units.length;
-    applyArmyLosses(unit, casualties * share, organizationLoss);
+    applyArmyLosses(unit, casualties * share, organizationLoss, world);
   }
 }
 
@@ -433,8 +433,8 @@ function resolveRound(game, battle) {
   const attackerOrganizationLoss = 6 + (defenderRoll / total) * 5;
   const defenderOrganizationLoss = 5.5 + (attackerRoll / total) * 4.5;
 
-  distributeLosses(attackers, attackerCasualties, attackerOrganizationLoss);
-  distributeLosses(defenders, defenderCasualties, defenderOrganizationLoss);
+  distributeLosses(attackers, attackerCasualties, attackerOrganizationLoss, world);
+  distributeLosses(defenders, defenderCasualties, defenderOrganizationLoss, world);
 
   battle.rounds++;
   battle.attackerLosses += Math.round(attackerCasualties);

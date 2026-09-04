@@ -19,7 +19,7 @@ import { UNIT_COSTS, canAfford, pay } from './cities.js';
 import { settle } from './treasury.js';
 import { underTreaty } from './peace.js';
 import { controllerOf } from './control.js';
-import { occupiedShareOf } from './provinces.js';
+import { claimSoldiers, occupiedShareOf, releaseSoldiers } from './provinces.js';
 
 export const RECRUITMENT_EQUIPMENT = {
   INFANTRY: { arms: 4 },
@@ -61,7 +61,13 @@ export const PROVINCE_POPULATION_FLOOR = 2000 * POPULATION_SCALE;
 export function provinceManpower(world, tile) {
   const econ = tile?.province;
   if (!econ) return 0;
-  const base = Math.max(0, econ.population - PROVINCE_POPULATION_FLOOR * (econ.hexes ?? 1));
+  // Silah altindakiler havuzdan DUSER: nufusta duruyorlar ama zaten
+  // askerdeler, ayni adam ikinci kez alinamaz.
+  const armed = Math.max(0, econ.soldiers ?? 0);
+  const base = Math.max(
+    0,
+    econ.population - armed - PROVINCE_POPULATION_FLOOR * (econ.hexes ?? 1),
+  );
   const cluster = world?.provinces?.[tile.provinceId];
   if (!cluster || cluster.owner < 0) return base;
   const nation = world.nations?.[cluster.owner];
@@ -185,7 +191,7 @@ function drawManpower(world, source, amount) {
     if (remaining <= 0) break;
     const take = Math.min(remaining, provinceManpower(world, tile));
     if (take <= 0) continue;
-    tile.province.population -= take;
+    claimSoldiers(tile.province, take);
     draws.push({ q: tile.q, r: tile.r, men: take });
     remaining -= take;
   }
@@ -280,22 +286,11 @@ export function disband(game, unit) {
         * Math.max(0, regiment.strength / Math.max(1, regiment.maxStrength)) }]
       : []);
     for (const draw of draws) {
-      const tile = world.get(draw.q, draw.r);
-      // Province kaybedildiyse dönecek yurt kalmamıştır: insan gücü de kaybolur.
-      // Kayıp SAYILIR (economy.strandedManpower): nüfus muhasebesi bunu
-      // "kaynaksız kayıp" değil kayıtlı kanal olarak okur, tıpkı famineDeaths
-      // gibi. Toprağı tamamen alınmış devletin ordusunu dağıtması gerçek bir
-      // olaydır ve haftada on binlerce kişi tutabilir.
-      if (!tile?.province || tile.owner !== unit.nationId
-        || controllerOf(tile) !== unit.nationId) {
-        const economy = world.nations?.[unit.nationId]?.economy;
-        if (economy) {
-          economy.strandedManpower = (economy.strandedManpower ?? 0)
-            + Math.round(draw.men);
-        }
-        continue;
-      }
-      tile.province.population += Math.round(draw.men);
+      // Terhis artik nufusa insan EKLEMEZ, cunku askere alma da nufustan
+      // insan CIKARMAMISTI: yalnizca tutma birakilir, adam sivil hayata doner.
+      // Province el degistirmis olsa bile tutmayi birakmak dogrudur — o
+      // insanlar artik yeni sahibin nufusunun parcasidir.
+      releaseSoldiers(world.get(draw.q, draw.r)?.province, draw.men);
     }
   }
   removeUnit(world, unit);

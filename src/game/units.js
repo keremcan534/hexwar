@@ -7,6 +7,7 @@
 import { controllerOf } from './control.js';
 import { techUnlocksUnit } from './technology.js';
 import { POPULATION_SCALE } from './populationScale.js';
+import { releaseSoldiers } from './provinces.js';
 
 /** Kara birimi denize girdiginde bu hizla yol alir (bindirilmis hali). */
 export const EMBARKED_MOVES = 4;
@@ -238,7 +239,12 @@ export function armyPower(unit) {
   }, 0);
 }
 
-export function applyArmyLosses(unit, casualties, organizationLoss = 0) {
+/**
+ * `world` verilirse olen adam province nufusundan da duser. Verilmezse yalniz
+ * guc puani duser — cagiran her yerde world vardir, parametre eski cagrilari
+ * kirmamak icin istege bagli.
+ */
+export function applyArmyLosses(unit, casualties, organizationLoss = 0, world = null) {
   if (!unit?.regiments?.length) return false;
   const total = Math.max(1, soldiersOf(unit));
   for (const regiment of unit.regiments) {
@@ -248,7 +254,14 @@ export function applyArmyLosses(unit, casualties, organizationLoss = 0) {
       const representedMen = regiment.draws.reduce((sum, draw) => sum + Math.max(0, draw.men ?? 0), 0);
       const menLoss = strengthLoss * ((regiment.manpower ?? 0) / Math.max(1, regiment.maxStrength));
       const keep = representedMen > 0 ? Math.max(0, representedMen - menLoss) / representedMen : 0;
-      for (const draw of regiment.draws) draw.men = Math.max(0, (draw.men ?? 0) * keep);
+      for (const draw of regiment.draws) {
+        const before = Math.max(0, draw.men ?? 0);
+        draw.men = before * keep;
+        // OLEN ADAM ARTIK NUFUSTAN DUSER. Eskiden askerler zaten nufusun
+        // disindaydi, yani bir ordunun yok olmasi ulke nufusunu HIC
+        // degistirmiyordu — savasin insan bedeli hicbir sayacta gorunmuyordu.
+        releaseSoldiers(world?.get(draw.q, draw.r)?.province, before - draw.men, true);
+      }
       regiment.draws = regiment.draws.filter((draw) => draw.men > 0.01);
     }
     regiment.strength = Math.max(0, regiment.strength - strengthLoss);
