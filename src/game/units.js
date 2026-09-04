@@ -130,6 +130,37 @@ export function soldiersOf(unit) {
 }
 
 /**
+ * Tumendeki GERCEK INSAN sayisi. `soldiersOf` ile karistirilmamali: o GUC
+ * PUANI dondurur (alay basina maxStrength = 1000) ve muharebe matematiginin
+ * birimidir. Ekranda insan sayisi gerekiyorsa buradan okunur.
+ *
+ * NEDEN VAR: ust cubuk "ARMY" satirini soldiersOf ile yaziyordu, yani 19
+ * alaylik bir ordu "19.0K" gorunuyordu — oysa icinde 19 x 30.000 = 570.000
+ * kisi var. Hemen yanindaki "MANPOWER 2.76M" ise GERCEK insan sayisi.
+ * Oyuncu ikisini yan yana okuyunca ordusunu havuzun binde 7'si saniyordu;
+ * gercekte havuzun %17'si. Sayi degil, birim yanlisti.
+ *
+ * Kaynak sirasi: alayin `draws` defteri (kimden kac kisi alindiginin
+ * kaydidir ve kayiplarla birlikte kuculur), yoksa insan gucu x mevcut oran.
+ */
+export function menUnderArms(unit) {
+  if (!unit) return 0;
+  if (!unit.regiments?.length) return 0;
+  let men = 0;
+  for (const regiment of unit.regiments) {
+    const draws = regiment.draws;
+    if (draws?.length) {
+      for (const draw of draws) men += Math.max(0, draw.men ?? 0);
+      continue;
+    }
+    const ratio = Math.max(0, (regiment.strength ?? 0))
+      / Math.max(1, regiment.maxStrength ?? 1);
+    men += (regiment.manpower ?? 0) * ratio;
+  }
+  return Math.round(men);
+}
+
+/**
  * Tumenin muharebede kalma kapasitesi. Eski kayitlarda bu alan `morale`
  * adindaydi; ilk yenilemede organization'a tasinir.
  */

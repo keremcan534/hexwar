@@ -13,7 +13,7 @@ import {
   provinceWarCost, signPeace, termAvailable, warGoalOf, warScore,
 } from '../game/peace.js';
 import { INFAMY_COALITION } from '../game/infamy.js';
-import { maxHpOf, organizationOf, soldiersOf } from '../game/units.js';
+import { maxHpOf, menUnderArms, organizationOf, soldiersOf } from '../game/units.js';
 import { provinceName } from '../game/provinces.js';
 import { populationGroupDetail, populationOverview } from '../game/populationView.js';
 import { populationScreen } from './populationScreen.js';
@@ -1814,13 +1814,16 @@ export class Screens {
     }).join('');
 
     const forceStats = (armies) => {
+      // `soldiers` GUC PUANIDIR ve STR oraninin paydasidir; ekranda "kac
+      // kisi" yazacaksak insan sayisi ayri okunur (units.menUnderArms).
+      const men = armies.reduce((sum, army) => sum + menUnderArms(army), 0);
       const soldiers = armies.reduce((sum, army) => sum + soldiersOf(army), 0);
       const maxStrength = armies.reduce((sum, army) => sum + maxHpOf(army), 0);
       const organization = soldiers > 0
         ? armies.reduce((sum, army) => sum + organizationOf(army) * soldiersOf(army), 0) / soldiers
         : 0;
       const strength = maxStrength > 0 ? soldiers / maxStrength : 0;
-      return { soldiers, strength, organization, divisions: armies.length };
+      return { men, soldiers, strength, organization, divisions: armies.length };
     };
     const battleRows = battlesFor(world, me.id).map((battle) => {
       const mineAttacks = battle.attackerNation === me.id;
@@ -1834,9 +1837,9 @@ export class Screens {
         <div class="card-head"><h3>Battle of ${battle.q}, ${battle.r}</h3>
           <small>round ${battle.rounds}/${MAX_ROUNDS} · province terrain modifies the defender</small></div>
         <div class="front-numbers">
-          <span><small>${esc(me.name)} · ${mine.divisions} divisions</small><b>${formatPopulation(mine.soldiers)} · STR ${Math.round(mine.strength * 100)}% · ORG ${Math.round(mine.organization)}%</b></span>
+          <span><small>${esc(me.name)} · ${mine.divisions} divisions</small><b>${formatPopulation(mine.men)} · STR ${Math.round(mine.strength * 100)}% · ORG ${Math.round(mine.organization)}%</b></span>
           <strong>VS</strong>
-          <span><small>${esc(world.nations[enemyId].name)} · ${enemy.divisions} divisions</small><b>${formatPopulation(enemy.soldiers)} · STR ${Math.round(enemy.strength * 100)}% · ORG ${Math.round(enemy.organization)}%</b></span>
+          <span><small>${esc(world.nations[enemyId].name)} · ${enemy.divisions} divisions</small><b>${formatPopulation(enemy.men)} · STR ${Math.round(enemy.strength * 100)}% · ORG ${Math.round(enemy.organization)}%</b></span>
         </div>
         <div class="front-track"><i style="left:${position}%"></i></div>
         <p class="hint">losses: ${battle.attackerLosses} attacker / ${battle.defenderLosses} defender · the broken army retreats automatically</p>

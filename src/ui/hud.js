@@ -5,8 +5,8 @@ import {
   CITY_COST, UNIT_COSTS, canAfford, canFoundCity, formatCost, pay,
 } from '../game/cities.js';
 import {
-  UNIT_TYPES, isMoving, maxHpOf, organizationOf, regimentCount, soldiersOf, speedOf,
-  strengthRatio,
+  UNIT_TYPES, isMoving, maxHpOf, menUnderArms, organizationOf, regimentCount, soldiersOf,
+  speedOf, strengthRatio,
 } from '../game/units.js';
 import { MIN_WAR_TURNS, atWar, relation, truceLeft } from '../game/diplomacy.js';
 import { warScore } from '../game/peace.js';
@@ -738,12 +738,15 @@ export class Hud {
 
     // Sol üst künye: bayrak + ülke adı + tek satır özet (HOI4'ün ülke kutusu).
     if (me) {
+      // INSAN sayisi, guc puani degil (bkz. units.menUnderArms). Yanindaki
+      // Manpower satiri da insan; ikisi ayni birimde olmazsa oyuncu ordusunu
+      // oldugundan bir buyukluk kucuk okuyor.
       const army = world.units
         .filter((unit) => unit.nationId === me.id && unit.type.domain === 'land')
-        .reduce((sum, unit) => sum + soldiersOf(unit), 0);
+        .reduce((sum, unit) => sum + menUnderArms(unit), 0);
       this.el.macroStats.innerHTML = `
         <span class="macro-live" data-macro="population"><small>Population</small><b>${formatPopulation(me.economy?.population ?? 0)}</b></span>
-        <span title="Standing army"><small>Army</small><b>${formatNumber(army)}</b></span>
+        <span title="Men under arms — soldiers drawn from your provinces"><small>Army</small><b>${formatPopulation(army)}</b></span>
         <span title="Recruitable population left in your provinces"><small>Manpower</small><b>${formatPopulation(nationManpower(world, me.id))}</b></span>
         <span class="macro-live" data-macro="gdp"><small>GDP</small><b>£${formatNumber(Math.round(me.economy?.gdp ?? 0))}</b></span>`;
       this.ensureMacroCards();
