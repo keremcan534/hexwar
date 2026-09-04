@@ -557,12 +557,37 @@ küçülme var. Fabrika seviyeleri 1856'da donuyor (562 → 562, 90 yıl) çünk
 daha açılmıyor; işgücü tavanı ise hiç bağlamıyor (yüzyıl boyunca tavanın
 %16–18'i kullanılıyor, 6–7 milyon kadro boş duruyor).
 
-Kök sebep talep tarafında: `bought = quantity × afford` ve `afford ≤ 1`, yani
-talep **sabit sepetin üstüne çıkamaz**. Gelir artınca talep artmaz; fazla
-gelir `savings` tavanında kaybolur. Tek büyüme kanalı sınıf atlama, o da
-`CLASS_CEILING` ile kilitli (tavanda bile kişi başı sepet 1.84×). Victoria
-3'te bu ok vardır — gelir → yaşam standardı → ihtiyaç → talep; bizde yok.
-Bu modelde büyüme ölçülemiyor değil, **imkânsız**.
+Talep tarafında bir tavan var: `bought = quantity × afford` ve `afford ≤ 1`,
+yani talep **sabit sepetin üstüne çıkamaz**. Victoria 3'te bu okun karşılığı
+vardır — gelir → yaşam standardı → ihtiyaç → talep; bizde yok.
+
+**Ama bu tavan kök sebep DEĞİL — ölçüldü ve elendi.** Refah basamağı
+denendi: sınıfa bir `prosperity` stoğu, geliri sepetini rahatça karşılayan
+hane zamanla daha büyük bir sepet ister (yalnız isteğe bağlı kademeler;
+yaşam kademesi sabit). Tesisatın kendisi inert olduğu kanıtlandı (tavan 1
+iken 400 hafta, 1117 satırlık durum birebir aynı). Kaldıraç açıkken
+`audit:growth`, 100 yıl × 2 tohum:
+
+| | referans | refah açık |
+|---|---|---|
+| H1 reel tüketim/kişi | 0.94 / 1.01 | **0.90 / 0.99** |
+| H2 orta+üst payı | %5.85 / %3.84 | **%4.20 / %2.71** |
+| H3 tesis büyümesi | 1.12× / 1.03× | **1.04× / 1.03×** |
+
+Üçü de kötüleşti; H2 iki tohumda da ≈%29, yani gürültü değil. Sebep
+tümdengelimle kesin: `hedef = clamp(covered/MARGIN, 1, CAP)` ve
+`covered = needsBudget/outOfPocket`. Bir sınıfta `affordShare < 1` ise
+`covered < 1 ≤ MARGIN`, yani hedef **her zaman 1'e kırpılır**. Sepet
+karşılanması %40–49 olduğuna göre **alt sınıfın refahı hiç kıpırdamaz.**
+Kaldıraç yalnız sepetini zaten tam karşılayabilen orta ve üst sınıfa çalışır;
+onların sepeti büyüyünce `runPromotion`'ın istediği artık küçülür, eşiği ise
+büyür — daha az terfi, daha çok düşüş.
+
+**Bulgu:** nüfusun %94'ü için bağlayıcı kısıt talep tavanı değil **gelirdir**.
+Alt sınıf zaten sahip olduğundan fazlasını istiyor, alamıyor. "İnsanlar daha
+çok istesin" demek, yalnızca zaten yeterince alabilene daha çok istetiyor ve
+sonuç regresif oluyor. Sıradaki aday bu yüzden talep değil **gelir kanalı**
+olmalı (bordro payı, income-pool, ya da fiyat seviyesinin kendisi).
 
 Bu bir kalibrasyon işidir (RGO verimi + kişi başı sepet + sanayinin emişi
 birlikte) ve kendi pass'ini ister. `audit:price-stability` TEST 4 bulguyu

@@ -185,14 +185,18 @@ for (const seed of SEEDS) {
 if (baseline && baseline.seeds) {
   sub('REFERANS CIZGIYLE FARK');
   console.log(`  taban: ${baseline.recorded ?? 'tarihsiz'} · commit ${baseline.commit ?? '?'}`);
+  // Kisi basi reel buyuklukler HAM haliyle 1e-5 mertebesindedir ve iki
+  // basamakla basilinca ekranda "0.00 -> 0.00" gorunuyordu: yuzde dogru,
+  // sayilar okunamaz. Ikisi de kendi kosusunun ILK kontrol noktasina gore
+  // ENDEKSLENIR — zaten anlamli olan buyukluk odur.
   const METRICS = [
-    ['realGdpPc', 'reel uretim/kisi'],
-    ['tradedPc', 'reel tuketim/kisi'],
-    ['index', 'fiyat endeksi'],
-    ['ratio', 'arz/talep'],
-    ['midUpShare', 'orta+ust %'],
-    ['needsMet', 'sepet'],
-    ['tesis', 'tesis'],
+    ['realGdpPc', 'reel uretim/kisi', true],
+    ['tradedPc', 'reel tuketim/kisi', true],
+    ['index', 'fiyat endeksi', false],
+    ['ratio', 'arz/talep', false],
+    ['midUpShare', 'orta+ust %', false],
+    ['needsMet', 'sepet', false],
+    ['tesis', 'tesis', false],
   ];
   for (const seed of SEEDS) {
     const key = seed.trim();
@@ -200,9 +204,17 @@ if (baseline && baseline.seeds) {
     if (!rows) { console.log(`  ${key}: referans cizgide yok, atlandi.`); continue; }
     const son = rows[rows.length - 1];
     if (!son.before) { console.log(`  ${key}: son yil referansta yok, atlandi.`); continue; }
+    const nowFirst = current[key][0];
+    const beforeFirst = baseline.seeds[key][0];
     console.log(`\n  ${key} — ${son.now.year} yilinda:`);
-    for (const [k, label] of METRICS) {
-      const a = son.before[k]; const b = son.now[k];
+    for (const [k, label, indexed] of METRICS) {
+      let a = son.before[k]; let b = son.now[k];
+      if (indexed) {
+        // Her kosu KENDI ilk noktasina gore endekslenir; iki kosunun ham
+        // birimleri farkli olabilir, buyume orani karsilastirilabilir olandir.
+        a = beforeFirst?.[k] > 0 ? a / beforeFirst[k] : NaN;
+        b = nowFirst?.[k] > 0 ? b / nowFirst[k] : NaN;
+      }
       if (!Number.isFinite(a) || !Number.isFinite(b)) continue;
       const delta = a !== 0 ? 100 * (b - a) / Math.abs(a) : 0;
       const yon = Math.abs(delta) < 0.005 ? '=' : (delta > 0 ? '+' : '');

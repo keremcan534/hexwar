@@ -595,45 +595,6 @@ export const UNEMPLOYMENT_MOOD = 0.22;
 export const SUBSISTENCE_SHARE = { lower: 0.30, middle: 0.15, upper: 0.12 };
 
 /**
- * REFAH BASAMAGI — talebin gelire bagli olan kismi.
- *
- * BULGU (olculdu, `npm run audit:growth`, 100 yil x 2 tohum). Talep sabit bir
- * tavana yasliydi: `bought = quantity * afford` ve afford <= 1, yani hane ne
- * kadar zenginlesirse zenginlessin SEPETINDEN FAZLASINI ISTEYEMIYORDU; artan
- * gelir `savings` tavaninda kayboluyordu. Arz ise nufus x RGO gelisimi x
- * teknoloji ile carpimsal buyudugu icin makas surekli aciliyordu:
- *   reel uretim/kisi   1.00 -> 1.64 / 1.96   (buyuyor)
- *   reel tuketim/kisi  1.00 -> 0.94 / 1.01   (buyumuyor)
- *   arz/talep          1.33 -> 3.11 / 3.77   (makas)
- * Victoria 3'te bu ok vardir — gelir yasam standardini, yasam standardi
- * ihtiyaci, ihtiyac talebi buyutur. Bizde yoktu.
- *
- * YALNIZ ISTEGE BAGLI KADEMELER BUYUR; yasam kademesi (ekmek, balik) sabit
- * kalir. Bu zerafet degil GUVENLIK sartidir: `canAffordNeeds` yalniz
- * `tierMet.life`e bakar, dolayisiyla sepeti TOPLUCA buyutmek ekmegi pahali
- * gosterip SINIF DUSUSUNU hizlandirirdi — duzeltilmek istenenin tam tersi.
- * Zengin adam daha cok ekmek yemez; kumas, mobilya, sarap alir. Asiri
- * uretimin oturdugu yer de tam orasidir (olculdu, 30. yil: sarap 60 kat,
- * luks esya 57 kat, kumas 3.9 kat fazla).
- *
- * KENDINI SINIRLAR. Refah buyudukce sepet buyur, sepet buyudukce gelir/sepet
- * orani duser; denge, gelirin sepeti tam MARGIN kat karsiladigi yerdedir.
- * Vic3'un "hanenin net birikimi sifira yaklasir" davranisi. MARGIN 1'den
- * buyuktur ki hanede SINIF ATLAMAYA yetecek artik kalsin: `runPromotion`
- * artigin sepetin %35'ini asmasini ister, refah butun geliri yutsaydi orta
- * sinif bir daha hic buyuyemezdi.
- *
- * TABANI 1'DIR VE ALTINA INMEZ. Kitligin talebi kismasi zaten `afford`
- * uzerinden oluyor; ikinci kez kissaydik eski deflasyon sarmali geri gelirdi.
- *
- * Yaklasma hizi `RGO_DEMAND_APPROACH` ile ayni mertebede (haftada 0.004,
- * mesafenin yarisi ~4 yil): yasam standardi bir stoktur, haftalik zipmaz.
- */
-const PROSPERITY_CAP = 2;
-const PROSPERITY_MARGIN = 1.5;
-const PROSPERITY_APPROACH = 0.004;
-
-/**
  * Fabrika katma degerinin emege giden payi. Eski sabit ucret
  * (WAGE_PER_THROUGHPUT = 1.2) katma degerin %2.5'iydi ve ODENMIYORDU:
  * kardan dusuluyor ama hicbir sinifin gelirine yazilmiyordu — para imha.
@@ -995,9 +956,6 @@ const CLASS_DEFAULTS = {
   needsBudget: 0,
   canAffordNeeds: true,
   hardshipWeeks: 0,
-  // Eski kayitta yok; `fillMissing` 1 ile doldurur, yani yuklenen dunya
-  // degisiklikten onceki davranisla baslar ve oradan yurur.
-  prosperity: 1,
 };
 
 /**
@@ -1135,7 +1093,6 @@ export function ensurePopulationModel(
         needsBudget: 0,
         canAffordNeeds: true,
         hardshipWeeks: 0,
-        prosperity: 1,
       };
     } else {
       // Eksik alan yalniz eski kayit gocunde cikar; haftalik yolda nesne
@@ -3110,24 +3067,8 @@ function populationDemand(world, nation, market) {
     const needsEntries = CLASS_NEEDS_ENTRIES[c][1];
     const socialClass = economy.classes[classId];
     const scale = socialClass.population / POPULATION_UNIT;
-    // REFAH BASAMAGI (bkz. PROSPERITY_CAP). GECEN HAFTANIN degeri okunur —
-    // gelir de gecen haftanindir — ve IKI GECISTE DE ayni carpan gecer;
-    // gecisler ayni sepeti gormezse talep butceden kopar.
-    const prosperity = clamp(
-      Number.isFinite(socialClass.prosperity) ? socialClass.prosperity : 1,
-      1,
-      PROSPERITY_CAP,
-    );
-    /** Yasam kademesi sabit, istege bagli kademeler refahla buyur. */
-    const wantScale = (need) => (needTier(need) === 'life' ? 1 : prosperity);
     let basket = 0;
     let basketAtBase = 0;
-    // STANDART sepetin parasal bedeli (refah carpani UYGULANMAMIS). Memnuniyet
-    // bunu okur: hane daha cok ISTEDIGI icin mutsuzlasmamali. `affordability`
-    // sepet bedelini dogrudan cezalandirdigi icin, olcegi ozlem duyulan sepete
-    // baglamak refahi kendi kuyrugunu yiyen bir kaldirac yapardi (memnuniyet
-    // duser -> istikrar, ise alim ve sinif atlama birden vurulur).
-    let basketPlain = 0;
     // Kademe basina PARA maliyeti; butce bu sirayla harcanir.
     const tierCost = { life: 0, everyday: 0, luxury: 0 };
     // BIRINCI GECIS: sepetin *istenen* hali. Pazara henuz hicbir sey yazilmaz —
@@ -3147,8 +3088,7 @@ function populationDemand(world, nation, market) {
       const need = needsEntries[n][1];
       const amount = needAmount(need, world.turn ?? 1);
       if (amount <= 0) continue;
-      const want = wantScale(need);
-      const quantity = amount * scale * want;
+      const quantity = amount * scale;
       // Tariffs only raise the imported share of a household basket. Last
       // week's share is used because this week's trade clears after all
       // nations have submitted supply and demand.
@@ -3161,7 +3101,6 @@ function populationDemand(world, nation, market) {
       const cost = priceOf(world, goodId) * quantity * tariffFactor;
       const baseCost = GOODS[goodId].basePrice * quantity;
       basket += cost;
-      basketPlain += cost / want;
       basketAtBase += baseCost;
       tierCost[needTier(need)] += cost;
       if (FOOD_GOODS.has(goodId)) { foodCost += cost; foodAtBase += baseCost; }
@@ -3219,10 +3158,7 @@ function populationDemand(world, nation, market) {
     // sınıfa göre: yoksul en çok yararlanır, aristokrasiye sosyal yardım yok.
     const reliefRate = classId === 'lower' ? 0.35 : classId === 'middle' ? 0.12 : 0;
     const outOfPocket = basket * (1 - welfare * reliefRate);
-    // Olcek STANDART sepettir (bkz. basketPlain): refah yalniz talebi buyutur,
-    // memnuniyeti dusurmez. Refah 1 iken bu satir eskisiyle birebir aynidir.
-    const affordability = 1
-      / (1 + basketPlain * (1 - welfare * reliefRate) / Math.max(1, scale * 2.5));
+    const affordability = 1 / (1 + outOfPocket / Math.max(1, scale * 2.5));
     // IKINCI GECIS: hane ancak odeyebildigi kadarini satin alir. Oran butun
     // sepete esit uygulanir; kalem sirasi (once luks kesilsin) bilerek
     // yapilmadi — bu duzeltmenin isi bagi KURMAK, dengeyi yeniden yazmak degil.
@@ -3280,23 +3216,13 @@ function populationDemand(world, nation, market) {
       outOfPocket * SAVINGS_CAP_WEEKS,
     );
     socialClass.savingsDrawn = drawn;
-    // REFAH BASAMAGI GELECEK HAFTAYA GUNCELLENIR. Hedef: gelirin sepeti kac kat
-    // karsiladigi, MARGIN kadar pay hanede birakilarak. Denge, gelir sepeti tam
-    // MARGIN kat karsiladiginda kurulur — o noktada hane ne aclik ceker ne de
-    // sinif atlayacak artigini kaybeder. Yerel `prosperity` sabiti bilerek
-    // degistirilmez: bu haftanin iki gecisi ayni sepeti gormeye devam eder.
-    const covered = outOfPocket > 1e-9 ? needsBudget / outOfPocket : 1;
-    const prosperityTarget = clamp(covered / PROSPERITY_MARGIN, 1, PROSPERITY_CAP);
-    socialClass.prosperity = prosperity
-      + (prosperityTarget - prosperity) * PROSPERITY_APPROACH;
     // Ikinci gecis sepeti listeye biriktirmek yerine ayni tablodan yeniden
-    // yurur: ayni carpim, sonuc bit bit ayni, gecici dizi yok.
+    // yurur: amount * scale ayni carpim, sonuc bit bit ayni, gecici dizi yok.
     for (let n = 0; n < needsEntries.length; n++) {
       const goodId = needsEntries[n][0];
-      const need = needsEntries[n][1];
-      const amount = needAmount(need, world.turn ?? 1);
+      const amount = needAmount(needsEntries[n][1], world.turn ?? 1);
       if (amount <= 0) continue;
-      const quantity = amount * scale * wantScale(need);
+      const quantity = amount * scale;
       const bought = quantity * (FOOD_GOODS.has(goodId) ? foodAfford : restAfford);
       addFlow(market, goodId, 'demand', bought);
       addNationFlow(nation, goodId, 'demand', bought);
