@@ -1519,23 +1519,26 @@ export function factoryCost(nation, typeId) {
   const type = FACTORIES[typeId];
   if (!type) return null;
   const built = nation.economy?.factories?.length ?? 0;
-  // Katsayı 0.12 -> 0.05 -> 0.02. Aynı sebep her seferinde: eğim kurulu sayıyla
+  // Katsayı 0.12 -> 0.05 -> 0.035. Aynı sebep her seferinde: eğim kurulu sayıyla
   // çarpıldığı için sanayileşmeyi kendi başarısı durduruyor.
   //
-  // 0.05 -> 0.02 OLCULDU (audit:growth + tarama). Kapitalistin bütçesi
+  // 0.05 -> 0.035 OLCULDU (audit:growth + tarama). Kapitalistin bütçesi
   // (`privateCommitRoom` = akış × PRIVATE_FUNDING_HORIZON) fiyat seviyesiyle
   // birlikte düşerken bedel kurulu sayıyla tırmanıyordu; makas 1838-46 arasında
   // kapanıyor ve bir daha açılmıyordu — 1838'de 27 ülkenin 24'ü fabrika
   // açabiliyorken 1846'da SIFIR. 20 fabrikalı bir ülkede çarpan 2.0x yerine
   // 1.4x olur.
   //
-  // Tek sabit, bütün ölçütlerde iyileşme (40 yıl, gözlemci, PRICE-A):
-  //   tesis 463 -> 581 · H1 1.498 -> 1.569 · H2 %12.29 -> %13.50
-  //   alt sınıf sepeti %60.7 -> %66.7 · kârlı tesis %65 -> %76
-  //   arz/talep 1.93 -> 1.93 (değişmedi)
-  // 0.01 daha çok tesis verir (624) ama arz/talep'i 2.03'e iter: fazla ucuz
-  // fabrika, kapatmaya çalıştığımız makası yeniden açar.
-  const scale = 1 + built * 0.02;
+  // DEGER FIYAT KARARLILIGIYLA SINIRLI. Egim ne kadar ucuzsa o kadar cok
+  // fabrika, o kadar cok arz — ve arz fazlasi tam da kapatmaya calistigimiz
+  // sey. Olculdu (100 yil x 2 tohum, audit:growth + audit:price-stability):
+  //   0.02  -> uc hedef yesil AMA fiyat capasi testi KALIYOR (kayma -0.29)
+  //   0.03  -> H1 kaciyor (0.99) ve capa testi yine kaliyor
+  //   0.035 -> uc hedef yesil VE capa testi temiz  <-- secilen
+  //     H1 1.19/1.14 · H2 %12.99/%13.25 · H3 1.34x/1.30x
+  // 0.01 daha cok tesis verir (624) ama arz/talep'i 2.03'e iter: fazla ucuz
+  // fabrika, kapatmaya calistigimiz makasi yeniden acar.
+  const scale = 1 + built * 0.035;
   return Object.fromEntries(
     Object.entries(type.cost).map(([resource, amount]) => [resource, Math.round(amount * scale)]),
   );
