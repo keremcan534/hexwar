@@ -502,6 +502,12 @@ export function needAmount(need, turn) {
 
 const DEFAULT_TAXES = { lower: 20, middle: 15, upper: 10 };
 const PRICE_SPEED = 0.09;
+/**
+ * Fiyatin taban fiyatina donme hizi (bkz. updatePrices). PRICE_SPEED'in
+ * besde biri: dengesizlik hep kazanir, ama yalnizca SUREKLI oldugu surece.
+ * Bir mali tabanda tutmak icin gereken kalici arz fazlasi ~%20'dir.
+ */
+const PRICE_ANCHOR = 0.018;
 
 /**
  * Gümrüğün ithalat iştahını ne kadar kıstığı. %10 tarife iştahı ~%14, %50
@@ -4189,10 +4195,27 @@ function updatePrices(market) {
     if (state.history.length > PRICE_HISTORY) state.history.shift();
     const total = Math.max(1, state.supply + state.demand);
     const imbalance = (state.demand - state.supply) / total;
+    // FIYAT CAPASI. Eski kural saf bir INTEGRATORDU: fiyat yalnizca dengesizligi
+    // biriktiriyor, taban fiyata donduren hicbir kuvvet yoktu. Kucuk ama SUREKLI
+    // bir arz fazlasi (olculdu: dunya arzi talebin %5 ustunde) haftada %0.2
+    // dusus demek ve 130 haftada 0.75 kat; 20 yilda fiyat endeksi 1.86'dan
+    // 0.47'ye iniyordu. Gelir de nominal oldugu icin (RGO degeri x pay + bordro)
+    // sinif geliri 10 KAT eriyor, vergi 77'den 8'e duşuyor ve oyunun orta oyunu
+    // yok oluyordu — "gelir egrisi yok" bulgusunun asil sebebi buydu.
+    //
+    // Artik fiyat taban fiyatina dogru zayifca cekilir. Cekim dengesizlik
+    // sinyalinin altinda tutuldu (0.018 vs 0.09): gercek kitlik hala fiyati
+    // tavana tasir, ama bir mali BANTTA TUTMAK icin surekli ve buyuk bir
+    // dengesizlik gerekir — gecici bolluk kalici cokus uretmez.
+    const anchor = clamp(
+      (base - state.price) / Math.max(base, state.price), -1, 1,
+    ) * PRICE_ANCHOR;
     // Band 0.25-4'ten 0.12-8'e genisletildi. Zincir 12 maldan 43'e cikinca
     // kitlik ve bolluk cok daha keskin oluyor; dar bandda fiyatlar raya yapisip
     // hic hareket etmiyordu (olculdu: 80. turda 43 maldan yalniz 1'i oynuyordu).
-    state.price = clamp(state.price * (1 + imbalance * PRICE_SPEED), base * 0.12, base * 8);
+    state.price = clamp(
+      state.price * (1 + imbalance * PRICE_SPEED + anchor), base * 0.12, base * 8,
+    );
     state.trend = state.price - state.previousPrice;
     state.traded = Math.min(state.supply, state.demand);
     totalGdp += state.traded * state.price;

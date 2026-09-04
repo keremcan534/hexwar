@@ -522,6 +522,27 @@ mal-haftalarının tabanda geçen payı %37.7 → %31.0, toplam bant doygunluğu
 0.5'in altına inmediği için orada kalırlar; bu tasarım seçimi, tarlanın
 yok olmasını değil yarıya inmesini istiyor.
 
+**Fiyat çapası.** Fiyat kuralı bir integratördü: `fiyat ×= 1 + dengesizlik ×
+0.09` ve taban fiyata döndüren hiçbir kuvvet yoktu. Dünya arzı talebi taban
+fiyatla 1.9 katladığı için küçük ama sürekli bir fazla, yirmi yılda fiyat
+endeksini 1.86'dan 0.47'ye indiriyordu; gelir nominal olduğu için sınıf geliri
+on kat eriyordu. Artık fiyat taban fiyatına zayıfça çekilir
+(`PRICE_ANCHOR` 0.018, dengesizlik sinyalinin beşte biri). Ölçüldü
+(`audit:price-stability`, 30 yıl, 2 tohum): endeks 0.49–0.51'de **oturuyor**,
+son çeyrekte kayma −0.08 ve −0.01, gelir oranı 0.86 ve 1.03.
+
+**Yatırım fiyata bağlı.** `rgoPriceDrive` tabanı 0.5'ti: fiyatı çökmüş malın
+tarlası yarım hızla gelişmeye devam ediyor, dünya arz/talep oranı 1.50'den
+2.03'e tırmanıyordu. Artık sürücü oranın kendisidir (taban fiyatta 1.0,
+yarısında 0.5, bantta çakılı malda durur). RGO verimini global kısmak
+(0.8/0.7/0.6) denendi ve İŞE YARAMADI: oran yine tırmandı, çünkü sorun
+başlangıç seviyesi değil birikimdi.
+
+**AÇIK KALAN.** Dünya kapasitesi tüketimin ~1.9 katı; denge taban fiyatın
+yarısında kuruluyor ve yüzyıl boyunca gerçek bir BÜYÜME eğrisi yok. Bu bir
+kalibrasyon işidir (RGO verimi + kişi başı sepet + sanayinin emişi birlikte)
+ve kendi pass'ini ister.
+
 **Pratikte** — dünya fiyatı tabana yapışan hammaddenin province'i yıllar
 içinde kadrosunu ve çıktısını yarıya indirir, açığa çıkan nüfus göçle
 fabrikaya ya da başka tarlaya akar. Vic2'nin "kârsız RGO'dan pop kaçar"

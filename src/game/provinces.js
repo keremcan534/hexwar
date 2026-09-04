@@ -553,7 +553,7 @@ const RGO_DEVELOPMENT_CAP = 10;
  * hizlanir ama hicbiri anlik denge kurmaz. Kitlik ve patlama iyidir; KALICI
  * tavan degildir.
  */
-const RGO_PRICE_DRIVE_MIN = 0.5;
+const RGO_PRICE_DRIVE_MIN = 0.05;
 const RGO_PRICE_DRIVE_MAX = 2.5;
 
 function rgoPriceDrive(world, econ) {
@@ -563,7 +563,15 @@ function rgoPriceDrive(world, econ) {
   // Eski kayitlarda basePrice yok: oran 1 kabul edilir (notr, eski davranis).
   const base = state.basePrice ?? state.price;
   if (!(base > 0)) return 1;
-  return clamp(0.5 + (state.price / base) * 0.5, RGO_PRICE_DRIVE_MIN, RGO_PRICE_DRIVE_MAX);
+  // ORANIN KENDISI. Eski formul `0.5 + oran*0.5` idi ve TABANI 0.5'ti: fiyati
+  // cokmus mal bile yarim hizla gelismeye devam ediyordu. Olculdu (1040 hafta,
+  // rgo-sweep): dunya arz/talep orani 1.50'den 2.03'e TIRMANIYOR ve fiyat
+  // endeksi 1.01'den 0.49'a iniyor — cunku degersiz tarlaya yatirim hic
+  // durmuyordu. RGO verimini global olarak kismak denendi (0.8/0.7/0.6): oran
+  // yine tirmandi, yani sorun baslangic seviyesi degil BIRIKIMDI.
+  // Artik yatirim urunun degeriyle orantilidir: taban fiyatta 1.0, yarisinda
+  // 0.5, bantta cakili malda neredeyse durur.
+  return clamp(state.price / base, RGO_PRICE_DRIVE_MIN, RGO_PRICE_DRIVE_MAX);
 }
 
 /**

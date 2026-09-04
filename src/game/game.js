@@ -257,13 +257,24 @@ export class Game {
   handleTap(sx, sy) {
     const hitUnit = this.unitAtScreen(sx, sy);
     const tile = hitUnit?.tile ?? this.tileAtScreen(sx, sy);
+    const previous = this.selected;
     this.selected = tile;
 
-    // Kendi ordumuza tıklamak o province'teki bütün tümenlerini seçer
-    // (tümenler birleşmiyor, bir karede birkaçı olabilir); başka her yere
-    // tıklamak seçimi iptal eder.
+    // ORDU SECMEK ILE EYALET SECMEK AYRI ISLERDIR. Eskiden ordulu bir kareye
+    // tiklamak ikisini BIRDEN yapiyordu ve oyuncu "askere tikliyorum, province
+    // de seciliyor" diye yazdi. Ayirmak icin isaretleme kullanilamaz: birim
+    // rozetinin tiklama yaricapi neredeyse butun hexi kapliyor
+    // (`unitAtScreen` hitRadius), yani "rozete mi zemine mi bastin" ayrimi
+    // guvenilir degil. Bunun yerine AYNI KAREYE ikinci tik kipi cevirir:
+    //   1. tik  -> ordu secili (emirler orduya gider)
+    //   2. tik  -> ordu birakilir, yalniz eyalet secili kalir
+    // Kare degistiginde her zaman ordu kipiyle baslanir; bos kare zaten
+    // yalnizca eyalet secer.
     const own = unitsOn(tile).filter((u) => u.nationId === this.turns.playerNation);
-    this.selectUnits(own);
+    const sameTile = previous === tile && tile != null;
+    const armyActive = sameTile && own.length > 0
+      && own.some((unit) => this.selection.includes(unit));
+    this.selectUnits(armyActive ? [] : own);
     this.emit('select', tile);
     this.requestRender();
   }
