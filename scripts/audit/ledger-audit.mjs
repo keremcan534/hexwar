@@ -12,6 +12,7 @@
 
 import { headless, pickNation } from './harness.mjs';
 import {
+  INCOME_POOL_SHARE, INCOME_WEIGHTS,
   LABOR_SHARE, PROFIT_TO_CAPITAL, PROFIT_TO_REINVEST, WAGE_SPLIT,
 } from '../../src/game/economy.js';
 
@@ -37,14 +38,17 @@ console.log('='.repeat(74));
   for (const nation of world.nations) {
     if (!nation.alive || !nation.economy) continue;
     const economy = nation.economy;
-    const pool = Math.max(1, (economy.baseOutputValue ?? 0) * 0.35);
+    // SABIT ELLE YAZILMAZ, ICE AKTARILIR. Once 0.35 gomuluydu; uretim sabiti
+    // degisince denetim ESKI sayiyla yeniden hesaplayip sim'i "sapmis" ilan
+    // etti. Kimligi dogrulayan taraf, dogruladigi sayiyi kendi uydurmamali.
+    const pool = Math.max(1, (economy.baseOutputValue ?? 0) * INCOME_POOL_SHARE);
     const wagesPaid = Math.max(0, economy.wagesPaid ?? 0);
     const profitShare = (economy.factoryProfit ?? 0) * PROFIT_TO_CAPITAL;
     // Sirket temettusu bir TRANSFERDIR: yabanci ortaga odenen tutar ayni hafta
     // ust sinif gelirinden dusulur (kaldirilan sirket katmani). Kimlik o yuzden bu
     // terimi tasimali; tasimasaydi denetim gercek bir korunumu ihlal sayardi.
     const withheld = Math.max(0, economy.capitalWithheld ?? 0);
-    const weights = { lower: 0.42, middle: 0.33, upper: 0.25 };
+    const weights = INCOME_WEIGHTS;
     let taxes = 0;
     for (const [classId, weight] of Object.entries(weights)) {
       const socialClass = economy.classes[classId];
@@ -62,10 +66,12 @@ console.log('='.repeat(74));
       - taxes) / Math.max(1, taxes));
     const subsidyPaid = (economy.factories ?? [])
       .reduce((sum, factory) => sum + (factory.subsidyPaid ?? 0), 0);
-    // subsidyGold updateLedger'da sifirlanir; haftalik birikim tesislerin
-    // toplamina esit olmali — defter yazildiktan sonra 0 gorunebilir, o
-    // yuzden yalniz "tesis > kayit" yonu (odeme kayda gecmemis) sinanir.
-    const recorded = Math.max(economy.subsidyGold ?? 0, economy.ledger?.subsidyCost ?? 0);
+    // DEFTERDEKI KALEMIN ADI `subsidy`. Once `economy.subsidyGold` ve
+    // `ledger.subsidyCost` okunuyordu; IKISI DE HIC VAR OLMAYAN ALANLARDI, yani
+    // bu kimlik uzun sure sabit 0 ile kiyaslandi ve yalnizca subvansiyonlar 1
+    // altinin altinda kaldigi icin gecti. Kalem GIDER oldugu icin negatif
+    // yazilir (settle(..., -support)); mutlak degeri alinir.
+    const recorded = Math.abs(economy.ledger?.subsidy ?? 0);
     if (subsidyPaid > recorded + 0.01) worstL5 = Math.max(worstL5, subsidyPaid - recorded);
     // L15 — GSYH CIFT SAYMAZ. Sanayi terimi KATMA DEGERDIR, hasilat degil.
     // Tesis alanlarindan geri turetilir: VA = kar + ucret − subvansiyon
@@ -90,7 +96,7 @@ console.log('='.repeat(74));
   console.log(`  L15 GSYH = taban + sanayi KATMA DEGERI, en kotu sapma: ${(worstL15 * 100).toFixed(2)}%`);
   if (worstL1 > 0.01) {
     finding('HIGH', 'Sinif geliri beyanli kanallardan sapmis',
-      'income = 0.35×taban×pay + bordro×pay (+ kar payi)', `${(worstL1 * 100).toFixed(2)}%`, '');
+      `income = ${INCOME_POOL_SHARE}×taban×pay + bordro×pay (+ kar payi)`, `${(worstL1 * 100).toFixed(2)}%`, '');
   }
   if (worstL2 > 1) finding('HIGH', 'Bordro toplami tutmuyor', 'Σfactory.wages = wagesPaid', n2(worstL2), '');
   if (PROFIT_TO_CAPITAL + PROFIT_TO_REINVEST > 1) {

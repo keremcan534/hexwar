@@ -503,11 +503,30 @@ export function needAmount(need, turn) {
 const DEFAULT_TAXES = { lower: 20, middle: 15, upper: 10 };
 const PRICE_SPEED = 0.09;
 /**
- * Fiyatin taban fiyatina donme hizi (bkz. updatePrices). PRICE_SPEED'in
- * besde biri: dengesizlik hep kazanir, ama yalnizca SUREKLI oldugu surece.
- * Bir mali tabanda tutmak icin gereken kalici arz fazlasi ~%20'dir.
+ * Fiyatin taban fiyatina donme hizi (bkz. updatePrices).
+ *
+ * DENGE KAPALI FORMDA. `dengesizlik x PRICE_SPEED + capa = 0` cozulurse,
+ * r = arz/talep ve x = fiyat/taban icin:
+ *     x = 1 - K (r-1)/(r+1),   K = PRICE_SPEED / PRICE_ANCHOR
+ * Yani K, kalici bir arz fazlasinin fiyati ne kadar ezdigini belirleyen TEK
+ * sayidir (17 malda gozlenen fiyata karsi RMS hata 0.06 ile dogrulandi).
+ *
+ * 0.018 -> 0.060, yani K 5'ten 1.5'e. Eski deger "%22 kalici fazla fiyati
+ * YARIYA indirir, %50 fazla mali banda civiler" demekti ve dengenin taban
+ * fiyatin yarisinda kurulmasinin sebebi buydu; gelir nominal oldugu icin
+ * (RGO degeri x pay + bordro) hanenin alim gucu de oradan asagi cekiliyordu.
+ *
+ * KITLIK MEKANIGI OLMEDI: gercek bir kitlikta dengesizlik sinyali +0.09'a
+ * kadar cikar, capa ise tavanda en fazla ((1-8)/8) x 0.06 = -0.053 ceker —
+ * fiyat hala tavana tasinabilir. Capa kitligi degil, KALICI FAZLANIN
+ * biriktirdigi cokusu sinirlar.
+ *
+ * Olculdu (`npm run audit:growth`, 100 yil x 2 tohum, INCOME_POOL_SHARE 0.70
+ * ile birlikte): H1 0.94/1.01 -> 1.03/1.05 · H2 %5.85/%3.84 -> %13.83/%11.63.
+ * Tek basina degil, gelir payiyla BIRLIKTE kalibre edildi — tek tek denenen
+ * her kaldirac daha once elenmisti (bkz. MEKANIK_KILAVUZU 4.3).
  */
-const PRICE_ANCHOR = 0.018;
+const PRICE_ANCHOR = 0.060;
 
 /**
  * Gümrüğün ithalat iştahını ne kadar kıstığı. %10 tarife iştahı ~%14, %50
@@ -3289,8 +3308,28 @@ function populationDemand(world, nation, market) {
  * DISARI ACILDI: sirket katmani cikarim sahibinin hakkini ayni sayidan
  * turetir. Iki yerde ayri ayri yazilsaydi
  * biri kayinca temettu ust sinif gelirinden farkli bir tutar duserdi.
+ *
+ * 0.35 -> 0.70. GEREKCE MUHASEBEDIR, ayar degil: bu sayi kirsal uretimin
+ * PAZARLANAN payidir, `SUBSISTENCE_SHARE.lower` (0.30) ise hanenin kendi
+ * uretiminden karsiladigi paydir. Ikisi ayni bolusumun iki yarisi oldugu
+ * halde toplamlari 0.65 tutuyordu; kalan %35 ne pazara ne haneye yaziliyordu.
+ * 0.70 + 0.30 = 1.00 ile bolusum kapaniyor.
+ *
+ * BU SAYI DAHA ONCE YANLIS METRIKLE ELENMISTI. d9d05e9 0.35 -> 0.6 denemis ve
+ * "GSYH ayni kaldi" diye reddetmisti; oysa GSYH'nin degismemesi BEKLENEN
+ * seydir — havuz bir transferdir, uretim yaratmaz. Reel olcutlerle (bkz.
+ * audit:growth) ayni kaldirac uc hedefi de iyilestiriyor ve sanayiyi en cok
+ * buyuten varyant cikiyor.
+ *
+ * Olculdu (100 yil x 2 tohum, PRICE_ANCHOR 0.060 ile BIRLIKTE):
+ *   H1 reel tuketim/kisi   0.94 / 1.01  ->  1.03 / 1.05   (gecti)
+ *   H2 orta+ust payi       %5.85 / %3.84 -> %13.83 / %11.63 (gecti)
+ *   H3 tesis buyumesi      1.12x / 1.03x ->  1.19x / 1.16x  (hala kirmizi)
+ * H3 ACIK KALIYOR ve kilidi burada degil: yeni tesisin bedeli kurulu sayiyla
+ * tirmanirken kapitalistin butcesi fiyatla birlikte cokuyor (bkz. factoryCost
+ * ve privateCommitRoom).
  */
-export const INCOME_POOL_SHARE = 0.35;
+export const INCOME_POOL_SHARE = 0.70;
 export const INCOME_WEIGHTS = { lower: 0.42, middle: 0.33, upper: 0.25 };
 
 function fiscalBalance(nation, baseOutputValue) {
