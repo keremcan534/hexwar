@@ -591,23 +591,36 @@ function nearestCoastalNation(world, province) {
   return best;
 }
 
+/**
+ * Ülkenin kuruluş sayaçları. YALNIZ BURADA, bir kez çalışır; `tiles` ve
+ * `provinces` bundan sonra artımlı olarak güncel tutulur (fetih, barış,
+ * province tazelemesi).
+ *
+ * `nation.population` DİYE BİR ALAN YOKTUR ve olmamalı. Burada bir tane
+ * vardı: kare veriminden türetilen ayrı bir formül, dünya üretiminde bir kez
+ * yazılıp bir daha hiç güncellenmiyordu ve hiçbir yerden okunmuyordu. Üç ayrı
+ * sebeple tuzaktı:
+ *   - Ölüydü ama hazır duruyordu: bir YZ sezgisi ya da ekran yazan biri
+ *     doğal olarak `nation.population`a uzanır.
+ *   - Kuruluşta donuyordu; 1. haftada bile bayattı.
+ *   - POPULATION_SCALE geldikten sonra (bkz. game/populationScale.js) gerçek
+ *     sayının bir basamak altında kaldı.
+ * Nüfusun TEK doğrusu `economy.populationOf(world, nation)`: province
+ * ekonomilerinin toplamı. İkinci bir tanım tutulmaz.
+ */
 function computeStats(world, nations) {
   for (const n of nations) {
     n.tiles = 0;
     n.provinces = 0;
-    n.population = 0;
     n.coastal = false;
   }
   world.forEach((tile) => {
     if (tile.owner < 0) return;
     const n = nations[tile.owner];
     n.tiles++;
-    n.population += Math.round(tile.terrain.yields.food * 2200 + tile.moisture * 400);
     if (tile.coastal) n.coastal = true;
   });
   for (const province of world.provinces ?? []) {
     if (province.owner >= 0) nations[province.owner].provinces++;
   }
-  // Başkent nüfusu ayrıca ağırlıklı.
-  for (const n of nations) n.population = Math.round(n.population * 1.15);
 }
