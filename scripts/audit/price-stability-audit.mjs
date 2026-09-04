@@ -37,7 +37,9 @@
 import {
   headless, runPeaceful, pickNation, section, sub, table, n2, finding, reportFindings,
 } from './harness.mjs';
-import { GOODS } from '../../src/game/economy.js';
+import {
+  GOODS, MILITARY_EQUIPMENT_IDS, PRICE_ANCHOR, PRICE_SPEED,
+} from '../../src/game/economy.js';
 
 // 1560 hafta (30 yil). KISA UFUK YANILTIR: dunya yapay olarak yuksek
 // fiyatlarla acilir (1836'da hicbir fabrika yok, her mal kit) ve denge
@@ -59,11 +61,18 @@ function marketSlice(world) {
   // Fiilen el degistiren mal, SABIT fiyatla: reel tuketim budur. Cari fiyatla
   // olcmek daireseldir — fiyat zaten fazlanin sonucu.
   let realTraded = 0;
+  // Fazlanin ne kadari, bu arenada tuketicisi olmayan askeri mallarda? Sayi
+  // ELLE YAZILMAZ: rapor metni bunu kosuda hesaplayip basar.
+  let askeriFazla = 0;
+  let toplamFazla = 0;
   for (const [id, good] of Object.entries(world.market.goods)) {
     const base = good.basePrice ?? GOODS[id]?.basePrice ?? 0;
     if (!(base > 0)) continue;
     supply += good.supply * base;
     demand += good.demand * base;
+    const fazla = Math.max(0, good.supply - good.demand) * base;
+    toplamFazla += fazla;
+    if (MILITARY_EQUIPMENT_IDS.includes(id)) askeriFazla += fazla;
     realTraded += Math.min(good.supply, good.demand) * base;
     index += good.price / base;
     counted++;
@@ -85,6 +94,7 @@ function marketSlice(world) {
   }
   const people = Math.max(1, population);
   return {
+    askeriFazlaPayi: toplamFazla > 1e-9 ? askeriFazla / toplamFazla : 0,
     index: counted > 0 ? index / counted : 0,
     pinned,
     goods: counted,
@@ -117,6 +127,7 @@ for (const seed of SEEDS) {
     kayma: end.index - mid.index,
     cakili: `${end.pinned}/${end.goods}`,
     arzTalep: end.ratio,
+    askeriFazlaPayi: end.askeriFazlaPayi,
     ortaGelir: midIncome,
     sonGelir: endIncome,
     gelirOran: midIncome > 0 ? endIncome / midIncome : 0,
@@ -216,14 +227,35 @@ sub('TEST 4 — reel buyume egrisi var mi?');
 sub('ACIK BULGU — yapisal asiri kapasite');
 {
   const avg = rows.reduce((s, r) => s + r.arzTalep, 0) / Math.max(1, rows.length);
+  const askeriFazlaPayi = rows.reduce((s, r) => s + (r.askeriFazlaPayi ?? 0), 0)
+    / Math.max(1, rows.length);
   console.log(`  dunya arzi / talebi (taban fiyatla): ${n2(avg)}`);
   console.log('  Bu bir DENGE sorunu degil KALIBRASYON sorunudur: fiyat capasi');
-  console.log('  cokusu durdurur ama dengenin yeri taban fiyatin yarisidir.');
-  console.log('  Denge kapali formda: x = 1 - K(r-1)/(r+1), K = PRICE_SPEED /');
-  console.log('  PRICE_ANCHOR = 5. Yani %22 kalici fazla fiyati YARIYA indirir,');
-  console.log('  %50 fazla mali banda civiler. Olculdu: 17 malda RMS hata 0.06.');
-  console.log('  UYARI: bu toplam oran cakili ve talebi sifir mallarla kirlenir');
-  console.log('  (baris arenasinda topcu/tufek talebi yok; fazlanin ~%30\'u orada).');
+  console.log('  cokusu durdurur ama dengenin YERINI arz fazlasi belirler.');
+  // SABIT ELLE YAZILMAZ, ICE AKTARILIR. Burada "K = 5" gomuluydu; PRICE_ANCHOR
+  // 0.018'den 0.060'a kalibre edilince gercek K 1.5 oldu ve denetim yuzyildir
+  // ESKI sayiyi rapor ediyordu. Ayni ailenin dorduncu vakasi (bkz. ledger L1/L5).
+  const K = PRICE_SPEED / PRICE_ANCHOR;
+  // r = arz/talep icin denge fiyati; metin artik kendi formulunu KOSTURUR.
+  const denge = (r) => 1 - K * (r - 1) / (r + 1);
+  const yariyaDusuren = (() => {
+    // x = 0.5 veren r'yi coz: 0.5 = 1 - K(r-1)/(r+1)  ->  r = (K+0.5)/(K-0.5)
+    if (K <= 0.5) return null;
+    return (K + 0.5) / (K - 0.5);
+  })();
+  console.log(`  Denge kapali formda: x = 1 - K(r-1)/(r+1), K = PRICE_SPEED /`);
+  console.log(`  PRICE_ANCHOR = ${n2(PRICE_SPEED)}/${n2(PRICE_ANCHOR)} = ${n2(K)}.`);
+  console.log(`  Olculen ${n2(avg)}x fazla icin denge fiyati: ${n2(denge(avg))}`);
+  if (yariyaDusuren) {
+    console.log(`  Fiyati YARIYA indiren fazla: ${n2(yariyaDusuren)}x`);
+  } else {
+    console.log(`  Bu K ile fiyat hicbir fazlada yariya inmez (taban ${n2(denge(1e9))}).`);
+  }
+  // UYARI METNI DE OLCULUR. Once "fazlanin ~%30'u askeri mallarda" yaziyordu;
+  // sayi elle yazilmisti ve olcum onu dogrulamadi. Artik kosuda hesaplanir.
+  console.log(`  UYARI: bu oran, tuketicisi arenada bulunmayan mallarla kirlenir.`);
+  console.log(`  Askeri mallarin (${MILITARY_EQUIPMENT_IDS.join(', ')}) fazladaki payi:`
+    + ` %${n2(100 * askeriFazlaPayi)}`);
   console.log('  Buyume icin bakilacak sayi TEST 4\'tur, bu oran degil.');
 }
 

@@ -504,7 +504,7 @@ export function needAmount(need, turn) {
 }
 
 const DEFAULT_TAXES = { lower: 20, middle: 15, upper: 10 };
-const PRICE_SPEED = 0.09;
+export const PRICE_SPEED = 0.09;
 /**
  * Fiyatin taban fiyatina donme hizi (bkz. updatePrices).
  *
@@ -529,7 +529,7 @@ const PRICE_SPEED = 0.09;
  * Tek basina degil, gelir payiyla BIRLIKTE kalibre edildi — tek tek denenen
  * her kaldirac daha once elenmisti (bkz. MEKANIK_KILAVUZU 4.3).
  */
-const PRICE_ANCHOR = 0.060;
+export const PRICE_ANCHOR = 0.060;
 
 /**
  * Gümrüğün ithalat iştahını ne kadar kıstığı. %10 tarife iştahı ~%14, %50
