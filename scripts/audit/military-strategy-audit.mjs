@@ -114,6 +114,12 @@ for (let w = 0; w < WEEKS; w++) {
       strandedAge.delete(unit.id);
     }
   }
+  // Haritadan kalkan birim (terhis, imha) sayacta yasamaya devam ediyordu:
+  // seferberlikle dagitilan yedek "suda yetim" diye sayiliyor, tablo '?'
+  // basiyordu. Yalniz var olan birimler izlenir.
+  const present = new Set(world.units.map((unit) => unit.id));
+  for (const id of [...strandedAge.keys()]) if (!present.has(id)) strandedAge.delete(id);
+  for (const id of [...idleAge.keys()]) if (!present.has(id)) idleAge.delete(id);
 
   // --- atil ordular (ulke savasta, mevki yok, emir yok) ---
   for (const nation of world.nations) {

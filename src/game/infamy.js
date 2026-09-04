@@ -80,7 +80,11 @@ export const FOREIGN_YIELD_PENALTY = 0.3;
  * eteklerine getiriyor, art arda iki boyle baris esigi asiyor.
  */
 export const INFAMY_ANNEX = {
-  PER_TILE: 0.4,
+  // 0.4 -> 0.5 (2026-09-04): bos cepheye yuruyus acilinca (command.js
+  // WALK_IN_SHARE) savaslar daha kesin bitiyor ve 50 yilda el degistiren
+  // kume payi %31'den %39'a cikti (audit:war-pressure). Gem ordunun hizinda
+  // degil dunyanin tepkisinde: seri fatih koalisyon esigine daha erken varir.
+  PER_TILE: 0.5,
   PER_CITY: 3,
   /** Bu kadar nufus basina bir puan: kalabalik toprak daha cok rahatsiz eder. */
   POP_PER_POINT: 100000 * POPULATION_SCALE,

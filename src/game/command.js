@@ -22,7 +22,7 @@
 import { DIRS, hexesInRange } from '../core/hex.js';
 import { settle } from './treasury.js';
 import { atWar } from './diplomacy.js';
-import { MAX_ASSAULT_DIVISIONS, estimateBattle, startBattle } from './battles.js';
+import { estimateBattle, selectAssault, startBattle } from './battles.js';
 import { hasDirective, orderMove } from './movement.js';
 import { controllerOf } from './control.js';
 import { MAX_STACK, armyPower, isMoving, unitsOn } from './units.js';
@@ -714,8 +714,7 @@ function rescueStranded(game, unit) {
 /** Yalniz gercekten muharebeye yazilacak, combat-width icindeki tumenlerin gucu. */
 export function participatingAttackPower(units) {
   const list = Array.isArray(units) ? units : [units];
-  return list.slice(0, MAX_ASSAULT_DIVISIONS)
-    .reduce((sum, unit) => sum + armyPower(unit), 0);
+  return selectAssault(list).reduce((sum, unit) => sum + armyPower(unit), 0);
 }
 
 /**
@@ -758,11 +757,12 @@ function readyForOperation(game, unit) {
 
 /** Hedefe bitisik, ayni komutadaki gercek katilimcilar; en fazla combat width. */
 function operationParticipants(game, divisions, target) {
-  return divisions.filter((unit) => (
+  // Kusatma genisligi: birden cok komsu kareden gelen tumenler daha genis
+  // paket kurar (bkz. battles.selectAssault).
+  return selectAssault(divisions.filter((unit) => (
     readyForOperation(game, unit)
     && game.world.wrapDistance(unit.tile.q, unit.tile.r, target.q, target.r) === 1
-  )).sort((a, b) => armyPower(b) - armyPower(a) || a.id - b.id)
-    .slice(0, MAX_ASSAULT_DIVISIONS);
+  )));
 }
 
 /**
@@ -779,6 +779,10 @@ function pickOperation(game, general, divisions, info) {
       if (!tile.terrain.passable || controller < 0 || controller === unit.nationId) continue;
       if (general.target != null && controller !== general.target) continue;
       if (!atWar(world, controller, unit.nationId)) continue;
+      // Operasyon SAVUNULAN kare icindir; savunmasiz dusman karesi yuruyus
+      // pasinin isidir (pickWalkInTarget). Eskiden ikisi de buradan geciyor ve
+      // bos bir kareye yurumek bile grubun tek operasyon hakkini yiyordu.
+      if (!unitsOn(tile).some((other) => other.nationId !== unit.nationId)) continue;
       const active = world.battleSystem?.battles?.some(
         (battle) => battle.q === tile.q && battle.r === tile.r,
       );
@@ -848,11 +852,9 @@ export function assaultOutlook(world, general, turn = world.turn ?? 0) {
       const defenders = unitsOn(tile).filter((other) => other.nationId !== nation.id);
       if (!defenders.length) continue;
       // pickOperation ile ayni katilimci kurali: bitisik, hazir, combat width.
-      const participants = divisions
+      const participants = selectAssault(divisions
         .filter((other) => ready(other)
-          && world.wrapDistance(other.tile.q, other.tile.r, tile.q, tile.r) === 1)
-        .sort((a, b) => armyPower(b) - armyPower(a) || a.id - b.id)
-        .slice(0, MAX_ASSAULT_DIVISIONS);
+          && world.wrapDistance(other.tile.q, other.tile.r, tile.q, tile.r) === 1));
       if (!participants.length) continue;
       const { attack, defense } = estimateBattle(world, participants, defenders);
       const ratio = defense > 0 ? attack / defense : Infinity;
@@ -869,24 +871,49 @@ export function assaultOutlook(world, general, turn = world.turn ?? 0) {
   return best;
 }
 
-function pickWalkInTarget(world, unit, reserved) {
+/**
+ * Haftada dusman topragina yuruyebilecek tumen payi: grubun 1/WALK_IN_SHARE'i
+ * (en az bir). Yuruyusu SINIRSIZ acmak denendi ve OLCULDU: kartopu %39.8 ->
+ * %58.7 (commit 8560122). Hic acmamak ise cepheyi dondurdu — 10 tumen, 3
+ * general, agresiflik 3 ile bos cepheye ~1 hex/hafta (olculdu, 2026-09-04).
+ * Pay, "hat kirilinca supurme" ile "bombos cephede bekleme" arasindaki gem.
+ */
+const WALK_IN_SHARE = 4;
+
+function pickWalkInTarget(world, unit, reserved, { general = null, enemy = false } = {}) {
   let best = null;
   let bestScore = -Infinity;
   for (const tile of world.neighbors(unit.tile)) {
-    // Sahipli toprak ancak operasyonla alinir (bkz. pickOperation); burasi
-    // yalnizca SAHIPSIZ topragin yerlesimidir. Dusman topragini da bu pasa
-    // acmak denendi ve OLCULDU: kartopu %39.8 -> %58.7, yani hat kirilinca
-    // kazanan tarafin sureklesi bir supurmeye donusuyordu (audit:borders).
-    if (!tile.terrain.passable || controllerOf(tile) >= 0 || reserved.has(tile)) continue;
-    // Barista oldugumuz birinin tumeni oradaysa gecemeyiz.
+    if (!tile.terrain.passable || reserved.has(tile)) continue;
+    const controller = controllerOf(tile);
+    let hostileLand = false;
+    if (controller >= 0) {
+      // Sahipli toprak: yalniz savastigimiz ulkenin SAVUNMASIZ karesi ve
+      // yalniz haftalik pay izin veriyorsa (bkz. WALK_IN_SHARE). Savunulan
+      // kare operasyon ister (pickOperation).
+      if (!enemy || controller === unit.nationId) continue;
+      if (general?.target != null && controller !== general.target) continue;
+      if (!atWar(world, controller, unit.nationId)) continue;
+      hostileLand = true;
+    }
+    // Baska bir ulkenin tumeni oradaysa yuruyusle girilmez (barista gecit
+    // yok, savasta orasi muharebedir).
     const defenders = unitsOn(tile).filter((other) => other.nationId !== unit.nationId);
     if (defenders.length) continue;
+    if (world.battleSystem?.battles?.some((battle) => battle.q === tile.q && battle.r === tile.r)) continue;
 
     // Sehir degerlidir ama cephe sekli daha onemlidir: cok dost kenari olan
     // hedefler bosluk kapatir, tek kenardan uzanan hedefler cikinti yaratir.
     const ring = world.neighbors(tile).filter((near) => near.terrain.passable);
     const friendlySides = ring.filter((near) => controllerOf(near) === unit.nationId).length;
-    const score = (tile.city ? 20 : 0) + friendlySides * 28;
+    const enemySides = hostileLand
+      ? ring.filter((near) => controllerOf(near) === controller).length : 0;
+    // "En az iki dost kenar" sarti denendi ve OLCULDU (audit:borders D):
+    // kartopunu dusurmedi (%25/27/48 -> %37/29/48), yalniz cepheyi
+    // yavaslatti; kaldirildi. Cikinti kurali (tek kenar, dort dusman kenar)
+    // duruyor.
+    if (hostileLand && friendlySides === 1 && enemySides >= 4) continue;
+    const score = (tile.city ? 20 : 0) + friendlySides * 28 - enemySides * 14;
     if (score > bestScore) {
       bestScore = score;
       best = tile;
@@ -911,9 +938,21 @@ function pickWalkInTarget(world, unit, reserved) {
  * 2'den 4'e cikardigi icin en agresif durusta bile dort haftada bir hex
  * dusuyordu. "Cephe bos ama ilerlemiyoruz" sikayetinin koku buydu.
  */
+/**
+ * Sabirsizlik: ilerleme durusundaki general, onunde savunulan hedef varken
+ * bu kadar hafta operasyon acamazsa bir kademe daha saldirgan davranir
+ * (risk esigi duser). KAPALI (Infinity): 12 hafta denendi ve olculdu —
+ * donmus cepheyi (bully BULLY-1, en iyi sans 0.64-0.74, gereken 1.2)
+ * ACMADI ama 50 yillik kartopunu 4-5 puan buyuttu (audit:borders A/B
+ * karsilastirmasi). Mekanizma duruyor; acmak isteyen sayiyi yazsin ve
+ * borders'i yeniden olcsun.
+ */
+const STALL_ESCALATION_WEEKS = Infinity;
+
 function advance(game, general, divisions) {
   const world = game.world;
-  const info = aggressionInfo(general.aggression);
+  const stalled = (general.stalledWeeks ?? 0) >= STALL_ESCALATION_WEEKS;
+  const info = aggressionInfo(Math.min(3, general.aggression + (stalled ? 1 : 0)));
   // Hazirliksiz taarruz agir ilerler: olgunluk cadence'i kisaltir.
   const maturity = general.planning >= 1 ? 0 : general.planning >= 0.5 ? 1 : 2;
   const cadence = info.cadence + maturity;
@@ -926,34 +965,40 @@ function advance(game, general, divisions) {
   // bekletiyordu; ustelik hazirliksiz baslayan taarruzda `maturity` cadence'i
   // 2'den 4'e cikardigi icin en agresif durusta bile dort haftada bir hex
   // dusuyordu. Bos kare artik yalniz TEMPOYA tabidir.
-  if (game.turns.turn >= (general.nextAssaultAt ?? 0)) {
+  let opened = false;
+  if (game.turns.turn >= (general.nextAssaultAt ?? 0)
+    && general.planning >= MIN_ASSAULT_PLANNING) {
+    // Operasyon yalniz SAVUNULAN kareye acilir (pickOperation); savunmasiz
+    // kare asagidaki yuruyus pasinindir ve grubun operasyon hakkini yemez.
     const operation = pickOperation(game, general, divisions, info);
-    if (operation && (!operation.held || general.planning >= MIN_ASSAULT_PLANNING)) {
+    if (operation) {
       const [lead, ...support] = operation.participants;
-      const ok = operation.held
-        ? startBattle(game, lead, operation.tile)
-        : orderMove(game, lead, operation.tile);
-      if (ok) {
+      if (startBattle(game, lead, operation.tile)) {
         const committed = [lead];
-        if (operation.held) {
-          for (const unit of support) {
-            if (startBattle(game, unit, operation.tile)) committed.push(unit);
-          }
+        for (const unit of support) {
+          if (startBattle(game, unit, operation.tile)) committed.push(unit);
         }
         for (const unit of committed) unit.post = { q: operation.tile.q, r: operation.tile.r };
         // Ayni kareyi asagidaki yuruyus pasi de secmesin.
         reserved.add(operation.tile);
-        // Bos kareyi almak hazirlik harcamaz: bir sonraki firsat ham
-        // agresiflik temposunda gelir, plan olgunlugu cezasi yoktur.
-        general.nextAssaultAt = game.turns.turn
-          + (operation.held ? cadence : info.cadence);
+        general.nextAssaultAt = game.turns.turn + cadence;
+        opened = true;
       }
     }
   }
+  // Sabirsizlik sayaci: savunulan hedef var, operasyon yok -> birikir.
+  if (opened) general.stalledWeeks = 0;
+  else if (assaultOutlook(world, general, game.turns.turn)) {
+    general.stalledWeeks = (general.stalledWeeks ?? 0) + 1;
+  } else general.stalledWeeks = 0;
 
   // YURUYUS: sahipsiz toprak ve savunmasiz dusman karesi. Tempo YALNIZ
   // agresiflikten gelir — `maturity` burada YOK, cunku hazirlik savunulan
-  // hatta girmenin bedelidir, bos araziye yurumenin degil.
+  // hatta girmenin bedelidir, bos araziye yurumenin degil. Dusman karesine
+  // haftada en fazla grubun WALK_IN_SHARE'de biri yurur: bos cephe ilerler
+  // ama kirilan hat tek haftada supurulmez.
+  const walkInCap = Math.max(1, Math.ceil(divisions.length / WALK_IN_SHARE));
+  let enemyWalkIns = 0;
   for (let index = 0; index < divisions.length; index++) {
     const unit = divisions[index];
     if (!readyForOperation(game, unit)) continue;
@@ -965,10 +1010,13 @@ function advance(game, general, divisions) {
     // Kayittan yuklemek de kimlikleri yeniden urettigi icin ayni dallanmayi
     // yaratiyordu. Sira ise dunyaya aittir: kayitta korunur, surecten bagimsizdir.
     if ((game.turns.turn + index) % info.cadence !== 0) continue;
-    const target = pickWalkInTarget(world, unit, reserved);
+    const target = pickWalkInTarget(world, unit, reserved, {
+      general, enemy: enemyWalkIns < walkInCap,
+    });
     if (!target) continue;
     if (!orderMove(game, unit, target)) continue;
     reserved.add(target);
+    if (controllerOf(target) >= 0) enemyWalkIns++;
     // Mevki ileri tasinir, yoksa tumen aldigi kareden hemen geri cagriliyordu.
     unit.post = { q: target.q, r: target.r };
   }
@@ -1081,23 +1129,27 @@ function wantedOfficers(world, nation, branch) {
 
 function refreshOfficerCorps(game, nation, rng) {
   const world = game.world;
-  if (world.turn % 52 !== 0) return;
-  for (const general of [...generalsOf(nation)]) {
-    general.age = (general.age ?? 0) + 1;
-    // Otuz hizmet yılından sonra her yıl artan bir ayrılma şansı.
-    const odds = (general.age - GENERAL_RETIRE_AGE) * 0.08;
-    if (odds <= 0 || rng() > odds) continue;
-    for (const armyId of [...general.divisions]) releaseArmy(nation, armyId);
-    nation.generals = generalsOf(nation).filter((other) => other.id !== general.id);
-    if (nation.id === game.turns.playerNation) {
-      const rank = branchOf(general) === BRANCH.NAVY ? 'Admiral' : 'General';
-      game.turns.addLog(`${rank} ${general.name} retired after ${general.age} years.`,
-        { kind: 'COMMANDER' });
+  if (world.turn % 52 === 0) {
+    for (const general of [...generalsOf(nation)]) {
+      general.age = (general.age ?? 0) + 1;
+      // Otuz hizmet yılından sonra her yıl artan bir ayrılma şansı.
+      const odds = (general.age - GENERAL_RETIRE_AGE) * 0.08;
+      if (odds <= 0 || rng() > odds) continue;
+      for (const armyId of [...general.divisions]) releaseArmy(nation, armyId);
+      nation.generals = generalsOf(nation).filter((other) => other.id !== general.id);
+      if (nation.id === game.turns.playerNation) {
+        const rank = branchOf(general) === BRANCH.NAVY ? 'Admiral' : 'General';
+        game.turns.addLog(`${rank} ${general.name} retired after ${general.age} years.`,
+          { kind: 'COMMANDER' });
+      }
     }
   }
   // Otomatik kadro kapalıysa boşalan yer boş kalır: subayı oyuncu yetiştirir.
   if (!ensureCommandOptions(nation).autoCreate) return;
-  // Komutasız tümen kalmasın: ordu büyüdükçe kadro da büyür.
+  // Komutasız tümen kalmasın: ordu büyüdükçe kadro da büyür. Kontrol HER
+  // HAFTA — yılda bir yetmiyordu: seferberlik orduyu sekiz haftada iki-uc
+  // katina cikariyor ve yeni tumenler bir yila kadar komutansiz bekliyordu
+  // (olculdu, military-strategy-audit: 44 tumen >=8 hafta atil, en uzun 45).
   for (const branch of [BRANCH.ARMY, BRANCH.NAVY]) {
     const wanted = wantedOfficers(world, nation, branch);
     if (officersOf(nation, branch).length >= wanted) continue;

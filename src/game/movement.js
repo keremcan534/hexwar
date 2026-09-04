@@ -6,7 +6,7 @@
 // (yeniden hesap) ve hedefe varmak.
 
 import { findPath } from '../core/pathfind.js';
-import { atWar } from './diplomacy.js';
+import { atWar, inCrisis } from './diplomacy.js';
 import { controllerOf } from './control.js';
 import { startBattle } from './battles.js';
 import { generalMarchBonus, generalOfArmy } from './command.js';
@@ -68,12 +68,22 @@ export function resumeDirectives(game) {
     }
     if (unit.battleId || (unit.retreatUntil ?? 0) > game.turns.turn) continue;
     if (isMoving(unit)) { directive.tries = 0; continue; }
+    // Ultimatomdaki hedef: sinir kapali, emir bekler ve deneme SAYILMAZ
+    // (sekiz haftalik bekleme alti denemede emri dusururdu).
+    const holder = controllerOf(tile);
+    if (holder >= 0 && holder !== unit.nationId && inCrisis(world, holder, unit.nationId)) continue;
     // Bitisikteki dusmana yuruyusle degil taarruzla girilir.
     if (world.wrapDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) === 1
       && unitsOn(tile).some((other) => other.nationId !== unit.nationId)) {
-      if (game.attack(unit, tile)) { directive.tries = 0; continue; }
-      // Cadence/organizasyon hazir degil: emir DUSMEZ, hafta beklenir.
-      directive.tries++;
+      // Oyuncunun emri generalin temposunu beklemez (manual); toparlanma ve
+      // duzen gibi fiziksel engeller beklenir ve deneme sayilmaz — yalniz
+      // umutsuz engel (barista, denizde) emri dusurur.
+      const blockers = game.attackBlockers(unit, tile, { manual: true });
+      if (!blockers.length && game.attack(unit, tile, { manual: true })) {
+        directive.tries = 0;
+        continue;
+      }
+      if (blockers.some((b) => !b.wait)) directive.tries = DIRECTIVE_TRIES;
     } else if (orderMove(game, unit, tile)) {
       directive.tries = 0;
       continue;

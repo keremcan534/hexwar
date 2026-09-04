@@ -9,11 +9,14 @@ import { PointerController } from '../input/pointer.js';
 import { pixelToHex } from '../core/hex.js';
 import { randomSeed } from '../core/rng.js';
 import { reachable } from '../core/pathfind.js';
-import { armyPower, clearPath, placeUnit, speedOf, stackFull, unitsOn } from './units.js';
+import {
+  armyPower, clearPath, organizationOf, placeUnit, speedOf, stackFull, unitsOn,
+} from './units.js';
 import { orderMove, setDirective } from './movement.js';
 import { TurnManager } from './turn.js';
-import { atWar, declareWar } from './diplomacy.js';
+import { atWar, crisisLeft, declareWar, inCrisis } from './diplomacy.js';
 import { demobilize, isMobilized, mobilize } from './mobilization.js';
+import { provinceName } from './provinces.js';
 import {
   signPeace, suggestWarGoal,
 } from './peace.js';
@@ -28,7 +31,9 @@ import { loadFromStorage, saveToStorage } from './save.js';
 import {
   ORDER, clearOrder, executeOrders, idleUnits, setOrder,
 } from './orders.js';
-import { MAX_ASSAULT_DIVISIONS, battleAt, startBattle } from './battles.js';
+import {
+  BREAK_ORGANIZATION, MAX_ASSAULT_WIDTH, assaultWidth, battleAt, selectAssault, startBattle,
+} from './battles.js';
 import {
   STANCE, assignDivisions, divisionsOf, frontTilesOf, generalOfArmy, refreshFront, setTarget,
   toggleStance,
@@ -287,55 +292,93 @@ export class Game {
     const selected = [...this.selection];
     const controller = controllerOf(tile);
     const foreignOwner = controller >= 0 && controller !== this.turns.playerNation;
+    const player = this.turns.playerNation;
     const hostileUnits = unitsOn(tile).filter((unit) => (
-      unit.nationId !== this.turns.playerNation
-      && atWar(this.world, unit.nationId, this.turns.playerNation)
+      unit.nationId !== player && (atWar(this.world, unit.nationId, player)
+        || inCrisis(this.world, unit.nationId, player))
     ));
+    // Ültimatomdaki düşman da hedeftir: emir kaydedilir, sınır açılınca
+    // yürür (bkz. movement.resumeDirectives). Sessizce yutulan tık yok.
     const hostileTarget = hostileUnits.length > 0 || (
-      foreignOwner && atWar(this.world, controller, this.turns.playerNation)
+      foreignOwner && (atWar(this.world, controller, player) || inCrisis(this.world, controller, player))
     );
     if (hostileTarget) {
       const defenders = hostileUnits;
       let issued = 0;
+      let waiting = 0;
+      const reasons = new Map();
       if (defenders.length) {
         // Tek sag tik tek province operasyonudur. Bitişik secili tumenler ayni
         // muharebeye katilir; battles.js combat width fazlasini reddeder.
-        const participants = selected.filter((unit) => (
+        const able = selected.filter((unit) => (
           unit && unit.hp > 0 && !unit.battleId && !unit.embarked
-        )).sort((a, b) => (
+        ));
+        const near = (unit) => this.world.wrapDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) === 1;
+        // Bitisik tumenler kusatma genisligine gore secilir (birden cok yon
+        // daha genis paket); uzaktakiler yuruyup katilir, toplam tavan genislik.
+        const adjacentPick = selectAssault(able.filter(near));
+        const farPick = able.filter((unit) => !near(unit)).sort((a, b) => (
           this.world.wrapDistance(a.tile.q, a.tile.r, tile.q, tile.r)
           - this.world.wrapDistance(b.tile.q, b.tile.r, tile.q, tile.r)
           || armyPower(b) - armyPower(a) || a.id - b.id
-        )).slice(0, MAX_ASSAULT_DIVISIONS);
+        )).slice(0, Math.max(0, MAX_ASSAULT_WIDTH - adjacentPick.length));
+        const participants = adjacentPick.concat(farPick);
         for (const unit of participants) {
           const adjacent = this.world.wrapDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) === 1;
           // Emir tumenin ustunde kalir: yol duserse general onu geri cagirmak
           // yerine hedefe yeniden yollar (bkz. movement.resumeDirectives).
-          const ok = adjacent ? this.attack(unit, tile) : orderMove(this, unit, tile);
-          if (!ok) continue;
+          // EMIR HER DURUMDA KAYDEDILIR. Eskiden saldiri o hafta acilamiyorsa
+          // (tempo, toparlanma, ultimatom) tik hicbir iz birakmiyordu; oyuncu
+          // "5-10 kere tiklayinca bazen oluyor" diye yaziyordu — olan sey
+          // tiklar arasinda zamanin gecmesiydi.
+          const blockers = adjacent ? this.attackBlockers(unit, tile, { manual: true }) : [];
+          const hopeless = blockers.some((b) => !b.wait);
+          if (hopeless) {
+            for (const b of blockers) if (!b.wait) reasons.set(b.id, b.text);
+            continue;
+          }
+          const ok = adjacent
+            ? this.attack(unit, tile, { manual: true })
+            : orderMove(this, unit, tile);
           setDirective(unit, tile);
-          issued++;
+          if (ok) { issued++; continue; }
+          waiting++;
+          for (const b of blockers) reasons.set(b.id, b.text);
+          if (!adjacent && !blockers.length) reasons.set('path', 'no open road yet');
         }
+        this.reportOrder(tile, issued, waiting, reasons);
       } else {
         // Bos dusman province'i bir tikla yalniz bir tumen alir; toplu secim
         // cevredeki birden cok province'i ayni anda yutamaz.
         const candidates = selected.filter((unit) => (
-          unit && unit.hp > 0 && !unit.battleId && this.canEnterFor(unit)(tile)
+          unit && unit.hp > 0 && !unit.battleId && unit.type.domain === 'land'
         )).sort((a, b) => (
           this.world.wrapDistance(a.tile.q, a.tile.r, tile.q, tile.r)
           - this.world.wrapDistance(b.tile.q, b.tile.r, tile.q, tile.r)
           || armyPower(b) - armyPower(a) || a.id - b.id
         ));
-        if (candidates[0] && orderMove(this, candidates[0], tile)) {
-          setDirective(candidates[0], tile);
-          issued = 1;
+        const lead = candidates[0];
+        if (lead) {
+          const left = crisisLeft(this.world, controller, player, this.turns.turn);
+          // Ültimatomda yol yok ama emir var: sınır açılınca yürür.
+          setDirective(lead, tile);
+          if (left) {
+            waiting = 1;
+            reasons.set('ultimatum', `ultimatum: the border opens in ${left} week(s)`);
+          } else if (orderMove(this, lead, tile)) {
+            issued = 1;
+          } else {
+            waiting = 1;
+            reasons.set('path', 'no open road yet');
+          }
         }
+        this.reportOrder(tile, issued, waiting, reasons);
       }
       this.selected = tile;
       this.emit('select', tile);
       this.emit('units', this.selectedUnit);
       this.requestRender();
-      return issued > 0;
+      return issued + waiting > 0;
     }
 
     const spread = spreadTargets(this.world, tile, this.selection.length);
@@ -433,6 +476,26 @@ export class Game {
   }
 
   /**
+   * Sağ tık emrinin tek satırlık karşılığı. Emir ya yürüdü, ya kaydedilip
+   * bekliyor, ya anlamsız — üçü de yazılır; sessiz tık yok.
+   */
+  reportOrder(tile, issued, waiting, reasons) {
+    const where = provinceName(tile);
+    const why = [...reasons.values()].join('; ');
+    let text;
+    if (issued && waiting) {
+      text = `${issued} division(s) move on ${where}; ${waiting} hold the order (${why}).`;
+    } else if (issued) {
+      text = null; // yürüyen emir haritada görünür, satır gerekmez
+    } else if (waiting) {
+      text = `Order recorded for ${where}: ${why}. The division(s) will act when they can.`;
+    } else if (why) {
+      text = `No order for ${where}: ${why}.`;
+    }
+    if (text) this.turns.addLog(text, { kind: 'ARMY', tile, key: `order:${tile.q}:${tile.r}` });
+  }
+
+  /**
    * Birimin girebileceği kareler. Kara birimi denize girebilir ("bindirilmiş"),
    * gemi karaya çıkamaz.
    */
@@ -514,21 +577,61 @@ export class Game {
     return conquered;
   }
 
-  attack(unit, tile) {
+  /**
+   * Bu tümen şu an bu kareye NEDEN saldıramaz? Boş dizi = saldırabilir.
+   * `attack` ile aynı kapılar; ekran ve emir katmanı sebebi buradan okur.
+   * Her satır {id, text, wait} — `wait` true ise engel geçicidir (hafta
+   * beklenir), false ise emir anlamsızdır (denizde, barışta).
+   */
+  attackBlockers(unit, tile, { manual = false } = {}) {
+    const out = [];
     const defender = unitsOn(tile).find((other) => other.nationId !== unit.nationId);
-    if (!defender) return false;
-    if (this.world.wrapDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) !== 1) return false;
-    // Denizdeki kara birimi savaşamaz; önce karaya çıkmalı.
-    if (unit.embarked) return false;
-    if ((unit.attackReadyAt ?? 0) > this.turns.turn) return false;
-    // Barış içindeki ülkeye saldırmak için önce savaş ilan edilmeli.
-    if (!atWar(this.world, unit.nationId, defender.nationId)) return false;
-
-    // Ayni general yeni bir province taarruzunu cadence dolmadan acamaz.
-    // Mevcut muharebeye combat-width icinde takviye girmek serbesttir.
+    if (!defender) return [{ id: 'empty', text: 'no enemy there', wait: false }];
+    if (this.world.wrapDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) !== 1) {
+      out.push({ id: 'far', text: 'not adjacent', wait: true });
+    }
+    if (unit.embarked) out.push({ id: 'sea', text: 'at sea; land first', wait: false });
+    if ((unit.attackReadyAt ?? 0) > this.turns.turn) {
+      out.push({
+        id: 'consolidating', wait: true,
+        text: `consolidating ${unit.attackReadyAt - this.turns.turn} more week(s)`,
+      });
+    }
+    if (!atWar(this.world, unit.nationId, defender.nationId)) {
+      const left = crisisLeft(this.world, unit.nationId, defender.nationId, this.turns.turn);
+      out.push(left
+        ? { id: 'ultimatum', text: `ultimatum: war begins in ${left} week(s)`, wait: true }
+        : { id: 'peace', text: 'not at war with them', wait: false });
+    }
+    if (organizationOf(unit) <= BREAK_ORGANIZATION) {
+      out.push({ id: 'broken', text: 'organization too low to attack', wait: true });
+    }
+    // Generalin temposu yalniz KENDI operasyonlarini baglar. Oyuncunun sag
+    // tiki bir karardir, generalin plan takvimi degil: eskiden bu kapi el
+    // emrini de sessizce reddediyor ve "5-10 tikta bir saldiriyor" hissini
+    // veriyordu (her taarruz nextAssaultAt'i 3-7 hafta ileri atar).
     const existing = battleAt(this.world, tile);
     const general = generalOfArmy(this.world.nations[unit.nationId], unit);
-    if (!existing && general && this.turns.turn < (general.nextAssaultAt ?? 0)) return false;
+    if (!manual && !existing && general && this.turns.turn < (general.nextAssaultAt ?? 0)) {
+      out.push({
+        id: 'cadence', wait: true,
+        text: `${general.name}'s next assault in ${general.nextAssaultAt - this.turns.turn} week(s)`,
+      });
+    }
+    if (existing && unit.nationId === existing.attackerNation) {
+      const origins = new Set(existing.attackers
+        .map((id) => this.world.units.find((other) => other.id === id))
+        .filter(Boolean).map((other) => `${other.tile.q}:${other.tile.r}`));
+      origins.add(`${unit.tile.q}:${unit.tile.r}`);
+      if ((existing.attackerCommitted ?? existing.attackers.length) >= assaultWidth(origins.size)) {
+        out.push({ id: 'width', text: 'the battle is at full width; attack from another side to widen it', wait: true });
+      }
+    }
+    return out;
+  }
+
+  attack(unit, tile, { manual = false } = {}) {
+    if (this.attackBlockers(unit, tile, { manual }).length) return false;
 
     // Muharebe kareye aittir: o province'teki bütün savunanlar aynı savaşa girer.
     if (!startBattle(this, unit, tile)) return false;

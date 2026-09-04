@@ -31,9 +31,10 @@ import { rulingParty } from './politics.js';
 import { delegationActive, noteDelegated } from './delegation.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
-// 1.4 -> 1.6: 50 yilda haritanin ucte birinden fazlasi el degistiriyordu
+// 1.4 -> 1.6 -> 1.8 (2026-09-04: kusatma ve bos cepheye yuruyus savaslari
+// kesinlestirdi, 50 yilda %39-45 kume el degistirdi): 50 yilda haritanin ucte birinden fazlasi el degistiriyordu
 // (audit:borders %35-39); daha kesin ustunluk ister, daha az savas acar.
-const WAR_THRESHOLD = 1.6;
+const WAR_THRESHOLD = 1.8;
 
 /**
  * ZATEN SAVAŞTA olan bir ülkeye saldırmak için gereken üstünlük ve sınır.
@@ -74,10 +75,11 @@ const PEACE_WIN_SCORE = 25;
 
 /** Bu warscore'un altında YZ savaşı ne pahasına olursa olsun kesmeye çalışır. */
 const PEACE_LOSS_SCORE = -30;
-// Uc yil sonuc uretmeyen savas masaya beyaz baris koyar (bkz. asagida
+// Iki yil (156 -> 104, 2026-09-04: seferberlikle donmus cephe sıklaştı) sonuc
+// uretmeyen savas masaya beyaz baris koyar (bkz. asagida
 // donmus-savas dali). 8 yillik `stale` kapisi yalniz KAZANAN dalinda
 // yasiyordu; 0-0 savasin teklif vereni hic yoktu.
-const FROZEN_WAR_WEEKS = 156;
+const FROZEN_WAR_WEEKS = 104;
 
 /**
  * Teklifi alan tarafın kararı. Ölçüt tek: masada verdiğim, cephede

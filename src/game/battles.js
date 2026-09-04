@@ -27,7 +27,55 @@ import { controllerOf } from './control.js';
 export const MAX_ROUNDS = 20;
 /** Tek province muharebesinin combat width'i; sonsuz tumen yigmayi engeller. */
 export const MAX_ASSAULT_DIVISIONS = 3;
+/**
+ * Savunma genisligi = MAX_STACK: karedeki dort tumen de dovusur. 3'e
+ * indirmek denendi (2026-09-04, siperli arazi carpani 1.5 ile birlikte):
+ * donmus dar cephede saldiri acildi (sans 0.7 -> 1.5-2.0) ama muharebeler
+ * yine kazanilmadi ve 50 yillik kartopu %42-50'ye cikti; geri alindi.
+ */
 export const MAX_DEFENSE_DIVISIONS = MAX_STACK;
+/**
+ * KUSATMA: ayni kareye birden cok komsu kareden gelen saldiri daha genis
+ * cephe acar — her ek yon FLANK_WIDTH tumen daha sokar, tavan MAX_ASSAULT_WIDTH.
+ *
+ * NEDEN: tek kareden en fazla 3 tumen saldirirken savunan MAX_STACK (4) ile
+ * siperde duruyordu; sayica 2.3 kat ustun ordu (39 vs 16 alay, olculdu:
+ * bully BULLY-1) tek bir kareye bile dalamiyor, cephe uc yil donuyordu.
+ * Kusatma sayisal ustunlugu yeniden anlamli kilar ve oyuncuya okunur bir
+ * taktik verir: bir kareyi iki-uc yandan sar.
+ */
+export const FLANK_WIDTH = 2;
+export const MAX_ASSAULT_WIDTH = 7;
+
+export function assaultWidth(originCount) {
+  return Math.min(
+    MAX_ASSAULT_WIDTH,
+    MAX_ASSAULT_DIVISIONS + FLANK_WIDTH * Math.max(0, originCount - 1),
+  );
+}
+
+const originKey = (unit) => (unit?.tile ? `${unit.tile.q}:${unit.tile.r}` : 'x');
+
+/**
+ * Saldiri paketi: guce gore sirali adaylardan genislik kuralina sigan
+ * tumenler. Yeni bir yonden gelen tumen genisligi buyuttugu icin, zayif olsa
+ * da yer bulabilir; ayni yonden gelen fazlalik disarida kalir.
+ */
+export function selectAssault(units, alreadyIn = []) {
+  const sorted = [...units].sort((a, b) => armyPower(b) - armyPower(a) || a.id - b.id);
+  const chosen = [];
+  const origins = new Set(alreadyIn.map(originKey));
+  let count = alreadyIn.length;
+  for (const unit of sorted) {
+    const key = originKey(unit);
+    const width = assaultWidth(origins.has(key) ? origins.size : origins.size + 1);
+    if (count >= width) continue;
+    chosen.push(unit);
+    origins.add(key);
+    count++;
+  }
+  return chosen;
+}
 /** Bu organization seviyesine dusen division tek basina kirilir ve cekilir. */
 export const BREAK_ORGANIZATION = 15;
 
@@ -109,6 +157,11 @@ export function battleUnitPower(world, unit, defending, relief = 0) {
   // Vaat artik gercek: hat piyadesi savunurken arazi/tahkimat katkisini iki
   // kat alir. Piyadeyi "her zaman dogru cevap" olmaktan cikaran karsi agirlik
   // da ayni haftada geldi (bkz. sidePower destek kolu carpani).
+  // 1.5 denendi (2026-09-04): iki kat arazi + siper + MAX_STACK savunan, bes
+  // tumenlik kusatmaya karsi bile 0.64-0.74 sans veriyor (olculdu: bully
+  // BULLY-1, 3 hexlik dar cephe, iki yil donmus savas -> beyaz baris).
+  // 1.5 saldiriyi acti ama kartopunu %42-50'ye tasidi; 2'de kaldi. Dar
+  // cephe hala topcu, muhendis general ve sabir ister.
   const terrainScale = unit.type?.entrenched ? 2 : 1;
   const terrain = defending
     ? (1 + terrainDefense(world, unit) * terrainScale * (1 - relief)) * (1 + (unit.entrenchment ?? 0))
@@ -146,7 +199,7 @@ function sidePower(world, units, defending, relief) {
  * savunan yigin tavani. Zar araligi bilerek disarida; YZ ortalamayi tartar.
  */
 export function estimateBattle(world, attackers, defenders) {
-  const front = attackers.slice(0, MAX_ASSAULT_DIVISIONS);
+  const front = selectAssault(attackers);
   const relief = generalSiegeRelief(leadGeneral(world, front));
   return {
     attack: sidePower(world, front, false, 0),
@@ -231,7 +284,10 @@ export function joinBattle(game, battle, unit) {
   if (!battle || !unit || unit.battleId === battle.id) return false;
   if (unit.battleId || organizationOf(unit) <= BREAK_ORGANIZATION) return false;
   if (unit.nationId === battle.attackerNation) {
-    if ((battle.attackerCommitted ?? battle.attackers.length) >= MAX_ASSAULT_DIVISIONS) {
+    // Genislik, saldiranlarin geldigi YON sayisina bakar (kusatma).
+    const origins = new Set(armiesByIds(game.world, battle.attackers).map(originKey));
+    origins.add(originKey(unit));
+    if ((battle.attackerCommitted ?? battle.attackers.length) >= assaultWidth(origins.size)) {
       return false;
     }
     enlist(battle, unit, true);

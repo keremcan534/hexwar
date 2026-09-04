@@ -91,7 +91,9 @@ export function demandLimit(score) {
   // degistiriyordu (audit:borders). Savas sinir duzeltir, ulke yutmaz.
   if (s < 15) return 0;
   if (s < 30) return 1;
-  if (s < 55) return 2;
+  // 55 -> 70 (2026-09-04): kusatma genisligi savaslari kesinlestirince 50
+  // yilda el degistiren kume payi %39a cikti; ucuncu kume daha buyuk zafer ister.
+  if (s < 70) return 2;
   return MAX_DEMAND_PROVINCES;
 }
 

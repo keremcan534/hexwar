@@ -17,7 +17,9 @@ import {
   ensureCommandOptions, generalsOf, officersOf,
   assaultOutlook,
 } from './command.js';
-import { MAX_ASSAULT_DIVISIONS, MAX_DEFENSE_DIVISIONS } from './battles.js';
+import {
+  FLANK_WIDTH, MAX_ASSAULT_DIVISIONS, MAX_ASSAULT_WIDTH, MAX_DEFENSE_DIVISIONS,
+} from './battles.js';
 import {
   MAX_ENTRENCHMENT, UNIT_TYPES, isMoving, maxHpOf, organizationOf, soldiersOf,
   unitAvailable,
@@ -465,10 +467,11 @@ export function militaryStats(world, nation) {
     {
       id: 'width',
       label: 'Combat Width',
-      value: `${MAX_ASSAULT_DIVISIONS} / ${MAX_DEFENSE_DIVISIONS}`,
+      value: `${MAX_ASSAULT_DIVISIONS}+${FLANK_WIDTH}/side (max ${MAX_ASSAULT_WIDTH}) / ${MAX_DEFENSE_DIVISIONS}`,
       live: true,
-      note: 'Divisions that can attack a province at once, and the defenders that'
-        + ' can answer. Extra divisions wait behind the line.',
+      note: 'Divisions that can attack a province from one side, plus two more for'
+        + ' every extra side the attack comes from; and the defenders that can answer.'
+        + ' Surround a province to widen the battle.',
     },
     {
       id: 'digin',

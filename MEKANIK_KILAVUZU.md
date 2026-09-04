@@ -613,6 +613,84 @@ bağlı değildi**: oyuncu askerlik yasası çıkarıyor, hiçbir şey olmuyordu
 edilmiş taşra havuza **hiç** katkı vermez — savaşta toprak kaybetmek aynı
 zamanda yedek kaybetmektir.
 
+## 5.4 Ültimatom
+
+**Formül**
+
+    savaş ilanı → CRISIS (8 hafta) → WAR
+    ültimatomda: sınır kapalı, muharebe yok, seferberlik AÇIK, müttefik çağrılır
+    warAt = ilan turu + 8 ; müttefiğin ültimatomu saldırganınkiyle aynı hafta biter
+
+**Kod** — `src/game/diplomacy.js` `CRISIS`, `ULTIMATUM_WEEKS`, `resolveCrises`
+
+**Çalışıyor mu?** **EVET** (2026-09-04, bully senaryosu, 3 tohum). Ültimatom
+öncesi 2.5–3.4× üstün komşu ilk haftadan saldırıyor, kurbanın ordusu savaş
+boyunca hiç büyümüyordu (3→3 alay). Sonrası: kurban 4→16, 3→5, 3→7 alay.
+Denetim/tanılama betikleri ültimatomu `declareWarNow` ile atlar; oyun
+içinde her ilan (oyuncu, YZ, koalisyon) ültimatomdan geçer.
+
+**Pratikte** — savaş ilan ettiğin an hiçbir şey olmaz; sekiz hafta sonra
+sınır açılır. O sekiz haftada iki taraf da seferber olur ve ordularını sınıra
+diker (YZ generalleri ültimatomdaki düşmana bakar, HOLD'da bekler). Zayıf
+komşuya "pat diye" saldırmak artık onu iki katına çıkarır. Ültimatomda
+verdiğin sağ tık emri düşmez: sınır açılınca yürür.
+
+## 5.5 Seferberlik
+
+**Formül**
+
+    hedef alay  = min( havuz × 0.06 / 30.000 ,  düzenli kara alayı × 2 + 2 )
+    tempo       = hedef / 8 alay per hafta      (ültimatomla aynı sürede tamamlanır)
+    yedek gücü  = düzenli × 0.7 ; düzen 55 ile çıkar
+    bedel       = insan (province nüfusundan), bakım (düzenli alayla aynı),
+                  savaş yükü +0.35 (istikrar), son düşman gidince eve döner
+
+**Kod** — `src/game/mobilization.js` (`MOBILIZATION`), `units.js`
+`CONSCRIPT_POWER`, `economy.js` warStrain
+
+**Çalışıyor mu?** **EVET.** Tek ulusal anahtar (Military ekranı "Mobilize");
+YZ aynı fonksiyonla, düşman gücü kendi gücünün 0.6 katını aşınca açar.
+Tavansız ilk sürüm 26 kümelik devlete 41 yedek verdi ve cephe üç yıl dondu;
+"düzenli ordunun 2 katı + 2" tavanı bunun için var.
+
+**Pratikte** — barış ordusu nüfusun %1–3'ü; seferberlik onu iki-üç katına
+çıkarır ama tarla ve tezgâhtan adam çeker, istikrarı yer, sadece ültimatom
+ya da savaşta açılabilir. Askerlik yasası havuzu (5.3) büyüttükçe seferberlik
+de büyür. Barışta açık bırakamazsın; son savaş bitince kendiliğinden kapanır.
+
+## 5.6 Cephe temposu ve kuşatma
+
+**Formül**
+
+    yürüyüş  : savunmasız düşman karesine, general başına haftada tümen/4 (en az 1)
+    operasyon: YALNIZ savunulan kareye, plan ≥ 0.32 ve tempo (cadence) ile
+    genişlik : 3 tümen + her ek saldırı yönü için 2, tavan 7 ; savunan 4
+    sağ tık  : oyuncunun emri generalin temposunu beklemez; emir kaydedilir
+    donmuş   : 104 hafta sonuçsuz savaş beyaz barış teklif eder
+
+**Kod** — `src/game/command.js` `WALK_IN_SHARE`, `pickOperation`;
+`battles.js` `selectAssault`, `FLANK_WIDTH`; `game.js` `attackBlockers`,
+`reportOrder`; `movement.js` `resumeDirectives`; `ai.js` `FROZEN_WAR_WEEKS`
+
+**Çalışıyor mu?** **EVET, ölçülü.** Boş cepheye 10 tümen / 3 general /
+agresiflik 3: 16 haftada 16 hex → 25–28 hex. Sağ tık: generalin temposu 5
+hafta ileri atılmışken el emri yine saldırıyor (`right-click.mjs`). Yürüyüş
+artık savunmasız düşman karesinin TEK işgal yolu: kapatınca 50 yılda küme
+değişimi %4–15'e düşüyor, yani savaş toprak üretmiyor (`audit:borders` C).
+Kartopu (50 yılda el değiştiren küme payı, 3 tohum): taban %42/24/40 →
+seferberlikle %28/34/32 → bu bölümle %25/27/48. Denenip GERİ ALINANLAR:
+12 haftalık sabırsızlık tırmanışı (+4–5 puan kartopu, dar cepheyi açmadı),
+savunma genişliği 3 ve siperli arazi çarpanı 1.5 (saldırı açıldı ama
+kartopu %42–50), yürüyüşe "iki dost kenar" şartı (fark yok).
+
+**Pratikte** — bir kareyi iki-üç yandan sar: genişlik 3'ten 5–7'ye çıkar ve
+sayı üstünlüğün nihayet muharebeye girer. Sağ tıkın sonucu her zaman tek
+satırla yazılır ("Order recorded… consolidating 1 more week"); sessiz tık
+yok. 3 hexlik dar cephede dolu siperli yığın hâlâ kırılmaz (şans 0.66–0.71,
+gereken 1.2): topçu, mühendis general, ya da iki yıl sonunda beyaz barış.
+Bu, bilinçli WW1 dengesi; çözümü kuşatma yeterlilik mekaniği değil,
+topçu/ikmal yıpratması olmalı (açık iş).
+
 ---
 
 # 6. REFORMLAR — 18 merdiven, dokuz kanal
