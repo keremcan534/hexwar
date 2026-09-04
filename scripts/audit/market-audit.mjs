@@ -317,21 +317,33 @@ for (const goodId of ['food', 'clothes', 'groceries']) {
   console.log(`  DUNYA buyumesi: taban ${pct(baseGrowth)} · kitlik ${pct(zeroGrowth)}`
     + ` · silinen pay ${pct(halted)}`);
 
-  // OLCUT MALIN CINSINE GORE AYRILIR — eskiden uc mala da ayni buyume sarti
-  // uygulaniyordu ve KIYAFET tesadufen geciyordu. `provinces.js` nufus
-  // buyumesini `foodMet`ten okur, `FOOD_GOODS` ise kiyafeti ICERMEZ:
+  // OLCUT SOKUN NASIL UYGULANDIGINA GORE AYRILIR — bu testin gizli degiskeni.
+  // `supplyShock` iki farkli sey yapar:
+  //   RGO mali     -> province.econ.rgoQuality *= factor   (isgucu YERINDE kalir)
+  //   fabrika mali -> factory.employees *= factor          (ISGUCU SERBEST KALIR)
+  // Ikincisinde serbest kalan kadro kirsala doner, tahil uretimi artar,
+  // `foodMet` YUKSELIR ve nufus buyumesi HIZLANIR. Yani fabrika mallarinda
+  // olculen sey "kitlik" degil "sanayi kapanmasi"dir ve buyume okumasi
+  // yorumlanamaz. Olculdu: kiyafet -%51.3, konserve -%23.2 — ikisi de eksi,
+  // yani kitlik buyumeyi artiriyor gibi gorunuyor.
+  //
+  // Bir de tasarim tarafi: `provinces.js` buyumeyi `foodMet`ten okur ve
   // "karsilanmayan luks buyumeyi yavaslatmaz, karsilanmayan GIDA yavaslatir".
-  // Yani kiyafet icin buyume beklemek tasarimin BILEREK kaldirdigi bir bagi
-  // sinamaktir. Olculdu: gelir payi kalibre edilince tesadufi gecis bozuldu
-  // ve test -%51.3 gibi anlamsiz bir sayi uretti.
-  if (FOOD_GOODS.has(goodId)) {
+  // Kiyafet zaten FOOD_GOODS icinde degildir.
+  //
+  // Bu yuzden BUYUME olcutu yalnizca RGO mallarina uygulanir (sok temiz);
+  // fabrika mallari HANE kanalindan sinanir. Konserve FOOD_GOODS icinde
+  // olmasina ragmen fabrika malidir — ayrimi FOOD_GOODS degil, sokun bicimi
+  // belirler.
+  const rgoUretimi = Object.values(RGO_TYPES).some((r) => r.goodId === goodId);
+  if (rgoUretimi) {
     // ORAN OLU BIR DUNYAYI BOLMEZ. Esik yalnizca gercekten durmus bir dunyaya
     // karsi korur; DUNYA toplaminda %0.8 buyume zaten milyonlarca kisidir ve
     // oran temiz cikar (olculdu: gida %101.0, konserve %64.7, kiyafet -%1.1).
     // Esik onceki surumde 0.02'ydi ve TEK ULKE olcutunun gurultusune gore
     // secilmisti; dunya olcutunde ayni esik gida testini bosuna atliyordu.
     const GROWTH_FLOOR = 0.002;
-    const EXPECTED_HALT = { food: 0.5, groceries: 0.15 };
+    const EXPECTED_HALT = { food: 0.5 };
     if (baseGrowth <= GROWTH_FLOOR) {
       console.log(`  NOT: taban buyume ${pct(baseGrowth)} <= ${pct(GROWTH_FLOOR)};`
         + ' oran gurultu olurdu, buyume olcutu bu kosuda ATLANDI.');
@@ -342,8 +354,9 @@ for (const goodId of ['food', 'clothes', 'groceries']) {
         `hane sepeti ${n1(base.lowerCost)} -> ${n1(zero.lowerCost)}, memnuniyet ${n2(base.lowerSat)} -> ${n2(zero.lowerSat)}`);
     }
   } else {
-    // GIDA DISI MAL: bedel NUFUSA degil HANEYE biner. Kitlik sepeti pahalilastirmali
-    // ve memnuniyeti dusurmeli; tasarimin bu mal icin verdigi soz budur.
+    // FABRIKA MALI: buyume okumasi isgucu kaymasiyla kirlendigi icin bedel
+    // HANEDE olculur. Kitlik sepeti pahalilastirmali ya da memnuniyeti
+    // dusurmeli; tasarimin bu mal icin verdigi soz budur.
     const costUp = base.lowerCost > 1e-9 ? zero.lowerCost / base.lowerCost : 1;
     const satDrop = base.lowerSat - zero.lowerSat;
     console.log(`  hane bedeli: sepet ${n1(base.lowerCost)} -> ${n1(zero.lowerCost)}`
