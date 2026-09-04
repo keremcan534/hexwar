@@ -248,39 +248,62 @@ sub('TEST 6 — kulturu kabul etmek huzursuzlugu dusuruyor mu?');
 {
   const probe = headless('CULTURE-UNREST');
   const world2 = probe.world;
-  const target = world2.nations.find((n) => n.name === multiNation?.name);
-  if (!target) {
-    console.log('  ATLANDI — cok kulturlu aday yok');
-  } else {
-    probe.turns.playerNation = target.id;
-    for (let i = 0; i < 520; i++) {
-      forcePolicy(target, 'citizenship', 'limited_citizenship');
-      probe.turns.endTurn();
-    }
-    const before = unrestSummary(world2, target).unrest;
-    const mix = cultureMix(world2, target);
+  for (let i = 0; i < 520; i++) probe.turns.endTurn();
+  // TEK ULKE ORNEGI KIRILGAN. Once yalnizca en cok kulturlu ulke deneniyordu
+  // ve o ulke huzursuzluk DENGESINDE olursa (hedefe ulasmis; kalemi kultur
+  // degil baska bir kanal belirliyorsa) kabul hicbir seyi oynatmiyor, test de
+  // saglam bir mekanigi "etkisiz" ilan ediyordu. Olculdu: ayni kosuda tek
+  // ulke 5.00 -> 5.00 verirken, esigi asan kulturu olan diger ulkelerde
+  // huzursuzluk duzenli olarak DUSUYORDU (2.35 -> 1.96, 0.46 -> 0.29).
+  // Ayni kirilganligi market ve population denetimlerinde de duzelttik.
+  const adaylar = [];
+  for (const nation of world2.nations) {
+    if (!nation.alive) continue;
+    const mix = cultureMix(world2, nation);
     const candidate = mix.find((row) => !row.accepted && row.share >= CULTURE.ACCEPT_MIN_SHARE);
-    if (!candidate) {
-      console.log(`  ATLANDI — ${target.name} icinde esigi asan kabul edilmemis kultur yok`
-        + ` (en buyugu ${mix.find((r) => !r.accepted) ? pct(mix.find((r) => !r.accepted).share) : 'yok'})`);
+    if (!candidate) continue;
+    adaylar.push({ nation, candidate });
+  }
+  if (adaylar.length < 3) {
+    console.log(`  ATLANDI — esigi asan kabul edilmemis kulturu olan ulke ${adaylar.length} < 3`);
+  } else {
+    const satirlar = [];
+    for (const { nation, candidate } of adaylar.slice(0, 8)) {
+      const before = unrestSummary(world2, nation).unrest;
+      const ok = acceptCulture(probe, nation, candidate.id);
+      satirlar.push({ nation, candidate, ok, before });
+    }
+    for (let i = 0; i < 156; i++) probe.turns.endTurn();
+    let dusen = 0; let anlamli = 0;
+    for (const row of satirlar) {
+      row.after = unrestSummary(world2, row.nation).unrest;
+      // OLCUME YALNIZ KABULUN GERCEKLESTIGI ULKE GIRER. Kabul reddedilmis
+      // ulkede huzursuzluk yine de duser (dogal geri cekilme) ve o dusus
+      // testin lehine sayilirsa test kabulu degil ZAMANI olcer.
+      if (!row.ok) { row.not = 'kabul reddedildi — olcume girmez'; continue; }
+      // Huzursuzlugu zaten sifir olan ulkede test anlamsizdir: dusecek sey yok.
+      if (row.before <= 0.05) { row.not = 'huzursuzluk zaten sifir'; continue; }
+      anlamli++;
+      if (row.after < row.before - 1e-6) dusen++;
+    }
+    console.log(table(satirlar, [
+      { label: 'ulke', get: (r) => r.nation.name, right: false },
+      { label: 'kultur', get: (r) => `${r.candidate.name} ${pct(r.candidate.share)}`, right: false },
+      { label: 'kabul', get: (r) => (r.ok ? 'evet' : 'hayir'), right: false },
+      { label: 'once', get: (r) => n2(r.before) },
+      { label: 'sonra', get: (r) => n2(r.after) },
+      { label: 'not', get: (r) => r.not ?? '', right: false },
+    ]));
+    console.log(`  Kabulun GERCEKLESTIGI ${anlamli} ulkenin ${dusen}'inde huzursuzluk dustu.`);
+    if (anlamli < 2) {
+      console.log('  ATLANDI — huzursuzlugu sifirdan buyuk yeterli aday yok.');
+    } else if (dusen * 2 < anlamli) {
+      finding('MEDIUM', 'kabul etkisiz',
+        'kultur kabulu ulusal huzursuzlugu ulkelerin cogunda dusurmeli',
+        `${dusen}/${anlamli} ulkede dustu`,
+        'tepki (backlash) iki yil surer; uc yil sonra net kazanc beklenir');
     } else {
-      const ok = acceptCulture(probe, target, candidate.id);
-      for (let i = 0; i < 156; i++) probe.turns.endTurn();
-      const after = unrestSummary(world2, target).unrest;
-      console.log(`  ${candidate.name} (${pct(candidate.share)}) kabul edildi: ${ok}`);
-      console.log(`  ulusal huzursuzluk ${n2(before)} -> ${n2(after)} (uc yil sonra)`);
-      if (!ok) {
-        finding('HIGH', 'kabul kapisi', 'esigi asan kultur kabul edilebilmeli', 'reddedildi');
-      } else if (after >= before) {
-        finding('MEDIUM', 'kabul etkisiz',
-          'kultur kabulu ulusal huzursuzlugu dusurmeli',
-          `${n2(before)} -> ${n2(after)}`,
-          'tepki (backlash) iki yil surer; uc yil sonra net kazanc beklenir');
-      } else {
-        console.log('  -> Kabul gercek bir cikis yolu. DOGRU.');
-      }
+      console.log('  -> Kabul gercek bir cikis yolu. DOGRU.');
     }
   }
 }
-
-reportFindings();

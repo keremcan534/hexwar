@@ -142,7 +142,28 @@ world.forEach((tile) => {
   tile.controller = invader.id;
   taken++;
 });
-for (let i = 0; i < 6; i++) game.turns.endTurn();
+// OLCUM SENARYO AYAKTAYKEN ALINIR. Once 6 tur kosulup SONUNDA olculuyordu;
+// savas o pencerede biterse isgal kalkiyor, kanal 0 okunuyor ve saglam bir
+// kanal "olu" ilan ediliyordu. Olculdu: tur 1'de isgal kalemi -25.96 ve isgal
+// payi %68.3 iken tur 2'de savas bitmis, ikisi de 0. Testin kirmizisi
+// kanalin degil, PENCERENIN sonucuydu. Artik pencere boyunca EN GUCLU okuma
+// tutulur ve senaryonun kac tur ayakta kaldigi da yazilir.
+let peakOccupation = 0;
+let peakShare = 0;
+let scenarioTurns = 0;
+let troughStability = victim.economy.stability ?? 1;
+for (let i = 0; i < 6; i++) {
+  game.turns.endTurn();
+  const bd = victim.economy.stabilityBreakdown ?? {};
+  if (atWar(world, invader.id, victim.id) || (bd.occupiedShare ?? 0) > 0) scenarioTurns++;
+  if ((bd.occupation ?? 0) < peakOccupation) peakOccupation = bd.occupation ?? 0;
+  if ((bd.occupiedShare ?? 0) > peakShare) peakShare = bd.occupiedShare ?? 0;
+  // Istikrarin EN DIP okumasi: savas biterse istikrar toparlanir ve pencerenin
+  // SONUNDAKI deger "isgalin etkisi yok" der. Sorulan soru bu degil.
+  if ((victim.economy.stability ?? 1) < troughStability) {
+    troughStability = victim.economy.stability ?? 1;
+  }
+}
 
 const after = {
   stability: victim.economy.stability,
@@ -153,6 +174,7 @@ console.log(table([
   { k: 'istikrar', a: pct(before.stability), b: pct(after.stability) },
   { k: 'taban', a: pct(before.bd.base ?? 0), b: pct(after.bd.base ?? 0) },
   { k: 'isgal kalemi', a: n1((before.bd.occupation ?? 0) * 100), b: n1((after.bd.occupation ?? 0) * 100) },
+  { k: 'isgal kalemi (tepe)', a: n1((before.bd.occupation ?? 0) * 100), b: n1(peakOccupation * 100) },
   { k: 'savas kalemi', a: n1((before.bd.war ?? 0) * 100), b: n1((after.bd.war ?? 0) * 100) },
   { k: 'isgal payi', a: pct(before.bd.occupiedShare ?? 0), b: pct(after.bd.occupiedShare ?? 0) },
   { k: 'cephe', a: before.bd.warFronts ?? 0, b: after.bd.warFronts ?? 0 },
@@ -162,16 +184,20 @@ console.log(table([
   { label: 'sonra', get: (r) => r.b },
 ]));
 
-if ((after.bd.occupation ?? 0) >= -0.01) {
+console.log(`  Senaryo ${scenarioTurns}/6 tur ayakta kaldi`
+  + `${scenarioTurns < 6 ? ' (savas erken bitti; hukum TEPE okumasina gore)' : ''}.`);
+if (peakOccupation >= -0.01) {
   finding('HIGH', 'isgal kanali olu',
     'isgal edilen ulkede isgal kalemi negatif olmali',
     `isgal kalemi ${n1((after.bd.occupation ?? 0) * 100)} (isgal payi ${pct(after.bd.occupiedShare ?? 0)})`);
-} else if (after.stability >= before.stability) {
+} else if (troughStability >= before.stability) {
   finding('HIGH', 'isgalin net etkisi yok',
     'isgal + savas istikrari DUSURMELI',
-    `${pct(before.stability)} -> ${pct(after.stability)}`);
+    `${pct(before.stability)} -> dip ${pct(troughStability)}`,
+    `pencere sonu ${pct(after.stability)} (savas bittiyse toparlanir)`);
 } else {
-  console.log(`  -> Isgal ve savas istikrari ${pct(before.stability)} -> ${pct(after.stability)} dusurdu. DOGRU.`);
+  console.log(`  -> Isgal ve savas istikrari ${pct(before.stability)} -> dip`
+    + ` ${pct(troughStability)} dusurdu (pencere sonu ${pct(after.stability)}). DOGRU.`);
 }
 
 process.exit(reportFindings() > 0 ? 1 : 0);
