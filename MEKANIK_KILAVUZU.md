@@ -599,6 +599,9 @@ tavanı 70 → 100). Kaba ölçütlerde ise gürültünün 0.46 katı — çünk
 kendi tohum gürültüsü %51.9 ve fazla üretim dünya fiyatını düşürerek kendini
 kısmen yiyor. **Bu, kılavuzdaki tek "bağlı ama hissedilmiyor" mekanik.**
 
+**Ayrıca** — sadakat kazancından huzursuzluk düşülür (`CULTURE.CONTROL_DRAG`
+0.15/puan). Huzursuz taşra önce ÜRETİMİ keser; isyan en son adımdır (§5.7).
+
 **Pratikte** — çok kültürlü imparatorluk kurduysan azınlık hakları doğrudan
 paradır: kısıtlı haklarla yabancı kültürlü taşran üretiminin %70'ini verir ve
 **asla fazlasını vermez** — bekleyerek düzelmez, tavan kalıcıdır. Parti
@@ -714,6 +717,51 @@ yok. 3 hexlik dar cephede dolu siperli yığın hâlâ kırılmaz (şans 0.66–
 gereken 1.2): topçu, mühendis general, ya da iki yıl sonunda beyaz barış.
 Bu, bilinçli WW1 dengesi; çözümü kuşatma yeterlilik mekaniği değil,
 topçu/ikmal yıpratması olmalı (açık iş).
+
+## 5.7 Kültür — huzursuzluk, asimilasyon, ayrılıkçılık
+
+**Formül**
+
+    huzursuzluk HEDEFİ (0–10) =
+        yabancı pay × 10 × haklar × milliyetçilik çağı      ← ana kaynak
+      + (1 − sadakat) × 3 × (0.3 + 0.7 × yabancı pay)       ← taze fetih
+      + savaş yükü × 1.0 + işgal × 1.5 + kabul tepkisi
+      − refah/100 × 2 − azınlık hakları × yabancı pay
+    huzursuzluk += (hedef − mevcut) × 0.02                  ← yarılanma ~34 hafta
+    haklar: residency 1.0 · limited 0.7 · full citizenship 0.45
+    milliyetçilik çağı: 1836'da 1.0 → 1900'de 1.8 (takvim)
+
+    asimilasyon/hafta = 0.0008 × (0.5 + okuryazarlık) × haklar
+                        × sadakat × (şehir ? 1.5 : 1) × (1 − huzursuzluk/10 × 1.3)
+    asimilasyon haklarında ters yön: full 1.4 · limited 1.0 · residency 0.6
+
+    isyan: huzursuzluk ≥ 7 VE yabancı pay ≥ 0.5 → sayaç++; 26 haftada kopar
+
+**Kod** — `src/game/culture.js` (`unrestBreakdown`, `assimilate`,
+`resolveRevolts`, `acceptCulture`), `provinces.js` haftalık döngü
+
+**Çalışıyor mu?** **EVET, altı testle sabitlendi** (`audit:culture-unrest`,
+520 hafta): yabancı kümelerin ortalama huzursuzluğu **6.24**, aynı ulusların
+kendi kümelerinin ortalaması **1.05**. Vatandaşlık kaldıracı 0.43 puan
+oynatıyor. Asimilasyon 520 haftada küme başına %1.3, yani yüzyılda ~%13 —
+onlarca yıl sürer, yüzyılda kazanır. Kültür kabulü ulusal huzursuzluğu üç
+yılda **3.78 → 1.83** düşürüyor.
+
+**GÜVENLİK KİLİDİ.** İsyan yalnız kabul edilmeyen halkın **çoğunlukta**
+olduğu kümede olur. Tek kültürlü ulusal devlet bu mekanikten toprak
+kaybedemez; ölçüldü: 9 tek kültürlü ulusun 520 haftada isyan sayacı 0.
+Savaş yorgunluğu huzursuzluğu yükseltir ama tek başına asla kopma üretmez.
+
+**Pratikte** — fethettiğin yabancı taşra ilk yıl sessizdir, sonra huzursuzluk
+birikir: önce sadakat kazancını yer (üretim ve vergi düşer), sonra asker
+havuzunu (%60'a kadar), altı mevsim eşiğin üstünde kalırsa kopar. Kopan küme
+aynı kültürden komşu varsa **ona katılır** (irredentizm), yoksa bağımsızlaşır
+— ve geri alsan bile huzursuzlukla geri gelir. İki çıkış var: **kabul et**
+(nüfusun %8'ini geçen halka vatandaşlık; anında sakinleşir ama iki yıl kendi
+halkın küser) ya da **asimile et** (okul + tam vatandaşlık + sadakat; on
+yıllar sürer ve huzursuz kümede hiç işlemez — yani önce yatıştırman gerekir).
+Yüzyıl ilerledikçe aynı yabancı pay daha çok huzursuzluk üretir: 1890'da
+kurulan imparatorluk 1840'takinden zordur.
 
 ---
 

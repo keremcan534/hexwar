@@ -13,6 +13,7 @@ import {
 } from '../game/diplomacy.js';
 import { warScore } from '../game/peace.js';
 import { INFAMY_COALITION, OCCUPATION_TURNS, tileEfficiency } from '../game/infamy.js';
+import { CULTURE, unrestBreakdown } from '../game/culture.js';
 import { savedInfo } from '../game/save.js';
 import { scoreboard } from '../game/hegemony.js';
 import { ORDER, idleUnits } from '../game/orders.js';
@@ -923,6 +924,26 @@ export class Hud {
       else if (eff < 1) stats.push(['Status', `foreign culture −${Math.round((1 - eff) * 100)}%`]);
       else if (acceptedCulture && tile.culture !== nation.culture) {
         stats.push(['Status', 'accepted culture']);
+      }
+      // HUZURSUZLUK. "foreign culture −30%" bir ceza etiketiydi; halkın ne
+      // yaptığını söylemiyordu. Artık satır bir cümle: kaç, neden, ne zaman
+      // patlar (bkz. culture.js unrestBreakdown).
+      const cluster = world.provinces?.[tile.provinceId];
+      const unrest = cluster?.econ?.unrest ?? 0;
+      if (cluster?.econ && unrest >= 0.5) {
+        const weeks = cluster.econ.revoltWeeks ?? 0;
+        const left = Math.max(0, CULTURE.REVOLT_WEEKS - weeks);
+        const parts = unrestBreakdown(world, cluster, nation, {
+          occupied: 0, turn: world.turn ?? 0,
+        });
+        const why = [
+          parts.culture > 0.5 ? `${Math.round(parts.foreign * 100)}% not accepted` : null,
+          parts.conquest > 0.5 ? 'recent conquest' : null,
+          parts.war > 0.5 ? 'war weariness' : null,
+          parts.backlash > 0.3 ? 'nationalist backlash' : null,
+        ].filter(Boolean).join(', ');
+        stats.push(['Unrest', `${unrest.toFixed(1)}/10${why ? ` · ${why}` : ''}`
+          + (weeks > 0 ? ` · revolt in ${left} weeks` : '')]);
       }
     }
     if (tile.workedBy) stats.push(['Worked By', tile.workedBy.name]);

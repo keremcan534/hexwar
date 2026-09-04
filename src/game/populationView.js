@@ -13,6 +13,7 @@
 
 import { IDEOLOGIES } from './politics.js';
 import { peopleMix } from './reforms.js';
+import { acceptBlockers, cultureMix, unrestSummary } from './culture.js';
 import { formatPopulation, populationOf, weightedNeedsMet } from './economy.js';
 import {
   CONFESSIONS, censusSource, censusTree, classPoliticsOf, confessionOf,
@@ -175,8 +176,17 @@ export function populationOverview(world, nation) {
   const unrest = weighted(cohorts, militancyOf) ?? 0;
   const needs = weightedNeedsMet(economy);
 
+  // Ulusun kultur bilesimi ve kabul durumu (bkz. culture.js). Nufus
+  // dagilimindan AYRI tutulur: o kohortlardan, bu kume paylarindan gelir ve
+  // "kimi vatandas sayiyoruz" sorusunun cevabi ikincisidir.
+  const nationCultures = cultureMix(world, nation).map((row) => ({
+    ...row,
+    blockers: acceptBlockers(world, nation, row.id, world.turn ?? 0),
+  }));
+
   const summary = {
     total,
+    unrestNation: unrestSummary(world, nation),
     growth: trend.growth,
     monthlyPeople: trend.monthlyPeople ?? null,
     employment: employment.rate,
@@ -319,6 +329,7 @@ export function populationOverview(world, nation) {
     summary,
     // Ülke çapındaki uyarılar: şeridi bunlar doldurur.
     alerts: alertsFor({ ...summary, growth: trend.growth }),
+    nationCultures,
     states,
     groups,
     trend,

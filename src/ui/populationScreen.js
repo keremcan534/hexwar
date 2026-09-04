@@ -400,12 +400,55 @@ function cultureTab(view) {
       <td class="num ${unrest != null && unrest > 3.5 ? 'bad' : ''}">${unrest == null ? '—' : unrest.toFixed(1)}</td>
     </tr>`;
   }).join('');
-  return panel('Cultures', 'ranked by population',
+  return `${citizenshipPanel(view)}${panel('Cultures', 'ranked by population',
     `<table class="data-table"><thead><tr><th>Culture</th><th class="num">People</th>
       <th class="num">Share</th><th>Largest state</th>
       <th class="num">Unrest</th></tr></thead><tbody>${rows}</tbody></table>
-     <p class="hint">Unrest is measured from unmet needs and unemployment
-       (the groups behind each figure are listed below).</p>`, 'wide');
+     <p class="hint">Unrest here is measured from unmet needs and unemployment
+       (the groups behind each figure are listed below). Provincial unrest —
+       the one that ends in revolt — is in the panel above.</p>`, 'wide')}`;
+}
+
+/**
+ * VATANDASLIK. "Kimi kendimizden sayiyoruz" sorusu tek bir tabloda: pay,
+ * kabul durumu ve kabul dugmesi. Karar ULUSALDIR — kume kume tiklama yok
+ * (bkz. VICTORIA_LITE.md ev odevi testi). Butun esikler ve engeller
+ * game/culture.js'ten hazir gelir; ekran hicbir kural kurmaz.
+ */
+function citizenshipPanel(view) {
+  const list = view.nationCultures ?? [];
+  if (!list.length) return '';
+  const national = view.summary?.unrestNation;
+  const rows = list.map((row) => {
+    const tag = row.primary
+      ? '<span class="tag peace">national</span>'
+      : row.accepted ? '<span class="tag ally">accepted</span>'
+        : '<span class="tag war">not accepted</span>';
+    const action = row.primary || row.accepted
+      ? ''
+      : `<button class="action" data-pop-accept="${row.id}"
+          ${row.blockers.length ? 'disabled' : ''}
+          title="${esc(row.blockers.length ? row.blockers.join(' ')
+    : 'They pay full taxes, fill the ranks and calm down. The national culture'
+            + ' resents it for two years.')}">Grant citizenship</button>`;
+    return `<tr>
+      <td><b>${esc(row.name)}</b> ${tag}</td>
+      <td class="num">${people(row.people)}</td>
+      <td class="num">${(row.share * 100).toFixed(1)}%</td>
+      <td>${action}</td>
+    </tr>`;
+  }).join('');
+  const note = national
+    ? `Provincial unrest ${national.unrest.toFixed(1)}/10`
+      + (national.boiling ? ` · <b class="bad">${national.boiling} province(s) at boiling point</b>` : '')
+    : '';
+  return panel('Citizenship', note,
+    `<table class="data-table"><thead><tr><th>Culture</th><th class="num">People</th>
+      <th class="num">Share</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+     <p class="hint">Unaccepted people work at reduced yield, fill only a third of
+       the ranks and grow restless — the more so as the century turns nationalist.
+       Two ways out: grant them citizenship, or hold the province long enough that
+       schooling assimilates them.</p>`, 'wide');
 }
 
 function religionTab(view) {

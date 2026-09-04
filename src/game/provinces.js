@@ -15,6 +15,7 @@ import { policyOf } from './politics.js';
 import { reformModifiers } from './reforms.js';
 import { controllerOf } from './control.js';
 import { DEFAULT_ZONE, ZONE_RULES } from '../world/macro.js';
+import { CULTURE, resolveRevolts, runProvinceCulture } from './culture.js';
 import { POPULATION_SCALE } from './populationScale.js';
 
 /**
@@ -259,6 +260,10 @@ function ensureProvinceRgo(world, province) {
   }
   if (!Number.isFinite(econ.migration)) econ.migration = 0;
   if (!Number.isFinite(econ.rgoDemandScale)) econ.rgoDemandScale = 1;
+  // Kultur sayaclari (bkz. culture.js). Eski kayitta yoktur: sifirdan baslar
+  // ve ilk haftalarda kendi hedefine yaklasir.
+  if (!Number.isFinite(econ.unrest)) econ.unrest = 0;
+  if (!Number.isFinite(econ.revoltWeeks)) econ.revoltWeeks = 0;
   if (!Number.isFinite(econ.hexes)) econ.hexes = province.tileIdx.length;
   return econ;
 }
@@ -880,6 +885,10 @@ export function runProvinces(game) {
   }
 
   const provinces = world.provinces ?? [];
+  // Kultur pasinin iki ciktisi dongu SONUNA birikir (bkz. culture.js):
+  // asimilasyonla rengi degisen kumeler ve ayaklanan kumeler.
+  const recolored = [];
+  const revolts = [];
   // Kitlik olumleri ACIK bir muhasebe kanalidir: nufus dususu "kayip insan"
   // degil kayitli olumdur — korunum denetimi ve ekran bu sayaci okur.
   for (const nation of world.nations) {
@@ -918,9 +927,13 @@ export function runProvinces(game) {
       ? 100
       : 100 * (reformModifiers(nation).minorityCeiling ?? 1);
     // Kısmi işgal sadakati aşındırır: kazanım payı, sağlam kalan toprağın oranı.
+    // HUZURSUZLUK KAZANCI YER (bkz. culture.js): huzursuz kümede sadakat önce
+    // yavaşlar, eşiğe yaklaşınca geriler — üretim ve vergi zaten sadakatle
+    // ölçekli olduğu için mekanik isyandan ÖNCE hissedilir.
+    const drag = (econ.unrest ?? 0) * CULTURE.CONTROL_DRAG;
     econ.control = clamp(
-      econ.control + ((province.culture === nation.culture ? 1.5 : minorityControl)
-        * (0.45 + stability)) * (1 - occupied) - occupied * 2,
+      econ.control + (((province.culture === nation.culture ? 1.5 : minorityControl)
+        * (0.45 + stability)) - drag) * (1 - occupied) - occupied * 2,
       0,
       ceiling,
     );
@@ -975,7 +988,24 @@ export function runProvinces(game) {
     // Piyasa her kosulda konusur: savas ve isgal gelismeyi durdurur ama
     // alicisiz tarlanin kuculmesini durdurmaz.
     updateRgoDemandScale(world, econ);
+
+    // KULTUR: huzursuzluk birikir, asimilasyon paylari kaydirir. Isyan bu
+    // dongude COZULMEZ — sahiplik degistirmek ayni taramada okunan durumu
+    // bozar; kume kimligi kuyruga yazilir, dongu bitince cozulur.
+    const culture = runProvinceCulture(world, province, nation, {
+      occupied, turn: game.turns.turn,
+    });
+    if (culture.recolored) recolored.push(province);
+    if (culture.revolt) revolts.push(province.id);
   }
+  if (recolored.length) {
+    const tiles = [];
+    for (const province of recolored) {
+      for (const idx of province.tileIdx ?? []) tiles.push(world.tiles[idx]);
+    }
+    game.renderer.invalidateTiles(tiles.filter(Boolean));
+  }
+  if (revolts.length) resolveRevolts(game, revolts);
   // Küme sayaçları: HUD ve hegemonya gerçek province sayısını okur.
   for (const nation of world.nations) nation.provinces = 0;
   for (let p = 0; p < provinces.length; p++) {

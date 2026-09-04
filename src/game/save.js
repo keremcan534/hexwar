@@ -58,7 +58,12 @@ import { ensureDelegation, restoreDelegation } from './delegation.js';
 // cikariyordu; province.econ artik `soldiers` sayaciyla yalnizca "silah
 // altinda" isaretler. v18 kayitlarinda nufus askerleri ICERMEZ ve `soldiers`
 // alani yoktur; yuklenirse ulke nufusu oldugundan az gorunurdu.
-export const SAVE_VERSION = 19;
+// 20: KULTUR CANLANDI (bkz. culture.js). province.econ'a `unrest`/`revoltWeeks`
+// eklendi ve kume kultur bilesimi (province.cultures) artik KAYDA GIRIYOR —
+// asimilasyon paylari yillar icinde kaydiriyor, uretimden turetilemez.
+// v19 kayitlari kayipsiz yuklenir: alan yoksa bilesim uretilmis haliyle
+// kalir, huzursuzluk sifirdan kendi hedefine yaklasir.
+export const SAVE_VERSION = 20;
 /** Gocu bilinen eski surumler: deserialize bunlari da kabul eder. */
 const MIGRATABLE_VERSIONS = new Set([14, 16]);
 const STORAGE_KEY = 'hexwar.save';
@@ -80,7 +85,14 @@ function partitionChecksum(world) {
 /** Ulusun tur içinde değişen alanları. */
 // `mobilization` kucuk bir nesnedir ({active, since, target}); yazilmazsa
 // yuklenen oyunda seferber ordu "duzenli" sayilir ve baristа hic terhis olmaz.
-const NATION_FIELDS = ['gold', 'infamy', 'alive', 'debt', 'mobilization'];
+// `cultureBacklashUntil`: kultur kabulunun milliyetci tepkisi (culture.js).
+// Yazilmazsa yuklenen oyun bedeli odemeden kazanci devralir.
+// `accepted`: kabul edilen kulturler. Kurulusta tohumdan turetilir ama ARTIK
+// OYUN ICINDE DEGISIR (acceptCulture); yazilmazsa yuklemede imparatorlugun
+// butun siyasi kazanimi silinir.
+const NATION_FIELDS = [
+  'gold', 'infamy', 'alive', 'debt', 'mobilization', 'cultureBacklashUntil', 'accepted',
+];
 
 export function serialize(game) {
   const world = game.world;
@@ -105,8 +117,18 @@ export function serialize(game) {
   // Küme ekonomileri. Sanayi alanları da yazılır: runFactories her hafta
   // tazeler ama yüklemeden sonraki İLK hafta gelişim baskısı bu değerleri
   // okur — sıfırla başlatmak kaydet-yükle simülasyonunu dallandırıyordu.
+  // Ucuncu alan: kultur bilesimi. Asimilasyon (bkz. culture.js) bu paylari
+  // yillar icinde kaydirir; uretimden yeniden turetilemez, yazilmazsa
+  // yuklenen dunya bir asrin asimilasyonunu geri alir.
   const provinces = (world.provinces ?? []).map((province) => (
-    province.econ ? [province.id, { ...province.econ }] : null
+    province.econ ? [
+      province.id,
+      { ...province.econ },
+      // Pay YUVARLANMAZ. 5 haneye kirpmak denendi ve save-audit yakaladi:
+      // paylar toplami 1'den kayiyor, asimilasyon baska bir hafta cogunlugu
+      // ceviriyor ve yuklenen oyun kesintisiz kosudan dallaniyordu.
+      (province.cultures ?? []).map((row) => [row.id, row.share]),
+    ] : null
   )).filter(Boolean);
 
   return {
@@ -317,10 +339,16 @@ export function deserialize(game, data) {
 
   // 3b) Küme ekonomileri: taze üretilen econ'un üzerine kayıttaki durum yazılır.
   // Paylaşılan referans korunur — üye karelerin tile.province'i aynı nesne.
-  for (const [id, econ] of data.provinces ?? []) {
+  for (const [id, econ, cultures] of data.provinces ?? []) {
     const province = world.provinces?.[id];
     if (!province?.econ || !econ) continue;
     Object.assign(province.econ, econ);
+    // Kultur bilesimi kayittan gelir (asimilasyon onu degistirmis olabilir).
+    // Eski kayitta alan yok: uretilmis bilesim oldugu gibi kalir.
+    if (cultures?.length) {
+      province.cultures = cultures.map(([cultureId, share]) => ({ id: cultureId, share }));
+      province.culture = province.cultures[0]?.id ?? province.culture;
+    }
   }
   // Hukuki sahip üye çoğunluğundan: kayıt savaşın ortasında alınmış olabilir.
   for (const province of world.provinces ?? []) refreshProvinceOwner(world, province);

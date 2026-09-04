@@ -74,6 +74,7 @@
     "audit:events": "node scripts/audit/event-communication-audit.mjs",
     "audit:research": "node scripts/audit/research-audit.mjs",
     "audit:budget-contract": "node scripts/audit/budget-contract-audit.mjs",
-    "audit:mechanics": "node scripts/audit/mechanic-health-audit.mjs"
+    "audit:mechanics": "node scripts/audit/mechanic-health-audit.mjs",
+    "audit:culture-unrest": "node scripts/audit/culture-unrest-audit.mjs"
   }
 }

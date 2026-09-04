@@ -74,7 +74,10 @@ export function provinceManpower(world, tile) {
   const accepted = nation?.accepted?.length
     ? nation.accepted.includes(cluster.culture)
     : cluster.culture === nation?.culture;
-  return Math.round(base * (accepted ? 1 : 0.35));
+  // Huzursuz kume asker de vermez: ayaklanmanin esigindeki taşra kendi
+  // jandarmasini besler, imparatorlugun ordusunu degil (bkz. culture.js).
+  const calm = 1 - Math.max(0, Math.min(1, (econ.unrest ?? 0) / 10)) * 0.6;
+  return Math.round(base * (accepted ? 1 : 0.35) * calm);
 }
 
 /** Ulusun toplam insan gücü: sahip olunan huzurlu kümelerin toplamı. */

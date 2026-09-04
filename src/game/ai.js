@@ -9,6 +9,7 @@ import {
   recordWarProgress, relation, truceLeft,
 } from './diplomacy.js';
 import { manageMobilization } from './mobilization.js';
+import { manageAcceptance } from './culture.js';
 import {
   buildOffer, demandLimit, occupiedProvincesOf, offerCost, offerMeetsExpectation, provinceKeyOf,
   signPeace, suggestWarGoal, warScore,
@@ -559,6 +560,8 @@ export function runNationAI(game, nation, rng) {
   const world = game.world;
   diplomacy(game, nation, rng);
   manageMobilization(game, nation);
+  // Kultur kabulu de bir hukumet karari: oyuncu ile ayni kapi (culture.js).
+  manageAcceptance(game, nation);
   spend(game, nation);
   reformAgenda(game, nation);
   manageCommand(game, nation);
@@ -596,6 +599,12 @@ export function runDelegatedAI(game, nation, rng) {
     if (after > before) {
       noteDelegated(game, nation, 'reforms', 'A reform was enacted.',
         'The chamber allowed it and the ruling party wanted it.');
+    }
+    // Kultur kabulu yasa merdiveniyle ayni kapida: ikisi de "kimin devleti"
+    // sorusunun cevabi (bkz. culture.js manageAcceptance).
+    if (manageAcceptance(game, nation)) {
+      noteDelegated(game, nation, 'reforms', 'A minority was made an accepted culture.',
+        'Their provinces were close to revolt and they are numerous enough to matter.');
     }
   }
   if (delegationActive(nation, 'recruitment', turn)) {

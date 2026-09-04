@@ -15,6 +15,7 @@ import {
   provinceWarCost, signPeace, termAvailable, warGoalOf, warScore,
 } from '../game/peace.js';
 import { INFAMY_COALITION } from '../game/infamy.js';
+import { acceptCulture } from '../game/culture.js';
 import { maxHpOf, menUnderArms, organizationOf, soldiersOf } from '../game/units.js';
 import { provinceName } from '../game/provinces.js';
 import { populationGroupDetail, populationOverview } from '../game/populationView.js';
@@ -1703,6 +1704,12 @@ export class Screens {
   /** Nufus ekraninin etkilesimleri. */
   bindPopulation() {
     const state = this.population;
+    for (const btn of this.el.body.querySelectorAll('[data-pop-accept]')) {
+      btn.onclick = () => {
+        // Tek ulusal karar; butun sartlar game/culture.js'te (YZ ayni kapidan).
+        if (acceptCulture(this.game, this.me, Number(btn.dataset.popAccept))) this.refresh();
+      };
+    }
     for (const btn of this.el.body.querySelectorAll('[data-pop-tab]')) {
       btn.onclick = () => { state.tab = btn.dataset.popTab; this.refresh(); };
     }
