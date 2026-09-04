@@ -143,6 +143,36 @@ function weightedRgo(world, province) {
 }
 
 /**
+ * Nüfus gürültüsü. Şablon (ZONE_RULES.popMul) bölgenin ROLÜNÜ verir; iki
+ * dünya arasında aynı bölge hep aynı ağırlıkta doğuyordu ve bölge içinde her
+ * küme arazi formülünün verdiği sayıyla, komşusuna benzer başlıyordu.
+ *
+ *   bölge çarpanı  : tohum başına ±%10 (roller korunur: doğu devi doğu devi
+ *                    kalır, world-audit'in "doğu ≥ batı × 1.5" şartı en kötü
+ *                    çekilişte bile tutar: 3.0×0.9 / 1.6×1.1 = 1.53)
+ *   küme çarpanı   : lognormal, σ = 0.35 — kalabalık vadi, seyrek yayla.
+ *                    Ortalama exp(σ²/2) ile bölünür ki dünya toplamı değişmesin.
+ *
+ * Her ikisi de tohum ve küme merkezine bağlıdır: kayıt/yükleme arasında
+ * kaymaz (initialProvinceEcon yalnız dünya doğarken çalışır).
+ */
+const POP_ZONE_JITTER = 0.10;
+const POP_PROVINCE_SIGMA = 0.35;
+function populationNoise(world, province) {
+  const zone = province.zone ?? DEFAULT_ZONE;
+  const zoneRng = makeRng(`${world.seed}-pop-zone-${zone}`);
+  const zoneFactor = 1 + (zoneRng() * 2 - 1) * POP_ZONE_JITTER;
+  const rng = makeRng(`${world.seed}-pop-${province.center.q}:${province.center.r}`);
+  // Box–Muller: iki düzgün çekilişten bir normal.
+  const u1 = Math.max(1e-9, rng());
+  const u2 = rng();
+  const normal = Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+  const provinceFactor = Math.exp(POP_PROVINCE_SIGMA * normal)
+    / Math.exp((POP_PROVINCE_SIGMA * POP_PROVINCE_SIGMA) / 2);
+  return zoneFactor * provinceFactor;
+}
+
+/**
  * Kümenin başlangıç ekonomisi. Nüfus, eski kare formülünün üye toplamıdır —
  * dünya toplam nüfusu hex-tabanlı sürümle birebir aynı kalır. Gelişim
  * kademeleri üye verim ORTALAMASINA eşiklenir (küme tek karar alanıdır).
@@ -180,7 +210,7 @@ function initialProvinceEcon(world, province) {
   let commerce = coastal || goldSum > 0 ? 1 : 0;
   if (rule.dev >= 1) commerce = Math.max(commerce, 1);
   if (rule.dev >= 2 && coastal) commerce = 2;
-  population *= rule.popMul * POPULATION_SCALE;
+  population *= rule.popMul * POPULATION_SCALE * populationNoise(world, province);
   const selected = weightedRgo(world, province);
   const track = RGO_TYPES[selected.id].track;
   return {

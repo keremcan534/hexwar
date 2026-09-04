@@ -291,6 +291,8 @@ export const HIRING_INTERVAL = 4;
 // akış sanayiyi açlıktan öldürüyordu — doluluk 40. yılda %38'e düşmüştü.
 // Sanayileşme artık doğum fazlasından değil, kırdan gelen göçten beslenir.
 const MONTHLY_HIRE_RATE = 0.0018;
+/** Tek tesisin ayda alabilecegi kadro payi: sifirdan tam kadro en az ~10 ay. */
+const FACTORY_HIRE_CAP = 0.10;
 // Sanayi fakir nüfusun tamamını yutamaz: tarla ve maden de işçi ister.
 const MAX_WORKER_SHARE = 0.4;
 
@@ -2765,10 +2767,17 @@ function runFactoryEmployment(game, nation) {
   // bütün boş kadrolara bölünüyordu: yüz fabrikanın her birine ayda birkaç
   // işçi düşüyor, hiçbiri dolmuyor, marja göre yapılan sıralama da boşa
   // gidiyordu. Kıt işgücü önce en kârlı tesisi doldurur.
+  // Ama tek tesis ayda kadrosunun en fazla FACTORY_HIRE_CAP'i kadar alir:
+  // isci yetismesi, tasinmasi, egitilmesi zaman ister. Tavansiz olculdu
+  // (2026-09-04, 2 tohum): sonradan kurulan tesislerin dortte biri 13
+  // haftadan kisa surede %90'a doluyordu — Vic2'de fabrika doldurmak
+  // yillar alir ve sonradan ivmelenir. Siralama korunur: en karli tesis
+  // yine ilk payi alir, ikinci ve ucuncu ayni ay pay gorur.
   let left = pool;
   for (const factory of hiring) {
     if (left <= 0) break;
-    const hired = Math.min(left, factoryVacancies(factory));
+    const monthly = Math.max(1, factoryJobs(factory) * FACTORY_HIRE_CAP);
+    const hired = Math.min(left, factoryVacancies(factory), monthly);
     factory.employees += hired;
     economy.industrialHiring += hired;
     left -= hired;
