@@ -17,13 +17,18 @@
 // savas topragi, toprak nufusu, nufus her seyi degistirir ve iki kosunun farki
 // artik kaldiraca degil kimin kimi fethettigine baglanir.
 //
-// UC HEDEF. Bu pass'in isi bu uc sayiyi duzeltmektir; denetim onlari tutar:
+// DORT HEDEF. Bu pass'in isi bu dort sayiyi duzeltmektir; denetim onlari tutar:
 //   H1  reel kisi basi TUKETIM yuzyil sonunda en az 1.00x olmali
-//       (su an dusuyor: uretim buyurken tuketim buyumuyor)
 //   H2  orta+ust sinif payi %10'un altina inmemeli
-//       (dunya %21.4 ile aciliyor, simulasyon %5.8'e eziyor)
 //   H3  fabrika sayisi 1846'dan 1936'ya en az 1.20x buyumeli
-//       (su an ~1.12x: sanayi 1846'da taslasiyor)
+//   H4  sanayi DOLULUGU 1846'dan yuzyil sonuna en az 1.50x artmali
+//
+// H4 NEDEN EGIM OLCER, SEVIYE DEGIL. Vic2'de fabrika slotlari aninda dolmaz:
+// okuryazarlik arttikca isci akisi hizlanir, ilk yarim yuzyilda yariya bile
+// ulasilmaz, sonra ivmelenir — sanayilesmenin S egrisi budur. Bizde egri TERS
+// duruyordu (olculdu: 1837 %61.0 -> 1906 %43.0), cunku dunya yari kadrolu
+// tesislerle aciliyor ve insaat ise alimdan hizli oldugu icin doluluk yalniz
+// SEYRELIYOR. Tek bir doluluk seviyesi bu kusuru gostermez; ORAN gosterir.
 //
 // Kullanim:
 //   npm run audit:growth              -> referans cizgiyle karsilastir
@@ -41,7 +46,7 @@ import { fileURLToPath } from 'node:url';
 import {
   headless, runPeaceful, section, sub, table, n2, finding, reportFindings,
 } from './harness.mjs';
-import { GOODS } from '../../src/game/economy.js';
+import { GOODS, factoryJobs } from '../../src/game/economy.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const BASELINE = join(HERE, 'baselines', 'growth.json');
@@ -63,6 +68,7 @@ function slice(world, year) {
   let realGdp = 0; let gdp = 0; let pop = 0;
   let lower = 0; let middle = 0; let upper = 0;
   let tesis = 0; let seviye = 0; let karli = 0;
+  let kadro = 0; let kapasite = 0;
   let needsW = 0; let classPop = 0;
   for (const nation of world.nations) {
     const economy = nation.economy;
@@ -82,6 +88,8 @@ function slice(world, year) {
     for (const factory of economy.factories ?? []) {
       tesis++;
       seviye += factory.level ?? 0;
+      kadro += Math.max(0, factory.employees ?? 0);
+      kapasite += Math.max(0, factoryJobs(factory));
       if ((factory.profit ?? 0) > 0) karli++;
     }
   }
@@ -112,6 +120,10 @@ function slice(world, year) {
     tesis,
     seviye,
     karliPay: tesis > 0 ? 100 * karli / tesis : 0,
+    // SANAYI DOLULUGU. Vic2'de fabrika slotlari aninda dolmaz: okuryazarlik
+    // arttikca isci akisi hizlanir, ilk yarim yuzyilda yariya bile ulasilmaz,
+    // sonra ivmelenir. Olcut bu EGRIDIR, tek bir seviye degil.
+    doluluk: kapasite > 0 ? 100 * kadro / kapasite : 0,
   };
 }
 
@@ -276,6 +288,36 @@ sub('HEDEFLER — bu pass\'in isi');
       'runPromotion "sepetini karsila + %35 artik birak" ister; sepet %50 civarinda');
   } else {
     console.log('  -> H2 gecti: orta ve ust sinif ayakta.');
+  }
+
+  sub('H4 — sanayi dolulugu yuzyil icinde YUKSELIYOR mu?');
+  for (const seed of SEEDS) {
+    const marks = current[seed.trim()];
+    console.log(`  ${seed.trim()}: `
+      + marks.map((m) => `${m.year} %${n2(m.doluluk)}`).join(' · '));
+  }
+  {
+    // Olcut SEVIYE degil EGIMDIR: dunya yarim kadroyla acilip asagi kayiyorsa
+    // (olculdu: 1837 %61 -> 1906 %43) sanayilesmenin bir kalkisi yok demektir.
+    const oran = SEEDS.map((s) => {
+      const marks = current[s.trim()];
+      const erken = marks.find((m) => m.year === 1846) ?? marks[0];
+      const gec = marks[marks.length - 1];
+      return { seed: s.trim(), erken: erken.doluluk, gec: gec.doluluk,
+        oran: erken.doluluk > 0 ? gec.doluluk / erken.doluluk : 0 };
+    });
+    const worst = oran.reduce((a, b) => (b.oran < a.oran ? b : a));
+    console.log(`  en kotu tohumda 1846 %${n2(worst.erken)} -> ${worst.gec.toFixed(0)}`
+      + `%${n2(worst.gec)} = ${n2(worst.oran)}x (${worst.seed})`);
+    if (worst.oran < 1.5) {
+      finding('HIGH', 'H4 sanayi dolulugu yukselmiyor',
+        '1846\'dan yuzyil sonuna doluluk en az 1.50x artmali',
+        `${n2(worst.oran)}x (${worst.seed})`,
+        'kurulus tesisleri yari kadro dogar (ensureInitialMilitaryIndustry) ve'
+          + ' insaat ise alimdan hizli oldugu icin doluluk yalniz SEYRELIR');
+    } else {
+      console.log('  -> H4 gecti: sanayi yuzyil icinde doluyor.');
+    }
   }
 
   const w3 = rows.reduce((a, b) => (b.h3 < a.h3 ? b : a));
