@@ -15,6 +15,7 @@ import { policyOf } from './politics.js';
 import { reformModifiers } from './reforms.js';
 import { controllerOf } from './control.js';
 import { DEFAULT_ZONE, ZONE_RULES } from '../world/macro.js';
+import { POPULATION_SCALE } from './populationScale.js';
 
 /**
  * Province kaynakları. Tahıl kasten baskın tutuldu: ordunun erzağı ve nüfusun
@@ -86,7 +87,7 @@ export const RGO_TYPES = {
 };
 
 export const MIGRATION_INTERVAL = 4;
-export const MIGRATION_COHORT = 100;
+export const MIGRATION_COHORT = 100 * POPULATION_SCALE;
 export const MIGRATION_RATE = 0.04;
 
 
@@ -179,7 +180,7 @@ function initialProvinceEcon(world, province) {
   let commerce = coastal || goldSum > 0 ? 1 : 0;
   if (rule.dev >= 1) commerce = Math.max(commerce, 1);
   if (rule.dev >= 2 && coastal) commerce = 2;
-  population *= rule.popMul;
+  population *= rule.popMul * POPULATION_SCALE;
   const selected = weightedRgo(world, province);
   const track = RGO_TYPES[selected.id].track;
   return {
@@ -195,7 +196,9 @@ function initialProvinceEcon(world, province) {
     lastInvestment: 0,
     rgo: selected.id,
     rgoQuality: selected.quality,
-    rgoBaseJobs: Math.max(1000, Math.round(population * selected.jobsRatio / 100) * 100),
+    rgoBaseJobs: Math.max(1000 * POPULATION_SCALE, Math.round(
+      population * selected.jobsRatio / (100 * POPULATION_SCALE),
+    ) * 100 * POPULATION_SCALE),
     rgoBaseDevelopment: track === 'agriculture' ? agriculture : extraction,
     migration: 0,
     industrialEmployees: 0,
@@ -211,8 +214,9 @@ function ensureProvinceRgo(world, province) {
   if (!Number.isFinite(econ.rgoQuality)) econ.rgoQuality = selected.quality;
   if (!Number.isFinite(econ.rgoBaseJobs)) {
     econ.rgoBaseJobs = Math.max(
-      1000,
-      Math.round(econ.population * selected.jobsRatio / 100) * 100,
+      1000 * POPULATION_SCALE,
+      Math.round(econ.population * selected.jobsRatio / (100 * POPULATION_SCALE))
+        * 100 * POPULATION_SCALE,
     );
   }
   const type = RGO_TYPES[econ.rgo];
@@ -429,7 +433,11 @@ export function rgoJobsOf(econ) {
   const type = RGO_TYPES[econ?.rgo];
   if (!econ || !type) return 0;
   const developed = Math.max(0, (econ[type.track] ?? 0) - (econ.rgoBaseDevelopment ?? 0));
-  return Math.max(1000, Math.round((econ.rgoBaseJobs + developed * 500) / 100) * 100);
+  return Math.max(
+    1000 * POPULATION_SCALE,
+    Math.round((econ.rgoBaseJobs + developed * 500 * POPULATION_SCALE)
+      / (100 * POPULATION_SCALE)) * 100 * POPULATION_SCALE,
+  );
 }
 
 /** Kare üzerinden okuma: tile.province paylaşılan küme econ'udur. */
@@ -639,7 +647,9 @@ export function provinceOutput(world, province, out = null) {
     * rgoLaborScale(econ, rgoJobsOf(econ)) * control * econ.hexes * tech;
   // Vergi tabanı kare başına eski ölçekte: nüfus hex payına indirgenir,
   // toplam hex sayısıyla geri çarpılır.
-  const taxpayerScale = clamp(econ.population / (7000 * econ.hexes), 0, 2.2);
+  const taxpayerScale = clamp(
+    econ.population / (7000 * POPULATION_SCALE * econ.hexes), 0, 2.2,
+  );
   // Çekirdek olmayan toprak (koloni, fetih) tam vergi vermez: sömürü gelir
   // getirir ama ev toprağı gibi işlemez — Vic2'nin non-core mantığı.
   const coreScale = province.coreOf === province.owner ? 1 : 0.55;
@@ -766,7 +776,8 @@ export function runProvinces(game) {
   // Kitlik olumleri ACIK bir muhasebe kanalidir: nufus dususu "kayip insan"
   // degil kayitli olumdur — korunum denetimi ve ekran bu sayaci okur.
   for (const nation of world.nations) {
-    if (nation.economy) nation.economy.famineDeaths = 0;
+    if (!nation.economy) continue;
+    nation.economy.famineDeaths = 0;
   }
   for (let p = 0; p < provinces.length; p++) {
     const province = provinces[p];

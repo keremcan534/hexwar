@@ -5,6 +5,7 @@ import { occupiedShareOf, provinceName } from './provinces.js';
 import { controllerOf } from './control.js';
 import { delegationActive, noteDelegated } from './delegation.js';
 import { settle } from './treasury.js';
+import { POPULATION_SCALE } from './populationScale.js';
 
 // Birim artık 2-7 hexlik province KÜMESİDİR (bkz. world/provinces-gen.js):
 // state başına ~3 küme ≈ eski 14 karelik hedefle aynı yüzölçümü.
@@ -434,7 +435,8 @@ export function constructionAtlas(world, nationId) {
     region.center = displayCenter(world, region.tiles);
     region.name = region.cities[0]?.name ?? region.seed.name;
     const capacity = 3 + Math.floor(region.tiles.length / 6)
-      + Math.floor(region.population / 70000) + Math.floor(region.development / 12);
+      + Math.floor(region.population / (70000 * POPULATION_SCALE))
+      + Math.floor(region.development / 12);
     region.slots = clamp(capacity, 4, 12);
     const state = ensureConstruction(nation);
     const inRegion = (item) => {

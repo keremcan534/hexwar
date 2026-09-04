@@ -1,3 +1,4 @@
+
 // Ticaret defteri: Trade ekranının okuduğu türetme katmanı.
 //
 // Bu dosya SİMÜLASYON DEĞİLDİR. Hiçbir sayaç ilerletmez, pazara hiçbir şey
@@ -19,7 +20,7 @@
 
 import {
   CLASS_NEEDS, FACTORIES, GOODS, GOOD_IDS, IMPORT_ELASTICITY,
-  MILITARY_EQUIPMENT, MILITARY_EQUIPMENT_IDS, WORKERS_PER_LEVEL,
+  MILITARY_EQUIPMENT, MILITARY_EQUIPMENT_IDS, POPULATION_UNIT, WORKERS_PER_LEVEL,
   armyWeeklyDemand, equipmentStock, needAmount, workshopArmsOutput,
 } from './economy.js';
 import { RGO_TYPES, provinceOutput } from './provinces.js';
@@ -245,7 +246,7 @@ function consumersOf(world, nation, id, flow) {
     if (!need) continue;
     const socialClass = economy.classes?.[classId];
     if (!socialClass) continue;
-    const amount = needAmount(need, world.turn ?? 1) * (socialClass.population / 10000);
+    const amount = needAmount(need, world.turn ?? 1) * (socialClass.population / POPULATION_UNIT);
     const availability = socialClass.needsAvailable ?? 1;
     const afford = availability > 0 ? clamp01((socialClass.needsMet ?? 1) / availability) : 1;
     population += amount * afford;

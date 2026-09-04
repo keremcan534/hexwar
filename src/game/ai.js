@@ -13,7 +13,7 @@ import {
   signPeace, suggestWarGoal, warScore,
 } from './peace.js';
 import { INFAMY_COALITION } from './infamy.js';
-import { isMoving, regimentCount, unitAvailable, unitsOn } from './units.js';
+import { UNIT_TYPES, isMoving, regimentCount, unitAvailable, unitsOn } from './units.js';
 import { destinationOf, orderMove } from './movement.js';
 import { controllerOf } from './control.js';
 import { canRecruit, disband, trainingCount } from './recruitment.js';
@@ -254,7 +254,11 @@ function desiredArmy(nation) {
   // Nufus tavani: genis ama seyrek ulke toprak sayisiyla ordu kuruyor ve
   // nufusunun %15'inden buyuk bir orduyu besleyemiyordu (audit:ai 13%).
   // Tumen ~3.000 kisi; ordu nufusun onda birini gecmez, iki tumen taban.
-  const byPeople = Math.floor((nation.economy?.population ?? 0) * 0.10 / 3000);
+  // Bolen bir piyade alayinin insan gucudur; sabit yazilmisti ve nufus
+  // olcegi degisince tavan on kat sismis olurdu.
+  const byPeople = Math.floor(
+    (nation.economy?.population ?? 0) * 0.10 / UNIT_TYPES.INFANTRY.manpower,
+  );
   return Math.max(2, Math.min(byLand, byPeople || byLand));
 }
 

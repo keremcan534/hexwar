@@ -12,6 +12,7 @@ import { atWar, makePeace, nationStrength, relation, warLossesOf } from './diplo
 import { controllerOf } from './control.js';
 import { soldiersOf } from './units.js';
 import { annexInfamy } from './infamy.js';
+import { POPULATION_SCALE } from './populationScale.js';
 
 /** Warscore 0-100 arasıdır; 100 tam teslimiyet demektir. */
 export const MAX_WAR_SCORE = 100;
@@ -201,7 +202,8 @@ export function provinceValue(world, province) {
   }
   const development = (econ.agriculture ?? 0) + (econ.extraction ?? 0) + (econ.commerce ?? 0);
   return Math.max(1, Math.round(
-    2 * econ.hexes + econ.population / 3000 + development * 0.6 * econ.hexes + cities * 12,
+    2 * econ.hexes + econ.population / (3000 * POPULATION_SCALE)
+      + development * 0.6 * econ.hexes + cities * 12,
   ));
 }
 

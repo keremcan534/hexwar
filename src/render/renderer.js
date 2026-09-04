@@ -4,6 +4,7 @@
 import { HEX_CORNERS, SQRT3, DIRS, wrapCol } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { englishCityName } from '../game/cities.js';
+import { POPULATION_SCALE } from '../game/populationScale.js';
 import { drawFlag } from './flagPainter.js';
 import { atWar } from '../game/diplomacy.js';
 import { maxHpOf, organizationOf, soldiersOf, unitsOn } from '../game/units.js';
@@ -2019,12 +2020,20 @@ export class Renderer {
     return color;
   }
 
-  /** Logaritmik nufus skalasi: 1K koyu, 20K+ parlak sari-yesil. */
+  /**
+   * Logaritmik nufus skalasi: 15K koyu, 1.5M+ parlak sari-yesil.
+   *
+   * Band OLCULEREK secildi. Eski 800-20.000 araligi kare basina nufustan
+   * kalmaydi; nufus province'e tasinince gercek dagilim cok yukari kaydi ve
+   * canli dunyada province'lerin %63.7'si bandin USTUNDE cakiliyordu — kip
+   * dunyanin ucte ikisini tek renk gosteriyordu. Yeni band gercek dagilimin
+   * ucundan ucuna oturur (olculdu: p10 91K, medyan 270K, p90 860K, en buyuk 2.1M).
+   */
   populationTint(tile) {
     const population = Math.max(0, tile.province?.population ?? 0);
     if (!population) return 'hsl(225 8% 20%)';
-    const low = Math.log10(800);
-    const high = Math.log10(20000);
+    const low = Math.log10(1500 * POPULATION_SCALE);
+    const high = Math.log10(150000 * POPULATION_SCALE);
     const ratio = Math.max(0, Math.min(1, (Math.log10(population) - low) / (high - low)));
     const hue = 268 - ratio * 205;
     const saturation = 18 + ratio * 18;

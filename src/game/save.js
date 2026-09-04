@@ -48,7 +48,13 @@ import { ensureDelegation, restoreDelegation } from './delegation.js';
 // eski tek oran, o kaydin hukumet yapisindaki agirliklarla uc orana bolunur
 // (bkz. economy.js ensure + taxWeightsFor), yani yuklenen ulke ayni vergiyi
 // ayni siniflardan toplamaya devam eder.
-export const SAVE_VERSION = 17;
+// 18: NUFUS OLCEGI. Butun nufus kaynaklari ve nufusa oranli butun sabitler
+// POPULATION_SCALE ile carpildi (bkz. game/populationScale.js). Kayit
+// dosyasindaki her nufus alani (province, sinif, alay insan gucu, tesis
+// kadrosu, RGO kotasi) ESKI olcektedir; goc yazilsa on yerde bir alani
+// atlamak yarim goc etmis bir kayit birakirdi ve yarim kayit reddedilen
+// kayittan daha kotudur. v17 bilerek gocurulmez.
+export const SAVE_VERSION = 18;
 /** Gocu bilinen eski surumler: deserialize bunlari da kabul eder. */
 const MIGRATABLE_VERSIONS = new Set([14, 16]);
 const STORAGE_KEY = 'hexwar.save';

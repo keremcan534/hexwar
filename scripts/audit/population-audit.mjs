@@ -112,8 +112,12 @@ sub('Haftalik denklem: onceki + buyume - askerAlimi + terhis = simdiki (60 hafta
     const total = pop + army;
     const prevTotal = prevPop + prevArmy;
     const growth = total - prevTotal;
+    // Iki kayitli kanal: kitlik olumleri ve yurdunu kaybetmis alayin dagilmasi
+    // (recruitment.js disband -> economy.strandedManpower). Ikisi de nufus
+    // muhasebesinde ACIKLANMIS kayiptir; yalniz bunlarin disindaki dusus bulgudur.
     const famine = world.nations.reduce(
-      (sum, nation) => sum + (nation.economy?.famineDeaths ?? 0), 0,
+      (sum, nation) => sum + (nation.economy?.famineDeaths ?? 0)
+        + (nation.economy?.strandedManpower ?? 0), 0,
     );
     rows.push({
       week: world.turn, pop, army, total, growth, famine,

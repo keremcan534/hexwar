@@ -4,6 +4,7 @@
 import { CITY_CENTER_YIELD, RESOURCES } from '../world/terrain.js';
 import { tileEfficiency } from './infamy.js';
 import { provinceOutput } from './provinces.js';
+import { POPULATION_SCALE } from './populationScale.js';
 import { regimentCount, upkeepWeight } from './units.js';
 import { controllerOf } from './control.js';
 import { settle } from './treasury.js';
@@ -260,7 +261,8 @@ function administrationCost(cityCount, provinceCount, distanceLoad, population =
   const provinces = Math.max(0, provinceCount) * ADMIN_PROVINCE_RATE;
   // Nufus terimi ALTDOGRUSAL: kalabalik ulke daha fazla oder ama nufusla
   // birebir degil, yoksa 1.9M nufuslu tek ulke tek basina iflas ederdi.
-  const people = (Math.max(0, population) / 100000) ** 0.75 * ADMIN_POPULATION_RATE;
+  const people = (Math.max(0, population) / (100000 * POPULATION_SCALE)) ** 0.75
+    * ADMIN_POPULATION_RATE;
   return Math.round((cities + provinces + distanceLoad + people) * 10) / 10;
 }
 

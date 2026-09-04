@@ -6,6 +6,7 @@
 
 import { controllerOf } from './control.js';
 import { techUnlocksUnit } from './technology.js';
+import { POPULATION_SCALE } from './populationScale.js';
 
 /** Kara birimi denize girdiginde bu hizla yol alir (bindirilmis hali). */
 export const EMBARKED_MOVES = 4;
@@ -29,39 +30,45 @@ export function upkeepWeight(unit) {
  * Kara ordusunun uc kolu. `manpower` alayin topladigi asker sayisidir: kurulusta
  * ciktigi province'in nufusundan duser, dagitilinca geri doner, savasta olurse
  * kalici kayiptir (bkz. recruitment.js).
+ *
+ * POPULATION_SCALE ile carpilir cunku havuzun kendisi (province nufusu) ayni
+ * sayiyla buyudu. Carpilmasaydi ayni nufus on kat ordu beslerdi. Techizat
+ * BUNDAN etkilenmez: reinforcement.js malzemeyi ADAM BASINA degil GUC PUANI
+ * basina harcar (menPerStrength = manpower / maxStrength), yani olcek adam
+ * sayisini buyutur, cephane talebini degil.
  */
 export const UNIT_TYPES = {
   INFANTRY: {
     id: 'INFANTRY', name: 'Infantry', glyph: 'I', domain: 'land',
-    moves: 3, attack: 5, hp: 110, manpower: 3000,
+    moves: 3, attack: 5, hp: 110, manpower: 3000 * POPULATION_SCALE,
     /** Savunmada arazi bonusunu iki kati kullanir. */
     entrenched: true,
   },
   CAVALRY: {
     id: 'CAVALRY', name: 'Cavalry', glyph: 'C', domain: 'land',
-    moves: 6, attack: 6, hp: 90, manpower: 2000,
+    moves: 6, attack: 6, hp: 90, manpower: 2000 * POPULATION_SCALE,
   },
   ARTILLERY: {
     id: 'ARTILLERY', name: 'Artillery', glyph: 'A', domain: 'land',
-    moves: 2, attack: 9, hp: 70, manpower: 1500,
+    moves: 2, attack: 9, hp: 70, manpower: 1500 * POPULATION_SCALE,
     /** Topcu ates destegidir: yalniz kaldiginda kirilgan, yigin icinde belirleyici. */
     support: true,
   },
   WARSHIP: {
     id: 'WARSHIP', name: 'Warship', glyph: 'W', domain: 'sea',
-    moves: 7, attack: 6, hp: 80, manpower: 1000,
+    moves: 7, attack: 6, hp: 80, manpower: 1000 * POPULATION_SCALE,
   },
   // Modern kollar yuzyilin ortasinda sahneye cikar. `availableFrom` olmasaydi
   // 1836'da tank kurulabilirdi; ayrica bunlar tank/ucak fabrikalarinin tek
   // musterisidir, o mallar aksi halde fiyat tabaninda cakili kaliyordu.
   ARMOR: {
     id: 'ARMOR', name: 'Armour', glyph: 'T', domain: 'land',
-    moves: 5, attack: 11, hp: 130, manpower: 1200,
+    moves: 5, attack: 11, hp: 130, manpower: 1200 * POPULATION_SCALE,
     availableFrom: 4176,
   },
   AIRCRAFT: {
     id: 'AIRCRAFT', name: 'Air Wing', glyph: 'P', domain: 'land',
-    moves: 8, attack: 8, hp: 60, manpower: 800,
+    moves: 8, attack: 8, hp: 60, manpower: 800 * POPULATION_SCALE,
     support: true,
     availableFrom: 3654,
   },

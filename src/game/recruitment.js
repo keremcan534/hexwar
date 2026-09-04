@@ -11,6 +11,7 @@ import {
 } from './units.js';
 import { orderMove } from './movement.js';
 import { reformModifiers } from './reforms.js';
+import { POPULATION_SCALE } from './populationScale.js';
 import {
   MILITARY_EQUIPMENT, ensureMilitaryEconomy, equipmentStock, setEquipmentStock,
 } from './economy.js';
@@ -50,7 +51,7 @@ export function equipmentCostLabel(typeId) {
  * boşaltamasın; taban küme boyuna ölçeklenir ki toplam rezerv hex-tabanlı
  * eski dengeyle aynı kalsın.
  */
-export const PROVINCE_POPULATION_FLOOR = 2000;
+export const PROVINCE_POPULATION_FLOOR = 2000 * POPULATION_SCALE;
 
 /**
  * Kümenin verebileceği asker sayısı. tile.province paylaşılan küme econ'udur.
@@ -281,8 +282,19 @@ export function disband(game, unit) {
     for (const draw of draws) {
       const tile = world.get(draw.q, draw.r);
       // Province kaybedildiyse dönecek yurt kalmamıştır: insan gücü de kaybolur.
+      // Kayıp SAYILIR (economy.strandedManpower): nüfus muhasebesi bunu
+      // "kaynaksız kayıp" değil kayıtlı kanal olarak okur, tıpkı famineDeaths
+      // gibi. Toprağı tamamen alınmış devletin ordusunu dağıtması gerçek bir
+      // olaydır ve haftada on binlerce kişi tutabilir.
       if (!tile?.province || tile.owner !== unit.nationId
-        || controllerOf(tile) !== unit.nationId) continue;
+        || controllerOf(tile) !== unit.nationId) {
+        const economy = world.nations?.[unit.nationId]?.economy;
+        if (economy) {
+          economy.strandedManpower = (economy.strandedManpower ?? 0)
+            + Math.round(draw.men);
+        }
+        continue;
+      }
       tile.province.population += Math.round(draw.men);
     }
   }

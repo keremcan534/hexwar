@@ -11,6 +11,7 @@ import {
   MAX_ATTACKERS_ON_TARGET, atWar, declareWar, nationStrength, attackerCount,
 } from './diplomacy.js';
 import { isOccupied } from './control.js';
+import { POPULATION_SCALE } from './populationScale.js';
 
 export const INFAMY = {
   /** Kendi halkının yaşadığı kareyi almak ucuz: haklı talep sayılır. */
@@ -82,7 +83,7 @@ export const INFAMY_ANNEX = {
   PER_TILE: 0.4,
   PER_CITY: 3,
   /** Bu kadar nufus basina bir puan: kalabalik toprak daha cok rahatsiz eder. */
-  POP_PER_POINT: 100000,
+  POP_PER_POINT: 100000 * POPULATION_SCALE,
   /** Yabanci halki ilhak etmek pahalidir; kendi halkini kurtarmak ucuz. */
   FOREIGN: 1.4,
   OWN_CULTURE: 0.5,

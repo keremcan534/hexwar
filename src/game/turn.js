@@ -446,6 +446,15 @@ export class TurnManager {
       stamp();
     };
 
+    // Yurdunu kaybetmis alayin dagilmasiyla kaybolan insan gucu ACIK bir
+    // kanaldir (recruitment.js disband -> economy.strandedManpower). Sayac
+    // haftanin EN BASINDA sifirlanir: karar YZ evresinde veriliyor, province
+    // ekonomisi ise cok sonra kosuyor — orada sifirlansa hafta boyunca hep 0
+    // okunur ve nufus muhasebesi kaydi kayipa yazardi.
+    for (const nation of world.nations) {
+      if (nation.economy) nation.economy.strandedManpower = 0;
+    }
+
     // Temas tablosu tur başında bir kez: her ülke için ayrı taramak pahalı.
     this.phase = 'contacts';
     world.contacts = computeContacts(world);

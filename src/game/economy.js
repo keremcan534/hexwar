@@ -3,6 +3,7 @@
 // fiyatlanan mallara, sınıf gelirlerine ve sanayi kârına dönüştürür.
 
 import { canAfford, pay } from './cities.js';
+import { POPULATION_SCALE } from './populationScale.js';
 import {
   RGO_TYPES, provinceOutput, provincePopulation, rgoJobsOf,
 } from './provinces.js';
@@ -279,7 +280,12 @@ export const FACTORIES = {
  * Çıktı seviye başına normalize edilir (employees / WORKERS_PER_LEVEL), yani
  * bu sabiti değiştirmek mal dengesini bozmaz, yalnız sanayinin *hızını* değiştirir.
  */
-export const WORKERS_PER_LEVEL = 2000;
+// Nufus olcegiyle carpilir: kadro nufusa oranli bir buyukluktur. Carpilmasa
+// sanayi on kat buyuyen nufusun yaninda gorunmez kalirdi ve isgucu tavani
+// (LOWER_WORKFORCE_SHARE) baglayici olmaktan cikardi — olculdu: kadro %40
+// sisiyor, doluluk kisitsiz kaliyordu. Cikti zaten seviye basina normalize
+// edildigi icin (employees / WORKERS_PER_LEVEL) mal dengesi degismez.
+export const WORKERS_PER_LEVEL = 2000 * POPULATION_SCALE;
 export const HIRING_INTERVAL = 4;
 // 0.0008 -> 0.0018: nüfus artışı Vic2 ölçeğine (yüzyılda ~2 kat) inince eski
 // akış sanayiyi açlıktan öldürüyordu — doluluk 40. yılda %38'e düşmüştü.
@@ -374,7 +380,14 @@ export const CLASS_INFO = {
   upper: { name: 'Upper Class', share: 0.05, color: '#c79a51' },
 };
 
-export const POPULATION_COHORT = 1000;
+// Sinif hareketliliginin kuantumu. Nufus olcegiyle carpilir: yoksa 1000
+// kisilik adim on kat buyumus bir hanede olculemez kalirdi.
+export const POPULATION_COHORT = 1000 * POPULATION_SCALE;
+
+// Nufusa oranli kalemlerin BIRIMI: "on bin kisi basina". Vergi matrahi,
+// sosyal program gideri ve hane sepeti hep bu birimden okunur; olcekle
+// carpilir ki buyuyen sayi butceyi degistirmesin.
+export const POPULATION_UNIT = 10000 * POPULATION_SCALE;
 export const PROFESSION_INFO = {
   farmers: { id: 'farmers', name: 'Farmers', classId: 'lower' },
   laborers: { id: 'laborers', name: 'Laborers', classId: 'lower' },
@@ -660,7 +673,8 @@ const DEFAULT_SOCIAL = { education: 0, welfare: 0 };
 export function programmeCost(nation, programId) {
   const program = SOCIAL_PROGRAMS[programId];
   if (!program || !nation?.economy) return 0;
-  return (nation.economy.population / 10000) * socialLevel(nation, programId) * program.rate;
+  return (nation.economy.population / POPULATION_UNIT)
+    * socialLevel(nation, programId) * program.rate;
 }
 export const MILITARY_EQUIPMENT = {
   arms: {
@@ -1041,7 +1055,9 @@ function alignWorkforce(nation) {
   for (const factory of factories) factory.employees = (factory.employees ?? 0) * scale;
 }
 
-export function ensurePopulationModel(nation, population = nation?.economy?.population ?? 10000) {
+export function ensurePopulationModel(
+  nation, population = nation?.economy?.population ?? POPULATION_UNIT,
+) {
   const economy = nation.economy;
   economy.classes ??= {};
   for (const classId of CLASS_IDS) {
@@ -1953,7 +1969,7 @@ export function budgetBreakdown(world, nation) {
   const ledger = economy.ledger ?? emptyLedger();
   const structure = taxStructureOf(nation);
   const limits = budgetPolicyLimits(nation);
-  const scale = (economy.population ?? 0) / 10000;
+  const scale = (economy.population ?? 0) / POPULATION_UNIT;
 
   // --- vergi: matrah x oran, sinif sinif -------------------------------------
   const classes = Object.keys(CLASS_INFO).map((id) => {
@@ -2178,7 +2194,7 @@ export function socialFloorOf(nation, programId) {
 export function programmeContext(world, nation) {
   const economy = nation.economy;
   const income = Math.max(1, economy.ledger?.income ?? 0);
-  const scale = (economy.population ?? 0) / 10000;
+  const scale = (economy.population ?? 0) / POPULATION_UNIT;
   const eduRate = SOCIAL_PROGRAMS.education?.rate ?? 0.34;
   let hasNavy = false;
   for (const unit of world.units ?? []) {
@@ -2215,7 +2231,7 @@ export function programmeContext(world, nation) {
 export function socialSpendingCost(nation) {
   const economy = nation?.economy;
   if (!economy) return 0;
-  const scale = economy.population / 10000;
+  const scale = economy.population / POPULATION_UNIT;
   let total = 0;
   for (const program of Object.values(SOCIAL_PROGRAMS)) {
     total += scale * socialLevel(nation, program.id) * program.rate;
@@ -2988,7 +3004,7 @@ function populationDemand(world, nation, market) {
     const classId = CLASS_NEEDS_ENTRIES[c][0];
     const needsEntries = CLASS_NEEDS_ENTRIES[c][1];
     const socialClass = economy.classes[classId];
-    const scale = socialClass.population / 10000;
+    const scale = socialClass.population / POPULATION_UNIT;
     let basket = 0;
     let basketAtBase = 0;
     // Kademe basina PARA maliyeti; butce bu sirayla harcanir.
@@ -3262,7 +3278,8 @@ function fiscalBalance(nation, baseOutputValue, industrialOutput) {
     if (cost > 0) settle(nation, program.ledgerLine, -cost);
   }
   // Yasayla verilen hak kaydiractan ayridir ve kisilamaz; refah satirina yazilir.
-  const mandated = (economy.population / 10000) * reformModifiers(nation).socialBurden;
+  const mandated = (economy.population / POPULATION_UNIT)
+    * reformModifiers(nation).socialBurden;
   if (mandated > 0) settle(nation, 'welfare', -mandated);
   economy.socialCost = socialSpendingCost(nation);
 }
