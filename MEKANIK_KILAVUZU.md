@@ -762,6 +762,92 @@ sanayi ekranındaki "close" düğmesidir; YZ artık aynı kolu kullanıyor.
 
 ---
 
+## 4.5 Teknoloji tek taraflı çarpıyordu — arz/talep makasının kaynağı
+
+**Formül**
+
+    laborThroughput = kadro / tezgâh
+    throughput      = laborThroughput × kıtlık × reform × (1 + teknoloji)
+
+    pazara yazılan ARZ    = çıktı  × throughput
+    maliyete yazılan girdi = girdi × throughput
+    pazara yazılan TALEP   = girdi × laborThroughput      ← BURASI
+
+**Kod** — `src/game/economy.js`, `runFactories`
+
+**Ne bozuktu.** Talep ile tüketim arasındaki tek fark **kıtlık** olmalıydı;
+yorumun söylediği niyet buydu ("fiyat karşılanamayan talebi de görür, maliyet
+yalnız gerçekten kullanılanı"). Ama `laborThroughput` kıtlıkla birlikte
+**reform ve teknoloji** çarpanlarını da düşürüyordu. Sonuç: fabrika teknoloji
+kadar çok girdi **tüketiyor ve ödüyor**, ama pazardan o kadar **istemiyor**.
+
+Teknolojinin iki ucu ölçüldü (100 yıl, gözlemci, ülke ortalaması):
+
+| yıl | çıktı çarpanı | girdi çarpanı | bileşik |
+|---|---|---|---|
+| 1836 | 1.00 | 1.00 | 1.00 |
+| 1886 | 1.67 | 0.74 | 2.26 |
+| 1936 | **2.16** | **0.535** | **4.03** |
+
+RGO ise aynı yüzyılda yalnızca 1.35× alıyor, hane talebinin ise **hiç teknoloji
+kanalı yok**. Yani bir yüzyıllık araştırma, kimsenin ememeyeceği kadar mal
+üretiyordu.
+
+Arz ve talep KAYNAĞINA göre ayrıştırıldı (yıllık, taban fiyatla, bin birim):
+
+| yıl | RGO arzı | fabrika arzı | hane | fabrika girdisi | gübre | ordu | arz/talep |
+|---|---|---|---|---|---|---|---|
+| 1837 | 129.7 | 26.7 | 65.0 | 15.4 | 15.8 | 8.7 | 1.47 |
+| 1886 | 160.1 | 258.2 | 78.5 | 64.6 | 23.4 | 6.5 | 2.42 |
+| 1936 | 200.7 | **496.2** | 126.0 | **75.5** | 30.2 | 4.7 | **2.95** |
+
+Fabrika arzı 18.6× büyürken fabrika girdi talebi 1866'dan sonra ~75'te yatay
+kalıyor. Katalog masum: 29 tesis türünün çıktı/girdi oranı 1.0–2.11, ortalama
+1.33 (Vic2 ölçeğinde). Fark tamamen bu satırdan geliyordu.
+
+**Düzeltme.** Talep de reform ve teknoloji çarpanını görür; kıtlığı görmez.
+
+```js
+const wantedThroughput = laborThroughput * reformMods.throughput
+  * (1 + (techMods?.factoryThroughput ?? 0));
+const requested = amount * wantedThroughput;   // önce: amount * laborThroughput
+```
+
+**Çalışıyor mu?** **EVET** — `audit:growth`, 100 yıl × 2 tohum:
+
+| | önce | sonra |
+|---|---|---|
+| 1936 arz/talep | 2.95 | **2.05** |
+| fabrika girdi talebi | 75.5 | **190.0** |
+| H1 reel tüketim/kişi | 1.67 / 1.73 | **2.66 / 2.18** ✓ |
+| H2 orta+üst payı | %12.5 / %12.4 | **%16.5 / %12.6** ✓ |
+| H3 tesis büyümesi | 0.72 / 0.59 | **1.10 / 0.82** |
+| H4 doluluk eğimi | 1.54 | **1.32** |
+| sanayi kapasitesi | 1.04× (yatay) | **1.44× / 1.02×** |
+
+Fazlanın **%46'sı** kapandı ve eğri 1906'dan sonra düzleşiyor
+(2.01 → 2.02 → 2.03 → 2.05), tırmanmıyor. `audit:price-stability` bulgusuz.
+
+**H3 İLE H4 BİRBİRİYLE KAVGA EDİYOR — bu bir ölçü kusurudur, oyunun değil.**
+Doluluk = kadro / kapasite. H3 kapasitenin **büyümesini** ister, H4 aynı kesrin
+**küçük kalmasını**. Aynı kesrin payını ve paydasını ayrı ayrı yeşile boyamak
+tanım gereği mümkün değil: bu düzeltme kapasiteyi ilk kez gerçekten büyüttüğü
+için (1.04× → 1.44×) H3 iyileşti, H4 kötüleşti. **Hiçbir barajı düşürmedim**;
+ikisi de açık bulgu olarak `audit:growth` içinde sayıyla duruyor. Bir sonraki
+tur bu iki hedefi TEK bir ölçüte indirmeli — muhtemelen "sanayi istihdamı kişi
+başına büyüyor mu" — yoksa turlar birbirini kovalar.
+
+Şunu da not düşmek gerekir: oyuncunun istediği ŞEKİL zaten var. Doluluk yüzyıl
+boyunca %47'den %63'e tırmanıyor; 1.50× barajı bu depoya konmuş bir sayıdır,
+oyunun bir gereği değil.
+
+**Pratikte** — teknoloji artık hem daha çok üretir hem daha çok hammadde ister.
+Çelik fabrikası açmak demir talebini gerçekten yükseltir, demir fiyatı yükselir,
+maden kârlı olur. Zincirin alt katmanı üst katmanın büyümesini hisseder — daha
+önce hissetmiyordu.
+
+---
+
 # 5. DEVLET — imparatorluğun otomatik bedelleri
 
 ## 5.1 İdari gider

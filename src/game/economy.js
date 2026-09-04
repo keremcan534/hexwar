@@ -2995,9 +2995,25 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
     // bu duzeltmenin isi degil.
     let realRevenue = 0;
     let realInputCost = 0;
+    // TALEP ILE ARZ AYNI CARPANI GORMELI.
+    //
+    // Asagidaki yorumun soyledigi niyet suydu: "fiyat karsilanamayan talebi de
+    // gorur, maliyet yalniz gercekten kullanilani". Yani talep ile tuketim
+    // arasindaki tek fark KITLIK olmaliydi. Ama `laborThroughput` kitlikla
+    // birlikte REFORM ve TEKNOLOJI carpanlarini da dusuruyordu; cikti ise
+    // `throughput` ile yaziliyordu. Sonuc: fabrika teknoloji kadar cok girdi
+    // TUKETIYOR (maliyete yaziliyor) ama pazardan o kadar ISTEMIYOR.
+    //
+    // Olculdu (100 yil, gozlemci, taban fiyatla): 1936'da teknoloji ciktiyi
+    // 2.16 kat buyuturken girdiyi 0.535'e kisiyor — bilesik 4.03 kat. Fabrika
+    // girdi talebi 75.5'te yatay kalirken fabrika arzi 496'ya cikiyordu.
+    // Duzeltince girdi talebi 190'a, dunya arz/talep orani 2.95'ten 2.05'e indi.
+    const wantedThroughput = laborThroughput * reformMods.throughput
+      * (1 + (techMods?.factoryThroughput ?? 0));
     for (const id in type.inputs) {
       const amount = type.inputs[id] * inputScale;
-      const requested = amount * laborThroughput;
+      // Talep KITLIGI gormez (niyeti gosterir), tuketim gorur.
+      const requested = amount * wantedThroughput;
       const consumed = amount * throughput;
       // Fiyat, karşılanamayan talebi de görür; maliyet yalnız gerçekten kullanılan
       // girdiye yazılır. Böylece kıtlık fiyatı yükseltirken hayali üretim yaratmaz.

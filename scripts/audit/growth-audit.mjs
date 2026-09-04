@@ -329,14 +329,36 @@ sub('HEDEFLER — bu pass\'in isi');
         + ` · kapasite ${n2(gec.kapasite / Math.max(1, erken.kapasite))}x`
         + ` (1846 kadro ${(erken.kadro / 1e6).toFixed(2)}mn -> ${(gec.kadro / 1e6).toFixed(2)}mn)`);
     }
+    // KANIT METNI DE KOSUDAN GELIR. Once "dunyanin yarisi ise alima kapali"
+    // yaziliydi; o cumle bir onceki turun olcumuydu ve her kosuda tekrar
+    // dogrulanmadan basiliyordu. Artik bu kosunun kendi pay/payda sayilari yazilir.
+    const buyume = (s3) => {
+      const marks = current[s3.trim()];
+      const erken = marks.find((m) => m.year === 1846) ?? marks[0];
+      const gec = marks[marks.length - 1];
+      return {
+        kadro: gec.kadro / Math.max(1, erken.kadro),
+        kapasite: gec.kapasite / Math.max(1, erken.kapasite),
+      };
+    };
     if (worst.oran < 1.5) {
+      const b4 = buyume(worst.seed);
       finding('HIGH', 'H4 sanayi dolulugu yukselmiyor',
         '1846\'dan yuzyil sonuna doluluk en az 1.50x artmali',
         `${n2(worst.oran)}x (${worst.seed})`,
-        'dunyanin yarisi beklenen marji <= 0 oldugu icin ISE ALIMA KAPALI:'
-          + ' kadro o tesislere hic akmaz, kapasite paydada oturur');
+        `ayni tohumda kadro ${n2(b4.kadro)}x, kapasite ${n2(b4.kapasite)}x`
+          + ` — doluluk ancak kadro kapasiteden HIZLI buyurse yukselir`);
     } else {
       console.log('  -> H4 gecti: sanayi yuzyil icinde doluyor.');
+    }
+    // H3 ILE H4 AYNI KESRIN IKI UCUDUR. Bu bir ölcu kusurudur, oyunun degil:
+    // doluluk = kadro / kapasite; H3 kapasitenin BUYUMESINI, H4 ayni kesrin
+    // KUCUK kalmasini ister. Ikisini ayni anda yesile boyamak tanim geregi
+    // mumkun degil. Uyari her kosuda basilir ki gelecek turlar birbirini
+    // kovalamasin — ikisi TEK olcute indirilmeli (bkz. MEKANIK_KILAVUZU 4.5).
+    if (worst.oran < 1.5 && rows.some((r) => r.h3 < 1.2)) {
+      console.log('  !! H3 ve H4 AYNI KESRIN pay ve paydasidir: ikisi birlikte'
+        + ' yesile donemez. Tek olcute indirilmeli.');
     }
   }
 
@@ -345,10 +367,15 @@ sub('HEDEFLER — bu pass\'in isi');
     finding('HIGH', 'H3 sanayi taslasiyor',
       '1846-1936 arasi fabrika sayisi en az 1.20x buyumeli',
       `${n2(w3.h3)}x (${w3.seed})`,
-      'olculdu (2 tohum, 1936): kapasite 1.01-1.04x ile YATAY, sanayi istihdami'
-        + ' 1.59x. Tesis sayisi olu tesis tasfiyesiyle duser (retireDeadFactories)'
-        + ' ama SANAYI TABANI da buyumuyor: cari fiyatlarla dunyanin yarisi'
-        + ' girdi maliyetini karsilamiyor. Bu fiyat yapisinin isi, ayri bir pass.');
+      (() => {
+        const marks = current[w3.seed];
+        const erken = marks.find((m) => m.year === 1846) ?? marks[0];
+        const gec = marks[marks.length - 1];
+        return `ayni tohumda kapasite ${n2(gec.kapasite / Math.max(1, erken.kapasite))}x,`
+          + ` kadro ${n2(gec.kadro / Math.max(1, erken.kadro))}x. Tesis SAYISI olu tesis`
+          + ` tasfiyesiyle de duser (retireDeadFactories), yani bu olcut tek basina`
+          + ` "sanayi buyuyor mu" sorusuna cevap vermez.`;
+      })());
   } else {
     console.log('  -> H3 gecti: sanayi yuzyil boyunca buyuyor.');
   }
