@@ -1532,6 +1532,23 @@ export class Screens {
     // kalemini ("Strategic imports", "External settlement") okuyamadi; sayi
     // vardi, anlami yoktu (Open Beta 4). Metin defter satirinin ne oldugunu
     // soyler, tutari yeniden hesaplamaz.
+    // Yonetim gideri en buyuk kalemken tek satirla "otomatik buyur" diyordu;
+    // dokum cities.administrationBreakdown'dan gelir, ekran yeniden hesaplamaz.
+    const administrationNote = (nation) => {
+      const parts = nation?.budget?.administrationParts;
+      if (!parts) return LEDGER_NOTES.administration;
+      const items = [
+        ['cities beyond the capital', parts.cities],
+        ['provinces', parts.provinces],
+        ['distance from the capital', parts.distance],
+        ['population', parts.people],
+      ].filter(([, v]) => v >= 0.05)
+        .sort((a, b) => b[1] - a[1])
+        .map(([label, v]) => `${label} £${v.toFixed(1)}`);
+      return items.length
+        ? `automatic: ${items.join(' · ')}. Cities cost more each (power 1.6); far-flung ones add distance.`
+        : 'automatic: the capital administers itself for free';
+    };
     const LEDGER_NOTES = {
       state: 'what state-owned factories and provincial raw output pay the treasury',
       settlement: 'cash settled with the world market this week: goods sold abroad minus goods bought',
@@ -1625,7 +1642,8 @@ export class Screens {
         + ` \u00b7 population growth <b>\u00d7${c.welfare.growth.toFixed(2)}</b>`)}
 
         ${view.expenseRows.filter((r) => !['army', 'procurement', 'education', 'welfare'].includes(r.id))
-    .map((r) => row(r.label, r.amount, LEDGER_NOTES[r.id] ?? '')).join('')}
+    .map((r) => row(r.label, r.amount,
+      r.id === 'administration' ? administrationNote(me) : (LEDGER_NOTES[r.id] ?? ''))).join('')}
 
         <div class="ledger-total"><span>Total spending</span>
           <span class="vbox neg big">${coin}${view.expenses.toFixed(1)}</span></div>

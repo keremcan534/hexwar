@@ -504,6 +504,30 @@ senin ithalat iştahın düşer (karşılanmayan talep büyür, halkın sepeti e
 kalır) ve senin ihracat erişimin kısılır (misilleme). Serbest ticaret bunun
 tersi: ucuz girdi, geniş pazar, sıfır gümrük geliri.
 
+## 4.3 Arz tepkisi — tabandaki malın tarlası küçülür
+
+**Formül**
+
+    hedef ölçek = clamp( √(fiyat / taban fiyat), 0.5, 1 )
+    ölçek      += (hedef − ölçek) × 0.004            ← her hafta (yarıya inmek ~4 yıl)
+    RGO kadrosu ×= ölçek ; RGO üretimi ×= ölçek
+    yukarı yön ayrı: gelişme × rgoPriceDrive (0.5…2.5), tavan yok
+
+**Kod** — `src/game/provinces.js` `updateRgoDemandScale`, `rgoDemandScaleOf`
+
+**Çalışıyor mu?** **EVET, yavaş.** 520 haftalık barış koşusu (tohum BAND-1):
+mal-haftalarının tabanda geçen payı %37.7 → %31.0, toplam bant doygunluğu
+%45.6 → %40.4; 520. haftada tabanda çakılı mal 20 → 13. Kalan taban malları
+(fruit, silk, rubber, oil, lumber) 1836'da alıcısı olmayan mallar — ölçek
+0.5'in altına inmediği için orada kalırlar; bu tasarım seçimi, tarlanın
+yok olmasını değil yarıya inmesini istiyor.
+
+**Pratikte** — dünya fiyatı tabana yapışan hammaddenin province'i yıllar
+içinde kadrosunu ve çıktısını yarıya indirir, açığa çıkan nüfus göçle
+fabrikaya ya da başka tarlaya akar. Vic2'nin "kârsız RGO'dan pop kaçar"
+davranışı. Fiyat toparlanınca ölçek de 1'e döner. Oyuncunun kolu yok: bu
+bir piyasa refleksi, karar değil.
+
 ---
 
 # 5. DEVLET — imparatorluğun otomatik bedelleri

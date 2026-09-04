@@ -258,6 +258,7 @@ function ensureProvinceRgo(world, province) {
     econ.rgoBaseDevelopment = econ[type.track] ?? 0;
   }
   if (!Number.isFinite(econ.migration)) econ.migration = 0;
+  if (!Number.isFinite(econ.rgoDemandScale)) econ.rgoDemandScale = 1;
   if (!Number.isFinite(econ.hexes)) econ.hexes = province.tileIdx.length;
   return econ;
 }
@@ -500,9 +501,10 @@ export function rgoJobsOf(econ) {
   const type = RGO_TYPES[econ?.rgo];
   if (!econ || !type) return 0;
   const developed = Math.max(0, (econ[type.track] ?? 0) - (econ.rgoBaseDevelopment ?? 0));
+  // Alicisiz malin tarlasi kuculur: kadro talep olcegiyle carpilir.
   return Math.max(
     1000 * POPULATION_SCALE,
-    Math.round((econ.rgoBaseJobs + developed * 500 * POPULATION_SCALE)
+    Math.round((econ.rgoBaseJobs + developed * 500 * POPULATION_SCALE) * rgoDemandScaleOf(econ)
       / (100 * POPULATION_SCALE)) * 100 * POPULATION_SCALE,
   );
 }
@@ -557,6 +559,39 @@ function rgoPriceDrive(world, econ) {
   const base = state.basePrice ?? state.price;
   if (!(base > 0)) return 1;
   return clamp(0.5 + (state.price / base) * 0.5, RGO_PRICE_DRIVE_MIN, RGO_PRICE_DRIVE_MAX);
+}
+
+/**
+ * ARZ TEPKISININ ASAGI YONU. `rgoPriceDrive` pahali mali hizlandirir ama
+ * ucuz mal icin fren yoktu: 2026-09-04 `audit:market` 42 malin 17'sini bantta
+ * cakili buldu, 14'u TABANDA (cattle, fruit, silk, timber, rubber, iron, oil,
+ * dye, lumber, liquor...). Alicisiz mal uretilmeye devam ediyor, kimse tarlayi
+ * kucultmuyordu. Vic2'de bu tarlanin isleri erir, halk baska ise gocer.
+ *
+ * Olcek [RGO_DEMAND_MIN, 1]: fiyat tabana indikce hedef yarim kadroya iner,
+ * fiyat toparlaninca 1'e doner; haftada RGO_DEMAND_APPROACH kadar yaklasir
+ * (yariya inmek ~4 yil). Kadroyu ve uretimi birlikte olcekler; yukari yon
+ * yine gelisme (development) ile gelir, burada 1'i asmaz.
+ */
+const RGO_DEMAND_MIN = 0.5;
+const RGO_DEMAND_APPROACH = 0.004;
+
+function updateRgoDemandScale(world, econ) {
+  const goodId = RGO_TYPES[econ.rgo]?.goodId;
+  const state = goodId ? world.market?.goods?.[goodId] : null;
+  const scale = Number.isFinite(econ.rgoDemandScale) ? econ.rgoDemandScale : 1;
+  if (!state) { econ.rgoDemandScale = scale; return; }
+  const base = state.basePrice ?? state.price;
+  if (!(base > 0)) { econ.rgoDemandScale = scale; return; }
+  // Taban fiyatin yarisi ve alti tam frendir; taban fiyat ve ustu frensiz.
+  const target = clamp(Math.sqrt(state.price / base), RGO_DEMAND_MIN, 1);
+  econ.rgoDemandScale = clamp(scale + (target - scale) * RGO_DEMAND_APPROACH, RGO_DEMAND_MIN, 1);
+}
+
+/** Talep olcegi: alicisiz malin tarlasi kuculur (bkz. updateRgoDemandScale). */
+export function rgoDemandScaleOf(econ) {
+  const scale = econ?.rgoDemandScale;
+  return Number.isFinite(scale) ? clamp(scale, RGO_DEMAND_MIN, 1) : 1;
 }
 
 /**
@@ -715,7 +750,8 @@ export function provinceOutput(world, province, out = null) {
   const tech = 1 + (world.nations?.[province.owner]?.economy?.techMods?.rgoOutput ?? 0);
   output[type.goodId] = type.baseOutput
     * econ.rgoQuality * (1 + development * 0.18)
-    * rgoLaborScale(econ, rgoJobsOf(econ)) * control * econ.hexes * tech;
+    * rgoLaborScale(econ, rgoJobsOf(econ)) * control * econ.hexes * tech
+    * rgoDemandScaleOf(econ);
   // Vergi tabanı kare başına eski ölçekte: nüfus hex payına indirgenir,
   // toplam hex sayısıyla geri çarpılır.
   const taxpayerScale = clamp(
@@ -936,6 +972,9 @@ export function runProvinces(game) {
             * rgoPriceDrive(world, econ),
       );
     }
+    // Piyasa her kosulda konusur: savas ve isgal gelismeyi durdurur ama
+    // alicisiz tarlanin kuculmesini durdurmaz.
+    updateRgoDemandScale(world, econ);
   }
   // Küme sayaçları: HUD ve hegemonya gerçek province sayısını okur.
   for (const nation of world.nations) nation.provinces = 0;

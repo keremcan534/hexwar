@@ -256,14 +256,26 @@ const ADMIN_CITY_RATE = 4.0;
 const ADMIN_PROVINCE_RATE = 0.02;
 const ADMIN_POPULATION_RATE = 0.8;
 
-function administrationCost(cityCount, provinceCount, distanceLoad, population = 0) {
+/**
+ * Yonetim giderinin dort kalemi. Ekran bu dokumu cumleye cevirir: gider en
+ * buyuk kalemken (olculdu: giderin ~%37'si) "otomatik buyur" diye tek satirla
+ * geciyordu — oyuncu neyin pahali oldugunu (sehir mi, uzaklik mi) goremiyordu.
+ */
+export function administrationBreakdown(cityCount, provinceCount, distanceLoad, population = 0) {
   const cities = Math.max(0, cityCount - ADMIN_FREE_CITIES) ** 1.6 * ADMIN_CITY_RATE;
   const provinces = Math.max(0, provinceCount) * ADMIN_PROVINCE_RATE;
   // Nufus terimi ALTDOGRUSAL: kalabalik ulke daha fazla oder ama nufusla
   // birebir degil, yoksa 1.9M nufuslu tek ulke tek basina iflas ederdi.
   const people = (Math.max(0, population) / (100000 * POPULATION_SCALE)) ** 0.75
     * ADMIN_POPULATION_RATE;
-  return Math.round((cities + provinces + distanceLoad + people) * 10) / 10;
+  return {
+    cities, provinces, distance: distanceLoad, people,
+    total: Math.round((cities + provinces + distanceLoad + people) * 10) / 10,
+  };
+}
+
+function administrationCost(cityCount, provinceCount, distanceLoad, population = 0) {
+  return administrationBreakdown(cityCount, provinceCount, distanceLoad, population).total;
 }
 
 /**
@@ -504,6 +516,10 @@ export function nationBudget(world, nation, provinceTotals = null) {
     armyGold,
     provinces: provinceCount,
     administration,
+    // Dokum ekran icin: butce defteri "neden bu kadar" sorusunu cevaplasin.
+    administrationParts: administrationBreakdown(
+      cityCount, provinceCount, distanceLoad, nation.economy?.population ?? 0,
+    ),
   };
 }
 
