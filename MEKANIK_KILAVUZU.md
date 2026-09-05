@@ -1234,16 +1234,30 @@ onarıldıktan **sonra** çalışıyor (%32.8 → %30.5).
 
 | | önce | sonra |
 |---|---|---|
-| el değişen küme | %40.8 | **%30.4** |
+| el değişen küme (9 tohum ort.) | %40.8 | **%32.7** |
+| eşiği geçen tohum | — | 2/9 |
 | bedava yerleşme | 206 | **5.3** |
 | barış masası fetih olayı | 139 | 108.7 |
 | isyan | 301 | 50 |
-| yabancı halk payı (50. yıl) | %6.0 | **%17.0** |
+| yabancı halk payı (50. yıl) | %6.0 | **%12.9** |
 | kırık kümenin hex başına çıktısı | — | **sağlamın %0'ı** |
 | üç kapısı da kapalı halk | — | **0** |
 
-Şöhret çarpanı ayrı ölçüldü ve yerini hak etti: çarpansız kartopu %33.9
-(eşiğin üstünde), çarpanlı %30.4. Fetih olayı 145 → 108.7.
+**Şöhret çarpanı ayrı ve DOKUZ tohumda ölçüldü.** Üç tohumluk ilk ölçüm
+yanıltıcıydı: `HL` ailesinde iyileşme, `WP` ailesinde kötüleşme gösteriyordu.
+Dokuz tohumda karar net:
+
+| | çarpansız | çarpanlı |
+|---|---|---|
+| ortalama el değişen | %34.1 | **%32.7** |
+| **eşiği geçen tohum** | **5/9** | **2/9** |
+| ölen ülke | 9.8 | **8.8** |
+| yabancı halk payı | %9.9 | **%12.9** |
+
+Tohum bazında oynaktır (WP1 %33.3 → %44.0 kötüleşir, WP3 %38.7 → %29.8
+iyileşir) çünkü çarpan hangi savaşların çıkacağını değiştirir. Ortalamada ve
+başarısız tohum sayısında iyileştirir; kalan iki tohum kovalanmadı — bu,
+mekaniği tohuma uydurmak olurdu.
 
 `audit:war-pressure` iki YÜKSEK bulgusunun ikisini de kapattı: kartopu
 %40.8 → %31.6, çullanma azami 4 → 3.
