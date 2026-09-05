@@ -747,9 +747,13 @@ export function expelCulture(game, nation, cultureId) {
     }
     // Halk gitti, ana yurt kaydi da gitti: burasi artik kimsenin yurdu degil.
     if (province.homeland === cultureId) province.homeland = -1;
-    province.econ.brokenSince = null;
-    province.econ.brokenCulture = null;
-    province.econ.unrest = Math.min(province.econ.unrest ?? 0, CULTURE.AFTER_REVOLT_UNREST);
+    // Yalniz BU halkin kirdigi kumenin isareti silinir: baska bir halk
+    // yuzunden kirilmis kume, onlar surulunce duzelmis olmaz.
+    if (province.econ.brokenCulture === cultureId) {
+      province.econ.brokenSince = null;
+      province.econ.brokenCulture = null;
+      province.econ.unrest = Math.min(province.econ.unrest ?? 0, CULTURE.AFTER_REVOLT_UNREST);
+    }
   }
   if (!expelled) return 0;
   const cost = Math.max(

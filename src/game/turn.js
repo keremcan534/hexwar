@@ -46,6 +46,22 @@ import { expireTreaties, treatiesOf } from './peace.js';
 /** Başlangıç stoku: ilk birkaç turda bir birim alacak kadar. */
 const STARTING_GOLD = 50;
 
+/**
+ * KIRIK ISARETI SAHIBE AITTIR. `econ.brokenSince`/`brokenCulture` "bu ulus bu
+ * halki tutamiyor" demektir; toprak el degistirince o cumle artik yeni sahip
+ * icin kurulmamistir ve sifirdan olculmelidir.
+ *
+ * Yazilmadan olculdu: kume bir sahipte kirildi, sonra o halki ZATEN KABUL
+ * EDEN bir ulusa gecti ve isaret uzerinde kaldi. Yeni sahip icin uc cikisin
+ * ucu de kapali gorunuyordu (kabul: "zaten kabul edilmis", surgun: "kendi
+ * halkimiz", birak: akraba komsu yok) — audit:homeland TEST 4 bunu duvar
+ * olarak raporladi.
+ */
+function clearBrokenMark(econ) {
+  econ.brokenSince = null;
+  econ.brokenCulture = null;
+}
+
 export class TurnManager {
   constructor(game) {
     this.game = game;
@@ -306,6 +322,7 @@ export class TurnManager {
     if (!taken) return false;
     if (province.econ) {
       province.econ.control = province.owner < 0 ? 60 : 25;
+      clearBrokenMark(province.econ);
     }
     refreshProvinceOwner(world, province);
     this.game.renderer.invalidateTiles(takenTiles);
@@ -338,6 +355,7 @@ export class TurnManager {
     province.owner = nationId;
     // Yeni tebaa hemen sadık olmaz; kontrol düşük başlar.
     province.econ.control = 25;
+    clearBrokenMark(province.econ);
     this.game.renderer.invalidateTiles(members);
     return true;
   }
