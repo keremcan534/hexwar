@@ -13,7 +13,9 @@ import { disband, queueRecruit, recruit, runTraining } from './recruitment.js';
 import { runReinforcements } from './reinforcement.js';
 import { runDelegatedAI, runNationAI } from './ai.js';
 import { runDiplomacyAI } from './alliances.js';
-import { atWar, computeContacts, initRelations, resolveCrises } from './diplomacy.js';
+import {
+  PEACE, atWar, computeContacts, initRelations, relation, resolveCrises,
+} from './diplomacy.js';
 import { runMobilization } from './mobilization.js';
 import {
   INFAMY, addInfamy, checkCoalitions, decayInfamy, tileInfamy,
@@ -43,6 +45,22 @@ import { expireTreaties, treatiesOf } from './peace.js';
 
 /** Başlangıç stoku: ilk birkaç turda bir birim alacak kadar. */
 const STARTING_GOLD = 50;
+
+/**
+ * KIRIK ISARETI SAHIBE AITTIR. `econ.brokenSince`/`brokenCulture` "bu ulus bu
+ * halki tutamiyor" demektir; toprak el degistirince o cumle artik yeni sahip
+ * icin kurulmamistir ve sifirdan olculmelidir.
+ *
+ * Yazilmadan olculdu: kume bir sahipte kirildi, sonra o halki ZATEN KABUL
+ * EDEN bir ulusa gecti ve isaret uzerinde kaldi. Yeni sahip icin uc cikisin
+ * ucu de kapali gorunuyordu (kabul: "zaten kabul edilmis", surgun: "kendi
+ * halkimiz", birak: akraba komsu yok) — audit:homeland TEST 4 bunu duvar
+ * olarak raporladi.
+ */
+function clearBrokenMark(econ) {
+  econ.brokenSince = null;
+  econ.brokenCulture = null;
+}
 
 export class TurnManager {
   constructor(game) {
@@ -304,6 +322,7 @@ export class TurnManager {
     if (!taken) return false;
     if (province.econ) {
       province.econ.control = province.owner < 0 ? 60 : 25;
+      clearBrokenMark(province.econ);
     }
     refreshProvinceOwner(world, province);
     this.game.renderer.invalidateTiles(takenTiles);
@@ -336,6 +355,7 @@ export class TurnManager {
     province.owner = nationId;
     // Yeni tebaa hemen sadık olmaz; kontrol düşük başlar.
     province.econ.control = 25;
+    clearBrokenMark(province.econ);
     this.game.renderer.invalidateTiles(members);
     return true;
   }
@@ -710,6 +730,18 @@ export class TurnManager {
       if (hasUnits || hasCities) continue;
 
       nation.alive = false;
+      // ILISKILER DE OLUR. Elenen ulusun savas kayitlari eskiden oldugu gibi
+      // kaliyordu: dunyada artik var olmayan bir ulke sonsuza kadar "savasta"
+      // gorunuyor ve `atWar` sorgusu yapan her tuketici onu sayabiliyordu.
+      // Olculdu: `audit:war-pressure` cullanma tavanini bu yuzden 6 olarak
+      // raporluyordu — oysa canli ulke filtreleyen sayim azami 3 veriyor,
+      // yani tavan (MAX_ATTACKERS_ON_TARGET) hic delinmemisti. Bayat durum
+      // birakmak, onu okuyan her yerde bir hata uretir.
+      for (const other of world.nations) {
+        if (other.id === nation.id) continue;
+        const rec = relation(world, nation.id, other.id);
+        if (rec) rec.state = PEACE;
+      }
       // Toprakları sahipsizleşir; komşular buraya doğru genişleyebilsin.
       world.forEach((t) => {
         if (t.owner === nation.id) {

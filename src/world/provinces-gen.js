@@ -251,6 +251,8 @@ export function generateProvinces(world) {
       owner: -1,
       // Çekirdek toprak: üretimde ev toprağı olan ülke; koloniler -1 kalır.
       coreOf: -1,
+      // Ana yurt mixCultures'ta yazılır; şema burada tam dursun.
+      homeland: -1,
       neighbors: [],
     };
   });

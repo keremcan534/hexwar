@@ -15,7 +15,7 @@ import {
   provinceWarCost, signPeace, termAvailable, warGoalOf, warScore,
 } from '../game/peace.js';
 import { INFAMY_COALITION } from '../game/infamy.js';
-import { acceptCulture } from '../game/culture.js';
+import { acceptCulture, expelCulture, releaseToKin } from '../game/culture.js';
 import { maxHpOf, menUnderArms, organizationOf, soldiersOf } from '../game/units.js';
 import { provinceName } from '../game/provinces.js';
 import { populationGroupDetail, populationOverview } from '../game/populationView.js';
@@ -1708,6 +1708,18 @@ export class Screens {
       btn.onclick = () => {
         // Tek ulusal karar; butun sartlar game/culture.js'te (YZ ayni kapidan).
         if (acceptCulture(this.game, this.me, Number(btn.dataset.popAccept))) this.refresh();
+      };
+    }
+    // Kirik kumenin diger iki cikisi. Ucu de HALK basinadir ve ucu de YZ'nin
+    // kullandigi fonksiyonun ta kendisidir (bkz. culture.js manageBrokenProvinces).
+    for (const btn of this.el.body.querySelectorAll('[data-pop-release]')) {
+      btn.onclick = () => {
+        if (releaseToKin(this.game, this.me, Number(btn.dataset.popRelease))) this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-pop-expel]')) {
+      btn.onclick = () => {
+        if (expelCulture(this.game, this.me, Number(btn.dataset.popExpel))) this.refresh();
       };
     }
     for (const btn of this.el.body.querySelectorAll('[data-pop-tab]')) {

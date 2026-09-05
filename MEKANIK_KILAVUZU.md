@@ -1155,14 +1155,137 @@ Savaş yorgunluğu huzursuzluğu yükseltir ama tek başına asla kopma üretmez
 
 **Pratikte** — fethettiğin yabancı taşra ilk yıl sessizdir, sonra huzursuzluk
 birikir: önce sadakat kazancını yer (üretim ve vergi düşer), sonra asker
-havuzunu (%60'a kadar), altı mevsim eşiğin üstünde kalırsa kopar. Kopan küme
-aynı kültürden komşu varsa **ona katılır** (irredentizm), yoksa bağımsızlaşır
-— ve geri alsan bile huzursuzlukla geri gelir. İki çıkış var: **kabul et**
-(nüfusun %8'ini geçen halka vatandaşlık; anında sakinleşir ama iki yıl kendi
-halkın küser) ya da **asimile et** (okul + tam vatandaşlık + sadakat; on
-yıllar sürer ve huzursuz kümede hiç işlemez — yani önce yatıştırman gerekir).
-Yüzyıl ilerledikçe aynı yabancı pay daha çok huzursuzluk üretir: 1890'da
-kurulan imparatorluk 1840'takinden zordur.
+havuzunu, altı mevsim eşiğin üstünde kalırsa ayaklanır. Yüzyıl ilerledikçe
+aynı yabancı pay daha çok huzursuzluk üretir: 1890'da kurulan imparatorluk
+1840'takinden zordur.
+
+Ayaklanmanın nereye çıktığı ve çıkış yolları için **5.8**.
+
+---
+
+## 5.8 Ana yurt — kırık küme ve üç çıkış
+
+**Bu bölüm bir teşhisin sonucudur.** `audit:borders` ve `audit:war-pressure`
+uzun süre "kartopu" veriyordu: 50 yılda haritanın %40.8'i el değiştiriyor,
+eşik %33. Ad fetih kartopunu ima ediyordu; ölçüm başka şey söyledi.
+
+**Sahiplik değişiminin sebebi** (50 yıl × 3 tohum, `claim`/`claimAtPeace`
+sarılarak sayıldı):
+
+| sebep | olay | ayrı küme | pay |
+|---|---|---|---|
+| savaş zaptı | 0 | 0 | %0 |
+| barış masası | 139 | 105 | ~%20 |
+| **bedava yerleşme** | 206 | **45** | ~%30 |
+| **isyan** | 301 | 87 | ~%48 |
+
+Olayların **%78'i bir döngüydü**. Mirasçısı olmayan ayaklanma kümeyi
+*sahipsiz* bırakıyordu; sahipsiz toprak savaşsız ve şöhretsiz yerleşilebildiği
+için (`turn.js occupy → canSettle`) komşu bedavaya giriyor, iki yıl sonra
+aynı küme yeniden kopuyordu. Bir küme 50 yılda **24 kez** el değiştirdi.
+
+Aynı döngü dünyayı da temizliyordu: yabancı halk payı %41.3 → **%6.0**.
+İzole edildi — bunu yapan asimilasyon değil isyandı (isyan kapalıyken pay
+%31.3 kalıyor). Yabancı toprak sindirilmiyor, **kopup gidiyordu**. Sonuç:
+fethin kalıcı bedeli yok ve kültür freni tam da oyuncunun en çok fethettiği
+çağda tutunacak yer bulamıyor — milliyetçilik çağının tersi.
+
+**Elenen iki hipotez, ikisi de ölçüldü:**
+
+| hipotez | ölçüm | sonuç |
+|---|---|---|
+| asimilasyon çok hızlı, yavaşlatalım | 8 kat yavaş → %40.8 → **%46.4** | ters etki, elendi |
+| yabancı asker payını kısalım | 0.35 → 0.12 → %40.8 → **%40.6** | tek başına ölü |
+
+İkincisi ölüydü çünkü dünyada ceza kesecek yabancı kalmamıştı. Döngü
+onarıldıktan **sonra** çalışıyor (%32.8 → %30.5).
+
+**Formül**
+
+    ana yurt = kümenin DOĞUŞ çoğunluğu (province.homeland), değişmez
+    asimilasyon: row.id === province.homeland ise ÇALIŞMAZ
+
+    ayaklanan halk = kabul EDİLMEYENLERİN en büyüğü (çoğunluk değil)
+    ayaklanma → aynı kültürden bitişik ulus varsa ONA KATILIR
+              → yoksa toprak EL DEĞİŞTİRMEZ, küme KIRILIR:
+                control = 0, unrest = 10, brokenSince = tur
+
+    kırık küme çıktısı ≈ 0   (provinceOutput çıktıyı sadakatle ölçekler)
+    kırık işareti SAHİBE aittir: devirde sıfırlanır, sadakat ≥ 50'de silinir
+
+    yabancı asker payı: residency 0.15 · limited 0.30 · full 0.50
+    ana yurt ilhak şöhreti: × 1.6 (kabul etmediğimiz bir halkın yurdu ise)
+
+**Üç çıkış** — hepsi **kültür başına**, küme başına değil (ev ödevi testi):
+
+| çıkış | şart | bedel | kod |
+|---|---|---|---|
+| **ortak et** | nüfusun %8'i; residency yasası engel | iki yıl milliyetçi tepki | `acceptCulture` |
+| **bırak** | aynı kültürden **bitişik** ulus | toprak gider, şöhret düşer | `releaseToKin` |
+| **sür** | her zaman açık | nüfus gider, ağır şöhret | `expelCulture` |
+
+**Kod** — `src/world/cultures.js` (`homeland` yazımı), `src/game/culture.js`
+(`rebelCultureOf`, `secede`, `brokenByCulture`, `releaseToKin`, `expelCulture`,
+`manageBrokenProvinces`), `src/game/recruitment.js` (`foreignManpowerShare`),
+`src/game/infamy.js` (`INFAMY_ANNEX.HOMELAND`), `src/game/turn.js`
+(`clearBrokenMark`), `src/ui/populationScreen.js` (`brokenPanel`)
+
+**Çalışıyor mu?** `audit:homeland`, altı test. Ölçülen (50 yıl × 3 tohum):
+
+| | önce | sonra |
+|---|---|---|
+| el değişen küme (9 tohum ort.) | %40.8 | **%32.7** |
+| eşiği geçen tohum | — | 2/9 |
+| bedava yerleşme | 206 | **5.3** |
+| barış masası fetih olayı | 139 | 108.7 |
+| isyan | 301 | 50 |
+| yabancı halk payı (50. yıl) | %6.0 | **%12.9** |
+| kırık kümenin hex başına çıktısı | — | **sağlamın %0'ı** |
+| üç kapısı da kapalı halk | — | **0** |
+
+**Şöhret çarpanı ayrı ve DOKUZ tohumda ölçüldü.** Üç tohumluk ilk ölçüm
+yanıltıcıydı: `HL` ailesinde iyileşme, `WP` ailesinde kötüleşme gösteriyordu.
+Dokuz tohumda karar net:
+
+| | çarpansız | çarpanlı |
+|---|---|---|
+| ortalama el değişen | %34.1 | **%32.7** |
+| **eşiği geçen tohum** | **5/9** | **2/9** |
+| ölen ülke | 9.8 | **8.8** |
+| yabancı halk payı | %9.9 | **%12.9** |
+
+Tohum bazında oynaktır (WP1 %33.3 → %44.0 kötüleşir, WP3 %38.7 → %29.8
+iyileşir) çünkü çarpan hangi savaşların çıkacağını değiştirir. Ortalamada ve
+başarısız tohum sayısında iyileştirir; kalan iki tohum kovalanmadı — bu,
+mekaniği tohuma uydurmak olurdu.
+
+`audit:war-pressure` iki YÜKSEK bulgusunun ikisini de kapattı: kartopu
+%40.8 → %31.6, çullanma azami 4 → 3.
+
+**Denetim dört gerçek kusur yakaladı**, dördü de düzeltildi:
+
+1. Kırık kümeleri **ana yurda** göre gruplamak — ayaklanan halk başkası
+   olabilir (`econ.brokenCulture`).
+2. Sürgünün `province.homeland` değişikliğinin **kayda girmemesi** —
+   yükleme sürgünü geri alıyordu.
+3. Elenen ulusun **ilişkilerinin hiç sıfırlanmaması** — ölü ülke sonsuza
+   kadar "savaşta" kalıyordu; `audit:war-pressure` bu bayat durumu
+   çullanma sayıyordu (canlı filtreyle gerçek değer 3, tavan hiç
+   delinmemiş).
+4. Kırık işaretinin **el değiştirirken taşınması** — küme bir sahipte
+   kırılıp o halkı zaten kabul eden bir ulusa geçince üç kapı da kapalı
+   görünüyordu.
+
+**Pratikte** — bir halkın ana yurdunu fethedebilirsin ama eritemezsin.
+Diasporası erir, yurdu erimez. Tutmakta ısrar edersen ayaklanma bastırılır
+ama küme çalışmaz: vergi yok, mal yok, asker yok, ve bu kalıcıdır. Üç
+çıkışın hep en az biri açıktır. Kendi halkının olmadığı bir imparatorluk
+kurmak artık mümkün ama ordusu küçük olur — asker vatandaştan gelir.
+
+**Ölçülen yan etki, saklanmıyor:** canlı ülke 19.0 → 17.3. Ama kimin öldüğü
+değişmedi (en büyük 10'dan 1.0, en küçük 10'dan 6.3 — master'da da aynı) ve
+dünya daha **az** yoğunlaşıyor: ilk üçün payı %39.2 → %35.7, ortanca ülke
+boyu 8.3 → 12.0. Harita üç deve değil orta boy devletlere oturuyor.
 
 ---
 

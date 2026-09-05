@@ -91,6 +91,15 @@ export const INFAMY_ANNEX = {
   /** Yabanci halki ilhak etmek pahalidir; kendi halkini kurtarmak ucuz. */
   FOREIGN: 1.4,
   OWN_CULTURE: 0.5,
+  /**
+   * ANA YURT CARPANI. Bir halkin YURDUNU almak, sinir boyundan bir kasaba
+   * almakla ayni fiyatta olamaz: dunya birincisini bir ulusun bogazlanmasi
+   * sayar, ikincisini sinir duzeltmesi. Ayrim `province.homeland` uzerinden
+   * kurulur (bkz. world/cultures.js) ve yalniz KABUL ETMEDIGIMIZ bir halkin
+   * yurdu icin isler — kendi halkimizin ya da ortak ettigimiz bir halkin
+   * yurdunu almak zaten ucuzdur.
+   */
+  HOMELAND: 1.6,
 };
 
 export function addInfamy(nation, amount) {
@@ -108,7 +117,14 @@ export function provinceAnnexInfamy(world, province, nation) {
     + cities * INFAMY_ANNEX.PER_CITY
     + (province.econ?.population ?? 0) / INFAMY_ANNEX.POP_PER_POINT;
   const ownPeople = province.culture >= 0 && province.culture === nation.culture;
-  return base * (ownPeople ? INFAMY_ANNEX.OWN_CULTURE : INFAMY_ANNEX.FOREIGN);
+  // `isAccepted` culture.js'tedir ama o dosya bu dosyayi import eder; kural
+  // burada acikca kurulur ki import dongusu olusmasin (bkz. acceptedCultures).
+  const accepted = nation.accepted?.length ? nation.accepted : [nation.culture];
+  const homeland = province.homeland ?? -1;
+  const foreignHomeland = homeland >= 0 && !accepted.includes(homeland);
+  return base
+    * (ownPeople ? INFAMY_ANNEX.OWN_CULTURE : INFAMY_ANNEX.FOREIGN)
+    * (foreignHomeland ? INFAMY_ANNEX.HOMELAND : 1);
 }
 
 /**

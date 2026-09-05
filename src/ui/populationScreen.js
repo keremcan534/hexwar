@@ -400,7 +400,7 @@ function cultureTab(view) {
       <td class="num ${unrest != null && unrest > 3.5 ? 'bad' : ''}">${unrest == null ? '—' : unrest.toFixed(1)}</td>
     </tr>`;
   }).join('');
-  return `${citizenshipPanel(view)}${panel('Cultures', 'ranked by population',
+  return `${citizenshipPanel(view)}${brokenPanel(view)}${panel('Cultures', 'ranked by population',
     `<table class="data-table"><thead><tr><th>Culture</th><th class="num">People</th>
       <th class="num">Share</th><th>Largest state</th>
       <th class="num">Unrest</th></tr></thead><tbody>${rows}</tbody></table>
@@ -449,6 +449,46 @@ function citizenshipPanel(view) {
        the ranks and grow restless — the more so as the century turns nationalist.
        Two ways out: grant them citizenship, or hold the province long enough that
        schooling assimilates them.</p>`, 'wide');
+}
+
+/**
+ * KIRIK KUMELER. Bastirilan ayaklanmanin biraktigi calismayan topraklar ve
+ * uc cikis. Karar HALK basinadir: kirk kirik kumesi olan oyuncu kirk tik
+ * yapmaz (bkz. VICTORIA_LITE.md ev odevi testi). Butun esikler ve engeller
+ * game/culture.js'ten hazir gelir; ekran hicbir kural kurmaz.
+ */
+function brokenPanel(view) {
+  const list = view.brokenCultures ?? [];
+  if (!list.length) return '';
+  const rows = list.map((row) => {
+    const button = (kind, label, blockers, hint) => `<button class="action"
+      data-pop-${kind}="${row.id}" ${blockers.length ? 'disabled' : ''}
+      title="${esc(blockers.length ? blockers.join(' ') : hint)}">${label}</button>`;
+    return `<tr>
+      <td><b>${esc(row.name)}</b>
+        <small>${esc(row.names.join(', '))}${row.provinces > row.names.length ? ' …' : ''}</small></td>
+      <td class="num">${row.provinces}</td>
+      <td class="num">${(row.share * 100).toFixed(1)}%</td>
+      <td>${button('accept', 'Share the state', row.accept,
+    'They become an accepted culture: full taxes, full ranks, calm. The national'
+      + ' culture resents it for two years.')}
+        ${button('release', 'Hand to their kin', row.release,
+    'The provinces pass to a neighbouring state of their people. We lose the land'
+      + ' and the trouble with it, and the world thinks better of us.')}
+        ${button('expel', 'Drive them out', row.expel,
+    'They are removed from every province we hold. The land goes quiet and empty,'
+      + ' we lose their people, and the world remembers what we did.')}</td>
+    </tr>`;
+  }).join('');
+  const kume = list.reduce((sum, row) => sum + row.provinces, 0);
+  return panel('Broken provinces',
+    `${kume} province${kume > 1 ? 's' : ''} pay us nothing`,
+    `<table class="data-table"><thead><tr><th>People</th><th class="num">Provinces</th>
+      <th class="num">Share</th><th></th></tr></thead><tbody>${rows}</tbody></table>
+     <p class="hint">A rising was put down here, but the province no longer works:
+       loyalty is gone, so it yields no taxes, no goods and no recruits. It will not
+       heal on its own — a people cannot be assimilated in its own homeland. Three
+       ways out, and one of them is always open.</p>`, 'wide');
 }
 
 function religionTab(view) {

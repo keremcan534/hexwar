@@ -19,6 +19,7 @@ import { UNIT_COSTS, canAfford, pay } from './cities.js';
 import { settle } from './treasury.js';
 import { underTreaty } from './peace.js';
 import { controllerOf } from './control.js';
+import { foreignManpowerShare } from './culture.js';
 import { claimSoldiers, occupiedShareOf, releaseSoldiers } from './provinces.js';
 
 export const RECRUITMENT_EQUIPMENT = {
@@ -77,7 +78,7 @@ export function provinceManpower(world, tile) {
   // Huzursuz kume asker de vermez: ayaklanmanin esigindeki taşra kendi
   // jandarmasini besler, imparatorlugun ordusunu degil (bkz. culture.js).
   const calm = 1 - Math.max(0, Math.min(1, (econ.unrest ?? 0) / 10)) * 0.6;
-  return Math.round(base * (accepted ? 1 : 0.35) * calm);
+  return Math.round(base * (accepted ? 1 : foreignManpowerShare(nation)) * calm);
 }
 
 /** Ulusun toplam insan gücü: sahip olunan huzurlu kümelerin toplamı. */
