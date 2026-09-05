@@ -13,7 +13,7 @@
 
 import { IDEOLOGIES } from './politics.js';
 import { peopleMix } from './reforms.js';
-import { acceptBlockers, cultureMix, unrestSummary } from './culture.js';
+import { acceptBlockers, brokenByCulture, cultureMix, unrestSummary } from './culture.js';
 import { formatPopulation, populationOf, weightedNeedsMet } from './economy.js';
 import {
   CONFESSIONS, censusSource, censusTree, classPoliticsOf, confessionOf,
@@ -184,6 +184,21 @@ export function populationOverview(world, nation) {
     blockers: acceptBlockers(world, nation, row.id, world.turn ?? 0),
   }));
 
+  // KIRIK KUMELER. Bastirilan ayaklanmanin biraktigi calismayan topraklar,
+  // HALK HALK toplanir: karar kultur basinadir, kume basina degil. Ekran
+  // kume nesnesi gormez — sayi ve engel listesi yeter.
+  const brokenCultures = brokenByCulture(world, nation).map((row) => ({
+    id: row.id,
+    name: row.name,
+    provinces: row.provinces.length,
+    names: row.provinces.slice(0, 4).map((province) => province.name ?? `#${province.id}`),
+    people: row.people,
+    share: row.share,
+    accept: row.accept,
+    release: row.release,
+    expel: row.expel,
+  }));
+
   const summary = {
     total,
     unrestNation: unrestSummary(world, nation),
@@ -330,6 +345,7 @@ export function populationOverview(world, nation) {
     // Ülke çapındaki uyarılar: şeridi bunlar doldurur.
     alerts: alertsFor({ ...summary, growth: trend.growth }),
     nationCultures,
+    brokenCultures,
     states,
     groups,
     trend,

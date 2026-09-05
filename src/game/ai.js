@@ -9,7 +9,7 @@ import {
   recordWarProgress, relation, truceLeft,
 } from './diplomacy.js';
 import { manageMobilization } from './mobilization.js';
-import { manageAcceptance } from './culture.js';
+import { manageAcceptance, manageBrokenProvinces } from './culture.js';
 import {
   buildOffer, demandLimit, occupiedProvincesOf, offerCost, offerMeetsExpectation, provinceKeyOf,
   signPeace, suggestWarGoal, warScore,
@@ -562,6 +562,8 @@ export function runNationAI(game, nation, rng) {
   manageMobilization(game, nation);
   // Kultur kabulu de bir hukumet karari: oyuncu ile ayni kapi (culture.js).
   manageAcceptance(game, nation);
+  // Kirik kumenin cikisi (ortak et / birak / sur) da ayni kapidan gecer.
+  manageBrokenProvinces(game, nation);
   spend(game, nation);
   reformAgenda(game, nation);
   manageCommand(game, nation);
@@ -605,6 +607,16 @@ export function runDelegatedAI(game, nation, rng) {
     if (manageAcceptance(game, nation)) {
       noteDelegated(game, nation, 'reforms', 'A minority was made an accepted culture.',
         'Their provinces were close to revolt and they are numerous enough to matter.');
+    }
+    // Kirik kume bir hukumet sorunudur: devredilmisse hukumet cozer.
+    const broken = manageBrokenProvinces(game, nation);
+    if (broken) {
+      const nasil = broken.action === 'accept'
+        ? ['A broken province was settled by sharing the state.', 'Their people are now an accepted culture.']
+        : broken.action === 'release'
+          ? ['A broken province was handed to their kin.', 'It paid us nothing and would not be held.']
+          : ['A people were driven out of a broken province.', 'No other way out was open to us.'];
+      noteDelegated(game, nation, 'reforms', nasil[0], nasil[1]);
     }
   }
   if (delegationActive(nation, 'recruitment', turn)) {

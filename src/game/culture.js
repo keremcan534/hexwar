@@ -1,8 +1,8 @@
 // Kultur: huzursuzluk, asimilasyon, ayrilikci isyan.
 //
 // NEDEN VAR. Kultur bu depoda uzun sure BES yere bagliydi ve hicbiri halkin
-// KENDI iradesini temsil etmiyordu: verim -%30, sadakat hizi/tavani, asker
-// havuzu x0.35, sohret carpani, baris masasinda LIBERATE. Yani yabanci halk
+// KENDI iradesini temsil etmiyordu: verim -%30, sadakat hizi/tavani, sabit
+// bir asker carpani, sohret carpani, baris masasinda LIBERATE. Yani yabanci halk
 // bir ceza tablosuydu, bir aktor degil. Ekranda da oyle goruluyordu:
 // "foreign culture -30%".
 //
@@ -15,8 +15,28 @@
 //                tam vatandaslik, sehir ve sadakat hizlandirir; huzursuzluk
 //                durdurur. Oyuncunun uzun vadeli cikis yolu budur.
 //   ISYAN        huzursuzluk esigi ALTI AY degil ALTI MEVSIM asarsa kume
-//                kopar: ayni kulturden komsu varsa ona katilir (irredentizm),
-//                yoksa bagimsizlasir (peace.js LIBERATE ile ayni kapi).
+//                ayaklanir. Ayni kulturden komsu varsa ona KATILIR
+//                (irredentizm). Yoksa toprak EL DEGISTIRMEZ: ayaklanma
+//                bastirilir ama kume KIRILIR — sadakat sifirlanir ve
+//                uretim/vergi sadakatle olcekli oldugu icin kume calismaz.
+//
+// ANA YURT. Kumenin dogus cogunlugu o halkin ana yurdudur (world/cultures.js
+// `province.homeland`) ve degismez. Asimilasyon yalniz DIASPORAYI eritir:
+// bir halk kendi yurdunda erimez. Fethedilen yurdun bedeli kalicidir ve
+// milliyetcilik cagiyla buyur — mekanik oyuncunun en cok fethettigi donemde
+// en guclu olur, tersi degil.
+//
+// UC CIKIS. Kirik kume bir duvar degil bir SORUDUR; her zaman en az bir
+// cikisi vardir: ORTAK ET (kabul), BIRAK (akraba ulusa devret), SUR
+// (halki cikar). Ucu de KULTUR basinadir, kume basina degil.
+//
+// NEDEN BOYLE. Olculdu (50 yil x 3 tohum): eski surumde mirascisiz ayaklanma
+// kumeyi SAHIPSIZ birakiyor, sahipsiz toprak savassiz ve sohretsiz
+// yerlesiliyordu. Sahiplik olaylarinin %78'i bu donguydu — 206 bedava
+// yerlesme, 301 isyan, bir kume 50 yilda 24 kez el degistirdi. Ayni dongu
+// dunyayi da temizliyordu: yabanci halk payi %41,3'ten %6,0'a dusuyordu,
+// yani fethin kalici bedeli kalmiyordu. Yeni surumde el degisen kume orani
+// %40,8 -> %32,8, bedava yerlesme 206 -> 7, 1886 yabanci payi %6 -> %14.
 //
 // GUVENLIK KILIDI: isyan yalnizca kabul edilmemis halkin cogunlukta oldugu
 // kumede olur (REVOLT_FOREIGN_MIN). Tek kulturlu ulusal devlet bu mekanikten
@@ -29,6 +49,8 @@
 import { policyOf } from './politics.js';
 import { reformModifiers } from './reforms.js';
 import { TIER, announce } from './chronicle.js';
+import { addInfamy } from './infamy.js';
+import { POPULATION_SCALE } from './populationScale.js';
 
 export const CULTURE = {
   /** Huzursuzluk olcegi 0-10 (nufus ekranindaki militanlikla ayni dil). */
@@ -60,6 +82,13 @@ export const CULTURE = {
   /** Paylar bu esigin altina duserse satir silinir (normalizeMix ile ayni). */
   SHARE_FLOOR: 0.02,
 
+  /** Kirik kume bu sadakatin ustune cikinca yeniden calisiyor sayilir. */
+  BROKEN_RECOVERED: 50,
+  /** Surgunun sohret bedeli: bu kadar insan basina bir puan. */
+  EXPEL_INFAMY_PER_POP: 40000 * POPULATION_SCALE,
+  /** Surgun en az bu kadar sohret uretir: kucuk halki surmek de ucuz degildir. */
+  EXPEL_INFAMY_MIN: 8,
+
   /** Kulturu kabul etmek icin gereken asgari ulusal nufus payi. */
   ACCEPT_MIN_SHARE: 0.08,
   /** Kabulun bedeli: ana kulturlu kumelerde bu kadar hafta suren tepki. */
@@ -83,6 +112,25 @@ function rightsWeight(nation) {
   if (policy === 'full_citizenship') return 0.45;
   if (policy === 'limited_citizenship') return 0.7;
   return 1;
+}
+
+/**
+ * Kabul EDILMEYEN halkin verdigi asker payi. Vic2'nin accepted-culture
+ * mantigi: imparatorlugun ordusu ana kulturden kurulur, yabanci tebaa
+ * gonulsuzdur. Deger 0,35'te sabitti; artik vatandaslik yasasina baglidir
+ * cunku sorunun tam karsiligi odur — halki devlete ortak etmeyen devlet
+ * onlardan asker de alamaz.
+ *
+ * Kartopu freninin SUREKLI kalemi budur: yabanci halktan kurulu imparatorlugun
+ * ordusu buyumez, yani fetih kendini beslemez. Olculdu — tek basina hicbir sey
+ * yapmiyordu (%40,6 vs %40,8) cunku dunyada ceza kesecek yabanci kalmamisti;
+ * ana yurt ve bastirilan isyan onarildiktan SONRA calisiyor (%32,8 -> %30,5).
+ */
+export function foreignManpowerShare(nation) {
+  const policy = policyOf(nation, 'citizenship');
+  if (policy === 'full_citizenship') return 0.5;
+  if (policy === 'limited_citizenship') return 0.3;
+  return 0.15;
 }
 
 /** Vatandaslik politikasinin asimilasyon hizi: haklar eritir, dislama korur. */
@@ -254,6 +302,13 @@ export function runProvinceCulture(world, province, nation, { occupied, turn }) 
     current + (target - current) * CULTURE.APPROACH,
   ));
 
+  // Kume yeniden calisiyorsa kirik degildir: isaret sadakatle silinir, boylece
+  // "duzeldi mi" sorusunun tek bir cevabi olur.
+  if (econ.brokenSince != null && (econ.control ?? 0) >= CULTURE.BROKEN_RECOVERED) {
+    econ.brokenSince = null;
+    econ.brokenCulture = null;
+  }
+
   const foreign = foreignShareOf(province, nation);
   const boiling = econ.unrest >= CULTURE.REVOLT_UNREST
     && foreign >= CULTURE.REVOLT_FOREIGN_MIN
@@ -311,6 +366,14 @@ function secede(game, province, nation) {
     econ.unrest = CULTURE.MAX_UNREST;
     econ.revoltWeeks = 0;
     econ.revoltCooldown = (game.turns?.turn ?? world.turn ?? 0) + CULTURE.REVOLT_COOLDOWN;
+    // KIRIK ISARETI. Turetilmis bir kosul yerine acik bir alan: ekran, YZ ve
+    // cikis yollari ayni gercege baksin (bir kavramin tek dogrusu olur).
+    econ.brokenSince = game.turns?.turn ?? world.turn ?? 0;
+    // AYAKLANAN HALK ayrica yazilir. Kume `homeland` ile gruplanamaz: ana
+    // yurdun sahibi ile bugun ayaklanan cogunluk ayni olmak zorunda degil
+    // (goc, surgun ve asimilasyon bilesimi kaydirir). Cikis yollari kime
+    // karsi acildigini bilmeli.
+    econ.brokenCulture = target;
     world.suppressedRevolts = (world.suppressedRevolts ?? 0) + 1;
     if (nation.id === game.turns?.playerNation) {
       const rebels = world.cultures?.[target]?.name ?? 'a foreign people';
@@ -463,6 +526,15 @@ export function acceptCulture(game, nation, cultureId) {
   if (acceptBlockers(world, nation, cultureId, turn).length) return false;
   nation.accepted = [...acceptedCultures(nation), cultureId];
   nation.cultureBacklashUntil = turn + CULTURE.BACKLASH_WEEKS;
+  // ORTAK ETMEK KIRIGI KAPATIR. Halk artik yabanci sayilmadigi icin
+  // huzursuzluk hedefi duser ve sadakat geri gelir; isaret hemen silinir ki
+  // "hala kirik" gorunup ucuncu bir cikis aranmasin.
+  for (const province of brokenProvinces(world, nation, cultureId)) {
+    province.econ.brokenSince = null;
+    province.econ.brokenCulture = null;
+    province.econ.unrest = Math.min(province.econ.unrest ?? 0, CULTURE.AFTER_REVOLT_UNREST);
+    province.econ.control = Math.max(province.econ.control ?? 0, 25);
+  }
   const name = world.cultures?.[cultureId]?.name ?? 'a people';
   if (nation.id === game.turns?.playerNation) {
     announce(game, nation, {
@@ -474,6 +546,244 @@ export function acceptCulture(game, nation, cultureId) {
   }
   game.emit?.('provinces', null);
   return true;
+}
+
+/* --------------------------------------------------------------------------
+   KIRIK KUME VE UC CIKIS
+
+   Bastirilan ayaklanma kumeyi calisamaz halde birakir (bkz. secede). Bu bir
+   duvar degil, bir SORU olmali: kirik kumenin her zaman en az bir cikisi var.
+
+     ORTAK ET  halki kabul et — anlik ve tam cozum, ama nufusun %8'i olmali
+               ve ana kulturde iki yil surecek bir tepki dogurur.
+     BIRAK     kumeyi ayni kulturden komsu bir ulusa devret — toprak gider,
+               sohret duser. Akraba ulus yoksa bu kapi kapalidir.
+     SUR       halki cikar — kume temizlenir ama nufusu gider ve dunya bunu
+               hatirlar. Her zaman aciktir; son caredir ve oyle fiyatlanir.
+
+   Ucu de KULTUR basinadir, kume basina degil: kirk kirik kumesi olan oyuncu
+   kirk tik yapmaz, bir karar verir (VICTORIA_LITE ev odevi testi).
+   -------------------------------------------------------------------------- */
+
+/** Bir ulusun kirik kumeleri; `cultureId` verilirse yalniz o halkinkiler. */
+export function brokenProvinces(world, nation, cultureId = null) {
+  const out = [];
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== nation.id || province.econ?.brokenSince == null) continue;
+    if (cultureId != null && province.econ.brokenCulture !== cultureId) continue;
+    out.push(province);
+  }
+  return out;
+}
+
+/** Kirik kumeleri halk halk toplar — ekranin ve YZ'nin ortak listesi. */
+export function brokenByCulture(world, nation) {
+  const groups = new Map();
+  for (const province of brokenProvinces(world, nation)) {
+    const id = province.econ.brokenCulture ?? province.homeland;
+    if (id < 0) continue;
+    if (!groups.has(id)) {
+      groups.set(id, {
+        id, name: world.cultures?.[id]?.name ?? 'a foreign people', provinces: [], people: 0,
+      });
+    }
+    const row = groups.get(id);
+    row.provinces.push(province);
+    row.people += Math.max(0, province.econ?.population ?? 0);
+  }
+  const mix = cultureMix(world, nation);
+  return [...groups.values()].map((row) => ({
+    ...row,
+    share: mix.find((item) => item.id === row.id)?.share ?? 0,
+    accept: acceptBlockers(world, nation, row.id),
+    release: releaseBlockers(world, nation, row.id),
+    expel: expelBlockers(world, nation, row.id),
+  })).sort((a, b) => b.provinces.length - a.provinces.length || a.id - b.id);
+}
+
+/** Kumeyi devralabilecek, ayni kulturden ve BITISIK bir ulus. */
+function kinHeirFor(world, nation, cultureId) {
+  for (const province of brokenProvinces(world, nation, cultureId)) {
+    for (const neighborId of province.neighbors ?? []) {
+      const neighbor = world.provinces?.[neighborId];
+      if (!neighbor || neighbor.owner < 0 || neighbor.owner === nation.id) continue;
+      const other = world.nations[neighbor.owner];
+      if (other?.alive && other.culture === cultureId) return other.id;
+    }
+  }
+  return -1;
+}
+
+/** Birakmayi engelleyen ne varsa. Bos dizi = birakilabilir. */
+export function releaseBlockers(world, nation, cultureId) {
+  const out = [];
+  if (!brokenProvinces(world, nation, cultureId).length) {
+    out.push('No broken province of theirs to hand over.');
+  }
+  if (kinHeirFor(world, nation, cultureId) < 0) {
+    out.push('No neighbouring state of their people to receive it.');
+  }
+  return out;
+}
+
+/**
+ * Kirik kumeleri akraba bir ulusa devreder. Toprak gider ama sorun da gider:
+ * dunya toprak IADESINI hatirlar, sohret duser.
+ */
+export function releaseToKin(game, nation, cultureId) {
+  const world = game.world;
+  if (releaseBlockers(world, nation, cultureId).length) return 0;
+  const heir = kinHeirFor(world, nation, cultureId);
+  const list = brokenProvinces(world, nation, cultureId);
+  const tiles = [];
+  for (const province of list) {
+    for (const idx of province.tileIdx ?? []) {
+      const tile = world.tiles[idx];
+      if (!tile) continue;
+      nation.tiles = Math.max(0, nation.tiles - 1);
+      tile.owner = heir;
+      tile.controller = heir;
+      tile.heldSince = game.turns?.turn ?? 0;
+      if (tile.city) tile.city.nationId = heir;
+      world.nations[heir].tiles++;
+      tiles.push(tile);
+    }
+    province.owner = heir;
+    nation.provinces = Math.max(0, (nation.provinces ?? 0) - 1);
+    world.nations[heir].provinces = (world.nations[heir].provinces ?? 0) + 1;
+    // Yeni sahip kendi halkini devraliyor: sorun onunla birlikte gitmez.
+    province.econ.control = 55;
+    province.econ.unrest = CULTURE.AFTER_REVOLT_UNREST;
+    province.econ.revoltWeeks = 0;
+    province.econ.brokenSince = null;
+    province.econ.brokenCulture = null;
+  }
+  // Iade sohreti ODER: ilhak sohretinin tersi (bkz. infamy.js INFAMY_ANNEX).
+  addInfamy(nation, -list.length * 2);
+  world.cultureReleases = (world.cultureReleases ?? 0) + list.length;
+  game.renderer?.invalidateTiles(tiles);
+  const name = world.cultures?.[cultureId]?.name ?? 'a foreign people';
+  if (nation.id === game.turns?.playerNation) {
+    announce(game, nation, {
+      kind: 'DIPLOMACY', tier: TIER.MAJOR, key: `release-${cultureId}`,
+      title: `${list.length} province${list.length > 1 ? 's' : ''} handed to the ${name}`,
+      detail: `Their kin in ${world.nations[heir].name} now rule them. We lose the`
+        + ' land and the trouble with it; the world thinks better of us.',
+    });
+  }
+  game.emit?.('provinces', null);
+  return list.length;
+}
+
+/** Surgunu engelleyen ne varsa. Bos dizi = surulebilir. */
+export function expelBlockers(world, nation, cultureId) {
+  if (!brokenProvinces(world, nation, cultureId).length) {
+    return ['No broken province of theirs to clear.'];
+  }
+  if (cultureId === nation.culture) return ['They are our own people.'];
+  if (isAccepted(nation, cultureId)) return ['They are an accepted culture of this state.'];
+  return [];
+}
+
+/**
+ * SURGUN. Halki butun topraklarimizdan cikarir: paylari silinir, o paya
+ * denk gelen nufus GIDER. Kume temizlenir ama bos kalir — surgun toprak
+ * kazandirmaz, yalniz sorunu kaldirir.
+ *
+ * Bedeli sohrettir ve surulen insan sayisiyla olculur. Kucuk bir halki
+ * surmek de ucuz degildir (EXPEL_INFAMY_MIN): olcek degil, eylem cezalidir.
+ */
+export function expelCulture(game, nation, cultureId) {
+  const world = game.world;
+  if (expelBlockers(world, nation, cultureId).length) return 0;
+  let expelled = 0;
+  const recolored = [];
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== nation.id || !province.econ) continue;
+    const rows = province.cultures;
+    if (!rows?.length) continue;
+    const row = rows.find((item) => item.id === cultureId);
+    if (!row || row.share <= 0) continue;
+    const gone = Math.round((province.econ.population ?? 0) * row.share);
+    expelled += gone;
+    province.econ.population = Math.max(0, (province.econ.population ?? 0) - gone);
+    const kalan = rows.filter((item) => item.id !== cultureId);
+    if (!kalan.length) {
+      // Bastan asagi o halkin oldugu kume bos kalir: yonetenin kulturu yazilir.
+      province.cultures = [{ id: nation.culture, share: 1 }];
+    } else {
+      const total = kalan.reduce((sum, item) => sum + item.share, 0);
+      province.cultures = kalan.map((item) => ({ id: item.id, share: item.share / total }));
+    }
+    province.cultures.sort((a, b) => b.share - a.share || a.id - b.id);
+    const before = province.culture;
+    province.culture = province.cultures[0]?.id ?? before;
+    if (province.culture !== before) {
+      for (const idx of province.tileIdx ?? []) world.tiles[idx].culture = province.culture;
+      recolored.push(province);
+    }
+    // Halk gitti, ana yurt kaydi da gitti: burasi artik kimsenin yurdu degil.
+    if (province.homeland === cultureId) province.homeland = -1;
+    province.econ.brokenSince = null;
+    province.econ.brokenCulture = null;
+    province.econ.unrest = Math.min(province.econ.unrest ?? 0, CULTURE.AFTER_REVOLT_UNREST);
+  }
+  if (!expelled) return 0;
+  const cost = Math.max(
+    CULTURE.EXPEL_INFAMY_MIN, expelled / CULTURE.EXPEL_INFAMY_PER_POP,
+  );
+  addInfamy(nation, cost);
+  world.cultureExpulsions = (world.cultureExpulsions ?? 0) + 1;
+  if (recolored.length) {
+    const tiles = [];
+    for (const province of recolored) {
+      for (const idx of province.tileIdx ?? []) tiles.push(world.tiles[idx]);
+    }
+    game.renderer?.invalidateTiles(tiles.filter(Boolean));
+  }
+  const name = world.cultures?.[cultureId]?.name ?? 'a foreign people';
+  if (nation.id === game.turns?.playerNation) {
+    announce(game, nation, {
+      kind: 'CRISIS', tier: TIER.MAJOR, key: `expel-${cultureId}`,
+      title: `The ${name} are driven out`,
+      detail: `${Math.round(expelled / POPULATION_SCALE).toLocaleString('en-US')} people`
+        + ' are gone and their provinces are quiet — and empty. The world has'
+        + ' taken note of what we did.',
+    });
+  }
+  game.emit?.('provinces', null);
+  return expelled;
+}
+
+/**
+ * YZ karari: kirik kume ne olacak? Oyuncu ile AYNI kapilardan gecer.
+ * Sira ucuzdan pahaliya: ortak et, birak, sur. Surgun son caredir ve
+ * ancak kume yillardir kirikken denenir.
+ */
+export function manageBrokenProvinces(game, nation) {
+  const world = game.world;
+  const turn = game.turns?.turn ?? world.turn ?? 0;
+  if ((turn + nation.id) % 26 !== 0) return null;
+  const groups = brokenByCulture(world, nation);
+  if (!groups.length) return null;
+  for (const group of groups) {
+    if (!group.accept.length && acceptCulture(game, nation, group.id)) {
+      return { action: 'accept', culture: group.id };
+    }
+  }
+  for (const group of groups) {
+    if (!group.release.length && releaseToKin(game, nation, group.id)) {
+      return { action: 'release', culture: group.id };
+    }
+  }
+  // Surgun: yalniz uzun suredir kirik ve baska kapisi olmayan halk icin.
+  for (const group of groups) {
+    if (group.expel.length) continue;
+    const eldest = Math.min(...group.provinces.map((p) => p.econ.brokenSince ?? turn));
+    if (turn - eldest < CULTURE.REVOLT_COOLDOWN * 2) continue;
+    if (expelCulture(game, nation, group.id)) return { action: 'expel', culture: group.id };
+  }
+  return null;
 }
 
 /**
