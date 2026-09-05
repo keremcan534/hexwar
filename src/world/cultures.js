@@ -313,6 +313,15 @@ export function mixCultures(world) {
       if (row.id === province.culture) world.cultures[row.id].tiles += hexes;
     }
   }
+  // ANA YURT. Kümenin DOĞUŞ çoğunluğu o halkın ana yurdudur ve oyun boyunca
+  // değişmez: fetih bir halkın yurdunu taşımaz. Asimilasyon (bkz. game/culture.js)
+  // yalnız DİASPORAYI eritir — kendi yurdunda kimse erimez.
+  //
+  // Ölçüm gerekçesi: bu alan yokken dünya 50 yılda homojenleşiyordu (yabancı
+  // halk payı %41,3 → %6,0) ve yüzyılın sonunda kültür freni tutunacak hiçbir
+  // şey bulamıyordu. Yani mekanik, oyuncunun EN ÇOK fethettiği dönemde en zayıf
+  // oluyordu; milliyetçilik çağının tersi.
+  for (const province of world.provinces) province.homeland = province.culture;
   world.cultureCounts = world.cultures.map((c) => c.tiles);
   // Üretim karnesi: denetim betikleri okur, oyun okumaz.
   world.cultureHistory = broken;

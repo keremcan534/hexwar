@@ -197,7 +197,14 @@ function assimilate(world, province, nation, { unrest, turn }) {
   const next = [];
   for (const row of rows) {
     // Kabul edilen halk erimez: imparatorluk onlari zaten kendinden sayiyor.
-    if (row.id === primary || isAccepted(nation, row.id)) {
+    //
+    // ANA YURDUNDA da erimez (bkz. world/cultures.js homeland). Asimilasyon
+    // yalniz DIASPORAYI eritir: bir halkin kendi yurdunda azalmasi icin ya
+    // surulmesi ya da yurdun elden cikmasi gerekir. Bu kilit olmadan dunya
+    // 50 yilda homojenlesiyordu (yabanci halk payi %41,3 -> %6,0) ve kultur
+    // freni tam da oyuncunun en cok fethettigi cagda tutunacak yer bulamiyordu.
+    if (row.id === primary || isAccepted(nation, row.id)
+      || row.id === province.homeland) {
       next.push({ ...row });
       continue;
     }
@@ -286,6 +293,41 @@ function secede(game, province, nation) {
     break;
   }
 
+  // MIRASCISIZ AYAKLANMA TOPRAK DEVRETMEZ, KUMEYI KIRAR.
+  //
+  // Eskiden mirascisi olmayan kume SAHIPSIZ kaliyordu ve sahipsiz toprak
+  // savassiz, sohretsiz yerlesilebiliyor (bkz. turn.js occupy -> canSettle).
+  // Olculdu: 50 yilda sahiplik olaylarinin %78'i bu donguydu — 3 tohumda
+  // ortalama 206 bedava yerlesme ve 301 isyan, bir kume 24 kez el degistirdi.
+  // Sinir degisimi %40,8'e ciktigi icin `audit:borders` "kartopu" veriyordu,
+  // ama kartopu fetih degil TITREMEYDI.
+  //
+  // Artik bastirilan ayaklanma kumeyi calisamaz halde birakir: sadakat sifira
+  // duser, uretim ve vergi zaten sadakatle olcekli oldugu icin kume kendini
+  // odemez. Bedel kalicidir ama HARITA OYNAMAZ. Cikis yolu ayri: halki ortak
+  // et, akrabasina birak ya da sur (bkz. releaseToKin / expelCulture).
+  if (heir < 0) {
+    econ.control = 0;
+    econ.unrest = CULTURE.MAX_UNREST;
+    econ.revoltWeeks = 0;
+    econ.revoltCooldown = (game.turns?.turn ?? world.turn ?? 0) + CULTURE.REVOLT_COOLDOWN;
+    world.suppressedRevolts = (world.suppressedRevolts ?? 0) + 1;
+    if (nation.id === game.turns?.playerNation) {
+      const rebels = world.cultures?.[target]?.name ?? 'a foreign people';
+      announce(game, nation, {
+        kind: 'CRISIS', tier: TIER.MAJOR, key: `uprising-${province.id}`,
+        title: `${rebels} rise in ${province.name ?? 'the province'}`,
+        detail: 'The rising was put down, but the province no longer works for us:'
+          + ' no taxes, no goods, no recruits. Share the state with them, hand the'
+          + ' land to their kin, or drive them out.',
+      });
+    }
+    return -1;
+  }
+
+  // Buradan asagisi yalniz MIRASCILI yol: kume sahipsiz kalmaz, akrabasina
+  // katilir. `heir >= 0` kapilari kaldirildi — yukaridaki erken donus onlari
+  // olu dala cevirmisti.
   const tiles = (province.tileIdx ?? []).map((idx) => world.tiles[idx]);
   for (const tile of tiles) {
     if (!tile) continue;
@@ -293,12 +335,12 @@ function secede(game, province, nation) {
     tile.owner = heir;
     tile.controller = heir;
     tile.heldSince = game.turns.turn;
-    if (tile.city) tile.city.nationId = heir >= 0 ? heir : tile.city.nationId;
-    if (heir >= 0) world.nations[heir].tiles++;
+    if (tile.city) tile.city.nationId = heir;
+    world.nations[heir].tiles++;
   }
   province.owner = heir;
   nation.provinces = Math.max(0, (nation.provinces ?? 0) - 1);
-  if (heir >= 0) world.nations[heir].provinces = (world.nations[heir].provinces ?? 0) + 1;
+  world.nations[heir].provinces = (world.nations[heir].provinces ?? 0) + 1;
   // Yeni sahip de sorunu devralir: sadakat dusuk, huzursuzluk esigin altinda
   // ama yakin. Hicbir sey degismezse ayni kume yeniden kopar.
   econ.control = 55;
@@ -316,13 +358,12 @@ function secede(game, province, nation) {
     announce(game, nation, {
       kind: 'CRISIS', tier: TIER.MAJOR, key: `revolt-${province.id}`,
       title: `${name} rises in revolt`,
-      detail: heir >= 0
-        ? `The province has joined ${world.nations[heir].name}. Rights, welfare or assimilation would have held it.`
-        : 'The province has declared itself independent. Rights, welfare or assimilation would have held it.',
+      detail: `The province has joined ${world.nations[heir].name}.`
+        + ' Rights, welfare or assimilation would have held it.',
     });
-  } else if (heir >= 0 && heir === player) {
-    // `player` bassiz kosuda -1'dir ve `heir` de -1 olabilir: ikisinin
-    // esitligi "oyuncuya katildi" demek DEGILDIR.
+  } else if (heir === player) {
+    // `player` bassiz kosuda -1'dir; `heir` artik hep >= 0 oldugu icin bu
+    // karsilastirma guvenlidir.
     announce(game, world.nations[player], {
       kind: 'DIPLOMACY', tier: TIER.MAJOR, key: `irredenta-${province.id}`,
       title: `Our kin in ${nation.name} have joined us`,
