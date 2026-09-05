@@ -13,7 +13,9 @@ import { disband, queueRecruit, recruit, runTraining } from './recruitment.js';
 import { runReinforcements } from './reinforcement.js';
 import { runDelegatedAI, runNationAI } from './ai.js';
 import { runDiplomacyAI } from './alliances.js';
-import { atWar, computeContacts, initRelations, resolveCrises } from './diplomacy.js';
+import {
+  PEACE, atWar, computeContacts, initRelations, relation, resolveCrises,
+} from './diplomacy.js';
 import { runMobilization } from './mobilization.js';
 import {
   INFAMY, addInfamy, checkCoalitions, decayInfamy, tileInfamy,
@@ -710,6 +712,18 @@ export class TurnManager {
       if (hasUnits || hasCities) continue;
 
       nation.alive = false;
+      // ILISKILER DE OLUR. Elenen ulusun savas kayitlari eskiden oldugu gibi
+      // kaliyordu: dunyada artik var olmayan bir ulke sonsuza kadar "savasta"
+      // gorunuyor ve `atWar` sorgusu yapan her tuketici onu sayabiliyordu.
+      // Olculdu: `audit:war-pressure` cullanma tavanini bu yuzden 6 olarak
+      // raporluyordu — oysa canli ulke filtreleyen sayim azami 3 veriyor,
+      // yani tavan (MAX_ATTACKERS_ON_TARGET) hic delinmemisti. Bayat durum
+      // birakmak, onu okuyan her yerde bir hata uretir.
+      for (const other of world.nations) {
+        if (other.id === nation.id) continue;
+        const rec = relation(world, nation.id, other.id);
+        if (rec) rec.state = PEACE;
+      }
       // Toprakları sahipsizleşir; komşular buraya doğru genişleyebilsin.
       world.forEach((t) => {
         if (t.owner === nation.id) {

@@ -61,7 +61,13 @@ function runSeed(seed) {
     for (let a = 0; a < n; a++) {
       for (let b = a + 1; b < n; b++) {
         const key = `${a}:${b}`;
-        const now = atWar(world, a, b);
+        // CANLI ULKE SARTI. Yoksa elenen ulusun eski savas kaydi cullanma
+        // sayimini sisiriyordu: tohum WP3'te tavan 6 olculuyor ama canli
+        // filtreyle 3 cikiyordu — yani `MAX_ATTACKERS_ON_TARGET` hic
+        // delinmemisti, denetim olmeyen bir seyi sayiyordu. (Kaynaktaki
+        // bayat durum da ayrica temizlendi: turn.js checkElimination.)
+        const now = world.nations[a].alive && world.nations[b].alive
+          && atWar(world, a, b);
         if (now) { attackersOn[a]++; attackersOn[b]++; }
         if (now && !open.has(key)) {
           // Ikinci cephe mi: taraflardan biri BASKA bir ulusla zaten savasta

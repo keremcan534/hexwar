@@ -334,10 +334,33 @@ export function runProvinceCulture(world, province, nation, { occupied, turn }) 
  * Yeni ulus dogurmaz: ulus dogurmak iliski tablosunu, YZ'yi ve kaydi
  * buyutur; bu mekanigin bedeli toprak kaybi olmali, yeni bir sistem degil.
  */
+/**
+ * AYAKLANAN HALK. Kumenin cogunlugu DEGIL, kabul edilmeyenlerin en buyugu.
+ *
+ * Ayrim gercek: bilesim %45 bizimkiler + %30 X + %25 Y olabilir. Cogunluk
+ * bizim halkimizdir ama ayaklanan X'tir (isyan kapisi zaten yabanci payin
+ * %50'yi gecmesini ister). `province.culture` kullanildiginda kirik kume
+ * "bizim halkimiz" diye etiketleniyor, surgun kapisi "kendi halkimiz"
+ * gerekcesiyle kapaniyor ve halk uc kapisi da kapali kaliyordu — denetim
+ * bunu yakaladi (audit:homeland TEST 4).
+ */
+function rebelCultureOf(province, nation) {
+  let best = -1;
+  let share = 0;
+  for (const row of province.cultures ?? []) {
+    if (isAccepted(nation, row.id)) continue;
+    if (row.share > share || (row.share === share && row.id < best)) {
+      best = row.id;
+      share = row.share;
+    }
+  }
+  return best >= 0 ? best : province.culture;
+}
+
 function secede(game, province, nation) {
   const world = game.world;
   const econ = province.econ;
-  const target = province.culture;
+  const target = rebelCultureOf(province, nation);
   let heir = -1;
   for (const neighborId of province.neighbors ?? []) {
     const neighbor = world.provinces?.[neighborId];
