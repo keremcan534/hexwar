@@ -1234,12 +1234,16 @@ onarıldıktan **sonra** çalışıyor (%32.8 → %30.5).
 
 | | önce | sonra |
 |---|---|---|
-| el değişen küme | %40.8 | **%32.5** |
-| bedava yerleşme | 206 | **4.3** |
-| isyan | 301 | 61 |
-| yabancı halk payı (50. yıl) | %6.0 | **%13.9** |
-| kırık kümenin hex başına çıktısı | — | **saglamın %0'ı** |
+| el değişen küme | %40.8 | **%30.4** |
+| bedava yerleşme | 206 | **5.3** |
+| barış masası fetih olayı | 139 | 108.7 |
+| isyan | 301 | 50 |
+| yabancı halk payı (50. yıl) | %6.0 | **%17.0** |
+| kırık kümenin hex başına çıktısı | — | **sağlamın %0'ı** |
 | üç kapısı da kapalı halk | — | **0** |
+
+Şöhret çarpanı ayrı ölçüldü ve yerini hak etti: çarpansız kartopu %33.9
+(eşiğin üstünde), çarpanlı %30.4. Fetih olayı 145 → 108.7.
 
 `audit:war-pressure` iki YÜKSEK bulgusunun ikisini de kapattı: kartopu
 %40.8 → %31.6, çullanma azami 4 → 3.
