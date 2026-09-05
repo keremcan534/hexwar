@@ -58,6 +58,10 @@ import { ensureDelegation, restoreDelegation } from './delegation.js';
 // cikariyordu; province.econ artik `soldiers` sayaciyla yalnizca "silah
 // altinda" isaretler. v18 kayitlarinda nufus askerleri ICERMEZ ve `soldiers`
 // alani yoktur; yuklenirse ulke nufusu oldugundan az gorunurdu.
+// 20+: ANA YURT (bkz. world/cultures.js). province tuple'ina dorduncu alan
+// olarak `homeland` eklendi. Surum ARTMADI: alan istege baglidir ve eski
+// kayitta yoksa uretimden gelen deger zaten dogrudur (yalniz surgun onu
+// degistirir ve surgun bu surumden once yoktu).
 // 20: KULTUR CANLANDI (bkz. culture.js). province.econ'a `unrest`/`revoltWeeks`
 // eklendi ve kume kultur bilesimi (province.cultures) artik KAYDA GIRIYOR —
 // asimilasyon paylari yillar icinde kaydiriyor, uretimden turetilemez.
@@ -128,6 +132,11 @@ export function serialize(game) {
       // paylar toplami 1'den kayiyor, asimilasyon baska bir hafta cogunlugu
       // ceviriyor ve yuklenen oyun kesintisiz kosudan dallaniyordu.
       (province.cultures ?? []).map((row) => [row.id, row.share]),
+      // Dorduncu alan: ANA YURT. Normalde uretimden tohumla birebir gelir ve
+      // yazilmasi gerekmezdi — ama SURGUN onu siliyor (culture.js
+      // expelCulture). Yazilmazsa yuklenen dunya surgunu geri alir ve
+      // gitmis bir halk kendi yurdunda yeniden bagisik olur.
+      province.homeland ?? -1,
     ] : null
   )).filter(Boolean);
 
@@ -339,7 +348,7 @@ export function deserialize(game, data) {
 
   // 3b) Küme ekonomileri: taze üretilen econ'un üzerine kayıttaki durum yazılır.
   // Paylaşılan referans korunur — üye karelerin tile.province'i aynı nesne.
-  for (const [id, econ, cultures] of data.provinces ?? []) {
+  for (const [id, econ, cultures, homeland] of data.provinces ?? []) {
     const province = world.provinces?.[id];
     if (!province?.econ || !econ) continue;
     Object.assign(province.econ, econ);
@@ -349,6 +358,8 @@ export function deserialize(game, data) {
       province.cultures = cultures.map(([cultureId, share]) => ({ id: cultureId, share }));
       province.culture = province.cultures[0]?.id ?? province.culture;
     }
+    // Alan eski kayitta yoktur: o durumda uretimden gelen deger dogrudur.
+    if (homeland != null) province.homeland = homeland;
   }
   // Hukuki sahip üye çoğunluğundan: kayıt savaşın ortasında alınmış olabilir.
   for (const province of world.provinces ?? []) refreshProvinceOwner(world, province);
