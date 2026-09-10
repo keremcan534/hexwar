@@ -23,6 +23,7 @@
 import { SQRT3 } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { makeRng, fbm } from './textures.js';
+import { GpuTimer } from './gpuTimer.js';
 
 const HEX_STEP = SQRT3 * HEX_SIZE;
 const ROW_H = HEX_SIZE * 1.5;
@@ -433,25 +434,76 @@ function buildWaveTexture() {
   return { data, size };
 }
 
+/**
+ * Float32 -> IEEE 754 yarım kayan nokta (bit deseni).
+ *
+ * WebGL2 `HALF_FLOAT` dokuya Uint16 bekler; tarayıcıda dönüştürücü yok.
+ * Yükseklik alanı 0..1 aralığında olduğu için ne taşma ne de subnormal
+ * yolu ısınır, ama ikisi de doğru ele alınıyor: alan bir gün başka bir
+ * ölçekte kullanılırsa sessizce bozulmasın.
+ */
+function toHalf(value) {
+  const f = new Float32Array(1);
+  const i = new Int32Array(f.buffer);
+  f[0] = value;
+  const x = i[0];
+  const sign = (x >> 16) & 0x8000;
+  let exp = ((x >> 23) & 0xff) - 127 + 15;
+  const mant = x & 0x7fffff;
+  if (exp <= 0) {
+    // Subnormal ya da sıfır: mantis kaydırılarak korunur.
+    if (exp < -10) return sign;
+    return sign | ((mant | 0x800000) >> (1 - exp + 13));
+  }
+  if (exp >= 31) return sign | 0x7c00;  // taşma -> sonsuz
+  return sign | (exp << 10) | (mant >> 13);
+}
+
 export class SurfaceGL {
   /** WebGL2 yoksa null döner: çağıran Canvas2D suyuna geri düşer. */
-  static create(canvas) {
+  static create(canvas, onContextChange = null) {
     const gl = canvas.getContext('webgl2', {
       alpha: true, antialias: false, depth: false, stencil: false,
       premultipliedAlpha: true, powerPreference: 'high-performance',
     });
     if (!gl) return null;
     try {
-      return new SurfaceGL(canvas, gl);
+      return new SurfaceGL(canvas, gl, onContextChange);
     } catch {
       return null;
     }
   }
 
-  constructor(canvas, gl) {
+  constructor(canvas, gl, onContextChange = null) {
     this.canvas = canvas;
     this.gl = gl;
     this.world = null;
+    /**
+     * BAĞLAM KAYBI. Eskiden hiç ele alınmıyordu ve sonucu sessiz bir kara
+     * ekrandı: `create` yalnız AÇILIŞTA WebGL2 var mı diye bakar, bağlam
+     * SONRADAN kaybolursa `waterGL` null olmaz, `debug.enabled` true kalır,
+     * dolayısıyla `renderer.glSurface()` hâlâ true döner ve Canvas2D zemini
+     * hiç boyamaz (bkz. renderer.canvasWater) — harita boşalır.
+     *
+     * Artık kayıpta GPU yolu kapanır ve renderer Canvas2D suyuna geri düşer;
+     * oyun çalışmaya devam eder. Geri gelince yeniden kurulum ÇAĞIRANA
+     * bırakılır: program, VAO ve bütün dokular ölmüştür, onları yamamak
+     * yerine katmanı sıfırdan kurmak hem kısa hem doğrudur.
+     */
+    this.onContextChange = onContextChange;
+    this.contextLost = false;
+    canvas.addEventListener('webglcontextlost', (e) => {
+      // preventDefault olmadan tarayıcı 'restored' olayını hiç göndermez.
+      e.preventDefault();
+      this.contextLost = true;
+      this.debug.enabled = false;
+      this.gpuTimer = null;
+      this.onContextChange?.('lost');
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      this.contextLost = false;
+      this.onContextChange?.('restored');
+    });
     this.dpr = 1;
     /**
      * Su ÇÖZÜNÜRLÜĞÜ tam kare değil: malzeme düşük frekanslı olduğu için
@@ -460,6 +512,14 @@ export class SurfaceGL {
     this.resScale = 0.75;
     this.lastDraw = 0;
     this.debug = { enabled: true };
+    /**
+     * GPU zamanlayıcı. Eklenti yoksa null kalır ve ölçüm sessizce yapılmaz —
+     * çizim her hâlükârda çalışır. Sonuç GEÇ döner, bu yüzden `perf.add`
+     * değil `perf.gauge` kullanılır (bkz. gpuTimer.js başlığı).
+     */
+    this.gpuTimer = GpuTimer.create(gl);
+    /** Renderer bağlar; yoksa ölçüm toplanmaz. */
+    this.perf = null;
     /** Deniz malzemeli mi cizilsin? Renderer harita kipine gore ayarlar. */
     this.seaMaterial = true;
     /** Isgal taramasi (yalniz siyasi kipte). */
@@ -540,12 +600,13 @@ export class SurfaceGL {
     this.elevTex = null;
   }
 
-  makeTex(internal, format, w, h, data, filter, wrap, wrapT = wrap) {
+  makeTex(internal, format, w, h, data, filter, wrap, wrapT = wrap, type = null) {
     const gl = this.gl;
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, format, gl.UNSIGNED_BYTE, data);
+    gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, format,
+      type ?? gl.UNSIGNED_BYTE, data);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
@@ -599,14 +660,17 @@ export class SurfaceGL {
     // Yükseklik: material.js'in zaten kurduğu yumuşatılmış raster (hex başına
     // 4 teksel). LINEAR örneklenir ve eğim shader'da alınır — kabartma böylece
     // ekran çözünürlüğünden bağımsız olur, önceden pişmiş bir gölge değildir.
+    // R8 DEĞİL R16F. Sekiz bit tüm yükseklik aralığına 256 kademe veriyordu;
+    // hex-altı kırıklık (bkz. material.addSubHexDetail, genlik 0.014) orada
+    // yalnız 3-4 kademe eder ve eğim hesabı basamak basamak çıkar — kabartma
+    // "kırışık" değil "teraslı" okunur. Yarım kayan nokta WebGL2 çekirdeğinde
+    // LINEAR süzülebilir, eklenti istemez.
     const surf = coast.surface;
-    const elev = new Uint8Array(surf.length);
-    for (let i = 0; i < surf.length; i++) {
-      elev[i] = Math.max(0, Math.min(255, Math.round(surf[i] * 255)));
-    }
+    const elev = new Uint16Array(surf.length);
+    for (let i = 0; i < surf.length; i++) elev[i] = toHalf(surf[i]);
     if (this.elevTex) gl.deleteTexture(this.elevTex);
-    this.elevTex = this.makeTex(gl.R8, gl.RED, coast.w, coast.h, elev,
-      gl.LINEAR, gl.REPEAT, gl.CLAMP_TO_EDGE);
+    this.elevTex = this.makeTex(gl.R16F, gl.RED, coast.w, coast.h, elev,
+      gl.LINEAR, gl.REPEAT, gl.CLAMP_TO_EDGE, gl.HALF_FLOAT);
     this.elevSize = { w: coast.w, h: coast.h };
 
     this.world = world;
@@ -670,6 +734,9 @@ export class SurfaceGL {
     this.lastCam = { x: camera.x, y: camera.y, zoom: camera.zoom };
 
     const gl = this.gl;
+    // Önceki karelerin sonuçları önce toplanır: okunmayan sorgu havuzu tıkar.
+    this.gpuTimer?.poll((ms) => this.perf?.gauge('gpu.surface', ms));
+    this.gpuTimer?.begin();
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -733,6 +800,16 @@ export class SurfaceGL {
     gl.uniform1i(u.uOverlay, 6);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    this.gpuTimer?.end();
+    // Çizim çağrısı ve üçgen sayısı: port ilerledikçe bu iki sayı büyüyecek
+    // ve bütçenin nereye gittiğini satır satır gösterecek.
+    this.perf?.bump('draws', 1);
+    this.perf?.bump('tris', 1);
     return true;
+  }
+
+  dispose() {
+    this.gpuTimer?.dispose();
+    this.gpuTimer = null;
   }
 }

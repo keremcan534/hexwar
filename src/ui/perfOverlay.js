@@ -90,8 +90,17 @@ export class PerfOverlay {
       .join('  ');
     lines.push(secLine(['render', 'sim', 'ui.hud', 'ui.screen']));
     lines.push(secLine(['r.static', 'r.water', 'r.far', 'r.farbake', 'r.actors', 'r.labels']));
+    // GPU satırı AYRI durur ve `~` ile işaretlenir: zamanlayıcı sorgusu
+    // birkaç kare gecikmeyle döner, yani bu sayı üstteki `frame` ile AYNI
+    // kareye ait değildir. Aynı satıra yazmak onları karşılaştırılabilir
+    // gösterirdi; değiller.
+    const g = s.gauges['gpu.surface'];
+    lines.push(g
+      ? `gpu~ ${f(g.avg, 2)}ms  p99 ${f(g.p99, 2)}  max ${f(g.max, 2)}  n${g.n}`
+      : 'gpu~ ölçülemiyor (EXT_disjoint_timer_query_webgl2 yok)');
     const hex = game.renderer.lastDrawn;
-    lines.push(`hex ${hex}  heap ${s.heapMB ? `${f(s.heapMB, 1)}MB` : '—'}  gc ${s.gc.drops}×/${f(s.gc.mb, 0)}MB`);
+    const cnt = s.counters;
+    lines.push(`hex ${hex}  draw ${cnt.draws ?? 0}  heap ${s.heapMB ? `${f(s.heapMB, 1)}MB` : '—'}  gc ${s.gc.drops}×/${f(s.gc.mb, 0)}MB`);
     const tp = game.turns?.lastProfile;
     if (tp) {
       const total = Object.values(tp).reduce((a, b) => a + b, 0);

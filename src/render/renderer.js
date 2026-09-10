@@ -360,6 +360,8 @@ export class Renderer {
     this.tintCache = new Map();
     this.corners = HEX_CORNERS.map(([x, y]) => [x * HEX_SIZE, y * HEX_SIZE]);
     this.cache = null;
+    /** Oyuncunun deniz kalite anahtarı (HUD 'Live sea'). */
+    this.liveSea = true;
     this.lastDrawn = 0;
     // Deniz yüzeyi ayrı bir katman nesnesidir: dokular, kıyı topolojisi ve
     // yerel bozulmalar orada yaşar (bkz. water.js).
@@ -395,6 +397,13 @@ export class Renderer {
    * dağıtır ve animasyon zinciri kendiliğinden durur.
    */
   waterAnimatedMode() {
+    // `liveSea` oyuncunun kalite anahtarı. Eskiden YALNIZ Canvas2D koluna
+    // (renderer.water) bağlıydı; GPU yüzeyi devredeyken `canvasWater()` false
+    // olduğu için kutu varsayılan yolda hiçbir şey yapmıyordu — yani yavaş
+    // makinedeki oyuncunun elindeki tek kaldıraç ölüydü. Artık her iki kolu
+    // birden kısar: GPU tarafında deniz malzemesiz düz tona iner (dalga
+    // örneklemesi, Fresnel ve köpük tamamen atlanır, bkz. uSeaMaterial).
+    if (!this.liveSea) return false;
     return this.mapMode === 'political' || this.mapMode === 'terrain'
       || this.mapMode === 'geography' || this.mapMode === 'cultures';
   }
@@ -441,12 +450,40 @@ export class Renderer {
    */
   attachWaterCanvas(canvas) {
     if (!canvas) return false;
-    this.waterGL = SurfaceGL.create(canvas);
+    this.waterGL = SurfaceGL.create(canvas, (state) => this.onGLContext(canvas, state));
     if (!this.waterGL) return false;
+    this.waterGL.perf = this.perf ?? null;
     // resize BURADA çağrılmaz: kurucu, düzen (layout) oturmadan çalışıyor ve
     // tuval o anda 0x0 ölçülüyor. Ölçüyü Game ilk kareden sonra verir.
     this.invalidateCache();
     return true;
+  }
+
+  /**
+   * WebGL bağlamı kaybolduğunda / geri geldiğinde.
+   *
+   * Kayıpta yapılacak tek şey Canvas2D yoluna geri düşmektir: `glSurface()`
+   * artık false döner, `canvasWater()` true olur ve zemin yine boyanır.
+   * Önbellek geçersizleştirilmeli — statik katman GPU yüzeyinin ALTINDA
+   * boş bırakılmış zeminle pişmişti.
+   *
+   * Geri gelişte katman SIFIRDAN kurulur: eski program, VAO ve dokular
+   * ölmüştür. Dünya varsa yeniden yüklenir; yoksa ilk `render` zaten kurar.
+   */
+  onGLContext(canvas, state) {
+    if (state === 'restored') {
+      this.waterGL?.dispose?.();
+      this.waterGL = SurfaceGL.create(canvas, (next) => this.onGLContext(canvas, next));
+      if (this.waterGL) this.waterGL.perf = this.perf ?? null;
+      // Dünya YENİDEN YÜKLENMEZ burada: taze katmanın `world`'ü null olduğu
+      // için ısıtma pompası (hasPendingJobs) bir sonraki karede setWorld'ü
+      // zaten kendi doğru argümanlarıyla çağırır. İki yerden yüklemek, iki
+      // ayrı doğru argüman listesi bakmak demekti.
+    }
+    this.invalidateCache();
+    this.staticLayers = null;
+    this.staticDirty = true;
+    this.requestFrame?.();
   }
 
   /**
@@ -547,18 +584,6 @@ export class Renderer {
     return rgb;
   }
 
-  /**
-   * Yüzeyin renk dokusunu tazeler. Fetih, harita kipi değişimi, işgal — hepsi
-   * `tileColor`ın çıktısını değiştirir ve GPU o çıktıyı bir dokudan okur;
-   * doku tazelenmezse harita ESKİ sahibi göstermeye devam eder. Bu kozmetik
-   * değil, yanlış bilgi.
-   *
-   * Yalnız BAYRAK kaldırılır; asıl yükleme bir sonraki karede yapılır ki aynı
-   * tikte gelen onlarca değişiklik tek tazelemeye düşsün.
-   */
-  invalidateSurfaceColors() {
-    this.surfaceColorsDirty = true;
-  }
 
   /** Hex başına işgal: RGB işgalcinin mürekkebi, A bayrak. */
   surfaceOverlayData(world) {
@@ -2155,7 +2180,19 @@ export class Renderer {
       ctx.clip(group.path);
       ctx.beginPath();
       const height = group.maxY - group.minY;
-      for (let x = group.minX - height; x <= group.maxX + height; x += period) {
+      // ZOOM LOD. Aralık dünyaya, kalınlık ekrana kilitliydi; ikisi birlikte
+      // kaplamayı zoomun fonksiyonu yapıyordu — ölçüldü: zoom 1'de ~%36,
+      // eşik zoomda (0.28) %100'ü aşıyor, yani azınlık taraması düz boyaya
+      // dönüşüyor ve "azınlık" ile "çoğunluk" aynı görünüyordu. Periyot ikinin
+      // kuvvetiyle basamaklanınca ekran yoğunluğu %23-29 bandında kalır;
+      // basamak ikiye bölünme olduğu için geçişte çizgiler yerinden oynamaz.
+      const step = period * (2 ** Math.round(Math.log2(1 / scale)));
+      // FAZ DÜNYAYA ÇİVİLİ. Döngü `group.minX`ten başlıyordu; o değer GÖRÜNÜR
+      // karelerden türer, yani kaydırdıkça değişir ve şerit haritanın üstünde
+      // kayardı. Periyodun katına hizalanınca desen dünyaya yapışır
+      // (water.js'in bütün desenleri için verilen gerekçenin aynısı).
+      const x0 = Math.floor((group.minX - height) / step) * step;
+      for (let x = x0; x <= group.maxX + height; x += step) {
         ctx.moveTo(x, group.minY);
         ctx.lineTo(x + height, group.maxY);
       }

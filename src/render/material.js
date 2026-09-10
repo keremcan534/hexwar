@@ -47,6 +47,17 @@ const WRAP_X0 = -HEX_STEP / 2;
  */
 const SUB = 4;
 
+/**
+ * Hex-altı kırıklığın genliği (yükseklik biriminde; tüm aralık 0..1).
+ *
+ * 0.030'da arazi "kumlu" okunuyordu — eğim shader'da 18x büyütüldüğü için
+ * (surfaceGL.FRAG, N = normalize(g * ... * 18.0)) yükseklikteki küçük bir
+ * sapma ışıkta büyük bir sapma demek. 0.014 sırtın karakterini bozmadan
+ * yüzeye kırıklık veriyor. Karakterin `relief` payıyla çarpılır: ova 0'a
+ * yakın, dağ tam değerde.
+ */
+const SUB_HEX_AMP = 0.014;
+
 /** Teksel boyu (dünya birimi). Uzaklık alanı doğrudan dünya biriminde çıkar. */
 const TEX_W = HEX_STEP / SUB;
 const TEX_H = ROW_H / SUB;
@@ -127,6 +138,43 @@ function smoothstep(e0, e1, v) {
 }
 
 /** Ayrılabilir kutu bulanıklığı; yatayda sarmal, dikeyde kenara kenetli. */
+/**
+ * HEX-ALTI YÜKSEKLİK.
+ *
+ * Ölçüm gerekçesi: yükseklik rasteri hex başına 4x4 teksel AMA on altısının
+ * hepsine aynı `tile.elevation` yazılıyordu (bkz. stageBase); yumuşatmadan
+ * sonra geriye hex ölçeğinde SÜREKLİ ama hex-altında BİLGİSİZ bir yüzey
+ * kalıyordu. Yani kabartmanın çözünürlüğünü shader değil VERİ sınırlıyordu:
+ * ne piksel başına ışık ne de (ileride) ekstrüde edilmiş bir yüzey, veride
+ * olmayan detayı gösteremez.
+ *
+ * Detay YUMUŞATMADAN SONRA eklenir. Önce eklenip sonra bulanıklaştırılsa
+ * yarıçap-1 çekirdek onu zaten silerdi; sıra tersine çevrilince büyük ölçekli
+ * yüzey sürekli kalır, ince kırıklık üstüne biner.
+ *
+ * Genlik arazi karakterinden gelir (`relief`): dağ kırışır, ova düz kalır.
+ * Deniz hiç dokunulmaz — kıyıda sahte uçurum ışığı doğuruyordu (aynı gerekçe
+ * stageBase'te deniz yüksekliğini SEA_LEVEL'e kenetliyor).
+ */
+function addSubHexDetail(surface, world, land, relief, w, h) {
+  // Tohum dünyadan türer: aynı tohum aynı kabartma (bkz. stageFields).
+  const seedText = String(world?.seed ?? 'hexwar');
+  let seed = 2166136261;
+  for (let i = 0; i < seedText.length; i++) {
+    seed = Math.imul(seed ^ seedText.charCodeAt(i), 16777619);
+  }
+  // Ayrı rng dalı: stageFields'in gürültü sırasını kaydırmasın.
+  const rng = makeRng((seed ^ 0x5bf03635) >>> 0);
+  // İki frekans: SUB=4 olduğu için ~2 teksel altı desen zaten örneklenemez.
+  const coarse = valueNoise(w, h, Math.max(16, Math.round(w / 12)), rng);
+  const fine = valueNoise(w, h, Math.max(48, Math.round(w / 4)), rng);
+  for (let i = 0; i < surface.length; i++) {
+    if (!land[i]) continue;
+    const d = (coarse[i] - 0.5) * 0.65 + (fine[i] - 0.5) * 0.35;
+    surface[i] += d * SUB_HEX_AMP * relief[i];
+  }
+}
+
 function blurWrapped(src, w, h, radius) {
   if (radius <= 0) return src;
   const tmp = new Float32Array(src.length);
@@ -350,6 +398,7 @@ export class LandMaterial {
     // Yükseklik yüzeyi: blok kenarları silinip süreklileşsin. Yarıçap 1 =
     // çeyrek hex; sırtı korur, basamağı siler.
     const surface = blurWrapped(blurWrapped(elev, w, h, 1), w, h, 1);
+    addSubHexDetail(surface, B.world, land, relief, w, h);
     Object.assign(B, { cols, rows, w, h, n, land, sea, relief, grainAmt, tone, warmAmt, surface });
   }
 
