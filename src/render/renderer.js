@@ -749,7 +749,11 @@ export class Renderer {
    * zincir kesilirse iş bir sonraki etkileşime dek yarım kalıyordu.
    */
   hasPendingJobs() {
-    return !!this.staticJob || !!this.farJob;
+    return !!this.staticJob || !!this.farJob
+      // Yüzey sunumu dünyayı henüz almadıysa iş BİTMEMİŞTİR: zincir kesilirse
+      // harita bir sonraki etkileşime dek eksik kalır.
+      || !!(this.lastWorld && this.waterGL && this.waterGL.world !== this.lastWorld
+        && this.material.cache);
   }
 
   /**
@@ -766,20 +770,35 @@ export class Renderer {
     // ~150 ms tutuyor ve ilk statik katmanda tek karede ödenirse takılıyor.
     if (this.material.warmStep(this.ctx, world)) return true;
     // WebGL su katmanı, malzemenin kıyı uzaklığı alanını doku olarak alır.
-    if (this.waterGL && this.waterGL.world !== world) {
-      this.waterGL.setWorld(world, this.material.cache, {
-        owner: this.surfaceOwnerData(world),
-        character: this.surfaceCharacterData(world),
-        ids: this.surfaceIdData(world),
-      });
-      return true;
-    }
+    if (this.uploadSurfaceWorld(world)) return true;
     if (this.water.warmStep(this.ctx)) return true;
     if (!this.cache) {
       this.stepCacheBuild(world, 10);
       return !this.cache;
     }
     return false;
+  }
+
+  /**
+   * Yüzey sunumuna dünyayı yükler. Yüklendiyse true.
+   *
+   * Neden ayrı ve neden `render`dan da çağrılıyor: `warmup` YALNIZ açılışta,
+   * menü perdesi arkasında koşuyor (bkz. main.js). Oyun ortasında yüzey
+   * sunumu değişirse (2B <-> 3B) taze katman dünyayı hiç almıyordu ve harita
+   * sessizce boşalıyordu — ölçüldü: kip değişiminden sonra `waterGL.world`
+   * null, `meshes` 0.
+   *
+   * Malzeme önbelleği hazır değilse dokunulmaz: pişirme sırası ısıtmanın
+   * işidir, burada zorlanırsa tek karede ~150 ms ödenir.
+   */
+  uploadSurfaceWorld(world) {
+    if (!world || !this.waterGL || this.waterGL.world === world) return false;
+    if (!this.material.cache) return false;
+    return !!this.waterGL.setWorld(world, this.material.cache, {
+      owner: this.surfaceOwnerData(world),
+      character: this.surfaceCharacterData(world),
+      ids: this.surfaceIdData(world),
+    });
   }
 
   resize() {
@@ -1609,6 +1628,11 @@ export class Renderer {
   render(world, state = {}) {
     const ctx = this.ctx;
     const cam = this.camera;
+    // Son çizilen dünya SAKLANIR. Renderer dünyaya sahip değildir ve olmamalı,
+    // ama yüzey sunumu değiştiğinde (2B <-> 3B) hangi dünyayı yükleyeceğini
+    // bilmesi gerekir; `warmup` o anda çalışmıyor olabilir.
+    this.lastWorld = world;
+    this.uploadSurfaceWorld(world);
     // Geçen zaman kare sayısından bağımsız: animasyon her FPS'te aynı hızda akar.
     this.waterTime = performance.now() / 1000;
     // Su önce çizilir: ayrı bir tuval olduğu için sıra bileşimi değiştirmez,

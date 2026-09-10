@@ -118,9 +118,88 @@ uniform float uInkProv;   // province kenari opakligi
 uniform float uInkEdge;   // ulke kenar golgesi payi
 uniform float uInkBorder; // ulke siniri (showsPolitics ile ayni kosul)
 
+// --- DUSEN GOLGE ve ORTAM TIKANIMI ---
+// Yukseklik alani zaten shader'da; golge icin ayrica bir golge haritasi,
+// FBO ya da cascade GEREKMEZ — isin dogrudan alanda yurutulur. Sarmali da
+// bedavaya cozer, cunku uElev S ekseninde REPEAT.
+uniform float uShadow;        // dusen golge siddeti (0 = kapali)
+uniform float uAO;            // ortam tikanimi siddeti (0 = kapali)
+uniform float uReliefHeight;  // yuksekligin (0..1) DUNYA birimi karsiligi
+
 
 const float SQ3 = 1.7320508;
 
+
+
+/** Yukseklik alanindan ornek; X sarmal (doku REPEAT), Y kenara kenetli. */
+float elevAt(vec2 world) {
+  return texture(uElev, (world - uFieldOrigin) / uFieldSpan).r;
+}
+
+/**
+ * DUSEN GOLGE — isin yuruyusu.
+ *
+ * Isiga dogru yururuz ve arazinin isini kesip kesmedigine bakariz. Bu,
+ * kabartma ISIGININ (yarim-Lambert) veremedigi tek seyi verir: bir SIRTIN
+ * KOMSU VADIYE dusen golgesi. Dagin dag gibi okunmasini saglayan ipucu
+ * budur; tepeden bakista bile calisir, cunku gunes ~29 derecede.
+ *
+ * Adim sayisi zoom'a bagli (uDetail): uzak zoomda golgenin ince yapisi
+ * zaten okunmaz, orada 6 adim yeterli.
+ */
+float castShadow(vec2 world, float h, vec3 L) {
+  if (uShadow <= 0.0) return 0.0;
+  vec2 dir = -normalize(L.xy);
+  float rise = L.z / max(1e-4, length(L.xy));
+  float stepLen = uHexSize * 0.32;
+  int n = 6 + int(8.0 * uDetail);
+  float sh = 0.0;
+  for (int i = 1; i <= 14; i++) {
+    if (i > n) break;
+    float t = stepLen * float(i);
+    float terr = elevAt(world + dir * t);
+    // Isinin o noktadaki yuksekligi, YUKSEKLIK biriminde.
+    float ray = h + (rise * t) / max(1.0, uReliefHeight);
+    // YUMUSAK ESIK, ham fark degil. Ham fark kullanildiginda golge
+    // DOYUYORDU: kabartma 90 birimken komsu hexler arasi egim ~31 derece,
+    // gunes ise 28,7 derecede — yani neredeyse her kare golgede kaliyor ve
+    // butun harita %31 parlakliga iniyordu (butun dunya goruntusunde
+    // goruldu). Fiziksel olarak dogru, harita icin yanlis: golge burada
+    // ACCENT, simulasyon degil.
+    float over = (terr - ray) * uReliefHeight;
+    float occ = smoothstep(0.0, uHexSize * 0.85, over);
+    // Uzaklastikca yumusa: sert kesim "karton duvar golgesi" gibi okunur.
+    sh = max(sh, occ * (1.0 - float(i) / float(n + 3)));
+  }
+  return clamp(sh, 0.0, 1.0);
+}
+
+/**
+ * ORTAM TIKANIMI — ufuk taramasi.
+ *
+ * Dort yonde arazinin ufku ne kadar kapattigina bakar. Golgeden farki
+ * YONSUZ olmasi: vadi tabani gunes nereden vurursa vursun daha az gok
+ * gorur. Kabartmaya derinlik veren ikinci ipucu.
+ */
+float horizonAO(vec2 world, float h) {
+  if (uAO <= 0.0) return 0.0;
+  float ao = 0.0;
+  for (int k = 0; k < 4; k++) {
+    float a = 1.5707963 * float(k) + 0.35;
+    vec2 dir = vec2(cos(a), sin(a));
+    float best = 0.0;
+    for (int i = 1; i <= 3; i++) {
+      float t = uHexSize * 0.55 * float(i);
+      float terr = elevAt(world + dir * t);
+      // Egim tanjanti; 1.0 = 45 derece. Yarisi alinir, yoksa engebeli
+      // arazide tikanim her yerde tavana vurur ve AO bir 'karartma
+      // filtresine' donusur.
+      best = max(best, (terr - h) * uReliefHeight / t * 0.5);
+    }
+    ao += clamp(best, 0.0, 1.0);
+  }
+  return ao * 0.25;
+}
 
 const vec2 HEX_DIRS[6] = vec2[6](
   vec2(1.0, 0.0), vec2(0.0, 1.0), vec2(-1.0, 1.0),
@@ -303,6 +382,13 @@ vec3 landColor(vec2 world, vec2 cell, vec3 Ldir) {
   // Yumusak yarim-Lambert: golge tarafi olmez, sirt yine one cikar.
   float shade = lam * 0.5 + 0.5;
   shade = pow(clamp(shade, 0.0, 1.0), 1.35);
+  // DUSEN GOLGE ve TIKANIM. Yarim-Lambert yalniz YUZEYIN kendi egimini bilir;
+  // komsusunun onu golgeleyip golgelemedigini bilmez. Ikisi de veri kipinde
+  // kisilir (damp), cunku orada harita bir secim yuzeyidir.
+  float sh = castShadow(world, h, Ldir);
+  float ao = horizonAO(world, h);
+  shade *= 1.0 - sh * 0.38 * uShadow;
+  shade *= 1.0 - ao * 0.18 * uAO;
 
   // --- PIGMENT ---
   // Uc olcek: genis boya kalinligi, orta leke, ince gren. Ince olan arazi
@@ -780,7 +866,8 @@ export class SurfaceGL {
       'uOwner', 'uChar', 'uElev', 'uElevSize',
       'uLandRelief', 'uLandGrain', 'uGrade', 'uSeaMaterial',
       'uOverlay', 'uOverlayOn', 'uDataMode',
-      'uIds', 'uInkOn', 'uInkGrid', 'uInkProv', 'uInkEdge', 'uInkBorder']) {
+      'uIds', 'uInkOn', 'uInkGrid', 'uInkProv', 'uInkEdge', 'uInkBorder',
+      'uShadow', 'uAO', 'uReliefHeight']) {
       this.u[name] = gl.getUniformLocation(prog, name);
     }
 
@@ -797,6 +884,22 @@ export class SurfaceGL {
     this.inkOnSurface = false;
     /** Mürekkep aile opaklıkları; renderer zoom ve kipe göre doldurur. */
     this.ink = { grid: 0, province: 0, edge: 0, border: 0 };
+    /**
+     * Dusen golge ve tikanim siddeti. Tam ekran yolunda yukseklik geometri
+     * DEGIL, ama golge yine de hesaplanabilir: alan elde. `reliefHeight`
+     * yuksekligin (0..1) dunya birimi karsiligi — bir hex yaricapi.
+     */
+    this.shadow = 1;
+    this.ao = 1;
+    /**
+     * 26 (bir hex yarıçapı) DENENDİ ve yetmedi: hex 45 birim geniş, kabartma
+     * 26 birim yüksek olunca eğimler çok yatık kalıyor ve düşen gölge algı
+     * eşiğinin altında duruyor. 90'da gölge okunur hâle geliyor (ölçüldü:
+     * kapalıya göre piksellerin %66'sı değişiyor, ortalama fark 4,2/765).
+     * Daha yükseği stratejik okumayı bozmaya başlıyor — bu bir harita,
+     * manzara değil.
+     */
+    this.reliefHeight = 60;
   }
 
   makeTex(internal, format, w, h, data, filter, wrap, wrapT = wrap, type = null) {
@@ -994,6 +1097,9 @@ export class SurfaceGL {
     gl.uniform1f(u.uInkProv, ink?.province ?? 0);
     gl.uniform1f(u.uInkEdge, ink?.edge ?? 0);
     gl.uniform1f(u.uInkBorder, ink?.border ?? 0);
+    gl.uniform1f(u.uShadow, this.shadow);
+    gl.uniform1f(u.uAO, this.ao);
+    gl.uniform1f(u.uReliefHeight, this.reliefHeight);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.hexTex);

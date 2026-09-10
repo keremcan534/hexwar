@@ -374,6 +374,11 @@ tarayıcı olmadan Node ile de test edilebilir.
 - Harita pointy-top eksenel `q,r` koordinatları kullanır.
 - Çizim sürekli çalışan bir animasyon döngüsü yerine gerektiğinde yenilenir;
   simülasyon saati hafif bir zamanlayıcıyla ilerler.
+- Harita yüzeyinin ÜÇ sunumu vardır ve üçü de yaşıyor: `classic` (Canvas2D),
+  `gpu` (tam ekran shader) ve `3d` (arazi mesh'i, three.js — kamera eğilebilir).
+  `renderer.setSurfaceMode` ile geçilir; three.js yalnız 3B kipte dinamik
+  yüklenir, vendor edilmiştir ve derleme adımı gerektirmez. Ayrıntı:
+  [docs/uc-boyut.md](docs/uc-boyut.md).
 - Deniz yüzeyi `render/water.js`'te ayrı bir katmandır: açılışta üretilen
   döşenebilir dokular (geniş kabarma, kırışıklık, parıltı) dünya uzayına
   sabitlenmiş desenler olarak deniz hexlerine dolgulanır ve zamanla yavaşça

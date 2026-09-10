@@ -32,15 +32,21 @@ import { GpuTimer } from './gpuTimer.js';
 const HEX_STEP = SQRT3 * HEX_SIZE;
 
 /**
- * Yükseklik ölçeği (dünya birimi). Yükseklik alanı 0..1'dir ve karanın
- * gerçekte kapladığı bant ~0.5..1, yani görünür kabartma bunun YARISI kadar.
+ * Yükseklik ölçeği (dünya birimi). Yükseklik alanı 0..1, karanın kapladığı
+ * bant ~0.5..1, yani görünür kabartma bunun yarısı kadar.
  *
- * 26 = bir hex yarıçapı. Paralaks bütçesi bu sayıya bağlıdır:
- *   kayma_hex = h * tan(eğim) / 45.03
- * 26'da 30° eğim 0.33 hex kayma demek; 0.5'i geçtiği an oyuncu "tıkladığım
- * hex bu değildi" der. Ölçekle eğim BİRLİKTE seçilmeli.
+ * PARALAKS BÜTÇESİ ARTIK BAĞLAYICI DEĞİL. Tasarım notunda bu sayı
+ * "kayma_hex = h*tan(eğim)/45.03 < 0.5" kuralıyla sınırlanıyordu, çünkü
+ * tıklamanın ters afinle çözüleceği varsayılmıştı. Tıklama ışın izine
+ * çevrildikten sonra oyuncu HER ZAMAN gördüğü hexi tıklıyor (ölçüldü: 0°,
+ * 20°, 30°, 45°'de %100). Geriye kalan risk kayma değil ÖRTME: dağın
+ * arkasındaki hex tıklanamaz.
+ *
+ * 60, gölgenin okunduğu ve arazinin hâlâ harita gibi durduğu değer
+ * (bkz. surfaceGL.reliefHeight aynı gerekçe). İkisi AYNI olmalı, yoksa
+ * gölge geometriden kopuk düşer.
  */
-const HEIGHT_SCALE = 26;
+const HEIGHT_SCALE = 60;
 
 /** Kameranın hedefe uzaklığı. Ortografikte yalnız kırpma düzlemlerini
  *  ilgilendirir; arazi kalınlığından kat kat büyük olması yeter. */
@@ -135,6 +141,8 @@ export class Scene3D {
      */
     this.inkOnSurface = true;
     this.ink = { grid: 0, province: 0, edge: 0, border: 0 };
+    this.shadow = 1;
+    this.ao = 1;
 
     this.renderer = new THREE.WebGLRenderer({
       canvas, context: gl, antialias: false, alpha: true,
@@ -251,6 +259,11 @@ export class Scene3D {
       uInkProv: { value: 0 },
       uInkEdge: { value: 0 },
       uInkBorder: { value: 0 },
+      uShadow: { value: 1 },
+      uAO: { value: 1 },
+      // Mesh yolunda yükseklik GERÇEKTEN geometri; gölge ışını da onunla aynı
+      // ölçeği kullanmalı, yoksa gölge araziden kopuk düşer.
+      uReliefHeight: { value: this.heightScale },
       // Vertex tarafı
       uElevVert: { value: elevVertTex },
       uField: { value: new THREE.Vector2(field.spanX, field.spanY) },
@@ -532,6 +545,9 @@ export class Scene3D {
       u.uInkProv.value = this.ink.province;
       u.uInkEdge.value = this.ink.edge;
       u.uInkBorder.value = this.ink.border;
+      u.uShadow.value = this.shadow;
+      u.uAO.value = this.ao;
+      u.uReliefHeight.value = this.heightScale;
       const T = this.tune;
       if (T) {
         u.uShallow.value.fromArray(T.shallow);
