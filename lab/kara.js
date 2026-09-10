@@ -132,13 +132,15 @@ const KARA_FRAGMENT = [
   '',
   '  vec2 crE = hexAt(vDunya.xz);',
   '  vec2 cellUV = (vec2(mod(crE.x, uGrid.x), crE.y) + 0.5) / uGrid;',
+  // Sahipsiz karayı arazi rengine çevirmeyi DENEDİK ve geri aldık: kullanıcı
+  // istemedi. Oyun sahipsiz toprağı nasıl gösteriyorsa öyle kalır.
   '  vec3 ulkeSaf = texture2D(uArka, suv).rgb;',
-  // Sahipsiz kara siyah bir boşluk değil, ARAZİDİR. Oyun onu koyu boyuyor
-  // çünkü siyasi kipte sahibi yok; burada arazi rengine çevriliyor.
-  '  float sahipDeg = texture2D(uSahip, cellUV).r;',
-  '  float sahipsiz = step(0.9940, sahipDeg) * (1.0 - step(0.9980, sahipDeg));',
-  '  vec3 araziH = texture2D(uArazi, cellUV).rgb;',
-  '  ulkeSaf = mix(ulkeSaf, araziH * 0.92, sahipsiz);',
+  // BOŞ ARKA DOKU KORUMASI. Pencere yeniden boyutlandırılınca oyunun
+  // tuvali yeniden ayrılır ve BOŞALIR; o kareyi örnekleyen kara katmanı
+  // bütün kıtayı simsiyah çiziyordu (kullanıcı ekranda gösterdi). Doku
+  // boşsa katman hiç çizmez: altta oyunun kendi haritası durur. En kötü
+  // ihtimal 'iyileştirme yok' olur, asla 'siyah harita' olmaz.
+  '  if (dot(ulkeSaf, vec3(0.3333)) < 0.012) discard;',
   '  vec3 taban = ulkeSaf;',
   '',
   // HOI4 KİPİ. Ülke rengi her yerde aynı kuvvetteyse harita boyama kitabına
@@ -365,35 +367,35 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uHexSize: { value: hexSize },
     uKayaCol: { value: new THREE.Color('#6e6a63') },
     uKarCol: { value: new THREE.Color('#dfe6e8') },
-    uDokuGuc: { value: 0.22 },
-    uKayaGuc: { value: 0.45 },
-    uKarSeviye: { value: 0.96 },
-    uGolgeGuc: { value: 0.42 },
-    uAO: { value: 0.35 },
+    uDokuGuc: { value: 0.0 },
+    uKayaGuc: { value: 0.0 },
+    uKarSeviye: { value: 1.01 },
+    uGolgeGuc: { value: 0.0 },
+    uAO: { value: 0.0 },
     uYukOlcek: { value: 1400 },
     uKabartmaK: { value: 1.0 },
     uKiyiK: { value: kiyiTex },
     uPlajCol: { value: new THREE.Color('#d8c79a') },
     uPlajGen: { value: 0.55 },
-    uPlajGuc: { value: 0.45 },
-    uFalezGuc: { value: 0.5 },
+    uPlajGuc: { value: 0.0 },
+    uFalezGuc: { value: 0.0 },
     uSinir: { value: sinirTex },
     uArazi: { value: araziTex },
     uSinirAzami: { value: sinirAzami },
     uSinirGen: { value: 6.0 },
-    uIcOpaklik: { value: 0.85 },
+    uIcOpaklik: { value: 1.0 },
     uCanlilik: { value: 0.0 },
     uKenarKalin: { value: 0.42 },
     uKenarGuc: { value: 0.0 },
     uHatGuc: { value: 0.0 },
     uTavan: { value: 0.62 },
-    uIcKarart: { value: 0.94 },
+    uIcKarart: { value: 1.0 },
     uSahip: { value: sahipTex },
     uCizgiKalin: { value: 3.0 },
     uCizgiGuc: { value: 0.85 },
-    uKarartmaTaban: { value: 0.72 },
+    uKarartmaTaban: { value: 1.0 },
     uCizgiRenk: { value: new THREE.Color('#0c1116') },
-    uKontrast: { value: 0.35 },
+    uKontrast: { value: 0.0 },
   };
 
   const geo = new THREE.PlaneGeometry(1, 1, 1, 1);

@@ -174,13 +174,13 @@ if (!alan || !alan.toLand) throw new Error('kıyı alanı kurulamadı (material.
 const P = {
   ...ONAYARLAR.master,
   kasirgaGuc: 0, kasirgaYaricap: 22,
-  karaDoku: 0.22, karaKaya: 0.45, karaKar: 0.96, karaGolge: 0.42,
-  karaAO: 0.35, karaKabartma: 1.0, karaYukOlcek: 1400,
-  plajGen: 0.55, plajGuc: 0.45, falezGuc: 0.5,
-  sinirGen: 6.0, icOpaklik: 0.85, canlilik: 0.0,
-  kenarKalin: 0.42, kenarGuc: 0.0, hatGuc: 0.0, kontrast: 0.35,
-  cizgiKalin: 3.0, cizgiGuc: 0.85, karartmaTaban: 0.72,
-  tavan: 0.62, icKarart: 0.94,
+  karaDoku: 0.0, karaKaya: 0.0, karaKar: 1.01, karaGolge: 0.0,
+  karaAO: 0.0, karaKabartma: 1.0, karaYukOlcek: 1400,
+  plajGen: 0.55, plajGuc: 0.0, falezGuc: 0.0,
+  sinirGen: 6.0, icOpaklik: 1.0, canlilik: 0.0,
+  kenarKalin: 0.42, kenarGuc: 0.0, hatGuc: 0.0, kontrast: 0.0,
+  cizgiKalin: 3.0, cizgiGuc: 0.85, karartmaTaban: 1.0,
+  tavan: 0.62, icKarart: 1.0,
   kusYogunluk: 0.55, kusBoyut: 9, kusYukseklik: 10, kusHiz: 1,
 };
 // Önayarlar bu alanları taşımaz; önayar değişince sıfırlanmasınlar.
@@ -427,7 +427,7 @@ const GRUPLAR = [
   ['Kara', [
     ['karaDoku', 'Arazi dokusu', 0, 1.5, 0.01],
     ['karaKaya', 'Eğimden kaya', 0, 1.5, 0.01],
-    ['karaKar', 'Kar seviyesi', 0.8, 1, 0.002],
+    ['karaKar', 'Kar seviyesi', 0.8, 1.02, 0.002],
     ['karaGolge', 'Dağ gölgesi', 0, 1, 0.01],
     ['karaAO', 'Çukur karanlığı', 0, 1.5, 0.01],
     ['karaKabartma', 'Eğim duyarlılığı', 0.2, 3, 0.02],
@@ -633,7 +633,24 @@ const sonKam = { x: NaN, y: NaN, zoom: NaN };
 let arkaTazele = 8;
 
 function boyutla() {
-  for (const t of [golge, isik, kirilmaT]) t.gl.setSize(innerWidth, innerHeight, false);
+  // RESIZE ONARIMI.
+  //
+  // Pencere değişince üç şey birden bozuluyordu ve harita "geberiyordu":
+  //   1. setPixelRatio yalnız kurulumda çağrılıyordu; dpr değişirse (monitör
+  //      değişimi, tarayıcı zoom'u) çizim tamponu ile uCozunurluk ayrışır ve
+  //      arka doku YANLIŞ yerden örneklenir.
+  //   2. Oyunun tuvali yeniden ayrılınca BOŞALIR; taze kare çizilene dek
+  //      örneklenen doku boştur.
+  //   3. Kamera değişmediği için "harita değişti mi" kontrolü yeniden çizim
+  //      istemiyordu — boşluk kalıcı hâle geliyordu.
+  const pr = Math.min(devicePixelRatio, 2);
+  for (const t of [golge, isik, kirilmaT]) {
+    t.gl.setPixelRatio(pr);
+    t.gl.setSize(innerWidth, innerHeight, false);
+  }
+  sonKam.zoom = NaN;      // "harita değişti" say: yeniden çiz
+  arkaTazele = 6;         // arka doku birkaç kare tazelensin
+  game.dirty = true;
 }
 addEventListener('resize', boyutla);
 boyutla();
