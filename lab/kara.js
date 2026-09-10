@@ -47,13 +47,14 @@ const KARA_VERTEX = [
 ].join('\n');
 
 const KARA_FRAGMENT = [
-  'uniform sampler2D uArka, uDist, uYuk, uTip, uGurultu, uKiyiK;',
+  'uniform sampler2D uArka, uDist, uYuk, uTip, uGurultu, uKiyiK, uSinir, uArazi;',
   'uniform vec2 uCozunurluk, uYukBoyut, uGrid;',
   'uniform vec4 uAlan;',
   'uniform vec3 uGunesDir, uKayaCol, uKarCol;',
   'uniform float uHexSize, uDistMax, uHex, uOlcek, uTime;',
   'uniform float uDokuGuc, uKayaGuc, uKarSeviye, uGolgeGuc, uAO, uYukOlcek, uKabartmaK;',
   'uniform float uPlajGen, uPlajGuc, uFalezGuc;',
+  'uniform float uSinirGen, uIcOpaklik, uCanlilik, uSinirAzami;',
   'uniform vec3 uPlajCol;',
   'varying vec3 vDunya;',
   '',
@@ -125,7 +126,23 @@ const KARA_FRAGMENT = [
   '  float kara = 1.0 - smoothstep(0.0, uHex * 0.22, toLand);',
   '  if (kara <= 0.003) discard;',
   '',
+  '  vec2 crE = hexAt(vDunya.xz);',
+  '  vec2 cellUV = (vec2(mod(crE.x, uGrid.x), crE.y) + 0.5) / uGrid;',
   '  vec3 taban = texture2D(uArka, suv).rgb;',
+  '',
+  // HOI4 KİPİ. Ülke rengi her yerde aynı kuvvetteyse harita boyama kitabına
+  // döner ve altındaki coğrafya kaybolur. Renk SINIRDA kuvvetli, İÇERİDE
+  // zayıf olunca iki şey birden okunur: kimin toprağı ve orası nasıl bir yer.
+  // Sınıra uzaklık hex cinsinden ayrı bir alandan gelir (çok kaynaklı BFS).
+  '  float sinirD = texture2D(uSinir, (cellUV)).r * uSinirAzami;',
+  '  float icerlek = smoothstep(0.0, max(0.25, uSinirGen), sinirD);',
+  '  float ulkeAgir = mix(1.0, uIcOpaklik, icerlek);',
+  '  vec3 araziRenk = texture2D(uArazi, (cellUV)).rgb;',
+  '  taban = mix(araziRenk, taban, ulkeAgir);',
+  // Canlılık: rengi doygunlaştırır ama parlaklığını korur. Ülke renkleri
+  // haritada birbirinden ayrılmalı; soluk palet siyaseti okunmaz yapıyor.
+  '  float gri = dot(taban, vec3(0.299, 0.587, 0.114));',
+  '  taban = clamp(mix(vec3(gri), taban, 1.0 + uCanlilik), 0.0, 1.0);',
   '',
   // Yükseklik ve eğim: raster zaten hex başına 4 teksel, merkezî fark yeter.
   '  vec2 tx = 1.0 / uYukBoyut;',
@@ -221,7 +238,7 @@ const KARA_FRAGMENT = [
  *   Paylaşmak zorunlu: iki katman aynı kadrajı ve aynı güneşi görmeli, yoksa
  *   kıyıda iki ayrı dünya buluşur.
  */
-export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, yukBoyut, grid, hexSize }) {
+export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, araziTex, sinirAzami, yukBoyut, grid, hexSize }) {
   const U = {
     ...ortak,
     uTip: { value: tipTex },
@@ -243,6 +260,12 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, yukBoyut, g
     uPlajGen: { value: 0.55 },
     uPlajGuc: { value: 0.45 },
     uFalezGuc: { value: 0.5 },
+    uSinir: { value: sinirTex },
+    uArazi: { value: araziTex },
+    uSinirAzami: { value: sinirAzami },
+    uSinirGen: { value: 2.2 },
+    uIcOpaklik: { value: 0.45 },
+    uCanlilik: { value: 0.35 },
   };
 
   const geo = new THREE.PlaneGeometry(1, 1, 1, 1);
@@ -310,6 +333,95 @@ export function denizUzakligiDokusu(THREE, cache, distMax) {
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.minFilter = tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/**
+ * Hexin SINIRA uzaklığı (hex cinsinden), çok kaynaklı BFS.
+ *
+ * HOI4 kipinin çalışma sebebi şu: ülke rengi her yerde aynı kuvvette olursa
+ * harita bir boyama kitabına döner ve altındaki coğrafya kaybolur. Renk
+ * sınırda kuvvetli, içeride zayıf olunca iki şey birden okunur — kimin
+ * toprağı olduğu ve ORANIN NASIL BİR YER olduğu.
+ *
+ * Sınır hexi = komşularından birinin sahibi farklı olan hex (kıyı da sınırdır;
+ * denize bakan hex de kenarını göstermeli). Oradan içeriye BFS ile uzaklık.
+ */
+export function sinirUzakligiDokusu(THREE, world, azami = 6) {
+  const { cols, rows } = world;
+  const n = cols * rows;
+  const uzak = new Int16Array(n).fill(-1);
+  const kuyruk = new Int32Array(n);
+  let bas = 0, son = 0;
+
+  for (let i = 0; i < n; i++) {
+    const t = world.tiles[i];
+    if (!t || t.terrain.water) continue;
+    let sinir = false;
+    for (const k of world.neighbors(t)) {
+      if (!k || k.terrain.water || k.owner !== t.owner) { sinir = true; break; }
+    }
+    if (world.neighbors(t).length < 6) sinir = true;   // harita kenarı
+    if (sinir) { uzak[i] = 0; kuyruk[son++] = i; }
+  }
+
+  while (bas < son) {
+    const i = kuyruk[bas++];
+    const t = world.tiles[i];
+    const d = uzak[i];
+    if (d >= azami) continue;
+    for (const k of world.neighbors(t)) {
+      if (!k || k.terrain.water) continue;
+      const j = k.y * cols + k.x;
+      if (uzak[j] !== -1) continue;
+      uzak[j] = d + 1;
+      kuyruk[son++] = j;
+    }
+  }
+
+  const veri = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const d = uzak[i] < 0 ? azami : uzak[i];
+    veri[i] = Math.round((Math.min(d, azami) / azami) * 255);
+  }
+  const tex = new THREE.DataTexture(veri, cols, rows, THREE.RedFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  // LINEAR: hex başına tek değer, ama örnekleme yumuşak geçsin — sınırdan
+  // içeriye doğru kademe değil GRADYAN istiyoruz.
+  tex.minFilter = tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return { tex, azami };
+}
+
+/**
+ * Hex başına ARAZİ rengi (RGBA8, NEAREST) — TERRAIN paletinden.
+ *
+ * Ülke rengi içeride zayıflayınca altından ne çıkacağı sorusunun cevabı bu.
+ * Oyunun coğrafya kipinde gösterdiği rengin aynısı; ayrı bir palet uydurmak
+ * "aynı oyunda iki ayrı sanat yönetimi" demek olurdu.
+ */
+export function araziRenkDokusu(THREE, world) {
+  const { cols, rows } = world;
+  const veri = new Uint8Array(cols * rows * 4);
+  const cek = (hex) => {
+    const s = hex.replace('#', '');
+    return [parseInt(s.slice(0, 2), 16), parseInt(s.slice(2, 4), 16), parseInt(s.slice(4, 6), 16)];
+  };
+  const bellek = new Map();
+  for (let i = 0; i < cols * rows; i++) {
+    const t = world.tiles[i];
+    const renk = t?.terrain?.color ?? '#000000';
+    let rgb = bellek.get(renk);
+    if (!rgb) { rgb = cek(renk); bellek.set(renk, rgb); }
+    const p = i * 4;
+    veri[p] = rgb[0]; veri[p + 1] = rgb[1]; veri[p + 2] = rgb[2]; veri[p + 3] = 255;
+  }
+  const tex = new THREE.DataTexture(veri, cols, rows, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.minFilter = tex.magFilter = THREE.NearestFilter;
   tex.needsUpdate = true;
   return tex;
 }
