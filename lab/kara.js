@@ -47,14 +47,14 @@ const KARA_VERTEX = [
 ].join('\n');
 
 const KARA_FRAGMENT = [
-  'uniform sampler2D uArka, uDist, uYuk, uTip, uGurultu, uKiyiK, uSinir, uArazi, uSahip;',
+  'uniform sampler2D uArka, uDist, uYuk, uTip, uGurultu, uKiyiK, uSinir, uArazi, uSahip, uUlkeOrt;',
   'uniform vec2 uCozunurluk, uYukBoyut, uGrid;',
   'uniform vec4 uAlan;',
   'uniform vec3 uGunesDir, uKayaCol, uKarCol;',
   'uniform float uHexSize, uDistMax, uHex, uOlcek, uTime;',
   'uniform float uDokuGuc, uKayaGuc, uKarSeviye, uGolgeGuc, uAO, uYukOlcek, uKabartmaK;',
   'uniform float uPlajGen, uPlajGuc, uFalezGuc;',
-  'uniform float uSinirGen, uIcOpaklik, uCanlilik, uSinirAzami;',
+  'uniform float uSinirGen, uIcOpaklik, uCanlilik, uSinirAzami, uHexYumusat;',
   'uniform float uKenarKalin, uKenarGuc, uHatGuc, uKontrast, uTavan, uIcKarart;',
   'uniform float uKarartmaTaban;',
   'uniform float uCekirdek, uCekirdekGuc, uBantKalin, uBantGuc, uBantDoygun, uBantIsik;',
@@ -139,7 +139,16 @@ const KARA_FRAGMENT = [
   // simsiyah çiziyordu. Doku boşsa hiç çizme: altta oyunun kendi haritası
   // durur. En kötü ihtimal 'iyileştirme yok' olur, asla 'siyah harita' değil.
   '  if (dot(ulkeSaf, vec3(0.3333)) < 0.012) discard;',
-  '  vec3 taban = ulkeSaf;',
+  // HEX KADEMESİNİ ERİT. Oyun her hexin rengini biraz farklı yüklüyor;
+  // sürekli alanlarla (pigment, kabartma) birleşince harita iki ayrı
+  // sistem gibi okunuyor — kullanıcının tarifi buydu. Ülke ortalamasına
+  // doğru çekmek kademeyi eritir, sınırı bozmaz: ortalama ülke içinde
+  // sabittir, komşuya sızmaz. Yalnız PARLAKLIK çekilir, ton değil —
+  // rengin kimliği hexin kendisinde kalır.
+  '  vec3 ulkeOrt = texture2D(uUlkeOrt, cellUV).rgb;',
+  '  float ulkeL = max(dot(ulkeSaf, vec3(0.299, 0.587, 0.114)), 0.001);',
+  '  float ortL = dot(ulkeOrt, vec3(0.299, 0.587, 0.114));',
+  '  vec3 taban = ulkeSaf * mix(1.0, ortL / ulkeL, uHexYumusat);',
   '',
   // HOI4 KİPİ. Ülke rengi her yerde aynı kuvvetteyse harita boyama kitabına
   // döner ve altındaki coğrafya kaybolur. Renk SINIRDA kuvvetli, İÇERİDE
@@ -377,7 +386,7 @@ const KARA_FRAGMENT = [
  *   Paylaşmak zorunlu: iki katman aynı kadrajı ve aynı güneşi görmeli, yoksa
  *   kıyıda iki ayrı dünya buluşur.
  */
-export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, araziTex, sahipTex, sinirAzami, yukBoyut, grid, hexSize }) {
+export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, araziTex, sahipTex, ulkeOrtTex, sinirAzami, yukBoyut, grid, hexSize }) {
   const U = {
     ...ortak,
     uTip: { value: tipTex },
@@ -405,6 +414,8 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uSinirGen: { value: 6.0 },
     uIcOpaklik: { value: 0.85 },
     uCanlilik: { value: 0.0 },
+    uUlkeOrt: { value: ulkeOrtTex },
+    uHexYumusat: { value: 0.6 },
     uKenarKalin: { value: 0.42 },
     uKenarGuc: { value: 0.0 },
     uHatGuc: { value: 0.0 },
@@ -615,10 +626,64 @@ export function araziRenkDokusu(THREE, world) {
   const tex = new THREE.DataTexture(veri, cols, rows, THREE.RGBAFormat);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
+  // LINEAR — NEAREST DEĞİL. Bu doku gösterim için değil MODÜLASYON için
+  // kullanılıyor: arazinin parlaklığı ülke rengini çarpıyor. NEAREST olunca
+  // coğrafya hexe kilitleniyor ve harita iki ayrı sistem gibi okunuyor —
+  // hex hex kademeli tonlar ile hexi umursamayan bulutlar yan yana.
+  // Ölçüldü: aynı ülkedeki komşu hexler arası ortalama parlaklık farkı yalnız
+  // oyunda 5.18, bu katman NEAREST iken 9.37. Kural: SİYASET hex bazlı
+  // (oyunun kuralı), COĞRAFYA sürekli.
+  tex.minFilter = tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/**
+ * Hex başına ÜLKE ORTALAMA rengi (RGBA8, NEAREST).
+ *
+ * Oyun her hexin siyasi rengini biraz farklı yüklüyor (ölçüldü: 214 hexlik
+ * Drailand için 15 ayrı renk, 106..125 aralığında). Bu, sürekli alanlarla
+ * (pigment, kabartma) birleşince harita "hem hex bazlı hem hex bazsız"
+ * okunuyor — kullanıcının tarifi buydu.
+ *
+ * Ülke ortalamasına doğru yumuşatmak bu kademeyi eritir ama SINIRI bozmaz:
+ * ortalama ülke içinde sabit olduğu için komşu ülkeyle karışma olmaz.
+ * Bilineer bir bulanıklaştırma bunu yapamazdı — sınırın iki yakasını
+ * birbirine akıtırdı.
+ */
+export function ulkeOrtalamaDokusu(THREE, world, ownerVeri) {
+  const { cols, rows } = world;
+  const topla = new Map();
+  for (let i = 0; i < cols * rows; i++) {
+    const t = world.tiles[i];
+    if (!t || t.terrain.water || t.owner < 0) continue;
+    const p = i * 4;
+    const o = topla.get(t.owner) ?? { r: 0, g: 0, b: 0, n: 0 };
+    o.r += ownerVeri[p]; o.g += ownerVeri[p + 1]; o.b += ownerVeri[p + 2]; o.n++;
+    topla.set(t.owner, o);
+  }
+  const veri = new Uint8Array(cols * rows * 4);
+  for (let i = 0; i < cols * rows; i++) {
+    const t = world.tiles[i];
+    const p = i * 4;
+    const o = (t && !t.terrain.water && t.owner >= 0) ? topla.get(t.owner) : null;
+    if (o) {
+      veri[p] = Math.round(o.r / o.n);
+      veri[p + 1] = Math.round(o.g / o.n);
+      veri[p + 2] = Math.round(o.b / o.n);
+    } else {
+      veri[p] = ownerVeri[p]; veri[p + 1] = ownerVeri[p + 1]; veri[p + 2] = ownerVeri[p + 2];
+    }
+    veri[p + 3] = 255;
+  }
+  const tex = new THREE.DataTexture(veri, cols, rows, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.minFilter = tex.magFilter = THREE.NearestFilter;
   tex.needsUpdate = true;
   return tex;
 }
+
 
 /**
  * Hex başına SAHİP kimliği (R8, NEAREST).

@@ -117,7 +117,7 @@ import {
 import { kusKatmani } from './lab/kuslar.js';
 import {
   karaKatmani, tipDokusu, yukseklikDokusu, denizUzakligiDokusu,
-  sinirAlaniDokusu, araziRenkDokusu, sahipDokusu,
+  sinirAlaniDokusu, araziRenkDokusu, sahipDokusu, ulkeOrtalamaDokusu,
 } from './lab/kara.js';
 
 const q = new URLSearchParams(location.search);
@@ -177,7 +177,7 @@ const P = {
   karaDoku: 0.22, karaKaya: 0.45, karaKar: 0.96, karaGolge: 0.42,
   karaAO: 0.35, karaKabartma: 1.0, karaYukOlcek: 1400,
   plajGen: 0.55, plajGuc: 0.45, falezGuc: 0.5,
-  sinirGen: 6.0, icOpaklik: 0.85, canlilik: 0.0,
+  sinirGen: 6.0, icOpaklik: 0.85, canlilik: 0.0, hexYumusat: 0.6,
   kenarKalin: 0.42, kenarGuc: 0.0, hatGuc: 0.0, kontrast: 0.35,
   cekirdek: 0.8, cekirdekGuc: 0.35, bantKalin: 7.0, bantGuc: 1.0,
   bantDoygun: 0.55, bantIsik: 0.22, karartmaTaban: 0.72,
@@ -187,7 +187,7 @@ const P = {
 // Önayarlar bu alanları taşımaz; önayar değişince sıfırlanmasınlar.
 const EKSTRA = ['kasirgaGuc', 'kasirgaYaricap', 'kusYogunluk', 'kusBoyut', 'kusYukseklik', 'kusHiz',
   'karaDoku', 'karaKaya', 'karaKar', 'karaGolge', 'karaAO', 'karaKabartma', 'karaYukOlcek',
-  'plajGen', 'plajGuc', 'falezGuc', 'sinirGen', 'icOpaklik', 'canlilik',
+  'plajGen', 'plajGuc', 'falezGuc', 'sinirGen', 'icOpaklik', 'canlilik', 'hexYumusat',
   'kenarKalin', 'kenarGuc', 'hatGuc', 'kontrast', 'tavan', 'icKarart',
   'cekirdek', 'cekirdekGuc', 'bantKalin', 'bantGuc', 'bantDoygun', 'bantIsik',
   'karartmaTaban'];
@@ -317,6 +317,7 @@ const kara = karaKatmani(THREE, {
   ...(() => { const a = sinirAlaniDokusu(THREE, game.world, alan, HEX_SIZE); return { sinirTex: a.tex, sinirAzami: a.azami }; })(),
   araziTex: araziRenkDokusu(THREE, game.world),
   sahipTex: sahipDokusu(THREE, game.world),
+  ulkeOrtTex: ulkeOrtalamaDokusu(THREE, game.world, r.surfaceOwnerData(game.world)),
   yukBoyut: { w: alan.w, h: alan.h },
   grid: { cols: game.world.cols, rows: game.world.rows },
   hexSize: HEX_SIZE,
@@ -376,6 +377,7 @@ function uygula() {
   kara.U.uSinirGen.value = P.sinirGen;
   kara.U.uIcOpaklik.value = P.icOpaklik;
   kara.U.uCanlilik.value = P.canlilik;
+  kara.U.uHexYumusat.value = P.hexYumusat;
   kara.U.uKenarKalin.value = P.kenarKalin;
   kara.U.uKenarGuc.value = P.kenarGuc;
   kara.U.uHatGuc.value = P.hatGuc;
@@ -459,6 +461,7 @@ const GRUPLAR = [
     ['karartmaTaban', 'Karartma tabanı', 0.3, 1, 0.01],
     ['icOpaklik', 'İçeride ülke rengi', 0, 1, 0.01],
     ['canlilik', 'Renk canlılığı', 0, 1.2, 0.01],
+    ['hexYumusat', 'Hex kademesini erit', 0, 1, 0.01],
   ]],
   ['Fırtına ve canlılar', [
     ['kasirgaGuc', 'Kasırga gücü', 0, 1, 0.01],
