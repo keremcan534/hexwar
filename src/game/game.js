@@ -225,7 +225,10 @@ export class Game {
 
   tileAtScreen(sx, sy) {
     if (!this.world) return null;
-    const w = this.camera.screenToWorld(sx, sy);
+    // `pickWorld`, `screenToWorld` DEĞİL: 3B yüzey devredeyken tıklanan hex
+    // ekranın altındaki düzlem noktası değil, IŞININ ARAZİYE ÇARPTIĞI yerdir.
+    // Aradaki fark yükseklikle büyür ve en çok dağlarda görünür.
+    const w = this.camera.pickWorld(sx, sy);
     const { q, r } = pixelToHex(w.x, w.y, HEX_SIZE);
     return this.world.get(q, r) ?? null;
   }

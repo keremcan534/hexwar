@@ -39,7 +39,15 @@ game.renderer.setMapMode('geography'); // siyasetsiz coğrafya önizlemesi
 game.world.geo.stats;                  // kara oranı, kütleler, yarımada, boğaz
 game.world.nations.map(n => [n.name, n.tiles]);
 game.renderer.lastDrawn;   // son karede çizilen hex sayısı
+
+await game.renderer.setSurfaceMode('3d');      // arazi mesh'i (three.js)
+game.renderer.waterGL.tilt = Math.PI / 6;      // kamerayı eğ
+game.renderer.waterGL.perspective = true;      // hareket paralaksı
 ```
+
+Üç boyutlu kip, ölçümleri ve sınırları: [docs/uc-boyut.md](docs/uc-boyut.md).
+Görsel yineleme ve piksel-eş referans testi `maplab.html`
+(`lab.abSurface`, `lab.shot`).
 
 Performans hedefi: kare süresi uzak zoomda < 2 ms, yakın zoomda < 5 ms.
 

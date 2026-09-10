@@ -15,7 +15,7 @@ import { controllerOf, isOccupied } from '../game/control.js';
 import { materials } from './textures.js';
 import { WaterLayer } from './water.js';
 import { LandMaterial } from './material.js';
-import { SurfaceGL } from './surfaceGL.js';
+import { SurfaceGL, createSurfaceContext } from './surfaceGL.js';
 
 /**
  * Karenin GÖRÜNEN sahibi. Geçilmez arazi (artık yalnız buz) hiçbir province'e
@@ -360,6 +360,12 @@ export class Renderer {
     this.tintCache = new Map();
     this.corners = HEX_CORNERS.map(([x, y]) => [x * HEX_SIZE, y * HEX_SIZE]);
     this.cache = null;
+    /** Oyuncunun deniz kalite anahtarı (HUD 'Live sea'). */
+    this.liveSea = true;
+    /** Yüzey sunumu: 'classic' | 'gpu' | '3d' (bkz. setSurfaceMode). */
+    this.surfaceMode = 'gpu';
+    /** Mesh kipine geçerken saklanan ham yol; geri dönüşte kullanılır. */
+    this.rawSurface = null;
     this.lastDrawn = 0;
     // Deniz yüzeyi ayrı bir katman nesnesidir: dokular, kıyı topolojisi ve
     // yerel bozulmalar orada yaşar (bkz. water.js).
@@ -395,6 +401,13 @@ export class Renderer {
    * dağıtır ve animasyon zinciri kendiliğinden durur.
    */
   waterAnimatedMode() {
+    // `liveSea` oyuncunun kalite anahtarı. Eskiden YALNIZ Canvas2D koluna
+    // (renderer.water) bağlıydı; GPU yüzeyi devredeyken `canvasWater()` false
+    // olduğu için kutu varsayılan yolda hiçbir şey yapmıyordu — yani yavaş
+    // makinedeki oyuncunun elindeki tek kaldıraç ölüydü. Artık her iki kolu
+    // birden kısar: GPU tarafında deniz malzemesiz düz tona iner (dalga
+    // örneklemesi, Fresnel ve köpük tamamen atlanır, bkz. uSeaMaterial).
+    if (!this.liveSea) return false;
     return this.mapMode === 'political' || this.mapMode === 'terrain'
       || this.mapMode === 'geography' || this.mapMode === 'cultures';
   }
@@ -441,12 +454,50 @@ export class Renderer {
    */
   attachWaterCanvas(canvas) {
     if (!canvas) return false;
-    this.waterGL = SurfaceGL.create(canvas);
+    // Bağlamı RENDERER açar; iki sunum (ham yol / mesh yolu) onu paylaşır.
+    this.surfaceCanvas = canvas;
+    this.surfaceCtx = createSurfaceContext(canvas);
+    if (!this.surfaceCtx) return false;
+    this.waterGL = SurfaceGL.create(canvas, this.surfaceCtx,
+      (state) => this.onGLContext(canvas, state));
     if (!this.waterGL) return false;
+    this.waterGL.perf = this.perf ?? null;
     // resize BURADA çağrılmaz: kurucu, düzen (layout) oturmadan çalışıyor ve
     // tuval o anda 0x0 ölçülüyor. Ölçüyü Game ilk kareden sonra verir.
     this.invalidateCache();
     return true;
+  }
+
+  /**
+   * WebGL bağlamı kaybolduğunda / geri geldiğinde.
+   *
+   * Kayıpta yapılacak tek şey Canvas2D yoluna geri düşmektir: `glSurface()`
+   * artık false döner, `canvasWater()` true olur ve zemin yine boyanır.
+   * Önbellek geçersizleştirilmeli — statik katman GPU yüzeyinin ALTINDA
+   * boş bırakılmış zeminle pişmişti.
+   *
+   * Geri gelişte katman SIFIRDAN kurulur: eski program, VAO ve dokular
+   * ölmüştür. Dünya varsa yeniden yüklenir; yoksa ilk `render` zaten kurar.
+   */
+  onGLContext(canvas, state) {
+    if (state === 'restored') {
+      this.waterGL?.dispose?.();
+      this.surfaceCtx = createSurfaceContext(canvas);
+      this.waterGL = this.surfaceCtx
+        ? SurfaceGL.create(canvas, this.surfaceCtx, (next) => this.onGLContext(canvas, next))
+        : null;
+      if (this.waterGL) this.waterGL.perf = this.perf ?? null;
+      // Mesh kipindeydiysek oraya geri dönülür; oyuncu kip değiştirmedi.
+      if (this.surfaceMode === '3d') this.setSurfaceMode('3d');
+      // Dünya YENİDEN YÜKLENMEZ burada: taze katmanın `world`'ü null olduğu
+      // için ısıtma pompası (hasPendingJobs) bir sonraki karede setWorld'ü
+      // zaten kendi doğru argümanlarıyla çağırır. İki yerden yüklemek, iki
+      // ayrı doğru argüman listesi bakmak demekti.
+    }
+    this.invalidateCache();
+    this.staticLayers = null;
+    this.staticDirty = true;
+    this.requestFrame?.();
   }
 
   /**
@@ -484,6 +535,53 @@ export class Renderer {
    */
   setSurfaceMode(mode) {
     if (!this.waterGL) return 'classic';
+    // ÜÇ KOL. 'classic' eski Canvas2D borusu, 'gpu' tam ekran shader,
+    // '3d' arazi mesh'i (three.js). Hiçbiri silinmedi: üçü yan yana
+    // karşılaştırılabilsin diye duruyorlar — bu portun tek güvenlik ağı
+    // tilt=0'da üç kolun AYNI pikselleri üretmesidir.
+    if (mode === '3d') {
+      this.surfaceMode = '3d';
+      // three.js DİNAMİK yüklenir: 3B kipine geçilmedikçe 687 KB inmez.
+      // Derleme adımı yok, tarayıcı `import()`i yerli olarak biliyor.
+      return import('./scene3d.js').then(({ Scene3D }) => {
+        const scene = Scene3D.create(this.surfaceCanvas, this.surfaceCtx,
+          (state) => this.onGLContext(this.surfaceCanvas, state));
+        if (!scene) {
+          this.surfaceMode = 'gpu';
+          return 'gpu';
+        }
+        this.rawSurface = this.waterGL;
+        scene.perf = this.perf ?? null;
+        scene.debug.enabled = true;
+        this.waterGL = scene;
+        // Mürekkep çapaları (etiket, künye, şehir) ve TIKLAMA artık 3B
+        // izdüşümden geçer; afin cevap eğim açıkken doğru değil.
+        this.camera.setProjector(scene);
+        // Taze sunum HİÇ boyutlanmamıştır: `resize` yalnız tuval ölçüsü
+        // değişince çağrılıyordu, kip değişiminde değil. Boyutsuz katman
+        // önceki kolun bıraktığı tampon ölçüsüyle çizer.
+        this.resize();
+        this.invalidateCache();
+        this.staticLayers = null;
+        this.staticDirty = true;
+        this.requestFrame?.();
+        return '3d';
+      }).catch((err) => {
+        console.warn('3B kip yüklenemedi:', err);
+        this.surfaceMode = 'gpu';
+        return 'gpu';
+      });
+    }
+    // Mesh kipinden çıkılıyorsa ham yol geri alınır.
+    if (this.surfaceMode === '3d' && this.rawSurface) {
+      this.waterGL.dispose?.();
+      this.waterGL = this.rawSurface;
+      this.rawSurface = null;
+      this.waterGL.world = null;   // dokular mesh kipinde bırakılmıştı
+      this.camera.setProjector(null);
+      this.resize();
+    }
+    this.surfaceMode = mode === 'classic' ? 'classic' : 'gpu';
     this.waterGL.debug.enabled = mode !== 'classic';
     this.invalidateCache();
     this.staticLayers = null;
@@ -520,6 +618,54 @@ export class Renderer {
   }
 
   /**
+   * HEX KİMLİK DOKUSU — yüzey mürekkebinin girdisi.
+   *
+   * Shader komşu hexin kimliğini okuyup "aynı ülke mi, aynı province mi"
+   * diye sorar; sınır ve province kenarı oradan doğar. Kimliğin ne olduğu
+   * HARİTA KİPİNE bağlıdır ve karar `drawBorders`la AYNI yerden gelir
+   * (kültür kipinde halk, diğerlerinde sahip) — iki yer iki ayrı doğru
+   * kurarsa sınırlar kipe göre yer değiştirir.
+   *
+   * RG = grup id (16 bit, 65535 = sahipsiz), BA = province id (16 bit).
+   * Sahipsiz kareler BİRBİRİNDEN ayrı sayılmaz: hepsi aynı gruptur, yoksa
+   * okyanusun ortasında sınır çizgileri belirir.
+   */
+  surfaceIdData(world) {
+    const cols = world.cols;
+    const rows = world.rows;
+    const out = new Uint8Array(cols * rows * 4);
+    const cultureMode = this.mapMode === 'cultures';
+    for (let i = 0; i < cols * rows; i++) {
+      const tile = world.tiles[i];
+      const p = i * 4;
+      if (!tile) {
+        out[p] = 255; out[p + 1] = 255; out[p + 2] = 255; out[p + 3] = 255;
+        continue;
+      }
+      const group = cultureMode ? tile.culture : ownerOf(tile, world);
+      const g = group < 0 ? 65535 : group;
+      const pid = tile.provinceId >= 0 ? tile.provinceId : 65535;
+      out[p] = g & 255;
+      out[p + 1] = (g >> 8) & 255;
+      out[p + 2] = pid & 255;
+      out[p + 3] = (pid >> 8) & 255;
+    }
+    return out;
+  }
+
+  /**
+   * Yüzey mürekkebi devrede mi? Devredeyse Canvas2D o aileleri ÇİZMEZ —
+   * iki kez çizilirse çizgiler kalınlaşır ve alfa katlanır.
+   *
+   * Yalnız mesh yolunda açılır: eğim ancak orada mümkün ve mürekkebin
+   * yüzeye taşınmasının tek gerekçesi eğimdir.
+   */
+  surfaceInk() {
+    return this.surfaceMode === '3d' && !!this.waterGL?.inkOnSurface
+      && this.glSurface();
+  }
+
+  /**
    * CSS renk dizesi -> RGB, BENZERSİZ dize başına bir kez.
    *
    * `tileColor` zaten sınırlı sayıda dize döndürür (bkz. tintCache): 15360
@@ -547,18 +693,6 @@ export class Renderer {
     return rgb;
   }
 
-  /**
-   * Yüzeyin renk dokusunu tazeler. Fetih, harita kipi değişimi, işgal — hepsi
-   * `tileColor`ın çıktısını değiştirir ve GPU o çıktıyı bir dokudan okur;
-   * doku tazelenmezse harita ESKİ sahibi göstermeye devam eder. Bu kozmetik
-   * değil, yanlış bilgi.
-   *
-   * Yalnız BAYRAK kaldırılır; asıl yükleme bir sonraki karede yapılır ki aynı
-   * tikte gelen onlarca değişiklik tek tazelemeye düşsün.
-   */
-  invalidateSurfaceColors() {
-    this.surfaceColorsDirty = true;
-  }
 
   /** Hex başına işgal: RGB işgalcinin mürekkebi, A bayrak. */
   surfaceOverlayData(world) {
@@ -615,7 +749,11 @@ export class Renderer {
    * zincir kesilirse iş bir sonraki etkileşime dek yarım kalıyordu.
    */
   hasPendingJobs() {
-    return !!this.staticJob || !!this.farJob;
+    return !!this.staticJob || !!this.farJob
+      // Yüzey sunumu dünyayı henüz almadıysa iş BİTMEMİŞTİR: zincir kesilirse
+      // harita bir sonraki etkileşime dek eksik kalır.
+      || !!(this.lastWorld && this.waterGL && this.waterGL.world !== this.lastWorld
+        && this.material.cache);
   }
 
   /**
@@ -632,19 +770,35 @@ export class Renderer {
     // ~150 ms tutuyor ve ilk statik katmanda tek karede ödenirse takılıyor.
     if (this.material.warmStep(this.ctx, world)) return true;
     // WebGL su katmanı, malzemenin kıyı uzaklığı alanını doku olarak alır.
-    if (this.waterGL && this.waterGL.world !== world) {
-      this.waterGL.setWorld(world, this.material.cache, {
-        owner: this.surfaceOwnerData(world),
-        character: this.surfaceCharacterData(world),
-      });
-      return true;
-    }
+    if (this.uploadSurfaceWorld(world)) return true;
     if (this.water.warmStep(this.ctx)) return true;
     if (!this.cache) {
       this.stepCacheBuild(world, 10);
       return !this.cache;
     }
     return false;
+  }
+
+  /**
+   * Yüzey sunumuna dünyayı yükler. Yüklendiyse true.
+   *
+   * Neden ayrı ve neden `render`dan da çağrılıyor: `warmup` YALNIZ açılışta,
+   * menü perdesi arkasında koşuyor (bkz. main.js). Oyun ortasında yüzey
+   * sunumu değişirse (2B <-> 3B) taze katman dünyayı hiç almıyordu ve harita
+   * sessizce boşalıyordu — ölçüldü: kip değişiminden sonra `waterGL.world`
+   * null, `meshes` 0.
+   *
+   * Malzeme önbelleği hazır değilse dokunulmaz: pişirme sırası ısıtmanın
+   * işidir, burada zorlanırsa tek karede ~150 ms ödenir.
+   */
+  uploadSurfaceWorld(world) {
+    if (!world || !this.waterGL || this.waterGL.world === world) return false;
+    if (!this.material.cache) return false;
+    return !!this.waterGL.setWorld(world, this.material.cache, {
+      owner: this.surfaceOwnerData(world),
+      character: this.surfaceCharacterData(world),
+      ids: this.surfaceIdData(world),
+    });
   }
 
   resize() {
@@ -786,7 +940,9 @@ export class Renderer {
     }
     if (this.mapMode === 'cultures') this.drawCultureMix(ctx, world, list, cache.scale);
     if (this.mapMode === 'construction') this.drawConstructionOverlay(ctx, world, list, cache.scale);
-    if (this.showsPolitics()) this.drawBorders(ctx, world, list, cache.scale);
+    if (this.showsPolitics() && !this.surfaceInk()) {
+      this.drawBorders(ctx, world, list, cache.scale);
+    }
     ctx.restore();
   }
 
@@ -1348,11 +1504,15 @@ export class Renderer {
     }
     if (this.mapMode === 'cultures') this.drawCultureMix(t, world, tiles, scale);
     if (this.mapMode === 'construction') this.drawConstructionOverlay(t, world, tiles, scale);
-    if (this.showGrid && scale >= GRID_MIN_ZOOM && this.mapMode !== 'geography') {
+    // Yüzey mürekkebi devredeyse bu üç aile YÜZEYDE çizilir (bkz.
+    // surfaceInk). İkisi birden çizerse çizgiler kalınlaşır ve alfa katlanır
+    // — işgal taramasının glSurface altında atlanmasıyla aynı gerekçe.
+    const ink = this.surfaceInk();
+    if (this.showGrid && scale >= GRID_MIN_ZOOM && this.mapMode !== 'geography' && !ink) {
       this.drawGrid(t, tiles, scale);
     }
-    if (this.mapMode !== 'geography') this.drawProvinceEdges(t, tiles, world, scale);
-    if (this.showsPolitics()) this.drawBorders(t, world, tiles, scale);
+    if (this.mapMode !== 'geography' && !ink) this.drawProvinceEdges(t, tiles, world, scale);
+    if (this.showsPolitics() && !ink) this.drawBorders(t, world, tiles, scale);
 
     if (clip) {
       b.restore();
@@ -1468,6 +1628,11 @@ export class Renderer {
   render(world, state = {}) {
     const ctx = this.ctx;
     const cam = this.camera;
+    // Son çizilen dünya SAKLANIR. Renderer dünyaya sahip değildir ve olmamalı,
+    // ama yüzey sunumu değiştiğinde (2B <-> 3B) hangi dünyayı yükleyeceğini
+    // bilmesi gerekir; `warmup` o anda çalışmıyor olabilir.
+    this.lastWorld = world;
+    this.uploadSurfaceWorld(world);
     // Geçen zaman kare sayısından bağımsız: animasyon her FPS'te aynı hızda akar.
     this.waterTime = performance.now() / 1000;
     // Su önce çizilir: ayrı bir tuval olduğu için sıra bileşimi değiştirmez,
@@ -1475,6 +1640,18 @@ export class Renderer {
     if (this.glWater()) {
       this.waterGL.seaMaterial = this.waterAnimatedMode();
       this.waterGL.overlayOn = this.mapMode === 'political';
+      // Mürekkep aileleri Canvas2D yolundakiyle AYNI koşullarla açılır
+      // (bkz. paintStaticContent): ızgara GRID_MIN_ZOOM üstünde ve showGrid
+      // açıkken, province kenarı coğrafya kipi dışında, sınır ve kenar
+      // gölgesi yalnız siyaset gösteren kiplerde.
+      if (this.waterGL.ink) {
+        const politics = this.showsPolitics();
+        this.waterGL.ink.grid = (this.showGrid && cam.zoom >= GRID_MIN_ZOOM
+          && this.mapMode !== 'geography') ? 1 : 0;
+        this.waterGL.ink.province = this.mapMode !== 'geography' ? 1 : 0;
+        this.waterGL.ink.border = politics ? 1 : 0;
+        this.waterGL.ink.edge = this.mapMode === 'political' ? 1 : 0;
+      }
       // İki doku, iki ayrı ömür: taban rengi yalnız sahiplik/kip değişince,
       // işgal taraması ise kontrol her değiştiğinde tazelenir. Aynı bayrağa
       // bağlamak savaşta ya bedava tam tarama ya da bayat işgal demekti.
@@ -1484,6 +1661,9 @@ export class Renderer {
         const t = performance.now();
         this.waterGL.updateOwners(this.surfaceOwnerData(world));
         this.waterGL.updateOverlay(this.surfaceOverlayData(world));
+        // Sınır sahipliğin fonksiyonu: renk tazelenip kimlik tazelenmezse
+        // fetihten sonra ülke yeni rengiyle ama ESKİ sınırıyla durur.
+        this.waterGL.updateIds?.(this.surfaceIdData(world));
         this.perf?.add('r.surfacecolors', performance.now() - t);
       } else if (this.surfaceOverlayDirty) {
         this.surfaceOverlayDirty = false;
@@ -1854,7 +2034,9 @@ export class Renderer {
       }
       // Kıyı hattı mürekkep süpürmesinde: kara dolgusundan SONRA gelmeli.
       if (water) this.water.bakeCoastline(j.ctx, world, bakeTiles.filter((t) => t.terrain.water));
-      if (this.showsPolitics()) this.drawBorders(j.ctx, world, bakeTiles, j.scale);
+      if (this.showsPolitics() && !this.surfaceInk()) {
+        this.drawBorders(j.ctx, world, bakeTiles, j.scale);
+      }
     } else if (!water) {
       // GL yüzey devredeyken uzak doku da zemin taşımaz: yalnız mürekkep.
       if (!this.glSurface() && j.phase === 'sea') {
@@ -2155,7 +2337,19 @@ export class Renderer {
       ctx.clip(group.path);
       ctx.beginPath();
       const height = group.maxY - group.minY;
-      for (let x = group.minX - height; x <= group.maxX + height; x += period) {
+      // ZOOM LOD. Aralık dünyaya, kalınlık ekrana kilitliydi; ikisi birlikte
+      // kaplamayı zoomun fonksiyonu yapıyordu — ölçüldü: zoom 1'de ~%36,
+      // eşik zoomda (0.28) %100'ü aşıyor, yani azınlık taraması düz boyaya
+      // dönüşüyor ve "azınlık" ile "çoğunluk" aynı görünüyordu. Periyot ikinin
+      // kuvvetiyle basamaklanınca ekran yoğunluğu %23-29 bandında kalır;
+      // basamak ikiye bölünme olduğu için geçişte çizgiler yerinden oynamaz.
+      const step = period * (2 ** Math.round(Math.log2(1 / scale)));
+      // FAZ DÜNYAYA ÇİVİLİ. Döngü `group.minX`ten başlıyordu; o değer GÖRÜNÜR
+      // karelerden türer, yani kaydırdıkça değişir ve şerit haritanın üstünde
+      // kayardı. Periyodun katına hizalanınca desen dünyaya yapışır
+      // (water.js'in bütün desenleri için verilen gerekçenin aynısı).
+      const x0 = Math.floor((group.minX - height) / step) * step;
+      for (let x = x0; x <= group.maxX + height; x += step) {
         ctx.moveTo(x, group.minY);
         ctx.lineTo(x + height, group.maxY);
       }

@@ -49,9 +49,14 @@ const showErr = (msg) => {
   if (el) el.textContent = 'ERROR: ' + msg;
 };
 window.addEventListener('error', (e) => showErr(e.message + ' @ ' + (e.filename || '') + ':' + e.lineno));
-window.addEventListener('unhandledrejection', (e) => showErr((e.reason?.message ?? e.reason) + ' | ' + (e.reason?.stack ?? '').split('
-')[1]));
+window.addEventListener('unhandledrejection', (e) => showErr((e.reason?.message ?? e.reason) + ' | ' + (e.reason?.stack ?? '').split('\n')[1]));
 </script>
+  <!-- three.js VENDOR edilmiştir: derleme adımı yok, paket yöneticisi yok,
+       çevrimdışı çalışır. Yalnızca 3B harita kipi (renderer.setSurfaceMode('3d'))
+       bunu DİNAMİK olarak yükler; varsayılan yolda hiç indirilmez. -->
+  <script type="importmap">
+  {"imports": {"three": "./vendor/three/three.module.min.js"}}
+  </script>
 <script type="module">
 import { Game } from './src/game/game.js';
 import { materials } from './src/render/textures.js';
@@ -209,6 +214,63 @@ async function shot(name = 'shot') {
   return res.text();
 }
 
+/**
+ * PİKSEL-EŞ REFERANS TESTİ — 3B portunun tek güvenlik ağı.
+ *
+ * Eğim SIFIRKEN üç sunumun (classic / gpu / 3d) aynı pikselleri üretmesi
+ * gerekir: ortografik izdüşüm o noktada bugünkü afin dönüşümle birebir
+ * aynıdır. Aynı değilse yeni yol o mürekkep ailesini TAŞIMAMIŞ, yeniden
+ * YORUMLAMIŞ demektir — ve satır saymak bunu asla göstermez.
+ *
+ * Karşılaştırma tek sayfa içinde, tek dünya üzerinde ve AYNI kadrajda yapılır.
+ * Zamana bağlı katmanlar (deniz) bilerek dışarıda bırakılabilsin diye
+ * `landOnly` seçeneği var: kadrajda deniz varsa iki koşu asla tutmaz.
+ */
+async function abSurface({ a = 'gpu', b = '3d', settleMs = 6000, ink = false } = {}) {
+  const grab = async (mode) => {
+    await r.setSurfaceMode(mode);
+    // MÜREKKEP VARSAYILAN OLARAK DIŞARIDA. Mesh yolu ızgarayı, province
+    // kenarını ve sınırı YÜZEYDE çizer; Canvas2D yolu aynı çizgileri kendi
+    // kenar yumuşatmasıyla çizer. İkisi tanım gereği piksel-eş olamaz ve
+    // referans testinin sorusu "MALZEME sadık mı" olduğu için mürekkep
+    // kapatılır. Mürekkep karşılaştırması ayrı bir sorudur (ink: true).
+    if (r.waterGL && 'inkOnSurface' in r.waterGL) r.waterGL.inkOnSurface = ink;
+    await settle(settleMs);
+    lockCamera();
+    r.render(game.world, {});
+    const out = document.createElement('canvas');
+    out.width = canvas.width;
+    out.height = canvas.height;
+    const g = out.getContext('2d');
+    g.fillStyle = '#0b1115';
+    g.fillRect(0, 0, out.width, out.height);
+    const wc = document.getElementById('map-water');
+    if (wc && wc.width > 1) {
+      r.waterGL?.draw(cam, 0, true);   // zaman SABİT: deniz iki kolda da aynı
+      g.drawImage(wc, 0, 0, out.width, out.height);
+    }
+    g.drawImage(canvas, 0, 0);
+    return g.getImageData(0, 0, out.width, out.height).data;
+  };
+  const pa = await grab(a);
+  const pb = await grab(b);
+  let farkli = 0; let toplam = 0; let enBuyuk = 0;
+  for (let i = 0; i < pa.length; i += 4) {
+    const d = Math.abs(pa[i] - pb[i]) + Math.abs(pa[i + 1] - pb[i + 1])
+      + Math.abs(pa[i + 2] - pb[i + 2]);
+    if (d > 2) farkli++;
+    toplam += d;
+    if (d > enBuyuk) enBuyuk = d;
+  }
+  const n = pa.length / 4;
+  return {
+    a, b, piksel: n, farkliPiksel: farkli,
+    farkliYuzde: +(100 * farkli / n).toFixed(2),
+    ortalamaFark: +(toplam / n).toFixed(3),
+    enBuyukFark: enBuyuk,
+  };
+}
+
 /** Kadrajı değiştirir ve kilidi yeni değere taşır. */
 function setView({ zoom, x, y } = {}) {
   if (zoom !== undefined) want.zoom = zoom;
@@ -217,7 +279,7 @@ function setView({ zoom, x, y } = {}) {
   lockCamera();
 }
 
-window.lab = { game, r, cam, settle, bench, tag, shot, canvas, setView, want };
+window.lab = { game, r, cam, settle, bench, tag, shot, canvas, setView, want, abSurface };
 document.title = 'Map Lab READY';
 </script>
 </body>

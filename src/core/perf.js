@@ -19,6 +19,8 @@ const LONG_FRAME_MS = 33;
 const LONG_EVENT_MS = 8;
 /** rAF zinciri kopuksa (boşta oyun) pacing örneği sayılmaz. */
 const PACING_GAP_MS = 250;
+/** Ölçü (gauge) halkası: ~2 sn @60fps. Yüzdelik için yeterli örnek. */
+const GAUGE_RING = 120;
 
 export class PerfMonitor {
   constructor() {
@@ -35,6 +37,7 @@ export class PerfMonitor {
     this.longFrames = [];                  // son uzun kareler (bölüm dökümlü)
     this.events = [];                      // kare dışı büyük işler
     this.counters = {};                    // kare başına sayaçlar (hex, yol...)
+    this.gauges = new Map();               // ad -> { ring, head, count }
     this.frameId = 0;
     // GC yaklaşımı: heap örnekleri arasında negatif sıçrama = toplama.
     this.lastHeap = 0;
@@ -73,6 +76,28 @@ export class PerfMonitor {
   bump(name, n = 1) {
     if (!this.enabled || !this.inFrame) return;
     this.counters[name] = (this.counters[name] ?? 0) + n;
+  }
+
+  /**
+   * Kareye BAĞLANMAYAN ölçü.
+   *
+   * GPU zamanlayıcı sorgusunun sonucu aynı karede okunamaz — sürücü işi
+   * bitirene kadar birkaç kare geçer. Böyle bir değeri `add` ile yazmak onu
+   * YANLIŞ karenin hanesine koyar ve profil suçluyu şaşırtır (bu depoda
+   * tekrar eden kusur ailesi: iddia ettiğinden başka şeyi ölçen ölçüm).
+   * Bu kanal kendi halkasını tutar, kare kapanışına bakmaz ve raporda
+   * `gauges` altında AYRI durur.
+   */
+  gauge(name, value) {
+    if (!this.enabled || !Number.isFinite(value)) return;
+    let g = this.gauges.get(name);
+    if (!g) {
+      g = { ring: new Float32Array(GAUGE_RING), head: 0, count: 0 };
+      this.gauges.set(name, g);
+    }
+    g.ring[g.head] = value;
+    g.head = (g.head + 1) % GAUGE_RING;
+    if (g.count < GAUGE_RING) g.count++;
   }
 
   /** Kare dışı iş: setInterval saat tiki, otomatik kayıt, olay dinleyicisi. */
@@ -151,13 +176,25 @@ export class PerfMonitor {
   snapshot() {
     const dt = this.percentiles(this.dt);
     const cpu = this.percentiles(this.cpu);
+    const gauges = {};
+    for (const [name, g] of this.gauges) {
+      const vals = Array.from(g.ring.subarray(0, g.count)).sort((a, b) => a - b);
+      if (!vals.length) continue;
+      gauges[name] = {
+        n: vals.length,
+        avg: vals.reduce((s2, v) => s2 + v, 0) / vals.length,
+        p50: vals[Math.floor(0.5 * vals.length)],
+        p99: vals[Math.min(vals.length - 1, Math.floor(0.99 * vals.length))],
+        max: vals[vals.length - 1],
+      };
+    }
     const sections = {};
     for (const [name, s] of this.sectionStats) {
       sections[name] = { avg: s.n ? s.sum / s.n : 0, max: s.max };
     }
     return {
       fps: dt ? 1000 / dt.avg : 0,
-      dt, cpu, sections,
+      dt, cpu, sections, gauges,
       counters: { ...this.counters },
       longFrames: this.longFrames.slice(-8),
       events: this.events.slice(-8),
@@ -172,6 +209,7 @@ export class PerfMonitor {
     this.count = 0;
     this.lastFrameAt = 0;
     this.sectionStats.clear();
+    this.gauges.clear();
     this.longFrames.length = 0;
     this.events.length = 0;
     this.gcDrops = 0;

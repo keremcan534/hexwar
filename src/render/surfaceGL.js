@@ -23,6 +23,7 @@
 import { SQRT3 } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { makeRng, fbm } from './textures.js';
+import { GpuTimer } from './gpuTimer.js';
 
 const HEX_STEP = SQRT3 * HEX_SIZE;
 const ROW_H = HEX_SIZE * 1.5;
@@ -42,8 +43,20 @@ void main() {
   gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }`;
 
-const FRAG = `#version 300 es
-precision highp float;
+/**
+ * ORTAK YÜZEY GLSL'İ.
+ *
+ * İki sunum var ve ikisi de AYNI malzemeyi çizmeli: tam ekran tek üçgen
+ * (bu dosya) ve arazi mesh'i (bkz. scene3d.js). Kaynağı tek tutmanın
+ * gerekçesi basit — iki kopya kaçınılmaz olarak birbirinden ayrılır ve
+ * "aynı oyunda iki ayrı sanat yönetimi" bu depoda daha önce bir kez
+ * yaşandı (bkz. glWater yorumu).
+ *
+ * Bölünme noktası `world`ün NEREDEN geldiğidir: tam ekran sunumu onu ekran
+ * koordinatından ters afinle türetir, mesh sunumu vertex'ten varying olarak
+ * taşır. Geri kalan her şey ortaktır.
+ */
+export const SURFACE_LIB = `precision highp float;
 out vec4 fragColor;
 
 uniform vec2 uViewport;     // CSS piksel
@@ -92,7 +105,199 @@ uniform float uOverlayOn;    // 1 = isgal taramasi cizilsin
 uniform float uDataMode;     // 1 = veri/secim kipi: kabartma ve pigment kisilir
 uniform sampler2D uWave;    // RGBA8, LINEAR, tekrar — RG normal.xy, B/A yükseklik
 
+// --- YUZEY MUREKKEBI ---
+// Izgara, province kenari ve ulke siniri artik YUZEYIN KENDISINDE cizilebilir.
+// Gerekce: kamera egildigi an Canvas2D'nin duz afin murekkebi hexlerin
+// ustunden kayiyor (olculdu ve goruldu). Yuzeye cizilen cizgi araziye
+// kusursuz drape olur, z-fighting yoktur ve kalinligi dFdx/dFdy ile EKRAN
+// pikselinde sabit kalir — egimde de, perspektifte de.
+uniform sampler2D uIds;   // RG = grup id (16 bit), BA = province id (16 bit)
+uniform float uInkOn;     // 0 = murekkep Canvas2D'de, 1 = yuzeyde
+uniform float uInkGrid;   // izgara opakligi (zoom LOD cagirandan gelir)
+uniform float uInkProv;   // province kenari opakligi
+uniform float uInkEdge;   // ulke kenar golgesi payi
+uniform float uInkBorder; // ulke siniri (showsPolitics ile ayni kosul)
+
+// --- DUSEN GOLGE ve ORTAM TIKANIMI ---
+// Yukseklik alani zaten shader'da; golge icin ayrica bir golge haritasi,
+// FBO ya da cascade GEREKMEZ — isin dogrudan alanda yurutulur. Sarmali da
+// bedavaya cozer, cunku uElev S ekseninde REPEAT.
+uniform float uShadow;        // dusen golge siddeti (0 = kapali)
+uniform float uAO;            // ortam tikanimi siddeti (0 = kapali)
+uniform float uReliefHeight;  // yuksekligin (0..1) DUNYA birimi karsiligi
+
+
 const float SQ3 = 1.7320508;
+
+
+
+/** Yukseklik alanindan ornek; X sarmal (doku REPEAT), Y kenara kenetli. */
+float elevAt(vec2 world) {
+  return texture(uElev, (world - uFieldOrigin) / uFieldSpan).r;
+}
+
+/**
+ * DUSEN GOLGE — isin yuruyusu.
+ *
+ * Isiga dogru yururuz ve arazinin isini kesip kesmedigine bakariz. Bu,
+ * kabartma ISIGININ (yarim-Lambert) veremedigi tek seyi verir: bir SIRTIN
+ * KOMSU VADIYE dusen golgesi. Dagin dag gibi okunmasini saglayan ipucu
+ * budur; tepeden bakista bile calisir, cunku gunes ~29 derecede.
+ *
+ * Adim sayisi zoom'a bagli (uDetail): uzak zoomda golgenin ince yapisi
+ * zaten okunmaz, orada 6 adim yeterli.
+ */
+float castShadow(vec2 world, float h, vec3 L) {
+  if (uShadow <= 0.0) return 0.0;
+  vec2 dir = -normalize(L.xy);
+  float rise = L.z / max(1e-4, length(L.xy));
+  float stepLen = uHexSize * 0.32;
+  int n = 6 + int(8.0 * uDetail);
+  float sh = 0.0;
+  for (int i = 1; i <= 14; i++) {
+    if (i > n) break;
+    float t = stepLen * float(i);
+    float terr = elevAt(world + dir * t);
+    // Isinin o noktadaki yuksekligi, YUKSEKLIK biriminde.
+    float ray = h + (rise * t) / max(1.0, uReliefHeight);
+    // YUMUSAK ESIK, ham fark degil. Ham fark kullanildiginda golge
+    // DOYUYORDU: kabartma 90 birimken komsu hexler arasi egim ~31 derece,
+    // gunes ise 28,7 derecede — yani neredeyse her kare golgede kaliyor ve
+    // butun harita %31 parlakliga iniyordu (butun dunya goruntusunde
+    // goruldu). Fiziksel olarak dogru, harita icin yanlis: golge burada
+    // ACCENT, simulasyon degil.
+    float over = (terr - ray) * uReliefHeight;
+    float occ = smoothstep(0.0, uHexSize * 0.85, over);
+    // Uzaklastikca yumusa: sert kesim "karton duvar golgesi" gibi okunur.
+    sh = max(sh, occ * (1.0 - float(i) / float(n + 3)));
+  }
+  return clamp(sh, 0.0, 1.0);
+}
+
+/**
+ * ORTAM TIKANIMI — ufuk taramasi.
+ *
+ * Dort yonde arazinin ufku ne kadar kapattigina bakar. Golgeden farki
+ * YONSUZ olmasi: vadi tabani gunes nereden vurursa vursun daha az gok
+ * gorur. Kabartmaya derinlik veren ikinci ipucu.
+ */
+float horizonAO(vec2 world, float h) {
+  if (uAO <= 0.0) return 0.0;
+  float ao = 0.0;
+  for (int k = 0; k < 4; k++) {
+    float a = 1.5707963 * float(k) + 0.35;
+    vec2 dir = vec2(cos(a), sin(a));
+    float best = 0.0;
+    for (int i = 1; i <= 3; i++) {
+      float t = uHexSize * 0.55 * float(i);
+      float terr = elevAt(world + dir * t);
+      // Egim tanjanti; 1.0 = 45 derece. Yarisi alinir, yoksa engebeli
+      // arazide tikanim her yerde tavana vurur ve AO bir 'karartma
+      // filtresine' donusur.
+      best = max(best, (terr - h) * uReliefHeight / t * 0.5);
+    }
+    ao += clamp(best, 0.0, 1.0);
+  }
+  return ao * 0.25;
+}
+
+const vec2 HEX_DIRS[6] = vec2[6](
+  vec2(1.0, 0.0), vec2(0.0, 1.0), vec2(-1.0, 1.0),
+  vec2(-1.0, 0.0), vec2(0.0, -1.0), vec2(1.0, -1.0)
+);
+
+/** Offset (col,row) -> hex merkezi (dunya). worldgen.hexToPixel ile ayni. */
+vec2 hexCenter(vec2 cell) {
+  float r = cell.y;
+  float q = cell.x - floor(r * 0.5);
+  return vec2(uHexSize * SQ3 * (q + r * 0.5), uHexSize * 1.5 * r);
+}
+
+/** Kenar dir uzerindeki komsunun offset hucresi. */
+vec2 neighborCell(vec2 cell, int dir) {
+  float r = cell.y;
+  float q = cell.x - floor(r * 0.5);
+  vec2 d = HEX_DIRS[dir];
+  float nq = q + d.x;
+  float nr = r + d.y;
+  return vec2(nq + floor(nr * 0.5), nr);
+}
+
+/** Hucrenin kimligi. RG grup (ulke ya da kultur), BA province. */
+vec4 idAt(vec2 cell) {
+  vec2 c = cell;
+  if (uWrap > 0.0) c.x = mod(c.x, uGrid.x);
+  return texture(uIds, (c + 0.5) / uGrid) * 255.0;
+}
+
+bool sameGroup(vec4 a, vec4 b) { return a.r == b.r && a.g == b.g; }
+bool sameProvince(vec4 a, vec4 b) { return a.b == b.b && a.a == b.a; }
+
+/**
+ * YUZEY MUREKKEBI.
+ *
+ * Kenar uzakligi ANALITIKTIR: sivri-tepe hexin kenar i'sinin dis normali
+ * 60*i derecededir ve merkeze uzakligi ic yaricap (apothem). Uzakligin
+ * dunya-piksel orani dFdx/dFdy'den gelir, dolayisiyla cizgi kalinligi
+ * kameradan BAGIMSIZ olarak ekran pikselindedir — Canvas2D'nin lineWidth /
+ * scale numarasinin egimde calismayan karsiligi budur.
+ */
+vec3 inkLayer(vec3 col, vec2 world, vec2 cell) {
+  if (uInkOn < 0.5) return col;
+  vec2 p = world - hexCenter(cell);
+  // En yakin kenar: normale izdusumu EN BUYUK olan.
+  float best = -1e9;
+  int bi = 0;
+  for (int i = 0; i < 6; i++) {
+    float a = radians(60.0 * float(i));
+    float d = dot(p, vec2(cos(a), sin(a)));
+    if (d > best) { best = d; bi = i; }
+  }
+  float apothem = uHexSize * 0.8660254;
+  float dist = apothem - best;              // kenara uzaklik (dunya birimi)
+  float wpp = max(length(dFdx(world)), length(dFdy(world)));
+  if (wpp <= 0.0) return col;
+
+  vec4 me = idAt(cell);
+  vec4 nb = idAt(neighborCell(cell, bi));
+  bool border = !sameGroup(me, nb);
+  bool provEdge = !sameProvince(me, nb);
+
+  // KENAR GOLGESI. Canvas2D'de iki ayri halka dolgusuydu (0.13 + 0.26 alfa);
+  // burada surekli bir gradyan, cunku uzaklik zaten elde. Ulke "kesilmis
+  // kagit" gibi kenarinda golgelenir.
+  if (border && uInkEdge > 0.0 && uInkBorder > 0.0) {
+    float g = 1.0 - smoothstep(0.0, uHexSize * 1.15, dist);
+    col *= 1.0 - g * g * 0.30 * uInkEdge;
+  }
+
+  // Izgara: en ince ve en soluk katman, yalnizca yakin zoomda.
+  if (uInkGrid > 0.0) {
+    float hw = 1.0 * wpp * 0.5;
+    float a = 1.0 - smoothstep(hw - wpp, hw + wpp, dist);
+    col = mix(col, vec3(0.04, 0.06, 0.07), a * 0.16 * uInkGrid);
+  }
+
+  // Province kenari: ince, koyu, yalnizca farkli province'e bakan kenarda.
+  if (provEdge && uInkProv > 0.0) {
+    float hw = 1.6 * wpp * 0.5;
+    float a = 1.0 - smoothstep(hw - wpp, hw + wpp, dist);
+    col = mix(col, vec3(0.05, 0.07, 0.08), a * 0.45 * uInkProv);
+  }
+
+  // Ulke siniri: kalin murekkep hatti + ic kenarda sicak pay. Renkler
+  // Canvas2D yolundan birebir alindi (bkz. renderer.drawBorders).
+  if (border && uInkBorder > 0.0) {
+    float hw = 3.4 * wpp * 0.5;
+    float a = 1.0 - smoothstep(hw - wpp, hw + wpp, dist);
+    col = mix(col, vec3(0.035, 0.051, 0.059), a * 0.82);
+    float ih = 1.1 * wpp * 0.5;
+    float inner = (1.0 - smoothstep(hw + ih - wpp, hw + ih + wpp, dist))
+                * smoothstep(hw - wpp, hw + wpp, dist);
+    col = mix(col, vec3(0.808, 0.710, 0.494), inner * 0.16);
+  }
+  return col;
+}
 
 /** Dünya noktasının hangi hexe düştüğü — ANALİTİK, dolayısıyla tam. */
 vec2 hexAt(vec2 w) {
@@ -177,6 +382,13 @@ vec3 landColor(vec2 world, vec2 cell, vec3 Ldir) {
   // Yumusak yarim-Lambert: golge tarafi olmez, sirt yine one cikar.
   float shade = lam * 0.5 + 0.5;
   shade = pow(clamp(shade, 0.0, 1.0), 1.35);
+  // DUSEN GOLGE ve TIKANIM. Yarim-Lambert yalniz YUZEYIN kendi egimini bilir;
+  // komsusunun onu golgeleyip golgelemedigini bilmez. Ikisi de veri kipinde
+  // kisilir (damp), cunku orada harita bir secim yuzeyidir.
+  float sh = castShadow(world, h, Ldir);
+  float ao = horizonAO(world, h);
+  shade *= 1.0 - sh * 0.38 * uShadow;
+  shade *= 1.0 - ao * 0.18 * uAO;
 
   // --- PIGMENT ---
   // Uc olcek: genis boya kalinligi, orta leke, ince gren. Ince olan arazi
@@ -215,12 +427,10 @@ vec3 landColor(vec2 world, vec2 cell, vec3 Ldir) {
   }
   return col;
 }
+`;
 
-void main() {
-  vec2 px = gl_FragCoord.xy / uDpr;
-  // Canvas2D ile aynı eksen: y aşağı.
-  vec2 scr = vec2(px.x, uViewport.y - px.y);
-  vec2 world = (scr - uViewport * 0.5) / uZoom + uCam;
+/** Yüzey rengi. Karanın dışında (kutupların ötesi) `discard` eder. */
+export const SURFACE_BODY = `vec4 surfaceAt(vec2 world) {
 
   // --- KARA MASKESİ (tam hex kenarı) ---
   vec2 cr = hexAt(world);
@@ -232,8 +442,7 @@ void main() {
   float isWater = texture(uHex, (cell + 0.5) / uGrid).r;
   if (isWater >= 0.5 && uSeaMaterial < 0.5) {
     // Duz deniz: rengi de oyunun kendi borusundan gelir (uOwner).
-    fragColor = vec4(texture(uOwner, (cell + 0.5) / uGrid).rgb, 1.0);
-    return;
+    return vec4(inkLayer(texture(uOwner, (cell + 0.5) / uGrid).rgb, world, cell), 1.0);
   }
   // Isik yonu SU ile ORTAK: iki yuzeyin ayni dunyada olmasi buna bagli.
   vec3 Ldir = normalize(vec3(-0.55, -0.68, 0.48));
@@ -242,8 +451,7 @@ void main() {
     // Kuresel derece: orta ton cevresinde S egrisi + soguk golge/sicak isik.
     vec3 gr = land * land * (3.0 - 2.0 * land);
     land = mix(land, gr, uGrade);
-    fragColor = vec4(clamp(land, 0.0, 1.0), 1.0);
-    return;
+    return vec4(clamp(inkLayer(land, world, cell), 0.0, 1.0), 1.0);
   }
 
   // --- DALGALAR (uzaklıktan ÖNCE: sığlık onların üstünden kırılacak) ---
@@ -354,7 +562,17 @@ void main() {
   foam *= 0.6 + 0.4 * uDetail;
   col3 = mix(col3, vec3(0.58, 0.64, 0.63), clamp(foam * uFoamAmp, 0.0, 0.62));
 
-  fragColor = vec4(col3, 1.0);
+  return vec4(inkLayer(col3, world, cell), 1.0);
+}`;
+
+const FRAG = `#version 300 es
+${SURFACE_LIB}
+${SURFACE_BODY}
+void main() {
+  vec2 px = gl_FragCoord.xy / uDpr;
+  // Canvas2D ile aynı eksen: y aşağı.
+  vec2 scr = vec2(px.x, uViewport.y - px.y);
+  fragColor = surfaceAt((scr - uViewport * 0.5) / uZoom + uCam);
 }`;
 
 function compile(gl, type, src) {
@@ -398,7 +616,7 @@ function smear(src, size, dx, dy, taps) {
   return out;
 }
 
-function buildWaveTexture() {
+export function buildWaveTexture() {
   const size = WAVE_SIZE;
   // İki alan, İKİ AYRI yönde yayılmış: üst üste bindiklerinde tek yönlü bir
   // tarama deseni değil, kesişen kabarma aileleri çıkar.
@@ -433,54 +651,92 @@ function buildWaveTexture() {
   return { data, size };
 }
 
-export class SurfaceGL {
-  /** WebGL2 yoksa null döner: çağıran Canvas2D suyuna geri düşer. */
-  static create(canvas) {
-    const gl = canvas.getContext('webgl2', {
-      alpha: true, antialias: false, depth: false, stencil: false,
-      premultipliedAlpha: true, powerPreference: 'high-performance',
-    });
-    if (!gl) return null;
-    try {
-      return new SurfaceGL(canvas, gl);
-    } catch {
-      return null;
-    }
+/**
+ * Float32 -> IEEE 754 yarım kayan nokta (bit deseni).
+ *
+ * WebGL2 `HALF_FLOAT` dokuya Uint16 bekler; tarayıcıda dönüştürücü yok.
+ * Yükseklik alanı 0..1 aralığında olduğu için ne taşma ne de subnormal
+ * yolu ısınır, ama ikisi de doğru ele alınıyor: alan bir gün başka bir
+ * ölçekte kullanılırsa sessizce bozulmasın.
+ */
+function toHalf(value) {
+  const f = new Float32Array(1);
+  const i = new Int32Array(f.buffer);
+  f[0] = value;
+  const x = i[0];
+  const sign = (x >> 16) & 0x8000;
+  let exp = ((x >> 23) & 0xff) - 127 + 15;
+  const mant = x & 0x7fffff;
+  if (exp <= 0) {
+    // Subnormal ya da sıfır: mantis kaydırılarak korunur.
+    if (exp < -10) return sign;
+    return sign | ((mant | 0x800000) >> (1 - exp + 13));
   }
+  if (exp >= 31) return sign | 0x7c00;  // taşma -> sonsuz
+  return sign | (exp << 10) | (mant >> 13);
+}
 
-  constructor(canvas, gl) {
-    this.canvas = canvas;
-    this.gl = gl;
-    this.world = null;
-    this.dpr = 1;
-    /**
-     * Su ÇÖZÜNÜRLÜĞÜ tam kare değil: malzeme düşük frekanslı olduğu için
-     * 0.75x'te fark görünmez, piksel işi %44 azalır.
-     */
-    this.resScale = 0.75;
-    this.lastDraw = 0;
-    this.debug = { enabled: true };
-    /** Deniz malzemeli mi cizilsin? Renderer harita kipine gore ayarlar. */
-    this.seaMaterial = true;
-    /** Isgal taramasi (yalniz siyasi kipte). */
-    this.overlayOn = false;
-    this.overlayTex = null;
-    /**
-     * Denizin karakteri. Konsoldan canlı değiştirilebilir:
-     *   game.renderer.waterGL.tune.abyss = [0.05, 0.12, 0.15]
-     *   game.renderer.waterGL.draw(game.camera, performance.now()/1000, true)
-     */
-    /**
-     * Varsayılan palet REFERANSLARDAN okundu (FENESHGARD ve KAZYLSTAN
-     * kareleri): açık deniz KOYU DEĞİL, orta tonda aydınlık bir teal; kıyıda
-     * belirgin daha parlak bir şelf; derinlik farkı renkle de anlatılıyor.
-     *
-     * Not: bu, ikinci brifingin "deep petrol / charcoal cyan, parlak camgöbeği
-     * YOK" yönergesinden bilinçli bir sapmadır. O yönergeye göre ayarlanan
-     * palet (abis 0.025/0.066/0.086) referansların yanında ölü kalıyordu —
-     * seçim referans karelerinden yana yapıldı.
-     */
-    this.tune = {
+/**
+ * Yüzey alanlarının HAM VERİSİ — GPU nesnesi değil, yalnız typed array.
+ *
+ * İki sunum (tam ekran shader ve arazi mesh'i) aynı dünyayı aynı sayılarla
+ * görmeli; ayrıca bu fonksiyon hiçbir GL bağlamına dokunmadığı için mesh
+ * tarafı kendi doku sınıfını (three.js DataTexture) kurabiliyor.
+ */
+export function buildSurfaceFields(world, coast) {
+  const cols = world.cols;
+  const rows = world.rows;
+  const hex = new Uint8Array(cols * rows);
+  for (let i = 0; i < hex.length; i++) {
+    const t = world.tiles[i];
+    hex[i] = t && t.terrain.water ? 255 : 0;
+  }
+  const { toLand, surface, w, h } = coast;
+  const dist = new Uint8Array(w * h);
+  for (let i = 0; i < dist.length; i++) {
+    dist[i] = Math.min(255, Math.round((toLand[i] / DIST_MAX) * 255));
+  }
+  const elev = new Uint16Array(surface.length);
+  for (let i = 0; i < surface.length; i++) elev[i] = toHalf(surface[i]);
+  return { hex, dist, elev, cols, rows, w, h };
+}
+
+/** Yükseklik/uzaklık alanlarının dünya dikdörtgeni. Tek kaynak: iki sunum da
+ *  aynı orijini kullanmazsa kabartma ile hex ızgarası birbirinden kayar. */
+export function fieldOf(world) {
+  return {
+    x0: WRAP_X0,
+    y0: -ROW_H / 2,
+    spanX: world.cols * HEX_STEP,
+    spanY: world.rows * ROW_H,
+  };
+}
+
+/**
+ * Denizin ve karanın SANAT AYARLARI. Fabrika olmasının gerekçesi: iki sunum
+ * (tam ekran ve mesh) aynı ayarlarla başlamalı ama biri diğerininkini canlı
+ * değiştirdiğinde ötekini bozmamalı — konsoldan `tune` kurcalamak bu depoda
+ * meşru bir iş akışı (bkz. WaterGL.tune yorumu).
+ */
+/**
+ * Yüzey katmanının WebGL2 bağlamı. Tuval tek bağlam verebildiği için onu
+ * SUNUM DEĞİL RENDERER açar; ham yol (SurfaceGL) ve mesh yolu (Scene3D) aynı
+ * bağlamı ödünç alır. Aksi hâlde ikisi yan yana yaşayamaz ve bu portun tek
+ * güvenlik ağı olan A/B karşılaştırması imkânsızlaşır.
+ *
+ * `depth` artık AÇIK: mesh yolunun derinlik tamponuna ihtiyacı var. Ham yol
+ * tek tam-ekran üçgen çizdiği için bundan etkilenmez, yalnız birkaç yüz
+ * kilobayt tampon ödenir.
+ */
+export function createSurfaceContext(canvas) {
+  return canvas.getContext('webgl2', {
+    alpha: true, antialias: false, depth: true, stencil: false,
+    premultipliedAlpha: true, powerPreference: 'high-performance',
+  });
+}
+
+export function defaultTune() {
+  return {
       shallow: [0.290, 0.560, 0.570],
       teal: [0.165, 0.335, 0.365],
       petrol: [0.108, 0.240, 0.272],
@@ -506,7 +762,90 @@ export class SurfaceGL {
       relief: 1.0,
       grain: 0.55,
       grade: 0.30,
-    };
+  };
+}
+
+export class SurfaceGL {
+  /** WebGL2 yoksa null döner: çağıran Canvas2D suyuna geri düşer. */
+  static create(canvas, gl, onContextChange = null) {
+    if (!gl) return null;
+    try {
+      return new SurfaceGL(canvas, gl, onContextChange);
+    } catch (err) {
+      // SESSİZ YUTMA YOK. Kurulum hatası (çoğu zaman shader derlemesi) burada
+      // yutulursa oyun Canvas2D'ye düşer ve kimse NEDEN düştüğünü bilmez.
+      console.warn('SurfaceGL kurulamadı:', err);
+      return null;
+    }
+  }
+
+  constructor(canvas, gl, onContextChange = null) {
+    this.canvas = canvas;
+    this.gl = gl;
+    this.world = null;
+    /**
+     * BAĞLAM KAYBI. Eskiden hiç ele alınmıyordu ve sonucu sessiz bir kara
+     * ekrandı: `create` yalnız AÇILIŞTA WebGL2 var mı diye bakar, bağlam
+     * SONRADAN kaybolursa `waterGL` null olmaz, `debug.enabled` true kalır,
+     * dolayısıyla `renderer.glSurface()` hâlâ true döner ve Canvas2D zemini
+     * hiç boyamaz (bkz. renderer.canvasWater) — harita boşalır.
+     *
+     * Artık kayıpta GPU yolu kapanır ve renderer Canvas2D suyuna geri düşer;
+     * oyun çalışmaya devam eder. Geri gelince yeniden kurulum ÇAĞIRANA
+     * bırakılır: program, VAO ve bütün dokular ölmüştür, onları yamamak
+     * yerine katmanı sıfırdan kurmak hem kısa hem doğrudur.
+     */
+    this.onContextChange = onContextChange;
+    this.contextLost = false;
+    canvas.addEventListener('webglcontextlost', (e) => {
+      // preventDefault olmadan tarayıcı 'restored' olayını hiç göndermez.
+      e.preventDefault();
+      this.contextLost = true;
+      this.debug.enabled = false;
+      this.gpuTimer = null;
+      this.onContextChange?.('lost');
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      this.contextLost = false;
+      this.onContextChange?.('restored');
+    });
+    this.dpr = 1;
+    /**
+     * Su ÇÖZÜNÜRLÜĞÜ tam kare değil: malzeme düşük frekanslı olduğu için
+     * 0.75x'te fark görünmez, piksel işi %44 azalır.
+     */
+    this.resScale = 0.75;
+    this.lastDraw = 0;
+    this.debug = { enabled: true };
+    /**
+     * GPU zamanlayıcı. Eklenti yoksa null kalır ve ölçüm sessizce yapılmaz —
+     * çizim her hâlükârda çalışır. Sonuç GEÇ döner, bu yüzden `perf.add`
+     * değil `perf.gauge` kullanılır (bkz. gpuTimer.js başlığı).
+     */
+    this.gpuTimer = GpuTimer.create(gl);
+    /** Renderer bağlar; yoksa ölçüm toplanmaz. */
+    this.perf = null;
+    /** Deniz malzemeli mi cizilsin? Renderer harita kipine gore ayarlar. */
+    this.seaMaterial = true;
+    /** Isgal taramasi (yalniz siyasi kipte). */
+    this.overlayOn = false;
+    this.overlayTex = null;
+    /**
+     * Denizin karakteri. Konsoldan canlı değiştirilebilir:
+     *   game.renderer.waterGL.tune.abyss = [0.05, 0.12, 0.15]
+     *   game.renderer.waterGL.draw(game.camera, performance.now()/1000, true)
+     */
+    /**
+     * Varsayılan palet REFERANSLARDAN okundu (FENESHGARD ve KAZYLSTAN
+     * kareleri): açık deniz KOYU DEĞİL, orta tonda aydınlık bir teal; kıyıda
+     * belirgin daha parlak bir şelf; derinlik farkı renkle de anlatılıyor.
+     *
+     * Not: bu, ikinci brifingin "deep petrol / charcoal cyan, parlak camgöbeği
+     * YOK" yönergesinden bilinçli bir sapmadır. O yönergeye göre ayarlanan
+     * palet (abis 0.025/0.066/0.086) referansların yanında ölü kalıyordu —
+     * seçim referans karelerinden yana yapıldı.
+     */
+    this.tune = defaultTune();
 
     const prog = gl.createProgram();
     gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
@@ -526,7 +865,9 @@ export class SurfaceGL {
       'uWaveAmp', 'uWaveShade', 'uRefract',
       'uOwner', 'uChar', 'uElev', 'uElevSize',
       'uLandRelief', 'uLandGrain', 'uGrade', 'uSeaMaterial',
-      'uOverlay', 'uOverlayOn', 'uDataMode']) {
+      'uOverlay', 'uOverlayOn', 'uDataMode',
+      'uIds', 'uInkOn', 'uInkGrid', 'uInkProv', 'uInkEdge', 'uInkBorder',
+      'uShadow', 'uAO', 'uReliefHeight']) {
       this.u[name] = gl.getUniformLocation(prog, name);
     }
 
@@ -538,14 +879,36 @@ export class SurfaceGL {
     this.ownerTex = null;
     this.charTex = null;
     this.elevTex = null;
+    this.idsTex = null;
+    /** Yüzey mürekkebi bu sunumda devrede mi (bkz. renderer.surfaceInk). */
+    this.inkOnSurface = false;
+    /** Mürekkep aile opaklıkları; renderer zoom ve kipe göre doldurur. */
+    this.ink = { grid: 0, province: 0, edge: 0, border: 0 };
+    /**
+     * Dusen golge ve tikanim siddeti. Tam ekran yolunda yukseklik geometri
+     * DEGIL, ama golge yine de hesaplanabilir: alan elde. `reliefHeight`
+     * yuksekligin (0..1) dunya birimi karsiligi — bir hex yaricapi.
+     */
+    this.shadow = 1;
+    this.ao = 1;
+    /**
+     * 26 (bir hex yarıçapı) DENENDİ ve yetmedi: hex 45 birim geniş, kabartma
+     * 26 birim yüksek olunca eğimler çok yatık kalıyor ve düşen gölge algı
+     * eşiğinin altında duruyor. 90'da gölge okunur hâle geliyor (ölçüldü:
+     * kapalıya göre piksellerin %66'sı değişiyor, ortalama fark 4,2/765).
+     * Daha yükseği stratejik okumayı bozmaya başlıyor — bu bir harita,
+     * manzara değil.
+     */
+    this.reliefHeight = 60;
   }
 
-  makeTex(internal, format, w, h, data, filter, wrap, wrapT = wrap) {
+  makeTex(internal, format, w, h, data, filter, wrap, wrapT = wrap, type = null) {
     const gl = this.gl;
     const tex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, tex);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
-    gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, format, gl.UNSIGNED_BYTE, data);
+    gl.texImage2D(gl.TEXTURE_2D, 0, internal, w, h, 0, format,
+      type ?? gl.UNSIGNED_BYTE, data);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
@@ -567,20 +930,14 @@ export class SurfaceGL {
     const cols = world.cols;
     const rows = world.rows;
 
-    const hex = new Uint8Array(cols * rows);
-    for (let i = 0; i < hex.length; i++) {
-      const t = world.tiles[i];
-      hex[i] = t && t.terrain.water ? 255 : 0;
-    }
+    const f = buildSurfaceFields(world, coast);
+    const hex = f.hex;
     if (this.hexTex) gl.deleteTexture(this.hexTex);
     this.hexTex = this.makeTex(gl.R8, gl.RED, cols, rows, hex,
       gl.NEAREST, gl.REPEAT, gl.CLAMP_TO_EDGE);
 
-    const { toLand, w, h } = coast;
-    const dist = new Uint8Array(w * h);
-    for (let i = 0; i < dist.length; i++) {
-      dist[i] = Math.min(255, Math.round((toLand[i] / DIST_MAX) * 255));
-    }
+    const { w, h } = coast;
+    const dist = f.dist;
     if (this.distTex) gl.deleteTexture(this.distTex);
     this.distTex = this.makeTex(gl.R8, gl.RED, w, h, dist,
       gl.LINEAR, gl.REPEAT, gl.CLAMP_TO_EDGE);
@@ -595,26 +952,31 @@ export class SurfaceGL {
     if (this.charTex) gl.deleteTexture(this.charTex);
     this.charTex = this.makeTex(gl.RGBA8, gl.RGBA, cols, rows, surfaceData.character,
       gl.NEAREST, gl.REPEAT, gl.CLAMP_TO_EDGE);
+    // Kimlik: yüzey mürekkebinin girdisi (bkz. renderer.surfaceIdData).
+    // NEAREST şart — kimlik enterpole edilirse sınır "aradaki" bir ülkeye ait
+    // olur ve hiçbir yere oturmaz.
+    if (this.idsTex) gl.deleteTexture(this.idsTex);
+    this.idsTex = this.makeTex(gl.RGBA8, gl.RGBA, cols, rows,
+      surfaceData.ids ?? new Uint8Array(cols * rows * 4),
+      gl.NEAREST, gl.REPEAT, gl.CLAMP_TO_EDGE);
 
     // Yükseklik: material.js'in zaten kurduğu yumuşatılmış raster (hex başına
     // 4 teksel). LINEAR örneklenir ve eğim shader'da alınır — kabartma böylece
     // ekran çözünürlüğünden bağımsız olur, önceden pişmiş bir gölge değildir.
-    const surf = coast.surface;
-    const elev = new Uint8Array(surf.length);
-    for (let i = 0; i < surf.length; i++) {
-      elev[i] = Math.max(0, Math.min(255, Math.round(surf[i] * 255)));
-    }
+    // R8 DEĞİL R16F. Sekiz bit tüm yükseklik aralığına 256 kademe veriyordu;
+    // hex-altı kırıklık (bkz. material.addSubHexDetail, genlik 0.014) orada
+    // yalnız 3-4 kademe eder ve eğim hesabı basamak basamak çıkar — kabartma
+    // "kırışık" değil "teraslı" okunur. Yarım kayan nokta WebGL2 çekirdeğinde
+    // LINEAR süzülebilir, eklenti istemez.
+    const elev = f.elev;
     if (this.elevTex) gl.deleteTexture(this.elevTex);
-    this.elevTex = this.makeTex(gl.R8, gl.RED, coast.w, coast.h, elev,
-      gl.LINEAR, gl.REPEAT, gl.CLAMP_TO_EDGE);
+    this.elevTex = this.makeTex(gl.R16F, gl.RED, coast.w, coast.h, elev,
+      gl.LINEAR, gl.REPEAT, gl.CLAMP_TO_EDGE, gl.HALF_FLOAT);
     this.elevSize = { w: coast.w, h: coast.h };
 
     this.world = world;
     this.grid = { cols, rows };
-    this.field = {
-      x0: WRAP_X0, y0: -ROW_H / 2,
-      spanX: cols * HEX_STEP, spanY: rows * ROW_H,
-    };
+    this.field = fieldOf(world);
     return true;
   }
 
@@ -635,6 +997,15 @@ export class SurfaceGL {
         gl.RGBA, gl.UNSIGNED_BYTE, overlayData);
     }
     this.lastDraw = 0;
+  }
+
+  updateIds(idData) {
+    if (!this.idsTex || !this.world) return;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.idsTex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.grid.cols, this.grid.rows,
+      gl.RGBA, gl.UNSIGNED_BYTE, idData);
   }
 
   updateOwners(ownerData) {
@@ -670,6 +1041,17 @@ export class SurfaceGL {
     this.lastCam = { x: camera.x, y: camera.y, zoom: camera.zoom };
 
     const gl = this.gl;
+    // Önceki karelerin sonuçları önce toplanır: okunmayan sorgu havuzu tıkar.
+    this.gpuTimer?.poll((ms) => this.perf?.gauge('gpu.surface', ms));
+    this.gpuTimer?.begin();
+    // DURUM KENDİ KURULUR. Bağlam mesh yoluyla (Scene3D/three) paylaşılıyor;
+    // three derinlik testini, yüz ayıklamayı ve karışımı kendi bildiği gibi
+    // bırakır. Tek tam-ekran üçgen çizen bu yol onları açık bulursa üçgen
+    // ayıklanabilir ya da testte kalabilir — sessiz bir boş ekran demektir.
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.CULL_FACE);
+    gl.disable(gl.BLEND);
+    gl.disable(gl.SCISSOR_TEST);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -709,6 +1091,15 @@ export class SurfaceGL {
     gl.uniform1f(u.uOverlayOn, this.overlayOn && this.overlayTex ? 1 : 0);
     gl.uniform1f(u.uDataMode, this.seaMaterial ? 0 : 1);
     gl.uniform2f(u.uElevSize, this.elevSize.w, this.elevSize.h);
+    const ink = this.ink;
+    gl.uniform1f(u.uInkOn, this.inkOnSurface ? 1 : 0);
+    gl.uniform1f(u.uInkGrid, ink?.grid ?? 0);
+    gl.uniform1f(u.uInkProv, ink?.province ?? 0);
+    gl.uniform1f(u.uInkEdge, ink?.edge ?? 0);
+    gl.uniform1f(u.uInkBorder, ink?.border ?? 0);
+    gl.uniform1f(u.uShadow, this.shadow);
+    gl.uniform1f(u.uAO, this.ao);
+    gl.uniform1f(u.uReliefHeight, this.reliefHeight);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.hexTex);
@@ -731,8 +1122,21 @@ export class SurfaceGL {
     gl.activeTexture(gl.TEXTURE6);
     gl.bindTexture(gl.TEXTURE_2D, this.overlayTex ?? this.ownerTex);
     gl.uniform1i(u.uOverlay, 6);
+    gl.activeTexture(gl.TEXTURE7);
+    gl.bindTexture(gl.TEXTURE_2D, this.idsTex ?? this.ownerTex);
+    gl.uniform1i(u.uIds, 7);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    this.gpuTimer?.end();
+    // Çizim çağrısı ve üçgen sayısı: port ilerledikçe bu iki sayı büyüyecek
+    // ve bütçenin nereye gittiğini satır satır gösterecek.
+    this.perf?.bump('draws', 1);
+    this.perf?.bump('tris', 1);
     return true;
+  }
+
+  dispose() {
+    this.gpuTimer?.dispose();
+    this.gpuTimer = null;
   }
 }

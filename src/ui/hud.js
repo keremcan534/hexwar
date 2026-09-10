@@ -208,20 +208,54 @@ export class Hud {
     // yani yavas makinedeki oyuncunun eline hicbir zaman gecmiyordu.
     // 'low' taban + kabarmayi birakir, kirisik/parilti/kopugu keser.
     const water = game.renderer?.water;
-    if (water) {
-      $('opt-live-sea').onchange = (e) => {
-        water.quality = e.target.checked ? 'high' : 'low';
-        // `swell` DE kapanmali. Uzak zoomun pahali yolu (`drawFar`) yalnizca
-        // `debug.swell`e bakar, `quality`ye DEGIL: kalite 'low' yapilsa bile
-        // desen dolgusu -- maliyetin tamami -- yine calisiyordu. `base` acik
-        // kalir, yani deniz duruyor; yalnizca canlanmiyor.
+    // Kutu HER İKİ kolu birden kısar. `renderer.liveSea` GPU yüzeyini (deniz
+    // malzemesi), `water.*` ise Canvas2D kolunu ilgilendirir; eskiden yalnız
+    // ikincisi bağlıydı ve GPU yolu varsayılan olduğu için kutu ölüydü.
+    $('opt-live-sea').onchange = (e) => {
+      const on = e.target.checked;
+      if (game.renderer) game.renderer.liveSea = on;
+      if (water) {
+        water.quality = on ? 'high' : 'low';
         for (const key of ['swell', 'ripple', 'shimmer', 'foam', 'disturbance']) {
-          water.debug[key] = e.target.checked;
+          water.debug[key] = on;
         }
-        game.renderer.invalidateCache();
-        game.requestRender();
-      };
-    }
+      }
+      game.renderer?.invalidateCache();
+      game.requestRender();
+    };
+    // --- 3B HARITA ---
+    // Kutu isaretlenince three.js DINAMIK olarak inen bir modul; kapaliyken
+    // hic indirilmez. Egim kaydiraci yalniz 3B kipte anlamli oldugu icin
+    // ona bagli gorunur.
+    const tiltWrap = $('opt-tilt-wrap');
+    const tilt = $('opt-tilt');
+    const tiltValue = $('opt-tilt-value');
+    const applyTilt = () => {
+      const surface = game.renderer?.waterGL;
+      if (!surface || !('tilt' in surface)) return;
+      const deg = Number(tilt.value);
+      surface.tilt = (deg * Math.PI) / 180;
+      // Egik ortografik hareket paralaksi VERMEZ; derinlik hissi ancak
+      // perspektif bolmesiyle gelir. Tepeden bakista (0) perspektif kapali
+      // kalir, cunku orada yalnizca bozulma ekler.
+      surface.perspective = deg > 0.5;
+      tiltValue.textContent = `${deg}°`;
+      game.renderer.invalidateCache();
+      game.requestRender();
+    };
+    tilt.oninput = applyTilt;
+    $('opt-3d').onchange = async (e) => {
+      const on = e.target.checked;
+      e.target.disabled = true;
+      const mode = await game.renderer?.setSurfaceMode(on ? '3d' : 'gpu');
+      e.target.disabled = false;
+      const ok = mode === '3d';
+      e.target.checked = ok;
+      tiltWrap.hidden = !ok;
+      if (ok) applyTilt();
+      game.renderer?.invalidateCache();
+      game.requestRender();
+    };
 
     el.seedChip.onclick = () => this.copySeed();
 

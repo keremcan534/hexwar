@@ -12,6 +12,7 @@ export class Camera {
     this.viewHeight = 1;
     this.bounds = null;   // { minX, minY, maxX, maxY }
     this.wrapX = null;    // silindir periyodu (dünya birimi) ya da null
+    this.projector = null; // 3B yüzey izdüşümü (bkz. setProjector)
   }
 
   setViewport(width, height) {
@@ -84,12 +85,47 @@ export class Camera {
   }
 
   /**
+   * 3B YÜZEY PROJEKTÖRÜ.
+   *
+   * Yüzey mesh olarak çizildiğinde (bkz. render/scene3d.js) düzlemsel afin
+   * dönüşüm artık DOĞRU DEĞİLDİR: bir noktanın ekran yeri yüksekliğine de
+   * bağlıdır ve eğim açıksa ters afin diye bir şey yoktur.
+   *
+   * Kamera matematiği (pan, zoom, kilit) afin KALIR — projektör yalnız
+   * "şu dünya noktası ekranda nerede" ve "şu ekran noktası dünyada nerede"
+   * sorularını devralır. İkisini ayırmazsak zoomAt'in imleç altındaki noktayı
+   * sabit tutma kimliği bozulur.
+   */
+  setProjector(projector) {
+    this.projector = projector ?? null;
+  }
+
+  /**
    * Dünya noktasının ekrana en yakın sarmal temsilcisi: dikişin öbür yanındaki
    * kopya ekranda daha yakınsa onu döndürür. Sarmalsız worldToScreen ile aynı.
+   *
+   * Yükseklik verilmezse projektör onu araziden örnekler — etiket, künye ve
+   * şehir böylece zeminin ÜSTÜNDE durur, havada asılı kalmaz.
    */
-  worldToScreenWrapped(wx, wy) {
+  worldToScreenWrapped(wx, wy, height = null) {
     if (this.wrapX) wx += this.wrapX * Math.round((this.x - wx) / this.wrapX);
+    if (this.projector) return this.projector.project(wx, wy, height);
     return this.worldToScreen(wx, wy);
+  }
+
+  /**
+   * Ekran noktasının düştüğü dünya noktası — TIKLAMANIN tek kaynağı.
+   *
+   * Projektör varsa ışın araziye yürütülür (yükseklik paralaksı); yoksa ters
+   * afin zaten kapalı formdur. Işın hiçbir yere çarpmazsa (haritanın dışı)
+   * afin cevaba düşülür ki tıklama sessizce ölmesin.
+   */
+  pickWorld(sx, sy) {
+    if (this.projector) {
+      const hit = this.projector.pick(sx, sy);
+      if (hit) return hit;
+    }
+    return this.screenToWorld(sx, sy);
   }
 
   worldToScreen(wx, wy) {

@@ -127,6 +127,13 @@
     <label><input type="checkbox" id="opt-grid" checked /> Grid</label>
     <label><input type="checkbox" id="opt-labels" checked /> Labels</label>
     <label><input type="checkbox" id="opt-live-sea" checked /> Live sea</label>
+    <!-- 3B harita: yuzey gercek geometri olur ve kamera egilebilir. three.js
+         yalnizca bu kutu isaretlenince indirilir (bkz. renderer.setSurfaceMode). -->
+    <label><input type="checkbox" id="opt-3d" /> 3D</label>
+    <label id="opt-tilt-wrap" hidden>Tilt
+      <input type="range" id="opt-tilt" min="0" max="50" step="1" value="30" />
+      <span id="opt-tilt-value">30°</span>
+    </label>
     <button class="chip" id="seed-chip" title="Copy seed">
       <span class="chip-label">seed</span><span id="seed-value">—</span>
     </button>
@@ -381,6 +388,12 @@
     </div>
   </div>
 
+  <!-- three.js VENDOR edilmiştir: derleme adımı yok, paket yöneticisi yok,
+       çevrimdışı çalışır. Yalnızca 3B harita kipi (renderer.setSurfaceMode('3d'))
+       bunu DİNAMİK olarak yükler; varsayılan yolda hiç indirilmez. -->
+  <script type="importmap">
+  {"imports": {"three": "./vendor/three/three.module.min.js"}}
+  </script>
   <script type="module" src="src/main.js"></script>
 </body>
 </html>
