@@ -47,7 +47,7 @@ const KARA_VERTEX = [
 ].join('\n');
 
 const KARA_FRAGMENT = [
-  'uniform sampler2D uArka, uDist, uYuk, uTip, uGurultu, uKiyiK, uSinir, uArazi;',
+  'uniform sampler2D uArka, uDist, uYuk, uTip, uGurultu, uKiyiK, uSinir, uArazi, uSahip;',
   'uniform vec2 uCozunurluk, uYukBoyut, uGrid;',
   'uniform vec4 uAlan;',
   'uniform vec3 uGunesDir, uKayaCol, uKarCol;',
@@ -56,6 +56,9 @@ const KARA_FRAGMENT = [
   'uniform float uPlajGen, uPlajGuc, uFalezGuc;',
   'uniform float uSinirGen, uIcOpaklik, uCanlilik, uSinirAzami;',
   'uniform float uKenarKalin, uKenarGuc, uHatGuc, uKontrast, uTavan, uIcKarart;',
+  'uniform float uCizgiKalin, uCizgiGuc;',
+  'uniform vec3 uCizgiRenk;',
+  'uniform vec2 uEkranSpan;',
   'uniform vec3 uPlajCol;',
   'varying vec3 vDunya;',
   '',
@@ -265,6 +268,61 @@ const KARA_FRAGMENT = [
   '            * smoothstep(0.0, uKenarKalin * uHex * 0.10, sinirD);',
   '  col *= 1.0 - hat * uHatGuc * 0.55;',
   '',
+  // SINIR ÇİZGİSİ — hex KENARINDA, analitik.
+  //
+  // Önceki sürüm sınırı yumuşak bir bant olarak boyuyordu; kullanıcı haklı
+  // olarak "absürt" dedi. Sınır bir alan değil bir HAT'tır ve hexin kenarında
+  // durur. Burada üçgen ya da segment yok: sivri-tepe hexin i numaralı
+  // kenarının dış normali 60·i derecededir ve merkeze uzaklığı iç yarıçaptır,
+  // yani kenara uzaklık tek bir nokta çarpımıyla çıkar.
+  //
+  // Kalınlık EKRAN pikselinde sabit: dünya biriminde sabit tutulursa uzak
+  // zoomda çizgi kaybolur, yakında kalasa döner.
+  '  vec2 cellQR = vec2(cell.x - floor(cell.y * 0.5), cell.y);',
+  '  vec2 merkez = vec2(uHexSize * 1.7320508 * (cellQR.x + cellQR.y * 0.5),',
+  '                     uHexSize * 1.5 * cellQR.y);',
+  '  vec2 rel = vDunya.xz - merkez;',
+  '  float icYaricap = uHexSize * 1.7320508 * 0.5;',
+  '  float pikselDunya = uEkranSpan.x / max(1.0, uCozunurluk.x);',
+  // Kalınlık ekran pikselinde sabit AMA hexin payını aşamaz. Sabit
+  // bırakılınca uzak zoomda (hex ~8 piksel) çizgi hexi yutuyor ve sıkışık
+  // ülkelerin olduğu yerde sınırlar birleşip koyu leke yapıyordu.
+  '  float yariKalin = min(max(0.35, uCizgiKalin * 0.5) * pikselDunya, icYaricap * 0.22);',
+  '  float benimSahip = texture2D(uSahip, (cell + 0.5) / uGrid).r;',
+  '  float cizgi = 0.0;',
+  '  for (int i = 0; i < 6; i++) {',
+  '    float aci = 1.0471976 * float(i);',
+  '    vec2 nrm = vec2(cos(aci), sin(aci));',
+  '    float kenarD = icYaricap - dot(rel, nrm);',
+  '    if (kenarD > yariKalin * 2.0) continue;',
+  // Komşunun ekseneli: DIRS sırası doğu'dan başlayıp saat yönünde döner ve
+  // kenar normalleriyle AYNI sırayı izler (60·i).
+  '    vec2 dq = vec2(0.0);',
+  '    if (i == 0) dq = vec2(1.0, 0.0);',
+  '    else if (i == 1) dq = vec2(0.0, 1.0);',
+  '    else if (i == 2) dq = vec2(-1.0, 1.0);',
+  '    else if (i == 3) dq = vec2(-1.0, 0.0);',
+  '    else if (i == 4) dq = vec2(0.0, -1.0);',
+  '    else dq = vec2(1.0, -1.0);',
+  '    vec2 kQR = cellQR + dq;',
+  '    vec2 kCell = vec2(kQR.x + floor(kQR.y * 0.5), kQR.y);',
+  '    kCell.x = mod(kCell.x, uGrid.x);',
+  '    if (kCell.y < 0.0 || kCell.y > uGrid.y - 1.0) continue;',
+  '    float kSahip = texture2D(uSahip, (kCell + 0.5) / uGrid).r;',
+  // 254/255 = deniz ve sahipsiz. Kıyıda çizgi çizilmez; kıyıyı zaten suyun
+  // kendisi anlatıyor ve orada çizgi haritayı kafeslere böler.
+  '    if (kSahip > 0.99 || benimSahip > 0.99) continue;',
+  '    if (abs(kSahip - benimSahip) < 0.002) continue;',
+  '    cizgi = max(cizgi, 1.0 - smoothstep(yariKalin * 0.6, yariKalin * 1.4, kenarD));',
+  '  }',
+  // UZAK ZOOMDA SÖNER. Hex ekranda ~10 piksele indiğinde çizgi hexin
+  // payını doldurur ve sıkışık ülkelerin olduğu yerde sınırlar birleşip
+  // koyu leke yapar. O ölçekte ayrımı zaten rengin KENDİSİ yapıyor;
+  // çizgi orada işe yaramadan zarar veriyor.
+  '  float hexPiksel = icYaricap * 2.0 / max(0.001, pikselDunya);',
+  '  float cizgiSol = smoothstep(9.0, 22.0, hexPiksel);',
+  '  col = mix(col, uCizgiRenk, cizgi * uCizgiGuc * cizgiSol);',
+  '',
   '  gl_FragColor = vec4(col, kara);',
   '}',
 ].join('\n');
@@ -277,7 +335,7 @@ const KARA_FRAGMENT = [
  *   Paylaşmak zorunlu: iki katman aynı kadrajı ve aynı güneşi görmeli, yoksa
  *   kıyıda iki ayrı dünya buluşur.
  */
-export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, araziTex, sinirAzami, yukBoyut, grid, hexSize }) {
+export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, araziTex, sahipTex, sinirAzami, yukBoyut, grid, hexSize }) {
   const U = {
     ...ortak,
     uTip: { value: tipTex },
@@ -306,10 +364,14 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uIcOpaklik: { value: 0.85 },
     uCanlilik: { value: 0.0 },
     uKenarKalin: { value: 0.42 },
-    uKenarGuc: { value: 0.9 },
+    uKenarGuc: { value: 0.0 },
     uHatGuc: { value: 0.0 },
     uTavan: { value: 0.62 },
-    uIcKarart: { value: 0.86 },
+    uIcKarart: { value: 0.94 },
+    uSahip: { value: sahipTex },
+    uCizgiKalin: { value: 3.0 },
+    uCizgiGuc: { value: 0.85 },
+    uCizgiRenk: { value: new THREE.Color('#0c1116') },
     uKontrast: { value: 0.35 },
   };
 
@@ -504,6 +566,28 @@ export function araziRenkDokusu(THREE, world) {
     veri[p] = rgb[0]; veri[p + 1] = rgb[1]; veri[p + 2] = rgb[2]; veri[p + 3] = 255;
   }
   const tex = new THREE.DataTexture(veri, cols, rows, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.minFilter = tex.magFilter = THREE.NearestFilter;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+/**
+ * Hex başına SAHİP kimliği (R8, NEAREST).
+ *
+ * Sınır çizgisi "komşumun sahibi benden farklı mı" sorusunu piksel piksel
+ * sorar; cevabı ancak bu doku verebilir. 255 = deniz ya da sahipsiz — o
+ * kenarlarda çizgi çizilmez, kıyıyı zaten suyun kendisi anlatıyor.
+ */
+export function sahipDokusu(THREE, world) {
+  const { cols, rows } = world;
+  const veri = new Uint8Array(cols * rows);
+  for (let i = 0; i < veri.length; i++) {
+    const t = world.tiles[i];
+    veri[i] = (!t || t.terrain.water || t.owner < 0) ? 255 : Math.min(253, t.owner);
+  }
+  const tex = new THREE.DataTexture(veri, cols, rows, THREE.RedFormat);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
   tex.minFilter = tex.magFilter = THREE.NearestFilter;

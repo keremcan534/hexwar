@@ -117,7 +117,7 @@ import {
 import { kusKatmani } from './lab/kuslar.js';
 import {
   karaKatmani, tipDokusu, yukseklikDokusu, denizUzakligiDokusu,
-  sinirAlaniDokusu, araziRenkDokusu,
+  sinirAlaniDokusu, araziRenkDokusu, sahipDokusu,
 } from './lab/kara.js';
 
 const q = new URLSearchParams(location.search);
@@ -178,15 +178,17 @@ const P = {
   karaAO: 0.35, karaKabartma: 1.0, karaYukOlcek: 320,
   plajGen: 0.55, plajGuc: 0.45, falezGuc: 0.5,
   sinirGen: 6.0, icOpaklik: 0.85, canlilik: 0.0,
-  kenarKalin: 0.42, kenarGuc: 1.0, hatGuc: 0.0, kontrast: 0.35,
-  tavan: 0.62, icKarart: 0.86,
+  kenarKalin: 0.42, kenarGuc: 0.0, hatGuc: 0.0, kontrast: 0.35,
+  cizgiKalin: 3.0, cizgiGuc: 0.85,
+  tavan: 0.62, icKarart: 0.94,
   kusYogunluk: 0.55, kusBoyut: 9, kusYukseklik: 10, kusHiz: 1,
 };
 // Önayarlar bu alanları taşımaz; önayar değişince sıfırlanmasınlar.
 const EKSTRA = ['kasirgaGuc', 'kasirgaYaricap', 'kusYogunluk', 'kusBoyut', 'kusYukseklik', 'kusHiz',
   'karaDoku', 'karaKaya', 'karaKar', 'karaGolge', 'karaAO', 'karaKabartma', 'karaYukOlcek',
   'plajGen', 'plajGuc', 'falezGuc', 'sinirGen', 'icOpaklik', 'canlilik',
-  'kenarKalin', 'kenarGuc', 'hatGuc', 'kontrast', 'tavan', 'icKarart'];
+  'kenarKalin', 'kenarGuc', 'hatGuc', 'kontrast', 'tavan', 'icKarart',
+  'cizgiKalin', 'cizgiGuc'];
 let aktifOnayar = 'master';
 THREE.ColorManagement.enabled = false;     // master paleti birebir çıksın
 
@@ -304,7 +306,7 @@ kus.mesh.renderOrder = 10;
 const kara = karaKatmani(THREE, {
   uArka: U.uArka, uDist: U.uDist, uGurultu: U.uGurultu, uAlan: U.uAlan,
   uOrigin: U.uOrigin, uSpan: U.uSpan, uCozunurluk: U.uCozunurluk,
-  uOlcek: U.uOlcek, uTime: U.uTime, uGunesDir: U.uGunesDir,
+  uOlcek: U.uOlcek, uTime: U.uTime, uGunesDir: U.uGunesDir, uEkranSpan: U.uEkranSpan,
   uDistMax: U.uDistMax, uHex: U.uHex,
 }, {
   tipTex: tipDokusu(THREE, game.world),
@@ -312,6 +314,7 @@ const kara = karaKatmani(THREE, {
   kiyiTex: denizUzakligiDokusu(THREE, alan, DIST_MAX),
   ...(() => { const a = sinirAlaniDokusu(THREE, game.world, alan, HEX_SIZE); return { sinirTex: a.tex, sinirAzami: a.azami }; })(),
   araziTex: araziRenkDokusu(THREE, game.world),
+  sahipTex: sahipDokusu(THREE, game.world),
   yukBoyut: { w: alan.w, h: alan.h },
   grid: { cols: game.world.cols, rows: game.world.rows },
   hexSize: HEX_SIZE,
@@ -377,6 +380,8 @@ function uygula() {
   kara.U.uKontrast.value = P.kontrast;
   kara.U.uTavan.value = P.tavan;
   kara.U.uIcKarart.value = P.icKarart;
+  kara.U.uCizgiKalin.value = P.cizgiKalin;
+  kara.U.uCizgiGuc.value = P.cizgiGuc;
 }
 
 // Kaydıraçlar GRUPLANIR: hepsi tek listede olunca hiçbiri bulunamıyordu.
@@ -432,8 +437,10 @@ const GRUPLAR = [
   ]],
   ['Ülke rengi (HOI4)', [
     ['sinirGen', 'Sınır bandı (hex)', 0.3, 6, 0.1],
-    ['kenarKalin', 'Şerit kalınlığı (hex)', 0.02, 0.8, 0.01],
-    ['kenarGuc', 'Şerit gücü', 0, 1, 0.01],
+    ['cizgiKalin', 'Sınır çizgisi (piksel)', 0, 10, 0.25],
+    ['cizgiGuc', 'Çizgi gücü', 0, 1, 0.01],
+    ['kenarKalin', 'Yumuşak şerit kalınlığı', 0.02, 0.8, 0.01],
+    ['kenarGuc', 'Yumuşak şerit gücü', 0, 1, 0.01],
     ['hatGuc', 'Kenar hattı', 0, 1, 0.01],
     ['tavan', 'Parlaklık tavanı', 0.3, 1, 0.01],
     ['icKarart', 'İç karartma', 0.6, 1, 0.01],
@@ -551,6 +558,18 @@ kopyaBtn.addEventListener('click', () => {
   kopyaBtn.textContent = 'kopyalandı ✓';
   setTimeout(() => { kopyaBtn.textContent = 'Ayarı kopyala'; }, 1400);
 });
+// Sınır çizgisinin rengi kaydıraçla seçilemez; küçük bir renk kutusu.
+const renkSatir = document.createElement('label');
+renkSatir.textContent = 'Sınır çizgisi rengi';
+renkSatir.style.marginTop = '8px';
+const renkKutu = document.createElement('input');
+renkKutu.type = 'color';
+renkKutu.value = '#0c1116';
+renkKutu.style.cssText = 'width:100%;height:22px;padding:0;border:1px solid rgba(150,190,200,0.22);'
+  + 'border-radius:4px;background:transparent;cursor:pointer;';
+renkKutu.addEventListener('input', () => kara.U.uCizgiRenk.value.set(renkKutu.value));
+document.getElementById('ui').append(renkSatir, renkKutu);
+
 document.getElementById('ui').append(kopyaBtn);
 
 const onaylarEl = document.getElementById('onaylar');
