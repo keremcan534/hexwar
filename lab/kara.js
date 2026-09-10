@@ -53,10 +53,10 @@ const KARA_FRAGMENT = [
   'uniform vec3 uGunesDir, uKayaCol, uKarCol;',
   'uniform float uHexSize, uDistMax, uHex, uOlcek, uTime;',
   'uniform float uDokuGuc, uKayaGuc, uKarSeviye, uGolgeGuc, uAO, uYukOlcek, uKabartmaK;',
-  'uniform float uPlajGen, uPlajGuc, uFalezGuc, uDagIsik;',
+  'uniform float uPlajGen, uPlajGuc, uFalezGuc;',
   'uniform float uSinirGen, uIcOpaklik, uCanlilik, uSinirAzami;',
   'uniform float uKenarKalin, uKenarGuc, uHatGuc, uKontrast, uTavan, uIcKarart;',
-  'uniform float uCizgiKalin, uCizgiGuc, uKarartmaTaban, uCizgiTon;',
+  'uniform float uCizgiKalin, uCizgiGuc, uKarartmaTaban;',
   'uniform vec3 uCizgiRenk;',
   'uniform vec2 uEkranSpan;',
   'uniform vec3 uPlajCol;',
@@ -132,15 +132,7 @@ const KARA_FRAGMENT = [
   '',
   '  vec2 crE = hexAt(vDunya.xz);',
   '  vec2 cellUV = (vec2(mod(crE.x, uGrid.x), crE.y) + 0.5) / uGrid;',
-  // Sahipsiz karayı arazi rengine çevirmeyi DENEDİK ve geri aldık: kullanıcı
-  // istemedi. Oyun sahipsiz toprağı nasıl gösteriyorsa öyle kalır.
   '  vec3 ulkeSaf = texture2D(uArka, suv).rgb;',
-  // BOŞ ARKA DOKU KORUMASI. Pencere yeniden boyutlandırılınca oyunun
-  // tuvali yeniden ayrılır ve BOŞALIR; o kareyi örnekleyen kara katmanı
-  // bütün kıtayı simsiyah çiziyordu (kullanıcı ekranda gösterdi). Doku
-  // boşsa katman hiç çizmez: altta oyunun kendi haritası durur. En kötü
-  // ihtimal 'iyileştirme yok' olur, asla 'siyah harita' olmaz.
-  '  if (dot(ulkeSaf, vec3(0.3333)) < 0.012) discard;',
   '  vec3 taban = ulkeSaf;',
   '',
   // HOI4 KİPİ. Ülke rengi her yerde aynı kuvvetteyse harita boyama kitabına
@@ -172,7 +164,7 @@ const KARA_FRAGMENT = [
   // birkaç ülke tamamen karardı). Pivot rengin kendi orta bölgesine çekildi
   // ve sonucun altına bir taban kondu: kontrast artık aydınlatır, öldürmez.
   '  vec3 gerilmis = clamp((taban - 0.42) * (1.0 + uKontrast) + 0.42, 0.0, 1.0);',
-  '  taban = max(gerilmis, taban * 0.88);',
+  '  taban = max(gerilmis, taban * 0.78);',
   '',
   // Yükseklik ve eğim: raster zaten hex başına 4 teksel, merkezî fark yeter.
   '  vec2 tx = 1.0 / uYukBoyut;',
@@ -210,13 +202,6 @@ const KARA_FRAGMENT = [
   '  col += tint * doku * uDokuGuc * 0.7;',
   '',
   // Eğimden KAYA: dik yamaçta bitki tutunmaz. Yükseklikten KAR: zirve beyazlar.
-  // DAĞ AYDINLATMA — oyunun kendi kabartma gölgesine KARŞI terim.
-  //
-  // Ölçüldü: oyunun kendi karesindeki koyu piksellerin %87'si HILLS ve
-  // MOUNTAIN. surfaceGL'in yarım-Lambert gölgesi tepeleri koyulaştırıyor
-  // ve dağ sıraları haritada koyu şerit gibi okunuyor. Bu terim eğimli
-  // yeri geri kaldırır; oyunun shaderine dokunmadan, yalnız üstünden.
-  '  col *= 1.0 + egim * uDagIsik;',
   '  float kaya = smoothstep(0.55, 0.95, egim) * uKayaGuc;',
   '  col = mix(col, uKayaCol * (0.75 + h * 0.5), kaya * 0.7);',
   // Kar ilk sürümde AMORF BEYAZ LEKE veriyordu: yükseklik alanı yumuşak
@@ -316,7 +301,7 @@ const KARA_FRAGMENT = [
   // Kalınlık ekran pikselinde sabit AMA hexin payını aşamaz. Sabit
   // bırakılınca uzak zoomda (hex ~8 piksel) çizgi hexi yutuyor ve sıkışık
   // ülkelerin olduğu yerde sınırlar birleşip koyu leke yapıyordu.
-  '  float yariKalin = min(max(0.3, uCizgiKalin * 0.5) * pikselDunya, icYaricap * 0.10);',
+  '  float yariKalin = min(max(0.35, uCizgiKalin * 0.5) * pikselDunya, icYaricap * 0.22);',
   '  float benimSahip = texture2D(uSahip, (cell + 0.5) / uGrid).r;',
   '  float cizgi = 0.0;',
   '  for (int i = 0; i < 6; i++) {',
@@ -349,13 +334,8 @@ const KARA_FRAGMENT = [
   // koyu leke yapar. O ölçekte ayrımı zaten rengin KENDİSİ yapıyor;
   // çizgi orada işe yaramadan zarar veriyor.
   '  float hexPiksel = icYaricap * 2.0 / max(0.001, pikselDunya);',
-  '  float cizgiSol = smoothstep(13.0, 34.0, hexPiksel);',
-  // Çizgi rengi sabit koyu mürekkep olunca kalınlaştığı an haritada DELİK
-  // gibi okunuyor. uCizgiTon onu ülkenin kendi renginin koyusuna çeker:
-  // sınır yine ayırır ama boşluk açmaz, ve iki yaka birbirinden ayrı
-  // tonda kalır (yeşilin tarafı koyu yeşil, kırmızının tarafı koyu kırmızı).
-  '  vec3 hatRenk = mix(uCizgiRenk, ulkeSaf * 0.34, uCizgiTon);',
-  '  col = mix(col, hatRenk, cizgi * uCizgiGuc * cizgiSol);',
+  '  float cizgiSol = smoothstep(9.0, 22.0, hexPiksel);',
+  '  col = mix(col, uCizgiRenk, cizgi * uCizgiGuc * cizgiSol);',
   '',
   '  gl_FragColor = vec4(col, kara);',
   '}',
@@ -379,37 +359,35 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uHexSize: { value: hexSize },
     uKayaCol: { value: new THREE.Color('#6e6a63') },
     uKarCol: { value: new THREE.Color('#dfe6e8') },
-    uDokuGuc: { value: 0.0 },
-    uKayaGuc: { value: 0.0 },
-    uDagIsik: { value: 0.4 },
-    uKarSeviye: { value: 1.01 },
-    uGolgeGuc: { value: 0.0 },
-    uAO: { value: 0.0 },
+    uDokuGuc: { value: 0.22 },
+    uKayaGuc: { value: 0.45 },
+    uKarSeviye: { value: 0.96 },
+    uGolgeGuc: { value: 0.42 },
+    uAO: { value: 0.35 },
     uYukOlcek: { value: 1400 },
     uKabartmaK: { value: 1.0 },
     uKiyiK: { value: kiyiTex },
     uPlajCol: { value: new THREE.Color('#d8c79a') },
     uPlajGen: { value: 0.55 },
-    uPlajGuc: { value: 0.0 },
-    uFalezGuc: { value: 0.0 },
+    uPlajGuc: { value: 0.45 },
+    uFalezGuc: { value: 0.5 },
     uSinir: { value: sinirTex },
     uArazi: { value: araziTex },
     uSinirAzami: { value: sinirAzami },
     uSinirGen: { value: 6.0 },
-    uIcOpaklik: { value: 1.0 },
+    uIcOpaklik: { value: 0.85 },
     uCanlilik: { value: 0.0 },
     uKenarKalin: { value: 0.42 },
     uKenarGuc: { value: 0.0 },
     uHatGuc: { value: 0.0 },
     uTavan: { value: 0.62 },
-    uIcKarart: { value: 1.0 },
+    uIcKarart: { value: 0.94 },
     uSahip: { value: sahipTex },
-    uCizgiKalin: { value: 2.0 },
+    uCizgiKalin: { value: 3.0 },
     uCizgiGuc: { value: 0.85 },
-    uCizgiTon: { value: 0.55 },
-    uKarartmaTaban: { value: 1.0 },
+    uKarartmaTaban: { value: 0.62 },
     uCizgiRenk: { value: new THREE.Color('#0c1116') },
-    uKontrast: { value: 0.0 },
+    uKontrast: { value: 0.35 },
   };
 
   const geo = new THREE.PlaneGeometry(1, 1, 1, 1);
@@ -622,11 +600,7 @@ export function sahipDokusu(THREE, world) {
   const veri = new Uint8Array(cols * rows);
   for (let i = 0; i < veri.length; i++) {
     const t = world.tiles[i];
-    // 255 = deniz, 254 = sahipsiz KARA, 0..253 = ülke. Sahipsizin denizden
-    // ayrılması şart: oyun sahipsiz karayı neredeyse siyah boyuyor ve
-    // ölçüldü, karanın %4.9'u sahipsiz — harita ortasında siyah bantlar
-    // oradan geliyordu.
-    veri[i] = (!t || t.terrain.water) ? 255 : (t.owner < 0 ? 254 : Math.min(253, t.owner));
+    veri[i] = (!t || t.terrain.water || t.owner < 0) ? 255 : Math.min(253, t.owner);
   }
   const tex = new THREE.DataTexture(veri, cols, rows, THREE.RedFormat);
   tex.wrapS = THREE.RepeatWrapping;
