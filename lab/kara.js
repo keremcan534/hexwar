@@ -55,6 +55,7 @@ const KARA_FRAGMENT = [
   'uniform float uDokuGuc, uKayaGuc, uKarSeviye, uGolgeGuc, uAO, uYukOlcek, uKabartmaK;',
   'uniform float uPlajGen, uPlajGuc, uFalezGuc;',
   'uniform float uSinirGen, uIcOpaklik, uCanlilik, uSinirAzami;',
+  'uniform float uKenarKalin, uKenarGuc;',
   'uniform vec3 uPlajCol;',
   'varying vec3 vDunya;',
   '',
@@ -128,14 +129,15 @@ const KARA_FRAGMENT = [
   '',
   '  vec2 crE = hexAt(vDunya.xz);',
   '  vec2 cellUV = (vec2(mod(crE.x, uGrid.x), crE.y) + 0.5) / uGrid;',
-  '  vec3 taban = texture2D(uArka, suv).rgb;',
+  '  vec3 ulkeSaf = texture2D(uArka, suv).rgb;',
+  '  vec3 taban = ulkeSaf;',
   '',
   // HOI4 KİPİ. Ülke rengi her yerde aynı kuvvetteyse harita boyama kitabına
   // döner ve altındaki coğrafya kaybolur. Renk SINIRDA kuvvetli, İÇERİDE
   // zayıf olunca iki şey birden okunur: kimin toprağı ve orası nasıl bir yer.
   // Sınıra uzaklık hex cinsinden ayrı bir alandan gelir (çok kaynaklı BFS).
-  '  float sinirD = texture2D(uSinir, (cellUV)).r * uSinirAzami;',
-  '  float icerlek = smoothstep(0.0, max(0.25, uSinirGen), sinirD);',
+  '  float sinirD = texture2D(uSinir, auv).r * uSinirAzami;',
+  '  float icerlek = smoothstep(0.0, max(0.2, uSinirGen * uHex), sinirD);',
   '  float ulkeAgir = mix(1.0, uIcOpaklik, icerlek);',
   '  vec3 araziRenk = texture2D(uArazi, (cellUV)).rgb;',
   '  taban = mix(araziRenk, taban, ulkeAgir);',
@@ -226,6 +228,14 @@ const KARA_FRAGMENT = [
   '  float cukur = clamp((komsu - h) * 8.0, 0.0, 1.0);',
   '  col *= 1.0 - cukur * uAO * 0.5;',
   '',
+  // SINIR ŞERİDİ. Siyah mürekkep yerine her ülke KENDİ renginde: şerit
+  // sınırın iki yakasında ayrı ayrı çizildiği için karşılıklı iki yarım
+  // oluşur. En sonda biner — dokunun, gölgenin ve plajın üstünde kalmalı,
+  // yoksa çizgi bulanır ve yarım yarım okunmaz.
+  '  float kenar = 1.0 - smoothstep(uKenarKalin * uHex * 0.45, uKenarKalin * uHex, sinirD);',
+  '  vec3 kenarRenk = clamp(ulkeSaf * 1.45 + 0.04, 0.0, 1.0);',
+  '  col = mix(col, kenarRenk, kenar * uKenarGuc);',
+  '',
   '  gl_FragColor = vec4(col, kara);',
   '}',
 ].join('\n');
@@ -266,6 +276,8 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uSinirGen: { value: 2.2 },
     uIcOpaklik: { value: 0.45 },
     uCanlilik: { value: 0.35 },
+    uKenarKalin: { value: 0.22 },
+    uKenarGuc: { value: 0.9 },
   };
 
   const geo = new THREE.PlaneGeometry(1, 1, 1, 1);
@@ -338,58 +350,98 @@ export function denizUzakligiDokusu(THREE, cache, distMax) {
 }
 
 /**
- * Hexin SINIRA uzaklığı (hex cinsinden), çok kaynaklı BFS.
+ * SINIRA uzaklık alanı — hex ızgarasında değil RASTERDE.
  *
- * HOI4 kipinin çalışma sebebi şu: ülke rengi her yerde aynı kuvvette olursa
- * harita bir boyama kitabına döner ve altındaki coğrafya kaybolur. Renk
- * sınırda kuvvetli, içeride zayıf olunca iki şey birden okunur — kimin
- * toprağı olduğu ve ORANIN NASIL BİR YER olduğu.
+ * İlk sürüm uzaklığı hex başına hesaplıyordu ve doku hex çözünürlüğündeydi.
+ * Sonuç kademeliydi: ülke rengi sınırdan içeri altıgen basamaklarla iniyordu
+ * ve harita boya lekesi gibi okunuyordu. Uzaklık artık yükseklik rasteriyle
+ * aynı çözünürlükte (hex başına ~4 teksel) çıkarılıyor, yani alan gerçek
+ * sınır ÇİZGİSİNİ takip ediyor — geçiş sürekli, hexten bağımsız.
  *
- * Sınır hexi = komşularından birinin sahibi farklı olan hex (kıyı da sınırdır;
- * denize bakan hex de kenarını göstermeli). Oradan içeriye BFS ile uzaklık.
+ * Sahip rasteri bir kez kurulur (dünya -> hex -> sahip), sınır hücreleri
+ * işaretlenir ve iki geçişli chamfer (3-4) alanı doldurur. Doğu-batı sarmalı
+ * korunur.
  */
-export function sinirUzakligiDokusu(THREE, world, azami = 6) {
+export function sinirAlaniDokusu(THREE, world, cache, hexSize, azamiHex = 6) {
+  const { w, h, x0, y0, width, height } = cache;
   const { cols, rows } = world;
-  const n = cols * rows;
-  const uzak = new Int16Array(n).fill(-1);
-  const kuyruk = new Int32Array(n);
-  let bas = 0, son = 0;
+  const SQ3 = Math.sqrt(3);
+  const hucreW = width / w;
+  const hucreH = height / h;
 
-  for (let i = 0; i < n; i++) {
-    const t = world.tiles[i];
-    if (!t || t.terrain.water) continue;
-    let sinir = false;
-    for (const k of world.neighbors(t)) {
-      if (!k || k.terrain.water || k.owner !== t.owner) { sinir = true; break; }
-    }
-    if (world.neighbors(t).length < 6) sinir = true;   // harita kenarı
-    if (sinir) { uzak[i] = 0; kuyruk[son++] = i; }
-  }
-
-  while (bas < son) {
-    const i = kuyruk[bas++];
-    const t = world.tiles[i];
-    const d = uzak[i];
-    if (d >= azami) continue;
-    for (const k of world.neighbors(t)) {
-      if (!k || k.terrain.water) continue;
-      const j = k.y * cols + k.x;
-      if (uzak[j] !== -1) continue;
-      uzak[j] = d + 1;
-      kuyruk[son++] = j;
+  // 1) Sahip rasteri. -2 = deniz/boşluk, -1 = sahipsiz kara, >=0 ülke.
+  const sahip = new Int16Array(w * h);
+  for (let j = 0; j < h; j++) {
+    const wy = y0 + (j + 0.5) * hucreH;
+    for (let i = 0; i < w; i++) {
+      const wx = x0 + (i + 0.5) * hucreW;
+      // dünya -> eksenel hex (pointy-top), sonra küp yuvarlama
+      const r = (wy * 2) / (3 * hexSize);
+      const q = wx / (SQ3 * hexSize) - r * 0.5;
+      let cx = q, cz = r, cy = -q - r;
+      let rx = Math.round(cx), ry = Math.round(cy), rz = Math.round(cz);
+      const dx = Math.abs(rx - cx), dy = Math.abs(ry - cy), dz = Math.abs(rz - cz);
+      if (dx > dy && dx > dz) rx = -ry - rz;
+      else if (dy > dz) ry = -rx - rz;
+      else rz = -rx - ry;
+      const col = ((rx + Math.floor(rz / 2)) % cols + cols) % cols;
+      const row = rz;
+      const t = (row >= 0 && row < rows) ? world.tiles[row * cols + col] : null;
+      sahip[j * w + i] = (!t || t.terrain.water) ? -2 : t.owner;
     }
   }
 
-  const veri = new Uint8Array(n);
-  for (let i = 0; i < n; i++) {
-    const d = uzak[i] < 0 ? azami : uzak[i];
-    veri[i] = Math.round((Math.min(d, azami) / azami) * 255);
+  // 2) Sınır hücreleri: komşusunun sahibi farklı olan KARA hücresi. Kıyı da
+  // sınırdır — denize bakan kenar da kendini göstermeli.
+  const INF = 1e9;
+  const d = new Float32Array(w * h).fill(INF);
+  const sar = (x) => (x < 0 ? x + w : (x >= w ? x - w : x));
+  for (let j = 0; j < h; j++) {
+    for (let i = 0; i < w; i++) {
+      const k = j * w + i;
+      if (sahip[k] === -2) continue;
+      const s = sahip[k];
+      const komsu = [
+        sahip[j * w + sar(i - 1)], sahip[j * w + sar(i + 1)],
+        j > 0 ? sahip[(j - 1) * w + i] : -2,
+        j < h - 1 ? sahip[(j + 1) * w + i] : -2,
+      ];
+      if (komsu.some((v) => v !== s)) d[k] = 0;
+    }
   }
-  const tex = new THREE.DataTexture(veri, cols, rows, THREE.RedFormat);
+
+  // 3) Chamfer 3-4, iki geçiş.
+  const A = 3, B = 4;
+  const bak = (k, x, y, dx2, dy2, m) => {
+    const ny = y + dy2;
+    if (ny < 0 || ny >= h) return;
+    const v = d[ny * w + sar(x + dx2)] + m;
+    if (v < d[k]) d[k] = v;
+  };
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const k = y * w + x;
+      bak(k, x, y, -1, -1, B); bak(k, x, y, 0, -1, A);
+      bak(k, x, y, 1, -1, B); bak(k, x, y, -1, 0, A);
+    }
+  }
+  for (let y = h - 1; y >= 0; y--) {
+    for (let x = w - 1; x >= 0; x--) {
+      const k = y * w + x;
+      bak(k, x, y, 1, 1, B); bak(k, x, y, 0, 1, A);
+      bak(k, x, y, -1, 1, B); bak(k, x, y, 1, 0, A);
+    }
+  }
+
+  const azami = azamiHex * SQ3 * hexSize;      // dünya birimi
+  const veri = new Uint8Array(w * h);
+  for (let k = 0; k < veri.length; k++) {
+    const dunya = (d[k] / A) * hucreW;
+    veri[k] = Math.min(255, Math.round((dunya / azami) * 255));
+  }
+  const tex = new THREE.DataTexture(veri, w, h, THREE.RedFormat);
   tex.wrapS = THREE.RepeatWrapping;
   tex.wrapT = THREE.ClampToEdgeWrapping;
-  // LINEAR: hex başına tek değer, ama örnekleme yumuşak geçsin — sınırdan
-  // içeriye doğru kademe değil GRADYAN istiyoruz.
   tex.minFilter = tex.magFilter = THREE.LinearFilter;
   tex.needsUpdate = true;
   return { tex, azami };

@@ -93,7 +93,7 @@
   <div id="gruplar"></div>
 </div>
 <div id="say">yükleniyor…</div>
-<div id="ipucu"><b>1-6</b> önayar · <b>o</b> deniz aç/kapa · <b>l</b> kara katmanı · <b>k</b> kasırga · <b>p</b> kırılma/kaplama · <b>b</b> arayüz</div>
+<div id="ipucu"><b>1-6</b> önayar · <b>o</b> deniz aç/kapa · <b>l</b> kara katmanı · <b>m</b> oyunun sınır mürekkebi · <b>k</b> kasırga · <b>p</b> kırılma/kaplama · <b>b</b> arayüz</div>
 
 <script>
 window.addEventListener('error', (e) => {
@@ -117,7 +117,7 @@ import {
 import { kusKatmani } from './lab/kuslar.js';
 import {
   karaKatmani, tipDokusu, yukseklikDokusu, denizUzakligiDokusu,
-  sinirUzakligiDokusu, araziRenkDokusu,
+  sinirAlaniDokusu, araziRenkDokusu,
 } from './lab/kara.js';
 
 const q = new URLSearchParams(location.search);
@@ -178,12 +178,14 @@ const P = {
   karaAO: 0.6, karaKabartma: 1.0, karaYukOlcek: 320,
   plajGen: 0.55, plajGuc: 0.45, falezGuc: 0.5,
   sinirGen: 2.2, icOpaklik: 0.45, canlilik: 0.35,
+  kenarKalin: 0.22, kenarGuc: 0.9,
   kusYogunluk: 0.55, kusBoyut: 9, kusYukseklik: 10, kusHiz: 1,
 };
 // Önayarlar bu alanları taşımaz; önayar değişince sıfırlanmasınlar.
 const EKSTRA = ['kasirgaGuc', 'kasirgaYaricap', 'kusYogunluk', 'kusBoyut', 'kusYukseklik', 'kusHiz',
   'karaDoku', 'karaKaya', 'karaKar', 'karaGolge', 'karaAO', 'karaKabartma', 'karaYukOlcek',
-  'plajGen', 'plajGuc', 'falezGuc', 'sinirGen', 'icOpaklik', 'canlilik'];
+  'plajGen', 'plajGuc', 'falezGuc', 'sinirGen', 'icOpaklik', 'canlilik',
+  'kenarKalin', 'kenarGuc'];
 let aktifOnayar = 'master';
 THREE.ColorManagement.enabled = false;     // master paleti birebir çıksın
 
@@ -307,7 +309,7 @@ const kara = karaKatmani(THREE, {
   tipTex: tipDokusu(THREE, game.world),
   yukTex: yukseklikDokusu(THREE, alan),
   kiyiTex: denizUzakligiDokusu(THREE, alan, DIST_MAX),
-  ...(() => { const s = sinirUzakligiDokusu(THREE, game.world); return { sinirTex: s.tex, sinirAzami: s.azami }; })(),
+  ...(() => { const a = sinirAlaniDokusu(THREE, game.world, alan, HEX_SIZE); return { sinirTex: a.tex, sinirAzami: a.azami }; })(),
   araziTex: araziRenkDokusu(THREE, game.world),
   yukBoyut: { w: alan.w, h: alan.h },
   grid: { cols: game.world.cols, rows: game.world.rows },
@@ -315,6 +317,13 @@ const kara = karaKatmani(THREE, {
 });
 kirilmaT.sahne.add(kara.mesh);
 kara.mesh.renderOrder = 5;
+
+// Oyunun kendi sınır mürekkebi KOYU bir çizgidir; kara katmanı sınırı her
+// ülkenin kendi renginde çizdiği için ikisi üst üste binerse şerit siyahın
+// altında kaybolur. Burada geçitlenir — `src/` değişmez, yalnız bu sayfada.
+const _drawBorders = r.drawBorders.bind(r);
+let murekkepKapali = true;
+r.drawBorders = (...a) => { if (!murekkepKapali) _drawBorders(...a); };
 
 let kol = 'kirilma';
 function kolSec(yeni) {
@@ -361,6 +370,8 @@ function uygula() {
   kara.U.uSinirGen.value = P.sinirGen;
   kara.U.uIcOpaklik.value = P.icOpaklik;
   kara.U.uCanlilik.value = P.canlilik;
+  kara.U.uKenarKalin.value = P.kenarKalin;
+  kara.U.uKenarGuc.value = P.kenarGuc;
 }
 
 // Kaydıraçlar GRUPLANIR: hepsi tek listede olunca hiçbiri bulunamıyordu.
@@ -416,6 +427,8 @@ const GRUPLAR = [
   ]],
   ['Ülke rengi (HOI4)', [
     ['sinirGen', 'Sınır bandı (hex)', 0.3, 6, 0.1],
+    ['kenarKalin', 'Şerit kalınlığı (hex)', 0.02, 0.8, 0.01],
+    ['kenarGuc', 'Şerit gücü', 0, 1, 0.01],
     ['icOpaklik', 'İçeride ülke rengi', 0, 1, 0.01],
     ['canlilik', 'Renk canlılığı', 0, 1.2, 0.01],
   ]],
@@ -566,7 +579,12 @@ addEventListener('keydown', (e) => {
   if (e.key === 'p') kolSec(kol === 'kirilma' ? 'kaplama' : 'kirilma');
   // Kasırgayı ekranın ortasına kur: fırtınayı aramak yerine ona gidilir.
   // Kara katmanı tek tuşla kapanır: bir şey bozulursa geri dönüş anlık.
-  if (e.key === 'l') kara.mesh.visible = !kara.mesh.visible;
+  if (e.key === 'l') {
+    kara.mesh.visible = !kara.mesh.visible;
+    murekkepKapali = kara.mesh.visible;   // katman kapaliyken oyunun sınırı geri gelsin
+    game.dirty = true;
+  }
+  if (e.key === 'm') { murekkepKapali = !murekkepKapali; game.dirty = true; }
   if (e.key === 'k') {
     U.uKasirga.value.x = cam.x;
     U.uKasirga.value.y = cam.y;
