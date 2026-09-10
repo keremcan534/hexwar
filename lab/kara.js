@@ -53,7 +53,7 @@ const KARA_FRAGMENT = [
   'uniform vec3 uGunesDir, uKayaCol, uKarCol;',
   'uniform float uHexSize, uDistMax, uHex, uOlcek, uTime;',
   'uniform float uDokuGuc, uKayaGuc, uKarSeviye, uGolgeGuc, uAO, uYukOlcek, uKabartmaK;',
-  'uniform float uPlajGen, uPlajGuc, uFalezGuc;',
+  'uniform float uPlajGen, uPlajGuc, uFalezGuc, uDagIsik;',
   'uniform float uSinirGen, uIcOpaklik, uCanlilik, uSinirAzami;',
   'uniform float uKenarKalin, uKenarGuc, uHatGuc, uKontrast, uTavan, uIcKarart;',
   'uniform float uCizgiKalin, uCizgiGuc, uKarartmaTaban, uCizgiTon;',
@@ -210,6 +210,13 @@ const KARA_FRAGMENT = [
   '  col += tint * doku * uDokuGuc * 0.7;',
   '',
   // Eğimden KAYA: dik yamaçta bitki tutunmaz. Yükseklikten KAR: zirve beyazlar.
+  // DAĞ AYDINLATMA — oyunun kendi kabartma gölgesine KARŞI terim.
+  //
+  // Ölçüldü: oyunun kendi karesindeki koyu piksellerin %87'si HILLS ve
+  // MOUNTAIN. surfaceGL'in yarım-Lambert gölgesi tepeleri koyulaştırıyor
+  // ve dağ sıraları haritada koyu şerit gibi okunuyor. Bu terim eğimli
+  // yeri geri kaldırır; oyunun shaderine dokunmadan, yalnız üstünden.
+  '  col *= 1.0 + egim * uDagIsik;',
   '  float kaya = smoothstep(0.55, 0.95, egim) * uKayaGuc;',
   '  col = mix(col, uKayaCol * (0.75 + h * 0.5), kaya * 0.7);',
   // Kar ilk sürümde AMORF BEYAZ LEKE veriyordu: yükseklik alanı yumuşak
@@ -374,6 +381,7 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uKarCol: { value: new THREE.Color('#dfe6e8') },
     uDokuGuc: { value: 0.0 },
     uKayaGuc: { value: 0.0 },
+    uDagIsik: { value: 0.4 },
     uKarSeviye: { value: 1.01 },
     uGolgeGuc: { value: 0.0 },
     uAO: { value: 0.0 },

@@ -174,7 +174,7 @@ if (!alan || !alan.toLand) throw new Error('kıyı alanı kurulamadı (material.
 const P = {
   ...ONAYARLAR.master,
   kasirgaGuc: 0, kasirgaYaricap: 22,
-  karaDoku: 0.0, karaKaya: 0.0, karaKar: 1.01, karaGolge: 0.0,
+  karaDoku: 0.0, karaKaya: 0.0, dagIsik: 0.4, karaKar: 1.01, karaGolge: 0.0,
   karaAO: 0.0, karaKabartma: 1.0, karaYukOlcek: 1400,
   plajGen: 0.55, plajGuc: 0.0, falezGuc: 0.0,
   sinirGen: 6.0, icOpaklik: 1.0, canlilik: 0.0,
@@ -185,7 +185,7 @@ const P = {
 };
 // Önayarlar bu alanları taşımaz; önayar değişince sıfırlanmasınlar.
 const EKSTRA = ['kasirgaGuc', 'kasirgaYaricap', 'kusYogunluk', 'kusBoyut', 'kusYukseklik', 'kusHiz',
-  'karaDoku', 'karaKaya', 'karaKar', 'karaGolge', 'karaAO', 'karaKabartma', 'karaYukOlcek',
+  'karaDoku', 'karaKaya', 'dagIsik', 'karaKar', 'karaGolge', 'karaAO', 'karaKabartma', 'karaYukOlcek',
   'plajGen', 'plajGuc', 'falezGuc', 'sinirGen', 'icOpaklik', 'canlilik',
   'kenarKalin', 'kenarGuc', 'hatGuc', 'kontrast', 'tavan', 'icKarart',
   'cizgiKalin', 'cizgiGuc', 'cizgiTon', 'karartmaTaban'];
@@ -363,6 +363,7 @@ function uygula() {
   kus.U.uYon.value = P.ruzgar * Math.PI / 180;   // kuşlar rüzgârla gider
   kara.U.uDokuGuc.value = P.karaDoku;
   kara.U.uKayaGuc.value = P.karaKaya;
+  kara.U.uDagIsik.value = P.dagIsik;
   kara.U.uKarSeviye.value = P.karaKar;
   kara.U.uGolgeGuc.value = P.karaGolge;
   kara.U.uAO.value = P.karaAO;
@@ -427,6 +428,7 @@ const GRUPLAR = [
   ]],
   ['Kara', [
     ['karaDoku', 'Arazi dokusu', 0, 1.5, 0.01],
+    ['dagIsik', 'Dağ aydınlatma', 0, 1.5, 0.01],
     ['karaKaya', 'Eğimden kaya', 0, 1.5, 0.01],
     ['karaKar', 'Kar seviyesi', 0.8, 1.02, 0.002],
     ['karaGolge', 'Dağ gölgesi', 0, 1, 0.01],
