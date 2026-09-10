@@ -127,6 +127,14 @@ export class Scene3D {
     this.meshDetail = 1;
     /** Ham yolla AYNI: bkz. resize gerekçesi. */
     this.resScale = 0.75;
+    /**
+     * Dünya-uzayı mürekkebi (ızgara, province kenarı, ülke sınırı) YÜZEYDE
+     * çizilsin mi? Mesh yolunda VARSAYILAN AÇIK: kamera eğildiği an Canvas2D'nin
+     * düz afin mürekkebi hexlerin üstünden kayar. Yüzeye çizilen çizgi araziye
+     * drape olur ve kalınlığı dFdx/dFdy sayesinde ekran pikselinde sabit kalır.
+     */
+    this.inkOnSurface = true;
+    this.ink = { grid: 0, province: 0, edge: 0, border: 0 };
 
     this.renderer = new THREE.WebGLRenderer({
       canvas, context: gl, antialias: false, alpha: true,
@@ -194,6 +202,10 @@ export class Scene3D {
       uChar: dataTex(surfaceData.character, cols, rows, THREE.RGBAFormat, THREE.UnsignedByteType, false, true),
       uElev: elevTex,
       uElevVert: elevVertTex,
+      // Kimlik NEAREST okunmalı: enterpole edilen bir kimlik "aradaki" bir
+      // ülkeye ait olur ve sınır hiçbir yere oturmaz.
+      uIds: dataTex(surfaceData.ids ?? new Uint8Array(cols * rows * 4), cols, rows,
+        THREE.RGBAFormat, THREE.UnsignedByteType, false, true),
       uOverlay: dataTex(new Uint8Array(cols * rows * 4), cols, rows, THREE.RGBAFormat, THREE.UnsignedByteType, false, true),
     };
     const wave = buildWaveTexture();
@@ -234,6 +246,11 @@ export class Scene3D {
       uOverlayOn: { value: 0 },
       uDataMode: { value: 0 },
       uElevSize: { value: new THREE.Vector2(coast.w, coast.h) },
+      uInkOn: { value: 0 },
+      uInkGrid: { value: 0 },
+      uInkProv: { value: 0 },
+      uInkEdge: { value: 0 },
+      uInkBorder: { value: 0 },
       // Vertex tarafı
       uElevVert: { value: elevVertTex },
       uField: { value: new THREE.Vector2(field.spanX, field.spanY) },
@@ -284,6 +301,12 @@ export class Scene3D {
     this.surface = coast.surface;
     this.surfaceSize = { w: coast.w, h: coast.h };
     return true;
+  }
+
+  updateIds(idData) {
+    if (!this.tex?.uIds) return;
+    this.tex.uIds.image.data.set(idData);
+    this.tex.uIds.needsUpdate = true;
   }
 
   updateOwners(ownerData) {
@@ -392,8 +415,14 @@ export class Scene3D {
    * ama mürekkep hâlâ ekran uzayında çizilir — değişen yalnız çapanın nereye
    * düştüğüdür.
    */
-  project(worldX, worldY, height = 0) {
-    const v = new THREE.Vector3(worldX, -worldY, height * this.heightScale);
+  project(worldX, worldY, height = null) {
+    // Yükseklik verilmediyse araziden örneklenir: etiket ve künye zeminin
+    // ÜSTÜNDE dursun, düz sıfır düzleminde asılı kalmasın.
+    const h = height == null ? this.heightAt(worldX, worldY) : height;
+    // Kare başına yüzlerce çağrı olur (etiket, province, şehir, birim);
+    // vektör TAHSİS EDİLMEZ, tek kalemlik bir kazıma nesnesi yeniden kullanılır.
+    const v = this.scratch ??= new THREE.Vector3();
+    v.set(worldX, -worldY, h * this.heightScale);
     v.project(this.camera);
     return {
       x: (v.x * 0.5 + 0.5) * this.cssW,
@@ -428,43 +457,47 @@ export class Scene3D {
    * senkron boru duraklamasıdır ve hover HER `mousemove`'da çalışır.
    */
   pick(screenX, screenY) {
-    const ndc = new THREE.Vector3(
-      (screenX / this.cssW) * 2 - 1,
-      1 - (screenY / this.cssH) * 2,
-      -1,
-    );
-    ndc.unproject(this.camera);
-    // Ortografikte ışın yönü kameranın bakış yönüdür.
-    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(this.camera.quaternion).normalize();
-    const maxH = this.heightScale;
-    // Kaba adım bir teksel boyu: alanın kendi çözünürlüğünden ince adım bilgi
-    // getirmez, yalnız maliyet getirir.
-    const step = this.field.spanX / this.surfaceSize.w;
-    const p = ndc.clone();
-    // Işını arazinin ÜSTÜNDEN başlat: tepe noktasının üstünde hiçbir kesişim
-    // olamaz, dolayısıyla ilk örnek her zaman "havada" olur.
-    if (dir.z < -1e-6) {
-      const t0 = (maxH - p.z) / dir.z;
-      if (t0 > 0) p.addScaledVector(dir, t0);
+    if (!this.surface) return null;
+    const cam = this.camera;
+    const o = this.pickOrigin ??= new THREE.Vector3();
+    const d = this.pickDir ??= new THREE.Vector3();
+    o.set((screenX / this.cssW) * 2 - 1, 1 - (screenY / this.cssH) * 2, -1);
+    o.unproject(cam);
+    if (cam.isPerspectiveCamera) {
+      // PERSPEKTİFTE HER PİKSEL BAŞKA YÖNE BAKAR. Kameranın ileri vektörünü
+      // bütün pikseller için kullanmak yalnız ortografikte doğrudur; burada
+      // yapılırsa ışın hep aynı yere çarpar ve tıklama ekranın neresine
+      // basılırsa basılsın odak karesini döndürür (ölçüldü: eğim 30°'de
+      // örneklerin tamamı tek kareye düştü).
+      d.copy(o).sub(cam.position).normalize();
+    } else {
+      d.set(0, 0, -1).applyQuaternion(cam.quaternion).normalize();
     }
-    let prev = null;
-    for (let i = 0; i < 4096; i++) {
-      const wx = p.x;
-      const wy = -p.y;
-      const ground = this.heightAt(wx, wy) * this.heightScale;
-      const diff = p.z - ground;
+
+    const maxH = this.heightScale;
+    // Işını arazinin TEPESİNDEN başlat: üstünde kesişim olamaz, dolayısıyla
+    // ilk örnek her zaman havadadır ve "önceki" değeri güvenle kurulur.
+    if (d.z < -1e-6 && o.z > maxH) o.addScaledVector(d, (maxH - o.z) / d.z);
+    if (d.z >= -1e-6) return null;   // yukarı ya da yatay bakan ışın araziye çarpmaz
+
+    // Adım bir teksel boyu: alanın kendi çözünürlüğünden ince adım bilgi
+    // getirmez, yalnız maliyet getirir. Dikey erim en fazla maxH kadar.
+    const step = this.field.spanX / this.surfaceSize.w;
+    const maxSteps = Math.ceil((maxH / Math.abs(d.z)) / step) + 4;
+    let pwx = 0; let pwy = 0; let pdiff = 0; let have = false;
+    for (let i = 0; i <= maxSteps; i++) {
+      const wx = o.x;
+      const wy = -o.y;
+      const diff = o.z - this.heightAt(wx, wy) * this.heightScale;
       if (diff <= 0) {
+        if (!have) return { x: wx, y: wy };
         // İki örnek arasında doğrusal kesişim: adımın içinde tam yer.
-        if (prev) {
-          const k = prev.diff / (prev.diff - diff);
-          return { x: prev.wx + (wx - prev.wx) * k, y: prev.wy + (wy - prev.wy) * k };
-        }
-        return { x: wx, y: wy };
+        const k = pdiff / (pdiff - diff);
+        return { x: pwx + (wx - pwx) * k, y: pwy + (wy - pwy) * k };
       }
-      prev = { wx, wy, diff };
-      p.addScaledVector(dir, step);
-      // Dünyanın dışına çıktıysak kesişim yok.
-      if (p.z < -maxH) break;
+      pwx = wx; pwy = wy; pdiff = diff; have = true;
+      o.addScaledVector(d, step);
+      if (o.z < -1e-3) break;
     }
     return null;
   }
@@ -494,6 +527,11 @@ export class Scene3D {
       u.uDataMode.value = this.seaMaterial ? 0 : 1;
       u.uOverlayOn.value = this.overlayOn ? 1 : 0;
       u.uHeightScale.value = this.heightScale;
+      u.uInkOn.value = this.inkOnSurface ? 1 : 0;
+      u.uInkGrid.value = this.ink.grid;
+      u.uInkProv.value = this.ink.province;
+      u.uInkEdge.value = this.ink.edge;
+      u.uInkBorder.value = this.ink.border;
       const T = this.tune;
       if (T) {
         u.uShallow.value.fromArray(T.shallow);

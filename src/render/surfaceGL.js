@@ -105,7 +105,120 @@ uniform float uOverlayOn;    // 1 = isgal taramasi cizilsin
 uniform float uDataMode;     // 1 = veri/secim kipi: kabartma ve pigment kisilir
 uniform sampler2D uWave;    // RGBA8, LINEAR, tekrar — RG normal.xy, B/A yükseklik
 
+// --- YUZEY MUREKKEBI ---
+// Izgara, province kenari ve ulke siniri artik YUZEYIN KENDISINDE cizilebilir.
+// Gerekce: kamera egildigi an Canvas2D'nin duz afin murekkebi hexlerin
+// ustunden kayiyor (olculdu ve goruldu). Yuzeye cizilen cizgi araziye
+// kusursuz drape olur, z-fighting yoktur ve kalinligi dFdx/dFdy ile EKRAN
+// pikselinde sabit kalir — egimde de, perspektifte de.
+uniform sampler2D uIds;   // RG = grup id (16 bit), BA = province id (16 bit)
+uniform float uInkOn;     // 0 = murekkep Canvas2D'de, 1 = yuzeyde
+uniform float uInkGrid;   // izgara opakligi (zoom LOD cagirandan gelir)
+uniform float uInkProv;   // province kenari opakligi
+uniform float uInkEdge;   // ulke kenar golgesi payi
+uniform float uInkBorder; // ulke siniri (showsPolitics ile ayni kosul)
+
+
 const float SQ3 = 1.7320508;
+
+
+const vec2 HEX_DIRS[6] = vec2[6](
+  vec2(1.0, 0.0), vec2(0.0, 1.0), vec2(-1.0, 1.0),
+  vec2(-1.0, 0.0), vec2(0.0, -1.0), vec2(1.0, -1.0)
+);
+
+/** Offset (col,row) -> hex merkezi (dunya). worldgen.hexToPixel ile ayni. */
+vec2 hexCenter(vec2 cell) {
+  float r = cell.y;
+  float q = cell.x - floor(r * 0.5);
+  return vec2(uHexSize * SQ3 * (q + r * 0.5), uHexSize * 1.5 * r);
+}
+
+/** Kenar dir uzerindeki komsunun offset hucresi. */
+vec2 neighborCell(vec2 cell, int dir) {
+  float r = cell.y;
+  float q = cell.x - floor(r * 0.5);
+  vec2 d = HEX_DIRS[dir];
+  float nq = q + d.x;
+  float nr = r + d.y;
+  return vec2(nq + floor(nr * 0.5), nr);
+}
+
+/** Hucrenin kimligi. RG grup (ulke ya da kultur), BA province. */
+vec4 idAt(vec2 cell) {
+  vec2 c = cell;
+  if (uWrap > 0.0) c.x = mod(c.x, uGrid.x);
+  return texture(uIds, (c + 0.5) / uGrid) * 255.0;
+}
+
+bool sameGroup(vec4 a, vec4 b) { return a.r == b.r && a.g == b.g; }
+bool sameProvince(vec4 a, vec4 b) { return a.b == b.b && a.a == b.a; }
+
+/**
+ * YUZEY MUREKKEBI.
+ *
+ * Kenar uzakligi ANALITIKTIR: sivri-tepe hexin kenar i'sinin dis normali
+ * 60*i derecededir ve merkeze uzakligi ic yaricap (apothem). Uzakligin
+ * dunya-piksel orani dFdx/dFdy'den gelir, dolayisiyla cizgi kalinligi
+ * kameradan BAGIMSIZ olarak ekran pikselindedir — Canvas2D'nin lineWidth /
+ * scale numarasinin egimde calismayan karsiligi budur.
+ */
+vec3 inkLayer(vec3 col, vec2 world, vec2 cell) {
+  if (uInkOn < 0.5) return col;
+  vec2 p = world - hexCenter(cell);
+  // En yakin kenar: normale izdusumu EN BUYUK olan.
+  float best = -1e9;
+  int bi = 0;
+  for (int i = 0; i < 6; i++) {
+    float a = radians(60.0 * float(i));
+    float d = dot(p, vec2(cos(a), sin(a)));
+    if (d > best) { best = d; bi = i; }
+  }
+  float apothem = uHexSize * 0.8660254;
+  float dist = apothem - best;              // kenara uzaklik (dunya birimi)
+  float wpp = max(length(dFdx(world)), length(dFdy(world)));
+  if (wpp <= 0.0) return col;
+
+  vec4 me = idAt(cell);
+  vec4 nb = idAt(neighborCell(cell, bi));
+  bool border = !sameGroup(me, nb);
+  bool provEdge = !sameProvince(me, nb);
+
+  // KENAR GOLGESI. Canvas2D'de iki ayri halka dolgusuydu (0.13 + 0.26 alfa);
+  // burada surekli bir gradyan, cunku uzaklik zaten elde. Ulke "kesilmis
+  // kagit" gibi kenarinda golgelenir.
+  if (border && uInkEdge > 0.0 && uInkBorder > 0.0) {
+    float g = 1.0 - smoothstep(0.0, uHexSize * 1.15, dist);
+    col *= 1.0 - g * g * 0.30 * uInkEdge;
+  }
+
+  // Izgara: en ince ve en soluk katman, yalnizca yakin zoomda.
+  if (uInkGrid > 0.0) {
+    float hw = 1.0 * wpp * 0.5;
+    float a = 1.0 - smoothstep(hw - wpp, hw + wpp, dist);
+    col = mix(col, vec3(0.04, 0.06, 0.07), a * 0.16 * uInkGrid);
+  }
+
+  // Province kenari: ince, koyu, yalnizca farkli province'e bakan kenarda.
+  if (provEdge && uInkProv > 0.0) {
+    float hw = 1.6 * wpp * 0.5;
+    float a = 1.0 - smoothstep(hw - wpp, hw + wpp, dist);
+    col = mix(col, vec3(0.05, 0.07, 0.08), a * 0.45 * uInkProv);
+  }
+
+  // Ulke siniri: kalin murekkep hatti + ic kenarda sicak pay. Renkler
+  // Canvas2D yolundan birebir alindi (bkz. renderer.drawBorders).
+  if (border && uInkBorder > 0.0) {
+    float hw = 3.4 * wpp * 0.5;
+    float a = 1.0 - smoothstep(hw - wpp, hw + wpp, dist);
+    col = mix(col, vec3(0.035, 0.051, 0.059), a * 0.82);
+    float ih = 1.1 * wpp * 0.5;
+    float inner = (1.0 - smoothstep(hw + ih - wpp, hw + ih + wpp, dist))
+                * smoothstep(hw - wpp, hw + wpp, dist);
+    col = mix(col, vec3(0.808, 0.710, 0.494), inner * 0.16);
+  }
+  return col;
+}
 
 /** Dünya noktasının hangi hexe düştüğü — ANALİTİK, dolayısıyla tam. */
 vec2 hexAt(vec2 w) {
@@ -243,7 +356,7 @@ export const SURFACE_BODY = `vec4 surfaceAt(vec2 world) {
   float isWater = texture(uHex, (cell + 0.5) / uGrid).r;
   if (isWater >= 0.5 && uSeaMaterial < 0.5) {
     // Duz deniz: rengi de oyunun kendi borusundan gelir (uOwner).
-    return vec4(texture(uOwner, (cell + 0.5) / uGrid).rgb, 1.0);
+    return vec4(inkLayer(texture(uOwner, (cell + 0.5) / uGrid).rgb, world, cell), 1.0);
   }
   // Isik yonu SU ile ORTAK: iki yuzeyin ayni dunyada olmasi buna bagli.
   vec3 Ldir = normalize(vec3(-0.55, -0.68, 0.48));
@@ -252,7 +365,7 @@ export const SURFACE_BODY = `vec4 surfaceAt(vec2 world) {
     // Kuresel derece: orta ton cevresinde S egrisi + soguk golge/sicak isik.
     vec3 gr = land * land * (3.0 - 2.0 * land);
     land = mix(land, gr, uGrade);
-    return vec4(clamp(land, 0.0, 1.0), 1.0);
+    return vec4(clamp(inkLayer(land, world, cell), 0.0, 1.0), 1.0);
   }
 
   // --- DALGALAR (uzaklıktan ÖNCE: sığlık onların üstünden kırılacak) ---
@@ -363,7 +476,7 @@ export const SURFACE_BODY = `vec4 surfaceAt(vec2 world) {
   foam *= 0.6 + 0.4 * uDetail;
   col3 = mix(col3, vec3(0.58, 0.64, 0.63), clamp(foam * uFoamAmp, 0.0, 0.62));
 
-  return vec4(col3, 1.0);
+  return vec4(inkLayer(col3, world, cell), 1.0);
 }`;
 
 const FRAG = `#version 300 es
@@ -572,7 +685,10 @@ export class SurfaceGL {
     if (!gl) return null;
     try {
       return new SurfaceGL(canvas, gl, onContextChange);
-    } catch {
+    } catch (err) {
+      // SESSİZ YUTMA YOK. Kurulum hatası (çoğu zaman shader derlemesi) burada
+      // yutulursa oyun Canvas2D'ye düşer ve kimse NEDEN düştüğünü bilmez.
+      console.warn('SurfaceGL kurulamadı:', err);
       return null;
     }
   }
@@ -663,7 +779,8 @@ export class SurfaceGL {
       'uWaveAmp', 'uWaveShade', 'uRefract',
       'uOwner', 'uChar', 'uElev', 'uElevSize',
       'uLandRelief', 'uLandGrain', 'uGrade', 'uSeaMaterial',
-      'uOverlay', 'uOverlayOn', 'uDataMode']) {
+      'uOverlay', 'uOverlayOn', 'uDataMode',
+      'uIds', 'uInkOn', 'uInkGrid', 'uInkProv', 'uInkEdge', 'uInkBorder']) {
       this.u[name] = gl.getUniformLocation(prog, name);
     }
 
@@ -675,6 +792,11 @@ export class SurfaceGL {
     this.ownerTex = null;
     this.charTex = null;
     this.elevTex = null;
+    this.idsTex = null;
+    /** Yüzey mürekkebi bu sunumda devrede mi (bkz. renderer.surfaceInk). */
+    this.inkOnSurface = false;
+    /** Mürekkep aile opaklıkları; renderer zoom ve kipe göre doldurur. */
+    this.ink = { grid: 0, province: 0, edge: 0, border: 0 };
   }
 
   makeTex(internal, format, w, h, data, filter, wrap, wrapT = wrap, type = null) {
@@ -727,6 +849,13 @@ export class SurfaceGL {
     if (this.charTex) gl.deleteTexture(this.charTex);
     this.charTex = this.makeTex(gl.RGBA8, gl.RGBA, cols, rows, surfaceData.character,
       gl.NEAREST, gl.REPEAT, gl.CLAMP_TO_EDGE);
+    // Kimlik: yüzey mürekkebinin girdisi (bkz. renderer.surfaceIdData).
+    // NEAREST şart — kimlik enterpole edilirse sınır "aradaki" bir ülkeye ait
+    // olur ve hiçbir yere oturmaz.
+    if (this.idsTex) gl.deleteTexture(this.idsTex);
+    this.idsTex = this.makeTex(gl.RGBA8, gl.RGBA, cols, rows,
+      surfaceData.ids ?? new Uint8Array(cols * rows * 4),
+      gl.NEAREST, gl.REPEAT, gl.CLAMP_TO_EDGE);
 
     // Yükseklik: material.js'in zaten kurduğu yumuşatılmış raster (hex başına
     // 4 teksel). LINEAR örneklenir ve eğim shader'da alınır — kabartma böylece
@@ -765,6 +894,15 @@ export class SurfaceGL {
         gl.RGBA, gl.UNSIGNED_BYTE, overlayData);
     }
     this.lastDraw = 0;
+  }
+
+  updateIds(idData) {
+    if (!this.idsTex || !this.world) return;
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, this.idsTex);
+    gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.grid.cols, this.grid.rows,
+      gl.RGBA, gl.UNSIGNED_BYTE, idData);
   }
 
   updateOwners(ownerData) {
@@ -850,6 +988,12 @@ export class SurfaceGL {
     gl.uniform1f(u.uOverlayOn, this.overlayOn && this.overlayTex ? 1 : 0);
     gl.uniform1f(u.uDataMode, this.seaMaterial ? 0 : 1);
     gl.uniform2f(u.uElevSize, this.elevSize.w, this.elevSize.h);
+    const ink = this.ink;
+    gl.uniform1f(u.uInkOn, this.inkOnSurface ? 1 : 0);
+    gl.uniform1f(u.uInkGrid, ink?.grid ?? 0);
+    gl.uniform1f(u.uInkProv, ink?.province ?? 0);
+    gl.uniform1f(u.uInkEdge, ink?.edge ?? 0);
+    gl.uniform1f(u.uInkBorder, ink?.border ?? 0);
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.hexTex);
@@ -872,6 +1016,9 @@ export class SurfaceGL {
     gl.activeTexture(gl.TEXTURE6);
     gl.bindTexture(gl.TEXTURE_2D, this.overlayTex ?? this.ownerTex);
     gl.uniform1i(u.uOverlay, 6);
+    gl.activeTexture(gl.TEXTURE7);
+    gl.bindTexture(gl.TEXTURE_2D, this.idsTex ?? this.ownerTex);
+    gl.uniform1i(u.uIds, 7);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.gpuTimer?.end();

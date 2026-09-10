@@ -49,8 +49,7 @@ const showErr = (msg) => {
   if (el) el.textContent = 'ERROR: ' + msg;
 };
 window.addEventListener('error', (e) => showErr(e.message + ' @ ' + (e.filename || '') + ':' + e.lineno));
-window.addEventListener('unhandledrejection', (e) => showErr((e.reason?.message ?? e.reason) + ' | ' + (e.reason?.stack ?? '').split('
-')[1]));
+window.addEventListener('unhandledrejection', (e) => showErr((e.reason?.message ?? e.reason) + ' | ' + (e.reason?.stack ?? '').split('\n')[1]));
 </script>
   <!-- three.js VENDOR edilmiştir: derleme adımı yok, paket yöneticisi yok,
        çevrimdışı çalışır. Yalnızca 3B harita kipi (renderer.setSurfaceMode('3d'))
@@ -227,9 +226,15 @@ async function shot(name = 'shot') {
  * Zamana bağlı katmanlar (deniz) bilerek dışarıda bırakılabilsin diye
  * `landOnly` seçeneği var: kadrajda deniz varsa iki koşu asla tutmaz.
  */
-async function abSurface({ a = 'gpu', b = '3d', settleMs = 6000 } = {}) {
+async function abSurface({ a = 'gpu', b = '3d', settleMs = 6000, ink = false } = {}) {
   const grab = async (mode) => {
     await r.setSurfaceMode(mode);
+    // MÜREKKEP VARSAYILAN OLARAK DIŞARIDA. Mesh yolu ızgarayı, province
+    // kenarını ve sınırı YÜZEYDE çizer; Canvas2D yolu aynı çizgileri kendi
+    // kenar yumuşatmasıyla çizer. İkisi tanım gereği piksel-eş olamaz ve
+    // referans testinin sorusu "MALZEME sadık mı" olduğu için mürekkep
+    // kapatılır. Mürekkep karşılaştırması ayrı bir sorudur (ink: true).
+    if (r.waterGL && 'inkOnSurface' in r.waterGL) r.waterGL.inkOnSurface = ink;
     await settle(settleMs);
     lockCamera();
     r.render(game.world, {});

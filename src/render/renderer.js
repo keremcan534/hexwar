@@ -554,6 +554,9 @@ export class Renderer {
         scene.perf = this.perf ?? null;
         scene.debug.enabled = true;
         this.waterGL = scene;
+        // Mürekkep çapaları (etiket, künye, şehir) ve TIKLAMA artık 3B
+        // izdüşümden geçer; afin cevap eğim açıkken doğru değil.
+        this.camera.setProjector(scene);
         // Taze sunum HİÇ boyutlanmamıştır: `resize` yalnız tuval ölçüsü
         // değişince çağrılıyordu, kip değişiminde değil. Boyutsuz katman
         // önceki kolun bıraktığı tampon ölçüsüyle çizer.
@@ -575,6 +578,7 @@ export class Renderer {
       this.waterGL = this.rawSurface;
       this.rawSurface = null;
       this.waterGL.world = null;   // dokular mesh kipinde bırakılmıştı
+      this.camera.setProjector(null);
       this.resize();
     }
     this.surfaceMode = mode === 'classic' ? 'classic' : 'gpu';
@@ -611,6 +615,54 @@ export class Renderer {
       out[p + 3] = 255;
     }
     return out;
+  }
+
+  /**
+   * HEX KİMLİK DOKUSU — yüzey mürekkebinin girdisi.
+   *
+   * Shader komşu hexin kimliğini okuyup "aynı ülke mi, aynı province mi"
+   * diye sorar; sınır ve province kenarı oradan doğar. Kimliğin ne olduğu
+   * HARİTA KİPİNE bağlıdır ve karar `drawBorders`la AYNI yerden gelir
+   * (kültür kipinde halk, diğerlerinde sahip) — iki yer iki ayrı doğru
+   * kurarsa sınırlar kipe göre yer değiştirir.
+   *
+   * RG = grup id (16 bit, 65535 = sahipsiz), BA = province id (16 bit).
+   * Sahipsiz kareler BİRBİRİNDEN ayrı sayılmaz: hepsi aynı gruptur, yoksa
+   * okyanusun ortasında sınır çizgileri belirir.
+   */
+  surfaceIdData(world) {
+    const cols = world.cols;
+    const rows = world.rows;
+    const out = new Uint8Array(cols * rows * 4);
+    const cultureMode = this.mapMode === 'cultures';
+    for (let i = 0; i < cols * rows; i++) {
+      const tile = world.tiles[i];
+      const p = i * 4;
+      if (!tile) {
+        out[p] = 255; out[p + 1] = 255; out[p + 2] = 255; out[p + 3] = 255;
+        continue;
+      }
+      const group = cultureMode ? tile.culture : ownerOf(tile, world);
+      const g = group < 0 ? 65535 : group;
+      const pid = tile.provinceId >= 0 ? tile.provinceId : 65535;
+      out[p] = g & 255;
+      out[p + 1] = (g >> 8) & 255;
+      out[p + 2] = pid & 255;
+      out[p + 3] = (pid >> 8) & 255;
+    }
+    return out;
+  }
+
+  /**
+   * Yüzey mürekkebi devrede mi? Devredeyse Canvas2D o aileleri ÇİZMEZ —
+   * iki kez çizilirse çizgiler kalınlaşır ve alfa katlanır.
+   *
+   * Yalnız mesh yolunda açılır: eğim ancak orada mümkün ve mürekkebin
+   * yüzeye taşınmasının tek gerekçesi eğimdir.
+   */
+  surfaceInk() {
+    return this.surfaceMode === '3d' && !!this.waterGL?.inkOnSurface
+      && this.glSurface();
   }
 
   /**
@@ -718,6 +770,7 @@ export class Renderer {
       this.waterGL.setWorld(world, this.material.cache, {
         owner: this.surfaceOwnerData(world),
         character: this.surfaceCharacterData(world),
+        ids: this.surfaceIdData(world),
       });
       return true;
     }
@@ -868,7 +921,9 @@ export class Renderer {
     }
     if (this.mapMode === 'cultures') this.drawCultureMix(ctx, world, list, cache.scale);
     if (this.mapMode === 'construction') this.drawConstructionOverlay(ctx, world, list, cache.scale);
-    if (this.showsPolitics()) this.drawBorders(ctx, world, list, cache.scale);
+    if (this.showsPolitics() && !this.surfaceInk()) {
+      this.drawBorders(ctx, world, list, cache.scale);
+    }
     ctx.restore();
   }
 
@@ -1430,11 +1485,15 @@ export class Renderer {
     }
     if (this.mapMode === 'cultures') this.drawCultureMix(t, world, tiles, scale);
     if (this.mapMode === 'construction') this.drawConstructionOverlay(t, world, tiles, scale);
-    if (this.showGrid && scale >= GRID_MIN_ZOOM && this.mapMode !== 'geography') {
+    // Yüzey mürekkebi devredeyse bu üç aile YÜZEYDE çizilir (bkz.
+    // surfaceInk). İkisi birden çizerse çizgiler kalınlaşır ve alfa katlanır
+    // — işgal taramasının glSurface altında atlanmasıyla aynı gerekçe.
+    const ink = this.surfaceInk();
+    if (this.showGrid && scale >= GRID_MIN_ZOOM && this.mapMode !== 'geography' && !ink) {
       this.drawGrid(t, tiles, scale);
     }
-    if (this.mapMode !== 'geography') this.drawProvinceEdges(t, tiles, world, scale);
-    if (this.showsPolitics()) this.drawBorders(t, world, tiles, scale);
+    if (this.mapMode !== 'geography' && !ink) this.drawProvinceEdges(t, tiles, world, scale);
+    if (this.showsPolitics() && !ink) this.drawBorders(t, world, tiles, scale);
 
     if (clip) {
       b.restore();
@@ -1557,6 +1616,18 @@ export class Renderer {
     if (this.glWater()) {
       this.waterGL.seaMaterial = this.waterAnimatedMode();
       this.waterGL.overlayOn = this.mapMode === 'political';
+      // Mürekkep aileleri Canvas2D yolundakiyle AYNI koşullarla açılır
+      // (bkz. paintStaticContent): ızgara GRID_MIN_ZOOM üstünde ve showGrid
+      // açıkken, province kenarı coğrafya kipi dışında, sınır ve kenar
+      // gölgesi yalnız siyaset gösteren kiplerde.
+      if (this.waterGL.ink) {
+        const politics = this.showsPolitics();
+        this.waterGL.ink.grid = (this.showGrid && cam.zoom >= GRID_MIN_ZOOM
+          && this.mapMode !== 'geography') ? 1 : 0;
+        this.waterGL.ink.province = this.mapMode !== 'geography' ? 1 : 0;
+        this.waterGL.ink.border = politics ? 1 : 0;
+        this.waterGL.ink.edge = this.mapMode === 'political' ? 1 : 0;
+      }
       // İki doku, iki ayrı ömür: taban rengi yalnız sahiplik/kip değişince,
       // işgal taraması ise kontrol her değiştiğinde tazelenir. Aynı bayrağa
       // bağlamak savaşta ya bedava tam tarama ya da bayat işgal demekti.
@@ -1566,6 +1637,9 @@ export class Renderer {
         const t = performance.now();
         this.waterGL.updateOwners(this.surfaceOwnerData(world));
         this.waterGL.updateOverlay(this.surfaceOverlayData(world));
+        // Sınır sahipliğin fonksiyonu: renk tazelenip kimlik tazelenmezse
+        // fetihten sonra ülke yeni rengiyle ama ESKİ sınırıyla durur.
+        this.waterGL.updateIds?.(this.surfaceIdData(world));
         this.perf?.add('r.surfacecolors', performance.now() - t);
       } else if (this.surfaceOverlayDirty) {
         this.surfaceOverlayDirty = false;
@@ -1936,7 +2010,9 @@ export class Renderer {
       }
       // Kıyı hattı mürekkep süpürmesinde: kara dolgusundan SONRA gelmeli.
       if (water) this.water.bakeCoastline(j.ctx, world, bakeTiles.filter((t) => t.terrain.water));
-      if (this.showsPolitics()) this.drawBorders(j.ctx, world, bakeTiles, j.scale);
+      if (this.showsPolitics() && !this.surfaceInk()) {
+        this.drawBorders(j.ctx, world, bakeTiles, j.scale);
+      }
     } else if (!water) {
       // GL yüzey devredeyken uzak doku da zemin taşımaz: yalnız mürekkep.
       if (!this.glSurface() && j.phase === 'sea') {
