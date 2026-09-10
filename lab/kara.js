@@ -56,7 +56,8 @@ const KARA_FRAGMENT = [
   'uniform float uPlajGen, uPlajGuc, uFalezGuc;',
   'uniform float uSinirGen, uIcOpaklik, uCanlilik, uSinirAzami;',
   'uniform float uKenarKalin, uKenarGuc, uHatGuc, uKontrast, uTavan, uIcKarart;',
-  'uniform float uCizgiKalin, uCizgiGuc, uKarartmaTaban, uCizgiTon;',
+  'uniform float uKarartmaTaban;',
+  'uniform float uCekirdek, uCekirdekGuc, uBantKalin, uBantGuc, uBantDoygun, uBantIsik;',
   'uniform vec3 uCizgiRenk;',
   'uniform vec2 uEkranSpan;',
   'uniform vec3 uPlajCol;',
@@ -133,6 +134,11 @@ const KARA_FRAGMENT = [
   '  vec2 crE = hexAt(vDunya.xz);',
   '  vec2 cellUV = (vec2(mod(crE.x, uGrid.x), crE.y) + 0.5) / uGrid;',
   '  vec3 ulkeSaf = texture2D(uArka, suv).rgb;',
+  // BOŞ ARKA DOKU KORUMASI. Pencere yeniden boyutlandırılınca oyunun tuvali
+  // yeniden ayrılır ve BOŞALIR; o kareyi örnekleyen katman bütün kıtayı
+  // simsiyah çiziyordu. Doku boşsa hiç çizme: altta oyunun kendi haritası
+  // durur. En kötü ihtimal 'iyileştirme yok' olur, asla 'siyah harita' değil.
+  '  if (dot(ulkeSaf, vec3(0.3333)) < 0.012) discard;',
   '  vec3 taban = ulkeSaf;',
   '',
   // HOI4 KİPİ. Ülke rengi her yerde aynı kuvvetteyse harita boyama kitabına
@@ -282,35 +288,52 @@ const KARA_FRAGMENT = [
   // rengine göre sınırlanır — gölge kalır, ama rengi öldüremez.
   '  col = max(col, ulkeSaf * uKarartmaTaban);',
   '',
-  // SINIR ÇİZGİSİ — hex KENARINDA, analitik.
-  //
-  // Önceki sürüm sınırı yumuşak bir bant olarak boyuyordu; kullanıcı haklı
-  // olarak "absürt" dedi. Sınır bir alan değil bir HAT'tır ve hexin kenarında
-  // durur. Burada üçgen ya da segment yok: sivri-tepe hexin i numaralı
-  // kenarının dış normali 60·i derecededir ve merkeze uzaklığı iç yarıçaptır,
-  // yani kenara uzaklık tek bir nokta çarpımıyla çıkar.
-  //
-  // Kalınlık EKRAN pikselinde sabit: dünya biriminde sabit tutulursa uzak
-  // zoomda çizgi kaybolur, yakında kalasa döner.
   '  vec2 cellQR = vec2(cell.x - floor(cell.y * 0.5), cell.y);',
   '  vec2 merkez = vec2(uHexSize * 1.7320508 * (cellQR.x + cellQR.y * 0.5),',
   '                     uHexSize * 1.5 * cellQR.y);',
   '  vec2 rel = vDunya.xz - merkez;',
   '  float icYaricap = uHexSize * 1.7320508 * 0.5;',
+  // SINIR — İKİ PARÇALI.
+  //
+  // Bu bölüm iki kez ters uca savruldu ve ikisini de kullanıcı ekranda gördü:
+  //   · Koyu mürekkep tek parça: sınırın iki yakası ayrı ayrı çizdiği için
+  //     görünen kalınlık iki kat; altı kenarı da sınır olan hex çepeçevre
+  //     kapanıp "çizgi" değil KARANLIK HEX oluyordu (ölçüldü: yoğun bölgede
+  //     kara pikselinin %12-18'i).
+  //   · Rengi ülkenin tonuna çekmek: siyahlık gitti ama çizgi de ÖLDÜ, çünkü
+  //     hat bindiği ülkenin renginin koyusuydu — kontrast yok.
+  //
+  // Doğrusu ikisini AYIRMAK. Sınır iki ayrı işi olan iki parçadan oluşur:
+  //
+  //   ÇEKİRDEK  tam kenarda, ekran pikselinde SABİT ve çok ince koyu hat.
+  //             Ayrımı garanti eder. İnce olduğu için hexi asla dolduramaz:
+  //             1 px'lik çekirdek 27 px'lik hexin %7'sini kaplar, 54 px'lik
+  //             hexin %3,5'ini.
+  //   BANT      çekirdeğin İÇ tarafında, ülkenin kendi renginin doygun ve
+  //             hafif parlak hâli. Kimliği taşır ("yeşilin tarafı yeşil
+  //             kalınlık"), ama KARARTMAZ — tersine biraz açar.
+  //
+  // Bant karartmadığı için genişleyebilir; çekirdek karartır ama incedir.
+  //
+  // ÖLÇÜLDÜ (zoom 0.75, sınırın yoğun olduğu bölge, kara pikselleri içinde
+  // siyah sayılan oran): kalın çekirdek %12.6, çekirdek kapalı %0.1. Yani
+  // karartmanın tamamı çekirdekten geliyordu, bandın katkısı sıfır. Bu
+  // yüzden varsayılanda çekirdek ince ve zayıf, bant geniş ve güçlü.
   '  float pikselDunya = uEkranSpan.x / max(1.0, uCozunurluk.x);',
-  // Kalınlık ekran pikselinde sabit AMA hexin payını aşamaz. Sabit
-  // bırakılınca uzak zoomda (hex ~8 piksel) çizgi hexi yutuyor ve sıkışık
-  // ülkelerin olduğu yerde sınırlar birleşip koyu leke yapıyordu.
-  '  float yariKalin = min(max(0.3, uCizgiKalin * 0.5) * pikselDunya, icYaricap * 0.09);',
   '  float benimSahip = texture2D(uSahip, (cell + 0.5) / uGrid).r;',
-  '  float cizgi = 0.0;',
+  '  float cekirdekY = max(0.5, uCekirdek * 0.5) * pikselDunya;',
+  '  float bantY = max(cekirdekY, uBantKalin * 0.5 * pikselDunya);',
+  // Emniyet supabı: hiçbir parça hexin payını aşamaz. Aşarsa uzak zoomda
+  // yoğun bölge gene dolar.
+  '  cekirdekY = min(cekirdekY, icYaricap * 0.06);',
+  '  bantY = min(bantY, icYaricap * 0.20);',
+  '  float cekirdek = 0.0;',
+  '  float ulkeBant = 0.0;',
   '  for (int i = 0; i < 6; i++) {',
   '    float aci = 1.0471976 * float(i);',
   '    vec2 nrm = vec2(cos(aci), sin(aci));',
   '    float kenarD = icYaricap - dot(rel, nrm);',
-  '    if (kenarD > yariKalin * 2.0) continue;',
-  // Komşunun ekseneli: DIRS sırası doğu'dan başlayıp saat yönünde döner ve
-  // kenar normalleriyle AYNI sırayı izler (60·i).
+  '    if (kenarD > bantY * 2.0) continue;',
   '    vec2 dq = vec2(0.0);',
   '    if (i == 0) dq = vec2(1.0, 0.0);',
   '    else if (i == 1) dq = vec2(0.0, 1.0);',
@@ -323,20 +346,24 @@ const KARA_FRAGMENT = [
   '    kCell.x = mod(kCell.x, uGrid.x);',
   '    if (kCell.y < 0.0 || kCell.y > uGrid.y - 1.0) continue;',
   '    float kSahip = texture2D(uSahip, (kCell + 0.5) / uGrid).r;',
-  // 254/255 = deniz ve sahipsiz. Kıyıda çizgi çizilmez; kıyıyı zaten suyun
-  // kendisi anlatıyor ve orada çizgi haritayı kafeslere böler.
+  // Deniz ve sahipsiz komşuya sınır çizilmez: kıyıyı zaten suyun kendisi
+  // anlatıyor, oraya hat koyunca harita kafese dönüyor.
   '    if (kSahip > 0.99 || benimSahip > 0.99) continue;',
   '    if (abs(kSahip - benimSahip) < 0.002) continue;',
-  '    cizgi = max(cizgi, 1.0 - smoothstep(yariKalin * 0.6, yariKalin * 1.4, kenarD));',
+  '    cekirdek = max(cekirdek, 1.0 - smoothstep(cekirdekY * 0.55, cekirdekY * 1.45, kenarD));',
+  '    ulkeBant = max(ulkeBant, 1.0 - smoothstep(bantY * 0.55, bantY * 1.25, kenarD));',
   '  }',
-  // UZAK ZOOMDA SÖNER. Hex ekranda ~10 piksele indiğinde çizgi hexin
-  // payını doldurur ve sıkışık ülkelerin olduğu yerde sınırlar birleşip
-  // koyu leke yapar. O ölçekte ayrımı zaten rengin KENDİSİ yapıyor;
-  // çizgi orada işe yaramadan zarar veriyor.
+  // Sönüm: hex ekranda küçülürken önce bant, sonra çekirdek incelir. Uzak
+  // zoomda ayrımı rengin kendisi yapar.
   '  float hexPiksel = icYaricap * 2.0 / max(0.001, pikselDunya);',
-  '  float cizgiSol = smoothstep(16.0, 36.0, hexPiksel);',
-  '  vec3 hatRenk = mix(uCizgiRenk, ulkeSaf * 0.34, uCizgiTon);',
-  '  col = mix(col, hatRenk, cizgi * uCizgiGuc * cizgiSol);',
+  '  float sol = smoothstep(11.0, 26.0, hexPiksel);',
+  // Bant: ülkenin rengi, doygunlaştırılmış ve bir tık açılmış. Parlaklık
+  // tavanı sarı/camgöbeği gibi zaten parlak ülkelerin neon yanmasını keser.
+  '  float bl = dot(ulkeSaf, vec3(0.299, 0.587, 0.114));',
+  '  vec3 bantRenk = mix(vec3(bl), ulkeSaf, 1.0 + uBantDoygun) * (1.0 + uBantIsik);',
+  '  bantRenk *= min(1.0, uTavan / max(dot(bantRenk, vec3(0.299, 0.587, 0.114)), 0.001));',
+  '  col = mix(col, clamp(bantRenk, 0.0, 1.0), ulkeBant * uBantGuc * sol);',
+  '  col = mix(col, uCizgiRenk, cekirdek * uCekirdekGuc * sol);',
   '',
   '  gl_FragColor = vec4(col, kara);',
   '}',
@@ -384,9 +411,12 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uTavan: { value: 0.62 },
     uIcKarart: { value: 0.94 },
     uSahip: { value: sahipTex },
-    uCizgiKalin: { value: 2.0 },
-    uCizgiGuc: { value: 0.85 },
-    uCizgiTon: { value: 0.55 },
+    uCekirdek: { value: 0.8 },      // koyu hat, ekran pikseli
+    uCekirdekGuc: { value: 0.35 },
+    uBantKalin: { value: 7.0 },     // ülke rengi bandı, ekran pikseli
+    uBantGuc: { value: 1.0 },
+    uBantDoygun: { value: 0.55 },   // bandın doygunluk artışı
+    uBantIsik: { value: 0.22 },     // bandın parlaklık artışı
     uKarartmaTaban: { value: 0.62 },
     uCizgiRenk: { value: new THREE.Color('#0c1116') },
     uKontrast: { value: 0.35 },
