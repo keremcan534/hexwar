@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<title>Su laboratuvarı — oyun haritasında</title>
+<!--
+  SU LABORATUVARI · OYUN KOLU
+
+  Aynı Gerstner denizi (bkz. lab/ocean.js), ama ada değil GERÇEK harita:
+  Game ayağa kalkar, dünya üretilir, kamera oyunun kamerasıdır.
+
+  İKİ KOL yan yana durur ('p' ile geçilir):
+
+  · KIRILMA (varsayılan) — haritanın kendi karesi dokuya alınır ve su onu
+    dalga normaliyle bükerek örnekler. Suyun ALTI görünür; taban diye ayrı bir
+    şey çizilmez, taban zaten oyunun denizidir.
+  · KAPLAMA — çarpım + ekran karışımıyla yalnız ışık/köpük bindirir. Daha ucuz,
+    kırılma yok. Karışım CSS'te yapılır; shader içinde denendi ve bütün ekran
+    karardı (WebGL tuvali alttaki tuvalle değil kendi çerçevesiyle karışır).
+
+  Katman sırası (aşağıdan yukarı):
+    #map-water    oyunun kendi yüzeyi — deniz ve kara buradan gelir
+    #map-golge    kaplama kolu, çarpım
+    #map-isik     kaplama kolu, ekran
+    #map-kirilma  kırılma kolu, normal
+    #map          Canvas2D mürekkebi — sınır, etiket, birim
+
+  src/ altına HİÇ dokunulmaz. Kıyı maskesi oyunun kendi kıyı-uzaklığı alanından
+  (material.cache.toLand) okunur: suyun bittiği yer ile karanın başladığı yer
+  bit bit aynıdır.
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #0b1115; overflow: hidden;
+    font: 12px/1.5 ui-sans-serif, system-ui, sans-serif; color: #cfe0e4; }
+  #map, #map-water, #map-golge, #map-isik, #map-kirilma {
+    position: fixed; inset: 0; display: block; width: 100vw; height: 100vh;
+  }
+  #map-water { z-index: 0; pointer-events: none; }
+  #map-golge { z-index: 1; pointer-events: none; mix-blend-mode: multiply; }
+  #map-isik { z-index: 2; pointer-events: none; mix-blend-mode: screen; }
+  #map-kirilma { z-index: 3; pointer-events: none; }
+  #map { z-index: 4; }
+  .map-film {
+    position: fixed; inset: 0; z-index: 5; pointer-events: none;
+    background:
+      var(--map-grain, none),
+      radial-gradient(ellipse 78% 72% at 50% 48%, transparent 42%, rgba(3, 6, 8, 0.34) 100%),
+      linear-gradient(0deg, rgba(122, 96, 52, 0.05), rgba(122, 96, 52, 0.05));
+  }
+  #ui {
+    position: fixed; top: 8px; left: 8px; z-index: 9; width: 242px;
+    max-height: calc(100vh - 16px); overflow-y: auto;
+    background: rgba(8, 18, 24, 0.88); border: 1px solid rgba(150, 190, 200, 0.18);
+    border-radius: 6px; padding: 9px 11px 11px;
+    scrollbar-width: thin; scrollbar-color: rgba(150, 190, 200, 0.3) transparent;
+  }
+  #ui h1 { font-size: 11px; margin: 0 0 7px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: #8fb3bd; font-weight: 600; }
+  .onay { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 4px; }
+  .onay button { min-width: 62px; }
+  .onay button {
+    flex: 1; padding: 5px 3px; font: inherit; font-size: 11px; cursor: pointer;
+    background: rgba(30, 58, 70, 0.7); color: #cfe0e4; border-radius: 4px;
+    border: 1px solid rgba(150, 190, 200, 0.22);
+  }
+  .onay button.aktif { background: #2b6d80; border-color: #7fc4d4; color: #fff; }
+  details { border-top: 1px solid rgba(150, 190, 200, 0.14); margin-top: 6px; }
+  details[open] { padding-bottom: 4px; }
+  summary { cursor: pointer; font-size: 11px; letter-spacing: 0.06em; padding: 5px 0 2px;
+    color: #7fb0bd; text-transform: uppercase; user-select: none; list-style: none; }
+  summary::before { content: '▸ '; }
+  details[open] > summary::before { content: '▾ '; }
+  label { display: block; margin: 5px 0 1px; font-size: 11px; color: #9fbcc4; }
+  label span { float: right; color: #dff0f4; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; margin: 0; accent-color: #62b6c9; height: 14px; }
+  #say { position: fixed; right: 10px; top: 10px; z-index: 9; font: 11px monospace;
+    color: rgba(210, 235, 240, 0.7); text-align: right; white-space: pre; }
+  #ipucu { position: fixed; left: 50%; transform: translateX(-50%); bottom: 8px; z-index: 9;
+    font-size: 11px; color: rgba(200, 225, 232, 0.45); }
+  body.bare #ui, body.bare #say, body.bare #ipucu { display: none; }
+</style>
+</head>
+<body>
+<canvas id="map-water"></canvas>
+<canvas id="map-golge"></canvas>
+<canvas id="map-isik"></canvas>
+<canvas id="map-kirilma"></canvas>
+<canvas id="map"></canvas>
+<div class="map-film" id="map-film" aria-hidden="true"></div>
+<div id="ui">
+  <h1>Deniz · oyun haritası</h1>
+  <div class="onay" id="onaylar"></div>
+  <div id="gruplar"></div>
+</div>
+<div id="say">yükleniyor…</div>
+<div id="ipucu"><b>1-6</b> önayar · <b>o</b> deniz aç/kapa · <b>k</b> kasırga · <b>p</b> kırılma/kaplama · <b>b</b> arayüz</div>
+
+<script>
+window.addEventListener('error', (e) => {
+  document.getElementById('say').textContent = 'HATA: ' + e.message + ' @' + (e.filename || '').split('/').pop() + ':' + e.lineno;
+});
+window.addEventListener('unhandledrejection', (e) => {
+  document.getElementById('say').textContent = 'HATA: ' + (e.reason && e.reason.message ? e.reason.message : e.reason);
+});
+</script>
+<script type="importmap">
+{"imports": {"three": "./vendor/three/three.module.min.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+import { Game } from './src/game/game.js';
+import { materials } from './src/render/textures.js';
+import { HEX_SIZE } from './src/world/worldgen.js';
+import {
+  ONAYARLAR, dalgaDizisi, gurultuDokusu, suVertex, kaplamaFragment, kirilmaFragment, gunesYonu,
+} from './lab/ocean.js';
+import { kusKatmani } from './lab/kuslar.js';
+
+const q = new URLSearchParams(location.search);
+const HEX_STEP = Math.sqrt(3) * HEX_SIZE;
+const DIST_MAX = HEX_STEP * 9;         // surfaceGL ile AYNI ölçek
+
+document.documentElement.style.setProperty(
+  '--map-grain', `url("${materials().filmGrain.toDataURL('image/png')}")`,
+);
+if (q.get('film') === '0') document.getElementById('map-film').style.display = 'none';
+if (q.has('bare')) document.body.classList.add('bare');
+
+// ------------------------------------------------------------------- oyun
+
+// TAMPONU KALICI YAP — Game kurulmadan ÖNCE.
+//
+// Kırılma kolu haritanın WebGL karesini BAŞKA bir bağlamdan doku olarak
+// okuyor. Tarayıcı bir WebGL tuvalinin çizim tamponunu kompozitten sonra
+// temizler (preserveDrawingBuffer varsayılanı false), dolayısıyla okuma kimi
+// karede dolu kimi karede BOŞ dönüyordu: deniz durup dururken simsiyah
+// oluyordu. Aynı kare içinde çizip flush etmek sırayı düzeltir ama garanti
+// vermez — kompozit her zaman bizim aramıza girebilir.
+//
+// Burada tuvalin bağlam isteği yakalanıp preserveDrawingBuffer açılıyor.
+// src/ altına dokunmadan, yalnız bu laboratuvar sayfası için.
+const _getContext = HTMLCanvasElement.prototype.getContext;
+HTMLCanvasElement.prototype.getContext = function (tur, secenek) {
+  if (this.id === 'map-water' && String(tur).startsWith('webgl')) {
+    return _getContext.call(this, tur, { ...(secenek || {}), preserveDrawingBuffer: true });
+  }
+  return _getContext.call(this, tur, secenek);
+};
+
+const game = new Game(document.getElementById('map'));
+game.newWorld(q.get('seed') || 'BAHD4H');
+const r = game.renderer;
+const cam = game.camera;
+r.setMapMode(q.get('mode') || 'political');
+cam.zoom = q.has('zoom') ? Number(q.get('zoom')) : 0.9;
+if (q.has('nation')) {
+  const n = game.world.nations.find((x) => x.name.toLowerCase() === q.get('nation').toLowerCase());
+  if (n) cam.centerOn(n.capital.x, n.capital.y);
+}
+cam.clamp();
+game.requestRender();
+
+// Kıyı alanı material.cache'te kurulur; ısıtma bitmeden orada YOKTUR.
+let guard = 0;
+while (r.warmup(game.world) && guard < 4000) guard++;
+const alan = r.material && r.material.cache;
+if (!alan || !alan.toLand) throw new Error('kıyı alanı kurulamadı (material.cache.toLand yok)');
+
+// ------------------------------------------------------------------ deniz
+const P = {
+  ...ONAYARLAR.master,
+  kasirgaGuc: 0, kasirgaYaricap: 22,
+  kusYogunluk: 0.55, kusBoyut: 9, kusYukseklik: 10, kusHiz: 1,
+};
+// Önayarlar bu alanları taşımaz; önayar değişince sıfırlanmasınlar.
+const EKSTRA = ['kasirgaGuc', 'kasirgaYaricap', 'kusYogunluk', 'kusBoyut', 'kusYukseklik', 'kusHiz'];
+let aktifOnayar = 'master';
+THREE.ColorManagement.enabled = false;     // master paleti birebir çıksın
+
+/** Bir tuval + bağlam + sahne. `notr` çizilmeyen yerin karışımdaki etkisizidir. */
+function tuval(id, notr, saydam) {
+  const c = document.getElementById(id);
+  const g = new THREE.WebGLRenderer({
+    canvas: c, antialias: true, alpha: !!saydam, powerPreference: 'high-performance',
+  });
+  g.outputColorSpace = THREE.LinearSRGBColorSpace;
+  g.setPixelRatio(Math.min(devicePixelRatio, 2));
+  if (saydam) g.setClearAlpha(0); else g.setClearColor(notr, 1);
+  return { canvas: c, gl: g, sahne: new THREE.Scene() };
+}
+// Kaplama kolu: çarpımda beyaz, ekranda siyah hiçbir şeyi değiştirmez.
+const golge = tuval('map-golge', 0xffffff, false);
+const isik = tuval('map-isik', 0x000000, false);
+const kirilmaT = tuval('map-kirilma', 0x000000, true);
+
+const kamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 12000);
+kamera.up.set(0, 0, -1);   // dünya +y ekranda AŞAĞI
+
+// Kıyı-uzaklığı dokusu: oyunun kendi alanı, surfaceGL ile aynı normalizasyon.
+const distVeri = new Uint8Array(alan.w * alan.h);
+for (let i = 0; i < distVeri.length; i++) {
+  distVeri[i] = Math.min(255, Math.round((alan.toLand[i] / DIST_MAX) * 255));
+}
+const distTex = new THREE.DataTexture(distVeri, alan.w, alan.h, THREE.RedFormat);
+distTex.wrapS = THREE.RepeatWrapping;       // doğu-batı sarmalı
+distTex.wrapT = THREE.ClampToEdgeWrapping;
+distTex.minFilter = distTex.magFilter = THREE.LinearFilter;
+distTex.needsUpdate = true;
+
+// Arka doku: OYUNUN kendi karesi. Kırılma kolu bunu büker — yani suyun altında
+// görünen şey uydurma bir taban değil, haritanın gerçek pikselidir.
+const arkaTex = new THREE.CanvasTexture(document.getElementById('map-water'));
+arkaTex.minFilter = arkaTex.magFilter = THREE.LinearFilter;
+arkaTex.wrapS = arkaTex.wrapT = THREE.ClampToEdgeWrapping;
+arkaTex.generateMipmaps = false;
+
+const ilk = dalgaDizisi(THREE, P);
+const U = {
+  uTime: { value: 0 },
+  uDalga: { value: ilk.arr },
+  uOrigin: { value: new THREE.Vector2() },
+  uSpan: { value: new THREE.Vector2() },
+  uEkranSpan: { value: new THREE.Vector2() },
+  uCozunurluk: { value: new THREE.Vector2() },
+  uKamera: { value: new THREE.Vector3() },
+  uAlan: { value: new THREE.Vector4(alan.x0, alan.y0, alan.width, alan.height) },
+  uDist: { value: distTex },
+  uArka: { value: arkaTex },
+  uGurultu: { value: gurultuDokusu(THREE) },
+  uDistMax: { value: DIST_MAX },
+  uOlcek: { value: 1 },
+  // Kasırga: xy merkez (dünya), z yarıçap, w güç. Güç 0 iken shader'daki
+  // bütün fırtına dalları erken çıkar, yani kapalıyken bedeli yoktur.
+  uKasirga: { value: new THREE.Vector4(0, 0, 900, 0) },
+  uHex: { value: HEX_STEP },
+  uTepeMax: { value: ilk.toplam },
+  uDerin: { value: new THREE.Color(P.deep) },
+  uOkyanus: { value: new THREE.Color(P.ocean) },
+  uKiyi: { value: new THREE.Color(P.coast) },
+  uKopukCol: { value: new THREE.Color(P.foam) },
+  uSSSCol: { value: new THREE.Color(P.sss) },
+  uUfuk: { value: new THREE.Color(P.ufuk) },
+  uZenit: { value: new THREE.Color(P.zenit) },
+  uGunesCol: { value: new THREE.Color(P.gunes) },
+  uGunesDir: { value: gunesYonu(THREE, P) },
+};
+// Kaydıraçla sürülen skalerler tek yerden bağlanır: uniform adı -> P alanı.
+const SKALER = {
+  uChop: 'chop', uHiz: 'hiz', uEsinti: 'esinti',
+  uKiyiKirilma: 'kiyiKirilma', uKiyiMenzil: 'kiyiMenzil', uGirdap: 'girdap',
+  uKirilma: 'kirilma', uSogurma: 'sogurma', uKostik: 'kostik',
+  uKostikOlcek: 'kostikOlcek', uSeviye: 'seviye',
+  uKopukMik: 'foamAmt', uKopukEsik: 'kopukEsik', uKopukOmur: 'kopukOmur',
+  uParilti: 'parilti', uPariltiGenis: 'pariltiGenis', uSSS: 'sssG',
+  uDetay: 'detay', uYansima: 'yansima', uKabartma: 'kabartma', uRampa: 'rampa',
+  uFaset: 'faset', uFasetOlcek: 'fasetOlcek',
+};
+for (const [u, alanAdi] of Object.entries(SKALER)) U[u] = { value: P[alanAdi] };
+
+// Birim kare: her karede kameranın altına ölçeklenir (uOrigin + xz * uSpan).
+const geo = new THREE.PlaneGeometry(1, 1, 512, 512);
+geo.rotateX(-Math.PI / 2);
+const vs = suVertex({ yama: true });
+
+function katman(hedef, fs, saydam) {
+  const m = new THREE.Mesh(geo, new THREE.ShaderMaterial({
+    uniforms: U, vertexShader: vs, fragmentShader: fs,
+    transparent: !!saydam, depthWrite: false, depthTest: false,
+  }));
+  m.frustumCulled = false;
+  hedef.sahne.add(m);
+  return m;
+}
+katman(golge, kaplamaFragment({ gecis: 'carpim' }), false);
+katman(isik, kaplamaFragment({ gecis: 'ekle' }), false);
+const kirilmaKat = katman(kirilmaT, kirilmaFragment(), true);
+
+// Kuşlar kırılma kolunun sahnesinde yaşar: ayrı bir tuval daha açmak dördüncü
+// bir WebGL bağlamı demekti ve kuşun suyla karışması gerekmiyor, üstünde durması
+// yetiyor.
+const kus = kusKatmani(THREE, {
+  uDist: U.uDist, uAlan: U.uAlan, uDistMax: U.uDistMax, uHex: U.uHex, sayi: 900,
+});
+kirilmaT.sahne.add(kus.mesh);
+kus.mesh.renderOrder = 10;
+
+let kol = 'kirilma';
+function kolSec(yeni) {
+  kol = yeni;
+  const k = kol === 'kirilma';
+  kirilmaT.canvas.style.display = k ? 'block' : 'none';
+  golge.canvas.style.display = k ? 'none' : 'block';
+  isik.canvas.style.display = k ? 'none' : 'block';
+}
+
+// --------------------------------------------------------------------- ayar
+let sonOlcek = 1;
+function uygula() {
+  const d = dalgaDizisi(THREE, P, sonOlcek);
+  U.uDalga.value = d.arr;
+  U.uTepeMax.value = d.toplam;
+  for (const [u, alanAdi] of Object.entries(SKALER)) U[u].value = P[alanAdi];
+  U.uDerin.value.set(P.deep);
+  U.uOkyanus.value.set(P.ocean);
+  U.uKiyi.value.set(P.coast);
+  U.uKopukCol.value.set(P.foam);
+  U.uSSSCol.value.set(P.sss);
+  U.uUfuk.value.set(P.ufuk);
+  U.uZenit.value.set(P.zenit);
+  U.uGunesCol.value.set(P.gunes);
+  U.uGunesDir.value.copy(gunesYonu(THREE, P));
+  U.uKasirga.value.z = P.kasirgaYaricap * HEX_STEP;
+  U.uKasirga.value.w = P.kasirgaGuc;
+  kus.U.uSayiOran.value = P.kusYogunluk;
+  kus.U.uBoyut.value = P.kusBoyut;
+  kus.U.uYukseklik.value = P.kusYukseklik;
+  kus.U.uHiz.value = P.kusHiz;
+  kus.U.uYon.value = P.ruzgar * Math.PI / 180;   // kuşlar rüzgârla gider
+}
+
+// Kaydıraçlar GRUPLANIR: hepsi tek listede olunca hiçbiri bulunamıyordu.
+// Her kaydıracın görünür bir etkisi var; türetilebilen değer kaydıraç değil.
+const GRUPLAR = [
+  ['Dalga', [
+    ['amp', 'Yükseklik', 0, 4, 0.05],
+    ['chop', 'Sivrilik (chop)', 0, 1.2, 0.01],
+    ['hiz', 'Hız', 0, 3, 0.01],
+    ['ruzgar', 'Rüzgâr yönü', 0, 360, 1],
+    ['yayilma', 'Yönsel yayılma', 0, 2.5, 0.01],
+    ['esinti', 'Esinti (hamle)', 0, 1, 0.01],
+  ]],
+  ['Dünyanın şekli', [
+    ['kiyiKirilma', 'Kıyı kırılması', 0, 3, 0.02],
+    ['kiyiMenzil', 'Kırılma menzili (hex)', 1, 16, 0.5],
+    ['girdap', 'Akıntı girdapları', 0, 2, 0.02],
+  ]],
+  ['Su sütunu', [
+    ['kirilma', 'Kırılma (altı görme)', 0, 4, 0.02],
+    ['sogurma', 'Soğurma (bulanıklık)', 0, 2, 0.02],
+    ['seviye', 'Derinlik ölçeği (hex)', 1, 14, 0.5],
+    ['kostik', 'Kostik (ışık ağı)', 0, 2, 0.02],
+    ['kostikOlcek', 'Kostik ölçeği', 0.3, 5, 0.05],
+  ]],
+  ['Işık', [
+    ['parilti', 'Güneş parıltısı', 0, 3, 0.02],
+    ['pariltiGenis', 'Parıltı genişliği', 0, 1, 0.01],
+    ['yansima', 'Gök yansıması', 0, 1, 0.01],
+    ['gunesY', 'Güneş yüksekliği', 0.02, 0.95, 0.01],
+    ['sssG', 'Altyüzey ışıması', 0, 2, 0.01],
+  ]],
+  ['Köpük ve yüzey', [
+    ['faset', 'Faset (durgun su üçgenleri)', 0, 2, 0.01],
+    ['fasetOlcek', 'Faset boyu (dünya birimi)', 2, 40, 0.5],
+    ['foamAmt', 'Köpük miktarı', 0, 1.5, 0.01],
+    ['kopukEsik', 'Köpük eşiği', 0.2, 1.2, 0.01],
+    ['kopukOmur', 'Köpük ömrü (iz)', 0, 1, 0.01],
+    ['detay', 'Yüzey detayı', 0, 1.5, 0.01],
+  ]],
+  ['Fırtına ve canlılar', [
+    ['kasirgaGuc', 'Kasırga gücü', 0, 1, 0.01],
+    ['kasirgaYaricap', 'Kasırga yarıçapı (hex)', 4, 60, 1],
+    ['kusYogunluk', 'Kuş yoğunluğu', 0, 1, 0.01],
+    ['kusBoyut', 'Kuş boyu (piksel)', 2, 18, 0.5],
+    ['kusYukseklik', 'Kuş yüksekliği (piksel)', 0, 30, 0.5],
+    ['kusHiz', 'Kuş hızı', 0, 3, 0.02],
+  ]],
+  ['Kaplama kolu', [
+    ['kabartma', 'Kabartma', 0, 3, 0.05],
+    ['rampa', 'Harita paleti', 0, 1, 0.01],
+  ]],
+];
+
+// MAKROLAR — bir kaydıraç, birlikte hareket etmesi gereken beş ayar.
+//
+// Yirmi yedi kaydıraç kusursuzu ARAMAYI zorlaştırıyor: iyi bir deniz için o
+// ayarların çoğu birlikte gitmek zorunda (rüzgâr sertleşince dalga da köpük
+// de yayılma da artar). Makrolar o birlikteliği tek eksene indiriyor; ince
+// ayar isteyen alttaki grupları açıyor.
+const MAKROLAR = [
+  ['ruzgarSiddeti', 'Rüzgâr şiddeti', (v) => ({
+    amp: 0.15 + 2.6 * v * v,
+    chop: 0.25 + 0.75 * v,
+    foamAmt: 0.08 + 1.0 * v,
+    yayilma: 0.5 + 1.3 * v,
+    esinti: 0.1 + 0.6 * v,
+    kopukEsik: 0.95 - 0.45 * v,
+  })],
+  ['berraklik', 'Berraklık (suyun altı)', (v) => ({
+    kirilma: 0.2 + 2.4 * v,
+    sogurma: 1.4 - 1.25 * v,
+    kostik: 0.05 + 0.95 * v,
+    seviye: 3.0 + 5.0 * v,
+  })],
+  ['isikSiddeti', 'Işık', (v) => ({
+    parilti: 0.2 + 2.0 * v,
+    yansima: 0.15 + 0.8 * v,
+    sssG: 0.15 + 1.1 * v,
+    pariltiGenis: 0.5 - 0.42 * v,
+  })],
+  ['kiyiEtkisi', 'Kıyının etkisi', (v) => ({
+    kiyiKirilma: 0.3 + 2.4 * v,
+    kiyiMenzil: 3.0 + 9.0 * v,
+    girdap: 0.1 + 1.2 * v,
+  })],
+];
+const makroDeger = { ruzgarSiddeti: 0.35, berraklik: 0.5, isikSiddeti: 0.4, kiyiEtkisi: 0.45 };
+
+const gruplarEl = document.getElementById('gruplar');
+const girdiler = {};
+const makroKutu = document.createElement('div');
+makroKutu.id = 'makrolar';
+gruplarEl.append(makroKutu);
+const makroGirdi = {};
+for (const [ad, etiket, kural] of MAKROLAR) {
+  const l = document.createElement('label');
+  l.innerHTML = '<b>' + etiket + '</b><span></span>';
+  const i = document.createElement('input');
+  i.type = 'range'; i.min = 0; i.max = 1; i.step = 0.01; i.value = makroDeger[ad];
+  const yaz = () => { l.querySelector('span').textContent = makroDeger[ad].toFixed(2); };
+  i.addEventListener('input', () => {
+    makroDeger[ad] = parseFloat(i.value);
+    Object.assign(P, kural(makroDeger[ad]));
+    yaz();
+    for (const g of Object.values(girdiler)) { g.i.value = P[g.ad]; g.yaz(); }
+    uygula();
+  });
+  yaz();
+  makroKutu.append(l, i);
+  makroGirdi[ad] = { i, yaz };
+}
+
+GRUPLAR.forEach(([baslik, satirlar], gi) => {
+  const d = document.createElement('details');
+  if (gi === 0) d.open = true;
+  const sum = document.createElement('summary');
+  sum.textContent = baslik;
+  d.append(sum);
+  for (const [ad, etiket, min, max, adim] of satirlar) {
+    const l = document.createElement('label');
+    l.innerHTML = etiket + '<span></span>';
+    const i = document.createElement('input');
+    i.type = 'range';
+    i.min = min; i.max = max; i.step = adim; i.value = P[ad];
+    const yaz = () => { l.querySelector('span').textContent = (+P[ad]).toFixed(adim < 1 ? 2 : 0); };
+    i.addEventListener('input', () => { P[ad] = parseFloat(i.value); yaz(); uygula(); });
+    yaz();
+    d.append(l, i);
+    girdiler[ad] = { i, l, adim, yaz, ad };
+  }
+  gruplarEl.append(d);
+});
+
+// Bulunan ayarı kaybetmemek için: panodaki JSON doğrudan önayara dönüşebilir.
+const kopyaBtn = document.createElement('button');
+kopyaBtn.textContent = 'Ayarı kopyala';
+kopyaBtn.style.cssText = 'width:100%;margin-top:8px;padding:5px;font:inherit;font-size:11px;'
+  + 'cursor:pointer;background:rgba(30,58,70,0.7);color:#cfe0e4;border-radius:4px;'
+  + 'border:1px solid rgba(150,190,200,0.22);';
+kopyaBtn.addEventListener('click', () => {
+  const cikti = {};
+  for (const [, satirlar] of GRUPLAR) for (const [ad] of satirlar) cikti[ad] = +(+P[ad]).toFixed(3);
+  const metin = JSON.stringify(cikti, null, 2);
+  if (navigator.clipboard) navigator.clipboard.writeText(metin).catch(() => {});
+  console.log('AYAR:', metin);
+  window.sonAyar = cikti;
+  kopyaBtn.textContent = 'kopyalandı ✓';
+  setTimeout(() => { kopyaBtn.textContent = 'Ayarı kopyala'; }, 1400);
+});
+document.getElementById('ui').append(kopyaBtn);
+
+const onaylarEl = document.getElementById('onaylar');
+for (const [anahtar, o] of Object.entries(ONAYARLAR)) {
+  const b = document.createElement('button');
+  b.textContent = o.ad;
+  b.dataset.k = anahtar;
+  b.addEventListener('click', () => onayarSec(anahtar));
+  onaylarEl.append(b);
+}
+function onayarSec(anahtar) {
+  aktifOnayar = anahtar;
+  const saklanan = {};
+  for (const k of EKSTRA) saklanan[k] = P[k];
+  Object.assign(P, ONAYARLAR[anahtar], saklanan);
+  for (const [ad, g] of Object.entries(girdiler)) { g.i.value = P[ad]; g.yaz(); }
+  for (const b of onaylarEl.children) b.classList.toggle('aktif', b.dataset.k === anahtar);
+  uygula();
+}
+
+let acik = true;
+function ac(v) {
+  acik = v;
+  for (const t of [golge, isik, kirilmaT]) t.canvas.style.visibility = v ? 'visible' : 'hidden';
+}
+addEventListener('keydown', (e) => {
+  if (e.key === '1') onayarSec('master');
+  if (e.key === '2') onayarSec('sot');
+  if (e.key === '3') onayarSec('gercek');
+  if (e.key === '4') onayarSec('durgun');
+  if (e.key === '5') onayarSec('kerem');
+  if (e.key === '6') onayarSec('kerem2');
+  if (e.key === 'b') document.body.classList.toggle('bare');
+  if (e.key === 'o') ac(!acik);
+  if (e.key === 'p') kolSec(kol === 'kirilma' ? 'kaplama' : 'kirilma');
+  // Kasırgayı ekranın ortasına kur: fırtınayı aramak yerine ona gidilir.
+  if (e.key === 'k') {
+    U.uKasirga.value.x = cam.x;
+    U.uKasirga.value.y = cam.y;
+    if (P.kasirgaGuc < 0.05) { P.kasirgaGuc = 0.75; girdiler.kasirgaGuc.i.value = 0.75; girdiler.kasirgaGuc.yaz(); }
+    uygula();
+  }
+});
+onayarSec('master');
+kolSec('kirilma');
+
+// -------------------------------------------------------------------- döngü
+const sayEl = document.getElementById('say');
+let t0 = performance.now(), kareler = 0, sure = 0;
+const sonKam = { x: NaN, y: NaN, zoom: NaN };
+// İlk kareler: ısıtma bitene dek arka doku birkaç kez tazelenmeli.
+let arkaTazele = 8;
+
+function boyutla() {
+  for (const t of [golge, isik, kirilmaT]) t.gl.setSize(innerWidth, innerHeight, false);
+}
+addEventListener('resize', boyutla);
+boyutla();
+
+function kare(ts) {
+  const dt = Math.min(0.05, (ts - t0) / 1000);
+  t0 = ts;
+  U.uTime.value += dt;
+  kus.U.uTime.value = U.uTime.value;
+  kus.U.uPikselDunya.value = 1 / cam.zoom;
+
+  // Harita YALNIZ DEĞİŞTİĞİNDE çizilir ve dokuya alınır.
+  //
+  // Çizim tamponu artık kalıcı (yukarıdaki getContext yaması), yani harita
+  // kendi tuvalinde DURUYOR; her karede yeniden çizmeye gerek yok. Bu ölçülen
+  // bir kazanç: her kare kopyalarken deniz 4.41 ms sürüyordu (bütçe 2 ms),
+  // çünkü tam ekran tuval->doku kopyası ucuz değil. Kamera durduğunda harita
+  // da durur; dalga animasyonu shader'ın kendi zamanından gelir, arkaya
+  // dokunmaz.
+  const kamDegisti = cam.x !== sonKam.x || cam.y !== sonKam.y || cam.zoom !== sonKam.zoom;
+  if (kamDegisti || game.dirty || r.hasPendingJobs() || arkaTazele > 0) {
+    game.dirty = true;
+    game.frame(ts);
+    // WebGL komutları tamponlanır; başka bir bağlamdan yapılan doku okuması
+    // boşalmamış komutları göremez (ölçüldü: deniz simsiyah çıkıyordu).
+    if (r.waterGL && r.waterGL.gl) r.waterGL.gl.flush();
+    arkaTex.needsUpdate = true;
+    sonKam.x = cam.x; sonKam.y = cam.y; sonKam.zoom = cam.zoom;
+    arkaTazele = Math.max(0, arkaTazele - 1);
+  }
+
+  // Dalga ölçeği zoom'u TAKİP EDER. Dalga boyu dünyada sabit tutulunca uzak
+  // zoomda ekranda birkaç piksele düşüyor ve deniz "çizik" gibi okunuyordu
+  // (ölçüldü: 118 birim dalga, zoom 0.22'de 26 px). Genlik de aynı çarpanla
+  // ölçeklenir, böylece diklik (A·k) sabit kalır: dalganın KARAKTERİ zoomla
+  // değişmez, yalnız boyu değişir.
+  const olcek = Math.min(4, Math.max(1, 0.9 / cam.zoom));
+  if (Math.abs(olcek - sonOlcek) > 0.02) { sonOlcek = olcek; U.uOlcek.value = olcek; uygula(); }
+
+  // Kamera senkronu: oyunun afin dönüşümünün ortografik karşılığı.
+  const yw = cam.viewWidth / cam.zoom;
+  const yh = cam.viewHeight / cam.zoom;
+  kamera.left = -yw / 2; kamera.right = yw / 2;
+  kamera.top = yh / 2; kamera.bottom = -yh / 2;
+  kamera.position.set(cam.x, 4000, cam.y);
+  kamera.lookAt(cam.x, 0, cam.y);
+  kamera.updateProjectionMatrix();
+  U.uKamera.value.copy(kamera.position);
+  U.uOrigin.value.set(cam.x, cam.y);
+  U.uSpan.value.set(yw * 1.2, yh * 1.2);
+  U.uEkranSpan.value.set(yw, yh);
+  const pr = kirilmaT.gl.getPixelRatio();
+  U.uCozunurluk.value.set(innerWidth * pr, innerHeight * pr);
+
+  const b = performance.now();
+  if (acik) {
+    if (kol === 'kirilma') {
+      kirilmaT.gl.render(kirilmaT.sahne, kamera);
+    } else {
+      golge.gl.render(golge.sahne, kamera);
+      isik.gl.render(isik.sahne, kamera);
+    }
+  }
+  sure += performance.now() - b;
+
+  if (++kareler >= 30) {
+    const tri = kol === 'kirilma'
+      ? kirilmaT.gl.info.render.triangles
+      : golge.gl.info.render.triangles + isik.gl.info.render.triangles;
+    sayEl.textContent = `${ONAYARLAR[aktifOnayar].ad} · ${kol}${acik ? '' : ' (KAPALI)'}`
+      + `\ndeniz ${(sure / kareler).toFixed(2)} ms`
+      + `\nzoom ${cam.zoom.toFixed(2)}  ölçek ${sonOlcek.toFixed(1)}x`
+      + `\n${(tri / 1e6).toFixed(2)} M üçgen`;
+    kareler = 0; sure = 0;
+  }
+  requestAnimationFrame(kare);
+}
+requestAnimationFrame(kare);
+
+window.sulab = { game, P, ONAYARLAR, uygula, onayarSec, U, kamera, ac, kolSec, kirilmaKat, kus, sahne: kirilmaT.sahne, gl: kirilmaT.gl };
+</script>
+</body>
+</html>
