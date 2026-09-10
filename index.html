@@ -381,6 +381,12 @@
     </div>
   </div>
 
+  <!-- three.js VENDOR edilmiştir: derleme adımı yok, paket yöneticisi yok,
+       çevrimdışı çalışır. Yalnızca 3B harita kipi (renderer.setSurfaceMode('3d'))
+       bunu DİNAMİK olarak yükler; varsayılan yolda hiç indirilmez. -->
+  <script type="importmap">
+  {"imports": {"three": "./vendor/three/three.module.min.js"}}
+  </script>
   <script type="module" src="src/main.js"></script>
 </body>
 </html>

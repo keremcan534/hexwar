@@ -43,8 +43,20 @@ void main() {
   gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }`;
 
-const FRAG = `#version 300 es
-precision highp float;
+/**
+ * ORTAK YÜZEY GLSL'İ.
+ *
+ * İki sunum var ve ikisi de AYNI malzemeyi çizmeli: tam ekran tek üçgen
+ * (bu dosya) ve arazi mesh'i (bkz. scene3d.js). Kaynağı tek tutmanın
+ * gerekçesi basit — iki kopya kaçınılmaz olarak birbirinden ayrılır ve
+ * "aynı oyunda iki ayrı sanat yönetimi" bu depoda daha önce bir kez
+ * yaşandı (bkz. glWater yorumu).
+ *
+ * Bölünme noktası `world`ün NEREDEN geldiğidir: tam ekran sunumu onu ekran
+ * koordinatından ters afinle türetir, mesh sunumu vertex'ten varying olarak
+ * taşır. Geri kalan her şey ortaktır.
+ */
+export const SURFACE_LIB = `precision highp float;
 out vec4 fragColor;
 
 uniform vec2 uViewport;     // CSS piksel
@@ -216,12 +228,10 @@ vec3 landColor(vec2 world, vec2 cell, vec3 Ldir) {
   }
   return col;
 }
+`;
 
-void main() {
-  vec2 px = gl_FragCoord.xy / uDpr;
-  // Canvas2D ile aynı eksen: y aşağı.
-  vec2 scr = vec2(px.x, uViewport.y - px.y);
-  vec2 world = (scr - uViewport * 0.5) / uZoom + uCam;
+/** Yüzey rengi. Karanın dışında (kutupların ötesi) `discard` eder. */
+export const SURFACE_BODY = `vec4 surfaceAt(vec2 world) {
 
   // --- KARA MASKESİ (tam hex kenarı) ---
   vec2 cr = hexAt(world);
@@ -233,8 +243,7 @@ void main() {
   float isWater = texture(uHex, (cell + 0.5) / uGrid).r;
   if (isWater >= 0.5 && uSeaMaterial < 0.5) {
     // Duz deniz: rengi de oyunun kendi borusundan gelir (uOwner).
-    fragColor = vec4(texture(uOwner, (cell + 0.5) / uGrid).rgb, 1.0);
-    return;
+    return vec4(texture(uOwner, (cell + 0.5) / uGrid).rgb, 1.0);
   }
   // Isik yonu SU ile ORTAK: iki yuzeyin ayni dunyada olmasi buna bagli.
   vec3 Ldir = normalize(vec3(-0.55, -0.68, 0.48));
@@ -243,8 +252,7 @@ void main() {
     // Kuresel derece: orta ton cevresinde S egrisi + soguk golge/sicak isik.
     vec3 gr = land * land * (3.0 - 2.0 * land);
     land = mix(land, gr, uGrade);
-    fragColor = vec4(clamp(land, 0.0, 1.0), 1.0);
-    return;
+    return vec4(clamp(land, 0.0, 1.0), 1.0);
   }
 
   // --- DALGALAR (uzaklıktan ÖNCE: sığlık onların üstünden kırılacak) ---
@@ -355,7 +363,17 @@ void main() {
   foam *= 0.6 + 0.4 * uDetail;
   col3 = mix(col3, vec3(0.58, 0.64, 0.63), clamp(foam * uFoamAmp, 0.0, 0.62));
 
-  fragColor = vec4(col3, 1.0);
+  return vec4(col3, 1.0);
+}`;
+
+const FRAG = `#version 300 es
+${SURFACE_LIB}
+${SURFACE_BODY}
+void main() {
+  vec2 px = gl_FragCoord.xy / uDpr;
+  // Canvas2D ile aynı eksen: y aşağı.
+  vec2 scr = vec2(px.x, uViewport.y - px.y);
+  fragColor = surfaceAt((scr - uViewport * 0.5) / uZoom + uCam);
 }`;
 
 function compile(gl, type, src) {
@@ -399,7 +417,7 @@ function smear(src, size, dx, dy, taps) {
   return out;
 }
 
-function buildWaveTexture() {
+export function buildWaveTexture() {
   const size = WAVE_SIZE;
   // İki alan, İKİ AYRI yönde yayılmış: üst üste bindiklerinde tek yönlü bir
   // tarama deseni değil, kesişen kabarma aileleri çıkar.
@@ -459,13 +477,98 @@ function toHalf(value) {
   return sign | (exp << 10) | (mant >> 13);
 }
 
+/**
+ * Yüzey alanlarının HAM VERİSİ — GPU nesnesi değil, yalnız typed array.
+ *
+ * İki sunum (tam ekran shader ve arazi mesh'i) aynı dünyayı aynı sayılarla
+ * görmeli; ayrıca bu fonksiyon hiçbir GL bağlamına dokunmadığı için mesh
+ * tarafı kendi doku sınıfını (three.js DataTexture) kurabiliyor.
+ */
+export function buildSurfaceFields(world, coast) {
+  const cols = world.cols;
+  const rows = world.rows;
+  const hex = new Uint8Array(cols * rows);
+  for (let i = 0; i < hex.length; i++) {
+    const t = world.tiles[i];
+    hex[i] = t && t.terrain.water ? 255 : 0;
+  }
+  const { toLand, surface, w, h } = coast;
+  const dist = new Uint8Array(w * h);
+  for (let i = 0; i < dist.length; i++) {
+    dist[i] = Math.min(255, Math.round((toLand[i] / DIST_MAX) * 255));
+  }
+  const elev = new Uint16Array(surface.length);
+  for (let i = 0; i < surface.length; i++) elev[i] = toHalf(surface[i]);
+  return { hex, dist, elev, cols, rows, w, h };
+}
+
+/** Yükseklik/uzaklık alanlarının dünya dikdörtgeni. Tek kaynak: iki sunum da
+ *  aynı orijini kullanmazsa kabartma ile hex ızgarası birbirinden kayar. */
+export function fieldOf(world) {
+  return {
+    x0: WRAP_X0,
+    y0: -ROW_H / 2,
+    spanX: world.cols * HEX_STEP,
+    spanY: world.rows * ROW_H,
+  };
+}
+
+/**
+ * Denizin ve karanın SANAT AYARLARI. Fabrika olmasının gerekçesi: iki sunum
+ * (tam ekran ve mesh) aynı ayarlarla başlamalı ama biri diğerininkini canlı
+ * değiştirdiğinde ötekini bozmamalı — konsoldan `tune` kurcalamak bu depoda
+ * meşru bir iş akışı (bkz. WaterGL.tune yorumu).
+ */
+/**
+ * Yüzey katmanının WebGL2 bağlamı. Tuval tek bağlam verebildiği için onu
+ * SUNUM DEĞİL RENDERER açar; ham yol (SurfaceGL) ve mesh yolu (Scene3D) aynı
+ * bağlamı ödünç alır. Aksi hâlde ikisi yan yana yaşayamaz ve bu portun tek
+ * güvenlik ağı olan A/B karşılaştırması imkânsızlaşır.
+ *
+ * `depth` artık AÇIK: mesh yolunun derinlik tamponuna ihtiyacı var. Ham yol
+ * tek tam-ekran üçgen çizdiği için bundan etkilenmez, yalnız birkaç yüz
+ * kilobayt tampon ödenir.
+ */
+export function createSurfaceContext(canvas) {
+  return canvas.getContext('webgl2', {
+    alpha: true, antialias: false, depth: true, stencil: false,
+    premultipliedAlpha: true, powerPreference: 'high-performance',
+  });
+}
+
+export function defaultTune() {
+  return {
+      shallow: [0.290, 0.560, 0.570],
+      teal: [0.165, 0.335, 0.365],
+      petrol: [0.108, 0.240, 0.272],
+      abyss: [0.078, 0.180, 0.210],
+      shelf: 1.15,
+      spec: 0.55,
+      fresnel: 1.90,
+      foam: 0.70,
+      /**
+       * Dalganın görünürlüğü. `waveShade` TABAN RENGİ oynatır (asıl kabarma),
+       * `waveAmp` normal eğimi (ışık), `refract` sığlıktaki kırılma.
+       *
+       * Ayarlar yüksekken (shade 0.60 / amp 1.70 / spec 1.15) deniz "sis
+       * bankası" okunuyordu: güçlü normaller speküları sırtlar boyunca sürekli
+       * ateşliyor ve beyaz şeritler çıkıyordu. Kabarmanın görünmesi için
+       * gereken şey parlaklık değil, taban renginin oynaması.
+       */
+      waveAmp: 1.15,
+      waveShade: 0.26,
+      refract: 0.60,
+      // KARA. `relief` yükseklik eğiminin ışığa katkısı, `grain` pigmentin
+      // gücü, `grade` küresel S eğrisinin payı.
+      relief: 1.0,
+      grain: 0.55,
+      grade: 0.30,
+  };
+}
+
 export class SurfaceGL {
   /** WebGL2 yoksa null döner: çağıran Canvas2D suyuna geri düşer. */
-  static create(canvas, onContextChange = null) {
-    const gl = canvas.getContext('webgl2', {
-      alpha: true, antialias: false, depth: false, stencil: false,
-      premultipliedAlpha: true, powerPreference: 'high-performance',
-    });
+  static create(canvas, gl, onContextChange = null) {
     if (!gl) return null;
     try {
       return new SurfaceGL(canvas, gl, onContextChange);
@@ -540,33 +643,7 @@ export class SurfaceGL {
      * palet (abis 0.025/0.066/0.086) referansların yanında ölü kalıyordu —
      * seçim referans karelerinden yana yapıldı.
      */
-    this.tune = {
-      shallow: [0.290, 0.560, 0.570],
-      teal: [0.165, 0.335, 0.365],
-      petrol: [0.108, 0.240, 0.272],
-      abyss: [0.078, 0.180, 0.210],
-      shelf: 1.15,
-      spec: 0.55,
-      fresnel: 1.90,
-      foam: 0.70,
-      /**
-       * Dalganın görünürlüğü. `waveShade` TABAN RENGİ oynatır (asıl kabarma),
-       * `waveAmp` normal eğimi (ışık), `refract` sığlıktaki kırılma.
-       *
-       * Ayarlar yüksekken (shade 0.60 / amp 1.70 / spec 1.15) deniz "sis
-       * bankası" okunuyordu: güçlü normaller speküları sırtlar boyunca sürekli
-       * ateşliyor ve beyaz şeritler çıkıyordu. Kabarmanın görünmesi için
-       * gereken şey parlaklık değil, taban renginin oynaması.
-       */
-      waveAmp: 1.15,
-      waveShade: 0.26,
-      refract: 0.60,
-      // KARA. `relief` yükseklik eğiminin ışığa katkısı, `grain` pigmentin
-      // gücü, `grade` küresel S eğrisinin payı.
-      relief: 1.0,
-      grain: 0.55,
-      grade: 0.30,
-    };
+    this.tune = defaultTune();
 
     const prog = gl.createProgram();
     gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
@@ -628,20 +705,14 @@ export class SurfaceGL {
     const cols = world.cols;
     const rows = world.rows;
 
-    const hex = new Uint8Array(cols * rows);
-    for (let i = 0; i < hex.length; i++) {
-      const t = world.tiles[i];
-      hex[i] = t && t.terrain.water ? 255 : 0;
-    }
+    const f = buildSurfaceFields(world, coast);
+    const hex = f.hex;
     if (this.hexTex) gl.deleteTexture(this.hexTex);
     this.hexTex = this.makeTex(gl.R8, gl.RED, cols, rows, hex,
       gl.NEAREST, gl.REPEAT, gl.CLAMP_TO_EDGE);
 
-    const { toLand, w, h } = coast;
-    const dist = new Uint8Array(w * h);
-    for (let i = 0; i < dist.length; i++) {
-      dist[i] = Math.min(255, Math.round((toLand[i] / DIST_MAX) * 255));
-    }
+    const { w, h } = coast;
+    const dist = f.dist;
     if (this.distTex) gl.deleteTexture(this.distTex);
     this.distTex = this.makeTex(gl.R8, gl.RED, w, h, dist,
       gl.LINEAR, gl.REPEAT, gl.CLAMP_TO_EDGE);
@@ -665,9 +736,7 @@ export class SurfaceGL {
     // yalnız 3-4 kademe eder ve eğim hesabı basamak basamak çıkar — kabartma
     // "kırışık" değil "teraslı" okunur. Yarım kayan nokta WebGL2 çekirdeğinde
     // LINEAR süzülebilir, eklenti istemez.
-    const surf = coast.surface;
-    const elev = new Uint16Array(surf.length);
-    for (let i = 0; i < surf.length; i++) elev[i] = toHalf(surf[i]);
+    const elev = f.elev;
     if (this.elevTex) gl.deleteTexture(this.elevTex);
     this.elevTex = this.makeTex(gl.R16F, gl.RED, coast.w, coast.h, elev,
       gl.LINEAR, gl.REPEAT, gl.CLAMP_TO_EDGE, gl.HALF_FLOAT);
@@ -675,10 +744,7 @@ export class SurfaceGL {
 
     this.world = world;
     this.grid = { cols, rows };
-    this.field = {
-      x0: WRAP_X0, y0: -ROW_H / 2,
-      spanX: cols * HEX_STEP, spanY: rows * ROW_H,
-    };
+    this.field = fieldOf(world);
     return true;
   }
 
@@ -737,6 +803,14 @@ export class SurfaceGL {
     // Önceki karelerin sonuçları önce toplanır: okunmayan sorgu havuzu tıkar.
     this.gpuTimer?.poll((ms) => this.perf?.gauge('gpu.surface', ms));
     this.gpuTimer?.begin();
+    // DURUM KENDİ KURULUR. Bağlam mesh yoluyla (Scene3D/three) paylaşılıyor;
+    // three derinlik testini, yüz ayıklamayı ve karışımı kendi bildiği gibi
+    // bırakır. Tek tam-ekran üçgen çizen bu yol onları açık bulursa üçgen
+    // ayıklanabilir ya da testte kalabilir — sessiz bir boş ekran demektir.
+    gl.disable(gl.DEPTH_TEST);
+    gl.disable(gl.CULL_FACE);
+    gl.disable(gl.BLEND);
+    gl.disable(gl.SCISSOR_TEST);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);

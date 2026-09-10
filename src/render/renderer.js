@@ -15,7 +15,7 @@ import { controllerOf, isOccupied } from '../game/control.js';
 import { materials } from './textures.js';
 import { WaterLayer } from './water.js';
 import { LandMaterial } from './material.js';
-import { SurfaceGL } from './surfaceGL.js';
+import { SurfaceGL, createSurfaceContext } from './surfaceGL.js';
 
 /**
  * Karenin GÖRÜNEN sahibi. Geçilmez arazi (artık yalnız buz) hiçbir province'e
@@ -362,6 +362,10 @@ export class Renderer {
     this.cache = null;
     /** Oyuncunun deniz kalite anahtarı (HUD 'Live sea'). */
     this.liveSea = true;
+    /** Yüzey sunumu: 'classic' | 'gpu' | '3d' (bkz. setSurfaceMode). */
+    this.surfaceMode = 'gpu';
+    /** Mesh kipine geçerken saklanan ham yol; geri dönüşte kullanılır. */
+    this.rawSurface = null;
     this.lastDrawn = 0;
     // Deniz yüzeyi ayrı bir katman nesnesidir: dokular, kıyı topolojisi ve
     // yerel bozulmalar orada yaşar (bkz. water.js).
@@ -450,7 +454,12 @@ export class Renderer {
    */
   attachWaterCanvas(canvas) {
     if (!canvas) return false;
-    this.waterGL = SurfaceGL.create(canvas, (state) => this.onGLContext(canvas, state));
+    // Bağlamı RENDERER açar; iki sunum (ham yol / mesh yolu) onu paylaşır.
+    this.surfaceCanvas = canvas;
+    this.surfaceCtx = createSurfaceContext(canvas);
+    if (!this.surfaceCtx) return false;
+    this.waterGL = SurfaceGL.create(canvas, this.surfaceCtx,
+      (state) => this.onGLContext(canvas, state));
     if (!this.waterGL) return false;
     this.waterGL.perf = this.perf ?? null;
     // resize BURADA çağrılmaz: kurucu, düzen (layout) oturmadan çalışıyor ve
@@ -473,8 +482,13 @@ export class Renderer {
   onGLContext(canvas, state) {
     if (state === 'restored') {
       this.waterGL?.dispose?.();
-      this.waterGL = SurfaceGL.create(canvas, (next) => this.onGLContext(canvas, next));
+      this.surfaceCtx = createSurfaceContext(canvas);
+      this.waterGL = this.surfaceCtx
+        ? SurfaceGL.create(canvas, this.surfaceCtx, (next) => this.onGLContext(canvas, next))
+        : null;
       if (this.waterGL) this.waterGL.perf = this.perf ?? null;
+      // Mesh kipindeydiysek oraya geri dönülür; oyuncu kip değiştirmedi.
+      if (this.surfaceMode === '3d') this.setSurfaceMode('3d');
       // Dünya YENİDEN YÜKLENMEZ burada: taze katmanın `world`'ü null olduğu
       // için ısıtma pompası (hasPendingJobs) bir sonraki karede setWorld'ü
       // zaten kendi doğru argümanlarıyla çağırır. İki yerden yüklemek, iki
@@ -521,6 +535,49 @@ export class Renderer {
    */
   setSurfaceMode(mode) {
     if (!this.waterGL) return 'classic';
+    // ÜÇ KOL. 'classic' eski Canvas2D borusu, 'gpu' tam ekran shader,
+    // '3d' arazi mesh'i (three.js). Hiçbiri silinmedi: üçü yan yana
+    // karşılaştırılabilsin diye duruyorlar — bu portun tek güvenlik ağı
+    // tilt=0'da üç kolun AYNI pikselleri üretmesidir.
+    if (mode === '3d') {
+      this.surfaceMode = '3d';
+      // three.js DİNAMİK yüklenir: 3B kipine geçilmedikçe 687 KB inmez.
+      // Derleme adımı yok, tarayıcı `import()`i yerli olarak biliyor.
+      return import('./scene3d.js').then(({ Scene3D }) => {
+        const scene = Scene3D.create(this.surfaceCanvas, this.surfaceCtx,
+          (state) => this.onGLContext(this.surfaceCanvas, state));
+        if (!scene) {
+          this.surfaceMode = 'gpu';
+          return 'gpu';
+        }
+        this.rawSurface = this.waterGL;
+        scene.perf = this.perf ?? null;
+        scene.debug.enabled = true;
+        this.waterGL = scene;
+        // Taze sunum HİÇ boyutlanmamıştır: `resize` yalnız tuval ölçüsü
+        // değişince çağrılıyordu, kip değişiminde değil. Boyutsuz katman
+        // önceki kolun bıraktığı tampon ölçüsüyle çizer.
+        this.resize();
+        this.invalidateCache();
+        this.staticLayers = null;
+        this.staticDirty = true;
+        this.requestFrame?.();
+        return '3d';
+      }).catch((err) => {
+        console.warn('3B kip yüklenemedi:', err);
+        this.surfaceMode = 'gpu';
+        return 'gpu';
+      });
+    }
+    // Mesh kipinden çıkılıyorsa ham yol geri alınır.
+    if (this.surfaceMode === '3d' && this.rawSurface) {
+      this.waterGL.dispose?.();
+      this.waterGL = this.rawSurface;
+      this.rawSurface = null;
+      this.waterGL.world = null;   // dokular mesh kipinde bırakılmıştı
+      this.resize();
+    }
+    this.surfaceMode = mode === 'classic' ? 'classic' : 'gpu';
     this.waterGL.debug.enabled = mode !== 'classic';
     this.invalidateCache();
     this.staticLayers = null;
