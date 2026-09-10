@@ -133,6 +133,12 @@ const KARA_FRAGMENT = [
   '  vec2 crE = hexAt(vDunya.xz);',
   '  vec2 cellUV = (vec2(mod(crE.x, uGrid.x), crE.y) + 0.5) / uGrid;',
   '  vec3 ulkeSaf = texture2D(uArka, suv).rgb;',
+  // Sahipsiz kara siyah bir boşluk değil, ARAZİDİR. Oyun onu koyu boyuyor
+  // çünkü siyasi kipte sahibi yok; burada arazi rengine çevriliyor.
+  '  float sahipDeg = texture2D(uSahip, cellUV).r;',
+  '  float sahipsiz = step(0.9940, sahipDeg) * (1.0 - step(0.9980, sahipDeg));',
+  '  vec3 araziH = texture2D(uArazi, cellUV).rgb;',
+  '  ulkeSaf = mix(ulkeSaf, araziH * 0.92, sahipsiz);',
   '  vec3 taban = ulkeSaf;',
   '',
   // HOI4 KİPİ. Ülke rengi her yerde aynı kuvvetteyse harita boyama kitabına
@@ -164,7 +170,7 @@ const KARA_FRAGMENT = [
   // birkaç ülke tamamen karardı). Pivot rengin kendi orta bölgesine çekildi
   // ve sonucun altına bir taban kondu: kontrast artık aydınlatır, öldürmez.
   '  vec3 gerilmis = clamp((taban - 0.42) * (1.0 + uKontrast) + 0.42, 0.0, 1.0);',
-  '  taban = max(gerilmis, taban * 0.78);',
+  '  taban = max(gerilmis, taban * 0.88);',
   '',
   // Yükseklik ve eğim: raster zaten hex başına 4 teksel, merkezî fark yeter.
   '  vec2 tx = 1.0 / uYukBoyut;',
@@ -385,7 +391,7 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uSahip: { value: sahipTex },
     uCizgiKalin: { value: 3.0 },
     uCizgiGuc: { value: 0.85 },
-    uKarartmaTaban: { value: 0.62 },
+    uKarartmaTaban: { value: 0.72 },
     uCizgiRenk: { value: new THREE.Color('#0c1116') },
     uKontrast: { value: 0.35 },
   };
@@ -600,7 +606,11 @@ export function sahipDokusu(THREE, world) {
   const veri = new Uint8Array(cols * rows);
   for (let i = 0; i < veri.length; i++) {
     const t = world.tiles[i];
-    veri[i] = (!t || t.terrain.water || t.owner < 0) ? 255 : Math.min(253, t.owner);
+    // 255 = deniz, 254 = sahipsiz KARA, 0..253 = ülke. Sahipsizin denizden
+    // ayrılması şart: oyun sahipsiz karayı neredeyse siyah boyuyor ve
+    // ölçüldü, karanın %4.9'u sahipsiz — harita ortasında siyah bantlar
+    // oradan geliyordu.
+    veri[i] = (!t || t.terrain.water) ? 255 : (t.owner < 0 ? 254 : Math.min(253, t.owner));
   }
   const tex = new THREE.DataTexture(veri, cols, rows, THREE.RedFormat);
   tex.wrapS = THREE.RepeatWrapping;
