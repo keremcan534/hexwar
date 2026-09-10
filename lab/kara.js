@@ -55,7 +55,7 @@ const KARA_FRAGMENT = [
   'uniform float uDokuGuc, uKayaGuc, uKarSeviye, uGolgeGuc, uAO, uYukOlcek, uKabartmaK;',
   'uniform float uPlajGen, uPlajGuc, uFalezGuc;',
   'uniform float uSinirGen, uIcOpaklik, uCanlilik, uSinirAzami;',
-  'uniform float uKenarKalin, uKenarGuc, uHatGuc, uKontrast;',
+  'uniform float uKenarKalin, uKenarGuc, uHatGuc, uKontrast, uTavan, uIcKarart;',
   'uniform vec3 uPlajCol;',
   'varying vec3 vDunya;',
   '',
@@ -147,6 +147,9 @@ const KARA_FRAGMENT = [
   '  float araziL = dot(araziRenk, vec3(0.299, 0.587, 0.114));',
   '  float araziMod = 0.72 + araziL * 0.95;',
   '  taban *= mix(1.0, araziMod, icerlek * (1.0 - uIcOpaklik));',
+  // Bant parlatılmayacaksa okunurluğu İÇERİNİN bir tık kararmasından
+  // gelir. Fark küçük olmalı: büyütülürse ülkeler halka gibi görünür.
+  '  taban *= mix(1.0, uIcKarart, icerlek);',
   // Canlılık: rengi doygunlaştırır ama parlaklığını korur. Ülke renkleri
   // haritada birbirinden ayrılmalı; soluk palet siyaseti okunmaz yapıyor.
   '  float gri = dot(taban, vec3(0.299, 0.587, 0.114));',
@@ -243,8 +246,18 @@ const KARA_FRAGMENT = [
   // sınırın iki yakasında ayrı ayrı çizildiği için karşılıklı iki yarım
   // oluşur. En sonda biner — dokunun, gölgenin ve plajın üstünde kalmalı,
   // yoksa çizgi bulanır ve yarım yarım okunmaz.
-  '  float kenar = 1.0 - smoothstep(uKenarKalin * uHex * 0.45, uKenarKalin * uHex, sinirD);',
-  '  vec3 kenarRenk = clamp(ulkeSaf * 1.5 + 0.05, 0.0, 1.0);',
+  // ŞERİT: ülkenin KENDİ rengi, PARLATILMADAN.
+  //
+  // İlk sürüm şeridi ulkeSaf * 1.5 + 0.05 ile parlatıyordu ve bazı ülke
+  // renkleri (sarı, camgöbeği) tavana çarpıp NEON gibi yanıyordu. Bant artık
+  // rengin kendisidir; okunurluğu parlatmadan değil, İÇERİNİN bir tık
+  // karartılmasından geliyor. Sınırın iki yakasında ayrı ayrı çizildiği için
+  // yeşilin tarafı yeşil kalınlık, kırmızının tarafı kırmızı kalınlık olur.
+  '  float kenar = 1.0 - smoothstep(uKenarKalin * uHex * 0.62, uKenarKalin * uHex, sinirD);',
+  // Parlaklık tavanı: doygun ama TAŞMAYAN bant. Rengin tonu korunur, yalnız
+  // parlaklığı tavana çekilir.
+  '  float sl = dot(ulkeSaf, vec3(0.299, 0.587, 0.114));',
+  '  vec3 kenarRenk = ulkeSaf * min(1.0, uTavan / max(sl, 0.001));',
   '  col = mix(col, kenarRenk, kenar * uKenarGuc);',
   // Şeridin DIŞ kenarında ince koyu bir hat. Haritayı suluboyadan çıkaran
   // şey yumuşak geçiş değil, tek bir KESKİN kenardır; göz oraya tutunur.
@@ -289,13 +302,15 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uSinir: { value: sinirTex },
     uArazi: { value: araziTex },
     uSinirAzami: { value: sinirAzami },
-    uSinirGen: { value: 2.2 },
-    uIcOpaklik: { value: 0.45 },
-    uCanlilik: { value: 0.35 },
-    uKenarKalin: { value: 0.22 },
+    uSinirGen: { value: 6.0 },
+    uIcOpaklik: { value: 1.0 },
+    uCanlilik: { value: 0.0 },
+    uKenarKalin: { value: 0.42 },
     uKenarGuc: { value: 0.9 },
-    uHatGuc: { value: 0.55 },
-    uKontrast: { value: 0.22 },
+    uHatGuc: { value: 0.0 },
+    uTavan: { value: 0.62 },
+    uIcKarart: { value: 0.86 },
+    uKontrast: { value: 0.35 },
   };
 
   const geo = new THREE.PlaneGeometry(1, 1, 1, 1);
