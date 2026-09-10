@@ -55,7 +55,7 @@ const KARA_FRAGMENT = [
   'uniform float uDokuGuc, uKayaGuc, uKarSeviye, uGolgeGuc, uAO, uYukOlcek, uKabartmaK;',
   'uniform float uPlajGen, uPlajGuc, uFalezGuc;',
   'uniform float uSinirGen, uIcOpaklik, uCanlilik, uSinirAzami;',
-  'uniform float uKenarKalin, uKenarGuc;',
+  'uniform float uKenarKalin, uKenarGuc, uHatGuc, uKontrast;',
   'uniform vec3 uPlajCol;',
   'varying vec3 vDunya;',
   '',
@@ -138,13 +138,22 @@ const KARA_FRAGMENT = [
   // Sınıra uzaklık hex cinsinden ayrı bir alandan gelir (çok kaynaklı BFS).
   '  float sinirD = texture2D(uSinir, auv).r * uSinirAzami;',
   '  float icerlek = smoothstep(0.0, max(0.2, uSinirGen * uHex), sinirD);',
-  '  float ulkeAgir = mix(1.0, uIcOpaklik, icerlek);',
   '  vec3 araziRenk = texture2D(uArazi, (cellUV)).rgb;',
-  '  taban = mix(araziRenk, taban, ulkeAgir);',
+  // İLK SÜRÜM ülke rengini arazi rengine doğru KARIŞTIRIYORDU (lerp) ve
+  // sonuç suluboyaydı: iki flat renk karışınca doygunluk gider, geriye çamur
+  // kalır. HOI4 öyle yapmaz — ülke rengi HER YERDE durur, arazi onun yalnız
+  // PARLAKLIĞINI değiştirir. Kimlik (ton + doygunluk) korunur, coğrafya
+  // ışıkla anlatılır.
+  '  float araziL = dot(araziRenk, vec3(0.299, 0.587, 0.114));',
+  '  float araziMod = 0.72 + araziL * 0.95;',
+  '  taban *= mix(1.0, araziMod, icerlek * (1.0 - uIcOpaklik));',
   // Canlılık: rengi doygunlaştırır ama parlaklığını korur. Ülke renkleri
   // haritada birbirinden ayrılmalı; soluk palet siyaseti okunmaz yapıyor.
   '  float gri = dot(taban, vec3(0.299, 0.587, 0.114));',
   '  taban = clamp(mix(vec3(gri), taban, 1.0 + uCanlilik), 0.0, 1.0);',
+  // Mikro kontrast: orta tonları 0.5 çevresinde gerer. Solukluk suluboya
+  // hissinin yarısıdır; doygunluk tek başına yetmiyor.
+  '  taban = clamp((taban - 0.5) * (1.0 + uKontrast) + 0.5, 0.0, 1.0);',
   '',
   // Yükseklik ve eğim: raster zaten hex başına 4 teksel, merkezî fark yeter.
   '  vec2 tx = 1.0 / uYukBoyut;',
@@ -177,7 +186,9 @@ const KARA_FRAGMENT = [
   '',
   '  vec3 col = taban;',
   '  col *= 1.0 + doku * uDokuGuc;',
-  '  col += tint * doku * uDokuGuc * 2.2;',
+  // Ton kaçırma kısıldı: doku RENK eklerse harita boyanmış gibi olur.
+  // Doku parlaklıkla konuşur, tonla değil.
+  '  col += tint * doku * uDokuGuc * 0.7;',
   '',
   // Eğimden KAYA: dik yamaçta bitki tutunmaz. Yükseklikten KAR: zirve beyazlar.
   '  float kaya = smoothstep(0.30, 0.78, egim) * uKayaGuc;',
@@ -233,8 +244,13 @@ const KARA_FRAGMENT = [
   // oluşur. En sonda biner — dokunun, gölgenin ve plajın üstünde kalmalı,
   // yoksa çizgi bulanır ve yarım yarım okunmaz.
   '  float kenar = 1.0 - smoothstep(uKenarKalin * uHex * 0.45, uKenarKalin * uHex, sinirD);',
-  '  vec3 kenarRenk = clamp(ulkeSaf * 1.45 + 0.04, 0.0, 1.0);',
+  '  vec3 kenarRenk = clamp(ulkeSaf * 1.5 + 0.05, 0.0, 1.0);',
   '  col = mix(col, kenarRenk, kenar * uKenarGuc);',
+  // Şeridin DIŞ kenarında ince koyu bir hat. Haritayı suluboyadan çıkaran
+  // şey yumuşak geçiş değil, tek bir KESKİN kenardır; göz oraya tutunur.
+  '  float hat = (1.0 - smoothstep(0.0, uKenarKalin * uHex * 0.30, sinirD))',
+  '            * smoothstep(0.0, uKenarKalin * uHex * 0.10, sinirD);',
+  '  col *= 1.0 - hat * uHatGuc * 0.55;',
   '',
   '  gl_FragColor = vec4(col, kara);',
   '}',
@@ -278,6 +294,8 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uCanlilik: { value: 0.35 },
     uKenarKalin: { value: 0.22 },
     uKenarGuc: { value: 0.9 },
+    uHatGuc: { value: 0.55 },
+    uKontrast: { value: 0.22 },
   };
 
   const geo = new THREE.PlaneGeometry(1, 1, 1, 1);
