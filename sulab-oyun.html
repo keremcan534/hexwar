@@ -115,7 +115,7 @@ import {
   ONAYARLAR, dalgaDizisi, gurultuDokusu, suVertex, kaplamaFragment, kirilmaFragment, gunesYonu,
 } from './lab/ocean.js';
 import { kusKatmani } from './lab/kuslar.js';
-import { karaKatmani, tipDokusu, yukseklikDokusu } from './lab/kara.js';
+import { karaKatmani, tipDokusu, yukseklikDokusu, denizUzakligiDokusu } from './lab/kara.js';
 
 const q = new URLSearchParams(location.search);
 const HEX_STEP = Math.sqrt(3) * HEX_SIZE;
@@ -173,11 +173,13 @@ const P = {
   kasirgaGuc: 0, kasirgaYaricap: 22,
   karaDoku: 0.22, karaKaya: 0.45, karaKar: 0.86, karaGolge: 0.7,
   karaAO: 0.6, karaKabartma: 1.0, karaYukOlcek: 320,
+  plajGen: 0.55, plajGuc: 0.45, falezGuc: 0.5,
   kusYogunluk: 0.55, kusBoyut: 9, kusYukseklik: 10, kusHiz: 1,
 };
 // Önayarlar bu alanları taşımaz; önayar değişince sıfırlanmasınlar.
 const EKSTRA = ['kasirgaGuc', 'kasirgaYaricap', 'kusYogunluk', 'kusBoyut', 'kusYukseklik', 'kusHiz',
-  'karaDoku', 'karaKaya', 'karaKar', 'karaGolge', 'karaAO', 'karaKabartma', 'karaYukOlcek'];
+  'karaDoku', 'karaKaya', 'karaKar', 'karaGolge', 'karaAO', 'karaKabartma', 'karaYukOlcek',
+  'plajGen', 'plajGuc', 'falezGuc'];
 let aktifOnayar = 'master';
 THREE.ColorManagement.enabled = false;     // master paleti birebir çıksın
 
@@ -300,6 +302,7 @@ const kara = karaKatmani(THREE, {
 }, {
   tipTex: tipDokusu(THREE, game.world),
   yukTex: yukseklikDokusu(THREE, alan),
+  kiyiTex: denizUzakligiDokusu(THREE, alan, DIST_MAX),
   yukBoyut: { w: alan.w, h: alan.h },
   grid: { cols: game.world.cols, rows: game.world.rows },
   hexSize: HEX_SIZE,
@@ -346,6 +349,9 @@ function uygula() {
   kara.U.uAO.value = P.karaAO;
   kara.U.uKabartmaK.value = P.karaKabartma;
   kara.U.uYukOlcek.value = P.karaYukOlcek;
+  kara.U.uPlajGen.value = P.plajGen;
+  kara.U.uPlajGuc.value = P.plajGuc;
+  kara.U.uFalezGuc.value = P.falezGuc;
 }
 
 // Kaydıraçlar GRUPLANIR: hepsi tek listede olunca hiçbiri bulunamıyordu.
@@ -376,6 +382,7 @@ const GRUPLAR = [
     ['pariltiGenis', 'Parıltı genişliği', 0, 1, 0.01],
     ['yansima', 'Gök yansıması', 0, 1, 0.01],
     ['gunesY', 'Güneş yüksekliği', 0.02, 0.95, 0.01],
+    ['gunesAci', 'Güneş azimutu', 0, 360, 1],
     ['sssG', 'Altyüzey ışıması', 0, 2, 0.01],
   ]],
   ['Köpük ve yüzey', [
@@ -394,6 +401,9 @@ const GRUPLAR = [
     ['karaAO', 'Çukur karanlığı', 0, 1.5, 0.01],
     ['karaKabartma', 'Eğim duyarlılığı', 0.2, 3, 0.02],
     ['karaYukOlcek', 'Yükseklik ölçeği', 60, 900, 10],
+    ['plajGen', 'Plaj genişliği (hex)', 0, 2, 0.02],
+    ['plajGuc', 'Plaj gücü', 0, 1, 0.01],
+    ['falezGuc', 'Falez gücü', 0, 1, 0.01],
   ]],
   ['Fırtına ve canlılar', [
     ['kasirgaGuc', 'Kasırga gücü', 0, 1, 0.01],

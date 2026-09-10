@@ -44,6 +44,8 @@ export const TABAN = {
   kirilma: 1.0, sogurma: 0.35, kostik: 0.5, kostikOlcek: 1.6, seviye: 5.0,
   pariltiGenis: 0.35, kopukEsik: 0.55, kopukOmur: 0.45,
   faset: 0.0, fasetOlcek: 9.0,
+  // Oyunun kendi kara isigiyla ayni: surfaceGL'deki sabit yon.
+  gunesAci: 231,
 };
 
 // Durgun deniz: dalga yok denecek kadar az, iş fasetlerde. Kaplama kolunda
@@ -752,10 +754,20 @@ export function kirilmaFragment() {
   ].join('\n');
 }
 
-/** Güneş yönü: yükseklik [0..1] ve rüzgâra göre azimut. */
+/**
+ * Güneş yönü: yükseklik [0..1] ve azimut.
+ *
+ * TEK GÜNEŞ. Azimut önce `P.gunesAci` alanına bakar; yoksa rüzgâra bağlanır
+ * (eski davranış). Ayrı bir alan olması şart, çünkü oyunun KENDİ kara ışığı
+ * sabittir — surfaceGL içinde normalize(vec3(-0.55, -0.68, 0.48)) yazar, bu
+ * da bizim eksende yükseklik 0,48 ve azimut 231 derecedir. Güneşi rüzgâra
+ * bağlı bırakırsak rüzgâr her döndüğünde deniz bir yerden, kara başka bir
+ * yerden aydınlanır ve resim ikiye bölünür.
+ */
 export function gunesYonu(THREE, P) {
   const y = P.gunesY;
-  const a = (P.ruzgar + 150) * Math.PI / 180;
+  const azimut = P.gunesAci === undefined ? P.ruzgar + 150 : P.gunesAci;
+  const a = azimut * Math.PI / 180;
   const yatay = Math.sqrt(Math.max(0, 1 - y * y));
   return new THREE.Vector3(Math.cos(a) * yatay, y, Math.sin(a) * yatay).normalize();
 }

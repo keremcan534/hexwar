@@ -47,12 +47,14 @@ const KARA_VERTEX = [
 ].join('\n');
 
 const KARA_FRAGMENT = [
-  'uniform sampler2D uArka, uDist, uYuk, uTip, uGurultu;',
+  'uniform sampler2D uArka, uDist, uYuk, uTip, uGurultu, uKiyiK;',
   'uniform vec2 uCozunurluk, uYukBoyut, uGrid;',
   'uniform vec4 uAlan;',
   'uniform vec3 uGunesDir, uKayaCol, uKarCol;',
   'uniform float uHexSize, uDistMax, uHex, uOlcek, uTime;',
   'uniform float uDokuGuc, uKayaGuc, uKarSeviye, uGolgeGuc, uAO, uYukOlcek, uKabartmaK;',
+  'uniform float uPlajGen, uPlajGuc, uFalezGuc;',
+  'uniform vec3 uPlajCol;',
   'varying vec3 vDunya;',
   '',
   'float nz(vec2 p) { return texture2D(uGurultu, p).r; }',
@@ -170,6 +172,17 @@ const KARA_FRAGMENT = [
   '  kar *= (1.0 - kaya * 0.5) * (1.0 - smoothstep(0.45, 0.85, egim) * 0.7);',
   '  col = mix(col, uKarCol, kar * 0.55);',
   '',
+  // KIYI KUŞAĞI. Karanın tarafında denize uzaklık alanı (bkz.
+  // denizUzakligiDokusu) plajın nereye kadar uzanacağını söyler. Kıyı DÜZSE
+  // geniş kum, DİKSE falez: aynı bant, eğime göre iki ayrı okuma. Suyun sığ
+  // turkuazı tam burada bittiği için kıyı artık kesik değil GEÇİŞ.
+  '  float toSea = texture2D(uKiyiK, auv).r * uDistMax;',
+  '  float kirik = (nz(p * 0.05) - 0.5) * uHex * 0.5;',
+  '  float bant = 1.0 - smoothstep(0.0, uHex * uPlajGen + kirik, toSea);',
+  '  float falez = smoothstep(0.22, 0.60, egim);',
+  '  col = mix(col, uPlajCol, bant * (1.0 - falez) * uPlajGuc);',
+  '  col = mix(col, uKayaCol * 0.62, bant * falez * uFalezGuc);',
+  '',
   // DAĞ GÖLGESİ: yükseklik alanında güneşe doğru ışın yürütülür. Gölge
   // haritası, FBO yok — alan zaten dokuda, yürümek en ucuzu.
   '  float golge = 1.0;',
@@ -208,7 +221,7 @@ const KARA_FRAGMENT = [
  *   Paylaşmak zorunlu: iki katman aynı kadrajı ve aynı güneşi görmeli, yoksa
  *   kıyıda iki ayrı dünya buluşur.
  */
-export function karaKatmani(THREE, ortak, { tipTex, yukTex, yukBoyut, grid, hexSize }) {
+export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, yukBoyut, grid, hexSize }) {
   const U = {
     ...ortak,
     uTip: { value: tipTex },
@@ -225,6 +238,11 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, yukBoyut, grid, hexS
     uAO: { value: 0.6 },
     uYukOlcek: { value: 320 },
     uKabartmaK: { value: 1.0 },
+    uKiyiK: { value: kiyiTex },
+    uPlajCol: { value: new THREE.Color('#d8c79a') },
+    uPlajGen: { value: 0.55 },
+    uPlajGuc: { value: 0.45 },
+    uFalezGuc: { value: 0.5 },
   };
 
   const geo = new THREE.PlaneGeometry(1, 1, 1, 1);
@@ -239,6 +257,61 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, yukBoyut, grid, hexS
   }));
   mesh.frustumCulled = false;
   return { mesh, U };
+}
+
+/**
+ * KARADA denize uzaklık alanı (R8, LINEAR).
+ *
+ * Oyunun elinde `toLand` var — DENİZDE karaya uzaklık. Karanın tarafında o
+ * alan her yerde sıfırdır, yani plajın nerede biteceğini söylemez. Tersi
+ * alan hiç üretilmiyor, burada üretiliyor: iki geçişli chamfer (3-4) yeter,
+ * kesin Öklid mesafesi gerekmez — plaj bandının kenarı zaten yumuşak.
+ *
+ * Doğu-batı sarmalı korunur: x ekseninde komşuluk dünyanın kenarından döner,
+ * yoksa haritanın iki yakasında plaj birden kesilir.
+ */
+export function denizUzakligiDokusu(THREE, cache, distMax) {
+  const { w, h, toLand } = cache;
+  const INF = 1e9;
+  const d = new Float32Array(w * h);
+  for (let i = 0; i < d.length; i++) d[i] = toLand[i] > 0 ? 0 : INF;
+
+  const A = 3, B = 4;                      // chamfer 3-4: hata < %2
+  const sar = (x) => (x < 0 ? x + w : (x >= w ? x - w : x));
+  const bak = (i, x, y, dx, dy, m) => {
+    const ny = y + dy;
+    if (ny < 0 || ny >= h) return;
+    const v = d[ny * w + sar(x + dx)] + m;
+    if (v < d[i]) d[i] = v;
+  };
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = y * w + x;
+      bak(i, x, y, -1, -1, B); bak(i, x, y, 0, -1, A);
+      bak(i, x, y, 1, -1, B); bak(i, x, y, -1, 0, A);
+    }
+  }
+  for (let y = h - 1; y >= 0; y--) {
+    for (let x = w - 1; x >= 0; x--) {
+      const i = y * w + x;
+      bak(i, x, y, 1, 1, B); bak(i, x, y, 0, 1, A);
+      bak(i, x, y, -1, 1, B); bak(i, x, y, 1, 0, A);
+    }
+  }
+
+  // Chamfer birimi -> dünya birimi -> distMax'a göre normalize.
+  const hucre = cache.width / w;
+  const veri = new Uint8Array(w * h);
+  for (let i = 0; i < veri.length; i++) {
+    const dunya = (d[i] / A) * hucre;
+    veri[i] = Math.min(255, Math.round((dunya / distMax) * 255));
+  }
+  const tex = new THREE.DataTexture(veri, w, h, THREE.RedFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.ClampToEdgeWrapping;
+  tex.minFilter = tex.magFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  return tex;
 }
 
 /** Hex başına arazi SINIFI dokusu (R8, NEAREST). */
