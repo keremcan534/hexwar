@@ -309,7 +309,7 @@ const KARA_FRAGMENT = [
   // Kalınlık ekran pikselinde sabit AMA hexin payını aşamaz. Sabit
   // bırakılınca uzak zoomda (hex ~8 piksel) çizgi hexi yutuyor ve sıkışık
   // ülkelerin olduğu yerde sınırlar birleşip koyu leke yapıyordu.
-  '  float yariKalin = min(max(0.35, uCizgiKalin * 0.5) * pikselDunya, icYaricap * 0.22);',
+  '  float yariKalin = min(max(0.3, uCizgiKalin * 0.5) * pikselDunya, icYaricap * 0.10);',
   '  float benimSahip = texture2D(uSahip, (cell + 0.5) / uGrid).r;',
   '  float cizgi = 0.0;',
   '  for (int i = 0; i < 6; i++) {',
@@ -342,7 +342,7 @@ const KARA_FRAGMENT = [
   // koyu leke yapar. O ölçekte ayrımı zaten rengin KENDİSİ yapıyor;
   // çizgi orada işe yaramadan zarar veriyor.
   '  float hexPiksel = icYaricap * 2.0 / max(0.001, pikselDunya);',
-  '  float cizgiSol = smoothstep(9.0, 22.0, hexPiksel);',
+  '  float cizgiSol = smoothstep(13.0, 34.0, hexPiksel);',
   '  col = mix(col, uCizgiRenk, cizgi * uCizgiGuc * cizgiSol);',
   '',
   '  gl_FragColor = vec4(col, kara);',
@@ -391,7 +391,7 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uTavan: { value: 0.62 },
     uIcKarart: { value: 1.0 },
     uSahip: { value: sahipTex },
-    uCizgiKalin: { value: 3.0 },
+    uCizgiKalin: { value: 2.0 },
     uCizgiGuc: { value: 0.85 },
     uKarartmaTaban: { value: 1.0 },
     uCizgiRenk: { value: new THREE.Color('#0c1116') },
