@@ -179,7 +179,7 @@ const P = {
   plajGen: 0.55, plajGuc: 0.45, falezGuc: 0.5,
   sinirGen: 6.0, icOpaklik: 0.85, canlilik: 0.0,
   kenarKalin: 0.42, kenarGuc: 0.0, hatGuc: 0.0, kontrast: 0.35,
-  cizgiKalin: 3.0, cizgiGuc: 0.85, karartmaTaban: 0.62,
+  cizgiKalin: 2.0, cizgiGuc: 0.85, cizgiTon: 0.55, karartmaTaban: 0.62,
   tavan: 0.62, icKarart: 0.94,
   kusYogunluk: 0.55, kusBoyut: 9, kusYukseklik: 10, kusHiz: 1,
 };
@@ -188,7 +188,7 @@ const EKSTRA = ['kasirgaGuc', 'kasirgaYaricap', 'kusYogunluk', 'kusBoyut', 'kusY
   'karaDoku', 'karaKaya', 'karaKar', 'karaGolge', 'karaAO', 'karaKabartma', 'karaYukOlcek',
   'plajGen', 'plajGuc', 'falezGuc', 'sinirGen', 'icOpaklik', 'canlilik',
   'kenarKalin', 'kenarGuc', 'hatGuc', 'kontrast', 'tavan', 'icKarart',
-  'cizgiKalin', 'cizgiGuc', 'karartmaTaban'];
+  'cizgiKalin', 'cizgiGuc', 'cizgiTon', 'karartmaTaban'];
 let aktifOnayar = 'master';
 THREE.ColorManagement.enabled = false;     // master paleti birebir çıksın
 
@@ -382,6 +382,7 @@ function uygula() {
   kara.U.uIcKarart.value = P.icKarart;
   kara.U.uCizgiKalin.value = P.cizgiKalin;
   kara.U.uCizgiGuc.value = P.cizgiGuc;
+  kara.U.uCizgiTon.value = P.cizgiTon;
   kara.U.uKarartmaTaban.value = P.karartmaTaban;
 }
 
@@ -438,8 +439,9 @@ const GRUPLAR = [
   ]],
   ['Ülke rengi (HOI4)', [
     ['sinirGen', 'Sınır bandı (hex)', 0.3, 6, 0.1],
-    ['cizgiKalin', 'Sınır çizgisi (piksel)', 0, 10, 0.25],
+    ['cizgiKalin', 'Sınır çizgisi (piksel)', 0, 6, 0.25],
     ['cizgiGuc', 'Çizgi gücü', 0, 1, 0.01],
+    ['cizgiTon', 'Çizgi ülke tonu', 0, 1, 0.01],
     ['kenarKalin', 'Yumuşak şerit kalınlığı', 0.02, 0.8, 0.01],
     ['kenarGuc', 'Yumuşak şerit gücü', 0, 1, 0.01],
     ['hatGuc', 'Kenar hattı', 0, 1, 0.01],
