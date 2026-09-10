@@ -56,7 +56,7 @@ const KARA_FRAGMENT = [
   'uniform float uPlajGen, uPlajGuc, uFalezGuc;',
   'uniform float uSinirGen, uIcOpaklik, uCanlilik, uSinirAzami;',
   'uniform float uKenarKalin, uKenarGuc, uHatGuc, uKontrast, uTavan, uIcKarart;',
-  'uniform float uCizgiKalin, uCizgiGuc, uKarartmaTaban;',
+  'uniform float uCizgiKalin, uCizgiGuc, uKarartmaTaban, uCizgiTon;',
   'uniform vec3 uCizgiRenk;',
   'uniform vec2 uEkranSpan;',
   'uniform vec3 uPlajCol;',
@@ -343,7 +343,12 @@ const KARA_FRAGMENT = [
   // çizgi orada işe yaramadan zarar veriyor.
   '  float hexPiksel = icYaricap * 2.0 / max(0.001, pikselDunya);',
   '  float cizgiSol = smoothstep(13.0, 34.0, hexPiksel);',
-  '  col = mix(col, uCizgiRenk, cizgi * uCizgiGuc * cizgiSol);',
+  // Çizgi rengi sabit koyu mürekkep olunca kalınlaştığı an haritada DELİK
+  // gibi okunuyor. uCizgiTon onu ülkenin kendi renginin koyusuna çeker:
+  // sınır yine ayırır ama boşluk açmaz, ve iki yaka birbirinden ayrı
+  // tonda kalır (yeşilin tarafı koyu yeşil, kırmızının tarafı koyu kırmızı).
+  '  vec3 hatRenk = mix(uCizgiRenk, ulkeSaf * 0.34, uCizgiTon);',
+  '  col = mix(col, hatRenk, cizgi * uCizgiGuc * cizgiSol);',
   '',
   '  gl_FragColor = vec4(col, kara);',
   '}',
@@ -393,6 +398,7 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uSahip: { value: sahipTex },
     uCizgiKalin: { value: 2.0 },
     uCizgiGuc: { value: 0.85 },
+    uCizgiTon: { value: 0.55 },
     uKarartmaTaban: { value: 1.0 },
     uCizgiRenk: { value: new THREE.Color('#0c1116') },
     uKontrast: { value: 0.0 },
