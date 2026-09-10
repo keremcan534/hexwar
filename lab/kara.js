@@ -56,7 +56,7 @@ const KARA_FRAGMENT = [
   'uniform float uPlajGen, uPlajGuc, uFalezGuc;',
   'uniform float uSinirGen, uIcOpaklik, uCanlilik, uSinirAzami;',
   'uniform float uKenarKalin, uKenarGuc, uHatGuc, uKontrast, uTavan, uIcKarart;',
-  'uniform float uCizgiKalin, uCizgiGuc;',
+  'uniform float uCizgiKalin, uCizgiGuc, uKarartmaTaban;',
   'uniform vec3 uCizgiRenk;',
   'uniform vec2 uEkranSpan;',
   'uniform vec3 uPlajCol;',
@@ -157,9 +157,14 @@ const KARA_FRAGMENT = [
   // haritada birbirinden ayrılmalı; soluk palet siyaseti okunmaz yapıyor.
   '  float gri = dot(taban, vec3(0.299, 0.587, 0.114));',
   '  taban = clamp(mix(vec3(gri), taban, 1.0 + uCanlilik), 0.0, 1.0);',
-  // Mikro kontrast: orta tonları 0.5 çevresinde gerer. Solukluk suluboya
-  // hissinin yarısıdır; doygunluk tek başına yetmiyor.
-  '  taban = clamp((taban - 0.5) * (1.0 + uKontrast) + 0.5, 0.0, 1.0);',
+  // Mikro kontrast — ama koyu renkleri EZMEDEN.
+  //
+  // İlk sürüm 0.5 çevresinde doğrusal geriyordu ve zaten koyu olan ülke
+  // renkleri siyaha çakılıyordu (ölçüldü: 0.20 -> 0.095; harita üzerinde
+  // birkaç ülke tamamen karardı). Pivot rengin kendi orta bölgesine çekildi
+  // ve sonucun altına bir taban kondu: kontrast artık aydınlatır, öldürmez.
+  '  vec3 gerilmis = clamp((taban - 0.42) * (1.0 + uKontrast) + 0.42, 0.0, 1.0);',
+  '  taban = max(gerilmis, taban * 0.78);',
   '',
   // Yükseklik ve eğim: raster zaten hex başına 4 teksel, merkezî fark yeter.
   '  vec2 tx = 1.0 / uYukBoyut;',
@@ -169,7 +174,7 @@ const KARA_FRAGMENT = [
   '  float hd = texture2D(uYuk, auv - vec2(0.0, tx.y)).r;',
   '  float hu = texture2D(uYuk, auv + vec2(0.0, tx.y)).r;',
   '  vec2 g = vec2(hr - hl, hu - hd);',
-  '  float egim = clamp(length(g) * uKabartmaK * 26.0, 0.0, 1.0);',
+  '  float egim = clamp(length(g) * uKabartmaK * 10.0, 0.0, 1.0);',
   '',
   // Hex hücresi ve arazi sınıfı.
   '  vec2 cr = hexAt(vDunya.xz);',
@@ -197,14 +202,14 @@ const KARA_FRAGMENT = [
   '  col += tint * doku * uDokuGuc * 0.7;',
   '',
   // Eğimden KAYA: dik yamaçta bitki tutunmaz. Yükseklikten KAR: zirve beyazlar.
-  '  float kaya = smoothstep(0.30, 0.78, egim) * uKayaGuc;',
+  '  float kaya = smoothstep(0.55, 0.95, egim) * uKayaGuc;',
   '  col = mix(col, uKayaCol * (0.75 + h * 0.5), kaya * 0.7);',
   // Kar ilk sürümde AMORF BEYAZ LEKE veriyordu: yükseklik alanı yumuşak
   // olduğu için tek eşik geniş bir bölgeyi birden beyazlatıyor ve sonuç kar
   // değil SİS gibi okunuyordu. Eşik gürültüyle kırılır, ve kar yalnız yüksek
   // ve GÖRECE DÜZ zeminde tutar — dik yamaçta zaten tutmaz.
   '  float karKirik = (nz(p * 0.06) - 0.5) * 0.09;',
-  '  float kar = smoothstep(uKarSeviye + karKirik, uKarSeviye + karKirik + 0.06, h);',
+  '  float kar = smoothstep(uKarSeviye + karKirik, uKarSeviye + karKirik + 0.035, h);',
   '  kar *= (1.0 - kaya * 0.5) * (1.0 - smoothstep(0.45, 0.85, egim) * 0.7);',
   '  col = mix(col, uKarCol, kar * 0.55);',
   '',
@@ -242,7 +247,7 @@ const KARA_FRAGMENT = [
   // Çukur karanlığı (kaba ortam tıkanımı): komşulardan alçakta kalan yer
   // daha az gökyüzü görür.
   '  float komsu = (hl + hr + hd + hu) * 0.25;',
-  '  float cukur = clamp((komsu - h) * 8.0, 0.0, 1.0);',
+  '  float cukur = clamp((komsu - h) * 30.0, 0.0, 1.0);',
   '  col *= 1.0 - cukur * uAO * 0.5;',
   '',
   // SINIR ŞERİDİ. Siyah mürekkep yerine her ülke KENDİ renginde: şerit
@@ -267,6 +272,15 @@ const KARA_FRAGMENT = [
   '  float hat = (1.0 - smoothstep(0.0, uKenarKalin * uHex * 0.30, sinirD))',
   '            * smoothstep(0.0, uKenarKalin * uHex * 0.10, sinirD);',
   '  col *= 1.0 - hat * uHatGuc * 0.55;',
+  '',
+  // KARARTMA TABANI.
+  //
+  // Arazi modülasyonu, iç karartma, dağ gölgesi, çukur karanlığı ve kontrast
+  // hepsi ÇARPILARAK biniyor. Tek tek masum olan bu terimler koyu bir ülke
+  // renginde birleşince toplam çarpan 0.5'in altına iniyor ve ülke siyah
+  // görünüyordu (kullanıcı ekranda gösterdi). Toplam karartma, ülkenin kendi
+  // rengine göre sınırlanır — gölge kalır, ama rengi öldüremez.
+  '  col = max(col, ulkeSaf * uKarartmaTaban);',
   '',
   // SINIR ÇİZGİSİ — hex KENARINDA, analitik.
   //
@@ -347,10 +361,10 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uKarCol: { value: new THREE.Color('#dfe6e8') },
     uDokuGuc: { value: 0.22 },
     uKayaGuc: { value: 0.45 },
-    uKarSeviye: { value: 0.86 },
+    uKarSeviye: { value: 0.96 },
     uGolgeGuc: { value: 0.42 },
     uAO: { value: 0.35 },
-    uYukOlcek: { value: 320 },
+    uYukOlcek: { value: 1400 },
     uKabartmaK: { value: 1.0 },
     uKiyiK: { value: kiyiTex },
     uPlajCol: { value: new THREE.Color('#d8c79a') },
@@ -371,6 +385,7 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uSahip: { value: sahipTex },
     uCizgiKalin: { value: 3.0 },
     uCizgiGuc: { value: 0.85 },
+    uKarartmaTaban: { value: 0.62 },
     uCizgiRenk: { value: new THREE.Color('#0c1116') },
     uKontrast: { value: 0.35 },
   };
