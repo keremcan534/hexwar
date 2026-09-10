@@ -145,7 +145,7 @@ const KARA_FRAGMENT = [
   // PARLAKLIĞINI değiştirir. Kimlik (ton + doygunluk) korunur, coğrafya
   // ışıkla anlatılır.
   '  float araziL = dot(araziRenk, vec3(0.299, 0.587, 0.114));',
-  '  float araziMod = 0.72 + araziL * 0.95;',
+  '  float araziMod = 0.88 + araziL * 0.40;',
   '  taban *= mix(1.0, araziMod, icerlek * (1.0 - uIcOpaklik));',
   // Bant parlatılmayacaksa okunurluğu İÇERİNİN bir tık kararmasından
   // gelir. Fark küçük olmalı: büyütülürse ülkeler halka gibi görünür.
@@ -290,8 +290,8 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uDokuGuc: { value: 0.22 },
     uKayaGuc: { value: 0.45 },
     uKarSeviye: { value: 0.86 },
-    uGolgeGuc: { value: 0.7 },
-    uAO: { value: 0.6 },
+    uGolgeGuc: { value: 0.42 },
+    uAO: { value: 0.35 },
     uYukOlcek: { value: 320 },
     uKabartmaK: { value: 1.0 },
     uKiyiK: { value: kiyiTex },
@@ -303,7 +303,7 @@ export function karaKatmani(THREE, ortak, { tipTex, yukTex, kiyiTex, sinirTex, a
     uArazi: { value: araziTex },
     uSinirAzami: { value: sinirAzami },
     uSinirGen: { value: 6.0 },
-    uIcOpaklik: { value: 1.0 },
+    uIcOpaklik: { value: 0.85 },
     uCanlilik: { value: 0.0 },
     uKenarKalin: { value: 0.42 },
     uKenarGuc: { value: 0.9 },
