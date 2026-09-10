@@ -93,7 +93,7 @@
   <div id="gruplar"></div>
 </div>
 <div id="say">yükleniyor…</div>
-<div id="ipucu"><b>1-6</b> önayar · <b>o</b> deniz aç/kapa · <b>k</b> kasırga · <b>p</b> kırılma/kaplama · <b>b</b> arayüz</div>
+<div id="ipucu"><b>1-6</b> önayar · <b>o</b> deniz aç/kapa · <b>l</b> kara katmanı · <b>k</b> kasırga · <b>p</b> kırılma/kaplama · <b>b</b> arayüz</div>
 
 <script>
 window.addEventListener('error', (e) => {
@@ -115,6 +115,7 @@ import {
   ONAYARLAR, dalgaDizisi, gurultuDokusu, suVertex, kaplamaFragment, kirilmaFragment, gunesYonu,
 } from './lab/ocean.js';
 import { kusKatmani } from './lab/kuslar.js';
+import { karaKatmani, tipDokusu, yukseklikDokusu } from './lab/kara.js';
 
 const q = new URLSearchParams(location.search);
 const HEX_STEP = Math.sqrt(3) * HEX_SIZE;
@@ -170,10 +171,13 @@ if (!alan || !alan.toLand) throw new Error('kıyı alanı kurulamadı (material.
 const P = {
   ...ONAYARLAR.master,
   kasirgaGuc: 0, kasirgaYaricap: 22,
+  karaDoku: 0.22, karaKaya: 0.45, karaKar: 0.86, karaGolge: 0.7,
+  karaAO: 0.6, karaKabartma: 1.0, karaYukOlcek: 320,
   kusYogunluk: 0.55, kusBoyut: 9, kusYukseklik: 10, kusHiz: 1,
 };
 // Önayarlar bu alanları taşımaz; önayar değişince sıfırlanmasınlar.
-const EKSTRA = ['kasirgaGuc', 'kasirgaYaricap', 'kusYogunluk', 'kusBoyut', 'kusYukseklik', 'kusHiz'];
+const EKSTRA = ['kasirgaGuc', 'kasirgaYaricap', 'kusYogunluk', 'kusBoyut', 'kusYukseklik', 'kusHiz',
+  'karaDoku', 'karaKaya', 'karaKar', 'karaGolge', 'karaAO', 'karaKabartma', 'karaYukOlcek'];
 let aktifOnayar = 'master';
 THREE.ColorManagement.enabled = false;     // master paleti birebir çıksın
 
@@ -284,6 +288,25 @@ const kus = kusKatmani(THREE, {
 kirilmaT.sahne.add(kus.mesh);
 kus.mesh.renderOrder = 10;
 
+// KARA KATMANI. Denizin altına değil ÜSTÜNE değil, YANINA: maskeleri
+// birbirinin tersi (deniz toLand>0, kara toLand=0), kıyıda tam buluşurlar.
+// Denizle paylaşılan uniformlar tek nesne olarak geçer — iki katman aynı
+// kadrajı ve aynı güneşi görmek zorunda.
+const kara = karaKatmani(THREE, {
+  uArka: U.uArka, uDist: U.uDist, uGurultu: U.uGurultu, uAlan: U.uAlan,
+  uOrigin: U.uOrigin, uSpan: U.uSpan, uCozunurluk: U.uCozunurluk,
+  uOlcek: U.uOlcek, uTime: U.uTime, uGunesDir: U.uGunesDir,
+  uDistMax: U.uDistMax, uHex: U.uHex,
+}, {
+  tipTex: tipDokusu(THREE, game.world),
+  yukTex: yukseklikDokusu(THREE, alan),
+  yukBoyut: { w: alan.w, h: alan.h },
+  grid: { cols: game.world.cols, rows: game.world.rows },
+  hexSize: HEX_SIZE,
+});
+kirilmaT.sahne.add(kara.mesh);
+kara.mesh.renderOrder = 5;
+
 let kol = 'kirilma';
 function kolSec(yeni) {
   kol = yeni;
@@ -316,6 +339,13 @@ function uygula() {
   kus.U.uYukseklik.value = P.kusYukseklik;
   kus.U.uHiz.value = P.kusHiz;
   kus.U.uYon.value = P.ruzgar * Math.PI / 180;   // kuşlar rüzgârla gider
+  kara.U.uDokuGuc.value = P.karaDoku;
+  kara.U.uKayaGuc.value = P.karaKaya;
+  kara.U.uKarSeviye.value = P.karaKar;
+  kara.U.uGolgeGuc.value = P.karaGolge;
+  kara.U.uAO.value = P.karaAO;
+  kara.U.uKabartmaK.value = P.karaKabartma;
+  kara.U.uYukOlcek.value = P.karaYukOlcek;
 }
 
 // Kaydıraçlar GRUPLANIR: hepsi tek listede olunca hiçbiri bulunamıyordu.
@@ -355,6 +385,15 @@ const GRUPLAR = [
     ['kopukEsik', 'Köpük eşiği', 0.2, 1.2, 0.01],
     ['kopukOmur', 'Köpük ömrü (iz)', 0, 1, 0.01],
     ['detay', 'Yüzey detayı', 0, 1.5, 0.01],
+  ]],
+  ['Kara', [
+    ['karaDoku', 'Arazi dokusu', 0, 1.5, 0.01],
+    ['karaKaya', 'Eğimden kaya', 0, 1.5, 0.01],
+    ['karaKar', 'Kar seviyesi', 0.5, 1, 0.005],
+    ['karaGolge', 'Dağ gölgesi', 0, 1, 0.01],
+    ['karaAO', 'Çukur karanlığı', 0, 1.5, 0.01],
+    ['karaKabartma', 'Eğim duyarlılığı', 0.2, 3, 0.02],
+    ['karaYukOlcek', 'Yükseklik ölçeği', 60, 900, 10],
   ]],
   ['Fırtına ve canlılar', [
     ['kasirgaGuc', 'Kasırga gücü', 0, 1, 0.01],
@@ -502,6 +541,8 @@ addEventListener('keydown', (e) => {
   if (e.key === 'o') ac(!acik);
   if (e.key === 'p') kolSec(kol === 'kirilma' ? 'kaplama' : 'kirilma');
   // Kasırgayı ekranın ortasına kur: fırtınayı aramak yerine ona gidilir.
+  // Kara katmanı tek tuşla kapanır: bir şey bozulursa geri dönüş anlık.
+  if (e.key === 'l') kara.mesh.visible = !kara.mesh.visible;
   if (e.key === 'k') {
     U.uKasirga.value.x = cam.x;
     U.uKasirga.value.y = cam.y;
@@ -600,7 +641,7 @@ function kare(ts) {
 }
 requestAnimationFrame(kare);
 
-window.sulab = { game, P, ONAYARLAR, uygula, onayarSec, U, kamera, ac, kolSec, kirilmaKat, kus, sahne: kirilmaT.sahne, gl: kirilmaT.gl };
+window.sulab = { game, P, ONAYARLAR, uygula, onayarSec, U, kamera, ac, kolSec, kirilmaKat, kus, kara, sahne: kirilmaT.sahne, gl: kirilmaT.gl };
 </script>
 </body>
 </html>
