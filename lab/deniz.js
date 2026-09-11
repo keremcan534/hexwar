@@ -1,44 +1,35 @@
-// Yeni deniz + kara — oyuna bağlanan ÇEKİRDEK.
+// Yeni deniz — oyuna bağlanan ÇEKİRDEK.
 //
-// Laboratuvarın (sulab-oyun.html) kurulum kodu, ama iki şey olmadan:
+// Laboratuvarın (sulab-oyun.html) kurulum kodu, ama üç şey olmadan:
 //   · DOM paneli yok — o `dev-panel.js`'te, çünkü oyunda panel gizli durur.
 //   · Kendi kare döngüsü yok — CLAUDE.md oyunda sürekli rAF döngüsünü
 //     yasaklıyor. `ciz()` oyunun kendi karesinden çağrılır (bkz. entegre.js);
 //     su animasyonu oyunun zaten kısılmış su zamanlayıcısıyla (12-25 kare/sn)
 //     akar.
+//   · Kara katmanı yok: kara, sınır ve ülke rengi OYUNUN kendi çizimidir.
+//     Laboratuvardaki kara katmanı (lab/kara.js) koyu su önayarıyla birlikte
+//     haritayı okunmaz yapıyordu; harita en iyi hâlini su bittiğinde, kara
+//     oyunun kendisiyken almıştı. O katman laboratuvarda duruyor, oyuna bağlı
+//     değil.
 //
-// Dünyaya bağlı dokular (kıyı alanı, yükseklik, arazi, sahiplik) YENİ DÜNYADA
-// ve SAHİPLİK DEĞİŞİNCE yeniden kurulur; ikisi ayrı ömürdür. Sahipliği her tur
-// tazelemek sınır alanının raster chamfer'ını boşuna koşturmak olurdu.
+// Dünyaya bağlı tek doku kıyı alanıdır; YENİ DÜNYADA yeniden kurulur.
 
 import {
   ONAYARLAR, dalgaDizisi, gurultuDokusu, suVertex, kirilmaFragment, gunesYonu,
 } from './ocean.js';
 import { kusKatmani } from './kuslar.js';
-import {
-  karaKatmani, tipDokusu, yukseklikDokusu, denizUzakligiDokusu,
-  sinirAlaniDokusu, araziRenkDokusu, sahipDokusu, ulkeOrtalamaDokusu,
-} from './kara.js';
 import { HEX_SIZE } from '../src/world/worldgen.js';
 
 const HEX_STEP = Math.sqrt(3) * HEX_SIZE;
 const DIST_MAX = HEX_STEP * 9;         // surfaceGL ile AYNI ölçek
 
 /**
- * Önayarların TAŞIMADIĞI alanlar: kara, sınır, kasırga, kuş. Önayar değişince
+ * Önayarların TAŞIMADIĞI alanlar: kasırga ve kuş. Önayar değişince
  * sıfırlanmazlar — bunlar su malzemesi değil, sahnenin geri kalanı.
  * Değerler laboratuvarda ölçülüp kalibre edilmiş hâlleridir.
  */
 export const EK_VARSAYILAN = {
   kasirgaGuc: 0, kasirgaYaricap: 22,
-  karaDoku: 0.22, karaKaya: 0.45, karaKar: 0.96, karaGolge: 0.42,
-  karaAO: 0.35, karaKabartma: 1.0, karaYukOlcek: 1400,
-  plajGen: 0.55, plajGuc: 0.45, falezGuc: 0.5,
-  sinirGen: 6.0, icOpaklik: 0.85, canlilik: 0.0, hexYumusat: 0.6,
-  kenarKalin: 0.42, kenarGuc: 0.0, hatGuc: 0.0, kontrast: 0.35,
-  cekirdek: 0.8, cekirdekGuc: 0.35, bantKalin: 7.0, bantGuc: 1.0,
-  bantDoygun: 0.55, bantIsik: 0.22, karartmaTaban: 0.72,
-  tavan: 0.62, icKarart: 0.94,
   kusYogunluk: 0.55, kusBoyut: 9, kusYukseklik: 10, kusHiz: 1,
 };
 export const EKSTRA = Object.keys(EK_VARSAYILAN);
@@ -53,19 +44,6 @@ const SKALER = {
   uParilti: 'parilti', uPariltiGenis: 'pariltiGenis', uSSS: 'sssG',
   uDetay: 'detay', uYansima: 'yansima', uKabartma: 'kabartma', uRampa: 'rampa',
   uFaset: 'faset', uFasetOlcek: 'fasetOlcek',
-};
-
-/** Kara uniformu -> P alanı. uygula() tek döngüyle bağlar. */
-const KARA_SKALER = {
-  uDokuGuc: 'karaDoku', uKayaGuc: 'karaKaya', uKarSeviye: 'karaKar',
-  uGolgeGuc: 'karaGolge', uAO: 'karaAO', uKabartmaK: 'karaKabartma',
-  uYukOlcek: 'karaYukOlcek', uPlajGen: 'plajGen', uPlajGuc: 'plajGuc',
-  uFalezGuc: 'falezGuc', uSinirGen: 'sinirGen', uIcOpaklik: 'icOpaklik',
-  uCanlilik: 'canlilik', uHexYumusat: 'hexYumusat', uKenarKalin: 'kenarKalin',
-  uKenarGuc: 'kenarGuc', uHatGuc: 'hatGuc', uKontrast: 'kontrast',
-  uTavan: 'tavan', uIcKarart: 'icKarart', uCekirdek: 'cekirdek',
-  uCekirdekGuc: 'cekirdekGuc', uBantKalin: 'bantKalin', uBantGuc: 'bantGuc',
-  uBantDoygun: 'bantDoygun', uBantIsik: 'bantIsik', uKarartmaTaban: 'karartmaTaban',
 };
 
 /** Kıyı alanı hazır mı? Isıtma dilimli; hazır olmadan kurulum anlamsız. */
@@ -88,10 +66,10 @@ function kiyiDokusu(THREE, alan) {
 }
 
 /**
- * Denizi ve karayı oyuna kurar. `alanHazir(game)` true dönmeden çağrılmamalı.
+ * Denizi oyuna kurar. `alanHazir(game)` true dönmeden çağrılmamalı.
  *
  * @returns API — P (ayar), uygula(), onayarSec(), ciz(ts), boyutla(),
- *   dunyaYenile(), sahiplikYenile(), tazeleIste(), goster(v), kara, kus, U.
+ *   dunyaYenile(), tazeleIste(), goster(v), kus, U.
  */
 export function denizKur(THREE, game, { onayar = 'kerem', kayitli = null } = {}) {
   const r = game.renderer;
@@ -176,41 +154,6 @@ export function denizKur(THREE, game, { onayar = 'kerem', kayitli = null } = {})
   kus.mesh.renderOrder = 10;
   sahne.add(kus.mesh);
 
-  // Sahipliğe bağlı dokular — ayrı ömür, ayrı kurulum.
-  const sahiplikDokulari = () => {
-    const a = sinirAlaniDokusu(THREE, game.world, r.material.cache, HEX_SIZE);
-    return {
-      sinirTex: a.tex, sinirAzami: a.azami,
-      sahipTex: sahipDokusu(THREE, game.world),
-      ulkeOrtTex: ulkeOrtalamaDokusu(THREE, game.world, r.surfaceOwnerData(game.world)),
-    };
-  };
-  const s0 = sahiplikDokulari();
-  const kara = karaKatmani(THREE, {
-    uArka: U.uArka, uDist: U.uDist, uGurultu: U.uGurultu, uAlan: U.uAlan,
-    uOrigin: U.uOrigin, uSpan: U.uSpan, uCozunurluk: U.uCozunurluk,
-    uOlcek: U.uOlcek, uTime: U.uTime, uGunesDir: U.uGunesDir, uEkranSpan: U.uEkranSpan,
-    uDistMax: U.uDistMax, uHex: U.uHex,
-  }, {
-    tipTex: tipDokusu(THREE, game.world),
-    yukTex: yukseklikDokusu(THREE, alan0),
-    kiyiTex: denizUzakligiDokusu(THREE, alan0, DIST_MAX),
-    araziTex: araziRenkDokusu(THREE, game.world),
-    ...s0,
-    yukBoyut: { w: alan0.w, h: alan0.h },
-    grid: { cols: game.world.cols, rows: game.world.rows },
-    hexSize: HEX_SIZE,
-  });
-  kara.mesh.renderOrder = 5;
-  sahne.add(kara.mesh);
-
-  // Oyunun kendi sınır mürekkebi koyu bir çizgidir; kara katmanı sınırı kendi
-  // çekirdek + bant modeliyle çiziyor. İkisi üst üste binerse bant siyahın
-  // altında kalır. Geçit KARA KATMANINA bağlı: katman kapanınca oyunun
-  // mürekkebi kendiliğinden geri gelir.
-  const asilSinir = r.drawBorders.bind(r);
-  r.drawBorders = (...a) => { if (!kara.mesh.visible || !gorunur) asilSinir(...a); };
-
   // ------------------------------------------------------------ yenileme
   let sonOlcek = 1;
   let arkaTazele = 8;          // ilk kareler: arka doku birkaç kez tazelensin
@@ -220,30 +163,12 @@ export function denizKur(THREE, game, { onayar = 'kerem', kayitli = null } = {})
 
   const dispose = (t) => { if (t && t.dispose) t.dispose(); };
 
-  /** Yeni dünya: dünyaya bağlı HER doku yeniden kurulur. */
+  /** Yeni dünya: kıyı alanı yeniden kurulur, arka doku tazelenir. */
   function dunyaYenile() {
     const alan = r.material.cache;
     dispose(U.uDist.value);
     U.uDist.value = kiyiDokusu(THREE, alan);
     U.uAlan.value.set(alan.x0, alan.y0, alan.width, alan.height);
-    const K = kara.U;
-    dispose(K.uTip.value); K.uTip.value = tipDokusu(THREE, game.world);
-    dispose(K.uYuk.value); K.uYuk.value = yukseklikDokusu(THREE, alan);
-    K.uYukBoyut.value.set(alan.w, alan.h);
-    dispose(K.uKiyiK.value); K.uKiyiK.value = denizUzakligiDokusu(THREE, alan, DIST_MAX);
-    dispose(K.uArazi.value); K.uArazi.value = araziRenkDokusu(THREE, game.world);
-    K.uGrid.value.set(game.world.cols, game.world.rows);
-    sahiplikYenile();
-  }
-
-  /** Sahiplik değişti: yalnız sahipliğe bağlı üç doku yeniden kurulur. */
-  function sahiplikYenile() {
-    const s = sahiplikDokulari();
-    const K = kara.U;
-    dispose(K.uSinir.value); K.uSinir.value = s.sinirTex;
-    K.uSinirAzami.value = s.sinirAzami;
-    dispose(K.uSahip.value); K.uSahip.value = s.sahipTex;
-    dispose(K.uUlkeOrt.value); K.uUlkeOrt.value = s.ulkeOrtTex;
     arkaTazele = Math.max(arkaTazele, 2);
   }
 
@@ -268,7 +193,6 @@ export function denizKur(THREE, game, { onayar = 'kerem', kayitli = null } = {})
     kus.U.uYukseklik.value = P.kusYukseklik;
     kus.U.uHiz.value = P.kusHiz;
     kus.U.uYon.value = P.ruzgar * Math.PI / 180;    // kuşlar rüzgârla gider
-    for (const [u, alanAdi] of Object.entries(KARA_SKALER)) kara.U[u].value = P[alanAdi];
   }
 
   function onayarSec(anahtar) {
@@ -347,8 +271,8 @@ export function denizKur(THREE, game, { onayar = 'kerem', kayitli = null } = {})
   boyutla();
 
   return {
-    P, U, kara, kus, gl, sahne, kamera,
-    uygula, onayarSec, ciz, boyutla, dunyaYenile, sahiplikYenile, tazeleIste, goster,
+    P, U, kus, gl, sahne, kamera,
+    uygula, onayarSec, ciz, boyutla, dunyaYenile, tazeleIste, goster,
     get onayar() { return aktifOnayar; },
     get gorunur() { return gorunur; },
     kasirgaBuraya() {

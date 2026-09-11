@@ -1,4 +1,4 @@
-// Yeni deniz + kara'yı OYUNA bağlar — geliştirici sürümü.
+// Yeni denizi OYUNA bağlar — geliştirici sürümü.
 //
 // index.html'de main.js'ten SONRA yüklenir; modüller sırayla çalıştığı için
 // bu dosya çalıştığında `window.game` hazırdır. `?deniz=0` ile açılırsa hiçbir
@@ -12,7 +12,8 @@
 //      ısıtılıyor (main.js); burada zorla bitirilmez, hazır olması beklenir.
 //      three.js de dinamik yüklenir — bayrak kapalıyken 687 KB hiç inmez.
 //   3. Sahiplik değişimi TEK BOĞAZDAN yakalanır: oyun siyasi renkleri
-//      tazelediğinde her zaman waterGL.updateOwners'tan geçer.
+//      tazelediğinde her zaman waterGL.updateOwners'tan geçer. Kara oyunun
+//      kendi çizimi olduğu için orada yapılacak tek iş arka dokuyu tazelemek.
 
 const ANAHTAR = 'hexwar.dev.deniz.v1';
 
@@ -48,12 +49,9 @@ async function baslat() {
 
   const kayitli = oku();
   const api = denizKur(THREE, game, { onayar: 'kerem', kayitli });
-  if (kayitli && kayitli.__cizgiRenk && api.kara.U.uCizgiRenk) {
-    api.kara.U.uCizgiRenk.value.set(kayitli.__cizgiRenk);
-  }
 
   // ---------------------------------------------------------------- kare
-  // Oyunun karesine bağlan: önce oyun çizer, hemen ardından deniz ve kara.
+  // Oyunun karesine bağlan: önce oyun çizer, hemen ardından deniz.
   // Böylece arka doku her zaman AYNI karenin çizimidir.
   const asilKare = game.frame;
   game.frame = (ts = performance.now()) => {
@@ -62,17 +60,12 @@ async function baslat() {
   };
 
   // ------------------------------------------------------------ yenileme
-  let sahiplikZaman = 0;
-  const sahiplikPlanla = () => {
-    clearTimeout(sahiplikZaman);
-    // Bir savaş turunda onlarca hex el değiştirir; her birinde sınır alanını
-    // yeniden kurmak yerine hafta kapanınca bir kez.
-    sahiplikZaman = setTimeout(() => { api.sahiplikYenile(); game.requestRender(); }, 250);
-  };
+  // Siyasi renkler değişti: oyun #map-water'ı yeni renkle çizer, arka doku da
+  // tazelenmeli — kırılan su kıyıda karanın pikselini de örnekliyor.
   const wgl = game.renderer.waterGL;
   if (wgl && wgl.updateOwners) {
     const asil = wgl.updateOwners.bind(wgl);
-    wgl.updateOwners = (veri) => { asil(veri); sahiplikPlanla(); };
+    wgl.updateOwners = (veri) => { asil(veri); api.tazeleIste(2); };
   }
   game.on('world', () => {
     bekle(() => alanHazir(game)).then(() => { api.dunyaYenile(); game.requestRender(); });
@@ -105,7 +98,7 @@ async function baslat() {
   // `dev`. Oyunun tuşları WASD, oklar, boşluk, +/-, N, Escape ve F3; `b`
   // src/ altında hiçbir yere bağlı değil. Oyun bir gün `b`yi bir göreve
   // bağlarsa buradaki satır silinir, diğer iki yol kalır.
-  // Laboratuvar tuşları (1-6, k, l, o) yalnız panel AÇIKKEN çalışır: oyunda
+  // Laboratuvar tuşları (1-6, k, o) yalnız panel AÇIKKEN çalışır: oyunda
   // harf tuşları er geç bir göreve bağlanır ve tasarım tezgâhı oyunu ele
   // geçirmemeli.
   addEventListener('keydown', (e) => {
@@ -129,7 +122,6 @@ async function baslat() {
     const n = '123456'.indexOf(e.key);
     if (n >= 0) { api.onayarSec(onayarlar[n]); panel.yenile(); kaydet(); return; }
     if (e.key === 'k') { api.kasirgaBuraya(); panel.yenile(); kaydet(); }
-    if (e.key === 'l') { api.kara.mesh.visible = !api.kara.mesh.visible; game.dirty = true; game.requestRender(); }
     if (e.key === 'o') api.goster(!api.gorunur);
   });
 

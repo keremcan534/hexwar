@@ -1,4 +1,4 @@
-// Geliştirici paneli — deniz ve kara ayarları. Oyunda GİZLİ başlar.
+// Geliştirici paneli — deniz ayarları. Oyunda GİZLİ başlar.
 //
 // Açmak: `b`, `"` tuşu (Türkçe klavyede 1'in solu, `Backquote`) ya da konsola
 // `dev` yazmak. Oyun çıkana kadar böyle kalacak; oyuncuya görünen bir ayar
@@ -47,34 +47,6 @@ export const GRUPLAR = [
     ['kopukEsik', 'Köpük eşiği', 0.2, 1.2, 0.01],
     ['kopukOmur', 'Köpük ömrü (iz)', 0, 1, 0.01],
     ['detay', 'Yüzey detayı', 0, 1.5, 0.01],
-  ]],
-  ['Kara', [
-    ['karaDoku', 'Arazi dokusu', 0, 1.5, 0.01],
-    ['karaKaya', 'Eğimden kaya', 0, 1.5, 0.01],
-    ['karaKar', 'Kar seviyesi', 0.8, 1, 0.002],
-    ['karaGolge', 'Dağ gölgesi', 0, 1, 0.01],
-    ['karaAO', 'Çukur karanlığı', 0, 1.5, 0.01],
-    ['karaKabartma', 'Eğim duyarlılığı', 0.2, 3, 0.02],
-    ['karaYukOlcek', 'Yükseklik ölçeği', 200, 3000, 25],
-    ['plajGen', 'Plaj genişliği (hex)', 0, 2, 0.02],
-    ['plajGuc', 'Plaj gücü', 0, 1, 0.01],
-    ['falezGuc', 'Falez gücü', 0, 1, 0.01],
-  ]],
-  ['Ülke rengi (HOI4)', [
-    ['sinirGen', 'Sınır bandı (hex)', 0.3, 6, 0.1],
-    ['cekirdek', 'Çekirdek hat (piksel)', 0, 4, 0.1],
-    ['cekirdekGuc', 'Çekirdek gücü', 0, 1, 0.01],
-    ['bantKalin', 'Ülke bandı (piksel)', 0, 16, 0.5],
-    ['bantGuc', 'Bant gücü', 0, 1, 0.01],
-    ['bantDoygun', 'Bant doygunluğu', 0, 1.5, 0.01],
-    ['bantIsik', 'Bant parlaklığı', 0, 0.6, 0.01],
-    ['tavan', 'Parlaklık tavanı', 0.3, 1, 0.01],
-    ['icKarart', 'İç karartma', 0.6, 1, 0.01],
-    ['kontrast', 'Kontrast', 0, 0.8, 0.01],
-    ['karartmaTaban', 'Karartma tabanı', 0.3, 1, 0.01],
-    ['icOpaklik', 'İçeride ülke rengi', 0, 1, 0.01],
-    ['canlilik', 'Renk canlılığı', 0, 1.2, 0.01],
-    ['hexYumusat', 'Hex kademesini erit', 0, 1, 0.01],
   ]],
   ['Fırtına ve canlılar', [
     ['kasirgaGuc', 'Kasırga gücü', 0, 1, 0.01],
@@ -209,20 +181,6 @@ export function panelKur(api, { kaydet = () => {} } = {}) {
     gruplarEl.append(d);
   });
 
-  // Sınır çekirdeğinin rengi kaydıraçla seçilemez.
-  if (api.kara.U.uCizgiRenk) {
-    const l = document.createElement('label');
-    l.textContent = 'Sınır çekirdeği rengi';
-    l.style.marginTop = '8px';
-    const k = document.createElement('input');
-    k.type = 'color';
-    k.value = '#' + api.kara.U.uCizgiRenk.value.getHexString();
-    k.style.cssText = 'width:100%;height:22px;padding:0;border:1px solid rgba(150,190,200,0.22);'
-      + 'border-radius:4px;background:transparent;cursor:pointer;';
-    k.oninput = () => { api.kara.U.uCizgiRenk.value.set(k.value); P.__cizgiRenk = k.value; kaydet(); };
-    kok.append(l, k);
-  }
-
   const dugme = (metin, fn) => {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'dd-b'; b.textContent = metin;
@@ -244,7 +202,6 @@ export function panelKur(api, { kaydet = () => {} } = {}) {
   dugme('Varsayılana dön', () => {
     api.onayarSec('kerem');
     Object.assign(P, EK_VARSAYILAN);
-    delete P.__cizgiRenk;
     api.uygula();
     yenile();
     kaydet(true);
@@ -254,7 +211,7 @@ export function panelKur(api, { kaydet = () => {} } = {}) {
   not.className = 'dd-not';
   not.innerHTML = 'Aç/kapa: <b>b</b>, <b>"</b> ya da konsolda <b>dev</b>. '
     + 'Panel açıkken: <b>1-6</b> önayar · <b>k</b> kasırgayı buraya · '
-    + '<b>l</b> kara katmanı · <b>o</b> yeni deniz aç/kapa. Ayarlar tarayıcıda saklanır.';
+    + '<b>o</b> yeni deniz aç/kapa. Ayarlar tarayıcıda saklanır.';
   kok.append(not);
 
   function yenile() {
