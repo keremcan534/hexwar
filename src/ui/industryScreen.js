@@ -348,7 +348,8 @@ function railColumn(view) {
     ? `stalled — £${money(project.owed)} unpaid`
     : `${project.weeksLeft} week${project.weeksLeft === 1 ? '' : 's'} remaining`}</small>
       ${project.owed > 0.05 ? `<button class="ind-project-fund" data-support="${project.id}"
-        title="Pay £${money(project.owed)} from the treasury to finish it sooner. Shift-click pays the remainder in full.">\u{1F3DB}</button>` : ''}
+        data-name="${esc(project.name)}" data-tip="fund" data-tip-arg="${project.id}"
+        aria-label="Top up ${esc(project.name)} from the treasury">\u{1F3DB}</button>` : ''}
     </div>`).join('');
   return `<aside class="ind-rail">
     <div class="ind-rail-head"><span>Under construction</span><b>${projects.length}</b></div>

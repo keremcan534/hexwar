@@ -8519,6 +8519,10 @@ body.menu-open .sheet { visibility: hidden; }
 }
 .tech-programme-card:hover { border-color: var(--frame-brass); }
 /* Ilk tik: kart onay bekler, ikinci tik ilan eder (screens.js data-proclaim). */
+/* Iki tikli onay: savas ilani ve yasa dugmeleri de ayni vurguyu tasir. */
+.action.confirming { border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright) inset; color: var(--gold-bright); }
+.rstep.is-confirming button { border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright) inset; }
+.rstep.is-confirming button span { color: var(--gold-bright); }
 .tech-programme-card.confirming { border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright) inset; }
 .tech-programme-card.confirming em { color: var(--gold-bright); }
 /* Komutanin taarruz bakisi: neden saldirdigi ya da saldirmadigi (military.js assaultLine). */

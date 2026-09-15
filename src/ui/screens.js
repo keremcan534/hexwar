@@ -8,6 +8,7 @@
 import { canAfford, formatCost, pay } from '../game/cities.js';
 import {
   MIN_WAR_TURNS, atWar, crisisLeft, nationStrength, relation, truceLeft,
+  ULTIMATUM_WEEKS,
 } from '../game/diplomacy.js';
 import {
   MAX_DEMAND_PROVINCES, PEACE_TERMS, concedeKeyForTile, demandKeyForTile,
@@ -369,6 +370,9 @@ export class Screens {
   close() {
     if (this.active === 'construction' || this.active === 'peace') this.restoreMapMode();
     this.constructionType = null;
+    // Bekleyen onaylar ekranla birlikte duser.
+    this.reformConfirm = null;
+    this.warConfirm = null;
     // Sanayi ekraninin gecici katmanlari da kapanir: katalog, ⋯ menusu ve
     // kapatma onayi. Kalsalardi Factories her acilista acik katalogla geliyor
     // ve Upgrade/Subsidise satirini ortuyordu (Open Beta 4, B-10). Secili
@@ -558,7 +562,10 @@ export class Screens {
     ? `<button class="action" data-peace="${target.id}" ${locked ? 'disabled' : ''}>Peace Talks${locked ? ` (${MIN_WAR_TURNS - (turn - rec.since)}w)` : ''}</button>`
     : allied
       ? `<button class="action" data-break-alliance="${target.id}">Break Alliance</button>`
-      : `<button class="action" data-war="${target.id}" ${truce ? 'disabled' : ''}>Declare War</button>
+      : `<button class="action${this.warConfirm === target.id ? ' confirming' : ''}" data-war="${target.id}" ${truce ? 'disabled' : ''}>${
+        this.warConfirm === target.id
+          ? `Click again to declare war: ${ULTIMATUM_WEEKS}-week ultimatum, infamy per province taken`
+          : 'Declare War'}</button>
          <button class="action" data-ally="${target.id}">Propose Alliance</button>`}
         <button class="action" data-locate="${target.id}">Show on map</button>
       </div>
@@ -1877,6 +1884,7 @@ export class Screens {
     const board = reformBoard(me);
     return politicsScreen(this.game.world, me, {
       tab: this.politicsTab,
+      reformConfirm: this.reformConfirm ?? null,
       government: governmentType(me),
       electionWindow: electionWindowOpen(this.game.world, me),
       // Sandık yoksa seçim de yok: oy hakkı yasası kütüğü boşalttıysa düğme
@@ -1909,7 +1917,8 @@ export class Screens {
         ? `<button class="action" data-peace="${n.id}" ${locked ? 'disabled' : ''}>Offer Peace${locked ? ` (${MIN_WAR_TURNS - (turn - rec.since)})` : ''}</button>`
         : crisis
           ? `<button class="action" disabled title="The ultimatum runs out in ${crisis} weeks; mobilize from the Military screen.">Ultimatum (${crisis}w)</button>`
-          : `<button class="action" data-war="${n.id}" ${truce ? 'disabled' : ''}>Declare War</button>`;
+          : `<button class="action${this.warConfirm === n.id ? ' confirming' : ''}" data-war="${n.id}" ${truce ? 'disabled' : ''}>${
+            this.warConfirm === n.id ? 'Click again to declare war' : 'Declare War'}</button>`;
 
       return `<div class="card">
         <div class="rel-row">
@@ -2225,8 +2234,18 @@ export class Screens {
     // Yasa çıkarma. enactReform kapıyı kendi kontrol eder; burada yalnız
     // sonuç varsa ekran tazelenir (kapalıysa düğme zaten çizilmez).
     for (const btn of this.el.body.querySelectorAll('[data-reform]')) {
+      // IKI TIK. Tek tik yasayi yururluge koyup butun reformlari bir yila
+      // kadar kilitliyordu; kor oyun testinde ilk deneme tiki bir yillik
+      // kilide donustu. Ilk tik bedeli soyler, ikincisi cikarir.
       btn.onclick = () => {
-        if (enactReform(game, me, btn.dataset.reform)) this.refresh();
+        const id = btn.dataset.reform;
+        if (this.reformConfirm !== id) {
+          this.reformConfirm = id;
+          this.refresh();
+          return;
+        }
+        this.reformConfirm = null;
+        if (enactReform(game, me, id)) this.refresh();
       };
     }
     for (const btn of this.el.body.querySelectorAll('[data-appoint]')) {
@@ -2414,7 +2433,13 @@ export class Screens {
     for (const btn of this.el.body.querySelectorAll('[data-support]')) {
       // Shift ile tam destek: Vic2'de olduğu gibi kalanın tamamı, hazine yettiği kadar.
       btn.onclick = (event) => {
+        const before = me.gold ?? 0;
         if (supportProject(game, me, Number(btn.dataset.support), { full: event.shiftKey })) {
+          // Odeme makbuzu: eskiden hazine sessizce dusuyor, oyuncu ne
+          // odedigini ancak ust cubuktan tahmin ediyordu (kor oyun testi).
+          const paid = Math.max(0, before - (me.gold ?? 0));
+          game.turns.addLog(`Treasury paid £${paid.toFixed(0)} toward ${btn.dataset.name ?? 'the site'}.`,
+            { kind: 'INDUSTRY', key: `fund-${btn.dataset.support}` });
           this.refresh();
         }
       };
@@ -2497,7 +2522,25 @@ export class Screens {
       };
     }
     for (const btn of this.el.body.querySelectorAll('[data-war]')) {
-      btn.onclick = () => { game.declareWarOn(Number(btn.dataset.war)); this.refresh(); };
+      // Iki tik: ilki onay ister, ikincisi ilan eder (bkz. hud.bindActions).
+      btn.onclick = () => {
+        const id = Number(btn.dataset.war);
+        if (this.warConfirm !== id) {
+          this.warConfirm = id;
+          clearTimeout(this.warConfirmTimer);
+          this.warConfirmTimer = setTimeout(() => {
+            if (this.warConfirm !== id) return;
+            this.warConfirm = null;
+            this.refresh();
+          }, 8000);
+          this.refresh();
+          return;
+        }
+        this.warConfirm = null;
+        clearTimeout(this.warConfirmTimer);
+        game.declareWarOn(id);
+        this.refresh();
+      };
     }
     for (const btn of this.el.body.querySelectorAll('[data-ally]')) {
       btn.onclick = () => {

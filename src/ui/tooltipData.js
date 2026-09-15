@@ -15,10 +15,16 @@ import {
 } from '../game/economy.js';
 import { industryOverview } from '../game/industryView.js';
 import { provinceRgoStatus } from '../game/provinces.js';
+import { activeAlerts } from '../game/alerts.js';
+import { INFAMY, INFAMY_COALITION } from '../game/infamy.js';
 
 const pct = (v, d = 0) => `${((v ?? 0) * 100).toFixed(d)}%`;
 const coin = (v) => `£${(v ?? 0).toFixed(1)}`;
 const signed = (v) => `${v >= 0 ? '+' : '−'}£${Math.abs(v ?? 0).toFixed(1)}`;
+/** `text` ham HTML basilir; simulasyondan gelen cumleler kacirilarak girer. */
+const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => (
+  { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+));
 
 /**
  * Sağlayıcıları kurar. Oyun nesnesini kapatma (closure) ile taşır ki
@@ -290,6 +296,181 @@ export function registerTooltips(game) {
         { label: 'Workforce', value: `${formatPopulation(rgo.employed)} / ${formatPopulation(rgo.jobs)}` },
         { label: 'Unemployed', value: formatPopulation(rgo.unemployed), tone: rgo.unemployed > 0 ? 'bad' : '' },
         { label: 'Produces', value: `${tipTerm('good', GOODS[rgo.type.goodId]?.name ?? rgo.type.goodId, rgo.type.goodId)}` },
+      ],
+    };
+  });
+
+  /* ----------------------------------------------------------------------
+     UST CUBUK — istikrar, sohret, ordu, insan gucu
+     Tarayicinin `title` balonu bir saniye gecikiyor, duz metin basiyor ve
+     ekran goruntusune bile girmiyor; kor oyun testinde "tooltip yok" diye
+     okundu. Ayni bilgi artik geciktirmeli kartta.
+     ---------------------------------------------------------------------- */
+
+  provideTooltip('stability', () => {
+    const nation = me();
+    const bd = nation?.economy?.stabilityBreakdown;
+    if (!bd) {
+      return {
+        type: 'simple',
+        title: 'Stability',
+        text: 'Measured after the first weekly tick; the opening value is a placeholder.',
+      };
+    }
+    const pt = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1)}`;
+    const rows = [{ label: 'Household satisfaction', value: pt(bd.base), tone: 'good' }];
+    if (bd.occupation < -0.0005) {
+      rows.push({
+        label: `Occupied territory (${Math.round(bd.occupiedShare * 100)}% of ${bd.occupiedTiles} hexes)`,
+        value: pt(bd.occupation), tone: 'bad',
+      });
+    }
+    if (bd.war < -0.0005) {
+      rows.push({
+        label: `War exhaustion (${bd.warFronts} front${bd.warFronts === 1 ? '' : 's'})`,
+        value: pt(bd.war), tone: 'bad',
+      });
+    }
+    if (bd.unemployment < -0.0005) {
+      rows.push({
+        label: `Unemployment (${formatPopulation(bd.unemployed)} without work)`,
+        value: pt(bd.unemployment), tone: 'bad',
+      });
+    }
+    return {
+      type: 'breakdown',
+      title: 'Stability',
+      value: `${(bd.total * 100).toFixed(1)}%`,
+      text: 'How firmly the country holds together: household satisfaction minus '
+        + 'occupation, war and unemployment. Satisfaction rises when the basket gets '
+        + 'cheaper, tax falls or welfare rises.',
+      rows,
+      effects: [
+        { label: 'Population growth', value: 'follows it' },
+        { label: 'Province control', value: 'recovers faster when high' },
+        { label: 'Factory hiring', value: 'faster when high' },
+      ],
+      footer: 'Click the figure to pin this breakdown.',
+    };
+  });
+
+  provideTooltip('infamy', () => {
+    const nation = me();
+    const infamy = nation?.infamy ?? 0;
+    const decay = INFAMY.DECAY_PER_TURN + infamy * INFAMY.DECAY_RATIO;
+    return {
+      type: 'breakdown',
+      title: 'Infamy',
+      value: `${infamy.toFixed(1)} / ${INFAMY_COALITION}`,
+      text: `How much the world resents your conquests. At ${INFAMY_COALITION} your `
+        + 'neighbours unite in a coalition and declare war on you together.',
+      rows: [
+        { label: 'Occupying a foreign-culture hex', value: `+${INFAMY.FOREIGN_CULTURE_TILE}`, tone: 'bad' },
+        { label: 'Occupying a hex of your own culture', value: `+${INFAMY.OWN_CULTURE_TILE}`, tone: 'bad' },
+        { label: 'Occupying a city', value: `+${INFAMY.CITY}`, tone: 'bad' },
+        { label: 'Annexing at the peace table', value: 'per hex, city and person', tone: 'bad' },
+        { label: 'Forgotten every week', value: `−${decay.toFixed(2)}`, tone: 'good' },
+      ],
+      footer: infamy >= INFAMY_COALITION * 0.6
+        ? 'Close to the threshold: one more annexation may unite your neighbours.'
+        : 'A single border province is safe; a string of annexations is not.',
+    };
+  });
+
+  provideTooltip('army', () => ({
+    type: 'mechanic',
+    title: 'Army',
+    text: 'Men under arms: soldiers drawn from your provinces and serving in your '
+      + 'divisions. A regiment is 30,000 infantry, 20,000 cavalry or 15,000 gunners. '
+      + 'Survivors of a disbanded unit walk home; the dead do not.',
+  }));
+
+  provideTooltip('manpower', () => ({
+    type: 'mechanic',
+    title: 'Manpower',
+    text: 'Recruitable population left in your provinces. Every regiment you order '
+      + 'draws from it, mobilisation draws more, and disbanded survivors return to it.',
+  }));
+
+  /* ----------------------------------------------------------------------
+     UYARI SERIDI — ikonun uzerine gelince sebep ve care
+     ---------------------------------------------------------------------- */
+
+  provideTooltip('alert', (id) => {
+    const alert = activeAlerts(game.world, me()).find((row) => row.id === id);
+    if (!alert) return null;
+    return {
+      type: 'simple',
+      title: alert.title,
+      text: `${esc(alert.cause)}<br><br><b>${esc(alert.remedy)}</b>`,
+      footer: 'Click the icon to pin the note; ✕ silences it until the situation changes.',
+    };
+  });
+
+  /* ----------------------------------------------------------------------
+     SAAT, HARITA KIPLERI, DUNYA KURULUMU — duz aciklamalar
+     ---------------------------------------------------------------------- */
+
+  provideTooltip('time', (speed) => {
+    const n = Number(speed) || 0;
+    const desc = {
+      0: 'Pause. Space toggles it; + and − step the speed.',
+      1: 'One day per second — a week every seven seconds.',
+      2: 'Two days per second.',
+      4: 'Four days per second.',
+      8: 'Eight days per second — a week in under a second while the simulation keeps up.',
+    }[n] ?? '';
+    return {
+      type: 'simple',
+      title: n ? `Speed ×${n}` : 'Pause',
+      text: `${desc}${n ? ' War, crisis and existential events stop the clock by themselves; '
+        + 'the date then says why.' : ''}`,
+    };
+  });
+
+  provideTooltip('mapmode', (mode) => {
+    const table = {
+      political: ['Political map', 'Borders, nations and armies. Occupied hexes carry a hatch; the front of the selected commander is outlined.'],
+      terrain: ['Terrain', 'Relief and vegetation without borders: where armies slow down and where the land is rich.'],
+      geography: ['Geography', 'The bare world as the generator drew it — continents, seas and straits, no borders or units.'],
+      cultures: ['Cultures', 'Who lives where. Hatching marks provinces whose majority differs from the owner\'s culture.'],
+      resources: ['Resources', 'What each province extracts — grain, cattle, coal, iron and the rest. The legend below lists every resource.'],
+      population: ['Population', 'How many people live in each province, in four bands.'],
+      layers: ['Layers', 'Grid, labels, live sea, and the seed of this world.'],
+    };
+    const row = table[mode];
+    return row ? { type: 'simple', title: row[0], text: row[1] } : null;
+  });
+
+  provideTooltip('setup', (field) => {
+    const table = {
+      seed: ['World seed', 'Any text. The same seed always draws the same world, nations and opening economy — share it to share a map. Blank picks a random one.'],
+      size: ['Map size', 'Hex columns; rows follow the aspect. 160 × 96 is the standard world the game is balanced on.'],
+      cont: ['Continentality', 'How the land clumps: low values scatter islands and peninsulas, high values fuse them into a few large continents.'],
+      land: ['Land ratio', 'Nudges the share of land. 0.00 is the standard 36% land; negative drowns the coasts, positive raises them.'],
+      nations: ['Great powers', 'How many nations are seeded as great powers. Automatic lets the generator decide from the land available.'],
+    };
+    const row = table[field];
+    return row ? { type: 'simple', title: row[0], text: row[1] } : null;
+  });
+
+  /** Yatirimci santiyesine hazine destegi: ne oder, ne alir. */
+  provideTooltip('fund', (projectId) => {
+    const project = (industry()?.construction ?? []).find((row) => String(row.id) === String(projectId));
+    if (!project) return null;
+    const quarter = Math.max(1, Math.ceil(project.owed * 0.25));
+    return {
+      type: 'breakdown',
+      title: `Top up ${project.name}`,
+      value: `£${Math.round(project.owed)} unpaid`,
+      text: project.stalled
+        ? 'The investors ran out of capital and the site is dormant. Treasury money '
+          + 'wakes it; the plant stays theirs, the goods reach your market.'
+        : 'Investors are still paying; the treasury can shorten the wait.',
+      rows: [
+        { label: 'Click pays', value: `£${quarter}` },
+        { label: 'Shift-click pays', value: `£${Math.round(project.owed)}` },
+        { label: 'Booked to', value: 'construction line' },
       ],
     };
   });

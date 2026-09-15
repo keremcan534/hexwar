@@ -9,7 +9,7 @@ import {
   speedOf, strengthRatio,
 } from '../game/units.js';
 import {
-  MIN_WAR_TURNS, atWar, crisisLeft, inCrisis, relation, truceLeft,
+  MIN_WAR_TURNS, ULTIMATUM_WEEKS, atWar, crisisLeft, inCrisis, relation, truceLeft,
 } from '../game/diplomacy.js';
 import { warScore } from '../game/peace.js';
 import { INFAMY_COALITION, OCCUPATION_TURNS, tileEfficiency } from '../game/infamy.js';
@@ -811,8 +811,8 @@ export class Hud {
         .reduce((sum, unit) => sum + menUnderArms(unit), 0);
       this.el.macroStats.innerHTML = `
         <span class="macro-live" data-macro="population"><small>Population</small><b>${formatPopulation(me.economy?.population ?? 0)}</b></span>
-        <span title="Men under arms — soldiers drawn from your provinces"><small>Army</small><b>${formatPopulation(army)}</b></span>
-        <span title="Recruitable population left in your provinces"><small>Manpower</small><b>${formatPopulation(nationManpower(world, me.id))}</b></span>
+        <span data-tip="army" tabindex="0"><small>Army</small><b>${formatPopulation(army)}</b></span>
+        <span data-tip="manpower" tabindex="0"><small>Manpower</small><b>${formatPopulation(nationManpower(world, me.id))}</b></span>
         <span class="macro-live" data-macro="gdp"><small>GDP</small><b>£${formatNumber(Math.round(me.economy?.gdp ?? 0))}</b></span>`;
       this.ensureMacroCards();
       // Künyedeki bayrak canlı bez: kaynak bir kez pişer, şeritler kayar.
@@ -1166,6 +1166,8 @@ export class Hud {
     const foreign = tile.owner >= 0 && tile.owner !== game.turns.playerNation
       ? tile.owner
       : (tile.unit && tile.unit.nationId !== game.turns.playerNation ? tile.unit.nationId : -1);
+    // Onay bekleyen ilan baska bir ulkeye ait ise duser: iki tik ayni hedefe.
+    if (this.warConfirm != null && this.warConfirm !== foreign) this.warConfirm = null;
     if (foreign >= 0 && game.world.nations[foreign].alive) {
       const other = game.world.nations[foreign];
       const war = atWar(game.world, foreign, game.turns.playerNation);
@@ -1183,7 +1185,10 @@ export class Hud {
     ? `<button class="action wide" data-peace="${foreign}" ${locked ? 'disabled' : ''}>Offer Peace${locked ? ` (${MIN_WAR_TURNS - (game.turns.turn - rec.since)} weeks)` : ''}</button>`
     : crisis
       ? `<button class="action wide" disabled title="The ultimatum runs out in ${crisis} weeks; mobilize from the Military screen.">Ultimatum (${crisis} weeks)</button>`
-      : `<button class="action wide" data-war="${foreign}" ${truce ? 'disabled' : ''}>Declare War${truce ? ` (${truce} turns)` : ''}</button>`}
+      : `<button class="action wide${this.warConfirm === foreign ? ' confirming' : ''}" data-war="${foreign}" ${truce ? 'disabled' : ''}>${
+        this.warConfirm === foreign
+          ? `Click again to declare war: ${ULTIMATUM_WEEKS}-week ultimatum, infamy for every province taken`
+          : `Declare War${truce ? ` (${truce} turns)` : ''}`}</button>`}
       </div>`);
     }
 
@@ -1411,7 +1416,29 @@ export class Hud {
     const found = this.el.sheetBody.querySelector('[data-found]');
     if (found) found.onclick = () => game.turns.foundCity(game.selectedUnit);
     const war = this.el.sheetBody.querySelector('[data-war]');
-    if (war) war.onclick = () => game.declareWarOn(Number(war.dataset.war));
+    // IKI TIK. Tek tikla savas ilan etmek, "Open Dossier"in hemen altinda
+    // duran bir dugme icin fazla ucuzdu (kor oyun testi). Program kartiyla
+    // ayni kalip: ilk tik niyeti sorar, ikincisi ilan eder; sekiz saniyede
+    // cevap gelmezse dugme eski haline doner.
+    if (war) {
+      war.onclick = () => {
+        const id = Number(war.dataset.war);
+        if (this.warConfirm !== id) {
+          this.warConfirm = id;
+          clearTimeout(this.warConfirmTimer);
+          this.warConfirmTimer = setTimeout(() => {
+            if (this.warConfirm !== id) return;
+            this.warConfirm = null;
+            if (game.selected) this.showTile(game.selected);
+          }, 8000);
+          this.showTile(game.selected);
+          return;
+        }
+        this.warConfirm = null;
+        clearTimeout(this.warConfirmTimer);
+        game.declareWarOn(id);
+      };
+    }
     const peace = this.el.sheetBody.querySelector('[data-peace]');
     // Otomatik barış kalktı: bu düğme de masayı açar (bkz. screens.openPeaceTalks).
     if (peace) peace.onclick = () => this.screens.openPeaceTalks(Number(peace.dataset.peace));
@@ -1483,12 +1510,12 @@ function resourcesHtml(nation) {
   // Etiketler Title Case: her şeyin versal olması üst barı bağırtıyordu.
   // Hazine binlik ayraçla okunur — dört haneden sonra ayraçsız sayı taranmıyor.
   return `
-    <span class="res-money" title="treasury">
+    <span class="res-money" data-tip="treasury" tabindex="0">
       <img class="res-coin" src="assets/icons/budget/treasury.png" alt="" decoding="async">
       <span><small>Treasury</small><b>£${grouped(nation.gold)}${flow}</b></span></span>
     <span class="stat-why" role="button" tabindex="0" data-why="stability"
-      title="${(nation.budget ? stabilityWhy(nation) : 'Measured after the first weekly tick; the opening value is a placeholder.')}"><small>Stability</small><b>${nation.budget ? `${stability}%` : '—'}</b></span>
-    <span title="infamy — a coalition forms at ${INFAMY_COALITION}"><small>Infamy</small><b class="${infamyClass}">${infamy.toFixed(1)}</b></span>`;
+      data-tip="stability"><small>Stability</small><b>${nation.budget ? `${stability}%` : '—'}</b></span>
+    <span data-tip="infamy" tabindex="0"><small>Infamy</small><b class="${infamyClass}">${infamy.toFixed(1)}</b></span>`;
 }
 
 /**

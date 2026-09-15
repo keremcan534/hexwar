@@ -11,7 +11,7 @@
 // çizgi-SVG'dir (emoji değil), renkler UI katmanına aittir.
 
 import {
-  REFORM_CATEGORIES, canEnactCategory, electorate, importantIssues, peopleMix,
+  REFORM_CATEGORIES, SEVERITY_RULES, canEnactCategory, electorate, importantIssues, peopleMix,
   reformMovements, reformValue, upperHouse, voterMix,
 } from '../game/reforms.js';
 import { IDEOLOGIES, POLITICAL_POLICIES, rulingParty } from '../game/politics.js';
@@ -321,7 +321,7 @@ function blockReason(status) {
   return lines.join('\n');
 }
 
-export function reformLadder(status) {
+export function reformLadder(status, confirm = null) {
   const { group, current, next } = status;
   const steps = group.steps.map((step) => {
     const done = step.index <= current.index;
@@ -338,8 +338,14 @@ export function reformLadder(status) {
         ? `<em class="rstep-wait">${esc(waitLabel(status.cooldownLeft))}</em>`
         : `<em>${pct(status.support)}<small>/${pct(status.threshold)}</small></em>`;
     if (enact) {
-      return `<li class="rstep ${cls}"><button data-reform="${group.id}" title="${esc(title)}">
-        ${mark}<span>${esc(step.name)}</span>${badge}</button></li>`;
+      // Iki tikli onay: ilk tik bedeli (kilit suresi) yazar, ikincisi cikarir.
+      const confirming = confirm === group.id;
+      const lock = SEVERITY_RULES[status.severity]?.cooldown ?? 52;
+      const label = confirming
+        ? `Click again to enact — every other reform then waits ${waitLabel(lock)}`
+        : step.name;
+      return `<li class="rstep ${cls}${confirming ? ' is-confirming' : ''}"><button data-reform="${group.id}" title="${esc(title)}">
+        ${mark}<span>${esc(label)}</span>${confirming ? '' : badge}</button></li>`;
     }
     return `<li class="rstep ${cls}" title="${esc(title)}">${mark}<span>${esc(step.name)}</span>${badge}</li>`;
   }).join('');
@@ -399,11 +405,11 @@ function effectStrip(preview) {
   return `<div class="reform-effects" title="Measured from the engine: the same coefficients the simulation reads.">${rows}</div>`;
 }
 
-function reformColumn(category, board) {
+function reformColumn(category, board, confirm = null) {
   const rows = board.filter((status) => status.group.category === category);
   return `<section class="pol-col pol-col-${category}">
     ${band(REFORM_CATEGORIES[category].name)}
-    <div class="pol-reform-grid">${rows.map(reformLadder).join('')}</div>
+    <div class="pol-reform-grid">${rows.map((row) => reformLadder(row, confirm)).join('')}</div>
   </section>`;
 }
 
@@ -443,13 +449,13 @@ function reformNote(board, house, houseLaw) {
     <em>This is a political lock, not a bug.</em></p>`;
 }
 
-export function reformsTab(board, house, houseLaw) {
+export function reformsTab(board, house, houseLaw, confirm = null) {
   return `<div class="pol-reforms">
     <div class="pol-reform-columns">
-      ${reformColumn('social', board)}
-      ${reformColumn('political', board)}
+      ${reformColumn('social', board, confirm)}
+      ${reformColumn('political', board, confirm)}
     </div>
-    ${reformColumn('state', board)}
+    ${reformColumn('state', board, confirm)}
     ${reformNote(board, house, houseLaw)}
   </div>`;
 }
@@ -531,7 +537,7 @@ export function politicsScreen(world, nation, state, board) {
   };
 
   const body = state.tab === 'movements' ? movementsTab(movements)
-    : reformsTab(board, house, reformValue(nation, 'upper_house'));
+    : reformsTab(board, house, reformValue(nation, 'upper_house'), state.reformConfirm ?? null);
 
   return `<div class="pol">
     <aside class="pol-left">
