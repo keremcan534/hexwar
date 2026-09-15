@@ -352,6 +352,13 @@ export class TurnManager {
       if (member.city) member.city.nationId = nationId;
       members.push(member);
     }
+    // Ust cubuktaki "N provinces" sayaci ilhakta hemen oynasin; eskiden bir
+    // sonraki tam sayima kadar eski degerde kaliyordu.
+    const previousOwner = province.owner;
+    if (previousOwner >= 0) {
+      world.nations[previousOwner].provinces = Math.max(0, (world.nations[previousOwner].provinces ?? 0) - 1);
+    }
+    world.nations[nationId].provinces = (world.nations[nationId].provinces ?? 0) + 1;
     province.owner = nationId;
     // Yeni tebaa hemen sadık olmaz; kontrol düşük başlar.
     province.econ.control = 25;

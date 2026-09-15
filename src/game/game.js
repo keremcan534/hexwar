@@ -54,6 +54,10 @@ const EVENTS = [
   'nation', 'politics', 'notify', 'notify-clear', 'notify-dismiss',
   // AUTO devri (bkz. delegation.js).
   'delegation',
+  // Kayit yazildi (otomatik ya da elle): ayar paneli etiketini tazeler.
+  'save',
+  // Oyuncu ulusu degisti (kurulus ekraninda "play as"): HUD bastan kurulur.
+  'player',
 ];
 
 /** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */
@@ -776,13 +780,16 @@ export class Game {
     if (idleFor < 600) return;
     this.pendingAutosave = false;
     const t0 = performance.now();
-    saveToStorage(this);
+    const ok = saveToStorage(this);
     this.perf?.event('autosave', performance.now() - t0);
+    if (ok) this.emit('save', { auto: true });
   }
 
   save() {
     if (this.turns.turnJob) this.turns.endTurn();
-    return saveToStorage(this);
+    const ok = saveToStorage(this);
+    if (ok) this.emit('save', { auto: false });
+    return ok;
   }
 
   load() {
@@ -946,6 +953,9 @@ export class Game {
     const next = SPEEDS.includes(Number(speed)) ? Number(speed) : 0;
     // Duraklatmadan önceki hız hatırlanır: boşluk tuşu oyuncuyu 1x'e düşürmesin.
     if (this.clock.speed) this.clock.lastSpeed = this.clock.speed;
+    // Saat yeniden akinca kartin duraklatma sebebi de duser (bkz.
+    // notifications.push: `clock.haltedBy`).
+    if (next > 0) this.clock.haltedBy = null;
     this.clock.speed = next;
     this.clock.accumulator = 0;
     this.clock.lastTime = performance.now();

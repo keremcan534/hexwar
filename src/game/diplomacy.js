@@ -328,6 +328,10 @@ export function resolveCrises(game) {
         const me = world.nations[player];
         const other = world.nations[a === player ? b : a];
         const attacked = rec.aggressor !== player;
+        // Ilan karti burada duser, bir sonraki HUD tazelemesinde degil:
+        // "armies march in 8 weeks" ile "war begins" ayni anda ekranda
+        // durmasin.
+        game.notifications?.dismissKeys?.(`crisis-${other.id}`);
         announce(game, me, {
           kind: 'WAR', tier: TIER.MAJOR, key: `war-${other.id}`, ttl: 0,
           title: attacked ? `${other.name}'s armies cross the border` : `War with ${other.name} begins`,
@@ -398,6 +402,10 @@ export function makePeace(game, a, b, options = {}) {
   // ile işaretlendi; barışın kendisinin ayrıca harita izi yok.
   if (a === game.turns.playerNation || b === game.turns.playerNation) {
     const other = world.nations[a === game.turns.playerNation ? b : a];
+    // Bu savasin kendi kartlari duser (ilan + baslangic). Eskiden yalniz
+    // "hic savas kalmadi" halinde tur bazinda dusuyordu: iki savastan biri
+    // bitince bitenin karti ekranda kaliyordu.
+    game.notifications?.dismissKeys?.([`war-${other.id}`, `crisis-${other.id}`]);
     // `settle: false` geldiginde toprak devrini anlasma yapar; isgal sayisini
     // burada bildirmek yaniltici olur (her zaman 0 yazardi).
     game.turns.addLog(options.settle === false

@@ -775,6 +775,9 @@ export function signPeace(game, a, b, offer) {
     }
     game.turns.addLog(`Peace signed with ${other?.name ?? 'a rival'}.`, {
       kind: 'PEACE',
+      // Anahtar savasa ozel: anahtarsiz kart ture gore birlesiyor ve ikinci
+      // baris ilkinin basligini tasiyordu.
+      key: `peace-${other?.id ?? 'x'}`,
       tier: 2,
       title: `Peace with ${other?.name ?? 'a rival'}`,
       body: parts.length ? `${parts.join(' · ')}.` : 'A white peace: the borders stand as they are.',

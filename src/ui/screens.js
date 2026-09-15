@@ -33,7 +33,8 @@ import {
   MILITARY_EQUIPMENT,
   SOCIAL_PROGRAMS, buildFactory, closeFactory, factoryAtlas, upgradeFactory,
   debtCapacity, debtInterestRate, formatPopulation, populationOf,
-  budgetBreakdown, setBudgetPolicy, setTaxHold, TAX_POLICY_CLASS, taxHold, weeklyBalanceOf,
+  applyTaxHolds, budgetBreakdown, setBudgetPolicy, setTaxHold, TAX_POLICY_CLASS, taxHold,
+  weeklyBalanceOf,
   setMilitaryProductionLine, socialSpendingCost, ensureProductionLine, supportProject,
 } from '../game/economy.js';
 import { MAX_ROUNDS, battleSides, battlesFor } from '../game/battles.js';
@@ -286,6 +287,27 @@ export class Screens {
     ]) {
       game.on(event, () => this.scheduleRefresh());
     }
+    // SURUKLEME SIRASINDA TAZELEME YOK. Haftalik tik ekrani bastan kurar ve
+    // parmagin altindaki kaydiraci DOM'dan kaldirir: surukleme sessizce
+    // kopuyor, oyuncu "kaydirac tutmuyor" sanip tekrar deniyordu (kor oyun
+    // testi: egitim 0 -> 0 -> 50, ordu 100'de takili). Tazeleme birakilana
+    // kadar bekletilir.
+    this.dragging = false;
+    this.refreshPending = false;
+    this.el.body.addEventListener('pointerdown', (event) => {
+      if (event.target?.matches?.('input[type="range"]')) this.dragging = true;
+    });
+    const endDrag = () => {
+      if (!this.dragging) return;
+      this.dragging = false;
+      if (this.refreshPending) {
+        this.refreshPending = false;
+        // `change` olayi pointerup'tan sonra gelir; onun refresh'i onde olsun.
+        setTimeout(() => this.scheduleRefresh(), 0);
+      }
+    };
+    window.addEventListener('pointerup', endDrag);
+    window.addEventListener('pointercancel', endDrag);
     // Haritada yabancı toprağa sağ tık: o ülkenin paneli açılır.
     game.on('nation', (nationId) => this.openDossier(nationId));
     game.on('select', (tile) => {
@@ -420,6 +442,10 @@ export class Screens {
       this.refreshHandle = 0;
     }
     if (!this.active || !this.game.world) return;
+    if (this.dragging) {
+      this.refreshPending = true;
+      return;
+    }
     // Ekran kurulumu büyük innerHTML yazımıdır; maliyeti ölçülür.
     const t0 = performance.now();
     const me = this.me;
@@ -1472,10 +1498,14 @@ export class Screens {
 
     const hslider = (policy, current, min, max, step = 5, cfg = null) => {
       const fill = max > min ? ((current - min) / (max - min)) * 100 : 0;
+      // Vergi kaydiraci matrahi tasir: suruklerken satir "x oran = tutar"
+      // cumlesini canli yazabilsin (bkz. bindBudget oninput). Formul degil,
+      // dokumun kendi matrahi x oyuncunun secmekte oldugu oran.
+      const base = cfg && policy.startsWith('tax') ? ` data-base="${(cfg.base ?? 0).toFixed(2)}" data-population="${cfg.population ?? 0}"` : '';
       return `<span class="hslider"><i class="cap"></i><input type="range"
         min="${min}" max="${max}" step="${step}" value="${current}"
         style="--fill:${fill.toFixed(1)}%"
-        data-policy="${policy}"><i class="cap"></i>${cfg ? marks(policy, cfg) : ''}</span>`;
+        data-policy="${policy}"${base}><i class="cap"></i>${cfg ? marks(policy, cfg) : ''}</span>`;
     };
 
     const party = rulingParty(me);
@@ -1512,6 +1542,17 @@ export class Screens {
 }${
   chip('edge', th.survivalReachable, 'max', `Keep this at ${th.survival}% — the highest rate before they fall below subsistence`)
 }</span>`;
+    };
+
+    // TEK DOGRU: harcama satiri defterin kapanmis tutarini basar (uyari da
+    // onu okur). Kaydirac oynadiysa yeni maliyet notta "next week" olarak
+    // durur; iki sayi ayni satirda, ikisi de adlandirilmis.
+    const settled = (cfg) => (cfg.actual != null ? cfg.actual : cfg.cost);
+    const projectedNote = (cfg) => {
+      const next = cfg.projected ?? cfg.cost;
+      return cfg.actual != null && Math.abs(cfg.actual - next) > 0.05
+        ? ` <em class="ledger-projected">next week \u2248 \u00a3${next.toFixed(1)}</em>`
+        : '';
     };
 
     const control = (policy, label, picto, cfg, amount, breakdown) => `
@@ -1597,9 +1638,21 @@ export class Screens {
         : overEdge
           ? ` \u00b7 above ${th.survival}% they fall below subsistence — four weeks of that and they drop a class for good`
           : '';
-      return control(policy, label, LEDGER[policy], cfg, cfg.collected,
+      // KAYDIRAC OYNADIYSA SATIR YALAN SOYLEMESIN. `collected` gecen haftanin
+      // oraniyla kapanmis tutardir; oran degistiyse "£83 x 10% = £16.6" gibi
+      // yanlis bir aritmetik bir hafta ekranda kaliyordu (kor oyun testi).
+      // Kapanmis oran matrahtan turer, formul degil: collected / base.
+      const settledRate = cfg.base > 0 ? (cfg.collected / cfg.base) * 100 : cfg.value;
+      const stale = Math.abs(settledRate - cfg.value) > 0.5;
+      const projected = cfg.base * cfg.value / 100;
+      const arithmetic = stale
+        ? ` \u00d7 ${cfg.value}% \u2248 \u00a3${projected.toFixed(1)}`
+          + ` <em class="ledger-projected">projected \u2014 last week \u00a3${cfg.collected.toFixed(1)}`
+          + ` at ${Math.round(settledRate)}%</em>`
+        : ` \u00d7 ${cfg.value}% = \u00a3${cfg.collected.toFixed(1)}`;
+      return control(policy, label, LEDGER[policy], cfg, stale ? projected : cfg.collected,
         `${formatPopulation(cfg.population)} people \u00b7 income \u00a3${cfg.base.toFixed(1)}`
-        + ` \u00d7 ${cfg.value}% = \u00a3${cfg.collected.toFixed(1)}${powerless}`);
+        + `${arithmetic}${powerless}`);
     }).join('');
     const taxSummary = c.taxSummary;
 
@@ -1633,14 +1686,18 @@ export class Screens {
         + ` \u00b7 training <b>\u00d7${c.armyFunding.training.toFixed(2)}</b>`
         + ` \u00b7 supply ${Math.round(c.armyFunding.supply * 100)}%`)}
 
-        ${control('education', 'Education', LEDGER.education, c.education, -c.education.cost,
+        ${control('education', 'Education', LEDGER.education, c.education, -settled(c.education),
     `literacy ${(c.education.literacy * 100).toFixed(1)}% \u2192 target`
         + ` <b>${(c.education.literacyTarget * 100).toFixed(0)}%</b>`
-        + ` \u00b7 research <b>${c.education.researchPoints.toFixed(2)}</b>/wk`)}
+        + ` \u00b7 research <b>${c.education.researchPoints.toFixed(2)}</b>/wk${projectedNote(c.education)}`)}
 
-        ${control('welfare', 'Welfare', LEDGER.welfare, c.welfare, -c.welfare.cost,
+        ${control('welfare', 'Welfare', LEDGER.welfare, c.welfare, -settled(c.welfare),
     `satisfaction <b>+${(c.welfare.satisfaction * 100).toFixed(1)}</b>`
-        + ` \u00b7 population growth <b>\u00d7${c.welfare.growth.toFixed(2)}</b>`)}
+        + ` \u00b7 population growth <b>\u00d7${c.welfare.growth.toFixed(2)}</b>`
+        + (c.welfare.mandated > 0.05
+          ? ` \u00b7 includes \u00a3${c.welfare.mandated.toFixed(1)} of entitlements set by law`
+          : '')
+        + projectedNote(c.welfare))}
 
         ${view.expenseRows.filter((r) => !['army', 'procurement', 'education', 'welfare'].includes(r.id))
     .map((r) => row(r.label, r.amount,
@@ -2091,6 +2148,9 @@ export class Screens {
         this.techConfirm = null;
         if (adoptProgramme(me, id, game.world.turn ?? 0)) {
           const programme = PROGRAMMES[id];
+          // Davet karti haftalik taramayi beklemeden duser: ilan edilmis
+          // programin yaninda "The nation has no programme" durmasi yalan.
+          game.notifications?.dismissKeys?.('programme-prompt');
           // Taahhut ANINDA baglar: kart "egitim >= %25" diyorsa kaydirac o
           // hafta oraya cikar — sonraki dokunusa kadar 0'da kalmasi vaadi
           // bosa cikarirdi. setBudgetPolicy tabani zaten biliyor.
@@ -2380,6 +2440,11 @@ export class Screens {
         const classId = TAX_POLICY_CLASS[chip.dataset.taxHold];
         const mode = chip.dataset.holdMode;
         setTaxHold(me, classId, taxHold(me, classId) === mode ? null : mode);
+        // Kilit ANINDA orani esige ceker; haftalik tiki beklerse oyuncu
+        // "hicbir sey olmadi" sanip bir hafta sonra %78'i gorur (olcumlu:
+        // kor oyun testi, MAX tiki -> 30% -> 78% -> 89% sessizce).
+        applyTaxHolds(me);
+        this.game.recomputeEconomy?.();
         this.game.emit?.('economy');
         this.refresh();
       };
@@ -2407,6 +2472,22 @@ export class Screens {
         const max = Number(input.max) || 100;
         const fill = max > min ? ((Number(input.value) - min) / (max - min)) * 100 : 0;
         input.style.setProperty('--fill', `${fill.toFixed(1)}%`);
+        // Vergi satirinin cumlesi de oynar: "£122 x 10% = £24.4" gibi yanlis
+        // bir aritmetik bir hafta boyunca ekranda kaliyordu. Matrah dokumden,
+        // oran kaydiractan; tutar "projected" diye isaretlenir cunku defter
+        // haftalik kapanir.
+        if (input.dataset.base != null) {
+          const base = Number(input.dataset.base) || 0;
+          const rate = Number(input.value) || 0;
+          const projected = base * rate / 100;
+          const note = input.closest('.ledger-mid')?.querySelector('.ledger-note');
+          if (note) {
+            note.innerHTML = `${formatPopulation(Number(input.dataset.population) || 0)} people \u00b7 income \u00a3${base.toFixed(1)}`
+              + ` \u00d7 ${rate}% \u2248 \u00a3${projected.toFixed(1)} <em class="ledger-projected">projected \u2014 settles at the weekly tick</em>`;
+          }
+          const box = input.closest('.ledger-row')?.querySelector('.vbox');
+          if (box) box.textContent = `\u2248\u00a3${projected.toFixed(1)}`;
+        }
       };
       input.onchange = () => {
         // TEK AYAR KAPISI — YZ de ayni fonksiyonu cagirir (bkz. §23/§24).

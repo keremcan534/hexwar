@@ -666,6 +666,36 @@ select:focus-visible {
 }
 .turn-effective:empty { display: none; }
 
+/* Duraklatma rozeti: saat durunca yazar, kart durdurduysa sebebini de
+   (hud.js showPauseState). Efektif carpan gibi tarihin altinda durur. */
+/* Mutlak konum: rozet ust cubugun genisligine katilmaz, yoksa uzun bir
+   sebep GDP hucresini cubugun disina itiyordu (olculdu: 1600 px'te). */
+.turn-badge { position: relative; }
+.turn-paused {
+  display: block;
+  position: absolute;
+  right: var(--sp-2);
+  top: 100%;
+  color: var(--gold, #d9b25f);
+  font-size: var(--fs-xs, 0.7rem);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  max-width: 240px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: auto;
+}
+.turn-paused:empty { display: none; }
+.turn-control.is-paused .turn-badge b { animation: turn-paused-pulse 1.8s ease-in-out infinite; }
+@keyframes turn-paused-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .turn-control.is-paused .turn-badge b { animation: none; }
+}
+
 /* Tarih görsel olarak önemli ama başlık kadar büyük değil. */
 .turn-badge b {
   display: block;
@@ -5894,6 +5924,13 @@ body.screen-open .notify-stack.open .notify-card { display: grid; }
 
 .ledger-what:focus { outline: none; }
 .ledger-what:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
+
+/* Kaydirac oynadiginda satirin "henuz kapanmadi" isareti (screens.js bindBudget). */
+.ledger-projected {
+  font-style: italic;
+  color: var(--gold, #d9b25f);
+  opacity: 0.85;
+}
 
 .ledger-note {
   color: var(--text-dim);

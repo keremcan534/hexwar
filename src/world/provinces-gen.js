@@ -218,6 +218,11 @@ export function generateProvinces(world) {
   for (const list of groups) list.sort((a, b) => (a.row * world.cols + a.col) - (b.row * world.cols + b.col));
   groups.sort((a, b) => (a[0].row * world.cols + a[0].col) - (b[0].row * world.cols + b[0].col));
 
+  // Ad benzersizligi: iki "Dornford" ayni ulkede yan yana duruyordu ve
+  // Factories ekraninda ayirt edilemiyordu. Cakisan ad, ayni tohumlu
+  // ureteci bir daha cekerek cozulur; kararlilik bozulmaz (cekim sirasi
+  // kume sirasina baglidir, o da deterministik).
+  const usedNames = new Set();
   const provinces = groups.map((members, id) => {
     const center = centerOf(world, members);
     let moveCost = 0;
@@ -238,9 +243,14 @@ export function generateProvinces(world) {
       }
     }
     const nameRng = makeRng(`${world.seed}-provname-${center.q}:${center.r}`);
+    let name = nameRng.pick(NAME_A) + nameRng.pick(NAME_B);
+    for (let attempt = 0; usedNames.has(name) && attempt < 12; attempt++) {
+      name = nameRng.pick(NAME_A) + nameRng.pick(NAME_B);
+    }
+    usedNames.add(name);
     return {
       id,
-      name: nameRng.pick(NAME_A) + nameRng.pick(NAME_B),
+      name,
       tileIdx: members.map((t) => t.row * world.cols + t.col),
       center,
       moveCost: moveCost / members.length,

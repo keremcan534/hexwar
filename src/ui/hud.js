@@ -5,7 +5,7 @@ import {
   CITY_COST, UNIT_COSTS, canAfford, canFoundCity, formatCost, pay,
 } from '../game/cities.js';
 import {
-  UNIT_TYPES, isMoving, maxHpOf, menUnderArms, organizationOf, regimentCount, soldiersOf,
+  UNIT_TYPES, isMoving, maxHpOf, menUnderArms, organizationOf, regimentCount,
   speedOf, strengthRatio,
 } from '../game/units.js';
 import {
@@ -180,6 +180,9 @@ export class Hud {
     $('btn-settings').onclick = () => {
       el.settings.classList.toggle('hidden');
       el.layers.classList.add('hidden');
+      // Etiket yalniz dunya kurulunca yaziliyordu: 65 hafta sonra panel hala
+      // "No save yet" diyordu, oysa otomatik kayit coktan yazilmisti.
+      this.refreshSaveInfo();
     };
     $('btn-close-settings').onclick = () => el.settings.classList.add('hidden');
 
@@ -269,6 +272,8 @@ export class Hud {
     // olaylarinda da kosar, oradan sayilsaydi efektif hiz sisiyordu.
     game.on('turn', () => { (this.weekStamps ??= []).push(performance.now()); this.onTurn(); this.showWars(); });
     game.on('peace', () => this.showWars());
+    // Otomatik kayit da elle kayit da ayni satiri tazeler (bkz. game.flushAutosave).
+    game.on('save', () => this.refreshSaveInfo());
     // Gün tiki yalnız tarihi oynatır. Eskiden her gün tam onTurn koşuyordu:
     // hız 8'de saniyede 8 kez skorbord + ordu toplamı + üç innerHTML bloğu
     // (ölçüldü: tik başına ~1-2.4 ms + DOM çöpü). Haftalık kapanış zaten
@@ -410,6 +415,14 @@ export class Hud {
         // zorundaydi. Sira onemli — once ACIK PANEL kapanir, panel yoksa
         // secim temizlenir. Tersi olsaydi panel acikken Escape sessizce
         // secimi silip paneli birakirdi.
+        // Ayar ve katman panelleri de "acik panel"dir: kor oyun testinde
+        // Escape yonetim ekranini kapatiyor ama World Settings'i birakiyordu.
+        const openPanel = [this.el.settings, this.el.layers]
+          .find((panel) => panel && !panel.classList.contains('hidden'));
+        if (openPanel) {
+          openPanel.classList.add('hidden');
+          return;
+        }
         if (this.screens?.active) {
           this.screens.close();
           return;
@@ -488,7 +501,7 @@ export class Hud {
           <button class="division-main" data-focus-unit="${unit.id}">
             <span class="unit-badge" style="background:${me.color}">${unit.type.glyph}</span>
             <span class="division-text">
-              <b>${regimentCount(unit)}× ${escapeHtml(unit.type.name)} · ${formatPopulation(soldiersOf(unit))}</b>
+              <b>${regimentCount(unit)}× ${escapeHtml(unit.type.name)} · ${formatPopulation(menUnderArms(unit))} men</b>
               <small>${state} · STR ${Math.round(strengthRatio(unit) * 100)}% · ORG ${Math.round(organizationOf(unit))}%
                 · ${general ? escapeHtml(general.name) : 'no commander'}</small>
             </span>
@@ -701,6 +714,7 @@ export class Hud {
       this.el.turnValue.textContent = label;
     }
     this.showEffectiveSpeed();
+    this.showPauseState();
     if (clock.speed !== this.lastSpeedShown) {
       this.lastSpeedShown = clock.speed;
       this.speedSince = performance.now();
@@ -718,6 +732,30 @@ export class Hud {
    * kapanan hafta sayisindan efektif carpan turetilir; nominalin %80'inin
    * altina dusunce tarih rozetinin yaninda yazar.
    */
+  /**
+   * DURAKLATMA GORUNUR OLSUN. Kart saati durdurunca (bkz. notifications.push
+   * halt) tek iz duraklat dugmesinin dolu hali idi; kor oyun testinde oyuncu
+   * 40 saniye bekleyip "oyun yavas" sonucuna vardi. Rozet sebebi de yazar.
+   */
+  showPauseState() {
+    const { clock } = this.game;
+    const control = document.getElementById('turn-control');
+    if (!control || !this.el.turnValue) return;
+    if (!this.pauseEl) {
+      this.pauseEl = document.createElement('small');
+      this.pauseEl.className = 'turn-paused';
+      this.el.turnValue.after(this.pauseEl);
+    }
+    const paused = !clock.speed && Boolean(this.game.world);
+    control.classList.toggle('is-paused', paused);
+    const reason = clock.haltedBy;
+    const text = !paused ? '' : reason ? `Paused · ${reason}` : 'Paused';
+    if (this.pauseEl.textContent !== text) this.pauseEl.textContent = text;
+    this.pauseEl.title = reason
+      ? 'An event stopped the clock. Press play or Space to continue.'
+      : 'Press play or Space to continue.';
+  }
+
   showEffectiveSpeed() {
     const { clock } = this.game;
     if (!this.effEl) {
@@ -756,6 +794,7 @@ export class Hud {
     for (const btn of document.querySelectorAll('.time-btn[data-speed]')) {
       btn.classList.toggle('active', Number(btn.dataset.speed) === this.game.clock.speed);
     }
+    this.showPauseState();
 
     const wars = world.nations.filter(
       (n) => n.alive && atWar(world, n.id, turns.playerNation),
@@ -991,7 +1030,7 @@ export class Hud {
         <div style="flex:1;min-width:0">
           <div class="tile-title">${regimentCount(unit)}-regiment Army${unit.nationId === this.game.turns.playerNation ? '' : ' (enemy)'}${
   this.game.selection.length > 1 ? `<small class="tile-more"> · ${this.game.selection.length} divisions selected, showing the first</small>` : ''}</div>
-          <div class="tile-sub">${formatPopulation(soldiersOf(unit))} soldiers · STR ${Math.round(strengthRatio(unit) * 100)}% · ORG ${Math.round(organizationOf(unit))}% · speed ${speedOf(unit)}${isMoving(unit) ? ` · MARCHING (${unit.path.length} left)` : ''}${unit.battleId ? ' · IN BATTLE' : ''}${(unit.retreatUntil ?? 0) > this.game.turns.turn ? ' · RETREATING' : ''}</div>
+          <div class="tile-sub">${formatPopulation(menUnderArms(unit))} men · STR ${Math.round(strengthRatio(unit) * 100)}% · ORG ${Math.round(organizationOf(unit))}% · speed ${speedOf(unit)}${isMoving(unit) ? ` · MARCHING (${unit.path.length} left)` : ''}${unit.battleId ? ' · IN BATTLE' : ''}${(unit.retreatUntil ?? 0) > this.game.turns.turn ? ' · RETREATING' : ''}</div>
           <div class="army-composition">${Object.entries(unit.regiments?.reduce((out, regiment) => {
             out[regiment.typeId] = (out[regiment.typeId] ?? 0) + 1;
             return out;

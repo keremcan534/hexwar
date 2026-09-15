@@ -12,9 +12,33 @@
 // Katman notu: DOM'a dokunmaz, `world`/`nation` okur. Çizimi ui/alerts.js yapar.
 
 import {
-  CLASS_INFO, GOOD_IDS, GOODS, budgetBreakdown, classTaxThresholds, priceOf,
+  CLASS_INFO, CLASS_NEEDS, FACTORIES, GOOD_IDS, GOODS, budgetBreakdown, classTaxThresholds,
+  factoryUnlocked, priceOf,
 } from './economy.js';
 import { rulingParty } from './politics.js';
+
+/** Tur numarasindan yil: 1836 baslangicli haftalik takvim. */
+const yearOfTurn = (turn) => 1836 + Math.floor(Math.max(0, (turn ?? 0) - 1) / 52);
+
+/**
+ * Sinifin sepetindeki en kotu karsilanan mallar (ulusal akis kapsama orani).
+ * Uyari "sepet pahali" derken asil sorun malin YOKLUGU olabilir; hangi mal
+ * eksik, o soylenmeli.
+ */
+function scarcestBasketGoods(nation, classId, limit = 2) {
+  const needs = CLASS_NEEDS[classId] ?? {};
+  const flows = nation.economy?.goodsFlow ?? {};
+  return Object.keys(needs)
+    .map((id) => {
+      const flow = flows[id];
+      const demand = flow?.demand ?? 0;
+      const coverage = demand > 0.001 ? (flow.fulfilled ?? 0) / demand : 1;
+      return { id, coverage };
+    })
+    .filter((row) => row.coverage < 0.9)
+    .sort((a, b) => a.coverage - b.coverage)
+    .slice(0, limit);
+}
 
 /**
  * Uyarı türleri. `tone` sunum içindir, `tier` sıralama: 2 varoluşsal,
@@ -54,18 +78,37 @@ function starvation(world, nation) {
   // %45'i — orada vergi kaldıraç değildir ve "vergiyi %0'a indir" demek
   // oyuncuyu boş bir düğmeye yollar.
   const taxHelps = thresholds && thresholds.survivalReachable && thresholds.survival < rate;
+  // needsMet = odeme payi x bulunabilirlik (economy.populationDemand). Parasi
+  // yetip mali bulamayan sinifa "sepet pahali" demek yanlis atiftir; kor oyun
+  // testinde sepet £93, butce £90.9 iken kart "%45'ini karsiliyor, pahali"
+  // diyordu. Asil kisit malin yoklugu idi (konserve %2 kapsama).
+  const availability = data.needsAvailable ?? 1;
+  const affordShare = availability > 0.001 ? Math.min(1, (data.needsMet ?? 0) / availability) : 0;
+  const supplyBound = availability < 0.85 && affordShare >= 0.8;
+  const scarce = supplyBound ? scarcestBasketGoods(nation, id) : [];
+  const scarceText = scarce.length
+    ? scarce.map((row) => `${GOODS[row.id]?.name ?? row.id} (${Math.round(row.coverage * 100)}% covered)`).join(' and ')
+    : 'the goods in their basket';
   return {
     id: `STARVATION:${id}`,
     kind: ALERT_KINDS.STARVATION,
     title: `${name} below subsistence`,
-    cause: `Their basket costs £${round(data.needsCost ?? 0)} a week but they can only`
-      + ` field £${round(data.needsBudget ?? 0)} after ${rate}% tax.`
-      + ` They are meeting ${Math.round((data.needsMet ?? 0) * 100)}% of it.`,
-    remedy: taxHelps
-      ? `Cut ${name.toLowerCase()} tax to ${thresholds.survival}% — that is the last rate`
-        + ' at which they still clear the subsistence floor.'
-      : 'Tax is not the binding constraint: the basket itself is too expensive.'
-        + ' Cheaper food and clothes, or welfare, are the only levers left.',
+    cause: supplyBound
+      ? `Their basket costs £${round(data.needsCost ?? 0)} a week and they can field`
+        + ` £${round(data.needsBudget ?? 0)} after ${rate}% tax — the money is there, the goods are not:`
+        + ` only ${Math.round(availability * 100)}% of the basket exists to buy, so they meet`
+        + ` ${Math.round((data.needsMet ?? 0) * 100)}% of it.`
+      : `Their basket costs £${round(data.needsCost ?? 0)} a week but they can only`
+        + ` field £${round(data.needsBudget ?? 0)} after ${rate}% tax.`
+        + ` They are meeting ${Math.round((data.needsMet ?? 0) * 100)}% of it.`,
+    remedy: supplyBound
+      ? `The shortage is ${scarceText}. Tax and welfare cannot fix a missing good:`
+        + ' build the plant that makes it, or let investors — the Trade screen shows who pays for it.'
+      : taxHelps
+        ? `Cut ${name.toLowerCase()} tax to ${thresholds.survival}% — that is the last rate`
+          + ' at which they still clear the subsistence floor.'
+        : 'Tax is not the binding constraint: the basket itself is too expensive.'
+          + ' Cheaper food and clothes, or welfare, are the only levers left.',
   };
 }
 
@@ -139,6 +182,10 @@ function importDrain(world, nation) {
   // Gürültü tabanı: haftalık ithalatın beşte birinden küçük kalem uyarı değildir.
   const total = nation.economy?.trade?.importValue ?? 0;
   if (!worst || worst.value < 1 || worst.value < total * 0.2) return null;
+  // Maddiyat tabani: gelirin %3'unden kucuk bir fatura "en buyuk ithalat"
+  // olsa da uyari degildir (kor oyun testi: £98 gelirde £1.3'luk balik karti).
+  const income = budgetBreakdown(world, nation)?.income ?? 0;
+  if (worst.value < income * 0.03) return null;
   const name = GOODS[worst.id]?.name ?? worst.id;
   return {
     id: `IMPORT_DRAIN:${worst.id}`,
@@ -165,14 +212,31 @@ function shortage(world, nation) {
   }
   if (!worst || worst.share < 0.25) return null;
   const name = GOODS[worst.id]?.name ?? worst.id;
+  // Care, YAPILABILIR olmali. "Building the industry at home is the only way
+  // out" 1836'da yakit icin yaziyordu; rafineri 1870'te icat ediliyor. Mali
+  // ureten tesisler bulunur; hicbiri acik degilse en erken acilan soylenir.
+  const makers = Object.values(FACTORIES).filter((type) => (type.outputs?.[worst.id] ?? 0) > 0);
+  const turn = world.turn ?? 1;
+  const open = makers.filter((type) => factoryUnlocked(type.id, turn, nation));
+  const soonest = makers.length && !open.length
+    ? makers.reduce((a, b) => ((a.availableFrom ?? 0) <= (b.availableFrom ?? 0) ? a : b))
+    : null;
+  const remedy = open.length
+    ? `World supply cannot reach this demand. A ${open[0].name} at home is the way out;`
+      + ' the price stays pinned at the ceiling until one exists.'
+    : soonest
+      ? `No industry can make ${name.toLowerCase()} yet: the ${soonest.name} arrives in`
+        + ` ${yearOfTurn(soonest.availableFrom)}. Until then only imports and the price ceiling`
+        + ' apply — nothing you build changes this.'
+      : `${name} is a raw good: only provinces that carry it produce it, so imports`
+        + ' or conquest are the levers.';
   return {
     id: `SHORTAGE:${worst.id}`,
     kind: ALERT_KINDS.SHORTAGE,
     title: `${name} shortage`,
     cause: `${Math.round(worst.share * 100)}% of ${name.toLowerCase()} demand goes unmet.`
       + ' Households and factories that need it are running short whatever they pay.',
-    remedy: 'World supply cannot reach this demand. Building the industry at home is'
-      + ' the only way out; the price will stay pinned at the ceiling until it exists.',
+    remedy,
   };
 }
 

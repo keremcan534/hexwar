@@ -2160,6 +2160,8 @@ export function budgetBreakdown(world, nation) {
           + 'harder, recover faster and train quicker — and cost more every week. '
           + 'Your government sets the legal ceiling.',
         cost: Math.abs(line('army')) + Math.abs(line('procurement')),
+        // Defterin kapanmis tutari: ekran ile uyari ayni sayiyi soylesin.
+        actual: Math.abs(line('army')) + Math.abs(line('procurement')),
         supply,
         // GERCEK formuller (battles.js, reinforcement.js, turn.js, recruitment.js)
         combatPower: 0.55 + funding * 0.45,
@@ -2173,6 +2175,10 @@ export function budgetBreakdown(world, nation) {
           + 'sets, and literacy is what produces research. More research means '
           + 'technology arrives earlier. The cost grows with your population.',
         cost: programmeCost(nation, 'education'),
+        // Gecen haftanin kapanmis satiri; `projected` ise bugunku kaydiracin
+        // gelecek hafta yazacagi tutar. Ikisi ayrilinca ekran defterle tutmuyordu.
+        actual: Math.abs(line('education')),
+        projected: programmeCost(nation, 'education'),
         literacy,
         literacyTarget: literacyTargetOf(nation),
         researchPoints: researchPointsOf(nation),
@@ -2184,6 +2190,13 @@ export function budgetBreakdown(world, nation) {
           + 'population grows faster. Satisfaction holds the country stable and '
           + 'keeps your government in power. The cost grows with your population.',
         cost: programmeCost(nation, 'welfare'),
+        // Defter satiri yasayla verilen hakki da tasir (socialBurden), o yuzden
+        // kaydirac projeksiyonundan buyuk olabilir; uyari bu satiri okur.
+        actual: Math.abs(line('welfare')),
+        mandated: Math.max(0, Math.abs(line('welfare')) - programmeCost(nation, 'welfare')),
+        // Gelecek hafta: kaydirac + yasayla verilen hak (kisilamaz).
+        projected: programmeCost(nation, 'welfare')
+          + Math.max(0, Math.abs(line('welfare')) - programmeCost(nation, 'welfare')),
         // Memnuniyet formulundeki gercek terim (populationDemand).
         satisfaction: socialLevel(nation, 'welfare') * 0.14,
         // Nufus buyume carpani (provinces.js).

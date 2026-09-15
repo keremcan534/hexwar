@@ -383,6 +383,10 @@ function resolveElection(game, nation) {
   announce(game, nation, {
     kind: 'POLITICS', key: 'election',
     tier: !retained ? TIER.MAJOR : contested ? TIER.IMPORTANT : TIER.AMBIENT,
+    // Sonucu olan secim okunana kadar durur: 12 saniyelik kart, savas
+    // kartlarinin arkasinda hic gorulmeden gecti (kor oyun testi, 2 Ara 1836).
+    // Cekismesiz yenileme akista kalir.
+    ttl: (!retained || contested) ? 0 : undefined,
     title: retained
       ? `${winner.name} retained power with ${Math.round(winner.support)}% support`
       : `${winner.name} won the election with ${Math.round(winner.support)}% support`,
