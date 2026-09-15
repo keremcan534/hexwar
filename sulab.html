@@ -1,0 +1,517 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8" />
+<title>Su laboratuvarı — 3B dalga</title>
+<!--
+  SU LABORATUVARI — yalnız deniz, oyun yok.
+
+  Neden ayrı sayfa: sorulan soru "su TEK BAŞINA ne kadar iyi olabilir".
+  Oyunun içinde denenirse cevabı harita mürekkebi, arayüz ve kare bütçesi
+  bulandırır. Burada üç önayar yan yana karşılaştırılabilsin diye tek
+  malzeme, tek ışık, tek kamera var.
+
+  src/ altına ve simülasyona HİÇ dokunmaz.
+-->
+<style>
+  html, body { margin: 0; height: 100%; background: #070d11; overflow: hidden;
+    font: 12px/1.5 ui-sans-serif, system-ui, sans-serif; color: #cfe0e4; }
+  canvas { position: fixed; inset: 0; display: block; }
+  #ui {
+    position: fixed; top: 10px; left: 10px; z-index: 5; width: 226px;
+    background: rgba(8, 18, 24, 0.82); border: 1px solid rgba(150, 190, 200, 0.18);
+    border-radius: 6px; padding: 10px 12px 12px;
+  }
+  #ui h1 { font-size: 11px; margin: 0 0 8px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: #8fb3bd; font-weight: 600; }
+  .onay { display: flex; gap: 4px; margin-bottom: 6px; }
+  .onay button {
+    flex: 1; padding: 5px 3px; font: inherit; font-size: 11px; cursor: pointer;
+    background: rgba(30, 58, 70, 0.7); color: #cfe0e4; border-radius: 4px;
+    border: 1px solid rgba(150, 190, 200, 0.22);
+  }
+  .onay button.aktif { background: #2b6d80; border-color: #7fc4d4; color: #fff; }
+  label { display: block; margin: 7px 0 2px; font-size: 11px; color: #9fbcc4; }
+  label span { float: right; color: #dff0f4; font-variant-numeric: tabular-nums; }
+  input[type=range] { width: 100%; margin: 0; accent-color: #62b6c9; }
+  #say { position: fixed; right: 10px; top: 10px; z-index: 5; font: 11px monospace;
+    color: rgba(210, 235, 240, 0.7); text-align: right; white-space: pre; }
+  #ipucu { position: fixed; left: 10px; bottom: 8px; z-index: 5; font-size: 11px;
+    color: rgba(200, 225, 232, 0.4); }
+  body.bare #ui, body.bare #say, body.bare #ipucu { display: none; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <h1>Su laboratuvarı</h1>
+  <div class="onay" id="onaylar"></div>
+  <div id="kaydiraclar"></div>
+</div>
+<div id="say"></div>
+<div id="ipucu">sürükle: kamera · tekerlek: yakınlaş · <b>1/2/3</b>: önayar · <b>b</b>: arayüzü gizle</div>
+
+<script type="importmap">
+{"imports": {"three": "./vendor/three/three.module.min.js"}}
+</script>
+<script type="module">
+import * as THREE from 'three';
+
+// ---------------------------------------------------------------- önayarlar
+// Renk çapası MASTER'dan geliyor: TERRAIN.DEEP_OCEAN / OCEAN / COAST ve
+// water.js'in köpük tonu. Üç önayar AYNI geometriyi farklı ışık ve renkle
+// sunar; hangisinin oyuna gireceği yan yana görülünce kararlaşır.
+const ONAYARLAR = {
+  master: {
+    ad: 'Master', deep: '#0a2836', ocean: '#103544', coast: '#153f4e',
+    foam: '#bacccc', ufuk: '#20404e', zenit: '#0c2230', gunes: '#d8e8e6',
+    sss: '#1d5560',
+    amp: 1.0, chop: 0.55, foamAmt: 0.55, detay: 0.5, parilti: 0.45,
+    sssG: 0.35, gunesY: 0.30, ruzgar: 35,
+  },
+  sot: {
+    ad: 'Sea of Thieves', deep: '#06303f', ocean: '#0e5c6c', coast: '#219aa0',
+    foam: '#ffffff', ufuk: '#4d8ea3', zenit: '#17506e', gunes: '#fff0cf',
+    sss: '#2fb9ae',
+    amp: 2.4, chop: 0.95, foamAmt: 1.0, detay: 0.35, parilti: 0.7,
+    sssG: 1.15, gunesY: 0.45, ruzgar: 35,
+  },
+  gercek: {
+    ad: 'Gerçekçi', deep: '#04202c', ocean: '#0a3646', coast: '#12586a',
+    foam: '#dfeef0', ufuk: '#2b5468', zenit: '#0a1e2e', gunes: '#ffe6bd',
+    sss: '#1a6b6a',
+    amp: 1.5, chop: 1.0, foamAmt: 0.6, detay: 1.0, parilti: 1.0,
+    sssG: 0.55, gunesY: 0.18, ruzgar: 35,
+  },
+};
+
+const P = { ...ONAYARLAR.master };
+let aktifOnayar = 'master';
+
+// -------------------------------------------------------------- dalga tayfı
+// Altı Gerstner dalgası: uzun kabarma + kısa çırpıntı. Yönler rüzgârın
+// çevresine yayılır — hepsi aynı yöne bakarsa deniz "oluklu sac" olur.
+const TAYF = [
+  { boy: 118, gen: 1.00, sapma: 0 },
+  { boy: 67, gen: 0.58, sapma: 24 },
+  { boy: 38, gen: 0.32, sapma: -31 },
+  { boy: 21, gen: 0.18, sapma: 47 },
+  { boy: 12, gen: 0.10, sapma: -58 },
+  { boy: 7, gen: 0.06, sapma: 72 },
+];
+
+function dalgaDizisi() {
+  const arr = [];
+  let toplam = 0;
+  for (const d of TAYF) {
+    const a = (P.ruzgar + d.sapma) * Math.PI / 180;
+    const gen = d.gen * P.amp;
+    toplam += gen;
+    arr.push(new THREE.Vector4(Math.cos(a), Math.sin(a), Math.max(gen, 1e-4), d.boy));
+  }
+  return { arr, toplam };
+}
+
+// ------------------------------------------------------------ gürültü dokusu
+// Döşenebilir değer gürültüsü (fBm). Dosya yok, ağ yok: dizi burada üretilir,
+// böylece laboratuvar da oyun gibi çevrimdışı çalışır.
+function gurultuDokusu(N = 256) {
+  const rast = (x, y, tohum) => {
+    let h = Math.imul(x, 374761393) ^ Math.imul(y, 668265263) ^ Math.imul(tohum, 1442695041);
+    h = Math.imul(h ^ (h >>> 13), 1274126177);
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
+  };
+  const yumusa = (t) => t * t * (3 - 2 * t);
+  const mod = (a, b) => ((a % b) + b) % b;
+  const katman = (x, y, per, tohum) => {
+    const xi = Math.floor(x), yi = Math.floor(y);
+    const xf = yumusa(x - xi), yf = yumusa(y - yi);
+    const v = (dx, dy) => rast(mod(xi + dx, per), mod(yi + dy, per), tohum);
+    return (v(0, 0) * (1 - xf) + v(1, 0) * xf) * (1 - yf)
+      + (v(0, 1) * (1 - xf) + v(1, 1) * xf) * yf;
+  };
+  const veri = new Uint8Array(N * N * 4);
+  for (let y = 0; y < N; y++) {
+    for (let x = 0; x < N; x++) {
+      let s = 0, genlik = 0.5, per = 8;
+      for (let o = 0; o < 5; o++) {
+        s += katman(x / N * per, y / N * per, per, o + 1) * genlik;
+        genlik *= 0.5; per *= 2;
+      }
+      const v = Math.max(0, Math.min(255, Math.round(s * 255)));
+      const i = (y * N + x) * 4;
+      veri[i] = veri[i + 1] = veri[i + 2] = v; veri[i + 3] = 255;
+    }
+  }
+  const t = new THREE.DataTexture(veri, N, N, THREE.RGBAFormat);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  t.minFilter = THREE.LinearMipmapLinearFilter;
+  t.magFilter = THREE.LinearFilter;
+  t.generateMipmaps = true;
+  t.needsUpdate = true;
+  return t;
+}
+
+// ------------------------------------------------------------------ gökyüzü
+// Tek kaynak: gök kubbesi ve SUYUN YANSIMASI aynı fonksiyonu çağırır. İkisi
+// ayrılırsa denizde yansıyan gök, gerçek gökten başka bir yer olur.
+const GOK_GLSL = [
+  'uniform vec3 uUfuk, uZenit, uGunesCol, uGunesDir;',
+  'vec3 gok(vec3 dir) {',
+  '  vec3 d = normalize(dir);',
+  '  vec3 c = mix(uUfuk, uZenit, pow(clamp(d.y, 0.0, 1.0), 0.55));',
+  '  c = mix(uUfuk * 0.82, c, smoothstep(-0.12, 0.05, d.y));',
+  '  float sd = max(dot(d, uGunesDir), 0.0);',
+  '  c += uGunesCol * pow(sd, 900.0) * 2.6;',
+  '  c += uGunesCol * pow(sd, 15.0) * 0.16;',
+  '  return c;',
+  '}',
+].join('\n');
+
+const gokUniforms = {
+  uUfuk: { value: new THREE.Color(P.ufuk) },
+  uZenit: { value: new THREE.Color(P.zenit) },
+  uGunesCol: { value: new THREE.Color(P.gunes) },
+  uGunesDir: { value: new THREE.Vector3(0, 0.3, -1).normalize() },
+};
+
+// --------------------------------------------------------------- su malzeme
+const SU_VERTEX = [
+  'uniform float uTime, uChop;',
+  'uniform vec4 uDalga[6];',
+  'varying vec3 vDunya; varying vec3 vNrm; varying float vKopuk; varying float vYuk;',
+  'void main() {',
+  '  vec2 dp = position.xz;',
+  '  vec3 kay = vec3(0.0);',
+  '  vec3 ddx = vec3(1.0, 0.0, 0.0);',
+  '  vec3 ddz = vec3(0.0, 0.0, 1.0);',
+  '  for (int i = 0; i < 6; i++) {',
+  '    vec2 d = normalize(uDalga[i].xy);',
+  '    float A = uDalga[i].z;',
+  '    float L = uDalga[i].w;',
+  '    float w = 6.2831853 / L;',
+  // Derin su dağılımı: uzun dalga hızlı gider. Hepsi aynı hızda giderse desen
+  // donar ve deniz "kayan duvar kâğıdı" olur.
+  '    float hiz = sqrt(9.81 / w) * 0.55;',
+  '    float ph = w * dot(d, dp) + uTime * hiz;',
+  '    float Q = uChop / (w * A * 6.0 + 1e-5);',
+  '    float c = cos(ph), s = sin(ph);',
+  '    kay.x += Q * A * d.x * c;',
+  '    kay.z += Q * A * d.y * c;',
+  '    kay.y += A * s;',
+  '    float wa = w * A;',
+  '    ddx.x += -Q * wa * d.x * d.x * s;',
+  '    ddx.y +=  wa * d.x * c;',
+  '    ddx.z += -Q * wa * d.x * d.y * s;',
+  '    ddz.x += -Q * wa * d.y * d.x * s;',
+  '    ddz.y +=  wa * d.y * c;',
+  '    ddz.z += -Q * wa * d.y * d.y * s;',
+  '  }',
+  '  vec3 pos = position + kay;',
+  '  vNrm = normalize(cross(ddz, ddx));',
+  // Jacobian: yatay sıkışma. Tepe kırılırken alan daralır ve köpük ORADA olur;
+  // "yüksek yer köpüklüdür" kestirmesi tepeyi boydan boya beyaza boyuyordu.
+  '  float J = ddx.x * ddz.z - ddx.z * ddz.x;',
+  '  vKopuk = clamp(1.0 - J, 0.0, 2.0);',
+  '  vYuk = kay.y;',
+  '  vec4 wp = modelMatrix * vec4(pos, 1.0);',
+  '  vDunya = wp.xyz;',
+  '  gl_Position = projectionMatrix * viewMatrix * wp;',
+  '}',
+].join('\n');
+
+const SU_FRAGMENT = GOK_GLSL + '\n' + [
+  'uniform vec3 uDerin, uOkyanus, uKiyi, uKopukCol, uSSSCol, uKamera;',
+  'uniform float uTime, uKopukMik, uSSS, uParilti, uDetay, uKiyiR, uTepeMax;',
+  'uniform sampler2D uGurultu;',
+  'varying vec3 vDunya; varying vec3 vNrm; varying float vKopuk; varying float vYuk;',
+  'float nz(vec2 p) { return texture2D(uGurultu, p).r; }',
+  // Yükseklikten normal: merkezî fark. dFdx yerine doku örneği — ölçek elimizde
+  // kalsın, eğimli kamerada türev kalitesi düşüyor.
+  'vec2 detayEgim(vec2 p, float olcek, float kay) {',
+  '  vec2 uv = p * olcek + vec2(kay * 0.013, kay * 0.0091);',
+  '  float e = 1.0 / 256.0;',
+  '  float hL = nz(uv - vec2(e, 0.0)), hR = nz(uv + vec2(e, 0.0));',
+  '  float hD = nz(uv - vec2(0.0, e)), hU = nz(uv + vec2(0.0, e));',
+  '  return vec2(hL - hR, hD - hU);',
+  '}',
+  'void main() {',
+  '  vec3 V = normalize(uKamera - vDunya);',
+  '  vec3 N = normalize(vNrm);',
+  '  vec2 e1 = detayEgim(vDunya.xz, 0.055, uTime);',
+  '  vec2 e2 = detayEgim(vDunya.xz, 0.17, -uTime * 1.6);',
+  '  N = normalize(N + vec3(e1.x + e2.x * 0.55, 0.0, e1.y + e2.y * 0.55) * uDetay * 7.0);',
+  // Sığlık halkası: oyunda bunun yerine kıyı-uzaklığı alanı gelecek.
+  '  float derinlik = clamp((length(vDunya.xz) - uKiyiR) / 95.0, 0.0, 1.0);',
+  '  vec3 govde = mix(uKiyi, uOkyanus, smoothstep(0.0, 0.5, derinlik));',
+  '  govde = mix(govde, uDerin, smoothstep(0.42, 1.0, derinlik));',
+  '  float fres = 0.02 + 0.98 * pow(1.0 - max(dot(N, V), 0.0), 5.0);',
+  '  vec3 yansima = gok(reflect(-V, N));',
+  // Altyüzey saçılımı: ince tepe güneşe karşı içten aydınlanır. Suyu "boyalı
+  // cam" olmaktan çıkaran terim budur.
+  '  float tepe = smoothstep(0.15, 0.95, vYuk / max(0.001, uTepeMax));',
+  '  float arka = pow(max(dot(V, -uGunesDir), 0.0), 3.0);',
+  '  vec3 sss = uSSSCol * tepe * (0.30 + arka * 0.9) * uSSS;',
+  '  vec3 H = normalize(V + uGunesDir);',
+  '  float ndh = max(dot(N, H), 0.0);',
+  '  float spek = pow(ndh, 300.0) * 1.7 + pow(ndh, 34.0) * 0.10;',
+  '  vec3 col = mix(govde + sss, yansima, fres);',
+  '  col += uGunesCol * spek * uParilti;',
+  '  float gn = nz(vDunya.xz * 0.045 + vec2(uTime * 0.011, uTime * 0.008));',
+  '  float tepeKopuk = smoothstep(0.50, 1.10, vKopuk * (0.60 + gn * 0.8));',
+  '  float kiyiKopuk = (1.0 - smoothstep(0.0, 0.12, derinlik))',
+  '    * (0.30 + 0.70 * nz(vDunya.xz * 0.085 - vec2(uTime * 0.02, 0.0)));',
+  '  float kopuk = clamp(max(tepeKopuk, kiyiKopuk) * uKopukMik, 0.0, 1.0);',
+  '  col = mix(col, uKopukCol, kopuk);',
+  // Ufka doğru sis: düzlemin kenarı görünmesin.
+  '  float uzak = length(uKamera - vDunya);',
+  '  col = mix(col, uUfuk, smoothstep(300.0, 620.0, uzak));',
+  '  gl_FragColor = vec4(col, 1.0);',
+  '}',
+].join('\n');
+
+// -------------------------------------------------------------------- sahne
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, powerPreference: 'high-performance' });
+// Renk yönetimi KAPALI: master paletinin hex değeri ekranda birebir çıksın.
+THREE.ColorManagement.enabled = false;
+renderer.outputColorSpace = THREE.LinearSRGBColorSpace;
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+
+const sahne = new THREE.Scene();
+const kamera = new THREE.PerspectiveCamera(52, 1, 0.5, 4000);
+
+const ilk = dalgaDizisi();
+const suUniforms = {
+  ...gokUniforms,
+  uTime: { value: 0 },
+  uChop: { value: P.chop },
+  uDalga: { value: ilk.arr },
+  uDerin: { value: new THREE.Color(P.deep) },
+  uOkyanus: { value: new THREE.Color(P.ocean) },
+  uKiyi: { value: new THREE.Color(P.coast) },
+  uKopukCol: { value: new THREE.Color(P.foam) },
+  uSSSCol: { value: new THREE.Color(P.sss) },
+  uKamera: { value: new THREE.Vector3() },
+  uKopukMik: { value: P.foamAmt },
+  uSSS: { value: P.sssG },
+  uParilti: { value: P.parilti },
+  uDetay: { value: P.detay },
+  uKiyiR: { value: 74 },
+  uTepeMax: { value: ilk.toplam },
+  uGurultu: { value: gurultuDokusu() },
+};
+
+const suGeo = new THREE.PlaneGeometry(900, 900, 512, 512);
+suGeo.rotateX(-Math.PI / 2);
+const su = new THREE.Mesh(suGeo, new THREE.ShaderMaterial({
+  uniforms: suUniforms, vertexShader: SU_VERTEX, fragmentShader: SU_FRAGMENT,
+}));
+su.frustumCulled = false;
+sahne.add(su);
+
+// Gök kubbesi: yansımayla AYNI fonksiyonu çizer.
+const gokKubbe = new THREE.Mesh(
+  new THREE.SphereGeometry(1800, 32, 16),
+  new THREE.ShaderMaterial({
+    uniforms: gokUniforms, side: THREE.BackSide, depthWrite: false,
+    vertexShader: 'varying vec3 vD; void main(){ vD = position; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+    fragmentShader: GOK_GLSL + '\nvarying vec3 vD; void main(){ gl_FragColor = vec4(gok(vD), 1.0); }',
+  }),
+);
+sahne.add(gokKubbe);
+
+// Ada: suyun neye çarptığı görünsün diye. Renkler master TERRAIN'den.
+const KARA_VERTEX = 'varying vec3 vN; void main(){ vN = normalMatrix * normal; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }';
+const KARA_FRAGMENT = [
+  'uniform vec3 uRenk, uGunesDir, uGunesCol, uUfuk;',
+  'varying vec3 vN;',
+  'void main() {',
+  '  float l = max(dot(normalize(vN), uGunesDir), 0.0);',
+  '  vec3 c = uRenk * (0.45 + 0.55 * l) + uGunesCol * pow(l, 8.0) * 0.05;',
+  '  gl_FragColor = vec4(mix(c, uUfuk, 0.08), 1.0);',
+  '}',
+].join('\n');
+
+function karaParca(r, h, renk, y) {
+  const m = new THREE.Mesh(
+    new THREE.CylinderGeometry(r, r * 1.05, h, 6, 1),
+    new THREE.ShaderMaterial({
+      uniforms: {
+        uRenk: { value: new THREE.Color(renk) },
+        uGunesDir: gokUniforms.uGunesDir,
+        uGunesCol: gokUniforms.uGunesCol,
+        uUfuk: gokUniforms.uUfuk,
+      },
+      vertexShader: KARA_VERTEX, fragmentShader: KARA_FRAGMENT,
+    }),
+  );
+  m.position.y = y;
+  m.rotation.y = Math.PI / 6;
+  return m;
+}
+const ada = new THREE.Group();
+ada.add(karaParca(72, 8, '#d2bd85', 0.5));    // BEACH
+ada.add(karaParca(55, 11, '#97a45c', 4.5));   // PLAINS
+ada.add(karaParca(33, 14, '#3d6b45', 10.0));  // FOREST
+ada.add(karaParca(15, 17, '#8d855c', 16.5));  // HILLS
+sahne.add(ada);
+
+// ------------------------------------------------------------------- kamera
+let yaw = 0.75, pitch = 0.20, uzaklik = 175;
+const hedef = new THREE.Vector3(0, 2, 0);
+function kamerayiKur() {
+  const cy = Math.cos(pitch) * uzaklik;
+  kamera.position.set(
+    hedef.x + Math.sin(yaw) * cy,
+    hedef.y + Math.sin(pitch) * uzaklik,
+    hedef.z + Math.cos(yaw) * cy,
+  );
+  kamera.lookAt(hedef);
+  suUniforms.uKamera.value.copy(kamera.position);
+  gokKubbe.position.copy(kamera.position);
+}
+let suruk = null;
+canvas.addEventListener('pointerdown', (e) => {
+  suruk = { x: e.clientX, y: e.clientY };
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointerup', (e) => {
+  suruk = null;
+  canvas.releasePointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!suruk) return;
+  yaw -= (e.clientX - suruk.x) * 0.005;
+  pitch = Math.max(0.02, Math.min(1.35, pitch + (e.clientY - suruk.y) * 0.004));
+  suruk = { x: e.clientX, y: e.clientY };
+});
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  uzaklik = Math.max(28, Math.min(600, uzaklik * (e.deltaY > 0 ? 1.09 : 0.92)));
+}, { passive: false });
+
+// --------------------------------------------------------------------- ayar
+function gunesYonu() {
+  const y = P.gunesY;
+  const a = (P.ruzgar + 150) * Math.PI / 180;
+  const yatay = Math.sqrt(Math.max(0, 1 - y * y));
+  return new THREE.Vector3(Math.cos(a) * yatay, y, Math.sin(a) * yatay).normalize();
+}
+
+function uygula() {
+  const d = dalgaDizisi();
+  suUniforms.uDalga.value = d.arr;
+  suUniforms.uTepeMax.value = d.toplam;
+  suUniforms.uChop.value = P.chop;
+  suUniforms.uKopukMik.value = P.foamAmt;
+  suUniforms.uSSS.value = P.sssG;
+  suUniforms.uParilti.value = P.parilti;
+  suUniforms.uDetay.value = P.detay;
+  suUniforms.uDerin.value.set(P.deep);
+  suUniforms.uOkyanus.value.set(P.ocean);
+  suUniforms.uKiyi.value.set(P.coast);
+  suUniforms.uKopukCol.value.set(P.foam);
+  suUniforms.uSSSCol.value.set(P.sss);
+  gokUniforms.uUfuk.value.set(P.ufuk);
+  gokUniforms.uZenit.value.set(P.zenit);
+  gokUniforms.uGunesCol.value.set(P.gunes);
+  gokUniforms.uGunesDir.value.copy(gunesYonu());
+}
+
+const KAYDIRAC = [
+  ['amp', 'Dalga yüksekliği', 0, 4, 0.05],
+  ['chop', 'Sivrilik (chop)', 0, 1.2, 0.01],
+  ['foamAmt', 'Köpük', 0, 1.5, 0.01],
+  ['detay', 'Yüzey detayı', 0, 1.5, 0.01],
+  ['sssG', 'Altyüzey ışıması', 0, 2, 0.01],
+  ['parilti', 'Güneş parıltısı', 0, 2, 0.01],
+  ['gunesY', 'Güneş yüksekliği', 0.02, 0.9, 0.01],
+  ['ruzgar', 'Rüzgâr yönü', 0, 360, 1],
+];
+const kutu = document.getElementById('kaydiraclar');
+const girdiler = {};
+for (const [ad, etiket, min, max, adim] of KAYDIRAC) {
+  const l = document.createElement('label');
+  l.innerHTML = etiket + '<span></span>';
+  const i = document.createElement('input');
+  i.type = 'range';
+  i.min = min; i.max = max; i.step = adim; i.value = P[ad];
+  i.addEventListener('input', () => {
+    P[ad] = parseFloat(i.value);
+    l.querySelector('span').textContent = (+i.value).toFixed(adim < 1 ? 2 : 0);
+    uygula();
+  });
+  l.querySelector('span').textContent = (+P[ad]).toFixed(adim < 1 ? 2 : 0);
+  kutu.append(l, i);
+  girdiler[ad] = { i, l, adim };
+}
+
+const onaylarEl = document.getElementById('onaylar');
+for (const [anahtar, o] of Object.entries(ONAYARLAR)) {
+  const b = document.createElement('button');
+  b.textContent = o.ad;
+  b.dataset.k = anahtar;
+  b.addEventListener('click', () => onayarSec(anahtar));
+  onaylarEl.append(b);
+}
+
+function onayarSec(anahtar) {
+  aktifOnayar = anahtar;
+  Object.assign(P, ONAYARLAR[anahtar]);
+  for (const [ad, g] of Object.entries(girdiler)) {
+    g.i.value = P[ad];
+    g.l.querySelector('span').textContent = (+P[ad]).toFixed(g.adim < 1 ? 2 : 0);
+  }
+  for (const b of onaylarEl.children) b.classList.toggle('aktif', b.dataset.k === anahtar);
+  uygula();
+}
+
+addEventListener('keydown', (e) => {
+  if (e.key === '1') onayarSec('master');
+  if (e.key === '2') onayarSec('sot');
+  if (e.key === '3') onayarSec('gercek');
+  if (e.key === 'b') document.body.classList.toggle('bare');
+});
+if (new URLSearchParams(location.search).has('bare')) document.body.classList.add('bare');
+
+onayarSec('master');
+
+// -------------------------------------------------------------------- döngü
+const sayEl = document.getElementById('say');
+let t0 = performance.now(), kareler = 0, sure = 0;
+
+function boyutla() {
+  renderer.setSize(innerWidth, innerHeight, false);
+  kamera.aspect = innerWidth / innerHeight;
+  kamera.updateProjectionMatrix();
+}
+addEventListener('resize', boyutla);
+boyutla();
+
+function kare(ts) {
+  const dt = Math.min(0.05, (ts - t0) / 1000);
+  t0 = ts;
+  suUniforms.uTime.value += dt;
+  kamerayiKur();
+  const b = performance.now();
+  renderer.render(sahne, kamera);
+  sure += performance.now() - b;
+  if (++kareler >= 30) {
+    const tri = renderer.info.render.triangles;
+    sayEl.textContent = ONAYARLAR[aktifOnayar].ad + '\ncpu ' + (sure / kareler).toFixed(2)
+      + ' ms\n' + (tri / 1e6).toFixed(2) + ' M ucgen';
+    kareler = 0; sure = 0;
+  }
+  requestAnimationFrame(kare);
+}
+requestAnimationFrame(kare);
+
+// Konsoldan kurcalamak için.
+window.sulab = {
+  P, ONAYARLAR, uygula, onayarSec, kamera, suUniforms,
+  kadraj: (y, p, u) => { yaw = y; pitch = p; uzaklik = u; },
+};
+</script>
+</body>
+</html>

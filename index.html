@@ -381,6 +381,12 @@
     </div>
   </div>
 
+  <!-- Yeni deniz (geliştirici sürümü, bkz. lab/entegre.js). Kanca
+       klasik bir script: Game haritanın WebGL bağlamını istemeden ÖNCE
+       kurulmalı. Bağlayıcı main.js'ten SONRA gelir. ?deniz=0 ile ikisi de
+       hiçbir şey yapmaz ve oyun bugünkü hâliyle açılır. -->
+  <script src="lab/dev-kanca.js"></script>
   <script type="module" src="src/main.js"></script>
+  <script type="module" src="lab/entegre.js"></script>
 </body>
 </html>
