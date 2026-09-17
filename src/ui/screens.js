@@ -63,7 +63,9 @@ import { politicsScreen } from './politicsScreen.js';
 import {
   DELEGATION_AREAS, DELEGATION_IDS, isDelegated, lastDelegatedAction, setDelegation,
 } from '../game/delegation.js';
-import { researchRateLines, technologyScreen } from './technologyScreen.js';
+import {
+  TECH_ZOOMS, researchRateLines, techInspector, technologyScreen,
+} from './technologyScreen.js';
 import { industryScreen } from './industryScreen.js';
 import { factoryBuildOptions, industryOverview } from '../game/industryView.js';
 import {
@@ -122,8 +124,28 @@ const SCROLL_KEEPERS = [
   '.census-scroll', '.census-browser-list', '.trade-goods-scroll', '.trade-detail',
   '.pol-left', '.pol-panel', '.pol-issues-scroll',
   '.mil-leader-list', '.mil-build-list', '.mil-queue-list', '.mil-left',
-  '.xch-list', '.xch-dossier', '.tech-tree',
+  '.xch-list', '.xch-dossier', '.tech-tree', '.tech-inspector',
 ];
+
+const TECH_ZOOM_KEY = 'hexwar.techZoom';
+
+/** Kayitli yakinlik; tarayici deposu kapaliysa (gizli pencere) %100. */
+function readTechZoom() {
+  try {
+    const value = Number(localStorage.getItem(TECH_ZOOM_KEY));
+    return TECH_ZOOMS.includes(value) ? value : 1;
+  } catch {
+    return 1;
+  }
+}
+
+function writeTechZoom(value) {
+  try {
+    localStorage.setItem(TECH_ZOOM_KEY, String(value));
+  } catch {
+    // Depo yoksa tercih yalniz bu oturumda yasar.
+  }
+}
 
 /**
  * Defter piktogramları: tek renk, 16px, sekme çubuğuyla aynı çizgi dili.
@@ -260,6 +282,9 @@ export class Screens {
       groupQuery: '',
       sort: { key: 'size', dir: -1 },
     };
+    // Teknoloji ekrani: inceleme panelindeki teknoloji ve agacin yakinligi.
+    // Yakinlik izleyicinin tercihidir; kayda girmez, tarayicida kalir.
+    this.tech = { inspect: null, zoom: readTechZoom() };
     this.el = {
       root: document.getElementById('screen'),
       title: document.getElementById('screen-title'),
@@ -322,6 +347,7 @@ export class Screens {
   open(name) {
     // Baris kipi haritayi ele gecirir; ekrandan cikarken geri verilmeli.
     if (this.active === 'peace' && name !== this.active) this.restoreMapMode();
+    const switching = this.active !== name;
     this.active = name;
     this.el.root.dataset.screen = name;
     document.body.classList.add('screen-open');
@@ -332,6 +358,25 @@ export class Screens {
     }
     this.el.body.scrollTop = 0;
     this.refresh();
+    if (switching) this.playEnter();
+  }
+
+  /**
+   * Ekran girisi (styles.css §31). Sinif bir kez takilir ve animasyon bitince
+   * sokulur: haftalik tazeleme govdeyi yeniden kurar, sinif kalsaydi her
+   * hafta kartlar yeniden yukselirdi.
+   */
+  playEnter() {
+    const targets = [this.el.root, this.el.body];
+    for (const el of targets) {
+      el.classList.remove('is-entering');
+      void el.offsetWidth;
+      el.classList.add('is-entering');
+    }
+    clearTimeout(this.enterTimer);
+    this.enterTimer = setTimeout(() => {
+      for (const el of targets) el.classList.remove('is-entering');
+    }, 420);
   }
 
   close() {
@@ -1776,7 +1821,63 @@ export class Screens {
       // Liste fiyati basmak, motorun dusecegi sayiyla celisir ve
       // UI_TRUTH_FIXES'in kapattigi hata sinifini yeniden acardi.
       costOf: (techId) => effectiveTechCost(world, me, techId, year),
+      inspect: this.tech.inspect,
+      zoom: this.tech.zoom,
     });
+  }
+
+  /**
+   * Fare gezinirken yalniz inceleme paneli ve vurgu degisir: butun ekrani
+   * her dugumde yeniden kurmak hover'i takiltili yapardi.
+   */
+  inspectTech(me, techId) {
+    if (!techId || this.tech.inspect === techId) return;
+    this.tech.inspect = techId;
+    const panel = this.el.body.querySelector('[data-tech-inspector]');
+    if (panel) {
+      panel.innerHTML = techInspector(me, techId);
+      panel.classList.remove('is-swapping');
+      void panel.offsetWidth;
+      panel.classList.add('is-swapping');
+    }
+    for (const node of this.el.body.querySelectorAll('.tech-node.is-inspected')) {
+      node.classList.remove('is-inspected');
+    }
+    this.el.body.querySelector(`.tech-node[data-tech="${CSS.escape(techId)}"]`)?.classList.add('is-inspected');
+  }
+
+  /**
+   * Yakinlik kademesi. `anchor` verilirse (Ctrl+tekerlek) imlecin altindaki
+   * nokta yerinde kalir; dugmeyle yakinlastirmada gorunur alanin sol ust
+   * kosesi sabittir.
+   */
+  zoomTech(step, anchor = null) {
+    const index = TECH_ZOOMS.indexOf(this.tech.zoom);
+    const next = step === 0
+      ? 1 : TECH_ZOOMS[Math.max(0, Math.min(TECH_ZOOMS.length - 1, (index < 0 ? 3 : index) + step))];
+    if (next === this.tech.zoom) return;
+    const tree = this.el.body.querySelector('.tech-tree');
+    const inner = tree?.querySelector('.tech-tree-inner');
+    const before = this.tech.zoom;
+    this.tech.zoom = next;
+    writeTechZoom(next);
+    if (!tree || !inner) return;
+    const box = tree.getBoundingClientRect();
+    const offsetX = anchor ? anchor.x - box.left : 0;
+    const offsetY = anchor ? anchor.y - box.top : 0;
+    const contentX = (tree.scrollLeft + offsetX) / before;
+    const contentY = (tree.scrollTop + offsetY) / before;
+    inner.style.zoom = String(next);
+    tree.scrollLeft = contentX * next - offsetX;
+    tree.scrollTop = contentY * next - offsetY;
+    const label = this.el.body.querySelector('.tech-zoom-level');
+    if (label) label.textContent = `${Math.round(next * 100)}%`;
+    const buttons = this.el.body.querySelectorAll('[data-tech-zoom]');
+    for (const button of buttons) {
+      const dir = Number(button.dataset.techZoom);
+      if (dir < 0) button.disabled = next <= TECH_ZOOMS[0];
+      if (dir > 0) button.disabled = next >= TECH_ZOOMS[TECH_ZOOMS.length - 1];
+    }
   }
 
   // --- Politics: hükûmet ve beş yasa (bkz. politicsScreen.js) ---
@@ -1983,11 +2084,41 @@ export class Screens {
         event.preventDefault();
         if (dequeueResearch(me, btn.dataset.tech)) this.refresh();
       };
+      btn.onpointerenter = () => this.inspectTech(me, btn.dataset.tech);
+      btn.onfocus = () => this.inspectTech(me, btn.dataset.tech);
     }
     for (const btn of this.el.body.querySelectorAll('[data-dequeue]')) {
       btn.onclick = () => {
         dequeueResearch(me, btn.dataset.dequeue);
         this.refresh();
+      };
+    }
+    for (const chip of this.el.body.querySelectorAll('[data-tech-inspect]')) {
+      chip.onpointerenter = () => this.inspectTech(me, chip.dataset.techInspect);
+    }
+    const inspector = this.el.body.querySelector('[data-tech-inspector]');
+    if (inspector) {
+      // Panelin icerigi fare gezindikce degisir: dugmeler tek tek degil
+      // kaptan yakalanir.
+      inspector.onclick = (event) => {
+        const button = event.target.closest('[data-tech-now], [data-tech-queue], [data-tech-dequeue]');
+        if (!button) return;
+        if (button.dataset.techNow) researchNow(me, button.dataset.techNow);
+        else if (button.dataset.techQueue) queueResearch(me, button.dataset.techQueue);
+        else dequeueResearch(me, button.dataset.techDequeue);
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-tech-zoom]')) {
+      btn.onclick = () => this.zoomTech(Number(btn.dataset.techZoom));
+    }
+    const techTree = this.el.body.querySelector('.tech-body > .tech-tree');
+    if (techTree) {
+      // Ctrl+tekerlek sayfayi degil agaci yakinlastirir; duz tekerlek kaydirir.
+      techTree.onwheel = (event) => {
+        if (!event.ctrlKey) return;
+        event.preventDefault();
+        this.zoomTech(event.deltaY < 0 ? 1 : -1, { x: event.clientX, y: event.clientY });
       };
     }
     for (const el of this.el.body.querySelectorAll('[data-why-text]')) {

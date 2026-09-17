@@ -347,7 +347,25 @@
             <option>English</option>
           </select>
         </label>
+        <div class="menu-field">
+          <span>Interface animations</span>
+          <div class="menu-chips" id="menu-motion">
+            <button type="button" class="menu-chip" data-motion-choice="on" aria-pressed="true">On</button>
+            <button type="button" class="menu-chip" data-motion-choice="off" aria-pressed="false">Off</button>
+          </div>
+        </div>
         <p class="menu-note" id="menu-motion-note"></p>
+        <!-- Kayıt dosyası: tarayıcı deposu adres başınadır; başlatıcının
+             penceresi eski adresin kaydını görmez. Dosya, kaydı taşır. -->
+        <div class="menu-field">
+          <span>Save file</span>
+          <div class="menu-setup-buttons menu-save-buttons">
+            <button type="button" class="menu-btn" id="menu-export">Export save</button>
+            <button type="button" class="menu-btn" id="menu-import">Import save</button>
+            <input type="file" id="menu-import-file" accept=".json,application/json" hidden />
+          </div>
+        </div>
+        <p class="menu-note" id="menu-save-note">Copy your campaign to a file, or bring one in from another window.</p>
         <div class="menu-setup-buttons">
           <button type="button" class="menu-btn" data-menu-back>Back</button>
         </div>
@@ -375,10 +393,7 @@
 
   <div class="sheet" id="sheet">
     <div class="sheet-grip"></div>
-    <div class="hegemony" id="hegemony"></div>
-    <div class="sheet-body" id="sheet-body">
-      <p class="placeholder">Select a province to develop it, or an army to issue movement orders.</p>
-    </div>
+    <div class="sheet-body" id="sheet-body"></div>
   </div>
 
   <!-- Yeni deniz (geliştirici sürümü, bkz. lab/entegre.js). Kanca

@@ -3,9 +3,15 @@
 // Bes kategori yatay serit, her klasor bir satir. Teknoloji kendi aktivasyon
 // yilina yerlesir ve klasoru icinde cizgiyle bir sonrakine baglanir. Butun
 // agac tek sayfada: eski ekran kategori sekmelerinin arkasinda bir seferde tek
-// kategori gosteriyordu, "digerlerinde ne var" sorusu tik istiyordu. Etkiler
-// dugumun ipucu kartinda (tooltipData 'tech'); tik arastirir, shift+tik
-// kuyruga ekler.
+// kategori gosteriyordu, "digerlerinde ne var" sorusu tik istiyordu. Tik
+// arastirir, shift+tik kuyruga ekler.
+//
+// ETKILER AGACIN USTUNDE DEGIL YANINDA. Dugumun ipucu karti gecikmeyle
+// aciliyor ve komsu dugumlerin ustune oturuyordu: oyuncu bir teknolojiye
+// bakarken yanindakine gecemiyordu (Kerem). Kart yerine sag rayda kalici bir
+// inceleme paneli var; fare hangi dugumdeyse panel ANINDA onu gosterir ve
+// fare agactan cikinca son bakilan teknolojide kalir (dugmelere gidilebilsin).
+// Icerik ayni saglayicidan (tooltipData 'tech') gelir.
 //
 // Katman notu: saf gorunum. Simulasyonu okur, YAZMAZ — eylemler `data-*`
 // olarak isaretlenir, isleyicileri screens.js baglar.
@@ -14,6 +20,7 @@ import {
   TECH_CATEGORIES, TECH_FOLDERS, TECHNOLOGIES, canResearch, hasTech, techById,
 } from '../game/technology.js';
 import { lawModifiers } from '../game/politics.js';
+import { tooltipHtml } from './tooltip.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -31,6 +38,12 @@ const NODE_W = 140;
 const NODE_GAP = 6;
 
 const CATEGORY_ORDER = ['industry', 'army', 'navy', 'commerce', 'culture'];
+
+/**
+ * Yakinlastirma kademeleri. Agacin tamami 1600px ekranda %100'de ancak sigiyor;
+ * uzaklastirmak butun yuzyili tek bakista, yakinlastirmak kesilen adlari verir.
+ */
+export const TECH_ZOOMS = [0.6, 0.75, 0.9, 1, 1.15, 1.3, 1.5];
 
 /**
  * Satir yerlesimi: dugum yilinin yerine konur, onceki dugume binecekse saga
@@ -77,13 +90,41 @@ function stateOf(nation, research, tech) {
 }
 
 /**
+ * Inceleme paneli: saglayicinin karti + teknolojinin durumuna gore fiiller.
+ * Ekran her hafta yeniden kurulur ama fare gezinirken yalniz bu parca
+ * degisir (bkz. screens.inspectTech).
+ */
+export function techInspector(nation, techId) {
+  const tech = techId ? techById(techId)?.tech : null;
+  if (!tech) {
+    return '<p class="tech-inspector-empty">Point at a technology to see what it does.</p>';
+  }
+  const research = nation.research ?? {};
+  const state = stateOf(nation, research, tech);
+  const queued = (research.queue ?? []).includes(tech.id);
+  const id = esc(tech.id);
+  const actions = [];
+  if (state !== 'done' && state !== 'active') {
+    actions.push(`<button type="button" class="ui-btn primary" data-tech-now="${id}">Research now</button>`);
+    actions.push(queued
+      ? `<button type="button" class="ui-btn danger" data-tech-dequeue="${id}">Remove from queue</button>`
+      : `<button type="button" class="ui-btn" data-tech-queue="${id}">Add to queue</button>`);
+  }
+  return `<div class="tech-inspector-card">${tooltipHtml('tech', tech.id)}</div>
+    ${actions.length ? `<div class="tech-inspector-actions">${actions.join('')}</div>` : ''}`;
+}
+
+/**
  * @param {object} nation
- * @param {object} view { year, yearExact, rate, costOf, rank, of }
+ * @param {object} view { year, yearExact, rate, costOf, rank, of, inspect, zoom }
  */
 export function technologyScreen(nation, view) {
   const research = nation.research ?? { points: 0, current: null, done: [], queue: [] };
   const queue = research.queue ?? [];
   const costOf = view.costOf;
+  const zoom = TECH_ZOOMS.includes(view.zoom) ? view.zoom : 1;
+  // Bakilan teknoloji yoksa panel bos durmaz: yurutulen ya da kuyrugun basi.
+  const inspect = view.inspect ?? research.current ?? queue[0] ?? null;
 
   // --- Ozet: yurutulen teknoloji, ilerleme, hiz, okuryazarlik, konum ---
   const current = research.current ? techById(research.current)?.tech : null;
@@ -118,13 +159,19 @@ export function technologyScreen(nation, view) {
   const chips = queue.map((id, index) => {
     const tech = techById(id)?.tech;
     if (!tech) return '';
-    return `<li><button class="tech-chip" data-dequeue="${esc(id)}" data-tip="tech" data-tip-arg="${esc(id)}"
+    return `<li><button class="tech-chip" data-dequeue="${esc(id)}" data-tech-inspect="${esc(id)}"
       aria-label="Remove ${esc(tech.name)} from the queue"><em>${index + 1}</em>${esc(tech.name)}<i aria-hidden="true">×</i></button></li>`;
   }).join('');
+  const zoomIndex = TECH_ZOOMS.indexOf(zoom);
   const queueRow = `<div class="tech-queue">
     <span class="tech-queue-label">Queue</span>
     ${chips ? `<ol>${chips}</ol>` : '<span class="tech-queue-empty">empty — when a technology finishes, the next is chosen for you</span>'}
-    <span class="tech-queue-hint"><b>Click</b> research now · <b>Shift+click</b> add to queue · <b>Right-click</b> remove</span>
+    <span class="tech-queue-hint"><b>Click</b> research now · <b>Shift+click</b> add to queue · <b>Right-click</b> remove · <b>Ctrl+wheel</b> zoom</span>
+    <span class="tech-zoom" role="group" aria-label="Zoom">
+      <button type="button" class="ui-btn sm" data-tech-zoom="-1" aria-label="Zoom out" ${zoomIndex <= 0 ? 'disabled' : ''}>−</button>
+      <button type="button" class="ui-btn sm tech-zoom-level" data-tech-zoom="0" aria-label="Reset zoom">${Math.round(zoom * 100)}%</button>
+      <button type="button" class="ui-btn sm" data-tech-zoom="1" aria-label="Zoom in" ${zoomIndex >= TECH_ZOOMS.length - 1 ? 'disabled' : ''}>+</button>
+    </span>
   </div>`;
 
   // --- Agac ---
@@ -153,8 +200,8 @@ export function technologyScreen(nation, view) {
           : `<span class="${early ? 'is-early' : ''}">${tech.year}</span> · ${costOf(tech.id)} RP`;
         const bar = state === 'active'
           ? `<i class="tech-node-bar" style="width:${(progress * 100).toFixed(1)}%"></i>` : '';
-        return `<button class="tech-node is-${state}${queued >= 0 ? ' is-queued' : ''}"
-          style="left:${x}px" data-tech="${esc(tech.id)}" data-tip="tech" data-tip-arg="${esc(tech.id)}"
+        return `<button class="tech-node is-${state}${queued >= 0 ? ' is-queued' : ''}${tech.id === inspect ? ' is-inspected' : ''}"
+          style="left:${x}px" data-tech="${esc(tech.id)}"
           aria-label="${esc(tech.name)}, ${tech.year}, ${state}">
           <b>${esc(tech.name)}</b><small>${meta}</small>${bar}
           ${queued >= 0 ? `<em class="tech-node-q">${queued + 1}</em>` : ''}
@@ -186,12 +233,15 @@ export function technologyScreen(nation, view) {
   return `<div class="tech-screen">
     ${kpis}
     ${queueRow}
-    <div class="tech-tree" style="--tree-w:${Math.ceil(width)}px;--node-w:${NODE_W}px;--now-x:${nowX.toFixed(1)}px">
-      <div class="tech-tree-inner">
-        <div class="tech-axis"><span class="tech-row-label"></span><div class="tech-axis-track">${ticks.join('')}
-          <span class="tech-now-label" style="left:${nowX.toFixed(1)}px">${view.year}</span></div></div>
-        <div class="tech-bands">${bands}<i class="tech-now" aria-hidden="true"></i></div>
+    <div class="tech-body">
+      <div class="tech-tree" style="--tree-w:${Math.ceil(width)}px;--node-w:${NODE_W}px;--now-x:${nowX.toFixed(1)}px">
+        <div class="tech-tree-inner" style="zoom:${zoom}">
+          <div class="tech-axis"><span class="tech-row-label"></span><div class="tech-axis-track">${ticks.join('')}
+            <span class="tech-now-label" style="left:${nowX.toFixed(1)}px">${view.year}</span></div></div>
+          <div class="tech-bands">${bands}<i class="tech-now" aria-hidden="true"></i></div>
+        </div>
       </div>
+      <aside class="tech-inspector" data-tech-inspector aria-live="polite">${techInspector(nation, inspect)}</aside>
     </div>
   </div>`;
 }

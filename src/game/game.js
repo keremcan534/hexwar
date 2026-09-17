@@ -395,8 +395,9 @@ export class Game {
         }
         this.reportOrder(tile, issued, waiting, reasons);
       }
-      this.selected = tile;
-      this.emit('select', tile);
+      // Emir SECIMI DEGISTIRMEZ: hedef kare secili eyalet olursa panel ve
+      // vurgu hedefe atliyor, oyuncu "asker seciliyken state seciliyor"
+      // goruyordu. Ordu secili kalir, panel yalniz tazelenir.
       this.emit('units', this.selectedUnit);
       this.requestRender();
       return issued + waiting > 0;
@@ -427,8 +428,6 @@ export class Game {
       }
     });
 
-    this.selected = tile;
-    this.emit('select', tile);
     this.emit('units', this.selectedUnit);
     this.requestRender();
     return issued > 0;
@@ -1028,16 +1027,22 @@ export class Game {
     // büyüyüp kapanış uzadıkça tarih "5 gün 5 gün" atlıyordu. Takvim borç
     // tutmaz; en fazla iki günlük birikim taşınır, tik başına iki gün.
     this.clock.accumulator = Math.min(this.clock.accumulator + elapsed, stepMs * 2);
+    // Sekme gizliyken rAF donar; dilimler burada boşaltılır ki oyun zamanı
+    // (kısılmış tempoda) akmaya devam etsin. Görünürken pompayı YALNIZ kare
+    // zinciri yapar — setInterval içinde pompalamak kare zamanlamasından
+    // bağımsız 7-20 ms'lik stall üretiyordu (ölçüldü).
+    if (this.turns.turnJob && document.visibilityState === 'hidden') this.pumpTurnFrame();
     let steps = 0;
     while (this.clock.accumulator >= stepMs && steps < 2) {
-      // Hafta hâlâ dilim dilim işleniyorsa takvim bekler: turlar üst üste
-      // binmez, yüksek hızda tempo tur maliyetine göre kendiliğinden ölçülür.
-      if (this.turns.turnJob) {
-        // Sekme gizliyken rAF donar; dilimler burada boşaltılır ki oyun
-        // zamanı (kısılmış tempoda) akmaya devam etsin. Görünürken pompayı
-        // YALNIZ kare zinciri yapar — setInterval içinde pompalamak kare
-        // zamanlamasından bağımsız 7-20 ms'lik stall üretiyordu (ölçüldü).
-        if (document.visibilityState === 'hidden') this.pumpTurnFrame();
+      // TAKVİM HAFTAYI BEKLEMEZ, HAFTA SINIRI BEKLER. Eskiden iş sürdükçe
+      // bütün günler dururdu: 1842 kaydında kapanış 110-220 ms, 8x'te gün
+      // 125 ms — haftanın üçte biri duruşla geçiyor, oyun "sürekli duruyor"
+      // görünüyordu (Kerem). Artık kapanış yeni haftanın ilk günleri akarken
+      // biter; yalnız SONRAKİ hafta sınırına iş bitmeden varılırsa takvim
+      // durur ki turlar üst üste binmesin. Tarih gün sayacından okunur
+      // (hud.gameDate), tur sayacının iş ortasında artması onu oynatmaz.
+      const boundary = (this.clock.day + 1) % DAYS_PER_WEEK === 0;
+      if (boundary && this.turns.turnJob) {
         // Bekleme süresi biriken güne dönüşmez: iş bitince tek gün akar.
         this.clock.accumulator = Math.min(this.clock.accumulator, stepMs);
         break;

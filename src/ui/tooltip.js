@@ -132,6 +132,16 @@ export function provideTooltip(id, fn) {
   providers.set(id, fn);
 }
 
+/**
+ * Sağlayıcının içeriği, kart açmadan. Kalıcı bilgi paneli (teknoloji ekranının
+ * inceleme paneli) kartla aynı sağlayıcıyı okur: iki ayrı döküm yazılsaydı
+ * panel ile kart zamanla farklı sayı söylerdi.
+ */
+export function tooltipHtml(id, arg = '') {
+  const provider = providers.get(id);
+  return provider ? render(provider(arg, null)) : '';
+}
+
 /** İçeriğin içinde ikincil terim: `tipTerm('research', 'Research Points')`. */
 export function tipTerm(id, label, arg = '') {
   return `<b class="tip-term" data-tip="${esc(id)}"${arg ? ` data-tip-arg="${esc(arg)}"` : ''}>${esc(label)}</b>`;

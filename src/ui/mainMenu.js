@@ -20,7 +20,9 @@
 //
 // Katman notu: DOM'a dokunur, oyun durumunu yalnız `game` üzerinden değiştirir.
 
-import { SAVE_VERSION, savedInfo } from '../game/save.js';
+import {
+  SAVE_VERSION, exportSaveText, importSaveText, savedInfo,
+} from '../game/save.js';
 import { gameDate } from './hud.js';
 import { worldRows } from '../world/worldgen.js';
 import { MenuMusic } from './menuMusic.js';
@@ -150,6 +152,35 @@ function nextSceneIndex() {
 }
 
 /** Kayıt künyesi: "seed 4KZQ81 · 14 MAR 1851". */
+const MOTION_KEY = 'hexwar.motion';
+
+/**
+ * Arayuz animasyonlari (styles.css §31). Sistemin "hareketi azalt" ayarina
+ * BAGLI DEGIL: Kerem'in Windows'unda animasyon efektleri kapali ve tarayici
+ * bunu "reduce" diye bildiriyor; animasyon isteyen oyuncu onlari hic
+ * goremiyordu. Varsayilan acik, secim tarayicida kalir.
+ */
+export function uiMotion() {
+  try {
+    return localStorage.getItem(MOTION_KEY) === 'off' ? 'off' : 'on';
+  } catch {
+    return 'on';
+  }
+}
+
+export function setUiMotion(value) {
+  const next = value === 'off' ? 'off' : 'on';
+  document.documentElement.dataset.motion = next;
+  try {
+    localStorage.setItem(MOTION_KEY, next);
+  } catch {
+    // Depo kapaliysa tercih yalniz bu oturumda yasar.
+  }
+}
+
+// Modul yuklenirken uygulanir: menu acilmadan once de gecerli olsun.
+document.documentElement.dataset.motion = uiMotion();
+
 function saveLabel(info) {
   if (!info) return '';
   const parts = [];
@@ -214,6 +245,11 @@ export class MainMenu {
       volumeLabel: $('menu-volume-label'),
       themeList: $('menu-theme-list'),
       motionNote: $('menu-motion-note'),
+      motionChoices: [...document.querySelectorAll('[data-motion-choice]')],
+      exportSave: $('menu-export'),
+      importSave: $('menu-import'),
+      importFile: $('menu-import-file'),
+      saveNote: $('menu-save-note'),
       mute: $('menu-mute'),
       sceneBtn: $('menu-scene'),
       buildInfo: $('menu-build-info'),
@@ -322,6 +358,17 @@ export class MainMenu {
     el.build.onclick = () => this.build();
     el.load.onclick = () => this.loadSave();
     el.exit.onclick = () => this.exit();
+    for (const chip of el.motionChoices ?? []) {
+      chip.onclick = () => {
+        setUiMotion(chip.dataset.motionChoice);
+        this.syncMotionNote();
+      };
+    }
+    if (el.exportSave) el.exportSave.onclick = () => this.exportSave();
+    if (el.importSave && el.importFile) {
+      el.importSave.onclick = () => el.importFile.click();
+      el.importFile.onchange = () => this.importSave(el.importFile.files?.[0]);
+    }
     for (const button of el.root.querySelectorAll('[data-menu-back]')) {
       button.onclick = () => this.showView('actions');
     }
@@ -396,11 +443,14 @@ export class MainMenu {
   /** Hareket azaltma açıksa oyuncu bunu bilsin: sis ve geçişler durur. */
   syncMotionNote() {
     const { motionNote } = this.el;
+    for (const chip of this.el.motionChoices ?? []) {
+      chip.setAttribute('aria-pressed', chip.dataset.motionChoice === uiMotion() ? 'true' : 'false');
+    }
     if (!motionNote) return;
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     motionNote.textContent = reduced
-      ? 'Reduced motion is on in your system settings — drifting fog and scene transitions are held still.'
-      : 'Drifting fog and scene transitions follow your system’s reduced-motion setting.';
+      ? 'Reduced motion is on in your system settings — drifting fog and scene transitions are held still. Interface animations follow the switch above.'
+      : 'Drifting fog and scene transitions follow your system’s reduced-motion setting; interface animations follow the switch above.';
   }
 
   /** Kaydırıcılardaki değerlerle yeni dünya kurar ve perdeyi kaldırır. */
@@ -430,6 +480,47 @@ export class MainMenu {
     }
     this.resumable = true;
     this.close();
+  }
+
+  /**
+   * Kaydı dosyaya indirir. Kayıt tarayıcı deposunda adres başına durduğu için
+   * oyunu başka bir pencereden (başlatıcı) açan oyuncunun kampanyası ancak
+   * böyle taşınır. Depodaki kayıt aynen iner; oturumdaki oyun burada
+   * YAZILMAZ — aynı adreste iki pencere açıksa eski oturum yeni kaydı ezerdi.
+   * Dosya adı kaydın tarihini taşır: ne indirildiği görünür.
+   */
+  exportSave() {
+    const text = exportSaveText();
+    if (!text) {
+      this.el.saveNote.textContent = 'There is no saved campaign in this window yet.';
+      return;
+    }
+    const info = savedInfo();
+    const blob = new Blob([text], { type: 'application/json' });
+    const link = document.createElement('a');
+    const date = info?.turn ? gameDate(info.turn).replace(/\s+/g, '-').toLowerCase() : 'campaign';
+    link.href = URL.createObjectURL(blob);
+    link.download = `imperial-eye-${date}.json`;
+    document.body.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    this.el.saveNote.textContent = `Exported ${saveLabel(info)}.`;
+  }
+
+  /** Dosyadaki kaydı depoya alır; doğrulanmayan dosya mevcut kaydı ezmez. */
+  async importSave(file) {
+    const { el } = this;
+    if (!file) return;
+    el.importFile.value = '';
+    const result = importSaveText(await file.text());
+    if (!result.ok) {
+      el.saveNote.textContent = `Could not import: ${result.reason}.`;
+      return;
+    }
+    el.saveNote.textContent = `Imported ${saveLabel(result.info)} — choose Load Game to play it.`;
+    el.load.hidden = false;
+    el.loadNote.textContent = saveLabel(result.info);
   }
 
   /**

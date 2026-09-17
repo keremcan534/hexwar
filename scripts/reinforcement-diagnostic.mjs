@@ -10,8 +10,8 @@ import {
 import {
   equipmentLogistics, reinforcementNeed, runReinforcements,
 } from '../src/game/reinforcement.js';
-import { applyArmyLosses, refreshArmy, soldiersOf } from '../src/game/units.js';
-import { provincePopulation } from '../src/game/provinces.js';
+import { UNIT_TYPES, applyArmyLosses, refreshArmy, soldiersOf } from '../src/game/units.js';
+import { provinceSoldiers } from '../src/game/provinces.js';
 
 function headless(seed) {
   const game = Object.create(Game.prototype);
@@ -118,7 +118,7 @@ const artilleryStockBeforeRecruit = artilleryMilitary.artillery;
 const artilleryUnit = recruit(artilleryGame, artilleryNation, 'ARTILLERY');
 const artilleryArmsAfterRecruit = artilleryMilitary.arms;
 const artilleryStockAfterRecruit = artilleryMilitary.artillery;
-applyArmyLosses(artilleryUnit, 120, 0);
+applyArmyLosses(artilleryUnit, 120, 0, artilleryGame.world);
 const damagedArtilleryStrength = soldiersOf(artilleryUnit);
 artilleryMilitary.artillery = 0;
 runReinforcements(artilleryGame);
@@ -146,18 +146,18 @@ const recruitMilitary = ensureMilitaryEconomy(recruitNation);
 recruitMilitary.arms = 10;
 const recruitArmsBefore = recruitMilitary.arms;
 const recruitMenBefore = nationManpower(recruitWorld, recruitNation.id);
-// Odenen bedel HAM nufustur; nationManpower ise kultur agirlikli bir HAVUZ
-// olcusudur (kabul edilmemis kulturde province basi %35, bkz. recruitment.js
-// provinceManpower). Alay kabul edilmemis kulturlu bir kumeden cikinca 3000
-// kisi gercekten dusuyor ama havuz olcusu yalniz 1050 iniyordu ve test
-// "nufus odenmedi" diyordu — olculen yanlis buyuklukmus.
-const recruitPopBefore = provincePopulation(recruitWorld, recruitNation.id);
+// Odenen bedel ASKER KAYDIDIR: asker nufusun icinde durur (0e180a5), tarladan
+// ve insan gucu havuzundan duser. Eski olcu nufusun 3000 dusmesini bekliyordu —
+// hem eski model hem nufus olcegi (x10) oncesi.
+const recruitSoldiersBefore = provinceSoldiers(recruitWorld, recruitNation.id);
 const recruited = recruit(recruitGame, recruitNation, 'INFANTRY');
-const populationPaid = provincePopulation(recruitWorld, recruitNation.id)
-  <= recruitPopBefore - 3000;
+const menClaimed = provinceSoldiers(recruitWorld, recruitNation.id) - recruitSoldiersBefore
+  === UNIT_TYPES.INFANTRY.manpower;
 const armsPaid = recruitMilitary.arms <= recruitArmsBefore - RECRUITMENT_ARMS.INFANTRY;
 
-applyArmyLosses(recruited, 100, 0);
+// world verilmezse kayip kumeye yazilmaz: asker hayalet kalir, olum nufustan
+// dusmez ve asagidaki olcu yanlis sebeple gecer.
+applyArmyLosses(recruited, 100, 0, recruitWorld);
 runReinforcements(recruitGame);
 disband(recruitGame, recruited);
 const casualtiesStayedLost = nationManpower(recruitWorld, recruitNation.id) < recruitMenBefore;
@@ -201,7 +201,7 @@ const results = {
   },
   recruitment: {
     unitCreated: Boolean(recruited),
-    populationPaid,
+    menClaimed,
     armsPaid,
     casualtiesStayedLostAfterReinforcementAndDisband: casualtiesStayedLost,
     oldSaveGetsMilitaryDefaults: recruitNation.economy.military.arms === 16,

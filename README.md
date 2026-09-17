@@ -7,6 +7,17 @@ tasarım hedefi değildir (bkz. CLAUDE.md).
 
 ## Çalıştırma
 
+**Oyuncu için (Windows):** kök klasördeki `Imperial Eye.cmd` dosyasına çift
+tıkla. Yerel sunucuyu görünmez başlatır, oyunu adres çubuğu olmayan tam ekran
+bir Edge (yoksa Chrome) penceresinde açar; pencere kapanınca sunucu da kapanır.
+Node.js kurulu olmalı. Tarayıcı modülleri `file://` üzerinden yüklemediği için
+`index.html`e doğrudan çift tıklamak çalışmaz. Başlatıcının penceresi kendi
+tarayıcı profilini kullanır (`%LOCALAPPDATA%\ImperialEye`); başka bir
+pencerede oynanan kampanyayı taşımak için eski pencerede **Settings → Export
+save**, başlatıcının penceresinde **Settings → Import save**.
+
+**Geliştirici için:**
+
 ```bash
 npm run dev
 ```
@@ -106,7 +117,8 @@ Kaybeden taraf da masaya toprak koyarak anlaşmanın bedelini düşürebilir.
 
 Victoria 2'nin üretim zinciri: **43 mal, 29 fabrika türü, 14 province kaynağı**
 tek bir dünya pazarında buluşur. Her malın fiyatı haftalık arz-talep dengesine
-göre değişir (taban fiyatın 0.12–8 katı arasında).
+göre değişir (taban fiyatın 0.5–1.5 katı arasında; kıtlık ve bolluk
+fiyattan çok miktarda görünür).
 
 Zincir katmanlıdır — Kömür+Demir → Çelik → Makine Parçası → Otomobil → Tank —
 ve bir halkadaki kıtlık üst katmanların hepsini yavaşlatır.

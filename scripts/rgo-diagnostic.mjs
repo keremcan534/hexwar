@@ -8,10 +8,10 @@ import { generateWorld } from '../src/world/worldgen.js';
 import { generateNations } from '../src/world/nations.js';
 import {
   MIGRATION_COHORT, RGO_TYPES, depositsOf, provinceOutput, provincePopulation,
-  provinceRgoJobs, provinceRgoStatus, runProvinceMigration,
+  provinceRgoJobs, provinceRgoStatus, provinceSoldiers, runProvinceMigration,
 } from '../src/game/provinces.js';
 import { ensureMilitaryEconomy } from '../src/game/economy.js';
-import { applyArmyLosses } from '../src/game/units.js';
+import { UNIT_TYPES, applyArmyLosses } from '../src/game/units.js';
 import { disband, recruit } from '../src/game/recruitment.js';
 
 function headless(seed) {
@@ -92,14 +92,23 @@ const outputMatchesDeposits = first.world.provinces.every((cluster) => {
 const depositsSumToHexes = first.world.provinces.every((cluster) => (
   !cluster.econ || depositsOf(cluster.econ).reduce((sum, line) => sum + line.hexes, 0) === cluster.tileIdx.length
 ));
-const startingUnit = first.world.units[0];
+// Kurulus ordusunun adami gercek kumelerden gelir (turn.js: depo bitince
+// techizatsiz recruit). Bedava tumen kalirsa olumu nufustan bir sey goturmez.
+const startingRegiments = first.world.units.flatMap((unit) => unit.regiments ?? []);
+const startingDrawnShare = startingRegiments.filter((regiment) => regiment.draws?.length).length
+  / Math.max(1, startingRegiments.length);
+const startingUnit = first.world.units.find((unit) => unit.regiments?.[0]?.draws?.length) ?? first.world.units[0];
 const startingDraws = startingUnit.regiments[0].draws.reduce(
   (sum, draw) => sum + draw.men, 0,
 );
 const startingNationPopulation = provincePopulation(first.world, startingUnit.nationId);
+const startingSoldiers = provinceSoldiers(first.world, startingUnit.nationId);
 disband(first, startingUnit);
+// Asker nufusun ICINDE durur (bkz. provinces.claimSoldiers): terhis nufusu
+// artirmaz, yalniz asker kaydini birakir.
 const startingPopulationReturned = provincePopulation(first.world, startingUnit.nationId)
   - startingNationPopulation;
+const startingSoldiersReleased = startingSoldiers - provinceSoldiers(first.world, startingUnit.nationId);
 
 const legacyArmyGame = headless('RGO-LEGACY-ARMY');
 const legacyUnit = legacyArmyGame.world.units[0];
@@ -122,9 +131,11 @@ for (const tile of armyTiles) fillToJobs(tile, 1);
 const military = ensureMilitaryEconomy(armyNation);
 military.arms = 40;
 const populationBeforeRecruitment = provincePopulation(armyGame.world, armyNation.id);
+const soldiersBeforeRecruitment = provinceSoldiers(armyGame.world, armyNation.id);
 const outputBeforeRecruitment = rawOutput(armyGame.world, armyTiles);
 const recruited = recruit(armyGame, armyNation, 'INFANTRY');
 const populationAfterRecruitment = provincePopulation(armyGame.world, armyNation.id);
+const soldiersAfterRecruitment = provinceSoldiers(armyGame.world, armyNation.id);
 const outputAfterRecruitment = rawOutput(armyGame.world, armyTiles);
 disband(armyGame, recruited);
 const populationAfterPeacefulDisband = provincePopulation(armyGame.world, armyNation.id);
@@ -135,10 +146,13 @@ const lossTiles = owned(lossGame.world, lossNation.id);
 for (const tile of lossTiles) fillToJobs(tile, 1);
 ensureMilitaryEconomy(lossNation).arms = 40;
 const populationBeforeLoss = provincePopulation(lossGame.world, lossNation.id);
+const soldiersBeforeLoss = provinceSoldiers(lossGame.world, lossNation.id);
 const doomed = recruit(lossGame, lossNation, 'INFANTRY');
-applyArmyLosses(doomed, 500, 0);
+// world verilmezse kayip kumeye yazilmaz ve asker hayalet kalir (units.js).
+applyArmyLosses(doomed, 500, 0, lossGame.world);
 disband(lossGame, doomed);
 const populationAfterLoss = provincePopulation(lossGame.world, lossNation.id);
+const soldiersAfterLoss = provinceSoldiers(lossGame.world, lossNation.id);
 
 const migrationGame = headless('RGO-MIGRATION');
 const migrationNation = migrationGame.world.nations.find(
@@ -176,14 +190,17 @@ const assertions = {
   allRgoTypesExist: Object.values(rgoCounts).every((count) => count > 0),
   outputMatchesDeposits,
   depositsSumToHexes,
-  startingArmyHasRealProvinceDraws: startingDraws > 0
-    && Math.abs(startingPopulationReturned - startingDraws) < 1,
+  startingArmyHasRealProvinceDraws: startingDraws > 0 && startingPopulationReturned === 0
+    && Math.abs(startingSoldiersReleased - startingDraws) < 1,
+  startingArmyMostlyDrawn: startingDrawnShare >= 0.85,
   legacyFreeArmyCannotCreatePopulation: legacyPopulationAfter === legacyPopulationBefore,
   halfWorkforceHalvesOutput: Math.abs(halfOutput / fullOutput - 0.5) < 0.02,
-  recruitmentConsumesProvincePopulation: populationBeforeRecruitment - populationAfterRecruitment === 3000,
+  recruitmentConsumesProvincePopulation: populationAfterRecruitment === populationBeforeRecruitment
+    && soldiersAfterRecruitment - soldiersBeforeRecruitment === UNIT_TYPES.INFANTRY.manpower,
   underCapacityCutsProduction: outputAfterRecruitment < outputBeforeRecruitment,
   peacefulDisbandReturnsSurvivors: populationAfterPeacefulDisband === populationBeforeRecruitment,
-  battleDeathsStayLost: populationBeforeLoss - populationAfterLoss === 1500,
+  battleDeathsStayLost: populationBeforeLoss - populationAfterLoss === UNIT_TYPES.INFANTRY.manpower / 2
+    && soldiersAfterLoss === soldiersBeforeLoss,
   migrationUsesCohorts: moved >= MIGRATION_COHORT && moved % MIGRATION_COHORT === 0,
   migrationConservesPopulation: populationAfterMigration === populationBeforeMigration,
   migrationFillsVacancy: receiverEfficiencyAfter > receiverEfficiencyBefore
@@ -208,6 +225,8 @@ console.log(JSON.stringify({
     outputLossPercent: Number(((1 - outputAfterRecruitment / outputBeforeRecruitment) * 100).toFixed(1)),
     populationAfterPeacefulDisband,
     permanentBattleLoss: populationBeforeLoss - populationAfterLoss,
+    startingDrawnShare: Number(startingDrawnShare.toFixed(3)),
+    startingRegiments: startingRegiments.length,
   },
   migration: { moved, receiverEfficiencyBefore, receiverEfficiencyAfter },
   longRun: {

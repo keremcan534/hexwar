@@ -6,7 +6,8 @@ import { HEX_SIZE } from '../world/worldgen.js';
 import { englishCityName } from '../game/cities.js';
 import { POPULATION_SCALE } from '../game/populationScale.js';
 import { drawFlag } from './flagPainter.js';
-import { atWar } from '../game/diplomacy.js';
+import { atWar, inCrisis } from '../game/diplomacy.js';
+import { isAllied } from '../game/alliances.js';
 import { maxHpOf, organizationOf, soldiersOf, unitsOn } from '../game/units.js';
 import { terrainShade } from '../world/terrain.js';
 import { RGO_TYPES } from '../game/provinces.js';
@@ -204,6 +205,23 @@ const UNIT_ON_CITY_OFFSET = 0.22;
 
 /** Emir rozetleri; orders.js'teki ORDER değerleriyle eşleşir. */
 const ORDER_BADGE = { auto: '⚙', hold: '⏸' };
+
+/**
+ * TARAF RENGI — "bu kimin ordusu" sorusunun TEK cevabi. Ulus rengi yetmiyordu:
+ * elli bes ulusun paleti birbirine yakin ve savasta iki tarafin rozetleri ayni
+ * tona karisiyordu (Kerem). Varsayilan oyun zoomunda (0.287) rozet yalniz
+ * bayrakti ve hicbir taraf isareti tasimiyordu. Renk ulustan bagimsiz, oyuncuya
+ * gore: benim yesil, muttefik celik mavi, savastigim kizil; ucuncu taraf
+ * isaretsiz. Benimki PIRINC OLAMAZ: kunyelerin kendisi pirinc, altin hale
+ * her rozette varmis gibi okunuyordu. Saldiri ucgenleri de ayni renkleri
+ * kullanir.
+ */
+const SIDE_COLOR = { own: '#63c77a', ally: '#6fa8d6', hostile: '#dc5a40' };
+const SIDE_HALO = {
+  own: 'rgba(99, 199, 122, 0.95)',
+  ally: 'rgba(111, 168, 214, 0.92)',
+  hostile: 'rgba(220, 90, 64, 0.95)',
+};
 
 /**
  * Birim kunyeleri: pirinc plakalar (assets/icons/units). Sayacin ortasindaki
@@ -1688,10 +1706,15 @@ export class Renderer {
 
     t0 = performance.now();
     if (state.reachable) this.drawReachable(ctx, state.reachable);
-    if (state.selected && state.selected.provinceId >= 0) {
+    // ORDU SECILIYKEN EYALET VURGUSU YOK. Secili kare panelin baglamidir
+    // (ordunun durdugu yer) ama haritada eyalet cercevesi cizmek, oyuncuya
+    // "eyalet de secildi" diyordu (Kerem: asker seciliyken state secme bugu).
+    // Orduyu gosteren isaret drawSelection'in halkasidir.
+    const armySelected = (state.selection?.length ?? 0) > 0;
+    if (!armySelected && state.selected && state.selected.provinceId >= 0) {
       this.drawProvinceHighlight(ctx, world, state.selected.provinceId);
     }
-    if (state.selected) this.drawHighlight(ctx, state.selected, '#ffffff', 3);
+    if (!armySelected && state.selected) this.drawHighlight(ctx, state.selected, '#ffffff', 3);
     if (state.hovered && state.hovered !== state.selected) {
       this.drawHighlight(ctx, state.hovered, 'rgba(255,255,255,0.45)', 2);
     }
@@ -2623,6 +2646,15 @@ export class Renderer {
     }
   }
 
+  /** Birimin oyuncuya göre tarafı (bkz. SIDE_COLOR). Ültimatomdaki düşman da düşmandır. */
+  sideOf(world, nationId, playerNation) {
+    if (playerNation == null || playerNation < 0 || !world) return 'other';
+    if (nationId === playerNation) return 'own';
+    if (atWar(world, nationId, playerNation) || inCrisis(world, nationId, playerNation)) return 'hostile';
+    const me = world.nations?.[playerNation];
+    return me && isAllied(me, nationId) ? 'ally' : 'other';
+  }
+
   /** Birim kimlik şeridinin mineral tonu; kare başına dize kurulmasın. */
   nationBand(nation) {
     const key = `nband:${nation.id}`;
@@ -2652,6 +2684,8 @@ export class Renderer {
     const zoom = this.camera.zoom;
     const width = HEX_SIZE * 1.56;
     const height = HEX_SIZE * 1.08;
+    // Taraf ulus basina bir kez: kare icinde ayni ulusun onlarca rozeti var.
+    const sides = new Map();
 
     for (const unit of world.units) {
       const tile = unit.tile;
@@ -2661,6 +2695,11 @@ export class Renderer {
       const stack = unitsOn(tile);
       if (stack.length > 1 && stack[0] !== unit) continue;
       const nation = world.nations[unit.nationId];
+      let side = sides.get(unit.nationId);
+      if (!side) {
+        side = this.sideOf(world, unit.nationId, playerNation);
+        sides.set(unit.nationId, side);
+      }
       const y = tile.y + (tile.city ? HEX_SIZE * UNIT_ON_CITY_OFFSET : 0);
       const left = tile.x - width / 2;
       const top = y - height / 2;
@@ -2676,6 +2715,13 @@ export class Renderer {
         const off = 1.5 / zoom;
         ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
         ctx.fillRect(left + off * 0.4, top + off, width, height);
+        const edge = SIDE_COLOR[side];
+        if (edge) {
+          // Taraf cercevesi bayragin DISINA tasar: bayrak kimligini yemez.
+          const pad = 1.6 / zoom;
+          ctx.fillStyle = edge;
+          ctx.fillRect(left - pad, top - pad, width + pad * 2, height + pad * 2);
+        }
         const flag = this.flagSprite(nation, width, height);
         if (flag) ctx.drawImage(flag, left, top, width, height);
         else {
@@ -2684,17 +2730,18 @@ export class Renderer {
           ctx.fillStyle = this.nationBand(nation);
           ctx.fillRect(left, top, width, height * 0.3);
         }
-        // Muharebedeki birim: bayragin uzerine ince kizil hat. Zemini
-        // kizartmak bayragi yutuyordu, kimlik ikinci kez kaybolurdu.
-        if (unit.battleId) {
-          ctx.strokeStyle = '#c2604a';
-          ctx.lineWidth = 1.6 / zoom;
+        // Muharebe artik rozeti KIZARTMAZ: kizil cerceve dusmanin rengi oldu
+        // ve iki tarafin da ayni hatla cizilmesi karisikligin kendisiydi.
+        // Muharebeyi drawBattles nisani ve saldiri ucgenleri gosterir.
+        if (!edge) {
+          ctx.strokeStyle = 'rgba(6, 10, 12, 0.75)';
+          ctx.lineWidth = 1 / zoom;
           ctx.strokeRect(left, top, width, height);
         }
         continue;
       }
 
-      const sprite = this.unitSprite(unit, nation, Math.min(stack.length, 9), unit === selectedUnit);
+      const sprite = this.unitSprite(unit, nation, Math.min(stack.length, 9), unit === selectedUnit, side);
       ctx.drawImage(sprite.canvas, left - sprite.margin, top - sprite.margin, sprite.w, sprite.h);
     }
   }
@@ -2727,7 +2774,7 @@ export class Renderer {
   }
 
   /** Sayaç sprite önbelleği; anahtar görsel durumun tamamını taşır. */
-  unitSprite(unit, nation, stackLen, selected) {
+  unitSprite(unit, nation, stackLen, selected, side = null) {
     // Zoom kovası: sprite 1.25 adımlı ölçek basamağında pişer, ara zoomlarda
     // blit ölçeklenir (≤%12 sapma — durağan kartta okunur fark bırakmıyor).
     const bucket = Math.max(-6, Math.min(10,
@@ -2740,10 +2787,7 @@ export class Renderer {
     // KIMIN ORDUSU: kunye cercevesi bunu soyler. Ulus rengi seridi tek basina
     // yetmiyordu — elli beş ulusun paleti birbirine yakin ve oyuncu kendi
     // birimini dusmanininkinden ayiramiyordu (kullanici bildirimi).
-    const me = this.playerNationId;
-    const allegiance = me == null ? 'other'
-      : unit.nationId === me ? 'own'
-        : this.viewWorld && atWar(this.viewWorld, unit.nationId, me) ? 'hostile' : 'other';
+    const allegiance = side ?? this.sideOf(this.viewWorld, unit.nationId, this.playerNationId);
     const key = `${bucket}|${nation.id}|${unit.type.id}|${soldiers}|${strengthQ}|${orgQ}|`
       + `${unit.battleId ? 1 : 0}|${selected ? 1 : 0}|${stackLen}|${unit.order?.type ?? ''}|`
       + `${unitPlates.size}|${allegiance}`;
@@ -2809,10 +2853,9 @@ export class Renderer {
     // pirinc kunyenin KENDI cercevesi resmin icinde oldugu icin ustune cizilen
     // 1-2 piksellik hat kayboluyordu. Hale plakanin disina tasar ve uzaktan da
     // okunur: benimki fildisi-pirinc, dusman tugla kirmizisi, ucuncu taraf yok.
-    const halo = spec.allegiance === 'own' ? 'rgba(214, 186, 122, 0.85)'
-      : spec.allegiance === 'hostile' ? 'rgba(169, 94, 74, 0.9)' : null;
+    const halo = SIDE_HALO[spec.allegiance] ?? null;
     if (halo) {
-      const pad = Math.max(1.6 / zoom, height * 0.075);
+      const pad = Math.max(1.8 / zoom, height * (spec.allegiance === 'hostile' ? 0.095 : 0.08));
       ctx.fillStyle = halo;
       ctx.fill(roundedRectPath(new Path2D(),
         left - pad, top - pad, width + pad * 2, height + pad * 2,
@@ -2847,11 +2890,10 @@ export class Renderer {
     //   ucuncu  — soluk, ince
     const own = spec.allegiance === 'own';
     const hostile = spec.allegiance === 'hostile';
-    ctx.lineWidth = (spec.selected || hostile || spec.battle ? 2.4 : own ? 1.9 : 1.2) / zoom;
-    ctx.strokeStyle = spec.selected ? '#e8c98a'
-      : hostile ? '#a95e4a'
-        : own ? '#c6b183'
-          : spec.battle ? '#a95e4a' : 'rgba(206, 196, 172, 0.34)';
+    const ally = spec.allegiance === 'ally';
+    ctx.lineWidth = (spec.selected || hostile ? 2.4 : own || ally ? 1.9 : 1.2) / zoom;
+    ctx.strokeStyle = spec.selected ? '#fff1cc'
+      : SIDE_COLOR[spec.allegiance] ?? 'rgba(206, 196, 172, 0.34)';
     ctx.stroke(outer);
 
     // Ulke rengi yalniz ust kimlik seridinde: counter haritaya karismaz.
@@ -2981,6 +3023,8 @@ export class Renderer {
         .map((id) => unitById.get(id)).filter(Boolean);
       const aSoldiers = attackers.reduce((sum, army) => sum + soldiersOf(army), 0);
       const dSoldiers = defenders.reduce((sum, army) => sum + soldiersOf(army), 0);
+      // Iki olcekte de: kimin nereye vurdugu uzaktan da okunmali.
+      this.drawAttackMarks(ctx, world, tile, attackers);
 
       // UZAK LOD: rakam okunmuyor, kalabalik okunuyor. Kirmizi bir nisan yeter;
       // tam kunye o olcekte hexleri yutup "haritayi kapatan ikon" oluyordu.
@@ -3059,6 +3103,45 @@ export class Renderer {
       ctx.fillText(`${a} ⚔ ${d}`, x + 0.7 / zoom, textY + 0.7 / zoom);
       ctx.fillStyle = '#e9dcc0';
       ctx.fillText(`${a} ⚔ ${d}`, x, textY);
+    }
+  }
+
+  /**
+   * SALDIRI UCGENI: saldiran her tumenin karesinden muharebe karesine bakan
+   * kucuk ucgen, iki karenin ortak kenarinda. Rozetler kimin NEREDE durdugunu
+   * soyluyordu, kimin NEREYE vurdugunu soylemiyordu (Kerem). Rengi saldiranin
+   * oyuncuya gore tarafidir (SIDE_COLOR); ayni kareden gelen tumenler tek
+   * ucgendir. Boy ekranda sabit tabanli: varsayilan zoomda da gorunur.
+   */
+  drawAttackMarks(ctx, world, target, attackers) {
+    if (!attackers.length) return;
+    const zoom = this.camera.zoom;
+    const P = world.wrapWidth;
+    const size = Math.max(HEX_SIZE * 0.5, 15 / zoom);
+    const seen = new Set();
+    for (const army of attackers) {
+      const from = army.tile;
+      if (!from || from === target || seen.has(from)) continue;
+      seen.add(from);
+      let dx = target.x - from.x;
+      if (P) dx -= P * Math.round(dx / P);
+      const dy = target.y - from.y;
+      const length = Math.hypot(dx, dy);
+      if (!(length > 0)) continue;
+      const ux = dx / length;
+      const uy = dy / length;
+      const mx = from.x + dx * 0.5;
+      const my = from.y + dy * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(mx + ux * size * 0.62, my + uy * size * 0.62);
+      ctx.lineTo(mx - ux * size * 0.38 - uy * size * 0.5, my - uy * size * 0.38 + ux * size * 0.5);
+      ctx.lineTo(mx - ux * size * 0.38 + uy * size * 0.5, my - uy * size * 0.38 - ux * size * 0.5);
+      ctx.closePath();
+      ctx.fillStyle = SIDE_COLOR[this.sideOf(world, army.nationId, this.playerNationId)] ?? '#e9dcc0';
+      ctx.fill();
+      ctx.lineWidth = 1.3 / zoom;
+      ctx.strokeStyle = 'rgba(8, 10, 12, 0.9)';
+      ctx.stroke();
     }
   }
 

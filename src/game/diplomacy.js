@@ -274,6 +274,10 @@ export function declareWar(game, a, b, options = {}) {
     const attacked = b === game.turns.playerNation;
     announce(game, me, {
       kind: 'CRISIS', tier: TIER.MAJOR, key: `crisis-${other.id}`, ttl: 0,
+      // Oyuncunun KENDİ tıkladığı ilan saati durdurmaz: kararı az önce verdi,
+      // haberi yok değil. Saldırıya uğramak ya da devredilmiş diplomasinin
+      // ilanı ise durdurur (Kerem: "oyun aşırı fazla duruyor").
+      halt: !(manual && !attacked),
       title: attacked
         ? `${other.name} declares war on us — ${ULTIMATUM_WEEKS} weeks to prepare`
         : `War declared on ${other.name} — armies march in ${ULTIMATUM_WEEKS} weeks`,

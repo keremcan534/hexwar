@@ -24,9 +24,8 @@ export const INFAMY = {
    * zaman kazanıyordu. Ölçüm: 109 yılda 471 kare el değiştirdi, hiçbir ülkenin
    * şöhreti 0'ın üstüne çıkmadı — yani fethin diplomatik bedeli hiç işlemedi.
    *
-   * Artık asıl fren oransaldır: %3/tur unutulma, sürekli fetihte ~33 puanlık
-   * bir denge noktası verir ve bu tam da koalisyon eşiğidir (INFAMY_COALITION).
-   * Fethi bırakan ülke birkaç on yılda temizlenir.
+   * Artık asıl fren oransaldır (DECAY_RATIO, bugün %1.2/tur; ilk sürüm %3
+   * idi): fethi bırakan ülke birkaç on yılda temizlenir.
    */
   DECAY_PER_TURN: 0.05,
   /**

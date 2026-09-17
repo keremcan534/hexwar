@@ -179,7 +179,7 @@ export const PEACE_TERMS = {
   // kurulursa sart geri gelir.
   LIBERATE: {
     id: 'LIBERATE', name: 'Liberate Minorities', icon: '⚑', cost: 35,
-    desc: 'Provinces of a culture foreign to them break away and become independent.',
+    desc: 'Provinces of a culture foreign to them break away and join a state of their own people.',
   },
   VASSALIZE: {
     id: 'VASSALIZE', name: 'Vassalise', icon: '👑', cost: 65,
@@ -378,13 +378,44 @@ export function canVassalize(world, a, b) {
   return mine > theirs * 2.5 && world.nations[b].tiles > 0;
 }
 
+/**
+ * Serbest bırakılan kümenin gideceği devlet: aynı kültürden, yaşayan, iki
+ * tarafın dışında bir ulus. Sınır komşusu olan önce gelir (akraba toprağa
+ * yapışır); yoksa başkenti en yakın akraba. Hiçbiri yoksa -1: küme
+ * serbest bırakılamaz — sahipsiz toprak üretilmez.
+ */
+export function liberationHeir(world, province, a, b) {
+  const kin = (id) => {
+    const nation = world.nations[id];
+    return id >= 0 && id !== a && id !== b && nation?.alive && nation.culture === province.culture;
+  };
+  for (const neighborId of province.neighbors ?? []) {
+    const owner = world.provinces?.[neighborId]?.owner;
+    if (kin(owner)) return owner;
+  }
+  let best = -1;
+  let bestDistance = Infinity;
+  for (const nation of world.nations) {
+    if (!kin(nation.id) || !nation.capital) continue;
+    const distance = world.wrapDistance(
+      nation.capital.q, nation.capital.r, province.center.q, province.center.r,
+    );
+    if (distance < bestDistance) {
+      best = nation.id;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
 export function termAvailable(world, a, b, termId) {
   if (termId === 'VASSALIZE') return canVassalize(world, a, b);
   if (termId === 'LIBERATE') {
     const target = world.nations[b];
     return (world.provinces ?? []).some(
       (province) => province.owner === b && province.econ
-        && province.culture !== target.culture,
+        && province.culture !== target.culture
+        && liberationHeir(world, province, a, b) >= 0,
     );
   }
   return true;
@@ -526,6 +557,14 @@ export function offerAcceptable(world, a, b, offer) {
  * savaş beyaz barışla kapanıyordu.
  */
 export function occupiedProvincesOf(world, a, b) {
+  // KOALISYONUN HEDEFI UYELERDEN TOPRAK ALAMAZ. Koalisyon cezaydi ama odule
+  // donuyordu: uyeler hedefin %25 gucunde tek tek katiliyor, yenilip toprak
+  // veriyordu. Olculdu (3 tohum, 18 yil): hedef uyelerden 111-181 kume aldi,
+  // 29-58 kaybetti; savaslarin %73-83'u koalisyondu ve el degistiren toprak
+  // koalisyon kapaliyken %12-18, acikken %23-31 idi. Hedef savunmayi
+  // kazanabilir, masadan yalniz toprak disi sart alir.
+  const rec = relation(world, a, b);
+  if (rec?.reason === 'coalition' && rec.aggressor === b) return [];
   const held = [];
   for (const province of world.provinces ?? []) {
     if (province.owner !== b || !province.econ) continue;
@@ -688,22 +727,18 @@ function applyTerms(game, a, b, terms) {
     const term = PEACE_TERMS[termId];
     if (!term || !termAvailable(world, a, b, termId)) continue;
     if (termId === 'LIBERATE') {
-      // Yabancı kültürlü kümeler bağımsızlaşır: imparatorluk küçülür ama
-      // toprak fatihe geçmez — Victoria'daki "ulus serbest bırakma" bunu yapar.
-      // Küme bütün olarak çözülür; sınır hiçbir kümeyi ikiye bölmez.
+      // Yabancı kültürlü kümeler kendi halkının devletine katılır: imparatorluk
+      // küçülür ama toprak fatihe geçmez. Eskiden küme SAHİPSİZ bırakılıyordu;
+      // komşular ona şöhretsiz yerleşiyordu (ölçüldü: 20-21 küme, ilhakın
+      // bedeli 191-221 şöhret) ve haritada kimsenin olmayan toprak kalıyordu.
+      // Akrabası olmayan küme serbest bırakılamaz (bkz. liberationHeir).
       for (const province of world.provinces ?? []) {
         if (province.owner !== b || !province.econ) continue;
         if (province.culture === loser.culture) continue;
-        province.owner = -1;
-        loser.provinces = Math.max(0, (loser.provinces ?? 0) - 1);
-        for (const idx of province.tileIdx) {
-          const tile = world.tiles[idx];
-          loser.tiles = Math.max(0, loser.tiles - 1);
-          tile.owner = -1;
-          tile.controller = -1;
-        }
+        const heir = liberationHeir(world, province, a, b);
+        if (heir < 0) continue;
+        game.turns.claimAtPeace(province.center, heir);
         province.econ.control = 60;
-        game.renderer.invalidateTiles(province.tileIdx.map((idx) => world.tiles[idx]));
       }
       continue;
     }

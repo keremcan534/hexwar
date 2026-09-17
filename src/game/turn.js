@@ -157,6 +157,13 @@ export class TurnManager {
         // plan bir HEDEFTIR, garanti degil. Nufusu yetmeyen ulke daha az
         // tumenle baslar -- dogrusu da budur.
         const unit = recruit(this.game, nation, typeId)
+          // Kurulus ordusu 1836'da ZATEN silah altindadir: depo (16 tufek,
+          // 4 piyadeye yetiyor) bitince techizat dusulmeden kurulur ama adam
+          // yine gercek kumelerden cekilir. Eskiden dogrudan spawnAt'a
+          // dusuyordu: baslangic askerlerinin %26-30'u hicbir nufusta yoktu
+          // ve savas olumlerinin %8.7-9.1'i nufustan hicbir sey
+          // goturmuyordu (olculdu, 2 tohum, 260 hafta).
+          ?? recruit(this.game, nation, typeId, { charge: false })
           ?? this.spawnAt(nation, typeId, { fallbackToCapital: true });
         if (!unit) break;
         // Only an emergency fallback can lack province draws. Mark it
@@ -383,7 +390,10 @@ export class TurnManager {
       && !atWar(this.world, tile.owner, nationId)) return false;
 
     const occupier = this.world.nations[nationId];
-    if (tile.owner !== nationId) {
+    // Isgal sohreti YALNIZ SALDIRANA yazilir. Savunan da yaziliyordu:
+    // olculdu, isgal sohretinin %55-57'si savunanlarindi; koalisyonun hedefi
+    // kendini savunurken sohret topluyor, sohreti yeni koalisyon getiriyordu.
+    if (tile.owner !== nationId && relation(this.world, nationId, tile.owner)?.aggressor === nationId) {
       addInfamy(occupier, tileInfamy(tile, occupier) + (tile.city ? INFAMY.CITY : 0));
     }
     setController(tile, nationId, this.turn);
@@ -749,7 +759,16 @@ export class TurnManager {
         const rec = relation(world, nation.id, other.id);
         if (rec) rec.state = PEACE;
       }
-      // Toprakları sahipsizleşir; komşular buraya doğru genişleyebilsin.
+      // TOPRAK SAHİPSİZ KALMAZ. Eskiden kalan kareler -1'e düşüyor, komşular
+      // onlara şöhretsiz yerleşiyordu ve haritada kimsenin olmayan toprak
+      // kalıyordu (Kerem: "kimsenin kontrol etmediği toprak istemiyorum").
+      // Her küme bütün olarak varise geçer (bkz. heirOfProvince).
+      for (const province of world.provinces ?? []) {
+        if (province.owner !== nation.id || !province.econ || !province.center) continue;
+        const heir = this.heirOfProvince(province, nation.id);
+        if (heir >= 0) this.claimAtPeace(province.center, heir);
+      }
+      // Kümeye bağlı olmayan artık kare (eski kayıt) yine düşer.
       world.forEach((t) => {
         if (t.owner === nation.id) {
           t.owner = -1;
@@ -766,6 +785,48 @@ export class TurnManager {
       this.game.renderer.invalidateCache();
       this.addLog(`${nation.name} has been eliminated.`, { kind: 'NATION' });
     }
+  }
+
+  /**
+   * Elenen ulusun kümesini kim devralır: önce karelerini tutan işgalci
+   * (kare başına 3 oy), sonra kümeye sınır komşusu kümelerin sahipleri (küme
+   * başına 1 oy); eşitlikte küçük id. Deniz ardındaki yalnız küme en yakın
+   * başkentin ulusuna gider. Belirleyici: yineleme sırası sabittir.
+   */
+  heirOfProvince(province, deadId) {
+    const world = this.world;
+    const living = (id) => id >= 0 && id !== deadId && world.nations[id]?.alive;
+    const votes = new Map();
+    for (const idx of province.tileIdx) {
+      const holder = controllerOf(world.tiles[idx]);
+      if (living(holder)) votes.set(holder, (votes.get(holder) ?? 0) + 3);
+    }
+    for (const neighborId of province.neighbors ?? []) {
+      const owner = world.provinces?.[neighborId]?.owner;
+      if (living(owner)) votes.set(owner, (votes.get(owner) ?? 0) + 1);
+    }
+    let best = -1;
+    let bestVotes = 0;
+    for (const [id, count] of votes) {
+      if (count > bestVotes || (count === bestVotes && id < best)) {
+        best = id;
+        bestVotes = count;
+      }
+    }
+    if (best >= 0) return best;
+    let nearest = -1;
+    let nearestDistance = Infinity;
+    for (const other of world.nations) {
+      if (!living(other.id) || !other.capital) continue;
+      const distance = world.wrapDistance(
+        other.capital.q, other.capital.r, province.center.q, province.center.r,
+      );
+      if (distance < nearestDistance) {
+        nearest = other.id;
+        nearestDistance = distance;
+      }
+    }
+    return nearest;
   }
 
   /**

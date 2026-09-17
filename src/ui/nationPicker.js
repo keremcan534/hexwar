@@ -164,5 +164,13 @@ export class NationPicker {
       }
     }
     this.root.scrollTop = 0;
+    // Aday degisince kart suzulur (styles.css §31). Sinif kisa sure sonra
+    // sokulur: ayni adayin yeniden cizimi animasyonu tekrar oynatmasin.
+    if (this.shown !== nation.id) {
+      this.shown = nation.id;
+      this.root.classList.add('is-swapping');
+      clearTimeout(this.swapTimer);
+      this.swapTimer = setTimeout(() => this.root.classList.remove('is-swapping'), 260);
+    }
   }
 }

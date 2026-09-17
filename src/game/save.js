@@ -632,6 +632,45 @@ export function loadFromStorage(game, slot = STORAGE_KEY) {
 }
 
 
+/**
+ * Kaydın ham metni — dosyaya aktarmak için. Tarayıcı deposu ADRES başınadır:
+ * oyun başka bir adresten açılınca (başlatıcının penceresi, başka port)
+ * önceki kayıt görünmez. Dosya, kaydın adresler arasında taşınma yoludur.
+ */
+export function exportSaveText(slot = STORAGE_KEY) {
+  try {
+    return localStorage.getItem(slot);
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * Dosyadan gelen kaydı depoya yazar. Yüklemeden ÖNCE doğrulanır: bozuk ya da
+ * bu sürümün okuyamadığı bir dosya çalışan kaydın üstüne yazılmamalı.
+ * @returns {{ ok: boolean, reason?: string, info?: object }}
+ */
+export function importSaveText(text, slot = STORAGE_KEY) {
+  let data = null;
+  try {
+    data = JSON.parse(text);
+  } catch (err) {
+    return { ok: false, reason: 'not a save file' };
+  }
+  if (!data || typeof data !== 'object' || !Number.isFinite(data.turn) || data.seed == null) {
+    return { ok: false, reason: 'not a save file' };
+  }
+  if (data.version !== SAVE_VERSION && !MIGRATABLE_VERSIONS.has(data.version)) {
+    return { ok: false, reason: `save version ${data.version} cannot be read by this build` };
+  }
+  try {
+    localStorage.setItem(slot, text);
+  } catch (err) {
+    return { ok: false, reason: 'browser storage is full or disabled' };
+  }
+  return { ok: true, info: { seed: data.seed, turn: data.turn, savedAt: data.savedAt } };
+}
+
 export function savedInfo(slot = STORAGE_KEY) {
   try {
     const raw = localStorage.getItem(slot);

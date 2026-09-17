@@ -102,10 +102,16 @@ export function denizKur(THREE, game, { onayar = 'kerem', kayitli = null } = {})
 
   // Arka doku: OYUNUN kendi karesi. Suyun altında görünen şey uydurma bir
   // taban değil, haritanın gerçek pikselidir.
-  const arkaTex = new THREE.CanvasTexture(document.getElementById('map-water'));
-  arkaTex.minFilter = arkaTex.magFilter = THREE.LinearFilter;
-  arkaTex.wrapS = arkaTex.wrapT = THREE.ClampToEdgeWrapping;
-  arkaTex.generateMipmaps = false;
+  const arkaKaynak = document.getElementById('map-water');
+  const arkaDoku = () => {
+    const t = new THREE.CanvasTexture(arkaKaynak);
+    t.minFilter = t.magFilter = THREE.LinearFilter;
+    t.wrapS = t.wrapT = THREE.ClampToEdgeWrapping;
+    t.generateMipmaps = false;
+    return t;
+  };
+  let arkaTex = arkaDoku();
+  let arkaBoyut = `${arkaKaynak.width}x${arkaKaynak.height}`;
 
   const alan0 = r.material.cache;
   const ilk = dalgaDizisi(THREE, P);
@@ -236,6 +242,21 @@ export function denizKur(THREE, game, { onayar = 'kerem', kayitli = null } = {})
     kus.U.uTime.value = U.uTime.value;
     kus.U.uPikselDunya.value = 1 / cam.zoom;
 
+    // PENCERE BOYUTU: three.js dokunun depolamasını ilk yüklemede sabitler;
+    // oyun #map-water'ı yeniden boyutlayınca yeni kare eski dokuya sığmıyordu
+    // (konsol: "glCopySubTextureCHROMIUM: Offset overflows texture
+    // dimensions") ve kırılan su eski/kaymış bir kareyi gösteriyordu — oyuncu
+    // pencereyi büyütüp küçültünce "su kayıyor" gördü. Boyut değişince doku
+    // yeniden kurulur.
+    const boyut = `${arkaKaynak.width}x${arkaKaynak.height}`;
+    if (boyut !== arkaBoyut) {
+      arkaBoyut = boyut;
+      const eski = arkaTex;
+      arkaTex = arkaDoku();
+      U.uArka.value = arkaTex;
+      eski.dispose();
+      arkaTazele = Math.max(arkaTazele, 2);
+    }
     const kamDegisti = cam.x !== sonKam.x || cam.y !== sonKam.y || cam.zoom !== sonKam.zoom;
     if (kamDegisti || arkaTazele > 0 || r.hasPendingJobs()) {
       if (r.waterGL && r.waterGL.gl) r.waterGL.gl.flush();

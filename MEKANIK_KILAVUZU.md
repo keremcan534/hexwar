@@ -550,12 +550,53 @@ tersi: ucuz girdi, geniş pazar, sıfır gümrük geliri.
 
 **Formül**
 
-    hedef ölçek = clamp( √(fiyat / taban fiyat), 0.5, 1 )      ← MAL BAŞINA
-    ölçek      += (hedef − ölçek) × 0.004            ← her hafta (yarıya inmek ~4 yıl)
+    fiyat bandı  = taban fiyat × [0.5, 1.5]                     ← priceBand.js
+    yer          = bant içindeki konum: tabanda −1, taban fiyatta 0, tavanda +1
+    hedef ölçek  = √(1 + min(0, yer) × (1 − 0.5²))  ∈ [0.5, 1]  ← MAL BAŞINA
+    ölçek       += (hedef − ölçek) × 0.004            ← her hafta (yarıya inmek ~4 yıl)
     RGO kadrosu ×= satırların hex ağırlıklı ölçeği ; malın çıktısı ×= kendi ölçeği
-    yukarı yön ayrı: gelişme × rgoPriceDrive (0.05…2.5), iz başına
+    yukarı yön ayrı: gelişme × rgoPriceDrive — tabanda 0.05, taban fiyatta 1, tavanda 2.5
 
-**Kod** — `src/game/provinces.js` `updateDemandScale`, `rgoJobsOf`, `provinceOutput`
+**Kod** — `src/game/priceBand.js`, `src/game/provinces.js` `updateDemandScale`,
+`rgoPriceDrive`, `rgoJobsOf`, `provinceOutput`
+
+**Fiyat bandı ±%50 (2026-09-17).** Bant 0.12–8 idi ve malların yarısı iki
+uçtan birine çakılı yaşıyordu (bkz. aşağıdaki ölçümler). Kerem'in isteği
+"dünya çökmesin": bant taban fiyatın 0.5–1.5 katına daraldı. Arz tepkisi ham
+oranı değil bandın içindeki YERİ okur; oranı okusaydı ±%50 bantta tam frene
+(eski eşik 0.25) ve tam gaza (2.5) hiç varılamazdı ve tabana çakılı mal yarım
+hızla gelişmeye devam ederdi — yukarıda ölçülen tırmanışın aynısı.
+
+Ölçüldü — 9 tohum, eşleştirilmiş (aynı tohumda bant − eski bant), standart
+dünya, gözlemci, taban f526c93; `t` eşleştirilmiş farkın t değeri:
+
+| | eski bant | fark | t |
+|---|---|---|---|
+| fiyatın tabandan ortalama sapması, \|ln oran\| (20. yıl) | 0.845 | **−0.417** | −34.1 |
+| taban fiyatın yarısı ve altında mal (10. yıl) | 19.3 | **−7.4** | −10.5 |
+| istikrar medyanı (10. yıl) | 0.553 | +0.037 | 3.0 |
+| fabrika sayısı (5. yıl) | 1034 | **−260** | −31.6 |
+| fabrika doluluğu (10. yıl) | %48.3 | **+9.1 puan** | 10.8 |
+| alt sınıf sepeti (5. yıl) | 0.633 | −0.029 | −5.0 |
+| reel GSYH (5. yıl) | 7550 | −516 | −7.6 |
+| reel GSYH (20. yıl) | 8615 | −23 | −0.1 |
+| dünya nüfusu (20. yıl) | 280M | −5.6M | −3.0 |
+| toplam borç (20. yıl) | 25779 | +9461 | 2.6 |
+| yaşayan ülke (20. yıl) | 51.8 | −2.6 | −1.4 |
+
+Okuma: fiyatlar sakinleşti ve ilk on yılda istikrar biraz yükseldi. Bedeli
+erken sanayi yatırımında: 1836 dünyası fabrikasız açıldığı için mamul mallar
+eski bantta 8 kata fırlıyor ve ilk beş yılda bir kuruluş dalgası
+tetikliyordu (fiyat endeksi 1. yılda 3.05, yeni bantta 1.13; 3 tohum). Dalga
+kalkınca 5. yılda %25 daha az fabrika var, ama kurulanlar daha dolu ve daha
+kârlı; 3 tohumluk koşuda 10. yıldan sonra fabrikada çalışan kadro eşit ya da
+fazla (seviye × doluluk: 10. yıl 604 → 627, 30. yıl 647 → 699). 20. yılda
+nüfus −%2 ve borç +%37 ayrıştırılmadı; ilk yılların eksik sepeti nüfus için
+olası sebep. Ülke kaybı anlamlı değil.
+
+**AÇIK** — erken yatırım artık fiyat sıçramasından değil kıtlıktan
+okunmalı: `investmentOptions` yalnız marja bakıyor ve tavan 1.5'te marj
+kıtlığı az gösteriyor. Aday ölçülmedi.
 
 **Çalışıyor mu?** **EVET, yavaş.** 520 haftalık barış koşusu (tohum BAND-1):
 mal-haftalarının tabanda geçen payı %37.7 → %31.0, toplam bant doygunluğu
@@ -1214,6 +1255,23 @@ var, ters yönde: seferberlik alt sınıf moralinden 0.06 götürür. Yani "büy
 edilmiş taşra havuza **hiç** katkı vermez — savaşta toprak kaybetmek aynı
 zamanda yedek kaybetmektir.
 
+**Asker kaybı gerçek kayıptır.** Askere alınan adam nüfusun İÇİNDE kalır
+(`claimSoldiers`); tarladan ve insan gücü havuzundan düşer, meslek tablosunda
+`soldiers` olarak görünür. Savaşta ölen adam hem nüfustan hem asker kaydından
+düşer ve hiçbir terim onu geri doldurmaz; terhis yalnız kaydı bırakır, insan
+yaratmaz. Ölçüldü (2 tohum, 260 hafta): savaş fazındaki nüfus düşüşü sayılan
+ölümlere **birebir** eşit (−1.571.002 / −1.420.802), kayıt/yükleme sonrası
+asker ve nüfus 4 haneye kadar aynı.
+
+**Bedava başlangıç ordusu kapandı.** Kuruluş tümeni önce depodan teçhizat
+isteyerek kuruluyordu; depo 16 tüfek (4 piyade) olduğu için plan çoğu ülkede
+tükeniyor ve kalan tümenler HİÇBİR kümeden adam çekilmeden yaratılıyordu:
+başlangıç askerlerinin %26-30'u hiçbir nüfusta yoktu, savaş ölümlerinin
+%8.7-9.1'i nüfustan bir şey götürmüyordu. Artık depo bitince tümen teçhizatsız
+kurulur ama adamı gerçek kümelerden çekilir (`turn.js`); gerçek kümeden adam
+çeken alay payı %94.5 (`diagnose:rgo`, 309 alay). Kalanı nüfusu yetmeyen
+ülkelerin acil durum tümenidir.
+
 ## 5.4 Ültimatom
 
 **Formül**
@@ -1468,6 +1526,66 @@ değişmedi (en büyük 10'dan 1.0, en küçük 10'dan 6.3 — master'da da ayn�
 dünya daha **az** yoğunlaşıyor: ilk üçün payı %39.2 → %35.7, ortanca ülke
 boyu 8.3 → 12.0. Harita üç deve değil orta boy devletlere oturuyor.
 
+## 5.9 Şöhret, koalisyon ve sahipsiz toprak
+
+**Formül**
+
+    şöhret kazancı = ilhak (annexInfamy) + işgal (tileInfamy, şehir +INFAMY.CITY)
+                     işgal şöhreti YALNIZ o savaşın SALDIRGANINA yazılır
+    erime          = 0.05 + %1.2 / hafta
+    koalisyon      = şöhret ≥ 22 → temaslı komşular tek tek katılabilir
+    koalisyon savaşında hedef, üyelerden TOPRAK alamaz (occupiedProvincesOf → [])
+
+**Kod** — `src/game/infamy.js`, `src/game/turn.js` (`occupy`, `heirOfProvince`,
+`checkElimination`), `src/game/peace.js` (`occupiedProvincesOf`,
+`liberationHeir`, `LIBERATE`)
+
+**Ne bozuktu.** Kerem "şöhret doğru çalışıyor mu" diye sordu; ayrı bir ajan
+3 tohum × 18 yıl ölçtü:
+
+1. **Koalisyon ceza değil ödüldü.** Üyeler hedefin %25 gücünde tek tek
+   katılıyor, yenilip toprak veriyordu: hedef üyelerden 111–181 küme aldı,
+   29–58 kaybetti. Savaş ilanlarının %73–83'ü koalisyondu; el değiştiren
+   toprak koalisyon açıkken %23–31, kapalıyken %12–18.
+2. **Savunan da işgal şöhreti topluyordu:** işgal şöhretinin %55–57'si
+   savunanlarındı. Kendini savunan hedefin şöhreti yeni koalisyon getiriyordu.
+3. **"Liberate Minorities" toprağı SAHİPSİZ bırakıyordu:** komşular 20–21
+   kümeye şöhretsiz yerleşti (aynı toprağın ilhakı 191–221 şöhret).
+4. **Elenen ülkenin kalan toprağı sahipsizleşiyordu** ve aynı bedava
+   yerleşme yolundan geçiyordu.
+
+**Düzeltme.** (1) Koalisyon savaşında hedef masadan toprak dışı şart alır.
+(2) İşgal şöhreti yalnız saldırgana. (3) Serbest bırakılan küme aynı kültürden
+üçüncü bir ülkeye katılır (önce sınır komşusu); akrabası yoksa serbest
+bırakılamaz. (4) Elenen ülkenin her kümesi işgalcisine ya da en çok sınır
+paylaşan komşusuna geçer (`heirOfProvince`). Kutup buzu zaten bağlı olduğu
+kümenin rengiyle boyanıyordu; panel de artık "Unclaimed Territory" değil o
+ülkeyi yazar. Sonuç: oyun boyunca sahipsiz toprak oluşmaz.
+
+**Çalışıyor mu?** **EVET, kısmen.** `audit:war-pressure` (50 yıl × 3 tohum;
+taban f526c93, yeni kolda aynı çalışma alanındaki fiyat bandı ve kuruluş
+ordusu değişiklikleri de var):
+
+| | taban | yeni |
+|---|---|---|
+| dünya zirve şöhreti (ortalama) | 270 | **172** |
+| eşiği geçen ülke-hafta | 5053 / 7241 / 8421 | **2978 / 2047 / 2775** |
+| el değiştiren küme | %38.5 — HIGH kartopu | **%30.7** — bulgu yok |
+| ayakta kalan ülke (başlangıç 28–29) | 17 / 17 / 17 | 19 / 20 / 18 |
+| ortanca savaş süresi | 21.3 hafta | 41.3 hafta |
+
+`audit:borders` (50 yıl × 3 tohum): el değiştiren küme %34.1 / 39.4 / 41.7
+→ %36.9 / 31.1 / 35.6, toprak kazanan ülke 11 → 14. **Açık:** üç tohumun
+ikisinde hâlâ üçte biri aşıyor (HIGH kartopu). Sahipsizliğe düşen küme
+(`deaths` ölçümü, 2 tohum × 20 yıl): önce 5 yıllık dilimlerde 0–6, şimdi 0.
+
+**Görünmeyen bedel — açık.** Barış masası imzalanacak şartın şöhret bedelini
+göstermiyor; ipucu yalnız "hex, şehir ve kişi başına" diyor.
+
+**Pratikte** — koalisyon artık kartopu yapmaz: sana karşı kurulan koalisyonu
+yenersen hayatta kalırsın ama üyelerinden toprak koparamazsın. Savunurken
+düşman toprağını işgal etmek şöhret getirmez; saldırırken getirir.
+
 ---
 
 # 6. SİYASET — hükûmet ve beş yasa
@@ -1572,19 +1690,25 @@ dünyanın 0.08 altında kaldı.
 
 | Kaldıraç | Hüküm | Kaç kat (son) | ilk 5-yasa taraması | En güçlü ölçüt (son) |
 |---|---|---|---|---|
-| Constitution | EVET | 4.98× | 6.97× | istikrar |
-| Labour Rights | EVET | 5.49× | 6.20× | memnuniyet |
-| Welfare State | EVET | 7.40× | 7.63× | memnuniyet |
-| Conscription | EVET | 1.75× | 2.40× (eski merdiven 1.66×) | memnuniyet |
-| Citizenship | GÜRÜLTÜ ALTI, bağlı | 0.55× | 0.71× (eski azınlık hakları 0.57×) | istikrar |
-| Meşruiyet | EVET | 2.35× | 2.82× | istikrar |
+| Constitution | EVET | 6.00× | 6.97× | istikrar |
+| Labour Rights | EVET | 4.78× | 6.20× | memnuniyet |
+| Welfare State | EVET | 7.08× | 7.63× | istikrar |
+| Conscription | EVET | 1.83× | 2.40× (eski merdiven 1.66×) | memnuniyet |
+| Citizenship | EVET, eşikte | 1.68× | 0.71× (eski azınlık hakları 0.57×) | hazine |
+| Meşruiyet | EVET | 2.37× | 2.82× | istikrar |
 
-"Son" = 2026-09-17 taraması (program kalktı, hex kaynakları geldi). Sınıflar
-değişmedi; katlar ekonomi değiştikçe oynar.
+"Son" = 2026-09-17 taraması (program kalktı, hex kaynakları, ±%50 fiyat
+bandı, adamı gerçek kümeden gelen kuruluş ordusu). Katlar ekonomi değiştikçe
+oynar; vatandaşlık eşiğin iki yanında gidip geliyor (aynı gün iki taramada
+0.55× ve 1.68×) — hüküm "eşikte".
 
 Doğrudan kanal (son tarama): vatandaşlık Residency → Full taşra gelirini
-**+%20.0** (ilk taramada +%8.3), işçi hakkı None → Strong işçi gelirini
-**+%19.3** oynatıyor (eski asgari ücret kanalı %0.6'da kalıyordu). Vatandaşlığın asıl işi azınlığı olan ülkededir: `audit:culture-unrest`
+**+%13.0** (ilk taramada +%8.3), işçi hakkı None → Strong işçi gelirini
+**+%2.8** oynatıyor (eski asgari ücret kanalı %0.6'da kalıyordu). İşçi
+kanalı bant daralmadan önceki taramada **+%19.3** idi: taban fiyat 0.12'den
+0.5'e çıkınca satılamayan hammaddenin geliri de büyüyor ve ücret, alt sınıf
+gelirinin küçük bir parçasına iniyor. Yasa memnuniyette hâlâ 4.78× çalışıyor;
+kanal daralması §4.3 bant notunda açık iş olarak duruyor. Vatandaşlığın asıl işi azınlığı olan ülkededir: `audit:culture-unrest`
 TEST 3'te huzursuzluk Residency 4.91 → Full 3.14.
 
 **Pratikte** — tek tık artık büyüktür. İşçi hakkında bir kademe alt sınıf
@@ -1601,11 +1725,11 @@ en güçlü ölçüt.
 
 | # | Mekanik | Formül (kısa) | Çalışıyor? | Kaç kat |
 |---|---|---|---|---|
-| 1 | Vergi | gelir × oran × sınıf ağırlığı | EVET | 7.82× (alt sınıf) |
-| 2 | Gümrük | ithalat × oran; girdi fiyatı ×(1+oran×ithal payı); gıda iştahtan muaf | EVET | 1.97× |
+| 1 | Vergi | gelir × oran × sınıf ağırlığı | EVET | 8.00× (alt sınıf) |
+| 2 | Gümrük | ithalat × oran; girdi fiyatı ×(1+oran×ithal payı); gıda iştahtan muaf | EVET | 1.82× |
 | 3 | Ordu fonu | güç = 0.55 + fon×0.45 | EVET (savaşta) | contract §6 |
-| 4 | Eğitim | (nüfus/10k) × bütçe × 0.34 | EVET | 13.44× |
-| 5 | Refah | (nüfus/10k) × bütçe × 0.76 | EVET | 4.49× |
+| 4 | Eğitim | (nüfus/10k) × bütçe × 0.34 | EVET | 13.97× |
+| 5 | Refah | (nüfus/10k) × bütçe × 0.76 | EVET | 4.63× |
 | 6 | Okuryazarlık | hedefe haftada binde 4 yaklaşır | EVET | zincirin içinde |
 | 7 | Araştırma | (okuryazarlık×4 + orta×1.5 + katip + 1) × çarpanlar | EVET | 4.00× |
 | 8 | Teknoloji maliyeti | 120 × (1+kademe×0.55) × erken ceza | EVET | kalibre |
@@ -1614,16 +1738,16 @@ en güçlü ölçüt.
 | 11 | Nüfus | beş çarpanın çarpımı; beslenme %50 altı kıtlık | EVET | ölçüldü |
 | 12 | İşsizlik | (min(işçi,tezgâh) − istihdam) / tezgâh | EVET | tek kaynak |
 | 13 | Fabrika ücreti | katma değer × 0.55 × yasa çarpanı | EVET | +%8.8 |
-| 14 | Ticaret | min(fazla, teklif); iştah = 1/(1+oran×1.6), gıdada 1 | EVET | 1.97× |
+| 14 | Ticaret | min(fazla, teklif); iştah = 1/(1+oran×1.6), gıdada 1 | EVET | 1.82× |
 | 15 | İdari gider | (şehir−1)^1.6 × 4.0 + nüfus^0.75 × 0.8 | EVET | kaldıraç değil |
-| 16 | Taşra sadakati | tavan = vatandaşlık yasası; üretim ×= sadakat | BAĞLI, hissedilmez | +%20.0 |
-| 17 | İnsan gücü | havuz × (0.85 + askerlik×0.45) | EVET | 1.75× |
-| 18 | Anayasa | alt +0.22, orta +0.23, üst −0.12, araştırma +%25; kimin desteği sayılır | EVET | 4.98× |
-| 19 | İşçi hakları | alt +0.44 (kölelik kalkınca +0.08), bordro +%29, üretim −%5.4 | EVET | 5.49× |
-| 20 | Sosyal devlet | alt +0.32, hazine yükü 0.41, okuryazarlık tabanı 0.35 | EVET | 7.40× |
-| 21 | Vatandaşlık | azınlık tavanı 0.7→1.0, huzursuzluk, asimilasyon | GÜRÜLTÜ ALTI, bağlı | 0.55× |
-| 22 | Askerlik | insan gücü 0.85→1.30, alt −0.06 | EVET | 1.75× |
-| 23 | Meşruiyet | istikrar −= (lider − iktidar) × 0.25 | EVET | 2.35× |
+| 16 | Taşra sadakati | tavan = vatandaşlık yasası; üretim ×= sadakat | BAĞLI | +%13.0 |
+| 17 | İnsan gücü | havuz × (0.85 + askerlik×0.45) | EVET | 1.83× |
+| 18 | Anayasa | alt +0.22, orta +0.23, üst −0.12, araştırma +%25; kimin desteği sayılır | EVET | 6.00× |
+| 19 | İşçi hakları | alt +0.44 (kölelik kalkınca +0.08), bordro +%29, üretim −%5.4 | EVET | 4.78× |
+| 20 | Sosyal devlet | alt +0.32, hazine yükü 0.41, okuryazarlık tabanı 0.35 | EVET | 7.08× |
+| 21 | Vatandaşlık | azınlık tavanı 0.7→1.0, huzursuzluk, asimilasyon | EŞİKTE (0.55× ↔ 1.68×) | 1.68× |
+| 22 | Askerlik | insan gücü 0.85→1.30, alt −0.06 | EVET | 1.83× |
+| 23 | Meşruiyet | istikrar −= (lider − iktidar) × 0.25 | EVET | 2.37× |
 | 24 | Hex kaynakları | kota ataması (talepten paylar); satır çıktısı × talep ölçeği; kadro = alt sınıf × 1.05 | EVET | §4.7 sağlık koşusu |
 | 25 | Fabrika duraklatma | barış + depo ≥%95 + fiyat <0.75 → silah hattı durur | EVET | silah fiyatı 0.34 → 0.93 |
 
@@ -1638,7 +1762,7 @@ Bu kılavuz ne kadar ölçüldüyse o kadar doğrudur. Ölçülemeyenler:
    kol arasındaki fark kaldıraca değil kimin kimi fethettiğine bağlanır).
    Yönü `audit:budget-contract` §6'da ayrıca doğrulanıyor.
 
-2. **Vatandaşlık yasası bağlı ama taramada hissedilmiyor** (son tarama 0.55×, ilk
+2. **Vatandaşlık yasası eşikte** (aynı gün iki taramada 0.55× ve 1.68×; ilk
    5-yasa taraması 0.71×; eski `political_rights` 0.46–0.57×). Taşra gelirini
    +%20 artırdığı doğrudan ölçüldü. Kaba ölçütlerde görünmemesinin iki nedeni
    var: taramanın ülkesinde
