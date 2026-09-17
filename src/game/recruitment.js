@@ -10,7 +10,7 @@ import {
   UNIT_TYPES, createUnit, removeUnit, resolveTypeId, stackFull, unitAvailable,
 } from './units.js';
 import { orderMove } from './movement.js';
-import { reformModifiers } from './reforms.js';
+import { lawModifiers } from './politics.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import {
   MILITARY_EQUIPMENT, ensureMilitaryEconomy, equipmentStock, setEquipmentStock,
@@ -89,9 +89,9 @@ export function nationManpower(world, nationId) {
     if (occupiedShareOf(world, province) > 0) continue;
     total += provinceManpower(world, province.center);
   }
-  // ASKERLIK YASASI. Tam askerlikte havuz 1.30 kati, gonullu orduda 0.85.
-  // Merdiven daha once HICBIR seye baglanmiyordu (bkz. audit:mechanics).
-  return total * (reformModifiers(world.nations?.[nationId]).manpower ?? 1);
+  // ASKERLIK YASASI. Seferber ulusta havuz 1.30 kati, gonullu orduda 0.85.
+  // Eski merdiven daha once HICBIR seye baglanmiyordu (bkz. audit:mechanics).
+  return total * (lawModifiers(world.nations?.[nationId]).manpower ?? 1);
 }
 
 /**

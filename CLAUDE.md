@@ -54,8 +54,10 @@ Bu depoya mekanik EKLEMEK varsayılan değildir. Yeni bir mekanik önermeden ön
 
 İlk tarama: 26 mekanikten 10'u ölü, 5'i gürültü tabanının altındaydı. Yani bu
 depoda asıl risk eksik mekanik değil, **çalışmayan mekanik**.
-Son tarama: 26 mekanik · çalışıyor 24 · gürültü altı 1 · **ölü 0** · savaş
-kaldıracı 1 (barış arenasında ölçülemez).
+Son tarama (siyaset sadeleştikten sonra, 18 merdiven → 5 yasa): 13 kaldıraç ·
+çalışıyor 11 · gürültü altı 1 (vatandaşlık, bağlı) · **ölü 0** · savaş
+kaldıracı 1 (barış arenasında ölçülemez). Siyaset: 4 sabit parti, 5 yasa,
+meşruiyet — bkz. `src/game/politics.js`, `npm run diagnose:politics`.
 
 Her mekaniğin formülü, kodu, "çalışıyor mu" testi ve pratikte ne yaptığı:
 [MEKANIK_KILAVUZU.md](MEKANIK_KILAVUZU.md)

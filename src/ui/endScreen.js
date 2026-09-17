@@ -9,7 +9,7 @@
 // kesitinden ya da bugunku durumdan gelir.
 
 import { chronicleYear, ensureChronicle } from '../game/chronicle.js';
-import { governmentType } from '../game/reforms.js';
+import { governmentType } from '../game/politics.js';
 import { scoreboard } from '../game/hegemony.js';
 import { formatPopulation } from '../game/economy.js';
 import { techStanding } from '../game/identity.js';

@@ -51,17 +51,13 @@ import {
 } from '../game/command.js';
 import { militaryScreen } from './militaryScreen.js';
 import {
-  EARLY_ELECTION_WINDOW, electionWindowOpen,
-  appointParty, fiscalPolicyLimits, holdElection, policyLabel, rulingParty,
+  formGovernment, governmentType, governmentView, lawBoard, rulingParty, setLaw,
 } from '../game/politics.js';
 import { TIER, announce, chronicleYear, ensureChronicle, memoryOf } from '../game/chronicle.js';
 import {
   allianceAppeal, alliesOf, breakAlliance, formAlliance, isAllied,
 } from '../game/alliances.js';
 import { characterLine, techStanding } from '../game/identity.js';
-import {
-  electorate, enactReform, governmentType, reformBoard,
-} from '../game/reforms.js';
 import { politicsScreen } from './politicsScreen.js';
 import {
   DELEGATION_AREAS, DELEGATION_IDS, isDelegated, lastDelegatedAction, setDelegation,
@@ -248,8 +244,8 @@ export class Screens {
       confirm: null,
     };
     this.tradeGood = null;
-    // Siyaset ekranının açık sekmesi (Reforms / Movements / Decisions / Release).
-    this.politicsTab = 'reforms';
+    // Siyaset ekraninin bekleyen onayi: `gov:<parti>` ya da `law:<yasa>:<kademe>`.
+    this.politicsConfirm = null;
     // Askerî ekranın durumu: açık kol, seçili subay, birim kategorisi ve
     // tarihi gelmemiş kolların gösterilip gösterilmediği.
     this.military = { branch: 'army', leader: null, category: 'all', showLocked: false };
@@ -371,7 +367,7 @@ export class Screens {
     if (this.active === 'construction' || this.active === 'peace') this.restoreMapMode();
     this.constructionType = null;
     // Bekleyen onaylar ekranla birlikte duser.
-    this.reformConfirm = null;
+    this.politicsConfirm = null;
     this.warConfirm = null;
     // Sanayi ekraninin gecici katmanlari da kapanir: katalog, ⋯ menusu ve
     // kapatma onayi. Kalsalardi Factories her acilista acik katalogla geliyor
@@ -1881,24 +1877,13 @@ export class Screens {
     });
   }
 
-  // --- Politics: hükûmet, üst meclis ve yasa defteri (bkz. politicsScreen.js) ---
+  // --- Politics: hükûmet ve beş yasa (bkz. politicsScreen.js) ---
   render_politics(me) {
     if (!me.politics?.parties?.length || !rulingParty(me)) {
       return '<p class="empty">Political parties are not initialized.</p>';
     }
-    // Yasa tahtası bir kez kurulur: sekme çubuğu, reform kapıları ve mesele
-    // tablosu aynı hesabı paylaşır (üçü ayrı kurunca meclis üç kez sayılıyordu).
-    const board = reformBoard(me);
-    return politicsScreen(this.game.world, me, {
-      tab: this.politicsTab,
-      reformConfirm: this.reformConfirm ?? null,
-      government: governmentType(me),
-      electionWindow: electionWindowOpen(this.game.world, me),
-      // Sandık yoksa seçim de yok: oy hakkı yasası kütüğü boşalttıysa düğme
-      // "seçim yap" diyemez.
-      hasElectorate: electorate(me).voters > 0,
-      electionWindowWeeks: EARLY_ELECTION_WINDOW,
-    }, board);
+    const world = this.game.world;
+    return politicsScreen(governmentView(world, me), lawBoard(world, me), this.politicsConfirm);
   }
 
   // --- Diplomasi: ilişki listesi ve savaş/barış eylemleri ---
@@ -2235,36 +2220,27 @@ export class Screens {
     for (const btn of this.el.body.querySelectorAll('[data-peace-tab]')) {
       btn.onclick = () => { this.peaceTab = btn.dataset.peaceTab; this.refresh(); };
     }
-    for (const btn of this.el.body.querySelectorAll('[data-politics-tab]')) {
-      btn.onclick = () => { this.politicsTab = btn.dataset.politicsTab; this.refresh(); };
+    // Hükûmet ve yasa. IKI TIK: ikisi de kilit baslatir (hukumet dort yil,
+    // yasa bir yil); kor oyun testinde ilk deneme tiki bir yillik kilide
+    // donusmustu. Ilk tik bedeli soyler, ikincisi uygular. Kapi kontrolu
+    // politics.js'te; kapaliysa dugme zaten cizilmez.
+    const confirmThen = (key, apply) => {
+      if (this.politicsConfirm !== key) {
+        this.politicsConfirm = key;
+        this.refresh();
+        return;
+      }
+      this.politicsConfirm = null;
+      apply();
+      this.refresh();
+    };
+    for (const btn of this.el.body.querySelectorAll('[data-form-government]')) {
+      const partyId = btn.dataset.formGovernment;
+      btn.onclick = () => confirmThen(`gov:${partyId}`, () => formGovernment(game, me, partyId));
     }
-    // Yasa çıkarma. enactReform kapıyı kendi kontrol eder; burada yalnız
-    // sonuç varsa ekran tazelenir (kapalıysa düğme zaten çizilmez).
-    for (const btn of this.el.body.querySelectorAll('[data-reform]')) {
-      // IKI TIK. Tek tik yasayi yururluge koyup butun reformlari bir yila
-      // kadar kilitliyordu; kor oyun testinde ilk deneme tiki bir yillik
-      // kilide donustu. Ilk tik bedeli soyler, ikincisi cikarir.
-      btn.onclick = () => {
-        const id = btn.dataset.reform;
-        if (this.reformConfirm !== id) {
-          this.reformConfirm = id;
-          this.refresh();
-          return;
-        }
-        this.reformConfirm = null;
-        if (enactReform(game, me, id)) this.refresh();
-      };
-    }
-    for (const btn of this.el.body.querySelectorAll('[data-appoint]')) {
-      btn.onclick = () => {
-        if (appointParty(game, me, btn.dataset.appoint)) this.refresh();
-      };
-    }
-    const election = this.el.body.querySelector('[data-hold-election]');
-    if (election) {
-      election.onclick = () => {
-        if (holdElection(game, me)) this.refresh();
-      };
+    for (const btn of this.el.body.querySelectorAll('[data-set-law]')) {
+      const [lawId, levelId] = btn.dataset.setLaw.split(':');
+      btn.onclick = () => confirmThen(`law:${lawId}:${levelId}`, () => setLaw(game, me, lawId, levelId));
     }
     for (const btn of this.el.body.querySelectorAll('[data-drop-tile]')) {
       btn.onclick = () => {

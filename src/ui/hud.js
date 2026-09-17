@@ -1633,6 +1633,9 @@ function stabilityWhy(nation) {
   if (bd.unemployment < -0.0005) {
     lines.push(`Unemployment            ${pt(bd.unemployment)}  (${grouped(bd.unemployed)} without work)`);
   }
+  if ((bd.legitimacy ?? 0) < -0.0005) {
+    lines.push(`Government backing      ${pt(bd.legitimacy)}  (${bd.leader} ${Math.round(bd.leaderSupport)}% vs ${bd.ruling} ${Math.round(bd.rulingSupport)}%)`);
+  }
   lines.push(`= Stability             ${(bd.total * 100).toFixed(1)}%`);
   return lines.join('\n');
 }

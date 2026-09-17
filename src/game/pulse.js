@@ -87,7 +87,7 @@ export function balanceAttribution(nation, limit = 4) {
   };
 }
 
-/** Istikrar: toplam fark ve dort bilesenin farklari (hepsi toplanabilir). */
+/** Istikrar: toplam fark ve bes bilesenin farklari (hepsi toplanabilir). */
 export function stabilityAttribution(nation) {
   const pulse = pulseWindow(nation);
   if (!pulse) return null;
@@ -101,6 +101,7 @@ export function stabilityAttribution(nation) {
       part('occupation', 'Occupied territory'),
       part('war', 'War exhaustion'),
       part('unemployment', 'Unemployment'),
+      part('legitimacy', 'Government backing'),
     ].filter((row) => Math.abs(row.delta) >= 0.0005),
   };
 }

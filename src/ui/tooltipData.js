@@ -355,6 +355,12 @@ export function registerTooltips(game) {
         value: pt(bd.unemployment), tone: 'bad',
       });
     }
+    if ((bd.legitimacy ?? 0) < -0.0005) {
+      rows.push({
+        label: `Government backing (${bd.leader} ${Math.round(bd.leaderSupport)}% vs your ${bd.ruling} ${Math.round(bd.rulingSupport)}%)`,
+        value: pt(bd.legitimacy), tone: 'bad',
+      });
+    }
     // Bu haftanin farki: hangi bilesen oynadi (pulse.js).
     const moved = stabilityAttribution(nation);
     const effects = moved
@@ -372,7 +378,7 @@ export function registerTooltips(game) {
       title: 'Stability',
       value: `${(bd.total * 100).toFixed(1)}%`,
       text: 'How firmly the country holds together: household satisfaction minus '
-        + 'occupation, war and unemployment. Satisfaction rises when the basket gets '
+        + 'occupation, war, unemployment and a government the people do not back. Satisfaction rises when the basket gets '
         + 'cheaper, tax falls or welfare rises. It steers population growth, '
         + 'province control and factory hiring.',
       rows,

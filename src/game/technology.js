@@ -16,7 +16,7 @@
 // (economy bunu import eder; ters yon dongu olurdu).
 
 import { makeRng } from '../core/rng.js';
-import { reformModifiers } from './reforms.js';
+import { lawModifiers } from './politics.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -387,18 +387,18 @@ export function researchPointsOf(nation) {
   // atanmiyordu, carpan her zaman 1'di (olu buyuk-guc terimi). Sabit 1 taban
   // olarak korunur ki puan uretimi degismesin.
   const base = literacy * 4 + middleShare * 1.5 + clerks + 1;
-  // BASIN OZGURLUGU AYNI CARPANDA. Sansur okuryazari yok etmez, fikri
-  // yavaslatir: ayni nufus, ayni okul, daha az arastirma. Basin merdiveni
-  // daha once yalnizca orta sinif moraline giriyordu ve olculdu
+  // BASIN OZGURLUGU AYNI CARPANDA (anayasa yasasi). Sansur okuryazari yok
+  // etmez, fikri yavaslatir: ayni nufus, ayni okul, daha az arastirma. Eski
+  // basin merdiveni yalnizca orta sinif moraline giriyordu ve olculdu
   // (audit:mechanics): butun menzil gurultunun 0.44 kati.
-  const press = reformModifiers(nation).researchRate ?? 0;
+  const press = lawModifiers(nation).researchRate ?? 0;
   return base * (1 + (economy.techMods?.researchRate ?? 0) + press);
 }
 
 /**
  * Arastirilmis teknolojilerin toplam degistiricileri. Haftada bir kez
  * hesaplanip `economy.techMods`a yazilir; sicak yol duz alan okur
- * (reformModifiers ile ayni kalip — kapanis maliyeti olculmustu).
+ * (politics.lawModifiers ile ayni kalip — kapanis maliyeti olculmustu).
  */
 export function refreshTechModifiers(nation) {
   const mods = {};

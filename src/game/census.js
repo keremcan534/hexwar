@@ -17,7 +17,9 @@
 
 import { makeRng } from '../core/rng.js';
 import { constructionAtlas } from './construction.js';
-import { CLASS_IDEOLOGY, IDEOLOGIES, POLITICAL_POLICIES } from './politics.js';
+import {
+  CLASS_IDEOLOGY, IDEOLOGIES, PARTIES, POLITICAL_POLICIES,
+} from './politics.js';
 import { nationCohorts } from './population.js';
 import { provinceName } from './provinces.js';
 
@@ -238,18 +240,17 @@ function buildIdeologyMix(parties, classId) {
 
 /**
  * Sınıfın gündemi: ideolojisinin partisi hangi politikaları savunuyorsa onlar.
- * Dört eksen (vatandaşlık, ekonomi, ticaret, ordu) tek pastaya girer, bu yüzden
- * her eksen çeyrek ağırlık taşır. Yeni bir mekanik değil — mevcut parti
- * programlarının nüfus tarafından okunuşu.
+ * Üç eksen (ekonomi, ticaret, ordu) tek pastaya girer, her eksen eşit ağırlık
+ * taşır. Yeni bir mekanik değil — sabit parti programlarının (politics.PARTIES)
+ * nüfus tarafından okunuşu.
  */
 function buildIssueMix(parties, ideology) {
-  const byIdeology = new Map(parties.map((party) => [party.ideology, party]));
+  const present = new Set(parties.map((party) => party.ideology));
   const mix = new Map();
   for (const [id, weight] of ideology) {
-    const party = byIdeology.get(id);
-    if (!party) continue;
+    if (!present.has(id)) continue;
     for (const axis of ISSUE_AXES) {
-      const option = party.policies?.[axis];
+      const option = PARTIES[id]?.policies?.[axis];
       if (!option) continue;
       mix.set(option, (mix.get(option) ?? 0) + weight / ISSUE_AXES.length);
     }

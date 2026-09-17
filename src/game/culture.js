@@ -46,8 +46,7 @@
 // Katman: game. DOM yok. provinces.js bu dosyayi cagirir, tersi olmaz —
 // gerekli baglam (isgal payi, sadakat) parametre olarak gecer.
 
-import { policyOf } from './politics.js';
-import { reformModifiers } from './reforms.js';
+import { lawModifiers, lawValue } from './politics.js';
 import { TIER, announce } from './chronicle.js';
 import { addInfamy } from './infamy.js';
 import { POPULATION_SCALE } from './populationScale.js';
@@ -106,9 +105,9 @@ export function nationalismEra(turn) {
   return 1 + progress * 0.8;
 }
 
-/** Vatandaslik politikasinin huzursuzluk agirligi. */
+/** Vatandaslik yasasinin huzursuzluk agirligi. */
 function rightsWeight(nation) {
-  const policy = policyOf(nation, 'citizenship');
+  const policy = lawValue(nation, 'citizenship');
   if (policy === 'full_citizenship') return 0.45;
   if (policy === 'limited_citizenship') return 0.7;
   return 1;
@@ -127,15 +126,15 @@ function rightsWeight(nation) {
  * ana yurt ve bastirilan isyan onarildiktan SONRA calisiyor (%32,8 -> %30,5).
  */
 export function foreignManpowerShare(nation) {
-  const policy = policyOf(nation, 'citizenship');
+  const policy = lawValue(nation, 'citizenship');
   if (policy === 'full_citizenship') return 0.5;
   if (policy === 'limited_citizenship') return 0.3;
   return 0.15;
 }
 
-/** Vatandaslik politikasinin asimilasyon hizi: haklar eritir, dislama korur. */
+/** Vatandaslik yasasinin asimilasyon hizi: haklar eritir, dislama korur. */
 function assimilationRights(nation) {
-  const policy = policyOf(nation, 'citizenship');
+  const policy = lawValue(nation, 'citizenship');
   if (policy === 'full_citizenship') return 1.4;
   if (policy === 'limited_citizenship') return 1;
   return 0.6;
@@ -213,7 +212,7 @@ export function unrestBreakdown(world, province, nation, { occupied = 0, turn = 
   // REFAH: sosyal harcama huzursuzlugu satin alir. Azinlik haklari yasasi da
   // yatistirir (minorityCeiling 0.7-1.0 arasi).
   const welfare = Math.max(0, Math.min(100, nation.economy?.social?.welfare ?? 0)) / 100 * 2;
-  const rights = ((reformModifiers(nation).minorityCeiling ?? 1) - 0.7) / 0.3 * foreign;
+  const rights = ((lawModifiers(nation).minorityCeiling ?? 1) - 0.7) / 0.3 * foreign;
   const target = Math.max(0, Math.min(
     CULTURE.MAX_UNREST,
     culture + conquest + war + occupation + backlash - welfare - rights,
@@ -523,7 +522,7 @@ export function cultureMix(world, nation) {
 export function acceptBlockers(world, nation, cultureId, turn = world.turn ?? 0) {
   const out = [];
   if (isAccepted(nation, cultureId)) return ['Already an accepted culture.'];
-  if (policyOf(nation, 'citizenship') === 'residency') {
+  if (lawValue(nation, 'citizenship') === 'residency') {
     out.push('Residency law grants political rights to the national culture only.');
   }
   const row = cultureMix(world, nation).find((item) => item.id === cultureId);

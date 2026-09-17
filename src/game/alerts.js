@@ -15,7 +15,7 @@ import {
   CLASS_INFO, CLASS_NEEDS, FACTORIES, GOOD_IDS, GOODS, budgetBreakdown, classTaxThresholds,
   factoryUnlocked, priceOf,
 } from './economy.js';
-import { rulingParty } from './politics.js';
+import { governmentLockWeeks, legitimacyOf } from './politics.js';
 
 /** Tur numarasindan yil: 1836 baslangicli haftalik takvim. */
 const yearOfTurn = (turn) => 1836 + Math.floor(Math.max(0, (turn ?? 0) - 1) / 52);
@@ -247,20 +247,20 @@ function shortage(world, nation) {
 }
 
 /**
- * SİYASİ KAYMA. İktidar partisi artık en çok desteklenen parti değilse haber
- * verilir. Sebep, `supportScore`'un GERÇEK sürücüsüdür: sınıf memnuniyeti
- * 0.40'ın altına düşünce radikal partiler, 0.58'in üstüne çıkınca liberal ve
+ * MEŞRUİYET KAYBI. İktidar partisi en çok desteklenen parti değilse aradaki
+ * fark istikrardan düşer (politics.legitimacyOf) ve bu şerit bunu söyler.
+ * Sebep, desteğin GERÇEK sürücüsüdür: sınıf memnuniyeti 0.40'ın altına
+ * düşünce sosyalist ve milliyetçi, 0.58'in üstüne çıkınca liberal ve
  * muhafazakâr partiler kazanır.
  */
 function ideology(world, nation) {
-  const parties = nation.politics?.parties;
-  const ruling = rulingParty(nation);
-  if (!parties?.length || !ruling) return null;
-  const leader = [...parties].sort((a, b) => b.support - a.support)[0];
-  if (!leader || leader.id === ruling.id || leader.support - ruling.support < 3) return null;
+  const { ruling, leader, hit } = legitimacyOf(nation);
+  if (!ruling || !leader || leader.id === ruling.id) return null;
+  // Yarım puandan küçük bedel gürültüdür: şerit her dar farkta titremesin.
+  if (hit > -0.005) return null;
 
   const classes = nation.economy?.classes ?? {};
-  const radical = ['socialist', 'communist', 'fascist'].includes(leader.ideology);
+  const radical = leader.ideology === 'socialist' || leader.ideology === 'nationalist';
   const driver = Object.keys(CLASS_INFO)
     .map((id) => ({ id, data: classes[id] }))
     .filter((entry) => entry.data)
@@ -269,22 +269,23 @@ function ideology(world, nation) {
       : (b.data.satisfaction ?? 0) - (a.data.satisfaction ?? 0)))[0];
   const driverName = CLASS_INFO[driver?.id]?.name ?? 'The population';
   const satisfaction = driver ? round(driver.data.satisfaction ?? 0, 2) : null;
+  const wait = governmentLockWeeks(world, nation);
+  const cost = `${Math.abs(hit * 100).toFixed(1)}`;
   return {
     id: 'IDEOLOGY',
     kind: ALERT_KINDS.IDEOLOGY,
-    title: `${leader.name} now leads support`,
-    cause: radical
-      ? `${driverName} satisfaction is ${satisfaction}. Below 0.40 the socialist,`
-        + ` communist and fascist parties gain ground — ${leader.name} is at`
-        + ` ${Math.round(leader.support)}% against your ${Math.round(ruling.support)}%.`
-      : `${driverName} satisfaction is ${satisfaction}. Above 0.58 the liberal and`
-        + ` conservative parties gain ground — ${leader.name} is at`
-        + ` ${Math.round(leader.support)}% against your ${Math.round(ruling.support)}%.`,
-    remedy: radical
-      ? 'Satisfaction rises when the basket gets cheaper, tax falls, welfare rises or'
-        + ' unemployment falls. Any of those four turns the drift around.'
-      : 'Your government keeps its seat until the next election, but the direction of'
-        + ' travel is set. Reform now or hand the chamber over at the vote.',
+    title: `The ${leader.name} lead the people — stability −${cost}`,
+    cause: `The ${leader.name} hold ${Math.round(leader.support)}% of the backing against`
+      + ` your ${ruling.name}' ${Math.round(ruling.support)}%. ${driverName} satisfaction is`
+      + ` ${satisfaction}: ${radical
+        ? 'below 0.40 the socialists and nationalists gain ground.'
+        : 'above 0.58 the liberals and conservatives gain ground.'}`,
+    remedy: (wait > 0
+      ? `Your government's term runs another ${wait} weeks; then you may form a government with the ${leader.name}.`
+      : `You may form a government with the ${leader.name} on the Politics screen now.`)
+      + (radical
+        ? ' Or win the people back: satisfaction rises when the basket gets cheaper, tax falls, welfare rises or unemployment falls.'
+        : ' Or keep governing and pay the stability each week.'),
   };
 }
 

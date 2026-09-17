@@ -516,9 +516,9 @@ function politicsTab(view) {
     <span>${esc(row.name)}</span><b>${(row.share * 100).toFixed(0)}%</b>
   </div>`).join('');
   return `<div class="pop-panels two">
-    ${panel('Party support', 'national return', parties)}
+    ${panel('Party support', 'whose voices the constitution counts', parties)}
     ${panel('Dominant issues', 'what the country argues about', issues)}
-    ${panel('Ideology', 'of the people, not the electorate', `
+    ${panel('Ideology', 'of all the people, counted or not', `
       <div class="pop-chart">${donut(view.distributions.ideologies)}
       <div class="pop-legend">${legend(view.distributions.ideologies)}</div></div>`)}
   </div>`;

@@ -12,8 +12,7 @@
 import { TIER, announce, captureOpening } from './chronicle.js';
 import { CLASS_INFO, GOODS, debtCapacity } from './economy.js';
 import { scarcestBasketGoods } from './alerts.js';
-import { governmentType } from './reforms.js';
-import { rulingParty } from './politics.js';
+import { governmentType, rulingParty } from './politics.js';
 import { controllerOf } from './control.js';
 import { regimentCount } from './units.js';
 import { scoreboard } from './hegemony.js';

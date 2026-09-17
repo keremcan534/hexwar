@@ -14,7 +14,7 @@ import {
 } from './harness.mjs';
 import { headless, run } from './harness.mjs';
 import { setBudgetPolicy } from '../../src/game/economy.js';
-import { policyOf, rulingParty } from '../../src/game/politics.js';
+import { formGovernment, policyOf } from '../../src/game/politics.js';
 
 const SEED = 'tariff-audit';
 const WARMUP = 60;
@@ -144,7 +144,10 @@ const at = (t) => runs.find((r) => r.tariff === t);
   run(g, WARMUP);
   const prot = g.world.nations.find((n) => n.alive && policyOf(n, 'trade') === 'protectionism');
   const other = g.world.nations.find((n) => n.alive && n.politics && n !== prot);
-  if (other) rulingParty(other).policies.trade = 'free_trade';
+  // Serbest ticaret liberal programidir: parti programlari sabit, bant
+  // hukumetle gelir (kilit tanilamada atlanir).
+  const liberal = other?.politics.parties.find((party) => party.ideology === 'liberal');
+  if (liberal) formGovernment(g, other, liberal.id, { force: true });
   const probe = (nation) => {
     if (!nation) return 'yok';
     setBudgetPolicy(nation, 'tariff', 999);

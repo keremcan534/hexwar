@@ -4089,57 +4089,19 @@ body.screen-open .layer-menu { display: none; }
   .pop-lower { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* Siyaset ekranindaki pasta ve lejant (bkz. politicsScreen.pieChart). Nufus
-   ekrani donut'a gectigi icin bu kurallar artik yalniz oraya aittir. */
-.pie {
-  display: block;
-  flex: none;
-  width: var(--pie-size, 70px);
-  height: var(--pie-size, 70px);
-  border-radius: 50%;
-  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.5);
-}
-
-.pie.empty { background: var(--surface-3); }
-.pie-legend { display: grid; gap: 1px; min-width: 0; }
-
-.pie-legend-row {
-  display: grid;
-  grid-template-columns: 8px minmax(0, 1fr) auto;
-  gap: var(--sp-1);
-  align-items: center;
-  font-size: var(--fs-label);
-}
-
-.pie-legend-row > i { width: 8px; height: 8px; border-radius: 1px; }
-
-.pie-legend-row em {
-  color: var(--text-dim);
-  font-style: normal;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.pie-legend-row b { color: var(--text); font-variant-numeric: tabular-nums; }
-.pie-legend-row.empty { color: var(--text-faint); }
-
 /* ==========================================================================
-   17. EKRAN: SİYASET VE REFORMLAR
+   17. EKRAN: SİYASET — hükûmet ve beş yasa
 
-   Victoria 2'nin Politics penceresinin yapısı: solda tek sütunda rejim, üst
-   meclis, iktidar partisi, iki ideoloji pastası ve mesele tablosu; sağda dört
-   sekme ve Reforms sekmesinde iki sütun yasa merdiveni ile altta "Matters of
-   State" bandı. Çerçeve dili sayım defteriyle aynı (§16): oyulmuş pirinç hat,
-   bordo laklanmış şerit başlık, dar satır. Referansın gri/altın metal kabuğu
-   taklit edilmez — yapı onun, boya bizim.
+   Oyuncunun iki kararı iki sütunda: solda dört parti (hangisiyle
+   yönetileceği ve meşruiyet bedeli), sağda beş yasa (üçer kademe, her
+   kademenin motor farkı kartın üstünde görünür). Çerçeve dili sayım
+   defteriyle aynı (§16): oyulmuş pirinç hat, laklanmış şerit başlık, dar
+   satır. Eski Victoria 2 penceresinin üst meclisi, pastaları, mesele tablosu
+   ve 18 merdiveni kaldırıldı (bkz. game/politics.js).
    ========================================================================== */
 
-/* Yasa defteri de ekranın tamamını ister: yirmi bir merdiven tek bakışta
-   karşılaştırılabilmeli. Gövde kaydırılmaz; kaydırma iki sütunun kendisine
-   aittir (bkz. §16'daki aynı karar). */
 .screen[data-screen='politics'] {
-  width: min(1760px, 98vw);
+  width: min(1320px, 98vw);
   height: calc(100vh - var(--screen-top) - var(--sp-3));
 }
 
@@ -4152,24 +4114,30 @@ body.screen-open .layer-menu { display: none; }
 .screen-body > .pol {
   flex: 1 1 auto;
   display: grid;
-  grid-template-columns: 356px minmax(0, 1fr);
-  gap: 5px;
+  grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+  gap: 6px;
   min-height: 0;
 }
 
-/* Ortak çerçeve yığını: dış siyah kenar → ince pirinç hat → oyuk koyu yüzey. */
+/* Ortak çerçeve yığını: dış siyah kenar → ince pirinç hat → oyuk koyu yüzey.
+   Her sütun kendi içinde kayar; kısa ekranda kartlar kesilmesin. */
 .pol-gov,
-.pol-house,
-.pol-party,
-.pol-mix,
-.pol-issues,
-.pol-panel,
-.pol-tabs > button {
+.pol-laws {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 6px;
+  min-height: 0;
+  padding: 0 0 7px;
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid #0a0f12;
   outline: 1px solid rgba(168, 138, 75, 0.45);
   outline-offset: -3px;
   background: var(--ui-grain), linear-gradient(180deg, #10181c, #0c1316);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.6), inset 0 0 26px rgba(0, 0, 0, 0.3);
+  scrollbar-color: var(--gold) var(--surface-sunken);
+  scrollbar-width: thin;
 }
 
 /* Bordo, laklanmış şerit başlık — defterin her yerinde tek bölüm ayracı. */
@@ -4197,469 +4165,231 @@ body.screen-open .layer-menu { display: none; }
   font-size: 10px;
   font-style: normal;
   letter-spacing: 0.03em;
+  text-align: right;
   text-transform: none;
 }
 
-/* --- 17.1 Sol sütun: rejim, meclis, iktidar, pastalar, meseleler --- */
+/* --- 17.1 Hükûmet --- */
 
-/* Sol sütun kendi içinde kayar. Alt bloklar (pastalar, meseleler) kısa
-   ekranda kesilmesin diye dış kaydırma bilinçli: iç tablonun kendi
-   kaydırması yalnız çok uzun mesele listesi içindir. */
-.pol-left {
+/* Meşruiyet: partiyi seçerken göze alınan tek bedel. Yeşil kenar bedel yok,
+   kırmızı kenar istikrar her hafta düşüyor demektir. */
+.pol-legit {
   display: grid;
-  align-content: start;
-  gap: 5px;
-  min-height: 0;
-  overflow-x: hidden;
-  overflow-y: auto;
-  scrollbar-color: var(--gold) var(--surface-sunken);
-  scrollbar-width: thin;
+  gap: 3px;
+  margin: 0 7px;
+  padding: 6px 8px;
+  border-left: 2px solid var(--gold-dark);
+  background: rgba(150, 122, 69, 0.06);
 }
 
-.pol-gov-line { display: grid; gap: 4px; padding: 5px 7px; }
+.pol-legit p { margin: 0; color: var(--text-dim); font-size: 12px; line-height: var(--lh-body); }
+.pol-legit b { color: var(--text); font-weight: 650; }
+.pol-legit small { color: var(--text-faint); font-size: 10px; line-height: 1.4; }
+.pol-legit.ok { border-left-color: var(--green); }
+.pol-legit.bad { border-left-color: var(--red); background: var(--red-wash); }
 
-.pol-gov-date { color: var(--text-dim); font-size: 11px; }
-.pol-gov-date b { color: #d6b574; font-family: var(--font-mono); font-size: 11px; font-weight: 600; }
-.pol-gov-date em { color: var(--text-faint); font-style: normal; }
+.pol-lock { margin: 0 7px; color: var(--text-dim); font-size: 11px; line-height: var(--lh-body); }
+.pol-lock b { color: #d6b574; font-weight: 600; }
 
-.pol-gov-stats { display: flex; gap: var(--sp-3); }
-
-.pol-mini {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  color: var(--text-dim);
-  font-size: 11px;
-  font-style: normal;
-}
-
-.pol-mini svg { width: 13px; height: 13px; color: #96835a; }
-.pol-mini b { color: #d6b574; font-variant-numeric: tabular-nums; font-weight: 600; }
-.pol-mini.hot b { color: var(--red); }
-
-.pol-house-body {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 7px;
-  align-items: center;
-  padding: 6px 7px;
-}
-
-/* Reform kapısının iki satırı. Referanstaki "Can't enact ..." satırlarının
-   karşılığı; renk tek başına anlam taşımasın diye işaret de değişir. */
-.pol-gates { display: grid; gap: 2px; padding: 0 7px 6px; }
-
-.pol-gate {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: var(--red);
-  font-size: 11px;
-}
-
-.pol-gate.ok { color: var(--green); }
-
-.pol-gate i {
-  display: grid;
-  place-items: center;
-  width: 11px;
-  height: 11px;
-  border: 1px solid currentColor;
-  font-size: 8px;
-  font-style: normal;
-}
-
-.pol-party { display: grid; }
-
-.pol-party-name {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 7px;
-  border-bottom: 1px solid var(--line);
-}
-
-.pol-party-name i {
-  width: 9px;
-  height: 9px;
-  background: var(--party-color, var(--gold));
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75);
-}
-
-.pol-party-name b { color: var(--text); font-size: 13px; font-weight: 650; }
-
-.pol-party-name small {
-  color: var(--party-color, var(--gold));
-  font-size: 10px;
-  letter-spacing: var(--ls-label);
-  text-transform: uppercase;
-}
-
-.pol-party-name strong {
-  margin-left: auto;
-  color: var(--party-color, var(--gold));
-  font-size: 14px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 700;
-}
-
-/* Pirinç düğme: ekranın tek eylem kontrolü, kapalıyken de görünür kalır. */
-.pol-election {
-  margin: 5px 7px;
-  padding: 4px 10px;
-  border: 1px solid rgba(190, 158, 96, 0.55);
-  background: linear-gradient(180deg, #7d6538, #4d3f23);
-  box-shadow: inset 0 1px rgba(232, 210, 160, 0.18);
-  color: #f0e3c4;
-  cursor: pointer;
-  font-family: var(--font-display);
-  font-size: 11px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.pol-election:hover:not(:disabled) { background: linear-gradient(180deg, #957a45, #5c4b2a); }
-
-.pol-election:disabled {
-  border-color: rgba(168, 138, 75, 0.25);
-  background: linear-gradient(180deg, #1a2226, #121a1d);
-  color: var(--text-faint);
-  cursor: not-allowed;
-}
-
-.pol-policies { width: 100%; border-collapse: collapse; font-size: 11px; }
-
-.pol-policies td {
-  padding: 2px 7px;
-  border-top: 1px solid var(--line);
-  color: var(--text-dim);
-}
-
-.pol-policy-value { color: var(--text); font-weight: 600; text-align: right; }
-
-.pol-mixes { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; min-width: 0; }
-.pol-mix { min-width: 0; }
-
-.pol-mix-body { display: grid; place-items: center; padding: 7px 5px; }
-
-/* Ne ızgara ne de `min-height: 0`. İkisi de mesele tablosunu 2 piksele
-   indiriyordu (ölçüldü): sol sütun kaydırmalı bir ızgara olduğu için, en alt
-   satırın asgari boyu sıfırlanınca tarayıcı o satırı taşan içeriğe sığdırmak
-   yerine tamamen eziyor. Varsayılan `min-height: auto` bandı ve tabloyu ayakta
-   tutar; kaydırma zaten iç kutunun max-height'ına bağlı. */
-.pol-issues { display: block; }
-
-.pol-issues-scroll {
-  min-height: 0;
-  max-height: 260px;
-  overflow-y: auto;
-  scrollbar-color: var(--gold) var(--surface-sunken);
-  scrollbar-width: thin;
-}
-
-/* Sabit yerleşim: `auto` yerleşimde mesele adı sütunu 97 piksele iniyordu
-   (ölçüldü) ve "Minimal Safety Regulations" üç noktaya düşüyordu. Sayı
-   sütunları sabit, kalan genişlik adın. */
-.pol-issue-table { width: 100%; border-collapse: collapse; font-size: 11px; table-layout: fixed; }
-
-.pol-issue-table th {
-  position: sticky;
-  top: 0;
-  z-index: 1;
-  padding: 3px 7px;
-  border-bottom: 1px solid rgba(168, 138, 75, 0.3);
-  background: #0b1215;
-  color: var(--text-mute);
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: var(--ls-label);
-  text-align: left;
-  text-transform: uppercase;
-}
-
-.pol-issue-table td {
-  padding: 1px 7px;
-  border-bottom: 1px solid var(--line);
-  color: var(--text-dim);
-}
-
-.pol-issue-table .num { width: 60px; color: #d6b574; font-variant-numeric: tabular-nums; text-align: right; }
-.pol-issue-table .num.void { color: var(--text-faint); }
-.pol-issue-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.pol-empty { color: var(--text-faint); font-style: italic; text-align: center; }
-
-/* --- 17.2 Sağ sütun: sekmeler --- */
-
-/* `minmax(0, 1fr)`: tek sütunlu bir ızgaranın örtük sütunu `auto`dur ve
-   max-content'e büyür — dar ekranda reform kartları paneli yarıp yatay
-   kaydırma açıyordu (ölçüldü: 334 piksellik kutuda 375 piksellik içerik). */
-.pol-right {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  grid-template-columns: minmax(0, 1fr);
-  gap: 5px;
-  min-height: 0;
-  min-width: 0;
-}
-
-.pol-tabs { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
-
-.pol-tabs > button {
-  flex: 1 1 120px;
-  min-width: 0;
-  padding: 6px 10px;
-  color: var(--text-dim);
-  cursor: pointer;
-  font-family: var(--font-display);
-  font-size: 12px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.pol-tabs > button:hover { color: var(--text); }
-
-.pol-tabs > button.active {
-  background: linear-gradient(180deg, #5a1822, #4a1520 55%, #3c1019);
-  color: #f0e3c4;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-}
-
-.pol-panel {
-  min-height: 0;
-  min-width: 0;
-  padding: 5px;
-  overflow-y: auto;
-  scrollbar-color: var(--gold) var(--surface-sunken);
-  scrollbar-width: thin;
-}
-
-/* --- 17.3 Reforms sekmesi: yasa merdivenleri --- */
-
-.pol-reforms { display: grid; grid-template-columns: minmax(0, 1fr); gap: 5px; }
-
-.pol-reform-columns {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 5px;
-  align-items: start;
-}
-
-.pol-col { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; min-width: 0; }
-
-/* İki sütun içinde ikişer merdiven: referanstaki dört sütunlu tarama düzeni.
-   Matters of State bandı dörde açılır — merdivenleri kısadır. */
-.pol-reform-grid {
+.pol-parties {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0 6px;
+}
+
+.pol-party {
+  display: grid;
+  grid-template-rows: auto auto auto auto 1fr auto;
   gap: 4px;
-  align-items: start;
-}
-
-.pol-col-state .pol-reform-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-
-.reform {
   min-width: 0;
+  padding: 6px 7px 7px;
   border: 1px solid rgba(168, 138, 75, 0.26);
+  border-top: 3px solid var(--party-color);
   background: linear-gradient(180deg, #141d21, #0e1619);
-  box-shadow: inset 0 1px rgba(232, 210, 160, 0.05);
 }
 
-.reform.is-complete { border-color: rgba(131, 154, 107, 0.32); }
-
-.reform-head {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 5px;
-  border-bottom: 1px solid rgba(168, 138, 75, 0.2);
-  background: linear-gradient(180deg, rgba(150, 122, 69, 0.16), transparent);
+.pol-party.is-ruling {
+  border-color: rgba(214, 181, 116, 0.7);
+  border-top-color: var(--party-color);
+  box-shadow: inset 0 0 0 1px rgba(214, 181, 116, 0.3);
 }
 
-.reform-icon { display: grid; flex: none; place-items: center; width: 16px; height: 16px; color: #c8ab77; }
-.reform-icon svg { width: 16px; height: 16px; }
+.pol-party-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 
-.reform-head h5 {
-  overflow: hidden;
-  margin: 0;
-  color: var(--text);
-  font-family: var(--font-display);
-  font-size: 12px;
-  font-weight: 600;
-  text-overflow: ellipsis;
+.pol-party-head i {
+  flex: none;
+  align-self: center;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--party-color);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7);
+}
+
+.pol-party-head b { color: var(--text); font-family: var(--font-display); font-size: 13px; font-weight: 650; }
+
+.pol-party-head small {
+  color: var(--green);
+  font-size: 9px;
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
   white-space: nowrap;
 }
 
-.reform-steps { display: grid; gap: 1px; margin: 0; padding: 3px; list-style: none; }
-
-/* Merdivenin tek basamağı. Üç sütun: işaret kutusu, ad, meclis payı. */
-.rstep,
-.rstep > button {
-  display: grid;
-  grid-template-columns: 11px minmax(0, 1fr) auto;
-  gap: 4px;
-  align-items: center;
-  padding: 1px 4px;
-  font-size: 11px;
-  line-height: 1.55;
+.pol-party-head strong {
+  margin-left: auto;
+  color: #d6b574;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
-.rstep { color: var(--text-faint); }
-.rstep > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.rstep em { color: var(--text-faint); font-size: 10px; font-style: normal; font-variant-numeric: tabular-nums; }
-
-.rstep-mark {
-  display: grid;
-  place-items: center;
-  width: 9px;
-  height: 9px;
-  border: 1px solid rgba(168, 138, 75, 0.3);
-  color: transparent;
-  font-size: 8px;
-  font-style: normal;
-}
-
-.rstep-mark.on {
-  border-color: rgba(168, 138, 75, 0.6);
-  background: rgba(150, 122, 69, 0.18);
-  color: #cbb075;
-}
-
-.rstep.is-past { color: var(--text-dim); }
-.rstep.is-current { background: rgba(150, 122, 69, 0.1); color: var(--text); font-weight: 600; }
-
-/* Bir sonraki basamak meclisten geçmiyor: kilitli değil, REDDEDİLMİŞ. Payı
-   kırmızı yazılır ki oyuncu neyin eksik olduğunu görsün. */
-.rstep.is-blocked { color: #8a7f6a; }
-.rstep.is-blocked em { color: var(--red); }
-.rstep.is-locked { color: #566063; }
-
-/* BUG-008: enact dugmesi 11px genisliginde bir hedefti.
-   Sebep: `.rstep` kendisi `grid-template-columns: 11px minmax(0,1fr) auto`
-   olan bir grid. Icinde TEK bir <button> varsa o buton ilk sutuna, yani
-   11px'lik hucreye yerlesiyordu; butonun `width: 100%`u da o 11px'in
-   %100'u demekti. Olculen kutu tam olarak 11x55 idi.
-   Cozum: is-open satirinda li grid OLMAKTAN cikar, izgara butonun kendisidir
-   ve satirin tamamini kaplar. */
-.rstep.is-open {
+.pol-party-bar {
   display: block;
-  padding: 0;
-}
-
-.rstep.is-open > button {
-  width: 100%;
-  border: 1px solid rgba(190, 158, 96, 0.5);
-  background: linear-gradient(180deg, #7d6538, #4d3f23);
-  box-shadow: inset 0 1px rgba(232, 210, 160, 0.16);
-  color: #f5ead0;
-  cursor: pointer;
-  font-weight: 650;
-  text-align: left;
-}
-
-.rstep.is-open > button:hover { background: linear-gradient(180deg, #a2854b, #66512d); }
-.rstep.is-open > button:focus-visible { outline: 1px solid #e0c37f; outline-offset: 1px; }
-.rstep.is-open em { color: #f5ead0; }
-.rstep.is-open .rstep-mark { border-color: rgba(245, 234, 208, 0.5); }
-
-/* Ekranın dürüstlük notu: neyin gerçek, neyin henüz bağlı olmadığı. */
-.pol-note {
-  margin: 0;
-  padding: 5px 7px;
-  border-left: 2px solid var(--gold-dark);
-  background: rgba(150, 122, 69, 0.06);
-  color: var(--text-dim);
-  font-size: 11px;
-  line-height: var(--lh-body);
-}
-
-.pol-note em { color: var(--text-faint); font-style: italic; }
-.pol-note b { color: var(--text); font-weight: 650; }
-.pol-note.waiting { border-left-color: var(--gold); }
-.pol-note.blocked { border-left-color: var(--red); background: var(--red-wash); }
-
-/* --- 17.4 Movements / Decisions / Release Nations --- */
-
-.pol-movements,
-.pol-releases,
-.pol-tab-empty {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-content: start;
-  gap: 4px;
-}
-
-.pol-tab-empty p { margin: 0; padding: 0 7px; color: var(--text-dim); font-size: 12px; line-height: var(--lh-body); }
-.pol-tab-empty .pol-note { padding: 5px 7px; }
-
-.pol-movement {
-  display: grid;
-  grid-template-columns: 16px minmax(0, 1fr) auto;
-  gap: 7px;
-  align-items: center;
-  padding: 5px 7px;
-  border: 1px solid rgba(168, 138, 75, 0.22);
-  background: linear-gradient(180deg, #141d21, #0e1619);
-}
-
-.pol-movement.blocked { border-left: 2px solid var(--red); }
-.pol-movement-body { display: grid; gap: 2px; min-width: 0; }
-.pol-movement-body b { color: var(--text); font-size: 12px; font-weight: 650; }
-.pol-movement-body small { color: var(--text-dim); font-size: 10px; }
-
-.pol-movement-bar {
   height: 4px;
   background: var(--surface-sunken);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.6);
 }
 
-.pol-movement-bar i { display: block; height: 100%; background: linear-gradient(90deg, #7d6538, #baa064); }
+.pol-party-bar i { display: block; height: 100%; background: var(--party-color); }
 
-.pol-movement-num { display: flex; gap: var(--sp-3); }
-.pol-movement-num span { display: grid; gap: 1px; text-align: right; }
-.pol-movement-num small { color: var(--text-mute); font-size: 9px; letter-spacing: var(--ls-label); text-transform: uppercase; }
-.pol-movement-num b { color: #d6b574; font-size: 12px; font-variant-numeric: tabular-nums; }
+.pol-pitch { margin: 0; color: var(--text-dim); font-size: 11px; font-style: italic; }
+.pol-programme { margin: 0; color: var(--text); font-size: 11px; line-height: 1.4; }
 
-.pol-release {
-  display: grid;
-  grid-template-columns: 12px minmax(0, 1fr) auto;
-  gap: 7px;
-  align-items: center;
-  padding: 5px 7px;
-  border: 1px solid rgba(168, 138, 75, 0.22);
-  background: linear-gradient(180deg, #141d21, #0e1619);
-}
+/* Programın yasa tavanları: tam izin yeşil, hiç izin yok kırmızı. */
+.pol-caps { display: grid; align-content: start; gap: 1px; margin: 0; padding: 0; list-style: none; font-size: 10px; }
+.pol-caps li { display: flex; justify-content: space-between; gap: 6px; color: var(--text-mute); }
+.pol-caps li b { color: var(--text-dim); font-weight: 600; }
+.pol-caps li.full b { color: var(--green); }
+.pol-caps li.none b { color: var(--red); }
 
-.pol-release-flag { width: 12px; height: 12px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75); }
-.pol-release-body { display: grid; gap: 1px; min-width: 0; }
-.pol-release-body b { color: var(--text); font-size: 12px; font-weight: 650; }
-.pol-release-body small { color: var(--text-dim); font-size: 10px; }
-
-.pol-release-btn {
-  padding: 3px 10px;
-  border: 1px solid rgba(168, 138, 75, 0.25);
-  background: linear-gradient(180deg, #1a2226, #121a1d);
-  color: var(--text-faint);
-  cursor: not-allowed;
+/* Pirinç düğme: kartın tek eylemi. Kapalıyken nedenini yazan düz etiket. */
+.pol-form {
+  margin-top: 2px;
+  padding: 4px 8px;
+  border: 1px solid rgba(214, 181, 116, 0.55);
+  background: linear-gradient(180deg, #7d6538, #4e3f22);
+  color: #f5ead0;
   font-family: var(--font-display);
   font-size: 10px;
   letter-spacing: 0.08em;
+  line-height: 1.35;
+  text-align: center;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.pol-form:hover { background: linear-gradient(180deg, #957a45, #5c4b2a); }
+.pol-form:focus-visible { outline: 1px solid #e0c37f; outline-offset: 1px; }
+
+.pol-form.is-confirming {
+  border-color: var(--gold-bright);
+  box-shadow: inset 0 0 0 1px var(--gold-bright);
+  color: var(--gold-bright);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+span.pol-form { background: none; cursor: default; }
+span.pol-form:hover { background: none; }
+.pol-form.is-ruling { border-color: rgba(131, 154, 107, 0.5); color: var(--green); }
+
+.pol-form.is-blocked {
+  border-color: rgba(168, 138, 75, 0.25);
+  color: var(--text-faint);
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+/* --- 17.2 Yasalar --- */
+
+.pol-law {
+  display: grid;
+  gap: 4px;
+  margin: 0 6px;
+  padding: 5px 7px 7px;
+  border: 1px solid rgba(168, 138, 75, 0.26);
+  background: linear-gradient(180deg, #141d21, #0e1619);
+}
+
+.pol-law-head { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.pol-law-icon { display: grid; flex: none; place-items: center; width: 16px; height: 16px; color: #c8ab77; }
+.pol-law-icon svg { width: 16px; height: 16px; }
+.pol-law-head h5 { margin: 0; color: var(--text); font-family: var(--font-display); font-size: 13px; font-weight: 600; }
+.pol-law-head em { margin-left: auto; color: var(--text-faint); font-size: 10px; }
+
+.pol-law-now { margin: 0; color: var(--text-dim); font-size: 11px; line-height: var(--lh-body); }
+
+.pol-levels { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px; }
+
+.pol-level {
+  display: grid;
+  align-content: start;
+  gap: 3px;
+  min-width: 0;
+  padding: 5px 6px;
+  border: 1px solid rgba(168, 138, 75, 0.2);
+  background: rgba(8, 12, 14, 0.45);
+  color: var(--text-dim);
+  font: inherit;
+  text-align: left;
+}
+
+.pol-level-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pol-level-note { color: var(--text-faint); font-size: 10px; line-height: 1.35; }
+
+.pol-level.is-current {
+  border-color: rgba(214, 181, 116, 0.65);
+  background: rgba(150, 122, 69, 0.14);
+  color: var(--text);
+}
+
+.pol-level.is-current .pol-level-name i { color: var(--green); font-style: normal; }
+
+.pol-level.is-current .pol-level-note {
+  color: #d6b574;
+  font-size: 9px;
+  letter-spacing: var(--ls-label);
   text-transform: uppercase;
 }
 
-/* Dar ekran: önce merdiven ızgarası tek sütuna iner, sonra iki ana sütun
-   üst üste gelir. Hiçbir bölge kaybolmaz — yalnız sıraya girer. */
-@media (max-width: 1500px) {
-  .screen-body > .pol { grid-template-columns: 320px minmax(0, 1fr); }
-  .pol-col-state .pol-reform-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+button.pol-level { cursor: pointer; }
+.pol-level.is-open:hover { border-color: var(--gold); color: var(--text); }
+.pol-level.is-open:hover .pol-level-note { color: #d6b574; }
+.pol-level.is-open:focus-visible { outline: 1px solid #e0c37f; outline-offset: 1px; }
+.pol-level.is-confirming { border-color: var(--gold-bright); box-shadow: inset 0 0 0 1px var(--gold-bright); }
+.pol-level.is-confirming .pol-level-note { color: var(--gold-bright); }
+
+/* Programın tavanı üstündeki ya da kilitli kademe: okunur ama soluk. Seçilip
+   askıya alınmış kademe kesik çizgiyle ayrılır — geri gelecek olan odur. */
+.pol-level.is-beyond,
+.pol-level.is-waiting { opacity: 0.72; }
+.pol-level.is-beyond .pol-level-name { color: #7b8588; }
+.pol-level.is-wanted { border-style: dashed; border-color: rgba(214, 181, 116, 0.45); opacity: 1; }
+.pol-lock-icon { display: inline-grid; place-items: center; width: 12px; height: 12px; color: #8a7f6a; }
+.pol-lock-icon svg { width: 12px; height: 12px; }
+
+/* Kademenin motor farkı. Renk "artması iyi mi"ye bakar, işarete değil. */
+.pol-effects { display: flex; flex-wrap: wrap; gap: 1px 6px; margin-top: 1px; }
+.pol-eff { display: inline-flex; align-items: baseline; gap: 3px; min-width: 0; }
+.pol-eff small { color: var(--text-mute); font-size: 9px; white-space: nowrap; }
+.pol-eff b { font-size: 10px; font-variant-numeric: tabular-nums; }
+.pol-eff.up b { color: var(--green); }
+.pol-eff.down b { color: var(--red); }
+
+@media (max-width: 1100px) {
+  .pol-parties { grid-template-columns: minmax(0, 1fr); }
 }
 
-@media (max-width: 1180px) {
-  .pol-reform-grid { grid-template-columns: minmax(0, 1fr); }
-}
-
-/* Telefon: iki sütun üst üste gelir ve kaydırma tek yere, gövdeye toplanır.
-   İç kutuların ayrı ayrı kaydırılması dar ekranda üç ayrı kaydırma alanı
-   demekti — parmak hangisini tuttuğunu bilmiyordu. */
+/* Dar ekran: iki sütun üst üste gelir ve kaydırma tek yere, gövdeye toplanır. */
 @media (max-width: 900px) {
   .screen[data-screen='politics'] {
     height: auto;
@@ -4668,10 +4398,9 @@ body.screen-open .layer-menu { display: none; }
 
   .screen[data-screen='politics'] .screen-body { overflow-y: auto; }
   .screen-body > .pol { flex: none; grid-template-columns: minmax(0, 1fr); }
-  .pol-reform-columns { grid-template-columns: minmax(0, 1fr); }
-  .pol-left,
-  .pol-panel { overflow: visible; }
-  .pol-issues-scroll { max-height: none; overflow: visible; }
+  .pol-gov,
+  .pol-laws { overflow: visible; }
+  .pol-levels { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ==========================================================================
@@ -7292,15 +7021,6 @@ body.menu-open .sheet { visibility: hidden; }
   background-clip: padding-box;
 }
 
-/* Reform kapısının durumu kartın kenarından okunur: hazır olan pirinç, destek
-   bekleyen kırmızı, sayaç bekleyen soluk. Oyuncu ızgaraya bakınca hangi
-   yasanın neden durduğunu tek bakışta görür. */
-.reform.is-ready { border-color: rgba(190, 158, 96, 0.55); }
-.reform.is-support { border-left: 2px solid var(--red); }
-.reform.is-cooldown { border-left: 2px solid var(--text-faint); }
-.rstep em small { color: var(--text-faint); font-size: 9px; }
-.rstep-wait { color: var(--text-faint); font-size: 9px; font-style: italic; }
-
 /* ==========================================================================
    21. EKRAN: ASKERÎ (military)
 
@@ -8548,8 +8268,6 @@ body.menu-open .sheet { visibility: hidden; }
 /* Ilk tik: kart onay bekler, ikinci tik ilan eder (screens.js data-proclaim). */
 /* Iki tikli onay: savas ilani ve yasa dugmeleri de ayni vurguyu tasir. */
 .action.confirming { border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright) inset; color: var(--gold-bright); }
-.rstep.is-confirming button { border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright) inset; }
-.rstep.is-confirming button span { color: var(--gold-bright); }
 .tech-programme-card.confirming { border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright) inset; }
 .tech-programme-card.confirming em { color: var(--gold-bright); }
 /* Komutanin taarruz bakisi: neden saldirdigi ya da saldirmadigi (military.js assaultLine). */
@@ -8832,7 +8550,8 @@ body.menu-open .sheet { visibility: hidden; }
 .mil-head,
 .mil-disposition,
 .mil-leader-detail,
-.pol-panel,
+.pol-gov,
+.pol-laws,
 .pol-band,
 .trade-totals,
 .trade-cat,
@@ -10096,8 +9815,7 @@ svg.res-glyph {
 .ledger-col, .bank-rows,
 .trade-totals, .trade-cat, .trade-detail, .trade-struct-block,
 .mil-col, .mil-stats, .mil-head, .mil-disposition, .mil-leader-detail,
-.pol-panel, .pol-band, .pol-gov, .pol-house, .pol-mix, .pol-movements,
-.pol-issues, .pol-gates,
+.pol-gov, .pol-laws, .pol-band,
 .tech-col, .tech-programme-card, .tech-detail, .tech-head,
 .chron-row,
 .mil-build, .mil-command, .mil-queue, .mil-plan,
@@ -10135,7 +9853,7 @@ svg.res-glyph {
 .pop-attention, .vbox, .ind-search input, .pop-search input,
 .mil-build-list, .mil-queue-list, .mil-leader-list,
 .chron-list, .tech-body, .tech-ladder, .tech-effects,
-.pol-issues-scroll, .pol-house-body, .pol-mix-body, .pol-movement-body,
+.pol-party-bar,
 .market-table, .data-table tbody {
   /* Oyuk da saydam: altindaki lake gorunur, uzerine koyu bir dikdortgen
      konmaz (Butce'deki .vbox ile ayni davranis). */
@@ -11002,89 +10720,6 @@ body.screen-open .alert-pop { display: none; }
 }
 
 
-/* Hukumet atama seridi: partiler kendi renklerinde birer kunye. Sandigi
-   kaldirmadigimiz icin satir bir SECIM degil bir ATAMA gibi okunmali —
-   dugmeler kucuk, destek yuzdesi yaninda. */
-.pol-appoint-row {
-  display: grid;
-  gap: var(--sp-1);
-  margin-top: var(--sp-2);
-  padding-top: var(--sp-2);
-  border-top: 1px solid var(--line);
-}
-
-.pol-appoint-row > small {
-  color: var(--text-mute);
-  font-size: var(--fs-label);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.pol-appoint-list { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
-
-.pol-appoint {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px var(--sp-2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  color: var(--text-dim);
-  font-size: var(--fs-sm);
-  cursor: pointer;
-}
-
-.pol-appoint > i {
-  width: 8px;
-  height: 8px;
-  flex: none;
-  border-radius: 50%;
-  background: var(--party-color);
-}
-
-.pol-appoint > em { color: var(--text-mute); font-style: normal; }
-.pol-appoint:hover { color: var(--text); border-color: var(--gold); }
-
-.pol-appoint.on {
-  color: var(--gold-bright);
-  border-color: var(--gold);
-  background: var(--gold-wash);
-  cursor: default;
-}
-
-
-/* --- Reform etki seridi ---------------------------------------------------
-   Merdivenin altinda, bir sonraki basamagin GERCEK bedeli ve kazanci.
-   Sayilar motorun katsayilarindan geliyor (reforms.reformPreview); ekran
-   yalnizca adlandirip isaretini boyuyor. Renk "artmasi iyi mi" sorusuna
-   bakar, degerin isaretine degil — ucret faturasinin artmasi yesil olsaydi
-   tablo yalan soylerdi. */
-.reform-effects {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 3px var(--sp-2);
-  margin-top: var(--sp-1);
-  padding-top: var(--sp-1);
-  border-top: 1px solid var(--line);
-}
-
-.reform-eff {
-  display: flex;
-  align-items: baseline;
-  gap: 4px;
-  min-width: 0;
-}
-
-.reform-eff small {
-  color: var(--text-mute);
-  font-size: var(--fs-label);
-  white-space: nowrap;
-}
-
-.reform-eff b { font-size: var(--fs-sm); font-variant-numeric: tabular-nums; }
-.reform-eff.up b { color: var(--green); }
-.reform-eff.down b { color: var(--red); }
 
 
 /* --- Vergi esigine kilitleme ---------------------------------------------

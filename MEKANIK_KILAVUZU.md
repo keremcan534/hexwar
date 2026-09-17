@@ -9,7 +9,7 @@ Oyundaki her mekanik için dört şey:
 | **Çalışıyor mu?** | EVET / HAYIR — ölçülmüş, tahmin değil |
 | **Pratikte** | oyunda ne yapman gerektiği |
 
-Son ölçüm: 2026-08-29, dal `experiment/simple-budget`.
+Son ölçüm: 2026-08-29, dal `experiment/simple-budget`; siyaset (§6) 2026-09-17, `master`.
 Yeniden üretmek için: `npm run audit:mechanics` ve `npm run audit:budget-contract`.
 
 ---
@@ -49,7 +49,8 @@ oyundaki "insanın fark ettiği en küçük değişim" ölçeği.
 - **ÖLÜ** — hiçbir ölçüt kımıldamadı, bit bit aynı. *Şu an sıfır tane var.*
 - **SAVAŞ KALDIRACI** — barış arenasında ölçülemez (aşağıda `armyFunding`).
 
-**Bugünkü tablo: 24 mekanik · ÇALIŞIYOR 22 · GÜRÜLTÜ ALTI 1 · ÖLÜ 0 · SAVAŞ 1.**
+**Bugünkü tablo: 13 kaldıraç (5 yasa, meşruiyet, 7 bütçe) · ÇALIŞIYOR 11 · GÜRÜLTÜ ALTI 1 · ÖLÜ 0 · SAVAŞ 1.**
+Siyaset sadeleşmeden önce tarama 26 mekaniği (18 merdiven dahil) sayıyordu: 24 · 1 · 0 · 1.
 Bu tarama ilk koştuğunda 26 mekanikten **10'u ölüydü.**
 
 ---
@@ -191,7 +192,7 @@ export function literacyTargetOf(nation) {
   const schooling = clamp(economy.social?.education ?? 0, 0, 100) / 100;
   const reach = economy.techMods?.literacyReach ?? 0;
   const budgeted = 0.08 + schooling * 0.62 * (1 + higherEducationBonus(nation));
-  const floor = reformModifiers(nation).literacyFloor ?? 0;   // okul YASASI
+  const floor = lawModifiers(nation).literacyFloor ?? 0;   // refah YASASI (okul)
   return clamp(Math.max(budgeted, floor) + reach, 0, 0.95);
 }
 
@@ -226,7 +227,7 @@ welfare: { id: 'welfare', name: 'Welfare', rate: 0.76, ledgerLine: 'welfare' },
 
 socialClass.satisfaction = clamp(
   0.35 + affordability * 0.5 - taxRate * 0.28 + welfare * 0.14
-    + reformMoodShift(nation, classId) - joblessBite,
+    + lawMoodShift(nation, classId) - joblessBite,
   0.08, 0.95);
 
 const health = 1 + Math.min(100, nation.economy?.social?.welfare ?? 0) / 100 * 0.35;
@@ -236,7 +237,7 @@ const health = 1 + Math.min(100, nation.economy?.social?.welfare ?? 0) / 100 * 0
 **4.32 katı.**
 
 **Pratikte** — refah pahalıdır (0.76 oran, eğitimin iki katından fazla) ve
-etkisi anında görünür: memnuniyet → istikrar → parti desteği → seçim. Vergiyi
+etkisi anında görünür: memnuniyet → istikrar → parti desteği → meşruiyet. Vergiyi
 yükselttiğin hafta refahı da yükselt, halk farkı yutar. Nüfusun da daha hızlı
 büyür (%35'e kadar). Sağlık ayrı bir kaydıraç DEĞİL — ölçüldü, tek başına
 700 haftada nüfusa %1.4–2.0 katkı yapıyordu, nüfusun kendi gürültüsü ise %39;
@@ -268,7 +269,7 @@ export function researchPointsOf(nation) {
   const middleShare = clamp((economy.classes?.middle?.population ?? 0) / population, 0, 1);
   const clerks = literacy >= 0.5 ? middleShare * 2 : 0;
   const base = literacy * 4 + middleShare * 1.5 + clerks + 1;
-  const press = reformModifiers(nation).researchRate ?? 0;
+  const press = lawModifiers(nation).researchRate ?? 0;   // anayasa (basın)
   return base * (1 + (economy.techMods?.researchRate ?? 0) + press);
 }
 ```
@@ -324,7 +325,7 @@ klasörün ilk kademelerini almak neredeyse her zaman daha ucuzdur.
                + ödenebilirlik × 0.50      (sepetinin ne kadarını alabiliyor)
                − vergi oranı   × 0.28
                + refah bütçesi × 0.14
-               + reform kayması            (aşağıda §6)
+               + yasa kayması              (aşağıda §6)
                − işsizlik ısırığı          (alt %22, orta %11, üst yok)
     sonuç 0.08 ile 0.95 arasına kırpılır
 
@@ -335,7 +336,7 @@ const joblessBite = classId === 'upper' ? 0
   : unemployment * (classId === 'lower' ? UNEMPLOYMENT_MOOD : UNEMPLOYMENT_MOOD * 0.5);
 socialClass.satisfaction = clamp(
   0.35 + affordability * 0.5 - taxRate * 0.28 + welfare * 0.14
-    + reformMoodShift(nation, classId) - joblessBite,
+    + lawMoodShift(nation, classId) - joblessBite,
   0.08, 0.95);
 ```
 
@@ -343,7 +344,7 @@ socialClass.satisfaction = clamp(
 yalnızca %5.3) ve 24 mekanikten 13'ü en güçlü sinyalini burada veriyor.
 
 **Pratikte** — bu formül oyunun omurgası: memnuniyet → istikrar → parti
-desteği → seçim. Dört girdisi var ve dördü de senin elinde. En büyük terim
+desteği → meşruiyet. Dört girdisi var ve dördü de senin elinde. En büyük terim
 **ödenebilirlik (0.50)** — yani halkın sepetini alabilmesi. Fiyatlar fırlarsa
 hiçbir refah bütçesi kurtarmaz. **Vergi (-0.28) refahın (+0.14) tam iki
 katıdır**: refahı sıfırdan sonuna açman, vergiyi %50 artırmanın yarısını
@@ -975,7 +976,7 @@ her şehir ayrıca yük getirir — sömürge kurarken bunu hesaba kat.
 ```js
 const ceiling = province.culture === nation.culture
   ? 100
-  : 100 * (reformModifiers(nation).minorityCeiling ?? 1);
+  : 100 * (lawModifiers(nation).minorityCeiling ?? 1);
 econ.control = clamp(
   econ.control + ((province.culture === nation.culture ? 1.5 : minorityControl)
     * (0.45 + stability)) * (1 - occupied) - occupied * 2,
@@ -1007,8 +1008,8 @@ senin için bedava.
 **Formül**
 
     ulusal insan gücü = Σ (işgal edilmemiş taşranın havuzu) × askerlik çarpanı
-    askerlik çarpanı  = 0.85 + (1 − merdiven ilerlemesi) × 0.45
-                        tam askerlik 1.30 … gönüllü ordu 0.85
+    askerlik çarpanı  = 0.85 + askerlik yasası ilerlemesi × 0.45
+                        Mass 1.30 … Limited 1.075 … Volunteer 0.85
 
 **Kod** — `src/game/recruitment.js:74`
 
@@ -1020,16 +1021,17 @@ export function nationManpower(world, nationId) {
     if (occupiedShareOf(world, province) > 0) continue;
     total += provinceManpower(world, province.center);
   }
-  return total * (reformModifiers(world.nations?.[nationId]).manpower ?? 1);
+  return total * (lawModifiers(world.nations?.[nationId]).manpower ?? 1);
 }
 ```
 
-**Çalışıyor mu?** **EVET** — 1.66 katı. Bu merdiven daha önce **hiçbir şeye
-bağlı değildi**: oyuncu askerlik yasası çıkarıyor, hiçbir şey olmuyordu.
+**Çalışıyor mu?** **EVET** — 2.40 katı (yasa; eski merdiven 1.66 katıydı). Merdiven
+bağlanmadan önce **hiçbir şeye bağlı değildi**: oyuncu askerlik yasası çıkarıyor,
+hiçbir şey olmuyordu.
 
-**Pratikte** — tam askerlikten gönüllü orduya geçmek havuzunu %35 küçültür
-(1.30 → 0.85). Bedeli de var, ters yönde: tam askerlik alt sınıf moralinden
-0.06 götürür. Yani "büyük ordu mu, mutlu halk mı" gerçek bir takas. İşgal
+**Pratikte** — seferber ulustan gönüllü orduya geçmek havuzunu %35 küçültür
+(1.30 → 0.85); Mass kademesine yalnız milliyetçi program izin verir. Bedeli de
+var, ters yönde: seferberlik alt sınıf moralinden 0.06 götürür. Yani "büyük ordu mu, mutlu halk mı" gerçek bir takas. İşgal
 edilmiş taşra havuza **hiç** katkı vermez — savaşta toprak kaybetmek aynı
 zamanda yedek kaybetmektir.
 
@@ -1289,110 +1291,124 @@ boyu 8.3 → 12.0. Harita üç deve değil orta boy devletlere oturuyor.
 
 ---
 
-# 6. REFORMLAR — 18 merdiven, dokuz kanal
+# 6. SİYASET — hükûmet ve beş yasa
 
-Reform ekranındaki her merdiven 0–1 arası bir "ilerleme"ye indirgenir, sonra
-dokuz kanaldan birine (veya birkaçına) girer. Kanal listesi tam olarak budur;
-başka bir yere bağlı değildirler.
+Siyaset ekranında iki karar var: **hangi partiyle yönetildiği** ve **beş yasanın
+kademesi**. Eski katman (18 yasa merdiveni, üst meclis kapısı, 48 haftalık seçim,
+ülkeden ülkeye zarla kurulan partiler) 2026-09'da buna indirildi. Simülasyona
+giden kanalların katsayıları DEĞİŞMEDİ: bir yasanın tavan kademesi, katlandığı
+eski merdivenlerin hepsi tavandayken ne veriyorsa onu verir.
 
-**Kod** — `src/game/reforms.js:930`
+**Kod** — `src/game/politics.js` (`computeLawModifiers`). Her yasanın kademesi
+0 / 0.5 / 1 ilerlemeye çevrilir.
 
 ```js
-const representation = (p('vote_franchise') + p('voting_system')
-  + p('political_parties') + p('upper_house') + p('public_meetings')) / 5;
-const draft = 1 - p('conscription');       // merdiven TERS: 0 = herkesi al
-const slaveryFree = 1 - p('slavery');      // 0 = serbest, 1 = yasak
-
-const mods = {
-  lowerMood: hours * 0.13 + safety * 0.07 + dole * 0.12 + pension * 0.10
-    + health * 0.10 + child * 0.06 + wage * 0.11 + unions * 0.07
-    + representation * 0.22 - draft * 0.06 - slaveryFree * 0.08,
-  middleMood: rights * 0.09 + press * 0.07 + health * 0.02 + representation * 0.16,
-  upperMood: -(wage * 0.05 + safety * 0.03 + unions * 0.04 + representation * 0.12),
-  throughput: 1 - hours * 0.03 - safety * 0.012 - child * 0.012,
-  wageCost: 1 + wage * 0.14 + unions * 0.05 + hours * 0.06 + safety * 0.04
-    - slaveryFree * 0.10,
-  socialBurden: dole * 0.10 + pension * 0.12 + health * 0.10 + school * 0.09,
-  manpower: 0.85 + draft * 0.45,
-  literacyFloor: school * 0.35,
-  researchRate: press * 0.25,
-  minorityCeiling: 0.7 + rights * 0.3,
-};
+const slavery = 1 - labour;          // kölelik işçi hakkının en alt kademesinde yasal
+lowerMood:  labour * 0.44 + welfare * 0.32 + constitution * 0.22
+            - conscription * 0.06 - slavery * 0.08,
+middleMood: constitution * 0.23 + citizenship * 0.09 + welfare * 0.02,
+upperMood:  -(labour * 0.12 + constitution * 0.12),
+throughput: 1 - labour * 0.054,
+wageCost:   1 + labour * 0.29 - slavery * 0.10,
+socialBurden:    welfare * 0.41,
+manpower:        0.85 + conscription * 0.45,
+literacyFloor:   welfare * 0.35,
+researchRate:    constitution * 0.25,
+minorityCeiling: 0.7 + citizenship * 0.3,
 ```
 
-| Kanal | Ne yapar | Besleyen merdivenler |
-|---|---|---|
-| `lowerMood` | alt sınıf memnuniyeti | çalışma saati, güvenlik, işsizlik, emeklilik, sağlık, çocuk işçi, asgari ücret, sendika, temsil, askerlik(−), kölelik(−) |
-| `middleMood` | orta sınıf memnuniyeti | azınlık hakları, basın, sağlık, temsil |
-| `upperMood` | üst sınıf memnuniyeti (hep eksi) | asgari ücret, güvenlik, sendika, temsil |
-| `throughput` | fabrika üretim hızı | çalışma saati, güvenlik, çocuk işçi |
-| `wageCost` | fabrika bordrosu | asgari ücret, sendika, çalışma saati, güvenlik, kölelik(−) |
-| `socialBurden` | zorunlu sosyal gider | işsizlik, emeklilik, sağlık, okul |
-| `manpower` | seferberlik havuzu | askerlik |
-| `literacyFloor` | okuryazarlık TABANI | okul sistemi |
-| `researchRate` | araştırma çarpanı | basın |
-| `minorityCeiling` | yabancı kültür sadakat TAVANI | azınlık hakları |
+| Yasa | Kademeler | Katlanan eski merdivenler | Kanallar |
+|---|---|---|---|
+| Constitution | Absolute · Constitutional · Democracy | oy hakkı, seçim sistemi, partiler, üst meclis, toplanma, basın | alt/orta sınıf (+), seçkin (−), araştırma; kimin desteğinin sayıldığı (§6.2) |
+| Labour Rights | None · Basic · Strong | asgari ücret, çalışma saati, güvenlik, sendika, çocuk işçi, kölelik | alt sınıf (+), seçkin (−), bordro, fabrika üretimi |
+| Welfare State | None · Basic · Full | işsizlik yardımı, emeklilik, sağlık, okul | alt/orta sınıf (+), kısılamaz hazine yükü, okuryazarlık tabanı |
+| Citizenship | Residency · Limited · Full | azınlık hakları + partinin eski vatandaşlık ekseni | orta sınıf (+), azınlık sadakat tavanı ve hızı, kültürel huzursuzluk, asimilasyon, yabancı asker payı, kültür kabulü |
+| Conscription | Volunteer · Limited · Mass | askerlik (yön ters çevrildi: kademe = asker) | insan gücü, alt sınıf (−) |
 
-## 6.1 Temsil — beş merdiven, tek karar
+## 6.1 Hükûmet — dört parti, dört yıl
 
-**Formül**
+Her ülkede aynı dört parti, aynı programla:
 
-    temsil = (oy hakkı + seçim sistemi + partiler + üst meclis + toplanma) / 5
-    alt sınıf   += temsil × 0.22
-    orta sınıf  += temsil × 0.16
-    üst sınıf   −= temsil × 0.12
+| Parti | Fabrika | Ticaret bandı | Ordu tavanı | Yasa tavanları (Anayasa / İşçi / Refah / Vatandaşlık / Askerlik) |
+|---|---|---|---|---|
+| Conservatives | devlet + özel | koruma −15…100 | %100 | Constitutional / Basic / Basic / Limited / Limited |
+| Liberals | yalnız özel | serbest −50…25 | %75 | Democracy / Basic / Basic / Full / Limited |
+| Socialists | yalnız devlet | koruma −15…100 | %60 | Democracy / Strong / Full / Full / Limited |
+| Nationalists | devlet + özel | koruma −15…100 | %100 | Absolute / Basic / Basic / Residency / Mass |
 
-**Çalışıyor mu?** **EVET — ama ancak birlikte.** Tek tek ölçüldüğünde her biri
-gürültünün 1.24–1.41 katı (yani sınırda). **Beşi birlikte 4.58 katı.**
+Hükûmet dört yıl (208 hafta) görevde kalır, seçim yoktur; yasa yılda bir
+değişir. Tavan yalnız yukarıyı keser: daha dar programlı bir hükûmet gelince
+seçilen kademe **askıya alınır**, geniş programlı bir hükûmetle kendiliğinden geri
+gelir — bütçedeki `tariffWanted` / `armyFundingWanted` ile aynı kavram.
 
-**Pratikte** — bu beş merdiven aslında **tek bir karardır**: "devletim ne
-kadar temsil ediyor". Birini açıp diğerlerini kapalı tutmak paranı boşa
-harcamaktır — siyasi bedelini ödersin, hissedilir bir karşılık almazsın.
-Ya hepsini birlikte sür, ya hiçbirine dokunma. Karşılığı da net: halk memnun
-olur, aristokrasi küser. Demokratikleşmek üst sınıfın memnuniyetinden
-0.12 götürür ve üst sınıf senin sermayendir.
-
-## 6.2 Okul yasası — taban, bütçe tavan
+## 6.2 Meşruiyet — seçimin yerini alan kural
 
 **Formül**
 
-    okuryazarlık hedefi = max( bütçeden gelen hedef , okul yasası × 0.35 )
+    fark      = max(0, en çok desteklenen partinin desteği − iktidarın desteği) / 100
+    istikrar −= fark × 0.25
 
-**Çalışıyor mu?** **EVET** — 4.34 katı. Bağlanmadan önce 0.90 katıydı, yani
-oyuncu için yoktu.
+    destek    = Σ sınıf nüfusu × ideoloji eğilimi × anayasa ağırlığı
+                (radikal parti memnuniyet 0.40 altında, ılımlı 0.58 üstünde kazanır;
+                 savaş ve işgal iktidarın desteğini %45'e kadar oyar)
+    ağırlık   Absolute {alt 0, orta 0, üst 1} · Constitutional {0, 1, 1} · Democracy {1, 1, 1}
 
-**Pratikte** — yasa ile bütçe **toplanmaz**, büyüğü geçerlidir. Zorunlu eğitim
-yasası çıkardıysan hazinen eğitime sıfır ayırsa bile okuryazarlığın %35'in
-altına düşmez. Yani yasa bir **sigortadır**: savaşta bütçeyi kesersin,
-okuryazarlığın çökmez. Ama tavanı yükseltmez — %35'in üstüne çıkmak istiyorsan
-bütçe açman gerekir.
+**Çalışıyor mu?** **EVET** — iktidarın 30 puan geride olması gürültünün
+**2.82 katı** (istikrar).
 
-## 6.3 Basın — araştırmanın hızı
+**Pratikte** — halkın arkasında olmadığı partiyle de yönetebilirsin; bedelini her
+hafta istikrardan ödersin (üst çubuktaki istikrar kartında "Government backing"
+satırı). Anayasayı genişletmek kimin sesinin sayıldığını değiştirir: sayıca büyük
+alt sınıf sosyaliste yakındır, yani demokrasi muhafazakâr bir hükûmetin
+meşruiyetini yer. Eski seçim bu bedeli hiç kesmiyordu: parti atamak bedava ve
+anlıktı, kaybedilen seçimin ertesi günü aynı parti yeniden atanabiliyordu.
 
-**Formül**
+## 6.3 Yapay zekâ ve dünya
 
-    araştırma puanı ×= (1 + basın özgürlüğü × 0.25)
+Oyuncuyla aynı iki kapıdan geçer (`formGovernment`, `setLaw`). Hükûmet tam dönem
+dolmadan değişmez; halkın öndeki partisi iktidarı anayasaya göre **8 / 5 / 3**
+puan geçerse hükûmet ona geçer. Yılda en çok bir yasa, bir kademe, **yalnız
+yukarı** — eski merdivenler gibi yasa geri alınmaz. Devredilmiş oyuncu kabinesi
+(Laws AUTO) yalnız yasaları sürer; hükûmeti oyuncu seçer.
 
-**Çalışıyor mu?** **EVET** — haftalık araştırmayı %20.0 oynatıyor, gürültünün
-4.00 katı.
+Aynı üç tohum, 20 yıl, eski katman / yeni katman:
 
-**Pratikte** — sansürlü ülke aynı nüfusla, aynı okulla **%20 daha az araştırır.**
-Otokrasi oynuyorsan bunu bilerek ödüyorsun; teknoloji lideri olacaksan basını
-serbest bırakman gerekir. Basının ikinci etkisi orta sınıf moralinde (0.07).
+| | 5. yıl | 10. yıl | 20. yıl |
+|---|---|---|---|
+| alt sınıf memnuniyeti | 0.68 / 0.68 | 0.68 / 0.68 | 0.69 / 0.66 |
+| istikrar | 0.53 / 0.54 | 0.53 / 0.52 | 0.53 / 0.51 |
+| okuryazarlık | 0.20 / 0.20 | 0.33 / 0.32 | 0.41 / 0.39 |
+| teknoloji | 3.7 / 3.7 | 6.0 / 6.1 | 10.8 / 10.9 |
+| fabrika seviyesi | 16.0 / 16.7 | 19.7 / 20.7 | 24.4 / 24.0 |
+| hükûmet değişimi (toplam) | 0 / 4.3 | 3.7 / 8.7 | 23.0 / 16.7 |
 
-## 6.4 Kölelik
+Üç ayar ölçülerek bulundu ve geri dönülmesin diye kodda yazılı:
+(1) meşrutiyet alt sınıfı da saydığında 30 haftada 30 ülkenin 9'u sosyalist
+demokrasiye geçiyordu; (2) mutlak monarşi orta sınıfı saydığında liberal ilk yılda
+dünyanın %60'ını alıyordu — üst sınıf ilk yıl alt sınıfa oranla 0.064'ten 0.016'ya
+iniyor; (3) muhafazakâr refahı tercih etmeyince 20 yılda alt sınıf memnuniyeti eski
+dünyanın 0.08 altında kaldı.
 
-**Formül**
+## 6.4 Çalışıyor mu?
 
-    ücret maliyeti −= (kölelik yasak mı) × 0.10
-    alt sınıf morali −= (kölelik yasak mı) × 0.08
+| Kaldıraç | Hüküm | Kaç kat | En güçlü ölçüt |
+|---|---|---|---|
+| Constitution | EVET | 6.97× | istikrar |
+| Labour Rights | EVET | 6.20× | memnuniyet |
+| Welfare State | EVET | 7.63× | istikrar |
+| Conscription | EVET | 2.40× | istikrar (eski merdiven 1.66×) |
+| Citizenship | GÜRÜLTÜ ALTI, bağlı | 0.71× | hazine (eski azınlık hakları 0.57×) |
+| Meşruiyet | EVET | 2.82× | istikrar |
 
-**Çalışıyor mu?** **EVET** — 2.35 katı.
+Doğrudan kanal: vatandaşlık Residency → Full taşra gelirini **+%8.3**, işçi hakkı
+None → Strong işçi gelirini **+%19.0** oynatıyor (eski asgari ücret kanalı %0.6'da
+kalıyordu). Vatandaşlığın asıl işi azınlığı olan ülkededir: `audit:culture-unrest`
+TEST 3'te huzursuzluk Residency 4.91 → Full 3.14.
 
-**Pratikte** — ters okunuyor, dikkat: **kölelik serbestken emek ucuzdur**
-(bordro %10 düşük) ve kaldırmak sanayinin maliyetini büyütür. Ama serbest
-kölelik alt sınıfı ezer. Yani ahlaki tercih burada ekonomik bir tercihtir de:
-köleliği kaldırmak sanayine fatura çıkarır, halkına iyi gelir.
+**Pratikte** — tek tık artık büyüktür. İşçi hakkında bir kademe alt sınıf
+memnuniyetini +0.26 oynatır ve bordroyu %19.5 büyütür; eskiden bu altı merdivenin
+yıllar süren toplamıydı. Kademenin gerçek farkı düğmenin üstünde yazar (motorun
+kendi katsayılarından, `lawPreview`).
 
 ---
 
@@ -1412,18 +1428,17 @@ köleliği kaldırmak sanayine fatura çıkarır, halkına iyi gelir.
 | 10 | İstikrar | memnuniyet − işgal − savaş − işsizlik×0.22 | EVET | omurga |
 | 11 | Nüfus | beş çarpanın çarpımı; beslenme %50 altı kıtlık | EVET | ölçüldü |
 | 12 | İşsizlik | (min(işçi,tezgâh) − istihdam) / tezgâh | EVET | tek kaynak |
-| 13 | Fabrika ücreti | katma değer × 0.55 × reform çarpanı | EVET | +%8.8 |
+| 13 | Fabrika ücreti | katma değer × 0.55 × yasa çarpanı | EVET | +%8.8 |
 | 14 | Ticaret | min(fazla, teklif); iştah = 1/(1+oran×1.6) | EVET | 1.47× |
 | 15 | İdari gider | (şehir−1)^1.6 × 4.0 + nüfus^0.75 × 0.8 | EVET | kaldıraç değil |
-| 16 | Taşra sadakati | tavan = azınlık hakları; üretim ×= sadakat | BAĞLI, hissedilmez | +%12.5 |
-| 17 | İnsan gücü | havuz × (0.85 + askerlik×0.45) | EVET | 1.66× |
-| 18 | Temsil (5 merdiven) | ortalama; alt +0.22, orta +0.16, üst −0.12 | EVET | 4.58× |
-| 19 | Okul yasası | okuryazarlık tabanı = yasa × 0.35 | EVET | 4.34× |
-| 20 | Basın | araştırma ×= (1 + basın×0.25) | EVET | 4.00× |
-| 21 | Kölelik | bordro −%10, alt sınıf morali −0.08 | EVET | 2.35× |
-| 22 | İşçi yasaları | mood + wageCost + throughput | EVET | 1.40–3.49× |
-| 23 | Asgari ücret | işçi geliri +%8.8 | EVET | 2.95× |
-| 24 | Sendika | işçi geliri +%5.2 | EVET | 1.93× |
+| 16 | Taşra sadakati | tavan = vatandaşlık yasası; üretim ×= sadakat | BAĞLI, hissedilmez | +%8.3 |
+| 17 | İnsan gücü | havuz × (0.85 + askerlik×0.45) | EVET | 2.40× |
+| 18 | Anayasa | alt +0.22, orta +0.23, üst −0.12, araştırma +%25; kimin desteği sayılır | EVET | 6.97× |
+| 19 | İşçi hakları | alt +0.44 (kölelik kalkınca +0.08), bordro +%29, üretim −%5.4 | EVET | 6.20× |
+| 20 | Sosyal devlet | alt +0.32, hazine yükü 0.41, okuryazarlık tabanı 0.35 | EVET | 7.63× |
+| 21 | Vatandaşlık | azınlık tavanı 0.7→1.0, huzursuzluk, asimilasyon | GÜRÜLTÜ ALTI, bağlı | 0.71× |
+| 22 | Askerlik | insan gücü 0.85→1.30, alt −0.06 | EVET | 2.40× |
+| 23 | Meşruiyet | istikrar −= (lider − iktidar) × 0.25 | EVET | 2.82× |
 
 ---
 
@@ -1436,10 +1451,12 @@ Bu kılavuz ne kadar ölçüldüyse o kadar doğrudur. Ölçülemeyenler:
    kol arasındaki fark kaldıraca değil kimin kimi fethettiğine bağlanır).
    Yönü `audit:budget-contract` §6'da ayrıca doğrulanıyor.
 
-2. **`political_rights` bağlı ama hissedilmiyor** (0.46×). Taşra gelirini
-   +%12.5 artırdığı doğrudan ölçüldü. Kaba ölçütlerde görünmemesinin iki
-   nedeni var: GSYH'nin kendi tohum gürültüsü %51.9 ve artan üretim dünya
-   fiyatını düşürerek kendini kısmen yiyor.
+2. **Vatandaşlık yasası bağlı ama taramada hissedilmiyor** (0.71×; eski
+   `political_rights` 0.46–0.57×). Taşra gelirini +%8.3 artırdığı doğrudan
+   ölçüldü. Kaba ölçütlerde görünmemesinin iki nedeni var: taramanın ülkesinde
+   azınlık azdır (yasanın asıl işi azınlıklı ülkede: `audit:culture-unrest`
+   TEST 3, huzursuzluk 4.91 → 3.14) ve artan üretim dünya fiyatını düşürerek
+   kendini kısmen yiyor.
 
 3. **Tarama 3 tohum × 150 hafta koşar.** Eşiğe yakın mekanikler (1.2–1.4×
    bandı) koşudan koşuya biraz oynayabilir. Gürültünün 2 katının üstündekiler

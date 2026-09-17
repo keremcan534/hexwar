@@ -27,8 +27,9 @@ import {
 import {
   MILITARY_EQUIPMENT, ensureProductionLine, equipmentStock,
 } from './economy.js';
-import { desiredIndex, enactReform, reformBoard } from './reforms.js';
-import { rulingParty } from './politics.js';
+import {
+  LAW_BY_ID, formGovernment, nextLawStep, preferredGovernment, setLaw,
+} from './politics.js';
 import { delegationActive, noteDelegated } from './delegation.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
@@ -532,28 +533,29 @@ function manageCommand(game, nation) {
 }
 
 /**
- * Yasa çıkarma. Reform oyuncuya özel bir kaldıraç olmamalı: YZ de aynı
- * meclis kapısından geçer. Karar iktidar partisinin isteğidir — merdivende
- * partisinin durmak istediği noktanın gerisindeyse bir basamak ilerler.
- * Böylece sosyalist hükûmet sosyal yasaları, liberal hükûmet siyasi yasaları
- * kendiliğinden sürer; gerici hükûmet hiçbirini sürmez.
+ * SİYASET GÜNDEMİ. Oyuncuyla aynı iki kapıdan geçer (politics.formGovernment
+ * ve setLaw); gizli bir YZ kısayolu yoktur.
  *
- * Haftada en fazla bir yasa ve borçluyken hiç: yeni taahhüt hazineyi batırmasın.
+ * Hükûmet: görev süresi dolmuşsa ve halk başka bir partiyi belirgin öndeyse
+ * o partiyle hükûmet kurulur — eski seçimin YZ tarafındaki karşılığı. Oyuncu
+ * bunu kendi seçer, devredilmiş kabine hükûmeti DEĞİŞTİRMEZ.
+ * Yasalar: iktidarın programının istediği yöne, yılda bir yasa, bir kademe.
+ * Borçluyken yasa değişmez: refah hazineye kısılamaz yük bindirir.
+ *
+ * Ulus başına çeyrek yılda bir, farklı haftalarda değerlendirilir.
  */
-function reformAgenda(game, nation) {
-  // Meclis her hafta toplanmaz. Ulus başına çeyrek yılda bir, farklı
-  // haftalarda değerlendirilir — hem doğru tempo hem de zorunlu bir
-  // performans kararı: reformBoard 21 merdivenin tamamını kurar ve haftalık
-  // çağrı haftalık tahsisatı 9 MB'den 30 MB'ye çıkarıyor (ölçüldü).
-  if ((game.turns.turn + nation.id) % 12 !== 0) return;
-  if ((nation.gold ?? 0) < 0) return;
-  const ruling = rulingParty(nation);
-  if (!ruling) return;
-  for (const row of reformBoard(nation)) {
-    if (!row.canEnact) continue;
-    if (desiredIndex(row.group, ruling.ideology) < row.next.index) continue;
-    if (enactReform(game, nation, row.group.id)) return;
+function politicalAgenda(game, nation, { government = true } = {}) {
+  if ((game.turns.turn + nation.id) % 12 !== 0) return null;
+  const world = game.world;
+  let formed = null;
+  if (government) {
+    const party = preferredGovernment(world, nation);
+    if (party && formGovernment(game, nation, party.id)) formed = party;
   }
+  if ((nation.gold ?? 0) < 0) return { formed, law: null };
+  const step = nextLawStep(world, nation);
+  const law = step && setLaw(game, nation, step.lawId, step.levelId) ? step : null;
+  return { formed, law };
 }
 
 export function runNationAI(game, nation, rng) {
@@ -565,7 +567,7 @@ export function runNationAI(game, nation, rng) {
   // Kirik kumenin cikisi (ortak et / birak / sur) da ayni kapidan gecer.
   manageBrokenProvinces(game, nation);
   spend(game, nation);
-  reformAgenda(game, nation);
+  politicalAgenda(game, nation);
   manageCommand(game, nation);
   // Kara tümenleri komuta katmanından yönetilir; burada yalnız donanma kalır.
   for (const unit of [...world.units]) {
@@ -581,11 +583,9 @@ export function runNationAI(game, nation, rng) {
  * Ordu komutası (`manageCommand`) DEVREDİLMEZ; kendi otomatik anahtarlarını
  * zaten taşıyor (bkz. command.js ensureCommandOptions).
  *
- * Yasa (`reformAgenda`) ARTIK DEVREDİLİR. Eski gerekçe "oyunun asıl kararı"
- * idi; pratikte öyle çıkmadı — merdiven bekleme süresi dolunca tek bir açık
- * basamak sunuyor, oyuncu de ne verdiğini bilmeden tıklıyordu. Devredilen
- * ajanda YZ'nin kendi fonksiyonudur; ayrı bir "oyuncu otomasyonu" yazılmadı
- * ki iki davranış sessizce ayrışmasın.
+ * Yasalar (`politicalAgenda`) devredilir; HÜKÛMET devredilmez. Hangi partiyle
+ * yönetileceği oyuncunun kararıdır ve dört yıl bağlar — kabine yalnız
+ * iktidarın programını yılda bir adım sürer.
  */
 export function runDelegatedAI(game, nation, rng) {
   if (!nation?.alive) return;
@@ -595,14 +595,14 @@ export function runDelegatedAI(game, nation, rng) {
     diplomacy(game, nation, rng);
   }
   if (delegationActive(nation, 'reforms', turn)) {
-    const before = reformBoard(nation).filter((row) => row.complete).length;
-    reformAgenda(game, nation);
-    const after = reformBoard(nation).filter((row) => row.complete).length;
-    if (after > before) {
-      noteDelegated(game, nation, 'reforms', 'A reform was enacted.',
-        'The chamber allowed it and the ruling party wanted it.');
+    const law = politicalAgenda(game, nation, { government: false })?.law;
+    if (law) {
+      const item = LAW_BY_ID[law.lawId];
+      const level = item.levels.find((entry) => entry.id === law.levelId);
+      noteDelegated(game, nation, 'reforms', `${item.name} moved to ${level?.name ?? law.levelId}.`,
+        'The ruling party’s programme wants it; the cabinet moves one law a year.');
     }
-    // Kultur kabulu yasa merdiveniyle ayni kapida: ikisi de "kimin devleti"
+    // Kultur kabulu yasalarla ayni kapida: ikisi de "kimin devleti"
     // sorusunun cevabi (bkz. culture.js manageAcceptance).
     if (manageAcceptance(game, nation)) {
       noteDelegated(game, nation, 'reforms', 'A minority was made an accepted culture.',

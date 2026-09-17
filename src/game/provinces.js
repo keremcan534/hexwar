@@ -11,8 +11,7 @@
 // recruitment). Yenisini yazarken world.provinces üzerinden dolaş.
 
 import { makeRng } from '../core/rng.js';
-import { policyOf } from './politics.js';
-import { reformModifiers } from './reforms.js';
+import { lawModifiers, lawValue } from './politics.js';
 import { controllerOf } from './control.js';
 import { DEFAULT_ZONE, ZONE_RULES } from '../world/macro.js';
 import { CULTURE, resolveRevolts, runProvinceCulture } from './culture.js';
@@ -924,20 +923,20 @@ export function runProvinces(game) {
       continue;
     }
     const stability = Math.max(0.1, Math.min(1, nation.economy?.stability ?? 0.6));
-    const citizenship = policyOf(nation, 'citizenship');
+    const citizenship = lawValue(nation, 'citizenship');
     const minorityControl = citizenship === 'full_citizenship'
       ? 1.25
       : citizenship === 'limited_citizenship' ? 0.85 : 0.6;
-    // AZINLIK HAKLARI TAVANI. Parti politikasi sadakatin ne kadar HIZLI
-    // oturdugunu soyler; yasa NEREYE KADAR oturdugunu. `political_rights`
-    // merdiveni daha once yalnizca orta sinif moraline giriyordu ve olculdu
+    // AZINLIK HAKLARI TAVANI. Vatandaslik yasasi hem sadakatin ne kadar HIZLI
+    // oturdugunu hem NEREYE KADAR oturdugunu soyler. Eski `political_rights`
+    // merdiveni yalnizca orta sinif moraline giriyordu ve olculdu
     // (audit:mechanics): butun menzil gurultunun 0.57 kati, yani yoktu. Hiz
-    // vermek yetmezdi — baris zamaninda sadakat zaten tavana ciker, yasa
-    // yalnizca birkac yil kazandirirdi. Tavan kalicidir ve dogrudan
-    // uretimdedir (provinceOutput ciktiyi sadakatle olcekler).
+    // vermek yetmezdi — baris zamaninda sadakat zaten tavana ciker. Tavan
+    // kalicidir ve dogrudan uretimdedir (provinceOutput ciktiyi sadakatle
+    // olcekler).
     const ceiling = province.culture === nation.culture
       ? 100
-      : 100 * (reformModifiers(nation).minorityCeiling ?? 1);
+      : 100 * (lawModifiers(nation).minorityCeiling ?? 1);
     // Kısmi işgal sadakati aşındırır: kazanım payı, sağlam kalan toprağın oranı.
     // HUZURSUZLUK KAZANCI YER (bkz. culture.js): huzursuz kümede sadakat önce
     // yavaşlar, eşiğe yaklaşınca geriler — üretim ve vergi zaten sadakatle

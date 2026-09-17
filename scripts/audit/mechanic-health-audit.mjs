@@ -26,7 +26,7 @@
 //   npm run audit:mechanics
 
 import { headless, runPeaceful, pickNation, section, sub, finding, reportFindings } from './harness.mjs';
-import { REFORMS, refreshReformModifiers } from '../../src/game/reforms.js';
+import { LAWS, refreshLawModifiers } from '../../src/game/politics.js';
 import { BUDGET_POLICIES, budgetPolicyLimits, setBudgetPolicy } from '../../src/game/economy.js';
 import { researchPointsOf } from '../../src/game/technology.js';
 
@@ -150,40 +150,52 @@ function probe(label, applyLow, applyHigh) {
     + ` %${best.pct.toFixed(1).padStart(6)}  = gurultunun ${best.ratio.toFixed(2)} kati${mark}`);
 }
 
-// =========================================================== REFORMLAR
+// ============================================================= YASALAR
 section('MEKANIK SAGLIK TARAMASI');
-sub(`Reform merdivenleri — taban kademe vs tavan kademe (${WEEKS} hafta, ${SEEDS.length} tohum)`);
+sub(`Yasalar — taban kademe vs tavan kademe (${WEEKS} hafta, ${SEEDS.length} tohum)`);
 
-const ladders = (Array.isArray(REFORMS) ? REFORMS : Object.values(REFORMS));
-for (const group of ladders) {
-  const bottom = group.steps[0].id;
-  const top = group.steps[group.steps.length - 1].id;
-  // Siyasi kapi ATLANIR: burada kapinin degil ETKININ olcusu yapiliyor.
-  const set = (id) => (nation) => {
-    nation.politics.reforms[group.id] = id;
-    refreshReformModifiers(nation);
-  };
-  probe(group.id, set(bottom), set(top));
+/**
+ * Siyasi kapi ATLANIR: burada kapinin degil ETKININ olcusu yapiliyor. Yine de
+ * yururlukteki kademe iktidarin tavaniyla kirpilir (politics.lawCap); tavani
+ * o yasada en yuksek olan parti iki kolda da iktidarda tutulur ki olculen
+ * fark yalniz yasadan gelsin.
+ */
+const TOP_PARTY = {
+  constitution: 'liberal',
+  labour: 'socialist',
+  welfare: 'socialist',
+  citizenship: 'liberal',
+  conscription: 'nationalist',
+};
+
+function governLaw(nation, lawId, levelId) {
+  const party = nation.politics.parties.find((item) => item.ideology === TOP_PARTY[lawId]);
+  nation.politics.rulingPartyId = party.id;
+  nation.politics.laws[lawId] = levelId;
+  refreshLawModifiers(nation);
 }
 
-// ================================================= BILESIK KARARLAR
-sub('Bilesik kararlar — bir karari birlikte olusturan merdivenler');
+for (const law of LAWS) {
+  const bottom = law.levels[0].id;
+  const top = law.levels[law.levels.length - 1].id;
+  probe(law.id, (nation) => governLaw(nation, law.id, bottom), (nation) => governLaw(nation, law.id, top));
+}
+
+// ============================================================ MESRUIYET
+sub('Mesruiyet — halkin arkasinda olmayan hukumet istikrar oder mi?');
 {
-  // Bes siyasi merdiven TEK bir karardir ("devletim ne kadar temsil ediyor").
-  // Tek tek olcmek her birini bilesigin beste biri gosterir; oyuncunun verdigi
-  // karar ise hepsi birden. Bilesigi de ayrica olceriz.
-  const POLITICAL = ['vote_franchise', 'voting_system', 'political_parties',
-    'upper_house', 'public_meetings'];
-  const setAll = (which) => (nation) => {
-    for (const id of POLITICAL) {
-      const grp = ladders.find((g) => g.id === id);
-      if (!grp) continue;
-      const step = which === 'top' ? grp.steps[grp.steps.length - 1] : grp.steps[0];
-      nation.politics.reforms[id] = step.id;
+  // Destek her hafta siyaset fazinda yeniden hesaplanir; ekonomi bir SONRAKI
+  // hafta okur. Kol her hafta sonunda destegi yazar: bir kolda iktidar
+  // halkla esit, digerinde en onde giden partinin 30 puan gerisinde.
+  const backing = (gap) => (nation) => {
+    const ruling = nation.politics.rulingPartyId;
+    const other = nation.politics.parties.find((party) => party.id !== ruling);
+    for (const party of nation.politics.parties) {
+      party.support = party.id === ruling ? 25 - gap / 2
+        : party.id === other.id ? 25 + gap / 2 : 25;
     }
-    refreshReformModifiers(nation);
   };
-  probe('TEMSIL (5 merdiven)', setAll('bottom'), setAll('top'));
+  probe('mesruiyet (30 puan)', backing(0), backing(30));
 }
 
 // ============================================================ BUTCE
@@ -206,16 +218,13 @@ sub('Dogrudan kanal — gurultunun altinda kalan mekanik BAGLI MI?');
   // kaba olcutlere bakar; burada her zayif mekanigin BAGLANDIGI sayi dogrudan
   // okunur. Gecerse mekanik vardir ve yonu dogrudur — yalnizca oyuncunun onu
   // ayirt etmesi zordur. Gecmezse mekanik gercekten yoktur.
-  const channel = (label, group, lowStep, highStep, read) => {
+  const channel = (label, lawId, lowStep, highStep, read) => {
     const one = (step) => {
       const game = headless(SEEDS[0]);
       runPeaceful(game, WARMUP);
       const nation = pickNation(game);
       game.turns.playerNation = nation.id;
-      const set = () => {
-        nation.politics.reforms[group] = step;
-        refreshReformModifiers(nation);
-      };
+      const set = () => governLaw(nation, lawId, step);
       set();
       for (let i = 0; i < WEEKS; i++) { runPeaceful(game, 1); set(); }
       return read(nation);
@@ -231,12 +240,12 @@ sub('Dogrudan kanal — gurultunun altinda kalan mekanik BAGLI MI?');
         `${lo} -> ${hi}, degisim %${delta.toFixed(2)}`);
     }
   };
-  channel('political_rights -> tasra geliri', 'political_rights',
-    'restricted_rights', 'all_allowed_rights', (n) => n.economy.ledger.state ?? 0);
-  channel('minimum_wage -> isci geliri', 'minimum_wage',
-    'no_minimum_wage', 'good_minimum_wage', (n) => n.economy.classes?.lower?.income ?? 0);
-  channel('trade_unions -> isci geliri', 'trade_unions',
-    'no_trade_unions', 'all_trade_unions', (n) => n.economy.classes?.lower?.income ?? 0);
+  // Eski `political_rights` merdiveni (0.57x) vatandaslik yasasina, asgari
+  // ucret ve sendika merdivenleri isci hakki yasasina katlandi.
+  channel('citizenship -> tasra geliri', 'citizenship',
+    'residency', 'full_citizenship', (n) => n.economy.ledger.state ?? 0);
+  channel('labour -> isci geliri', 'labour',
+    'no_labour_rights', 'strong_labour_rights', (n) => n.economy.classes?.lower?.income ?? 0);
 }
 
 // ============================================================== OZET

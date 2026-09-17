@@ -20,17 +20,14 @@ import { TIER, announce } from './chronicle.js';
 import { treatiesOf } from './peace.js';
 import { regimentCount } from './units.js';
 import {
-  canInvestInFactory, factoryInvestmentRules, fiscalPolicyLimits, policyOf,
-  rulingParty,
+  canInvestInFactory, factoryInvestmentRules, fiscalPolicyLimits, lawModifiers, lawMoodShift,
+  legitimacyOf, policyOf, refreshLawModifiers, rulingParty,
 } from './politics.js';
 import {
   NATIONAL_INVESTMENTS, PROJECT_KIND, constructionAtlas, constructionPower,
   constructionUpkeep, dropInvestmentLevel, ensureConstruction, fundProject,
   higherEducationBonus, investmentLevel, planConstructionAI, queueIndustryProject,
 } from './construction.js';
-import {
-  decayReformCounters, refreshReformModifiers, reformModifiers, reformMoodShift,
-} from './reforms.js';
 import {
   LEDGER_LINES, LEDGER_LINE_IDS, closeWeek, emptyLedger, openWeek, settle, settleAffordable,
   weekTotals,
@@ -1854,11 +1851,9 @@ export const TAX_STRUCTURES = {
 
 const IDEOLOGY_TAX_STRUCTURE = {
   socialist: 'progressive',
-  communist: 'progressive',
   liberal: 'flat',
   conservative: 'regressive',
-  reactionary: 'regressive',
-  fascist: 'regressive',
+  nationalist: 'regressive',
 };
 
 export const TAX_CLASS_IDS = ['lower', 'middle', 'upper'];
@@ -2341,7 +2336,7 @@ export function socialSpendingCost(nation) {
     total += scale * socialLevel(nation, program.id) * program.rate;
   }
   // Yasayla verilen hak kaydıraçtan ayrıdır ve kısılamaz.
-  return total + scale * reformModifiers(nation).socialBurden;
+  return total + scale * lawModifiers(nation).socialBurden;
 }
 
 function addFlow(market, goodId, kind, amount) {
@@ -2918,7 +2913,7 @@ function runFactoryEmployment(game, nation) {
 
 function runFactories(world, nation, market, ownOutput, inputAvailability) {
   const economy = nation.economy;
-  const reformMods = reformModifiers(nation);
+  const reformMods = lawModifiers(nation);
   let totalProfit = 0;
   // SANAYININ GSYH'YE KATKISI KATMA DEGERDIR, HASILAT DEGIL. Eskiden burada
   // `industrialOutput += fiyat × miktar` birikiyordu, yani fabrika hasilatinin
@@ -3164,18 +3159,30 @@ function updateStability(world, nation, base) {
   const occupationHit = -occupation * STABILITY_WEIGHTS.occupation;
   const warHit = -war * STABILITY_WEIGHTS.war;
   const unemploymentHit = -unemployment * STABILITY_WEIGHTS.unemployment;
+  // MESRUIYET — secimin yerini alan kalem (bkz. politics.legitimacyOf). Halkin
+  // en cok destekledigi parti iktidarda degilse aradaki fark buradan duser.
+  // Destek gecen haftanin siyaset fazindan gelir; bir haftalik gecikme
+  // bilerek kabul edildi (ekonomi siyasetten once kosar).
+  const legitimacy = legitimacyOf(nation);
 
-  economy.stability = clamp(base + occupationHit + warHit + unemploymentHit, 0.03, 0.98);
+  economy.stability = clamp(
+    base + occupationHit + warHit + unemploymentHit + legitimacy.hit, 0.03, 0.98,
+  );
   economy.stabilityBreakdown = {
     base,
     occupation: occupationHit,
     war: warHit,
     unemployment: unemploymentHit,
+    legitimacy: legitimacy.hit,
     occupiedShare: occupation,
     occupiedTiles: economy.occupiedTiles ?? 0,
     warFronts: economy.warFronts ?? 0,
     unemploymentShare: unemployment,
     unemployed: Math.round(seeking),
+    ruling: legitimacy.ruling?.name ?? null,
+    leader: legitimacy.leader?.name ?? null,
+    rulingSupport: legitimacy.ruling?.support ?? 0,
+    leaderSupport: legitimacy.leader?.support ?? 0,
     total: economy.stability,
   };
 }
@@ -3390,7 +3397,7 @@ function populationDemand(world, nation, market) {
       : unemployment * (classId === 'lower' ? UNEMPLOYMENT_MOOD : UNEMPLOYMENT_MOOD * 0.5);
     socialClass.satisfaction = clamp(
       0.35 + affordability * 0.5 - taxRate * 0.28 + welfare * 0.14
-        + reformMoodShift(nation, classId) - joblessBite,
+        + lawMoodShift(nation, classId) - joblessBite,
       0.08,
       0.95,
     );
@@ -3490,7 +3497,7 @@ function fiscalBalance(nation, baseOutputValue) {
   }
   // Yasayla verilen hak kaydiractan ayridir ve kisilamaz; refah satirina yazilir.
   const mandated = (economy.population / POPULATION_UNIT)
-    * reformModifiers(nation).socialBurden;
+    * lawModifiers(nation).socialBurden;
   if (mandated > 0) settle(nation, 'welfare', -mandated);
   economy.socialCost = socialSpendingCost(nation);
 }
@@ -4402,6 +4409,7 @@ function recordPulse(nation, turn) {
       occupation: bd.occupation ?? 0,
       war: bd.war ?? 0,
       unemployment: bd.unemployment ?? 0,
+      legitimacy: bd.legitimacy ?? 0,
       total: bd.total ?? economy.stability ?? 0,
     },
     ledger: { ...lines, income: ledger.income ?? 0, expenses: ledger.expenses ?? 0, net: ledger.net ?? 0 },
@@ -4468,14 +4476,11 @@ export function beginEconomy(game) {
   const world = game.world;
   ensureEconomy(world);
   // Yasa çarpanları haftada BİR KEZ, ekonomi fazının başında hesaplanır;
-  // sıcak yol sonra yalnız düz alan okur. Politika fazından çağırmak
-  // politics.js ile reforms.js arasında döngüsel içe aktarma kuruyordu.
+  // sıcak yol sonra yalnız düz alan okur (bkz. politics.refreshLawModifiers).
+  // Yasa ve hükûmet kilitleri mutlak tur numarasıdır: eritilecek sayaç yok.
   for (const nation of world.nations) {
     if (!nation.alive || !nation.politics) continue;
-    // Sayac erimesi ulus basina haftada TAM BIR KEZ, burada (bkz.
-    // reforms.decayReformCounters — kaydet/yukle dallanmasinin sebebiydi).
-    decayReformCounters(nation);
-    refreshReformModifiers(nation);
+    refreshLawModifiers(nation);
   }
   refreshNationalStrain(world);
   // Egitim -> okuryazarlik -> arastirma puani -> teknoloji zinciri. Sira
@@ -4646,7 +4651,7 @@ export function literacyTargetOf(nation) {
   // egitim yasasi cikaran ulke, hazinesi egitime sifir ayirsa bile bu
   // seviyenin altina dusmez. Boylece yasa ile kaydirac ayni sayiyi iki kez
   // odemez ve ikisinin cumlesi ayri kalir: yasa tabani, butce hedefi.
-  const floor = reformModifiers(nation).literacyFloor ?? 0;
+  const floor = lawModifiers(nation).literacyFloor ?? 0;
   return clamp(Math.max(budgeted, floor) + reach, 0, 0.95);
 }
 

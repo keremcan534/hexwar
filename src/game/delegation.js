@@ -48,15 +48,13 @@ export const DELEGATION_AREAS = {
     desc: 'The foreign ministry answers peace offers and opens wars it can win.',
   },
   reforms: {
+    // Kimlik `reforms` kaldi: kayittaki devir anahtari bu adla yazili.
     id: 'reforms',
-    name: 'Reforms',
+    name: 'Laws',
     screen: 'politics',
-    // Once bilerek DEVREDILMEZ birakilmisti ("oyunun asil kararlari").
-    // Pratikte oyle cikmadi: merdiven bekleme suresi dolunca tek bir acik
-    // basamak sunuyor ve oyuncu ne verdigini bilmeden tikliyor — yani karar
-    // degil ayin. Devir bu ayini kaldirir; ONEMLI karar hala oyuncunun,
-    // cunku istedigi an geri alip kendi merdivenini secebilir.
-    desc: 'The cabinet enacts the ruling party’s programme as the chamber allows it.',
+    // Devredilen yalniz yasalardir. HUKUMET devredilmez: hangi partiyle
+    // yonetilecegi dort yil baglayan karar, oyuncunun elinde kalir.
+    desc: 'The cabinet moves one law a year toward the ruling party’s programme and settles restless minorities. The choice of government stays yours.',
   },
   recruitment: {
     id: 'recruitment',

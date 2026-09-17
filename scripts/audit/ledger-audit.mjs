@@ -11,7 +11,7 @@
 // Kontrollu tek-tesis senaryosu: bilinen kadro/uretimle VA = ucret + kar.
 
 import { headless, pickNation } from './harness.mjs';
-import { reformModifiers } from '../../src/game/reforms.js';
+import { lawModifiers } from '../../src/game/politics.js';
 import {
   INCOME_POOL_SHARE, INCOME_WEIGHTS,
   LABOR_SHARE, PROFIT_TO_CAPITAL, PROFIT_TO_REINVEST, WAGE_SPLIT,
@@ -140,7 +140,7 @@ console.log('='.repeat(74));
     // (wageCost < 1) mesru olarak payi 0.55'in altina indirir ve denetim
     // saglam bir sim'i "sapmis" ilan ediyordu — olculdu: HEAD'de %53.2,
     // kimlik ise tam tutuyordu. Kimlik artik BIREBIR dogrulanir.
-    const wageCost = reformModifiers(nation)?.wageCost ?? 1;
+    const wageCost = lawModifiers(nation)?.wageCost ?? 1;
     const expectedShare = Math.min(0.85, LABOR_SHARE * wageCost);
     const shareObserved = va > 0 ? factory.wages / va : 0;
     console.log(`  tek tesis (${factory.typeId}): VA=${n2(va)} ucret=${n2(factory.wages)}`

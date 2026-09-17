@@ -317,6 +317,25 @@ piyasa fiyatından alınır. Savaş çıkarsa temettü ve öncelik donar, pay du
 Kamulaştırma mümkündür ve bedeli şöhrettir: tazminatsız el koymak bir şehir
 fethi kadar itibar yakar ve ülkeye yıllarca yabancı sermaye girmez.
 
+### Siyaset: hükûmet ve beş yasa
+
+Oyuncunun iki siyasi kararı var. **Hükûmet**: her ülkede aynı dört parti
+(Muhafazakâr, Liberal, Sosyalist, Milliyetçi), sabit programla — fabrikayı kimin
+kurduğu, gümrük bandı, ordu fonu tavanı ve her yasada izin verilen en yüksek
+kademe. Hükûmet dört yıl görevde kalır; seçim yoktur. Bedeli **meşruiyettir**:
+halkın en çok desteklediği parti iktidarda değilse aradaki fark ×0.25 istikrardan
+düşer. Kimin desteğinin sayıldığını anayasa belirler (mutlak: seçkin, meşruti:
+mülk sahibi, demokrasi: herkes).
+
+**Yasalar**: Anayasa, İşçi hakları, Sosyal devlet, Vatandaşlık, Askerlik — üçer
+kademe, doğrudan seçilir, her yasa yılda bir değişir. Programın tavanı daralınca
+seçilen kademe askıya alınır, genişleyince geri gelir (bütçe bantlarıyla aynı
+kavram). Her kademenin motordan gelen farkı (işçi memnuniyeti, bordro, hazine
+yükü, araştırma, insan gücü…) düğmenin üstünde yazar. YZ aynı iki kapıdan geçer:
+tam dönem dolunca halkın belirgin öndeki partisine geçer, yılda bir yasayı
+programına doğru yükseltir, yasa geri almaz. Ayrıntı: `src/game/politics.js`,
+ölçüm: `npm run diagnose:politics`.
+
 ### Yönetimi devretme (AUTO)
 
 Altı alan — bütçe, ticaret, inşaat, araştırma programı, diplomasi, asker alımı
@@ -351,8 +370,7 @@ src/
     provinces.js     nüfus, kontrol, RGO üretimi ve göç
     cities.js        şehir, işçi dağıtımı ve ulusal bilanço
     construction.js  eyalet bölgeleri, yapılar ve inşaat kuyruğu
-    politics.js      partiler, seçim ve politika sınırları
-    reforms.js       yasa merdivenleri, üst meclis oyu ve seçmen kütüğü
+    politics.js      hükûmet (4 sabit parti), 5 yasa, meşruiyet ve politika sınırları
     command.js       generaller, amiraller, ordu grupları ve cephe hattı
     battles.js       province muharebesi, moral ve geri çekilme
     reinforcement.js insan ve teçhizat takviyesi
@@ -372,7 +390,7 @@ src/
     nationPicker.js dünya kurulunca açılan ülke seçim paneli ("Play as")
     tooltipData.js gecikmeli bilgi kartlarının içerik sağlayıcıları
     screens.js     inşaat, sanayi, lojistik, bütçe, ticaret, nüfus, siyaset ve ordu ekranları
-    politicsScreen.js  hükûmet, üst meclis ve yasa defterinin çizimi
+    politicsScreen.js  hükûmet kartları ve beş yasanın çizimi
     exchangeScreen.js  borsa bülteni: kotasyon defteri ve şirket dosyası
     militaryScreen.js  komuta, asker alımı ve eğitim kuyruğunun çizimi
 ```

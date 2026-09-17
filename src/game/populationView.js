@@ -11,8 +11,7 @@
 //
 // Burası `game` katmanıdır: DOM'a dokunmaz, Node'da tek başına çalışır.
 
-import { IDEOLOGIES } from './politics.js';
-import { peopleMix } from './reforms.js';
+import { IDEOLOGIES, peopleMix } from './politics.js';
 import { acceptBlockers, brokenByCulture, cultureMix, unrestSummary } from './culture.js';
 import { formatPopulation, populationOf, weightedNeedsMet } from './economy.js';
 import {

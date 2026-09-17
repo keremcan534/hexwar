@@ -19,17 +19,20 @@ import {
 import {
   CULTURE, acceptCulture, cultureMix, foreignShareOf, unrestSummary,
 } from '../../src/game/culture.js';
-import { rulingParty } from '../../src/game/politics.js';
+import { refreshLawModifiers } from '../../src/game/politics.js';
 
 /**
- * Politika iktidar partisinden gelir (politics.policyOf); testte sabitlemek
- * icin BUTUN partilerin ayni kaydi yazilir — secim kimi getirirse getirsin
- * olculen politika degismez.
+ * Vatandaslik artik bir YASADIR (politics.laws.citizenship) ve iktidarin
+ * programi tavanini belirler. Iki kolda da ayni parti (liberal: tavan Full)
+ * iktidardadir ki olculen fark yalniz yasadan gelsin. Kilit ve duyuru
+ * atlanir; olculen sey kapi degil etki.
  */
-function forcePolicy(nation, category, value) {
-  for (const party of nation?.politics?.parties ?? []) party.policies[category] = value;
-  const ruling = rulingParty(nation);
-  if (ruling) ruling.policies[category] = value;
+function forceCitizenship(nation, level) {
+  const liberal = nation?.politics?.parties?.find((party) => party.ideology === 'liberal');
+  if (!liberal) return;
+  nation.politics.rulingPartyId = liberal.id;
+  nation.politics.laws.citizenship = level;
+  refreshLawModifiers(nation);
 }
 
 const WEEKS = Number(process.argv[2] ?? 520);
@@ -173,8 +176,8 @@ sub('TEST 3 — vatandaslik politikasi huzursuzlugu oynatiyor mu?');
     if (!target) break;
     probe.turns.playerNation = target.id;
     for (let i = 0; i < 520; i++) {
-      // Politika her hafta yeniden yazilir: runPolitics YZ tercihine geri ceker.
-      forcePolicy(target, 'citizenship', policy);
+      // Yasa her hafta yeniden yazilir: kaydedilmis bir secim bile olculeni bozmasin.
+      forceCitizenship(target, policy);
       probe.turns.endTurn();
     }
     results[policy] = unrestSummary(world2, target).unrest;

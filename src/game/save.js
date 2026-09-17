@@ -14,8 +14,7 @@ import { ensureCommand, ensureCommandOptions } from './command.js';
 import { ensureTraining } from './recruitment.js';
 import { ensureBattles } from './battles.js';
 import { ensureProvinces, refreshProvinceOwner } from './provinces.js';
-import { ensurePolitics } from './politics.js';
-import { refreshReformModifiers } from './reforms.js';
+import { ensurePolitics, refreshLawModifiers } from './politics.js';
 import { ensureConstruction, migrateConstructionV14 } from './construction.js';
 import { ensureDelegation, restoreDelegation } from './delegation.js';
 
@@ -67,9 +66,15 @@ import { ensureDelegation, restoreDelegation } from './delegation.js';
 // asimilasyon paylari yillar icinde kaydiriyor, uretimden turetilemez.
 // v19 kayitlari kayipsiz yuklenir: alan yoksa bilesim uretilmis haliyle
 // kalir, huzursuzluk sifirdan kendi hedefine yaklasir.
-export const SAVE_VERSION = 20;
+// 21: SIYASET SADELESTI (bkz. politics.js). nation.politics artik dort sabit
+// parti, bes yasa (`laws`), yasa kilitleri ve dort yillik hukumet kilidi
+// tasir; secim sayaclari ve 18 merdivenlik `reforms` dustu. v20 kayitlari
+// KAYIPSIZ gocer: ensurePolitics eski bicimi tanir, iktidarin ideolojisini
+// dort partiden birine, merdivenlerin ortalama ilerlemesini en yakin yasa
+// kademesine cevirir; ozel sermaye aynen tasinir.
+export const SAVE_VERSION = 21;
 /** Gocu bilinen eski surumler: deserialize bunlari da kabul eder. */
-const MIGRATABLE_VERSIONS = new Set([14, 16]);
+const MIGRATABLE_VERSIONS = new Set([14, 16, 20]);
 const STORAGE_KEY = 'hexwar.save';
 
 /**
@@ -371,8 +376,8 @@ export function deserialize(game, data) {
     for (const f of NATION_FIELDS) nation[f] = saved[f];
     nation.economy = saved.economy ?? nation.economy;
     // Politics eski kayıtlarda yoktur. Başlangıçta üretilen turn-1 verisini
-    // taşımak yerine null bırakılır; ensurePolitics gerçek kayıt turuna göre
-    // partileri ve bir sonraki seçimi yeniden kurar.
+    // taşımak yerine null bırakılır; ensurePolitics partileri ve yasaları
+    // yeniden kurar, v20 biçimini de yenisine göçürür.
     nation.politics = saved.politics ?? null;
     // Eski kayitta yok: ensureResearch bos kayitla kurar (teknoloji sifirdan
     // baslar, takvim kapisi zaten calismaya devam eder).
@@ -536,13 +541,13 @@ export function deserialize(game, data) {
   ensureEconomy(world);
   ensurePolitics(world);
   ensureProvinces(world);
-  // Yasa carpanlari WeakMap'te yasar, kayda girmez (bkz. reforms.js
+  // Yasa carpanlari WeakMap'te yasar, kayda girmez (bkz. politics.js
   // modsByNation). Yuklemede bos kalinca tasra fazi ilk hafta NOTR tavani
   // okuyordu (olculdu: azinlik tavani 70 olan province'te sadakat 70'te
   // duracakken 70.55'e cikti) ve ekonomi oradan ayriliyordu. Saf yeniden
-  // hesap: sayaclara dokunmaz, sicak kosuyla ayni tabloyu kurar.
+  // hesap: kilitlere dokunmaz, sicak kosuyla ayni tabloyu kurar.
   for (const nation of world.nations) {
-    if (nation.alive && nation.politics) refreshReformModifiers(nation);
+    if (nation.alive && nation.politics) refreshLawModifiers(nation);
   }
   if (data.market) {
     world.market = data.market;

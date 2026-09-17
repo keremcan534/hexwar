@@ -11,8 +11,9 @@
 
 import { scoreboard } from './hegemony.js';
 import { nationStrength } from './diplomacy.js';
-import { governmentType } from './reforms.js';
-import { policyLabel, policyOf, rulingParty } from './politics.js';
+import {
+  governmentType, policyLabel, policyOf, rulingParty,
+} from './politics.js';
 import { RGO_TYPES } from './provinces.js';
 import { FACTORIES, GOODS, populationOf } from './economy.js';
 import { characterLine } from './identity.js';

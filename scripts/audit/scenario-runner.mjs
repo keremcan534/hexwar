@@ -17,7 +17,7 @@ import {
   FACTORIES, factoryJobs, factoryMargin, priceOf, setBudgetPolicy, BUDGET_POLICIES,
 } from '../../src/game/economy.js';
 import { RGO_TYPES } from '../../src/game/provinces.js';
-import { rulingParty } from '../../src/game/politics.js';
+import { policyOf } from '../../src/game/politics.js';
 import { battleUnitPower } from '../../src/game/battles.js';
 import { reinforcementNeed } from '../../src/game/reinforcement.js';
 import { nationManpower } from '../../src/game/recruitment.js';
@@ -32,7 +32,7 @@ function chooseNation(game, mode) {
   const list = game.world.nations.filter((n) => n.alive && n.economy);
   if (typeof mode === 'number') return game.world.nations[mode];
   if (mode === 'protectionist') {
-    return list.find((n) => rulingParty(n)?.policies?.trade === 'protectionism') ?? list[0];
+    return list.find((n) => policyOf(n, 'trade') === 'protectionism') ?? list[0];
   }
   if (mode === 'first') return list[0];
   // varsayilan: en cok fabrikasi olan (en zengin ekonomik sinyal)
