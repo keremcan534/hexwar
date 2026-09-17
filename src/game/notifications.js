@@ -39,6 +39,10 @@ export const NOTIFY = {
   COMMANDER: { icon: '🎖', tone: 'good', label: 'Officer staff', ttl: 10000, tier: 0 },
   POLITICS: { icon: '🗳', tone: 'info', label: 'Politics', ttl: 12000, tier: 1 },
   CRISIS: { icon: '⚠', tone: 'bad', label: 'Crisis', ttl: 0, halt: true, tier: 2 },
+  // Aclik arki (events.js): baslangic durdurur, donum noktalari akista gecer,
+  // bitis okunana kadar durur ama saati durdurmaz — iyi haber beklemez.
+  HUNGER: { icon: '🍞', tone: 'bad', label: 'Hunger', ttl: 0, halt: true, tier: 2 },
+  RELIEF: { icon: '🌾', tone: 'good', label: 'Hunger', ttl: 0, tier: 2 },
   NATION: { icon: '☠', tone: 'bad', label: 'Nations', ttl: 12000, tier: 1 },
   HEGEMONY: { icon: '👑', tone: 'good', label: 'Hegemony', ttl: 0, tier: 2 },
   INFO: { icon: '❕', tone: 'info', label: 'Dispatch', ttl: 9000, tier: 0 },

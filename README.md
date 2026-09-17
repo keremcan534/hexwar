@@ -44,7 +44,14 @@ yayılır, hepsi tek province'e tıkışmaz.
 
 Oyun haftalık adımlarla gerçek zamanlı akar. Saat penceresi sağ üsttedir; boşluk
 tuşu duraklatır ve duraklatmadan önceki hızı hatırlar, `+`/`−` kademe değiştirir.
-Yeni oyun ve yüklenen kayıt duraklatılmış başlar.
+Yeni oyun ve yüklenen kayıt duraklatılmış başlar. Savaş, kriz ve açlık gibi
+sonucu olan olaylar saati kendileri durdurur; tarihin altındaki "Paused" rozeti
+sebebini yazar.
+
+Yeni dünya kurulunca sağda **ülke seçim paneli** açılır: haritada bir ülkeye
+tıklamak ya da listeden seçmek kartı o ülkeye çevirir (sıra, hammadde, sanayi,
+komşuların gücü, dikkat satırları); "Play as" oyuncu ulusunu değiştirir. Saat
+akmaya başlarsa kartta duran ülke seçilmiş sayılır.
 
 Ekran yerleşimi Vic2 düzenindedir: seçili province penceresi **sol altta**, saat
 **sağ üstte**, harita kipleri **sağ altta**. Dar ekranda panel genişler ve kipler
@@ -356,9 +363,14 @@ src/
     ai.js            ülke yapay zekâsı
     companies.js     şirketler, küresel borsa, yabancı sahiplik ve temettü
     delegation.js    yönetim alanlarının AUTO ON/OFF devri
+    nationBrief.js   ülke seçim kartının dökümü (sıra, hammadde, komşular, dikkat satırları)
+    pulse.js         haftalık atıf: GSYH/hazine/istikrar "bu hafta neyi ne oynattı"
+    events.js        ulusal olay saptayıcısı (borç, rejim, başkent, ordu, açlık arkı)
     save.js          sürümlü kayıt
   ui/
     hud.js         üst çubuk, tarih, hız ve komuta paneli
+    nationPicker.js dünya kurulunca açılan ülke seçim paneli ("Play as")
+    tooltipData.js gecikmeli bilgi kartlarının içerik sağlayıcıları
     screens.js     inşaat, sanayi, lojistik, bütçe, ticaret, nüfus, siyaset ve ordu ekranları
     politicsScreen.js  hükûmet, üst meclis ve yasa defterinin çizimi
     exchangeScreen.js  borsa bülteni: kotasyon defteri ve şirket dosyası
