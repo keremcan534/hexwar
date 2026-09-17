@@ -460,7 +460,7 @@ export function advanceResearch(nation, year, world = null) {
 // Ulusal program (sekiz yillik yon + egitim tabani taahhudu) 2026-09'da
 // kalkti: kart secmek, vade saymak ve fesih bedeli oyuncuya teknoloji
 // agacindan baska bir sey anlatmiyordu. Yon artik dogrudan secim ve kuyruktur.
-// Kuyruk bosalinca `nextTechFor` doldurur — kor beta B-018'in (dokuz kacan
+// Kuyruk bosalinca `pickNextTech` doldurur — kor beta B-018'in (dokuz kacan
 // secim, 5671 bos RP) yapisal cozumu aynen yasar.
 // ===========================================================================
 
@@ -594,43 +594,104 @@ export function effectiveTechCost(world, nation, techId, year) {
   return Math.max(1, Math.round(base));
 }
 
+// ===========================================================================
+// AKILLI SECICI — "ulkenin su an en cok neye ihtiyaci var, kac puana?"
+//
+// Eski secici ekolu KESIN one koyup en ucuzu aliyordu: savastaki ulke okul
+// arastiriyor, borca batmis ulke tren yolu, sanayisi olmayan ulke fabrika
+// verimi aliyordu. Simdi her teknoloji ulkenin durumuna gore TARTILIR ve
+// puan basina degerle siralanir. Agirliklari economy.researchPriorities
+// kurar (bu dosya economy.js'i import edemez); burada yalniz toplanir.
+// Oyuncunun Research AUTO'su ve YZ AYNI fonksiyonu kullanir (delegation.js).
+// ===========================================================================
+
 /**
- * Siradaki teknoloji — oyuncu ve YZ icin AYNI yol: once ulkenin ekolu, sonra
- * etkin maliyet, aktivasyon yili ve id (deterministik). Oyuncunun kuyrugu
- * her zaman once gelir (bkz. nextQueuedTech); bu yalniz bos kuyrugu doldurur.
- *
- * Sabit bir "order" dizisi BILEREK verilmedi: farkli komsuluklar farkli
- * yayilim indirimi gorur ve ayni ekoldeki iki ulke bile farkli rota izler.
+ * Degistiricinin toplanabilir birimi. Yuzde anahtarlari oldugu gibi okunur
+ * (0.08 = 0.08); duz slot (egitim kadrosu) slot basina 0.05 sayilir. Tedarik
+ * tuketimi eksi yazilir (azalir) — degeri mutlaktir.
  */
-export function nextTechFor(nation, year, world) {
-  const candidates = availableTechs(nation);
-  if (!candidates.length) return null;
-  // EKOL. Her ulke ayni merdiveni ayni sirayla tirmaniyordu (audit:research,
-  // 1945: 60 ulkede 5-11 farkli teknoloji kumesi). Tohumdan gelen kalici
-  // egilim: o kategorinin teknolojisi once gelir. Kayda research ile girer.
+const MOD_UNIT = { trainingCapacity: 0.05 };
+/** Agirlik verilmemis fabrika/birim kilidinin degeri: orta boy bir yuzde. */
+const FACTORY_UNLOCK_VALUE = 0.08;
+const UNIT_UNLOCK_VALUE = 0.05;
+/**
+ * EKOL hala yasar ama carpan olarak: 1945'te ayrisma (audit:research) ekolun
+ * isiydi. Kesin oncelik olsaydi durumsal agirliklarin hicbir hukmu kalmazdi.
+ */
+export const SCHOOL_BONUS = 1.4;
+/** Hicbir agirliga dokunmayan teknoloji de sonunda alinir; sifir bolmesi yok. */
+const VALUE_FLOOR = 0.01;
+
+/**
+ * Teknolojinin bu ulkeye DEGERI ve degeri en cok tasiyan kalem (`lead`):
+ * degistirici anahtari, `unlock:<FABRIKA>` ya da `unit:<BIRIM>`.
+ * @param {object} tech TECHNOLOGIES kaydi
+ * @param {{weights?:object, factoryUnlock?:(id:string)=>number, unitUnlock?:number}|null} priorities
+ */
+export function techValue(tech, priorities = null) {
+  const weights = priorities?.weights ?? {};
+  let value = 0;
+  let lead = null;
+  let leadValue = 0;
+  for (const key of Object.keys(TECH_MODS)) {
+    const amount = tech[key];
+    if (!Number.isFinite(amount) || amount === 0) continue;
+    const part = Math.abs(amount) * (MOD_UNIT[key] ?? 1) * (weights[key] ?? 1);
+    value += part;
+    if (part > leadValue) { leadValue = part; lead = key; }
+  }
+  for (const typeId of tech.unlock ?? []) {
+    const part = priorities?.factoryUnlock?.(typeId) ?? FACTORY_UNLOCK_VALUE;
+    value += part;
+    if (part > leadValue) { leadValue = part; lead = `unlock:${typeId}`; }
+  }
+  for (const typeId of tech.unlockUnit ?? []) {
+    const part = priorities?.unitUnlock ?? UNIT_UNLOCK_VALUE;
+    value += part;
+    if (part > leadValue) { leadValue = part; lead = `unit:${typeId}`; }
+  }
+  return { value, lead };
+}
+
+/** Ulkenin ekolu: tohumdan gelen kalici egilim, kayda research ile girer. */
+function schoolOf(nation, world) {
   const research = ensureResearch(nation);
   if (!research.school && world?.seed != null) {
     const ids = Object.keys(TECH_CATEGORIES);
     research.school = makeRng(`${world.seed}-school-${nation.id}`).pick(ids);
   }
-  const tierOf = (entry) => (entry.categoryId === research.school ? 0.5 : 1);
+  return research.school ?? null;
+}
+
+/**
+ * Siradaki teknoloji — oyuncu ve YZ icin AYNI yol: deger x ekol / etkin
+ * maliyet; esitlikte maliyet, aktivasyon yili ve id (deterministik).
+ * Oyuncunun kuyrugu her zaman once gelir (bkz. nextQueuedTech); bu yalniz
+ * bos kuyrugu doldurur.
+ *
+ * Sabit bir "order" dizisi BILEREK verilmedi: farkli komsuluklar farkli
+ * yayilim indirimi gorur ve ayni ekoldeki iki ulke bile farkli rota izler.
+ *
+ * @returns {{id:string, lead:string|null}|null} `lead`: secimi tasiyan kalem
+ */
+export function pickNextTech(nation, year, world, priorities = null) {
+  const candidates = availableTechs(nation);
+  if (!candidates.length) return null;
+  const school = schoolOf(nation, world);
   let best = null;
-  let bestKey = null;
   for (const entry of candidates) {
-    const key = [
-      tierOf(entry),
-      world ? effectiveTechCost(world, nation, entry.id, year) : techCost(entry.id, year),
-      entry.tech.year ?? 9999,
-      entry.id,
-    ];
-    if (!bestKey
-      || key[0] < bestKey[0]
-      || (key[0] === bestKey[0] && (key[1] < bestKey[1]
-        || (key[1] === bestKey[1] && (key[2] < bestKey[2]
-          || (key[2] === bestKey[2] && key[3] < bestKey[3])))))) {
-      bestKey = key;
-      best = entry.id;
+    const cost = world ? effectiveTechCost(world, nation, entry.id, year) : techCost(entry.id, year);
+    const { value, lead } = techValue(entry.tech, priorities);
+    const score = Math.max(VALUE_FLOOR, value) * (entry.categoryId === school ? SCHOOL_BONUS : 1)
+      / Math.max(1, cost);
+    const tieYear = entry.tech.year ?? 9999;
+    if (!best
+      || score > best.score
+      || (score === best.score && (cost < best.cost
+        || (cost === best.cost && (tieYear < best.year
+          || (tieYear === best.year && entry.id < best.id)))))) {
+      best = { id: entry.id, lead, score, cost, year: tieYear };
     }
   }
-  return best;
+  return best ? { id: best.id, lead: best.lead } : null;
 }

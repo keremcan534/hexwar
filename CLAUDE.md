@@ -59,7 +59,10 @@ kaldıraç · çalışıyor 12 (vatandaşlık eşikte: 0.55× ↔ 1.68×) · gü
 **ölü 0** · savaş kaldıracı 1 (barış arenasında ölçülemez). Siyaset: 4 sabit
 parti, 5 yasa, meşruiyet — bkz.
 `src/game/politics.js`, `npm run diagnose:politics`. Araştırma: ulusal program
-yok; kuyruk + YZ okul geleneği (`economy.js aiEducationFloor`).
+yok; kuyruk + akıllı seçici (`technology.pickNextTech`, ağırlıklar
+`economy.researchPriorities`) + YZ okul geleneği (`economy.aiEducationFloor`).
+Yeni kampanyada üst şeridin portföyleri AUTO açık başlar
+(`delegation.DEFAULT_AUTO_AREAS`; diplomasi hariç).
 
 Her mekaniğin formülü, kodu, "çalışıyor mu" testi ve pratikte ne yaptığı:
 [MEKANIK_KILAVUZU.md](MEKANIK_KILAVUZU.md)

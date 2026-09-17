@@ -21,6 +21,7 @@ import {
   signPeace, suggestWarGoal,
 } from './peace.js';
 import { NotificationCenter } from './notifications.js';
+import { applyDefaultDelegation } from './delegation.js';
 import { PerfMonitor } from '../core/perf.js';
 
 /** Masadaki teklif bu kadar hafta cevapsız kalırsa geri çekilir. */
@@ -223,6 +224,9 @@ export class Game {
     this.activeGeneral = null;
     this.reachable = null;
     this.turns.start(this.world);
+    // Yeni kampanya üst şeridin bütün portföyleri AUTO açık başlar
+    // (bkz. delegation.DEFAULT_AUTO_AREAS). Betik koşuları buradan geçmez.
+    applyDefaultDelegation(this.world.nations[this.turns.playerNation], this.world.turn ?? 1);
     this.renderer.invalidateCache();
     this.renderer.resize();
     this.camera.setBounds(this.world.bounds, this.world.wrapWidth);
@@ -854,10 +858,12 @@ export class Game {
     const previous = this.turns.playerNation;
     this.turns.playerNation = nationId;
     this.world.playerNation = nationId;
-    // Eski oyuncunun devir bayraklari YZ'ye kalmasin.
+    // Eski oyuncunun devir bayraklari YZ'ye kalmasin; yeni ulus kuruluştaki
+    // gibi AUTO açık başlar.
     if (previous >= 0 && previous !== nationId && this.world.nations[previous]) {
       delete this.world.nations[previous].delegation;
     }
+    applyDefaultDelegation(nation, this.world.turn ?? 1);
     this.activeGeneral = null;
     this.selectUnits([]);
     this.selected = null;

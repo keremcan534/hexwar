@@ -329,12 +329,67 @@ teknoloji 2.2 kat pahalıdır (tavan 2.5). Ceza silinmedi çünkü silinseydi
 %55 büyütür. Yani derin bir klasörü sonuna kadar sürmek yerine, birkaç
 klasörün ilk kademelerini almak neredeyse her zaman daha ucuzdur.
 
-## 2.3 Araştırma kuyruğu ve YZ'nin okul geleneği
+## 2.3 Araştırma kuyruğu, akıllı seçici ve YZ'nin okul geleneği
 
 **Ne değişti (2026-09)** — Ulusal Program (sekiz yıllık yön + eğitim tabanı)
 kalktı. Yön artık doğrudan seçimdir: teknoloji ağacında tık hemen araştırır
 (kilitliyse yolunu kurar), shift+tık kuyruğa ekler, sağ tık çıkarır. Kuyruk
-boşalınca sıradaki teknolojiyi `nextTechFor` seçer (oyuncu dahil).
+boşalınca sıradaki teknolojiyi `technology.pickNextTech` seçer.
+
+**AKILLI SEÇİCİ.** Eski seçici ekolü kesin öne koyup **en ucuzu** alıyordu:
+savaştaki ülke okul, borca batmış ülke tren yolu, sanayisi olmayan ülke
+fabrika verimi araştırıyordu. Artık her teknoloji ülkenin ölçülmüş durumuna
+göre tartılır ve **puan başına değerle** sıralanır:
+
+    puan = Σ |etki| × ağırlık(etki, ülke) × ekol / etkin maliyet
+
+| Ağırlık | Nereden | Bant |
+| --- | --- | --- |
+| fabrika verimi / girdi verimi | sanayinin GSYH payı (nabız) | 0.5 → 3.0 |
+| RGO çıktısı | tarla/maden payı | 0.5 → 2.0 |
+| inşaat gücü | kuyruktaki proje sayısı | 0.6 → 1.6 |
+| araştırma hızı | 1936'ya kalan yıl | 0.5 → 1.6 |
+| okuryazarlık tavanı | okuryazarlık 0.6'ya uzaklık | 0.6 → 1.5 |
+| borç kapasitesi | borç / kredi kapasitesi | 0.3 → 2.5 |
+| tedarik · eğitim kadrosu · takviye | savaş > rakip > barış (1 / 0.55 / 0) | 0.35 → 1.6 |
+| fabrika kilidi | ürünün bant içindeki kıtlığı; barışta silah hattı ×0.6 | 0.08 → 0.16 |
+
+Ekol (tohumdan gelen kategori eğilimi) **kesin öncelik değil ×1.4 çarpan**:
+ülkeye karakterini bırakır ama durumun hükmünü kaldırmaz. Seçim deterministik
+(eşitlikte maliyet → yıl → id) ve **YZ ile oyuncu aynı fonksiyonu kullanır**:
+Research AUTO açıkken devir, YZ'nin ta kendisidir (bkz. `delegation.js`).
+
+**Research AUTO.** Yeni kampanyada açık başlar; kuyruk her zaman önce gelir.
+Kapalıyken kuyruk boşalınca akademi bekler — puan yanmaz, bankada birikir ve
+kalıcı bir kart ("The academy is waiting") seçimi ister. Hükûmet bir teknoloji
+seçince AUTO şeridi gerekçesini yazar ("Debt has used 52% of the country's
+credit").
+
+**Ölçüldü** (4 tohum × 30 yıl, standart dünya, gözlemci; taban `ae80dfc`):
+
+| | 10. yıl | 20. yıl | 30. yıl |
+| --- | --- | --- | --- |
+| tamamlanan teknoloji (medyan) | 4 → 9 | 7 → 18 | 16 → 25.5 |
+| farklı teknoloji kümesi | 11 → 34.5 | 22.5 → 45.5 | 28 → 47 |
+| araştırma puanı/hafta (medyan) | 2.71 → 2.86 | 3.08 → 3.31 | 3.45 → 3.67 |
+| okuryazarlık medyanı | 0.367 → 0.370 | 0.445 → 0.475 | 0.495 → 0.501 |
+| GSYH medyanı | 58 → 52.5 | 64.5 → 68.5 | 71.5 → 89.5 |
+| dünya GSYH toplamı | 5686 → 6055 | 6530 → 7059 | 7268 → 7904 |
+| borçlu ülke | 27.5 → 24.5 | 21.5 → 20.5 | 21 → 18 |
+| fabrika | 897 → 941 | 1069 → 1163 | 1035 → 1112 |
+| ayakta kalan ülke | 60.5 → 61.5 | 54.5 → 55.5 | 51 → 52.5 |
+
+Teknoloji sayısı arttı çünkü seçici aynı puanla **daha ucuz ve işe yarar**
+kademeleri alıyor (eski seçici tek klasörün merdivenini tırmanıp pahalı
+kademelere giriyordu); ayrışma neredeyse ülke başına bir kümeye çıktı. Kategori
+payı sanayiye kayar (30. yıl: sanayi %47 → %56, ticaret %16 → %14, kültür
+%16 → %11, donanma %6 → %4); **ordu payı rakip kapısı sayesinde yerinde kalır**
+(%15 → %15). Rakip kapısı olmadan ölçülmüştü: ordu %15 → %11 ve barıştaki ülke
+hiç askerî teknoloji almıyordu.
+
+10. yıl GSYH medyanındaki düşüş (−%9.5) gürültüdür: aynı yılda dünya toplamı
++%6.5 ve ayakta kalan ülke sayısı bir fazladır (küçük ülkeler medyanı aşağı
+çeker). Dört tohumun medyanı savaş sayısında ±%40 oynuyor.
 
 **YZ'nin eğitim tabanı** — `economy.js aiEducationFloor`. Program YZ'ye tek
 bir şey veriyordu: eğitim tabanı. O gidince ölçüldü (3 tohum, 1846–1906):
@@ -1667,6 +1722,13 @@ dolmadan değişmez; halkın öndeki partisi iktidarı anayasaya göre **8 / 5 /
 puan geçerse hükûmet ona geçer. Yılda en çok bir yasa, bir kademe, **yalnız
 yukarı** — eski merdivenler gibi yasa geri alınmaz. Devredilmiş oyuncu kabinesi
 (Laws AUTO) yalnız yasaları sürer; hükûmeti oyuncu seçer.
+
+**Yeni kampanya AUTO açık başlar** (`delegation.DEFAULT_AUTO_AREAS`): inşaat,
+sanayi, ticaret, bütçe, asker alımı, yasalar, araştırma. Isınma penceresi
+geriye yazılır — kuruluşta ezilecek bir oyuncu ayarı yok ve YZ ülkeleri de ilk
+haftadan yönetiyor. **Diplomasi dışarıdadır**: devri oyuncu adına savaş ilan
+eder. Devredilmiş portföyün sekme künyesi şeritte yeşil yanar; anahtar ekranın
+üstündeki AUTO şeridinden kapanır ve o hafta kontrol geri döner.
 
 Aynı üç tohum, 20 yıl, eski katman / yeni katman:
 

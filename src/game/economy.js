@@ -4,15 +4,15 @@
 
 import { canAfford, pay } from './cities.js';
 import { POPULATION_SCALE } from './populationScale.js';
-import { PRICE_CEILING, PRICE_FLOOR } from './priceBand.js';
+import { PRICE_CEILING, PRICE_FLOOR, bandPosition } from './priceBand.js';
 import {
   RGO_TYPES, provinceOutput, provincePopulation, provinceSoldiers, rgoJobsOf, trackShareOf,
 } from './provinces.js';
-import { delegationActive, noteDelegated } from './delegation.js';
+import { delegationActive, isDelegated, noteDelegated } from './delegation.js';
 import { atWar } from './diplomacy.js';
 import { controllerOf } from './control.js';
 import {
-  advanceResearch, ensureResearch, nextQueuedTech, nextTechFor, refreshDiffusion,
+  advanceResearch, availableTechs, ensureResearch, nextQueuedTech, pickNextTech, refreshDiffusion,
   refreshTechModifiers, researchPointsOf, startResearch, techById, techUnlocksFactory,
 } from './technology.js';
 import { TIER, announce } from './chronicle.js';
@@ -4574,6 +4574,94 @@ function updatePrices(market) {
 }
 
 /**
+ * AKILLI ARASTIRMA SECICISININ AGIRLIKLARI (bkz. technology.pickNextTech).
+ *
+ * Her agirlik ulkenin OLCULMUS durumundan gelir ve teknolojinin ilgili
+ * degistiricisinin carpanidir; 1 "notr" demektir. Esikler tahmin degil,
+ * ekranlarda zaten gosterilen alanlardir: GSYH'nin RGO/sanayi ayrimi (nabiz),
+ * borc/kapasite (faiz yuku), savas, insaat kuyrugu, okuryazarlik. Gerekce
+ * cumlesi ayni yerden yazilir ki AUTO seridi uydurma bir "neden" basmasin.
+ */
+export function researchPriorities(world, nation, year) {
+  const economy = nation.economy ?? {};
+  const pulse = economy.pulse?.cur;
+  const gdp = Math.max(1, pulse?.gdp ?? economy.gdp ?? 1);
+  const industryShare = clamp((pulse?.industry ?? 0) / gdp, 0, 1);
+  const rgoShare = clamp((pulse?.rgo ?? economy.baseOutputValue ?? 0) / gdp, 0, 1);
+  const war = world.nations.some(
+    (other) => other.alive && other.id !== nation.id && atWar(world, nation.id, other.id),
+  );
+  // Savaş yokken ordu teknolojisi tamamen ölmesin: rakibi olan ülke hazırlanır.
+  // (Ölçüldü: yalnız savaş kapısıyla 30 yılda ordu teknolojilerinin payı
+  // %15'ten %11'e iniyordu ve barıştaki ülke hiç askerî araştırma yapmıyordu.)
+  const threatened = war || Boolean(nation.rivalId != null && world.nations[nation.rivalId]?.alive);
+  const guard = war ? 1 : threatened ? 0.55 : 0;
+  const load = clamp((nation.debt ?? 0) / Math.max(1, debtCapacity(nation)), 0, 1);
+  const backlog = clamp((nation.construction?.projects?.length ?? 0) / 6, 0, 1);
+  const literacy = clamp(economy.literacy ?? 0, 0, 1);
+  // Ufuk: arastirma hizi yuzyilin basinda kendini defalarca oder, sonunda oder.
+  const horizon = clamp((1936 - year) / 100, 0, 1);
+  const weights = {
+    factoryThroughput: 0.5 + 2.5 * industryShare,
+    inputEfficiency: 0.5 + 2.5 * industryShare,
+    rgoOutput: 0.5 + 1.5 * rgoShare,
+    constructionPower: 0.6 + backlog,
+    researchRate: 0.5 + 1.1 * horizon,
+    literacyReach: 0.6 + 0.9 * clamp(1 - literacy / 0.6, 0, 1),
+    debtCapacityBonus: 0.3 + 2.2 * load,
+    supplyConsumption: 0.4 + 1.2 * guard,
+    trainingCapacity: 0.35 + 1.15 * guard,
+    reinforcementRate: 0.4 + 1.2 * guard,
+  };
+  const reasons = {
+    factoryThroughput: `Factories make ${Math.round(industryShare * 100)}% of what the country produces.`,
+    inputEfficiency: `Factories make ${Math.round(industryShare * 100)}% of output and burn costly inputs.`,
+    rgoOutput: `Farms, mines and forests are ${Math.round(rgoShare * 100)}% of the economy.`,
+    constructionPower: backlog > 0.3 ? 'The build queue is longer than the builders.'
+      : 'Every future project gets built faster.',
+    researchRate: 'Faster research pays for itself over the century.',
+    literacyReach: literacy < 0.4 ? `Only ${Math.round(literacy * 100)}% of the people can read.`
+      : 'Schools can still raise the ceiling on literacy.',
+    debtCapacityBonus: load > 0.25 ? `Debt has used ${Math.round(load * 100)}% of the country's credit.`
+      : 'Wider credit keeps interest low when money is short.',
+    supplyConsumption: war ? 'The army in the field eats its supplies.'
+      : threatened ? 'A rival waits on the border; supply must stretch.' : 'A leaner army costs less to keep.',
+    trainingCapacity: war ? 'The war needs regiments faster.'
+      : threatened ? 'A rival waits on the border; the depots must fill faster.' : 'More regiments can train at once.',
+    reinforcementRate: war ? 'Losses at the front must be replaced.'
+      : threatened ? 'A rival waits on the border; losses must be replaced quickly.' : 'Broken regiments refill faster.',
+  };
+  return {
+    weights,
+    war,
+    unitUnlock: 0.04 + 0.08 * guard,
+    /** Kilit, urettigi malin kitligiyla deger kazanir; savassiz silah hatti az. */
+    factoryUnlock: (typeId) => {
+      const type = FACTORIES[typeId];
+      const goodId = Object.keys(type?.outputs ?? {})[0];
+      const state = world.market?.goods?.[goodId];
+      const base = GOODS[goodId]?.basePrice ?? 0;
+      const scarcity = state && base > 0 ? Math.max(0, bandPosition(state.price / base)) : 0;
+      const military = GOODS[goodId]?.category === 'military';
+      return 0.08 * (1 + scarcity) * (military && !war ? 0.6 : 1);
+    },
+    reason(lead) {
+      if (!lead) return 'It is the best value left on the tree.';
+      if (lead.startsWith('unlock:')) {
+        const type = FACTORIES[lead.slice(7)];
+        const goodId = Object.keys(type?.outputs ?? {})[0];
+        const state = world.market?.goods?.[goodId];
+        const base = GOODS[goodId]?.basePrice ?? 0;
+        const scarce = state && base > 0 && bandPosition(state.price / base) > 0.3;
+        return `It opens the ${type?.name ?? 'new factory'}${scarce ? ` — ${GOODS[goodId].name} is scarce` : ''}.`;
+      }
+      if (lead.startsWith('unit:')) return war ? 'It opens a new arm the war can use.' : 'It opens a new arm of the army.';
+      return reasons[lead] ?? 'It is the best value left on the tree.';
+    },
+  };
+}
+
+/**
  * Haftalık ekonomi üç adıma bölündü: beginEconomy → ulus başına
  * runNationEconomy → finishEconomy. Neden: kapanışın en pahalı kalemi
  * ekonomiydi (ölçüldü: 72 ms'lik turun 51 ms'i) ve maliyet tek bir sıcak
@@ -4610,21 +4698,53 @@ export function beginEconomy(game) {
       refreshTechModifiers(nation);
     }
     const isPlayer = nation.id === game.turns.playerNation;
-    // Bosalan arastirmayi once oyuncunun KUYRUGU, o da bossa nextTechFor
-    // doldurur — OYUNCU DAHIL. Elle secim her an serbest (researchNow);
-    // kor beta B-018'in (dokuz kacan secim, 5671 bos RP) yapisal cozumu budur.
-    if (!nation.research.current) {
-      const pick = nextQueuedTech(nation) ?? nextTechFor(nation, year, world);
-      if (pick) startResearch(nation, pick);
-    }
+    // Bosalan arastirmayi once oyuncunun KUYRUGU, o da bossa akilli secici
+    // doldurur. YZ her zaman; oyuncu Research AUTO aciksa (yeni kampanyada
+    // varsayilan). Kor beta B-018'in (dokuz kacan secim, 5671 bos RP)
+    // yapisal cozumu budur. AUTO kapaliysa kuyruk bosalinca akademi bekler:
+    // puan yanmaz, bankada birikir ve oyuncuya kalici bir kart soyler.
+    // Isinma penceresi YOK (delegationActive degil isDelegated): pencere,
+    // devrin ilk haftasinda YZ'nin butun kaldiraclari oynatmasini onlemek
+    // icindir; teknoloji secimi oyle bir kaldirac degil ve dort hafta bos
+    // beklemek yalnizca zaman kaybettirirdi.
+    const auto = !isPlayer || isDelegated(nation, 'research');
+    const fill = () => {
+      const queued = nextQueuedTech(nation);
+      if (queued) return { id: queued, lead: null, auto: false };
+      if (!auto) return null;
+      const priorities = researchPriorities(world, nation, year);
+      const pick = pickNextTech(nation, year, world, priorities);
+      return pick ? { ...pick, auto: true, reason: isPlayer ? priorities.reason(pick.lead) : '' } : null;
+    };
+    const begin = (pick) => {
+      if (!pick || !startResearch(nation, pick.id)) return;
+      if (isPlayer && pick.auto) {
+        noteDelegated(game, nation, 'research', `${techById(pick.id)?.tech.name ?? pick.id} chosen.`, pick.reason);
+      }
+    };
+    if (!nation.research.current) begin(fill());
     const done = advanceResearch(nation, year, world);
     if (done && !nation.research.current) {
       // Biten teknoloji kuyrugu BOSALTIR; yukaridaki doldurma advanceResearch'ten
       // once kostugu icin burada doldurulmazsa asagidaki kart her seferinde
       // "nothing left to research" der (olculdu: 56 kartta 56, agac doluyken)
       // ve puan bir hafta bosta birikir.
-      const pick = nextQueuedTech(nation) ?? nextTechFor(nation, year, world);
-      if (pick) startResearch(nation, pick);
+      begin(fill());
+    }
+    if (isPlayer) {
+      if (nation.research.current) {
+        if (nation.research.idleSince != null) {
+          delete nation.research.idleSince;
+          game.notifications?.dismissKeys?.(['research-idle']);
+        }
+      } else if (availableTechs(nation).length && nation.research.idleSince == null) {
+        nation.research.idleSince = world.turn ?? 0;
+        announce(game, nation, {
+          kind: 'RESEARCH', tier: TIER.IMPORTANT, key: 'research-idle', ttl: 0,
+          title: 'The academy is waiting',
+          detail: 'Your research queue is empty and Research AUTO is off. Points keep banking until you choose a technology.',
+        });
+      }
     }
     if (done && isPlayer) {
       const entry = techById(done);
@@ -4649,7 +4769,8 @@ export function beginEconomy(game) {
         // soyluyor: kuyruk programa gore kendini doldurdu.
         game.turns.addLog(
           `${entry?.tech.name ?? done} researched`
-          + (next ? ` — continuing with ${next}.` : ' — nothing left to research.'),
+          + (next ? ` — continuing with ${next}.`
+            : availableTechs(nation).length ? ' — the queue is empty.' : ' — nothing left to research.'),
           { kind: 'RESEARCH', ttl: 0, key: 'research-done' },
         );
       }

@@ -64,9 +64,28 @@ export const DELEGATION_AREAS = {
     // yetkiyi de verir; yazmamak sürpriz olurdu.
     desc: 'The general staff orders regiments, founds cities, mobilizes the reserve when an enemy outweighs the army — and disbands regiments if the treasury defaults in peacetime.',
   },
+  research: {
+    // Program devri 2026-09'da düşmüştü (4bb99ed); bu anahtar ondan AYRI:
+    // devredilen şey yön değil, kuyruk boşalınca SIRADAKİ teknolojinin
+    // seçimidir. Seçici YZ ile aynıdır (technology.pickNextTech).
+    id: 'research',
+    name: 'Research',
+    screen: 'technology',
+    desc: 'When your queue runs dry the academy picks what the country needs most — factories, fields, credit, schools or the war — weighed against the cost. Your own queue always comes first.',
+  },
 };
 
 export const DELEGATION_IDS = Object.keys(DELEGATION_AREAS);
+
+/**
+ * Yeni kampanyada hükûmete devredilmiş BAŞLAYAN alanlar: üst sekme
+ * şeridindeki bütün portföyler (Kerem: "barlarımız hepsi otomatikte
+ * başlayacak"). DİPLOMASİ BİLEREK DIŞARIDA: sekmesi yok ve devri oyuncu adına
+ * savaş ilan eder — ilk haftada habersiz bir savaş başlatmak "kolaylık" değil.
+ */
+export const DEFAULT_AUTO_AREAS = [
+  'construction', 'industry', 'trade', 'budget', 'recruitment', 'reforms', 'research',
+];
 
 /**
  * Devir açıldıktan sonraki koruma süresi. Oyuncunun elle kurduğu ayar bir
@@ -124,6 +143,23 @@ export function setDelegation(game, nation, areaId, on) {
   if (!next) delete state.last[areaId];
   game?.emit?.('delegation', state);
   return true;
+}
+
+/**
+ * Oyuncunun yeni ulusu için varsayılan devir. Isınma penceresi GERİYE
+ * yazılır: ısınma, oyuncunun elle kurduğu ayarın üstüne binen ilk haftayı
+ * yumuşatmak içindir; kuruluşta ezilecek bir ayar yok, YZ ülkeleri de ilk
+ * haftadan yönetiyor. Zaten devir kaydı olan ulusa dokunulmaz (yüklenen
+ * kayıt, oyun içinde yeniden seçilen ulus).
+ */
+export function applyDefaultDelegation(nation, turn = 0) {
+  if (!nation || nation.delegation) return null;
+  const state = ensureDelegation(nation);
+  for (const id of DEFAULT_AUTO_AREAS) {
+    state[id] = true;
+    state.since[id] = (turn ?? 0) - DELEGATION_WARMUP;
+  }
+  return state;
 }
 
 /**
