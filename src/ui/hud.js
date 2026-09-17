@@ -5,11 +5,11 @@ import {
   CITY_COST, UNIT_COSTS, canAfford, canFoundCity, formatCost, pay,
 } from '../game/cities.js';
 import {
-  UNIT_TYPES, isMoving, maxHpOf, menUnderArms, organizationOf, regimentCount, soldiersOf,
+  UNIT_TYPES, isMoving, maxHpOf, menUnderArms, organizationOf, regimentCount,
   speedOf, strengthRatio,
 } from '../game/units.js';
 import {
-  MIN_WAR_TURNS, atWar, crisisLeft, inCrisis, relation, truceLeft,
+  MIN_WAR_TURNS, ULTIMATUM_WEEKS, atWar, crisisLeft, inCrisis, relation, truceLeft,
 } from '../game/diplomacy.js';
 import { warScore } from '../game/peace.js';
 import { INFAMY_COALITION, OCCUPATION_TURNS, tileEfficiency } from '../game/infamy.js';
@@ -24,6 +24,7 @@ import { bindMacroCards } from './macroCard.js';
 import { Screens } from './screens.js';
 import { showEndScreen } from './endScreen.js';
 import { formatPopulation, weeklyBalanceOf } from '../game/economy.js';
+import { gdpAttribution, populationAttribution } from '../game/pulse.js';
 import {
   canRecruit, disband, equipmentCostLabel, nationManpower, rallyTile, setRallyPoint,
   trainingWeeks,
@@ -180,6 +181,9 @@ export class Hud {
     $('btn-settings').onclick = () => {
       el.settings.classList.toggle('hidden');
       el.layers.classList.add('hidden');
+      // Etiket yalniz dunya kurulunca yaziliyordu: 65 hafta sonra panel hala
+      // "No save yet" diyordu, oysa otomatik kayit coktan yazilmisti.
+      this.refreshSaveInfo();
     };
     $('btn-close-settings').onclick = () => el.settings.classList.add('hidden');
 
@@ -244,6 +248,7 @@ export class Hud {
         nationCount: nations > 0 ? nations : null,
       });
       el.settings.classList.add('hidden');
+      this.picker?.open();
     };
 
     $('btn-save').onclick = () => {
@@ -269,6 +274,8 @@ export class Hud {
     // olaylarinda da kosar, oradan sayilsaydi efektif hiz sisiyordu.
     game.on('turn', () => { (this.weekStamps ??= []).push(performance.now()); this.onTurn(); this.showWars(); });
     game.on('peace', () => this.showWars());
+    // Otomatik kayit da elle kayit da ayni satiri tazeler (bkz. game.flushAutosave).
+    game.on('save', () => this.refreshSaveInfo());
     // Gün tiki yalnız tarihi oynatır. Eskiden her gün tam onTurn koşuyordu:
     // hız 8'de saniyede 8 kez skorbord + ordu toplamı + üç innerHTML bloğu
     // (ölçüldü: tik başına ~1-2.4 ms + DOM çöpü). Haftalık kapanış zaten
@@ -365,6 +372,11 @@ export class Hud {
    * HUD onu yalnız açabilsin diye referansı burada tutulur.
    * (Arayüz metni İngilizce; Türkçe olan yalnız kod ve yorumlar.)
    */
+  /** Ulke secim paneli (main.js kurar); yeni dunya uretince acilir. */
+  bindPicker(picker) {
+    this.picker = picker;
+  }
+
   bindMenu(menu) {
     this.menu = menu;
     const btn = document.getElementById('btn-menu');
@@ -410,6 +422,14 @@ export class Hud {
         // zorundaydi. Sira onemli — once ACIK PANEL kapanir, panel yoksa
         // secim temizlenir. Tersi olsaydi panel acikken Escape sessizce
         // secimi silip paneli birakirdi.
+        // Ayar ve katman panelleri de "acik panel"dir: kor oyun testinde
+        // Escape yonetim ekranini kapatiyor ama World Settings'i birakiyordu.
+        const openPanel = [this.el.settings, this.el.layers]
+          .find((panel) => panel && !panel.classList.contains('hidden'));
+        if (openPanel) {
+          openPanel.classList.add('hidden');
+          return;
+        }
         if (this.screens?.active) {
           this.screens.close();
           return;
@@ -488,7 +508,7 @@ export class Hud {
           <button class="division-main" data-focus-unit="${unit.id}">
             <span class="unit-badge" style="background:${me.color}">${unit.type.glyph}</span>
             <span class="division-text">
-              <b>${regimentCount(unit)}× ${escapeHtml(unit.type.name)} · ${formatPopulation(soldiersOf(unit))}</b>
+              <b>${regimentCount(unit)}× ${escapeHtml(unit.type.name)} · ${formatPopulation(menUnderArms(unit))} men</b>
               <small>${state} · STR ${Math.round(strengthRatio(unit) * 100)}% · ORG ${Math.round(organizationOf(unit))}%
                 · ${general ? escapeHtml(general.name) : 'no commander'}</small>
             </span>
@@ -701,6 +721,7 @@ export class Hud {
       this.el.turnValue.textContent = label;
     }
     this.showEffectiveSpeed();
+    this.showPauseState();
     if (clock.speed !== this.lastSpeedShown) {
       this.lastSpeedShown = clock.speed;
       this.speedSince = performance.now();
@@ -718,6 +739,30 @@ export class Hud {
    * kapanan hafta sayisindan efektif carpan turetilir; nominalin %80'inin
    * altina dusunce tarih rozetinin yaninda yazar.
    */
+  /**
+   * DURAKLATMA GORUNUR OLSUN. Kart saati durdurunca (bkz. notifications.push
+   * halt) tek iz duraklat dugmesinin dolu hali idi; kor oyun testinde oyuncu
+   * 40 saniye bekleyip "oyun yavas" sonucuna vardi. Rozet sebebi de yazar.
+   */
+  showPauseState() {
+    const { clock } = this.game;
+    const control = document.getElementById('turn-control');
+    if (!control || !this.el.turnValue) return;
+    if (!this.pauseEl) {
+      this.pauseEl = document.createElement('small');
+      this.pauseEl.className = 'turn-paused';
+      this.el.turnValue.after(this.pauseEl);
+    }
+    const paused = !clock.speed && Boolean(this.game.world);
+    control.classList.toggle('is-paused', paused);
+    const reason = clock.haltedBy;
+    const text = !paused ? '' : reason ? `Paused · ${reason}` : 'Paused';
+    if (this.pauseEl.textContent !== text) this.pauseEl.textContent = text;
+    this.pauseEl.title = reason
+      ? 'An event stopped the clock. Press play or Space to continue.'
+      : 'Press play or Space to continue.';
+  }
+
   showEffectiveSpeed() {
     const { clock } = this.game;
     if (!this.effEl) {
@@ -756,6 +801,7 @@ export class Hud {
     for (const btn of document.querySelectorAll('.time-btn[data-speed]')) {
       btn.classList.toggle('active', Number(btn.dataset.speed) === this.game.clock.speed);
     }
+    this.showPauseState();
 
     const wars = world.nations.filter(
       (n) => n.alive && atWar(world, n.id, turns.playerNation),
@@ -772,8 +818,8 @@ export class Hud {
         .reduce((sum, unit) => sum + menUnderArms(unit), 0);
       this.el.macroStats.innerHTML = `
         <span class="macro-live" data-macro="population"><small>Population</small><b>${formatPopulation(me.economy?.population ?? 0)}</b></span>
-        <span title="Men under arms — soldiers drawn from your provinces"><small>Army</small><b>${formatPopulation(army)}</b></span>
-        <span title="Recruitable population left in your provinces"><small>Manpower</small><b>${formatPopulation(nationManpower(world, me.id))}</b></span>
+        <span data-tip="army" tabindex="0"><small>Army</small><b>${formatPopulation(army)}</b></span>
+        <span data-tip="manpower" tabindex="0"><small>Manpower</small><b>${formatPopulation(nationManpower(world, me.id))}</b></span>
         <span class="macro-live" data-macro="gdp"><small>GDP</small><b>£${formatNumber(Math.round(me.economy?.gdp ?? 0))}</b></span>`;
       this.ensureMacroCards();
       // Künyedeki bayrak canlı bez: kaynak bir kez pişer, şeritler kayar.
@@ -801,12 +847,16 @@ export class Hud {
     this.game.perf?.add('ui.hud', performance.now() - t0);
   }
 
-  /** Oyuncunun boşta kaldığında okuyacağı tek, öncelikli karar özeti. */
-  showGuidance() {
+  /**
+   * Oyuncunun bir sonraki anlamli karari: {next, why}. Tek kaynak — hem bos
+   * ekrandaki kart hem de secili karenin ustundeki kisa serit bunu okur.
+   * Eskiden yalniz kartta yasiyordu ve ilk harita tikindan sonra kayboluyordu.
+   */
+  guidanceOf() {
     const { world, turns } = this.game;
-    if (!world) return;
+    if (!world) return null;
     const me = world.nations[turns.playerNation];
-    if (!me) return;
+    if (!me) return null;
     const wars = world.nations.filter((nation) => (
       nation.alive && atWar(world, nation.id, me.id)
     ));
@@ -830,11 +880,23 @@ export class Hud {
       && (f.fulfilled ?? 0) / f.demand < 0.925).length;
     let next;
     let why = 'Province → population and raw goods → factories and taxes → army and world prices.';
-    if (battles.length) {
+    // SAVASTA GENERALLER TUTUYOR MU? Kor oyun testinde savas alti hafta
+    // "0 engaged" ile gecti: generaller varsayilan HOLD'daydi ve hicbir yer
+    // taarruzu nasil baslatacagini soylemiyordu.
+    const holding = wars.length
+      ? officersOf(me, BRANCH.ARMY).filter((g) => g.divisions?.length && g.stance !== 'advance')
+      : [];
+    if (this.picker?.isOpen) {
+      next = 'Choose your nation: click one on the map or in the list, then Play as.';
+      why = 'The suggested start is contiguous and large; a stronger neighbour makes a harder game.';
+    } else if (battles.length) {
       next = 'A battle is active: select its army to inspect strength and organization.';
+    } else if (holding.length) {
+      next = `${holding.length} of your ${holding.length === 1 ? 'command holds' : 'commands hold'} the line: Military → All commands → Advance, or select a division and Start Offensive.`;
+      why = 'Advancing commands march on the provinces in front of them; the peace table opens once provinces are held.';
     } else if (wars.length) {
-      next = 'Move an army onto an enemy army or province; defeated armies retreat.';
-      why = 'Set a general\'s target and posture in the command dock; Aggressive assaults at even odds.';
+      next = 'Your commands are advancing: watch the front, or right-click an enemy province to direct an assault.';
+      why = 'Stance 3 assaults at even odds; a matured plan is worth up to +25% in the attack.';
     } else if (turns.turn <= 1) {
       next = 'Unpause for one week: the books open after the first weekly tick.';
       why = 'Income, prices and factory output all read zero until the market clears once.';
@@ -859,16 +921,36 @@ export class Hud {
     } else {
       next = 'Books balanced, programme set, army posted: expand a profitable factory or review Trade.';
     }
+    return { next, why, battles: battles.length, balance: weeklyBalanceOf(me) };
+  }
+
+  /** Oyuncunun boşta kaldığında okuyacağı tek, öncelikli karar özeti. */
+  showGuidance() {
+    const guide = this.guidanceOf();
+    if (!guide) return;
     this.el.sheetBody.innerHTML = `
       <div class="decision-card">
         <small>NEXT MEANINGFUL DECISION</small>
-        <h3>${escapeHtml(next)}</h3>
-        <p>${escapeHtml(why)}</p>
+        <h3>${escapeHtml(guide.next)}</h3>
+        <p>${escapeHtml(guide.why)}</p>
         <div class="decision-kpis">
-          <span><b>${weeklyBalanceOf(me) >= 0 ? '+' : ''}${Math.round(weeklyBalanceOf(me))}</b><small>weekly balance</small></span>
-          <span><b>${battles.length}</b><small>active battles</small></span>
+          <span><b>${guide.balance >= 0 ? '+' : ''}${Math.round(guide.balance)}</b><small>weekly balance</small></span>
+          <span><b>${guide.battles}</b><small>active battles</small></span>
         </div>
       </div>`;
+  }
+
+  /**
+   * Secili karenin USTUNDE tek satirlik rehber: kare secilince kart kaybolup
+   * bir daha gelmiyordu (kor oyun testi). Tiklamak secimi birakip tam karti
+   * geri getirir.
+   */
+  guidanceStrip() {
+    const guide = this.guidanceOf();
+    if (!guide) return '';
+    return `<button class="decision-mini" data-clear-select="1"
+      title="${escapeHtml(guide.why)} — click to return to the full card">
+      <small>Next</small><span>${escapeHtml(guide.next)}</span></button>`;
   }
 
   async copySeed() {
@@ -991,7 +1073,7 @@ export class Hud {
         <div style="flex:1;min-width:0">
           <div class="tile-title">${regimentCount(unit)}-regiment Army${unit.nationId === this.game.turns.playerNation ? '' : ' (enemy)'}${
   this.game.selection.length > 1 ? `<small class="tile-more"> · ${this.game.selection.length} divisions selected, showing the first</small>` : ''}</div>
-          <div class="tile-sub">${formatPopulation(soldiersOf(unit))} soldiers · STR ${Math.round(strengthRatio(unit) * 100)}% · ORG ${Math.round(organizationOf(unit))}% · speed ${speedOf(unit)}${isMoving(unit) ? ` · MARCHING (${unit.path.length} left)` : ''}${unit.battleId ? ' · IN BATTLE' : ''}${(unit.retreatUntil ?? 0) > this.game.turns.turn ? ' · RETREATING' : ''}</div>
+          <div class="tile-sub">${formatPopulation(menUnderArms(unit))} men · STR ${Math.round(strengthRatio(unit) * 100)}% · ORG ${Math.round(organizationOf(unit))}% · speed ${speedOf(unit)}${isMoving(unit) ? ` · MARCHING (${unit.path.length} left)` : ''}${unit.battleId ? ' · IN BATTLE' : ''}${(unit.retreatUntil ?? 0) > this.game.turns.turn ? ' · RETREATING' : ''}</div>
           <div class="army-composition">${Object.entries(unit.regiments?.reduce((out, regiment) => {
             out[regiment.typeId] = (out[regiment.typeId] ?? 0) + 1;
             return out;
@@ -1048,7 +1130,7 @@ export class Hud {
     // seyrek ama önemli — kendi uyarı satırlarında durur.
     const notes = stats.map(([k, v]) => `<span class="pv-note"><small>${k}</small>${v}</span>`).join('');
 
-    body.innerHTML = unitBlock + this.actionsHtml(tile) + `
+    body.innerHTML = this.guidanceStrip() + unitBlock + this.actionsHtml(tile) + `
       <div class="province-view">
         <div class="tile-head">
           ${emblem}
@@ -1127,6 +1209,8 @@ export class Hud {
     const foreign = tile.owner >= 0 && tile.owner !== game.turns.playerNation
       ? tile.owner
       : (tile.unit && tile.unit.nationId !== game.turns.playerNation ? tile.unit.nationId : -1);
+    // Onay bekleyen ilan baska bir ulkeye ait ise duser: iki tik ayni hedefe.
+    if (this.warConfirm != null && this.warConfirm !== foreign) this.warConfirm = null;
     if (foreign >= 0 && game.world.nations[foreign].alive) {
       const other = game.world.nations[foreign];
       const war = atWar(game.world, foreign, game.turns.playerNation);
@@ -1144,7 +1228,10 @@ export class Hud {
     ? `<button class="action wide" data-peace="${foreign}" ${locked ? 'disabled' : ''}>Offer Peace${locked ? ` (${MIN_WAR_TURNS - (game.turns.turn - rec.since)} weeks)` : ''}</button>`
     : crisis
       ? `<button class="action wide" disabled title="The ultimatum runs out in ${crisis} weeks; mobilize from the Military screen.">Ultimatum (${crisis} weeks)</button>`
-      : `<button class="action wide" data-war="${foreign}" ${truce ? 'disabled' : ''}>Declare War${truce ? ` (${truce} turns)` : ''}</button>`}
+      : `<button class="action wide${this.warConfirm === foreign ? ' confirming' : ''}" data-war="${foreign}" ${truce ? 'disabled' : ''}>${
+        this.warConfirm === foreign
+          ? `Click again to declare war: ${ULTIMATUM_WEEKS}-week ultimatum, infamy for every province taken`
+          : `Declare War${truce ? ` (${truce} turns)` : ''}`}</button>`}
       </div>`);
     }
 
@@ -1329,6 +1416,43 @@ export class Hud {
           current: metric === 'gdp' ? (me?.economy?.gdp ?? 0) : (me?.economy?.population ?? 0),
         };
       },
+      /**
+       * "Bu hafta": GSYH icin fiyat/hacim ve RGO/sanayi ayrimi ile ulkenin
+       * mallarindaki fiyat hareketi; nufus icin buyume ve sepet karsilanmasi.
+       * Sayilar game/pulse.js'ten; burada yalniz cumleye cevrilir.
+       */
+      pulse: (metric) => {
+        const me = game.world.nations[game.turns.playerNation];
+        const money = (v) => `${v >= 0 ? '+' : '−'}£${Math.abs(v).toFixed(1)}`;
+        const tone = (v) => (v > 0.05 ? 'up' : v < -0.05 ? 'down' : '');
+        if (metric === 'gdp') {
+          const a = gdpAttribution(game.world, me);
+          if (!a) return null;
+          const rows = [
+            { label: 'Change vs last week', value: money(a.delta), tone: tone(a.delta) },
+            { label: 'Prices of what you make', value: money(a.price), tone: tone(a.price), sub: true },
+            { label: 'Volume produced', value: money(a.volume), tone: tone(a.volume), sub: true },
+            { label: `Raw output (£${a.rgo.now.toFixed(0)})`, value: money(a.rgo.delta), tone: tone(a.rgo.delta) },
+            { label: `Factory value added (£${a.industry.now.toFixed(0)})`, value: money(a.industry.delta), tone: tone(a.industry.delta) },
+          ];
+          for (const m of a.movers) {
+            rows.push({
+              label: `${m.icon} ${m.name} £${m.previous.toFixed(2)} → £${m.price.toFixed(2)}`,
+              value: money(m.value), tone: tone(m.value), sub: true,
+            });
+          }
+          return rows;
+        }
+        const p = populationAttribution(me);
+        if (!p) return null;
+        const people = (v) => `${v >= 0 ? '+' : '−'}${formatPopulation(Math.abs(v))}`;
+        const pp = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1)} pp`;
+        return [
+          { label: 'Growth vs last week', value: people(p.delta), tone: tone(p.delta) },
+          { label: `Needs met (${Math.round(p.needs * 100)}%)`, value: pp(p.needsDelta), tone: tone(p.needsDelta * 100) },
+          { label: `Literacy (${(p.literacy * 100).toFixed(1)}%)`, value: pp(p.literacyDelta), tone: tone(p.literacyDelta * 100) },
+        ];
+      },
       /** Siralama CANLI durumdan turer; ayri bir tablo saklanmaz. */
       ranking: (metric) => game.world.nations
         .filter((nation) => nation.alive && nation.economy)
@@ -1345,6 +1469,16 @@ export class Hud {
   bindActions() {
     const { game } = this;
     const me = game.world.nations[game.turns.playerNation];
+    const strip = this.el.sheetBody.querySelector('[data-clear-select]');
+    if (strip) {
+      strip.onclick = () => {
+        game.selectGeneral(null);
+        game.selectUnits([]);
+        game.selected = null;
+        game.emit('select', null);
+        game.requestRender();
+      };
+    }
     // ORDUYU DAGIT. `disband()` zaten vardi ve hayatta kalanlarin insan gucunu
     // TOPLANDIKLARI province'lere iade ediyordu — eksik olan sadece dugmeydi,
     // yani oyuncunun elinde ordu kucultme araci hic yoktu (kullanici bildirimi).
@@ -1372,7 +1506,29 @@ export class Hud {
     const found = this.el.sheetBody.querySelector('[data-found]');
     if (found) found.onclick = () => game.turns.foundCity(game.selectedUnit);
     const war = this.el.sheetBody.querySelector('[data-war]');
-    if (war) war.onclick = () => game.declareWarOn(Number(war.dataset.war));
+    // IKI TIK. Tek tikla savas ilan etmek, "Open Dossier"in hemen altinda
+    // duran bir dugme icin fazla ucuzdu (kor oyun testi). Program kartiyla
+    // ayni kalip: ilk tik niyeti sorar, ikincisi ilan eder; sekiz saniyede
+    // cevap gelmezse dugme eski haline doner.
+    if (war) {
+      war.onclick = () => {
+        const id = Number(war.dataset.war);
+        if (this.warConfirm !== id) {
+          this.warConfirm = id;
+          clearTimeout(this.warConfirmTimer);
+          this.warConfirmTimer = setTimeout(() => {
+            if (this.warConfirm !== id) return;
+            this.warConfirm = null;
+            if (game.selected) this.showTile(game.selected);
+          }, 8000);
+          this.showTile(game.selected);
+          return;
+        }
+        this.warConfirm = null;
+        clearTimeout(this.warConfirmTimer);
+        game.declareWarOn(id);
+      };
+    }
     const peace = this.el.sheetBody.querySelector('[data-peace]');
     // Otomatik barış kalktı: bu düğme de masayı açar (bkz. screens.openPeaceTalks).
     if (peace) peace.onclick = () => this.screens.openPeaceTalks(Number(peace.dataset.peace));
@@ -1444,12 +1600,12 @@ function resourcesHtml(nation) {
   // Etiketler Title Case: her şeyin versal olması üst barı bağırtıyordu.
   // Hazine binlik ayraçla okunur — dört haneden sonra ayraçsız sayı taranmıyor.
   return `
-    <span class="res-money" title="treasury">
+    <span class="res-money" data-tip="treasury" tabindex="0">
       <img class="res-coin" src="assets/icons/budget/treasury.png" alt="" decoding="async">
       <span><small>Treasury</small><b>£${grouped(nation.gold)}${flow}</b></span></span>
     <span class="stat-why" role="button" tabindex="0" data-why="stability"
-      title="${(nation.budget ? stabilityWhy(nation) : 'Measured after the first weekly tick; the opening value is a placeholder.')}"><small>Stability</small><b>${nation.budget ? `${stability}%` : '—'}</b></span>
-    <span title="infamy — a coalition forms at ${INFAMY_COALITION}"><small>Infamy</small><b class="${infamyClass}">${infamy.toFixed(1)}</b></span>`;
+      data-tip="stability"><small>Stability</small><b>${nation.budget ? `${stability}%` : '—'}</b></span>
+    <span data-tip="infamy" tabindex="0"><small>Infamy</small><b class="${infamyClass}">${infamy.toFixed(1)}</b></span>`;
 }
 
 /**

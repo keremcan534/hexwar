@@ -666,6 +666,36 @@ select:focus-visible {
 }
 .turn-effective:empty { display: none; }
 
+/* Duraklatma rozeti: saat durunca yazar, kart durdurduysa sebebini de
+   (hud.js showPauseState). Efektif carpan gibi tarihin altinda durur. */
+/* Mutlak konum: rozet ust cubugun genisligine katilmaz, yoksa uzun bir
+   sebep GDP hucresini cubugun disina itiyordu (olculdu: 1600 px'te). */
+.turn-badge { position: relative; }
+.turn-paused {
+  display: block;
+  position: absolute;
+  right: var(--sp-2);
+  top: 100%;
+  color: var(--gold, #d9b25f);
+  font-size: var(--fs-xs, 0.7rem);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  max-width: 240px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: auto;
+}
+.turn-paused:empty { display: none; }
+.turn-control.is-paused .turn-badge b { animation: turn-paused-pulse 1.8s ease-in-out infinite; }
+@keyframes turn-paused-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .turn-control.is-paused .turn-badge b { animation: none; }
+}
+
 /* Tarih görsel olarak önemli ama başlık kadar büyük değil. */
 .turn-badge b {
   display: block;
@@ -1787,6 +1817,33 @@ body.screen-open .layer-menu { display: none; }
 }
 
 .decision-card p { margin: var(--sp-2) 0 var(--sp-3); }
+
+/* Secili karenin ustundeki tek satirlik rehber (hud.js guidanceStrip). */
+.decision-mini {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--sp-2);
+  align-items: baseline;
+  width: 100%;
+  margin-bottom: var(--sp-2);
+  padding: 5px var(--sp-2);
+  border: 1px solid rgba(158, 172, 178, 0.26);
+  border-left: 3px solid var(--cyan);
+  border-radius: var(--radius);
+  background: linear-gradient(145deg, var(--cyan-wash), transparent 60%), var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+.decision-mini:hover { border-color: var(--cyan); }
+.decision-mini small { color: var(--cyan); font-size: var(--fs-label); font-weight: 650; letter-spacing: var(--ls-label); text-transform: uppercase; }
+.decision-mini span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.ind-tab-locked { margin-left: auto; color: var(--text-faint); }
+.ind-tab-locked.on { color: var(--gold-bright); }
 
 .decision-kpis {
   display: grid;
@@ -5895,6 +5952,13 @@ body.screen-open .notify-stack.open .notify-card { display: grid; }
 .ledger-what:focus { outline: none; }
 .ledger-what:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 2px; }
 
+/* Kaydirac oynadiginda satirin "henuz kapanmadi" isareti (screens.js bindBudget). */
+.ledger-projected {
+  font-style: italic;
+  color: var(--gold, #d9b25f);
+  opacity: 0.85;
+}
+
 .ledger-note {
   color: var(--text-dim);
   font-size: 10.5px;
@@ -8482,6 +8546,10 @@ body.menu-open .sheet { visibility: hidden; }
 }
 .tech-programme-card:hover { border-color: var(--frame-brass); }
 /* Ilk tik: kart onay bekler, ikinci tik ilan eder (screens.js data-proclaim). */
+/* Iki tikli onay: savas ilani ve yasa dugmeleri de ayni vurguyu tasir. */
+.action.confirming { border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright) inset; color: var(--gold-bright); }
+.rstep.is-confirming button { border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright) inset; }
+.rstep.is-confirming button span { color: var(--gold-bright); }
 .tech-programme-card.confirming { border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright) inset; }
 .tech-programme-card.confirming em { color: var(--gold-bright); }
 /* Komutanin taarruz bakisi: neden saldirdigi ya da saldirmadigi (military.js assaultLine). */
@@ -10284,6 +10352,15 @@ svg.res-glyph {
 .mc-change.up { color: var(--green); }
 .mc-change.down { color: var(--red); }
 
+/* "Bu hafta" atif blogu (macroCard.js pulseBlock): etiket solda, fark sagda. */
+.mc-pulse { margin-top: var(--sp-2); padding-top: var(--sp-2); border-top: 1px solid var(--line); }
+.mc-pulse > small { display: block; margin-bottom: 3px; color: var(--text-faint); font-size: var(--fs-label); letter-spacing: 0.08em; text-transform: uppercase; }
+.mc-pulse-row { display: flex; justify-content: space-between; gap: var(--sp-3); font-size: var(--fs-sm); line-height: 1.5; }
+.mc-pulse-row span { color: var(--text-dim); }
+.mc-pulse-row.sub span { padding-left: 12px; color: var(--text-faint); }
+.mc-pulse-row b { font-variant-numeric: tabular-nums; font-weight: 600; }
+.mc-pulse-row b.up { color: var(--green); }
+.mc-pulse-row b.down { color: var(--red); }
 .mc-chart { display: block; width: 100%; height: 96px; margin-top: var(--sp-2); }
 .mc-line { fill: none; stroke: var(--gold-bright); stroke-width: 1.6; }
 .mc-area { fill: rgba(190, 158, 96, 0.14); stroke: none; }
@@ -11056,3 +11133,85 @@ body.screen-open .alert-pop { display: none; }
 
 .unit-disband:hover:not([disabled]) { color: var(--red); border-color: var(--red); }
 .unit-disband[disabled] { opacity: 0.4; cursor: default; }
+
+/* ==========================================================================
+   ULKE SECIMI (ui/nationPicker.js) — haritanin saginda, saat akmadan once.
+   ========================================================================== */
+.nation-picker {
+  position: fixed;
+  top: calc(var(--header-bottom, 130px) + var(--sp-2));
+  right: var(--sp-3);
+  width: min(420px, calc(100vw - 2 * var(--sp-3)));
+  max-height: calc(100vh - var(--header-bottom, 130px) - var(--sp-5) - var(--safe-bottom, 0px));
+  z-index: var(--z-sheet);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  overflow: auto;
+  border: 1px solid var(--line-brass);
+  border-radius: var(--radius-lg);
+  background: var(--ui-grain), var(--panel-tone), var(--surface-1);
+  box-shadow: var(--shadow-panel);
+  color: var(--text);
+  font-size: var(--fs-base);
+}
+.nation-picker.hidden { display: none; }
+.np-head { display: flex; flex-direction: column; gap: 2px; }
+.np-head small {
+  font-size: var(--fs-xs, 0.7rem);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold-bright);
+}
+.np-head span { color: var(--text-dim); font-size: var(--fs-sm); }
+.np-hero { display: flex; align-items: center; gap: var(--sp-3); }
+.np-flag { width: 72px; height: 48px; object-fit: cover; border: 1px solid var(--line-brass); }
+.np-hero h3 { margin: 0; font-family: var(--font-display); font-size: 1.25rem; color: var(--gold-bright); }
+.np-hero small { color: var(--text-dim); }
+.np-line { margin: 0; font-style: italic; color: var(--text-dim); }
+.np-facts { margin: 0; display: grid; grid-template-columns: 1fr; gap: 4px 0; }
+.np-facts div { display: grid; grid-template-columns: 96px 1fr; gap: var(--sp-2); align-items: baseline; }
+.np-facts dt { margin: 0; color: var(--text-dim); font-size: var(--fs-xs, 0.7rem); letter-spacing: 0.08em; text-transform: uppercase; }
+.np-facts dd { margin: 0; }
+.np-block > small { display: block; margin-bottom: 4px; color: var(--text-dim); font-size: var(--fs-xs, 0.7rem); letter-spacing: 0.08em; text-transform: uppercase; }
+.np-neighbours { display: flex; flex-wrap: wrap; gap: 4px; }
+.np-neighbour {
+  display: grid; grid-template-columns: auto auto; gap: 0 6px; align-items: baseline;
+  padding: 3px 8px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03); color: var(--text); cursor: pointer; font: inherit; text-align: left;
+}
+.np-neighbour:hover { border-color: var(--gold-bright); }
+.np-neighbour b { font-weight: 600; }
+.np-neighbour span.bad { color: var(--red, #d9736a); }
+.np-neighbour span.good { color: var(--green, #8fbf8a); }
+.np-neighbour small { grid-column: 1 / -1; color: var(--text-dim); }
+.np-notes { margin: 0; padding-left: 1.1em; display: grid; gap: 2px; }
+.np-notes li.bad { color: var(--red, #d9736a); }
+.np-notes li.good { color: var(--green, #8fbf8a); }
+.np-notes li.warn { color: var(--gold-bright); }
+.np-actions { display: flex; gap: var(--sp-2); }
+.np-play {
+  flex: 1; padding: 10px 12px; font: inherit; font-weight: 700; letter-spacing: 0.04em;
+  border: 1px solid var(--gold-bright); border-radius: var(--radius);
+  background: linear-gradient(180deg, #a2854b, #66512d); color: #f5ead0; cursor: pointer;
+}
+.np-play:hover { filter: brightness(1.1); }
+.np-alt {
+  padding: 10px 12px; font: inherit; border: 1px solid var(--line); border-radius: var(--radius);
+  background: none; color: var(--text-dim); cursor: pointer;
+}
+.np-roster { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow: auto; }
+.np-row {
+  display: grid; grid-template-columns: 12px 1fr auto; gap: var(--sp-2); align-items: center;
+  padding: 4px 6px; border: 1px solid transparent; border-radius: var(--radius);
+  background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.np-row:hover { border-color: var(--line); }
+.np-row.on { border-color: var(--gold-bright); background: rgba(190, 158, 96, 0.12); }
+.np-row small { color: var(--text-dim); }
+.np-swatch { width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(255,255,255,0.25); }
+/* Secim acikken sag alttaki harita kipleri panelin altinda kalmasin; komuta
+   paneli ise ulke secilmeden anlamsizdir (generaller ulkeye aittir), gizlenir. */
+body.picker-open .map-modes { right: calc(var(--sp-3) + min(420px, calc(100vw - 2 * var(--sp-3))) + var(--sp-2)); }
+body.picker-open .command-dock { display: none; }

@@ -7,6 +7,7 @@ import { registerTooltips } from './ui/tooltipData.js';
 import { MainMenu } from './ui/mainMenu.js';
 import { Notifications } from './ui/notifications.js';
 import { AlertStrip } from './ui/alerts.js';
+import { NationPicker } from './ui/nationPicker.js';
 import { PerfOverlay } from './ui/perfOverlay.js';
 import { materials } from './render/textures.js';
 
@@ -51,9 +52,19 @@ const resumable = !seed && game.load();
 if (seed) game.newWorld(seed);
 else if (!resumable) game.newWorld();
 
+// Ülke seçimi: yeni dünya kurulunca perde kalkar, oyuncu ülkesini haritadan
+// ya da listeden seçer (bkz. ui/nationPicker.js). Kayıttan dönüşte açılmaz.
+const picker = new NationPicker(game);
+hud.bindPicker(picker);
+
 // Paylaşılan tohum linki doğrudan haritayı açar; menü perdesi araya girmez.
-const menu = new MainMenu(game, { resumable });
+const menu = new MainMenu(game, {
+  resumable,
+  onWorldBuilt: () => picker.open(),
+  onOpen: () => picker.close(),
+});
 if (!seed) menu.open();
+else picker.open();
 hud.bindMenu(menu);
 
 // Geliştirici performans kaplaması: F3 ya da ?perf=1 (bkz. ui/perfOverlay.js).

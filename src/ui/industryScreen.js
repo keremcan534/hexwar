@@ -348,7 +348,8 @@ function railColumn(view) {
     ? `stalled — £${money(project.owed)} unpaid`
     : `${project.weeksLeft} week${project.weeksLeft === 1 ? '' : 's'} remaining`}</small>
       ${project.owed > 0.05 ? `<button class="ind-project-fund" data-support="${project.id}"
-        title="Pay £${money(project.owed)} from the treasury to finish it sooner. Shift-click pays the remainder in full.">\u{1F3DB}</button>` : ''}
+        data-name="${esc(project.name)}" data-tip="fund" data-tip-arg="${project.id}"
+        aria-label="Top up ${esc(project.name)} from the treasury">\u{1F3DB}</button>` : ''}
     </div>`).join('');
   return `<aside class="ind-rail">
     <div class="ind-rail-head"><span>Under construction</span><b>${projects.length}</b></div>
@@ -365,14 +366,30 @@ function railColumn(view) {
 export function buildCatalogue(catalogue, state) {
   if (!catalogue) return '';
   const category = state.buildCategory ?? 'all';
-  const options = catalogue.options
-    .filter((option) => category === 'all' || option.category === category)
+  const inCategory = catalogue.options
+    .filter((option) => category === 'all' || option.category === category);
+  // ICAT EDILMEMIS TESIS VARSAYILAN OLARAK GIZLI. 1906'nin otomobil fabrikasi
+  // 1836'da kurulabilenlerin yanindaydi ve liste 29 karta sisiyordu; oyuncu
+  // kurabilecegi konserve fabrikasini kaydirip gecti (kor oyun testi).
+  const lockedCount = inCategory.filter((option) => option.locked).length;
+  const showLocked = Boolean(state.buildShowLocked);
+  const options = inCategory
+    .filter((option) => showLocked || !option.locked)
     // Marja göre sıralamak inşa listesini de her tik zıplatıyordu; marj
     // satırın kendisinde zaten yazılı.
     .sort((a, b) => Number(b.enabled) - Number(a.enabled) || a.name.localeCompare(b.name));
   const tabs = Object.entries(CATEGORY_TABS).map(([id, label]) => `
     <button class="ind-tab${category === id ? ' on' : ''}"
-      data-build-category="${id}">${esc(label)}</button>`).join('');
+      data-build-category="${id}">${esc(label)}</button>`).join('')
+    + (lockedCount ? `<button class="ind-tab ind-tab-locked${showLocked ? ' on' : ''}" data-build-locked="1"
+      title="Factories the age has not invented yet; the year each arrives is on its card.">${
+      showLocked ? 'Hide' : 'Show'} ${lockedCount} not yet invented</button>` : '');
+  // Beklenen haftalik kar TAM KADRODA: "Profitable at current prices" her
+  // kartta ayni cumleydi ve secenekleri ayirt etmiyordu. Sayi motorun kendi
+  // marj hesabidir (factoryMargin: cikti - girdi - ucret vekili), tam kadrolu
+  // birinci seviye tesis icin.
+  const profitCell = (option) => `<span><small>at full staff</small><b class="${option.margin > 0 ? 'good' : 'bad'}"
+      title="${esc(option.market)}">${option.margin >= 0 ? '+' : '−'}£${Math.abs(option.margin).toFixed(1)} / wk</b></span>`;
   const cards = options.map((option) => `
     <article class="build-card${option.enabled ? '' : ' blocked'}">
       <div class="build-emblem" aria-hidden="true">${option.outputs.length
@@ -390,7 +407,7 @@ export function buildCatalogue(catalogue, state) {
       <div class="build-facts">
         <span><small>workers</small><b>${people(option.workers)}</b></span>
         <span><small>cost</small><b>£${Math.round(option.cost)}</b></span>
-        <span><small>market</small><b class="${option.margin > 0 ? 'good' : 'bad'}">${esc(option.market)}</b></span>
+        ${profitCell(option)}
         ${option.eraLabel ? `<span><small>invented</small><b>${esc(option.eraLabel)}</b></span>` : ''}
       </div>
       ${option.enabled

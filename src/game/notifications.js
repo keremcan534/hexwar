@@ -39,6 +39,10 @@ export const NOTIFY = {
   COMMANDER: { icon: '🎖', tone: 'good', label: 'Officer staff', ttl: 10000, tier: 0 },
   POLITICS: { icon: '🗳', tone: 'info', label: 'Politics', ttl: 12000, tier: 1 },
   CRISIS: { icon: '⚠', tone: 'bad', label: 'Crisis', ttl: 0, halt: true, tier: 2 },
+  // Aclik arki (events.js): baslangic durdurur, donum noktalari akista gecer,
+  // bitis okunana kadar durur ama saati durdurmaz — iyi haber beklemez.
+  HUNGER: { icon: '🍞', tone: 'bad', label: 'Hunger', ttl: 0, halt: true, tier: 2 },
+  RELIEF: { icon: '🌾', tone: 'good', label: 'Hunger', ttl: 0, tier: 2 },
   NATION: { icon: '☠', tone: 'bad', label: 'Nations', ttl: 12000, tier: 1 },
   HEGEMONY: { icon: '👑', tone: 'good', label: 'Hegemony', ttl: 0, tier: 2 },
   INFO: { icon: '❕', tone: 'info', label: 'Dispatch', ttl: 9000, tier: 0 },
@@ -84,6 +88,12 @@ export class NotificationCenter {
     if (existing) {
       existing.count = Math.min(MAX_COUNT, existing.count + 1);
       existing.text = text;
+      // Baslik ve govde de tazelenir: ayni anahtarla gelen ikinci olay
+      // (ikinci baris, ikinci secim) eskiden ilkinin cumlesini tasiyordu —
+      // kart "Peace with Arheim" derken baris Gorgrad'la imzalanmisti.
+      if (meta.title != null) existing.title = meta.title;
+      if (meta.body != null) existing.body = meta.body;
+      if (meta.tier != null) existing.tier = meta.tier;
       existing.tile = meta.tile ?? existing.tile;
       existing.at = now;
       this.game.emit('notify', { entry: existing, repeated: true });
@@ -116,7 +126,12 @@ export class NotificationCenter {
     // olay (ayni anahtar) oyuncuyu tekrar tekrar duraklatmamali. Varolussal
     // olay (tier 3) turu ne olursa olsun durdurur.
     const halt = meta.halt ?? (kind.halt || tier >= 3);
-    if (halt) this.game.setSpeed?.(0);
+    if (halt) {
+      // Sebep saatin uzerinde yazsin: kor oyun testinde oyuncu durmus saati
+      // "oyun yavas" sandi, cunku hicbir yer "kart durdurdu" demiyordu.
+      if (this.game.clock) this.game.clock.haltedBy = meta.title ?? text;
+      this.game.setSpeed?.(0);
+    }
     this.game.emit('notify', { entry, repeated: false });
     return entry;
   }

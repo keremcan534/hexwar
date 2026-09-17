@@ -435,6 +435,8 @@ export function factoryBuildOptions(world, nation, regionId) {
           : 'Unprofitable at current prices',
       era,
       eraLabel: era ? eraYear(era) : null,
+      // Takvim henuz acmadi: katalog bunlari varsayilan olarak gizler.
+      locked,
       enabled,
       blocked,
     };

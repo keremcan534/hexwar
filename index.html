@@ -49,11 +49,11 @@
          kaynak değerleri saatin altında kırpılıyordu. -->
     <div class="turn-control" id="turn-control">
       <span class="turn-badge"><b id="turn-value">1 JAN 1836</b></span>
-      <button class="time-btn active" id="btn-pause" data-speed="0" aria-label="Pause" title="Pause"><svg viewBox="0 0 16 16"><path d="M6 3.5v9M10 3.5v9"/></svg></button>
-      <button class="time-btn" data-speed="1" aria-label="Normal speed" title="Normal speed"><svg viewBox="0 0 16 16"><path d="M5 3.5 12 8l-7 4.5z"/></svg></button>
-      <button class="time-btn" data-speed="2" aria-label="Fast" title="Fast"><svg viewBox="0 0 16 16"><path d="M3 3.5 8 8l-5 4.5zM9 3.5 14 8l-5 4.5z"/></svg></button>
-      <button class="time-btn" data-speed="4" aria-label="Very fast" title="Very fast"><svg viewBox="0 0 16 16"><path d="M1.5 3.5 6 8l-4.5 4.5zM6.5 3.5 11 8l-4.5 4.5zM12.5 3.5v9"/></svg></button>
-      <button class="time-btn" data-speed="8" aria-label="Fastest" title="Fastest"><svg viewBox="0 0 16 16"><path d="M1 3.5 5 8l-4 4.5zM5.5 3.5 9.5 8l-4 4.5zM10 3.5 14 8l-4 4.5z"/></svg></button>
+      <button class="time-btn active" id="btn-pause" data-speed="0" aria-label="Pause" data-tip="time" data-tip-arg="0"><svg viewBox="0 0 16 16"><path d="M6 3.5v9M10 3.5v9"/></svg></button>
+      <button class="time-btn" data-speed="1" aria-label="Normal speed" data-tip="time" data-tip-arg="1"><svg viewBox="0 0 16 16"><path d="M5 3.5 12 8l-7 4.5z"/></svg></button>
+      <button class="time-btn" data-speed="2" aria-label="Fast" data-tip="time" data-tip-arg="2"><svg viewBox="0 0 16 16"><path d="M3 3.5 8 8l-5 4.5zM9 3.5 14 8l-5 4.5z"/></svg></button>
+      <button class="time-btn" data-speed="4" aria-label="Very fast" data-tip="time" data-tip-arg="4"><svg viewBox="0 0 16 16"><path d="M1.5 3.5 6 8l-4.5 4.5zM6.5 3.5 11 8l-4.5 4.5zM12.5 3.5v9"/></svg></button>
+      <button class="time-btn" data-speed="8" aria-label="Fastest" data-tip="time" data-tip-arg="8"><svg viewBox="0 0 16 16"><path d="M1 3.5 5 8l-4 4.5zM5.5 3.5 9.5 8l-4 4.5zM10 3.5 14 8l-4 4.5z"/></svg></button>
     </div>
 
     <button class="icon-btn" id="btn-settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></svg></button>
@@ -100,13 +100,13 @@
   <!-- Sağ altta harita modları: ayrı parlak kutular değil, tek bir kompakt
        kontrol grubu. Simgeler sekme çubuğuyla aynı SVG dilinde. -->
   <div class="map-modes" id="map-modes">
-    <button class="mode-btn active" data-mode="political" aria-label="Political map" title="Political map"><svg viewBox="0 0 16 16"><path d="M2 4.2 6 2.6l4 1.6 4-1.6v9.2l-4 1.6-4-1.6-4 1.6zM6 2.6v9.2M10 4.2v9.2"/></svg></button>
-    <button class="mode-btn" data-mode="terrain" aria-label="Terrain map" title="Terrain map"><svg viewBox="0 0 16 16"><path d="M1.5 12.5 6 5l3 4.6 1.8-2.6 3.7 5.5z"/></svg></button>
-    <button class="mode-btn" data-mode="geography" aria-label="Geography preview" title="Geography (no borders)"><svg viewBox="0 0 16 16"><path d="M1.5 7.4c1.6-2.1 3-3.1 4.4-3.1s2.1 1.3 3.3 1.3 1.2-1.7 2.4-1.7c1 0 1.9.6 1.9.6M1.5 11.4c1.6-2.1 3-3.1 4.4-3.1s2.1 1.3 3.3 1.3 1.2-1.7 2.4-1.7c1 0 1.9.6 1.9.6"/></svg></button>
-    <button class="mode-btn" data-mode="cultures" aria-label="Culture map" title="Culture map"><svg viewBox="0 0 16 16"><path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM2.4 6.5h11.2M2.4 9.5h11.2M8 2c-1.8 2-2.6 4-2.6 6s.8 4 2.6 6c1.8-2 2.6-4 2.6-6s-.8-4-2.6-6z"/></svg></button>
-    <button class="mode-btn" data-mode="resources" aria-label="Resource map" title="Resource map"><svg viewBox="0 0 16 16"><path d="M9.5 2.5 13.5 6.5M11.5 4.5 6 10l-3.5 3.5M4.5 8.5 7.5 11.5"/></svg></button>
-    <button class="mode-btn" data-mode="population" aria-label="Population map" title="Population map"><svg viewBox="0 0 16 16"><path d="M8 7.5a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4zM3.5 13.5c0-2.5 2-4.2 4.5-4.2s4.5 1.7 4.5 4.2"/></svg></button>
-    <button class="mode-btn" id="btn-layers" aria-label="Map layers" title="Map layers"><svg viewBox="0 0 16 16"><path d="M8 2 14 5.2 8 8.4 2 5.2zM2 8.4 8 11.6l6-3.2M2 11.2 8 14.4l6-3.2"/></svg></button>
+    <button class="mode-btn active" data-mode="political" aria-label="Political map" data-tip="mapmode" data-tip-arg="political"><svg viewBox="0 0 16 16"><path d="M2 4.2 6 2.6l4 1.6 4-1.6v9.2l-4 1.6-4-1.6-4 1.6zM6 2.6v9.2M10 4.2v9.2"/></svg></button>
+    <button class="mode-btn" data-mode="terrain" aria-label="Terrain map" data-tip="mapmode" data-tip-arg="terrain"><svg viewBox="0 0 16 16"><path d="M1.5 12.5 6 5l3 4.6 1.8-2.6 3.7 5.5z"/></svg></button>
+    <button class="mode-btn" data-mode="geography" aria-label="Geography preview" data-tip="mapmode" data-tip-arg="geography"><svg viewBox="0 0 16 16"><path d="M1.5 7.4c1.6-2.1 3-3.1 4.4-3.1s2.1 1.3 3.3 1.3 1.2-1.7 2.4-1.7c1 0 1.9.6 1.9.6M1.5 11.4c1.6-2.1 3-3.1 4.4-3.1s2.1 1.3 3.3 1.3 1.2-1.7 2.4-1.7c1 0 1.9.6 1.9.6"/></svg></button>
+    <button class="mode-btn" data-mode="cultures" aria-label="Culture map" data-tip="mapmode" data-tip-arg="cultures"><svg viewBox="0 0 16 16"><path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM2.4 6.5h11.2M2.4 9.5h11.2M8 2c-1.8 2-2.6 4-2.6 6s.8 4 2.6 6c1.8-2 2.6-4 2.6-6s-.8-4-2.6-6z"/></svg></button>
+    <button class="mode-btn" data-mode="resources" aria-label="Resource map" data-tip="mapmode" data-tip-arg="resources"><svg viewBox="0 0 16 16"><path d="M9.5 2.5 13.5 6.5M11.5 4.5 6 10l-3.5 3.5M4.5 8.5 7.5 11.5"/></svg></button>
+    <button class="mode-btn" data-mode="population" aria-label="Population map" data-tip="mapmode" data-tip-arg="population"><svg viewBox="0 0 16 16"><path d="M8 7.5a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4zM3.5 13.5c0-2.5 2-4.2 4.5-4.2s4.5 1.7 4.5 4.2"/></svg></button>
+    <button class="mode-btn" id="btn-layers" aria-label="Map layers" data-tip="mapmode" data-tip-arg="layers"><svg viewBox="0 0 16 16"><path d="M8 2 14 5.2 8 8.4 2 5.2zM2 8.4 8 11.6l6-3.2M2 11.2 8 14.4l6-3.2"/></svg></button>
   </div>
 
   <!-- Lejand çipleri haritadaki gerçek tonlarla aynı doygunlukta olmalı;
@@ -138,23 +138,23 @@
       <button class="icon-btn" id="btn-close-settings" aria-label="Close">✕</button>
     </div>
     <label class="field">
-      <span>World seed</span>
+      <span data-tip="setup" data-tip-arg="seed">World seed</span>
       <input type="text" id="in-seed" placeholder="leave blank for random" autocomplete="off" />
     </label>
     <label class="field">
-      <span>Map size: <b id="lbl-size">160 × 96</b></span>
+      <span data-tip="setup" data-tip-arg="size">Map size: <b id="lbl-size">160 × 96</b></span>
       <input type="range" id="in-size" min="60" max="220" step="4" value="160" />
     </label>
     <label class="field">
-      <span>Continentality: <b id="lbl-cont">0.50</b></span>
+      <span data-tip="setup" data-tip-arg="cont">Continentality: <b id="lbl-cont">0.50</b></span>
       <input type="range" id="in-cont" min="0" max="1" step="0.05" value="0.5" />
     </label>
     <label class="field">
-      <span>Land ratio: <b id="lbl-land">0.00</b></span>
+      <span data-tip="setup" data-tip-arg="land">Land ratio: <b id="lbl-land">0.00</b></span>
       <input type="range" id="in-land" min="-0.5" max="0.5" step="0.05" value="0" />
     </label>
     <label class="field">
-      <span>Great powers: <b id="lbl-nations">automatic</b></span>
+      <span data-tip="setup" data-tip-arg="nations">Great powers: <b id="lbl-nations">automatic</b></span>
       <input type="range" id="in-nations" min="0" max="40" step="1" value="0" />
     </label>
     <button class="primary" id="btn-generate">Generate New World</button>
@@ -307,23 +307,23 @@
 
       <form class="menu-view menu-setup hidden" id="menu-setup" onsubmit="return false">
         <label class="menu-field">
-          <span>World seed</span>
+          <span data-tip="setup" data-tip-arg="seed">World seed</span>
           <input type="text" id="menu-seed" placeholder="leave blank for random" autocomplete="off" spellcheck="false" />
         </label>
         <label class="menu-field">
-          <span>Map size <b id="menu-size-label">160 × 96</b></span>
+          <span data-tip="setup" data-tip-arg="size">Map size <b id="menu-size-label">160 × 96</b></span>
           <input type="range" id="menu-size" min="60" max="220" step="4" value="160" />
         </label>
         <label class="menu-field">
-          <span>Continentality <b id="menu-cont-label">0.50</b></span>
+          <span data-tip="setup" data-tip-arg="cont">Continentality <b id="menu-cont-label">0.50</b></span>
           <input type="range" id="menu-cont" min="0" max="1" step="0.05" value="0.5" />
         </label>
         <label class="menu-field">
-          <span>Land ratio <b id="menu-land-label">0.00</b></span>
+          <span data-tip="setup" data-tip-arg="land">Land ratio <b id="menu-land-label">0.00</b></span>
           <input type="range" id="menu-land" min="-0.5" max="0.5" step="0.05" value="0" />
         </label>
         <label class="menu-field">
-          <span>Great powers <b id="menu-nations-label">automatic</b></span>
+          <span data-tip="setup" data-tip-arg="nations">Great powers <b id="menu-nations-label">automatic</b></span>
           <input type="range" id="menu-nations" min="0" max="40" step="1" value="0" />
         </label>
         <div class="menu-setup-buttons">

@@ -95,7 +95,8 @@ export class AlertStrip {
       const isOpen = this.open === alert.id;
       return `<div class="alert-item ${alert.kind.tone}${isOpen ? ' open' : ''}">
         <button class="alert-pin" data-alert-open="${esc(alert.id)}"
-          title="${esc(alert.title)}" aria-expanded="${isOpen}">
+          data-tip="alert" data-tip-arg="${esc(alert.id)}" aria-label="${esc(alert.title)}"
+          aria-expanded="${isOpen}">
           ${icon(alert.kind.id)}</button>
         ${isOpen ? `<div class="alert-pop">
           <header><small>${esc(alert.kind.label)}</small>

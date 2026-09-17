@@ -10,7 +10,8 @@
 // borc surdugu her hafta degil.
 
 import { TIER, announce, captureOpening } from './chronicle.js';
-import { debtCapacity } from './economy.js';
+import { CLASS_INFO, GOODS, debtCapacity } from './economy.js';
+import { scarcestBasketGoods } from './alerts.js';
 import { governmentType } from './reforms.js';
 import { rulingParty } from './politics.js';
 import { controllerOf } from './control.js';
@@ -24,6 +25,15 @@ const DEBT_CRITICAL = 0.75;
 const DEBT_FLOOR = 120;
 /** Ordunun bir haftada bu orandan fazlasi giderse bozgun sayilir. */
 const ROUT_SHARE = 0.34;
+/**
+ * ACLIK ARKI esikleri. Acilis, nufus ekraninin "Famine" cipiyle AYNI olcu
+ * (populationView alertsFor: needsMet < 0.5); kapanis %90'da ve dort hafta
+ * tutunca — bir haftalik salinim ne baslatir ne bitirir.
+ */
+const HUNGER_OPEN = 0.5;
+const HUNGER_CLOSE = 0.9;
+const HUNGER_HOLD = 4;
+const HUNGER_STAGES = [0.5, 0.75];
 /** Bozgun duyurusu icin gereken en az alay: iki alaylik kuvvette gurultu olur. */
 const ROUT_FLOOR = 3;
 
@@ -192,6 +202,9 @@ export function runNationalEvents(game, nation) {
     }
   }
 
+  // --- ACLIK ARKI --------------------------------------------------------
+  runHungerArc(game, nation, state);
+
   // --- BORC / TEMERRUT ---------------------------------------------------
   const phase = debtPhase(nation);
   if (state.debt !== null && phase !== state.debt) announceDebt(game, nation, state, state.debt, phase);
@@ -307,6 +320,78 @@ export function runNationalEvents(game, nation) {
     }
   }
   state.regiments = regiments;
+}
+
+/**
+ * ACLIK ARKI — kitligin baslangici, donum noktalari ve sonu.
+ *
+ * Kor oyun testinin duygusal omurgasi kitlikti (sepet %27 -> %48, on bes ay)
+ * ve oyunun bu hikayeyi anlatan tek bir satiri yoktu: ne basladigi, ne en
+ * kotu haftasi, ne de bittigi bir yerde yaziyordu. Bu bir mekanik DEGIL,
+ * duyuru katmanidir: needsMet zaten hesaplaniyor, burada yalniz esikler
+ * gecilince konusulur ve vakayinameye yazilir (MAJOR). Baslangic saati
+ * durdurur (kriz), donum noktalari akista gecer, bitis okunana kadar durur.
+ */
+function runHungerArc(game, nation, state) {
+  const world = game.world;
+  const turn = world.turn ?? 0;
+  const needs = nation.economy?.needsMet;
+  if (!Number.isFinite(needs)) return;
+  const arc = state.hunger ??= {
+    active: false, since: 0, worst: 1, below: 0, above: 0, stage: 0, ended: 0,
+  };
+  if (!arc.active) {
+    arc.below = needs < HUNGER_OPEN ? arc.below + 1 : 0;
+    if (arc.below < HUNGER_HOLD) return;
+    arc.active = true;
+    arc.since = turn;
+    arc.worst = needs;
+    arc.stage = 0;
+    arc.above = 0;
+    arc.below = 0;
+    // En kalabalik sinifin sepetinde eksik olan mallar: ark neyin kitligi?
+    const biggest = Object.keys(CLASS_INFO)
+      .map((id) => ({ id, size: nation.economy.classes?.[id]?.population ?? 0 }))
+      .sort((a, b) => b.size - a.size)[0];
+    const scarce = biggest ? scarcestBasketGoods(nation, biggest.id, 2) : [];
+    const goods = scarce.length
+      ? scarce.map((row) => `${GOODS[row.id]?.name ?? row.id} ${Math.round(row.coverage * 100)}% covered`).join(', ')
+      : 'the basket outruns household budgets';
+    announce(game, nation, {
+      kind: 'HUNGER', tier: TIER.MAJOR, key: 'hunger',
+      title: 'The Hunger begins',
+      detail: `Only ${Math.round(needs * 100)}% of the household basket is being met: ${goods}. `
+        + 'The chronicle records the day; it will record the day it ends.',
+    });
+    return;
+  }
+  arc.worst = Math.min(arc.worst, needs);
+  // Donum noktalari yalniz YUKARI ve arkta bir kez: %50 ve %75.
+  for (let i = arc.stage; i < HUNGER_STAGES.length; i++) {
+    if (needs < HUNGER_STAGES[i]) break;
+    arc.stage = i + 1;
+    announce(game, nation, {
+      kind: 'RELIEF', tier: TIER.IMPORTANT, key: `hunger-stage-${i + 1}`, ttl: 12000,
+      title: i === 0 ? 'Half the basket is met again' : 'Three quarters of the basket is met',
+      detail: `Week ${turn - arc.since + 1} of the hunger; the worst week met ${Math.round(arc.worst * 100)}%.`,
+    });
+  }
+  arc.above = needs >= HUNGER_CLOSE ? arc.above + 1 : 0;
+  if (arc.above < HUNGER_HOLD) return;
+  const weeks = turn - arc.since;
+  arc.active = false;
+  arc.ended = turn;
+  arc.above = 0;
+  // Baslangic ve donum karti bitisten ONCE duser; bitis kendi anahtariyla
+  // acilir (ayni anahtar eski karta birlesir ve kotu-haber tonunda kalirdi).
+  if (nation.id === game.turns?.playerNation) {
+    game.notifications?.dismissKeys?.(['hunger', 'hunger-stage-1', 'hunger-stage-2']);
+  }
+  announce(game, nation, {
+    kind: 'RELIEF', tier: TIER.MAJOR, key: 'hunger-ends',
+    title: `The Hunger ends after ${weeks} weeks`,
+    detail: `Households meet ${Math.round(needs * 100)}% of their basket; the worst week met ${Math.round(arc.worst * 100)}%.`,
+  });
 }
 
 // --------------------------------------------------------- DUNYA HABERLERI ---

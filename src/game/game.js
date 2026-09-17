@@ -54,6 +54,10 @@ const EVENTS = [
   'nation', 'politics', 'notify', 'notify-clear', 'notify-dismiss',
   // AUTO devri (bkz. delegation.js).
   'delegation',
+  // Kayit yazildi (otomatik ya da elle): ayar paneli etiketini tazeler.
+  'save',
+  // Oyuncu ulusu degisti (kurulus ekraninda "play as"): HUD bastan kurulur.
+  'player',
 ];
 
 /** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */
@@ -200,6 +204,12 @@ export class Game {
   /** Yeni dünya üret. seed verilmezse rastgele. */
   newWorld(seed = randomSeed(), options = {}) {
     this.setSpeed(0);
+    // Gun sayaci sifirlanir: yeni dunya eski oturumun takviminden baslamasin
+    // (olculdu: 1. turdaki yeni kampanya "8 JUL 1836" gosteriyordu, cunku
+    // gameDate gun ile turun buyugunu alir ve gun eski oyundan kalmisti).
+    this.clock.day = 0;
+    this.clock.accumulator = 0;
+    this.clock.haltedBy = null;
     const t0 = performance.now();
     this.world = generateWorld(seed, options);
     generateNations(this.world, { seed: `${seed}-nations`, count: options.nationCount ?? null });
@@ -776,13 +786,16 @@ export class Game {
     if (idleFor < 600) return;
     this.pendingAutosave = false;
     const t0 = performance.now();
-    saveToStorage(this);
+    const ok = saveToStorage(this);
     this.perf?.event('autosave', performance.now() - t0);
+    if (ok) this.emit('save', { auto: true });
   }
 
   save() {
     if (this.turns.turnJob) this.turns.endTurn();
-    return saveToStorage(this);
+    const ok = saveToStorage(this);
+    if (ok) this.emit('save', { auto: false });
+    return ok;
   }
 
   load() {
@@ -826,6 +839,39 @@ export class Game {
     this.emit('select', next.tile);
     this.requestRender();
     return next;
+  }
+
+  /**
+   * OYUNCU ULUSUNU DEGISTIR — kurulus ekranindaki "Play as".
+   *
+   * Her ulus kurulusta ayni sekilde kurulur (turn.start), o yuzden gecis
+   * ucuzdur: bayrak tasinir, secim/bildirim/masa temizlenir ve butun HUD
+   * 'world' olayiyla bastan kurulur. Ilk haftalik tikten sonra da calisir
+   * ama tasarim yeri kurulus anidir.
+   */
+  setPlayerNation(nationId) {
+    const nation = this.world?.nations[nationId];
+    if (!nation?.alive) return false;
+    const previous = this.turns.playerNation;
+    this.turns.playerNation = nationId;
+    this.world.playerNation = nationId;
+    // Eski oyuncunun devir bayraklari YZ'ye kalmasin.
+    if (previous >= 0 && previous !== nationId && this.world.nations[previous]) {
+      delete this.world.nations[previous].delegation;
+    }
+    this.activeGeneral = null;
+    this.selectUnits([]);
+    this.selected = null;
+    this.hovered = null;
+    this.reachable = null;
+    this.notifications?.clear?.();
+    this.peaceOffers = [];
+    this.renderer.invalidateCache();
+    this.emit('player', nationId);
+    this.emit('world', this.world);
+    this.emit('turn', this.turns.turn);
+    this.focusNation(nation);
+    return true;
   }
 
   declareWarOn(nationId, goalProvinceId = undefined) {
@@ -946,6 +992,9 @@ export class Game {
     const next = SPEEDS.includes(Number(speed)) ? Number(speed) : 0;
     // Duraklatmadan önceki hız hatırlanır: boşluk tuşu oyuncuyu 1x'e düşürmesin.
     if (this.clock.speed) this.clock.lastSpeed = this.clock.speed;
+    // Saat yeniden akinca kartin duraklatma sebebi de duser (bkz.
+    // notifications.push: `clock.haltedBy`).
+    if (next > 0) this.clock.haltedBy = null;
     this.clock.speed = next;
     this.clock.accumulator = 0;
     this.clock.lastTime = performance.now();
