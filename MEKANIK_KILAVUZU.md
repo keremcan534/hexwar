@@ -313,6 +313,22 @@ teknoloji 2.2 kat pahalıdır (tavan 2.5). Ceza silinmedi çünkü silinseydi
 %55 büyütür. Yani derin bir klasörü sonuna kadar sürmek yerine, birkaç
 klasörün ilk kademelerini almak neredeyse her zaman daha ucuzdur.
 
+## 2.3 Araştırma kuyruğu ve YZ'nin okul geleneği
+
+**Ne değişti (2026-09)** — Ulusal Program (sekiz yıllık yön + eğitim tabanı)
+kalktı. Yön artık doğrudan seçimdir: teknoloji ağacında tık hemen araştırır
+(kilitliyse yolunu kurar), shift+tık kuyruğa ekler, sağ tık çıkarır. Kuyruk
+boşalınca sıradaki teknolojiyi `nextTechFor` seçer (oyuncu dahil).
+
+**YZ'nin eğitim tabanı** — `economy.js aiEducationFloor`. Program YZ'ye tek
+bir şey veriyordu: eğitim tabanı. O gidince ölçüldü (3 tohum, 1846–1906):
+eğitimi sıfırda duran YZ payı %26–33'ten %51–63'e çıktı, 1866 medyan
+okuryazarlık 0.45'ten 0.29'a indi. Taban artık ülkenin kalıcı okul geleneği
+(%25/%40/%55); gelirin %35'ini aşamaz, borç yükseldikçe iner, temerrütteki
+devlet muaftır. Sonuç: sıfırdaki YZ payı %17–29, medyan okuryazarlık 1906'da
+0.52 (programla 0.52). Oyuncu bağlanmaz; bütçesini devrederse aynı fonksiyon
+onun için de çalışır.
+
 ---
 
 # 3. HANE — memnuniyet, istikrar, nüfus

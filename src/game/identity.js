@@ -53,7 +53,9 @@ function pickTag(world, nation) {
   const techTop = techCounts[Math.max(0, Math.floor(techCounts.length * 0.15))] ?? 0;
   const techBottom = techCounts[Math.min(techCounts.length - 1, Math.floor(techCounts.length * 0.85))] ?? 0;
   if (research >= techTop && research > 5) return 'tech_leader';
-  if (nation.research?.programme === 'NATIONAL_INSTRUCTION') return 'educating';
+  // Ulusal program kalkinca olcut butcenin kendisi: okula gercekten para
+  // basan ulke (Ulusal Egitim programinin tabani da %55'ti).
+  if ((economy.social?.education ?? 0) >= 55 && (economy.literacy ?? 0) >= 0.4) return 'educating';
   if (factories >= 10 && (economy.social?.education ?? 0) >= 25) return 'industrializing';
   // KIMLIK
   if (rank > 0 && rank <= 3) return 'great_power';

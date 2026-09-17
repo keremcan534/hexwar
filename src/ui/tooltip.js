@@ -77,7 +77,7 @@ function render(data) {
     ${data.note ? `<div class="tip-note">${data.note}</div>` : ''}
     ${data.text ? `<p class="tip-text">${data.text}</p>` : ''}
     ${effects ? `<div class="tip-block"><small>Effects</small>${effects}</div>` : ''}
-    ${rows ? `<div class="tip-block"><small>Why</small>${rows}</div>` : ''}
+    ${rows ? `<div class="tip-block"><small>${esc(data.rowsLabel ?? 'Why')}</small>${rows}</div>` : ''}
     ${data.footer ? `<p class="tip-foot">${data.footer}</p>` : ''}`;
 }
 

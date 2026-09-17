@@ -29,17 +29,16 @@ export const DELEGATION_AREAS = {
     id: 'construction',
     name: 'Construction',
     screen: 'construction',
-    desc: 'State investment and public works are planned for you.',
+    desc: 'Construction capacity is raised for you when the build queue outgrows it.',
   },
-  research: {
-    // ADI DAR TUTULDU. Bos arastirma kuyrugunu programa gore doldurmak zaten
-    // OYUNCU ICIN DE calisiyor (bkz. economy.js nextTechFor — kor beta B-018'in
-    // cozumu) ve AUTO'dan bagimsizdir. Devredilen tek sey PROGRAM ilanidir;
-    // "Research AUTO" demek, kapaliyken hicbir sey secilmiyor sanmaya yol acardi.
-    id: 'research',
-    name: 'Research programme',
-    screen: 'technology',
-    desc: 'The eight-year national programme is declared and renewed for you. Individual technologies stay yours to steer.',
+  industry: {
+    // Insaattan AYRI anahtar. Ikisi tek anahtardayken "kapasiteyi hukumet
+    // buyutsun, fabrikayi ben secerim" (ya da tersi) denemiyordu: insaat gucu
+    // ile hangi tesisin kurulacagi ayri kararlardir.
+    id: 'industry',
+    name: 'Industry',
+    screen: 'industry',
+    desc: 'The ministry founds state factories where margins are best and keeps the arms lines on what the army lacks. Expansion and private investment run on their own either way.',
   },
   diplomacy: {
     id: 'diplomacy',
@@ -153,6 +152,13 @@ export function restoreDelegation(nation, saved) {
   if (saved) {
     for (const id of DELEGATION_IDS) state[id] = Boolean(saved[id]);
     state.since = { ...(saved.since ?? {}) };
+    // Sanayi anahtari insaattan ayrilmadan onceki kayit: devlet fabrikasi o
+    // zaman insaat devrinin icindeydi. Devretmis oyuncu yuklemede sanayisini
+    // kendi elinde bulmasin; isinma penceresi de ayni haftadan sayilir.
+    if (saved.industry === undefined && saved.construction) {
+      state.industry = true;
+      if (Number.isFinite(saved.since?.construction)) state.since.industry = saved.since.construction;
+    }
     // Son eylem satırı sınırlıdır: alan başına bir kayıt, fazlası atılır.
     for (const id of DELEGATION_IDS) {
       const entry = saved.last?.[id];

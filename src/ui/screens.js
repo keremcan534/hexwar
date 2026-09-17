@@ -62,12 +62,11 @@ import { politicsScreen } from './politicsScreen.js';
 import {
   DELEGATION_AREAS, DELEGATION_IDS, isDelegated, lastDelegatedAction, setDelegation,
 } from '../game/delegation.js';
-import { technologyScreen } from './technologyScreen.js';
+import { researchRateLines, technologyScreen } from './technologyScreen.js';
 import { industryScreen } from './industryScreen.js';
 import { factoryBuildOptions, industryOverview } from '../game/industryView.js';
 import {
-  PROGRAMMES, adoptProgramme, abandonProgramme, effectiveTechCost,
-  researchPointsOf, startResearch,
+  dequeueResearch, effectiveTechCost, queueResearch, researchNow, researchPointsOf,
 } from '../game/technology.js';
 import {
   NATIONAL_INVESTMENTS, cancelConstruction, constructionPower, constructionView,
@@ -122,7 +121,7 @@ const SCROLL_KEEPERS = [
   '.census-scroll', '.census-browser-list', '.trade-goods-scroll', '.trade-detail',
   '.pol-left', '.pol-panel', '.pol-issues-scroll',
   '.mil-leader-list', '.mil-build-list', '.mil-queue-list', '.mil-left',
-  '.xch-list', '.xch-dossier',
+  '.xch-list', '.xch-dossier', '.tech-tree',
 ];
 
 /**
@@ -379,16 +378,20 @@ export class Screens {
    * korunmazsa oyuncu uzun bir tabloda baktığı satırı her turda kaybeder.
    */
   captureScroll() {
+    // Yatay konum da tutulur: dar pencerede kaydirilmis teknoloji agaci her
+    // tiklamada basa donuyordu.
     return SCROLL_KEEPERS.map((selector) => {
       const node = this.el.body.querySelector(selector);
-      return node ? [selector, node.scrollTop] : null;
+      return node ? [selector, node.scrollTop, node.scrollLeft] : null;
     }).filter(Boolean);
   }
 
   restoreScroll(saved) {
-    for (const [selector, top] of saved) {
+    for (const [selector, top, left] of saved) {
       const node = this.el.body.querySelector(selector);
-      if (node) node.scrollTop = top;
+      if (!node) continue;
+      node.scrollTop = top;
+      node.scrollLeft = left ?? 0;
     }
   }
 
@@ -1751,19 +1754,21 @@ export class Screens {
   }
 
 
-  // --- Teknoloji: arastirma merdiveni (bkz. technologyScreen.js) ---
+  // --- Teknoloji: zaman cizelgeli agac (bkz. technologyScreen.js) ---
   render_technology(me) {
     const world = this.game.world;
-    const year = 1836 + Math.floor(((world.turn ?? 1) - 1) * 7 / 365);
+    const turn = world.turn ?? 1;
+    const year = 1836 + Math.floor((turn - 1) * 7 / 365);
+    const standing = techStanding(world, me);
     return technologyScreen(me, {
-      category: this.techCategory ?? 'industry',
-      selected: this.techSelected ?? null,
-      confirm: this.techConfirm ?? null,
       year,
-      turn: world.turn ?? 0,
+      yearExact: 1836 + ((turn - 1) * 7) / 365,
       rate: researchPointsOf(me),
-      // SERT KURAL: ekran ETKIN maliyeti gosterir (program indirimi +
-      // yayilim). Liste fiyati basmak, motorun dusecegi sayiyla celisir ve
+      rateLines: researchRateLines(me),
+      rank: standing.rank,
+      of: standing.of,
+      // SERT KURAL: ekran ETKIN maliyeti gosterir (yayilim indirimi dahil).
+      // Liste fiyati basmak, motorun dusecegi sayiyla celisir ve
       // UI_TRUTH_FIXES'in kapattigi hata sinifini yeniden acardi.
       costOf: (techId) => effectiveTechCost(world, me, techId, year),
     });
@@ -1961,23 +1966,22 @@ export class Screens {
         this.refresh();
       };
     }
-    for (const btn of this.el.body.querySelectorAll('[data-tech-category]')) {
-      btn.onclick = () => {
-        this.techCategory = btn.dataset.techCategory;
-        this.techSelected = null;
-        this.refresh();
-      };
-    }
     for (const btn of this.el.body.querySelectorAll('[data-tech]')) {
-      btn.onclick = () => {
-        this.techSelected = btn.dataset.tech;
+      // Tik hemen arastirir (kilitliyse yolunu kurar), shift+tik kuyruga
+      // ekler, sag tik kuyruktan cikarir: agacin uc fiili, ayri dugme yok.
+      btn.onclick = (event) => {
+        if (event.shiftKey) queueResearch(me, btn.dataset.tech);
+        else researchNow(me, btn.dataset.tech);
         this.refresh();
       };
+      btn.oncontextmenu = (event) => {
+        event.preventDefault();
+        if (dequeueResearch(me, btn.dataset.tech)) this.refresh();
+      };
     }
-    for (const btn of this.el.body.querySelectorAll('[data-start-research]')) {
+    for (const btn of this.el.body.querySelectorAll('[data-dequeue]')) {
       btn.onclick = () => {
-        // Yon secimi OYUNCUNUN: bu cagri programin otomatik akisini ezer.
-        startResearch(me, btn.dataset.startResearch);
+        dequeueResearch(me, btn.dataset.dequeue);
         this.refresh();
       };
     }
@@ -2008,49 +2012,6 @@ export class Screens {
         if (event.key !== 'Enter' && event.key !== ' ') return;
         event.preventDefault();
         toggle();
-      };
-    }
-    for (const btn of this.el.body.querySelectorAll('[data-proclaim]')) {
-      btn.onclick = () => {
-        const id = btn.dataset.proclaim;
-        // Ilk tik onay ister, ikinci tik ilan eder (bkz. technologyScreen kart).
-        if (this.techConfirm !== id) {
-          this.techConfirm = id;
-          this.refresh();
-          return;
-        }
-        this.techConfirm = null;
-        if (adoptProgramme(me, id, game.world.turn ?? 0)) {
-          const programme = PROGRAMMES[id];
-          // Davet karti haftalik taramayi beklemeden duser: ilan edilmis
-          // programin yaninda "The nation has no programme" durmasi yalan.
-          game.notifications?.dismissKeys?.('programme-prompt');
-          // Taahhut ANINDA baglar: kart "egitim >= %25" diyorsa kaydirac o
-          // hafta oraya cikar — sonraki dokunusa kadar 0'da kalmasi vaadi
-          // bosa cikarirdi. setBudgetPolicy tabani zaten biliyor.
-          setBudgetPolicy(me, 'education',
-            Math.max(me.economy.social?.education ?? 0, programme.floor));
-          // Ilan buyuk bir ulusal taahhuttur: vakayinameye girer (tier 2),
-          // zaman DURMAZ — karari zaten oyuncu verdi.
-          announce(game, me, {
-            kind: 'POLITICS', tier: TIER.MAJOR, key: 'programme',
-            title: `${programme.name} proclaimed`,
-            detail: `${programme.line} Education bound at ${programme.floor}%.`,
-          });
-        }
-        this.refresh();
-      };
-    }
-    for (const btn of this.el.body.querySelectorAll('[data-abandon-programme]')) {
-      btn.onclick = () => {
-        if (abandonProgramme(me, game.world.turn ?? 0, 'abandoned')) {
-          announce(game, me, {
-            kind: 'POLITICS', tier: TIER.MAJOR, key: 'programme',
-            title: 'The national programme is wound up',
-            detail: 'Half the accumulated research bank is forfeit; no new proclamation for a year.',
-          });
-        }
-        this.refresh();
       };
     }
     for (const btn of this.el.body.querySelectorAll('[data-project-top]')) {

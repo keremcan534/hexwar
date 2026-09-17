@@ -339,8 +339,9 @@ programına doğru yükseltir, yasa geri almaz. Ayrıntı: `src/game/politics.js
 
 ### Yönetimi devretme (AUTO)
 
-Altı alan — bütçe, ticaret, inşaat, araştırma programı, diplomasi, asker alımı
-— tek bir **AUTO ON/OFF** anahtarıyla hükûmete devredilebilir. Ekranın üstünde
+Yedi alan — bütçe, ticaret, inşaat kapasitesi, sanayi (devlet fabrikası ve silah
+hatları), yasalar, diplomasi, asker alımı — tek bir **AUTO ON/OFF** anahtarıyla
+hükûmete devredilebilir. Ekranın üstünde
 tek satırlık bir şerit anahtarı, bir cümlelik açıklamayı ve hükûmetin son
 anlamlı eylemini gerekçesiyle gösterir.
 

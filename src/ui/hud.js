@@ -866,12 +866,11 @@ export class Hud {
     // Kart devletin O ANKI haline gore konusur. Eskiden uc cumlesi vardi
     // (baris/savas/muharebe) ve temerrutteki devlete alti yil boyunca
     // "Review Military..." diyordu (Open Beta 4). Sira onemli: muharebe >
-    // savas > ilk hafta > butce acigi > egitim > program > bos tumen >
+    // savas > ilk hafta > butce acigi > egitim > bos tumen >
     // bos insaat gucu > kitlik > rutin. Sayilar simulasyonun kendi
     // alanlaridir, kart hicbir seyi yeniden hesaplamaz.
     const balance = weeklyBalanceOf(me);
     const education = me.economy?.social?.education ?? 0;
-    const research = me.research;
     const idle = idleUnits(world, me.id);
     const capacityIdle = investmentLevel(me, 'CONSTRUCTION_CAPACITY') > 0
       && !ensureConstruction(me).projects.some((p) => p.kind !== 'national');
@@ -904,11 +903,8 @@ export class Hud {
       next = `Spending exceeds revenue (${balance >= 0 ? '+' : ''}${Math.round(balance)}/week): open Budget.`;
       why = 'Raise a class tax or the tariff, or lower army funding; every ledger line says what it is.';
     } else if (education < 25) {
-      next = `Education is at ${education}%: raise it past 25% in Budget to unlock a National Programme.`;
-      why = 'Literacy feeds research; the programme sets its direction for eight years.';
-    } else if (research && !research.programme && (world.turn ?? 0) >= (research.programmeCooldown ?? 0)) {
-      next = 'Proclaim a National Programme on the Technology screen.';
-      why = 'Direction, price and an education floor for eight years; click a card twice.';
+      next = `Education is at ${education}%: raise it in Budget — research runs on literacy.`;
+      why = 'Literacy climbs slowly toward what the schools are paid for; research points follow it.';
     } else if (idle.length) {
       next = `${idle.length} ${idle.length === 1 ? 'division has' : 'divisions have'} no orders: press N to cycle through them.`;
       why = 'A division under a general holds the border by itself; loose ones stand still.';
@@ -919,7 +915,7 @@ export class Hud {
       next = `${shortages} goods are in shortage: the Trade screen shows which plant would pay.`;
       why = 'A plant covering an import bill earns from the first week.';
     } else {
-      next = 'Books balanced, programme set, army posted: expand a profitable factory or review Trade.';
+      next = 'Books balanced, schools paid, army posted: queue research on the Technology screen or review Trade.';
     }
     return { next, why, battles: battles.length, balance: weeklyBalanceOf(me) };
   }

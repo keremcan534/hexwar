@@ -54,10 +54,11 @@ Bu depoya mekanik EKLEMEK varsayılan değildir. Yeni bir mekanik önermeden ön
 
 İlk tarama: 26 mekanikten 10'u ölü, 5'i gürültü tabanının altındaydı. Yani bu
 depoda asıl risk eksik mekanik değil, **çalışmayan mekanik**.
-Son tarama (siyaset sadeleştikten sonra, 18 merdiven → 5 yasa): 13 kaldıraç ·
-çalışıyor 11 · gürültü altı 1 (vatandaşlık, bağlı) · **ölü 0** · savaş
-kaldıracı 1 (barış arenasında ölçülemez). Siyaset: 4 sabit parti, 5 yasa,
-meşruiyet — bkz. `src/game/politics.js`, `npm run diagnose:politics`.
+Son tarama (ulusal program kalktıktan sonra, 2026-09): 13 kaldıraç ·
+çalışıyor 12 · gürültü altı 0 · **ölü 0** · savaş kaldıracı 1 (barış
+arenasında ölçülemez). Siyaset: 4 sabit parti, 5 yasa, meşruiyet — bkz.
+`src/game/politics.js`, `npm run diagnose:politics`. Araştırma: ulusal program
+yok; kuyruk + YZ okul geleneği (`economy.js aiEducationFloor`).
 
 Her mekaniğin formülü, kodu, "çalışıyor mu" testi ve pratikte ne yaptığı:
 [MEKANIK_KILAVUZU.md](MEKANIK_KILAVUZU.md)

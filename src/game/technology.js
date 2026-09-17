@@ -251,15 +251,19 @@ export function techById(id) {
 }
 
 export function ensureResearch(nation) {
-  const research = nation.research ??= { points: 0, current: null, done: [] };
+  const research = nation.research ??= { points: 0, current: null, done: [], queue: [] };
   research.done ??= [];
+  // Eski kayitta kuyruk yoktur: bos baslar, surum yukseltmesi gerekmez.
+  if (!Array.isArray(research.queue)) research.queue = [];
   if (!Number.isFinite(research.points)) research.points = 0;
-  // Ulusal program alanlari (bkz. PROGRAMMES). Eski kayitlar bu alanlari
-  // tasimaz; varsayilanlar burada dolar, surum yukseltmesi gerekmez.
-  research.programme ??= null;
-  research.programmeSince ??= 0;
-  research.programmeCooldown ??= 0;
-  research.programmeHistory ??= [];
+  // Ulusal program 2026-09'da kalkti; eski kayittaki alanlari tasimak kaydi
+  // sisirir ve "program var mi" diye okuyan unutulmus bir kod yolunu yasatir.
+  if ('programme' in research) {
+    delete research.programme;
+    delete research.programmeSince;
+    delete research.programmeCooldown;
+    delete research.programmeHistory;
+  }
   return research;
 }
 
@@ -420,7 +424,10 @@ export function refreshTechModifiers(nation) {
 
 export function startResearch(nation, techId) {
   if (!canResearch(nation, techId)) return false;
-  ensureResearch(nation).current = techId;
+  const research = ensureResearch(nation);
+  research.current = techId;
+  // Kuyruktan baslatilan kalem kuyrukta ikinci kez beklemez.
+  if (research.queue.includes(techId)) research.queue = research.queue.filter((id) => id !== techId);
   return true;
 }
 
@@ -428,7 +435,7 @@ export function startResearch(nation, techId) {
  * Bir haftalik arastirma. Puan birikir; secili teknolojinin maliyeti dolunca
  * tamamlanir ve artan puan bir sonrakine devreder (puan bosa gitmez).
  *
- * Maliyet artik ETKIN maliyettir (program indirimi + yayilim); `world`
+ * Maliyet artik ETKIN maliyettir (yayilim indirimi dahil); `world`
  * verilmezse liste fiyatina duser — eski cagri yerleri ve denetimler kirilmaz.
  */
 export function advanceResearch(nation, year, world = null) {
@@ -448,206 +455,88 @@ export function advanceResearch(nation, year, world = null) {
 }
 
 // ===========================================================================
-// ULUSAL PROGRAM — "sirada ne" degil "ne tur ulke olacagim" karari.
+// ARASTIRMA KUYRUGU — "sirada ne" sorusunun oyuncu cevabi.
 //
-// Oyuncu (ve YZ) sekiz yilligina bir programa baglanir. Program uc sey birden
-// soyler: YON (odak klasorler ucuz, ihmal edilenler pahali), BEDEL (egitim
-// taban sarti — socialFloorOf'un ikinci kaynagi; yakit cokusunun asil
-// cozumu buradadir) ve TAAHHUT (erken fesih puan yakar).
-//
-// Tek tek teknoloji secimi KALKMADI — program icinde yon degistirmek serbest.
-// Kalkan sey zorunlu mikro: `nextTechFor` bosalan kuyrugu oyuncu icin de
-// programa gore doldurur (kor beta B-018: dokuz secim kacti, 5671 RP bosta).
+// Ulusal program (sekiz yillik yon + egitim tabani taahhudu) 2026-09'da
+// kalkti: kart secmek, vade saymak ve fesih bedeli oyuncuya teknoloji
+// agacindan baska bir sey anlatmiyordu. Yon artik dogrudan secim ve kuyruktur.
+// Kuyruk bosalinca `nextTechFor` doldurur — kor beta B-018'in (dokuz kacan
+// secim, 5671 bos RP) yapisal cozumu aynen yasar.
 // ===========================================================================
 
-export const PROGRAMME_TERM = 416;      // 8 yil
-export const PROGRAMME_COOLDOWN = 52;   // fesihten sonra yeni ilan yasagi
+export const RESEARCH_QUEUE_LIMIT = 10;
 
-export const PROGRAMMES = {
-  IRON_AND_RAIL: {
-    id: 'IRON_AND_RAIL', name: 'Iron & Rail', icon: '🛤', floor: 25,
-    line: 'The state binds itself to metal and distance.',
-    focus: [['industry', 'Metallurgy'], ['industry', 'Infrastructure']],
-    neglect: [['culture', 'Philosophy'], ['army', 'Military Science']],
-  },
-  WORKSHOP: {
-    id: 'WORKSHOP', name: 'Workshop of the World', icon: '⚙', floor: 25,
-    line: 'Whatever the world buys, we shall make more of it.',
-    focus: [['industry', 'Power'], ['industry', 'Mechanization']],
-    neglect: [['army', 'Army Doctrine'], ['navy', 'Ship Construction']],
-  },
-  ARSENAL: {
-    id: 'ARSENAL', name: 'The Arsenal', icon: '⚔', floor: 25,
-    line: 'Peace, if it comes, will find us armed.',
-    focus: [['army', 'Army Doctrine'], ['army', 'Military Science']],
-    neglect: [['culture', 'Public Instruction'], ['commerce', 'Financial Institutions']],
-  },
-  BLUE_WATER: {
-    id: 'BLUE_WATER', name: 'Blue Water', icon: '⚓', floor: 25,
-    line: 'The sea is not a border. It is a road.',
-    focus: [['navy', 'Ship Construction'], ['industry', 'Infrastructure']],
-    neglect: [['army', 'Army Doctrine']],
-  },
-  COUNTING_HOUSE: {
-    id: 'COUNTING_HOUSE', name: 'The Counting House', icon: '⚖', floor: 40,
-    line: 'Credit is the sinew of the modern state.',
-    focus: [['commerce', 'Financial Institutions'], ['commerce', 'Communications']],
-    neglect: [['army', 'Military Science']],
-  },
-  NATIONAL_INSTRUCTION: {
-    id: 'NATIONAL_INSTRUCTION', name: 'National Instruction', icon: '🎓', floor: 55,
-    line: 'A century is won in its classrooms.',
-    focus: [['culture', 'Public Instruction'], ['culture', 'Philosophy']],
-    neglect: [['army', 'Army Doctrine'], ['navy', 'Ship Construction']],
-  },
-};
-
-const FOCUS_FACTOR = 0.6;
-const NEGLECT_FACTOR = 1.6;
-
-export function programmeOf(nation) {
-  const id = nation.research?.programme;
-  return id ? PROGRAMMES[id] ?? null : null;
-}
-
-/** Programin egitim taban sarti (socialFloorOf'un ikinci kaynagi). */
-export function programmeFloorOf(nation) {
-  return programmeOf(nation)?.floor ?? 0;
-}
-
-/** Bir teknolojinin bu ulke icin fiyat carpani: odak / notr / ihmal. */
-export function programmeCostFactor(nation, techId) {
-  const programme = programmeOf(nation);
-  if (!programme) return 1;
+/** Teknolojiye giden yol: klasorunde henuz alinmamis kademeler, sirayla. */
+export function researchPath(nation, techId) {
   const entry = INDEX.get(techId);
-  if (!entry) return 1;
-  const match = (list) => list.some(([cat, folder]) => cat === entry.categoryId && folder === entry.folder);
-  if (match(programme.focus)) return FOCUS_FACTOR;
-  if (match(programme.neglect)) return NEGLECT_FACTOR;
-  return 1;
-}
-
-export function adoptProgramme(nation, id, turn) {
-  if (!PROGRAMMES[id]) return false;
-  const research = ensureResearch(nation);
-  if (turn < (research.programmeCooldown ?? 0)) return false;
-  if (research.programme === id) return false;
-  if (research.programme) {
-    research.programmeHistory.push({
-      id: research.programme, from: research.programmeSince, to: turn, reason: 'replaced',
-    });
+  if (!entry || hasTech(nation, techId)) return [];
+  const list = TECHNOLOGIES[entry.categoryId][entry.folder];
+  const path = [];
+  for (let level = 0; level <= entry.level; level++) {
+    if (!hasTech(nation, list[level].id)) path.push(list[level].id);
   }
-  research.programme = id;
-  research.programmeSince = turn;
-  if (research.programmeHistory.length > 24) research.programmeHistory.shift();
-  return true;
+  return path;
 }
 
 /**
- * Fesih. Vadeden once birakmanin bedeli: birikmis puanin yarisi yanar ve
- * bir yil yeni ilan yasagi baslar. Kriz dali (economy.js) da bunu cagirir —
- * cokus SILINMEDI, okunur bir basarisizlik durumu oldu.
+ * Kuyruga ekler. Kilitli teknoloji istenirse yolundaki eksik kademeler de
+ * sirayla girer ("oraya kadar arastir"): klasor ici dogrusal oldugu icin tek
+ * tik yeterli, alti ayri tik degil. Yurutulen ya da kuyrukta olan atlanir.
+ * @returns {number} eklenen kalem sayisi
  */
-export function abandonProgramme(nation, turn, reason = 'abandoned') {
+export function queueResearch(nation, techId) {
   const research = ensureResearch(nation);
-  if (!research.programme) return false;
-  research.programmeHistory.push({
-    id: research.programme, from: research.programmeSince, to: turn, reason,
+  let added = 0;
+  for (const id of researchPath(nation, techId)) {
+    if (id === research.current || research.queue.includes(id)) continue;
+    if (research.queue.length >= RESEARCH_QUEUE_LIMIT) break;
+    research.queue.push(id);
+    added++;
+  }
+  return added;
+}
+
+/**
+ * Kuyruktan cikarir. Ayni klasorde ondan SONRA gelenler de duser: yolu
+ * kesilen kalem arastirilamaz, kuyrukta kalmasi sessiz bir olu kalem olurdu.
+ */
+export function dequeueResearch(nation, techId) {
+  const research = ensureResearch(nation);
+  const entry = INDEX.get(techId);
+  if (!entry) return false;
+  const before = research.queue.length;
+  research.queue = research.queue.filter((id) => {
+    const other = INDEX.get(id);
+    return !(other && other.categoryId === entry.categoryId
+      && other.folder === entry.folder && other.level >= entry.level);
   });
-  if (research.programmeHistory.length > 24) research.programmeHistory.shift();
-  research.programme = null;
-  research.programmeSince = 0;
-  research.programmeCooldown = turn + PROGRAMME_COOLDOWN;
-  if (turn < (nationTermEnd(research) ?? Infinity)) research.points *= 0.5;
-  return true;
-}
-
-function nationTermEnd(research) {
-  return research.programmeSince ? research.programmeSince + PROGRAMME_TERM : null;
-}
-
-/** Vade doldu mu? (Dolan program surer ama YZ yeniden degerlendirir.) */
-export function programmeLapsed(nation, turn) {
-  const research = nation.research;
-  if (!research?.programme) return true;
-  return turn >= research.programmeSince + PROGRAMME_TERM;
+  return research.queue.length !== before;
 }
 
 /**
- * YZ program secimi — SAF puanlama. `ctx`yi economy.js kurar (katman kurali:
- * bu dosya economy.js'i import edemez). En ucuzu secmek YASAK davranisti;
- * burada maliyet bir terim bile degil: ulke DURUMU secer.
- * Deterministik; esitlikte id sirasi.
+ * Tik: hemen buna calis. Kilitliyse yolunun ilk eksik kademesi baslar, geri
+ * kalani kuyrugun BASINA girer — istenen o teknolojidir, eski kuyruk arkada
+ * bekler. Puan bankasi teknolojiye bagli olmadigi icin degistirmek bedava.
  */
-export function scoreProgrammes(nation, ctx) {
-  const scores = {};
+export function researchNow(nation, techId) {
   const research = ensureResearch(nation);
-  const ids = Object.keys(PROGRAMMES).sort();
-  for (const programme of Object.values(PROGRAMMES)) {
-    // Odenebilirlik kapisi: taban maliyeti gelirin %35'ini asan ulkeye o
-    // program KAPALIDIR. Borc kapisi KADEMELI: agir borc yalniz yuksek
-    // tabanli (pahali) programlari kapatir; ancak kapasiteyi fiilen doldurmus
-    // devlet hicbirini tasiyamaz. Yoksul ulke Ulusal Egitim'den teknoloji
-    // kapisiyla degil, KENDI BUTCESIYLE menedilir — yapisal geri-kalan
-    // ureteci budur. (Ilk yazimda borc>%60 HER SEYI kapatiyordu: 10 yillik
-    // kosuda dunyanin yarisi programsiz kaldi — olculdu, gevsetildi.)
-    if ((ctx.floorCost?.(programme.floor) ?? 0) > ctx.income * 0.35
-      || (ctx.debtLoad > 0.6 && programme.floor >= 40)
-      || ctx.debtLoad > 0.9) {
-      scores[programme.id] = -Infinity;
-      continue;
-    }
-    let s = 1;
-    // Ulusal egilim: ayni kosullardaki iki ulke ayni programa kosmasin diye
-    // kimlikten turetilen DETERMINISTIK yatkinlik (gelenek gibi dusun).
-    // Rastgelelik degil: ayni tohum ayni dunyada ayni egilimi verir. Agirlik
-    // bilerek belirgin — olculen dunyada partiler tekduze (hepsi ayni
-    // politika), dolayisiyla cesitliligin ana kaynagi kosullar + gelenek.
-    if (ids[nation.id % ids.length] === programme.id) s += 0.6;
-    if (programme.id === 'ARSENAL') {
-      // Yalniz SUREGIDEN, yipratan savasa tepki. Bu dunya savas-yogun
-      // (50 yilda 55-99 savas): "savastayim" duz ikramiyesi her incelemede
-      // Arsenal'i kazandiriyordu (olculdu: iki tohumda 11/13 ve 17/17).
-      // Parti terimi de kucuk tutulur — olculen dunyada TUM partiler
-      // pro_military (tekduze), buyuk agirlik verilirse ayirt etmez, yigar.
-      if (ctx.warStrain > 0.15) s += 0.8 + ctx.warStrain * 2;
-      if (ctx.militarist) s += 0.25;
-      if (!ctx.atWar) s *= 0.55;
-      if (ctx.pacifist) s = 0;
-    }
-    if (programme.id === 'IRON_AND_RAIL') {
-      s += (ctx.constructionStrained ? 1.0 : 0) + (ctx.shortSteel ? 0.8 : 0);
-    }
-    if (programme.id === 'WORKSHOP') {
-      s += (ctx.shortMachine ? 0.8 : 0) + (ctx.stability > 0.6 ? 0.3 : 0);
-    }
-    if (programme.id === 'BLUE_WATER') {
-      s = ctx.hasNavy ? s + 0.4 : 0.2;
-    }
-    if (programme.id === 'COUNTING_HOUSE') {
-      s += (ctx.freeTrade ? 1.0 : 0) + (ctx.debtLoad > 0.3 ? 0.6 : 0);
-    }
-    if (programme.id === 'NATIONAL_INSTRUCTION') {
-      s += (ctx.literacy < 0.3 ? 0.8 : 0) + (ctx.rich ? 0.6 : 0)
-        + (ctx.progressive ? 0.5 : 0);
-      if (ctx.stability < 0.45) s *= 0.4;
-    }
-    // Yuksek tabanli programlar sallanan devlete agir gelir.
-    if (programme.floor >= 40 && ctx.stability < 0.45) s *= 0.5;
-    // Yerlesik program kolay birakilmaz (savrulma freni). TEK istisna:
-    // barista Arsenal — savas bitti diye ordu programina yapisip kalmak,
-    // "YZ hep askeri secer" yasagini arka kapidan geri getiriyordu.
-    if (research.programme === programme.id
-      && !(programme.id === 'ARSENAL' && !ctx.atWar && !ctx.militarist)) {
-      s += 0.6;
-    }
-    scores[programme.id] = s;
+  const path = researchPath(nation, techId);
+  if (!path.length || !canResearch(nation, path[0])) return false;
+  const [first, ...rest] = path;
+  research.current = first;
+  research.queue = [...rest, ...research.queue.filter((id) => id !== first && !rest.includes(id))]
+    .slice(0, RESEARCH_QUEUE_LIMIT);
+  return true;
+}
+
+/** Kuyrugun ilk arastirilabilir kalemi; alinmis ya da yolu kopmus olanlar duser. */
+export function nextQueuedTech(nation) {
+  const research = ensureResearch(nation);
+  while (research.queue.length) {
+    const id = research.queue.shift();
+    if (canResearch(nation, id)) return id;
   }
-  let best = null;
-  for (const id of Object.keys(PROGRAMMES).sort()) {
-    if (best === null || (scores[id] ?? -Infinity) > (scores[best] ?? -Infinity)) best = id;
-  }
-  return (scores[best] ?? -Infinity) > 0 ? best : null;
+  return null;
 }
 
 // ===========================================================================
@@ -697,46 +586,34 @@ export function diffusionDiscount(world, nation, techId) {
 
 /**
  * ETKIN maliyet — herkesin (UI dahil) alinti yapmasi gereken TEK fiyat.
- * liste fiyati (techCost) x program carpani x (1 - yayilim indirimi).
+ * liste fiyati (techCost) x (1 - yayilim indirimi).
  */
 export function effectiveTechCost(world, nation, techId, year) {
   const base = techCost(techId, year)
-    * programmeCostFactor(nation, techId)
     * (1 - diffusionDiscount(world, nation, techId));
   return Math.max(1, Math.round(base));
 }
 
 /**
- * Siradaki teknoloji — oyuncu ve YZ icin AYNI yol. Once odak klasorler,
- * sonra notr, en son ihmal edilenler; kademe icinde etkin maliyet, sonra
- * aktivasyon yili, sonra id (deterministik).
+ * Siradaki teknoloji — oyuncu ve YZ icin AYNI yol: once ulkenin ekolu, sonra
+ * etkin maliyet, aktivasyon yili ve id (deterministik). Oyuncunun kuyrugu
+ * her zaman once gelir (bkz. nextQueuedTech); bu yalniz bos kuyrugu doldurur.
  *
- * Programa sabit bir "order" dizisi BILEREK verilmedi: ayni programdaki iki
- * ulke, farkli komsuluklar yuzunden farkli yayilim indirimi gorur ve ayni
- * programda bile farkli rota izler — ayrisma buradan dogar.
+ * Sabit bir "order" dizisi BILEREK verilmedi: farkli komsuluklar farkli
+ * yayilim indirimi gorur ve ayni ekoldeki iki ulke bile farkli rota izler.
  */
 export function nextTechFor(nation, year, world) {
   const candidates = availableTechs(nation);
   if (!candidates.length) return null;
-  const programme = programmeOf(nation);
-  // EKOL. Ayni programdaki her ulke ayni merdiveni ayni sirayla tirmaniyordu
-  // (audit:research: 1945'te 60 ulkede 5-11 farkli teknoloji kumesi). Her
-  // ulkenin tohumdan gelen kalici bir egilimi var: o kategorinin teknolojisi
-  // ayni kademede yarim basamak one gecer. Program (oyuncunun ilani) yine
-  // baskin; ekol yalniz esitleri ayirir. Kayda research ile girer.
+  // EKOL. Her ulke ayni merdiveni ayni sirayla tirmaniyordu (audit:research,
+  // 1945: 60 ulkede 5-11 farkli teknoloji kumesi). Tohumdan gelen kalici
+  // egilim: o kategorinin teknolojisi once gelir. Kayda research ile girer.
   const research = ensureResearch(nation);
   if (!research.school && world?.seed != null) {
     const ids = Object.keys(TECH_CATEGORIES);
     research.school = makeRng(`${world.seed}-school-${nation.id}`).pick(ids);
   }
-  const tierOf = (entry) => {
-    const lean = entry.categoryId === research.school ? -0.5 : 0;
-    if (!programme) return 1 + lean;
-    const match = (list) => list.some(([cat, folder]) => cat === entry.categoryId && folder === entry.folder);
-    if (match(programme.focus)) return 0 + lean;
-    if (match(programme.neglect)) return 2 + lean;
-    return 1 + lean;
-  };
+  const tierOf = (entry) => (entry.categoryId === research.school ? 0.5 : 1);
   let best = null;
   let bestKey = null;
   for (const entry of candidates) {

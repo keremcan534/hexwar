@@ -11,10 +11,8 @@ import { delegationActive, noteDelegated } from './delegation.js';
 import { atWar } from './diplomacy.js';
 import { controllerOf } from './control.js';
 import {
-  PROGRAMMES, abandonProgramme, adoptProgramme, advanceResearch, ensureResearch,
-  nextTechFor, programmeFloorOf, programmeLapsed, programmeOf, refreshDiffusion,
-  refreshTechModifiers, researchPointsOf, scoreProgrammes, startResearch, techById,
-  techUnlocksFactory,
+  advanceResearch, ensureResearch, nextQueuedTech, nextTechFor, refreshDiffusion,
+  refreshTechModifiers, researchPointsOf, startResearch, techById, techUnlocksFactory,
 } from './technology.js';
 import { TIER, announce } from './chronicle.js';
 import { treatiesOf } from './peace.js';
@@ -1905,8 +1903,8 @@ export function budgetPolicyLimits(nation) {
     taxUpper: { min: 0, max: 100 },
     tariff: { min: party.tariffMin, max: party.tariffMax },
     armyFunding: { min: party.armySpendingMin, max: party.armySpendingMax },
-    education: { min: socialFloorOf(nation, 'education'), max: 100 },
-    welfare: { min: socialFloorOf(nation, 'welfare'), max: 100 },
+    education: { min: 0, max: 100 },
+    welfare: { min: 0, max: 100 },
   };
 }
 
@@ -2252,66 +2250,6 @@ function applySubsidyPolicy(world, nation) {
  */
 // Tarayicida `process` YOKTUR — dogrudan process.env okumak butun oyunu
 // acilista dusuruyordu (Chromium smoke yakaladi; bassiz denetim yakalayamaz).
-/**
- * Bir sosyal programin ALT SINIRI: yalniz ulusal program taahhudunden gelir.
- * (Yuksekogretim kurumunun seviye tabani 2026-09'da kurumla birlikte gitti.)
- *
- * Duz taban yanlis cozumdu ve olculdu: %70'lik duz taban okuryazarligi
- * ikiye katliyor ama teknolojik yayilimi 6'dan 3'e, farkli teknoloji kumesi
- * sayisini 7'den 4'e cokertiyor — yakiti tektiplestirmek sonucu
- * tektiplestiriyor. Programsiz ulke yine cokebilir — bu "ara sira basarisiz
- * devlet" tasarim geregi korunur.
- *
- * Kredi cezasi altindaki devlet muaftir: geri kalan DUSEBILMELI, yoksa
- * "teknoloji lideri olmak" risksiz bir bahis olur.
- */
-export function socialFloorOf(nation, programId) {
-  if (programId !== 'education') return 0;
-  if ((nation?.economy?.creditPenalty ?? 0) > 0.05) return 0;
-  return programmeFloorOf(nation);
-}
-
-/**
- * YZ program degerlendirmesinin baglami. scoreProgrammes SAF kalir
- * (technology.js economy'yi import edemez); butun okumalar burada.
- */
-export function programmeContext(world, nation) {
-  const economy = nation.economy;
-  const income = Math.max(1, economy.ledger?.income ?? 0);
-  const scale = (economy.population ?? 0) / POPULATION_UNIT;
-  const eduRate = SOCIAL_PROGRAMS.education?.rate ?? 0.34;
-  let hasNavy = false;
-  for (const unit of world.units ?? []) {
-    if (unit.nationId === nation.id && unit.regiments?.some((r) => r.typeId === 'WARSHIP')) {
-      hasNavy = true;
-      break;
-    }
-  }
-  const party = rulingParty(nation);
-  const ideology = party?.ideology ?? '';
-  const military = policyOf(nation, 'military');
-  return {
-    income,
-    // Taban F'nin HAFTALIK bedeli. socialLevel 0..1 dondurur (kaydirac/100);
-    // rate "10.000 kisi basina, %100 seviyede haftalik" tanimlidir.
-    floorCost: (floor) => scale * (floor / 100) * eduRate,
-    debtLoad: (nation.debt ?? 0) / Math.max(1, debtCapacity(nation)),
-    atWar: economy.atWarCache ?? false,
-    warStrain: clamp(economy.warStrain ?? 0, 0, 1),
-    militarist: military === 'jingoism' || military === 'pro_military',
-    pacifist: military === 'pacifism' || military === 'anti_military',
-    constructionStrained: nation.gold > 900 && (economy.ledger?.net ?? 0) > 0,
-    shortSteel: (economy.goodsFlow?.steel?.shortage ?? 0) > 0,
-    shortMachine: (economy.goodsFlow?.tools?.shortage ?? 0) > 0,
-    stability: economy.stability ?? 0.5,
-    hasNavy,
-    freeTrade: policyOf(nation, 'trade') === 'free_trade',
-    literacy: economy.literacy ?? 0,
-    rich: nation.gold > 500,
-    progressive: ideology === 'liberal' || ideology === 'socialist',
-  };
-}
-
 export function socialSpendingCost(nation) {
   const economy = nation?.economy;
   if (!economy) return 0;
@@ -3526,12 +3464,55 @@ export function fiscalStance(nation) {
 const CUT_ORDER = ['welfare', 'education'];
 
 /**
+ * YZ'NIN EGITIM TABANI — ulkenin kalici okul gelenegi.
+ *
+ * Ulusal program (2026-09'da kalkti) YZ'ye tek bir sey veriyordu: ilan
+ * ettigi programin egitim tabani (%25 / %40 / %55). Program gidince taban da
+ * gitti ve olculdu (3 tohum, 1846-1906): egitimi SIFIRDA duran YZ payi
+ * %26-33'ten %51-63'e cikti, 1866 medyan okuryazarlik 0.45'ten 0.29'a indi —
+ * teknolojinin yakit cokusu geri geldi. Taban burada yasar ama oyuncuyu
+ * BAGLAMAZ: oyuncu butcesini devrederse ayni fonksiyon onun icin de kosar.
+ *
+ * Kapilar programinkiyle ayni: taban gelirin %35'ini asamaz, borc
+ * yukseldikce iner, temerrutteki devlet muaftir — geri kalan DUSEBILMELI.
+ * Dagilim olculerek secildi (ayni 3 tohum): [25x4, 40, 55] okuryazarligi
+ * 1856'da 0.34'te birakti (program 0.45); bu dagilimla sifirdaki YZ payi
+ * %17-29 (program %11-33), medyan okuryazarlik 1906'da 0.52 (program 0.52),
+ * teknoloji medyani biraz hizli (48'e 42).
+ */
+const EDUCATION_TRADITIONS = [25, 25, 40, 40, 55, 55];
+
+function aiEducationFloor(nation) {
+  const economy = nation.economy;
+  if (!economy || (economy.creditPenalty ?? 0) > 0.05) return 0;
+  const debtLoad = Math.max(0, nation.debt ?? 0) / Math.max(1, debtCapacity(nation));
+  if (debtLoad > 0.8) return 0;
+  let floor = EDUCATION_TRADITIONS[nation.id % EDUCATION_TRADITIONS.length];
+  if (debtLoad > 0.6) floor = Math.min(floor, 25);
+  const income = Math.max(1, economy.ledger?.income ?? 0);
+  const weeklyAt = (level) => (economy.population / POPULATION_UNIT) * (level / 100)
+    * (SOCIAL_PROGRAMS.education?.rate ?? 0.34);
+  while (floor > 0 && weeklyAt(floor) > income * 0.35) floor = floor > 40 ? 40 : floor > 25 ? 25 : 0;
+  return floor;
+}
+
+/**
  * Hazine biriktikçe açılan sosyal harcama. YZ oyuncuyla aynı kaldıraçları
  * kullanmazsa geç oyunda tek başına para yığar; istikrar düşükse refah,
  * hazine bolsa eğitim/sağlık açar, para biterse kısar.
  */
 function adjustSocialAI(nation, report = null) {
   const economy = nation.economy;
+  const educationFloor = aiEducationFloor(nation);
+  // Taban altindaki okul once tabana cikar (programin ilan anindaki baglama
+  // davranisi). Iflas eden hazine istisna: once kesme dali konusur.
+  const schooling = economy.social.education ?? 0;
+  if (schooling < educationFloor && !fiscalStance(nation).broke) {
+    economy.social.education = educationFloor;
+    report?.('budget', `Education spending ${schooling}% → ${educationFloor}%.`,
+      'Schools are the last thing the state lets go.');
+    return;
+  }
   // TEK BAKIYE. Gecen haftanin KAPANMIS net'i okunur — bilerek. Eski kod
   // `budget.net.gold + fiscalNet` topluyordu ve o toplam gumruk gelirini
   // GORMUYORDU (fiscalBalance tariffRevenue'yu sifirliyor, ticaret sonra
@@ -3565,9 +3546,9 @@ function adjustSocialAI(nation, report = null) {
       return;
     }
     if (step < 0) {
-      const floor = socialFloorOf(nation, id);
-      if (current > floor) {
-        const next = Math.max(floor, current + step);
+      const min = id === 'education' ? educationFloor : 0;
+      if (current > min) {
+        const next = Math.max(min, current + step);
         economy.social[id] = next;
         if (next !== current) {
           report?.('budget', `${SOCIAL_PROGRAMS[id]?.name ?? id} spending ${current}% \u2192 ${next}%.`,
@@ -3723,22 +3704,14 @@ function adjustWarFiscalAI(nation) {
   };
 
   if (crisis) {
-    // KRIZ PROGRAMI FESHEDER — sosyal kesintiden ONCE. Fesih egitim tabanini
-    // kaldirir (asagidaki kesinti ancak boyle inebilir), puanin yarisini
-    // yakar ve bir yil yeni ilan yasagi baslatir. Cokus boylece SILINMEDI:
-    // okunur bir basarisizlik durumu oldu (bkz. TECHNOLOGY_DESIGN §4).
-    // Fesih esigi kriz esiginden DERINDIR (0.8 > 0.5): her nakit sikismasi
-    // programi dusurseydi ulkeler adopt->kriz->52 hafta yasak dongusune
-    // giriyordu (olculdu: dunyanin yarisi surekli programsiz). Kriz yine
-    // kaydiraclari kisar; program ancak gercek batakta feshedilir.
-    if (nation.research?.programme && debt > debtCapacity(nation) * 0.8) {
-      abandonProgramme(nation, economy.turnCache ?? 0, 'crisis');
-    }
     // Önce isteğe bağlı harcamalar: sübvansiyonlar kapanır, sosyal kısılır,
     // tedarik tabana iner. Vergi tarafını mevcut "broke" dalı zaten sıkıyor.
+    // Okul geleneğin tabanına kadar kısılır; taban borç derinleşince kendisi
+    // iner (bkz. aiEducationFloor) — programın eski "gerçek batakta fesih" eşiği.
     for (const programId of Object.keys(economy.social ?? {})) {
       const level = economy.social[programId] ?? 0;
-      if (level > 0) setBudgetPolicy(nation, programId, level - 10);
+      const min = programId === 'education' ? aiEducationFloor(nation) : 0;
+      if (level > min) setBudgetPolicy(nation, programId, Math.max(min, level - 10));
     }
     drift('armyFunding', wartime ? limits.armySpendingMax : 45);
     // TASFIYE: akis kisintisi yetmiyorsa STOK erir. Zengin donemde kurulan
@@ -3845,8 +3818,10 @@ function runEconomicAI(game, nation) {
   applyTaxHolds(nation);
   const budget = !player || delegationActive(nation, 'budget', turn);
   const trade = !player || delegationActive(nation, 'trade', turn);
-  const construction = !player || delegationActive(nation, 'construction', turn);
-  if (!budget && !trade && !construction) return;
+  // Devlet sanayisi (tesis kurma, silah hatti) kendi anahtarindadir; insaat
+  // devri yalniz kapasiteyi yonetir (bkz. construction.planConstructionAI).
+  const industry = !player || delegationActive(nation, 'industry', turn);
+  if (!budget && !trade && !industry) return;
   const report = player
     ? (areaId, text, reason) => noteDelegated(game, nation, areaId, text, reason)
     : null;
@@ -3857,12 +3832,9 @@ function runEconomicAI(game, nation) {
     (other) => other.alive && other.id !== nation.id
       && atWar(game.world, nation.id, other.id),
   );
-  // Kriz dalindaki program feshi tur numarasi ister; economy dunyayi
-  // tutmadigi icin atWarCache ile ayni kalipla burada baglanir.
-  economy.turnCache = game.world.turn ?? 0;
   if (budget) adjustSocialAI(nation, report);
   adjustFiscalAI(nation, { budget, trade, report });
-  if (!construction) return;
+  if (!industry) return;
   // Yatirim hedefi kalmamis (sehirsiz) devlet MALIYESIZ kalmasin: erken cikis
   // fiscal YZ'nin ustundeyken kriz modu hic kosmuyordu — kalinti devlet eski
   // bolluk gunlerinin kapasite bakimini odemeye devam edip kalici temerrutte
@@ -3894,7 +3866,11 @@ function runEconomicAI(game, nation) {
         return equipmentStock(nation, current.id) >= current.reserve;
       })
       .sort((a, b) => a.lineEfficiency - b.lineEfficiency)[0];
-    if (switchable && setMilitaryProductionLine(game, nation, switchable.id, desiredLine)) return;
+    if (switchable && setMilitaryProductionLine(game, nation, switchable.id, desiredLine)) {
+      report?.('industry', `An arms line switched to ${MILITARY_EQUIPMENT[desiredLine].name}.`,
+        'The army was short of it and the old line had its reserve.');
+      return;
+    }
   }
   if (desiredLine) {
     // Her ekipman için önce tek, beslenebilir hat kurulur. Mevcut hattın stoku
@@ -3907,6 +3883,8 @@ function runEconomicAI(game, nation) {
       if (region && buildFactory(game, nation, region.id, 'ARMS_FACTORY')) {
         const factory = economy.factories[economy.factories.length - 1];
         if (desiredLine !== 'arms') setMilitaryProductionLine(game, nation, factory.id, desiredLine);
+        report?.('industry', `Arms factory founded in ${region.name}.`,
+          `No line was making ${MILITARY_EQUIPMENT[desiredLine].name}.`);
         return;
       }
       // Kritik ekipman, başka bir yatırım öncesinde bütçesini bekler.
@@ -3925,7 +3903,12 @@ function runEconomicAI(game, nation) {
     const region = regions.find((candidate) => canBuildFactory(
       game.world, nation, candidate.id, option.typeId,
     ));
-    if (region && buildFactory(game, nation, region.id, option.typeId)) return;
+    if (region && buildFactory(game, nation, region.id, option.typeId)) {
+      report?.('industry', `State ${FACTORIES[option.typeId].name} founded in ${region.name}.`,
+        option.built ? 'Its margin was the best on the market.'
+          : 'The nation had none; the chain is built before it is multiplied.');
+      return;
+    }
   }
 }
 
@@ -4479,36 +4462,11 @@ export function beginEconomy(game) {
       refreshTechModifiers(nation);
     }
     const isPlayer = nation.id === game.turns.playerNation;
-    // YZ program secimi: vade doldugunda ya da program yokken. Oyuncu kendi
-    // ilanini verir; suresi dolan programi surdurmek de mesru bir tercihtir.
-    // Program secimi: YZ her zaman, oyuncu YALNIZ arastirma devredildiyse.
-    // AUTO kapaliyken oyuncunun programi kendiliginden degismez; suresi dolan
-    // programi surdurmek ya da degistirmek onun karari kalir.
-    const autoResearch = !isPlayer
-      || delegationActive(nation, 'research', world.turn ?? 0);
-    if (autoResearch && programmeLapsed(nation, world.turn ?? 0)) {
-      const pick = scoreProgrammes(nation, programmeContext(world, nation));
-      if (pick && pick !== nation.research.programme) {
-        adoptProgramme(nation, pick, world.turn ?? 0);
-        if (isPlayer) {
-          noteDelegated(game, nation, 'research', `National programme: ${PROGRAMMES[pick]?.name ?? pick}.`,
-            'The previous commitment had run its term.');
-        }
-        // Taahhut aninda baglar (oyuncu tarafiyla ayni kural).
-        setBudgetPolicy(nation, 'education',
-          Math.max(nation.economy.social?.education ?? 0, PROGRAMMES[pick]?.floor ?? 0));
-      } else if (nation.research.programme) {
-        // Ayni program yeniden taahhut edildi: vade tazelenir.
-        nation.research.programmeSince = world.turn ?? 0;
-      }
-    }
-    // Bosalan kuyrugu program doldurur — OYUNCU DAHIL. Bu, eski "oyuncunun
-    // secimini ezme" sorununu geri getirmez: program oyuncunun KENDI ilan
-    // ettigi yondur; nextTechFor o yonu yurutur, elle secim hala serbest
-    // (startResearch her an yeniden yonlendirebilir). Kor beta B-018'in
-    // (dokuz kacan secim, 5671 bos RP) yapisal cozumu budur.
+    // Bosalan arastirmayi once oyuncunun KUYRUGU, o da bossa nextTechFor
+    // doldurur — OYUNCU DAHIL. Elle secim her an serbest (researchNow);
+    // kor beta B-018'in (dokuz kacan secim, 5671 bos RP) yapisal cozumu budur.
     if (!nation.research.current) {
-      const pick = nextTechFor(nation, year, world);
+      const pick = nextQueuedTech(nation) ?? nextTechFor(nation, year, world);
       if (pick) startResearch(nation, pick);
     }
     const done = advanceResearch(nation, year, world);
@@ -4517,7 +4475,7 @@ export function beginEconomy(game) {
       // once kostugu icin burada doldurulmazsa asagidaki kart her seferinde
       // "nothing left to research" der (olculdu: 56 kartta 56, agac doluyken)
       // ve puan bir hafta bosta birikir.
-      const pick = nextTechFor(nation, year, world);
+      const pick = nextQueuedTech(nation) ?? nextTechFor(nation, year, world);
       if (pick) startResearch(nation, pick);
     }
     if (done && isPlayer) {

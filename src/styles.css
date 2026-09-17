@@ -1520,12 +1520,10 @@ body.screen-open .layer-menu { display: none; }
 .pop-nav-head,
 .pop-table-head,
 .ind-rail-head,
-.tech-col header,
 .card-head h3 { color: var(--head-title); }
 
 .pop-panel > header,
 .ind-rail-head,
-.tech-col header,
 .card-head { border-bottom-color: var(--head-line); }
 
 /* --- Düğmeler --- */
@@ -7590,83 +7588,219 @@ body.menu-open .sheet { visibility: hidden; }
   .mil-icon { width: 28px; height: 22px; }
 }
 
-/* --- Teknoloji ekrani (bkz. ui/technologyScreen.js) ------------------- */
-.tech-screen { display: flex; flex-direction: column; gap: 8px; }
+/* --- Teknoloji ekrani: zaman cizelgeli agac (bkz. ui/technologyScreen.js) ---
+   Butun agac tek bakista: bes kategori seridi, klasor basina bir satir, yatay
+   eksen yil. Etiket sutunu yapiskan; dar pencerede agac yatay kayar ama
+   klasor adlari gorunur kalir. */
+.tech-screen { display: flex; flex-direction: column; gap: 6px; }
+/* 1600x900 ekranda agac dikey kaydirmasiz sigsin: alt bosluk diger ekranlarin yarisi. */
+.screen[data-screen='technology'] .screen-body { padding-bottom: 6px; }
 
-/* Özet şeridi §7B'den; araştırılan teknolojinin adı geniş hücreyi alır. */
+/* Ozet seridi §7B'den; yurutulen teknoloji ilerleme cubuguyla genis hucrede. */
 .tech-kpis { grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)); }
-.tech-kpis .tech-kpi-wide > b { overflow: hidden; font-family: var(--font-display); font-weight: 400; text-overflow: ellipsis; }
+.tech-kpi-now > b {
+  overflow: hidden;
+  font-family: var(--font-display);
+  font-weight: 400;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Cubuk hucrenin alt kenarinda: ayri satir istemez, serit diger hucrelerle ayni boyda kalir. */
+.tech-kpi-now { position: relative; }
+.tech-kpi-bar { position: absolute; right: var(--sp-3); bottom: 4px; left: var(--sp-3); height: 3px; background: rgba(0, 0, 0, 0.45); }
+.tech-kpi-bar > i { display: block; height: 100%; background: linear-gradient(90deg, var(--gold-dark), var(--gold-bright)); }
 
-.tech-cats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
-.tech-cat {
-  display: grid; grid-template-columns: auto minmax(0, 1fr) auto;
-  gap: 5px; align-items: center;
-  padding: 5px 8px;
-  border: 1px solid rgba(168, 138, 75, 0.3);
-  background: rgba(20, 24, 26, 0.5);
-  color: var(--text-dim);
+.tech-queue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  min-height: 28px;
+  padding: 2px 8px;
+  border: 1px solid var(--head-line);
+  background: rgba(7, 12, 14, 0.35);
+}
+.tech-queue-label {
+  color: var(--head-title);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+.tech-queue ol { display: flex; flex-wrap: wrap; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.tech-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  border: 1px solid rgba(120, 164, 190, 0.45);
+  background: rgba(70, 110, 135, 0.14);
+  color: var(--text);
   cursor: pointer;
   font-size: 11px;
+}
+.tech-chip em { color: #9cc3da; font-style: normal; font-variant-numeric: tabular-nums; }
+.tech-chip i { color: var(--text-faint); font-style: normal; }
+.tech-chip:hover { border-color: rgba(201, 135, 113, 0.8); }
+.tech-chip:hover i { color: #c98771; }
+.tech-queue-empty { color: var(--text-faint); font-size: var(--fs-sm); }
+.tech-queue-hint { margin-left: auto; color: var(--text-faint); font-size: 10px; white-space: nowrap; }
+.tech-queue-hint b { color: var(--text-dim); font-weight: 600; }
+
+.tech-tree {
+  --tech-label-w: 136px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  border: 1px solid #0a0f12;
+  outline: 1px solid rgba(168, 138, 75, 0.3);
+  outline-offset: -3px;
+  background: linear-gradient(180deg, rgba(12, 19, 22, 0.92), rgba(9, 14, 16, 0.92));
+  scrollbar-color: var(--gold) var(--surface-sunken);
+  scrollbar-width: thin;
+}
+.tech-tree-inner {
+  position: relative;
+  width: calc(var(--tech-label-w) + var(--tree-w) + 14px);
+}
+
+.tech-row-label {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  width: var(--tech-label-w);
+  height: 100%;
+  padding: 0 8px 0 10px;
+  background: linear-gradient(90deg, #0d1518 88%, rgba(13, 21, 24, 0));
+  color: var(--text-dim);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.tech-axis { display: flex; height: 18px; border-bottom: 1px solid rgba(168, 138, 75, 0.18); }
+.tech-axis-track { position: relative; width: var(--tree-w); }
+.tech-axis-track > span {
+  position: absolute;
+  top: 3px;
+  transform: translateX(-50%);
+  color: var(--text-faint);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.tech-axis-track > .tech-now-label { color: var(--gold-bright); font-weight: 650; }
+
+.tech-bands { position: relative; }
+/* Bugun cizgisi: sagindaki her teknoloji zamaninin onunde (erken arastirma
+   cezasi). Tiklamayi yutmaz. */
+.tech-now {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: calc(var(--tech-label-w) + var(--now-x));
+  width: 1px;
+  background: rgba(224, 195, 127, 0.5);
+  box-shadow: 0 0 6px rgba(224, 195, 127, 0.3);
+  pointer-events: none;
+}
+
+.tech-band-head {
+  display: flex;
+  align-items: center;
+  height: 20px;
+  border-top: 1px solid var(--head-line);
+  background: var(--head-wash);
+}
+.tech-band-head .tech-row-label { background: transparent; }
+.tech-band-head i { font-style: normal; }
+.tech-band-head b {
+  color: var(--head-title);
+  font-size: var(--fs-label);
+  font-weight: 650;
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+.tech-band-head em { color: var(--text-faint); font-size: 10px; font-style: normal; font-variant-numeric: tabular-nums; }
+.tech-band-bar { width: 140px; height: 2px; background: rgba(0, 0, 0, 0.45); }
+.tech-band-bar > i { display: block; height: 100%; background: var(--gold); }
+
+.tech-row { display: flex; align-items: stretch; height: 36px; }
+.tech-row + .tech-row { border-top: 1px solid rgba(168, 138, 75, 0.06); }
+.tech-track { position: relative; width: var(--tree-w); }
+
+.tech-link {
+  position: absolute;
+  top: 50%;
+  height: 2px;
+  margin-top: -1px;
+  background: rgba(130, 130, 118, 0.3);
+}
+.tech-link.is-lit { background: linear-gradient(90deg, rgba(190, 158, 96, 0.75), rgba(130, 130, 118, 0.3)); }
+.tech-link.is-done { background: rgba(190, 158, 96, 0.75); }
+
+.tech-node {
+  position: absolute;
+  top: 3px;
+  display: grid;
+  align-content: center;
+  gap: 1px;
+  width: var(--node-w, 140px);
+  height: 30px;
+  padding: 2px 7px;
+  overflow: hidden;
+  border: 1px solid rgba(168, 138, 75, 0.28);
+  background: linear-gradient(180deg, #172126, #10181c);
+  color: var(--text-dim);
+  cursor: pointer;
   text-align: left;
 }
-.tech-cat:hover:not(:disabled) { border-color: rgba(190, 158, 96, 0.7); color: var(--text); }
-.tech-cat:disabled { opacity: 0.4; cursor: default; }
-.tech-cat.is-active { background: rgba(150, 122, 69, 0.16); border-color: rgba(190, 158, 96, 0.8); color: var(--text); }
-.tech-cat em { color: var(--text-faint); font-size: 10px; font-style: normal; font-variant-numeric: tabular-nums; }
-.tech-cat-bar { grid-column: 1 / -1; height: 2px; background: rgba(0, 0, 0, 0.4); }
-.tech-cat-bar i { display: block; height: 100%; background: #a8863f; }
-
-.tech-body { display: grid; grid-template-columns: minmax(0, 1fr) 240px; gap: 8px; align-items: start; }
-.tech-cols { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
-.tech-col header {
-  padding: 3px 5px; font-size: 10px; letter-spacing: 0.04em;
-  color: var(--text-faint); text-transform: uppercase;
-  border-bottom: 1px solid rgba(168, 138, 75, 0.25);
+.tech-node b {
+  overflow: hidden;
+  color: inherit;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.15;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
-.tech-ladder { display: grid; gap: 2px; margin: 3px 0 0; padding: 0; list-style: none; }
+.tech-node small { color: var(--text-faint); font-size: 9.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tech-node small .is-early { color: #c98771; }
+.tech-node:hover { z-index: 3; border-color: rgba(214, 184, 120, 0.85); color: var(--text); }
+.tech-node:focus-visible { outline: 1px solid var(--gold-bright); outline-offset: 1px; }
 
-/* Basamak: butonun KENDISI satirin tamami (bkz. BUG-008 dersi). */
-.tech-step { display: block; }
-.tech-step > button {
-  display: grid; grid-template-columns: minmax(0, 1fr) auto;
-  gap: 4px; align-items: center; width: 100%;
-  padding: 4px 6px;
-  border: 1px solid rgba(168, 138, 75, 0.22);
-  background: rgba(20, 24, 26, 0.55);
-  color: var(--text-faint);
-  cursor: pointer; font-size: 10px; text-align: left;
+.tech-node.is-done {
+  border-color: rgba(190, 158, 96, 0.55);
+  background: linear-gradient(180deg, rgba(150, 122, 69, 0.36), rgba(104, 84, 47, 0.28));
+  color: #e8d9b4;
 }
-.tech-step > button span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.tech-step > button em { font-size: 9px; font-style: normal; font-variant-numeric: tabular-nums; }
-.tech-step > button:disabled { cursor: default; }
-.tech-step.is-done > button { background: rgba(150, 122, 69, 0.22); border-color: rgba(190, 158, 96, 0.55); color: #e8d9b4; }
-.tech-step.is-active > button { background: linear-gradient(180deg, #7d6538, #4d3f23); border-color: rgba(214, 184, 120, 0.9); color: #f5ead0; font-weight: 650; }
-.tech-step.is-open > button { color: var(--text); border-color: rgba(168, 138, 75, 0.45); }
-.tech-step.is-open > button:hover { background: rgba(150, 122, 69, 0.18); }
-.tech-step.is-locked > button { opacity: 0.5; }
-.tech-step.is-selected > button { outline: 1px solid #e0c37f; outline-offset: -1px; }
-
-.tech-detail {
-  display: flex; flex-direction: column; gap: 7px;
-  padding: 9px;
-  border: 1px solid rgba(168, 138, 75, 0.3);
-  background: rgba(150, 122, 69, 0.07);
+.tech-node.is-done small { color: rgba(232, 217, 180, 0.62); }
+.tech-node.is-active {
+  border-color: rgba(232, 202, 132, 0.95);
+  background: linear-gradient(180deg, #6d5630, #443820);
+  box-shadow: 0 0 0 1px rgba(232, 202, 132, 0.3), 0 0 12px rgba(224, 195, 127, 0.22);
+  color: #f7ecd2;
 }
-.tech-detail.empty { color: var(--text-faint); font-size: 11px; }
-.tech-detail header { display: flex; flex-direction: column; gap: 2px; }
-.tech-detail h4 { margin: 0; font-size: 13px; }
-.tech-year { color: var(--text-faint); font-size: 10px; }
-.tech-effects { display: grid; gap: 2px; }
-.tech-effect { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; }
-.tech-effect span { color: var(--text-dim); }
-.tech-cost { display: flex; flex-wrap: wrap; gap: 10px; padding-top: 4px; border-top: 1px solid rgba(168, 138, 75, 0.2); }
-.tech-cost span { display: flex; flex-direction: column; }
-.tech-cost small { color: var(--text-faint); font-size: 9px; text-transform: uppercase; }
-
-@media (max-width: 900px) {
-  .tech-body { grid-template-columns: minmax(0, 1fr); }
-  .tech-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .tech-cats { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.tech-node.is-active small { color: rgba(247, 236, 210, 0.8); }
+.tech-node.is-open { border-color: rgba(168, 138, 75, 0.5); color: var(--text); }
+.tech-node.is-locked { opacity: 0.55; }
+.tech-node.is-locked:hover { opacity: 0.95; }
+.tech-node.is-queued { border-color: rgba(120, 164, 190, 0.7); }
+.tech-node-bar { position: absolute; bottom: 0; left: 0; height: 2px; background: var(--gold-bright); }
+.tech-node-q {
+  position: absolute;
+  top: 2px;
+  right: 3px;
+  min-width: 13px;
+  height: 13px;
+  padding: 0 3px;
+  border-radius: 7px;
+  background: rgba(78, 126, 154, 0.9);
+  color: #f2f6f8;
+  font-size: 9px;
+  font-style: normal;
+  line-height: 13px;
+  text-align: center;
 }
 
 /* ==========================================================================
@@ -7957,98 +8091,10 @@ body.menu-open .sheet { visibility: hidden; }
   .epilogue-foot { flex-direction: column; align-items: stretch; }
 }
 
-/* --- Ulusal Program (teknoloji ekrani) — defter dili: pirinc cerceve,
-   koseli, fildisi metin; SaaS karti degil. --- */
-.tech-programme {
-  margin: var(--sp-2) 0;
-  border: 1px solid var(--frame-brass);
-  background: var(--surface-1);
-  padding: var(--sp-2) var(--sp-3);
-}
-.tech-programme header {
-  display: flex;
-  align-items: baseline;
-  gap: var(--sp-2);
-}
-.tech-programme header i { font-style: normal; }
-.tech-programme header b {
-  font-family: var(--font-display);
-  font-size: var(--fs-md);
-  color: var(--gold-bright);
-}
-.tech-programme header span {
-  margin-left: auto;
-  font-size: var(--fs-sm);
-  color: var(--text-mute);
-}
-.tech-programme-line {
-  margin: 2px 0 var(--sp-1);
-  font-family: var(--font-display);
-  font-style: italic;
-  color: var(--text-dim);
-}
-.tech-programme-terms {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--sp-3);
-  font-size: var(--fs-sm);
-}
-.tech-programme-terms small {
-  display: block;
-  letter-spacing: var(--ls-label);
-  text-transform: uppercase;
-  font-size: var(--fs-label);
-  color: var(--text-faint);
-}
-.tech-programme-abandon {
-  margin-top: var(--sp-1);
-  background: none;
-  border: 1px solid var(--surface-3);
-  color: var(--text-mute);
-  padding: 2px var(--sp-2);
-  cursor: pointer;
-  font-size: var(--fs-sm);
-}
-.tech-programme-abandon:hover { border-color: var(--red); color: var(--red); }
-.tech-programme.choose header b { color: var(--text); }
-.tech-programme-cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
-  gap: var(--sp-2);
-  margin-top: var(--sp-1);
-}
-.tech-programme-card {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: 2px;
-  text-align: left;
-  border: 1px solid var(--surface-3);
-  background: var(--surface-2);
-  color: var(--text);
-  padding: var(--sp-2);
-  cursor: pointer;
-}
-.tech-programme-card:hover { border-color: var(--frame-brass); }
-/* Ilk tik: kart onay bekler, ikinci tik ilan eder (screens.js data-proclaim). */
-/* Iki tikli onay: savas ilani ve yasa dugmeleri de ayni vurguyu tasir. */
+/* Iki tikli onay: savas ilani ve yasa dugmeleri ayni vurguyu tasir. */
 .action.confirming { border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright) inset; color: var(--gold-bright); }
-.tech-programme-card.confirming { border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright) inset; }
-.tech-programme-card.confirming em { color: var(--gold-bright); }
 /* Komutanin taarruz bakisi: neden saldirdigi ya da saldirmadigi (military.js assaultLine). */
 .mil-assault { margin: 4px 8px 6px; color: var(--text-dim); font-size: var(--fs-sm); line-height: 1.35; }
-.tech-programme-card i { font-style: normal; }
-.tech-programme-card b { font-family: var(--font-display); }
-.tech-programme-card span { font-size: var(--fs-sm); color: var(--text-dim); }
-.tech-programme-card em {
-  font-style: normal;
-  font-size: var(--fs-label);
-  color: var(--text-mute);
-  letter-spacing: var(--ls-label);
-}
-/* Odak/ihmal renkleri: pahali-ucuz bilgisi ekranda, yalnizca tooltipte degil. */
-.tech-step.is-focus > button { border-left: 2px solid var(--gold); }
-.tech-step.is-neglect > button { opacity: 0.72; }
 
 /* --- Dosya kimligi: karakter satiri + kimlik tablosu + hafiza --- */
 .dossier-line {
@@ -8314,7 +8360,6 @@ body.menu-open .sheet { visibility: hidden; }
 .trade-cat,
 .trade-detail,
 .trade-struct-block,
-.tech-col,
 .decision-card {
   background-image: var(--ui-grain), var(--mat-raised);
   background-blend-mode: soft-light, normal;
@@ -8373,8 +8418,7 @@ body.menu-open .sheet { visibility: hidden; }
 .mil-btn,
 .sub-tabs button,
 .building-chip,
-.production-choice,
-.tech-cat-bar button {
+.production-choice {
   transition: background-color var(--ease), box-shadow var(--ease),
     border-color var(--ease), color var(--ease), transform var(--ease);
 }
@@ -8474,7 +8518,6 @@ body.menu-open .sheet { visibility: hidden; }
 .mil-btn,
 .building-chip,
 .production-choice,
-.tech-cat-bar button,
 .sub-tabs button {
   background-image: var(--mat-raised);
   box-shadow: var(--material-control);
@@ -8483,7 +8526,6 @@ body.menu-open .sheet { visibility: hidden; }
 .mil-btn:hover:not([disabled]),
 .building-chip:hover:not([disabled]),
 .production-choice:hover:not([disabled]),
-.tech-cat-bar button:hover:not([disabled]),
 .sub-tabs button:hover:not(.active) {
   background-image: var(--mat-raised-hi);
   border-color: var(--line-brass);
@@ -8493,7 +8535,6 @@ body.menu-open .sheet { visibility: hidden; }
 .mil-btn:active:not([disabled]),
 .building-chip:active:not([disabled]),
 .production-choice:active:not([disabled]),
-.tech-cat-bar button:active:not([disabled]),
 .sub-tabs button:active {
   background-image: none;
   background-color: rgba(0, 0, 0, 0.22);
@@ -9523,7 +9564,6 @@ svg.res-glyph {
 .trade-cat, .trade-detail, .trade-struct-block,
 .mil-col, .mil-stats, .mil-disposition, .mil-leader-detail,
 .pol-gov, .pol-laws,
-.tech-col, .tech-programme-card, .tech-detail,
 .chron-row,
 .mil-build, .mil-command, .mil-queue, .mil-plan,
 .ui-panel,
@@ -9558,7 +9598,7 @@ svg.res-glyph {
 .pop-party-bar, .pop-table-scroll,
 .pop-attention, .vbox, .ind-search input, .pop-search input,
 .mil-build-list, .mil-queue-list, .mil-leader-list,
-.chron-list, .tech-body, .tech-ladder, .tech-effects,
+.chron-list,
 .pol-party-bar,
 .market-table, .data-table tbody {
   /* Oyuk da saydam: altindaki lake gorunur, uzerine koyu bir dikdortgen

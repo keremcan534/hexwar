@@ -11,10 +11,14 @@
 
 import { provideTooltip, tipTerm } from './tooltip.js';
 import {
-  GOODS, budgetBreakdown, debtCapacity, formatPopulation, literacyTargetOf, priceOf,
+  FACTORIES, GOODS, budgetBreakdown, debtCapacity, formatPopulation, literacyTargetOf, priceOf,
 } from '../game/economy.js';
 import { constructionView } from '../game/construction.js';
-import { researchPointsOf } from '../game/technology.js';
+import {
+  TECH_CATEGORIES, TECH_MODS, canResearch, diffusionDiscount, effectiveTechCost, hasTech,
+  researchPath, researchPointsOf, techById, techCost,
+} from '../game/technology.js';
+import { UNIT_TYPES } from '../game/units.js';
 import { industryOverview } from '../game/industryView.js';
 import { provinceRgoStatus } from '../game/provinces.js';
 import { activeAlerts } from '../game/alerts.js';
@@ -614,6 +618,78 @@ export function registerTooltips(game) {
       default:
         return null;
     }
+  });
+
+  /* ----------------------------------------------------------------------
+     TEKNOLOJİ — ağaç düğümü ve kuyruk çipi (bkz. technologyScreen.js).
+     Fiyat motorun ETKİN fiyatıdır; erken araştırma cezası ve yayılım
+     indirimi formül kopyalanmadan, motorun kendi fonksiyonlarından okunur.
+     ---------------------------------------------------------------------- */
+
+  provideTooltip('tech', (arg) => {
+    const nation = me();
+    const entry = techById(arg);
+    if (!nation || !entry) return null;
+    const { tech, categoryId, folder } = entry;
+    const world = game.world;
+    const year = 1836 + Math.floor(((world.turn ?? 1) - 1) * 7 / 365);
+    const research = nation.research ?? {};
+    const queue = research.queue ?? [];
+    const done = hasTech(nation, tech.id);
+    const status = done ? 'Researched'
+      : research.current === tech.id ? 'Researching'
+        : queue.includes(tech.id) ? `Queued #${queue.indexOf(tech.id) + 1}`
+          : canResearch(nation, tech.id) ? 'Available' : 'Locked';
+
+    const effects = [];
+    for (const [key, label] of Object.entries(TECH_MODS)) {
+      const value = tech[key];
+      if (!Number.isFinite(value) || value === 0) continue;
+      // Tedarik tüketiminde AZALMA iyidir; eğitim kadrosu düz slottur.
+      const good = key === 'supplyConsumption' ? value < 0 : value > 0;
+      const shown = key === 'trainingCapacity'
+        ? `+${value}` : `${value >= 0 ? '+' : '−'}${Math.abs(value * 100).toFixed(0)}%`;
+      effects.push({ label, value: shown, tone: good ? 'good' : 'bad' });
+    }
+    for (const typeId of tech.unlock ?? []) {
+      effects.push({ label: 'Unlocks', value: FACTORIES[typeId]?.name ?? typeId, tone: 'good' });
+    }
+    for (const typeId of tech.unlockUnit ?? []) {
+      effects.push({ label: 'Fields early', value: UNIT_TYPES[typeId]?.name ?? typeId, tone: 'good' });
+    }
+
+    const rows = [];
+    if (!done) {
+      const cost = effectiveTechCost(world, nation, tech.id, year);
+      rows.push({ label: 'Cost', value: `${cost} RP` });
+      const onTime = techCost(tech.id, tech.year ?? year);
+      const now = techCost(tech.id, year);
+      if (now > onTime) {
+        rows.push({ label: `Ahead of its time (${tech.year})`, value: `+${Math.round((now / onTime - 1) * 100)}%`, tone: 'bad' });
+      }
+      const discount = diffusionDiscount(world, nation, tech.id);
+      if (discount > 0.005) {
+        rows.push({ label: 'Neighbours already know it', value: `−${Math.round(discount * 100)}%`, tone: 'good' });
+      }
+      const path = researchPath(nation, tech.id);
+      const rate = researchPointsOf(nation);
+      if (path.length > 1) rows.push({ label: 'Earlier steps first', value: path.length - 1 });
+      if (rate > 0) {
+        const total = path.reduce((sum, id) => sum + effectiveTechCost(world, nation, id, year), 0);
+        const weeks = Math.max(0, Math.ceil((total - (research.points ?? 0)) / rate));
+        rows.push({ label: research.current === tech.id ? 'Done in' : 'If started now', value: `${weeks} wk` });
+      }
+    }
+    return {
+      type: 'breakdown',
+      title: tech.name,
+      value: status,
+      text: `${esc(TECH_CATEGORIES[categoryId]?.name ?? categoryId)} · ${esc(folder)} · activation ${tech.year}`,
+      effects,
+      rows,
+      rowsLabel: 'Research',
+      footer: done ? null : 'Click to research now · Shift+click to queue · Right-click to remove',
+    };
   });
 
   /* ----------------------------------------------------------------------
