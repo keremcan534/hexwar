@@ -835,6 +835,39 @@ export class Game {
     return next;
   }
 
+  /**
+   * OYUNCU ULUSUNU DEGISTIR — kurulus ekranindaki "Play as".
+   *
+   * Her ulus kurulusta ayni sekilde kurulur (turn.start), o yuzden gecis
+   * ucuzdur: bayrak tasinir, secim/bildirim/masa temizlenir ve butun HUD
+   * 'world' olayiyla bastan kurulur. Ilk haftalik tikten sonra da calisir
+   * ama tasarim yeri kurulus anidir.
+   */
+  setPlayerNation(nationId) {
+    const nation = this.world?.nations[nationId];
+    if (!nation?.alive) return false;
+    const previous = this.turns.playerNation;
+    this.turns.playerNation = nationId;
+    this.world.playerNation = nationId;
+    // Eski oyuncunun devir bayraklari YZ'ye kalmasin.
+    if (previous >= 0 && previous !== nationId && this.world.nations[previous]) {
+      delete this.world.nations[previous].delegation;
+    }
+    this.activeGeneral = null;
+    this.selectUnits([]);
+    this.selected = null;
+    this.hovered = null;
+    this.reachable = null;
+    this.notifications?.clear?.();
+    this.peaceOffers = [];
+    this.renderer.invalidateCache();
+    this.emit('player', nationId);
+    this.emit('world', this.world);
+    this.emit('turn', this.turns.turn);
+    this.focusNation(nation);
+    return true;
+  }
+
   declareWarOn(nationId, goalProvinceId = undefined) {
     // Oyuncunun kendi karari: merkezi kapi bunu istemsiz ilandan ayirir.
     // Hedef verilmezse makul bir tane onerilir (sinira komsu, en degerli

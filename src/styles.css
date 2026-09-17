@@ -11097,3 +11097,85 @@ body.screen-open .alert-pop { display: none; }
 
 .unit-disband:hover:not([disabled]) { color: var(--red); border-color: var(--red); }
 .unit-disband[disabled] { opacity: 0.4; cursor: default; }
+
+/* ==========================================================================
+   ULKE SECIMI (ui/nationPicker.js) — haritanin saginda, saat akmadan once.
+   ========================================================================== */
+.nation-picker {
+  position: fixed;
+  top: calc(var(--header-bottom, 130px) + var(--sp-2));
+  right: var(--sp-3);
+  width: min(420px, calc(100vw - 2 * var(--sp-3)));
+  max-height: calc(100vh - var(--header-bottom, 130px) - var(--sp-5) - var(--safe-bottom, 0px));
+  z-index: var(--z-sheet);
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+  overflow: auto;
+  border: 1px solid var(--line-brass);
+  border-radius: var(--radius-lg);
+  background: var(--ui-grain), var(--panel-tone), var(--surface-1);
+  box-shadow: var(--shadow-panel);
+  color: var(--text);
+  font-size: var(--fs-base);
+}
+.nation-picker.hidden { display: none; }
+.np-head { display: flex; flex-direction: column; gap: 2px; }
+.np-head small {
+  font-size: var(--fs-xs, 0.7rem);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--gold-bright);
+}
+.np-head span { color: var(--text-dim); font-size: var(--fs-sm); }
+.np-hero { display: flex; align-items: center; gap: var(--sp-3); }
+.np-flag { width: 72px; height: 48px; object-fit: cover; border: 1px solid var(--line-brass); }
+.np-hero h3 { margin: 0; font-family: var(--font-display); font-size: 1.25rem; color: var(--gold-bright); }
+.np-hero small { color: var(--text-dim); }
+.np-line { margin: 0; font-style: italic; color: var(--text-dim); }
+.np-facts { margin: 0; display: grid; grid-template-columns: 1fr; gap: 4px 0; }
+.np-facts div { display: grid; grid-template-columns: 96px 1fr; gap: var(--sp-2); align-items: baseline; }
+.np-facts dt { margin: 0; color: var(--text-dim); font-size: var(--fs-xs, 0.7rem); letter-spacing: 0.08em; text-transform: uppercase; }
+.np-facts dd { margin: 0; }
+.np-block > small { display: block; margin-bottom: 4px; color: var(--text-dim); font-size: var(--fs-xs, 0.7rem); letter-spacing: 0.08em; text-transform: uppercase; }
+.np-neighbours { display: flex; flex-wrap: wrap; gap: 4px; }
+.np-neighbour {
+  display: grid; grid-template-columns: auto auto; gap: 0 6px; align-items: baseline;
+  padding: 3px 8px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.03); color: var(--text); cursor: pointer; font: inherit; text-align: left;
+}
+.np-neighbour:hover { border-color: var(--gold-bright); }
+.np-neighbour b { font-weight: 600; }
+.np-neighbour span.bad { color: var(--red, #d9736a); }
+.np-neighbour span.good { color: var(--green, #8fbf8a); }
+.np-neighbour small { grid-column: 1 / -1; color: var(--text-dim); }
+.np-notes { margin: 0; padding-left: 1.1em; display: grid; gap: 2px; }
+.np-notes li.bad { color: var(--red, #d9736a); }
+.np-notes li.good { color: var(--green, #8fbf8a); }
+.np-notes li.warn { color: var(--gold-bright); }
+.np-actions { display: flex; gap: var(--sp-2); }
+.np-play {
+  flex: 1; padding: 10px 12px; font: inherit; font-weight: 700; letter-spacing: 0.04em;
+  border: 1px solid var(--gold-bright); border-radius: var(--radius);
+  background: linear-gradient(180deg, #a2854b, #66512d); color: #f5ead0; cursor: pointer;
+}
+.np-play:hover { filter: brightness(1.1); }
+.np-alt {
+  padding: 10px 12px; font: inherit; border: 1px solid var(--line); border-radius: var(--radius);
+  background: none; color: var(--text-dim); cursor: pointer;
+}
+.np-roster { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow: auto; }
+.np-row {
+  display: grid; grid-template-columns: 12px 1fr auto; gap: var(--sp-2); align-items: center;
+  padding: 4px 6px; border: 1px solid transparent; border-radius: var(--radius);
+  background: none; color: var(--text); font: inherit; text-align: left; cursor: pointer;
+}
+.np-row:hover { border-color: var(--line); }
+.np-row.on { border-color: var(--gold-bright); background: rgba(190, 158, 96, 0.12); }
+.np-row small { color: var(--text-dim); }
+.np-swatch { width: 12px; height: 12px; border-radius: 2px; border: 1px solid rgba(255,255,255,0.25); }
+/* Secim acikken sag alttaki harita kipleri panelin altinda kalmasin; komuta
+   paneli ise ulke secilmeden anlamsizdir (generaller ulkeye aittir), gizlenir. */
+body.picker-open .map-modes { right: calc(var(--sp-3) + min(420px, calc(100vw - 2 * var(--sp-3))) + var(--sp-2)); }
+body.picker-open .command-dock { display: none; }

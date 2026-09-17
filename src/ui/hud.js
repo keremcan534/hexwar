@@ -247,6 +247,7 @@ export class Hud {
         nationCount: nations > 0 ? nations : null,
       });
       el.settings.classList.add('hidden');
+      this.picker?.open();
     };
 
     $('btn-save').onclick = () => {
@@ -370,6 +371,11 @@ export class Hud {
    * HUD onu yalnız açabilsin diye referansı burada tutulur.
    * (Arayüz metni İngilizce; Türkçe olan yalnız kod ve yorumlar.)
    */
+  /** Ulke secim paneli (main.js kurar); yeni dunya uretince acilir. */
+  bindPicker(picker) {
+    this.picker = picker;
+  }
+
   bindMenu(menu) {
     this.menu = menu;
     const btn = document.getElementById('btn-menu');
@@ -869,7 +875,10 @@ export class Hud {
       && (f.fulfilled ?? 0) / f.demand < 0.925).length;
     let next;
     let why = 'Province → population and raw goods → factories and taxes → army and world prices.';
-    if (battles.length) {
+    if (this.picker?.isOpen) {
+      next = 'Choose your nation: click one on the map or in the list, then Play as.';
+      why = 'The suggested start is contiguous and large; a stronger neighbour makes a harder game.';
+    } else if (battles.length) {
       next = 'A battle is active: select its army to inspect strength and organization.';
     } else if (wars.length) {
       next = 'Move an army onto an enemy army or province; defeated armies retreat.';

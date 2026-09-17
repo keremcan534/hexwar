@@ -164,9 +164,12 @@ export class MainMenu {
    * @param {{ resumable?: boolean }} options `resumable` açılışta kaydın
    *   gerçekten yüklendiğini söyler; menü kapanınca oyun oradan devam eder.
    */
-  constructor(game, { resumable = false } = {}) {
+  constructor(game, { resumable = false, onWorldBuilt = null, onOpen = null } = {}) {
     this.game = game;
     this.resumable = resumable;
+    // Yeni dunya kurulunca perde kalkar ve ulke secimi acilir (main.js).
+    this.onWorldBuilt = onWorldBuilt;
+    this.onOpen = onOpen;
     this.open_ = false;
     this.sceneIndex = 0;
 
@@ -302,6 +305,7 @@ export class MainMenu {
     el.random.onclick = () => {
       this.game.newWorld();
       this.close();
+      this.onWorldBuilt?.();
     };
     el.create.onclick = () => this.showView('setup');
     el.settings.onclick = () => this.showView('options');
@@ -310,8 +314,10 @@ export class MainMenu {
     el.drawerClose.onclick = () => this.showView('actions');
     // Birincil eylem: kayıt varsa kampanyayı sürdürür, yoksa yeni dünya kurar.
     el.cta.onclick = () => {
-      if (!this.resumable) this.game.newWorld();
+      const fresh = !this.resumable;
+      if (fresh) this.game.newWorld();
       this.close();
+      if (fresh) this.onWorldBuilt?.();
     };
     el.build.onclick = () => this.build();
     el.load.onclick = () => this.loadSave();
@@ -410,6 +416,7 @@ export class MainMenu {
       nationCount: nations > 0 ? nations : null,
     });
     this.close();
+    this.onWorldBuilt?.();
   }
 
   /**
@@ -460,6 +467,7 @@ export class MainMenu {
 
   open() {
     this.open_ = true;
+    this.onOpen?.();
     // Düğme ancak işe yarıyorsa görünür: "Continue" oturumdaki oyunu sürdürür,
     // "Load Game" diskte kayıt varsa okur.
     const info = savedInfo();
