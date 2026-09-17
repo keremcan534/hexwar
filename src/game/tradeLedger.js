@@ -23,7 +23,7 @@ import {
   MILITARY_EQUIPMENT, MILITARY_EQUIPMENT_IDS, POPULATION_UNIT, WORKERS_PER_LEVEL,
   armyWeeklyDemand, equipmentStock, needAmount, workshopArmsOutput,
 } from './economy.js';
-import { RGO_TYPES, provinceOutput } from './provinces.js';
+import { RGO_TYPES, depositsOf, provinceOutput } from './provinces.js';
 import { constructionPower, ensureConstruction } from './construction.js';
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
@@ -163,10 +163,10 @@ function producersOf(world, nation, id, flow) {
   let rgoName = null;
   for (const province of world.provinces ?? []) {
     if (province.owner !== nation.id || !province.econ) continue;
-    const type = RGO_TYPES[province.econ.rgo];
-    if (type?.goodId !== id) continue;
+    const line = depositsOf(province.econ).find((row) => RGO_TYPES[row.id]?.goodId === id);
+    if (!line) continue;
     rgoProvinces++;
-    rgoName = type.name;
+    rgoName = RGO_TYPES[line.id].name;
     rgoAmount += provinceOutput(world, province)[id] ?? 0;
   }
   if (rgoProvinces > 0) {

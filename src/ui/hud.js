@@ -35,7 +35,7 @@ import {
   officersOf, refreshFront, setAggression, unassignGeneral,
 } from '../game/command.js';
 import {
-  RGO_TYPES, provinceOutput, provinceRgoStatus,
+  RGO_TYPES, depositsOf, provinceRgoStatus,
 } from '../game/provinces.js';
 import { controllerOf, isOccupied } from '../game/control.js';
 import { tileDefense } from '../game/battles.js';
@@ -1028,14 +1028,17 @@ export class Hud {
     if (nation) stats.push(['Nation Size', `${nation.tiles} hexes`]);
     if (tile.province) {
       const rgo = provinceRgoStatus(tile);
-      const clusterRec = world.provinces?.[tile.provinceId];
-      const rgoOutput = rgo.type && clusterRec
-        ? (provinceOutput(world, clusterRec)[rgo.type.goodId] ?? 0) : 0;
+      // HEX KAYNAĞI: tıklanan karenin kendi kaynağı başlıkta, kümenin bütün
+      // satırları (tür × hex) yanında; haftalık çıktı ipucu kartında.
+      const own = RGO_TYPES[tile.resource];
+      const mix = depositsOf(tile.province)
+        .map((line) => (RGO_TYPES[line.id] ? `${RGO_TYPES[line.id].icon}${line.hexes}` : ''))
+        .filter(Boolean).join(' ');
       stats.unshift(
         ['Population', formatPopulation(tile.province.population)],
-        ['RGO', rgo.type ? `${rgo.type.icon} ${rgo.type.name}` : '—'],
+        ['RGO', own ? `${own.icon} ${own.name}` : '—'],
         ['RGO Workforce', `${formatPopulation(rgo.employed)}/${formatPopulation(rgo.jobs)} · ${Math.round(rgo.efficiency * 100)}%`],
-        ['RGO Output', rgo.type ? `${rgoOutput.toFixed(2)}/week` : '—'],
+        ['RGO Output', mix || '—'],
         ['Unemployed', formatPopulation(rgo.unemployed)],
         ['Control', `${Math.round(tile.province.control)}%`],
       );

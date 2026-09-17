@@ -20,7 +20,7 @@ import {
 } from '../game/technology.js';
 import { UNIT_TYPES } from '../game/units.js';
 import { industryOverview } from '../game/industryView.js';
-import { provinceRgoStatus } from '../game/provinces.js';
+import { RGO_TYPES, depositsOf, provinceOutput, provinceRgoStatus } from '../game/provinces.js';
 import { activeAlerts } from '../game/alerts.js';
 import { INFAMY, INFAMY_COALITION } from '../game/infamy.js';
 import { balanceAttribution, classIncomeAttribution, stabilityAttribution } from '../game/pulse.js';
@@ -305,22 +305,34 @@ export function registerTooltips(game) {
       + 'peace is signed.',
   }));
 
-  provideTooltip('rgo', (_, element) => {
+  provideTooltip('rgo', () => {
     const tile = game.selected;
     if (!tile?.province) return null;
     const rgo = provinceRgoStatus(tile);
-    if (!rgo.type) return null;
+    const province = game.world.provinces?.[tile.provinceId];
+    if (!rgo.type || !province) return null;
+    // Satır başına haftalık çıktı motorun kendi hesabından (provinceOutput).
+    const output = provinceOutput(game.world, province);
+    const effects = depositsOf(tile.province).map((line) => {
+      const type = RGO_TYPES[line.id];
+      return type ? {
+        label: `${type.icon} ${type.name} · ${line.hexes} hex`,
+        value: `${(output[type.goodId] ?? 0).toFixed(2)}/wk`,
+      } : null;
+    }).filter(Boolean);
     return {
       type: 'breakdown',
-      title: rgo.type.name,
+      title: province.name ?? 'Province',
       value: `${pct(rgo.efficiency)} worked`,
-      text: `This province's raw output. It employs the countryside directly; `
-        + 'idle hands here are the unemployment you see beside it.',
+      text: 'Every hex yields its own resource. Farms and mines employ the lower class '
+        + 'who are not in factories or under arms; those left over are unemployed.',
+      effects,
       rows: [
-        { label: 'Workforce', value: `${formatPopulation(rgo.employed)} / ${formatPopulation(rgo.jobs)}` },
+        { label: 'Workforce', value: formatPopulation(rgo.workforce) },
+        { label: 'Jobs', value: formatPopulation(rgo.jobs) },
         { label: 'Unemployed', value: formatPopulation(rgo.unemployed), tone: rgo.unemployed > 0 ? 'bad' : '' },
-        { label: 'Produces', value: `${tipTerm('good', GOODS[rgo.type.goodId]?.name ?? rgo.type.goodId, rgo.type.goodId)}` },
       ],
+      rowsLabel: 'Labour',
     };
   });
 
@@ -474,7 +486,7 @@ export function registerTooltips(game) {
       terrain: ['Terrain', 'Relief and vegetation without borders: where armies slow down and where the land is rich.'],
       geography: ['Geography', 'The bare world as the generator drew it — continents, seas and straits, no borders or units.'],
       cultures: ['Cultures', 'Who lives where. Hatching marks provinces whose majority differs from the owner\'s culture.'],
-      resources: ['Resources', 'What each province extracts — grain, cattle, coal, iron and the rest. The legend below lists every resource.'],
+      resources: ['Resources', 'What every hex yields — grain, cattle, coal, iron and the rest. A province produces the sum of its hexes; the legend lists every resource.'],
       population: ['Population', 'How many people live in each province, in four bands.'],
       layers: ['Layers', 'Grid, labels, live sea, and the seed of this world.'],
     };

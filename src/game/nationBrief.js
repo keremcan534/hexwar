@@ -14,7 +14,7 @@ import { nationStrength } from './diplomacy.js';
 import {
   governmentType, policyLabel, policyOf, rulingParty,
 } from './politics.js';
-import { RGO_TYPES } from './provinces.js';
+import { RGO_TYPES, depositsOf } from './provinces.js';
 import { FACTORIES, GOODS, populationOf } from './economy.js';
 import { characterLine } from './identity.js';
 
@@ -48,12 +48,14 @@ export function isContiguous(world, nationId) {
 function rawGoods(world, provinces, limit = 3) {
   const tally = new Map();
   for (const province of provinces) {
-    const type = RGO_TYPES[province.econ.rgo];
-    if (!type) continue;
-    const row = tally.get(type.goodId) ?? { id: type.goodId, hexes: 0, provinces: 0 };
-    row.hexes += province.tileIdx.length;
-    row.provinces += 1;
-    tally.set(type.goodId, row);
+    for (const line of depositsOf(province.econ)) {
+      const type = RGO_TYPES[line.id];
+      if (!type) continue;
+      const row = tally.get(type.goodId) ?? { id: type.goodId, hexes: 0, provinces: 0 };
+      row.hexes += line.hexes;
+      row.provinces += 1;
+      tally.set(type.goodId, row);
+    }
   }
   return [...tally.values()]
     .sort((a, b) => b.hexes - a.hexes)

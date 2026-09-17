@@ -1985,11 +1985,11 @@ export class Renderer {
     return rings;
   }
 
-  /** Kaynak kipi: her province yalnız kendi RGO rengini taşır. */
+  /** Kaynak kipi: her hex kendi kaynağının rengini taşır (hex kaynakları). */
   resourceTint(tile) {
-    const type = RGO_TYPES[tile.province?.rgo];
+    const type = tile.province ? RGO_TYPES[tile.resource] : null;
     if (!type) return 'hsl(210 6% 26%)';
-    const quality = Math.max(0.85, Math.min(1.15, tile.province.rgoQuality ?? 1));
+    const quality = Math.max(0.85, Math.min(1.15, tile.resourceQuality ?? 1));
     const key = `res:${type.id}:${Math.round(quality * 10)}`;
     let color = this.tintCache.get(key);
     if (color) return color;

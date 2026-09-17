@@ -16,7 +16,7 @@ import {
 import {
   FACTORIES, factoryJobs, factoryMargin, priceOf, setBudgetPolicy, BUDGET_POLICIES,
 } from '../../src/game/economy.js';
-import { RGO_TYPES } from '../../src/game/provinces.js';
+import { RGO_TYPES, depositsOf } from '../../src/game/provinces.js';
 import { policyOf } from '../../src/game/politics.js';
 import { battleUnitPower } from '../../src/game/battles.js';
 import { reinforcementNeed } from '../../src/game/reinforcement.js';
@@ -47,8 +47,10 @@ const MUTATIONS = {
   rgoScale(game, { goodId, factor }) {
     // Kume dongusu: kare basina `*=` uye sayisi kadar tekrar uygulaniyordu.
     for (const province of game.world.provinces ?? []) {
-      const rgo = RGO_TYPES[province.econ?.rgo];
-      if (rgo?.goodId === goodId) province.econ.rgoQuality *= factor;
+      if (!province.econ) continue;
+      for (const line of depositsOf(province.econ)) {
+        if (RGO_TYPES[line.id]?.goodId === goodId) line.quality *= factor;
+      }
     }
   },
   /** Belirli mallari ureten fabrikalarin kadrosunu carpar. */

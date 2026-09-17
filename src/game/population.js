@@ -16,7 +16,7 @@
 // Dağıtım keyfi değil, gerçek zemine oturur:
 //   farmers   -> tarım RGO istihdamı        (provinceRgoStatus)
 //   laborers  -> madencilik RGO istihdamı   (provinceRgoStatus)
-//   workers   -> province.industrialEmployees (runFactories yazar)
+//   workers   -> ulusun kendi fabrikalarının kadrosu (küme başına)
 //   diğerleri -> nüfus payı, orta/üst sınıf şehirlere ağırlıklı
 //
 // Katman notu: yalnız okur. Simülasyonu değiştirmez, DOM bilmez.
@@ -24,13 +24,14 @@
 import {
   CLASS_INFO, PROFESSION_INFO, factoryJobs, jobTotalsOf,
 } from './economy.js';
-import { RGO_TYPES, rgoStatusOf } from './provinces.js';
+import { rgoStatusOf, trackShareOf } from './provinces.js';
 
 /** Bu meslek hangi zemine göre dağıtılır? */
 const BASIS = {
   farmers: 'agriculture',
   laborers: 'extraction',
   workers: 'industry',
+  soldiers: 'soldiers',
   clerks: 'urban',
   artisans: 'urban',
   officers: 'population',
@@ -42,10 +43,12 @@ const BASIS = {
  * Bir kümenin verilen zemindeki ağırlığı. Sıfır dönerse o meslek orada
  * yok demektir — kohort da üretilmez.
  */
-function weightOf(entry, basis) {
+function weightOf(entry, basis, plants) {
   const econ = entry.province.econ;
   if (!econ) return 0;
   if (basis === 'population') return Math.max(0, econ.population);
+  // Asker alayin tuttugu kumede sayilir (bkz. provinces.claimSoldiers).
+  if (basis === 'soldiers') return Math.max(0, econ.soldiers ?? 0);
   if (basis === 'urban') {
     // Kâtip, zanaatkâr ve kapitalist şehirde toplanır; şehirsiz küme
     // yine de az bir pay alır (kasaba esnafı).
@@ -53,16 +56,18 @@ function weightOf(entry, basis) {
     return Math.max(0, econ.population) * urban;
   }
   if (basis === 'industry') {
-    // Zemin dolu kadro değil, KAPASITEDIR: işçi işin olduğu yere gider ve
-    // boşta kalan kadro gerçek işsizliği verir. Dolu kadroya göre dağıtınca
-    // işsizlik tanım gereği sıfırlanıyordu.
-    const jobs = econ.industrialJobs ?? 0;
-    return Math.max(0, jobs > 0 ? jobs : (econ.industrialEmployees ?? 0));
+    // Zemin DOLU KADRODUR. "Fabrika işçisi" mesleğinin toplamı zaten fiilen
+    // çalışan işçidir (jobTotalsOf); kapasiteye göre dağıtınca boş tezgahı olan
+    // kümeye var olmayan işçi yazılıyordu. Kadro `econ` alanından değil ulusun
+    // KENDİ fabrikalarından okunur: o alan haftanın başında yazılır ve kümede
+    // duran başka ulusun fabrikasını da toplar.
+    const plant = plants.get(entry.province.id);
+    return plant ? Math.max(plant.employees, plant.jobs * 1e-6) : 0;
   }
+  // Kume iki izi birden tasiyabilir: calisan, izin hex payiyla bolunur.
   const status = rgoStatusOf(econ);
-  const track = RGO_TYPES[econ.rgo]?.track;
-  if (basis === 'agriculture') return track === 'agriculture' ? status.employed : 0;
-  if (basis === 'extraction') return track === 'extraction' ? status.employed : 0;
+  if (basis === 'agriculture') return status.employed * trackShareOf(econ, 'agriculture');
+  if (basis === 'extraction') return status.employed * trackShareOf(econ, 'extraction');
   return 0;
 }
 
@@ -199,6 +204,19 @@ export function nationCohorts(world, nation) {
   // o sayaclar sanayilesmeyi gormuyordu: dunya yedi kat sanayilesirken ciftci
   // payi %50'den %62'ye CIKIYORDU (bkz. economy.js jobTotalsOf notu).
   const jobTotals = jobTotalsOf(world, nation);
+  // Fabrika kare koordinatıyla çapalı; kümesi provinceId üzerinden çözülür.
+  // Duran fabrika işe almaz: boş kadrosu ilan edilmez.
+  const plants = new Map();
+  for (const factory of economy.factories ?? []) {
+    const provinceId = world.get(factory.q, factory.r)?.provinceId;
+    if (provinceId == null) continue;
+    const plant = plants.get(provinceId) ?? { employees: 0, jobs: 0, count: 0 };
+    const employees = Math.max(0, factory.employees ?? 0);
+    plant.employees += employees;
+    plant.jobs += factory.paused ? employees : factoryJobs(factory);
+    plant.count++;
+    plants.set(provinceId, plant);
+  }
 
   // Once butun kohortlar ve istihdamlari kurulur; gelir dagitimi ancak sinifin
   // TOPLAM etkinlik agirligi bilindiginde yapilabilir (yoksa paylar toplami
@@ -208,18 +226,18 @@ export function nationCohorts(world, nation) {
     const total = Math.max(0, Math.round(jobTotals[professionId] ?? 0));
     if (total <= 0) continue;
     const basis = BASIS[professionId] ?? 'population';
-    let weights = entries.map((entry) => weightOf(entry, basis));
+    let weights = entries.map((entry) => weightOf(entry, basis, plants));
     // Zemin tamamen boşsa (ör. hiç fabrika yok ama işçi sayılmış) nüfusa düş:
     // meslek kaybolmasın, hepsi ilk kümeye yığılmasın.
     if (weights.every((value) => value <= 0)) {
-      weights = entries.map((entry) => weightOf(entry, 'population'));
+      weights = entries.map((entry) => weightOf(entry, 'population', plants));
     }
     const sizes = allocate(total, weights);
     for (let i = 0; i < entries.length; i++) {
       const size = sizes[i];
       if (size <= 0) continue;
       const entry = entries[i];
-      const employment = cohortEmployment(world, nation, entry, professionId, size);
+      const employment = cohortEmployment(entry, professionId, size, plants);
       draft.push({
         // Kimlik küme id'sine bağlı: bölümleme deterministik olduğundan kayıt
         // ve ekran arasında kaymaz.
@@ -259,33 +277,31 @@ export function nationCohorts(world, nation) {
  * o province'teki tesis kadrosuna, çiftçi/madenci RGO kadrosuna bakar.
  * Diğer meslekler için istihdam kavramı yok (null) — uydurma oran üretilmez.
  */
-function cohortEmployment(world, nation, entry, professionId, size) {
+function cohortEmployment(entry, professionId, size, plants) {
   if (professionId === 'workers') {
-    // Fabrika kare koordinatıyla çapalı; kümesi provinceId üzerinden çözülür.
-    const factories = (nation.economy?.factories ?? []).filter(
-      (factory) => world.get(factory.q, factory.r)?.provinceId === entry.province.id,
-    );
-    const employed = Math.min(size, Math.round(
-      factories.reduce((sum, factory) => sum + (factory.employees ?? 0), 0),
-    ));
-    const vacancies = Math.max(0, Math.round(
-      factories.reduce((sum, factory) => sum + factoryJobs(factory) - (factory.employees ?? 0), 0),
-    ));
+    // Bu meslek TANIM GEREĞİ çalışandır: toplamı fabrika kadrosunun kendisi.
+    // Kohortun yerel kadroyla kıyaslanması, kaybedilmiş kümede kalan fabrikanın
+    // işçisini kalan kümelerde "işsiz" gösteriyordu (1842 kaydı: %61 istihdam).
+    const plant = plants.get(entry.province.id);
     return {
-      employed,
-      unemployed: Math.max(0, size - employed),
-      vacancies,
-      workplaces: factories.length,
+      employed: size,
+      unemployed: 0,
+      vacancies: plant ? Math.max(0, Math.round(plant.jobs - plant.employees)) : 0,
+      workplaces: plant?.count ?? 0,
     };
   }
+  // Ordu bir istir: asker issiz sayilmaz, bos kadro da ilan etmez.
+  if (professionId === 'soldiers') return { employed: size, unemployed: 0, vacancies: 0, workplaces: 1 };
   if (professionId === 'farmers' || professionId === 'laborers') {
-    const status = rgoStatusOf(entry.province.econ);
-    const employed = Math.min(size, Math.round(status.employed));
+    const econ = entry.province.econ;
+    const status = rgoStatusOf(econ);
+    const share = trackShareOf(econ, professionId === 'farmers' ? 'agriculture' : 'extraction');
+    const employed = Math.min(size, Math.round(status.employed * share));
     return {
       employed,
       unemployed: Math.max(0, size - employed),
-      vacancies: Math.max(0, Math.round(status.vacancies)),
-      workplaces: status.type ? 1 : 0,
+      vacancies: Math.max(0, Math.round(status.vacancies * share)),
+      workplaces: share > 0 ? 1 : 0,
     };
   }
   return { employed: null, unemployed: null, vacancies: 0, workplaces: 0 };

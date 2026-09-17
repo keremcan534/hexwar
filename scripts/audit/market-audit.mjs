@@ -17,7 +17,7 @@ import {
   n1, n2, n0, pct, GOOD_IDS, GOODS,
 } from './harness.mjs';
 import { FACTORIES, FOOD_GOODS, priceOf } from '../../src/game/economy.js';
-import { RGO_TYPES } from '../../src/game/provinces.js';
+import { RGO_TYPES, depositsOf } from '../../src/game/provinces.js';
 
 const SEED = 'market-audit';
 
@@ -109,10 +109,13 @@ sub('Girdiyi kes: ust katman gercekten duruyor mu?');
   // cekilir — boylece meslek dagilimi ve nufus aynen kalir).
   const control = headless(SEED);
   const cut = headless(SEED);
-  cut.world.forEach((tile) => {
-    const rgo = RGO_TYPES[tile.province?.rgo];
-    if (rgo && (rgo.goodId === 'iron' || rgo.goodId === 'coal')) tile.province.rgoQuality = 0;
-  });
+  for (const province of cut.world.provinces ?? []) {
+    if (!province.econ) continue;
+    for (const line of depositsOf(province.econ)) {
+      const rgo = RGO_TYPES[line.id];
+      if (rgo && (rgo.goodId === 'iron' || rgo.goodId === 'coal')) line.quality = 0;
+    }
+  }
   run(control, 80);
   run(cut, 80);
   const cmp = (world, id) => {
@@ -226,8 +229,10 @@ function supplyShock(goodId, factor, weeks = 120, nationId = null) {
   // Kume dongusu: paylasilan econ'da kare basina `*=` carpani uye sayisi
   // kadar uygulanip kaliteyi factor^hexes'e cekiyordu.
   for (const province of world.provinces ?? []) {
-    const rgo = RGO_TYPES[province.econ?.rgo];
-    if (rgo?.goodId === goodId) province.econ.rgoQuality *= factor;
+    if (!province.econ) continue;
+    for (const line of depositsOf(province.econ)) {
+      if (RGO_TYPES[line.id]?.goodId === goodId) line.quality *= factor;
+    }
   }
   // RGO'su olmayan mallar icin (or. clothes) fabrika kadrosu uzerinden vurulur.
   if (!Object.values(RGO_TYPES).some((r) => r.goodId === goodId)) {

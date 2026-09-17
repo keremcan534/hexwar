@@ -11,6 +11,7 @@
 // recruitment). Yenisini yazarken world.provinces üzerinden dolaş.
 
 import { makeRng } from '../core/rng.js';
+import { fbm, makeNoise2D } from '../core/noise.js';
 import { lawModifiers, lawValue } from './politics.js';
 import { controllerOf } from './control.js';
 import { DEFAULT_ZONE, ZONE_RULES } from '../world/macro.js';
@@ -76,9 +77,12 @@ export const RGO_TYPES = {
     id: 'COAL', goodId: 'coal', name: 'Coal Mines', icon: '◆', hue: 28,
     track: 'extraction', baseOutput: 0.288,
   },
+  // Verim 0.18 -> 0.36: tek RGO doneminde 40 yil boyunca kitti (arz talebin
+  // 0.4-0.8'i, fiyat 1.3-2.8 kat). Hex payini iki katina cikarmak yerine
+  // madenin verimi artti; dunya kukurt kusagina donmesin.
   SULPHUR: {
     id: 'SULPHUR', goodId: 'sulphur', name: 'Sulphur Mines', icon: '🜍', hue: 48,
-    track: 'extraction', baseOutput: 0.18,
+    track: 'extraction', baseOutput: 0.36,
   },
   OIL: {
     id: 'OIL', goodId: 'oil', name: 'Oil Derricks', icon: '🛢', hue: 12,
@@ -93,53 +97,248 @@ export const MIGRATION_RATE = 0.04;
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-/** Tek karenin RGO ağırlık vektörü; küme seçimi üyelerin toplamından yapılır. */
-function rgoWeightsOf(tile) {
-  const yields = tile.terrain.yields;
-  const terrain = tile.terrain.id;
-  const rugged = terrain === 'HILLS' || terrain === 'MOUNTAIN';
-  const tropical = terrain === 'JUNGLE';
-  const open = terrain === 'PLAINS' || terrain === 'GRASSLAND';
-  const arid = terrain === 'DESERT' || terrain === 'TUNDRA';
-  // Tahılın ağırlığı bilerek yüksek: erzak çökerse ordular dağılır. Egzotik
-  // kaynaklar yalnız kendi arazilerinde ve düşük ağırlıkla çıkar.
-  return [
-    ['GRAIN', 2.5 + yields.food * 5 + (open ? 2 : 0)],
-    ['CATTLE', 0.5 + (open ? 2 : 0) + (terrain === 'TUNDRA' ? 0.8 : 0)],
-    ['FISH', tile.coastal ? 3 : 0],
-    ['FRUIT', 0.3 + (open ? 1 : 0) + (tropical ? 1.2 : 0)],
-    ['COTTON', 0.2 + (open ? 1.2 : 0) + (terrain === 'BEACH' ? 0.6 : 0)],
-    ['SILK', 0.15 + (tropical ? 0.7 : 0)],
-    ['DYE', 0.2 + (tropical ? 0.6 : 0) + (open ? 0.3 : 0)],
-    ['TIMBER', 0.6 + yields.timber * 5.5],
-    ['TROPICAL_WOOD', tropical ? 2.2 : 0],
-    ['RUBBER', tropical ? 2 : 0],
-    ['IRON', 0.6 + yields.iron * 5 + (rugged ? 1.5 : 0)],
-    ['COAL', 0.35 + (rugged ? 4 : 0) + (terrain === 'FOREST' ? 0.5 : 0)],
-    ['SULPHUR', 0.15 + (rugged ? 1.2 : 0) + (terrain === 'DESERT' ? 0.5 : 0)],
-    ['OIL', 0.1 + (arid ? 1.4 : 0)],
-  ];
+// ============================================================================
+// HEX KAYNAKLARI (2026-09)
+//
+// Kaynak artık KÜMENİN değil HEX'in özelliğidir: her geçilebilir hex kendi
+// RGO'sunu taşır, küme üyelerinin toplamını üretir. Tek RGO'lu kümede iki
+// sorun ölçüldü (standart dünya, 3 tohum):
+//   - Paylar zara bağlıydı ve talebi izlemiyordu: 40 yılda meyve, ipek, boya,
+//     tropik ağaç ve kauçuk taban fiyata çakılı (arz talebin 3-20 katı),
+//     kükürt kıt (arz talebin 0.4-0.8'i, fiyat 1.3-2.8 kat).
+//   - Gıda dünyada fazlayken (arz talebin 1.1-1.6 katı) ülkelerin yarısı aç
+//     kalıyordu: korumacı gümrük (%50) açığın yalnız %56'sını ithal ettiriyor
+//     ve yerli tahıl tek RGO zarına bağlıydı (10. yıl: 66 ülkenin 24'ünde
+//     raftaki gıda <%90).
+//
+// Dağılım iki katmanlı:
+//   1. ARAZİ + İKLİM: kaynak ancak ona uygun karede çıkar (tahıl ova, kömür
+//      tepe, kauçuk tropik orman; balık yalnız kıyıda).
+//   2. DAMAR: her kaynağın düşük frekanslı gürültü alanı vardır; maden
+//      kuşakları ve plantasyon bölgeleri tek tek serpilmez, öbek olur.
+// Dünya payları TALEPTEN ölçülerek hedeflenir ve her dünya üretiminde KOTA
+// ataması ile birebir verilir (bkz. assignHexResources): hiçbir mal yapısal
+// kıt doğmaz.
+// Atama tohum + arazi + koordinattan türer, KAYDA GİRMEZ: yüklemede aynı
+// dünya aynı kaynakları yeniden üretir.
+// ============================================================================
+
+/** Arazi uygunluğu. Tabloda olmayan arazide o kaynak çıkmaz. */
+const RESOURCE_TERRAIN = {
+  GRAIN: { GRASSLAND: 3.2, PLAINS: 3.0, BEACH: 0.8, HILLS: 0.8, FOREST: 0.6, JUNGLE: 0.5, TUNDRA: 0.35, DESERT: 0.1, MOUNTAIN: 0.05 },
+  CATTLE: { GRASSLAND: 2.2, PLAINS: 1.5, TUNDRA: 1.0, HILLS: 0.8, DESERT: 0.3, BEACH: 0.3, FOREST: 0.3, MOUNTAIN: 0.15, JUNGLE: 0.1 },
+  // Balık kıyı karesine bağlıdır (aşağıda); tablo kıyıdaki arazinin payıdır.
+  FISH: { BEACH: 3.0, PLAINS: 1.4, GRASSLAND: 1.4, HILLS: 1.2, FOREST: 1.2, JUNGLE: 1.2, TUNDRA: 1.2, DESERT: 1.2, MOUNTAIN: 0.6, SNOW_PEAK: 0.4 },
+  FRUIT: { JUNGLE: 1.4, PLAINS: 1.0, GRASSLAND: 0.8, BEACH: 0.8, HILLS: 0.5 },
+  COTTON: { PLAINS: 1.6, GRASSLAND: 0.9, BEACH: 0.7, DESERT: 0.4 },
+  SILK: { JUNGLE: 1.0, PLAINS: 0.5, HILLS: 0.4, GRASSLAND: 0.3 },
+  DYE: { JUNGLE: 1.3, PLAINS: 0.6, GRASSLAND: 0.4, BEACH: 0.4 },
+  TIMBER: { FOREST: 4.0, JUNGLE: 0.9, HILLS: 0.7, TUNDRA: 0.6, MOUNTAIN: 0.4, GRASSLAND: 0.2 },
+  TROPICAL_WOOD: { JUNGLE: 2.6 },
+  RUBBER: { JUNGLE: 2.2 },
+  IRON: { MOUNTAIN: 2.8, HILLS: 2.2, SNOW_PEAK: 1.4, TUNDRA: 0.35, DESERT: 0.3, FOREST: 0.2 },
+  COAL: { HILLS: 2.6, MOUNTAIN: 1.3, FOREST: 0.7, TUNDRA: 0.5, PLAINS: 0.25, GRASSLAND: 0.15 },
+  SULPHUR: { MOUNTAIN: 1.3, DESERT: 1.0, HILLS: 0.9, SNOW_PEAK: 0.5, BEACH: 0.2 },
+  OIL: { DESERT: 2.2, TUNDRA: 1.3, BEACH: 0.5, PLAINS: 0.3, JUNGLE: 0.25, GRASSLAND: 0.15 },
+};
+
+/** Sıcak iklim mahsulleri: serin karede zayıflar (tile.temperature). */
+const WARM_CROPS = new Set(['FRUIT', 'COTTON', 'SILK', 'DYE', 'RUBBER', 'TROPICAL_WOOD']);
+
+/**
+ * Damar eğilimi: 0 = her yere serpilir, 2 = güçlü kuşak. Madenler kuşak
+ * kuşak, plantasyonlar bölge bölge, temel gıda neredeyse her yerde.
+ */
+const RESOURCE_CLUMP = {
+  GRAIN: 0.3, CATTLE: 0.6, FISH: 0.2, FRUIT: 0.8, COTTON: 1.0, SILK: 1.2, DYE: 1.0,
+  TIMBER: 0.4, TROPICAL_WOOD: 0.8, RUBBER: 1.2, IRON: 1.6, COAL: 1.8, SULPHUR: 1.8, OIL: 2.0,
+};
+
+/**
+ * DÜNYA HEX PAYLARI — talepten. Türetme: 40 yıllık taban koşuda her malın
+ * ölçülen arz/talep oranı ve fiyatı; alıcısız malın tarlası kendiliğinden
+ * küçüldüğü için (bkz. updateDemandScale) potansiyel oran = oran / √fiyat.
+ * Pay, potansiyel oranı ~1.3'e getirecek biçimde ölçeklendi ve toplam 1'e
+ * normalize edildi; artan hex payı RGO_OUTPUT_SCALE ile dengelenir.
+ * Kauçuk ve petrolün talebi geç doğar (otomobil, tank, rafineri): pay,
+ * doğduğu gün kıtlık olmayacak kadar tutuldu.
+ *
+ * DEMİR KOTASI BİLEREK DÜŞÜK: karlı zirvelerde yalnız demir/kükürt çıkar ve
+ * kotalar dolunca artan zirve demire düşer. Kota %6.5 iken gerçekleşen pay
+ * %8.8'di; %4.5 kota ≈ %7 gerçek pay verir.
+ */
+const RESOURCE_SHARE = {
+  GRAIN: 0.488, CATTLE: 0.09, FISH: 0.069, FRUIT: 0.008, COTTON: 0.05, SILK: 0.0065,
+  DYE: 0.006, TIMBER: 0.045, TROPICAL_WOOD: 0.005, RUBBER: 0.0105, IRON: 0.045,
+  COAL: 0.066, SULPHUR: 0.085, OIL: 0.026,
+};
+
+/**
+ * Hex başına çıktı ölçeği: paylar normalize edilince toplam arz talebi izlesin.
+ * 0.9 ile ölçüldü (3 tohum × 20 yıl): gıda arz/talebi ~1.0'a sıkıştı, pamuk ve
+ * kömür ilk yıllarda kısaydı (0.67 ve 0.80); 1.0 ile paylar yeniden dağıtıldı.
+ */
+const RGO_OUTPUT_SCALE = 1.0;
+
+/** Damar alanının periyodu (yatay sarmal): ~13 hexlik öbekler. */
+const DEPOSIT_PERIOD = 12;
+
+const RESOURCE_IDS = Object.keys(RGO_TYPES);
+
+/**
+ * Hex kaynaklarını atar ve her kümenin kaynak satırlarını (`province.deposits`)
+ * kurar. Deterministik: tohum, arazi, sıcaklık ve koordinattan türer.
+ */
+export function assignHexResources(world) {
+  const tiles = [];
+  for (const province of world.provinces ?? []) {
+    for (const idx of province.tileIdx) tiles.push(world.tiles[idx]);
+  }
+  const count = tiles.length;
+  const k = RESOURCE_IDS.length;
+  if (!count) return;
+  const fields = RESOURCE_IDS.map((id) => makeNoise2D(makeRng(`${world.seed}-deposit-${id}`)));
+  const aspect = (world.rows ?? 1) / Math.max(1, world.cols ?? 1);
+  const score = new Float64Array(count * k);
+  for (let t = 0; t < count; t++) {
+    const tile = tiles[t];
+    const u = tile.col / world.cols;
+    const v = tile.row / world.rows;
+    const warm = clamp(((tile.temperature ?? 0.5) - 0.35) / 0.3, 0.05, 1);
+    // Sınırda şerit oluşmasın: kare başına küçük, deterministik sapma.
+    const jitter = makeRng(`${world.seed}-resource-${tile.q}:${tile.r}`);
+    for (let r = 0; r < k; r++) {
+      const id = RESOURCE_IDS[r];
+      let weight = RESOURCE_TERRAIN[id]?.[tile.terrain.id] ?? 0;
+      if (id === 'FISH' && !tile.coastal) weight = 0;
+      if (WARM_CROPS.has(id)) weight *= warm;
+      if (weight > 0) {
+        const field = fbm(fields[r], u * DEPOSIT_PERIOD, v * DEPOSIT_PERIOD * aspect, {
+          octaves: 2, periodX: DEPOSIT_PERIOD,
+        });
+        const contrast = clamp((field - 0.5) * 3 + 0.5, 0, 1);
+        weight *= Math.exp((RESOURCE_CLUMP[id] ?? 0.5) * (contrast - 0.5) * 2.5);
+        weight *= 0.92 + jitter() * 0.16;
+      }
+      score[t * k + r] = weight;
+    }
+  }
+
+  // KOTA ATAMASI. İlk yazım çarpan yinelemesiydi (tür çarpanı payı hedefe
+  // yaklaştırana dek) ve ölçüldü: yakınsamadı. Argmax ataması kesiklidir —
+  // küçük bir çarpan değişimi ikinci sıradaki binlerce kareyi birden çeviriyor,
+  // 30 tur sonunda meyve %18.9'da (hedef %1.3), ipek ve tropik ağaç sıfırda
+  // kalıyordu. Kota ataması payı TAM verir: her türün skoru kendi dağılımının
+  // üst dilimine bölünür (tahılın 3.2'si ile kükürdün 1.3'ü kıyaslanabilir
+  // olsun), (kare, tür) çiftleri en uygundan başlayarak kotaya kadar atanır.
+  // Uygun karesi kotadan az olan tür (tropik ormansız dünya) eksik kalır;
+  // artan kare en uygun türüne düşer.
+  const reference = new Float64Array(k);
+  for (let r = 0; r < k; r++) {
+    const positive = [];
+    for (let t = 0; t < count; t++) if (score[t * k + r] > 0) positive.push(score[t * k + r]);
+    positive.sort((a, b) => a - b);
+    reference[r] = positive.length ? positive[Math.floor((positive.length - 1) * 0.9)] : 1;
+  }
+  const pairs = [];
+  for (let t = 0; t < count; t++) {
+    for (let r = 0; r < k; r++) {
+      const value = score[t * k + r];
+      if (value > 0) pairs.push({ value: value / reference[r], t, r });
+    }
+  }
+  pairs.sort((a, b) => b.value - a.value || a.t - b.t || a.r - b.r);
+  const quota = RESOURCE_IDS.map((id) => Math.round((RESOURCE_SHARE[id] ?? 0) * count));
+  const filled = new Int32Array(k);
+  const choice = new Int32Array(count).fill(-1);
+  for (const pair of pairs) {
+    if (choice[pair.t] >= 0 || filled[pair.r] >= quota[pair.r]) continue;
+    choice[pair.t] = pair.r;
+    filled[pair.r]++;
+  }
+  // Artan kare once KOTASI DOLMAMIS uygun ture gider; yoksa en uygununa.
+  // Tek gecisli argmax yalniz demir/kukurt cikabilen zirveleri demire
+  // yigiyordu (hedef %6.5, gerceklesen %8.8).
+  for (let t = 0; t < count; t++) {
+    if (choice[t] >= 0) continue;
+    let best = -1;
+    let bestScore = 0;
+    let fallback = 0;
+    let fallbackScore = -1;
+    for (let r = 0; r < k; r++) {
+      const value = score[t * k + r] / reference[r];
+      if (value > fallbackScore) {
+        fallback = r;
+        fallbackScore = value;
+      }
+      if (value > bestScore && filled[r] < quota[r]) {
+        best = r;
+        bestScore = value;
+      }
+    }
+    choice[t] = best >= 0 ? best : fallback;
+    filled[choice[t]]++;
+  }
+
+  for (let t = 0; t < count; t++) {
+    const tile = tiles[t];
+    tile.resource = RESOURCE_IDS[choice[t]];
+    tile.resourceQuality = makeRng(`${world.seed}-quality-${tile.q}:${tile.r}`).range(0.85, 1.15);
+  }
+  for (const province of world.provinces ?? []) {
+    province.deposits = depositLines(world, province);
+    if (province.econ) attachDeposits(province.econ, province.deposits);
+  }
+}
+
+/** Kümenin kaynak satırları: tür başına hex sayısı ve ortalama nitelik. */
+function depositLines(world, province) {
+  const byId = new Map();
+  for (const idx of province.tileIdx) {
+    const tile = world.tiles[idx];
+    const id = RGO_TYPES[tile.resource] ? tile.resource : 'GRAIN';
+    const line = byId.get(id) ?? { id, hexes: 0, quality: 0 };
+    line.hexes++;
+    line.quality += tile.resourceQuality ?? 1;
+    byId.set(id, line);
+  }
+  return [...byId.values()]
+    .map((line) => ({ id: line.id, hexes: line.hexes, quality: line.quality / line.hexes }))
+    .sort((a, b) => b.hexes - a.hexes || (a.id < b.id ? -1 : 1));
 }
 
 /**
- * Kümenin TEK RGO'su (Vic2 kuralı). Zar, rastgele seçilen bir ÜYENİN eski
- * kare ağırlıklarıyla atılır — ağırlıkları toplamak çoğunluk arazisini
- * kayırıyor, dağınık azınlık kaynakları (tepe kömürü, karışık orman) dünya
- * genelinde eksiliyor du (ölçüldü: kömür −%30, kereste −%22). Üye örneklemesi
- * beklenen dağılımı kare-tabanlı eski dağılıma birebir oturtur. Zar kümenin
- * merkez koordinatına bağlı dalla atılır: kayıt/yükleme arasında kaymaz.
+ * Satırlar econ'a SAYILAMAZ alan olarak bağlanır: kayıt `{...econ}` ile
+ * yazar ve türetilebilen bu listeyi taşımaz; yüklemede dünya aynı listeyi
+ * yeniden kurar.
  */
-function weightedRgo(world, province) {
-  const rng = makeRng(`${world.seed}-rgo-${province.center.q}:${province.center.r}`);
-  const sample = world.tiles[province.tileIdx[rng.int(0, province.tileIdx.length - 1)]];
-  const weights = rgoWeightsOf(sample);
-  let roll = rng() * weights.reduce((sum, [, weight]) => sum + weight, 0);
-  let rgo = 'GRAIN';
-  for (const [id, weight] of weights) {
-    roll -= weight;
-    if (roll <= 0) { rgo = id; break; }
+function attachDeposits(econ, lines) {
+  Object.defineProperty(econ, 'deposits', {
+    value: lines, enumerable: false, writable: true, configurable: true,
+  });
+}
+
+/** Kaynak satırları; bağlanmamış econ (eski betik kopyası) tek tahıl satırı sayılır. */
+export function depositsOf(econ) {
+  if (econ?.deposits?.length) return econ.deposits;
+  return [{ id: 'GRAIN', hexes: Math.max(1, econ?.hexes ?? 1), quality: 1 }];
+}
+
+/** Bir izin (agriculture/extraction) kümedeki hex payı. */
+export function trackShareOf(econ, track) {
+  const lines = depositsOf(econ);
+  let total = 0;
+  let hexes = 0;
+  for (let i = 0; i < lines.length; i++) {
+    total += lines[i].hexes;
+    if (RGO_TYPES[lines[i].id]?.track === track) hexes += lines[i].hexes;
   }
-  return { id: rgo, quality: rng.range(0.85, 1.15), jobsRatio: rng.range(0.72, 0.88) };
+  return total > 0 ? hexes / total : 0;
+}
+
+/** Kümenin baskın kaynağı (en çok hex); ekranların tek etiketi. */
+export function primaryResourceOf(econ) {
+  return RGO_TYPES[depositsOf(econ)[0]?.id] ?? null;
 }
 
 /**
@@ -211,8 +410,6 @@ function initialProvinceEcon(world, province) {
   if (rule.dev >= 1) commerce = Math.max(commerce, 1);
   if (rule.dev >= 2 && coastal) commerce = 2;
   population *= rule.popMul * POPULATION_SCALE * populationNoise(world, province);
-  const selected = weightedRgo(world, province);
-  const track = RGO_TYPES[selected.id].track;
   return {
     population: Math.round(population),
     // Kaç hexlik küme: kare başına pay isteyen eski okuyucular (barış bedeli
@@ -224,12 +421,20 @@ function initialProvinceEcon(world, province) {
     commerce,
     control: province.owner >= 0 ? 100 : 0,
     lastInvestment: 0,
-    rgo: selected.id,
-    rgoQuality: selected.quality,
+    // HERKES İŞLE BAŞLAR (Vic2). Kuruluş kadrosu kümenin alt sınıf iş gücüne
+    // göre açılır; eskiden nüfusun %72-88'iydi ve orta/üst sınıf da iş
+    // arayan sayılıyordu. Küçük pay (RGO_JOB_SLACK) ilk yılın nüfus artışını
+    // karşılar.
     rgoBaseJobs: Math.max(1000 * POPULATION_SCALE, Math.round(
-      population * selected.jobsRatio / (100 * POPULATION_SCALE),
+      population * LOWER_SHARE_DEFAULT * RGO_JOB_SLACK / (100 * POPULATION_SCALE),
     ) * 100 * POPULATION_SCALE),
-    rgoBaseDevelopment: track === 'agriculture' ? agriculture : extraction,
+    // Gelişim kademelerinin kuruluş değeri: kadro yalnız bunun üstündeki
+    // kazanımla büyür (bkz. rgoCapacityOf).
+    agricultureBase: agriculture,
+    extractionBase: extraction,
+    // Mal başına talep ölçeği (bkz. updateDemandScale); 1 = tam tarla.
+    demand: {},
+    lowerShare: LOWER_SHARE_DEFAULT,
     migration: 0,
     // Kultur sayaclari (bkz. culture.js). Kurulusta SIFIR: 1836 imparatorlugu
     // oturmus bir dunyadir, huzursuzluk oyun boyunca birikir.
@@ -244,25 +449,56 @@ function initialProvinceEcon(world, province) {
   };
 }
 
-function ensureProvinceRgo(world, province) {
+/**
+ * Eski kayıt (tek RGO'lu küme) yeni biçime göçer ve eksik alanlar dolar.
+ * Göç kayıpsızdır: eski izin gelişim tabanı ve talep ölçeği kendi malına
+ * taşınır, öbür iz bugünkü değerini taban alır (henüz kazanımı yoktur).
+ */
+function ensureProvinceResources(world, province) {
   const econ = province.econ;
   if (!econ) return null;
-  const selected = weightedRgo(world, province);
-  if (!RGO_TYPES[econ.rgo]) econ.rgo = selected.id;
-  if (!Number.isFinite(econ.rgoQuality)) econ.rgoQuality = selected.quality;
+  if (!province.deposits) province.deposits = depositLines(world, province);
+  attachDeposits(econ, province.deposits);
+  const legacy = RGO_TYPES[econ.rgo] ?? null;
+  if (!Number.isFinite(econ.agricultureBase)) {
+    econ.agricultureBase = legacy?.track === 'agriculture' && Number.isFinite(econ.rgoBaseDevelopment)
+      ? econ.rgoBaseDevelopment : (econ.agriculture ?? 0);
+  }
+  if (!Number.isFinite(econ.extractionBase)) {
+    econ.extractionBase = legacy?.track === 'extraction' && Number.isFinite(econ.rgoBaseDevelopment)
+      ? econ.rgoBaseDevelopment : (econ.extraction ?? 0);
+  }
+  if (!econ.demand || typeof econ.demand !== 'object') econ.demand = {};
+  if (legacy && Number.isFinite(econ.rgoDemandScale) && !(legacy.goodId in econ.demand)) {
+    econ.demand[legacy.goodId] = econ.rgoDemandScale;
+  }
+  delete econ.rgo;
+  delete econ.rgoQuality;
+  delete econ.rgoBaseDevelopment;
+  delete econ.rgoDemandScale;
+  // ESKI KAYIT HERKESI ISE ALIR. Tek RGO donemindeki kadro 1836 nufusuyla
+  // kurulmustu; kayit yillar sonra acilinca buyuyen ve goc eden nufus yeni
+  // is gucu tanimiyla bir anda yuzde elli issiz gorunuyordu (olculdu: 1842
+  // kaydi, istihdam %47). Goc aninda kadro bugunku is gucune acilir.
+  if (legacy) {
+    // Pay sahibinin gercek sinif dagilimindan: varsayilan 0.78 yillar sonra
+    // alt sinifi eksik sayiyor ve kadroyu yine dar aciyordu.
+    const owner = world.nations?.[province.owner]?.economy;
+    if (owner?.population > 0 && Number.isFinite(owner.classes?.lower?.population)) {
+      econ.lowerShare = clamp(owner.classes.lower.population / owner.population, 0, 1);
+    }
+    const workforce = rgoWorkforceOf(econ);
+    econ.rgoBaseJobs = Math.max(econ.rgoBaseJobs ?? 0, Math.round(
+      workforce * RGO_JOB_SLACK / (100 * POPULATION_SCALE),
+    ) * 100 * POPULATION_SCALE);
+  }
   if (!Number.isFinite(econ.rgoBaseJobs)) {
-    econ.rgoBaseJobs = Math.max(
-      1000 * POPULATION_SCALE,
-      Math.round(econ.population * selected.jobsRatio / (100 * POPULATION_SCALE))
-        * 100 * POPULATION_SCALE,
-    );
+    econ.rgoBaseJobs = Math.max(1000 * POPULATION_SCALE, Math.round(
+      Math.max(0, econ.population ?? 0) * LOWER_SHARE_DEFAULT * RGO_JOB_SLACK / (100 * POPULATION_SCALE),
+    ) * 100 * POPULATION_SCALE);
   }
-  const type = RGO_TYPES[econ.rgo];
-  if (!Number.isFinite(econ.rgoBaseDevelopment)) {
-    econ.rgoBaseDevelopment = econ[type.track] ?? 0;
-  }
+  if (!Number.isFinite(econ.lowerShare)) econ.lowerShare = LOWER_SHARE_DEFAULT;
   if (!Number.isFinite(econ.migration)) econ.migration = 0;
-  if (!Number.isFinite(econ.rgoDemandScale)) econ.rgoDemandScale = 1;
   // Kultur sayaclari (bkz. culture.js). Eski kayitta yoktur: sifirdan baslar
   // ve ilk haftalarda kendi hedefine yaklasir.
   if (!Number.isFinite(econ.unrest)) econ.unrest = 0;
@@ -271,121 +507,26 @@ function ensureProvinceRgo(world, province) {
   return econ;
 }
 
-/**
- * Bir RGO turunun dunyada bulunmasi gereken asgari kume sayisi.
- *
- * NEDEN: `weightedRgo` her kume icin BAGIMSIZ zar atar ve nadir kaynaklarin
- * agirligi cok dusuktur (SULPHUR 0.15 taban, SILK 0.15). Zar kotu giderse bir
- * mal butun dunyada TEK kumeye duser — ama o mala olan talep yapisaldir ve
- * sanayilesmeyle buyur.
- *
- * Olculdu (260. hafta, 255 kume): kukurt **1 kume / 1 hex**, arz 0.2, talep
- * 7.1, fiyat tabanin 8 kati; ipek **1 kume / 1 hex**. Buna karsilik tahil 123
- * kume / 691 hex. Gelisim hizi bunu KURTARAMAZ: gelisim tavaninda bile tek
- * hex 0.56 uretir, talep 7.1'dir. Beta'nin "dunya 70 yil sonra basindan daha
- * cok kitliga sahip" bulgusunun yapisal kaynagi budur.
- *
- * Sayilar taleple orantili: kukurt/ipek gibi girdiler birkac tesisi besler,
- * kauçuk ve tropik agac daha genis kullanilir.
- */
-/**
- * Deger = dunyadaki kumelerin ORANI, mutlak sayi degil.
- *
- * Mutlak sayi ilk denemede yaziliydi ve denetim haritasinda (255 kume) dogru
- * calisti; sonra URUN haritasinda (160x96, ~1000 kume) olculunce komur ve
- * kukurt yine 8 kata cikti — 11 kume 255'in %4.3'u ama 1000'in %1.1'i, oysa
- * TALEP dunya buyuklugu ile birlikte buyuyor. Kitlik tabani da olcekle
- * buyumeli.
- *
- * Oranlar denetim haritasindaki calisan degerlerden turetildi.
- */
-const RGO_WORLD_MINIMUM_SHARE = {
-  SULPHUR: 0.043, SILK: 0.012, RUBBER: 0.020, DYE: 0.020,
-  OIL: 0.031, TROPICAL_WOOD: 0.024, COAL: 0.063,
-};
-
-/** Cok kucuk dunyada oran sifira yuvarlanmasin. */
-const RGO_MINIMUM_FLOOR = 2;
-
-/**
- * Zarin ac biraktigi kaynaklari onarir: asgarinin altinda kalan her RGO turu
- * icin, o kaynagin ARAZI OLARAK mumkun oldugu ve halihazirda BOL bir turden
- * olan kumeler devralinir.
- *
- * Kural CLAUDE.md'deki cografya kuralinin ayni ruhu: sekli sablon belirler,
- * gurultu bozar. Burada da dagilimi talep belirler, zar yalnizca yerini secer.
- * Secim tamamen deterministiktir (kume merkezine bagli siralama).
- */
-function repairRgoScarcity(world) {
-  const byType = new Map();
-  for (const province of world.provinces ?? []) {
-    if (!province.econ) continue;
-    const list = byType.get(province.econ.rgo);
-    if (list) list.push(province);
-    else byType.set(province.econ.rgo, [province]);
-  }
-  // Devralinabilir turler: asgarisi olmayan ve bol olanlar.
-  const total = (world.provinces ?? []).filter((p) => p.econ).length;
-  const minimumOf = (typeId) => {
-    const share = RGO_WORLD_MINIMUM_SHARE[typeId];
-    return share ? Math.max(RGO_MINIMUM_FLOOR, Math.round(share * total)) : 0;
-  };
-  const donorScore = (province) => {
-    const list = byType.get(province.econ.rgo) ?? [];
-    return list.length - minimumOf(province.econ.rgo);
-  };
-  for (const typeId of Object.keys(RGO_WORLD_MINIMUM_SHARE)) {
-    const have = byType.get(typeId) ?? [];
-    let missing = minimumOf(typeId) - have.length;
-    if (missing <= 0) continue;
-    // Aday: arazisi bu kaynaga uygun (agirligi > 0) ve verici turu bol olan.
-    const candidates = [];
-    for (const province of world.provinces ?? []) {
-      if (!province.econ || province.econ.rgo === typeId) continue;
-      if (donorScore(province) <= 1) continue;
-      const sample = world.tiles[province.tileIdx[0]];
-      const weight = rgoWeightsOf(sample).find(([id]) => id === typeId)?.[1] ?? 0;
-      if (weight <= 0) continue;
-      candidates.push({ province, weight });
-    }
-    // Deterministik siralama: once arazi uygunlugu, sonra verici bolluğu,
-    // sonra kume merkezi (kararli tie-break).
-    candidates.sort((a, b) => b.weight - a.weight
-      || donorScore(b.province) - donorScore(a.province)
-      || a.province.center.q - b.province.center.q
-      || a.province.center.r - b.province.center.r);
-    for (const { province } of candidates) {
-      if (missing <= 0) break;
-      const from = byType.get(province.econ.rgo);
-      if (from) from.splice(from.indexOf(province), 1);
-      province.econ.rgo = typeId;
-      const track = RGO_TYPES[typeId].track;
-      province.econ.rgoBaseDevelopment = track === 'agriculture'
-        ? province.econ.agriculture : province.econ.extraction;
-      (byType.get(typeId) ?? byType.set(typeId, []).get(typeId)).push(province);
-      missing--;
-    }
-  }
-}
-
 export function initProvinces(world) {
   world.forEach((tile) => { tile.province = null; });
   for (const province of world.provinces ?? []) {
     province.econ = initialProvinceEcon(world, province);
   }
-  // Zar atildiktan SONRA: dunyayi yapisal kitliga mahkum eden dagilimlari onar.
-  repairRgoScarcity(world);
+  // Kaynaklar econ kurulduktan SONRA atanır: satırlar econ'a bağlanır.
+  assignHexResources(world);
   for (const province of world.provinces ?? []) {
     for (const idx of province.tileIdx) world.tiles[idx].province = province.econ;
   }
 }
 
 export function ensureProvinces(world) {
+  const needsResources = (world.provinces ?? []).some((province) => !province.deposits);
+  if (needsResources) assignHexResources(world);
   for (const province of world.provinces ?? []) {
     if (!province.econ) {
       province.econ = initialProvinceEcon(world, province);
     }
-    ensureProvinceRgo(world, province);
+    ensureProvinceResources(world, province);
     for (const idx of province.tileIdx) world.tiles[idx].province = province.econ;
   }
 }
@@ -471,7 +612,6 @@ export function provincePopulation(world, nationId) {
   return Math.round(total);
 }
 
-/** Küme econ'unun RGO kadrosu; gelişim kadroyu 500'lük adımlarla açar. */
 /**
  * Bir ulusun silah altindaki toplam insani. Nufusun ICINDEDIR; sivil nufus
  * istendiginde nufustan bu cikarilir (bkz. economy.js isgucu tavani).
@@ -505,15 +645,83 @@ export function releaseSoldiers(econ, men, died = false) {
   if (died) econ.population = Math.max(0, (econ.population ?? 0) - men);
 }
 
+/**
+ * Alt sınıfın nüfus payı: RGO'da yalnız alt sınıf çalışır. Varsayılan
+ * economy.CLASS_INFO.lower.share ile aynıdır (import katman döngüsü olurdu);
+ * gerçek değeri runProvinces haftada bir ulusun sınıf dağılımından yazar.
+ */
+const LOWER_SHARE_DEFAULT = 0.78;
+
+/** Kuruluşta kadro iş gücünü bu kadar aşar: ilk yıl nüfus artışı işsiz kalmasın. */
+const RGO_JOB_SLACK = 1.05;
+
+/** Gelişim kademesi başına kadro büyümesi (kuruluş kadrosunun payı). */
+const DEVELOPMENT_JOBS = 0.04;
+
+/**
+ * RGO iş gücü: kümenin alt sınıfı, fabrikada çalışanlar, banliyö işçileri
+ * ve silah altındakiler düşülerek. Eskiden bütün nüfus (orta ve üst sınıf
+ * dahil) RGO kadrosuyla kıyaslanıyordu: başkent kümesinde fabrika işçileri ve
+ * kâtipler "2.47M işsiz" görünüyordu (oyuncu bildirimi).
+ */
+export function rgoWorkforceOf(econ) {
+  const population = Math.max(0, econ?.population ?? 0);
+  const share = Number.isFinite(econ?.lowerShare) ? clamp(econ.lowerShare, 0, 1) : LOWER_SHARE_DEFAULT;
+  const lower = population * share;
+  // Fabrikada çalışan tarlada çalışmaz; yerel kadro yerel nüfusla SINIRLI
+  // düşülür, fazlası banliyöcülük olarak başka kümelerden düşer (bkz.
+  // economy.runFactories banliyö düzeltmesi). Silah altındaki adam da
+  // tarlada değildir: seferberlik üretimi DÜŞÜRÜR.
+  const local = Math.min(Math.max(0, econ?.industrialEmployees ?? 0), lower);
+  const commuters = Math.max(0, econ?.industrialCommuters ?? 0);
+  const armed = Math.max(0, econ?.soldiers ?? 0);
+  return Math.max(0, lower - local - commuters - armed);
+}
+
+/** Talep ölçeği (bkz. updateDemandScale): 1 = tam tarla. */
+function demandScaleOf(econ, goodId) {
+  const scale = econ?.demand?.[goodId];
+  return Number.isFinite(scale) ? clamp(scale, RGO_DEMAND_MIN, 1) : 1;
+}
+
+/**
+ * RGO KAPASİTESİ: kuruluş kadrosu × gelişim kazanımı. Talep ölçeği İÇERMEZ —
+ * çıktı onu mal başına ayrıca görür; kadroya da bir kez girer (rgoJobsOf).
+ */
+function rgoCapacityOf(econ) {
+  const lines = depositsOf(econ);
+  let total = 0;
+  let developed = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const type = RGO_TYPES[lines[i].id];
+    if (!type) continue;
+    const gain = type.track === 'agriculture'
+      ? (econ.agriculture ?? 0) - (econ.agricultureBase ?? 0)
+      : (econ.extraction ?? 0) - (econ.extractionBase ?? 0);
+    developed += lines[i].hexes * Math.max(0, gain);
+    total += lines[i].hexes;
+  }
+  const levels = total > 0 ? developed / total : 0;
+  return Math.max(0, econ.rgoBaseJobs ?? 0) * (1 + levels * DEVELOPMENT_JOBS);
+}
+
 export function rgoJobsOf(econ) {
-  const type = RGO_TYPES[econ?.rgo];
-  if (!econ || !type) return 0;
-  const developed = Math.max(0, (econ[type.track] ?? 0) - (econ.rgoBaseDevelopment ?? 0));
-  // Alicisiz malin tarlasi kuculur: kadro talep olcegiyle carpilir.
+  if (!econ) return 0;
+  // Alıcısız malın tarlası küçülür: kadro, satırların talep ölçeğinin hex
+  // ağırlıklı ortalamasıyla çarpılır.
+  const lines = depositsOf(econ);
+  let total = 0;
+  let demand = 0;
+  for (let i = 0; i < lines.length; i++) {
+    const type = RGO_TYPES[lines[i].id];
+    if (!type) continue;
+    total += lines[i].hexes;
+    demand += lines[i].hexes * demandScaleOf(econ, type.goodId);
+  }
+  const factor = total > 0 ? demand / total : 1;
   return Math.max(
     1000 * POPULATION_SCALE,
-    Math.round((econ.rgoBaseJobs + developed * 500 * POPULATION_SCALE) * rgoDemandScaleOf(econ)
-      / (100 * POPULATION_SCALE)) * 100 * POPULATION_SCALE,
+    Math.round(rgoCapacityOf(econ) * factor / (100 * POPULATION_SCALE)) * 100 * POPULATION_SCALE,
   );
 }
 
@@ -525,14 +733,16 @@ export function provinceRgoJobs(tile) {
 /**
  * RGO gelişimi: tarla ve maden kendiliğinden verimlenmez, barış ve istikrar
  * ister. Bu olmadan `agriculture`/`extraction` dünya üretiminde bir kez atanıp
- * bir daha hiç değişmiyor, dolayısıyla `provinceRgoJobs`teki `developed * 500`
- * terimi yapısal olarak hep 0 kalıyordu. Sonucu ölçüldü: 40 yılda hammadde
- * arzı +%14, sanayi talebi +%489, bütün hammaddeler fiyat tavanında ve alt
- * zincirler ölü (bkz. market-diagnostic).
+ * bir daha hiç değişmiyor, dolayısıyla kadronun gelişim terimi yapısal olarak
+ * hep 0 kalıyordu. Sonucu ölçüldü: 40 yılda hammadde arzı +%14, sanayi talebi
+ * +%489, bütün hammaddeler fiyat tavanında ve alt zincirler ölü (bkz.
+ * market-diagnostic).
  *
  * Hız, iyi yönetilen bir province'in yüzyılda ~6 kademe kazanacağı şekilde
- * seçildi: kapasite ~1.8, verim ~1.8 kat artar. Oyuncuya iş çıkarmaz —
- * mikro yönetim mobilde en pahalı maliyet (bkz. CLAUDE.md).
+ * seçildi: kapasite ~1.24, verim ~2 kat artar. Oyuncuya iş çıkarmaz — mikro
+ * yönetim en pahalı maliyet (bkz. CLAUDE.md). Hex kaynakları gelince iki iz
+ * (tarım, çıkarım) kümede birlikte bulunabilir; her iz kendi satırlarının
+ * fiyatıyla gelişir.
  */
 const RGO_DEVELOPMENT_PER_WEEK = 0.0011;
 const RGO_DEVELOPMENT_CAP = 10;
@@ -548,19 +758,14 @@ const RGO_DEVELOPMENT_CAP = 10;
  * halde arz 0.1'e karsi talep 37.6. Yani sorun yatirim istahi degildi;
  * zincirin en ustundeki hammadde hic buyumuyordu.
  *
- * Beta raporunun istegi tam olarak buydu: *"coal at price ceiling for years +
- * huge global unmet demand should eventually encourage more coal extraction."*
- *
- * Egri kasten ilimli: taban fiyatta carpan 1.0 (onceki davranis birebir
- * korunur), tavanda 2.5, dip fiyatta 0.56 — yani ucuz mal yavaslar, pahali mal
- * hizlanir ama hicbiri anlik denge kurmaz. Kitlik ve patlama iyidir; KALICI
- * tavan degildir.
+ * Egri kasten ilimli: taban fiyatta carpan 1.0, tavanda 2.5, dip fiyatta
+ * yavaslar — ucuz mal yavaslar, pahali mal hizlanir ama hicbiri anlik denge
+ * kurmaz. Kitlik ve patlama iyidir; KALICI tavan degildir.
  */
 const RGO_PRICE_DRIVE_MIN = 0.05;
 const RGO_PRICE_DRIVE_MAX = 2.5;
 
-function rgoPriceDrive(world, econ) {
-  const goodId = RGO_TYPES[econ.rgo]?.goodId;
+function rgoPriceDrive(world, goodId) {
   const state = goodId ? world.market?.goods?.[goodId] : null;
   if (!state) return 1;
   // Eski kayitlarda basePrice yok: oran 1 kabul edilir (notr, eski davranis).
@@ -570,44 +775,37 @@ function rgoPriceDrive(world, econ) {
   // cokmus mal bile yarim hizla gelismeye devam ediyordu. Olculdu (1040 hafta,
   // rgo-sweep): dunya arz/talep orani 1.50'den 2.03'e TIRMANIYOR ve fiyat
   // endeksi 1.01'den 0.49'a iniyor — cunku degersiz tarlaya yatirim hic
-  // durmuyordu. RGO verimini global olarak kismak denendi (0.8/0.7/0.6): oran
-  // yine tirmandi, yani sorun baslangic seviyesi degil BIRIKIMDI.
-  // Artik yatirim urunun degeriyle orantilidir: taban fiyatta 1.0, yarisinda
-  // 0.5, bantta cakili malda neredeyse durur.
+  // durmuyordu. Yatirim urunun degeriyle orantilidir: taban fiyatta 1.0,
+  // yarisinda 0.5, bantta cakili malda neredeyse durur.
   return clamp(state.price / base, RGO_PRICE_DRIVE_MIN, RGO_PRICE_DRIVE_MAX);
 }
 
 /**
  * ARZ TEPKISININ ASAGI YONU. `rgoPriceDrive` pahali mali hizlandirir ama
  * ucuz mal icin fren yoktu: 2026-09-04 `audit:market` 42 malin 17'sini bantta
- * cakili buldu, 14'u TABANDA (cattle, fruit, silk, timber, rubber, iron, oil,
- * dye, lumber, liquor...). Alicisiz mal uretilmeye devam ediyor, kimse tarlayi
- * kucultmuyordu. Vic2'de bu tarlanin isleri erir, halk baska ise gocer.
+ * cakili buldu, 14'u TABANDA. Alicisiz mal uretilmeye devam ediyor, kimse
+ * tarlayi kucultmuyordu. Vic2'de bu tarlanin isleri erir, halk baska ise gocer.
  *
- * Olcek [RGO_DEMAND_MIN, 1]: fiyat tabana indikce hedef yarim kadroya iner,
- * fiyat toparlaninca 1'e doner; haftada RGO_DEMAND_APPROACH kadar yaklasir
- * (yariya inmek ~4 yil). Kadroyu ve uretimi birlikte olcekler; yukari yon
- * yine gelisme (development) ile gelir, burada 1'i asmaz.
+ * Olcek [RGO_DEMAND_MIN, 1] ve artik MAL BASINA: fiyat tabana indikce hedef
+ * yarim tarlaya iner, fiyat toparlaninca 1'e doner; haftada
+ * RGO_DEMAND_APPROACH kadar yaklasir (yariya inmek ~4 yil).
  */
 const RGO_DEMAND_MIN = 0.5;
 const RGO_DEMAND_APPROACH = 0.004;
 
-function updateRgoDemandScale(world, econ) {
-  const goodId = RGO_TYPES[econ.rgo]?.goodId;
+function updateDemandScale(world, econ, goodId) {
   const state = goodId ? world.market?.goods?.[goodId] : null;
-  const scale = Number.isFinite(econ.rgoDemandScale) ? econ.rgoDemandScale : 1;
-  if (!state) { econ.rgoDemandScale = scale; return; }
+  const current = econ.demand?.[goodId];
+  const scale = Number.isFinite(current) ? current : 1;
+  if (!state) return;
   const base = state.basePrice ?? state.price;
-  if (!(base > 0)) { econ.rgoDemandScale = scale; return; }
+  if (!(base > 0)) return;
   // Taban fiyatin yarisi ve alti tam frendir; taban fiyat ve ustu frensiz.
   const target = clamp(Math.sqrt(state.price / base), RGO_DEMAND_MIN, 1);
-  econ.rgoDemandScale = clamp(scale + (target - scale) * RGO_DEMAND_APPROACH, RGO_DEMAND_MIN, 1);
-}
-
-/** Talep olcegi: alicisiz malin tarlasi kuculur (bkz. updateRgoDemandScale). */
-export function rgoDemandScaleOf(econ) {
-  const scale = econ?.rgoDemandScale;
-  return Number.isFinite(scale) ? clamp(scale, RGO_DEMAND_MIN, 1) : 1;
+  const next = clamp(scale + (target - scale) * RGO_DEMAND_APPROACH, RGO_DEMAND_MIN, 1);
+  // Tam tarlada alan yazilmaz: kayit ve kopya kucuk kalir, 1 varsayilandir.
+  if (next >= 1 && !Number.isFinite(current)) return;
+  (econ.demand ??= {})[goodId] = next;
 }
 
 /**
@@ -625,9 +823,9 @@ export function rgoDemandScaleOf(econ) {
  *      %62-70 eriyor, son haftada hala dusuyordu.
  *
  * Yerine Victoria'nin yaptigi sey: karsilanmayan ihtiyac nufusu OLDURMEZ,
- * buyumeyi durdurur ve sinif atlamayi (promotion) askiya alir. Yoksul ulke
- * buyumez ve yerinde sayar; nufusunu kaybetmez. Nufus kaybi artik yalnizca
- * savas ve isgal yoluyla olur — yani oyuncunun gorebildigi bir sebeple.
+ * buyumeyi durdurur ve sinif atlamayi (promotion) askiya alir. Nufus kaybi
+ * artik yalnizca savas ve isgal yoluyla olur — yani oyuncunun gorebildigi bir
+ * sebeple.
  *
  * `famineDeaths` alani KORUNUR: savas/isgal kaynakli dusus hala oraya yazilir
  * ve ekran onu okur.
@@ -635,69 +833,39 @@ export function rgoDemandScaleOf(econ) {
 const FOOD_FLOOR = 0.25;
 
 /**
- * Fazla nüfusun RGO çıktısını ne kadar büyütebileceğinin tavanı. Sınırsız
- * olsaydı kalabalık province tek başına dünya arzını karşılardı.
- */
-const RGO_LABOR_CAP = 3;
-
-/** Fazla işgücünün azalan getirisi; 1 doğrusal, 0 hiç katkı yok demektir. */
-const RGO_LABOR_FALLOFF = 0.75;
-
-/**
- * RGO işgücü ölçeği. Kadro dolana kadar doluluk oranıdır — yani eksik nüfuslu
- * province eskisi gibi az üretir. Kadro dolduktan sonrası yeni: gelen fazla
- * nüfus azalan getiriyle çıktıyı büyütmeye devam eder.
+ * RGO işgücü ölçeği: çalışan iş gücünün KURULUŞ kadrosuna oranı. Ölçü
+ * güncel kadro değil kuruluş kadrosudur: güncel kadroya bölünürken gelişme
+ * çıktıya hiç yansımıyordu (kapasite artıyor, oran 1'de kalıyordu).
  *
- * Bu bağ yokken çıktı `development`e çakılıydı ve development dünya üretiminde
- * bir kez atanıp bir daha hiç artmıyordu. Sonuç ölçüldü: 40 yılda hammadde
- * arzı +%14, sanayi talebi +%489; bütün hammaddeler fiyat tavanına yapışıyor,
- * girdisi 8 katına çıkan fabrikalar işçi alamıyordu (bkz. market-diagnostic).
+ * Kadro fazlası artık ÜRETMEZ. Eski model kadroyu aşan kırsal nüfusu azalan
+ * getiriyle çıktıya katıyordu (3 kata kadar) ama aynı nüfusu işsiz de
+ * sayıyordu — aynı insan hem tarlada hem kahvede. Fazla nüfusun yolu artık
+ * gelişimdir: nüfus baskısı kadroyu büyüten gelişimi hızlandırır.
  */
-/**
- * Kirsal (RGO'da calisabilecek) nufus. Fabrikada calisan tarlada calismaz;
- * yerel kadro yerel nufusla SINIRLI dusulur, fazlasi banliyoculuk olarak
- * fabrikanin bulunmadigi provinslerden duser (bkz. economy.runFactories
- * banliyo duzeltmesi). Eski hali fazlayi hicbir yerden dusmuyordu.
- */
-export function ruralPopulation(econ) {
-  const population = Math.max(0, econ?.population ?? 0);
-  const local = Math.min(Math.max(0, econ?.industrialEmployees ?? 0), population);
-  const commuters = Math.max(0, econ?.industrialCommuters ?? 0);
-  // Silah altindaki adam tarlada da degildir: seferberlik uretimi DUSURUR.
-  // Modelin dogru olan tarafi buydu ve korunuyor; yanlis olan tarafi
-  // (adami nufustan silmek) kaldirildi.
-  const armed = Math.max(0, econ?.soldiers ?? 0);
-  return Math.max(0, population - local - commuters - armed);
+export function rgoLaborScale(econ, jobs = rgoCapacityOf(econ)) {
+  if (!econ || jobs <= 0) return 0;
+  const employed = Math.min(rgoWorkforceOf(econ), jobs);
+  return employed / Math.max(1, econ.rgoBaseJobs ?? jobs);
 }
 
-export function rgoLaborScale(province, jobs) {
-  if (!province || jobs <= 0) return 0;
-  // Fabrikada çalışan tarlada çalışmıyor. Bu ayrım olmadan şehir province'i
-  // nüfusuyla birlikte hem sanayi hem hammadde üretiyor gibi görünüyordu.
-  const rural = ruralPopulation(province);
-  // Ölçü *kuruluş* kadrosudur, güncel kadro değil. Güncel kadroya bölünürken
-  // gelişme çıktıya hiç yansımıyordu: kapasite artıyor, göç kırsal nüfusu yeni
-  // kadroya eşitliyor, oran 1'de kalıyor, üretim yerinde sayıyordu.
-  const base = Math.max(1, province.rgoBaseJobs ?? jobs);
-  const ratio = rural / base;
-  if (ratio <= 1) return ratio;
-  return Math.min(RGO_LABOR_CAP, ratio ** RGO_LABOR_FALLOFF);
-}
-
-/** Küme econ'unun RGO istihdam durumu. */
+/** Küme econ'unun RGO istihdam durumu. `type` baskın kaynaktır. */
 export function rgoStatusOf(econ) {
-  const type = RGO_TYPES[econ?.rgo];
-  if (!econ || !type) return {
-    type: null, jobs: 0, employed: 0, unemployed: 0, vacancies: 0, efficiency: 0,
-  };
+  const type = econ ? primaryResourceOf(econ) : null;
+  if (!econ || !type) {
+    return {
+      type: null, jobs: 0, workforce: 0, employed: 0, unemployed: 0, vacancies: 0, efficiency: 0,
+    };
+  }
   const jobs = rgoJobsOf(econ);
-  const employed = Math.min(Math.max(0, econ.population), jobs);
+  const workforce = rgoWorkforceOf(econ);
+  const employed = Math.min(workforce, jobs);
   return {
     type,
     jobs,
+    workforce,
     employed,
-    unemployed: Math.max(0, econ.population - jobs),
-    vacancies: Math.max(0, jobs - econ.population),
+    unemployed: Math.max(0, workforce - jobs),
+    vacancies: Math.max(0, jobs - workforce),
     efficiency: jobs > 0 ? employed / jobs : 0,
   };
 }
@@ -711,21 +879,15 @@ export function provinceRgoStatus(tile) {
 // uretim, dort haftalik goc) durum nesnesinin tek alanini istiyor; nesne
 // kurmak olculebilir cop uretiyordu. Deger tanimlari rgoStatusOf ile birebir.
 export function rgoUnemployedOf(econ) {
-  if (!econ || !RGO_TYPES[econ.rgo]) return 0;
-  return Math.max(0, econ.population - rgoJobsOf(econ));
+  if (!econ) return 0;
+  return Math.max(0, rgoWorkforceOf(econ) - rgoJobsOf(econ));
 }
 
 export function rgoVacanciesOf(econ) {
-  if (!econ || !RGO_TYPES[econ.rgo]) return 0;
-  return Math.max(0, rgoJobsOf(econ) - econ.population);
+  if (!econ) return 0;
+  return Math.max(0, rgoJobsOf(econ) - rgoWorkforceOf(econ));
 }
 
-/**
- * Kümenin haftalık ulusal bütçe katkısı. Çıktı üye sayısıyla (hexes) ölçekli:
- * eskiden her kare kendi RGO'suyla üretiyordu, şimdi tek RGO kümenin tüm
- * toprağını işliyor. Kısmi işgal üretimi payı kadar keser — hex hex ilerleyen
- * ordu ekonomiyi kademeli boğar, barış masasını beklemez.
- */
 /**
  * Cikti nesnesinin olasi TUM anahtarlari (taban kalemler + butun RGO mallari).
  * Karalama nesnesi geri kullanilirken onceki cagridan kalan anahtarlar bu
@@ -736,10 +898,15 @@ const PROVINCE_OUTPUT_KEYS = [...new Set([
   ...Object.values(RGO_TYPES).map((type) => type.goodId),
 ])];
 
+/**
+ * Kümenin haftalık çıktısı: kaynak satırlarının toplamı ve vergi tabanı.
+ * Kısmi işgal üretimi payı kadar keser — hex hex ilerleyen ordu ekonomiyi
+ * kademeli boğar, barış masasını beklemez.
+ */
 export function provinceOutput(world, province, out = null) {
   const econ = province?.econ;
-  // Üretmeyen küme de kendi malını anahtar olarak taşımalı: çağıran taraf
-  // `output[rgo.goodId]` okuyor ve eksik anahtar undefined dönüyordu.
+  // Üretmeyen küme de kendi mallarını anahtar olarak taşımalı: çağıran taraf
+  // `output[goodId]` okuyor ve eksik anahtar undefined dönüyordu.
   // `out` verilirse tahsis yerine karalama nesnesi sifirlanip doldurulur —
   // sicak toplayicilar (rawProduction, collectProvinceTotals) haftada binlerce
   // kez cagirir. Karalamanin omru cagri anidir; referansi saklama.
@@ -750,24 +917,29 @@ export function provinceOutput(world, province, out = null) {
   } else {
     output = { gold: 0, food: 0, timber: 0, iron: 0, coal: 0 };
   }
-  if (econ) output[RGO_TYPES[econ.rgo]?.goodId ?? 'food'] ??= 0;
+  const lines = econ ? depositsOf(econ) : [];
+  for (let i = 0; i < lines.length; i++) {
+    const goodId = RGO_TYPES[lines[i].id]?.goodId;
+    if (goodId) output[goodId] ??= 0;
+  }
   if (!econ || province.owner < 0) return output;
   const occupied = occupiedShareOf(world, province);
   if (occupied >= 1) return output;
   const control = clamp(econ.control / 100, 0, 1) * (1 - occupied);
-  // rgoStatusOf kurmadan dogrudan okunur (ayni degerler): burasi haftada
-  // binlerce kez kosan bir sicak yol.
-  const type = RGO_TYPES[econ.rgo];
-  if (!type) return output;
-  const development = econ[type.track] ?? 0;
-  // Teknoloji RGO verimini buyutur. `rgoOutput` degistiricisi hesaplanip
-  // hicbir yerde okunmuyordu (olculdu, P1-6); tuketicisi burasi. Duz alan
-  // okumasi — technology.js import edilmez (katman: world -> game yasak).
+  // Teknoloji RGO verimini buyutur. Duz alan okumasi — technology.js import
+  // edilmez (katman: world -> game yasak).
   const tech = 1 + (world.nations?.[province.owner]?.economy?.techMods?.rgoOutput ?? 0);
-  output[type.goodId] = type.baseOutput
-    * econ.rgoQuality * (1 + development * 0.18)
-    * rgoLaborScale(econ, rgoJobsOf(econ)) * control * econ.hexes * tech
-    * rgoDemandScaleOf(econ);
+  const labor = rgoLaborScale(econ);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const type = RGO_TYPES[line.id];
+    if (!type) continue;
+    const development = type.track === 'agriculture' ? (econ.agriculture ?? 0) : (econ.extraction ?? 0);
+    output[type.goodId] += type.baseOutput * RGO_OUTPUT_SCALE
+      * line.quality * (1 + development * 0.18)
+      * labor * control * line.hexes * tech
+      * demandScaleOf(econ, type.goodId);
+  }
   // Vergi tabanı kare başına eski ölçekte: nüfus hex payına indirgenir,
   // toplam hex sayısıyla geri çarpılır.
   const taxpayerScale = clamp(
@@ -873,8 +1045,10 @@ export function runProvinceMigration(world, force = false) {
   return totalMoved;
 }
 
-// Ulus basina baris bayragi karalamasi; omru tek runProvinces cagrisidir.
+// Ulus basina baris bayragi ve alt sinif payi karalamasi; omru tek
+// runProvinces cagrisidir.
 const atPeaceScratch = [];
+const lowerShareScratch = [];
 
 export function runProvinces(game) {
   const world = game.world;
@@ -893,6 +1067,11 @@ export function runProvinces(game) {
       }
     }
     atPeace[nation.id] = peace;
+    const economy = nation.economy;
+    lowerShareScratch[nation.id] = economy?.population > 0
+      && Number.isFinite(economy.classes?.lower?.population)
+      ? clamp(economy.classes.lower.population / economy.population, 0, 1)
+      : LOWER_SHARE_DEFAULT;
   }
 
   const provinces = world.provinces ?? [];
@@ -923,6 +1102,8 @@ export function runProvinces(game) {
       continue;
     }
     const stability = Math.max(0.1, Math.min(1, nation.economy?.stability ?? 0.6));
+    // RGO yalnız alt sınıfı çalıştırır (bkz. rgoWorkforceOf); pay haftalık.
+    econ.lowerShare = lowerShareScratch[nation.id];
     const citizenship = lawValue(nation, 'citizenship');
     const minorityControl = citizenship === 'full_citizenship'
       ? 1.25
@@ -982,23 +1163,44 @@ export function runProvinces(game) {
     }
 
     // Gelişme yalnız düzenin oturduğu yerde birikir: savaş, işgal ve kaos durdurur.
-    const track = RGO_TYPES[econ.rgo]?.track;
-    if (track && peace && occupied === 0 && econ.control > 80) {
+    const lines = depositsOf(econ);
+    if (peace && occupied === 0 && econ.control > 80) {
       // Nüfus baskısı gelişmeyi hızlandırır: kadroyu aşan her el yeni tarla
       // açar, yeni kuyu kazar (gerekçe ölçümleri için git geçmişine bakınız).
       const jobs = rgoJobsOf(econ);
-      const rural = ruralPopulation(econ);
-      const pressure = jobs > 0 ? clamp(rural / jobs - 1, 0, 2) : 0;
-      econ[track] = Math.min(
-        RGO_DEVELOPMENT_CAP,
-        (econ[track] ?? 0)
-          + RGO_DEVELOPMENT_PER_WEEK * stability * (1 + pressure * 1.5)
-            * rgoPriceDrive(world, econ),
-      );
+      const pressure = jobs > 0 ? clamp(rgoWorkforceOf(econ) / jobs - 1, 0, 2) : 0;
+      const pace = RGO_DEVELOPMENT_PER_WEEK * stability * (1 + pressure * 1.5);
+      // İki iz kümede birlikte bulunabilir; her iz kendi satırlarının hex
+      // ağırlıklı fiyat sinyaliyle gelişir.
+      let agHexes = 0;
+      let agDrive = 0;
+      let exHexes = 0;
+      let exDrive = 0;
+      for (let i = 0; i < lines.length; i++) {
+        const type = RGO_TYPES[lines[i].id];
+        if (!type) continue;
+        const drive = rgoPriceDrive(world, type.goodId) * lines[i].hexes;
+        if (type.track === 'agriculture') {
+          agHexes += lines[i].hexes;
+          agDrive += drive;
+        } else {
+          exHexes += lines[i].hexes;
+          exDrive += drive;
+        }
+      }
+      if (agHexes > 0) {
+        econ.agriculture = Math.min(RGO_DEVELOPMENT_CAP, (econ.agriculture ?? 0) + pace * (agDrive / agHexes));
+      }
+      if (exHexes > 0) {
+        econ.extraction = Math.min(RGO_DEVELOPMENT_CAP, (econ.extraction ?? 0) + pace * (exDrive / exHexes));
+      }
     }
     // Piyasa her kosulda konusur: savas ve isgal gelismeyi durdurur ama
     // alicisiz tarlanin kuculmesini durdurmaz.
-    updateRgoDemandScale(world, econ);
+    for (let i = 0; i < lines.length; i++) {
+      const goodId = RGO_TYPES[lines[i].id]?.goodId;
+      if (goodId) updateDemandScale(world, econ, goodId);
+    }
 
     // KULTUR: huzursuzluk birikir, asimilasyon paylari kaydirir. Isyan bu
     // dongude COZULMEZ — sahiplik degistirmek ayni taramada okunan durumu

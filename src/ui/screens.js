@@ -18,7 +18,7 @@ import {
 import { INFAMY_COALITION } from '../game/infamy.js';
 import { acceptCulture, expelCulture, releaseToKin } from '../game/culture.js';
 import { maxHpOf, menUnderArms, organizationOf, soldiersOf } from '../game/units.js';
-import { RGO_TYPES, provinceName } from '../game/provinces.js';
+import { RGO_TYPES, depositsOf, provinceName } from '../game/provinces.js';
 import { populationGroupDetail, populationOverview } from '../game/populationView.js';
 import { populationScreen } from './populationScreen.js';
 import {
@@ -37,6 +37,7 @@ import {
   applyTaxHolds, budgetBreakdown, setBudgetPolicy, setTaxHold, TAX_POLICY_CLASS, taxHold,
   weeklyBalanceOf,
   setMilitaryProductionLine, socialSpendingCost, ensureProductionLine, supportProject,
+  setFactoryPaused,
 } from '../game/economy.js';
 import { MAX_ROUNDS, battleSides, battlesFor } from '../game/battles.js';
 import { cancelTraining, moveTrainingTo, prioritizeTraining } from '../game/recruitment.js';
@@ -679,9 +680,13 @@ export class Screens {
     // NE URETIYOR? Masa il adi ve hex sayisi veriyordu; oyuncu sulfur kumesini
     // sigir kumesi sanip aldi (kor oyun testi: Zelfell/Norrfell). Kaynak
     // etiketi her satirda durur.
+    // Hex kaynaklari: kume birden cok mal cikarir; en cok hex tutan ikisi.
     const rgoOf = (province) => {
-      const type = RGO_TYPES[province?.econ?.rgo];
-      return type ? ` · ${type.icon} ${type.name}` : '';
+      if (!province?.econ) return '';
+      const lines = depositsOf(province.econ).slice(0, 2)
+        .map((line) => RGO_TYPES[line.id] ? `${RGO_TYPES[line.id].icon} ${RGO_TYPES[line.id].name}` : null)
+        .filter(Boolean);
+      return lines.length ? ` · ${lines.join(', ')}` : '';
     };
     const list = (keys, kind) => (keys.length ? keys.map((key) => {
       const province = provinceFromKey(world, key);
@@ -2236,6 +2241,23 @@ export class Screens {
         // state'e pes pese birkac tesis kurabilir. Eski davranis (her alimda
         // kapanan modal) 75 fabrikalik bir kurulumu ~160 tika cikariyordu
         // (Beta 2 §7-4); karar sayisi ayni, tik sayisi tesise iner.
+        this.refresh();
+      };
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-pause-factory]')) {
+      btn.onclick = (event) => {
+        event.stopPropagation();
+        const factory = (me.economy?.factories ?? [])
+          .find((candidate) => candidate.id === btn.dataset.pauseFactory);
+        if (!factory) return;
+        const next = !factory.paused;
+        if (setFactoryPaused(me, factory.id, next)) {
+          const name = FACTORIES[factory.typeId]?.name ?? factory.typeId;
+          game.turns.addLog(next
+            ? `${name} paused: no inputs, no output, no wages. Workers drift to other jobs.`
+            : `${name} restarted: workers are hired back month by month.`, { kind: 'INDUSTRY' });
+        }
+        this.industry.menu = null;
         this.refresh();
       };
     }

@@ -5,7 +5,7 @@
 import { canAfford, pay } from './cities.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import {
-  RGO_TYPES, provinceOutput, provincePopulation, provinceSoldiers, rgoJobsOf,
+  RGO_TYPES, provinceOutput, provincePopulation, provinceSoldiers, rgoJobsOf, trackShareOf,
 } from './provinces.js';
 import { delegationActive, noteDelegated } from './delegation.js';
 import { atWar } from './diplomacy.js';
@@ -112,6 +112,11 @@ export const FOOD_GOODS = new Set(['food', 'fish', 'cattle', 'fruit', 'groceries
 /** Gubrenin besledigi kalemler (RGO_TYPES'taki 'agriculture' izi). */
 const AGRICULTURE_GOODS = new Set(
   Object.values(RGO_TYPES).filter((r) => r.track === 'agriculture').map((r) => r.goodId),
+);
+
+/** Cikarim kalemleri: sirket/maden istatistigi bunlari sayar. */
+const EXTRACTION_GOODS = new Set(
+  Object.values(RGO_TYPES).filter((r) => r.track === 'extraction').map((r) => r.goodId),
 );
 
 /**
@@ -368,6 +373,48 @@ function privateCommitRoom(nation) {
 const LAYOFF_RATE = 0.06;
 
 /**
+ * Duran tesisin kadrosu ayda bu payla dağılır. Zarar edenden hızlı: tezgah
+ * soğuk, ücret yok; işçi başka tesise ya da tarlaya döner. Tamamen sıfırlamak
+ * yerine erime — kısa bir duraklama kadroyu bütünüyle kaybettirmez.
+ */
+const PAUSE_LAYOFF_RATE = 0.25;
+
+/**
+ * BARIŞTA DOLU DEPO. Stoku tavanına dayanmış silah hattı çıktısını pazara
+ * döküyordu (ölçüldü, 1 tohum 2-20 yıl: dünya silah arzı talebin 2.1-2.3
+ * katı, fiyat tabanın 0.34-0.60 katı; 70 ülkenin hepsi bir silah
+ * fabrikasıyla başlıyor).
+ *
+ * YALNIZ DEPO YETMEZ, PAZAR DA SORULUR. İlk kural "depo dolu + barış"tı ve
+ * ölçüldü: 5. yılda 86 hattın 61'i durdu, arz talebin altına düştü (5.8'e
+ * 15.3, fiyat tabanın 1.95 katı) ve YZ açığı kapatmak için yeni silah
+ * fabrikası kurdu (20. yılda 90 yerine 110). Fazlanın yarısı orduların
+ * tüketimine gidiyordu. Hat artık yalnız pazar da doyduğunda (fiyat tabanın
+ * altında) durur; pazar ısınınca, savaşta ya da depo boşalınca açılır.
+ */
+const DEPOT_FULL = 0.95;
+const DEPOT_RESUME = 0.6;
+const GLUT_PRICE = 0.75;
+const NEED_PRICE = 1.0;
+
+/**
+ * Tesisi kapatmadan durdurur ya da yeniden açar. Seviye, konum ve silah hattı
+ * korunur; durduğu sürece girdi istemez, üretmez, ücret ödemez, kadrosu
+ * erir (PAUSE_LAYOFF_RATE). `auto` işareti hükümetin durdurduğunu kaydeder:
+ * otomatik yeniden açma yalnız onları açar, oyuncunun elle durdurduğuna
+ * dokunmaz.
+ * @returns {boolean} durum değişti mi
+ */
+export function setFactoryPaused(nation, factoryId, paused, { auto = false } = {}) {
+  const factory = (nation?.economy?.factories ?? []).find((candidate) => candidate.id === factoryId);
+  if (!factory || Boolean(factory.paused) === Boolean(paused)) return false;
+  factory.paused = Boolean(paused);
+  factory.autoPaused = factory.paused && auto;
+  if (factory.paused) factory.subsidized = false;
+  return true;
+}
+
+/**
  * Aylık kârın kâr eğilimine katkısı (üstel hareketli ortalama). 0.25 ile
  * eğilim yaklaşık bir yıllık hafızaya sahip olur: tek kötü ay kadroyu
  * dağıtmaz, üst üste gelen zarar dağıtır.
@@ -392,6 +439,7 @@ export const PROFESSION_INFO = {
   farmers: { id: 'farmers', name: 'Farmers', classId: 'lower' },
   laborers: { id: 'laborers', name: 'Laborers', classId: 'lower' },
   workers: { id: 'workers', name: 'Factory Workers', classId: 'lower' },
+  soldiers: { id: 'soldiers', name: 'Soldiers', classId: 'lower' },
   clerks: { id: 'clerks', name: 'Clerks', classId: 'middle' },
   artisans: { id: 'artisans', name: 'Artisans', classId: 'middle' },
   officers: { id: 'officers', name: 'Officers', classId: 'middle' },
@@ -946,8 +994,10 @@ function clamp(value, min, max) {
 
 /** Kurulu sanayinin toplam kadro kapasitesi (dolu olsun olmasin). */
 export function industrialJobs(nation) {
+  // Duran tesisin tezgahi is ilani degildir: issizlik oranini ve goc cekisini
+  // sisirmesin.
   return (nation.economy?.factories ?? []).reduce(
-    (sum, factory) => sum + (factory.jobs ?? factory.level * WORKERS_PER_LEVEL), 0,
+    (sum, factory) => sum + (factory.paused ? 0 : (factory.jobs ?? factory.level * WORKERS_PER_LEVEL)), 0,
   );
 }
 
@@ -956,7 +1006,7 @@ export function laborFill(nation) {
   const jobs = industrialJobs(nation);
   if (jobs <= 0) return 1;
   const employed = (nation.economy?.factories ?? []).reduce(
-    (sum, factory) => sum + (factory.employees ?? 0), 0,
+    (sum, factory) => sum + (factory.paused ? 0 : (factory.employees ?? 0)), 0,
   );
   return employed / jobs;
 }
@@ -1032,13 +1082,21 @@ export function jobTotalsOf(world, nation) {
   let exJobs = 0;
   for (const province of world?.provinces ?? []) {
     if (province.owner !== nation.id || !province.econ) continue;
-    const track = RGO_TYPES[province.econ.rgo]?.track;
-    if (track === 'agriculture') agJobs += rgoJobsOf(province.econ);
-    else if (track === 'extraction') exJobs += rgoJobsOf(province.econ);
+    // Kume iki izi birden tasiyabilir (hex kaynaklari): kadro hex payiyla bolunur.
+    const jobs = rgoJobsOf(province.econ);
+    const agShare = trackShareOf(province.econ, 'agriculture');
+    agJobs += jobs * agShare;
+    exJobs += jobs * (1 - agShare);
   }
-  const rural = Math.max(0, lower - inFactories);
+  // Silah altindaki insan da alt siniftir ama ne tarlada ne fabrikada: kendi
+  // meslegi vardir. Ciftci sayilinca nufus ekraninda ORDUNUN KENDISI issiz
+  // gorunuyordu (olculdu: hex kaynaklariyla RGO'da issiz sifirken istihdam
+  // medyani %95, en kotu onda birde %83 — fark ordunun buyuklugu).
+  const soldiers = Math.min(Math.max(0, lower - inFactories), Math.max(0, economy.soldiersUnderArms ?? 0));
+  const rural = Math.max(0, lower - inFactories - soldiers);
   const ruralJobs = agJobs + exJobs;
   out.workers = inFactories;
+  out.soldiers = soldiers;
   // Zemini hic olmayan ulkede (butun kumeler isgal altinda vb.) herkes koyde.
   out.laborers = ruralJobs > 0 ? rural * (exJobs / ruralJobs) : 0;
   out.farmers = rural - out.laborers;
@@ -2367,17 +2425,16 @@ function rawProduction(world, nation, market, output) {
     const province = provinces[p];
     if (province.owner !== nation.id || !province.econ) continue;
     const produced = provinceOutput(world, province, provinceOutputScratch);
-    const track = RGO_TYPES[province.econ.rgo]?.track;
-    const mine = track === 'extraction';
-    if (mine) {
+    const mineShare = trackShareOf(province.econ, 'extraction');
+    if (mineShare > 0) {
       extraction.count++;
-      extraction.jobs += rgoJobsOf(province.econ);
+      extraction.jobs += rgoJobsOf(province.econ) * mineShare;
     }
     for (const id in produced) {
       const amount = produced[id];
       if (id === 'gold' || !GOODS[id] || !(amount > 0)) continue;
-      output[id] += track === 'agriculture' ? amount * farmBonus : amount;
-      if (mine) {
+      output[id] += AGRICULTURE_GOODS.has(id) ? amount * farmBonus : amount;
+      if (EXTRACTION_GOODS.has(id)) {
         const value = amount * priceOf(world, id);
         extraction.value += value;
         extraction.byGood[id] = (extraction.byGood[id] ?? 0) + amount;
@@ -2525,6 +2582,11 @@ function retireDeadFactories(game, nation) {
   const factories = nation.economy?.factories ?? [];
   let closed = 0;
   for (const factory of [...factories]) {
+    // Duran tesis bilerek bostur; olu sayilip yikilmaz.
+    if (factory.paused) {
+      factory.deadMonths = 0;
+      continue;
+    }
     const jobs = factoryJobs(factory);
     const bos = (factory.employees ?? 0) <= jobs * DEAD_FACTORY_FILL;
     if (!bos || expectedMargin(game.world, nation, factory) > 0) {
@@ -2540,6 +2602,7 @@ function retireDeadFactories(game, nation) {
 }
 
 function autoUpgradeFactory(game, nation, factory) {
+  if (factory.paused) return false;
   if (factory.level >= MAX_FACTORY_LEVEL || !factoryAtCapacity(factory)) return false;
   // Zarar eden tesise kimse sermaye koymaz.
   if (factory.profit <= 0) return false;
@@ -2755,6 +2818,12 @@ function runFactoryEmployment(game, nation) {
   // aynı tesis aynı ay hem "kârlı" diye doluyor hem "zararda" diye
   // boşalıyordu. Testere dişinin motoru buydu (ölçüldü: tepe-dip %20.9).
   for (const factory of factories) {
+    if (factory.paused) {
+      const laid = factory.employees * PAUSE_LAYOFF_RATE;
+      factory.employees = Math.max(0, factory.employees - laid);
+      economy.industrialLayoffs += laid;
+      continue;
+    }
     // Kâr eğilimi: tek kötü ay kadroyu dağıtmasın, ısrarlı zarar dağıtsın.
     const previous = factory.profitTrend ?? factory.profit ?? 0;
     factory.profitTrend = previous * (1 - PROFIT_TREND_WEIGHT)
@@ -2802,7 +2871,7 @@ function runFactoryEmployment(game, nation) {
   // Kârlı tesis önce dolar: piyasa sinyali istihdamı yönlendirir. Ölçüt
   // gerçekleşen değil beklenen marj (bkz. expectedMargin).
   const hiring = factories
-    .filter((factory) => factoryVacancies(factory) > 0)
+    .filter((factory) => !factory.paused && factoryVacancies(factory) > 0)
     .map((factory) => ({ factory, score: expectedMargin(game.world, nation, factory) }))
     .filter((row) => row.score > 0)
     .sort((a, b) => b.score - a.score)
@@ -2866,7 +2935,7 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
       tile.province.industrialEmployees += Math.max(0, factory.employees ?? 0);
       // Kapasite de yazılır: POP kohortları işçiyi işin OLDUĞU yere dağıtır,
       // dolu kadroya göre değil (bkz. population.js weightOf).
-      tile.province.industrialJobs += Math.max(0, factoryJobs(factory));
+      if (!factory.paused) tile.province.industrialJobs += Math.max(0, factoryJobs(factory));
     }
   }
 
@@ -2907,6 +2976,20 @@ function runFactories(world, nation, market, ownOutput, inputAvailability) {
     const type = FACTORIES[factory.typeId];
     if (!type) continue;
     factory.employees = clamp(factory.employees, 0, factoryJobs(factory));
+    if (factory.paused) {
+      // DURAN TESIS: girdi istemez, uretmez, ucret odemez. Kapatmaktan farki
+      // seviyenin ve konumun durmasi — yeniden acmak insaat istemez. Ilan
+      // edilen tezgah yok (goc ve issizlik onu is sanmasin).
+      factory.jobs = 0;
+      factory.throughput = 0;
+      factory.inputFulfillment = 1;
+      factory.wages = 0;
+      factory.profit = 0;
+      factory.subsidyPaid = 0;
+      factory.margin = 0;
+      if (factory.typeId === 'ARMS_FACTORY') ensureProductionLine(factory).lineOutput = 0;
+      continue;
+    }
     // Kadro sayısı nesneye yazılır: provinces.js göç hesabında buna bakar ve
     // böylece economy.js'i import etmek (katman döngüsü) gerekmez.
     factory.jobs = factoryJobs(factory);
@@ -3590,8 +3673,13 @@ function investmentTargets(world, nation) {
  */
 function investmentOptions(world, nation) {
   const owned = new Map();
+  // DURAN TESISI OLAN TUR YENIDEN KURULMAZ: once durani acmak bedava. Bu kapi
+  // yokken duran silah hatlarinin yerine yeni silah fabrikasi dikiliyordu
+  // (olculdu: 20. yilda 90 yerine 103-110 tesis).
+  const paused = new Set();
   for (const factory of nation.economy.factories ?? []) {
     owned.set(factory.typeId, (owned.get(factory.typeId) ?? 0) + 1);
+    if (factory.paused) paused.add(factory.typeId);
   }
   for (const project of ensureConstruction(nation).projects) {
     if (project.kind !== PROJECT_KIND.FACTORY) continue;
@@ -3603,7 +3691,7 @@ function investmentOptions(world, nation) {
       margin: factoryMargin(world, typeId),
       built: owned.get(typeId) ?? 0,
     }))
-    .filter((option) => option.margin > 0)
+    .filter((option) => option.margin > 0 && !paused.has(option.typeId))
     .sort((a, b) => a.built - b.built || b.margin - a.margin);
 }
 
@@ -3643,6 +3731,26 @@ function adjustFiscalAI(nation, areas = FULL_FISCAL) {
         const policy = `tax${id[0].toUpperCase()}${id.slice(1)}`;
         const delta = Math.round(step * (weights[id] ?? 1));
         if (delta && setBudgetPolicy(nation, policy, economy.tax[id] + delta)) moved = true;
+      }
+    }
+    // EKMEK VERGIDEN ONCE. Fren vergiyi ARTIRMAYI durduruyordu ama hic
+    // INDIRMIYORDU: borclu devlet 'iflas + ezilen hane' durumunda kilitleniyor,
+    // alt sinif vergisi %90-100'de kaliyordu (olculdu, 10. yil: gidasini
+    // karsilayamayan 32 ulkenin hepsinde alt sinif vergisi %90-100; doyan
+    // ulkelerde %0-42). Hazine bos olsa da alt sinif yasam sepetini
+    // karsilayamiyorsa YALNIZ onun vergisi iner; yuk ust siniflarda kalir.
+    const lower = economy.classes?.lower;
+    const hungry = lower && (!lower.canAffordNeeds || (lower.hardshipWeeks ?? 0) > 0);
+    if (broke && hungry && (economy.tax.lower ?? 0) > 0
+      && setBudgetPolicy(nation, 'taxLower', economy.tax.lower - 5)) {
+      moved = true;
+      // YUK KAYAR, KAYBOLMAZ: yalniz indirim olculdu ve borc medyani 20. yilda
+      // 47'den 89'a cikti. Sepetini karsilayabilen ust siniflar farki tasir.
+      for (const id of ['middle', 'upper']) {
+        const social = economy.classes?.[id];
+        if (!social?.canAffordNeeds || (social.hardshipWeeks ?? 0) > 0) continue;
+        const policy = `tax${id[0].toUpperCase()}${id.slice(1)}`;
+        setBudgetPolicy(nation, policy, economy.tax[id] + 5);
       }
     }
     if (moved) {
@@ -3801,6 +3909,37 @@ function runPrivateSector(game, nation) {
 }
 
 /**
+ * Barista deposu dolu silah hatlarini durdurur, savas ya da azalan stok
+ * onlari yeniden acar (bkz. DEPOT_FULL). Yalniz hukumetin durdurdugu hat
+ * otomatik acilir; oyuncunun elle durdurdugu hat elle acilir.
+ */
+function restMilitaryLines(world, nation, report = null) {
+  const economy = nation.economy;
+  const wartime = economy.atWarCache ?? false;
+  for (const factory of economy.factories ?? []) {
+    if (factory.typeId !== 'ARMS_FACTORY') continue;
+    const equipment = MILITARY_EQUIPMENT[ensureProductionLine(factory).lineEquipment];
+    if (!equipment) continue;
+    const stock = equipmentStock(nation, equipment.id);
+    const priceRatio = priceOf(world, equipment.id) / Math.max(1e-9, basePriceOf(equipment.id));
+    if (!factory.paused && !wartime && stock >= equipment.stockCap * DEPOT_FULL
+      && priceRatio < GLUT_PRICE) {
+      if (setFactoryPaused(nation, factory.id, true, { auto: true })) {
+        report?.('industry', `An arms line on ${equipment.name} was stopped.`,
+          'The depot is full, the country is at peace and the market is already glutted.');
+      }
+    } else if (factory.paused && factory.autoPaused
+      && (wartime || stock < equipment.stockCap * DEPOT_RESUME || priceRatio > NEED_PRICE)) {
+      if (setFactoryPaused(nation, factory.id, false)) {
+        report?.('industry', `An arms line on ${equipment.name} was restarted.`,
+          wartime ? 'The country is at war.'
+            : priceRatio > NEED_PRICE ? 'Armies abroad are short of it.' : 'The depot is running down.');
+      }
+    }
+  }
+}
+
+/**
  * Ulusal ekonomi yonetimi. YZ ulkeleri icin hepsi, oyuncu icin YALNIZ
  * devredilmis alanlar kosar (bkz. delegation.js).
  *
@@ -3835,6 +3974,7 @@ function runEconomicAI(game, nation) {
   if (budget) adjustSocialAI(nation, report);
   adjustFiscalAI(nation, { budget, trade, report });
   if (!industry) return;
+  restMilitaryLines(game.world, nation, report);
   // Yatirim hedefi kalmamis (sehirsiz) devlet MALIYESIZ kalmasin: erken cikis
   // fiscal YZ'nin ustundeyken kriz modu hic kosmuyordu — kalinti devlet eski
   // bolluk gunlerinin kapasite bakimini odemeye devam edip kalici temerrutte
@@ -4064,7 +4204,12 @@ export function settleGlobalTrade(world) {
       // Payda 0.05'in altina inemez: formul −%62.5 tarifede sonsuza, altinda
       // NEGATIFE gidiyor. UI bandi (taban −50) bugun oraya girmiyor ama
       // matematiksel koruma bantla birlikte tasinmamali.
-      const appetite = importAppetite(nation.economy.tariff);
+      // GIDA KESILMEZ. Korumaci gumruk (%50) ithalat istahini 0.56'ya indiriyor
+      // ve ekmek de bu kesintiye giriyordu: 10. yilda 64 ulkenin 23'unde raftaki
+      // gida tam 0.56'da kaliyordu, dunyada gida fazlayken (olculdu, hex
+      // kaynaklari sonrasi). Devletler luksu keser, tahili degil; gumruk gida
+      // fiyatina yine biner (hane sepeti tariffFactor), yalniz miktari kismaz.
+      const appetite = FOOD_GOODS.has(id) ? 1 : importAppetite(nation.economy.tariff);
       // Yuksek tarifeli ulkenin ihracat erisimi kisilir (bkz. EXPORT_RETALIATION).
       // Fiziksel mal yok olmaz: satilamayan fazla, zaten satilamayan fazlanin
       // yanina duser (crossBorderTrade = min(surplus, bid) korunumu bozulmaz).

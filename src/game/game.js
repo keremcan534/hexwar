@@ -1021,11 +1021,15 @@ export class Game {
     // hız kontrolünden önce denenir.
     this.flushAutosave();
     if (!this.world || !this.clock.speed || this.turns.victory) return;
-    this.clock.accumulator += elapsed;
     // Bir gün bu kadar sürer; hafta yedi günde bir kapanır.
     const stepMs = DAY_MS / this.clock.speed;
+    // BİRİKİM TAVANI. Hafta dilim dilim işlenirken geçen süre birikiyor, iş
+    // bitince takvim o borcu tek tikte ödüyordu (14 adıma kadar): dünya
+    // büyüyüp kapanış uzadıkça tarih "5 gün 5 gün" atlıyordu. Takvim borç
+    // tutmaz; en fazla iki günlük birikim taşınır, tik başına iki gün.
+    this.clock.accumulator = Math.min(this.clock.accumulator + elapsed, stepMs * 2);
     let steps = 0;
-    while (this.clock.accumulator >= stepMs && steps < 14) {
+    while (this.clock.accumulator >= stepMs && steps < 2) {
       // Hafta hâlâ dilim dilim işleniyorsa takvim bekler: turlar üst üste
       // binmez, yüksek hızda tempo tur maliyetine göre kendiliğinden ölçülür.
       if (this.turns.turnJob) {
@@ -1034,6 +1038,8 @@ export class Game {
         // YALNIZ kare zinciri yapar — setInterval içinde pompalamak kare
         // zamanlamasından bağımsız 7-20 ms'lik stall üretiyordu (ölçüldü).
         if (document.visibilityState === 'hidden') this.pumpTurnFrame();
+        // Bekleme süresi biriken güne dönüşmez: iş bitince tek gün akar.
+        this.clock.accumulator = Math.min(this.clock.accumulator, stepMs);
         break;
       }
       this.clock.accumulator -= stepMs;

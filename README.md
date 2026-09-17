@@ -109,10 +109,15 @@ tek bir dünya pazarında buluşur. Her malın fiyatı haftalık arz-talep denge
 göre değişir (taban fiyatın 0.12–8 katı arasında).
 
 Zincir katmanlıdır — Kömür+Demir → Çelik → Makine Parçası → Otomobil → Tank —
-ve bir halkadaki kıtlık üst katmanların hepsini yavaşlatır. Kaynak dağılımı
-kasten dengesizdir: tahıl haritanın yarısını kaplar (ordunun erzağı ona bağlı),
-kauçuk ve petrol ise bir avuç province'te bulunur. Kıtlıkları ticaretin ve
-sömürge hırsının asıl sebebidir.
+ve bir halkadaki kıtlık üst katmanların hepsini yavaşlatır.
+
+Kaynaklar **hex bazlıdır**: her kara hex'i arazisine, iklimine ve bir damar
+alanına göre tek bir kaynak taşır (tahıl ovada, kömür tepede, kauçuk tropik
+ormanda, balık kıyıda; madenler kuşak kuşak öbeklenir) ve province üyelerinin
+toplamını üretir. Dünya payları talepten ölçülerek hedeflenir ve her dünyada
+kota atamasıyla tutturulur: hiçbir mal yapısal kıt doğmaz, nadir kaynaklar yine
+belirli kuşaklarda toplanır ve ticaretin sebebi olmaya devam eder. Atama
+tohumdan türer, kayda girmez.
 
 Ham maddenin yalnız fabrikaya girmesi yetmez; çıktının da müşterisi olmalıdır.
 Ordu mühimmat ve yakıt tüketir, inşaat kuyruğu çimento harcar, gübre tarım
@@ -355,7 +360,14 @@ değil. Anahtar kapandığı hafta kontrol geri döner.
 Ülke kereste ya da demir stoklamaz: bütün hammadde province RGO'larından
 dünya pazarına akar. Hazineden çıkan sürekli kalemler ordu bakımı, idari gider,
 inşaat bakımı, sosyal harcama ve stratejik teçhizat ithalatıdır. Yerel kıtlık
-pazardan alımla kapanır ve küresel fiyata yansır.
+pazardan alımla kapanır ve küresel fiyata yansır. Gıda ithalatı gümrükle
+kısılmaz (gümrük yalnız fiyatına biner).
+
+Oyun **herkes işte** başlar: RGO kadrosu kümenin alt sınıf iş gücüne göre
+açılır; orta ve üst sınıf, fabrika işçileri ve silah altındakiler RGO iş
+arayanı sayılmaz. Fabrika kapatılmadan **duraklatılabilir** (girdi, çıktı ve
+ücret durur, kadro yavaşça başka işe geçer); barışta deposu dolu ve pazarı
+doymuş silah hatlarını hükümet kendisi durdurur (YZ ve Industry AUTO).
 
 ## Mimari
 

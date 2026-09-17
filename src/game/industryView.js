@@ -122,6 +122,8 @@ const DIAGNOSIS = {
   WORKER_SHORTAGE: { id: 'WORKER_SHORTAGE', label: 'Worker Shortage', tone: 'warn', weight: 40, attention: true },
   IDLE: { id: 'IDLE', label: 'Idle', tone: 'warn', weight: 35, attention: true },
   SUBSIDIZED: { id: 'SUBSIDIZED', label: 'Subsidised', tone: 'warn', weight: 30, attention: true },
+  // Durmak bir karardir, ariza degil: dikkat suzgecine girmez.
+  PAUSED: { id: 'PAUSED', label: 'Paused', tone: 'neutral', weight: 20, attention: false },
   HIRING: { id: 'HIRING', label: 'Hiring', tone: 'neutral', weight: 10, attention: false },
   STARTING: { id: 'STARTING', label: 'Starting up', tone: 'neutral', weight: 8, attention: false },
   EXPANDING: { id: 'EXPANDING', label: 'Expanding', tone: 'good', weight: 5, attention: false },
@@ -161,6 +163,12 @@ export function factoryDiagnosis(world, availability, factory, nationalFill = 1,
   // sonrasi dolar.
   if (!started) {
     return { status: DIAGNOSIS.STARTING, reason: 'Awaiting the first week' };
+  }
+  if (factory.paused) {
+    return {
+      status: DIAGNOSIS.PAUSED,
+      reason: factory.autoPaused ? 'Depot full — restarts in war' : 'Stopped; workers drift away',
+    };
   }
   const jobs = Math.max(1, factoryJobs(factory));
   const fill = clamp((factory.employees ?? 0) / jobs, 0, 1);
@@ -243,6 +251,8 @@ function factoryRow(world, nation, availability, factory, region, expansions, na
     wages: factory.wages ?? 0,
     subsidized: Boolean(factory.subsidized),
     subsidyPaid: factory.subsidyPaid ?? 0,
+    paused: Boolean(factory.paused),
+    autoPaused: Boolean(factory.autoPaused),
     reason,
     status,
     // Dikkat isteyen tesis: SUZGEC, SOL LISTEDEKI SAYAC ve KART ROZETI ayni

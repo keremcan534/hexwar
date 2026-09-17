@@ -1,11 +1,13 @@
 // Province RGO, iş kapasitesi, askerî nüfus kaybı ve toplu göç doğrulaması.
+// Hex kaynakları (2026-09): her hex kendi kaynağını taşır, küme satırlarının
+// toplamını üretir; RGO yalnız alt sınıf iş gücünü çalıştırır.
 
 import { Game } from '../src/game/game.js';
 import { TurnManager } from '../src/game/turn.js';
 import { generateWorld } from '../src/world/worldgen.js';
 import { generateNations } from '../src/world/nations.js';
 import {
-  MIGRATION_COHORT, RGO_TYPES, provinceOutput, provincePopulation,
+  MIGRATION_COHORT, RGO_TYPES, depositsOf, provinceOutput, provincePopulation,
   provinceRgoJobs, provinceRgoStatus, runProvinceMigration,
 } from '../src/game/provinces.js';
 import { ensureMilitaryEconomy } from '../src/game/economy.js';
@@ -48,32 +50,48 @@ function clustersOf(world, tiles) {
   return out;
 }
 
-// Province'ler artik 14 farkli hammadde uretebiliyor; test dort mala
-// sabitlenemez, kumenin kendi RGO malina bakar. Cikti kume basina BIR kez
-// sayilir (tile.province paylasilan econ).
+const RAW_GOODS = new Set(Object.values(RGO_TYPES).map((type) => type.goodId));
+
+/** Kumelerin butun ham mal ciktisi (altin haric); kume basina BIR kez. */
 function rawOutput(world, tiles) {
   return clustersOf(world, tiles).reduce((sum, cluster) => {
-    const goodId = RGO_TYPES[cluster.econ?.rgo]?.goodId;
-    if (!goodId) return sum;
-    return sum + (provinceOutput(world, cluster)[goodId] ?? 0);
+    const output = provinceOutput(world, cluster);
+    let raw = 0;
+    for (const [id, value] of Object.entries(output)) if (RAW_GOODS.has(id)) raw += value;
+    return sum + raw;
   }, 0);
+}
+
+/**
+ * Kumenin iş gücünü kadronun `fraction` katina ayarlar: fabrika, banliyö ve
+ * asker sifirlanir, nufus alt sinif payina bolunur (RGO yalniz onu calistirir).
+ */
+function fillToJobs(tile, fraction = 1, extraWorkers = 0) {
+  const econ = tile.province;
+  econ.industrialEmployees = 0;
+  econ.industrialCommuters = 0;
+  econ.soldiers = 0;
+  econ.population = Math.round((provinceRgoJobs(tile) * fraction + extraWorkers) / econ.lowerShare);
 }
 
 const first = headless('RGO-DETERMINISTIC');
 const second = headless('RGO-DETERMINISTIC');
-const firstRgos = first.world.tiles.filter((tile) => tile.province).map((tile) => tile.province.rgo);
-const secondRgos = second.world.tiles.filter((tile) => tile.province).map((tile) => tile.province.rgo);
+const firstResources = first.world.tiles.filter((tile) => tile.province).map((tile) => tile.resource);
+const secondResources = second.world.tiles.filter((tile) => tile.province).map((tile) => tile.resource);
 const land = first.world.tiles.filter((tile) => tile.province);
 const rgoCounts = Object.fromEntries(Object.keys(RGO_TYPES).map((id) => [
-  id, land.filter((tile) => tile.province.rgo === id).length,
+  id, land.filter((tile) => tile.resource === id).length,
 ]));
-// Bir kume tek bir hammadde uretir: altin disinda tam bir kalem pozitif olmali.
-const uniqueOutput = first.world.provinces.every((cluster) => {
+// Kume YALNIZ kendi satirlarinin mallarini uretir.
+const outputMatchesDeposits = first.world.provinces.every((cluster) => {
   if (cluster.owner < 0 || !cluster.econ) return true;
+  const allowed = new Set(depositsOf(cluster.econ).map((line) => RGO_TYPES[line.id].goodId));
   const output = provinceOutput(first.world, cluster);
-  const goods = Object.entries(output).filter(([id, value]) => id !== 'gold' && value > 0);
-  return goods.length === 1 && goods[0][0] === RGO_TYPES[cluster.econ.rgo].goodId;
+  return Object.entries(output).every(([id, value]) => id === 'gold' || !(value > 0) || allowed.has(id));
 });
+const depositsSumToHexes = first.world.provinces.every((cluster) => (
+  !cluster.econ || depositsOf(cluster.econ).reduce((sum, line) => sum + line.hexes, 0) === cluster.tileIdx.length
+));
 const startingUnit = first.world.units[0];
 const startingDraws = startingUnit.regiments[0].draws.reduce(
   (sum, draw) => sum + draw.men, 0,
@@ -92,15 +110,15 @@ const legacyPopulationAfter = provincePopulation(legacyArmyGame.world, legacyUni
 
 const capacityTile = land.find((tile) => tile.owner >= 0);
 capacityTile.province.control = 100;
-capacityTile.province.population = provinceRgoJobs(capacityTile);
+fillToJobs(capacityTile, 1);
 const fullOutput = rawOutput(first.world, [capacityTile]);
-capacityTile.province.population = Math.round(provinceRgoJobs(capacityTile) * 0.5);
+fillToJobs(capacityTile, 0.5);
 const halfOutput = rawOutput(first.world, [capacityTile]);
 
 const armyGame = headless('RGO-ARMY-LINK');
 const armyNation = armyGame.world.nations.find((nation) => nation.alive && owned(armyGame.world, nation.id).length > 8);
 const armyTiles = owned(armyGame.world, armyNation.id);
-for (const tile of armyTiles) tile.province.population = provinceRgoJobs(tile);
+for (const tile of armyTiles) fillToJobs(tile, 1);
 const military = ensureMilitaryEconomy(armyNation);
 military.arms = 40;
 const populationBeforeRecruitment = provincePopulation(armyGame.world, armyNation.id);
@@ -114,7 +132,7 @@ const populationAfterPeacefulDisband = provincePopulation(armyGame.world, armyNa
 const lossGame = headless('RGO-CASUALTIES');
 const lossNation = lossGame.world.nations.find((nation) => nation.alive && owned(lossGame.world, nation.id).length > 8);
 const lossTiles = owned(lossGame.world, lossNation.id);
-for (const tile of lossTiles) tile.province.population = provinceRgoJobs(tile);
+for (const tile of lossTiles) fillToJobs(tile, 1);
 ensureMilitaryEconomy(lossNation).arms = 40;
 const populationBeforeLoss = provincePopulation(lossGame.world, lossNation.id);
 const doomed = recruit(lossGame, lossNation, 'INFANTRY');
@@ -127,13 +145,13 @@ const migrationNation = migrationGame.world.nations.find(
   (nation) => nation.alive && owned(migrationGame.world, nation.id).length >= 3,
 );
 const migrationTiles = owned(migrationGame.world, migrationNation.id);
-for (const tile of migrationTiles) tile.province.population = provinceRgoJobs(tile);
+for (const tile of migrationTiles) fillToJobs(tile, 1);
 // Verici ile alici FARKLI kumelerden secilmeli: ayni kumenin iki uyesi ayni
 // havuzu paylasir, kume kendi kendine goc edemez.
 const donor = migrationTiles[0];
 const receiver = migrationTiles.find((tile) => tile.provinceId !== donor.provinceId);
-donor.province.population = provinceRgoJobs(donor) + 2000;
-receiver.province.population = Math.max(0, provinceRgoJobs(receiver) - 1500);
+fillToJobs(donor, 1, 2000);
+fillToJobs(receiver, 1, -1500);
 const populationBeforeMigration = provincePopulation(migrationGame.world, migrationNation.id);
 const receiverEfficiencyBefore = provinceRgoStatus(receiver).efficiency;
 const moved = runProvinceMigration(migrationGame.world, true);
@@ -150,13 +168,14 @@ for (let week = 0; week < 260 && !longGame.turns.victory; week++) {
   );
 }
 const elapsedMs = performance.now() - started;
-const longProvinces = longGame.world.tiles.filter((tile) => tile.province);
+const longProvinces = longGame.world.provinces.filter((province) => province.econ);
 
 const assertions = {
-  deterministic: firstRgos.every((id, index) => id === secondRgos[index]),
-  exactlyOneRgo: land.every((tile) => Boolean(RGO_TYPES[tile.province.rgo])),
+  deterministic: firstResources.every((id, index) => id === secondResources[index]),
+  everyHexHasResource: land.every((tile) => Boolean(RGO_TYPES[tile.resource])),
   allRgoTypesExist: Object.values(rgoCounts).every((count) => count > 0),
-  onlyRgoProducesRawGood: uniqueOutput,
+  outputMatchesDeposits,
+  depositsSumToHexes,
   startingArmyHasRealProvinceDraws: startingDraws > 0
     && Math.abs(startingPopulationReturned - startingDraws) < 1,
   legacyFreeArmyCannotCreatePopulation: legacyPopulationAfter === legacyPopulationBefore,
@@ -169,9 +188,9 @@ const assertions = {
   migrationConservesPopulation: populationAfterMigration === populationBeforeMigration,
   migrationFillsVacancy: receiverEfficiencyAfter > receiverEfficiencyBefore
     && donor.province.migration < 0 && receiver.province.migration > 0,
-  longRunPopulationValid: longProvinces.every((tile) => tile.province.population >= 0),
-  longRunOutputFinite: longProvinces.every((tile) => (
-    Object.values(provinceOutput(tile)).every(Number.isFinite)
+  longRunPopulationValid: longProvinces.every((province) => province.econ.population >= 0),
+  longRunOutputFinite: longProvinces.every((province) => (
+    Object.values(provinceOutput(longGame.world, province)).every(Number.isFinite)
   )),
   naturalMigrationObserved: observedMigration > 0,
 };

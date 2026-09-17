@@ -188,6 +188,10 @@ function factoryCard(row, openMenu) {
   // TASMA MENUSU yalniz gercekten VAR OLAN eylemleri tasir; olu satir
   // gostermek "tiklanabilir ama hicbir sey yapmiyor" hissi uretir.
   const menu = [];
+  if (!row.paused) {
+    menu.push(`<button data-pause-factory="${esc(row.id)}"
+      title="Stop production without closing: no inputs, no output, no wages. Workers drift to other jobs; the level stays.">Pause production</button>`);
+  }
   if (row.expansion) {
     menu.push(`<button data-cancel-expansion="${row.expansion.projectId}"
       title="Stop the expansion. ${row.expansion.refund > 0.05
@@ -232,9 +236,12 @@ function factoryCard(row, openMenu) {
       <button class="action primary" data-upgrade-factory="${esc(row.id)}"
         ${row.upgradeBlocked ? 'disabled' : ''}
         data-tip="fac-upgrade" data-tip-arg="${esc(row.id)}">Upgrade</button>
-      <button class="action${row.subsidized ? ' on' : ''}" data-subsidize="${esc(row.id)}"
+      ${row.paused
+    ? `<button class="action on" data-pause-factory="${esc(row.id)}"
+        title="Restart production. Workers are hired back at the normal monthly pace.">Resume</button>`
+    : `<button class="action${row.subsidized ? ' on' : ''}" data-subsidize="${esc(row.id)}"
         data-tip="fac-subsidy" data-tip-arg="${esc(row.id)}"
-        >${row.subsidized ? 'Subsidised ✓' : 'Subsidise'}</button>
+        >${row.subsidized ? 'Subsidised ✓' : 'Subsidise'}</button>`}
       <div class="fac-more">
         <button class="action icon" data-factory-menu="${esc(row.id)}"
           aria-expanded="${openMenu === row.id}" title="More actions">⋯</button>

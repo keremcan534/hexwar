@@ -96,6 +96,15 @@ girer, refah **+0.14** ile: yani refahı sonuna kadar açsan bile vergiyi iki
 katı kadar açarsan halk yine küser. %30–45 bandı çoğu oyunda doğru yer;
 üstüne çıkacaksan refahı da açıp isyanı satın alman gerekir.
 
+**Aç ve borçlu devlet alt sınıfı sıkıştırmaz (YZ ve devredilmiş bütçe).**
+Ölçüldü: gıdası eksik ülkelerin hepsi alt sınıf vergisinde %90–100'deydi —
+borç YZ'yi vergiye itiyor, vergi haneyi gıdadan ediyordu. Artık hazine
+sıkışıkken alt sınıf sepetini karşılayamıyorsa (`adjustFiscalAI`) alt vergi 5
+puan iner ve yük sepetini karşılayabilen orta/üst sınıfa 5'er puan kayar.
+Kaydırma olmadan indirim sıkışık hazineyi daha da sıkıştırırdı. Bu pass'in
+öbür değişiklikleriyle BİRLİKTE ölçüldü (ayrı kol koşulmadı): 20. yılda alt
+vergisi ≥%90 ülke 9.3 → 1.7, borçlu ülke 34 → 24 (bkz. §4.7 tablosu).
+
 ## 1.2 Gümrük · `tariff`
 
 **Formül**
@@ -132,6 +141,13 @@ kısılır. Sanayin ithal girdiyle dönüyorsa yüksek gümrük kendi fabrikanı
 vurur. **Bandı hükûmetin belirler:** serbest ticaret partisinde -50…+25,
 korumacıda -15…+100. Yani gümrüğü sonuna kadar açmak istiyorsan önce doğru
 hükûmeti kurman gerekir.
+
+**Gıda ithalatı iştahtan muaftır** (`settleGlobalTrade`, `FOOD_GOODS` için
+iştah 1). Ölçüldü: dünyada gıda fazlayken %50 gümrük iştahı 0.56'ya
+indiriyordu ve ekmek de bu kesintiye giriyordu — 10. yılda 64 ülkenin 23'ünde
+raftaki gıda tam 0.56'da kalıyordu. Devletler lüksü keser, tahılı değil:
+gümrük gıdanın fiyatına yine biner (hane sepeti), yalnız miktarını kısmaz.
+Sanayi girdisinde ve ihracat erişiminde bedeli aynen sürer.
 
 ## 1.3 Ordu fonu · `armyFunding`
 
@@ -459,6 +475,15 @@ demek. Fabrikan girdi bulamayıp üretimi kısarsa işçi çıkarır, işsizlik
 memnuniyeti ısırır, memnuniyet istikrarı düşürür. Yani bir tedarik krizi üç
 hafta sonra siyasi krize dönüşür.
 
+**Nüfus ekranındaki "Employment" başka bir sayıdır.** Yukarıdaki oran fabrika
+tezgâhıdır ve istikrara girer. Nüfus ekranı ise alt sınıfın işte olup
+olmadığını sayar: çiftçi ve amele RGO kadrosu kadar, fabrika işçisi tesis
+kadrosu kadar, asker ordu kadar çalışır. Oyun Vic2'deki gibi **herkes işte**
+başlar — kadro kuruluşta kümenin alt sınıf iş gücünün 1.05 katı açılır
+(§4.7). Ölçüldü (3 tohum): 1. yıl istihdam medyanı %92.9 → %99.1, en kötü
+onda bir %84.9 → %97.2. Silah altındaki adam kendi mesleğindedir
+(`soldiers`); çiftçi sayıldığı sürece ordunun kendisi "işsiz" görünüyordu.
+
 ---
 
 # 4. SANAYİ VE TİCARET
@@ -525,12 +550,12 @@ tersi: ucuz girdi, geniş pazar, sıfır gümrük geliri.
 
 **Formül**
 
-    hedef ölçek = clamp( √(fiyat / taban fiyat), 0.5, 1 )
+    hedef ölçek = clamp( √(fiyat / taban fiyat), 0.5, 1 )      ← MAL BAŞINA
     ölçek      += (hedef − ölçek) × 0.004            ← her hafta (yarıya inmek ~4 yıl)
-    RGO kadrosu ×= ölçek ; RGO üretimi ×= ölçek
-    yukarı yön ayrı: gelişme × rgoPriceDrive (0.5…2.5), tavan yok
+    RGO kadrosu ×= satırların hex ağırlıklı ölçeği ; malın çıktısı ×= kendi ölçeği
+    yukarı yön ayrı: gelişme × rgoPriceDrive (0.05…2.5), iz başına
 
-**Kod** — `src/game/provinces.js` `updateRgoDemandScale`, `rgoDemandScaleOf`
+**Kod** — `src/game/provinces.js` `updateDemandScale`, `rgoJobsOf`, `provinceOutput`
 
 **Çalışıyor mu?** **EVET, yavaş.** 520 haftalık barış koşusu (tohum BAND-1):
 mal-haftalarının tabanda geçen payı %37.7 → %31.0, toplam bant doygunluğu
@@ -938,6 +963,142 @@ kaldıraç. Ve **optimumu ortada**: sonuna kadar açmak okuryazarlığı %92'ye
 ücretler artar, hane geçiminin üstüne artık bırakır ve yüzyılın sonunda
 katipler gelir. Kestirme yok: parayı önden basıp sınıf satın alamıyorsun.
 
+## 4.7 Hex kaynakları — her karenin kendi malı, herkes işte
+
+**Formül**
+
+    uygunluk(kare, mal) = arazi tablosu × (sıcak mahsulde iklim) × damar gürültüsü × (0.92…1.08)
+    kota(mal)           = dünya hex payı × kare sayısı        ← paylar talepten ölçüldü
+    atama               = (kare, mal) çiftleri, uygunluk / o malın üst %10 dilimi
+                          sırasıyla, kota dolana dek; artan kare kotası dolmamış
+                          en uygun mala
+    küme satırı         = mal başına { hex sayısı, ortalama nitelik 0.85…1.15 }
+    satırın çıktısı     = taban × nitelik × (1 + gelişim×0.18) × emek × sadakat
+                          × hex × teknoloji × talep ölçeği(mal)          (§4.3, §5.2)
+
+    kuruluş kadrosu     = küme nüfusu × alt sınıf payı × 1.05
+    RGO iş gücü         = nüfus × alt sınıf payı − yerel fabrika kadrosu − banliyö − asker
+
+**Kod** — `src/game/provinces.js` (`assignHexResources`, `depositLines`,
+`rgoWorkforceOf`, `rgoJobsOf`, `provinceOutput`, `ensureProvinceResources`),
+`src/game/economy.js` (`jobTotalsOf`: asker mesleği)
+
+**Ne bozuktu.** Kümenin tek RGO'su vardı ve türü zara bağlıydı:
+
+1. **Paylar talebi izlemiyordu.** 40 yılda meyve, ipek, boya, tropik ağaç ve
+   kauçuk tabana çakılı (arz talebin 3–20 katı), kükürt kıt (0.4–0.8, fiyat
+   tabanın 1.3–2.8 katı), balık kıt.
+2. **Kadro iş gücüne göre değil nüfusa göre açılıyordu** (nüfusun %72–88'i)
+   ve orta/üst sınıf da iş arayan sayılıyordu: başkent kümesinde fabrika
+   işçileri ve kâtipler "2.47M işsiz" görünüyordu (oyuncu bildirimi). Oyun
+   işsizle başlıyor, 20. yılda en kötü onda bir ülkede istihdam %63'e
+   iniyordu.
+3. **Gıda fazlayken ülkelerin yarısı açtı:** gümrük iştahı ekmeği kesiyordu
+   (§1.2), borçlu YZ alt vergisini %90–100'e çekiyordu (§1.1).
+
+**Elenen: çarpan yinelemesi.** Tür çarpanını payı hedefe yaklaştırana dek
+oynatmak yakınsamadı — argmax ataması kesikli, küçük bir çarpan değişimi
+ikinci sıradaki binlerce kareyi birden çeviriyor: 30 turda meyve %18.9 (hedef
+%1.3), ipek ve tropik ağaç sıfır. Kota ataması payı birebir verir.
+
+**Demir kotası bilerek düşük (%4.5).** Karlı zirvede yalnız demir ve kükürt
+çıkar; kotalar dolunca artan zirve demire düşüyordu (kota %6.5 iken gerçek
+pay %8.8).
+
+Atama tohum, arazi ve koordinattan türer, **kayda girmez**; satırlar econ'a
+sayılamaz alan olarak bağlanır ve yüklemede aynı dünya aynı kaynakları yeniden
+kurar. Eski kayıt göçü tek RGO'nun gelişim tabanını ve talep ölçeğini kendi
+malına taşır, kadroyu bugünkü iş gücüne açar (sahip ulusun gerçek alt sınıf
+payıyla — varsayılan 0.78 yıllar sonra alt sınıfı eksik sayıyordu).
+
+**Çalışıyor mu?** **EVET** — standart dünya, 3 tohum × 20 yıl, gözlemci,
+taban 4bb99ed (üç tohum ortalaması; bu pass'in bütün değişiklikleri
+birlikte):
+
+| | taban 1. yıl | yeni 1. yıl | taban 20. yıl | yeni 20. yıl |
+|---|---|---|---|---|
+| istihdam medyanı | %92.9 | %99.1 | %81.3 | %94.7 |
+| istihdam, en kötü onda bir | %84.9 | %97.2 | %63.2 | %78.7 |
+| raftaki gıda (ülke ortalaması) | 0.76 | 0.86 | 0.80 | 0.98 |
+| gıdası %90 altında ülke | 57 | 42 | 32.3 | 2.0 |
+| alt vergisi ≥ %90 ülke | 0 | 0.3 | 9.3 | 1.7 |
+| istikrar medyanı | 0.32 | 0.32 | 0.52 | 0.66 |
+| borçlu ülke | 55 | 52 | 34 | 24 |
+| dünya nüfusu | 268M | 268M | 269M | 271M |
+
+İstikrar artışı üç tohumun üçünde de var (20. yıl 0.58/0.50/0.50 →
+0.68/0.57/0.71). Borç MEDYANI raporlanmadı: medyan ülke borçlu olmakla
+olmamak arasında durduğu için tohum içinde 0 ile 50 arasında zıplıyor.
+
+Hammadde arz/talebi, 20. yıl (taban → yeni): balık 0.72 → 1.22, kükürt
+0.46 → 1.14, tropik ağaç 14.4 → 3.1, meyve 2.38 → 1.67, kömür 1.59 → 1.21,
+pamuk 1.02 → 1.17, ipek 0.85 → 0.60 (fiyat 1.01). Kıt doğan mal yok.
+
+**Reel GSYH ilk yıllarda düşük görünür, bu bir kayıp değildir.** Taban kodda
+satılamayan fazla taban fiyattan sayılıyordu. Ayrıştırıldı: 1. yılda
+hammaddenin taban fiyatlı SATILAN kısmı 2255 → 2202 (aynı), fazlası 5464 →
+4340; reel GSYH farkının (−1177) 1124'ü eriyen fazladır. 5. yılda satılan
+hammadde +%6, 20. yılda +%10; reel GSYH toplamı 20. yılda 8277 → 8710.
+Nominal GSYH toplamı değişmedi (+%1). GSYH MEDYANI 55 → 37 düştü ama tohum
+gürültüsü içinde (tabanın kendi tohumları 40/38/88) ve yeni kolda daha çok
+küçük ülke ayakta (58/53/52 → 60/57/51).
+
+**Açık kalan.** 20. yılda demir (1.84), boya (1.98), kereste (1.72) ve tropik
+ağaç (3.1) hâlâ fazlada; fiyatları tabanın 0.5–0.6'sında, bantta değil. İlk
+yıl bütün hammaddeler fazladır (sanayi henüz dolmadı) — tabanda da aynı.
+
+**Pratikte** — haritadaki "resources" modu her karenin malını gösterir;
+bir kümenin birden çok satırı olabilir (ovası tahıl, tepesi kömür). Kuruluşta
+iş arayan yoktur; işsizlik ancak nüfus kadrodan hızlı büyürse, fiyatı çöken
+malın tarlası küçülürse (§4.3) ya da fabrika kapanırsa doğar.
+
+## 4.8 Fabrika duraklatma — kapatmadan durdurmak
+
+**Formül**
+
+    duran tesis: iş yok, üretim yok, ücret ve kâr sıfır; kadro ayda %25 erir
+    YZ ve Industry AUTO, yalnız silah hattı (ARMS_FACTORY):
+      durdur      = barış VE depo ≥ tavan × 0.95 VE fiyat < taban × 0.75
+      yeniden aç  = savaş VEYA depo < tavan × 0.60 VEYA fiyat > taban
+                    (yalnız YZ'nin durdurduğu hat; elle durdurulan elle açılır)
+    duran türden yeni fabrika kurulmaz
+
+**Kod** — `src/game/economy.js` (`setFactoryPaused`, `restMilitaryLines`,
+`runFactories` duran dalı, `runFactoryEmployment`, `investmentOptions`);
+ekran: `src/ui/industryScreen.js` ("Pause production" / "Resume")
+
+**Ne bozuktu.** Kapatmaktan başka kol yoktu ve kapatmak geri dönüşsüzdü.
+Silah fabrikası barışta da tam çalışıyor, deposu dolunca fazlayı dünya
+pazarına döküyordu: tohum RAW1'de silah arzı 10. yılda talebin 2.2, 20.
+yılda 2.3 katı, fiyat tabanın 0.34'ü.
+
+**İlk kural geri alındı.** "Barışta depo dolu → durdur" tek başına ölçüldü:
+5. yılda 86 hattın 61'i durdu, arz talebin altına indi (5.8'e 15.3, fiyat
+tabanın 1.95 katı) ve YZ açığı kapatmak için yeni silah fabrikası kurdu (20.
+yılda 90 yerine 110). Fazlanın yarısı zaten orduların tüketimine gidiyordu.
+Hat artık yalnız pazar da doyduğunda durur.
+
+**Çalışıyor mu?** **EVET** — tohum RAW1, 20 yıl, taban 4bb99ed:
+
+| silah pazarı | taban 10. yıl | yeni 10. yıl | taban 20. yıl | yeni 20. yıl |
+|---|---|---|---|---|
+| arz / talep | 56.8 / 26.2 | 44.3 / 30.0 | 41.7 / 17.9 | 11.1 / 10.0 |
+| fiyat / taban | 0.60 | 0.84 | 0.34 | 0.93 |
+| silah fabrikası (duran) | 81 (0) | 81 (17) | 90 (0) | 77 (45) |
+
+İki kol aynı tohumdan zamanla ayrışır (20. yılda savaştaki ülke 19'a 4);
+yön tablonun her satırında aynı. 3 tohumluk sağlık koşusunda 20. yılda
+dünyadaki 1106 tesisin ortalama 36'sı durmuş.
+
+Mühimmat ve patlayıcı otomatik durmaz: deposu yoktur, fiyatla ayarlanır
+(aynı koşuda 20. yıl mühimmat arzı talebin 1.85 katı, fiyat 0.52). Zararda
+kalan tesis zaten işe almaz ve yirmi yıl boş kalırsa tasfiye olur (§4.4).
+
+**Pratikte** — sanayi ekranında her tesisin menüsünde "Pause production"
+vardır; işçi ayda dörtte bir hızla başka tesise ya da tarlaya döner, tesis
+ve seviyesi yerinde kalır. Industry AUTO açıksa barışta dolu depolu silah
+hatlarını hükûmet soğutur, savaş çıkınca kendisi açar.
+
 ---
 
 # 5. DEVLET — imparatorluğun otomatik bedelleri
@@ -999,8 +1160,10 @@ econ.control = clamp(
   0, ceiling);
 
 const control = clamp(econ.control / 100, 0, 1) * (1 - occupied);
-output[type.goodId] = type.baseOutput * econ.rgoQuality * (1 + development * 0.18)
-  * rgoLaborScale(econ, rgoJobsOf(econ)) * control * econ.hexes * tech;
+// hex kaynakları: kümenin her kaynak satırı (tür × hex) ayrı üretir
+output[type.goodId] += type.baseOutput * RGO_OUTPUT_SCALE
+  * line.quality * (1 + development * 0.18)
+  * labor * control * line.hexes * tech * demandScaleOf(econ, type.goodId);
 ```
 
 **Çalışıyor mu?** **EVET, ama oyuncu ayırt edemez.** Doğrudan ölçüldü:
@@ -1407,18 +1570,21 @@ dünyanın 0.08 altında kaldı.
 
 ## 6.4 Çalışıyor mu?
 
-| Kaldıraç | Hüküm | Kaç kat | En güçlü ölçüt |
-|---|---|---|---|
-| Constitution | EVET | 6.97× | istikrar |
-| Labour Rights | EVET | 6.20× | memnuniyet |
-| Welfare State | EVET | 7.63× | istikrar |
-| Conscription | EVET | 2.40× | istikrar (eski merdiven 1.66×) |
-| Citizenship | GÜRÜLTÜ ALTI, bağlı | 0.71× | hazine (eski azınlık hakları 0.57×) |
-| Meşruiyet | EVET | 2.82× | istikrar |
+| Kaldıraç | Hüküm | Kaç kat (son) | ilk 5-yasa taraması | En güçlü ölçüt (son) |
+|---|---|---|---|---|
+| Constitution | EVET | 4.98× | 6.97× | istikrar |
+| Labour Rights | EVET | 5.49× | 6.20× | memnuniyet |
+| Welfare State | EVET | 7.40× | 7.63× | memnuniyet |
+| Conscription | EVET | 1.75× | 2.40× (eski merdiven 1.66×) | memnuniyet |
+| Citizenship | GÜRÜLTÜ ALTI, bağlı | 0.55× | 0.71× (eski azınlık hakları 0.57×) | istikrar |
+| Meşruiyet | EVET | 2.35× | 2.82× | istikrar |
 
-Doğrudan kanal: vatandaşlık Residency → Full taşra gelirini **+%8.3**, işçi hakkı
-None → Strong işçi gelirini **+%19.0** oynatıyor (eski asgari ücret kanalı %0.6'da
-kalıyordu). Vatandaşlığın asıl işi azınlığı olan ülkededir: `audit:culture-unrest`
+"Son" = 2026-09-17 taraması (program kalktı, hex kaynakları geldi). Sınıflar
+değişmedi; katlar ekonomi değiştikçe oynar.
+
+Doğrudan kanal (son tarama): vatandaşlık Residency → Full taşra gelirini
+**+%20.0** (ilk taramada +%8.3), işçi hakkı None → Strong işçi gelirini
+**+%19.3** oynatıyor (eski asgari ücret kanalı %0.6'da kalıyordu). Vatandaşlığın asıl işi azınlığı olan ülkededir: `audit:culture-unrest`
 TEST 3'te huzursuzluk Residency 4.91 → Full 3.14.
 
 **Pratikte** — tek tık artık büyüktür. İşçi hakkında bir kademe alt sınıf
@@ -1430,13 +1596,16 @@ kendi katsayılarından, `lawPreview`).
 
 # 7. TEK SAYFA ÖZET
 
+Kaç kat: son `audit:mechanics` taraması (2026-09-17); bütçe satırlarında
+en güçlü ölçüt.
+
 | # | Mekanik | Formül (kısa) | Çalışıyor? | Kaç kat |
 |---|---|---|---|---|
-| 1 | Vergi | gelir × oran × sınıf ağırlığı | EVET | 4.77× |
-| 2 | Gümrük | ithalat × oran; girdi fiyatı ×(1+oran×ithal payı) | EVET | 1.47× |
+| 1 | Vergi | gelir × oran × sınıf ağırlığı | EVET | 7.82× (alt sınıf) |
+| 2 | Gümrük | ithalat × oran; girdi fiyatı ×(1+oran×ithal payı); gıda iştahtan muaf | EVET | 1.97× |
 | 3 | Ordu fonu | güç = 0.55 + fon×0.45 | EVET (savaşta) | contract §6 |
-| 4 | Eğitim | (nüfus/10k) × bütçe × 0.34 | EVET | 11.83× |
-| 5 | Refah | (nüfus/10k) × bütçe × 0.76 | EVET | 4.32× |
+| 4 | Eğitim | (nüfus/10k) × bütçe × 0.34 | EVET | 13.44× |
+| 5 | Refah | (nüfus/10k) × bütçe × 0.76 | EVET | 4.49× |
 | 6 | Okuryazarlık | hedefe haftada binde 4 yaklaşır | EVET | zincirin içinde |
 | 7 | Araştırma | (okuryazarlık×4 + orta×1.5 + katip + 1) × çarpanlar | EVET | 4.00× |
 | 8 | Teknoloji maliyeti | 120 × (1+kademe×0.55) × erken ceza | EVET | kalibre |
@@ -1445,16 +1614,18 @@ kendi katsayılarından, `lawPreview`).
 | 11 | Nüfus | beş çarpanın çarpımı; beslenme %50 altı kıtlık | EVET | ölçüldü |
 | 12 | İşsizlik | (min(işçi,tezgâh) − istihdam) / tezgâh | EVET | tek kaynak |
 | 13 | Fabrika ücreti | katma değer × 0.55 × yasa çarpanı | EVET | +%8.8 |
-| 14 | Ticaret | min(fazla, teklif); iştah = 1/(1+oran×1.6) | EVET | 1.47× |
+| 14 | Ticaret | min(fazla, teklif); iştah = 1/(1+oran×1.6), gıdada 1 | EVET | 1.97× |
 | 15 | İdari gider | (şehir−1)^1.6 × 4.0 + nüfus^0.75 × 0.8 | EVET | kaldıraç değil |
-| 16 | Taşra sadakati | tavan = vatandaşlık yasası; üretim ×= sadakat | BAĞLI, hissedilmez | +%8.3 |
-| 17 | İnsan gücü | havuz × (0.85 + askerlik×0.45) | EVET | 2.40× |
-| 18 | Anayasa | alt +0.22, orta +0.23, üst −0.12, araştırma +%25; kimin desteği sayılır | EVET | 6.97× |
-| 19 | İşçi hakları | alt +0.44 (kölelik kalkınca +0.08), bordro +%29, üretim −%5.4 | EVET | 6.20× |
-| 20 | Sosyal devlet | alt +0.32, hazine yükü 0.41, okuryazarlık tabanı 0.35 | EVET | 7.63× |
-| 21 | Vatandaşlık | azınlık tavanı 0.7→1.0, huzursuzluk, asimilasyon | GÜRÜLTÜ ALTI, bağlı | 0.71× |
-| 22 | Askerlik | insan gücü 0.85→1.30, alt −0.06 | EVET | 2.40× |
-| 23 | Meşruiyet | istikrar −= (lider − iktidar) × 0.25 | EVET | 2.82× |
+| 16 | Taşra sadakati | tavan = vatandaşlık yasası; üretim ×= sadakat | BAĞLI, hissedilmez | +%20.0 |
+| 17 | İnsan gücü | havuz × (0.85 + askerlik×0.45) | EVET | 1.75× |
+| 18 | Anayasa | alt +0.22, orta +0.23, üst −0.12, araştırma +%25; kimin desteği sayılır | EVET | 4.98× |
+| 19 | İşçi hakları | alt +0.44 (kölelik kalkınca +0.08), bordro +%29, üretim −%5.4 | EVET | 5.49× |
+| 20 | Sosyal devlet | alt +0.32, hazine yükü 0.41, okuryazarlık tabanı 0.35 | EVET | 7.40× |
+| 21 | Vatandaşlık | azınlık tavanı 0.7→1.0, huzursuzluk, asimilasyon | GÜRÜLTÜ ALTI, bağlı | 0.55× |
+| 22 | Askerlik | insan gücü 0.85→1.30, alt −0.06 | EVET | 1.75× |
+| 23 | Meşruiyet | istikrar −= (lider − iktidar) × 0.25 | EVET | 2.35× |
+| 24 | Hex kaynakları | kota ataması (talepten paylar); satır çıktısı × talep ölçeği; kadro = alt sınıf × 1.05 | EVET | §4.7 sağlık koşusu |
+| 25 | Fabrika duraklatma | barış + depo ≥%95 + fiyat <0.75 → silah hattı durur | EVET | silah fiyatı 0.34 → 0.93 |
 
 ---
 
@@ -1467,9 +1638,10 @@ Bu kılavuz ne kadar ölçüldüyse o kadar doğrudur. Ölçülemeyenler:
    kol arasındaki fark kaldıraca değil kimin kimi fethettiğine bağlanır).
    Yönü `audit:budget-contract` §6'da ayrıca doğrulanıyor.
 
-2. **Vatandaşlık yasası bağlı ama taramada hissedilmiyor** (0.71×; eski
-   `political_rights` 0.46–0.57×). Taşra gelirini +%8.3 artırdığı doğrudan
-   ölçüldü. Kaba ölçütlerde görünmemesinin iki nedeni var: taramanın ülkesinde
+2. **Vatandaşlık yasası bağlı ama taramada hissedilmiyor** (son tarama 0.55×, ilk
+   5-yasa taraması 0.71×; eski `political_rights` 0.46–0.57×). Taşra gelirini
+   +%20 artırdığı doğrudan ölçüldü. Kaba ölçütlerde görünmemesinin iki nedeni
+   var: taramanın ülkesinde
    azınlık azdır (yasanın asıl işi azınlıklı ülkede: `audit:culture-unrest`
    TEST 3, huzursuzluk 4.91 → 3.14) ve artan üretim dünya fiyatını düşürerek
    kendini kısmen yiyor.
