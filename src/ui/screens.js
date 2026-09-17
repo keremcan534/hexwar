@@ -75,6 +75,10 @@ import {
   NATIONAL_INVESTMENTS, cancelConstruction, constructionPower, constructionView,
   divestInvestment, moveConstructionTo, prioritizeConstruction, queueInvestment,
 } from '../game/construction.js';
+import { motionOn } from './motion.js';
+
+/** Ekranın kapanış geçişi (styles.css §6 .screen.hidden) bitene kadar gövde kalır. */
+const SCREEN_CLOSE_MS = 220;
 
 const TITLES = {
   nation: 'Nation Overview',
@@ -348,6 +352,7 @@ export class Screens {
     // Baris kipi haritayi ele gecirir; ekrandan cikarken geri verilmeli.
     if (this.active === 'peace' && name !== this.active) this.restoreMapMode();
     const switching = this.active !== name;
+    clearTimeout(this.closeTimer);
     this.active = name;
     this.el.root.dataset.screen = name;
     document.body.classList.add('screen-open');
@@ -392,7 +397,9 @@ export class Screens {
     this.industry.menu = null;
     this.industry.confirm = null;
     this.active = null;
-    delete this.el.root.dataset.screen;
+    // Genişlik sınıfı (dar/geniş panel) kapanış hareketi bitene dek kalır;
+    // yoksa dossier kapanırken bir anda tam boy panele dönüşüp kayardı.
+    const closingScreen = this.el.root.dataset.screen;
     document.body.classList.remove('screen-open');
     this.el.root.classList.add('hidden');
     this.el.root.setAttribute('aria-hidden', 'true');
@@ -402,8 +409,17 @@ export class Screens {
     // sayımı gibi büyük bir ekranda bu on binlerce düğüm demek. Açılış zaten
     // `refresh()` ile gövdeyi baştan kuruyor, yani temizlemenin görsel bedeli
     // yok; kazancı kalıcı bellek ve stil/erişilebilirlik ağacının küçülmesi.
-    this.el.body.innerHTML = '';
-    this.el.res.innerHTML = '';
+    // Temizlik KAPANIŞ HAREKETİNDEN SONRA: panel boş bir kabuk olarak
+    // kaymasın (styles.css §6 .screen.hidden geçişi ~200 ms).
+    const clear = () => {
+      if (this.active) return;
+      if (this.el.root.dataset.screen === closingScreen) delete this.el.root.dataset.screen;
+      this.el.body.innerHTML = '';
+      this.el.res.innerHTML = '';
+    };
+    clearTimeout(this.closeTimer);
+    if (motionOn()) this.closeTimer = setTimeout(clear, SCREEN_CLOSE_MS);
+    else clear();
     for (const btn of document.querySelectorAll('#tab-bar button')) {
       btn.classList.remove('active');
     }

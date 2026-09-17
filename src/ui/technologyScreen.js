@@ -20,6 +20,7 @@ import {
   TECH_CATEGORIES, TECH_FOLDERS, TECHNOLOGIES, canResearch, hasTech, techById,
 } from '../game/technology.js';
 import { lawModifiers } from '../game/politics.js';
+import { isDelegated } from '../game/delegation.js';
 import { tooltipHtml } from './tooltip.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
@@ -165,7 +166,9 @@ export function technologyScreen(nation, view) {
   const zoomIndex = TECH_ZOOMS.indexOf(zoom);
   const queueRow = `<div class="tech-queue">
     <span class="tech-queue-label">Queue</span>
-    ${chips ? `<ol>${chips}</ol>` : '<span class="tech-queue-empty">empty — when a technology finishes, the next is chosen for you</span>'}
+    ${chips ? `<ol>${chips}</ol>` : `<span class="tech-queue-empty">${isDelegated(nation, 'research')
+    ? 'empty — the academy picks the next technology (Research AUTO)'
+    : 'empty — research waits for your choice; points keep banking'}</span>`}
     <span class="tech-queue-hint"><b>Click</b> research now · <b>Shift+click</b> add to queue · <b>Right-click</b> remove · <b>Ctrl+wheel</b> zoom</span>
     <span class="tech-zoom" role="group" aria-label="Zoom">
       <button type="button" class="ui-btn sm" data-tech-zoom="-1" aria-label="Zoom out" ${zoomIndex <= 0 ? 'disabled' : ''}>−</button>

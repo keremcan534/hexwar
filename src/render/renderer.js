@@ -6,8 +6,9 @@ import { HEX_SIZE } from '../world/worldgen.js';
 import { englishCityName } from '../game/cities.js';
 import { POPULATION_SCALE } from '../game/populationScale.js';
 import { drawFlag } from './flagPainter.js';
-import { atWar, inCrisis } from '../game/diplomacy.js';
+import { atWar, inCrisis, relation } from '../game/diplomacy.js';
 import { isAllied } from '../game/alliances.js';
+import { INFAMY_COALITION } from '../game/infamy.js';
 import { maxHpOf, organizationOf, soldiersOf, unitsOn } from '../game/units.js';
 import { terrainShade } from '../world/terrain.js';
 import { RGO_TYPES } from '../game/provinces.js';
@@ -27,6 +28,92 @@ function ownerOf(tile, world) {
   if (tile.owner >= 0) return tile.owner;
   if (tile.fringeOf >= 0) return world.provinces?.[tile.fringeOf]?.owner ?? -1;
   return -1;
+}
+
+/**
+ * VERİ KİPLERİ: kara rengi simülasyondan gelir ve haftadan haftaya değişir
+ * (hud.js her hafta `refreshModeColors` ister). Deniz bu kiplerde düz ve
+ * koyudur — kıpırdayan su veriyi okumayı bozar (bkz. waterAnimatedMode).
+ * Renkler TEK yerde; lejant çipleri hud.js'te aynı tablodan okunur.
+ */
+export const DATA_MODES = new Set(['diplomacy', 'unrest', 'industry', 'infamy']);
+
+/**
+ * Diplomasi kipi: bakılan ülkeye göre herkesin yeri. Birim taraf renkleriyle
+ * aynı aile (yeşil biz, mavi müttefik, kırmızı düşman), harita için
+ * doygunluğu kısılmış. Sıra lejantın sırasıdır.
+ */
+export const DIPLOMACY_COLORS = {
+  focus: 'hsl(140 30% 40%)',
+  ally: 'hsl(208 42% 46%)',
+  war: 'hsl(4 58% 44%)',
+  crisis: 'hsl(28 64% 46%)',
+  truce: 'hsl(265 22% 44%)',
+  rival: 'hsl(44 44% 40%)',
+  elsewhere: 'hsl(12 24% 30%)',
+  neutral: 'hsl(210 8% 31%)',
+};
+
+/** Rampalar: [t, hue, sat, light]; t 0–1 aralığında, doğrusal karışım. */
+export const UNREST_RAMP = [[0, 150, 18, 30], [0.35, 48, 44, 40], [0.7, 8, 58, 42], [1, 350, 64, 38]];
+export const INDUSTRY_RAMP = [[0, 215, 16, 26], [0.45, 38, 36, 38], [1, 44, 66, 58]];
+export const INFAMY_RAMP = [[0, 210, 10, 30], [0.3, 46, 32, 36], [0.65, 30, 58, 42], [1, 2, 62, 42]];
+const DATA_EMPTY = 'hsl(210 6% 21%)';
+
+/** Rampadan renk; 24 kademeye yuvarlanır ki benzersiz renk dizesi sınırlı kalsın. */
+export function rampColor(ramp, t) {
+  const x = Math.round(Math.max(0, Math.min(1, t)) * 24) / 24;
+  let i = 1;
+  while (i < ramp.length - 1 && ramp[i][0] < x) i++;
+  const [t0, h0, s0, l0] = ramp[i - 1];
+  const [t1, h1, s1, l1] = ramp[i];
+  const k = t1 > t0 ? Math.max(0, Math.min(1, (x - t0) / (t1 - t0))) : 0;
+  // Ton kısa yoldan döner (350 → 8 arası kırmızıda kalır, maviye sapmaz).
+  let dh = h1 - h0;
+  if (dh > 180) dh -= 360;
+  if (dh < -180) dh += 360;
+  const hue = (h0 + dh * k + 360) % 360;
+  return `hsl(${Math.round(hue)} ${Math.round(s0 + (s1 - s0) * k)}% ${Math.round(l0 + (l1 - l0) * k)}%)`;
+}
+
+/**
+ * Diplomasi kipi: her ülkenin bakılan ülkeye göre yeri. Öncelik sırası
+ * anlamlıdır — savaşta olan müttefik değil düşmandır, ateşkesteki eski düşman
+ * rakipten önce gelir. "elsewhere": bakılan ülkeyle değil başkasıyla savaşan.
+ */
+export function diplomacyStanding(world, focus) {
+  const nations = world.nations ?? [];
+  const out = new Array(nations.length).fill('neutral');
+  const me = nations[focus];
+  const turn = world.turn ?? 0;
+  for (const other of nations) {
+    if (!other?.alive) continue;
+    const id = other.id;
+    if (id === focus) out[id] = 'focus';
+    else if (atWar(world, focus, id)) out[id] = 'war';
+    else if (inCrisis(world, focus, id)) out[id] = 'crisis';
+    else if (me && isAllied(me, id)) out[id] = 'ally';
+    else if ((relation(world, focus, id)?.truceUntil ?? 0) > turn) out[id] = 'truce';
+    else if (me?.rivalId === id || other.rivalId === focus) out[id] = 'rival';
+    else if (nations.some((third) => third?.alive && third.id !== id && atWar(world, id, third.id))) {
+      out[id] = 'elsewhere';
+    }
+  }
+  return out;
+}
+
+/** Sanayi kipi: küme başına fabrika işçisi (bütün ülkelerin tesisleri). */
+export function factoryWorkersByProvince(world) {
+  const workers = new Map();
+  for (const nation of world.nations ?? []) {
+    if (!nation?.alive) continue;
+    for (const factory of nation.economy?.factories ?? []) {
+      const provinceId = world.get(factory.q, factory.r)?.provinceId;
+      if (provinceId == null || provinceId < 0) continue;
+      workers.set(provinceId, (workers.get(provinceId) ?? 0) + Math.max(0, factory.employees ?? 0));
+    }
+  }
+  return workers;
 }
 
 const MAX_DPR = 2;            // mobilde 3x DPR gereksiz pahalı
@@ -782,7 +869,7 @@ export class Renderer {
       minX: minX - HEX_SIZE * 2, maxX: maxX + HEX_SIZE * 2,
       minY: minY - HEX_SIZE * 2, maxY: maxY + HEX_SIZE * 2,
     });
-    if (this.mapMode === 'political' && !this.glSurface()) {
+    if (this.occupationMode() && !this.glSurface()) {
       this.drawOccupationOverlay(ctx, world, list, cache.scale);
     }
     if (this.mapMode === 'cultures') this.drawCultureMix(ctx, world, list, cache.scale);
@@ -797,8 +884,86 @@ export class Renderer {
 
   setMapMode(mode) {
     this.mapMode = mode;
+    // Diplomasi kipinden çıkınca bakılan ülke unutulur: tekrar açılışta harita
+    // oyuncunun kendi ilişkileriyle başlar.
+    if (mode !== 'diplomacy') this.diplomacyFocus = null;
+    this.modeCache = null;
     this.tintCache.clear();
     this.invalidateCache();
+  }
+
+  /** İşgal taraması hangi kiplerde çizilir: siyaset ve diplomasi (savaşın hâli). */
+  occupationMode() {
+    return this.mapMode === 'political' || this.mapMode === 'diplomacy';
+  }
+
+  /**
+   * Veri kipinin renkleri yeniden okunsun (hafta kapandı, savaş ilan edildi,
+   * bakılan ülke değişti). GPU yüzeyinde yalnız renk dokusu tazelenir; eski
+   * Canvas2D yolunda önbellek baştan pişer.
+   */
+  refreshModeColors() {
+    this.modeCache = null;
+    if (this.glSurface()) this.invalidateSurfaceColors();
+    else this.invalidateCache();
+  }
+
+  /** Diplomasi kipinde ilişkileri gösterilen ülke; null = oyuncu. */
+  setDiplomacyFocus(nationId) {
+    const next = nationId ?? null;
+    if (next === (this.diplomacyFocus ?? null)) return;
+    this.diplomacyFocus = next;
+    this.refreshModeColors();
+  }
+
+  /** Bakılan ülkenin kimliği: seçilen yaşayan ülke, yoksa oyuncu. */
+  diplomacyFocusId(world) {
+    const focus = this.diplomacyFocus;
+    if (focus != null && world.nations?.[focus]?.alive) return focus;
+    return this.viewPlayer ?? 0;
+  }
+
+  /**
+   * Veri kiplerinin kare başına okuduğu tablo. Kip, dünya ya da bakılan ülke
+   * değişince yeniden kurulur; `refreshModeColors` onu da düşürür.
+   */
+  modeTable(world) {
+    const focus = this.mapMode === 'diplomacy' ? this.diplomacyFocusId(world) : null;
+    const cached = this.modeCache;
+    if (cached && cached.world === world && cached.mode === this.mapMode && cached.focus === focus) {
+      return cached;
+    }
+    const table = { world, mode: this.mapMode, focus };
+    if (this.mapMode === 'diplomacy') table.relation = diplomacyStanding(world, focus);
+    if (this.mapMode === 'industry') table.workers = factoryWorkersByProvince(world);
+    this.modeCache = table;
+    return table;
+  }
+
+  /** Veri kiplerinde karanın rengi (deniz tileColor'da ayrılır). */
+  dataTint(tile, world) {
+    const owner = ownerOf(tile, world);
+    if (owner < 0) return DATA_EMPTY;
+    if (this.mapMode === 'diplomacy') {
+      return DIPLOMACY_COLORS[this.modeTable(world).relation[owner]] ?? DIPLOMACY_COLORS.neutral;
+    }
+    if (this.mapMode === 'infamy') {
+      return rampColor(INFAMY_RAMP, (world.nations[owner]?.infamy ?? 0) / INFAMY_COALITION);
+    }
+    // `tile.province` kümenin econ kaydıdır (provinces.initProvinces); buz
+    // eteğinin kendi kümesi yok, bağlı olduğu kümeden okunur.
+    const provinceId = tile.provinceId >= 0 ? tile.provinceId : tile.fringeOf;
+    const econ = tile.province ?? world.provinces?.[provinceId]?.econ;
+    if (!econ) return DATA_EMPTY;
+    if (this.mapMode === 'unrest') return rampColor(UNREST_RAMP, (econ.unrest ?? 0) / 10);
+    if (this.mapMode === 'industry') {
+      const workers = this.modeTable(world).workers.get(provinceId) ?? 0;
+      if (workers <= 0) return rampColor(INDUSTRY_RAMP, 0);
+      // 1K işçi en soluk, 200K+ en parlak pirinç: log ölçek, çünkü dağılım
+      // birkaç sanayi merkezinde toplanır ve doğrusal ölçek geri kalanını söndürür.
+      return rampColor(INDUSTRY_RAMP, 0.08 + 0.92 * (Math.log10(Math.max(1000, workers)) - 3) / 2.3);
+    }
+    return DATA_EMPTY;
   }
 
   /**
@@ -1328,7 +1493,7 @@ export class Renderer {
     // ÜST: işgal/inşaat taraması, ızgara, province kenarı, ülke sınırı.
     // İşgal taraması GPU yüzeyinde (bkz. surfaceGL uOverlay); Canvas2D yalnız
     // yedek yolda çizer, yoksa iki kez binip alfası katlanır.
-    if (this.mapMode === 'political' && !this.glSurface()) {
+    if (this.occupationMode() && !this.glSurface()) {
       this.drawOccupationOverlay(t, world, tiles, scale);
     }
     if (this.mapMode === 'cultures') this.drawCultureMix(t, world, tiles, scale);
@@ -1452,13 +1617,19 @@ export class Renderer {
   render(world, state = {}) {
     const ctx = this.ctx;
     const cam = this.camera;
+    // Diplomasi kipinin varsayılan bakış açısı; renk dokusu aşağıda bu kareden
+    // önce tazelenirse doğru ülkeye göre kurulsun.
+    if (state.playerNation != null && state.playerNation !== this.viewPlayer) {
+      this.viewPlayer = state.playerNation;
+      if (this.mapMode === 'diplomacy') this.refreshModeColors();
+    }
     // Geçen zaman kare sayısından bağımsız: animasyon her FPS'te aynı hızda akar.
     this.waterTime = performance.now() / 1000;
     // Su önce çizilir: ayrı bir tuval olduğu için sıra bileşimi değiştirmez,
     // ama kamera değerleri Canvas2D karesiyle BİREBİR aynı kalır.
     if (this.glWater()) {
       this.waterGL.seaMaterial = this.waterAnimatedMode();
-      this.waterGL.overlayOn = this.mapMode === 'political';
+      this.waterGL.overlayOn = this.occupationMode();
       // İki doku, iki ayrı ömür: taban rengi yalnız sahiplik/kip değişince,
       // işgal taraması ise kontrol her değiştiğinde tazelenir. Aynı bayrağa
       // bağlamak savaşta ya bedava tam tarama ya da bayat işgal demekti.
@@ -1832,7 +2003,7 @@ export class Renderer {
     // taşar, üstünü kara dolgusu kapatır (bkz. paintStaticContent).
     const water = this.canvasWater();
     if (j.phase === 'ink') {
-      if (this.mapMode === 'political' && !this.glSurface()) {
+      if (this.occupationMode() && !this.glSurface()) {
         this.drawOccupationOverlay(j.ctx, world, bakeTiles, j.scale);
       }
       if (this.mapMode === 'cultures') this.drawCultureMix(j.ctx, world, bakeTiles, j.scale);
@@ -2044,6 +2215,9 @@ export class Renderer {
   }
 
   tileColor(tile, world) {
+    if (DATA_MODES.has(this.mapMode)) {
+      return tile.terrain.water ? 'hsl(207 32% 13%)' : this.dataTint(tile, world);
+    }
     if (this.mapMode === 'resources') {
       return tile.terrain.water ? 'hsl(210 30% 18%)' : this.resourceTint(tile);
     }

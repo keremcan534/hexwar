@@ -13,7 +13,10 @@
 
 import { IDEOLOGIES, peopleMix } from './politics.js';
 import { acceptBlockers, brokenByCulture, cultureMix, unrestSummary } from './culture.js';
-import { formatPopulation, populationOf, weightedNeedsMet } from './economy.js';
+import {
+  CLASS_INFO, CLASS_NEEDS, GOODS, NEED_TIERS, formatPopulation, needAmount, needTier, populationOf,
+  weightedNeedsMet,
+} from './economy.js';
 import {
   CONFESSIONS, censusSource, censusTree, classPoliticsOf, confessionOf,
   consciousnessOf, issueName, literacyOf, militancyOf,
@@ -341,6 +344,11 @@ export function populationOverview(world, nation) {
 
   return {
     summary,
+    // Sınıf sepetleri ULUSALDIR (ekonomi sınıf başına tek bütçe tutar);
+    // state seçimi bunları daraltmaz.
+    classNeeds: Object.fromEntries(
+      Object.keys(CLASS_INFO).map((classId) => [classId, classNeedsOf(world, nation, classId)]),
+    ),
     // Ülke çapındaki uyarılar: şeridi bunlar doldurur.
     alerts: alertsFor({ ...summary, growth: trend.growth }),
     nationCultures,
@@ -371,6 +379,43 @@ export function populationOverview(world, nation) {
       })),
       issues: topIssues(nation, cohorts, total),
     },
+  };
+}
+
+/**
+ * Bir sınıfın SEPETİ, mal mal: ne istiyor, ne kadarını karşılıyor.
+ *
+ * Hesap yeniden kurulmaz; iki kayıtlı kapı okunur (economy.populationDemand):
+ *   - `tierMet[kademe]` — bütçe o kademeye yetti mi (yaşam → günlük → lüks
+ *     şelalesi; ekmek en son kesilir),
+ *   - `goodsFlow[mal].fulfilledShare` — mal pazarda bulundu mu.
+ * Malın karşılanması ikisinin çarpımıdır; sınıfın toplamı `needsMet`
+ * (sepet ağırlıklı) ile aynı iki kapıdan geçer. Takvimi gelmemiş mal (telefon
+ * 1880'lerden önce) talep edilmediği için listede yoktur.
+ */
+export function classNeedsOf(world, nation, classId) {
+  const socialClass = nation?.economy?.classes?.[classId];
+  const basket = CLASS_NEEDS[classId];
+  if (!socialClass || !basket) return null;
+  const turn = world.turn ?? 1;
+  const flows = nation.economy.goodsFlow ?? {};
+  const goods = Object.entries(basket)
+    .filter(([, need]) => needAmount(need, turn) > 0)
+    .map(([goodId, need]) => {
+      const tier = needTier(need);
+      const afford = clamp(socialClass.tierMet?.[tier] ?? socialClass.needsMet ?? 1, 0, 1);
+      const shelf = clamp(flows[goodId]?.fulfilledShare ?? 1, 0, 1);
+      return {
+        id: goodId, name: GOODS[goodId]?.name ?? goodId, tier, afford, shelf, met: afford * shelf,
+      };
+    })
+    .sort((a, b) => NEED_TIERS.indexOf(a.tier) - NEED_TIERS.indexOf(b.tier));
+  return {
+    id: classId,
+    name: CLASS_INFO[classId]?.name ?? classId,
+    needsMet: clamp(socialClass.needsMet ?? 1, 0, 1),
+    tiers: socialClass.tierMet ?? null,
+    goods,
   };
 }
 

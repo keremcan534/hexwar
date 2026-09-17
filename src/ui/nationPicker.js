@@ -11,6 +11,7 @@
 import { nationBrief, nationRoster } from '../game/nationBrief.js';
 import { formatPopulation } from '../game/economy.js';
 import { flagDataUrl } from '../render/flagPainter.js';
+import { hidePanel, showPanel } from './motion.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -48,7 +49,7 @@ export class NationPicker {
     this.open_ = true;
     this.candidate = world.playerNation ?? this.game.turns.playerNation;
     this.roster = nationRoster(world);
-    this.root.classList.remove('hidden');
+    showPanel(this.root);
     document.body.classList.add('picker-open');
     this.render();
   }
@@ -56,7 +57,8 @@ export class NationPicker {
   close() {
     if (!this.open_) return;
     this.open_ = false;
-    this.root.classList.add('hidden');
+    // Kart sağa çekilerek kapanır; başlık ve paneller aynı anda geri gelir.
+    hidePanel(this.root);
     document.body.classList.remove('picker-open');
   }
 

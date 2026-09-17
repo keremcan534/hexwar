@@ -15,6 +15,8 @@
 // Bu dosya YALNIZ ÇİZER. Bütün sayılar `game/populationView.js`ten hazır
 // gelir; burada hiçbir eşik, oran ya da "neden mutsuz" cümlesi hesaplanmaz.
 
+import { resourceGlyph } from './icons/index.js';
+
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
     { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -374,15 +376,55 @@ function groupTable(view, state) {
   </div>`;
 }
 
+const TIER_LABEL = { life: 'Life', everyday: 'Everyday', luxury: 'Luxury' };
+/** Karşılanma tonu: grup tablosundaki "Needs met" eşiğiyle aynı dil (0.85). */
+const needTone = (met) => (met >= 0.85 ? 'ok' : met >= 0.6 ? 'warn' : 'bad');
+
+/**
+ * Sınıfın sepeti, adının ALTINDA: kademe kademe mal madalyonu ve yüzdesi.
+ * Tek satırlık "People / Share" tablosu sınıfın NE İSTEDİĞİNİ ve NEYİ
+ * alamadığını hiç söylemiyordu (Kerem: sınıf adlarının altında ihtiyaçların
+ * ikonları ve yüzdelikleri). Sayılar populationView.classNeedsOf'tan.
+ */
+function needChips(needs) {
+  if (!needs?.goods?.length) return '';
+  const groups = Object.keys(TIER_LABEL).map((tier) => {
+    const goods = needs.goods.filter((good) => good.tier === tier);
+    if (!goods.length) return '';
+    return `<span class="pop-need-tier">
+      <small>${TIER_LABEL[tier]}</small>
+      ${goods.map((good) => `<span class="pop-need ${needTone(good.met)}" tabindex="0"
+        data-tip="class-need" data-tip-arg="${esc(needs.id)}:${esc(good.id)}">
+        <i>${resourceGlyph(good.id)}</i>
+        <b>${Math.round(good.met * 100)}%</b>
+        <em class="pop-need-bar" aria-hidden="true"><em style="width:${Math.round(good.met * 100)}%"></em></em>
+      </span>`).join('')}
+    </span>`;
+  }).join('');
+  return `<div class="pop-needs">${groups}</div>`;
+}
+
 function classesTab(view) {
-  const rows = view.distributions.classes.map((row) => `<tr>
-    <td><b>${esc(row.name)}</b></td>
-    <td class="num">${people(row.value)}</td>
-    <td class="num">${(row.share * 100).toFixed(1)}%</td>
-  </tr>`).join('');
-  return panel('Social classes', 'share of the population',
-    `<table class="data-table"><thead><tr><th>Class</th><th class="num">People</th>
-      <th class="num">Share</th></tr></thead><tbody>${rows}</tbody></table>`, 'wide');
+  const rows = view.distributions.classes.map((row) => {
+    const needs = view.classNeeds?.[row.id];
+    const met = needs?.needsMet;
+    return `<tr class="pop-class-row">
+      <td>
+        <b class="pop-class-name">${esc(row.name)}</b>
+        ${needChips(needs)}
+      </td>
+      <td class="num ${met != null ? needTone(met) : ''}">${met == null ? '—' : pct(met)}</td>
+      <td class="num">${people(row.value)}</td>
+      <td class="num">${(row.share * 100).toFixed(1)}%</td>
+    </tr>`;
+  }).join('');
+  return panel('Social classes', 'what each class needs and how much of it they get',
+    `<table class="data-table pop-classes"><thead><tr><th>Class and basket</th>
+      <th class="num">Needs met</th><th class="num">People</th>
+      <th class="num">Share</th></tr></thead><tbody>${rows}</tbody></table>
+     <p class="hint">Each figure is what the class can afford of that tier times what the
+       market could supply of that good. Baskets are national: a class spends one budget
+       across the whole country.</p>`, 'wide');
 }
 
 function cultureTab(view) {

@@ -68,6 +68,27 @@ Ekran yerleşimi Vic2 düzenindedir: seçili province penceresi **sol altta**, s
 **sağ üstte**, harita kipleri **sağ altta**. Dar ekranda panel genişler ve kipler
 onun üstüne çıkar.
 
+Üst çubuk üç bölgedir ve tek eksene oturur: solda künye (dalgalanan bayrak +
+ülke adı + tek satır özet), **ortada yedi eş gösterge** (hazine, istikrar,
+şöhret, nüfus, ordu, insan gücü, GSYH), sağda tarih, saat durumu ve hız
+kanalı. Sekme künyeleri de ortalanır ve pencere genişledikçe büyür.
+
+Harita kipleri üç ailedir: coğrafya (siyasi, arazi, coğrafya, kültür, kaynak,
+nüfus), **veri** ve katmanlar. Veri kipleri simülasyondan boyanır ve her hafta
+tazelenir:
+
+| Kip | Ne gösterir |
+| --- | --- |
+| Diplomacy | Bakılan ülkenin gözünden savaş, ültimatom, ittifak, ateşkes, rakip; başkasıyla savaşanlar ayrı ton, işgal edilen topraklar taralı. Haritada bir ülkeye tıklamak bakış açısını ona çevirir. |
+| Unrest | Küme başına huzursuzluk (0–10); 7'nin üstü isyan kuluçkası. |
+| Industry | Küme başına fabrika işçisi — bütün ülkeler, sanayi kalpleri. |
+| Infamy | Ülkelerin şöhreti; koalisyon eşiğine (22) yaklaşan kızarır. |
+
+Arayüz hareketleri (ekran/panel açılış-kapanışı, sekme ışığı, bayrak dalgası)
+**Settings → Interface animations** anahtarındadır; varsayılan açık. Sistemin
+"hareketi azalt" ayarına bağlı değildir — Windows animasyonları kapalı bir
+makinede oyunun kendi hareketleri yine oynar.
+
 ## Ana sistemler
 
 ### Oyunun amacı: hegemonya
@@ -356,16 +377,29 @@ programına doğru yükseltir, yasa geri almaz. Ayrıntı: `src/game/politics.js
 
 ### Yönetimi devretme (AUTO)
 
-Yedi alan — bütçe, ticaret, inşaat kapasitesi, sanayi (devlet fabrikası ve silah
-hatları), yasalar, diplomasi, asker alımı — tek bir **AUTO ON/OFF** anahtarıyla
-hükûmete devredilebilir. Ekranın üstünde
+Sekiz alan — bütçe, ticaret, inşaat kapasitesi, sanayi (devlet fabrikası ve silah
+hatları), yasalar, **araştırma**, asker alımı ve diplomasi — tek bir
+**AUTO ON/OFF** anahtarıyla hükûmete devredilebilir. Ekranın üstünde
 tek satırlık bir şerit anahtarı, bir cümlelik açıklamayı ve hükûmetin son
 anlamlı eylemini gerekçesiyle gösterir.
+
+**Yeni kampanya üst şeridin bütün portföyleri AUTO açık başlar** (inşaat,
+fabrikalar, ticaret, bütçe, ordu, yasalar, araştırma); devredilmiş sekmenin
+künyesi şeritte yeşil yanar ve altında küçük bir lamba durur. Diplomasi
+bilerek dışarıdadır: devri oyuncu adına savaş ilan eder, ilk hafta habersiz
+bir savaş "kolaylık" olmaz. Her anahtar ilgili ekrandan tek tıkla kapanır.
 
 AUTO açıkken çalışan şey, yapay zekâ ülkelerinin kullandığı fonksiyonun ta
 kendisidir; ayrı bir "oyuncu otomasyonu" yoktur. Hazine, yasa tavanları,
 inşaat gücü ve teçhizat kısıtları aynıdır — devir bir kolaylıktır, bir bonus
 değil. Anahtar kapandığı hafta kontrol geri döner.
+
+Araştırma devri (**Research AUTO**) kuyruk boşalınca sıradaki teknolojiyi
+ülkenin durumuna göre seçer: sanayi payı, tarla payı, borcun kredi kapasitesine
+oranı, inşaat kuyruğu, okuryazarlık, savaş ve rakip. Değer puana bölünür
+(`technology.pickNextTech`), ekol çarpanı ülkeye karakterini bırakır.
+Kapalıyken kuyruk senindir; boş kuyrukta puan bankada birikir ve akademi
+seçimini bekleyen kalıcı bir kart çıkar. Ayrıntı: `MEKANIK_KILAVUZU 2.3`.
 
 ### Kaynak ekonomisi
 

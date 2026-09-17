@@ -29,34 +29,45 @@
        çubuk yüksekliğinden elle hesaplanmak zorundaydı; hesap tutmayınca
        şeritler üst üste biniyordu. Aynı akışta oldukları için artık çakışamazlar. -->
   <div class="hud-header" id="hud-header">
+  <!-- Üç bölge, tek eksen: künye solda, göstergeler TAM ORTADA, saat sağda.
+       Yan sütunlar eşit (1fr) olduğu için orta grup pencerenin merkezine
+       oturur; künyeyle saat birbirinin aynasıdır (bayrak ↔ menü, ad ↔ tarih,
+       özet ↔ saat durumu). -->
   <header class="topbar">
-    <button class="nation-badge" id="nation-badge" title="Nation overview">
-      <span class="flag-frame">
-        <span class="flag" id="top-flag"></span>
-        <i aria-hidden="true"></i>
-      </span>
-      <span class="nation-text">
-        <b id="top-nation">—</b>
-        <small id="top-sub">—</small>
-      </span>
-    </button>
+    <div class="topbar-side topbar-left">
+      <button class="nation-badge" id="nation-badge" title="Nation overview">
+        <span class="nation-flag" id="top-flag" aria-hidden="true"></span>
+        <span class="nation-text">
+          <b id="top-nation">—</b>
+          <small id="top-sub">—</small>
+        </span>
+      </button>
+    </div>
 
-    <div class="res-strip" id="resources" aria-label="National resources">—</div>
-    <div class="macro-strip" id="macro-stats" aria-label="National statistics">—</div>
+    <div class="top-stats" aria-label="National statistics">
+      <div class="res-strip" id="resources">—</div>
+      <div class="macro-strip" id="macro-stats">—</div>
+    </div>
 
     <!-- Saat üst çubuğun *içinde* durur. Ayrı bir yüzen katman olduğunda üst
          çubuğun sağ boşluğu elle tahmin edilmek zorundaydı ve tahmin tutmayınca
          kaynak değerleri saatin altında kırpılıyordu. -->
-    <div class="turn-control" id="turn-control">
-      <span class="turn-badge"><b id="turn-value">1 JAN 1836</b></span>
-      <button class="time-btn active" id="btn-pause" data-speed="0" aria-label="Pause" data-tip="time" data-tip-arg="0"><svg viewBox="0 0 16 16"><path d="M6 3.5v9M10 3.5v9"/></svg></button>
-      <button class="time-btn" data-speed="1" aria-label="Normal speed" data-tip="time" data-tip-arg="1"><svg viewBox="0 0 16 16"><path d="M5 3.5 12 8l-7 4.5z"/></svg></button>
-      <button class="time-btn" data-speed="2" aria-label="Fast" data-tip="time" data-tip-arg="2"><svg viewBox="0 0 16 16"><path d="M3 3.5 8 8l-5 4.5zM9 3.5 14 8l-5 4.5z"/></svg></button>
-      <button class="time-btn" data-speed="4" aria-label="Very fast" data-tip="time" data-tip-arg="4"><svg viewBox="0 0 16 16"><path d="M1.5 3.5 6 8l-4.5 4.5zM6.5 3.5 11 8l-4.5 4.5zM12.5 3.5v9"/></svg></button>
-      <button class="time-btn" data-speed="8" aria-label="Fastest" data-tip="time" data-tip-arg="8"><svg viewBox="0 0 16 16"><path d="M1 3.5 5 8l-4 4.5zM5.5 3.5 9.5 8l-4 4.5zM10 3.5 14 8l-4 4.5z"/></svg></button>
+    <div class="topbar-side topbar-right">
+      <div class="turn-control" id="turn-control">
+        <span class="turn-badge">
+          <b id="turn-value">1 JAN 1836</b>
+          <small class="turn-status" id="turn-status">Paused</small>
+        </span>
+        <div class="time-controls" role="group" aria-label="Game speed">
+          <button class="time-btn active" id="btn-pause" data-speed="0" aria-label="Pause" data-tip="time" data-tip-arg="0"><svg viewBox="0 0 16 16" aria-hidden="true"><path class="bar" d="M5.8 4v8M10.2 4v8"/></svg></button>
+          <button class="time-btn" data-speed="1" aria-label="Normal speed" data-tip="time" data-tip-arg="1"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.8 11.5 8l-6 4.2z"/></svg></button>
+          <button class="time-btn" data-speed="2" aria-label="Fast" data-tip="time" data-tip-arg="2"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2.8 3.8 7.6 8l-4.8 4.2zM8.4 3.8 13.2 8l-4.8 4.2z"/></svg></button>
+          <button class="time-btn" data-speed="4" aria-label="Very fast" data-tip="time" data-tip-arg="4"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.6 4.2 5.4 8l-3.8 3.8zM5.9 4.2 9.7 8l-3.8 3.8zM10.2 4.2 14 8l-3.8 3.8z"/></svg></button>
+          <button class="time-btn" data-speed="8" aria-label="Fastest" data-tip="time" data-tip-arg="8"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M1.2 4.2 4.6 8l-3.4 3.8zM5.1 4.2 8.5 8l-3.4 3.8zM9 4.2 12.4 8 9 11.8z"/><path class="bar" d="M14 4.2v7.6"/></svg></button>
+        </div>
+      </div>
+      <button class="icon-btn" id="btn-settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></svg></button>
     </div>
-
-    <button class="icon-btn" id="btn-settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></svg></button>
   </header>
 
   <!-- Yalnızca oyuncuya açık ve etkin olan ulusal yönetim ekranları.
@@ -65,15 +76,15 @@
        resim erişilebilirlik ağacına girmez, ekran okuyucu adı metinden okur.
        Genişliği kelime belirler; her sekmenin oranı CSS'te yazılıdır. -->
   <nav class="tab-bar" id="tab-bar" aria-label="National management">
-    <button data-screen="construction"><b>Construction</b></button>
-    <button data-screen="industry"><b>Factories</b></button>
-    <button data-screen="trade"><b>Trade</b></button>
-    <button data-screen="budget"><b>Budget</b></button>
-    <button data-screen="military"><b>Military</b></button>
-    <button data-screen="population"><b>Population</b></button>
-    <button data-screen="politics"><b>Politics</b></button>
-    <button data-screen="technology"><b>Technology</b></button>
-    <button data-screen="chronicle"><b>Chronicle</b></button>
+    <button data-screen="construction" data-tip="tab" data-tip-arg="construction"><b>Construction</b></button>
+    <button data-screen="industry" data-tip="tab" data-tip-arg="industry"><b>Factories</b></button>
+    <button data-screen="trade" data-tip="tab" data-tip-arg="trade"><b>Trade</b></button>
+    <button data-screen="budget" data-tip="tab" data-tip-arg="budget"><b>Budget</b></button>
+    <button data-screen="military" data-tip="tab" data-tip-arg="military"><b>Military</b></button>
+    <button data-screen="population" data-tip="tab" data-tip-arg="population"><b>Population</b></button>
+    <button data-screen="politics" data-tip="tab" data-tip-arg="politics"><b>Politics</b></button>
+    <button data-screen="technology" data-tip="tab" data-tip-arg="technology"><b>Technology</b></button>
+    <button data-screen="chronicle" data-tip="tab" data-tip-arg="chronicle"><b>Chronicle</b></button>
   </nav>
   <!-- Aktif savaslar: EU4/HOI4'teki gibi menunun altinda kirmizi parlayan
        kutucuklar. Icerik hud.js showWars tarafindan uretilir. -->
@@ -106,6 +117,14 @@
     <button class="mode-btn" data-mode="cultures" aria-label="Culture map" data-tip="mapmode" data-tip-arg="cultures"><svg viewBox="0 0 16 16"><path d="M8 2a6 6 0 1 0 0 12A6 6 0 0 0 8 2zM2.4 6.5h11.2M2.4 9.5h11.2M8 2c-1.8 2-2.6 4-2.6 6s.8 4 2.6 6c1.8-2 2.6-4 2.6-6s-.8-4-2.6-6z"/></svg></button>
     <button class="mode-btn" data-mode="resources" aria-label="Resource map" data-tip="mapmode" data-tip-arg="resources"><svg viewBox="0 0 16 16"><path d="M9.5 2.5 13.5 6.5M11.5 4.5 6 10l-3.5 3.5M4.5 8.5 7.5 11.5"/></svg></button>
     <button class="mode-btn" data-mode="population" aria-label="Population map" data-tip="mapmode" data-tip-arg="population"><svg viewBox="0 0 16 16"><path d="M8 7.5a2.2 2.2 0 1 0 0-4.4 2.2 2.2 0 0 0 0 4.4zM3.5 13.5c0-2.5 2-4.2 4.5-4.2s4.5 1.7 4.5 4.2"/></svg></button>
+    <!-- Veri kipleri: renk simülasyondan gelir, her hafta tazelenir
+         (renderer DATA_MODES; lejantı hud.js kurar). -->
+    <i class="mode-sep" aria-hidden="true"></i>
+    <button class="mode-btn" data-mode="diplomacy" aria-label="Diplomacy map" data-tip="mapmode" data-tip-arg="diplomacy"><svg viewBox="0 0 16 16"><path d="M3 14V2.6M3 3h5.6L7.4 5l1.2 2H3M13 14V4.6M13 5H7.8M13 9H9.2l1.2-2"/></svg></button>
+    <button class="mode-btn" data-mode="unrest" aria-label="Unrest map" data-tip="mapmode" data-tip-arg="unrest"><svg viewBox="0 0 16 16"><path d="M8 14c-2.6 0-4.3-1.8-4.3-4.1 0-2.7 2.5-3.7 2.8-6.3 1.5 1 2.3 2.4 2.3 3.6.6-.5 1-1.3 1.1-2.1 1.6 1.3 2.5 3 2.5 4.8C12.4 12.2 10.6 14 8 14z"/></svg></button>
+    <button class="mode-btn" data-mode="industry" aria-label="Industry map" data-tip="mapmode" data-tip-arg="industry"><svg viewBox="0 0 16 16"><path d="M1.8 13.8h12.4M2.6 13.8V8.6l3.3-2.1v2.1l3.3-2.1v2.1l2.1-1.3V2.4h2v11.4"/></svg></button>
+    <button class="mode-btn" data-mode="infamy" aria-label="Infamy map" data-tip="mapmode" data-tip-arg="infamy"><svg viewBox="0 0 16 16"><path d="M8 1.7 9.7 4v5.7H6.3V4zM4.4 9.7h7.2M8 9.7v3.6M6.5 13.4h3"/></svg></button>
+    <i class="mode-sep" aria-hidden="true"></i>
     <button class="mode-btn" id="btn-layers" aria-label="Map layers" data-tip="mapmode" data-tip-arg="layers"><svg viewBox="0 0 16 16"><path d="M8 2 14 5.2 8 8.4 2 5.2zM2 8.4 8 11.6l6-3.2M2 11.2 8 14.4l6-3.2"/></svg></button>
   </div>
 
@@ -122,6 +141,10 @@
     <span style="--rgo-color:hsl(150 30% 37%)">3K–8K</span>
     <span style="--rgo-color:hsl(63 36% 54%)">8K+</span>
   </div>
+
+  <!-- Veri kiplerinin lejantı (diplomasi, huzursuzluk, sanayi, şöhret):
+       renkler renderer.js tablolarından, içerik hud.js showModeLegend. -->
+  <div class="rgo-map-legend mode-legend hidden" id="mode-legend" aria-live="polite"></div>
 
   <div class="layer-menu hidden" id="layer-menu">
     <label><input type="checkbox" id="opt-grid" checked /> Grid</label>

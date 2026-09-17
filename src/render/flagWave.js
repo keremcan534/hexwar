@@ -50,13 +50,15 @@ function ensureCloth() {
   clothImage.decoding = 'async';
   clothImage.addEventListener('load', () => {
     clothReady = true;
-    for (const flag of live) bake(flag);   // dokusuz pişenler yeniden pişer
+    for (const flag of [...live, ...parked]) bake(flag);   // dokusuz pişenler yeniden pişer
   }, { once: true });
   clothImage.src = CLOTH_URL;
 }
 
 /** Şu an sürülen bayraklar. */
 const live = new Set();
+/** Hareket kapalıyken bekleyen (büyük ama duran) bayraklar; ayar açılınca canlanır. */
+const parked = new Set();
 let rafId = 0;
 let lastFrame = 0;
 
@@ -72,15 +74,21 @@ const seen = typeof IntersectionObserver === 'function'
 
 /**
  * Görsel kalibrasyon kancası. Oyun ayarı DEĞİLDİR ve arayüzden erişilmez;
- * sabitleri konsoldan kurcalamak ve azaltılmış-hareket ayarı açık makinede
- * efekti bir kez görebilmek içindir.
+ * sabitleri konsoldan kurcalamak ve hareketi kapalı makinede efekti bir kez
+ * görebilmek içindir.
  */
 export const flagWaveDebug = { tune: TUNE, forceMotion: false };
 
+/**
+ * Hareket OYUNUN ayarıdır (Settings → Interface animations, kök
+ * `data-motion`), sistemin "hareketi azalt" bayrağı değil: Kerem'in
+ * Windows'unda animasyon efektleri kapalı ve medya sorgusuna bakan bayrak
+ * onda hiç dalgalanmıyordu.
+ */
 function reducedMotion() {
   if (flagWaveDebug.forceMotion) return false;
-  return typeof matchMedia === 'function'
-    && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  return typeof document !== 'undefined'
+    && document.documentElement?.dataset?.motion === 'off';
 }
 
 function loop(now) {
@@ -108,6 +116,26 @@ if (typeof document !== 'undefined') {
     if (document.hidden) stopClock();
     else startClock();
   });
+  // Ayar oyun sırasında çevrilir: takılı bayraklar yeniden takılmadan
+  // durur ya da kıpırdamaya başlar.
+  if (typeof MutationObserver === 'function') {
+    new MutationObserver(() => {
+      const still = reducedMotion();
+      for (const flag of [...live, ...parked]) {
+        flag.static = still;
+        if (still) {
+          blit(flag);
+          live.delete(flag);
+          parked.add(flag);
+        } else if (flag.canvas.isConnected && !flag.tiny) {
+          parked.delete(flag);
+          live.add(flag);
+        }
+      }
+      if (still) stopClock();
+      else startClock();
+    }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-motion'] });
+  }
 }
 
 /**
@@ -214,7 +242,8 @@ export function mountFlag(host, nation, cssW, cssH) {
   //   < 30px  — kıpırtı fark edilmez, hareketsiz bas
   //   < 56px  — 8 şerit, çok küçük genlik
   //   üstü    — 14 şerit, tam kumaş
-  const tiny = cssW < 30 || reducedMotion();
+  const tiny = cssW < 30;
+  const still = tiny || reducedMotion();
   const small = cssW < 56;
   const strips = small ? 8 : 14;
   const ampCss = small ? Math.min(1.2, cssH * 0.035) : Math.min(5, cssH * 0.05);
@@ -223,19 +252,27 @@ export function mountFlag(host, nation, cssW, cssH) {
   src.width = w;
   src.height = h;
 
+  // Aynı kabın eski kaydı iki kümeden de düşer: yeniden takılan bayrak
+  // eski nesneyle birlikte ikinci kez sürülmesin.
+  if (host.__flag) {
+    live.delete(host.__flag);
+    parked.delete(host.__flag);
+  }
   flag = {
     canvas, ctx: canvas.getContext('2d'), src,
     nation, w, h, strips,
     amp: ampCss * dpr,
-    static: tiny,
+    static: still,
+    tiny,
     visible: true,
   };
   host.__flag = flag;
   canvas.__flag = flag;
   bake(flag);
 
-  if (tiny) {
-    live.delete(flag);
+  for (const old of parked) if (!old.canvas.isConnected) parked.delete(old);
+  if (still) {
+    if (!tiny) parked.add(flag);
     return flag;
   }
   live.add(flag);

@@ -151,7 +151,6 @@ function nextSceneIndex() {
   return index;
 }
 
-/** Kayıt künyesi: "seed 4KZQ81 · 14 MAR 1851". */
 const MOTION_KEY = 'hexwar.motion';
 
 /**
@@ -181,6 +180,7 @@ export function setUiMotion(value) {
 // Modul yuklenirken uygulanir: menu acilmadan once de gecerli olsun.
 document.documentElement.dataset.motion = uiMotion();
 
+/** Kayıt künyesi: "seed 4KZQ81 · 14 MAR 1851". */
 function saveLabel(info) {
   if (!info) return '';
   const parts = [];
@@ -440,7 +440,11 @@ export class MainMenu {
     if (creditsMusic) creditsMusic.textContent = `Menu music: ${this.music.trackList}.`;
   }
 
-  /** Hareket azaltma açıksa oyuncu bunu bilsin: sis ve geçişler durur. */
+  /**
+   * Anahtar TEK kaynaktır: sis, sahne geçişi, bayrak dalgası ve arayüz
+   * hareketleri. Sistemin "hareketi azalt" bayrağı yalnız bilgi olarak anılır —
+   * ona bağlı hareket Kerem'in makinesinde hiç oynamıyordu.
+   */
   syncMotionNote() {
     const { motionNote } = this.el;
     for (const chip of this.el.motionChoices ?? []) {
@@ -448,9 +452,11 @@ export class MainMenu {
     }
     if (!motionNote) return;
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    motionNote.textContent = reduced
-      ? 'Reduced motion is on in your system settings — drifting fog and scene transitions are held still. Interface animations follow the switch above.'
-      : 'Drifting fog and scene transitions follow your system’s reduced-motion setting; interface animations follow the switch above.';
+    motionNote.textContent = uiMotion() === 'off'
+      ? 'Everything holds still: fog, flags, panels and screen transitions.'
+      : reduced
+        ? 'Your system asks for reduced motion; the game still animates because this switch is on.'
+        : 'Fog drifts, flags wave, and panels slide as they open and close.';
   }
 
   /** Kaydırıcılardaki değerlerle yeni dünya kurar ve perdeyi kaldırır. */

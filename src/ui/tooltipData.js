@@ -22,6 +22,8 @@ import { UNIT_TYPES } from '../game/units.js';
 import { industryOverview } from '../game/industryView.js';
 import { RGO_TYPES, depositsOf, provinceOutput, provinceRgoStatus } from '../game/provinces.js';
 import { activeAlerts } from '../game/alerts.js';
+import { DELEGATION_AREAS, DELEGATION_IDS, isDelegated } from '../game/delegation.js';
+import { classNeedsOf } from '../game/populationView.js';
 import { INFAMY, INFAMY_COALITION } from '../game/infamy.js';
 import { balanceAttribution, classIncomeAttribution, stabilityAttribution } from '../game/pulse.js';
 
@@ -285,6 +287,30 @@ export function registerTooltips(game) {
     };
   });
 
+  /** Sınıf sepetindeki tek mal: iki kapı (bütçe × raf), nüfus ekranının çipi. */
+  provideTooltip('class-need', (arg) => {
+    const [classId, goodId] = String(arg ?? '').split(':');
+    const needs = classNeedsOf(game.world, me(), classId);
+    const good = needs?.goods.find((row) => row.id === goodId);
+    if (!good) return null;
+    const TIER_TEXT = {
+      life: 'A life need — bought first and cut last. When it falls short the class slides down and growth slows.',
+      everyday: 'An everyday need — bought once life needs are paid. Falling short costs satisfaction, not lives.',
+      luxury: 'A luxury — bought last and cut first. Falling short only costs satisfaction.',
+    };
+    return {
+      type: 'breakdown',
+      title: `${good.name} · ${needs.name}`,
+      value: pct(good.met),
+      text: TIER_TEXT[good.tier] ?? '',
+      rows: [
+        { label: `Budget reaches the ${good.tier} tier`, value: pct(good.afford) },
+        { label: 'Found on the market', value: pct(good.shelf) },
+        { label: 'Price now', value: `£${priceOf(game.world, goodId).toFixed(2)}` },
+      ],
+    };
+  });
+
   provideTooltip('market', () => ({
     type: 'mechanic',
     title: 'World market',
@@ -488,10 +514,45 @@ export function registerTooltips(game) {
       cultures: ['Cultures', 'Who lives where. Hatching marks provinces whose majority differs from the owner\'s culture.'],
       resources: ['Resources', 'What every hex yields — grain, cattle, coal, iron and the rest. A province produces the sum of its hexes; the legend lists every resource.'],
       population: ['Population', 'How many people live in each province, in four bands.'],
+      diplomacy: ['Diplomacy', 'Who is at war with whom. Green is the nation you look from, red its enemies, blue its allies; hatching marks occupied land. Click any nation to see the map through its eyes.'],
+      unrest: ['Unrest', 'How close each province is to revolt, 0 to 10. Above 7 a revolt starts to brew; foreign culture, hunger and occupation drive it.'],
+      industry: ['Industry', 'Factory workers in each province, across every nation — where the industrial heartlands are.'],
+      infamy: ['Infamy', `How feared each nation is. At ${INFAMY_COALITION} the neighbours start forming coalitions against it.`],
       layers: ['Layers', 'Grid, labels, live sea, and the seed of this world.'],
     };
     const row = table[mode];
     return row ? { type: 'simple', title: row[0], text: row[1] } : null;
+  });
+
+  /**
+   * Sekme künyesi: ekranın ne olduğu ve AUTO ışığının anlamı. Işık tek başına
+   * "bu neden yeşil yanıyor" sorusunu cevaplamaz; cümle devir tablosundan gelir.
+   */
+  provideTooltip('tab', (screen) => {
+    const TAB = {
+      construction: ['Construction', 'Build capacity and the national build queue.'],
+      industry: ['Factories', 'Every plant you own: output, workers, profit and upgrades.'],
+      trade: ['Trade', 'The world market: prices, what you buy and sell, and the tariff.'],
+      budget: ['Budget', 'Taxes, spending, debt and the weekly balance.'],
+      military: ['Military', 'Regiments, training, equipment and mobilization.'],
+      population: ['Population', 'Classes, needs, employment, literacy and unrest.'],
+      politics: ['Politics', 'Parties, laws and the legitimacy of the government.'],
+      technology: ['Technology', 'The research tree, the queue and what each technology does.'],
+      chronicle: ['Chronicle', 'The history of your nation, event by event.'],
+    };
+    const row = TAB[screen];
+    if (!row) return null;
+    const nation = me();
+    const areaId = DELEGATION_IDS.find((id) => DELEGATION_AREAS[id].screen === screen);
+    if (!areaId || !nation) return { type: 'simple', title: row[0], text: row[1] };
+    const on = isDelegated(nation, areaId);
+    return {
+      type: 'simple',
+      title: `${row[0]} · ${on ? 'AUTO' : 'manual'}`,
+      text: `${row[1]} ${on
+        ? `The government runs it: ${DELEGATION_AREAS[areaId].desc} Turn AUTO off on the screen to take it back.`
+        : 'You run this portfolio yourself; AUTO on the screen hands it to the government.'}`,
+    };
   });
 
   provideTooltip('setup', (field) => {
