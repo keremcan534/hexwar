@@ -3,7 +3,6 @@
 // Bina donusumu + yuk azaltma + kaldirac düzeltmelerinden sonra dunya sagligi:
 //   - YZ yeni kapasite/kurum modeline yatirim yapiyor mu?
 //   - Kapasite patliyor mu, duruyor mu?
-//   - Kaleler sinira mi dikiliyor?
 //   - Sohret/koalisyon freni artik ATES ALIYOR mu?
 //   - Donanma 1836'dan itibaren gercekten kurulabiliyor mu?
 //   - Ekonomi/politika sagligi (iflas, istikrar, fiyat tavani) geriledi mi?
@@ -14,7 +13,7 @@
 import {
   headless, section, sub, table, finding, reportFindings, n1, n0, pct,
 } from './harness.mjs';
-import { investmentLevel, constructionCount, constructionPower } from '../../src/game/construction.js';
+import { investmentLevel, constructionPower } from '../../src/game/construction.js';
 import { INFAMY_COALITION } from '../../src/game/infamy.js';
 import { GOODS } from '../../src/game/economy.js';
 
@@ -58,8 +57,6 @@ for (const plan of PLANS) {
     const wall = (performance.now() - t0) / 1000;
     const alive = world.nations.filter((n) => n.alive && n.economy);
     const capacity = alive.map((n) => investmentLevel(n, 'CONSTRUCTION_CAPACITY'));
-    const education = alive.map((n) => investmentLevel(n, 'HIGHER_EDUCATION'));
-    const forts = alive.map((n) => constructionCount(n, 'FORT'));
     const powerMax = Math.max(...alive.map((n) => constructionPower(n)));
     const warships = world.units.filter((u) => u.type.domain === 'sea').length;
     const goods = Object.entries(world.market.goods);
@@ -85,9 +82,6 @@ for (const plan of PLANS) {
       population: alive.reduce((s, n) => s + n.economy.population, 0),
       capacityTotal: sum(capacity),
       capacityMax: Math.max(...capacity),
-      educationTotal: sum(education),
-      educationMax: Math.max(...education),
-      fortsTotal: sum(forts),
       powerMax,
       warships,
       infamyPeak,
@@ -101,7 +95,6 @@ for (const plan of PLANS) {
     summaryRows.push(row);
     console.log(`  ${seed} x${plan.weeks}hf: ${n1(wall)}s (${n1(row.weeksPerSecond)} hf/s)`
       + ` · ${alive.length} ulke · kapasite T${row.capacityTotal}/max${row.capacityMax}`
-      + ` · egitim T${row.educationTotal}/max${row.educationMax} · kale ${row.fortsTotal}`
       + ` · gemi ${warships} · zirve sohret ${n1(infamyPeak)}`
       + ` · esik-ustu ${overThresholdWeeks} ulke-hafta · tavan mal ${ceiling}`);
   }
@@ -117,8 +110,6 @@ console.log(table(summaryRows, [
   { label: 'nufus', get: (r) => n0(r.population) },
   { label: 'kapasiteT', get: (r) => r.capacityTotal },
   { label: 'kapMax', get: (r) => r.capacityMax },
-  { label: 'egitimT', get: (r) => r.educationTotal },
-  { label: 'kale', get: (r) => r.fortsTotal },
   { label: 'gemi', get: (r) => r.warships },
   { label: 'zirveSohret', get: (r) => n1(r.infamyPeak) },
   { label: 'esikUstuHf', get: (r) => r.overThresholdWeeks },

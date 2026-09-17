@@ -123,16 +123,17 @@ function sparkline(samples, { width = 260, height = 74 } = {}) {
 function healthCards(summary) {
   // Her kartin ustunde NE oldugu ve NEYIN oynattigi yazar; rakam tek basina
   // "buna ne yapmaliyim" sorusunu cevaplamiyordu (Open Beta 4 nufus kesfi).
+  // Ortak ozet seridi (§7B .ui-kpis): alti ayri kart yerine tek cerceve.
   const card = (label, value, note, noteTone = '', tip = '') => `
-    <div class="pop-card" ${tip ? `title="${esc(tip)}"` : ''}>
+    <div class="ui-kpi" ${tip ? `title="${esc(tip)}"` : ''}>
       <small>${esc(label)}</small>
       <b>${value}</b>
-      <em class="${noteTone}">${note}</em>
+      <span class="${noteTone}">${note}</span>
     </div>`;
   const growthNote = summary.growth == null
     ? 'no history yet'
     : `${summary.monthlyPeople >= 0 ? '+' : '−'}${people(Math.abs(summary.monthlyPeople))} / month`;
-  return `<header class="pop-cards">
+  return `<header class="ui-kpis pop-kpis">
     ${card('Total population', people(summary.total), growthNote, arrow(summary.growth),
     'Everyone living in your provinces. The note is the change over the last month.')}
     ${card('Growth', summary.growth == null ? '—' : `${summary.growth >= 0 ? '+' : '−'}${Math.abs(summary.growth * 100).toFixed(2)}%`,
@@ -146,7 +147,7 @@ function healthCards(summary) {
     'How much of what your people want they can afford at current prices. Falling needs breed unrest; the note is the change over the last year.')}
     ${card('Literacy', pct(summary.literacy), `${pp(summary.literacyChange)} this year`,
     arrow(summary.literacyChange),
-    'Share of adults who can read. Education spending and schools raise it; it feeds research and lets people move up a class.')}
+    'Share of people who can read, counting class and town. It follows national literacy (Technology screen), which education spending raises.')}
     ${card('Unrest', summary.unrest.toFixed(1),
     summary.unrest > 5 ? 'severe' : summary.unrest > 3.5 ? 'rising' : 'low',
     summary.unrest > 3.5 ? 'down' : 'up',

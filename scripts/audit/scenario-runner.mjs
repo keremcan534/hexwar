@@ -22,7 +22,7 @@ import { battleUnitPower } from '../../src/game/battles.js';
 import { reinforcementNeed } from '../../src/game/reinforcement.js';
 import { nationManpower } from '../../src/game/recruitment.js';
 import { declareWarNow } from '../../src/game/diplomacy.js';
-import { ensureConstruction, queueConstruction, constructionAtlas, constructionPower } from '../../src/game/construction.js';
+import { ensureConstruction, constructionPower } from '../../src/game/construction.js';
 
 const spec = JSON.parse(process.argv[2]);
 
@@ -338,9 +338,7 @@ if (spec.measure?.includes('construction')) {
       id: p.id, kind: p.kind, typeId: p.typeId, work: p.work,
       progress: p.progress, cost: p.cost, funded: p.funded,
     })),
-    buildings: state.buildings.length,
     sectors: state.capacity.construction ?? 0,
-    education: state.capacity.education ?? 0,
     upkeep: nation.economy.constructionUpkeep ?? 0,
   };
 }

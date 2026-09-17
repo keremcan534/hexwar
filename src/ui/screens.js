@@ -70,11 +70,8 @@ import {
   researchPointsOf, startResearch,
 } from '../game/technology.js';
 import {
-  CONSTRUCTION_TYPES, NATIONAL_INVESTMENTS, cancelConstruction, canQueueConstruction,
-  constructionAtlas, constructionPower, constructionUpkeep, divestInvestment,
-  ensureConstruction,
-  investmentBlocker, investmentCost, investmentLevel, moveConstructionTo,
-  prioritizeConstruction, queueConstruction, queueInvestment,
+  NATIONAL_INVESTMENTS, cancelConstruction, constructionPower, constructionView,
+  divestInvestment, moveConstructionTo, prioritizeConstruction, queueInvestment,
 } from '../game/construction.js';
 
 const TITLES = {
@@ -229,7 +226,6 @@ export class Screens {
     this.active = null;
     this.refreshHandle = 0;
     this.previousMapMode = null;
-    this.constructionType = null;
     // Sanayi ekraninin butun durumu tek nesnede: secili state, iki suzgec,
     // arama, kategori sekmesi, acik ⋯ menusu, acik katalog ve kapatma onayi.
     this.industry = {
@@ -307,28 +303,11 @@ export class Screens {
     window.addEventListener('pointercancel', endDrag);
     // Haritada yabancı toprağa sağ tık: o ülkenin paneli açılır.
     game.on('nation', (nationId) => this.openDossier(nationId));
+    // Haritayi secim yuzeyi yapan tek ekran baris masasidir.
     game.on('select', (tile) => {
-      if (this.active === 'peace') {
-        this.pickPeaceTile(tile);
-        return;
-      }
-      if (this.active !== 'construction') return;
-      const me = this.me;
-      if (this.constructionType && tile?.owner === me?.id) {
-        const region = constructionAtlas(game.world, me.id).tileRegions.get(tile);
-        // Tiklanan kare CAPA olur: kalenin etkisi artik o noktaya bagli
-        // (bkz. construction.fortDefenseAt), yani haritadan yer secmek gercek
-        // bir karardir — dag gecidine kale, ovaya kale ayni sey degil.
-        if (region && queueConstruction(game, me.id, region.id, this.constructionType, tile)) {
-          game.turns.addLog(`${CONSTRUCTION_TYPES[this.constructionType].name} queued at ${provinceName(tile)}.`);
-        }
-      }
-      this.refresh();
+      if (this.active === 'peace') this.pickPeaceTile(tile);
     });
-    game.on('world', () => {
-      this.constructionType = null;
-      this.close();
-    });
+    game.on('world', () => this.close());
   }
 
   get me() {
@@ -341,18 +320,10 @@ export class Screens {
   }
 
   open(name) {
-    // Baris kipi de haritayi ele gecirir; ekrandan cikarken geri verilmeli.
-    if ((this.active === 'construction' || this.active === 'peace') && name !== this.active) {
-      this.restoreMapMode();
-    }
+    // Baris kipi haritayi ele gecirir; ekrandan cikarken geri verilmeli.
+    if (this.active === 'peace' && name !== this.active) this.restoreMapMode();
     this.active = name;
     this.el.root.dataset.screen = name;
-    if (name === 'construction') {
-      this.previousMapMode ??= this.game.renderer.mapMode === 'construction'
-        ? 'political' : this.game.renderer.mapMode;
-      this.game.renderer.setConstructionMode(this.game.turns.playerNation);
-      this.game.requestRender();
-    }
     document.body.classList.add('screen-open');
     this.el.root.classList.remove('hidden');
     this.el.root.setAttribute('aria-hidden', 'false');
@@ -364,8 +335,7 @@ export class Screens {
   }
 
   close() {
-    if (this.active === 'construction' || this.active === 'peace') this.restoreMapMode();
-    this.constructionType = null;
+    if (this.active === 'peace') this.restoreMapMode();
     // Bekleyen onaylar ekranla birlikte duser.
     this.politicsConfirm = null;
     this.warConfirm = null;
@@ -938,7 +908,6 @@ export class Screens {
     const score = board.find((entry) => entry.nation.id === me.id);
     const rank = board.findIndex((entry) => entry.nation.id === me.id) + 1;
     const foreignPct = population ? Math.round((foreign / population) * 100) : 0;
-    const atlas = constructionAtlas(world, me.id);
     const taxes = me.economy?.taxes ?? {};
 
     return `<div class="nation-hero card">
@@ -955,7 +924,7 @@ export class Screens {
         <div><span>Population</span><b>${formatPopulation(population)}</b><small>${cities.length} ${cities.length === 1 ? 'city' : 'cities'}</small></div>
         <div><span>Armed Forces</span><b>${units.length}</b><small>power ${nationStrength(world, me).toFixed(1)}</small></div>
         <div><span>Internal Cohesion</span><b>${100 - foreignPct}%</b><small>${foreignPct}% foreign population</small></div>
-        <div><span>Construction</span><b>${atlas.free}/${atlas.slots}</b><small>state slots available</small></div>
+        <div><span>Construction</span><b>${constructionPower(me).toFixed(1)}/wk</b><small>build power</small></div>
       </div>
       <div class="card">
         <div class="card-head"><h3>National Economy</h3><small>current fiscal system</small></div>
@@ -986,9 +955,7 @@ export class Screens {
    * defter madalyonlarinin yanina baska bir setten yapistirilmis duruyordu.
    */
   static BUILD_GLYPH = {
-    FORT: PICTO_SHELL('<path d="M2.5 6.5V4h2.5v1.5h1.7V4h2.6v1.5H11V4h2.5v2.5l-1.2 1v6.5h-9V7.5z"/>'),
     CONSTRUCTION_CAPACITY: PICTO_SHELL('<path d="M2.5 13.5h11M4 13.5V6l4-2.5L12 6v7.5M6.5 13.5v-3.5h3v3.5M4 8.5h8"/>'),
-    HIGHER_EDUCATION: PICTO_SHELL('<path d="M8 3 14 6l-6 3-6-3z"/><path d="M4.5 7.4v3.4c0 1 1.6 1.9 3.5 1.9s3.5-.9 3.5-1.9V7.4M13 6.4v3.6"/>'),
   };
 
   /** Bir kuyruk satirinin amblemi: once urunun madalyonu, sonra cizgi glifi. */
@@ -1001,182 +968,103 @@ export class Screens {
     return Screens.BUILD_GLYPH[typeId] ?? Screens.BUILD_GLYPH.CONSTRUCTION_CAPACITY;
   }
 
+  /**
+   * INSAAT — ozet seridi, kapasite karti, tek kuyruk.
+   *
+   * Kale ve Higher Education kalkinca ekranin anlatacagi iki sey kaldi: ne kadar
+   * hizli insa ediyorsun (kapasite) ve sirada ne var (kuyruk). Bolge yuvalari
+   * yalniz kaleyi saydigi icin onlarla gitti; harita secimi de. Butun sayilar
+   * `construction.constructionView`dan hazir gelir.
+   */
   render_construction(me) {
-    const cities = this.myCities(me);
-    if (!cities.length) return '<p class="empty">You have no cities.</p>';
+    const view = constructionView(me, {
+      projectName: (project) => {
+        if (project.kind === 'national') return NATIONAL_INVESTMENTS[project.typeId]?.name ?? project.typeId;
+        const name = FACTORIES[project.typeId]?.name ?? project.typeId;
+        return project.kind === 'upgrade' ? `${name} expansion` : name;
+      },
+    });
+    const cap = view.capacity;
+    const weeks = (n) => `${n} week${n === 1 ? '' : 's'}`;
+    const kpi = (arg, label, value, sub) => `<div class="ui-kpi" data-tip="construction" data-tip-arg="${arg}">
+      <small>${label}</small><b>${value}</b><span>${sub}</span></div>`;
 
-    const atlas = constructionAtlas(this.game.world, me.id);
-    const state = ensureConstruction(me);
-    const selected = CONSTRUCTION_TYPES[this.constructionType] ?? null;
-    const power = constructionPower(me);
-    const upkeep = constructionUpkeep(me);
-    const buildPalette = Object.values(CONSTRUCTION_TYPES).map((type) => `
-      <button class="construction-build${this.constructionType === type.id ? ' selected' : ''}"
-        data-construction-type="${type.id}" title="${esc(type.desc)}">
-        <i class="build-emblem">${Screens.BUILD_GLYPH[type.id] ?? ''}</i><span><b>${esc(type.name)}</b><small>£${type.cost} · −£${type.upkeep}/week</small></span>
-      </button>`).join('');
-    // Ulusal yatirimlar: eski bina spam'inin kurum hali. Bir kart = bir
-    // seviye + bir sonraki seviyenin bedeli + (kapaliysa) NEDENI.
-    const investmentCards = Object.values(NATIONAL_INVESTMENTS).map((info) => {
-      const level = investmentLevel(me, info.id);
-      const pending = state.projects.filter(
-        (project) => project.kind === 'national' && project.typeId === info.id,
-      ).length;
-      const blocked = investmentBlocker(me, info.id);
-      const cost = investmentCost(me, info.id);
-      const levelName = info.levels
-        ? info.levels[Math.min(level, info.levels.length - 1)]
-        : `level ${level}`;
-      const capped = info.max != null && level + pending >= info.max;
-      // Bos kuyrukla calisan insaat gucu para kuyusudur: sanayici 14 seviye
-      // alip 12 yil bos kuyrukla bakim odedi, hicbir sey uyarmadi (Open Beta 4).
-      const idlePower = info.id === 'CONSTRUCTION_CAPACITY' && level > 0
-        && !state.projects.some((project) => project.kind !== 'national' || project.typeId !== info.id);
-      return `<div class="construction-invest card" title="${esc(info.desc)}">
-        <i class="build-emblem">${Screens.BUILD_GLYPH[info.id] ?? ''}</i>
-        <span class="grow"><b>${esc(info.name)}</b>
-          <small>${esc(levelName)}${pending ? ` · ${pending} in queue` : ''}${
-  info.id === 'CONSTRUCTION_CAPACITY' ? ` · +${5 * level}/wk` : ''}</small>
-          ${blocked && !capped ? `<small class="res-warn">${esc(blocked)}</small>` : ''}
-          ${idlePower ? `<small class="res-warn">Build power idle: nothing is queued, upkeep −£${info.upkeep * level}/week still runs. Queue a project or dissolve a level.</small>` : ''}
-        </span>
-        <button class="action" data-invest="${info.id}" ${blocked ? 'disabled' : ''}
-          title="${esc(blocked ?? `Invest £${cost}: enters the construction queue and adds −£${info.upkeep}/week upkeep.`)}">
-          ${capped ? 'Max' : `Invest · £${cost}`}</button>
-        ${level > 0 ? `<button class="action" data-divest="${info.id}"
-          title="Dissolve one level. No refund — you only shed the £${info.upkeep}/week upkeep.">−</button>` : ''}
-      </div>`;
-    }).join('');
-    // Siralama KARARLI: ad alfabetik. Eski "bos yuvaya gore" siralama satirlari
-    // her hafta yer degistirtiyordu ve oyuncu ayni state'e iki kez tiklayamiyordu
-    // (P2-3'un insaat ekranindaki kardesi).
-    const regions = [...atlas.regions]
-      .sort((a, b) => a.name.localeCompare(b.name));
-    const stateRows = regions.map((region) => {
-      const status = region.status === 'full'
-        ? 'Full'
-        : region.status === 'partial' ? 'Partly occupied' : 'Open';
-      const built = Object.values(CONSTRUCTION_TYPES).map((type) => {
-        const count = region.buildings.filter((building) => building.typeId === type.id).length;
-        return count ? `<span title="${esc(type.name)}"><i class="build-emblem">${
-  Screens.BUILD_GLYPH[type.id] ?? ''}</i>${count}</span>` : '';
-      }).join('');
-      const allowed = selected
-        ? canQueueConstruction(this.game.world, me, region.id, selected.id) : true;
-      return `<button class="construction-state state-${region.status}${selected ? ' placement-ready' : ''}"
-        data-construction-region="${region.id}" ${allowed ? '' : 'disabled'}>
-        <i class="construction-state-color"></i>
-        <span class="construction-state-name">
-          <span><b>${esc(region.name)}</b><em>${esc(status)}</em></span>
-          <small>${region.tiles.length} provinces · ${formatPopulation(region.population)} population</small>
-          <span class="construction-state-buildings">${built || '<span>no buildings</span>'}</span>
-        </span>
-        <span class="construction-state-capacity">
-          <span><small>Used capacity</small><b>${region.used} / ${region.slots}</b></span>
-          <i class="construction-slot-bar"><i style="width:${Math.round((region.used / region.slots) * 100)}%"></i></i>
-        </span>
-        <strong><b>${region.free}</b><small>free</small></strong>
-      </button>`;
-    }).join('');
-    // DEVLET KUYRUGU YALNIZ DEVLETIN ISIDIR. Ozel sermayenin santiyeleri de
-    // ayni dizide duruyor ama oyuncunun verebilecegi bir emir yok: sirasini
-    // degistiremez, iptal edemez, parasini o odemiyor. Ayni listede gosterilince
-    // oyuncu kendi kuyrugunu okuyamiyordu (olculdu: alti satirin altisi ozel).
-    // Ozel santiyeler asagida ayri, salt okunur bir seritte durur.
-    const stateProjects = state.projects.filter((project) => project.actor !== 'private');
-    const privateProjects = state.projects.filter((project) => project.actor === 'private');
-    let cumulative = 0;
-    // KUYRUK KATLANIR. 87 proje x 5 dugme = 435 kontrol; dar panelde ne
-    // okunuyordu ne de kullaniliyordu. Ustteki sekiz sira gorunur, gerisi
-    // istenirse acilir — kuyrugun UZUNLUGU yine tek bakista bellidir.
+    const kpis = `<div class="ui-kpis con-kpis">
+      ${kpi('power', 'Build power', `${view.power.toFixed(1)}<em>/wk</em>`,
+    `base ${view.basePower} · capacity +${(view.power - view.basePower).toFixed(1)}`)}
+      ${kpi('queue', 'Queue', `${view.own.length}<em> ${view.own.length === 1 ? 'project' : 'projects'}</em>`,
+    `${Math.round(view.workLeft)} work left`)}
+      ${kpi('clears', 'Clears in', view.own.length ? `~${view.clearsIn}<em> wk</em>` : '—',
+    view.own.length ? 'at current build power' : 'nothing queued')}
+      ${kpi('upkeep', 'Upkeep', `<i class="res-neg">−£${view.upkeep.toFixed(1)}</i><em>/wk</em>`,
+    `${cap.level} capacity ${cap.level === 1 ? 'level' : 'levels'}`)}
+      ${kpi('investors', 'Investor sites', `${view.investors.length}`,
+    `£${view.privateInflow.toFixed(1)}/wk raised`)}
+    </div>`;
+
+    const capped = cap.blocked === 'already at the highest level';
+    const capacityCard = `<section class="ui-panel con-capacity">
+      <header class="ui-panel-head"><h3>Construction Capacity</h3><em>investment</em></header>
+      <div class="con-cap-level">
+        <i class="build-emblem">${Screens.BUILD_GLYPH.CONSTRUCTION_CAPACITY}</i>
+        <span><b>Level ${cap.level}${cap.pending ? `<em> +${cap.pending} queued</em>` : ''}</b>
+          <small>+${cap.level * cap.perLevel} build power · −£${(cap.level * cap.upkeepPerLevel).toFixed(1)}/wk</small></span>
+      </div>
+      <dl class="ui-facts con-cap-next">
+        <div><dt>Next level</dt><dd>£${cap.cost}</dd></div>
+        <div><dt>Adds</dt><dd class="res-pos">+${cap.perLevel}/wk</dd></div>
+        <div><dt>Upkeep</dt><dd class="res-neg">−£${cap.upkeepPerLevel}/wk</dd></div>
+      </dl>
+      <div class="ui-actions">
+        <button class="ui-btn primary" data-invest="${cap.id}" ${cap.blocked ? 'disabled' : ''}
+          data-tip="construction" data-tip-arg="invest">${capped ? 'Highest level' : `Invest · £${cap.cost}`}</button>
+        <button class="ui-btn" data-divest="${cap.id}" ${cap.level > 0 ? '' : 'disabled'}
+          data-tip="construction" data-tip-arg="divest">Dissolve a level</button>
+      </div>
+      ${cap.blocked && !capped ? `<p class="ui-note warn">Invest: ${esc(cap.blocked)}.</p>` : ''}
+      ${cap.idle ? `<p class="ui-note warn">Build power is idle: nothing is queued, yet −£${(cap.level * cap.upkeepPerLevel).toFixed(1)}/wk upkeep still runs.</p>` : ''}
+      <p class="ui-note">Factories are founded and expanded on the Factories screen; their sites join this queue.</p>
+    </section>`;
+
+    // KUYRUK KATLANIR. Seksen yedi projelik kuyrukta bes dugmeli satirlar ne
+    // okunuyordu ne kullaniliyordu; ilk sekiz sira gorunur, gerisi istenirse.
     const QUEUE_HEAD = 8;
-    const collapsed = !this.queueExpanded && stateProjects.length > QUEUE_HEAD;
-    const shown = collapsed ? stateProjects.slice(0, QUEUE_HEAD) : stateProjects;
-    const queueRows = shown.map((project, index) => {
-      // Kuyrukta bina, fabrika, seviye VE ulusal yatirim projeleri var; tip
-      // aramasi uc tabloya birden bakmali, yoksa ekran cokertir.
-      const type = CONSTRUCTION_TYPES[project.typeId] ?? NATIONAL_INVESTMENTS[project.typeId]
-        ?? FACTORIES[project.typeId] ?? { name: project.typeId, icon: '🏭' };
-      const work = project.work ?? type.cost ?? 1;
-      const remaining = Math.max(0, work - project.progress);
-      cumulative += remaining;
-      const eta = Math.max(1, Math.ceil(cumulative / Math.max(1, power)));
-      const percent = Math.min(100, Math.round((project.progress / work) * 100));
-      const label = project.kind === 'upgrade' ? `${type.name} expansion` : type.name;
-      // IKI EMIR YETER. "Bir sira yukari/asagi" seksen yedi projelik bir
-      // kuyrukta anlamli bir fiil degil: oyuncunun gercek niyeti ya "bunu
-      // simdi istiyorum" ya "bunu istemiyorum"dur. Dort siralama dugmesi,
-      // kirk fabrikada kirk tik ile ayni cinsten yuktu (VICTORIA_LITE).
-      return `<div class="construction-project">
-        <strong>${index + 1}</strong><i class="build-emblem">${this.buildEmblem(project.typeId)}</i>
-        <span><b>${esc(label)}</b><small>${esc(project.regionName ?? '')} · about ${eta} week${eta === 1 ? '' : 's'}</small>
-          <span class="construction-project-bar"><i style="width:${percent}%"></i><em>${Math.round(project.progress)} / ${Math.round(work)}</em></span>
-        </span>
-        <span class="construction-project-actions">
-          <button data-project-top="${project.id}" ${index === 0 ? 'disabled' : ''} title="Build this first">First</button>
-          <button class="danger" data-project-cancel="${project.id}" title="Cancel this project">Drop</button>
-        </span>
-      </div>`;
-    }).join('') + (stateProjects.length > QUEUE_HEAD ? `<button class="construction-queue-more"
-      data-queue-toggle="1">${collapsed
-    ? `Show the other ${stateProjects.length - QUEUE_HEAD} projects`
-    : 'Show only the next 8'}</button>` : '');
-    const constructionOverview = `<div class="construction-summary">
-      <div class="construction-summary-title">
-        <span><small>NATIONAL CAPACITY</small><b>State Construction</b></span>
-        <em>MAP MODE ACTIVE</em>
-      </div>
-      <div class="construction-kpis">
-        <span><small>Build power</small><b>${power.toFixed(1)}/wk</b></span>
-        <span><small>Building upkeep</small><b>−£${upkeep.toFixed(1)}</b></span>
-        <span class="construction-free-total"><small>Available slots</small><b>${atlas.free}<em> / ${atlas.slots}</em></b></span>
-      </div>
-      <div class="construction-invest-row">${investmentCards}</div>
-      <div class="construction-build-palette">${buildPalette}</div>
-      <div class="construction-placement-hint ${selected ? 'active' : ''}">
-        ${selected ? `<b>${esc(selected.name)} selected</b><span>Click one of your hexes on the map — the fort defends that hex and its 2-hex surroundings. A state row places it at the state centre.</span>`
-    : '<b>National investments above; the fort is placed on the map</b><span>Select the fort, then click the hex it should defend — a pass, a capital approach, a border city.</span>'}
-      </div>
-      <div class="construction-legend">
-        <span><i class="legend-green"></i><b>More free slots</b></span>
-        <span><i class="legend-yellow"></i><b>Partly occupied</b></span>
-        <span><i class="legend-blue"></i><b>Full state</b></span>
-      </div>
-    </div>`;
-    const regionOverview = `<div class="construction-regions">
-      <div class="construction-regions-head"><span><small>STATE OVERVIEW</small><b>Construction Regions</b></span>
-        <em>${atlas.free} slots available</em></div>
-      ${stateRows}
-    </div>`;
+    const collapsed = !this.queueExpanded && view.own.length > QUEUE_HEAD;
+    const shown = collapsed ? view.own.slice(0, QUEUE_HEAD) : view.own;
+    // IKI EMIR YETER: "bunu simdi istiyorum" ya da "bunu istemiyorum". Bir sira
+    // yukari/asagi dugmeleri kirk fabrikada kirk tik ile ayni cinsten yuktu.
+    const row = (item, index) => `<li class="con-row${item.dormant ? ' dormant' : ''}">
+      <strong>${item.private ? '' : index + 1}</strong>
+      <i class="build-emblem">${this.buildEmblem(item.typeId)}</i>
+      <span class="con-row-name"><b>${esc(item.name)}</b><small>${esc(item.place)}</small></span>
+      <span class="con-row-progress">
+        <i class="ui-bar"><i style="width:${item.private ? item.funded : item.percent}%"></i></i>
+        <em>${item.private ? `${item.funded}% paid` : `${Math.round(item.progress)} / ${Math.round(item.work)}`}</em>
+      </span>
+      ${item.private
+    ? `<span class="con-row-eta">${item.dormant ? 'dormant' : `${item.percent}% built`}</span>`
+    : `<span class="con-row-eta">${weeks(item.eta)}</span>
+      <span class="ui-actions compact">
+        <button class="ui-btn sm" data-project-top="${item.id}" ${index === 0 ? 'disabled' : ''}>First</button>
+        <button class="ui-btn sm danger" data-project-cancel="${item.id}">Drop</button>
+      </span>`}
+    </li>`;
 
-    // Ozel sermayenin santiyeleri: tek satir, emirsiz. Oyuncunun burada
-    // yapabilecegi tek sey kendi hazinesinden destek vermek (Factories ekrani);
-    // dolayisiyla burada yalniz "kim, nerede, ne kadari odendi" yazar.
-    const privateStrip = privateProjects.length ? `<div class="construction-private">
-      <div class="construction-private-head">
-        <span><small>PRIVATE CAPITAL</small><b>Investor Sites</b></span>
-        <em>${privateProjects.length} site${privateProjects.length === 1 ? '' : 's'}
-          · £${(me.politics?.privateInflow ?? 0).toFixed(1)}/wk raised</em>
-      </div>
-      ${privateProjects.map((project) => {
-    const type = FACTORIES[project.typeId] ?? { name: project.typeId, icon: '🏭' };
-    const paid = project.cost > 0 ? Math.round((project.funded / project.cost) * 100) : 100;
-    const label = project.kind === 'upgrade' ? `${type.name} expansion` : type.name;
-    return `<div class="construction-private-row${project.dormant ? ' dormant' : ''}">
-          <i class="build-emblem">${this.buildEmblem(project.typeId)}</i>
-          <span><b>${esc(label)}</b><small>${esc(project.regionName ?? '')}</small></span>
-          <span class="construction-private-bar"><i style="width:${paid}%"></i></span>
-          <em>${paid}% paid</em>
-        </div>`;
-  }).join('')}
-      <p class="hint">Investors pay for these themselves and choose their own order.
-        The Factories screen can top one up from the treasury.</p>
-    </div>` : '';
+    const queue = `<section class="ui-panel con-queue">
+      <header class="ui-panel-head"><h3>Construction Queue</h3>
+        <em>${view.own.length ? 'built top to bottom · capacity first' : 'empty'}</em></header>
+      ${view.own.length
+    ? `<ol class="con-rows">${shown.map(row).join('')}</ol>${view.own.length > QUEUE_HEAD
+      ? `<button class="ui-btn ghost con-more" data-queue-toggle="1">${collapsed
+        ? `Show the other ${view.own.length - QUEUE_HEAD} projects` : `Show only the next ${QUEUE_HEAD}`}</button>` : ''}`
+    : `<div class="ui-empty"><b>Nothing is being built</b>
+        <span>Invest in capacity on the left, or found a factory on the Factories screen.</span></div>`}
+      ${view.investors.length ? `<header class="ui-subhead"><h4>Investor sites</h4>
+        <em>private capital pays and orders these</em></header>
+      <ol class="con-rows investors">${view.investors.map(row).join('')}</ol>` : ''}
+    </section>`;
 
-    return `${constructionOverview}<div class="construction-queue">
-        <div class="construction-queue-head"><span><small>NATIONAL PRIORITY</small><b>Construction Queue</b></span><em>${stateProjects.length} active</em></div>
-        ${queueRows || `<div class="construction-queue-empty"><b>No active projects</b><p>Select a building above, then choose a state.</p></div>`}
-      </div>${privateStrip}${regionOverview}`;
+    return `<div class="con">${kpis}<div class="con-body">${capacityCard}${queue}</div></div>`;
   }
 
   /**
@@ -1606,7 +1494,7 @@ export class Screens {
       settlement: 'cash settled with the world market this week: goods sold abroad minus goods bought',
       treaty: 'indemnities and tribute owed or received under signed treaties',
       administration: 'automatic: grows with cities, provinces and population',
-      construction: 'upkeep of construction capacity, forts, offices and universities',
+      construction: 'upkeep of construction capacity; one-off investment payments',
       subsidy: 'treasury support paid to subsidised factories',
       imports: 'arms, shells and fuel bought abroad for the army; falls as your own plants make them',
       outlay: 'one-off state purchases this week: factories, regiments, officers',
@@ -1764,8 +1652,12 @@ export class Screens {
       state.expanded.add(view.states[0].id);
     }
     if (state.group && !view.groups.some((row) => row.id === state.group)) state.group = null;
-    const detail = state.group ? populationGroupDetail(view, state.group) : null;
-    return populationScreen(view, state, detail);
+    // Secim yokken dosya bos kalmaz: en kalabalik grup acik gelir (bos panel
+    // "Select a group" diyen olu bir kutuydu). Oyuncunun secimi kalicidir,
+    // varsayilan secim degildir — kayit alani null kalir.
+    const groupId = state.group ?? view.groups[0]?.id ?? null;
+    const detail = groupId ? populationGroupDetail(view, groupId) : null;
+    return populationScreen(view, { ...state, group: groupId }, detail);
   }
 
   /** Nufus ekraninin etkilesimleri. */
@@ -2041,13 +1933,6 @@ export class Screens {
       };
     }
 
-    for (const btn of this.el.body.querySelectorAll('[data-construction-type]')) {
-      btn.onclick = () => {
-        this.constructionType = this.constructionType === btn.dataset.constructionType
-          ? null : btn.dataset.constructionType;
-        this.refresh();
-      };
-    }
     for (const btn of this.el.body.querySelectorAll('[data-invest]')) {
       btn.onclick = () => {
         if (queueInvestment(game, me.id, btn.dataset.invest)) {
@@ -2060,18 +1945,6 @@ export class Screens {
       btn.onclick = () => {
         if (divestInvestment(game, me.id, btn.dataset.divest)) {
           game.turns.addLog(`${NATIONAL_INVESTMENTS[btn.dataset.divest].name} level dissolved.`);
-        }
-        this.refresh();
-      };
-    }
-    for (const btn of this.el.body.querySelectorAll('[data-construction-region]')) {
-      btn.onclick = () => {
-        if (!this.constructionType) return;
-        if (queueConstruction(game, me.id, btn.dataset.constructionRegion, this.constructionType)) {
-          const region = constructionAtlas(game.world, me.id).regions.find(
-            (item) => item.id === btn.dataset.constructionRegion,
-          );
-          game.turns.addLog(`${CONSTRUCTION_TYPES[this.constructionType].name} queued in ${region?.name ?? 'state'}.`);
         }
         this.refresh();
       };

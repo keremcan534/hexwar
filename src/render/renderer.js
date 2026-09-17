@@ -9,7 +9,6 @@ import { drawFlag } from './flagPainter.js';
 import { atWar } from '../game/diplomacy.js';
 import { maxHpOf, organizationOf, soldiersOf, unitsOn } from '../game/units.js';
 import { terrainShade } from '../world/terrain.js';
-import { constructionAtlas } from '../game/construction.js';
 import { RGO_TYPES } from '../game/provinces.js';
 import { controllerOf, isOccupied } from '../game/control.js';
 import { materials } from './textures.js';
@@ -347,15 +346,13 @@ export class Renderer {
     this.showLabels = true;
     /**
      * 'political' | 'terrain' | 'geography' | 'cultures' | 'resources'
-     * | 'population' | 'construction'
+     * | 'population' | 'peace'
      *
      * 'geography': fiziksel coğrafya önizlemesi. Ülke, sınır, province kenarı,
      * ızgara ve etiket kapalı — yalnız kara, deniz ve arazi. Kıtaların biçimi
      * siyasi katmandan bağımsız değerlendirilebilsin diye vardır.
      */
     this.mapMode = 'political';
-    this.constructionNation = -1;
-    this.constructionCache = null;
     /** (ülke,arazi) ve (kültür,arazi) renk önbelleği; her karede yeniden hesaplanmasın. */
     this.tintCache = new Map();
     this.corners = HEX_CORNERS.map(([x, y]) => [x * HEX_SIZE, y * HEX_SIZE]);
@@ -671,7 +668,6 @@ export class Renderer {
     this.surfaceColorsDirty = true;
     this.surfaceOverlayDirty = true;
     this.cache = null;
-    this.constructionCache = null;
     this.tintCache.clear();
     // Sprite'lar ulus rengine bağlı; yeni dünyada aynı id başka renktir.
     this.unitSprites?.clear();
@@ -682,19 +678,6 @@ export class Renderer {
     this.seaFrame = null;
     this.staticJob = null;
     this.farJob = null;
-  }
-
-  /**
-   * Yalnız inşaat verisi eskidi: rozet/bölge atlası düşer, tam pişirme
-   * yalnız inşaat kipi ekrandayken gerekir. Ölçüldü (62 ulus, hız 8):
-   * YZ'nin her tur kuyruk oynatması runConstruction üzerinden tam
-   * invalidateCache tetikliyor, uzak önbellek + etiket yerleşimi + ton
-   * önbelleği her tur baştan kuruluyordu (~her karede 5 ms farbake dilimi
-   * ve saniyede ~20 MB çöp). Harita görseli inşaattan yalnız o kipte etkilenir.
-   */
-  invalidateConstruction() {
-    this.constructionCache = null;
-    if (this.mapMode === 'construction') this.invalidateCache();
   }
 
   /**
@@ -785,7 +768,6 @@ export class Renderer {
       this.drawOccupationOverlay(ctx, world, list, cache.scale);
     }
     if (this.mapMode === 'cultures') this.drawCultureMix(ctx, world, list, cache.scale);
-    if (this.mapMode === 'construction') this.drawConstructionOverlay(ctx, world, list, cache.scale);
     if (this.showsPolitics()) this.drawBorders(ctx, world, list, cache.scale);
     ctx.restore();
   }
@@ -801,15 +783,9 @@ export class Renderer {
     this.invalidateCache();
   }
 
-  setConstructionMode(nationId) {
-    this.constructionNation = nationId;
-    this.setMapMode('construction');
-  }
-
   /**
    * Baris masasi kipi. Karsi tarafin topragi kirmizi, secilenler yesil yanar;
-   * kendi verdigin topraklar turuncu. Construction kipiyle ayni kalip: harita
-   * bir secim yuzeyine doner.
+   * kendi verdigin topraklar turuncu: harita bir secim yuzeyine doner.
    */
   setPeaceMode(nationId, targetId, selection) {
     this.peaceNation = nationId;
@@ -824,15 +800,6 @@ export class Renderer {
     this.invalidateCache();
   }
 
-  constructionData(world) {
-    if (this.constructionCache?.world === world
-      && this.constructionCache?.nationId === this.constructionNation) {
-      return this.constructionCache.atlas;
-    }
-    const atlas = constructionAtlas(world, this.constructionNation);
-    this.constructionCache = { world, nationId: this.constructionNation, atlas };
-    return atlas;
-  }
 
   /**
    * Politik/kültür kipinde bir karenin rengi: sahibinin tonu, arazinin
@@ -1347,7 +1314,6 @@ export class Renderer {
       this.drawOccupationOverlay(t, world, tiles, scale);
     }
     if (this.mapMode === 'cultures') this.drawCultureMix(t, world, tiles, scale);
-    if (this.mapMode === 'construction') this.drawConstructionOverlay(t, world, tiles, scale);
     if (this.showGrid && scale >= GRID_MIN_ZOOM && this.mapMode !== 'geography') {
       this.drawGrid(t, tiles, scale);
     }
@@ -1553,7 +1519,7 @@ export class Renderer {
 
     // Etiketler her zoomda: uzak görünümde ülke adları haritayı "atlas"
     // yapar; yoğunluğu zoom LOD'u ve çarpışma ayıklaması yönetir.
-    if (this.showLabels && this.mapMode !== 'construction' && this.mapMode !== 'geography'
+    if (this.showLabels && this.mapMode !== 'geography'
       && world.nations?.length) {
       const t0 = performance.now();
       this.drawLabels(ctx, world);
@@ -1730,9 +1696,7 @@ export class Renderer {
       this.drawHighlight(ctx, state.hovered, 'rgba(255,255,255,0.45)', 2);
     }
     this.drawCities(ctx, world, rect);
-    if (this.mapMode === 'construction') {
-      this.drawConstructionBadges(ctx, world, cam.zoom, rect);
-    } else if (this.mapMode !== 'geography') {
+    if (this.mapMode !== 'geography') {
       // Coğrafya kipi fiziksel dünyayı yalnız başına gösterir: ordu, cephe ve
       // muharebe de siyasettir (bkz. mapMode yorumu).
       this.drawFronts(ctx, world, state);
@@ -1849,9 +1813,6 @@ export class Renderer {
         this.drawOccupationOverlay(j.ctx, world, bakeTiles, j.scale);
       }
       if (this.mapMode === 'cultures') this.drawCultureMix(j.ctx, world, bakeTiles, j.scale);
-      if (this.mapMode === 'construction') {
-        this.drawConstructionOverlay(j.ctx, world, bakeTiles, j.scale);
-      }
       // Kıyı hattı mürekkep süpürmesinde: kara dolgusundan SONRA gelmeli.
       if (water) this.water.bakeCoastline(j.ctx, world, bakeTiles.filter((t) => t.terrain.water));
       if (this.showsPolitics()) this.drawBorders(j.ctx, world, bakeTiles, j.scale);
@@ -2076,17 +2037,6 @@ export class Renderer {
       if (tile.owner === this.peaceNation) return 'hsl(210 16% 26%)';
       return 'hsl(205 8% 17%)';
     }
-    if (this.mapMode === 'construction') {
-      if (tile.terrain.water) return 'hsl(207 35% 14%)';
-      if (tile.owner !== this.constructionNation) return 'hsl(205 10% 19%)';
-      const region = this.constructionData(world).tileRegions.get(tile.ghostOf ?? tile);
-      // Ton, orandan cok mutlak bos kapasiteyi anlatir: 4/4 ile 10/10 ayni
-      // aciklikta gorunmemeli; fazla bos slotu olan state daha acik yesildir.
-      // Doygunluk arayuz paletiyle ayni kademede: %52 neon yesil bir alan
-      // yaratiyor ve acik panelle gorsel guc yarisina giriyordu.
-      const light = 22 + Math.min(1, (region?.free ?? 0) / 12) * 26;
-      return `hsl(96 18% ${Math.round(light)}%)`;
-    }
     // Su kimsenin toprağı değil; geo kiplerinde taban rengi derinlikten
     // gelir (bkz. water.seaShade — sığlık turkuaz, abis petrol). Seçim
     // yüzeyi kipleri yukarıda kendi düz sularını döndürdü.
@@ -2212,111 +2162,6 @@ export class Renderer {
       ctx.restore();
     }
   }
-
-  drawConstructionOverlay(ctx, world, tiles, scale) {
-    const atlas = this.constructionData(world);
-    const visible = new Set(tiles);
-    const spacing = 10 / scale;
-    const stripeWidth = 2.5 / scale;
-
-    for (const region of atlas.regions) {
-      if (region.status === 'open') continue;
-      const shown = region.tiles.filter((tile) => visible.has(tile));
-      if (!shown.length) continue;
-      const clip = new Path2D();
-      let minX = Infinity;
-      let maxX = -Infinity;
-      let minY = Infinity;
-      let maxY = -Infinity;
-      for (const tile of shown) {
-        this.hexPath(clip, tile.x, tile.y);
-        minX = Math.min(minX, tile.x - HEX_SIZE);
-        maxX = Math.max(maxX, tile.x + HEX_SIZE);
-        minY = Math.min(minY, tile.y - HEX_SIZE);
-        maxY = Math.max(maxY, tile.y + HEX_SIZE);
-      }
-      ctx.save();
-      ctx.clip(clip);
-      ctx.beginPath();
-      const height = maxY - minY;
-      for (let x = minX - height; x <= maxX + height; x += spacing) {
-        ctx.moveTo(x, minY);
-        ctx.lineTo(x + height, maxY);
-      }
-      ctx.lineWidth = stripeWidth;
-      ctx.strokeStyle = region.status === 'full'
-        ? 'rgba(126, 141, 146, 0.7)'
-        : 'rgba(183, 142, 72, 0.66)';
-      ctx.stroke();
-      ctx.restore();
-    }
-
-    // Ulke sinirindan farkli olarak planlama bolgesi sinirlari ince beyazdir.
-    const border = new Path2D();
-    for (const tile of tiles) {
-      const region = atlas.tileRegions.get(tile.ghostOf ?? tile);
-      if (!region) continue;
-      for (let side = 0; side < 6; side++) {
-        const neighbor = world.get(tile.q + DIRS[side][0], tile.r + DIRS[side][1]);
-        const other = atlas.tileRegions.get(neighbor);
-        if (!other || other.id === region.id) continue;
-        const a = this.corners[side];
-        const b = this.corners[(side + 1) % 6];
-        border.moveTo(tile.x + a[0], tile.y + a[1]);
-        border.lineTo(tile.x + b[0], tile.y + b[1]);
-      }
-    }
-    ctx.lineWidth = 1.8 / scale;
-    ctx.strokeStyle = 'rgba(214, 200, 168, 0.55)';
-    ctx.stroke(border);
-  }
-
-  drawConstructionBadges(ctx, world, scale, rect) {
-    if (scale < 0.25) return;
-    const atlas = this.constructionData(world);
-    const width = 54 / scale;
-    const height = 27 / scale;
-    for (const region of atlas.regions) {
-      const tile = region.center;
-      if (!tile || tile.x < rect.minX || tile.x > rect.maxX
-        || tile.y < rect.minY || tile.y > rect.maxY) continue;
-      const x = tile.x - width / 2;
-      const y = tile.y - height / 2;
-      ctx.fillStyle = 'rgba(11, 17, 21, 0.9)';
-      ctx.fillRect(x, y, width, height);
-      ctx.strokeStyle = region.status === 'full'
-        ? 'rgba(126, 141, 146, 0.9)'
-        : region.status === 'partial'
-          ? 'rgba(183, 142, 72, 0.9)'
-          : 'rgba(131, 154, 107, 0.9)';
-      ctx.lineWidth = 1.4 / scale;
-      ctx.strokeRect(x, y, width, height);
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#d9d1bd';
-      ctx.font = `700 ${10 / scale}px ui-monospace, monospace`;
-      ctx.fillText(`${region.used}/${region.slots}`, tile.x, tile.y - 4 / scale);
-      ctx.fillStyle = '#839a6b';
-      ctx.font = `${8 / scale}px ui-monospace, monospace`;
-      ctx.fillText(`${region.free} free`, tile.x, tile.y + 7 / scale);
-    }
-    // Kale capalari: etki artik yerel oldugu icin (bkz. fortDefenseAt) kalenin
-    // NEREDE durdugu bilgi tasiyan bir isaret — bolge rozetinin susu degil.
-    const nation = world.nations?.[this.constructionNation];
-    if (nation?.construction?.buildings?.length) {
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.font = `${12 / scale}px ui-monospace, monospace`;
-      for (const building of nation.construction.buildings) {
-        if (building.typeId !== 'FORT' || !Number.isFinite(building.q)) continue;
-        const anchor = world.get(building.q, building.r);
-        if (!anchor || anchor.x < rect.minX || anchor.x > rect.maxX
-          || anchor.y < rect.minY || anchor.y > rect.maxY) continue;
-        ctx.fillText('🛡', anchor.x, anchor.y);
-      }
-    }
-  }
-
 
   drawGrid(ctx, tiles, scale) {
     ctx.lineWidth = 1 / scale;

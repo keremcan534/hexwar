@@ -227,7 +227,6 @@ export function snapshotNation(world, nation) {
     reinforcementDemand: mil.reinforcementDemand ?? 0,
     // --- insaat ---
     projects: ensureConstruction(nation).projects.length,
-    buildings: ensureConstruction(nation).buildings.length,
     atWar: world.nations.some((o) => o.alive && o.id !== nation.id && atWar(world, nation.id, o.id)),
   };
 }

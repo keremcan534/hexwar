@@ -38,6 +38,7 @@ import {
   RGO_TYPES, provinceOutput, provinceRgoStatus,
 } from '../game/provinces.js';
 import { controllerOf, isOccupied } from '../game/control.js';
+import { tileDefense } from '../game/battles.js';
 import { worldRows } from '../world/worldgen.js';
 
 const ORDER_LABELS = {
@@ -190,7 +191,6 @@ export class Hud {
     // Harita modları: sağ alt köşedeki düğme kümesi
     for (const btn of document.querySelectorAll('.mode-btn[data-mode]')) {
       btn.onclick = () => {
-        if (this.screens.active === 'construction') this.screens.close();
         game.renderer.setMapMode(btn.dataset.mode);
         for (const other of document.querySelectorAll('.mode-btn[data-mode]')) {
           other.classList.toggle('active', other === btn);
@@ -979,7 +979,7 @@ export class Hud {
     const sub = `${tile.terrain.name} · ${tile.q}, ${tile.r}${tile.coastal ? ' · coast' : ''}`;
 
     const stats = [
-      ['Defense', `${Math.round(tile.terrain.defense * 100)}%`],
+      ['Defense', `${Math.round(tileDefense(tile) * 100)}%`],
       ['Terrain', tile.terrain.name],
     ];
     if (tile.culture >= 0) {
@@ -1186,20 +1186,13 @@ export class Hud {
         return `<button class="action" data-buy="${id}" ${disabled}
           title="Ordered into training; the full order book with reasons is on the Military screen.">${UNIT_TYPES[id].name} · ${formatCost(cost)} · ${equipmentCostLabel(id)} · ${trainingWeeks(id)}w</button>`;
       }).join('');
-      // Nüfusun etnik bileşimi: yabancı halk payı ileride hoşnutsuzluğun ölçütü.
-      const composition = Object.entries(city.pops)
-        .sort((a, b) => b[1] - a[1])
-        .map(([id, n]) => `${n} ${escapeHtml(game.world.cultures[id]?.name ?? '?')}`)
-        .join(' · ');
-
       // Alim listesi KATLI acilir. Alti alay dugmesi kutuyu tek basina ~180px
       // sisiriyor ve baskent karesinde bilgi kismini ekranin disina itiyordu;
       // buyruk kutusunun asil isi "burada ne var" demektir, siparis vermek
       // Military ekraninin isidir. Islev duruyor, yalnizca katlanmis.
-      rows.push(`<div class="action-row">
-        <div class="k">${escapeHtml(city.name)} — population: ${composition}</div>
-      </div>
-      <details class="sheet-fold">
+      // Sehrin eski "population: 3 Ammar" satiri kalkti: eski pop birimini
+      // sayiyordu ve hemen altindaki 2.55M nufus ve kultur payiyla celisiyordu.
+      rows.push(`<details class="sheet-fold">
         <summary>Recruit in ${escapeHtml(city.name)}</summary>
         <div class="action-row">${buttons}</div>
       </details>`);
@@ -1248,12 +1241,15 @@ export class Hud {
       const here = rally === tile;
       const where = rally
         ? `${rally.city ? escapeHtml(rally.city.name) : `${rally.q}, ${rally.r}`}`
-        : 'none — new regiments stay where they are raised';
-      rows.push(`<div class="action-row">
-        <div class="k">rally point — ${where}</div>
+        : 'none';
+      // Her kendi karemizde gorunur ama seyrek kullanilir: tam satir aciklama
+      // + tam genislik dugme yerine tek satir; aciklama ipucunda.
+      rows.push(`<div class="action-row rally-row"
+          title="Rally point: new regiments march here from where they are raised. Without one they stay put.">
+        <div class="k">Rally point · <b>${where}</b></div>
         ${here
-    ? '<button class="action wide" data-rally="clear">Clear Rally Point</button>'
-    : '<button class="action wide" data-rally="set">Set Rally Point Here</button>'}
+    ? '<button class="action" data-rally="clear">Clear</button>'
+    : '<button class="action" data-rally="set">Set here</button>'}
       </div>`);
     }
 

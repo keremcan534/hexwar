@@ -193,6 +193,15 @@
   /* Bildirim her seyin ustunde: kacirilmamasi gereken tek katman. */
   --z-notify: 13;
 
+  /* --- Bölüm başlığı: bütün ekranlarda tek kalıp (bkz. §7B). Bordo kimlik
+     tam boy lake şerit değil, soldan sönen bir yıkamadır: on başlıklı bir
+     ekran (Trade) bağırmasın, ama başlık yine ilk bakışta bulunsun. --- */
+  --head-wash: linear-gradient(90deg,
+    rgba(92, 28, 36, 0.5), rgba(92, 28, 36, 0.16) 42%, rgba(92, 28, 36, 0) 82%);
+  --head-line: rgba(174, 139, 74, 0.42);
+  --head-title: var(--gold-bright);
+  --head-note: var(--text-dim);
+
   /* Kart giris/cikis suresi. ui/notifications.js icindeki SLIDE_MS ile
      ayni olmali, yoksa kart DOM'dan animasyon bitmeden silinir. */
   --notify-slide: 420ms;
@@ -320,11 +329,6 @@ select:focus-visible {
 .fiscal-hero small,
 .market-hero small,
 .front-numbers small,
-.construction-kpis small,
-.construction-state small,
-.construction-summary-title small,
-.construction-regions-head small,
-.construction-queue-head small,
 .decision-kpis small,
 .screen-heading > span,
 .divisions-head,
@@ -341,7 +345,6 @@ select:focus-visible {
 .budget-row b,
 .budget-summary b,
 .budget-balance-row b,
-.construction-kpis b,
 .decision-kpis b,
 .factory-kpis b {
   font-variant-numeric: tabular-nums;
@@ -867,7 +870,6 @@ select:focus-visible {
    peace kareye tıklatarak seçim yaptırır, dossier haritadan sağ tıkla açılır.
    Panel haritayı kaplarsa bu etkileşimlerin anlamı kalmaz. Geri kalan her
    ekran veri okumak içindir ve genişler. */
-.screen[data-screen='construction'],
 .screen[data-screen='peace'],
 .screen[data-screen='dossier'] {
   /* 94vw sınırı dar telefonda gerekli: clamp'in 400px alt sınırı ekranı taşardı. */
@@ -877,7 +879,6 @@ select:focus-visible {
   border-left: 0;
 }
 
-.screen[data-screen='construction'].hidden,
 .screen[data-screen='peace'].hidden,
 .screen[data-screen='dossier'].hidden { transform: translateX(-102%); }
 
@@ -894,11 +895,9 @@ select:focus-visible {
 
 /* Dar ekranlar eski cömert dolgusunu korur: orada yer sıkıntısı yok, panel
    zaten haritanın yanında bir sütun. */
-.screen[data-screen='construction'] .screen-head,
 .screen[data-screen='peace'] .screen-head,
 .screen[data-screen='dossier'] .screen-head { padding: var(--sp-5) var(--sp-6) var(--sp-4); }
 
-.screen[data-screen='construction'] .screen-body,
 .screen[data-screen='peace'] .screen-body,
 .screen[data-screen='dossier'] .screen-body {
   gap: var(--sp-4);
@@ -950,6 +949,8 @@ select:focus-visible {
 }
 
 .screen-heading { flex: none; min-width: 0; }
+
+#screen-close { flex: none; margin-left: auto; }
 
 /* "STRATEGIC COMMAND" üst etiketi kaldırıldı: her ekranda tekrar eden,
    bilgi taşımayan bir başlıktı ve asıl başlığın önüne geçiyordu. */
@@ -1136,7 +1137,6 @@ body.screen-open .layer-menu { display: none; }
 .overview-copy,
 .hint,
 .order-help,
-.construction-queue-empty p,
 .decision-card p,
 .province-card p {
   margin: 0;
@@ -1236,7 +1236,6 @@ body.screen-open .layer-menu { display: none; }
 .action.compact[disabled],
 .building-option[disabled],
 .province-action:disabled,
-.construction-state:disabled,
 .production-choice[disabled] {
   opacity: 0.4;
   filter: grayscale(0.35);
@@ -1288,72 +1287,14 @@ body.screen-open .layer-menu { display: none; }
 .tag.ally { color: var(--gold-bright); border-color: var(--frame-brass); }
 .tag.rival { color: var(--red); border-color: var(--surface-3); }
 
-/* --- Tooltip. Tek bir bileşen: `data-tooltip` taşıyan her öğe kullanır.
-       Uzun açıklamaları satır içine sıkıştırmak yerine üstte gösterir. --- */
-[data-tooltip] { position: relative; cursor: help; }
-
-[data-tooltip]::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  bottom: calc(100% + var(--sp-2));
-  left: 50%;
-  z-index: 20;
-  width: max-content;
-  max-width: 300px;
-  padding: var(--sp-3) var(--sp-4);
-  border: 1px solid var(--line-brass);
-  border-radius: var(--radius-lg);
-  /* Cam ipucu: menü rafıyla aynı malzeme, opak kart değil. Üst kenardaki
-     içten pirinç ışık, kartı "cilalı cam levha" gibi toplar. */
-  background: linear-gradient(180deg, rgba(14, 19, 24, 0.9), rgba(7, 11, 14, 0.96));
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  box-shadow:
-    inset 0 1px rgba(232, 210, 160, 0.14),
-    0 0 0 1px rgba(0, 0, 0, 0.55),
-    0 16px 40px rgba(0, 0, 0, 0.5);
-  color: var(--text);
-  font-size: var(--fs-sm);
-  font-weight: 400;
-  letter-spacing: 0;
-  line-height: var(--lh-body);
-  text-align: left;
-  text-transform: none;
-  white-space: normal;
-  opacity: 0;
-  transform: translate(-50%, 4px);
-  transition: opacity 140ms ease, transform 140ms ease;
-  pointer-events: none;
-}
-
-[data-tooltip]:hover::after,
-[data-tooltip]:focus::after,
-[data-tooltip]:focus-within::after {
-  opacity: 1;
-  transform: translate(-50%, 0);
-}
-
-/* Tablo hücresinde ortalanmış tooltip hücrenin iki yanından da taşıyor ve
-   kaydırılabilir kabında yatay kaydırma çubuğu doğuruyordu. Hücrenin sağ
-   kenarına yaslanıp içeri doğru büyür. */
-.data-table [data-tooltip]::after {
-  left: auto;
-  right: 0;
-  transform: translate(0, 4px);
-}
-
-.data-table [data-tooltip]:hover::after,
-.data-table [data-tooltip]:focus::after {
-  transform: translate(0, 0);
-}
+/* Açıklamalı hover tek sistemdir: gecikmeli kart (§29, ui/tooltip.js). Eski saf
+   CSS `data-tooltip` balonu kaldırıldı; öznitelik ilk hover’da karta devşirilir. */
 
 /* --- Ölçek çubukları. Hepsi aynı yükseklik ve aynı çukur yatak. --- */
 .meter,
 .hp-bar,
 .hegemony .bar,
 .line-efficiency,
-.construction-slot-bar,
-.construction-project-bar,
 .front-track {
   position: relative;
   height: 6px;
@@ -1365,10 +1306,8 @@ body.screen-open .layer-menu { display: none; }
 
 .meter i,
 .hp-bar i,
-.construction-slot-bar i,
 .front-track i,
-.line-efficiency i,
-.construction-project-bar > i {
+.line-efficiency i {
   display: block;
   height: 100%;
 }
@@ -1412,6 +1351,319 @@ body.screen-open .layer-menu { display: none; }
 .rel-row .grow { flex: 1; min-width: 0; }
 .rel-row .name { font-size: var(--fs-base); font-weight: 650; }
 .rel-row .meta { color: var(--text-mute); font-size: var(--fs-sm); }
+
+/* ==========================================================================
+   7B. ARAYÜZ AİLESİ — özet şeridi, panel, düğme, satır, çubuk, boş durum
+
+   Yeni ve yeniden yazılan ekranlar kendi kutu/düğme sınıfını icat etmez; bu
+   parçalardan kurulur. Aynı kalıp her ekranda aynı görünür, oyuncu bir kez
+   öğrenir. Dört kural:
+     1. Etiket küçük versal ve soluk, değer büyük ve parlak: göz önce sayıya iner.
+     2. Panel başlığı tek kalıp: solda pirinç versal başlık, sağda kısa not.
+     3. Düğme üç kademe: birincil (pirinç dolgu), olağan (çelik), tehlike (tuğla).
+     4. Kapalı düğme soluklaşır ama kaybolmaz; nedeni tooltip kartındadır.
+   ========================================================================== */
+
+/* --- Özet şeridi: ekranın "ana sayılar" satırı. Hücreler kutu değil; tek
+       çerçevenin içinde 1px ayraçla bölünür, göz satırı bir bakışta tarar. */
+.ui-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
+  gap: 1px;
+  border: 1px solid var(--line-strong);
+  background: var(--line);
+}
+
+.ui-kpi {
+  display: grid;
+  align-content: start;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--sp-2) var(--sp-3);
+  background: rgba(9, 14, 17, 0.72);
+  transition: background-color var(--ease, 120ms);
+}
+
+.ui-kpi > small {
+  overflow: hidden;
+  color: var(--text-mute);
+  font-size: var(--fs-label);
+  font-weight: 600;
+  letter-spacing: var(--ls-label);
+  text-overflow: ellipsis;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ui-kpi > b {
+  color: var(--text);
+  font-size: var(--fs-lg);
+  font-weight: 650;
+  line-height: var(--lh-tight);
+  white-space: nowrap;
+}
+
+.ui-kpi > b em {
+  margin-left: 1px;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  font-style: normal;
+  font-weight: 500;
+}
+
+.ui-kpi > b i { font-style: normal; }
+
+.ui-kpi > span {
+  overflow: hidden;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ui-kpi[data-tip],
+.ui-kpi[title] { cursor: help; }
+.ui-kpi[data-tip]:hover { background: rgba(28, 38, 43, 0.85); }
+
+/* Anlam renkleri yalnız DEĞERDE; etiket ve not sakin kalır. */
+.ui-kpi > b.good { color: var(--green); }
+.ui-kpi > b.bad { color: var(--red); }
+.ui-kpi > span.up { color: var(--green); }
+.ui-kpi > span.down { color: var(--red); }
+.ui-kpi.warn > b { color: var(--amber); }
+.ui-kpi.hot > b { color: #c98771; }
+.ui-kpi.stat-why { cursor: pointer; }
+
+/* --- Panel: bir bölüm = bir çerçeve. İç içe panel yoktur. --- */
+.ui-panel {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+  border: 1px solid var(--line-strong);
+}
+
+/* BÖLÜM BAŞLIĞI — TEK KALIP. Ekranların kendi başlık sınıfları (siyaset,
+   ordu, ticaret, bütçe) aynı kurala bağlıdır; eskiden dört ayrı tam boy bordo
+   lake şerit ve üç ayrı düz versal vardı. Başlık metni pirinç versal, not
+   sağda normal harf. */
+.ui-panel-head,
+.ui-subhead,
+.pol-band,
+.mil-band,
+.trade-cat > h4,
+.trade-h4,
+.ledger-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-width: 0;
+  margin: 0;
+  padding: 4px var(--sp-2);
+  border: 0;
+  border-bottom: 1px solid var(--head-line);
+  background: var(--head-wash);
+  box-shadow: none;
+  color: var(--head-title);
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+  font-weight: 650;
+  letter-spacing: var(--ls-label);
+  text-align: left;
+  text-shadow: none;
+  text-transform: uppercase;
+}
+
+.ui-panel-head h3,
+.ui-subhead h4 {
+  flex: none;
+  margin: 0;
+  color: inherit;
+  font-size: inherit;
+  font-weight: inherit;
+  letter-spacing: inherit;
+  white-space: nowrap;
+}
+
+.ui-panel-head em,
+.ui-subhead em,
+.pol-band em,
+.mil-band em,
+.trade-cat > h4 em,
+.trade-h4 em {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--head-note);
+  font-family: var(--font-ui);
+  font-size: var(--fs-sm);
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-align: right;
+  text-overflow: ellipsis;
+  text-transform: none;
+  white-space: nowrap;
+}
+
+.ui-subhead {
+  margin-top: var(--sp-2);
+  border-bottom-color: var(--line-strong);
+  background: none;
+  color: var(--text-mute);
+}
+
+/* Düz başlıklar (nüfus, sanayi, teknoloji, kart) aynı renk ve çizgiyi alır;
+   yerleşimleri kendilerinindir (arama kutusu, dikey ray). */
+.pop-panel > header b,
+.pop-nav-head,
+.pop-table-head,
+.ind-rail-head,
+.tech-col header,
+.card-head h3 { color: var(--head-title); }
+
+.pop-panel > header,
+.ind-rail-head,
+.tech-col header,
+.card-head { border-bottom-color: var(--head-line); }
+
+/* --- Düğmeler --- */
+.ui-actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
+.ui-actions.compact { flex-wrap: nowrap; gap: var(--sp-1); }
+
+.ui-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  min-height: 28px;
+  padding: 0 var(--sp-3);
+  border: 1px solid rgba(158, 172, 178, 0.26);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.05), transparent), var(--surface-2);
+  box-shadow: var(--material-control, var(--bevel));
+  color: var(--text);
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ui-btn:hover:not([disabled]) {
+  border-color: var(--line-brass);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.09), transparent), var(--surface-3);
+}
+
+.ui-btn:active:not([disabled]) {
+  box-shadow: var(--edge-dark, none), var(--press, inset 0 2px 4px rgba(0, 0, 0, 0.5));
+  transform: translateY(1px);
+}
+
+.ui-btn.primary {
+  border-color: rgba(214, 181, 116, 0.6);
+  background: linear-gradient(180deg, var(--metal-mid), var(--metal-lo));
+  color: #f5ead0;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.5);
+}
+
+.ui-btn.primary:hover:not([disabled]) {
+  border-color: var(--gold-bright);
+  background: linear-gradient(180deg, #957a45, #5c4b2a);
+}
+
+.ui-btn.danger { color: var(--red); }
+.ui-btn.danger:hover:not([disabled]) { border-color: rgba(169, 94, 74, 0.6); }
+
+.ui-btn.ghost {
+  border-style: dashed;
+  border-color: var(--line-strong);
+  background: none;
+  box-shadow: none;
+  color: var(--text-dim);
+}
+
+.ui-btn.ghost:hover:not([disabled]) { background: none; color: var(--gold-bright); }
+.ui-btn.sm { min-height: 22px; padding: 0 var(--sp-2); font-size: var(--fs-label); }
+
+.ui-btn[disabled] {
+  opacity: 0.42;
+  filter: grayscale(0.4);
+  cursor: not-allowed;
+}
+
+/* --- Kısa bilgi hücreleri: "Next level £240 · Adds +5 · Upkeep −£4". --- */
+.ui-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(76px, 1fr));
+  gap: 1px;
+  margin: 0;
+  border: 1px solid var(--line);
+  background: var(--line);
+}
+
+.ui-facts > div {
+  display: grid;
+  gap: 1px;
+  min-width: 0;
+  padding: var(--sp-1) var(--sp-2);
+  background: rgba(0, 0, 0, 0.22);
+}
+
+.ui-facts dt {
+  color: var(--text-mute);
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.ui-facts dd { margin: 0; color: var(--text); font-size: var(--fs-md); font-weight: 650; white-space: nowrap; }
+
+/* --- İlerleme çubuğu --- */
+.ui-bar {
+  position: relative;
+  display: block;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: var(--surface-sunken);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.ui-bar > i {
+  display: block;
+  height: 100%;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), transparent 55%, rgba(0, 0, 0, 0.2)),
+    linear-gradient(90deg, var(--bar-shade), var(--gold-bright));
+}
+
+/* --- Not ve boş durum: boş panel boş kutu değildir, ne yapılacağını söyler. --- */
+.ui-note { margin: 0; color: var(--text-dim); font-size: var(--fs-sm); line-height: var(--lh-body); }
+.ui-note.warn { color: var(--amber); }
+.ui-note.bad { color: var(--red); }
+
+.ui-empty {
+  display: grid;
+  gap: 2px;
+  padding: var(--sp-4) var(--sp-3);
+  border: 1px dashed var(--line-strong);
+  text-align: center;
+}
+
+.ui-empty b { color: var(--text); font-size: var(--fs-md); font-weight: 650; }
+.ui-empty span { color: var(--text-dim); font-size: var(--fs-sm); }
+
+/* --- Açıklamalı terim (Paradox kalıbı): ince noktalı alt çizgi "üzerime gel,
+       sana ne olduğumu söylerim" der. Kart gecikmeyle açılır (ui/tooltip.js). */
+.tip-label {
+  text-decoration: underline dotted rgba(190, 158, 96, 0.5);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  cursor: help;
+}
 
 /* ==========================================================================
    8. HARİTA ARAÇLARI — kipler, gösterge, katman menüsü, ayarlar
@@ -1845,9 +2097,12 @@ body.screen-open .layer-menu { display: none; }
 .ind-tab-locked { margin-left: auto; color: var(--text-faint); }
 .ind-tab-locked.on { color: var(--gold-bright); }
 
+/* Hücre sayısı kadar sütun: sabit üç sütun, iki hücrelik kartta üçüncü
+   sütunu boş bir kutu gibi boyuyordu (ızgara zemini görünüyordu). */
 .decision-kpis {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-auto-columns: minmax(0, 1fr);
+  grid-auto-flow: column;
   gap: 1px;
   background: var(--line);
 }
@@ -2151,7 +2406,6 @@ body.screen-open .layer-menu { display: none; }
 .factory-kpis,
 .fiscal-hero,
 .market-hero,
-.construction-kpis,
 
 /* KPI hücresi kutu değil: etiket üstte soluk, değer altta belirgin. Her
    birine kenarlık ve zemin vermek panelde onlarca küçük kart yaratıyordu. */
@@ -2159,13 +2413,11 @@ body.screen-open .layer-menu { display: none; }
 .factory-kpis span,
 .fiscal-hero > div,
 .market-hero > div,
-.construction-kpis > span,
 
 .front-numbers b,
 .factory-kpis b,
 .fiscal-hero b,
 .market-hero b,
-.construction-kpis b,
 
 .front-numbers { grid-template-columns: 1fr auto 1fr; }
 .front-numbers strong { align-self: center; color: var(--text-mute); font-size: var(--fs-sm); }
@@ -2236,291 +2488,94 @@ body.screen-open .layer-menu { display: none; }
 .economy-ledger b { color: var(--text); font-size: var(--fs-base); font-weight: 650; }
 
 /* ==========================================================================
-   12. EKRAN: İNŞAAT
+   12. EKRAN: İNŞAAT — özet şeridi, kapasite, tek kuyruk
+
+   Kale ve Higher Education kalktı (2026-09): ekranın anlatacağı iki şey kaldı,
+   ne kadar hızlı inşa edildiği ve sırada ne olduğu. Harita seçimi olmadığı için
+   panel sola yaslı dar sütun değil, ortalanmış orta genişlikte bir defterdir.
+   Parçalar §7B ailesinden gelir; burada yalnız yerleşim var.
    ========================================================================== */
 
-.construction-summary { display: grid; gap: var(--sp-3); }
+.screen[data-screen='construction'] { width: min(1120px, 96vw); }
 
-.construction-summary-title,
-.construction-regions-head,
-.construction-queue-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
+.con { display: grid; gap: var(--sp-3); }
+.con-kpis { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+/* Kapasite kartı dar, kuyruk geniş: karar solda, sonucu sağda — göz soldan
+   sağa bir kez gider, geri dönmez. */
+.con-body {
+  display: grid;
+  grid-template-columns: minmax(270px, 330px) minmax(0, 1fr);
   gap: var(--sp-3);
-  padding-bottom: var(--sp-2);
-  border-bottom: 1px solid var(--line-gold);
+  align-items: start;
 }
 
-.construction-summary-title > span,
-.construction-regions-head > span,
-.construction-queue-head > span { display: grid; gap: 3px; }
+.con-cap-level { display: flex; align-items: center; gap: var(--sp-3); }
 
-.construction-summary-title b,
-.construction-regions-head b,
-.construction-queue-head b {
+.con-cap-level b {
+  display: block;
   color: var(--text);
   font-family: var(--font-display);
-  font-size: var(--fs-md);
-  font-weight: 650;
+  font-size: var(--fs-xl);
+  font-weight: 400;
+  line-height: var(--lh-tight);
 }
 
-.construction-summary-title > em,
-.construction-regions-head > em,
-.construction-queue-head em {
+.con-cap-level b em { color: var(--gold-bright); font-family: var(--font-ui); font-size: var(--fs-sm); font-style: normal; }
+.con-cap-level small { color: var(--text-dim); font-size: var(--fs-sm); }
+.con-cap-level .build-emblem { width: 40px; height: 40px; color: #c6b183; }
+.con-cap-level .build-emblem svg { width: 30px; height: 30px; }
+.con-capacity .ui-actions .ui-btn { flex: 1 1 0; }
+
+.con-rows { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+
+/* Satır sütunları sabit: sıra · amblem · ad · ilerleme · süre · emir. Değer
+   sütunları hizalı olduğu için göz satır satır değil sütun sütun tarar. */
+.con-row {
+  display: grid;
+  grid-template-columns: 18px 28px minmax(0, 1.3fr) minmax(120px, 1fr) 72px auto;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 40px;
+  padding: var(--sp-1) var(--sp-2);
+  border: 1px solid transparent;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.con-row:hover { border-color: var(--line); background: rgba(255, 247, 228, 0.035); }
+
+.con-row > strong {
   color: var(--text-mute);
   font-size: var(--fs-sm);
-  font-style: normal;
+  font-weight: 600;
+  text-align: right;
 }
 
-.construction-kpis b { font-size: var(--fs-md); white-space: nowrap; }
-.construction-free-total b { color: var(--green); }
-.construction-free-total b em { color: var(--text-mute); font-size: var(--fs-sm); font-style: normal; }
+.con-row-name { display: grid; min-width: 0; }
 
-.construction-legend { display: flex; flex-wrap: wrap; gap: var(--sp-3); }
-.construction-legend > span { display: flex; align-items: center; gap: var(--sp-2); }
-.construction-legend i { width: 14px; height: 14px; border-radius: 1px; }
-.construction-legend b { color: var(--text-dim); font-size: var(--fs-label); font-weight: 650; letter-spacing: var(--ls-label); text-transform: uppercase; }
-
-.legend-green { background: var(--green); }
-.legend-yellow { background: var(--amber); }
-.legend-blue { background: var(--cyan); }
-
-/* Ulusal yatirim kartlari: seviye + bedel + (kapaliysa) neden. */
-.construction-invest-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: var(--sp-2);
-}
-
-.construction-invest {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-3);
-  padding: var(--sp-3);
-}
-
-.construction-invest > i { font-size: 20px; }
-.construction-invest .grow { display: grid; gap: 2px; min-width: 0; }
-.construction-invest b { color: var(--text); font-size: var(--fs-md); }
-.construction-invest small { color: var(--text-mute); font-size: var(--fs-sm); }
-.construction-invest small.res-warn { color: var(--amber); }
-.construction-invest .action { white-space: nowrap; }
-
-.construction-build-palette {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(94px, 1fr));
-  gap: var(--sp-2);
-}
-
-.construction-build {
-  display: grid;
-  gap: 2px;
-  justify-items: center;
-  padding: var(--sp-2) var(--sp-1);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent), var(--surface-2);
-  color: var(--text);
-  cursor: pointer;
-}
-
-.construction-build > i { font-size: var(--fs-lg); font-style: normal; line-height: 1; }
-.construction-build > span { display: grid; gap: 3px; text-align: center; }
-.construction-build b { font-size: var(--fs-sm); font-weight: 650; line-height: var(--lh-tight); }
-.construction-build small { color: var(--text-mute); font-size: var(--fs-label); line-height: var(--lh-tight); }
-
-.construction-build:hover,
-.construction-build.selected {
-  border-color: var(--gold);
-  background: linear-gradient(180deg, rgba(211, 176, 106, 0.2), var(--gold-wash)), var(--surface-2);
-}
-
-.construction-build.selected small { color: var(--gold-bright); }
-
-.construction-placement-hint {
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius);
-  text-align: center;
-}
-
-/* Kalın çağrı ile açıklaması iki ayrı öğe; aralarında boşluk olmadan
-   "iconThen" gibi bitişik okunuyordu. */
-.construction-placement-hint { display: flex; flex-wrap: wrap; justify-content: center; gap: var(--sp-1); }
-.construction-placement-hint b { color: var(--text-dim); font-size: var(--fs-sm); font-weight: 650; }
-.construction-placement-hint.active { border-color: var(--gold); background: var(--gold-wash); }
-.construction-placement-hint.active b { color: var(--gold-bright); }
-
-.construction-regions,
-.construction-queue { display: grid; gap: var(--sp-2); }
-
-.construction-state {
-  display: grid;
-  grid-template-columns: 4px 1fr auto auto;
-  gap: var(--sp-2);
-  align-items: center;
-  padding: var(--sp-1) var(--sp-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  color: var(--text);
-  text-align: left;
-  cursor: pointer;
-}
-
-.construction-state.placement-ready { cursor: crosshair; }
-.construction-state.placement-ready:hover:not(:disabled) { border-color: var(--gold); }
-.construction-state-color { align-self: stretch; background: var(--green); }
-.state-partial .construction-state-color { background: var(--amber); }
-.state-full .construction-state-color { background: var(--cyan); }
-
-.construction-state-name { display: grid; gap: var(--sp-2); }
-.construction-state-name > span { display: flex; align-items: center; gap: var(--sp-2); }
-.construction-state-name b { color: var(--text); font-size: var(--fs-base); font-weight: 650; }
-
-.construction-state-name em {
-  padding: 1px var(--sp-2);
-  border: 1px solid var(--green);
-  border-radius: var(--radius);
-  color: var(--green);
-  font-size: var(--fs-label);
-  font-style: normal;
-  font-weight: 650;
-  letter-spacing: var(--ls-label);
-  text-transform: uppercase;
-}
-
-.state-partial .construction-state-name em { border-color: var(--amber); color: var(--amber); }
-.state-full .construction-state-name em { border-color: var(--cyan); color: var(--cyan); }
-
-.construction-state-buildings { display: flex; flex-wrap: wrap; gap: var(--sp-1); }
-
-.construction-state-buildings > span {
-  padding: 2px var(--sp-2);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-sunken);
-  font-size: var(--fs-sm);
-}
-
-.construction-state-capacity { display: grid; gap: var(--sp-2); min-width: 110px; }
-.construction-state-capacity > span { display: flex; justify-content: space-between; gap: var(--sp-2); }
-.construction-state-capacity b { color: var(--text); font-size: var(--fs-sm); font-weight: 650; }
-.construction-slot-bar i { background: var(--green); }
-.state-partial .construction-slot-bar i { background: var(--amber); }
-.state-full .construction-slot-bar i { background: var(--cyan); }
-
-.construction-state > strong { display: grid; gap: 2px; color: var(--green); text-align: center; }
-.construction-state > strong b { font-size: var(--fs-md); font-weight: 650; }
-.state-full > strong { color: var(--cyan); }
-
-.construction-project {
-  display: grid;
-  grid-template-columns: auto auto 1fr auto;
-  gap: var(--sp-2);
-  align-items: center;
-  padding: var(--sp-1) var(--sp-2);
-  border-bottom: 1px solid var(--line);
-}
-
-.construction-project:last-child { border-bottom: 0; }
-.construction-project > strong { color: var(--text-mute); font-size: var(--fs-base); text-align: center; }
-.construction-project > i { font-size: var(--fs-md); font-style: normal; }
-.construction-project > span:nth-child(3) { display: grid; gap: var(--sp-1); min-width: 0; }
-.construction-project b { color: var(--text); font-size: var(--fs-sm); font-weight: 650; }
-.construction-project small { color: var(--text-mute); font-size: var(--fs-label); }
-
-.construction-project-bar > i { background: var(--gold); }
-
-.construction-project-bar > em {
-  position: absolute;
-  top: 50%;
-  right: var(--sp-1);
-  color: var(--text);
-  font-size: var(--fs-label);
-  font-style: normal;
-  font-weight: 650;
-  line-height: 1;
-  transform: translateY(-50%);
-}
-
-/* Ozel sermayenin santiyeleri. Devlet kuyrugundan GORSEL olarak da ayrilir:
-   emir dugmesi yok, cerceve soluk, ilerleme cubugu altin degil bakir. Oyuncu
-   bir bakista "bunlar benim isim degil" diyebilmeli. */
-.construction-private {
-  display: grid;
-  gap: var(--sp-1);
-  padding: var(--sp-2);
-  border: 1px dashed var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-sunken);
-}
-
-.construction-private-head {
-  display: flex;
-  gap: var(--sp-2);
-  align-items: baseline;
-  justify-content: space-between;
-}
-
-.construction-private-head small {
-  color: var(--text-mute);
-  font-size: var(--fs-label);
-  font-weight: 650;
-  letter-spacing: var(--ls-label);
-}
-
-.construction-private-head b { display: block; color: var(--text); font-size: var(--fs-sm); }
-.construction-private-head em { color: var(--text-mute); font-size: var(--fs-label); font-style: normal; }
-
-.construction-private-row {
-  display: grid;
-  grid-template-columns: auto 1fr 90px auto;
-  gap: var(--sp-2);
-  align-items: center;
-  padding: 2px 0;
-}
-
-.construction-private-row.dormant { opacity: 0.55; }
-.construction-private-row > i { font-size: var(--fs-md); font-style: normal; }
-.construction-private-row b { color: var(--text); font-size: var(--fs-sm); font-weight: 650; }
-.construction-private-row small { display: block; color: var(--text-mute); font-size: var(--fs-label); }
-.construction-private-row em { color: var(--text-dim); font-size: var(--fs-label); font-style: normal; }
-
-.construction-private-bar {
-  position: relative;
-  height: 5px;
+.con-row-name b,
+.con-row-name small {
   overflow: hidden;
-  border-radius: 1px;
-  background: var(--surface-3);
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.construction-private-bar > i { display: block; height: 100%; background: var(--bar-shade, #8a6a44); }
+.con-row-name b { color: var(--text); font-size: var(--fs-base); font-weight: 650; }
+.con-row-name small { color: var(--text-dim); font-size: var(--fs-sm); }
+.con-row-progress { display: grid; gap: 3px; }
+.con-row-progress em { color: var(--text-dim); font-size: var(--fs-label); font-style: normal; }
+.con-row-eta { color: var(--text); font-size: var(--fs-sm); text-align: right; white-space: nowrap; }
 
-.construction-project-actions { display: grid; grid-template-columns: repeat(3, 28px); gap: 2px; }
+.con-rows.investors .con-row { grid-template-columns: 18px 28px minmax(0, 1.3fr) minmax(120px, 1fr) 72px; }
+.con-rows.investors .con-row-eta { color: var(--text-mute); }
+.con-rows.investors .ui-bar > i { background: linear-gradient(90deg, var(--bar-shade-green), var(--green)); }
+.con-row.dormant { opacity: 0.6; }
+.con-more { width: 100%; }
 
-.construction-project-actions button {
-  height: 28px;
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  background: var(--surface-3);
-  color: var(--text-dim);
-  font-size: var(--fs-sm);
-  cursor: pointer;
+@media (max-width: 960px) {
+  .con-kpis { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .con-body { grid-template-columns: minmax(0, 1fr); }
 }
-
-.construction-project-actions button:hover:not(:disabled) { border-color: var(--gold); color: var(--gold-bright); }
-.construction-project-actions button:disabled { opacity: 0.35; cursor: default; }
-
-.construction-queue-empty {
-  display: grid;
-  gap: var(--sp-2);
-  padding: var(--sp-3);
-  text-align: center;
-}
-
-.construction-queue-empty > b { color: var(--text); font-size: var(--fs-md); font-weight: 650; }
 
 /* ==========================================================================
    13. EKRAN: SANAYİ VE ÜRETİM
@@ -2728,37 +2783,6 @@ body.screen-open .layer-menu { display: none; }
    bırakır (bkz. .ind-rail.collapsed).
    -------------------------------------------------------------------------- */
 .ind { display: grid; gap: var(--sp-2); min-width: 0; }
-
-.ind-summary {
-  display: grid;
-  /* Yedinci hucre: iktidarin yatirim kurali ("Who may build"). */
-  grid-template-columns: repeat(7, minmax(0, 1fr));
-  gap: var(--sp-2);
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-}
-
-.ind-sum-cell { display: grid; gap: 1px; min-width: 0; }
-
-.ind-sum-cell small {
-  color: var(--text-mute);
-  font-size: var(--fs-label);
-  font-weight: 650;
-  letter-spacing: var(--ls-label);
-  text-transform: uppercase;
-}
-
-.ind-sum-cell b {
-  color: var(--text);
-  font-size: 18px;
-  font-variant-numeric: tabular-nums;
-}
-
-.ind-sum-cell b.good { color: var(--green); }
-.ind-sum-cell b.bad { color: var(--red); }
-.ind-sum-cell em { color: var(--text-dim); font-size: var(--fs-label); font-style: normal; }
 
 .ind-cols {
   display: grid;
@@ -3325,7 +3349,6 @@ body.screen-open .layer-menu { display: none; }
   .ind-cols, .ind-cols:has(.ind-rail.collapsed) { grid-template-columns: 200px minmax(0, 1fr); }
   .ind-rail { grid-column: 1 / -1; }
   .ind-rail.collapsed .ind-rail-head { flex-direction: row; writing-mode: horizontal-tb; }
-  .ind-summary { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
 /* ==========================================================================
@@ -3645,42 +3668,6 @@ body.screen-open .layer-menu { display: none; }
 }
 
 .pop-body { display: grid; gap: var(--sp-2); min-width: 0; }
-
-/* --- Altı sağlık kartı ---------------------------------------------------- */
-.pop-cards {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: var(--sp-2);
-}
-
-.pop-card {
-  display: grid;
-  gap: 1px;
-  padding: var(--sp-2) var(--sp-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius);
-  background: var(--surface-2);
-  min-width: 0;
-}
-
-.pop-card small {
-  color: var(--text-mute);
-  font-size: var(--fs-label);
-  font-weight: 650;
-  letter-spacing: var(--ls-label);
-  text-transform: uppercase;
-}
-
-.pop-card b {
-  color: var(--text);
-  font-size: 22px;
-  font-variant-numeric: tabular-nums;
-  line-height: 1.15;
-}
-
-.pop-card em { color: var(--text-dim); font-size: var(--fs-label); font-style: normal; }
-.pop-card em.up { color: var(--green); }
-.pop-card em.down { color: var(--red); }
 
 /* --- Dikkat şeridi -------------------------------------------------------- */
 .pop-attention {
@@ -4084,7 +4071,6 @@ body.screen-open .layer-menu { display: none; }
 /* Dar ekran: kartlar üçe iner, dosya tablonun altına geçer. */
 @media (max-width: 1180px) {
   .pop { grid-template-columns: 200px minmax(0, 1fr); }
-  .pop-cards { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .pop-panels, .pop-panels.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .pop-lower { grid-template-columns: minmax(0, 1fr); }
 }
@@ -4138,35 +4124,6 @@ body.screen-open .layer-menu { display: none; }
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.6), inset 0 0 26px rgba(0, 0, 0, 0.3);
   scrollbar-color: var(--gold) var(--surface-sunken);
   scrollbar-width: thin;
-}
-
-/* Bordo, laklanmış şerit başlık — defterin her yerinde tek bölüm ayracı. */
-.pol-band {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  margin: 0;
-  padding: 3px 7px;
-  border: 1px solid rgba(168, 138, 75, 0.5);
-  background: linear-gradient(180deg, #5a1822, #4a1520 55%, #3c1019);
-  box-shadow: inset 0 1px 0 rgba(232, 220, 194, 0.12), inset 0 -4px 8px rgba(0, 0, 0, 0.3);
-  color: #e8dcc2;
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-  text-transform: uppercase;
-}
-
-.pol-band em {
-  color: #c8ab77;
-  font-size: 10px;
-  font-style: normal;
-  letter-spacing: 0.03em;
-  text-align: right;
-  text-transform: none;
 }
 
 /* --- 17.1 Hükûmet --- */
@@ -4415,8 +4372,9 @@ button.pol-level { cursor: pointer; }
 /* Defter ekranin tamamini ister: dort bolge ayni anda gorunmezse "neden
    pahali" sorusu tek bakista cevaplanamaz. Govde kaydirilmaz; kaydirma
    katalog ile dosya paneline aittir. */
+/* Genişlik ortak kabuktan (1560px): yoğun ekranlar da aynı çerçevede durur,
+   1920px'de iki ayrı ekran genişliği göz için iki ayrı oyun demekti. */
 .screen[data-screen='trade'] {
-  width: min(1760px, 98vw);
   height: calc(100vh - var(--screen-top) - var(--sp-3));
 }
 
@@ -4438,7 +4396,6 @@ button.pol-level { cursor: pointer; }
 }
 
 /* Ortak cerceve yigini: dis siyah kenar -> ince pirinc hat -> oyuk yuzey. */
-.trade-totals,
 .trade-cat,
 .trade-detail,
 .trade-struct-block {
@@ -4448,79 +4405,6 @@ button.pol-level { cursor: pointer; }
   background: var(--ui-grain), linear-gradient(180deg, #10181c, #0c1316);
   box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.6), inset 0 0 26px rgba(0, 0, 0, 0.3);
 }
-
-/* Bordo, laklanmis serit baslik — defterin bolum ayraci (bkz. census). */
-.trade-cat > h4,
-.trade-h4 {
-  margin: 0;
-  padding: 2px 6px;
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 400;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: #e8dcc2;
-  background: linear-gradient(180deg, #5a1822, #4a1520 55%, #3c1019);
-  border: 1px solid rgba(168, 138, 75, 0.5);
-  box-shadow: inset 0 1px 0 rgba(232, 220, 194, 0.12), inset 0 -4px 8px rgba(0, 0, 0, 0.3);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-}
-
-.trade-cat > h4 em,
-.trade-h4 em {
-  color: #b39a6a;
-  font-family: var(--font-ui);
-  font-size: 9px;
-  font-style: normal;
-  letter-spacing: 0.03em;
-  text-transform: none;
-  text-shadow: none;
-  white-space: nowrap;
-}
-
-/* --- 18.1 Ust kunye --- */
-
-.trade-totals {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 3px 6px;
-  padding: 4px 6px;
-}
-
-.trade-total {
-  display: flex;
-  align-items: baseline;
-  gap: 5px;
-  padding: 1px 6px;
-  border: 1px solid rgba(168, 138, 75, 0.3);
-  background: linear-gradient(180deg, #0a1013, #111a1e);
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.6);
-}
-
-.trade-total small {
-  color: var(--text-mute);
-  font-size: 9.5px;
-  letter-spacing: 0.07em;
-  text-transform: uppercase;
-}
-
-.trade-total b {
-  color: #e8dcc2;
-  font-size: 11.5px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-.trade-total.pos b { color: #93b65c; }
-.trade-total.neg b { color: #b0563a; }
-.trade-total.wide b { font-family: var(--font-display); font-weight: 400; }
-
-.trade-await { color: var(--text-faint); font-size: 10.5px; font-style: italic; }
 
 /* --- 18.2 Orta bolge: katalog + dosya --- */
 
@@ -4956,9 +4840,6 @@ button.pol-level { cursor: pointer; }
 
   .command-slot { width: 58px; height: 58px; }
   .province-actions { grid-template-columns: 1fr; }
-  .construction-state { grid-template-columns: 4px 1fr; gap: var(--sp-2); }
-  .construction-state-capacity,
-  .construction-state > strong { grid-column: 2; }
 }
 
 @media (max-width: 480px) {
@@ -5583,23 +5464,7 @@ body.screen-open .notify-stack.open .notify-card { display: grid; }
 .ledger-col { min-width: 0; padding: 0 9px; }
 .ledger-col + .ledger-col { border-left: 1px solid rgba(168, 138, 75, 0.35); }
 
-/* Bordo serit basliklar: boyali/laklanmis tarihi UI seridi. */
-.ledger-head {
-  font-family: var(--font-display);
-  font-size: 13px;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  text-align: center;
-  color: #e8dcc2;
-  padding: 4px 8px;
-  margin: 0 0 4px;
-  background: linear-gradient(180deg, #5a1822, #4a1520 55%, #3c1019);
-  border: 1px solid rgba(168, 138, 75, 0.5);
-  box-shadow: inset 0 1px 0 rgba(232, 220, 194, 0.12), inset 0 -4px 8px rgba(0, 0, 0, 0.3);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-}
-
-.ledger-head.sub { margin-top: 7px; font-size: 12px; }
+.ledger-head.sub { margin-top: 7px; }
 
 /* Satirlar: dar, ince ayiracli seritler. Kart yok. */
 .ledger-row {
@@ -7035,7 +6900,6 @@ body.menu-open .sheet { visibility: hidden; }
    bakışta görülmeli. Gövde kaydırılmaz; kaydırma sütunların kendisine aittir
    (bkz. §16 ve §17'deki aynı karar). */
 .screen[data-screen='military'] {
-  width: min(1760px, 98vw);
   height: calc(100vh - var(--screen-top) - var(--sp-3));
 }
 
@@ -7078,7 +6942,6 @@ body.menu-open .sheet { visibility: hidden; }
 /* Ortak çerçeve yığını: dış siyah kenar → ince pirinç hat → oyuk koyu yüzey. */
 .mil-col,
 .mil-stats,
-.mil-head,
 .mil-disposition,
 .mil-leader-detail {
   border: 1px solid #0a0f12;
@@ -7097,91 +6960,6 @@ body.menu-open .sheet { visibility: hidden; }
 
 .mil-command { grid-template-rows: auto auto minmax(120px, 1fr) auto auto; }
 .mil-queue { grid-template-rows: auto auto minmax(0, 1fr); }
-
-/* Bordo, laklanmış şerit başlık — §17 ile birebir aynı ayraç. */
-.mil-band {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: var(--sp-2);
-  margin: 0;
-  padding: 3px 7px;
-  border: 1px solid rgba(168, 138, 75, 0.5);
-  background: linear-gradient(180deg, #5a1822, #4a1520 55%, #3c1019);
-  box-shadow: inset 0 1px 0 rgba(232, 220, 194, 0.12), inset 0 -4px 8px rgba(0, 0, 0, 0.3);
-  color: #e8dcc2;
-  font-family: var(--font-display);
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
-  text-transform: uppercase;
-}
-
-.mil-band em {
-  color: #c8ab77;
-  font-size: 10px;
-  font-style: normal;
-  letter-spacing: 0.03em;
-  text-transform: none;
-}
-
-/* --- 21.1 Üst künye: ülkenin askerî durumu tek satırda --- */
-
-.mil-head {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 1px;
-  padding: 0;
-}
-
-.mil-figure {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  padding: 7px 10px;
-  border-right: 1px solid rgba(168, 138, 75, 0.16);
-}
-
-.mil-figure:last-child { border-right: 0; }
-
-.mil-figure > i {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  flex: none;
-  border: 1px solid rgba(168, 138, 75, 0.3);
-  background: linear-gradient(180deg, #1a252a, #101a1e);
-  color: #96835a;
-}
-
-.mil-figure > i svg { width: 15px; height: 15px; }
-.mil-figure span { display: grid; min-width: 0; }
-
-.mil-figure small {
-  color: var(--text-mute);
-  font-size: 9px;
-  letter-spacing: var(--ls-label);
-  text-transform: uppercase;
-}
-
-.mil-figure b {
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 15px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-  line-height: 1.2;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mil-figure.hot > i { border-color: rgba(169, 94, 74, 0.5); color: var(--red); }
-.mil-figure.hot b { color: #c98771; }
-.mil-figure.warn > i { border-color: rgba(183, 142, 72, 0.5); color: var(--amber); }
 
 /* --- 21.2 Sol sütun: subay kadrosu --- */
 
@@ -7771,12 +7549,6 @@ body.menu-open .sheet { visibility: hidden; }
    Hiçbir bölge kaybolmaz — yalnız sıraya girer (bkz. §17'deki aynı karar). */
 @media (max-width: 1500px) {
   .mil-cols { grid-template-columns: 330px minmax(0, 1fr) 300px; }
-
-  .mil-head {
-    grid-auto-flow: row;
-    grid-auto-columns: auto;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 1180px) {
@@ -7801,7 +7573,6 @@ body.menu-open .sheet { visibility: hidden; }
   .mil-build-list,
   .mil-queue-list { max-height: 320px; }
 
-  .mil-head { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .mil-disposition { grid-template-columns: minmax(0, 1fr); }
 
   /* Telefonda satır iki kata iner: üstte kol ve düğme, altta bedel. Tek
@@ -7822,15 +7593,9 @@ body.menu-open .sheet { visibility: hidden; }
 /* --- Teknoloji ekrani (bkz. ui/technologyScreen.js) ------------------- */
 .tech-screen { display: flex; flex-direction: column; gap: 8px; }
 
-.tech-head {
-  display: flex; flex-wrap: wrap; gap: 14px;
-  padding: 6px 10px;
-  border: 1px solid rgba(168, 138, 75, 0.28);
-  background: rgba(150, 122, 69, 0.07);
-}
-.tech-head span { display: flex; flex-direction: column; }
-.tech-head small { color: var(--text-faint); font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; }
-.tech-head b { font-size: 13px; }
+/* Özet şeridi §7B'den; araştırılan teknolojinin adı geniş hücreyi alır. */
+.tech-kpis { grid-template-columns: minmax(0, 2fr) repeat(3, minmax(0, 1fr)); }
+.tech-kpis .tech-kpi-wide > b { overflow: hidden; font-family: var(--font-display); font-weight: 400; text-overflow: ellipsis; }
 
 .tech-cats { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 4px; }
 .tech-cat {
@@ -8528,32 +8293,24 @@ body.menu-open .sheet { visibility: hidden; }
 /* --------------------------------------------------------------------------
    YÜZEYLER — panel, alt panel, ray, kart
    -------------------------------------------------------------------------- */
-.ind-summary,
 .ind-states,
 .ind-rail,
 .fac-card,
-.pop-card,
 .pop-nav,
 .pop-panel,
 .pop-table,
 .pop-detail,
 .build-card,
-.construction-private,
 .tax-summary,
 /* Diger ekranlar da ayni aileye girer: yerlesimleri kendilerinin, MALZEMESI
    ortak. Yoksa oyuncu ekran degistirdiginde baska bir oyuna girmis gibi olur. */
-.construction-summary,
-.construction-queue,
-.construction-regions,
+.ui-panel,
 .mil-col,
 .mil-stats,
-.mil-head,
 .mil-disposition,
 .mil-leader-detail,
 .pol-gov,
 .pol-laws,
-.pol-band,
-.trade-totals,
 .trade-cat,
 .trade-detail,
 .trade-struct-block,
@@ -8572,7 +8329,6 @@ body.menu-open .sheet { visibility: hidden; }
 .pop-meter > i,
 .ind-project-bar,
 .pop-party-bar,
-.construction-private-bar,
 .pop-table-scroll {
   background-image: var(--mat-sunken);
   box-shadow: var(--material-inset);
@@ -8616,7 +8372,6 @@ body.menu-open .sheet { visibility: hidden; }
 .pop-nav-clear,
 .mil-btn,
 .sub-tabs button,
-.construction-build,
 .building-chip,
 .production-choice,
 .tech-cat-bar button {
@@ -8717,7 +8472,6 @@ body.menu-open .sheet { visibility: hidden; }
 /* Diger ekranlarin dugmeleri de ayni fiziksel davranisi alir: ayri ayri
    yazilmis on kadar dugme stili yerine tek reçete. */
 .mil-btn,
-.construction-build,
 .building-chip,
 .production-choice,
 .tech-cat-bar button,
@@ -8727,7 +8481,6 @@ body.menu-open .sheet { visibility: hidden; }
 }
 
 .mil-btn:hover:not([disabled]),
-.construction-build:hover:not([disabled]),
 .building-chip:hover:not([disabled]),
 .production-choice:hover:not([disabled]),
 .tech-cat-bar button:hover:not([disabled]),
@@ -8738,7 +8491,6 @@ body.menu-open .sheet { visibility: hidden; }
 }
 
 .mil-btn:active:not([disabled]),
-.construction-build:active:not([disabled]),
 .building-chip:active:not([disabled]),
 .production-choice:active:not([disabled]),
 .tech-cat-bar button:active:not([disabled]),
@@ -8750,7 +8502,6 @@ body.menu-open .sheet { visibility: hidden; }
 }
 
 /* Secili durum: pirinc dolgu + sol kenar isareti. */
-.construction-build.selected,
 .production-choice.active,
 .building-chip.on,
 .sub-tabs button.active {
@@ -8830,7 +8581,6 @@ body.menu-open .sheet { visibility: hidden; }
    -------------------------------------------------------------------------- */
 .ind-state,
 .pop-nav-state,
-.construction-state,
 .pop-alert {
   transition: background-color var(--ease), box-shadow var(--ease), border-color var(--ease);
 }
@@ -8914,19 +8664,6 @@ body.menu-open .sheet { visibility: hidden; }
   background-image: var(--ui-grain), var(--mat-raised);
   background-blend-mode: soft-light, normal;
   box-shadow: var(--material-panel);
-}
-
-/* Bölüm başlığı (REVENUE / SPENDING): bordo şerit artık dövülmüş bir plaka. */
-.ledger-head {
-  background-image:
-    linear-gradient(180deg,
-      rgba(255, 247, 228, 0.10) 0%,
-      rgba(255, 247, 228, 0.02) 42%,
-      rgba(0, 0, 0, 0.22) 100%);
-  box-shadow:
-    inset 0 1px 0 rgba(232, 210, 160, 0.14),
-    inset 0 -1px 0 rgba(0, 0, 0, 0.5),
-    0 2px 6px rgba(0, 0, 0, 0.3);
 }
 
 /* Kontrol satırı: üstüne gelince satır canlanır, hangi kaydıracın üstünde
@@ -9076,8 +8813,7 @@ body.menu-open .sheet { visibility: hidden; }
 /* Doluluk ve ilerleme dolguları: düz renk yerine hafif hacim. */
 .fac-bar > i,
 .pop-meter > i > i,
-.ind-project-bar > i,
-.construction-private-bar > i {
+.ind-project-bar > i {
   background-image: linear-gradient(180deg,
     rgba(255, 255, 255, 0.22), transparent 55%, rgba(0, 0, 0, 0.2));
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.25);
@@ -9086,20 +8822,6 @@ body.menu-open .sheet { visibility: hidden; }
 /* --------------------------------------------------------------------------
    NÜFUS — sağlık kartı ve dikkat şeridi
    -------------------------------------------------------------------------- */
-.pop-card { position: relative; overflow: hidden; }
-
-/* Kartın üst kenarında ince bir ışık hattı: metal levhanın kenarı. */
-.pop-card::before {
-  content: '';
-  position: absolute;
-  left: var(--sp-3);
-  right: var(--sp-3);
-  top: 0;
-  height: 1px;
-  background: linear-gradient(90deg,
-    transparent, rgba(232, 210, 160, 0.22) 30%, rgba(232, 210, 160, 0.22) 70%, transparent);
-}
-
 .pop-attention {
   background-image: var(--mat-sunken);
   box-shadow: var(--material-inset);
@@ -9225,23 +8947,8 @@ body.screen-open #map { filter: saturate(0.72) brightness(0.82); transition: fil
    2 · İÇ BÖLÜMLER — state listesi, üst şerit, inşaat rayı
    -------------------------------------------------------------------------- */
 /* Kenar burada kalir; yuzey §26'dan gelir. */
-.ind-summary,
 .ind-states,
 .ind-rail { border: 1px solid rgba(0, 0, 0, 0.5); }
-
-/* --- Üst şerit tek alet paneli: hücreleri dikey ayraç böler, her hücreye
-   ayrı kutu çizilmez. --- */
-.ind-summary { gap: 0; padding: var(--sp-2) 0; }
-
-.ind-sum-cell {
-  padding: 0 var(--sp-3);
-  border-left: 1px solid rgba(0, 0, 0, 0.42);
-  box-shadow: inset 1px 0 0 rgba(255, 248, 232, 0.045);
-}
-
-.ind-sum-cell:first-child { border-left: 0; box-shadow: none; }
-.ind-sum-cell small { color: var(--text-mute); }
-.ind-sum-cell b { color: #e2dac6; font-size: 19px; letter-spacing: -0.01em; }
 
 /* --------------------------------------------------------------------------
    3 · TESİS KARTI — yüzeyin ÜSTÜNDE
@@ -9810,17 +9517,16 @@ svg.res-glyph {
    Bütün ekranların "kutu" sayılan parçaları. Kendi zeminini kuran her ekran
    burada tek reçeteye bağlanır.
    -------------------------------------------------------------------------- */
-.ind-summary, .ind-states, .ind-rail, .fac-card, .build-card,
-.pop-card, .pop-nav, .pop-panel, .pop-table, .pop-detail,
+.ind-states, .ind-rail, .fac-card, .build-card,
+.pop-nav, .pop-panel, .pop-table, .pop-detail,
 .ledger-col, .bank-rows,
-.trade-totals, .trade-cat, .trade-detail, .trade-struct-block,
-.mil-col, .mil-stats, .mil-head, .mil-disposition, .mil-leader-detail,
-.pol-gov, .pol-laws, .pol-band,
-.tech-col, .tech-programme-card, .tech-detail, .tech-head,
+.trade-cat, .trade-detail, .trade-struct-block,
+.mil-col, .mil-stats, .mil-disposition, .mil-leader-detail,
+.pol-gov, .pol-laws,
+.tech-col, .tech-programme-card, .tech-detail,
 .chron-row,
 .mil-build, .mil-command, .mil-queue, .mil-plan,
-.construction-summary, .construction-queue, .construction-regions,
-.construction-private,
+.ui-panel,
 .decision-card,
 .tax-summary {
   /* Zemin RENGI SIFIRLANIR: --mat-raised saydam bir ton katmanidir ve
@@ -9836,7 +9542,7 @@ svg.res-glyph {
 /* Kart kademesi bir tık daha açık: iç blokla kart aynı düzlemde durmasın. */
 /* Kart kademesi ayni malzemenin bir tik daha aydinlik hali; ayri bir renk
    degil. Boylece kart panelin UZERINDE durur ama ondan kopmaz. */
-.fac-card, .build-card, .pop-card {
+.fac-card, .build-card {
   background-color: transparent;
   background-image: var(--ui-grain), var(--mat-raised-hi);
   box-shadow: var(--shadow-card);
@@ -9849,7 +9555,7 @@ svg.res-glyph {
    OYULUR, üstüne konmaz.
    -------------------------------------------------------------------------- */
 .fac-chain, .pop-stack, .fac-bar, .pop-meter > i, .ind-project-bar,
-.pop-party-bar, .construction-private-bar, .pop-table-scroll,
+.pop-party-bar, .pop-table-scroll,
 .pop-attention, .vbox, .ind-search input, .pop-search input,
 .mil-build-list, .mil-queue-list, .mil-leader-list,
 .chron-list, .tech-body, .tech-ladder, .tech-effects,
@@ -9881,7 +9587,7 @@ svg.res-glyph {
 
 /* Bölüm başlığı: yüzeye oturan ince pirinç ayraç — her ekranda aynı. */
 .pop-panel > header, .ind-rail-head, .pop-nav-head, .pop-table-head,
-.ledger-head, .mil-head, .trade-h4, .card-head, .pop-attention-label {
+.ledger-head, .trade-h4, .card-head, .pop-attention-label {
   position: relative;
 }
 
@@ -10126,6 +9832,11 @@ svg.res-glyph {
 .sheet .action-row .k,
 .sheet .action-row .action.wide { grid-column: 1 / -1; }
 
+/* Toplanma noktası tek satır: etiket solda, küçük düğme sağda. */
+.sheet .action-row.rally-row { grid-template-columns: minmax(0, 1fr) auto; }
+.sheet .action-row.rally-row .k { grid-column: auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sheet .action-row.rally-row .k b { color: var(--text); font-weight: 600; }
+
 /* Kutudaki katlanır bölüm: seyrek kullanılan eylem yığınları (asker alımı)
    varsayılan olarak kapalı durur, bilgi kısmını ekran dışına itmez. */
 .sheet-fold { margin-bottom: var(--sp-2); }
@@ -10163,14 +9874,20 @@ svg.res-glyph {
 /* ==========================================================================
    29. GECİKMELİ BİLGİ KARTI (tooltip)
 
-   ANLIK hover yalnızca görsel vurgudur; BİLGİ 800 ms sonra gelir. Ayrım
+   ANLIK hover yalnızca görsel vurgudur; BİLGİ 550 ms sonra gelir. Ayrım
    bilinçli: imleç ekranda gezerken kart yanıp sönmemeli.
    ========================================================================== */
 
-/* Kaynak: anlık tepki yalnızca alt çizgi. Kutu, gölge, sıçrama yok. */
+/* Kaynak: anlık tepki yalnızca işaret. Kutu, gölge, sıçrama yok. Düğme
+   tıklanır olduğunu söylemeye devam eder; açıklaması ek bilgidir. */
 [data-tip] { cursor: help; }
+button[data-tip] { cursor: pointer; }
+button[data-tip]:disabled { cursor: not-allowed; }
 
-[data-tip]:hover {
+/* Satır içi metin kaynağında noktalı alt çizgi. Blok kaynakta (özet hücresi,
+   satır, kart) alt çizgi bütün metni çizer ve gürültü olur; onlar kendi hover
+   zeminini taşır (bkz. §7B .ui-kpi). */
+:is(span, small, b, em, strong, label, dt, dd, td, th, h3, h4, i)[data-tip]:hover {
   text-decoration-line: underline;
   text-decoration-style: dotted;
   text-decoration-color: var(--gold);
@@ -10242,6 +9959,9 @@ button[data-tip]:hover,
 
 .tip-block { margin-top: var(--sp-2); }
 
+/* Başlıksız kartın ilk öğesi üst boşluk taşımaz: dolgu zaten yeterli. */
+.tip-card > :first-child { margin-top: 0; }
+
 .tip-block > small {
   display: block;
   margin-bottom: 2px;
@@ -10299,25 +10019,7 @@ button[data-tip]:hover,
   :root { --sheet-max: min(50vh, 640px); }
 }
 
-/* --- İnşaat ekranı: okunurluk onarımı ------------------------------------
-   KPI şeridinin kendi kuralı YOKTU: seçici listesi bir üstteki bloğa yapışmış,
-   `.construction-kpis` yalnız `grid-template-columns` alıyordu ve etiketle
-   değer yan yana yapışık çıkıyordu ("Build power27.5/wk"). Tarihî seçici
-   yığınını çözmek dört ekranı birden riske atardı; şerit kendi kuralını alır. */
-.construction-kpis {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(104px, 1fr));
-  gap: var(--sp-2);
-  margin-bottom: var(--sp-3);
-}
-
-.construction-kpis > span {
-  display: grid;
-  gap: 1px;
-  align-content: start;
-}
-
-/* Amblem kutusu: kuyruk, özel şantiye ve yatırım kartı aynı ölçüyü paylaşır,
+/* --- Amblem kutusu: kuyruk satırı ve sanayi kataloğu aynı ölçüyü paylaşır,
    yoksa boyalı madalyon çizgi glifinin yanında zıplıyor. */
 .build-emblem {
   display: grid;
@@ -10329,32 +10031,6 @@ button[data-tip]:hover,
 }
 
 .build-emblem img, .build-emblem svg { width: 24px; height: 24px; }
-.construction-state-buildings .build-emblem { width: 15px; height: 15px; }
-.construction-state-buildings .build-emblem svg { width: 14px; height: 14px; }
-
-/* Kuyruğun devamı: satır değil düğme — kuyruğun uzunluğu zaten başlıkta. */
-.construction-queue-more {
-  width: 100%;
-  margin-top: var(--sp-1);
-  padding: var(--sp-2);
-  border: 1px dashed var(--line-strong);
-  border-radius: var(--radius);
-  background: none;
-  color: var(--text-dim);
-  font-size: var(--fs-sm);
-  cursor: pointer;
-}
-
-.construction-queue-more:hover { color: var(--gold-bright); border-color: var(--gold); }
-
-/* İki emir, yazıyla: ok yığını hangi düğmenin ne yaptığını gizliyordu. */
-.construction-project-actions button {
-  padding: 0 var(--sp-2);
-  font-size: var(--fs-label);
-  letter-spacing: 0.04em;
-}
-
-.construction-project-actions .danger { color: var(--red); }
 
 
 /* --- Bildirimler: açık ekranı kapatmasınlar -------------------------------
@@ -10705,22 +10381,6 @@ body.screen-open .alert-pop { display: none; }
       yalniz basina bir satira dusuyordu. Ok artik ciktilarla ayni parcada. */
 .fac-chain { row-gap: 3px; }
 .fac-chain > span { min-width: 0; }
-
-/* 3. Yatirim kartindaki dugmeler `.action`in `flex: 1 1 auto`ini miras
-      aliyordu: kucucuk "2" isareti Invest kadar genis bir kutuya
-      yayiliyordu. Ikisi de icerigi kadar yer kaplar. */
-.construction-invest .action { flex: 0 0 auto; }
-.construction-invest .action[data-divest] { width: 34px; padding-inline: 0; text-align: center; }
-
-/* 4. Insa paletinde TEK tur var (Fort) ve `auto-fit` + `1fr` onu butun
-      genislige yayiyordu: koca bos bir blok. Kart artik kendi boyunda durur. */
-.construction-build-palette {
-  grid-template-columns: repeat(auto-fill, minmax(104px, 132px));
-  justify-content: start;
-}
-
-
-
 
 /* --- Vergi esigine kilitleme ---------------------------------------------
    Iki kucuk anahtar: "hold" yesil esikte tutar, "max" kirmizida. Esikler her

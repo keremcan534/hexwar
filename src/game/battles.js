@@ -18,7 +18,6 @@ import {
   addExperience, consumeAssaultPlanning, generalModifier, generalOfArmy,
   generalSiegeRelief, generalVariance, planningBonus,
 } from './command.js';
-import { fortDefenseAt } from './construction.js';
 import { provinceName } from './provinces.js';
 import { MILITARY_EQUIPMENT, equipmentStock } from './economy.js';
 import { controllerOf } from './control.js';
@@ -119,10 +118,17 @@ export function battleSides(world, battle) {
   };
 }
 
+/**
+ * Savunma katkisi: arazi ve sehir. (Kale 2026-09'da insaatla birlikte gitti.)
+ * Disari acik: kare kutusu ayni sayiyi gostermeli — yalniz araziyi yazinca
+ * baskent karesi "Defense 0%" diyordu, muharebe ise sehir surlerini sayiyordu.
+ */
+export function tileDefense(tile) {
+  return (tile.terrain.defense ?? 0) + (tile.city ? 0.12 + tile.city.level * 0.04 : 0);
+}
+
 function terrainDefense(world, army) {
-  const tile = army.tile;
-  return (tile.terrain.defense ?? 0) + (tile.city ? 0.12 + tile.city.level * 0.04 : 0)
-    + fortDefenseAt(world, army.nationId, tile);
+  return tileDefense(army.tile);
 }
 
 /** Bir tarafin en yetenekli komutani: zar oynakligi ve kusatma ondan gelir. */

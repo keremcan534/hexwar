@@ -106,6 +106,8 @@ export function technologyScreen(nation, view) {
   const categoryId = TECH_CATEGORIES[view.category] ? view.category : 'industry';
   const research = nation.research ?? { points: 0, current: null, done: [] };
   const done = new Set(research.done ?? []);
+  // Secim yokken dosya bos kalmaz: arastirilan teknoloji acik gelir.
+  const selectedId = view.selected ?? research.current ?? null;
 
   // --- Kategori cubuklari: kac teknoloji alindi / toplam ---
   const bars = Object.values(TECH_CATEGORIES).map((cat) => {
@@ -135,7 +137,7 @@ export function technologyScreen(nation, view) {
       // Program rengi: odak klasor ucuz (pirinc), ihmal edilen pahali (soluk).
       const factor = programmeCostFactor(nation, tech.id);
       const bias = factor < 1 ? ' is-focus' : factor > 1 ? ' is-neglect' : '';
-      return `<li class="tech-step is-${state}${tech.id === view.selected ? ' is-selected' : ''}${bias}">
+      return `<li class="tech-step is-${state}${tech.id === selectedId ? ' is-selected' : ''}${bias}">
         <button data-tech="${esc(tech.id)}" title="${esc(tech.name)} · ${tech.year} · ${cost} RP${early ? ' (early research penalty)' : ''}${factor !== 1 ? (factor < 1 ? ' · programme focus' : ' · programme neglect') : ''}">
           <span>${esc(tech.name)}</span>
           ${state === 'done' ? '<em>✓</em>' : `<em class="${early ? 'neg' : ''}">${tech.year}</em>`}
@@ -148,9 +150,9 @@ export function technologyScreen(nation, view) {
   }).join('');
 
   // --- Secili teknolojinin dosyasi ---
-  const selected = view.selected
+  const selected = selectedId
     ? Object.values(TECHNOLOGIES).flatMap((f) => Object.values(f).flat())
-      .find((t) => t.id === view.selected)
+      .find((t) => t.id === selectedId)
     : null;
 
   let detail = '<div class="tech-detail empty"><p>Select a technology to see what it changes.</p></div>';
@@ -209,12 +211,15 @@ export function technologyScreen(nation, view) {
   ].filter(Boolean).join('\n'));
 
   return `<div class="tech-screen">
-    <div class="tech-head">
-      <span><small>Current research</small><b>${esc(currentName)}</b></span>
-      <span><small>Research points</small><b>${Math.round(research.points)}</b></span>
-      <span class="stat-why" role="button" tabindex="0" data-why="research" data-why-text="${whyRate}"
-        title="Click for the breakdown"><small>Per week</small><b>${view.rate.toFixed(2)}</b></span>
-      <span title="National schooling level. The Population screen shows the class-weighted share of literate pops, which is a different measure."><small>National literacy</small><b>${Math.round((nation.economy?.literacy ?? 0) * 100)}%</b></span>
+    <div class="ui-kpis tech-kpis">
+      <div class="ui-kpi tech-kpi-wide"><small>Researching</small><b>${esc(currentName)}</b>
+        <span>${research.current ? 'points flow in every week' : 'choose a technology below'}</span></div>
+      <div class="ui-kpi"><small>Research points</small><b>${Math.round(research.points)}</b><span>stored toward it</span></div>
+      <div class="ui-kpi stat-why" role="button" tabindex="0" data-why="research" data-why-text="${whyRate}"
+        data-tip="term" data-tip-arg="research"><small>Per week</small><b>${view.rate.toFixed(2)}</b>
+        <span>click for the breakdown</span></div>
+      <div class="ui-kpi" data-tip="term" data-tip-arg="literacy"><small>National literacy</small>
+        <b>${Math.round((nation.economy?.literacy ?? 0) * 100)}%</b><span>the main source of points</span></div>
     </div>
     ${programmePanel(nation, view)}
     <div class="tech-cats">${bars}</div>

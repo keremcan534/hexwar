@@ -283,16 +283,21 @@ export function tradeSummaryBar(summary) {
   // BES HUCRE. Eskiden sekiz kucuk cip vardi ve hicbiri one cikmiyordu; sekiz
   // esit agirlikli sayi, sifir sayi demektir. Kalanlar (dunya ticareti, tarife
   // orani, en yuksek baski) alt seritteki ulusal ozette zaten duruyor.
-  const cell = (label, value, cls = '') => `<span class="trade-total${cls ? ` ${cls}` : ''}">
-    <small>${esc(label)}</small><b>${value}</b></span>`;
+  // Ortak ozet seridi (§7B .ui-kpis); iki terim sozlukten aciklanir.
+  const cell = (label, value, sub, cls = '', term = '') => `<div class="ui-kpi"${
+    term ? ` data-tip="term" data-tip-arg="${term}"` : ''}>
+    <small>${esc(label)}</small><b class="${cls}">${value}</b><span>${sub}</span></div>`;
   const balance = summary.balance;
-  return `<div class="trade-totals">
-    ${cell('Trade balance', `${balance >= 0 ? '+' : ''}£${balance.toFixed(1)}`, balance >= 0 ? 'pos' : 'neg')}
-    ${cell('Imports', `£${summary.importValue.toFixed(1)}`)}
-    ${cell('Exports', `£${summary.exportValue.toFixed(1)}`)}
-    ${cell('Tariff income', `£${summary.tariffRevenue.toFixed(1)}`)}
-    ${cell('Critical shortages', String(summary.shortages), summary.shortages ? 'neg' : '')}
-    ${summary.awaiting ? '<span class="trade-await">market clears on the next weekly tick</span>' : ''}
+  return `<div class="ui-kpis trade-kpis">
+    ${cell('Trade balance', `${balance >= 0 ? '+' : '−'}£${Math.abs(balance).toFixed(1)}`,
+    summary.awaiting ? 'market clears on the next weekly tick' : 'exports minus imports / wk',
+    balance >= 0 ? 'good' : 'bad', 'trade-balance')}
+    ${cell('Imports', `£${summary.importValue.toFixed(1)}`, 'bought abroad / wk')}
+    ${cell('Exports', `£${summary.exportValue.toFixed(1)}`, 'sold abroad / wk')}
+    ${cell('Tariff income', `£${summary.tariffRevenue.toFixed(1)}`, 'paid into the treasury / wk')}
+    ${cell('Critical shortages', String(summary.shortages),
+    summary.shortages ? 'goods nobody can supply' : 'none this week',
+    summary.shortages ? 'bad' : '', 'shortages')}
   </div>`;
 }
 

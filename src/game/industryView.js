@@ -313,9 +313,8 @@ export function industryOverview(world, nation) {
     byState.get(row.stateId).push(row);
   }
 
-  // SANAYI YUVASI, BINA YUVASI DEGIL. `region.slots` insaat (kale) yuvasidir;
-  // sanayide kural baskadir: bir state'te her turden EN FAZLA BIR tesis olur
-  // (bkz. economy.industryTaken). Ekranin "bos yuva" sayisi bu kuraldan gelir.
+  // SANAYI YUVASI: bir state'te her turden EN FAZLA BIR tesis olur (bkz.
+  // economy.industryTaken). Ekranin "bos yuva" sayisi bu kuraldan gelir.
   const industrySlots = Object.keys(FACTORIES).length;
   const states = atlas.regions.map((region) => {
     const list = byState.get(region.id) ?? [];
@@ -415,8 +414,7 @@ export function factoryBuildOptions(world, nation, regionId) {
         : locked ? `Not yet invented — available from ${eraYear(era)}`
           : !rules.stateBuild ? `${policyNameOf(nation)} forbids state industry`
             : (nation.gold ?? 0) < gold ? `Treasury short by £${Math.ceil(gold - (nation.gold ?? 0))}`
-              : region.free <= 0 ? 'No free industrial slot in this state'
-                : 'Unavailable';
+              : 'Unavailable';
     const margin = factoryMargin(world, type.id);
     return {
       typeId: type.id,

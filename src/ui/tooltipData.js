@@ -11,8 +11,10 @@
 
 import { provideTooltip, tipTerm } from './tooltip.js';
 import {
-  GOODS, budgetBreakdown, debtCapacity, formatPopulation, priceOf,
+  GOODS, budgetBreakdown, debtCapacity, formatPopulation, literacyTargetOf, priceOf,
 } from '../game/economy.js';
+import { constructionView } from '../game/construction.js';
+import { researchPointsOf } from '../game/technology.js';
 import { industryOverview } from '../game/industryView.js';
 import { provinceRgoStatus } from '../game/provinces.js';
 import { activeAlerts } from '../game/alerts.js';
@@ -512,8 +514,8 @@ export function registerTooltips(game) {
   provideTooltip('defense', () => ({
     type: 'mechanic',
     title: 'Defence',
-    text: 'Terrain bonus plus any fort in range. A defender on this hex fights '
-      + 'with this much extra strength.',
+    text: 'Terrain bonus, plus a city\'s walls if one stands here. A defender on this '
+      + 'hex fights with this much extra strength.',
   }));
 
   provideTooltip('culture', () => ({
@@ -522,4 +524,199 @@ export function registerTooltips(game) {
     text: 'Provinces of a culture your state does not accept recover control more '
       + 'slowly and are unhappier. Citizenship law decides who counts as accepted.',
   }));
+
+  /* ----------------------------------------------------------------------
+     İNŞAAT — özet şeridi ve kapasite eylemleri (construction.constructionView)
+     ---------------------------------------------------------------------- */
+
+  provideTooltip('construction', (arg) => {
+    const nation = me();
+    if (!nation) return null;
+    const view = constructionView(nation);
+    const cap = view.capacity;
+    switch (arg) {
+      case 'power':
+        return {
+          type: 'breakdown',
+          title: 'Build power',
+          value: `${view.power.toFixed(1)}/wk`,
+          text: 'Work poured into the queue each week, top project first. Factories, '
+            + 'expansions and capacity levels all draw on this one pool.',
+          rows: [
+            { label: 'Base', value: `${view.basePower}` },
+            { label: `Capacity levels (${cap.level} × ${cap.perLevel})`, value: `+${cap.level * cap.perLevel}` },
+            { label: 'Railway technology & credit', value: `${view.power - view.basePower - cap.level * cap.perLevel >= 0 ? '+' : '−'}${Math.abs(view.power - view.basePower - cap.level * cap.perLevel).toFixed(1)}` },
+            { label: 'Build power', value: `${view.power.toFixed(1)}/wk`, tone: 'good' },
+          ],
+        };
+      case 'queue':
+      case 'clears':
+        return {
+          type: 'breakdown',
+          title: arg === 'queue' ? 'Construction queue' : 'Queue clears in',
+          value: view.own.length ? `~${view.clearsIn} wk` : 'empty',
+          text: 'Your own projects, built top to bottom. A capacity level always goes '
+            + 'first; investor sites wait for their money, not for your order.',
+          rows: [
+            { label: 'Projects', value: `${view.own.length}` },
+            { label: 'Work left', value: `${Math.round(view.workLeft)}` },
+            { label: 'Build power', value: `${view.power.toFixed(1)}/wk` },
+            { label: 'Weeks to clear', value: view.own.length ? `~${view.clearsIn}` : '—' },
+          ],
+        };
+      case 'upkeep':
+        return {
+          type: 'breakdown',
+          title: 'Construction upkeep',
+          value: `−£${view.upkeep.toFixed(1)}/wk`,
+          text: 'Every capacity level costs upkeep whether or not anything is being built. '
+            + 'Dissolve a level to shed it; there is no refund.',
+          rows: [
+            { label: `Levels (${cap.level} × £${cap.upkeepPerLevel})`, value: `−£${view.upkeep.toFixed(1)}`, tone: 'bad' },
+          ],
+          footer: 'Booked on the Budget screen under Construction.',
+        };
+      case 'investors':
+        return {
+          type: 'breakdown',
+          title: 'Investor sites',
+          value: `${view.investors.length}`,
+          text: 'Factories that private capital founds and pays for. They share your build '
+            + 'power once funded. The Factories screen can top one up from the treasury.',
+          rows: [
+            { label: 'Capital raised', value: `£${view.privateInflow.toFixed(1)}/wk` },
+            { label: 'Sites waiting for money', value: `${view.investors.filter((row) => row.funded < 100).length}` },
+          ],
+          footer: `Private capital comes from upper-class savings and factory profits (${tipTerm('term', 'private capital', 'private-capital')}).`,
+        };
+      case 'invest':
+        return cap.blocked
+          ? { type: 'simple', title: 'Cannot invest', text: esc(cap.blocked[0].toUpperCase() + cap.blocked.slice(1)) }
+          : {
+            type: 'breakdown',
+            title: `Capacity level ${cap.level + cap.pending + 1}`,
+            value: `£${cap.cost}`,
+            text: 'Paid up front. The level itself is built by the queue and always goes first.',
+            effects: [
+              { label: 'Build power', value: `+${cap.perLevel}/wk`, tone: 'good' },
+              { label: 'Upkeep', value: `−£${cap.upkeepPerLevel}/wk`, tone: 'bad' },
+            ],
+            footer: 'Each further level costs 35% more than the first.',
+          };
+      case 'divest':
+        return {
+          type: 'simple',
+          title: 'Dissolve a capacity level',
+          text: cap.level > 0
+            ? `Removes one level at once: −${cap.perLevel} build power, saves £${cap.upkeepPerLevel}/wk. No refund.`
+            : 'There is no capacity level to dissolve.',
+        };
+      default:
+        return null;
+    }
+  });
+
+  /* ----------------------------------------------------------------------
+     SÖZLÜK — ekranların özet etiketleri. Tanım kısa; bugünkü değer ve nereden
+     geldiği, okunabiliyorsa, yanında. Formül burada kopyalanmaz: yalnız alan
+     katmanının zaten hesapladığı sayılar okunur.
+     ---------------------------------------------------------------------- */
+
+  const GLOSSARY = {
+    literacy: (nation) => ({
+      type: 'breakdown',
+      title: 'National literacy',
+      value: pct(nation.economy?.literacy, 1),
+      text: 'The schooling level of the nation. It feeds research and factory hiring, and '
+        + 'drifts slowly toward a target set by education spending, the welfare law and technology.',
+      rows: [
+        { label: 'Now', value: pct(nation.economy?.literacy, 1) },
+        { label: 'Heading toward', value: pct(literacyTargetOf(nation), 1), tone: 'good' },
+      ],
+      // Nufus ekranindaki oran sinif ve sehirle duzeltilmis halidir; iki ayri
+      // sayi gorulunce hangisinin ne oldugu burada bir kez soylenir.
+      footer: 'Half the gap closes in about three years. The Population screen adds class and '
+        + 'town: townsfolk and the rich read more, peasants less.',
+    }),
+    research: (nation) => ({
+      type: 'breakdown',
+      title: 'Research points',
+      value: `${researchPointsOf(nation).toFixed(2)}/wk`,
+      text: 'Produced every week by literate people, the middle class and clerks, then '
+        + 'raised by technology and a free press. They flow into the technology being researched.',
+    }),
+    needs: (nation) => ({
+      type: 'mechanic',
+      title: 'Needs met',
+      text: 'How much of their weekly basket households actually get. Below full, '
+        + 'satisfaction falls; when food runs short, people starve.',
+      effects: [
+        { label: 'Satisfaction', value: 'rises with it', tone: 'good' },
+        { label: 'Population growth', value: 'follows it' },
+      ],
+    }),
+    unrest: () => ({
+      type: 'mechanic',
+      title: 'Unrest',
+      text: 'From 0 to 10. Foreign culture, fresh conquest, war and occupation push it up; '
+        + 'welfare and minority rights pull it down. At 7 or more, a province with a foreign '
+        + 'majority can break away.',
+    }),
+    growth: () => ({
+      type: 'mechanic',
+      title: 'Population growth',
+      text: 'Births minus deaths, famine and the men taken into the army. Food and '
+        + 'satisfaction set the pace.',
+    }),
+    employment: () => ({
+      type: 'mechanic',
+      title: 'Employment',
+      text: 'Share of working people who have a job on a farm, in a mine or in a factory. '
+        + 'Unemployment lowers satisfaction and stability.',
+    }),
+    gdp: (nation) => ({
+      type: 'simple',
+      title: 'Gross domestic product',
+      text: `Raw output plus the value factories add, per week: £${Math.round(nation.economy?.gdp ?? 0)}.`,
+    }),
+    'private-capital': (nation) => ({
+      type: 'breakdown',
+      title: 'Private capital',
+      value: `£${Math.round(nation.politics?.privateCapital ?? 0)}`,
+      text: 'Money the upper class reinvests: part of its household surplus and 30% of factory '
+        + 'profits. It founds and expands factories where your government allows private industry.',
+      rows: [
+        { label: 'Raised per week', value: `£${(nation.politics?.privateInflow ?? 0).toFixed(1)}` },
+      ],
+    }),
+    'trade-balance': () => ({
+      type: 'mechanic',
+      title: 'Trade balance',
+      text: 'Goods sold abroad minus goods bought abroad this week, at world prices. '
+        + 'A deficit is not a debt; it is paid from the same week\'s income.',
+    }),
+    shortages: () => ({
+      type: 'mechanic',
+      title: 'Critical shortages',
+      text: 'Goods your people or factories need that neither your land nor the world '
+        + 'market can supply this week. Shortages raise prices and idle factories.',
+    }),
+    officers: () => ({
+      type: 'mechanic',
+      title: 'Officers',
+      text: 'Generals and admirals. Each commands an army or fleet; their skill shapes '
+        + 'battle rolls and sieges.',
+    }),
+    upkeep: () => ({
+      type: 'mechanic',
+      title: 'Military upkeep',
+      text: 'Weekly cost of the standing army and fleet, scaled by army funding on the Budget screen.',
+    }),
+  };
+
+  provideTooltip('term', (arg) => {
+    const nation = me();
+    const entry = GLOSSARY[arg];
+    return nation && entry ? entry(nation) : null;
+  });
 }

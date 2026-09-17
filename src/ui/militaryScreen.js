@@ -65,10 +65,14 @@ const band = (title, note = '') => `<h4 class="mil-band">${esc(title)}${
    ÜST KÜNYE — ülkenin askerî durumu tek satırda
    -------------------------------------------------------------------------- */
 
-function figure(icon, label, value, note, tone = '') {
-  return `<div class="mil-figure ${tone}" title="${esc(note)}">
-    <i aria-hidden="true">${mark(icon)}</i>
-    <span><small>${esc(label)}</small><b>${esc(value)}</b></span>
+/**
+ * Ortak ozet seridi (§7B .ui-kpis). Kisa not hucrede gorunur, uzun dokum
+ * gecikmeli kartta: eskiden notun tamami yalniz `title` balonundaydi ve
+ * serit "sayi + simge" disinda hicbir sey soylemiyordu.
+ */
+function figure(label, value, sub, note, tone = '') {
+  return `<div class="ui-kpi ${tone}" title="${esc(note)}">
+    <small>${esc(label)}</small><b>${esc(value)}</b><span>${esc(sub)}</span>
   </div>`;
 }
 
@@ -78,27 +82,30 @@ function headerStrip(summary) {
   const wars = summary.wars.length || crises.length
     ? summary.wars.map((war) => war.name).concat(crises).join(', ')
     : 'At peace';
-  return `<header class="mil-head">
-    ${figure('sword', 'Standing army', `${summary.divisions}`,
+  return `<header class="ui-kpis mil-kpis">
+    ${figure('Standing army', `${summary.divisions}`,
+    `${summary.regiments} regiments · ${formatPopulation(summary.soldiers)} men`,
     `${summary.regiments} regiments · ${formatPopulation(summary.soldiers)} men`
       + ` · ${pct(summary.strength)} of establishment`
       + (summary.inBattle ? ` · ${summary.inBattle} in battle` : '')
       + (summary.marching ? ` · ${summary.marching} marching` : ''))}
-    ${figure('manpower', 'Manpower pool', formatPopulation(summary.manpower),
+    ${figure('Manpower pool', formatPopulation(summary.manpower), 'men who can still be raised',
     'People your provinces can still put under arms. Recruits leave the province'
       + ' population; only survivors return when a division is disbanded.')}
-    ${figure('officer', 'Officers', `${summary.officers}${summary.admirals ? ` · ${summary.admirals}⚓` : ''}`,
+    ${figure('Officers', `${summary.officers}`,
+    summary.unassigned ? `${summary.unassigned} unit(s) without a commander`
+      : `${summary.officers} generals · ${summary.admirals} admirals`,
     `${summary.officers} generals, ${summary.admirals} admirals`
       + (summary.unassigned ? ` · ${summary.unassigned} unit(s) without a commander` : ''),
     summary.unassigned ? 'warn' : '')}
-    ${figure('hourglass', 'In training', `${summary.training}`,
+    ${figure('In training', `${summary.training}`, `${summary.trainingCapacity} can train at once`,
     `${summary.trainingCapacity} can train at once · ${formatPopulation(summary.trainingManpower)}`
       + ' men committed when they march out')}
-    ${figure('flag', 'Wars', `${summary.wars.length}${crises.length ? ` +${crises.length}` : ''}`, wars,
+    ${figure('Wars', `${summary.wars.length}${crises.length ? ` +${crises.length}` : ''}`, wars, wars,
     summary.wars.length ? 'hot' : crises.length ? 'warn' : '')}
-    ${figure('coin', 'Upkeep', `${summary.upkeepGold.toFixed(1)}£`,
+    ${figure('Upkeep', `£${summary.upkeepGold.toFixed(1)}`, `per week · wages at ${summary.wages}%`,
     `${summary.upkeepGold.toFixed(1)} gold and ${Math.round(summary.upkeepFood)} food a week`
-      + ` · procurement ${summary.procurementCost.toFixed(1)}£ · wages at ${summary.wages}%`)}
+      + ` · procurement £${summary.procurementCost.toFixed(1)} · wages at ${summary.wages}%`)}
   </header>`;
 }
 

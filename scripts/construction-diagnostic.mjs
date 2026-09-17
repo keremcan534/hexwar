@@ -1,10 +1,9 @@
 import { Game } from '../src/game/game.js';
 import { TurnManager } from '../src/game/turn.js';
 import {
-  FORT_DEFENSE, FORT_RADIUS, canQueueConstruction, cancelConstruction, constructionAtlas,
-  constructionCount, constructionPower, constructionUpkeep, fortDefenseAt, higherEducationBonus,
-  investmentBlocker, investmentLevel, prioritizeConstruction, queueConstruction, queueInvestment,
-  runConstruction,
+  cancelConstruction, constructionAtlas, constructionPower, constructionUpkeep,
+  constructionView, investmentBlocker, investmentLevel, moveConstructionTo,
+  prioritizeConstruction, queueInvestment, runConstruction,
 } from '../src/game/construction.js';
 import { generateNations } from '../src/world/nations.js';
 import { generateWorld } from '../src/world/worldgen.js';
@@ -40,68 +39,51 @@ const nations = game.world.nations.filter((nation) => nation.alive).map((nation)
     deterministic: owned.every(
       (tile) => atlas.tileRegions.get(tile)?.id === repeat.tileRegions.get(tile)?.id,
     ),
-    totalsValid: atlas.slots === atlas.used + atlas.free
-      && atlas.regions.every((region) => (
-        region.slots >= 4 && region.slots <= 12
-        && region.used >= 0 && region.free >= 0
-        && region.used + region.free === region.slots
-      )),
+    // Bolge yuvalari kaleyle gitti; bolge artik yalniz fabrika konumu ve ad.
+    regionsValid: atlas.regions.every((region) => region.tiles.length > 0 && Boolean(region.name))
+      && new Set(atlas.regions.map((region) => region.id)).size === atlas.regions.length,
   };
 });
 
 const nation = game.world.nations.find((candidate) => candidate.alive);
 game.turns.playerNation = nation.id;
-const region = constructionAtlas(game.world, nation.id).regions[0];
 // Yatirim bedeli PESIN odenir; tani finansmani degil kuyruk davranisini olcer.
 nation.gold = Math.max(nation.gold, 800);
 
 // --- 1) Ulusal insaat kapasitesi yatirimi -----------------------------------
 const capacityQueued = queueInvestment(game, nation.id, 'CONSTRUCTION_CAPACITY');
 // Ikinci yatirimin fiyati kuyruktakiyle birlikte artmali (fiyat kacirilamaz).
-const risingCost = investmentBlocker(nation, 'CONSTRUCTION_CAPACITY') === null;
+const risingCost = investmentBlocker(nation, 'CONSTRUCTION_CAPACITY') === null
+  && constructionView(nation).capacity.cost > 100;
 for (let week = 0; week < 20; week++) runConstruction(game);
 const capacityCompleted = investmentLevel(nation, 'CONSTRUCTION_CAPACITY') === 1;
 const capacityIncreased = constructionPower(nation) === 10;
 const upkeepApplied = constructionUpkeep(nation) === 4;
 
-// --- 2) Yuksekogretim: egitim butcesi esigi ---------------------------------
-nation.economy.social.education = 0;
-const educationGate = investmentBlocker(nation, 'HIGHER_EDUCATION') !== null;
-nation.economy.social.education = 25;
-const educationQueued = queueInvestment(game, nation.id, 'HIGHER_EDUCATION');
-for (let week = 0; week < 15; week++) runConstruction(game);
-const educationCompleted = investmentLevel(nation, 'HIGHER_EDUCATION') === 1
-  && higherEducationBonus(nation) === 0.06;
-
-// --- 3) Kale: capa secimi ve YEREL etki -------------------------------------
-const anchor = region.tiles.find((tile) => tile.terrain.passable) ?? region.center;
-const fortQueued = queueConstruction(game, nation.id, region.id, 'FORT', anchor);
-const fortProject = nation.construction.projects.find((p) => p.typeId === 'FORT');
-const anchorStored = fortProject.q === anchor.q && fortProject.r === anchor.r;
-// Kuyruk araclari: fort projesi one alinabilir ve iptal iade eder.
+// --- 2) Kuyruk araclari: sira, uca tasima, iptal iadesi ---------------------
+nation.gold = Math.max(nation.gold, 800);
+const firstQueued = queueInvestment(game, nation.id, 'CONSTRUCTION_CAPACITY');
 const secondQueued = queueInvestment(game, nation.id, 'CONSTRUCTION_CAPACITY');
-// Kuyruk [FORT, CAPACITY]: kapasiteyi bir yukari almak sirayi cevirmeli.
-const capacityProject = nation.construction.projects.find(
-  (p) => p.typeId === 'CONSTRUCTION_CAPACITY' && p.progress === 0,
-);
-const reordered = prioritizeConstruction(game, nation.id, capacityProject.id, -1)
-  && nation.construction.projects[0]?.id === capacityProject.id;
-const cancelTarget = nation.construction.projects.find(
-  (p) => p.typeId === 'CONSTRUCTION_CAPACITY' && p.progress === 0,
-);
+const [first, second] = nation.construction.projects;
+const reordered = prioritizeConstruction(game, nation.id, second.id, -1)
+  && nation.construction.projects[0]?.id === second.id;
+const movedToBottom = moveConstructionTo(game, nation.id, second.id, 'bottom')
+  && nation.construction.projects.at(-1)?.id === second.id;
+const movedToTop = moveConstructionTo(game, nation.id, second.id, 'top')
+  && nation.construction.projects[0]?.id === second.id;
+const view = constructionView(nation);
+const viewRows = view.own.length === 2 && view.investors.length === 0
+  && view.own.every((row) => row.place === 'National' && row.eta >= 1)
+  && view.capacity.pending === 2 && view.clearsIn === view.own.at(-1).eta;
 const goldBefore = nation.gold;
-const cancelled = cancelConstruction(game, nation.id, cancelTarget.id)
-  && nation.gold > goldBefore;
-for (let week = 0; week < 12; week++) runConstruction(game);
-const fortBuilt = constructionCount(nation, 'FORT') === 1;
-const atAnchor = fortDefenseAt(game.world, nation.id, game.world.get(anchor.q, anchor.r));
-const far = game.world.tiles.find((tile) => tile.owner === nation.id && tile.terrain.passable
-  && game.world.wrapDistance(tile.q, tile.r, anchor.q, anchor.r) > FORT_RADIUS);
-const fortLocal = atAnchor === FORT_DEFENSE
-  && (!far || fortDefenseAt(game.world, nation.id, far) === 0);
-const limitsWork = canQueueConstruction(game.world, nation, region.id, 'FORT');
+const cancelled = cancelConstruction(game, nation.id, first.id)
+  && nation.gold > goldBefore
+  && !nation.construction.projects.some((p) => p.id === first.id);
+for (let week = 0; week < 30; week++) runConstruction(game);
+const secondCompleted = investmentLevel(nation, 'CONSTRUCTION_CAPACITY') === 2
+  && constructionPower(nation) === 15;
 
-// --- 4) Kayit turu: v15 dogal, v14 gocu -------------------------------------
+// --- 3) Kayit turu: v21 dogal, kaldirilan kalemlerin temizligi, v14 gocu -----
 game.newWorld = function newWorld(seed, options = {}) {
   this.world = generateWorld(seed, options);
   generateNations(this.world, { seed: `${seed}-nations`, count: options.nationCount ?? null });
@@ -113,12 +95,42 @@ const saved = serialize(game);
 const loaded = deserialize(game, saved);
 const loadedNation = game.world.nations[nation.id];
 const savePreserved = loaded
-  && investmentLevel(loadedNation, 'CONSTRUCTION_CAPACITY') === 1
-  && investmentLevel(loadedNation, 'HIGHER_EDUCATION') === 1
-  && constructionCount(loadedNation, 'FORT') === 1
-  && constructionPower(loadedNation) === 10;
+  && investmentLevel(loadedNation, 'CONSTRUCTION_CAPACITY') === 2
+  && constructionPower(loadedNation) === 15
+  && !('buildings' in loadedNation.construction);
 
-// v14 gocu: eski bina kayitlari kurum seviyelerine cevrilmeli, idare iade edilmeli.
+const anchor = game.world.tiles.find((tile) => tile.owner === nation.id && tile.terrain.passable);
+
+// Kaldirmadan once kaydedilmis oyun: yerlesik kale, egitim seviyesi ve bedeli
+// odenmis kale/yuksekogretim projeleri. Kapasite korunur, gerisi iade edilerek
+// duser.
+const removal = JSON.parse(JSON.stringify(saved));
+const removalNation = removal.nations.find((n) => n.id === nation.id);
+removalNation.construction = {
+  nextId: 20,
+  buildings: [{ id: 'b1', typeId: 'FORT', regionId: 'x', q: anchor.q, r: anchor.r }],
+  projects: [
+    { id: 11, typeId: 'FORT', regionId: 'x', q: anchor.q, r: anchor.r, work: 60, cost: 60, funded: 60, progress: 45 },
+    { id: 12, kind: 'national', typeId: 'HIGHER_EDUCATION', work: 120, cost: 120, funded: 120, progress: 0 },
+  ],
+  completedFactories: [],
+  lastCompleted: 0,
+  capacity: { construction: 2, education: 1 },
+};
+const goldBeforeRemoval = removalNation.gold;
+const cleanedLoads = deserialize(game, removal);
+const cleanedNation = game.world.nations[nation.id];
+const cleanup = {
+  cleanedLoads,
+  removedBuildings: !('buildings' in cleanedNation.construction),
+  removedEducation: !('education' in cleanedNation.construction.capacity),
+  removedProjects: cleanedNation.construction.projects.length === 0,
+  // Kalenin insa edilmemis ceyregi (15) + yuksekogretimin tamami (120).
+  refundedOnce: Math.abs(cleanedNation.gold - (goldBeforeRemoval + 15 + 120)) < 1e-6,
+  capacityKept: investmentLevel(cleanedNation, 'CONSTRUCTION_CAPACITY') === 2,
+};
+
+// v14 gocu: eski bina kayitlari kurum seviyesine cevrilir, gerisi iade edilir.
 const legacy = JSON.parse(JSON.stringify(saved));
 legacy.version = 14;
 const legacyNation = legacy.nations.find((n) => n.id === nation.id);
@@ -144,26 +156,18 @@ const migratedNation = game.world.nations[nation.id];
 const migration = {
   loads: migrated,
   capacityFromSectors: investmentLevel(migratedNation, 'CONSTRUCTION_CAPACITY') === 2,
-  educationFromUniversity: investmentLevel(migratedNation, 'HIGHER_EDUCATION') === 1,
-  fortSurvives: constructionCount(migratedNation, 'FORT') === 1,
-  adminRefunded: migratedNation.gold >= goldBeforeMigration + 80 + 80,
-  universityProjectConverted: migratedNation.construction.projects.some(
-    (p) => p.kind === 'national' && p.typeId === 'HIGHER_EDUCATION',
-  ),
-  adminProjectDropped: !migratedNation.construction.projects.some(
-    (p) => p.typeId === 'ADMINISTRATION',
-  ),
+  noLegacyBuildings: !('buildings' in migratedNation.construction),
+  // Administration binasi (80) + University projesi (100) + Administration projesi (80).
+  legacyRefunded: Math.abs(migratedNation.gold - (goldBeforeMigration + 80 + 100 + 80)) < 1e-6,
+  legacyProjectsDropped: migratedNation.construction.projects.length === 0,
   powerPreserved: constructionPower(migratedNation) === 15,
 };
 
-// --- 5) Temerrut kademesi ----------------------------------------------------
+// --- 4) Temerrut kademesi ----------------------------------------------------
 migratedNation.gold = 0;
 const solventKeeps = constructionPower(migratedNation) === 15;
 migratedNation.economy.creditPenalty = 0.85;
-const fortTile = game.world.get(anchor.q, anchor.r);
-const defaultDegrades = constructionPower(migratedNation) < 15
-  && fortDefenseAt(game.world, migratedNation.id, fortTile) < FORT_DEFENSE
-  && higherEducationBonus(migratedNation) < 0.06;
+const defaultDegrades = constructionPower(migratedNation) < 15;
 migratedNation.economy.creditPenalty = 0;
 
 const functional = {
@@ -172,18 +176,16 @@ const functional = {
   capacityCompleted,
   capacityIncreased,
   upkeepApplied,
-  educationGate,
-  educationQueued,
-  educationCompleted,
-  fortQueued,
-  anchorStored,
+  firstQueued,
   secondQueued,
   reordered,
+  movedToBottom,
+  movedToTop,
+  viewRows,
   cancelled,
-  fortBuilt,
-  fortLocal,
-  limitsWork,
+  secondCompleted,
   savePreserved,
+  ...cleanup,
   ...migration,
   solventKeeps,
   defaultDegrades,
@@ -191,7 +193,7 @@ const functional = {
 
 const passed = nations.every(
   (result) => result.regions > 0 && result.coveredOnce
-    && result.deterministic && result.totalsValid,
+    && result.deterministic && result.regionsValid,
 ) && Object.values(functional).every(Boolean);
 console.log(JSON.stringify({ nations, functional, passed }, null, 2));
 if (!passed) process.exitCode = 1;

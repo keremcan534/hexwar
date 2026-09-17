@@ -439,20 +439,27 @@ function secede(game, province, nation) {
 
   const player = game.turns.playerNation;
   const name = world.cultures?.[target]?.name ?? 'a foreign people';
+  // Kart anahtari HALK + MIRASCI: ayni halkin ayni komsuya katilan kumeleri
+  // tek kartta sayilir. Kume basina anahtar, ayni hafta ayni basligi tasiyan
+  // uc-dort ozdes karti ust uste yigiyordu; hangi kumenin gittigini govde ve
+  // karta tiklayinca acilan kare soyler.
+  const center = province.center ? world.get(province.center.q, province.center.r) : null;
   if (nation.id === player) {
     announce(game, nation, {
-      kind: 'CRISIS', tier: TIER.MAJOR, key: `revolt-${province.id}`,
-      title: `${name} rises in revolt`,
-      detail: `The province has joined ${world.nations[heir].name}.`
+      kind: 'CRISIS', tier: TIER.MAJOR, key: `revolt-${target}-${heir}`,
+      title: `${name} rise in revolt`,
+      detail: `${province.name ?? 'The province'} has joined ${world.nations[heir].name}.`
         + ' Rights, welfare or assimilation would have held it.',
+      tile: center,
     });
   } else if (heir === player) {
     // `player` bassiz kosuda -1'dir; `heir` artik hep >= 0 oldugu icin bu
     // karsilastirma guvenlidir.
     announce(game, world.nations[player], {
-      kind: 'DIPLOMACY', tier: TIER.MAJOR, key: `irredenta-${province.id}`,
+      kind: 'DIPLOMACY', tier: TIER.MAJOR, key: `irredenta-${nation.id}`,
       title: `Our kin in ${nation.name} have joined us`,
-      detail: 'A province of our culture revolted against its ruler and swore to us.',
+      detail: `${province.name ?? 'A province'} of our culture revolted against its ruler and swore to us.`,
+      tile: center,
     });
   }
   return heir;

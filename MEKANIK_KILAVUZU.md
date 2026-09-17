@@ -176,7 +176,7 @@ pasifist hükûmette %60'ın üstüne çıkamazsın.
 
     haftalık gider = (nüfus / 10.000) × bütçe% × 0.34
 
-    okuryazarlık HEDEFİ = 0.08 + (bütçe% × 0.62 × üniversite çarpanı)
+    okuryazarlık HEDEFİ = 0.08 + bütçe% × 0.62   (okul yasası tabanı altına inmez)
     okuryazarlık STOĞU  += (hedef − mevcut) × 0.004     ← her hafta
 
 **Kod** — `src/game/economy.js:539`, `:3865`, `:3878`
@@ -191,7 +191,7 @@ export function programmeCost(nation, programId) {
 export function literacyTargetOf(nation) {
   const schooling = clamp(economy.social?.education ?? 0, 0, 100) / 100;
   const reach = economy.techMods?.literacyReach ?? 0;
-  const budgeted = 0.08 + schooling * 0.62 * (1 + higherEducationBonus(nation));
+  const budgeted = 0.08 + schooling * 0.62;
   const floor = lawModifiers(nation).literacyFloor ?? 0;   // refah YASASI (okul)
   return clamp(Math.max(budgeted, floor) + reach, 0, 0.95);
 }
@@ -682,7 +682,7 @@ bir piyasa refleksi, karar değil.
 **Formül**
 
     aylık işgücü akışı = alt sınıf × 0.0012 × okul × isteklilik
-    okul               = 1 + okuryazarlık² × 2.5 + eğitim reformu × 0.25 + üniversite
+    okul               = 1 + okuryazarlık² × 2.5 + eğitim bütçesi × 0.25
     kuruluş kadrosu    = tezgâh × 0.15
     tasfiye            = beklenen marj ≤ 0 VE doluluk ≤ %5, 240 ay üst üste
 
@@ -690,7 +690,7 @@ bir piyasa refleksi, karar değil.
 
 ```js
 const schooling = 1 + clamp(economy.literacy ?? 0, 0, 1) ** 2 * 2.5
-  + socialLevel(nation, 'education') * 0.25 + higherEducationBonus(nation);
+  + socialLevel(nation, 'education') * 0.25;
 
 function retireDeadFactories(game, nation) {
   const bos = (factory.employees ?? 0) <= jobs * DEAD_FACTORY_FILL;

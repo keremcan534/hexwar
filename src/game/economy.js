@@ -24,9 +24,9 @@ import {
   legitimacyOf, policyOf, refreshLawModifiers, rulingParty,
 } from './politics.js';
 import {
-  NATIONAL_INVESTMENTS, PROJECT_KIND, constructionAtlas, constructionPower,
+  PROJECT_KIND, constructionAtlas, constructionPower,
   constructionUpkeep, dropInvestmentLevel, ensureConstruction, fundProject,
-  higherEducationBonus, investmentLevel, planConstructionAI, queueIndustryProject,
+  planConstructionAI, queueIndustryProject,
 } from './construction.js';
 import {
   LEDGER_LINES, LEDGER_LINE_IDS, closeWeek, emptyLedger, openWeek, settle, settleAffordable,
@@ -2253,17 +2253,14 @@ function applySubsidyPolicy(world, nation) {
 // Tarayicida `process` YOKTUR — dogrudan process.env okumak butun oyunu
 // acilista dusuruyordu (Chromium smoke yakaladi; bassiz denetim yakalayamaz).
 /**
- * Bir sosyal programin ALT SINIRI.
- *
- * Fikir: `educationFloor` bugun bir GIRIS kapisi (universite acmak icin
- * egitim butcesi sarti, construction.js `investmentBlocker`). Ayni esigi
- * CIKIS kapisi da yapiyoruz — satin alinan kurum yapiskanlasir. Boylece
- * taban DUZ degil, ulkenin kendi yatirim gecmisine gore FARKLILASIR.
+ * Bir sosyal programin ALT SINIRI: yalniz ulusal program taahhudunden gelir.
+ * (Yuksekogretim kurumunun seviye tabani 2026-09'da kurumla birlikte gitti.)
  *
  * Duz taban yanlis cozumdu ve olculdu: %70'lik duz taban okuryazarligi
  * ikiye katliyor ama teknolojik yayilimi 6'dan 3'e, farkli teknoloji kumesi
  * sayisini 7'den 4'e cokertiyor — yakiti tektiplestirmek sonucu
- * tektiplestiriyor.
+ * tektiplestiriyor. Programsiz ulke yine cokebilir — bu "ara sira basarisiz
+ * devlet" tasarim geregi korunur.
  *
  * Kredi cezasi altindaki devlet muaftir: geri kalan DUSEBILMELI, yoksa
  * "teknoloji lideri olmak" risksiz bir bahis olur.
@@ -2271,19 +2268,7 @@ function applySubsidyPolicy(world, nation) {
 export function socialFloorOf(nation, programId) {
   if (programId !== 'education') return 0;
   if ((nation?.economy?.creditPenalty ?? 0) > 0.05) return 0;
-  const floors = NATIONAL_INVESTMENTS.HIGHER_EDUCATION?.educationFloor;
-  let floor = 0;
-  if (floors?.length) {
-    const level = investmentLevel(nation, 'HIGHER_EDUCATION');
-    floor = floors[Math.min(Math.max(0, level), floors.length - 1)] ?? 0;
-  }
-  // IKINCI KAYNAK — ulusal program taahhudu. Ilk olcum tek kaynagin (kurum)
-  // yetmedigini gosterdi: HE seviyesi 0 olan ulkenin tabani da 0'di ve HE'ye
-  // girmek %25 egitim istedigi icin erken coken ulke KALICI kilitleniyordu.
-  // Program tabani bu kısır donguyu kirar: taahhut eden ulke egitimi acar,
-  // acilan egitim HE kapisini acar. Programsiz ulke yine cokebilir — bu
-  // "ara sira basarisiz devlet" tasarim geregi korunur.
-  return Math.max(floor, programmeFloorOf(nation));
+  return programmeFloorOf(nation);
 }
 
 /**
@@ -2852,16 +2837,14 @@ function runFactoryEmployment(game, nation) {
     economy.industrialLayoffs += laid;
   }
 
-  // Eğitim ve yüksekögretim kurumu işgücünü niteliklendirir: aynı nüfus daha
-  // hızlı akar (eski üniversite binasının sayacı kurum seviyesine taşındı).
+  // Eğitim işgücünü niteliklendirir: aynı nüfus daha hızlı akar.
   // Okuryazarlik stogu ise alimi da surer (bkz. runPromotion notu).
   // Okuryazarlık DOĞRUSAL değil ÜSTEL sürer. Doğrusal çarpanla (1 + oku×0.5)
   // cahil ülke de işçi akıtıyordu; Vic2'de fabrikaya adam gelmesi
   // okuryazarlık eşiğini geçince ivmelenir. Kare alınca ilk yarım yüzyıl
   // yavaş, sonrası hızlı olur — reel GSYH eğrisiyle aynı biçim.
   const schooling = 1 + clamp(economy.literacy ?? 0, 0, 1) ** 2 * 2.5
-    + socialLevel(nation, 'education') * 0.25
-    + higherEducationBonus(nation);
+    + socialLevel(nation, 'education') * 0.25;
   const lower = civilianLower(economy);
   const employed = factories.reduce((sum, factory) => sum + factory.employees, 0);
   // KIRDAN SANAYIYE GECIS ARTIK BIR SAYAC ISLEMI DEGIL. Eskiden burada
@@ -3759,11 +3742,10 @@ function adjustWarFiscalAI(nation) {
     }
     drift('armyFunding', wartime ? limits.armySpendingMax : 45);
     // TASFIYE: akis kisintisi yetmiyorsa STOK erir. Zengin donemde kurulan
-    // kapasite/egitim seviyeleri sabit bakimdir; dunya fakirlesince bu yuk
-    // temerrut sarmalina donusuyordu (olculdu: 1300. haftada 19/26 ulke
-    // kalici kredi cezasinda, cikis yolu yok). Haftada en fazla bir seviye,
-    // bakim gelirin %25'inin altina inince durur; son kapasite seviyesi ve
-    // ilk egitim kademesi korunur (kurumlar tamamen silinmez).
+    // kapasite seviyeleri sabit bakimdir; dunya fakirlesince bu yuk temerrut
+    // sarmalina donusuyordu (olculdu: 1300. haftada 19/26 ulke kalici kredi
+    // cezasinda, cikis yolu yok). Haftada en fazla bir seviye, bakim gelirin
+    // %25'inin altina inince durur; son kapasite seviyesi korunur.
     const income = Math.max(1, economy.ledger?.income ?? 0);
     if (constructionUpkeep(nation) > income * 0.25) {
       const state = ensureConstruction(nation);
@@ -3773,8 +3755,6 @@ function adjustWarFiscalAI(nation) {
       const floor = constructionUpkeep(nation) > income * 0.5 ? 0 : 1;
       if ((state.capacity.construction ?? 0) > floor) {
         dropInvestmentLevel(nation, 'CONSTRUCTION_CAPACITY');
-      } else if ((state.capacity.education ?? 0) > floor) {
-        dropInvestmentLevel(nation, 'HIGHER_EDUCATION');
       }
     }
     return;
@@ -4615,7 +4595,7 @@ export function beginEconomy(game) {
  * tuttu, sanayilesme koyluyu dusuk okuryazarlikli isci sinifina tasidi ve
  * okuryazarlik %24 → %23 DUSTU. Para harcandi, hicbir sey birikmedi.
  *
- * Artik stok: egitim harcamasi ve universiteler bir HEDEF belirler, stok
+ * Artik stok: egitim harcamasi bir HEDEF belirler, stok
  * oraya yillar icinde yaklasir. Hedefe varis ~40 yil surer (yarilanma ~14
  * yil) — bir insan omru boyunca gorunur, tek secimde donmez.
  */
@@ -4638,15 +4618,13 @@ const LITERACY_APPROACH = 0.004;
 
 /**
  * Okuryazarlik HEDEFI (disa acik: tech-effect denetimi saf yoklar).
- * Universite carpani okul tabanini yukseltir; `literacyReach` teknolojileri
- * (Public Instruction) tavani buyutur. Mekanik azami eskiden 0.8488 idi —
- * 0.95 kirpmasi OLU idi; literacyReach ile ilk kez ulasilabilir.
+ * `literacyReach` teknolojileri (Public Instruction) tavani buyutur.
  */
 export function literacyTargetOf(nation) {
   const economy = nation.economy;
   const schooling = clamp(economy.social?.education ?? 0, 0, 100) / 100;
   const reach = economy.techMods?.literacyReach ?? 0;
-  const budgeted = 0.08 + schooling * 0.62 * (1 + higherEducationBonus(nation));
+  const budgeted = 0.08 + schooling * 0.62;
   // OKUL YASASI BIR TABANDIR, BIR KALEM DEGIL. Butce ile TOPLANMAZ: zorunlu
   // egitim yasasi cikaran ulke, hazinesi egitime sifir ayirsa bile bu
   // seviyenin altina dusmez. Boylece yasa ile kaydirac ayni sayiyi iki kez

@@ -121,9 +121,9 @@ tesis zarar eder.
 
 Victoria tarzı fabrikalar **state'lere** kurulur ve bir state'te her türden tek
 tesis bulunur. Fabrika anında belirmez: **ulusal inşaat kuyruğuna** girer ve
-kale/üniversite ile aynı inşaat gücünü paylaşır. Zincir böylece kapanır —
-politika kimin başlatabileceğini, sermaye parayı, inşaat gücü hızı belirler.
-Construction Sector yatırımı doğrudan sanayileşme hızına dönüşür.
+inşaat kapasitesi yatırımlarıyla aynı inşaat gücünü paylaşır. Zincir böylece
+kapanır — politika kimin başlatabileceğini, sermaye parayı, inşaat gücü hızı
+belirler. Construction Capacity yatırımı doğrudan sanayileşme hızına dönüşür.
 
 Kapitalist projeleri Victoria 2'deki gibi para biriktirerek ilerler: sermaye
 bitince proje durur ve Factories ekranında "¤ support" ile hazineden destek
@@ -280,13 +280,14 @@ sırasında kaldırıldı; gelişim şu an yalnız dünya üretiminden gelir.
 Fethedilen province düşük kontrolle başlar ve tam üretime zamanla döner. Böylece
 arazi yalnız harita rengi değil, nüfus ve üretim tabanıdır.
 
-Yapılar şehre değil **eyalet bölgelerine** kurulur. Ülkenin toprağı yaklaşık
-14 province'lik deterministik bölgelere ayrılır; her bölgenin sınırlı yapı yuvası
-vardır. Construction ekranından bir yapı seçilip bölgeye kuyruğa alınır ve tek
-bir ulusal öncelik kuyruğu haftalık inşaat gücüyle ilerler. Dört yapı vardır:
-inşaat sektörü (inşaat gücü), tahkimat (bölgede savunma), idare (vergi tahsilatı)
-ve üniversite (sanayi işgücü niteliği). Yapı bölge merkezinde haritada görünür ve
-o kare fethedilirse bölgenin yapıları yeni sahibe geçer.
+Fabrikalar şehre değil **eyalet bölgelerine** (state) kurulur. Ülkenin toprağı
+üç province kümesi civarındaki deterministik bölgelere ayrılır. İnşaat tek bir
+ulusal öncelik kuyruğudur ve haftalık inşaat gücüyle ilerler; kuyrukta yalnız
+iki cins iş vardır: fabrika kurulum/genişletme projeleri ve ulusal **Construction
+Capacity** yatırımı (seviye başına +5 inşaat gücü, artan bedel ve bakım).
+Construction ekranı yalnız bunu anlatır: güç, kuyruk, kapasite. Yerleşik bina
+(kale, üniversite, idare) yoktur; 2026-09'da kale ve Higher Education da
+kaldırıldı, eski kayıttaki insa edilmemiş payları iade edilir.
 
 ### Şirketler ve küresel borsa
 

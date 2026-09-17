@@ -35,7 +35,6 @@ function fingerprint(game) {
     n.economy.taxRate, n.economy.armyFunding,
     n.economy.tariff,
     (n.construction?.projects ?? []).length,
-    (n.construction?.buildings ?? []).length,
     world.units.filter((u) => u.nationId === n.id).length,
   ].join(','));
   let pop = 0;

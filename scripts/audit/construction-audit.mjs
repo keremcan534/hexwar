@@ -1,61 +1,48 @@
 // Q. INSAAT ISTISMAR TESTI
 //
-// v15'ten itibaren yerlesik bina yalniz KALE; insaat kapasitesi ve
-// yuksekogretim ULUSAL yatirimdir (bkz. construction.NATIONAL_INVESTMENTS).
-// Denetim uc soruya bakar: bedel gercekten pesin mi, kapasite yatirimi
-// bedavaya donusen bir carkl mi (A/B kiyasi), kale yerel etkisini ve
-// yuva sinirini koruyor mu.
+// 2026-09'dan itibaren kuyrukta yalniz ulusal insaat kapasitesi yatirimi ve
+// fabrika projeleri var (kale ve yuksekogretim kaldirildi, bkz.
+// construction.js basligi). Denetim dort soruya bakar: bedel gercekten pesin
+// mi, kapasite yatirimi bedavaya donusen bir cark mi (A/B kiyasi), iptal para
+// uretiyor mu ve eski kayittaki kaldirilmis kalemler iz birakmadan cikiyor mu.
 
 import {
   headless, run, runPeaceful, runScenario, pickNation, section, sub, table,
   finding, reportFindings, n1, n2, n0, pct, relDelta,
 } from './harness.mjs';
 import {
-  BASE_CONSTRUCTION_POWER, CONSTRUCTION_TYPES, FORT_DEFENSE, FORT_RADIUS,
-  NATIONAL_INVESTMENTS, cancelConstruction, constructionAtlas, constructionCount,
-  constructionPower, constructionUpkeep, ensureConstruction, fortDefenseAt,
-  higherEducationBonus, investmentCost, investmentLevel, prioritizeConstruction,
-  queueConstruction, queueInvestment,
+  BASE_CONSTRUCTION_POWER, NATIONAL_INVESTMENTS, cancelConstruction, constructionAtlas,
+  constructionPower, ensureConstruction, investmentCost, prioritizeConstruction,
+  queueInvestment,
 } from '../../src/game/construction.js';
 import { buildFactory, factoryCost, factoryMargin, FACTORIES } from '../../src/game/economy.js';
+import { formGovernment } from '../../src/game/politics.js';
 
 const SEED = 'construction-audit';
 
 section('Q. INSAAT SISTEMI');
 
 // ------------------------------------------- 1) BEDELLER PESIN MI? ---
-sub('Bina ve ulusal yatirim kuyruga girerken hazineden ne cikiyor?');
+sub('Ulusal yatirim kuyruga girerken hazineden ne cikiyor?');
 {
   const game = headless(SEED);
   run(game, 60);
   const nation = pickNation(game);
   game.turns.playerNation = nation.id;
-  const region = constructionAtlas(game.world, nation.id).regions[0];
   const rows = [];
-  for (const typeId of Object.keys(CONSTRUCTION_TYPES)) {
-    nation.gold = 5000;
-    const before = nation.gold;
-    const ok = queueConstruction(game, nation.id, region.id, typeId);
-    const project = ensureConstruction(nation).projects.slice(-1)[0];
-    rows.push({
-      typeId,
-      declaredCost: CONSTRUCTION_TYPES[typeId].cost,
-      goldPaid: before - nation.gold,
-      work: ok ? project.work : null,
-      queued: ok,
-    });
-  }
   for (const id of Object.keys(NATIONAL_INVESTMENTS)) {
-    nation.gold = 5000;
-    if (id === 'HIGHER_EDUCATION') nation.economy.social.education = 100;
-    const declared = investmentCost(nation, id);
-    const before = nation.gold;
-    const ok = queueInvestment(game, nation.id, id);
-    const project = ensureConstruction(nation).projects.slice(-1)[0];
-    rows.push({
-      typeId: id, declaredCost: declared, goldPaid: before - nation.gold,
-      work: ok ? project.work : null, queued: ok,
-    });
+    // Ikinci satir: kuyruktaki seviye fiyati yukseltmeli (fiyat kacirilamaz).
+    for (let i = 0; i < 2; i++) {
+      nation.gold = 5000;
+      const declared = investmentCost(nation, id);
+      const before = nation.gold;
+      const ok = queueInvestment(game, nation.id, id);
+      const project = ensureConstruction(nation).projects.slice(-1)[0];
+      rows.push({
+        typeId: `${id} #${i + 1}`, declaredCost: declared, goldPaid: before - nation.gold,
+        work: ok ? project.work : null, queued: ok,
+      });
+    }
   }
   console.log(table(rows, [
     { label: 'kalem', get: (r) => r.typeId, right: false },
@@ -67,20 +54,24 @@ sub('Bina ve ulusal yatirim kuyruga girerken hazineden ne cikiyor?');
   const free = rows.filter((r) => r.queued && r.goldPaid === 0);
   if (free.length) {
     finding('HIGH', 'Pesin bedel odemeyen kalem var',
-      'her bina/yatirim ilan edilen bedeli kuyruga girerken oder',
+      'her yatirim ilan edilen bedeli kuyruga girerken oder',
       `${free.map((r) => r.typeId).join(', ')} hazineden 0 altin cikardi`, '');
   } else {
     console.log('  OK  her kalem ilan edilen bedeli pesin oduyor.');
   }
+  if (rows.length >= 2 && !(rows[1].declaredCost > rows[0].declaredCost)) {
+    finding('MEDIUM', 'Kuyruktaki seviye fiyati yukseltmiyor',
+      'ikinci seviye birinciden pahali olmali',
+      `${rows[0].declaredCost} -> ${rows[1].declaredCost}`, '');
+  }
   nation.gold = 0;
-  const brokeFort = queueConstruction(game, nation.id, region.id, 'FORT');
   const brokeInvest = queueInvestment(game, nation.id, 'CONSTRUCTION_CAPACITY');
-  if (brokeFort || brokeInvest) {
+  if (brokeInvest) {
     finding('HIGH', 'Parasiz devlet insaata baslayabiliyor',
       'bedeli odeyemeyen devlet kuyruga yazamamali',
-      `hazine 0 iken fort=${brokeFort} yatirim=${brokeInvest}`, '');
+      `hazine 0 iken yatirim=${brokeInvest}`, '');
   } else {
-    console.log('  OK  hazine 0 iken ne kale ne yatirim baslatilabiliyor.');
+    console.log('  OK  hazine 0 iken yatirim baslatilamiyor.');
   }
 }
 
@@ -136,9 +127,8 @@ sub('Bedeli odenmis proje parasiz ilerler; temerrut kademeli koreltir');
   run(game, 60);
   const nation = pickNation(game);
   game.turns.playerNation = nation.id;
-  const region = constructionAtlas(game.world, nation.id).regions[0];
   nation.gold = 500;
-  queueConstruction(game, nation.id, region.id, 'FORT');
+  queueInvestment(game, nation.id, 'CONSTRUCTION_CAPACITY');
   const project = ensureConstruction(nation).projects.slice(-1)[0];
   nation.gold = 0;
   const before = project.progress;
@@ -146,16 +136,21 @@ sub('Bedeli odenmis proje parasiz ilerler; temerrut kademeli koreltir');
   const still = ensureConstruction(nation).projects.find((p) => p.id === project.id);
   console.log(`  bedeli ODENMIS proje, hazine 0 iken 4 haftada: ${n2(before)}`
     + ` -> ${still ? n2(still.progress) : 'BITTI'}`);
+  if (still && still.progress <= before) {
+    finding('HIGH', 'Bedeli odenmis proje hazine bosken durdu',
+      'pesin odenen is hazineden bagimsiz ilerlemeli',
+      `4 haftada ilerleme ${n2(before)} -> ${n2(still.progress)}`, '');
+  }
   nation.gold = 1;
-  const on = { power: constructionPower(nation), edu: higherEducationBonus(nation) };
+  const on = constructionPower(nation);
   nation.gold = 0;
-  const off = { power: constructionPower(nation), edu: higherEducationBonus(nation) };
-  if (on.power !== off.power || on.edu !== off.edu) {
+  const off = constructionPower(nation);
+  if (on !== off) {
     finding('LOW', 'Etkilerde gizli 1-altinlik ucurum',
       'etkiler hazine bakiyesine gore ani acilip kapanmamali',
-      `hazine 1 -> 0: guc ${on.power} -> ${off.power}, egitim ${n2(on.edu)} -> ${n2(off.edu)}`, '');
+      `hazine 1 -> 0: guc ${on} -> ${off}`, '');
   } else {
-    console.log('  OK  hazine 1 -> 0 gecisinde hicbir etki sicramiyor (olcut kredi itibari).');
+    console.log('  OK  hazine 1 -> 0 gecisinde insaat gucu sicramiyor (olcut kredi itibari).');
   }
 }
 
@@ -167,21 +162,8 @@ sub('Iptal-yeniden kur dongusu para uretiyor mu?');
   const nation = pickNation(game);
   game.turns.playerNation = nation.id;
   const world = game.world;
-  const region = constructionAtlas(world, nation.id).regions
-    .find((r) => r.free > 0) ?? constructionAtlas(world, nation.id).regions[0];
 
   nation.gold = 5000;
-  const goldA = nation.gold;
-  for (let i = 0; i < 50; i++) {
-    if (!queueConstruction(game, nation.id, region.id, 'FORT')) break;
-    const p = ensureConstruction(nation).projects.slice(-1)[0];
-    cancelConstruction(game, nation.id, p.id);
-  }
-  const fortDrift = nation.gold - goldA;
-  console.log(`  kale: 50 kez kur-iptal -> hazine farki ${n2(fortDrift)}`);
-  if (fortDrift > 1e-6) {
-    finding('CRITICAL', 'Kale kur-iptal dongusu para uretiyor', 'iade <= odenen', `fark +${n2(fortDrift)}`, '');
-  }
   const goldI = nation.gold;
   for (let i = 0; i < 20; i++) {
     if (!queueInvestment(game, nation.id, 'CONSTRUCTION_CAPACITY')) break;
@@ -194,19 +176,32 @@ sub('Iptal-yeniden kur dongusu para uretiyor mu?');
     finding('CRITICAL', 'Yatirim kur-iptal dongusu para uretiyor', 'iade <= odenen', `fark +${n2(investDrift)}`, '');
   }
 
-  // Devlet fabrikasi iptali (eski Q4b — degismedi).
-  const typeId = Object.keys(FACTORIES)
+  // Devlet fabrikasi iptali. Test devletin fabrika kurabildigi bir hukumet
+  // ister: liberal hukumette buildFactory hic kurmaz ve olcum bos gecer
+  // (olculdu: 'odenen 0, iade 0'). Ilk bos (state, tur) cifti secilir.
+  formGovernment(game, nation, 'conservative', { force: true });
+  const types = Object.keys(FACTORIES)
     .filter((id) => (FACTORIES[id].availableFrom ?? 0) <= world.turn)
-    .sort((a, b) => factoryMargin(world, b) - factoryMargin(world, a))[0];
+    .sort((a, b) => factoryMargin(world, b) - factoryMargin(world, a));
   nation.gold = 5000;
   const goldB = nation.gold;
+  let typeId = types[0];
+  let built = false;
+  for (const region of constructionAtlas(world, nation.id).regions) {
+    typeId = types.find((id) => buildFactory(game, nation, region.id, id));
+    if (typeId) { built = true; break; }
+  }
+  typeId ??= types[0];
   const cost = factoryCost(nation, typeId);
-  const built = buildFactory(game, nation, region.id, typeId);
   const afterBuild = nation.gold;
   const project = ensureConstruction(nation).projects.slice(-1)[0];
   const cancelled = built ? cancelConstruction(game, nation.id, project.id) : false;
   const refunded = nation.gold - afterBuild;
   console.log(`  devlet fabrikasi (${typeId}, bedel ${cost.gold}): odenen ${n0(goldB - afterBuild)}, iade ${n0(refunded)}`);
+  if (!built) {
+    finding('LOW', 'Devlet fabrikasi iptal testi olculemedi',
+      'muhafazakar hukumette bos bir state/tur bulunmali', 'hicbir state/tur kurulamadi', '');
+  }
   if (built && cancelled && refunded <= 0) {
     finding('MEDIUM', 'Fabrika projesi iptalinde para iade edilmiyor',
       'harcanmamis para hazineye donmeli', 'iade 0', '');
@@ -225,51 +220,58 @@ sub('Iptal-yeniden kur dongusu para uretiyor mu?');
   console.log(`  oncelik degisimi ${swaps} kez; proje ${state.projects.length}`);
 }
 
-// ----------------------------------------- 5) KALE: YUVA VE YEREL ETKI ---
-sub('Kale spam siniri ve yerel etki');
+// ------------------------------ 5) KALDIRILAN KALEMLER: ESKI KAYIT ---
+sub('Eski kayittaki kale / yuksekogretim kalintilari');
 {
   const game = headless(SEED);
-  run(game, 100);
+  run(game, 40);
   const nation = pickNation(game);
   game.turns.playerNation = nation.id;
-  nation.gold = 100000;
-  const atlas = constructionAtlas(game.world, nation.id);
-  let queued = 0;
-  for (const region of atlas.regions) {
-    for (let i = 0; i < 6; i++) {
-      if (queueConstruction(game, nation.id, region.id, 'FORT')) queued++;
-    }
-  }
-  const after = constructionAtlas(game.world, nation.id);
-  console.log(`  ${atlas.regions.length} bolge · spam denemesi -> kuyruga giren ${queued}`);
-  const overfull = after.regions.filter((r) => r.used > r.slots);
-  const perRegion = after.regions.every((r) => (
-    r.buildings.filter((b) => b.typeId === 'FORT').length
-      + r.projects.filter((p) => p.typeId === 'FORT').length
-      <= CONSTRUCTION_TYPES.FORT.maxPerRegion
-  ));
-  if (overfull.length || !perRegion) {
-    finding('HIGH', 'Kale yuva/bolge siniri asilabiliyor', 'used <= slots ve tur siniri', '', '');
+  const tile = game.world.tiles.find((t) => t.owner === nation.id && t.terrain.passable);
+  const state = ensureConstruction(nation);
+  // Kaldirmadan onceki bicim: yerlesik kale, egitim seviyesi ve iki bedeli
+  // pesin odenmis (yarisi insa edilmis) proje.
+  state.buildings = [{ id: 'b1', typeId: 'FORT', regionId: 'x', q: tile.q, r: tile.r }];
+  state.capacity.education = 2;
+  state.projects.push(
+    { id: 901, typeId: 'FORT', regionId: 'x', q: tile.q, r: tile.r, work: 60, cost: 60, funded: 60, progress: 30 },
+    { id: 902, kind: 'national', typeId: 'HIGHER_EDUCATION', work: 120, cost: 120, funded: 120, progress: 0 },
+  );
+  const capacityBefore = state.capacity.construction;
+  const gold = nation.gold;
+  ensureConstruction(nation);
+  const after = ensureConstruction(nation);
+  const refund = nation.gold - gold;
+  // Beklenen iade: kalenin insa edilmemis yarisi (30) + yuksekogretimin tamami (120).
+  const expected = 30 + 120;
+  const rows = [{
+    buildings: 'buildings' in after ? 'KALDI' : 'silindi',
+    education: 'education' in after.capacity ? 'KALDI' : 'silindi',
+    dropped: after.projects.some((p) => p.id === 901 || p.id === 902) ? 'KALDI' : 'dustu',
+    refund: n2(refund),
+    capacity: `${capacityBefore} -> ${after.capacity.construction}`,
+  }];
+  console.log(table(rows, [
+    { label: 'bina', get: (r) => r.buildings, right: false },
+    { label: 'egitimSeviyesi', get: (r) => r.education, right: false },
+    { label: 'projeler', get: (r) => r.dropped, right: false },
+    { label: 'iade', get: (r) => r.refund },
+    { label: 'kapasite', get: (r) => r.capacity, right: false },
+  ]));
+  if ('buildings' in after || 'education' in after.capacity
+    || after.projects.some((p) => p.id === 901 || p.id === 902)) {
+    finding('HIGH', 'Kaldirilan insaat kalemi eski kayitta yasiyor',
+      'ensureConstruction kale/yuksekogretim izini temizlemeli', JSON.stringify(rows[0]), '');
+  } else if (Math.abs(refund - expected) > 1e-6) {
+    finding('HIGH', 'Kaldirilan projenin iadesi yanlis',
+      'yalniz insa edilmemis pay geri doner, bir kez',
+      `iade ${n2(refund)}, beklenen ${expected}`, '');
+  } else if (after.capacity.construction !== capacityBefore) {
+    finding('MEDIUM', 'Temizlik insaat kapasitesine dokundu', 'kapasite ayni kalmali',
+      rows[0].capacity, '');
   } else {
-    console.log('  OK  yuva ve bolge basi sinir tutuyor.');
+    console.log('  OK  kalintilar silindi, insa edilmemis pay bir kez iade edildi.');
   }
-  runPeaceful(game, 120);
-  const fortCount = constructionCount(nation, 'FORT');
-  const anchorBuilding = ensureConstruction(nation).buildings.find((b) => b.typeId === 'FORT');
-  if (anchorBuilding) {
-    const anchor = game.world.get(anchorBuilding.q, anchorBuilding.r);
-    const nearDefense = fortDefenseAt(game.world, nation.id, anchor);
-    const farTile = game.world.tiles.find((t) => t.owner === nation.id && t.terrain.passable
-      && game.world.wrapDistance(t.q, t.r, anchor.q, anchor.r) > FORT_RADIUS
-      && fortDefenseAt(game.world, nation.id, t) === 0);
-    console.log(`  ${fortCount} kale · capadaki savunma ${pct(nearDefense)} ·`
-      + ` yaricap disi sifir ornegi ${farTile ? 'var' : 'bulunamadi'}`);
-    if (nearDefense < FORT_DEFENSE) {
-      finding('HIGH', 'Kale capasinda etki yok',
-        'kale kendi karesini savunmali', `capa ${pct(nearDefense)}`, '');
-    }
-  }
-  console.log(`  bakim ${n2(constructionUpkeep(nation))}/hafta, hazine ${n0(nation.gold)}`);
 }
 
 process.exit(reportFindings() > 0 ? 1 : 0);

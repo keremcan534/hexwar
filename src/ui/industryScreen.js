@@ -77,30 +77,28 @@ function goodCell(good) {
  * seridi "kartlar tepsisi" yapiyordu.
  */
 function summaryStrip(summary) {
+  // Ortak ozet seridi (§7B .ui-kpis): her ekranda ayni etiket/deger/not kalibi.
   const cell = (label, value, extra = '', cls = '', explain = '') => `
-    <span class="ind-sum-cell"${explain ? ` title="${esc(explain)}"` : ''}>
+    <div class="ui-kpi"${explain ? ` title="${esc(explain)}"` : ''}>
       <small>${esc(label)}</small>
       <b class="${cls}">${value}</b>
-      ${extra ? `<em>${extra}</em>` : ''}
-    </span>`;
-  return `<header class="ind-summary">
-    ${cell('Total factories', summary.factories)}
-    ${cell('Workers', `${people(summary.workers)} / ${people(summary.jobs)}`)}
-    ${cell('Weekly profit', signed(summary.weeklyProfit), '', tone(summary.weeklyProfit))}
-    ${cell('Hired per month', `+${people(summary.hiredPerMonth)}`)}
+      <span>${extra}</span>
+    </div>`;
+  const rule = summary.investmentRule;
+  return `<header class="ui-kpis ind-kpis">
+    ${cell('Factories', summary.factories, 'plants founded')}
+    ${cell('Workers', `${people(summary.workers)}<em> / ${people(summary.jobs)}</em>`, 'posts filled')}
+    ${cell('Weekly profit', signed(summary.weeklyProfit), 'all plants together', tone(summary.weeklyProfit))}
+    ${cell('Hired / month', `+${people(summary.hiredPerMonth)}`, 'from the lower class')}
     ${cell('Private capital', `£${money(summary.privateCapital)}`,
-    summary.investmentRule?.privateBuild === false
-      ? `+£${summary.privateInflow.toFixed(1)} / week · idle under ${esc(summary.investmentRule.name)}`
-      : `+£${summary.privateInflow.toFixed(1)} / week`,
-    '', summary.investmentRule?.privateBuild === false
-      ? `${summary.investmentRule.name}: ${summary.investmentRule.desc} The pool fills to its ceiling and waits for a change of policy.`
+    rule?.privateBuild === false
+      ? `+£${summary.privateInflow.toFixed(1)}/wk · idle under ${esc(rule.name)}`
+      : `+£${summary.privateInflow.toFixed(1)}/wk raised`,
+    '', rule?.privateBuild === false
+      ? `${rule.name}: ${rule.desc} The pool fills to its ceiling and waits for a change of policy.`
       : 'Money investors have on hand for factory construction and expansion.')}
-    ${cell('Open slots', `${summary.freeSlots} / ${summary.totalSlots}`)}
-    ${summary.investmentRule ? `<span class="ind-sum-cell ind-sum-rule" title="${esc(summary.investmentRule.desc)}">
-      <small>Who may build</small>
-      <b>${esc(summary.investmentRule.name)}</b>
-      <em>${esc(summary.investmentRule.who)}</em>
-    </span>` : ''}
+    ${cell('Open slots', `${summary.freeSlots}<em> / ${summary.totalSlots}</em>`, 'one plant per type per state')}
+    ${rule ? cell('Who may build', esc(rule.name), esc(rule.who), '', rule.desc) : ''}
   </header>`;
 }
 

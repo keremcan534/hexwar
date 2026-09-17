@@ -6,7 +6,6 @@ import { TurnManager } from '../src/game/turn.js';
 import { generateWorld } from '../src/world/worldgen.js';
 import { generateNations } from '../src/world/nations.js';
 import { MAX_STACK, regimentCount, soldiersOf, unitsOn } from '../src/game/units.js';
-import { CONSTRUCTION_TYPES } from '../src/game/construction.js';
 
 const seed = process.argv[2] ?? 'SYSTEM';
 const weeks = Math.max(1, Number(process.argv[3] ?? 180));
@@ -103,16 +102,6 @@ const provinces = game.world.tiles.filter((tile) => tile.province);
 const developed = provinces.filter((tile) => (
   tile.province.agriculture + tile.province.extraction + tile.province.commerce > 3
 ));
-// Yapılar artık şehre değil ulusal inşaat durumuna bağlı (construction.js).
-// Bir bölgenin bütün yapıları bölge merkezinde çapalanır; ölçüt tek kare değil,
-// çapanın hâlâ sahibinin toprağında olması ve tipin tanımlı kalmasıdır.
-const structures = game.world.nations.flatMap((nation) => (
-  (nation.construction?.buildings ?? []).map((building) => ({ nation, building }))
-));
-const invalidStructures = structures.filter(({ nation, building }) => {
-  const tile = game.world.get(building.q, building.r);
-  return !tile || tile.owner !== nation.id || !CONSTRUCTION_TYPES[building.typeId];
-});
 const thinCapturedSalients = game.world.tiles.filter((tile) => {
   if (tile.owner < 0 || (tile.heldSince ?? -100) < 0 || !tile.terrain.passable) return false;
   const ring = game.world.neighbors(tile).filter((near) => near.terrain.passable);
@@ -164,8 +153,6 @@ console.log(JSON.stringify({
   invalidStacks: invalidStacks.length,
   provinces: provinces.length,
   developedProvinces: developed.length,
-  structures: structures.length,
-  invalidStructures: invalidStructures.length,
   militaryProduction: {
     allFactories: game.world.nations.reduce(
       (sum, nation) => sum + (nation.economy?.factories?.length ?? 0), 0,

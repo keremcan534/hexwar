@@ -12,7 +12,6 @@ import {
   headless, section, sub, table, finding, reportFindings, n0, n1, pct,
 } from './harness.mjs';
 import { researchPointsOf } from '../../src/game/technology.js';
-import { investmentLevel } from '../../src/game/construction.js';
 
 const SEEDS = ['RSCH1', 'RSCH2', 'RSCH3'];
 const FINAL_TURN = 5740;                 // 1945 (hegemony.js)
@@ -44,7 +43,6 @@ function runSeed(seed) {
     const lit = asc(live.map((n) => n.economy.literacy ?? 0));
     const rate = asc(live.map((n) => researchPointsOf(n)));
     const techs = asc(live.map((n) => (n.research?.done ?? []).length));
-    const he = live.map((n) => investmentLevel(n, 'HIGHER_EDUCATION'));
     // Ayrisma olcusu: kac FARKLI teknoloji kumesi var? (sira duyarsiz)
     const sets = new Set(live.map((n) => (n.research?.done ?? []).slice().sort().join(',')));
     const progHist = {};
@@ -68,9 +66,6 @@ function runSeed(seed) {
       techP10: quantile(techs, 0.1), techP50: quantile(techs, 0.5), techP90: quantile(techs, 0.9),
       techMin: techs[0] ?? 0, techMax: techs[techs.length - 1] ?? 0,
       distinctSets: sets.size,
-      heAny: he.filter((v) => v > 0).length,
-      heGe2: he.filter((v) => v >= 2).length,
-      heTotal: he.reduce((a, b) => a + b, 0),
       stabMed: quantile(asc(live.map((n) => n.economy.stability ?? 0)), 0.5),
       healthMed: quantile(asc(live.map((n) => n.economy.social?.health ?? 0)), 0.5),
       welfareMed: quantile(asc(live.map((n) => n.economy.social?.welfare ?? 0)), 0.5),
@@ -115,15 +110,12 @@ for (const run of runs) {
   ]));
 }
 
-// --------------------------------------------- YUKSEKOGRETIM ---
-sub('Kurum: yuksekogretim ve toplumsal denge');
+// ------------------------------------------------ TOPLUMSAL DENGE ---
+sub('Toplumsal denge');
 for (const run of runs) {
   console.log(`\n  [${run.seed}]`);
   console.log(table(run.marks, [
     { label: 'yil', get: (m) => m.year },
-    { label: 'HE>=1', get: (m) => m.heAny },
-    { label: 'HE>=2', get: (m) => m.heGe2 },
-    { label: 'HE toplam', get: (m) => m.heTotal },
     { label: 'istikrar', get: (m) => n1(m.stabMed) },
     { label: 'saglik med', get: (m) => n0(m.healthMed) },
     { label: 'refah med', get: (m) => n0(m.welfareMed) },
@@ -223,10 +215,9 @@ const some = (fn) => runs.some(fn);
   }
 }
 
-// (d) yuksekogretim: A kolunda OLCULEN taban kayit altina alinir
+// (d) yuksekogretim olcutu 2026-09'da kurumla birlikte kalkti.
 {
-  const vals = runs.map((r) => { const m = at(r, 1900); return m ? `${m.heAny}/${m.nations} (>=2: ${m.heGe2})` : '?'; });
-  console.log(`  (d) 1900 HE>=1 (taban)    : ${vals.join(' · ')}`);
+  console.log('  (d) yuksekogretim         : kurum kaldirildi (2026-09), OLCULMEZ');
 }
 
 // (h) 1870'te alt cerekte olup 1930'da ust yariya cikan var mi

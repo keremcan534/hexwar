@@ -1,5 +1,9 @@
 // Gecikmeli bilgi kartı sistemi — TEK yönetici.
 //
+// Oyundaki bütün açıklamalı hover'lar buradan geçer: `data-tip` sağlayıcıları,
+// eski `title` öznitelikleri ve `data-tooltip` (ikisi ilk hover'da devşirilir,
+// bkz. adopt). Yeni kod `title` yazmaz; `data-tip` + sağlayıcı yazar.
+//
 // Paradox'un tooltip'i tarayıcının `title` balonu değildir: gecikmeyle açılır,
 // içine girilebilir, içindeki terimlerin kendi açıklaması vardır ve ekranın
 // dışına taşmaz. Bu dosya o davranışın tamamını tek yerde tutar.
@@ -17,10 +21,13 @@
 //
 // Katman notu: yalnız DOM. Oyun durumuna sağlayıcılar üzerinden erişir.
 
-/** Birinci katman: oyuncu gerçekten "ne bu?" diye durmuş olmalı. */
-const DELAY = 800;
+/**
+ * Birinci katman: oyuncu gerçekten "ne bu?" diye durmuş olmalı. 800 ms
+ * "tooltip yok" diye okunuyordu (kör oyun testi); Paradox bandı 450–700 ms.
+ */
+const DELAY = 550;
 /** İç içe katman: zaten okuma kipindedir, daha kısa. */
-const NESTED_DELAY = 350;
+const NESTED_DELAY = 300;
 /** Kaynakla kart arasında gezerken kapanmasın diye mühlet. */
 const GRACE = 220;
 /** Derinlik sınırı: sonsuz zincir okunmaz hale gelir. */
@@ -60,11 +67,13 @@ function render(data) {
       <span>${esc(row.label)}</span>
       <b class="${row.tone ?? ''}">${esc(String(row.value))}</b>
     </div>`).join('');
-  return `
+  // Başlıksız kart (yalnız açıklama cümlesi) boş bir başlık şeridi taşımaz.
+  const head = data.title || data.value != null ? `
     <div class="tip-head">
       <b>${esc(data.title ?? '')}</b>
       ${data.value != null ? `<span class="tip-value">${esc(String(data.value))}</span>` : ''}
-    </div>
+    </div>` : '';
+  return `${head}
     ${data.note ? `<div class="tip-note">${data.note}</div>` : ''}
     ${data.text ? `<p class="tip-text">${data.text}</p>` : ''}
     ${effects ? `<div class="tip-block"><small>Effects</small>${effects}</div>` : ''}
@@ -77,6 +86,42 @@ function render(data) {
    ========================================================================== */
 
 const providers = new Map();
+
+/**
+ * DÜZ METİN SAĞLAYICI. Eski `title` ve `data-tooltip` açıklamaları buradan
+ * geçer: tarayıcının gecikmeli, düz ve ekran görüntüsüne bile girmeyen
+ * balonu ile saf CSS balonu yan yana iki ayrı dil konuşuyordu. İlk satır çok
+ * satırlı metinde başlık olur.
+ */
+providers.set('text', (arg, element) => {
+  const lines = String(element?.dataset.tipText ?? '')
+    .split('\n').map((line) => line.trim()).filter(Boolean);
+  if (!lines.length) return null;
+  if (lines.length === 1) return { type: 'simple', text: esc(lines[0]) };
+  return { type: 'simple', title: lines[0], text: lines.slice(1).map(esc).join('<br>') };
+});
+
+/**
+ * `title`/`data-tooltip` taşıyan öğeyi karta devşirir: metin `data-tip-text`e
+ * taşınır, yerel balon kaldırılır. Yalnız simgeden oluşan düğme adını
+ * kaybetmesin diye metnin ilk satırı erişilebilir ada yazılır.
+ */
+function adopt(element) {
+  if (!element) return null;
+  if (element.dataset.tip) return element;
+  const text = element.getAttribute('title') ?? element.getAttribute('data-tooltip');
+  if (!text || !text.trim()) return null;
+  element.removeAttribute('title');
+  element.removeAttribute('data-tooltip');
+  if (!element.hasAttribute('aria-label') && !element.textContent.trim()) {
+    element.setAttribute('aria-label', text.split('\n')[0]);
+  }
+  element.dataset.tip = 'text';
+  element.dataset.tipText = text;
+  return element;
+}
+
+const SOURCE = '[data-tip], [title], [data-tooltip]';
 
 /**
  * Bir tooltip kaynağı tanımlar.
@@ -193,7 +238,7 @@ export function mountTooltips() {
   mounted = true;
 
   document.addEventListener('pointerover', (event) => {
-    const element = event.target.closest?.('[data-tip]');
+    const element = adopt(event.target.closest?.(SOURCE));
     if (!element) return;
     const depth = depthOf(element);
     if (depth >= MAX_DEPTH) return;
@@ -215,7 +260,24 @@ export function mountTooltips() {
     const to = event.relatedTarget;
     // Karta doğru çıkıyorsa kapatma: oyuncu içeriği okumaya gidiyor.
     if (to && layers.some((layer) => layer.card.contains(to))) return;
-    if (to && to.closest?.('[data-tip]')) { clearTimeout(openTimer); return; }
+    if (to && to.closest?.(SOURCE)) { clearTimeout(openTimer); return; }
+    clearTimeout(openTimer);
+    scheduleClose();
+  });
+
+  // KLAVYE. Sekmeyle gezen oyuncu da aynı açıklamayı alır. Yalnız
+  // :focus-visible — tıklamanın odağı kartı düğmenin üstünde yeniden açmasın.
+  document.addEventListener('focusin', (event) => {
+    if (!event.target.matches?.(':focus-visible')) return;
+    const element = adopt(event.target.closest?.(SOURCE));
+    if (!element) return;
+    const depth = depthOf(element);
+    if (depth >= MAX_DEPTH) return;
+    clearTimeout(closeTimer);
+    clearTimeout(openTimer);
+    openTimer = setTimeout(() => open(element, depth), DELAY);
+  });
+  document.addEventListener('focusout', () => {
     clearTimeout(openTimer);
     scheduleClose();
   });

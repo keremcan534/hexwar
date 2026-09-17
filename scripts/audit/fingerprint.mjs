@@ -17,8 +17,6 @@ export function worldFingerprint(game) {
       n2(n.economy?.stability ?? 0),
       n2(n.infamy ?? 0),
       n.construction?.capacity?.construction ?? 0,
-      n.construction?.capacity?.education ?? 0,
-      (n.construction?.buildings ?? []).length,
       (n.generals ?? []).length,
       n2(n.economy?.literacy ?? 0),
       (n.research?.done ?? []).length,

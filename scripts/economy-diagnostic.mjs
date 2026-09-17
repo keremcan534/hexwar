@@ -52,7 +52,6 @@ function nationSnapshot(world, nation, turn) {
     cities: cities.length,
     factories: economy.factories?.length ?? 0,
     factoryLevels: (economy.factories ?? []).reduce((sum, f) => sum + f.level, 0),
-    structures: construction.buildings.length,
     projects: construction.projects.length,
     units: units.length,
     heavyUnits: units.filter((unit) => unit.type.id === 'CAVALRY' || unit.type.id === 'WARSHIP').length,
