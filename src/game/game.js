@@ -204,6 +204,12 @@ export class Game {
   /** Yeni dünya üret. seed verilmezse rastgele. */
   newWorld(seed = randomSeed(), options = {}) {
     this.setSpeed(0);
+    // Gun sayaci sifirlanir: yeni dunya eski oturumun takviminden baslamasin
+    // (olculdu: 1. turdaki yeni kampanya "8 JUL 1836" gosteriyordu, cunku
+    // gameDate gun ile turun buyugunu alir ve gun eski oyundan kalmisti).
+    this.clock.day = 0;
+    this.clock.accumulator = 0;
+    this.clock.haltedBy = null;
     const t0 = performance.now();
     this.world = generateWorld(seed, options);
     generateNations(this.world, { seed: `${seed}-nations`, count: options.nationCount ?? null });

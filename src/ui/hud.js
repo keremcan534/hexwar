@@ -847,12 +847,16 @@ export class Hud {
     this.game.perf?.add('ui.hud', performance.now() - t0);
   }
 
-  /** Oyuncunun boşta kaldığında okuyacağı tek, öncelikli karar özeti. */
-  showGuidance() {
+  /**
+   * Oyuncunun bir sonraki anlamli karari: {next, why}. Tek kaynak — hem bos
+   * ekrandaki kart hem de secili karenin ustundeki kisa serit bunu okur.
+   * Eskiden yalniz kartta yasiyordu ve ilk harita tikindan sonra kayboluyordu.
+   */
+  guidanceOf() {
     const { world, turns } = this.game;
-    if (!world) return;
+    if (!world) return null;
     const me = world.nations[turns.playerNation];
-    if (!me) return;
+    if (!me) return null;
     const wars = world.nations.filter((nation) => (
       nation.alive && atWar(world, nation.id, me.id)
     ));
@@ -876,14 +880,23 @@ export class Hud {
       && (f.fulfilled ?? 0) / f.demand < 0.925).length;
     let next;
     let why = 'Province → population and raw goods → factories and taxes → army and world prices.';
+    // SAVASTA GENERALLER TUTUYOR MU? Kor oyun testinde savas alti hafta
+    // "0 engaged" ile gecti: generaller varsayilan HOLD'daydi ve hicbir yer
+    // taarruzu nasil baslatacagini soylemiyordu.
+    const holding = wars.length
+      ? officersOf(me, BRANCH.ARMY).filter((g) => g.divisions?.length && g.stance !== 'advance')
+      : [];
     if (this.picker?.isOpen) {
       next = 'Choose your nation: click one on the map or in the list, then Play as.';
       why = 'The suggested start is contiguous and large; a stronger neighbour makes a harder game.';
     } else if (battles.length) {
       next = 'A battle is active: select its army to inspect strength and organization.';
+    } else if (holding.length) {
+      next = `${holding.length} of your ${holding.length === 1 ? 'command holds' : 'commands hold'} the line: Military → All commands → Advance, or select a division and Start Offensive.`;
+      why = 'Advancing commands march on the provinces in front of them; the peace table opens once provinces are held.';
     } else if (wars.length) {
-      next = 'Move an army onto an enemy army or province; defeated armies retreat.';
-      why = 'Set a general\'s target and posture in the command dock; Aggressive assaults at even odds.';
+      next = 'Your commands are advancing: watch the front, or right-click an enemy province to direct an assault.';
+      why = 'Stance 3 assaults at even odds; a matured plan is worth up to +25% in the attack.';
     } else if (turns.turn <= 1) {
       next = 'Unpause for one week: the books open after the first weekly tick.';
       why = 'Income, prices and factory output all read zero until the market clears once.';
@@ -908,16 +921,36 @@ export class Hud {
     } else {
       next = 'Books balanced, programme set, army posted: expand a profitable factory or review Trade.';
     }
+    return { next, why, battles: battles.length, balance: weeklyBalanceOf(me) };
+  }
+
+  /** Oyuncunun boşta kaldığında okuyacağı tek, öncelikli karar özeti. */
+  showGuidance() {
+    const guide = this.guidanceOf();
+    if (!guide) return;
     this.el.sheetBody.innerHTML = `
       <div class="decision-card">
         <small>NEXT MEANINGFUL DECISION</small>
-        <h3>${escapeHtml(next)}</h3>
-        <p>${escapeHtml(why)}</p>
+        <h3>${escapeHtml(guide.next)}</h3>
+        <p>${escapeHtml(guide.why)}</p>
         <div class="decision-kpis">
-          <span><b>${weeklyBalanceOf(me) >= 0 ? '+' : ''}${Math.round(weeklyBalanceOf(me))}</b><small>weekly balance</small></span>
-          <span><b>${battles.length}</b><small>active battles</small></span>
+          <span><b>${guide.balance >= 0 ? '+' : ''}${Math.round(guide.balance)}</b><small>weekly balance</small></span>
+          <span><b>${guide.battles}</b><small>active battles</small></span>
         </div>
       </div>`;
+  }
+
+  /**
+   * Secili karenin USTUNDE tek satirlik rehber: kare secilince kart kaybolup
+   * bir daha gelmiyordu (kor oyun testi). Tiklamak secimi birakip tam karti
+   * geri getirir.
+   */
+  guidanceStrip() {
+    const guide = this.guidanceOf();
+    if (!guide) return '';
+    return `<button class="decision-mini" data-clear-select="1"
+      title="${escapeHtml(guide.why)} — click to return to the full card">
+      <small>Next</small><span>${escapeHtml(guide.next)}</span></button>`;
   }
 
   async copySeed() {
@@ -1097,7 +1130,7 @@ export class Hud {
     // seyrek ama önemli — kendi uyarı satırlarında durur.
     const notes = stats.map(([k, v]) => `<span class="pv-note"><small>${k}</small>${v}</span>`).join('');
 
-    body.innerHTML = unitBlock + this.actionsHtml(tile) + `
+    body.innerHTML = this.guidanceStrip() + unitBlock + this.actionsHtml(tile) + `
       <div class="province-view">
         <div class="tile-head">
           ${emblem}
@@ -1436,6 +1469,16 @@ export class Hud {
   bindActions() {
     const { game } = this;
     const me = game.world.nations[game.turns.playerNation];
+    const strip = this.el.sheetBody.querySelector('[data-clear-select]');
+    if (strip) {
+      strip.onclick = () => {
+        game.selectGeneral(null);
+        game.selectUnits([]);
+        game.selected = null;
+        game.emit('select', null);
+        game.requestRender();
+      };
+    }
     // ORDUYU DAGIT. `disband()` zaten vardi ve hayatta kalanlarin insan gucunu
     // TOPLANDIKLARI province'lere iade ediyordu — eksik olan sadece dugmeydi,
     // yani oyuncunun elinde ordu kucultme araci hic yoktu (kullanici bildirimi).

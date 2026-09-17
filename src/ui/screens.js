@@ -18,7 +18,7 @@ import {
 import { INFAMY_COALITION } from '../game/infamy.js';
 import { acceptCulture, expelCulture, releaseToKin } from '../game/culture.js';
 import { maxHpOf, menUnderArms, organizationOf, soldiersOf } from '../game/units.js';
-import { provinceName } from '../game/provinces.js';
+import { RGO_TYPES, provinceName } from '../game/provinces.js';
 import { populationGroupDetail, populationOverview } from '../game/populationView.js';
 import { populationScreen } from './populationScreen.js';
 import {
@@ -707,12 +707,19 @@ export class Screens {
     const acceptable = refusal === null;
     const budget = Math.max(0, score);
     const cost0 = cost;
+    // NE URETIYOR? Masa il adi ve hex sayisi veriyordu; oyuncu sulfur kumesini
+    // sigir kumesi sanip aldi (kor oyun testi: Zelfell/Norrfell). Kaynak
+    // etiketi her satirda durur.
+    const rgoOf = (province) => {
+      const type = RGO_TYPES[province?.econ?.rgo];
+      return type ? ` · ${type.icon} ${type.name}` : '';
+    };
     const list = (keys, kind) => (keys.length ? keys.map((key) => {
       const province = provinceFromKey(world, key);
       if (!province) return '';
       const starred = province.tileIdx.some((idx) => world.tiles[idx].city);
       return `<div class="peace-tile ${kind}">
-        <span>${esc(province.name)}${starred ? ' ★' : ''} · ${province.tileIdx.length} hex</span>
+        <span>${esc(province.name)}${starred ? ' ★' : ''} · ${province.tileIdx.length} hex${esc(rgoOf(province))}</span>
         <b>${provinceWarCost(world, province)}</b>
         <button class="peace-drop" data-drop-tile="${esc(key)}" data-drop-kind="${kind}" title="Remove">✕</button>
       </div>`;
@@ -749,7 +756,7 @@ export class Screens {
         return `<button class="peace-offer-row${near ? ' adjacent' : ''}"
           data-take-tile="${esc(key)}" title="${esc(province.name)} — ${cost} war score">
           <span class="por-name">${esc(province.name)}${starred ? ' ★' : ''}</span>
-          <span class="por-meta">${province.tileIdx.length} hex · ${Math.round(share * 100)}% held${
+          <span class="por-meta">${province.tileIdx.length} hex${esc(rgoOf(province))} · ${Math.round(share * 100)}% held${
   near ? ' · borders you' : ''}</span>
           <b class="por-cost${afford ? '' : ' res-neg'}">${cost}</b>
         </button>`;
@@ -775,7 +782,7 @@ export class Screens {
             : { cls: 'open', text: 'not occupied yet' };
       return `<div class="peace-goal ${state.cls}">
         <span class="pg-label">War goal</span>
-        <b class="pg-name">${esc(goal.name)}</b>
+        <b class="pg-name">${esc(goal.name)}${esc(rgoOf(goal))}</b>
         <span class="pg-state">${state.text}</span>
         ${!onTable && held && !lost
     ? `<button class="pg-add" data-take-tile="${esc(key)}">Add</button>` : ''}
@@ -2332,6 +2339,10 @@ export class Screens {
     }
     for (const btn of this.el.body.querySelectorAll('[data-build-category]')) {
       btn.onclick = () => { industry.buildCategory = btn.dataset.buildCategory; this.refresh(); };
+    }
+    const lockedToggle = this.el.body.querySelector('[data-build-locked]');
+    if (lockedToggle) {
+      lockedToggle.onclick = () => { industry.buildShowLocked = !industry.buildShowLocked; this.refresh(); };
     }
     const search = this.el.body.querySelector('[data-state-search]');
     if (search) {

@@ -25,7 +25,7 @@ const yearOfTurn = (turn) => 1836 + Math.floor(Math.max(0, (turn ?? 0) - 1) / 52
  * Uyari "sepet pahali" derken asil sorun malin YOKLUGU olabilir; hangi mal
  * eksik, o soylenmeli.
  */
-function scarcestBasketGoods(nation, classId, limit = 2) {
+export function scarcestBasketGoods(nation, classId, limit = 2) {
   const needs = CLASS_NEEDS[classId] ?? {};
   const flows = nation.economy?.goodsFlow ?? {};
   return Object.keys(needs)
@@ -89,18 +89,24 @@ function starvation(world, nation) {
   const scarceText = scarce.length
     ? scarce.map((row) => `${GOODS[row.id]?.name ?? row.id} (${Math.round(row.coverage * 100)}% covered)`).join(' and ')
     : 'the goods in their basket';
+  // Aclik arki suruyorsa kart onun kacinci haftasinda oldugumuzu soyler
+  // (bkz. events.js runHungerArc): kriz bir sayi degil, bir sure.
+  const arc = nation.events?.hunger;
+  const arcLine = arc?.active
+    ? ` This is week ${Math.max(1, (world.turn ?? 0) - arc.since + 1)} of the hunger; nationwide, the worst week met ${Math.round(arc.worst * 100)}% of the basket.`
+    : '';
   return {
     id: `STARVATION:${id}`,
     kind: ALERT_KINDS.STARVATION,
     title: `${name} below subsistence`,
-    cause: supplyBound
+    cause: (supplyBound
       ? `Their basket costs £${round(data.needsCost ?? 0)} a week and they can field`
         + ` £${round(data.needsBudget ?? 0)} after ${rate}% tax — the money is there, the goods are not:`
         + ` only ${Math.round(availability * 100)}% of the basket exists to buy, so they meet`
         + ` ${Math.round((data.needsMet ?? 0) * 100)}% of it.`
       : `Their basket costs £${round(data.needsCost ?? 0)} a week but they can only`
         + ` field £${round(data.needsBudget ?? 0)} after ${rate}% tax.`
-        + ` They are meeting ${Math.round((data.needsMet ?? 0) * 100)}% of it.`,
+        + ` They are meeting ${Math.round((data.needsMet ?? 0) * 100)}% of it.`) + arcLine,
     remedy: supplyBound
       ? `The shortage is ${scarceText}. Tax and welfare cannot fix a missing good:`
         + ' build the plant that makes it, or let investors — the Trade screen shows who pays for it.'

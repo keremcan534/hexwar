@@ -1818,6 +1818,33 @@ body.screen-open .layer-menu { display: none; }
 
 .decision-card p { margin: var(--sp-2) 0 var(--sp-3); }
 
+/* Secili karenin ustundeki tek satirlik rehber (hud.js guidanceStrip). */
+.decision-mini {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--sp-2);
+  align-items: baseline;
+  width: 100%;
+  margin-bottom: var(--sp-2);
+  padding: 5px var(--sp-2);
+  border: 1px solid rgba(158, 172, 178, 0.26);
+  border-left: 3px solid var(--cyan);
+  border-radius: var(--radius);
+  background: linear-gradient(145deg, var(--cyan-wash), transparent 60%), var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}
+.decision-mini:hover { border-color: var(--cyan); }
+.decision-mini small { color: var(--cyan); font-size: var(--fs-label); font-weight: 650; letter-spacing: var(--ls-label); text-transform: uppercase; }
+.decision-mini span { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+.ind-tab-locked { margin-left: auto; color: var(--text-faint); }
+.ind-tab-locked.on { color: var(--gold-bright); }
+
 .decision-kpis {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

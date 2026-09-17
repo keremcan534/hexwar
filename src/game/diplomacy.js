@@ -335,9 +335,11 @@ export function resolveCrises(game) {
         announce(game, me, {
           kind: 'WAR', tier: TIER.MAJOR, key: `war-${other.id}`, ttl: 0,
           title: attacked ? `${other.name}'s armies cross the border` : `War with ${other.name} begins`,
+          // Generaller emir gelene kadar TUTAR: kart bunu soylemezse savas
+          // haftalarca "0 engaged" ile gecer (kor oyun testi, 6 hafta).
           detail: attacked
-            ? 'The ultimatum has expired; hold the line or take theirs.'
-            : 'The peace table opens once provinces are held; each taken province costs infamy.',
+            ? 'The ultimatum has expired; hold the line or take theirs. Your commands hold until ordered: Military → All commands → Advance.'
+            : 'Your commands hold the line until ordered: Military → All commands → Advance. The peace table opens once provinces are held; each taken province costs infamy.',
         });
       }
     }
