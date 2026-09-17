@@ -24,6 +24,7 @@ import { bindMacroCards } from './macroCard.js';
 import { Screens } from './screens.js';
 import { showEndScreen } from './endScreen.js';
 import { formatPopulation, weeklyBalanceOf } from '../game/economy.js';
+import { gdpAttribution, populationAttribution } from '../game/pulse.js';
 import {
   canRecruit, disband, equipmentCostLabel, nationManpower, rallyTile, setRallyPoint,
   trainingWeeks,
@@ -1381,6 +1382,43 @@ export class Hud {
           samples: history.map((row) => row[key] ?? 0),
           current: metric === 'gdp' ? (me?.economy?.gdp ?? 0) : (me?.economy?.population ?? 0),
         };
+      },
+      /**
+       * "Bu hafta": GSYH icin fiyat/hacim ve RGO/sanayi ayrimi ile ulkenin
+       * mallarindaki fiyat hareketi; nufus icin buyume ve sepet karsilanmasi.
+       * Sayilar game/pulse.js'ten; burada yalniz cumleye cevrilir.
+       */
+      pulse: (metric) => {
+        const me = game.world.nations[game.turns.playerNation];
+        const money = (v) => `${v >= 0 ? '+' : '−'}£${Math.abs(v).toFixed(1)}`;
+        const tone = (v) => (v > 0.05 ? 'up' : v < -0.05 ? 'down' : '');
+        if (metric === 'gdp') {
+          const a = gdpAttribution(game.world, me);
+          if (!a) return null;
+          const rows = [
+            { label: 'Change vs last week', value: money(a.delta), tone: tone(a.delta) },
+            { label: 'Prices of what you make', value: money(a.price), tone: tone(a.price), sub: true },
+            { label: 'Volume produced', value: money(a.volume), tone: tone(a.volume), sub: true },
+            { label: `Raw output (£${a.rgo.now.toFixed(0)})`, value: money(a.rgo.delta), tone: tone(a.rgo.delta) },
+            { label: `Factory value added (£${a.industry.now.toFixed(0)})`, value: money(a.industry.delta), tone: tone(a.industry.delta) },
+          ];
+          for (const m of a.movers) {
+            rows.push({
+              label: `${m.icon} ${m.name} £${m.previous.toFixed(2)} → £${m.price.toFixed(2)}`,
+              value: money(m.value), tone: tone(m.value), sub: true,
+            });
+          }
+          return rows;
+        }
+        const p = populationAttribution(me);
+        if (!p) return null;
+        const people = (v) => `${v >= 0 ? '+' : '−'}${formatPopulation(Math.abs(v))}`;
+        const pp = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1)} pp`;
+        return [
+          { label: 'Growth vs last week', value: people(p.delta), tone: tone(p.delta) },
+          { label: `Needs met (${Math.round(p.needs * 100)}%)`, value: pp(p.needsDelta), tone: tone(p.needsDelta * 100) },
+          { label: `Literacy (${(p.literacy * 100).toFixed(1)}%)`, value: pp(p.literacyDelta), tone: tone(p.literacyDelta * 100) },
+        ];
       },
       /** Siralama CANLI durumdan turer; ayri bir tablo saklanmaz. */
       ranking: (metric) => game.world.nations

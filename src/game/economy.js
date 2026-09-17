@@ -32,7 +32,7 @@ import {
   decayReformCounters, refreshReformModifiers, reformModifiers, reformMoodShift,
 } from './reforms.js';
 import {
-  LEDGER_LINES, closeWeek, emptyLedger, openWeek, settle, settleAffordable,
+  LEDGER_LINES, LEDGER_LINE_IDS, closeWeek, emptyLedger, openWeek, settle, settleAffordable,
   weekTotals,
 } from './treasury.js';
 
@@ -4359,6 +4359,56 @@ function closeNationWeek(world, nation, turn) {
   settleDebt(nation);
   recordPopulationTrend(nation, populationOf(world, nation));
   closeWeek(nation, turn);
+  recordPulse(nation, turn);
+}
+
+/**
+ * HAFTALIK NABIZ — "bu hafta neyi ne oynatti" sorusunun ham maddesi.
+ *
+ * Kor oyun testinde GSYH alti ayda 415'ten 183'e indi ve hicbir ekran neden
+ * demedi: butun bilesenler her hafta ustune yaziliyordu, gecen haftanin
+ * kopyasi yoktu. Burada iki haftalik bir pencere tutulur (onceki + simdiki);
+ * fark hesabi pulse.js'te. Yeni sayi uretilmez: gdp, reel gdp, RGO/sanayi
+ * payi, defter satirlari, istikrar dokumu ve sinif gelirleri kopyalanir.
+ * Kayda girer (economy butunuyle serilestirilir); boyutu birkac yuz bayt.
+ */
+function recordPulse(nation, turn) {
+  const economy = nation.economy;
+  if (!economy) return;
+  const ledger = economy.ledger ?? {};
+  const lines = {};
+  for (const id of LEDGER_LINE_IDS) lines[id] = ledger[id] ?? 0;
+  const classes = {};
+  for (const id of Object.keys(CLASS_INFO)) {
+    const socialClass = economy.classes?.[id];
+    classes[id] = {
+      income: socialClass?.income ?? 0,
+      taxPaid: socialClass?.taxPaid ?? 0,
+      needsMet: socialClass?.needsMet ?? 0,
+      population: socialClass?.population ?? 0,
+    };
+  }
+  const bd = economy.stabilityBreakdown ?? {};
+  const snapshot = {
+    turn,
+    gdp: economy.gdp ?? 0,
+    realGdp: economy.realGdp ?? 0,
+    rgo: economy.baseOutputValue ?? 0,
+    industry: (economy.gdp ?? 0) - (economy.baseOutputValue ?? 0),
+    factoryProfit: economy.factoryProfit ?? 0,
+    wagesPaid: economy.wagesPaid ?? 0,
+    stability: {
+      base: bd.base ?? 0,
+      occupation: bd.occupation ?? 0,
+      war: bd.war ?? 0,
+      unemployment: bd.unemployment ?? 0,
+      total: bd.total ?? economy.stability ?? 0,
+    },
+    ledger: { ...lines, income: ledger.income ?? 0, expenses: ledger.expenses ?? 0, net: ledger.net ?? 0 },
+    classes,
+    needsMet: weightedNeedsMet(economy),
+  };
+  economy.pulse = { prev: economy.pulse?.cur ?? null, cur: snapshot };
 }
 
 /** Fiyat grafiginin tuttugu ornek sayisi (haftalik). */

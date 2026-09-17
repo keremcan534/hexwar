@@ -17,6 +17,7 @@ import { industryOverview } from '../game/industryView.js';
 import { provinceRgoStatus } from '../game/provinces.js';
 import { activeAlerts } from '../game/alerts.js';
 import { INFAMY, INFAMY_COALITION } from '../game/infamy.js';
+import { balanceAttribution, classIncomeAttribution, stabilityAttribution } from '../game/pulse.js';
 
 const pct = (v, d = 0) => `${((v ?? 0) * 100).toFixed(d)}%`;
 const coin = (v) => `£${(v ?? 0).toFixed(1)}`;
@@ -55,6 +56,8 @@ export function registerTooltips(game) {
 
     // Vergi: matrah × oran = tahsilat. Üç sayı da dökümden gelir.
     if (arg.startsWith('tax')) {
+      const incomes = classIncomeAttribution(nation);
+      const mine = incomes?.[cfg.classId];
       return {
         type: 'breakdown',
         title: `${label} — ${cfg.value}%`,
@@ -63,6 +66,9 @@ export function registerTooltips(game) {
         rows: [
           { label: 'People in this class', value: formatPopulation(cfg.population) },
           { label: 'Taxable income / week', value: coin(cfg.base) },
+          ...(mine && Math.abs(mine.delta) >= 0.05
+            ? [{ label: 'Income vs last week', value: signed(mine.delta), tone: mine.delta >= 0 ? 'good' : 'bad' }]
+            : []),
           { label: 'Rate', value: `${cfg.value}%` },
           { label: 'Collected', value: coin(cfg.collected), tone: 'good' },
         ],
@@ -126,6 +132,16 @@ export function registerTooltips(game) {
     const nation = me();
     const view = budgetBreakdown(game.world, nation);
     if (!view) return null;
+    // "Bu hafta neyi oynatti": defterin en cok degisen satirlari (pulse.js).
+    const moved = balanceAttribution(nation);
+    const effects = moved ? [
+      { label: 'Balance vs last week', value: signed(moved.delta), tone: moved.delta >= 0 ? 'good' : 'bad' },
+      ...moved.lines.map((row) => ({
+        label: `${row.label} (£${Math.abs(row.now).toFixed(1)})`,
+        value: signed(row.delta),
+        tone: row.delta >= 0 ? 'good' : 'bad',
+      })),
+    ] : [];
     return {
       type: 'breakdown',
       title: 'Treasury',
@@ -139,6 +155,8 @@ export function registerTooltips(game) {
         { label: 'Debt', value: `£${Math.round(view.debt)}` },
         { label: 'Borrowing room', value: `£${Math.round(Math.max(0, debtCapacity(nation) - view.debt))}` },
       ],
+      effects,
+      footer: moved ? 'Effects: what moved this week, largest first.' : null,
     };
   });
 
@@ -337,20 +355,30 @@ export function registerTooltips(game) {
         value: pt(bd.unemployment), tone: 'bad',
       });
     }
+    // Bu haftanin farki: hangi bilesen oynadi (pulse.js).
+    const moved = stabilityAttribution(nation);
+    const effects = moved
+      ? [
+        { label: 'Change vs last week', value: pt(moved.delta), tone: moved.delta >= 0 ? 'good' : 'bad' },
+        ...moved.parts.map((row) => ({ label: row.label, value: pt(row.delta), tone: row.delta >= 0 ? 'good' : 'bad' })),
+      ]
+      : [
+        { label: 'Population growth', value: 'follows it' },
+        { label: 'Province control', value: 'recovers faster when high' },
+        { label: 'Factory hiring', value: 'faster when high' },
+      ];
     return {
       type: 'breakdown',
       title: 'Stability',
       value: `${(bd.total * 100).toFixed(1)}%`,
       text: 'How firmly the country holds together: household satisfaction minus '
         + 'occupation, war and unemployment. Satisfaction rises when the basket gets '
-        + 'cheaper, tax falls or welfare rises.',
+        + 'cheaper, tax falls or welfare rises. It steers population growth, '
+        + 'province control and factory hiring.',
       rows,
-      effects: [
-        { label: 'Population growth', value: 'follows it' },
-        { label: 'Province control', value: 'recovers faster when high' },
-        { label: 'Factory hiring', value: 'faster when high' },
-      ],
-      footer: 'Click the figure to pin this breakdown.',
+      effects,
+      footer: moved ? 'Effects: what moved this week. Click the figure to pin the breakdown.'
+        : 'Click the figure to pin this breakdown.',
     };
   });
 

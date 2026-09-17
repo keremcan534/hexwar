@@ -51,8 +51,21 @@ function chart(samples, { width = 300, height = 96 } = {}) {
     <div class="mc-axis"><span>${compact(min)}</span><span>${samples.length} weeks</span><span>${compact(max)}</span></div>`;
 }
 
-/** Geçmiş kartı: başlık, şu anki değer, değişim ve eğri. */
-function historyCard(title, samples, current, unit) {
+/**
+ * "Bu hafta" blogu: atif satirlari (bkz. game/pulse.js). Satir yoksa blok
+ * yok — ilk haftada anlatacak fark olmaz, bos baslik basilmaz.
+ * @param {{label:string, value:string, tone?:string, sub?:boolean}[]} rows
+ */
+function pulseBlock(rows) {
+  if (!rows?.length) return '';
+  return `<div class="mc-pulse"><small>This week</small>${rows.map((row) => `
+      <div class="mc-pulse-row${row.sub ? ' sub' : ''}">
+        <span>${esc(row.label)}</span><b class="${row.tone ?? ''}">${esc(row.value)}</b>
+      </div>`).join('')}</div>`;
+}
+
+/** Geçmiş kartı: başlık, şu anki değer, değişim, bu haftanin atifi ve eğri. */
+function historyCard(title, samples, current, unit, pulseRows = null) {
   const first = samples?.[0];
   const last = samples?.[samples.length - 1];
   const change = first > 0 && last != null ? (last / first - 1) * 100 : null;
@@ -62,6 +75,7 @@ function historyCard(title, samples, current, unit) {
     </div>
     ${change == null ? '' : `<div class="mc-change ${change >= 0 ? 'up' : 'down'}">
       ${change >= 0 ? '+' : '−'}${Math.abs(change).toFixed(1)}% over the recorded period</div>`}
+    ${pulseBlock(pulseRows)}
     ${chart(samples)}
     <p class="mc-hint">Click for the world ranking.</p>`;
 }
@@ -88,7 +102,7 @@ function rankCard(title, rows, meId, unit) {
  * Makro ölçüleri gecikmeli bilgi kartına bağlar.
  *
  * @param {HTMLElement} root  üst çubuktaki `.macro-strip`
- * @param {object} api  `{ series(metric), ranking(metric), playerId }`
+ * @param {object} api  `{ series(metric), ranking(metric), playerId, pulse?(metric) }`
  */
 export function bindMacroCards(root, api) {
   if (!root) return;
@@ -138,7 +152,7 @@ export function bindMacroCards(root, api) {
       card.innerHTML = rankCard(`${label} — world ranking`, rows, api.playerId(), unit);
     } else {
       const series = api.series(metric);
-      card.innerHTML = historyCard(label, series.samples, series.current, unit);
+      card.innerHTML = historyCard(label, series.samples, series.current, unit, api.pulse?.(metric));
     }
     place(element);
   };
