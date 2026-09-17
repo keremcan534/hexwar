@@ -40,6 +40,7 @@ import {
 import {
   GOODS, MILITARY_EQUIPMENT_IDS, PRICE_ANCHOR, PRICE_SPEED,
 } from '../../src/game/economy.js';
+import { PRICE_CEILING, PRICE_FLOOR } from '../../src/game/priceBand.js';
 
 // 1560 hafta (30 yil). KISA UFUK YANILTIR: dunya yapay olarak yuksek
 // fiyatlarla acilir (1836'da hicbir fabrika yok, her mal kit) ve denge
@@ -76,7 +77,7 @@ function marketSlice(world) {
     realTraded += Math.min(good.supply, good.demand) * base;
     index += good.price / base;
     counted++;
-    if (good.price <= base * 0.12 + 1e-6 || good.price >= base * 8 - 1e-6) pinned++;
+    if (good.price <= base * PRICE_FLOOR + 1e-6 || good.price >= base * PRICE_CEILING - 1e-6) pinned++;
   }
   // Reel URETIM ulke defterinden gelir (economy.js realGdp): katma deger,
   // taban fiyatlarla. Reel TUKETIM piyasadan. Ikisi ayri sorulara cevaptir ve

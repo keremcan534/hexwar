@@ -1,7 +1,7 @@
 // Dunya piyasasinin dengeye gelip gelmedigini olcer.
 //
-// Fiyat her hafta arz/talep dengesizligiyle carpilir ve base*0.12 - base*8
-// bandina kirpilir. Bir mal bandin ucunda takiliyorsa sebep bandin darligi
+// Fiyat her hafta arz/talep dengesizligiyle carpilir ve priceBand.js bandina
+// (taban fiyatin PRICE_FLOOR…PRICE_CEILING kati) kirpilir. Bir mal bandin ucunda takiliyorsa sebep bandin darligi
 // degil, zincirde yapisal bir aciktir: ya hic uretilmiyor ya hic tuketilmiyor.
 // Burada hangi mallarin takildigi ve *neden* takildigi listelenir.
 
@@ -11,6 +11,7 @@ import { generateWorld } from '../src/world/worldgen.js';
 import { generateNations } from '../src/world/nations.js';
 import { FACTORIES, GOODS } from '../src/game/economy.js';
 import { provinceRgoJobs, rgoLaborScale } from '../src/game/provinces.js';
+import { PRICE_CEILING, PRICE_FLOOR } from '../src/game/priceBand.js';
 
 function headless(seed) {
   const game = Object.create(Game.prototype);
@@ -29,8 +30,8 @@ function headless(seed) {
   return game;
 }
 
-const FLOOR = 0.12;
-const CEIL = 8;
+const FLOOR = PRICE_FLOOR;
+const CEIL = PRICE_CEILING;
 const EPS = 0.02;   // bandin ucune bu kadar yakinsa "takili" sayilir
 
 function bandState(state, base) {

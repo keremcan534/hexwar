@@ -13,6 +13,7 @@ import {
   finding, reportFindings,
 } from './harness.mjs';
 import { FACTORIES, factoryMargin } from '../../src/game/economy.js';
+import { PRICE_CEILING } from '../../src/game/priceBand.js';
 
 const WEEKS = Number(process.argv[2] ?? 520);
 
@@ -37,7 +38,7 @@ for (let w = 0; w < WEEKS; w++) {
   game.turns.endTurn();
   for (const id of GOOD_IDS) {
     const g = world.market.goods[id];
-    if (g.price >= GOODS[id].basePrice * 8 - 1e-6) ceilingWeeks[id]++;
+    if (g.price >= GOODS[id].basePrice * PRICE_CEILING - 1e-6) ceilingWeeks[id]++;
   }
   for (const typeId of Object.keys(FACTORIES)) {
     if (factoryMargin(world, typeId) > 0) marginPositiveWeeks[typeId]++;

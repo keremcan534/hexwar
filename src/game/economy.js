@@ -4,6 +4,7 @@
 
 import { canAfford, pay } from './cities.js';
 import { POPULATION_SCALE } from './populationScale.js';
+import { PRICE_CEILING, PRICE_FLOOR } from './priceBand.js';
 import {
   RGO_TYPES, provinceOutput, provincePopulation, provinceSoldiers, rgoJobsOf, trackShareOf,
 } from './provinces.js';
@@ -4557,11 +4558,13 @@ function updatePrices(market) {
     const anchor = clamp(
       (base - state.price) / Math.max(base, state.price), -1, 1,
     ) * PRICE_ANCHOR;
-    // Band 0.25-4'ten 0.12-8'e genisletildi. Zincir 12 maldan 43'e cikinca
-    // kitlik ve bolluk cok daha keskin oluyor; dar bandda fiyatlar raya yapisip
-    // hic hareket etmiyordu (olculdu: 80. turda 43 maldan yalniz 1'i oynuyordu).
+    // Bant priceBand.js'tedir (±%50). Tarihçe: 0.25-4'ten 0.12-8'e
+    // genişletilmişti, çünkü o gün fiyat çapası yoktu ve dar bantta fiyatlar
+    // raya yapışıp hiç oynamıyordu (80. turda 43 maldan 1'i). Çapa geldikten
+    // sonra geniş bant malların yarısını iki uca çiviledi; bkz. priceBand.js.
     state.price = clamp(
-      state.price * (1 + imbalance * PRICE_SPEED + anchor), base * 0.12, base * 8,
+      state.price * (1 + imbalance * PRICE_SPEED + anchor),
+      base * PRICE_FLOOR, base * PRICE_CEILING,
     );
     state.trend = state.price - state.previousPrice;
     state.traded = Math.min(state.supply, state.demand);

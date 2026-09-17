@@ -22,6 +22,7 @@ import { nationManpower } from '../../src/game/recruitment.js';
 import { regimentCount, soldiersOf } from '../../src/game/units.js';
 import { atWar } from '../../src/game/diplomacy.js';
 import { ensureConstruction } from '../../src/game/construction.js';
+import { PRICE_CEILING, PRICE_FLOOR } from '../../src/game/priceBand.js';
 
 /**
  * Bassiz oyun. DOM, zamanlayici, cizim yok; simulasyon tam calisir.
@@ -246,8 +247,8 @@ export function marketSnapshot(world) {
       ratio: g.price / GOODS[id].basePrice,
       supply: g.supply,
       demand: g.demand,
-      atCeiling: g.price >= GOODS[id].basePrice * 8 - 1e-6,
-      atFloor: g.price <= GOODS[id].basePrice * 0.12 + 1e-6,
+      atCeiling: g.price >= GOODS[id].basePrice * PRICE_CEILING - 1e-6,
+      atFloor: g.price <= GOODS[id].basePrice * PRICE_FLOOR + 1e-6,
     };
   }
   return out;

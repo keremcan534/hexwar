@@ -24,15 +24,16 @@ import {
   armyWeeklyDemand, equipmentStock, needAmount, workshopArmsOutput,
 } from './economy.js';
 import { RGO_TYPES, depositsOf, provinceOutput } from './provinces.js';
+import { bandPosition } from './priceBand.js';
 import { constructionPower, ensureConstruction } from './construction.js';
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
 
-/** Fiyat bandın ucuna yapışmış mı? Eşikler updatePrices'ın 0.12–8 bandından. */
+/** Fiyat bandın ucuna yapışmış mı? Eşikler priceBand.js'ten. */
 export function pricePin(price, base) {
-  const ratio = price / base;
-  if (ratio >= 7.9) return 'ceiling';
-  if (ratio <= 0.13) return 'floor';
+  const position = bandPosition(price / base);
+  if (position >= 0.98) return 'ceiling';
+  if (position <= -0.98) return 'floor';
   return null;
 }
 
@@ -321,7 +322,8 @@ function priceReasons(world, nation, row) {
   }
   const expensive = [...inputs]
     .map((inputId) => ({ inputId, ratio: world.market.goods[inputId].price / GOODS[inputId].basePrice }))
-    .filter((entry) => entry.ratio >= 1.6)
+    // Bandın üst yarısı: ±%50 bantta eski 1.6 eşiği hiç tetiklenmezdi.
+    .filter((entry) => bandPosition(entry.ratio) >= 0.5)
     .sort((a, b) => b.ratio - a.ratio)
     .slice(0, 2);
   for (const entry of expensive) {

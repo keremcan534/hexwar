@@ -18,6 +18,7 @@ import {
 } from './harness.mjs';
 import { FACTORIES, FOOD_GOODS, priceOf } from '../../src/game/economy.js';
 import { RGO_TYPES, depositsOf } from '../../src/game/provinces.js';
+import { PRICE_CEILING, PRICE_FLOOR } from '../../src/game/priceBand.js';
 
 const SEED = 'market-audit';
 
@@ -173,8 +174,8 @@ sub('Uretim zincirinin olu halkalari (120 hafta)');
       demand: g.demand,
       price: g.price,
       ratio: g.price / base,
-      ceiling: g.price >= base * 8 - 1e-6,
-      floor: g.price <= base * 0.12 + 1e-6,
+      ceiling: g.price >= base * PRICE_CEILING - 1e-6,
+      floor: g.price <= base * PRICE_FLOOR + 1e-6,
       built: world.nations.some((n) => (n.economy?.factories ?? [])
         .some((f) => Object.keys(FACTORIES[f.typeId].outputs).includes(id))),
     };

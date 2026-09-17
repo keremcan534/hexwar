@@ -17,6 +17,7 @@ import { controllerOf } from './control.js';
 import { DEFAULT_ZONE, ZONE_RULES } from '../world/macro.js';
 import { CULTURE, resolveRevolts, runProvinceCulture } from './culture.js';
 import { POPULATION_SCALE } from './populationScale.js';
+import { bandPosition } from './priceBand.js';
 
 /**
  * Province kaynakları. Tahıl kasten baskın tutuldu: ordunun erzağı ve nüfusun
@@ -771,13 +772,18 @@ function rgoPriceDrive(world, goodId) {
   // Eski kayitlarda basePrice yok: oran 1 kabul edilir (notr, eski davranis).
   const base = state.basePrice ?? state.price;
   if (!(base > 0)) return 1;
-  // ORANIN KENDISI. Eski formul `0.5 + oran*0.5` idi ve TABANI 0.5'ti: fiyati
-  // cokmus mal bile yarim hizla gelismeye devam ediyordu. Olculdu (1040 hafta,
-  // rgo-sweep): dunya arz/talep orani 1.50'den 2.03'e TIRMANIYOR ve fiyat
-  // endeksi 1.01'den 0.49'a iniyor — cunku degersiz tarlaya yatirim hic
-  // durmuyordu. Yatirim urunun degeriyle orantilidir: taban fiyatta 1.0,
-  // yarisinda 0.5, bantta cakili malda neredeyse durur.
-  return clamp(state.price / base, RGO_PRICE_DRIVE_MIN, RGO_PRICE_DRIVE_MAX);
+  // Eski formul `0.5 + oran*0.5` idi ve TABANI 0.5'ti: fiyati cokmus mal bile
+  // yarim hizla gelismeye devam ediyordu. Olculdu (1040 hafta, rgo-sweep):
+  // dunya arz/talep orani 1.50'den 2.03'e TIRMANIYOR ve fiyat endeksi
+  // 1.01'den 0.49'a iniyor — cunku degersiz tarlaya yatirim hic durmuyordu.
+  //
+  // BANDIN ICINDEKI YER. Surucu oranin kendisiydi (0.05…2.5); fiyat ±%50
+  // banda sikisinca tabana cakili mal yine 0.5 hizla gelisirdi — ayni
+  // tirmanis. Uclar korunur: tabanda 0.05, taban fiyatta 1, tavanda 2.5.
+  const position = bandPosition(state.price / base);
+  return position < 0
+    ? 1 + position * (1 - RGO_PRICE_DRIVE_MIN)
+    : 1 + position * (RGO_PRICE_DRIVE_MAX - 1);
 }
 
 /**
@@ -800,8 +806,13 @@ function updateDemandScale(world, econ, goodId) {
   if (!state) return;
   const base = state.basePrice ?? state.price;
   if (!(base > 0)) return;
-  // Taban fiyatin yarisi ve alti tam frendir; taban fiyat ve ustu frensiz.
-  const target = clamp(Math.sqrt(state.price / base), RGO_DEMAND_MIN, 1);
+  // Bandin tabani tam frendir; taban fiyat ve ustu frensiz. Eski egri √oran
+  // idi ve tam frene oran 0.25'te ulasiyordu: ±%50 bantta oran oraya inmez,
+  // tabana cakili malin tarlasi en fazla √0.5 = 0.71'e kuculurdu.
+  const position = Math.min(0, bandPosition(state.price / base));
+  const target = clamp(
+    Math.sqrt(1 + position * (1 - RGO_DEMAND_MIN * RGO_DEMAND_MIN)), RGO_DEMAND_MIN, 1,
+  );
   const next = clamp(scale + (target - scale) * RGO_DEMAND_APPROACH, RGO_DEMAND_MIN, 1);
   // Tam tarlada alan yazilmaz: kayit ve kopya kucuk kalir, 1 varsayilandir.
   if (next >= 1 && !Number.isFinite(current)) return;
