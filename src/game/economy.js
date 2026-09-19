@@ -3731,7 +3731,25 @@ function adjustFiscalAI(nation, areas = FULL_FISCAL) {
       for (const id of TAX_CLASS_IDS) {
         const policy = `tax${id[0].toUpperCase()}${id.slice(1)}`;
         const delta = Math.round(step * (weights[id] ?? 1));
-        if (delta && setBudgetPolicy(nation, policy, economy.tax[id] + delta)) moved = true;
+        if (!delta) continue;
+        let target = economy.tax[id] + delta;
+        if (delta > 0) {
+          // GECIM TAVANI. Yukaridaki `strained` freni sinif ZATEN cokene kadar
+          // acilmiyordu, cunku `canAffordNeeds` yalniz YASAM kademesine bakar:
+          // ekmegini alabilen orta sinif "zorlanmis" sayilmiyor ve merdiven
+          // haftada +5 ile %100'e kadar tirmaniyordu. Olculdu (2 tohum x 30
+          // yil, AUTO): orta/ust oran kampanyanin ~%90'inda >=90, orta sinif
+          // payi %17 -> %0.02, ust %5 -> %0.03. Ayni ulus saf YZ olarak da ayni
+          // sonucu veriyor — bu YZ maliyesinin genel davranisiydi.
+          //
+          // Esik UYDURULMADI: `classTaxThresholds` sepetin %60'ini birakan
+          // orani zaten hesapliyor ve alerts.js oyuncuya onu oneriyor. Artis o
+          // orani gecmez; ulasilamayan esikte (sepet gelirin ustunde) fren
+          // uygulanmaz, cunku orada vergi kaldirac degildir.
+          const th = classTaxThresholds(nation, id);
+          if (th?.survivalReachable) target = Math.min(target, Math.max(economy.tax[id], th.survival));
+        }
+        if (setBudgetPolicy(nation, policy, target)) moved = true;
       }
     }
     // EKMEK VERGIDEN ONCE. Fren vergiyi ARTIRMAYI durduruyordu ama hic
@@ -3753,6 +3771,16 @@ function adjustFiscalAI(nation, areas = FULL_FISCAL) {
         const policy = `tax${id[0].toUpperCase()}${id.slice(1)}`;
         setBudgetPolicy(nation, policy, economy.tax[id] + 5);
       }
+    }
+    // ESIGIN USTUNDE KALAN ORAN INER. Artis tavani yalniz YENI artisi durdurur;
+    // gelir dusunce (ya da esigin kendisi inince) sinif tavanda kilitli kalirdi.
+    // Eski kayitlarda oran coktan %100 oldugu icin bu dal onlari da onarir.
+    for (const id of TAX_CLASS_IDS) {
+      const th = classTaxThresholds(nation, id);
+      const rate = economy.tax[id] ?? 0;
+      if (!th?.survivalReachable || rate <= th.survival) continue;
+      const policy = `tax${id[0].toUpperCase()}${id.slice(1)}`;
+      if (setBudgetPolicy(nation, policy, Math.max(th.survival, rate - 5))) moved = true;
     }
     if (moved) {
       areas.report?.('budget',
