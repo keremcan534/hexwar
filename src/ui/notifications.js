@@ -87,6 +87,23 @@ export class Notifications {
       return;
     }
     const { card } = state;
+    // BASLIK DA TAZELENIR. Model katmani basligi guncelliyordu ama kart yalniz
+    // govdeyi yaziyordu: 1870'teki yeni aclik karti 1836'nin basligini ve
+    // "1016 hafta" suresini tasiyordu (Astra6 B5). Baslik yok/var gecisinde
+    // kartin iskeleti degistigi icin o durumda kart bastan kurulur.
+    const titleNode = card.querySelector('.notify-title');
+    if (Boolean(titleNode) !== Boolean(entry.title) || card.dataset.kind !== entry.kind) {
+      // Basliksiz karta baslik geldi (ya da tersi), ya da olayin TURU degisti
+      // (ikon/etiket/ton/ttl onunla gelir): iskelet degisti, kart yerinde
+      // yeniden kurulur. `remove()` cagrilmaz — o, modeldeki kaydi da kapatir
+      // ve kart ile model ayrisirdi.
+      const fresh = this.build(entry);
+      card.replaceWith(fresh);
+      state.card = fresh;
+      this.restartTimer(entry);
+      return;
+    }
+    if (titleNode && titleNode.textContent !== entry.title) titleNode.textContent = entry.title;
     card.querySelector('.notify-body').textContent = entry.title ? (entry.body ?? '') : entry.text;
     const count = card.querySelector('.notify-count');
     count.textContent = entry.count > 1 ? String(entry.count) : '';
@@ -106,6 +123,7 @@ export class Notifications {
     const tier = entry.tier ?? 0;
     const weight = tier >= 3 ? ' notify-existential' : tier >= 2 ? ' notify-major' : '';
     card.className = `notify-card notify-${entry.tone}${entry.ttl ? '' : ' notify-sticky'}${weight}`;
+    card.dataset.kind = entry.kind;
     card.style.setProperty('--notify-ttl', `${entry.ttl || 0}ms`);
     const headline = entry.title
       ? `<b class="notify-title">${escapeHtml(entry.title)}</b>`

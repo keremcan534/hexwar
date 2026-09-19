@@ -414,10 +414,14 @@ export function makePeace(game, a, b, options = {}) {
     game.notifications?.dismissKeys?.([`war-${other.id}`, `crisis-${other.id}`]);
     // `settle: false` geldiginde toprak devrini anlasma yapar; isgal sayisini
     // burada bildirmek yaniltici olur (her zaman 0 yazardi).
+    // Anahtar savasa ozel: anahtarsiz kart TURE gore birlesiyordu, yani ayni
+    // hafta ikinci bir baris ilkinin kartina yapisip "Peace with X" derken
+    // Y ile imzalanmis oluyordu. peace.js kendi kartini ayni anahtarla basar;
+    // ikisi birlesince tek kart kalir (Astra6 B5).
     game.turns.addLog(options.settle === false
       ? `Peace signed with ${other.name}.`
       : `Peace signed with ${other.name}; ${transferred} occupied provinces changed sovereignty.`,
-    { kind: 'PEACE' });
+    { kind: 'PEACE', key: `peace-${other.id}` });
   }
   return true;
 }

@@ -198,7 +198,19 @@ export function tileEfficiency(tile, cultureOrNation, turn) {
  * gecmez. Ilhak sohreti devreye girince bu kacak bir yol oldu — olculdu
  * (tohum OB3-1836, tur 755): oyuncu uc cephedeyken dordunculeri eklendi.
  */
-export const MAX_COALITION_ATTACKERS = MAX_ATTACKERS_ON_TARGET;
+/**
+ * DAIRESEL IMPORT TUZAGI. Eskiden `export const MAX_COALITION_ATTACKERS =
+ * MAX_ATTACKERS_ON_TARGET;` yaziyordu ve bu, MODUL YUKLENIRKEN diplomacy.js'in
+ * sabitini okuyordu. diplomacy.js de infamy.js'i import ettigi icin, giris
+ * noktasi once diplomacy.js'e ulastiginda sabit henuz kurulmamis oluyor ve
+ * yukleme "Cannot access 'MAX_ATTACKERS_ON_TARGET' before initialization" ile
+ * cokuyordu (olculdu: `import('src/game/diplomacy.js')` ve hegemony.js tek
+ * baslarina patliyor; oyunun kendi girisi game.js sirayi maskeliyor).
+ * Fonksiyon CAGRILDIGINDA okur, yuklenirken degil.
+ */
+export function maxCoalitionAttackers() {
+  return MAX_ATTACKERS_ON_TARGET;
+}
 
 /**
  * Koalisyon zarinin haftalik gecme olasiligi. 0.5'ten 0.08'e: yarim ihtimal,
@@ -230,7 +242,7 @@ export function checkCoalitions(game, rng) {
       // Iki cephesi olan devlet koalisyona da binmez: ai.js'teki ayni kural,
       // yoksa ucuncu-dorduncu savas buradan geliyordu (audit:war-pressure).
       if (attackerCount(world, other.id) >= 2) continue;
-      if (fronts >= MAX_COALITION_ATTACKERS) break;
+      if (fronts >= maxCoalitionAttackers()) break;
       if (!contacts[other.id][target.id]) continue;
       // Umutsuz derecede zayıf olan katılmaz; koalisyon intihar değil.
       if (nationStrength(world, other) < nationStrength(world, target) * 0.25) continue;

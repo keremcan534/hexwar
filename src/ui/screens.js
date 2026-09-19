@@ -977,7 +977,9 @@ export class Screens {
     const score = board.find((entry) => entry.nation.id === me.id);
     const rank = board.findIndex((entry) => entry.nation.id === me.id) + 1;
     const foreignPct = population ? Math.round((foreign / population) * 100) : 0;
-    const taxes = me.economy?.taxes ?? {};
+    // Alan adi v16'da `taxes` -> `tax` oldu; ozet eskisini okudugu icin
+    // oyuncuya her zaman 0/0/0 gosteriyordu (Astra6 B2).
+    const taxes = me.economy?.tax ?? {};
 
     return `<div class="nation-hero card">
         <span class="flag-hero" data-flag-nation="${me.id}" data-flag-w="210" data-flag-h="140"></span>
@@ -2266,7 +2268,9 @@ export class Screens {
           terms: [...this.peaceSelection.terms],
         };
         if (!signPeace(game, me.id, this.peaceTarget, offer)) return;
-        game.turns.addLog(`Peace signed with ${game.world.nations[this.peaceTarget].name}.`);
+        // Kart BURADAN BASILMAZ: barisin tek sahibi peace.js'tir (sartlari ve
+        // devredilen kumeleri o biliyor). Ucuncu bir satir eklemek ayni baris
+        // icin uc kart uretiyordu (Astra6 B5: peace-13 / PEACE / INFO).
         this.peaceTarget = null;
         this.close();
         game.emit('turn', game.turns.turn);
@@ -2545,6 +2549,9 @@ export class Screens {
             title: `Alliance with ${target.name}`,
             detail: 'An attack on one is a call to the other.',
           });
+          // Harita diplomasi kipindeyse rengi ilişki değişir değişmez tazelensin
+          // (alliances.js `world` alır, oyunu görmez; olayı buradan yayıyoruz).
+          game.emit('diplomacy');
         } else {
           game.turns.addLog(`${target.name} declines the alliance.`, {
             kind: 'DIPLOMACY', key: `ally-no:${targetId}`,
@@ -2563,6 +2570,7 @@ export class Screens {
             title: `The alliance with ${target?.name ?? '?'} is dissolved`,
             detail: 'Former partners remember such things.',
           });
+          game.emit('diplomacy');
         }
         this.refresh();
       };

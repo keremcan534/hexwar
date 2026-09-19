@@ -4,7 +4,7 @@ import { makeRng } from '../core/rng.js';
 import { settle } from './treasury.js';
 import {
   UNIT_TYPES, advanceEntrenchment, clearPath, createUnit, placeUnit, refreshArmy,
-  removeUnit, resetUnitIds, stackFull,
+  regimentCount, removeUnit, resetUnitIds, stackFull,
 } from './units.js';
 import {
   advanceMovement, clearDirective, orderMove, resumeDirectives,
@@ -898,6 +898,14 @@ export class TurnManager {
   }
 
   killUnit(unit) {
+    // GERCEK KAYIP SAYACI. Haftalik olay taramasi (events.js) alay sayisindaki
+    // HER azalmayi "yok edildi" sayiyordu; terhis ve oyuncunun kendi dagitma
+    // dugmesi de oradan geciyor ve hic catisma olmadan "The army is broken"
+    // karti cikiyordu (Astra6 B4, T7'de 5/13 terhisle dogrulandi). Yok etme
+    // ile birakma zaten ayri yollar: killUnit oldurur, disband birakir.
+    // Sayac kayda girmez; olay taramasi her hafta okuyup sifirlar.
+    const owner = this.world.nations[unit.nationId];
+    if (owner) owner.regimentsKilled = (owner.regimentsKilled ?? 0) + regimentCount(unit);
     // Yok edilen (ya da teslim olan) tumende hala tutulan adamlar KAYIPTIR:
     // nufustan da duserler. Kalan tutma birakilmazsa o insanlar sonsuza dek
     // "askerde" gorunur ve province bir daha onlari asker olarak veremezdi.

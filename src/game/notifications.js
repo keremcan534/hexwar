@@ -94,6 +94,16 @@ export class NotificationCenter {
       if (meta.title != null) existing.title = meta.title;
       if (meta.body != null) existing.body = meta.body;
       if (meta.tier != null) existing.tier = meta.tier;
+      // TUR DEGISTIYSE KIMLIK DE DEGISIR. `kind`/ikon/ton/etiket/ttl eskiden
+      // hic tazelenmiyordu: ARMY kartina CRISIS olayi birlesince kart 🛡 ve
+      // "Army" etiketiyle, uzerine sekiz saniyelik ttl ile kaliyordu (olculdu).
+      if (kindId !== existing.kind) {
+        existing.kind = kindId;
+        existing.icon = meta.icon ?? kind.icon;
+        existing.tone = meta.tone ?? kind.tone;
+        existing.label = meta.label ?? kind.label;
+        existing.ttl = meta.ttl ?? kind.ttl;
+      }
       existing.tile = meta.tile ?? existing.tile;
       existing.at = now;
       this.game.emit('notify', { entry: existing, repeated: true });

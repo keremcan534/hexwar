@@ -4559,6 +4559,10 @@ function recordPulse(nation, turn) {
 /** Fiyat grafiginin tuttugu ornek sayisi (haftalik). */
 export const PRICE_HISTORY = 60;
 
+/** Bos arastirma hatirlatmasinin tekrar araligi (hafta). Yarim yil: duran bir
+ *  karar unutulmasin ama kart da dirdir etmesin. */
+const IDLE_RESEARCH_REMINDER = 26;
+
 function updatePrices(market) {
   let totalGdp = 0;
   for (const [id, state] of Object.entries(market.goods)) {
@@ -4760,13 +4764,22 @@ export function beginEconomy(game) {
       begin(fill());
     }
     if (isPlayer) {
+      const turn = world.turn ?? 0;
       if (nation.research.current) {
-        if (nation.research.idleSince != null) {
-          delete nation.research.idleSince;
+        if (nation.research.idleNotifiedAt != null) {
+          delete nation.research.idleNotifiedAt;
           game.notifications?.dismissKeys?.(['research-idle']);
         }
-      } else if (availableTechs(nation).length && nation.research.idleSince == null) {
-        nation.research.idleSince = world.turn ?? 0;
+      } else if (availableTechs(nation).length
+        // TEK SEFERLIK DEGIL, HATIRLATMA. Eski hali "bir kez bastim" isaretine
+        // bakiyordu; oyuncu karti X ile kapattiginda (kart ttl:0 kalici),
+        // yigin 12 karti astiginda ya da kayit yuklendiginde isaret dolu +
+        // kart yok durumu KALICI sessizlige donuyordu (Astra6 R1: 52 haftada
+        // 0 kart, 78 puan bosta). Akademi bosta durdukca yarim yilda bir
+        // yeniden soyler; oyuncu bir teknoloji secince isaret silinir.
+        && (nation.research.idleNotifiedAt == null
+          || turn - nation.research.idleNotifiedAt >= IDLE_RESEARCH_REMINDER)) {
+        nation.research.idleNotifiedAt = turn;
         announce(game, nation, {
           kind: 'RESEARCH', tier: TIER.IMPORTANT, key: 'research-idle', ttl: 0,
           title: 'The academy is waiting',

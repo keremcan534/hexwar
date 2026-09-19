@@ -380,8 +380,24 @@ export function deserialize(game, data) {
     // yeniden kurar, v20 biçimini de yenisine göçürür.
     nation.politics = saved.politics ?? null;
     // Eski kayitta yok: ensureResearch bos kayitla kurar (teknoloji sifirdan
-    // baslar, takvim kapisi zaten calismaya devam eder).
-    nation.research = saved.research ?? null;
+    // baslar, takvim kapisi zaten calismaya devam eder). Diziler KOPYALANIR —
+    // dosyanin geri kalani da oyle yapiyor (chronicle/treaties/generals) ve
+    // takma ad birakmak ayni yuku iki kez deserialize eden betiklerde
+    // canli duruma sizdiriyordu.
+    nation.research = saved.research
+      ? {
+        ...saved.research,
+        done: [...(saved.research.done ?? [])],
+        queue: [...(saved.research.queue ?? [])],
+      }
+      : null;
+    // `idleNotifiedAt` KAYIT ALANI DEGIL, "bu karti en son ne zaman bastim"
+    // isaretidir; bildirimler kayda girmedigi icin yuklemeden sonra kart yok
+    // ama isaret dolu kaliyor ve uyari bir daha hic cikmiyordu (Astra6 R1).
+    if (nation.research) {
+      delete nation.research.idleNotifiedAt;
+      delete nation.research.idleSince;   // 0174f86'nin eski adi
+    }
     nation.construction = saved.construction ?? null;
     // v14 gocu ensure'dan ONCE: ensure eski bina tiplerini tanimayip atardi,
     // goc ham kayittan sayar (bkz. construction.migrateConstructionV14).

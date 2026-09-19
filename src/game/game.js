@@ -59,6 +59,9 @@ const EVENTS = [
   'save',
   // Oyuncu ulusu degisti (kurulus ekraninda "play as"): HUD bastan kurulur.
   'player',
+  // Iliski hafta ICINDE degisti (elle savas ilani, ittifak kurma/bozma):
+  // diplomasi harita kipi rengini onbellekten okur, tazelenmesi gerekir.
+  'diplomacy',
 ];
 
 /** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */
@@ -891,6 +894,10 @@ export class Game {
     if (ok) {
       this.selectUnit(this.selectedUnit);
       this.emit('units', this.selectedUnit);
+      // Diplomasi kipi rengini ILISKIDEN okur ve onbellege alir; hafta icinde
+      // degisen iliski (duraklatilmis oyunda elle ilan) haftalik tike kadar
+      // haritada gorunmuyordu — kare notr gri kalirken ulke ultimatomdaydi.
+      this.emit('diplomacy');
       this.requestRender();
     }
     return ok;

@@ -172,7 +172,14 @@ export function snapshotNation(world, nation) {
     unreconciled: L.unreconciled ?? 0,
     creditPenalty: L.creditPenalty ?? 0,
     // --- politika ---
-    taxRate: e.taxRate ?? 0,
+    // `economy.taxRate` v17'de silindi; olcum sifir okuyordu. Sinif basina
+    // oran tek alandir (economy.tax) — ortalama da ondan cikar.
+    taxLower: e.tax?.lower ?? 0,
+    taxMiddle: e.tax?.middle ?? 0,
+    taxUpper: e.tax?.upper ?? 0,
+    taxRate: e.tax
+      ? (e.tax.lower + e.tax.middle + e.tax.upper) / 3
+      : 0,
     tariff: e.tariff ?? 0,
     education: e.social?.education ?? 0,
     welfare: e.social?.welfare ?? 0,

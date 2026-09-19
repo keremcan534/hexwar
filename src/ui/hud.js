@@ -338,7 +338,19 @@ export class Hud {
       this.showWars();
       this.refreshDataMode();
     });
-    game.on('peace', () => { this.showWars(); this.refreshDataMode(); });
+    // Barıştan sonra seçili kare paneli de tazelenir: "At war / Offer peace"
+    // satırı bir sonraki haftalık yenilemeye kadar ekranda kalıyordu (Astra6 B5).
+    game.on('peace', () => {
+      this.showWars();
+      this.refreshDataMode();
+      if (game.selected) this.showTile(game.selected);
+    });
+    // Hafta içinde değişen ilişki: duraklatılmış oyunda da harita hemen yenilenir.
+    game.on('diplomacy', () => {
+      this.showWars();
+      this.refreshDataMode();
+      if (game.selected) this.showTile(game.selected);
+    });
     // Otomatik kayit da elle kayit da ayni satiri tazeler (bkz. game.flushAutosave).
     game.on('save', () => this.refreshSaveInfo());
     // Gün tiki yalnız tarihi oynatır. Eskiden her gün tam onTurn koşuyordu:

@@ -86,9 +86,23 @@ export function announce(game, nation, spec) {
   return text;
 }
 
-/** Yil etiketi: 1836 baslangicli haftalik takvim. */
+/**
+ * Yil etiketi: 1836 baslangicli haftalik takvim.
+ *
+ * Eski formul `1836 + floor(turn/52)` idi ve iki bagimsiz hata tasiyordu:
+ * 52 tur x 7 gun = 364 gun (yilda 1.24 gun kayma) ve tur 1'den basladigi icin
+ * bastan bir haftalik ileri sapma. Olculdu: 3340 turun 467'sinde (%14) etiket
+ * gercek takvimden ileri; 1880 Kasim'indaki temerrut Chronicle'da 1881
+ * gorunuyordu (Astra6 B3). Kaynak artik tek: HUD'un kullandigi gercek takvim
+ * (bkz. ui/hud.js gameDate — orada da 1836-01-01 + (tur-1) x 7 gun).
+ *
+ * NOT: `technology.yearOfTurn` BILEREK ayri kaliyor — o bir ETIKET degil oyun
+ * kurali (teknolojinin aktivasyon yili, erken arastirma cezasi); formulunu
+ * degistirmek butun teknoloji takvimini kaydirirdi.
+ */
 export function chronicleYear(turn) {
-  return 1836 + Math.floor((turn ?? 0) / 52);
+  const day = Math.max(0, (turn ?? 0) - 1) * 7;
+  return new Date(Date.UTC(1836, 0, 1 + day)).getUTCFullYear();
 }
 
 /**

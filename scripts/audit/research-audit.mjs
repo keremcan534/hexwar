@@ -9,13 +9,17 @@
 // dogrular ya da yanlislar; onlara gore ayarlanmaz.
 
 import {
-  headless, section, sub, table, finding, reportFindings, n0, n1, pct,
+  headless, section, sub, table, finding, reportFindings, n0, n1, n2, pct,
 } from './harness.mjs';
 import { researchPointsOf } from '../../src/game/technology.js';
+import { FINAL_TURN as CAMPAIGN_FINAL_TURN } from '../../src/game/hegemony.js';
 
 const SEEDS = ['RSCH1', 'RSCH2', 'RSCH3'];
-const FINAL_TURN = 5740;                 // 1945 (hegemony.js)
-const DECADES = [1850, 1860, 1870, 1880, 1890, 1900, 1910, 1920, 1930, 1945];
+// Kampanya 1900'de biter (hegemony.FINAL_TURN = 3340, 29 Aralik 1899); denetim
+// 5740/1945'e kadar kosuyor ve oyunun SAHIP OLMADIGI 45 yili not veriyordu.
+// Olcut artik oynanan pencereyle ayni.
+const FINAL_TURN = CAMPAIGN_FINAL_TURN;
+const DECADES = [1850, 1860, 1870, 1880, 1890, 1899];
 
 const yearOf = (turn) => 1836 + Math.floor(((turn ?? 1) - 1) * 7 / 365);
 
@@ -29,7 +33,7 @@ function quantile(sorted, q) {
 }
 const asc = (a) => [...a].sort((x, y) => x - y);
 
-/** Bir tohumu 1945'e kadar isletir, onyil isaretlerini toplar. */
+/** Bir tohumu kampanya sonuna kadar isletir, onyil isaretlerini toplar. */
 function runSeed(seed) {
   const game = headless(seed);
   const world = game.world;
@@ -66,7 +70,7 @@ function runSeed(seed) {
 }
 
 section('ARASTIRMA DENETIMI — teknolojinin yakiti ve ayrismasi');
-console.log(`  ${SEEDS.length} tohum × ${FINAL_TURN} tur (1836-1945)`);
+console.log(`  ${SEEDS.length} tohum × ${FINAL_TURN} tur (1836-1899, kampanya penceresi)`);
 console.log('  NOT: harness.headless() 78x62 harita kurar (standart 160x96 degil).');
 console.log('  Mutlak sayilar buna aittir; yakit cokusu standart haritada ayrica dogrulandi.');
 
@@ -138,10 +142,10 @@ const some = (fn) => runs.some(fn);
   }
 }
 
-// (b) egitim IQR sifir olmamali (1860/1900/1945)
+// (b) egitim IQR sifir olmamali (1860/1880/1899)
 {
   const flat = [];
-  for (const run of runs) for (const y of [1860, 1900, 1945]) {
+  for (const run of runs) for (const y of [1860, 1880, 1899]) {
     const m = at(run, y);
     if (m && m.eduIqr === 0) flat.push(`${run.seed}/${y}`);
   }
@@ -154,53 +158,53 @@ const some = (fn) => runs.some(fn);
   }
 }
 
-// (c) medyan okuryazarlik 1900 >= 0.25
+// (c) medyan okuryazarlik 1899 >= 0.25
 {
-  const vals = runs.map((r) => at(r, 1900)?.litP50 ?? 0);
+  const vals = runs.map((r) => at(r, 1899)?.litP50 ?? 0);
   const ok = vals.every((v) => v >= 0.25);
-  console.log(`  (c) 1900 okuryazarlik>=%25: ${ok ? 'GECTI' : 'KALDI'} (${vals.map((v) => pct(v).trim()).join(' · ')})`);
+  console.log(`  (c) 1899 okuryazarlik>=%25: ${ok ? 'GECTI' : 'KALDI'} (${vals.map((v) => pct(v).trim()).join(' · ')})`);
   if (!ok) {
     finding('HIGH', 'Okuryazarlik yuzyil ortasinda taban seviyede',
-      '1900\'de medyan okuryazarlik en az %25 olmali',
+      '1899\'da medyan okuryazarlik en az %25 olmali',
       `olculen: ${vals.map((v) => pct(v).trim()).join(' · ')}`,
       'okuryazarlik hedefi 0.08 tabanina cakili (advanceLiteracy, economy.js:3380)');
   }
 }
 
-// (e) arastirma hizi p90/p10 >= 2.0 (1900) — lider VE geri kalan var mi
+// (e) arastirma hizi p90/p10 >= 2.0 (kampanya sonu) — lider VE geri kalan var mi
 {
-  const vals = runs.map((r) => { const m = at(r, 1900); return m && m.rateP10 > 0 ? m.rateP90 / m.rateP10 : Infinity; });
+  const vals = runs.map((r) => { const m = at(r, 1899); return m && m.rateP10 > 0 ? m.rateP90 / m.rateP10 : Infinity; });
   const ok = vals.every((v) => v >= 2.0);
-  console.log(`  (e) 1900 hiz p90/p10>=2.0 : ${ok ? 'GECTI' : 'KALDI'} (${vals.map((v) => n1(v)).join(' · ')})`);
+  console.log(`  (e) 1899 hiz p90/p10>=2.0 : ${ok ? 'GECTI' : 'KALDI'} (${vals.map((v) => n2(v)).join(' · ')})`);
   if (!ok) {
-    finding('MEDIUM', 'Arastirma hizinda ayrisma yok',
-      '1900\'de en hizli %10 ile en yavas %10 arasinda en az 2 kat fark olmali',
-      `olculen p90/p10: ${vals.map((v) => n1(v)).join(' · ')}`,
+    finding('MEDIUM', 'Arastirma hizi ayrismasi her tohumda esigi gecmiyor',
+      '1899\'da en hizli %10 ile en yavas %10 arasinda en az 2 kat fark olmali',
+      `olculen p90/p10: ${vals.map((v) => n2(v)).join(' · ')}`,
       'formuldeki sabit +1 tabani (technology.js:222) herkesi ayni tabana yaklastiriyor');
   }
 }
 
-// (f) 1945'te farkli teknoloji kumesi >= 9
+// (f) kampanya sonunda farkli teknoloji kumesi >= 9
 {
-  const vals = runs.map((r) => at(r, 1945)?.distinctSets ?? 0);
+  const vals = runs.map((r) => at(r, 1899)?.distinctSets ?? 0);
   const ok = vals.every((v) => v >= 9);
-  console.log(`  (f) 1945 farkli kume>=9   : ${ok ? 'GECTI' : 'KALDI'} (${vals.join(' · ')})`);
+  console.log(`  (f) 1899 farkli kume>=9   : ${ok ? 'GECTI' : 'KALDI'} (${vals.join(' · ')})`);
   if (!ok) {
     finding('HIGH', 'Teknolojik ayrisma duzlesti',
-      '1945\'te en az 9 farkli teknoloji kumesi olmali',
+      '1899\'da en az 9 farkli teknoloji kumesi olmali',
       `olculen: ${vals.join(' · ')}`,
       'butun ulkeler ayni merdiveni ayni sirada tirmaniyor olabilir');
   }
 }
 
-// (g) 1900'de lider-geri farki >= 8
+// (g) kampanya sonunda lider-geri farki >= 8
 {
-  const vals = runs.map((r) => { const m = at(r, 1900); return m ? m.techMax - m.techMin : 0; });
+  const vals = runs.map((r) => { const m = at(r, 1899); return m ? m.techMax - m.techMin : 0; });
   const ok = vals.every((v) => v >= 8);
-  console.log(`  (g) 1900 lider-geri>=8    : ${ok ? 'GECTI' : 'KALDI'} (${vals.join(' · ')})`);
+  console.log(`  (g) 1899 lider-geri>=8    : ${ok ? 'GECTI' : 'KALDI'} (${vals.join(' · ')})`);
   if (!ok) {
     finding('MEDIUM', 'Teknolojik liderlik merdiveni yok',
-      '1900\'de en ileri ile en geri ulke arasinda en az 8 teknoloji fark olmali',
+      '1899\'da en ileri ile en geri ulke arasinda en az 8 teknoloji fark olmali',
       `olculen: ${vals.join(' · ')}`, '');
   }
 }

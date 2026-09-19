@@ -274,8 +274,15 @@ export function runNationalEvents(game, nation) {
   // --- ORDU --------------------------------------------------------------
   const regiments = regimentsOf(world, nation.id);
   const before = state.regiments;
-  if (before >= 0 && regiments < before) {
-    const lost = before - regiments;
+  // KAYIP = YOK EDILEN, azalan degil. Eskiden alay sayisindaki her dusus
+  // "destroyed" sayiliyordu; terhis (mobilization.demobilize), oyuncunun
+  // dagitma dugmesi ve dagilan devletin tumenleri de oradan geciyordu —
+  // 1836'nin 7. haftasinda, hic catisma olmadan "The army is broken" karti
+  // cikiyordu (Astra6 B4). Sayaci turn.killUnit yazar; burada okunup sifirlanir.
+  const killed = nation.regimentsKilled ?? 0;
+  nation.regimentsKilled = 0;
+  if (before >= 0 && killed > 0 && regiments < before) {
+    const lost = Math.min(killed, before - regiments);
     if (regiments === 0) {
       announce(game, nation, {
         kind: 'ARMY', tier: TIER.EXISTENTIAL, key: 'army-gone',

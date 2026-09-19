@@ -195,6 +195,14 @@ export function restoreDelegation(nation, saved) {
       state.industry = true;
       if (Number.isFinite(saved.since?.construction)) state.since.industry = saved.since.construction;
     }
+    // `research` alani 0174f86'da geldi; ondan onceki kayitta ANAHTAR YOKTUR
+    // ve false okunurdu. Yeni kampanya AUTO acik basladigi halde eski kayit
+    // sessizce kapali aciliyor, kuyruk bosalinca akademi bekliyordu. Eksik
+    // anahtar "kapali" degil "henuz secilmedi" demektir: varsayilana baglanir.
+    if (saved.research === undefined) {
+      state.research = DEFAULT_AUTO_AREAS.includes('research');
+      state.since.research = Number.isFinite(saved.since?.reforms) ? saved.since.reforms : 0;
+    }
     // Son eylem satırı sınırlıdır: alan başına bir kayıt, fazlası atılır.
     for (const id of DELEGATION_IDS) {
       const entry = saved.last?.[id];
