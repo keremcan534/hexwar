@@ -8,3 +8,8 @@ scripts/audit/_tmp/
 
 # Gorsel yineleme dongusunun ciktisi (bkz. maplab.html).
 .shots/
+
+# Disaridan gelen inceleme paketleri (astra6 gibi): depoya alinmaz, 100+ MB
+# ham kosu ve ekran goruntusu tasirlar. Paketin kendisi kullanicinin elinde.
+astra6/
+astra6.zip

@@ -54,15 +54,16 @@ Bu depoya mekanik EKLEMEK varsayılan değildir. Yeni bir mekanik önermeden ön
 
 İlk tarama: 26 mekanikten 10'u ölü, 5'i gürültü tabanının altındaydı. Yani bu
 depoda asıl risk eksik mekanik değil, **çalışmayan mekanik**.
-Son tarama (±%50 fiyat bandı ve hex kaynaklarından sonra, 2026-09-17): 13
-kaldıraç · çalışıyor 12 (vatandaşlık eşikte: 0.55× ↔ 1.68×) · gürültü altı 0 ·
+Son tarama (vergi geçim tavanından sonra, 2026-09-19): 13
+kaldıraç · çalışıyor 12 (vatandaşlık 1.73×) · gürültü altı 0 ·
 **ölü 0** · savaş kaldıracı 1 (barış arenasında ölçülemez). Siyaset: 4 sabit
 parti, 5 yasa, meşruiyet — bkz.
 `src/game/politics.js`, `npm run diagnose:politics`. Araştırma: ulusal program
 yok; kuyruk + akıllı seçici (`technology.pickNextTech`, ağırlıklar
 `economy.researchPriorities`) + YZ okul geleneği (`economy.aiEducationFloor`).
 Yeni kampanyada üst şeridin portföyleri AUTO açık başlar
-(`delegation.DEFAULT_AUTO_AREAS`; diplomasi hariç).
+(`delegation.DEFAULT_AUTO_AREAS`; diplomasi hariç) — araştırma da bir devir
+alanıdır, eski kayıtlar açılırken AUTO'ya göçürülür.
 
 Her mekaniğin formülü, kodu, "çalışıyor mu" testi ve pratikte ne yaptığı:
 [MEKANIK_KILAVUZU.md](MEKANIK_KILAVUZU.md)

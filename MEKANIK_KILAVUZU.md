@@ -49,7 +49,7 @@ oyundaki "insanın fark ettiği en küçük değişim" ölçeği.
 - **ÖLÜ** — hiçbir ölçüt kımıldamadı, bit bit aynı. *Şu an sıfır tane var.*
 - **SAVAŞ KALDIRACI** — barış arenasında ölçülemez (aşağıda `armyFunding`).
 
-**Bugünkü tablo: 13 kaldıraç (5 yasa, meşruiyet, 7 bütçe) · ÇALIŞIYOR 11 · GÜRÜLTÜ ALTI 1 · ÖLÜ 0 · SAVAŞ 1.**
+**Bugünkü tablo (2026-09-19): 13 kaldıraç (5 yasa, meşruiyet, 7 bütçe) · ÇALIŞIYOR 12 · GÜRÜLTÜ ALTI 0 · ÖLÜ 0 · SAVAŞ 1.**
 Siyaset sadeleşmeden önce tarama 26 mekaniği (18 merdiven dahil) sayıyordu: 24 · 1 · 0 · 1.
 Bu tarama ilk koştuğunda 26 mekanikten **10'u ölüydü.**
 
@@ -104,6 +104,25 @@ puan iner ve yük sepetini karşılayabilen orta/üst sınıfa 5'er puan kayar.
 Kaydırma olmadan indirim sıkışık hazineyi daha da sıkıştırırdı. Bu pass'in
 öbür değişiklikleriyle BİRLİKTE ölçüldü (ayrı kol koşulmadı): 20. yılda alt
 vergisi ≥%90 ülke 9.3 → 1.7, borçlu ülke 34 → 24 (bkz. §4.7 tablosu).
+
+**Geçim tavanı: vergi artışı sepeti yiyene kadar sürmez (2026-09-19).** Yukarıdaki
+fren yalnız *aç* devleti tutuyordu; `canAffordNeeds` sadece YAŞAM kademesine
+baktığı için ekmeğini alabilen orta sınıf "zorlanmış" sayılmıyor, merdiven
+haftada +5 ile %100'e tırmanıyordu. Ölçüldü (4 tohum × 30 yıl, AUTO açık):
+YZ medyanı orta vergide %75–90, üst vergide %80–100 ve orta sınıf payı 30.
+yılda %2.9–9.5'e iniyordu; oyuncu ulusunda iki tohumda %0.02'ye kadar çöktü.
+Artık `adjustFiscalAI` artışı `classTaxThresholds().survival` oranında
+kesiyor — eşik uydurma değil, `alerts.js`'in zaten oyuncuya önerdiği "sepetin
+%60'ını bırakan oran". Eşik ulaşılamıyorsa (sepet gelirin üstünde) fren
+uygulanmaz, çünkü orada vergi kaldıraç değildir. Ayrıca eşiğin üstünde kilitli
+kalan oran haftada 5 puan iner; eski kayıtlar da böyle onarılır.
+
+Sonuç (aynı tohumlar, 30. yıl): YZ orta vergi medyanı %75–90 → %50–53, orta
+sınıf payı %2.9–9.5 → %16.5–18.7, üst sınıf payı %1.9–2.9 → %2.9–8.8. **Bedeli
+var:** hazine farkı borçtan kapatıyor, borçlu ülke sayısı 9–14 → 13–23'e
+çıkıyor; GSYH iki tohumda artıyor (383→403, 509→659), ikisinde düşüyor
+(573→546, 563→499). Yani bu değişiklik "daha zengin dünya" değil, **vergiyi
+nüfusu yok eden bir kaldıraç olmaktan çıkarma**dır.
 
 ## 1.2 Gümrük · `tariff`
 
@@ -1752,24 +1771,26 @@ dünyanın 0.08 altında kaldı.
 
 | Kaldıraç | Hüküm | Kaç kat (son) | ilk 5-yasa taraması | En güçlü ölçüt (son) |
 |---|---|---|---|---|
-| Constitution | EVET | 6.00× | 6.97× | istikrar |
-| Labour Rights | EVET | 4.78× | 6.20× | memnuniyet |
-| Welfare State | EVET | 7.08× | 7.63× | istikrar |
+| Constitution | EVET | 6.13× | 6.97× | istikrar |
+| Labour Rights | EVET | 4.80× | 6.20× | memnuniyet |
+| Welfare State | EVET | 7.17× | 7.63× | istikrar |
 | Conscription | EVET | 1.83× | 2.40× (eski merdiven 1.66×) | memnuniyet |
-| Citizenship | EVET, eşikte | 1.68× | 0.71× (eski azınlık hakları 0.57×) | hazine |
-| Meşruiyet | EVET | 2.37× | 2.82× | istikrar |
+| Citizenship | EVET | 1.73× | 0.71× (eski azınlık hakları 0.57×) | hazine |
+| Meşruiyet | EVET | 2.36× | 2.82× | istikrar |
 
-"Son" = 2026-09-17 taraması (program kalktı, hex kaynakları, ±%50 fiyat
-bandı, adamı gerçek kümeden gelen kuruluş ordusu). Katlar ekonomi değiştikçe
-oynar; vatandaşlık eşiğin iki yanında gidip geliyor (aynı gün iki taramada
-0.55× ve 1.68×) — hüküm "eşikte".
+"Son" = 2026-09-19 taraması (vergi geçim tavanından sonra; ondan önceki
+tarama program kalkmış, hex kaynakları ve ±%50 fiyat bandı ile koşmuştu).
+Katlar ekonomi değiştikçe oynar; vatandaşlık uzun süre eşiğin iki yanında
+gidip geliyordu (bir gün 0.55×, aynı gün 1.68×). Vergi tavanı orta/üst sınıfı
+nüfusta tuttuğu için hazine ölçütü artık daha dayanıklı: 1.73×.
 
 Doğrudan kanal (son tarama): vatandaşlık Residency → Full taşra gelirini
 **+%13.0** (ilk taramada +%8.3), işçi hakkı None → Strong işçi gelirini
-**+%2.8** oynatıyor (eski asgari ücret kanalı %0.6'da kalıyordu). İşçi
-kanalı bant daralmadan önceki taramada **+%19.3** idi: taban fiyat 0.12'den
+**+%7.9** oynatıyor (eski asgari ücret kanalı %0.6'da kalıyordu; bandın hemen
+ardından ölçülen +%2.8'den geri geldi — vergi tavanı işçinin elinde kalan
+geliri büyüttü). İşçi kanalı bant daralmadan önceki taramada **+%19.3** idi: taban fiyat 0.12'den
 0.5'e çıkınca satılamayan hammaddenin geliri de büyüyor ve ücret, alt sınıf
-gelirinin küçük bir parçasına iniyor. Yasa memnuniyette hâlâ 4.78× çalışıyor;
+gelirinin küçük bir parçasına iniyor. Yasa memnuniyette hâlâ 4.80× çalışıyor;
 kanal daralması §4.3 bant notunda açık iş olarak duruyor. Vatandaşlığın asıl işi azınlığı olan ülkededir: `audit:culture-unrest`
 TEST 3'te huzursuzluk Residency 4.91 → Full 3.14.
 
@@ -1804,12 +1825,12 @@ en güçlü ölçüt.
 | 15 | İdari gider | (şehir−1)^1.6 × 4.0 + nüfus^0.75 × 0.8 | EVET | kaldıraç değil |
 | 16 | Taşra sadakati | tavan = vatandaşlık yasası; üretim ×= sadakat | BAĞLI | +%13.0 |
 | 17 | İnsan gücü | havuz × (0.85 + askerlik×0.45) | EVET | 1.83× |
-| 18 | Anayasa | alt +0.22, orta +0.23, üst −0.12, araştırma +%25; kimin desteği sayılır | EVET | 6.00× |
-| 19 | İşçi hakları | alt +0.44 (kölelik kalkınca +0.08), bordro +%29, üretim −%5.4 | EVET | 4.78× |
-| 20 | Sosyal devlet | alt +0.32, hazine yükü 0.41, okuryazarlık tabanı 0.35 | EVET | 7.08× |
-| 21 | Vatandaşlık | azınlık tavanı 0.7→1.0, huzursuzluk, asimilasyon | EŞİKTE (0.55× ↔ 1.68×) | 1.68× |
+| 18 | Anayasa | alt +0.22, orta +0.23, üst −0.12, araştırma +%25; kimin desteği sayılır | EVET | 6.13× |
+| 19 | İşçi hakları | alt +0.44 (kölelik kalkınca +0.08), bordro +%29, üretim −%5.4 | EVET | 4.80× |
+| 20 | Sosyal devlet | alt +0.32, hazine yükü 0.41, okuryazarlık tabanı 0.35 | EVET | 7.17× |
+| 21 | Vatandaşlık | azınlık tavanı 0.7→1.0, huzursuzluk, asimilasyon | EVET | 1.73× |
 | 22 | Askerlik | insan gücü 0.85→1.30, alt −0.06 | EVET | 1.83× |
-| 23 | Meşruiyet | istikrar −= (lider − iktidar) × 0.25 | EVET | 2.37× |
+| 23 | Meşruiyet | istikrar −= (lider − iktidar) × 0.25 | EVET | 2.36× |
 | 24 | Hex kaynakları | kota ataması (talepten paylar); satır çıktısı × talep ölçeği; kadro = alt sınıf × 1.05 | EVET | §4.7 sağlık koşusu |
 | 25 | Fabrika duraklatma | barış + depo ≥%95 + fiyat <0.75 → silah hattı durur | EVET | silah fiyatı 0.34 → 0.93 |
 
@@ -1824,8 +1845,9 @@ Bu kılavuz ne kadar ölçüldüyse o kadar doğrudur. Ölçülemeyenler:
    kol arasındaki fark kaldıraca değil kimin kimi fethettiğine bağlanır).
    Yönü `audit:budget-contract` §6'da ayrıca doğrulanıyor.
 
-2. **Vatandaşlık yasası eşikte** (aynı gün iki taramada 0.55× ve 1.68×; ilk
-   5-yasa taraması 0.71×; eski `political_rights` 0.46–0.57×). Taşra gelirini
+2. **Vatandaşlık yasası eşiğe yakın koşuyor** (2026-09-19'da 1.73×; daha önce
+   aynı gün iki taramada 0.55× ve 1.68×; ilk 5-yasa taraması 0.71×; eski
+   `political_rights` 0.46–0.57×). Taşra gelirini
    +%20 artırdığı doğrudan ölçüldü. Kaba ölçütlerde görünmemesinin iki nedeni
    var: taramanın ülkesinde
    azınlık azdır (yasanın asıl işi azınlıklı ülkede: `audit:culture-unrest`
