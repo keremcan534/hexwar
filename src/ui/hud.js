@@ -23,6 +23,7 @@ import {
   DATA_MODES, DIPLOMACY_COLORS, INDUSTRY_RAMP, INFAMY_RAMP, UNREST_RAMP, diplomacyStanding, rampColor,
 } from '../render/renderer.js';
 import { bindMacroCards } from './macroCard.js';
+import { subayPortresi } from './icons/subaylar.js';
 import { LEAVE_MS, hidePanel, motionOn, panelOpen, togglePanel } from './motion.js';
 import { Screens } from './screens.js';
 import { showEndScreen } from './endScreen.js';
@@ -626,14 +627,19 @@ export class Hud {
 
     el.commandBar.innerHTML = `${generals.map((general) => {
     const size = commandSize(general);
-    const icon = general.traits.length ? TRAITS[general.traits[0]].icon : '✵';
     const hint = `${general.name} - skill ${general.skill} - ${size} divisions`
       + ` (left click selects the command, right click transfers ${selected} selected)`;
-    return `<button class="command-slot ${active?.id === general.id ? 'active' : ''}"
+    // PORTRE YUVANIN KENDISIDIR. 58px'lik kutuda portre + ad + yildiz alt
+    // alta durunca resme 24px kaliyordu ve yuz kaybolup pirinc bir noktaya
+    // donuyordu (olculdu). Resim kutuyu kaplar, ad ve yildiz uzerine binen
+    // koyu seritte okunur — HOI4'un komutan portresi kalibi.
+    return `<button class="command-slot has-art ${active?.id === general.id ? 'active' : ''}"
         data-general="${general.id}" title="${escapeHtml(hint)}">
-        <span class="portrait">${icon}</span>
-        <b>${escapeHtml(general.name.split(' ')[0])}</b>
-        <small>${'★'.repeat(general.skill)} · ${size}</small>
+        <span class="portrait">${subayPortresi(general)}</span>
+        <span class="command-name">
+          <b>${escapeHtml(general.name.split(' ')[0])}</b>
+          <small>${'★'.repeat(general.skill)} · ${size}</small>
+        </span>
       </button>`;
   }).join('')}
     <button class="command-slot empty" data-new-command="1"

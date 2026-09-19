@@ -11,6 +11,7 @@
 
 import { formatPopulation } from '../game/economy.js';
 import { UNIT_CATEGORIES } from '../game/military.js';
+import { subayPortresi } from './icons/subaylar.js';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -39,23 +40,8 @@ const COUNTER_ART = {
   AIRCRAFT: 'aircraft',
 };
 
-const MARK = {
-  officer: '<path d="M8 2.6 9.6 6l3.7.4-2.7 2.5.7 3.6L8 10.8 4.7 12.5l.7-3.6L2.7 6.4 6.4 6z"/>',
-  hourglass: '<path d="M4.4 2.8h7.2M4.4 13.2h7.2M5.2 2.8c0 2.6 2.8 3.6 2.8 5.2S5.2 10.6 5.2 13.2M10.8 2.8c0 2.6-2.8 3.6-2.8 5.2s2.8 2.6 2.8 5.2"/>',
-  manpower: '<circle cx="5.4" cy="4.6" r="1.7"/><path d="M2.4 12.8V10c0-1.5 1.3-2.7 3-2.7s3 1.2 3 2.7v2.8M10.6 5.4a1.6 1.6 0 1 0 0-.1M9.8 12.8V10c0-1 .5-1.8 1.3-2.2"/>',
-  sword: '<path d="M11.4 2.6h2v2L7.2 10.8 5.2 8.8zM4.6 9.4 6.6 11.4 4 14l-2-2zM9 7l-2-2"/>',
-  flag: '<path d="M4 13.4V2.8M4 3.4h8l-1.6 2.4L12 8.2H4z"/>',
-  coin: '<circle cx="8" cy="8" r="5.2"/><path d="M8 4.8v6.4M6.4 6.4h3.2M6.4 9.6h3.2"/>',
-  anchor: '<circle cx="8" cy="3.6" r="1.4"/><path d="M8 5v8.4M4.6 7.2h6.8M3 10.2c0 2 2.2 3.4 5 3.4s5-1.4 5-3.4"/>',
-  shield: '<path d="M8 2.4 13 4.4v3.4c0 2.9-2.1 4.7-5 5.8-2.9-1.1-5-2.9-5-5.8V4.4z"/>',
-};
-
 const counter = (typeId) => `<img class="mil-counter" alt="" loading="lazy" decoding="async"
   src="assets/icons/units/${COUNTER_ART[typeId] ?? COUNTER_ART.INFANTRY}.png">`;
-
-const mark = (id) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
-  stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"
-  aria-hidden="true">${MARK[id] ?? ''}</svg>`;
 
 /** Bölüm başlığı: bordo laklanmış şerit — defterin her yerinde aynı ayraç. */
 const band = (title, note = '') => `<h4 class="mil-band">${esc(title)}${
@@ -84,8 +70,8 @@ function headerStrip(summary) {
     : 'At peace';
   return `<header class="ui-kpis mil-kpis">
     ${figure('Standing army', `${summary.divisions}`,
-    `${summary.regiments} regiments · ${formatPopulation(summary.soldiers)} men`,
-    `${summary.regiments} regiments · ${formatPopulation(summary.soldiers)} men`
+    `${summary.regiments} regiments · ${formatPopulation(summary.men)} men`,
+    `${summary.regiments} regiments · ${formatPopulation(summary.men)} men`
       + ` · ${pct(summary.strength)} of establishment`
       + (summary.inBattle ? ` · ${summary.inBattle} in battle` : '')
       + (summary.marching ? ` · ${summary.marching} marching` : ''))}
@@ -125,7 +111,7 @@ function leaderRow(leader, selected) {
   return `<button class="mil-leader ${selected ? 'is-open' : ''} ${leader.divisions ? '' : 'is-idle'}"
     data-military-leader="${leader.id}"
     title="${esc(`${leader.rank} ${leader.name} — ${traits}`)}">
-    <i class="mil-portrait" aria-hidden="true">${mark(leader.branch === 'navy' ? 'anchor' : 'officer')}</i>
+    <i class="mil-portrait has-art" aria-hidden="true">${subayPortresi(leader)}</i>
     <span class="mil-leader-text">
       <b>${esc(leader.name)}</b>
       <small>${esc(traits)}</small>
@@ -432,8 +418,8 @@ function dispositionBand(summary, composition, logistics, spent) {
     </div>
     <div class="mil-disp-cell">
       <small>Reinforcement</small>
-      <b>${formatPopulation(summary.reinforced)} men last week</b>
-      <em>${formatPopulation(summary.reinforcementDemand)} still missing from the ranks${spent
+      <b>${formatPopulation(summary.reinforcedMen)} men last week</b>
+      <em>${formatPopulation(summary.reinforcementDemand)} strength still missing from the ranks${spent
     ? ` · cost ${spent.arms.toFixed(1)} small arms, ${spent.artillery.toFixed(1)} artillery`
     : ''}</em>
     </div>

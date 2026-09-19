@@ -21,7 +21,7 @@ import {
   FLANK_WIDTH, MAX_ASSAULT_DIVISIONS, MAX_ASSAULT_WIDTH, MAX_DEFENSE_DIVISIONS,
 } from './battles.js';
 import {
-  MAX_ENTRENCHMENT, UNIT_TYPES, isMoving, maxHpOf, organizationOf, soldiersOf,
+  MAX_ENTRENCHMENT, UNIT_TYPES, isMoving, maxHpOf, menUnderArms, organizationOf, soldiersOf,
   unitAvailable,
 } from './units.js';
 import {
@@ -122,12 +122,17 @@ export function militarySummary(world, nation) {
   const military = nation.economy?.military ?? {};
 
   let soldiers = 0;
+  let men = 0;
   let capacity = 0;
   let regiments = 0;
   let inBattle = 0;
   let marching = 0;
   for (const unit of army) {
     soldiers += soldiersOf(unit);
+    // GUC PUANI ILE INSAN AYRI. `soldiers` alay gucudur (mevcut/azami hesabi
+    // ondan cikar); ekranda "men" diye yazilinca ust cubuktaki gercek kisi
+    // sayisiyla catisiyordu (olculdu: 310K'ya karsi 11K, ayni ordu).
+    men += menUnderArms(unit);
     capacity += maxHpOf(unit);
     regiments += unit.regiments?.length ?? 1;
     if (unit.battleId) inBattle++;
@@ -155,6 +160,7 @@ export function militarySummary(world, nation) {
     divisions: army.length,
     regiments,
     soldiers,
+    men,
     capacity,
     strength: capacity > 0 ? soldiers / capacity : 1,
     organization: averageOrganization(army),
@@ -198,6 +204,9 @@ export function militarySummary(world, nation) {
     procurement: nation.economy?.armyFunding ?? 100,
     supplyIndex: military.supplyIndex ?? 1,
     reinforced: military.reinforced ?? 0,
+    // `reinforced` GUC puanidir; ekran "men" diye yaziyordu. Gercek insan
+    // sayisi takviye sirasinda province'lerden cekilen manpower'dir.
+    reinforcedMen: military.manpowerUsed ?? 0,
     reinforcementDemand: military.reinforcementDemand ?? 0,
   };
 }

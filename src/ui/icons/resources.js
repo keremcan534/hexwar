@@ -30,6 +30,7 @@ export const RESOURCE_ART = {
   tools: 'machine_parts',
   electric_gear: 'electric_gear',
   radio: 'radio',
+  telephone: 'telephone',
   automobile: 'automobile',
   // Paket 2: halkasız nesneler; dairesel maskeyle paket 1'in biçimine
   // getirildi, pirinç halkayı amblemde CSS çizer.
@@ -64,14 +65,15 @@ export const RESOURCE_ART = {
 export const RINGED_ART = new Set([
   'food', 'fish', 'cattle', 'fruit', 'timber', 'paper', 'coal', 'iron',
   'steel', 'fabric', 'dye', 'glass', 'fertilizer', 'ammunition', 'oil',
-  'rubber', 'tools', 'electric_gear', 'radio', 'automobile',
+  'rubber', 'tools', 'electric_gear', 'radio', 'telephone', 'automobile',
   'arms', 'artillery', 'tanks', 'airplane', 'clippers', 'steamers',
 ]);
 
 /**
  * Çizgi-SVG yedekler (24x24 stroke). Boyası gelen mal bu tablodan silinip
- * RESOURCE_ART'a taşınır; geriye yalnız telefon kaldı.
+ * RESOURCE_ART'a taşınır; son kalan telefon da 2026-09'da boyandı. Tablo BOŞ
+ * kalır ama durur: `resourceGlyph` boyasız mal için bu kapıdan geçer ve yeni
+ * bir mal eklendiğinde çizgi yedeği buraya yazılır (sandık fallback'i son
+ * çaredir, bkz. icons/index.js).
  */
-export const RESOURCE_PATHS = {
-  telephone: '<path d="M6 8a12 12 0 0 1 12 0l-2 3a8 8 0 0 0-8 0z"/><path d="M12 12v5M9 20h6M10 17h4"/>',
-};
+export const RESOURCE_PATHS = {};

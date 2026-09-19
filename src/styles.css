@@ -2400,6 +2400,45 @@ body.screen-open .layer-menu { display: none; }
 
 .command-slot .portrait { font-size: var(--fs-lg); line-height: 1; }
 
+/* --- Subay portresi: madalyon resmi yuvanin kendisi olur (bkz. hud.js
+   showCommand). Ad ve yildiz, resmin altina binen koyu seritte okunur;
+   resim 58px'e cikinca yuz ilk kez secilebiliyor (26px'te pirinc bir nokta
+   kaliyordu, olculdu). --- */
+.command-slot.has-art {
+  position: relative;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.command-slot.has-art .portrait {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+
+.officer-art {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.command-slot.has-art .command-name {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  justify-items: center;
+  width: 100%;
+  margin-top: auto;
+  padding: 1px 2px 2px;
+  background: linear-gradient(180deg, rgba(6, 10, 12, 0), rgba(6, 10, 12, 0.82) 45%);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.command-slot.has-art b { font-size: 11px; line-height: 1.05; }
+.command-slot.has-art small { font-size: 9px; letter-spacing: 0; }
+
 .command-slot b {
   color: var(--text);
   font-family: var(--font-display);
@@ -4885,6 +4924,33 @@ button.pol-level { cursor: pointer; }
   .sheet { left: var(--sp-3); bottom: var(--sp-3); }
 }
 
+/* KOMUTA RIHTIMI KIPLERI ORTUYORDU. Rihtim ekranin ortasina sabit
+   (`.command-dock` left:50% + translateX), kip seridi sag kenara yapisik; on
+   bir kip 442px tutunca ortadaki kutu genisledikce (her general +62px) ikisi
+   kesisiyor ve ustte kalan hep rihtim oluyor — dugmenin TAM MERKEZINDE
+   elementFromPoint #command-bar donuyordu. Olculdu: 8 generalle 1264x625'te
+   uc dugme (Political/Terrain/Geography) tiklanamiyor; kirilma general
+   sayisiyla buyuyor (0 general 940px, 8 general 1430px) ve YUKSEKLIKTEN
+   bagimsiz. Cozum kipleri iki satira sarmak; alt sinir 901 DEGIL 561, cunku
+   561-900 bandinda da dort dugme kapali kaliyordu. */
+@media (min-width: 561px) and (max-width: 1500px) {
+  .map-modes {
+    max-width: 240px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .layer-menu,
+  .rgo-map-legend { bottom: calc(var(--safe-bottom) + 110px); }
+}
+
+/* Katman menusu ile veri kipi lejandi ayni kosede ayni yeri paylasiyordu:
+   ikisi birden acikken lejant menunun ALTINDA tamamen kayboluyordu (olculdu:
+   134x68 tam ortusme, test edilen her genislikte). Menu acikken lejant yana
+   kayar — yukari kaydirmak `bottom` degerini uc ayri kirilimda takip etmeyi
+   gerektiriyordu, yan kayma tek kuralla her bantta calisir. */
+body:has(#layer-menu:not(.hidden)) .rgo-map-legend { right: calc(var(--sp-3) + 146px); }
+
 /* Gösterge hücresi pencereyle büyür: yan bölgeler (~360px x 2) ve boşluklar
    düşülünce kalan yer yediye bölünür. Genişlik sabit bir tahmin değil, hesap;
    eşikler 1920/1600/1536/1440/1366/1280 genişliklerde başsız tarayıcıyla
@@ -7187,6 +7253,17 @@ body.menu-open .sheet { visibility: hidden; }
 }
 
 .mil-portrait svg { width: 14px; height: 14px; }
+
+/* Madalyon portre kendi pirinc halkasini tasir: CSS cercevesi ve zemini
+   kalkar, kutu da yuzun secilebilecegi olcuye buyur (26px'te yuz okunmuyordu). */
+.mil-portrait.has-art {
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
 
 .mil-leader-text { display: grid; min-width: 0; }
 
