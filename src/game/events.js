@@ -180,7 +180,8 @@ export function runNationalEvents(game, nation) {
   const state = ensureEventState(nation);
   // Acilis kesiti ilk taramada alinir: kapanis ekrani yuzyilin iki ucunu
   // karsilastirabilsin (bkz. ui/endScreen.js).
-  captureOpening(world, nation, governmentType(nation));
+  captureOpening(world, nation, governmentType(nation),
+    nation.opening ? null : scoreboard(world).findIndex((row) => row.nation.id === nation.id) + 1);
 
   // --- KAMPANYA SAYACLARI ------------------------------------------------
   // Kapanis ekraninin "savas sayisi / zirve hazine / en kotu borc" satirlari

@@ -103,7 +103,11 @@ export function showEndScreen(game, result) {
     metricRow('Technology', `${opening.research ?? 0} researched`,
       `${standing.research} · ${standing.label.toLowerCase()}`),
     metricRow('Government', opening.government, governmentType(nation)),
-    metricRow('Standing', `rank ${(board.findIndex((row) => row.nation.id === nation.id) + 1) || '—'}`, `rank ${rank + 1} of ${board.length}`),
+    // Baslangic ucu ACILIS kesitinden (chronicle.captureOpening). Eskiden iki
+    // uc da ayni bugunku tablodan okunuyordu: "rank 5 -> rank 5" her zaman.
+    // Eski kayitta alan yoktur; uydurmak yerine "—" yazilir.
+    metricRow('Standing', opening.rank ? `rank ${opening.rank}` : '—',
+      rank >= 0 ? `rank ${rank + 1} of ${board.length}` : '—'),
   ].join('') : '';
   // Kampanya sayaclari (nation.tally, haftalik tutulur — uydurma yok).
   // Sayac yoksa satir da yok: eski kayitta tally birikmemis olabilir.

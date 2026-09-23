@@ -90,8 +90,8 @@ function headerStrip(summary) {
     ${figure('Wars', `${summary.wars.length}${crises.length ? ` +${crises.length}` : ''}`, wars, wars,
     summary.wars.length ? 'hot' : crises.length ? 'warn' : '')}
     ${figure('Upkeep', `£${summary.upkeepGold.toFixed(1)}`, `per week · wages at ${summary.wages}%`,
-    `${summary.upkeepGold.toFixed(1)} gold and ${Math.round(summary.upkeepFood)} food a week`
-      + ` · procurement £${summary.procurementCost.toFixed(1)} · wages at ${summary.wages}%`)}
+    `£${summary.upkeepGold.toFixed(1)} wages a week · procurement £${summary.procurementCost.toFixed(1)}`
+      + ` last week (supplies and equipment bought for the army) · wages at ${summary.wages}%`)}
   </header>`;
 }
 

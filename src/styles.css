@@ -2892,7 +2892,10 @@ body.screen-open .layer-menu { display: none; }
   min-width: 0;
 }
 
-.ind-cols:has(.ind-rail.collapsed) { grid-template-columns: 232px minmax(0, 1fr) 44px; }
+/* Boş ray etiketinin KENDİ genişliğini alır. Sabit 44px'lik sırt tek kelimelik
+   "Construction"ı sığdıramıyordu: etiket "CONSTRUC" diye kırpılıyor ve taşan
+   yarısı ekran gövdesini 29px yatay kaydırıyordu (1366×768'de de 1920×1080'de de). */
+.ind-cols:has(.ind-rail.collapsed) { grid-template-columns: 232px minmax(0, 1fr) max-content; }
 
 /* --- Sol: state gezgini --------------------------------------------------- */
 .ind-states {
@@ -9625,9 +9628,10 @@ body.screen-open #map { filter: saturate(0.72) brightness(0.82); transition: fil
 }
 
 .ind-rail.collapsed .ind-rail-chip > span {
-  /* Dar rayda başlık kelime kelime alt alta iner — DÖNDÜRÜLMEZ. */
+  /* Başlık DÖNDÜRÜLMEZ ve kırpılmaz: tek kelime olduğu için 34px'lik kutuda
+     alt alta inemiyordu; sütun artık etiketin genişliğine açılır. */
   display: block;
-  width: 34px;
+  white-space: nowrap;
   text-align: center;
   line-height: 1.25;
 }

@@ -197,9 +197,14 @@ export function militarySummary(world, nation) {
       power: CONSCRIPT_POWER,
     },
     upkeepGold: nation.budget?.armyGold ?? 0,
-    upkeepFood: nation.budget?.army ?? 0,
-    armyCost: nation.economy?.ledger?.armyCost ?? 0,
-    procurementCost: nation.economy?.ledger?.procurementCost ?? 0,
+    // Defterin KAPANMIS satirlari (treasury.LEDGER_LINES: `army`, `procurement`;
+    // denetim tezgahi da ayni ikisini okur). `armyCost`/`procurementCost`
+    // adinda defter alani yok: eski okuma hep 0 veriyordu ve ekran
+    // "procurement £0.0" yaziyordu. Ayri bir "gida" kalemi de yok —
+    // `budget.army` alay SAYISIDIR ve ordunun erzaki piyasadan procurement
+    // satirina yazilarak alinir (economy ARMY_CONSUMPTION_RATES.groceries).
+    armyCost: Math.abs(nation.economy?.ledger?.army ?? 0),
+    procurementCost: Math.abs(nation.economy?.ledger?.procurement ?? 0),
     wages: nation.economy?.armyFunding ?? 100,
     procurement: nation.economy?.armyFunding ?? 100,
     supplyIndex: military.supplyIndex ?? 1,

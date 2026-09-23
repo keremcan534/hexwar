@@ -135,12 +135,10 @@
        elle yazilan liste 4 kaynakta kalmisti, tabloda 14 kaynak vardi. -->
   <div class="rgo-map-legend hidden" id="rgo-map-legend" aria-label="RGO resource legend"></div>
 
-  <div class="rgo-map-legend population-map-legend hidden" id="population-map-legend" aria-label="Population map legend">
-    <span style="--rgo-color:hsl(268 18% 20%)">under 1K</span>
-    <span style="--rgo-color:hsl(220 24% 27%)">1K–3K</span>
-    <span style="--rgo-color:hsl(150 30% 37%)">3K–8K</span>
-    <span style="--rgo-color:hsl(63 36% 54%)">8K+</span>
-  </div>
+  <!-- Icerik renderer.populationTint olceginden uretilir (bkz. hud.js
+       buildPopulationLegend): elle yazilan "1K-8K" bantlari nufus olcegi
+       buyuyunce haritadan kopmustu. -->
+  <div class="rgo-map-legend population-map-legend hidden" id="population-map-legend" aria-label="Population map legend"></div>
 
   <!-- Veri kiplerinin lejantı (diplomasi, huzursuzluk, sanayi, şöhret):
        renkler renderer.js tablolarından, içerik hud.js showModeLegend. -->

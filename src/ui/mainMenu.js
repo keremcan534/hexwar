@@ -185,8 +185,21 @@ function saveLabel(info) {
   if (!info) return '';
   const parts = [];
   if (info.seed) parts.push(`seed ${info.seed}`);
-  if (info.turn) parts.push(gameDate(info.turn));
+  if (info.turn) parts.push(gameDate(info.turn, info.day ?? 0));
   return parts.join(' · ');
+}
+
+/**
+ * "Continue"un sürdüreceği şey BELLEKTEKİ oturumdur, diskteki kayıt değil.
+ * Künye eskiden diski okuyordu: yeni dünya kurup menüye dönen oyuncu
+ * "Continue · seed A · 20 MAY" görüp tıklıyor, B dünyasının 1 JAN'ına
+ * dönüyordu — ve on hafta sonra otomatik kayıt tek yuvadaki A'yı eziyordu.
+ * Tarih HUD'la aynı: tur tabanı + saatin günü.
+ */
+function sessionLabel(game) {
+  const world = game.world;
+  if (!world) return '';
+  return saveLabel({ seed: world.seed, turn: game.turns?.turn, day: game.clock?.day });
 }
 
 export class MainMenu {
@@ -568,14 +581,15 @@ export class MainMenu {
     // Düğme ancak işe yarıyorsa görünür: "Continue" oturumdaki oyunu sürdürür,
     // "Load Game" diskte kayıt varsa okur.
     const info = savedInfo();
+    const session = this.resumable ? sessionLabel(this.game) : '';
     this.el.resume.hidden = !this.resumable;
-    this.el.resumeNote.textContent = this.resumable ? saveLabel(info) : '';
+    this.el.resumeNote.textContent = session;
     this.el.load.hidden = !info;
     this.el.loadNote.textContent = info ? saveLabel(info) : '';
     // Alt şeritteki tek birincil eylem duruma göre ad değiştirir.
     this.el.ctaLabel.textContent = this.resumable ? 'Continue Campaign' : 'Begin Campaign';
     this.el.ctaNote.textContent = this.resumable
-      ? saveLabel(info)
+      ? session
       : 'a fresh world at the standard size';
 
     this.el.root.classList.remove('hidden');

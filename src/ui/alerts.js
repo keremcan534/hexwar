@@ -52,6 +52,12 @@ export class AlertStrip {
     // dinleyici bağlamak çöp üretirdi.
     this.root.addEventListener('click', (event) => this.onClick(event));
     this.last = '';
+    // Yeni dünya / kayıt / ülke yeni bir durumdur: eski oturumun susturmaları
+    // taşınmaz (kimlikler kalıcı: 'DEFICIT' yeni kampanyada da susuk kalıyordu).
+    game.on?.('world', () => {
+      this.muted.clear();
+      this.open = null;
+    });
   }
 
   onClick(event) {
@@ -88,6 +94,13 @@ export class AlertStrip {
       return;
     }
     const all = activeAlerts(world, me);
+    // Susturma durum SÜRDÜKÇE geçerlidir (✕: "until the situation changes").
+    // Durumu biten uyarı listeden düşer; koşul aylar sonra dönerse uyarı yeniden
+    // görünür. Eskiden küme hiç boşalmıyordu: bir kez susturulan açık, oturum
+    // boyunca bir daha hiç gösterilmiyordu.
+    for (const id of this.muted) {
+      if (!all.some((alert) => alert.id === id)) this.muted.delete(id);
+    }
     const shown = all.filter((alert) => !this.muted.has(alert.id));
     const hiddenCount = all.length - shown.length;
 

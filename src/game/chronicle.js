@@ -110,7 +110,7 @@ export function chronicleYear(turn) {
  * diyebilsin diye acilis degerleri saklanir; sonradan turetilemezler.
  * Bir kez yazilir, bir daha degismez.
  */
-export function captureOpening(world, nation, governmentLabel) {
+export function captureOpening(world, nation, governmentLabel, rank = null) {
   if (!nation || nation.opening) return nation?.opening ?? null;
   nation.opening = {
     turn: world?.turn ?? 1,
@@ -123,6 +123,11 @@ export function captureOpening(world, nation, governmentLabel) {
     factories: nation.economy?.factories?.length ?? 0,
     // Kapanistaki "teknolojik konum" satirinin baslangic ucu.
     research: nation.research?.done?.length ?? 0,
+    // Kapanistaki "Standing" satirinin baslangic ucu. Kesit tutulmadigi icin
+    // kapanis iki ucu da BUGUNKU tablodan okuyordu ("rank 5 -> rank 5").
+    // Sira hegemonya tablosundan gelir ve cagiran verir: bu dosya hicbir sey
+    // import etmez (hegemony -> diplomacy -> chronicle dongusu kurulurdu).
+    rank: rank > 0 ? rank : null,
   };
   return nation.opening;
 }
