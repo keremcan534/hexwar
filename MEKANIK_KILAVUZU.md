@@ -1771,22 +1771,23 @@ dünyanın 0.08 altında kaldı.
 
 | Kaldıraç | Hüküm | Kaç kat (son) | ilk 5-yasa taraması | En güçlü ölçüt (son) |
 |---|---|---|---|---|
-| Constitution | EVET | 6.13× | 6.97× | istikrar |
-| Labour Rights | EVET | 4.80× | 6.20× | memnuniyet |
-| Welfare State | EVET | 7.17× | 7.63× | istikrar |
-| Conscription | EVET | 1.83× | 2.40× (eski merdiven 1.66×) | memnuniyet |
-| Citizenship | EVET | 1.73× | 0.71× (eski azınlık hakları 0.57×) | hazine |
-| Meşruiyet | EVET | 2.36× | 2.82× | istikrar |
+| Constitution | EVET | 5.72× | 6.97× | istikrar |
+| Labour Rights | EVET | 4.82× | 6.20× | memnuniyet |
+| Welfare State | EVET | 6.53× | 7.63× | memnuniyet |
+| Conscription | EVET | 2.01× | 2.40× (eski merdiven 1.66×) | istikrar |
+| Citizenship | EVET | 1.05× | 0.71× (eski azınlık hakları 0.57×) | hazine |
+| Meşruiyet | EVET | 2.38× | 2.82× | istikrar |
 
-"Son" = 2026-09-19 taraması (vergi geçim tavanından sonra; ondan önceki
-tarama program kalkmış, hex kaynakları ve ±%50 fiyat bandı ile koşmuştu).
-Katlar ekonomi değiştikçe oynar; vatandaşlık uzun süre eşiğin iki yanında
-gidip geliyordu (bir gün 0.55×, aynı gün 1.68×). Vergi tavanı orta/üst sınıfı
-nüfusta tuttuğu için hazine ölçütü artık daha dayanıklı: 1.73×.
+"Son" = 2026-09-23 taraması (hayali ekipman rezervi ve alıcısız tesis
+düzeltmelerinden sonra; ondan önceki 2026-09-19 taraması vergi geçim
+tavanıyla koşmuştu). Katlar ekonomi değiştikçe oynar; vatandaşlık uzun süre
+eşiğin iki yanında gidip geliyordu (bir gün 0.55×, aynı gün 1.68×). 09-19'da
+vergi tavanı hazine ölçütünü 1.73×'e taşımıştı; 09-23'te 1.05×'e indi — neden
+kaldıraç değil arena kaydı, bkz. §8.2.
 
 Doğrudan kanal (son tarama): vatandaşlık Residency → Full taşra gelirini
-**+%13.0** (ilk taramada +%8.3), işçi hakkı None → Strong işçi gelirini
-**+%7.9** oynatıyor (eski asgari ücret kanalı %0.6'da kalıyordu; bandın hemen
+**+%7.1** (09-19'da +%13.0, ilk taramada +%8.3), işçi hakkı None → Strong
+işçi gelirini **+%7.4** (09-19'da +%7.9) oynatıyor (eski asgari ücret kanalı %0.6'da kalıyordu; bandın hemen
 ardından ölçülen +%2.8'den geri geldi — vergi tavanı işçinin elinde kalan
 geliri büyüttü). İşçi kanalı bant daralmadan önceki taramada **+%19.3** idi: taban fiyat 0.12'den
 0.5'e çıkınca satılamayan hammaddenin geliri de büyüyor ve ücret, alt sınıf
@@ -1821,16 +1822,16 @@ en güçlü ölçüt.
 | 11 | Nüfus | beş çarpanın çarpımı; beslenme %50 altı kıtlık | EVET | ölçüldü |
 | 12 | İşsizlik | (min(işçi,tezgâh) − istihdam) / tezgâh | EVET | tek kaynak |
 | 13 | Fabrika ücreti | katma değer × 0.55 × yasa çarpanı | EVET | +%8.8 |
-| 14 | Ticaret | min(fazla, teklif); iştah = 1/(1+oran×1.6), gıdada 1 | EVET | 1.82× |
+| 14 | Ticaret | min(fazla, teklif); iştah = min(1, 1/(1+oran×1.6)), gıdada 1 | EVET | 1.82× |
 | 15 | İdari gider | (şehir−1)^1.6 × 4.0 + nüfus^0.75 × 0.8 | EVET | kaldıraç değil |
-| 16 | Taşra sadakati | tavan = vatandaşlık yasası; üretim ×= sadakat | BAĞLI | +%13.0 |
-| 17 | İnsan gücü | havuz × (0.85 + askerlik×0.45) | EVET | 1.83× |
-| 18 | Anayasa | alt +0.22, orta +0.23, üst −0.12, araştırma +%25; kimin desteği sayılır | EVET | 6.13× |
-| 19 | İşçi hakları | alt +0.44 (kölelik kalkınca +0.08), bordro +%29, üretim −%5.4 | EVET | 4.80× |
-| 20 | Sosyal devlet | alt +0.32, hazine yükü 0.41, okuryazarlık tabanı 0.35 | EVET | 7.17× |
-| 21 | Vatandaşlık | azınlık tavanı 0.7→1.0, huzursuzluk, asimilasyon | EVET | 1.73× |
-| 22 | Askerlik | insan gücü 0.85→1.30, alt −0.06 | EVET | 1.83× |
-| 23 | Meşruiyet | istikrar −= (lider − iktidar) × 0.25 | EVET | 2.36× |
+| 16 | Taşra sadakati | tavan = vatandaşlık yasası; üretim ×= sadakat | BAĞLI | +%7.1 |
+| 17 | İnsan gücü | havuz × (0.85 + askerlik×0.45) | EVET | 2.01× |
+| 18 | Anayasa | alt +0.22, orta +0.23, üst −0.12, araştırma +%25; kimin desteği sayılır | EVET | 5.72× |
+| 19 | İşçi hakları | alt +0.44 (kölelik kalkınca +0.08), bordro +%29, üretim −%5.4 | EVET | 4.82× |
+| 20 | Sosyal devlet | alt +0.32, hazine yükü 0.41, okuryazarlık tabanı 0.35 | EVET | 6.53× |
+| 21 | Vatandaşlık | azınlık tavanı 0.7→1.0, huzursuzluk, asimilasyon | EVET | 1.05× |
+| 22 | Askerlik | insan gücü 0.85→1.30, alt −0.06 | EVET | 2.01× |
+| 23 | Meşruiyet | istikrar −= (lider − iktidar) × 0.25 | EVET | 2.38× |
 | 24 | Hex kaynakları | kota ataması (talepten paylar); satır çıktısı × talep ölçeği; kadro = alt sınıf × 1.05 | EVET | §4.7 sağlık koşusu |
 | 25 | Fabrika duraklatma | barış + depo ≥%95 + fiyat <0.75 → silah hattı durur | EVET | silah fiyatı 0.34 → 0.93 |
 
@@ -1845,14 +1846,24 @@ Bu kılavuz ne kadar ölçüldüyse o kadar doğrudur. Ölçülemeyenler:
    kol arasındaki fark kaldıraca değil kimin kimi fethettiğine bağlanır).
    Yönü `audit:budget-contract` §6'da ayrıca doğrulanıyor.
 
-2. **Vatandaşlık yasası eşiğe yakın koşuyor** (2026-09-19'da 1.73×; daha önce
-   aynı gün iki taramada 0.55× ve 1.68×; ilk 5-yasa taraması 0.71×; eski
-   `political_rights` 0.46–0.57×). Taşra gelirini
+2. **Vatandaşlık yasası eşiğe yakın koşuyor** (2026-09-23'te 1.05×;
+   2026-09-19'da 1.73×; daha önce aynı gün iki taramada 0.55× ve 1.68×; ilk
+   5-yasa taraması 0.71×; eski `political_rights` 0.46–0.57×). Taşra gelirini
    +%20 artırdığı doğrudan ölçüldü. Kaba ölçütlerde görünmemesinin iki nedeni
    var: taramanın ülkesinde
    azınlık azdır (yasanın asıl işi azınlıklı ülkede: `audit:culture-unrest`
    TEST 3, huzursuzluk 4.91 → 3.14) ve artan üretim dünya fiyatını düşürerek
    kendini kısmen yiyor.
+
+   09-23'teki düşüşün kaynağı yasa değil ARENA: ölçülen ülke 30 haftalık
+   ısınmayı YZ olarak geçirir ve eskiden tank/uçak/vapur rezervi yüzünden
+   `ai.spend()` kapısı kapalıydı. Kapı açılınca ülke ısınmada 2 yerine 4
+   şehir kuruyor, idari gider ~12'den ~33'e çıkıp iki kolu da borca
+   sokuyor; borç yastığına yakın hazine, taramanın ölçtüğü altın farkını
+   daraltıyor. Düzeltmeler tek tek çıkarılarak ölçüldü: yalnız rezerv
+   düzeltmesi olmadan 1.69×, diğerlerinin her biri olmadan 1.07–1.15×.
+   Hüküm hâlâ ÇALIŞIYOR, ama pay ince: arenanın ısınması (oyuncu olarak mı,
+   YZ olarak mı) yeniden düşünülmeli.
 
 3. **Tarama 3 tohum × 150 hafta koşar.** Eşiğe yakın mekanikler (1.2–1.4×
    bandı) koşudan koşuya biraz oynayabilir. Gürültünün 2 katının üstündekiler

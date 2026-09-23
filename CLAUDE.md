@@ -54,9 +54,10 @@ Bu depoya mekanik EKLEMEK varsayılan değildir. Yeni bir mekanik önermeden ön
 
 İlk tarama: 26 mekanikten 10'u ölü, 5'i gürültü tabanının altındaydı. Yani bu
 depoda asıl risk eksik mekanik değil, **çalışmayan mekanik**.
-Son tarama (vergi geçim tavanından sonra, 2026-09-19): 13
-kaldıraç · çalışıyor 12 (vatandaşlık 1.73×) · gürültü altı 0 ·
-**ölü 0** · savaş kaldıracı 1 (barış arenasında ölçülemez). Siyaset: 4 sabit
+Son tarama (hayali ekipman rezervi ve alıcısız tesis düzeltmelerinden sonra,
+2026-09-23): 13 kaldıraç · çalışıyor 12 (vatandaşlık 1.05× — ince pay, bkz.
+MEKANIK_KILAVUZU §8.2) · gürültü altı 0 · **ölü 0** · savaş kaldıracı 1
+(barış arenasında ölçülemez). Siyaset: 4 sabit
 parti, 5 yasa, meşruiyet — bkz.
 `src/game/politics.js`, `npm run diagnose:politics`. Araştırma: ulusal program
 yok; kuyruk + akıllı seçici (`technology.pickNextTech`, ağırlıklar

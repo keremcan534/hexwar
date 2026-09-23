@@ -19,9 +19,10 @@
 // Katman notu: yalnız okur. DOM bilmez, Node'da sınanabilir.
 
 import {
-  CLASS_NEEDS, FACTORIES, GOODS, GOOD_IDS, IMPORT_ELASTICITY,
+  CLASS_NEEDS, FACTORIES, FOOD_GOODS, GOODS, GOOD_IDS,
   MILITARY_EQUIPMENT, MILITARY_EQUIPMENT_IDS, POPULATION_UNIT, WORKERS_PER_LEVEL,
-  armyWeeklyDemand, equipmentStock, needAmount, workshopArmsOutput,
+  armyWeeklyDemand, equipmentReserve, equipmentStock, importAppetite, needAmount,
+  workshopArmsOutput,
 } from './economy.js';
 import { RGO_TYPES, depositsOf, provinceOutput } from './provinces.js';
 import { bandPosition } from './priceBand.js';
@@ -371,7 +372,10 @@ export function goodDossier(world, nation, id) {
   const tariff = economy.tariff ?? 0;
   const importShare = clamp01(flow.importShare ?? 0);
   const tariffAdd = state.price * (tariff / 100) * importShare;
-  const appetite = 1 / Math.max(0.05, 1 + (tariff / 100) * IMPORT_ELASTICITY);
+  // İştah settleGlobalTrade'in kullandığıyla AYNI: gıda gümrükle kısılmaz ve
+  // teklif açığı aşamaz. Kendi formülünü kurunca ekran eksi gümrükte "%132",
+  // gıdada ise simülasyonun hiç uygulamadığı bir kısıntı yazıyordu.
+  const appetite = FOOD_GOODS.has(id) ? 1 : Math.min(1, importAppetite(tariff));
 
   // Stok yalnız askeri teçhizatta gerçek; sivil mallar haftalık temizlenir.
   const equipment = MILITARY_EQUIPMENT[id];
@@ -379,7 +383,9 @@ export function goodDossier(world, nation, id) {
   const stockpile = equipment ? {
     stock: equipmentStock(nation, id),
     cap: equipment.stockCap,
-    reserve: equipment.reserve,
+    // Etkin rezerv: kullanımda olmayan ailenin (1900'e dek tank, uçak; hiç
+    // çekilmeyen vapur) rezervi yok — ekran ham tablo değerini yazmasın.
+    reserve: equipmentReserve(nation, id, world.turn ?? 0),
     produced: military[`${id}Produced`] ?? 0,
     imported: military[`${id}Imported`] ?? 0,
     used: Number.isFinite(military[`${id}Used`]) ? military[`${id}Used`] : null,
@@ -413,7 +419,6 @@ export function goodDossier(world, nation, id) {
 const INPUT_GOODS = new Set(
   Object.values(FACTORIES).flatMap((type) => Object.keys(type.inputs)),
 );
-const FOOD_GOODS = new Set(['food', 'fish', 'cattle', 'fruit', 'groceries']);
 const MILITARY_GOODS = new Set([...MILITARY_EQUIPMENT_IDS, 'ammunition', 'fuel']);
 
 function dependencyOf(rows, filter) {
