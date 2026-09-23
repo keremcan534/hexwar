@@ -96,6 +96,16 @@ export class TurnManager {
     this.turn = 1;
     this.log = [];
     this.victory = null;
+    // Yarim kalmis dilimli hafta onceki dunyaya aittir. Uretec eski `world`u
+    // yakalamis olsa da tur sayacini ve zari bu nesneyle paylasiyor: yukleme
+    // ya da yeni dunya ortasinda birakilirsa yeni oyunda kosmaya devam edip
+    // sayaci bir ileri atiyor, zari tuketiyordu; ulke sayisi azalmissa
+    // command.js'te TypeError ile cokuyordu (olculdu).
+    this.turnJob = null;
+    // Kullanilmis sehir adlari da dunyaya aittir: tasinirsa ad secici zari
+    // baska yerden ceker ve ayni tohum baska bir oyun olur (olculdu: ikinci
+    // dunyada 6 yinelenen ad, farkli hazineler).
+    this.usedCityNames = null;
     this.rng = makeRng(`${world.seed}-turns`);
     world.turn = 1;
     initRelations(world);

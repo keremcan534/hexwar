@@ -123,6 +123,20 @@ function strengthPhrase(myPower, theirPower) {
   return 'evenly matched';
 }
 
+/**
+ * Vergi satirinin aritmetigi — defter satiri da tooltip'i de (tooltipData
+ * 'budget') BUNU okur; iki kopya ayrisinca kart satirla celisiyordu.
+ * `collected` gecen haftanin oraniyla kapanmis tutardir: oran o haftadan beri
+ * degistiyse (oyuncu ya da AUTO) "matrah x oran = tahsilat" yalan olur.
+ * Kapanmis oran formulden degil matrahtan turer: collected / base.
+ */
+export function taxSettlement(cfg) {
+  const settledRate = cfg.base > 0 ? (cfg.collected / cfg.base) * 100 : cfg.value;
+  const stale = Math.abs(settledRate - cfg.value) > 0.5;
+  const projected = cfg.base * cfg.value / 100;
+  return { settledRate, stale, projected, amount: stale ? projected : cfg.collected };
+}
+
 /** Yeniden çizimde kaydırma konumu korunacak iç listeler. */
 const SCROLL_KEEPERS = [
   '.census-scroll', '.census-browser-list', '.trade-goods-scroll', '.trade-detail',
@@ -485,6 +499,12 @@ export class Screens {
     const t0 = performance.now();
     const me = this.me;
     const scroll = this.captureScroll();
+    // Odaktaki bütçe kaydıracı yeniden çizimden sonra geri gelir: okla her
+    // adım `change` → `economy` → tazeleme demek; eski eleman DOM'dan kalkınca
+    // odak gövdeye düşüyor, ikinci ok tuşu kaydıracı değil haritayı sürüyordu.
+    const focused = document.activeElement;
+    const refocus = focused?.dataset?.policy && this.el.body.contains(focused)
+      ? `[data-policy="${focused.dataset.policy}"]` : null;
     this.el.title.textContent = TITLES[this.active] ?? '—';
     // Construction artik eski sehir kaynaklariyla degil state-slot kapasitesiyle
     // calisir; eski gold/food/timber/iron seridi bu ekranda gosterilmez.
@@ -504,6 +524,7 @@ export class Screens {
     // canvas'lar burada takılır (kopan eskiler kendi kendini siler).
     hydrateFlags(this.el.body, this.game.world.nations);
     this.restoreScroll(scroll);
+    if (refocus) this.el.body.querySelector(refocus)?.focus({ preventScroll: true });
     this.game.perf?.add('ui.screen', performance.now() - t0);
   }
 
@@ -1607,19 +1628,16 @@ export class Screens {
         : overEdge
           ? ` \u00b7 above ${th.survival}% they fall below subsistence — four weeks of that and they drop a class for good`
           : '';
-      // KAYDIRAC OYNADIYSA SATIR YALAN SOYLEMESIN. `collected` gecen haftanin
-      // oraniyla kapanmis tutardir; oran degistiyse "£83 x 10% = £16.6" gibi
-      // yanlis bir aritmetik bir hafta ekranda kaliyordu (kor oyun testi).
-      // Kapanmis oran matrahtan turer, formul degil: collected / base.
-      const settledRate = cfg.base > 0 ? (cfg.collected / cfg.base) * 100 : cfg.value;
-      const stale = Math.abs(settledRate - cfg.value) > 0.5;
-      const projected = cfg.base * cfg.value / 100;
+      // KAYDIRAC OYNADIYSA SATIR YALAN SOYLEMESIN: oran degistiyse "£83 x 10%
+      // = £16.6" gibi yanlis bir aritmetik bir hafta ekranda kaliyordu (kor
+      // oyun testi). Hesap taxSettlement'ta; tooltip de ayni fonksiyonu okur.
+      const { settledRate, stale, projected, amount } = taxSettlement(cfg);
       const arithmetic = stale
         ? ` \u00d7 ${cfg.value}% \u2248 \u00a3${projected.toFixed(1)}`
           + ` <em class="ledger-projected">projected \u2014 last week \u00a3${cfg.collected.toFixed(1)}`
           + ` at ${Math.round(settledRate)}%</em>`
         : ` \u00d7 ${cfg.value}% = \u00a3${cfg.collected.toFixed(1)}`;
-      return control(policy, label, LEDGER[policy], cfg, stale ? projected : cfg.collected,
+      return control(policy, label, LEDGER[policy], cfg, amount,
         `${formatPopulation(cfg.population)} people \u00b7 income \u00a3${cfg.base.toFixed(1)}`
         + `${arithmetic}${powerless}`);
     }).join('');
@@ -1775,8 +1793,10 @@ export class Screens {
     for (const row of this.el.body.querySelectorAll('[data-pop-group]')) {
       const open = () => { state.group = row.dataset.popGroup; this.refresh(); };
       row.onclick = open;
+      // Yalniz Enter: Space saatindir (hud.bindKeys); ikisi birden satiri
+      // acip oyunu da durduruyordu.
       row.onkeydown = (event) => {
-        if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); open(); }
+        if (event.key === 'Enter') { event.preventDefault(); open(); }
       };
     }
     for (const btn of this.el.body.querySelectorAll('[data-pop-alert]')) {
@@ -2162,8 +2182,9 @@ export class Screens {
         }, { once: true }), 0);
       };
       el.onclick = toggle;
+      // Yalniz Enter: Space saatindir (hud.bindKeys).
       el.onkeydown = (event) => {
-        if (event.key !== 'Enter' && event.key !== ' ') return;
+        if (event.key !== 'Enter') return;
         event.preventDefault();
         toggle();
       };

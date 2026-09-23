@@ -791,12 +791,23 @@ function readyForOperation(game, unit) {
     && (unit.attackReadyAt ?? 0) <= game.turns.turn;
 }
 
+/**
+ * Yuruyus ve taarruz kapisi: HOLD emri generali burada da baglar (march ile
+ * ayni kural). Eskiden yalniz mevkiye yuruyus emri tanirdi; taarruz paketi ve
+ * bos kareye yuruyus onu atlayip "dur" denen tumeni dusman topragina
+ * sokuyordu. Bombardiman bu kapidan gecmez: tumen yerinden kipirdamadan ates
+ * eder, "yerinde dur" vaadini bozmaz.
+ */
+function readyToAdvance(game, unit) {
+  return readyForOperation(game, unit) && unit.order?.type !== 'hold';
+}
+
 /** Hedefe bitisik, ayni komutadaki gercek katilimcilar; en fazla combat width. */
 function operationParticipants(game, divisions, target) {
   // Kusatma genisligi: birden cok komsu kareden gelen tumenler daha genis
   // paket kurar (bkz. battles.selectAssault).
   return selectAssault(divisions.filter((unit) => (
-    readyForOperation(game, unit)
+    readyToAdvance(game, unit)
     && game.world.wrapDistance(unit.tile.q, unit.tile.r, target.q, target.r) === 1
   )));
 }
@@ -809,7 +820,7 @@ function pickOperation(game, general, divisions, info) {
   const world = game.world;
   const targets = new Set();
   for (const unit of divisions) {
-    if (!readyForOperation(game, unit)) continue;
+    if (!readyToAdvance(game, unit)) continue;
     for (const tile of world.neighbors(unit.tile)) {
       const controller = controllerOf(tile);
       if (!tile.terrain.passable || controller < 0 || controller === unit.nationId) continue;
@@ -876,7 +887,8 @@ export function assaultOutlook(world, general, turn = world.turn ?? 0) {
     .map((id) => world.units.find((unit) => unit.id === id))
     .filter((unit) => unit && unit.hp > 0 && unit.type.domain === 'land');
   const ready = (unit) => !unit.battleId && !isMoving(unit) && !unit.embarked
-    && (unit.retreatUntil ?? 0) <= turn && (unit.attackReadyAt ?? 0) <= turn;
+    && (unit.retreatUntil ?? 0) <= turn && (unit.attackReadyAt ?? 0) <= turn
+    && unit.order?.type !== 'hold';
   const info = aggressionInfo(general.aggression);
   let best = null;
   for (const unit of divisions) {
@@ -1088,7 +1100,7 @@ function advance(game, general, divisions) {
   let enemyWalkIns = 0;
   for (let index = 0; index < divisions.length; index++) {
     const unit = divisions[index];
-    if (!readyForOperation(game, unit)) continue;
+    if (!readyToAdvance(game, unit)) continue;
     // Butun grup ayni hafta firlamasin: her tumen kendi sirasinda taarruz eder.
     // Faz, tumenin komuta icindeki SIRASIDIR — mutlak kimligi degil. Kimlik
     // surec omurlu bir sayactan geliyordu (units.js nextId), dolayisiyla ayni

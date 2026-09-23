@@ -9,7 +9,7 @@ import { drawFlag } from './flagPainter.js';
 import { atWar, inCrisis, relation } from '../game/diplomacy.js';
 import { isAllied } from '../game/alliances.js';
 import { INFAMY_COALITION } from '../game/infamy.js';
-import { maxHpOf, organizationOf, soldiersOf, unitsOn } from '../game/units.js';
+import { maxHpOf, menUnderArms, organizationOf, soldiersOf, unitsOn } from '../game/units.js';
 import { terrainShade } from '../world/terrain.js';
 import { RGO_TYPES } from '../game/provinces.js';
 import { controllerOf, isOccupied } from '../game/control.js';
@@ -393,10 +393,16 @@ function roundedRectPath(path, x, y, width, height, radius) {
   return path;
 }
 
-function compactSoldiers(unit) {
-  const soldiers = soldiersOf(unit);
-  if (soldiers >= 1000) return `${(soldiers / 1000).toFixed(1)}K`;
-  return String(soldiers);
+/**
+ * Haritada İNSAN sayısı, kısa: 30K, 570K, 1.2M. `soldiersOf` güç puanıdır
+ * (alay başına 1000) ve plaka onu yazarken paneller insanı yazıyordu: aynı
+ * ordu haritada "1.0K", panelde "30K men" okunuyordu (bkz. units.menUnderArms).
+ * Dar plakaya sığsın diye milyon tek ondalık, bin tam sayı.
+ */
+function compactMen(men) {
+  if (men >= 999500) return `${(men / 1e6).toFixed(1)}M`;
+  if (men >= 1000) return `${Math.round(men / 1000)}K`;
+  return String(Math.round(men));
 }
 
 /** '#rrggbb' → {h,s,l}. Arazi renkleri hex yazılır; ton sapması HSL ister. */
@@ -545,10 +551,33 @@ export class Renderer {
     if (!canvas) return false;
     this.waterGL = SurfaceGL.create(canvas);
     if (!this.waterGL) return false;
+    // BAĞLAM KAYBI (bkz. SurfaceGL): kayıpta glWater() yanlışa döner ve
+    // zemin Canvas2D'den boyanır; geri gelince dünya dokuları yeniden yüklenir.
+    // İki yönde de bütün önbellekler baştan kurulur: GL kipinde pişen katmanlar
+    // zemin taşımaz, Canvas2D kipinde pişenler taşır — biri ötekinin yerine
+    // geçemez.
+    this.waterGL.onLost = () => this.surfaceChanged();
+    this.waterGL.onRestored = () => {
+      const world = this.renderWorld;
+      if (world && this.material.cache?.world === world) {
+        this.waterGL.setWorld(world, this.material.cache, {
+          owner: this.surfaceOwnerData(world),
+          character: this.surfaceCharacterData(world),
+        });
+      }
+      this.surfaceChanged();
+    };
     // resize BURADA çağrılmaz: kurucu, düzen (layout) oturmadan çalışıyor ve
     // tuval o anda 0x0 ölçülüyor. Ölçüyü Game ilk kareden sonra verir.
     this.invalidateCache();
     return true;
+  }
+
+  /** Zemin GL ile Canvas2D arasında el değiştirdi: her pişmiş katman bayat. */
+  surfaceChanged() {
+    this.invalidateCache();
+    this.staticLayers = null;
+    this.requestFrame?.();
   }
 
   /**
@@ -570,7 +599,7 @@ export class Renderer {
    * tek şey denizin MALZEMELİ mi düz mü çizileceğidir (bkz. uSeaMaterial).
    */
   glWater() {
-    return !!this.waterGL?.debug.enabled && !!this.waterGL?.world;
+    return !!this.waterGL?.debug.enabled && !this.waterGL.lost && !!this.waterGL?.world;
   }
 
   /** Okunurluk için takma ad; yüzey artık karayı da çiziyor. */
@@ -706,7 +735,10 @@ export class Renderer {
     // Ayrı bir rAF döngüsü AÇILMADI (bkz. CLAUDE.md): kamera senkronu tek
     // yerden gelsin diye su, haritanın kendi karesinde güncelleniyor. Canvas
     // tarafı bu karelerde yalnız hazır katmanları blit eder (p50 1.0 ms).
-    if (this.glWater()) return true;
+    // Yalnız MALZEMELİ kiplerde: veri/barış kiplerinde GL deniz düz ve
+    // zamandan bağımsızdır (uSeaMaterial 0), zincir aynı kareyi boşuna
+    // yeniden çiziyordu (ölçüldü: duraklatılmış haritada 5 sn'de 35 tam kare).
+    if (this.glWater() && this.waterAnimatedMode()) return true;
     return this.water.animatedThisFrame || this.water.disturbances.length > 0
       || this.labelFadePending === true || this.waterSkipped === true;
   }
@@ -734,11 +766,19 @@ export class Renderer {
     // ~150 ms tutuyor ve ilk statik katmanda tek karede ödenirse takılıyor.
     if (this.material.warmStep(this.ctx, world)) return true;
     // WebGL su katmanı, malzemenin kıyı uzaklığı alanını doku olarak alır.
-    if (this.waterGL && this.waterGL.world !== world) {
+    // Kayıp bağlamda atlanır: setWorld yükleyemez ve ısıtma zinciri aynı
+    // adımı sonsuza dek tekrar ederdi; bağlam dönünce onRestored kurar.
+    if (this.waterGL && !this.waterGL.lost && this.waterGL.world !== world) {
+      const wasGL = this.glSurface();
       this.waterGL.setWorld(world, this.material.cache, {
         owner: this.surfaceOwnerData(world),
         character: this.surfaceCharacterData(world),
       });
+      // İlk yüklemede zemin Canvas2D'den GL'ye geçer: o kipte pişen katmanlar
+      // dolgu taşıyıp GL yüzeyini örter, geçişi yarıda yakalayan uzak pişirme
+      // ise iki kipi karıştırıp karayı dolgusuz, gri malzemeyle boyuyordu
+      // (ölçüldü: uzak dokuda kara pikseli opak gri).
+      if (this.glSurface() !== wasGL) this.surfaceChanged();
       return true;
     }
     if (this.water.warmStep(this.ctx)) return true;
@@ -776,12 +816,16 @@ export class Renderer {
     this.tintCache.clear();
     // Sprite'lar ulus rengine bağlı; yeni dünyada aynı id başka renktir.
     this.unitSprites?.clear();
+    // Bayrak sprite'ı da ulus KİMLİĞİYLE anahtarlı: temizlenmezse yeni
+    // kampanyada uzak zoomdaki her ordu önceki dünyanın aynı id'li ulusunun
+    // bayrağını taşıyordu (ölçüldü: 109 sprite'ın 94'ü yanlış ulus).
+    this.flagSprites?.clear();
     this.dirtyTiles?.clear();
     // Ülke biçimleri değişmiş olabilir: etiket yerleşimi yeniden kurulsun.
     this.labelsDirty = true;
     this.staticDirty = true;
     this.seaFrame = null;
-    this.staticJob = null;
+    this.dropStaticJob();
     this.farJob = null;
   }
 
@@ -808,8 +852,12 @@ export class Renderer {
     // "haritada rastgele beliren isimler" şikâyetinin kökü buydu.
     if (ownershipChanged) this.labelsDirty = true;
     this.staticDirty = true;
-    // Önbellek yoksa iş yok: ilk uzak-zoom karesi zaten taze pişirir.
-    if (!this.cache) return;
+    // Önbellek de pişirme işi de yoksa iş yok: ilk uzak-zoom karesi zaten
+    // taze pişirir. Pişirme SÜRÜYORSA kayıt tutulur — dilimli iş bu kareleri
+    // eski durumdan boyamış olabilir ve bitince buradan yerinde onarılır;
+    // tutulmazsa bitmiş doku eski sınırı bir sonraki tam pişirmeye dek
+    // taşıyordu (ölçüldü: devredilen kare eski sahibin renginde kaldı).
+    if (!this.cache && !this.farJob) return;
     this.dirtyTiles ??= new Set();
     for (const tile of tiles) this.dirtyTiles.add(tile);
     // Küme büyüdüyse (toplu ilhak, çökme) tam pişirme daha ucuz.
@@ -1311,7 +1359,7 @@ export class Renderer {
     const hard = !L || L.world !== world || L.mode !== this.mapMode
       || L.dpr !== this.dpr || L.grid !== this.showGrid;
     if (hard) {
-      this.staticJob = null;
+      this.dropStaticJob();
       return this.buildStaticLayers(world);
     }
     if (this.staticDirty) {
@@ -1320,8 +1368,12 @@ export class Renderer {
       // takılmanın kaynağı buydu. İçerik en fazla 3 kare (~120 ms) bayat
       // kalır; sınır çizgisinin yüz milisaniye geç güncellenmesi hissedilmez,
       // kare düşmesi hissedilir.
+      //
+      // Gösterilen katman BAYAT diye işaretlenir: iş bitene dek kaydırma onun
+      // piksellerini taşıyamaz ve iş, zoom değişmedi diye yarıda bırakılamaz.
       this.staticDirty = false;
-      this.staticJob = null;
+      L.stale = true;
+      this.dropStaticJob();
       this.stepStaticJob(world);
       return this.staticLayers;
     }
@@ -1334,11 +1386,19 @@ export class Renderer {
     const dy = cam.y - L.cy;
     const slackX = (L.w - viewW) / 2;
     const slackY = (L.h - viewH) / 2;
+    const uncovered = Math.abs(dx) > slackX || Math.abs(dy) > slackY;
     if (mag === 1) {
-      this.staticJob = null;
-      if (Math.abs(dx) > slackX || Math.abs(dy) > slackY) {
-        return this.buildStaticLayers(world);
+      // Bayat içerik ya da BU zoom'da yarım kalmış iş dilim dilim bitirilir.
+      // Eskiden bu dal işi koşulsuz düşürüyordu: fetihten sonraki ilk dilim
+      // boyanıyor, ertesi karede iş atılıyor ve kamera zoom yapmadıkça sınır
+      // hiç tazelenmiyordu (ölçüldü: 2.5 sn sonra da, kaydırıp dönünce de eski
+      // sahibin rengi — kaydırma bayat pikselleri yeni katmana taşıyordu).
+      if (L.stale || this.staticJob?.zoom === cam.zoom) {
+        this.stepStaticJob(world);
+        return this.staticLayers;
       }
+      this.dropStaticJob();
+      if (uncovered) return this.buildStaticLayers(world);
       return L;
     }
     // Zoom değişti. Jest SÜRERKEN katman yeniden pişmez: ölçekli blit yeter.
@@ -1356,9 +1416,21 @@ export class Renderer {
     // yeterince iyi görünüyordu. Jest yerleşince (STATIC_SETTLE_MS) katman TAM
     // zoom'da bir kez pişer, durağan haritada bulanıklık kalmaz.
     const settled = performance.now() - this.zoomStamp.at > STATIC_SETTLE_MS;
-    const uncovered = Math.abs(dx) > slackX || Math.abs(dy) > slackY;
     if (settled || uncovered) this.stepStaticJob(world);
     return this.staticLayers;
+  }
+
+  /**
+   * Yarım statik işi bırakır; tuval çifti yedeğe döner. Döndürülmezse her
+   * yeniden başlatma tam ekranlık yeni bir çift ayırıyordu — savaşta her
+   * işgal bir iş başlattığı için bu, olay başına onlarca MB çöp demekti
+   * (ölçüldü: 5 işgalde 10 tuval, 1946×1216).
+   */
+  dropStaticJob() {
+    const job = this.staticJob;
+    if (!job) return;
+    this.staticJob = null;
+    if (!this.staticSpare) this.staticSpare = job.pair;
   }
 
   /**
@@ -1381,7 +1453,10 @@ export class Renderer {
         || Math.abs(cam.zoom / job.zoom - 1) > 0.3
         || Math.abs(jdx) > job.w * 0.25
         || Math.abs(cam.y - job.cy) > job.h * 0.25;
-      if (stale) job = null;
+      if (stale) {
+        this.dropStaticJob();
+        job = null;
+      }
     }
     if (!job) {
       const g = this.staticGeometry(world);
@@ -1521,8 +1596,10 @@ export class Renderer {
     // Saf kaydırma tekrar kullanımı: aynı dünya/kip/zoom ve aynı doku boyutu
     // ise eski içerik piksel hizalı kaydırılır, yalnız yeni açılan şeritler
     // çizilir. Tam pişirme ~11k kare sürerken şeritler onda biri kadardır;
-    // sürükleme sırasındaki "kasma" bu farktan geliyordu.
-    const canScroll = prev && !this.staticDirty && prev.world === world
+    // sürükleme sırasındaki "kasma" bu farktan geliyordu. Bayat katman
+    // (bkz. ensureStaticLayers `stale`) kaydırılmaz: eski sınırı yeni şeridin
+    // yanına taşır ve harita yarı eski yarı yeni kalırdı.
+    const canScroll = prev && !prev.stale && !this.staticDirty && prev.world === world
       && prev.mode === this.mapMode && prev.dpr === dpr && prev.grid === this.showGrid
       && prev.zoom === cam.zoom
       && prev.base.width === pxW && prev.base.height === pxH;
@@ -1569,9 +1646,10 @@ export class Renderer {
     const b = setup(L.base);
     const t = setup(L.top);
 
+    // Ya baştan boyanır ya da taze katmandan kaydırılır: iki durumda da güncel.
     Object.assign(L, {
       world, mode: this.mapMode, dpr, grid: this.showGrid,
-      zoom: cam.zoom, cx: cam.x, cy: cam.y, x0, y0, w, h,
+      zoom: cam.zoom, cx: cam.x, cy: cam.y, x0, y0, w, h, stale: false,
     });
 
     const collar = HEX_SIZE * 2.5;
@@ -1617,6 +1695,8 @@ export class Renderer {
   render(world, state = {}) {
     const ctx = this.ctx;
     const cam = this.camera;
+    // GL bağlamı geri geldiğinde dokular bu dünyadan yeniden kurulur.
+    this.renderWorld = world;
     // Diplomasi kipinin varsayılan bakış açısı; renk dokusu aşağıda bu kareden
     // önce tazelenirse doğru ülkeye göre kurulsun.
     if (state.playerNation != null && state.playerNation !== this.viewPlayer) {
@@ -2957,7 +3037,7 @@ export class Renderer {
       20 * Math.max(0, Math.min(1, unit.hp / Math.max(1, maxHpOf(unit)))),
     );
     const orgQ = Math.round(Math.max(0, Math.min(100, organizationOf(unit))) / 5);
-    const soldiers = compactSoldiers(unit);
+    const soldiers = compactMen(menUnderArms(unit));
     // KIMIN ORDUSU: kunye cercevesi bunu soyler. Ulus rengi seridi tek basina
     // yetmiyordu — elli beş ulusun paleti birbirine yakin ve oyuncu kendi
     // birimini dusmanininkinden ayiramiyordu (kullanici bildirimi).
@@ -3088,6 +3168,13 @@ export class Renderer {
     ctx.stroke(outer);
     ctx.restore();
 
+    // Yığın rozeti sağ üst köşeye oturur (bkz. aşağıda). Yığında mevcut
+    // rozetin SOLUNA yaslanır: aynı hizada kalınca rozet sayının sonunu
+    // örtüyor, "30K" yakın zoomda "3(" okunuyordu.
+    const badgeWidth = HEX_SIZE * 0.48;
+    const countRight = spec.stackLen > 1
+      ? left + width - badgeWidth * 0.75 - width * 0.03
+      : left + width * 0.92;
     if (detailed) {
       ctx.font = `800 ${Math.round(HEX_SIZE * 0.2)}px ui-sans-serif, system-ui, sans-serif`;
       ctx.textBaseline = 'middle';
@@ -3097,15 +3184,15 @@ export class Renderer {
         // kez soyluyordu. Geriye yalniz mevcut kalir ve okunsun diye koyu
         // golgeyle basilir — pirinc zemin acik.
         ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-        ctx.fillText(spec.soldiers, left + width * 0.93, top + height * 0.115);
+        ctx.fillText(spec.soldiers, countRight + width * 0.01, top + height * 0.115);
         ctx.fillStyle = '#f0e2bd';
-        ctx.fillText(spec.soldiers, left + width * 0.92, top + height * 0.1);
+        ctx.fillText(spec.soldiers, countRight, top + height * 0.1);
       } else {
         ctx.fillStyle = '#081017';
         ctx.textAlign = 'left';
         ctx.fillText(TYPE_CODE[spec.typeId] ?? 'DIV', left + width * 0.08, top + height * 0.135);
         ctx.textAlign = 'right';
-        ctx.fillText(spec.soldiers, left + width * 0.92, top + height * 0.135);
+        ctx.fillText(spec.soldiers, countRight, top + height * 0.135);
 
         const symbolWidth = width * 0.58;
         const symbolHeight = height * 0.38;
@@ -3137,7 +3224,6 @@ export class Renderer {
     ctx.fillRect(barLeft, organizationY, barWidth * organization, barHeight);
 
     if (spec.stackLen > 1) {
-      const badgeWidth = HEX_SIZE * 0.48;
       const badge = roundedRectPath(
         new Path2D(), left + width - badgeWidth * 0.75, top - badgeWidth * 0.25,
         badgeWidth, badgeWidth, badgeWidth * 0.22,
@@ -3270,8 +3356,11 @@ export class Renderer {
       ctx.font = `650 ${10.5 / zoom}px ui-sans-serif, system-ui, sans-serif`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      const a = aSoldiers ? `${(aSoldiers / 1000).toFixed(1)}K` : '0';
-      const d = dSoldiers ? `${(dSoldiers / 1000).toFixed(1)}K` : '0';
+      // Yazı İNSAN sayısıdır, panellerle aynı birim (bkz. compactMen). Yukarıdaki
+      // güç puanı toplamları yalnız örgütlenme ağırlığında kalır: muharebe
+      // matematiğinin birimi odur.
+      const a = compactMen(attackers.reduce((sum, army) => sum + menUnderArms(army), 0));
+      const d = compactMen(defenders.reduce((sum, army) => sum + menUnderArms(army), 0));
       const textY = y - 1.5 / zoom;
       ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
       ctx.fillText(`${a} ⚔ ${d}`, x + 0.7 / zoom, textY + 0.7 / zoom);
@@ -3304,8 +3393,13 @@ export class Renderer {
       if (!(length > 0)) continue;
       const ux = dx / length;
       const uy = dy / length;
-      const mx = from.x + dx * 0.5;
-      const my = from.y + dy * 0.5;
+      // Orta nokta HEDEFTEN geriye ölçülür: muharebe yalnız hedef karenin
+      // kopyasında çizilir (bkz. drawBattles kırpması). Saldıranın karesinden
+      // ölçülünce dikişin öbür yakasındaki saldırının üçgeni bir periyot
+      // ötedeki kopyaya düşüyor ve hiç görünmüyordu (ölçüldü: hedef x 0,
+      // üçgen x 7230).
+      const mx = target.x - dx * 0.5;
+      const my = target.y - dy * 0.5;
       ctx.beginPath();
       ctx.moveTo(mx + ux * size * 0.62, my + uy * size * 0.62);
       ctx.lineTo(mx - ux * size * 0.38 - uy * size * 0.5, my - uy * size * 0.38 + ux * size * 0.5);
@@ -3615,6 +3709,24 @@ export class Renderer {
       if (P) d -= P * Math.round(d / P);
       if (Math.abs(d) > jumpLimit) this.labelAlpha.set(key, 0);
     };
+    // Ekrana düşen sarmal kopyaların x'leri, kameraya en yakını başta. Periyot
+    // ekrandan dar olduğunda (geniş ekran, uzak zoom) harita aynı çapayı birden
+    // çok yerde çizer; yalnız en yakınını yazmak tekrarlanan bandı adsız
+    // bırakıyordu. Birincil kopya erime/çarpışma kararını verir, diğerleri
+    // aynı alfayla ve yalnız yer varsa basılır. Dizi yeniden kullanılır: kare
+    // başına yüzlerce çağrı çöp üretmesin.
+    const copyStep = P * z;
+    const copyXs = (this.labelCopyXs ??= []);
+    const copiesOf = (x, margin) => {
+      copyXs.length = 0;
+      const hi = cam.viewWidth + margin;
+      if (x >= -margin && x <= hi) copyXs.push(x);
+      if (copyStep > 0) {
+        for (let c = x - copyStep; c >= -margin; c -= copyStep) if (c <= hi) copyXs.push(c);
+        for (let c = x + copyStep; c <= hi; c += copyStep) if (c >= -margin) copyXs.push(c);
+      }
+      return copyXs;
+    };
 
     ctx.save();
     ctx.textAlign = 'center';
@@ -3666,11 +3778,13 @@ export class Renderer {
       }
       const p = cam.worldToScreenWrapped(L.x, L.y);
       const w = (w100 * size) / 100 + spacing * L.name.length;
-      if (p.x < -w || p.x > cam.viewWidth + w || p.y < -50 || p.y > cam.viewHeight + 50) {
+      const xs = copiesOf(p.x, w);
+      if (!xs.length || p.y < -50 || p.y > cam.viewHeight + 50) {
         // Ekran dışı: alfa sıfırlanır ki dönüşte içeri "erirken" girsin.
         this.labelAlpha.delete(key);
         continue;
       }
+      p.x = xs[0];
       const pad = size * 0.5;
       const bw = cos * w + sin * size + pad * 2;
       const bh = sin * w + size * 1.15 + pad * 0.6;
@@ -3684,34 +3798,41 @@ export class Renderer {
       const a = fade(key, fits ? countryAlpha * sizeFactor : 0);
       if (a <= 0.01) continue;
 
-      ctx.save();
-      ctx.translate(p.x, p.y);
-      ctx.rotate(L.tilt);
-      ctx.globalAlpha = a;
-      ctx.font = `600 ${size.toFixed(1)}px Georgia, "Times New Roman", serif`;
-      ctx.letterSpacing = spacing.toFixed(2) + 'px';
-      // Kâğıda BASILMIŞ his: gölge daralır (blur 4 → 2.5), kontur incelir ve
-      // koyulaşır. Geniş bir hale yazıyı zeminden koparıp "üstte yüzen HTML"
-      // gibi gösteriyordu; dar ve koyu bir kontur ise harfi haritanın içine
-      // oturtur. Mürekkep de ısıtıldı: nötr fildişi yerine hafif sıcak.
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-      ctx.shadowBlur = 2.5;
-      ctx.shadowOffsetY = 1;
-      ctx.lineJoin = 'round';
-      ctx.lineWidth = Math.max(1.2, size * 0.075);
-      ctx.strokeStyle = 'rgba(8, 10, 11, 0.55)';
-      ctx.strokeText(L.name, 0, 0);
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetY = 0;
-      ctx.fillStyle = 'rgba(240, 229, 200, 0.97)';
-      ctx.fillText(L.name, 0, 0);
-      ctx.letterSpacing = '0px';
-      ctx.restore();
-      // Bayrak uzak/orta zoomda kimlik verir; yakında şehir katmanı devralır.
-      if (L.flag && z < 0.75) {
+      for (let i = 0; i < xs.length; i++) {
+        const px = xs[i];
+        if (i > 0) {
+          if (collides(px - bw / 2, ry, bw, bh)) continue;
+          placed.push({ x: px - bw / 2, y: ry, w: bw, h: bh });
+        }
+        ctx.save();
+        ctx.translate(px, p.y);
+        ctx.rotate(L.tilt);
         ctx.globalAlpha = a;
-        drawFlag(ctx, L.flag, p.x - 9, p.y + bh / 2 + 3, 18, 12);
-        ctx.globalAlpha = 1;
+        ctx.font = `600 ${size.toFixed(1)}px Georgia, "Times New Roman", serif`;
+        ctx.letterSpacing = spacing.toFixed(2) + 'px';
+        // Kâğıda BASILMIŞ his: gölge daralır (blur 4 → 2.5), kontur incelir ve
+        // koyulaşır. Geniş bir hale yazıyı zeminden koparıp "üstte yüzen HTML"
+        // gibi gösteriyordu; dar ve koyu bir kontur ise harfi haritanın içine
+        // oturtur. Mürekkep de ısıtıldı: nötr fildişi yerine hafif sıcak.
+        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
+        ctx.shadowBlur = 2.5;
+        ctx.shadowOffsetY = 1;
+        ctx.lineJoin = 'round';
+        ctx.lineWidth = Math.max(1.2, size * 0.075);
+        ctx.strokeStyle = 'rgba(8, 10, 11, 0.55)';
+        ctx.strokeText(L.name, 0, 0);
+        ctx.shadowBlur = 0;
+        ctx.shadowOffsetY = 0;
+        ctx.fillStyle = 'rgba(240, 229, 200, 0.97)';
+        ctx.fillText(L.name, 0, 0);
+        ctx.letterSpacing = '0px';
+        ctx.restore();
+        // Bayrak uzak/orta zoomda kimlik verir; yakında şehir katmanı devralır.
+        if (L.flag && z < 0.75) {
+          ctx.globalAlpha = a;
+          drawFlag(ctx, L.flag, px - 9, p.y + bh / 2 + 3, 18, 12);
+          ctx.globalAlpha = 1;
+        }
       }
     }
 
@@ -3728,7 +3849,8 @@ export class Renderer {
         // Sahipsiz kırlar en yakın zoomda; önce devletlerin toprağı konuşsun.
         if (pr.owner < 0 && z < 1.1) continue;
         const p = cam.worldToScreenWrapped(pr.center.x, pr.center.y);
-        if (p.x < -70 || p.x > cam.viewWidth + 70 || p.y < -20 || p.y > cam.viewHeight + 20) {
+        const xs = copiesOf(p.x, 70);
+        if (!xs.length || p.y < -20 || p.y > cam.viewHeight + 20) {
           // Ekran dışı: alfa SIFIRLANIR. Bırakılınca ad 0.85'te donuyor ve
           // görüşe geri girdiğinde erimeden, tam alfayla beliriyordu — ülke ve
           // şehir döngüleri bunu zaten yapıyordu, eksik olan yalnız burasıydı
@@ -3736,7 +3858,8 @@ export class Renderer {
           this.labelAlpha.delete('p' + pr.center.q + ':' + pr.center.r);
           continue;
         }
-        visible.push({ pr, p });
+        p.x = xs[0];
+        visible.push({ pr, p, more: xs.length > 1 ? xs.slice(1) : null });
       }
       visible.sort((a, b) => (b.pr.population ?? 0) - (a.pr.population ?? 0));
       // Font kare başına TEK kez kurulur (yüzlerce state'te atama başına
@@ -3744,7 +3867,7 @@ export class Renderer {
       // değiştirmemeli — measureLabel bu yüzden durumu geri yazar.
       ctx.font = `400 small-caps ${size}px Georgia, "Times New Roman", serif`;
       ctx.letterSpacing = '1.1px';
-      for (const { pr, p } of visible) {
+      for (const { pr, p, more } of visible) {
         const key = 'p' + pr.center.q + ':' + pr.center.r;
         const w = (this.measureLabel(ctx, refFont, pr.name) * size) / 100 + pr.name.length * 1.1;
         const rx = p.x - w / 2 - 3;
@@ -3760,6 +3883,13 @@ export class Renderer {
         ctx.strokeText(pr.name, p.x, p.y);
         ctx.fillStyle = 'rgba(226, 219, 198, 0.92)';
         ctx.fillText(pr.name, p.x, p.y);
+        if (!more) continue;
+        for (const mx of more) {
+          if (collides(mx - w / 2 - 3, ry, w + 6, 16)) continue;
+          placed.push({ x: mx - w / 2 - 3, y: ry, w: w + 6, h: 16 });
+          ctx.strokeText(pr.name, mx, p.y);
+          ctx.fillText(pr.name, mx, p.y);
+        }
       }
       ctx.globalAlpha = 1;
       ctx.letterSpacing = '0px';
@@ -3783,10 +3913,12 @@ export class Renderer {
           : Math.max(city.level >= 2 ? majorTarget : 0, allTarget);
         if (target <= 0 && !this.labelAlpha.has(key)) continue;
         const p = cam.worldToScreenWrapped(city.tile.x, city.tile.y);
-        if (p.x < -60 || p.x > cam.viewWidth + 60 || p.y < -24 || p.y > cam.viewHeight + 24) {
+        const xs = copiesOf(p.x, 60);
+        if (!xs.length || p.y < -24 || p.y > cam.viewHeight + 24) {
           this.labelAlpha.delete(key);
           continue;
         }
+        p.x = xs[0];
         const name = englishCityName(city.name);
         const ly = p.y + HEX_SIZE * z * 0.68;
         const refFont = isCapital
@@ -3808,6 +3940,12 @@ export class Renderer {
         ctx.strokeText(name, p.x, ly);
         ctx.fillStyle = isCapital ? 'rgba(240, 231, 208, 0.95)' : 'rgba(223, 214, 192, 0.85)';
         ctx.fillText(name, p.x, ly);
+        for (let i = 1; i < xs.length; i++) {
+          if (collides(xs[i] - w / 2 - 2, ry, w + 4, 15)) continue;
+          placed.push({ x: xs[i] - w / 2 - 2, y: ry, w: w + 4, h: 15 });
+          ctx.strokeText(name, xs[i], ly);
+          ctx.fillText(name, xs[i], ly);
+        }
       }
       ctx.globalAlpha = 1;
     }

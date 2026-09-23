@@ -14,7 +14,8 @@
 //
 // Bütçe: TEK requestAnimationFrame döngüsü bütün bayrakları sürer (bayrak
 // başına döngü açılmaz, bkz. CLAUDE.md). Kare 30 Hz'e kısılır, sekme
-// gizlenince durur, görünmeyen bayrak çizilmez, döngü içinde tahsis yapılmaz.
+// gizlenince ya da görünen bayrak kalmayınca (menü perdesi) durur, döngü
+// içinde tahsis yapılmaz.
 
 import { drawFlag } from './flagPainter.js';
 
@@ -62,15 +63,30 @@ const parked = new Set();
 let rafId = 0;
 let lastFrame = 0;
 
-/** Görünürlük: ekrandan çıkan bayrak çizilmez. */
+/** Görünürlük: ekrandan çıkan bayrak çizilmez; geri girince saat yeniden kurulur. */
 const seen = typeof IntersectionObserver === 'function'
   ? new IntersectionObserver((entries) => {
+    let back = false;
     for (const entry of entries) {
       const flag = entry.target.__flag;
-      if (flag) flag.visible = entry.isIntersecting;
+      if (!flag) continue;
+      flag.visible = entry.isIntersecting;
+      back ||= entry.isIntersecting;
     }
+    if (back) startClock();
   }, { threshold: 0 })
   : null;
+
+/**
+ * Bayrak gerçekten görünüyor mu? IntersectionObserver `visibility: hidden`ı
+ * görmez: ana menü künyeyi bu yolla gizlerken bayrak saniyede 30 kez boşuna
+ * çiziliyor ve döngü her karede rAF istiyordu (ölçüldü: menü açıkken 2 sn'de
+ * 448 drawImage). checkVisibility yoksa (eski tarayıcı) eski davranış kalır.
+ */
+function shown(flag) {
+  return flag.visible
+    && flag.canvas.checkVisibility?.({ visibilityProperty: true }) !== false;
+}
 
 /**
  * Görsel kalibrasyon kancası. Oyun ayarı DEĞİLDİR ve arayüzden erişilmez;
@@ -96,7 +112,12 @@ function loop(now) {
   if (now - lastFrame < TUNE.frameMs) return;
   lastFrame = now;
   const time = now / 1000;
-  for (const flag of live) draw(flag, time);
+  let drawn = 0;
+  for (const flag of live) if (draw(flag, time)) drawn++;
+  // Görünen bayrak kalmadıysa saat DURUR: gizli bayrak için her karede rAF
+  // istemek sürekli döngü demekti (bkz. CLAUDE.md). Perde kalkınca sınıf
+  // gözcüsü, ekrana geri giren bayrak için görünürlük gözcüsü yeniden kurar.
+  if (!drawn) stopClock();
 }
 
 function startClock() {
@@ -135,6 +156,13 @@ if (typeof document !== 'undefined') {
       if (still) stopClock();
       else startClock();
     }).observe(document.documentElement, { attributes: true, attributeFilter: ['data-motion'] });
+    // Perdeler (ana menü, ekranlar) gövde sınıfıyla açılıp kapanır ve
+    // IntersectionObserver `visibility` değişimini bildirmez: gizli bayrakta
+    // duran saat, perde kalkınca buradan yeniden kurulur.
+    if (document.body) {
+      new MutationObserver(() => startClock())
+        .observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    }
   }
 }
 
@@ -171,9 +199,9 @@ function draw(flag, time) {
     live.delete(flag);
     if (seen) seen.unobserve(flag.canvas);
     if (!live.size) stopClock();
-    return;
+    return false;
   }
-  if (!flag.visible) return;
+  if (!shown(flag)) return false;
 
   const { ctx, src, w, h, strips, amp } = flag;
   const sw = w / strips;
@@ -205,6 +233,7 @@ function draw(flag, time) {
     ctx.fillRect(sx, dy, sw + 1, dh);
   }
   ctx.globalAlpha = 1;
+  return true;
 }
 
 /**

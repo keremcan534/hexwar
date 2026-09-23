@@ -10,6 +10,7 @@
 // hiç göstermemekten kötüdür.
 
 import { provideTooltip, tipTerm } from './tooltip.js';
+import { taxSettlement } from './screens.js';
 import {
   FACTORIES, GOODS, budgetBreakdown, debtCapacity, formatPopulation, literacyTargetOf, priceOf,
 } from '../game/economy.js';
@@ -62,14 +63,18 @@ export function registerTooltips(game) {
       welfare: 'Welfare',
     }[arg] ?? arg;
 
-    // Vergi: matrah × oran = tahsilat. Üç sayı da dökümden gelir.
+    // Vergi: matrah × oran = tahsilat. Üç sayı da dökümden gelir; çarpım
+    // satırla AYNI fonksiyondan (screens.taxSettlement). Kart kendi çarpımını
+    // kurarken oran değişince "25% · Collected £10.9" yazıyordu, satır ise
+    // "≈ £20.9 projected" diyordu.
     if (arg.startsWith('tax')) {
       const incomes = classIncomeAttribution(nation);
       const mine = incomes?.[cfg.classId];
+      const tax = taxSettlement(cfg);
       return {
         type: 'breakdown',
         title: `${label} — ${cfg.value}%`,
-        value: coin(cfg.collected),
+        value: tax.stale ? `≈${coin(tax.projected)}` : coin(cfg.collected),
         text: cfg.explain,
         rows: [
           { label: 'People in this class', value: formatPopulation(cfg.population) },
@@ -78,7 +83,12 @@ export function registerTooltips(game) {
             ? [{ label: 'Income vs last week', value: signed(mine.delta), tone: mine.delta >= 0 ? 'good' : 'bad' }]
             : []),
           { label: 'Rate', value: `${cfg.value}%` },
-          { label: 'Collected', value: coin(cfg.collected), tone: 'good' },
+          ...(tax.stale
+            ? [
+              { label: `Projected at ${cfg.value}%`, value: `≈${coin(tax.projected)}`, tone: 'good' },
+              { label: `Last week at ${Math.round(tax.settledRate)}%`, value: coin(cfg.collected) },
+            ]
+            : [{ label: 'Collected', value: coin(cfg.collected), tone: 'good' }]),
         ],
         footer: `The system reads as <b>${view.controls.taxSummary.structure}</b>: `
           + 'the label follows your three rates, it is not set for you.',
@@ -103,16 +113,19 @@ export function registerTooltips(game) {
     }
 
     if (arg === 'armyFunding') {
+      // Satirla ayni dort sonuc, ayni sirada ve bicimde. Anahtar listesi
+      // 'combat' ariyordu ama alan `combatPower`: kart savas gucunu hic
+      // gostermiyordu. Ikmal bir carpan degil doluluk payidir, satir gibi % yazar.
       return {
         type: 'mechanic',
         title: `Army funding — ${cfg.value}%`,
         text: cfg.explain,
-        effects: Object.entries(cfg)
-          .filter(([key]) => ['combat', 'reinforcement', 'training', 'supply'].includes(key))
-          .map(([key, value]) => ({
-            label: key[0].toUpperCase() + key.slice(1),
-            value: typeof value === 'number' ? `×${value.toFixed(2)}` : String(value),
-          })),
+        effects: [
+          { label: 'Combat power', value: `×${cfg.combatPower.toFixed(2)}` },
+          { label: 'Reinforcement', value: `×${cfg.reinforcement.toFixed(2)}` },
+          { label: 'Training', value: `×${cfg.training.toFixed(2)}` },
+          { label: 'Supply', value: pct(cfg.supply) },
+        ],
         footer: `Your government allows ${cfg.min}–${cfg.max}%.`,
       };
     }
@@ -172,15 +185,15 @@ export function registerTooltips(game) {
      SANAYİ — tesis, mal, kadro, durum, eylemler
      ---------------------------------------------------------------------- */
 
-  /** Sanayi dökümü bir tazelemede birden çok kez istenebilir: kısa bellek. */
-  let cache = null;
-  const industry = () => {
-    const turn = game.world.turn;
-    if (cache && cache.turn === turn && cache.nation === game.turns.playerNation) return cache.view;
-    const view = industryOverview(game.world, me());
-    cache = { turn, nation: game.turns.playerNation, view };
-    return view;
-  };
+  /**
+   * Döküm her kart açılışında TAZE okunur. Tur anahtarlı bellek hafta içinde
+   * bayat kalıyordu: duraklatılmış oyunda sübvansiyon açılınca düğme
+   * "Subsidised ✓" derken kart hâlâ "Subsidise this plant", genişletme
+   * kuyruğa girince kart hâlâ "Expand to level 2 · £145" diyordu. Döküm tek
+   * ulus için ~0.1 ms (ölçüldü); kart 550 ms gecikmeyle açılır, bellek kazanç
+   * getirmiyordu.
+   */
+  const industry = () => industryOverview(game.world, me());
   const factoryOf = (id) => industry()?.factories.find((row) => row.id === id) ?? null;
 
   provideTooltip('fac-profit', (id) => {

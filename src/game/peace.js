@@ -787,13 +787,20 @@ export function signPeace(game, a, b, offer) {
   // Egemenlik degisti: fiyatlar ulke toplamindan turedigi icin tablo bayat.
   invalidateWarCosts(world);
   // Anlaşma dışında kalan işgaller sahibine döner: barış cepheyi siler.
+  const returned = [];
   for (const tile of world.tiles) {
     const controller = controllerOf(tile);
     if (controller === tile.owner) continue;
     if ((tile.owner === a && controller === b) || (tile.owner === b && controller === a)) {
       tile.controller = tile.owner;
+      returned.push(tile);
     }
   }
+  // İade haritaya da işlenmeli: tarama GPU dokusunda ve önbellekte yaşar,
+  // kendiliğinden tazelenmez. Beyaz barışta başka bir geçersizleme olmadığı
+  // için kurtulan topraklar taralı kalıyordu (ölçüldü: 3 sn sonra dokuda
+  // hâlâ işgal bayrağı). Egemenlik değişmedi: etiket yerleşimi kirlenmesin.
+  if (returned.length) game.renderer?.invalidateTiles(returned, false);
   // Baris bir SONUCTUR: kim ne aldi, ne odedi. Tek satirlik "terms imposed"
   // kor beta testcisine savasin nasil bittigini soylemiyordu.
   const player = game.turns.playerNation;

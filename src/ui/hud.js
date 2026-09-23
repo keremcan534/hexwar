@@ -43,6 +43,7 @@ import {
 } from '../game/provinces.js';
 import { controllerOf, isOccupied } from '../game/control.js';
 import { tileDefense } from '../game/battles.js';
+import { POPULATION_SCALE } from '../game/populationScale.js';
 import { worldRows } from '../world/worldgen.js';
 
 const ORDER_LABELS = {
@@ -95,6 +96,26 @@ const PAN_KEYS = {
   KeyD: [-1, 0], ArrowRight: [-1, 0],
 };
 
+/**
+ * Yazi alani: orada her tus yaziya aittir, kisayol calismaz. Kaydirac, onay
+ * kutusu ve dugme yazi alani DEGILDIR — eskiden butun <input>'lar sayiliyordu
+ * ve fareyle bir kaydiraca ya da kutuya dokunan oyuncunun Space/Esc/+/-
+ * tuslari, odak baska yere gecene kadar olu kaliyordu.
+ */
+const NON_TEXT_INPUTS = new Set([
+  'range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color', 'file', 'image',
+]);
+function takesText(el) {
+  if (!el) return false;
+  if (el.isContentEditable || el.tagName === 'TEXTAREA') return true;
+  return el.tagName === 'INPUT' && !NON_TEXT_INPUTS.has(el.type);
+}
+
+/** Ok tuslarini kendisi kullanan denetim: odakli kaydirac ve secim kutusu. */
+function ownsArrows(el) {
+  return el?.tagName === 'SELECT' || (el?.tagName === 'INPUT' && el.type === 'range');
+}
+
 export class Hud {
   constructor(game) {
     this.game = game;
@@ -134,6 +155,7 @@ export class Hud {
     };
     this.screens = new Screens(game);
     this.buildRgoLegend();
+    this.buildPopulationLegend();
     this.bind();
   }
 
@@ -148,6 +170,34 @@ export class Hud {
     legend.innerHTML = Object.values(RGO_TYPES).map((type) => (
       `<span style="--rgo-color:hsl(${type.hue} 30% 38%)">${type.icon} ${type.name}</span>`
     )).join('');
+  }
+
+  /**
+   * Nufus lejandi haritanin KENDI olceginden uretilir. Elle yazilan "1K-8K"
+   * bantlari nufus olcegi on kat buyuyunce haritadan kopmustu: her province
+   * "8K+" okunuyordu, harita ise onlari dort ayri tonda boyuyordu. Renk
+   * dogrudan renderer.populationTint'ten gelir; bant uclari onun log bandidir
+   * (1.5K-150K x POPULATION_SCALE) — orada degisirse burada da degismeli.
+   */
+  buildPopulationLegend() {
+    const legend = this.el.populationLegend;
+    const renderer = this.game.renderer;
+    if (!legend || !renderer?.populationTint) return;
+    const low = 1500 * POPULATION_SCALE;
+    const high = 150000 * POPULATION_SCALE;
+    // Iki anlamli basamak: ara duraklar "~69.6K" degil "~70K" okunsun.
+    const round = (value) => {
+      const step = 10 ** (Math.floor(Math.log10(value)) - 1);
+      return Math.round(value / step) * step;
+    };
+    const stops = [0, 1 / 3, 2 / 3, 1].map((t) => round(low * (high / low) ** t));
+    legend.innerHTML = stops.map((population, index) => {
+      const label = index === 0 ? `${formatPopulation(population)} or less`
+        : index === stops.length - 1 ? `${formatPopulation(population)}+`
+          : `~${formatPopulation(population)}`;
+      const color = renderer.populationTint({ province: { population } });
+      return `<span style="--rgo-color:${color}">${label}</span>`;
+    }).join('');
   }
 
   /**
@@ -375,8 +425,10 @@ export class Hud {
       const cell = event.target.closest?.('[data-why="stability"]');
       if (cell) this.toggleWhy(cell, stabilityWhy(this.game.world?.nations[this.game.turns.playerNation]));
     });
+    // Yalniz Enter: Space saatindir (bkz. bindKeys). Ikisi birden dinlenince
+    // odakli hucrede Space hem balonu acip kapatiyor hem oyunu durduruyordu.
     this.el.resources.addEventListener('keydown', (event) => {
-      if (event.key !== 'Enter' && event.key !== ' ') return;
+      if (event.key !== 'Enter') return;
       const cell = event.target.closest?.('[data-why="stability"]');
       if (!cell) return;
       event.preventDefault();
@@ -471,13 +523,15 @@ export class Hud {
 
   bindKeys() {
     window.addEventListener('keydown', (event) => {
-      const tag = event.target?.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA' || event.target?.isContentEditable) return;
+      if (takesText(event.target)) return;
       if (event.ctrlKey || event.altKey || event.metaKey) return;
       // Perde açıkken boşluk/ok tuşları arkadaki haritayı sürmesin.
       if (document.body.classList.contains('menu-open')) return;
 
       if (event.code === 'Space') {
+        // Space HER ZAMAN saattir. preventDefault odaktaki düğmenin ya da onay
+        // kutusunun kendi Space tıklamasını da iptal eder: tek tuş, tek eylem
+        // (kutu hem dönüp hem oyunu durdurmasın). Odaktaki denetimi Enter sürer.
         event.preventDefault();
         this.game.togglePause();
         return;
@@ -529,6 +583,9 @@ export class Hud {
       }
       const pan = PAN_KEYS[event.code];
       if (pan) {
+        // Odaktaki kaydıraç/seçim kutusu okları kendisi kullanır (ince ayar);
+        // WASD kamerada kalır.
+        if (event.code.startsWith('Arrow') && ownsArrows(event.target)) return;
         event.preventDefault();
         this.game.camera.panByScreen(pan[0] * PAN_STEP, pan[1] * PAN_STEP);
         this.game.requestRender();
@@ -646,7 +703,9 @@ export class Hud {
       title="Assign the selected divisions to a commander">
       <span class="portrait">+</span><b>Assign</b></button>`;
 
-    togglePanel(el.commandTools, active);
+    // Boolean sart: togglePanel `force ?? !acik` okur ve null "cevir" demektir.
+    // General secili degilken arac cubugu her showCommand'da gorunup kayboluyordu.
+    togglePanel(el.commandTools, Boolean(active));
     if (active) {
       const offensive = $('btn-offensive');
       const running = game.offensiveActive();
@@ -720,29 +779,59 @@ export class Hud {
    */
   toggleWhy(anchor, text) {
     if (this.whyPop?.isConnected && this.whyPop.dataset.anchor === anchor.dataset.why) {
-      this.whyPop.remove();
+      this.closeWhy();
       return;
     }
-    this.whyPop?.remove();
+    this.closeWhy();
     if (!text) return;
     const pop = document.createElement('div');
     pop.className = 'why-pop';
     pop.dataset.anchor = anchor.dataset.why;
     pop.textContent = text;
-    const rect = anchor.getBoundingClientRect();
-    pop.style.top = `${Math.round(rect.bottom + 6)}px`;
-    pop.style.left = `${Math.round(rect.left)}px`;
     document.body.append(pop);
     this.whyPop = pop;
-    // Bir sonraki tiklama kapatir; balon kendi tiklamasiyla kapanmaz.
-    setTimeout(() => {
-      const close = (event) => {
-        if (pop.contains(event.target)) return;
-        pop.remove();
-        document.removeEventListener('pointerdown', close);
-      };
-      document.addEventListener('pointerdown', close);
-    }, 0);
+    this.placeWhy(anchor);
+    // Disaridaki bir tik kapatir; balon kendi tiklamasiyla kapanmaz. Hucrenin
+    // KENDI tiki de disari sayilmaz, onu click -> toggleWhy kapatir: eskiden
+    // pointerdown balonu siliyor, hemen ardindaki click yeniden aciyordu ve
+    // hucreye ikinci tik balonu hic kapatamiyordu.
+    this.whyClose = (event) => {
+      if (pop.contains(event.target)) return;
+      if (event.target.closest?.('[data-why]')?.dataset.why === pop.dataset.anchor) return;
+      this.closeWhy();
+    };
+    document.addEventListener('pointerdown', this.whyClose);
+  }
+
+  closeWhy() {
+    this.whyPop?.remove();
+    this.whyPop = null;
+    if (this.whyClose) document.removeEventListener('pointerdown', this.whyClose);
+    this.whyClose = null;
+  }
+
+  /** Balonu kaynagin altina oturtur; hucre her tazelemede yeniden cizilir. */
+  placeWhy(anchor) {
+    const rect = anchor.getBoundingClientRect();
+    this.whyPop.style.top = `${Math.round(rect.bottom + 6)}px`;
+    this.whyPop.style.left = `${Math.round(rect.left)}px`;
+  }
+
+  /**
+   * Sabitlenen istikrar dokumu ust cubukla birlikte tazelenir: acildigi anin
+   * kopyasi olarak kaliyordu ve sekiz hafta sonra "= Stability 22.4%" derken
+   * yanindaki hucre 33% gosteriyordu.
+   */
+  refreshWhy(me) {
+    if (this.whyPop?.dataset.anchor !== 'stability') return;
+    const anchor = this.el.resources.querySelector('[data-why="stability"]');
+    if (!me || !anchor) {
+      this.closeWhy();
+      return;
+    }
+    const text = stabilityWhy(me);
+    if (this.whyPop.textContent !== text) this.whyPop.textContent = text;
+    this.placeWhy(anchor);
   }
 
   refreshSaveInfo() {
@@ -839,6 +928,7 @@ export class Hud {
     // Elenen oyuncuda gösterge yok: çıplak bir "—" metni ortadaki ızgaranın
     // içinde hücresiz kalıyordu (şeritler `display: contents`).
     this.el.resources.innerHTML = me ? resourcesHtml(me) : '';
+    this.refreshWhy(me);
     // Bekleyen birim sayısı düğmede: turu bitirmeden önce ne kaldığı görünsün.
     for (const btn of document.querySelectorAll('.time-btn[data-speed]')) {
       btn.classList.toggle('active', Number(btn.dataset.speed) === this.game.clock.speed);
@@ -1175,7 +1265,8 @@ export class Hud {
       if (cluster.owner >= 0 && cluster.coreOf !== cluster.owner) {
         stats.unshift(['Territory', 'non-core (colonial)']);
       }
-      stats.unshift(['Province', `${cluster.name} · ${cluster.tileIdx.length} hexes`]);
+      const hexes = cluster.tileIdx.length;
+      stats.unshift(['Province', `${cluster.name} · ${hexes} ${hexes === 1 ? 'hex' : 'hexes'}`]);
     }
 
     const unitBlock = this.unitBlockHtml(tile.unit);

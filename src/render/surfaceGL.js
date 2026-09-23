@@ -508,6 +508,44 @@ export class SurfaceGL {
       grade: 0.30,
     };
 
+    // Dalga verisi CPU'da bir kez üretilir: bağlam geri geldiğinde yalnız
+    // yeniden yüklenir, yeniden hesaplanmaz.
+    this.wave = buildWaveTexture();
+    this.initGL();
+
+    /**
+     * BAĞLAM KAYBI. Sürücü sıfırlanması, GPU değişimi ya da tarayıcının
+     * bağlamı geri alması bütün GL nesnelerini geçersiz kılar. Kayıp
+     * yakalanmazsa renderer yüzeyi hâlâ geçerli sanıp kara ve denizi hiç
+     * boyamıyordu: harita, yalnız sınır ve yazılar kalacak şekilde, yeniden
+     * yüklenene dek SİYAH kalıyordu. preventDefault olmadan da tarayıcı
+     * bağlamı hiç geri vermez. Kayıpta renderer Canvas2D zeminine döner
+     * (onLost), geri gelince nesneler baştan kurulur (onRestored).
+     */
+    this.lost = false;
+    canvas.addEventListener('webglcontextlost', (event) => {
+      event.preventDefault();
+      this.lost = true;
+      this.onLost?.();
+    });
+    canvas.addEventListener('webglcontextrestored', () => {
+      try {
+        this.initGL();
+      } catch {
+        return;   // yeniden kurulamadı: Canvas2D zemininde kalınır
+      }
+      this.lost = false;
+      this.onRestored?.();
+    });
+  }
+
+  /**
+   * Programı ve dünyadan bağımsız dokuyu kurar; dünya dokuları boşaltılır
+   * (setWorld yeniden yükler). Bağlam geri geldiğinde de buradan geçilir:
+   * eski tutamaklar yeni bağlamda geçersizdir.
+   */
+  initGL() {
+    const gl = this.gl;
     const prog = gl.createProgram();
     gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
     gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, FRAG));
@@ -530,14 +568,18 @@ export class SurfaceGL {
       this.u[name] = gl.getUniformLocation(prog, name);
     }
 
-    const wave = buildWaveTexture();
+    const wave = this.wave;
     this.waveTex = this.makeTex(gl.RGBA8, gl.RGBA, wave.size, wave.size, wave.data,
       gl.LINEAR, gl.REPEAT);
+    this.world = null;
     this.hexTex = null;
     this.distTex = null;
     this.ownerTex = null;
     this.charTex = null;
     this.elevTex = null;
+    this.overlayTex = null;
+    this.lastCam = null;
+    this.lastDraw = 0;
   }
 
   makeTex(internal, format, w, h, data, filter, wrap, wrapT = wrap) {
@@ -562,6 +604,8 @@ export class SurfaceGL {
    */
   setWorld(world, coast, surfaceData) {
     if (this.world === world && this.hexTex && this.distTex) return true;
+    // Kayıp bağlama yüklenen doku boşa gider; geri gelince onRestored kurar.
+    if (this.lost) return false;
     if (!coast?.toLand || !coast?.surface || !surfaceData) return false;
     const gl = this.gl;
     const cols = world.cols;
@@ -624,6 +668,7 @@ export class SurfaceGL {
    */
   /** İşgal taraması dokusu; sahiplik/kontrol değişince tazelenir. */
   updateOverlay(overlayData) {
+    if (this.lost || !this.world) return;
     const gl = this.gl;
     if (!this.overlayTex) {
       this.overlayTex = this.makeTex(gl.RGBA8, gl.RGBA, this.grid.cols, this.grid.rows,
@@ -638,7 +683,7 @@ export class SurfaceGL {
   }
 
   updateOwners(ownerData) {
-    if (!this.ownerTex || !this.world) return;
+    if (this.lost || !this.ownerTex || !this.world) return;
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, this.ownerTex);
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
@@ -661,7 +706,7 @@ export class SurfaceGL {
 
   /** Kamera/zaman değişmediyse çizmeye gerek yok. */
   draw(camera, time, force = false) {
-    if (!this.world || !this.debug.enabled) return false;
+    if (this.lost || !this.world || !this.debug.enabled) return false;
     const now = performance.now();
     const moved = this.lastCam?.x !== camera.x || this.lastCam?.y !== camera.y
       || this.lastCam?.zoom !== camera.zoom;
