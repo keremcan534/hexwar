@@ -253,7 +253,13 @@ export function startBattle(game, attacker, tile) {
   system.battles.push(battle);
   enlist(battle, attacker, true);
   for (const unit of defenders.slice(0, MAX_DEFENSE_DIVISIONS)) {
-    if (unit.nationId === defenderNation) enlist(battle, unit, false);
+    if (unit.nationId !== defenderNation) continue;
+    // Kendi karesinde saldiriya ugrayan tumen disaridaki taarruzunu birakip
+    // savunmaya doner. Iki muharebeye birden yazildiginda ikisinde de kayip
+    // veriyordu; biri bitince battleId'si bosalip digerinde hala "savunan"
+    // sayilirken yuruyup gidebiliyordu (olculdu: 400 haftada 52 tumen-hafta).
+    if (unit.battleId) removeFromBattles(world, unit);
+    enlist(battle, unit, false);
   }
 
   // Dünyadaki her muharebe günlüğe düşer ama kart yalnız oyuncununkiler için
@@ -281,7 +287,10 @@ function enlist(battle, unit, attacking) {
   }
   unit.battleId = battle.id;
   if (attacking) resetEntrenchment(unit);
-  unit.order = null;
+  // Savunan tumenin HOLD emri silinmez: yerinde savunmak o emrin kendisidir.
+  // Silinince muharebeden sonra general tumeni oyuncunun "dur" dedigi yerden
+  // yeniden cepheye yuruyordu.
+  if (attacking || unit.order?.type !== 'hold') unit.order = null;
   clearPath(unit);
 }
 
@@ -458,12 +467,35 @@ function distributeLosses(units, casualties, organizationLoss, world) {
   }
 }
 
+/**
+ * Kazanansiz kapanis: taraflar yerinde kalir, muharebe listeden duser.
+ *
+ * Baris muharebeyi bir TARAFIN yenilgisiyle bitirmez. Eskiden savas masada
+ * bitince muharebe finishBattle'a "saldiran kaybetti" diye giriyordu:
+ * isgaller barisla iade edildigi icin eski dusman topraginin derinindeki
+ * tam guclu tumen cekilecek kare bulamayip "teslim oluyordu" (olculdu: 400
+ * haftalik kosuda baristan sonra 5 tumen yok oldu). Sinir disinda kalan
+ * tumeni ayni hafta withdrawTrespassers eve yollar; muharebedeki tumeni
+ * atladigi icin uyelik once silinmelidir.
+ */
+function dissolveBattle(game, battle) {
+  const world = game.world;
+  const system = ensureBattles(world);
+  const { attackers, defenders } = battleSides(world, battle);
+  for (const unit of [...attackers, ...defenders]) unit.battleId = null;
+  system.battles = system.battles.filter((item) => item.id !== battle.id);
+  game.emit('battles', battle);
+}
+
 function resolveRound(game, battle) {
   const world = game.world;
+  if (!atWar(world, battle.attackerNation, battle.defenderNation)) {
+    dissolveBattle(game, battle);
+    return;
+  }
   const { attackers, defenders } = battleSides(world, battle);
   // Bir taraf tamamen yok olduysa muharebe biter.
-  if (!attackers.length || !defenders.length
-    || !atWar(world, battle.attackerNation, battle.defenderNation)) {
+  if (!attackers.length || !defenders.length) {
     finishBattle(game, battle, attackers.length > 0 && defenders.length === 0);
     return;
   }
@@ -544,6 +576,12 @@ function resolveRound(game, battle) {
 export function runBattles(game) {
   const system = ensureBattles(game.world);
   for (const battle of [...system.battles]) {
+    // Baris raund sirasini beklemez: bu hafta acilmis muharebe de dagilir ki
+    // withdrawTrespassers tumenleri ayni hafta eve yollayabilsin.
+    if (!atWar(game.world, battle.attackerNation, battle.defenderNation)) {
+      dissolveBattle(game, battle);
+      continue;
+    }
     if (game.turns.turn < battle.nextRound) continue;
     resolveRound(game, battle);
     battle.nextRound = game.turns.turn + 1;

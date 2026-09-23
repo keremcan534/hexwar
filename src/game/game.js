@@ -226,6 +226,11 @@ export class Game {
     this.marquee = null;
     this.activeGeneral = null;
     this.reachable = null;
+    // Barış teklifleri kayda girmez ve eski dünyanın savaşlarına aittir.
+    // Kalırsa yüklenen zaman çizelgesinde hiç yapılmamış bir teklif masada
+    // durup imzalanabiliyor, yaşı negatif olduğu için de hiç düşmüyordu
+    // (expirePeaceOffers) ve YZ'nin yeni tekliflerini kapatıyordu.
+    this.peaceOffers = [];
     this.turns.start(this.world);
     // Yeni kampanya üst şeridin bütün portföyleri AUTO açık başlar
     // (bkz. delegation.DEFAULT_AUTO_AREAS). Betik koşuları buradan geçmez.
@@ -962,10 +967,17 @@ export class Game {
     const [entry] = this.peaceOffers.splice(index, 1);
     const from = this.world.nations[entry.from];
     const done = accept ? signPeace(this, entry.from, entry.to, entry.offer) : false;
-    this.turns.addLog(accept && done
-      ? `Treaty signed with ${from.name}.`
-      : `We rejected ${from.name}'s terms; the war goes on.`,
-    { kind: accept && done ? 'PEACE' : 'DIPLOMACY' });
+    // Kabul edilip imzalanamayan teklif "reddettik" diye yazılmaz: oyuncu
+    // Accept'e bastı. Savaş o arada bittiyse ya da şartlar artık
+    // uygulanamıyorsa günlük bunu söylemeli.
+    let message = `We rejected ${from.name}'s terms; the war goes on.`;
+    if (done) message = `Treaty signed with ${from.name}.`;
+    else if (accept) {
+      message = atWar(this.world, entry.from, entry.to)
+        ? `${from.name}'s terms could not be signed; the war goes on.`
+        : `${from.name}'s terms no longer apply; we are not at war.`;
+    }
+    this.turns.addLog(message, { kind: done ? 'PEACE' : 'DIPLOMACY' });
     this.emit('peace', this.peaceOffers);
     this.emit('units', this.selectedUnit);
     this.requestRender();

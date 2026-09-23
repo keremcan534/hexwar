@@ -255,6 +255,11 @@ export function serialize(game) {
         rec.wars ?? 0, rec.peaks ?? null, rec.goals ?? null, rec.warAt ?? 0,
         rec.reason ?? null, rec.aggressor ?? null]
     ))),
+    // Müttefikleri savaşa çağırma kuyruğu: ilan haftası yazılır, ertesi
+    // haftanın diplomasi evresi boşaltır (alliances.runDiplomacyAI). Kayda
+    // girmezse elle ilandan hemen sonra alınan kayıtta savunanın müttefikleri
+    // savaşa hiç katılmıyordu.
+    pendingWarCalls: (world.pendingWarCalls ?? []).map((call) => ({ ...call })),
     cities: world.cities.map((c) => ({
       name: c.name,
       q: c.tile.q,
@@ -305,6 +310,11 @@ export function serialize(game) {
       entrenchment: u.entrenchment ?? 0,
       // Cephede tuttuğu province: yüklemede tümenler yerlerinde kalsın.
       post: u.post ? { ...u.post } : null,
+      // Oyuncunun bekleyen emri (movement.js directive): ültimatomda verilen
+      // "savaş başlayınca oraya git" emri yazılmazsa yüklemede kayboluyordu.
+      // `tries` da taşınır; sayaç sıfırlanırsa yüklenen koşu vazgeçme anını
+      // kaydırıp kesintisiz koşudan ayrılır.
+      directive: u.directive ? { ...u.directive } : null,
     })),
   };
 }
@@ -458,6 +468,8 @@ export function deserialize(game, data) {
       world.relations[b][a] = rec;
     }
   }
+  // Eski kayitta alan yok: kuyruk bos baslar, yani bugunku davranis.
+  world.pendingWarCalls = (data.pendingWarCalls ?? []).map((call) => ({ ...call }));
 
   // 6) Şehirler
   for (const saved of data.cities) {
@@ -508,6 +520,7 @@ export function deserialize(game, data) {
     unit.attackReadyAt = saved.attackReadyAt ?? 0;
     unit.entrenchment = Math.max(0, Math.min(0.35, saved.entrenchment ?? 0));
     unit.post = saved.post ? { ...saved.post } : null;
+    unit.directive = saved.directive ? { ...saved.directive } : null;
     // Kimlik kayittan geri yazilir. Yeniden uretilen kimlikler cephe temposunu
     // kaydiriyordu: yuklenen oyun kesintisiz devam eden oyundan ayriliyordu
     // (olculdu: 100 hafta sonra nufus, birim, sehir ve savaslar farkli).
