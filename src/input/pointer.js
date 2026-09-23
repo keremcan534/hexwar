@@ -16,6 +16,12 @@ const TAP_TIME_LIMIT = 300;  // ms
 const LONG_PRESS_MS = 380;   // dokunmatikte kutu seçimini baslatan basili tutma
 /** Sol sürükleme bu eşiği geçmeden seçim kutusu sayılmaz (titreme tıklamayı yemesin). */
 const MARQUEE_MIN = 10;
+/**
+ * Bırakıştan bu kadar önce kıpırdamamış işaretçi fırlatmaz. Hız yalnız
+ * hareket olayında güncellenir; durup bekleyince eski değerde kalıyor ve
+ * harita bırakınca kendi kendine kayıyordu (ölçüldü: 600 ms beklemede 82 px).
+ */
+const FLICK_IDLE_MS = 80;
 
 export class PointerController {
   /**
@@ -141,6 +147,9 @@ export class PointerController {
         ...p, startX: p.x, startY: p.y, startTime: performance.now(), moved: 0, pan: true,
       });
       this.gesture = 'pan';
+      // Süren kayma yakalanınca durur; yoksa eski hız bırakışta geri gelirdi.
+      this.velocity.x = 0;
+      this.velocity.y = 0;
       return;
     }
 
@@ -270,6 +279,10 @@ export class PointerController {
     if (!rec) return;
     this.pointers.delete(e.pointerId);
     this.release(e.pointerId);
+    if (performance.now() - this.lastMoveTime > FLICK_IDLE_MS) {
+      this.velocity.x = 0;
+      this.velocity.y = 0;
+    }
 
     const duration = performance.now() - rec.startTime;
     const isTap = !rec.pan

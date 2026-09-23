@@ -92,6 +92,21 @@ export class Camera {
     return this.worldToScreen(wx, wy);
   }
 
+  /**
+   * Dünya noktasının, verilen EKRAN x'ine en yakın sarmal kopyası. Periyot
+   * ekrandan dar olduğunda (geniş ekran, uzak zoom) aynı nokta birden çok
+   * yerde çizilir; kameraya en yakın kopyaya bakan tıklama ve kutu seçimi
+   * tekrarlanan banttaki orduyu hiç bulamıyordu (ölçüldü: 2560×1080 açılış
+   * zoomunda 95 ordu). Sarmalsız worldToScreen ile aynı.
+   */
+  worldToScreenNear(wx, wy, sx) {
+    if (this.wrapX) {
+      const at = (sx - this.viewWidth / 2) / this.zoom + this.x;
+      wx += this.wrapX * Math.round((at - wx) / this.wrapX);
+    }
+    return this.worldToScreen(wx, wy);
+  }
+
   worldToScreen(wx, wy) {
     return {
       x: (wx - this.x) * this.zoom + this.viewWidth / 2,

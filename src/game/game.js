@@ -254,15 +254,16 @@ export class Game {
 
   /** Gorunen amblemin kenari komsu province sayilmasin. */
   unitAtScreen(sx, sy) {
-    if (!this.world || !this.camera?.worldToScreen) return null;
+    if (!this.world || !this.camera?.worldToScreenNear) return null;
     const hitRadius = Math.max(9, HEX_SIZE * 0.92 * this.camera.zoom);
     let best = null;
     let bestDistance = Infinity;
     for (const unit of this.world.units) {
       if (!unit?.tile || unit.hp <= 0) continue;
       const y = unit.tile.y + (unit.tile.city ? HEX_SIZE * 0.22 : 0);
-      // Sarmal temsilci: dikişin öbür yanında görünen kopya da tıklanabilsin.
-      const point = this.camera.worldToScreenWrapped(unit.tile.x, y);
+      // Sarmal temsilci İMLECE göre: dikişin öbür yanındaki ve dar dünyada
+      // tekrarlanan bantta çizilen kopya da tıklanabilsin.
+      const point = this.camera.worldToScreenNear(unit.tile.x, y, sx);
       const distance = Math.hypot(point.x - sx, point.y - sy);
       if (distance <= hitRadius && distance < bestDistance) {
         best = unit;
@@ -492,9 +493,14 @@ export class Game {
       return [];
     }
     const picked = [];
+    // Kutunun ORTASINA en yakın kopya: kutunun içine bir kopya düşüyorsa o
+    // odur (kutu periyottan darsa içinde en fazla bir kopya olur, genişse
+    // ortaya en yakını zaten içindedir). Kameraya en yakın kopyaya bakınca
+    // dar dünyada tekrarlanan banttaki ordular seçilemiyordu.
+    const midX = rect.x + rect.w / 2;
     for (const unit of this.world.units) {
       if (unit.nationId !== this.turns.playerNation || unit.hp <= 0) continue;
-      const p = this.camera.worldToScreenWrapped(unit.tile.x, unit.tile.y);
+      const p = this.camera.worldToScreenNear(unit.tile.x, unit.tile.y, midX);
       if (p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h) {
         picked.push(unit);
       }
@@ -1162,7 +1168,14 @@ export class Game {
     // bitene dek tam kare hızında sürer, kaydırma/zoom akıcı kalır.
     if (this.turns?.turnJob) this.pumpTurnFrame();
     this.perf?.endFrame();
-    if (moving) this.frameHandle = requestAnimationFrame(this.frame);
+    // Kayma sürüyorsa TEK bekleyen kare: pumpTurnFrame ya da dilimli iş bu
+    // karede zaten bir kare istemiş olabilir. Koşulsuz ikinci rAF, her karede
+    // çağrı sayısını ikiye katlıyordu — bırakılan sürüklemeyle tur işi üst
+    // üste gelince 1, 2, 4, 8, 16 çağrı/kare (ölçüldü), her biri tam çizim +
+    // 5 ms'lik simülasyon dilimi.
+    if (moving) {
+      if (!this.frameHandle) this.frameHandle = requestAnimationFrame(this.frame);
+    }
     // Dilimli arka plan işi (statik katman, uzak önbellek) kaldıysa zincir
     // sürsün: iş birkaç karede biter, yoksa bir sonraki etkileşime dek yarım
     // kalıp kenarlarda boşluk bırakıyordu.
@@ -1178,7 +1191,7 @@ export class Game {
    * false döner ve zincir kendiliğinden durur, ilk requestRender'da yeniden
    * kurulur.
    */
-  scheduleWaterFrame() {
+  scheduleWaterFrame(minDelay = 0) {
     if (this.waterTimer || this.frameHandle) return;
     // Eşik önbellek zoom'uyla senkron: uzak dalda su daha seyrek dürtülür.
     // Not: bu kadans yalnız DURAĞAN haritanın su tazelemesidir; etkileşim
@@ -1191,15 +1204,19 @@ export class Game {
     // 40 ms hedefte 33-104 ms arası düzensiz adımlar üretiyordu (ölçüldü);
     // duraklatılmış oyunda hissedilen mikro takılmanın bir bileşeni buydu.
     const since = performance.now() - (this.lastWaterAt ?? 0);
-    const delay = Math.max(0, interval - since);
+    const delay = Math.max(minDelay, interval - since);
     this.waterTimer = setTimeout(() => {
       this.waterTimer = 0;
       // Sekme gizliyken ya da ana menü haritayı örterken çizim boşa gider;
       // zamanlayıcı ucuz olduğundan zincir canlı tutulur, görünürlük dönünce
-      // ilk tikte kaldığı yerden akar.
+      // ilk tikte kaldığı yerden akar. Örtülüyken yoklama SEYREK ve sabittir:
+      // faz kilidi `lastWaterAt`e bakar, o da örtülüyken ilerlemez — gecikme
+      // 0'a çöküyor ve zincir setTimeout(0) döngüsüne dönüyordu (ölçüldü:
+      // menü açıkken 2 sn'de 408 uyanma; açık haritada 25). Perde kalkınca
+      // menü zaten bir kare ister, yoklama yalnız sekme dönüşünü yakalar.
       const covered = document.visibilityState === 'hidden'
         || document.body.classList.contains('menu-open');
-      if (covered) this.scheduleWaterFrame();
+      if (covered) this.scheduleWaterFrame(250);
       else {
         this.lastWaterAt = performance.now();
         this.requestRender();

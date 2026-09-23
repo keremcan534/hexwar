@@ -6131,56 +6131,96 @@ body.screen-open .notify-stack.open .notify-card { display: grid; }
 }
 
 /* --- 18.2 Suruklenen sis ---
-   Ayni saydam doku (assets/menu/fog.png) iki katmanda: uzak katman genis,
-   yavas ve soluk; yakin katman iri, hizli ve alt kenara oturur. Doku yatayda
-   dosendigi icin animasyon tam bir kopya kaydirir, basa donerken dikis
-   gorunmez. */
+   Ayni doku (assets/menu/fog.png) iki katmanda: uzak katman genis, yavas ve
+   soluk; yakin katman iri, hizli ve alt kenara oturur. Dosya adina ragmen
+   doku SAYDAM DEGIL: alfasiz, gri tonlu bir JPEG. Sis etkisi alfadan degil
+   katman opakligindan gelir (acik yer sahneyi acar, koyu yer kisar); bu
+   yuzden katmanin HER kenari maskeyle eritilmek zorunda, yoksa duz bir
+   cizgi olarak gorunur.
+
+   Kap (.menu-fog) DURAGANDIR: maske ve opaklik ondadir, sisin rafa girmedigi
+   bolge ekrana sabit kalir. Kayan sey icteki ::before katmanidir; tam BIR
+   doku eni kadar kayar ve kaptan bir doku eni genistir, yani ne donguye
+   donerken dikis ne de kenar gorunur. Eskiden 140%'lik katmanin kendisi,
+   kendi eninin %25'i kadar kayiyordu: kayma doku eninin kati degildi (her
+   turda sicrama), katmanin sag kenari ekrana giriyordu (1920px'te yakin
+   katmanda ~288px'lik ciplak serit, her 96 sn'nin ~41'i boyunca) ve maske
+   katmanla birlikte kaydigi icin sis rafin arkasina da giriyordu. Doku enleri
+   (64.4vw / 100.8vw) ve suruklenme hizlari (~0.21 / ~0.36 vw/sn) eskisiyle
+   ayni tutuldu. */
 .menu-fog {
   position: absolute;
-  left: -20%;
-  width: 140%;
-  background-image: url('../assets/menu/fog.png');
-  background-repeat: repeat-x;
+  left: 0;
+  right: 0;
+  overflow: hidden;
   pointer-events: none;
   /* Normal karisim, `screen` degil: gercek sis kontrasti ORTAYA ceker —
      karanligi acar, parlagi kisar. `screen` yalnizca aydinlattigi icin islak
      meydan gibi zaten parlak sahnelerde hicbir sey gorunmuyordu (olculdu:
      opaklik 0.34'te bile fark yok). */
   mix-blend-mode: normal;
-  will-change: transform;
   /* Iki yonlu maske. Yatay: solda cam raf var, sis oraya girince rafin
      arkasini aydinlatip metni okunmaz yapiyor. Dikey: katman dikdortgen
-     oldugu icin ust kenari duz bir cizgi olarak goruluyordu. */
+     oldugu icin ust kenari duz bir cizgi olarak goruluyordu. Yatay duraklar
+     eski kayan maskenin baslangic konumudur (ekranin %16'si / %47'si). */
   -webkit-mask-image:
-    linear-gradient(90deg, transparent 0%, transparent 26%, #000 48%, #000 100%),
+    linear-gradient(90deg, transparent 0%, transparent 16%, #000 47%, #000 100%),
     linear-gradient(180deg, transparent 0%, #000 58%, #000 100%);
   mask-image:
-    linear-gradient(90deg, transparent 0%, transparent 26%, #000 48%, #000 100%),
+    linear-gradient(90deg, transparent 0%, transparent 16%, #000 47%, #000 100%),
     linear-gradient(180deg, transparent 0%, #000 58%, #000 100%);
   -webkit-mask-composite: source-in;
   mask-composite: intersect;
 }
 
+.menu-fog::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: calc(100% + var(--fog-tile));
+  background-image: url('../assets/menu/fog.png');
+  background-repeat: repeat-x;
+  background-size: var(--fog-tile) 100%;
+  will-change: transform;
+  animation: menu-fog-drift var(--fog-time) linear infinite;
+}
+
 .menu-fog-far {
+  --fog-tile: 64.4vw;
+  --fog-time: 309s;
   bottom: 10%;
   height: 34%;
-  background-size: 46% 100%;
   opacity: 0.24;
-  animation: menu-fog-drift 168s linear infinite;
+}
+
+/* Uzak katmanin alt kenari ekranin icinde kalir (alttan %10): alfasiz doku
+   orada sert bir yatay cizgi basiyordu. Kendi maskesiyle erir — kabin
+   maskesi dar ekranda (bkz. 18.8) degistirildigi icin oraya yazilmaz. */
+.menu-fog-far::before {
+  -webkit-mask-image: linear-gradient(180deg, #000 0%, #000 60%, transparent 100%);
+  mask-image: linear-gradient(180deg, #000 0%, #000 60%, transparent 100%);
 }
 
 .menu-fog-near {
+  --fog-tile: 100.8vw;
+  --fog-time: 276s;
   bottom: -8%;
   height: 30%;
-  background-size: 72% 100%;
   opacity: 0.34;
-  /* Ters yon: iki katman ayni yone giderse tek kalin sis gibi okunuyor. */
-  animation: menu-fog-drift 96s linear infinite reverse;
 }
+
+/* Ters yon: iki katman ayni yone giderse tek kalin sis gibi okunuyor. */
+.menu-fog-near::before { animation-direction: reverse; }
+
+/* Genel hareket-azaltma kurali ::before'u da 0.01ms'ye ceker ve sonsuz
+   animasyonda bu durmak degil cilgin hizda donmek demek (bkz. 18.8 sonu). */
+:root[data-motion="off"] .menu-fog::before { animation: none !important; }
 
 @keyframes menu-fog-drift {
   from { transform: translate3d(0, 0, 0); }
-  to { transform: translate3d(-25%, 0, 0); }
+  to { transform: translate3d(calc(-1 * var(--fog-tile)), 0, 0); }
 }
 
 /* --- 18.3 Sol ikon seridi ---
