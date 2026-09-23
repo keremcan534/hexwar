@@ -25,7 +25,7 @@ import {
   BRANCH, STANCE, assignDivisions, commandSize, generalOfArmy, officersOf, setStance,
 } from './command.js';
 import {
-  MILITARY_EQUIPMENT, ensureProductionLine, equipmentStock,
+  MILITARY_EQUIPMENT, ensureProductionLine, equipmentReserve, equipmentStock,
 } from './economy.js';
 import {
   LAW_BY_ID, formGovernment, nextLawStep, preferredGovernment, setLaw,
@@ -321,8 +321,11 @@ function spend(game, nation) {
   const militaryLines = (nation.economy?.factories ?? [])
     .filter((factory) => factory.typeId === 'ARMS_FACTORY')
     .map((factory) => ensureProductionLine(factory));
+  // Rezerv yalniz kullanimdaki ailede sayilir (economy.equipmentInService).
+  // Ham `reserve` okundugunda 1836'da tank/ucak/vapur rezervi bu kapiyi butun
+  // YZ'ler icin kapatiyordu: ilk hafta 30/30, iki yilda ulus-haftalarin %88'i.
   const uncoveredCriticalStock = Object.values(MILITARY_EQUIPMENT).some((equipment) => (
-    equipmentStock(nation, equipment.id) < equipment.reserve
+    equipmentStock(nation, equipment.id) < equipmentReserve(nation, equipment.id, world.turn ?? 0)
     && !militaryLines.some((factory) => factory.lineEquipment === equipment.id)
   ));
   // Do not spend the military-factory fund on another unit or local project.

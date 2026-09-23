@@ -17,7 +17,7 @@ import {
 } from './technology.js';
 import { TIER, announce } from './chronicle.js';
 import { treatiesOf } from './peace.js';
-import { regimentCount } from './units.js';
+import { regimentCount, unitAvailable } from './units.js';
 import {
   canInvestInFactory, factoryInvestmentRules, fiscalPolicyLimits, lawModifiers, lawMoodShift,
   legitimacyOf, policyOf, refreshLawModifiers, rulingParty,
@@ -750,6 +750,14 @@ export function programmeCost(nation, programId) {
   return (nation.economy.population / POPULATION_UNIT)
     * socialLevel(nation, programId) * program.rate;
 }
+/**
+ * `users`: DEPODAN CEKEN birim tipleri (kurulus ve takviye malzemesi). Alan
+ * yoksa aile her birime girer (kucuk silah). Rezerv, ithalat hedefi ve silah
+ * hatti secimi yalniz bu birimlerden biri kurulabilirken anlamlidir (bkz.
+ * equipmentInService). Liste recruitment.js RECRUITMENT_EQUIPMENT ve
+ * reinforcement.js REINFORCEMENT_EQUIPMENT ile AYNI olmali; oradan import
+ * edilemez, iki dosya da bu dosyayi import eder.
+ */
 export const MILITARY_EQUIPMENT = {
   arms: {
     id: 'arms', name: 'Small Arms', icon: '⚔', stockCap: 40, defaultStock: 16,
@@ -757,7 +765,7 @@ export const MILITARY_EQUIPMENT = {
   },
   artillery: {
     id: 'artillery', name: 'Artillery Equipment', icon: '●', stockCap: 20, defaultStock: 6,
-    factoryRate: 0.55, importLimit: 1.25, reserve: 4,
+    factoryRate: 0.55, importLimit: 1.25, reserve: 4, users: ['ARTILLERY'],
   },
   // Tank, ucak ve vapur da birer ekipman ailesidir: fabrika ciktilari dogrudan
   // askeri stoka akar ve ilgili birim tipi onlari tuketir. Boylece uretim
@@ -765,15 +773,19 @@ export const MILITARY_EQUIPMENT = {
   // cakili kaliyor ve onu ureten tesis surekli zarar ediyordu).
   tanks: {
     id: 'tanks', name: 'Tanks', icon: '🛡', stockCap: 12, defaultStock: 0,
-    factoryRate: 0.35, importLimit: 0.6, reserve: 2,
+    factoryRate: 0.35, importLimit: 0.6, reserve: 2, users: ['ARMOR'],
   },
   airplane: {
     id: 'airplane', name: 'Aeroplanes', icon: '✈', stockCap: 12, defaultStock: 0,
-    factoryRate: 0.4, importLimit: 0.7, reserve: 2,
+    factoryRate: 0.4, importLimit: 0.7, reserve: 2, users: ['AIRCRAFT'],
   },
+  // Vapurun depodan ceken birimi YOK: savas gemisi yelkenli konvoyla kurulur
+  // (bkz. clippers), denizdeki ordunun konvoyu ise piyasadan alinir
+  // (armyWeeklyDemand). Rezervi (3) baslangic stogunun (2) ustundeydi ve
+  // tuketicisiz bir depo icin silah hatti ve alim istiyordu.
   steamers: {
     id: 'steamers', name: 'Steamer Convoys', icon: '🚢', stockCap: 16, defaultStock: 2,
-    factoryRate: 0.6, importLimit: 1, reserve: 3,
+    factoryRate: 0.6, importLimit: 1, reserve: 3, users: [],
   },
   // Yelkenli konvoylar: 1836'nin donanmasi bununla kurulur. Eskiden savas
   // gemisi vapur konvoyu istiyor ve vapur tersanesi 1850'ye kilitli oldugu
@@ -784,10 +796,33 @@ export const MILITARY_EQUIPMENT = {
   // stok hic 6'ya cikmiyor, hicbir ulke ILK gemisini kuramiyordu (olculdu).
   clippers: {
     id: 'clippers', name: 'Clipper Convoys', icon: '⛵', stockCap: 16, defaultStock: 8,
-    factoryRate: 0.6, importLimit: 1.2, reserve: 4,
+    factoryRate: 0.6, importLimit: 1.2, reserve: 4, users: ['WARSHIP'],
   },
 };
 export const MILITARY_EQUIPMENT_IDS = Object.keys(MILITARY_EQUIPMENT);
+
+/**
+ * Aile bu hafta bir birimin malzemesi mi? Degilse deposunu kimse bosaltmaz ve
+ * rezerv hedefi hayali bir ihtiyactir.
+ *
+ * Olculdu (tohum PROBE3 ve SEEDB, 104 hafta): tank ve ucak rezervi (2) 1836'da
+ * stogun (0) ustundeydi; ARMOR 1912'den, AIRCRAFT 1902'den once kurulamaz,
+ * kampanya 1900'de biter. Vapurun depodan ceken birimi hic yok. YZ 31 silah
+ * hattinin 16-19'unu bu uc aileye ceviriyor, iki yilda ~7 bin altinlik alim
+ * yapiyordu; ai.js `spend()` kapisi da ilk hafta 30/30, iki yilda
+ * ulus-haftalarin %88'inde sehir kurmayi ve alay siparisini durduruyordu.
+ */
+export function equipmentInService(nation, equipmentId, turn) {
+  const users = MILITARY_EQUIPMENT[equipmentId]?.users;
+  if (!users) return Boolean(MILITARY_EQUIPMENT[equipmentId]);
+  return users.some((typeId) => unitAvailable(typeId, turn, nation));
+}
+
+/** Etkin rezerv: kullanimda olmayan ailenin rezervi yoktur. */
+export function equipmentReserve(nation, equipmentId, turn) {
+  return equipmentInService(nation, equipmentId, turn)
+    ? MILITARY_EQUIPMENT[equipmentId].reserve : 0;
+}
 /**
  * Baslangic degerleri tablodan turetilir. Elle yazilmis liste yeni bir ekipman
  * ailesi eklenince eksik kalir ve stok NaN'a doner.
@@ -1783,6 +1818,9 @@ export function buildFactory(game, nation, regionId, typeId, options = {}) {
     cost: cost.gold ?? 0,
     funded: actor === 'private' ? 0 : (cost.gold ?? 0),
     actor,
+    // Silah fabrikasi hangi aile icin kuruluyorsa o hatta acilir.
+    ...(typeId === 'ARMS_FACTORY' && MILITARY_EQUIPMENT[options.lineEquipment]
+      ? { lineEquipment: options.lineEquipment } : {}),
   });
   if (nation.id === game.turns.playerNation) {
     const by = actor === 'private' ? ' by private investors' : '';
@@ -1831,7 +1869,9 @@ function commitCompletedProjects(game, nation) {
       throughput: 0,
       fundedBy: project.actor,
       ...(project.typeId === 'ARMS_FACTORY' ? {
-        lineEquipment: 'arms', lineEfficiency: 0.5, lineOutput: 0,
+        lineEquipment: MILITARY_EQUIPMENT[project.lineEquipment] ? project.lineEquipment : 'arms',
+        lineEfficiency: 0.5,
+        lineOutput: 0,
       } : {}),
     });
     if (nation.id === game.turns.playerNation) {
@@ -2403,13 +2443,10 @@ const provinceOutputScratch = {};
 // runNationEconomy'nin ulusal cikti biriktirici karalamasi (bkz. oradaki not).
 const nationOutputScratch = emptyGoods();
 
-function rawProduction(world, nation, market, output) {
+function rawProduction(world, nation, market, output, fertilized, shipments) {
   // Gübre tarımı besler: sanayi → tarım yönünde tek bağ budur ve gübre
-  // fabrikasına gerçek bir müşteri kazandırır. Geçen haftanın karşılanma
-  // oranı kullanılır, bu haftaki pazar henüz temizlenmedi.
-  const fertilizer = nation.economy.goodsFlow?.fertilizer;
-  const fertilized = fertilizer?.demand > 0
-    ? clamp((fertilizer.fulfilled ?? 0) / fertilizer.demand, 0, 1) : 0;
+  // fabrikasına gerçek bir müşteri kazandırır. Oran geçen haftanındır ve
+  // ÇAĞIRAN okur (bkz. runNationEconomy): burada akış çoktan sıfırlanmıştır.
   const farmBonus = 1 + fertilized * 0.25;
   // Cikarim isletmelerinin haftalik pazar degeri. Sirket katmani madenlerin
   // sahibini buradan okur: ayri bir tarama
@@ -2468,7 +2505,10 @@ function rawProduction(world, nation, market, output) {
     const shipped = holder?.alive ? amount * 0.2 : 0;
     if (shipped > 0) {
       output[id] -= shipped;
-      addNationFlow(holder, id, 'production', shipped);
+      // Galibin akisina finishEconomy yazar. Burada yazildiginda galip bu
+      // ulkeden SONRA kosuyorsa kendi haftalik sifirlamasi sevkiyati siliyordu:
+      // mal id sirasina gore yok oluyordu (olculdu: 700 haftada 39 hafta).
+      shipments.push({ holder, id, amount: shipped });
     }
     addFlow(market, id, 'supply', amount);
     addNationFlow(nation, id, 'production', amount - shipped);
@@ -2607,6 +2647,10 @@ function autoUpgradeFactory(game, nation, factory) {
   if (factory.level >= MAX_FACTORY_LEVEL || !factoryAtCapacity(factory)) return false;
   // Zarar eden tesise kimse sermaye koymaz.
   if (factory.profit <= 0) return false;
+  // Alicisi olmayan mali ureten tesis de buyutulmez (bkz. goodHasBuyer):
+  // satilmayan cikti da hasilat yazdigi icin boyle bir tesis "karli" gorunebilir.
+  const type = FACTORIES[factory.typeId];
+  if (!type || !outputHasBuyer(nation, factoryOutputs(factory, type), game.world.turn ?? 0)) return false;
   // Yeni tesise koyulan işgücü kapısı seviye atlamada da geçerli: tek tesisin
   // dolu olması ülkenin kadro bulabileceği anlamına gelmez. Bu kapı yokken
   // dolu fabrikalar büyüyüp ulusal doluluğu seyreltiyordu (ölçüldü: 15. yılda
@@ -3664,6 +3708,54 @@ function investmentTargets(world, nation) {
 }
 
 /**
+ * ALICISI OLMAYAN MAL. Otomatik yatirim (YZ devleti, ozel sermaye, Industry
+ * AUTO) boyle bir mali ureten tesisi KURMAZ ve BUYUTMEZ. Oyuncu elle kurabilir:
+ * kural canBuildFactory'de degil, yalniz otomatik kapilardadir.
+ *
+ * Olculdu (tohum PROBE3): 1839'a kadar 8 icki, 1842'ye kadar 10 sarap tesisi
+ * kuruldu; likor talebi 1848'de (tur 624), sarap talebi 1850'de (728) baslar.
+ * Mallar tabana cakildi, 1846'da on sarap tesisinin yedisi zarardaydi. Radyo
+ * ve otomobil talebi kampanyanin son turundan SONRA (3341) acilir ama
+ * teknoloji tesisi 1895-96'da aciyor, YZ 1897'de radyo, 1899'da otomobil
+ * fabrikasi kuruyordu. Ara mal da ayni kurala baglidir: celigin buharli
+ * tersaneden (1845-50), camin likor talebinden (1848) once alicisi yoktur.
+ * Bedeli bilinerek kabul edildi: talep acildigi yil tesis yoktur, pazar 2-3
+ * yil kitlik yasar (olculdu: likor 1848-51, sarap 1850-53 tavanda), sonra
+ * doyar — eskiden on yil bos bekleyen zarardaki tesis vardi.
+ *
+ * Alici: hane sepeti (kalemin talep turu geldiyse), surekli tuketici (ordu
+ * tuketimi, denizdeki ordunun vapur konvoyu, santiyenin cimentosu, tarlanin
+ * gubresi), kullanimdaki askeri depo ya da mali girdi olarak isteyen,
+ * KURULABILIR ve kendi malinin alicisi olan bir tesis.
+ */
+const STANDING_BUYERS = new Set(['cement', 'fertilizer', 'steamers']);
+
+function goodHasBuyer(nation, goodId, turn, memo) {
+  if (memo.has(goodId)) return memo.get(goodId);
+  // Dongu bekcisi: katalog bugun dongusuz, ama ozyineleme sonsuz olmasin.
+  memo.set(goodId, false);
+  let buyer = STANDING_BUYERS.has(goodId) || goodId in ARMY_CONSUMPTION_RATES
+    || (Boolean(MILITARY_EQUIPMENT[goodId]) && equipmentInService(nation, goodId, turn))
+    || CLASS_IDS.some((classId) => {
+      const need = CLASS_NEEDS[classId][goodId];
+      return Boolean(need) && needAmount(need, turn) > 0;
+    });
+  for (const typeId in FACTORIES) {
+    if (buyer) break;
+    const type = FACTORIES[typeId];
+    if (!(goodId in type.inputs) || !factoryUnlocked(typeId, turn, nation)) continue;
+    buyer = Object.keys(type.outputs).some((out) => goodHasBuyer(nation, out, turn, memo));
+  }
+  memo.set(goodId, buyer);
+  return buyer;
+}
+
+/** Ciktilardan (silah fabrikasinda hattin ailesi) en az birinin alicisi var mi? */
+function outputHasBuyer(nation, outputs, turn, memo = new Map()) {
+  return Object.keys(outputs).some((goodId) => goodHasBuyer(nation, goodId, turn, memo));
+}
+
+/**
  * Yatırım sırası. Yalnız marja bakmak zinciri çökertiyordu: ülke en kârlı tek
  * türü bütün state'lere dikiyor, inşaat gücü tükeniyor ve tablodaki 29 türün
  * ancak 7'si kuruluyordu. Sonuç ölçüldü — ara mallar (yakıt, mühimmat, tank)
@@ -3686,13 +3778,16 @@ function investmentOptions(world, nation) {
     if (project.kind !== PROJECT_KIND.FACTORY) continue;
     owned.set(project.typeId, (owned.get(project.typeId) ?? 0) + 1);
   }
+  const turn = world.turn ?? 0;
+  const memo = new Map();
   return Object.keys(FACTORIES)
     .map((typeId) => ({
       typeId,
       margin: factoryMargin(world, typeId),
       built: owned.get(typeId) ?? 0,
     }))
-    .filter((option) => option.margin > 0 && !paused.has(option.typeId))
+    .filter((option) => option.margin > 0 && !paused.has(option.typeId)
+      && outputHasBuyer(nation, FACTORIES[option.typeId].outputs, turn, memo))
     .sort((a, b) => a.built - b.built || b.margin - a.margin);
 }
 
@@ -3900,7 +3995,6 @@ function runPrivateSector(game, nation) {
   fundPrivateProjects(nation, game.world.turn);
   const rules = factoryInvestmentRules(nation);
   if (!rules.privateBuild) return;
-  const economy = nation.economy;
   const regions = investmentTargets(game.world, nation);
   if (!regions.length) return;
   // Kapitalistler sınırsız şantiye açmaz; ama UYUYAN proje kapıyı tutmaz.
@@ -3925,10 +4019,13 @@ function runPrivateSector(game, nation) {
     ));
     if (!region) continue;
     if (buildFactory(game, nation, region.id, option.typeId, { actor: 'private' })) {
-      const factory = economy.factories[economy.factories.length - 1];
+      // Kayit KUYRUGA eklenen projeyi gosterir: tesis henuz yok, haftalar sonra
+      // dogar. Eskiden listenin son tesisi yaziliyordu (baska bir fabrika; tesisi
+      // hic kalmamis ulkede TypeError).
+      const queue = ensureConstruction(nation).projects;
       nation.politics.lastPrivateInvestment = {
         action: 'build',
-        factoryId: factory.id,
+        projectId: queue[queue.length - 1].id,
         typeId: option.typeId,
         regionName: region.name,
       };
@@ -4012,13 +4109,14 @@ function runEconomicAI(game, nation) {
   if (!regions.length) return;
 
   const military = ensureMilitaryEconomy(nation);
+  // Rezerv yalniz kullanimdaki ailede sayilir (bkz. equipmentInService); gercek
+  // birim talebi her zaman sayilir.
   const equipmentPriority = MILITARY_EQUIPMENT_IDS.map((id) => {
-    const type = MILITARY_EQUIPMENT[id];
     const stock = equipmentStock(nation, id);
     const demand = military[`${id}Demand`] ?? 0;
     return {
       id,
-      pressure: Math.max(demand - stock, type.reserve - stock),
+      pressure: Math.max(demand - stock, equipmentReserve(nation, id, turn) - stock),
     };
   }).sort((a, b) => b.pressure - a.pressure);
   const desiredLine = equipmentPriority.find((item) => item.pressure > 0)?.id ?? null;
@@ -4029,12 +4127,13 @@ function runEconomicAI(game, nation) {
     ? militaryFactories.find((factory) => factory.lineEquipment === desiredLine)
     : null;
   if (desiredLine && !matchingLine) {
+    // Kullanimda olmayan aileyi yapan hat (eski kayitta tanka cevrilmis hat)
+    // once devredilir: rezervi yoktur, deposunu bekleyen birim yoktur.
+    const inService = (factory) => (equipmentInService(nation, factory.lineEquipment, turn) ? 1 : 0);
     const switchable = militaryFactories
-      .filter((factory) => {
-        const current = MILITARY_EQUIPMENT[factory.lineEquipment];
-        return equipmentStock(nation, current.id) >= current.reserve;
-      })
-      .sort((a, b) => a.lineEfficiency - b.lineEfficiency)[0];
+      .filter((factory) => equipmentStock(nation, factory.lineEquipment)
+        >= equipmentReserve(nation, factory.lineEquipment, turn))
+      .sort((a, b) => inService(a) - inService(b) || a.lineEfficiency - b.lineEfficiency)[0];
     if (switchable && setMilitaryProductionLine(game, nation, switchable.id, desiredLine)) {
       report?.('industry', `An arms line switched to ${MILITARY_EQUIPMENT[desiredLine].name}.`,
         'The army was short of it and the old line had its reserve.');
@@ -4049,9 +4148,12 @@ function runEconomicAI(game, nation) {
       const region = regions.find((candidate) => canBuildFactory(
         game.world, nation, candidate.id, 'ARMS_FACTORY',
       ));
-      if (region && buildFactory(game, nation, region.id, 'ARMS_FACTORY')) {
-        const factory = economy.factories[economy.factories.length - 1];
-        if (desiredLine !== 'arms') setMilitaryProductionLine(game, nation, factory.id, desiredLine);
+      // Hat PROJEYE yazilir; tesis haftalar sonra o hatta acilir (bkz.
+      // commitCompletedProjects). buildFactory tesis degil kuyruk kaydi acar:
+      // eskiden listenin SON tesisi "yeni tesis" saniliyordu, baska bir silah
+      // hatti bu aileye cevriliyor (verimi 0.5'e dusuyordu), yeni tesis de
+      // kucuk silahta aciliyordu.
+      if (region && buildFactory(game, nation, region.id, 'ARMS_FACTORY', { lineEquipment: desiredLine })) {
         report?.('industry', `Arms factory founded in ${region.name}.`,
           `No line was making ${MILITARY_EQUIPMENT[desiredLine].name}.`);
         return;
@@ -4161,10 +4263,13 @@ function procureStrategicGoods(world) {
       // Tedarik kaydırağı ithalat hedefini de ölçekler: %50 fonlanan ordu
       // yarım depoyla idare etmeye çalışır, hazine de yarım öder.
       const procurement = (nation.economy.armyFunding ?? 100) / 100;
+      // Kullanimda olmayan ailenin rezervi yoktur: hedef yalniz gercek birim
+      // talebidir (bkz. equipmentInService).
+      const reserve = equipmentReserve(nation, id, world.turn ?? 0);
       const target = Math.min(
         equipment.stockCap,
-        (equipment.reserve + Math.min(
-          equipment.stockCap - equipment.reserve,
+        (reserve + Math.min(
+          equipment.stockCap - reserve,
           military[field.demand] ?? 0,
         )) * procurement,
       );
@@ -4245,7 +4350,12 @@ export function settleGlobalTrade(world) {
       const access = 1 / (1 + Math.max(0, nation.economy.tariff / 100) * EXPORT_RETALIATION);
       domesticCol[i] = domestic;
       surplusCol[i] = Math.max(0, marketProduction - domestic) * access;
-      bidCol[i] = deficit * appetite;
+      // Istah teklifi ACIGIN ustune cikaramaz. Eksi gumrukte istah 1'i asiyor
+      // (−%15'te 1.32, −%50'de 5) ve ithalat talebi asiyordu: fazlasi tuketilmez
+      // (fulfilled = min(talep, ...)) ama dunya arzindan duser, bedeli dis
+      // hesaptan ve gumruk subvansiyonundan odenir (olculdu: −%50'de ithalat
+      // degerinin %14.8'i).
+      bidCol[i] = deficit * Math.min(1, appetite);
       weightCol[i] = bidCol[i];
     }
     // Toplamlar eski reduce ile ayni sirada birikir (ulke dizisi sirasi).
@@ -4818,7 +4928,9 @@ export function beginEconomy(game) {
     }
   }
   const market = world.market;
-  const ctx = { world, market, profile: {} };
+  // `concessions`: imtiyaz sevkiyatlari, galibin akisina finishEconomy'de
+  // yazilir (bkz. rawProduction).
+  const ctx = { world, market, profile: {}, concessions: [] };
   let markT = performance.now();
   ctx.mark = (name) => {
     const now = performance.now();
@@ -4955,6 +5067,12 @@ export function runNationEconomy(game, nation, ctx) {
     // Subvansiyon politikasi (yalniz oyuncu: YZ kendi maliyesinde yonetiyor).
     // Herkes icin ayni: sahibine gore degisen bir kural degil.
     applySubsidyPolicy(world, nation);
+    // Gubre orani SIFIRLAMADAN ONCE okunur. rawProduction onu sifirlanmis
+    // akistan okuyordu: talep hep 0, tarla bonusu hic islemiyordu (olculdu:
+    // gubresi tam karsilanan ulkede tarla carpani 1.25 yerine 1.00).
+    const fertilizer = nation.economy.goodsFlow?.fertilizer;
+    const fertilized = fertilizer?.demand > 0
+      ? clamp((fertilizer.fulfilled ?? 0) / fertilizer.demand, 0, 1) : 0;
     resetNationGoodsFlow(nation);
     updateClasses(world, nation);
     mark('classes');
@@ -4963,7 +5081,7 @@ export function runNationEconomy(game, nation, ctx) {
     // DEGER olarak kopyalanir. Referansi disari verme.
     const ownOutput = nationOutputScratch;
     for (let i = 0; i < GOOD_IDS.length; i++) ownOutput[GOOD_IDS[i]] = 0;
-    rawProduction(world, nation, market, ownOutput);
+    rawProduction(world, nation, market, ownOutput, fertilized, ctx.concessions);
     // RGO'nun katma degeri brut ciktisina esittir: bu modelde tarlanin
     // piyasadan aldigi bir girdi yok (gubre TALEP olarak yazilir ama RGO'ya
     // maliyet olarak islenmez). Sanayi icin ayni sey DOGRU DEGILDIR — bkz.
@@ -5089,6 +5207,11 @@ export function runNationEconomy(game, nation, ctx) {
 export function finishEconomy(game, ctx) {
   const { world, market, mark } = ctx;
   ctx.stamp();
+  // Imtiyaz sevkiyati ancak BUTUN uluslarin akisi sifirlandiktan sonra
+  // galibe yazilabilir; boylece ulke sirasi sonucu degistirmez.
+  for (const { holder, id, amount } of ctx.concessions) {
+    addNationFlow(holder, id, 'production', amount);
+  }
   // Dünya piyasasındaki gerçek alımlar stratejik stokları doldurur ve fiyatı
   // yukarı iter; böylece ekrandaki piyasa ile inşaat ekonomisi aynı sistemdir.
   procureStrategicGoods(world);
