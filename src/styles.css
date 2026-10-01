@@ -10969,3 +10969,356 @@ body.picker-open .sheet { display: none; }
 :root[data-motion="on"] .fac-menu { transform-origin: top right; animation: ui-pop 150ms cubic-bezier(0.2, 0.7, 0.2, 1); }
 :root[data-motion="on"] .why-pop { animation: ui-drop-in 160ms ease-out; }
 :root[data-motion="on"] .epilogue { animation: ui-fade 320ms ease-out; }
+
+/* ==========================================================================
+   32. KABARTMA — "paint'te konmuş düz kutu" yasağı
+
+   Kerem: "UI'yi paintten konulmuş kutu gibi değil de daha 3D'li, animasyonlu
+   kullansak iyi olur; yapıştırma düz kutucuklar istemiyorum." §24/§26 malzeme
+   ve kademe sistemini kurmuştu ama genliği bilerek %3-5'te tutmuştu: ekran
+   görüntüsünde kademe farkı yine düz kâğıt gibi okunuyordu. Bu bölüm aynı
+   ışık kuralını (ışık YUKARIDAN: yükselen nesnenin üstü açık, altı koyu;
+   oyuğun tersi) okunur genliğe çıkarır ve hareketi kademelere bağlar:
+
+     levha   — pirinç çerçeveli, derin düşen gölgeli pencere; perspektifle açılır
+     kart    — pahlı kenar, üst ışık, alt gölge; ekran açılırken sırayla yükselir
+     plaka   — başlık bantları dövme metal şerit, yazı kazınmış
+     düğme   — metal topuz: üstüne gelince kalkar, basınca içeri oturur
+     oyuk    — tutar kutuları ve listeler panele OYULUR
+
+   Bütün hareket transform/opacity (kompozitörde) ve tek seferlik; sürekli
+   döngü yok. Settings → Interface animations kapalıysa (data-motion="off")
+   §19'daki genel kural hepsini durdurur.
+   ========================================================================== */
+
+:root {
+  --relief-raised:
+    0 0 0 1px rgba(0, 0, 0, 0.72),
+    0 2px 2px rgba(0, 0, 0, 0.42),
+    0 8px 18px -6px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(255, 236, 196, 0.13),
+    inset 1px 0 0 rgba(255, 236, 196, 0.035),
+    inset -1px 0 0 rgba(0, 0, 0, 0.28),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.42);
+  --relief-lifted:
+    0 0 0 1px rgba(0, 0, 0, 0.75),
+    0 4px 6px rgba(0, 0, 0, 0.42),
+    0 16px 30px -8px rgba(0, 0, 0, 0.78),
+    inset 0 1px 0 rgba(255, 236, 196, 0.2),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.45);
+  --relief-sunken:
+    inset 0 3px 7px rgba(0, 0, 0, 0.72),
+    inset 0 1px 0 rgba(0, 0, 0, 0.85),
+    inset 0 -1px 0 rgba(255, 236, 196, 0.08),
+    0 1px 0 rgba(255, 236, 196, 0.05);
+  /* Üstten düşen ışık: kartın üst üçte biri hafif aydınlık, tabanı gölgede. */
+  --light-top: linear-gradient(180deg,
+    rgba(255, 242, 214, 0.075) 0%,
+    rgba(255, 242, 214, 0.02) 24%,
+    rgba(0, 0, 0, 0) 56%,
+    rgba(0, 0, 0, 0.2) 100%);
+  /* Dövme pirinç şerit: ortada kırılan iki ton = silindirik yüzey. */
+  --plate-metal: linear-gradient(180deg,
+    rgba(255, 226, 168, 0.13) 0%,
+    rgba(255, 226, 168, 0.04) 46%,
+    rgba(0, 0, 0, 0.16) 54%,
+    rgba(0, 0, 0, 0.32) 100%);
+  --knob-metal: linear-gradient(180deg,
+    #2c3438 0%, #1d2529 48%, #151c20 52%, #10171a 100%);
+  --knob-metal-hot: linear-gradient(180deg,
+    #4a3d22 0%, #33291a 48%, #261e12 52%, #1c160d 100%);
+  --lift-ease: cubic-bezier(0.2, 0.75, 0.25, 1);
+}
+
+/* --- LEVHA: yönetim penceresi ------------------------------------------- */
+.screen {
+  border-radius: 4px 4px 0 0;
+  box-shadow:
+    0 0 0 1px #000,
+    0 0 0 3px rgba(122, 98, 54, 0.9),
+    0 0 0 4px rgba(22, 17, 10, 0.95),
+    0 0 0 5px rgba(186, 160, 100, 0.25),
+    0 34px 90px rgba(0, 0, 0, 0.66),
+    0 10px 24px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(255, 236, 196, 0.16),
+    inset 0 0 60px rgba(0, 0, 0, 0.32);
+}
+
+.screen .screen-head {
+  position: relative;
+  background-image: var(--plate-metal);
+  box-shadow:
+    inset 0 -1px 0 rgba(0, 0, 0, 0.75),
+    0 1px 0 rgba(255, 236, 196, 0.07);
+}
+
+.screen .screen-head h2 {
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9), 0 0 18px rgba(186, 160, 100, 0.18);
+}
+
+/* --- KART: iç bloklar ---------------------------------------------------- */
+.ind-states, .ind-rail,
+.pop-nav, .pop-panel, .pop-table, .pop-detail,
+.ledger-col, .bank-rows,
+.trade-cat, .trade-detail, .trade-struct-block,
+.mil-col, .mil-stats, .mil-disposition, .mil-leader-detail,
+.pol-gov, .pol-laws,
+.mil-build, .mil-command, .mil-queue, .mil-plan,
+.ui-panel,
+.tax-summary,
+.auto-strip {
+  border-radius: 3px;
+  background-image: var(--light-top), var(--surface-card);
+  background-blend-mode: normal, var(--blend-card);
+  box-shadow: var(--relief-raised);
+}
+
+.fac-card, .build-card {
+  border-radius: 3px;
+  box-shadow: var(--relief-raised);
+  transition: transform 170ms var(--lift-ease), box-shadow 170ms var(--lift-ease), filter 170ms ease;
+}
+
+.fac-card:hover, .build-card:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--relief-lifted);
+  filter: brightness(1.06);
+}
+
+/* Devir şeridi panelin içine oyulmuş bir yuva: kart değil, kayıt satırı. */
+.auto-strip { box-shadow: var(--relief-sunken); background-image: var(--surface-well); }
+.auto-strip.on { box-shadow: var(--relief-sunken), inset 2px 0 0 var(--gold); }
+
+/* --- GÖSTERGE KAROLARI: her biri ayrı bir dökme blok ---------------------- */
+.ui-kpis {
+  gap: 6px;
+  border: 0;
+  background: none;
+}
+
+.ui-kpi {
+  position: relative;
+  border-radius: 3px;
+  background-color: rgba(14, 22, 26, 0.86);
+  background-image: var(--light-top);
+  box-shadow: var(--relief-raised);
+  transition: transform 160ms var(--lift-ease), box-shadow 160ms var(--lift-ease), background-color 160ms ease;
+}
+
+.ui-kpi:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--relief-lifted);
+}
+
+.ui-kpi[data-tip]:hover { background-color: rgba(26, 36, 41, 0.92); }
+
+/* Değer rakamı kabartma: alttan karanlık, üstten pirinç parıltısı. */
+.ui-kpi > b {
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.85), 0 -1px 0 rgba(255, 236, 196, 0.06);
+}
+
+/* --- PLAKA: başlık bantları ---------------------------------------------- */
+.ui-panel-head,
+.ui-subhead,
+.pol-band,
+.mil-band,
+.trade-cat > h4,
+.trade-h4,
+.ledger-head {
+  background-image: var(--plate-metal);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 236, 196, 0.14),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.65),
+    0 1px 0 rgba(0, 0, 0, 0.55),
+    0 2px 4px rgba(0, 0, 0, 0.3);
+  /* Kazınmış yazı: harfin altında karanlık, üstünde ışık kırığı. */
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9), 0 -1px 0 rgba(255, 236, 196, 0.05);
+}
+
+/* --- DÜĞME: metal topuz --------------------------------------------------- */
+.ui-btn,
+.mil-btn,
+.action,
+.auto-toggle,
+.mil-tabs button {
+  border-radius: 3px;
+  background-image: var(--knob-metal);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.7),
+    0 2px 3px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 236, 196, 0.15),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.8);
+  transition:
+    transform 140ms var(--lift-ease),
+    box-shadow 140ms var(--lift-ease),
+    filter 140ms ease,
+    color 140ms ease,
+    border-color 140ms ease;
+}
+
+.ui-btn.primary,
+.mil-tabs button.active,
+.auto-strip.on .auto-toggle {
+  background-image: var(--knob-metal-hot);
+}
+
+.ui-btn:hover:not([disabled]),
+.mil-btn:hover:not(:disabled),
+.action:hover:not([disabled]),
+.auto-toggle:hover,
+.mil-tabs button:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.18);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.72),
+    0 4px 8px rgba(0, 0, 0, 0.55),
+    0 0 12px rgba(186, 160, 100, 0.14),
+    inset 0 1px 0 rgba(255, 236, 196, 0.22),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.5);
+}
+
+.ui-btn:active:not([disabled]),
+.mil-btn:active:not(:disabled),
+.action:active:not([disabled]),
+.auto-toggle:active,
+.mil-tabs button:active {
+  transform: translateY(1px);
+  filter: brightness(0.94);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.75),
+    inset 0 2px 5px rgba(0, 0, 0, 0.7),
+    inset 0 -1px 0 rgba(255, 236, 196, 0.05);
+}
+
+.ui-btn[disabled],
+.mil-btn:disabled,
+.action[disabled] {
+  background-image: none;
+  box-shadow: var(--relief-sunken);
+  text-shadow: none;
+}
+
+/* Vergi kilidi ve gümrük hedefi: küçük basmalı anahtarlar. Yanan anahtar
+   içeri basılı durur (oyuk), sönük olan dışarıda. */
+.tax-hold {
+  background-image: var(--knob-metal);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.6),
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 236, 196, 0.12);
+  transition: transform 120ms var(--lift-ease), box-shadow 120ms ease, color 120ms ease;
+}
+.tax-hold:hover:not(:disabled) { transform: translateY(-1px); }
+.tax-hold.on {
+  background-image: none;
+  background-color: rgba(0, 0, 0, 0.35);
+  box-shadow: var(--relief-sunken);
+}
+
+/* --- OYUK: tutar kutuları, listeler -------------------------------------- */
+.vbox {
+  border-radius: 3px;
+  box-shadow: var(--relief-sunken);
+}
+
+.mil-build-list, .mil-queue-list, .mil-leader-list, .chron-list, .pop-table-scroll {
+  border-radius: 3px;
+  box-shadow: var(--relief-sunken);
+}
+
+/* --- SATIR: üstüne gelince kalkan şerit ---------------------------------- */
+.ledger-row,
+.mil-build-row,
+.mil-queue-row,
+.chron-row {
+  position: relative;
+  transition: transform 150ms var(--lift-ease), background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.ledger-row:hover,
+.mil-build-row:hover,
+.mil-queue-row:hover {
+  z-index: 1;
+  transform: translateY(-1px);
+  background-color: rgba(255, 244, 220, 0.035);
+  box-shadow:
+    0 6px 14px -6px rgba(0, 0, 0, 0.8),
+    inset 0 1px 0 rgba(255, 236, 196, 0.07);
+}
+
+/* --- KAYDIRAÇ: oluklu ray, küresel topuz --------------------------------- */
+.ledger input[type="range"]::-webkit-slider-runnable-track {
+  height: 5px;
+  border-radius: 3px;
+  box-shadow:
+    inset 0 2px 3px rgba(0, 0, 0, 0.85),
+    inset 0 -1px 0 rgba(255, 236, 196, 0.1),
+    0 1px 0 rgba(255, 236, 196, 0.05);
+}
+
+.ledger input[type="range"]::-webkit-slider-thumb {
+  background: radial-gradient(circle at 35% 30%, #f0d595 0%, #b2924f 38%, #6a5428 78%, #3a2d14 100%);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.8),
+    0 2px 4px rgba(0, 0, 0, 0.65),
+    inset 0 -1px 2px rgba(0, 0, 0, 0.45);
+  transition: transform 120ms var(--lift-ease);
+}
+
+.ledger input[type="range"]:hover::-webkit-slider-thumb { transform: scale(1.15); }
+.ledger input[type="range"]:active::-webkit-slider-thumb { transform: scale(1.05); }
+
+.ledger input[type="range"]::-moz-range-thumb {
+  background: radial-gradient(circle at 35% 30%, #f0d595 0%, #b2924f 38%, #6a5428 78%, #3a2d14 100%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8), 0 2px 4px rgba(0, 0, 0, 0.65);
+}
+
+/* --- HAREKET -------------------------------------------------------------- */
+/* Pencere düz kaymaz, masaya YATARAK iner: üst kenar hafif geride başlar,
+   perspektifle öne döner. 300 ms — bilgi gecikmez, levha ağırlık kazanır. */
+@keyframes relief-panel-in {
+  from { opacity: 0; transform: translateX(-50%) perspective(1600px) rotateX(7deg) translateY(-14px) scale(0.975); }
+  to { opacity: 1; transform: translateX(-50%) perspective(1600px) rotateX(0) translateY(0) scale(1); }
+}
+@keyframes relief-panel-in-left {
+  from { opacity: 0; transform: perspective(1600px) rotateY(6deg) translateX(-24px); }
+  to { opacity: 1; transform: perspective(1600px) rotateY(0) translateX(0); }
+}
+/* Kart masaya düşer: hafif büyük ve havada başlar, gölgesi ona yetişir. */
+@keyframes relief-card-in {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+
+:root[data-motion="on"] .screen.is-entering {
+  transform-origin: 50% 0;
+  animation: relief-panel-in 300ms var(--lift-ease) both;
+}
+:root[data-motion="on"] .screen[data-screen='peace'].is-entering,
+:root[data-motion="on"] .screen[data-screen='dossier'].is-entering {
+  transform-origin: 0 50%;
+  animation-name: relief-panel-in-left;
+}
+
+/* İç kartlar sırayla iner (ekran gövdesinin torunları dahil): ızgaranın
+   yalnız ilk çocuğu değil, sütunların kendisi de kademeli gelir. */
+:root[data-motion="on"] .screen.is-entering :is(.ui-kpi, .ui-panel, .mil-col, .ledger-col,
+  .pol-gov, .pol-laws, .pop-panel, .pop-nav, .trade-cat, .fac-card, .build-card) {
+  animation: relief-card-in 320ms var(--lift-ease) both;
+}
+:root[data-motion="on"] .screen.is-entering :is(.ui-kpi, .ui-panel, .mil-col, .ledger-col,
+  .pol-gov, .pol-laws, .pop-panel, .pop-nav, .trade-cat, .fac-card, .build-card):nth-child(2) { animation-delay: 45ms; }
+:root[data-motion="on"] .screen.is-entering :is(.ui-kpi, .ui-panel, .mil-col, .ledger-col,
+  .pol-gov, .pol-laws, .pop-panel, .pop-nav, .trade-cat, .fac-card, .build-card):nth-child(3) { animation-delay: 90ms; }
+:root[data-motion="on"] .screen.is-entering :is(.ui-kpi, .ui-panel, .mil-col, .ledger-col,
+  .pol-gov, .pol-laws, .pop-panel, .pop-nav, .trade-cat, .fac-card, .build-card):nth-child(4) { animation-delay: 135ms; }
+:root[data-motion="on"] .screen.is-entering :is(.ui-kpi, .ui-panel, .mil-col, .ledger-col,
+  .pol-gov, .pol-laws, .pop-panel, .pop-nav, .trade-cat, .fac-card, .build-card):nth-child(n+5) { animation-delay: 180ms; }
+
+:root[data-motion="off"] .ledger-row:hover,
+:root[data-motion="off"] .mil-build-row:hover,
+:root[data-motion="off"] .mil-queue-row:hover,
+:root[data-motion="off"] .ui-kpi:hover,
+:root[data-motion="off"] .fac-card:hover,
+:root[data-motion="off"] .build-card:hover { transform: none; }

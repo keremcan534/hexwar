@@ -396,7 +396,9 @@ export class Screens {
     clearTimeout(this.enterTimer);
     this.enterTimer = setTimeout(() => {
       for (const el of targets) el.classList.remove('is-entering');
-    }, 420);
+    // §32: son kart 180 ms gecikip 320 ms iner; sinif erken sokulurse
+    // animasyon yarida kesilip yerine siçrar.
+    }, 560);
   }
 
   close() {
