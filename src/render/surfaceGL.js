@@ -98,6 +98,7 @@ uniform highp sampler2D uSegHead;  // RGBA32F, hex basina: (ilk kayit, sayi)
 uniform highp sampler2D uSegData;  // RGBA32F, kayit basina 2 teksel
 uniform int uSegW;                 // uSegData eni
 uniform float uRemap;              // 1 = dolgu yumusak siniri izler
+uniform float uSegOn;              // 1 = parca tablosu yuklu (kiyi + sinir)
 uniform highp sampler2D uRegion;   // RGBA8, NEAREST: RG bolge kimligi + 1 (deniz 0), B sahipli mi
 uniform float uHexBlend;           // 1 = bolge dokusu yuklu, hex suzmesi acik
 uniform sampler2D uBand;           // R8, LINEAR: ulke sinirina uzaklik / BAND_REACH (alan izgarasi)
@@ -163,15 +164,19 @@ vec2 elevGrad(vec2 uv, out float h) {
 }
 
 /**
- * Dolgunun hangi hexten okunacagi. Hex merkezinden piksele cekilen dogru
- * yumusak siniri kesiyorsa piksel komsu bolgededir (merkez daima kendi
- * bolgesinde kalir). Kesisimlerin en uzagi, yani piksele en yakini karar
+ * Pikselin hangi hexe ait sayilacagi. Hex merkezinden piksele cekilen dogru
+ * yumusak siniri kesiyorsa piksel komsu taraftadir (merkez daima kendi
+ * tarafinda kalir). Kesisimlerin en uzagi, yani piksele en yakini karar
  * verir. Donus: xy birincil hex, zw kenar yumusatmada karisan oteki hex;
  * w: otekinin payi (en yakin parcaya ekranda yarim pikselden yakinsa).
+ *
+ * Kiyi parcalari (inf.w = 1) her kipte gecerli: kara/deniz sekli cografyadir.
+ * Kara-kara parcalari yalniz bolge kiplerinde: arazi ve kaynak kiplerinde
+ * renk hexin kendi verisidir, komsudan odunc alinmaz.
  */
 vec4 fillCells(vec2 world, vec2 raw, vec2 cell, out float w) {
   w = 0.0;
-  if (uRemap < 0.5) return vec4(cell, cell);
+  if (uSegOn < 0.5) return vec4(cell, cell);
   vec4 head = texelFetch(uSegHead, ivec2(cell), 0);
   int n = int(head.y + 0.5);
   if (n <= 0) return vec4(cell, cell);
@@ -188,6 +193,7 @@ vec4 fillCells(vec2 world, vec2 raw, vec2 cell, out float w) {
     int k = (start + i) * 2;
     vec4 seg = texelFetch(uSegData, ivec2(k % uSegW, k / uSegW), 0);
     vec4 inf = texelFetch(uSegData, ivec2((k + 1) % uSegW, (k + 1) / uSegW), 0);
+    if (uRemap < 0.5 && inf.w < 0.5) continue;
     vec2 a = seg.xy;
     vec2 e = seg.zw - a;
     vec2 ap = p - a;
@@ -287,13 +293,10 @@ void hexBlend(vec2 world, vec2 raw, vec2 cell, vec2 fill, out vec3 base, out vec
  * Kabartma gercek yukseklik rasterinden gelir (uydurma dag golgesi yok) ve
  * isik yonu SU ile aynidir — iki yuzey ayni dunyada gibi dursun (§22).
  */
-vec3 landColor(vec2 world, vec2 cell, vec2 raw, vec3 Ldir) {
-  float mixW;
-  vec4 fc = fillCells(world, raw, cell, mixW);
+vec3 landColor(vec2 world, vec2 cell, vec2 raw, vec2 fill, vec3 Ldir) {
   vec3 base;
   vec4 ch;
-  hexBlend(world, raw, cell, fc.xy, base, ch);
-  if (mixW > 0.0) base = mix(base, texelFetch(uOwner, ivec2(fc.zw), 0).rgb, mixW);
+  hexBlend(world, raw, cell, fill, base, ch);
   float reliefGain = ch.r * 2.0;
   float grainAmt = ch.g;
   float warmth = (ch.b - 0.5) * 2.0;
@@ -334,21 +337,15 @@ vec3 landColor(vec2 world, vec2 cell, vec2 raw, vec3 Ldir) {
   // artik YUZEYIN ISIGINI aliyor ve her zoomda keskin: cizgi ekran uzayinda
   // hesaplaniyor, onceden pismis bir dokudan gelmiyor.
   if (uOverlayOn > 0.5) {
-    // Isgal de bolgeye aittir: tarama, dolgunun okundugu hexten gelir ve
-    // yumusak sinirda dolguyla birlikte karisir.
-    vec4 o1 = texture(uOverlay, (fc.xy + 0.5) / uGrid);
-    vec4 o2 = texture(uOverlay, (fc.zw + 0.5) / uGrid);
-    float w1 = step(0.5, o1.a) * (1.0 - mixW);
-    float w2 = step(0.5, o2.a) * mixW;
-    float occ = w1 + w2;
-    if (occ > 0.0) {
-      vec3 ink = (o1.rgb * w1 + o2.rgb * w2) / occ;
-      col = mix(col, ink, 0.46 * occ);
+    // Isgal de bolgeye aittir: tarama, dolgunun okundugu hexten gelir.
+    vec4 ov = texelFetch(uOverlay, ivec2(fill), 0);
+    if (ov.a > 0.5) {
+      col = mix(col, ov.rgb, 0.46);
       float sp = 9.0 * uDpr;
       float wd = 2.2 * uDpr;
       float f = mod(gl_FragCoord.x + gl_FragCoord.y, sp);
       float line = 1.0 - smoothstep(wd * 0.5 - 0.9, wd * 0.5 + 0.9, abs(f - sp * 0.5));
-      col = mix(col, vec3(0.839, 0.784, 0.659), line * 0.5 * occ);
+      col = mix(col, vec3(0.839, 0.784, 0.659), line * 0.5);
     }
   }
 
@@ -357,11 +354,21 @@ vec3 landColor(vec2 world, vec2 cell, vec2 raw, vec3 Ldir) {
   // icinde dogrusal soner. Eskiden Canvas2D'de ulkenin cokgenine kirpilmis
   // alti genis darbeydi; yakin zoomda statik katmani GPU'da kareden
   // tasiriyordu. Ton ulkenin kendi rengi, koyulasmis: her yan kendi tonunda.
-  if (uBandOn > 0.5 && texelFetch(uRegion, ivec2(fc.xy), 0).b > 0.5) {
+  if (uBandOn > 0.5 && texelFetch(uRegion, ivec2(fill), 0).b > 0.5) {
     float bd = texture(uBand, (world - uFieldOrigin) / uFieldSpan).r;
     col = mix(col, col * 0.52, 0.24 * clamp(1.0 - bd, 0.0, 1.0));
   }
-  return col;
+  // Kuresel derece: orta ton cevresinde S egrisi + soguk golge/sicak isik.
+  vec3 gr = col * col * (3.0 - 2.0 * col);
+  return clamp(mix(col, gr, uGrade), 0.0, 1.0);
+}
+
+vec3 seaColor(vec2 world, vec2 cell, vec3 Ldir);
+
+/** Pikselin yuzeyi: kara mi deniz mi, karar etkin hexten (yumusak kiyi). */
+vec3 surfaceAt(vec2 world, vec2 cell, vec2 raw, vec2 fill, vec3 Ldir) {
+  if (texelFetch(uHex, ivec2(fill), 0).r >= 0.5) return seaColor(world, fill, Ldir);
+  return landColor(world, cell, raw, fill, Ldir);
 }
 
 void main() {
@@ -370,28 +377,27 @@ void main() {
   vec2 scr = vec2(px.x, uViewport.y - px.y);
   vec2 world = (scr - uViewport * 0.5) / uZoom + uCam;
 
-  // --- KARA MASKESİ (tam hex kenarı) ---
   vec2 cr = hexAt(world);
   float col = cr.x;
   float row = cr.y;
   if (uWrap > 0.0) col = mod(col, uGrid.x);
   if (row < 0.0 || row > uGrid.y - 1.0) discard;
   vec2 cell = vec2(col, row);
-  float isWater = texture(uHex, (cell + 0.5) / uGrid).r;
-  if (isWater >= 0.5 && uSeaMaterial < 0.5) {
-    // Duz deniz: rengi de oyunun kendi borusundan gelir (uOwner).
-    fragColor = vec4(texture(uOwner, (cell + 0.5) / uGrid).rgb, 1.0);
-    return;
-  }
   // Isik yonu SU ile ORTAK: iki yuzeyin ayni dunyada olmasi buna bagli.
   vec3 Ldir = normalize(vec3(-0.55, -0.68, 0.48));
-  if (isWater < 0.5) {
-    vec3 land = landColor(world, cell, cr, Ldir);
-    // Kuresel derece: orta ton cevresinde S egrisi + soguk golge/sicak isik.
-    vec3 gr = land * land * (3.0 - 2.0 * land);
-    land = mix(land, gr, uGrade);
-    fragColor = vec4(clamp(land, 0.0, 1.0), 1.0);
-    return;
+  // KARA MASKESI artik yumusak kiyidan: piksel hangi hexe aitse yuzeyi o.
+  // Kenar yumusatma bandinda (yarim piksel) iki yuzey karisir.
+  float mixW;
+  vec4 fc = fillCells(world, cr, cell, mixW);
+  vec3 c = surfaceAt(world, cell, cr, fc.xy, Ldir);
+  if (mixW > 0.0) c = mix(c, surfaceAt(world, cell, cr, fc.zw, Ldir), mixW);
+  fragColor = vec4(c, 1.0);
+}
+
+vec3 seaColor(vec2 world, vec2 cell, vec3 Ldir) {
+  if (uSeaMaterial < 0.5) {
+    // Duz deniz: rengi de oyunun kendi borusundan gelir (uOwner).
+    return texelFetch(uOwner, ivec2(cell), 0).rgb;
   }
 
   // --- DALGALAR (uzaklıktan ÖNCE: sığlık onların üstünden kırılacak) ---
@@ -501,8 +507,7 @@ void main() {
   float foam = band * smoothstep(gate, gate + 0.11, chop);
   foam *= 0.6 + 0.4 * uDetail;
   col3 = mix(col3, vec3(0.58, 0.64, 0.63), clamp(foam * uFoamAmp, 0.0, 0.62));
-
-  fragColor = vec4(col3, 1.0);
+  return col3;
 }`;
 
 function compile(gl, type, src) {
@@ -713,7 +718,7 @@ export class SurfaceGL {
       'uOwner', 'uChar', 'uElev', 'uElevSize',
       'uLandRelief', 'uLandGrain', 'uGrade', 'uSeaMaterial',
       'uOverlay', 'uOverlayOn', 'uDataMode',
-      'uSegHead', 'uSegData', 'uSegW', 'uRemap', 'uRegion', 'uHexBlend', 'uBand', 'uBandOn']) {
+      'uSegHead', 'uSegData', 'uSegW', 'uRemap', 'uSegOn', 'uRegion', 'uHexBlend', 'uBand', 'uBandOn']) {
       this.u[name] = gl.getUniformLocation(prog, name);
     }
 
@@ -984,8 +989,9 @@ export class SurfaceGL {
     gl.uniform1i(u.uOverlay, 6);
     // Tablo yoksa eşleme kapalı; örnekleyiciler yine de geçerli bir dokuya
     // bağlanır ki program her kipte aynı durumla çalışsın.
-    const remap = this.remapOn && this.segHeadTex && this.segDataTex;
-    gl.uniform1f(u.uRemap, remap ? 1 : 0);
+    const seg = !!(this.segHeadTex && this.segDataTex);
+    gl.uniform1f(u.uSegOn, seg ? 1 : 0);
+    gl.uniform1f(u.uRemap, seg && this.remapOn ? 1 : 0);
     gl.uniform1i(u.uSegW, this.segWidth || 1);
     gl.activeTexture(gl.TEXTURE7);
     gl.bindTexture(gl.TEXTURE_2D, this.segHeadTex ?? this.ownerTex);

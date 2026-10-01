@@ -463,12 +463,16 @@ tarayıcı olmadan Node ile de test edilebilir.
 
 - Harita pointy-top eksenel `q,r` koordinatları kullanır.
 - Harita birimi province'tir; hex altta veri ızgarası olarak kalır ve
-  ızgara çizgileri varsayılan kapalıdır (Katmanlar → Hex grid, tercih
-  hatırlanır). Province ve ülke sınırları hex kenarlarından türeyip
-  yumuşatılır (`render/borderMesh.js`): kenarlar zincirlere dizilir, kara-kara
-  zincirleri kenar orta noktalarından Chaikin ile yumuşar, kavşak ve kıyı
-  uçları sabit kalır. Kıyı hex kenarında kalır (kara maskesi ve deniz hex
-  kenarlı). Dolgu aynı eğriyi izler: GL yüzeyinde shader pikselin hex
+  ızgara çizgileri varsayılan kapalıdır (Katmanlar → Hex grid; ülke ve
+  province sınırları da oradan ayrı ayrı kapatılır, tercihler hatırlanır).
+  Province, ülke ve kıyı çizgileri hex kenarlarından türer
+  (`render/borderMesh.js`): kenarlar zincirlere dizilir, her zincir yay
+  boyunca Gauss süzgecinden geçip konuma bağlı gürültüyle kıvrılır; hex
+  merdiveni söner, eğri hex yolundan en çok 17 birim sapar (hex merkezi hep
+  kendi tarafında kalır), kavşak uçları sabittir. GL yüzeyi kara/deniz
+  kararını da bu eğriden verir; deniz katmanlarının kıyı uzaklığı alanı aynı
+  eğriden (`coastMesh`). Canvas2D yedeğinde kıyı hex kenarında kalır (deniz
+  dolgusu ve köpük orada hex yoluna bağlı). Dolgu aynı eğriyi izler: GL yüzeyinde shader pikselin hex
   merkezinden kendisine uzanan doğrunun eğriyi kesip kesmediğine bakıp
   komşu bölgenin rengini okur, hex başına ton bölge içinde komşu merkezler
   arasında süzülür; Canvas2D yedeğinde kara province çokgeni olarak dolar.

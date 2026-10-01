@@ -3,16 +3,17 @@
 // Harita birimi province'tir, veri ızgarası ise hex kalır; sınır hex
 // kenarlarından türer. Hex kenarını olduğu gibi çizmek haritayı petek gibi
 // okutuyordu: oyuncu province'i değil hexi görüyordu. Kenarlar hex köşe
-// grafiğinde ZİNCİRLERE dizilir ve kara-kara zincirleri kenar orta
-// noktalarından yumuşatılır.
+// grafiğinde ZİNCİRLERE dizilir ve her zincir doğal bir eğriye dönüştürülür
+// (bkz. EĞRİ BİÇİMİ: süzgeç + kıvrım, hex yolundan sınırlı sapma).
 //
 // Zincir, iki bölgenin kesintisiz ortak sınırıdır; üç bölgenin buluştuğu
 // köşede (kavşak) ve kıyıda kopar. Uçlar yumuşatmada SABİT kalır: kavşak
 // kaymaz, komşu zincirler aynı noktada buluşur, bölge çokgenleri dikişsiz
 // kapanır.
 //
-// Kıyı hex kenarında kalır. Kara maskesi (surfaceGL) ve iki deniz katmanı hex
-// kenarlıdır; kıyıyı yumuşatmak denize dokunmak demek ve bu adımın işi değil.
+// Kıyı da aynı eğridir: GL yüzeyi kara/deniz kararını onunla verir, deniz
+// katmanlarının kıyı uzaklığı alanı coastMesh'ten gelir (material.js). Yalnız
+// Canvas2D yedeği kıyıyı hex kenarında çizer (renderer.chainPts).
 //
 // Çizgi, kenar gölgesi, bölge çokgenleri (classic dolgu) ve GL dolgu
 // eşlemesi AYNI yumuşak eğriden beslenir. Dolgunun sınırı çizgiyle aynı
@@ -41,13 +42,6 @@ const CORNERS = HEX_CORNERS.map(([x, y]) => [x * HEX_SIZE, y * HEX_SIZE]);
  * [komşu yönü (-1 = kendisi), 0 = üst, 1 = alt]
  */
 const CORNER_OWNER = [[5, 1], [1, 0], [-1, 1], [2, 0], [4, 1], [-1, 0]];
-
-/**
- * Chaikin tekrar sayısı. 2'de dikey sınırların dalgası hâlâ köşeli okunuyor,
- * 4'te nokta sayısı ikiye katlanıp hiçbir şey kazandırmıyor; doğrusal
- * kısımlar zaten sadeleştirmede tek parçaya iner.
- */
-const SMOOTH_ITERS = 3;
 
 /**
  * Ülke kenar gölgesinin derinliği (dünya birimi, sınırdan içeri): eski iki hex
@@ -100,74 +94,322 @@ export function neighborTable(world) {
   return tab;
 }
 
-// Yumuşatmanın ara tamponları: zincir başına yeni dizi ayırmak kurulumun
-// üçte birini tahsisata harcıyordu.
-let SCRATCH_A = new Float64Array(8192);
-let SCRATCH_B = new Float64Array(8192);
+/**
+ * EĞRİ BİÇİMİ. Hex kenarı yolu (H) bir merdivendir: sınır hangi yönde
+ * giderse gitsin 60°'lik dişlerle ilerler. Köşe kırpması (Chaikin) dişi
+ * yuvarlıyor ama periyodunu koruyordu — çizgiler kapatılınca dolgu kenarı
+ * yine hex hex basamaklıydı, çizgiler de "cetvelle çekilmiş koloni sınırı"
+ * gibi düzenli dalgalanıyordu. Şimdi:
+ *
+ *   1. H yay uzunluğuna göre eşit aralıkla örneklenir,
+ *   2. yay boyunca Gauss süzgeci: bir hex periyodundaki diş söner (dalga boyu
+ *      45 birimde genlik %1), üç hexlik çıkıntı kalır (%60),
+ *   3. eğri H'den en çok SHAPE_CLAMP uzaklaşabilir,
+ *   4. konuma bağlı gürültüyle normali boyunca kıvrılır, yeniden sınırlanır.
+ *
+ * SINIR KANITI: her hex merkezi kendi kenarlarından iç yarıçap (22.5) kadar
+ * uzaktadır. Eğri H'den en çok MEANDER_CLAMP (17) saparsa hiçbir merkez
+ * karşı tarafa geçmez ve eğri yalnız H'ye kenar ya da KÖŞE ile değen hexlere
+ * girer — GL dolgu tablosu bu kümeyi tarar (buildGlTable).
+ */
+const SHAPE_STEP = 4.5;
+const SHAPE_SIGMA = 22;
+const SHAPE_CLAMP = 14;
+const MEANDER_CLAMP = 17;
+/** Açık zincirde uçlara doğru sönme boyu: kavşak yerinde kalır, komşular buluşur. */
+const SHAPE_TAPER = 26;
+/** Kıvrım genliği: süzgecin sildiği düzensizliğin yerine konuma bağlı olanı. */
+const MEANDER_AMP = 6;
+
+// Ara tamponlar: zincir başına dizi ayırmak kurulumun üçte birini
+// tahsisata harcıyordu.
+let BUF_X = new Float64Array(4096);
+let BUF_Y = new Float64Array(4096);
+let BUF_GX = new Float64Array(4096);
+let BUF_GY = new Float64Array(4096);
+let BUF_SEG = new Int32Array(4096);
+let BUF_S = new Float64Array(4096);
+let BUF_D = new Float64Array(4096);
+let BUF_T = new Float64Array(4096);
+
+function ensureBuffers(n) {
+  if (BUF_X.length >= n) return;
+  const size = n * 2;
+  BUF_X = new Float64Array(size);
+  BUF_Y = new Float64Array(size);
+  BUF_GX = new Float64Array(size);
+  BUF_GY = new Float64Array(size);
+  BUF_SEG = new Int32Array(size);
+  BUF_S = new Float64Array(size);
+  BUF_D = new Float64Array(size);
+  BUF_T = new Float64Array(size);
+}
 
 /**
- * Chaikin köşe kırpması + doğrusal noktaların atılması; sonuç kesin boyda
- * yeni bir dizidir. Açık zincirde uçlar sabit: kavşak ve kıyı ucu yerinde
- * kalır, komşu zincirler orada birleşmeye devam eder.
+ * Yerinde kutu süzgeci (yarıçap rb). Açık zincirde pencere uçta kırpılır ve
+ * yeniden ağırlıklanır; kapalıda sarar.
  */
-function smoothPolyline(ctrl, closed, iters) {
-  const need = ctrl.length * (2 ** iters) + 8;
-  if (SCRATCH_A.length < need) {
-    SCRATCH_A = new Float64Array(need * 2);
-    SCRATCH_B = new Float64Array(need * 2);
+function boxPass(v, n, rb, closed) {
+  const tmp = BUF_T;
+  if (closed && 2 * rb + 1 >= n) {
+    let sum = 0;
+    for (let i = 0; i < n; i++) sum += v[i];
+    for (let i = 0; i < n; i++) v[i] = sum / n;
+    return;
   }
-  let src = ctrl;
-  let len = ctrl.length;
-  let dst = SCRATCH_A;
-  for (let k = 0; k < iters; k++) {
-    const m = len / 2;
-    if (m < 3) break;
-    let o = 0;
-    if (closed) {
-      for (let i = 0; i < m; i++) {
-        const j = i + 1 < m ? i + 1 : 0;
-        const ax = src[i * 2]; const ay = src[i * 2 + 1];
-        const bx = src[j * 2]; const by = src[j * 2 + 1];
-        dst[o++] = 0.75 * ax + 0.25 * bx; dst[o++] = 0.75 * ay + 0.25 * by;
-        dst[o++] = 0.25 * ax + 0.75 * bx; dst[o++] = 0.25 * ay + 0.75 * by;
-      }
-    } else {
-      dst[o++] = src[0]; dst[o++] = src[1];
-      for (let i = 0; i < m - 1; i++) {
-        const ax = src[i * 2]; const ay = src[i * 2 + 1];
-        const bx = src[i * 2 + 2]; const by = src[i * 2 + 3];
-        if (i > 0) { dst[o++] = 0.75 * ax + 0.25 * bx; dst[o++] = 0.75 * ay + 0.25 * by; }
-        if (i < m - 2) { dst[o++] = 0.25 * ax + 0.75 * bx; dst[o++] = 0.25 * ay + 0.75 * by; }
-      }
-      dst[o++] = src[(m - 1) * 2]; dst[o++] = src[(m - 1) * 2 + 1];
+  let sum = 0;
+  if (closed) {
+    const width = 2 * rb + 1;
+    for (let d = -rb; d <= rb; d++) sum += v[(d + n) % n];
+    for (let k = 0; k < n; k++) {
+      tmp[k] = sum / width;
+      sum += v[(k + rb + 1) % n] - v[(k - rb + n) % n];
     }
-    src = dst;
-    len = o;
-    dst = dst === SCRATCH_A ? SCRATCH_B : SCRATCH_A;
+  } else {
+    let cnt = 0;
+    for (let i = 0; i <= Math.min(rb, n - 1); i++) {
+      sum += v[i];
+      cnt++;
+    }
+    for (let k = 0; k < n; k++) {
+      tmp[k] = sum / cnt;
+      const add = k + rb + 1;
+      if (add < n) {
+        sum += v[add];
+        cnt++;
+      }
+      const rem = k - rb;
+      if (rem >= 0) {
+        sum -= v[rem];
+        cnt--;
+      }
+    }
   }
-  // Yatay hex sınırının orta noktaları tek doğru üstündedir; yumuşatma oraya
-  // onlarca eş doğrultulu nokta koyar ve her biri GL'de piksel başına bir
-  // döngü adımı, Canvas2D'de bir lineTo demektir. Sapma son TUTULAN noktaya
-  // göre ölçülür: komşuya göre ölçülseydi yavaş bir kavisin bütün noktaları
-  // tek tek "düz" sayılıp atılabilirdi.
-  const m = len / 2;
-  const keep = dst;
-  let count = 0;
-  let lx = src[0];
-  let ly = src[1];
-  keep[count++] = lx; keep[count++] = ly;
-  for (let i = 1; i < m - 1; i++) {
-    const ax = src[i * 2] - lx; const ay = src[i * 2 + 1] - ly;
-    const bx = src[i * 2 + 2] - src[i * 2]; const by = src[i * 2 + 3] - src[i * 2 + 1];
-    const la = Math.hypot(ax, ay); const lb = Math.hypot(bx, by);
-    if (la < 1e-9) continue;
-    // ~0.25°: 3.5x zoomda bile kırık görünmeyen sapma.
-    if (lb > 1e-9 && Math.abs(ax * by - ay * bx) / (la * lb) <= 0.004) continue;
-    lx = src[i * 2]; ly = src[i * 2 + 1];
-    keep[count++] = lx; keep[count++] = ly;
+  for (let k = 0; k < n; k++) v[k] = tmp[k];
+}
+
+function hash2(ix, iy) {
+  let h = (Math.imul(ix, 374761393) + Math.imul(iy, 668265263)) | 0;
+  h = Math.imul(h ^ (h >>> 13), 1274126177);
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/**
+ * Değer gürültüsü; x ekseninde `period` hücrede sarar. Zincirler açılmış
+ * koordinattadır ve aynı zincir iki ağda (siyasi, kıyı) farklı periyotta
+ * açılabilir: gürültü sarmazsa kıyı iki ağda farklı kıvrılırdı.
+ */
+function valueNoise(x, y, period) {
+  const ix = Math.floor(x);
+  const iy = Math.floor(y);
+  const fx = x - ix;
+  const fy = y - iy;
+  const sx = fx * fx * (3 - 2 * fx);
+  const sy = fy * fy * (3 - 2 * fy);
+  const x0 = period ? ((ix % period) + period) % period : ix;
+  const x1 = period ? (x0 + 1) % period : ix + 1;
+  const a = hash2(x0, iy);
+  const b = hash2(x1, iy);
+  const c = hash2(x0, iy + 1);
+  const d = hash2(x1, iy + 1);
+  return (a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy) * 2 - 1;
+}
+
+/** Oktavlar: [hücre boyu, genlik, y kayması] — ~3 hexlik kıvrım, ~1 hexlik dalga, kırık. */
+const MEANDER_OCTAVES = [[130, 0.62, 0], [48, 0.34, 17.3], [21, 0.2, -41.9]];
+
+/** Hücre boyları sarmal periyoduna tam bölünecek biçimde yuvarlanır. */
+function meanderNoise(x, y, P) {
+  if (P !== NOISE_P) {
+    NOISE_P = P;
+    for (let k = 0; k < MEANDER_OCTAVES.length; k++) {
+      const cell = MEANDER_OCTAVES[k][0];
+      NOISE_N[k] = P ? Math.max(1, Math.round(P / cell)) : 0;
+      NOISE_C[k] = P ? P / NOISE_N[k] : cell;
+    }
   }
-  if (m > 1) { keep[count++] = src[(m - 1) * 2]; keep[count++] = src[(m - 1) * 2 + 1]; }
-  return keep.slice(0, count);
+  let v = 0;
+  for (let k = 0; k < MEANDER_OCTAVES.length; k++) {
+    const c = NOISE_C[k];
+    v += valueNoise(x / c, y / c + MEANDER_OCTAVES[k][2], NOISE_N[k]) * MEANDER_OCTAVES[k][1];
+  }
+  return v;
+}
+let NOISE_P = -1;
+const NOISE_N = new Int32Array(MEANDER_OCTAVES.length);
+const NOISE_C = new Float64Array(MEANDER_OCTAVES.length);
+
+const NEAR = new Float64Array(3);
+
+/** (px,py)'nin a-b parçasına en yakın noktası NEAR'a: x, y, uzaklık². */
+function nearestOnSeg(px, py, ax, ay, bx, by) {
+  const ex = bx - ax;
+  const ey = by - ay;
+  const ll = ex * ex + ey * ey;
+  let t = ll > 1e-12 ? ((px - ax) * ex + (py - ay) * ey) / ll : 0;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  NEAR[0] = ax + ex * t;
+  NEAR[1] = ay + ey * t;
+  NEAR[2] = (px - NEAR[0]) ** 2 + (py - NEAR[1]) ** 2;
+}
+
+const CLAMPED = new Float64Array(2);
+
+/** Noktayı H'nin `seg` çevresindeki parçalarına en çok `limit` uzaklığa çeker (CLAMPED'e). */
+function clampToPath(H, closed, seg, x, y, limit) {
+  const m = H.length / 2;
+  const segs = closed ? m : m - 1;
+  let bx = x;
+  let by = y;
+  let best = Infinity;
+  // Gauss penceresi (3σ = 66) üç kenar boyu: en yakın kaynak parça ±3 içinde.
+  const reach = Math.min(segs, 3);
+  for (let k = -reach; k <= reach; k++) {
+    let s = seg + k;
+    if (closed) s = ((s % segs) + segs) % segs;
+    else if (s < 0 || s >= segs) continue;
+    const j = s + 1 < m ? s + 1 : 0;
+    nearestOnSeg(x, y, H[s * 2], H[s * 2 + 1], H[j * 2], H[j * 2 + 1]);
+    if (NEAR[2] < best) {
+      best = NEAR[2];
+      bx = NEAR[0];
+      by = NEAR[1];
+    }
+  }
+  const d = Math.sqrt(best);
+  if (d <= limit) {
+    CLAMPED[0] = x;
+    CLAMPED[1] = y;
+  } else {
+    const k = limit / d;
+    CLAMPED[0] = bx + (x - bx) * k;
+    CLAMPED[1] = by + (y - by) * k;
+  }
+}
+
+/**
+ * Hex kenarı yolundan doğal sınır eğrisi (bkz. EĞRİ BİÇİMİ). Açık zincirin
+ * uçları birebir H'nin uçlarıdır. `P`: sarmal periyodu (gürültü sarması).
+ */
+function shapeChain(H, closed, P) {
+  const m = H.length / 2;
+  if (m < 2) return H;
+  const segs = closed ? m : m - 1;
+  let total = 0;
+  for (let i = 0; i < segs; i++) {
+    const j = i + 1 < m ? i + 1 : 0;
+    total += Math.sqrt((H[j * 2] - H[i * 2]) ** 2 + (H[j * 2 + 1] - H[i * 2 + 1]) ** 2);
+  }
+  if (total < 1e-6) return H;
+  const count = Math.max(closed ? 6 : 1, Math.round(total / SHAPE_STEP));
+  const n = closed ? count : count + 1;
+  ensureBuffers(n + 2);
+  const X = BUF_X;
+  const Y = BUF_Y;
+  const GX = BUF_GX;
+  const GY = BUF_GY;
+  const SEG = BUF_SEG;
+  const S = BUF_S;
+
+  // 1. Eşit aralıklı örnekleme; her örneğin kaynak parçası kenetleme içindir.
+  let seg = 0;
+  let segStart = 0;
+  let segLen = Math.sqrt((H[2] - H[0]) ** 2 + (H[3] - H[1]) ** 2);
+  for (let k = 0; k < n; k++) {
+    const s = (total * k) / count;
+    while (seg < segs - 1 && segStart + segLen < s) {
+      segStart += segLen;
+      seg++;
+      const j = seg + 1 < m ? seg + 1 : 0;
+      segLen = Math.sqrt((H[j * 2] - H[seg * 2]) ** 2 + (H[j * 2 + 1] - H[seg * 2 + 1]) ** 2);
+    }
+    const j = seg + 1 < m ? seg + 1 : 0;
+    const t = segLen > 1e-9 ? Math.min(1, (s - segStart) / segLen) : 0;
+    X[k] = H[seg * 2] + (H[j * 2] - H[seg * 2]) * t;
+    Y[k] = H[seg * 2 + 1] + (H[j * 2 + 1] - H[seg * 2 + 1]) * t;
+    SEG[k] = seg;
+    S[k] = s;
+  }
+
+  // 2. Yay boyunca Gauss yaklaşığı: üç kutu geçişi (kayan toplam, O(n)).
+  // Gerçek çekirdek örnek başına 31 dokunuştu ve tam kurulumun en büyük
+  // kalemiydi. Küçük kapalı halkada (tek hexlik ada) süzgeç halkanın boyuna
+  // göre daralır: yoksa ada noktaya büzülür.
+  const sigma = closed ? Math.min(SHAPE_SIGMA, total / 10) : SHAPE_SIGMA;
+  const ss = sigma / (total / count);
+  const rb = Math.max(1, Math.round((Math.sqrt(4 * ss * ss + 1) - 1) / 2));
+  for (let k = 0; k < n; k++) {
+    GX[k] = X[k];
+    GY[k] = Y[k];
+  }
+  for (let pass = 0; pass < 3; pass++) {
+    boxPass(GX, n, rb, closed);
+    boxPass(GY, n, rb, closed);
+  }
+
+  // 3. Uç sönümü ve kenetleme. X[k] H'nin üstünde olduğundan kaymanın boyu
+  // H'ye uzaklığın üst sınırıdır: sınırın altındaki noktada arama gereksiz.
+  const out = new Float64Array(n * 2);
+  const D = BUF_D;
+  for (let k = 0; k < n; k++) {
+    let w = 1;
+    if (!closed) {
+      const u = Math.min(1, Math.min(S[k], total - S[k]) / SHAPE_TAPER);
+      w = u * u * (3 - 2 * u);
+    }
+    const dx = (GX[k] - X[k]) * w;
+    const dy = (GY[k] - Y[k]) * w;
+    const dd = Math.sqrt(dx * dx + dy * dy);
+    if (dd <= SHAPE_CLAMP) {
+      out[k * 2] = X[k] + dx;
+      out[k * 2 + 1] = Y[k] + dy;
+      D[k] = dd;
+    } else {
+      clampToPath(H, closed, SEG[k], X[k] + dx, Y[k] + dy, SHAPE_CLAMP);
+      out[k * 2] = CLAMPED[0];
+      out[k * 2 + 1] = CLAMPED[1];
+      D[k] = SHAPE_CLAMP;
+    }
+  }
+  // 4. Kıvrım (normal boyunca) ve yeniden kenetleme (yine yalnız gerekirse).
+  for (let k = 0; k < n; k++) {
+    const a = closed ? (k - 1 + n) % n : Math.max(0, k - 1);
+    const b = closed ? (k + 1) % n : Math.min(n - 1, k + 1);
+    let tx = out[b * 2] - out[a * 2];
+    let ty = out[b * 2 + 1] - out[a * 2 + 1];
+    const tl = Math.sqrt(tx * tx + ty * ty) || 1;
+    tx /= tl;
+    ty /= tl;
+    let w = 1;
+    if (!closed) {
+      const u = Math.min(1, Math.min(S[k], total - S[k]) / SHAPE_TAPER);
+      w = u * u * (3 - 2 * u);
+    }
+    const x = out[k * 2];
+    const y = out[k * 2 + 1];
+    const off = MEANDER_AMP * w * meanderNoise(x, y, P);
+    GX[k] = x - ty * off;
+    GY[k] = y + tx * off;
+    D[k] += Math.abs(off);
+  }
+  for (let k = 0; k < n; k++) {
+    if (D[k] <= MEANDER_CLAMP) {
+      out[k * 2] = GX[k];
+      out[k * 2 + 1] = GY[k];
+      continue;
+    }
+    clampToPath(H, closed, SEG[k], GX[k], GY[k], MEANDER_CLAMP);
+    out[k * 2] = CLAMPED[0];
+    out[k * 2 + 1] = CLAMPED[1];
+  }
+  if (!closed) {
+    // Uçlar birebir kavşak noktası: kayan nokta payı bile birleşimi açmasın.
+    out[0] = H[0];
+    out[1] = H[1];
+    out[(n - 1) * 2] = H[(m - 1) * 2];
+    out[(n - 1) * 2 + 1] = H[(m - 1) * 2 + 1];
+  }
+  return out;
 }
 
 function bboxOf(pts, box = [Infinity, Infinity, -Infinity, -Infinity]) {
@@ -238,7 +480,7 @@ export function buildBorderMesh(world, groupOf, keys = null) {
       regionOf.set(key, id);
       const province = Math.floor(key / 4096) - 1;
       const group = (key % 4096) - 1;
-      regions.push({ id, province, group, tiles: [], chains: [], loops: [], bbox: null, partial: false });
+      regions.push({ id, province, group, tiles: [], chains: [], loops: [], loopsHex: [], bbox: null, partial: false });
     }
     labels[i] = id;
     regions[id].tiles.push(i);
@@ -369,24 +611,18 @@ export function buildBorderMesh(world, groupOf, keys = null) {
     const cylinder = ch.loop && Math.abs(H[0] - H[(m - 1) * 2]) > 1;
     ch.closed = ch.loop && !cylinder;
     ch.H = ch.closed ? H.subarray(0, (m - 1) * 2) : H;
-    if (ch.pos >= 0 && ch.neg >= 0) {
-      const ra = regions[ch.pos];
-      const rb = regions[ch.neg];
-      ch.cls = ra.group !== rb.group ? LINE_COUNTRY : LINE_PROVINCE;
-      const hm = ch.H.length / 2;
-      const segs = ch.closed ? hm : hm - 1;
-      const ctrl = new Float64Array((segs + (ch.closed ? 0 : 2)) * 2);
-      let o = 0;
-      if (!ch.closed) { ctrl[o++] = ch.H[0]; ctrl[o++] = ch.H[1]; }
-      for (let i = 0; i < segs; i++) {
-        const j = (i + 1) % hm;
-        ctrl[o++] = (ch.H[i * 2] + ch.H[j * 2]) / 2;
-        ctrl[o++] = (ch.H[i * 2 + 1] + ch.H[j * 2 + 1]) / 2;
-      }
-      if (!ch.closed) { ctrl[o++] = ch.H[(hm - 1) * 2]; ctrl[o++] = ch.H[(hm - 1) * 2 + 1]; }
-      ch.S = smoothPolyline(ctrl, ch.closed, SMOOTH_ITERS);
+    const land = ch.pos >= 0 && ch.neg >= 0;
+    if (land) {
+      ch.cls = regions[ch.pos].group !== regions[ch.neg].group ? LINE_COUNTRY : LINE_PROVINCE;
     } else {
       ch.cls = LINE_COAST;
+    }
+    // Harita kenarı (kutup) hex kenarında kalır; kara-kara ve kara-deniz
+    // zincirleri yumuşar ve kıvrılır. Kıyı da artık yumuşak: hex dişli
+    // sahil, yumuşak sınırların yanında haritanın en petek parçasıydı.
+    if (land || ch.pos === SEA || ch.neg === SEA) {
+      ch.S = shapeChain(ch.H, ch.closed, P);
+    } else {
       ch.S = ch.H;
     }
     ch.bbox = bboxOf(ch.H, bboxOf(ch.S));
@@ -400,15 +636,18 @@ export function buildBorderMesh(world, groupOf, keys = null) {
   // --- Bölge döngüleri --------------------------------------------------
   // Bölge hep POZİTİF tarafta kalacak yönde yürünür: dış sınır ve delikler
   // zıt yönlü çıkar, Path2D 'nonzero' ile deliği kendiliğinden boşaltır.
+  // İki takım: loops her zinciri yumuşak eğrisiyle (GL yüzeyi), loopsHex
+  // kıyıyı hex kenarıyla (classic yedek: orada su katmanları hex yoluna bağlı).
   let buf = new Float64Array(4096);
-  for (const region of regions) {
+  const assemble = (region, pick) => {
     const starts = new Map();
     const loops = [];
+    let partial = false;
     for (const id of region.chains) {
       const ch = chains[id];
       const reversed = ch.pos !== region.id;
       if (ch.closed) {
-        loops.push(reversed ? reversePts(ch.S) : ch.S);
+        loops.push(reversed ? reversePts(pick(ch)) : pick(ch));
         continue;
       }
       starts.set(reversed ? ch.end : ch.start, { ch, reversed });
@@ -421,7 +660,7 @@ export function buildBorderMesh(world, groupOf, keys = null) {
       let v = startV;
       while (cur && !used.has(v)) {
         used.add(v);
-        const S = cur.ch.S;
+        const S = pick(cur.ch);
         const m = S.length / 2;
         if (buf.length < len + S.length + 2) {
           const grown = new Float64Array((len + S.length) * 2);
@@ -445,13 +684,20 @@ export function buildBorderMesh(world, groupOf, keys = null) {
         loops.push(buf.slice(0, len - 2));
       } else {
         // Çokgeni eksik bölge: classic dolgu onu hex hex boyar.
-        region.partial = true;
+        partial = true;
       }
     }
-    region.loops = loops;
-    if (!loops.length) region.partial = true;
+    return { loops, partial: partial || !loops.length };
+  };
+  for (const region of regions) {
+    const smooth = assemble(region, (ch) => ch.S);
+    const hex = assemble(region, (ch) => (ch.cls === LINE_COAST ? ch.H : ch.S));
+    region.loops = smooth.loops;
+    region.loopsHex = hex.loops;
+    region.partial = smooth.partial || hex.partial;
     let box = null;
-    for (const loop of loops) box = bboxOf(loop, box ?? undefined);
+    for (const loop of smooth.loops) box = bboxOf(loop, box ?? undefined);
+    for (const loop of hex.loops) box = bboxOf(loop, box ?? undefined);
     region.bbox = box;
   }
 
@@ -469,6 +715,83 @@ export function buildBorderMesh(world, groupOf, keys = null) {
 export function meshGlTable(mesh) {
   mesh.gl ??= buildGlTable(mesh.world, mesh.labels, mesh.chains, mesh.edges.eTile, mesh.edges.eOther);
   return mesh.gl;
+}
+
+const COAST_CACHE = new WeakMap();
+
+/**
+ * Yalnız province bölümlemesiyle kurulmuş ağ: kıyının yumuşak hâli dünya
+ * başına SABİT olsun diye. Denizin uzaklık alanı (malzeme, GL denizi, three.js
+ * denizi) bu kıyıdan pişer; sahiplik değişince yeniden pişmemeli. Sahiplik
+ * province içinde bölünmedikçe bölge ağının kıyısı bununla birebir aynıdır
+ * (zincir kopuşları aynı köşelerde, yumuşatma aynı).
+ */
+export function coastMesh(world) {
+  let mesh = COAST_CACHE.get(world);
+  if (!mesh) {
+    mesh = buildBorderMesh(world, () => 0);
+    meshGlTable(mesh);
+    COAST_CACHE.set(world, mesh);
+  }
+  return mesh;
+}
+
+/**
+ * Dünya noktası yumuşak kıyıya göre karada mı? Shader'ın kara/deniz kararıyla
+ * aynı kural: noktanın hexinin merkezinden noktaya uzanan doğru eğriyi
+ * kesiyorsa nokta komşu taraftadır (bkz. surfaceGL fillCells).
+ */
+export function smoothLandAt(mesh, x, y) {
+  const world = mesh.world;
+  const cols = world.cols;
+  const ti = tileIndexAt(world, x, y);
+  if (ti < 0) return false;
+  const tile = world.tiles[ti];
+  const P = world.wrapWidth || 0;
+  let lx = x - tile.x;
+  if (P) lx -= P * Math.round(lx / P);
+  const ly = y - tile.y;
+  const gl = mesh.gl;
+  const n = gl.head[ti * 4 + 1];
+  const start = gl.head[ti * 4];
+  const d = gl.data;
+  let bestT = -1;
+  let result = ti;
+  for (let i = 0; i < n; i++) {
+    const o = (start + i) * 8;
+    const ax = d[o]; const ay = d[o + 1];
+    const ex = d[o + 2] - ax; const ey = d[o + 3] - ay;
+    const den = lx * ey - ly * ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const t = (ax * ey - ay * ex) / den;
+    const u = (ax * ly - ay * lx) / den;
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1 && t > bestT) {
+      bestT = t;
+      const side = ex * (ly - ay) - ey * (lx - ax);
+      result = side * d[o + 6] > 0 ? d[o + 5] * cols + d[o + 4] : ti;
+    }
+  }
+  return !world.tiles[result].terrain.water;
+}
+
+/** Dünya noktasının (açılmış x olabilir) hex indeksi; harita dışı -1. Küp yuvarlama, tahsisatsız. */
+function tileIndexAt(world, x, y) {
+  const cols = world.cols;
+  const fr = (y * 2) / (3 * HEX_SIZE);
+  const fq = x / (Math.sqrt(3) * HEX_SIZE) - fr / 2;
+  const fs = -fq - fr;
+  let rq = Math.round(fq);
+  let rr = Math.round(fr);
+  const rs = Math.round(fs);
+  const dq = Math.abs(rq - fq);
+  const dr = Math.abs(rr - fr);
+  const ds = Math.abs(rs - fs);
+  if (dq > dr && dq > ds) rq = -rr - rs;
+  else if (dr > ds) rr = -rq - rs;
+  if (rr < 0 || rr >= world.rows) return -1;
+  const col = rq + ((rr - (rr & 1)) >> 1);
+  if (!world.wrapWidth && (col < 0 || col >= cols)) return -1;
+  return rr * cols + (((col % cols) + cols) % cols);
 }
 
 function reversePts(pts) {
@@ -571,7 +894,8 @@ export function updateMeshGroups(mesh, keys) {
  *
  *   head: cols x rows RGBA32F  — (ilk kayıt, sayı, 0, 0)
  *   data: GL_DATA_WIDTH x h    — kayıt başına iki teksel:
- *         (ax, ay, bx, by), (karşı kol, karşı satır, karşı tarafın işareti, 0)
+ *         (ax, ay, bx, by), (karşı kol, karşı satır, karşı tarafın işareti,
+ *         1 = kıyı / 0 = kara-kara)
  */
 function buildGlTable(world, labels, chains, eTile, eOther) {
   const cols = world.cols;
@@ -580,25 +904,73 @@ function buildGlTable(world, labels, chains, eTile, eOther) {
   const tiles = world.tiles;
   const nbr = neighborTable(world);
   const R = HEX_SIZE + GL_MARGIN;
-  // Kayıtlar önce düz bir diziye (kare, 7 değer) yazılır, sonra kare başına
+  // Kayıtlar önce düz bir diziye (kare + 8 değer) yazılır, sonra kare başına
   // sayılıp yerleştirilir: kare başına JS dizisi tutmak tahsisat ve GC'ydi.
-  let rec = new Float32Array(65536 * 8);
+  const REC = 9;
+  let rec = new Float32Array(65536 * REC);
   let total = 0;
   const counts = new Int32Array(n);
-  const near = new Set();
+  // Hex başına zincirde değdiği kenar aralığı: parça taraması yalnız o
+  // aralığın çevresine bakar (eğri H'den en çok 17 birim sapar, kenar 26).
+  // Her parçayı her yakın hexe sınamak uzun kıyıda karesel büyüyordu.
+  const near = [];
+  const stamp = new Int32Array(n).fill(-1);
+  const kLo = new Int32Array(n);
+  const kHi = new Int32Array(n);
+  let cid = 0;
+  const touch = (ti, k) => {
+    if (stamp[ti] !== cid) {
+      stamp[ti] = cid;
+      kLo[ti] = k;
+      kHi[ti] = k;
+      near.push(ti);
+    } else {
+      if (k < kLo[ti]) kLo[ti] = k;
+      if (k > kHi[ti]) kHi[ti] = k;
+    }
+  };
   for (const ch of chains) {
-    if (ch.cls === LINE_COAST) continue;
-    near.clear();
-    for (const ref of ch.edges) {
+    cid++;
+    // Kıyı da tabloda: shader kara/deniz kararını da yumuşak eğriden verir.
+    // Harita kenarı (kutup) hex kenarında kalır, onu eşlemeye gerek yok.
+    const coast = ch.cls === LINE_COAST;
+    if (coast && ch.pos !== SEA && ch.neg !== SEA) continue;
+    near.length = 0;
+    const edgeCount = ch.edges.length;
+    for (let k = 0; k < edgeCount; k++) {
+      const ref = ch.edges[k];
       const e = ref >= 0 ? ref : ~ref;
-      near.add(eTile[e]);
-      if (eOther[e] >= 0) near.add(eOther[e]);
+      const ta = eTile[e];
+      const tb = eOther[e];
+      touch(ta, k);
+      if (tb < 0) continue;
+      touch(tb, k);
+      // Kenarın iki ucundaki üçüncü hexler: eğri H'den saptığında köşede
+      // onlara da girer (bkz. EĞRİ BİÇİMİ). Kenarın iki hexinin ortak
+      // komşuları, yön d'nin iki yanındaki yönlerdir.
+      for (let d = 0; d < 6; d++) {
+        if (nbr[ta * 6 + d] !== tb) continue;
+        for (const dd of [(d + 1) % 6, (d + 5) % 6]) {
+          const j = nbr[ta * 6 + dd];
+          if (j >= 0 && (labels[j] === ch.pos || labels[j] === ch.neg)) touch(j, k);
+        }
+        break;
+      }
     }
     const S = ch.S;
     const ms = S.length / 2;
     const segs = ch.closed ? ms : ms - 1;
     const midX = (ch.bbox[0] + ch.bbox[2]) / 2;
+    // H'nin k. parçası ch.edges[k]'dir; S eşit aralıklı olduğundan k. kenar
+    // S'de yaklaşık k·ratio'dadır (bütün hex kenarları eşit boy).
+    const ratio = segs / edgeCount;
     for (const ti of near) {
+      let sLo = 0;
+      let sHi = segs - 1;
+      if (!(ch.closed && kHi[ti] - kLo[ti] > edgeCount / 2)) {
+        sLo = Math.max(0, Math.floor((kLo[ti] - 4) * ratio));
+        sHi = Math.min(segs - 1, Math.ceil((kHi[ti] + 5) * ratio));
+      }
       const t = tiles[ti];
       const mine = labels[ti];
       const farLabel = mine === ch.pos ? ch.neg : ch.pos;
@@ -606,7 +978,7 @@ function buildGlTable(world, labels, chains, eTile, eOther) {
       // Zincir açılmış koordinatta; hex merkezi aynı periyoda çekilir.
       const cx = P ? t.x + P * Math.round((midX - t.x) / P) : t.x;
       const cy = t.y;
-      for (let s = 0; s < segs; s++) {
+      for (let s = sLo; s <= sHi; s++) {
         const s2 = s + 1 < ms ? s + 1 : 0;
         const ax = S[s * 2] - cx;
         const ay = S[s * 2 + 1] - cy;
@@ -629,15 +1001,16 @@ function buildGlTable(world, labels, chains, eTile, eOther) {
           if (dd < bestD) { bestD = dd; best = j; }
         }
         if (best < 0) continue;
-        if ((total + 1) * 8 > rec.length) {
+        if ((total + 1) * REC > rec.length) {
           const grown = new Float32Array(rec.length * 2);
           grown.set(rec);
           rec = grown;
         }
-        const o = total * 8;
+        const o = total * REC;
         rec[o] = ti;
         rec[o + 1] = ax; rec[o + 2] = ay; rec[o + 3] = bx; rec[o + 4] = by;
         rec[o + 5] = best % cols; rec[o + 6] = Math.floor(best / cols); rec[o + 7] = farSign;
+        rec[o + 8] = coast ? 1 : 0;
         counts[ti]++;
         total++;
       }
@@ -660,12 +1033,12 @@ function buildGlTable(world, labels, chains, eTile, eOther) {
   const data = new Float32Array(GL_DATA_WIDTH * height * 4);
   const fill = new Int32Array(n);
   for (let r = 0; r < total; r++) {
-    const o = r * 8;
+    const o = r * REC;
     const ti = rec[o];
     if (fill[ti] >= GL_MAX_PER_TILE) continue;
     const d = (start[ti] + fill[ti]++) * 8;
     data[d] = rec[o + 1]; data[d + 1] = rec[o + 2]; data[d + 2] = rec[o + 3]; data[d + 3] = rec[o + 4];
-    data[d + 4] = rec[o + 5]; data[d + 5] = rec[o + 6]; data[d + 6] = rec[o + 7];
+    data[d + 4] = rec[o + 5]; data[d + 5] = rec[o + 6]; data[d + 6] = rec[o + 7]; data[d + 7] = rec[o + 8];
   }
   return { head, data, width: GL_DATA_WIDTH, height, entries: at, rawMax };
 }

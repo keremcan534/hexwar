@@ -55,6 +55,8 @@ const $ = (id) => document.getElementById(id);
 
 /** Katmanlar → Hex grid tercihi (tarayıcıda; varsayılan kapalı). */
 const GRID_KEY = 'hexwar.map.hexGrid';
+/** Sınır katmanları; anahtar yoksa açık (varsayılan görünüm). */
+const BORDER_KEYS = { showCountryBorders: 'hexwar.map.countryBorders', showProvinceBorders: 'hexwar.map.provinceBorders' };
 
 /** Sekme ekranı → devir alanı (Military → recruitment, Politics → reforms…). */
 const AREA_OF_SCREEN = Object.fromEntries(
@@ -321,6 +323,27 @@ export class Hud {
         // Tercih yalnız bu oturumda yaşar.
       }
     };
+    // Ülke ve province sınırları ayrı kapatılabilir: biri temiz arazi ya da
+    // kaynak okumak, öteki ülke dolgusunu sınırsız görmek ister.
+    for (const [flag, id] of [['showCountryBorders', 'opt-country-borders'], ['showProvinceBorders', 'opt-province-borders']]) {
+      const box = $(id);
+      let on = true;
+      try {
+        on = localStorage.getItem(BORDER_KEYS[flag]) !== '0';
+      } catch {
+        // Depo kapalıysa varsayılan (açık) geçerli.
+      }
+      box.checked = on;
+      game.renderer[flag] = on;
+      box.onchange = (e) => {
+        this.setLayer(flag, e.target.checked);
+        try {
+          localStorage.setItem(BORDER_KEYS[flag], e.target.checked ? '1' : '0');
+        } catch {
+          // Tercih yalnız bu oturumda yaşar.
+        }
+      };
+    }
     $('opt-labels').onchange = (e) => this.setLayer('showLabels', e.target.checked);
     // CANLI DENIZ — kare suresinin tek en buyuk kalemi.
     //

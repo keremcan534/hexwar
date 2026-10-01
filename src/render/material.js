@@ -30,9 +30,50 @@ import { SQRT3 } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { SEA_LEVEL } from '../world/terrain.js';
 import { makeRng, valueNoise, fbm } from './textures.js';
+import { coastMesh, neighborTable, smoothLandAt } from './borderMesh.js';
 
 const HEX_STEP = SQRT3 * HEX_SIZE;
 const ROW_H = HEX_SIZE * 1.5;
+/**
+ * Kara maskesi, kıyısı yumuşak eğriden (borderMesh.coastMesh). GL yüzeyi
+ * kara/deniz kararını o eğriden verir; kıyı uzaklığı alanı hex bloğundan
+ * kalırsa sığlık ve koyu temas kenarı eski hex kıyısını çizmeye devam eder.
+ * Yalnız kıyı hexlerinin blokları (+1 teksel pay: blok hexin dikdörtgen
+ * yaklaşığıdır) sınanır; iç kara ve açık deniz bloktan bilinir.
+ */
+function smoothLandMask(world, land, w, h) {
+  const mesh = coastMesh(world);
+  const nb = neighborTable(world);
+  const out = land.slice();
+  const cols = world.cols;
+  const half = SUB / 2;
+  for (let row = 0; row < world.rows; row++) {
+    for (let col = 0; col < cols; col++) {
+      const ti = row * cols + col;
+      const water = world.tiles[ti].terrain.water;
+      let coast = false;
+      for (let d = 0; d < 6 && !coast; d++) {
+        const j = nb[ti * 6 + d];
+        if (j >= 0 && world.tiles[j].terrain.water !== water) coast = true;
+      }
+      if (!coast) continue;
+      const x0 = 2 * col * half + (row & 1) * half;
+      const y0 = row * SUB;
+      for (let sy = -1; sy <= SUB; sy++) {
+        const yy = y0 + sy;
+        if (yy < 0 || yy >= h) continue;
+        const wy = -ROW_H / 2 + (yy + 0.5) * TEX_H;
+        for (let sx = -1; sx <= SUB; sx++) {
+          const xx = (((x0 + sx) % w) + w) % w;
+          const wx = WRAP_X0 + (xx + 0.5) * TEX_W;
+          out[yy * w + xx] = smoothLandAt(mesh, wx, wy) ? 1 : 0;
+        }
+      }
+    }
+  }
+  return out;
+}
+
 /** Sarmal periyodunun sol kenarı; renderer.WRAP_X0 ile aynı orijin. */
 const WRAP_X0 = -HEX_STEP / 2;
 
@@ -295,7 +336,11 @@ export class LandMaterial {
     switch (B.stage) {
       case 0: this.stageRaster(B); break;
       case 1: this.stageFields(B); break;
-      case 2: this.stageLight(B); break;
+      // Yumuşak kıyı iki aşama: kıyı ağı (~25 ms) ve maske + uzaklık alanı.
+      // stageFields'e eklenince o aşama 51 → 125 ms çıkmıştı (ölçüldü).
+      case 2: coastMesh(B.world); break;
+      case 3: this.stageCoast(B); break;
+      case 4: this.stageLight(B); break;
       default: this.stageSea(B); this.build = null; return true;
     }
     B.stage++;
@@ -392,7 +437,9 @@ export class LandMaterial {
     const foamNoise = valueNoise(w, h, Math.max(40, cols * 2), rng);
     const seaMood = valueNoise(w, h, Math.max(3, Math.round(cols / 34)), rng);
 
-    // Kıyı uzaklığı: denizde karaya, karada denize.
+    // Kıyı uzaklığı: denizde karaya, karada denize. Canvas2D deniz rasteri
+    // hex kıyısıyla kalır (yedek yol kıyıyı hex kenarında çizer); GL yüzeyi
+    // ve deniz katmanı yumuşak kıyının alanını okur (cache.toLand).
     const toLand = distanceField(land, w, h);
     const toSea = distanceField(sea, w, h);
     Object.assign(B, {
@@ -400,7 +447,12 @@ export class LandMaterial {
     });
   }
 
-  /** 3. aşama: ışık alanı (kabartma + pigment + kenar payı). */
+  /** Yumuşak kıyının kara maskesi ve kıyı uzaklığı (GL yüzeyi + deniz katmanı). */
+  stageCoast(B) {
+    B.toLandSmooth = distanceField(smoothLandMask(B.world, B.land, B.w, B.h), B.w, B.h);
+  }
+
+  /** 5. aşama: ışık alanı (kabartma + pigment + kenar payı). */
   stageLight(B) {
     const {
       w, h, n, land, relief, grainAmt, tone, warmAmt, surface,
@@ -475,7 +527,7 @@ export class LandMaterial {
     B.lightCanvas = lightCanvas;
   }
 
-  /** 4. aşama: deniz rasteri (kıyı uzaklığından üç derinlik bölgesi). */
+  /** 6. aşama: deniz rasteri (kıyı uzaklığından üç derinlik bölgesi). */
   stageSea(B) {
     const world = B.world;
     const { cols, rows, w, h, n, sea, toLand, warpBroad, warpFine, foamNoise, seaMood } = B;
@@ -526,8 +578,9 @@ export class LandMaterial {
       // Kıyı uzaklığı alanı ve yükseklik yüzeyi SAKLANIR: WebGL yüzey katmanı
       // ikisini de doku olarak yükler (bkz. surfaceGL.setWorld). Chamfer
       // dönüşümünü ve yükseklik rasterini iki kez kurmanın anlamı yok, ayrıca
-      // iki katmanın kıyısı böylece bit bit aynı yerde durur.
-      toLand,
+      // iki katmanın kıyısı böylece bit bit aynı yerde durur. Yumuşak kıyıdan:
+      // GL kara/deniz kararı da o eğriden (bkz. smoothLandMask).
+      toLand: B.toLandSmooth,
       surface: B.surface,
       x0: WRAP_X0,
       y0: -ROW_H / 2,

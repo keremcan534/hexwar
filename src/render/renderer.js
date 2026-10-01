@@ -19,7 +19,7 @@ import { LandMaterial } from './material.js';
 import { SurfaceGL } from './surfaceGL.js';
 import {
   buildBorderMesh, borderKeys, sameKeys, updateMeshGroups, meshGlTable, meshRegionData,
-  bandFieldJob, BAND_REACH, LINE_COUNTRY, LINE_PROVINCE,
+  bandFieldJob, BAND_REACH, LINE_COUNTRY, LINE_PROVINCE, LINE_COAST,
 } from './borderMesh.js';
 
 /**
@@ -480,6 +480,9 @@ export class Renderer {
     // veri ızgarası olarak kalır. Katmanlar menüsünden açılır (hud.js
     // tercihi hatırlar).
     this.showGrid = false;
+    /** Katmanlar menüsü: ülke ve province sınırları ayrı ayrı kapatılabilir. */
+    this.showCountryBorders = true;
+    this.showProvinceBorders = true;
     this.showLabels = true;
     // Sınır ağı (bkz. borderMesh.js). `meshCheck`: sahiplik ya da kip değişti,
     // bir sonraki istekte anahtarlar karşılaştırılsın.
@@ -1439,7 +1442,7 @@ export class Renderer {
     const cam = this.camera;
     const L = this.staticLayers;
     const hard = !L || L.world !== world || L.mode !== this.mapMode
-      || L.dpr !== this.dpr || L.grid !== this.showGrid;
+      || L.dpr !== this.dpr || L.grid !== this.layerKey();
     if (hard) {
       this.dropStaticJob();
       return this.buildStaticLayers(world);
@@ -1563,7 +1566,7 @@ export class Renderer {
         world, ...g, P: world.wrapWidth || 0, pair,
         b: setup(pair.base), t: setup(pair.top),
         slice: 0, slices: 3, tiles: 0,
-        mode: this.mapMode, grid: this.showGrid, dpr: this.dpr,
+        mode: this.mapMode, grid: this.layerKey(), dpr: this.dpr,
       };
       this.staticJob = job;
     }
@@ -1684,7 +1687,7 @@ export class Renderer {
     // (bkz. ensureStaticLayers `stale`) kaydırılmaz: eski sınırı yeni şeridin
     // yanına taşır ve harita yarı eski yarı yeni kalırdı.
     const canScroll = prev && !prev.stale && !this.staticDirty && prev.world === world
-      && prev.mode === this.mapMode && prev.dpr === dpr && prev.grid === this.showGrid
+      && prev.mode === this.mapMode && prev.dpr === dpr && prev.grid === this.layerKey()
       && prev.zoom === cam.zoom
       && prev.base.width === pxW && prev.base.height === pxH;
 
@@ -1732,7 +1735,7 @@ export class Renderer {
 
     // Ya baştan boyanır ya da taze katmandan kaydırılır: iki durumda da güncel.
     Object.assign(L, {
-      world, mode: this.mapMode, dpr, grid: this.showGrid,
+      world, mode: this.mapMode, dpr, grid: this.layerKey(),
       zoom: cam.zoom, cx: cam.x, cy: cam.y, x0, y0, w, h, stale: false,
     });
 
@@ -1795,7 +1798,7 @@ export class Renderer {
       this.waterGL.seaMaterial = this.waterAnimatedMode();
       this.waterGL.overlayOn = this.occupationMode();
       // Dolgu sınırı yumuşak eğriyi izlesin: tablo ağ değişince yüklenir.
-      // Hex başına veri kiplerinde (arazi, kaynak) eşleme kapalı.
+      // Hex başına veri kiplerinde (arazi, kaynak) yalnız kıyı parçaları geçerli.
       const mesh = this.borderMeshFor(world);
       const wgl = this.waterGL;
       if (wgl.borderMesh !== mesh || wgl.regionVersion !== mesh.version) {
@@ -1812,7 +1815,7 @@ export class Renderer {
         if (this.stepBandJob(mesh, 2)) wgl.setBandField(mesh.band, mesh);
         this.perf?.add('r.band', performance.now() - t);
       }
-      wgl.bandOn = political && wgl.bandMesh?.world === world;
+      wgl.bandOn = political && this.showCountryBorders && wgl.bandMesh?.world === world;
       // İki doku, iki ayrı ömür: taban rengi yalnız sahiplik/kip değişince,
       // işgal taraması ise kontrol her değiştiğinde tazelenir. Aynı bayrağa
       // bağlamak savaşta ya bedava tam tarama ya da bayat işgal demekti.
@@ -2183,7 +2186,7 @@ export class Renderer {
       // gölgesi tek adımda ~5 ms tutuyordu (ölçüldü) ve o kareyi bütçeden
       // taşırıyordu; çizgiler tek adımda ~0.4 ms.
       const rect = this.bakeRect(world, j.scale);
-      if (this.mapMode === 'political' && !this.glSurface()) {
+      if (this.mapMode === 'political' && this.showCountryBorders && !this.glSurface()) {
         const mesh = this.borderMeshFor(world);
         j.bandAt = this.drawMeshBands(j.ctx, world, mesh, rect, j.bandAt ?? 0, 1.5);
         if (j.bandAt < this.meshIndex(mesh).groupList.length) return true;
@@ -2389,7 +2392,7 @@ export class Renderer {
         byColor.set(color, path);
       }
       for (const dx of shifts) {
-        for (const loop of region.loops) appendPts(path, loop, true, dx);
+        for (const loop of this.regionLoops(region)) appendPts(path, loop, true, dx);
       }
     }
     for (const [color, path] of byColor) {
@@ -2525,7 +2528,7 @@ export class Renderer {
           groups.set(key, group);
         }
         for (const rid of entry.regions) {
-          for (const loop of mesh.regions[rid].loops) appendPts(group.path, loop, true, dx);
+          for (const loop of this.regionLoops(mesh.regions[rid])) appendPts(group.path, loop, true, dx);
         }
         group.minX = Math.min(group.minX, entry.bbox[0] + dx);
         group.maxX = Math.max(group.maxX, entry.bbox[2] + dx);
@@ -2735,6 +2738,26 @@ export class Renderer {
     return mesh.index;
   }
 
+  /** Statik katmanın görünüm anahtarı: menüdeki çizgi katmanları değişince yeniden pişer. */
+  layerKey() {
+    return (this.showGrid ? 1 : 0) | (this.showCountryBorders ? 2 : 0) | (this.showProvinceBorders ? 4 : 0);
+  }
+
+  /**
+   * Zincirin çizilecek eğrisi. Kıyı GL yüzeyinde yumuşaktır (shader kara/deniz
+   * kararını aynı eğriden verir); Canvas2D yedeğinde deniz dolgusu, deniz
+   * rasteri ve köpük hex kıyısıyla çizildiği için kıyı orada hex kenarında
+   * kalır — yoksa kara ile deniz arasında boşluk ya da taşma açılır.
+   */
+  chainPts(ch) {
+    return ch.cls === LINE_COAST && !this.glSurface() ? ch.H : ch.S;
+  }
+
+  /** Bölge çokgeni; kıyı kuralı chainPts ile aynı. */
+  regionLoops(region) {
+    return this.glSurface() ? region.loops : region.loopsHex;
+  }
+
   /**
    * Açılmış koordinatlı bir kutunun `rect`e düşen sarmal kopyaları (k·P
    * kaymaları). Ağ dikişi aşan zincirleri bir periyodun dışında da taşır;
@@ -2764,7 +2787,10 @@ export class Renderer {
     if (this.mapMode === 'geography') return;
     const mesh = this.borderMeshFor(world);
     const P = world.wrapWidth || 0;
-    const politics = this.showsPolitics();
+    // Ülke çizgisi kapalıysa ülke sınırı yine province sınırıdır: province
+    // ağı açıkken o kenar ince çizgiyle kalır, harita delik görünmez.
+    const politics = this.showsPolitics() && this.showCountryBorders;
+    const provinces = this.showProvinceBorders;
     const shifts = (this.inkShifts ??= []);
     const prov = new Path2D();
     const major = new Path2D();
@@ -2772,8 +2798,10 @@ export class Renderer {
     let nMajor = 0;
     for (const ch of mesh.chains) {
       let toMajor;
-      if (ch.cls === LINE_PROVINCE || (!politics && ch.cls === LINE_COUNTRY)) toMajor = false;
-      else if (!politics) continue;
+      if (ch.cls === LINE_PROVINCE || (!politics && ch.cls === LINE_COUNTRY)) {
+        if (!provinces) continue;
+        toMajor = false;
+      } else if (!politics) continue;
       else if (ch.cls === LINE_COUNTRY) toMajor = true;
       else {
         // Kıyı yalnız bir ülkenin (kültürün) kıyısıysa: sahipsiz kıyı çizgisiz.
@@ -2783,7 +2811,7 @@ export class Renderer {
       }
       if (!this.copyShifts(ch.bbox, rect, P, shifts).length) continue;
       const path = toMajor ? major : prov;
-      for (const dx of shifts) appendPts(path, ch.S, ch.closed, dx);
+      for (const dx of shifts) appendPts(path, this.chainPts(ch), ch.closed, dx);
       if (toMajor) nMajor++;
       else nProv++;
     }
@@ -2792,7 +2820,7 @@ export class Renderer {
     ctx.lineJoin = 'round';
     ctx.globalAlpha = 1;
     // GL yüzeyinde kenar gölgesini shader çizer (uzaklık alanından).
-    if (bands && this.mapMode === 'political' && !this.glSurface()) {
+    if (bands && this.mapMode === 'political' && this.showCountryBorders && !this.glSurface()) {
       this.drawMeshBands(ctx, world, mesh, rect);
     }
     if (nProv) {
@@ -2800,8 +2828,10 @@ export class Renderer {
       // yakında okunan kalın bir mürekkep olsun. Geniş ve soluk bir omuz,
       // üstüne çekirdek: kalın çizginin kenarı yumuşar, kâğıda sinmiş durur.
       const z = far ? 0 : Math.max(0, Math.min(1, (scale - 0.45) / 1.0));
-      const width = far ? 1.1 : 1.4 + 1.0 * z;
-      const alpha = far ? 0.24 : 0.30 + 0.14 * z;
+      // Uzakta da okunmalı: harita birimi province. 0.24'te uzak dokuda ağ
+      // seçilmiyordu, oyuncu province'i yalnız imleç vurgusunda görüyordu.
+      const width = far ? 1.35 : 1.4 + 1.0 * z;
+      const alpha = far ? 0.42 : 0.36 + 0.12 * z;
       ctx.lineWidth = (width + 1.8) / scale;
       ctx.strokeStyle = `rgba(12, 16, 16, ${(alpha * 0.28).toFixed(3)})`;
       ctx.stroke(prov);
@@ -2855,7 +2885,7 @@ export class Renderer {
       for (const cid of entry.chains) {
         const ch = mesh.chains[cid];
         for (const dx of this.copyShifts(ch.bbox, reach, P, b)) {
-          appendPts(band, ch.S, ch.closed, dx);
+          appendPts(band, this.chainPts(ch), ch.closed, dx);
           any = true;
         }
       }
@@ -2864,7 +2894,7 @@ export class Renderer {
       for (const rid of entry.regions) {
         const region = mesh.regions[rid];
         for (const dx of this.copyShifts(region.bbox, rect, P, b)) {
-          for (const loop of region.loops) appendPts(clip, loop, true, dx);
+          for (const loop of this.regionLoops(region)) appendPts(clip, loop, true, dx);
         }
       }
       ctx.save();
@@ -2903,13 +2933,13 @@ export class Renderer {
       const edge = new Path2D();
       for (const cid of entry.chains) {
         const ch = mesh.chains[cid];
-        for (const dx of this.copyShifts(ch.bbox, rect, P, b)) appendPts(edge, ch.S, ch.closed, dx);
+        for (const dx of this.copyShifts(ch.bbox, rect, P, b)) appendPts(edge, this.chainPts(ch), ch.closed, dx);
       }
       const clip = new Path2D();
       for (const rid of entry.regions) {
         const region = mesh.regions[rid];
         for (const dx of this.copyShifts(region.bbox, rect, P, b)) {
-          for (const loop of region.loops) appendPts(clip, loop, true, dx);
+          for (const loop of this.regionLoops(region)) appendPts(clip, loop, true, dx);
         }
       }
       ctx.save();
@@ -2938,12 +2968,12 @@ export class Renderer {
     for (const rid of entry.regions) {
       const region = mesh.regions[rid];
       for (const dx of this.copyShifts(region.bbox, rect, P, shifts)) {
-        for (const loop of region.loops) appendPts(fill, loop, true, dx);
+        for (const loop of this.regionLoops(region)) appendPts(fill, loop, true, dx);
       }
     }
     for (const cid of entry.chains) {
       const ch = mesh.chains[cid];
-      for (const dx of this.copyShifts(ch.bbox, rect, P, shifts)) appendPts(outline, ch.S, ch.closed, dx);
+      for (const dx of this.copyShifts(ch.bbox, rect, P, shifts)) appendPts(outline, this.chainPts(ch), ch.closed, dx);
     }
     const zoom = this.camera.zoom;
     // İmleç seçimden bir kademe sessiz: dolgu yok denecek kadar hafif, çizgi
