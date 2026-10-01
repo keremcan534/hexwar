@@ -58,12 +58,6 @@ export const GL_DATA_WIDTH = 2048;
 /** Parçanın hexe "değdiği" sayılan pay: kenar yumuşatma pikseli dışarıda kalmasın. */
 const GL_MARGIN = 2.5;
 
-/** Komşu merkezinin yerel konumu, yön başına (dünya birimi). */
-const NEIGHBOR_OFFSET = DIRS.map(([dq, dr]) => [
-  Math.sqrt(3) * HEX_SIZE * (dq + dr / 2),
-  1.5 * HEX_SIZE * dr,
-]);
-
 const NEIGHBOR_CACHE = new WeakMap();
 
 /**
@@ -546,6 +540,7 @@ export function buildBorderMesh(world, groupOf, keys = null) {
   const trace = (startV, e0) => {
     const edges = [];
     const pts = [];
+    const verts = [startV];
     let v = startV;
     let e = e0;
     let lastX = null;
@@ -568,6 +563,7 @@ export function buildBorderMesh(world, groupOf, keys = null) {
       push(x, y);
       edges.push(fwd ? e : ~e);
       v = fwd ? eC1[e] : eC0[e];
+      verts.push(v);
       if (v === startV || isBreak(v)) break;
       const a = cornerEdges[v * 3];
       const b = cornerEdges[v * 3 + 1];
@@ -580,8 +576,8 @@ export function buildBorderMesh(world, groupOf, keys = null) {
     // Bütün alanlar baştan: nesne biçimi sabit kalsın, sonradan eklenen
     // alanlar zinciri yavaş sözlük kipine düşürmesin.
     return {
-      edges, pts, start: startV, end: v, loop: v === startV && !isBreak(startV),
-      id: 0, pos: 0, neg: 0, cls: 0, closed: false, H: null, S: null, bbox: null,
+      edges, pts, verts, start: startV, end: v, loop: v === startV && !isBreak(startV),
+      id: 0, pos: 0, neg: 0, cls: 0, closed: false, H: null, S: null, bbox: null, cut: null,
     };
   };
   for (let v = 0; v < numCorners; v++) {
@@ -632,6 +628,47 @@ export function buildBorderMesh(world, groupOf, keys = null) {
     if (ch.pos >= 0) regions[ch.pos].chains.push(id);
     if (ch.neg >= 0) regions[ch.neg].chains.push(id);
   });
+
+  // --- Hücre geometrisi (organik hex) ------------------------------------
+  // Zincir üstündeki köşe, eğrinin ona en yakın örneğine "oturur"; zincir
+  // kenarının hücre sınırı eğrinin iki oturmuş köşe arasındaki parçasıdır.
+  // İç kenarlar oturmuş ya da titretilmiş köşeler arasında kıvrılır (bkz.
+  // cellEdge). Böylece province sınırı hücre kenarlarının tam birleşimidir.
+  const snapX = new Float64Array(numCorners);
+  const snapY = new Float64Array(numCorners);
+  const snapSet = new Uint8Array(numCorners);
+  const edgeChain = new Int32Array(n * 6).fill(-1);
+  const edgeK = new Int32Array(n * 6);
+  const edgeRev = new Uint8Array(n * 6);
+  for (const ch of chains) {
+    ch.cut = cutChain(ch);
+    const ns = ch.S.length / 2;
+    for (let k = 0; k < ch.cut.length; k++) {
+      const v = ch.verts[k];
+      const si = ((ch.cut[k] % ns) + ns) % ns;
+      snapX[v] = ch.S[si * 2];
+      snapY[v] = ch.S[si * 2 + 1];
+      snapSet[v] = 1;
+    }
+    for (let k = 0; k < ch.edges.length; k++) {
+      const ref = ch.edges[k];
+      const e = ref >= 0 ? ref : ~ref;
+      const a = eTile[e] * 6 + eDir[e];
+      edgeChain[a] = ch.id;
+      edgeK[a] = k;
+      edgeRev[a] = ref >= 0 ? 0 : 1;
+      const j = eOther[e];
+      if (j >= 0) {
+        // Komşunun aynı kenarı (yön d+3) ters yönde yürünür.
+        const b = j * 6 + (eDir[e] + 3) % 6;
+        edgeChain[b] = ch.id;
+        edgeK[b] = k;
+        edgeRev[b] = ref >= 0 ? 1 : 0;
+      }
+    }
+    ch.verts = null;
+  }
+  const cells = { cornerOf, snapX, snapY, snapSet, edgeChain, edgeK, edgeRev, nbr };
 
   // --- Bölge döngüleri --------------------------------------------------
   // Bölge hep POZİTİF tarafta kalacak yönde yürünür: dış sınır ve delikler
@@ -702,7 +739,7 @@ export function buildBorderMesh(world, groupOf, keys = null) {
   }
 
   return {
-    world, keys, labels, regions, chains,
+    world, keys, labels, regions, chains, cells,
     edges: { eTile, eOther },
     gl: null,
     regionData: null,
@@ -713,7 +750,7 @@ export function buildBorderMesh(world, groupOf, keys = null) {
 
 /** GL dolgu eşlemesinin tablosu; ağ başına ilk istekte kurulur. */
 export function meshGlTable(mesh) {
-  mesh.gl ??= buildGlTable(mesh.world, mesh.labels, mesh.chains, mesh.edges.eTile, mesh.edges.eOther);
+  mesh.gl ??= buildGlTable(mesh);
   return mesh.gl;
 }
 
@@ -736,43 +773,6 @@ export function coastMesh(world) {
   return mesh;
 }
 
-/**
- * Dünya noktası yumuşak kıyıya göre karada mı? Shader'ın kara/deniz kararıyla
- * aynı kural: noktanın hexinin merkezinden noktaya uzanan doğru eğriyi
- * kesiyorsa nokta komşu taraftadır (bkz. surfaceGL fillCells).
- */
-export function smoothLandAt(mesh, x, y) {
-  const world = mesh.world;
-  const cols = world.cols;
-  const ti = tileIndexAt(world, x, y);
-  if (ti < 0) return false;
-  const tile = world.tiles[ti];
-  const P = world.wrapWidth || 0;
-  let lx = x - tile.x;
-  if (P) lx -= P * Math.round(lx / P);
-  const ly = y - tile.y;
-  const gl = mesh.gl;
-  const n = gl.head[ti * 4 + 1];
-  const start = gl.head[ti * 4];
-  const d = gl.data;
-  let bestT = -1;
-  let result = ti;
-  for (let i = 0; i < n; i++) {
-    const o = (start + i) * 8;
-    const ax = d[o]; const ay = d[o + 1];
-    const ex = d[o + 2] - ax; const ey = d[o + 3] - ay;
-    const den = lx * ey - ly * ex;
-    if (Math.abs(den) < 1e-9) continue;
-    const t = (ax * ey - ay * ex) / den;
-    const u = (ax * ly - ay * lx) / den;
-    if (t >= 0 && t <= 1 && u >= 0 && u <= 1 && t > bestT) {
-      bestT = t;
-      const side = ex * (ly - ay) - ey * (lx - ax);
-      result = side * d[o + 6] > 0 ? d[o + 5] * cols + d[o + 4] : ti;
-    }
-  }
-  return !world.tiles[result].terrain.water;
-}
 
 /** Dünya noktasının (açılmış x olabilir) hex indeksi; harita dışı -1. Küp yuvarlama, tahsisatsız. */
 function tileIndexAt(world, x, y) {
@@ -881,149 +881,376 @@ export function updateMeshGroups(mesh, keys) {
 }
 
 /**
- * GL dolgu eşlemesinin tablosu.
+ * Köşe titremesi ve iç kenar kıvrımı (dünya birimi). Küçük tutulur: zincir
+ * eğrisi hex yolundan 17 birime dek sapabilir ve zincirde olmayan bir köşe
+ * hex yolundan en az iç yarıçap (22.5) uzaktadır; titreme bu payın içinde
+ * kalmalı ki iç kenar sınır eğrisini kesmesin.
+ */
+const CORNER_JITTER = 4.5;
+/** İç kenar eğrisi: yarım dalga (yay) + tam dalga (S) genliği. */
+const EDGE_BOW = 5;
+const EDGE_S = 2;
+/** İç kenarın parça sayısı: yakın zoomda eğri, kırık çizgi gibi okunmasın. */
+const EDGE_SEGS = 5;
+
+/** -1..1 aralığında, tam sayı anahtardan deterministik değer. */
+function hashSigned(a, b) {
+  return hash2(a, b) * 2 - 1;
+}
+
+/** Sarmal periyodunda en yakın temsilciye çekilmiş fark. */
+function wrapDelta(dx, P) {
+  return P ? dx - P * Math.round(dx / P) : dx;
+}
+
+/** S'nin [lo, hi] (sarmalı indeks) aralığında (x, y)'ye en yakın örneği. */
+function nearestSample(S, ns, x, y, lo, hi) {
+  if (hi < lo) hi = lo;
+  let best = lo;
+  let bestD = Infinity;
+  for (let u = lo; u <= hi; u++) {
+    const i = ((u % ns) + ns) % ns;
+    const d = (S[i * 2] - x) ** 2 + (S[i * 2 + 1] - y) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = u;
+    }
+  }
+  return best;
+}
+
+/**
+ * Zincirin her hex köşesi için eğri örnek indeksi (artan, kapalıda sarmalı).
+ * Açık zincirin uçları eğrinin uçlarıdır. Kenar k'nin hücre sınırı
+ * S[cut[k] .. cut[k+1]] parçasıdır.
+ */
+function cutChain(ch) {
+  const H = ch.H;
+  const S = ch.S;
+  const E = ch.edges.length;
+  const ns = S.length / 2;
+  if (!ch.closed) {
+    const m = E + 1;
+    const cut = new Int32Array(m);
+    cut[m - 1] = ns - 1;
+    const ratio = (ns - 1) / E;
+    let prev = 0;
+    for (let k = 1; k < m - 1; k++) {
+      const lo = Math.max(prev + 1, Math.floor((k - 2) * ratio));
+      const hi = Math.min(ns - 1 - (m - 1 - k), Math.ceil((k + 2) * ratio));
+      cut[k] = nearestSample(S, ns, H[k * 2], H[k * 2 + 1], lo, hi);
+      prev = cut[k];
+    }
+    return cut;
+  }
+  const cut = new Int32Array(E);
+  const ratio = ns / E;
+  cut[0] = nearestSample(S, ns, H[0], H[1], Math.floor(-2 * ratio), Math.ceil(2 * ratio));
+  let prev = cut[0];
+  for (let k = 1; k < E; k++) {
+    const lo = Math.max(prev + 1, cut[0] + Math.floor((k - 2) * ratio));
+    const hi = Math.min(cut[0] + ns - (E - k), cut[0] + Math.ceil((k + 2) * ratio));
+    cut[k] = nearestSample(S, ns, H[k * 2], H[k * 2 + 1], lo, hi);
+    prev = cut[k];
+  }
+  return cut;
+}
+
+/** Köşenin hücre konumu, `tile` merkezine göre yerel: oturmuş ya da titretilmiş. */
+function cornerLocal(mesh, tile, k, out) {
+  const { cornerOf, snapX, snapY, snapSet } = mesh.cells;
+  const P = mesh.world.wrapWidth || 0;
+  const id = cornerOf(tile.q, tile.r, k);
+  if (snapSet[id]) {
+    out[0] = wrapDelta(snapX[id] - tile.x, P);
+    out[1] = snapY[id] - tile.y;
+    return;
+  }
+  out[0] = CORNERS[k][0] + CORNER_JITTER * hashSigned(id, 7);
+  out[1] = CORNERS[k][1] + CORNER_JITTER * hashSigned(id, 13);
+}
+
+const CORNER_A = new Float64Array(2);
+const CORNER_B = new Float64Array(2);
+
+/**
+ * Hücre kenarı: `ti` hexinin köşe d'sinden d+1'e, ti merkezine göre YEREL.
+ *
+ *   zincir kenarı  → sınır eğrisinin iki oturmuş köşe arası parçası,
+ *   iç kenar       → köşeler arasında iki ara noktayla hafif kıvrık,
+ *   deniz-deniz / harita kenarı → düz hex kenarı (dolgu tablosu onları atlar).
+ *
+ * İç kenar, küçük indeksli hexin gözünden kurulur; komşu aynı kenarı birebir
+ * aynı noktalarla (ters sırada) görür.
+ */
+export function cellEdge(mesh, ti, d) {
+  const m = edgeInto(mesh, ti, d);
+  return EDGE_BUF.slice(0, m * 2);
+}
+
+/** Kenar örnekleme tamponu (bkz. edgeInto); tablo kurulumu kenar başına dizi ayırmasın. */
+let EDGE_BUF = new Float64Array(512);
+const SIN_BOW = Float64Array.from({ length: EDGE_SEGS + 1 }, (_, i) => Math.sin((Math.PI * i) / EDGE_SEGS));
+const SIN_S = Float64Array.from({ length: EDGE_SEGS + 1 }, (_, i) => Math.sin((2 * Math.PI * i) / EDGE_SEGS));
+
+/** cellEdge'in tahsisatsız gövdesi: noktaları EDGE_BUF'a yazar, nokta sayısını döner. */
+function edgeInto(mesh, ti, d) {
+  const world = mesh.world;
+  const P = world.wrapWidth || 0;
+  const tile = world.tiles[ti];
+  const cells = mesh.cells;
+  const slot = ti * 6 + d;
+  const c = cells.edgeChain[slot];
+  if (c >= 0) {
+    const ch = mesh.chains[c];
+    const S = ch.S;
+    const ns = S.length / 2;
+    const k = cells.edgeK[slot];
+    const u0 = ch.cut[k];
+    const u1 = k + 1 < ch.cut.length ? ch.cut[k + 1] : ch.cut[0] + ns;
+    const len = u1 - u0 + 1;
+    if (EDGE_BUF.length < len * 2) EDGE_BUF = new Float64Array(len * 4);
+    const out = EDGE_BUF;
+    const rev = cells.edgeRev[slot] === 1;
+    for (let i = 0; i < len; i++) {
+      const si = (((u0 + i) % ns) + ns) % ns;
+      const o = (rev ? len - 1 - i : i) * 2;
+      out[o] = wrapDelta(S[si * 2] - tile.x, P);
+      out[o + 1] = S[si * 2 + 1] - tile.y;
+    }
+    return len;
+  }
+  const j = cells.nbr[slot];
+  const labels = mesh.labels;
+  const out = EDGE_BUF;
+  if (j < 0 || labels[ti] < 0 || labels[j] < 0) {
+    const ca = CORNERS[d];
+    const cb = CORNERS[(d + 1) % 6];
+    out[0] = ca[0]; out[1] = ca[1]; out[2] = cb[0]; out[3] = cb[1];
+    return 2;
+  }
+  // İç kenar: kanonik taraf küçük indeksli hex.
+  const flip = j < ti;
+  const ct = flip ? world.tiles[j] : tile;
+  const cd = flip ? (d + 3) % 6 : d;
+  cornerLocal(mesh, ct, cd, CORNER_A);
+  cornerLocal(mesh, ct, (cd + 1) % 6, CORNER_B);
+  const ax = CORNER_A[0];
+  const ay = CORNER_A[1];
+  const ex = CORNER_B[0] - ax;
+  const ey = CORNER_B[1] - ay;
+  const el = Math.sqrt(ex * ex + ey * ey) || 1;
+  const nx = -ey / el;
+  const ny = ex / el;
+  const key = (flip ? j : ti) * 6 + cd;
+  // Yay + S: kenar tek bir hafif kavis ya da iki yana kıvrılan bir dalga
+  // olur; uçlarda sıfır, köşe yerinde kalır. Kırık çizgi değil eğri: sınır
+  // çizgileri gibi okunsun.
+  const bow = EDGE_BOW * hashSigned(key, 1);
+  const wave = EDGE_S * hashSigned(key, 2);
+  const np = EDGE_SEGS + 1;
+  // Komşunun gözünden kurulduysa bu hexin yereline, ters sırada yazılır.
+  const ox = flip ? wrapDelta(ct.x - tile.x, P) : 0;
+  const oy = flip ? ct.y - tile.y : 0;
+  for (let i = 0; i < np; i++) {
+    const t = i / EDGE_SEGS;
+    const off = bow * SIN_BOW[i] + wave * SIN_S[i];
+    const o = (flip ? np - 1 - i : i) * 2;
+    out[o] = ax + ex * t + nx * off + ox;
+    out[o + 1] = ay + ey * t + ny * off + oy;
+  }
+  // Uç birebir köşe: komşu kenarla aynı nokta.
+  const last = (flip ? 0 : np - 1) * 2;
+  out[last] = CORNER_B[0] + ox;
+  out[last + 1] = CORNER_B[1] + oy;
+  return np;
+}
+
+/**
+ * Hücrenin kapalı ana hattı, hex merkezine göre yerel. Altı kenar uç uca;
+ * ortak köşe noktası bir kez yazılır. Ağ başına önbellekli (geometri sahiplik
+ * değişiminde aynı kalır, bkz. updateMeshGroups).
+ */
+export function cellOutline(mesh, ti) {
+  mesh.outlines ??= new Map();
+  let loop = mesh.outlines.get(ti);
+  if (loop) return loop;
+  const parts = [];
+  let len = 0;
+  for (let d = 0; d < 6; d++) {
+    const e = cellEdge(mesh, ti, d);
+    parts.push(e);
+    len += e.length - 2;
+  }
+  loop = new Float64Array(len);
+  let o = 0;
+  for (const e of parts) {
+    // Son nokta bir sonraki kenarın ilk noktasıdır.
+    for (let i = 0; i < e.length - 2; i++) loop[o++] = e[i];
+  }
+  mesh.outlines.set(ti, loop);
+  return loop;
+}
+
+/**
+ * Dünya noktasının hücresi (kare indeksi, harita dışı -1). Shader'ın
+ * fillCells kuralının birebir aynısı: nokta hexinin merkezinden noktaya
+ * uzanan doğrunun kestiği son sınır parçası, noktanın hangi hücrede olduğunu
+ * söyler. Tıklama, imleç ve kıyı maskesi buradan okur.
+ */
+export function cellAt(mesh, x, y) {
+  const world = mesh.world;
+  const ti = tileIndexAt(world, x, y);
+  if (ti < 0) return -1;
+  const tile = world.tiles[ti];
+  const lx = wrapDelta(x - tile.x, world.wrapWidth || 0);
+  const ly = y - tile.y;
+  const gl = meshGlTable(mesh);
+  const n = gl.head[ti * 4 + 1];
+  const start = gl.head[ti * 4];
+  const d = gl.data;
+  let bestT = -1;
+  let result = ti;
+  for (let i = 0; i < n; i++) {
+    const o = (start + i) * 8;
+    const ax = d[o];
+    const ay = d[o + 1];
+    const ex = d[o + 2] - ax;
+    const ey = d[o + 3] - ay;
+    const den = lx * ey - ly * ex;
+    if (Math.abs(den) < 1e-9) continue;
+    const t = (ax * ey - ay * ex) / den;
+    const u = (ax * ly - ay * lx) / den;
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1 && t > bestT) {
+      bestT = t;
+      const left = ex * (ly - ay) - ey * (lx - ax) > 0;
+      result = left ? d[o + 4] : d[o + 5];
+    }
+  }
+  return result;
+}
+
+/** Dünya noktası yumuşak kıyıya göre karada mı? (bkz. cellAt) */
+export function smoothLandAt(mesh, x, y) {
+  const c = cellAt(mesh, x, y);
+  return c >= 0 && !mesh.world.tiles[c].terrain.water;
+}
+
+/**
+ * GL dolgu eşlemesinin tablosu: hücre sınırlarının parçaları, değdikleri
+ * her hexe kaydedilir.
  *
  * Shader her piksel için kendi hexinin merkezinden piksele bir doğru çeker;
- * doğru yumuşak sınırı kesiyorsa piksel komşu bölgededir ve rengi o taraftaki
- * komşu hexten okunur. Hex merkezi daima kendi bölgesinde kalır (yumuşak eğri
- * kenar orta noktalarının dışbükey zarfından taşmaz), bu yüzden kesişim testi
- * tek başına yeter; uzaklık alanı ya da çokgen dolgusu gerekmez.
+ * kesilen son sınır parçası pikselin hücresini verir (parçanın o yanındaki
+ * hücre). Hex merkezi daima kendi hücresindedir (sapma iç yarıçapın altında,
+ * bkz. EĞRİ BİÇİMİ ve CORNER_JITTER) ve hex dışbükeydir: merkezden piksele
+ * doğru hexin içinde kalır, dolayısıyla hexe değen bütün parçalar o hexin
+ * listesindeyse karar kesindir.
  *
  * Kayıtlar hex merkezine göre YEREL koordinattadır: shader sarmalı hiç
  * bilmeden doğru parçayı bulur.
  *
  *   head: cols x rows RGBA32F  — (ilk kayıt, sayı, 0, 0)
  *   data: GL_DATA_WIDTH x h    — kayıt başına iki teksel:
- *         (ax, ay, bx, by), (karşı kol, karşı satır, karşı tarafın işareti,
- *         1 = kıyı / 0 = kara-kara)
+ *         (ax, ay, bx, by), (sol hücre, sağ hücre, 0, 0)
+ *         sol = a→b yönüne göre çapraz çarpımı pozitif yan; hücre = kare indeksi
  */
-function buildGlTable(world, labels, chains, eTile, eOther) {
+function buildGlTable(mesh) {
+  const world = mesh.world;
+  const labels = mesh.labels;
   const cols = world.cols;
   const n = cols * world.rows;
   const P = world.wrapWidth || 0;
   const tiles = world.tiles;
   const nbr = neighborTable(world);
   const R = HEX_SIZE + GL_MARGIN;
-  // Kayıtlar önce düz bir diziye (kare + 8 değer) yazılır, sonra kare başına
-  // sayılıp yerleştirilir: kare başına JS dizisi tutmak tahsisat ve GC'ydi.
-  const REC = 9;
-  let rec = new Float32Array(65536 * REC);
+  // Kayıtlar önce düz bir diziye yazılır, sonra kare başına sayılıp
+  // yerleştirilir: kare başına JS dizisi tutmak tahsisat ve GC'ydi.
+  const REC = 7;
+  let rec = new Float32Array(262144 * REC);
   let total = 0;
   const counts = new Int32Array(n);
-  // Hex başına zincirde değdiği kenar aralığı: parça taraması yalnız o
-  // aralığın çevresine bakar (eğri H'den en çok 17 birim sapar, kenar 26).
-  // Her parçayı her yakın hexe sınamak uzun kıyıda karesel büyüyordu.
-  const near = [];
-  const stamp = new Int32Array(n).fill(-1);
-  const kLo = new Int32Array(n);
-  const kHi = new Int32Array(n);
-  let cid = 0;
-  const touch = (ti, k) => {
-    if (stamp[ti] !== cid) {
-      stamp[ti] = cid;
-      kLo[ti] = k;
-      kHi[ti] = k;
-      near.push(ti);
-    } else {
-      if (k < kLo[ti]) kLo[ti] = k;
-      if (k > kHi[ti]) kHi[ti] = k;
-    }
-  };
-  for (const ch of chains) {
-    cid++;
-    // Kıyı da tabloda: shader kara/deniz kararını da yumuşak eğriden verir.
-    // Harita kenarı (kutup) hex kenarında kalır, onu eşlemeye gerek yok.
-    const coast = ch.cls === LINE_COAST;
-    if (coast && ch.pos !== SEA && ch.neg !== SEA) continue;
-    near.length = 0;
-    const edgeCount = ch.edges.length;
-    for (let k = 0; k < edgeCount; k++) {
-      const ref = ch.edges[k];
-      const e = ref >= 0 ? ref : ~ref;
-      const ta = eTile[e];
-      const tb = eOther[e];
-      touch(ta, k);
-      if (tb < 0) continue;
-      touch(tb, k);
-      // Kenarın iki ucundaki üçüncü hexler: eğri H'den saptığında köşede
-      // onlara da girer (bkz. EĞRİ BİÇİMİ). Kenarın iki hexinin ortak
-      // komşuları, yön d'nin iki yanındaki yönlerdir.
-      for (let d = 0; d < 6; d++) {
-        if (nbr[ta * 6 + d] !== tb) continue;
-        for (const dd of [(d + 1) % 6, (d + 5) % 6]) {
-          const j = nbr[ta * 6 + dd];
-          if (j >= 0 && (labels[j] === ch.pos || labels[j] === ch.neg)) touch(j, k);
-        }
-        break;
+  const cand = new Int32Array(16);
+  for (let ti = 0; ti < n; ti++) {
+    if (labels[ti] < 0) continue;
+    const tile = tiles[ti];
+    for (let d = 0; d < 6; d++) {
+      const j = nbr[ti * 6 + d];
+      // Harita kenarı düz hex kenarıdır (hex sınırı = hücre sınırı).
+      if (j < 0) continue;
+      // Kara-kara kenarı bir kez, kıyı kenarı kara tarafından kurulur.
+      if (labels[j] >= 0 && j < ti) continue;
+      const m = edgeInto(mesh, ti, d);
+      const pts = EDGE_BUF;
+      // ti hangi yanda: düz hex kenarına göre merkezin yanı (eğri merkezi aşmaz).
+      const c0 = CORNERS[d];
+      const c1 = CORNERS[(d + 1) % 6];
+      const tiLeft = (c1[0] - c0[0]) * -c0[1] - (c1[1] - c0[1]) * -c0[0] > 0;
+      const left = tiLeft ? ti : j;
+      const right = tiLeft ? j : ti;
+      let minX = Infinity;
+      let minY = Infinity;
+      let maxX = -Infinity;
+      let maxY = -Infinity;
+      for (let i = 0; i < m; i++) {
+        const x = pts[i * 2];
+        const y = pts[i * 2 + 1];
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
       }
-    }
-    const S = ch.S;
-    const ms = S.length / 2;
-    const segs = ch.closed ? ms : ms - 1;
-    const midX = (ch.bbox[0] + ch.bbox[2]) / 2;
-    // H'nin k. parçası ch.edges[k]'dir; S eşit aralıklı olduğundan k. kenar
-    // S'de yaklaşık k·ratio'dadır (bütün hex kenarları eşit boy).
-    const ratio = segs / edgeCount;
-    for (const ti of near) {
-      let sLo = 0;
-      let sHi = segs - 1;
-      if (!(ch.closed && kHi[ti] - kLo[ti] > edgeCount / 2)) {
-        sLo = Math.max(0, Math.floor((kLo[ti] - 4) * ratio));
-        sHi = Math.min(segs - 1, Math.ceil((kHi[ti] + 5) * ratio));
+      // Aday hexler: kenarın iki hexi ve komşuları. Eğri hex yolundan en çok
+      // 17 birim saptığı için daha ötesine erişemez.
+      let nc = 0;
+      cand[nc++] = ti;
+      cand[nc++] = j;
+      for (let k = 0; k < 12; k++) {
+        const h = nbr[(k < 6 ? ti : j) * 6 + (k % 6)];
+        if (h < 0) continue;
+        let seen = false;
+        for (let q = 0; q < nc; q++) if (cand[q] === h) { seen = true; break; }
+        if (!seen) cand[nc++] = h;
       }
-      const t = tiles[ti];
-      const mine = labels[ti];
-      const farLabel = mine === ch.pos ? ch.neg : ch.pos;
-      const farSign = mine === ch.pos ? -1 : 1;
-      // Zincir açılmış koordinatta; hex merkezi aynı periyoda çekilir.
-      const cx = P ? t.x + P * Math.round((midX - t.x) / P) : t.x;
-      const cy = t.y;
-      for (let s = sLo; s <= sHi; s++) {
-        const s2 = s + 1 < ms ? s + 1 : 0;
-        const ax = S[s * 2] - cx;
-        const ay = S[s * 2 + 1] - cy;
-        const bx = S[s2 * 2] - cx;
-        const by = S[s2 * 2 + 1] - cy;
-        if ((ax < -R && bx < -R) || (ax > R && bx > R)
-          || (ay < -R && by < -R) || (ay > R && by > R)) continue;
-        if (!segTouchesHex(ax, ay, bx, by, R)) continue;
-        // Karşı taraf: o bölgenin, parçaya en yakın komşu hexi. Renk ve işgal
-        // taraması oradan okunur; hex başına arazi tonu böylece korunur.
-        const mx = (ax + bx) / 2;
-        const my = (ay + by) / 2;
-        let best = -1;
-        let bestD = Infinity;
-        for (let d = 0; d < 6; d++) {
-          const j = nbr[ti * 6 + d];
-          if (j < 0 || labels[j] !== farLabel) continue;
-          const o = NEIGHBOR_OFFSET[d];
-          const dd = (o[0] - mx) ** 2 + (o[1] - my) ** 2;
-          if (dd < bestD) { bestD = dd; best = j; }
+      for (let q = 0; q < nc; q++) {
+        const h = cand[q];
+        const ht = tiles[h];
+        const ox = wrapDelta(tile.x - ht.x, P);
+        const oy = tile.y - ht.y;
+        if (maxX + ox < -R || minX + ox > R || maxY + oy < -R || minY + oy > R) continue;
+        for (let s = 0; s < m - 1; s++) {
+          const ax = pts[s * 2] + ox;
+          const ay = pts[s * 2 + 1] + oy;
+          const bx = pts[s * 2 + 2] + ox;
+          const by = pts[s * 2 + 3] + oy;
+          if ((ax < -R && bx < -R) || (ax > R && bx > R)
+            || (ay < -R && by < -R) || (ay > R && by > R)) continue;
+          if (!segTouchesHex(ax, ay, bx, by, R)) continue;
+          if ((total + 1) * REC > rec.length) {
+            const grown = new Float32Array(rec.length * 2);
+            grown.set(rec);
+            rec = grown;
+          }
+          const o = total * REC;
+          rec[o] = h;
+          rec[o + 1] = ax; rec[o + 2] = ay; rec[o + 3] = bx; rec[o + 4] = by;
+          rec[o + 5] = left; rec[o + 6] = right;
+          counts[h]++;
+          total++;
         }
-        if (best < 0) continue;
-        if ((total + 1) * REC > rec.length) {
-          const grown = new Float32Array(rec.length * 2);
-          grown.set(rec);
-          rec = grown;
-        }
-        const o = total * REC;
-        rec[o] = ti;
-        rec[o + 1] = ax; rec[o + 2] = ay; rec[o + 3] = bx; rec[o + 4] = by;
-        rec[o + 5] = best % cols; rec[o + 6] = Math.floor(best / cols); rec[o + 7] = farSign;
-        rec[o + 8] = coast ? 1 : 0;
-        counts[ti]++;
-        total++;
       }
     }
   }
   const head = new Float32Array(n * 4);
   let at = 0;
   let rawMax = 0;
+  let dropped = 0;
   const start = new Int32Array(n);
   for (let i = 0; i < n; i++) {
     start[i] = at;
     if (!counts[i]) continue;
     if (counts[i] > rawMax) rawMax = counts[i];
+    if (counts[i] > GL_MAX_PER_TILE) dropped += counts[i] - GL_MAX_PER_TILE;
     const count = Math.min(GL_MAX_PER_TILE, counts[i]);
     head[i * 4] = at;
     head[i * 4 + 1] = count;
@@ -1038,9 +1265,9 @@ function buildGlTable(world, labels, chains, eTile, eOther) {
     if (fill[ti] >= GL_MAX_PER_TILE) continue;
     const d = (start[ti] + fill[ti]++) * 8;
     data[d] = rec[o + 1]; data[d + 1] = rec[o + 2]; data[d + 2] = rec[o + 3]; data[d + 3] = rec[o + 4];
-    data[d + 4] = rec[o + 5]; data[d + 5] = rec[o + 6]; data[d + 6] = rec[o + 7]; data[d + 7] = rec[o + 8];
+    data[d + 4] = rec[o + 5]; data[d + 5] = rec[o + 6];
   }
-  return { head, data, width: GL_DATA_WIDTH, height, entries: at, rawMax };
+  return { head, data, width: GL_DATA_WIDTH, height, entries: at, rawMax, dropped };
 }
 
 /**

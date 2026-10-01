@@ -477,7 +477,12 @@ tarayıcı olmadan Node ile de test edilebilir.
   komşu bölgenin rengini okur, hex başına ton bölge içinde komşu merkezler
   arasında süzülür; Canvas2D yedeğinde kara province çokgeni olarak dolar.
   Ülke kenar gölgesi GL'de uzaklık alanından, yedekte kırpılmış darbelerden
-  gelir. Seçim ve imleç ızgara kapalıyken province'i gösterir; ordu
+  gelir. Hex hücreleri de organiktir: zincir üstündeki köşe sınır eğrisine
+  oturur, iç kenarlar hafif kavisle kıvrılır; province sınırı hücre
+  kenarlarının tam birleşimidir. Dolgu (her kipte), tıklama, ızgara ve imleç
+  aynı hücre tablosunu okur (`cellAt`/`cellOutline`); Canvas2D yedeğinde
+  arazi/kaynak dolgusu hex kalır. Seçim ve imleç ızgara kapalıyken
+  province'i gösterir; ordu
   seçiliyken ise çevresinde 6 hexlik, uzaklıkla sönen yerel ızgara belirir ve
   imleç hedef hexi çerçeveler (yürüyüş 3. adıma dek hex hex).
 - Çizim sürekli çalışan bir animasyon döngüsü yerine gerektiğinde yenilenir;

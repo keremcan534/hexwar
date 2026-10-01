@@ -163,16 +163,21 @@ vec2 elevGrad(vec2 uv, out float h) {
   return vec2(l - r, u - d);
 }
 
+/** Kare indeksi -> (kolon, satir). Bolme yuvarlamasi satiri kaydirmasin diye +0.5. */
+vec2 cellOf(float idx) {
+  float row = floor((idx + 0.5) / uGrid.x);
+  return vec2(idx - row * uGrid.x, row);
+}
+
 /**
- * Pikselin hangi hexe ait sayilacagi. Hex merkezinden piksele cekilen dogru
- * yumusak siniri kesiyorsa piksel komsu taraftadir (merkez daima kendi
- * tarafinda kalir). Kesisimlerin en uzagi, yani piksele en yakini karar
- * verir. Donus: xy birincil hex, zw kenar yumusatmada karisan oteki hex;
- * w: otekinin payi (en yakin parcaya ekranda yarim pikselden yakinsa).
+ * Pikselin HUCRESI (organik hex). Hex merkezinden piksele cekilen dogrunun
+ * kestigi son sinir parcasi, pikselin hangi hucrede oldugunu soyler: parcanin
+ * pikselle ayni yanindaki hucre (inf.x sol, inf.y sag). Merkez daima kendi
+ * hucresindedir. Donus: xy birincil hucre, zw kenar yumusatmada karisan oteki
+ * hucre; w: otekinin payi (en yakin parcaya ekranda yarim pikselden yakinsa).
  *
- * Kiyi parcalari (inf.w = 1) her kipte gecerli: kara/deniz sekli cografyadir.
- * Kara-kara parcalari yalniz bolge kiplerinde: arazi ve kaynak kiplerinde
- * renk hexin kendi verisidir, komsudan odunc alinmaz.
+ * Parcalar her kipte gecerli: hucre bicimi cografyadir, harita kipinden
+ * bagimsiz (tiklama da ayni kurali kullanir, bkz. borderMesh.cellAt).
  */
 vec4 fillCells(vec2 world, vec2 raw, vec2 cell, out float w) {
   w = 0.0;
@@ -185,25 +190,26 @@ vec4 fillCells(vec2 world, vec2 raw, vec2 cell, out float w) {
   vec2 center = vec2((raw.x + 0.5 * mod(raw.y, 2.0)) * SQ3 * uHexSize, raw.y * 1.5 * uHexSize);
   vec2 p = world - center;
   float bestT = -1.0;
-  vec2 primary = cell;
+  float own = cell.y * uGrid.x + cell.x;
+  float primary = own;
   float dMin = 1e9;
-  vec2 across = cell;
+  float across = own;
   for (int i = 0; i < 64; i++) {
     if (i >= n) break;
     int k = (start + i) * 2;
     vec4 seg = texelFetch(uSegData, ivec2(k % uSegW, k / uSegW), 0);
     vec4 inf = texelFetch(uSegData, ivec2((k + 1) % uSegW, (k + 1) / uSegW), 0);
-    if (uRemap < 0.5 && inf.w < 0.5) continue;
     vec2 a = seg.xy;
     vec2 e = seg.zw - a;
     vec2 ap = p - a;
-    // inf.z: karsi tarafin isareti; piksel o yandaysa parcanin otesindedir.
-    bool beyond = (e.x * ap.y - e.y * ap.x) * inf.z > 0.0;
+    bool left = (e.x * ap.y - e.y * ap.x) > 0.0;
+    float here = left ? inf.x : inf.y;
+    float there = left ? inf.y : inf.x;
     float h = clamp(dot(ap, e) / max(dot(e, e), 1e-6), 0.0, 1.0);
     float d = length(ap - e * h);
     if (d < dMin) {
       dMin = d;
-      across = beyond ? cell : inf.xy;
+      across = there;
     }
     float den = p.x * e.y - p.y * e.x;
     if (abs(den) > 1e-6) {
@@ -211,12 +217,12 @@ vec4 fillCells(vec2 world, vec2 raw, vec2 cell, out float w) {
       float u = (a.x * p.y - a.y * p.x) / den;
       if (t >= 0.0 && t <= 1.0 && u >= 0.0 && u <= 1.0 && t > bestT) {
         bestT = t;
-        primary = beyond ? inf.xy : cell;
+        primary = here;
       }
     }
   }
   w = clamp(0.5 - dMin * uZoom * uDpr, 0.0, 0.5);
-  return vec4(primary, across);
+  return vec4(cellOf(primary), cellOf(across));
 }
 
 float regionAt(vec2 c) {

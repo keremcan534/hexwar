@@ -19,7 +19,7 @@ import { LandMaterial } from './material.js';
 import { SurfaceGL } from './surfaceGL.js';
 import {
   buildBorderMesh, borderKeys, sameKeys, updateMeshGroups, meshGlTable, meshRegionData,
-  bandFieldJob, BAND_REACH, LINE_COUNTRY, LINE_PROVINCE, LINE_COAST,
+  bandFieldJob, BAND_REACH, LINE_COUNTRY, LINE_PROVINCE, LINE_COAST, cellAt, cellOutline,
 } from './borderMesh.js';
 
 /**
@@ -1306,6 +1306,32 @@ export class Renderer {
    * YALNIZ stroke için güvenlidir: dolgu ayrı yollara bölünürse aynı renkteki
    * komşu hexlerin paylaştığı kenarlarda kenar yumuşatmadan ince dikiş kalır.
    */
+  /**
+   * Karenin HÜCRESİNİ (organik hex, bkz. borderMesh.cellEdge) yola ekler.
+   * Kara hücresi sınır ağının geometrisinden gelir: ızgara, imleç ve cephe
+   * bandı dolgu ve tıklamayla aynı şekli çizer. Ağ henüz yoksa ya da kare
+   * denizse düz hex (deniz hücreleri yalnız kıyıda eğilir).
+   */
+  cellPath(path, world, tile) {
+    const base = tile.ghostOf ?? tile;
+    const mesh = this.mesh?.world === world ? this.mesh : null;
+    if (!mesh || base.terrain.water) {
+      this.hexPath(path, tile.x, tile.y);
+      return;
+    }
+    const loop = cellOutline(mesh, base.row * world.cols + base.col);
+    const m = loop.length / 2;
+    path.moveTo(tile.x + loop[0], tile.y + loop[1]);
+    for (let i = 1; i < m; i++) path.lineTo(tile.x + loop[i * 2], tile.y + loop[i * 2 + 1]);
+    path.closePath();
+  }
+
+  /** Dünya noktasının karesi, hücre geometrisine göre (tıklama ve imleç). */
+  tileAtWorld(world, x, y) {
+    const i = cellAt(this.borderMeshFor(world), x, y);
+    return i >= 0 ? world.tiles[i] : null;
+  }
+
   chunkedHexPaths(tiles, chunk = PATH_CHUNK) {
     const paths = [];
     let path = null;
@@ -1667,7 +1693,7 @@ export class Renderer {
     }
     if (this.mapMode === 'cultures') this.drawCultureMix(t, world, tiles, scale, rect);
     if (this.showGrid && scale >= GRID_MIN_ZOOM && this.mapMode !== 'geography') {
-      this.drawGrid(t, tiles, scale);
+      this.drawGrid(t, world, tiles, scale);
     }
     this.drawMeshInk(t, world, rect, scale);
 
@@ -2610,7 +2636,7 @@ export class Renderer {
     }
   }
 
-  drawGrid(ctx, tiles, scale) {
+  drawGrid(ctx, world, tiles, scale) {
     ctx.lineWidth = 1 / scale;
     // Hex ızgarası artık en alt kademe: üstünde province kenarı, onun
     // üstünde ülke sınırı var. Saf siyah değil koyu toprak tonu; üç kademeli
@@ -2628,7 +2654,13 @@ export class Renderer {
     const land = tiles.filter((t) => !t.terrain.water);
     // Parçalı yol: tek yolda binlerce hex kurmak karenin tamamını yiyordu
     // (bkz. chunkedHexPaths). Stroke olduğu için bölmek görüntüyü değiştirmez.
-    for (const path of this.chunkedHexPaths(land)) ctx.stroke(path);
+    // Hücreler organik: ızgara dolgu ve tıklamayla aynı şekli çizer.
+    for (let i = 0; i < land.length; i += PATH_CHUNK) {
+      const path = new Path2D();
+      const end = Math.min(land.length, i + PATH_CHUNK);
+      for (let k = i; k < end; k++) this.cellPath(path, world, land[k]);
+      ctx.stroke(path);
+    }
   }
 
   /**
@@ -2665,8 +2697,19 @@ export class Renderer {
    */
   borderMeshFor(world) {
     const grouping = this.mapMode === 'cultures' ? 'culture' : 'owner';
-    const cur = this.mesh;
-    const same = cur && cur.world === world && cur.grouping === grouping;
+    let cur = this.mesh;
+    // Gruplama başına bir ağ saklanır: siyasi ↔ kültür kipi arasında gidip
+    // gelmek her seferinde tam kurulum (~50 ms, hücre tablosuyla) ödemesin.
+    // Geri dönülen ağın anahtarları bayat olabilir; aşağıda karşılaştırılır.
+    if (!cur || cur.world !== world || cur.grouping !== grouping) {
+      const kept = this.meshByGroup?.get(grouping);
+      cur = kept?.world === world ? kept : null;
+      if (cur) {
+        this.mesh = cur;
+        this.meshCheck = true;
+      }
+    }
+    const same = !!cur;
     if (same && !this.meshCheck) return cur;
     const groupOf = grouping === 'culture'
       ? (tile) => tile.culture
@@ -2681,6 +2724,10 @@ export class Renderer {
     const mesh = buildBorderMesh(world, groupOf, keys);
     mesh.grouping = grouping;
     this.mesh = mesh;
+    this.meshByGroup ??= new Map();
+    // Eski dünyanın ağları (hücre tablosuyla onlarca MB) tutulmasın.
+    for (const [g, m] of this.meshByGroup) if (m.world !== world) this.meshByGroup.delete(g);
+    this.meshByGroup.set(grouping, mesh);
     this.perf?.add('r.mesh', performance.now() - t0);
     return mesh;
   }
@@ -3039,7 +3086,7 @@ export class Renderer {
             dist.set(n, d);
             next.push(n);
             // Deniz ızgara dışı (bkz. drawGrid).
-            if (!n.terrain.water) this.hexPath(path, n.x, n.y);
+            if (!n.terrain.water) this.cellPath(path, world, n);
           }
         }
         rings.push(path);
@@ -3047,7 +3094,7 @@ export class Renderer {
       }
       // Halka 0 (ordunun karesi) da çizilir: kenarı komşularla ortak.
       const own = new Path2D();
-      for (const [tile, d] of dist) if (d === 0 && !tile.terrain.water) this.hexPath(own, tile.x, tile.y);
+      for (const [tile, d] of dist) if (d === 0 && !tile.terrain.water) this.cellPath(own, world, tile);
       rings.unshift(own);
       this.armyGrid = { world, key, rings };
     }
@@ -3111,7 +3158,7 @@ export class Renderer {
     const attack = general.stance === 'advance';
     const glow = attack ? '#ff9382' : '#8fcdef';
     const band = new Path2D();
-    for (const tile of tiles) this.hexPath(band, tile.x, tile.y);
+    for (const tile of tiles) this.cellPath(band, world, tile);
 
     ctx.globalAlpha = 0.3;
     ctx.fillStyle = glow;
@@ -3826,7 +3873,8 @@ export class Renderer {
 
   drawHighlight(ctx, tile, color, width) {
     const path = new Path2D();
-    this.hexPath(path, tile.x, tile.y);
+    if (this.mesh) this.cellPath(path, this.mesh.world, tile);
+    else this.hexPath(path, tile.x, tile.y);
     ctx.lineWidth = width / this.camera.zoom;
     ctx.strokeStyle = color;
     ctx.stroke(path);

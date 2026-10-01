@@ -248,6 +248,9 @@ export class Game {
   tileAtScreen(sx, sy) {
     if (!this.world) return null;
     const w = this.camera.screenToWorld(sx, sy);
+    // Hücreler organik (bkz. borderMesh.cellEdge): tıklama, ekranda çizilen
+    // hücreye düşmeli, geometrik hexe değil.
+    if (this.renderer?.tileAtWorld) return this.renderer.tileAtWorld(this.world, w.x, w.y);
     const { q, r } = pixelToHex(w.x, w.y, HEX_SIZE);
     return this.world.get(q, r) ?? null;
   }
