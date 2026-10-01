@@ -8,6 +8,7 @@ import {
 } from './diplomacy.js';
 import { manageMobilization } from './mobilization.js';
 import { manageAcceptance, manageBrokenProvinces } from './culture.js';
+import { manageMovements } from './movements.js';
 import {
   buildOffer, demandLimit, occupiedProvincesOf, offerCost, offerMeetsExpectation, provinceKeyOf,
   signPeace, suggestWarGoal, warScore,
@@ -558,6 +559,8 @@ export function runNationAI(game, nation, rng) {
   manageAcceptance(game, nation);
   // Kirik kumenin cikisi (ortak et / birak / sur) da ayni kapidan gecer.
   manageBrokenProvinces(game, nation);
+  // Ulusal hareketler: taviz, sikiyonetim, vassal, katliam — oyuncuyla ayni kapi.
+  manageMovements(game, nation);
   spend(game, nation);
   politicalAgenda(game, nation);
   manageCommand(game, nation);
@@ -609,6 +612,19 @@ export function runDelegatedAI(game, nation, rng) {
           ? ['A broken province was handed to their kin.', 'It paid us nothing and would not be held.']
           : ['A people were driven out of a broken province.', 'No other way out was open to us.'];
       noteDelegated(game, nation, 'reforms', nasil[0], nasil[1]);
+    }
+    // Ulusal hareket de bir hukumet sorunudur (bkz. movements.manageMovements).
+    const moved = manageMovements(game, nation, { crackdown: false });
+    if (moved) {
+      const name = game.world.cultures?.[moved.culture]?.name ?? 'a people';
+      const lines = {
+        accept: [`The ${name} were made an accepted culture.`, 'Their movement was close to rising.'],
+        concessions: [`Concessions were made to the ${name}.`, 'Their movement was gathering pace.'],
+        martial: [`Martial law was declared over the ${name}.`, 'Their movement had turned to insurgency.'],
+        vassal: [`The ${name} were released as a vassal.`, 'They were about to rise and could not be held.'],
+        crackdown: [`The ${name} were crushed.`, 'The government chose force over the loss of land.'],
+      }[moved.action];
+      if (lines) noteDelegated(game, nation, 'reforms', lines[0], lines[1]);
     }
   }
   if (delegationActive(nation, 'recruitment', turn)) {

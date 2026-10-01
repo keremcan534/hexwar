@@ -113,8 +113,11 @@ sub('Haftalik denklem: onceki + buyume - askerAlimi + terhis = simdiki (60 hafta
     const total = pop;
     const prevTotal = prevPop;
     const growth = total - prevTotal;
+    // Katliam olumleri de beyanli kanaldir (movements.crackdown ->
+    // economy.repressionDeaths): kitlik gibi denklemden dusulur.
     const famine = world.nations.reduce(
-      (sum, nation) => sum + (nation.economy?.famineDeaths ?? 0), 0,
+      (sum, nation) => sum + (nation.economy?.famineDeaths ?? 0)
+        + (nation.economy?.repressionDeaths ?? 0), 0,
     );
     rows.push({
       week: world.turn, pop, army, total, growth, famine,

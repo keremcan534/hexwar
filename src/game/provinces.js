@@ -15,7 +15,7 @@ import { fbm, makeNoise2D } from '../core/noise.js';
 import { lawModifiers, lawValue } from './politics.js';
 import { controllerOf } from './control.js';
 import { DEFAULT_ZONE, ZONE_RULES } from '../world/macro.js';
-import { CULTURE, resolveRevolts, runProvinceCulture } from './culture.js';
+import { CULTURE, runProvinceCulture } from './culture.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import { bandPosition } from './priceBand.js';
 
@@ -1089,7 +1089,6 @@ export function runProvinces(game) {
   // Kultur pasinin iki ciktisi dongu SONUNA birikir (bkz. culture.js):
   // asimilasyonla rengi degisen kumeler ve ayaklanan kumeler.
   const recolored = [];
-  const revolts = [];
   // Kitlik olumleri ACIK bir muhasebe kanalidir: nufus dususu "kayip insan"
   // degil kayitli olumdur — korunum denetimi ve ekran bu sayaci okur.
   for (const nation of world.nations) {
@@ -1213,14 +1212,13 @@ export function runProvinces(game) {
       if (goodId) updateDemandScale(world, econ, goodId);
     }
 
-    // KULTUR: huzursuzluk birikir, asimilasyon paylari kaydirir. Isyan bu
-    // dongude COZULMEZ — sahiplik degistirmek ayni taramada okunan durumu
-    // bozar; kume kimligi kuyruga yazilir, dongu bitince cozulur.
+    // KULTUR: huzursuzluk birikir, asimilasyon paylari kaydirir. Isyan
+    // artik kume kume degil, halk halk bir HAREKETTIR ve bu dongunun
+    // disinda ilerler (turn.js -> movements.runMovements).
     const culture = runProvinceCulture(world, province, nation, {
       occupied, turn: game.turns.turn,
     });
     if (culture.recolored) recolored.push(province);
-    if (culture.revolt) revolts.push(province.id);
   }
   if (recolored.length) {
     const tiles = [];
@@ -1229,7 +1227,6 @@ export function runProvinces(game) {
     }
     game.renderer.invalidateTiles(tiles.filter(Boolean));
   }
-  if (revolts.length) resolveRevolts(game, revolts);
   // Küme sayaçları: HUD ve hegemonya gerçek province sayısını okur.
   for (const nation of world.nations) nation.provinces = 0;
   for (let p = 0; p < provinces.length; p++) {

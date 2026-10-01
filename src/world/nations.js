@@ -293,9 +293,61 @@ export function generateNations(world, options = {}) {
 
   separateNeighborColors(world, nations, rng);
   computeStats(world, nations);
+  appendRebelStates(world, nations, `${seed}-rebels`);
 
   world.nations = nations;
   return nations;
+}
+
+/**
+ * UYUYAN ISYANCI DEVLETLER — her kultur icin bir tane, dunya kurulurken.
+ *
+ * Bir ulusal hareket patladiginda (game/movements.js) kopan toprak bir devlete
+ * gecmeli ve o devlet eski efendisine savas acmali. Devleti oyun ORTASINDA
+ * dogurmak uc yerden kirilirdi: iliski tablosu N x N kurulur, kayit dunyayi
+ * tohumdan yeniden uretip ulkeleri kimlikle eslestirir, harita da ulke
+ * renklerini baslangicta pisirir. Olu ulke ise zaten desteklenen bir durumdur
+ * (fethedilen ulkeler boyle yasar). Bu yuzden isyancilar bastan VAR ve olu
+ * dogar; patlama onlari uyandirir.
+ *
+ * AYRI ZAR akisi kullanir ve dizinin SONUNA eklenir: mevcut ulkelerin adi,
+ * rengi, toprak payi bit bit ayni kalir (determinizm ve eski kayitlar).
+ */
+function appendRebelStates(world, nations, seed) {
+  const rng = makeRng(seed);
+  for (const culture of world.cultures ?? []) {
+    if (!culture?.origin) continue;
+    const id = nations.length;
+    // Renk halkin kendi rengidir: haritada kopan toprak kimin oldugunu soyler.
+    const palette = {
+      hue: culture.hue ?? (id * 137.508) % 360,
+      sat: Math.max(30, Math.min(52, culture.sat ?? 40)),
+      light: Math.max(42, Math.min(56, culture.light ?? 48)),
+    };
+    nations.push({
+      id,
+      name: `Free ${culture.name}`,
+      fullName: `Free State of the ${culture.name}`,
+      color: `hsl(${Math.round(palette.hue)} ${palette.sat}% ${Math.round(palette.light)}%)`,
+      hue: palette.hue,
+      sat: palette.sat,
+      light: palette.light,
+      flag: makeFlag(rng, palette),
+      capital: culture.origin,
+      culture: culture.id,
+      accepted: [culture.id],
+      archetype: 'rebel',
+      rebelCulture: culture.id,
+      devTier: 0,
+      extraCity: false,
+      tiles: 0,
+      provinces: 0,
+      population: 0,
+      coastal: false,
+      aggression: 1,
+      focus: 'military',
+    });
+  }
 }
 
 /**

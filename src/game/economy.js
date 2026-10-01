@@ -3315,9 +3315,11 @@ function updateStability(world, nation, base) {
   // Destek gecen haftanin siyaset fazindan gelir; bir haftalik gecikme
   // bilerek kabul edildi (ekonomi siyasetten once kosar).
   const legitimacy = legitimacyOf(nation);
+  // BASKI: sikiyonetim ve katliamin istikrar bedeli (movements.js yazar).
+  const repressionHit = -clamp(economy.repressionHit ?? 0, 0, 1);
 
   economy.stability = clamp(
-    base + occupationHit + warHit + unemploymentHit + legitimacy.hit, 0.03, 0.98,
+    base + occupationHit + warHit + unemploymentHit + legitimacy.hit + repressionHit, 0.03, 0.98,
   );
   economy.stabilityBreakdown = {
     base,
@@ -3325,6 +3327,7 @@ function updateStability(world, nation, base) {
     war: warHit,
     unemployment: unemploymentHit,
     legitimacy: legitimacy.hit,
+    repression: repressionHit,
     occupiedShare: occupation,
     occupiedTiles: economy.occupiedTiles ?? 0,
     warFronts: economy.warFronts ?? 0,

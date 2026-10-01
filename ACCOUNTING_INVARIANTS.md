@@ -12,7 +12,7 @@ alan olarak kayitli, denetimin okudugu, ekranin gosterebilecegi akis.
 | I3 | Σ meslek sayaci = `cohortPopulation` = Σ sinif nufusu = Σ kohort | labor I4 + population §1 |
 | I4 | dunya: Σ(yerel nufusu asan kadro) ≈ Σ banliyoculuk (`industrialCommuters`) | labor I5 + factory |
 | I5 | nufus tabani UYDURULMAZ: sayaclar kare nufusundan turer (10k hayalet taban yok) | population §1 |
-| I6 | bariscil hafta: Δ(nufus+ordu) ≥ −kayitli kitlik olumleri (`famineDeaths`) | population §2 |
+| I6 | bariscil hafta: Δ(nufus+ordu) ≥ −kayitli kitlik olumleri (`famineDeaths`) − kayitli katliam olumleri (`repressionDeaths`, movements.crackdown) | population §2 |
 | I7 | asker alimi: cekilen insan = alay `draws` kaydi; dagitimda sahipli yurda doner | population §3-4 |
 
 ## Para (audit:ledger, audit:population, audit:tariff, audit:save)
@@ -31,6 +31,7 @@ alan olarak kayitli, denetimin okudugu, ekranin gosterebilecegi akis.
 | L15 | GSYH CIFT SAYMAZ: `gdp` = tabanUretim + Σ tesis KATMA DEGERI (hasilat degil); ara mal alt zincirin hasilatinda ikinci kez sayilmaz | ledger L15 (sapma %0.00) |
 | L16 | REEL seri ayridir: `realGdp` ayni toplam TABAN fiyatlarla. Buyume yalniz burada okunur — nominal seride hacim artisi fiyat dususuyle sifirlanir | price-stability TEST 4 |
 | L17 | PARA BASMA tek beyanli kaynaktir: `ledger.printing` = `gdp` × `printing`/100 (birebir); karsiligi odeyen yok, bedeli `economy.inflation` → sinif memnuniyeti | budget-contract §6 (sapma 0.00) |
+| L18 | ulusal hareket bedelleri (sikiyonetim haftaligi, taviz) `unrest` defter satirindan odenir; kopan devletin hazinesi YENI PARA ALMAZ (uyuyan devlet 1836 kurulus hazinesini tasir, ordusu kopan kumelerin gercek nufusundan) | budget-contract §1 + movements.js |
 
 ## Sirket / borsa (audit:companies)
 

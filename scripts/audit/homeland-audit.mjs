@@ -101,6 +101,12 @@ function runSeed(seed) {
     suppressed: world.suppressedRevolts ?? 0,
     releases: world.cultureReleases ?? 0,
     expulsions: world.cultureExpulsions ?? 0,
+    // Ulusal hareketler (movements.js): kopus ve vassal birakma. Ikisi de
+    // PARCALANMADIR, fetih degil — kartopu testinden ayri sayilir.
+    uprisings: world.uprisings ?? 0,
+    seceded: (world.uprisingProvinces ?? 0) + (world.vassalProvinces ?? 0),
+    vassals: world.vassalReleases ?? 0,
+    crackdowns: world.crackdowns ?? 0,
     broken,
     brokenGroups,
     wallCount,
@@ -123,6 +129,8 @@ console.log(table(rows, [
   { label: 'baris masasi', get: (r) => r.peace },
   { label: 'bedava yerlesme', get: (r) => r.free },
   { label: 'isyan', get: (r) => r.revolts },
+  { label: 'ayaklanma', get: (r) => `${r.uprisings}/${r.vassals}v` },
+  { label: 'kopan kume', get: (r) => r.seceded },
   { label: 'bastirilan', get: (r) => r.suppressed },
   { label: 'birakilan', get: (r) => r.releases },
   { label: 'surgun', get: (r) => r.expulsions },
@@ -201,15 +209,27 @@ sub('TEST 4 — kirik kume duvar mi, soru mu? (cikis kapisi)');
 // --- TEST 5: savas hala toprak uretiyor mu? (alt sinir) ---
 sub('TEST 5 — savas hala toprak uretiyor mu?');
 {
+  // FETIH PAYI = el degisen - ulusal hareketle kopan. Kopus (ayaklanma ve
+  // vassal birakma) imparatorlugun DAGILMASIDIR; kartopu testi buyuyen
+  // fatihi arar. Ikisi ayni sayida toplanirsa hareket mekaniginin calismasi
+  // "kartopu" diye okunurdu. Iki sayi da basilir; dagilmanin ust siniri
+  // TEST 5 sonunda ayrica sorulur.
+  const conquest = rows.reduce((sum, r) => sum
+    + Math.max(0, r.changed - r.seceded) / r.provinces, 0) / rows.length;
   console.log(`  ${YEARS} yilda el degisen kume orani ${pct(avg('share'))}`
-    + ` · bunun ${n1(avg('peace'))} olayi baris masasindan`);
+    + ` · ulusal hareketle kopan ${n1(avg('seceded'))} kume · fetih payi ${pct(conquest)}`
+    + ` · ${n1(avg('peace'))} olay baris masasindan`);
+  if (avg('share') > 0.5) {
+    finding('HIGH', 'harita dagiliyor',
+      'kumelerin yarisindan fazlasi el degistirmemeli', pct(avg('share')));
+  }
   if (avg('share') < 0.03) {
     finding('CRITICAL', 'toprak uretimi',
       'savas hala sinir degistirmeli', pct(avg('share')),
       'kartopu freni savasi oldurdu: audit:borders TEST 1 ile ayni kapi');
-  } else if (avg('share') > 0.33) {
+  } else if (conquest > 0.33) {
     finding('HIGH', 'kartopu',
-      'haritanin ucte birinden fazlasi el degistirmemeli', pct(avg('share')),
+      'haritanin ucte birinden fazlasi FETIHLE el degistirmemeli', pct(conquest),
       'audit:borders TEST 3 ile ayni esik');
   } else {
     console.log('  -> Savas toprak uretiyor, harita dagilmiyor. DOGRU.');

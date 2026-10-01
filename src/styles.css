@@ -5404,12 +5404,12 @@ body:has(#layer-menu:not(.hidden)) .rgo-map-legend { right: calc(var(--sp-3) + 1
 .notify-tray.notify-alert { border-left-color: var(--red); }
 .notify-tray.bump { animation: notify-bump 0.4s ease; }
 .notify-tray[hidden] { display: none !important; }
-body.screen-open .notify-tray { display: inline-flex; }
-body.screen-open .notify-stack .notify-card { display: none; }
-body.screen-open .notify-stack:hover,
-body.screen-open .notify-stack.open { pointer-events: auto; }
-body.screen-open .notify-stack:hover .notify-card,
-body.screen-open .notify-stack.open .notify-card { display: grid; }
+body:is(.screen-open, .notify-quiet) .notify-tray { display: inline-flex; }
+body:is(.screen-open, .notify-quiet) .notify-stack .notify-card { display: none; }
+body:is(.screen-open, .notify-quiet) .notify-stack:hover,
+body:is(.screen-open, .notify-quiet) .notify-stack.open { pointer-events: auto; }
+body:is(.screen-open, .notify-quiet) .notify-stack:hover .notify-card,
+body:is(.screen-open, .notify-quiet) .notify-stack.open .notify-card { display: grid; }
 /* Imlec yiginin ustundeyken sayac durur; serit de durmali. */
 .notify-stack.paused .notify-timer { animation-play-state: paused; }
 
@@ -10388,7 +10388,7 @@ button[data-tip]:hover,
    için doğrudan panelin üstüne biniyordu (kullanıcı bildirimi: "sağdaki
    popuplar ekranımı kapatıyor"). Ekran açıkken yığın sağ ALTA iner ve
    daralır: harita kontrollerinin üstünde, panelin dışında bir şerit. */
-body.screen-open .notify-stack {
+body:is(.screen-open, .notify-quiet) .notify-stack {
   /* `!important` bilerek: hud.js yiginin `top`unu SATIR ICI stile olcup
      yaziyor (trackHeaderHeight) ve normal kural ona yenilir. Ekran acikken
      yigin panelin ustune biniyordu — kullanicinin sikayeti buydu. */
@@ -11322,3 +11322,176 @@ body.picker-open .sheet { display: none; }
 :root[data-motion="off"] .ui-kpi:hover,
 :root[data-motion="off"] .fac-card:hover,
 :root[data-motion="off"] .build-card:hover { transform: none; }
+
+/* ==========================================================================
+   33. ULUSAL HAREKETLER — sağ üst panel (ui/movementDock.js)
+
+   Bildirim kartlarının eski yeri. Her hareket bir satır: halk, aşama,
+   dört kademeli ilerleme rayı, hız ve eylemler. Ray bir sigorta fitili gibi
+   okunur: kademe çizgileri 25/50/75'te, dolgu aşamayla kızarır. Malzeme
+   §32'nin kabartma dilidir; yeni bir görünüm icat edilmez.
+   ========================================================================== */
+.movement-dock {
+  position: fixed;
+  top: calc(var(--hud-top) + var(--tabbar-height) + var(--sp-2));
+  right: var(--sp-3);
+  z-index: var(--z-notify);
+  width: min(318px, calc(100vw - var(--sp-3) * 2));
+  max-height: calc(100vh - var(--hud-top) - var(--tabbar-height) - 140px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px;
+  background-color: rgba(12, 19, 23, 0.94);
+  background-image: var(--light-top), var(--surface-card);
+  background-blend-mode: normal, var(--blend-card);
+  box-shadow:
+    0 0 0 1px #000,
+    0 0 0 2px rgba(122, 98, 54, 0.75),
+    0 14px 34px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 236, 196, 0.14);
+  overflow: hidden;
+}
+.movement-dock[hidden] { display: none; }
+body.screen-open .movement-dock,
+body.menu-open .movement-dock,
+body.picker-open .movement-dock { display: none; }
+
+.md-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  padding: 7px var(--sp-3);
+  border: 0;
+  background-color: rgba(26, 31, 30, 0.96);
+  background-image: var(--plate-metal);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 236, 196, 0.06);
+  color: var(--gold-bright);
+  font: inherit;
+  font-size: var(--fs-label);
+  font-weight: 650;
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9);
+  cursor: pointer;
+}
+.md-title { flex: 1; text-align: left; }
+.md-count {
+  min-width: 20px;
+  padding: 0 6px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: var(--relief-sunken);
+  color: var(--text);
+  text-align: center;
+}
+.md-count.stage-2 { color: var(--amber); }
+.md-count.stage-3 { color: #e08c72; animation: md-pulse 1.6s ease-in-out infinite; }
+:root[data-motion="off"] .md-count.stage-3 { animation: none; }
+@keyframes md-pulse { 50% { box-shadow: var(--relief-sunken), 0 0 10px rgba(224, 120, 90, 0.55); } }
+.md-chevron { color: var(--text-dim); font-style: normal; }
+
+.md-list {
+  display: grid;
+  gap: 6px;
+  padding: 6px;
+  overflow-y: auto;
+}
+
+.md-row {
+  --md-color: var(--gold);
+  display: grid;
+  gap: 4px;
+  padding: 7px 8px 8px;
+  border-radius: 3px;
+  background-image: var(--light-top);
+  box-shadow: var(--relief-raised), inset 3px 0 0 var(--md-color);
+  transition: transform 150ms var(--lift-ease), box-shadow 150ms ease;
+}
+.md-row:hover { transform: translateY(-1px); box-shadow: var(--relief-lifted), inset 3px 0 0 var(--md-color); }
+:root[data-motion="on"] .md-row { animation: relief-card-in 260ms var(--lift-ease) both; }
+
+.md-row-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.md-swatch {
+  width: 9px; height: 9px; flex: 0 0 auto;
+  border-radius: 50%;
+  background: var(--md-color);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), inset 0 1px 1px rgba(255, 255, 255, 0.35);
+}
+.md-name {
+  flex: 1; min-width: 0;
+  padding: 0; border: 0; background: none;
+  color: var(--text);
+  font: inherit; font-size: var(--fs-base); font-weight: 650;
+  text-align: left; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  cursor: pointer;
+}
+.md-name:hover { color: var(--gold-bright); }
+.md-stage {
+  font-size: var(--fs-label);
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.md-row.stage-1 .md-stage { color: var(--gold-bright); }
+.md-row.stage-2 .md-stage { color: var(--amber); }
+.md-row.stage-3 .md-stage { color: #e08c72; }
+
+/* Fitil: oyulmus ray, dolgu asamayla kizarir, kademe cizgileri kazinmis. */
+.md-bar {
+  position: relative;
+  height: 9px;
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: var(--relief-sunken);
+  overflow: hidden;
+}
+.md-fill {
+  position: absolute; inset: 0 auto 0 0;
+  border-radius: 5px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.28), rgba(255, 255, 255, 0) 55%),
+    linear-gradient(90deg, #6f6a52, #b49a58 45%, #c8823e 72%, #b8452e);
+  background-size: 100% 100%, 318px 100%;
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.4);
+  transition: width 420ms var(--lift-ease);
+}
+.md-row.stage-3 .md-fill { box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.4), 0 0 8px rgba(214, 96, 60, 0.6); }
+.md-tick {
+  position: absolute; top: 0; bottom: 0;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.7);
+  box-shadow: 1px 0 0 rgba(255, 236, 196, 0.08);
+}
+
+.md-meta {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+.md-meta small { color: var(--text-faint); margin-left: 2px; }
+.md-trend { font-weight: 700; color: var(--text); }
+.md-row.stage-3 .md-trend, .md-row.stage-2 .md-trend { color: #e08c72; }
+
+.md-acts { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; }
+.md-act {
+  padding: 2px 6px;
+  border: 0;
+  border-radius: 3px;
+  background-image: var(--knob-metal);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.7),
+    0 1px 2px rgba(0, 0, 0, 0.5),
+    inset 0 1px 0 rgba(255, 236, 196, 0.13);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: transform 120ms var(--lift-ease), filter 120ms ease;
+}
+.md-act:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.2); }
+.md-act:active:not(:disabled) { transform: translateY(1px); box-shadow: var(--relief-sunken); }
+.md-act:disabled { opacity: 0.42; cursor: default; background-image: none; box-shadow: var(--relief-sunken); }
+.md-act.act-crackdown:not(:disabled), .md-act.act-expel:not(:disabled) { color: #e5a08a; }
+.md-act.act-accept:not(:disabled), .md-act.act-vassal:not(:disabled) { color: #b9cf98; }
+.md-act.arming { color: #fff; background-image: linear-gradient(180deg, #7a2e1f, #4d1a10); }

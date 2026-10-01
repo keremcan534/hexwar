@@ -80,7 +80,7 @@ tazelenir:
 | Kip | Ne gösterir |
 | --- | --- |
 | Diplomacy | Bakılan ülkenin gözünden savaş, ültimatom, ittifak, ateşkes, rakip; başkasıyla savaşanlar ayrı ton, işgal edilen topraklar taralı. Haritada bir ülkeye tıklamak bakış açısını ona çevirir. |
-| Unrest | Küme başına huzursuzluk (0–10); 7'nin üstü isyan kuluçkası. |
+| Unrest | Küme başına huzursuzluk (0–10); 6'nın üstü ulusal hareketi besler. |
 | Industry | Küme başına fabrika işçisi — bütün ülkeler, sanayi kalpleri. |
 | Infamy | Ülkelerin şöhreti; koalisyon eşiğine (22) yaklaşan kızarır. |
 
@@ -370,6 +370,17 @@ pazarında **sırada önceliktir** (pay × 0.35, mal başına en çok %20). Mal 
 piyasa fiyatından alınır. Savaş çıkarsa temettü ve öncelik donar, pay durur.
 Kamulaştırma mümkündür ve bedeli şöhrettir: tazminatsız el koymak bir şehir
 fethi kadar itibar yakar ve ülkeye yıllarca yabancı sermaye girmez.
+
+### Ulusal hareketler
+
+Kabul edilmeyen her halk, çoğunlukta olduğu kümelerde bir **ulusal hareket**
+kurar. Hareket huzursuzlukla beslenir ve dört aşamadan geçer (Grievances,
+Agitation, Resistance, Insurgency); her aşama o kümelerin sadakatini daha
+hızlı aşındırır. %100'de kümeler kopar: halkın devleti doğar (ya da bitişik
+akraba devlete katılır), ordusunu oradan toplar ve savaş açar. Sağ üstteki
+panel hareketleri fitil gibi gösterir ve araçları sunar: sıkıyönetim ve taviz
+(geçici), kabul, vassal olarak bırakma, katliam ve sürgün (kalıcı). YZ aynı
+araçları kullanır. Ayrıntı: MEKANIK_KILAVUZU §5.10.
 
 ### Siyaset: hükûmet ve beş yasa
 

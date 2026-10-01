@@ -290,6 +290,26 @@ export function declareWar(game, a, b, options = {}) {
 }
 
 /**
+ * ISYAN SAVASI. Kopan halkin devleti eski efendisine ultimatomsuz savas acar:
+ * isyan ilan edilmez, patlar. `declareWar`in uc kapisi (cullanma tavani,
+ * oyuncuya istemsiz cephe, ittifak) BURADA SORULMAZ — o kapilar devletlerin
+ * secimini sinirlar; ayaklanma bir secim degil, hareketin sonucudur
+ * (bkz. movements.js). Muttefik cagrisi da yok: yeni devletin muttefiki yok.
+ */
+export function startRebellionWar(game, rebelId, targetId) {
+  const world = game.world;
+  const turn = game.turns?.turn ?? world.turn ?? 0;
+  if (rebelId === targetId || atWar(world, rebelId, targetId)) return false;
+  const wars = (relation(world, rebelId, targetId)?.wars ?? 0) + 1;
+  setState(world, rebelId, targetId, WAR, turn, {
+    wars, reason: 'independence', aggressor: rebelId,
+  });
+  remember(world.nations[rebelId], turn, 'war_with', targetId);
+  remember(world.nations[targetId], turn, 'war_with', rebelId);
+  return true;
+}
+
+/**
  * Ültimatomsuz savaş: ilan ve aynı hafta açık cephe. Denetim ve tanılama
  * betikleri içindir ("bu savaşın masası ne verir" sorusu sekiz hafta
  * beklemeden sorulabilsin); oyunun kendisi her ilanı ültimatomdan geçirir

@@ -44,9 +44,11 @@ export class Notifications {
     this.tray.setAttribute('aria-label', 'Notifications');
     this.tray.onclick = () => this.root.classList.toggle('open');
     this.root.prepend(this.tray);
-    new MutationObserver(() => {
-      if (!document.body.classList.contains('screen-open')) this.root.classList.remove('open');
-    }).observe(document.body, { attributes: true, attributeFilter: ['class'] });
+    // SESSIZ KIP — her zaman. Kerem: "sagda cikan popuplari kaldirabiliriz";
+    // sag ust artik ulusal hareket panelidir (ui/movementDock.js). Kartlar
+    // kaybolmaz, ekran acikkenki gibi sag alttaki sayaca toplanir ve
+    // tiklayinca acilir. Saati durduran (halt) kartlar da oradadir.
+    document.body.classList.add('notify-quiet');
     this.updateTray();
   }
 

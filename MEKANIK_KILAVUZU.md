@@ -1493,7 +1493,7 @@ topçu/ikmal yıpratması olmalı (açık iş).
                         × sadakat × (şehir ? 1.5 : 1) × (1 − huzursuzluk/10 × 1.3)
     asimilasyon haklarında ters yön: full 1.4 · limited 1.0 · residency 0.6
 
-    isyan: huzursuzluk ≥ 7 VE yabancı pay ≥ 0.5 → sayaç++; 26 haftada kopar
+    isyan: artık küme sayacı değil, halkın ULUSAL HAREKETİ (bkz. 5.10)
 
 **Kod** — `src/game/culture.js` (`unrestBreakdown`, `assimilate`,
 `resolveRevolts`, `acceptCulture`), `provinces.js` haftalık döngü
@@ -1739,6 +1739,70 @@ minorityCeiling: 0.7 + citizenship * 0.3,
 | Welfare State | None · Basic · Full | işsizlik yardımı, emeklilik, sağlık, okul | alt/orta sınıf (+), kısılamaz hazine yükü, okuryazarlık tabanı |
 | Citizenship | Residency · Limited · Full | azınlık hakları + partinin eski vatandaşlık ekseni | orta sınıf (+), azınlık sadakat tavanı ve hızı, kültürel huzursuzluk, asimilasyon, yabancı asker payı, kültür kabulü |
 | Conscription | Volunteer · Limited · Mass | askerlik (yön ters çevrildi: kademe = asker) | insan gücü, alt sınıf (−) |
+
+## 5.10 Ulusal hareketler — isyan bir süreçtir
+
+**Neden.** Eski isyan küme küme, sessizce birikip tek haftada patlıyordu ve
+sonucu "kırık küme"ydi: toprak el değiştirmez, küme çalışmaz olurdu. Oyuncu
+neyin yaklaştığını göremiyor, araya giremiyordu. Kerem: "isyanlar giderek
+ilerleyecek, patlayana kadar sürecek; bazı şeyleri feda edip bastırabileceğiz;
+sona gelirse bizden ayrılıp savaş açacaklar — Balkan savaşları gibi."
+
+**Formül**
+
+    hareket   = ULUS × HALK (küme başına değil — ev ödevi testi)
+    üyeler    = halkın kabul edilmeyenlerin en büyüğü olduğu VE yabancı payın
+                ≥ 0.5 olduğu kümeler (tek kültürlü devlette hareket doğmaz)
+    basınç    = üye kümelerin nüfus ağırlıklı huzursuzluğu (5.7)
+    ilerleme += (basınç − 6) × 0.6     basınç ≥ 6 ise
+             −= (6 − basınç) × 0.5     altındaysa
+    aşama     Grievances 0 · Agitation 25 · Resistance 50 · Insurgency 75
+    aşama bedeli: üye kümelerin sadakati haftada 0 / 0.3 / 0.8 / 1.6 aşınır
+    100       AYAKLANMA: üye kümeler kopar; bitişik akraba devlet varsa ona
+              katılır (o savaş açar), yoksa halkın UYUYAN devleti uyanır
+              (world/nations.js appendRebelStates — her kültür için bir tane,
+              dünya kurulurken ölü doğar), ordusunu kopan kümelerin gerçek
+              nüfusundan toplar (2–6 alay) ve ültimatomsuz savaş açar.
+              Hareket 104 hafta toparlanır.
+
+**Feda edilenler** — oyuncu ve YZ aynı kapıdan (`movements.js`):
+
+| eylem | tür | fayda | bedel |
+|---|---|---|---|
+| Sıkıyönetim | geçici, 26 hf | ilerleme −1.2/hf, aşınma durur | £(0.5 + 0.4 × küme)/hf · istikrar −0.03 |
+| Taviz | geçici, yılda bir | ilerleme −25, huzursuzluk −1.5 | iki haftalık gelir |
+| Kabul | kalıcı | hareket söner (halk artık yabancı değil) | iki yıl milliyetçi tepki (5.7) |
+| Vassal bırak | kalıcı, barışçı | savaş gelmez, gelirinin %15'i haraç | toprak gider (şöhret düşer) |
+| Katliam | kalıcı | ilerleme −45, halkın %15'i ölür | şöhret, istikrar −0.05 (26 hf), diğer hareketler +10 |
+| Sürgün | kalıcı | halk ve hareketi gider | nüfus ve ağır şöhret (5.8) |
+
+Baskının istikrar bedeli `stabilityBreakdown.repression`dır, en çok −0.12.
+Katliam ölümleri beyanlı kanaldır (`economy.repressionDeaths`,
+ACCOUNTING_INVARIANTS I6); sıkıyönetim ve taviz `unrest` defter satırından
+ödenir (L18). Oyuncunun "reforms" devri katliam YAPMAZ.
+
+**Kod** — `src/game/movements.js` (`runMovements`, `uprising`, eylemler,
+`movementView`, `manageMovements`), `src/game/culture.js`
+(`movementProvinces`), `src/world/nations.js` (`appendRebelStates`),
+`src/game/diplomacy.js` (`startRebellionWar`), `src/ui/movementDock.js`
+(sağ üst panel; bildirim kartları sağ alttaki 🔔 sayacına indi)
+
+**Çalışıyor mu?** Ölçüldü (160×96, 20 yıl): TNGZT4'te 7 ayaklanma (55
+küme) + YZ'nin 14 vassal bırakması, SEEDB'de 6 ayaklanma (33 küme) + 14
+vassal + 1 katliam; ilk patlama iki tohumda da 7. yıl; 20. yılda 9 ve 8
+bağımsız halk devleti ayakta. `audit:homeland` (50 yıl × 3 tohum, 78×62):
+ayaklanma 4 / 3 / 7, vassal bırakma 17 / 8 / 16; el değişen küme %33.8,
+bunun ulusal hareketle kopan kısmı çıkınca fetih payı %15.6. Denetimler
+(`audit:culture-unrest` TEST 5, `audit:homeland` TEST 5) kopuşu ayrı sayar:
+kopuş parçalanmadır, fetih kartopu değil. Ayaklanmadan sonra alınan kayıt
+yüklenince 20 hafta boyunca kesintisiz koşuyla bit bit aynı kalıyor.
+
+**Pratikte** — çok uluslu imparatorluk saatli bombadır: milliyetçilik çağı
+(5.7) basıncı yüzyıl boyunca 1.8 katına çıkarır ve hareketler sağ üstte
+fitil gibi ilerler. Asimile etmeyen, hak tanımayan devlet ya bedel öder
+(sıkıyönetim, taviz), ya toprağı barışla bırakır (vassal), ya da savaşla
+kaybeder. Geri almak mümkündür ama kopan devlet artık bir devlettir: barış
+masası gerekir.
 
 ## 6.1 Hükûmet — dört parti, dört yıl
 

@@ -101,6 +101,9 @@ function partitionChecksum(world) {
 // butun siyasi kazanimi silinir.
 const NATION_FIELDS = [
   'gold', 'infamy', 'alive', 'debt', 'mobilization', 'cultureBacklashUntil', 'accepted',
+  // Ulusal hareketler (movements.js): ilerleme, sikiyonetim/taviz/katliam
+  // tarihleri. Turetilemez: yazilmazsa yuklenen oyunda bomba sifirlanir.
+  'movements',
 ];
 
 export function serialize(game) {
@@ -236,6 +239,8 @@ export function serialize(game) {
         })),
       };
       for (const f of NATION_FIELDS) out[f] = n[f];
+      // Uyanan isyanci devletin baskenti uretimden degil ayaklanmadan gelir.
+      if (n.archetype === 'rebel' && n.capital) out.capitalAt = [n.capital.q, n.capital.r];
       return out;
     }),
     relations: world.relations.map((row, a) => row.map((rec, b) => (
@@ -384,6 +389,7 @@ export function deserialize(game, data) {
     const nation = world.nations[saved.id];
     if (!nation) continue;
     for (const f of NATION_FIELDS) nation[f] = saved[f];
+    if (saved.capitalAt) nation.capital = world.get(saved.capitalAt[0], saved.capitalAt[1]) ?? nation.capital;
     nation.economy = saved.economy ?? nation.economy;
     // Politics eski kayıtlarda yoktur. Başlangıçta üretilen turn-1 verisini
     // taşımak yerine null bırakılır; ensurePolitics partileri ve yasaları

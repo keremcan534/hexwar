@@ -228,14 +228,25 @@ sub('TEST 5 — isyan oluyor ama harita dagilmiyor mu?');
   const total = world.provinces.filter((p) => p.econ).length;
   const share = total > 0 ? revolted / total : 0;
   const boiling = world.provinces.filter((p) => (p.econ?.revoltWeeks ?? 0) > 0).length;
-  const revolts = world.cultureRevolts ?? 0;
+  // Isyan artik halkin HAREKETIDIR (movements.js): ayaklanma ya da hukumetin
+  // patlamadan once vassal birakmasi. Ikisi de yoksa en azindan bir hareket
+  // direnis asamasina (50) varmis olmali; varmadiysa mekanik olu.
+  const revolts = (world.uprisings ?? 0) + (world.vassalReleases ?? 0);
+  let peak = 0;
+  for (const nation of world.nations) {
+    for (const movement of Object.values(nation.movements ?? {})) {
+      peak = Math.max(peak, movement.progress ?? 0);
+    }
+  }
   console.log(`  ${WEEKS} haftada sahibi degisen kume ${revolted}/${total} (${pct(share)})`
-    + ` · bunlarin ISYANLA kopani ${revolts} · su an isyan sayaci isleyen kume ${boiling}`);
+    + ` · ayaklanma ${world.uprisings ?? 0} · vassal birakma ${world.vassalReleases ?? 0}`
+    + ` · sikiyonetim/katliam sonrasi en ileri hareket %${peak.toFixed(0)} · kaynayan kume ${boiling}`);
   console.log('  NOT: ilk sayi savasi da icerir; ust sinir testidir.');
-  if (revolts === 0) {
+  if (revolts === 0 && peak < 50) {
     finding('HIGH', 'isyan olu',
-      `${WEEKS} haftada en az bir ayrilikci isyan beklenir`,
-      'hic isyan olmadi', 'REVOLT_UNREST/REVOLT_WEEKS esikleri erisilemez olabilir');
+      `${WEEKS} haftada en az bir hareket direnise varmali ya da patlamali`,
+      `hic ayaklanma yok, en ileri hareket %${peak.toFixed(0)}`,
+      'MOVEMENT.CALM/GROWTH esikleri erisilemez olabilir');
   }
   if (share > 0.5) {
     finding('HIGH', 'harita dagiliyor',

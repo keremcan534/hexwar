@@ -13,7 +13,10 @@ import {
 } from '../game/diplomacy.js';
 import { warScore } from '../game/peace.js';
 import { INFAMY_COALITION, OCCUPATION_TURNS, tileEfficiency } from '../game/infamy.js';
-import { CULTURE, unrestBreakdown } from '../game/culture.js';
+import {
+  CULTURE, foreignShareOf, rebelCultureOf, unrestBreakdown,
+} from '../game/culture.js';
+import { stageOf } from '../game/movements.js';
 import { savedInfo } from '../game/save.js';
 import { ORDER } from '../game/orders.js';
 import { DELEGATION_AREAS, DELEGATION_IDS, isDelegated } from '../game/delegation.js';
@@ -1080,7 +1083,7 @@ export class Hud {
         (province) => province.owner === me?.id && (province.econ?.unrest ?? 0) >= CULTURE.REVOLT_UNREST,
       ).length;
       html = `<header><b>Provincial unrest</b><small>${boiling
-        ? `${boiling} of your provinces boiling` : 'revolts brew above 7'}</small></header>`
+        ? `${boiling} of your provinces boiling` : 'national movements grow above 6'}</small></header>`
         + [[0, 'Calm'], [0.35, 'Restless'], [0.7, 'Boiling'], [1, 'Revolt']]
           .map(([t, label]) => chip(rampColor(UNREST_RAMP, t), label)).join('');
     } else if (mode === 'industry') {
@@ -1256,8 +1259,10 @@ export class Hud {
       const cluster = world.provinces?.[tile.provinceId];
       const unrest = cluster?.econ?.unrest ?? 0;
       if (cluster?.econ && unrest >= 0.5) {
-        const weeks = cluster.econ.revoltWeeks ?? 0;
-        const left = Math.max(0, CULTURE.REVOLT_WEEKS - weeks);
+        // Isyan artik halkin HAREKETIDIR (movements.js): kumenin sayaci yok.
+        const rebels = foreignShareOf(cluster, nation) >= CULTURE.REVOLT_FOREIGN_MIN
+          ? rebelCultureOf(cluster, nation) : null;
+        const movement = rebels != null ? nation.movements?.[rebels] : null;
         const parts = unrestBreakdown(world, cluster, nation, {
           occupied: 0, turn: world.turn ?? 0,
         });
@@ -1268,7 +1273,10 @@ export class Hud {
           parts.backlash > 0.3 ? 'nationalist backlash' : null,
         ].filter(Boolean).join(', ');
         stats.push(['Unrest', `${unrest.toFixed(1)}/10${why ? ` · ${why}` : ''}`
-          + (weeks > 0 ? ` · revolt in ${left} weeks` : '')]);
+          + (movement?.progress > 0.5
+            ? ` · ${world.cultures?.[rebels]?.name ?? 'their'} movement ${Math.round(movement.progress)}%`
+              + ` (${stageOf(movement.progress).name})`
+            : '')]);
       }
     }
     if (tile.workedBy) stats.push(['Worked By', tile.workedBy.name]);

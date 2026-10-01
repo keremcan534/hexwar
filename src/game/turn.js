@@ -37,6 +37,7 @@ import {
   releaseSoldiers, runProvinces,
 } from './provinces.js';
 import { initPolitics, runPolitics } from './politics.js';
+import { runMovements } from './movements.js';
 import { captureConstructionAt, initConstruction, runConstruction } from './construction.js';
 import { controllerOf, setController } from './control.js';
 import { runNationalEvents, runWorldStories } from './events.js';
@@ -577,6 +578,9 @@ export class TurnManager {
     decayInfamy(world);
     // Sıra önemli: sahiplik savaşta değişmiş olabilir, önce işçiler yeniden dağıtılır.
     runProvinces(this.game);
+    // Ulusal hareketler kumelerin bu haftaki huzursuzlugunu okur; kopus
+    // sahiplik degistirdigi icin isciler bundan SONRA dagitilir.
+    runMovements(this.game);
     yield* pause('provinces');
     // Şehirler işçi dağıtımından önce büyür ki yeni nüfus aynı hafta bir kare işlesin.
     this.phase = 'workers';
