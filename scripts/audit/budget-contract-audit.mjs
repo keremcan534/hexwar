@@ -175,6 +175,28 @@ sub('6. Her kaldirac dogru yone hareket ediyor');
     console.log(`  ${label.padEnd(26)} dusuk ${n2(a).padStart(9)} -> yuksek ${n2(b).padStart(9)} ${ok ? '' : '  <-- YON YANLIS'}`);
     if (!ok) finding('HIGH', label, 'yuksek ayar daha buyuk deger vermeli', `${a} -> ${b}`);
   }
+
+  // PARA BASMA IZOLE: hazineye girer, enflasyon ve memnuniyet bedeli oder.
+  // Basilan tutar defterde GSYH x oran ile BIREBIR (ACCOUNTING_INVARIANTS L17).
+  const base = [['taxLower', 25], ['taxMiddle', 25], ['taxUpper', 25], ['education', 0], ['welfare', 0], ['armyFunding', 60]];
+  const mintLo = probe([...base, ['printing', 0]]);
+  const mintHi = probe([...base, ['printing', 10]]);
+  const printed = mintHi.view.controls.printing;
+  const identity = Math.abs(printed.minted - printed.gdp * 10 / 100);
+  console.log(`  para basma 0 -> 10: basilan ${n2(mintLo.view.controls.printing.minted)} -> ${n2(printed.minted)}`
+    + ` · enflasyon ${pct(mintLo.e.inflation)} -> ${pct(mintHi.e.inflation)}`
+    + ` · alt sinif memnuniyeti ${n2(mintLo.e.classes.lower.satisfaction)} -> ${n2(mintHi.e.classes.lower.satisfaction)}`
+    + ` · GSYH x oran sapmasi ${identity.toExponential(2)}`);
+  if (!(printed.minted > 0) || mintLo.view.controls.printing.minted !== 0) {
+    finding('HIGH', 'Para basma geliri', 'basim hazineye girmeli, sifirda hic girmemeli',
+      `${mintLo.view.controls.printing.minted} -> ${printed.minted}`);
+  }
+  if (identity > 1e-6) finding('HIGH', 'Para basma kimligi', 'basilan = GSYH x oran', `sapma ${identity}`);
+  if (!(mintHi.e.inflation > mintLo.e.inflation)
+    || !(mintHi.e.classes.lower.satisfaction < mintLo.e.classes.lower.satisfaction)) {
+    finding('HIGH', 'Para basmanin bedeli', 'basim enflasyonu artirmali, memnuniyeti dusurmeli',
+      `enflasyon ${mintLo.e.inflation} -> ${mintHi.e.inflation}`);
+  }
 }
 
 // ------------------------------------------------------------ 7. GUMRUK

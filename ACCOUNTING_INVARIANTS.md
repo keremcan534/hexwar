@@ -22,7 +22,7 @@ alan olarak kayitli, denetimin okudugu, ekranin gosterebilecegi akis.
 | L1 | sinif geliri = 0.35×tabanUretim×pay + bordro×WAGE_SPLIT (+ kar×0.5 ust) — baska kaynak yok | ledger (sapma %0.00) |
 | L2 | Σ `factory.wages` = `economy.wagesPaid`; tesiste VA = ucret + kar; ucret/VA ∈ [LABOR_SHARE, 0.85] | ledger |
 | L3 | kar beyani: hane 0.50 + yeniden-yatirim 0.08 ≤ 1; kalan 0.42 BEYANLI yipranma bataktir (kaynak degil) | ledger |
-| L4 | vergi geliri = Σ sinif.taxPaid × taxEfficiency — odeyensiz devlet geliri yok | ledger (sapma %0.00) |
+| L4 | vergi geliri = Σ sinif.taxPaid × taxEfficiency — odeyensiz devlet geliri yok (tek istisna L17) | ledger (sapma %0.00) |
 | L5 | subvansiyon: tesise odenen destek defterde (`subsidyCost`) gorunur | ledger |
 | L6 | HANE KIMLIGI: `needsBudget_t` = netGelir_{t-1} + `subsistence_t` — beyansiz harcama yok | population §5 (sapma %0.0) |
 | L7 | hane artigi bolusumu: birikim 0.50 + ozel sermaye 0.22 ≤ 1 | sabitler (politics not) |
@@ -30,6 +30,7 @@ alan olarak kayitli, denetimin okudugu, ekranin gosterebilecegi akis.
 | L9 | Δhazine = defter net + borclanilan − odenen + temerrut (bilanco kimligi) | updateLedger + save |
 | L15 | GSYH CIFT SAYMAZ: `gdp` = tabanUretim + Σ tesis KATMA DEGERI (hasilat degil); ara mal alt zincirin hasilatinda ikinci kez sayilmaz | ledger L15 (sapma %0.00) |
 | L16 | REEL seri ayridir: `realGdp` ayni toplam TABAN fiyatlarla. Buyume yalniz burada okunur — nominal seride hacim artisi fiyat dususuyle sifirlanir | price-stability TEST 4 |
+| L17 | PARA BASMA tek beyanli kaynaktir: `ledger.printing` = `gdp` × `printing`/100 (birebir); karsiligi odeyen yok, bedeli `economy.inflation` → sinif memnuniyeti | budget-contract §6 (sapma 0.00) |
 
 ## Sirket / borsa (audit:companies)
 
@@ -59,5 +60,6 @@ AKISA uygular. Havuz <= 1200 iken iki yazim birebir ayni sonucu verir.
 - taxEfficiency < 1 kaybi: tahsilat kaybi — yonetim butcesinin bedeli.
 - Iptal edilen insaatta yapilan is: batik maliyet (cancelConstruction).
 
-Kaynak yaratan (odeyensiz gelir, sahipsiz insan) HICBIR kanal yoktur;
-yeni kanal eklerken bu dosyaya beyan + denetime kimlik eklenmelidir.
+Kaynak yaratan (odeyensiz gelir, sahipsiz insan) TEK kanal para basmadir
+(L17) ve bilerek beyan edilmistir; bedeli enflasyondur. Baska yeni kanal
+eklerken bu dosyaya beyan + denetime kimlik eklenmelidir.

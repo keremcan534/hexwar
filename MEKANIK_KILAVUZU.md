@@ -168,6 +168,12 @@ raftaki gıda tam 0.56'da kalıyordu. Devletler lüksü keser, tahılı değil:
 gümrük gıdanın fiyatına yine biner (hane sepeti), yalnız miktarını kısmaz.
 Sanayi girdisinde ve ihracat erişiminde bedeli aynen sürer.
 
+**Hedef düğmeleri** (`economy.TARIFF_AIMS`, `applyTariffAim`) — oran yerine
+niyet: *import* %0, *balanced* %25, *export* %50; hepsi parti bandına kırpılır
+ve her hafta yeniden uygulanır, seçiliyken hükûmetin ticaret devri durur.
+"Dengeli"yi dış hesaba bağlamak ölçüldü ve alınmadı: açıkta iki puan/hafta
+artan gümrük 58'den 84'e çıktı, dış hesap −1 civarında hiç kımıldamadı.
+
 ## 1.3 Ordu fonu · `armyFunding`
 
 **Formül**
@@ -278,6 +284,44 @@ büyür (%35'e kadar). Sağlık ayrı bir kaydıraç DEĞİL — ölçüldü, te
 700 haftada nüfusa %1.4–2.0 katkı yapıyordu, nüfusun kendi gürültüsü ise %39;
 kaydıracın bütün menzili gürültünün yirmide biriydi. İki etkisi de refaha
 katıldı, oran ikisinin toplamı.
+
+## 1.6 Para basma · `printing`
+
+**Formül**
+
+    haftalık basım   = GSYH × oran%              (oran 0–10, tek puan)
+    enflasyon hedefi = 0.02 × oran + 0.004 × oran²   (yıllık; 3 → %9.6, 10 → %60)
+    enflasyon       += (hedef − enflasyon) × (yükselirken 1/8, sönerken 1/26)
+    memnuniyet terimi = −enflasyon × 0.35 × (alt 1 · orta 1 · üst 0.5)
+
+**Kod** — `src/game/economy.js` (`PRINTING_MAX`, `inflationTarget`,
+`inflationMood`, `fiscalBalance`, YZ kuralı `adjustFiscalAI`),
+defter satırı `treasury.js` `printing`
+
+```js
+const printing = clamp(economy.printing ?? 0, 0, PRINTING_MAX);
+if (printing > 0) settle(nation, 'printing', Math.max(0, economy.gdp ?? 0) * printing / 100);
+economy.inflation = inflation
+  + (target - inflation) * (target > inflation ? INFLATION_RISE : INFLATION_FALL);
+```
+
+**Çalışıyor mu?** **EVET** — istikrarı %39.4 oynatıyor, gürültünün
+**7.17 katı** (`audit:mechanics`). `audit:budget-contract` §6 yönü ayrıca
+ölçer: 0 → 10'da basılan 0 → 19.4/hafta, enflasyon %0.3 → %60, alt sınıf
+memnuniyeti 0.57 → 0.35; basılan tutar GSYH × oran ile **birebir**
+(ACCOUNTING_INVARIANTS L17).
+
+**Pratikte** — ödeyeni olmayan tek gelir; bedelini fiyatlar öder. Para hemen
+gelir, enflasyon iki ayda yetişir ve basmayı bıraktıktan sonra yarım yılda
+söner: kriz için iyi bir köprü, kalıcı açık için pahalı bir alışkanlık. Az
+basmak ucuz (1–2 puan memnuniyetten 1–2 puan yer), çok basmak dış bükey
+pahalı. Ücretli ve birikimli sınıflar tam öder; üst sınıf toprak ve tesis
+tuttuğu için yarısını. YZ ve Budget AUTO hazine kurudukça bir puan açar,
+enflasyon hedefini %6'nın altında tutar (en çok 2 puan), bollukta kapatır.
+
+Ölçüldü (2 tohum × 104 hafta, 160×96, şehir kurma kaldırıldıktan sonra):
+borçlu ülke-hafta %45.1 → %39.1 ve %34.9 → %32.3, toplam borç 16.3k → 14.2k
+ve 16.0k → 13.5k; medyan istikrar 0.53 → 0.51.
 
 ---
 
@@ -1771,16 +1815,17 @@ dünyanın 0.08 altında kaldı.
 
 | Kaldıraç | Hüküm | Kaç kat (son) | ilk 5-yasa taraması | En güçlü ölçüt (son) |
 |---|---|---|---|---|
-| Constitution | EVET | 5.72× | 6.97× | istikrar |
-| Labour Rights | EVET | 4.82× | 6.20× | memnuniyet |
-| Welfare State | EVET | 6.53× | 7.63× | memnuniyet |
-| Conscription | EVET | 2.01× | 2.40× (eski merdiven 1.66×) | istikrar |
-| Citizenship | EVET | 1.05× | 0.71× (eski azınlık hakları 0.57×) | hazine |
-| Meşruiyet | EVET | 2.38× | 2.82× | istikrar |
+| Constitution | EVET | 5.93× | 6.97× | istikrar |
+| Labour Rights | EVET | 5.35× | 6.20× | memnuniyet |
+| Welfare State | EVET | 7.47× | 7.63× | memnuniyet |
+| Conscription | EVET | 2.19× | 2.40× (eski merdiven 1.66×) | istikrar |
+| Citizenship | EVET | 1.33× | 0.71× (eski azınlık hakları 0.57×) | hazine |
+| Meşruiyet | EVET | 2.50× | 2.82× | istikrar |
 
-"Son" = 2026-09-23 taraması (hayali ekipman rezervi ve alıcısız tesis
-düzeltmelerinden sonra; ondan önceki 2026-09-19 taraması vergi geçim
-tavanıyla koşmuştu). Katlar ekonomi değiştikçe oynar; vatandaşlık uzun süre
+"Son" = 2026-10-01 taraması (şehir kurma kaldırıldı, para basma eklendi,
+teçhizatsız alay siparişi açıldı; tarama hazineyi artık NET ölçer: altın −
+borç, bkz. §8.2). Ondan önceki 2026-09-23 taraması hayali ekipman rezervi ve
+alıcısız tesis düzeltmelerinden sonraydı. Katlar ekonomi değiştikçe oynar; vatandaşlık uzun süre
 eşiğin iki yanında gidip geliyordu (bir gün 0.55×, aynı gün 1.68×). 09-19'da
 vergi tavanı hazine ölçütünü 1.73×'e taşımıştı; 09-23'te 1.05×'e indi — neden
 kaldıraç değil arena kaydı, bkz. §8.2.
@@ -1804,34 +1849,35 @@ kendi katsayılarından, `lawPreview`).
 
 # 7. TEK SAYFA ÖZET
 
-Kaç kat: son `audit:mechanics` taraması (2026-09-17); bütçe satırlarında
+Kaç kat: son `audit:mechanics` taraması (2026-10-01); bütçe satırlarında
 en güçlü ölçüt.
 
 | # | Mekanik | Formül (kısa) | Çalışıyor? | Kaç kat |
 |---|---|---|---|---|
-| 1 | Vergi | gelir × oran × sınıf ağırlığı | EVET | 8.00× (alt sınıf) |
-| 2 | Gümrük | ithalat × oran; girdi fiyatı ×(1+oran×ithal payı); gıda iştahtan muaf | EVET | 1.82× |
+| 1 | Vergi | gelir × oran × sınıf ağırlığı | EVET | 8.48× (alt sınıf) |
+| 2 | Gümrük | ithalat × oran; girdi fiyatı ×(1+oran×ithal payı); gıda iştahtan muaf; hedef düğmeleri 0/25/50 | EVET | 1.15× |
 | 3 | Ordu fonu | güç = 0.55 + fon×0.45 | EVET (savaşta) | contract §6 |
-| 4 | Eğitim | (nüfus/10k) × bütçe × 0.34 | EVET | 13.97× |
-| 5 | Refah | (nüfus/10k) × bütçe × 0.76 | EVET | 4.63× |
+| 4 | Eğitim | (nüfus/10k) × bütçe × 0.34 | EVET | 13.96× |
+| 5 | Refah | (nüfus/10k) × bütçe × 0.76 | EVET | 4.66× |
+| 5b | Para basma | GSYH × oran; enflasyon hedefi 0.02p+0.004p²; memnuniyet −enflasyon×0.35 | EVET | 7.49× |
 | 6 | Okuryazarlık | hedefe haftada binde 4 yaklaşır | EVET | zincirin içinde |
 | 7 | Araştırma | (okuryazarlık×4 + orta×1.5 + katip + 1) × çarpanlar | EVET | 4.00× |
 | 8 | Teknoloji maliyeti | 120 × (1+kademe×0.55) × erken ceza | EVET | kalibre |
-| 9 | Memnuniyet | 0.35 + ödenebilirlik×0.5 − vergi×0.28 + refah×0.14 | EVET | omurga |
+| 9 | Memnuniyet | 0.35 + ödenebilirlik×0.5 − vergi×0.28 + refah×0.14 − enflasyon×0.35 | EVET | omurga |
 | 10 | İstikrar | memnuniyet − işgal − savaş − işsizlik×0.22 | EVET | omurga |
 | 11 | Nüfus | beş çarpanın çarpımı; beslenme %50 altı kıtlık | EVET | ölçüldü |
 | 12 | İşsizlik | (min(işçi,tezgâh) − istihdam) / tezgâh | EVET | tek kaynak |
 | 13 | Fabrika ücreti | katma değer × 0.55 × yasa çarpanı | EVET | +%8.8 |
 | 14 | Ticaret | min(fazla, teklif); iştah = min(1, 1/(1+oran×1.6)), gıdada 1 | EVET | 1.82× |
-| 15 | İdari gider | (şehir−1)^1.6 × 4.0 + nüfus^0.75 × 0.8 | EVET | kaldıraç değil |
+| 15 | İdari gider | (şehir−1)^1.6 × 4.0 + nüfus^0.75 × 0.8; yeni şehir kurulmaz | EVET | kaldıraç değil |
 | 16 | Taşra sadakati | tavan = vatandaşlık yasası; üretim ×= sadakat | BAĞLI | +%7.1 |
-| 17 | İnsan gücü | havuz × (0.85 + askerlik×0.45) | EVET | 2.01× |
-| 18 | Anayasa | alt +0.22, orta +0.23, üst −0.12, araştırma +%25; kimin desteği sayılır | EVET | 5.72× |
-| 19 | İşçi hakları | alt +0.44 (kölelik kalkınca +0.08), bordro +%29, üretim −%5.4 | EVET | 4.82× |
-| 20 | Sosyal devlet | alt +0.32, hazine yükü 0.41, okuryazarlık tabanı 0.35 | EVET | 6.53× |
-| 21 | Vatandaşlık | azınlık tavanı 0.7→1.0, huzursuzluk, asimilasyon | EVET | 1.05× |
-| 22 | Askerlik | insan gücü 0.85→1.30, alt −0.06 | EVET | 2.01× |
-| 23 | Meşruiyet | istikrar −= (lider − iktidar) × 0.25 | EVET | 2.38× |
+| 17 | İnsan gücü | havuz × (0.85 + askerlik×0.45) | EVET | 2.19× |
+| 18 | Anayasa | alt +0.22, orta +0.23, üst −0.12, araştırma +%25; kimin desteği sayılır | EVET | 5.93× |
+| 19 | İşçi hakları | alt +0.44 (kölelik kalkınca +0.08), bordro +%29, üretim −%5.4 | EVET | 5.35× |
+| 20 | Sosyal devlet | alt +0.32, hazine yükü 0.41, okuryazarlık tabanı 0.35 | EVET | 7.47× |
+| 21 | Vatandaşlık | azınlık tavanı 0.7→1.0, huzursuzluk, asimilasyon | EVET | 1.33× |
+| 22 | Askerlik | insan gücü 0.85→1.30, alt −0.06 | EVET | 2.19× |
+| 23 | Meşruiyet | istikrar −= (lider − iktidar) × 0.25 | EVET | 2.50× |
 | 24 | Hex kaynakları | kota ataması (talepten paylar); satır çıktısı × talep ölçeği; kadro = alt sınıf × 1.05 | EVET | §4.7 sağlık koşusu |
 | 25 | Fabrika duraklatma | barış + depo ≥%95 + fiyat <0.75 → silah hattı durur | EVET | silah fiyatı 0.34 → 0.93 |
 
@@ -1864,6 +1910,15 @@ Bu kılavuz ne kadar ölçüldüyse o kadar doğrudur. Ölçülemeyenler:
    düzeltmesi olmadan 1.69×, diğerlerinin her biri olmadan 1.07–1.15×.
    Hüküm hâlâ ÇALIŞIYOR, ama pay ince: arenanın ısınması (oyuncu olarak mı,
    YZ olarak mı) yeniden düşünülmeli.
+
+   2026-10-01: şehir kurma oyundan KALKTI (YZ, AUTO ve oyuncu düğmesi), yani
+   ısınmadaki şehir patlaması artık yok. Aynı gün tarama hazineyi
+   `altın − borç` olarak ölçmeye başladı: yalnız altın ölçülürken iki kol da
+   borca düştüğünde ikisi de 0'da kırpılıyor, fark borçta görünmüyordu
+   (gümrük mh2'de iki kolda altın 0, borç 1327'ye karşı 1133 — kaldıraç
+   1.22×'ten 0.78×'e "düşmüştü"). Net ölçütle gümrük 1.15×, vatandaşlık 1.33×.
+   Eşik (50.8) kırpılan seriyle ölçülmüştü; net seride muhtemelen yüksek
+   kalır, yani hüküm muhafazakâr tarafta.
 
 3. **Tarama 3 tohum × 150 hafta koşar.** Eşiğe yakın mekanikler (1.2–1.4×
    bandı) koşudan koşuya biraz oynayabilir. Gürültünün 2 katının üstündekiler

@@ -17,7 +17,7 @@ export const DELEGATION_AREAS = {
     id: 'budget',
     name: 'Budget',
     screen: 'budget',
-    desc: 'The treasury sets class taxes, social spending and the war budget.',
+    desc: 'The treasury sets class taxes, social spending, the war budget and the mint — it prints money when the coffers run dry.',
   },
   trade: {
     id: 'trade',
@@ -62,7 +62,7 @@ export const DELEGATION_AREAS = {
     // Uyarı dürüst olsun: `spend()` temerrütteki barış ordusunu KÜÇÜLTÜR
     // (bkz. ai.js) ve oyuncunun elinde bir "terhis" düğmesi yok. Devir bu
     // yetkiyi de verir; yazmamak sürpriz olurdu.
-    desc: 'The general staff orders regiments, founds cities, mobilizes the reserve when an enemy outweighs the army — and disbands regiments if the treasury defaults in peacetime.',
+    desc: 'The general staff orders regiments, mobilizes the reserve when an enemy outweighs the army — and disbands regiments if the treasury defaults in peacetime.',
   },
   research: {
     // Program devri 2026-09'da düşmüştü (4bb99ed); bu anahtar ondan AYRI:

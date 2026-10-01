@@ -173,12 +173,41 @@ export function recruitmentSource(world, nation, typeId) {
   return best;
 }
 
+// TECHIZAT ARTIK KAPI DEGIL (Victoria usulu). Depoda yoksa siparis yine
+// verilir; eksik dunya pazarindan alinir (economy.procureStrategicGoods) ve
+// alay teçhizat gelene kadar egitime baslamaz. Eskiden depo bos diye dugme
+// kapaniyordu: silah uretmeyen ulke hic alay kuramiyordu, dunya fiyatlari da
+// savas talebini hic gormuyordu.
 export function canRecruit(world, nation, typeId) {
-  const id = resolveTypeId(typeId);
-  ensureMilitaryEconomy(nation);
-  return Object.entries(recruitmentEquipmentCost(id))
-    .every(([equipmentId, amount]) => equipmentStock(nation, equipmentId) >= amount)
-    && Boolean(recruitmentSource(world, nation, id));
+  return Boolean(recruitmentSource(world, nation, resolveTypeId(typeId)));
+}
+
+/** Siparislerin henuz karsilanmamis teçhizati: aile -> miktar. */
+export function trainingShortfall(nation) {
+  const out = {};
+  for (const item of nation?.training?.queue ?? []) {
+    for (const [id, amount] of Object.entries(item.missing ?? {})) {
+      if (amount > 0) out[id] = (out[id] ?? 0) + amount;
+    }
+  }
+  return out;
+}
+
+/** Depoda bulunani siparisin eksigine aktarir; eksik kaldiysa false. */
+function fillOrder(nation, item) {
+  let complete = true;
+  for (const [id, need] of Object.entries(item.missing ?? {})) {
+    if (need <= 0) continue;
+    const take = Math.min(need, equipmentStock(nation, id));
+    if (take > 0) {
+      setEquipmentStock(nation, id, equipmentStock(nation, id) - take);
+      (item.equipment ??= {})[id] = (item.equipment[id] ?? 0) + take;
+      item.missing[id] = need - take;
+    }
+    if (item.missing[id] > 1e-9) complete = false;
+    else delete item.missing[id];
+  }
+  return complete;
 }
 
 /**
@@ -417,16 +446,6 @@ export function recruitBlockers(game, nation, typeId, options = {}) {
       text: `Treasury short: ${cost.gold} needed, ${Math.floor(nation.gold ?? 0)} on hand.`,
     });
   }
-  ensureMilitaryEconomy(nation);
-  for (const [equipmentId, amount] of Object.entries(recruitmentEquipmentCost(id))) {
-    const stock = equipmentStock(nation, equipmentId);
-    if (stock >= amount) continue;
-    blockers.push({
-      id: `equipment:${equipmentId}`,
-      text: `${MILITARY_EQUIPMENT[equipmentId]?.name ?? equipmentId} short:`
-        + ` ${amount} needed, ${stock.toFixed(1)} in stock.`,
-    });
-  }
   if (!source) {
     blockers.push({
       id: 'source',
@@ -453,9 +472,15 @@ export function queueRecruit(game, nation, typeId) {
   if (!source) return null;
   const cost = UNIT_COSTS[id];
   if (cost && !pay(nation, cost)) return null;
-  const equipment = { ...recruitmentEquipmentCost(id) };
-  for (const [equipmentId, amount] of Object.entries(equipment)) {
-    setEquipmentStock(nation, equipmentId, equipmentStock(nation, equipmentId) - amount);
+  // Depodan alinabilen alinir, eksik siparise yazilir ve pazardan gelir.
+  ensureMilitaryEconomy(nation);
+  const equipment = {};
+  const missing = {};
+  for (const [equipmentId, amount] of Object.entries(recruitmentEquipmentCost(id))) {
+    const take = Math.min(amount, Math.max(0, equipmentStock(nation, equipmentId)));
+    setEquipmentStock(nation, equipmentId, equipmentStock(nation, equipmentId) - take);
+    equipment[equipmentId] = take;
+    if (amount - take > 1e-9) missing[equipmentId] = amount - take;
   }
   const training = ensureTraining(nation);
   const item = {
@@ -467,6 +492,7 @@ export function queueRecruit(game, nation, typeId) {
     r: source.r,
     gold: cost?.gold ?? 0,
     equipment,
+    missing,
     queuedAt: game.turns?.turn ?? world.turn ?? 0,
     // Bu hafta ilerleyemiyorsa nedeni: 'capacity' (kışla dolu) ya da
     // 'deploy' (eğitim bitti, çıkacak yer/insan yok).
@@ -553,6 +579,11 @@ export function runTraining(game) {
     let slots = 0;
     for (const item of training.queue) {
       if (item.progress >= item.weeks) continue;
+      // Teçhizati gelmemis alay kisla yeri tutmaz; pazardan gelince baslar.
+      if (!fillOrder(nation, item)) {
+        item.waiting = 'equipment';
+        continue;
+      }
       if (slots >= capacity) {
         item.waiting = 'capacity';
         continue;

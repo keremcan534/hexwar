@@ -5700,6 +5700,11 @@ body.screen-open .notify-stack.open .notify-card { display: grid; }
 
 .ledger-row.tax { grid-template-columns: auto auto minmax(0, 1fr) auto; }
 
+/* Resimsiz satir (defter kalemi) iki cocukla gelir: orta blok `auto` ilk
+   sutuna dusup nowrap notun genisligine buyuyordu ve tutar kutusu panelin
+   disina itiliyordu (Administration satiri). Orta blok ilk iki sutunu kaplar. */
+.ledger-row > .ledger-mid:first-child { grid-column: 1 / 3; }
+
 .ledger-pie {
   width: 30px;
   height: 30px;
@@ -10747,6 +10752,7 @@ body.screen-open .alert-pop { display: none; }
 }
 
 .tax-hold:hover { color: var(--text); }
+.tax-hold:disabled { opacity: 0.45; cursor: default; }
 .tax-hold.safe.on { color: var(--green); border-color: var(--green); }
 .tax-hold.edge.on { color: var(--red); border-color: var(--red); }
 

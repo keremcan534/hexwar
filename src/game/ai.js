@@ -1,9 +1,7 @@
 // Basit ülke yapay zekâsı: sınıra yürü, toprak al, komşudaki düşmana vur.
 // Amaç zekâ değil, dünyanın canlı hissettirmesi; strateji katmanı sonra gelir.
 
-import {
-  CITY_COST, UNIT_COSTS, canAfford, canFoundCity,
-} from './cities.js';
+import { UNIT_COSTS, canAfford } from './cities.js';
 import {
   MIN_WAR_TURNS, atWar, attackerCount, declareWar, hostile, hostileNations, nationStrength,
   recordWarProgress, relation, truceLeft,
@@ -290,7 +288,7 @@ function affordableUnit(game, nation, army) {
 }
 
 /**
- * Harcama önceliği: önce yeterli ordu, sonra yeni şehir, artan altınla yine ordu.
+ * Harcama önceliği: önce yeterli ordu, artan altınla yine ordu.
  * Hazine biriktirmek YZ'yi pasifleştirdiği için son adım önemli.
  */
 function spend(game, nation) {
@@ -331,15 +329,6 @@ function spend(game, nation) {
   // Do not spend the military-factory fund on another unit or local project.
   // runEconomicAI executes later in the same week and buys the missing line.
   if (uncoveredCriticalStock) return;
-
-  // Yeni şehir: gelirin asıl kaynağı, orduyu beslemekten önce gelir.
-  if (canAfford(nation, { gold: CITY_COST.gold + 25 })
-    && cities < 1 + nation.tiles / 45) {
-    const unit = world.units.find(
-      (u) => u.nationId === nation.id && canFoundCity(world, u.tile, nation.id),
-    );
-    if (unit) game.turns.foundCity(unit);
-  }
 
   // Ordu, erzak fazlasının beslediği kadar büyür; altın ikincil frendir.
   const target = desiredArmy(nation);

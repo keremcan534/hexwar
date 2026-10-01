@@ -34,7 +34,8 @@ import {
   MILITARY_EQUIPMENT,
   SOCIAL_PROGRAMS, buildFactory, closeFactory, factoryAtlas, upgradeFactory,
   debtCapacity, debtInterestRate, formatPopulation, populationOf,
-  applyTaxHolds, budgetBreakdown, setBudgetPolicy, setTaxHold, TAX_POLICY_CLASS, taxHold,
+  applyTaxHolds, applyTariffAim, budgetBreakdown, setBudgetPolicy, setTariffAim, setTaxHold,
+  TAX_POLICY_CLASS, taxHold,
   weeklyBalanceOf,
   setMilitaryProductionLine, socialSpendingCost, ensureProductionLine, supportProject,
   setFactoryPaused,
@@ -1520,17 +1521,41 @@ export class Screens {
      * kadar zorla, ama daha fazla degil".
      */
     const holdSwitch = (policy, cfg) => {
+      if (!TAX_POLICY_CLASS[policy]) return '';
       const th = cfg.thresholds;
-      if (!th) return '';
-      const chip = (mode, on, label, title) => (on
-        ? `<button class="tax-hold ${mode}${cfg.hold === mode ? ' on' : ''}"
-            data-tax-hold="${policy}" data-hold-mode="${mode}"
-            title="${esc(title)}">${label}</button>`
-        : '');
+      // IKI ANAHTAR HER ZAMAN DURUR. Esige ulasilamayan sinifta gizlenince
+      // oyuncu "bu sinifta neden hold/max yok" diye soruyordu; dugme kalir ve
+      // ne yapacagini soyler: sepet gelirin ustundeyse kilit orani tabana ceker.
+      const chip = (mode, label, title) => `<button class="tax-hold ${mode}${cfg.hold === mode ? ' on' : ''}"
+            data-tax-hold="${policy}" data-hold-mode="${mode}"${th ? '' : ' disabled'}
+            title="${esc(title)}">${label}</button>`;
+      if (!th) {
+        const idle = 'No taxable income in this class yet';
+        return `<span class="tax-hold-row">${chip('safe', 'hold', idle)}${chip('edge', 'max', idle)}</span>`;
+      }
+      const short = (rate) => `Even ${rate}% leaves them short of their basket — keeps this at the floor, ${rate}%`;
       return `<span class="tax-hold-row">${
-  chip('safe', th.comfortReachable, 'hold', `Keep this at ${th.comfort}% — the highest rate that still lets them afford their whole basket`)
+  chip('safe', 'hold', th.comfortReachable
+    ? `Keep this at ${th.comfort}% — the highest rate that still lets them afford their whole basket`
+    : short(th.comfort))
 }${
-  chip('edge', th.survivalReachable, 'max', `Keep this at ${th.survival}% — the highest rate before they fall below subsistence`)
+  chip('edge', 'max', th.survivalReachable
+    ? `Keep this at ${th.survival}% — the highest rate before they fall below subsistence`
+    : short(th.survival))
+}</span>`;
+    };
+
+    // GUMRUK HEDEFI: oran yerine niyet (economy.applyTariffAim). Ayni kilit
+    // dili: secili dugme yanar, ikinci tik birakir.
+    const aimSwitch = (cfg) => {
+      const chip = (aim, label, title) => `<button class="tax-hold aim${cfg.aim === aim ? ' on' : ''}"
+            data-tariff-aim="${aim}" title="${esc(title)}">${label}</button>`;
+      return `<span class="tax-hold-row">${
+  chip('import', 'import', 'Free trade: the tariff goes to 0% (or the lowest your government allows). Imports get cheaper, tariff revenue disappears.')
+}${
+  chip('balanced', 'balanced', 'A revenue tariff: 25% (within what your government allows). Some income, some protection.')
+}${
+  chip('export', 'export', 'Protection: the tariff goes to 50% (or your government\u2019s ceiling). Home industry is shielded, imported goods cost more.')
 }</span>`;
     };
 
@@ -1545,16 +1570,18 @@ export class Screens {
         : '';
     };
 
-    const control = (policy, label, picto, cfg, amount, breakdown) => `
+    // `step`/`band`: para basma 0-10 araliginda tek puanla oynar ve parti
+    // bandi tasimaz; yoksa "ruling party allows 0-10%" diye yanlis yazardi.
+    const control = (policy, label, picto, cfg, amount, breakdown, { step = 5, limit = true } = {}) => `
       <div class="ledger-row">
         <span class="ledger-picto">${picto}</span>
         <span class="ledger-mid">
           <span class="ledger-label">
             <span class="ledger-what" data-tip="budget" data-tip-arg="${esc(policy)}" tabindex="0"
               >${esc(label)}<i class="ledger-hint" aria-hidden="true">?</i></span>
-            <b>${cfg.value}%</b>${holdSwitch(policy, cfg)}</span>
-          ${hslider(policy, cfg.value, cfg.min, cfg.max, 5, cfg)}
-          ${band(cfg.min, cfg.max)}
+            <b>${cfg.value}%</b>${holdSwitch(policy, cfg)}${policy === 'tariff' ? aimSwitch(cfg) : ''}</span>
+          ${hslider(policy, cfg.value, cfg.min, cfg.max, step, cfg)}
+          ${limit ? band(cfg.min, cfg.max) : ''}
           <small class="ledger-note">${breakdown}</small>
         </span>
         ${vbox(amount)}
@@ -1655,9 +1682,22 @@ export class Screens {
 
         ${control('tariff', 'Tariff', LEDGER.tariff, c.tariff, c.tariff.revenue,
     `imports \u00a3${c.tariff.imports.toFixed(1)} \u00b7 revenue \u00a3${c.tariff.revenue.toFixed(1)}`
-        + ` \u00b7 imported goods cost <b>+${c.tariff.priceEffect}%</b>`)}
+        + ` \u00b7 imported goods cost <b>+${c.tariff.priceEffect}%</b>`
+        + ` \u00b7 trade balance ${c.tariff.tradeBalance >= 0 ? '+' : '\u2212'}\u00a3${Math.abs(c.tariff.tradeBalance).toFixed(1)}`
+        + (c.tariff.aim ? ` \u00b7 aim <b>${c.tariff.aim}</b>` : ''))}
 
-        ${view.incomeRows.filter((r) => r.id !== 'tax' && r.id !== 'tariff')
+        ${c.printing ? control('printing', 'Money printing', LEDGER.treasury, c.printing,
+    c.printing.minted,
+    `mints <b>${c.printing.value}%</b> of GDP \u00a3${c.printing.gdp.toFixed(1)}`
+        + ` \u00b7 inflation <b>${(c.printing.inflation * 100).toFixed(1)}%</b>/yr`
+        + (Math.abs(c.printing.inflationTarget - c.printing.inflation) > 0.001
+          ? ` \u2192 ${(c.printing.inflationTarget * 100).toFixed(1)}%` : '')
+        + (c.printing.moodLower > 0.0005
+          ? ` \u00b7 satisfaction <b>\u2212${(c.printing.moodLower * 100).toFixed(1)}</b>` : '')
+        + projectedNote({ actual: c.printing.minted, projected: c.printing.projected }),
+    { step: 1, limit: false }) : ''}
+
+        ${view.incomeRows.filter((r) => !['tax', 'tariff', 'printing'].includes(r.id))
     .map((r) => row(r.label, r.amount, LEDGER_NOTES[r.id] ?? '')).join('')}
 
         <div class="ledger-total"><span>Total income</span>
@@ -2489,6 +2529,17 @@ export class Screens {
         this.refresh();
       };
     }
+    for (const chip of this.el.body.querySelectorAll('[data-tariff-aim]')) {
+      chip.onclick = () => {
+        const aim = chip.dataset.tariffAim;
+        setTariffAim(me, me.economy?.tariffAim === aim ? null : aim);
+        // Secim aninda uygulanir; haftalik tikte de ayni oranda tutulur.
+        applyTariffAim(me);
+        this.game.recomputeEconomy?.();
+        this.game.emit?.('economy');
+        this.refresh();
+      };
+    }
     for (const pin of this.el.body.querySelectorAll('[data-tax-set]')) {
       pin.onclick = (event) => {
         event.preventDefault();
@@ -2531,6 +2582,9 @@ export class Screens {
       };
       input.onchange = () => {
         // TEK AYAR KAPISI — YZ de ayni fonksiyonu cagirir (bkz. §23/§24).
+        // Elle cekilen gumruk hedefi birakir; yoksa haftalik tik oyuncunun
+        // sectigi orani sessizce geri iterdi.
+        if (input.dataset.policy === 'tariff') setTariffAim(me, null);
         setBudgetPolicy(me, input.dataset.policy, Number(input.value));
         game.recomputeEconomy();
         game.emit('economy', me.economy);

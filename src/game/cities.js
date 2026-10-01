@@ -9,10 +9,6 @@ import { regimentCount, upkeepWeight } from './units.js';
 import { controllerOf } from './control.js';
 import { settle } from './treasury.js';
 
-/** Yeni şehir kurma bedeli ve şehirler arası asgari mesafe. */
-export const CITY_COST = { gold: 60 };
-export const CITY_MIN_DISTANCE = 4;
-
 /** Şehrin işçi yerleştirebileceği yarıçap. */
 export const WORK_RADIUS = 2;
 
@@ -193,15 +189,6 @@ export function growCities(world) {
     const culture = city.tile.culture;
     city.pops[culture] = (city.pops[culture] ?? 0) + 1;
   }
-}
-
-/** Bir karede şehir kurulabilir mi? (kendi toprağın, karada, şehirlerden uzakta) */
-export function canFoundCity(world, tile, nationId) {
-  if (!tile || tile.city || !tile.terrain.passable || tile.owner !== nationId
-    || controllerOf(tile) !== nationId) return false;
-  return world.cities.every(
-    (c) => world.wrapDistance(c.tile.q, c.tile.r, tile.q, tile.r) >= CITY_MIN_DISTANCE,
-  );
 }
 
 /**

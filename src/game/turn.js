@@ -3,7 +3,7 @@
 import { makeRng } from '../core/rng.js';
 import { settle } from './treasury.js';
 import {
-  UNIT_TYPES, advanceEntrenchment, clearPath, createUnit, placeUnit, refreshArmy,
+  UNIT_TYPES, advanceEntrenchment, createUnit, placeUnit, refreshArmy,
   regimentCount, removeUnit, resetUnitIds, stackFull,
 } from './units.js';
 import {
@@ -23,8 +23,7 @@ import {
 import { checkVictory } from './hegemony.js';
 import { executeOrders } from './orders.js';
 import {
-  CITY_COST, assignAllWorkers, canAfford, canFoundCity,
-  cityName, collectProvinceTotals, createCity, growCities, nationBudget, pay,
+  assignAllWorkers, cityName, collectProvinceTotals, createCity, growCities, nationBudget,
 } from './cities.js';
 import {
   beginEconomy, finishEconomy, initEconomy, reconcilePopulation, runNationEconomy,
@@ -102,10 +101,6 @@ export class TurnManager {
     // sayaci bir ileri atiyor, zari tuketiyordu; ulke sayisi azalmissa
     // command.js'te TypeError ile cokuyordu (olculdu).
     this.turnJob = null;
-    // Kullanilmis sehir adlari da dunyaya aittir: tasinirsa ad secici zari
-    // baska yerden ceker ve ayni tohum baska bir oyun olur (olculdu: ikinci
-    // dunyada 6 yinelenen ad, farkli hazineler).
-    this.usedCityNames = null;
     this.rng = makeRng(`${world.seed}-turns`);
     world.turn = 1;
     initRelations(world);
@@ -210,25 +205,6 @@ export class TurnManager {
     }
     this.game.emit('units', this.game.selectedUnit);
     return item;
-  }
-
-  /** Birimin durduğu karede yeni şehir kurar. */
-  foundCity(unit) {
-    const world = this.world;
-    const nation = world.nations[unit.nationId];
-    if (!canAfford(nation, CITY_COST)) return null;
-    if (!canFoundCity(world, unit.tile, unit.nationId)) return null;
-    pay(nation, CITY_COST);
-    this.usedCityNames = this.usedCityNames ?? new Set(world.cities.map((c) => c.name));
-    const city = createCity(world, unit.tile, unit.nationId, cityName(this.rng, this.usedCityNames));
-    clearPath(unit);
-    this.game.renderer.invalidateCache();
-    if (unit.nationId === this.playerNation) {
-      this.addLog(`${city.name} founded.`, { kind: 'CITY', tile: city.tile });
-    }
-    this.game.emit('units', this.game.selectedUnit);
-    this.game.requestRender();
-    return city;
   }
 
   /**

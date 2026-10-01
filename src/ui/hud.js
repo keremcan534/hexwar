@@ -2,7 +2,7 @@
 // Oyun mantığı burada yok; sadece Game'i sürer ve olaylarını dinler.
 
 import {
-  CITY_COST, UNIT_COSTS, canAfford, canFoundCity, formatCost, pay,
+  UNIT_COSTS, canAfford, formatCost, pay,
 } from '../game/cities.js';
 import {
   UNIT_TYPES, isMoving, maxHpOf, menUnderArms, organizationOf, regimentCount,
@@ -1422,9 +1422,9 @@ export class Hud {
   }
 
   /**
-   * Karede yapılabilecek eylemler: şehirde birim al, birimle şehir kur.
+   * Karede yapılabilecek eylemler: şehirde birim al, orduya emir ver.
    * `armyOnly`: ordu seçiliyken yalnız ordunun eylemleri (komutan, cephe,
-   * emir, şehir kurma); karenin şehir/diplomasi/toplanma satırları düşer.
+   * emir); karenin şehir/diplomasi/toplanma satırları düşer.
    */
   actionsHtml(tile, { armyOnly = false } = {}) {
     const { game } = this;
@@ -1536,11 +1536,6 @@ export class Hud {
       </div>`);
     }
 
-    const unit = game.selectedUnit;
-    if (unit && unit.tile === tile && !isMoving(unit) && canFoundCity(game.world, tile, unit.nationId)) {
-      const disabled = canAfford(me, CITY_COST) ? '' : 'disabled';
-      rows.push(`<div class="action-row"><button class="action wide" data-found="1" ${disabled}>Found City · ${formatCost(CITY_COST)}</button></div>`);
-    }
     return rows.join('');
   }
 
@@ -1748,8 +1743,6 @@ export class Hud {
         }
       };
     }
-    const found = this.el.sheetBody.querySelector('[data-found]');
-    if (found) found.onclick = () => game.turns.foundCity(game.selectedUnit);
     const war = this.el.sheetBody.querySelector('[data-war]');
     // IKI TIK. Tek tikla savas ilan etmek, "Open Dossier"in hemen altinda
     // duran bir dugme icin fazla ucuzdu (kor oyun testi). Program kartiyla

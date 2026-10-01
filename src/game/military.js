@@ -303,6 +303,11 @@ export function trainingRows(game, nation) {
       queued: !done && item.waiting === 'capacity',
       // Askersizleştirme antlaşması sırayı dondurur (bkz. recruitment.js).
       frozen: item.waiting === 'treaty',
+      // Teçhizat dünya pazarından bekleniyor (recruitment.queueRecruit).
+      awaiting: item.waiting === 'equipment'
+        ? Object.entries(item.missing ?? {}).filter(([, v]) => v > 1e-9)
+          .map(([id, v]) => `${v.toFixed(1)} ${MILITARY_EQUIPMENT[id]?.name ?? id}`).join(', ')
+        : null,
       index,
       first: index === 0,
       last: index === queue.length - 1,

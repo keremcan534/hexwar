@@ -197,7 +197,19 @@ refah. Maliyetleri nüfusla birlikte büyür. Eğitim işgücünü niteliklendir
 aynı nüfusla daha çok fabrika doldurur, sağlık yaşam standardını yükseltir,
 refah bütün sınıfların memnuniyetini artırır.
 
-İmparatorluk büyüdükçe idari gider de artar: şehir sayısı süperdoğrusal,
+Hazine kuruduğunda **para basılabilir**: kaydıraç haftalık GSYH'nin %0–10'u
+kadar parayı hazineye yazar. Ödeyeni yoktur, bedelini enflasyon öder —
+enflasyon iki ayda yükselir, basma bitince yarım yılda söner ve bütün
+sınıfların memnuniyetinden (üst sınıfta yarısı) düşer. YZ ve Budget AUTO
+hazine kurudukça en çok iki puan basar.
+
+Sınıf vergilerinde *hold* (sepeti karşılatan en yüksek oran) ve *max*
+(geçim tabanından önceki en yüksek oran) kilitleri her zaman görünür;
+gümrükte ise oran yerine niyet seçilebilir: *import* %0, *balanced* %25,
+*export* %50.
+
+Yeni şehir kurulmaz; şehirler kuruluşta (başkent, büyük güçlerde ikinci kent)
+ve fetihle gelir. İmparatorluk büyüdükçe idari gider de artar: şehir sayısı süperdoğrusal,
 province sayısı ve şehirlerin başkente uzaklığı doğrusal olarak haftalık altın
 yer. Bu kalem Lojistik/Ülke ekranında ayrı satır olarak görünür.
 
@@ -278,6 +290,9 @@ Alay artık düğmeye basılan hafta belirmez, **siparişe** dönüşür:
 
 - Altın ve teçhizat sıraya girerken düşer, insan gücü alay sahaya çıkarken
   toplanır. İptal, harcanmamış payı geri verir.
+- Depoda teçhizat yoksa sipariş yine verilir (Victoria usulü): eksik dünya
+  pazarından alınır, kimse üretmiyorsa talep fiyatı yukarı iter; alay
+  teçhizatı gelene kadar kışla yeri tutmadan bekler.
 - Eğitim süresi kola göredir (piyade 8, süvari 10, topçu ve uçak 12, zırhlı 14,
   gemi 16 hafta) ve **askerî bütçeyle ölçeklenir**: maaş ile ikmal tamsa ilan
   edilen süre, ikisi de dipteyse iki katından fazlası.
@@ -285,7 +300,7 @@ Alay artık düğmeye basılan hafta belirmez, **siparişe** dönüşür:
   Öncelik okları kapasitenin kime gideceğini değiştirir.
 - Kuyruk kendiliğinden eyaletlere yayılır: bir kışlaya söz verilen asker bir
   sonraki siparişte o kümeyi daha az çekici yapar.
-- Kurulamayan kol sebebini yazar — hangi teçhizat eksik, hazine kaç altın
+- Kurulamayan kol sebebini yazar — hazine kaç altın
   yetmiyor, hangi antlaşma yasaklıyor, hangi yıl açılıyor.
 
 Subay kadrosunun iki kolu vardır: general cephe tutar, **amiral** filoya komuta

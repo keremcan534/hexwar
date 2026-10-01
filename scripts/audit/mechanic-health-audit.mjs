@@ -54,7 +54,14 @@ const NOISE = {
 function measure(nation) {
   const e = nation.economy;
   return {
-    gold: nation.gold ?? 0,
+    // NET HAZINE: altin - borc. Yalniz altin olculdugunde iki kol da borca
+    // dustugunde ikisi de 0'da kirpiliyor, fark borca kayip gorunmuyordu
+    // (olculdu, 2026-10: gumruk mh2'de iki kolda altin 0, borc 1327 vs
+    // 1133; kaldirac 1.22x'ten 0.78x'e "dustu"). Borclanma hazineye giren
+    // paradir (L9); ayni miktarin iki yarisi birlikte sayilir. Esik (50.8)
+    // kirpilan seriyle olculmustu: 0 ile 37 arasi %100 sayiliyordu, yani
+    // net seride muhtemelen YUKSEK kalir — hukum muhafazakar tarafta.
+    gold: (nation.gold ?? 0) - Math.max(0, nation.debt ?? 0),
     gdp: e.gdp ?? 0,
     pop: e.population ?? 0,
     needs: e.needsMet ?? 0,

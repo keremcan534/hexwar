@@ -61,6 +61,7 @@ export function registerTooltips(game) {
       armyFunding: 'Army funding',
       education: 'Education',
       welfare: 'Welfare',
+      printing: 'Money printing',
     }[arg] ?? arg;
 
     // Vergi: matrah × oran = tahsilat. Üç sayı da dökümden gelir; çarpım
@@ -127,6 +128,28 @@ export function registerTooltips(game) {
           { label: 'Supply', value: pct(cfg.supply) },
         ],
         footer: `Your government allows ${cfg.min}–${cfg.max}%.`,
+      };
+    }
+
+    if (arg === 'printing') {
+      const pctOf = (v) => `${(v * 100).toFixed(1)}%`;
+      return {
+        type: 'breakdown',
+        title: `${label} — ${cfg.value}% of GDP`,
+        value: coin(cfg.minted),
+        text: cfg.explain,
+        rows: [
+          { label: 'GDP / week', value: coin(cfg.gdp) },
+          { label: 'Minted last week', value: coin(cfg.minted), tone: 'good' },
+          { label: `Next week at ${cfg.value}%`, value: `≈${coin(cfg.projected)}` },
+        ],
+        effects: [
+          { label: 'Inflation now', value: `${pctOf(cfg.inflation)}/yr`, tone: cfg.inflation > 0.001 ? 'bad' : undefined },
+          { label: `Inflation heads to`, value: `${pctOf(cfg.inflationTarget)}/yr` },
+          { label: 'Workers & middle class', value: `−${(cfg.moodLower * 100).toFixed(1)} satisfaction`, tone: cfg.moodLower > 0.0005 ? 'bad' : undefined },
+          { label: 'Upper class', value: `−${(cfg.moodUpper * 100).toFixed(1)} satisfaction`, tone: cfg.moodUpper > 0.0005 ? 'bad' : undefined },
+        ],
+        footer: 'Inflation rises within two months of printing and takes about half a year to fade.',
       };
     }
 

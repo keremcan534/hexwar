@@ -345,12 +345,14 @@ function buildColumn(state, options, summary) {
 function queueRow(row) {
   const state = row.frozen
     ? 'frozen — a peace treaty forbids raising divisions'
-    : row.stalled
-      ? 'trained — no province can spare the men or the ground'
-      : row.queued
-        ? 'waiting for a training slot'
-        : `${row.left} ${row.left === 1 ? 'week' : 'weeks'} left`;
-  return `<div class="mil-queue-row ${row.stalled || row.frozen ? 'is-stalled' : ''} ${row.queued ? 'is-waiting' : ''}"
+    : row.awaiting
+      ? `waiting for equipment — buying ${row.awaiting} abroad`
+      : row.stalled
+        ? 'trained — no province can spare the men or the ground'
+        : row.queued
+          ? 'waiting for a training slot'
+          : `${row.left} ${row.left === 1 ? 'week' : 'weeks'} left`;
+  return `<div class="mil-queue-row ${row.stalled || row.frozen ? 'is-stalled' : ''} ${row.queued || row.awaiting ? 'is-waiting' : ''}"
     title="${esc(`${row.name} — ${row.province} (${row.region})\n${state}`)}">
     <i class="mil-build-mark" aria-hidden="true">${counter(row.typeId)}</i>
     <div class="mil-queue-text">

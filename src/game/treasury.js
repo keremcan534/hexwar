@@ -29,6 +29,8 @@ export const LEDGER_LINES = {
   state: { kind: 'income', label: 'State production' },
   settlement: { kind: 'income', label: 'External settlement' },
   treaty: { kind: 'income', label: 'Treaty obligations' },
+  // Odeyeni olmayan TEK gelir; bedeli enflasyondur (economy.js PRINTING).
+  printing: { kind: 'income', label: 'Money printing' },
 
   army: { kind: 'expense', label: 'Army' },
   administration: { kind: 'expense', label: 'Administration' },

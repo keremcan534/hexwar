@@ -810,7 +810,7 @@ export const MILITARY_EQUIPMENT_IDS = Object.keys(MILITARY_EQUIPMENT);
  * kampanya 1900'de biter. Vapurun depodan ceken birimi hic yok. YZ 31 silah
  * hattinin 16-19'unu bu uc aileye ceviriyor, iki yilda ~7 bin altinlik alim
  * yapiyordu; ai.js `spend()` kapisi da ilk hafta 30/30, iki yilda
- * ulus-haftalarin %88'inde sehir kurmayi ve alay siparisini durduruyordu.
+ * ulus-haftalarin %88'inde alay siparisini durduruyordu.
  */
 export function equipmentInService(nation, equipmentId, turn) {
   const users = MILITARY_EQUIPMENT[equipmentId]?.users;
@@ -1431,6 +1431,8 @@ export function initNationEconomy(world, nation) {
     // yone bakiyor, ayni parayla odeniyor, ayni parti bandina takiliyordu:
     // iki kaydirac tek karardi.
     armyFunding: 100,
+    printing: 0,
+    inflation: 0,
     military: { ...DEFAULT_MILITARY },
     factories: [],
     cohortPopulation: Math.max(10, Math.floor(population / POPULATION_COHORT)) * POPULATION_COHORT,
@@ -1540,6 +1542,9 @@ export function ensureEconomy(world) {
     // Eski kayıt göçü: tek armySpending kaydıracı iki yeni kaydırağa açılır,
     // oyuncunun ayarı iki tarafta da korunmuş olur. Yönetim varsayılan tam.
     nation.economy.armyFunding ??= 100;
+    // Para basma sonradan geldi: eski kayit basmamis, enflasyonsuz acilir.
+    if (!Number.isFinite(nation.economy.printing)) nation.economy.printing = 0;
+    if (!Number.isFinite(nation.economy.inflation)) nation.economy.inflation = 0;
     // Eski kayit tek oranla geliyorsa uc orana acilir (save v17).
     const economy = nation.economy;
     if (!economy.tax || typeof economy.tax !== 'object') {
@@ -1925,9 +1930,46 @@ export function upgradeOutlook(nation, factory) {
  *   armyFunding+ hazirlik         - hazine
  *   education  + arastirma        - hazine
  *   welfare    + memnuniyet/buyume- hazine
+ *   printing   + hazine           - enflasyon (memnuniyet, istikrar)
  * ==========================================================================
  */
-export const BUDGET_POLICIES = ['taxLower', 'taxMiddle', 'taxUpper', 'tariff', 'armyFunding', 'education', 'welfare'];
+export const BUDGET_POLICIES = ['taxLower', 'taxMiddle', 'taxUpper', 'tariff', 'armyFunding', 'education', 'welfare', 'printing'];
+
+/**
+ * PARA BASMA — odeyeni olmayan tek gelir; bedeli enflasyondur.
+ *
+ * Kaydirac haftalik GSYH'nin yuzdesidir: her hafta GSYH'nin %p'si kadar para
+ * basilip hazineye yazilir (haftalik GSYH'nin %p'si = yillik GSYH'nin %p'si).
+ * Nufusa degil GSYH'ye bagli, cunku paraya olan talep ekonominin hacmiyle
+ * buyur: ayni oran zengin ulkede daha cok para getirir, ayni enflasyonla.
+ *
+ * Enflasyon bir STOKTUR: basim surdukce hedefine (inflationTarget) yaklasir,
+ * basim durunca yavas soner. Yukselis ~8 hafta, sonme ~26 hafta: acil durumda
+ * basilan para hemen gelir, faturasi aylarca odenir. Hedef dis bukey: az basim
+ * ucuz, cok basim pahali (1 → %2.4/yil, 3 → %9.6, 5 → %20, 10 → %60).
+ *
+ * Bedel yeni bir kanal UYDURMAZ: memnuniyetten duser, memnuniyet de zaten
+ * istikrari, nufus artisini, sinif yukselmesini ve parti destegini besliyor.
+ * Ucretli ve birikimli siniflar tam oder; ust sinif toprak ve tesis tutar,
+ * yarisini oder.
+ */
+export const PRINTING_MAX = 10;
+const INFLATION_RISE = 1 / 8;
+const INFLATION_FALL = 1 / 26;
+export const INFLATION_MOOD = 0.35;
+const INFLATION_CLASS_WEIGHT = { lower: 1, middle: 1, upper: 0.5 };
+
+/** Bu basim oraninin enflasyonu zamanla tasidigi yer (yillik, 0-1). */
+export function inflationTarget(printing) {
+  const p = clamp(printing ?? 0, 0, PRINTING_MAX);
+  return 0.02 * p + 0.004 * p * p;
+}
+
+/** Enflasyonun bir sinifin memnuniyetinden dustugu pay (pozitif sayi). */
+export function inflationMood(nation, classId = 'lower') {
+  return clamp(nation?.economy?.inflation ?? 0, 0, 2) * INFLATION_MOOD
+    * (INFLATION_CLASS_WEIGHT[classId] ?? 1);
+}
 
 /** Kaydirac adi -> sinif kimligi. */
 export const TAX_POLICY_CLASS = { taxLower: 'lower', taxMiddle: 'middle', taxUpper: 'upper' };
@@ -2004,6 +2046,7 @@ export function budgetPolicyLimits(nation) {
     armyFunding: { min: party.armySpendingMin, max: party.armySpendingMax },
     education: { min: 0, max: 100 },
     welfare: { min: 0, max: 100 },
+    printing: { min: 0, max: PRINTING_MAX },
   };
 }
 
@@ -2095,6 +2138,47 @@ export function taxHold(nation, classId) {
   return nation?.economy?.taxHold?.[classId] ?? null;
 }
 
+/**
+ * GUMRUK HEDEFI — vergi kilidinin ticaret karsiligi. Oyuncu bir oran degil
+ * bir NIYET secer, sistem her hafta ayni kapidan (setBudgetPolicy) tutar:
+ *
+ *   'import'   — serbest ticaret, %0: ithal girdi ve sepet ucuzlar, gumruk
+ *                geliri kalkar.
+ *   'balanced' — gelir gumrugu, %25: biraz gelir, biraz koruma.
+ *   'export'   — koruma, %50 (PROTECTIONIST_TARIFF): ic sanayi korunur,
+ *                ithal mal pahalanir.
+ * Hepsi parti bandina kirpilir.
+ *
+ * "Dengeli"yi dis hesaba baglamak OLCULDU VE ALINMADI: acikta iki puan/hafta
+ * artan gumruk 58'den 84'e cikti, dis hesap -1 civarinda hic kimildamadi
+ * (acigin cogu stratejik ithalat). Etkisiz bir geri besleme tavana giden bir
+ * circir olurdu; sabit hedef ne yaptigini dogru soyler.
+ *
+ * Niyet secildiginde hukumetin ticaret devri (doktrin suruklemesi) durur;
+ * ikisi ayni kaydiraci ters yone itmesin.
+ */
+/** Korumaci YZ hukumetinin surundugu gumruk (%). */
+const PROTECTIONIST_TARIFF = 50;
+export const TARIFF_AIMS = { import: 0, balanced: 25, export: PROTECTIONIST_TARIFF };
+
+export function tariffAim(nation) {
+  return nation?.economy?.tariffAim ?? null;
+}
+
+export function setTariffAim(nation, aim) {
+  if (!nation?.economy) return false;
+  nation.economy.tariffAim = aim in TARIFF_AIMS ? aim : null;
+  return true;
+}
+
+/** Secili niyetin oranini kaydiraca yazar (parti bandina kirpilmis). */
+export function applyTariffAim(nation) {
+  const aim = nation?.economy?.tariffAim;
+  if (!(aim in TARIFF_AIMS)) return false;
+  const limits = budgetPolicyLimits(nation).tariff;
+  return setBudgetPolicy(nation, 'tariff', clamp(TARIFF_AIMS[aim], limits.min, limits.max));
+}
+
 export function setTaxHold(nation, classId, mode) {
   if (!nation?.economy) return false;
   const holds = nation.economy.taxHold ?? (nation.economy.taxHold = {});
@@ -2110,8 +2194,8 @@ export function applyTaxHolds(nation) {
     if (!mode) continue;
     const th = classTaxThresholds(nation, classId);
     if (!th) continue;
-    const reachable = mode === 'safe' ? th.comfortReachable : th.survivalReachable;
-    if (!reachable) continue;
+    // Ulasilamayan esik tabana kirpilmis gelir (classTaxThresholds): sepet
+    // gelirin ustundeyse kilit orani tabanda tutar, sessizce atlamaz.
     const policy = Object.keys(TAX_POLICY_CLASS).find((id) => TAX_POLICY_CLASS[id] === classId);
     if (policy) setBudgetPolicy(nation, policy, mode === 'safe' ? th.comfort : th.survival);
   }
@@ -2244,6 +2328,9 @@ export function budgetBreakdown(world, nation) {
         revenue: line('tariff'),
         // Ithal malin sepetteki fiyatini bu kadar buyutur (populationDemand).
         priceEffect: economy.tariff ?? 0,
+        aim: tariffAim(nation),
+        // Dis hesap: 'balanced' hedefinin baktigi defter satiri.
+        tradeBalance: line('settlement'),
       },
       armyFunding: {
         value: economy.armyFunding ?? 100,
@@ -2294,6 +2381,23 @@ export function budgetBreakdown(world, nation) {
         // Nufus buyume carpani (provinces.js).
         growth: 1 + socialLevel(nation, 'welfare') * 0.35,
       },
+      printing: {
+        value: economy.printing ?? 0,
+        ...limits.printing,
+        explain: 'Print money to pay the state\u2019s bills. Each point mints 1% of '
+          + 'the economy\u2019s output (GDP) into the treasury every week. Nobody '
+          + 'pays it directly — prices pay it: inflation angers workers and savers '
+          + 'and lowers stability, and it fades only slowly after you stop.',
+        gdp: economy.gdp ?? 0,
+        // Gecen haftanin kapanmis satiri ve bugunku oranla gelecek hafta.
+        minted: line('printing'),
+        projected: Math.max(0, economy.gdp ?? 0) * (economy.printing ?? 0) / 100,
+        inflation: economy.inflation ?? 0,
+        inflationTarget: inflationTarget(economy.printing ?? 0),
+        // Memnuniyet formulundeki gercek terim (populationDemand).
+        moodLower: inflationMood(nation, 'lower'),
+        moodUpper: inflationMood(nation, 'upper'),
+      },
     },
     scale,
   };
@@ -2321,8 +2425,6 @@ export function budgetPolicyValue(nation, policy) {
  */
 const STRATEGIC_FACTORY_TYPES = new Set(['ARMS_FACTORY', 'AMMUNITION_FACTORY']);
 
-/** Korumaci YZ hukumetinin surundugu gumruk (%). */
-const PROTECTIONIST_TARIFF = 50;
 
 function applySubsidyPolicy(world, nation) {
   const wartime = world.nations.some(
@@ -3446,7 +3548,7 @@ function populationDemand(world, nation, market) {
       : unemployment * (classId === 'lower' ? UNEMPLOYMENT_MOOD : UNEMPLOYMENT_MOOD * 0.5);
     socialClass.satisfaction = clamp(
       0.35 + affordability * 0.5 - taxRate * 0.28 + welfare * 0.14
-        + lawMoodShift(nation, classId) - joblessBite,
+        + lawMoodShift(nation, classId) - joblessBite - inflationMood(nation, classId),
       0.08,
       0.95,
     );
@@ -3549,6 +3651,15 @@ function fiscalBalance(nation, baseOutputValue) {
     * lawModifiers(nation).socialBurden;
   if (mandated > 0) settle(nation, 'welfare', -mandated);
   economy.socialCost = socialSpendingCost(nation);
+
+  // PARA BASMA: bu haftanin GSYH'si x oran, birebir (ACCOUNTING_INVARIANTS L17).
+  const printing = clamp(economy.printing ?? 0, 0, PRINTING_MAX);
+  if (printing > 0) settle(nation, 'printing', Math.max(0, economy.gdp ?? 0) * printing / 100);
+  const target = inflationTarget(printing);
+  const inflation = Number.isFinite(economy.inflation) ? economy.inflation : 0;
+  economy.inflation = inflation
+    + (target - inflation) * (target > inflation ? INFLATION_RISE : INFLATION_FALL);
+  if (economy.inflation < 1e-4 && target === 0) economy.inflation = 0;
 }
 
 /** TEK BAKIYE TANIMI (dis dunya icin de: bkz. treasury.weeklyBalance). */
@@ -3886,7 +3997,7 @@ function adjustFiscalAI(nation, areas = FULL_FISCAL) {
   // Korumacı hükümet sanayisini kollar, serbest ticaretçi gümrüğü SIFIRA
   // indirir — tabana değil. Taban artık −50 (ithalat sübvansiyonu) ve oraya
   // sürüklenen YZ hazinesini kalıcı olarak ithalata akıtıyordu.
-  if (areas.trade) {
+  if (areas.trade && !economy.tariffAim) {
     // Korumaci hedef doktrinin duzeyidir, kaydiracin fiziksel tavani degil:
     // tavana (%100) suruklenen YZ ithalati ucte ikiye kesiyor ve 302 YZ
     // devletinin 298'i ayni %99+ gumrukte donuyordu (ai-audit patoloji
@@ -3910,8 +4021,24 @@ function adjustFiscalAI(nation, areas = FULL_FISCAL) {
       }
     }
   }
+  // PARA BASMA: iflasta bir puan acar, bollukta bir puan kapatir — oyuncuyla
+  // ayni kapi, ayni tavan. Hukumet enflasyonu %6 civarinda tutmayi secer
+  // (gumrukte PROTECTIONIST_TARIFF gibi bir tercih; kaydiracin siniri degil).
+  if (areas.budget) {
+    const printing = economy.printing ?? 0;
+    const next = broke && inflationTarget(printing + 1) <= AI_INFLATION_CEILING ? printing + 1
+      : (rich || easing) && printing > 0 ? printing - 1 : printing;
+    if (next !== printing && setBudgetPolicy(nation, 'printing', next)) {
+      areas.report?.('budget', `Money printing ${printing}% \u2192 ${next}% of GDP.`,
+        next > printing ? 'The treasury ran dry; the mint covers the gap.'
+          : 'The treasury recovered; the mint slows down.');
+    }
+  }
   if (areas.budget) adjustWarFiscalAI(nation);
 }
+
+/** YZ'nin (ve Budget AUTO'nun) katlanmayi sectigi en yuksek enflasyon hedefi. */
+const AI_INFLATION_CEILING = 0.06;
 
 /** YZ ulkeleri her kaldiraci kullanir; devirde alanlar ayri ayri acilir. */
 const FULL_FISCAL = { budget: true, trade: true, report: null };
@@ -4081,6 +4208,7 @@ function runEconomicAI(game, nation) {
   // Kilitler HER ZAMAN once uygulanir: devir kapaliyken de oyuncunun kendi
   // niyeti korunmali, acikken de YZ kilitlenmis kaydiraci bulmali.
   applyTaxHolds(nation);
+  applyTariffAim(nation);
   const budget = !player || delegationActive(nation, 'budget', turn);
   const trade = !player || delegationActive(nation, 'trade', turn);
   // Devlet sanayisi (tesis kurma, silah hatti) kendi anahtarindadir; insaat
@@ -4246,6 +4374,22 @@ export function armyWeeklyDemand(world, nation) {
   return { demand, fullDemand, landUnits, wartime };
 }
 
+/** Pazardan gelen teçhizati bekleyen alay siparislerine sirayla dagitir. */
+function deliverToOrders(nation, equipmentId, quantity) {
+  let left = quantity;
+  for (const item of nation.training?.queue ?? []) {
+    if (left <= 0) break;
+    const need = item.missing?.[equipmentId] ?? 0;
+    if (need <= 0) continue;
+    const give = Math.min(need, left);
+    item.missing[equipmentId] = need - give;
+    if (item.missing[equipmentId] <= 1e-9) delete item.missing[equipmentId];
+    (item.equipment ??= {})[equipmentId] = (item.equipment[equipmentId] ?? 0) + give;
+    left -= give;
+  }
+  return quantity - left;
+}
+
 function procureStrategicGoods(world) {
   // Tablodan türetilir. Elle yazılan iki kalemlik liste, tank/uçak/vapur
   // eklenince onlar için `undefined` döndürüyor ve hazineyi NaN yapıyordu.
@@ -4256,6 +4400,14 @@ function procureStrategicGoods(world) {
     if (!nation.alive) continue;
     nation.economy.importCost = 0;
     const military = ensureMilitaryEconomy(nation);
+    // Teçhizati eksik verilmis alay siparisleri (recruitment.queueRecruit).
+    // Kuyruk dogrudan okunur: recruitment.js'i import etmek dongu kurardi.
+    const ordered = {};
+    for (const item of nation.training?.queue ?? []) {
+      for (const [id, amount] of Object.entries(item.missing ?? {})) {
+        if (amount > 0) ordered[id] = (ordered[id] ?? 0) + amount;
+      }
+    }
     for (const id of MILITARY_EQUIPMENT_IDS) {
       const equipment = MILITARY_EQUIPMENT[id];
       const field = MILITARY_FIELD[id];
@@ -4273,17 +4425,28 @@ function procureStrategicGoods(world) {
           military[field.demand] ?? 0,
         )) * procurement,
       );
-      const shortage = Math.max(0, target - equipmentStock(nation, id));
-      if (shortage <= 0 || available[id] <= 0) continue;
+      // Siparisin eksigi depo tavanina takilmaz ve haftalik ithalat sinirini
+      // asar: alay bekliyor. Victoria'daki gibi: kimse uretmiyorsa da talep
+      // pazara yazilir ve fiyat tirmanir (asagida, karsilanmayan pay).
+      const orderGap = ordered[id] ?? 0;
+      const shortage = Math.max(0, target - equipmentStock(nation, id)) + orderGap;
+      if (shortage <= 0) continue;
       const tariffFactor = 1 + nation.economy.tariff / 100;
       const unitPrice = priceOf(world, id) * tariffFactor;
-      const affordable = nation.gold / Math.max(0.01, unitPrice);
-      const amount = Math.min(
-        equipment.importLimit, shortage, available[id], affordable,
-      );
+      const affordable = Math.max(0, nation.gold) / Math.max(0.01, unitPrice);
+      const amount = Math.max(0, Math.min(
+        equipment.importLimit + orderGap, shortage, available[id], affordable,
+      ));
+      // Bulunamayan siparis payi yine TALEPTIR: parasi olup mal bulamayan hane
+      // gibi fiyati yukari iter (populationDemand ile ayni kural).
+      const unmet = Math.max(0, orderGap - amount);
+      if (unmet > 0) addFlow(world.market, id, 'demand', unmet);
       if (amount <= 0) continue;
       const cost = amount * unitPrice;
-      setEquipmentStock(nation, id, equipmentStock(nation, id) + amount);
+      // Once bekleyen siparisler doldurulur, kalan depoya: depo tavani
+      // siparis malini kirpip parasi odenmis teçhizati yok etmesin.
+      const delivered = deliverToOrders(nation, id, Math.min(amount, orderGap));
+      setEquipmentStock(nation, id, equipmentStock(nation, id) + amount - delivered);
       military[field.imported] = amount;
       settle(nation, 'imports', -cost);
       nation.economy.importCost += cost;
