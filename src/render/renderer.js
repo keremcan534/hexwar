@@ -191,6 +191,12 @@ export const CACHE_ZOOM = 0.45;
  */
 const GRID_MIN_ZOOM = 0.55;
 /**
+ * Ordu seçiliyken çevresinde beliren yerel ızgaranın yarıçapı (hex). Hareket
+ * province grafiğine geçene dek (plan 3. adım) ordu hex hex yürür; ızgara
+ * kapalıyken oyuncu hedef kareyi göremiyordu. ~6 hex bir-iki haftalık yürüyüş.
+ */
+const ARMY_GRID_RADIUS = 6;
+/**
  * Ülke kenar gölgesi Canvas2D yedek yolunda: ülkenin yumuşak çokgenine
  * kırpılmış kademeli geniş darbeler (sınırda ~%24, BAND_REACH içinde söner).
  * GL yüzeyinde aynı gölgeyi shader uzaklık alanından çizer (bkz. surfaceGL).
@@ -2068,6 +2074,7 @@ export class Renderer {
     // "eyalet de secildi" diyordu (Kerem: asker seciliyken state secme bugu).
     // Orduyu gosteren isaret drawSelection'in halkasidir.
     const armySelected = (state.selection?.length ?? 0) > 0;
+    if (armySelected && !this.showGrid) this.drawArmyGrid(ctx, world, state.selection);
     // Izgara kapalıyken seçim ve imleç PROVINCE'i gösterir: hex çerçevesi,
     // gizlenen peteği tek karede geri getiriyordu. Province'i olmayan kare
     // (deniz) hex çerçevesiyle kalır — denizde yürüyüş hâlâ hex hex.
@@ -2080,7 +2087,8 @@ export class Renderer {
     }
     if (state.hovered && state.hovered !== state.selected) {
       const hovered = provinceOfTile(state.hovered);
-      if (hexMarks || hovered < 0) this.drawHighlight(ctx, state.hovered, 'rgba(255,255,255,0.45)', 2);
+      // Ordu seçiliyken imleç yürüyüş HEDEFİDİR ve hedef bir hextir.
+      if (hexMarks || armySelected || hovered < 0) this.drawHighlight(ctx, state.hovered, 'rgba(255,255,255,0.45)', 2);
       else if (hovered !== selectedProvince) this.drawProvinceHighlight(ctx, world, hovered, rect, true);
     }
     this.drawCities(ctx, world, rect);
@@ -3000,6 +3008,60 @@ export class Renderer {
     ctx.lineWidth = 1.5 / this.camera.zoom;
     ctx.strokeStyle = 'rgba(255,255,255,0.5)';
     ctx.stroke(path);
+  }
+
+  /**
+   * Seçili orduların çevresinde yerel hex ızgarası, uzaklıkla sönerek. Tam
+   * ızgara haritayı yeniden petek yapar; burada ızgara yalnız yürüyüşün
+   * hedeflendiği yerde bir araçtır. Halkalar seçim değişince bir kez kurulur.
+   */
+  drawArmyGrid(ctx, world, selection) {
+    let key = '';
+    for (const unit of selection) if (unit?.tile) key += `${unit.tile.q},${unit.tile.r};`;
+    let rings = this.armyGrid?.world === world && this.armyGrid.key === key ? this.armyGrid.rings : null;
+    if (!rings) {
+      // Çok kaynaklı BFS: birbirine yakın ordular tek ızgara paylaşır.
+      const dist = new Map();
+      let frontier = [];
+      for (const unit of selection) {
+        if (unit?.tile && !dist.has(unit.tile)) {
+          dist.set(unit.tile, 0);
+          frontier.push(unit.tile);
+        }
+      }
+      rings = [];
+      for (let d = 1; d <= ARMY_GRID_RADIUS && frontier.length; d++) {
+        const next = [];
+        const path = new Path2D();
+        for (const tile of frontier) {
+          for (const n of world.neighbors(tile)) {
+            if (!n || dist.has(n)) continue;
+            dist.set(n, d);
+            next.push(n);
+            // Deniz ızgara dışı (bkz. drawGrid).
+            if (!n.terrain.water) this.hexPath(path, n.x, n.y);
+          }
+        }
+        rings.push(path);
+        frontier = next;
+      }
+      // Halka 0 (ordunun karesi) da çizilir: kenarı komşularla ortak.
+      const own = new Path2D();
+      for (const [tile, d] of dist) if (d === 0 && !tile.terrain.water) this.hexPath(own, tile.x, tile.y);
+      rings.unshift(own);
+      this.armyGrid = { world, key, rings };
+    }
+    const zoom = this.camera.zoom;
+    ctx.save();
+    ctx.lineWidth = 1.1 / zoom;
+    ctx.lineJoin = 'round';
+    for (let d = 0; d < rings.length; d++) {
+      // Yakında okunur, kenarda sıfıra iner: ızgaranın bittiği yer çizgi olmasın.
+      const a = 0.34 * (1 - d / (ARMY_GRID_RADIUS + 1)) ** 1.4;
+      ctx.strokeStyle = `rgba(232, 222, 196, ${a.toFixed(3)})`;
+      ctx.stroke(rings[d]);
+    }
+    ctx.restore();
   }
 
   /** Seçili ordular: altın çember. Çoklu seçimde hepsi işaretlenir. */

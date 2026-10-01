@@ -477,7 +477,9 @@ tarayıcı olmadan Node ile de test edilebilir.
   komşu bölgenin rengini okur, hex başına ton bölge içinde komşu merkezler
   arasında süzülür; Canvas2D yedeğinde kara province çokgeni olarak dolar.
   Ülke kenar gölgesi GL'de uzaklık alanından, yedekte kırpılmış darbelerden
-  gelir. Seçim ve imleç ızgara kapalıyken province'i gösterir.
+  gelir. Seçim ve imleç ızgara kapalıyken province'i gösterir; ordu
+  seçiliyken ise çevresinde 6 hexlik, uzaklıkla sönen yerel ızgara belirir ve
+  imleç hedef hexi çerçeveler (yürüyüş 3. adıma dek hex hex).
 - Çizim sürekli çalışan bir animasyon döngüsü yerine gerektiğinde yenilenir;
   simülasyon saati hafif bir zamanlayıcıyla ilerler.
 - Deniz yüzeyi `render/water.js`'te ayrı bir katmandır: açılışta üretilen
