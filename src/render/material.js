@@ -116,6 +116,11 @@ const W_GRAIN = 0.44;
 const SEA_REACH = HEX_STEP * 4.0;
 /** Sığlık bandının kabaca bittiği uzaklık; gürültüyle bozulur. */
 const SHELF = HEX_STEP * 0.95;
+/**
+ * Kıyı yıkamasının ışık alanındaki payı. overlay'de +0.06, orta tonlu bir
+ * dolguda eski açık ton dolgusunun (%15 #f4e3b2) kabaca aynı aydınlatmasıdır.
+ */
+const SHORE_WASH = 0.06;
 
 function clamp(v, lo, hi) {
   return v < lo ? lo : (v > hi ? hi : v);
@@ -350,7 +355,16 @@ export class LandMaterial {
     // Yükseklik yüzeyi: blok kenarları silinip süreklileşsin. Yarıçap 1 =
     // çeyrek hex; sırtı korur, basamağı siler.
     const surface = blurWrapped(blurWrapped(elev, w, h, 1), w, h, 1);
-    Object.assign(B, { cols, rows, w, h, n, land, sea, relief, grainAmt, tone, warmAmt, surface });
+    // Arazi karakteri de hex bloğu olarak kalmasın: ton ve gren basamakları
+    // hex ızgarası kapalıyken peteği ele veriyordu. Yarıçap 2 = yarım hex;
+    // GL yüzeyindeki komşu-merkez süzmesiyle (surfaceGL.hexBlend) aynı erim.
+    Object.assign(B, {
+      cols, rows, w, h, n, land, sea, surface,
+      relief: blurWrapped(relief, w, h, 2),
+      grainAmt: blurWrapped(grainAmt, w, h, 2),
+      tone: blurWrapped(tone, w, h, 2),
+      warmAmt: blurWrapped(warmAmt, w, h, 2),
+    });
   }
 
   /** 2. aşama: gürültü alanları ve kıyı uzaklığı. */
@@ -419,15 +433,22 @@ export class LandMaterial {
         // Kara kenarında koyu bir pay: kıyı, parlayan bir hale değil kesilmiş
         // bir kenar gibi okunsun (§4 "dark edge shadow").
         const rim = -0.13 * (1 - smoothstep(0, HEX_STEP * 0.55, toSea[i]));
+        // Kıyı yıkaması: kenarın hemen gerisi "güneş almış", ~1.5 hex içeride
+        // söner. Eskiden kıyıdaki iki hex halkası ayrı bir açık ton dolgusuyla
+        // boyanıyordu; halkaların iç kenarı karanın ortasında hex basamakları
+        // çiziyordu. Uzaklık alanından sürekli gelir, dünya başına bir kez
+        // pişer.
+        const wash = SHORE_WASH * (1 - smoothstep(0, HEX_STEP * 1.5, toSea[i]));
         const v = 0.5
           + shade * W_RELIEF
           + (ambient[i] - 0.5) * W_AMBIENT
           + (pigment[i] - 0.5) * W_PIGMENT
           + (fine[i] - 0.5) * grainAmt[i] * W_GRAIN
           + tone[i]
-          + rim;
+          + rim
+          + wash;
         lum[i] = softClip(v);
-        warmOut[i] = warmAmt[i];
+        warmOut[i] = warmAmt[i] + wash * 2.5;
       }
     }
     // Çok hafif yumuşatma: teksel gürültüsünü alır, sırtı bırakır.

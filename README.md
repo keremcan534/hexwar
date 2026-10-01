@@ -462,6 +462,18 @@ tarayıcı olmadan Node ile de test edilebilir.
 ## Tasarım notları
 
 - Harita pointy-top eksenel `q,r` koordinatları kullanır.
+- Harita birimi province'tir; hex altta veri ızgarası olarak kalır ve
+  ızgara çizgileri varsayılan kapalıdır (Katmanlar → Hex grid, tercih
+  hatırlanır). Province ve ülke sınırları hex kenarlarından türeyip
+  yumuşatılır (`render/borderMesh.js`): kenarlar zincirlere dizilir, kara-kara
+  zincirleri kenar orta noktalarından Chaikin ile yumuşar, kavşak ve kıyı
+  uçları sabit kalır. Kıyı hex kenarında kalır (kara maskesi ve deniz hex
+  kenarlı). Dolgu aynı eğriyi izler: GL yüzeyinde shader pikselin hex
+  merkezinden kendisine uzanan doğrunun eğriyi kesip kesmediğine bakıp
+  komşu bölgenin rengini okur, hex başına ton bölge içinde komşu merkezler
+  arasında süzülür; Canvas2D yedeğinde kara province çokgeni olarak dolar.
+  Ülke kenar gölgesi GL'de uzaklık alanından, yedekte kırpılmış darbelerden
+  gelir. Seçim ve imleç ızgara kapalıyken province'i gösterir.
 - Çizim sürekli çalışan bir animasyon döngüsü yerine gerektiğinde yenilenir;
   simülasyon saati hafif bir zamanlayıcıyla ilerler.
 - Deniz yüzeyi `render/water.js`'te ayrı bir katmandır: açılışta üretilen

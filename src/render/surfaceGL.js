@@ -91,6 +91,17 @@ uniform sampler2D uOverlay;  // RGBA8, NEAREST — RGB isgalcinin murekkebi, A b
 uniform float uOverlayOn;    // 1 = isgal taramasi cizilsin
 uniform float uDataMode;     // 1 = veri/secim kipi: kabartma ve pigment kisilir
 uniform sampler2D uWave;    // RGBA8, LINEAR, tekrar — RG normal.xy, B/A yükseklik
+// SINIR AGI (bkz. render/borderMesh.js). Dolgu hex basina okunur ama sinir
+// yumusak egridir; egri hexin icine girdigi yerde piksel komsu bolgenin
+// rengini almali, yoksa cizginin iki yanindan renk disleri tasar.
+uniform highp sampler2D uSegHead;  // RGBA32F, hex basina: (ilk kayit, sayi)
+uniform highp sampler2D uSegData;  // RGBA32F, kayit basina 2 teksel
+uniform int uSegW;                 // uSegData eni
+uniform float uRemap;              // 1 = dolgu yumusak siniri izler
+uniform highp sampler2D uRegion;   // RGBA8, NEAREST: RG bolge kimligi + 1 (deniz 0), B sahipli mi
+uniform float uHexBlend;           // 1 = bolge dokusu yuklu, hex suzmesi acik
+uniform sampler2D uBand;           // R8, LINEAR: ulke sinirina uzaklik / BAND_REACH (alan izgarasi)
+uniform float uBandOn;             // 1 = siyasi kip: ulke kenar golgesi
 
 const float SQ3 = 1.7320508;
 
@@ -152,17 +163,137 @@ vec2 elevGrad(vec2 uv, out float h) {
 }
 
 /**
+ * Dolgunun hangi hexten okunacagi. Hex merkezinden piksele cekilen dogru
+ * yumusak siniri kesiyorsa piksel komsu bolgededir (merkez daima kendi
+ * bolgesinde kalir). Kesisimlerin en uzagi, yani piksele en yakini karar
+ * verir. Donus: xy birincil hex, zw kenar yumusatmada karisan oteki hex;
+ * w: otekinin payi (en yakin parcaya ekranda yarim pikselden yakinsa).
+ */
+vec4 fillCells(vec2 world, vec2 raw, vec2 cell, out float w) {
+  w = 0.0;
+  if (uRemap < 0.5) return vec4(cell, cell);
+  vec4 head = texelFetch(uSegHead, ivec2(cell), 0);
+  int n = int(head.y + 0.5);
+  if (n <= 0) return vec4(cell, cell);
+  int start = int(head.x + 0.5);
+  // Parcalar hex merkezine gore yerel: sarmal kopyasi fark etmez.
+  vec2 center = vec2((raw.x + 0.5 * mod(raw.y, 2.0)) * SQ3 * uHexSize, raw.y * 1.5 * uHexSize);
+  vec2 p = world - center;
+  float bestT = -1.0;
+  vec2 primary = cell;
+  float dMin = 1e9;
+  vec2 across = cell;
+  for (int i = 0; i < 64; i++) {
+    if (i >= n) break;
+    int k = (start + i) * 2;
+    vec4 seg = texelFetch(uSegData, ivec2(k % uSegW, k / uSegW), 0);
+    vec4 inf = texelFetch(uSegData, ivec2((k + 1) % uSegW, (k + 1) / uSegW), 0);
+    vec2 a = seg.xy;
+    vec2 e = seg.zw - a;
+    vec2 ap = p - a;
+    // inf.z: karsi tarafin isareti; piksel o yandaysa parcanin otesindedir.
+    bool beyond = (e.x * ap.y - e.y * ap.x) * inf.z > 0.0;
+    float h = clamp(dot(ap, e) / max(dot(e, e), 1e-6), 0.0, 1.0);
+    float d = length(ap - e * h);
+    if (d < dMin) {
+      dMin = d;
+      across = beyond ? cell : inf.xy;
+    }
+    float den = p.x * e.y - p.y * e.x;
+    if (abs(den) > 1e-6) {
+      float t = (a.x * e.y - a.y * e.x) / den;
+      float u = (a.x * p.y - a.y * p.x) / den;
+      if (t >= 0.0 && t <= 1.0 && u >= 0.0 && u <= 1.0 && t > bestT) {
+        bestT = t;
+        primary = beyond ? inf.xy : cell;
+      }
+    }
+  }
+  w = clamp(0.5 - dMin * uZoom * uDpr, 0.0, 0.5);
+  return vec4(primary, across);
+}
+
+float regionAt(vec2 c) {
+  vec2 v = texelFetch(uRegion, ivec2(c), 0).rg * 255.0;
+  return floor(v.x + 0.5) + floor(v.y + 0.5) * 256.0;
+}
+
+/**
+ * Hex basina renk ve arazi karakteri hex MERKEZLERI arasinda yumusakca
+ * suzulur. NEAREST okumada her hex kendi tonunda keskin kenarli bir altigen
+ * leke gibi duruyordu; izgara kapaliyken bile petegi ele veren buydu.
+ *
+ * Agirlik merkezde 1, komsu merkezde 0: kenar ortasinda iki hex yari yariya,
+ * kosede uc hex esit. Pikselin sifirdan buyuk agirlik alabilecegi her merkez
+ * kendi hexi ya da komsusudur, yani yedi hexlik toplam hex kenarinda
+ * kesintisizdir.
+ *
+ * Renk YALNIZ ayni bolgenin hexlerinden suzulur: ulke ve province rengi
+ * siniri asmaz, sinirin keskinligini fillCells verir. Arazi karakteri ise
+ * siyasete uymaz; denizi atlayarak butun kara komsulardan suzulur.
+ */
+void hexBlend(vec2 world, vec2 raw, vec2 cell, vec2 fill, out vec3 base, out vec4 ch) {
+  base = texelFetch(uOwner, ivec2(fill), 0).rgb;
+  ch = texelFetch(uChar, ivec2(cell), 0);
+  if (uHexBlend < 0.5) return;
+  float odd = mod(raw.y, 2.0);
+  float stepX = SQ3 * uHexSize;
+  vec2 p = world - vec2((raw.x + 0.5 * odd) * stepX, raw.y * 1.5 * uHexSize);
+  float rid = regionAt(fill);
+  vec3 cs = vec3(0.0);
+  float cw = 0.0;
+  vec4 hs = vec4(0.0);
+  float hw = 0.0;
+  for (int k = 0; k < 7; k++) {
+    vec2 dc = vec2(0.0);
+    vec2 off = vec2(0.0);
+    if (k == 1) { dc = vec2(1.0, 0.0); off = vec2(stepX, 0.0); }
+    else if (k == 2) { dc = vec2(-1.0, 0.0); off = vec2(-stepX, 0.0); }
+    else if (k >= 3) {
+      // Capraz komsular: odd-r ofsette sag capraz cift satirda ayni kolon,
+      // tek satirda bir saga kayar.
+      float dy = k < 5 ? -1.0 : 1.0;
+      bool right = k == 3 || k == 5;
+      dc = vec2(right ? odd : odd - 1.0, dy);
+      off = vec2(right ? stepX * 0.5 : -stepX * 0.5, dy * 1.5 * uHexSize);
+    }
+    vec2 nc = cell + dc;
+    if (nc.y < 0.0 || nc.y > uGrid.y - 1.0) continue;
+    if (uWrap > 0.0) nc.x = mod(nc.x, uGrid.x);
+    else if (nc.x < 0.0 || nc.x > uGrid.x - 1.0) continue;
+    float x = clamp(1.0 - length(p - off) / stepX, 0.0, 1.0);
+    float w = x * x * (3.0 - 2.0 * x);
+    if (w <= 0.0) continue;
+    float r = regionAt(nc);
+    if (r < 0.5) continue;
+    hs += texelFetch(uChar, ivec2(nc), 0) * w;
+    hw += w;
+    if (uRemap > 0.5 && abs(r - rid) < 0.5) {
+      cs += texelFetch(uOwner, ivec2(nc), 0).rgb * w;
+      cw += w;
+    }
+  }
+  if (cw > 1e-4) base = cs / cw;
+  if (hw > 1e-4) ch = hs / hw;
+}
+
+/**
  * KARA MALZEMESI.
  *
  *   ulke rengi (oyundan)  x  pigment  x  kabartma isigi  x  kuresel derece
  *
- * Ulke rengi NEAREST okunur: hex kenari tam kalir, siyasi okuma bozulmaz.
+ * Ulke rengi hex basina okunur ve bolge icinde suzulur (hexBlend); bolge
+ * sinirinda hangi hexin okunacagini yumusak sinir agi soyler (fillCells).
  * Kabartma gercek yukseklik rasterinden gelir (uydurma dag golgesi yok) ve
  * isik yonu SU ile aynidir — iki yuzey ayni dunyada gibi dursun (§22).
  */
-vec3 landColor(vec2 world, vec2 cell, vec3 Ldir) {
-  vec3 base = texture(uOwner, (cell + 0.5) / uGrid).rgb;
-  vec4 ch = texture(uChar, (cell + 0.5) / uGrid);
+vec3 landColor(vec2 world, vec2 cell, vec2 raw, vec3 Ldir) {
+  float mixW;
+  vec4 fc = fillCells(world, raw, cell, mixW);
+  vec3 base;
+  vec4 ch;
+  hexBlend(world, raw, cell, fc.xy, base, ch);
+  if (mixW > 0.0) base = mix(base, texelFetch(uOwner, ivec2(fc.zw), 0).rgb, mixW);
   float reliefGain = ch.r * 2.0;
   float grainAmt = ch.g;
   float warmth = (ch.b - 0.5) * 2.0;
@@ -203,15 +334,32 @@ vec3 landColor(vec2 world, vec2 cell, vec3 Ldir) {
   // artik YUZEYIN ISIGINI aliyor ve her zoomda keskin: cizgi ekran uzayinda
   // hesaplaniyor, onceden pismis bir dokudan gelmiyor.
   if (uOverlayOn > 0.5) {
-    vec4 ov = texture(uOverlay, (cell + 0.5) / uGrid);
-    if (ov.a > 0.5) {
-      col = mix(col, ov.rgb, 0.46);
+    // Isgal de bolgeye aittir: tarama, dolgunun okundugu hexten gelir ve
+    // yumusak sinirda dolguyla birlikte karisir.
+    vec4 o1 = texture(uOverlay, (fc.xy + 0.5) / uGrid);
+    vec4 o2 = texture(uOverlay, (fc.zw + 0.5) / uGrid);
+    float w1 = step(0.5, o1.a) * (1.0 - mixW);
+    float w2 = step(0.5, o2.a) * mixW;
+    float occ = w1 + w2;
+    if (occ > 0.0) {
+      vec3 ink = (o1.rgb * w1 + o2.rgb * w2) / occ;
+      col = mix(col, ink, 0.46 * occ);
       float sp = 9.0 * uDpr;
       float wd = 2.2 * uDpr;
       float f = mod(gl_FragCoord.x + gl_FragCoord.y, sp);
       float line = 1.0 - smoothstep(wd * 0.5 - 0.9, wd * 0.5 + 0.9, abs(f - sp * 0.5));
-      col = mix(col, vec3(0.839, 0.784, 0.659), line * 0.5);
+      col = mix(col, vec3(0.839, 0.784, 0.659), line * 0.5 * occ);
     }
+  }
+
+  // --- ULKE KENAR GOLGESI ---
+  // Ulke kesilmis kagit gibi kenarinda koyulasir: sinirda ~%24, BAND_REACH
+  // icinde dogrusal soner. Eskiden Canvas2D'de ulkenin cokgenine kirpilmis
+  // alti genis darbeydi; yakin zoomda statik katmani GPU'da kareden
+  // tasiriyordu. Ton ulkenin kendi rengi, koyulasmis: her yan kendi tonunda.
+  if (uBandOn > 0.5 && texelFetch(uRegion, ivec2(fc.xy), 0).b > 0.5) {
+    float bd = texture(uBand, (world - uFieldOrigin) / uFieldSpan).r;
+    col = mix(col, col * 0.52, 0.24 * clamp(1.0 - bd, 0.0, 1.0));
   }
   return col;
 }
@@ -238,7 +386,7 @@ void main() {
   // Isik yonu SU ile ORTAK: iki yuzeyin ayni dunyada olmasi buna bagli.
   vec3 Ldir = normalize(vec3(-0.55, -0.68, 0.48));
   if (isWater < 0.5) {
-    vec3 land = landColor(world, cell, Ldir);
+    vec3 land = landColor(world, cell, cr, Ldir);
     // Kuresel derece: orta ton cevresinde S egrisi + soguk golge/sicak isik.
     vec3 gr = land * land * (3.0 - 2.0 * land);
     land = mix(land, gr, uGrade);
@@ -564,7 +712,8 @@ export class SurfaceGL {
       'uWaveAmp', 'uWaveShade', 'uRefract',
       'uOwner', 'uChar', 'uElev', 'uElevSize',
       'uLandRelief', 'uLandGrain', 'uGrade', 'uSeaMaterial',
-      'uOverlay', 'uOverlayOn', 'uDataMode']) {
+      'uOverlay', 'uOverlayOn', 'uDataMode',
+      'uSegHead', 'uSegData', 'uSegW', 'uRemap', 'uRegion', 'uHexBlend', 'uBand', 'uBandOn']) {
       this.u[name] = gl.getUniformLocation(prog, name);
     }
 
@@ -578,6 +727,15 @@ export class SurfaceGL {
     this.charTex = null;
     this.elevTex = null;
     this.overlayTex = null;
+    this.segHeadTex = null;
+    this.segDataTex = null;
+    this.regionTex = null;
+    this.bandTex = null;
+    this.bandMesh = null;
+    this.bandVersion = -1;
+    // Yüklü tablonun ağı; renderer farklı bir ağ görünce yeniden yükler.
+    // Bağlam geri gelince boşalır ki tablo yeni bağlama tekrar insin.
+    this.borderMesh = null;
     this.lastCam = null;
     this.lastDraw = 0;
   }
@@ -682,6 +840,54 @@ export class SurfaceGL {
     this.lastDraw = 0;
   }
 
+  /**
+   * Sınır ağının dolgu tablosu (bkz. borderMesh.buildGlTable). Kayıp bağlamda
+   * yüklenmez; `borderMesh` boş kalır ve renderer bağlam dönünce yeniden dener.
+   */
+  setBorderTable(table, mesh) {
+    if (this.lost || !this.world) return;
+    const gl = this.gl;
+    const upload = (tex, w, h, data) => {
+      if (tex) gl.deleteTexture(tex);
+      const t = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, t);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA32F, w, h, 0, gl.RGBA, gl.FLOAT, data);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      return t;
+    };
+    this.segHeadTex = upload(this.segHeadTex, this.grid.cols, this.grid.rows, table.head);
+    this.segDataTex = upload(this.segDataTex, table.width, table.height, table.data);
+    this.segWidth = table.width;
+    this.borderMesh = mesh;
+    this.lastDraw = 0;
+  }
+
+  /** Kare başına bölge dokusu (bkz. borderMesh.meshRegionData). */
+  setRegionData(region) {
+    if (this.lost || !this.world) return;
+    const gl = this.gl;
+    if (this.regionTex) gl.deleteTexture(this.regionTex);
+    this.regionTex = this.makeTex(gl.RGBA8, gl.RGBA, this.grid.cols, this.grid.rows, region,
+      gl.NEAREST, gl.REPEAT, gl.CLAMP_TO_EDGE);
+    this.lastDraw = 0;
+  }
+
+  /** Ülke kenar gölgesinin uzaklık alanı (bkz. borderMesh.meshBandField). */
+  setBandField(band, mesh) {
+    if (this.lost || !this.world) return;
+    const gl = this.gl;
+    if (this.bandTex) gl.deleteTexture(this.bandTex);
+    this.bandTex = this.makeTex(gl.R8, gl.RED, band.w, band.h, band.data,
+      gl.LINEAR, gl.REPEAT, gl.CLAMP_TO_EDGE);
+    this.bandMesh = mesh;
+    this.bandVersion = mesh.version;
+    this.lastDraw = 0;
+  }
+
   updateOwners(ownerData) {
     if (this.lost || !this.ownerTex || !this.world) return;
     const gl = this.gl;
@@ -776,6 +982,27 @@ export class SurfaceGL {
     gl.activeTexture(gl.TEXTURE6);
     gl.bindTexture(gl.TEXTURE_2D, this.overlayTex ?? this.ownerTex);
     gl.uniform1i(u.uOverlay, 6);
+    // Tablo yoksa eşleme kapalı; örnekleyiciler yine de geçerli bir dokuya
+    // bağlanır ki program her kipte aynı durumla çalışsın.
+    const remap = this.remapOn && this.segHeadTex && this.segDataTex;
+    gl.uniform1f(u.uRemap, remap ? 1 : 0);
+    gl.uniform1i(u.uSegW, this.segWidth || 1);
+    gl.activeTexture(gl.TEXTURE7);
+    gl.bindTexture(gl.TEXTURE_2D, this.segHeadTex ?? this.ownerTex);
+    gl.uniform1i(u.uSegHead, 7);
+    gl.activeTexture(gl.TEXTURE8);
+    gl.bindTexture(gl.TEXTURE_2D, this.segDataTex ?? this.ownerTex);
+    gl.uniform1i(u.uSegData, 8);
+    // Bölge dokusu tabloyla birlikte iner; inmeden önceki karelerde süzme
+    // kapalı, her hex kendi rengiyle çizilir.
+    gl.uniform1f(u.uHexBlend, this.regionTex ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE9);
+    gl.bindTexture(gl.TEXTURE_2D, this.regionTex ?? this.hexTex);
+    gl.uniform1i(u.uRegion, 9);
+    gl.uniform1f(u.uBandOn, this.bandOn && this.bandTex && this.regionTex ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE10);
+    gl.bindTexture(gl.TEXTURE_2D, this.bandTex ?? this.distTex);
+    gl.uniform1i(u.uBand, 10);
 
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     return true;

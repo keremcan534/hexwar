@@ -1,7 +1,7 @@
 // Canvas2D hex çizimi. Görünmeyen hexler kırpılır, aynı renkler tek path'te toplanır,
 // uzaklaşınca tüm dünya önceden pişirilmiş tek dokudan basılır.
 
-import { HEX_CORNERS, SQRT3, DIRS, wrapCol } from '../core/hex.js';
+import { HEX_CORNERS, SQRT3, wrapCol } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { englishCityName } from '../game/cities.js';
 import { POPULATION_SCALE } from '../game/populationScale.js';
@@ -17,6 +17,10 @@ import { materials } from './textures.js';
 import { WaterLayer } from './water.js';
 import { LandMaterial } from './material.js';
 import { SurfaceGL } from './surfaceGL.js';
+import {
+  buildBorderMesh, borderKeys, sameKeys, updateMeshGroups, meshGlTable, meshRegionData,
+  bandFieldJob, BAND_REACH, LINE_COUNTRY, LINE_PROVINCE,
+} from './borderMesh.js';
 
 /**
  * Karenin GÖRÜNEN sahibi. Geçilmez arazi (artık yalnız buz) hiçbir province'e
@@ -186,6 +190,13 @@ export const CACHE_ZOOM = 0.45;
  * önbellek) arasında görsel sıçrama yaratıyordu. Eski eşik korunur.
  */
 const GRID_MIN_ZOOM = 0.55;
+/**
+ * Ülke kenar gölgesi Canvas2D yedek yolunda: ülkenin yumuşak çokgenine
+ * kırpılmış kademeli geniş darbeler (sınırda ~%24, BAND_REACH içinde söner).
+ * GL yüzeyinde aynı gölgeyi shader uzaklık alanından çizer (bkz. surfaceGL).
+ */
+const BAND_STEPS = 6;
+const BAND_STEP_ALPHA = 0.045;
 /**
  * Azınlık taramasının eşikleri. Pay %15'in altındaysa çizgi haritayı
  * kirletir, bilgi vermez; zoom 0.28'in altında çizgi aralığı piksel altına
@@ -378,6 +389,18 @@ function natoSymbol(path, typeId, cx, cy, r) {
   }
 }
 
+/** Açılmış koordinatlı nokta dizisini `dx` kaydırarak yola ekler. */
+function appendPts(path, pts, closed, dx = 0, reverse = false) {
+  const m = pts.length / 2;
+  if (m < 2) return;
+  for (let k = 0; k < m; k++) {
+    const i = reverse ? m - 1 - k : k;
+    if (k === 0) path.moveTo(pts[i * 2] + dx, pts[i * 2 + 1]);
+    else path.lineTo(pts[i * 2] + dx, pts[i * 2 + 1]);
+  }
+  if (closed) path.closePath();
+}
+
 function roundedRectPath(path, x, y, width, height, radius) {
   const r = Math.min(radius, width / 2, height / 2);
   path.moveTo(x + r, y);
@@ -453,8 +476,15 @@ export class Renderer {
       this.invalidateCache();
       this.onPlatesReady?.();
     });
-    this.showGrid = true;
+    // Hex ızgarası varsayılan KAPALI: harita birimi province'tir, hex altta
+    // veri ızgarası olarak kalır. Katmanlar menüsünden açılır (hud.js
+    // tercihi hatırlar).
+    this.showGrid = false;
     this.showLabels = true;
+    // Sınır ağı (bkz. borderMesh.js). `meshCheck`: sahiplik ya da kip değişti,
+    // bir sonraki istekte anahtarlar karşılaştırılsın.
+    this.mesh = null;
+    this.meshCheck = true;
     /**
      * 'political' | 'terrain' | 'geography' | 'cultures' | 'resources'
      * | 'population' | 'peace'
@@ -749,7 +779,31 @@ export class Renderer {
    * zincir kesilirse iş bir sonraki etkileşime dek yarım kalıyordu.
    */
   hasPendingJobs() {
-    return !!this.staticJob || !!this.farJob;
+    return !!this.staticJob || !!this.farJob || !!this.bandJob;
+  }
+
+  /**
+   * Ülke kenar gölgesi alanını dilim dilim kurar (bkz. borderMesh.bandFieldJob);
+   * alan hazırsa true. Toplam ~20 ms sahiplik değişiminde tek kareye
+   * sığdırılınca takılma oluyordu; bitene dek GL eski alanı gösterir —
+   * gölgenin birkaç kare geç kayması görünmez.
+   */
+  stepBandJob(mesh, budgetMs) {
+    if (mesh.band?.version === mesh.version) return true;
+    let job = this.bandJob;
+    if (!job || job.mesh !== mesh || job.version !== mesh.version) {
+      job = { mesh, version: mesh.version, it: bandFieldJob(mesh) };
+      this.bandJob = job;
+    }
+    const t0 = performance.now();
+    while (performance.now() - t0 < budgetMs) {
+      if (job.it.next().done) {
+        this.bandJob = null;
+        return true;
+      }
+    }
+    this.requestFrame?.();
+    return false;
   }
 
   /**
@@ -781,6 +835,17 @@ export class Renderer {
       if (this.glSurface() !== wasGL) this.surfaceChanged();
       return true;
     }
+    // Sınır ağı (~15 ms) ve GL dolgu tablosu da perde arkasında kurulur;
+    // ilk harita karesi onları ödemesin.
+    if (this.mesh?.world !== world || this.meshCheck) {
+      this.borderMeshFor(world);
+      return true;
+    }
+    if (this.waterGL && !this.mesh.gl) {
+      meshGlTable(this.mesh);
+      return true;
+    }
+    if (this.waterGL && !this.stepBandJob(this.mesh, 10)) return true;
     if (this.water.warmStep(this.ctx)) return true;
     if (!this.cache) {
       this.stepCacheBuild(world, 10);
@@ -812,6 +877,7 @@ export class Renderer {
     // Kip değişimi, dünya değişimi, sahiplik — hepsi buradan geçer.
     this.surfaceColorsDirty = true;
     this.surfaceOverlayDirty = true;
+    this.meshCheck = true;
     this.cache = null;
     this.tintCache.clear();
     // Sprite'lar ulus rengine bağlı; yeni dünyada aynı id başka renktir.
@@ -833,10 +899,15 @@ export class Renderer {
    * Nokta geçersizleme: sahiplik/işgal değişen kareler tam pişirme yerine
    * önbelleğe yerinde boyanır. Savaş haftalarında invalidateCache fırtınası
    * 32k hexlik dünyayı haftada onlarca kez baştan pişiriyordu; artık yalnız
-   * değişen kareler (+1 komşu halkası) yeniden mürekkeplenir.
+   * değişen kareler (+3 komşu halkası) yeniden mürekkeplenir.
    */
   invalidateTiles(tiles, ownershipChanged = true) {
-    if (ownershipChanged) this.surfaceColorsDirty = true;
+    if (ownershipChanged) {
+      this.surfaceColorsDirty = true;
+      // Bölge (province, sahip) değişmiş olabilir; ağ ancak anahtarlar
+      // gerçekten değiştiyse yeniden kurulur (bkz. borderMeshFor).
+      this.meshCheck = true;
+    }
     // İŞGAL DOKUSU HER ZAMAN KİRLENİR — sahiplik bayrağına BAĞLANAMAZ.
     // occupy() bilerek `ownershipChanged: false` geçer (etiket yerleşimi
     // kaymasın diye) ve işgal taraması GPU'ya taşındığında doku bu bayrağa
@@ -869,11 +940,21 @@ export class Renderer {
     const cache = this.cache;
     const dirty = this.dirtyTiles;
     if (!cache || !dirty?.size) return;
-    // Sınır mürekkebi komşuya taşar: +1 halka birlikte boyanır.
-    const affected = new Set();
-    for (const tile of dirty) {
-      affected.add(tile);
-      for (const n of world.neighbors(tile)) affected.add(n);
+    // Sınır mürekkebi komşuya taşar. Üç halka: yumuşak sınır kendi hexinden
+    // yarım hex sapar ve ülke kenar gölgesi sınırdan ~74 birim içeri iner;
+    // tek halkada eski gölge onarım bölgesinin dışında asılı kalıyordu.
+    const affected = new Set(dirty);
+    let ring = [...dirty];
+    for (let k = 0; k < 3; k++) {
+      const next = [];
+      for (const tile of ring) {
+        for (const n of world.neighbors(tile)) {
+          if (affected.has(n)) continue;
+          affected.add(n);
+          next.push(n);
+        }
+      }
+      ring = next;
     }
     dirty.clear();
     const P = world.wrapWidth;
@@ -913,15 +994,16 @@ export class Renderer {
     );
     // Onarılan bölge kırpma yolunun İÇİNDE baştan boyanır; malzeme burada
     // dilimlenmediği için dikiş sorunu yoktur (bkz. stepFarBake üç süpürme).
-    this.drawTerrain(ctx, list, world, {
+    const rect = {
       minX: minX - HEX_SIZE * 2, maxX: maxX + HEX_SIZE * 2,
       minY: minY - HEX_SIZE * 2, maxY: maxY + HEX_SIZE * 2,
-    });
+    };
+    this.drawTerrain(ctx, list, world, rect);
     if (this.occupationMode() && !this.glSurface()) {
       this.drawOccupationOverlay(ctx, world, list, cache.scale);
     }
-    if (this.mapMode === 'cultures') this.drawCultureMix(ctx, world, list, cache.scale);
-    if (this.showsPolitics()) this.drawBorders(ctx, world, list, cache.scale);
+    if (this.mapMode === 'cultures') this.drawCultureMix(ctx, world, list, cache.scale, rect);
+    this.drawMeshInk(ctx, world, rect, cache.scale, true);
     ctx.restore();
   }
 
@@ -1183,7 +1265,7 @@ export class Renderer {
    * Sınıra doğru koyulaşan kenar tonu: dolgunun kendisinden türetilmiş,
    * belirgin ölçüde koyu bir gölge. Paradox haritalarının imza görünümü —
    * ülke kesilmiş kağıt parçası gibi kenarında gölgelenir, düz vinil
-   * çıkartma gibi durmaz (bkz. drawBorders halkaları).
+   * çıkartma gibi durmaz (bkz. drawMeshBands).
    */
   nationEdgeTone(nation) {
     const key = `nedge:${nation.id}`;
@@ -1549,8 +1631,7 @@ export class Renderer {
       // pahalı işlemi tam olarak odur.
       this.paintTileFills(b, sea, world);
       this.material.paintSea(b, world, rect);
-      this.paintTileFills(b, land, world);
-      this.paintShore(b, world, land);
+      this.paintLandFills(b, world, land, rect);
       this.water.paintStaticBase(b, world, sea);
       // MALZEME: ışık alanı, kabartma ve kâğıt greni. Dolgunun üstüne,
       // kıyı mürekkebinin altına biner — düz poligon burada yüzey olur.
@@ -1562,7 +1643,11 @@ export class Renderer {
         if (coastal.length) this.water.drawCoastline(t, cache, coastal, scale);
       }
     } else {
-      this.paintTileFills(b, tiles, world);
+      const land = [];
+      const sea = [];
+      for (const tile of tiles) (tile.terrain.water ? sea : land).push(tile);
+      this.paintTileFills(b, sea, world);
+      this.paintLandFills(b, world, land, rect);
     }
 
     // ÜST: işgal/inşaat taraması, ızgara, province kenarı, ülke sınırı.
@@ -1571,12 +1656,11 @@ export class Renderer {
     if (this.occupationMode() && !this.glSurface()) {
       this.drawOccupationOverlay(t, world, tiles, scale);
     }
-    if (this.mapMode === 'cultures') this.drawCultureMix(t, world, tiles, scale);
+    if (this.mapMode === 'cultures') this.drawCultureMix(t, world, tiles, scale, rect);
     if (this.showGrid && scale >= GRID_MIN_ZOOM && this.mapMode !== 'geography') {
       this.drawGrid(t, tiles, scale);
     }
-    if (this.mapMode !== 'geography') this.drawProvinceEdges(t, tiles, world, scale);
-    if (this.showsPolitics()) this.drawBorders(t, world, tiles, scale);
+    this.drawMeshInk(t, world, rect, scale);
 
     if (clip) {
       b.restore();
@@ -1710,6 +1794,25 @@ export class Renderer {
     if (this.glWater()) {
       this.waterGL.seaMaterial = this.waterAnimatedMode();
       this.waterGL.overlayOn = this.occupationMode();
+      // Dolgu sınırı yumuşak eğriyi izlesin: tablo ağ değişince yüklenir.
+      // Hex başına veri kiplerinde (arazi, kaynak) eşleme kapalı.
+      const mesh = this.borderMeshFor(world);
+      const wgl = this.waterGL;
+      if (wgl.borderMesh !== mesh || wgl.regionVersion !== mesh.version) {
+        const t = performance.now();
+        if (wgl.borderMesh !== mesh) wgl.setBorderTable(meshGlTable(mesh), mesh);
+        wgl.setRegionData(meshRegionData(mesh));
+        wgl.regionVersion = mesh.version;
+        this.perf?.add('r.meshgl', performance.now() - t);
+      }
+      wgl.remapOn = this.remapMode();
+      const political = this.mapMode === 'political';
+      if (political && (wgl.bandMesh !== mesh || wgl.bandVersion !== mesh.version)) {
+        const t = performance.now();
+        if (this.stepBandJob(mesh, 2)) wgl.setBandField(mesh.band, mesh);
+        this.perf?.add('r.band', performance.now() - t);
+      }
+      wgl.bandOn = political && wgl.bandMesh?.world === world;
       // İki doku, iki ayrı ömür: taban rengi yalnız sahiplik/kip değişince,
       // işgal taraması ise kontrol her değiştiğinde tazelenir. Aynı bayrağa
       // bağlamak savaşta ya bedava tam tarama ya da bayat işgal demekti.
@@ -1962,12 +2065,20 @@ export class Renderer {
     // "eyalet de secildi" diyordu (Kerem: asker seciliyken state secme bugu).
     // Orduyu gosteren isaret drawSelection'in halkasidir.
     const armySelected = (state.selection?.length ?? 0) > 0;
-    if (!armySelected && state.selected && state.selected.provinceId >= 0) {
-      this.drawProvinceHighlight(ctx, world, state.selected.provinceId);
+    // Izgara kapalıyken seçim ve imleç PROVINCE'i gösterir: hex çerçevesi,
+    // gizlenen peteği tek karede geri getiriyordu. Province'i olmayan kare
+    // (deniz) hex çerçevesiyle kalır — denizde yürüyüş hâlâ hex hex.
+    const hexMarks = this.showGrid;
+    const provinceOfTile = (tile) => (tile.provinceId >= 0 ? tile.provinceId : tile.fringeOf ?? -1);
+    const selectedProvince = !armySelected && state.selected ? provinceOfTile(state.selected) : -1;
+    if (selectedProvince >= 0) this.drawProvinceHighlight(ctx, world, selectedProvince, rect);
+    if (!armySelected && state.selected && (hexMarks || selectedProvince < 0)) {
+      this.drawHighlight(ctx, state.selected, '#ffffff', 3);
     }
-    if (!armySelected && state.selected) this.drawHighlight(ctx, state.selected, '#ffffff', 3);
     if (state.hovered && state.hovered !== state.selected) {
-      this.drawHighlight(ctx, state.hovered, 'rgba(255,255,255,0.45)', 2);
+      const hovered = provinceOfTile(state.hovered);
+      if (hexMarks || hovered < 0) this.drawHighlight(ctx, state.hovered, 'rgba(255,255,255,0.45)', 2);
+      else if (hovered !== selectedProvince) this.drawProvinceHighlight(ctx, world, hovered, rect, true);
     }
     this.drawCities(ctx, world, rect);
     if (this.mapMode !== 'geography') {
@@ -2053,6 +2164,40 @@ export class Renderer {
       return false;
     }
     const P = world.wrapWidth;
+    if (j.phase === 'regions') {
+      // Kara dolgusu (bölge kiplerinde province çokgeni) dilim dilim, sonra
+      // malzeme: ışık alanı dolgunun üstüne biner.
+      const rect = this.bakeRect(world, j.scale);
+      if (this.remapMode()) {
+        j.regionAt = this.paintRegionFills(j.ctx, world, rect, j.regionAt ?? 0, 2);
+        if (j.regionAt < this.borderMeshFor(world).regions.length) return true;
+      }
+      this.material.paint(j.ctx, world, rect, j.scale);
+      j.phase = 'ink';
+      return true;
+    }
+    if (j.phase === 'mesh') {
+      // Sınır ağı satır bandına bölünmez: zincir ve province çokgeni bantları
+      // aşar, bant bant çizilseydi kesişen yerde yarı saydam mürekkep iki kez
+      // binerdi. Kenar gölgesi ise ÜLKE ülke dilimlenir: bütün dünyanın
+      // gölgesi tek adımda ~5 ms tutuyordu (ölçüldü) ve o kareyi bütçeden
+      // taşırıyordu; çizgiler tek adımda ~0.4 ms.
+      const rect = this.bakeRect(world, j.scale);
+      if (this.mapMode === 'political' && !this.glSurface()) {
+        const mesh = this.borderMeshFor(world);
+        j.bandAt = this.drawMeshBands(j.ctx, world, mesh, rect, j.bandAt ?? 0, 1.5);
+        if (j.bandAt < this.meshIndex(mesh).groupList.length) return true;
+      }
+      if (this.mapMode === 'cultures') this.drawCultureMix(j.ctx, world, null, j.scale, rect);
+      this.drawMeshInk(j.ctx, world, rect, j.scale, true, false);
+      const b = world.bounds;
+      this.cache = {
+        canvas: j.canvas, x: WRAP_X0, y: b.minY, w: P,
+        h: b.maxY - b.minY, scale: j.scale, widthPx: j.widthPx, heightPx: j.heightPx,
+      };
+      this.farJob = null;
+      return true;
+    }
     const endRow = Math.min(world.rows, j.row + j.step);
     const bakeTiles = [];
     for (let row = j.row; row < endRow; row++) {
@@ -2086,14 +2231,15 @@ export class Renderer {
       if (this.occupationMode() && !this.glSurface()) {
         this.drawOccupationOverlay(j.ctx, world, bakeTiles, j.scale);
       }
-      if (this.mapMode === 'cultures') this.drawCultureMix(j.ctx, world, bakeTiles, j.scale);
       // Kıyı hattı mürekkep süpürmesinde: kara dolgusundan SONRA gelmeli.
       if (water) this.water.bakeCoastline(j.ctx, world, bakeTiles.filter((t) => t.terrain.water));
-      if (this.showsPolitics()) this.drawBorders(j.ctx, world, bakeTiles, j.scale);
     } else if (!water) {
       // GL yüzey devredeyken uzak doku da zemin taşımaz: yalnız mürekkep.
+      // Bölge kiplerinde kara satır bandı değil province çokgeni olarak evre
+      // sonunda dilim dilim basılır (bkz. 'regions').
       if (!this.glSurface() && j.phase === 'sea') {
-        this.paintTileFills(j.ctx, bakeTiles, world);
+        this.paintTileFills(j.ctx, this.remapMode()
+          ? bakeTiles.filter((t) => t.terrain.water) : bakeTiles, world);
       }
     } else {
       const land = [];
@@ -2102,9 +2248,8 @@ export class Renderer {
       if (j.phase === 'sea') {
         this.paintTileFills(j.ctx, sea, world);
         this.water.bakeStatic(j.ctx, world, sea, { coastline: false });
-      } else {
+      } else if (!this.remapMode()) {
         this.paintTileFills(j.ctx, land, world);
-        this.paintShore(j.ctx, world, land);
       }
     }
     j.row = endRow;
@@ -2119,19 +2264,12 @@ export class Renderer {
       } else if (this.glSurface()) {
         j.phase = 'ink';
       } else {
-        this.material.paint(j.ctx, world, rect, j.scale);
-        j.phase = 'ink';
+        j.phase = 'regions';
       }
     } else if (j.phase === 'land') {
-      this.material.paint(j.ctx, world, rect, j.scale);
-      j.phase = 'ink';
+      j.phase = 'regions';
     } else {
-      const b = world.bounds;
-      this.cache = {
-        canvas: j.canvas, x: WRAP_X0, y: b.minY, w: P,
-        h: b.maxY - b.minY, scale: j.scale, widthPx: j.widthPx, heightPx: j.heightPx,
-      };
-      this.farJob = null;
+      j.phase = 'mesh';
     }
     return true;
   }
@@ -2161,7 +2299,7 @@ export class Renderer {
   paintTileFills(ctx, tiles, world) {
     const byColor = new Map();
     for (const t of tiles) {
-      const color = this.tileColor(t, world);
+      const color = this.fillColorOf(t, world);
       let group = byColor.get(color);
       if (!group) {
         group = [];
@@ -2186,77 +2324,80 @@ export class Renderer {
    */
   drawTerrain(ctx, tiles, world, rect = null) {
     if (this.glSurface()) return;   // zemin GPU'da
-    if (!this.waterAnimatedMode()) {
-      this.paintTileFills(ctx, tiles, world);
-      return;
-    }
     const land = [];
     const sea = [];
     for (const t of tiles) (t.terrain.water ? sea : land).push(t);
+    if (!this.waterAnimatedMode()) {
+      this.paintTileFills(ctx, sea, world);
+      this.paintLandFills(ctx, world, land, rect);
+      return;
+    }
     this.paintTileFills(ctx, sea, world);
     if (rect) this.material.paintSea(ctx, world, rect);
-    this.paintTileFills(ctx, land, world);
-    this.paintShore(ctx, world, land);
+    this.paintLandFills(ctx, world, land, rect);
     this.water.bakeStatic(ctx, world, sea);
     if (rect) this.material.paint(ctx, world, rect, 1);
   }
 
   /**
-   * Kıyının hemen içindeki kara şeridi ısıtılmış açık tonla yıkanır: deniz
-   * kenarı kağıt üstünde hafifçe "güneş almış" okunur ve kıyı çizgisinin
-   * mürekkebi (water.drawCoastline) bu açıklıkla kontrast kazanır.
+   * Kara dolgusu (Canvas2D). Bölge kiplerinde province ÇOKGENİ: renk zaten
+   * province başına tek (bkz. fillColorOf) ve kenarı yumuşak sınırla aynı
+   * eğri. Hex dolgusunun üstüne yama basmak iki kat çizim çağrısıydı (uzak
+   * dokunun tek adımı 27 ms'ye çıkmıştı, ölçüldü) ve hex kenarı boyunca kenar
+   * yumuşatma dikişi bırakıyordu.
    */
-  paintShore(ctx, world, landTiles) {
-    const rings = this.shoreSetOf(world);
-    const first = [];
-    const second = [];
-    for (const t of landTiles) {
-      const real = t.ghostOf ?? t;
-      if (rings.first.has(real)) first.push(t);
-      else if (rings.second.has(real)) second.push(t);
+  paintLandFills(ctx, world, land, rect) {
+    if (!rect || !this.remapMode()) {
+      this.paintTileFills(ctx, land, world);
+      return;
     }
-    if (!first.length && !second.length) return;
-    // İKİ HALKA, azalan güçte: kıyı bir çizgi değil bir GEÇİŞ olmalı (§13).
-    // Tek halka (eski hâli) kıyıyı bir hex genişliğinde sert bir şeride
-    // çeviriyordu; ikinci, yarı güçteki halka onu içeriye doğru söndürür ve
-    // kara "kesilmiş kâğıt" gibi kenarında aydınlanır.
-    ctx.fillStyle = '#f4e3b2';
-    if (second.length) {
-      ctx.globalAlpha = 0.06;
-      for (const path of this.chunkedHexPaths(second, FILL_CHUNK)) ctx.fill(path);
-    }
-    if (first.length) {
-      ctx.globalAlpha = 0.15;
-      for (const path of this.chunkedHexPaths(first, FILL_CHUNK)) ctx.fill(path);
-    }
-    ctx.globalAlpha = 1;
+    this.paintRegionFills(ctx, world, rect);
   }
 
   /**
-   * Kıyı halkaları: denize komşu kara kareleri (`first`) ve onların bir kare
-   * gerisi (`second`). Dünya başına bir kez çıkarılır.
+   * Bölge çokgenlerini renge göre toplayıp doldurur; `from`/`budgetMs` uzak
+   * doku pişirmesinin dilimlemesi içindir, sonraki bölgenin sırasını döner.
+   * Çokgeni kapanmayan bölge (silindiri saran kutup kuşağı) hex hex boyanır.
    */
-  shoreSetOf(world) {
-    if (this.shoreCache?.world === world) return this.shoreCache.rings;
-    const first = new Set();
-    for (const t of world.tiles) {
-      if (!t || t.terrain.water) continue;
-      for (const n of world.neighbors(t)) {
-        if (n.terrain.water) {
-          first.add(t);
-          break;
+  paintRegionFills(ctx, world, rect, from = 0, budgetMs = Infinity) {
+    const mesh = this.borderMeshFor(world);
+    const index = this.meshIndex(mesh);
+    const P = world.wrapWidth || 0;
+    const shifts = (this.regionShifts ??= []);
+    const byColor = new Map();
+    const loose = [];
+    const t0 = performance.now();
+    let at = from;
+    for (; at < mesh.regions.length; at++) {
+      if (at > from && performance.now() - t0 > budgetMs) break;
+      const region = mesh.regions[at];
+      if (region.partial) {
+        for (const ti of region.tiles) {
+          const tile = world.tiles[ti];
+          const box = [tile.x - HEX_SIZE, tile.y - HEX_SIZE, tile.x + HEX_SIZE, tile.y + HEX_SIZE];
+          for (const dx of this.copyShifts(box, rect, P, shifts)) {
+            loose.push(dx ? { ...tile, x: tile.x + dx, ghostOf: tile } : tile);
+          }
         }
+        continue;
+      }
+      if (!this.copyShifts(region.bbox, rect, P, shifts).length) continue;
+      const color = this.tileColor(world.tiles[index.rep[region.id]], world);
+      let path = byColor.get(color);
+      if (!path) {
+        path = new Path2D();
+        byColor.set(color, path);
+      }
+      for (const dx of shifts) {
+        for (const loop of region.loops) appendPts(path, loop, true, dx);
       }
     }
-    const second = new Set();
-    for (const t of first) {
-      for (const n of world.neighbors(t)) {
-        if (!n.terrain.water && !first.has(n)) second.add(n);
-      }
+    for (const [color, path] of byColor) {
+      ctx.fillStyle = color;
+      ctx.fill(path);
     }
-    const rings = { first, second };
-    this.shoreCache = { world, rings };
-    return rings;
+    if (loose.length) this.paintTileFills(ctx, loose, world);
+    return at;
   }
 
   /** Kaynak kipi: her hex kendi kaynağının rengini taşır (hex kaynakları). */
@@ -2346,33 +2487,51 @@ export class Renderer {
    * Yalnız yeterince yakında çizilir; uzak zoomda çizgi aralığı piksel altına
    * inip moiré üretir ve renk çamura döner.
    */
-  drawCultureMix(ctx, world, tiles, scale) {
+  drawCultureMix(ctx, world, tiles, scale, rect) {
     if (scale < CULTURE_STRIPE_MIN_ZOOM) return;
+    // Tarama province'in YUMUŞAK çokgenine kırpılır: hex yoluna kırpılınca
+    // çizgili alanın kenarı sınırın yanında petek gibi duruyordu.
+    const mesh = this.borderMeshFor(world);
+    const index = this.meshIndex(mesh);
+    const P = world.wrapWidth || 0;
+    const shifts = (this.cultureShifts ??= []);
+    let ids;
+    if (tiles) {
+      ids = new Set();
+      for (const tile of tiles) if (!tile.terrain.water && tile.provinceId >= 0) ids.add(tile.provinceId);
+    } else {
+      ids = index.provinces.keys();
+    }
     const groups = new Map();
-    for (const tile of tiles) {
-      if (tile.terrain.water) continue;
-      const province = world.provinces?.[tile.provinceId];
+    for (const id of ids) {
+      const province = world.provinces?.[id];
       const minority = province?.cultures?.[1];
       if (!minority || minority.share < CULTURE_MINORITY_MIN) continue;
+      const entry = index.provinces.get(id);
+      if (!entry?.bbox) continue;
       // Kümeler (azınlık kültürü × yoğunluk kademesi) çiftinde toplanır:
       // aynı halkın %12'lik ve %45'lik azınlığı aynı sıklıkta çizilmemeli.
       const band = stripeBand(minority.share);
       const key = minority.id * 8 + band;
-      let group = groups.get(key);
-      if (!group) {
-        group = {
-          id: minority.id,
-          band,
-          path: new Path2D(),
-          minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity,
-        };
-        groups.set(key, group);
+      for (const dx of this.copyShifts(entry.bbox, rect, P, shifts)) {
+        let group = groups.get(key);
+        if (!group) {
+          group = {
+            id: minority.id,
+            band,
+            path: new Path2D(),
+            minX: Infinity, maxX: -Infinity, minY: Infinity, maxY: -Infinity,
+          };
+          groups.set(key, group);
+        }
+        for (const rid of entry.regions) {
+          for (const loop of mesh.regions[rid].loops) appendPts(group.path, loop, true, dx);
+        }
+        group.minX = Math.min(group.minX, entry.bbox[0] + dx);
+        group.maxX = Math.max(group.maxX, entry.bbox[2] + dx);
+        group.minY = Math.min(group.minY, entry.bbox[1]);
+        group.maxY = Math.max(group.maxY, entry.bbox[3]);
       }
-      this.hexPath(group.path, tile.x, tile.y);
-      group.minX = Math.min(group.minX, tile.x - HEX_SIZE);
-      group.maxX = Math.max(group.maxX, tile.x + HEX_SIZE);
-      group.minY = Math.min(group.minY, tile.y - HEX_SIZE);
-      group.maxY = Math.max(group.maxY, tile.y + HEX_SIZE);
     }
     for (const group of groups.values()) {
       const culture = world.cultures?.[group.id];
@@ -2462,182 +2621,342 @@ export class Renderer {
   }
 
   /**
-   * Province kenarları: kara-kara farklı kümeler arasındaki ince nötr çizgi.
-   * Ülke sınırından zayıf, hex ızgarasından güçlü — CK3'ün üç kademeli
-   * okuması (hex dokusu / province / ülke). Kıyıda çizilmez, su katmanı
-   * kıyıyı zaten anlatıyor.
+   * Dolgu sınırı yumuşak eğriyi izlesin mi? Arazi, coğrafya ve kaynak
+   * kiplerinde renk hexin KENDİ verisidir (arazi tipi, hex kaynağı); orada
+   * komşunun rengini ödünç almak veriyi yanlış gösterirdi.
    */
-  drawProvinceEdges(ctx, tiles, world, scale) {
-    const c = this.corners;
-    const paths = [];
-    let path = null;
-    let segments = 0;
-    for (const t of tiles) {
-      if (t.provinceId < 0) continue;
-      for (let i = 0; i < 6; i++) {
-        const n = world.get(t.q + DIRS[i][0], t.r + DIRS[i][1]);
-        if (!n || n.terrain.water || n.provinceId === t.provinceId) continue;
-        // Parçalı yol (bkz. chunkedHexPaths gerekçesi).
-        if (segments % 512 === 0) {
-          path = new Path2D();
-          paths.push(path);
-        }
-        segments++;
-        const a = c[i];
-        const b = c[(i + 1) % 6];
-        path.moveTo(t.x + a[0], t.y + a[1]);
-        path.lineTo(t.x + b[0], t.y + b[1]);
+  remapMode() {
+    return this.mapMode !== 'terrain' && this.mapMode !== 'geography'
+      && this.mapMode !== 'resources';
+  }
+
+  /**
+   * Canvas2D dolgusunun rengi. Bölge kiplerinde kara province başına TEK
+   * renktir: GL yolunda hex başına ton komşu merkezler arasında süzülüyor
+   * (surfaceGL.hexBlend), Canvas2D'de süzme yok ve ton basamakları ızgara
+   * kapalıyken bile peteği ele veriyordu. Arazi dokusunu orada malzeme
+   * katmanının kabartması taşır.
+   */
+  fillColorOf(tile, world) {
+    if (tile.terrain.water || this.glSurface() || !this.remapMode()) return this.tileColor(tile, world);
+    const mesh = this.borderMeshFor(world);
+    const real = tile.ghostOf ?? tile;
+    const label = mesh.labels[real.row * world.cols + real.col];
+    if (label < 0) return this.tileColor(tile, world);
+    return this.tileColor(world.tiles[this.meshIndex(mesh).rep[label]], world);
+  }
+
+  /**
+   * Geçerli sınır ağı. Büyük sınır kültür kipinde kültürden, diğerlerinde
+   * sahipten çizilir. Sahiplik bayrağı kalktıysa anahtarlar yeniden okunur;
+   * ağ (~15 ms) yalnız bölgeler gerçekten değiştiyse kurulur — savaş ilanı
+   * gibi geçersizlemeler sınırı oynatmaz.
+   */
+  borderMeshFor(world) {
+    const grouping = this.mapMode === 'cultures' ? 'culture' : 'owner';
+    const cur = this.mesh;
+    const same = cur && cur.world === world && cur.grouping === grouping;
+    if (same && !this.meshCheck) return cur;
+    const groupOf = grouping === 'culture'
+      ? (tile) => tile.culture
+      : (tile) => ownerOf(tile, world);
+    const keys = borderKeys(world, groupOf);
+    this.meshCheck = false;
+    if (same && sameKeys(cur.keys, keys)) return cur;
+    // Bütün province devri: bölümleme aynı, yalnız sahip değişti — ağ yerinde
+    // güncellenir (geometri, GL tablosu ve yamalar aynen geçerli).
+    if (same && updateMeshGroups(cur, keys)) return cur;
+    const t0 = performance.now();
+    const mesh = buildBorderMesh(world, groupOf, keys);
+    mesh.grouping = grouping;
+    this.mesh = mesh;
+    this.perf?.add('r.mesh', performance.now() - t0);
+    return mesh;
+  }
+
+  /** Ağın grup (ülke/kültür) ve province dizini: bölgeler, sınır zincirleri, kutu. */
+  meshIndex(mesh) {
+    if (mesh.index) return mesh.index;
+    const groups = new Map();
+    const provinces = new Map();
+    const entryOf = (map, key) => {
+      let e = map.get(key);
+      if (!e) {
+        e = { regions: [], chains: [], bbox: null };
+        map.set(key, e);
+      }
+      return e;
+    };
+    const grow = (e, box) => {
+      if (!box) return;
+      if (!e.bbox) e.bbox = [...box];
+      else {
+        e.bbox[0] = Math.min(e.bbox[0], box[0]);
+        e.bbox[1] = Math.min(e.bbox[1], box[1]);
+        e.bbox[2] = Math.max(e.bbox[2], box[2]);
+        e.bbox[3] = Math.max(e.bbox[3], box[3]);
+      }
+    };
+    for (const region of mesh.regions) {
+      const g = entryOf(groups, region.group);
+      g.regions.push(region.id);
+      grow(g, region.bbox);
+      if (region.province >= 0) {
+        const p = entryOf(provinces, region.province);
+        p.regions.push(region.id);
+        grow(p, region.bbox);
       }
     }
-    // Ülke sınırından iki kademe zayıf: ince, yumuşak, mürekkep grisi.
-    // Ülke konturu 0.9 alfa/3.4px iken province 0.16/1px — hiyerarşi net:
-    // province dokusu hissedilir ama ülke sınırıyla asla yarışmaz.
+    for (const ch of mesh.chains) {
+      const a = ch.pos >= 0 ? mesh.regions[ch.pos] : null;
+      const b = ch.neg >= 0 ? mesh.regions[ch.neg] : null;
+      if (ch.cls !== LINE_PROVINCE) {
+        if (a && a.group >= 0 && (!b || b.group !== a.group)) entryOf(groups, a.group).chains.push(ch.id);
+        if (b && b.group >= 0 && (!a || a.group !== b.group)) entryOf(groups, b.group).chains.push(ch.id);
+      }
+      const pa = a ? a.province : -2;
+      const pb = b ? b.province : -2;
+      if (pa !== pb) {
+        if (pa >= 0) entryOf(provinces, pa).chains.push(ch.id);
+        if (pb >= 0) entryOf(provinces, pb).chains.push(ch.id);
+      }
+    }
+    // Bölgenin temsilci karesi (classic tek renk dolgusu): province merkezi
+    // bölgedeyse o — province'in adını taşıyan kare —, değilse ilk üye.
+    const rep = new Int32Array(mesh.regions.length);
+    const cols = mesh.world.cols;
+    for (const region of mesh.regions) {
+      const center = mesh.world.provinces?.[region.province]?.center;
+      const ci = center ? center.row * cols + center.col : -1;
+      rep[region.id] = ci >= 0 && mesh.labels[ci] === region.id ? ci : region.tiles[0];
+    }
+    // Kararlı sıra: uzak doku gölgeyi bu listede dilim dilim ilerletir.
+    mesh.index = { groups, provinces, groupList: [...groups], rep };
+    return mesh.index;
+  }
+
+  /**
+   * Açılmış koordinatlı bir kutunun `rect`e düşen sarmal kopyaları (k·P
+   * kaymaları). Ağ dikişi aşan zincirleri bir periyodun dışında da taşır;
+   * hangi kopyanın çizileceğini kutu söyler. `out` yeniden kullanılır.
+   */
+  copyShifts(bbox, rect, P, out) {
+    out.length = 0;
+    if (!bbox || bbox[3] < rect.minY || bbox[1] > rect.maxY) return out;
+    if (!P) {
+      if (bbox[2] >= rect.minX && bbox[0] <= rect.maxX) out.push(0);
+      return out;
+    }
+    const k0 = Math.ceil((rect.minX - bbox[2]) / P);
+    const k1 = Math.floor((rect.maxX - bbox[0]) / P);
+    for (let k = k0; k <= k1; k++) out.push(k * P);
+    return out;
+  }
+
+  /**
+   * Sınır mürekkebi: kenar gölgesi, province çizgisi, ülke/kıyı çizgisi.
+   *
+   * Hiyerarşi (hex ızgarası < province < ülke) korunur ama province artık
+   * hissedilen bir doku değil, okunan bir sınırdır: harita birimi province.
+   * `far`: uzak doku — kalınlıklar doku pikselinde, gösterim 0.6-1x küçülür.
+   */
+  drawMeshInk(ctx, world, rect, scale, far = false, bands = true) {
+    if (this.mapMode === 'geography') return;
+    const mesh = this.borderMeshFor(world);
+    const P = world.wrapWidth || 0;
+    const politics = this.showsPolitics();
+    const shifts = (this.inkShifts ??= []);
+    const prov = new Path2D();
+    const major = new Path2D();
+    let nProv = 0;
+    let nMajor = 0;
+    for (const ch of mesh.chains) {
+      let toMajor;
+      if (ch.cls === LINE_PROVINCE || (!politics && ch.cls === LINE_COUNTRY)) toMajor = false;
+      else if (!politics) continue;
+      else if (ch.cls === LINE_COUNTRY) toMajor = true;
+      else {
+        // Kıyı yalnız bir ülkenin (kültürün) kıyısıysa: sahipsiz kıyı çizgisiz.
+        const land = mesh.regions[ch.pos >= 0 ? ch.pos : ch.neg];
+        if (!land || land.group < 0) continue;
+        toMajor = true;
+      }
+      if (!this.copyShifts(ch.bbox, rect, P, shifts).length) continue;
+      const path = toMajor ? major : prov;
+      for (const dx of shifts) appendPts(path, ch.S, ch.closed, dx);
+      if (toMajor) nMajor++;
+      else nProv++;
+    }
+    ctx.save();
     ctx.lineCap = 'round';
-    ctx.lineWidth = 1 / scale;
-    ctx.strokeStyle = 'rgba(10, 15, 14, 0.16)';
-    for (const p of paths) ctx.stroke(p);
+    ctx.lineJoin = 'round';
+    ctx.globalAlpha = 1;
+    // GL yüzeyinde kenar gölgesini shader çizer (uzaklık alanından).
+    if (bands && this.mapMode === 'political' && !this.glSurface()) {
+      this.drawMeshBands(ctx, world, mesh, rect);
+    }
+    if (nProv) {
+      // Kalınlık zoomla açılır: uzakta province ağı ülke sınırını boğmasın,
+      // yakında okunan kalın bir mürekkep olsun. Geniş ve soluk bir omuz,
+      // üstüne çekirdek: kalın çizginin kenarı yumuşar, kâğıda sinmiş durur.
+      const z = far ? 0 : Math.max(0, Math.min(1, (scale - 0.45) / 1.0));
+      const width = far ? 1.1 : 1.4 + 1.0 * z;
+      const alpha = far ? 0.24 : 0.30 + 0.14 * z;
+      ctx.lineWidth = (width + 1.8) / scale;
+      ctx.strokeStyle = `rgba(12, 16, 16, ${(alpha * 0.28).toFixed(3)})`;
+      ctx.stroke(prov);
+      ctx.lineWidth = width / scale;
+      ctx.strokeStyle = `rgba(12, 16, 16, ${alpha.toFixed(3)})`;
+      ctx.stroke(prov);
+    }
+    if (nMajor) {
+      // Ülke sınırı: tek yol, tek darbe. Eskiden her ülke kendi kenarını
+      // çiziyordu ve ortak sınır iki kez boyanıp kıyıdan koyu çıkıyordu;
+      // yumuşak ağda zincir tek, alfa ortak sınırın eski koyuluğunda.
+      ctx.lineWidth = 3.4 / scale;
+      ctx.strokeStyle = 'rgba(9, 13, 15, 0.88)';
+      ctx.stroke(major);
+      if (this.mapMode === 'cultures') this.drawMeshCultureEdges(ctx, world, mesh, rect, scale);
+      else {
+        // İç hat: baskıda hattın ortasında kalan açık mürekkep payı.
+        ctx.lineWidth = 1.1 / scale;
+        ctx.strokeStyle = 'rgba(206, 181, 126, 0.2)';
+        ctx.stroke(major);
+      }
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Ülke kenar gölgesi: sınıra doğru koyulaşan iki kademe. Ülkenin yumuşak
+   * çokgenine kırpılmış geniş darbe — tek stroke çağrısı kendi üstüne binmez,
+   * kavşakta ve dar kıvrımda alfa katlanmaz.
+   */
+  drawMeshBands(ctx, world, mesh, rect, from = 0, budgetMs = Infinity) {
+    const index = this.meshIndex(mesh);
+    const P = world.wrapWidth || 0;
+    const a = (this.bandShiftsA ??= []);
+    const b = (this.bandShiftsB ??= []);
+    const reach = {
+      minX: rect.minX - BAND_REACH, maxX: rect.maxX + BAND_REACH,
+      minY: rect.minY - BAND_REACH, maxY: rect.maxY + BAND_REACH,
+    };
+    const list = index.groupList;
+    const t0 = performance.now();
+    let at = from;
+    for (; at < list.length; at++) {
+      if (at > from && performance.now() - t0 > budgetMs) break;
+      const [g, entry] = list[at];
+      if (g < 0 || !entry.chains.length) continue;
+      const nation = world.nations[g];
+      if (!nation || !this.copyShifts(entry.bbox, rect, P, a).length) continue;
+      const band = new Path2D();
+      let any = false;
+      for (const cid of entry.chains) {
+        const ch = mesh.chains[cid];
+        for (const dx of this.copyShifts(ch.bbox, reach, P, b)) {
+          appendPts(band, ch.S, ch.closed, dx);
+          any = true;
+        }
+      }
+      if (!any) continue;
+      const clip = new Path2D();
+      for (const rid of entry.regions) {
+        const region = mesh.regions[rid];
+        for (const dx of this.copyShifts(region.bbox, rect, P, b)) {
+          for (const loop of region.loops) appendPts(clip, loop, true, dx);
+        }
+      }
+      ctx.save();
+      ctx.clip(clip);
+      ctx.strokeStyle = this.nationEdgeTone(nation);
+      // Geniş darbede köşe sivri birleşirse kıvrımda gölge diken gibi taşar.
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      // Altı ince kademe, dıştan içe: sınırda ~%24, içeri doğru doğrusal
+      // söner. İki sert kademe (eski hex halkalarının birebir karşılığı)
+      // yumuşak sınırın yanında içeride paralel kontur çizgileri bırakıyordu.
+      ctx.globalAlpha = BAND_STEP_ALPHA;
+      for (let i = BAND_STEPS; i >= 1; i--) {
+        ctx.lineWidth = (BAND_REACH * 2 * i) / BAND_STEPS;
+        ctx.stroke(band);
+      }
+      ctx.restore();
+    }
+    return at;
+  }
+
+  /**
+   * Kültür kipinde sınırın iç hattı her iki yanda kendi kültürünün rengiyle:
+   * kırpılmış darbenin yalnız iç yarısı görünür. Eskiden iki rengin ikisi de
+   * hattın ortasına çiziliyor, sonra gelen öncekini örtüyordu.
+   */
+  drawMeshCultureEdges(ctx, world, mesh, rect, scale) {
+    const index = this.meshIndex(mesh);
+    const P = world.wrapWidth || 0;
+    const a = (this.bandShiftsA ??= []);
+    const b = (this.bandShiftsB ??= []);
+    for (const [g, entry] of index.groups) {
+      const culture = world.cultures?.[g];
+      if (!culture || !entry.chains.length) continue;
+      if (!this.copyShifts(entry.bbox, rect, P, a).length) continue;
+      const edge = new Path2D();
+      for (const cid of entry.chains) {
+        const ch = mesh.chains[cid];
+        for (const dx of this.copyShifts(ch.bbox, rect, P, b)) appendPts(edge, ch.S, ch.closed, dx);
+      }
+      const clip = new Path2D();
+      for (const rid of entry.regions) {
+        const region = mesh.regions[rid];
+        for (const dx of this.copyShifts(region.bbox, rect, P, b)) {
+          for (const loop of region.loops) appendPts(clip, loop, true, dx);
+        }
+      }
+      ctx.save();
+      ctx.clip(clip);
+      ctx.strokeStyle = culture.color;
+      ctx.lineWidth = 4 / scale;
+      ctx.stroke(edge);
+      ctx.restore();
+    }
   }
 
   /**
    * Seçili karenin province'i tek parça vurgulanır: hangi hexlerin aynı
-   * kümede olduğu tıklamadan önce okunur. Üye sayısı ≤8 — her kare yeniden
-   * kurmak önbellekten ucuz.
+   * kümede olduğu tıklamadan önce okunur. Ana hat yumuşak sınır ağından —
+   * hex kenarından çizilince vurgu, altındaki sınırdan ayrı bir petek
+   * çiziyordu.
    */
-  drawProvinceHighlight(ctx, world, provinceId) {
-    const province = world.provinces?.[provinceId];
-    if (!province) return;
-    const zoom = this.camera.zoom;
+  drawProvinceHighlight(ctx, world, provinceId, rect = this.camera.visibleRect(HEX_SIZE * 2), hover = false) {
+    const mesh = this.borderMeshFor(world);
+    const entry = this.meshIndex(mesh).provinces.get(provinceId);
+    if (!entry?.bbox) return;
+    const P = world.wrapWidth || 0;
+    const shifts = (this.highlightShifts ??= []);
     const fill = new Path2D();
     const outline = new Path2D();
-    const c = this.corners;
-    for (const idx of province.tileIdx) {
-      const t = world.tiles[idx];
-      this.hexPath(fill, t.x, t.y);
-      for (let i = 0; i < 6; i++) {
-        const n = world.get(t.q + DIRS[i][0], t.r + DIRS[i][1]);
-        if (n && n.provinceId === provinceId) continue;
-        const a = c[i];
-        const b = c[(i + 1) % 6];
-        outline.moveTo(t.x + a[0], t.y + a[1]);
-        outline.lineTo(t.x + b[0], t.y + b[1]);
+    for (const rid of entry.regions) {
+      const region = mesh.regions[rid];
+      for (const dx of this.copyShifts(region.bbox, rect, P, shifts)) {
+        for (const loop of region.loops) appendPts(fill, loop, true, dx);
       }
     }
-    ctx.globalAlpha = 0.08;
+    for (const cid of entry.chains) {
+      const ch = mesh.chains[cid];
+      for (const dx of this.copyShifts(ch.bbox, rect, P, shifts)) appendPts(outline, ch.S, ch.closed, dx);
+    }
+    const zoom = this.camera.zoom;
+    // İmleç seçimden bir kademe sessiz: dolgu yok denecek kadar hafif, çizgi
+    // pirinç değil soluk beyaz — eski hex imlecinin tonu.
+    ctx.globalAlpha = hover ? 0.05 : 0.08;
     ctx.fillStyle = '#ffffff';
     ctx.fill(fill);
     ctx.globalAlpha = 1;
     ctx.lineCap = 'round';
-    ctx.lineWidth = 2.2 / zoom;
-    ctx.strokeStyle = 'rgba(229, 202, 132, 0.85)';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = (hover ? 1.8 : 2.2) / zoom;
+    ctx.strokeStyle = hover ? 'rgba(255, 255, 255, 0.45)' : 'rgba(229, 202, 132, 0.85)';
     ctx.stroke(outline);
-  }
-
-  /** Yalnızca farklı sahipler arasındaki kenarları çizer -> net ülke sınırları. */
-  drawBorders(ctx, world, tiles, scale) {
-    const byColor = new Map();
-    const c = this.corners;
-    const cultureMode = this.mapMode === 'cultures';
-    // Kenar gölgesi yalnız politik kipte: veri kiplerinde (nüfus, kaynak,
-    // inşaat, barış) ulus rengi katmanı okumayı kirletir.
-    const edgeMode = this.mapMode === 'political';
-    // Sınır da etek kareleri kapsar: dağ silsilesi ülkenin İÇİNDE kalır,
-    // sınır çizgisi onun etrafından dolaşmaz.
-    const groupOf = (tile) => (cultureMode ? tile.culture : ownerOf(tile, world));
-
-    // 1. geçiş: kenar segmentleri + sınır karesi kümesi (gerçek kare anahtar,
-    // sarmal hayaletler karesinden çözülür).
-    const boundaryOf = edgeMode ? new Map() : null;
-    const ring1ByColor = edgeMode ? new Map() : null;
-    for (const t of tiles) {
-      const group = groupOf(t);
-      if (group < 0) continue;
-      const color = cultureMode
-        ? world.cultures[group].color
-        : this.nationInk(world.nations[group]);
-      let path = byColor.get(color);
-      if (!path) {
-        path = new Path2D();
-        byColor.set(color, path);
-      }
-      let boundary = false;
-      for (let i = 0; i < 6; i++) {
-        const n = world.get(t.q + DIRS[i][0], t.r + DIRS[i][1]);
-        if (n && groupOf(n) === group) continue;
-        boundary = true;
-        const a = c[i];
-        const b = c[(i + 1) % 6];
-        path.moveTo(t.x + a[0], t.y + a[1]);
-        path.lineTo(t.x + b[0], t.y + b[1]);
-      }
-      if (boundary && edgeMode) {
-        boundaryOf.set(t.ghostOf ?? t, group);
-        const tone = this.nationEdgeTone(world.nations[group]);
-        let ring = ring1ByColor.get(tone);
-        if (!ring) {
-          ring = new Path2D();
-          ring1ByColor.set(tone, ring);
-        }
-        this.hexPath(ring, t.x, t.y);
-      }
-    }
-
-    // 2. geçiş: sınırın bir kare içi. İki halka birlikte, sınıra doğru
-    // koyulaşan bir gradyan kurar — ülke kesilmiş kağıt gibi kenarında
-    // gölgelenir (Paradox'un imza kenar geçişinin hex karşılığı). Kendi
-    // karesine dolgu olduğu için komşu ülkeye taşma/çakışma sorunu yok.
-    if (edgeMode) {
-      const ring2ByColor = new Map();
-      for (const t of tiles) {
-        const real = t.ghostOf ?? t;
-        if (boundaryOf.has(real)) continue;
-        const group = groupOf(t);
-        if (group < 0) continue;
-        for (let i = 0; i < 6; i++) {
-          const n = world.get(t.q + DIRS[i][0], t.r + DIRS[i][1]);
-          if (!n || boundaryOf.get(n) !== group) continue;
-          const tone = this.nationEdgeTone(world.nations[group]);
-          let ring = ring2ByColor.get(tone);
-          if (!ring) {
-            ring = new Path2D();
-            ring2ByColor.set(tone, ring);
-          }
-          this.hexPath(ring, t.x, t.y);
-          break;
-        }
-      }
-      ctx.globalAlpha = 0.13;
-      for (const [tone, ring] of ring2ByColor) {
-        ctx.fillStyle = tone;
-        ctx.fill(ring);
-      }
-      ctx.globalAlpha = 0.26;
-      for (const [tone, ring] of ring1ByColor) {
-        ctx.fillStyle = tone;
-        ctx.fill(ring);
-      }
-      ctx.globalAlpha = 1;
-    }
-
-    ctx.lineCap = 'round';
-    // Kontur: eskisinden ince (4.2→3.4) ama daha koyu ve dolu — sınır
-    // "kalın bant" değil "net mürekkep hattı" okunur; kenar gölgesi
-    // kalınlık hissini zaten veriyor.
-    ctx.lineWidth = 3.4 / scale;
-    // Saf siyahtan biraz uzak, hafif soğuk bir mürekkep: dünya koyulaştıktan
-    // sonra 0.9 opak kömür siyahı sınırı haritadan KOPARIYORDU (§9 "avoid
-    // excessive uniform black"). Kalınlık aynı, karakter yumuşak.
-    ctx.strokeStyle = 'rgba(9, 13, 15, 0.82)';
-    for (const path of byColor.values()) ctx.stroke(path);
-
-    // İç hat: çok ince, düşük opaklıkta sıcak highlight. Neon bir dış çizgi
-    // değil, baskıda hattın iç kenarında kalan açık mürekkep payı.
-    ctx.lineWidth = (cultureMode ? 2 : 1.1) / scale;
-    for (const [color, path] of byColor) {
-      // İç hat biraz güçlendi (0.10 → 0.16): koyu zeminde sınırın kendi
-      // kalınlığı okunsun, ama sıcak pay bir ışık çizgisine dönüşmesin.
-      ctx.strokeStyle = cultureMode ? color : 'rgba(206, 181, 126, 0.16)';
-      ctx.stroke(path);
-    }
   }
 
   /** Seçili birimin gidebileceği kareler. */

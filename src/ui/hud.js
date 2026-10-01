@@ -53,6 +53,9 @@ const ORDER_LABELS = {
 
 const $ = (id) => document.getElementById(id);
 
+/** Katmanlar → Hex grid tercihi (tarayıcıda; varsayılan kapalı). */
+const GRID_KEY = 'hexwar.map.hexGrid';
+
 /** Sekme ekranı → devir alanı (Military → recruitment, Politics → reforms…). */
 const AREA_OF_SCREEN = Object.fromEntries(
   DELEGATION_IDS.map((id) => [DELEGATION_AREAS[id].screen, id]),
@@ -299,7 +302,25 @@ export class Hud {
       game.requestRender();
     });
 
-    $('opt-grid').onchange = (e) => this.setLayer('showGrid', e.target.checked);
+    // Hex ızgarası isteğe bağlı bir veri katmanı: harita birimi province.
+    // Açan oyuncunun tercihi oturumlar arasında kalır.
+    const gridBox = $('opt-grid');
+    let gridOn = false;
+    try {
+      gridOn = localStorage.getItem(GRID_KEY) === '1';
+    } catch {
+      // Depo kapalıysa varsayılan (kapalı) geçerli.
+    }
+    gridBox.checked = gridOn;
+    game.renderer.showGrid = gridOn;
+    gridBox.onchange = (e) => {
+      this.setLayer('showGrid', e.target.checked);
+      try {
+        localStorage.setItem(GRID_KEY, e.target.checked ? '1' : '0');
+      } catch {
+        // Tercih yalnız bu oturumda yaşar.
+      }
+    };
     $('opt-labels').onchange = (e) => this.setLayer('showLabels', e.target.checked);
     // CANLI DENIZ — kare suresinin tek en buyuk kalemi.
     //
