@@ -11,6 +11,7 @@ import {
 } from './units.js';
 import { orderMove } from './movement.js';
 import { lawModifiers } from './politics.js';
+import { societyModifiers } from './society.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import {
   MILITARY_EQUIPMENT, ensureMilitaryEconomy, equipmentStock, setEquipmentStock,
@@ -91,7 +92,9 @@ export function nationManpower(world, nationId) {
   }
   // ASKERLIK YASASI. Seferber ulusta havuz 1.30 kati, gonullu orduda 0.85.
   // Eski merdiven daha once HICBIR seye baglanmiyordu (bkz. audit:mechanics).
-  return total * (lawModifiers(world.nations?.[nationId]).manpower ?? 1);
+  // TOPLUM: militarist halk silaha daha istekli gelir (society.js).
+  const nation = world.nations?.[nationId];
+  return total * (lawModifiers(nation).manpower ?? 1) * societyModifiers(nation).manpower;
 }
 
 /**

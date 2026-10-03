@@ -28,6 +28,9 @@
 
 import { makeRng } from '../core/rng.js';
 import { TIER, announce } from './chronicle.js';
+import {
+  chooseCampaign, ensureSociety, partyCloseness, runSociety, settleCampaign, societyView,
+} from './society.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const CLASS_IDS = ['lower', 'middle', 'upper'];
@@ -496,6 +499,9 @@ export function ensurePolitics(world) {
     politics.privateInflow = Math.max(0, politics.privateInflow ?? 0);
     politics.lastPrivateInvestment ??= null;
     nation.politics = politics;
+    // Toplum eksenleri (society.js): eski kayitta yoksa halkin bugunku parti
+    // egilimlerinden kurulur.
+    ensureSociety(world, nation, peopleMix(nation));
     ready.add(politics);
     // Yeni kurulan ya da göçen nesne ekrana 0% ile düşmesin.
     if (politics !== current && nation.alive) updateNationSupport(nation);
@@ -560,6 +566,10 @@ function supportScore(nation, party, ruling, weights) {
     }
     score += Math.max(0, socialClass.population ?? 0) * affinity * weight;
   }
+  // HALK KENDINE YAKIN PROGRAMI TUTAR (society.js). Sinif egilimi kimin
+  // tabani oldugunu soyler, toplum eksenleri o tabanin bugun neye inandigini:
+  // uzun savaslardan sonra pasifist bir halk milliyetciyi tutmaz.
+  score *= partyCloseness(nation, party.ideology);
   // SAVAŞ İKTİDARA FATURA KESER. Yıpratan savaş ve işgal iktidar partisinin
   // desteğini oyar; meşruiyet üzerinden istikrara da yansır.
   if (ruling && party.id === ruling.id) {
@@ -872,15 +882,64 @@ function collectPrivateCapital(nation) {
     : Math.max(0, inflow);
 }
 
+/** Toplumun aylik guncellemesine siyasetin verdigi baglam. */
+function societyContext(nation, turn) {
+  const ruling = rulingParty(nation);
+  return {
+    turn,
+    rulingIdeology: ruling?.ideology ?? null,
+    rulingName: ruling?.name ?? 'the government',
+    laws: {
+      constitution: lawIndex(nation, 'constitution'),
+      conscription: lawIndex(nation, 'conscription'),
+      citizenship: lawIndex(nation, 'citizenship'),
+    },
+  };
+}
+
 export function runPolitics(game) {
   const world = game.world;
+  const turn = world.turn ?? 0;
   updatePoliticalSupport(world);
   for (const nation of world.nations) {
     if (!nation.alive) continue;
     collectPrivateCapital(nation);
     applyGovernmentLimits(nation, game);
+    // TOPLUM ayda bir guncellenir; ulke basina farkli hafta (yuk dagilsin).
+    // Bedelden ONCE: bu hafta acik olan kampanya bu ayin itisine girer.
+    if ((turn + nation.id) % 4 === 0) runSociety(world, nation, societyContext(nation, turn));
+    // KAMPANYA haftalik odenir; hazine yetmezse durur ve oyuncuya soylenir.
+    if (settleCampaign(nation) && nation.id === game.turns?.playerNation) {
+      announce(game, nation, {
+        kind: 'POLITICS', tier: TIER.IMPORTANT, key: 'campaign-stopped',
+        title: 'The state campaign has stopped',
+        detail: 'The treasury could not pay for it this week.',
+      });
+    }
   }
   game.emit('politics', world.turn);
+}
+
+/**
+ * YZ ve devredilmis kabinenin kampanya karari (society.chooseCampaign). Yarim
+ * yilda bir, ulke basina farkli hafta.
+ */
+export function manageSocietyCampaign(game, nation) {
+  const turn = game.world?.turn ?? 0;
+  if ((turn + nation.id) % 26 !== 0) return null;
+  return chooseCampaign(nation, rulingParty(nation)?.ideology);
+}
+
+/** Siyaset ekraninin toplum bolumu: eksenler, itisler, partilerin yeri. */
+export function societyBoard(world, nation) {
+  const ruling = rulingParty(nation);
+  const parties = (nation?.politics?.parties ?? []).map((party) => ({
+    ideology: party.ideology,
+    name: party.name,
+    color: IDEOLOGIES[party.ideology]?.color ?? '#7b7568',
+    ruling: party.id === ruling?.id,
+  }));
+  return societyView(nation, parties);
 }
 
 /* --------------------------------------------------------------------------

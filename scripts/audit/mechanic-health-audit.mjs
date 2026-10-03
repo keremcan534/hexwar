@@ -29,6 +29,8 @@ import { headless, runPeaceful, pickNation, section, sub, finding, reportFinding
 import { LAWS, refreshLawModifiers } from '../../src/game/politics.js';
 import { BUDGET_POLICIES, budgetPolicyLimits, setBudgetPolicy } from '../../src/game/economy.js';
 import { researchPointsOf } from '../../src/game/technology.js';
+import { SOCIETY_AXES } from '../../src/game/society.js';
+import { foreignShareOf } from '../../src/game/culture.js';
 
 const WEEKS = 120;
 const WARMUP = 30;
@@ -130,6 +132,17 @@ const results = [];
  */
 const WAR_LEVERS = new Set(['armyFunding']);
 
+/**
+ * KULTUR KALDIRACLARI — etkisi azinlik kumelerindedir, ulusal toplamda degil.
+ *
+ * Toplumun asimilasyon ekseni (society.js) azinlik kumelerinde huzursuzlugu
+ * ~1.4 puan, sadakati 12-18 puan oynatiyor ve ulusal hareketi dogurup
+ * dogurmayacagina karar veriyor (olculdu, 3 tohum); ama arenanin ULUSAL
+ * olcutleri (GSYH, hazine, istikrar) azinlik payi kadar kimildar. Savas
+ * kaldiraci gibi ayri tutulur ve asagida DOGRUDAN KANALINDAN olculur.
+ */
+const CULTURE_LEVERS = new Set(['society:integration']);
+
 function probe(label, applyLow, applyHigh) {
   const lows = SEEDS.map((s) => arm(s, applyLow));
   const highs = SEEDS.map((s) => arm(s, applyHigh));
@@ -148,11 +161,13 @@ function probe(label, applyLow, applyHigh) {
   }
   let v = identical ? 'OLU' : (best.ratio >= 1 ? 'CALISIYOR' : 'GURULTU ALTI');
   if (WAR_LEVERS.has(label) && v !== 'OLU') v = 'SAVAS KALDIRACI';
+  if (CULTURE_LEVERS.has(label) && v === 'GURULTU ALTI') v = 'KULTUR KALDIRACI';
   results.push({ label, verdict: v, key: best.key, pct: best.pct, ratio: best.ratio });
   const mark = v === 'OLU' ? '  <<< OLU'
     : v === 'GURULTU ALTI' ? '  <-- hissedilmez'
       : v === 'SAVAS KALDIRACI' ? '  <-- baris arenasinda yalniz MALIYETI gorunur'
-        : '';
+        : v === 'KULTUR KALDIRACI' ? '  <-- etkisi azinlik kumelerinde; dogrudan kanali asagida'
+          : '';
   console.log(`  ${label.padEnd(24)} ${v.padEnd(13)} en guclu: ${String(best.key).padEnd(6)}`
     + ` %${best.pct.toFixed(1).padStart(6)}  = gurultunun ${best.ratio.toFixed(2)} kati${mark}`);
 }
@@ -205,6 +220,31 @@ sub('Mesruiyet — halkin arkasinda olmayan hukumet istikrar oder mi?');
   probe('mesruiyet (30 puan)', backing(0), backing(30));
 }
 
+// ===================================================== TOPLUM EKSENLERI
+sub('Toplum eksenleri — sol kutup vs sag kutup (society.js)');
+{
+  // Eksen her hafta kutba CAKILIR: aylik itisler onu kutuptan cekmesin. Olculen
+  // sey eksenin ETKISIDIR (parti destegi -> mesruiyet, savas yuku, huzursuzluk,
+  // arastirma, istikrar); eksenin nasil oraya geldigi ayri soru (kampanya
+  // asagida). Militarizmin iki etkisi savasta (savas yuku, insan gucu); barista
+  // yalniz parti destegi uzerinden gorunur.
+  const pin = (axisId, value) => (nation) => {
+    if (nation.politics?.society) nation.politics.society[axisId] = value;
+  };
+  for (const axis of SOCIETY_AXES) {
+    probe(`society:${axis.id}`, pin(axis.id, -100), pin(axis.id, 100));
+  }
+  // KAMPANYA: oyuncunun tek kaldiraci. Ayni eksen, iki yon; ekseni kendisi
+  // tasir, yani etkisi eksenin etkisinin bir kesridir.
+  // Hazine kapisi ATLANIR (yasalardaki siyasi kapi gibi): olculen sey
+  // kampanyanin ETKISIDIR. Hazine yetmeyen hafta settleCampaign onu durdurur,
+  // kol her hafta yeniden kurar.
+  const campaign = (dir) => (nation) => {
+    if (nation.politics) nation.politics.campaign = { axis: 'progress', dir };
+  };
+  probe('campaign (progress)', campaign(-1), campaign(1));
+}
+
 // ============================================================ BUTCE
 sub('Butce kaldiraclari — kontrol grubu (bunlarin calistigi ayrica dogrulandi)');
 // TABAN VE TAVAN SABIT DEGIL, HUKUMETIN IZIN VERDIGI YERDIR. Ilk surum
@@ -253,6 +293,32 @@ sub('Dogrudan kanal — gurultunun altinda kalan mekanik BAGLI MI?');
     'residency', 'full_citizenship', (n) => n.economy.ledger.state ?? 0);
   channel('labour -> isci geliri', 'labour',
     'no_labour_rights', 'strong_labour_rights', (n) => n.economy.classes?.lower?.income ?? 0);
+
+  // TOPLUMUN ASIMILASYON EKSENI -> azinlik kumelerinin sadakati. Eksen her hafta
+  // kutba cakilir; okunan sey yabanci cogunluklu kumelerin ortalama sadakatidir.
+  const minorityLoyalty = (value) => {
+    const game = headless(SEEDS[0]);
+    runPeaceful(game, WARMUP);
+    const nation = pickNation(game);
+    game.turns.playerNation = nation.id;
+    for (let i = 0; i < WEEKS; i++) { nation.politics.society.integration = value; runPeaceful(game, 1); }
+    const foreign = game.world.provinces.filter((p) => p.owner === nation.id && p.econ
+      && foreignShareOf(p, nation) >= 0.5);
+    return foreign.length
+      ? foreign.reduce((sum, p) => sum + (p.econ.control ?? 0), 0) / foreign.length : 0;
+  };
+  {
+    const lo = minorityLoyalty(-100);
+    const hi = minorityLoyalty(100);
+    const delta = (hi - lo) / Math.max(1e-9, Math.abs(lo)) * 100;
+    const ok = delta > 5;
+    console.log(`  ${'society:integration -> azinlik sadakati'.padEnd(34)} ${lo.toFixed(3).padStart(10)} -> ${hi.toFixed(3).padStart(10)}`
+      + `  %${delta.toFixed(1).padStart(6)}  ${ok ? 'BAGLI' : 'BAGLI DEGIL'}`);
+    if (!ok) {
+      finding('HIGH', 'Kanal: society:integration -> azinlik sadakati',
+        'cok kulturlu toplumda azinlik kumeleri daha sadik olmali', `${lo} -> ${hi}`);
+    }
+  }
 }
 
 // ============================================================== OZET
@@ -261,9 +327,11 @@ const dead = results.filter((r) => r.verdict === 'OLU');
 const weak = results.filter((r) => r.verdict === 'GURULTU ALTI');
 const live = results.filter((r) => r.verdict === 'CALISIYOR');
 const war = results.filter((r) => r.verdict === 'SAVAS KALDIRACI');
+const culture = results.filter((r) => r.verdict === 'KULTUR KALDIRACI');
 console.log(`  toplam ${results.length} mekanik · CALISIYOR ${live.length}`
   + ` · GURULTU ALTI ${weak.length} · OLU ${dead.length}`
-  + ` · SAVAS KALDIRACI ${war.length} (bu arenada olculemez)`);
+  + ` · SAVAS KALDIRACI ${war.length} (bu arenada olculemez)`
+  + (culture.length ? ` · KULTUR KALDIRACI ${culture.length} (dogrudan kanaliyla olculur)` : ''));
 if (war.length) {
   console.log(`  savas kaldiraclari ayrica dogrulanir: npm run audit:budget-contract §6`
     + ` — ${war.map((w) => w.label).join(', ')}`);

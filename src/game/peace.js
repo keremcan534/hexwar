@@ -13,6 +13,7 @@ import { controllerOf } from './control.js';
 import { soldiersOf } from './units.js';
 import { annexInfamy } from './infamy.js';
 import { POPULATION_SCALE } from './populationScale.js';
+import { pushSociety } from './society.js';
 
 /** Warscore 0-100 arasıdır; 100 tam teslimiyet demektir. */
 export const MAX_WAR_SCORE = 100;
@@ -784,6 +785,24 @@ export function signPeace(game, a, b, offer) {
   transfer(offer?.demands, b, a);
   transfer(offer?.concessions, a, b);
   applyTerms(game, a, b, offer?.terms);
+  // ZAFER VE YENILGI TOPLUMA ISLER (society.js): kazanan savasi kutsar,
+  // kaybeden bezer. Beyaz baris iki tarafi da biraz yorgun birakir.
+  {
+    const gainA = (offer?.demands ?? []).length + (offer?.terms ?? []).length;
+    const gainB = (offer?.concessions ?? []).length;
+    const nameA = world.nations[a]?.name ?? 'the enemy';
+    const nameB = world.nations[b]?.name ?? 'the enemy';
+    if (gainA > gainB) {
+      pushSociety(world.nations[a], 'militarism', -4, `Victory over ${nameB}`);
+      pushSociety(world.nations[b], 'militarism', 4, `Defeat by ${nameA}`);
+    } else if (gainB > gainA) {
+      pushSociety(world.nations[b], 'militarism', -4, `Victory over ${nameA}`);
+      pushSociety(world.nations[a], 'militarism', 4, `Defeat by ${nameB}`);
+    } else {
+      pushSociety(world.nations[a], 'militarism', 1, `White peace with ${nameB}`);
+      pushSociety(world.nations[b], 'militarism', 1, `White peace with ${nameA}`);
+    }
+  }
   // Egemenlik degisti: fiyatlar ulke toplamindan turedigi icin tablo bayat.
   invalidateWarCosts(world);
   // Anlaşma dışında kalan işgaller sahibine döner: barış cepheyi siler.

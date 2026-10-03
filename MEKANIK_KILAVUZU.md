@@ -1828,6 +1828,7 @@ gelir — bütçedeki `tariffWanted` / `armyFundingWanted` ile aynı kavram.
     istikrar −= fark × 0.25
 
     destek    = Σ sınıf nüfusu × ideoloji eğilimi × anayasa ağırlığı
+                × topluma yakınlık (0.6–1.4, bkz. 6.5)
                 (radikal parti memnuniyet 0.40 altında, ılımlı 0.58 üstünde kazanır;
                  savaş ve işgal iktidarın desteğini %45'e kadar oyar)
     ağırlık   Absolute {alt 0, orta 0, üst 1} · Constitutional {0, 1, 1} · Democracy {1, 1, 1}
@@ -1880,23 +1881,30 @@ dünyanın 0.08 altında kaldı.
 | Kaldıraç | Hüküm | Kaç kat (son) | ilk 5-yasa taraması | En güçlü ölçüt (son) |
 |---|---|---|---|---|
 | Constitution | EVET | 5.93× | 6.97× | istikrar |
-| Labour Rights | EVET | 5.35× | 6.20× | memnuniyet |
-| Welfare State | EVET | 7.47× | 7.63× | memnuniyet |
-| Conscription | EVET | 2.19× | 2.40× (eski merdiven 1.66×) | istikrar |
-| Citizenship | EVET | 1.33× | 0.71× (eski azınlık hakları 0.57×) | hazine |
-| Meşruiyet | EVET | 2.50× | 2.82× | istikrar |
+| Labour Rights | EVET | 5.37× | 6.20× | memnuniyet |
+| Welfare State | EVET | 7.58× | 7.63× | memnuniyet |
+| Conscription | EVET | 1.90× | 2.40× (eski merdiven 1.66×) | istikrar |
+| Citizenship | EVET | 1.39× | 0.71× (eski azınlık hakları 0.57×) | hazine |
+| Meşruiyet | EVET | 2.39× | 2.82× | istikrar |
 
-"Son" = 2026-10-01 taraması (şehir kurma kaldırıldı, para basma eklendi,
-teçhizatsız alay siparişi açıldı; tarama hazineyi artık NET ölçer: altın −
-borç, bkz. §8.2). Ondan önceki 2026-09-23 taraması hayali ekipman rezervi ve
-alıcısız tesis düzeltmelerinden sonraydı. Katlar ekonomi değiştikçe oynar; vatandaşlık uzun süre
+"Son" = 2026-10-03 taraması (toplum eksenleri eklendi, §6.5). Askerlik
+2.19×'ten 1.90×'e indi: yasa artık topluma da dokunur — 120 haftada tavan
+kademe halkı tabana göre ~14 puan daha militarist yapar (−22 → −36) ve
+militarist halk tam fonlu orduyla övünür (ordu havası), yani tavan kademenin
+istikrar bedelinin bir kısmını kendi yarattığı toplum geri öder. Ölçüldü:
+toplum iki kolda da dondurulunca aynı prob 2.15× verir (3 tohum).
+Ondan önceki 2026-10-01 taraması şehir kurma kalkıp para basma eklendikten
+sonraydı (tarama o gün hazineyi NET ölçmeye başladı: altın − borç, bkz.
+§8.2); 2026-09-23 taraması hayali ekipman rezervi ve alıcısız tesis
+düzeltmelerinden sonraydı. Katlar ekonomi değiştikçe oynar; vatandaşlık uzun süre
 eşiğin iki yanında gidip geliyordu (bir gün 0.55×, aynı gün 1.68×). 09-19'da
 vergi tavanı hazine ölçütünü 1.73×'e taşımıştı; 09-23'te 1.05×'e indi — neden
 kaldıraç değil arena kaydı, bkz. §8.2.
 
 Doğrudan kanal (son tarama): vatandaşlık Residency → Full taşra gelirini
-**+%7.1** (09-19'da +%13.0, ilk taramada +%8.3), işçi hakkı None → Strong
-işçi gelirini **+%7.4** (09-19'da +%7.9) oynatıyor (eski asgari ücret kanalı %0.6'da kalıyordu; bandın hemen
+**+%13.0** (isyan reworkünden sonra +%8.3; 09-19'da da +%13.0, ilk taramada
++%8.3 — tamsayı gelirde 23 → 26 ile 24 → 26 arası gidip gelir), işçi hakkı
+None → Strong işçi gelirini **+%8.2** (önceki taramalarda +%7.2…+%7.9) oynatıyor (eski asgari ücret kanalı %0.6'da kalıyordu; bandın hemen
 ardından ölçülen +%2.8'den geri geldi — vergi tavanı işçinin elinde kalan
 geliri büyüttü). İşçi kanalı bant daralmadan önceki taramada **+%19.3** idi: taban fiyat 0.12'den
 0.5'e çıkınca satılamayan hammaddenin geliri de büyüyor ve ücret, alt sınıf
@@ -1911,39 +1919,137 @@ kendi katsayılarından, `lawPreview`).
 
 ---
 
+## 6.5 Toplum — üç eksen
+
+**Neden.** Dört parti sabit programlıydı ve ülkenin "nasıl bir ülke olduğu"
+hiçbir yerde birikmiyordu. Kerem: "EU5 tarzı, eksenleri aylık iterek sağa
+sola götürelim; partisi, yaptıklarımız bunları oynatsın — çok savaş,
+pasifist vs.; nelerin etkilediğini de görelim." 12Axes'in on iki ekseninden
+üçü alındı: din ve teknolojinin oyunda bağlanacağı bir şey yok (ölü eksen
+olurlardı), ekonomi ve ticaret zaten partinin programında.
+
+**Ayrım.** Yasalar ve bütçe DEVLETİN kararıdır (hızlı, oyuncunun). Eksenler
+TOPLUMUN eğilimidir (yavaş, kendiliğinden). Oyuncu ekseni elle itmez — her ay
+aynı tık ev ödevi olurdu; tek kaldıraç **kampanya**dır.
+
+**Formül** (değer −100 sol kutup … +100 sağ kutup; ayda bir güncellenir)
+
+    eksen      Militarist ↔ Pacifist · Assimilationist ↔ Multicultural · Progressive ↔ Traditional
+    itiş/ay    savaşta  −1.4 + 2.8 × savaş yükü (coşku → bezginlik); barışta +0.4
+               ordu fonu −(fon − 60)/40 × 0.5 · askerlik +0.3 / 0 / −0.4
+               vatandaşlık −0.6 / 0 / +0.6 · kabul edilen halk +0.25 her biri
+               milliyetçilik çağı −(çağ − 1) · ayaklanma aşamasındaki hareket −0.4 her biri
+               okuryazarlık −(oran − 0.25) × 2 · okul −bütçe% × 0.4
+               anayasa +0.4 / 0 / −0.4 · orta sınıf −(pay − 0.1) × 3
+               iktidar: (programı − toplum) × 0.01 · kampanya ±2
+               olaylar: zafer −4 / yenilgi +4 (militarizm), kabul +6, sürgün −8,
+               katliam −6, taviz +1.5, vassal bırakma +3, ayaklanma −4 (halklar)
+    adım       kutba doğru itiş kutba yaklaştıkça küçülür (× 1 − |değer|/110)
+
+    etkiler (m = değer/100)
+      Militarist ↔ Pacifist          savaş yükü × (1 + 0.35 m) · insan gücü × (1 − 0.12 m)
+                                     memnuniyet −0.06 m × ordu fonu (pasifist halk tam fonlu
+                                     orduya kızar, militarist halk övünür — barışta da hissedilir)
+      Assimilationist ↔ Multicult.   azınlık huzursuzluğu −0.8 m × yabancı pay · asimilasyon × (1 − 0.4 m)
+      Progressive ↔ Traditional      araştırma × (1 − 0.15 m) · istikrar + 0.04 m
+      parti desteği                  × yakınlık = 1.4 − 0.8 × ortalama |program − toplum| / 200
+
+    kampanya   tek eksen, tek yön, ayda ±2; haftada max(0.5, nüfus/10.000 × 0.004) altın
+               (defter satırı `campaign`); hazine ödeyemezse durur
+
+**Kod** — `src/game/society.js` (eksenler, itişler, etkiler, kampanya,
+`societyView`), `src/game/politics.js` (`supportScore` yakınlık çarpanı,
+`runPolitics` aylık güncelleme ve haftalık kampanya bedeli, `societyBoard`,
+`manageSocietyCampaign`), etkiler: `economy.js` (savaş yükü, istikrar),
+`recruitment.js` (insan gücü), `culture.js` (huzursuzluk, asimilasyon),
+`technology.js` (araştırma); olaylar: `peace.js`, `culture.js`, `movements.js`.
+Ekran: `src/ui/politicsScreen.js` (Society bandı).
+
+**Çalışıyor mu?** `audit:mechanics` (2026-10-03): eksen her hafta sol kutba
+(−100) ya da sağ kutba (+100) sabitlenir, iki kol 3 tohum × 120 hafta koşar.
+
+| Kaldıraç | Hüküm | Kaç kat | En güçlü ölçüt |
+|---|---|---|---|
+| Militarist ↔ Pacifist | EVET | 3.06× | istikrar %16.8 |
+| Assimilationist ↔ Multicultural | KÜLTÜR KALDIRACI | arenada 0.32× | doğrudan kanal BAĞLI: azınlık sadakati 48.4 → 62.9 (+%30) |
+| Progressive ↔ Traditional | EVET | 4.68× | araştırma %23.4 |
+| Kampanya (değişim ekseni, iki yön) | EVET | 2.02× | araştırma %10.1 |
+
+İlk ölçüm üçünü gürültünün altında buldu: militarizm 0.22× (etkisi yalnız
+savaşta işliyordu, tarama ise barışta koşar), halklar 0.30×, kampanya 0.64×
+(ayda ±1.2, bedel 0.002). Militarizme barışta da hissedilen **ordu havası**
+eklendi (memnuniyet −0.06 m × ordu fonu), kampanya ±2 / 0.004'e çıktı ve
+aylık güncellemeden sonra ödenir oldu. Halklar ekseninin işi azınlık
+kümelerindedir; taramanın ülkesinde azınlık az olduğundan kaba ölçütte
+görünmez. Bu yüzden ayrı bir hüküm aldı: **KÜLTÜR KALDIRACI** — yabancı
+çoğunluklu taşraların ortalama sadakatiyle doğrudan ölçülür (eşik %5).
+
+Siyaset dinamiği (160×96, 20 yıl, 2 tohum, eski → yeni): hükümet değişimi
+107 → 71 ve 130 → 55; ortalama meşruiyet açığı 1.7 → 1.2 ve 2.3 → 1.2 puan;
+ortalama istikrar 0.563 → 0.559 ve 0.585 → 0.572. Halk kendine yakın partiyi
+tuttuğu için iktidar halkla daha uyumlu; hükümetler eskisinden belirgin uzun
+görevde kalıyor (DAVRANIŞ DEĞİŞİKLİĞİ, bilerek). İktidarın aylık çekişi 0.015
+ile ölçüldü ve fazlaydı (130 → 65, kendini besleyen iktidar avantajı); 0.01'e
+indi. 20. yılda dünya ortalaması: militarist (−25 / −27), asimilasyoncu
+(−28 / −28), değişimde geleneğe hafif yakın (+5 / +7.5).
+
+Dünya biraz daha savaşçı (10 yıl, 4 tohum, tam YZ, eski → yeni): savaş
+140 → 170, savaşta geçen ülke çifti-hafta 6344 → 7500; el değiştiren küme
+177 → 182, ayaklanma 3 → 6, vassal bırakma 11 → 7. Neden: 1836 toplumu
+militarist başlar (−15) ve iktidardaki muhafazakâr/milliyetçi onu orada
+tutar; militarist halk savaşı ~%9 daha hafif yaşar, savaşlar uzar. Tohumdan
+tohuma çok oynar (bir tohumda el değiştiren küme 64 → 27, başkasında
+42 → 64) — tek tohumluk bir "sakinleşme" ölçüm değildir.
+
+**Pratikte** — uzun savaşlar halkı önce coşturur, sonra bezdirir; bezgin halk
+pasifist partileri tutar, savaşı sürdüren hükümet meşruiyet öder. Asimilasyoncu
+toplum azınlığı daha hızlı eritir ama ulusal hareketleri de besler (bkz. §5.10).
+Okul ve anayasa toplumu ilerici yapar: araştırma hızlanır, istikrar biraz
+düşer. Her eksenin yanında "geçen ay ne itti" dökümü durur; kampanya
+toplumu istediğin yöne iter ama haftalık parası vardır.
+
+---
+
 # 7. TEK SAYFA ÖZET
 
-Kaç kat: son `audit:mechanics` taraması (2026-10-01); bütçe satırlarında
+Kaç kat: son `audit:mechanics` taraması (2026-10-03); bütçe satırlarında
 en güçlü ölçüt.
 
 | # | Mekanik | Formül (kısa) | Çalışıyor? | Kaç kat |
 |---|---|---|---|---|
-| 1 | Vergi | gelir × oran × sınıf ağırlığı | EVET | 8.48× (alt sınıf) |
-| 2 | Gümrük | ithalat × oran; girdi fiyatı ×(1+oran×ithal payı); gıda iştahtan muaf; hedef düğmeleri 0/25/50 | EVET | 1.15× |
+| 1 | Vergi | gelir × oran × sınıf ağırlığı | EVET | 8.35× (alt sınıf) |
+| 2 | Gümrük | ithalat × oran; girdi fiyatı ×(1+oran×ithal payı); gıda iştahtan muaf; hedef düğmeleri 0/25/50 | EVET | 1.33× |
 | 3 | Ordu fonu | güç = 0.55 + fon×0.45 | EVET (savaşta) | contract §6 |
 | 4 | Eğitim | (nüfus/10k) × bütçe × 0.34 | EVET | 13.96× |
-| 5 | Refah | (nüfus/10k) × bütçe × 0.76 | EVET | 4.66× |
-| 5b | Para basma | GSYH × oran; enflasyon hedefi 0.02p+0.004p²; memnuniyet −enflasyon×0.35 | EVET | 7.49× |
+| 5 | Refah | (nüfus/10k) × bütçe × 0.76 | EVET | 4.46× |
+| 5b | Para basma | GSYH × oran; enflasyon hedefi 0.02p+0.004p²; memnuniyet −enflasyon×0.35 | EVET | 7.09× |
 | 6 | Okuryazarlık | hedefe haftada binde 4 yaklaşır | EVET | zincirin içinde |
 | 7 | Araştırma | (okuryazarlık×4 + orta×1.5 + katip + 1) × çarpanlar | EVET | 4.00× |
 | 8 | Teknoloji maliyeti | 120 × (1+kademe×0.55) × erken ceza | EVET | kalibre |
-| 9 | Memnuniyet | 0.35 + ödenebilirlik×0.5 − vergi×0.28 + refah×0.14 − enflasyon×0.35 | EVET | omurga |
-| 10 | İstikrar | memnuniyet − işgal − savaş − işsizlik×0.22 | EVET | omurga |
+| 9 | Memnuniyet | 0.35 + ödenebilirlik×0.5 − vergi×0.28 + refah×0.14 − enflasyon×0.35 − 0.06m×ordu fonu | EVET | omurga |
+| 10 | İstikrar | memnuniyet − işgal − savaş×(1+0.35m) − işsizlik×0.22 + 0.04p | EVET | omurga |
 | 11 | Nüfus | beş çarpanın çarpımı; beslenme %50 altı kıtlık | EVET | ölçüldü |
 | 12 | İşsizlik | (min(işçi,tezgâh) − istihdam) / tezgâh | EVET | tek kaynak |
 | 13 | Fabrika ücreti | katma değer × 0.55 × yasa çarpanı | EVET | +%8.8 |
 | 14 | Ticaret | min(fazla, teklif); iştah = min(1, 1/(1+oran×1.6)), gıdada 1 | EVET | 1.82× |
 | 15 | İdari gider | (şehir−1)^1.6 × 4.0 + nüfus^0.75 × 0.8; yeni şehir kurulmaz | EVET | kaldıraç değil |
-| 16 | Taşra sadakati | tavan = vatandaşlık yasası; üretim ×= sadakat | BAĞLI | +%7.1 |
-| 17 | İnsan gücü | havuz × (0.85 + askerlik×0.45) | EVET | 2.19× |
+| 16 | Taşra sadakati | tavan = vatandaşlık yasası; üretim ×= sadakat | BAĞLI | +%13.0 |
+| 17 | İnsan gücü | havuz × (0.85 + askerlik×0.45) × (1 − 0.12m) | EVET | 1.90× |
 | 18 | Anayasa | alt +0.22, orta +0.23, üst −0.12, araştırma +%25; kimin desteği sayılır | EVET | 5.93× |
-| 19 | İşçi hakları | alt +0.44 (kölelik kalkınca +0.08), bordro +%29, üretim −%5.4 | EVET | 5.35× |
-| 20 | Sosyal devlet | alt +0.32, hazine yükü 0.41, okuryazarlık tabanı 0.35 | EVET | 7.47× |
-| 21 | Vatandaşlık | azınlık tavanı 0.7→1.0, huzursuzluk, asimilasyon | EVET | 1.33× |
-| 22 | Askerlik | insan gücü 0.85→1.30, alt −0.06 | EVET | 2.19× |
-| 23 | Meşruiyet | istikrar −= (lider − iktidar) × 0.25 | EVET | 2.50× |
+| 19 | İşçi hakları | alt +0.44 (kölelik kalkınca +0.08), bordro +%29, üretim −%5.4 | EVET | 5.37× |
+| 20 | Sosyal devlet | alt +0.32, hazine yükü 0.41, okuryazarlık tabanı 0.35 | EVET | 7.58× |
+| 21 | Vatandaşlık | azınlık tavanı 0.7→1.0, huzursuzluk, asimilasyon | EVET | 1.39× |
+| 22 | Askerlik | insan gücü 0.85→1.30, alt −0.06; toplumu militaristleştirir | EVET | 1.90× |
+| 23 | Meşruiyet | istikrar −= (lider − iktidar) × 0.25 | EVET | 2.39× |
 | 24 | Hex kaynakları | kota ataması (talepten paylar); satır çıktısı × talep ölçeği; kadro = alt sınıf × 1.05 | EVET | §4.7 sağlık koşusu |
 | 25 | Fabrika duraklatma | barış + depo ≥%95 + fiyat <0.75 → silah hattı durur | EVET | silah fiyatı 0.34 → 0.93 |
+| 26 | Toplum: savaş ve barış | savaş yükü ×(1+0.35m), insan gücü ×(1−0.12m), memnuniyet −0.06m×fon | EVET | 3.06× |
+| 27 | Toplum: halklar | azınlık huzursuzluğu −0.8i×yabancı pay, asimilasyon ×(1−0.4i) | KÜLTÜR | sadakat +%30 |
+| 28 | Toplum: değişim | araştırma −0.15p, istikrar +0.04p | EVET | 4.68× |
+| 29 | Parti yakınlığı | destek × (1.4 − 0.8 × ort. mesafe(program, toplum) / 200) | EVET | §6.5 siyaset dinamiği |
+| 30 | Devlet kampanyası | tek eksen ±2/ay; haftada max(0.5, nüfus/10k × 0.004) | EVET | 2.02× |
+
+m, i, p = toplum ekseni / 100 (−1 sol kutup … +1 sağ kutup; militarizm, halklar, değişim), bkz. §6.5.
 
 ---
 
@@ -1980,7 +2086,8 @@ Bu kılavuz ne kadar ölçüldüyse o kadar doğrudur. Ölçülemeyenler:
    `altın − borç` olarak ölçmeye başladı: yalnız altın ölçülürken iki kol da
    borca düştüğünde ikisi de 0'da kırpılıyor, fark borçta görünmüyordu
    (gümrük mh2'de iki kolda altın 0, borç 1327'ye karşı 1133 — kaldıraç
-   1.22×'ten 0.78×'e "düşmüştü"). Net ölçütle gümrük 1.15×, vatandaşlık 1.33×.
+   1.22×'ten 0.78×'e "düşmüştü"). Net ölçütle gümrük 1.15×, vatandaşlık 1.33×;
+   2026-10-03'te (toplum eksenleri eklendikten sonra) 1.33× ve 1.39×.
    Eşik (50.8) kırpılan seriyle ölçülmüştü; net seride muhtemelen yüksek
    kalır, yani hüküm muhafazakâr tarafta.
 

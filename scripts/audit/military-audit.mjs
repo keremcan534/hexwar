@@ -212,11 +212,17 @@ sub('Savas askeri mallarin fiyatini oynatiyor mu');
     { label: 'savasFiyati', get: (r) => n2(r.warp) },
     { label: 'fark', get: (r) => pct(relDelta(r.peace, r.warp)) },
   ]));
+  // Olcut mermidir: cephedeki ordu her hafta mermi ceker, silahi ise yalnizca
+  // alay kurarken alir. forceWar oyuncuya savas acamadigi icin bu kontrol eskiden
+  // rastgele YZ savaslarini olcup silah -15.9% ile "geciyordu"; gercek savasta
+  // mermi +17.6%, silah +2.8% oynar.
+  const ammoDelta = relDelta(peace.prices.ammunition, fight.prices.ammunition);
   const armsDelta = relDelta(peace.prices.arms, fight.prices.arms);
-  if (Math.abs(armsDelta) < 0.05) {
+  console.log(`  mermi ${pct(ammoDelta)} · silah ${pct(armsDelta)}`);
+  if (Math.abs(ammoDelta) < 0.05) {
     finding('MEDIUM', 'Savas -> askeri mal fiyati',
       'savasan ulke piyasadan daha cok mermi cekince fiyat oynamali',
-      `silah fiyati fark ${pct(armsDelta)}`,
+      `mermi fiyati fark ${pct(ammoDelta)} (silah ${pct(armsDelta)})`,
       'ordu talebi (landUnits x 0.08 x tempo) dunya talebine gore cok kucuk');
   }
 }

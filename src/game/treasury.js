@@ -44,6 +44,8 @@ export const LEDGER_LINES = {
   interest: { kind: 'expense', label: 'Debt interest' },
   // Ulusal harekete karsi sikiyonetim ve tavizler (movements.js).
   unrest: { kind: 'expense', label: 'Unrest measures' },
+  // Toplum eksenini yuruten devlet kampanyasi (society.js).
+  campaign: { kind: 'expense', label: 'State campaign' },
 
   // Bilanco hareketleri: gelir/gider DEGILDIR, hazineyi degistirir.
   borrow: { kind: 'financing', label: 'Borrowed' },

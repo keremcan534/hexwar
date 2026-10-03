@@ -22,6 +22,7 @@ import {
   canInvestInFactory, factoryInvestmentRules, fiscalPolicyLimits, lawModifiers, lawMoodShift,
   legitimacyOf, policyOf, refreshLawModifiers, rulingParty,
 } from './politics.js';
+import { societyModifiers } from './society.js';
 import {
   PROJECT_KIND, constructionAtlas, constructionPower,
   constructionUpkeep, dropInvestmentLevel, ensureConstruction, fundProject,
@@ -3317,9 +3318,12 @@ function updateStability(world, nation, base) {
   const legitimacy = legitimacyOf(nation);
   // BASKI: sikiyonetim ve katliamin istikrar bedeli (movements.js yazar).
   const repressionHit = -clamp(economy.repressionHit ?? 0, 0, 1);
+  // TOPLUM: geleneksel toplum sakin, ilerici toplum huzursuz (society.js).
+  const societyShift = societyModifiers(nation).stability;
 
   economy.stability = clamp(
-    base + occupationHit + warHit + unemploymentHit + legitimacy.hit + repressionHit, 0.03, 0.98,
+    base + occupationHit + warHit + unemploymentHit + legitimacy.hit + repressionHit
+      + societyShift, 0.03, 0.98,
   );
   economy.stabilityBreakdown = {
     base,
@@ -3328,6 +3332,7 @@ function updateStability(world, nation, base) {
     unemployment: unemploymentHit,
     legitimacy: legitimacy.hit,
     repression: repressionHit,
+    society: societyShift,
     occupiedShare: occupation,
     occupiedTiles: economy.occupiedTiles ?? 0,
     warFronts: economy.warFronts ?? 0,
@@ -3348,6 +3353,9 @@ function populationDemand(world, nation, market) {
   let metWeighted = 0;
   let foodWeighted = 0;
   const welfare = socialLevel(nation, 'welfare');
+  // TOPLUM x ORDU BUTCESI (society.js): pasifist halk tam fonlu orduya kizar,
+  // militarist halk ovunur. Butun siniflara ayni.
+  const armyMood = societyModifiers(nation).armyMood * ((economy.armyFunding ?? 100) / 100);
   // Sinif dongusunden ONCE: memnuniyet bunu okuyacak (istikrar da ayni
   // fonksiyondan okur, bkz. unemploymentOf).
   const { rate: unemployment } = unemploymentOf(nation);
@@ -3551,7 +3559,8 @@ function populationDemand(world, nation, market) {
       : unemployment * (classId === 'lower' ? UNEMPLOYMENT_MOOD : UNEMPLOYMENT_MOOD * 0.5);
     socialClass.satisfaction = clamp(
       0.35 + affordability * 0.5 - taxRate * 0.28 + welfare * 0.14
-        + lawMoodShift(nation, classId) - joblessBite - inflationMood(nation, classId),
+        + lawMoodShift(nation, classId) - joblessBite - inflationMood(nation, classId)
+        + armyMood,
       0.08,
       0.95,
     );
@@ -4823,6 +4832,8 @@ function recordPulse(nation, turn) {
       war: bd.war ?? 0,
       unemployment: bd.unemployment ?? 0,
       legitimacy: bd.legitimacy ?? 0,
+      repression: bd.repression ?? 0,
+      society: bd.society ?? 0,
       total: bd.total ?? economy.stability ?? 0,
     },
     ledger: { ...lines, income: ledger.income ?? 0, expenses: ledger.expenses ?? 0, net: ledger.net ?? 0 },
@@ -5217,7 +5228,11 @@ function refreshNationalStrain(world) {
     // seferberligi barista acik birakmak bedava degildir.
     if (nation.mobilization?.active) strain += 0.35;
     nation.economy.warFronts = fronts;
-    nation.economy.warStrain = clamp(strain / 2, 0, 1);
+    // HAM yuk toplumun aylik itisine gider (savas cosku mu, bezginlik mi);
+    // hissedilen yuk toplumun egilimiyle carpilir: pasifist halk ayni savasi
+    // daha agir yasar (society.js).
+    nation.economy.warStrainRaw = clamp(strain / 2, 0, 1);
+    nation.economy.warStrain = clamp(strain / 2 * societyModifiers(nation).warStrain, 0, 1);
   }
 }
 

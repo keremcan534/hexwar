@@ -158,8 +158,13 @@ const MUTATIONS = {
       const touching = world.tiles.some((t) => t.owner === nationId
         && world.neighbors(t).some((nb) => nb.owner === other.id));
       if (!touching) continue;
-      declareWarNow(game, nationId, other.id);
-      opened++;
+      // `manual`: izlenen ulke oyuncuyken (asPlayer) oyuncu adina otomatik
+      // savas ilan edilemez (diplomacy.declareWar kapi 1). Bayraksiz cagri
+      // sessizce dusuyordu: audit:military R bolumunun 80 haftalik "savasi"nda
+      // isgal 0, takviye talebi 0 idi; olculen, dunyanin rastgele YZ
+      // savaslariydi. Senaryo oyuncunun kararini taklit eder. Oyuncu olmayan
+      // ulkede (asPlayer: false) bayrak hicbir kapiyi degistirmez.
+      if (declareWarNow(game, nationId, other.id, { manual: true })) opened++;
     }
   },
   /** Butun tumenlerin gucunu kirpar: takviye sistemi olculebilsin. */

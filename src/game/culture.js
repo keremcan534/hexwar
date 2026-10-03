@@ -47,6 +47,7 @@
 // gerekli baglam (isgal payi, sadakat) parametre olarak gecer.
 
 import { lawModifiers, lawValue } from './politics.js';
+import { nationalismEra, pushSociety, societyModifiers } from './society.js';
 import { TIER, announce } from './chronicle.js';
 import { addInfamy } from './infamy.js';
 import { POPULATION_SCALE } from './populationScale.js';
@@ -95,15 +96,8 @@ export const CULTURE = {
   BACKLASH_UNREST: 2.5,
 };
 
-/**
- * Milliyetcilik cagi. 1836'da imparatorluk bir hanedandir, 1900'de bir ulus
- * olmak zorundadir: ayni yabanci pay yuzyilin sonunda 1.8 kat huzursuzluk
- * uretir. Takvime bagli, teknolojiye degil — herkes ayni cagi yasar.
- */
-export function nationalismEra(turn) {
-  const progress = Math.max(0, Math.min(1, (turn ?? 0) / 3330));
-  return 1 + progress * 0.8;
-}
+/** Milliyetcilik cagi tek yerde: society.js (toplum da ona gore kayar). */
+export { nationalismEra };
 
 /** Vatandaslik yasasinin huzursuzluk agirligi. */
 function rightsWeight(nation) {
@@ -213,11 +207,14 @@ export function unrestBreakdown(world, province, nation, { occupied = 0, turn = 
   // yatistirir (minorityCeiling 0.7-1.0 arasi).
   const welfare = Math.max(0, Math.min(100, nation.economy?.social?.welfare ?? 0)) / 100 * 2;
   const rights = ((lawModifiers(nation).minorityCeiling ?? 1) - 0.7) / 0.3 * foreign;
+  // TOPLUM: asimilasyoncu cogunluk azinligi iter, cok kulturlu toplum
+  // yatistirir (society.js). Yabanci payla olceklenir: tek kulturlu kume etkilenmez.
+  const society = societyModifiers(nation).minorityUnrest * foreign;
   const target = Math.max(0, Math.min(
     CULTURE.MAX_UNREST,
-    culture + conquest + war + occupation + backlash - welfare - rights,
+    culture + conquest + war + occupation + backlash - welfare - rights + society,
   ));
-  return { target, culture, conquest, war, occupation, backlash, welfare, rights, foreign, era };
+  return { target, culture, conquest, war, occupation, backlash, welfare, rights, society, foreign, era };
 }
 
 /**
@@ -236,8 +233,10 @@ function assimilate(world, province, nation, { unrest, turn }) {
   if (calm <= 0) return false;
   const literacy = Math.max(0, Math.min(1, nation.economy?.literacy ?? 0));
   const urban = province.tileIdx?.some((idx) => world.tiles[idx]?.city) ? 1.5 : 1;
+  // Asimilasyoncu toplum daha hizli eritir, cok kulturlu toplum yavaslatir.
   const rate = CULTURE.ASSIMILATE_BASE
-    * (0.5 + literacy) * assimilationRights(nation) * control * urban * calm;
+    * (0.5 + literacy) * assimilationRights(nation) * control * urban * calm
+    * societyModifiers(nation).assimilation;
   if (!(rate > 0)) return false;
 
   let moved = 0;
@@ -421,6 +420,8 @@ export function acceptCulture(game, nation, cultureId) {
     province.econ.control = Math.max(province.econ.control ?? 0, 25);
   }
   const name = world.cultures?.[cultureId]?.name ?? 'a people';
+  // Toplum da degisir: devleti paylasmak cogulculugu ogretir (society.js).
+  pushSociety(nation, 'integration', 6, `Enfranchised the ${name}`);
   if (nation.id === game.turns?.playerNation) {
     announce(game, nation, {
       kind: 'POLITICS', tier: TIER.MAJOR, key: `accept-${cultureId}`,
@@ -646,6 +647,8 @@ export function expelCulture(game, nation, cultureId) {
   );
   addInfamy(nation, cost);
   world.cultureExpulsions = (world.cultureExpulsions ?? 0) + 1;
+  pushSociety(nation, 'integration', -8,
+    `Expelled the ${world.cultures?.[cultureId]?.name ?? 'a people'}`);
   if (recolored.length) {
     const tiles = [];
     for (const province of recolored) {

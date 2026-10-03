@@ -32,6 +32,7 @@ alan olarak kayitli, denetimin okudugu, ekranin gosterebilecegi akis.
 | L16 | REEL seri ayridir: `realGdp` ayni toplam TABAN fiyatlarla. Buyume yalniz burada okunur — nominal seride hacim artisi fiyat dususuyle sifirlanir | price-stability TEST 4 |
 | L17 | PARA BASMA tek beyanli kaynaktir: `ledger.printing` = `gdp` × `printing`/100 (birebir); karsiligi odeyen yok, bedeli `economy.inflation` → sinif memnuniyeti | budget-contract §6 (sapma 0.00) |
 | L18 | ulusal hareket bedelleri (sikiyonetim haftaligi, taviz) `unrest` defter satirindan odenir; kopan devletin hazinesi YENI PARA ALMAZ (uyuyan devlet 1836 kurulus hazinesini tasir, ordusu kopan kumelerin gercek nufusundan) | budget-contract §1 + movements.js |
+| L19 | toplum kampanyasi (society.js) haftalik bedelini `campaign` defter satirindan oder; hazine odeyemezse kampanya durur (borcla propaganda yok) | budget-contract §1 |
 
 ## Sirket / borsa (audit:companies)
 

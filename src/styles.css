@@ -11495,3 +11495,161 @@ body.picker-open .movement-dock { display: none; }
 .md-act.act-crackdown:not(:disabled), .md-act.act-expel:not(:disabled) { color: #e5a08a; }
 .md-act.act-accept:not(:disabled), .md-act.act-vassal:not(:disabled) { color: #b9cf98; }
 .md-act.arming { color: #fff; background-image: linear-gradient(180deg, #7a2e1f, #4d1a10); }
+
+/* ==========================================================================
+   34. TOPLUM EKSENLERİ — Siyaset ekranının üst şeridi (ui/politicsScreen.js)
+
+   Üç eksen yan yana: her biri oyulmuş bir ray, üstünde toplumun pirinç
+   topuzu, altında partilerin renkli çentikleri. Ray §32'nin kabartma
+   dilindedir; topuz yeri değişince kayarak gider (yer değişimi bilgidir).
+   ========================================================================== */
+.screen-body > .pol { grid-template-rows: auto minmax(0, 1fr); }
+.pol-society {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+  padding: 0 0 6px;
+  border-radius: 3px;
+  background-image: var(--light-top), var(--surface-card);
+  background-blend-mode: normal, var(--blend-card);
+  box-shadow: var(--relief-raised);
+}
+.soc-axes {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+  padding: 0 6px;
+}
+.soc-axis {
+  display: grid;
+  align-content: start;
+  gap: 5px;
+  padding: 7px 9px 8px;
+  border-radius: 3px;
+  background: rgba(8, 13, 16, 0.55);
+  box-shadow: var(--relief-sunken);
+}
+.soc-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.soc-head h5 {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: var(--fs-label);
+  font-weight: 650;
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+}
+.soc-lean { color: var(--gold-bright); font-size: var(--fs-md); font-weight: 650; }
+.soc-lean small { color: var(--text-faint); font-size: 11px; margin-left: 2px; }
+
+.soc-scale {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+}
+.soc-pole {
+  color: var(--text-dim);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  cursor: help;
+}
+.soc-track {
+  position: relative;
+  height: 12px;
+  margin: 6px 0 9px;
+  border-radius: 6px;
+  background:
+    linear-gradient(90deg, rgba(169, 94, 74, 0.38), rgba(80, 80, 80, 0.12) 50%, rgba(126, 141, 146, 0.38));
+  box-shadow: var(--relief-sunken);
+}
+.soc-mid {
+  position: absolute; left: 50%; top: 1px; bottom: 1px;
+  width: 1px;
+  background: rgba(0, 0, 0, 0.6);
+  box-shadow: 1px 0 0 rgba(255, 236, 196, 0.08);
+}
+/* Parti çentiği rayın ALTINDA durur: toplum topuzunu örtmesin. */
+.soc-party {
+  position: absolute;
+  bottom: -8px;
+  width: 0; height: 0;
+  margin-left: -5px;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 7px solid var(--party-color, #888);
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.8));
+  cursor: help;
+}
+.soc-party.ruling { border-bottom-width: 9px; bottom: -10px; filter: drop-shadow(0 0 3px rgba(255, 230, 170, 0.6)); }
+.soc-marker {
+  position: absolute;
+  top: 50%;
+  width: 16px; height: 16px;
+  margin: -8px 0 0 -8px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #f0d595 0%, #b2924f 38%, #6a5428 78%, #3a2d14 100%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 2px 4px rgba(0, 0, 0, 0.7), 0 0 10px rgba(240, 210, 150, 0.25);
+  transition: left 600ms var(--lift-ease);
+}
+
+.soc-trend { margin: 0; color: var(--text-dim); font-size: var(--fs-sm); }
+.soc-trend b { color: var(--text); font-weight: 650; }
+
+.soc-pushes {
+  display: grid;
+  gap: 1px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-sm);
+}
+.soc-pushes li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 1px 2px;
+  border-bottom: 1px solid rgba(168, 138, 75, 0.1);
+}
+.soc-pushes li span { color: var(--text-dim); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.soc-pushes li b { flex: 0 0 auto; font-family: var(--font-mono); font-weight: 600; font-size: 11px; }
+.soc-pushes .to-left { color: #d39a83; }
+.soc-pushes .to-right { color: #a9bfc6; }
+.soc-pushes .soc-none span { white-space: normal; color: var(--text-faint); }
+
+.soc-effects { display: flex; flex-wrap: wrap; gap: 4px; }
+.soc-eff {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.35);
+  box-shadow: var(--relief-sunken);
+  font-size: 11px;
+}
+.soc-eff small { color: var(--text-dim); }
+.soc-eff.up b { color: var(--green); }
+.soc-eff.down b { color: var(--red); }
+
+.soc-camps { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.soc-camp {
+  padding: 3px 6px;
+  border: 0;
+  border-radius: 3px;
+  background-image: var(--knob-metal);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 1px 2px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 236, 196, 0.13);
+  color: var(--text);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  transition: transform 120ms var(--lift-ease), filter 120ms ease;
+}
+.soc-camp:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.2); }
+.soc-camp:active:not(:disabled) { transform: translateY(1px); }
+.soc-camp:disabled { opacity: 0.45; cursor: default; background-image: none; box-shadow: var(--relief-sunken); }
+.soc-camp.on {
+  background-image: var(--knob-metal-hot);
+  color: var(--gold-bright);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7), 0 0 10px rgba(214, 180, 110, 0.35), inset 0 1px 0 rgba(255, 236, 196, 0.2);
+}
+.soc-note { margin: 0 8px; color: var(--text-faint); font-size: 11px; }

@@ -192,6 +192,82 @@ function lawsColumn(board, confirm) {
 }
 
 /* --------------------------------------------------------------------------
+   TOPLUM — üç eksen (game/society.js)
+
+   Her eksen bir ray: solda ve sağda kutup, rayın üstünde toplumun yeri
+   (pirinç topuz), altında dört partinin programı (renkli çentik). Altında
+   "bu ay ne itti" dökümü ve eksenin bugün neyi değiştirdiği. Hiçbir sayı
+   burada üretilmez; yön okları işaretin okunuşudur: ◀ sola, ▶ sağa.
+   -------------------------------------------------------------------------- */
+
+const at = (value) => `${((Math.max(-100, Math.min(100, value)) + 100) / 2).toFixed(1)}%`;
+
+function pushRow(row, axis) {
+  const left = row.amount < 0;
+  return `<li><span>${esc(row.label)}</span><b class="${left ? 'to-left' : 'to-right'}"
+    title="pushes toward ${esc(left ? axis.left : axis.right)}">${left ? '◀ ' : ''}${Math.abs(row.amount).toFixed(2)}${left ? '' : ' ▶'}</b></li>`;
+}
+
+function campaignButton(axis, dir, society) {
+  const blockers = dir < 0 ? axis.campaignLeft : axis.campaignRight;
+  const on = axis.active === dir;
+  const pole = dir < 0 ? axis.left : axis.right;
+  const label = on ? `Campaigning for ${pole}` : `${dir < 0 ? '◀ ' : ''}Promote ${pole}${dir > 0 ? ' ▶' : ''}`;
+  const title = on
+    ? `Click to stop the campaign (£${society.cost.toFixed(1)} a week).`
+    : blockers.length ? blockers.join(' ')
+      : `The state pushes society toward ${pole} every month for £${society.cost.toFixed(1)} a week. One campaign at a time.`;
+  return `<button type="button" class="soc-camp${on ? ' on' : ''}" data-campaign="${esc(axis.id)}:${dir}"
+    ${blockers.length && !on ? 'disabled' : ''} title="${esc(title)}">${esc(label)}</button>`;
+}
+
+function axisCard(axis, society) {
+  const monthly = axis.monthly;
+  const toward = monthly < -0.05 ? axis.left : monthly > 0.05 ? axis.right : null;
+  const parties = axis.parties.map((party) => `<i class="soc-party${party.ruling ? ' ruling' : ''}"
+    style="left:${at(party.position)};--party-color:${party.color}"
+    title="${esc(`${party.name}${party.ruling ? ' (in government)' : ''}: their programme stands here`)}"></i>`).join('');
+  const pushes = axis.pushes.length
+    ? axis.pushes.map((row) => pushRow(row, axis)).join('')
+    : '<li class="soc-none"><span>Nothing has moved it yet — society is updated once a month.</span></li>';
+  const effects = axis.effects.map((effect) => `<span class="soc-eff ${effect.good ? 'up' : 'down'}">
+    <small>${esc(effect.label)}</small><b>${esc(effect.value)}</b></span>`).join('');
+  return `<article class="soc-axis">
+    <header class="soc-head">
+      <h5>${esc(axis.name)}</h5>
+      <b class="soc-lean">${esc(axis.lean)} <small>${Math.round(Math.abs(axis.value))}</small></b>
+    </header>
+    <div class="soc-scale">
+      <span class="soc-pole" title="${esc(axis.leftNote)}">${esc(axis.left)}</span>
+      <div class="soc-track" role="meter" aria-valuemin="-100" aria-valuemax="100" aria-valuenow="${Math.round(axis.value)}">
+        <i class="soc-mid" aria-hidden="true"></i>
+        ${parties}
+        <b class="soc-marker" style="left:${at(axis.value)}" title="Society stands here (${Math.round(axis.value)})"></b>
+      </div>
+      <span class="soc-pole right" title="${esc(axis.rightNote)}">${esc(axis.right)}</span>
+    </div>
+    <p class="soc-trend">${toward
+    ? `Last month <b>${Math.abs(monthly).toFixed(2)}</b> toward <b>${esc(toward)}</b>`
+    : 'Last month it held its ground'}</p>
+    <ul class="soc-pushes">${pushes}</ul>
+    <div class="soc-effects">${effects}</div>
+    <div class="soc-camps">${campaignButton(axis, -1, society)}${campaignButton(axis, 1, society)}</div>
+  </article>`;
+}
+
+function societySection(society) {
+  if (!society) return '';
+  const note = society.autoReforms
+    ? 'Reforms are delegated: the cabinet chooses the campaign.'
+    : `A campaign costs £${society.cost.toFixed(1)} a week; one at a time.`;
+  return `<section class="pol-society">
+    ${band('Society', 'what the nation believes — moved by wars, laws, schools and the government · parties win backing by standing close to it')}
+    <div class="soc-axes">${society.axes.map((axis) => axisCard(axis, society)).join('')}</div>
+    <p class="soc-note">${esc(note)}</p>
+  </section>`;
+}
+
+/* --------------------------------------------------------------------------
    ÇERÇEVE
    -------------------------------------------------------------------------- */
 
@@ -199,8 +275,9 @@ function lawsColumn(board, confirm) {
  * Ekranın tamamı. `view` = politics.governmentView, `board` = politics.lawBoard;
  * `confirm` Screens örneğinde yaşayan bekleyen iki tıklı onaydır.
  */
-export function politicsScreen(view, board, confirm = null) {
+export function politicsScreen(view, board, confirm = null, society = null) {
   return `<div class="pol">
+    ${societySection(society)}
     ${governmentColumn(view, confirm)}
     ${lawsColumn(board, confirm)}
   </div>`;

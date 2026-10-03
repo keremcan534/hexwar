@@ -27,8 +27,9 @@ import {
   MILITARY_EQUIPMENT, ensureProductionLine, equipmentReserve, equipmentStock,
 } from './economy.js';
 import {
-  LAW_BY_ID, formGovernment, nextLawStep, preferredGovernment, setLaw,
+  LAW_BY_ID, formGovernment, manageSocietyCampaign, nextLawStep, preferredGovernment, setLaw,
 } from './politics.js';
+import { SOCIETY_AXES } from './society.js';
 import { delegationActive, noteDelegated } from './delegation.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
@@ -561,6 +562,8 @@ export function runNationAI(game, nation, rng) {
   manageBrokenProvinces(game, nation);
   // Ulusal hareketler: taviz, sikiyonetim, vassal, katliam — oyuncuyla ayni kapi.
   manageMovements(game, nation);
+  // Toplum kampanyasi: iktidarin programindan en uzak eksen (society.js).
+  manageSocietyCampaign(game, nation);
   spend(game, nation);
   politicalAgenda(game, nation);
   manageCommand(game, nation);
@@ -625,6 +628,17 @@ export function runDelegatedAI(game, nation, rng) {
         crackdown: [`The ${name} were crushed.`, 'The government chose force over the loss of land.'],
       }[moved.action];
       if (lines) noteDelegated(game, nation, 'reforms', lines[0], lines[1]);
+    }
+    // Toplum kampanyasi da kabinenin isi: programdan en uzak ekseni yurutur.
+    const campaign = manageSocietyCampaign(game, nation);
+    if (campaign?.stopped) {
+      noteDelegated(game, nation, 'reforms', 'The state campaign was stopped.',
+        'The treasury is under strain, or society already stands where the government wants it.');
+    } else if (campaign?.axis) {
+      const axis = SOCIETY_AXES.find((item) => item.id === campaign.axis);
+      noteDelegated(game, nation, 'reforms',
+        `A state campaign now pushes society toward ${campaign.dir < 0 ? axis.left : axis.right}.`,
+        'That is where the ruling party wants the nation, and the treasury can pay for it.');
     }
   }
   if (delegationActive(nation, 'recruitment', turn)) {

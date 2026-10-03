@@ -441,6 +441,17 @@ export function registerTooltips(game) {
         value: pt(bd.legitimacy), tone: 'bad',
       });
     }
+    // Toplamin parcasi olan iki kalem daha: baski (movements.js) ve toplumun
+    // egilimi (society.js). Yazilmazsa satirlar toplami istikrari tutmaz.
+    if ((bd.repression ?? 0) < -0.0005) {
+      rows.push({ label: 'Repression (martial law, crackdowns)', value: pt(bd.repression), tone: 'bad' });
+    }
+    if (Math.abs(bd.society ?? 0) >= 0.0005) {
+      rows.push({
+        label: bd.society > 0 ? 'Society: traditional and settled' : 'Society: progressive and restless',
+        value: pt(bd.society), tone: bd.society > 0 ? 'good' : 'bad',
+      });
+    }
     // Bu haftanin farki: hangi bilesen oynadi (pulse.js).
     const moved = stabilityAttribution(nation);
     const effects = moved

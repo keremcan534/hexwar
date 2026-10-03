@@ -53,8 +53,9 @@ import {
 } from '../game/command.js';
 import { militaryScreen } from './militaryScreen.js';
 import {
-  formGovernment, governmentType, governmentView, lawBoard, rulingParty, setLaw,
+  formGovernment, governmentType, governmentView, lawBoard, rulingParty, setLaw, societyBoard,
 } from '../game/politics.js';
+import { setCampaign } from '../game/society.js';
 import { TIER, announce, chronicleYear, ensureChronicle, memoryOf } from '../game/chronicle.js';
 import {
   allianceAppeal, alliesOf, breakAlliance, formAlliance, isAllied,
@@ -1966,7 +1967,9 @@ export class Screens {
       return '<p class="empty">Political parties are not initialized.</p>';
     }
     const world = this.game.world;
-    return politicsScreen(governmentView(world, me), lawBoard(world, me), this.politicsConfirm);
+    const society = societyBoard(world, me);
+    if (society) society.autoReforms = isDelegated(me, 'reforms');
+    return politicsScreen(governmentView(world, me), lawBoard(world, me), this.politicsConfirm, society);
   }
 
   // --- Diplomasi: ilişki listesi ve savaş/barış eylemleri ---
@@ -2288,6 +2291,14 @@ export class Screens {
     for (const btn of this.el.body.querySelectorAll('[data-form-government]')) {
       const partyId = btn.dataset.formGovernment;
       btn.onclick = () => confirmThen(`gov:${partyId}`, () => formGovernment(game, me, partyId));
+    }
+    // Kampanya: tek tik (kilit baslatmaz, her an kapatilir); ayni dugme kapatir.
+    for (const btn of this.el.body.querySelectorAll('[data-campaign]')) {
+      const [axisId, dir] = btn.dataset.campaign.split(':');
+      btn.onclick = () => {
+        if (setCampaign(me, axisId, Number(dir))) game.emit?.('politics', game.world.turn);
+        this.refresh();
+      };
     }
     for (const btn of this.el.body.querySelectorAll('[data-set-law]')) {
       const [lawId, levelId] = btn.dataset.setLaw.split(':');

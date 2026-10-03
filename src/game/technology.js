@@ -17,6 +17,7 @@
 
 import { makeRng } from '../core/rng.js';
 import { lawModifiers } from './politics.js';
+import { societyModifiers } from './society.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -396,7 +397,9 @@ export function researchPointsOf(nation) {
   // basin merdiveni yalnizca orta sinif moraline giriyordu ve olculdu
   // (audit:mechanics): butun menzil gurultunun 0.44 kati.
   const press = lawModifiers(nation).researchRate ?? 0;
-  return base * (1 + (economy.techMods?.researchRate ?? 0) + press);
+  // TOPLUM: ilerici halk fikre aciktir, geleneksel halk yavaslatir (society.js).
+  const society = societyModifiers(nation).research;
+  return base * (1 + (economy.techMods?.researchRate ?? 0) + press + society);
 }
 
 /**

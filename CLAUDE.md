@@ -54,13 +54,16 @@ Bu depoya mekanik EKLEMEK varsayılan değildir. Yeni bir mekanik önermeden ön
 
 İlk tarama: 26 mekanikten 10'u ölü, 5'i gürültü tabanının altındaydı. Yani bu
 depoda asıl risk eksik mekanik değil, **çalışmayan mekanik**.
-Son tarama (şehir kurma kaldırıldı, para basma eklendi, tarama hazineyi
-net ölçüyor: altın − borç; 2026-10-01): 14 kaldıraç · çalışıyor 13
-(gümrük 1.15× ve vatandaşlık 1.33× — ince pay, bkz. MEKANIK_KILAVUZU §8.2) ·
-gürültü altı 0 · **ölü 0** · savaş kaldıracı 1 (barış arenasında ölçülemez).
+Son tarama (toplum eksenleri eklendi; tarama hazineyi net ölçer: altın −
+borç; 2026-10-03): 18 kaldıraç · çalışıyor 16 (gümrük 1.33× ve vatandaşlık
+1.39× — ince pay, bkz. MEKANIK_KILAVUZU §8.2) · gürültü altı 0 · **ölü 0** ·
+savaş kaldıracı 1 (barış arenasında ölçülemez) · kültür kaldıracı 1 (toplumun
+halklar ekseni: işi azınlık kümelerinde, doğrudan kanalıyla ölçülür).
 Para basma tek beyanlı kaynak (ACCOUNTING_INVARIANTS L17). Siyaset: 4 sabit
-parti, 5 yasa, meşruiyet — bkz.
-`src/game/politics.js`, `npm run diagnose:politics`. Araştırma: ulusal program
+parti, 5 yasa, meşruiyet ve toplumun üç ekseni (parti desteği topluma
+yakınlıkla çarpılır; oyuncunun tek kaldıracı kampanya, MEKANIK_KILAVUZU §6.5)
+— bkz. `src/game/politics.js`, `src/game/society.js`,
+`npm run diagnose:politics`. Araştırma: ulusal program
 yok; kuyruk + akıllı seçici (`technology.pickNextTech`, ağırlıklar
 `economy.researchPriorities`) + YZ okul geleneği (`economy.aiEducationFloor`).
 Yeni kampanyada üst şeridin portföyleri AUTO açık başlar

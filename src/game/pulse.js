@@ -102,6 +102,8 @@ export function stabilityAttribution(nation) {
       part('war', 'War exhaustion'),
       part('unemployment', 'Unemployment'),
       part('legitimacy', 'Government backing'),
+      part('repression', 'Repression'),
+      part('society', 'Society'),
     ].filter((row) => Math.abs(row.delta) >= 0.0005),
   };
 }

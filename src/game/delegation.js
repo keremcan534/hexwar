@@ -53,7 +53,7 @@ export const DELEGATION_AREAS = {
     screen: 'politics',
     // Devredilen yalniz yasalardir. HUKUMET devredilmez: hangi partiyle
     // yonetilecegi dort yil baglayan karar, oyuncunun elinde kalir.
-    desc: 'The cabinet moves one law a year toward the ruling party’s programme and settles restless minorities. The choice of government stays yours.',
+    desc: 'The cabinet moves one law a year toward the ruling party’s programme, settles restless minorities and runs the state campaign that pulls society toward the programme. The choice of government stays yours.',
   },
   recruitment: {
     id: 'recruitment',

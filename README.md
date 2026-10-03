@@ -382,6 +382,20 @@ panel hareketleri fitil gibi gösterir ve araçları sunar: sıkıyönetim ve ta
 (geçici), kabul, vassal olarak bırakma, katliam ve sürgün (kalıcı). YZ aynı
 araçları kullanır. Ayrıntı: MEKANIK_KILAVUZU §5.10.
 
+### Toplum: üç eksen
+
+Devletin kararlarından ayrı olarak toplumun bir eğilimi vardır ve ayda bir
+kayar: **Militarist ↔ Pasifist**, **Asimilasyoncu ↔ Çok kültürlü**, **İlerici ↔
+Geleneksel**. Savaşlar (önce coşku, sonra bezginlik), zafer ve yenilgi, yasalar,
+ordu bütçesi, okuryazarlık ve okul, katliam/kabul/sürgün ve iktidar partisi
+onları iter. Eksenler mevcut sayıları değiştirir (savaş yükü, insan gücü,
+ordu bütçesine bakan memnuniyet, azınlık huzursuzluğu, asimilasyon, araştırma,
+istikrar) ve partilerin halk
+desteğini belirler: halk programı kendine yakın partiyi tutar. Siyaset
+ekranında her eksenin "geçen ay ne itti" dökümü ve partilerin konumu durur;
+**kampanya** devletin toplumu bir yöne itmesidir ve haftalık parası vardır.
+Ayrıntı: MEKANIK_KILAVUZU §6.5.
+
 ### Siyaset: hükûmet ve beş yasa
 
 Oyuncunun iki siyasi kararı var. **Hükûmet**: her ülkede aynı dört parti

@@ -1889,6 +1889,8 @@ function stabilityWhy(nation) {
   if ((bd.legitimacy ?? 0) < -0.0005) {
     lines.push(`Government backing      ${pt(bd.legitimacy)}  (${bd.leader} ${Math.round(bd.leaderSupport)}% vs ${bd.ruling} ${Math.round(bd.rulingSupport)}%)`);
   }
+  if ((bd.repression ?? 0) < -0.0005) lines.push(`Repression              ${pt(bd.repression)}`);
+  if (Math.abs(bd.society ?? 0) >= 0.0005) lines.push(`Society                 ${pt(bd.society)}`);
   lines.push(`= Stability             ${(bd.total * 100).toFixed(1)}%`);
   return lines.join('\n');
 }

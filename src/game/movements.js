@@ -47,6 +47,7 @@ import { cityName, createCity } from './cities.js';
 import { recruit } from './recruitment.js';
 import { initNationEconomy } from './economy.js';
 import { POPULATION_SCALE } from './populationScale.js';
+import { pushSociety } from './society.js';
 
 export const MOVEMENT = {
   /** Bu huzursuzlugun altinda hareket soner, ustunde buyur. */
@@ -341,6 +342,8 @@ function uprising(game, nation, cultureId, provinces) {
   state.uprisings = (state.uprisings ?? 0) + 1;
   world.uprisings = (world.uprisings ?? 0) + 1;
   world.uprisingProvinces = (world.uprisingProvinces ?? 0) + provinces.length;
+  // Kaybedilen toprak cogunlugu sertlestirir (society.js).
+  pushSociety(nation, 'integration', -4, `The ${cultureName(world, cultureId)} rose`);
 
   const name = cultureName(world, cultureId);
   const where = provinces.length === 1
@@ -427,6 +430,7 @@ export function grantConcessions(game, nation, cultureId) {
   settle(nation, 'unrest', -concessionCost(nation));
   state.progress = Math.max(0, (state.progress ?? 0) - MOVEMENT.CONCESSION_DROP);
   state.concessionAt = turn;
+  pushSociety(nation, 'integration', 1.5, `Concessions to the ${cultureName(world, cultureId)}`);
   for (const province of provinces) {
     province.econ.unrest = Math.max(0, (province.econ.unrest ?? 0) - MOVEMENT.CONCESSION_UNREST);
   }
@@ -501,6 +505,8 @@ export function crackdown(game, nation, cultureId) {
     other.progress = Math.min(99, (other.progress ?? 0) + MOVEMENT.CRACKDOWN_RADICALIZE);
   }
   world.crackdowns = (world.crackdowns ?? 0) + 1;
+  pushSociety(nation, 'integration', -6, `Crushed the ${cultureName(world, cultureId)}`);
+  pushSociety(nation, 'militarism', -2, `Crushed the ${cultureName(world, cultureId)}`);
   if (nation.id === game.turns?.playerNation) {
     announce(game, nation, {
       kind: 'CRISIS', tier: TIER.MAJOR, key: `crackdown-${cultureId}-${turn}`,
@@ -551,6 +557,7 @@ export function releaseAsVassal(game, nation, cultureId) {
   state.progress = 0;
   state.calmUntil = turn + MOVEMENT.COOLDOWN;
   world.vassalReleases = (world.vassalReleases ?? 0) + 1;
+  pushSociety(nation, 'integration', 3, `Released the ${cultureName(world, cultureId)}`);
   world.vassalProvinces = (world.vassalProvinces ?? 0) + provinces.length;
   if (nation.id === game.turns?.playerNation) {
     announce(game, nation, {
