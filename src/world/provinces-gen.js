@@ -8,8 +8,21 @@
 // Katman notu: world katmanıdır, DOM'a ve game'e dokunmaz.
 
 import { makeRng } from '../core/rng.js';
+import { DIRS } from '../core/hex.js';
 import { growRegions } from './regions.js';
 import { DEFAULT_ZONE, ZONE_RULES } from './macro.js';
+import { riverFlowTable } from './rivers.js';
+
+/**
+ * Üreteç sürümü. Kayıt dünyayı tohumdan yeniden kurar ve province parmak
+ * izini doğrular; sürüm `genOptions.provinceGen` ile saklanır, alanı olmayan
+ * eski kayıt v1 ile açılır (bkz. save.deserialize). v1'e DOKUNMA: eski
+ * kampanyaların bölümlemesi onun birebir çıktısıdır.
+ *
+ *   1: bölge kotası + jitter'lı büyüme (ızgara tohumları)
+ *   2: tohum vadide, sınır nehir/sırt/kıyı boyunca, boy yerel verimle
+ */
+export const PROVINCE_GEN_LATEST = 2;
 
 /**
  * Province boyu makro bölgeden gelir: yoğun-batı küçük (siyasi doku),
@@ -80,7 +93,7 @@ function gridSeeds(world, rng) {
  * komşu province'e katılır (bitişiklik bozulmaz). Hiçbir province'e değmeyen
  * bileşenler (adalar, kapalı cepler) kendi province'lerini kurar.
  */
-function repairOrphans(world, assignment, counts, caps, rng) {
+function repairOrphans(world, assignment, counts, caps, rng, targetOf = sizeTargetOf, joinPenalty = null) {
   // Katılım geçişi: province'li komşusu olan artık, en küçük komşuya bağlanır.
   const joinPass = () => {
     for (;;) {
@@ -95,8 +108,11 @@ function repairOrphans(world, assignment, counts, caps, rng) {
           // Katılım toleransı bölge hedefine bağlı: iri sınır province'i
           // biraz daha şişebilir, yoğun-batı kümesi şişemez.
           if (counts[region] >= (caps[region] ?? 8) + 4) continue;
-          if (counts[region] < bestCount) {
-            bestCount = counts[region];
+          // v2: nehir/sırt karşısındaki komşu ancak çok daha küçükse seçilir;
+          // yoksa sırtta kalan dağ kareleri rastgele bir yakaya bağlanıyordu.
+          const key = joinPenalty ? counts[region] + joinPenalty(tile, n) : counts[region];
+          if (key < bestCount) {
+            bestCount = key;
             best = region;
           }
         }
@@ -130,7 +146,7 @@ function repairOrphans(world, assignment, counts, caps, rng) {
     });
     if (!component) return;
 
-    const componentTarget = sizeTargetOf(component[0]);
+    const componentTarget = targetOf(component[0]);
     if (component.length <= componentTarget) {
       // İzole ada ya da dolu komşulara sıkışmış cep: kendi province'i olur.
       const region = counts.length;
@@ -150,18 +166,185 @@ function repairOrphans(world, assignment, counts, caps, rng) {
     const sub = growRegions(world, seeds, {
       canEnter: (t) => componentSet.has(t) && !assignment.has(t),
       stepCost: () => 1 + rng.range(0, 0.4),
-      budget: (i) => sizeTargetOf(seeds[i]),
+      budget: (i) => targetOf(seeds[i]),
     });
     const offset = counts.length;
     for (const seed of seeds) {
       counts.push(0);
-      caps.push(sizeTargetOf(seed));
+      caps.push(targetOf(seed));
     }
     for (const [member, sr] of sub.assignment) {
       assignment.set(member, offset + sr);
       counts[offset + sr]++;
     }
   }
+}
+
+// --- v2: doğal sınırlar ----------------------------------------------------
+//
+// Gerçek idari sınırlar nehirden, sırttan ve kıyıdan geçer; nüfus vadide
+// toplanır, yoğun vadide birim küçülür. v2 bunu büyüme maliyetiyle kurar:
+// tohum vadi tabanına düşer, büyüme yokuş yukarı ve nehir karşısına PAHALI
+// ilerler. İki komşu vadiden büyüyen kümeler sırtta, nehrin iki yakasından
+// büyüyenler nehirde buluşur — sınır oraya oturur.
+
+/** Nehir geçişi: büyük kol ~RIVER_CROSS, kaynak yarısı. */
+const RIVER_CROSS = 5;
+/** Yükseklik farkı başına maliyet (kara yüksekliği 0.42..1, komşu farkı ~0.01-0.08). */
+const UPHILL = 30;
+/** Dağlık kareye adım: masif iki vadi arasında duvar olsun. */
+const HIGHLAND_STEP = 1.2;
+/**
+ * Sırt geçişi. Yokuş maliyeti tek başına sırtı sınır yapmıyordu (ölçüldü:
+ * sırt kenarlarının sınır payı genel paydan yalnız ~%3 fazla): kota sırta
+ * varmadan doluyor. Sırt kenarını geçmek nehir gibi doğrudan pahalı.
+ */
+const RIDGE_CROSS = 4;
+
+/**
+ * Kenar başına sırt gücü (kare indeksi*6 + yön): kenarın iki yanı, kenarın
+ * uçlarındaki iki kareden ne kadar yüksek. 0 = sırt değil; ~0.04 üstü tam.
+ */
+function ridgeTable(world) {
+  const n = world.cols * world.rows;
+  const table = new Float32Array(n * 6);
+  for (let i = 0; i < n; i++) {
+    const t = world.tiles[i];
+    if (t.terrain.water) continue;
+    for (let d = 0; d < 6; d++) {
+      const o = world.get(t.q + DIRS[d][0], t.r + DIRS[d][1]);
+      const c1 = world.get(t.q + DIRS[(d + 5) % 6][0], t.r + DIRS[(d + 5) % 6][1]);
+      const c2 = world.get(t.q + DIRS[(d + 1) % 6][0], t.r + DIRS[(d + 1) % 6][1]);
+      if (!o || !c1 || !c2 || o.terrain.water) continue;
+      const lift = Math.min(t.elevation, o.elevation) - Math.max(c1.elevation, c2.elevation);
+      if (lift > 0.005) table[i * 6 + d] = Math.min(1, lift / 0.04);
+    }
+  }
+  return table;
+}
+
+/** İki komşu kare arasındaki kenarın tablo değeri (0 = yok). */
+function edgeValue(world, table, a, b) {
+  const ai = a.row * world.cols + a.col;
+  for (let d = 0; d < 6; d++) {
+    const v = table[ai * 6 + d];
+    if (v && world.get(a.q + DIRS[d][0], a.r + DIRS[d][1]) === b) return v;
+  }
+  return 0;
+}
+
+/** Yerel verim 0..1: besin verimi + nehir + kıyı. Yoğun nüfusun vekili. */
+function fertilityOf(tile) {
+  const food = tile.terrain.yields?.food ?? 0;
+  return Math.min(1, food / 3 + (tile.river ? 0.35 : 0) + (tile.coastal ? 0.1 : 0));
+}
+
+/**
+ * v2 boy hedefi: bölge hedefi × verim çarpanı (0.8-1.15). Bereketli vadide
+ * province küçük, kıraç yaylada iri. Ortalama ~1: province sayısı ve ekonomi
+ * dengesi v1 ile aynı mertebede kalır. Bölgenin en iri hedefini aşmaz: katılım
+ * toleransıyla (+4) birlikte bölge tavanının içinde kalsın (audit:province).
+ */
+function targetV2(tile) {
+  const rule = ZONE_RULES[tile.zone ?? DEFAULT_ZONE] ?? ZONE_RULES[DEFAULT_ZONE];
+  const raw = Math.round(sizeTargetOf(tile) * (1.15 - 0.35 * fertilityOf(tile)));
+  return Math.max(2, Math.min(Math.max(rule.size[0], rule.size[1]), raw));
+}
+
+/** İki komşu kare arasındaki kenarda nehir akışı (0 = nehir yok). */
+function riverBetween(world, flow, a, b) {
+  if (!a.riverMask || !b.riverMask) return 0;
+  const ai = a.row * world.cols + a.col;
+  for (let d = 0; d < 6; d++) {
+    if (!(a.riverMask & (1 << d))) continue;
+    if (world.get(a.q + DIRS[d][0], a.r + DIRS[d][1]) === b) return flow[ai * 6 + d];
+  }
+  return 0;
+}
+
+/** Izgara tohumları, hücre başına en ALÇAK aday (nehir kıyısı hafif önde). */
+function seedsV2(world, rng) {
+  const seeds = [];
+  const cellRows = Math.ceil(world.rows / SEED_CELL);
+  const cellCols = Math.ceil(world.cols / SEED_CELL);
+  for (let cr = 0; cr < cellRows; cr++) {
+    for (let cc = 0; cc < cellCols; cc++) {
+      let pick = null;
+      let pickScore = Infinity;
+      for (let dr = 0; dr < SEED_CELL; dr++) {
+        const row = cr * SEED_CELL + dr;
+        if (row >= world.rows) break;
+        for (let dc = 0; dc < SEED_CELL; dc++) {
+          const col = cc * SEED_CELL + dc;
+          if (col >= world.cols) break;
+          const t = world.tiles[row * world.cols + col];
+          if (!t.terrain.passable || t.terrain.highland) continue;
+          const score = t.elevation - (t.river ? 0.015 : 0) + rng.range(0, 0.012);
+          if (score < pickScore) {
+            pickScore = score;
+            pick = t;
+          }
+        }
+      }
+      if (!pick) continue;
+      if (rng.chance(Math.min(1, (SEED_CELL * SEED_CELL) / targetV2(pick)))) seeds.push(pick);
+    }
+  }
+  return seeds;
+}
+
+function partitionV2(world, rng) {
+  const flow = riverFlowTable(world);
+  const ridge = ridgeTable(world);
+  const seeds = seedsV2(world, rng);
+  const caps = seeds.map((seed) => targetV2(seed));
+  const { assignment, counts } = growRegions(world, seeds, {
+    canEnter: (tile) => tile.terrain.passable,
+    edgeCost: (from, to, i) => {
+      let c = (to.zone === seeds[i].zone ? 1 : 2.4) + rng.range(0, 0.3);
+      const f = riverBetween(world, flow, from, to);
+      if (f > 0) c += RIVER_CROSS * (0.5 + 0.5 * f);
+      const up = to.elevation - from.elevation;
+      if (up > 0) c += UPHILL * up;
+      if (to.terrain.highland) c += HIGHLAND_STEP;
+      const crest = edgeValue(world, ridge, from, to);
+      if (crest > 0) c += RIDGE_CROSS * (0.4 + 0.6 * crest);
+      return c;
+    },
+    budget: (i) => caps[i],
+  });
+  const crossing = (a, b) => {
+    const f = riverBetween(world, flow, a, b);
+    const crest = edgeValue(world, ridge, a, b);
+    return (f > 0 ? 8 * (0.5 + 0.5 * f) : 0) + (crest > 0 ? 8 * (0.4 + 0.6 * crest) : 0);
+  };
+  repairOrphans(world, assignment, counts, caps, rng, targetV2, crossing);
+
+  // Tek karelik artık: nehir maliyeti büyümeyi yakada durdurunca iki büyük
+  // kümenin arasında kırıntı kalıyordu (tek hexlik province v1'in iki katıydı).
+  // Komşusu olan tekli, tavanı dolmamış en küçük komşuya katılır; nehir
+  // karşısındaki komşu son çaredir. Ada ve kapalı cep tek kalır.
+  const sizes = counts;
+  for (const [tile, region] of assignment) {
+    if (sizes[region] !== 1) continue;
+    let best = -1;
+    let bestKey = Infinity;
+    for (const n of world.neighbors(tile)) {
+      const other = assignment.get(n);
+      if (other === undefined || other === region) continue;
+      if (sizes[other] >= (caps[other] ?? 8) + 4) continue;
+      const key = sizes[other] + (riverBetween(world, flow, tile, n) > 0 ? 1000 : 0);
+      if (key < bestKey) {
+        bestKey = key;
+        best = other;
+      }
+    }
+    if (best < 0) continue;
+    assignment.set(tile, best);
+    sizes[region] = 0;
+    sizes[best]++;
+  }
+  return assignment;
 }
 
 /** Üyelere toplam sarmal mesafesi en küçük üye: küçük kümelerde gerçek merkez. */
@@ -186,21 +369,27 @@ function centerOf(world, members) {
  * Dünyayı province'lere bölümler. `world.provinces` dizisini kurar ve her
  * geçilebilir kareye `tile.provinceId` yazar (deniz/geçilemez: -1).
  */
-export function generateProvinces(world) {
-  const rng = makeRng(`${world.seed}-provinces`);
+export function generateProvinces(world, version = 1) {
+  const rng = makeRng(version >= 2 ? `${world.seed}-provinces-v2` : `${world.seed}-provinces`);
   world.forEach((tile) => { tile.provinceId = -1; });
 
-  const seeds = gridSeeds(world, rng);
-  const caps = seeds.map((seed) => sizeTargetOf(seed));
-  const { assignment, counts } = growRegions(world, seeds, {
-    canEnter: (tile) => tile.terrain.passable,
-    // Düşük jitter: kompakt ama tam altıgen olmayan, organik kümeler.
-    // Bölge sınırında büyüme yavaşlar: iri bozkır kümesi yoğun-batıya taşmasın.
-    stepCost: (tile, i) => (tile.zone === seeds[i].zone ? 1 : 2.4) + rng.range(0, 0.4),
-    // Kota tohumun bölgesinden: yoğun-batı 4-5, bozkır/kolonizasyon 11-15.
-    budget: (i) => caps[i],
-  });
-  repairOrphans(world, assignment, counts, caps, rng);
+  let assignment;
+  if (version >= 2) {
+    assignment = partitionV2(world, rng);
+  } else {
+    const seeds = gridSeeds(world, rng);
+    const caps = seeds.map((seed) => sizeTargetOf(seed));
+    const grown = growRegions(world, seeds, {
+      canEnter: (tile) => tile.terrain.passable,
+      // Düşük jitter: kompakt ama tam altıgen olmayan, organik kümeler.
+      // Bölge sınırında büyüme yavaşlar: iri bozkır kümesi yoğun-batıya taşmasın.
+      stepCost: (tile, i) => (tile.zone === seeds[i].zone ? 1 : 2.4) + rng.range(0, 0.4),
+      // Kota tohumun bölgesinden: yoğun-batı 4-5, bozkır/kolonizasyon 11-15.
+      budget: (i) => caps[i],
+    });
+    assignment = grown.assignment;
+    repairOrphans(world, assignment, grown.counts, caps, rng);
+  }
 
   // Kümeleri topla; boşları at (kota yarışını tümden kaybeden tohumlar).
   const buckets = new Map();

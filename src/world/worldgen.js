@@ -11,7 +11,8 @@ import { makeNoise2D, fbm } from '../core/noise.js';
 import { classify, SEA_LEVEL, TERRAIN } from './terrain.js';
 import { DIRS, SQRT3, axialToOffset, hexDistance, hexToPixel, offsetToAxial, wrapCol } from '../core/hex.js';
 import { generateCultures, mixCultures } from './cultures.js';
-import { generateProvinces } from './provinces-gen.js';
+import { generateProvinces, PROVINCE_GEN_LATEST } from './provinces-gen.js';
+import { generateRivers } from './rivers.js';
 import { buildGeography, zoneAnchors } from './geography.js';
 
 /** Hex dış yarıçapı (dünya birimi). Ekran ölçeği kamera zoom'undan gelir. */
@@ -44,6 +45,12 @@ export const DEFAULT_OPTIONS = {
   continentality: 0.5,
   /** Kara oranı kaydırması: + = daha çok kara */
   landBias: 0,
+  /**
+   * Province üreteci sürümü (bkz. provinces-gen.js). Yeni dünya en yenisini
+   * kullanır; kayıt bu alanı genOptions içinde taşır, alanı olmayan eski kayıt
+   * v1 ile yeniden kurulur.
+   */
+  provinceGen: PROVINCE_GEN_LATEST,
 };
 
 export class World {
@@ -182,11 +189,14 @@ export function generateWorld(seed, options = {}) {
   }
 
   markCoasts(world);
+  // Nehirler araziden türer, RNG çekmez: province üreteci v2 onları sınır
+  // olarak kullanır, v1 dünyası birebir aynı kalır (bkz. rivers.js).
+  generateRivers(world);
   labelContinents(world);
   generateCultures(world, rng);
   // Province bölümlemesi kültürden sonra: küme, üye çoğunluğunun kültürüne
   // "snap" eder. Kendi rng dalını kullanır, ana akışı kaydırmaz.
-  generateProvinces(world);
+  generateProvinces(world, opt.provinceGen);
   // Karışım kümeler kurulduktan SONRA: sızma komşuluk üzerinden işler ve
   // kırılmış kültürler küme küme azınlığa düşer (bkz. cultures.mixCultures).
   mixCultures(world);

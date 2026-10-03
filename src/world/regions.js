@@ -47,10 +47,16 @@ class MinHeap {
  *   canEnter: (tile: object) => boolean,
  *   stepCost: (tile: object, regionIndex: number) => number,
  *   budget?: (regionIndex: number) => number,
+ *   edgeCost?: (from: object, to: object, regionIndex: number) => number,
  * }} opts
+ *
+ * `edgeCost` verilirse `stepCost` yerine o kullanılır: geçiş maliyeti hedef
+ * kareye değil KENARA bağlı olabilir (nehir geçişi, yokuş; bkz. provinces-gen v2).
  * @returns {{ assignment: Map<object, number>, counts: number[] }}
  */
-export function growRegions(world, seeds, { canEnter, stepCost, budget = () => Infinity }) {
+export function growRegions(world, seeds, {
+  canEnter, stepCost, budget = () => Infinity, edgeCost = null,
+}) {
   const assignment = new Map();
   const counts = new Array(seeds.length).fill(0);
   const best = new Map();
@@ -59,7 +65,7 @@ export function growRegions(world, seeds, { canEnter, stepCost, budget = () => I
   const expand = (tile, region, cost) => {
     for (const n of world.neighbors(tile)) {
       if (!canEnter(n)) continue;
-      const total = cost + stepCost(n, region);
+      const total = cost + (edgeCost ? edgeCost(tile, n, region) : stepCost(n, region));
       const known = best.get(n);
       if (known !== undefined && known <= total) continue;
       best.set(n, total);

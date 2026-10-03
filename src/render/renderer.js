@@ -19,7 +19,7 @@ import { LandMaterial } from './material.js';
 import { SurfaceGL } from './surfaceGL.js';
 import {
   buildBorderMesh, borderKeys, sameKeys, updateMeshGroups, meshGlTable, meshRegionData,
-  bandFieldJob, BAND_REACH, LINE_COUNTRY, LINE_PROVINCE, LINE_COAST, cellAt, cellOutline,
+  bandFieldJob, BAND_REACH, LINE_COUNTRY, LINE_PROVINCE, LINE_COAST, cellAt, cellOutline, cellEdge,
 } from './borderMesh.js';
 
 /**
@@ -2799,6 +2799,60 @@ export class Renderer {
   }
 
   /**
+   * Nehirler (world.rivers): hücre kenarı boyunca, akışla kalınlaşan mavi.
+   * Province çizgisinin ÜSTÜNDE, ülke çizgisinin ALTINDA çizilir: nehir çoğu
+   * yerde province sınırının kendisidir (üreteç v2) ve sınırın koyu rengine
+   * gömülmemeli; ülke sınırı ise nehirden de baskın kalmalı.
+   */
+  drawRivers(ctx, world, mesh, rect, scale, far = false) {
+    if (!world.rivers?.edges?.length) return;
+    const geo = this.riverGeometry(world, mesh);
+    const P = world.wrapWidth || 0;
+    const shifts = (this.riverShifts ??= []);
+    const paths = [new Path2D(), new Path2D(), new Path2D()];
+    const used = [0, 0, 0];
+    for (const g of geo) {
+      // Uzak dokuda kaynak kolları atılır: 1 pikselin altında kılçık olurlar.
+      if (far && g.flow < 0.18) continue;
+      if (!this.copyShifts(g.bbox, rect, P, shifts).length) continue;
+      const b = g.flow < 0.3 ? 0 : g.flow < 0.65 ? 1 : 2;
+      for (const dx of shifts) appendPts(paths[b], g.pts, false, dx);
+      used[b]++;
+    }
+    const z = far ? 0 : Math.max(0, Math.min(1, (scale - 0.45) / 1.2));
+    const widths = far ? [1.1, 1.7, 2.6] : [1.4 + 0.6 * z, 2.2 + 1.0 * z, 3.2 + 1.5 * z];
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(82, 136, 172, 0.95)';
+    for (let b = 0; b < 3; b++) {
+      if (!used[b]) continue;
+      ctx.lineWidth = widths[b] / scale;
+      ctx.stroke(paths[b]);
+    }
+    ctx.restore();
+  }
+
+  /** Nehir kenarlarının hücre eğrileri (dünya koordinatı), ağ başına bir kez. */
+  riverGeometry(world, mesh) {
+    if (mesh.riverGeo) return mesh.riverGeo;
+    const out = [];
+    for (const e of world.rivers.edges) {
+      const tile = world.tiles[e.a];
+      const local = cellEdge(mesh, e.a, e.dir);
+      const pts = new Float64Array(local.length);
+      for (let i = 0; i < local.length; i += 2) {
+        pts[i] = local[i] + tile.x;
+        pts[i + 1] = local[i + 1] + tile.y;
+      }
+      const pad = HEX_SIZE * 1.2;
+      out.push({ pts, flow: e.flow, bbox: [tile.x - pad, tile.y - pad, tile.x + pad, tile.y + pad] });
+    }
+    mesh.riverGeo = out;
+    return out;
+  }
+
+  /**
    * Zincirin çizilecek eğrisi. Kıyı GL yüzeyinde yumuşaktır (shader kara/deniz
    * kararını aynı eğriden verir); Canvas2D yedeğinde deniz dolgusu, deniz
    * rasteri ve köpük hex kıyısıyla çizildiği için kıyı orada hex kenarında
@@ -2839,7 +2893,11 @@ export class Renderer {
    * `far`: uzak doku — kalınlıklar doku pikselinde, gösterim 0.6-1x küçülür.
    */
   drawMeshInk(ctx, world, rect, scale, far = false, bands = true) {
-    if (this.mapMode === 'geography') return;
+    if (this.mapMode === 'geography') {
+      // Coğrafya kipi siyasetsizdir ama nehir fiziksel dünyanın parçası.
+      this.drawRivers(ctx, world, this.borderMeshFor(world), rect, scale, far);
+      return;
+    }
     const mesh = this.borderMeshFor(world);
     const P = world.wrapWidth || 0;
     // Ülke çizgisi kapalıysa ülke sınırı yine province sınırıdır: province
@@ -2894,6 +2952,7 @@ export class Renderer {
       ctx.strokeStyle = `rgba(12, 16, 16, ${alpha.toFixed(3)})`;
       ctx.stroke(prov);
     }
+    this.drawRivers(ctx, world, mesh, rect, scale, far);
     if (nMajor) {
       // Ülke sınırı: tek yol, tek darbe. Eskiden her ülke kendi kenarını
       // çiziyordu ve ortak sınır iki kez boyanıp kıyıdan koyu çıkıyordu;

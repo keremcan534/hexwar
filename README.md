@@ -502,6 +502,16 @@ tarayıcı olmadan Node ile de test edilebilir.
 ## Tasarım notları
 
 - Harita pointy-top eksenel `q,r` koordinatları kullanır.
+- Nehirler hex KENARLARI boyunca akar (`world/rivers.js`): köşe grafında
+  denizden geriye öncelikli taşma ile drenaj ağacı, nem birikimi eşiği aşan
+  kenar nehirdir. RNG çekmez, araziye dokunmaz; çizimde hücre kenarı eğrisini
+  izler (province çizgisinin üstünde, ülke çizgisinin altında).
+- Province üreteci sürümlüdür (`world/provinces-gen.js`, `genOptions.provinceGen`).
+  v2'de tohum vadi tabanına düşer, büyüme nehir ve sırt geçişinde ve yokuş
+  yukarı pahalıdır: sınırlar nehir, sırt ve kıyıya oturur (ölçüldü: nehir
+  kenarlarının %81-87'si sınır, v1'de %37-45). Boy yerel verimle (besin,
+  nehir, kıyı) 0.8-1.15× ölçeklenir. Kayıt sürümü taşır; alanı olmayan eski
+  kayıt v1 ile birebir aynı bölümlemeyle açılır.
 - Harita birimi province'tir; hex altta veri ızgarası olarak kalır ve
   ızgara çizgileri varsayılan kapalıdır (Katmanlar → Hex grid; ülke ve
   province sınırları da oradan ayrı ayrı kapatılır, tercihler hatırlanır).

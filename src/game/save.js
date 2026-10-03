@@ -72,9 +72,13 @@ import { ensureDelegation, restoreDelegation } from './delegation.js';
 // KAYIPSIZ gocer: ensurePolitics eski bicimi tanir, iktidarin ideolojisini
 // dort partiden birine, merdivenlerin ortalama ilerlemesini en yakin yasa
 // kademesine cevirir; ozel sermaye aynen tasinir.
-export const SAVE_VERSION = 21;
+//
+// v22: province ureteci surumlendi (worldgen genOptions.provinceGen; v2 sinirlari
+// nehir/sirt/kiyi boyunca). Kayit bicimi ayni; v21 kaydi genOptions'unda alan
+// tasimaz ve v1 bolumlemesiyle yeniden kurulur — goc kayipsiz.
+export const SAVE_VERSION = 22;
 /** Gocu bilinen eski surumler: deserialize bunlari da kabul eder. */
-const MIGRATABLE_VERSIONS = new Set([14, 16, 20]);
+const MIGRATABLE_VERSIONS = new Set([14, 16, 20, 21]);
 const STORAGE_KEY = 'hexwar.save';
 
 /**
@@ -335,7 +339,9 @@ export function deserialize(game, data) {
   }
 
   // 1) Aynı seed ve ayarlarla dünyayı yeniden kur (arazi, iklim, kültür aynı).
-  game.newWorld(data.seed, data.options);
+  // Province ureteci surumu kayitla gelir; alani olmayan eski kayit v1
+  // bolumlemesiyle yazilmistir (bkz. provinces-gen PROVINCE_GEN_LATEST).
+  game.newWorld(data.seed, { provinceGen: 1, ...data.options });
   const world = game.world;
   const turns = game.turns;
 
