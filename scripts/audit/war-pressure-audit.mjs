@@ -18,7 +18,7 @@
 import {
   headless, section, sub, table, n1, pct, finding, reportFindings,
 } from './harness.mjs';
-import { atWar, declareWar, truceLeft } from '../../src/game/diplomacy.js';
+import { atWar, declareWar, relation, truceLeft } from '../../src/game/diplomacy.js';
 import * as infamyModule from '../../src/game/infamy.js';
 import { INFAMY_COALITION, decayInfamy } from '../../src/game/infamy.js';
 
@@ -47,6 +47,7 @@ function runSeed(seed) {
   const pairCount = new Map();
   let maxSimultaneous = 0;         // bir ulusa ayni anda kac saldirgan
   let dogpiled3 = 0;               // uc ve daha fazla saldirgan gorulme sayisi
+  let maxWithRebels = 0;           // isyan cepheleri dahil azami dusman
   let secondFronts = 0;
   const infamyPeak = new Float64Array(n);
   let thresholdNationWeeks = 0;
@@ -58,6 +59,7 @@ function runSeed(seed) {
 
     // --- savas acilis/kapanis takibi ---
     const attackersOn = new Int32Array(n);
+    const rebelsOn = new Int32Array(n);
     for (let a = 0; a < n; a++) {
       for (let b = a + 1; b < n; b++) {
         const key = `${a}:${b}`;
@@ -68,7 +70,16 @@ function runSeed(seed) {
         // bayat durum da ayrica temizlendi: turn.js checkElimination.)
         const now = world.nations[a].alive && world.nations[b].alive
           && atWar(world, a, b);
-        if (now) { attackersOn[a]++; attackersOn[b]++; }
+        // ISYAN SAVASI tavana girmez: startRebellionWar cullanma kapisini
+        // bilerek sormaz (ayaklanma devletin secimi degil, bkz. diplomacy.js).
+        // Sayilsa tavani DOLU bir ulusta patlayan isyan "4 saldirgan" diye
+        // okunuyordu (olculdu: WP3 hafta 2246, 3 cephe + Free Reneth).
+        if (now) {
+          const rebel = relation(world, a, b)?.reason === 'independence';
+          const counter = rebel ? rebelsOn : attackersOn;
+          counter[a]++;
+          counter[b]++;
+        }
         if (now && !open.has(key)) {
           // Ikinci cephe mi: taraflardan biri BASKA bir ulusla zaten savasta
           // miydi? Sorgu dogrudan yapilir; `attackersOn` bu noktada yalniz
@@ -91,6 +102,7 @@ function runSeed(seed) {
     }
     for (let i = 0; i < n; i++) {
       if (attackersOn[i] > maxSimultaneous) maxSimultaneous = attackersOn[i];
+      if (attackersOn[i] + rebelsOn[i] > maxWithRebels) maxWithRebels = attackersOn[i] + rebelsOn[i];
       if (attackersOn[i] >= 3) dogpiled3++;
     }
 
@@ -142,6 +154,7 @@ function runSeed(seed) {
     quickRepeats,
     secondFronts,
     maxSimultaneous,
+    maxWithRebels,
     dogpiled3,
     repeatPairs4: repeats.filter((v) => v >= 4).length,
     maxRepeats: repeats.length ? Math.max(...repeats) : 0,
@@ -263,6 +276,7 @@ sub('TEST 4 — sinirsiz cullanma (dog-pile) engelleniyor mu?');
 {
   console.log(`  azami escamanli saldirgan: ${rows.map((r) => r.maxSimultaneous).join(' · ')}`);
   console.log(`  3+ saldirganli ulke-hafta: ${rows.map((r) => r.dogpiled3).join(' · ')}`);
+  console.log(`  isyan cepheleri dahil azami dusman (tavan disi): ${rows.map((r) => r.maxWithRebels).join(' · ')}`);
   if (Math.max(...rows.map((r) => r.maxSimultaneous)) > 3) {
     finding('HIGH', 'cullanma',
       'bir ulusa ayni anda ucten fazla saldirgan binmemeli',
