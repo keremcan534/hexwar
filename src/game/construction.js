@@ -38,9 +38,9 @@ export function initConstruction(world) {
   }
 }
 
-/** Aynı anda yürüyen proje sayısı: 2 + her 8 province'e bir + teknoloji. */
+/** Aynı anda yürüyen proje sayısı: 2 + her 5 province'e bir + teknoloji. */
 export function constructionSlots(nation) {
-  return Math.max(1, 2 + Math.floor((nation.provinces ?? 0) / 8)
+  return Math.max(1, 2 + Math.floor((nation.provinces ?? 0) / 5)
     + Math.round(mod(nation, 'constructionSlots')));
 }
 
@@ -317,7 +317,7 @@ export function planConstruction(game, nation, { reserve = 60 } = {}) {
   const world = game.world;
   const state = ensureConstruction(nation);
   const slots = constructionSlots(nation);
-  if (state.queue.length >= slots + 1) return null;
+  if (state.queue.length >= slots + 2) return null;
   const budget = (nation.gold ?? 0) - reserve - Math.max(0, nation.debt ?? 0) * 0.5;
   if (budget <= 0) return null;
   const economy = nation.economy ?? {};

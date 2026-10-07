@@ -31,7 +31,10 @@ import { LEAVE_MS, hidePanel, motionOn, panelOpen, togglePanel } from './motion.
 import { Screens } from './screens.js';
 import { showEndScreen } from './endScreen.js';
 import { formatPopulation, weeklyBalanceOf } from '../game/economy.js';
-import { gdpAttribution, populationAttribution } from '../game/pulse.js';
+import { RESOURCES, RESOURCE_IDS, BUILDINGS, BUILDING_IDS } from '../game/econ/defs.js';
+import { depositsOf, fertilityOf } from '../game/econ/deposits.js';
+import { powerIncome } from '../game/politics.js';
+import { buildingLevels, buildingSlots } from '../game/provinces.js';
 import {
   canRecruit, disband, equipmentCostLabel, nationManpower, rallyTile, setRallyPoint,
   trainingWeeks,
@@ -41,9 +44,6 @@ import {
   aggressionInfo, borderNationIds, frontTilesOf, generalCost, generalOfArmy,
   officersOf, refreshFront, setAggression, unassignGeneral,
 } from '../game/command.js';
-import {
-  RGO_TYPES, depositsOf, provinceRgoStatus,
-} from '../game/provinces.js';
 import { controllerOf, isOccupied } from '../game/control.js';
 import { tileDefense } from '../game/battles.js';
 import { POPULATION_SCALE } from '../game/populationScale.js';
@@ -82,6 +82,8 @@ const STAT_ICONS = {
   army: '<path d="M3 13 12.2 3.8M12.2 3.8l1.3-1.3M4.1 10.3l1.6 1.6M13 13 3.8 3.8M3.8 3.8 2.5 2.5M11.9 10.3l-1.6 1.6"/>',
   manpower: '<circle cx="6.4" cy="5.3" r="2.1"/><path d="M2.5 13.1c0-2.2 1.7-3.8 3.9-3.8s3.9 1.6 3.9 3.8M12.4 4.6v4.2M10.3 6.7h4.2"/>',
   gdp: '<path d="M2.5 13.5h11M4 13.5V9.6h2.1v3.9M7 13.5V7.1h2.1v6.4M10 13.5V4.4h2.1v9.1"/>',
+  power: '<path d="M8 1.8 9.6 5.6l4 .4-3 2.7.9 4-3.5-2.1-3.5 2.1.9-4-3-2.7 4-.4z"/>',
+  warsupport: '<path d="M3 14V2.5M3 3h8.5l-1.6 2.5L11.5 8H3"/>',
 };
 
 /**
@@ -175,10 +177,11 @@ export class Hud {
   buildRgoLegend() {
     const legend = this.el.rgoLegend;
     if (!legend) return;
-    legend.innerHTML = Object.values(RGO_TYPES).map((type) => (
-      `<span style="--rgo-color:hsl(${type.hue} 30% 38%)">${type.icon} ${type.name}</span>`
+    legend.innerHTML = Object.values(RESOURCES).filter((type) => type.id !== 'FOOD').map((type) => (
+      `<span style="--rgo-color:hsl(${type.hue} ${type.sat}% 40%)">${type.glyph} ${type.name}</span>`
     )).join('');
   }
+
 
   /**
    * Nufus lejandi haritanin KENDI olceginden uretilir. Elle yazilan "1K-8K"
@@ -995,12 +998,14 @@ export class Hud {
       const army = world.units
         .filter((unit) => unit.nationId === me.id && unit.type.domain === 'land')
         .reduce((sum, unit) => sum + menUnderArms(unit), 0);
-      this.el.macroStats.innerHTML = statCell('population', 'Population',
+      const ic = me.economy?.ic ?? { total: 0, civil: 0, military: 0 };
+      this.el.macroStats.innerHTML = statCell('population', 'People',
         formatPopulation(me.economy?.population ?? 0), 'data-macro="population"', 'macro-live')
         + statCell('army', 'Army', formatPopulation(army), 'data-tip="army"')
-        + statCell('manpower', 'Manpower', formatPopulation(nationManpower(world, me.id)), 'data-tip="manpower"')
-        + statCell('gdp', 'GDP', `£${formatNumber(Math.round(me.economy?.gdp ?? 0))}`,
-          'data-macro="gdp"', 'macro-live');
+        + statCell('manpower', 'Recruits', formatPopulation(nationManpower(world, me.id)), 'data-tip="manpower"')
+        + statCell('gdp', 'IC', `${ic.total.toFixed(1)}<em class="stat-flow">${ic.military.toFixed(1)}⚔</em>`,
+          'data-macro="ic" data-tip="ic"', 'macro-live')
+        + resourceChips(me);
       this.ensureMacroCards();
       this.mountTopFlag();
       this.el.topNation.textContent = me.name;
@@ -1279,30 +1284,23 @@ export class Hud {
             : '')]);
       }
     }
-    if (tile.workedBy) stats.push(['Worked By', tile.workedBy.name]);
-    if (nation) stats.push(['Nation Size', `${nation.tiles} hexes`]);
+    if (nation) stats.push(['Nation Size', `${nation.provinces ?? 0} provinces`]);
     if (tile.province) {
-      const rgo = provinceRgoStatus(tile);
-      // HEX KAYNAĞI: tıklanan karenin kendi kaynağı başlıkta, kümenin bütün
-      // satırları (tür × hex) yanında; haftalık çıktı ipucu kartında.
-      const own = RGO_TYPES[tile.resource];
-      const mix = depositsOf(tile.province)
-        .map((line) => (RGO_TYPES[line.id] ? `${RGO_TYPES[line.id].icon}${line.hexes}` : ''))
-        .filter(Boolean).join(' ');
+      // PROVINCE: tek pop, kalkınma, binalar, yataklar (TASARIM.md §2).
+      const econ = tile.province;
+      const area = world.provinces?.[tile.provinceId];
+      const deposits = area ? depositsOf(area)
+        .map((line) => `${RESOURCES[line.id].glyph} ${RESOURCES[line.id].name} ×${line.size.toFixed(1)}`).join(' · ') : '';
+      const built = BUILDING_IDS.filter((id) => (econ.buildings?.[id] ?? 0) > 0)
+        .map((id) => `${BUILDINGS[id].name} ${econ.buildings[id]}`).join(', ');
       stats.unshift(
-        ['Population', formatPopulation(tile.province.population)],
-        ['RGO', own ? `${own.icon} ${own.name}` : '—'],
-        ['RGO Workforce', `${formatPopulation(rgo.employed)}/${formatPopulation(rgo.jobs)} · ${Math.round(rgo.efficiency * 100)}%`],
-        ['RGO Output', mix || '—'],
-        ['Unemployed', formatPopulation(rgo.unemployed)],
-        ['Control', `${Math.round(tile.province.control)}%`],
+        ['Population', formatPopulation(econ.population)],
+        ['Development', `${econ.development} · ${buildingLevels(econ)}/${buildingSlots(econ)} building slots`],
+        ['Buildings', built || 'none'],
+        ['Deposits', deposits || 'none'],
+        ['Fertility', area ? `${Math.round(fertilityOf(area) * 100)}% of world average` : '—'],
+        ['Compliance', `${Math.round(econ.control)}%${econ.core === false ? ' · counts at ' + Math.round((econ.status ?? 0) * 100) + '%' : ''}`],
       );
-      if (tile.province.migration) {
-        stats.splice(5, 0, [
-          'Migration',
-          `${tile.province.migration > 0 ? '+' : ''}${formatPopulation(tile.province.migration)}`,
-        ]);
-      }
     }
     // Küme kimliği en üstte: hangi province'in parçası olduğu ilk bakışta okunsun.
     const cluster = world.provinces?.[tile.provinceId];
@@ -1313,9 +1311,9 @@ export class Hud {
       if (cluster.owner >= 0 && occupiedMembers > 0) {
         stats.unshift(['Occupation', `${occupiedMembers}/${cluster.tileIdx.length} hexes lost`]);
       }
-      // Koloni/fetih toprakları çekirdek değildir: eksik vergi, gönülsüz asker.
-      if (cluster.owner >= 0 && cluster.coreOf !== cluster.owner) {
-        stats.unshift(['Territory', 'non-core (colonial)']);
+      // Çekirdek dışı toprak: vergi, asker ve sanayi uyum oranında gelir.
+      if (cluster.owner >= 0 && cluster.econ?.core === false) {
+        stats.unshift(['Territory', 'non-core: yields by compliance']);
       }
       const hexes = cluster.tileIdx.length;
       stats.unshift(['Province', `${cluster.name} · ${hexes} ${hexes === 1 ? 'hex' : 'hexes'}`]);
@@ -1663,67 +1661,42 @@ export class Hud {
   ensureMacroCards() {
     if (this.macroCards) return;
     const { game } = this;
+    const valueOf = (nation, metric) => (metric === 'ic'
+      ? (nation?.economy?.ic?.total ?? 0) : (nation?.economy?.population ?? 0));
     this.macroCards = bindMacroCards(this.el.macroStats, {
       playerId: () => game.turns.playerNation,
-      /** Gecmis izi: `economy.popHistory` (bkz. economy.recordPopulationTrend). */
+      /** Geçmiş izi: `economy.history` (economy.finishEconomy, 104 hafta). */
       series: (metric) => {
         const me = game.world.nations[game.turns.playerNation];
-        const history = me?.economy?.popHistory ?? [];
-        const key = metric === 'gdp' ? 'gdp' : 'pop';
-        return {
-          samples: history.map((row) => row[key] ?? 0),
-          current: metric === 'gdp' ? (me?.economy?.gdp ?? 0) : (me?.economy?.population ?? 0),
-        };
+        const history = me?.economy?.history ?? [];
+        const key = metric === 'ic' ? 'ic' : 'population';
+        return { samples: history.map((row) => row[key] ?? 0), current: valueOf(me, metric) };
       },
-      /**
-       * "Bu hafta": GSYH icin fiyat/hacim ve RGO/sanayi ayrimi ile ulkenin
-       * mallarindaki fiyat hareketi; nufus icin buyume ve sepet karsilanmasi.
-       * Sayilar game/pulse.js'ten; burada yalniz cumleye cevrilir.
-       */
+      /** "Bu hafta": geçen haftaya göre fark (economy.history'den okunur). */
       pulse: (metric) => {
         const me = game.world.nations[game.turns.playerNation];
-        const money = (v) => `${v >= 0 ? '+' : '−'}£${Math.abs(v).toFixed(1)}`;
-        const tone = (v) => (v > 0.05 ? 'up' : v < -0.05 ? 'down' : '');
-        if (metric === 'gdp') {
-          const a = gdpAttribution(game.world, me);
-          if (!a) return null;
-          const rows = [
-            { label: 'Change vs last week', value: money(a.delta), tone: tone(a.delta) },
-            { label: 'Prices of what you make', value: money(a.price), tone: tone(a.price), sub: true },
-            { label: 'Volume produced', value: money(a.volume), tone: tone(a.volume), sub: true },
-            { label: `Raw output (£${a.rgo.now.toFixed(0)})`, value: money(a.rgo.delta), tone: tone(a.rgo.delta) },
-            { label: `Factory value added (£${a.industry.now.toFixed(0)})`, value: money(a.industry.delta), tone: tone(a.industry.delta) },
-          ];
-          for (const m of a.movers) {
-            rows.push({
-              label: `${m.icon} ${m.name} £${m.previous.toFixed(2)} → £${m.price.toFixed(2)}`,
-              value: money(m.value), tone: tone(m.value), sub: true,
-            });
-          }
-          return rows;
-        }
-        const p = populationAttribution(me);
-        if (!p) return null;
-        const people = (v) => `${v >= 0 ? '+' : '−'}${formatPopulation(Math.abs(v))}`;
-        const pp = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1)} pp`;
+        const history = me?.economy?.history ?? [];
+        if (history.length < 2) return null;
+        const key = metric === 'ic' ? 'ic' : 'population';
+        const delta = history.at(-1)[key] - history.at(-2)[key];
+        const year = history.length >= 53 ? history.at(-1)[key] - history.at(-53)[key] : null;
+        const fmt = metric === 'ic'
+          ? (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}`
+          : (v) => `${v >= 0 ? '+' : '−'}${formatPopulation(Math.abs(v))}`;
+        const tone = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '');
         return [
-          { label: 'Growth vs last week', value: people(p.delta), tone: tone(p.delta) },
-          { label: `Needs met (${Math.round(p.needs * 100)}%)`, value: pp(p.needsDelta), tone: tone(p.needsDelta * 100) },
-          { label: `Literacy (${(p.literacy * 100).toFixed(1)}%)`, value: pp(p.literacyDelta), tone: tone(p.literacyDelta * 100) },
-        ];
+          { label: 'Change vs last week', value: fmt(delta), tone: tone(delta) },
+          year != null ? { label: 'Change over a year', value: fmt(year), tone: tone(year) } : null,
+        ].filter(Boolean);
       },
-      /** Siralama CANLI durumdan turer; ayri bir tablo saklanmaz. */
       ranking: (metric) => game.world.nations
         .filter((nation) => nation.alive && nation.economy)
-        .map((nation) => ({
-          id: nation.id,
-          name: nation.name,
-          value: metric === 'gdp' ? (nation.economy.gdp ?? 0) : (nation.economy.population ?? 0),
-        }))
+        .map((nation) => ({ id: nation.id, name: nation.name, value: valueOf(nation, metric) }))
         .sort((a, b) => b.value - a.value)
         .map((row, index) => ({ ...row, rank: index + 1 })),
     });
   }
+
 
   bindActions() {
     const { game } = this;
@@ -1831,29 +1804,40 @@ export class Hud {
   }
 }
 
-/** Üst çubuk yalnız yeni makro ekonomiyi gösterir; eski ham stoklar kaldırıldı. */
+/** Üst çubuk: oyunun bütün ekonomisi (TASARIM.md §1). */
 function resourcesHtml(nation) {
-  // TEK BAKIYE: kapanmis defterin net'i. Eskiden bu satir ile karar
-  // kartindaki "weekly gold" ve butce ekranindaki iki sayi birbirini
-  // tutmuyordu — dort farkli tanim vardi.
+  // TEK BAKIYE: kapanmış defterin net'i (treasury.closeWeek).
   const weekly = weeklyBalanceOf(nation);
-  // Akış ayrı bir <em>: değerin içine ikinci bir <b> koymak geçersiz iç içe
-  // yapıydı ve akışı ana rakamla aynı ağırlıkta gösteriyordu.
   const flowClass = weekly < 0 ? 'res-neg' : weekly > 0 ? 'res-pos' : '';
   const flowValue = Math.abs(weekly) >= 1000 ? `${(weekly / 1000).toFixed(1)}K` : `${Math.round(weekly)}`;
   const flow = `<em class="stat-flow ${flowClass}">${weekly >= 0 ? '+' : ''}${flowValue}</em>`;
-  // Şöhret eşiğe yaklaşırsa kırmızıya döner: koalisyon habersiz gelmesin.
   const infamy = nation.infamy ?? 0;
   const infamyClass = infamy >= INFAMY_COALITION ? 'res-neg'
     : infamy >= INFAMY_COALITION * 0.6 ? 'res-warn' : '';
-  const stability = Math.round((nation.economy?.stability ?? 0) * 100);
-  // Hazine binlik ayraçla okunur — dört haneden sonra ayraçsız sayı taranmıyor.
-  // Altı haneye çıkınca kısaltılır: hücre genişliği yedi göstergede ortaktır
-  // ve "£1,234,567 +1,234" eş hücreyi taşırıyordu.
-  return statCell('treasury', 'Treasury', `£${treasuryLabel(nation.gold)}${flow}`, 'data-tip="treasury"')
-    + statCell('stability', 'Stability', nation.budget ? `${stability}%` : '—',
+  const stability = Math.round((nation.stability ?? 0) * 100);
+  const warSupport = Math.round((nation.warSupport ?? 0) * 100);
+  const power = powerIncome(nation);
+  const stabilityClass = stability < 30 ? 'res-neg' : stability < 45 ? 'res-warn' : '';
+  return statCell('treasury', 'Gold', `${treasuryLabel(nation.gold)}${flow}`, 'data-tip="treasury"')
+    + statCell('power', 'Power', `${Math.round(nation.power ?? 0)}<em class="stat-flow res-pos">+${power.total.toFixed(1)}</em>`, 'data-tip="power"')
+    + statCell('stability', 'Stability', `<span class="${stabilityClass}">${stability}%</span>`,
       'role="button" data-why="stability" data-tip="stability"', 'stat-why')
+    + statCell('warsupport', 'War Sup.', `${warSupport}%`, 'data-tip="warsupport"')
     + statCell('infamy', 'Infamy', `<span class="${infamyClass}">${infamy.toFixed(1)}</span>`, 'data-tip="infamy"');
+}
+
+/** Altı kaynak çipi: karşılanma oranı; eksik olan kırmızı yanar. */
+function resourceChips(nation) {
+  const records = nation.economy?.resources ?? {};
+  return `<span class="res-chips">${RESOURCE_IDS.map((id) => {
+    const record = records[id];
+    const need = (record?.need ?? 0) > 0.01;
+    const ratio = need ? record.ratio : 1;
+    const cls = !need ? 'idle' : ratio < 0.8 ? 'short' : ratio < 0.98 ? 'tight' : 'ok';
+    const surplus = (record?.exported ?? 0) > 0.05;
+    return `<span class="res-chip ${cls}" data-tip="resource" data-tip-arg="${id}" tabindex="0">
+      <i>${RESOURCES[id].glyph}</i><b>${need ? `${Math.round(ratio * 100)}%` : '—'}</b>${surplus ? '<em>▲</em>' : ''}</span>`;
+  }).join('')}</span>`;
 }
 
 /** Hazine: altı haneye kadar ayraçlı tam sayı, üstü K/M. */
@@ -1876,25 +1860,11 @@ function treasuryLabel(value) {
  * simulasyon kalemleridir ve toplamlari istikrara esittir.
  */
 function stabilityWhy(nation) {
-  const bd = nation.economy?.stabilityBreakdown;
-  if (!bd) return 'national stability';
+  const parts = nation?.politics?.stabilityParts;
+  if (!parts?.length) return 'national stability';
   const pt = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1)}`;
-  const lines = [`Household satisfaction  ${pt(bd.base)}`];
-  if (bd.occupation < -0.0005) {
-    lines.push(`Occupied territory      ${pt(bd.occupation)}  (${Math.round(bd.occupiedShare * 100)}% of ${bd.occupiedTiles} hexes)`);
-  }
-  if (bd.war < -0.0005) {
-    lines.push(`War exhaustion          ${pt(bd.war)}  (${bd.warFronts} front${bd.warFronts === 1 ? '' : 's'})`);
-  }
-  if (bd.unemployment < -0.0005) {
-    lines.push(`Unemployment            ${pt(bd.unemployment)}  (${grouped(bd.unemployed)} without work)`);
-  }
-  if ((bd.legitimacy ?? 0) < -0.0005) {
-    lines.push(`Government backing      ${pt(bd.legitimacy)}  (${bd.leader} ${Math.round(bd.leaderSupport)}% vs ${bd.ruling} ${Math.round(bd.rulingSupport)}%)`);
-  }
-  if ((bd.repression ?? 0) < -0.0005) lines.push(`Repression              ${pt(bd.repression)}`);
-  if (Math.abs(bd.society ?? 0) >= 0.0005) lines.push(`Society                 ${pt(bd.society)}`);
-  lines.push(`= Stability             ${(bd.total * 100).toFixed(1)}%`);
+  const lines = parts.map((part) => `${part.label.padEnd(30)} ${pt(part.value)}`);
+  lines.push(`= Target ${(nation.politics.stabilityTarget * 100).toFixed(1)}% (now ${(nation.stability * 100).toFixed(1)}%)`);
   return lines.join('\n');
 }
 

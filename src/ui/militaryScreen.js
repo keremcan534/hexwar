@@ -89,9 +89,9 @@ function headerStrip(summary) {
       + ' men committed when they march out')}
     ${figure('Wars', `${summary.wars.length}${crises.length ? ` +${crises.length}` : ''}`, wars, wars,
     summary.wars.length ? 'hot' : crises.length ? 'warn' : '')}
-    ${figure('Upkeep', `£${summary.upkeepGold.toFixed(1)}`, `per week · wages at ${summary.wages}%`,
-    `£${summary.upkeepGold.toFixed(1)} wages a week · procurement £${summary.procurementCost.toFixed(1)}`
-      + ` last week (supplies and equipment bought for the army) · wages at ${summary.wages}%`)}
+    ${figure('Upkeep', `${summary.upkeepGold.toFixed(1)}`, 'gold per week',
+    `${summary.armyCost.toFixed(1)} army and ${summary.navyCost.toFixed(1)} navy upkeep last week;`
+      + ' half again more while at war. Equipment comes from the production lines (Factories).')}
   </header>`;
 }
 
@@ -402,8 +402,8 @@ function dispositionBand(summary, composition, logistics, spent) {
     const short = item.balance < 0;
     return `<span class="${short ? 'short' : ''}"
       title="${esc(`${item.name}: ${item.stock.toFixed(1)} in stock, ${item.required.toFixed(1)} needed`
-      + `, ${item.supplyPerDay.toFixed(2)}/day arriving`
-      + (item.etaDays ? ` — ${item.etaDays} days to cover the gap` : ''))}">
+      + `, ${item.producedPerWeek.toFixed(1)}/week from the production line`
+      + (item.etaWeeks ? ` — ${item.etaWeeks} weeks to cover the gap` : ''))}">
       ${item.icon}${item.stock.toFixed(0)}</span>`;
   }).join('');
   const orgValue = summary.organization == null ? '—' : `${Math.round(summary.organization)}%`;
@@ -422,13 +422,13 @@ function dispositionBand(summary, composition, logistics, spent) {
       <small>Reinforcement</small>
       <b>${formatPopulation(summary.reinforcedMen)} men last week</b>
       <em>${formatPopulation(summary.reinforcementDemand)} strength still missing from the ranks${spent
-    ? ` · cost ${spent.arms.toFixed(1)} small arms, ${spent.artillery.toFixed(1)} artillery`
+    ? ` · cost ${spent.rifles.toFixed(1)} rifles, ${spent.guns.toFixed(1)} guns`
     : ''}</em>
     </div>
     <div class="mil-disp-cell">
       <small>Stockpile</small>
       <div class="mil-supply">${supply}</div>
-      <em>supply index ${pct(summary.supplyIndex)} · procurement ${summary.procurement}%</em>
+      <em>upkeep ${summary.upkeepGold.toFixed(1)} gold a week</em>
     </div>
   </footer>`;
 }

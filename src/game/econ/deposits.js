@@ -36,7 +36,7 @@ const DEPOSIT_CLUMP = { COAL: 1.8, IRON: 1.6, TIMBER: 0.5, HORSES: 0.7, SALTPETE
  * iki ayağı olduğu için en geniş; güherçile seyrek ama kuşaklı — savaşta
  * kıtlığı hissedilsin.
  */
-const DEPOSIT_SHARE = { COAL: 0.07, IRON: 0.065, TIMBER: 0.07, HORSES: 0.075, SALTPETER: 0.05 };
+const DEPOSIT_SHARE = { COAL: 0.07, IRON: 0.065, TIMBER: 0.07, HORSES: 0.075, SALTPETER: 0.04 };
 
 const DEPOSIT_PERIOD = 12;
 

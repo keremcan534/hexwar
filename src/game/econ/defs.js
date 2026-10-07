@@ -26,41 +26,50 @@ export const RESOURCE_IDS = Object.keys(RESOURCES);
 /** Yataktan çıkan kaynaklar (gıda araziden gelir, yatağı yoktur). */
 export const DEPOSIT_IDS = ['COAL', 'IRON', 'TIMBER', 'HORSES', 'SALTPETER'];
 
-/** Yatak hex'i başına haftalık çıktı (maden ve demiryolundan önce). */
-export const DEPOSIT_OUTPUT = 0.15;
+/**
+ * Yatak hex'i başına haftalık çıktı (maden ve demiryolundan önce). Kömür en
+ * bol: sanayinin yakıtı; yine de 64 yıllık koşuda dünya kömürü sanayiyi
+ * frenler (ölçüldü: tek çıktıyla 1900'de medyan kömür oranı 0.09).
+ */
+export const DEPOSIT_OUTPUT = { COAL: 0.45, IRON: 0.35, TIMBER: 0.3, HORSES: 0.3, SALTPETER: 0.3 };
 
 /**
  * Gıda: nüfus birimi başına üretim `FOOD_BASE + FOOD_FERTILITY × verim`.
  * Nüfusla ölçeklenir (tarlayı insan sürer) ama verimsiz toprak hep açık verir:
  * çöl ve dağ ithalatçı, ova ve bozkır ihracatçı doğar.
  */
-export const FOOD_BASE = 0.55;
+export const FOOD_BASE = 0.45;
 export const FOOD_FERTILITY = 0.55;
 /** Nüfus birimi başına haftalık gıda ihtiyacı. */
 export const FOOD_NEED = 1.0;
 
-/** Bina tablosu. `max` kademe tavanı; yuva toplamı kalkınma + 1. */
+/**
+ * Bina tablosu. `max` kademe tavanı; yuva toplamı kalkınma + 1. `upkeep`
+ * kademe başına haftalık bakım (altın): genişleyen devlet onu taşımalı —
+ * yoksa geç oyunda altın birikip anlamsızlaşıyordu (ölçüldü: 1900 medyan
+ * hazine 29 bin).
+ */
 export const BUILDINGS = {
-  farm: { id: 'farm', name: 'Farm', cost: 40, weeks: 12, max: 3, effect: 'Food +25%' },
-  mine: { id: 'mine', name: 'Mine', cost: 60, weeks: 16, max: 3, effect: 'Deposit output +50%', needsDeposit: true },
-  factory: { id: 'factory', name: 'Factory', cost: 120, weeks: 26, max: 5, effect: '+1 industrial capacity', minDevelopment: 2 },
-  dockyard: { id: 'dockyard', name: 'Dockyard', cost: 120, weeks: 30, max: 3, effect: 'Ships line +1 IC cap, naval base', coastal: true },
-  barracks: { id: 'barracks', name: 'Barracks', cost: 50, weeks: 16, max: 2, effect: 'Manpower +20%, training faster' },
-  fort: { id: 'fort', name: 'Fort', cost: 60, weeks: 20, max: 3, effect: 'Defence +15%' },
-  railway: { id: 'railway', name: 'Railway', cost: 70, weeks: 20, max: 5, effect: 'Resources +10%, supply, movement', costGrowth: 0.5 },
-  university: { id: 'university', name: 'University', cost: 100, weeks: 30, max: 2, effect: 'Research +0.3, literacy', minDevelopment: 4 },
+  farm: { id: 'farm', name: 'Farm', cost: 80, upkeep: 0.05, weeks: 12, max: 3, effect: 'Food +25%' },
+  mine: { id: 'mine', name: 'Mine', cost: 120, upkeep: 0.15, weeks: 16, max: 3, effect: 'Deposit output +50%', needsDeposit: true },
+  factory: { id: 'factory', name: 'Factory', cost: 250, upkeep: 0.4, weeks: 26, max: 5, effect: '+1 industrial capacity', minDevelopment: 2 },
+  dockyard: { id: 'dockyard', name: 'Dockyard', cost: 200, upkeep: 0.4, weeks: 30, max: 3, effect: 'Ships line +1 IC cap, naval base', coastal: true },
+  barracks: { id: 'barracks', name: 'Barracks', cost: 100, upkeep: 0.2, weeks: 16, max: 2, effect: 'Manpower +20%, training faster' },
+  fort: { id: 'fort', name: 'Fort', cost: 120, upkeep: 0.2, weeks: 20, max: 3, effect: 'Defence +15%' },
+  railway: { id: 'railway', name: 'Railway', cost: 150, upkeep: 0.15, weeks: 20, max: 5, effect: 'Resources +10%, supply, movement', costGrowth: 0.5 },
+  university: { id: 'university', name: 'University', cost: 200, upkeep: 0.4, weeks: 30, max: 2, effect: 'Research +0.3, literacy', minDevelopment: 4 },
 };
 export const BUILDING_IDS = Object.keys(BUILDINGS);
 
 /** Her fabrika bir sonrakini %3 pahalılaştırır: sanayi hamlesi hep artan bedeldir. */
-export const FACTORY_COST_GROWTH = 0.03;
+export const FACTORY_COST_GROWTH = 0.05;
 
 /**
  * Kalkınma: bir kademe 12 hafta, bedel 10 × (hedef)² × √(nüfus birimi).
  * Kalabalık province'i kalkındırmak pahalı ama en hızlı geri döner.
  */
 export const DEVELOPMENT_WEEKS = 12;
-export const DEVELOPMENT_COST = 10;
+export const DEVELOPMENT_COST = 20;
 export const DEVELOPMENT_MAX = 10;
 /** Kalkınma tavanının tabanı (teknoloji ve okuryazarlık ekler). */
 export const DEVELOPMENT_CAP_BASE = 3;
@@ -100,13 +109,13 @@ export const UNIT_RESOURCES = {
 };
 
 /** Muharebedeki alay başına haftalık barut (güherçile). */
-export const BATTLE_SALTPETER = 0.2;
+export const BATTLE_SALTPETER = 0.5;
 
 /** Fabrika kademesi başına IC ve IC başına kömür. */
 export const FACTORY_IC = 1.0;
 /** Tersane kademesi başına gemi hattına girebilen IC. */
 export const DOCKYARD_IC = 1.0;
-export const COAL_PER_IC = 0.25;
+export const COAL_PER_IC = 0.35;
 
 /**
  * Tüketim malı: ihtiyaç ve el tezgâhı arzı nüfus birimi başına. Çağ çarpanı
@@ -122,7 +131,7 @@ export const COTTAGE_PER_DEVELOPMENT = 0.03;
 export const LINE_EFFICIENCY = { start: 0.5, floor: 0.2, cap: 0.8, gain: 0.01, decay: 0.005 };
 
 /** Vergi: nüfus birimi başına taban; kalkınma kademesi başına artış. */
-export const TAX_PER_UNIT = 0.55;
+export const TAX_PER_UNIT = 0.45;
 export const TAX_PER_DEVELOPMENT = 0.25;
 
 /** Alay başına haftalık bakım (altın); savaşta seferi gider çarpanı. */

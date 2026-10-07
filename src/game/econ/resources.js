@@ -49,7 +49,7 @@ export function provinceOutput(province, nation, out = emptyResourceMap()) {
   const mine = 1 + 0.5 * (buildings.mine ?? 0);
   const extra = 1 + mod(nation, 'resources');
   for (const line of depositsOf(province)) {
-    out[line.id] += line.size * DEPOSIT_OUTPUT * mine * rail * extra * status;
+    out[line.id] += line.size * (DEPOSIT_OUTPUT[line.id] ?? 0.3) * mine * rail * extra * status;
   }
   return out;
 }

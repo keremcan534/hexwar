@@ -31,6 +31,7 @@ import { LAWS, lawIndex } from './laws.js';
 import { politicsAI, setLaw } from './politics.js';
 import { planConstruction } from './construction.js';
 import { unificationAI } from './unification.js';
+import { decisionsAI } from './decisions.js';
 import { delegationActive, noteDelegated } from './delegation.js';
 import { nodeNeighbors } from '../world/provinceGraph.js';
 
@@ -363,8 +364,11 @@ export function economyAI(game, nation) {
     regiments += regimentCount(unit);
     for (const regiment of unit.regiments ?? []) if (regiment.typeId === 'ARTILLERY') guns++;
   }
+  // Depo doluysa hat durur: barışta yığılan tüfek demir yer ama kimseyi
+  // silahlandırmaz (ölçüldü: 1900'de dünya demiri %40'ta, depolar taşkın).
   const rifles = equipmentStock(nation, 'rifles');
-  const wantRifles = rifles < regiments * 4 + 30 ? (war ? 5 : 3) : 1;
+  const wantRifles = rifles < regiments * 4 + 30 ? (war ? 5 : 3)
+    : rifles < regiments * 10 + 80 ? 1 : 0;
   const wantGuns = equipmentStock(nation, 'guns') < guns * 3 + 6 ? (war ? 2 : 1) : 0;
   const wantShips = economy.coastal ? ((economy.blockade ?? 0) > 0 || nation.focus === 'military' ? 2 : 1) : 0;
   setLineWeight(nation, 'rifles', wantRifles);
@@ -570,6 +574,7 @@ export function runNationAI(game, nation, rng) {
   economyAI(game, nation);
   constructionAI(game, nation);
   unificationAI(game, nation);
+  decisionsAI(game, nation);
   manageCommand(game, nation);
   // Kara tümenleri komuta katmanından yönetilir; burada yalnız donanma kalır.
   for (const unit of [...world.units]) {
@@ -611,6 +616,8 @@ export function runDelegatedAI(game, nation, rng) {
   if (delegationActive(nation, 'reforms', turn)) {
     const lawsBefore = JSON.stringify(nation.politics?.laws ?? {});
     politicsAI(game, nation, { appoint: false });
+    const decided = decisionsAI(game, nation);
+    if (decided) noteDelegated(game, nation, 'reforms', decided, 'Political power was piling up.');
     if (JSON.stringify(nation.politics?.laws ?? {}) !== lawsBefore) {
       noteDelegated(game, nation, 'reforms', 'The cabinet changed a law.', 'The situation demanded it.');
     }

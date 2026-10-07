@@ -19,7 +19,7 @@
 import {
   TECH_CATEGORIES, TECH_FOLDERS, TECHNOLOGIES, canResearch, hasTech, techById,
 } from '../game/technology.js';
-import { lawModifiers } from '../game/politics.js';
+import { mod } from '../game/modifiers.js';
 import { isDelegated } from '../game/delegation.js';
 import { tooltipHtml } from './tooltip.js';
 
@@ -28,7 +28,7 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
 ));
 
 const START_YEAR = 1836;
-const END_YEAR = 1915;
+const END_YEAR = 1900;
 /**
  * Yil basina piksel ve dugum eni birlikte secildi: 1600px ekranda agac yatay
  * kaydirmasiz sigar ve adlarin cogu kesilmez (118px ile yarisi kesiliyordu).
@@ -38,7 +38,7 @@ const NODE_W = 140;
 /** Ayni klasorde iki teknoloji yillari yakinsa ust uste binmesin. */
 const NODE_GAP = 6;
 
-const CATEGORY_ORDER = ['industry', 'army', 'navy', 'commerce', 'culture'];
+const CATEGORY_ORDER = ['industry', 'infrastructure', 'army', 'navy', 'society'];
 
 /**
  * Yakinlastirma kademeleri. Agacin tamami 1600px ekranda %100'de ancak sigiyor;
@@ -62,24 +62,19 @@ function layoutRow(list) {
 }
 
 /**
- * "Neden bu hiz?" dokumu: researchPointsOf'un GERCEK terimleri, ayni sirayla.
- * Basin ozgurlugu (anayasa yasasi) da carpandadir; eski dokum onu yazmiyordu
- * ve satirlarin toplami ekrandaki hizi tutmuyordu.
+ * "Neden bu hız?" dökümü: technology.researchPointsOf'un GERÇEK terimleri,
+ * aynı sırayla (ekran formül kurmaz; terimleri okur).
  */
 export function researchRateLines(nation) {
   const economy = nation.economy ?? {};
   const lit = Math.max(0, Math.min(1, economy.literacy ?? 0));
-  const population = Math.max(1, economy.population ?? 1);
-  const middle = Math.max(0, Math.min(1, (economy.classes?.middle?.population ?? 0) / population));
-  const clerks = lit >= 0.5 ? middle * 2 : 0;
-  const tech = economy.techMods?.researchRate ?? 0;
-  const press = lawModifiers(nation).researchRate ?? 0;
+  const universities = economy.universities ?? 0;
+  const bonus = mod(nation, 'research');
   return [
-    `Literacy ${(lit * 100).toFixed(0)}% × 4  =  +${(lit * 4).toFixed(2)}`,
-    `Middle class ${(middle * 100).toFixed(1)}% × 1.5  =  +${(middle * 1.5).toFixed(2)}`,
-    lit >= 0.5 ? `Clerks (literacy ≥ 50%)  =  +${clerks.toFixed(2)}` : 'Clerks  =  +0.00 (needs literacy ≥ 50%)',
     'Base  =  +1.00',
-    tech || press ? `Technology and press  =  ×${(1 + tech + press).toFixed(2)}` : null,
+    `Literacy ${(lit * 100).toFixed(0)}% × 6  =  +${(lit * 6).toFixed(2)}`,
+    `Universities ${universities} × 0.3  =  +${(universities * 0.3).toFixed(2)}`,
+    bonus ? `Technology, ministers, party  =  ×${(1 + bonus).toFixed(2)}` : null,
   ].filter(Boolean);
 }
 

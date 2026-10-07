@@ -22,10 +22,10 @@ export const LAWS = {
   conscription: {
     id: 'conscription', name: 'Conscription', icon: '⚔',
     options: [
-      { id: 'volunteer', name: 'Volunteer Army', rate: 0.02, desc: 'Manpower 2% of population' },
-      { id: 'limited', name: 'Limited Conscription', rate: 0.04, ic: -0.03, desc: 'Manpower 4%, industry −3%' },
-      { id: 'extensive', name: 'Extensive Conscription', rate: 0.08, ic: -0.08, warSupport: 0.5, desc: 'Manpower 8%, industry −8% · needs war support 50%' },
-      { id: 'total', name: 'Total Mobilisation', rate: 0.15, ic: -0.2, stability: -0.05, warSupport: 0.8, desc: 'Manpower 15%, industry −20%, stability −5 · needs war support 80%' },
+      { id: 'volunteer', name: 'Volunteer Army', rate: 0.03, desc: 'Manpower 3% of population' },
+      { id: 'limited', name: 'Limited Conscription', rate: 0.06, ic: -0.03, desc: 'Manpower 6%, industry −3%' },
+      { id: 'extensive', name: 'Extensive Conscription', rate: 0.10, ic: -0.08, warSupport: 0.5, desc: 'Manpower 10%, industry −8% · needs war support 50%' },
+      { id: 'total', name: 'Total Mobilisation', rate: 0.16, ic: -0.2, stability: -0.05, warSupport: 0.8, desc: 'Manpower 16%, industry −20%, stability −5 · needs war support 80%' },
     ],
     default: 1,
   },

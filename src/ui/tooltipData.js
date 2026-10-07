@@ -1,36 +1,31 @@
 // Tooltip içerik sağlayıcıları.
 //
 // TEK KURAL: burada hiçbir simülasyon formülü yeniden kurulmaz. Her sağlayıcı
-// alan katmanının döküm fonksiyonunu okur — `budgetBreakdown`, `industryOverview`,
-// `factoryDiagnosis`, `provinceRgoStatus` — ve okuduğunu cümleye çevirir.
-// Kopyalasaydık ekranla motor zamanla ayrışırdı; bütçede ölçülen sapma sınıfı
-// tam olarak buydu (bkz. VICTORIA_LITE değişmez #2).
+// alan katmanının döküm fonksiyonunu okur — economyView, stabilityBreakdown,
+// warSupportBreakdown, powerIncome, taxBreakdown — ve okuduğunu cümleye
+// çevirir (TASARIM.md ilke 2).
 //
 // Sağlayıcı `null` dönerse tooltip hiç açılmaz — boş bir kart göstermek,
 // hiç göstermemekten kötüdür.
 
-import { provideTooltip, tipTerm } from './tooltip.js';
-import { taxSettlement } from './screens.js';
+import { provideTooltip } from './tooltip.js';
+import { economyView, formatPopulation, literacyTarget } from '../game/economy.js';
 import {
-  FACTORIES, GOODS, budgetBreakdown, debtCapacity, formatPopulation, literacyTargetOf, priceOf,
-} from '../game/economy.js';
-import { constructionView } from '../game/construction.js';
-import {
-  TECH_CATEGORIES, TECH_MODS, canResearch, diffusionDiscount, effectiveTechCost, hasTech,
+  TECH_CATEGORIES, canResearch, diffusionDiscount, effectiveTechCost, hasTech,
   researchPath, researchPointsOf, techById, techCost,
 } from '../game/technology.js';
-import { UNIT_TYPES } from '../game/units.js';
-import { industryOverview } from '../game/industryView.js';
-import { RGO_TYPES, depositsOf, provinceOutput, provinceRgoStatus } from '../game/provinces.js';
 import { activeAlerts } from '../game/alerts.js';
 import { DELEGATION_AREAS, DELEGATION_IDS, isDelegated } from '../game/delegation.js';
-import { classNeedsOf } from '../game/populationView.js';
 import { INFAMY, INFAMY_COALITION } from '../game/infamy.js';
-import { balanceAttribution, classIncomeAttribution, stabilityAttribution } from '../game/pulse.js';
+import { BUILDINGS, RESOURCES } from '../game/econ/defs.js';
+import { describeEffects, modifierBreakdown, MODIFIER_KEYS } from '../game/modifiers.js';
+import { powerIncome } from '../game/politics.js';
+import { nationManpower } from '../game/recruitment.js';
 
 const pct = (v, d = 0) => `${((v ?? 0) * 100).toFixed(d)}%`;
-const coin = (v) => `£${(v ?? 0).toFixed(1)}`;
-const signed = (v) => `${v >= 0 ? '+' : '−'}£${Math.abs(v ?? 0).toFixed(1)}`;
+const coin = (v) => `${(v ?? 0).toFixed(1)}`;
+const signed = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v ?? 0).toFixed(1)}`;
+const pts = (v) => `${v >= 0 ? '+' : '−'}${Math.abs((v ?? 0) * 100).toFixed(1)}`;
 /** `text` ham HTML basilir; simulasyondan gelen cumleler kacirilarak girer. */
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -44,316 +39,128 @@ export function registerTooltips(game) {
   const me = () => game.world.nations[game.turns.playerNation];
 
   /* ----------------------------------------------------------------------
-     BÜTÇE — beş kaldıraç + defter satırları
+     ÜST ÇUBUK — hazine, SG, savaş desteği, IC, kaynaklar, binalar
      ---------------------------------------------------------------------- */
 
-  /** Ortak: bir bütçe kontrolünün dökümü. `arg` = kontrol anahtarı. */
-  provideTooltip('budget', (arg) => {
-    const nation = me();
-    const view = budgetBreakdown(game.world, nation);
-    const cfg = view?.controls?.[arg];
-    if (!cfg) return null;
-    const label = {
-      taxLower: 'Lower class tax',
-      taxMiddle: 'Middle class tax',
-      taxUpper: 'Upper class tax',
-      tariff: 'Tariff',
-      armyFunding: 'Army funding',
-      education: 'Education',
-      welfare: 'Welfare',
-      printing: 'Money printing',
-    }[arg] ?? arg;
-
-    // Vergi: matrah × oran = tahsilat. Üç sayı da dökümden gelir; çarpım
-    // satırla AYNI fonksiyondan (screens.taxSettlement). Kart kendi çarpımını
-    // kurarken oran değişince "25% · Collected £10.9" yazıyordu, satır ise
-    // "≈ £20.9 projected" diyordu.
-    if (arg.startsWith('tax')) {
-      const incomes = classIncomeAttribution(nation);
-      const mine = incomes?.[cfg.classId];
-      const tax = taxSettlement(cfg);
-      return {
-        type: 'breakdown',
-        title: `${label} — ${cfg.value}%`,
-        value: tax.stale ? `≈${coin(tax.projected)}` : coin(cfg.collected),
-        text: cfg.explain,
-        rows: [
-          { label: 'People in this class', value: formatPopulation(cfg.population) },
-          { label: 'Taxable income / week', value: coin(cfg.base) },
-          ...(mine && Math.abs(mine.delta) >= 0.05
-            ? [{ label: 'Income vs last week', value: signed(mine.delta), tone: mine.delta >= 0 ? 'good' : 'bad' }]
-            : []),
-          { label: 'Rate', value: `${cfg.value}%` },
-          ...(tax.stale
-            ? [
-              { label: `Projected at ${cfg.value}%`, value: `≈${coin(tax.projected)}`, tone: 'good' },
-              { label: `Last week at ${Math.round(tax.settledRate)}%`, value: coin(cfg.collected) },
-            ]
-            : [{ label: 'Collected', value: coin(cfg.collected), tone: 'good' }]),
-        ],
-        footer: `The system reads as <b>${view.controls.taxSummary.structure}</b>: `
-          + 'the label follows your three rates, it is not set for you.',
-      };
-    }
-
-    if (arg === 'tariff') {
-      return {
-        type: 'breakdown',
-        title: `Tariff — ${cfg.value}%`,
-        value: coin(cfg.revenue),
-        text: cfg.explain,
-        rows: [
-          { label: 'Imports / week', value: coin(cfg.imports) },
-          { label: 'Tariff revenue', value: coin(cfg.revenue), tone: cfg.revenue >= 0 ? 'good' : 'bad' },
-        ],
-        effects: [
-          { label: 'Imported goods cost', value: `+${cfg.priceEffect}%`, tone: cfg.priceEffect > 0 ? 'bad' : 'good' },
-          { label: 'Factories buying abroad', value: cfg.priceEffect > 0 ? 'earn less' : 'earn more' },
-        ],
-      };
-    }
-
-    if (arg === 'armyFunding') {
-      // Satirla ayni dort sonuc, ayni sirada ve bicimde. Anahtar listesi
-      // 'combat' ariyordu ama alan `combatPower`: kart savas gucunu hic
-      // gostermiyordu. Ikmal bir carpan degil doluluk payidir, satir gibi % yazar.
-      return {
-        type: 'mechanic',
-        title: `Army funding — ${cfg.value}%`,
-        text: cfg.explain,
-        effects: [
-          { label: 'Combat power', value: `×${cfg.combatPower.toFixed(2)}` },
-          { label: 'Reinforcement', value: `×${cfg.reinforcement.toFixed(2)}` },
-          { label: 'Training', value: `×${cfg.training.toFixed(2)}` },
-          { label: 'Supply', value: pct(cfg.supply) },
-        ],
-        footer: `Your government allows ${cfg.min}–${cfg.max}%.`,
-      };
-    }
-
-    if (arg === 'printing') {
-      const pctOf = (v) => `${(v * 100).toFixed(1)}%`;
-      return {
-        type: 'breakdown',
-        title: `${label} — ${cfg.value}% of GDP`,
-        value: coin(cfg.minted),
-        text: cfg.explain,
-        rows: [
-          { label: 'GDP / week', value: coin(cfg.gdp) },
-          { label: 'Minted last week', value: coin(cfg.minted), tone: 'good' },
-          { label: `Next week at ${cfg.value}%`, value: `≈${coin(cfg.projected)}` },
-        ],
-        effects: [
-          { label: 'Inflation now', value: `${pctOf(cfg.inflation)}/yr`, tone: cfg.inflation > 0.001 ? 'bad' : undefined },
-          { label: `Inflation heads to`, value: `${pctOf(cfg.inflationTarget)}/yr` },
-          { label: 'Workers & middle class', value: `−${(cfg.moodLower * 100).toFixed(1)} satisfaction`, tone: cfg.moodLower > 0.0005 ? 'bad' : undefined },
-          { label: 'Upper class', value: `−${(cfg.moodUpper * 100).toFixed(1)} satisfaction`, tone: cfg.moodUpper > 0.0005 ? 'bad' : undefined },
-        ],
-        footer: 'Inflation rises within two months of printing and takes about half a year to fade.',
-      };
-    }
-
-    // Eğitim ve refah: sosyal program kaldıraçları.
-    return {
-      type: 'breakdown',
-      title: `${label} — ${cfg.value}%`,
-      value: cfg.cost != null ? `${coin(cfg.cost)} / week` : undefined,
-      text: cfg.explain,
-      rows: Object.entries(cfg)
-        .filter(([key, value]) => typeof value === 'number'
-          && !['value', 'min', 'max', 'cost'].includes(key))
-        .slice(0, 4)
-        .map(([key, value]) => ({
-          label: key.replace(/([A-Z])/g, ' $1').toLowerCase(),
-          value: value < 3 ? value.toFixed(2) : Math.round(value),
-        })),
-      footer: cfg.min > 0 ? `A law sets the floor at ${cfg.min}%.` : null,
-    };
-  });
-
-  /** Ulusal banka: borç kapasitesi ve faiz. */
   provideTooltip('treasury', () => {
     const nation = me();
-    const view = budgetBreakdown(game.world, nation);
-    if (!view) return null;
-    // "Bu hafta neyi oynatti": defterin en cok degisen satirlari (pulse.js).
-    const moved = balanceAttribution(nation);
-    const effects = moved ? [
-      { label: 'Balance vs last week', value: signed(moved.delta), tone: moved.delta >= 0 ? 'good' : 'bad' },
-      ...moved.lines.map((row) => ({
-        label: `${row.label} (£${Math.abs(row.now).toFixed(1)})`,
-        value: signed(row.delta),
-        tone: row.delta >= 0 ? 'good' : 'bad',
-      })),
-    ] : [];
+    if (!nation?.economy) return null;
+    const view = economyView(game.world, nation);
+    const ledger = view.ledger;
     return {
       type: 'breakdown',
       title: 'Treasury',
-      value: `£${Math.round(view.treasury)}`,
-      text: 'Last week\'s closed balance, not a forecast. '
-        + `Income and spending are settled once a week.`,
+      value: `${Math.round(view.gold)} gold`,
+      text: 'Gold pays for buildings, regiments, upkeep and imports. When it runs dry the '
+        + 'state borrows automatically; above the debt ceiling it goes bankrupt.',
       rows: [
-        { label: 'Income', value: coin(view.income), tone: 'good' },
-        { label: 'Spending', value: coin(view.expenses), tone: 'bad' },
-        { label: 'Balance', value: signed(view.balance), tone: view.balance >= 0 ? 'good' : 'bad' },
-        { label: 'Debt', value: `£${Math.round(view.debt)}` },
-        { label: 'Borrowing room', value: `£${Math.round(Math.max(0, debtCapacity(nation) - view.debt))}` },
+        { label: 'Taxes', value: signed(ledger.tax ?? 0), tone: 'good' },
+        { label: 'Exports', value: signed(ledger.exports ?? 0), tone: 'good' },
+        { label: 'Army & navy', value: signed((ledger.army ?? 0) + (ledger.navy ?? 0)), tone: 'bad' },
+        { label: 'Building upkeep', value: signed(ledger.maintenance ?? 0), tone: 'bad' },
+        { label: 'Imports', value: signed(ledger.imports ?? 0), tone: 'bad' },
+        { label: 'Education', value: signed(ledger.education ?? 0), tone: 'bad' },
+        { label: 'Interest', value: signed(ledger.interest ?? 0), tone: 'bad' },
+        { label: 'Week closed at', value: signed(ledger.net ?? 0), tone: (ledger.net ?? 0) >= 0 ? 'good' : 'bad' },
       ],
-      effects,
-      footer: moved ? 'Effects: what moved this week, largest first.' : null,
+      footer: `Debt ${Math.round(view.debt)} of a ${Math.round(view.debtCap)} ceiling.`,
     };
   });
 
-  /* ----------------------------------------------------------------------
-     SANAYİ — tesis, mal, kadro, durum, eylemler
-     ---------------------------------------------------------------------- */
-
-  /**
-   * Döküm her kart açılışında TAZE okunur. Tur anahtarlı bellek hafta içinde
-   * bayat kalıyordu: duraklatılmış oyunda sübvansiyon açılınca düğme
-   * "Subsidised ✓" derken kart hâlâ "Subsidise this plant", genişletme
-   * kuyruğa girince kart hâlâ "Expand to level 2 · £145" diyordu. Döküm tek
-   * ulus için ~0.1 ms (ölçüldü); kart 550 ms gecikmeyle açılır, bellek kazanç
-   * getirmiyordu.
-   */
-  const industry = () => industryOverview(game.world, me());
-  const factoryOf = (id) => industry()?.factories.find((row) => row.id === id) ?? null;
-
-  provideTooltip('fac-profit', (id) => {
-    const row = factoryOf(id);
-    if (!row) return null;
-    const revenue = row.outputs.reduce(
-      (sum, out) => sum + priceOf(game.world, out.id) * out.perWeek, 0,
-    );
-    const inputs = row.inputs.reduce(
-      (sum, input) => sum + priceOf(game.world, input.id) * input.perWeek, 0,
-    );
+  provideTooltip('power', () => {
+    const nation = me();
+    if (!nation) return null;
+    const income = powerIncome(nation);
     return {
       type: 'breakdown',
-      title: `${row.name} — weekly profit`,
-      value: signed(row.profit),
-      note: row.reason,
+      title: 'Political power',
+      value: `${Math.round(nation.power ?? 0)} / 500`,
+      text: 'The currency of government: laws, advisors, propaganda, culture policy, '
+        + 'war justification, embargoes and decisions all cost political power.',
       rows: [
-        { label: 'Output sold', value: coin(revenue), tone: 'good' },
-        { label: 'Inputs bought', value: coin(-inputs), tone: 'bad' },
-        { label: 'Wages', value: coin(-row.wages), tone: 'bad' },
-        ...(row.subsidyPaid > 0
-          ? [{ label: 'Treasury subsidy', value: coin(row.subsidyPaid), tone: 'good' }] : []),
-        { label: 'Profit', value: signed(row.profit), tone: row.profit >= 0 ? 'good' : 'bad' },
+        { label: 'Base', value: '+1.00' },
+        ...modifierBreakdown(nation, 'power').map((row) => ({ label: row.label, value: `+${row.value.toFixed(2)}`, tone: 'good' })),
+        { label: 'Stability multiplier', value: `×${income.stability.toFixed(2)}` },
+        { label: 'Per week', value: `+${income.total.toFixed(2)}`, tone: 'good' },
       ],
-      footer: `Margin ${pct(row.margin, 1)}. Prices come from the `
-        + `${tipTerm('market', 'world market')}.`,
     };
   });
 
-  provideTooltip('fac-workers', (id) => {
-    const row = factoryOf(id);
-    if (!row) return null;
+  provideTooltip('warsupport', () => {
+    const nation = me();
+    const parts = nation?.politics?.warSupportParts;
+    if (!parts) return null;
     return {
       type: 'breakdown',
-      title: `${row.name} — workforce`,
-      value: `${formatPopulation(row.employees)} / ${formatPopulation(row.jobs)}`,
-      text: 'Factories hire once a month from the lower class. A plant that fills '
-        + 'every post and turns a profit expands on its own.',
+      title: 'War support',
+      value: pct(nation.warSupport),
+      text: 'How willing the people are to fight. Extensive conscription needs 50%, total '
+        + 'mobilisation 80%. Below 20% the nation accepts harsh peace terms.',
+      rows: parts.map((part) => ({ label: part.label, value: pts(part.value), tone: part.value >= 0 ? 'good' : 'bad' })),
+      footer: `Heading to ${pct(nation.politics?.warSupportTarget)}, one point a week.`,
+    };
+  });
+
+  provideTooltip('ic', () => {
+    const nation = me();
+    const ic = nation?.economy?.ic;
+    if (!ic) return null;
+    return {
+      type: 'breakdown',
+      title: 'Industrial capacity',
+      value: ic.total.toFixed(1),
+      text: 'Factories make IC. The economy law sends a share of it to the army\'s production '
+        + 'lines; the rest makes consumer goods for the people.',
       rows: [
-        { label: 'Posts filled', value: pct(row.fill) },
-        { label: 'Level', value: `${row.level} / ${row.maxLevel}` },
-        { label: 'Empty posts', value: formatPopulation(Math.max(0, row.jobs - row.employees)) },
+        { label: 'Factory levels', value: ic.raw.toFixed(1) },
+        { label: 'Coal', value: `×${(ic.factors?.coal ?? 1).toFixed(2)}`, tone: (ic.factors?.coal ?? 1) < 1 ? 'bad' : '' },
+        { label: 'Stability', value: `×${(ic.factors?.stability ?? 1).toFixed(2)}` },
+        { label: 'Conscription', value: `×${(ic.factors?.law ?? 1).toFixed(2)}` },
+        { label: 'Technology & ministers', value: `×${(ic.factors?.tech ?? 1).toFixed(2)}` },
+        { label: 'Civilian · military', value: `${ic.civil.toFixed(1)} · ${ic.military.toFixed(1)}` },
       ],
     };
   });
 
-  provideTooltip('fac-status', (id) => {
-    const row = factoryOf(id);
-    if (!row) return null;
+  provideTooltip('resource', (id) => {
+    const nation = me();
+    const info = RESOURCES[id];
+    const record = nation?.economy?.resources?.[id];
+    if (!info || !record) return null;
+    const partner = record.topPartner >= 0 ? game.world.nations[record.topPartner] : null;
+    const uses = {
+      FOOD: 'Feeds the people. Below 70% the population shrinks.',
+      COAL: 'Fuels the factories: short coal costs up to 40% of industrial capacity.',
+      IRON: 'Rifles, artillery, railways and ironclads.',
+      TIMBER: 'Construction sites, rifle stocks and sailing ships.',
+      HORSES: 'Cavalry and artillery: without them they fight up to 40% weaker.',
+      SALTPETER: 'Gunpowder: every regiment in battle burns it; short powder costs up to 30% of strength.',
+    }[id];
     return {
-      type: 'simple',
-      title: row.status.label,
-      text: `${row.reason}. This is the plant's single primary state; the same `
-        + 'reading drives the left-hand warning count and the Needs Attention filter.',
+      type: 'breakdown',
+      title: `${info.glyph} ${info.name}`,
+      value: record.need > 0.01 ? `${pct(record.ratio)} covered` : 'no need',
+      text: uses,
+      rows: [
+        { label: 'Produced', value: record.produced.toFixed(1) },
+        { label: 'Needed', value: record.need.toFixed(1) },
+        { label: 'Imported', value: record.imported.toFixed(1), tone: record.imported > 0 ? 'bad' : '' },
+        { label: 'Exported', value: record.exported.toFixed(1), tone: record.exported > 0 ? 'good' : '' },
+        { label: 'World price', value: (game.world.market?.prices?.[id] ?? info.price).toFixed(2) },
+        partner ? { label: `Main supplier: ${partner.name}`, value: pct(record.topShare), tone: record.topShare > 0.5 ? 'bad' : '' } : null,
+      ].filter(Boolean),
     };
   });
 
-  provideTooltip('fac-upgrade', (id) => {
-    const row = factoryOf(id);
-    if (!row) return null;
-    return row.upgradeBlocked
-      ? { type: 'simple', title: 'Expansion not possible', text: row.upgradeBlocked }
-      : {
-        type: 'breakdown',
-        title: `Expand to level ${row.level + 1}`,
-        value: `£${Math.round(row.upgradeCost)}`,
-        text: 'The treasury pays up front and the work enters the construction queue.',
-        rows: [
-          { label: 'New capacity', value: formatPopulation(row.jobs / row.level * (row.level + 1)) },
-          { label: 'Paid from', value: 'Treasury' },
-        ],
-      };
-  });
-
-  provideTooltip('fac-subsidy', (id) => {
-    const row = factoryOf(id);
-    if (!row) return null;
+  provideTooltip('building', (id) => {
+    const info = BUILDINGS[id];
+    if (!info) return null;
     return {
       type: 'mechanic',
-      title: row.subsidized ? 'Subsidy active' : 'Subsidise this plant',
-      text: 'The treasury covers the plant\'s losses so it keeps its workers instead '
-        + 'of shedding them. There is no fixed fee — you pay exactly the loss.',
-      effects: row.subsidized
-        ? [{ label: 'Paid this week', value: coin(row.subsidyPaid), tone: 'bad' }]
-        : [{ label: 'Current loss', value: coin(Math.min(0, row.profit)), tone: 'bad' }],
+      title: info.name,
+      text: `${info.effect}. Costs ${info.cost} gold, ${info.weeks} weeks to build, ${info.upkeep ?? 0} gold a week to keep. Up to ${info.max} levels.`,
     };
   });
-
-  /** Mal künyesi: ne eder, kim üretir. `arg` = goodId. */
-  provideTooltip('good', (goodId) => {
-    const good = GOODS[goodId];
-    if (!good) return null;
-    const state = game.world.market?.goods?.[goodId];
-    return {
-      type: 'breakdown',
-      title: good.name,
-      value: `£${priceOf(game.world, goodId).toFixed(2)}`,
-      text: `A ${good.category} good. Its price moves with world supply and demand.`,
-      rows: state ? [
-        { label: 'Base price', value: `£${good.basePrice.toFixed(2)}` },
-        { label: 'World supply', value: state.supply.toFixed(1) },
-        { label: 'World demand', value: state.demand.toFixed(1) },
-      ] : [],
-    };
-  });
-
-  /** Sınıf sepetindeki tek mal: iki kapı (bütçe × raf), nüfus ekranının çipi. */
-  provideTooltip('class-need', (arg) => {
-    const [classId, goodId] = String(arg ?? '').split(':');
-    const needs = classNeedsOf(game.world, me(), classId);
-    const good = needs?.goods.find((row) => row.id === goodId);
-    if (!good) return null;
-    const TIER_TEXT = {
-      life: 'A life need — bought first and cut last. When it falls short the class slides down and growth slows.',
-      everyday: 'An everyday need — bought once life needs are paid. Falling short costs satisfaction, not lives.',
-      luxury: 'A luxury — bought last and cut first. Falling short only costs satisfaction.',
-    };
-    return {
-      type: 'breakdown',
-      title: `${good.name} · ${needs.name}`,
-      value: pct(good.met),
-      text: TIER_TEXT[good.tier] ?? '',
-      rows: [
-        { label: `Budget reaches the ${good.tier} tier`, value: pct(good.afford) },
-        { label: 'Found on the market', value: pct(good.shelf) },
-        { label: 'Price now', value: `£${priceOf(game.world, goodId).toFixed(2)}` },
-      ],
-    };
-  });
-
-  provideTooltip('market', () => ({
-    type: 'mechanic',
-    title: 'World market',
-    text: 'Every nation sells its surplus and buys its shortfall into one pool. '
-      + 'Prices move where supply and demand part; a tariff raises what your own '
-      + 'buyers pay for the imported share.',
-  }));
 
   /* ----------------------------------------------------------------------
      EYALET KUTUSU — denetim, RGO, kültür
@@ -367,36 +174,6 @@ export function registerTooltips(game) {
       + 'peace is signed.',
   }));
 
-  provideTooltip('rgo', () => {
-    const tile = game.selected;
-    if (!tile?.province) return null;
-    const rgo = provinceRgoStatus(tile);
-    const province = game.world.provinces?.[tile.provinceId];
-    if (!rgo.type || !province) return null;
-    // Satır başına haftalık çıktı motorun kendi hesabından (provinceOutput).
-    const output = provinceOutput(game.world, province);
-    const effects = depositsOf(tile.province).map((line) => {
-      const type = RGO_TYPES[line.id];
-      return type ? {
-        label: `${type.icon} ${type.name} · ${line.hexes} hex`,
-        value: `${(output[type.goodId] ?? 0).toFixed(2)}/wk`,
-      } : null;
-    }).filter(Boolean);
-    return {
-      type: 'breakdown',
-      title: province.name ?? 'Province',
-      value: `${pct(rgo.efficiency)} worked`,
-      text: 'Every hex yields its own resource. Farms and mines employ the lower class '
-        + 'who are not in factories or under arms; those left over are unemployed.',
-      effects,
-      rows: [
-        { label: 'Workforce', value: formatPopulation(rgo.workforce) },
-        { label: 'Jobs', value: formatPopulation(rgo.jobs) },
-        { label: 'Unemployed', value: formatPopulation(rgo.unemployed), tone: rgo.unemployed > 0 ? 'bad' : '' },
-      ],
-      rowsLabel: 'Labour',
-    };
-  });
 
   /* ----------------------------------------------------------------------
      UST CUBUK — istikrar, sohret, ordu, insan gucu
@@ -407,75 +184,18 @@ export function registerTooltips(game) {
 
   provideTooltip('stability', () => {
     const nation = me();
-    const bd = nation?.economy?.stabilityBreakdown;
-    if (!bd) {
-      return {
-        type: 'simple',
-        title: 'Stability',
-        text: 'Measured after the first weekly tick; the opening value is a placeholder.',
-      };
+    const parts = nation?.politics?.stabilityParts;
+    if (!parts?.length) {
+      return { type: 'simple', title: 'Stability', text: 'Measured after the first weekly tick.' };
     }
-    const pt = (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v * 100).toFixed(1)}`;
-    const rows = [{ label: 'Household satisfaction', value: pt(bd.base), tone: 'good' }];
-    if (bd.occupation < -0.0005) {
-      rows.push({
-        label: `Occupied territory (${Math.round(bd.occupiedShare * 100)}% of ${bd.occupiedTiles} hexes)`,
-        value: pt(bd.occupation), tone: 'bad',
-      });
-    }
-    if (bd.war < -0.0005) {
-      rows.push({
-        label: `War exhaustion (${bd.warFronts} front${bd.warFronts === 1 ? '' : 's'})`,
-        value: pt(bd.war), tone: 'bad',
-      });
-    }
-    if (bd.unemployment < -0.0005) {
-      rows.push({
-        label: `Unemployment (${formatPopulation(bd.unemployed)} without work)`,
-        value: pt(bd.unemployment), tone: 'bad',
-      });
-    }
-    if ((bd.legitimacy ?? 0) < -0.0005) {
-      rows.push({
-        label: `Government backing (${bd.leader} ${Math.round(bd.leaderSupport)}% vs your ${bd.ruling} ${Math.round(bd.rulingSupport)}%)`,
-        value: pt(bd.legitimacy), tone: 'bad',
-      });
-    }
-    // Toplamin parcasi olan iki kalem daha: baski (movements.js) ve toplumun
-    // egilimi (society.js). Yazilmazsa satirlar toplami istikrari tutmaz.
-    if ((bd.repression ?? 0) < -0.0005) {
-      rows.push({ label: 'Repression (martial law, crackdowns)', value: pt(bd.repression), tone: 'bad' });
-    }
-    if (Math.abs(bd.society ?? 0) >= 0.0005) {
-      rows.push({
-        label: bd.society > 0 ? 'Society: traditional and settled' : 'Society: progressive and restless',
-        value: pt(bd.society), tone: bd.society > 0 ? 'good' : 'bad',
-      });
-    }
-    // Bu haftanin farki: hangi bilesen oynadi (pulse.js).
-    const moved = stabilityAttribution(nation);
-    const effects = moved
-      ? [
-        { label: 'Change vs last week', value: pt(moved.delta), tone: moved.delta >= 0 ? 'good' : 'bad' },
-        ...moved.parts.map((row) => ({ label: row.label, value: pt(row.delta), tone: row.delta >= 0 ? 'good' : 'bad' })),
-      ]
-      : [
-        { label: 'Population growth', value: 'follows it' },
-        { label: 'Province control', value: 'recovers faster when high' },
-        { label: 'Factory hiring', value: 'faster when high' },
-      ];
     return {
       type: 'breakdown',
       title: 'Stability',
-      value: `${(bd.total * 100).toFixed(1)}%`,
-      text: 'How firmly the country holds together: household satisfaction minus '
-        + 'occupation, war, unemployment and a government the people do not back. Satisfaction rises when the basket gets '
-        + 'cheaper, tax falls or welfare rises. It steers population growth, '
-        + 'province control and factory hiring.',
-      rows,
-      effects,
-      footer: moved ? 'Effects: what moved this week. Click the figure to pin the breakdown.'
-        : 'Click the figure to pin this breakdown.',
+      value: pct(nation.stability, 1),
+      text: 'How firmly the country holds together. It multiplies political power, taxes and '
+        + 'industry; below 30% unrest boils over. It moves one point a week toward its target.',
+      rows: parts.map((part) => ({ label: part.label, value: pts(part.value), tone: part.value >= 0 ? 'good' : 'bad' })),
+      footer: `Target ${pct(nation.politics?.stabilityTarget, 1)}. Click the figure to pin the breakdown.`,
     };
   });
 
@@ -510,12 +230,16 @@ export function registerTooltips(game) {
       + 'Survivors of a disbanded unit walk home; the dead do not.',
   }));
 
-  provideTooltip('manpower', () => ({
-    type: 'mechanic',
-    title: 'Manpower',
-    text: 'Recruitable population left in your provinces. Every regiment you order '
-      + 'draws from it, mobilisation draws more, and disbanded survivors return to it.',
-  }));
+  provideTooltip('manpower', () => {
+    const nation = me();
+    return {
+      type: 'mechanic',
+      title: 'Manpower',
+      text: `Recruits available: ${formatPopulation(nation ? nationManpower(game.world, nation.id) : 0)}. `
+        + 'The conscription law sets the share of the population that can be called up (2% to 15%); '
+        + 'barracks, the citizenship law and compliance raise or lower it. Regiments and reinforcements draw from it.',
+    };
+  });
 
   /* ----------------------------------------------------------------------
      UYARI SERIDI — ikonun uzerine gelince sebep ve care
@@ -614,26 +338,6 @@ export function registerTooltips(game) {
     return row ? { type: 'simple', title: row[0], text: row[1] } : null;
   });
 
-  /** Yatirimci santiyesine hazine destegi: ne oder, ne alir. */
-  provideTooltip('fund', (projectId) => {
-    const project = (industry()?.construction ?? []).find((row) => String(row.id) === String(projectId));
-    if (!project) return null;
-    const quarter = Math.max(1, Math.ceil(project.owed * 0.25));
-    return {
-      type: 'breakdown',
-      title: `Top up ${project.name}`,
-      value: `£${Math.round(project.owed)} unpaid`,
-      text: project.stalled
-        ? 'The investors ran out of capital and the site is dormant. Treasury money '
-          + 'wakes it; the plant stays theirs, the goods reach your market.'
-        : 'Investors are still paying; the treasury can shorten the wait.',
-      rows: [
-        { label: 'Click pays', value: `£${quarter}` },
-        { label: 'Shift-click pays', value: `£${Math.round(project.owed)}` },
-        { label: 'Booked to', value: 'construction line' },
-      ],
-    };
-  });
 
   provideTooltip('defense', () => ({
     type: 'mechanic',
@@ -648,97 +352,6 @@ export function registerTooltips(game) {
     text: 'Provinces of a culture your state does not accept recover control more '
       + 'slowly and are unhappier. Citizenship law decides who counts as accepted.',
   }));
-
-  /* ----------------------------------------------------------------------
-     İNŞAAT — özet şeridi ve kapasite eylemleri (construction.constructionView)
-     ---------------------------------------------------------------------- */
-
-  provideTooltip('construction', (arg) => {
-    const nation = me();
-    if (!nation) return null;
-    const view = constructionView(nation);
-    const cap = view.capacity;
-    switch (arg) {
-      case 'power':
-        return {
-          type: 'breakdown',
-          title: 'Build power',
-          value: `${view.power.toFixed(1)}/wk`,
-          text: 'Work poured into the queue each week, top project first. Factories, '
-            + 'expansions and capacity levels all draw on this one pool.',
-          rows: [
-            { label: 'Base', value: `${view.basePower}` },
-            { label: `Capacity levels (${cap.level} × ${cap.perLevel})`, value: `+${cap.level * cap.perLevel}` },
-            { label: 'Railway technology & credit', value: `${view.power - view.basePower - cap.level * cap.perLevel >= 0 ? '+' : '−'}${Math.abs(view.power - view.basePower - cap.level * cap.perLevel).toFixed(1)}` },
-            { label: 'Build power', value: `${view.power.toFixed(1)}/wk`, tone: 'good' },
-          ],
-        };
-      case 'queue':
-      case 'clears':
-        return {
-          type: 'breakdown',
-          title: arg === 'queue' ? 'Construction queue' : 'Queue clears in',
-          value: view.own.length ? `~${view.clearsIn} wk` : 'empty',
-          text: 'Your own projects, built top to bottom. A capacity level always goes '
-            + 'first; investor sites wait for their money, not for your order.',
-          rows: [
-            { label: 'Projects', value: `${view.own.length}` },
-            { label: 'Work left', value: `${Math.round(view.workLeft)}` },
-            { label: 'Build power', value: `${view.power.toFixed(1)}/wk` },
-            { label: 'Weeks to clear', value: view.own.length ? `~${view.clearsIn}` : '—' },
-          ],
-        };
-      case 'upkeep':
-        return {
-          type: 'breakdown',
-          title: 'Construction upkeep',
-          value: `−£${view.upkeep.toFixed(1)}/wk`,
-          text: 'Every capacity level costs upkeep whether or not anything is being built. '
-            + 'Dissolve a level to shed it; there is no refund.',
-          rows: [
-            { label: `Levels (${cap.level} × £${cap.upkeepPerLevel})`, value: `−£${view.upkeep.toFixed(1)}`, tone: 'bad' },
-          ],
-          footer: 'Booked on the Budget screen under Construction.',
-        };
-      case 'investors':
-        return {
-          type: 'breakdown',
-          title: 'Investor sites',
-          value: `${view.investors.length}`,
-          text: 'Factories that private capital founds and pays for. They share your build '
-            + 'power once funded. The Factories screen can top one up from the treasury.',
-          rows: [
-            { label: 'Capital raised', value: `£${view.privateInflow.toFixed(1)}/wk` },
-            { label: 'Sites waiting for money', value: `${view.investors.filter((row) => row.funded < 100).length}` },
-          ],
-          footer: `Private capital comes from upper-class savings and factory profits (${tipTerm('term', 'private capital', 'private-capital')}).`,
-        };
-      case 'invest':
-        return cap.blocked
-          ? { type: 'simple', title: 'Cannot invest', text: esc(cap.blocked[0].toUpperCase() + cap.blocked.slice(1)) }
-          : {
-            type: 'breakdown',
-            title: `Capacity level ${cap.level + cap.pending + 1}`,
-            value: `£${cap.cost}`,
-            text: 'Paid up front. The level itself is built by the queue and always goes first.',
-            effects: [
-              { label: 'Build power', value: `+${cap.perLevel}/wk`, tone: 'good' },
-              { label: 'Upkeep', value: `−£${cap.upkeepPerLevel}/wk`, tone: 'bad' },
-            ],
-            footer: 'Each further level costs 35% more than the first.',
-          };
-      case 'divest':
-        return {
-          type: 'simple',
-          title: 'Dissolve a capacity level',
-          text: cap.level > 0
-            ? `Removes one level at once: −${cap.perLevel} build power, saves £${cap.upkeepPerLevel}/wk. No refund.`
-            : 'There is no capacity level to dissolve.',
-        };
-      default:
-        return null;
-    }
-  });
 
   /* ----------------------------------------------------------------------
      TEKNOLOJİ — ağaç düğümü ve kuyruk çipi (bkz. technologyScreen.js).
@@ -761,22 +374,10 @@ export function registerTooltips(game) {
         : queue.includes(tech.id) ? `Queued #${queue.indexOf(tech.id) + 1}`
           : canResearch(nation, tech.id) ? 'Available' : 'Locked';
 
-    const effects = [];
-    for (const [key, label] of Object.entries(TECH_MODS)) {
-      const value = tech[key];
-      if (!Number.isFinite(value) || value === 0) continue;
-      // Tedarik tüketiminde AZALMA iyidir; eğitim kadrosu düz slottur.
-      const good = key === 'supplyConsumption' ? value < 0 : value > 0;
-      const shown = key === 'trainingCapacity'
-        ? `+${value}` : `${value >= 0 ? '+' : '−'}${Math.abs(value * 100).toFixed(0)}%`;
-      effects.push({ label, value: shown, tone: good ? 'good' : 'bad' });
-    }
-    for (const typeId of tech.unlock ?? []) {
-      effects.push({ label: 'Unlocks', value: FACTORIES[typeId]?.name ?? typeId, tone: 'good' });
-    }
-    for (const typeId of tech.unlockUnit ?? []) {
-      effects.push({ label: 'Fields early', value: UNIT_TYPES[typeId]?.name ?? typeId, tone: 'good' });
-    }
+    const effects = describeEffects(tech.effects).map((line) => ({
+      label: line, value: '', tone: line.startsWith('−') ? 'bad' : 'good',
+    }));
+    if (tech.desc) effects.unshift({ label: tech.desc, value: '' });
 
     const rows = [];
     if (!done) {
@@ -823,90 +424,52 @@ export function registerTooltips(game) {
       type: 'breakdown',
       title: 'National literacy',
       value: pct(nation.economy?.literacy, 1),
-      text: 'The schooling level of the nation. It feeds research and factory hiring, and '
-        + 'drifts slowly toward a target set by education spending, the welfare law and technology.',
+      text: 'Schooling of the nation. It feeds research, raises the development cap and quickens '
+        + 'national movements. It drifts slowly toward a target set by the education law and universities.',
       rows: [
         { label: 'Now', value: pct(nation.economy?.literacy, 1) },
-        { label: 'Heading toward', value: pct(literacyTargetOf(nation), 1), tone: 'good' },
+        { label: 'Heading toward', value: pct(literacyTarget(game.world, nation), 1), tone: 'good' },
       ],
-      // Nufus ekranindaki oran sinif ve sehirle duzeltilmis halidir; iki ayri
-      // sayi gorulunce hangisinin ne oldugu burada bir kez soylenir.
-      footer: 'Half the gap closes in about three years. The Population screen adds class and '
-        + 'town: townsfolk and the rich read more, peasants less.',
     }),
     research: (nation) => ({
       type: 'breakdown',
       title: 'Research points',
       value: `${researchPointsOf(nation).toFixed(2)}/wk`,
-      text: 'Produced every week by literate people, the middle class and clerks, then '
-        + 'raised by technology and a free press. They flow into the technology being researched.',
-    }),
-    needs: (nation) => ({
-      type: 'mechanic',
-      title: 'Needs met',
-      text: 'How much of their weekly basket households actually get. Below full, '
-        + 'satisfaction falls; when food runs short, people starve.',
-      effects: [
-        { label: 'Satisfaction', value: 'rises with it', tone: 'good' },
-        { label: 'Population growth', value: 'follows it' },
-      ],
+      text: 'One point a week, plus literacy × 6, plus 0.3 per university level; ministers and parties multiply.',
     }),
     unrest: () => ({
       type: 'mechanic',
       title: 'Unrest',
-      text: 'From 0 to 10. Foreign culture, fresh conquest, war and occupation push it up; '
-        + 'welfare and minority rights pull it down. At 7 or more, a province with a foreign '
-        + 'majority can break away.',
+      text: 'From 0 to 10. Unaccepted peoples, fresh conquest, an unpopular war and empty shops push it up; '
+        + 'minority rights and full shops pull it down. Unrest feeds national movements.',
     }),
-    growth: () => ({
+    compliance: () => ({
       type: 'mechanic',
-      title: 'Population growth',
-      text: 'Births minus deaths, famine and the men taken into the army. Food and '
-        + 'satisfaction set the pace.',
+      title: 'Compliance',
+      text: 'How far a non-core province accepts our rule (0-100). Taxes, recruits, industry and resources '
+        + 'come in at 25% plus 75% of compliance. Cores always give everything.',
     }),
-    employment: () => ({
+    consumer: () => ({
       type: 'mechanic',
-      title: 'Employment',
-      text: 'Share of working people who have a job on a farm, in a mine or in a factory. '
-        + 'Unemployment lowers satisfaction and stability.',
+      title: 'Consumer goods',
+      text: 'What the people want to buy: workshops make most of it, civilian industry the rest. Short '
+        + 'goods cost stability; surplus raises taxes. Expectations grow every decade.',
     }),
-    gdp: (nation) => ({
-      type: 'simple',
-      title: 'Gross domestic product',
-      text: `Raw output plus the value factories add, per week: £${Math.round(nation.economy?.gdp ?? 0)}.`,
-    }),
-    'private-capital': (nation) => ({
-      type: 'breakdown',
-      title: 'Private capital',
-      value: `£${Math.round(nation.politics?.privateCapital ?? 0)}`,
-      text: 'Money the upper class reinvests: part of its household surplus and 30% of factory '
-        + 'profits. It founds and expands factories where your government allows private industry.',
-      rows: [
-        { label: 'Raised per week', value: `£${(nation.politics?.privateInflow ?? 0).toFixed(1)}` },
-      ],
-    }),
-    'trade-balance': () => ({
+    development: () => ({
       type: 'mechanic',
-      title: 'Trade balance',
-      text: 'Goods sold abroad minus goods bought abroad this week, at world prices. '
-        + 'A deficit is not a debt; it is paid from the same week\'s income.',
-    }),
-    shortages: () => ({
-      type: 'mechanic',
-      title: 'Critical shortages',
-      text: 'Goods your people or factories need that neither your land nor the world '
-        + 'market can supply this week. Shortages raise prices and idle factories.',
+      title: 'Development',
+      text: 'Roads, markets and towns. Each level adds 25% tax, a building slot and faster growth. '
+        + 'Research and literacy raise the cap.',
     }),
     officers: () => ({
       type: 'mechanic',
       title: 'Officers',
-      text: 'Generals and admirals. Each commands an army or fleet; their skill shapes '
-        + 'battle rolls and sieges.',
+      text: 'Generals and admirals. Each commands an army or fleet; their skill shapes battle rolls and sieges.',
     }),
     upkeep: () => ({
       type: 'mechanic',
       title: 'Military upkeep',
-      text: 'Weekly cost of the standing army and fleet, scaled by army funding on the Budget screen.',
+      text: 'Weekly cost of the standing army and fleet; doubled half again while at war.',
     }),
   };
 

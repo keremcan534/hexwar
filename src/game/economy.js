@@ -13,7 +13,7 @@
 // ve deterministik kalmanın bedeli budur.
 
 import {
-  BUILDINGS, DEBT, EQUIPMENT_IDS, POP_UNIT, RESOURCE_IDS, TAX_PER_DEVELOPMENT,
+  BUILDINGS, BUILDING_IDS, DEBT, EQUIPMENT_IDS, POP_UNIT, RESOURCE_IDS, TAX_PER_DEVELOPMENT,
   TAX_PER_UNIT, UPKEEP,
 } from './econ/defs.js';
 import { lawOption } from './laws.js';
@@ -221,6 +221,18 @@ export function upkeepBreakdown(world, nation) {
   };
 }
 
+/** Bina bakımı (altın/hafta): kademe başına BUILDINGS[*].upkeep. */
+export function maintenanceCost(world, nation) {
+  let total = 0;
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== nation.id || !province.econ) continue;
+    for (const id of BUILDING_IDS) {
+      total += (province.econ.buildings?.[id] ?? 0) * (BUILDINGS[id].upkeep ?? 0);
+    }
+  }
+  return total;
+}
+
 /** Eğitim gideri (altın/hafta): nüfus × yasanın birim bedeli. */
 export function educationCost(nation) {
   return (nation.economy?.population ?? 0) / POP_UNIT * (lawOption(nation, 'education').cost ?? 0);
@@ -319,12 +331,14 @@ export function runNationEconomy(game, nation, ctx) {
   settle(nation, 'army', -upkeep.army);
   settle(nation, 'navy', -upkeep.navy);
   settle(nation, 'education', -educationCost(nation));
+  economy.maintenance = maintenanceCost(world, nation);
+  settle(nation, 'maintenance', -economy.maintenance);
   if ((nation.debt ?? 0) > 0) settle(nation, 'interest', -nation.debt * DEBT.interest);
 
-  // 8. Okuryazarlık hedefe yavaşça (yılda ~%3) yaklaşır.
+  // 8. Okuryazarlık hedefe yavaşça (yılda ~%1.5) yaklaşır: bir nesil sürer.
   const target = literacyTarget(world, nation);
   economy.literacyTarget = target;
-  economy.literacy += clamp(target - economy.literacy, -0.0004, 0.0006);
+  economy.literacy += clamp(target - economy.literacy, -0.0003, 0.0003);
 }
 
 /**
@@ -413,6 +427,7 @@ export function economyView(world, nation) {
     tax: economy?.tax ?? taxBreakdown(world, nation),
     upkeep: economy?.upkeep ?? upkeepBreakdown(world, nation),
     education: educationCost(nation),
+    maintenance: economy?.maintenance ?? maintenanceCost(world, nation),
     ic: economy?.ic,
     consumer: economy?.consumer,
     lines: economy?.lines,

@@ -116,12 +116,12 @@ Aynı anda yürüyen proje: `2 + ⌊province/8⌋` (+teknoloji); kereste eksikse
 
 - Artış haftalık `%0.012 × gıda × tüketim malı × istikrar × barış` (savaşta ×0.6); kıtlıkta azalış. Ölen asker nüfustan düşer.
 - İnsan gücü: province `nüfus × askerlik oranı × (kabul payı + yabancı pay × vatandaşlık oranı) × statü − silah altındakiler`.
-- Askerlik: Gönüllü %1.5 · Sınırlı %3 (IC −%3) · Yaygın %6 (IC −%8, savaş desteği ≥50) · Topyekûn %12 (IC −%20, istikrar −5, savaş desteği ≥80).
+- Askerlik: Gönüllü %3 · Sınırlı %6 (IC −%3) · Yaygın %10 (IC −%8, savaş desteği ≥50) · Topyekûn %16 (IC −%20, istikrar −5, savaş desteği ≥80). Alay 30 bin kişidir; 8 milyonluk ülke Sınırlı'da ~16 alay besler (ilk ayarda %4 kuruluş ordusunu havuzla eşitliyordu, yeni alay kurulamıyordu).
 - Okuryazarlık ulusal; eğitim yasası ve üniversiteyle hedefe yaklaşır. Araştırmayı, kalkınma tavanını ve milliyetçiliği büyütür.
 
 ## 9. Siyaset
 
-- **SG:** haftada `(1.5 + hükûmet + parti) × (0.5 + istikrar)`, tavan 500.
+- **SG:** haftada `(1 + hükûmet + parti + danışman) × (0.5 + istikrar)`, tavan 500. Harcandığı yer: yasa, hükûmet, danışman, propaganda, kültür politikası, savaş gerekçesi, ambargo ve KARARLAR (sübvansiyon, savaş tahvili, manevra, nüfus sayımı, af, araştırma bursu…; süreli değiştirici, bekleme süreli).
 - **İstikrar** hedefe haftada 1 puan yaklaşır. Hedef: 50 + tüketim malı + gıda + vergi yasası + savaş + işgal + huzursuzluk + meşruiyet + parti + olay/gündem.
 - **Savaş desteği** hedefe haftada 1 puan yaklaşır. Hedef: 40 + saldırganlık + yabancı yönetimdeki soydaşlar + savunma savaşı − kayıp − savaş süresi + milliyetçi destek.
 - **Hükûmet biçimi:** Mutlakiyet (SG +0.5, seçim yok, iktidar partisini sen seçersin), Meşruti (4 yılda seçim), Cumhuriyet (seçim, istikrar +5). Kararla ya da isyanla değişir.

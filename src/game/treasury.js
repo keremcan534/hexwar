@@ -35,6 +35,7 @@ export const LEDGER_LINES = {
   construction: { kind: 'expense', label: 'Construction' },
   recruitment: { kind: 'expense', label: 'Recruitment' },
   education: { kind: 'expense', label: 'Education' },
+  maintenance: { kind: 'expense', label: 'Building upkeep' },
   interest: { kind: 'expense', label: 'Debt interest' },
   // Ulusal harekete karşı sıkıyönetim (movements.js).
   unrest: { kind: 'expense', label: 'Martial law' },
@@ -136,7 +137,6 @@ export function closeWeek(nation, turn) {
     // Sifirdan farkliysa bir yerde kayitsiz para hareketi var demektir.
     unreconciled: Math.abs(drift) < 1e-6 ? 0 : drift,
     debt: nation.debt ?? 0,
-    creditPenalty: economy.creditPenalty ?? 0,
   };
 
   // 52 haftalik hazine izi: butce ekranindaki grafik buradan cizilir.
@@ -163,7 +163,6 @@ export function emptyLedger() {
     delta: 0,
     unreconciled: 0,
     debt: 0,
-    creditPenalty: 0,
   };
 }
 

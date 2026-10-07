@@ -10,6 +10,7 @@ import { AlertStrip } from './ui/alerts.js';
 import { MovementDock } from './ui/movementDock.js';
 import { NationPicker } from './ui/nationPicker.js';
 import { PerfOverlay } from './ui/perfOverlay.js';
+import { EventCards } from './ui/eventCard.js';
 import { materials } from './render/textures.js';
 
 // Yüzey dokuları bir kez üretilip CSS'e verilir. Çalışma anında hesaplandığı
@@ -29,6 +30,8 @@ const hud = new Hud(game);
 new Notifications(game);
 // Sag ust: ulusal hareketler (bildirim kartlari sag alttaki sayaca indi).
 new MovementDock(game);
+// Seçenekli olay kartları: açılınca saati durdurur (bkz. ui/eventCard.js).
+new EventCards(game);
 
 // Sürekli uyarı şeridi: baloncuktan farkı, DURUM sürdükçe durmasıdır.
 // Haftalık kapanışta ve dünya değişince yeniden ölçülür; içerik değişmediyse

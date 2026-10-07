@@ -9,6 +9,7 @@
 
 import { makeRng } from '../core/rng.js';
 import { lawOption } from './laws.js';
+import { mod } from './modifiers.js';
 import { controllerOf } from './control.js';
 import { DEFAULT_ZONE, ZONE_RULES } from '../world/macro.js';
 import { CULTURE, isAccepted, runProvinceCulture } from './culture.js';
@@ -297,7 +298,7 @@ export function growthRateOf(nation, econ, { peace = true, occupied = 0 } = {}) 
   const stability = 0.5 + clamp(nation?.stability ?? 0.5, 0, 1);
   const development = 1 + 0.05 * (econ?.development ?? 1);
   const law = 1 + (lawOption(nation, 'tax').growth ?? 0);
-  const mods = 1 + (economy?.techMods?.growth ?? 0) + (economy?.timed?.growth ?? 0);
+  const mods = Math.max(0.1, 1 + mod(nation, 'growth'));
   return GROWTH_BASE * foodFactor * consumer * stability * development * law * mods
     * (peace ? 1 : 0.6) * (1 - occupied);
 }

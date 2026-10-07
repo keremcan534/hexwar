@@ -38,11 +38,11 @@ function closingLine(nation, opening, board) {
   if (!opening) return 'The century closes on a state still finding its shape.';
   const now = {
     population: nation.economy?.population ?? 0,
-    gdp: nation.economy?.gdp ?? 0,
+    gdp: nation.economy?.ic?.total ?? 0,
     literacy: nation.economy?.literacy ?? 0,
     tiles: nation.tiles ?? 0,
     government: governmentType(nation),
-    factories: nation.economy?.factories?.length ?? 0,
+    factories: Math.round(nation.economy?.ic?.raw ?? 0),
   };
   const land = now.tiles - opening.tiles;
   const industry = now.factories - opening.factories;
@@ -98,7 +98,7 @@ export function showEndScreen(game, result) {
   const metrics = opening ? [
     metricRow('Population', formatPopulation(opening.population), formatPopulation(nation.economy?.population ?? 0)),
     metricRow('Territory', `${opening.tiles} hexes`, `${nation.tiles} hexes`),
-    metricRow('Industry', `${opening.factories} plants`, `${nation.economy?.factories?.length ?? 0} plants`),
+    metricRow('Industry', `${opening.factories} factories`, `${Math.round(nation.economy?.ic?.raw ?? 0)} factories`),
     metricRow('Literacy', `${Math.round(opening.literacy * 100)}%`, `${Math.round((nation.economy?.literacy ?? 0) * 100)}%`),
     metricRow('Technology', `${opening.research ?? 0} researched`,
       `${standing.research} · ${standing.label.toLowerCase()}`),

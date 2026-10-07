@@ -563,7 +563,7 @@ export function stabilityBreakdown(world, nation, turn = world.turn ?? 0) {
   const economy = nation.economy ?? {};
   const parts = [{ label: 'Base', value: 0.5 }];
   const push = (label, value) => {
-    if (Math.abs(value) >= 0.0005) parts.push({ label, value });
+    if (Math.abs(value) >= 0.005) parts.push({ label, value });
   };
   push('Consumer goods', consumerStability(economy.consumer?.ratio ?? 1));
   const food = economy.resources?.FOOD?.ratio ?? 1;
@@ -586,7 +586,7 @@ export function warSupportBreakdown(world, nation, { kin = 0 } = {}) {
   const politics = nation.politics;
   const parts = [{ label: 'Base', value: 0.4 }];
   const push = (label, value) => {
-    if (Math.abs(value) >= 0.0005) parts.push({ label, value });
+    if (Math.abs(value) >= 0.005) parts.push({ label, value });
   };
   push('National temperament', ((nation.aggression ?? 1) - 1) * 0.2);
   push('Kin under foreign rule', Math.min(0.2, kin * 0.4));
@@ -606,7 +606,7 @@ export function warSupportBreakdown(world, nation, { kin = 0 } = {}) {
 
 /** Haftalık SG geliri ve dökümü. */
 export function powerIncome(nation) {
-  const base = 1.5;
+  const base = 1.0;
   const bonus = mod(nation, 'power');
   const stability = 0.5 + clamp(nation.stability ?? 0.5, 0, 1);
   return { base, bonus, stability, total: Math.max(0, (base + bonus) * stability) };

@@ -145,8 +145,8 @@ export function bindMacroCards(root, api) {
 
   const draw = (element) => {
     const metric = element.dataset.macro;
-    const label = metric === 'population' ? 'Population' : 'Gross domestic product';
-    const unit = metric === 'gdp' ? '£' : '';
+    const label = metric === 'population' ? 'Population' : 'Industrial capacity';
+    const unit = '';
     if (mode === 'rank') {
       const rows = api.ranking(metric);
       card.innerHTML = rankCard(`${label} — world ranking`, rows, api.playerId(), unit);

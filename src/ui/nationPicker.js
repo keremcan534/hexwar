@@ -104,13 +104,13 @@ export class NationPicker {
       ['People', `${formatPopulation(brief.population)} · ${brief.cities} ${brief.cities === 1 ? 'city' : 'cities'}`],
       ['Government', `${brief.government} · ${brief.party}`],
       ['Economy', `${brief.economicPolicy} · ${brief.tradePolicy}`],
-      ['Raw goods', brief.goods.length
+      ['Resources', brief.goods.length
         ? brief.goods.map((g) => `${g.icon} ${g.name} (${g.provinces})`).join(' · ')
         : 'none of note'],
       ['Industry', brief.industry.count
-        ? `${brief.industry.count} plants: ${brief.industry.types.join(', ')}`
-        : 'no plants yet'],
-      ['Army', `${brief.divisions} divisions · strength ${brief.power.toFixed(1)} · treasury £${brief.treasury}`],
+        ? `${brief.industry.count} factor${brief.industry.count === 1 ? 'y' : 'ies'}${brief.industry.dockyards ? ` · ${brief.industry.dockyards} dockyard` : ''}`
+        : 'no factories yet'],
+      ['Army', `${brief.divisions} divisions · strength ${brief.power.toFixed(1)} · treasury ${brief.treasury}`],
       ['Coast', brief.coastal ? 'Maritime access' : 'Landlocked'],
     ];
     const neighbours = brief.neighbours.slice(0, 5).map((n) => {
