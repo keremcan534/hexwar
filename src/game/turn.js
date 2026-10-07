@@ -42,6 +42,7 @@ import { captureConstructionAt, initConstruction, runConstruction } from './cons
 import { controllerOf, setController } from './control.js';
 import { runNationalEvents, runWorldStories } from './events.js';
 import { expireTreaties, treatiesOf } from './peace.js';
+import { isNode, nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
 
 /** Başlangıç stoku: ilk birkaç turda bir birim alacak kadar. */
 const STARTING_GOLD = 50;
@@ -218,17 +219,19 @@ export class TurnManager {
       (c) => c.nationId === nation.id && controllerOf(c.tile) === nation.id,
     );
     if (!cities.length && !fallbackToCapital) return null;
-    const spots = cities.length ? cities.map((c) => c.tile) : [nation.capital];
+    // Doğum noktası şehrin province'inin merkez düğümüdür (bkz. world/provinceGraph).
+    const spots = (cities.length ? cities.map((c) => c.tile) : [nation.capital])
+      .map((tile) => nodeOf(world, tile));
 
     const isSea = UNIT_TYPES[typeId].domain === 'sea';
     for (const spot of spots) {
       // Tümenler birleşmez: aynı province'te ayrı ayrı dururlar. Şehir karesi
       // doluysa bitişik boş/az dolu bir kareye inilir.
       const tile = isSea
-        ? world.neighbors(spot).find((n) => n.terrain.navigable && !stackFull(n))
+        ? nodeNeighbors(world, spot).find((n) => n.terrain.navigable && !stackFull(n))
         : (!stackFull(spot)
           ? spot
-          : world.neighbors(spot).find(
+          : nodeNeighbors(world, spot).find(
             (n) => n.terrain.passable && !stackFull(n)
               && controllerOf(n) === nation.id,
           ));
@@ -368,6 +371,25 @@ export class TurnManager {
    * Sahipsiz province ise isgal degil YERLESIMDIR — ama yalnizca kendi
    * sinirina bitisikse (bkz. canSettle).
    */
+  /**
+   * Province BÜTÜNÜNÜN işgali: ordu merkez düğümüne girince kümenin bütün
+   * kareleri ele geçer (bkz. world/provinceGraph). Kare başına `occupy`
+   * kuralları (savaş şartı, şöhret, kontrol) aynen uygulanır; şöhret de kare
+   * kare toplandığı için eski hex hex alma toplamıyla aynıdır.
+   * @returns {boolean} en az bir kare el değiştirdi mi
+   */
+  occupyProvince(tile, nationId) {
+    const province = this.world.provinces?.[tile?.provinceId];
+    if (!province) return this.occupy(tile, nationId);
+    // Sahipsiz küme claim ile zaten bütün olarak alınır.
+    if (tile.owner < 0) return this.occupy(tile, nationId);
+    let any = false;
+    for (const idx of province.tileIdx) {
+      if (this.occupy(this.world.tiles[idx], nationId)) any = true;
+    }
+    return any;
+  }
+
   occupy(tile, nationId) {
     if (!tile?.terrain.passable) return false;
     if (tile.owner < 0) {
@@ -874,7 +896,8 @@ export class TurnManager {
         if (candidate.terrain.water || !candidate.terrain.passable) return;
         if (controllerOf(candidate) !== unit.nationId) return;
         home++;
-        if (stackFull(candidate)) return;
+        // Ordu yalnız province merkezinde durur.
+        if (!isNode(world, candidate) || stackFull(candidate)) return;
         const distance = world.wrapDistance(tile.q, tile.r, candidate.q, candidate.r);
         if (distance < bestDistance) { bestDistance = distance; best = candidate; }
       });

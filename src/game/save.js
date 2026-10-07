@@ -6,8 +6,9 @@
 // değişirse eski kayıtlar geçersizleşir, o yüzden SAVE_VERSION var.
 
 import {
-  createUnit, refreshArmy, resetUnitIds, resolveTypeId, unitIdCursor,
+  createUnit, placeUnit, refreshArmy, resetUnitIds, resolveTypeId, stackFull, unitIdCursor, unitsOn,
 } from './units.js';
+import { nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
 import { createCity, englishCityName } from './cities.js';
 import { generateWorld } from '../world/worldgen.js';
 import { ensureEconomy } from './economy.js';
@@ -77,9 +78,15 @@ import { ensureDelegation, restoreDelegation } from './delegation.js';
 // v22: province ureteci surumlendi (worldgen genOptions.provinceGen; v2 sinirlari
 // nehir/sirt/kiyi boyunca). Kayit bicimi ayni; v21 kaydi genOptions'unda alan
 // tasimaz ve v1 bolumlemesiyle yeniden kurulur — goc kayipsiz.
-export const SAVE_VERSION = 22;
+//
+// v23: ordular province MERKEZINDE durur, yuruyus province grafinda
+// (world/provinceGraph). v22 kaydindaki ordu herhangi bir hexte olabilir:
+// yuklemede kendi province merkezine (dolu ya da yabanci tumenliyse en yakin
+// uygun merkeze) tasinir, hex yolu duser (general/emir ertesi hafta yeniden
+// kurar), hex karede kurulmus muharebeler kapanir.
+export const SAVE_VERSION = 23;
 /** Gocu bilinen eski surumler: deserialize bunlari da kabul eder. */
-const MIGRATABLE_VERSIONS = new Set([14, 16, 20, 21]);
+const MIGRATABLE_VERSIONS = new Set([14, 16, 20, 21, 22]);
 const STORAGE_KEY = 'hexwar.save';
 
 /**
@@ -330,6 +337,37 @@ export function serialize(game) {
 }
 
 /**
+ * Ordunun province düğümüne oturması (v23 göçü; yeni kayıtta zaten düğümdedir).
+ * Kendi province merkezi doluysa ya da yabancı tümen varsa graf üzerinde en
+ * yakın uygun merkez seçilir. Hex karelerden oluşan eski yol bırakılır.
+ */
+function settleOnNode(world, unit) {
+  if (unit.path?.some((step) => nodeOf(world, step) !== step)) {
+    unit.path = null;
+    unit.progress = 0;
+  }
+  const home = nodeOf(world, unit.tile);
+  if (!home || home === unit.tile) return;
+  const fits = (tile) => !stackFull(tile)
+    && unitsOn(tile).every((other) => other.nationId === unit.nationId)
+    && (unit.type.domain !== 'land' || tile.terrain.passable || tile.terrain.navigable);
+  const seen = new Set([home]);
+  const queue = [home];
+  for (let head = 0; head < queue.length && head < 400; head++) {
+    const tile = queue[head];
+    if (fits(tile)) {
+      placeUnit(unit, tile);
+      return;
+    }
+    for (const near of nodeNeighbors(world, tile)) {
+      if (seen.has(near) || near.terrain.water) continue;
+      seen.add(near);
+      queue.push(near);
+    }
+  }
+}
+
+/**
  * Kaydı oyuna geri yükler. Dünyayı seed'den yeniden üretip üstüne durumu yazar.
  * @returns {boolean} başarılı mı
  */
@@ -558,6 +596,9 @@ export function deserialize(game, data) {
     tile.units.sort((a, b) => (stackOf.get(a.id) ?? 0) - (stackOf.get(b.id) ?? 0));
     tile.unit = tile.units[0] ?? null;
   });
+  // Province dugumu goçu (v23): ordu yalniz province merkezinde durur.
+  const legacyNodes = data.version < 23;
+  for (const unit of world.units) settleOnNode(world, unit);
   // Sayac kayittaki en buyuk kimligin uzerine kurulur ki yeni alaylar
   // yuklenmis olanlarla carpismasin.
   resetUnitIds(Math.max(
@@ -613,6 +654,9 @@ export function deserialize(game, data) {
   ensureBattles(world);
   if (data.battleSystem) {
     world.battleSystem = data.battleSystem;
+    // v22 muharebesi hex karede kurulmustu, saldiranlar komsu hextedir;
+    // province dugumune tasinan ordularla surduremez (bkz. settleOnNode).
+    if (legacyNodes) world.battleSystem.battles = [];
     // Muharebe uyeligini yeniden bagla: birimler kimlikleriyle dondu, ama
     // unit.battleId kayitta tasinmiyor. Kayipsiz kural: iki tarafi da hala
     // var olan muharebe surer, tek tarafi kalmayan dusurulur.

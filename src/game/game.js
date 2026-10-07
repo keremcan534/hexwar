@@ -7,9 +7,10 @@ import { Camera } from '../render/camera.js';
 import { CACHE_ZOOM, Renderer } from '../render/renderer.js';
 import { PointerController } from '../input/pointer.js';
 import { pixelToHex } from '../core/hex.js';
+import { nodeNeighbors, nodeOf, nodeStepCost, nodesAdjacent } from '../world/provinceGraph.js';
 import { randomSeed } from '../core/rng.js';
 import {
-  armyPower, clearPath, organizationOf, placeUnit, stackFull, unitsOn,
+  armyPower, clearPath, organizationOf, placeUnit, stackCapacity, stackFull, unitsOn,
 } from './units.js';
 import { orderMove, setDirective } from './movement.js';
 import { TurnManager } from './turn.js';
@@ -92,12 +93,13 @@ const CONSOLIDATION_WEEKS = 2;
  * boş kareler toplayıp her orduya ayrı bir varış noktası veririz.
  */
 function spreadTargets(world, center, count) {
-  if (count <= 1) return [center];
+  // Province düğümü birden çok tümen alır: yalnız tavan aşılınca yayılınır.
+  if (count <= 1 || count <= stackCapacity(center)) return [center];
   const targets = [center];
   const seen = new Set([center]);
   const queue = [center];
   for (let head = 0; head < queue.length && targets.length < count; head++) {
-    for (const near of world.neighbors(queue[head])) {
+    for (const near of nodeNeighbors(world, queue[head])) {
       if (seen.has(near) || !near.terrain.passable) continue;
       seen.add(near);
       queue.push(near);
@@ -309,7 +311,9 @@ export class Game {
    */
   handleRightTap(sx, sy) {
     const hitUnit = this.unitAtScreen(sx, sy);
-    const tile = hitUnit?.tile ?? this.tileAtScreen(sx, sy);
+    // Hedef province'tir: tıklanan kare bağlı olduğu province'in merkezine
+    // (hareket düğümüne) çekilir; denizde kare kendisidir.
+    const tile = nodeOf(this.world, hitUnit?.tile ?? this.tileAtScreen(sx, sy));
     if (!tile) return false;
     // Seçili birim yokken sağ tık boştaydı. Yabancı toprakta o ülkenin
     // panelini açar: diplomasi ekranı menüde aranmak yerine haritadan gelir.
@@ -347,7 +351,7 @@ export class Game {
         const able = selected.filter((unit) => (
           unit && unit.hp > 0 && !unit.battleId && !unit.embarked
         ));
-        const near = (unit) => this.world.wrapDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) === 1;
+        const near = (unit) => nodesAdjacent(this.world, unit.tile, tile);
         // Bitisik tumenler kusatma genisligine gore secilir (birden cok yon
         // daha genis paket); uzaktakiler yuruyup katilir, toplam tavan genislik.
         const adjacentPick = selectAssault(able.filter(near));
@@ -358,7 +362,7 @@ export class Game {
         )).slice(0, Math.max(0, MAX_ASSAULT_WIDTH - adjacentPick.length));
         const participants = adjacentPick.concat(farPick);
         for (const unit of participants) {
-          const adjacent = this.world.wrapDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) === 1;
+          const adjacent = nodesAdjacent(this.world, unit.tile, tile);
           // Emir tumenin ustunde kalir: yol duserse general onu geri cagirmak
           // yerine hedefe yeniden yollar (bkz. movement.resumeDirectives).
           // EMIR HER DURUMDA KAYDEDILIR. Eskiden saldiri o hafta acilamiyorsa
@@ -429,7 +433,7 @@ export class Game {
           other.nationId !== unit.nationId
           && atWar(this.world, other.nationId, unit.nationId)
         ));
-        if (enemy && this.world.wrapDistance(unit.tile.q, unit.tile.r, target.q, target.r) === 1) {
+        if (enemy && nodesAdjacent(this.world, unit.tile, target)) {
           if (this.attack(unit, target)) { setDirective(unit, target); issued++; }
           break;
         }
@@ -558,15 +562,27 @@ export class Game {
       && openOrFriendly(tile) && allowed(tile);
   }
 
+  /**
+   * Adım maliyeti. `from` verilirse province grafının kenar maliyeti
+   * (merkezler arası hex mesafesi × arazi; bkz. provinceGraph.nodeStepCost):
+   * province'i boydan boya geçmek hex hex yürüyüşle aynı sürer.
+   */
   costForUnit() {
-    return (tile) => (tile.terrain.water ? tile.terrain.seaCost : tile.terrain.moveCost);
+    const world = this.world;
+    return (tile, from) => (from
+      ? nodeStepCost(world, from, tile)
+      : (tile.terrain.water ? tile.terrain.seaCost : tile.terrain.moveCost));
   }
 
-  /** Bir birimin kareye girişi: yerleş, toprağı al, şehirse ele geçir. */
+  /**
+   * Bir birimin düğüme girişi: yerleş, province'i al, şehirlerini ele geçir.
+   * İşgal province BÜTÜNÜNE yazılır — ordu merkezde durur, kümenin öbür
+   * karelerinde onu durduracak kimse yoktur (bkz. world/provinceGraph).
+   */
   enterTile(unit, tile) {
     const previousController = controllerOf(tile);
     placeUnit(unit, tile);
-    const occupied = this.turns.occupy(tile, unit.nationId);
+    const occupied = this.turns.occupyProvince(tile, unit.nationId);
     const conquered = occupied && previousController >= 0
       && previousController !== unit.nationId;
     if (conquered) {
@@ -574,8 +590,12 @@ export class Game {
         unit.attackReadyAt ?? 0, this.turns.turn + CONSOLIDATION_WEEKS,
       );
     }
-    const city = tile.city;
-    if (conquered && city && city.nationId !== unit.nationId) {
+    const province = this.world.provinces?.[tile.provinceId];
+    const cities = conquered
+      ? (province?.tileIdx ?? []).map((idx) => this.world.tiles[idx].city).filter(Boolean)
+      : [];
+    for (const city of cities) {
+      if (city.nationId === unit.nationId) continue;
       // Sehir hukuken eski ulkede kalir; baris antlasmasi devri kesinlestirir.
       // Haber aktorunu soyler ve kart yalniz oyuncunun savasinda acilir:
       // baristaki oyuncu "Bluehill occupied" kartini kendi sehri dusmus gibi
@@ -601,7 +621,7 @@ export class Game {
     const out = [];
     const defender = unitsOn(tile).find((other) => other.nationId !== unit.nationId);
     if (!defender) return [{ id: 'empty', text: 'no enemy there', wait: false }];
-    if (this.world.wrapDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) !== 1) {
+    if (!nodesAdjacent(this.world, unit.tile, tile)) {
       out.push({ id: 'far', text: 'not adjacent', wait: true });
     }
     if (unit.embarked) out.push({ id: 'sea', text: 'at sea; land first', wait: false });

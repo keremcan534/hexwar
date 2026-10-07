@@ -532,9 +532,15 @@ tarayıcı olmadan Node ile de test edilebilir.
   kenarlarının tam birleşimidir. Dolgu (her kipte), tıklama, ızgara ve imleç
   aynı hücre tablosunu okur (`cellAt`/`cellOutline`); Canvas2D yedeğinde
   arazi/kaynak dolgusu hex kalır. Seçim ve imleç ızgara kapalıyken
-  province'i gösterir; ordu
-  seçiliyken ise çevresinde 6 hexlik, uzaklıkla sönen yerel ızgara belirir ve
-  imleç hedef hexi çerçeveler (yürüyüş 3. adıma dek hex hex).
+  province'i gösterir; ordu seçiliyken imleç hedef province'i çerçeveler.
+- Ordular PROVINCE grafında yürür (`world/provinceGraph.js`): karada yalnız
+  province merkez karesinde durur, komşu province'in merkezine geçer;
+  denizde hex hex gider, kıyı province'ine ona değen deniz karesinden
+  çıkılır. Adım maliyeti merkezler arası hex mesafesi × arazi (tempo hex
+  yürüyüşüyle aynı). Province'e girmek bütün karelerini işgal eder; cephe,
+  komşuluk, saldırı ve geri çekilme bu graftan sorulur. Province düğümünün
+  yığın tavanı 8 (muharebe genişliği 4). v22 kaydı yüklenirken ordular
+  province merkezine taşınır.
 - Çizim sürekli çalışan bir animasyon döngüsü yerine gerektiğinde yenilenir;
   simülasyon saati hafif bir zamanlayıcıyla ilerler.
 - Deniz yüzeyi `render/water.js`'te ayrı bir katmandır: açılışta üretilen

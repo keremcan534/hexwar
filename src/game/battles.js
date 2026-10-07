@@ -21,6 +21,7 @@ import {
 import { provinceName } from './provinces.js';
 import { MILITARY_EQUIPMENT, equipmentStock } from './economy.js';
 import { controllerOf } from './control.js';
+import { nodeNeighbors } from '../world/provinceGraph.js';
 
 /** Muharebe bu kadar raunttan sonra zorla biter; kazanan guce gore belirlenir. */
 export const MAX_ROUNDS = 20;
@@ -332,6 +333,11 @@ export function removeFromBattles(world, unit) {
  * gerisinde kalan yer. Bir karelik geri ziplamak ayni savasi hemen yeniden
  * aciyordu; iki province derinlik duzenli bir ikinci hat kurar.
  */
+/**
+ * Geri çekilme hedefi: kendi kontrolümüzdeki, düşmansız ve yığını dolmamış
+ * province düğümü. Arama province grafında yürür (bkz. world/provinceGraph);
+ * derinlik province adımıdır.
+ */
 function retreatDestination(world, army, awayFrom) {
   const queue = [{ tile: army.tile, depth: 0 }];
   const seen = new Set([army.tile]);
@@ -343,14 +349,14 @@ function retreatDestination(world, army, awayFrom) {
       const hostile = unitsOn(tile).some((unit) => unit.nationId !== army.nationId);
       if (!hostile) {
         const distance = world.wrapDistance(tile.q, tile.r, awayFrom.q, awayFrom.r);
-        const pressure = world.neighbors(tile).filter((near) => (
+        const pressure = nodeNeighbors(world, tile).filter((near) => (
           controllerOf(near) >= 0 && controllerOf(near) !== army.nationId
           && atWar(world, controllerOf(near), army.nationId)
         )).length;
         candidates.push({ tile, depth, distance, pressure });
       }
     }
-    for (const near of world.neighbors(tile)) {
+    for (const near of nodeNeighbors(world, tile)) {
       if (seen.has(near) || !near.terrain.passable) continue;
       if (controllerOf(near) !== army.nationId) continue;
       seen.add(near);

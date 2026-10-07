@@ -439,6 +439,19 @@ export function advanceEntrenchment(unit, turn) {
  */
 export const MAX_STACK = 4;
 
+/**
+ * Kara province düğümünün yığın tavanı. Ordu artık province merkezinde durur
+ * (world/provinceGraph): eskiden 4'lük tavan HEX başınaydı ve 6 hexlik bir
+ * province 24 tümen taşıyabiliyordu. Province başına 4 cepheyi tıkardı;
+ * muharebe genişliği ayrıca MAX_STACK'te kalır (battles.MAX_DEFENSE_DIVISIONS).
+ */
+export const PROVINCE_STACK = 8;
+
+/** Karenin yığın tavanı: kara düğümü PROVINCE_STACK, deniz karesi MAX_STACK. */
+export function stackCapacity(tile) {
+  return tile && !tile.terrain.water && tile.province ? PROVINCE_STACK : MAX_STACK;
+}
+
 /** Bir province'teki tumenler. Eski tek-birim alaniyla uyumlu okur. */
 export function unitsOn(tile) {
   if (!tile) return [];
@@ -466,7 +479,7 @@ function detach(unit) {
 
 /** Yigin doldu mu? Dost tumen icin giris kontrolu bunu sorar. */
 export function stackFull(tile) {
-  return unitsOn(tile).length >= MAX_STACK;
+  return unitsOn(tile).length >= stackCapacity(tile);
 }
 
 export function removeUnit(world, unit) {

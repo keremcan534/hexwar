@@ -2,10 +2,15 @@
 // boyunca yol boyunca ilerler. Bir haftalik adimda `speedOf` kadar ilerleme
 // birikir, komsu province'in maliyeti dolunca ordu oraya gecer.
 //
+// Yol PROVINCE grafindadir (world/provinceGraph): karada ordu province
+// merkezinden komsu province merkezine yurur, denizde hex hex gider. Adim
+// maliyeti merkezler arasi hex mesafesi x arazidir; tempo hex yuruyusuyle ayni.
+//
 // Yuruyusu kesen uc sey var: dusmana carpmak (muharebe), yolun kapanmasi
 // (yeniden hesap) ve hedefe varmak.
 
 import { findPath } from '../core/pathfind.js';
+import { nodeNeighbors, nodeOf, nodesAdjacent } from '../world/provinceGraph.js';
 import { atWar, inCrisis } from './diplomacy.js';
 import { controllerOf } from './control.js';
 import { startBattle } from './battles.js';
@@ -73,7 +78,7 @@ export function resumeDirectives(game) {
     const holder = controllerOf(tile);
     if (holder >= 0 && holder !== unit.nationId && inCrisis(world, holder, unit.nationId)) continue;
     // Bitisikteki dusmana yuruyusle degil taarruzla girilir.
-    if (world.wrapDistance(unit.tile.q, unit.tile.r, tile.q, tile.r) === 1
+    if (nodesAdjacent(world, unit.tile, tile)
       && unitsOn(tile).some((other) => other.nationId !== unit.nationId)) {
       // Oyuncunun emri generalin temposunu beklemez (manual); toparlanma ve
       // duzen gibi fiziksel engeller beklenir ve deneme sayilmaz — yalniz
@@ -110,11 +115,16 @@ export function destinationOf(unit) {
  * bulundugu kare yola dahil edilmez.
  */
 export function orderMove(game, unit, target) {
+  const world = game.world;
+  // Hedef karesi province'in merkez dugumune cekilir: hangi kareye
+  // tiklanmis olursa olsun ordu o province'e yurur.
+  target = nodeOf(world, target);
   // attackReadyAt yeni saldiriyi kilitler, dost toprakta yeniden konuslanmayi degil.
   if (!unit || !target || unit.battleId || unit.tile === target) return false;
-  const path = findPath(game.world, unit.tile, target, {
+  const path = findPath(world, unit.tile, target, {
     canEnter: game.canEnterFor(unit),
     costOf: game.costForUnit(unit),
+    neighbors: (tile) => nodeNeighbors(world, tile),
   });
   if (!path?.length) return false;
   resetEntrenchment(unit);
@@ -222,7 +232,7 @@ export function advanceMovement(game) {
       }
       // Alt sinir sart: birikmis ilerleme maliyeti asarsa need negatife duser
       // ve butce azalmak yerine buyur — dongu hic bitmez.
-      const need = Math.max(0.01, Math.max(0.01, costOf(next)) - unit.progress);
+      const need = Math.max(0.01, Math.max(0.01, costOf(next, unit.tile)) - unit.progress);
       if (budget < need) {
         unit.progress += budget;
         budget = 0;

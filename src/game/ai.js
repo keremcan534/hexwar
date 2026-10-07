@@ -31,6 +31,7 @@ import {
 } from './politics.js';
 import { SOCIETY_AXES } from './society.js';
 import { delegationActive, noteDelegated } from './delegation.js';
+import { nodeNeighbors } from '../world/provinceGraph.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
 // 1.4 -> 1.6 -> 1.8 (2026-09-04: kusatma ve bos cepheye yuruyus savaslari
@@ -388,7 +389,8 @@ function nearestFrontier(world, from, nationId, maxNodes = 900) {
     const tile = queue[head++];
     if (controllerOf(tile) !== nationId && tile.terrain.passable && open(tile)) return tile;
     const seaDepth = depth.get(tile);
-    for (const n of world.neighbors(tile)) {
+    // Province grafı: karada province'ten province'e, denizde hex hex.
+    for (const n of nodeNeighbors(world, tile)) {
       if (depth.has(n)) continue;
       if (n.terrain.passable && open(n)) depth.set(n, 0);
       else if (n.terrain.navigable && seaDepth < MAX_SEA_CROSSING) depth.set(n, seaDepth + 1);
@@ -423,7 +425,7 @@ function navalGoal(world, unit) {
 
 function adjacentEnemy(world, unit) {
   let best = null;
-  for (const n of world.neighbors(unit.tile)) {
+  for (const n of nodeNeighbors(world, unit.tile)) {
     for (const other of unitsOn(n)) {
       if (other.nationId === unit.nationId) continue;
       if (!atWar(world, other.nationId, unit.nationId)) continue;

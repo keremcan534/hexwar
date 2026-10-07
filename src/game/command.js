@@ -19,13 +19,13 @@
 //
 // Katman notu: burasi saf veri + hesap + emir. DOM'a dokunmaz.
 
-import { DIRS, hexesInRange } from '../core/hex.js';
 import { settle } from './treasury.js';
 import { atWar } from './diplomacy.js';
 import { estimateBattle, selectAssault, startBattle } from './battles.js';
 import { hasDirective, orderMove } from './movement.js';
 import { controllerOf } from './control.js';
-import { MAX_STACK, armyPower, isMoving, unitsOn } from './units.js';
+import { PROVINCE_STACK, armyPower, isMoving, unitsOn } from './units.js';
+import { nodeNeighbors, nodesAdjacent } from '../world/provinceGraph.js';
 
 const FIRST = [
   'Aleron', 'Bertran', 'Casimir', 'Dorian', 'Edric', 'Faelan', 'Gideon', 'Halvard',
@@ -496,21 +496,25 @@ function scanBorders(world) {
   const out = world.nations.map(() => ({
     byNation: new Map(), hostile: [], foreign: [], frontier: [],
   }));
-  // world.neighbors kare basina dizi kurar; haftalik tam taramada ~0.9 MB
-  // coptu (olculdu). Yon tablosu dogrudan gezilir, ziyaret sirasi ayni.
-  world.forEach((tile) => {
+  // Cephe PROVINCE düzeyindedir: ordu province merkezinde durur ve komşu
+  // province'e yürür (bkz. world/provinceGraph). Cephe karesi = kendi
+  // kontrolümüzdeki province'in merkez düğümü; komşu province'in kontrolü de
+  // merkezinden okunur (işgal province bütününe yazılır, bkz. occupyProvince).
+  for (const province of world.provinces ?? []) {
+    const tile = province.center;
+    if (!tile) continue;
     const owner = controllerOf(tile);
-    if (owner < 0 || !tile.terrain.passable) return;
+    if (owner < 0) continue;
     const entry = out[owner];
-    if (!entry) return;
+    if (!entry) continue;
     let foreign = false;
     let hostile = false;
     let frontier = false;
-    for (let d = 0; d < DIRS.length; d++) {
-      const near = world.get(tile.q + DIRS[d][0], tile.r + DIRS[d][1]);
+    for (const id of province.neighbors ?? []) {
+      const near = world.provinces[id]?.center;
       if (!near) continue;
       const nearOwner = controllerOf(near);
-      if (!near.terrain.passable || nearOwner === owner) continue;
+      if (nearOwner === owner) continue;
       // Sahipsiz toprak da bir sinirdir: baristaki ordu grubunun ilerledigi yer.
       if (nearOwner < 0) {
         frontier = true;
@@ -524,9 +528,9 @@ function scanBorders(world) {
     }
     if (foreign) entry.foreign.push(tile);
     if (hostile) entry.hostile.push(tile);
-    // Yabanci sinira da bakan kare iki listede birden olmasin.
+    // Yabanci sinira da bakan province iki listede birden olmasin.
     if (frontier && !foreign) entry.frontier.push(tile);
-  });
+  }
   return out;
 }
 
@@ -602,7 +606,7 @@ function assignPosts(world, divisions, front) {
   index.clear();
   for (let i = 0; i < front.length; i++) index.set(front[i], i);
   // Tumen sayisi cepheyi asarsa mevkiler katlanir; yigin tavani asilmaz.
-  const capacity = Math.max(1, Math.min(MAX_STACK, Math.ceil(divisions.length / front.length)));
+  const capacity = Math.max(1, Math.min(PROVINCE_STACK, Math.ceil(divisions.length / front.length)));
   const count = postCountScratch;
   const gap = postGapScratch;
   count.length = front.length;
@@ -673,7 +677,7 @@ function reservePostFor(world, unit, front) {
   let best = null;
   let bestDistance = Infinity;
   for (const tile of front) {
-    for (const near of world.neighbors(tile)) {
+    for (const near of nodeNeighbors(world, tile)) {
       if (!near.terrain.passable || controllerOf(near) !== unit.nationId) continue;
       const distance = world.wrapDistance(unit.tile.q, unit.tile.r, near.q, near.r);
       if (distance < bestDistance) {
@@ -687,10 +691,7 @@ function reservePostFor(world, unit, front) {
 
 // --- Suda kalan tumenin kurtarilmasi ---------------------------------------
 
-/** Cikarma noktasi bu yaricapa kadar aranir. */
-const STRAND_RESCUE_RADIUS = 6;
-
-/** Halka taramasi bosa cikarsa denenecek en yakin kendi-toprak sayisi. */
+/** Deniz aramasi bosa cikarsa denenecek en yakin kendi province merkezi sayisi. */
 const STRAND_RESCUE_FALLBACK = 12;
 
 /**
@@ -710,39 +711,69 @@ const STRAND_RESCUE_FALLBACK = 12;
 function rescueStranded(game, unit) {
   const world = game.world;
   const canEnter = game.canEnterFor(unit);
-  // Yakindan uzaga: ilk bulunan uygun kara karesi en yakin kiyidir.
-  for (let radius = 1; radius <= STRAND_RESCUE_RADIUS; radius++) {
-    let best = null;
-    let bestDistance = Infinity;
-    for (const { q, r } of hexesInRange(unit.tile.q, unit.tile.r, radius)) {
-      const tile = world.get(q, r);
-      if (!tile || tile.terrain.water || !tile.terrain.passable) continue;
-      if (!canEnter(tile)) continue;
-      const distance = world.wrapDistance(unit.tile.q, unit.tile.r, q, r);
-      if (distance < bestDistance) {
-        bestDistance = distance;
-        best = tile;
-      }
-    }
-    if (best && orderMove(game, unit, best)) return true;
-  }
-  // Yaricap icinde cikarma yeri yok. Olculen kalan vaka tam olarak buydu:
-  // tarafsiz bir ulkenin kiyisiyla cevrili korfezde embarked tumen — `allowed`
-  // baristaki topraga girisi (dogru sekilde) reddediyor, dolayisiyla hicbir
-  // komsu kare uygun degil. Cikis: kendi topragina donmek. Yalnizca halka
-  // taramasi basarisiz olunca kosar, yani pratikte cok seyrek.
+  // Province grafında denizden yayılan arama: ilk GİRİLEBİLİR kara düğümü
+  // (dolu değil, barıştaki ülkenin değil) en yakın çıkarma yeridir. Eski hex
+  // araması "bu kıyı karesi boş" deyip yolu o karenin province merkezine
+  // kuruyordu; merkez doluysa tümen son adımda geri dönüp denizde kalıyordu
+  // (ölçüldü: military-strategy, 33 vaka, en uzun 46 hafta).
+  const landing = nearestEnterableLand(world, unit.tile, canEnter);
+  if (landing && orderMove(game, unit, landing)) return true;
+  // Yakında çıkarma yeri yok (tarafsız kıyıyla çevrili körfez): kendi
+  // topraklarımızdan en yakın girilebilir province merkezlerine dönülür.
   const own = [];
-  world.forEach((tile) => {
-    if (tile.terrain.water || !tile.terrain.passable) return;
-    if (controllerOf(tile) !== unit.nationId) return;
-    own.push(tile);
-  });
-  own.sort((a, b) => world.wrapDistance(unit.tile.q, unit.tile.r, a.q, a.r)
-    - world.wrapDistance(unit.tile.q, unit.tile.r, b.q, b.r));
+  for (const province of world.provinces ?? []) {
+    const center = province.center;
+    if (!center || controllerOf(center) !== unit.nationId || !canEnter(center)) continue;
+    own.push(center);
+  }
+  own.sort((x, y) => world.wrapDistance(unit.tile.q, unit.tile.r, x.q, x.r)
+    - world.wrapDistance(unit.tile.q, unit.tile.r, y.q, y.r));
   for (let i = 0; i < Math.min(own.length, STRAND_RESCUE_FALLBACK); i++) {
-    if (canEnter(own[i]) && orderMove(game, unit, own[i])) return true;
+    if (orderMove(game, unit, own[i])) return true;
   }
   return false;
+}
+
+/**
+ * Denizdeki düğümden, yalnız deniz üzerinden yayılarak, girilebilir ilk kara
+ * düğümü. Kara düğümü sınanır ama içinden geçilmez: çıkarma yeri aranıyor.
+ */
+function nearestEnterableLand(world, from, canEnter, maxNodes = 900) {
+  const seen = new Set([from]);
+  const queue = [from];
+  for (let head = 0; head < queue.length && head < maxNodes; head++) {
+    for (const near of nodeNeighbors(world, queue[head])) {
+      if (seen.has(near)) continue;
+      seen.add(near);
+      if (!near.terrain.water) {
+        if (near.terrain.passable && canEnter(near)) return near;
+        continue;
+      }
+      queue.push(near);
+    }
+  }
+  return null;
+}
+
+/**
+ * Mevki DOLUYSA yürünecek yer: mevkiye en yakın, kendi kontrolümüzdeki ve
+ * girilebilir province düğümü (kara grafında BFS). Mevki hedefi doluyken
+ * yol yine kuruluyordu (hedef her zaman açık sayılır); tümen son adımda geri
+ * dönüyor, çoğu zaman da kıyıdan yanaştığı için denizde kalıyordu.
+ */
+function nearestFreeOwnNode(world, post, unit, canEnter, maxNodes = 200) {
+  const seen = new Set([post]);
+  const queue = [post];
+  for (let head = 0; head < queue.length && head < maxNodes; head++) {
+    for (const near of nodeNeighbors(world, queue[head])) {
+      if (seen.has(near) || near.terrain.water) continue;
+      seen.add(near);
+      if (controllerOf(near) !== unit.nationId) continue;
+      if (canEnter(near)) return near;
+      queue.push(near);
+    }
+  }
+  return null;
 }
 
 // --- Haftalik isleyis ------------------------------------------------------
@@ -771,11 +802,19 @@ function march(game, divisions) {
     // ('hold' degismezi orders.js ORDER.HOLD'dur; import etmek orders->ai->
     // command dongusu kurar, tek dizgi burada belgelenerek kullanilir.)
     if (unit.order?.type === 'hold') continue;
-    const post = postTileOf(game.world, unit);
+    let post = postTileOf(game.world, unit);
     if (!post || unit.tile === post) continue;
     // Zaten oraya yuruyorsa yolu yeniden kurmayiz: her hafta yeni yol vermek
     // orduyu ilerledigi yerde durdurup bastan baslatiyordu.
     if (isMoving(unit)) continue;
+    // Dolu mevkiye yürünmez: bir province düğümü PROVINCE_STACK tümen alır
+    // ve başka grupların tümenleri de orada durabilir. Mevkiye en yakın boş
+    // kendi düğümümüz yedek mevkidir (bkz. nearestFreeOwnNode).
+    const canEnter = game.canEnterFor(unit);
+    if (!canEnter(post)) {
+      post = nearestFreeOwnNode(game.world, post, unit, canEnter);
+      if (!post || unit.tile === post) continue;
+    }
     orderMove(game, unit, post);
   }
 }
@@ -808,7 +847,7 @@ function operationParticipants(game, divisions, target) {
   // paket kurar (bkz. battles.selectAssault).
   return selectAssault(divisions.filter((unit) => (
     readyToAdvance(game, unit)
-    && game.world.wrapDistance(unit.tile.q, unit.tile.r, target.q, target.r) === 1
+    && nodesAdjacent(game.world, unit.tile, target)
   )));
 }
 
@@ -821,7 +860,7 @@ function pickOperation(game, general, divisions, info) {
   const targets = new Set();
   for (const unit of divisions) {
     if (!readyToAdvance(game, unit)) continue;
-    for (const tile of world.neighbors(unit.tile)) {
+    for (const tile of nodeNeighbors(world, unit.tile)) {
       const controller = controllerOf(tile);
       if (!tile.terrain.passable || controller < 0 || controller === unit.nationId) continue;
       if (general.target != null && controller !== general.target) continue;
@@ -853,7 +892,7 @@ function pickOperation(game, general, divisions, info) {
       : { attack: 0, defense: 0 };
     if (defense > 0 && attack < defense * info.risk) continue;
 
-    const ring = world.neighbors(tile).filter((near) => near.terrain.passable);
+    const ring = nodeNeighbors(world, tile).filter((near) => near.terrain.passable);
     const targetController = controllerOf(tile);
     const friendlySides = ring.filter((near) => controllerOf(near) === general.nationId).length;
     const enemySides = ring.filter((near) => controllerOf(near) === targetController).length;
@@ -892,7 +931,7 @@ export function assaultOutlook(world, general, turn = world.turn ?? 0) {
   const info = aggressionInfo(general.aggression);
   let best = null;
   for (const unit of divisions) {
-    for (const tile of world.neighbors(unit.tile)) {
+    for (const tile of nodeNeighbors(world, unit.tile)) {
       const controller = controllerOf(tile);
       if (!tile.terrain.passable || controller < 0 || controller === nation.id) continue;
       if (general.target != null && controller !== general.target) continue;
@@ -902,7 +941,7 @@ export function assaultOutlook(world, general, turn = world.turn ?? 0) {
       // pickOperation ile ayni katilimci kurali: bitisik, hazir, combat width.
       const participants = selectAssault(divisions
         .filter((other) => ready(other)
-          && world.wrapDistance(other.tile.q, other.tile.r, tile.q, tile.r) === 1));
+          && nodesAdjacent(world, other.tile, tile)));
       if (!participants.length) continue;
       const { attack, defense } = estimateBattle(world, participants, defenders);
       const ratio = defense > 0 ? attack / defense : Infinity;
@@ -931,7 +970,7 @@ const WALK_IN_SHARE = 4;
 function pickWalkInTarget(world, unit, reserved, { general = null, enemy = false } = {}) {
   let best = null;
   let bestScore = -Infinity;
-  for (const tile of world.neighbors(unit.tile)) {
+  for (const tile of nodeNeighbors(world, unit.tile)) {
     if (!tile.terrain.passable || reserved.has(tile)) continue;
     const controller = controllerOf(tile);
     let hostileLand = false;
@@ -952,7 +991,7 @@ function pickWalkInTarget(world, unit, reserved, { general = null, enemy = false
 
     // Sehir degerlidir ama cephe sekli daha onemlidir: cok dost kenari olan
     // hedefler bosluk kapatir, tek kenardan uzanan hedefler cikinti yaratir.
-    const ring = world.neighbors(tile).filter((near) => near.terrain.passable);
+    const ring = nodeNeighbors(world, tile).filter((near) => near.terrain.passable);
     const friendlySides = ring.filter((near) => controllerOf(near) === unit.nationId).length;
     const enemySides = hostileLand
       ? ring.filter((near) => controllerOf(near) === controller).length : 0;
@@ -1017,7 +1056,7 @@ function bombard(game, general, divisions) {
   if (!ready.length) return;
   const targets = new Map();
   for (const unit of ready) {
-    for (const tile of world.neighbors(unit.tile)) {
+    for (const tile of nodeNeighbors(world, unit.tile)) {
       const controller = controllerOf(tile);
       if (!tile.terrain.passable || controller < 0 || controller === unit.nationId) continue;
       if (general.target != null && controller !== general.target) continue;

@@ -22,6 +22,7 @@ import { underTreaty } from './peace.js';
 import { controllerOf } from './control.js';
 import { foreignManpowerShare } from './culture.js';
 import { claimSoldiers, occupiedShareOf, releaseSoldiers } from './provinces.js';
+import { nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
 
 export const RECRUITMENT_EQUIPMENT = {
   INFANTRY: { arms: 4 },
@@ -162,7 +163,8 @@ export function recruitmentSource(world, nation, typeId) {
     const load = promised.get(`${center.q}:${center.r}`);
     const available = regionManpower(world, center) - (load?.men ?? 0);
     if (available < need) continue;
-    if (naval && !world.neighbors(center).some((tile) => tile.terrain.navigable)) continue;
+    // Kıyı province'i: herhangi bir karesi denize değiyorsa tersane olur.
+    if (naval && !nodeNeighbors(world, center).some((tile) => tile.terrain.navigable)) continue;
     const hasCity = province.tileIdx.some((idx) => world.tiles[idx].city);
     // Meşgul kışla daha az çekicidir. Havuzu tek başına yeterli olsa bile beş
     // alayı aynı kasabadan toplamak hem gerçekçi değil hem de o bölgenin
@@ -223,11 +225,16 @@ function drawManpower(world, source, amount) {
   return draws;
 }
 
-/** Alayın haritaya çıkacağı kare: kaynağın kendisi ya da boş bir komşusu. */
+/**
+ * Alayın haritaya çıkacağı düğüm: kaynak province'in merkezi ya da komşu bir
+ * province (bkz. world/provinceGraph). Gemi province'e değen deniz karesine iner.
+ */
 function deploymentTile(world, source, typeId) {
+  // Eski kuyruk kaydı province'in herhangi bir karesini tutabilir.
+  source = nodeOf(world, source);
   const domain = UNIT_TYPES[resolveTypeId(typeId)].domain;
   if (domain === 'sea') {
-    return world.neighbors(source).find(
+    return nodeNeighbors(world, source).find(
       (tile) => tile.terrain.navigable && !stackFull(tile),
     ) ?? null;
   }
@@ -237,7 +244,7 @@ function deploymentTile(world, source, typeId) {
   const own = (tile) => controllerOf(tile) === source.owner
     && unitsOn(tile).every((unit) => unit.nationId === source.owner);
   if (!stackFull(source) && own(source)) return source;
-  return world.neighbors(source).find(
+  return nodeNeighbors(world, source).find(
     (tile) => tile.terrain.passable && !stackFull(tile) && own(tile),
   ) ?? null;
 }

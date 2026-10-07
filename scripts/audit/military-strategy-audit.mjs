@@ -21,6 +21,7 @@ import {
 import { armyPower, regimentCount, soldiersOf, isMoving } from '../../src/game/units.js';
 import { destinationOf } from '../../src/game/movement.js';
 import { findPath } from '../../src/core/pathfind.js';
+import { nodeNeighbors } from '../../src/world/provinceGraph.js';
 
 const WEEKS = Number(process.argv[2] ?? 400);
 
@@ -314,9 +315,12 @@ for (const unit of world.units) {
   if (unit.type.domain !== 'land' || !isMoving(unit)) continue;
   const dest = destinationOf(unit);
   if (!dest) continue;
+  // Oyunun yurudugu graf: province merkezleri + deniz (bkz. world/provinceGraph).
+  // Hex grafiyla olcmek, ordunun gercekten kullanmadigi yollari sorguluyordu.
   const path = findPath(world, unit.tile, dest, {
     canEnter: game.canEnterFor(unit),
     costOf: game.costForUnit(unit),
+    neighbors: (tile) => nodeNeighbors(world, tile),
   });
   if (!path?.length) {
     unreachable++;

@@ -77,6 +77,9 @@ export function findPath(world, start, goal, {
   canEnter = defaultCanEnter,
   costOf = defaultCostOf,
   maxNodes = null,
+  // Komşu kümesi dışarıdan verilebilir: askeri hareket province grafında
+  // yürür (bkz. world/provinceGraph). Verilmezse hex yönleri gezilir.
+  neighbors = null,
 } = {}) {
   if (start === goal) return [];
   // Sınır harita boyutuyla ölçeklenir: 200x160'ta sabit 8000 düğüm uzun
@@ -93,8 +96,10 @@ export function findPath(world, start, goal, {
     if (tile === goal) return tracePath(prev, goal);
     if (++expanded > nodeCap) break;
     const cost = g.get(tile);
-    for (let d = 0; d < 6; d++) {
-      const n = world.get(tile.q + DIRS[d][0], tile.r + DIRS[d][1]);
+    const around = neighbors ? neighbors(tile) : null;
+    const count = around ? around.length : 6;
+    for (let d = 0; d < count; d++) {
+      const n = around ? around[d] : world.get(tile.q + DIRS[d][0], tile.r + DIRS[d][1]);
       if (!n) continue;
       if (n !== goal && !canEnter(n, tile)) continue;
       const next = cost + costOf(n, tile);
