@@ -33,16 +33,19 @@ const LINES = {
 /** Deterministik etiket secimi — oncelik sirasi sabit. */
 function pickTag(world, nation) {
   const economy = nation.economy ?? {};
-  // KRIZ (occupiedShare haftalik refreshNationalStrain tarafindan yazilir)
+  // KRIZ (occupiedShare haftalik economy.beginEconomy tarafindan yazilir)
   if ((economy.occupiedShare ?? 0) > 0.35) return 'occupied';
   const anyWar = world.nations.some((o) => o.alive && o.id !== nation.id
     && atWar(world, nation.id, o.id));
-  if (anyWar && (economy.warStrain ?? 0) > 0.35) return 'losing_war';
-  if ((economy.creditPenalty ?? 0) > 0.3) return 'debt_crisis';
-  if ((economy.stability ?? 1) < 0.15) return 'revolutionary';
+  if (anyWar && (nation.warSupport ?? 0.5) < 0.3) return 'losing_war';
+  const turn = world.turn ?? 0;
+  if ((nation.bankruptUntil ?? 0) > turn
+    || (nation.debt ?? 0) > (economy.debtCap ?? Infinity) * 0.75) return 'debt_crisis';
+  if ((nation.stability ?? 1) < 0.15) return 'revolutionary';
   if (anyWar) return 'at_war';
   // DONUSUM
-  const factories = economy.factories?.length ?? 0;
+  const factories = economy.ic?.raw ?? 0;
+  const education = nation.politics?.laws?.education ?? 0;
   const research = nation.research?.done?.length ?? 0;
   const board = scoreboard(world);
   const rank = board.findIndex((row) => row.nation.id === nation.id) + 1;
@@ -53,23 +56,16 @@ function pickTag(world, nation) {
   const techTop = techCounts[Math.max(0, Math.floor(techCounts.length * 0.15))] ?? 0;
   const techBottom = techCounts[Math.min(techCounts.length - 1, Math.floor(techCounts.length * 0.85))] ?? 0;
   if (research >= techTop && research > 5) return 'tech_leader';
-  // Ulusal program kalkinca olcut butcenin kendisi: okula gercekten para
-  // basan ulke (Ulusal Egitim programinin tabani da %55'ti).
-  if ((economy.social?.education ?? 0) >= 55 && (economy.literacy ?? 0) >= 0.4) return 'educating';
-  if (factories >= 10 && (economy.social?.education ?? 0) >= 25) return 'industrializing';
+  // Okula gerçekten para basan ülke: eğitim yasası en üst kademede.
+  if (education >= 2 && (economy.literacy ?? 0) >= 0.4) return 'educating';
+  if (factories >= 10 && education >= 1) return 'industrializing';
   // KIMLIK
   if (rank > 0 && rank <= 3) return 'great_power';
   if (rank > 0 && rank <= 6 && (economy.ledger?.net ?? 0) < 0) return 'declining_power';
   if (research <= techBottom && research < 5) return 'tech_laggard';
-  const flow = economy.goodsFlow ?? {};
-  let exports = 0;
-  let production = 0;
-  for (const id of Object.keys(flow)) {
-    exports += flow[id]?.exports ?? 0;
-    production += flow[id]?.production ?? 0;
-  }
-  if (production > 0 && exports / production > 0.3) return 'trade_power';
-  if (factories < 4) return 'agrarian';
+  const income = economy.ledger?.income ?? 0;
+  if (income > 0 && (economy.ledger?.exports ?? 0) / income > 0.3) return 'trade_power';
+  if (factories < 3) return 'agrarian';
   return 'generic';
 }
 

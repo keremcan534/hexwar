@@ -22,12 +22,15 @@ import {
 } from './infamy.js';
 import { checkVictory } from './hegemony.js';
 import { executeOrders } from './orders.js';
+import { cityName, createCity, refreshCities } from './cities.js';
 import {
-  assignAllWorkers, cityName, collectProvinceTotals, createCity, growCities, nationBudget,
-} from './cities.js';
-import {
-  beginEconomy, finishEconomy, initEconomy, reconcilePopulation, runNationEconomy,
+  beginEconomy, finishEconomy, initEconomy, runNationEconomy,
 } from './economy.js';
+import { runResearch } from './technology.js';
+import { runAgenda } from './agenda.js';
+import { runEventCards } from './eventCards.js';
+import { assignGoals } from './hegemony.js';
+import { mod, refreshModifiers } from './modifiers.js';
 import { initBattles, removeFromBattles, runBattles } from './battles.js';
 import {
   beginCommand, finishCommand, initCommand, releaseArmy, runNationCommandSteps, seedGenerals,
@@ -44,8 +47,8 @@ import { runNationalEvents, runWorldStories } from './events.js';
 import { expireTreaties, treatiesOf } from './peace.js';
 import { isNode, nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
 
-/** Başlangıç stoku: ilk birkaç turda bir birim alacak kadar. */
-const STARTING_GOLD = 50;
+/** Başlangıç hazinesi: ilk binaya ya da birkaç alaya yeter. */
+const STARTING_GOLD = 100;
 
 /**
  * KIRIK ISARETI SAHIBE AITTIR. `econ.brokenSince`/`brokenCulture` "bu ulus bu
@@ -114,10 +117,8 @@ export class TurnManager {
     for (const nation of world.nations) {
       nation.alive = nation.tiles > 0;
       nation.gold = STARTING_GOLD;
-      delete nation.food;
-      delete nation.timber;
-      delete nation.iron;
-      nation.budget = null;
+      nation.debt = 0;
+      nation.prestige = 0;
       nation.infamy = 0;
       if (!nation.alive) continue;
       // Her ülke başkentinde bir şehirle başlar.
@@ -178,17 +179,16 @@ export class TurnManager {
         if (unit?.regiments?.[0] && !unit.regiments[0].draws) unit.regiments[0].draws = [];
       }
       nation.economy.population = provincePopulation(world, nation.id);
-      nation.economy.soldiersUnderArms = provinceSoldiers(world, nation.id);
-      reconcilePopulation(nation, nation.economy.population);
+      nation.economy.soldiers = provinceSoldiers(world, nation.id);
     }
     initPolitics(world);
     initConstruction(world);
     initBattles(world);
     initCommand(world);
     seedGenerals(world, this.rng);
-    assignAllWorkers(world);
-    const totals = collectProvinceTotals(world);
-    for (const nation of world.nations) nation.budget = nationBudget(world, nation, totals);
+    refreshCities(world);
+    assignGoals(world);
+    for (const nation of world.nations) refreshModifiers(nation, this.turn);
   }
 
   /**
@@ -541,13 +541,11 @@ export class TurnManager {
       // duzenini yavasca kurar; strength ise asagida nufus ve ekipman harcayan
       // reinforcement sistemi olmadan bedava dolmaz.
       if (!unit.battleId) {
-        // Toparlanma maaşa ve ikmale bağlıdır: parasız asker yavaş toplanır,
-        // ikmalsiz ordu daha da yavaş. Tabanlar (0.6/0.7) kademeli tutar —
-        // felaket cezası yok, süregiden ihmal hissedilir (bkz. supplyIndex).
-        const economy = world.nations[unit.nationId]?.economy;
-        const wages = (economy?.armyFunding ?? 100) / 100;
-        const supply = economy?.military?.supplyIndex ?? 1;
-        const fundingFactor = (0.6 + 0.4 * wages) * (0.7 + 0.3 * supply);
+        // Toparlanma doktrinle hızlanır; iflas eden devletin ordusu yarı
+        // hızda toplanır (maaş ödenmiyor).
+        const owner = world.nations[unit.nationId];
+        const bankrupt = (owner?.bankruptUntil ?? 0) > this.turn;
+        const fundingFactor = Math.max(0.2, 1 + mod(owner, 'organization')) * (bankrupt ? 0.5 : 1);
         const organizationRecovery = ((unit.retreatUntil ?? 0) > this.turn ? 6 : 10)
           * fundingFactor;
         for (const regiment of unit.regiments ?? []) {
@@ -606,20 +604,15 @@ export class TurnManager {
     // sahiplik degistirdigi icin isciler bundan SONRA dagitilir.
     runMovements(this.game);
     yield* pause('provinces');
-    // Şehirler işçi dağıtımından önce büyür ki yeni nüfus aynı hafta bir kare işlesin.
-    this.phase = 'workers';
-    growCities(world);
-    assignAllWorkers(world);
-    yield* pause('workers');
-    this.phase = 'produce';
-    this.produce();
-    mark('produce');
-    // Ticaret üretimden sonra: bu turun fazlası satılabilsin.
-    // Eski timber/iron takasi kaldirildi; tek kaynak gercegi economy.js pazari.
-    this.lastTrade = [];
-    // Sınıflar, fabrikalar ve küresel fiyatlar haftalık ekonomik kapanışta
-    // çözülür. Ekonomi en pahalı fazdır ve maliyeti ulus sayısına yayılır:
-    // 6'şarlı demetler halinde dilimlenir (bkz. economy.js begin/finish notu).
+    // Şehir boyu province nüfusundan okunur (çizim ve prestij).
+    refreshCities(world);
+    // Araştırma ekonomi kapanışından ÖNCE: biten teknolojinin değiştiricisi
+    // bu haftanın IC'sine girsin.
+    this.phase = 'research';
+    runResearch(this.game);
+    mark('research');
+    // Ekonomi: kaynak → IC → tüketim malı → hatlar → vergi; ulus başına
+    // dilimlenir, sonra dünya ticareti ve defter kapanışı.
     const economyContext = beginEconomy(this.game);
     for (const nation of world.nations) {
       this.phase = `economy:${nation.name}`;
@@ -630,16 +623,19 @@ export class TurnManager {
       // Sıra ve işlem dizisi aynı — determinizm etkilenmez.
       mark('economy');
       yield;
-      economyContext.stamp();
       stamp();
     }
     this.phase = 'economy:finish';
     finishEconomy(this.game, economyContext);
+    this.payTreaties();
     yield* pause('economy');
-    // Ulusal insaat gucu haftalik kapanista kuyrugun en ustundeki projeye akar.
     this.phase = 'construction';
     runConstruction(this.game);
+    // Siyaset ekonomiden SONRA: istikrar ve parti desteği bu haftanın
+    // tüketim malını, gıdasını ve savaşını okur.
     runPolitics(this.game);
+    runAgenda(this.game);
+    runEventCards(this.game);
     yield* pause('construction');
     // Haritadaki ordular çarpıştıkları province üzerinde haftalık muharebe çözer.
     this.phase = 'battles';
@@ -686,30 +682,6 @@ export class TurnManager {
   }
 
   /**
-   * Üretim, tüketim ve büyüme. Erzak ulusta stoklanmaz: üretilir, işçiler ve
-   * ordu yer, artan şehir ambarlarına gidip nüfusu büyütür. Açık verilirse
-   * ordu beslenemez.
-   */
-  produce() {
-    const world = this.world;
-    const totals = collectProvinceTotals(world);
-    for (const nation of world.nations) {
-      if (!nation.alive) continue;
-      const budget = nationBudget(world, nation, totals);
-      nation.budget = budget;
-
-      // UC AYRI KALEM, tek bir "net" degil. Eskiden bu uc sey `budget.net.gold`
-      // icinde toplanip hazineye tek satirda ekleniyordu; oyuncu ordusunun mu
-      // yoksa yonetiminin mi pahali oldugunu defterden goremiyordu.
-      // Kelepçe yok: açık borçlanmayla kapanır (economy.js settleDebt).
-      settle(nation, 'state', budget.production.gold);
-      settle(nation, 'army', -budget.armyGold);
-      settle(nation, 'administration', -budget.administration);
-    }
-    this.payTreaties();
-  }
-
-  /**
    * Anlaşma yükümlülükleri. Tazminat ve vassal haracı gelirin bir payıdır:
    * sabit bir rakam olsaydı zengin ülke için anlamsız, fakir için yıkıcı olurdu.
    */
@@ -739,6 +711,7 @@ export class TurnManager {
         // kosuda treatyCost her ulkede tam olarak 0'di — savasi kazanip
         // tazminat dayatmak hicbir sey transfer etmiyordu. Artik defterin
         // kapanmis GELIR satiri esas alinir: vaat edilen sey buydu.
+        // Taban: geçen haftanın kapanmış GELİR satırı (vergi + ihracat).
         const base = Math.max(0, nation.economy?.ledger?.income ?? 0);
         const due = base * share;
         if (due <= 0) continue;

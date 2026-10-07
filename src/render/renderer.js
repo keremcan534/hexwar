@@ -11,7 +11,7 @@ import { isAllied } from '../game/alliances.js';
 import { INFAMY_COALITION } from '../game/infamy.js';
 import { maxHpOf, menUnderArms, organizationOf, soldiersOf, unitsOn } from '../game/units.js';
 import { terrainShade } from '../world/terrain.js';
-import { RGO_TYPES } from '../game/provinces.js';
+import { RESOURCES } from '../game/econ/defs.js';
 import { controllerOf, isOccupied } from '../game/control.js';
 import { WaterLayer } from './water.js';
 import { LandMaterial } from './material.js';
@@ -105,18 +105,14 @@ export function diplomacyStanding(world, focus) {
   return out;
 }
 
-/** Sanayi kipi: küme başına fabrika işçisi (bütün ülkelerin tesisleri). */
+/** Sanayi kipi: küme başına fabrika kademesi (bina province'e aittir). */
 export function factoryWorkersByProvince(world) {
-  const workers = new Map();
-  for (const nation of world.nations ?? []) {
-    if (!nation?.alive) continue;
-    for (const factory of nation.economy?.factories ?? []) {
-      const provinceId = world.get(factory.q, factory.r)?.provinceId;
-      if (provinceId == null || provinceId < 0) continue;
-      workers.set(provinceId, (workers.get(provinceId) ?? 0) + Math.max(0, factory.employees ?? 0));
-    }
+  const levels = new Map();
+  for (const province of world.provinces ?? []) {
+    const factories = province.econ?.buildings?.factory ?? 0;
+    if (factories > 0) levels.set(province.id, factories);
   }
-  return workers;
+  return levels;
 }
 
 const MAX_DPR = 2;            // mobilde 3x DPR gereksiz pahalı
@@ -1060,11 +1056,10 @@ export class Renderer {
     if (!econ) return DATA_EMPTY;
     if (this.mapMode === 'unrest') return rampColor(UNREST_RAMP, (econ.unrest ?? 0) / 10);
     if (this.mapMode === 'industry') {
-      const workers = this.modeTable(world).workers.get(provinceId) ?? 0;
-      if (workers <= 0) return rampColor(INDUSTRY_RAMP, 0);
-      // 1K işçi en soluk, 200K+ en parlak pirinç: log ölçek, çünkü dağılım
-      // birkaç sanayi merkezinde toplanır ve doğrusal ölçek geri kalanını söndürür.
-      return rampColor(INDUSTRY_RAMP, 0.08 + 0.92 * (Math.log10(Math.max(1000, workers)) - 3) / 2.3);
+      const factories = this.modeTable(world).workers.get(provinceId) ?? 0;
+      if (factories <= 0) return rampColor(INDUSTRY_RAMP, 0);
+      // Bir fabrika soluk, beş fabrika (kademe tavanı) en parlak pirinç.
+      return rampColor(INDUSTRY_RAMP, 0.2 + 0.8 * Math.min(1, (factories - 1) / 4));
     }
     return DATA_EMPTY;
   }
@@ -2406,14 +2401,14 @@ export class Renderer {
 
   /** Kaynak kipi: her hex kendi kaynağının rengini taşır (hex kaynakları). */
   resourceTint(tile) {
-    const type = tile.province ? RGO_TYPES[tile.resource] : null;
+    const type = tile.province ? RESOURCES[tile.resource] : null;
     if (!type) return 'hsl(210 6% 26%)';
     const quality = Math.max(0.85, Math.min(1.15, tile.resourceQuality ?? 1));
     const key = `res:${type.id}:${Math.round(quality * 10)}`;
     let color = this.tintCache.get(key);
     if (color) return color;
-    const light = 30 + (quality - 0.85) * 38;
-    color = `hsl(${type.hue} 30% ${Math.round(light)}%)`;
+    const light = 34 + (quality - 0.85) * 40;
+    color = `hsl(${type.hue} ${type.sat}% ${Math.round(light)}%)`;
     this.tintCache.set(key, color);
     return color;
   }

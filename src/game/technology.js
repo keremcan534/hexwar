@@ -1,250 +1,124 @@
-// Teknoloji ve arastirma.
+// TEKNOLOJİ ve araştırma (TASARIM.md §13).
 //
-// Model Victoria 2'nin iskeleti: 5 kategori x 5 klasor x 6 kademe, klasor
-// icinde DOGRUSAL ilerleyis. Arastirma puani okuryazarliktan, orta siniftan
-// ve ulusal rutbeden gelir.
+// Beş dal × iki klasör × dört kademe = 40 teknoloji, 1836-1890. Klasör
+// içinde DOĞRUSAL ilerleyiş (Vic2 kuralı). Her teknolojinin etkisi somuttur
+// ve modifiers.js anahtarlarına yazılır — "+%2'lik dolgu düğme" yoktur; her
+// anahtarın okuyucusu MODIFIER_KEYS tablosunda yazar.
 //
-// EN ONEMLI TASARIM KARARI — takvim ATILMIYOR:
-// `availableFrom` (economy.js/units.js) Vic2'nin "activation year"idir ve
-// UST SINIR olarak kalir. Arastirma o tarihi ONE CEKER, yerine gecmez.
-//   - Arastiran ulke yillar once kurar  -> teknolojik ustunluk ilk kez mumkun.
-//   - Arastirmayan ulke yil gelince yine acar -> kimse kalici geride kalmaz.
-// Beta'nin begendigi "dunya kendi tarihini yaziyor" hissi boylece korunur
-// (bkz. rapor: celik/telefon/otomobil onyillar icinde makul sirayla geldi).
+// Takvim ÜST SINIR değil, maliyet çarpanıdır: aktivasyon yılından önce
+// araştırmak pahalıdır (yılda %6, tavan 2.5 kat). Yayılım: temas ettiğin
+// komşuların sahip olduğu teknoloji %35'e kadar ucuzlar.
 //
-// Katman notu: saf veri + hesap. DOM yok, economy.js'i IMPORT ETMEZ
-// (economy bunu import eder; ters yon dongu olurdu).
+// Katman notu: saf veri + hesap; ekonomiyi import ETMEZ.
 
 import { makeRng } from '../core/rng.js';
-import { lawModifiers } from './politics.js';
-import { societyModifiers } from './society.js';
+import { MODIFIER_KEYS, mod, refreshModifiers, registerModifierSource } from './modifiers.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export const TECH_CATEGORIES = {
+  industry: { id: 'industry', name: 'Industry', icon: '⚙' },
+  infrastructure: { id: 'infrastructure', name: 'Infrastructure', icon: '🛤' },
   army: { id: 'army', name: 'Army', icon: '⚔' },
   navy: { id: 'navy', name: 'Navy', icon: '⚓' },
-  commerce: { id: 'commerce', name: 'Commerce', icon: '⚖' },
-  culture: { id: 'culture', name: 'Culture', icon: '🎭' },
-  industry: { id: 'industry', name: 'Industry', icon: '⚙' },
+  society: { id: 'society', name: 'Society', icon: '🎓' },
 };
 
-/**
- * Klasorler. Vic2'nin kendi bolumlemesi — isimler bilerek birebir, cunku
- * oyuncu zaten bu haritayi biliyor.
- */
-// Klasor listesi YAZILMIS icerige gore kirpildi: bos sutun cizdirmek
-// "yarim oyun" hissi verir (eski hali 5 kategoride 25 klasor vaat ediyordu,
-// yalniz 5'i doluydu). Icerik eklendikce klasor da eklenir.
 export const TECH_FOLDERS = {
-  army: ['Army Doctrine', 'Military Science'],
-  navy: ['Ship Construction'],
-  commerce: ['Financial Institutions', 'Communications'],
-  culture: ['Philosophy', 'Public Instruction'],
-  industry: ['Power', 'Mechanization', 'Metallurgy', 'Infrastructure', 'Chemistry & Electricity'],
+  industry: ['Power', 'Metallurgy'],
+  infrastructure: ['Railways', 'Agriculture'],
+  army: ['Doctrine', 'Arms'],
+  navy: ['Shipbuilding', 'Naval Doctrine'],
+  society: ['Philosophy', 'Public Instruction'],
 };
 
-/**
- * Degistirici anahtarlari. Her teknoloji EN AZ birini tasimali — beta raporu
- * "+%2'lik dolgu dugmeler" istemedigini acikca yazdi.
- *
- * Hepsi TOPLANIR (additive); `refreshTechModifiers` haftada bir kez toplayip
- * `economy.techMods` duz nesnesine yazar, sicak yol yalnizca o alani okur.
- */
-// `literacyCap` ve `morale` anahtarlari silindi: hicbir teknoloji tasimiyordu
-// ve hicbir sistem okumuyordu — sifir tuketicili degistirici tutulmaz (P1-6).
-// HEPSININ gercek tuketicisi var (audit:tech-effect AC/KAPA ile dogrular):
-//   rgoOutput          -> provinces.provinceOutput
-//   constructionPower  -> construction.constructionPower
-//   factoryThroughput  -> economy.runFactories
-//   inputEfficiency    -> economy.runFactories (girdi tuketimi; tavan 0.5,
-//                         agac toplami 0.50'ye kirpildi — olu kuyruk yok)
-//   researchRate       -> researchPointsOf (asagida)
-//   supplyConsumption  -> economy.armyWeeklyDemand
-//   literacyReach      -> economy.literacyTargetOf (okuryazarlik tavani;
-//                         0.95 kirpmasi ilk kez ULASILABILIR oluyor)
-//   debtCapacityBonus  -> economy.debtCapacity (borc kapasitesi; faiz yuku
-//                         load=debt/kapasite uzerinden kendiliginden duser)
-//   trainingCapacity   -> recruitment.trainingCapacity (es zamanli egitim
-//                         kadrosu, DUZ slot — yuzde degil)
-//   reinforcementRate  -> reinforcement.reinforcementRateOf
-export const TECH_MODS = {
-  rgoOutput: 'RGO output',
-  constructionPower: 'Construction power',
-  factoryThroughput: 'Factory throughput',
-  inputEfficiency: 'Factory input efficiency',
-  researchRate: 'Research speed',
-  supplyConsumption: 'Army supply consumption',
-  literacyReach: 'Literacy ceiling',
-  debtCapacityBonus: 'Debt capacity',
-  trainingCapacity: 'Training slots',
-  reinforcementRate: 'Reinforcement rate',
-};
+/** Teknoloji etkileri modifiers.js anahtarlarıdır; ekran adları oradan. */
+export const TECH_MODS = Object.fromEntries(
+  Object.entries(MODIFIER_KEYS).map(([key, meta]) => [key, meta.label]),
+);
 
-/** `t(...)` kisa yazim: teknoloji kaydi. */
-function t(id, name, year, effects = {}) {
-  return { id, name, year, ...effects };
+function t(id, name, year, effects, desc = '') {
+  return { id, name, year, effects, desc };
 }
 
-/**
- * INDUSTRY kategorisi — tam dolu (5 klasor x 6 kademe).
- *
- * Diger dort kategori ayni sekilde doldurulacak; iskelet ve kosum yolu
- * hazir (bkz. TECHNOLOGY_GAMEPLAY_AUDIT "EK: UYGULAMA TASARIMI" G bolumu).
- * Icerik once OLCULEN kategoriden buyutulur — 150 dugumu tek seferde
- * yazmak dolguya davetiyedir.
- *
- * `year` = Vic2'nin activation year'i; `unlock` = economy.js FACTORIES id'si.
- */
 export const TECHNOLOGIES = {
   industry: {
-    'Power': [
-      t('water_wheel_power', 'Water Wheel Power', 1836, { rgoOutput: 0.04 }),
-      t('stationary_steam_engine', 'Stationary Steam Engine', 1840, { factoryThroughput: 0.08 }),
-      t('mechanical_production', 'Mechanical Production', 1850, { factoryThroughput: 0.10 }),
-      t('compound_engines', 'Compound Steam Engines', 1860, { factoryThroughput: 0.10, inputEfficiency: 0.04 }),
-      // 1875 -> 1866: kilit acacagi fabrikanin takviminden (1870) SONRAYA
-      // tarihlenmisti, yani arastirmak hicbir zaman one gecirmiyordu —
-      // modulun kendi sozlesmesinin (bkz. dosya basi) ihlaliydi. 1866 hem
-      // sirayi bozmaz (1860 < 1866 < 1895) hem tarihsel (Siemens dinamosu).
-      t('electrical_power', 'Electrical Power Generation', 1866, { factoryThroughput: 0.12, unlock: ['ELECTRIC_GEAR_FACTORY'] }),
-      t('combustion_engine', 'Combustion Engine', 1895, { factoryThroughput: 0.12, unlock: ['AUTOMOBILE_FACTORY'] }),
+    Power: [
+      t('stationary_steam', 'Stationary Steam Engine', 1836, { ic: 0.08 }, 'Steam replaces the water wheel in the mills.'),
+      t('mechanical_production', 'Mechanical Production', 1846, { ic: 0.08, lineGain: 0.2 }, 'Machine tools speed up every production line.'),
+      t('compound_engines', 'Compound Steam Engines', 1860, { ic: 0.10 }, 'More power from the same coal.'),
+      t('electrical_power', 'Electrical Power', 1880, { ic: 0.12 }, 'Dynamos light the factory floor.'),
     ],
-    'Mechanization': [
-      t('basic_mechanization', 'Basic Mechanization', 1836, { factoryThroughput: 0.06 }),
-      t('interchangeable_parts', 'Interchangeable Parts', 1845, { inputEfficiency: 0.06 }),
-      // 1855 -> 1848: ayni hata (fabrika takvimi 1850). 1845 < 1848 < 1870.
-      t('precision_work', 'Precision Work', 1848, { inputEfficiency: 0.06, unlock: ['MACHINE_PARTS_FACTORY'] }),
-      t('assembly_line', 'Assembly Line', 1870, { factoryThroughput: 0.14 }),
-      t('scientific_management', 'Scientific Management', 1885, { factoryThroughput: 0.10, inputEfficiency: 0.04 }),
-      t('mass_production', 'Mass Production', 1900, { factoryThroughput: 0.16, inputEfficiency: 0.05 }),
-    ],
-    'Metallurgy': [
-      t('publishing_industry', 'Charcoal Smelting', 1836, { rgoOutput: 0.05 }),
-      // `unlock: ['STEEL_MILL']` KALDIRILDI: STEEL_MILL'in `availableFrom`u
-      // yok, yani ilk haftadan herkese acik — kilit hicbir sey acmiyordu ama
-      // ekran "Unlocks steel mill" diye SAHTE bir vaat basiyordu. Fabrikaya
-      // takvim vermek yerine vaadi kaldirmak secildi: kilit eklemek butun
-      // sanayi zamanlamasini (ve piyasa taban cizgisini) oynatirdi.
-      t('coke_smelting', 'Coke Smelting', 1842, { rgoOutput: 0.08 }),
-      t('bessemer_process', 'Bessemer Process', 1855, { inputEfficiency: 0.06 }),
-      t('open_hearth', 'Open Hearth Furnace', 1868, { factoryThroughput: 0.10 }),
-      t('electric_furnace', 'Electric Furnace', 1885, { factoryThroughput: 0.10, inputEfficiency: 0.05 }),
-      t('alloy_steel', 'Alloy Steel', 1900, { inputEfficiency: 0.06, unlock: ['TANK_FACTORY'] }),
-    ],
-    'Infrastructure': [
-      t('early_railways', 'Early Railways', 1836, { constructionPower: 0.10 }),
-      t('iron_railways', 'Iron Railways', 1845, { constructionPower: 0.12, rgoOutput: 0.04 }),
-      t('steel_railways', 'Steel Railways', 1860, { constructionPower: 0.14, supplyConsumption: -0.05 }),
-      t('integral_rail', 'Integral Rail System', 1875, { constructionPower: 0.14, supplyConsumption: -0.05 }),
-      t('limited_access_roads', 'Limited Access Roads', 1890, { constructionPower: 0.12, supplyConsumption: -0.05 }),
-      t('national_rail_network', 'National Rail Network', 1905, { constructionPower: 0.16, supplyConsumption: -0.06 }),
-    ],
-    'Chemistry & Electricity': [
-      t('practical_chemistry', 'Practical Chemistry', 1836, { rgoOutput: 0.04 }),
-      t('fertilizer_chemistry', 'Fertilizer', 1848, { rgoOutput: 0.10 }),
-      t('organic_chemistry', 'Organic Chemistry', 1860, { unlock: ['REFINERY'], inputEfficiency: 0.04 }),
-      t('electricity', 'Electricity', 1872, { researchRate: 0.08 }),
-      t('synthetic_polymers', 'Synthetic Polymers', 1888, { unlock: ['SYNTHETIC_OIL_PLANT'] }),
-      t('nitroglycerin', 'Nitroglycerin', 1900, { inputEfficiency: 0.04 }),
+    Metallurgy: [
+      t('coke_smelting', 'Coke Smelting', 1840, { resources: 0.10 }, 'Coke furnaces raise iron and coal output.'),
+      t('bessemer_process', 'Bessemer Process', 1856, { lineEfficiency: 0.05, resources: 0.05 }, 'Cheap steel for arsenals.'),
+      t('open_hearth', 'Open Hearth Furnace', 1868, { lineEfficiency: 0.05, ic: 0.05 }, 'Better steel, steadier output.'),
+      t('alloy_steel', 'Alloy Steel', 1890, { lineEfficiency: 0.05, resources: 0.10 }, 'Hard steels for guns and machines.'),
     ],
   },
-
-  // ARMY — savas modeline DOKUNMADAN durustce yapilabilenler: egitim kadrosu
-  // (duz slot), takviye hizi, tedarik tuketimi ve iki tarih-kapili birimin
-  // (ARMOR 1916, AIRCRAFT 1906) one cekilmesi. "Tufek I/II/III" yok: piyade/
-  // suvari/topcu takvimsizdir, "acan" bir teknoloji sahte olurdu.
+  infrastructure: {
+    Railways: [
+      t('early_railways', 'Early Railways', 1836, { construction: 0.10, constructionSlots: 1 }, 'The first lines between mine and port.'),
+      t('iron_railways', 'Iron Railways', 1848, { developmentCap: 1, supply: 0.15 }, 'Rails tie the provinces together.'),
+      t('steel_railways', 'Steel Railways', 1862, { construction: 0.15, developmentCap: 1 }, 'Heavier trains, cheaper building.'),
+      t('integral_rail', 'Integral Rail System', 1878, { constructionSlots: 1, supply: 0.15 }, 'A national network.'),
+    ],
+    Agriculture: [
+      t('crop_rotation', 'Crop Rotation', 1838, { food: 0.10 }, 'Four-field rotation raises yields.'),
+      t('mechanized_farming', 'Mechanised Farming', 1852, { food: 0.10, growth: 0.05 }, 'Reapers and threshers.'),
+      t('fertilizers', 'Chemical Fertilisers', 1868, { food: 0.15 }, 'Guano and superphosphate.'),
+      t('refrigeration', 'Refrigeration', 1884, { food: 0.10, consumerNeed: -0.05, developmentCap: 1 }, 'Food travels across the world.'),
+    ],
+  },
   army: {
-    'Army Doctrine': [
-      t('professional_officers', 'Professional Officer Corps', 1836, { trainingCapacity: 1 }),
-      t('staff_college', 'Staff College', 1848, { trainingCapacity: 1, supplyConsumption: -0.03 }),
-      t('general_staff', 'General Staff System', 1860, { reinforcementRate: 0.08 }),
-      t('universal_conscription', 'Universal Conscription', 1872, { trainingCapacity: 2 }),
-      t('field_telegraph', 'Field Telegraph', 1885, { reinforcementRate: 0.10, supplyConsumption: -0.03 }),
-      t('motorised_logistics', 'Motorised Logistics', 1908, { supplyConsumption: -0.08, reinforcementRate: 0.10 }),
+    Doctrine: [
+      t('post_napoleonic', 'Post-Napoleonic Thought', 1836, { attack: 0.05, manpower: 0.05 }, 'Mass armies and columns.'),
+      t('field_fortifications', 'Field Fortifications', 1846, { defense: 0.08 }, 'Trenches and earthworks.'),
+      t('general_staff', 'General Staff', 1860, { attack: 0.06, organization: 0.15, reinforce: 0.15 }, 'Planning wins wars before they start.'),
+      t('modern_doctrine', 'Modern Doctrine', 1882, { defense: 0.08, attack: 0.06, training: 0.15 }, 'Firepower and dispersion.'),
     ],
-    'Military Science': [
-      t('military_medicine', 'Military Medicine', 1850, { reinforcementRate: 0.12 }),
-      t('breech_loading', 'Breech-Loading Arms', 1866, { supplyConsumption: -0.04 }),
-      t('smokeless_powder', 'Smokeless Powder', 1884, { supplyConsumption: -0.05 }),
-      t('combined_arms', 'Combined Arms Doctrine', 1900, { trainingCapacity: 1, reinforcementRate: 0.08 }),
-      t('military_aviation', 'Military Aviation', 1902, { unlockUnit: ['AIRCRAFT'], unlock: ['AIRCRAFT_FACTORY'] }),
-      t('armoured_warfare', 'Armoured Warfare', 1912, { unlockUnit: ['ARMOR'] }),
+    Arms: [
+      t('percussion_caps', 'Percussion Caps', 1840, { attack: 0.05, lineGain: 0.1 }, 'Muskets that fire in the rain.'),
+      t('breech_loaders', 'Breech-Loading Rifles', 1852, { attack: 0.08 }, 'Reload lying down.'),
+      t('rifled_artillery', 'Rifled Artillery', 1864, { attack: 0.06, defense: 0.05 }, 'Guns that hit what they aim at.'),
+      t('machine_guns', 'Machine Guns', 1884, { defense: 0.12 }, 'The defence dominates the field.'),
     ],
   },
-
-  // NAVY — bilerek ince: bir klasor, dort teknoloji. Deniz savasi/abluka
-  // mekanigi olmadigi icin derinlik taklidi yapilmadi. Gercek tuketiciler:
-  // STEAMER_YARD kilidi, tersane cikti/verimi, bindirilmis alay konvoy
-  // talebi (supplyConsumption onu da olcekler) ve gemi onarimi (takviye).
   navy: {
-    'Ship Construction': [
-      t('steam_navigation', 'Steam Navigation', 1845, { unlock: ['STEAMER_YARD'] }),
-      t('screw_propulsion', 'Screw Propulsion', 1855, { supplyConsumption: -0.03 }),
-      t('modern_shipyards', 'Modern Shipyards', 1875, { factoryThroughput: 0.06 }),
-      t('wireless_at_sea', 'Wireless at Sea', 1898, { supplyConsumption: -0.04, reinforcementRate: 0.06 }),
+    Shipbuilding: [
+      t('clipper_design', 'Clipper Design', 1838, { naval: 0.08 }, 'Fast sailing hulls.'),
+      t('steam_screw', 'Screw Propulsion', 1850, { naval: 0.08 }, 'Steam frigates.'),
+      t('ironclads', 'Ironclads', 1860, { naval: 0.15, ironclad: 1 }, 'Armoured steamships: built from iron and coal instead of timber.'),
+      t('steel_hulls', 'Steel Hulls', 1880, { naval: 0.12 }, 'Pre-dreadnought battleships.'),
+    ],
+    'Naval Doctrine': [
+      t('naval_gunnery', 'Naval Gunnery', 1842, { naval: 0.06 }, 'Broadsides at range.'),
+      t('merchant_marine', 'Merchant Marine', 1856, { exportIncome: 0.10 }, 'A trading fleet earns its keep.'),
+      t('fleet_in_being', 'Fleet in Being', 1870, { naval: 0.08 }, 'A fleet that need not sail to matter.'),
+      t('modern_naval_doctrine', 'Modern Naval Doctrine', 1890, { naval: 0.10, exportIncome: 0.05 }, 'Command of the sea.'),
     ],
   },
-
-  // COMMERCE — mali teknolojiler borc KAPASITESINI buyutur (faiz yuku
-  // load = borc/kapasite uzerinden kendiliginden duser: tek anahtar, iki
-  // gorunur sonuc). Haberlesme teknolojileri yuzyilin en gorunur iki
-  // fabrikasini (telefon, radyo) ilk kez arastirilabilir yapar.
-  commerce: {
-    'Financial Institutions': [
-      t('private_banking', 'Private Banking', 1836, { debtCapacityBonus: 0.10 }),
-      t('joint_stock', 'Joint-Stock Companies', 1850, { debtCapacityBonus: 0.12 }),
-      t('limited_liability', 'Limited Liability', 1862, { debtCapacityBonus: 0.12 }),
-      t('central_banking', 'Central Banking', 1875, { debtCapacityBonus: 0.16 }),
-      t('modern_credit', 'Modern Credit Markets', 1890, { debtCapacityBonus: 0.20 }),
-    ],
-    'Communications': [
-      t('commercial_telegraphy', 'Commercial Telegraphy', 1848, { constructionPower: 0.06 }),
-      t('transoceanic_cables', 'Transoceanic Cables', 1866, { constructionPower: 0.08 }),
-      t('telephone_exchange', 'Telephone Exchange', 1877, { unlock: ['TELEPHONE_FACTORY'] }),
-      t('wireless_telegraphy', 'Wireless Telegraphy', 1896, { unlock: ['RADIO_FACTORY'] }),
-    ],
-  },
-
-  // CULTURE — arastirmanin kendisini ve okuryazarlik TAVANINI buyutur.
-  // literacyReach sayesinde advanceLiteracy'nin 0.95 kirpmasi ilk kez
-  // ulasilabilir oluyor (mekanik tavan 0.8488 idi — olu kirpma canlandi).
-  culture: {
-    'Philosophy': [
-      t('scientific_method', 'The Scientific Method', 1836, { researchRate: 0.05 }),
-      t('positivism', 'Positivism', 1852, { researchRate: 0.06 }),
-      t('research_university', 'The Research University', 1868, { researchRate: 0.08, literacyReach: 0.02 }),
-      t('professional_societies', 'Professional Societies', 1884, { researchRate: 0.08 }),
-      t('modern_physics', 'Modern Physics', 1902, { researchRate: 0.10 }),
+  society: {
+    Philosophy: [
+      t('rationalism', 'Rationalism', 1836, { research: 0.05 }, 'Reason over tradition.'),
+      t('positivism', 'Positivism', 1848, { stability: 0.03, research: 0.05 }, 'The science of society.'),
+      t('social_reform', 'Social Reform', 1866, { consumerNeed: -0.05, stability: 0.03 }, 'Factory acts and poor relief.'),
+      t('mass_politics', 'Mass Politics', 1884, { power: 0.5 }, 'Parties, rallies and newspapers.'),
     ],
     'Public Instruction': [
-      t('normal_schools', 'Normal Schools', 1840, { literacyReach: 0.03 }),
-      t('compulsory_primary', 'Compulsory Primary Schooling', 1858, { literacyReach: 0.04 }),
-      t('public_libraries', 'Public Libraries', 1872, { literacyReach: 0.03, researchRate: 0.04 }),
-      t('mass_press', 'The Mass Press', 1886, { literacyReach: 0.04 }),
-      t('universal_schooling', 'Universal Schooling', 1900, { literacyReach: 0.05 }),
+      t('public_schools', 'Public Schools', 1840, { literacy: 0.05 }, 'Every village a schoolhouse.'),
+      t('university_reform', 'University Reform', 1854, { research: 0.10, developmentCap: 1 }, 'Research universities.'),
+      t('mass_press', 'Mass Press', 1868, { warSupport: 0.05, literacy: 0.05 }, 'Cheap newspapers shape opinion.'),
+      t('modern_bureaucracy', 'Modern Bureaucracy', 1882, { tax: 0.08, developmentCap: 1 }, 'Census, cadastre, civil service.'),
     ],
   },
 };
 
-/** Duz arama tablosu: id -> { tech, categoryId, folder, level }. */
 const INDEX = new Map();
 for (const [categoryId, folders] of Object.entries(TECHNOLOGIES)) {
   for (const [folder, list] of Object.entries(folders)) {
     list.forEach((tech, level) => INDEX.set(tech.id, { tech, categoryId, folder, level }));
   }
-}
-
-/** Bir fabrika tipini acan teknoloji (varsa). */
-const UNLOCKS = new Map();
-for (const { tech } of INDEX.values()) {
-  for (const typeId of tech.unlock ?? []) UNLOCKS.set(typeId, tech.id);
-}
-
-/** Bir birim tipini acan teknoloji (varsa) — ayni kalip, units.js tuketir. */
-const UNLOCKS_UNIT = new Map();
-for (const { tech } of INDEX.values()) {
-  for (const typeId of tech.unlockUnit ?? []) UNLOCKS_UNIT.set(typeId, tech.id);
 }
 
 export function techById(id) {
@@ -254,17 +128,12 @@ export function techById(id) {
 export function ensureResearch(nation) {
   const research = nation.research ??= { points: 0, current: null, done: [], queue: [] };
   research.done ??= [];
-  // Eski kayitta kuyruk yoktur: bos baslar, surum yukseltmesi gerekmez.
   if (!Array.isArray(research.queue)) research.queue = [];
   if (!Number.isFinite(research.points)) research.points = 0;
-  // Ulusal program 2026-09'da kalkti; eski kayittaki alanlari tasimak kaydi
-  // sisirir ve "program var mi" diye okuyan unutulmus bir kod yolunu yasatir.
-  if ('programme' in research) {
-    delete research.programme;
-    delete research.programmeSince;
-    delete research.programmeCooldown;
-    delete research.programmeHistory;
-  }
+  // Ağaçta olmayan eski kimlikler (önceki ağaç) düşer.
+  research.done = research.done.filter((id) => INDEX.has(id));
+  research.queue = research.queue.filter((id) => INDEX.has(id));
+  if (research.current && !INDEX.has(research.current)) research.current = null;
   return research;
 }
 
@@ -272,48 +141,21 @@ export function hasTech(nation, techId) {
   return !!nation.research?.done?.includes(techId);
 }
 
-/**
- * Fabrika tipi arastirmayla ERKEN acildi mi?
- * economy.js `factoryUnlocked` bunu takvimin YANINA koyar, yerine degil.
- */
-/** Turun takvim yili; teknoloji devri kapisi ve erken arastirma cezasi bunu okur. */
+/** Turun takvim yılı. */
 export function yearOfTurn(turn) {
   return 1836 + Math.floor((Math.max(1, turn ?? 1) - 1) * 7 / 365);
 }
 
-/**
- * Arastirmayla acilan tesis ancak teknolojisinin DEVRI gelince kurulur.
- * Erken arastirma (cezali) teknolojinin carpanlarini erken verir; tesisi
- * takvimden (1916) teknolojinin kendi yilina (1900) kadar one ceker, daha
- * one degil. Aksi halde %100 egitimle 1858'de Alloy Steel alan ulke o yil
- * Tank Factory kuruyordu (Open Beta 4, B-8). `turn` verilmezse eski
- * davranis (yalniz arastirma) korunur.
- */
-export function techUnlocksFactory(nation, typeId, turn = null) {
-  const techId = UNLOCKS.get(typeId);
-  if (!techId || !hasTech(nation, techId)) return false;
-  const year = INDEX.get(techId)?.tech.year;
-  return turn == null || year == null || yearOfTurn(turn) >= year;
-}
+// Teknoloji etkileri değiştirici kaynağıdır (modifiers.js toplar).
+registerModifierSource((nation) => {
+  const out = [];
+  for (const techId of nation?.research?.done ?? []) {
+    const entry = INDEX.get(techId);
+    if (entry) out.push({ label: entry.tech.name, effects: entry.tech.effects });
+  }
+  return out;
+});
 
-/**
- * Birim tipi arastirmayla ERKEN acildi mi? units.js `unitAvailable` bunu
- * takvimin YANINA koyar — fabrika kapisiyla ayni VEYA kalibi. Boylece modulun
- * dosya basindaki sozlesmesi ("economy.js/units.js") ilk kez iki yariyla da
- * dogru: tank fabrikasini erken kuran ulke tanki da erken egitebilir.
- */
-export function techUnlocksUnit(nation, typeId, turn = null) {
-  const techId = UNLOCKS_UNIT.get(typeId);
-  if (!techId || !hasTech(nation, techId)) return false;
-  // Fabrikayla ayni devir kurali (bkz. techUnlocksFactory).
-  const year = INDEX.get(techId)?.tech.year;
-  return turn == null || year == null || yearOfTurn(turn) >= year;
-}
-
-/**
- * Bir teknolojinin arastirilabilir olmasi: klasorde sirasi gelmis olmali.
- * Vic2 kurali — ucuncuyu almadan dorduncu yok.
- */
 export function canResearch(nation, techId) {
   const entry = INDEX.get(techId);
   if (!entry || hasTech(nation, techId)) return false;
@@ -322,7 +164,6 @@ export function canResearch(nation, techId) {
   return hasTech(nation, previous.id);
 }
 
-/** O an arastirilabilecek butun teknolojiler. */
 export function availableTechs(nation) {
   const out = [];
   for (const [id, entry] of INDEX) {
@@ -332,144 +173,65 @@ export function availableTechs(nation) {
 }
 
 /**
- * Maliyet. Iki carpan var:
- *   - kademe: ileri teknoloji pahalidir (Vic2'de de oyle),
- *   - ERKEN ARASTIRMA CEZASI: aktivasyon yilindan once arastirmak pahaliya
- *     patlar. Ceza olmasaydi 1836'da tank arastirilirdi; ceza SONSUZ olsaydi
- *     takvim yine tek belirleyici olurdu ve oyuncunun karari yok olurdu.
- *     Yilda %12 birikir, tavan 4 kat.
+ * Liste fiyatı: kademe ileri teknolojiyi pahalılaştırır, aktivasyon yılından
+ * önce araştırmak yılda %6 (tavan 2.5×) daha pahalıdır.
  */
-/**
- * Taban teknoloji maliyeti. 260 -> 120.
- *
- * ARASTIRMA LAGIMININ ASIL SEBEBI BUYDU. Olculdu: egitim %10'a karsi %90,
- * ayni tohum, 1500 hafta (29 oyun yili) — okuryazarlik 0.235'e karsi 0.637,
- * arastirma 2.1'e karsi 4.1 puan/hafta, yani TAM IKI KATI. Tamamlanan
- * teknoloji: 7'ye karsi 8. Fazladan uretilen ~600 puan hicbir seye
- * donusmeden bekliyordu, cunku bir sonraki teknoloji ~500-800 puana mal
- * oluyor ve maliyet kademeyle (1 + level*0.55) arastirmadan hizli buyuyor.
- *
- * Agac degismedi: 65 teknolojinin hepsi, on kosullari, aktivasyon yillari ve
- * erken arastirma cezasi aynen duruyor. Yalnizca puanin ALIM GUCU degisti,
- * boylece "daha fazla arastirma" gercekten "daha erken teknoloji" demek
- * oluyor. 65 teknoloji / 100 yil temposu icin dogru buyukluk de budur.
- */
-export const TECH_BASE_COST = 120;
+export const TECH_BASE_COST = 110;
 export function techCost(techId, year) {
   const entry = INDEX.get(techId);
   if (!entry) return Infinity;
-  const levelScale = 1 + entry.level * 0.55;
+  const levelScale = 1 + entry.level * 0.6;
   const early = Math.max(0, (entry.tech.year ?? 1836) - year);
-  // ERKEN ARASTIRMA CEZASI YUMUSATILDI (0.12/yil, tavan 4x -> 0.06/yil,
-  // tavan 2.5x). Fazla arastirmanin donusebilecegi TEK yer takvimin onune
-  // gecmektir; 4 kat ceza bu kapiyi fiilen kapatiyor ve artan puani
-  // biriktiriyordu. Ceza SILINMEDI — silinseydi 1836'da tank arastirilirdi.
   const earlyPenalty = clamp(1 + early * 0.06, 1, 2.5);
   return Math.round(TECH_BASE_COST * levelScale * earlyPenalty);
 }
 
 /**
- * Haftalik arastirma puani. Vic2 formulunun bizdeki karsiligi:
- *
- *   RP = (okuryazarlik + egitimli orta sinif + sabit taban) x (1 + teknoloji)
- *
- * ("ulusal rutbe" terimi kaldirildi — bkz. asagidaki not; formul metni
- * uzun sure silinmis bir terimi anlatmaya devam etmisti.)
- *
- * Okuryazarlik ARTIK BIR STOK (bkz. economy.js `advanceLiteracy`); bu bag
- * olmadan arastirma sabit bir sayiya baglanirdi ve egitim yine olu kalirdi.
+ * Haftalık araştırma puanı: taban 1 + okuryazarlık × 6 + üniversite kademesi
+ * × 0.3; teknoloji, danışman ve parti çarpar.
  */
-export function researchPointsOf(nation) {
+export function researchPointsOf(nation, world = null) {
   const economy = nation.economy;
   if (!economy) return 0;
   const literacy = clamp(economy.literacy ?? 0, 0, 1);
-  const population = Math.max(1, economy.population ?? 1);
-  // Egitimli orta sinif: Vic2'nin ruhban + katip kalemi. Katip payi ancak
-  // okuryazarlik yeterliyse sayilir (Vic2'de esik %50).
-  const middleShare = clamp((economy.classes?.middle?.population ?? 0) / population, 0, 1);
-  const clerks = literacy >= 0.5 ? middleShare * 2 : 0;
-  // Eski "ulusal rutbe" bonusu kaldirildi: `nation.rank` hicbir yerde
-  // atanmiyordu, carpan her zaman 1'di (olu buyuk-guc terimi). Sabit 1 taban
-  // olarak korunur ki puan uretimi degismesin.
-  const base = literacy * 4 + middleShare * 1.5 + clerks + 1;
-  // BASIN OZGURLUGU AYNI CARPANDA (anayasa yasasi). Sansur okuryazari yok
-  // etmez, fikri yavaslatir: ayni nufus, ayni okul, daha az arastirma. Eski
-  // basin merdiveni yalnizca orta sinif moraline giriyordu ve olculdu
-  // (audit:mechanics): butun menzil gurultunun 0.44 kati.
-  const press = lawModifiers(nation).researchRate ?? 0;
-  // TOPLUM: ilerici halk fikre aciktir, geleneksel halk yavaslatir (society.js).
-  const society = societyModifiers(nation).research;
-  return base * (1 + (economy.techMods?.researchRate ?? 0) + press + society);
-}
-
-/**
- * Arastirilmis teknolojilerin toplam degistiricileri. Haftada bir kez
- * hesaplanip `economy.techMods`a yazilir; sicak yol duz alan okur
- * (politics.lawModifiers ile ayni kalip — kapanis maliyeti olculmustu).
- */
-export function refreshTechModifiers(nation) {
-  const mods = {};
-  for (const key of Object.keys(TECH_MODS)) mods[key] = 0;
-  for (const techId of nation.research?.done ?? []) {
-    const entry = INDEX.get(techId);
-    if (!entry) continue;
-    for (const key of Object.keys(TECH_MODS)) {
-      if (Number.isFinite(entry.tech[key])) mods[key] += entry.tech[key];
+  let universities = 0;
+  if (world) {
+    for (const province of world.provinces ?? []) {
+      if (province.owner === nation.id) universities += province.econ?.buildings?.university ?? 0;
     }
+    economy.universities = universities;
+  } else {
+    universities = economy.universities ?? 0;
   }
-  if (nation.economy) nation.economy.techMods = mods;
-  return mods;
+  const base = 1 + literacy * 6 + universities * 0.3;
+  return base * Math.max(0.2, 1 + mod(nation, 'research'));
 }
-
-// `techModifiers(nation)` KALDIRILDI: sicak yollar (provinces.js, economy.js,
-// construction.js) katman kurali geregi `economy.techMods` alanini dogrudan
-// okuyor; sarmalayicinin src/ ve scripts/ altinda tek cagirani kalmamisti.
 
 export function startResearch(nation, techId) {
   if (!canResearch(nation, techId)) return false;
   const research = ensureResearch(nation);
   research.current = techId;
-  // Kuyruktan baslatilan kalem kuyrukta ikinci kez beklemez.
   if (research.queue.includes(techId)) research.queue = research.queue.filter((id) => id !== techId);
   return true;
 }
 
-/**
- * Bir haftalik arastirma. Puan birikir; secili teknolojinin maliyeti dolunca
- * tamamlanir ve artan puan bir sonrakine devreder (puan bosa gitmez).
- *
- * Maliyet artik ETKIN maliyettir (yayilim indirimi dahil); `world`
- * verilmezse liste fiyatina duser — eski cagri yerleri ve denetimler kirilmaz.
- */
+/** Bir haftalık araştırma; tamamlanan teknolojinin kimliğini döndürür. */
 export function advanceResearch(nation, year, world = null) {
   const research = ensureResearch(nation);
-  research.points += researchPointsOf(nation);
+  research.points += researchPointsOf(nation, world);
   const techId = research.current;
   if (!techId) return null;
-  const cost = world
-    ? effectiveTechCost(world, nation, techId, year)
-    : techCost(techId, year);
+  const cost = world ? effectiveTechCost(world, nation, techId, year) : techCost(techId, year);
   if (research.points < cost) return null;
   research.points -= cost;
   research.done.push(techId);
   research.current = null;
-  refreshTechModifiers(nation);
+  refreshModifiers(nation, world?.turn ?? 0);
   return techId;
 }
 
-// ===========================================================================
-// ARASTIRMA KUYRUGU — "sirada ne" sorusunun oyuncu cevabi.
-//
-// Ulusal program (sekiz yillik yon + egitim tabani taahhudu) 2026-09'da
-// kalkti: kart secmek, vade saymak ve fesih bedeli oyuncuya teknoloji
-// agacindan baska bir sey anlatmiyordu. Yon artik dogrudan secim ve kuyruktur.
-// Kuyruk bosalinca `pickNextTech` doldurur — kor beta B-018'in (dokuz kacan
-// secim, 5671 bos RP) yapisal cozumu aynen yasar.
-// ===========================================================================
-
 export const RESEARCH_QUEUE_LIMIT = 10;
 
-/** Teknolojiye giden yol: klasorunde henuz alinmamis kademeler, sirayla. */
 export function researchPath(nation, techId) {
   const entry = INDEX.get(techId);
   if (!entry || hasTech(nation, techId)) return [];
@@ -481,12 +243,6 @@ export function researchPath(nation, techId) {
   return path;
 }
 
-/**
- * Kuyruga ekler. Kilitli teknoloji istenirse yolundaki eksik kademeler de
- * sirayla girer ("oraya kadar arastir"): klasor ici dogrusal oldugu icin tek
- * tik yeterli, alti ayri tik degil. Yurutulen ya da kuyrukta olan atlanir.
- * @returns {number} eklenen kalem sayisi
- */
 export function queueResearch(nation, techId) {
   const research = ensureResearch(nation);
   let added = 0;
@@ -499,10 +255,6 @@ export function queueResearch(nation, techId) {
   return added;
 }
 
-/**
- * Kuyruktan cikarir. Ayni klasorde ondan SONRA gelenler de duser: yolu
- * kesilen kalem arastirilamaz, kuyrukta kalmasi sessiz bir olu kalem olurdu.
- */
 export function dequeueResearch(nation, techId) {
   const research = ensureResearch(nation);
   const entry = INDEX.get(techId);
@@ -516,11 +268,6 @@ export function dequeueResearch(nation, techId) {
   return research.queue.length !== before;
 }
 
-/**
- * Tik: hemen buna calis. Kilitliyse yolunun ilk eksik kademesi baslar, geri
- * kalani kuyrugun BASINA girer — istenen o teknolojidir, eski kuyruk arkada
- * bekler. Puan bankasi teknolojiye bagli olmadigi icin degistirmek bedava.
- */
 export function researchNow(nation, techId) {
   const research = ensureResearch(nation);
   const path = researchPath(nation, techId);
@@ -532,7 +279,6 @@ export function researchNow(nation, techId) {
   return true;
 }
 
-/** Kuyrugun ilk arastirilabilir kalemi; alinmis ya da yolu kopmus olanlar duser. */
 export function nextQueuedTech(nation) {
   const research = ensureResearch(nation);
   while (research.queue.length) {
@@ -542,21 +288,10 @@ export function nextQueuedTech(nation) {
   return null;
 }
 
-// ===========================================================================
-// YAYILIM — geri kalan yakalayabilir, lider one gecmis kalir.
-//
-// Temas ettigin komsularin cogu bir teknolojiye sahipse o teknoloji sana
-// UCUZLAR (azami %35). Sinir tanimayan buyuk sistem yok: yalniz world.contacts
-// (bitisik hex sayimi, diplomacy.computeContacts) ve `research.done` okunur.
-// ===========================================================================
+// ------------------------------------------------------------- YAYILIM ---
 
 export const DIFFUSION_MAX = 0.35;
 
-/**
- * world.techHolders'i kurar: techId -> Set<nationId>. Haftada bir cagrilir
- * (economy.js, arastirma dongusunden once). KAYDA GIRMEZ — `research.done`
- * ve temas matrisi zaten deterministik oldugundan her tikta yeniden kurulur.
- */
 export function refreshDiffusion(world) {
   const holders = new Map();
   for (const nation of world.nations) {
@@ -587,76 +322,52 @@ export function diffusionDiscount(world, nation, techId) {
   return DIFFUSION_MAX * (holding / neighbours);
 }
 
-/**
- * ETKIN maliyet — herkesin (UI dahil) alinti yapmasi gereken TEK fiyat.
- * liste fiyati (techCost) x (1 - yayilim indirimi).
- */
 export function effectiveTechCost(world, nation, techId, year) {
-  const base = techCost(techId, year)
-    * (1 - diffusionDiscount(world, nation, techId));
+  const base = techCost(techId, year) * (1 - diffusionDiscount(world, nation, techId));
   return Math.max(1, Math.round(base));
 }
 
-// ===========================================================================
-// AKILLI SECICI — "ulkenin su an en cok neye ihtiyaci var, kac puana?"
-//
-// Eski secici ekolu KESIN one koyup en ucuzu aliyordu: savastaki ulke okul
-// arastiriyor, borca batmis ulke tren yolu, sanayisi olmayan ulke fabrika
-// verimi aliyordu. Simdi her teknoloji ulkenin durumuna gore TARTILIR ve
-// puan basina degerle siralanir. Agirliklari economy.researchPriorities
-// kurar (bu dosya economy.js'i import edemez); burada yalniz toplanir.
-// Oyuncunun Research AUTO'su ve YZ AYNI fonksiyonu kullanir (delegation.js).
-// ===========================================================================
+// ------------------------------------------------------- AKILLI SEÇİCİ ---
 
 /**
- * Degistiricinin toplanabilir birimi. Yuzde anahtarlari oldugu gibi okunur
- * (0.08 = 0.08); duz slot (egitim kadrosu) slot basina 0.05 sayilir. Tedarik
- * tuketimi eksi yazilir (azalir) — degeri mutlaktir.
+ * Ulusun durumundan araştırma ağırlıkları: savaşta ordu, tüketim malı
+ * eksikse sanayi, gıda açığında tarım, kıyı ve ablukada donanma.
  */
-const MOD_UNIT = { trainingCapacity: 0.05 };
-/** Agirlik verilmemis fabrika/birim kilidinin degeri: orta boy bir yuzde. */
-const FACTORY_UNLOCK_VALUE = 0.08;
-const UNIT_UNLOCK_VALUE = 0.05;
-/**
- * EKOL hala yasar ama carpan olarak: 1945'te ayrisma (audit:research) ekolun
- * isiydi. Kesin oncelik olsaydi durumsal agirliklarin hicbir hukmu kalmazdi.
- */
+export function researchPriorities(nation) {
+  const economy = nation.economy ?? {};
+  const weights = {};
+  const war = (economy.warFronts ?? 0) > 0;
+  weights.attack = war ? 2.5 : 1;
+  weights.defense = war ? 2.5 : 1;
+  weights.ic = (economy.consumer?.ratio ?? 1) < 1 ? 2 : 1.4;
+  weights.food = (economy.resources?.FOOD?.ratio ?? 1) < 1 ? 2.5 : 0.8;
+  weights.naval = economy.coastal ? ((economy.blockade ?? 0) > 0 ? 2.5 : 1) : 0.2;
+  weights.ironclad = economy.coastal ? 0.1 : 0;
+  weights.research = 1.3;
+  weights.developmentCap = 0.12;
+  weights.constructionSlots = 0.08;
+  weights.power = 0.12;
+  return { weights };
+}
+
 export const SCHOOL_BONUS = 1.4;
-/** Hicbir agirliga dokunmayan teknoloji de sonunda alinir; sifir bolmesi yok. */
 const VALUE_FLOOR = 0.01;
 
-/**
- * Teknolojinin bu ulkeye DEGERI ve degeri en cok tasiyan kalem (`lead`):
- * degistirici anahtari, `unlock:<FABRIKA>` ya da `unit:<BIRIM>`.
- * @param {object} tech TECHNOLOGIES kaydi
- * @param {{weights?:object, factoryUnlock?:(id:string)=>number, unitUnlock?:number}|null} priorities
- */
+/** Teknolojinin bu ulusa değeri ve değeri taşıyan kalem (`lead`). */
 export function techValue(tech, priorities = null) {
   const weights = priorities?.weights ?? {};
   let value = 0;
   let lead = null;
   let leadValue = 0;
-  for (const key of Object.keys(TECH_MODS)) {
-    const amount = tech[key];
+  for (const [key, amount] of Object.entries(tech.effects ?? {})) {
     if (!Number.isFinite(amount) || amount === 0) continue;
-    const part = Math.abs(amount) * (MOD_UNIT[key] ?? 1) * (weights[key] ?? 1);
+    const part = Math.abs(amount) * (weights[key] ?? 1);
     value += part;
     if (part > leadValue) { leadValue = part; lead = key; }
-  }
-  for (const typeId of tech.unlock ?? []) {
-    const part = priorities?.factoryUnlock?.(typeId) ?? FACTORY_UNLOCK_VALUE;
-    value += part;
-    if (part > leadValue) { leadValue = part; lead = `unlock:${typeId}`; }
-  }
-  for (const typeId of tech.unlockUnit ?? []) {
-    const part = priorities?.unitUnlock ?? UNIT_UNLOCK_VALUE;
-    value += part;
-    if (part > leadValue) { leadValue = part; lead = `unit:${typeId}`; }
   }
   return { value, lead };
 }
 
-/** Ulkenin ekolu: tohumdan gelen kalici egilim, kayda research ile girer. */
 function schoolOf(nation, world) {
   const research = ensureResearch(nation);
   if (!research.school && world?.seed != null) {
@@ -666,17 +377,6 @@ function schoolOf(nation, world) {
   return research.school ?? null;
 }
 
-/**
- * Siradaki teknoloji — oyuncu ve YZ icin AYNI yol: deger x ekol / etkin
- * maliyet; esitlikte maliyet, aktivasyon yili ve id (deterministik).
- * Oyuncunun kuyrugu her zaman once gelir (bkz. nextQueuedTech); bu yalniz
- * bos kuyrugu doldurur.
- *
- * Sabit bir "order" dizisi BILEREK verilmedi: farkli komsuluklar farkli
- * yayilim indirimi gorur ve ayni ekoldeki iki ulke bile farkli rota izler.
- *
- * @returns {{id:string, lead:string|null}|null} `lead`: secimi tasiyan kalem
- */
 export function pickNextTech(nation, year, world, priorities = null) {
   const candidates = availableTechs(nation);
   if (!candidates.length) return null;
@@ -697,4 +397,34 @@ export function pickNextTech(nation, year, world, priorities = null) {
     }
   }
   return best ? { id: best.id, lead: best.lead } : null;
+}
+
+/**
+ * Haftalık araştırma döngüsü (turn.js ekonomi fazından önce): yayılım
+ * tablosu, puan, tamamlanan teknoloji, boş kuyruğa otomatik seçim. Oyuncu
+ * kuyruğu her zaman önce gelir; kuyruk boşsa AUTO ve YZ aynı seçiciyi kullanır.
+ */
+export function runResearch(game) {
+  const world = game.world;
+  const turn = game.turns?.turn ?? world.turn ?? 0;
+  const year = yearOfTurn(turn);
+  refreshDiffusion(world);
+  for (const nation of world.nations) {
+    if (!nation.alive || !nation.economy) continue;
+    const research = ensureResearch(nation);
+    const done = advanceResearch(nation, year, world);
+    if (done && nation.id === game.turns?.playerNation) {
+      game.turns.addLog(`Research complete: ${INDEX.get(done).tech.name}.`, { kind: 'RESEARCH' });
+    }
+    if (!research.current) {
+      const queued = nextQueuedTech(nation);
+      if (queued) startResearch(nation, queued);
+      else {
+        const isPlayer = nation.id === game.turns?.playerNation;
+        const auto = !isPlayer || nation.delegation?.research !== false;
+        const pick = auto ? pickNextTech(nation, year, world, researchPriorities(nation)) : null;
+        if (pick) startResearch(nation, pick.id);
+      }
+    }
+  }
 }

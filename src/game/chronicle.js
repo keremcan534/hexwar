@@ -115,12 +115,12 @@ export function captureOpening(world, nation, governmentLabel, rank = null) {
   nation.opening = {
     turn: world?.turn ?? 1,
     population: Math.round(nation.economy?.population ?? 0),
-    gdp: Math.round(nation.economy?.gdp ?? 0),
+    gdp: Math.round(nation.economy?.ic?.total ?? 0),
     literacy: Number((nation.economy?.literacy ?? 0).toFixed(4)),
     tiles: nation.tiles ?? 0,
     provinces: nation.provinces ?? 0,
     government: governmentLabel ?? '',
-    factories: nation.economy?.factories?.length ?? 0,
+    factories: Math.round(nation.economy?.ic?.raw ?? 0),
     // Kapanistaki "teknolojik konum" satirinin baslangic ucu.
     research: nation.research?.done?.length ?? 0,
     // Kapanistaki "Standing" satirinin baslangic ucu. Kesit tutulmadigi icin

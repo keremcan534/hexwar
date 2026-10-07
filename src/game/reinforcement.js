@@ -1,47 +1,33 @@
-// Muharebe kayiplarini ekonomiyle baglar. Moral dinlenerek geri gelir; asker
-// gucu ise province nufusu ve Small Arms stogu olmadan yukselemez.
+// TAKVİYE — muharebe kaybını ekonomiye bağlar. Düzen dinlenerek geri gelir;
+// asker gücü ise province insan gücü ve TEÇHİZAT stoğu olmadan dolmaz:
+// kaybolan her güç puanı, alayın kuruluş teçhizatından payını yer
+// (UNIT_EQUIPMENT / maxStrength). Üretim hattı durursa ordu erir.
 
-import {
-  MILITARY_EQUIPMENT, MILITARY_EQUIPMENT_IDS, MILITARY_FIELD, ensureMilitaryEconomy,
-  equipmentStock, setEquipmentStock, workshopArmsOutput,
-} from './economy.js';
+import { EQUIPMENT, EQUIPMENT_IDS, UNIT_EQUIPMENT } from './econ/defs.js';
+import { equipmentStock } from './econ/industry.js';
+import { mod } from './modifiers.js';
 import { generalOfArmy, generalRecoveryBonus } from './command.js';
-import { nationManpower, provinceManpower } from './recruitment.js';
+import { nationManpower, provinceManpower, trainingQueue } from './recruitment.js';
 import { UNIT_TYPES, refreshArmy, resolveTypeId } from './units.js';
 import { claimSoldiers, occupiedShareOf } from './provinces.js';
 
 export const BASE_REINFORCEMENT_RATE = 24;
 
-/**
- * Haftalik takviye hizi (disa acik: tech-effect denetimi saf yoklar).
- * Tedarik + fon + komutan + teknoloji (Army Doctrine `reinforcementRate`,
- * ornegin askeri tip ve sahra telgrafi — yarali geri doner, emir erken ulasir).
- */
+/** Haftalık takviye hızı (güç puanı): komutan, teknoloji, iflas. */
 export function reinforcementRateOf(nation, general = null) {
-  const supply = Math.max(0.4, nation.economy?.military?.supplyIndex ?? 1);
-  const funding = Math.max(0.25, (nation.economy?.armyFunding ?? 100) / 100) * supply;
+  const bankrupt = (nation.bankruptUntil ?? 0) > (nation.economy?.ledger?.lastUpdated ?? 0);
   return BASE_REINFORCEMENT_RATE
-    * (0.25 + funding * 0.75)
     * (1 + generalRecoveryBonus(general))
-    * (1 + (nation.economy?.techMods?.reinforcementRate ?? 0));
+    * Math.max(0.2, 1 + mod(nation, 'reinforce'))
+    * (bankrupt ? 0.5 : 1);
 }
-export const REINFORCEMENT_EQUIPMENT = {
-  INFANTRY: { arms: 0.002 },
-  CAVALRY: { arms: 0.0025 },
-  ARTILLERY: { arms: 0.001, artillery: 0.003 },
-  // Gemi kurulusla ayni malzemeyle onarilir (bkz. recruitment.js WARSHIP).
-  WARSHIP: { arms: 0.005, clippers: 0.003 },
-  ARMOR: { arms: 0.001, tanks: 0.004 },
-  AIRCRAFT: { arms: 0.0005, airplane: 0.004 },
-};
-// Sicak donguler tabloyu [id, miktar] cifti dizisi olarak okur: alay basina
-// Object.entries cagirmak haftada yuz binlerce gecici dizi uretiyordu.
-const REINFORCEMENT_EQUIPMENT_ENTRIES = Object.fromEntries(
-  Object.keys(REINFORCEMENT_EQUIPMENT).map(
-    (typeId) => [typeId, Object.entries(REINFORCEMENT_EQUIPMENT[typeId])],
-  ),
-);
-const DEFAULT_EQUIPMENT_ENTRIES = [['arms', 0.002]];
+
+/** Güç puanı başına teçhizat: kuruluş teçhizatı / alayın tam gücü. */
+function perStrength(regiment) {
+  const recipe = UNIT_EQUIPMENT[resolveTypeId(regiment.typeId)] ?? {};
+  const max = Math.max(1, regiment.maxStrength ?? 1000);
+  return Object.entries(recipe).map(([id, amount]) => [id, amount / max]);
+}
 
 function missingStrength(regiment) {
   return Math.max(0, (regiment.maxStrength ?? 0) - (regiment.strength ?? 0));
@@ -66,10 +52,8 @@ function appendDraw(regiment, tile, men) {
 }
 
 /**
- * Once alayin yurdu ve komsu kumeler, sonra ulkenin kalan kumeleri askere
- * verir. Kumeler MERKEZ kareleriyle temsil edilir: ayni havuz iki kez
- * listelenmez ve tarama kare sayisi degil kume sayisi kadardir (32k haritada
- * alay basina tam dunya taramasi kare butcesini yiyordu).
+ * Önce alayın yurdu ve komşu kümeler, sonra ülkenin kalan kümeleri askere
+ * verir. Kümeler MERKEZ kareleriyle temsil edilir.
  */
 function manpowerSources(world, nationId, regiment) {
   const preferred = [];
@@ -86,7 +70,6 @@ function manpowerSources(world, nationId, regiment) {
   if (homeCluster) {
     for (const neighborId of homeCluster.neighbors) addCluster(world.provinces[neighborId]);
   }
-
   const rest = [];
   for (const province of world.provinces ?? []) {
     if (province.owner === nationId && province.econ && !seen.has(province.id)
@@ -111,85 +94,65 @@ function drawManpower(world, nationId, regiment, requested) {
   return drawn;
 }
 
+/** Ordunun eksik gücünün insan ve teçhizat karşılığı. */
 export function reinforcementNeed(world, nation) {
   let strength = 0;
   let manpower = 0;
   const equipment = {};
-  for (let i = 0; i < MILITARY_EQUIPMENT_IDS.length; i++) equipment[MILITARY_EQUIPMENT_IDS[i]] = 0;
+  for (const id of EQUIPMENT_IDS) equipment[id] = 0;
   for (const unit of world.units) {
     if (unit.nationId !== nation.id || !unit.regiments?.length) continue;
     for (const regiment of unit.regiments) {
       const missing = missingStrength(regiment);
+      if (missing <= 0) continue;
       strength += missing;
       manpower += missing * menPerStrength(regiment);
-      const cost = REINFORCEMENT_EQUIPMENT_ENTRIES[resolveTypeId(regiment.typeId)]
-        ?? DEFAULT_EQUIPMENT_ENTRIES;
-      for (let c = 0; c < cost.length; c++) equipment[cost[c][0]] += missing * cost[c][1];
+      for (const [id, per] of perStrength(regiment)) equipment[id] += missing * per;
     }
   }
   return {
     strength: Math.round(strength),
     manpower: Math.ceil(manpower),
     equipment,
-    arms: equipment.arms,
-    artillery: equipment.artillery,
     availableManpower: nationManpower(world, nation.id),
   };
 }
 
-/** HOI-style equipment ledger. New equipment families can be added as real stocks appear. */
+/**
+ * Teçhizat defteri (ordu ekranı): stok, ihtiyaç (takviye + eğitim kuyruğunun
+ * eksiği), haftalık üretim ve eksik kapanana kadar kalan hafta.
+ */
 export function equipmentLogistics(world, nation) {
-  const military = ensureMilitaryEconomy(nation);
   const need = reinforcementNeed(world, nation);
-  return MILITARY_EQUIPMENT_IDS.map((id) => {
-    const type = MILITARY_EQUIPMENT[id];
-    const samples = military[`${id}AverageSamples`] ?? 0;
-    const workshop = id === 'arms' ? workshopArmsOutput(nation) : 0;
-    const producedWeekly = samples > 0
-      ? military[`${id}ProducedAverage`]
-      : Math.max(military[`${id}Produced`], workshop);
-    const importedWeekly = samples > 0
-      ? military[`${id}ImportedAverage`]
-      : military[`${id}Imported`];
-    const supplyWeekly = samples > 0
-      ? military[`${id}SupplyAverage`]
-      : producedWeekly + importedWeekly;
+  const queued = {};
+  for (const id of EQUIPMENT_IDS) queued[id] = 0;
+  for (const item of trainingQueue(nation)) {
+    for (const [id, amount] of Object.entries(item.missing ?? {})) queued[id] = (queued[id] ?? 0) + amount;
+  }
+  return EQUIPMENT_IDS.map((id) => {
     const stock = equipmentStock(nation, id);
-    const required = Math.max(0, need.equipment[id] ?? 0);
-    const balance = stock - required;
-    const deficit = Math.max(0, -balance);
-    const supplyPerDay = Math.max(0, supplyWeekly) / 7;
+    const required = Math.max(0, (need.equipment[id] ?? 0) + (queued[id] ?? 0));
+    const produced = nation.economy?.lines?.[id]?.output ?? 0;
+    const deficit = Math.max(0, required - stock);
     return {
       id,
-      name: type.name,
-      icon: type.icon,
+      name: EQUIPMENT[id].name,
+      icon: EQUIPMENT[id].glyph,
       stock,
       required,
-      balance,
-      producedPerDay: Math.max(0, producedWeekly) / 7,
-      importedPerDay: Math.max(0, importedWeekly) / 7,
-      supplyPerDay,
-      etaDays: deficit > 0 && supplyPerDay > 0
-        ? Math.ceil(deficit / supplyPerDay)
-        : null,
+      balance: stock - required,
+      producedPerWeek: produced,
+      etaWeeks: deficit > 0 && produced > 0 ? Math.ceil(deficit / produced) : null,
     };
   });
 }
 
-/** Bir ulusun uygun tumenlerine haftalik insan ve techizat dagitir. */
+/** Bir ulusun uygun tümenlerine haftalık insan ve teçhizat dağıtır. */
 function reinforceNation(game, nation) {
   const world = game.world;
-  const military = ensureMilitaryEconomy(nation);
-  const need = reinforcementNeed(world, nation);
-  military.reinforcementDemand = need.strength;
-  military.manpowerDemand = need.manpower;
-  military.reinforced = 0;
-  military.manpowerUsed = 0;
-  for (const id of MILITARY_EQUIPMENT_IDS) {
-    military[MILITARY_FIELD[id].demand] = need.equipment[id] ?? 0;
-    military[MILITARY_FIELD[id].used] = 0;
-  }
-
+  const stock = nation.economy?.stock;
+  if (!stock) return;
+  const log = { demand: 0, reinforced: 0, manpowerUsed: 0, equipmentUsed: {} };
   const units = world.units.filter((unit) => (
     unit.nationId === nation.id && unit.regiments?.length
     && !unit.battleId && (unit.retreatUntil ?? 0) <= game.turns.turn
@@ -199,53 +162,41 @@ function reinforceNation(game, nation) {
     ) / Math.max(1, unit.maxHp);
     return deficit(b) - deficit(a) || a.id - b.id;
   });
-
-  // Takviye hızını TEDARİK belirler: adam maaşla değil, mühimmat ve ikmalle
-  // cepheye taşınır. Uzayan kıtlık da yavaşça bastırır (supplyIndex, EMA) —
-  // tek kötü hafta değil, süregiden açlık hissedilsin.
   for (const unit of units) {
     const general = generalOfArmy(nation, unit);
     const rate = reinforcementRateOf(nation, general);
     for (const regiment of unit.regiments) {
       const missing = missingStrength(regiment);
       if (missing <= 0) continue;
-      const typeId = resolveTypeId(regiment.typeId);
-      const equipmentCost = REINFORCEMENT_EQUIPMENT_ENTRIES[typeId]
-        ?? DEFAULT_EQUIPMENT_ENTRIES;
+      log.demand += missing;
+      const recipe = perStrength(regiment);
       let equipmentLimit = Infinity;
-      for (let c = 0; c < equipmentCost.length; c++) {
-        const limit = equipmentStock(nation, equipmentCost[c][0])
-          / Math.max(0.0001, equipmentCost[c][1]);
+      for (const [id, per] of recipe) {
+        const limit = (stock[id] ?? 0) / Math.max(1e-6, per);
         if (limit < equipmentLimit) equipmentLimit = limit;
       }
-      const wantedStrength = Math.floor(Math.min(
-        missing,
-        rate,
-        equipmentLimit,
-      ));
-      if (wantedStrength <= 0) continue;
-
+      const wanted = Math.floor(Math.min(missing, rate, equipmentLimit));
+      if (wanted <= 0) continue;
       const ratio = menPerStrength(regiment);
-      const men = drawManpower(world, nation.id, regiment, wantedStrength * ratio);
-      const gained = Math.min(wantedStrength, men / Math.max(0.0001, ratio));
+      const men = drawManpower(world, nation.id, regiment, wanted * ratio);
+      const gained = Math.min(wanted, men / Math.max(1e-6, ratio));
       if (gained <= 0) continue;
       regiment.strength = Math.min(regiment.maxStrength, regiment.strength + gained);
-      for (let c = 0; c < equipmentCost.length; c++) {
-        const id = equipmentCost[c][0];
-        const used = gained * equipmentCost[c][1];
-        setEquipmentStock(nation, id, equipmentStock(nation, id) - used);
-        military[MILITARY_FIELD[id].used] += used;
+      for (const [id, per] of recipe) {
+        const used = gained * per;
+        stock[id] = Math.max(0, stock[id] - used);
+        log.equipmentUsed[id] = (log.equipmentUsed[id] ?? 0) + used;
       }
-      military.reinforced += gained;
-      military.manpowerUsed += men;
+      log.reinforced += gained;
+      log.manpowerUsed += men;
     }
     refreshArmy(unit);
   }
+  nation.economy.reinforcement = log;
 }
 
 export function runReinforcements(game) {
   for (const nation of game.world.nations) {
     if (nation.alive) reinforceNation(game, nation);
   }
-  game.emit('economy', game.world.market);
 }

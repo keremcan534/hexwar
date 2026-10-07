@@ -5,6 +5,7 @@
 import { DIRS } from '../core/hex.js';
 import { armyPower } from './units.js';
 import { captureConstructionAt } from './construction.js';
+import { noteCasualties } from './politics.js';
 import { controllerOf } from './control.js';
 import { TIER, announce, remember } from './chronicle.js';
 
@@ -133,6 +134,9 @@ export function recordWarCasualties(world, a, b, aLoss, bLoss) {
   const losses = rec.losses ?? (rec.losses = {});
   losses[a] = (losses[a] ?? 0) + Math.max(0, aLoss);
   losses[b] = (losses[b] ?? 0) + Math.max(0, bLoss);
+  // Kayıp savaş desteğini aşındırır (politics.warSupportBreakdown).
+  noteCasualties(world.nations[a], aLoss);
+  noteCasualties(world.nations[b], bLoss);
 }
 
 /** Savaşın kayıp defteri; savaş yoksa boş. */
@@ -197,6 +201,31 @@ export const MAX_ATTACKERS_ON_TARGET = 3;
 export const MAX_PLAYER_INVOLUNTARY_FRONTS = 2;
 
 /**
+ * SAVAŞ GEREKÇESİ — Siyasi Güç bedeli. Kendi halkımızın yaşadığı ya da
+ * talep ettiğimiz (gündem "Soydaşları getir") province'i tutan ülkeye
+ * savaş ucuzdur; sebepsiz saldırı pahalıdır. Müttefik çağrısı, koalisyon ve
+ * isyan bedelsizdir (seçim değil yükümlülük).
+ */
+export const WAR_COST = { justified: 20, unjustified: 60 };
+
+export function hasClaimOn(world, a, b) {
+  const nation = world.nations[a];
+  if (!nation) return false;
+  const claims = new Set(nation.claims ?? []);
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== b) continue;
+    if (claims.has(province.id)) return true;
+    if (province.culture === nation.culture || province.homeland === nation.culture) return true;
+  }
+  return false;
+}
+
+export function warDeclarationCost(world, a, b, reason = null) {
+  if (reason === 'alliance' || reason === 'coalition' || reason === 'independence') return 0;
+  return hasClaimOn(world, a, b) ? WAR_COST.justified : WAR_COST.unjustified;
+}
+
+/**
  * Savaş ilanı. `manual: true` yalnız OYUNCUNUN kendi kararı için geçilir;
  * YZ ve koalisyon bu bayrağı asla kullanmaz.
  *
@@ -215,6 +244,8 @@ export function declareWar(game, a, b, options = {}) {
     (t.type === 'ALLIANCE' || t.type === 'VASSALIZE') && t.partner === pid
     && (t.until ?? Infinity) > game.turns.turn);
   if (boundTo(world.nations[a], b) || boundTo(world.nations[b], a)) return false;
+  const cost = warDeclarationCost(world, a, b, options.reason ?? null);
+  if (cost > 0 && (world.nations[a]?.power ?? 0) < cost) return false;
 
   const player = game.turns?.playerNation;
   // 1) Oyuncu ADINA otomatik savaş ilan edilemez. Koalisyon oyuncuya KARŞI
@@ -230,6 +261,7 @@ export function declareWar(game, a, b, options = {}) {
   if (b === player && !manual
     && attackerCount(world, player) >= MAX_PLAYER_INVOLUNTARY_FRONTS) return false;
 
+  if (cost > 0) world.nations[a].power -= cost;
   // Kaçıncı savaş: ateşkes uzunluğu buna bakar, o yüzden barış kaydından
   // savaş kaydına taşınmalı (setState yeni bir nesne kurar).
   const wars = (relation(world, a, b)?.wars ?? 0) + 1;

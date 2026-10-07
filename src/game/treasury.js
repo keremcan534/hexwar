@@ -25,29 +25,23 @@
  */
 export const LEDGER_LINES = {
   tax: { kind: 'income', label: 'Taxes' },
-  tariff: { kind: 'income', label: 'Tariffs' },
-  state: { kind: 'income', label: 'State production' },
-  settlement: { kind: 'income', label: 'External settlement' },
-  treaty: { kind: 'income', label: 'Treaty obligations' },
-  // Odeyeni olmayan TEK gelir; bedeli enflasyondur (economy.js PRINTING).
-  printing: { kind: 'income', label: 'Money printing' },
+  exports: { kind: 'income', label: 'Exports' },
+  // Haraç ve tazminat iki yöne akar: alan için gelir, ödeyen için gider.
+  treaty: { kind: 'income', label: 'Tribute & reparations' },
 
-  army: { kind: 'expense', label: 'Army' },
-  administration: { kind: 'expense', label: 'Administration' },
-  education: { kind: 'expense', label: 'Education' },
-  welfare: { kind: 'expense', label: 'Welfare' },
+  army: { kind: 'expense', label: 'Army upkeep' },
+  navy: { kind: 'expense', label: 'Navy upkeep' },
+  imports: { kind: 'expense', label: 'Imports' },
   construction: { kind: 'expense', label: 'Construction' },
-  procurement: { kind: 'expense', label: 'Military procurement' },
-  subsidy: { kind: 'expense', label: 'Subsidies' },
-  imports: { kind: 'expense', label: 'Strategic imports' },
-  outlay: { kind: 'expense', label: 'State purchases' },
+  recruitment: { kind: 'expense', label: 'Recruitment' },
+  education: { kind: 'expense', label: 'Education' },
   interest: { kind: 'expense', label: 'Debt interest' },
-  // Ulusal harekete karsi sikiyonetim ve tavizler (movements.js).
-  unrest: { kind: 'expense', label: 'Unrest measures' },
-  // Toplum eksenini yuruten devlet kampanyasi (society.js).
-  campaign: { kind: 'expense', label: 'State campaign' },
+  // Ulusal harekete karşı sıkıyönetim (movements.js).
+  unrest: { kind: 'expense', label: 'Martial law' },
+  // Generaller, olay seçenekleri, gündem: tek seferlik devlet harcaması.
+  outlay: { kind: 'expense', label: 'State purchases' },
 
-  // Bilanco hareketleri: gelir/gider DEGILDIR, hazineyi degistirir.
+  // Bilanço hareketleri: gelir/gider DEĞİLDİR, hazineyi değiştirir.
   borrow: { kind: 'financing', label: 'Borrowed' },
   repay: { kind: 'financing', label: 'Repaid' },
   default: { kind: 'financing', label: 'Defaulted' },

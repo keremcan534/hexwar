@@ -16,8 +16,8 @@ import { ensureCommand, ensureCommandOptions } from './command.js';
 import { ensureTraining } from './recruitment.js';
 import { ensureBattles } from './battles.js';
 import { ensureProvinces, refreshProvinceOwner } from './provinces.js';
-import { ensurePolitics, refreshLawModifiers } from './politics.js';
-import { ensureConstruction, migrateConstructionV14 } from './construction.js';
+import { ensurePolitics } from './politics.js';
+import { ensureConstruction } from './construction.js';
 import { ensureDelegation, restoreDelegation } from './delegation.js';
 
 // Ordu sistemi yeniden yazıldı: cephe artık saklanmıyor (sınırdan türetiliyor),
@@ -84,9 +84,15 @@ import { ensureDelegation, restoreDelegation } from './delegation.js';
 // yuklemede kendi province merkezine (dolu ya da yabanci tumenliyse en yakin
 // uygun merkeze) tasinir, hex yolu duser (general/emir ertesi hafta yeniden
 // kurar), hex karede kurulmus muharebeler kapanir.
-export const SAVE_VERSION = 23;
-/** Gocu bilinen eski surumler: deserialize bunlari da kabul eder. */
-const MIGRATABLE_VERSIONS = new Set([14, 16, 20, 21, 22]);
+//
+// v24: ULUSLAR ÇAĞI (bkz. TASARIM.md). Ekonomi baştan yazıldı: sınıflar, 42
+// mal, fabrika kayıtları ve piyasa gitti; province econ'u kalkınma ve bina
+// taşır, ulusun ekonomisi IC/kaynak/teçhizat stoğu, siyaseti SG/istikrar/
+// savaş desteği/parti/yasa/danışman. Eski kayıtlar TEMİZ REDDEDİLİR: göç
+// edilecek bir eşdeğer yoktur (sınıf parası bina değildir).
+export const SAVE_VERSION = 24;
+/** Göçü bilinen eski sürümler: deserialize bunları da kabul eder. */
+const MIGRATABLE_VERSIONS = new Set([]);
 const STORAGE_KEY = 'hexwar.save';
 
 /**
@@ -116,6 +122,10 @@ const NATION_FIELDS = [
   // Ulusal hareketler (movements.js): ilerleme, sikiyonetim/taviz/katliam
   // tarihleri. Turetilemez: yazilmazsa yuklenen oyunda bomba sifirlanir.
   'movements',
+  // Uluslar Çağı: siyasi sayaçlar, iflas, ambargo, talepler, zafer hedefi,
+  // geçici değiştiriciler, kalıcı fikirler, gündem ve bekleyen olay kartları.
+  'power', 'stability', 'warSupport', 'prestige', 'bankruptUntil', 'embargoes', 'claims',
+  'goal', 'startProvinces', 'timed', 'ideas', 'agenda', 'cards', 'fullName', 'formerName',
 ];
 
 export function serialize(game) {
@@ -157,6 +167,9 @@ export function serialize(game) {
       // expelCulture). Yazilmazsa yuklenen dunya surgunu geri alir ve
       // gitmis bir halk kendi yurdunda yeniden bagisik olur.
       province.homeland ?? -1,
+      // Beşinci alan: tarihî çekirdek. Büyük X kurulunca ana yurt çekirdek
+      // olur (unification.formNation); üretimden türetilemez.
+      province.coreOf ?? -1,
     ] : null
   )).filter(Boolean);
 
@@ -178,6 +191,9 @@ export function serialize(game) {
     rngState: turns.rng.state(),
     log: turns.log.slice(0, 20),
     market: world.market,
+    // Ulusların Baharı takvimi ve kurulmuş büyük uluslar (unification.js).
+    spring: world.spring ?? null,
+    formedNations: world.formedNations ?? null,
     battleSystem: {
       nextId: world.battleSystem?.nextId ?? 1,
       // Aktif muharebeler ARTIK kayda girer. Eskiden bilerek dusuruluyordu
@@ -198,11 +214,6 @@ export function serialize(game) {
         // Arastirma: biriken puan + tamamlanan teknolojiler. Kayit disi
         // kalirsa oyuncu yuzyillik teknoloji birikimini yuklemede kaybeder.
         research: n.research ?? null,
-        // Haftalik butce uretim fazinda hesaplanir; yuklemede hafta SONU
-        // durumundan yeniden kurmak baska bir sayi veriyordu (olculdu: bir
-        // ulkede net erzak -3'e karsi -4) ve isci agirliklari o sayiyi
-        // okudugu icin ilk hafta baska kareler isleniyordu (save-audit).
-        budget: n.budget ?? null,
         construction: ensureConstruction(n),
         // Ulusal vakayiname ve olay durum makinesi. Turetilemez veri:
         // yazilmazsa yuklemeden sonra oyun ayni borcu/rejimi ikinci kez
@@ -284,15 +295,6 @@ export function serialize(game) {
       nationId: c.nationId,
       level: c.level,
       pop: c.pop,
-      pops: c.pops,
-      // Islenen kareler ve buyume sayaci kayda girer. Yuklemede yeniden
-      // secilen kareler kesintisiz kosudan farkli cikiyordu (olculdu: 21 kare
-      // yuklemenin ilk haftasinda baska sehre calisiyordu, bir hafta sonra
-      // 25 ulkenin hazinesi ayrismisti); buyume sayaci sifirlaninca da
-      // sehirler yuklemeden sonra bir donem gec buyuyordu.
-      worked: (c.worked ?? []).map((t) => [t.q, t.r]),
-      growth: c.growth ?? 0,
-      manualWorkers: c.manualWorkers === true,
     })),
     units: world.units.map((u) => ({
       id: u.id,
@@ -417,7 +419,7 @@ export function deserialize(game, data) {
 
   // 3b) Küme ekonomileri: taze üretilen econ'un üzerine kayıttaki durum yazılır.
   // Paylaşılan referans korunur — üye karelerin tile.province'i aynı nesne.
-  for (const [id, econ, cultures, homeland] of data.provinces ?? []) {
+  for (const [id, econ, cultures, homeland, coreOf] of data.provinces ?? []) {
     const province = world.provinces?.[id];
     if (!province?.econ || !econ) continue;
     Object.assign(province.econ, econ);
@@ -429,6 +431,7 @@ export function deserialize(game, data) {
     }
     // Alan eski kayitta yoktur: o durumda uretimden gelen deger dogrudur.
     if (homeland != null) province.homeland = homeland;
+    if (coreOf != null) province.coreOf = coreOf;
   }
   // Hukuki sahip üye çoğunluğundan: kayıt savaşın ortasında alınmış olabilir.
   for (const province of world.provinces ?? []) refreshProvinceOwner(world, province);
@@ -469,9 +472,6 @@ export function deserialize(game, data) {
       delete nation.research.idleSince;   // 0174f86'nin eski adi
     }
     nation.construction = saved.construction ?? null;
-    // v14 gocu ensure'dan ONCE: ensure eski bina tiplerini tanimayip atardi,
-    // goc ham kayittan sayar (bkz. construction.migrateConstructionV14).
-    if (data.version === 14 && nation.construction) migrateConstructionV14(nation);
     ensureConstruction(nation);
     // Eski kayitta yoktur: bos tarih ve bos durum makinesiyle baslar. Durum
     // makinesi bos oldugunda ilk hafta mevcut durumu "baslangic" sayar,
@@ -487,7 +487,6 @@ export function deserialize(game, data) {
     nation.rallyPoint = saved.rallyPoint ?? null;
     // Eski kayitta yok: butun alanlar kapali baslar (guvenli varsayilan).
     restoreDelegation(nation, saved.delegation);
-    nation.budget = saved.budget ? JSON.parse(JSON.stringify(saved.budget)) : null;
     nation.treaties = (saved.treaties ?? []).map((t) => ({ ...t }));
     nation.training = saved.training
       ? {
@@ -538,14 +537,6 @@ export function deserialize(game, data) {
     const city = createCity(
       world, tile, saved.nationId, englishCityName(saved.name), saved.level, saved.pop,
     );
-    city.pops = { ...saved.pops };
-    city.manualWorkers = saved.manualWorkers === true;
-    city.growth = saved.growth ?? 0;
-    // Eski kayitta kare listesi yok: ilk haftalik dagitim yeniden secer.
-    city.worked = (saved.worked ?? [])
-      .map(([q, r]) => world.get(q, r))
-      .filter((t) => t && t.owner === city.nationId && !t.workedBy);
-    for (const t of city.worked) t.workedBy = city;
   }
 
   // 7) Birimler
@@ -636,17 +627,11 @@ export function deserialize(game, data) {
   // Eski kayitlarda bu alan yok: o zaman zar taze baslar, yani bugunku davranis.
   if (Number.isFinite(data.rngState)) turns.rng.seedState(data.rngState);
   turns.log = data.log ?? [];
+  world.spring = data.spring ?? null;
+  world.formedNations = data.formedNations ?? null;
   ensureEconomy(world);
-  ensurePolitics(world);
+  for (const nation of world.nations) ensurePolitics(world, nation);
   ensureProvinces(world);
-  // Yasa carpanlari WeakMap'te yasar, kayda girmez (bkz. politics.js
-  // modsByNation). Yuklemede bos kalinca tasra fazi ilk hafta NOTR tavani
-  // okuyordu (olculdu: azinlik tavani 70 olan province'te sadakat 70'te
-  // duracakken 70.55'e cikti) ve ekonomi oradan ayriliyordu. Saf yeniden
-  // hesap: kilitlere dokunmaz, sicak kosuyla ayni tabloyu kurar.
-  for (const nation of world.nations) {
-    if (nation.alive && nation.politics) refreshLawModifiers(nation);
-  }
   if (data.market) {
     world.market = data.market;
     ensureEconomy(world);
@@ -700,11 +685,8 @@ export function deserialize(game, data) {
   game.selected = null;
   game.activeGeneral = null;
   game.selectUnit(null);
-  // Eski kayitta kare listesi yoksa dagitim yeniden yapilir (tek secenek).
-  game.recomputeEconomy({
-    keepWorkers: (data.cities ?? []).some((c) => Array.isArray(c.worked)),
-    keepBudgets: data.nations.some((n) => n.budget != null),
-  });
+  // Değiştirici toplamları ve şehir boyları kayda girmez: kaynaklarından kurulur.
+  game.recomputeEconomy();
   game.renderer.invalidateCache();
   game.emit('world', world);
   game.emit('turn', turns.turn);

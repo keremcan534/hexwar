@@ -13,65 +13,48 @@
 
 /** Devredilebilir alanlar. Sıra ekranda göründükleri sıradır. */
 export const DELEGATION_AREAS = {
-  budget: {
-    id: 'budget',
-    name: 'Budget',
-    screen: 'budget',
-    desc: 'The treasury sets class taxes, social spending, the war budget and the mint — it prints money when the coffers run dry.',
-  },
-  trade: {
-    id: 'trade',
-    name: 'Trade',
-    screen: 'trade',
-    desc: 'The tariff follows the ruling party’s trade doctrine.',
+  economy: {
+    id: 'economy',
+    name: 'Economy',
+    screen: 'economy',
+    desc: 'The ministry weighs the production lines toward what the army lacks and opens or closes trade to fit the balance of resources.',
   },
   construction: {
     id: 'construction',
     name: 'Construction',
     screen: 'construction',
-    desc: 'Construction capacity is raised for you when the build queue outgrows it.',
+    desc: 'Factories where consumer goods run short, farms where food does, mines on scarce deposits, railways and development for the populous heartland.',
   },
-  industry: {
-    // Insaattan AYRI anahtar. Ikisi tek anahtardayken "kapasiteyi hukumet
-    // buyutsun, fabrikayi ben secerim" (ya da tersi) denemiyordu: insaat gucu
-    // ile hangi tesisin kurulacagi ayri kararlardir.
-    id: 'industry',
-    name: 'Industry',
-    screen: 'industry',
-    desc: 'The ministry founds state factories where margins are best and keeps the arms lines on what the army lacks. Expansion and private investment run on their own either way.',
+  reforms: {
+    id: 'reforms',
+    name: 'Government',
+    screen: 'politics',
+    // Hükûmet biçimi kararları devredilmez: rejimi oyuncu seçer.
+    desc: 'The cabinet passes laws the situation demands, hires advisors, and settles restless minorities. Regime changes stay yours.',
+  },
+  agenda: {
+    id: 'agenda',
+    name: 'Agenda',
+    screen: 'politics',
+    desc: 'The cabinet picks the national agenda that fits the country best when the last one completes.',
+  },
+  recruitment: {
+    id: 'recruitment',
+    name: 'Recruitment',
+    screen: 'military',
+    desc: 'The general staff orders regiments, mobilises the reserve when an enemy outweighs the army — and disbands regiments if the state goes bankrupt in peacetime.',
+  },
+  research: {
+    id: 'research',
+    name: 'Research',
+    screen: 'technology',
+    desc: 'When your queue runs dry the academy picks what the country needs most. Your own queue always comes first.',
   },
   diplomacy: {
     id: 'diplomacy',
     name: 'Diplomacy',
     screen: 'diplomacy',
     desc: 'The foreign ministry answers peace offers and opens wars it can win.',
-  },
-  reforms: {
-    // Kimlik `reforms` kaldi: kayittaki devir anahtari bu adla yazili.
-    id: 'reforms',
-    name: 'Laws',
-    screen: 'politics',
-    // Devredilen yalniz yasalardir. HUKUMET devredilmez: hangi partiyle
-    // yonetilecegi dort yil baglayan karar, oyuncunun elinde kalir.
-    desc: 'The cabinet moves one law a year toward the ruling party’s programme, settles restless minorities and runs the state campaign that pulls society toward the programme. The choice of government stays yours.',
-  },
-  recruitment: {
-    id: 'recruitment',
-    name: 'Recruitment',
-    screen: 'military',
-    // Uyarı dürüst olsun: `spend()` temerrütteki barış ordusunu KÜÇÜLTÜR
-    // (bkz. ai.js) ve oyuncunun elinde bir "terhis" düğmesi yok. Devir bu
-    // yetkiyi de verir; yazmamak sürpriz olurdu.
-    desc: 'The general staff orders regiments, mobilizes the reserve when an enemy outweighs the army — and disbands regiments if the treasury defaults in peacetime.',
-  },
-  research: {
-    // Program devri 2026-09'da düşmüştü (4bb99ed); bu anahtar ondan AYRI:
-    // devredilen şey yön değil, kuyruk boşalınca SIRADAKİ teknolojinin
-    // seçimidir. Seçici YZ ile aynıdır (technology.pickNextTech).
-    id: 'research',
-    name: 'Research',
-    screen: 'technology',
-    desc: 'When your queue runs dry the academy picks what the country needs most — factories, fields, credit, schools or the war — weighed against the cost. Your own queue always comes first.',
   },
 };
 
@@ -84,7 +67,7 @@ export const DELEGATION_IDS = Object.keys(DELEGATION_AREAS);
  * savaş ilan eder — ilk haftada habersiz bir savaş başlatmak "kolaylık" değil.
  */
 export const DEFAULT_AUTO_AREAS = [
-  'construction', 'industry', 'trade', 'budget', 'recruitment', 'reforms', 'research',
+  'economy', 'construction', 'reforms', 'agenda', 'recruitment', 'research',
 ];
 
 /**
@@ -188,21 +171,6 @@ export function restoreDelegation(nation, saved) {
   if (saved) {
     for (const id of DELEGATION_IDS) state[id] = Boolean(saved[id]);
     state.since = { ...(saved.since ?? {}) };
-    // Sanayi anahtari insaattan ayrilmadan onceki kayit: devlet fabrikasi o
-    // zaman insaat devrinin icindeydi. Devretmis oyuncu yuklemede sanayisini
-    // kendi elinde bulmasin; isinma penceresi de ayni haftadan sayilir.
-    if (saved.industry === undefined && saved.construction) {
-      state.industry = true;
-      if (Number.isFinite(saved.since?.construction)) state.since.industry = saved.since.construction;
-    }
-    // `research` alani 0174f86'da geldi; ondan onceki kayitta ANAHTAR YOKTUR
-    // ve false okunurdu. Yeni kampanya AUTO acik basladigi halde eski kayit
-    // sessizce kapali aciliyor, kuyruk bosalinca akademi bekliyordu. Eksik
-    // anahtar "kapali" degil "henuz secilmedi" demektir: varsayilana baglanir.
-    if (saved.research === undefined) {
-      state.research = DEFAULT_AUTO_AREAS.includes('research');
-      state.since.research = Number.isFinite(saved.since?.reforms) ? saved.since.reforms : 0;
-    }
     // Son eylem satırı sınırlıdır: alan başına bir kayıt, fazlası atılır.
     for (const id of DELEGATION_IDS) {
       const entry = saved.last?.[id];

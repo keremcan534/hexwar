@@ -5,7 +5,6 @@
 // dunya nesnesi disinda bagimlilik yok.
 
 import { controllerOf } from './control.js';
-import { techUnlocksUnit } from './technology.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import { releaseSoldiers } from './provinces.js';
 
@@ -59,34 +58,19 @@ export const UNIT_TYPES = {
     id: 'WARSHIP', name: 'Warship', glyph: 'W', domain: 'sea',
     moves: 7, attack: 6, hp: 80, manpower: 1000 * POPULATION_SCALE,
   },
-  // Modern kollar yuzyilin ortasinda sahneye cikar. `availableFrom` olmasaydi
-  // 1836'da tank kurulabilirdi; ayrica bunlar tank/ucak fabrikalarinin tek
-  // musterisidir, o mallar aksi halde fiyat tabaninda cakili kaliyordu.
-  ARMOR: {
-    id: 'ARMOR', name: 'Armour', glyph: 'T', domain: 'land',
-    moves: 5, attack: 11, hp: 130, manpower: 1200 * POPULATION_SCALE,
-    availableFrom: 4176,
-  },
-  AIRCRAFT: {
-    id: 'AIRCRAFT', name: 'Air Wing', glyph: 'P', domain: 'land',
-    moves: 8, attack: 8, hp: 60, manpower: 800 * POPULATION_SCALE,
-    support: true,
-    availableFrom: 3654,
-  },
 };
 
 /**
- * Bu tur o birim tipi kurulabilir mi? Takvim UST SINIRDIR: arastirma tarihi
- * one ceker (economy.js `factoryUnlocked` ile ayni VEYA kalibi). `nation`
- * verilmezse saf takvim — eski cagri yerleri kirilmasin.
+ * Bu tur o birim tipi kurulabilir mi? 1836-1900 kolları baştan açıktır;
+ * zırhlı ve hava kolu 1900'den sonra açıldığı için kaldırıldı. İmza, takvim
+ * kapısı geri gelirse çağıranlar değişmesin diye korunur.
  */
-export function unitAvailable(typeId, turn, nation = null) {
-  if (nation && techUnlocksUnit(nation, typeId, turn)) return true;
+export function unitAvailable(typeId, turn = 0, _nation = null) {
   return (UNIT_TYPES[typeId]?.availableFrom ?? 0) <= turn;
 }
 
-/** Kaldirilan birim tipleri: eski kayitlar yuklenirken bunlara cevrilir. */
-export const LEGACY_UNIT_TYPES = { SCOUT: 'INFANTRY' };
+/** Kaldırılan birim tipleri: eski kayıtlar yüklenirken bunlara çevrilir. */
+export const LEGACY_UNIT_TYPES = { SCOUT: 'INFANTRY', ARMOR: 'INFANTRY', AIRCRAFT: 'ARTILLERY' };
 
 export function resolveTypeId(typeId) {
   return UNIT_TYPES[typeId] ? typeId : (LEGACY_UNIT_TYPES[typeId] ?? 'INFANTRY');

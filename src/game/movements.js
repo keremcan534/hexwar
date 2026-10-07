@@ -47,7 +47,6 @@ import { cityName, createCity } from './cities.js';
 import { recruit } from './recruitment.js';
 import { initNationEconomy } from './economy.js';
 import { POPULATION_SCALE } from './populationScale.js';
-import { pushSociety } from './society.js';
 import { captureConstructionAt } from './construction.js';
 
 export const MOVEMENT = {
@@ -76,8 +75,6 @@ export const MOVEMENT = {
   CONCESSION_DROP: 25,
   CONCESSION_UNREST: 1.5,
   CONCESSION_COOLDOWN: 52,
-  CONCESSION_MIN_COST: 10,
-  CONCESSION_INCOME_WEEKS: 2,
 
   CRACKDOWN_MIN_PROGRESS: 25,
   CRACKDOWN_KILL: 0.15,
@@ -140,11 +137,12 @@ function martialCost(provinces) {
   return MOVEMENT.MARTIAL_BASE_COST + MOVEMENT.MARTIAL_COST_PER_PROVINCE * provinces.length;
 }
 
-function concessionCost(nation) {
-  return Math.max(
-    MOVEMENT.CONCESSION_MIN_COST,
-    Math.max(0, nation.economy?.ledger?.income ?? 0) * MOVEMENT.CONCESSION_INCOME_WEEKS,
-  );
+/** Ödün ve baskı SİYASİ hamledir: altınla değil Siyasi Güçle ödenir. */
+export const CONCESSION_POWER = 40;
+export const CRACKDOWN_POWER = 30;
+
+function concessionCost(_nation) {
+  return CONCESSION_POWER;
 }
 
 /* --------------------------------------------------------------------------
@@ -291,12 +289,9 @@ function awaken(game, rebel, provinces) {
   rebel.accepted = [rebel.rebelCulture ?? rebel.culture];
   rebel.capital = seat.center;
   rebel.movements = {};
-  // Devirde (transfer) toprakla gelen fabrikalar ekonomi kurulurken silinmesin.
-  const inherited = rebel.economy?.factories ?? [];
+  // Binalar province'te durur; isyancı devletin yalnız ekonomi kaydı kurulur.
   initNationEconomy(world, rebel);
-  rebel.economy.factories.push(...inherited);
   openWeek(rebel);
-  rebel.budget = null;
   const hasCity = provinces.some((province) => province.tileIdx
     ?.some((idx) => world.tiles[idx]?.city));
   if (!hasCity && seat.center && !seat.center.city) {
@@ -352,7 +347,6 @@ function uprising(game, nation, cultureId, provinces) {
   world.uprisings = (world.uprisings ?? 0) + 1;
   world.uprisingProvinces = (world.uprisingProvinces ?? 0) + provinces.length;
   // Kaybedilen toprak cogunlugu sertlestirir (society.js).
-  pushSociety(nation, 'integration', -4, `The ${cultureName(world, cultureId)} rose`);
 
   const name = cultureName(world, cultureId);
   const where = provinces.length === 1
@@ -423,8 +417,8 @@ export function concessionBlockers(world, nation, cultureId, turn = world.turn ?
   if (!provinces.length) return ['No national movement of theirs in our lands.'];
   const next = (state?.concessionAt ?? -Infinity) + MOVEMENT.CONCESSION_COOLDOWN;
   if (next > turn) return [`Concessions were made recently; again in ${next - turn} weeks.`];
-  if ((nation.gold ?? 0) < concessionCost(nation)) {
-    return [`Treasury short: concessions cost £${concessionCost(nation).toFixed(0)}.`];
+  if ((nation.power ?? 0) < concessionCost(nation)) {
+    return [`Concessions cost ${concessionCost(nation)} political power.`];
   }
   return [];
 }
@@ -436,10 +430,9 @@ export function grantConcessions(game, nation, cultureId) {
   if (concessionBlockers(world, nation, cultureId, turn).length) return false;
   const { provinces } = liveMovement(world, nation, cultureId);
   const state = stateOf(nation, cultureId);
-  settle(nation, 'unrest', -concessionCost(nation));
+  nation.power -= concessionCost(nation);
   state.progress = Math.max(0, (state.progress ?? 0) - MOVEMENT.CONCESSION_DROP);
   state.concessionAt = turn;
-  pushSociety(nation, 'integration', 1.5, `Concessions to the ${cultureName(world, cultureId)}`);
   for (const province of provinces) {
     province.econ.unrest = Math.max(0, (province.econ.unrest ?? 0) - MOVEMENT.CONCESSION_UNREST);
   }
@@ -462,6 +455,7 @@ export function crackdownBlockers(world, nation, cultureId, turn = world.turn ??
   }
   const next = (state?.crackdownAt ?? -Infinity) + MOVEMENT.CRACKDOWN_COOLDOWN;
   if (next > turn) return [`The last crackdown is too recent; again in ${next - turn} weeks.`];
+  if ((nation.power ?? 0) < CRACKDOWN_POWER) return [`A crackdown costs ${CRACKDOWN_POWER} political power.`];
   return [];
 }
 
@@ -475,6 +469,7 @@ export function crackdown(game, nation, cultureId) {
   const turn = turnOf(game);
   if (crackdownBlockers(world, nation, cultureId, turn).length) return 0;
   const { provinces } = liveMovement(world, nation, cultureId);
+  nation.power -= CRACKDOWN_POWER;
   const recolored = [];
   let killed = 0;
   for (const province of provinces) {
@@ -525,8 +520,6 @@ export function crackdown(game, nation, cultureId) {
     other.progress = Math.min(99, (other.progress ?? 0) + MOVEMENT.CRACKDOWN_RADICALIZE);
   }
   world.crackdowns = (world.crackdowns ?? 0) + 1;
-  pushSociety(nation, 'integration', -6, `Crushed the ${cultureName(world, cultureId)}`);
-  pushSociety(nation, 'militarism', -2, `Crushed the ${cultureName(world, cultureId)}`);
   if (nation.id === game.turns?.playerNation) {
     announce(game, nation, {
       kind: 'CRISIS', tier: TIER.MAJOR, key: `crackdown-${cultureId}-${turn}`,
@@ -577,7 +570,6 @@ export function releaseAsVassal(game, nation, cultureId) {
   state.progress = 0;
   state.calmUntil = turn + MOVEMENT.COOLDOWN;
   world.vassalReleases = (world.vassalReleases ?? 0) + 1;
-  pushSociety(nation, 'integration', 3, `Released the ${cultureName(world, cultureId)}`);
   world.vassalProvinces = (world.vassalProvinces ?? 0) + provinces.length;
   if (nation.id === game.turns?.playerNation) {
     announce(game, nation, {

@@ -119,7 +119,7 @@ function nationPowerOf(world, nation) {
   for (const unit of world.units ?? []) {
     if (unit.nationId === nation.id) regiments += unit.regiments?.length ?? 0;
   }
-  return regiments * 3 + (nation.economy?.factories?.length ?? 0);
+  return regiments * 3 + (nation.economy?.ic?.raw ?? 0);
 }
 
 /**

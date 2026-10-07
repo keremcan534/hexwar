@@ -26,7 +26,8 @@ import { PerfMonitor } from '../core/perf.js';
 
 /** Masadaki teklif bu kadar hafta cevapsız kalırsa geri çekilir. */
 const PEACE_OFFER_TTL = 6;
-import { assignAllWorkers, collectProvinceTotals, nationBudget } from './cities.js';
+import { refreshCities } from './cities.js';
+import { refreshModifiers } from './modifiers.js';
 import { controllerOf } from './control.js';
 import { loadFromStorage, saveToStorage } from './save.js';
 import {
@@ -55,6 +56,8 @@ const EVENTS = [
   'nation', 'politics', 'notify', 'notify-clear', 'notify-dismiss',
   // AUTO devri (bkz. delegation.js).
   'delegation',
+  // Oyuncuya açılan olay kartı (bkz. eventCards.js).
+  'card',
   // Kayit yazildi (otomatik ya da elle): ayar paneli etiketini tazeler.
   'save',
   // Oyuncu ulusu degisti (kurulus ekraninda "play as"): HUD bastan kurulur.
@@ -816,20 +819,13 @@ export class Game {
   }
 
   /**
-   * İşçileri ve bütçeleri baştan hesaplar; kayıt yüklendikten sonra gerekir.
-   * `keepWorkers`: kayıt işlenen kareleri taşıyorsa dağıtım YENİDEN yapılmaz.
-   * Yüklemede yeniden dağıtmak hafta sonu ağırlıklarıyla başka kareler
-   * seçiyor ve kesintisiz koşudan ayrılıyordu (save-audit: 100 hafta sonra
-   * nüfus/hazine/fiyat farklı).
+   * Türetilmiş durumu baştan kurar (kayıt yüklendikten sonra): değiştirici
+   * toplamları ve şehir boyları. Kayıt bunları taşımaz; kaynakları taşır.
    */
-  recomputeEconomy({ keepWorkers = false, keepBudgets = false } = {}) {
+  recomputeEconomy() {
     if (!this.world) return;
-    if (!keepWorkers) assignAllWorkers(this.world);
-    const totals = collectProvinceTotals(this.world);
-    for (const nation of this.world.nations) {
-      if (keepBudgets && nation.budget) continue;
-      nation.budget = nationBudget(this.world, nation, totals);
-    }
+    for (const nation of this.world.nations) refreshModifiers(nation, this.world.turn ?? 0);
+    refreshCities(this.world);
   }
 
   idleUnits() {

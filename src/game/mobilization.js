@@ -11,19 +11,23 @@
 //   - insan: alay province nüfusundan çıkar (claimSoldiers), tarla ve tezgah
 //     boşalır (rgoLaborScale / civilianLower zaten silah altındakini düşer)
 //   - para: alay bakımı düzenli alayla aynıdır (cities.js UNIT_UPKEEP)
-//   - istikrar: seferberlik savaş yüküne 0.35 ekler (economy.js warStrain)
+//   - teçhizat: her yedek alay depodan yarım tüfek takımı (5) çeker
 // Seferber alay 0.7 güçle dövüşür (units.js CONSCRIPT_POWER).
 
 import { UNIT_TYPES, isConscript, refreshArmy } from './units.js';
 import { disband, nationManpower, recruit } from './recruitment.js';
 import { hostileNations, nationStrength } from './diplomacy.js';
 import { underTreaty } from './peace.js';
+import { addEquipment, takeEquipment } from './econ/industry.js';
 import { TIER, announce } from './chronicle.js';
 
 export const MOBILIZATION = {
-  /** Havuzun bu payı silah altına alınır. 0.06 × ~12M havuz ≈ 24 alay: büyük
-   * devlette barış ordusunun iki katı; 3 alaylık mikro devlette 0. */
-  SHARE: 0.06,
+  /** Kalan insan gücü havuzunun bu payı silah altına alınır. Havuz zaten
+   * askerlik yasasının oranıdır (nüfusun %2-15'i): seferberlik onun yarısını
+   * çağırır, gerisi takviyeye kalır. */
+  SHARE: 0.5,
+  /** Yedek alay yarım tüfek takımıyla çıkar (eski tüfekler, ev silahı). */
+  RIFLES: 5,
   /** Tam seferberlik bu kadar haftada tamamlanır — ültimatom süresine eşit
    * (diplomacy.js ULTIMATUM_WEEKS): ilanda seferber olan, ilk çatışmaya yetişir. */
   RAISE_WEEKS: 8,
@@ -165,11 +169,14 @@ export function runMobilization(game) {
       const perWeek = Math.max(1, Math.ceil(record.target / MOBILIZATION.RAISE_WEEKS));
       let raised = 0;
       while (have + raised < record.target && raised < perWeek) {
-        // Teçhizat düşülmez: yedek depodan değil evden gelir. Ateş gücü
-        // zaten CONSCRIPT_POWER ile kırpılı; hazırlık (arms/reserve) çarpanı
-        // muharebede herkese uygulanır.
+        // Yedek yarım takımla çıkar: depo boşsa seferberlik de durur — tüfek
+        // hattı savaş öncesi hazırlığın asıl ölçüsüdür.
+        if (takeEquipment(nation, { rifles: MOBILIZATION.RIFLES }) < 1) break;
         const unit = recruit(game, nation, 'INFANTRY', { charge: false });
-        if (!unit) break;
+        if (!unit) {
+          addEquipment(nation, 'rifles', MOBILIZATION.RIFLES);
+          break;
+        }
         for (const regiment of unit.regiments) {
           regiment.conscript = true;
           regiment.organization = MOBILIZATION.ORGANIZATION;

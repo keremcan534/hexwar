@@ -1,303 +1,167 @@
 // Harita uyarıları: "şu an neyin yanlış gittiği ve NEDEN".
 //
-// HOI4/EU4'teki ikon şeridinin karşılığı. Amaç süsleme değil: bu oyunda
-// oyuncunun en sık kaybettiği şey, kötü giden bir şeyin SEBEBİNİ ekranlar
-// arasında aramak. Uyarı o sebebi kendisi getirir.
-//
-// KURAL — hiçbir sayı uydurulmaz. Her uyarının başlığı, sebebi ve çaresi
-// simülasyonun kendi alanlarından türer; tıpkı vergi eşiklerinde olduğu gibi
-// (bkz. economy.classTaxThresholds). Uyarı metni bir yorum değil, okunmuş bir
-// ölçümdür. Böylece ekran simülasyondan sapamaz.
+// HOI4/EU4'teki ikon şeridinin karşılığı. Uyarı sebebi kendisi getirir; hiçbir
+// sayı uydurulmaz — başlık, sebep ve çare simülasyonun kendi alanlarından
+// türer (kaynak oranı, tüketim malı oranı, defter, meşruiyet). Uyarı metni
+// bir yorum değil, okunmuş bir ölçümdür.
 //
 // Katman notu: DOM'a dokunmaz, `world`/`nation` okur. Çizimi ui/alerts.js yapar.
 
-import {
-  CLASS_INFO, CLASS_NEEDS, FACTORIES, GOOD_IDS, GOODS, budgetBreakdown, classTaxThresholds,
-  factoryUnlocked, priceOf,
-} from './economy.js';
-import { governmentLockWeeks, legitimacyOf } from './politics.js';
-
-/** Tur numarasindan yil: 1836 baslangicli haftalik takvim. */
-const yearOfTurn = (turn) => 1836 + Math.floor(Math.max(0, (turn ?? 0) - 1) / 52);
+import { RESOURCES } from './econ/defs.js';
+import { legitimacyOf, PARTIES } from './politics.js';
+import { trainingQueue } from './recruitment.js';
 
 /**
- * Sinifin sepetindeki en kotu karsilanan mallar (ulusal akis kapsama orani).
- * Uyari "sepet pahali" derken asil sorun malin YOKLUGU olabilir; hangi mal
- * eksik, o soylenmeli.
- */
-export function scarcestBasketGoods(nation, classId, limit = 2) {
-  const needs = CLASS_NEEDS[classId] ?? {};
-  const flows = nation.economy?.goodsFlow ?? {};
-  return Object.keys(needs)
-    .map((id) => {
-      const flow = flows[id];
-      const demand = flow?.demand ?? 0;
-      const coverage = demand > 0.001 ? (flow.fulfilled ?? 0) / demand : 1;
-      return { id, coverage };
-    })
-    .filter((row) => row.coverage < 0.9)
-    .sort((a, b) => a.coverage - b.coverage)
-    .slice(0, limit);
-}
-
-/**
- * Uyarı türleri. `tone` sunum içindir, `tier` sıralama: 2 varoluşsal,
- * 1 ciddi, 0 bilgilendirici.
+ * Uyarı türleri. Kimlikler ui/alerts.js'teki ikonlarla eşleşir. `tier`
+ * sıralama: 2 varoluşsal, 1 ciddi, 0 bilgilendirici.
  */
 export const ALERT_KINDS = {
-  STARVATION: { id: 'STARVATION', label: 'Subsistence', tone: 'bad', tier: 2 },
+  STARVATION: { id: 'STARVATION', label: 'Food', tone: 'bad', tier: 2 },
   DEFICIT: { id: 'DEFICIT', label: 'Treasury', tone: 'bad', tier: 2 },
+  DEMOTION: { id: 'DEMOTION', label: 'Consumer goods', tone: 'warn', tier: 1 },
   IMPORT_DRAIN: { id: 'IMPORT_DRAIN', label: 'Trade', tone: 'warn', tier: 1 },
   SHORTAGE: { id: 'SHORTAGE', label: 'Supply', tone: 'warn', tier: 1 },
   IDEOLOGY: { id: 'IDEOLOGY', label: 'Politics', tone: 'info', tier: 1 },
-  DEMOTION: { id: 'DEMOTION', label: 'Society', tone: 'bad', tier: 2 },
 };
 
-const round = (value, digits = 1) => Number(value.toFixed(digits));
+const pct = (value) => `${Math.round(value * 100)}%`;
 
-/**
- * GEÇİM ALTINDA SINIF. Doğrudan `canAffordNeeds` bayrağını okur — aynı bayrak
- * sınıf düşüşünü ve memnuniyet çöküşünü tetikleyen şeydir, yani uyarı
- * mekaniğin kendi eşiğiyle konuşur.
- */
-function starvation(world, nation) {
-  const classes = nation.economy?.classes ?? {};
-  const hit = Object.keys(CLASS_INFO)
-    .map((id) => ({ id, data: classes[id] }))
-    .filter((entry) => entry.data && entry.data.canAffordNeeds === false)
-    .sort((a, b) => (b.data.population ?? 0) - (a.data.population ?? 0))[0];
-  if (!hit) return null;
-
-  const { id, data } = hit;
-  const name = CLASS_INFO[id]?.name ?? id;
-  const rate = nation.economy?.tax?.[id] ?? 0;
-  const thresholds = classTaxThresholds(nation, id);
-  // Çare ancak vergi GERÇEKTEN sebepse önerilir. İki koşul birden: eşik
-  // ULAŞILABİLİR olmalı (vergiyi sıfırlamak yetiyor olmalı) ve bugünkü oranın
-  // altında kalmalı. Ölçüldü: erken oyunda orta sınıfın bütçesi sepetinin
-  // %45'i — orada vergi kaldıraç değildir ve "vergiyi %0'a indir" demek
-  // oyuncuyu boş bir düğmeye yollar.
-  const taxHelps = thresholds && thresholds.survivalReachable && thresholds.survival < rate;
-  // needsMet = odeme payi x bulunabilirlik (economy.populationDemand). Parasi
-  // yetip mali bulamayan sinifa "sepet pahali" demek yanlis atiftir; kor oyun
-  // testinde sepet £93, butce £90.9 iken kart "%45'ini karsiliyor, pahali"
-  // diyordu. Asil kisit malin yoklugu idi (konserve %2 kapsama).
-  const availability = data.needsAvailable ?? 1;
-  const affordShare = availability > 0.001 ? Math.min(1, (data.needsMet ?? 0) / availability) : 0;
-  const supplyBound = availability < 0.85 && affordShare >= 0.8;
-  const scarce = supplyBound ? scarcestBasketGoods(nation, id) : [];
-  const scarceText = scarce.length
-    ? scarce.map((row) => `${GOODS[row.id]?.name ?? row.id} (${Math.round(row.coverage * 100)}% covered)`).join(' and ')
-    : 'the goods in their basket';
-  // Aclik arki suruyorsa kart onun kacinci haftasinda oldugumuzu soyler
-  // (bkz. events.js runHungerArc): kriz bir sayi degil, bir sure.
-  const arc = nation.events?.hunger;
-  const arcLine = arc?.active
-    ? ` This is week ${Math.max(1, (world.turn ?? 0) - arc.since + 1)} of the hunger; nationwide, the worst week met ${Math.round(arc.worst * 100)}% of the basket.`
-    : '';
+function famine(world, nation) {
+  const food = nation.economy?.resources?.FOOD;
+  if (!food || food.ratio >= 0.95) return null;
+  const blockade = nation.economy?.blockade ?? 0;
   return {
-    id: `STARVATION:${id}`,
+    id: 'STARVATION',
     kind: ALERT_KINDS.STARVATION,
-    title: `${name} below subsistence`,
-    cause: (supplyBound
-      ? `Their basket costs £${round(data.needsCost ?? 0)} a week and they can field`
-        + ` £${round(data.needsBudget ?? 0)} after ${rate}% tax — the money is there, the goods are not:`
-        + ` only ${Math.round(availability * 100)}% of the basket exists to buy, so they meet`
-        + ` ${Math.round((data.needsMet ?? 0) * 100)}% of it.`
-      : `Their basket costs £${round(data.needsCost ?? 0)} a week but they can only`
-        + ` field £${round(data.needsBudget ?? 0)} after ${rate}% tax.`
-        + ` They are meeting ${Math.round((data.needsMet ?? 0) * 100)}% of it.`) + arcLine,
-    remedy: supplyBound
-      ? `The shortage is ${scarceText}. Tax and welfare cannot fix a missing good:`
-        + ' build the plant that makes it, or let investors — the Trade screen shows who pays for it.'
-      : taxHelps
-        ? `Cut ${name.toLowerCase()} tax to ${thresholds.survival}% — that is the last rate`
-          + ' at which they still clear the subsistence floor.'
-        : 'Tax is not the binding constraint: the basket itself is too expensive.'
-          + ' Cheaper food and clothes, or welfare, are the only levers left.',
+    title: food.ratio < 0.7 ? 'Famine' : 'Food is running short',
+    cause: `Our provinces grow ${food.produced.toFixed(1)} food a week and the people need ${food.need.toFixed(1)};`
+      + ` imports bring ${food.imported.toFixed(1)}. ${pct(food.ratio)} of the need is met.`
+      + (blockade > 0 ? ` An enemy fleet blockades ${pct(blockade)} of our coast.` : ''),
+    remedy: food.ratio < 0.7
+      ? 'Below 70% the population shrinks every week. Build farms in fertile provinces, keep gold for imports, or break the blockade.'
+      : 'Growth slows and stability falls. Build farms, or make sure the treasury can pay for imports.',
   };
 }
 
-/**
- * SINIF DÜŞÜŞÜ — ekonominin en pahalı olayı, ve en sessizi.
- *
- * `runPopulationMobility` bir sınıfı dört hafta geçim altında kalınca bir alt
- * sınıfa indirir. Geri dönüşü YAVAŞTIR: yükselme, kaynak sınıfın sepetinin
- * %35'i kadar artık bırakıp sekiz hafta böyle kalmasını ister. Yani bu olay
- * kalıcı bir kayıptır ve hiçbir yerde duyurulmuyordu.
- *
- * Ölçüldü: tam vergiyle 400 haftada üst sınıf 45.6K'dan 9.0K'ya iniyor —
- * oyuncu bunu ancak nüfus ekranına bakıp fark edebiliyordu.
- */
-function demotion(world, nation) {
-  const mobility = nation.economy?.mobility;
-  if (!mobility) return null;
-  const lost = (mobility.demotedUpper ?? 0) > 0 ? 'upper'
-    : (mobility.demotedMiddle ?? 0) > 0 ? 'middle' : null;
-  if (!lost) return null;
-  const name = CLASS_INFO[lost]?.name ?? lost;
-  const moved = lost === 'upper' ? mobility.demotedUpper : mobility.demotedMiddle;
-  const data = nation.economy.classes?.[lost] ?? {};
-  const rate = nation.economy?.tax?.[lost] ?? 0;
-  const thresholds = classTaxThresholds(nation, lost);
-  const overEdge = thresholds?.survivalReachable && rate > thresholds.survival;
+function consumerGoods(world, nation) {
+  const consumer = nation.economy?.consumer;
+  if (!consumer || consumer.ratio >= 0.95) return null;
+  const military = nation.economy?.ic?.share ?? 0;
   return {
-    id: `DEMOTION:${lost}`,
+    id: 'DEMOTION',
     kind: ALERT_KINDS.DEMOTION,
-    title: `${name} is shrinking`,
-    cause: `${Math.round(moved)} people dropped out of the ${name.toLowerCase()} this month:`
-      + ` they went four weeks without covering their basket`
-      + ` (£${round(data.needsBudget ?? 0)} against £${round(data.needsCost ?? 0)}).`,
-    remedy: overEdge
-      ? `Your ${lost} tax is ${rate}%, above the ${thresholds.survival}% they can survive.`
-        + ' Cut it — climbing back takes far longer than falling did.'
-      : 'Climbing back is slow: a class only rises after eight straight weeks with real'
-        + ' surplus. Cheaper goods, lower tax or welfare are the only ways up.',
+    title: 'The shops are empty',
+    cause: `Consumer goods meet ${pct(consumer.ratio)} of demand: workshops make ${consumer.cottage.toFixed(1)},`
+      + ` civilian industry ${consumer.civil.toFixed(1)}, the people want ${consumer.need.toFixed(1)}.`
+      + (military > 0.1 ? ` ${pct(military)} of our industry works for the army.` : ''),
+    remedy: military > 0.1
+      ? 'Return industry to civilian work (Economy law) or build factories. Every missing tenth costs stability.'
+      : 'Build factories: expectations rise every decade and workshops alone cannot keep up.',
   };
 }
 
-/** HAZİNE AÇIĞI. Sebep, defterin EN BÜYÜK gider satırıdır — tahmin değil. */
-function deficit(world, nation) {
-  const view = budgetBreakdown(world, nation);
-  if (!view || (view.balance ?? 0) >= 0) return null;
-  const worst = [...view.expenseRows].sort((a, b) => a.amount - b.amount)[0];
+function treasury(world, nation) {
+  const economy = nation.economy;
+  const turn = world.turn ?? 0;
+  if ((nation.bankruptUntil ?? 0) > turn) {
+    return {
+      id: 'DEFICIT',
+      kind: ALERT_KINDS.DEFICIT,
+      title: 'The state is bankrupt',
+      cause: `We defaulted on our debts. For ${nation.bankruptUntil - turn} more weeks no one lends to us,`
+        + ' stability suffers and the army trains and reinforces at half speed.',
+      remedy: 'Cut costs: fewer regiments, lower education spending, higher taxes.',
+    };
+  }
+  const net = economy?.ledger?.net ?? 0;
+  const cap = economy?.debtCap ?? 0;
+  const debt = nation.debt ?? 0;
+  if (net >= 0 && debt < cap * 0.75) return null;
   return {
     id: 'DEFICIT',
     kind: ALERT_KINDS.DEFICIT,
-    title: `Treasury losing £${round(Math.abs(view.balance))} a week`,
-    cause: worst
-      ? `Income is £${round(view.income)} against £${round(view.expenses)} of spending.`
-        + ` The largest single line is ${worst.label} at £${round(Math.abs(worst.amount))}.`
-      : `Income is £${round(view.income)} against £${round(view.expenses)} of spending.`,
-    remedy: `At this rate the treasury (£${round(view.treasury, 0)}) runs dry in`
-      + ` ${Math.max(1, Math.round(view.treasury / Math.abs(view.balance)))} weeks.`,
+    title: debt >= cap * 0.75 ? 'Debt near the ceiling' : 'Running a deficit',
+    cause: `Last week closed at ${net >= 0 ? '+' : ''}${net.toFixed(1)} gold. Debt ${Math.round(debt)} of a ${Math.round(cap)} ceiling.`,
+    remedy: 'Above the ceiling the state goes bankrupt. Raise taxes, cut the army or imports, or stop building for a while.',
   };
 }
 
-/** En çok para götüren ithal mal. Kullanıcının "fish açık veriyor" örneği. */
-function importDrain(world, nation) {
-  const flows = nation.economy?.goodsFlow;
-  if (!flows) return null;
-  let worst = null;
-  for (const id of GOOD_IDS) {
-    const flow = flows[id];
-    if (!flow?.imports) continue;
-    const value = flow.imports * priceOf(world, id);
-    if (!worst || value > worst.value) worst = { id, flow, value };
-  }
-  // Gürültü tabanı: haftalık ithalatın beşte birinden küçük kalem uyarı değildir.
-  const total = nation.economy?.trade?.importValue ?? 0;
-  if (!worst || worst.value < 1 || worst.value < total * 0.2) return null;
-  // Maddiyat tabani: gelirin %3'unden kucuk bir fatura "en buyuk ithalat"
-  // olsa da uyari degildir (kor oyun testi: £98 gelirde £1.3'luk balik karti).
-  const income = budgetBreakdown(world, nation)?.income ?? 0;
-  if (worst.value < income * 0.03) return null;
-  const name = GOODS[worst.id]?.name ?? worst.id;
-  return {
-    id: `IMPORT_DRAIN:${worst.id}`,
-    kind: ALERT_KINDS.IMPORT_DRAIN,
-    title: `${name} is your biggest import bill`,
-    cause: `£${round(worst.value)} a week leaves for ${name.toLowerCase()};`
-      + ` imports cover ${Math.round((worst.flow.importShare ?? 0) * 100)}% of what the`
-      + ' country demands.',
-    remedy: 'Produce it at home or raise the tariff — the tariff earns, but every'
-      + ' household and factory that buys it abroad then pays more.',
-  };
-}
-
-/** Karşılanamayan talep: parası olsa da mal yok. */
 function shortage(world, nation) {
-  const flows = nation.economy?.goodsFlow;
-  if (!flows) return null;
+  const resources = nation.economy?.resources ?? {};
   let worst = null;
-  for (const id of GOOD_IDS) {
-    const flow = flows[id];
-    if (!flow?.demand || !flow.shortage) continue;
-    const share = flow.shortage / flow.demand;
-    if (!worst || share > worst.share) worst = { id, flow, share };
+  for (const [id, record] of Object.entries(resources)) {
+    if (id === 'FOOD' || record.need < 0.05 || record.ratio >= 0.8) continue;
+    if (!worst || record.ratio < worst.record.ratio) worst = { id, record };
   }
-  if (!worst || worst.share < 0.25) return null;
-  const name = GOODS[worst.id]?.name ?? worst.id;
-  // Care, YAPILABILIR olmali. "Building the industry at home is the only way
-  // out" 1836'da yakit icin yaziyordu; rafineri 1870'te icat ediliyor. Mali
-  // ureten tesisler bulunur; hicbiri acik degilse en erken acilan soylenir.
-  const makers = Object.values(FACTORIES).filter((type) => (type.outputs?.[worst.id] ?? 0) > 0);
-  const turn = world.turn ?? 1;
-  const open = makers.filter((type) => factoryUnlocked(type.id, turn, nation));
-  const soonest = makers.length && !open.length
-    ? makers.reduce((a, b) => ((a.availableFrom ?? 0) <= (b.availableFrom ?? 0) ? a : b))
-    : null;
-  const remedy = open.length
-    ? `World supply cannot reach this demand. A ${open[0].name} at home is the way out;`
-      + ' the price stays pinned at the ceiling until one exists.'
-    : soonest
-      ? `No industry can make ${name.toLowerCase()} yet: the ${soonest.name} arrives in`
-        + ` ${yearOfTurn(soonest.availableFrom)}. Until then only imports and the price ceiling`
-        + ' apply — nothing you build changes this.'
-      : `${name} is a raw good: only provinces that carry it produce it, so imports`
-        + ' or conquest are the levers.';
+  const waiting = trainingQueue(nation).filter((item) => Object.keys(item.missing ?? {}).length).length;
+  if (!worst && waiting === 0) return null;
+  if (!worst) {
+    return {
+      id: 'SHORTAGE:equipment',
+      kind: ALERT_KINDS.SHORTAGE,
+      title: 'Regiments waiting for equipment',
+      cause: `${waiting} regiment${waiting > 1 ? 's wait' : ' waits'} in the training queue for weapons the depot does not have.`,
+      remedy: 'Shift industry to the army (Economy law) or weigh the production lines toward what is missing.',
+    };
+  }
+  const name = RESOURCES[worst.id].name;
+  const effect = {
+    COAL: 'Industry runs below capacity.',
+    IRON: 'Production lines slow down.',
+    TIMBER: 'Construction slows down.',
+    HORSES: 'Cavalry and artillery fight weaker.',
+    SALTPETER: 'Our regiments run out of gunpowder in battle.',
+  }[worst.id] ?? '';
   return {
     id: `SHORTAGE:${worst.id}`,
     kind: ALERT_KINDS.SHORTAGE,
     title: `${name} shortage`,
-    cause: `${Math.round(worst.share * 100)}% of ${name.toLowerCase()} demand goes unmet.`
-      + ' Households and factories that need it are running short whatever they pay.',
-    remedy,
+    cause: `We need ${worst.record.need.toFixed(1)} ${name.toLowerCase()} a week and have ${pct(worst.record.ratio)} of it. ${effect}`,
+    remedy: `Build a mine on a ${name.toLowerCase()} deposit, conquer one, or keep gold for imports.`,
   };
 }
 
-/**
- * MEŞRUİYET KAYBI. İktidar partisi en çok desteklenen parti değilse aradaki
- * fark istikrardan düşer (politics.legitimacyOf) ve bu şerit bunu söyler.
- * Sebep, desteğin GERÇEK sürücüsüdür: sınıf memnuniyeti 0.40'ın altına
- * düşünce sosyalist ve milliyetçi, 0.58'in üstüne çıkınca liberal ve
- * muhafazakâr partiler kazanır.
- */
-function ideology(world, nation) {
-  const { ruling, leader, hit } = legitimacyOf(nation);
-  if (!ruling || !leader || leader.id === ruling.id) return null;
-  // Yarım puandan küçük bedel gürültüdür: şerit her dar farkta titremesin.
-  if (hit > -0.005) return null;
+function dependency(world, nation) {
+  const resources = nation.economy?.resources ?? {};
+  let worst = null;
+  for (const [id, record] of Object.entries(resources)) {
+    if (record.topPartner < 0 || record.topShare < 0.5) continue;
+    if (!worst || record.topShare > worst.record.topShare) worst = { id, record };
+  }
+  if (!worst) return null;
+  const partner = world.nations[worst.record.topPartner];
+  const name = RESOURCES[worst.id].name;
+  return {
+    id: `IMPORT_DRAIN:${worst.id}`,
+    kind: ALERT_KINDS.IMPORT_DRAIN,
+    title: `Dependent on ${partner?.name ?? 'one supplier'} for ${name.toLowerCase()}`,
+    cause: `${pct(worst.record.topShare)} of our ${name.toLowerCase()} need comes from ${partner?.name ?? 'a single country'}.`
+      + ' An embargo or a war would cut it overnight.',
+    remedy: 'Build our own mines or farms, or buy from more countries by keeping peace with several suppliers.',
+  };
+}
 
-  const classes = nation.economy?.classes ?? {};
-  const radical = leader.ideology === 'socialist' || leader.ideology === 'nationalist';
-  const driver = Object.keys(CLASS_INFO)
-    .map((id) => ({ id, data: classes[id] }))
-    .filter((entry) => entry.data)
-    .sort((a, b) => (radical
-      ? (a.data.satisfaction ?? 1) - (b.data.satisfaction ?? 1)
-      : (b.data.satisfaction ?? 0) - (a.data.satisfaction ?? 0)))[0];
-  const driverName = CLASS_INFO[driver?.id]?.name ?? 'The population';
-  const satisfaction = driver ? round(driver.data.satisfaction ?? 0, 2) : null;
-  const wait = governmentLockWeeks(world, nation);
-  const cost = `${Math.abs(hit * 100).toFixed(1)}`;
+function legitimacy(world, nation) {
+  const { gap, leader } = legitimacyOf(nation);
+  if (gap < 12) return null;
+  const ruling = PARTIES[nation.politics?.ruling];
+  const elections = nation.politics?.government !== 'absolutism';
   return {
     id: 'IDEOLOGY',
     kind: ALERT_KINDS.IDEOLOGY,
-    title: `The ${leader.name} lead the people — stability −${cost}`,
-    cause: `The ${leader.name} hold ${Math.round(leader.support)}% of the backing against`
-      + ` your ${ruling.name}' ${Math.round(ruling.support)}%. ${driverName} satisfaction is`
-      + ` ${satisfaction}: ${radical
-        ? 'below 0.40 the socialists and nationalists gain ground.'
-        : 'above 0.58 the liberals and conservatives gain ground.'}`,
-    remedy: (wait > 0
-      ? `Your government's term runs another ${wait} weeks; then you may form a government with the ${leader.name}.`
-      : `You may form a government with the ${leader.name} on the Politics screen now.`)
-      + (radical
-        ? ' Or win the people back: satisfaction rises when the basket gets cheaper, tax falls, welfare rises or unemployment falls.'
-        : ' Or keep governing and pay the stability each week.'),
+    title: `The people want the ${PARTIES[leader].name}`,
+    cause: `${PARTIES[leader].name} lead the ${ruling?.name ?? 'government'} by ${Math.round(gap)} points.`
+      + ` Legitimacy costs ${Math.round(gap * 0.4)} stability.`,
+    remedy: elections
+      ? 'The next election will settle it — or spend political power on propaganda for the ruling party.'
+      : `Appoint a ${PARTIES[leader].name} government (political power), or run propaganda for the crown's party.`,
   };
 }
 
-const CHECKS = [starvation, demotion, deficit, importDrain, shortage, ideology];
+const CHECKS = [famine, treasury, consumerGoods, shortage, dependency, legitimacy];
 
 /**
- * Ulusun şu anki uyarıları, ağırdan hafife.
- *
- * SAF FONKSİYON: durum yazmaz, sayaç tutmaz. "Kapatıldı mı" bilgisi sunum
- * katmanının işidir — uyarının kendisi her hafta baştan ölçülür, böylece
- * kapatılan bir uyarı sorun geçtiğinde sessizce ölür, geri geldiğinde de
- * yeniden doğar.
+ * Ulusun şu anki uyarıları, ağırdan hafife. SAF FONKSİYON: durum yazmaz.
  */
 export function activeAlerts(world, nation) {
   if (!nation?.alive || !nation.economy) return [];
@@ -307,7 +171,6 @@ export function activeAlerts(world, nation) {
     try {
       hit = check(world, nation);
     } catch {
-      // Tek bir uyarının hatası şeridin tamamını düşürmez.
       hit = null;
     }
     if (hit) out.push(hit);

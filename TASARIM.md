@@ -1,0 +1,192 @@
+# ULUSLAR ÇAĞI — yön belgesi
+
+Bu belge hem **ölçüt** hem **plan**dır. Her mekanik buna göre yargılanır;
+sayılar başsız ölçümle ayarlanır ve ayarlandıkça burada güncellenir.
+
+## Hedef tek cümlede
+
+Age of History'nin sadeliği, HOI4'ün savaş ve üretim omurgası, Victoria 2'nin
+halkları. 1836–1900, bir tur bir hafta.
+
+Eski yön ("Victoria'nın dünyası, ev ödevi olmadan") 42 mal, üç sınıf, fiyat
+zinciri ve 5.400 satırlık `economy.js` üretti; oyuncu kararlarının çoğu bir
+muhasebe tablosuna gömüldü. Yeni yön içeriği budamaz, MUHASEBEYİ budar:
+oyuncunun gördüğü her sayı bir karara bağlanır.
+
+## İlkeler
+
+1. **Her sayı bir karara bağlı.** Kararı olmayan sayı ne ekranda ne simde.
+2. **Her sistem tek dosya, tek haftalık giriş, saf hesap.** Ekran formül
+   kurmaz; sistemin döküm fonksiyonunu basar (eski değişmez #2 aynen geçerli).
+3. **Oyuncu niyet söyler, sistem uygular.** Yasa, ağırlık, kuyruk — mal mal,
+   fabrika fabrika düğme yok. Province başına iş varsa AUTO devralır.
+4. **YZ aynı kapıdan geçer.** Ayrı YZ ekonomisi, gizli tavan yok.
+5. **Her kaldıraç ölçülür.** Hissedilmeyen kaldıraç silinir.
+
+### Üç test (eski belgeden, aynen geçerli)
+
+- **Gürültü testi:** kaldıracın bütün menzili tohumlar arası doğal oynamanın
+  altındaysa oyuncu onu hissetmez → birleştir ya da sil.
+- **Ev ödevi testi:** oyuncunun işi sahip olduğu nesne sayısıyla büyüyorsa bu
+  işletmedir → politikaya çevir.
+- **Cümle testi:** ekrandaki sayı bir cümleye çevrilemiyorsa ya bir karara
+  girdidir (dökümüyle kalsın) ya da ekranda işi yoktur.
+
+## 1. Üst çubuk = oyunun bütün ekonomisi
+
+| Sayaç | Gelir | Gider |
+|---|---|---|
+| Altın | province vergisi, ihracat, haraç | ordu/donanma bakımı, inşaat, alay, ithalat, faiz, eğitim |
+| Siyasi Güç (SG) | hükûmet, istikrar | yasa, hükûmet, danışman, kültür politikası, savaş gerekçesi, ambargo |
+| İnsan gücü | çekirdek nüfus × askerlik yasası | alay, takviye |
+| Sanayi (IC) | fabrika × kömür × istikrar × teknoloji | sivil pay → tüketim malı, askerî pay → teçhizat |
+| İstikrar | hükûmet, mal, savaş, huzursuzluk | SG, vergi, IC, isyan |
+| Savaş desteği | soydaş, saldırıya uğramak | kayıp, uzayan savaş; yasaların kapısı |
+| 6 kaynak | province yatağı, ithalat | üretim hatları, nüfus, muharebe |
+
+## 2. Province — tek pop
+
+`province.econ`: `population`, `development` (1–10), `buildings`, `control`
+(çekirdek dışında UYUM), `unrest`, `soldiers`. Kültür payları ve ana yurt
+province üstünde kalır. Sınıf, meslek, ihtiyaç sepeti, fiyat yok.
+
+**Çekirdek:** üretimden gelen `coreOf`, ya da çoğunluk sahibin ana/kabul
+edilmiş kültürü, ya da sahibin ana kültürünün ana yurdu, ya da 25 yıldır
+elde. **Statü:** çekirdek 1, çekirdek dışı `0.25 + 0.75 × uyum/100`, işgal 0.
+
+**Kalkınma** vergiyi (×(1 + 0.2·kalkınma)), bina yuvasını (kalkınma + 1),
+el tezgâhı tüketim malını ve nüfus artışını büyütür. Altınla, 12 haftada bir
+kademe; bedel `15 × (kalkınma+1)²`. Tavan: 3 + teknoloji + okuryazarlık × 3.
+
+## 3. Altı kaynak (akış — stok yok)
+
+| Kaynak | Province üretimi | Tüketen | Eksikse |
+|---|---|---|---|
+| Gıda | arazi verimi × (1 + 0.25 çiftlik) | nüfus | nüfus azalır, istikrar düşer |
+| Kömür | yatak × (1 + 0.5 maden) | fabrikalar (0.25/IC) | IC × (0.6 + 0.4 oran) |
+| Demir | yatak | tüfek, top, demiryolu inşaatı | hat yavaşlar |
+| Kereste | yatak | inşaat, gemi, tüfek | inşaat yavaşlar |
+| At | yatak | süvari (0.5/hafta), topçu (0.25/hafta) | süvari/topçu gücü düşer |
+| Güherçile | yatak | muharebedeki her alay (0.2/hafta) | muharebe gücü −%30'a kadar |
+
+Yatak, demiryolu ve statüyle çarpılır. Güherçile yalnız savaşta tüketilir:
+barışta değersiz, savaşta hayati — savaş hedefi olmaya en uygun kaynak.
+
+## 4. Ticaret
+
+- Kaynak başına tek dünya fiyatı: `taban × √(talep/arz)`, 0.6–2.0, haftada %10 yaklaşır.
+- **İhracat:** yalnız fazla, üretimin yasa payına kadar. **İthalat:** açık, altın yettiği sürece kendiliğinden.
+- Ticaret yasası: Kapalı %0 (ithalat ×1.5, istikrar +3) · Sınırlı %25 · İhracat odaklı %50 (ihracat geliri +%15) · Serbest %80 (ithalat ×0.9, inşaat −%10).
+- İkili akış: savaştaki ve ambargolu çift ticaret yapmaz. Kara komşusu doğrudan, ötekiler denizden (iki taraf da kıyılı).
+- **Abluka:** düşman savaş gemisinin 2 hex yakınındaki kıyı province'lerinin payı kadar deniz ithalatı kesilir. Haritada görünür, donanmanın asıl işi.
+- **Bağımlılık:** bir kaynağın yarısından fazlası tek ülkeden geliyorsa uyarı; YZ rakibine ambargoyu silah olarak kullanır.
+
+## 5. Sanayi ve üretim
+
+- `IC = Σ fabrika × (1 + teknoloji) × kömür × (0.85 + 0.3·istikrar) × (1 − askerlik cezası) × statü`.
+- **Ekonomi yasası** askerî payı belirler: Sivil %10 · Kısmi %25 · Savaş %50 (savaşta ya da savaş desteği ≥50) · Topyekûn %80 (savaşta ve savaş desteği ≥70).
+- **Tüketim malı:** ihtiyaç `nüfus/100k × 0.6 × çağ (1→1.8)`; arz el tezgâhı (`nüfus/100k × 0.5 × (1+0.03·kalkınma)`) + sivil IC. Oran 1'in altındaysa istikrar düşer (−20'ye kadar), üstündeyse vergi artar (+%20'ye kadar). Çağ ilerledikçe ihtiyaç büyür: sanayileşmeyen ülke huzursuzlaşır.
+- **Üretim hatları:** Tüfek (0.5 IC, demir 0.2 + kereste 0.1), Top (2 IC, demir 1), Gemi (3 IC, kereste 1.5; zırhlı teknolojisiyle demir+kömür; tersane şart). Oyuncu ağırlık verir; askerî IC ağırlıkla dağılır. Verim hat başına %20–%100: çalışırken haftada +1 puan, boşta −0.5.
+- **Teçhizat stoğu** ulusaldır, tavansız. Alay ihtiyacı: piyade 10 tüfek; süvari 6 tüfek; topçu 4 tüfek + 6 top; savaş gemisi 10 gemi. Takviye kaybolan güç oranında teçhizat yer.
+
+## 6. Altın, borç, iflas
+
+- Vergi = Σ province `nüfus/100k × 0.9 × (1+0.2·kalkınma) × statü` × vergi yasası × `(0.8+0.4·istikrar)` × tüketim malı bonusu.
+- Bakım: kara alayı 0.5, savaş gemisi 0.8 altın/hafta; savaşta ×1.5.
+- Altın sıfırın altına inerse otomatik borç. Faiz haftada %0.3. Tavan `max(150, 20 × haftalık gelir)`.
+- **İflas** (tavan aşılırsa): borç silinir, istikrar −20 ve ordu düzeni −50 (52 hafta), inşaat kuyruğu iptal, 52 hafta borç yok.
+
+## 7. İnşaat
+
+Bina province'e aittir; toprakla el değiştirir. Bedel peşin, süre haftalarla.
+Aynı anda yürüyen proje: `2 + ⌊province/8⌋` (+teknoloji); kereste eksikse yavaşlar.
+
+| Bina | Bedel | Hafta | Etki | Şart |
+|---|---|---|---|---|
+| Çiftlik | 40 | 12 | gıda +%25 | — |
+| Maden | 60 | 16 | yatak +%50 | yatak |
+| Fabrika | 120 (+%3/fabrika) | 26 | +1 IC | kalkınma ≥2 |
+| Tersane | 120 | 30 | gemi hattı, liman | kıyı |
+| Kışla | 50 | 16 | insan gücü +%20, eğitim −%10 süre | — |
+| Kale | 60 | 20 | savunma +%15/kademe (en çok 3) | — |
+| Demiryolu | 70 (+%50/kademe) | 20 | kaynak +%10, hareket, ikmal (en çok 5) | — |
+| Üniversite | 100 | 30 | araştırma +0.3, okuryazarlık | kalkınma ≥4 |
+
+## 8. Nüfus, insan gücü, okuryazarlık
+
+- Artış haftalık `%0.012 × gıda × tüketim malı × istikrar × barış` (savaşta ×0.6); kıtlıkta azalış. Ölen asker nüfustan düşer.
+- İnsan gücü: province `nüfus × askerlik oranı × (kabul payı + yabancı pay × vatandaşlık oranı) × statü − silah altındakiler`.
+- Askerlik: Gönüllü %1.5 · Sınırlı %3 (IC −%3) · Yaygın %6 (IC −%8, savaş desteği ≥50) · Topyekûn %12 (IC −%20, istikrar −5, savaş desteği ≥80).
+- Okuryazarlık ulusal; eğitim yasası ve üniversiteyle hedefe yaklaşır. Araştırmayı, kalkınma tavanını ve milliyetçiliği büyütür.
+
+## 9. Siyaset
+
+- **SG:** haftada `(1.5 + hükûmet + parti) × (0.5 + istikrar)`, tavan 500.
+- **İstikrar** hedefe haftada 1 puan yaklaşır. Hedef: 50 + tüketim malı + gıda + vergi yasası + savaş + işgal + huzursuzluk + meşruiyet + parti + olay/gündem.
+- **Savaş desteği** hedefe haftada 1 puan yaklaşır. Hedef: 40 + saldırganlık + yabancı yönetimdeki soydaşlar + savunma savaşı − kayıp − savaş süresi + milliyetçi destek.
+- **Hükûmet biçimi:** Mutlakiyet (SG +0.5, seçim yok, iktidar partisini sen seçersin), Meşruti (4 yılda seçim), Cumhuriyet (seçim, istikrar +5). Kararla ya da isyanla değişir.
+- **Dört parti:** Muhafazakâr, Liberal, Milliyetçi, Sosyalist (1848'den sonra). Destek sürücüleri: istikrar, okuryazarlık, tüketim malı, savaş, soydaşlar, sanayi. İktidar partisi bonus verir ve yasa aralığını sınırlar. Halkın istediği iktidarda değilse **meşruiyet cezası**. SG ile propaganda.
+- **Altı yasa** (SG 50, 26 hafta kilit): Vergi (3), Askerlik (4), Ekonomi (4), Ticaret (4), Vatandaşlık (3), Eğitim (3).
+- **Danışmanlar:** Ekonomi, Ordu, Siyaset yuvası; ikişer aday, SG 50, tek bonus.
+- **Ulusal gündem:** duruma uyan 3 seçenekten biri, 12–20 hafta, somut sonuç.
+- **Olaylar:** sistemlere bağlı, seçenekli kartlar (kıtlık, grev, seçim, Ulusların Baharı, savaş bezginliği…).
+
+## 10. Kültür (Victoria 2'nin kalbi)
+
+- Huzursuzluk = kabul edilmemiş pay × vatandaşlık × çağın milliyetçiliği + fetih + savaş + işgal − tüketim malı fazlası; garnizon ve istikrar düşürür.
+- **Uyum** (çekirdek dışı): huzursuzluk düşükken artar; vergi, asker ve IC o oranda gelir.
+- **İsyancılar haritada gerçek ordulardır** (Özgür X devletleri): hareket aşamaları → ayaklanma → bağımsızlık savaşı.
+- Politikalar: kabul (SG), ödün (SG), sıkıyönetim (altın/hafta), baskı (SG + şöhret), sürgün, soydaşa bırakma, vasal olarak bırakma.
+- **Birleşme:** soydaş toprak gerekçesi yarı fiyat; küçük soydaş devlet ilişki ve güç farkıyla barışla katılır; ana yurdun %80'i toplanınca "Büyük X" kurulur.
+- **Ulusların Baharı:** 1848 dolayında dünya dalgası: milliyetçilik ve liberaller sıçrar.
+
+## 11. Askerî
+
+- Hareket, muharebe, cephe, general, planlama, eğitim kuyruğu, seferberlik olduğu gibi kalır (province grafı).
+- Alay: altın + insan gücü + teçhizat. Teçhizat yoksa kuyrukta bekler, eksik tümen takviye alamaz.
+- Muharebe: nehir aşarak saldırı −%25 (province sınırının çoğu nehirse); güherçile eksikliği −%30'a kadar; at eksikliği süvari ve topçuyu vurur; kale +%15/kademe.
+- Donanma: muharebe, abluka, nakliye.
+- **Teslim:** başkenti ve şehirlerinin yarısı düşen ülke, savaş desteği düşükse her makul barışı kabul eder.
+
+## 12. Diplomasi ve barış
+
+İlişki, ittifak, rakip, kriz/ultimatom, barış masası, şöhret ve koalisyon
+aynen kalır. Eklenen: savaş ilanı SG ister (soydaş/çekirdek hedefe ucuz),
+ambargo (SG). Barış talepleri: toprak, kurtarma, vasal, tazminat, askersizleştirme.
+
+## 13. Teknoloji
+
+5 dal (Sanayi, Altyapı, Ordu, Donanma, Toplum) × 8 seviye. Her teknolojinin
+etkisi somut: IC, verim tavanı, kaynak, kalkınma tavanı, inşaat, ikmal, saldırı,
+savunma, zırhlı gemi, okuryazarlık, istikrar. Araştırma = 1 + okuryazarlık × 6
++ üniversite × 0.3.
+
+## 14. Zafer (1900)
+
+Puan = IC × 4 + nüfus (milyon) × 3 + çekirdek province + prestij. Prestij
+kazanılan savaştan, Büyük X'ten, gündemden gelir. Her ülkenin bir **ulusal
+hedefi** vardır (Birleşmiş Ulus / İmparatorluğu Koru / Sanayi Devi); tutarsa
+büyük bonus. Küçük ülke de kendi hikâyesini kazanabilir.
+
+## 15. YZ
+
+Kişilik (ulusun `focus` ve `aggression`'ı) ağırlıkları seçer. Her sistemin
+kendi YZ rutini vardır: yasa, inşaat, kalkınma, hat ağırlığı, ticaret yasası,
+ambargo, kültür politikası, gündem, danışman, olay seçimi. AUTO devri aynı
+rutinleri oyuncu için çalıştırır.
+
+## 16. Haftalık sıra
+
+temas/koalisyon → YZ → diplomasi → tur++ → ordu düzeni → takviye → eğitim/
+seferberlik → komuta → yürüyüş → province (nüfus, uyum, kültür) → hareketler →
+**ekonomi** (ulus başına: kaynak → IC → tüketim malı → hatlar → vergi/bakım;
+sonra dünya ticareti, fiyat, hafta kapanışı) → inşaat → siyaset (SG, istikrar,
+savaş desteği, parti, seçim, gündem, olay) → muharebe → eleme → emirler → zafer.
+
+## 17. Değişmezler (her hafta doğrulanır)
+
+- Altın defteri kapanır: açılış + Σ satır = kapanış.
+- Kaynak dengesi: üretim + ithalat = tüketim + ihracat + açık.
+- Dünya ticareti kapanır: Σ ithalat = Σ ihracat (miktar ve altın).
+- Nüfus, insan gücü, stok negatif olmaz; hiçbir sayı NaN olmaz.
+- Aynı tohum aynı oyunu üretir.

@@ -10,8 +10,7 @@
 // borc surdugu her hafta degil.
 
 import { TIER, announce, captureOpening } from './chronicle.js';
-import { CLASS_INFO, GOODS, debtCapacity } from './economy.js';
-import { scarcestBasketGoods } from './alerts.js';
+import { debtCapacity } from './economy.js';
 import { governmentType, rulingParty } from './politics.js';
 import { controllerOf } from './control.js';
 import { regimentCount } from './units.js';
@@ -29,10 +28,10 @@ const ROUT_SHARE = 0.34;
  * (populationView alertsFor: needsMet < 0.5); kapanis %90'da ve dort hafta
  * tutunca — bir haftalik salinim ne baslatir ne bitirir.
  */
-const HUNGER_OPEN = 0.5;
-const HUNGER_CLOSE = 0.9;
+const HUNGER_OPEN = 0.8;
+const HUNGER_CLOSE = 0.95;
 const HUNGER_HOLD = 4;
-const HUNGER_STAGES = [0.5, 0.75];
+const HUNGER_STAGES = [0.85, 0.9];
 /** Bozgun duyurusu icin gereken en az alay: iki alaylik kuvvette gurultu olur. */
 const ROUT_FLOOR = 3;
 
@@ -89,7 +88,7 @@ function regimentsOf(world, nationId) {
  * ucusmaz) hem de olayi gercekten haber degeri olan yere baglar.
  */
 function debtPhase(nation) {
-  if ((nation.economy?.ledger?.default ?? 0) > 0.01) return 'default';
+  if ((nation.bankruptUntil ?? 0) > (nation.economy?.ledger?.lastUpdated ?? 0)) return 'default';
   const debt = Math.max(0, nation.debt ?? 0);
   if (debt <= 0.01) return 'clear';
   const monthlyIncome = Math.max(0, nation.economy?.ledger?.income ?? 0) * 4;
@@ -322,7 +321,8 @@ export function runNationalEvents(game, nation) {
 function runHungerArc(game, nation, state) {
   const world = game.world;
   const turn = world.turn ?? 0;
-  const needs = nation.economy?.needsMet;
+  // Kıtlığın ölçüsü artık GIDA ORANI: üretim + ithalat / ihtiyaç.
+  const needs = nation.economy?.resources?.FOOD?.ratio;
   if (!Number.isFinite(needs)) return;
   const arc = state.hunger ??= {
     active: false, since: 0, worst: 1, below: 0, above: 0, stage: 0, ended: 0,
@@ -336,18 +336,12 @@ function runHungerArc(game, nation, state) {
     arc.stage = 0;
     arc.above = 0;
     arc.below = 0;
-    // En kalabalik sinifin sepetinde eksik olan mallar: ark neyin kitligi?
-    const biggest = Object.keys(CLASS_INFO)
-      .map((id) => ({ id, size: nation.economy.classes?.[id]?.population ?? 0 }))
-      .sort((a, b) => b.size - a.size)[0];
-    const scarce = biggest ? scarcestBasketGoods(nation, biggest.id, 2) : [];
-    const goods = scarce.length
-      ? scarce.map((row) => `${GOODS[row.id]?.name ?? row.id} ${Math.round(row.coverage * 100)}% covered`).join(', ')
-      : 'the basket outruns household budgets';
+    const blockade = nation.economy?.blockade ?? 0;
     announce(game, nation, {
       kind: 'HUNGER', tier: TIER.MAJOR, key: 'hunger',
       title: 'The Hunger begins',
-      detail: `Only ${Math.round(needs * 100)}% of the household basket is being met: ${goods}. `
+      detail: `Only ${Math.round(needs * 100)}% of the food the people need reaches them`
+        + (blockade > 0 ? `; an enemy fleet blockades ${Math.round(blockade * 100)}% of our coast. ` : '. ')
         + 'The chronicle records the day; it will record the day it ends.',
     });
     return;
@@ -359,7 +353,7 @@ function runHungerArc(game, nation, state) {
     arc.stage = i + 1;
     announce(game, nation, {
       kind: 'RELIEF', tier: TIER.IMPORTANT, key: `hunger-stage-${i + 1}`, ttl: 12000,
-      title: i === 0 ? 'Half the basket is met again' : 'Three quarters of the basket is met',
+      title: i === 0 ? 'Half the food need is met again' : 'Three quarters of the food need is met',
       detail: `Week ${turn - arc.since + 1} of the hunger; the worst week met ${Math.round(arc.worst * 100)}%.`,
     });
   }
@@ -377,7 +371,7 @@ function runHungerArc(game, nation, state) {
   announce(game, nation, {
     kind: 'RELIEF', tier: TIER.MAJOR, key: 'hunger-ends',
     title: `The Hunger ends after ${weeks} weeks`,
-    detail: `Households meet ${Math.round(needs * 100)}% of their basket; the worst week met ${Math.round(arc.worst * 100)}%.`,
+    detail: `${Math.round(needs * 100)}% of the food need is met; the worst week met ${Math.round(arc.worst * 100)}%.`,
   });
 }
 
@@ -401,7 +395,7 @@ export function runWorldStories(game) {
   for (const nation of world.nations) {
     if (!nation.alive) continue;
     aliveIds.push(nation.id);
-    const levels = (nation.economy?.factories ?? []).reduce((s, f) => s + (f.level ?? 1), 0);
+    const levels = nation.economy?.ic?.total ?? 0;
     if (levels > topLevels || (levels === topLevels && topIndustry != null && nation.id < topIndustry)) {
       topLevels = levels;
       topIndustry = nation.id;
@@ -425,7 +419,7 @@ export function runWorldStories(game) {
   }
   // Sanayi liderligi el degistirdi.
   if (prev.topIndustry != null && topIndustry != null
-    && prev.topIndustry !== topIndustry && topLevels > 10) {
+    && prev.topIndustry !== topIndustry && topLevels > 5) {
     say(`${world.nations[topIndustry]?.name} is now the world's first industrial power.`, 'story-industry');
   }
   // Cokus: gecen bakista canli olan devlet artik yok.

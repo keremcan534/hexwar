@@ -11,6 +11,8 @@
 //
 // Katman notu: world katmanıdır, DOM'a ve game'e dokunmaz.
 
+import { DIRS } from '../core/hex.js';
+
 /** Kara karesinin bağlı olduğu province (geçilmez etek de bağlı olduğu province). */
 function provinceOfTile(world, tile) {
   const id = tile.provinceId >= 0 ? tile.provinceId : (tile.fringeOf ?? -1);
@@ -119,4 +121,36 @@ export function nodeStepCost(world, from, to) {
   const province = provinceOfTile(world, to);
   const land = hexes * (province?.moveCost ?? to.terrain.moveCost);
   return from.terrain.water ? land + EMBARK_COST : land;
+}
+
+const RIVER_CACHE = new WeakMap();
+
+/**
+ * İki province arasındaki sınırın NEHİR olup olmadığı: ortak hex kenarlarının
+ * yarısından fazlası nehirse evet. Muharebe nehir aşarak saldırana ceza keser
+ * (battles.js); province üreteci v2 sınırları zaten nehirlere oturtur, yani
+ * nehir hatları doğal savunma hattıdır. Dünya başına önbelleklidir.
+ */
+export function riverBorder(world, a, b) {
+  if (!a || !b || a === b) return false;
+  let cache = RIVER_CACHE.get(world);
+  if (!cache) RIVER_CACHE.set(world, (cache = new Map()));
+  const key = a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
+  let value = cache.get(key);
+  if (value === undefined) {
+    let shared = 0;
+    let river = 0;
+    for (const idx of a.tileIdx) {
+      const tile = world.tiles[idx];
+      for (let d = 0; d < 6; d++) {
+        const other = world.get(tile.q + DIRS[d][0], tile.r + DIRS[d][1]);
+        if (!other || other.provinceId !== b.id) continue;
+        shared++;
+        if ((tile.riverMask ?? 0) & (1 << d)) river++;
+      }
+    }
+    value = shared > 0 && river / shared > 0.5;
+    cache.set(key, value);
+  }
+  return value;
 }

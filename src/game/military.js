@@ -35,12 +35,11 @@ import {
 } from './mobilization.js';
 import { CONSCRIPT_POWER } from './units.js';
 import { crisisLeft, inCrisis } from './diplomacy.js';
-import { UNIT_COSTS, UNIT_UPKEEP } from './cities.js';
-import {
-  MILITARY_EQUIPMENT, MILITARY_EQUIPMENT_IDS, MILITARY_FIELD, equipmentStock,
-} from './economy.js';
-import { constructionAtlas } from './construction.js';
+import { UNIT_COSTS } from './cities.js';
+import { EQUIPMENT, UPKEEP } from './econ/defs.js';
+import { equipmentStock } from './econ/industry.js';
 import { provinceName } from './provinces.js';
+import { reinforcementRateOf } from './reinforcement.js';
 import { atWar } from './diplomacy.js';
 
 /**
@@ -60,14 +59,6 @@ export const UNIT_ROLE = {
   ARTILLERY: {
     category: 'guns', role: 'Fire support',
     desc: 'Highest attack in the army and the most fragile alone. Decisive inside a stack.',
-  },
-  ARMOR: {
-    category: 'guns', role: 'Shock',
-    desc: 'Breaks entrenched lines. Needs a tank industry before it can be fielded.',
-  },
-  AIRCRAFT: {
-    category: 'support', role: 'Air support',
-    desc: 'Support arm: adds weight to a battle without holding the province itself.',
   },
   WARSHIP: {
     category: 'naval', role: 'Fleet',
@@ -119,7 +110,7 @@ export function militarySummary(world, nation) {
   const army = divisionsOfNation(world, nation.id);
   const fleet = divisionsOfNation(world, nation.id, { naval: true });
   const queue = trainingQueue(nation);
-  const military = nation.economy?.military ?? {};
+  const reinforcement = nation.economy?.reinforcement ?? {};
 
   let soldiers = 0;
   let men = 0;
@@ -196,32 +187,25 @@ export function militarySummary(world, nation) {
       share: MOBILIZATION.SHARE,
       power: CONSCRIPT_POWER,
     },
-    upkeepGold: nation.budget?.armyGold ?? 0,
-    // Defterin KAPANMIS satirlari (treasury.LEDGER_LINES: `army`, `procurement`;
-    // denetim tezgahi da ayni ikisini okur). `armyCost`/`procurementCost`
-    // adinda defter alani yok: eski okuma hep 0 veriyordu ve ekran
-    // "procurement £0.0" yaziyordu. Ayri bir "gida" kalemi de yok —
-    // `budget.army` alay SAYISIDIR ve ordunun erzaki piyasadan procurement
-    // satirina yazilarak alinir (economy ARMY_CONSUMPTION_RATES.groceries).
+    upkeepGold: (nation.economy?.upkeep?.army ?? 0) + (nation.economy?.upkeep?.navy ?? 0),
+    // Defterin KAPANMIŞ satırları (treasury.LEDGER_LINES: `army`, `navy`).
     armyCost: Math.abs(nation.economy?.ledger?.army ?? 0),
-    procurementCost: Math.abs(nation.economy?.ledger?.procurement ?? 0),
-    wages: nation.economy?.armyFunding ?? 100,
-    procurement: nation.economy?.armyFunding ?? 100,
-    supplyIndex: military.supplyIndex ?? 1,
-    reinforced: military.reinforced ?? 0,
-    // `reinforced` GUC puanidir; ekran "men" diye yaziyordu. Gercek insan
-    // sayisi takviye sirasinda province'lerden cekilen manpower'dir.
-    reinforcedMen: military.manpowerUsed ?? 0,
-    reinforcementDemand: military.reinforcementDemand ?? 0,
+    navyCost: Math.abs(nation.economy?.ledger?.navy ?? 0),
+    reinforced: reinforcement.reinforced ?? 0,
+    // `reinforced` güç puanıdır; gerçek insan sayısı province'lerden çekilen
+    // insan gücüdür.
+    reinforcedMen: reinforcement.manpowerUsed ?? 0,
+    reinforcementDemand: reinforcement.demand ?? 0,
   };
 }
 
 /** Kuyruk kaydının çıkış kümesinin adı — "nereden çıkacak" sorusu. */
-function placeOf(world, nationId, tile, atlas) {
+function placeOf(world, nationId, tile) {
   if (!tile) return { province: 'Lost province', region: '—' };
+  const province = world.provinces?.[tile.provinceId];
   return {
-    province: provinceName(tile),
-    region: atlas?.tileRegions.get(tile)?.name ?? '—',
+    province: provinceName(province?.center ?? tile),
+    region: world.nations[province?.owner]?.name ?? '—',
   };
 }
 
@@ -232,7 +216,6 @@ function placeOf(world, nationId, tile, atlas) {
 export function recruitOptions(game, nation) {
   const world = game.world;
   const turn = game.turns?.turn ?? world.turn ?? 0;
-  const atlas = constructionAtlas(world, nation.id);
   return Object.keys(UNIT_TYPES).map((id) => {
     const type = UNIT_TYPES[id];
     const source = recruitmentSource(world, nation, id);
@@ -241,8 +224,8 @@ export function recruitOptions(game, nation) {
     const equipment = Object.entries(recruitmentEquipmentCost(id))
       .map(([equipmentId, amount]) => ({
         id: equipmentId,
-        name: MILITARY_EQUIPMENT[equipmentId]?.name ?? equipmentId,
-        icon: MILITARY_EQUIPMENT[equipmentId]?.icon ?? '',
+        name: EQUIPMENT[equipmentId]?.name ?? equipmentId,
+        icon: EQUIPMENT[equipmentId]?.glyph ?? '',
         amount,
         stock: equipmentStock(nation, equipmentId),
       }));
@@ -264,11 +247,11 @@ export function recruitOptions(game, nation) {
       moves: type.moves,
       support: Boolean(type.support),
       entrenched: Boolean(type.entrenched),
-      upkeep: UNIT_UPKEEP.gold,
+      upkeep: type.domain === 'sea' ? UPKEEP.sea : UPKEEP.land,
       available: unitAvailable(id, turn, nation),
       blockers,
       canBuild: blockers.length === 0,
-      source: source ? placeOf(world, nation.id, source, atlas) : null,
+      source: source ? placeOf(world, nation.id, source) : null,
       sourcePool: source ? regionManpower(world, source) : 0,
     };
   });
@@ -277,7 +260,6 @@ export function recruitOptions(game, nation) {
 /** Kuyruk satırları: ilerleme, kalan süre, yer ve bekleme nedeni. */
 export function trainingRows(game, nation) {
   const world = game.world;
-  const atlas = constructionAtlas(world, nation.id);
   const capacity = trainingCapacity(world, nation);
   const queue = trainingQueue(nation);
   let active = 0;
@@ -285,7 +267,7 @@ export function trainingRows(game, nation) {
     const type = UNIT_TYPES[item.typeId];
     const done = item.progress >= item.weeks;
     if (!done && active < capacity) active++;
-    const place = placeOf(world, nation.id, world.get(item.q, item.r), atlas);
+    const place = placeOf(world, nation.id, world.get(item.q, item.r));
     return {
       id: item.id,
       typeId: item.typeId,
@@ -303,10 +285,10 @@ export function trainingRows(game, nation) {
       queued: !done && item.waiting === 'capacity',
       // Askersizleştirme antlaşması sırayı dondurur (bkz. recruitment.js).
       frozen: item.waiting === 'treaty',
-      // Teçhizat dünya pazarından bekleniyor (recruitment.queueRecruit).
+      // Teçhizat üretim hattından bekleniyor (recruitment.queueRecruit).
       awaiting: item.waiting === 'equipment'
         ? Object.entries(item.missing ?? {}).filter(([, v]) => v > 1e-9)
-          .map(([id, v]) => `${v.toFixed(1)} ${MILITARY_EQUIPMENT[id]?.name ?? id}`).join(', ')
+          .map(([id, v]) => `${v.toFixed(1)} ${EQUIPMENT[id]?.name ?? id}`).join(', ')
         : null,
       index,
       first: index === 0,
@@ -421,14 +403,11 @@ export function unassignedDivisions(world, nation) {
  */
 export function militaryStats(world, nation) {
   const summary = militarySummary(world, nation);
-  const wages = Math.max(0, Math.min(1, summary.wages / 100));
-  const supply = Math.max(0, Math.min(1, summary.supplyIndex));
-  const funding = Math.max(0.25, summary.procurement / 100) * Math.max(0.4, summary.supplyIndex);
-  const organizationRegain = 10 * (0.6 + 0.4 * wages) * (0.7 + 0.3 * supply);
-  const reinforcement = BASE_REINFORCEMENT_RATE * (0.25 + funding * 0.75);
-  const equipmentDemand = MILITARY_EQUIPMENT_IDS.reduce(
-    (sum, id) => sum + (nation.economy?.military?.[MILITARY_FIELD[id].demand] ?? 0), 0,
-  );
+  const organizationRegain = 10 * Math.max(0.2, 1 + (nation.mods?.organization ?? 0))
+    * ((nation.bankruptUntil ?? 0) > (world.turn ?? 0) ? 0.5 : 1);
+  const reinforcement = reinforcementRateOf(nation);
+  const powder = nation.economy?.resources?.SALTPETER?.ratio ?? 1;
+  const horses = nation.economy?.resources?.HORSES?.ratio ?? 1;
   const bestPlanning = Math.max(0, ...generalsOf(nation).map((g) => g.planning ?? 0));
 
   // "War Exhaustion" satiri KALDIRILDI: 'Not simulated' diye gri bir olu
@@ -438,26 +417,26 @@ export function militaryStats(world, nation) {
   return [
     {
       id: 'supply',
-      label: 'Supply Consumption',
-      value: `${equipmentDemand.toFixed(1)}/week`,
+      label: 'Gunpowder & Horses',
+      value: `${Math.round(powder * 100)}% / ${Math.round(horses * 100)}%`,
       live: true,
-      note: `Equipment the army asks for each week. Supply index ${(supply * 100).toFixed(0)}%`
-        + ' — the smoothed share of that demand actually met.',
+      note: 'Saltpeter burned in battle and horses for cavalry and artillery. Short supply'
+        + ' costs up to 30% of battle strength (gunpowder) and up to 40% for mounted arms.',
     },
     {
       id: 'reinforcement',
       label: 'Reinforcement Rate',
       value: `${Math.round(reinforcement)} men/week`,
       live: true,
-      note: 'Per regiment, before manpower and equipment limits. Scales with military'
-        + ' procurement and the supply index.',
+      note: 'Per regiment, before manpower and equipment limits. Generals, doctrine and'
+        + ' advisors raise it; bankruptcy halves it.',
     },
     {
       id: 'organization',
       label: 'Organization Regain',
       value: `${organizationRegain.toFixed(1)}/week`,
       live: true,
-      note: 'Recovered outside combat. Wages and supply both slow it down when cut.',
+      note: 'Recovered outside combat. Doctrine raises it; bankruptcy halves it.',
     },
     {
       id: 'land-org',
@@ -480,8 +459,8 @@ export function militaryStats(world, nation) {
       label: 'Recruit Time',
       value: `${Math.round(100 / trainingSpeed(nation))}%`,
       live: true,
-      note: 'Of the listed training time. Full military wages and full supply train'
-        + ' at 100%; a starved budget stretches every order.',
+      note: 'Of the listed training time. Doctrine and advisors shorten it;'
+        + ' bankruptcy doubles it.',
     },
     {
       id: 'width',

@@ -1,100 +1,116 @@
-// Hegemonya puanı ve zafer. Oyunun amacı budur: eleme değil, üstünlük.
+// ZAFER — 1900'de en yüksek puan (TASARIM.md §14).
 //
-// Toprak puana katkı verir ama tek yol değildir; ekonomi ve prestij de
-// barışçı bir zafer yolu sağlar.
+// Puan dört eksenden: SANAYİ (IC), NÜFUS, ÇEKİRDEK TOPRAK ve PRESTİJ.
+// Toprak tek yol değildir; sanayi ve prestij barışçı bir yol açar. Her
+// ulusun bir de ULUSAL HEDEFİ vardır (kuruluşta, durumuna göre): tutarsa
+// büyük bonus — küçük ülke de kendi hikâyesini kazanabilir.
+//
+// Erken zafer yoktur: kampanya 1900'de biter (önceki ölçüm: 1910 sonrası
+// harita donuyordu, oyuncunun önüne gelen karar sıfıra yaklaşıyordu).
 
-import { atPeace } from './diplomacy.js';
+import { isCore } from './provinces.js';
 
-/**
- * Oyun 1836'da başlar, bir tur bir haftadır ve 1945'te biter: 5740. tur
- * 28 Aralık 1945'e denk gelirdi (bkz. hud.js tarih hesabı).
- *
- * Erken zafer yoktur. Eskiden bir puan eşiğine ilk ulaşan oyunu bitiriyordu;
- * bu, güçlü ülkenin yüzyılın ortasında masayı toplamasına ve geri kalan
- * onlarca yılın hiç oynanmamasına yol açıyordu. Artık tek kural son turda en
- * yüksek puana sahip olmaktır.
- *
- * KAMPANYA 1900'DE BITER (5740 -> 3340 hafta). Sebep tasarım değil ÖLÇÜM:
- * 110 yıllık kampanyanın son 45 yılı ölçülebilir biçimde boştu.
- *   - Harita 1910'dan sonra donuyordu: ömür boyu sınır değişiminin 649/668'i
- *     1910'dan önce oluyor, sonrasında dört tohumda da 25-32 yıllık kesintisiz
- *     "tek hex el değiştirmedi" pencereleri var.
- *   - Teknoloji ağacının SON düğümü zaten 1912; lider ulus 1899-1902'de
- *     65/65'i bitiriyor. Sonrası için araştırma ekranında gösterilecek şey yok.
- *   - Oyuncunun önüne gelen karar sayısı geç oyunda sıfıra yaklaşıyordu.
- * Yani kesilen 45 yıl oynanan bir şey değildi, izlenen bir şeydi. 1836-1900
- * arası ~64 yıl, oyunun içeriğinin bittiği yere denk düşer ve tek oturumda
- * bitirilebilir bir kampanya olur.
- */
 export const FINAL_TURN = 3340;
 
-/**
- * Kurulu sanayi kapasitesinin puan ağırlığı. Ham üretim ve prestij yüzyıl
- * boyunca yavaş büyür; fabrika seviyesi ise asıl yükselen eksendir.
- *
- * Ağırlık 10'dan 4'e indirildi: fabrikalar artık state başına kurulup kendi
- * kendine seviye atladığı için toplam seviye 12 değil 250'yi aşıyor.
- *
- * Ölçülen bileşim (industry/production/prestige): 1845'te %49/%35/%17,
- * 1935'te %86/%10/%4. Geç oyundaki baskınlık bu ağırlıktan değil, prestij ve
- * ham üretimin yüzyıl boyunca sabit kalmasından gelir (prestij 49 → 47).
- * Ağırlığı buradan düşürmek geç oyunu çeşitlendirmez, yalnız eşiği
- * ulaşılamaz yapar; çözüm diğer eksenleri büyütmektir.
- */
-const INDUSTRY_WEIGHT = 4;
+export const SCORE_WEIGHTS = { ic: 4, population: 3, core: 1, prestige: 1 };
+
+/** Ulusal hedefler ve bonusları. */
+export const GOALS = {
+  unify: {
+    id: 'unify', name: 'United Nation', bonus: 100,
+    desc: 'Our people are divided. Gather the homeland and proclaim the Great nation.',
+  },
+  empire: {
+    id: 'empire', name: 'Preserve the Empire', bonus: 80,
+    desc: 'Many peoples, one crown. Hold at least 90% of our 1836 provinces in 1900.',
+  },
+  industry: {
+    id: 'industry', name: 'Industrial Giant', bonus: 80,
+    desc: 'Become one of the three greatest industrial powers by 1900.',
+  },
+};
 
 /**
- * @returns {{ total:number, economy:number, prestige:number }}
+ * Kuruluşta hedef seçimi: bölünmüş halk → birleşme; çok uluslu devlet →
+ * imparatorluğu koru; geri kalan → sanayi devi. Başlangıç province sayısı
+ * hedefin ölçüsü için saklanır.
  */
-export function hegemonyScore(world, nation) {
-  const budget = nation.budget;
-  // Ekonomi: ürettiğin, sahip olduğun değil.
-  const production = budget
-    ? budget.production.gold + budget.production.food
-      + budget.production.timber + budget.production.iron
-    : 0;
-  const industry = (nation.economy?.factories ?? []).reduce(
-    (sum, factory) => sum + factory.level, 0,
-  );
-  const economy = production * 1.2 + industry * INDUSTRY_WEIGHT;
-
-  // Prestij: şehirler, barışçı ilişkiler, toprak (en zayıf katsayı toprakta).
-  let cities = 0;
-  for (const city of world.cities) if (city.nationId === nation.id) cities += 2 + city.pop * 0.3;
-  let partners = 0;
-  for (const other of world.nations) {
-    if (other.alive && other.id !== nation.id && atPeace(world, nation.id, other.id)) partners++;
+export function assignGoals(world) {
+  const homelandOwners = new Map();
+  for (const province of world.provinces ?? []) {
+    if (province.homeland == null || province.homeland < 0 || province.owner < 0) continue;
+    let set = homelandOwners.get(province.homeland);
+    if (!set) homelandOwners.set(province.homeland, (set = new Set()));
+    set.add(province.owner);
   }
-  // Toprağın katsayısı kasten en zayıf: geniş olmak tek yol olmasın.
-  const prestige = cities + partners * 2 + nation.tiles * 0.04;
+  for (const nation of world.nations) {
+    if (!nation.alive) continue;
+    const own = (world.provinces ?? []).filter((p) => p.owner === nation.id && p.econ);
+    nation.startProvinces = own.length;
+    const foreign = own.filter((p) => !(nation.accepted ?? [nation.culture]).includes(p.culture)).length;
+    const split = (homelandOwners.get(nation.culture)?.size ?? 0) >= 2;
+    nation.goal = split ? 'unify' : (own.length >= 8 && foreign / Math.max(1, own.length) >= 0.25 ? 'empire' : 'industry');
+  }
+}
 
+/** Hedef tuttu mu (şu an)? */
+export function goalMet(world, nation, board = null) {
+  switch (nation.goal) {
+    case 'unify':
+      return world.formedNations?.[nation.culture] === nation.id;
+    case 'empire': {
+      const own = (world.provinces ?? []).filter((p) => p.owner === nation.id).length;
+      return own >= Math.ceil((nation.startProvinces ?? own) * 0.9);
+    }
+    case 'industry': {
+      const ranked = (board ?? world.nations.filter((n) => n.alive))
+        .map((row) => row.nation ?? row)
+        .sort((a, b) => (b.economy?.ic?.total ?? 0) - (a.economy?.ic?.total ?? 0));
+      return ranked.slice(0, 3).some((n) => n.id === nation.id);
+    }
+    default:
+      return false;
+  }
+}
+
+/**
+ * @returns {{ total, industry, population, land, prestige, goal }}
+ */
+export function hegemonyScore(world, nation, board = null) {
+  const industry = (nation.economy?.ic?.total ?? 0) * SCORE_WEIGHTS.ic;
+  const population = (nation.economy?.population ?? 0) / 1e6 * SCORE_WEIGHTS.population;
+  let cores = 0;
+  for (const province of world.provinces ?? []) {
+    if (province.owner === nation.id && isCore(world, province, nation.id)) cores++;
+  }
+  const land = cores * SCORE_WEIGHTS.core;
+  const prestige = (nation.prestige ?? 0) * SCORE_WEIGHTS.prestige;
+  const goal = goalMet(world, nation, board) ? GOALS[nation.goal]?.bonus ?? 0 : 0;
   return {
-    total: Math.round(economy + prestige),
-    economy: Math.round(economy),
+    total: Math.round(industry + population + land + prestige + goal),
+    industry: Math.round(industry),
+    population: Math.round(population),
+    land,
     prestige: Math.round(prestige),
+    goal,
+    // Eski okuyucular (dosya kartı) için iki toplam.
+    economy: Math.round(industry + population),
   };
 }
 
 export function scoreboard(world) {
-  return world.nations
-    .filter((n) => n.alive)
-    .map((n) => ({ nation: n, ...hegemonyScore(world, n) }))
+  const alive = world.nations.filter((n) => n.alive);
+  return alive
+    .map((n) => ({ nation: n, ...hegemonyScore(world, n, alive) }))
     .sort((a, b) => b.total - a.total);
 }
 
-/**
- * Zafer kontrolü.
- * @returns {{ nation: object, score: number, byConquest: boolean, reason: string }|null}
- */
+/** Zafer kontrolü: yalnız son turda. */
 export function checkVictory(world, turn) {
+  if (turn < FINAL_TURN) return null;
   const board = scoreboard(world);
   if (!board.length) return null;
   const leader = board[0];
-
-  // Tek bitiş koşulu süredir; erken zafer yoktur (bkz. FINAL_TURN notu).
-  if (turn < FINAL_TURN) return null;
-
-  // Kazanan aynı zamanda en geniş ülke mi? Tasarım ölçütü bunu sorar.
   const maxTiles = Math.max(...board.map((b) => b.nation.tiles));
   return {
     nation: leader.nation,

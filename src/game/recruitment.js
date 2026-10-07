@@ -10,80 +10,56 @@ import {
   UNIT_TYPES, createUnit, removeUnit, resolveTypeId, stackFull, unitAvailable, unitsOn,
 } from './units.js';
 import { orderMove } from './movement.js';
-import { lawModifiers } from './politics.js';
-import { societyModifiers } from './society.js';
-import { POPULATION_SCALE } from './populationScale.js';
-import {
-  MILITARY_EQUIPMENT, ensureMilitaryEconomy, equipmentStock, setEquipmentStock,
-} from './economy.js';
+import { lawOption } from './laws.js';
+import { mod } from './modifiers.js';
+import { EQUIPMENT, UNIT_EQUIPMENT } from './econ/defs.js';
+import { addEquipment, equipmentStock, takeEquipment } from './econ/industry.js';
 import { UNIT_COSTS, canAfford, pay } from './cities.js';
 import { settle } from './treasury.js';
 import { underTreaty } from './peace.js';
 import { controllerOf } from './control.js';
-import { foreignManpowerShare } from './culture.js';
+import { acceptedShareOf, foreignManpowerShare } from './culture.js';
 import { claimSoldiers, occupiedShareOf, releaseSoldiers } from './provinces.js';
 import { nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
 
-export const RECRUITMENT_EQUIPMENT = {
-  INFANTRY: { arms: 4 },
-  CAVALRY: { arms: 6 },
-  ARTILLERY: { arms: 2, artillery: 4 },
-  // Gemi yelkenli konvoyla kurulur: 1836'da donanma kurmak artik mumkun.
-  // Eski `steamers: 6` sarti, vapur tersanesi 1850'ye kilitli oldugu icin
-  // donanmayi ilk 14 yil yapisal olarak imkansiz kiliyordu (P2-7).
-  WARSHIP: { arms: 8, clippers: 6 },
-  ARMOR: { arms: 2, tanks: 5 },
-  AIRCRAFT: { arms: 1, airplane: 5 },
-};
-export const RECRUITMENT_ARMS = Object.fromEntries(
-  Object.entries(RECRUITMENT_EQUIPMENT).map(([id, cost]) => [id, cost.arms ?? 0]),
-);
-
+/** Alayın kuruluş teçhizatı (econ/defs.js UNIT_EQUIPMENT). */
 export function recruitmentEquipmentCost(typeId) {
-  return RECRUITMENT_EQUIPMENT[resolveTypeId(typeId)] ?? {};
+  return UNIT_EQUIPMENT[resolveTypeId(typeId)] ?? {};
 }
 
 export function equipmentCostLabel(typeId) {
   return Object.entries(recruitmentEquipmentCost(typeId))
-    .map(([id, amount]) => `${amount}${MILITARY_EQUIPMENT[id]?.icon ?? id}`)
+    .map(([id, amount]) => `${amount}${EQUIPMENT[id]?.glyph ?? id}`)
     .join(' ');
 }
 
-/**
- * Bir kümenin hex başına altına inemeyeceği nüfus. Ülke kendi taşrasını
- * boşaltamasın; taban küme boyuna ölçeklenir ki toplam rezerv hex-tabanlı
- * eski dengeyle aynı kalsın.
- */
-export const PROVINCE_POPULATION_FLOOR = 2000 * POPULATION_SCALE;
+const clamp01 = (value) => Math.max(0, Math.min(1, value));
 
 /**
- * Kümenin verebileceği asker sayısı. tile.province paylaşılan küme econ'udur.
- * Kültürü kabul edilmemiş toprak (koloni, fetih) tam asker vermez: halk
- * imparatorluğun ordusuna gönülsüzdür — Vic2'nin accepted-culture mantığı.
+ * Kümenin verebileceği asker sayısı. Havuz ASKERLİK YASASININ oranıdır
+ * (nüfusun %2-15'i); kışla ve teknoloji büyütür. Kabul edilmemiş halk
+ * vatandaşlık yasasının izin verdiği kadar gelir (Vic2), huzursuz küme az
+ * verir, çekirdek dışı küme uyumu oranında. Silah altındakiler havuzdan düşer.
  */
 export function provinceManpower(world, tile) {
   const econ = tile?.province;
   if (!econ) return 0;
-  // Silah altindakiler havuzdan DUSER: nufusta duruyorlar ama zaten
-  // askerdeler, ayni adam ikinci kez alinamaz.
-  const armed = Math.max(0, econ.soldiers ?? 0);
-  const base = Math.max(
-    0,
-    econ.population - armed - PROVINCE_POPULATION_FLOOR * (econ.hexes ?? 1),
-  );
   const cluster = world?.provinces?.[tile.provinceId];
-  if (!cluster || cluster.owner < 0) return base;
+  if (!cluster || cluster.owner < 0) return 0;
   const nation = world.nations?.[cluster.owner];
-  const accepted = nation?.accepted?.length
-    ? nation.accepted.includes(cluster.culture)
-    : cluster.culture === nation?.culture;
-  // Huzursuz kume asker de vermez: ayaklanmanin esigindeki taşra kendi
-  // jandarmasini besler, imparatorlugun ordusunu degil (bkz. culture.js).
-  const calm = 1 - Math.max(0, Math.min(1, (econ.unrest ?? 0) / 10)) * 0.6;
-  return Math.round(base * (accepted ? 1 : foreignManpowerShare(nation)) * calm);
+  if (!nation) return 0;
+  const rate = lawOption(nation, 'conscription').rate
+    * (1 + 0.2 * (econ.buildings?.barracks ?? 0))
+    * Math.max(0.2, 1 + mod(nation, 'manpower'));
+  const accepted = acceptedShareOf(cluster, nation);
+  const willing = accepted + (1 - accepted) * foreignManpowerShare(nation);
+  const calm = 1 - clamp01((econ.unrest ?? 0) / 10) * 0.6;
+  const status = econ.status ?? 1;
+  const pool = Math.max(0, econ.population) * rate * willing * calm * status;
+  return Math.max(0, Math.round(pool - Math.max(0, econ.soldiers ?? 0)));
 }
 
-/** Ulusun toplam insan gücü: sahip olunan huzurlu kümelerin toplamı. */
+/** Ulusun toplam insan gücü: sahip olunan, işgalsiz kümelerin toplamı. */
 export function nationManpower(world, nationId) {
   let total = 0;
   for (const province of world.provinces ?? []) {
@@ -91,11 +67,7 @@ export function nationManpower(world, nationId) {
     if (occupiedShareOf(world, province) > 0) continue;
     total += provinceManpower(world, province.center);
   }
-  // ASKERLIK YASASI. Seferber ulusta havuz 1.30 kati, gonullu orduda 0.85.
-  // Eski merdiven daha once HICBIR seye baglanmiyordu (bkz. audit:mechanics).
-  // TOPLUM: militarist halk silaha daha istekli gelir (society.js).
-  const nation = world.nations?.[nationId];
-  return total * (lawModifiers(nation).manpower ?? 1) * societyModifiers(nation).manpower;
+  return total;
 }
 
 /**
@@ -194,7 +166,7 @@ function fillOrder(nation, item) {
     if (need <= 0) continue;
     const take = Math.min(need, equipmentStock(nation, id));
     if (take > 0) {
-      setEquipmentStock(nation, id, equipmentStock(nation, id) - take);
+      nation.economy.stock[id] -= take;
       (item.equipment ??= {})[id] = (item.equipment[id] ?? 0) + take;
       item.missing[id] = need - take;
     }
@@ -274,7 +246,6 @@ export function recruit(game, nation, typeId, options = {}) {
   const { source: preferred = null, charge = true } = options;
   const world = game.world;
   const id = resolveTypeId(typeId);
-  ensureMilitaryEconomy(nation);
   const equipmentCost = recruitmentEquipmentCost(id);
   if (charge && !Object.entries(equipmentCost)
     .every(([equipmentId, amount]) => equipmentStock(nation, equipmentId) >= amount)) return null;
@@ -294,11 +265,7 @@ export function recruit(game, nation, typeId, options = {}) {
   const draws = drawManpower(world, source, need);
   if (!draws.length) return null;
   const unit = createUnit(id, nation.id, tile, nation, source);
-  if (charge) {
-    for (const [equipmentId, amount] of Object.entries(equipmentCost)) {
-      setEquipmentStock(nation, equipmentId, equipmentStock(nation, equipmentId) - amount);
-    }
-  }
+  if (charge) takeEquipment(nation, equipmentCost);
   // Nereden kaç asker alındığı alayda durur: dağıtımda aynı yerlere döner.
   unit.regiments[0].draws = draws;
   world.units.push(unit);
@@ -363,8 +330,6 @@ export const TRAINING_WEEKS = {
   CAVALRY: 10,
   ARTILLERY: 12,
   WARSHIP: 16,
-  ARMOR: 14,
-  AIRCRAFT: 12,
 };
 
 /** Kuyruk tavanı: sıra sonsuz uzayıp planlamayı anlamsızlaştırmasın. */
@@ -397,21 +362,22 @@ export function trainingCapacity(world, nation) {
   for (const city of world.cities ?? []) {
     if (city.nationId === nation.id && controllerOf(city.tile) === nation.id) cities++;
   }
-  // Askeri doktrin teknolojileri (Army Doctrine) DUZ slot ekler — yuzde
-  // degil: subay okulu acmak, bir sehir kazanmakla ayni cinsten bir genisleme.
-  const tech = Math.round(nation.economy?.techMods?.trainingCapacity ?? 0);
-  return Math.max(1, Math.min(12, BASE_TRAINING_CAPACITY + Math.floor(cities / 2) + tech));
+  // Kışla binası düz yuva ekler: her iki kademe bir alay daha.
+  let barracks = 0;
+  for (const province of world.provinces ?? []) {
+    if (province.owner === nation.id) barracks += province.econ?.buildings?.barracks ?? 0;
+  }
+  return Math.max(1, Math.min(12, BASE_TRAINING_CAPACITY + Math.floor(cities / 2)
+    + Math.floor(barracks / 2)));
 }
 
 /**
- * Haftada kaç haftalık eğitim ilerler. Maaşı kısılan ordu yavaş yetişir,
- * ikmalsiz kışla daha da yavaş — bütçe kaydıracının kuyruktaki karşılığı.
- * Tam bütçe + tam ikmal = 1.0, yani ilan edilen süre.
+ * Haftada kaç haftalık eğitim ilerler: teknoloji ve danışman hızlandırır,
+ * iflas eden devletin kışlası yarı hızda işler. 1.0 = ilan edilen süre.
  */
 export function trainingSpeed(nation) {
-  const wages = Math.max(0, Math.min(1, (nation.economy?.armyFunding ?? 100) / 100));
-  const supply = Math.max(0, Math.min(1, nation.economy?.military?.supplyIndex ?? 1));
-  return 0.45 + 0.4 * wages + 0.15 * supply;
+  const bankrupt = (nation.bankruptUntil ?? 0) > (nation.economy?.ledger?.lastUpdated ?? 0);
+  return Math.max(0.2, 1 + mod(nation, 'training')) * (bankrupt ? 0.5 : 1);
 }
 
 /** Kuyruktaki alay sayısı; tip verilirse yalnız o tip. */
@@ -476,14 +442,14 @@ export function queueRecruit(game, nation, typeId) {
   const source = recruitmentSource(world, nation, id);
   if (!source) return null;
   const cost = UNIT_COSTS[id];
-  if (cost && !pay(nation, cost)) return null;
-  // Depodan alinabilen alinir, eksik siparise yazilir ve pazardan gelir.
-  ensureMilitaryEconomy(nation);
+  if (cost && !pay(nation, cost, 'recruitment')) return null;
+  // Depodan alınabilen alınır; eksik siparişe yazılır ve üretim hattından
+  // geldikçe dolar (alay teçhizatı tamamlanmadan eğitime başlamaz).
   const equipment = {};
   const missing = {};
   for (const [equipmentId, amount] of Object.entries(recruitmentEquipmentCost(id))) {
     const take = Math.min(amount, Math.max(0, equipmentStock(nation, equipmentId)));
-    setEquipmentStock(nation, equipmentId, equipmentStock(nation, equipmentId) - take);
+    if (take > 0) nation.economy.stock[equipmentId] -= take;
     equipment[equipmentId] = take;
     if (amount - take > 1e-9) missing[equipmentId] = amount - take;
   }
@@ -521,11 +487,9 @@ export function cancelTraining(game, nation, itemId) {
   // IADE DEFTERLIDIR. Eski surumde bu satir hazineyi buyutuyor ama `pay()`in
   // yazdigi kalemi geri almiyordu; olculdu: 25 altinlik bir siparis iptali
   // haftalik Δhazine kimligini tam 25.000 kadar bozuyordu (L9 ihlali).
-  settle(nation, 'outlay', Math.floor((item.gold ?? 0) * share));
+  settle(nation, 'recruitment', Math.floor((item.gold ?? 0) * share));
   for (const [equipmentId, amount] of Object.entries(item.equipment ?? {})) {
-    setEquipmentStock(
-      nation, equipmentId, equipmentStock(nation, equipmentId) + amount * share,
-    );
+    addEquipment(nation, equipmentId, amount * share);
   }
   return true;
 }

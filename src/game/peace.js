@@ -13,7 +13,6 @@ import { controllerOf } from './control.js';
 import { soldiersOf } from './units.js';
 import { annexInfamy } from './infamy.js';
 import { POPULATION_SCALE } from './populationScale.js';
-import { pushSociety } from './society.js';
 
 /** Warscore 0-100 arasıdır; 100 tam teslimiyet demektir. */
 export const MAX_WAR_SCORE = 100;
@@ -203,10 +202,13 @@ export function provinceValue(world, province) {
   for (const idx of province.tileIdx) {
     if (world.tiles[idx].city) cities++;
   }
-  const development = (econ.agriculture ?? 0) + (econ.extraction ?? 0) + (econ.commerce ?? 0);
+  // Kalkınma ve binalar değeri büyütür: sanayi havzası ve demiryolu
+  // kavşağı barış masasında da pahalıdır.
+  let buildings = 0;
+  for (const level of Object.values(econ.buildings ?? {})) buildings += level;
   return Math.max(1, Math.round(
     2 * econ.hexes + econ.population / (3000 * POPULATION_SCALE)
-      + development * 0.6 * econ.hexes + cities * 12,
+      + (econ.development ?? 1) * 1.2 * econ.hexes + buildings * 3 + cities * 12,
   ));
 }
 
@@ -486,7 +488,9 @@ export function acceptanceTolerance(world, receiverId, proposerId) {
   const weeks = Math.max(0, (world.turn ?? 0) - (rec?.since ?? 0));
   const weariness = clamp(weeks / 312, 0, 1) * 15;
   const raw = 10 + Math.max(0, fronts - 1) * 15
-    + ((receiver?.economy?.stability ?? 0.6) < 0.4 ? 15 : 0)
+    + ((receiver?.stability ?? 0.6) < 0.4 ? 15 : 0)
+    // TESLİM: savaş desteği çökmüş ülke kötü barışı da kabul eder.
+    + ((receiver?.warSupport ?? 0.5) < 0.2 ? 20 : 0)
     + weariness;
   // TAVAN: tolerans, kazanilan ustunlugun tamamini silemez.
   //
@@ -785,23 +789,18 @@ export function signPeace(game, a, b, offer) {
   transfer(offer?.demands, b, a);
   transfer(offer?.concessions, a, b);
   applyTerms(game, a, b, offer?.terms);
-  // ZAFER VE YENILGI TOPLUMA ISLER (society.js): kazanan savasi kutsar,
-  // kaybeden bezer. Beyaz baris iki tarafi da biraz yorgun birakir.
+  // ZAFER PRESTİJ GETİRİR (puan tablosu, hegemony.js): kazanan alır,
+  // kaybeden verir. Beyaz barışta kimse kazanmaz.
   {
     const gainA = (offer?.demands ?? []).length + (offer?.terms ?? []).length;
     const gainB = (offer?.concessions ?? []).length;
-    const nameA = world.nations[a]?.name ?? 'the enemy';
-    const nameB = world.nations[b]?.name ?? 'the enemy';
-    if (gainA > gainB) {
-      pushSociety(world.nations[a], 'militarism', -4, `Victory over ${nameB}`);
-      pushSociety(world.nations[b], 'militarism', 4, `Defeat by ${nameA}`);
-    } else if (gainB > gainA) {
-      pushSociety(world.nations[b], 'militarism', -4, `Victory over ${nameA}`);
-      pushSociety(world.nations[a], 'militarism', 4, `Defeat by ${nameB}`);
-    } else {
-      pushSociety(world.nations[a], 'militarism', 1, `White peace with ${nameB}`);
-      pushSociety(world.nations[b], 'militarism', 1, `White peace with ${nameA}`);
-    }
+    const award = (winner, loser, size) => {
+      const prize = Math.min(20, 5 + size * 3);
+      world.nations[winner].prestige = (world.nations[winner].prestige ?? 0) + prize;
+      world.nations[loser].prestige = Math.max(0, (world.nations[loser].prestige ?? 0) - prize / 2);
+    };
+    if (gainA > gainB) award(a, b, gainA - gainB);
+    else if (gainB > gainA) award(b, a, gainB - gainA);
   }
   // Egemenlik degisti: fiyatlar ulke toplamindan turedigi icin tablo bayat.
   invalidateWarCosts(world);

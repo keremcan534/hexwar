@@ -4,18 +4,19 @@
 // haritaya bırakıyordu. Seçim ekranı için tek bir döküm fonksiyonu: sıra,
 // toprak, halk, hükûmet, hammadde, sanayi, ordu, komşular ve "dikkat"
 // satırları. Burada hiçbir sayı üretilmez; hepsi dünyanın kendi alanlarından
-// okunur (VICTORIA_LITE değişmez #2: sayıyı üreten, onu gösterendir).
+// okunur (TASARIM.md ilke 2: sayıyı üreten, onu gösterendir).
 //
 // Katman: game. DOM yok. Kuruluş anında (ilk haftalık tik öncesi) da çalışır:
-// goodsFlow henüz boş olduğundan üretim province RGO'larından sayılır.
+// kaynaklar province yataklarından sayılır.
 
 import { scoreboard } from './hegemony.js';
 import { nationStrength } from './diplomacy.js';
-import {
-  governmentType, policyLabel, policyOf, rulingParty,
-} from './politics.js';
-import { RGO_TYPES, depositsOf } from './provinces.js';
-import { FACTORIES, GOODS, populationOf } from './economy.js';
+import { governmentType, rulingParty } from './politics.js';
+import { depositsOf } from './econ/deposits.js';
+import { RESOURCES } from './econ/defs.js';
+import { lawOption } from './laws.js';
+import { populationOf } from './economy.js';
+import { GOALS } from './hegemony.js';
 import { characterLine } from './identity.js';
 
 /** Bir ülkenin ekonomisi olan (yerleşik) kümeleri. */
@@ -44,17 +45,15 @@ export function isContiguous(world, nationId) {
   return seen.size === provinces.length;
 }
 
-/** Ülkenin çıkardığı hammaddeler, kaç kümede: hexle ağırlıklı ilk üç. */
+/** Ülkenin yatakları, kaç kümede: hexle ağırlıklı ilk üç. */
 function rawGoods(world, provinces, limit = 3) {
   const tally = new Map();
   for (const province of provinces) {
-    for (const line of depositsOf(province.econ)) {
-      const type = RGO_TYPES[line.id];
-      if (!type) continue;
-      const row = tally.get(type.goodId) ?? { id: type.goodId, hexes: 0, provinces: 0 };
+    for (const line of depositsOf(province)) {
+      const row = tally.get(line.id) ?? { id: line.id, hexes: 0, provinces: 0 };
       row.hexes += line.hexes;
       row.provinces += 1;
-      tally.set(type.goodId, row);
+      tally.set(line.id, row);
     }
   }
   return [...tally.values()]
@@ -62,24 +61,20 @@ function rawGoods(world, provinces, limit = 3) {
     .slice(0, limit)
     .map((row) => ({
       ...row,
-      name: GOODS[row.id]?.name ?? row.id,
-      icon: GOODS[row.id]?.icon ?? '',
+      name: RESOURCES[row.id]?.name ?? row.id,
+      icon: RESOURCES[row.id]?.glyph ?? '',
     }));
 }
 
-/** Kurulu sanayi: kaç tesis, hangi türler (en çok üçü). */
-function industryOf(nation) {
-  const factories = nation.economy?.factories ?? [];
-  const names = new Map();
-  for (const factory of factories) {
-    const name = FACTORIES[factory.typeId]?.name ?? factory.typeId;
-    names.set(name, (names.get(name) ?? 0) + 1);
+/** Kurulu sanayi: fabrika kademesi ve tersane. */
+function industryOf(provinces) {
+  let factories = 0;
+  let dockyards = 0;
+  for (const province of provinces) {
+    factories += province.econ?.buildings?.factory ?? 0;
+    dockyards += province.econ?.buildings?.dockyard ?? 0;
   }
-  return {
-    count: factories.length,
-    levels: factories.reduce((sum, factory) => sum + (factory.level ?? 1), 0),
-    types: [...names.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3).map(([name]) => name),
-  };
+  return { count: factories, levels: factories, dockyards };
 }
 
 /**
@@ -135,7 +130,7 @@ export function nationBrief(world, nation) {
   const foreignShare = population > 0 ? foreign / population : 0;
   const contiguous = isContiguous(world, nation.id);
   const goods = rawGoods(world, provinces);
-  const industry = industryOf(nation);
+  const industry = industryOf(provinces);
   const neighbours = neighboursOf(world, nation, power);
   const strongest = neighbours[0] ?? null;
 
@@ -148,8 +143,10 @@ export function nationBrief(world, nation) {
   }
   if (!contiguous) notes.push({ tone: 'warn', text: 'Territory in more than one piece: the far part lives by sea.' });
   if (!nation.coastal) notes.push({ tone: 'warn', text: 'Landlocked: no navy, trade by land only.' });
-  if (industry.count < 4) notes.push({ tone: 'warn', text: `Agrarian: ${industry.count} plant${industry.count === 1 ? '' : 's'} — industry must be built.` });
-  else if (industry.count >= 8) notes.push({ tone: 'good', text: `An industrial base of ${industry.count} plants.` });
+  if (industry.count < 2) notes.push({ tone: 'warn', text: `Agrarian: ${industry.count} factor${industry.count === 1 ? 'y' : 'ies'} — industry must be built.` });
+  else if (industry.count >= 5) notes.push({ tone: 'good', text: `An industrial base of ${industry.count} factories.` });
+  const goal = GOALS[nation.goal];
+  if (goal) notes.push({ tone: 'good', text: `National goal — ${goal.name}: ${goal.desc}` });
   if (foreignShare > 0.3) notes.push({ tone: 'warn', text: `${Math.round(foreignShare * 100)}% of the people are of a culture the state does not accept.` });
   if (rank > 0 && rank <= 5) notes.push({ tone: 'good', text: 'A great power: the world measures itself against you.' });
   else if (rank > 0 && rank >= board.length * 0.7) notes.push({ tone: 'warn', text: 'A minor power: room to climb, little margin for error.' });
@@ -171,8 +168,9 @@ export function nationBrief(world, nation) {
     foreignShare,
     government: governmentType(nation),
     party: party?.name ?? 'No government',
-    economicPolicy: policyLabel('economy', policyOf(nation, 'economy')),
-    tradePolicy: policyLabel('trade', policyOf(nation, 'trade')),
+    economicPolicy: lawOption(nation, 'economy').name,
+    tradePolicy: lawOption(nation, 'trade').name,
+    goal: goal ? { name: goal.name, desc: goal.desc } : null,
     goods,
     industry,
     divisions,

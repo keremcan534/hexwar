@@ -19,9 +19,10 @@ import {
   generalSiegeRelief, generalVariance, planningBonus,
 } from './command.js';
 import { provinceName } from './provinces.js';
-import { MILITARY_EQUIPMENT, equipmentStock } from './economy.js';
+import { resourceRatio } from './econ/resources.js';
+import { mod } from './modifiers.js';
 import { controllerOf } from './control.js';
-import { nodeNeighbors } from '../world/provinceGraph.js';
+import { nodeNeighbors, riverBorder } from '../world/provinceGraph.js';
 
 /** Muharebe bu kadar raunttan sonra zorla biter; kazanan guce gore belirlenir. */
 export const MAX_ROUNDS = 20;
@@ -120,12 +121,34 @@ export function battleSides(world, battle) {
 }
 
 /**
- * Savunma katkisi: arazi ve sehir. (Kale 2026-09'da insaatla birlikte gitti.)
- * Disari acik: kare kutusu ayni sayiyi gostermeli — yalniz araziyi yazinca
- * baskent karesi "Defense 0%" diyordu, muharebe ise sehir surlerini sayiyordu.
+ * Savunma katkısı: arazi, şehir ve KALE (province binası, kademe başına %15).
+ * Dışarı açık: kare kutusu aynı sayıyı göstermeli.
  */
 export function tileDefense(tile) {
-  return (tile.terrain.defense ?? 0) + (tile.city ? 0.12 + tile.city.level * 0.04 : 0);
+  return (tile.terrain.defense ?? 0) + (tile.city ? 0.12 + tile.city.level * 0.04 : 0)
+    + 0.15 * (tile.province?.buildings?.fort ?? 0);
+}
+
+/** Nehir aşarak saldırı cezası (province sınırının çoğu nehirse). */
+export const RIVER_PENALTY = 0.25;
+
+/** Saldıranın çıkış province'i ile muharebe province'i arasında nehir var mı? */
+export function crossesRiver(world, from, target) {
+  if (!from || !target || from.terrain.water) return false;
+  const a = world.provinces?.[from.provinceId];
+  const b = world.provinces?.[target.provinceId];
+  return Boolean(a && b && a !== b && riverBorder(world, a, b));
+}
+
+/** Süvari ve topçunun at payı: sürüsüz kalan kol ağırlaşır. */
+function horseFactor(unit, horses) {
+  const regiments = unit.regiments ?? [];
+  if (!regiments.length || horses >= 1) return 1;
+  let mounted = 0;
+  for (const regiment of regiments) {
+    if (regiment.typeId === 'CAVALRY' || regiment.typeId === 'ARTILLERY') mounted++;
+  }
+  return 1 - (mounted / regiments.length) * 0.4 * (1 - horses);
 }
 
 function terrainDefense(world, army) {
@@ -147,41 +170,34 @@ function leadGeneral(world, units) {
  * Saldiran muhendis general, savunanin arazi/tahkimat bonusunun bir kismini
  * silebilir — kusatmanin karsiligi budur.
  */
-export function battleUnitPower(world, unit, defending, relief = 0) {
+export function battleUnitPower(world, unit, defending, relief = 0, target = null) {
   const nation = world.nations[unit.nationId];
-  // Maaş muharebe iradesini alır: aç asker savaşmaz.
-  const funding = (nation.economy?.armyFunding ?? 100) / 100;
-  // Cephanesi olmayan ordu dövüşemez. Ölçüt ihtiyat stoğudur: stok ihtiyatın
-  // altına inince güç doğrusal olarak düşer. Bu bağ yokken teçhizat muharebeye
-  // hiç girmiyordu — stoğu sıfır olan ve askerî sanayisi tamamen kapalı bir
-  // ordu, deposu dolu orduyla neredeyse aynı güçte dövüşüyor (fark %3.6) ve
-  // aynı savaşta DAHA FAZLA toprak işgal ediyordu (59'a 52, ölçüldü).
-  const reserve = Math.max(1, MILITARY_EQUIPMENT.arms.reserve);
-  const readiness = Math.max(0, Math.min(1, equipmentStock(nation, 'arms') / reserve));
   const general = generalOfArmy(nation, unit);
-  // Ekran yillardir "piyade savunmada arazi bonusunu iki kat kullanir" diyordu
-  // ama muharebe `entrenched` bayragini hic okumuyordu (olculdu: olu bayrak).
-  // Vaat artik gercek: hat piyadesi savunurken arazi/tahkimat katkisini iki
-  // kat alir. Piyadeyi "her zaman dogru cevap" olmaktan cikaran karsi agirlik
-  // da ayni haftada geldi (bkz. sidePower destek kolu carpani).
-  // 1.5 denendi (2026-09-04): iki kat arazi + siper + MAX_STACK savunan, bes
-  // tumenlik kusatmaya karsi bile 0.64-0.74 sans veriyor (olculdu: bully
-  // BULLY-1, 3 hexlik dar cephe, iki yil donmus savas -> beyaz baris).
-  // 1.5 saldiriyi acti ama kartopunu %42-50'ye tasidi; 2'de kaldi. Dar
-  // cephe hala topcu, muhendis general ve sabir ister.
+  // Hat piyadesi savunurken arazi/tahkimat katkısını iki kat alır (1.5
+  // denendi: kartopunu %42-50'ye taşıdı; 2'de kaldı).
   const terrainScale = unit.type?.entrenched ? 2 : 1;
   const terrain = defending
     ? (1 + terrainDefense(world, unit) * terrainScale * (1 - relief)) * (1 + (unit.entrenchment ?? 0))
     : 1;
+  // BARUT: muharebedeki her alay güherçile yakar (econ/resources). Kıtlıkta
+  // güç %30'a kadar düşer — güherçile yatağı savaşın asıl hedefi olur.
+  const powder = 0.7 + 0.3 * resourceRatio(nation, 'SALTPETER');
+  const horses = horseFactor(unit, resourceRatio(nation, 'HORSES'));
+  const doctrine = Math.max(0.3, 1 + (defending ? mod(nation, 'defense') : mod(nation, 'attack')));
+  const naval = unit.type?.domain === 'sea' ? Math.max(0.3, 1 + mod(nation, 'naval')) : 1;
+  const river = !defending && crossesRiver(world, unit.tile, target) ? 1 - RIVER_PENALTY : 1;
   return armyPower(unit)
-    * (0.55 + funding * 0.45)
-    * (0.65 + readiness * 0.35)
+    * powder
+    * horses
+    * doctrine
+    * naval
+    * river
     * terrain
     * generalModifier(general, { defending, army: unit })
     * (defending ? 1 : planningBonus(nation, unit));
 }
 
-function sidePower(world, units, defending, relief) {
+function sidePower(world, units, defending, relief, target = null) {
   // Destek kolu (topcu, hava) tek basina kirilgandir, hat birligiyle yiginda
   // belirleyicidir — UNIT_ROLE bunu bastan beri vaat ediyordu, simulasyonda
   // karsiligi yoktu. Carpani taraf bilesiminden turetiyoruz: yalniz destek
@@ -189,7 +205,7 @@ function sidePower(world, units, defending, relief) {
   const hasLine = units.some((unit) => !unit.type?.support);
   return units.reduce((sum, unit) => {
     const arm = unit.type?.support ? (hasLine ? 1.2 : 0.65) : 1;
-    return sum + battleUnitPower(world, unit, defending, relief) * arm;
+    return sum + battleUnitPower(world, unit, defending, relief, target) * arm;
   }, 0);
 }
 
@@ -209,7 +225,7 @@ export function estimateBattle(world, attackers, defenders) {
   const front = selectAssault(attackers);
   const relief = generalSiegeRelief(leadGeneral(world, front));
   return {
-    attack: sidePower(world, front, false, 0),
+    attack: sidePower(world, front, false, 0, defenders[0]?.tile ?? null),
     defense: sidePower(world, defenders.slice(0, MAX_DEFENSE_DIVISIONS), true, relief),
   };
 }
@@ -516,7 +532,8 @@ function resolveRound(game, battle) {
     if (general) participatingGenerals.set(general, unit.nationId);
   }
   const relief = generalSiegeRelief(attackerLead);
-  const attackerBase = sidePower(world, attackers, false, 0);
+  const roundTile = world.get(battle.q, battle.r);
+  const attackerBase = sidePower(world, attackers, false, 0, roundTile);
   const defenderBase = sidePower(world, defenders, true, relief);
   // Trickster generalin zar araligi genistir: hem daha iyi hem daha kotu ceker.
   const swing = (general) => 0.36 * (1 + generalVariance(general));
@@ -573,7 +590,7 @@ function resolveRound(game, battle) {
   if (!liveAttackers.length || !liveDefenders.length) {
     finishBattle(game, battle, liveAttackers.length > 0 && liveDefenders.length === 0);
   } else if (battle.rounds >= MAX_ROUNDS) {
-    const attackerScore = sidePower(world, liveAttackers, false, 0);
+    const attackerScore = sidePower(world, liveAttackers, false, 0, battleTile);
     const defenderScore = sidePower(world, liveDefenders, true, relief);
     finishBattle(game, battle, attackerScore > defenderScore);
   }

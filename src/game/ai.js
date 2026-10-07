@@ -19,17 +19,18 @@ import {
 } from './units.js';
 import { destinationOf, orderMove } from './movement.js';
 import { controllerOf } from './control.js';
-import { canRecruit, disband, trainingCount } from './recruitment.js';
+import {
+  canRecruit, disband, nationManpower, trainingCount, trainingQueue,
+} from './recruitment.js';
 import {
   BRANCH, STANCE, assignDivisions, commandSize, generalOfArmy, officersOf, setStance,
 } from './command.js';
-import {
-  MILITARY_EQUIPMENT, ensureProductionLine, equipmentReserve, equipmentStock,
-} from './economy.js';
-import {
-  LAW_BY_ID, formGovernment, manageSocietyCampaign, nextLawStep, preferredGovernment, setLaw,
-} from './politics.js';
-import { SOCIETY_AXES } from './society.js';
+import { equipmentStock, setLineWeight } from './econ/industry.js';
+import { UNIT_EQUIPMENT } from './econ/defs.js';
+import { LAWS, lawIndex } from './laws.js';
+import { politicsAI, setLaw } from './politics.js';
+import { planConstruction } from './construction.js';
+import { unificationAI } from './unification.js';
 import { delegationActive, noteDelegated } from './delegation.js';
 import { nodeNeighbors } from '../world/provinceGraph.js';
 
@@ -204,7 +205,8 @@ function diplomacy(game, nation, rng) {
   const regiments = world.units
     .filter((unit) => unit.nationId === nation.id && unit.type.domain === 'land')
     .reduce((sum, unit) => sum + regimentCount(unit), 0);
-  if (regiments < 4 || nation.gold < 45 || (nation.economy?.stability ?? 0.6) < 0.40) return;
+  if (regiments < 4 || (nation.gold ?? 0) < 20 || (nation.stability ?? 0.6) < 0.35
+    || (nation.warSupport ?? 0.5) < 0.3 || (nation.power ?? 0) < 20) return;
   // Şöhreti kirlenmiş ülke yeni savaş açmaz: koalisyon riski taşıyor.
   if ((nation.infamy ?? 0) > INFAMY_COALITION * 0.6) return;
 
@@ -257,116 +259,140 @@ function diplomacy(game, nation, rng) {
  * birim = bir alay; eski hedef (2 + tiles/25) yığınlar birleşirken anlamlıydı,
  * şimdi ülkeleri savunmasız bırakıp savaş zincirini tetikliyordu.
  */
-function desiredArmy(nation) {
+function desiredArmy(world, nation) {
   const byLand = 4 + Math.floor(nation.tiles / 12);
-  // Nufus tavani: genis ama seyrek ulke toprak sayisiyla ordu kuruyor ve
-  // nufusunun %15'inden buyuk bir orduyu besleyemiyordu (audit:ai 13%).
-  // Tumen ~3.000 kisi; ordu nufusun onda birini gecmez, iki tumen taban.
-  // Bolen bir piyade alayinin insan gucudur; sabit yazilmisti ve nufus
-  // olcegi degisince tavan on kat sismis olurdu.
-  const byPeople = Math.floor(
-    (nation.economy?.population ?? 0) * 0.10 / UNIT_TYPES.INFANTRY.manpower,
-  );
-  return Math.max(2, Math.min(byLand, byPeople || byLand));
+  // İnsan gücü tavanı: askerlik yasasının havuzu (silah altındakiler dahil)
+  // ordunun gerçek sınırıdır; havuzun beşte biri takviyeye kalsın.
+  const soldiers = nation.economy?.soldiers ?? 0;
+  const byPeople = Math.floor((nationManpower(world, nation.id) + soldiers) * 0.8
+    / UNIT_TYPES.INFANTRY.manpower);
+  return Math.max(2, Math.min(byLand, byPeople || 2));
 }
 
 /**
- * Sıradaki kol. Topçu destek sınıfıdır: ordunun gövdesi piyade, hızı süvari,
- * ateş gücü topçudur. Her üçüncü alay topçu olsun ki YZ dengeli ordu kursun.
+ * Sıradaki kol. Gövde piyade, hız süvari, ateş gücü topçu: her üçüncü alay
+ * topçu (top stoğu varsa), her beşinci süvari (at açığı yoksa).
  */
 function affordableUnit(game, nation, army) {
   const world = game.world;
-  const wantsArtillery = army >= 3 && army % 3 === 0;
-  const order = wantsArtillery
-    ? ['ARMOR', 'ARTILLERY', 'AIRCRAFT', 'INFANTRY', 'CAVALRY']
-    : ['INFANTRY', 'ARMOR', 'CAVALRY', 'ARTILLERY', 'AIRCRAFT'];
+  const horses = nation.economy?.resources?.HORSES?.ratio ?? 1;
+  const order = army >= 3 && army % 3 === 0 && equipmentStock(nation, 'guns') >= UNIT_EQUIPMENT.ARTILLERY.guns
+    ? ['ARTILLERY', 'INFANTRY']
+    : army >= 4 && army % 5 === 0 && horses >= 0.9 ? ['CAVALRY', 'INFANTRY'] : ['INFANTRY'];
   for (const id of order) {
-    // Tarihsel acilis burada sorulur. Sorulmadigi surece YZ 1836'da tanki
-    // "karsilanabilir" sayip siraya sokmayi deniyor, buyUnit reddediyor ve
-    // haftanin butun alim dongusu kiriliyordu (her ucuncu alayda).
     if (!unitAvailable(id, game.turns.turn, nation)) continue;
     if (canAfford(nation, UNIT_COSTS[id]) && canRecruit(world, nation, id)) return id;
   }
   return null;
 }
 
+/** Kuyrukta teçhizat bekleyen sipariş sayısı. */
+function waitingForEquipment(nation) {
+  return trainingQueue(nation).filter((item) => Object.keys(item.missing ?? {}).length).length;
+}
+
 /**
- * Harcama önceliği: önce yeterli ordu, artan altınla yine ordu.
- * Hazine biriktirmek YZ'yi pasifleştirdiği için son adım önemli.
+ * Harcama: önce yeterli ordu. Teçhizat yoksa sipariş vermez (kuyrukta
+ * bekleyen iki siparişten fazlası depoyu bekler, kışlayı değil). İflastaki
+ * barış devleti ordusunu küçültür.
  */
 function spend(game, nation) {
   const world = game.world;
   const cities = world.cities.filter((c) => c.nationId === nation.id).length;
-
-  // SEFERBERLIKTEN DONUS: temerrutteki devlet bariste ordusunu kucultur.
-  // desiredArmy maliyeye bakmaz; yenilgiden cikan kalinti devlet gelirinin
-  // katini maas+tedarike verip her hafta kucuk kucuk temerrude dusuyordu —
-  // alim kapilari kapaliyken eldeki stok kimseye sorulmadan duruyordu.
-  // Haftada bir birim, iki alaylik cekirdek savunma korunur.
-  if ((nation.economy?.creditPenalty ?? 0) > 0.3
-    && !world.nations.some((other) => other.alive && other.id !== nation.id
-      && atWar(world, other.id, nation.id))) {
-    const units = world.units
-      .filter((u) => u.nationId === nation.id && u.type.domain !== 'sea');
+  const turn = game.turns?.turn ?? 0;
+  const atWarNow = world.nations.some((other) => other.alive && other.id !== nation.id
+    && atWar(world, other.id, nation.id));
+  if ((nation.bankruptUntil ?? 0) > turn && !atWarNow) {
+    const units = world.units.filter((u) => u.nationId === nation.id && u.type.domain !== 'sea');
     const total = units.reduce((sum, unit) => sum + regimentCount(unit), 0);
     if (total > 2) {
       const weakest = units.reduce(
-        (worst, unit) => (regimentCount(unit) < regimentCount(worst) ? unit : worst),
-        units[0],
+        (worst, unit) => (regimentCount(unit) < regimentCount(worst) ? unit : worst), units[0],
       );
       if (weakest) disband(game, weakest);
     }
     return;
   }
+  if (waitingForEquipment(nation) >= 2) return;
 
-  const militaryLines = (nation.economy?.factories ?? [])
-    .filter((factory) => factory.typeId === 'ARMS_FACTORY')
-    .map((factory) => ensureProductionLine(factory));
-  // Rezerv yalniz kullanimdaki ailede sayilir (economy.equipmentInService).
-  // Ham `reserve` okundugunda 1836'da tank/ucak/vapur rezervi bu kapiyi butun
-  // YZ'ler icin kapatiyordu: ilk hafta 30/30, iki yilda ulus-haftalarin %88'i.
-  const uncoveredCriticalStock = Object.values(MILITARY_EQUIPMENT).some((equipment) => (
-    equipmentStock(nation, equipment.id) < equipmentReserve(nation, equipment.id, world.turn ?? 0)
-    && !militaryLines.some((factory) => factory.lineEquipment === equipment.id)
-  ));
-  // Do not spend the military-factory fund on another unit or local project.
-  // runEconomicAI executes later in the same week and buys the missing line.
-  if (uncoveredCriticalStock) return;
-
-  // Ordu, erzak fazlasının beslediği kadar büyür; altın ikincil frendir.
-  const target = desiredArmy(nation);
-  // Eğitimdeki alaylar da orduya sayılır. Sayılmasaydı YZ, sipariş sahaya
-  // çıkana kadar (8-16 hafta) her hafta yeniden sipariş verir ve kuyruğu
-  // hazinesinin yettiği kadar şişirirdi — kuyruğun getirdiği ilk risk budur.
-  // Seferber alaylar sayılmaz: yedek geçicidir, barışta eve döner. Sayılsaydı
-  // seferber devlet savaş boyunca tek bir düzenli alay kurmazdı.
+  const target = desiredArmy(world, nation);
   let army = world.units
     .filter((u) => u.nationId === nation.id && !isConscript(u))
     .reduce((sum, unit) => sum + regimentCount(unit), 0)
     + trainingCount(nation);
-  const canFeed = () => true;
 
-  // Kıyı ülkeleri mütevazı bir donanma tutar: adalar ve kıyı şehirleri savunmasız kalmasın.
+  // Kıyı ülkeleri mütevazı bir donanma tutar (gemi stoğu varsa).
   const hasPort = world.cities.some((c) => c.nationId === nation.id && c.tile.coastal);
   const fleet = world.units.filter(
     (u) => u.nationId === nation.id && u.type.domain === 'sea',
   ).length + trainingCount(nation, 'WARSHIP');
-  if (hasPort && fleet < 1 + Math.floor(cities / 3) && canFeed()
+  if (hasPort && fleet < 1 + Math.floor(cities / 3)
+    && equipmentStock(nation, 'ships') >= UNIT_EQUIPMENT.WARSHIP.ships
     && canAfford(nation, UNIT_COSTS.WARSHIP)
     && game.turns.buyUnit(nation, 'WARSHIP')) {
     army++;
   }
 
   for (let i = 0; i < 3; i++) {
-    // Hazine fazlası orduya dönüşür ama sert bir tavan var: ölçümde tek ülke
-    // 93 süvari yığıp tur süresini 22 ms'ye çıkarmıştı.
-    const surplus = nation.gold > 180 && army < Math.ceil(target * 1.35);
+    const surplus = (nation.gold ?? 0) > 200 && army < Math.ceil(target * 1.25);
     if (army >= target && !surplus) break;
-    if (!canFeed()) break;
+    if (equipmentStock(nation, 'rifles') < UNIT_EQUIPMENT.INFANTRY.rifles
+      && waitingForEquipment(nation) >= 1) break;
     const typeId = affordableUnit(game, nation, army);
     if (!typeId || !game.turns.buyUnit(nation, typeId)) break;
     army++;
   }
+}
+
+/**
+ * EKONOMİ YZ'si — oyuncunun AUTO'suyla aynı kapı. Ayda bir: hat ağırlıkları
+ * ordunun ihtiyacına göre, ticaret yasası kaynak dengesine göre. İnşaat her
+ * hafta (bütçe ve yuva sınırında).
+ */
+export function economyAI(game, nation) {
+  const world = game.world;
+  const turn = game.turns?.turn ?? 0;
+  if ((turn + nation.id) % 4 !== 0) return null;
+  const economy = nation.economy;
+  if (!economy) return null;
+  const war = (economy.warFronts ?? 0) > 0;
+  let regiments = 0;
+  let guns = 0;
+  for (const unit of world.units) {
+    if (unit.nationId !== nation.id) continue;
+    regiments += regimentCount(unit);
+    for (const regiment of unit.regiments ?? []) if (regiment.typeId === 'ARTILLERY') guns++;
+  }
+  const rifles = equipmentStock(nation, 'rifles');
+  const wantRifles = rifles < regiments * 4 + 30 ? (war ? 5 : 3) : 1;
+  const wantGuns = equipmentStock(nation, 'guns') < guns * 3 + 6 ? (war ? 2 : 1) : 0;
+  const wantShips = economy.coastal ? ((economy.blockade ?? 0) > 0 || nation.focus === 'military' ? 2 : 1) : 0;
+  setLineWeight(nation, 'rifles', wantRifles);
+  setLineWeight(nation, 'guns', wantGuns);
+  setLineWeight(nation, 'ships', wantShips);
+  // Ticaret yasası: satacak fazlası olan açılır, açığı çok ve altını az
+  // olan (ithalat bedeli ×1.5) kapanmaz; ablukadaki savaşan küçültmez.
+  let surplusValue = 0;
+  let deficitValue = 0;
+  for (const record of Object.values(economy.resources ?? {})) {
+    surplusValue += Math.max(0, record.produced - record.need) * (record.price || 1);
+    deficitValue += Math.max(0, record.need - record.produced) * (record.price || 1);
+  }
+  const trade = lawIndex(nation, 'trade');
+  const income = Math.max(1, economy.incomeAvg ?? 1);
+  let wanted = trade;
+  if (surplusValue > income * 0.1 && trade < 2) wanted = trade + 1;
+  else if (trade === 0 && deficitValue > 0) wanted = 1;
+  if (wanted !== trade && (nation.power ?? 0) >= 80) {
+    if (setLaw(game, nation, 'trade', wanted)) return { action: 'trade', text: `Trade law set to ${LAWS.trade.options[wanted].name}.` };
+  }
+  return null;
+}
+
+/** İnşaat YZ'si: her hafta bir proje (yedek altını koruyarak). */
+function constructionAI(game, nation) {
+  const war = (nation.economy?.warFronts ?? 0) > 0;
+  return planConstruction(game, nation, { reserve: war ? 120 : 50 });
 }
 
 /** Kara birimi kesintisiz en fazla bu kadar su karesi geçmeyi göze alır. */
@@ -528,31 +554,6 @@ function manageCommand(game, nation) {
   });
 }
 
-/**
- * SİYASET GÜNDEMİ. Oyuncuyla aynı iki kapıdan geçer (politics.formGovernment
- * ve setLaw); gizli bir YZ kısayolu yoktur.
- *
- * Hükûmet: görev süresi dolmuşsa ve halk başka bir partiyi belirgin öndeyse
- * o partiyle hükûmet kurulur — eski seçimin YZ tarafındaki karşılığı. Oyuncu
- * bunu kendi seçer, devredilmiş kabine hükûmeti DEĞİŞTİRMEZ.
- * Yasalar: iktidarın programının istediği yöne, yılda bir yasa, bir kademe.
- * Borçluyken yasa değişmez: refah hazineye kısılamaz yük bindirir.
- *
- * Ulus başına çeyrek yılda bir, farklı haftalarda değerlendirilir.
- */
-function politicalAgenda(game, nation, { government = true } = {}) {
-  if ((game.turns.turn + nation.id) % 12 !== 0) return null;
-  const world = game.world;
-  let formed = null;
-  if (government) {
-    const party = preferredGovernment(world, nation);
-    if (party && formGovernment(game, nation, party.id)) formed = party;
-  }
-  if ((nation.gold ?? 0) < 0) return { formed, law: null };
-  const step = nextLawStep(world, nation);
-  const law = step && setLaw(game, nation, step.lawId, step.levelId) ? step : null;
-  return { formed, law };
-}
 
 export function runNationAI(game, nation, rng) {
   const world = game.world;
@@ -564,10 +565,11 @@ export function runNationAI(game, nation, rng) {
   manageBrokenProvinces(game, nation);
   // Ulusal hareketler: taviz, sikiyonetim, vassal, katliam — oyuncuyla ayni kapi.
   manageMovements(game, nation);
-  // Toplum kampanyasi: iktidarin programindan en uzak eksen (society.js).
-  manageSocietyCampaign(game, nation);
   spend(game, nation);
-  politicalAgenda(game, nation);
+  politicsAI(game, nation);
+  economyAI(game, nation);
+  constructionAI(game, nation);
+  unificationAI(game, nation);
   manageCommand(game, nation);
   // Kara tümenleri komuta katmanından yönetilir; burada yalnız donanma kalır.
   for (const unit of [...world.units]) {
@@ -583,7 +585,7 @@ export function runNationAI(game, nation, rng) {
  * Ordu komutası (`manageCommand`) DEVREDİLMEZ; kendi otomatik anahtarlarını
  * zaten taşıyor (bkz. command.js ensureCommandOptions).
  *
- * Yasalar (`politicalAgenda`) devredilir; HÜKÛMET devredilmez. Hangi partiyle
+ * Yasalar (`politicsAI`) devredilir; HÜKÛMET devredilmez. Hangi partiyle
  * yönetileceği oyuncunun kararıdır ve dört yıl bağlar — kabine yalnız
  * iktidarın programını yılda bir adım sürer.
  */
@@ -594,13 +596,23 @@ export function runDelegatedAI(game, nation, rng) {
     answerPeaceOffers(game, nation, rng);
     diplomacy(game, nation, rng);
   }
+  if (delegationActive(nation, 'economy', turn)) {
+    const result = economyAI(game, nation);
+    if (result) noteDelegated(game, nation, 'economy', result.text, 'The resource balance asked for it.');
+  }
+  if (delegationActive(nation, 'construction', turn)) {
+    const project = constructionAI(game, nation);
+    if (project) {
+      noteDelegated(game, nation, 'construction',
+        project.kind === 'develop' ? 'A province is being developed.' : `A ${project.building} was ordered.`,
+        'It answers the shortage the country feels most.');
+    }
+  }
   if (delegationActive(nation, 'reforms', turn)) {
-    const law = politicalAgenda(game, nation, { government: false })?.law;
-    if (law) {
-      const item = LAW_BY_ID[law.lawId];
-      const level = item.levels.find((entry) => entry.id === law.levelId);
-      noteDelegated(game, nation, 'reforms', `${item.name} moved to ${level?.name ?? law.levelId}.`,
-        'The ruling party’s programme wants it; the cabinet moves one law a year.');
+    const lawsBefore = JSON.stringify(nation.politics?.laws ?? {});
+    politicsAI(game, nation, { appoint: false });
+    if (JSON.stringify(nation.politics?.laws ?? {}) !== lawsBefore) {
+      noteDelegated(game, nation, 'reforms', 'The cabinet changed a law.', 'The situation demanded it.');
     }
     // Kultur kabulu yasalarla ayni kapida: ikisi de "kimin devleti"
     // sorusunun cevabi (bkz. culture.js manageAcceptance).
@@ -630,17 +642,6 @@ export function runDelegatedAI(game, nation, rng) {
         crackdown: [`The ${name} were crushed.`, 'The government chose force over the loss of land.'],
       }[moved.action];
       if (lines) noteDelegated(game, nation, 'reforms', lines[0], lines[1]);
-    }
-    // Toplum kampanyasi da kabinenin isi: programdan en uzak ekseni yurutur.
-    const campaign = manageSocietyCampaign(game, nation);
-    if (campaign?.stopped) {
-      noteDelegated(game, nation, 'reforms', 'The state campaign was stopped.',
-        'The treasury is under strain, or society already stands where the government wants it.');
-    } else if (campaign?.axis) {
-      const axis = SOCIETY_AXES.find((item) => item.id === campaign.axis);
-      noteDelegated(game, nation, 'reforms',
-        `A state campaign now pushes society toward ${campaign.dir < 0 ? axis.left : axis.right}.`,
-        'That is where the ruling party wants the nation, and the treasury can pay for it.');
     }
   }
   if (delegationActive(nation, 'recruitment', turn)) {

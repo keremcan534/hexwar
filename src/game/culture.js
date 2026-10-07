@@ -46,8 +46,8 @@
 // Katman: game. DOM yok. provinces.js bu dosyayi cagirir, tersi olmaz —
 // gerekli baglam (isgal payi, sadakat) parametre olarak gecer.
 
-import { lawModifiers, lawValue } from './politics.js';
-import { nationalismEra, pushSociety, societyModifiers } from './society.js';
+import { lawIndex, lawOption } from './laws.js';
+import { mod } from './modifiers.js';
 import { TIER, announce } from './chronicle.js';
 import { addInfamy } from './infamy.js';
 import { POPULATION_SCALE } from './populationScale.js';
@@ -97,15 +97,23 @@ export const CULTURE = {
   BACKLASH_UNREST: 2.5,
 };
 
-/** Milliyetcilik cagi tek yerde: society.js (toplum da ona gore kayar). */
-export { nationalismEra };
+/**
+ * MİLLİYETÇİLİK ÇAĞI: 1836'da 1, 1900'de 1.8; Ulusların Baharı sürerken
+ * (world.spring, eventCards.js) ayrıca ×1.3. Tek yerde: huzursuzluk, parti
+ * desteği ve olaylar buradan okur.
+ */
+export function nationalismEra(turn, world = null) {
+  const progress = Math.max(0, Math.min(1, (turn ?? 0) / 3330));
+  const spring = (world?.spring?.until ?? 0) > (turn ?? 0) ? 1.3 : 1;
+  return (1 + progress * 0.8) * spring;
+}
+
+/** Kabulün SG bedeli: halkı devlete ortak etmek siyasi bir hamledir. */
+export const ACCEPT_POWER = 100;
 
 /** Vatandaslik yasasinin huzursuzluk agirligi. */
 function rightsWeight(nation) {
-  const policy = lawValue(nation, 'citizenship');
-  if (policy === 'full_citizenship') return 0.45;
-  if (policy === 'limited_citizenship') return 0.7;
-  return 1;
+  return lawOption(nation, 'citizenship').unrest;
 }
 
 /**
@@ -121,18 +129,12 @@ function rightsWeight(nation) {
  * ana yurt ve bastirilan isyan onarildiktan SONRA calisiyor (%32,8 -> %30,5).
  */
 export function foreignManpowerShare(nation) {
-  const policy = lawValue(nation, 'citizenship');
-  if (policy === 'full_citizenship') return 0.5;
-  if (policy === 'limited_citizenship') return 0.3;
-  return 0.15;
+  return lawOption(nation, 'citizenship').manpower;
 }
 
 /** Vatandaslik yasasinin asimilasyon hizi: haklar eritir, dislama korur. */
 function assimilationRights(nation) {
-  const policy = lawValue(nation, 'citizenship');
-  if (policy === 'full_citizenship') return 1.4;
-  if (policy === 'limited_citizenship') return 1;
-  return 0.6;
+  return lawOption(nation, 'citizenship').assimilation;
 }
 
 /** Ulusun kabul ettigi kulturler (ana kultur her zaman dahil). */
@@ -179,7 +181,7 @@ function backlashOf(nation, turn) {
 export function unrestBreakdown(world, province, nation, { occupied = 0, turn = 0 } = {}) {
   const econ = province.econ;
   const foreign = foreignShareOf(province, nation);
-  const era = nationalismEra(turn);
+  const era = nationalismEra(turn, world);
   // ANA KAYNAK: yabanci pay x haklar x cag. Tek kulturlu kumede sifirdir.
   //
   // Katsayi MAX_UNREST (10) degil CULTURE_WEIGHT (6). 10 ile olculdu ve iki
@@ -201,21 +203,23 @@ export function unrestBreakdown(world, province, nation, { occupied = 0, turn = 
   // uzun savasta KENDI kumelerinin huzursuzlugu yabanci kumeleri geciyordu
   // (olculdu: kendi zirvesi 6.7, yabanci ortalamasi 6.2) — mekanigin adi
   // kultur ama en buyuk kaynagi savas oluyordu.
-  const war = Math.max(0, Math.min(1, nation.economy?.warStrain ?? 0));
+  // Savaş yorgunluğu artık savaş desteğinin tersidir: halk savaşı
+  // istemiyorsa her kümede homurdanır.
+  const war = (nation.economy?.warFronts ?? 0) > 0
+    ? Math.max(0, Math.min(1, 1 - (nation.warSupport ?? 0.5))) : 0;
   const occupation = Math.max(0, Math.min(1, occupied)) * 1.5;
   const backlash = backlashOf(nation, turn) * (1 - foreign);
-  // REFAH: sosyal harcama huzursuzlugu satin alir. Azinlik haklari yasasi da
-  // yatistirir (minorityCeiling 0.7-1.0 arasi).
-  const welfare = Math.max(0, Math.min(100, nation.economy?.social?.welfare ?? 0)) / 100 * 2;
-  const rights = ((lawModifiers(nation).minorityCeiling ?? 1) - 0.7) / 0.3 * foreign;
-  // TOPLUM: asimilasyoncu cogunluk azinligi iter, cok kulturlu toplum
-  // yatistirir (society.js). Yabanci payla olceklenir: tek kulturlu kume etkilenmez.
-  const society = societyModifiers(nation).minorityUnrest * foreign;
+  // TÜKETİM MALI: dolu raf huzursuzluğu satın alır, boş raf besler (eski
+  // refah harcamasının yerini aldı). Azınlık hakları da yatıştırır.
+  const consumer = nation.economy?.consumer?.ratio ?? 1;
+  const welfare = Math.max(-1.5, Math.min(1, (consumer - 1) * 4));
+  const rights = ((lawOption(nation, 'citizenship').ceiling ?? 1) - 0.7) / 0.3 * foreign;
+  const policy = Math.max(0.2, 1 + mod(nation, 'unrest'));
   const target = Math.max(0, Math.min(
     CULTURE.MAX_UNREST,
-    culture + conquest + war + occupation + backlash - welfare - rights + society,
+    (culture + conquest + war + occupation + backlash - welfare - rights) * policy,
   ));
-  return { target, culture, conquest, war, occupation, backlash, welfare, rights, society, foreign, era };
+  return { target, culture, conquest, war, occupation, backlash, welfare, rights, policy, foreign, era };
 }
 
 /**
@@ -237,7 +241,7 @@ function assimilate(world, province, nation, { unrest, turn }) {
   // Asimilasyoncu toplum daha hizli eritir, cok kulturlu toplum yavaslatir.
   const rate = CULTURE.ASSIMILATE_BASE
     * (0.5 + literacy) * assimilationRights(nation) * control * urban * calm
-    * societyModifiers(nation).assimilation;
+    * Math.max(0.2, 1 + mod(nation, 'assimilation'));
   if (!(rate > 0)) return false;
 
   let moved = 0;
@@ -385,9 +389,10 @@ export function cultureMix(world, nation) {
 export function acceptBlockers(world, nation, cultureId, turn = world.turn ?? 0) {
   const out = [];
   if (isAccepted(nation, cultureId)) return ['Already an accepted culture.'];
-  if (lawValue(nation, 'citizenship') === 'residency') {
+  if (lawIndex(nation, 'citizenship') === 0) {
     out.push('Residency law grants political rights to the national culture only.');
   }
+  if ((nation.power ?? 0) < ACCEPT_POWER) out.push(`Needs ${ACCEPT_POWER} political power.`);
   const row = cultureMix(world, nation).find((item) => item.id === cultureId);
   const share = row?.share ?? 0;
   if (share < CULTURE.ACCEPT_MIN_SHARE) {
@@ -409,6 +414,7 @@ export function acceptCulture(game, nation, cultureId) {
   const world = game.world;
   const turn = game.turns?.turn ?? world.turn ?? 0;
   if (acceptBlockers(world, nation, cultureId, turn).length) return false;
+  nation.power -= ACCEPT_POWER;
   nation.accepted = [...acceptedCultures(nation), cultureId];
   nation.cultureBacklashUntil = turn + CULTURE.BACKLASH_WEEKS;
   // ORTAK ETMEK KIRIGI KAPATIR. Halk artik yabanci sayilmadigi icin
@@ -421,8 +427,6 @@ export function acceptCulture(game, nation, cultureId) {
     province.econ.control = Math.max(province.econ.control ?? 0, 25);
   }
   const name = world.cultures?.[cultureId]?.name ?? 'a people';
-  // Toplum da degisir: devleti paylasmak cogulculugu ogretir (society.js).
-  pushSociety(nation, 'integration', 6, `Enfranchised the ${name}`);
   if (nation.id === game.turns?.playerNation) {
     announce(game, nation, {
       kind: 'POLITICS', tier: TIER.MAJOR, key: `accept-${cultureId}`,
@@ -650,8 +654,6 @@ export function expelCulture(game, nation, cultureId) {
   );
   addInfamy(nation, cost);
   world.cultureExpulsions = (world.cultureExpulsions ?? 0) + 1;
-  pushSociety(nation, 'integration', -8,
-    `Expelled the ${world.cultures?.[cultureId]?.name ?? 'a people'}`);
   if (recolored.length) {
     const tiles = [];
     for (const province of recolored) {
