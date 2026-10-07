@@ -54,9 +54,11 @@ province üstünde kalır. Sınıf, meslek, ihtiyaç sepeti, fiyat yok.
 edilmiş kültürü, ya da sahibin ana kültürünün ana yurdu, ya da 25 yıldır
 elde. **Statü:** çekirdek 1, çekirdek dışı `0.25 + 0.75 × uyum/100`, işgal 0.
 
-**Kalkınma** vergiyi (×(1 + 0.2·kalkınma)), bina yuvasını (kalkınma + 1),
+**Kalkınma** vergiyi (×(1 + 0.25·kalkınma)), bina yuvasını (kalkınma + 1),
 el tezgâhı tüketim malını ve nüfus artışını büyütür. Altınla, 12 haftada bir
-kademe; bedel `15 × (kalkınma+1)²`. Tavan: 3 + teknoloji + okuryazarlık × 3.
+kademe; bedel `20 × hedef² × √(nüfus ÷ 100 bin)` (kalabalık province'i
+kalkındırmak pahalı ama daha çok vergi getirir). Tavan: 3 + teknoloji +
+okuryazarlık × 4.
 
 ## 3. Altı kaynak (akış — stok yok)
 
@@ -74,7 +76,7 @@ barışta değersiz, savaşta hayati — savaş hedefi olmaya en uygun kaynak.
 
 ## 4. Ticaret
 
-- Kaynak başına tek dünya fiyatı: `taban × √(talep/arz)`, 0.6–2.0, haftada %10 yaklaşır.
+- Kaynak başına tek dünya fiyatı: `taban × (dünya ihtiyacı ÷ dünya üretimi)^1.5`, 0.6–2.0, haftada %10 yaklaşır.
 - **İhracat:** yalnız fazla, üretimin yasa payına kadar. **İthalat:** açık, altın yettiği sürece kendiliğinden.
 - Ticaret yasası: Kapalı %0 (ithalat ×1.5, istikrar +3) · Sınırlı %25 · İhracat odaklı %50 (ihracat geliri +%15) · Serbest %80 (ithalat ×0.9, inşaat −%10).
 - İkili akış: savaştaki ve ambargolu çift ticaret yapmaz. Kara komşusu doğrudan, ötekiler denizden (iki taraf da kıyılı).
@@ -99,25 +101,27 @@ barışta değersiz, savaşta hayati — savaş hedefi olmaya en uygun kaynak.
 ## 7. İnşaat
 
 Bina province'e aittir; toprakla el değiştirir. Bedel peşin, süre haftalarla.
-Aynı anda yürüyen proje: `2 + ⌊province/8⌋` (+teknoloji); kereste eksikse yavaşlar.
+Aynı anda yürüyen proje: `2 + ⌊province/5⌋` (+teknoloji); kereste eksikse
+yavaşlar. Her bina haftalık bakım öder (bütçede "maintenance"). Sayılar
+`src/game/econ/defs.js BUILDINGS`'tendir.
 
-| Bina | Bedel | Hafta | Etki | Şart |
-|---|---|---|---|---|
-| Çiftlik | 40 | 12 | gıda +%25 | — |
-| Maden | 60 | 16 | yatak +%50 | yatak |
-| Fabrika | 120 (+%3/fabrika) | 26 | +1 IC | kalkınma ≥2 |
-| Tersane | 120 | 30 | gemi hattı, liman | kıyı |
-| Kışla | 50 | 16 | insan gücü +%20, eğitim −%10 süre | — |
-| Kale | 60 | 20 | savunma +%15/kademe (en çok 3) | — |
-| Demiryolu | 70 (+%50/kademe) | 20 | kaynak +%10, hareket, ikmal (en çok 5) | — |
-| Üniversite | 100 | 30 | araştırma +0.3, okuryazarlık | kalkınma ≥4 |
+| Bina | Bedel | Bakım/hf | Hafta | Etki | Şart |
+|---|---|---|---|---|---|
+| Çiftlik | 80 | 0.05 | 12 | gıda +%25 (en çok 3) | — |
+| Maden | 120 | 0.15 | 16 | yatak +%50 (en çok 3) | yatak |
+| Fabrika | 250 (+%5/fabrika) | 0.4 | 26 | +1 IC (en çok 5) | kalkınma ≥2 |
+| Tersane | 200 | 0.4 | 30 | gemi hattı, liman (en çok 3) | kıyı |
+| Kışla | 100 | 0.2 | 16 | insan gücü +%20, hızlı eğitim (en çok 2) | — |
+| Kale | 120 | 0.2 | 20 | savunma +%15/kademe (en çok 3) | — |
+| Demiryolu | 150 (+%50/kademe) | 0.15 | 20 | kaynak +%10, hareket, ikmal (en çok 5) | — |
+| Üniversite | 200 | 0.4 | 30 | araştırma +0.3, okuryazarlık (en çok 2) | kalkınma ≥4 |
 
 ## 8. Nüfus, insan gücü, okuryazarlık
 
 - Artış haftalık `%0.012 × gıda × tüketim malı × istikrar × barış` (savaşta ×0.6); kıtlıkta azalış. Ölen asker nüfustan düşer.
 - İnsan gücü: province `nüfus × askerlik oranı × (kabul payı + yabancı pay × vatandaşlık oranı) × statü − silah altındakiler`.
 - Askerlik: Gönüllü %3 · Sınırlı %6 (IC −%3) · Yaygın %10 (IC −%8, savaş desteği ≥50) · Topyekûn %16 (IC −%20, istikrar −5, savaş desteği ≥80). Alay 30 bin kişidir; 8 milyonluk ülke Sınırlı'da ~16 alay besler (ilk ayarda %4 kuruluş ordusunu havuzla eşitliyordu, yeni alay kurulamıyordu).
-- Okuryazarlık ulusal; eğitim yasası ve üniversiteyle hedefe yaklaşır. Araştırmayı, kalkınma tavanını ve milliyetçiliği büyütür.
+- Okuryazarlık ulusal; eğitim yasası (hedef %12 / %40 / %75) ve üniversiteyle hedefe ORANSAL yaklaşır (haftada açığın 0.0013'ü: 15 yılda %63, 30 yılda %86). Sabit adım denendi ve geri alındı: hedef iki yasada da aynı taraftayken yasa görünmüyordu. Araştırmayı, kalkınma tavanını ve milliyetçiliği büyütür.
 
 ## 9. Siyaset
 
@@ -159,7 +163,10 @@ ambargo (SG). Barış talepleri: toprak, kurtarma, vasal, tazminat, askersizleş
 5 dal (Sanayi, Altyapı, Ordu, Donanma, Toplum) × 8 seviye. Her teknolojinin
 etkisi somut: IC, verim tavanı, kaynak, kalkınma tavanı, inşaat, ikmal, saldırı,
 savunma, zırhlı gemi, okuryazarlık, istikrar. Araştırma = 1 + okuryazarlık × 6
-+ üniversite × 0.3.
++ üniversite × 0.3. Bedel `110 × (1 + 0.6·kademe) × (1 + 0.02·(yıl − 1836))`,
+yılından önce araştırmak yılda +%6 (tavan 2.5×). Yıl çarpanı ağacı takvime
+bağlar: ölçümde orta ülke 1876'da 30, 1886'da 36 teknolojide, 40'ını
+1886-96 arasında bitirir (çarpansız 1881-86'da bitip son on beş yıl boştu).
 
 ## 14. Zafer (1900)
 

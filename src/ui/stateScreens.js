@@ -194,7 +194,7 @@ export function renderTrade(game, me, state) {
     return `<div class="uc-mkt">
       <span>${RESOURCES[id].glyph} ${esc(RESOURCES[id].name)}</span>
       <b>${num(market.prices?.[id] ?? 0, 2)}</b>
-      <small>offered ${num(market.offered?.[id] ?? 0, 0)} · wanted ${num(market.wanted?.[id] ?? 0, 0)}</small>
+      <small>world needs ${pct(market.balance?.[id] ?? 0)} of output · traded ${num(market.volume?.[id] ?? 0, 0)}</small>
       <div class="uc-spark mini">${sparkline(history, 120, 22)}</div>
     </div>`;
   }).join('');
@@ -205,7 +205,7 @@ export function renderTrade(game, me, state) {
       <tbody>${table}</tbody></table></div>
       <p class="uc-note">Food feeds the people · Coal fuels the factories · Iron and Timber feed the production lines and construction · Horses mount cavalry and artillery · Saltpeter is gunpowder for every regiment in battle.</p>`)}
     <div class="uc-grid">
-      ${card('World market', 'price = base × √(wanted / offered)', `<div class="uc-mkts">${marketRows}</div>`)}
+      ${card('World market', 'price = base × (world need ÷ world output)^1.5', `<div class="uc-mkts">${marketRows}</div>`)}
       ${card('Embargoes', 'no trade with these states', embargoes.length
     ? `<div class="detail-list">${embargoes.map((other) => `<div><span>${esc(other.name)}</span>
         <button class="action compact" data-uc-embargo-lift="${other.id}">Lift</button></div>`).join('')}</div>`
@@ -466,8 +466,15 @@ export function bindStateScreens(screens) {
   const root = screens.el.body;
   const state = screens.uc;
   if (!me) return;
+  // Her düğme SG, altın ya da istikrar harcar; üst çubuk haftayı beklemeden
+  // tazelensin diye eylemden sonra 'politics' yayınlanır (hud.js dinler).
   const on = (selector, handler) => {
-    for (const el of root.querySelectorAll(selector)) el.onclick = (event) => handler(el, event);
+    for (const el of root.querySelectorAll(selector)) {
+      el.onclick = (event) => {
+        handler(el, event);
+        game.emit('politics', me.id);
+      };
+    }
   };
   const confirmThen = (key, apply) => {
     if (state.confirm !== key) {

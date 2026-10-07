@@ -11661,9 +11661,32 @@ body.picker-open .movement-dock { display: none; }
    bileşenlerin yerleşimi.
    ========================================================================== */
 
-/* Dokuz gösterge + çipler tek sırada: hücreler biraz daralır. */
+/* Dokuz gösterge + çipler tek sırada: hücreler biraz daralır. Harf aralığı
+   da daralır, yoksa "STABILITY" simgesiyle 96 piksele sığmayıp komşu
+   hücrenin etiketine biniyordu (1600 genişlikte başsız tarayıcıda görüldü). */
 .top-stats { --stat-w: 96px; }
 .top-stat { min-width: 64px; }
+.top-stat small { gap: 4px; letter-spacing: 0.07em; margin-right: -0.07em; }
+
+/* Dokuz gösterge + kaynak çipleri eski yedi göstergeden ~300 piksel geniştir:
+   ikinci satıra inme eşiği 1179'dan 1365'e çıkar. 1280'de çipler tarihe,
+   künye satırı altına biniyordu (başsız tarayıcıda ölçüldü; 1366 ve üstü
+   tek satıra sığıyor). --hud-top JS ile ölçüldüğü için alt katmanlar kayar. */
+@media (max-width: 1365px) {
+  .topbar {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "left right"
+      "stats stats";
+    row-gap: 2px;
+    padding-top: calc(var(--safe-top) + 6px);
+  }
+  .top-stats {
+    border-top: 1px solid var(--line);
+    padding-block: 2px;
+  }
+  .top-stat { height: 44px; }
+}
 
 /* Altı kaynak: 3 × 2 küçük çip, gösterge ızgarasının sonunda. */
 .res-chips {

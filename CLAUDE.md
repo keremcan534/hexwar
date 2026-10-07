@@ -27,7 +27,7 @@ Mimari ve tasarım kararları için [README.md](README.md).
 - Oyuncuya birim başına iş çıkaran her özellik, `orders.js` üzerinden
   devredilebilir olmalı. Mikro yönetim, oyuncunun sahip olduğu nesne sayısıyla
   büyüyen tek maliyettir; kırk fabrikada kırk tık ise o mekanik politikaya
-  çevrilmeli (bkz. [VICTORIA_LITE.md](VICTORIA_LITE.md) "ev ödevi testi").
+  çevrilmeli (bkz. [TASARIM.md](TASARIM.md) "ev ödevi testi").
 
 ## Test
 
@@ -45,31 +45,37 @@ Performans hedefi: kare süresi uzak zoomda < 2 ms, yakın zoomda < 5 ms.
 
 ## Mekanik eklemeden önce
 
-Bu depoya mekanik EKLEMEK varsayılan değildir. Yeni bir mekanik önermeden önce
-[VICTORIA_LITE.md](VICTORIA_LITE.md) okunmalı; ölçüt orada. Bir mekaniğin
-çalıştığı varsayılmaz, ÖLÇÜLÜR:
+Oyunun yönü **Uluslar Çağı**dır: Age of History sadeliği, HOI4'ün savaş ve
+üretim omurgası, Victoria 2'nin halkları. Tasarım, formüller, sabitler ve
+haftalık sıra [TASARIM.md](TASARIM.md)'dedir; yeni mekanik önermeden önce
+okunmalı (ilkeler + üç test: gürültü, ev ödevi, cümle).
 
-    npm run audit:mechanics        # her kaldıraç: çalışıyor / hissedilmiyor / ölü
-    npm run audit:budget-contract  # bütçe sözleşmesi değişmezleri
+Bu depoya mekanik EKLEMEK varsayılan değildir. Bir mekaniğin çalıştığı
+varsayılmaz, ÖLÇÜLÜR:
 
-İlk tarama: 26 mekanikten 10'u ölü, 5'i gürültü tabanının altındaydı. Yani bu
-depoda asıl risk eksik mekanik değil, **çalışmayan mekanik**.
-Son tarama (toplum eksenleri eklendi; tarama hazineyi net ölçer: altın −
-borç; 2026-10-03): 18 kaldıraç · çalışıyor 16 (gümrük 1.33× ve vatandaşlık
-1.39× — ince pay, bkz. MEKANIK_KILAVUZU §8.2) · gürültü altı 0 · **ölü 0** ·
-savaş kaldıracı 1 (barış arenasında ölçülemez) · kültür kaldıracı 1 (toplumun
-halklar ekseni: işi azınlık kümelerinde, doğrudan kanalıyla ölçülür).
-Para basma tek beyanlı kaynak (ACCOUNTING_INVARIANTS L17). Siyaset: 4 sabit
-parti, 5 yasa, meşruiyet ve toplumun üç ekseni (parti desteği topluma
-yakınlıkla çarpılır; oyuncunun tek kaldıracı kampanya, MEKANIK_KILAVUZU §6.5)
-— bkz. `src/game/politics.js`, `src/game/society.js`,
-`npm run diagnose:politics`. Araştırma: ulusal program
-yok; kuyruk + akıllı seçici (`technology.pickNextTech`, ağırlıklar
-`economy.researchPriorities`) + YZ okul geleneği (`economy.aiEducationFloor`).
-Yeni kampanyada üst şeridin portföyleri AUTO açık başlar
-(`delegation.DEFAULT_AUTO_AREAS`; diplomasi hariç) — araştırma da bir devir
-alanıdır, eski kayıtlar açılırken AUTO'ya göçürülür.
+    npm run audit:econ         # ekonomi değişmezleri (defter, ticaret korunumu, NaN) + sağlık
+    npm run audit:mechanics    # her yasa/hat kaldıracı: çalışıyor / gürültü altı / ölü
+    npm run audit:tech-effect  # her değiştirici anahtarının bir okuyucusu var mı
+    npm run audit:all          # bütün batarya
 
-Her mekaniğin formülü, kodu, "çalışıyor mu" testi ve pratikte ne yaptığı:
-[MEKANIK_KILAVUZU.md](MEKANIK_KILAVUZU.md)
-(PDF: [docs/HexWar-Mekanik-Kilavuzu.pdf](docs/HexWar-Mekanik-Kilavuzu.pdf)).
+Son tarama (2026-10-08, eşli bağıl etki + 1 altınlık dürtü gürültüsü):
+8 kaldıraç · çalışıyor 8 · gürültü altı 0 · **ölü 0**. En ince pay ekonomi
+yasasının tüketim malına etkisi (sanayi ülkesinde −%10.8, eşiğin 2.16 katı).
+Eğitim yasası bir önceki taramada ölüydü: okuryazarlık sabit adımla
+yaklaşıyordu, şimdi oransal (TASARIM.md §8). Bataryada kalan bulgular
+yeniden yazımdan ÖNCE de vardı: province boy tavanı (200×160'ta 1 province),
+ülke sayısı 101 (scale, ORTA), sınır kartopu tohuma göre %22-42 (eşik
+%33; yeniden yazımdan önce %39-51).
+
+Sistemlerin kod yeri: ekonomi `src/game/economy.js` + `src/game/econ/*`,
+siyaset `politics.js` (+ `laws.js`, `modifiers.js`, `agenda.js`,
+`decisions.js`, `eventCards.js`), kültür `culture.js` + `movements.js` +
+`unification.js`, ordu `recruitment.js`/`reinforcement.js`/`battles.js`,
+zafer `hegemony.js`. Ekranlar sayı üretmez; `economyView`, `governmentView`,
+`constructionView`, `agendaView` gibi döküm fonksiyonlarını basar
+(`src/ui/stateScreens.js`). Teknoloji/danışman/parti/olay etkileri tek
+değiştirici toplamına yazılır (`modifiers.js MODIFIER_KEYS`): yeni anahtarın
+okuyucusu yoksa `audit:tech-effect` yakalar.
+
+Yeni kampanyada AUTO açık başlar (`delegation.DEFAULT_AUTO_AREAS`; diplomasi
+hariç). Kayıt sürümü 24'tür; eski kayıtlar temiz reddedilir.

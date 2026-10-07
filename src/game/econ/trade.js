@@ -179,13 +179,22 @@ export function clearTrade(world, turn) {
     }
     flowsByRes[id] = flows;
 
-    // Fiyat: talep/teklif oranının karekökü, bant içinde, haftada %10 yaklaşır.
-    const base = RESOURCES[id].price;
-    const pressure = offeredTotal > 0
-      ? Math.sqrt(wantedTotal / offeredTotal)
-      : (wantedTotal > 0 ? TRADE.maxPrice : 1);
-    const target = base * clamp(wantedTotal > 0 || offeredTotal > 0 ? pressure : 1,
-      TRADE.minPrice, TRADE.maxPrice);
+    // FİYAT DÜNYA DENGESİNDEN: (dünya ihtiyacı ÷ dünya üretimi)^1.5, bant içinde,
+    // haftada %10 yaklaşır. İlk sürüm takas tekliflerine bakıyordu
+    // (√talep/teklif) ve dünya fazlası %11 olan gıdada bile fiyat hep
+    // tabandaydı (audit:econ): takasa yalnız açıklar girdiği için oran
+    // kıtlığı değil takasın darlığını ölçüyordu.
+    let produced = 0;
+    let need = 0;
+    for (const nation of nations) {
+      produced += nation.economy.resources[id].produced;
+      need += nation.economy.resources[id].need;
+    }
+    const balance = produced > 0 ? need / produced : (need > 0 ? TRADE.maxPrice : 1);
+    market.balance ??= {};
+    market.balance[id] = balance;
+    // Üs 1.5: kare, %26 dünya fazlasında bile fiyatı tabana çakıyordu.
+    const target = RESOURCES[id].price * clamp(balance ** 1.5, TRADE.minPrice, TRADE.maxPrice);
     market.prices[id] += (target - market.prices[id]) * TRADE.priceSpeed;
   }
 
@@ -208,6 +217,9 @@ export function clearTrade(world, turn) {
   }
 
   for (const nation of nations) {
+    // Bu haftanın takasına katıldı: aynı hafta elense de kaydı denetimde
+    // sayılır (korunum dünya toplamıyla sınanır).
+    nation.economy.tradeTurn = turn;
     for (const id of RESOURCE_IDS) {
       const record = nation.economy.resources[id];
       record.imported = 0;

@@ -1,351 +1,121 @@
-// MEKANIK SAGLIK TARAMASI — "bu mekanik calisiyor mu?"
+// MEKANİK SAĞLIK TARAMASI — "bu kaldıraç çalışıyor mu?" (Uluslar Çağı)
 //
-// Tek soru sorar ve her mekanige ayni soruyu sorar: kaldiraci TABANDAN
-// TAVANA cekince oyunda olculebilir bir sey degisiyor mu?
+// Her kaldıraca aynı soru: kaldıracı uçtan uca çekince oyunda ölçülebilir bir
+// şey değişiyor mu, ve bu değişim TOHUM GÜRÜLTÜSÜNÜN üstünde mi?
 //
-// Uc sonuc vardir:
-//   OLU            — hicbir olcut kimildamadi (bit bit ayni). Mekanik yok.
-//   GURULTU ALTI   — kimildadi ama tohum gurultusunun altinda. Oyuncu hissedemez.
-//   CALISIYOR      — gurultunun uzerinde. Mekanik var.
+//   ÖLÜ           — hiçbir ölçüt kıpırdamadı. Mekanik yok.
+//   GÜRÜLTÜ ALTI  — kıpırdadı ama tohumlar arası doğal oynamanın altında.
+//   ÇALIŞIYOR     — gürültünün üstünde. Oyuncu hisseder.
 //
-// Gurultu tabani butce gecisinde olculdu (6 tohum, 160 hafta, hicbir seye
-// dokunulmadan): hazine %50.8 · gsyh %51.9 · nufus %39.1 · needsMet %26.5 ·
-// istikrar %5.5 · memnuniyet %5.3. Bir mekanigin BUTUN menzili bu esigin
-// altindaysa oyuncu icin yoktur.
+// Yöntem: her tohumda aynı ulus için üç kol, ayrı süreçlerde, barış içinde:
+// kaldıracın iki ucu ve GÜRÜLTÜ KOLU (düşük uç + hazineye 1 altın dürtü).
+// Etki tohum içi EŞLİ bağıl farktır; gürültü, dürtünün aynı ölçütü ne kadar
+// oynattığıdır (kelebek etkisi). İlk sürüm etkiyi tohumlar arası yayılımla
+// kıyaslıyordu: farklı tohumun "orta ulusu" farklı boydadır ve askerî IC
+// 0.07 → 0.53 (7.5 kat) bile "gürültü altı" çıkıyordu — ölçü kaldıracı
+// değil ülke boyunu ölçüyordu.
 //
-// IKI OLCUT SONRADAN EKLENDI — okuryazarlik ve tamamlanan teknoloji. Sebep:
-// yukaridaki altisi da KISA VADELI ekonomik olcutlerdir; egitim/basin/okul
-// gibi yavas yanan mekanikler oralarda hicbir zaman gorunmez. Ayni yontemle
-// olculdu (6 tohum, 150 hafta): okuryazarlik %0.0 (hicbir seye dokunulmayan
-// ulkede tamamen belirlenimli), teknoloji %20.2, haftalik arastirma %4.8.
-//
-// Okuryazarligin gurultusu SIFIR ciktigi icin bolme anlamsizlasirdi; taban
-// %5'te tutuluyor. Bu keyfi degil: olculen en kucuk taban memnuniyetin %5.3'u
-// ve bu, bu oyundaki "insanin fark ettigi en kucuk degisim" olcegidir.
+// Kaldıraç başına bir BEKLENEN ölçüt vardır (vergi → hazine, askerlik →
+// insan gücü...): kaldıraç yalnız o ölçütte değerlendirilir, çünkü yan
+// etkiler (vergi istikrarı da düşürür) bilgidir, hüküm değil.
 //
 //   npm run audit:mechanics
 
-import { headless, runPeaceful, pickNation, section, sub, finding, reportFindings } from './harness.mjs';
-import { LAWS, refreshLawModifiers } from '../../src/game/politics.js';
-import { BUDGET_POLICIES, budgetPolicyLimits, setBudgetPolicy } from '../../src/game/economy.js';
-import { researchPointsOf } from '../../src/game/technology.js';
-import { SOCIETY_AXES } from '../../src/game/society.js';
-import { foreignShareOf } from '../../src/game/culture.js';
+import { runScenario, section, sub, finding, reportFindings, table, pct } from './harness.mjs';
 
-const WEEKS = 120;
-const WARMUP = 30;
 const SEEDS = ['mh1', 'mh2', 'mh3'];
+const WEEKS = 104;
+const WARMUP = 26;
 
-/**
- * Gurultu tabani — butce gecisinde 6 tohumla olculdu.
- *
- * DIKKAT, `gdp` esigi BAYAT: 51.9 sayisi GSYH brut ciktiyken olculmustu.
- * 2026-09-04'te GSYH katma degere cevrildi (bkz. economy.js runFactories,
- * ACCOUNTING_INVARIANTS L15) ve sanayinin GSYH icindeki agirligi %46'dan
- * %11'e indi, yani seriden seriye yayilim da degismis olabilir. Bu kosuda
- * hicbir kaldiracin verdictini GSYH belirlemedi (hepsinin en guclu olcutu
- * sat/stab/rp/gold/lit) — o yuzden hukumler etkilenmedi. Yine de esik
- * yeniden olculmeli; olculene kadar GSYH ile verilen bir hukum supheli
- * sayilmalidir.
- */
-const NOISE = {
-  gold: 50.8, gdp: 51.9, pop: 39.1, needs: 26.5, stab: 5.5, sat: 5.3,
-  lit: 5.0, tech: 20.2, rp: 5.0,
-};
+/** Kaldıraç → iki uç ve beklenen ölçüt. */
+const LEVERS = [
+  { id: 'tax', law: 'tax', lo: 0, hi: 2, metric: 'gold', note: 'Low vs High Taxes → treasury' },
+  { id: 'conscription', law: 'conscription', lo: 0, hi: 3, metric: 'manpower', note: 'Volunteer vs Total → manpower' },
+  // IC kaldıraçları sanayi ülkesinde ölçülür: üç tohumun ikisinde orta ulusun
+  // hiç fabrikası yoktu (IC 0) — iki uç da sıfır, kaldıraç değil kanal yok.
+  { id: 'economy', law: 'economy', lo: 0, hi: 3, metric: 'militaryIC', note: 'Civilian vs Total War → military IC (industrial nation)', nation: 'industry' },
+  // Tüketim malı bedeli SANAYİ ülkesinde ısırır: tarım ülkesinin rafını el
+  // tezgâhı doldurur (TASARIM.md §5), orta ulusta fark tasarım gereği küçük.
+  { id: 'economy-consumer', law: 'economy', lo: 0, hi: 3, metric: 'consumer', note: 'Civilian vs Total War → consumer goods (industrial nation)', nation: 'industry' },
+  { id: 'trade', law: 'trade', lo: 0, hi: 3, metric: 'exports', note: 'Closed vs Free → export income' },
+  { id: 'citizenship', law: 'citizenship', lo: 0, hi: 2, metric: 'unrest', note: 'Residency vs Full → unrest' },
+  { id: 'education', law: 'education', lo: 0, hi: 2, metric: 'literacy', note: 'None vs Universal → literacy' },
+  { id: 'rifles-line', line: 'rifles', lo: 0, hi: 10, metric: 'rifles', note: 'Rifles line 0 vs 10 → rifle stock (industrial nation)', base: [{ law: 'economy', index: 2 }], nation: 'industry' },
+];
 
-function measure(nation) {
-  const e = nation.economy;
-  return {
-    // NET HAZINE: altin - borc. Yalniz altin olculdugunde iki kol da borca
-    // dustugunde ikisi de 0'da kirpiliyor, fark borca kayip gorunmuyordu
-    // (olculdu, 2026-10: gumruk mh2'de iki kolda altin 0, borc 1327 vs
-    // 1133; kaldirac 1.22x'ten 0.78x'e "dustu"). Borclanma hazineye giren
-    // paradir (L9); ayni miktarin iki yarisi birlikte sayilir. Esik (50.8)
-    // kirpilan seriyle olculmustu: 0 ile 37 arasi %100 sayiliyordu, yani
-    // net seride muhtemelen YUKSEK kalir — hukum muhafazakar tarafta.
-    gold: (nation.gold ?? 0) - Math.max(0, nation.debt ?? 0),
-    gdp: e.gdp ?? 0,
-    pop: e.population ?? 0,
-    needs: e.needsMet ?? 0,
-    stab: e.stability ?? 0,
-    sat: e.classes?.lower?.satisfaction ?? 0,
-    lit: e.literacy ?? 0,
-    tech: nation.research?.done?.length ?? 0,
-    // Haftalik arastirma URETIMI — tamamlanan teknoloji sayisi bunun 120
-    // haftada yalnizca 2-3 kez zipladigi kaba bir sayacidir; uretimin
-    // kendisi teknoloji ekraninda yazan ve her hafta degisen sayidir.
-    rp: researchPointsOf(nation),
-  };
+function leverSpec(lever, value) {
+  if (lever.law) return [...(lever.base ?? []), { law: lever.law, index: value }];
+  return [...(lever.base ?? []), { line: lever.line, weight: value }];
 }
 
-/** Bir kolu kosar: `apply(nation)` her hafta cagrilir. */
-function arm(seed, apply) {
-  const game = headless(seed);
-  runPeaceful(game, WARMUP);
-  const nation = pickNation(game);
-  game.turns.playerNation = nation.id;
-  apply?.(nation);
-  for (let i = 0; i < WEEKS; i++) {
-    runPeaceful(game, 1);
-    apply?.(nation);
+function metricOf(out, metric) {
+  const snap = out.snap;
+  switch (metric) {
+    case 'gold': return snap.gold - snap.debt;
+    case 'manpower': return snap.manpower;
+    case 'militaryIC': return snap.militaryIC;
+    case 'consumer': return snap.consumer;
+    case 'exports': return snap.exportRevenue;
+    case 'unrest': return out.unrest ?? 0;
+    case 'literacy': return snap.literacy;
+    case 'rifles': return snap.stock?.rifles ?? 0;
+    default: return NaN;
   }
-  return measure(nation);
 }
 
-/** Iki kolun en buyuk BAGIL farki (%), olcut olcut. */
-function spread(a, b) {
-  const out = {};
-  let identical = true;
-  let best = { key: null, pct: 0, ratio: 0 };
-  for (const key of Object.keys(a)) {
-    if (a[key] !== b[key]) identical = false;
-    const scale = Math.max(Math.abs(a[key]), Math.abs(b[key]), 1e-9);
-    const pct = Math.abs(b[key] - a[key]) / scale * 100;
-    out[key] = pct;
-    const ratio = pct / NOISE[key];
-    if (ratio > best.ratio) best = { key, pct, ratio };
-  }
-  return { out, identical, best };
-}
+section(`MEKANİK SAĞLIK — ${LEVERS.length} kaldıraç · ${SEEDS.length} tohum · ${WEEKS} hafta`);
 
-function verdict(sp) {
-  if (sp.identical) return 'OLU';
-  return sp.best.ratio >= 1 ? 'CALISIYOR' : 'GURULTU ALTI';
-}
-
-const results = [];
-
-/**
- * SAVAS KALDIRACLARI — barisci arenada olculemez.
- *
- * Bu tarama bilerek `runPeaceful` kosar: savas topragi, toprak nufusu, nufus
- * her seyi degistirir; savasli bir arenada iki kol arasindaki fark artik
- * kaldiraca degil kimin kimi fethettigine baglanir (bkz. harness.mjs). Bedeli
- * su: bir kaldiracin FAYDASI yalnizca muharebede goruluyorsa burada yalnizca
- * MALIYETI olculur ve mekanik hakkinda verilen hukum yanlis olur.
- *
- * `armyFunding` tam olarak boyledir. Uc ciktisinin ucu de muharebe yolundadir
- * (battles.js muharebe gucu, military.js takviye, recruitment.js egitim) ve
- * uctu de dogrulanmistir — `npm run audit:budget-contract` §6 her ucunun
- * dogru yone hareket ettigini olcer. Burada ALTI CIZILEREK ayri tutulur:
- * "olculemedi" ile "yok" ayni sey degildir.
- */
-const WAR_LEVERS = new Set(['armyFunding']);
-
-/**
- * KULTUR KALDIRACLARI — etkisi azinlik kumelerindedir, ulusal toplamda degil.
- *
- * Toplumun asimilasyon ekseni (society.js) azinlik kumelerinde huzursuzlugu
- * ~1.4 puan, sadakati 12-18 puan oynatiyor ve ulusal hareketi dogurup
- * dogurmayacagina karar veriyor (olculdu, 3 tohum); ama arenanin ULUSAL
- * olcutleri (GSYH, hazine, istikrar) azinlik payi kadar kimildar. Savas
- * kaldiraci gibi ayri tutulur ve asagida DOGRUDAN KANALINDAN olculur.
- */
-const CULTURE_LEVERS = new Set(['society:integration']);
-
-function probe(label, applyLow, applyHigh) {
-  const lows = SEEDS.map((s) => arm(s, applyLow));
-  const highs = SEEDS.map((s) => arm(s, applyHigh));
-  const sps = lows.map((lo, i) => spread(lo, highs[i]));
-  const identical = sps.every((s) => s.identical);
-  // TOHUMLAR ARASINDA ORTALAMA ALINIR, EN IYISI SECILMEZ. Ilk surum her
-  // olcut icin tohumlarin EN BUYUK sapmasini aliyordu; iki tohumun maksimumu
-  // tohum gurultusunu olcume geri sokar ve esik civarindaki mekanikler kosudan
-  // kosuya taraf degistirir (olculdu: armyFunding ayni kodda 1.31x ve 0.61x).
-  // Once olcut olcut ORTALAMA, sonra en guclu olcut.
-  const best = { key: '-', pct: 0, ratio: 0 };
-  for (const key of Object.keys(NOISE)) {
-    const pct = sps.reduce((sum, s) => sum + s.out[key], 0) / sps.length;
-    const ratio = pct / NOISE[key];
-    if (ratio > best.ratio) { best.key = key; best.pct = pct; best.ratio = ratio; }
-  }
-  let v = identical ? 'OLU' : (best.ratio >= 1 ? 'CALISIYOR' : 'GURULTU ALTI');
-  if (WAR_LEVERS.has(label) && v !== 'OLU') v = 'SAVAS KALDIRACI';
-  if (CULTURE_LEVERS.has(label) && v === 'GURULTU ALTI') v = 'KULTUR KALDIRACI';
-  results.push({ label, verdict: v, key: best.key, pct: best.pct, ratio: best.ratio });
-  const mark = v === 'OLU' ? '  <<< OLU'
-    : v === 'GURULTU ALTI' ? '  <-- hissedilmez'
-      : v === 'SAVAS KALDIRACI' ? '  <-- baris arenasinda yalniz MALIYETI gorunur'
-        : v === 'KULTUR KALDIRACI' ? '  <-- etkisi azinlik kumelerinde; dogrudan kanali asagida'
-          : '';
-  console.log(`  ${label.padEnd(24)} ${v.padEnd(13)} en guclu: ${String(best.key).padEnd(6)}`
-    + ` %${best.pct.toFixed(1).padStart(6)}  = gurultunun ${best.ratio.toFixed(2)} kati${mark}`);
-}
-
-// ============================================================= YASALAR
-section('MEKANIK SAGLIK TARAMASI');
-sub(`Yasalar — taban kademe vs tavan kademe (${WEEKS} hafta, ${SEEDS.length} tohum)`);
-
-/**
- * Siyasi kapi ATLANIR: burada kapinin degil ETKININ olcusu yapiliyor. Yine de
- * yururlukteki kademe iktidarin tavaniyla kirpilir (politics.lawCap); tavani
- * o yasada en yuksek olan parti iki kolda da iktidarda tutulur ki olculen
- * fark yalniz yasadan gelsin.
- */
-const TOP_PARTY = {
-  constitution: 'liberal',
-  labour: 'socialist',
-  welfare: 'socialist',
-  citizenship: 'liberal',
-  conscription: 'nationalist',
-};
-
-function governLaw(nation, lawId, levelId) {
-  const party = nation.politics.parties.find((item) => item.ideology === TOP_PARTY[lawId]);
-  nation.politics.rulingPartyId = party.id;
-  nation.politics.laws[lawId] = levelId;
-  refreshLawModifiers(nation);
-}
-
-for (const law of LAWS) {
-  const bottom = law.levels[0].id;
-  const top = law.levels[law.levels.length - 1].id;
-  probe(law.id, (nation) => governLaw(nation, law.id, bottom), (nation) => governLaw(nation, law.id, top));
-}
-
-// ============================================================ MESRUIYET
-sub('Mesruiyet — halkin arkasinda olmayan hukumet istikrar oder mi?');
-{
-  // Destek her hafta siyaset fazinda yeniden hesaplanir; ekonomi bir SONRAKI
-  // hafta okur. Kol her hafta sonunda destegi yazar: bir kolda iktidar
-  // halkla esit, digerinde en onde giden partinin 30 puan gerisinde.
-  const backing = (gap) => (nation) => {
-    const ruling = nation.politics.rulingPartyId;
-    const other = nation.politics.parties.find((party) => party.id !== ruling);
-    for (const party of nation.politics.parties) {
-      party.support = party.id === ruling ? 25 - gap / 2
-        : party.id === other.id ? 25 + gap / 2 : 25;
-    }
-  };
-  probe('mesruiyet (30 puan)', backing(0), backing(30));
-}
-
-// ===================================================== TOPLUM EKSENLERI
-sub('Toplum eksenleri — sol kutup vs sag kutup (society.js)');
-{
-  // Eksen her hafta kutba CAKILIR: aylik itisler onu kutuptan cekmesin. Olculen
-  // sey eksenin ETKISIDIR (parti destegi -> mesruiyet, savas yuku, huzursuzluk,
-  // arastirma, istikrar); eksenin nasil oraya geldigi ayri soru (kampanya
-  // asagida). Militarizmin iki etkisi savasta (savas yuku, insan gucu); barista
-  // yalniz parti destegi uzerinden gorunur.
-  const pin = (axisId, value) => (nation) => {
-    if (nation.politics?.society) nation.politics.society[axisId] = value;
-  };
-  for (const axis of SOCIETY_AXES) {
-    probe(`society:${axis.id}`, pin(axis.id, -100), pin(axis.id, 100));
-  }
-  // KAMPANYA: oyuncunun tek kaldiraci. Ayni eksen, iki yon; ekseni kendisi
-  // tasir, yani etkisi eksenin etkisinin bir kesridir.
-  // Hazine kapisi ATLANIR (yasalardaki siyasi kapi gibi): olculen sey
-  // kampanyanin ETKISIDIR. Hazine yetmeyen hafta settleCampaign onu durdurur,
-  // kol her hafta yeniden kurar.
-  const campaign = (dir) => (nation) => {
-    if (nation.politics) nation.politics.campaign = { axis: 'progress', dir };
-  };
-  probe('campaign (progress)', campaign(-1), campaign(1));
-}
-
-// ============================================================ BUTCE
-sub('Butce kaldiraclari — kontrol grubu (bunlarin calistigi ayrica dogrulandi)');
-// TABAN VE TAVAN SABIT DEGIL, HUKUMETIN IZIN VERDIGI YERDIR. Ilk surum
-// 0-100 (ordu icin 25-100) yaziyordu; oysa serbest ticaret partisi altinda
-// tarife bandi -50..25, baris yanlisi hukumette ordu tavani 60'tir. Sabit
-// sayilarla olculen sey oyuncunun cekebilecegi menzil DEGILDI: reform
-// merdivenlerinde taban/tavan gercek kademelerdir, butcede de oyle olmali.
-for (const policy of BUDGET_POLICIES) {
-  probe(policy,
-    (n) => setBudgetPolicy(n, policy, budgetPolicyLimits(n)[policy].min),
-    (n) => setBudgetPolicy(n, policy, budgetPolicyLimits(n)[policy].max));
-}
-
-// ================================================ DOGRUDAN KANAL OLCUMU
-sub('Dogrudan kanal — gurultunun altinda kalan mekanik BAGLI MI?');
-{
-  // "Hissedilmiyor" ile "bagli degil" ayni sey degildir. Yukaridaki tarama
-  // kaba olcutlere bakar; burada her zayif mekanigin BAGLANDIGI sayi dogrudan
-  // okunur. Gecerse mekanik vardir ve yonu dogrudur — yalnizca oyuncunun onu
-  // ayirt etmesi zordur. Gecmezse mekanik gercekten yoktur.
-  const channel = (label, lawId, lowStep, highStep, read) => {
-    const one = (step) => {
-      const game = headless(SEEDS[0]);
-      runPeaceful(game, WARMUP);
-      const nation = pickNation(game);
-      game.turns.playerNation = nation.id;
-      const set = () => governLaw(nation, lawId, step);
-      set();
-      for (let i = 0; i < WEEKS; i++) { runPeaceful(game, 1); set(); }
-      return read(nation);
-    };
-    const lo = one(lowStep);
-    const hi = one(highStep);
-    const delta = (hi - lo) / Math.max(1e-9, Math.abs(lo)) * 100;
-    const ok = Math.abs(delta) > 1;
-    console.log(`  ${label.padEnd(34)} ${lo.toFixed(3).padStart(10)} -> ${hi.toFixed(3).padStart(10)}`
-      + `  %${delta.toFixed(1).padStart(6)}  ${ok ? 'BAGLI' : 'BAGLI DEGIL'}`);
-    if (!ok) {
-      finding('HIGH', `Kanal: ${label}`, 'zayif mekanik bari BAGLI olmali',
-        `${lo} -> ${hi}, degisim %${delta.toFixed(2)}`);
-    }
-  };
-  // Eski `political_rights` merdiveni (0.57x) vatandaslik yasasina, asgari
-  // ucret ve sendika merdivenleri isci hakki yasasina katlandi.
-  channel('citizenship -> tasra geliri', 'citizenship',
-    'residency', 'full_citizenship', (n) => n.economy.ledger.state ?? 0);
-  channel('labour -> isci geliri', 'labour',
-    'no_labour_rights', 'strong_labour_rights', (n) => n.economy.classes?.lower?.income ?? 0);
-
-  // TOPLUMUN ASIMILASYON EKSENI -> azinlik kumelerinin sadakati. Eksen her hafta
-  // kutba cakilir; okunan sey yabanci cogunluklu kumelerin ortalama sadakatidir.
-  const minorityLoyalty = (value) => {
-    const game = headless(SEEDS[0]);
-    runPeaceful(game, WARMUP);
-    const nation = pickNation(game);
-    game.turns.playerNation = nation.id;
-    for (let i = 0; i < WEEKS; i++) { nation.politics.society.integration = value; runPeaceful(game, 1); }
-    const foreign = game.world.provinces.filter((p) => p.owner === nation.id && p.econ
-      && foreignShareOf(p, nation) >= 0.5);
-    return foreign.length
-      ? foreign.reduce((sum, p) => sum + (p.econ.control ?? 0), 0) / foreign.length : 0;
-  };
-  {
-    const lo = minorityLoyalty(-100);
-    const hi = minorityLoyalty(100);
-    const delta = (hi - lo) / Math.max(1e-9, Math.abs(lo)) * 100;
-    const ok = delta > 5;
-    console.log(`  ${'society:integration -> azinlik sadakati'.padEnd(34)} ${lo.toFixed(3).padStart(10)} -> ${hi.toFixed(3).padStart(10)}`
-      + `  %${delta.toFixed(1).padStart(6)}  ${ok ? 'BAGLI' : 'BAGLI DEGIL'}`);
-    if (!ok) {
-      finding('HIGH', 'Kanal: society:integration -> azinlik sadakati',
-        'cok kulturlu toplumda azinlik kumeleri daha sadik olmali', `${lo} -> ${hi}`);
+const rows = [];
+for (const lever of LEVERS) {
+  const lo = [];
+  const hi = [];
+  const nudged = [];
+  const arms = [[lever.lo, lo, []], [lever.hi, hi, []], [lever.lo, nudged, [{ name: 'nudgeGold', args: { amount: 1 } }]]];
+  for (const seed of SEEDS) {
+    for (const [end, list, mutations] of arms) {
+      const out = runScenario({
+        seed, warmup: WARMUP, peacefulWarmup: true, weeks: WEEKS, peaceful: true,
+        nation: lever.nation ?? 'median', levers: leverSpec(lever, end), measure: ['unrest'],
+        mutations, label: `${lever.id}:${end}${mutations.length ? ':nudge' : ''}`,
+      });
+      list.push(metricOf(out, lever.metric));
     }
   }
+  const mean = (list) => list.reduce((s, v) => s + v, 0) / list.length;
+  // Tohum içi eşli bağıl fark: ölçek her tohumun kendi iki kolundan.
+  const rel = (a, b) => (b - a) / Math.max(Math.abs(a), Math.abs(b), 1e-9);
+  const effects = SEEDS.map((_, i) => rel(lo[i], hi[i]));
+  const noises = SEEDS.map((_, i) => Math.abs(rel(lo[i], nudged[i])));
+  const effect = mean(effects);
+  const noise = mean(noises);
+  const sameSign = effects.every((e) => Math.sign(e) === Math.sign(effect) && e !== 0);
+  const dead = lo.every((v, i) => Math.abs(v - hi[i]) < 1e-9);
+  // Etki dürtü gürültüsünün iki katının ve %5'in üstünde, her tohumda aynı yönde olmalı.
+  const floor = Math.max(noise * 2, 0.05);
+  const verdict = dead ? 'ÖLÜ' : (Math.abs(effect) >= floor && sameSign) ? 'ÇALIŞIYOR' : 'GÜRÜLTÜ ALTI';
+  rows.push({ lever, lo: mean(lo), hi: mean(hi), effect, noise, floor, sameSign, verdict });
 }
 
-// ============================================================== OZET
-sub('Ozet');
-const dead = results.filter((r) => r.verdict === 'OLU');
-const weak = results.filter((r) => r.verdict === 'GURULTU ALTI');
-const live = results.filter((r) => r.verdict === 'CALISIYOR');
-const war = results.filter((r) => r.verdict === 'SAVAS KALDIRACI');
-const culture = results.filter((r) => r.verdict === 'KULTUR KALDIRACI');
-console.log(`  toplam ${results.length} mekanik · CALISIYOR ${live.length}`
-  + ` · GURULTU ALTI ${weak.length} · OLU ${dead.length}`
-  + ` · SAVAS KALDIRACI ${war.length} (bu arenada olculemez)`
-  + (culture.length ? ` · KULTUR KALDIRACI ${culture.length} (dogrudan kanaliyla olculur)` : ''));
-if (war.length) {
-  console.log(`  savas kaldiraclari ayrica dogrulanir: npm run audit:budget-contract §6`
-    + ` — ${war.map((w) => w.label).join(', ')}`);
-}
+sub('Sonuç');
+console.log(table(rows, [
+  { label: 'kaldıraç', get: (r) => r.lever.id, right: false },
+  { label: 'ölçüt', get: (r) => r.lever.metric, right: false },
+  { label: 'düşük uç', get: (r) => r.lo.toFixed(2) },
+  { label: 'yüksek uç', get: (r) => r.hi.toFixed(2) },
+  { label: 'eşli etki', get: (r) => pct(r.effect) },
+  { label: 'dürtü gürültüsü', get: (r) => pct(r.noise) },
+  { label: 'kat', get: (r) => (Math.abs(r.effect) / r.floor).toFixed(2) },
+  { label: 'hüküm', get: (r) => r.verdict, right: false },
+]));
 
-if (dead.length) {
-  finding('HIGH', 'Olu mekanikler',
-    'kaldiraci tabandan tavana cekmek olculebilir bir sey degistirmeli',
-    `${dead.length} mekanikte HICBIR olcut kimildamadi: ${dead.map((d) => d.label).join(', ')}`);
+for (const row of rows) {
+  if (row.verdict === 'ÖLÜ') {
+    finding('HIGH', `${row.lever.id} ölü`, row.lever.note, 'iki uç birebir aynı');
+  } else if (row.verdict === 'GÜRÜLTÜ ALTI') {
+    finding('MEDIUM', `${row.lever.id} hissedilmiyor`, row.lever.note,
+      `eşli etki ${pct(row.effect)}, eşik ${pct(row.floor)}${row.sameSign ? '' : ', tohumlar arasında yön tutarsız'}`);
+  }
 }
-if (weak.length) {
-  finding('MEDIUM', 'Hissedilmeyen mekanikler',
-    'butun menzil tohum gurultusunun uzerinde olmali',
-    `${weak.length} mekanik gurultunun altinda: ${weak.map((w) => `${w.label} (${w.ratio.toFixed(2)}x)`).join(', ')}`);
-}
-
-reportFindings();
+const working = rows.filter((r) => r.verdict === 'ÇALIŞIYOR').length;
+console.log(`\n  ${rows.length} kaldıraç · çalışıyor ${working} · gürültü altı ${rows.filter((r) => r.verdict === 'GÜRÜLTÜ ALTI').length} · ölü ${rows.filter((r) => r.verdict === 'ÖLÜ').length}`);
+process.exitCode = reportFindings() ? 1 : 0;

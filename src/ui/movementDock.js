@@ -5,7 +5,7 @@
 // sayaca toplanir (ui/notifications.js); sag ust bu panelindir.
 //
 // Panel hicbir sayiyi kendisi kurmaz: satirlar, asamalar, bedeller ve
-// engeller `movements.movementView`dan gelir (VICTORIA_LITE: sayi ureten
+// engeller `movements.movementView`dan gelir (TASARIM.md ilke 2: sayi ureten
 // gosterendir). Eylemler ayni kapilari cagirir — YZ de onlardan gecer.
 
 import {

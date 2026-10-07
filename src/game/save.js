@@ -434,7 +434,14 @@ export function deserialize(game, data) {
     if (coreOf != null) province.coreOf = coreOf;
   }
   // Hukuki sahip üye çoğunluğundan: kayıt savaşın ortasında alınmış olabilir.
-  for (const province of world.provinces ?? []) refreshProvinceOwner(world, province);
+  // Taze üretilen dünyanın sahibi kayıttakinden farklıysa refresh çekirdek
+  // saatini "şimdi"ye çeker; kayıttaki saat geri yazılır, yoksa yüklenen
+  // oyunda fethin yaşı sıfırlanıp çekirdek kayboluyordu (audit:save).
+  for (const province of world.provinces ?? []) {
+    const since = province.econ?.ownedSince;
+    refreshProvinceOwner(world, province);
+    if (Number.isFinite(since)) province.econ.ownedSince = since;
+  }
 
   // 4) Uluslar
   for (const saved of data.nations) {

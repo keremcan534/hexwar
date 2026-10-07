@@ -19,7 +19,7 @@ import {
 import {
   CULTURE, acceptCulture, cultureMix, foreignShareOf, unrestSummary,
 } from '../../src/game/culture.js';
-import { refreshLawModifiers } from '../../src/game/politics.js';
+import { refreshModifiers } from '../../src/game/modifiers.js';
 
 /**
  * Vatandaslik artik bir YASADIR (politics.laws.citizenship) ve iktidarin
@@ -28,11 +28,12 @@ import { refreshLawModifiers } from '../../src/game/politics.js';
  * atlanir; olculen sey kapi degil etki.
  */
 function forceCitizenship(nation, level) {
-  const liberal = nation?.politics?.parties?.find((party) => party.ideology === 'liberal');
-  if (!liberal) return;
-  nation.politics.rulingPartyId = liberal.id;
-  nation.politics.laws.citizenship = level;
-  refreshLawModifiers(nation);
+  if (!nation?.politics) return;
+  nation.politics.ruling = 'liberal';
+  // Uluslar Çağı: yasa kademe indeksidir (0 residency, 1 limited, 2 full).
+  const index = { residency_only: 0, residency: 0, limited_citizenship: 1, limited: 1, full_citizenship: 2, full: 2 }[level] ?? level;
+  nation.politics.laws.citizenship = index;
+  refreshModifiers(nation, 0);
 }
 
 const WEEKS = Number(process.argv[2] ?? 520);
@@ -169,23 +170,36 @@ sub('TEST 2 — yabanci kulturlu tasra huzursuzlaniyor mu?');
 sub('TEST 3 — vatandaslik politikasi huzursuzlugu oynatiyor mu?');
 {
   const results = {};
+  const kept = {};
   for (const policy of ['residency', 'full_citizenship']) {
     const probe = headless('CULTURE-UNREST');
     const world2 = probe.world;
     const target = world2.nations.find((n) => n.name === multiNation?.name);
     if (!target) break;
     probe.turns.playerNation = target.id;
+    // Kosu boyunca ortalama: son haftanin fotografi hayatta kalan kumeleri
+    // olcer. Olculdu: residency altinda Norengrad 22 kumenin 19'unu kaybetti,
+    // elde kalan 3 ana kume sakindi ve son-hafta olcusu ters cikti
+    // (1.90 vs 2.58) — oysa kosu boyunca residency 3 kat huzursuzdu.
+    let sum = 0;
+    let samples = 0;
     for (let i = 0; i < 520; i++) {
       // Yasa her hafta yeniden yazilir: kaydedilmis bir secim bile olculeni bozmasin.
       forceCitizenship(target, policy);
       probe.turns.endTurn();
+      if (i % 13 === 12 && target.alive) {
+        sum += unrestSummary(world2, target).unrest;
+        samples++;
+      }
     }
-    results[policy] = unrestSummary(world2, target).unrest;
+    results[policy] = samples > 0 ? sum / samples : 0;
+    kept[policy] = world2.provinces.filter((p) => p.owner === target.id).length;
   }
   const strict = results.residency ?? 0;
   const open = results.full_citizenship ?? 0;
-  console.log(`  ${multiNation?.name ?? '?'} · residency ${n2(strict)} · full citizenship ${n2(open)}`
-    + ` · fark ${n2(strict - open)}`);
+  console.log(`  ${multiNation?.name ?? '?'} · kosu ortalamasi: residency ${n2(strict)}`
+    + ` · full citizenship ${n2(open)} · fark ${n2(strict - open)}`
+    + ` · elde kalan kume ${kept.residency ?? '?'} / ${kept.full_citizenship ?? '?'}`);
   if (!(strict - open > 0.3)) {
     finding('HIGH', 'vatandaslik kaldiraci',
       'residency ile tam vatandaslik arasinda olculebilir fark olmali',

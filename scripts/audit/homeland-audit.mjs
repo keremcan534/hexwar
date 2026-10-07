@@ -21,7 +21,7 @@ import {
   CULTURE, brokenByCulture, brokenProvinces, expelCulture, foreignShareOf,
   releaseToKin, acceptCulture, acceptBlockers, cultureMix,
 } from '../../src/game/culture.js';
-import { provinceOutput } from '../../src/game/provinces.js';
+import { provinceOutput } from '../../src/game/econ/resources.js';
 import { TurnManager } from '../../src/game/turn.js';
 
 const YEARS = Number(process.argv[2] ?? 50);
@@ -72,7 +72,7 @@ function runSeed(seed) {
     const pop = Math.max(0, province.econ.population ?? 0);
     people += pop;
     foreignWeighted += foreignShareOf(province, nation) * pop;
-    const out = provinceOutput(world, province);
+    const out = provinceOutput(province, world.nations[province.owner]);
     const total = Object.values(out).reduce((sum, v) => sum + v, 0);
     if (province.econ.brokenSince != null) {
       broken++;

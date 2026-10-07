@@ -24,6 +24,8 @@ const alive = world.nations.filter((n) => n.alive && n.tiles > 4);
 const [aggressor, victim] = alive;
 
 // --- Kurulum: saldirgan kurbanin topragini isgal eder ---
+// Ilanin Siyasi Guc bedeli bu denetimin konusu degil (TASARIM.md §12).
+aggressor.power = 500;
 if (!atWar(world, aggressor.id, victim.id)) declareWarNow(game, aggressor.id, victim.id);
 // Kurbanin kareleri saldirganin kontrolune gecirilir (cephe simulasyonu yerine
 // dogrudan kontrol atamasi: bu test BARIS KAPISINI olcer, savasi degil).
@@ -156,13 +158,14 @@ if (tolRows[0].tol >= tolRows[tolRows.length - 1].tol) {
 // cephede savasiyor ve istikrari dusukse tolerans (45.9) ustunlugun
 // tamamini (37) yutuyor ve beyaz baris yine bedava geciyordu.
 sub('TEST 5 — yipranmis kazanan (tolerans tavani)');
-const savedStability = world.nations[aggressor.id].economy.stability;
-world.nations[aggressor.id].economy.stability = 0.25; // coken istikrar
+const savedStability = world.nations[aggressor.id].stability;
+world.nations[aggressor.id].stability = 0.25; // coken istikrar
 const relAg = world.relations[aggressor.id][victim.id];
 const savedSince2 = relAg.since;
 relAg.since = (world.turn ?? 0) - 8 * 52; // 8 yil savas: yorgunluk tavanda
 // Ucuncu bir dusman: "ikinci cephe" toleransini da ac.
 const third = alive.find((n) => n.id !== aggressor.id && n.id !== victim.id);
+aggressor.power = 500;
 if (third && !atWar(world, aggressor.id, third.id)) declareWarNow(game, aggressor.id, third.id);
 
 const lead = warScore(world, aggressor.id, victim.id);
@@ -178,7 +181,7 @@ if (lead > 12 && whiteNow === null) {
 } else if (lead > 12) {
   console.log(`  -> Tolerans tavani tutuyor: ${n1(tol)} <= ${n1(lead * 0.6)} (ustunlugun %60'i). DOGRU.`);
 }
-world.nations[aggressor.id].economy.stability = savedStability;
+world.nations[aggressor.id].stability = savedStability;
 relAg.since = savedSince2;
 
 process.exit(reportFindings() > 0 ? 1 : 0);

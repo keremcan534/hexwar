@@ -460,6 +460,8 @@ export class Hud {
     // 'turn'/'economy' olaylarıyla tam tazeliyor.
     game.on('clock', () => this.onDay());
     game.on('economy', () => this.onTurn());
+    // Ekran düğmeleri (yasa, danışman, karar, olay kartı) SG ve altını anında harcar.
+    game.on('politics', () => this.onTurn());
     // İnşaat/yatırım kararı hazineden ANINDA para düşer ama haftalık tik
     // gelene kadar üst çubuk eski rakamı gösteriyordu: oyuncu £220 sanıp
     // £0 ile karar veriyordu (kör beta B-006). Ekonomi ekranı bu olayı zaten

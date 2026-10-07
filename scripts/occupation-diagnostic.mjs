@@ -7,7 +7,8 @@ import { generateNations } from '../src/world/nations.js';
 import { controllerOf, isOccupied } from '../src/game/control.js';
 import { declareWarNow, makePeace } from '../src/game/diplomacy.js';
 import { placeUnit, unitsOn } from '../src/game/units.js';
-import { provinceOutput } from '../src/game/provinces.js';
+import { provinceOutput } from '../src/game/econ/resources.js';
+import { runProvinces } from '../src/game/provinces.js';
 import { deserialize, serialize } from '../src/game/save.js';
 
 function headless(seed) {
@@ -78,7 +79,11 @@ const wartime = {
   markedOccupied: isOccupied(war.target),
   provinceCountsUnchanged: war.world.nations[war.attackerId].tiles === attackerTilesBefore
     && war.world.nations[war.defenderId].tiles === defenderTilesBefore,
-  occupiedOutputStopped: Object.values(provinceOutput(war.target)).every((value) => value === 0),
+  occupiedOutputStopped: (() => {
+    runProvinces(war.game ?? { world: war.world, turns: { turn: war.world.turn }, renderer: { invalidateTiles() {} }, emit() {} });
+    const province = war.world.provinces[war.target.provinceId];
+    return Object.values(provinceOutput(province, war.world.nations[province.owner])).every((value) => value === 0);
+  })(),
   lowControl: war.target.province.control === 10,
 };
 

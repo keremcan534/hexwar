@@ -28,19 +28,19 @@ function fingerprint(game) {
     Number((n.gold ?? 0).toFixed(3)),
     Number((n.debt ?? 0).toFixed(3)),
     n.tiles,
-    n.economy.factories.length,
-    n.economy.factories.reduce((s, f) => s + f.level, 0),
-    Number(n.economy.factories.reduce((s, f) => s + f.employees, 0).toFixed(2)),
-    Number((n.economy.stability ?? 0).toFixed(6)),
-    n.economy.taxRate, n.economy.armyFunding,
-    n.economy.tariff,
-    (n.construction?.projects ?? []).length,
+    (n.economy.ic?.raw ?? 0),
+    (n.economy.ic?.total ?? 0).toFixed(3),
+    (n.economy.consumer?.ratio ?? 0).toFixed(4),
+    Number((n.stability ?? 0).toFixed(6)),
+    JSON.stringify(n.politics?.laws ?? {}), Number((n.power ?? 0).toFixed(3)),
+    Number((n.warSupport ?? 0).toFixed(6)),
+    (n.construction?.queue ?? []).length,
     world.units.filter((u) => u.nationId === n.id).length,
   ].join(','));
   let pop = 0;
   world.forEach((t) => { if (t.province) pop += t.province.population; });
-  const prices = Object.entries(world.market.goods)
-    .map(([id, g]) => `${id}=${g.price.toFixed(6)}`).join(';');
+  const prices = Object.entries(world.market.prices)
+    .map(([id, price]) => `${id}=${price.toFixed(6)}`).join(';');
   const wars = [];
   for (let a = 0; a < world.nations.length; a++) {
     for (let b = a + 1; b < world.nations.length; b++) {

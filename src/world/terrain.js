@@ -4,7 +4,7 @@
 // İki ayrı geçilebilirlik var: `passable` kara birimleri, `navigable` deniz
 // yolu içindir. Kara birimi denize girince "bindirilmiş" (embarked) sayılır.
 //
-// `yield` bir işçinin o kareden çıkardığıdır (docs/tasarim.md).
+// `yield` karenin toprak verimidir: province gıdası ve nüfus tohumu buradan (econ/deposits.js).
 //
 // Geçilmez kara artık YALNIZ buz sahanlığıdır. Dağ ve zirve uzun süre
 // `passable: false` idi ve bu, karanın %10.9'unu (standart dünyada 606 kare)

@@ -13,16 +13,12 @@ import { Game } from '../../src/game/game.js';
 import { TurnManager } from '../../src/game/turn.js';
 import { generateWorld } from '../../src/world/worldgen.js';
 import { generateNations } from '../../src/world/nations.js';
-import {
-  FACTORIES, GOOD_IDS, GOODS, MILITARY_EQUIPMENT_IDS, factoryJobs,
-  industrialJobs, populationOf, priceOf,
-} from '../../src/game/economy.js';
-import { nationCohorts, summarize } from '../../src/game/population.js';
+import { RESOURCE_IDS, EQUIPMENT_IDS } from '../../src/game/econ/defs.js';
+import { populationOf } from '../../src/game/economy.js';
 import { nationManpower } from '../../src/game/recruitment.js';
 import { regimentCount, soldiersOf } from '../../src/game/units.js';
 import { atWar } from '../../src/game/diplomacy.js';
 import { ensureConstruction } from '../../src/game/construction.js';
-import { PRICE_CEILING, PRICE_FLOOR } from '../../src/game/priceBand.js';
 
 /**
  * Bassiz oyun. DOM, zamanlayici, cizim yok; simulasyon tam calisir.
@@ -101,11 +97,11 @@ export function runPeaceful(game, weeks) {
   return game;
 }
 
-/** Denetim ozgesi: en cok fabrikasi olan canli ulke (en zengin sinyal). */
+/** Denetim özgesi: en çok IC'si olan canlı ülke (en zengin sinyal). */
 export function pickNation(game) {
   return game.world.nations
     .filter((n) => n.alive && n.economy)
-    .sort((a, b) => (b.economy.factories?.length ?? 0) - (a.economy.factories?.length ?? 0))[0];
+    .sort((a, b) => (b.economy.ic?.raw ?? 0) - (a.economy.ic?.raw ?? 0) || a.id - b.id)[0];
 }
 
 /** Ulkeyi oyuncu yapar: YZ maliye/sosyal kaydiraclarini geri surukleyemez. */
@@ -118,144 +114,81 @@ export const alive = (game) => game.world.nations.filter((n) => n.alive && n.eco
 
 // ------------------------------------------------------------- OLCUMLER ---
 
-/** Bir ulkenin genis kesiti. Butun denetimler ayni sozlugu kullanir. */
+/** Bir ülkenin geniş kesiti. Bütün denetimler aynı sözlüğü kullanır. */
 export function snapshotNation(world, nation) {
   const e = nation.economy ?? {};
   const L = e.ledger ?? {};
-  const cls = e.classes ?? {};
-  const factories = e.factories ?? [];
-  const employees = factories.reduce((s, f) => s + (f.employees ?? 0), 0);
-  const jobs = industrialJobs(nation);
   const units = world.units.filter((u) => u.nationId === nation.id);
   const landRegiments = units
     .filter((u) => u.type.domain === 'land')
     .reduce((s, u) => s + regimentCount(u), 0);
-  const trade = e.trade ?? {};
-  const mil = e.military ?? {};
+  const resources = {};
+  for (const id of RESOURCE_IDS) resources[id] = { ...(e.resources?.[id] ?? {}) };
   return {
     id: nation.id,
     name: nation.name,
     turn: world.turn,
     gold: nation.gold ?? 0,
     debt: nation.debt ?? 0,
+    bankrupt: (nation.bankruptUntil ?? 0) > (world.turn ?? 0),
     tiles: nation.tiles ?? 0,
+    provinces: nation.provinces ?? 0,
     population: e.population ?? 0,
-    cohortPopulation: e.cohortPopulation ?? 0,
-    // --- defter ---
+    literacy: e.literacy ?? 0,
+    // --- defter (treasury.LEDGER_LINES, işaretli) ---
     income: L.income ?? 0,
     expenses: L.expenses ?? 0,
     net: L.net ?? 0,
-    // Defter satirlari artik treasury.js'in LEDGER_LINES adlarini kullanir ve
-    // ISARETLIDIR (gider negatif). `projectCost`/`shareCost` gibi eksik kalem
-    // yok: butun satirlar burada, cunku defter artik yeniden kurulmuyor.
     taxRevenue: L.tax ?? 0,
-    tariffRevenue: L.tariff ?? 0,
-    stateRevenue: L.state ?? 0,
-    settlementRevenue: L.settlement ?? 0,
-    dividendRevenue: L.dividend ?? 0,
-    shareFlow: L.share ?? 0,
+    exportRevenue: L.exports ?? 0,
     treatyFlow: L.treaty ?? 0,
-    socialCost: Math.abs(L.education ?? 0) + Math.abs(L.welfare ?? 0),
-    educationCost: Math.abs(L.education ?? 0),
-    welfareCost: Math.abs(L.welfare ?? 0),
     armyCost: Math.abs(L.army ?? 0),
-    procurementCost: Math.abs(L.procurement ?? 0),
-    subsidyCost: Math.abs(L.subsidy ?? 0),
-    interestCost: Math.abs(L.interest ?? 0),
-    constructionCost: Math.abs(L.construction ?? 0),
-    administrationCost: Math.abs(L.administration ?? 0),
+    navyCost: Math.abs(L.navy ?? 0),
     importCost: Math.abs(L.imports ?? 0),
-    outlayCost: Math.abs(L.outlay ?? 0),
+    constructionCost: Math.abs(L.construction ?? 0),
+    maintenanceCost: Math.abs(L.maintenance ?? 0),
+    educationCost: Math.abs(L.education ?? 0),
+    interestCost: Math.abs(L.interest ?? 0),
     borrowed: L.borrow ?? 0,
     repaid: Math.abs(L.repay ?? 0),
-    defaulted: L.default ?? 0,
     unreconciled: L.unreconciled ?? 0,
-    creditPenalty: L.creditPenalty ?? 0,
-    // --- politika ---
-    // `economy.taxRate` v17'de silindi; olcum sifir okuyordu. Sinif basina
-    // oran tek alandir (economy.tax) — ortalama da ondan cikar.
-    taxLower: e.tax?.lower ?? 0,
-    taxMiddle: e.tax?.middle ?? 0,
-    taxUpper: e.tax?.upper ?? 0,
-    taxRate: e.tax
-      ? (e.tax.lower + e.tax.middle + e.tax.upper) / 3
-      : 0,
-    tariff: e.tariff ?? 0,
-    education: e.social?.education ?? 0,
-    welfare: e.social?.welfare ?? 0,
-    armyFunding: e.armyFunding ?? 0,
-    // --- sinif haneleri ---
-    lowerPop: cls.lower?.population ?? 0,
-    middlePop: cls.middle?.population ?? 0,
-    upperPop: cls.upper?.population ?? 0,
-    lowerIncome: cls.lower?.income ?? 0,
-    lowerTax: cls.lower?.taxPaid ?? 0,
-    lowerBudget: cls.lower?.needsBudget ?? 0,
-    lowerCost: cls.lower?.needsCost ?? 0,
-    // needsCost ISTENEN sepettir; needsSpent fiilen alinandir. Ikisini ayirmak
-    // sart: duzeltme oncesi olcumde "sepet" degismiyor gorunuyordu cunku
-    // istenen sepet zaten butceden bagimsizdi.
-    lowerSpent: cls.lower?.needsSpent ?? cls.lower?.needsCost ?? 0,
-    lowerMet: cls.lower?.needsMet ?? 1,
-    needsMet: e.needsMet ?? 1,
-    lowerSat: cls.lower?.satisfaction ?? 0,
-    middleBudget: cls.middle?.needsBudget ?? 0,
-    middleCost: cls.middle?.needsCost ?? 0,
-    upperBudget: cls.upper?.needsBudget ?? 0,
-    upperCost: cls.upper?.needsCost ?? 0,
-    upperSat: cls.upper?.satisfaction ?? 0,
-    stability: e.stability ?? 0,
-    standardOfLiving: e.standardOfLiving ?? 0,
-    privateCapital: nation.politics?.privateCapital ?? 0,
+    // --- siyaset ---
+    stability: nation.stability ?? 0,
+    warSupport: nation.warSupport ?? 0,
+    power: nation.power ?? 0,
+    laws: { ...(nation.politics?.laws ?? {}) },
+    ruling: nation.politics?.ruling ?? null,
+    government: nation.politics?.government ?? null,
+    prestige: nation.prestige ?? 0,
     // --- sanayi ---
-    factories: factories.length,
-    factoryLevels: factories.reduce((s, f) => s + (f.level ?? 0), 0),
-    employees,
-    jobs,
-    fill: jobs > 0 ? employees / jobs : 1,
-    factoryProfit: e.factoryProfit ?? 0,
-    gdp: e.gdp ?? 0,
-    // Reel GSYH taban fiyatlarla: buyume ancak bu seride okunur (bkz.
-    // economy.js basePriceOf). Nominal seri fiyat seviyesiyle birlikte kayar.
-    realGdp: e.realGdp ?? 0,
-    subsidized: factories.filter((f) => f.subsidized).length,
-    // --- ticaret ---
-    imports: trade.imports ?? 0,
-    exports: trade.exports ?? 0,
-    importValue: trade.importValue ?? 0,
-    exportValue: trade.exportValue ?? 0,
+    ic: e.ic?.total ?? 0,
+    factories: e.ic?.raw ?? 0,
+    civilIC: e.ic?.civil ?? 0,
+    militaryIC: e.ic?.military ?? 0,
+    consumer: e.consumer?.ratio ?? 1,
+    stock: { ...(e.stock ?? {}) },
+    resources,
     // --- ordu ---
     units: units.length,
     regiments: landRegiments,
     soldiers: units.reduce((s, u) => s + soldiersOf(u), 0),
     manpower: nationManpower(world, nation.id),
-    supplyIndex: mil.supplyIndex ?? 1,
-    arms: mil.arms ?? 0,
-    reinforced: mil.reinforced ?? 0,
-    reinforcementDemand: mil.reinforcementDemand ?? 0,
-    // --- insaat ---
-    projects: ensureConstruction(nation).projects.length,
+    // --- inşaat ---
+    projects: ensureConstruction(nation).queue.length,
     atWar: world.nations.some((o) => o.alive && o.id !== nation.id && atWar(world, nation.id, o.id)),
   };
 }
 
-/** POP kohort ozeti: ihtiyac karsilanmasi ve istihdam gercekten oradan okunur. */
-export function cohortSummary(world, nation) {
-  return summarize(nationCohorts(world, nation));
-}
-
+/** Dünya pazarı kesiti: fiyat, teklif, talep, hacim. */
 export function marketSnapshot(world) {
   const out = {};
-  for (const id of GOOD_IDS) {
-    const g = world.market.goods[id];
+  const market = world.market ?? {};
+  for (const id of RESOURCE_IDS) {
     out[id] = {
-      price: g.price,
-      base: GOODS[id].basePrice,
-      ratio: g.price / GOODS[id].basePrice,
-      supply: g.supply,
-      demand: g.demand,
-      atCeiling: g.price >= GOODS[id].basePrice * PRICE_CEILING - 1e-6,
-      atFloor: g.price <= GOODS[id].basePrice * PRICE_FLOOR + 1e-6,
+      price: market.prices?.[id] ?? 0,
+      offered: market.offered?.[id] ?? 0,
+      wanted: market.wanted?.[id] ?? 0,
+      volume: market.volume?.[id] ?? 0,
     };
   }
   return out;
@@ -264,8 +197,8 @@ export function marketSnapshot(world) {
 // ------------------------------------------------------------ DEGISMEZLER ---
 
 /**
- * Her hafta calisabilen degismez taramasi. Ihlali oldugu yerde yakalar:
- * hafta, ulke, sistem, deger.
+ * Her hafta çalışabilen değişmez taraması (TASARIM.md §17). İhlali olduğu
+ * yerde yakalar: hafta, ülke, sistem, değer.
  */
 export function scanInvariants(world) {
   const bad = [];
@@ -273,54 +206,64 @@ export function scanInvariants(world) {
     turn: world.turn, nationId, system, field, value, note,
   });
   const finite = (v) => Number.isFinite(v);
+  const imported = {};
+  const exported = {};
+  for (const id of RESOURCE_IDS) { imported[id] = 0; exported[id] = 0; }
 
   for (const nation of world.nations) {
+    // Takas korunumu: bu haftanın takasına katılan herkes (aynı hafta elense de).
+    const traded = nation.economy?.tradeTurn === world.turn;
+    if (traded) {
+      for (const id of RESOURCE_IDS) {
+        imported[id] += nation.economy.resources?.[id]?.imported ?? 0;
+        exported[id] += nation.economy.resources?.[id]?.exported ?? 0;
+      }
+    }
     if (!nation.alive) continue;
     const e = nation.economy;
     if (!e) continue;
     if (!finite(nation.gold)) push('treasury', nation.id, 'gold', nation.gold);
-    if (!finite(nation.debt ?? 0)) push('debt', nation.id, 'debt', nation.debt);
-    if ((nation.debt ?? 0) < 0) push('debt', nation.id, 'debt<0', nation.debt);
+    if (!finite(nation.debt ?? 0) || (nation.debt ?? 0) < 0) push('debt', nation.id, 'debt', nation.debt);
+    if (Math.abs(e.ledger?.unreconciled ?? 0) > 1e-6) push('treasury', nation.id, 'unreconciled', e.ledger.unreconciled);
     if (!finite(e.population) || e.population < 0) push('population', nation.id, 'population', e.population);
-    for (const [cid, c] of Object.entries(e.classes ?? {})) {
-      if (!finite(c.population) || c.population < 0) push('population', nation.id, `class.${cid}`, c.population);
-      if (!finite(c.satisfaction)) push('population', nation.id, `sat.${cid}`, c.satisfaction);
-      if (!finite(c.needsBudget)) push('population', nation.id, `budget.${cid}`, c.needsBudget);
-      if (c.needsBudget < 0) push('population', nation.id, `budget<0.${cid}`, c.needsBudget);
+    for (const key of ['stability', 'warSupport']) {
+      const v = nation[key];
+      if (!finite(v) || v < 0 || v > 1) push('politics', nation.id, key, v);
     }
-    for (const f of e.factories ?? []) {
-      if (!finite(f.employees) || f.employees < 0) push('factory', nation.id, `${f.typeId}.employees`, f.employees);
-      if (f.employees > factoryJobs(f) + 1e-6) {
-        push('factory', nation.id, `${f.typeId}.overstaffed`, f.employees, `jobs=${factoryJobs(f)}`);
-      }
-      if (!finite(f.profit)) push('factory', nation.id, `${f.typeId}.profit`, f.profit);
-      if (!finite(f.level) || f.level < 1) push('factory', nation.id, `${f.typeId}.level`, f.level);
-    }
-    for (const id of MILITARY_EQUIPMENT_IDS) {
-      const v = e.military?.[id];
+    if (!finite(nation.power) || nation.power < 0) push('politics', nation.id, 'power', nation.power);
+    for (const id of EQUIPMENT_IDS) {
+      const v = e.stock?.[id];
       if (!finite(v) || v < 0) push('military', nation.id, `stock.${id}`, v);
+    }
+    for (const key of ['total', 'civil', 'military']) {
+      if (!finite(e.ic?.[key]) || e.ic[key] < 0) push('industry', nation.id, `ic.${key}`, e.ic?.[key]);
+    }
+    for (const id of RESOURCE_IDS) {
+      const r = e.resources?.[id];
+      if (!r) continue;
+      for (const k of ['produced', 'need', 'imported', 'exported', 'ratio']) {
+        if (!finite(r[k]) || r[k] < -1e-9) push('resources', nation.id, `${id}.${k}`, r[k]);
+      }
+      if (r.ratio > 1 + 1e-9) push('resources', nation.id, `${id}.ratio>1`, r.ratio);
+      // Kaynak dengesi: ihracat fazladan, fazla üretimden büyük olamaz.
+      if (r.exported > r.produced + 1e-6) push('resources', nation.id, `${id}.exported>produced`, r.exported);
     }
     const mp = nationManpower(world, nation.id);
     if (!finite(mp) || mp < 0) push('military', nation.id, 'manpower', mp);
     for (const [k, v] of Object.entries(e.ledger ?? {})) {
-      if (!finite(v)) push('ledger', nation.id, k, v);
+      if (typeof v === 'number' && !finite(v)) push('ledger', nation.id, k, v);
     }
-    for (const p of ensureConstruction(nation).projects) {
+    for (const p of ensureConstruction(nation).queue) {
       if (!finite(p.progress) || p.progress < 0) push('construction', nation.id, 'progress', p.progress);
-      if (!finite(p.work) || p.work <= 0) push('construction', nation.id, 'work', p.work);
-      if (!finite(p.funded) || p.funded < 0) push('construction', nation.id, 'funded', p.funded);
-    }
-    if (!finite(e.tariff)) push('trade', nation.id, 'tariff', e.tariff);
-    for (const [cid, v] of Object.entries(e.taxes ?? {})) {
-      if (!finite(v) || v < 0 || v > 100) push('tax', nation.id, `tax.${cid}`, v);
     }
   }
-
-  for (const id of GOOD_IDS) {
-    const g = world.market.goods[id];
-    if (!finite(g.price) || g.price < 0) push('market', -1, `price.${id}`, g.price);
-    if (!finite(g.supply) || g.supply < 0) push('market', -1, `supply.${id}`, g.supply);
-    if (!finite(g.demand) || g.demand < 0) push('market', -1, `demand.${id}`, g.demand);
+  // Dünya ticareti kapanır: Σ ithalat = Σ ihracat (miktar).
+  for (const id of RESOURCE_IDS) {
+    if (Math.abs(imported[id] - exported[id]) > 1e-6 * Math.max(1, imported[id])) {
+      push('trade', -1, `${id}.imported≠exported`, imported[id] - exported[id]);
+    }
+    const price = world.market?.prices?.[id];
+    if (!finite(price) || price <= 0) push('trade', -1, `price.${id}`, price);
   }
 
   for (const unit of world.units) {
@@ -330,16 +273,14 @@ export function scanInvariants(world) {
     }
   }
 
-  world.forEach((tile) => {
-    const p = tile.province;
-    if (!p) return;
-    if (!finite(p.population) || p.population < 0) {
-      push('province', tile.owner, `pop@${tile.q}:${tile.r}`, p.population);
-    }
-    if (!finite(p.control) || p.control < 0 || p.control > 100) {
-      push('province', tile.owner, `control@${tile.q}:${tile.r}`, p.control);
-    }
-  });
+  for (const province of world.provinces ?? []) {
+    const p = province.econ;
+    if (!p) continue;
+    if (!finite(p.population) || p.population < 0) push('province', province.owner, `pop#${province.id}`, p.population);
+    if (!finite(p.control) || p.control < 0 || p.control > 100) push('province', province.owner, `control#${province.id}`, p.control);
+    if (!finite(p.development) || p.development < 1 || p.development > 10) push('province', province.owner, `dev#${province.id}`, p.development);
+    if ((p.soldiers ?? 0) < 0) push('province', province.owner, `soldiers#${province.id}`, p.soldiers);
+  }
 
   return bad;
 }
@@ -447,4 +388,4 @@ export function reportFindings() {
   return findings.filter((f) => f.severity === 'CRITICAL' || f.severity === 'HIGH').length;
 }
 
-export { FACTORIES, GOOD_IDS, GOODS, priceOf, populationOf };
+export { populationOf };

@@ -22,12 +22,12 @@ function fingerprint(game) {
   let pop = 0;
   game.world.forEach((t) => { if (t.province) pop += t.province.population; });
   const nations = game.world.nations.filter((n) => n.alive)
-    .map((n) => `${n.id}:${n.gold.toFixed(2)}:${n.tiles}:${n.economy.factories.length}`).join(',');
+    .map((n) => `${n.id}:${n.gold.toFixed(2)}:${n.tiles}:${(n.economy.ic?.raw ?? 0).toFixed(2)}`).join(',');
   return {
     population: pop,
     units: game.world.units.length,
     cities: game.world.cities.length,
-    foodPrice: Number(game.world.market.goods.food.price.toFixed(6)),
+    foodPrice: Number(game.world.market.prices.FOOD.toFixed(6)),
     nations,
   };
 }

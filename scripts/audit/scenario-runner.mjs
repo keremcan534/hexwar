@@ -1,152 +1,72 @@
 // Tek senaryoyu KENDI SURECINDE isletir ve olcumu JSON olarak basar.
 //
 // Neden ayri surec: units.js'teki `nextId` modul duzeyinde ve dunyalar arasinda
-// sifirlanmiyor; command.js:723 ise `(turn + unit.id) % cadence` ile hangi
-// tumenin o hafta hareket edecegine karar veriyor. Ayni surecte kurulan ikinci
-// dunya, ayni tohumla bile FARKLI bir oyun olur (olculdu: ayni senaryonun iki
-// kosusu 585K ve 954K nufusla bitti). Karsilastirmali olcum icin her senaryo
-// temiz bir surecte baslamak zorunda.
+// sifirlanmiyor; command.js `(turn + unit.id) % cadence` ile hangi tumenin o
+// hafta hareket edecegine karar veriyor. Ayni surecte kurulan ikinci dunya,
+// ayni tohumla bile FARKLI bir oyun olur. Karsilastirmali olcum icin her
+// senaryo temiz bir surecte baslamak zorunda.
 //
 // Kullanim:  node scenario-runner.mjs '<json-spec>'
+//
+// Kaldiraclar (Uluslar Cagi): `{ law: 'tax', index: 2 }` yasayi kilitsiz ve
+// bedelsiz yazar (olcum icin), `{ line: 'rifles', weight: 5 }` hat agirligi.
 
 import {
-  headless, run, runPeaceful, snapshotNation, cohortSummary, marketSnapshot,
-  scanInvariants,
+  headless, run, runPeaceful, snapshotNation, marketSnapshot, scanInvariants,
 } from './harness.mjs';
-import {
-  FACTORIES, factoryJobs, factoryMargin, priceOf, setBudgetPolicy, BUDGET_POLICIES,
-} from '../../src/game/economy.js';
-import { RGO_TYPES, depositsOf } from '../../src/game/provinces.js';
-import { policyOf } from '../../src/game/politics.js';
+import { LAWS } from '../../src/game/laws.js';
+import { refreshModifiers } from '../../src/game/modifiers.js';
+import { setLineWeight } from '../../src/game/econ/industry.js';
 import { battleUnitPower } from '../../src/game/battles.js';
 import { reinforcementNeed } from '../../src/game/reinforcement.js';
 import { nationManpower } from '../../src/game/recruitment.js';
 import { declareWarNow } from '../../src/game/diplomacy.js';
-import { ensureConstruction, constructionPower } from '../../src/game/construction.js';
 
 const spec = JSON.parse(process.argv[2]);
-
-// --------------------------------------------------------------- OLCULEN ---
 
 function chooseNation(game, mode) {
   const list = game.world.nations.filter((n) => n.alive && n.economy);
   if (typeof mode === 'number') return game.world.nations[mode];
-  if (mode === 'protectionist') {
-    return list.find((n) => policyOf(n, 'trade') === 'protectionism') ?? list[0];
-  }
   if (mode === 'first') return list[0];
-  // varsayilan: en cok fabrikasi olan (en zengin ekonomik sinyal)
-  return list.sort((a, b) => (b.economy.factories?.length ?? 0) - (a.economy.factories?.length ?? 0))[0];
+  if (mode === 'median') {
+    const sorted = [...list].sort((a, b) => a.economy.population - b.economy.population);
+    return sorted[Math.floor(sorted.length / 2)];
+  }
+  // varsayılan: en çok IC'si olan (en zengin ekonomik sinyal)
+  return list.sort((a, b) => (b.economy.ic?.raw ?? 0) - (a.economy.ic?.raw ?? 0) || a.id - b.id)[0];
 }
 
-// --------------------------------------------------------------- MUTASYON ---
-// Seri hale getirilemeyen kod bloklari burada, adlandirilmis olarak durur.
-
 const MUTATIONS = {
-  /** Bir malin dunya RGO uretimini carpar (0 = tamamen kes). */
-  rgoScale(game, { goodId, factor }) {
-    // Kume dongusu: kare basina `*=` uye sayisi kadar tekrar uygulaniyordu.
-    for (const province of game.world.provinces ?? []) {
-      if (!province.econ) continue;
-      for (const line of depositsOf(province.econ)) {
-        if (RGO_TYPES[line.id]?.goodId === goodId) line.quality *= factor;
-      }
-    }
-  },
-  /** Belirli mallari ureten fabrikalarin kadrosunu carpar. */
-  factoryScale(game, { goodId, factor }) {
-    for (const n of game.world.nations) {
-      for (const f of n.economy?.factories ?? []) {
-        if (Object.keys(FACTORIES[f.typeId].outputs).includes(goodId)) f.employees *= factor;
-      }
-    }
-  },
-  /** Kasten zararli tesisler kurar ve destekler. */
-  badFactories(game, { nationId, count = 4, level = 5 }) {
-    const nation = game.world.nations[nationId];
-    const city = game.world.cities.find((c) => c.nationId === nationId);
-    if (!city) return;
-    const worst = Object.keys(FACTORIES)
-      .map((typeId) => ({ typeId, m: factoryMargin(game.world, typeId) }))
-      .sort((a, b) => a.m - b.m).slice(0, count);
-    for (const { typeId } of worst) {
-      nation.economy.factories.push({
-        id: `audit-${typeId}`, typeId, q: city.tile.q, r: city.tile.r,
-        level, employees: level * 2000, profit: 0, margin: 0, throughput: 0,
-        fundedBy: 'state', subsidized: true,
-        ...(typeId === 'ARMS_FACTORY' ? { lineEquipment: 'arms', lineEfficiency: 1, lineOutput: 0 } : {}),
-      });
-    }
-  },
-  /** Butun fabrikalari destekle. */
-  subsidizeAll(game, { nationId }) {
-    for (const f of game.world.nations[nationId].economy.factories) f.subsidized = true;
-  },
-  /** Hazineyi bir degere sabitler. */
+  /** Hazineyi bir değere sabitler. */
   setGold(game, { nationId, gold }) {
     game.world.nations[nationId].gold = gold;
   },
-  /** Butun piyasa fiyatlarini bir degere sabitler. */
-  setPrices(game, { price }) {
-    for (const state of Object.values(game.world.market.goods)) {
-      state.price = price;
-      state.previousPrice = price;
-    }
+  /** Hazineye küçük bir dürtü: kaldıraç taramasının gürültü kolu (kelebek etkisi). */
+  nudgeGold(game, { nationId, amount = 1 }) {
+    game.world.nations[nationId].gold += amount;
   },
-  /** Piyasa arz/talebini bir degere sabitler. */
-  setMarketFlow(game, { supply, demand }) {
-    for (const state of Object.values(game.world.market.goods)) {
-      if (supply != null) state.supply = supply;
-      if (demand != null) state.demand = demand;
-    }
-  },
-  /** Ulkenin butun fabrikalarini siler. */
-  wipeFactories(game, { nationId }) {
-    game.world.nations[nationId].economy.factories = [];
-  },
-  /** Fabrikalari cogaltir (yuzlerce tesis senaryosu). */
-  cloneFactories(game, { nationId, copies }) {
-    const nation = game.world.nations[nationId];
-    const base = [...nation.economy.factories];
-    if (!base.length) return;
-    for (let c = 0; c < copies; c++) {
-      for (const f of base) {
-        nation.economy.factories.push({ ...f, id: `${f.id}-clone${c}` });
-      }
-    }
-  },
-  /** Province nufuslarini asker alim tabanina indirir (insan gucu ~0). */
-  drainManpower(game, { nationId }) {
-    // Taban hex basina olceklenir; kume nufusu tam tabana cekilir.
+  /** Bir yatak türünün dünya çıktısını çarpar (0 = tamamen kes). */
+  depositScale(game, { resourceId, factor }) {
     for (const province of game.world.provinces ?? []) {
-      if (province.owner === nationId && province.econ) {
-        province.econ.population = 2000 * (province.econ.hexes ?? 1);
+      for (const line of province.deposits ?? []) {
+        if (line.id === resourceId) line.size *= factor;
       }
     }
   },
-  /** Province nufusunu hex basina sabit degere ceker (eski kalibrasyonla ayni). */
-  setProvincePopulation(game, { nationId, population }) {
-    for (const province of game.world.provinces ?? []) {
-      if (province.owner === nationId && province.econ) {
-        province.econ.population = population * (province.econ.hexes ?? 1);
-      }
-    }
-  },
-  /** Butun province nufuslarini carpar. */
+  /** Bütün province nüfuslarını çarpar. */
   populationScale(game, { factor }) {
-    // Kume dongusu: kare basina carpan uye sayisi kadar tekrar uygulaniyordu.
     for (const province of game.world.provinces ?? []) {
       if (!province.econ) continue;
       province.econ.population = Math.max(0, Math.round(province.econ.population * factor));
     }
   },
-  /** Insaat kapasitesi seviyesi verir (bedava: kapasitenin etkisini izole etmek icin). */
-  grantConstructionSectors(game, { nationId, count }) {
-    const nation = game.world.nations[nationId];
-    const state = ensureConstruction(nation);
-    state.capacity.construction += count;
+  /** Province nüfusunu alay taban seviyesine indirir (insan gücü ~0). */
+  drainManpower(game, { nationId }) {
+    for (const province of game.world.provinces ?? []) {
+      if (province.owner === nationId && province.econ) province.econ.soldiers = province.econ.population;
+    }
   },
-  /** Izlenen ulkeye savas acar (en yakin temasli komsu). */
+  /** İzlenen ulusa savaş açar (en yakın temaslı komşu). */
   forceWar(game, { nationId, foes = 1 }) {
     const world = game.world;
     let opened = 0;
@@ -154,20 +74,12 @@ const MUTATIONS = {
       if (opened >= foes) break;
       if (!other.alive || other.id === nationId) continue;
       if (world.relations[nationId]?.[other.id]?.state === 'war') continue;
-      // Sinir komsusu olsun ki cepheler gercekten temas etsin.
-      const touching = world.tiles.some((t) => t.owner === nationId
-        && world.neighbors(t).some((nb) => nb.owner === other.id));
-      if (!touching) continue;
-      // `manual`: izlenen ulke oyuncuyken (asPlayer) oyuncu adina otomatik
-      // savas ilan edilemez (diplomacy.declareWar kapi 1). Bayraksiz cagri
-      // sessizce dusuyordu: audit:military R bolumunun 80 haftalik "savasi"nda
-      // isgal 0, takviye talebi 0 idi; olculen, dunyanin rastgele YZ
-      // savaslariydi. Senaryo oyuncunun kararini taklit eder. Oyuncu olmayan
-      // ulkede (asPlayer: false) bayrak hicbir kapiyi degistirmez.
+      if (!(world.contacts?.[nationId]?.[other.id] > 0)) continue;
+      world.nations[nationId].power = Math.max(world.nations[nationId].power ?? 0, 100);
       if (declareWarNow(game, nationId, other.id, { manual: true })) opened++;
     }
   },
-  /** Butun tumenlerin gucunu kirpar: takviye sistemi olculebilsin. */
+  /** Bütün tümenlerin gücünü kırpar: takviye ölçülebilsin. */
   damageArmy(game, { nationId, ratio = 0.5 }) {
     for (const unit of game.world.units) {
       if (unit.nationId !== nationId) continue;
@@ -178,79 +90,59 @@ const MUTATIONS = {
       }
     }
   },
-  /** Butun askeri stoku sifirlar (mumkun oldugunca ikmalsiz ordu). */
+  /** Teçhizat stoğunu sıfırlar. */
   stripEquipment(game, { nationId }) {
-    const military = game.world.nations[nationId].economy.military;
-    for (const id of Object.keys(military)) {
-      if (RGO_TYPES[id]) continue;
-      if (['arms', 'artillery', 'tanks', 'airplane', 'steamers'].includes(id)) military[id] = 0;
-    }
-    military.supplyIndex = 0;
+    const stock = game.world.nations[nationId].economy.stock;
+    for (const id of Object.keys(stock)) stock[id] = 0;
   },
-  /** Askeri stoku tavana doldurur. */
-  floodEquipment(game, { nationId }) {
-    const military = game.world.nations[nationId].economy.military;
-    for (const id of ['arms', 'artillery', 'tanks', 'airplane', 'steamers']) military[id] = 40;
-    military.supplyIndex = 1;
+  /** Teçhizat stoğunu doldurur. */
+  floodEquipment(game, { nationId, amount = 500 }) {
+    const stock = game.world.nations[nationId].economy.stock;
+    for (const id of Object.keys(stock)) stock[id] = amount;
   },
-  /** Dunyada muhimmat/silah uretimini durdurur. */
-  killMilitaryIndustry(game) {
-    for (const n of game.world.nations) {
-      for (const f of n.economy?.factories ?? []) {
-        if (['ARMS_FACTORY', 'AMMUNITION_FACTORY'].includes(f.typeId)) f.employees = 0;
-      }
-    }
-  },
-  /** Fabrika kadrosunu zorla tam/bos tutar. */
-  pinEmployment(game, { nationId, fill }) {
-    for (const f of game.world.nations[nationId].economy.factories) {
-      f.employees = factoryJobs(f) * fill;
+  /** Bütün fabrikaları siler (IC 0). */
+  wipeFactories(game, { nationId }) {
+    for (const province of game.world.provinces ?? []) {
+      if (province.owner === nationId && province.econ) province.econ.buildings.factory = 0;
     }
   },
 };
 
-// ------------------------------------------------------------- KALDIRACLAR ---
-
-function applyLevers(nation, levers) {
+/** Yasa ve hat kaldıraçları: ölçüm için kilitsiz/bedelsiz yazılır. */
+function applyLevers(game, nation, levers) {
   for (const l of levers ?? []) {
-    if (l.raw) {
-      // Politika bandini asan SINIR testleri icin dogrudan yazim.
-      nation.economy[l.key] = l.value;
-    } else {
-      // Denetimler kaldiraci `{key:'social', classId:'education'}` ya da
-      // `{key:'tax', classId:'lower'}` bicimiyle de verir; setBudgetPolicy
-      // yalniz duz politika adini tanir. Eskiden bu satir sessizce false
-      // donuyordu ve egitim 0/50/100 senaryolari birebir ayni cikiyordu.
-      // Saglik programi refaha KATILDI (economy.js SOCIAL_PROGRAMS).
-      const classId = l.classId === 'health' ? 'welfare' : l.classId;
-      const policy = l.key === 'social' && classId ? classId
-        : l.key === 'tax' && l.classId
-          ? `tax${l.classId[0].toUpperCase()}${l.classId.slice(1)}`
-          : l.key;
-      // setBudgetPolicy degismeyen degerde de false doner; hata yalniz
-      // TANINMAYAN politika icindir.
-      if (!BUDGET_POLICIES.includes(policy) && policy !== 'armySpending') {
-        throw new Error(`kaldirac uygulanamadi: ${JSON.stringify(l)} (politika ${policy})`);
+    if (l.law) {
+      if (!LAWS[l.law] || !(l.index >= 0 && l.index < LAWS[l.law].options.length)) {
+        throw new Error(`kaldirac uygulanamadi: ${JSON.stringify(l)}`);
       }
-      setBudgetPolicy(nation, policy, l.value);
+      nation.politics.laws[l.law] = l.index;
+    } else if (l.line) {
+      setLineWeight(nation, l.line, l.weight);
+    } else if (l.field) {
+      nation[l.field] = l.value;
+    } else {
+      throw new Error(`taninmayan kaldirac: ${JSON.stringify(l)}`);
     }
   }
+  refreshModifiers(nation, game.turns.turn);
 }
-
-// ------------------------------------------------------------------ KOSU ---
 
 const game = headless(spec.seed, spec.worldOptions ?? {});
 const warmup = spec.warmup ?? 60;
 if (spec.peacefulWarmup) runPeaceful(game, warmup);
 else run(game, warmup);
 
-const nation = chooseNation(game, spec.nation ?? 'factories');
-if (spec.asPlayer !== false) game.turns.playerNation = nation.id;
+const nation = chooseNation(game, spec.nation ?? 'industry');
+if (spec.asPlayer !== false) {
+  game.turns.playerNation = nation.id;
+  // Oyuncu ulusunda AUTO kapalıdır: kaldıraçları YZ geri sürüklemesin.
+  nation.delegation = null;
+}
 
 for (const m of spec.mutations ?? []) {
   MUTATIONS[m.name](game, { nationId: nation.id, ...(m.args ?? {}) });
 }
-applyLevers(nation, spec.levers);
+applyLevers(game, nation, spec.levers);
 
 const trace = [];
 const violations = [];
@@ -258,9 +150,8 @@ const weeks = spec.weeks ?? 0;
 const step = spec.peaceful ? runPeaceful : run;
 for (let i = 0; i < weeks; i++) {
   step(game, 1);
-  // Kaldiraclar her hafta tazelenir: applyGovernmentLimits ve secim kaydiraci
-  // partinin bandina geri kirpar, YZ ise oyuncu olmayan ulkede zaten oynatir.
-  if (spec.reapply !== false) applyLevers(nation, spec.levers);
+  // Yasa şartı (savaş desteği) düşürürse kaldıraç her hafta yeniden yazılır.
+  if (spec.reapply !== false) applyLevers(game, nation, spec.levers);
   for (const m of spec.repeatMutations ?? []) {
     MUTATIONS[m.name](game, { nationId: nation.id, ...(m.args ?? {}) });
   }
@@ -270,8 +161,6 @@ for (let i = 0; i < weeks; i++) {
   }
 }
 
-// ----------------------------------------------------------------- OLCUM ---
-
 const world = game.world;
 const out = {
   seed: spec.seed,
@@ -279,7 +168,6 @@ const out = {
   nationId: nation.id,
   turn: world.turn,
   snap: snapshotNation(world, nation),
-  cohorts: cohortSummary(world, nation),
 };
 
 if (spec.measure?.includes('market')) out.market = marketSnapshot(world);
@@ -329,26 +217,6 @@ if (spec.measure?.includes('army')) {
     units: units.length,
   };
 }
-if (spec.measure?.includes('factories')) {
-  out.factories = nation.economy.factories.map((f) => ({
-    id: f.id, typeId: f.typeId, level: f.level, employees: f.employees,
-    jobs: factoryJobs(f), throughput: f.throughput, profit: f.profit,
-    subsidized: !!f.subsidized, subsidyPaid: f.subsidyPaid ?? 0,
-    inputFulfillment: f.inputFulfillment ?? 1,
-  }));
-}
-if (spec.measure?.includes('construction')) {
-  const state = ensureConstruction(nation);
-  out.construction = {
-    power: constructionPower(nation),
-    projects: state.projects.map((p) => ({
-      id: p.id, kind: p.kind, typeId: p.typeId, work: p.work,
-      progress: p.progress, cost: p.cost, funded: p.funded,
-    })),
-    sectors: state.capacity.construction ?? 0,
-    upkeep: nation.economy.constructionUpkeep ?? 0,
-  };
-}
 if (spec.measure?.includes('nations')) {
   out.nations = world.nations.filter((n) => n.alive && n.economy)
     .map((n) => snapshotNation(world, n));
@@ -356,40 +224,20 @@ if (spec.measure?.includes('nations')) {
 if (spec.measure?.includes('control')) {
   let sum = 0;
   let count = 0;
-  world.forEach((t) => {
-    if (t.owner === nation.id && t.province) { sum += t.province.control; count++; }
-  });
+  for (const province of world.provinces ?? []) {
+    if (province.owner === nation.id && province.econ) { sum += province.econ.control; count++; }
+  }
   out.control = count ? sum / count : 0;
 }
-if (spec.measure?.includes('trade')) {
-  const flow = nation.economy.goodsFlow;
-  const ids = Object.keys(world.market.goods);
-  let inputSpend = 0;
-  let inputSpendTariffed = 0;
-  for (const f of nation.economy.factories ?? []) {
-    for (const [id, amount] of Object.entries(FACTORIES[f.typeId].inputs)) {
-      const qty = amount * (f.throughput ?? 0);
-      const share = Math.max(0, Math.min(1, flow?.[id]?.importShare ?? 0));
-      inputSpend += priceOf(world, id) * qty;
-      inputSpendTariffed += priceOf(world, id) * qty * (1 + (nation.economy.tariff / 100) * share);
-    }
+if (spec.measure?.includes('unrest')) {
+  let weighted = 0;
+  let people = 0;
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== nation.id || !province.econ) continue;
+    weighted += (province.econ.unrest ?? 0) * province.econ.population;
+    people += province.econ.population;
   }
-  const demand = ids.reduce((s, id) => s + (flow[id]?.demand ?? 0), 0);
-  const shortage = ids.reduce((s, id) => s + (flow[id]?.shortage ?? 0), 0);
-  out.trade = {
-    inputSpend,
-    inputSpendTariffed,
-    importShareAvg: ids.reduce((s, id) => s + (flow[id]?.importShare ?? 0), 0) / ids.length,
-    demand,
-    shortage,
-    fulfilled: demand > 0 ? 1 - shortage / demand : 1,
-    priceIndex: ids.reduce((s, id) => s + priceOf(world, id) / world.market.goods[id].price
-      * 0 + priceOf(world, id), 0),
-  };
-}
-if (spec.measure?.includes('prices')) {
-  out.prices = Object.fromEntries(Object.keys(world.market.goods)
-    .map((id) => [id, priceOf(world, id)]));
+  out.unrest = people ? weighted / people : 0;
 }
 
 process.stdout.write(JSON.stringify(out));

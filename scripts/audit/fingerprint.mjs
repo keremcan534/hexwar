@@ -13,17 +13,17 @@ export function worldFingerprint(game) {
     .map((n) => [
       n.id, n.tiles, n2(n.gold), n2(n.debt ?? 0),
       n.economy?.population ?? 0,
-      n.economy?.factories?.length ?? 0,
-      n2(n.economy?.stability ?? 0),
+      n2(n.economy?.ic?.raw ?? 0),
+      n2(n.stability ?? 0),
       n2(n.infamy ?? 0),
-      n.construction?.capacity?.construction ?? 0,
+      (n.construction?.queue ?? []).length,
       (n.generals ?? []).length,
       n2(n.economy?.literacy ?? 0),
       (n.research?.done ?? []).length,
     ].join(':'))
     .join('|');
-  const prices = Object.entries(world.market?.goods ?? {})
-    .map(([id, g]) => `${id}=${g.price.toFixed(4)}`)
+  const prices = Object.entries(world.market?.prices ?? {})
+    .map(([id, price]) => `${id}=${price.toFixed(4)}`)
     .sort()
     .join(';');
   const units = world.units

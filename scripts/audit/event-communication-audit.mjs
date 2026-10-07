@@ -27,7 +27,7 @@ function show(rows, keys) {
 function measure(seed, weeks) {
   const game = headless(seed);
   const nation = alive(game)
-    .sort((a, b) => (b.economy.factories?.length ?? 0) - (a.economy.factories?.length ?? 0))[0];
+    .sort((a, b) => (b.economy.ic?.raw ?? 0) - (a.economy.ic?.raw ?? 0) || a.id - b.id)[0];
   asPlayer(game, nation);
   const tiers = [0, 0, 0, 0];
   const titles = new Map();

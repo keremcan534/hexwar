@@ -69,9 +69,9 @@ Ekran yerleşimi Vic2 düzenindedir: seçili province penceresi **sol altta**, s
 onun üstüne çıkar.
 
 Üst çubuk üç bölgedir ve tek eksene oturur: solda künye (dalgalanan bayrak +
-ülke adı + tek satır özet), **ortada yedi eş gösterge** (hazine, istikrar,
-şöhret, nüfus, ordu, insan gücü, GSYH), sağda tarih, saat durumu ve hız
-kanalı. Sekme künyeleri de ortalanır ve pencere genişledikçe büyür.
+ülke adı + tek satır özet), **ortada oyunun bütün ekonomisi** (altın ve haftalık
+akış, Siyasi Güç, istikrar, savaş desteği, şöhret, nüfus, ordu, insan gücü,
+IC ve altı kaynağın karşılanma çipi), sağda tarih, saat durumu ve hız kanalı. Sekme künyeleri de ortalanır ve pencere genişledikçe büyür.
 
 Harita kipleri üç ailedir: coğrafya (siyasi, arazi, coğrafya, kültür, kaynak,
 nüfus), **veri** ve katmanlar. Veri kipleri simülasyondan boyanır ve her hafta
@@ -81,7 +81,7 @@ tazelenir:
 | --- | --- |
 | Diplomacy | Bakılan ülkenin gözünden savaş, ültimatom, ittifak, ateşkes, rakip; başkasıyla savaşanlar ayrı ton, işgal edilen topraklar taralı. Haritada bir ülkeye tıklamak bakış açısını ona çevirir. |
 | Unrest | Küme başına huzursuzluk (0–10); 6'nın üstü ulusal hareketi besler. |
-| Industry | Küme başına fabrika işçisi — bütün ülkeler, sanayi kalpleri. |
+| Industry | Küme başına fabrika kademesi — bütün ülkeler, sanayi kalpleri. |
 | Infamy | Ülkelerin şöhreti; koalisyon eşiğine (22) yaklaşan kızarır. |
 
 Arayüz hareketleri (ekran/panel açılış-kapanışı, sekme ışığı, bayrak dalgası)
@@ -91,22 +91,16 @@ makinede oyunun kendi hareketleri yine oynar.
 
 ## Ana sistemler
 
-### Oyunun amacı: hegemonya
-
-Zafer eleme değil üstünlüktür. Her ülkenin haftalık bir hegemonya puanı vardır:
-ham üretim ve kurulu sanayi kapasitesi **ekonomi**, şehirler ile barışçı
-ilişkiler ve toprak **prestij** bileşenini oluşturur.
+### Oyunun amacı: 1900 puanı ve ulusal hedef
 
 Oyun 1836'da başlar, bir tur bir haftadır ve **1900'de biter** (`FINAL_TURN`
-3340; eskiden 1945'ti, ölçüm son 45 yılın boş olduğunu gösterdi, bkz.
-`src/game/hegemony.js`). **Erken zafer yoktur**: kazanan, son turda en yüksek
-puana sahip ülkedir. Eskiden bir puan eşiğine ilk ulaşan oyunu bitiriyordu; bu, güçlü
-ülkenin yüzyılın ortasında masayı toplamasına ve kalan onlarca yılın hiç
-oynanmamasına yol açıyordu.
-
-Puanın bileşimi zamanla kayar: 1845'te sanayi %39 / ham üretim %39 / prestij
-%21, 1935'te %73-82 / %10-18 / %8-9. Erken oyun dengelidir, geç oyunda sanayi
-baskın hale gelir — çünkü fabrika seviyesi en hızlı büyüyen eksendir.
+3340). Erken zafer yoktur: kazanan, son turda en yüksek puana sahip ülkedir.
+Puan dört eksenden gelir (`hegemony.js`): **sanayi** (IC × 4), **nüfus**
+(milyon × 3), **çekirdek province** (× 1) ve **prestij** (kazanılan savaş,
+gündem, Büyük X). Her ülke kuruluşta bir **ulusal hedef** alır — bölünmüş
+halk için *Birleşmiş Ulus*, çok uluslu devlet için *İmparatorluğu Koru*,
+diğerleri için *Sanayi Devi* — tutarsa 80-100 puan bonus: küçük ülke de kendi
+hikâyesini kazanabilir. Tasarımın bütünü: [TASARIM.md](TASARIM.md).
 
 ### Savaş ve barış masası
 
@@ -127,101 +121,56 @@ gerçek bir oyun etkisi bulunur:
 | --- | --- |
 | Savaş tazminatı | Beş yıl boyunca gelirinin bir payı sana akar |
 | Askersizleştirme | Dört yıl yeni tümen kuramaz |
-| Kaynak imtiyazı | Ham üretiminin beşte biri altı yıl sana teslim edilir |
-| Sanayi hakkı | Altı yıl onun state'lerinde fabrika kurabilirsin |
+| Kaynak imtiyazı | Yatak üretiminin (kömür, demir, kereste, at, güherçile) beşte biri altı yıl sana akar |
 | Azınlıkları serbest bırak | Yabancı kültürlü province'leri bağımsızlaşır |
 | Vassallaştırma | Kalıcı barış ve gelirinden haraç (yalnız çok zayıf ülkeye) |
 
 Kaybeden taraf da masaya toprak koyarak anlaşmanın bedelini düşürebilir.
 
-### Dünya pazarı ve sanayi
+### Ekonomi: altın, altı kaynak, sanayi
 
-Victoria 2'nin üretim zinciri: **43 mal, 29 fabrika türü, 14 province kaynağı**
-tek bir dünya pazarında buluşur. Her malın fiyatı haftalık arz-talep dengesine
-göre değişir (taban fiyatın 0.5–1.5 katı arasında; kıtlık ve bolluk
-fiyattan çok miktarda görünür).
+Uluslar Çağı ekonomisi üç sayaç ve altı kaynaktır; sınıf, mal sepeti ve fiyat
+zinciri yoktur (TASARIM.md §1-§8, `src/game/econ/`).
 
-Zincir katmanlıdır — Kömür+Demir → Çelik → Makine Parçası → Otomobil → Tank —
-ve bir halkadaki kıtlık üst katmanların hepsini yavaşlatır.
+- **Altın** province vergisinden (nüfus × kalkınma × statü × vergi yasası ×
+  istikrar) ve ihracattan gelir; ordu/donanma bakımı, bina bakımı, eğitim,
+  ithalat ve faize gider. Eksiye düşen hazine otomatik borçlanır; borç tavanı
+  aşılırsa **iflas**: borç silinir, 52 hafta kredi yok, istikrar −20, ordu
+  yarı hızda toplanır.
+- **Altı kaynak** akıştır, stok yoktur: gıda (topraktan), kömür, demir,
+  kereste, at, güherçile (yataktan). Fazla, ticaret yasasının izin verdiği
+  payda satılır; açık altın yettiği sürece kendiliğinden alınır. Dünya
+  fiyatı `taban × (dünya ihtiyacı ÷ dünya üretimi)^1.5`. Ambargo, abluka
+  (düşman savaş gemisi kıyının iki hex yakınında) ve bağımlılık uyarısı
+  ikili akıştan gelir.
+- **Sanayi (IC)** fabrika kademesinden gelir; kömür, istikrar, askerlik
+  yasası ve teknoloji çarpar. **Ekonomi yasası** IC'nin ne kadarının orduya
+  gideceğini söyler: sivil pay halkın **tüketim malıdır** (eksikse istikrar
+  düşer, fazlası vergiyi artırır; beklenti her on yılda büyür), askerî pay
+  **üretim hatlarına** (tüfek, top, gemi) ağırlıkla dağılır ve teçhizat
+  stoğunu doldurur.
 
-Kaynaklar **hex bazlıdır**: her kara hex'i arazisine, iklimine ve bir damar
-alanına göre tek bir kaynak taşır (tahıl ovada, kömür tepede, kauçuk tropik
-ormanda, balık kıyıda; madenler kuşak kuşak öbeklenir) ve province üyelerinin
-toplamını üretir. Dünya payları talepten ölçülerek hedeflenir ve her dünyada
-kota atamasıyla tutturulur: hiçbir mal yapısal kıt doğmaz, nadir kaynaklar yine
-belirli kuşaklarda toplanır ve ticaretin sebebi olmaya devam eder. Atama
-tohumdan türer, kayda girmez.
+### Nüfus, insan gücü, okuryazarlık
 
-Ham maddenin yalnız fabrikaya girmesi yetmez; çıktının da müşterisi olmalıdır.
-Ordu mühimmat ve yakıt tüketir, inşaat kuyruğu çimento harcar, gübre tarım
-verimini artırır. Müşterisi olmayan mal fiyat tabanına çakılır ve onu üreten
-tesis zarar eder.
-
-Victoria tarzı fabrikalar **state'lere** kurulur ve bir state'te her türden tek
-tesis bulunur. Fabrika anında belirmez: **ulusal inşaat kuyruğuna** girer ve
-inşaat kapasitesi yatırımlarıyla aynı inşaat gücünü paylaşır. Zincir böylece
-kapanır — politika kimin başlatabileceğini, sermaye parayı, inşaat gücü hızı
-belirler. Construction Capacity yatırımı doğrudan sanayileşme hızına dönüşür.
-
-Kapitalist projeleri Victoria 2'deki gibi para biriktirerek ilerler: sermaye
-bitince proje durur ve Factories ekranında "¤ support" ile hazineden destek
-verilebilir (tık = eksiğin dörtte biri, shift+tık = hazine yettiği kadar).
-
-Oyuncunun verdiği tek karar nereye ne dikeceğidir; büyüme kararı ekonomiye aittir:
-
-- Tesis işçisini **ayda bir**, alt sınıf nüfusun küçük bir oranı kadar toplar.
-  Bu yüzden bir seviyenin dolması yıllar sürer ve sanayi yüz yıla yayılır.
-- Kadrosunu dolduran **ve kâr eden** tesis kendini bir üst seviyeye çıkarır.
-  Parayı kimin verdiğini ekonomi politikası belirler: planlı ekonomide hazine,
-  laissez-faire'de kapitalistler, ikisinin serbest olduğu düzende önce özel
-  sermaye. Kasa yetmiyorsa tesis tavanda bekler — sanayileşmenin gerçek freni budur.
-- Girdi pahalanır ya da çıktı ucuzlarsa kâr düşer; zarar eden tesis işçi salar ve
-  seviye atlayamaz. Serbest kalan işgücü aynı ay kârlı tesislere akar.
-
-Sanayi fakir nüfusun tamamını yutamaz (tarla ve maden de işçi ister), kurulum
-bedeli de kurulu kapasiteyle birlikte artar. İki fren birlikte, tavanın oyun
-ortasından önce görülmesini engeller.
-
-### Nüfus ve bütçe
-
-Nüfus alt, orta ve üst sınıf olarak üçe ayrılır. Her sınıfın nüfusu, geliri,
-yaşam standardı, memnuniyeti ve ayrı vergi oranı vardır. Bütçe ekranında üç
-vergi, gümrük tarifesi ve ordu bakım oranı değiştirilebilir. Düşük ordu bakımı
-harcamayı azaltırken orduların muharebe gücünü de doğrudan düşürür.
-Yüksek vergi ve pozitif tarifeler geliri artırır; hane alım gücünü, sınıf
-memnuniyetini ve ulusal istikrarı düşürür. İstikrar da nüfus büyümesini, province
-kontrolünün toparlanmasını ve fabrika işgücünü etkiler.
-
-Bütçe ekranında ayrıca üç sürekli sosyal harcama vardır: eğitim, sağlık ve
-refah. Maliyetleri nüfusla birlikte büyür. Eğitim işgücünü niteliklendirir ve
-aynı nüfusla daha çok fabrika doldurur, sağlık yaşam standardını yükseltir,
-refah bütün sınıfların memnuniyetini artırır.
-
-Hazine kuruduğunda **para basılabilir**: kaydıraç haftalık GSYH'nin %0–10'u
-kadar parayı hazineye yazar. Ödeyeni yoktur, bedelini enflasyon öder —
-enflasyon iki ayda yükselir, basma bitince yarım yılda söner ve bütün
-sınıfların memnuniyetinden (üst sınıfta yarısı) düşer. YZ ve Budget AUTO
-hazine kurudukça en çok iki puan basar.
-
-Sınıf vergilerinde *hold* (sepeti karşılatan en yüksek oran) ve *max*
-(geçim tabanından önceki en yüksek oran) kilitleri her zaman görünür;
-gümrükte ise oran yerine niyet seçilebilir: *import* %0, *balanced* %25,
-*export* %50.
-
-Yeni şehir kurulmaz; şehirler kuruluşta (başkent, büyük güçlerde ikinci kent)
-ve fetihle gelir. İmparatorluk büyüdükçe idari gider de artar: şehir sayısı süperdoğrusal,
-province sayısı ve şehirlerin başkente uzaklığı doğrusal olarak haftalık altın
-yer. Bu kalem Lojistik/Ülke ekranında ayrı satır olarak görünür.
-
-Üst çubukta toplam nüfus, asker sayısı ve GSYİH sürekli görünür.
+Province tek poptur: nüfus, kalkınma, binalar, uyum ve huzursuzluk. Nüfus
+gıda, tüketim malı, istikrar ve barışla büyür; gıda %70'in altına inerse
+kıtlıkta erir; ölen asker nüfustan düşer. **İnsan gücü** askerlik yasasının
+oranıdır (Gönüllü %3 · Sınırlı %6 · Yaygın %10 · Topyekûn %16), kışla,
+vatandaşlık yasası ve uyumla çarpılır. **Okuryazarlık** ulusaldır; eğitim
+yasası ve üniversiteyle bir nesilde hedefe yaklaşır, araştırmayı ve kalkınma
+tavanını büyütür.
 
 ### Ordu yığınları ve province muharebeleri
 
 Haritadaki tümenler birkaç alaydan oluşur. Aynı province'te dört dost tümen yan
 yana durabilir; birbirleriyle birleşmezler. Düşmanla temas province'e bağlı tek
 bir muharebe açar: karedeki bütün savunanlar ve oraya saldıran takviyeler aynı
-savaşa katılır. Arazi savunanı, ordu bütçesi iki tarafın gücünü etkiler. Asker
-sayısı ve moral 20 raunda kadar haftalar boyunca aşınır. Morali kırılan taraf
+savaşa katılır. Arazi, kale ve siper savunanı güçlendirir; **nehir aşarak**
+saldıran −%25 alır (province sınırının çoğu nehirse); **barut** (güherçile)
+kıtlığı gücü %30'a kadar, **at** kıtlığı süvari ve topçuyu %40'a kadar düşürür.
+Düşman topraklarında kendi kontrolünden üç adımdan uzak tümen haftada güç
+kaybeder (ikmal yıpranması). Asker sayısı ve moral 20 raunda kadar haftalar
+boyunca aşınır. Morali kırılan taraf
 iki province gerideki baskısı düşük bir hatta çekilir ve dört hafta toparlanır.
 Kazanan province'i işgal eder ama ikmal kurmadan yeni taarruza geçemez.
 
@@ -290,13 +239,13 @@ Alay artık düğmeye basılan hafta belirmez, **siparişe** dönüşür:
 
 - Altın ve teçhizat sıraya girerken düşer, insan gücü alay sahaya çıkarken
   toplanır. İptal, harcanmamış payı geri verir.
-- Depoda teçhizat yoksa sipariş yine verilir (Victoria usulü): eksik dünya
-  pazarından alınır, kimse üretmiyorsa talep fiyatı yukarı iter; alay
-  teçhizatı gelene kadar kışla yeri tutmadan bekler.
-- Eğitim süresi kola göredir (piyade 8, süvari 10, topçu ve uçak 12, zırhlı 14,
-  gemi 16 hafta) ve **askerî bütçeyle ölçeklenir**: maaş ile ikmal tamsa ilan
-  edilen süre, ikisi de dipteyse iki katından fazlası.
-- Aynı anda kaç alayın eğitildiğini şehir sayısı belirler; sıradakiler bekler.
+- Depoda teçhizat yoksa sipariş yine verilir: eksik, üretim hattından
+  geldikçe dolar; alay teçhizatı tamamlanana dek kışla yeri tutmadan bekler.
+  Teçhizat: piyade 10 tüfek, süvari 6 tüfek, topçu 4 tüfek + 6 top, savaş
+  gemisi 10 gemi.
+- Eğitim süresi kola göredir (piyade 8, süvari 10, topçu 12, gemi 16 hafta);
+  doktrin ve danışman kısaltır, iflas iki katına çıkarır.
+- Aynı anda kaç alayın eğitildiğini şehir sayısı ve kışlalar belirler; sıradakiler bekler.
   Öncelik okları kapasitenin kime gideceğini değiştirir.
 - Kuyruk kendiliğinden eyaletlere yayılır: bir kışlaya söz verilen asker bir
   sonraki siparişte o kümeyi daha az çekici yapar.
@@ -310,8 +259,8 @@ boştaki tümenler istenirse haftalık olarak en az yüklü subaya dağıtılır
 Yapay zekâ aynı kuyruğu kullanır ve eğitimdeki alayları ordu hedefine sayar;
 yoksa sipariş sahaya çıkana kadar her hafta yeniden sipariş verirdi.
 
-Alay kurmak province nüfusundan asker alır: piyade 3000, süvari 2000, topçu 1500
-kişi. Asker çıkış province'i ve komşularından toplanır, dağıtımda hayatta kalanlar
+Alay kurmak province nüfusundan asker alır: piyade 30.000, süvari 20.000, topçu
+15.000 kişi; havuz askerlik yasasının oranıdır. Asker çıkış province'i ve komşularından toplanır, dağıtımda hayatta kalanlar
 aynı yerlere döner, savaşta ölenler kalıcı kayıptır. Üst şeritteki **MANPOWER**
 kalan asker havuzunu gösterir.
 
@@ -319,57 +268,15 @@ Bir province seçilip **toplanma noktası** atanabilir; yeni kurulan alaylar
 çıktıkları yerden oraya kendi yürür ve oradaki dost tümenlerle konumlanır. Nokta
 haritada altın renkli artı-daire ile işaretlenir.
 
-Alayların teçhizat kademesi (Levy, Regular, Drilled, Modern) muharebe gücünü
-ve haftalık bakımı belirler. Kademeyi yükselten oyuncu eylemi rework sırasında
-kaldırıldı; şu an bütün alaylar Levy kademesinde kalır.
+### İnşaat ve kalkınma
 
-### Province kararları
-
-Her kara hex'i nüfus, kontrol ve üç gelişim hattı taşır: tarım, çıkarım ve
-ticaret. Bunlar province'in RGO çıktısını ve vergi tabanını belirler; şehirler
-ise sanayi merkezidir. Hatları elle yükselten province geliştirme eylemi rework
-sırasında kaldırıldı; gelişim şu an yalnız dünya üretiminden gelir.
-
-Fethedilen province düşük kontrolle başlar ve tam üretime zamanla döner. Böylece
-arazi yalnız harita rengi değil, nüfus ve üretim tabanıdır.
-
-Fabrikalar şehre değil **eyalet bölgelerine** (state) kurulur. Ülkenin toprağı
-üç province kümesi civarındaki deterministik bölgelere ayrılır. İnşaat tek bir
-ulusal öncelik kuyruğudur ve haftalık inşaat gücüyle ilerler; kuyrukta yalnız
-iki cins iş vardır: fabrika kurulum/genişletme projeleri ve ulusal **Construction
-Capacity** yatırımı (seviye başına +5 inşaat gücü, artan bedel ve bakım).
-Construction ekranı yalnız bunu anlatır: güç, kuyruk, kapasite. Yerleşik bina
-(kale, üniversite, idare) yoktur; 2026-09'da kale ve Higher Education da
-kaldırıldı, eski kayıttaki insa edilmemiş payları iade edilir.
-
-### Şirketler ve küresel borsa
-
-Fabrikaların ve madenlerin bir **sahibi** vardır. Her ülkede en çok beş şirket
-kurulur (tüketim, ağır sanayi, taşıma, silah, madencilik) ve bunlar mevcut
-tesisleri toplar; ayrı bir ekonomi kurulmaz. "Özel sermaye bir çelik fabrikası
-kurdu" cümlesi artık **"Aldemar Steel Union Torford'da çelik fabrikası açtı"**
-olur.
-
-Şirketin kârı uydurulmaz: sanayide tesis kârının sermayedara düşen payı,
-madencilikte ham üretim değerinin üst sınıfa düşen payıdır — ikisi de zaten
-var olan kanallardır. Değerleme gerçek kârdan ve varlıktan türer ve
-yumuşatılır; rastgele fiyat hareketi yoktur.
-
-**Exchange** ekranından yabancı şirketlere ortak olunabilir. Hisse bedeli
-hazineden çıkar, ev sahibi ülkenin özel sermaye havuzuna girer — şirket bu
-paranın hiçbirini almaz. Temettü gerçek kârdan gelir ve ödeyen ülkenin
-sermayedar gelirinden düşülür.
-
-Yabancı sahiplik tavanı ayrı bir yasa değildir: iktidar partisinin ekonomi ve
-ticaret politikasından türer (planlı ekonomi kapalı, laissez-faire açık) ve
-sektöre göre daralır — silah sanayisi %10, tüketim sanayisi %49. Milliyetçi
-bir hükûmet seçilince tavan düşer ve fazla pay yavaşça elden çıkarılır.
-
-**Sahiplik bedava mal vermez.** %30 hisse %30 demir değildir; verdiği şey dünya
-pazarında **sırada önceliktir** (pay × 0.35, mal başına en çok %20). Mal yine
-piyasa fiyatından alınır. Savaş çıkarsa temettü ve öncelik donar, pay durur.
-Kamulaştırma mümkündür ve bedeli şöhrettir: tazminatsız el koymak bir şehir
-fethi kadar itibar yakar ve ülkeye yıllarca yabancı sermaye girmez.
+Bina province'e aittir ve toprakla el değiştirir: çiftlik, maden, fabrika,
+tersane, kışla, kale, demiryolu, üniversite. Bedel peşin, süre haftalarla;
+aynı anda yürüyen proje inşaat yuvasıyla sınırlıdır, yürüyen proje kereste
+(demiryolu ayrıca demir) yer. Bina yuvası **kalkınma + 1**'dir. **Kalkınma**
+(1-10) altınla, 12 haftada bir kademe yükselir: vergi +%25, bir yuva, hızlı
+büyüme; tavanı teknoloji ve okuryazarlık açar. Construction ekranı province
+listesi, kuruluş kataloğu ve kuyruktur; AUTO kıtlığa göre kurar.
 
 ### Ulusal hareketler
 
@@ -380,119 +287,79 @@ hızlı aşındırır. %100'de kümeler kopar: halkın devleti doğar (ya da bit
 akraba devlete katılır), ordusunu oradan toplar ve savaş açar. Sağ üstteki
 panel hareketleri fitil gibi gösterir ve araçları sunar: sıkıyönetim ve taviz
 (geçici), kabul, vassal olarak bırakma, katliam ve sürgün (kalıcı). YZ aynı
-araçları kullanır. Ayrıntı: MEKANIK_KILAVUZU §5.10.
+araçları kullanır; ödün ve baskı Siyasi Güç ister, sıkıyönetim altın.
 
-### Toplum: üç eksen
+### Siyaset: Siyasi Güç, istikrar, savaş desteği
 
-Devletin kararlarından ayrı olarak toplumun bir eğilimi vardır ve ayda bir
-kayar: **Militarist ↔ Pasifist**, **Asimilasyoncu ↔ Çok kültürlü**, **İlerici ↔
-Geleneksel**. Savaşlar (önce coşku, sonra bezginlik), zafer ve yenilgi, yasalar,
-ordu bütçesi, okuryazarlık ve okul, katliam/kabul/sürgün ve iktidar partisi
-onları iter. Eksenler mevcut sayıları değiştirir (savaş yükü, insan gücü,
-ordu bütçesine bakan memnuniyet, azınlık huzursuzluğu, asimilasyon, araştırma,
-istikrar) ve partilerin halk
-desteğini belirler: halk programı kendine yakın partiyi tutar. Siyaset
-ekranında her eksenin "geçen ay ne itti" dökümü ve partilerin konumu durur;
-**kampanya** devletin toplumu bir yöne itmesidir ve haftalık parası vardır.
-Ayrıntı: MEKANIK_KILAVUZU §6.5.
-
-### Siyaset: hükûmet ve beş yasa
-
-Oyuncunun iki siyasi kararı var. **Hükûmet**: her ülkede aynı dört parti
-(Muhafazakâr, Liberal, Sosyalist, Milliyetçi), sabit programla — fabrikayı kimin
-kurduğu, gümrük bandı, ordu fonu tavanı ve her yasada izin verilen en yüksek
-kademe. Hükûmet dört yıl görevde kalır; seçim yoktur. Bedeli **meşruiyettir**:
-halkın en çok desteklediği parti iktidarda değilse aradaki fark ×0.25 istikrardan
-düşer. Kimin desteğinin sayıldığını anayasa belirler (mutlak: seçkin, meşruti:
-mülk sahibi, demokrasi: herkes).
-
-**Yasalar**: Anayasa, İşçi hakları, Sosyal devlet, Vatandaşlık, Askerlik — üçer
-kademe, doğrudan seçilir, her yasa yılda bir değişir. Programın tavanı daralınca
-seçilen kademe askıya alınır, genişleyince geri gelir (bütçe bantlarıyla aynı
-kavram). Her kademenin motordan gelen farkı (işçi memnuniyeti, bordro, hazine
-yükü, araştırma, insan gücü…) düğmenin üstünde yazar. YZ aynı iki kapıdan geçer:
-tam dönem dolunca halkın belirgin öndeki partisine geçer, yılda bir yasayı
-programına doğru yükseltir, yasa geri almaz. Ayrıntı: `src/game/politics.js`,
-ölçüm: `npm run diagnose:politics`.
+**Siyasi Güç (SG)** hükûmetin para birimidir: yasa (50), hükûmet atama (80),
+danışman (50), propaganda (50), kültür kabulü (100), ödün/baskı, savaş
+gerekçesi (soydaş ya da talep varsa 20, yoksa 60), ambargo (25) ve kararlar
+(sübvansiyon, savaş tahvili, manevra, nüfus sayımı, af, araştırma bursu...).
+**İstikrar** ve **savaş desteği** dökümlü bir hedefe haftada bir puan
+yaklaşır; ekran parçaları basar. Dört parti (Muhafazakâr, Liberal,
+Milliyetçi, 1848'den sonra Sosyalist) iktidarda bonus verir ve yasa aralığını
+sınırlar; halkın istediği parti iktidarda değilse **meşruiyet cezası**
+istikrardan düşer. Mutlakiyette hükûmeti taç atar; Meşrutiyet ve Cumhuriyet
+dört yılda bir seçer. **Altı yasa**: vergi, askerlik, ekonomi, ticaret,
+vatandaşlık, eğitim. **Ulusal gündem** duruma uyan üç seçenekten birini
+12-20 haftada somut bir sonuca çevirir; **olay kartları** saati durdurur ve
+seçenek ister; **Büyük X** ana yurdun %80'i toplanınca kurulur.
 
 ### Yönetimi devretme (AUTO)
 
-Sekiz alan — bütçe, ticaret, inşaat kapasitesi, sanayi (devlet fabrikası ve silah
-hatları), yasalar, **araştırma**, asker alımı ve diplomasi — tek bir
-**AUTO ON/OFF** anahtarıyla hükûmete devredilebilir. Ekranın üstünde
-tek satırlık bir şerit anahtarı, bir cümlelik açıklamayı ve hükûmetin son
-anlamlı eylemini gerekçesiyle gösterir.
-
-**Yeni kampanya üst şeridin bütün portföyleri AUTO açık başlar** (inşaat,
-fabrikalar, ticaret, bütçe, ordu, yasalar, araştırma); devredilmiş sekmenin
-künyesi şeritte yeşil yanar ve altında küçük bir lamba durur. Diplomasi
-bilerek dışarıdadır: devri oyuncu adına savaş ilan eder, ilk hafta habersiz
-bir savaş "kolaylık" olmaz. Her anahtar ilgili ekrandan tek tıkla kapanır.
-
-AUTO açıkken çalışan şey, yapay zekâ ülkelerinin kullandığı fonksiyonun ta
-kendisidir; ayrı bir "oyuncu otomasyonu" yoktur. Hazine, yasa tavanları,
-inşaat gücü ve teçhizat kısıtları aynıdır — devir bir kolaylıktır, bir bonus
-değil. Anahtar kapandığı hafta kontrol geri döner.
-
-Araştırma devri (**Research AUTO**) kuyruk boşalınca sıradaki teknolojiyi
-ülkenin durumuna göre seçer: sanayi payı, tarla payı, borcun kredi kapasitesine
-oranı, inşaat kuyruğu, okuryazarlık, savaş ve rakip. Değer puana bölünür
-(`technology.pickNextTech`), ekol çarpanı ülkeye karakterini bırakır.
-Kapalıyken kuyruk senindir; boş kuyrukta puan bankada birikir ve akademi
-seçimini bekleyen kalıcı bir kart çıkar. Ayrıntı: `MEKANIK_KILAVUZU 2.3`.
-
-### Kaynak ekonomisi
-
-Ülke kereste ya da demir stoklamaz: bütün hammadde province RGO'larından
-dünya pazarına akar. Hazineden çıkan sürekli kalemler ordu bakımı, idari gider,
-inşaat bakımı, sosyal harcama ve stratejik teçhizat ithalatıdır. Yerel kıtlık
-pazardan alımla kapanır ve küresel fiyata yansır. Gıda ithalatı gümrükle
-kısılmaz (gümrük yalnız fiyatına biner).
-
-Oyun **herkes işte** başlar: RGO kadrosu kümenin alt sınıf iş gücüne göre
-açılır; orta ve üst sınıf, fabrika işçileri ve silah altındakiler RGO iş
-arayanı sayılmaz. Fabrika kapatılmadan **duraklatılabilir** (girdi, çıktı ve
-ücret durur, kadro yavaşça başka işe geçer); barışta deposu dolu ve pazarı
-doymuş silah hatlarını hükümet kendisi durdurur (YZ ve Industry AUTO).
+Yedi alan — ekonomi (hat ağırlıkları, ticaret yasası, kemer sıkma), inşaat,
+hükûmet (yasalar, danışmanlar, azınlıklar, kararlar), gündem, asker alımı,
+araştırma ve diplomasi — tek bir **AUTO ON/OFF** anahtarıyla devredilir.
+Diplomasi dışındakiler yeni kampanyada açık başlar. AUTO açıkken çalışan şey,
+yapay zekâ ülkelerinin kullandığı fonksiyonun ta kendisidir; hükûmet biçimi ve
+iktidar partisi devredilmez.
 
 ## Mimari
 
 ```text
 src/
   core/      hex matematiği, seed'li PRNG, gürültü, yol bulma
-  world/     arazi, prosedürel dünya, ülkeler
-  render/    kamera ve Canvas2D harita/muharebe çizimi
-  input/     birleşik dokunmatik, fare ve pinch girişi
+  world/     arazi, prosedürel dünya, nehirler, province üreteci, hareket grafı
+  render/    kamera, Canvas2D/WebGL harita ve sınır ağı
+  input/     birleşik fare ve klavye girişi
   game/
     game.js          gerçek zaman saati ve oyun kabuğu
-    turn.js          haftalık simülasyon adımı
-    economy.js       dünya pazarı, sınıflar, fabrikalar ve maliye
-    provinces.js     nüfus, kontrol, RGO üretimi ve göç
-    cities.js        şehir, işçi dağıtımı ve ulusal bilanço
-    construction.js  eyalet bölgeleri, yapılar ve inşaat kuyruğu
-    politics.js      hükûmet (4 sabit parti), 5 yasa, meşruiyet ve politika sınırları
-    command.js       generaller, amiraller, ordu grupları ve cephe hattı
-    battles.js       province muharebesi, moral ve geri çekilme
+    turn.js          haftalık simülasyon adımı (sıra: TASARIM.md §16)
+    economy.js       ekonomi orkestrası: vergi, bakım, okuryazarlık, borç/iflas
+    econ/defs.js     kaynak, bina, teçhizat ve ekonomi sabitleri (formül yok)
+    econ/deposits.js yatak ataması ve toprak verimi
+    econ/resources.js province üretimi ve ulusal kaynak ihtiyacı
+    econ/industry.js IC, tüketim malı, üretim hatları ve teçhizat stoğu
+    econ/trade.js    dünya fiyatı, ikili akış, ambargo, abluka
+    treasury.js      altının tek geçiş noktası ve haftalık defter
+    laws.js          altı yasanın verisi ve okuyucuları
+    modifiers.js     teknoloji/danışman/parti/olay değiştiricilerinin tek toplamı
+    politics.js      SG, istikrar, savaş desteği, partiler, seçim, yasa, danışman
+    agenda.js        ulusal gündem şablonları
+    decisions.js     SG kararları
+    eventCards.js    seçenekli olay kartları, Ulusların Baharı
+    unification.js   Büyük X ve barışla birleşme
+    provinces.js     tek pop: nüfus, uyum, çekirdek, statü
+    construction.js  bina ve kalkınma kuyruğu
+    culture.js       huzursuzluk, asimilasyon, kabul
+    movements.js     ulusal hareketler ve isyan ordusu
+    technology.js    40 teknoloji, araştırma, yayılım
+    hegemony.js      1900 puanı ve ulusal hedef
+    command.js       generaller, cephe ve planlama
+    battles.js       province muharebesi (nehir, barut, at, kale)
+    recruitment.js   alay siparişi, eğitim kuyruğu, insan gücü
     reinforcement.js insan ve teçhizat takviyesi
-    recruitment.js   alay siparişi, eğitim kuyruğu ve province asker havuzu
-    military.js      askerî ekranın türetme katmanı (yalnız okur)
-    control.js       hukuki sahiplik ile fiilî işgal ayrımı
-    diplomacy.js     savaş, barış ve işgal tasfiyesi
-    ai.js            ülke yapay zekâsı
-    companies.js     şirketler, küresel borsa, yabancı sahiplik ve temettü
-    delegation.js    yönetim alanlarının AUTO ON/OFF devri
-    nationBrief.js   ülke seçim kartının dökümü (sıra, hammadde, komşular, dikkat satırları)
-    pulse.js         haftalık atıf: GSYH/hazine/istikrar "bu hafta neyi ne oynattı"
-    events.js        ulusal olay saptayıcısı (borç, rejim, başkent, ordu, açlık arkı)
-    save.js          sürümlü kayıt
+    diplomacy.js     savaş, gerekçe, ateşkes, temas
+    ai.js            ülke yapay zekâsı (AUTO aynı fonksiyonları kullanır)
+    save.js          sürümlü kayıt (v24)
   ui/
-    hud.js         üst çubuk, tarih, hız ve komuta paneli
-    nationPicker.js dünya kurulunca açılan ülke seçim paneli ("Play as")
-    tooltipData.js gecikmeli bilgi kartlarının içerik sağlayıcıları
-    screens.js     inşaat, sanayi, lojistik, bütçe, ticaret, nüfus, siyaset ve ordu ekranları
-    politicsScreen.js  hükûmet kartları ve beş yasanın çizimi
-    exchangeScreen.js  borsa bülteni: kotasyon defteri ve şirket dosyası
-    militaryScreen.js  komuta, asker alımı ve eğitim kuyruğunun çizimi
+    hud.js           üst çubuk, il paneli, komuta paneli
+    screens.js       ekran kabuğu, dosya kartı, barış masası, diplomasi, ordu
+    stateScreens.js  Budget, Trade, Factories, Construction, Population, Politics
+    eventCard.js     olay kartı penceresi
+    tooltipData.js   gecikmeli bilgi kartlarının içerik sağlayıcıları
+```
+
 ```
 
 Katmanlar tek yönlüdür: `ui` ve `render`, `game` katmanını tanır; `world` ve
@@ -561,22 +428,10 @@ tarayıcı olmadan Node ile de test edilebilir.
 
 ## Sonraki adımlar
 
-Rework sırasında sökülen ve henüz geri bağlanmayanlar:
+Uluslar Çağı'nın ilk tam sürümünden sonra açık kalanlar (TASARIM.md):
 
-- Ordu modernizasyonu: teçhizat kademesi var ama yükseltme eylemi yok
-- Province geliştirme: gelişim hatları var ama oyuncu eylemi yok
-- Şehir nüfusunun büyümesi (`city.pop` artık sabit)
-- Mobilizasyon (arayüzde kapalı duruyor)
-
-Yeni işler:
-
-- Cephelere ikmal menzili ve yıpranma; hattan kopan ordunun cezalandırılması
-- Yapay zekânın cephe planlamasının derinleşmesi (şu an her generale sırayla
-  bir düşman düşüyor)
-- Savaş sıklığının yeni muharebe modeline göre yeniden ayarlanması
-- Nüfus sınıfları arasında meslek ve toplumsal hareketlilik
-- Dünya pazarı için ambargo (ithalat önceliği şirket sahipliğiyle geldi)
-- Şirket bazlı borç ve iflas (şirket katmanı var, borç kalemi yok)
-- Ücret politikası
-- Şirketlerin yurt dışında varlık edinmesi (çok uluslu şirket)
-- İttifaklar ve savaşa çağrı
+- Tümen şablonu (karma alaylı tümen kurma ekranı)
+- Büyük güçlerin başkalarının savaşına müdahalesi
+- Ulusal gündemde ülkeye özgü (kültür/bölge) şablonlar
+- Olay kartlarının sayısını artırmak (şu an 13 kart + Ulusların Baharı)
+- Ticaret akışı harita kipi

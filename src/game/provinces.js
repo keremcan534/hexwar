@@ -168,11 +168,22 @@ export function refreshProvinceOwner(world, province) {
       winnerVotes = counts[i];
     }
   }
-  if (province.owner !== winner && province.econ && Number.isFinite(world.turn)) {
+  setProvinceOwner(world, province, winner);
+  return winner;
+}
+
+/**
+ * Hukuki sahip değişimi. Çekirdek saati (ownedSince) sahiple BİRLİKTE
+ * sıfırlanır; sahibi doğrudan yazan barış devri, isyan ve kopuş yolları bunu
+ * atlıyordu ve fethedilen küme kuruluş değeri (−1300) ile ANINDA çekirdek
+ * oluyordu: tam vergi, tam insan gücü, uyum cezası yok (kayıt denetimi
+ * yakaladı — yükleme saati sıfırladığı için iki koşu ayrışıyordu).
+ */
+export function setProvinceOwner(world, province, nationId) {
+  if (province.owner !== nationId && province.econ && Number.isFinite(world.turn)) {
     province.econ.ownedSince = world.turn;
   }
-  province.owner = winner;
-  return winner;
+  province.owner = nationId;
 }
 
 /** İşgal payı: sahibinden başkasının fiilen kontrol ettiği üye oranı. */

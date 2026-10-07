@@ -48,6 +48,7 @@ import { recruit } from './recruitment.js';
 import { initNationEconomy } from './economy.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import { captureConstructionAt } from './construction.js';
+import { setProvinceOwner } from './provinces.js';
 
 export const MOVEMENT = {
   /** Bu huzursuzlugun altinda hareket soner, ustunde buyur. */
@@ -258,7 +259,7 @@ function transfer(game, nation, heir, provinces) {
       heir.tiles = (heir.tiles ?? 0) + 1;
       tiles.push(tile);
     }
-    province.owner = heir.id;
+    setProvinceOwner(world, province, heir.id);
     nation.provinces = Math.max(0, (nation.provinces ?? 0) - 1);
     heir.provinces = (heir.provinces ?? 0) + 1;
     // Yeni devlet kendi halkini yonetir: sadakat orta, huzursuzluk dusuk.

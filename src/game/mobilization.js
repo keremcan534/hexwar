@@ -1,6 +1,6 @@
 // Seferberlik. Vic2 mantığı: barış ordusu küçüktür, savaşta yedek silah
 // altına alınır ve barışta eve döner. Tek ulusal anahtar — tümen tümen
-// düğme yok (bkz. VICTORIA_LITE.md "ev ödevi testi").
+// düğme yok (bkz. TASARIM.md "ev ödevi testi").
 //
 // NEDEN VAR (ölçüldü, 2026-09-04): büyük ülkeler nüfusunun %1-3'ünü silah
 // altında tutuyor, boş havuz ordunun ~40 katı; YZ yılda ~1 alay büyütüyor.

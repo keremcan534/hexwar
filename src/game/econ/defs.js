@@ -31,7 +31,7 @@ export const DEPOSIT_IDS = ['COAL', 'IRON', 'TIMBER', 'HORSES', 'SALTPETER'];
  * bol: sanayinin yakıtı; yine de 64 yıllık koşuda dünya kömürü sanayiyi
  * frenler (ölçüldü: tek çıktıyla 1900'de medyan kömür oranı 0.09).
  */
-export const DEPOSIT_OUTPUT = { COAL: 0.45, IRON: 0.35, TIMBER: 0.3, HORSES: 0.3, SALTPETER: 0.3 };
+export const DEPOSIT_OUTPUT = { COAL: 0.45, IRON: 0.17, TIMBER: 0.25, HORSES: 0.16, SALTPETER: 0.2 };
 
 /**
  * Gıda: nüfus birimi başına üretim `FOOD_BASE + FOOD_FERTILITY × verim`.
@@ -77,15 +77,15 @@ export const DEVELOPMENT_CAP_BASE = 3;
 /** İnşaat süresince proje başına haftalık kereste (eksikse yavaşlar). */
 export const CONSTRUCTION_TIMBER = 0.3;
 /** Demiryolu inşaatı ayrıca demir yer. */
-export const RAILWAY_IRON = 0.4;
+export const RAILWAY_IRON = 0.8;
 
 /**
  * Teçhizat. `ic` bir parçanın sanayi bedeli, `resources` parça başına kaynak.
  * Gemi yelken çağında kereste, zırhlı teknolojisiyle demir ve kömür yer.
  */
 export const EQUIPMENT = {
-  rifles: { id: 'rifles', name: 'Rifles', glyph: '🔫', ic: 0.1, resources: { IRON: 0.1, TIMBER: 0.05 } },
-  guns: { id: 'guns', name: 'Artillery', glyph: '💣', ic: 0.4, resources: { IRON: 0.4 } },
+  rifles: { id: 'rifles', name: 'Rifles', glyph: '🔫', ic: 0.1, resources: { IRON: 0.06, TIMBER: 0.03 } },
+  guns: { id: 'guns', name: 'Artillery', glyph: '💣', ic: 0.4, resources: { IRON: 0.25 } },
   ships: {
     id: 'ships', name: 'Ships', glyph: '⚓', ic: 0.6, resources: { TIMBER: 0.6 },
     ironclad: { IRON: 0.5, COAL: 0.2 },
@@ -132,6 +132,13 @@ export const LINE_EFFICIENCY = { start: 0.5, floor: 0.2, cap: 0.8, gain: 0.01, d
 
 /** Vergi: nüfus birimi başına taban; kalkınma kademesi başına artış. */
 export const TAX_PER_UNIT = 0.45;
+/**
+ * Taç gelirleri: her devletin başkentinden düz haftalık gelir (gümrük,
+ * domain). Büyük devlette görünmez, mikro devleti yaşatır: 300 binlik bir
+ * beylik asgari ordusunu ve başkent binalarını taşıyamayıp on yılda üç kez
+ * iflas ediyordu (audit:econ).
+ */
+export const CROWN_REVENUE = 2;
 export const TAX_PER_DEVELOPMENT = 0.25;
 
 /** Alay başına haftalık bakım (altın); savaşta seferi gider çarpanı. */
@@ -143,7 +150,7 @@ export const RECRUIT_GOLD = { INFANTRY: 12, CAVALRY: 20, ARTILLERY: 22, WARSHIP:
 /** Borç: haftalık faiz, tavan (haftalık gelirin katı, mutlak taban). */
 export const DEBT = { interest: 0.003, capWeeks: 20, capFloor: 150, bankruptcyWeeks: 52 };
 
-/** Ticaret: fiyat bandı ve haftalık yaklaşma. */
+/** Ticaret: fiyat bandı ve haftalık yaklaşma (fiyat = taban × (dünya ihtiyacı ÷ dünya üretimi)^1.5). */
 export const TRADE = { minPrice: 0.6, maxPrice: 2.0, priceSpeed: 0.1 };
 
 /** Oyunun son turu (1900); çağ çarpanları buna göre ölçeklenir. */

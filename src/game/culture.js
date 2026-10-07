@@ -52,6 +52,7 @@ import { TIER, announce } from './chronicle.js';
 import { addInfamy } from './infamy.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import { captureConstructionAt } from './construction.js';
+import { setProvinceOwner } from './provinces.js';
 
 export const CULTURE = {
   /** Huzursuzluk olcegi 0-10 (nufus ekranindaki militanlikla ayni dil). */
@@ -453,7 +454,7 @@ export function acceptCulture(game, nation, cultureId) {
                hatirlar. Her zaman aciktir; son caredir ve oyle fiyatlanir.
 
    Ucu de KULTUR basinadir, kume basina degil: kirk kirik kumesi olan oyuncu
-   kirk tik yapmaz, bir karar verir (VICTORIA_LITE ev odevi testi).
+   kirk tik yapmaz, bir karar verir (TASARIM.md ev odevi testi).
    -------------------------------------------------------------------------- */
 
 /**
@@ -561,7 +562,7 @@ export function releaseToKin(game, nation, cultureId) {
       world.nations[heir].tiles++;
       tiles.push(tile);
     }
-    province.owner = heir;
+    setProvinceOwner(world, province, heir);
     nation.provinces = Math.max(0, (nation.provinces ?? 0) - 1);
     world.nations[heir].provinces = (world.nations[heir].provinces ?? 0) + 1;
     // Yeni sahip kendi halkini devraliyor: sorun onunla birlikte gitmez.

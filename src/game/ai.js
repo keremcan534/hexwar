@@ -385,10 +385,45 @@ export function economyAI(game, nation) {
   const trade = lawIndex(nation, 'trade');
   const income = Math.max(1, economy.incomeAvg ?? 1);
   let wanted = trade;
-  if (surplusValue > income * 0.1 && trade < 2) wanted = trade + 1;
+  // Fazlası olan açılır: kapalı pazar dünyanın kıtlığını büyütür (ölçüldü:
+  // dünya demiri ihtiyacın 3-5 katıyken ulus-haftaların %19'unda demir kıttı;
+  // ihracat payı %25'te kalan üreticiler açığı kapatamıyordu).
+  if (surplusValue > income * 0.04 && trade < 2) wanted = trade + 1;
   else if (trade === 0 && deficitValue > 0) wanted = 1;
-  if (wanted !== trade && (nation.power ?? 0) >= 80) {
+  if (wanted !== trade && (nation.power ?? 0) >= 60) {
     if (setLaw(game, nation, 'trade', wanted)) return { action: 'trade', text: `Trade law set to ${LAWS.trade.options[wanted].name}.` };
+  }
+  return null;
+}
+
+/**
+ * KEMER SIKMA. Borç tavanın %30'unu aşınca ya da hazine boşken açık
+ * sürerse, ayda bir tek adım: vergi yükselir, eğitim kısılır, barışta en
+ * küçük tümen terhis edilir. Ölçüldü: bu rutin yokken gelirinin üstünde
+ * ordu ve bina bakımı taşıyan küçük devletler 10 yılda 0.029/ulus-yıl
+ * iflas ediyordu (audit:econ).
+ */
+export function austerityAI(game, nation) {
+  const economy = nation.economy;
+  const turn = game.turns?.turn ?? 0;
+  if (!economy || (turn + nation.id) % 4 !== 1) return null;
+  const cap = economy.debtCap ?? 150;
+  const net = economy.ledger?.net ?? 0;
+  const stressed = (nation.debt ?? 0) > cap * 0.3 || (net < 0 && (nation.gold ?? 0) < 20);
+  if (!stressed) return null;
+  const tax = lawIndex(nation, 'tax');
+  if (tax < 2 && setLaw(game, nation, 'tax', tax + 1)) return 'Taxes raised to balance the books.';
+  const education = lawIndex(nation, 'education');
+  if (education > 0 && setLaw(game, nation, 'education', education - 1)) return 'School spending cut to balance the books.';
+  const world = game.world;
+  const atWarNow = (economy.warFronts ?? 0) > 0;
+  if (!atWarNow) {
+    const units = world.units.filter((u) => u.nationId === nation.id && u.type.domain !== 'sea' && !u.battleId);
+    const total = units.reduce((sum, unit) => sum + regimentCount(unit), 0);
+    if (total > 2) {
+      const weakest = units.reduce((worst, unit) => (regimentCount(unit) < regimentCount(worst) ? unit : worst), units[0]);
+      if (weakest && disband(game, weakest)) return 'A regiment was stood down to save its upkeep.';
+    }
   }
   return null;
 }
@@ -569,6 +604,7 @@ export function runNationAI(game, nation, rng) {
   manageBrokenProvinces(game, nation);
   // Ulusal hareketler: taviz, sikiyonetim, vassal, katliam — oyuncuyla ayni kapi.
   manageMovements(game, nation);
+  austerityAI(game, nation);
   spend(game, nation);
   politicsAI(game, nation);
   economyAI(game, nation);
@@ -602,6 +638,8 @@ export function runDelegatedAI(game, nation, rng) {
     diplomacy(game, nation, rng);
   }
   if (delegationActive(nation, 'economy', turn)) {
+    const saved = austerityAI(game, nation);
+    if (saved) noteDelegated(game, nation, 'economy', saved, 'Debt was climbing toward the ceiling.');
     const result = economyAI(game, nation);
     if (result) noteDelegated(game, nation, 'economy', result.text, 'The resource balance asked for it.');
   }

@@ -3,7 +3,7 @@
 import { makeRng } from '../core/rng.js';
 import { settle } from './treasury.js';
 import {
-  UNIT_TYPES, advanceEntrenchment, createUnit, placeUnit, refreshArmy,
+  UNIT_TYPES, advanceEntrenchment, applyArmyLosses, createUnit, placeUnit, refreshArmy,
   regimentCount, removeUnit, resetUnitIds, stackFull,
 } from './units.js';
 import {
@@ -30,6 +30,7 @@ import { runResearch } from './technology.js';
 import { runAgenda } from './agenda.js';
 import { runEventCards } from './eventCards.js';
 import { assignGoals } from './hegemony.js';
+import { computeIC } from './econ/industry.js';
 import { mod, refreshModifiers } from './modifiers.js';
 import { initBattles, removeFromBattles, runBattles } from './battles.js';
 import {
@@ -37,7 +38,7 @@ import {
 } from './command.js';
 import {
   initProvinces, provincePopulation, provinceSoldiers, refreshProvinceOwner,
-  releaseSoldiers, runProvinces,
+  releaseSoldiers, runProvinces, setProvinceOwner,
 } from './provinces.js';
 import { initPolitics, runPolitics } from './politics.js';
 import { runMovements } from './movements.js';
@@ -45,6 +46,9 @@ import { captureConstructionAt, initConstruction, runConstruction } from './cons
 import { controllerOf, setController } from './control.js';
 import { runNationalEvents, runWorldStories } from './events.js';
 import { expireTreaties, treatiesOf } from './peace.js';
+import { isAllied } from './alliances.js';
+
+const isAlliedTo = (world, a, b) => b >= 0 && isAllied(world.nations[a], b);
 import { isNode, nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
 
 /** Başlangıç hazinesi: ilk binaya ya da birkaç alaya yeter. */
@@ -188,7 +192,13 @@ export class TurnManager {
     seedGenerals(world, this.rng);
     refreshCities(world);
     assignGoals(world);
-    for (const nation of world.nations) refreshModifiers(nation, this.turn);
+    for (const nation of world.nations) {
+      refreshModifiers(nation, this.turn);
+      // Açılış karesi IC 0.0 göstermesin ve ilk haftanın YZ'si boş IC
+      // okumasın: computeIC saf okumadır, altın oynatmaz. Kaynak oranları
+      // ilk haftanın ticaretiyle gelir.
+      if (nation.alive && nation.economy) nation.economy.ic = computeIC(world, nation);
+    }
   }
 
   /**
@@ -358,7 +368,7 @@ export class TurnManager {
       world.nations[previousOwner].provinces = Math.max(0, (world.nations[previousOwner].provinces ?? 0) - 1);
     }
     world.nations[nationId].provinces = (world.nations[nationId].provinces ?? 0) + 1;
-    province.owner = nationId;
+    setProvinceOwner(world, province, nationId);
     // Yeni tebaa hemen sadık olmaz; kontrol düşük başlar.
     province.econ.control = 25;
     clearBrokenMark(province.econ);
@@ -559,6 +569,7 @@ export class TurnManager {
       }
       advanceEntrenchment(unit, this.turn);
     }
+    this.supplyAttrition();
     mark('units');
     this.phase = 'reinforcements';
     runReinforcements(this.game);
@@ -884,6 +895,52 @@ export class TurnManager {
       clearDirective(unit);
       if (!orderMove(this.game, unit, best)) placeUnit(unit, best);
       this.game.renderer.invalidateTiles([tile, best], false);
+    }
+  }
+
+  /**
+   * İKMAL YIPRANMASI. Düşman topraklarında, kendi (ya da müttefik) kontrolündeki
+   * en yakın province'ten 3 adımdan uzak kara tümeni haftada güç kaybeder:
+   * uzaklık başına %1, tavan %3. Derin akın bedavaya değil; demiryolu ve
+   * lojistik teknolojileri (modifiers 'supply') kaybı azaltır. Ölen adam
+   * nüfustan düşer (applyArmyLosses).
+   */
+  supplyAttrition() {
+    const world = this.world;
+    for (const unit of [...world.units]) {
+      if (unit.type?.domain !== 'land' || unit.embarked || !unit.tile) continue;
+      const owner = unit.nationId;
+      const friendly = (tile) => {
+        const holder = controllerOf(tile);
+        return holder === owner || isAlliedTo(world, owner, holder);
+      };
+      if (friendly(unit.tile)) continue;
+      // BFS province grafında: kendi/müttefik kontrolüne en yakın adım.
+      let distance = 0;
+      let frontier = [unit.tile];
+      const seen = new Set(frontier);
+      let found = false;
+      while (frontier.length && distance < 5 && !found) {
+        distance++;
+        const next = [];
+        for (const node of frontier) {
+          for (const near of nodeNeighbors(world, node)) {
+            if (seen.has(near) || near.terrain.water) continue;
+            if (friendly(near)) { found = true; break; }
+            seen.add(near);
+            next.push(near);
+          }
+          if (found) break;
+        }
+        frontier = next;
+      }
+      if (found && distance < 3) continue;
+      const nation = world.nations[owner];
+      const rate = Math.min(0.03, 0.01 * (distance - 2)) * Math.max(0, 1 - mod(nation, 'supply'));
+      if (rate <= 0) continue;
+      const casualties = unit.regiments.reduce((sum, r) => sum + r.strength, 0) * rate;
+      applyArmyLosses(unit, casualties, 0, world);
+      refreshArmy(unit);
     }
   }
 

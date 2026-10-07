@@ -49,6 +49,8 @@ function occupiedWar(seed, share, weeks = 40) {
   }
   if (!pair) pair = [ranked[0], ranked[1]];
   const [aggressor, victim] = pair;
+  // Ilanin Siyasi Guc bedeli bu denetimin konusu degil (TASARIM.md §12).
+  aggressor.power = 500;
   if (!atWar(world, aggressor.id, victim.id)) declareWarNow(game, aggressor.id, victim.id);
 
   const theirs = world.provinces.filter((p) => p.owner === victim.id && p.econ);

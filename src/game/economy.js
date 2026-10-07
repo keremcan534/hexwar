@@ -13,8 +13,8 @@
 // ve deterministik kalmanın bedeli budur.
 
 import {
-  BUILDINGS, BUILDING_IDS, DEBT, EQUIPMENT_IDS, POP_UNIT, RESOURCE_IDS, TAX_PER_DEVELOPMENT,
-  TAX_PER_UNIT, UPKEEP,
+  BUILDINGS, BUILDING_IDS, CROWN_REVENUE, DEBT, EQUIPMENT_IDS, POP_UNIT, RESOURCE_IDS,
+  TAX_PER_DEVELOPMENT, TAX_PER_UNIT, UPKEEP,
 } from './econ/defs.js';
 import { lawOption } from './laws.js';
 import { mod, refreshModifiers } from './modifiers.js';
@@ -65,6 +65,8 @@ export function debtCapacity(nation) {
 
 /** Başlangıç okuryazarlığı: 1836'nın gelişmiş çekirdeği daha okur-yazar. */
 const START_LITERACY = [0.08, 0.16, 0.28];
+/** Okuryazarlığın hedefe haftalık yaklaşma payı: 15 yılda açığın %63ü, 30 yılda %86sı. */
+const LITERACY_RATE = 0.0013;
 /** Nüfus birimi başına başlangıç fabrikası (gelişmişlik kademesine göre). */
 const START_FACTORIES = [0.025, 0.05, 0.09];
 
@@ -192,7 +194,9 @@ export function beginEconomy(game) {
 
 /** Haftalık vergi, dökümüyle (ekran aynı döküm fonksiyonunu okur). */
 export function taxBreakdown(world, nation) {
-  let base = 0;
+  // Taç gelirleri başkent elde olduğu sürece akar.
+  const capital = nation.capital ? world.provinces?.[nation.capital.provinceId] : null;
+  let base = capital?.owner === nation.id ? CROWN_REVENUE : 0;
   for (const province of world.provinces ?? []) {
     if (province.owner !== nation.id || !province.econ) continue;
     const econ = province.econ;
@@ -335,10 +339,13 @@ export function runNationEconomy(game, nation, ctx) {
   settle(nation, 'maintenance', -economy.maintenance);
   if ((nation.debt ?? 0) > 0) settle(nation, 'interest', -nation.debt * DEBT.interest);
 
-  // 8. Okuryazarlık hedefe yavaşça (yılda ~%1.5) yaklaşır: bir nesil sürer.
+  // 8. Okuryazarlık hedefe ORANSAL yaklaşır (zaman sabiti ~15 yıl: bir
+  // nesil). Eskiden sabit ±0.0003/hafta adımdı ve hedef iki kolda da aynı
+  // taraftayken yasa görünmezdi: %9'luk ülke "okulsuz" (%12) ve "herkese
+  // okul" (%75) altında AYNI hızla tırmanıyordu (audit:mechanics: ölü).
   const target = literacyTarget(world, nation);
   economy.literacyTarget = target;
-  economy.literacy += clamp(target - economy.literacy, -0.0003, 0.0003);
+  economy.literacy += (target - economy.literacy) * LITERACY_RATE;
 }
 
 /**

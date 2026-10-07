@@ -12,6 +12,7 @@ import {
 } from './diplomacy.js';
 import { isOccupied } from './control.js';
 import { POPULATION_SCALE } from './populationScale.js';
+import { mod } from './modifiers.js';
 
 export const INFAMY = {
   /** Kendi halkının yaşadığı kareyi almak ucuz: haklı talep sayılır. */
@@ -157,7 +158,9 @@ export function decayInfamy(world) {
   for (const nation of world.nations) {
     if (!nation.alive) continue;
     const current = nation.infamy ?? 0;
-    const rate = INFAMY.DECAY_PER_TURN + current * INFAMY.DECAY_RATIO;
+    // Devlet adamı danışmanı unutulmayı hızlandırır (modifiers 'infamyDecay').
+    const rate = (INFAMY.DECAY_PER_TURN + current * INFAMY.DECAY_RATIO)
+      * Math.max(0.2, 1 + mod(nation, 'infamyDecay'));
     addInfamy(nation, -rate);
   }
 }

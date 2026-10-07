@@ -33,6 +33,9 @@ function setup(seed, weeks = 60) {
     .sort((a, b) => (world.contacts?.[b.id]?.reduce((s, c) => s + (c > 0 ? 1 : 0), 0) ?? 0)
       - (world.contacts?.[a.id]?.reduce((s, c) => s + (c > 0 ? 1 : 0), 0) ?? 0))[0];
   game.turns.playerNation = player.id;
+  // Savas ilani Siyasi Guc ister (TASARIM.md §12); bu denetim o kapiyi degil
+  // cullanma kapilarini olcer, o yuzden ilan edenlerin cebi dolu.
+  for (const n of world.nations) n.power = 500;
   const neighbours = world.nations.filter(
     (n) => n.alive && n.id !== player.id && world.contacts?.[player.id]?.[n.id] > 0,
   );

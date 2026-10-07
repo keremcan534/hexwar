@@ -174,16 +174,24 @@ export function availableTechs(nation) {
 
 /**
  * Liste fiyatı: kademe ileri teknolojiyi pahalılaştırır, aktivasyon yılından
- * önce araştırmak yılda %6 (tavan 2.5×) daha pahalıdır.
+ * önce araştırmak yılda %6 (tavan 2.5×) daha pahalıdır, ve teknolojinin KENDİ
+ * yılı fiyatı büyütür (1836'dan sonra yılda %2). Yıl çarpanı olmadan ağaç
+ * 1866'ya dek takvimi izleyip sonra koşuyordu: araştırma puanı okuryazarlıkla
+ * ~2.5'ten ~5.5'e çıkarken 1870 sonrası teknolojiler erken olanlar kadar
+ * ucuzdu ve orta ülke 40 teknolojiyi 1881-86'da bitirip son on beş yılı boş
+ * geçiriyordu (erken ceza %12/3× denendi, yetmedi).
  */
 export const TECH_BASE_COST = 110;
+const TECH_YEAR_SCALE = 0.02;
 export function techCost(techId, year) {
   const entry = INDEX.get(techId);
   if (!entry) return Infinity;
   const levelScale = 1 + entry.level * 0.6;
-  const early = Math.max(0, (entry.tech.year ?? 1836) - year);
+  const techYear = entry.tech.year ?? 1836;
+  const yearScale = 1 + Math.max(0, techYear - 1836) * TECH_YEAR_SCALE;
+  const early = Math.max(0, techYear - year);
   const earlyPenalty = clamp(1 + early * 0.06, 1, 2.5);
-  return Math.round(TECH_BASE_COST * levelScale * earlyPenalty);
+  return Math.round(TECH_BASE_COST * levelScale * yearScale * earlyPenalty);
 }
 
 /**
