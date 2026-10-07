@@ -130,9 +130,6 @@ const DIAGNOSIS = {
   PROFITABLE: { id: 'PROFITABLE', label: 'Profitable', tone: 'good', weight: 0, attention: false },
 };
 
-export const ATTENTION_STATUSES = Object.values(DIAGNOSIS)
-  .filter((entry) => entry.attention).map((entry) => entry.id);
-
 /**
  * Tesisin bu haftaki en kıt girdisi — sebep cümlesi bunu ADLANDIRIR.
  * Kıtlık ölçüsü piyasanın kendi ölçüsüdür (`marketInputAvailability`); ekran

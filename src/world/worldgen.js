@@ -9,7 +9,7 @@
 import { makeRng } from '../core/rng.js';
 import { makeNoise2D, fbm } from '../core/noise.js';
 import { classify, SEA_LEVEL, TERRAIN } from './terrain.js';
-import { DIRS, SQRT3, axialToOffset, hexDistance, hexToPixel, offsetToAxial, wrapCol } from '../core/hex.js';
+import { DIRS, SQRT3, hexDistance, hexToPixel, offsetToAxial, wrapCol } from '../core/hex.js';
 import { generateCultures, mixCultures } from './cultures.js';
 import { generateProvinces, PROVINCE_GEN_LATEST } from './provinces-gen.js';
 import { generateRivers } from './rivers.js';
@@ -68,8 +68,11 @@ export class World {
   /** Axial erişim; doğu-batı sarmalı burada çözülür, kutuplar dışarıda kalır. */
   get(q, r) {
     if (r < 0 || r >= this.rows) return undefined;
-    const { col } = axialToOffset(q, r);
-    return this.tiles[r * this.cols + wrapCol(col, this.cols)];
+    // axialToOffset + wrapCol satır içinde: en sık çağrılan erişimci (komşu
+    // taraması), çağrı başına bir nesne ayırmasın.
+    const cols = this.cols;
+    const col = q + ((r - (r & 1)) >> 1);
+    return this.tiles[r * cols + (((col % cols) + cols) % cols)];
   }
 
   /** Offset ızgara erişimi: çizimde görünür aralığı taramak için. */

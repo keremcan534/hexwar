@@ -48,6 +48,7 @@ import { recruit } from './recruitment.js';
 import { initNationEconomy } from './economy.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import { pushSociety } from './society.js';
+import { captureConstructionAt } from './construction.js';
 
 export const MOVEMENT = {
   /** Bu huzursuzlugun altinda hareket soner, ustunde buyur. */
@@ -249,6 +250,9 @@ function transfer(game, nation, heir, provinces) {
       const tile = world.tiles[idx];
       if (!tile) continue;
       if (tile.owner === nation.id) nation.tiles = Math.max(0, nation.tiles - 1);
+      // Eski sahibin bu karedeki inşaat projesi düşer (claim/barış yolu gibi):
+      // kalsa kopan topraktaki fabrika eski devletin gücünü yemeye devam ederdi.
+      captureConstructionAt(world, tile, heir.id);
       tile.owner = heir.id;
       tile.controller = heir.id;
       tile.heldSince = turn;
@@ -308,7 +312,9 @@ function raiseRebels(game, heir, provinces) {
     // Silahi halk kendi getirir (teçhizat dusulmez); adam GERCEK nufustan
     // cekilir — kurulus ordusuyla ayni kural (turn.js start).
     const unit = recruit(game, heir, 'INFANTRY', { source: province.center, charge: false });
-    if (!unit) break;
+    // Kaynağında eski devletin garnizonu duran province atlanır (alay düşman
+    // yığınının üstüne doğmaz, bkz. recruitment.deploymentTile); öbürleri denenir.
+    if (!unit) continue;
     raised++;
   }
   return raised;
@@ -466,6 +472,7 @@ export function crackdown(game, nation, cultureId) {
   const turn = turnOf(game);
   if (crackdownBlockers(world, nation, cultureId, turn).length) return 0;
   const { provinces } = liveMovement(world, nation, cultureId);
+  const recolored = [];
   let killed = 0;
   for (const province of provinces) {
     const rows = province.cultures?.length
@@ -487,9 +494,19 @@ export function crackdown(game, nation, cultureId) {
           : (item.share * population) / left,
       })).filter((item) => item.share > 0)
         .sort((a, b) => b.share - a.share || a.id - b.id);
-      province.culture = province.cultures[0]?.id ?? province.culture;
+      const before = province.culture;
+      province.culture = province.cultures[0]?.id ?? before;
+      // Çoğunluk el değiştirdiyse kareler de (expelCulture gibi): harita,
+      // fetih kötü şöhreti ve şehir nüfusu kareden okur.
+      if (province.culture !== before) {
+        for (const idx of province.tileIdx ?? []) {
+          world.tiles[idx].culture = province.culture;
+          recolored.push(world.tiles[idx]);
+        }
+      }
     }
   }
+  if (recolored.length) game.renderer?.invalidateTiles(recolored);
   if (!killed) return 0;
   if (nation.economy) {
     nation.economy.repressionDeaths = (nation.economy.repressionDeaths ?? 0) + killed;

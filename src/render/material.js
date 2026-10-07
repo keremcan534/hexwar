@@ -303,11 +303,6 @@ export class LandMaterial {
     this.debug = { field: true, grain: true, sea: true };
   }
 
-  invalidate() {
-    this.cache = null;
-    this.build = null;
-  }
-
   /**
    * İki rasteri de pişirir (dünya başına bir kez).
    *

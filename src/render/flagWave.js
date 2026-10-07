@@ -324,8 +324,3 @@ export function hydrateFlags(root, nations) {
       Number(host.dataset.flagW) || 64, Number(host.dataset.flagH) || 42);
   }
 }
-
-/** Ekranda kaç bayrak sürülüyor — ölçüm ve hata ayıklama için. */
-export function wavingFlagCount() {
-  return live.size;
-}

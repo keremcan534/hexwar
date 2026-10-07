@@ -8,9 +8,8 @@ import { CACHE_ZOOM, Renderer } from '../render/renderer.js';
 import { PointerController } from '../input/pointer.js';
 import { pixelToHex } from '../core/hex.js';
 import { randomSeed } from '../core/rng.js';
-import { reachable } from '../core/pathfind.js';
 import {
-  armyPower, clearPath, organizationOf, placeUnit, speedOf, stackFull, unitsOn,
+  armyPower, clearPath, organizationOf, placeUnit, stackFull, unitsOn,
 } from './units.js';
 import { orderMove, setDirective } from './movement.js';
 import { TurnManager } from './turn.js';
@@ -133,7 +132,6 @@ export class Game {
     this.marquee = null;     // sürüklenirken oluşan seçim kutusu
     this.activeGeneral = null;  // komuta arayüzünde seçili general
     this.selected_ = [];     // seçili ordular (bkz. selectUnits)
-    this.reachable = null;   // { costs, prev } — seçili birimin menzili
     this.turns = new TurnManager(this);
     this.listeners = Object.fromEntries(EVENTS.map((name) => [name, []]));
     // Bildirim merkezi: günlüğe düşen olayı karta çevirir (bkz. notifications.js).
@@ -225,7 +223,6 @@ export class Game {
     this.selected_ = [];
     this.marquee = null;
     this.activeGeneral = null;
-    this.reachable = null;
     // Barış teklifleri kayda girmez ve eski dünyanın savaşlarına aittir.
     // Kalırsa yüklenen zaman çizelgesinde hiç yapılmamış bir teklif masada
     // durup imzalanabiliyor, yaşı negatif olduğu için de hiç düşmüyordu
@@ -464,9 +461,6 @@ export class Game {
     );
     this.selected_ = mine;
     this.selectedUnit = mine[0] ?? null;
-    // Menzil vurgusu kalktı: ordu artık haftalık bütçeyle değil, yol boyunca
-    // sürekli yürüyor. Seçili orduya sağ tıklanan her yer geçerli bir hedeftir.
-    this.reachable = null;
     this.emit('units', this.selectedUnit);
     this.emit('selection', mine);
     return mine;
@@ -566,27 +560,6 @@ export class Game {
 
   costForUnit() {
     return (tile) => (tile.terrain.water ? tile.terrain.seaCost : tile.terrain.moveCost);
-  }
-
-  /**
-   * Bir haftada kabaca nereye varılabileceğinin önizlemesi. Artık bir kural
-   * değil, yalnızca çizim ipucu: hareketin kendisi `movement.js`te sürüyor.
-   */
-  getReachable(unit) {
-    return reachable(this.world, unit.tile, speedOf(unit), {
-      canEnter: this.canEnterFor(unit),
-      costOf: this.costForUnit(unit),
-    });
-  }
-
-  /** Orduya yürüyüş emri verir; yol haftalar içinde kat edilir. */
-  moveUnit(unit, tile) {
-    if (unit.battleId || (unit.retreatUntil ?? 0) > this.turns.turn) return false;
-    if (!orderMove(this, unit, tile)) return false;
-    setDirective(unit, tile);
-    this.emit('units', unit);
-    this.requestRender();
-    return true;
   }
 
   /** Bir birimin kareye girişi: yerleş, toprağı al, şehirse ele geçir. */
@@ -885,7 +858,6 @@ export class Game {
     this.selectUnits([]);
     this.selected = null;
     this.hovered = null;
-    this.reachable = null;
     this.notifications?.clear?.();
     this.peaceOffers = [];
     this.renderer.invalidateCache();
@@ -1107,7 +1079,12 @@ export class Game {
     // zincir iş bitene dek sürsün.
     this.dirty = true;
     this.requestRender();
-    if (done) this.emit('clock', this.clock);
+    if (done) {
+      // Canlı döngüde de ölen/dağıtılan ordular seçimden ayıklanır (endTurn
+      // yalnız betiklerde koşar); yoksa ölü birlik seçili kalıp emir alıyordu.
+      this.pruneSelection();
+      this.emit('clock', this.clock);
+    }
   }
 
   handleHover(sx, sy) {
@@ -1162,7 +1139,6 @@ export class Game {
           front: this.frontTiles(),
           selection: this.selection,
           marquee: this.marquee,
-          reachable: this.reachable,
         });
         this.perf?.add('render', performance.now() - t0);
       }

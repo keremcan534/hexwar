@@ -27,8 +27,6 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 /** Bir province kümesinin ağaçtaki ve seçimdeki kimliği. */
 export const provinceKey = (province) => `p${province.id}`;
-/** Eski kare anahtarı; barış masası gibi hex bazlı ekranlar hala kullanır. */
-export const tileKey = (tile) => `${tile.q}:${tile.r}`;
 
 // --- Bellekleme ---------------------------------------------------------
 // Defterde binlerce satır var ve satır başına yapılan iş üç kalemde toplanıyor:
@@ -37,7 +35,6 @@ export const tileKey = (tile) => `${tile.q}:${tile.r}`;
 // sınıf başına bir ideoloji karışımı, kare başına bir ad. Bellemeden önce tek
 // tazeleme 340 ms sürüyordu (ölçüldü); sonuç değişmez, yalnız tekrar biter.
 const confessionCache = new WeakMap(); // world → Map(cultureId → confession)
-const nameCache = new WeakMap();       // tile  → province adı
 const politicsCache = new WeakMap();   // nation → { parties, byClass }
 
 /**
@@ -73,18 +70,6 @@ export function confessionOf(world, cultureId) {
     byCulture.set(cultureId, confession);
   }
   return confession;
-}
-
-/** Karenin adı. `provinceName` her çağrıda RNG kurar; defterde satır başına
- *  bir kez ödenemeyecek kadar pahalıdır. Ad zaten kareye sabittir. */
-export function locationName(tile) {
-  if (!tile) return '—';
-  let name = nameCache.get(tile);
-  if (name === undefined) {
-    name = provinceName(tile);
-    nameCache.set(tile, name);
-  }
-  return name;
 }
 
 /**
@@ -214,15 +199,6 @@ export function censusTree(world, nation, cohorts) {
   };
 }
 
-/** Sayaçtan sıralı pay listesi. Payı olmayan kalem listeye hiç girmez. */
-function shares(map, total, label) {
-  if (!(total > 0)) return [];
-  return [...map]
-    .filter(([, value]) => value > 0)
-    .sort((a, b) => b[1] - a[1])
-    .map(([id, value]) => ({ id, name: label(id), value, share: value / total }));
-}
-
 const ISSUE_AXES = Object.keys(POLITICAL_POLICIES);
 
 /**
@@ -291,11 +267,6 @@ function classPolitics(nation, classId) {
   return mix;
 }
 
-/** Tek kohortun ideoloji/mesele pastaları — tablodaki mini şeritler için. */
-export function cohortPolitics(nation, cohort) {
-  return classPolitics(nation, cohort.classId).display;
-}
-
 /**
  * Bir sınıfın siyasi karışımı. Nüfus ekranı da bunu okur (populationView):
  * ideoloji ve mesele ağırlıkları TEK yerde kurulur, ikinci bir kopya
@@ -312,79 +283,4 @@ export function issueName(id) {
     if (option) return option.name;
   }
   return id;
-}
-
-/**
- * Seçili province kümesinin sayımı. `source` bir kez üretilmiş kohort listesi
- * (bkz. censusSource); `keys` boşsa hiçbir şey seçili değildir (Vic2'deki
- * "Deselect All" durumu) ve ekran boş defteri gösterir.
- */
-export function censusFor(world, nation, source, keys) {
-  const selection = keys instanceof Set ? keys : new Set(keys ?? []);
-  const cohorts = source.filter((cohort) => selection.has(`p${cohort.provinceId}`));
-  const total = cohorts.reduce((sum, cohort) => sum + cohort.size, 0);
-
-  const workforce = new Map();
-  const nationality = new Map();
-  const religion = new Map();
-  const ideology = new Map();
-  const issues = new Map();
-  let literate = 0;
-  let employed = 0;
-  let employable = 0;
-  let needs = 0;
-  let income = 0;
-  let taxPaid = 0;
-
-  for (const cohort of cohorts) {
-    const { size } = cohort;
-    workforce.set(cohort.professionId, (workforce.get(cohort.professionId) ?? 0) + size);
-    nationality.set(cohort.culture, (nationality.get(cohort.culture) ?? 0) + size);
-    const confession = confessionOf(world, cohort.culture).id;
-    religion.set(confession, (religion.get(confession) ?? 0) + size);
-    const politics = classPolitics(nation, cohort.classId);
-    for (const [id, weight] of politics.ideology) {
-      ideology.set(id, (ideology.get(id) ?? 0) + weight * size);
-    }
-    for (const [id, weight] of politics.issues) {
-      issues.set(id, (issues.get(id) ?? 0) + weight * size);
-    }
-    literate += literacyOf(nation, cohort) * size;
-    needs += clamp(cohort.needsFulfilled ?? 1, 0, 1) * size;
-    income += cohort.income ?? 0;
-    taxPaid += cohort.taxPaid ?? 0;
-    if (cohort.employed != null) {
-      employed += cohort.employed;
-      employable += size;
-    }
-  }
-
-  const cultureName = (id) => world.cultures?.[id]?.name ?? 'Stateless';
-  // Seçmen dağılımı ulusaldır: sandık ülke genelinde sayılır, tek province'in
-  // ayrı bir sonucu yok. Ekran bunu ayrıca "national return" diye söyler.
-  const parties = [...(nation.politics?.parties ?? [])].sort((a, b) => b.support - a.support);
-  const electorate = parties.map((party) => ({
-    id: party.ideology,
-    name: party.name,
-    value: party.support,
-    share: party.support / 100,
-  }));
-
-  return {
-    cohorts,
-    total,
-    provinces: selection.size,
-    workforce: shares(workforce, total, (id) => id),
-    nationality: shares(nationality, total, cultureName),
-    religion: shares(religion, total, (id) => CONFESSIONS[id]?.name ?? id),
-    ideology: shares(ideology, total, (id) => IDEOLOGIES[id]?.name ?? id),
-    issues: shares(issues, total, issueName),
-    electorate,
-    literacy: total > 0 ? literate / total : 0,
-    needs: total > 0 ? needs / total : 1,
-    employment: employable > 0 ? employed / employable : null,
-    unemployed: Math.max(0, employable - employed),
-    income,
-    taxPaid,
-  };
 }

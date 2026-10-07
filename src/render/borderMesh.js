@@ -1302,25 +1302,11 @@ const BAND_SUB = 4;
  * Gölge önce Canvas2D'de, ülkenin çokgenine kırpılmış altı geniş darbeydi;
  * yakın zoomda darbeler 240 px'e çıkıyor ve statik katman her kurulduğunda
  * GPU'yu kareden taşırıyordu (ölçüldü: kare aralığı p95 4.3 → 12-17 ms).
- * Shader bu alanı piksel başına tek okumayla, kademesiz bir geçiş olarak
- * çizer. İşaretsiz uzaklık yeter: ülkenin içindeki bir pikselden başka iki
- * ülkenin sınırına giden yol önce kendi sınırını keser.
+ * Shader bu alanı piksel başına tek okumayla çizer. Izgara malzeme
+ * rasteriyle aynı (hex başına 4 teksel, x WRAP_X0'dan).
  *
- * Izgara malzeme rasteriyle aynı (hex başına 4 teksel, x WRAP_X0'dan): GL
- * yüzeyi aynı alan orijini ve açıklığıyla okur.
- */
-export function meshBandField(mesh) {
-  if (!mesh.band) {
-    const job = bandFieldJob(mesh);
-    while (!job.next().done);
-  }
-  return mesh.band;
-}
-
-/**
- * Gölge alanını dilim dilim kuran üreteç: her yield bir dilim sonudur (tarayıcıda
- * tamamı ~20 ms; sahiplik değişince tek kareye sığdırılırsa takılma olur).
- * Bitince alanı mesh.band'e yazar.
+ * Üreteçtir: her yield bir dilim sonudur (tarayıcıda tamamı ~20 ms; sahiplik
+ * değişince tek kareye sığdırılırsa takılma olur). Bitince mesh.band'e yazar.
  */
 export function* bandFieldJob(mesh) {
   // Sürüm İŞİN BAŞINDA damgalanır: yarıda sahiplik değişirse eski sonuç yeni

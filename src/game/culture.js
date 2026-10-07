@@ -51,6 +51,7 @@ import { nationalismEra, pushSociety, societyModifiers } from './society.js';
 import { TIER, announce } from './chronicle.js';
 import { addInfamy } from './infamy.js';
 import { POPULATION_SCALE } from './populationScale.js';
+import { captureConstructionAt } from './construction.js';
 
 export const CULTURE = {
   /** Huzursuzluk olcegi 0-10 (nufus ekranindaki militanlikla ayni dil). */
@@ -547,6 +548,8 @@ export function releaseToKin(game, nation, cultureId) {
       const tile = world.tiles[idx];
       if (!tile) continue;
       nation.tiles = Math.max(0, nation.tiles - 1);
+      // Eski sahibin inşaat projesi devirle düşer (bkz. movements.transfer).
+      captureConstructionAt(world, tile, heir);
       tile.owner = heir;
       tile.controller = heir;
       tile.heldSince = game.turns?.turn ?? 0;

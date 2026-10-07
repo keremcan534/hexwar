@@ -34,19 +34,6 @@ const FALLBACK_RESOURCE = '<path d="M4 8h16v11H4z"/><path d="M4 8l2-3h12l2 3M12 
 const FALLBACK_FACTORY = '<circle cx="12" cy="12" r="4"/>'
   + '<path d="M12 5V3M12 21v-2M5 12H3M21 12h-2M7 7 5.6 5.6M18.4 18.4 17 17M7 17l-1.4 1.4M18.4 5.6 17 7"/>';
 
-/** Bu malın boyalı madalyonu var mı? (Kart, halka çizimini buna göre seçer.) */
-export function hasResourceArt(goodId) {
-  return Boolean(RESOURCE_ART[goodId]);
-}
-
-/**
- * Halkası sanatın içinde mi? Paket 1 madalyonları kendi pirinç halkasını
- * taşır; paket 2 nesneleri halkasızdır ve CSS halkasının içine oturur.
- */
-export function resourceArtRinged(goodId) {
-  return RINGED_ART.has(goodId);
-}
-
 /** Mal ikonu: boyalı madalyon ya da çizgi-SVG. Satır içi kullanım. */
 export function resourceGlyph(goodId) {
   const art = RESOURCE_ART[goodId];

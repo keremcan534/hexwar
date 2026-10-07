@@ -822,6 +822,16 @@ export class SurfaceGL {
       gl.LINEAR, gl.REPEAT, gl.CLAMP_TO_EDGE);
     this.elevSize = { w: coast.w, h: coast.h };
 
+    // Yeni dünyada ızgara boyu değişebilir: işgal dokusu eski boyutta kalırsa
+    // texSubImage2D reddedilir ve tarama donar; tablo/bölge/gölge de eski
+    // ağa aitse yeniden yüklenmeleri gerekir (renderer borderMesh'e bakar).
+    if (this.world !== world) {
+      if (this.overlayTex) gl.deleteTexture(this.overlayTex);
+      this.overlayTex = null;
+      this.borderMesh = null;
+      this.regionVersion = -1;
+      this.bandMesh = null;
+    }
     this.world = world;
     this.grid = { cols, rows };
     this.field = {
@@ -915,6 +925,9 @@ export class SurfaceGL {
     if (this.canvas.width !== w || this.canvas.height !== h) {
       this.canvas.width = w;
       this.canvas.height = h;
+      // Boyut atamak tuvali siler; kamera kıpırdamadıysa draw() 33 ms
+      // kısıtıyla bir sonraki kareyi atlıyor ve yüzey boş kalıyordu.
+      this.lastDraw = 0;
     }
     this.cssW = cssW;
     this.cssH = cssH;

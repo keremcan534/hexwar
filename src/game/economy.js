@@ -29,8 +29,7 @@ import {
   planConstructionAI, queueIndustryProject,
 } from './construction.js';
 import {
-  LEDGER_LINES, LEDGER_LINE_IDS, closeWeek, emptyLedger, openWeek, settle, settleAffordable,
-  weekTotals,
+  LEDGER_LINES, LEDGER_LINE_IDS, closeWeek, emptyLedger, openWeek, settle,
 } from './treasury.js';
 
 /**
@@ -453,23 +452,6 @@ export const CLASS_PROFESSIONS = Object.fromEntries(Object.keys(CLASS_INFO).map(
   Object.values(PROFESSION_INFO).filter((profession) => profession.classId === classId).map((profession) => profession.id),
 ]));
 
-const PROFESSION_SHARES = {
-  lower: { farmers: 0.52, laborers: 0.25, workers: 0.23 },
-  middle: { clerks: 0.45, artisans: 0.35, officers: 0.20 },
-  upper: { capitalists: 0.45, aristocrats: 0.55 },
-};
-/**
- * Sınıfların 10.000 kişi başına haftalık geçim bütçesi.
- *
- * Üst sınıfın bütçesi 20'den 11'e indirildi. 20'de sepeti (taban fiyatlarla
- * ~5.4) o kadar rahat karşılıyordu ki vergi ancak %84'ün üstünde bir şey ifade
- * ediyordu: slider'ı çekmenin görünür etkisi yoktu. 11 ile eşikler anlamlı
- * yerlere düşer — ~%50 üzerinde yatırım sermayesi birikmez, ~%70 üzerinde
- * sınıf küçülmeye başlar. "Sanayiyi kim finanse edecek" böylece gerçek bir
- * tercih olur.
- */
-const CLASS_NEEDS_BUDGET = { lower: 4, middle: 8, upper: 11 };
-
 /**
  * Sınıfların tükettiği mallar. Zincir derinleştiği için sepetler de katmanlandı:
  * alt sınıf temel gıda ve giyim, orta sınıf dayanıklı tüketim ve iletişim, üst
@@ -548,7 +530,6 @@ export function needAmount(need, turn) {
   return turn >= (need.from ?? 0) ? need.amount : 0;
 }
 
-const DEFAULT_TAXES = { lower: 20, middle: 15, upper: 10 };
 export const PRICE_SPEED = 0.09;
 /**
  * Fiyatin taban fiyatina donme hizi (bkz. updatePrices).
@@ -895,10 +876,6 @@ function emptyTradeSummary() {
     tariffRevenue: 0,
     settlement: 0,
   };
-}
-
-function emptyProfessionCounts() {
-  return Object.fromEntries(Object.keys(PROFESSION_INFO).map((id) => [id, 0]));
 }
 
 // `emptyLedger` artik treasury.js'ten gelir: defterin sekli defteri YAZAN

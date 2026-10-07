@@ -36,8 +36,6 @@ const NEEDS_FLOOR = 0.85;
 const UNREST_CEILING = 3.5;
 /** Bu okuryazarlığın altı geri kalmışlıktır. */
 const LITERACY_FLOOR = 0.25;
-/** Bir yılda bu kadar bile artmayan okuryazarlık duruyor demektir (puan). */
-const LITERACY_STALL = 0.005;
 /** Nüfusu bu oranda gerileyen bölge eriyordur. */
 const DECLINE = -0.002;
 /** Bu oranın üstünde büyüyen bölge hızlı büyüyordur. */
@@ -52,8 +50,6 @@ const ALERTS = {
   LOW_LITERACY: { id: 'LOW_LITERACY', label: 'Low Literacy', tone: 'warn', weight: 30 },
   GROWING_FAST: { id: 'GROWING_FAST', label: 'Growing Fast', tone: 'good', weight: 10 },
 };
-
-export const ALERT_IDS = Object.keys(ALERTS);
 
 /* ==========================================================================
    YARDIMCILAR

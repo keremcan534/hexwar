@@ -14,8 +14,6 @@ import { DIRS, HEX_CORNERS } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { makeRng, fbm } from './textures.js';
 
-const TAU = Math.PI * 2;
-
 /** renderer.FILL_CHUNK ile aynı gerekçe: tek dev Path2D süper-doğrusal pahalı. */
 const FILL_CHUNK = 256;
 
@@ -220,7 +218,7 @@ export class WaterLayer {
     /** 'low' | 'medium' | 'high' — low: taban+kabarma, medium: +kırışık+kıyı, high: +parıltı+yerel etki. */
     this.quality = 'high';
     /** Geliştirici anahtarları; oyuncu arayüzünde yok. Konsoldan: game.renderer.water.debug.shimmer = false */
-    this.debug = { base: true, swell: true, ripple: true, shimmer: true, foam: true, disturbance: true };
+    this.debug = { base: true, swell: true, ripple: true, shimmer: true, foam: true };
     /**
      * İleride hava/gün-gece sistemleri bu yüzeyden konuşsun diye API burada
      * hazır; bugün kimse yazmıyor. lightDirection dünya uzayında birim
@@ -230,14 +228,9 @@ export class WaterLayer {
     this.textures = null;
     this.patterns = null;
     this.worldCache = null;
-    this.disturbances = [];
     /** Son karede hareketli katman çizildi mi — Game buna bakıp sonraki kareyi zamanlar. */
     this.animatedThisFrame = false;
     this.corners = HEX_CORNERS.map(([x, y]) => [x * HEX_SIZE, y * HEX_SIZE]);
-  }
-
-  setEnvironment(partial) {
-    Object.assign(this.env, partial);
   }
 
   ensurePatterns(ctx) {
@@ -699,9 +692,6 @@ export class WaterLayer {
         animated = true;
       }
     }
-    if (quality === 'high' && dbg.disturbance) {
-      animated = this.drawDisturbances(ctx, time) || animated;
-    }
     if (animated) this.animatedThisFrame = true;
   }
 
@@ -750,49 +740,6 @@ export class WaterLayer {
       ctx.strokeStyle = `rgba(191, 208, 207, ${(base[tier] * breathe).toFixed(3)})`;
       for (const path of tiers[tier]) ctx.stroke(path);
     }
-  }
-
-  /**
-   * Yerel su bozulması: gemi dümen suyu, top ağzı şok dalgası, patlama gibi
-   * gelecekteki etkiler için ortak temel. Oyun sistemlerine bağlı değildir;
-   * çağıran dünya koordinatı verir. Görsel dil: önce yüzeyi "düzleyen"
-   * basınç yaması (küçük kırışıklıklar kısa süre silinir), ardından dışa
-   * yayılan soluk halka — bariz beyaz daire değil.
-   */
-  addRipple(x, y, { radius = HEX_SIZE * 1.6, strength = 1, duration = 1.8 } = {}) {
-    this.disturbances.push({ x, y, radius, strength, duration, start: null });
-  }
-
-  drawDisturbances(ctx, time) {
-    const list = this.disturbances;
-    if (!list.length) return false;
-    let write = 0;
-    let drawn = false;
-    for (let i = 0; i < list.length; i++) {
-      const d = list[i];
-      // Başlangıç ilk çizimde damgalanır: çağıranın zaman kaynağı bilmesi gerekmez.
-      if (d.start === null) d.start = time;
-      const p = (time - d.start) / d.duration;
-      if (p >= 1) continue;
-      list[write++] = d;
-      drawn = true;
-      const ease = 1 - (1 - p) ** 2;
-      const r = d.radius * (0.2 + 0.8 * ease);
-      ctx.globalAlpha = 0.30 * d.strength * (1 - p);
-      ctx.fillStyle = '#123746';
-      ctx.beginPath();
-      ctx.arc(d.x, d.y, r * 0.85, 0, TAU);
-      ctx.fill();
-      ctx.globalAlpha = 0.20 * d.strength * (1 - p) ** 1.5;
-      ctx.strokeStyle = '#bacccc';
-      ctx.lineWidth = Math.max(1.2, r * 0.16 * (1 - p * 0.5));
-      ctx.beginPath();
-      ctx.arc(d.x, d.y, r, 0, TAU);
-      ctx.stroke();
-    }
-    list.length = write;
-    ctx.globalAlpha = 1;
-    return drawn;
   }
 
   /**

@@ -364,7 +364,7 @@ export class Hud {
         // `debug.swell`e bakar, `quality`ye DEGIL: kalite 'low' yapilsa bile
         // desen dolgusu -- maliyetin tamami -- yine calisiyordu. `base` acik
         // kalir, yani deniz duruyor; yalnizca canlanmiyor.
-        for (const key of ['swell', 'ripple', 'shimmer', 'foam', 'disturbance']) {
+        for (const key of ['swell', 'ripple', 'shimmer', 'foam']) {
           water.debug[key] = e.target.checked;
         }
         game.renderer.invalidateCache();
@@ -1364,7 +1364,8 @@ export class Hud {
 
     // Artakalan durum bilgileri (Status, Territory, Occupation, Worked By):
     // seyrek ama önemli — kendi uyarı satırlarında durur.
-    const notes = stats.map(([k, v]) => `<span class="pv-note"><small>${k}</small>${v}</span>`).join('');
+    // Değerler düz metin; şehir adı kayıttan aynen döner (içe aktarılan kayıt).
+    const notes = stats.map(([k, v]) => `<span class="pv-note"><small>${k}</small>${escapeHtml(String(v))}</span>`).join('');
 
     body.innerHTML = unitBlock + this.actionsHtml(tile) + `
       <div class="province-view">
@@ -1736,7 +1737,9 @@ export class Hud {
         const unit = game.world.units.find((u) => String(u.id) === btn.dataset.disband);
         if (!unit || unit.battleId) return;
         if (disband(game, unit)) {
-          game.selectedUnit = null;
+          // Seçimden de düşsün: yalnız selectedUnit sıfırlanınca ölü birlik
+          // seçili listede kalıyor, sağ tık ona yürüyüş emri veriyordu.
+          game.selectUnits(game.selection.filter((u) => u !== unit));
           this.showTile(game.selected);
           game.requestRender();
         }

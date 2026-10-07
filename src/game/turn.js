@@ -855,7 +855,9 @@ export class TurnManager {
    */
   withdrawTrespassers() {
     const world = this.world;
-    for (const unit of world.units) {
+    // Kopya üzerinde: disband birimi diziden yerinde siliyor, canlı dizide
+    // bir sonraki birim o hafta atlanıyordu.
+    for (const unit of [...world.units]) {
       if (unit.type.domain !== 'land' || unit.embarked || unit.battleId) continue;
       const tile = unit.tile;
       if (!tile) continue;

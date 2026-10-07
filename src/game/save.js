@@ -9,6 +9,7 @@ import {
   createUnit, refreshArmy, resetUnitIds, resolveTypeId, unitIdCursor,
 } from './units.js';
 import { createCity, englishCityName } from './cities.js';
+import { generateWorld } from '../world/worldgen.js';
 import { ensureEconomy } from './economy.js';
 import { ensureCommand, ensureCommandOptions } from './command.js';
 import { ensureTraining } from './recruitment.js';
@@ -341,14 +342,18 @@ export function deserialize(game, data) {
   // 1) Aynı seed ve ayarlarla dünyayı yeniden kur (arazi, iklim, kültür aynı).
   // Province ureteci surumu kayitla gelir; alani olmayan eski kayit v1
   // bolumlemesiyle yazilmistir (bkz. provinces-gen PROVINCE_GEN_LATEST).
-  game.newWorld(data.seed, { provinceGen: 1, ...data.options });
-  const world = game.world;
-  const turns = game.turns;
+  const options = { provinceGen: 1, ...data.options };
 
   // Bölümleme parmak izi tutmuyorsa worldgen kaymış demektir: econ satırları
-  // yanlış kümelere oturacağına yükleme temiz reddedilir.
+  // yanlış kümelere oturacağına yükleme temiz reddedilir. Sınama CANLI oyuna
+  // dokunmadan, ayrı kurulan dünyada yapılır: newWorld önce çağrılınca
+  // reddedilen yükleme süren kampanyayı silip yerine boş dünya bırakıyordu.
   if (Number.isFinite(data.provinceChecksum)
-    && data.provinceChecksum !== partitionChecksum(world)) return false;
+    && data.provinceChecksum !== partitionChecksum(generateWorld(data.seed, options))) return false;
+
+  game.newWorld(data.seed, options);
+  const world = game.world;
+  const turns = game.turns;
 
   // 2) Üretimden gelen durumu temizle: kayıt tam durumu taşır.
   world.units.length = 0;
@@ -394,7 +399,12 @@ export function deserialize(game, data) {
   for (const saved of data.nations) {
     const nation = world.nations[saved.id];
     if (!nation) continue;
-    for (const f of NATION_FIELDS) nation[f] = saved[f];
+    // v20 öncesi kayıtta `accepted` yoktur: üretimin değeri kalır. undefined
+    // yazılınca kuruluşta kabul edilen komşu kültürler yabancı sayılıyordu.
+    for (const f of NATION_FIELDS) {
+      if (f === 'accepted' && saved[f] === undefined) continue;
+      nation[f] = saved[f];
+    }
     if (saved.capitalAt) nation.capital = world.get(saved.capitalAt[0], saved.capitalAt[1]) ?? nation.capital;
     nation.economy = saved.economy ?? nation.economy;
     // Politics eski kayıtlarda yoktur. Başlangıçta üretilen turn-1 verisini
@@ -568,6 +578,12 @@ export function deserialize(game, data) {
   world.forEach((tile) => {
     if (tile.owner >= 0 && world.nations[tile.owner]) world.nations[tile.owner].tiles++;
   });
+  // Province sayacı da: ilk haftalık tike dek dünya üretiminin değeri kalıyor,
+  // duraklatılmış oyunda vasal bırakma sınaması ve sayaç yanlış okuyordu.
+  for (const nation of world.nations) nation.provinces = 0;
+  for (const province of world.provinces ?? []) {
+    if (province.owner >= 0 && world.nations[province.owner]) world.nations[province.owner].provinces++;
+  }
 
   // 8) Tur durumu
   turns.turn = data.turn;

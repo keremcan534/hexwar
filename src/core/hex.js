@@ -65,11 +65,6 @@ export function hexDistance(aq, ar, bq, br) {
   return (Math.abs(dq) + Math.abs(dq + dr) + Math.abs(dr)) / 2;
 }
 
-export function neighbor(q, r, dir) {
-  const d = DIRS[dir];
-  return { q: q + d[0], r: r + d[1] };
-}
-
 /** Merkezden `radius` mesafedeki tüm hexler (merkez dahil). */
 export function hexesInRange(cq, cr, radius) {
   const out = [];

@@ -7,7 +7,7 @@
 //   ölüm     → kalıcı kayıp, kimseye geri dönmez
 
 import {
-  UNIT_TYPES, createUnit, removeUnit, resolveTypeId, stackFull, unitAvailable,
+  UNIT_TYPES, createUnit, removeUnit, resolveTypeId, stackFull, unitAvailable, unitsOn,
 } from './units.js';
 import { orderMove } from './movement.js';
 import { lawModifiers } from './politics.js';
@@ -185,17 +185,6 @@ export function canRecruit(world, nation, typeId) {
   return Boolean(recruitmentSource(world, nation, resolveTypeId(typeId)));
 }
 
-/** Siparislerin henuz karsilanmamis teçhizati: aile -> miktar. */
-export function trainingShortfall(nation) {
-  const out = {};
-  for (const item of nation?.training?.queue ?? []) {
-    for (const [id, amount] of Object.entries(item.missing ?? {})) {
-      if (amount > 0) out[id] = (out[id] ?? 0) + amount;
-    }
-  }
-  return out;
-}
-
 /** Depoda bulunani siparisin eksigine aktarir; eksik kaldiysa false. */
 function fillOrder(nation, item) {
   let complete = true;
@@ -242,11 +231,14 @@ function deploymentTile(world, source, typeId) {
       (tile) => tile.terrain.navigable && !stackFull(tile),
     ) ?? null;
   }
-  // Tümenler birleşmediği için dolu olmayan yığına inmek serbest.
-  if (!stackFull(source)) return source;
+  // Tümenler birleşmediği için dolu olmayan yığına inmek serbest — ama
+  // yalnız kendi kontrolümüzde ve yabancı tümen yokken: işgal edilmiş
+  // kaynakta alay düşman yığınının ÜSTÜNE doğuyordu.
+  const own = (tile) => controllerOf(tile) === source.owner
+    && unitsOn(tile).every((unit) => unit.nationId === source.owner);
+  if (!stackFull(source) && own(source)) return source;
   return world.neighbors(source).find(
-    (tile) => tile.terrain.passable && !stackFull(tile)
-      && controllerOf(tile) === source.owner,
+    (tile) => tile.terrain.passable && !stackFull(tile) && own(tile),
   ) ?? null;
 }
 
@@ -280,8 +272,11 @@ export function recruit(game, nation, typeId, options = {}) {
   if (charge && !Object.entries(equipmentCost)
     .every(([equipmentId, amount]) => equipmentStock(nation, equipmentId) >= amount)) return null;
   const need = UNIT_TYPES[id].manpower;
+  // Söz verilen kaynak savaşta işgal edildiyse taze kaynak seçilir
+  // (recruitmentSource da işgalli kümeyi atlar).
   const usable = preferred && preferred.province
     && world.provinces?.[preferred.provinceId]?.owner === nation.id
+    && occupiedShareOf(world, world.provinces[preferred.provinceId]) === 0
     && regionManpower(world, preferred) >= need
       ? preferred : null;
   const source = usable ?? recruitmentSource(world, nation, id);

@@ -58,38 +58,7 @@ function defaultCostOf(tile) {
   return tile.terrain.moveCost;
 }
 
-/**
- * Verilen hareket bütçesiyle ulaşılabilen tüm kareler.
- * @returns {{ costs: Map<object, number>, prev: Map<object, object> }}
- */
-export function reachable(world, start, budget, {
-  canEnter = defaultCanEnter,
-  costOf = defaultCostOf,
-} = {}) {
-  const costs = new Map([[start, 0]]);
-  const prev = new Map();
-  const heap = new MinHeap();
-  heap.push({ tile: start, f: 0 });
-
-  while (heap.size) {
-    const { tile, f } = heap.pop();
-    if (f > (costs.get(tile) ?? Infinity)) continue; // eskimiş giriş
-    for (let d = 0; d < 6; d++) {
-      const n = world.get(tile.q + DIRS[d][0], tile.r + DIRS[d][1]);
-      if (!n) continue;
-      if (!canEnter(n, tile)) continue;
-      const next = f + costOf(n, tile);
-      if (next > budget) continue;
-      if (next >= (costs.get(n) ?? Infinity)) continue;
-      costs.set(n, next);
-      prev.set(n, tile);
-      heap.push({ tile: n, f: next });
-    }
-  }
-  return { costs, prev };
-}
-
-/** reachable() sonucundan hedefe giden kare dizisi (başlangıç hariç). */
+/** Önceki-kare haritasından hedefe giden kare dizisi (başlangıç hariç). */
 export function tracePath(prev, target) {
   const path = [];
   let cur = target;

@@ -147,7 +147,6 @@ export const LAWS = [
 ];
 
 export const LAW_BY_ID = Object.fromEntries(LAWS.map((item) => [item.id, item]));
-export const LAW_IDS = LAWS.map((item) => item.id);
 const TOP_LEVEL = 2;
 
 /** Bir yasa, yılda bir değişir. Oyuncu da YZ de aynı saatten geçer. */

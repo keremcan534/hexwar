@@ -102,22 +102,6 @@ export function settle(nation, line, amount) {
 }
 
 /**
- * Odeyebildigi kadarini oder. Hazine yetmiyorsa KISMI oder ve ne kadarini
- * odeyemedigini dondurur — cagiran taraf bunu goruntuleyebilir ya da borca
- * cevirebilir. `cost` pozitif verilir.
- *
- * Zorunlu giderler bunu KULLANMAZ: ordu tuketimi gibi kalemler bilerek
- * hazineyi eksiye iter ve borclanma devralir (bkz. settleDebt).
- */
-export function settleAffordable(nation, line, cost) {
-  if (!Number.isFinite(cost) || cost <= 0) return { paid: 0, short: 0 };
-  const available = Math.max(0, nation?.gold ?? 0);
-  const paid = Math.min(cost, available);
-  settle(nation, line, -paid);
-  return { paid, short: cost - paid };
-}
-
-/**
  * Haftayi kapatir ve defteri YAZAR — yeniden kurmaz, yalnizca toplar.
  *
  * gelir  = kalemlerin pozitif kismi (finansman haric)
@@ -171,25 +155,6 @@ export function closeWeek(nation, turn) {
   // `produce()`a birakilsaydi o harcamalar hicbir haftaya yazilmazdi.
   openWeek(nation);
   return economy.ledger;
-}
-
-/**
- * ACIK haftanin o ana kadarki toplami. Borclanma kapasitesi ve tanilama bunu
- * okur: kapanmis defter GECEN haftanindir, bu ise su ana kadar gerceklesmis
- * olandir.
- */
-export function weekTotals(nation) {
-  const week = ledgerWeekOf(nation);
-  if (!week) return { income: 0, expenses: 0, net: 0 };
-  let income = 0;
-  let expenses = 0;
-  for (const id of LEDGER_LINE_IDS) {
-    if (LEDGER_LINES[id].kind === 'financing') continue;
-    const value = week[id] ?? 0;
-    if (value >= 0) income += value;
-    else expenses += -value;
-  }
-  return { income, expenses, net: income - expenses };
 }
 
 /** Bos defter: ekranin ve YZ'nin ilk hafta okuyabilecegi guvenli taban. */

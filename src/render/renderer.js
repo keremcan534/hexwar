@@ -13,7 +13,6 @@ import { maxHpOf, menUnderArms, organizationOf, soldiersOf, unitsOn } from '../g
 import { terrainShade } from '../world/terrain.js';
 import { RGO_TYPES } from '../game/provinces.js';
 import { controllerOf, isOccupied } from '../game/control.js';
-import { materials } from './textures.js';
 import { WaterLayer } from './water.js';
 import { LandMaterial } from './material.js';
 import { SurfaceGL } from './surfaceGL.js';
@@ -261,9 +260,6 @@ const POLITICAL_TERRAIN_WEIGHT = 0.22;
  * katman yeniden kurulur.
  */
 const STATIC_PAD = 0.26;
-/** Statik katman bu büyütme aralığında ölçeklenerek kullanılır; dışında kurulur. */
-const STATIC_MAG_MIN = 0.78;
-const STATIC_MAG_MAX = 1.35;
 /** Pinch bittikten bu kadar ms sonra net (1:1) görüntü için yeniden kurulur. */
 const STATIC_SETTLE_MS = 150;
 /** Statik katman dokusunun azami kenarı (piksel); pay gerekirse kısılır. */
@@ -547,42 +543,6 @@ export class Renderer {
   }
 
   /**
-   * Malzeme geçişinden sonra DENİZİ yeniden saydam yapar.
-   *
-   * Neden gerekli: `material.paint` tek dikdörtgen olarak `overlay` ile
-   * biner. Saydam bir hedefe karışım uygulanınca sonuç kaynağın kendisidir
-   * (arka plan alfası 0 → karışım = kaynak, source-over ile opak biner), yani
-   * deniz alanı ORTA GRİ boyanıyordu — hibrit suda ilk gözlenen hata buydu.
-   *
-   * Çare: malzemeden ÖNCE katmanın alfası anlık kopyalanır, sonra
-   * `destination-in` ile geri uygulanır. Kaynak gerçek hex dolgusudur, yani
-   * maske tam kenarlıdır; binlerce hexlik kırpma yolu kurmaya gerek yok.
-   * Maliyet katman başına iki tam boy blit ve yalnız pişirmede ödenir.
-   */
-  maskToLand(ctx, paint) {
-    const canvas = ctx.canvas;
-    let scratch = this.landMaskScratch;
-    if (!scratch || scratch.width !== canvas.width || scratch.height !== canvas.height) {
-      scratch = document.createElement('canvas');
-      scratch.width = canvas.width;
-      scratch.height = canvas.height;
-      this.landMaskScratch = scratch;
-    }
-    const sc = scratch.getContext('2d');
-    sc.setTransform(1, 0, 0, 1, 0, 0);
-    sc.clearRect(0, 0, scratch.width, scratch.height);
-    sc.drawImage(canvas, 0, 0);
-    paint();
-    const t = ctx.getTransform();
-    ctx.save();
-    ctx.setTransform(1, 0, 0, 1, 0, 0);
-    ctx.globalCompositeOperation = 'destination-in';
-    ctx.drawImage(scratch, 0, 0);
-    ctx.restore();
-    ctx.setTransform(t);
-  }
-
-  /**
    * Hibrit su tuvalini bağlar. WebGL2 yoksa sessizce vazgeçilir ve her şey
    * Canvas2D'de kalır — katman silinmez, yalnız devreye girmez.
    */
@@ -638,7 +598,12 @@ export class Renderer {
    * tek şey denizin MALZEMELİ mi düz mü çizileceğidir (bkz. uSeaMaterial).
    */
   glWater() {
-    return !!this.waterGL?.debug.enabled && !this.waterGL.lost && !!this.waterGL?.world;
+    // GL dokuları ÇİZİLEN dünyaya ait olmalı: yeni dünya ilk karelerde eski
+    // dünyanın kara maskesi ve yüksekliğiyle boyanıyordu (ısıtma setWorld'ü
+    // birkaç kare sonra çağırır). O aralıkta zemin Canvas2D'den çizilir.
+    const wgl = this.waterGL;
+    return !!wgl?.debug.enabled && !wgl.lost && !!wgl.world
+      && (!this.renderWorld || wgl.world === this.renderWorld);
   }
 
   /** Okunurluk için takma ad; yüzey artık karayı da çiziyor. */
@@ -778,7 +743,7 @@ export class Renderer {
     // zamandan bağımsızdır (uSeaMaterial 0), zincir aynı kareyi boşuna
     // yeniden çiziyordu (ölçüldü: duraklatılmış haritada 5 sn'de 35 tam kare).
     if (this.glWater() && this.waterAnimatedMode()) return true;
-    return this.water.animatedThisFrame || this.water.disturbances.length > 0
+    return this.water.animatedThisFrame
       || this.labelFadePending === true || this.waterSkipped === true;
   }
 
@@ -788,7 +753,12 @@ export class Renderer {
    * zincir kesilirse iş bir sonraki etkileşime dek yarım kalıyordu.
    */
   hasPendingJobs() {
-    return !!this.staticJob || !!this.farJob || !!this.bandJob;
+    // Yalnız bu karede İLERLEYECEK işler sayılır. Yakın katman işi uzak zoomda,
+    // gölge işi siyasi kip ya da GL yüzeyi dışında hiç ilerlemez; sayılırsa
+    // kare zinciri duraklatılmış haritada bile sonsuza dek tam hızda dönüyordu.
+    const near = this.camera.zoom >= CACHE_ZOOM;
+    const band = !!this.bandJob && this.mapMode === 'political' && this.glSurface();
+    return (!!this.staticJob && near) || !!this.farJob || band;
   }
 
   /**
@@ -1815,7 +1785,11 @@ export class Renderer {
     const ctx = this.ctx;
     const cam = this.camera;
     // GL bağlamı geri geldiğinde dokular bu dünyadan yeniden kurulur.
+    const wasGL = this.glSurface();
     this.renderWorld = world;
+    // Dünya değiştiyse yüzey GL'den Canvas2D'ye (ya da geri) geçmiş olabilir:
+    // pişmiş katmanlar diğer kipin zeminini taşıyor (bkz. surfaceChanged).
+    if (this.glSurface() !== wasGL) this.surfaceChanged();
     // Diplomasi kipinin varsayılan bakış açısı; renk dokusu aşağıda bu kareden
     // önce tazelenirse doğru ülkeye göre kurulsun.
     if (state.playerNation != null && state.playerNation !== this.viewPlayer) {
@@ -2094,7 +2068,6 @@ export class Renderer {
     }
 
     t0 = performance.now();
-    if (state.reachable) this.drawReachable(ctx, state.reachable);
     // ORDU SECILIYKEN EYALET VURGUSU YOK. Secili kare panelin baglamidir
     // (ordunun durdugu yer) ama haritada eyalet cercevesi cizmek, oyuncuya
     // "eyalet de secildi" diyordu (Kerem: asker seciliyken state secme bugu).
@@ -3101,19 +3074,6 @@ export class Renderer {
     ctx.lineWidth = (hover ? 1.8 : 2.2) / zoom;
     ctx.strokeStyle = hover ? 'rgba(255, 255, 255, 0.45)' : 'rgba(229, 202, 132, 0.85)';
     ctx.stroke(outline);
-  }
-
-  /** Seçili birimin gidebileceği kareler. */
-  drawReachable(ctx, reachable) {
-    const path = new Path2D();
-    for (const tile of reachable.costs.keys()) this.hexPath(path, tile.x, tile.y);
-    ctx.globalAlpha = 0.22;
-    ctx.fillStyle = '#ffffff';
-    ctx.fill(path);
-    ctx.globalAlpha = 1;
-    ctx.lineWidth = 1.5 / this.camera.zoom;
-    ctx.strokeStyle = 'rgba(255,255,255,0.5)';
-    ctx.stroke(path);
   }
 
   /**

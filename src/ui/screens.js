@@ -5,7 +5,7 @@
 // mevcut olduğu için ekranlar gerçek sayılarla dolduruldu; etkileşimler de
 // var olan fonksiyonlara bağlandı (yeni oyun mantığı yazılmadı).
 
-import { canAfford, formatCost, pay } from '../game/cities.js';
+import { canAfford, pay } from '../game/cities.js';
 import {
   MIN_WAR_TURNS, atWar, crisisLeft, nationStrength, relation, truceLeft,
   ULTIMATUM_WEEKS,
@@ -18,7 +18,7 @@ import {
 import { INFAMY_COALITION } from '../game/infamy.js';
 import { acceptCulture, expelCulture, releaseToKin } from '../game/culture.js';
 import { maxHpOf, menUnderArms, organizationOf, soldiersOf } from '../game/units.js';
-import { RGO_TYPES, depositsOf, provinceName } from '../game/provinces.js';
+import { RGO_TYPES, depositsOf } from '../game/provinces.js';
 import { populationGroupDetail, populationOverview } from '../game/populationView.js';
 import { populationScreen } from './populationScreen.js';
 import {
@@ -28,17 +28,14 @@ import { tradeScreen } from './tradeScreen.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { hydrateFlags } from '../render/flagWave.js';
 import { hegemonyScore, scoreboard } from '../game/hegemony.js';
-import { factoryEmblem, resourceGlyph } from './icons/index.js';
+import { factoryEmblem } from './icons/index.js';
 import {
-  CLASS_INFO, FACTORIES, GOODS, GOOD_IDS,
-  MILITARY_EQUIPMENT,
-  SOCIAL_PROGRAMS, buildFactory, closeFactory, factoryAtlas, upgradeFactory,
-  debtCapacity, debtInterestRate, formatPopulation, populationOf,
-  applyTaxHolds, applyTariffAim, budgetBreakdown, setBudgetPolicy, setTariffAim, setTaxHold,
-  TAX_POLICY_CLASS, taxHold,
-  weeklyBalanceOf,
-  setMilitaryProductionLine, socialSpendingCost, ensureProductionLine, supportProject,
-  setFactoryPaused,
+  FACTORIES, GOODS, MILITARY_EQUIPMENT, buildFactory, closeFactory,
+  factoryAtlas, upgradeFactory, debtCapacity, debtInterestRate,
+  formatPopulation, populationOf, applyTaxHolds, applyTariffAim,
+  budgetBreakdown, setBudgetPolicy, setTariffAim, setTaxHold, TAX_POLICY_CLASS,
+  taxHold, weeklyBalanceOf, setMilitaryProductionLine, ensureProductionLine,
+  supportProject, setFactoryPaused,
 } from '../game/economy.js';
 import { MAX_ROUNDS, battleSides, battlesFor } from '../game/battles.js';
 import { cancelTraining, moveTrainingTo, prioritizeTraining } from '../game/recruitment.js';
@@ -208,59 +205,6 @@ const LEDGER = {
   armyFunding: LEDGER_ART('army'),
   education: LEDGER_ART('education'),
 };
-
-/**
- * Sosyal programın defterdeki payı. Toplam socialCost gerçek; program başına
- * bölüşüm seviye oranıyla yapılır (ayrı ayrı ölçülmüyor). Kabuk aşaması için
- * yeterli — üç kaydıraç da aynı gerçek toplamı paylaşır.
- */
-/**
- * "Borc neden buyuyor?" dokumu — debtInterestRate'in GERCEK terimleri
- * (taban + doluluk + kredi cezasi) ve haftalik defter net'i.
- */
-function debtWhy(me) {
-  const debt = Math.max(0, me.debt ?? 0);
-  const capacity = debtCapacity(me);
-  const load = capacity > 0 ? Math.min(1, debt / capacity) : 0;
-  const credit = Math.min(0.85, Math.max(0, me.economy?.creditPenalty ?? 0));
-  const net = me.economy?.ledger?.net ?? 0;
-  const interest = Math.abs(me.economy?.ledger?.interest ?? 0);
-  return [
-    `Base rate  =  4.0%`,
-    `Capacity used ${(load * 100).toFixed(0)}% × 8  =  +${(load * 8).toFixed(1)}%`,
-    credit > 0 ? `Default record × 10  =  +${(credit * 10).toFixed(1)}%` : 'Default record  =  +0.0%',
-    `Interest this week  =  £${interest.toFixed(1)}`,
-    `Ledger net  =  ${net >= 0 ? '+' : ''}£${net.toFixed(1)}/wk`,
-    net < 0 ? 'The deficit itself is what feeds the debt.' : 'The debt shrinks while the ledger stays positive.',
-  ].join('\n');
-}
-
-/** Bütçe: bu hafta ithal edilen askeri mallar — "ammunition 4.2 · fuel 2.0". */
-function strategicImportNote(me) {
-  const military = me.economy?.military ?? {};
-  const items = Object.entries(MILITARY_EQUIPMENT)
-    .map(([id, type]) => ({ name: type.name, amount: military[`${id}Imported`] ?? 0 }))
-    .filter((row) => row.amount > 0.05)
-    .map((row) => `${row.name.toLowerCase()} ${row.amount.toFixed(1)}`);
-  return items.length
-    ? `this week: ${items.join(' · ')}`
-    : 'buys critical equipment abroad when stock runs short';
-}
-
-/** Bütçe: sübvanse edilen tesisler — "3 plants: Steel Mill −3.7 …". */
-function subsidyNote(me) {
-  const rows = (me.economy?.factories ?? [])
-    .filter((factory) => factory.subsidized)
-    .map((factory) => ({
-      name: FACTORIES[factory.typeId]?.name ?? factory.typeId,
-      paid: factory.subsidyPaid ?? 0,
-    }))
-    .sort((a, b) => b.paid - a.paid);
-  if (!rows.length) return '';
-  const top = rows.slice(0, 3)
-    .map((row) => `${row.name} −${row.paid.toFixed(1)}`).join(' · ');
-  return `${rows.length} subsidised ${rows.length === 1 ? 'plant' : 'plants'}: ${top}`;
-}
 
 export class Screens {
   constructor(game) {
@@ -1186,31 +1130,6 @@ export class Screens {
     return industryScreen(view, state, catalogue);
   }
 
-
-  /**
-   * Tesisin ULUSAL baglami — yalniz gercek akislardan (goodsFlow) turen
-   * cumleler: girdinin ne kadari ithal, ciktinin ne kadari ihrac. Tesis
-   * basina pay UYDURULMAZ (uretim tesise paylastirilamiyor; ulusal rakam
-   * acikca "national" diye etiketlenir).
-   */
-  factoryContext(me, type) {
-    const flow = me.economy?.goodsFlow ?? {};
-    const parts = [];
-    for (const id of Object.keys(type.inputs ?? {})) {
-      const f = flow[id];
-      if (!f || (f.demand ?? 0) <= 0.05) continue;
-      const share = Math.round(((f.imports ?? 0) / f.demand) * 100);
-      if (share >= 25) parts.push(`${GOODS[id]?.name ?? id} is ${share}% imported nationally`);
-    }
-    for (const id of Object.keys(type.outputs ?? {})) {
-      const f = flow[id];
-      if (!f || (f.production ?? 0) <= 0.05) continue;
-      const share = Math.round(((f.exports ?? 0) / f.production) * 100);
-      if (share >= 25) parts.push(`${share}% of national ${GOODS[id]?.name ?? id} is exported`);
-    }
-    return parts.length
-      ? `<small class="factory-context">${esc(parts.slice(0, 2).join(' · '))}</small>` : '';
-  }
 
   /**
    * Askerî üretim hatları: hangi silah fabrikası neyi yapıyor. Eskiden ayrı
