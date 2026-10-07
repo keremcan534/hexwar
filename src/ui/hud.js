@@ -1828,7 +1828,7 @@ function resourcesHtml(nation) {
     + statCell('infamy', 'Infamy', `<span class="${infamyClass}">${infamy.toFixed(1)}</span>`, 'data-tip="infamy"');
 }
 
-/** Altı kaynak çipi: karşılanma oranı; eksik olan kırmızı yanar. */
+/** Kaynak çipleri: karşılanma oranı; eksik olan kırmızı yanar, talebi olmayan (1836'da petrol) çizgi. */
 function resourceChips(nation) {
   const records = nation.economy?.resources ?? {};
   return `<span class="res-chips">${RESOURCE_IDS.map((id) => {

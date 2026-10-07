@@ -10,8 +10,10 @@
 export const POP_UNIT = 100000;
 
 /**
- * Altı kaynak. Akış olarak işler: stok yoktur, her hafta üretilir, tüketilir,
- * fazlası satılır, açığı alınır. `price` dünya fiyatının tabanıdır (altın/birim).
+ * Sekiz kaynak: altı temel + iki çağ kaynağı (petrol, kauçuk). Akış olarak
+ * işler: stok yoktur, her hafta üretilir, tüketilir, fazlası satılır, açığı
+ * alınır. `price` dünya fiyatının tabanıdır (altın/birim). Çağ kaynaklarının
+ * 1836'da alıcısı yoktur; talebi teknolojiyle doğar (bkz. OIL_PER_IC).
  */
 export const RESOURCES = {
   FOOD: { id: 'FOOD', name: 'Food', glyph: '🌾', color: '#c9a13a', hue: 45, sat: 45, price: 1.0 },
@@ -20,18 +22,31 @@ export const RESOURCES = {
   TIMBER: { id: 'TIMBER', name: 'Timber', glyph: '🪵', color: '#6f8a3a', hue: 95, sat: 38, price: 1.2 },
   HORSES: { id: 'HORSES', name: 'Horses', glyph: '🐎', color: '#a0703c', hue: 30, sat: 45, price: 2.2 },
   SALTPETER: { id: 'SALTPETER', name: 'Saltpeter', glyph: '✦', color: '#d8d0c0', hue: 280, sat: 30, price: 3.0 },
+  OIL: { id: 'OIL', name: 'Oil', glyph: '🛢', color: '#3d3346', hue: 300, sat: 12, price: 2.5, era: true },
+  RUBBER: { id: 'RUBBER', name: 'Rubber', glyph: '◍', color: '#4f8a7a', hue: 165, sat: 30, price: 2.8, era: true },
 };
 export const RESOURCE_IDS = Object.keys(RESOURCES);
 
-/** Yataktan çıkan kaynaklar (gıda araziden gelir, yatağı yoktur). */
-export const DEPOSIT_IDS = ['COAL', 'IRON', 'TIMBER', 'HORSES', 'SALTPETER'];
+/**
+ * Province'in ANA kaynağı olabilecekler: her province birini çıkarır. Gıda
+ * ayrıca her province'te topraktan gelir; gıda ana kaynağı "tahıl ambarı"dır.
+ */
+export const DEPOSIT_IDS = ['FOOD', 'COAL', 'IRON', 'TIMBER', 'HORSES', 'SALTPETER'];
+/** Çağ kaynakları: bazı province'lerde ikinci satır olarak yatar. */
+export const ERA_DEPOSIT_IDS = ['OIL', 'RUBBER'];
 
 /**
- * Yatak hex'i başına haftalık çıktı (maden ve demiryolundan önce). Kömür en
- * bol: sanayinin yakıtı; yine de 64 yıllık koşuda dünya kömürü sanayiyi
- * frenler (ölçüldü: tek çıktıyla 1900'de medyan kömür oranı 0.09).
+ * Kaynak hex'i başına haftalık çıktı (maden ve demiryolundan önce). Her
+ * province bir kaynak çıkardığından kaynak hex'i eskisinin ~2.4 katıdır;
+ * hex başı çıktı aynı oranda indirildi ki dünya toplamı ve kıtlık korunsun
+ * (eski hex modeli: kömür 0.45, demir 0.17, kereste 0.25, at 0.16,
+ * güherçile 0.2 — %7/6.5/7/7.5/4 hex payıyla). Gıda satırı tahıl ambarının
+ * topraktan gelen gıdaya EKİdir.
  */
-export const DEPOSIT_OUTPUT = { COAL: 0.45, IRON: 0.17, TIMBER: 0.25, HORSES: 0.16, SALTPETER: 0.2 };
+export const DEPOSIT_OUTPUT = {
+  FOOD: 0.05, COAL: 0.185, IRON: 0.074, TIMBER: 0.097, HORSES: 0.075, SALTPETER: 0.13,
+  OIL: 0.2, RUBBER: 0.12,
+};
 
 /**
  * Gıda: nüfus birimi başına üretim `FOOD_BASE + FOOD_FERTILITY × verim`.
@@ -51,7 +66,7 @@ export const FOOD_NEED = 1.0;
  */
 export const BUILDINGS = {
   farm: { id: 'farm', name: 'Farm', cost: 80, upkeep: 0.05, weeks: 12, max: 3, effect: 'Food +25%' },
-  mine: { id: 'mine', name: 'Mine', cost: 120, upkeep: 0.15, weeks: 16, max: 3, effect: 'Deposit output +50%', needsDeposit: true },
+  mine: { id: 'mine', name: 'Extraction Works', cost: 120, upkeep: 0.15, weeks: 16, max: 3, effect: 'Province resource output +50%', needsDeposit: true },
   factory: { id: 'factory', name: 'Factory', cost: 250, upkeep: 0.4, weeks: 26, max: 5, effect: '+1 industrial capacity', minDevelopment: 2 },
   dockyard: { id: 'dockyard', name: 'Dockyard', cost: 200, upkeep: 0.4, weeks: 30, max: 3, effect: 'Ships line +1 IC cap, naval base', coastal: true },
   barracks: { id: 'barracks', name: 'Barracks', cost: 100, upkeep: 0.2, weeks: 16, max: 2, effect: 'Manpower +20%, training faster' },
@@ -84,8 +99,10 @@ export const RAILWAY_IRON = 0.8;
  * Gemi yelken çağında kereste, zırhlı teknolojisiyle demir ve kömür yer.
  */
 export const EQUIPMENT = {
-  rifles: { id: 'rifles', name: 'Rifles', glyph: '🔫', ic: 0.1, resources: { IRON: 0.06, TIMBER: 0.03 } },
-  guns: { id: 'guns', name: 'Artillery', glyph: '💣', ic: 0.4, resources: { IRON: 0.25 } },
+  // Güherçile fişek ve mermi barutudur: barışta da hat üretimiyle talep görür,
+  // yoksa yalnız muharebe yakıyordu ve güherçile province'i barışta boştu.
+  rifles: { id: 'rifles', name: 'Rifles', glyph: '🔫', ic: 0.1, resources: { IRON: 0.06, TIMBER: 0.03, SALTPETER: 0.02 } },
+  guns: { id: 'guns', name: 'Artillery', glyph: '💣', ic: 0.4, resources: { IRON: 0.25, SALTPETER: 0.06 } },
   ships: {
     id: 'ships', name: 'Ships', glyph: '⚓', ic: 0.6, resources: { TIMBER: 0.6 },
     ironclad: { IRON: 0.5, COAL: 0.2 },
@@ -116,6 +133,21 @@ export const FACTORY_IC = 1.0;
 /** Tersane kademesi başına gemi hattına girebilen IC. */
 export const DOCKYARD_IC = 1.0;
 export const COAL_PER_IC = 0.35;
+/**
+ * Petrol: rafineri teknolojisi (`oilIc` değiştiricisi) olan ülkede fabrika
+ * IC başına haftalık petrol ister; IC bonusu yalnız karşılanan oranda gelir.
+ * Teknolojisi olmayan ülke petrol istemez — eksik petrol bonusu alır, cezayı
+ * değil. Kauçuk aynı mantıkla alay başına ister, `rubberOrg` örgütlenme verir.
+ */
+export const OIL_PER_IC = 0.12;
+export const RUBBER_PER_REGIMENT = 0.08;
+/**
+ * Gübre: kimyasal gübre teknolojisi (`saltpeterFood`) olan ülkede gıda
+ * çıktısının birimi başına güherçile. Güherçile böylece barışta da alıcı
+ * bulur; yalnız muharebe yaktığında güherçile province'leri barışta boştu
+ * (ölçüldü: 64 yılda dünya talebi 0-7, üretim 27-55).
+ */
+export const SALTPETER_PER_FOOD = 0.02;
 
 /**
  * Tüketim malı: ihtiyaç ve el tezgâhı arzı nüfus birimi başına. Çağ çarpanı

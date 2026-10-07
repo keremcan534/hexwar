@@ -11688,11 +11688,11 @@ body.picker-open .movement-dock { display: none; }
   .top-stat { height: 44px; }
 }
 
-/* Altı kaynak: 3 × 2 küçük çip, gösterge ızgarasının sonunda. */
+/* Sekiz kaynak: 4 × 2 küçük çip, gösterge ızgarasının sonunda. */
 .res-chips {
   position: relative;
   display: grid;
-  grid-template-columns: repeat(3, auto);
+  grid-template-columns: repeat(4, auto);
   gap: 2px 6px;
   padding: 0 6px 0 10px;
   align-self: center;

@@ -42,7 +42,7 @@ oyuncunun gördüğü her sayı bir karara bağlanır.
 | Sanayi (IC) | fabrika × kömür × istikrar × teknoloji | sivil pay → tüketim malı, askerî pay → teçhizat |
 | İstikrar | hükûmet, mal, savaş, huzursuzluk | SG, vergi, IC, isyan |
 | Savaş desteği | soydaş, saldırıya uğramak | kayıp, uzayan savaş; yasaların kapısı |
-| 6 kaynak | province yatağı, ithalat | üretim hatları, nüfus, muharebe |
+| 8 kaynak | province kaynağı, ithalat | üretim hatları, nüfus, muharebe |
 
 ## 2. Province — tek pop
 
@@ -60,19 +60,37 @@ kademe; bedel `20 × hedef² × √(nüfus ÷ 100 bin)` (kalabalık province'i
 kalkındırmak pahalı ama daha çok vergi getirir). Tavan: 3 + teknoloji +
 okuryazarlık × 4.
 
-## 3. Altı kaynak (akış — stok yok)
+## 3. Sekiz kaynak (akış — stok yok)
+
+**Her province bir kaynak çıkarır** (Victoria'nın RGO'su gibi): gıda ambarı,
+kömür, demir, kereste, at ya da güherçile — arazisine ve kaynak kuşağına göre
+(`econ/deposits.js`, paylar %24/19/17/18/16/6). Eski hex yatağı modelinde
+province'lerin %39-45'i boştu; kaynaksız ülke iflas etmiyordu (vergi
+kaynaktan bağımsız, ithalat bütçeyle sınırlı; ölçüldü: 10 yılda 8 kaynaksız
+ülkeden hiçbiri ölmedi, gelirinin %18'i ithalata gitti) ama haritada
+kimliksizdi. Province'lerin ~%10'unda **petrol**, ~%6'sında **kauçuk** ikinci
+satırı yatar (çöl/tundra/kıyı ve orman-cangıl lekeleri): 1836'da alıcısı
+yoktur, teknoloji yayıldıkça değerlenir — petrol patlaması.
 
 | Kaynak | Province üretimi | Tüketen | Eksikse |
 |---|---|---|---|
-| Gıda | arazi verimi × (1 + 0.25 çiftlik) | nüfus | nüfus azalır, istikrar düşer |
-| Kömür | yatak × (1 + 0.5 maden) | fabrikalar (0.25/IC) | IC × (0.6 + 0.4 oran) |
-| Demir | yatak | tüfek, top, demiryolu inşaatı | hat yavaşlar |
-| Kereste | yatak | inşaat, gemi, tüfek | inşaat yavaşlar |
-| At | yatak | süvari (0.5/hafta), topçu (0.25/hafta) | süvari/topçu gücü düşer |
-| Güherçile | yatak | muharebedeki her alay (0.2/hafta) | muharebe gücü −%30'a kadar |
+| Gıda | nüfus × verim × (1 + 0.25 çiftlik); tahıl ambarı ayrıca hex başı 0.05 | nüfus | nüfus azalır, istikrar düşer |
+| Kömür | kaynak hex'i × 0.185 | fabrikalar (0.35/IC) | IC × (0.6 + 0.4 oran) |
+| Demir | × 0.074 | tüfek, top, demiryolu inşaatı | hat yavaşlar |
+| Kereste | × 0.097 | inşaat, gemi, tüfek | inşaat yavaşlar |
+| At | × 0.075 | süvari (0.5/hafta), topçu (0.25/hafta) | süvari/topçu gücü düşer |
+| Güherçile | × 0.13 | muharebe (alay başı 0.5), tüfek ve top hattı, 1868 sonrası gübre (gıda birimi başı 0.02) | muharebe gücü −%30'a kadar, gübre bonusu kaybolur |
+| Petrol | × 0.2 (yalnız petrol lekesi) | 1868 sonrası fabrikalar (0.12/IC) | IC bonusu (en çok +%15) karşılanan oranda |
+| Kauçuk | × 0.12 (yalnız kauçuk lekesi) | 1878 sonrası her kara alayı (0.08/hafta) | muharebe bonusu (en çok +%15) karşılanan oranda |
 
-Yatak, demiryolu ve statüyle çarpılır. Güherçile yalnız savaşta tüketilir:
-barışta değersiz, savaşta hayati — savaş hedefi olmaya en uygun kaynak.
+Kaynak hex'i başı çıktı işletme (+%50/kademe, en çok 3), demiryolu ve
+statüyle çarpılır. **Çağ kaynakları ceza değil bonus taşır:** teknolojisi
+olmayan ülke petrol istemez; teknoloji (Açık Ocak 1868 + Elektrik 1880 →
+petrol, Entegre Demiryolu 1878 + Modern Doktrin 1882 → kauçuk, Kimyasal
+Gübre 1868 → güherçile) bonusu yalnız kaynak karşılandığı oranda verir.
+Ölçüm (64 yıl, tek tohum): petrol 1886'dan sonra dünya ihtiyacı ~105,
+üretim ~75, fiyat 4.1-4.3; kauçuk ihtiyaç ≈ üretim ~20, fiyat 2.8-3.4;
+güherçile barışta da 41-58 ihtiyaç, fiyat 2.6-3.0.
 
 ## 4. Ticaret
 
@@ -93,8 +111,8 @@ barışta değersiz, savaşta hayati — savaş hedefi olmaya en uygun kaynak.
 
 ## 6. Altın, borç, iflas
 
-- Vergi = Σ province `nüfus/100k × 0.9 × (1+0.2·kalkınma) × statü` × vergi yasası × `(0.8+0.4·istikrar)` × tüketim malı bonusu.
-- Bakım: kara alayı 0.5, savaş gemisi 0.8 altın/hafta; savaşta ×1.5.
+- Vergi = taç geliri 2 + Σ province `nüfus/100k × 0.45 × (1+0.25·kalkınma) × statü` × vergi yasası × `(0.8+0.4·istikrar)` × tüketim malı bonusu.
+- Bakım: kara alayı 0.6, savaş gemisi 1.0 altın/hafta; savaşta ×1.5. Bina bakımı §7 tablosunda.
 - Altın sıfırın altına inerse otomatik borç. Faiz haftada %0.3. Tavan `max(150, 20 × haftalık gelir)`.
 - **İflas** (tavan aşılırsa): borç silinir, istikrar −20 ve ordu düzeni −50 (52 hafta), inşaat kuyruğu iptal, 52 hafta borç yok.
 

@@ -127,9 +127,9 @@ gerçek bir oyun etkisi bulunur:
 
 Kaybeden taraf da masaya toprak koyarak anlaşmanın bedelini düşürebilir.
 
-### Ekonomi: altın, altı kaynak, sanayi
+### Ekonomi: altın, sekiz kaynak, sanayi
 
-Uluslar Çağı ekonomisi üç sayaç ve altı kaynaktır; sınıf, mal sepeti ve fiyat
+Uluslar Çağı ekonomisi üç sayaç ve sekiz kaynaktır; sınıf, mal sepeti ve fiyat
 zinciri yoktur (TASARIM.md §1-§8, `src/game/econ/`).
 
 - **Altın** province vergisinden (nüfus × kalkınma × statü × vergi yasası ×
@@ -137,12 +137,15 @@ zinciri yoktur (TASARIM.md §1-§8, `src/game/econ/`).
   ithalat ve faize gider. Eksiye düşen hazine otomatik borçlanır; borç tavanı
   aşılırsa **iflas**: borç silinir, 52 hafta kredi yok, istikrar −20, ordu
   yarı hızda toplanır.
-- **Altı kaynak** akıştır, stok yoktur: gıda (topraktan), kömür, demir,
-  kereste, at, güherçile (yataktan). Fazla, ticaret yasasının izin verdiği
-  payda satılır; açık altın yettiği sürece kendiliğinden alınır. Dünya
-  fiyatı `taban × (dünya ihtiyacı ÷ dünya üretimi)^1.5`. Ambargo, abluka
-  (düşman savaş gemisi kıyının iki hex yakınında) ve bağımlılık uyarısı
-  ikili akıştan gelir.
+- **Sekiz kaynak** akıştır, stok yoktur. **Her province bir kaynak
+  çıkarır** (gıda ambarı, kömür, demir, kereste, at, güherçile); gıda ayrıca
+  her province'te topraktan gelir. Bazı province'lerde **petrol** ya da
+  **kauçuk** lekesi yatar: 1836'da alıcısı yoktur, sanayi ve ordu
+  teknolojileri yayıldıkça değerlenir (bonus, kaynak karşılandığı oranda).
+  Fazla, ticaret yasasının izin verdiği payda satılır; açık altın yettiği
+  sürece kendiliğinden alınır. Dünya fiyatı `taban × (dünya ihtiyacı ÷ dünya
+  üretimi)^1.5`. Ambargo, abluka (düşman savaş gemisi kıyının iki hex
+  yakınında) ve bağımlılık uyarısı ikili akıştan gelir.
 - **Sanayi (IC)** fabrika kademesinden gelir; kömür, istikrar, askerlik
   yasası ve teknoloji çarpar. **Ekonomi yasası** IC'nin ne kadarının orduya
   gideceğini söyler: sivil pay halkın **tüketim malıdır** (eksikse istikrar
@@ -327,7 +330,7 @@ src/
     turn.js          haftalık simülasyon adımı (sıra: TASARIM.md §16)
     economy.js       ekonomi orkestrası: vergi, bakım, okuryazarlık, borç/iflas
     econ/defs.js     kaynak, bina, teçhizat ve ekonomi sabitleri (formül yok)
-    econ/deposits.js yatak ataması ve toprak verimi
+    econ/deposits.js province kaynağı (her province bir tane + petrol/kauçuk lekesi), toprak verimi
     econ/resources.js province üretimi ve ulusal kaynak ihtiyacı
     econ/industry.js IC, tüketim malı, üretim hatları ve teçhizat stoğu
     econ/trade.js    dünya fiyatı, ikili akış, ambargo, abluka

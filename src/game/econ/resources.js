@@ -1,4 +1,4 @@
-// ALTI KAYNAK — province üretimi ve ulusal ihtiyaç.
+// KAYNAKLAR — province üretimi ve ulusal ihtiyaç.
 //
 // Kaynaklar AKIŞTIR: her hafta üretilir, tüketilir, fazlası satılır, açığı
 // alınır. Stok yoktur; böylece "ambar dolu mu" diye bir işletme sorusu
@@ -10,7 +10,7 @@
 
 import {
   BATTLE_SALTPETER, DEPOSIT_OUTPUT, FOOD_BASE, FOOD_FERTILITY, FOOD_NEED,
-  RESOURCE_IDS, UNIT_RESOURCES,
+  RESOURCE_IDS, RUBBER_PER_REGIMENT, UNIT_RESOURCES,
 } from './defs.js';
 import { depositsOf, fertilityOf } from './deposits.js';
 import { mod } from '../modifiers.js';
@@ -42,8 +42,9 @@ export function provinceOutput(province, nation, out = emptyResourceMap()) {
   if (status <= 0) return out;
   const buildings = econ.buildings ?? {};
   const units = Math.max(0, econ.population ?? 0) / 100000;
+  const fertilizer = Math.max(0, mod(nation, 'saltpeterFood')) * resourceRatio(nation, 'SALTPETER');
   const food = units * (FOOD_BASE + FOOD_FERTILITY * fertilityOf(province))
-    * (1 + 0.25 * (buildings.farm ?? 0)) * (1 + mod(nation, 'food'));
+    * (1 + 0.25 * (buildings.farm ?? 0)) * (1 + mod(nation, 'food') + fertilizer);
   out.FOOD = food * status;
   const rail = 1 + 0.1 * (buildings.railway ?? 0);
   const mine = 1 + 0.5 * (buildings.mine ?? 0);
@@ -72,11 +73,17 @@ export function foodNeed(population) {
   return Math.max(0, population) / 100000 * FOOD_NEED;
 }
 
-/** At sürüsü: süvari ve topçu alayları haftalık at yer. */
+/**
+ * At sürüsü: süvari ve topçu alayları haftalık at yer. Kauçuk: muharebe
+ * teknolojisi (`rubberArmy`) olan ülkede her kara alayı ister.
+ */
 export function unitResourceNeeds(world, nation, out) {
+  const rubber = mod(nation, 'rubberArmy') > 0;
   for (const unit of world.units ?? []) {
     if (unit.nationId !== nation.id) continue;
+    const land = unit.type?.domain !== 'sea';
     for (const regiment of unit.regiments ?? []) {
+      if (rubber && land) out.RUBBER += RUBBER_PER_REGIMENT;
       const need = UNIT_RESOURCES[regiment.typeId];
       if (!need) continue;
       for (const [id, amount] of Object.entries(need)) out[id] += amount;

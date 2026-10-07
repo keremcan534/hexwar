@@ -8,7 +8,7 @@
 import {
   COAL_PER_IC, CONSUMER_ERA_GROWTH, CONSUMER_NEED, COTTAGE_OUTPUT,
   COTTAGE_PER_DEVELOPMENT, DOCKYARD_IC, EQUIPMENT, EQUIPMENT_IDS, ERA_TURNS, FACTORY_IC,
-  LINE_EFFICIENCY,
+  LINE_EFFICIENCY, OIL_PER_IC,
 } from './defs.js';
 import { lawOption } from '../laws.js';
 import { mod } from '../modifiers.js';
@@ -66,13 +66,18 @@ export function computeIC(world, nation) {
   const stability = 0.85 + 0.3 * clamp(nation.stability ?? 0.5, 0, 1);
   const law = 1 + (lawOption(nation, 'conscription').ic ?? 0);
   const tech = 1 + mod(nation, 'ic');
-  const total = raw * coal * stability * law * tech;
+  // Petrol bonusu karşılanan petrol oranındadır; rafinerisi olmayan ülke
+  // petrol istemez (bkz. OIL_PER_IC).
+  const oilBonus = Math.max(0, mod(nation, 'oilIc'));
+  const oil = 1 + oilBonus * Math.min(1, resourceRatio(nation, 'OIL'));
+  const total = raw * coal * stability * law * tech * oil;
   const share = lawOption(nation, 'economy').military;
   return {
     raw,
     dockyards,
     coalNeed: raw * COAL_PER_IC,
-    factors: { coal, stability, law, tech },
+    oilNeed: oilBonus > 0 ? raw * OIL_PER_IC : 0,
+    factors: { coal, stability, law, tech, oil },
     total,
     military: total * share,
     civil: total * (1 - share),

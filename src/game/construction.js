@@ -11,7 +11,7 @@
 
 import {
   BUILDINGS, BUILDING_IDS, CONSTRUCTION_TIMBER, DEVELOPMENT_CAP_BASE, DEVELOPMENT_COST,
-  DEVELOPMENT_MAX, DEVELOPMENT_WEEKS, FACTORY_COST_GROWTH, POP_UNIT, RAILWAY_IRON,
+  DEVELOPMENT_MAX, DEVELOPMENT_WEEKS, FACTORY_COST_GROWTH, POP_UNIT, RAILWAY_IRON, RESOURCE_IDS,
 } from './econ/defs.js';
 import { lawOption } from './laws.js';
 import { mod } from './modifiers.js';
@@ -329,7 +329,10 @@ export function planConstruction(game, nation, { reserve = 60 } = {}) {
   const consumer = economy.consumer?.ratio ?? 1;
   if (consumer < 1.05 || (economy.warFronts ?? 0) > 0) wants.push('factory');
   if ((economy.resources?.FOOD?.ratio ?? 1) < 1) wants.push('farm');
-  for (const id of ['COAL', 'IRON', 'TIMBER', 'HORSES', 'SALTPETER']) {
+  // Gıda açığını çiftlik kapatır; geri kalan her kaynak (petrol ve kauçuk
+  // dahil — liste eskiden beş temel kaynakla sınırlıydı) işletmeyle.
+  for (const id of RESOURCE_IDS) {
+    if (id === 'FOOD') continue;
     if ((economy.resources?.[id]?.balance ?? 0) < 0) { wants.push('mine'); break; }
   }
   if (economy.coastal && !own.some((p) => (p.econ.buildings.dockyard ?? 0) > 0)) wants.push('dockyard');

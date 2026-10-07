@@ -633,8 +633,8 @@ export class Screens {
     // Hex kaynaklari: kume birden cok mal cikarir; en cok hex tutan ikisi.
     const rgoOf = (province) => {
       if (!province?.econ) return '';
-      const lines = depositsOf(province.econ).slice(0, 2)
-        .map((line) => RGO_TYPES[line.id] ? `${RGO_TYPES[line.id].icon} ${RGO_TYPES[line.id].name}` : null)
+      const lines = depositsOf(province).slice(0, 2)
+        .map((line) => (RESOURCES[line.id] ? `${RESOURCES[line.id].glyph} ${RESOURCES[line.id].name}` : null))
         .filter(Boolean);
       return lines.length ? ` · ${lines.join(', ')}` : '';
     };

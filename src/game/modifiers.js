@@ -48,6 +48,10 @@ export const MODIFIER_KEYS = {
   infamyDecay: { label: 'Infamy decay', format: 'pct' }, // infamy
   supply: { label: 'Supply in enemy land', format: 'pct' }, // turn (yıpranma)
   ironclad: { label: 'Ironclad ships (iron and coal instead of timber)', format: 'flag' }, // econ/industry
+  // Çağ kaynakları: bonus yalnız kaynak ihtiyacı karşılandığı oranda gelir.
+  oilIc: { label: 'Industrial capacity while oil needs are met', format: 'pct' }, // econ/industry
+  rubberArmy: { label: 'Land combat while rubber needs are met', format: 'pct' }, // battles
+  saltpeterFood: { label: 'Food output while saltpeter needs are met', format: 'pct' }, // econ/resources
 };
 
 /** Geçici etkiler (olay, gündem): `{ id, label, until, effects }`. */

@@ -185,12 +185,16 @@ export function battleUnitPower(world, unit, defending, relief = 0, target = nul
   const horses = horseFactor(unit, resourceRatio(nation, 'HORSES'));
   const doctrine = Math.max(0.3, 1 + (defending ? mod(nation, 'defense') : mod(nation, 'attack')));
   const naval = unit.type?.domain === 'sea' ? Math.max(0.3, 1 + mod(nation, 'naval')) : 1;
+  // KAUÇUK: saha telgrafı ve lastik; bonus karşılanan kauçuk oranında.
+  const rubber = unit.type?.domain === 'sea'
+    ? 1 : 1 + Math.max(0, mod(nation, 'rubberArmy')) * resourceRatio(nation, 'RUBBER');
   const river = !defending && crossesRiver(world, unit.tile, target) ? 1 - RIVER_PENALTY : 1;
   return armyPower(unit)
     * powder
     * horses
     * doctrine
     * naval
+    * rubber
     * river
     * terrain
     * generalModifier(general, { defending, army: unit })

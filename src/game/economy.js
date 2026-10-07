@@ -14,7 +14,7 @@
 
 import {
   BUILDINGS, BUILDING_IDS, CROWN_REVENUE, DEBT, EQUIPMENT_IDS, POP_UNIT, RESOURCE_IDS,
-  TAX_PER_DEVELOPMENT, TAX_PER_UNIT, UPKEEP,
+  SALTPETER_PER_FOOD, TAX_PER_DEVELOPMENT, TAX_PER_UNIT, UPKEEP,
 } from './econ/defs.js';
 import { lawOption } from './laws.js';
 import { mod, refreshModifiers } from './modifiers.js';
@@ -298,11 +298,14 @@ export function runNationEconomy(game, nation, ctx) {
   }
   const needs = emptyResourceMap();
   needs.FOOD = foodNeed(population);
+  // Gübre: gıda bonusu güherçile ister (bkz. SALTPETER_PER_FOOD).
+  if (mod(nation, 'saltpeterFood') > 0) needs.SALTPETER += produced.FOOD * SALTPETER_PER_FOOD;
 
   // 3. IC ve tüketim malı.
   const ic = computeIC(world, nation);
   economy.ic = ic;
   needs.COAL += ic.coalNeed;
+  needs.OIL += ic.oilNeed ?? 0;
   economy.consumer = consumerGoods(nation, {
     population, development: economy.development, civil: ic.civil, turn,
   });
