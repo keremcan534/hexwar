@@ -291,7 +291,10 @@ function awaken(game, rebel, provinces) {
   rebel.accepted = [rebel.rebelCulture ?? rebel.culture];
   rebel.capital = seat.center;
   rebel.movements = {};
+  // Devirde (transfer) toprakla gelen fabrikalar ekonomi kurulurken silinmesin.
+  const inherited = rebel.economy?.factories ?? [];
   initNationEconomy(world, rebel);
+  rebel.economy.factories.push(...inherited);
   openWeek(rebel);
   rebel.budget = null;
   const hasCity = provinces.some((province) => province.tileIdx

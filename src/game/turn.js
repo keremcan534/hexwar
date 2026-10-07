@@ -304,12 +304,14 @@ export class TurnManager {
         addInfamy(nation, tileInfamy(member, nation));
         world.nations[member.owner].tiles--;
       }
+      // Proje ve fabrika devri sahiplik yazılmadan ÖNCE: eski sahip
+      // tile.owner'dan okunur. Sonra çağrılınca hiçbir şey yakalanmıyordu.
+      captureConstructionAt(world, member, nationId);
       // İşgal saati sıfırlanır: taze fetih bir süre üretmez, sonra asimile olur.
       member.heldSince = this.turn;
       member.owner = nationId;
       member.controller = nationId;
       world.nations[nationId].tiles++;
-      captureConstructionAt(world, member, nationId);
       taken++;
       takenTiles.push(member);
     }

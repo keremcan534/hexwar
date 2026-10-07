@@ -482,17 +482,59 @@ export function prioritizeConstruction(game, nationId, projectId, direction) {
 /**
  * Kare el degistirince o kareye capalanmis tamamlanmamis sanayi projesi iptal
  * olur (yapilmis is batiktir). Ulusal yatirimlarin capasi yoktur, etkilenmez.
+ *
+ * Kurulmus FABRIKA ise toprakla birlikte yeni sahibe gecer. Eskiden eski
+ * sahipte kaliyordu: isletmeye devam edip iscisini yeni sahibin province'ine
+ * yaziyor, onun kirsal isgucunu eritiyordu (olculdu: 300 haftada 929
+ * fabrikanin 94'u yabanci karede). Fabrikanin konumu yalniz q/r'dir; state'i
+ * her hafta kareden turetildigi icin (economy.factoryAtlas) yeni sahibin
+ * bolgesine kendiliginden oturur.
+ *
+ * Cagiran tile.owner'i DEGISTIRMEDEN once cagirir: eski sahip oradan okunur.
  */
 export function captureConstructionAt(world, tile, newNationId) {
   if (!tile || tile.owner < 0 || tile.owner === newNationId) return 0;
   const oldNation = world.nations[tile.owner];
-  if (!oldNation || !world.nations[newNationId]) return 0;
+  const heir = world.nations[newNationId];
+  if (!oldNation || !heir) return 0;
   const oldState = ensureConstruction(oldNation);
   const before = oldState.projects.length;
   oldState.projects = oldState.projects.filter(
     (project) => project.q !== tile.q || project.r !== tile.r,
   );
+  transferFactoriesAt(oldNation, heir, tile);
   return before - oldState.projects.length;
+}
+
+/**
+ * Karedeki fabrikalari eski sahipten yenisine tasir. Kadro, bordro, kar ve
+ * subvansiyon eski devletin havuzundandir: sifirlanir, yeni sahip kendi
+ * isgucuyle doldurur. Uyumamis isyanci devletin ekonomisi henuz kurulmamis
+ * olabilir; liste o zaman yalniz fabrikalari tasir (movements.awaken korur).
+ */
+function transferFactoriesAt(oldNation, heir, tile) {
+  const list = oldNation.economy?.factories;
+  if (!list?.length) return 0;
+  let moved = 0;
+  for (let i = list.length - 1; i >= 0; i--) {
+    const factory = list[i];
+    if (factory.q !== tile.q || factory.r !== tile.r) continue;
+    list.splice(i, 1);
+    factory.employees = 0;
+    factory.wages = 0;
+    factory.profit = 0;
+    factory.margin = 0;
+    factory.throughput = 0;
+    factory.subsidized = false;
+    factory.subsidyPaid = 0;
+    factory.paused = false;
+    factory.autoPaused = false;
+    factory.deadMonths = 0;
+    heir.economy ??= {};
+    (heir.economy.factories ??= []).push(factory);
+    moved++;
+  }
+  return moved;
 }
 
 /**
