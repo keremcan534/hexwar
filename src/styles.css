@@ -13419,3 +13419,239 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
 @media (max-width: 1365px) {
   .tb-ico .art-emblem { width: 29px; height: 29px; }
 }
+
+/* ==========================================================================
+   §45 ÜST ÇUBUK II — arma, kartuş, saat birimi, sakin halkalar, değişim izi
+   (Kerem: "hepsini yap", 2026-10-08)
+   ========================================================================== */
+
+/* --- Sakin halka: yolunda giden gösterge pirinç, renk yalnız uyarıda ---- */
+.tb-ring.brass .val { stroke: #b39457; filter: none; }
+.tb-ring .val { transition: stroke-dasharray 0.8s cubic-bezier(0.2, 0.7, 0.2, 1), stroke 0.4s ease; }
+.tb-resi.ok .tb-ring circle { stroke-width: 2.4; }
+.tb-resi.ok .tb-ring .trk { stroke: rgba(0, 0, 0, 0.35); }
+.tb-resi em { color: #b8c47a; }
+
+/* --- Arma: alt kenardan taşan asılı plaka ------------------------------- */
+.topbar-left { align-self: stretch; }
+.nation-badge { position: relative; align-self: stretch; padding-left: 104px; }
+.nation-crest {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 3;
+  display: flex;
+  justify-content: center;
+  width: 92px;
+  height: calc(100% + 24px);
+  padding-top: 9px;
+  filter: drop-shadow(0 6px 8px rgba(0, 0, 0, 0.65)) drop-shadow(0 1px 0 rgba(0, 0, 0, 0.9));
+  pointer-events: none;
+}
+/* Pirinç kenar = dış çokgen; koyu alan = 2px içeriden aynı çokgen. Kesme
+   (clip-path) kutu gölgesini de keser, o yüzden çerçeve iki katmandır. */
+.nation-crest::before,
+.nation-crest::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 24px), 50% 100%, 0 calc(100% - 24px));
+}
+.nation-crest::before { background: linear-gradient(180deg, #8a6d36 0%, #e2c88a 45%, #6e5a32 100%); }
+.nation-crest::after {
+  inset: 0 2px 3px;
+  background:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 12'%3E%3Cpath d='M6 .6 11.4 6 6 11.4.6 6z' fill='%23d9bd7c' stroke='%23050708' stroke-width='.8'/%3E%3C/svg%3E") 50% calc(100% - 16px) / 11px 11px no-repeat,
+    linear-gradient(90deg, transparent 18%, rgba(214, 186, 120, 0.5) 50%, transparent 82%) 50% calc(100% - 34px) / 100% 1px no-repeat,
+    var(--ui-grain),
+    radial-gradient(90% 60% at 50% 30%, rgba(214, 186, 120, 0.12), transparent 70%),
+    linear-gradient(180deg, #241f16 0%, #16120c 60%, #0d0b08 100%);
+}
+.nation-crest .nation-flag {
+  position: relative;
+  z-index: 1;
+  width: 74px;
+  height: 50px;
+  box-shadow: 0 0 0 1px #050708, 0 0 0 2px #8a6d36, 0 0 0 3px #050708, 0 3px 6px rgba(0, 0, 0, 0.7);
+  filter: none;
+}
+.nation-badge:hover .nation-crest::before { background: linear-gradient(180deg, #a3834a 0%, #f3dca3 45%, #8a6d36 100%); }
+
+/* --- Kartuş: beş ana gösterge pirinç çerçevede ------------------------- */
+.tb-cartouche {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin: 0 12px;
+  padding: 2px 12px;
+  border-radius: 5px;
+  background:
+    var(--ui-grain),
+    radial-gradient(70% 120% at 50% 0%, rgba(214, 186, 120, 0.07), transparent 70%),
+    linear-gradient(180deg, rgba(3, 5, 6, 0.6), rgba(10, 14, 16, 0.35));
+  box-shadow:
+    0 0 0 1px #050708,
+    0 0 0 2px #7a6436,
+    0 0 0 3px #2a2214,
+    0 0 0 4px rgba(214, 186, 120, 0.28),
+    0 0 0 5px rgba(5, 7, 8, 0.8),
+    inset 0 2px 10px rgba(0, 0, 0, 0.75),
+    inset 0 0 0 1px rgba(214, 186, 120, 0.12),
+    0 8px 18px rgba(0, 0, 0, 0.45);
+}
+/* Uç süsleri: sekme künyelerindeki gibi iki yanda pirinç elmas. */
+.tb-cartouche::before,
+.tb-cartouche::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  background: linear-gradient(135deg, #f0d795, #8a6d36 55%, #3e3018);
+  box-shadow: 0 0 0 1px #050708, 0 0 8px rgba(214, 186, 120, 0.35);
+  transform: translateY(-50%) rotate(45deg);
+  pointer-events: none;
+}
+.tb-cartouche::before { left: -11px; }
+.tb-cartouche::after { right: -11px; }
+
+/* Yan bloklar kartuşun ikincisi: aynı oyuk, pirinçsiz. */
+.tb-minis,
+.tb-res {
+  border-radius: 4px;
+  background: linear-gradient(180deg, rgba(3, 5, 6, 0.45), rgba(10, 14, 16, 0.2));
+  box-shadow: inset 0 1px 6px rgba(0, 0, 0, 0.6), 0 1px 0 rgba(255, 232, 180, 0.06);
+}
+.tb-minis { margin-left: 8px; padding: 5px 12px; border-left: 0; border-right: 0; }
+.tb-res { padding: 5px 8px; }
+
+/* --- Saat birimi ------------------------------------------------------- */
+.turn-control {
+  gap: 11px;
+  padding: 4px 16px 4px 4px;
+  border-radius: 28px 5px 5px 28px;
+  background:
+    var(--ui-grain),
+    linear-gradient(180deg, rgba(60, 50, 32, 0.55), rgba(16, 13, 9, 0.8));
+  box-shadow:
+    0 0 0 1px #050708,
+    0 0 0 2px #7a6436,
+    0 0 0 3px #050708,
+    inset 0 1px 0 rgba(255, 236, 190, 0.12),
+    inset 0 -8px 14px rgba(0, 0, 0, 0.35),
+    0 6px 14px rgba(0, 0, 0, 0.5);
+}
+.turn-badge {
+  align-items: flex-start;
+  gap: 5px;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  text-align: left;
+}
+.turn-badge b { font-size: 22px; }
+.turn-row { display: flex; align-items: center; gap: 9px; }
+.turn-status { max-width: 150px; font-size: 10.5px; }
+
+/* Duraklat: pirinç kasalı yuvarlak düğme. */
+.time-btn.time-pause {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, #2a2418, #0c0a07 75%);
+  box-shadow:
+    0 0 0 1px #050708,
+    0 0 0 2px #8a6d36,
+    inset 0 2px 5px rgba(0, 0, 0, 0.9),
+    inset 0 -1px 0 rgba(255, 232, 180, 0.1);
+  color: #a99a78;
+}
+.time-btn.time-pause svg { width: 17px; height: 17px; }
+.time-btn.time-pause:hover { color: #f0dfb4; background: radial-gradient(circle at 50% 35%, #3a3120, #100d09 75%); }
+.turn-control.is-paused .time-btn.time-pause {
+  color: #f3c77a;
+  box-shadow:
+    0 0 0 1px #050708,
+    0 0 0 2px #d6a24c,
+    0 0 12px rgba(214, 162, 76, 0.45),
+    inset 0 2px 5px rgba(0, 0, 0, 0.9);
+}
+
+/* Hız çentikleri: sinyal çubuğu, seçilen hıza kadar yanar. */
+.time-controls {
+  align-items: flex-end;
+  gap: 1px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.time-btn.time-notch {
+  display: flex;
+  align-items: flex-end;
+  width: 11px;
+  height: 16px;
+  padding: 0 2px;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.time-notch i {
+  display: block;
+  width: 100%;
+  border-radius: 1px;
+  background: rgba(214, 186, 120, 0.16);
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.55);
+  transition: background-color 0.15s ease, box-shadow 0.15s ease;
+}
+.time-notch:nth-child(1) i { height: 6px; }
+.time-notch:nth-child(2) i { height: 9px; }
+.time-notch:nth-child(3) i { height: 12px; }
+.time-notch:nth-child(4) i { height: 16px; }
+.time-btn.time-notch:hover { background: none; }
+.time-notch:hover i { background: rgba(214, 186, 120, 0.45); }
+.time-notch.lit i { background: linear-gradient(180deg, #f6e2a8, #b48a3e); box-shadow: 0 0 6px rgba(240, 215, 149, 0.45); }
+.time-btn.time-notch.active { background: none; box-shadow: none; }
+
+/* --- Değişim izi: tek seferlik parıltı ---------------------------------- */
+:root[data-motion="on"] .tb-good { animation: tb-flash-good 1.6s ease-out 1; }
+:root[data-motion="on"] .tb-bad { animation: tb-flash-bad 1.6s ease-out 1; }
+:root[data-motion="on"] .tb-good .tb-gv b,
+:root[data-motion="on"] .tb-good > b { animation: tb-text-good 1.6s ease-out 1; }
+:root[data-motion="on"] .tb-bad .tb-gv b,
+:root[data-motion="on"] .tb-bad > b { animation: tb-text-bad 1.6s ease-out 1; }
+@keyframes tb-flash-good {
+  0%, 100% { filter: none; }
+  18% { filter: drop-shadow(0 0 8px rgba(156, 192, 103, 0.8)); }
+}
+@keyframes tb-flash-bad {
+  0%, 100% { filter: none; }
+  18% { filter: drop-shadow(0 0 8px rgba(207, 93, 62, 0.85)); }
+}
+@keyframes tb-text-good { 18% { color: #d4ea9f; } }
+@keyframes tb-text-bad { 18% { color: #ff9b7c; } }
+
+/* --- Dar pencere ------------------------------------------------------- */
+@media (max-width: 1799px) {
+  /* İki satırda arma yalnız üst satırdan taşar; alt satırın sol boşluğuna iner. */
+  .nation-crest { width: 80px; height: calc(100% + 16px); padding-top: 6px; }
+  .nation-crest .nation-flag { width: 64px; height: 43px; }
+  .nation-badge { padding-left: 92px; }
+}
+@media (max-width: 1365px) {
+  .tb-cartouche { margin: 0 10px; padding: 1px 8px; }
+  .turn-badge b { font-size: 19px; }
+  .time-btn.time-pause { width: 36px; height: 36px; }
+}
+/* Menü düğmesi saat biriminin yanında aynı pirinç kasada. */
+.topbar-right > .icon-btn {
+  border: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, #2a2418, #0c0a07 75%);
+  box-shadow: 0 0 0 1px #050708, 0 0 0 2px #7a6436, inset 0 2px 5px rgba(0, 0, 0, 0.9);
+  color: #c9b68a;
+}
+.topbar-right > .icon-btn:hover { color: #f0dfb4; box-shadow: 0 0 0 1px #050708, 0 0 0 2px #b39457, inset 0 2px 5px rgba(0, 0, 0, 0.9); }

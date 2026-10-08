@@ -87,6 +87,17 @@ function ringSvg(share, tone = '') {
     <circle class="val" cx="20" cy="20" r="${r}" stroke-dasharray="${(f * c).toFixed(2)} ${c.toFixed(2)}"/></svg>`;
 }
 
+/**
+ * DEĞİŞİM İZİ: hücre bir anahtar, sayısal değer ve eşik taşır; HUD bir önceki
+ * değerle karşılaştırıp hücreyi bir kez parlatır, halkayı eski dolumdan yeniye
+ * kaydırır (animateTopChanges). Eşik gürültüyü keser: altın her hafta oynar,
+ * her hafta parlarsa 8x hızda çubuk sürekli yanıp söner. `pol` -1: artışı kötü
+ * (şöhret).
+ */
+function track(key, value, eps, pol = 1) {
+  return `data-k="${key}" data-v="${Number(value) || 0}" data-eps="${eps}" data-pol="${pol}"`;
+}
+
 /** İkincil gösterge (nüfus, ordu, havuz, sanayi): küçük ikon, değer, etiket. */
 function miniCell(icon, label, value, attrs = '', cls = '') {
   return `<span class="tb-mini${cls ? ` ${cls}` : ''}" tabindex="0" ${attrs}>
@@ -913,9 +924,7 @@ export class Hud {
       this.lastSpeedShown = clock.speed;
       this.speedSince = performance.now();
       this.weekStamps = [];
-      for (const btn of document.querySelectorAll('.time-btn[data-speed]')) {
-        btn.classList.toggle('active', Number(btn.dataset.speed) === clock.speed);
-      }
+      this.syncSpeed(clock.speed);
     }
     this.showClockStatus();
   }
@@ -933,6 +942,45 @@ export class Hud {
    * kapanan hafta sayisindan efektif carpan turetilir; nominalin %80'inin
    * altina dusunce ayni satira eklenir.
    */
+  /** Seçili hız düğmesi `active`; ona kadar olan çentikler `lit` (sinyal çubuğu). */
+  syncSpeed(speed) {
+    for (const btn of document.querySelectorAll('.time-btn[data-speed]')) {
+      const value = Number(btn.dataset.speed);
+      btn.classList.toggle('active', value === speed);
+      btn.classList.toggle('lit', value > 0 && value <= speed);
+    }
+  }
+
+  /**
+   * Üst çubukta değeri eşiği aşan hücre bir kez parlar (iyi yön yeşil, kötü
+   * kırmızı) ve halkası eski dolumdan yenisine kayar. Hücreler her tazelemede
+   * innerHTML ile yeniden doğar; bu yüzden önceki değer DOM'da değil burada
+   * tutulur. Sürekli döngü yok: yalnız CSS geçişi ve tek seferlik animasyon.
+   */
+  animateTopChanges(root) {
+    const prev = (this.topPrev ??= new Map());
+    for (const cell of root.querySelectorAll('[data-k]')) {
+      const key = cell.dataset.k;
+      const value = Number(cell.dataset.v);
+      const ring = cell.querySelector('.tb-ring .val');
+      const dash = ring?.getAttribute('stroke-dasharray');
+      const old = prev.get(key);
+      prev.set(key, { value, dash });
+      if (!old) continue;
+      if (ring && old.dash && old.dash !== dash) {
+        ring.style.transition = 'none';
+        ring.style.strokeDasharray = old.dash;
+        ring.getBoundingClientRect();
+        ring.style.transition = '';
+        ring.style.strokeDasharray = dash;
+      }
+      const delta = value - old.value;
+      if (Math.abs(delta) < Number(cell.dataset.eps || 0) || delta === 0) continue;
+      const good = delta * Number(cell.dataset.pol || 1) > 0;
+      cell.classList.add(good ? 'tb-good' : 'tb-bad');
+    }
+  }
+
   showClockStatus() {
     const { clock } = this.game;
     const control = document.getElementById('turn-control');
@@ -983,11 +1031,10 @@ export class Hud {
     // Elenen oyuncuda gösterge yok: çıplak bir "—" metni ortadaki ızgaranın
     // içinde hücresiz kalıyordu (şeritler `display: contents`).
     this.el.resources.innerHTML = me ? resourcesHtml(me) : '';
+    this.animateTopChanges(this.el.resources);
     this.refreshWhy(me);
     // Bekleyen birim sayısı düğmede: turu bitirmeden önce ne kaldığı görünsün.
-    for (const btn of document.querySelectorAll('.time-btn[data-speed]')) {
-      btn.classList.toggle('active', Number(btn.dataset.speed) === this.game.clock.speed);
-    }
+    this.syncSpeed(this.game.clock.speed);
     this.showClockStatus();
     this.syncTabAuto();
 
@@ -1004,13 +1051,16 @@ export class Hud {
         .filter((unit) => unit.nationId === me.id && unit.type.domain === 'land')
         .reduce((sum, unit) => sum + menUnderArms(unit), 0);
       const ic = me.economy?.ic ?? { total: 0, civil: 0, military: 0 };
+      const people = me.economy?.population ?? 0;
+      const recruits = nationManpower(world, me.id);
       this.el.macroStats.innerHTML = `<span class="tb-minis">${miniCell(lawArt('citizenship', 'xs'), 'People',
-        formatPopulation(me.economy?.population ?? 0), 'data-macro="population"', 'macro-live')
-        + miniCell(equipmentArt('rifles', 'xs'), 'Army', formatPopulation(army), 'data-tip="army"')
-        + miniCell(ledgerArt('army', 'xs'), 'Recruits', formatPopulation(nationManpower(world, me.id)), 'data-tip="manpower"')
+        formatPopulation(people), `data-macro="population" ${track('pop', people, people * 0.01)}`, 'macro-live')
+        + miniCell(equipmentArt('rifles', 'xs'), 'Army', formatPopulation(army), `data-tip="army" ${track('army', army, army * 0.03 + 1)}`)
+        + miniCell(ledgerArt('army', 'xs'), 'Recruits', formatPopulation(recruits), `data-tip="manpower" ${track('mp', recruits, recruits * 0.05 + 1)}`)
         + miniCell(buildingArt('factory', 'xs'), 'IC', `${ic.total.toFixed(1)}<em class="stat-flow">${ic.military.toFixed(1)}${glyph('swords', 'inline')}</em>`,
-          'data-macro="ic" data-tip="ic"', 'macro-live')}</span>`
+          `data-macro="ic" data-tip="ic" ${track('ic', ic.total, 0.2)}`, 'macro-live')}</span>`
         + resourceChips(me);
+      this.animateTopChanges(this.el.macroStats);
       this.ensureMacroCards();
       this.mountTopFlag();
       this.el.topNation.textContent = me.name;
@@ -1828,16 +1878,24 @@ function resourcesHtml(nation) {
   const warSupport = Math.round((nation.warSupport ?? 0) * 100);
   const power = powerIncome(nation);
   const stabilityClass = stability < 30 ? 'res-neg' : stability < 45 ? 'res-warn' : '';
-  const tone = (v, warn, bad) => (v < bad ? 'neg' : v < warn ? 'warn' : 'pos');
-  return statCell(ledgerArt('tax', 'sm'), 'Gold', `${treasuryLabel(nation.gold)}${flow}`, 'data-tip="treasury"', 'tb-hero')
+  // Sakin halka: yolunda giden gösterge pirinçtir, renk yalnız uyarıda çıkar.
+  // Yeşil "her şey yolunda" çubuğun en bağıran öğesiydi (Kerem, 2026-10-08).
+  const tone = (v, warn, bad) => (v < bad ? 'neg' : v < warn ? 'warn' : 'brass');
+  const gold = nation.gold ?? 0;
+  const cells = statCell(ledgerArt('tax', 'sm'), 'Gold', `${treasuryLabel(gold)}${flow}`,
+    `data-tip="treasury" ${track('gold', gold, Math.max(25, Math.abs(gold) * 0.08))}`, 'tb-hero')
     + statCell(emblemArt('power'), 'Power', `${Math.round(nation.power ?? 0)}<em class="stat-flow res-pos">+${power.total.toFixed(1)}</em>`,
-      'data-tip="power"', '', { share: (nation.power ?? 0) / 500, tone: 'gold' })
+      `data-tip="power" ${track('power', nation.power ?? 0, 25)}`, '', { share: (nation.power ?? 0) / 500, tone: 'gold' })
     + statCell(emblemArt('stability'), 'Stability', `<span class="${stabilityClass}">${stability}%</span>`,
-      'role="button" data-why="stability" data-tip="stability"', 'stat-why', { share: stability / 100, tone: tone(stability, 45, 30) })
-    + statCell(lawArt('conscription', 'sm'), 'War Sup.', `${warSupport}%`, 'data-tip="warsupport"', '',
+      `role="button" data-why="stability" data-tip="stability" ${track('stab', stability, 1)}`, 'stat-why',
+      { share: stability / 100, tone: tone(stability, 45, 30) })
+    + statCell(lawArt('conscription', 'sm'), 'War Sup.', `${warSupport}%`, `data-tip="warsupport" ${track('ws', warSupport, 1)}`, '',
       { share: warSupport / 100, tone: 'war' })
-    + statCell(emblemArt('infamy'), 'Infamy', `<span class="${infamyClass}">${infamy.toFixed(1)}</span>`, 'data-tip="infamy"', '',
+    + statCell(emblemArt('infamy'), 'Infamy', `<span class="${infamyClass}">${infamy.toFixed(1)}</span>`,
+      `data-tip="infamy" ${track('inf', infamy, 0.5, -1)}`, '',
       { share: infamy / INFAMY_COALITION, tone: infamy >= INFAMY_COALITION ? 'neg' : infamy >= INFAMY_COALITION * 0.6 ? 'warn' : 'dim' });
+  // KARTUŞ: beş ana gösterge sekme künyeleriyle aynı pirinç çerçevede.
+  return `<span class="tb-cartouche">${cells}</span>`;
 }
 
 /** Kaynak çipleri: karşılanma oranı; eksik olan kırmızı yanar, talebi olmayan (1836'da petrol) çizgi. */
@@ -1850,9 +1908,9 @@ function resourceChips(nation) {
     const need = (record?.need ?? 0) > 0.01;
     const ratio = need ? record.ratio : 1;
     const cls = !need ? 'idle' : ratio < 0.8 ? 'short' : ratio < 0.98 ? 'tight' : 'ok';
-    const ringTone = { short: 'neg', tight: 'warn', ok: 'pos', idle: 'dim' }[cls];
+    const ringTone = { short: 'neg', tight: 'warn', ok: 'brass', idle: 'dim' }[cls];
     const surplus = (record?.exported ?? 0) > 0.05;
-    return `<span class="tb-resi ${cls}" data-tip="resource" data-tip-arg="${id}" tabindex="0">
+    return `<span class="tb-resi ${cls}" data-tip="resource" data-tip-arg="${id}" tabindex="0" ${track(`r-${id}`, need ? ratio : 1, 0.05)}>
       ${ringSvg(need ? ratio : 0, ringTone)}${resourceArt(id, 'sm')}${surplus ? '<em>▲</em>' : ''}
       <b>${need ? `${Math.round(ratio * 100)}%` : '—'}</b></span>`;
   }).join('')}</span>`;
