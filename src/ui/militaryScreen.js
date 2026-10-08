@@ -76,7 +76,7 @@ function headerStrip(summary) {
       + (summary.inBattle ? ` · ${summary.inBattle} in battle` : '')
       + (summary.marching ? ` · ${summary.marching} marching` : ''))}
     ${figure('Manpower pool', formatPopulation(summary.manpower), 'men who can still be raised',
-    'People your provinces can still put under arms. Recruits leave the province'
+    'People your states can still put under arms. Recruits leave the state'
       + ' population; only survivors return when a division is disbanded.')}
     ${figure('Officers', `${summary.officers}`,
     summary.unassigned ? `${summary.unassigned} unit(s) without a commander`
@@ -301,7 +301,7 @@ function buildRow(option, state) {
     <div class="mil-build-cost">
       <span title="Training time at full military funding.">${option.weeks}w</span>
       <span title="Paid from the treasury when the order is placed.">${option.gold}£</span>
-      <span title="Drawn from the province population when the unit marches out.">
+      <span title="Drawn from the state's population when the unit marches out.">
         ${option.manpower.toLocaleString('en-US')}</span>
       <span class="mil-build-kit">${equipment || '<em class="void">—</em>'}</span>
     </div>
@@ -348,7 +348,7 @@ function queueRow(row) {
     : row.awaiting
       ? `waiting for equipment — buying ${row.awaiting} abroad`
       : row.stalled
-        ? 'trained — no province can spare the men or the ground'
+        ? 'trained — no state can spare the men or the ground'
         : row.queued
           ? 'waiting for a training slot'
           : `${row.left} ${row.left === 1 ? 'week' : 'weeks'} left`;

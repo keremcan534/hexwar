@@ -100,7 +100,7 @@ export class NationPicker {
     const brief = nationBrief(world, nation);
     const facts = [
       ['Rank', `${brief.rank} / ${brief.of}`],
-      ['Provinces', `${brief.provinces} · ${brief.hexes} hexes`],
+      ['States', `${brief.provinces} · ${brief.hexes} hexes`],
       ['People', `${formatPopulation(brief.population)} · ${brief.cities} ${brief.cities === 1 ? 'city' : 'cities'}`],
       ['Government', `${brief.government} · ${brief.party}`],
       ['Economy', `${brief.economicPolicy} · ${brief.tradePolicy}`],

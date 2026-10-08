@@ -43,6 +43,7 @@ import {
   TECH_ZOOMS, researchRateLines, techInspector, technologyScreen,
 } from './technologyScreen.js';
 import { depositsOf } from '../game/econ/deposits.js';
+import { resourceArt } from './icons/art.js';
 import { motionOn } from './motion.js';
 import { formatPopulation, populationOf, weeklyBalanceOf } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS } from '../game/econ/defs.js';
@@ -440,7 +441,7 @@ export class Screens {
     const world = this.game.world;
     const target = world.nations[this.nationTarget];
     if (!target?.alive) {
-      return '<p class="empty">Right-click a foreign province on the map to open its dossier.</p>';
+      return '<p class="empty">Right-click a foreign state on the map to open its dossier.</p>';
     }
     const turn = this.game.turns.turn;
     const war = atWar(world, me.id, target.id);
@@ -498,9 +499,9 @@ export class Screens {
     ${offer ? this.peaceOfferCard(offer) : ''}
     <div class="card">
       <div class="card-head"><h3>Diplomacy</h3>
-        <small>${war ? 'a treaty is negotiated province by province at the peace table'
+        <small>${war ? 'a treaty is negotiated state by state at the peace table'
     : truce ? 'a truce forbids a new declaration until it lapses'
-      : 'declaring war costs infamy for every province you take'}</small></div>
+      : 'declaring war costs infamy for every state you take'}</small></div>
       <div class="row-buttons dossier-actions">
         ${war
     ? `<button class="action" data-peace="${target.id}" ${locked ? 'disabled' : ''}>Peace Talks${locked ? ` (${MIN_WAR_TURNS - (turn - rec.since)}w)` : ''}</button>`
@@ -508,7 +509,7 @@ export class Screens {
       ? `<button class="action" data-break-alliance="${target.id}">Break Alliance</button>`
       : `<button class="action${this.warConfirm === target.id ? ' confirming' : ''}" data-war="${target.id}" ${truce ? 'disabled' : ''}>${
         this.warConfirm === target.id
-          ? `Click again to declare war: ${ULTIMATUM_WEEKS}-week ultimatum, infamy per province taken`
+          ? `Click again to declare war: ${ULTIMATUM_WEEKS}-week ultimatum, infamy per state taken`
           : 'Declare War'}</button>
          <button class="action" data-ally="${target.id}">Propose Alliance</button>`}
         ${(me.embargoes ?? []).includes(target.id) ? '' : `<button class="action" data-embargo="${target.id}"
@@ -574,12 +575,12 @@ export class Screens {
       .filter((id) => (records[id]?.exported ?? 0) > 0.05)
       .sort((a, b) => (records[b].exported ?? 0) - (records[a].exported ?? 0))
       .slice(0, 3)
-      .map((id) => `${RESOURCES[id].glyph} ${RESOURCES[id].name}`);
+      .map((id) => `${resourceArt(id, 'xs')} ${RESOURCES[id].name}`);
     const imports = RESOURCE_IDS
       .filter((id) => (records[id]?.imported ?? 0) > 0.05 && (records[id]?.need ?? 0) > 0)
       .sort((a, b) => records[b].imported / records[b].need - records[a].imported / records[a].need)
       .slice(0, 3)
-      .map((id) => `${RESOURCES[id].glyph} ${RESOURCES[id].name} (${Math.round(records[id].imported / records[id].need * 100)}%)`);
+      .map((id) => `${resourceArt(id, 'xs')} ${RESOURCES[id].name} (${Math.round(records[id].imported / records[id].need * 100)}%)`);
     const standing = techStanding(world, target);
     const allies = alliesOf(target)
       .map((id) => world.nations[id])
@@ -637,7 +638,7 @@ export class Screens {
     const rgoOf = (province) => {
       if (!province?.econ) return '';
       const lines = depositsOf(province).slice(0, 2)
-        .map((line) => (RESOURCES[line.id] ? `${RESOURCES[line.id].glyph} ${RESOURCES[line.id].name}` : null))
+        .map((line) => (RESOURCES[line.id] ? `${resourceArt(line.id, 'xs')} ${RESOURCES[line.id].name}` : null))
         .filter(Boolean);
       return lines.length ? ` · ${lines.join(', ')}` : '';
     };
@@ -656,7 +657,7 @@ export class Screens {
      * ALINABILECEKLER LISTESI.
      *
      * Eski ekran yalnizca SECILENLERI gosteriyordu; secilecek bir sey yoksa
-     * tek yazdigi "Click provinces on the map." idi. Yani oyuncuya masada ne
+     * tek yazdigi "Click states on the map." idi. Yani oyuncuya masada ne
      * oldugu hic soylenmiyordu: 160x96'lik haritada kirmizi kume aramak,
      * hangisinin kac ettigini tek tek tiklayarak ogrenmek zorundaydi.
      * Isgal edilmis kumeler zaten hesaplanıyor (peace.js occupiedProvincesOf);
@@ -667,7 +668,7 @@ export class Screens {
         .filter((entry) => !selection.demands.has(provinceKeyOf(entry.province)));
       if (!held.length) {
         return `<p class="empty">${offer.demands.length
-          ? 'Every occupied province is already on the table.'
+          ? 'Every occupied state is already on the table.'
           : `Nothing to demand yet — occupy ${esc(target.name)}'s provinces first.`}</p>`;
       }
       // Kendi sinirima komsu olan kume once gelir: bitisik alinan toprak
@@ -741,14 +742,14 @@ export class Screens {
     </div>
     <div class="card">
       <div class="card-head"><h3>${tab === 'take' ? `Demands from ${esc(target.name)}`
-    : tab === 'give' ? 'Provinces you offer' : 'Additional terms'}</h3>
+    : tab === 'give' ? 'States you offer' : 'Additional terms'}</h3>
         <small>${tab === 'take'
-    ? `at most ${MAX_DEMAND_PROVINCES} provinces · click a row or the map`
+    ? `at most ${MAX_DEMAND_PROVINCES} states · click a row or the map`
     : tab === 'give' ? 'giving land lowers the price of the treaty'
       : 'terms that do not move borders'}</small></div>
       ${tab === 'terms' ? this.peaceTermList(world, me, target)
     : tab === 'give' ? (list(offer.concessions, 'give')
-      || '<p class="empty">Click your own provinces on the map to offer them.</p>')
+      || '<p class="empty">Click your own states on the map to offer them.</p>')
       : `${list(offer.demands, 'take')}
          <div class="peace-avail-head">Occupied — available to demand</div>
          ${takeable()}`}
@@ -864,7 +865,7 @@ export class Screens {
     const resources = RESOURCE_IDS.map((id) => {
       const record = me.economy?.resources?.[id];
       const ratio = record?.need > 0.01 ? Math.round(record.ratio * 100) : null;
-      return `<span><small>${RESOURCES[id].glyph} ${RESOURCES[id].name}</small><b class="${ratio != null && ratio < 90 ? 'res-neg' : ''}">${ratio == null ? '—' : `${ratio}%`}</b></span>`;
+      return `<span><small>${resourceArt(id, 'xs')} ${RESOURCES[id].name}</small><b class="${ratio != null && ratio < 90 ? 'res-neg' : ''}">${ratio == null ? '—' : `${ratio}%`}</b></span>`;
     }).join('');
     return `<div class="nation-hero card">
         <span class="flag-hero" data-flag-nation="${me.id}" data-flag-w="210" data-flag-h="140"></span>
@@ -1271,7 +1272,7 @@ export class Screens {
         <div class="card-head"><h3>How war works now</h3><small>one map, one combat system</small></div>
         <p class="hint">Select divisions and order a destination. Friendly divisions share provinces without merging. Entering an enemy army starts a weekly battle; low organization forces retreat and the winner occupies the province. Only a division with no connected retreat route surrenders.</p>
       </div>
-      ${battleRows || '<div class="card"><p class="empty">No active province battles.</p></div>'}${rows}`;
+      ${battleRows || '<div class="card"><p class="empty">No battles under way.</p></div>'}${rows}`;
   }
 
   // --- Ticaret: tek dünya pazarı, ülke bazlı haftalık mal akışı ---

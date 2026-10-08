@@ -7,6 +7,27 @@
 // YZ'nin seçimi uygulanır, oyun kilitlenmez.
 
 import { pendingCards, resolveCard } from '../game/eventCards.js';
+import { gameDate } from './hud.js';
+
+/**
+ * Olayın sahnesi: menü resimlerinden biri. Paradox olayının gücü başlık
+ * resmindedir; düz kutu "bildirim penceresi" gibi okunuyordu.
+ */
+const EVENT_SCENE = {
+  famine: 'field-road',
+  bumper_harvest: 'field-road',
+  strike: 'rail-yard',
+  railway_mania: 'rail-yard',
+  great_inventor: 'rail-yard',
+  war_weariness: 'coast-fort',
+  border_incident: 'coast-fort',
+  veterans: 'coast-fort',
+  cholera: 'tulip-night',
+  liberal_agitation: 'palace-square',
+  springtime: 'palace-square',
+  court_scandal: 'palace-hall',
+  emigration: 'harbour-dawn',
+};
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -43,14 +64,19 @@ export class EventCards {
     const layer = document.createElement('div');
     layer.className = 'event-card-layer';
     layer.dataset.key = card.key;
-    layer.innerHTML = `<div class="event-card" role="dialog" aria-modal="true" aria-label="${esc(card.title)}">
-      <small>${esc(me.name)} · event</small>
-      <h3>${esc(card.title)}</h3>
-      <p>${esc(card.text)}</p>
-      <div class="event-options">
-        ${card.options.map((option) => `<button class="action" data-option="${option.index}" ${option.available ? '' : 'disabled'}>
-          <b>${esc(option.label)}</b><small>${esc(option.detail)}</small></button>`).join('')}
-        <button class="action compact" data-later="1">Decide later</button>
+    const scene = EVENT_SCENE[card.id] ?? 'main-menu';
+    const date = gameDate(card.turn ?? this.game.turns?.turn ?? 1);
+    layer.innerHTML = `<div class="event-card ev" role="dialog" aria-modal="true" aria-label="${esc(card.title)}">
+      <div class="ev-scene" style="background-image:url('assets/menu/${scene}.jpg')"><span class="ev-vignette"></span></div>
+      <div class="ev-body">
+        <small class="ev-kicker">${esc(me.name)}${date ? ` · ${esc(date)}` : ''}</small>
+        <h3>${esc(card.title)}</h3>
+        <p>${esc(card.text)}</p>
+        <div class="ev-options">
+          ${card.options.map((option, i) => `<button class="ev-opt" data-option="${option.index}" ${option.available ? '' : 'disabled'}>
+            <i>${'ABCDE'[i] ?? ''}</i><span><b>${esc(option.label)}</b><small>${esc(option.detail)}</small></span></button>`).join('')}
+        </div>
+        <button class="ev-later" data-later="1">Decide later <small>— unanswered for 8 weeks, the cabinet decides</small></button>
       </div>
     </div>`;
     layer.addEventListener('click', (event) => {

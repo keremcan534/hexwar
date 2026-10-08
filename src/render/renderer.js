@@ -2086,6 +2086,8 @@ export class Renderer {
       else if (hovered !== selectedProvince) this.drawProvinceHighlight(ctx, world, hovered, rect, true);
     }
     this.drawCities(ctx, world, rect);
+    // Zafer puanı: ordu seçiliyken (hedef seçimi) ya da yakın zoomda.
+    if (armySelected || this.camera.zoom >= 0.9) this.drawVictoryPoints(ctx, world, rect);
     if (this.mapMode !== 'geography') {
       // Coğrafya kipi fiziksel dünyayı yalnız başına gösterir: ordu, cephe ve
       // muharebe de siyasettir (bkz. mapMode yorumu).
@@ -3282,6 +3284,41 @@ export class Renderer {
    * seviyesi burç dişi olarak okunur. Ham palet rengi yerine nationInk:
    * işaretler haritanın atlas tonuyla aynı aileden gelir.
    */
+  /**
+   * ZAFER PUANI: her state'in merkez hexi. Warscore'un %75'i oradan gelir
+   * (peace.VICTORY_POINT_SHARE); ordu hex hex yürüdüğü için oyuncu hangi
+   * hexi alması gerektiğini haritada görmeli. Şehirli merkez zaten şehir
+   * levhasıyla işaretli, ona ikinci işaret konmaz. İşgal edilmiş merkez
+   * işgalcinin rengiyle dolar.
+   */
+  drawVictoryPoints(ctx, world, rect) {
+    if (this.mapMode === 'geography') return;
+    const zoom = this.camera.zoom;
+    const r = HEX_SIZE * 0.2;
+    ctx.save();
+    ctx.lineWidth = 1.4 / zoom;
+    for (const province of world.provinces ?? []) {
+      const t = province.center;
+      if (!t || province.owner < 0 || t.city) continue;
+      if (t.x < rect.minX || t.x > rect.maxX || t.y < rect.minY || t.y > rect.maxY) continue;
+      const holder = controllerOf(t);
+      const occupied = holder >= 0 && holder !== province.owner;
+      // State adı merkeze yazılır; işaret adın üstünde durur, yazıyı bölmez.
+      const y = t.y - HEX_SIZE * 0.62;
+      ctx.beginPath();
+      ctx.moveTo(t.x, y - r);
+      ctx.lineTo(t.x + r * 0.8, y);
+      ctx.lineTo(t.x, y + r);
+      ctx.lineTo(t.x - r * 0.8, y);
+      ctx.closePath();
+      ctx.fillStyle = occupied ? this.nationInk(world.nations[holder]) : '#baa064';
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(8, 10, 12, 0.85)';
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
   drawCities(ctx, world, rect) {
     // Coğrafya kipi fiziksel dünyayı yalnız başına gösterir: şehir de siyasettir.
     if (!world.cities?.length || this.mapMode === 'geography') return;

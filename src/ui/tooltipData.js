@@ -8,6 +8,7 @@
 // Sağlayıcı `null` dönerse tooltip hiç açılmaz — boş bir kart göstermek,
 // hiç göstermemekten kötüdür.
 
+import { registerStateTooltips } from './tooltipState.js';
 import { provideTooltip } from './tooltip.js';
 import { economyView, formatPopulation, literacyTarget } from '../game/economy.js';
 import {
@@ -134,11 +135,13 @@ export function registerTooltips(game) {
       IRON: 'Rifles, artillery, railways and ironclads.',
       TIMBER: 'Construction sites, rifle stocks and sailing ships.',
       HORSES: 'Cavalry and artillery: without them they fight up to 40% weaker.',
-      SALTPETER: 'Gunpowder: every regiment in battle burns it; short powder costs up to 30% of strength.',
+      SALTPETER: 'Gunpowder: every regiment in battle burns it; short powder costs up to 30% of strength. Rifle and artillery lines use it too, and after Chemical Fertilisers (1868) the farms.',
+      OIL: 'Nobody needs it in 1836. After the Open Hearth Furnace (1868) and Electrical Power (1880) factories run on it: up to +15% industrial capacity, in proportion to the oil you have.',
+      RUBBER: 'Nobody needs it in 1836. After Integral Rail (1878) and Modern Doctrine (1882) every land regiment wants it: up to +15% in battle, in proportion to the rubber you have.',
     }[id];
     return {
       type: 'breakdown',
-      title: `${info.glyph} ${info.name}`,
+      title: info.name,
       value: record.need > 0.01 ? `${pct(record.ratio)} covered` : 'no need',
       text: uses,
       rows: [
@@ -169,7 +172,7 @@ export function registerTooltips(game) {
   provideTooltip('control', () => ({
     type: 'mechanic',
     title: 'Control',
-    text: 'How much of this province actually answers to you. Freshly taken land '
+    text: 'How much of this state actually answers to you. Freshly taken land '
       + 'starts low and climbs back; occupied land pays you nothing until the '
       + 'peace is signed.',
   }));
@@ -218,14 +221,14 @@ export function registerTooltips(game) {
       ],
       footer: infamy >= INFAMY_COALITION * 0.6
         ? 'Close to the threshold: one more annexation may unite your neighbours.'
-        : 'A single border province is safe; a string of annexations is not.',
+        : 'A single border state is safe; a string of annexations is not.',
     };
   });
 
   provideTooltip('army', () => ({
     type: 'mechanic',
     title: 'Army',
-    text: 'Men under arms: soldiers drawn from your provinces and serving in your '
+    text: 'Men under arms: soldiers drawn from your states and serving in your '
       + 'divisions. A regiment is 30,000 infantry, 20,000 cavalry or 15,000 gunners. '
       + 'Survivors of a disbanded unit walk home; the dead do not.',
   }));
@@ -282,12 +285,12 @@ export function registerTooltips(game) {
       political: ['Political map', 'Borders, nations and armies. Occupied hexes carry a hatch; the front of the selected commander is outlined.'],
       terrain: ['Terrain', 'Relief and vegetation without borders: where armies slow down and where the land is rich.'],
       geography: ['Geography', 'The bare world as the generator drew it — continents, seas and straits, no borders or units.'],
-      cultures: ['Cultures', 'Who lives where. Hatching marks provinces whose majority differs from the owner\'s culture.'],
-      resources: ['Resources', 'What every hex yields — grain, cattle, coal, iron and the rest. A province produces the sum of its hexes; the legend lists every resource.'],
-      population: ['Population', 'How many people live in each province, in four bands.'],
+      cultures: ['Cultures', 'Who lives where. Hatching marks states whose majority differs from the owner\'s culture.'],
+      resources: ['Resources', 'What every state produces: food, coal, iron, timber, horses or saltpeter — and the oil and rubber fields that only matter once industry and armies need them.'],
+      population: ['Population', 'How many people live in each state, in four bands.'],
       diplomacy: ['Diplomacy', 'Who is at war with whom. Green is the nation you look from, red its enemies, blue its allies; hatching marks occupied land. Click any nation to see the map through its eyes.'],
-      unrest: ['Unrest', 'How close each province is to revolt, 0 to 10. Above 7 a revolt starts to brew; foreign culture, hunger and occupation drive it.'],
-      industry: ['Industry', 'Factory workers in each province, across every nation — where the industrial heartlands are.'],
+      unrest: ['Unrest', 'How close each state is to revolt, 0 to 10. Above 7 a revolt starts to brew; foreign culture, hunger and occupation drive it.'],
+      industry: ['Industry', 'Factory levels in each state, across every nation — where the industrial heartlands are.'],
       infamy: ['Infamy', `How feared each nation is. At ${INFAMY_COALITION} the neighbours start forming coalitions against it.`],
       layers: ['Layers', 'Grid, labels, live sea, and the seed of this world.'],
     };
@@ -349,7 +352,7 @@ export function registerTooltips(game) {
   provideTooltip('culture', () => ({
     type: 'mechanic',
     title: 'Culture',
-    text: 'Provinces of a culture your state does not accept recover control more '
+    text: 'States of a culture your nation does not accept recover control more '
       + 'slowly and are unhappier. Citizenship law decides who counts as accepted.',
   }));
 
@@ -446,7 +449,7 @@ export function registerTooltips(game) {
     compliance: () => ({
       type: 'mechanic',
       title: 'Compliance',
-      text: 'How far a non-core province accepts our rule (0-100). Taxes, recruits, industry and resources '
+      text: 'How far a non-core state accepts our rule (0-100). Taxes, recruits, industry and resources '
         + 'come in at 25% plus 75% of compliance. Cores always give everything.',
     }),
     consumer: () => ({
@@ -478,4 +481,7 @@ export function registerTooltips(game) {
     const entry = GLOSSARY[arg];
     return nation && entry ? entry(nation) : null;
   });
+
+  // Ulusal ekranların kartları ayrı dosyada (tooltipState.js).
+  registerStateTooltips(game);
 }

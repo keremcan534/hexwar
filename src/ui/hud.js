@@ -31,7 +31,9 @@ import { LEAVE_MS, hidePanel, motionOn, panelOpen, togglePanel } from './motion.
 import { Screens } from './screens.js';
 import { showEndScreen } from './endScreen.js';
 import { formatPopulation, weeklyBalanceOf } from '../game/economy.js';
-import { RESOURCES, RESOURCE_IDS, BUILDINGS, BUILDING_IDS } from '../game/econ/defs.js';
+import { RESOURCES, RESOURCE_IDS, BUILDINGS, BUILDING_IDS, DEVELOPMENT_MAX } from '../game/econ/defs.js';
+import { buildingArt, resourceArt } from './icons/art.js';
+import { meter as kitMeter, pips as kitPips, tipAttr } from './kit.js';
 import { depositsOf, fertilityOf } from '../game/econ/deposits.js';
 import { powerIncome } from '../game/politics.js';
 import { buildingLevels, buildingSlots } from '../game/provinces.js';
@@ -178,7 +180,7 @@ export class Hud {
     const legend = this.el.rgoLegend;
     if (!legend) return;
     legend.innerHTML = Object.values(RESOURCES).filter((type) => type.id !== 'FOOD').map((type) => (
-      `<span style="--rgo-color:hsl(${type.hue} ${type.sat}% 40%)">${type.glyph} ${type.name}</span>`
+      `<span style="--rgo-color:hsl(${type.hue} ${type.sat}% 40%)">${resourceArt(type.id, 'xs')} ${type.name}</span>`
     )).join('');
   }
 
@@ -1021,7 +1023,7 @@ export class Hud {
       // sürerken sayaç Faz E'ye dek üretim anındaki değeri gösterir.
       const provinceCount = me.provinces || null;
       this.el.topSub.innerHTML =
-        `${provinceCount ? `${provinceCount} ${provinceCount === 1 ? 'province' : 'provinces'}`
+        `${provinceCount ? `${provinceCount} ${provinceCount === 1 ? 'state' : 'states'}`
           : `${me.tiles} ${me.tiles === 1 ? 'hex' : 'hexes'}`} ${sep} `
         + `${cities} ${cities === 1 ? 'city' : 'cities'} ${sep} ${state}`;
     } else {
@@ -1090,11 +1092,11 @@ export class Hud {
         (province) => province.owner === me?.id && (province.econ?.unrest ?? 0) >= CULTURE.REVOLT_UNREST,
       ).length;
       html = `<header><b>Provincial unrest</b><small>${boiling
-        ? `${boiling} of your provinces boiling` : 'national movements grow above 6'}</small></header>`
+        ? `${boiling} of your states boiling` : 'national movements grow above 6'}</small></header>`
         + [[0, 'Calm'], [0.35, 'Restless'], [0.7, 'Boiling'], [1, 'Revolt']]
           .map(([t, label]) => chip(rampColor(UNREST_RAMP, t), label)).join('');
     } else if (mode === 'industry') {
-      html = '<header><b>Factory workers</b><small>by province, every nation</small></header>'
+      html = '<header><b>Industry</b><small>factory levels by state, every nation</small></header>'
         + chip(rampColor(INDUSTRY_RAMP, 0), 'None')
         + [[1000, '1K'], [10000, '10K'], [100000, '100K+']]
           .map(([workers, label]) => chip(
@@ -1286,23 +1288,26 @@ export class Hud {
             : '')]);
       }
     }
-    if (nation) stats.push(['Nation Size', `${nation.provinces ?? 0} provinces`]);
+    if (nation) stats.push(['Nation Size', `${nation.provinces ?? 0} states`]);
+    // STATE KARTI (HOI4 modeli: küme = state, hex = province). Ekonomi not
+    // satırlarına dökülünce hiyerarşisiz bir metin yığını oluyordu; kart
+    // kaynağı, kalkınmayı, binaları ve uyumu simgeyle tek bakışta verir.
+    let stateHtml = '';
     if (tile.province) {
-      // PROVINCE: tek pop, kalkınma, binalar, yataklar (TASARIM.md §2).
       const econ = tile.province;
       const area = world.provinces?.[tile.provinceId];
-      const deposits = area ? depositsOf(area)
-        .map((line) => `${RESOURCES[line.id].glyph} ${RESOURCES[line.id].name} ×${line.size.toFixed(1)}`).join(' · ') : '';
-      const built = BUILDING_IDS.filter((id) => (econ.buildings?.[id] ?? 0) > 0)
-        .map((id) => `${BUILDINGS[id].name} ${econ.buildings[id]}`).join(', ');
-      stats.unshift(
-        ['Population', formatPopulation(econ.population)],
-        ['Development', `${econ.development} · ${buildingLevels(econ)}/${buildingSlots(econ)} building slots`],
-        ['Buildings', built || 'none'],
-        ['Deposits', deposits || 'none'],
-        ['Fertility', area ? `${Math.round(fertilityOf(area) * 100)}% of world average` : '—'],
-        ['Compliance', `${Math.round(econ.control)}%${econ.core === false ? ' · counts at ' + Math.round((econ.status ?? 0) * 100) + '%' : ''}`],
-      );
+      const deposits = area ? depositsOf(area) : [];
+      const levels = buildingLevels(econ);
+      const slots = buildingSlots(econ);
+      const built = BUILDING_IDS.filter((id) => (econ.buildings?.[id] ?? 0) > 0);
+      stats.unshift(['Population', formatPopulation(econ.population)]);
+      stateHtml = `<div class="pv-state"${area ? tipAttr('state', area.id) : ''}>
+        <div class="pv-state-res">${deposits.map((line) => `<span${tipAttr('resource', line.id)}>${resourceArt(line.id, 'sm')}<b>${escapeHtml(RESOURCES[line.id].name)}</b><small>×${line.size.toFixed(1)}</small></span>`).join('')}
+          ${area ? `<span class="pv-fert"><small>Fertility</small><b>${Math.round(fertilityOf(area) * 100)}%</b></span>` : ''}</div>
+        <div class="pv-state-row"><small>Development</small>${kitPips(econ.development, DEVELOPMENT_MAX)}<b>${econ.development}</b><em>${levels}/${slots} slots</em></div>
+        <div class="pv-state-blds">${built.length ? built.map((id) => `<span${tipAttr('building', id)}>${buildingArt(id, 'sm')}<i>${econ.buildings[id]}</i></span>`).join('') : '<small class="k-dim">No buildings</small>'}</div>
+        <div class="pv-state-row"><small>Compliance</small>${kitMeter((econ.control ?? 0) / 100, { tone: econ.core === false ? 'warn' : 'pos', wide: true })}<b>${Math.round(econ.control)}%</b>${econ.core === false ? `<em class="neg">counts at ${Math.round((econ.status ?? 0) * 100)}%</em>` : '<em>core</em>'}</div>
+      </div>`;
     }
     // Küme kimliği en üstte: hangi province'in parçası olduğu ilk bakışta okunsun.
     const cluster = world.provinces?.[tile.provinceId];
@@ -1318,7 +1323,7 @@ export class Hud {
         stats.unshift(['Territory', 'non-core: yields by compliance']);
       }
       const hexes = cluster.tileIdx.length;
-      stats.unshift(['Province', `${cluster.name} · ${hexes} ${hexes === 1 ? 'hex' : 'hexes'}`]);
+      stats.unshift(['State', `${cluster.name} · ${hexes} ${hexes === 1 ? 'province' : 'provinces'}`]);
     }
 
     const unitBlock = this.unitBlockHtml(tile.unit);
@@ -1339,7 +1344,7 @@ export class Hud {
       const at = stats.findIndex(([k]) => k === key);
       return at < 0 ? null : stats.splice(at, 1)[0][1];
     };
-    const province = take('Province');
+    const province = take('State');
     const population = take('Population');
     const control = take('Control');
     const defense = take('Defense');
@@ -1377,6 +1382,8 @@ export class Hud {
           </div>
         </div>
 
+        ${stateHtml}
+
         <div class="pv-metrics">
           ${metric('Population', population)}
           ${metric('Control', control, 'control')}
@@ -1393,7 +1400,7 @@ export class Hud {
         ${notes ? `<div class="pv-notes">${notes}</div>` : ''}
 
         <div class="pv-lines">
-          ${line('Province', province)}
+          ${line('State', province)}
           ${culture == null ? '' : `<span class="pv-line" data-tip="culture" tabindex="0">
             <small>Culture</small><b>${escapeHtml(String(culture))}</b></span>`}
           ${line('Language', language)}
@@ -1489,7 +1496,7 @@ export class Hud {
       ? `<button class="action wide" disabled title="The ultimatum runs out in ${crisis} weeks; mobilize from the Military screen.">Ultimatum (${crisis} weeks)</button>`
       : `<button class="action wide${this.warConfirm === foreign ? ' confirming' : ''}" data-war="${foreign}" ${truce ? 'disabled' : ''}>${
         this.warConfirm === foreign
-          ? `Click again to declare war: ${ULTIMATUM_WEEKS}-week ultimatum, infamy for every province taken`
+          ? `Click again to declare war: ${ULTIMATUM_WEEKS}-week ultimatum, infamy for every state taken`
           : `Declare War${truce ? ` (${truce} turns)` : ''}`}</button>`}
       </div>`);
     }
@@ -1838,7 +1845,7 @@ function resourceChips(nation) {
     const cls = !need ? 'idle' : ratio < 0.8 ? 'short' : ratio < 0.98 ? 'tight' : 'ok';
     const surplus = (record?.exported ?? 0) > 0.05;
     return `<span class="res-chip ${cls}" data-tip="resource" data-tip-arg="${id}" tabindex="0">
-      <i>${RESOURCES[id].glyph}</i><b>${need ? `${Math.round(ratio * 100)}%` : '—'}</b>${surplus ? '<em>▲</em>' : ''}</span>`;
+      ${resourceArt(id, 'xs')}<b>${need ? `${Math.round(ratio * 100)}%` : '—'}</b>${surplus ? '<em>▲</em>' : ''}</span>`;
   }).join('')}</span>`;
 }
 

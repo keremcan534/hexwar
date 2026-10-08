@@ -81,7 +81,7 @@ export class MovementDock {
     const trend = row.trend > 0.05 ? '▲' : row.trend < -0.05 ? '▼' : '■';
     const swatch = row.color ? `style="--md-color:${esc(row.color)}"` : '';
     const where = row.provinces.length === 1
-      ? esc(row.provinces[0].name ?? '1 province') : `${row.provinces.length} provinces`;
+      ? esc(row.provinces[0].name ?? '1 state') : `${row.provinces.length} states`;
     const a = row.actions;
     const button = (id, label, cfg, tip) => {
       const blocked = cfg.blockers?.length;
@@ -95,7 +95,7 @@ export class MovementDock {
       <header class="md-row-head">
         <i class="md-swatch" aria-hidden="true"></i>
         <button type="button" class="md-name" data-md-focus="${row.cultureId}"
-          title="Show their provinces on the map">${esc(row.name)}</button>
+          title="Show their states on the map">${esc(row.name)}</button>
         <span class="md-stage">${esc(stage.name)}</span>
       </header>
       <div class="md-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"
@@ -108,13 +108,13 @@ export class MovementDock {
         · unrest ${row.pressure.toFixed(1)}<small>/grows above ${row.calm}</small></p>
       <div class="md-acts">
         ${button('concessions', `Concede · £${a.concessions.cost.toFixed(0)}`, a.concessions,
-    `Temporary: −${a.concessions.drop}% progress and calmer provinces, once a year.`)}
+    `Temporary: −${a.concessions.drop}% progress and calmer states, once a year.`)}
         ${button('martial', `Martial law · £${a.martial.cost.toFixed(1)}/w`, a.martial,
     `Temporary: for ${a.martial.weeks} weeks the movement loses ground; costs money every week and some stability.`)}
         ${button('accept', 'Accept', a.accept,
     'Permanent: they become an accepted culture — full taxes and recruits, and the movement dies down. The old nation resents it for two years.')}
         ${button('vassal', `Release · ${a.vassal.provinces}`, a.vassal,
-    'Permanent: their provinces become a vassal state — the land is gone, the war never comes, and they pay us 15% of their income.')}
+    'Permanent: their states become a vassal — the land is gone, the war never comes, and they pay us 15% of their income.')}
         ${button('crackdown', `Crush · ${formatPopulation(a.crackdown.dead)}`, a.crackdown,
     `Permanent: ${formatPopulation(a.crackdown.dead)} of them die. −${a.crackdown.drop}% progress, heavy infamy, lost stability, and our other peoples grow bolder.`)}
         ${button('expel', 'Expel', a.expel,
