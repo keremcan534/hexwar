@@ -52,6 +52,7 @@ import {
   bindStateScreens, constructionKey, declareEmbargo, embargoBlockers, renderBudget, renderConstruction,
   renderIndustry, renderPolitics, renderPopulation, renderTrade,
 } from './stateScreens.js';
+import { refreshTooltips } from './tooltip.js';
 
 /** Ekranın kapanış geçişi (styles.css §6 .screen.hidden) bitene kadar gövde kalır. */
 const SCREEN_CLOSE_MS = 220;
@@ -300,7 +301,26 @@ export class Screens {
     }, 560);
   }
 
+  /**
+   * YÜKSEKLİK KİLİDİ. Ekran içeriği kadar uzar (boş panel haritadan çalınmış
+   * yerdir), ama AÇIKKEN yalnız büyüyebilir, küçülemez: haftalık tazelemede
+   * bir liste kısalınca alt kenar yukarı-aşağı oynuyordu (ölçüldü: Population
+   * 75 haftada 3 kez, 920 → 863 → 881 px). Kilit ekran değişince ve kapanınca
+   * çözülür. offsetHeight dönüşümü (açılış ölçeği) saymaz.
+   */
+  lockHeight() {
+    const root = this.el.root;
+    if (this.heightFor !== this.active) {
+      root.style.minHeight = '';
+      this.heightFor = this.active;
+    }
+    const height = root.offsetHeight;
+    if (height > (parseFloat(root.style.minHeight) || 0)) root.style.minHeight = `${height}px`;
+  }
+
   close() {
+    this.heightFor = null;
+    this.el.root.style.minHeight = '';
     if (this.active === 'peace') this.restoreMapMode();
     // Bekleyen onaylar ekranla birlikte duser.
     this.uc.confirm = null;
@@ -419,6 +439,8 @@ export class Screens {
     // canvas'lar burada takılır (kopan eskiler kendi kendini siler).
     hydrateFlags(this.el.body, this.game.world.nations);
     this.restoreScroll(scroll);
+    this.lockHeight();
+    refreshTooltips();
     if (refocus) this.el.body.querySelector(refocus)?.focus({ preventScroll: true });
     this.game.perf?.add('ui.screen', performance.now() - t0);
   }

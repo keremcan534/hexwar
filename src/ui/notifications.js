@@ -59,7 +59,8 @@ export class Notifications {
     if (!this.tray) return;
     const count = this.cards.size;
     const alert = [...this.cards.keys()].some((entry) => entry.tone === 'bad' || entry.tone === 'war');
-    this.tray.hidden = count === 0;
+    // Sayaç hiç kaybolmaz: 0'da soluk durur (belirip kaybolması oynama sayılır).
+    this.tray.classList.toggle('empty', count === 0);
     this.tray.innerHTML = `${glyph('bell', 'inline')} ${count}`;
     this.tray.classList.toggle('notify-alert', alert);
   }

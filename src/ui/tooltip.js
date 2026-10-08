@@ -204,11 +204,66 @@ function scheduleClose() {
   closeTimer = setTimeout(() => closeFrom(0), GRACE);
 }
 
+/**
+ * Açık kartları canlı tutar. Kaynağı haftalık tazelemede yeniden kurulduysa
+ * aynı kimlikteki yeni öğe bulunur ve içerik YERİNDE güncellenir: kart ne
+ * kapanır ne kayar, ama eski sayıyı da göstermez (ölçüldü: hazine kartı açık
+ * kalırken "134 gold" diyordu, çubuk 122). Bulunamazsa kart olduğu gibi kalır.
+ * HUD ve ekranlar her tazelemenin sonunda çağırır.
+ */
+export function refreshTooltips() {
+  for (const layer of layers) {
+    const old = layer.source;
+    if (!old || old.isConnected) continue;
+    for (const element of document.querySelectorAll('[data-tip]')) {
+      if (element.dataset.tip === old.dataset.tip && sameSource(old, element)) {
+        refresh(layer, element);
+        break;
+      }
+    }
+  }
+}
+
 /** Tümünü kapatır ve bekleyen zamanlayıcıları temizler (panel kapanışı). */
 export function hideTooltips() {
   clearTimeout(openTimer);
   clearTimeout(closeTimer);
   closeFrom(0);
+}
+
+/**
+ * Aynı bilgi mi? Üst çubuk ve açık ekranlar her hafta innerHTML ile yeniden
+ * kurulur; imlecin altındaki öğe YENİ bir düğümdür ama aynı sağlayıcıyı ve
+ * argümanı taşır. Bunu "başka kaynak" sayınca kart her hafta kapanıp
+ * gecikmeyle yeniden açılıyordu (Kerem: "açılıp kapanma, gidip gelmeler").
+ */
+function sameSource(a, b) {
+  if (!a || !b) return false;
+  if (a === b) return true;
+  if (a.dataset.tip !== b.dataset.tip) return false;
+  if ((a.dataset.tipArg ?? '') !== (b.dataset.tipArg ?? '')) return false;
+  // Serbest metinli kartta ilk satır (başlık) kimliktir; sayılar değişebilir.
+  if (a.dataset.tip === 'text') {
+    const head = (el) => (el.dataset.tipText ?? '').split('\n')[0];
+    return head(a) === head(b);
+  }
+  return true;
+}
+
+/** Açık kartın içeriğini yerinde tazeler: kapanmaz, yeri değişmez. */
+function refresh(layer, element) {
+  layer.source = element;
+  const provider = providers.get(element.dataset.tip);
+  if (!provider) return;
+  let data = null;
+  try {
+    data = provider(element.dataset.tipArg ?? '', element);
+  } catch {
+    data = null;
+  }
+  if (!data) return;
+  const html = render(data);
+  if (layer.card.innerHTML !== html) layer.card.innerHTML = html;
 }
 
 function open(element, depth) {
@@ -252,9 +307,12 @@ export function mountTooltips() {
     if (!element) return;
     const depth = depthOf(element);
     if (depth >= MAX_DEPTH) return;
-    // Aynı kaynağın üstünde gezinmek yeniden açmaz.
-    if (layers[depth] && layers[depth].source === element) {
+    // Aynı kaynağın üstünde gezinmek yeniden açmaz; yeniden kurulmuş aynı
+    // kaynak (haftalık tazeleme) kartı yerinde günceller.
+    if (layers[depth] && sameSource(layers[depth].source, element)) {
       clearTimeout(closeTimer);
+      clearTimeout(openTimer);
+      if (layers[depth].source !== element) refresh(layers[depth], element);
       return;
     }
     clearTimeout(closeTimer);

@@ -34,6 +34,7 @@ import { formatPopulation, weeklyBalanceOf } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS, BUILDINGS, BUILDING_IDS, DEVELOPMENT_MAX } from '../game/econ/defs.js';
 import { buildingArt, emblemArt, resourceArt, traitArt } from './icons/art.js';
 import { glyph } from './icons/glyphs.js';
+import { refreshTooltips } from './tooltip.js';
 import { meter as kitMeter, pips as kitPips, tipAttr } from './kit.js';
 import { depositsOf, fertilityOf } from '../game/econ/deposits.js';
 import { powerIncome } from '../game/politics.js';
@@ -1156,6 +1157,7 @@ export class Hud {
       this.el.topSub.textContent = 'eliminated';
     }
     if (!this.game.selected) this.clearSheet();
+    refreshTooltips();
     this.game.perf?.add('ui.hud', performance.now() - t0);
   }
 

@@ -13390,11 +13390,11 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
   .tb-hero .tb-gv b { font-size: 19px; }
   .tb-gauge { padding: 4px 9px 4px 6px; gap: 7px; }
 }
-/* Ana göstergeler halkalı yuva aldıktan sonra tek satıra ancak ~1800 pikselde
+/* Ana göstergeler halkalı yuva ve sabit ölçülü yuvalarla tek satıra ancak ~1890 pikselde
    sığıyor (1600'de Altın künyenin, kaynak tepsisi takvimin üstüne biniyordu;
    başsız tarayıcıda ölçüldü). Altında iki satır: künye + takvim üstte,
    göstergeler altta ortalı. --hud-top JS'le ölçüldüğü için alt katmanlar kayar. */
-@media (max-width: 1799px) {
+@media (max-width: 1899px) {
   .topbar {
     grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-areas:
@@ -13635,7 +13635,7 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
 @keyframes tb-text-bad { 18% { color: #ff9b7c; } }
 
 /* --- Dar pencere ------------------------------------------------------- */
-@media (max-width: 1799px) {
+@media (max-width: 1899px) {
   /* İki satırda arma yalnız üst satırdan taşar; alt satırın sol boşluğuna iner. */
   .nation-crest { width: 80px; height: calc(100% + 16px); padding-top: 6px; }
   .nation-crest .nation-flag { width: 64px; height: 43px; }
@@ -14280,3 +14280,52 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
   .k-lrow { grid-template-columns: 52px minmax(100px, 0.8fr) 150px minmax(250px, 2fr) 140px; gap: 10px; }
   .k-lrow-art .art-lg { width: 50px; height: 50px; }
 }
+
+/* ==========================================================================
+   §50 SABİT ÖLÇÜ — oyun akarken arayüz kıpırdamaz (Kerem 2026-10-08:
+   "arayüz oynuyor, açılıp kapanma, gidip gelmeler; hiçbir koşulda olmayacak").
+   Ölçüldü (8x, 40 sn): değer genişliği her hafta değiştiği için ortalı
+   gösterge grubu ±10px kayıyordu (~60 kez), saat birimi tarih ve durum
+   metniyle (41 kez). Her değer yuvası en geniş değerine göre SABİTTİR;
+   sayı ne olursa olsun kutu ölçüsü değişmez.
+   ========================================================================== */
+.tb-cartouche > .tb-gauge { flex: none; }
+.tb-cartouche > .tb-gauge .tb-gv { flex: none; width: var(--gv-w); overflow: hidden; }
+.tb-cartouche > .tb-gauge:nth-child(1) { --gv-w: 112px; }
+.tb-cartouche > .tb-gauge:nth-child(2) { --gv-w: 78px; }
+.tb-cartouche > .tb-gauge:nth-child(3) { --gv-w: 68px; }
+.tb-cartouche > .tb-gauge:nth-child(4) { --gv-w: 66px; }
+.tb-cartouche > .tb-gauge:nth-child(5) { --gv-w: 56px; }
+.tb-minis { grid-template-columns: 124px 116px; }
+.tb-mini { overflow: hidden; }
+.turn-badge { flex: none; width: 168px; }
+.turn-badge b { width: 100%; }
+.turn-row { width: 100%; }
+.turn-status { flex: 1; min-width: 0; max-width: none; }
+
+@media (max-width: 1365px) {
+  .tb-cartouche > .tb-gauge:nth-child(1) { --gv-w: 114px; }
+  .tb-cartouche > .tb-gauge:nth-child(2) { --gv-w: 80px; }
+  .tb-cartouche > .tb-gauge:nth-child(3) { --gv-w: 70px; }
+  .tb-cartouche > .tb-gauge:nth-child(4) { --gv-w: 70px; }
+  .tb-cartouche > .tb-gauge:nth-child(5) { --gv-w: 56px; }
+  .turn-badge { width: 156px; }
+}
+
+/* Bildirim sayacı: hep yerinde (boşken soluk), sabit genişlik; yeni bildirim
+   SALLAMAZ, bir kez parlar. Eskiden 0'da kaybolup gelince beliriyor ve
+   translateX ile sallanıyordu. */
+body:is(.screen-open, .notify-quiet) .notify-tray { justify-content: center; min-width: 64px; }
+.notify-tray.empty { opacity: 0.35; }
+.notify-tray.bump { animation: notify-glow 0.9s ease; }
+@keyframes notify-glow {
+  0%, 100% { box-shadow: var(--shadow-float); }
+  30% { box-shadow: var(--shadow-float), 0 0 0 1px var(--gold), 0 0 14px rgba(214, 186, 120, 0.55); }
+}
+/* Son eylem metni sabit genişlikte: uzunluğu haftadan haftaya değişir ve
+   sağa yaslı grupta AUTO hapını itiyordu (ölçüldü: 75 haftada 8 kayma). */
+.auto-last { flex: none; width: 340px; text-align: left; }
+/* Savaş şeridi başlığın AKIŞINDA değil, altında asılı: savaş başlayınca
+   başlık 40px uzuyor, ona göre konumlanan açık ekran ve bildirimler aşağı
+   kayıyordu (ölçüldü). Başlık yüksekliği artık savaşla değişmez. */
+.war-bar { position: absolute; top: 100%; left: 0; right: 0; }
