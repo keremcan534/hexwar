@@ -98,6 +98,19 @@ function track(key, value, eps, pol = 1) {
   return `data-k="${key}" data-v="${Number(value) || 0}" data-eps="${eps}" data-pol="${pol}"`;
 }
 
+/** Yüzen farkın metni: hücrenin kendi biriminde, işaretli. */
+function deltaLabel(key, delta) {
+  const sign = delta > 0 ? '+' : '−';
+  const abs = Math.abs(delta);
+  if (key === 'gold') return `${sign}${abs >= 10000 ? `${(abs / 1000).toFixed(1)}K` : Math.round(abs)}`;
+  if (key === 'stab' || key === 'ws') return `${sign}${Math.round(abs)}%`;
+  if (key === 'inf' || key === 'ic') return `${sign}${abs.toFixed(1)}`;
+  if (key === 'power') return `${sign}${Math.round(abs)}`;
+  if (key === 'pop' || key === 'army' || key === 'mp') return `${sign}${formatPopulation(abs)}`;
+  if (key.startsWith('r-')) return `${sign}${Math.round(abs * 100)}%`;
+  return '';
+}
+
 /** İkincil gösterge (nüfus, ordu, havuz, sanayi): küçük ikon, değer, etiket. */
 function miniCell(icon, label, value, attrs = '', cls = '') {
   return `<span class="tb-mini${cls ? ` ${cls}` : ''}" tabindex="0" ${attrs}>
@@ -424,6 +437,8 @@ export class Hud {
     for (const btn of document.querySelectorAll('.time-btn[data-speed]')) {
       btn.onclick = () => game.setSpeed(Number(btn.dataset.speed));
     }
+    // Saat biriminin yuvarlak düğmesi Space'in aynısı: duraklatıkken oynatır.
+    $('btn-pause').onclick = () => game.togglePause();
     this.bindKeys();
     this.bindCommandDock();
     this.trackHeaderHeight();
@@ -978,7 +993,39 @@ export class Hud {
       if (Math.abs(delta) < Number(cell.dataset.eps || 0) || delta === 0) continue;
       const good = delta * Number(cell.dataset.pol || 1) > 0;
       cell.classList.add(good ? 'tb-good' : 'tb-bad');
+      this.floatDelta(cell, key, delta, good);
     }
+  }
+
+  /**
+   * Yüzen fark: "+900" hücrenin üstünden yükselip söner. Hücrenin içine
+   * değil üst çubuğa takılır — hücreler her tazelemede yeniden doğduğundan
+   * 8x hızda etiket yarıda silinirdi. Hareket kapalıysa hiç doğmaz.
+   */
+  floatDelta(cell, key, delta, good) {
+    const bar = cell.closest('.topbar');
+    if (!bar || document.documentElement.dataset.motion !== 'on') return;
+    const label = deltaLabel(key, delta);
+    if (!label) return;
+    const host = bar.getBoundingClientRect();
+    // Hücre başına tek etiket: hızlı haftalarda üst üste binmesin.
+    const live = (this.topDeltas ??= new Map());
+    live.get(key)?.remove();
+    const tag = document.createElement('i');
+    tag.textContent = label;
+    // Etiketin yerine oturur (CSS etiketi o sürede söndürür); etiketi
+    // olmayan kaynak madalyonunda madalyonun üstünde ortalanır.
+    const slot = cell.querySelector('.tb-gv small, :scope > small');
+    const anchor = (slot ?? cell).getBoundingClientRect();
+    tag.className = `tb-delta ${good ? 'good' : 'bad'} ${slot ? 'at-label' : 'at-top'}`;
+    tag.style.left = `${Math.round(anchor.left - host.left + (slot ? 0 : anchor.width / 2))}px`;
+    tag.style.top = `${Math.round(anchor.top - host.top + (slot ? anchor.height / 2 : 0))}px`;
+    tag.addEventListener('animationend', () => {
+      tag.remove();
+      if (live.get(key) === tag) live.delete(key);
+    }, { once: true });
+    live.set(key, tag);
+    bar.append(tag);
   }
 
   showClockStatus() {

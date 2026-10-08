@@ -13655,3 +13655,79 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
   color: #c9b68a;
 }
 .topbar-right > .icon-btn:hover { color: #f0dfb4; box-shadow: 0 0 0 1px #050708, 0 0 0 2px #b39457, inset 0 2px 5px rgba(0, 0, 0, 0.9); }
+
+/* --- §45b cila: yüzen fark, cam yuva, oynat/duraklat, arma kuşağı ------- */
+
+/* Yüzen fark: değerin üstünden yükselip söner (hud.js floatDelta). */
+.tb-delta {
+  position: absolute;
+  z-index: 6;
+  color: #c9e48f;
+  font-family: var(--font-ui);
+  font-size: 13px;
+  font-style: normal;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  text-shadow: 0 1px 0 #000, 0 0 6px rgba(0, 0, 0, 0.9);
+  white-space: nowrap;
+  pointer-events: none;
+  animation: tb-delta-rise 1.5s cubic-bezier(0.2, 0.7, 0.2, 1) forwards;
+}
+.tb-delta.bad { color: #ff8f6e; }
+.tb-delta.at-label { font-size: 12px; transform-origin: left center; animation-name: tb-delta-label; }
+.tb-delta.at-top { font-size: 10.5px; animation-name: tb-delta-top; }
+/* Etiket yuvasında doğar, biraz büyüyüp yerine oturur, yukarı süzülüp söner. */
+@keyframes tb-delta-label {
+  0% { opacity: 0; transform: translate(0, -50%) scale(0.7); }
+  12% { opacity: 1; transform: translate(0, -50%) scale(1.15); }
+  24% { transform: translate(0, -50%) scale(1); }
+  72% { opacity: 1; transform: translate(0, -60%); }
+  100% { opacity: 0; transform: translate(0, -150%); }
+}
+@keyframes tb-delta-top {
+  0% { opacity: 0; transform: translate(-50%, 2px) scale(0.8); }
+  14% { opacity: 1; transform: translate(-50%, -10px) scale(1.1); }
+  70% { opacity: 1; transform: translate(-50%, -14px) scale(1); }
+  100% { opacity: 0; transform: translate(-50%, -20px); }
+}
+/* Fark etiketin yerindeyken etiket söner, sonra geri gelir. */
+:root[data-motion="on"] :is(.tb-good, .tb-bad) .tb-gv small,
+:root[data-motion="on"] .tb-mini:is(.tb-good, .tb-bad) > small { animation: tb-label-yield 1.5s ease-out 1; }
+@keyframes tb-label-yield {
+  0%, 100% { opacity: 1; }
+  8%, 80% { opacity: 0; }
+}
+
+/* Cam yuva: üst-solda ışık yayı; simge camın ardında durur. */
+.tb-socket::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  z-index: 2;
+  border-radius: 50%;
+  background: radial-gradient(62% 42% at 36% 16%, rgba(255, 240, 210, 0.17), transparent 72%);
+  pointer-events: none;
+}
+.tb-gauge:hover .tb-socket {
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.95),
+    0 0 0 1px #b39457,
+    0 0 12px rgba(214, 186, 120, 0.3);
+}
+.tb-gauge:hover .tb-gv small { color: var(--gold-bright); }
+
+/* Duraklat düğmesi durumu gösterir: duraklatıkken oynat simgesi. */
+.time-pause .ico-play { display: none; margin-left: 2px; }
+.turn-control.is-paused .time-pause .ico-play { display: block; }
+.turn-control.is-paused .time-pause .ico-pause { display: none; }
+.time-pause::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 50%;
+  background: radial-gradient(62% 42% at 36% 16%, rgba(255, 240, 210, 0.14), transparent 72%);
+  pointer-events: none;
+}
+.time-btn.time-pause { position: relative; }
+.turn-control.is-paused .time-pause .ico-play { color: #f3c77a; filter: drop-shadow(0 0 4px rgba(243, 199, 122, 0.6)); }
