@@ -7985,7 +7985,7 @@ body.menu-open .sheet { visibility: hidden; }
 .tech-band-head {
   display: flex;
   align-items: center;
-  height: 20px;
+  height: 30px;
   border-top: 1px solid var(--head-line);
   background: var(--head-wash);
 }
@@ -8041,7 +8041,7 @@ body.menu-open .sheet { visibility: hidden; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.tech-node small { color: var(--text-faint); font-size: 9.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tech-node small { color: var(--text-faint); font-size: 9.5px; font-variant-numeric: tabular-nums; line-height: 1.15; white-space: nowrap; }
 .tech-node small .is-early { color: #c98771; }
 .tech-node:hover { z-index: 3; border-color: rgba(214, 184, 120, 0.85); color: var(--text); }
 .tech-node:focus-visible { outline: 1px solid var(--gold-bright); outline-offset: 1px; }
@@ -11972,6 +11972,10 @@ button.uc-agenda:hover { border-color: var(--gold); }
 .art-plate img { width: 88%; height: 88%; filter: saturate(0.92) contrast(1.04); }
 .art-xs.art-plate img, .art-sm.art-plate img { width: 100%; height: 100%; }
 .art-unit img { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)); }
+/* Amblem: çerçevesiz gravür nesnesi; koyu zeminde kopmasın diye çift gölge. */
+.art-emblem img { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 4px rgba(0, 0, 0, 0.35)); }
+/* Metin satırı içi (general özellikleri): satır yüksekliğini itmesin. */
+.art-inline { width: 1.5em; height: 1.5em; margin: -0.3em 0.15em -0.25em 0; }
 
 /* --- Gösterge şeridi --------------------------------------------------- */
 .k-kpis {
@@ -13405,4 +13409,13 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
     padding-top: 4px;
     border-top: 1px solid rgba(214, 186, 120, 0.16);
   }
+}
+
+/* §44 Amblemler (gravür sheet'i, 2026-10-08): dal başlığı ve üst çubuk. */
+.tech-band-head .art-emblem { width: 26px; height: 26px; margin: 0 3px 0 -2px; }
+/* Başlık satırında etiket ağaç sütununa taşabilir; altındaki satırlar taşmaz. */
+.tech-band-head .tech-row-label { width: auto; min-width: var(--tech-label-w); }
+.tb-ico .art-emblem { width: 34px; height: 34px; }
+@media (max-width: 1365px) {
+  .tb-ico .art-emblem { width: 29px; height: 29px; }
 }

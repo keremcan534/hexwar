@@ -57,17 +57,6 @@ export const NOTIFY_GLYPH = {
   RELIEF: 'wheat', NATION: 'skull', HEGEMONY: 'crown', INFO: 'info',
 };
 
-/** General özelliği → ikon. */
-export const TRAIT_GLYPH = {
-  OFFENSIVE: 'swords', DEFENSIVE: 'shield', TRICKSTER: 'mask', LOGISTICIAN: 'crate',
-  ENGINEER: 'tools', CAVALRY_LEADER: 'horse', GUNNER: 'burst', PLANNER: 'map',
-};
-
-/** Teknoloji dalı → ikon. */
-export const TECH_GLYPH = {
-  industry: 'gear', infrastructure: 'rail', army: 'swords', navy: 'anchor', society: 'cap',
-};
-
 /** Barış şartı → ikon. */
 export const TERM_GLYPH = {
   REPARATIONS: 'coin', DEMILITARIZE: 'swords', CONCESSION: 'pick', LIBERATE: 'flag', VASSALIZE: 'crown',

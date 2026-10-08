@@ -9,8 +9,7 @@
 // burada tek bir eşik ya da toplam hesaplanmaz. Simgeler satır içi çizgi-SVG:
 // birim rozetleri harita odası sayacı gibi okunur, emoji yoktur.
 
-import { TRAIT_GLYPH, glyph } from './icons/glyphs.js';
-import { equipmentArt } from './icons/art.js';
+import { equipmentArt, traitArt } from './icons/art.js';
 import { formatPopulation } from '../game/economy.js';
 import { UNIT_CATEGORIES } from '../game/military.js';
 import { subayPortresi } from './icons/subaylar.js';
@@ -116,7 +115,7 @@ function leaderRow(leader, selected) {
     <i class="mil-portrait has-art" aria-hidden="true">${subayPortresi(leader)}</i>
     <span class="mil-leader-text">
       <b>${esc(leader.name)}</b>
-      <small>${esc(traits)}</small>
+      <small>${leader.traits.map((trait) => `${traitArt(trait.id)}${esc(trait.name)}`).join(' · ') || 'no traits'}</small>
     </span>
     <span class="mil-leader-side">
       <em class="mil-stars">${stars}</em>
@@ -137,7 +136,7 @@ function leaderDetail(leader, loose) {
     ? `<i title="${esc(note)}"><small>${esc(label)}</small><b>+${Math.round(value * 100)}%</b></i>`
     : '');
   const traits = leader.traits.map((trait) => `<em title="${esc(trait.desc)}">
-    ${glyph(TRAIT_GLYPH[trait.id], 'inline')} ${esc(trait.name)}</em>`).join('') || '<em class="void">No traits</em>';
+    ${traitArt(trait.id)} ${esc(trait.name)}</em>`).join('') || '<em class="void">No traits</em>';
   return `<div class="mil-leader-detail">
     <div class="mil-detail-head">
       <b>${esc(leader.rank)} ${esc(leader.name)}</b>

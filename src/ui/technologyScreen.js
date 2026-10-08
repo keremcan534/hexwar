@@ -16,7 +16,7 @@
 // Katman notu: saf gorunum. Simulasyonu okur, YAZMAZ — eylemler `data-*`
 // olarak isaretlenir, isleyicileri screens.js baglar.
 
-import { TECH_GLYPH, glyph } from './icons/glyphs.js';
+import { emblemArt } from './icons/art.js';
 import {
   TECH_CATEGORIES, TECH_FOLDERS, TECHNOLOGIES, canResearch, hasTech, techById,
 } from '../game/technology.js';
@@ -213,7 +213,7 @@ export function technologyScreen(nation, view) {
     }).join('');
     return `<section class="tech-band" data-category="${categoryId}">
       <header class="tech-band-head">
-        <span class="tech-row-label"><i aria-hidden="true">${glyph(TECH_GLYPH[category.id])}</i><b>${esc(category.name)}</b>
+        <span class="tech-row-label">${emblemArt(category.id)}<b>${esc(category.name)}</b>
           <em>${have}/${all.length}</em></span>
         <span class="tech-band-bar" aria-hidden="true"><i style="width:${all.length ? (have / all.length) * 100 : 0}%"></i></span>
       </header>

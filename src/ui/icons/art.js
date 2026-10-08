@@ -10,6 +10,9 @@
 //     aynı emaye diske ve pirinç halkaya oturtulur (`art-disc`) ki yan yana
 //     iki ayrı setten yapıştırılmış durmasınlar.
 //   - Bina ve yasa sahneleri (gravür): dikdörtgen "plaka" çerçeve (`art-plate`).
+//   - Amblemler (teknoloji dalı, üst çubuk göstergesi, general özelliği):
+//     çerçevesiz nesne + gölge (`art-emblem`). Metin satırının içinde de
+//     durdukları için disk ya da plaka onları satırdan taşırırdı.
 //
 // Katman notu: yalnız HTML dizgisi üretir; oyun durumu okumaz.
 
@@ -86,6 +89,16 @@ export function ledgerArt(id, size = 'xs') {
   if (!file) return '';
   const plate = file.startsWith('buildings/');
   return img(file, id, `art-${size} ${plate ? 'art-plate' : 'art-disc ringed'}`);
+}
+
+/** Amblem: teknoloji dalı (industry…society) ya da gösterge (power, stability, infamy). */
+export function emblemArt(id, size = 'sm') {
+  return img(`emblems/${id}`, id, `art-${size} art-emblem`);
+}
+
+/** General özelliği; `size` 'inline' metin satırına oturur. */
+export function traitArt(id, size = 'inline') {
+  return id ? img(`traits/${String(id).toLowerCase()}`, id, `art-${size} art-emblem`) : '';
 }
 
 /** Birim simgesi (assets/icons/units). */

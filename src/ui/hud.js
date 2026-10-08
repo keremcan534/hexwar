@@ -32,8 +32,8 @@ import { Screens } from './screens.js';
 import { showEndScreen } from './endScreen.js';
 import { formatPopulation, weeklyBalanceOf } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS, BUILDINGS, BUILDING_IDS, DEVELOPMENT_MAX } from '../game/econ/defs.js';
-import { buildingArt, equipmentArt, lawArt, ledgerArt, resourceArt } from './icons/art.js';
-import { TRAIT_GLYPH, glyph } from './icons/glyphs.js';
+import { buildingArt, emblemArt, equipmentArt, lawArt, ledgerArt, resourceArt, traitArt } from './icons/art.js';
+import { glyph } from './icons/glyphs.js';
 import { meter as kitMeter, pips as kitPips, tipAttr } from './kit.js';
 import { depositsOf, fertilityOf } from '../game/econ/deposits.js';
 import { powerIncome } from '../game/politics.js';
@@ -1566,7 +1566,7 @@ export class Hud {
       </div>`;
     }
     const traits = general.traits
-      .map((id) => `${glyph(TRAIT_GLYPH[id], 'inline')} ${escapeHtml(TRAITS[id].name)}`).join(' · ') || 'no traits';
+      .map((id) => `${traitArt(id)} ${escapeHtml(TRAITS[id].name)}`).join(' · ') || 'no traits';
     const stance = aggressionInfo(general.aggression);
     return `<div class="action-row">
       <div class="k">commander — ${escapeHtml(general.name)} · skill ${general.skill}/${MAX_SKILL}
@@ -1618,7 +1618,7 @@ export class Hud {
     const cards = officersOf(me, branch).map((general) => {
       const size = commandSize(general);
       const traits = general.traits
-        .map((id) => `<em title="${escapeHtml(TRAITS[id].desc)}">${glyph(TRAIT_GLYPH[id], 'inline')} ${escapeHtml(TRAITS[id].name)}</em>`)
+        .map((id) => `<em title="${escapeHtml(TRAITS[id].desc)}">${traitArt(id)} ${escapeHtml(TRAITS[id].name)}</em>`)
         .join('') || '<em>no traits</em>';
       return `<button class="general-card" data-pick-general="${general.id}">
         <b>${escapeHtml(general.name)}</b>
@@ -1830,13 +1830,13 @@ function resourcesHtml(nation) {
   const stabilityClass = stability < 30 ? 'res-neg' : stability < 45 ? 'res-warn' : '';
   const tone = (v, warn, bad) => (v < bad ? 'neg' : v < warn ? 'warn' : 'pos');
   return statCell(ledgerArt('tax', 'sm'), 'Gold', `${treasuryLabel(nation.gold)}${flow}`, 'data-tip="treasury"', 'tb-hero')
-    + statCell(glyph('crown'), 'Power', `${Math.round(nation.power ?? 0)}<em class="stat-flow res-pos">+${power.total.toFixed(1)}</em>`,
+    + statCell(emblemArt('power'), 'Power', `${Math.round(nation.power ?? 0)}<em class="stat-flow res-pos">+${power.total.toFixed(1)}</em>`,
       'data-tip="power"', '', { share: (nation.power ?? 0) / 500, tone: 'gold' })
-    + statCell(glyph('column'), 'Stability', `<span class="${stabilityClass}">${stability}%</span>`,
+    + statCell(emblemArt('stability'), 'Stability', `<span class="${stabilityClass}">${stability}%</span>`,
       'role="button" data-why="stability" data-tip="stability"', 'stat-why', { share: stability / 100, tone: tone(stability, 45, 30) })
     + statCell(lawArt('conscription', 'sm'), 'War Sup.', `${warSupport}%`, 'data-tip="warsupport"', '',
       { share: warSupport / 100, tone: 'war' })
-    + statCell(glyph('warning'), 'Infamy', `<span class="${infamyClass}">${infamy.toFixed(1)}</span>`, 'data-tip="infamy"', '',
+    + statCell(emblemArt('infamy'), 'Infamy', `<span class="${infamyClass}">${infamy.toFixed(1)}</span>`, 'data-tip="infamy"', '',
       { share: infamy / INFAMY_COALITION, tone: infamy >= INFAMY_COALITION ? 'neg' : infamy >= INFAMY_COALITION * 0.6 ? 'warn' : 'dim' });
 }
 
