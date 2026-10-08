@@ -19,7 +19,7 @@ import {
 } from '../game/econ/defs.js';
 import { LAWS, lawIndex } from '../game/laws.js';
 import { economyView, formatPopulation, populationOf } from '../game/economy.js';
-import { consumerStability, consumerTaxBonus, setLineWeight } from '../game/econ/industry.js';
+import { consumerStability, consumerTaxBonus, lineAllocation, setLineWeight } from '../game/econ/industry.js';
 import { embargoed, setEmbargo } from '../game/econ/trade.js';
 import { equipmentLogistics } from '../game/reinforcement.js';
 import {
@@ -284,29 +284,60 @@ export function renderIndustry(game, me, state) {
     </div>
     <div class="k-legend"><span><i class="a"></i>Workshops ${num(consumer.cottage)}</span><span><i class="b"></i>Civilian industry ${num(consumer.civil)}</span><span><i class="mark"></i>Wanted ${num(consumer.need)}</span></div>`;
 
+  // CEPHANE KATI: askerî IC şeridi + hat başına konveyör. Ağırlık 0-10 pul;
+  // her pulun kartı o ağırlıkta paylaşımın ne olacağını oyunun kendi
+  // hesabıyla (lineAllocation) söyler — eski ▲3▼ "3 ne demek" sorusunu
+  // cevapsız bırakıyordu.
+  const military = ic.military ?? 0;
+  const dockyards = ic.dockyards ?? 0;
+  const now = lineAllocation(me, military, dockyards);
+  const LINE_TONE = { rifles: 'brass', guns: 'copper', ships: 'steel' };
+  const totalIc = EQUIPMENT_IDS.reduce((sum, id) => sum + now[id].ic, 0);
+  const ribbon = `<div class="k-alloc"${tipAttr({ text: `Military industry ${num(military, 2)} IC\nThe economy law sends this share of industry to the army; the lines split it by weight.` })}>
+      ${EQUIPMENT_IDS.filter((id) => now[id].ic > 0).map((id) => `<i class="${LINE_TONE[id]}" style="flex:${(totalIc > 0 ? now[id].ic / totalIc * 100 : 0).toFixed(2)} 1 0"><b>${esc(EQUIPMENT[id].name)}</b><small>${num(now[id].ic, 2)} IC · ${pct(totalIc > 0 ? now[id].ic / totalIc : 0)}</small></i>`).join('')
+        || '<em>No military industry: the economy law sends nothing to the army.</em>'}
+    </div>`;
+
+  const pipTip = (id, weight) => {
+    const next = lineAllocation(me, military, dockyards, { [id]: weight });
+    const rows = EQUIPMENT_IDS.filter((other) => now[other].usable).map((other) => {
+      const a = now[other];
+      const b = next[other];
+      const changed = Math.abs(b.output - a.output) > 0.005;
+      return `${EQUIPMENT[other].name}: ${num(a.output, 2)} → ${num(b.output, 2)}/wk${changed ? (b.output > a.output ? '  ▲' : '  ▼') : ''}`;
+    });
+    return { text: [`Weight ${weight}`, ...rows].join('\n') };
+  };
+
   const lines = EQUIPMENT_IDS.map((id) => {
     const info = EQUIPMENT[id];
     const line = view.lines?.[id] ?? { weight: 0, efficiency: 0, ic: 0, output: 0, limit: 1 };
-    const log = logistics.find((row) => row.id === id);
-    const blocked = id === 'ships' && (ic.dockyards ?? 0) <= 0;
-    const need = log?.required ?? 0;
-    return `<div class="k-line${blocked ? ' off' : ''}"${tipAttr('line', id)}>
-      <span class="k-line-art">${equipmentArt(id, 'lg', ironclad)}</span>
-      <div class="k-line-main">
-        <div class="k-line-head"><b>${esc(info.name)}</b><small>${num(info.ic, 2)} IC each</small>${blocked ? badge('needs a dockyard', 'neg') : ''}</div>
-        <div class="k-line-stats">
-          <span><small>Output</small><b>${num(line.output, 1)}</b><em>/wk</em></span>
-          <span><small>Stock</small><b>${short(log?.stock ?? 0)}</b>${need > 0.5 ? `<em>needs ${short(need)}</em>` : ''}</span>
-          <span><small>Industry</small><b>${num(line.ic, 2)}</b><em>IC</em></span>
-        </div>
-        <div class="k-line-eff"><small>Efficiency</small>${meter(line.efficiency, { tone: line.efficiency < 0.4 ? 'warn' : 'pos' })}<b>${pct(line.efficiency)}</b>
-          ${line.limit < 1 ? badge(`materials ${pct(line.limit)}`, 'neg') : ''}</div>
-      </div>
-      <div class="k-stepper" data-tip="text" data-tip-text="Line weight\nMilitary industry is shared between lines by weight.">
-        <button class="k-btn sm" data-uc-weight="${id}:1" ${line.weight >= 10 ? 'disabled' : ''}>▲</button>
-        <b>${line.weight}</b>
-        <button class="k-btn sm" data-uc-weight="${id}:-1" ${line.weight <= 0 ? 'disabled' : ''}>▼</button>
-      </div>
+    const alloc = now[id];
+    const log = logistics.find((row) => row.id === id) ?? { stock: 0, required: 0, etaWeeks: null };
+    const blocked = !alloc.usable;
+    const pips = Array.from({ length: 11 }, (_, w) => `<button class="k-wpip${w <= line.weight && w > 0 ? ' on' : ''}${w === line.weight ? ' cur' : ''}" data-uc-weightset="${id}:${w}"${blocked ? ' disabled' : tipAttr(pipTip(id, w))}>${w === 0 ? '0' : ''}</button>`).join('');
+    const inputs = Object.entries(alloc.inputs).map(([res, amount]) => {
+      const ratio = me.economy?.resources?.[res]?.ratio ?? 1;
+      const cls = ratio < 0.8 ? 'short' : ratio < 0.98 ? 'tight' : 'ok';
+      return `<span class="k-lin ${cls}"${tipAttr('resource', res)}>${resourceArt(res, 'sm')}<b>${num(amount, 2)}</b><small>${pct(ratio)}</small></span>`;
+    }).join('') || '<span class="k-dim">no inputs</span>';
+    const moving = alloc.output > 0.005;
+    const deficit = Math.max(0, log.required - log.stock);
+    const status = blocked ? badge('needs a dockyard', 'neg')
+      : log.required <= 0.5 ? `<span class="k-lstat ok"><b>Surplus</b><small>${short(log.stock)} in stock · army needs none</small></span>`
+        : deficit <= 0 ? `<span class="k-lstat ok"><b>Covered</b><small>${short(log.stock)} / ${short(log.required)} needed</small></span>`
+          : `<span class="k-lstat short"><b>Short ${short(deficit)}</b><small>${log.etaWeeks != null ? `full in ~${log.etaWeeks} wk` : 'not filling — raise the weight'}</small></span>`;
+    const effTip = { text: `Efficiency ${pct(line.efficiency)}\nA running line gains a little every week up to its cap; an idle line slowly forgets. Output = IC × efficiency ÷ ${num(info.ic, 2)} IC each.${line.limit < 1 ? `\nMaterials cover only ${pct(line.limit)}: output is cut to match.` : ''}` };
+    return `<div class="k-lrow ${LINE_TONE[id]}${blocked ? ' off' : ''}${moving ? ' run' : ''}">
+      <span class="k-lrow-art"${tipAttr('line', id)}>${equipmentArt(id, 'lg', ironclad)}</span>
+      <span class="k-lrow-name"><b>${esc(info.name)}</b><small>${num(info.ic, 2)} IC each · ${num(alloc.ic, 2)} IC now</small></span>
+      <span class="k-lrow-weight"><small>Weight</small><span class="k-wpips">${pips}</span></span>
+      <span class="k-lrow-flow">
+        <span class="k-lins">${inputs}</span>
+        <span class="k-belt"${tipAttr(effTip)}><i></i><em>${pct(line.efficiency)}</em></span>
+        <span class="k-lout"><b>${num(alloc.output, 2)}</b><small>/wk</small>${alloc.limit < 1 ? badge(`materials ${pct(alloc.limit)}`, 'neg') : ''}</span>
+      </span>
+      <span class="k-lrow-stat">${status}</span>
     </div>`;
   }).join('');
 
@@ -316,7 +347,7 @@ export function renderIndustry(game, me, state) {
       ${panel('Consumer goods', `${consumerBar}<p class="k-note">Covered <b class="${consumer.ratio < 0.95 ? 'neg' : 'pos'}">${pct(consumer.ratio)}</b> · stability ${pts(consumerStability(consumer.ratio))} · tax bonus +${pct(consumerTaxBonus(consumer.ratio))}</p>`, { sub: 'the people\'s share of industry' })}
     </div>
     ${panel('Economy law', lawCard(world, me, 'economy', state.confirm), { sub: 'how much industry works for the army' })}
-    ${panel('Production lines', `<div class="k-lines">${lines}</div>`, { sub: 'military industry is shared by weight · shortages of iron, timber or coal slow a line' })}`;
+    ${panel('Production lines', `${ribbon}<div class="k-lrows">${lines}</div>`, { sub: 'military industry is shared by weight · hover a step to see the new split', right: `${num(military, 2)} military IC` })}`;
 }
 
 // ========================================================== CONSTRUCTION ===
@@ -844,6 +875,11 @@ export function bindStateScreens(screens) {
   on('[data-uc-law]', (el) => {
     const [lawId, index] = el.dataset.ucLaw.split(':');
     confirmThen(`law:${lawId}:${index}`, () => setLaw(game, me, lawId, Number(index)));
+  });
+  on('[data-uc-weightset]', (el) => {
+    const [id, weight] = el.dataset.ucWeightset.split(':');
+    setLineWeight(me, id, Number(weight));
+    screens.refresh();
   });
   on('[data-uc-weight]', (el) => {
     const [id, delta] = el.dataset.ucWeight.split(':');

@@ -114,34 +114,55 @@ export function consumerTaxBonus(ratio) {
  * İHTİYACI kısılmamış potansiyelden yazılır: ithalat açığı onu doldurmaya
  * çalışır. `needs` içine ekler.
  */
-export function runLines(nation, militaryIC, dockyards, needs) {
+/**
+ * Askerî IC'nin hatlara paylaşımı ve her hattın girdi/çıktısı — durum
+ * değiştirmez. runLines bunu uygular; ekran ağırlık önizlemesi için `weights`
+ * ile çağırır ("5'e çıkarsam ne olur"). Tek hesap: önizleme oyunla ayrışamaz.
+ */
+export function lineAllocation(nation, militaryIC, dockyards, weights = null) {
   const economy = nation.economy;
   ensureIndustry(economy);
   const lines = economy.lines;
   const ironclad = mod(nation, 'ironclad') > 0;
+  const weightOf = (id) => weights?.[id] ?? lines[id].weight;
   let weightSum = 0;
   for (const id of EQUIPMENT_IDS) {
     const usable = id !== 'ships' || dockyards > 0;
-    if (usable) weightSum += lines[id].weight;
+    if (usable) weightSum += weightOf(id);
   }
-  const cap = clamp(LINE_EFFICIENCY.cap + mod(nation, 'lineEfficiency'), 0.3, 1);
-  const gain = LINE_EFFICIENCY.gain * (1 + mod(nation, 'lineGain'));
-  const produced = {};
+  const out = {};
   for (const id of EQUIPMENT_IDS) {
     const line = lines[id];
     const equipment = EQUIPMENT[id];
     const usable = id !== 'ships' || dockyards > 0;
-    let ic = usable && weightSum > 0 ? militaryIC * line.weight / weightSum : 0;
+    let ic = usable && weightSum > 0 ? militaryIC * weightOf(id) / weightSum : 0;
     // Tersane kapasitesi: gemi hattına kademe başına DOCKYARD_IC girebilir.
     if (id === 'ships') ic = Math.min(ic, dockyards * DOCKYARD_IC);
     const recipe = id === 'ships' && ironclad ? equipment.ironclad : equipment.resources;
     const potential = ic > 0 ? ic * line.efficiency / equipment.ic : 0;
     let limit = 1;
+    const inputs = {};
     for (const [res, amount] of Object.entries(recipe)) {
-      needs[res] += potential * amount;
+      inputs[res] = potential * amount;
       limit = Math.min(limit, resourceRatio(nation, res));
     }
-    const output = potential * clamp(limit, 0, 1);
+    out[id] = { usable, ic, potential, limit, inputs, output: potential * clamp(limit, 0, 1) };
+  }
+  return out;
+}
+
+export function runLines(nation, militaryIC, dockyards, needs) {
+  const economy = nation.economy;
+  ensureIndustry(economy);
+  const lines = economy.lines;
+  const cap = clamp(LINE_EFFICIENCY.cap + mod(nation, 'lineEfficiency'), 0.3, 1);
+  const gain = LINE_EFFICIENCY.gain * (1 + mod(nation, 'lineGain'));
+  const allocation = lineAllocation(nation, militaryIC, dockyards);
+  const produced = {};
+  for (const id of EQUIPMENT_IDS) {
+    const line = lines[id];
+    const { ic, inputs, limit, output } = allocation[id];
+    for (const [res, amount] of Object.entries(inputs)) needs[res] += amount;
     economy.stock[id] += output;
     produced[id] = output;
     line.ic = ic;
