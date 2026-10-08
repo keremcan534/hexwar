@@ -26,7 +26,7 @@ import {
   buildBlockers, buildingCost, cancelProject, constructionView, developBlockers, developmentCost,
   moveProject, queueBuilding, queueDevelopment,
 } from '../game/construction.js';
-import { buildingLevels, buildingSlots, provinceName, growthRateOf } from '../game/provinces.js';
+import { buildingLevels, buildingSlots, provinceName } from '../game/provinces.js';
 import { depositsOf } from '../game/econ/deposits.js';
 import {
   PARTIES, appointGovernment, dismissAdvisor, enactRegime, governmentView,
@@ -34,10 +34,8 @@ import {
 } from '../game/politics.js';
 import { agendaView, chooseAgenda } from '../game/agenda.js';
 import { decisionsView, takeDecision } from '../game/decisions.js';
-import {
-  acceptBlockers, acceptCulture, cultureMix, expelBlockers, expelCulture, releaseBlockers, releaseToKin,
-} from '../game/culture.js';
-import { formNation, formationBlockers, proposeUnion, unionBlockers, unionCandidates, unificationStatus } from '../game/unification.js';
+import { acceptCulture, expelCulture, releaseToKin } from '../game/culture.js';
+import { formNation, formationBlockers, proposeUnion } from '../game/unification.js';
 import { GOALS, goalMet } from '../game/hegemony.js';
 import { nationManpower } from '../game/recruitment.js';
 import { describeEffects, mod } from '../game/modifiers.js';
@@ -47,6 +45,10 @@ import {
 } from './kit.js';
 import { buildingArt, emblemArt, equipmentArt, lawArt, ledgerArt, resourceArt } from './icons/art.js';
 import { buildPreview } from '../game/buildPreview.js';
+import { peoplesView } from '../game/peoplesView.js';
+import {
+  MOVEMENT, crackdown, declareMartialLaw, grantConcessions, releaseAsVassal,
+} from '../game/movements.js';
 
 const turnOf = (game) => game.turns?.turn ?? game.world?.turn ?? 0;
 
@@ -586,77 +588,147 @@ export function renderPopulation(game, me, state) {
   const world = game.world;
   const turn = turnOf(game);
   const economy = me.economy ?? {};
-  const mix = cultureMix(world, me);
-  const capital = world.provinces?.[me.capital?.provinceId];
-  const growth = capital?.econ ? growthRateOf(me, capital.econ) * 52 : 0;
-  const status = unificationStatus(world, me);
+  const view = peoplesView(world, me, turn);
   const goal = GOALS[me.goal];
+  const g = view.growth;
+  const yearly = (rate) => `${signed(rate * 52 * 100, 2)}%`;
 
   const kpis = kpiRow([
-    kpi({ label: 'Population', value: formatPopulation(economy.population ?? populationOf(world, me)), sub: `${signed(growth * 100, 2)}% a year`, tip: { text: 'Population\nGrows with food, consumer goods, stability and peace; war and famine shrink it.' }, cls: 'hero' }),
-    kpi({ icon: lawArt('education', 'md'), label: 'Literacy', value: pct(economy.literacy), sub: `target ${pct(economy.literacyTarget)}`, tip: 'law', arg: 'education', meter: economy.literacy, meterTone: 'pos' }),
-    kpi({ icon: lawArt('conscription', 'md'), label: 'Manpower', value: formatPopulation(nationManpower(world, me.id)), sub: 'available recruits', tip: 'manpower' }),
-    kpi({ icon: lawArt('citizenship', 'md'), label: 'Accepted peoples', value: pct(economy.acceptedShare ?? 1), sub: 'of the population', tip: 'law', arg: 'citizenship', meter: economy.acceptedShare ?? 1 }),
+    kpi({ icon: emblemArt('people', 'md'), label: 'Population', value: formatPopulation(economy.population ?? populationOf(world, me)), sub: `${yearly(g.rate)} a year${view.realized != null ? ` · last year ${signed(view.realized * 100, 2)}%` : ''}`, tip: { text: 'Population\nGrows with food, consumer goods, stability, development and peace; war and famine shrink it. The Growth panel shows every factor.' }, cls: 'hero' }),
+    kpi({ icon: lawArt('education', 'md'), label: 'Literacy', value: pct(economy.literacy), sub: `heading for ${pct(economy.literacyTarget)}`, tip: 'law', arg: 'education', meter: economy.literacy, meterTone: 'pos' }),
+    kpi({ icon: emblemArt('recruits', 'md'), label: 'Manpower', value: formatPopulation(nationManpower(world, me.id)), sub: 'men who can still be raised', tip: 'manpower' }),
+    kpi({ icon: lawArt('citizenship', 'md'), label: 'Full citizens', value: pct(economy.acceptedShare ?? 1), sub: 'of the population', tip: 'law', arg: 'citizenship', meter: economy.acceptedShare ?? 1 }),
+    kpi({ icon: emblemArt('infamy', 'md'), label: 'Unrest', value: num(view.unrest, 1), sub: view.boiling ? `${view.boiling} state${view.boiling === 1 ? '' : 's'} at revolt level` : `revolt level is ${view.revoltAt}`, tip: { text: `Unrest (0-10)\nPopulation-weighted across your states. Above ${view.revoltAt} a state can rise; where an unaccepted people is the majority, unrest above 6 feeds their national movement.` }, meter: view.unrest / 10, meterTone: view.unrest >= 4 ? 'neg' : 'warn' }),
   ]);
 
-  const peoples = mix.slice(0, 14).map((row) => {
-    const accept = acceptBlockers(world, me, row.id, turn);
-    const release = releaseBlockers(world, me, row.id);
-    const expel = expelBlockers(world, me, row.id);
+  // --- Halklar -----------------------------------------------------------
+  const acceptTip = (row) => {
+    const p = row.accept.preview;
+    return { text: [
+      `Accept the ${row.name}`,
+      `Recruits +${formatPopulation(p.recruits)}`,
+      `Unrest where they live: ${num(p.unrestFrom, 1)} → ${num(p.unrestTo, 1)} (target)`,
+      'They pay full taxes, fill the ranks and stop feeding a movement.',
+      `Cost: ${p.power} political power`,
+      `Backlash: your own people +${num(p.backlash, 1)} unrest, fading over ${Math.round(p.backlashWeeks / 52)} years`,
+    ].join('\n') };
+  };
+  const stageChip = (move) => (move
+    ? `<span class="k-stage s${move.stage.index}"${tipAttr({ text: `${move.stage.name} · ${Math.round(move.progress)}%\nAt 100% their states break away${move.heir ? ` and ${move.heir.name} goes to war with us` : ''}.${move.eta != null ? `\nAt this pace: ~${move.eta} weeks.` : ''}` })}>${esc(move.stage.name)} <b>${Math.round(move.progress)}%</b></span>`
+    : '<span class="k-dim">—</span>');
+  const peopleHead = `<div class="k-prow head"><span>People</span><span>Share</span><span>Lives in</span><span>Unrest</span><span>Movement</span><span></span></div>`;
+  const peopleRows = view.peoples.slice(0, 14).map((row) => {
     const confirmKey = `expel:${row.id}`;
-    const color = world.cultures?.[row.id]?.color ?? '#888';
-    return `<div class="k-people"${tipAttr('culture', row.id)}>
-      <span class="k-people-name"><i style="background:${color}"></i><b>${esc(row.name)}</b>${row.primary ? badge('primary', 'gold') : row.accepted ? badge('accepted', 'pos') : badge('foreign', 'dim')}</span>
-      <span class="k-num">${formatPopulation(row.people)}</span>
-      <span class="k-people-share">${meter(row.share, { tone: row.accepted ? 'pos' : 'warn' })}<b>${pct(row.share)}</b></span>
-      <span class="k-people-acts">${row.accepted ? '' : `
-        <button class="k-btn sm" data-uc-accept="${row.id}"${blockedAttr(accept)}${accept.length ? '' : tipAttr({ text: 'Accept\nThey pay full taxes, fill the ranks and stop rising. Costs political power.' })}>Accept</button>
-        <button class="k-btn sm" data-uc-release="${row.id}"${blockedAttr(release)}${release.length ? '' : tipAttr({ text: 'Release\nHand their states to their kin state.' })}>Release</button>
-        <button class="k-btn sm danger${state.confirm === confirmKey ? ' confirming' : ''}" data-uc-expel="${row.id}"${blockedAttr(expel)}${expel.length ? '' : tipAttr({ text: 'Expel\nFinal: they leave and the land empties. Infamy and unrest follow.' })}>${state.confirm === confirmKey ? 'Confirm' : 'Expel'}</button>`}</span>
+    const status = row.primary ? badge('primary', 'gold') : row.accepted ? badge('accepted', 'pos') : badge('no rights', 'dim');
+    let acts = '<span class="k-dim">full citizens</span>';
+    if (row.accept) {
+      const extra = [];
+      if (!row.release.blockers.length) extra.push(`<button class="k-btn sm" data-uc-release="${row.id}"${tipAttr({ text: 'Release\nHand their broken states to their kin state. The land and the trouble go; the world thinks better of us.' })}>Release</button>`);
+      if (!row.expel.blockers.length) extra.push(`<button class="k-btn sm danger${state.confirm === confirmKey ? ' confirming' : ''}" data-uc-expel="${row.id}"${tipAttr({ text: `Expel\nFinal: all ${formatPopulation(row.people)} of them leave and their land empties. Infamy and unrest follow.` })}>${state.confirm === confirmKey ? 'Confirm' : 'Expel'}</button>`);
+      // Engelliyken de önizleme görünür: oyuncu neyi kaçırdığını bilmeli.
+      const blocked = row.accept.blockers;
+      const tip = blocked.length
+        ? ` disabled aria-disabled="true"${tipAttr({ text: `Not possible now\n${blocked.join('\n')}\n\n${acceptTip(row).text}` })}`
+        : tipAttr(acceptTip(row));
+      acts = `<button class="k-btn sm" data-uc-accept="${row.id}"${tip}>Accept<small>${row.accept.preview.power} PP</small></button>${extra.join('')}`;
+    }
+    const gain = row.accept && row.accept.preview.recruits > 0
+      ? `<em class="k-pgain"${tipAttr(acceptTip(row))}>if accepted: +${formatPopulation(row.accept.preview.recruits)} recruits</em>` : '';
+    return `<div class="k-prow"${tipAttr('culture', row.id)}>
+      <span class="k-prow-name"><i style="background:${row.color}"></i><b>${esc(row.name)}</b>${status}${gain}</span>
+      <span class="k-prow-share">${meter(row.share, { tone: row.accepted ? 'pos' : 'warn' })}<b>${pct(row.share)}</b><small>${formatPopulation(row.people)}</small></span>
+      <span class="k-prow-where"><span><b>${row.states}</b> state${row.states === 1 ? '' : 's'}</span><small>${row.majority ? `majority in ${row.majority}` : 'minority everywhere'}</small></span>
+      <span class="k-prow-unrest">${meter(row.unrest / 10, { tone: row.unrest >= 6 ? 'neg' : row.unrest >= 3 ? 'warn' : 'pos', mark: 0.6 })}<b>${num(row.unrest, 1)}</b></span>
+      <span class="k-prow-move">${stageChip(row.movement)}</span>
+      <span class="k-prow-acts">${acts}</span>
     </div>`;
   }).join('');
 
-  const formBlockers = formationBlockers(world, me);
-  const unions = unionCandidates(world, me).map((other) => {
-    const blockers = unionBlockers(world, me, other, turn, game.turns?.playerNation);
-    return { label: esc(other.name), value: `<button class="k-btn sm" data-uc-union="${other.id}"${blockedAttr(blockers)}>Propose union</button>` };
-  });
-  const held = status.total ? status.owned / status.total : 0;
-  // En huzursuz state'ler: halklar tablosu "kim", bu liste "nerede" sorusunu
-  // cevaplar — isyan nereden çıkacak, ödün ya da baskı nereye.
-  const restless = (world.provinces ?? []).filter((p) => p.owner === me.id && p.econ && (p.econ.unrest ?? 0) > 0.3)
-    .sort((a, b) => (b.econ.unrest ?? 0) - (a.econ.unrest ?? 0)).slice(0, 8);
-  const restlessRows = restless.map((province) => {
-    const econ = province.econ;
-    const unrest = econ.unrest ?? 0;
-    const culture = world.cultures?.[province.culture];
-    return `<div class="k-restless"${tipAttr('state', province.id)}>
-      <span class="k-people-name"><i style="background:${culture?.color ?? '#888'}"></i><b>${esc(provinceName(province.center))}</b><small>${esc(culture?.name ?? '')}</small></span>
-      <span class="k-people-share">${meter(unrest / 10, { tone: unrest >= 7 ? 'neg' : unrest >= 4 ? 'warn' : 'party', mark: 0.7 })}<b class="${unrest >= 7 ? 'neg' : ''}">${num(unrest, 1)}</b></span>
-      <span class="k-dim">compliance ${Math.round(econ.control ?? 0)}%</span>
+  // --- Huzursuz state'ler, sebebiyle ------------------------------------
+  const restlessRows = view.restless.map((row) => {
+    const culture = world.cultures?.[row.culture];
+    const rising = row.target > row.unrest + 0.15;
+    const falling = row.target < row.unrest - 0.15;
+    const causes = row.causes.slice(0, 2).map((c) => `<span class="k-cause">${esc(c.label)} <b>+${num(c.value, 1)}</b></span>`).join('')
+      + row.reliefs.slice(0, 1).map((c) => `<span class="k-cause pos">${esc(c.label)} <b>${num(c.value, 1)}</b></span>`).join('');
+    const tip = [`${row.name}: unrest ${num(row.unrest, 1)}, heading for ${num(row.target, 1)}`,
+      ...row.causes.map((c) => `${c.label} +${num(c.value, 2)}`),
+      ...row.reliefs.map((c) => `${c.label} ${num(c.value, 2)}`),
+      `Compliance ${Math.round(row.compliance)}% · foreign ${pct(row.foreign)}`].join('\n');
+    return `<div class="k-rrow">
+      <span class="k-rrow-name"><i style="background:${culture?.color ?? '#888'}"></i><button class="k-link" data-uc-focus="${row.id}"${tipAttr('state', row.id)}>${esc(row.name)}</button><small>${esc(culture?.name ?? '')}</small></span>
+      <span class="k-rrow-val"${tipAttr({ text: tip })}>${meter(row.unrest / 10, { tone: row.unrest >= 7 ? 'neg' : row.unrest >= 4 ? 'warn' : 'party', mark: 0.7 })}<b class="${row.unrest >= 7 ? 'neg' : ''}">${num(row.unrest, 1)}</b><i class="k-trend ${rising ? 'up' : falling ? 'down' : ''}">${rising ? '▲' : falling ? '▼' : '■'}</i></span>
+      <span class="k-rrow-causes"${tipAttr({ text: tip })}>${causes || '<span class="k-dim">settling</span>'}</span>
+      <span class="k-rrow-comp">${Math.round(row.compliance)}%</span>
     </div>`;
   }).join('');
+
+  // --- Ulusal hareketler --------------------------------------------------
+  const moveCards = view.movements.map((row) => {
+    const a = row.actions;
+    const act = (id, label, cfg, tip, cls = '') => {
+      const key = `move:${id}:${row.cultureId}`;
+      const arming = state.confirm === key;
+      return `<button class="k-btn sm ${cls}${arming ? ' confirming' : ''}" data-uc-move="${id}:${row.cultureId}"${cfg.blockers.length ? blockedAttr(cfg.blockers) : tipAttr({ text: tip })}>${arming ? 'Confirm' : label}</button>`;
+    };
+    const ticks = MOVEMENT.STAGES.slice(1).map((s) => `<i style="left:${s.at}%"></i>`).join('');
+    const pace = row.martialLeft > 0 ? `martial law · ${row.martialLeft} wk`
+      : row.calmLeft > 0 ? `exhausted · ${row.calmLeft} wk`
+        : row.eta != null ? `breaks away in ~${row.eta} wk` : 'fading';
+    return `<div class="k-move s${row.stage.index}" style="--mv:${row.color ?? '#888'}">
+      <div class="k-move-head"><i></i><b>${esc(row.name)}</b><span class="k-stage s${row.stage.index}">${esc(row.stage.name)}</span><small>${pace}</small></div>
+      <div class="k-move-bar"${tipAttr({ text: `${Math.round(row.progress)}% — at 100% ${row.provinces.length} state${row.provinces.length === 1 ? '' : 's'} break away${row.heir ? ` and ${row.heir.name} goes to war with us` : ''}.\nIt grows while their unrest stays above ${row.calm} (now ${num(row.pressure, 1)}).` })}><i class="fill" style="width:${row.progress.toFixed(1)}%"></i>${ticks}</div>
+      <div class="k-move-acts">
+        ${act('concessions', `Concede · ${a.concessions.cost} PP`, a.concessions, `Temporary: −${a.concessions.drop}% progress and calmer states. Once a year.`)}
+        ${act('martial', `Martial law · ${num(a.martial.cost, 1)}/wk`, a.martial, `Temporary: for ${a.martial.weeks} weeks the movement loses ground; gold every week and some stability.`)}
+        ${act('vassal', `Release ${a.vassal.provinces} as vassal`, a.vassal, 'Permanent: their states become our vassal. The land goes, the war never comes, they pay us 15% of their income.')}
+        ${act('crackdown', `Crush · ${formatPopulation(a.crackdown.dead)} die`, a.crackdown, `Permanent: ${formatPopulation(a.crackdown.dead)} of them die. −${a.crackdown.drop}% progress, heavy infamy, lost stability; our other peoples grow bolder.`, 'danger')}
+      </div>
+    </div>`;
+  }).join('');
+
+  // --- Büyüme -------------------------------------------------------------
+  const growthBody = g.famine
+    ? `<div class="k-famine"><b>Famine</b> — food covers ${pct(g.foodRatio)} of need; the population shrinks ${yearly(g.rate)} a year. Build farms or import food.</div>`
+    : `<div class="k-growth-top"><b class="${g.rate >= 0 ? 'pos' : 'neg'}">${yearly(g.rate)}</b><small>a year</small>${spark(view.history, { width: 200, height: 34, zero: false })}</div>
+      ${chain({ label: 'Base', text: `${num(g.base * 5200, 2)}%`, value: g.base }, [
+    { label: 'Food', value: g.food, tip: { text: `Food\nShortfall slows growth; below 70% covered, famine.\nCovered ${pct(g.foodRatio)}` } },
+    { label: 'Goods', value: g.consumer, tip: { text: 'Consumer goods\nFull shelves add growth, empty ones take it away.' } },
+    { label: 'Stability', value: g.stability },
+    { label: 'Development', value: g.development, tip: { text: 'Development\nPopulation-weighted across your states: +5% per level.' } },
+    { label: 'Law', value: g.law },
+    { label: 'Tech & ideas', value: g.mods },
+    { label: 'Peace', value: g.peace, tip: { text: 'Peace\nAt war, growth is cut by 40%.' } },
+  ], { label: 'per year', text: yearly(g.rate), value: g.rate })}`;
+
+  // --- Birleşme -----------------------------------------------------------
+  const status = view.status;
+  const held = status.total ? status.owned / status.total : 0;
+  const unionRows = view.unions.map((u) => `<div class="k-urow">
+      <b>${esc(u.name)}</b><small>${formatPopulation(u.population)}</small>
+      <span class="k-urow-ratio ${u.ratio >= u.need ? 'pos' : ''}"${tipAttr({ text: `Size\nWe must be ${u.need}× their population to absorb them peacefully. Now ${num(u.ratio, 1)}×.` })}>${num(u.ratio, 1)}× <small>/ ${u.need}×</small></span>
+      <button class="k-btn sm" data-uc-union="${u.id}"${blockedAttr(u.blockers)}${u.blockers.length ? '' : tipAttr({ text: `Union\nTheir whole state joins ours in peace. Costs ${u.power} political power and a little infamy.` })}>Union<small>${u.power} PP</small></button>
+    </div>`).join('');
+  const formBlockers = formationBlockers(world, me);
 
   return `${kpis}
-    <div class="k-split wide-left">
+    <div class="k-split wide-left k-pop">
       <div class="k-stack">
-        ${panel('Peoples', `<div class="k-peoples">${peoples}</div>`, { sub: 'accept costs political power · release hands states to their kin · expulsion is final' })}
-        ${panel('Restless states', restlessRows || empty('No state is restless.'), { sub: 'unrest out of 10 · a revolt brews above 7', tip: { text: 'Unrest\nForeign peoples without rights, fresh conquests, unwanted war and empty shelves feed unrest. Above 7 a national movement can rise.' } })}
-        ${panel('National goal', goal ? `<div class="k-goal ${goalMet(world, me) ? 'pos' : ''}"><b>${esc(goal.name)}</b><p>${esc(goal.desc)}</p>
-          <span>${goalMet(world, me) ? badge('on track', 'pos') : badge('not yet achieved', 'neg')} <b>+${goal.bonus}</b> points in 1900</span></div>` : empty('No goal.'), { sub: 'victory bonus in 1900' })}
+        ${panel('Peoples', `<div class="k-ptable">${peopleHead}${peopleRows}</div>`, { sub: 'who lives in the nation · hover Accept to see what it brings' })}
+        ${panel('Citizenship', lawCard(world, me, 'citizenship', state.confirm, { compact: true }), { sub: 'rights for peoples you have not accepted' })}
+        ${panel('Restless states', restlessRows ? `<div class="k-rtable">${restlessRows}</div>${view.restlessMore ? `<small class="k-more">and ${view.restlessMore} calmer state${view.restlessMore === 1 ? '' : 's'}</small>` : ''}` : empty('Every state is calm.'), { sub: `out of 10 · revolt at ${view.revoltAt} · ▲ rising ▼ settling`, right: 'cause · compliance' })}
       </div>
       <div class="k-stack">
-        ${panel('Citizenship', lawCard(world, me, 'citizenship', state.confirm, { compact: true }), { sub: 'who belongs to the nation' })}
+        ${panel('National movements', moveCards || empty('No movement is growing. One rises where an unaccepted people is the majority and their unrest stays above 6.'), { sub: view.movements.length ? 'act before they break away' : 'peoples without rights organise here' })}
+        ${panel('Growth', growthBody, { sub: 'why the population grows' })}
         ${panel(`The ${esc(status.culture)} nation`, `
           <div class="k-unify"${tipAttr({ text: 'Unification\nHold 80% of your people\'s homeland to proclaim the Great nation: a core on every homeland state, prestige and an end to the kin-abroad grievance.' })}>
             <small>Homeland held</small>${meter(held, { tone: 'pos', mark: 0.8, wide: true })}<b>${status.owned} / ${status.total}</b>
           </div>
-          ${ledger([
-    { label: 'Kin under foreign rule', value: pct(economy.kinAbroad ?? 0), tone: (economy.kinAbroad ?? 0) > 0.1 ? 'neg' : '' },
-    { label: 'Great nation', value: status.formed == null ? 'not yet proclaimed' : status.formed === me.id ? 'proclaimed' : 'claimed by another' },
-    ...unions,
-  ])}
-          <button class="k-btn wide" data-uc-form="1"${blockedAttr(formBlockers)}>Proclaim the Great ${esc(status.culture)} Empire</button>`, { sub: 'unification' })}
+          <div class="k-unify-sub"><span>Kin under foreign rule <b class="${(economy.kinAbroad ?? 0) > 0.1 ? 'neg' : ''}">${pct(economy.kinAbroad ?? 0)}</b></span>
+            ${goal ? `<span${tipAttr({ text: `${goal.name}\n${goal.desc}` })}>Goal: <b>${esc(goal.name)}</b> ${goalMet(world, me) ? badge('on track', 'pos') : badge(`+${goal.bonus} in 1900`, 'dim')}</span>` : ''}</div>
+          ${unionRows ? `<div class="k-unions">${unionRows}</div>` : ''}
+          <button class="k-btn wide" data-uc-form="1"${blockedAttr(formBlockers)}>Proclaim the Great ${esc(status.culture)} Empire</button>`, { sub: status.formed == null ? 'unification' : status.formed === me.id ? 'proclaimed' : 'claimed by another' })}
       </div>
     </div>`;
 }
@@ -808,6 +880,21 @@ export function bindStateScreens(screens) {
     confirmThen(`expel:${id}`, () => expelCulture(game, me, id));
   });
   on('[data-uc-form]', () => { formNation(game, me); screens.refresh(); });
+  // Ulusal hareket eylemleri (movementDock ile aynı kapılar). Kalıcı olanlar
+  // (vassal bırakma, katliam) iki tık ister.
+  on('[data-uc-move]', (el) => {
+    const [action, id] = el.dataset.ucMove.split(':');
+    const cultureId = Number(id);
+    const run = {
+      concessions: () => grantConcessions(game, me, cultureId),
+      martial: () => declareMartialLaw(game, me, cultureId),
+      vassal: () => releaseAsVassal(game, me, cultureId),
+      crackdown: () => crackdown(game, me, cultureId),
+    }[action];
+    if (!run) return;
+    if (action === 'vassal' || action === 'crackdown') confirmThen(`move:${action}:${cultureId}`, run);
+    else { run(); screens.refresh(); }
+  });
   on('[data-uc-union]', (el) => { proposeUnion(game, me, Number(el.dataset.ucUnion)); screens.refresh(); });
   on('[data-uc-appoint]', (el) => {
     const id = el.dataset.ucAppoint;

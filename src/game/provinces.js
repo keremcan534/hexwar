@@ -300,18 +300,36 @@ const GROWTH_BASE = 0.00012;
 const FAMINE_THRESHOLD = 0.7;
 const FAMINE_RATE = 0.0006;
 
-export function growthRateOf(nation, econ, { peace = true, occupied = 0 } = {}) {
+/**
+ * Büyümenin çarpanları, ekranın "neden" dökümü için. growthRateOf AYNI
+ * çarpanları aynı sırayla çarpar: döküm ile oyun ayrışamaz.
+ */
+export function growthFactors(nation, econ, { peace = true, occupied = 0 } = {}) {
   const economy = nation?.economy;
   const food = economy?.resources?.FOOD?.ratio ?? 1;
-  if (food < FAMINE_THRESHOLD) return -FAMINE_RATE * (FAMINE_THRESHOLD - food) / FAMINE_THRESHOLD;
-  const foodFactor = food >= 1 ? 1 : (food - FAMINE_THRESHOLD) / (1 - FAMINE_THRESHOLD);
-  const consumer = 0.7 + 0.3 * Math.min(1.2, economy?.consumer?.ratio ?? 1);
-  const stability = 0.5 + clamp(nation?.stability ?? 0.5, 0, 1);
-  const development = 1 + 0.05 * (econ?.development ?? 1);
-  const law = 1 + (lawOption(nation, 'tax').growth ?? 0);
-  const mods = Math.max(0.1, 1 + mod(nation, 'growth'));
-  return GROWTH_BASE * foodFactor * consumer * stability * development * law * mods
-    * (peace ? 1 : 0.6) * (1 - occupied);
+  if (food < FAMINE_THRESHOLD) {
+    return { famine: true, foodRatio: food, rate: -FAMINE_RATE * (FAMINE_THRESHOLD - food) / FAMINE_THRESHOLD };
+  }
+  const f = {
+    famine: false,
+    foodRatio: food,
+    base: GROWTH_BASE,
+    food: food >= 1 ? 1 : (food - FAMINE_THRESHOLD) / (1 - FAMINE_THRESHOLD),
+    consumer: 0.7 + 0.3 * Math.min(1.2, economy?.consumer?.ratio ?? 1),
+    stability: 0.5 + clamp(nation?.stability ?? 0.5, 0, 1),
+    development: 1 + 0.05 * (econ?.development ?? 1),
+    law: 1 + (lawOption(nation, 'tax').growth ?? 0),
+    mods: Math.max(0.1, 1 + mod(nation, 'growth')),
+    peace: peace ? 1 : 0.6,
+    occupied: 1 - occupied,
+  };
+  f.rate = f.base * f.food * f.consumer * f.stability * f.development * f.law * f.mods
+    * f.peace * f.occupied;
+  return f;
+}
+
+export function growthRateOf(nation, econ, options = {}) {
+  return growthFactors(nation, econ, options).rate;
 }
 
 // Barış durumu ulus başına bir kez (province başına bütün ulusları taramak

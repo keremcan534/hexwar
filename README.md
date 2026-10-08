@@ -289,6 +289,16 @@ dünyanın aldığı oranda değerlidir. Satırda kur, ya da "en iyi N"; AUTO
 kıtlığa göre kurar. Gıda her state'te nüfus × verimden doğar; çiftlik o
 state'in gıdasını %25 artırır, yani kazancı nüfusa ve toprağa bağlıdır.
 
+### Population ekranı
+
+Tek döküm: `src/game/peoplesView.js`. Halklar tablosu (pay, yaşadığı state,
+huzursuzluk, hareket aşaması) ve **Kabul önizlemesi**: halk geçici olarak kabul
+edilmiş sayılır, `nationManpower` ve `unrestBreakdown` yeniden okunur — düğme
+kilitliyken de görünür. Huzursuz state'ler sebepleriyle (yabancı yönetim,
+taze fetih, savaş yorgunluğu; tüketim malı ve haklar yatıştırır). Ulusal
+hareketler eylemleriyle, büyüme çarpanlarıyla (`provinces.growthFactors`,
+`growthRateOf` aynı çarpanları okur).
+
 ### Klavye
 
 Saat: Space duraklat/sürdür, + / − hız. Sekmeler soldan sağa F1-F9.

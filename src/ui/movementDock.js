@@ -107,7 +107,7 @@ export class MovementDock {
         · ${where} · ${formatPopulation(row.people)}
         · unrest ${row.pressure.toFixed(1)}<small>/grows above ${row.calm}</small></p>
       <div class="md-acts">
-        ${button('concessions', `Concede · £${a.concessions.cost.toFixed(0)}`, a.concessions,
+        ${button('concessions', `Concede · ${a.concessions.cost.toFixed(0)} PP`, a.concessions,
     `Temporary: −${a.concessions.drop}% progress and calmer states, once a year.`)}
         ${button('martial', `Martial law · £${a.martial.cost.toFixed(1)}/w`, a.martial,
     `Temporary: for ${a.martial.weeks} weeks the movement loses ground; costs money every week and some stability.`)}

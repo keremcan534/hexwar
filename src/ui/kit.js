@@ -128,12 +128,16 @@ export function badge(text, cls = '') {
   return `<span class="k-badge ${cls}">${esc(text)}</span>`;
 }
 
-/** Sparkline (SVG). */
-export function spark(values, { width = 220, height = 42, cls = '' } = {}) {
+/**
+ * Sparkline (SVG). `zero: false` ölçeği sıfırdan değil verinin en altından
+ * başlatır: 9.99 milyonluk nüfusun %1'lik değişimi sıfır tabanlı ölçekte düz
+ * bir çubuk görünüyordu.
+ */
+export function spark(values, { width = 220, height = 42, cls = '', zero: fromZero = true } = {}) {
   const list = (values ?? []).filter(Number.isFinite);
   if (list.length < 2) return '<small class="k-dim">Not enough history yet</small>';
-  const min = Math.min(...list, 0);
-  const max = Math.max(...list, 1e-6);
+  const min = fromZero ? Math.min(...list, 0) : Math.min(...list);
+  const max = fromZero ? Math.max(...list, 1e-6) : Math.max(...list);
   const span = Math.max(1e-6, max - min);
   const pts2 = list.map((value, index) => {
     const x = (index / (list.length - 1)) * width;
