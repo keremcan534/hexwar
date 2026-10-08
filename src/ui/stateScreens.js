@@ -10,7 +10,9 @@
 // burada yalnız biçim ve düğme vardır. Bağlama `bindStateScreens` içindedir:
 // her düğme bir `data-uc-*` özniteliği taşır, oyunun kapısını çağırır.
 
-import { BUILDINGS, BUILDING_IDS, EQUIPMENT, EQUIPMENT_IDS, RESOURCES, RESOURCE_IDS } from '../game/econ/defs.js';
+import {
+  BUILDINGS, BUILDING_IDS, EQUIPMENT, EQUIPMENT_IDS, RESOURCES, RESOURCE_IDS, TAX_PER_DEVELOPMENT,
+} from '../game/econ/defs.js';
 import { LAWS, lawIndex } from '../game/laws.js';
 import { economyView, formatPopulation, populationOf } from '../game/economy.js';
 import { setLineWeight } from '../game/econ/industry.js';
@@ -107,6 +109,7 @@ export function renderBudget(game, me, state) {
     ['Army upkeep', signed(ledger.army ?? 0), 'res-neg'],
     ['Navy upkeep', signed(ledger.navy ?? 0), 'res-neg'],
     ['Building upkeep', signed(ledger.maintenance ?? 0), 'res-neg'],
+    [`Inflation (coin above ${Math.round(view.inflationReserve)} melts)`, signed(ledger.inflation ?? 0), 'res-neg'],
     ['Education', signed(ledger.education ?? 0), 'res-neg'],
     ['Imports', signed(ledger.imports ?? 0), 'res-neg'],
     ['Debt interest', signed(ledger.interest ?? 0), 'res-neg'],
@@ -323,7 +326,7 @@ export function renderConstruction(game, me, state) {
         <small>${formatPopulation(econ.population)} people · fertility ${num(fertilityOf(selected), 2)} · deposits: ${deposits}</small>
       </div>
       <div class="uc-dev">
-        <span><b>Development ${econ.development} <small>of ${view.developmentCap}</small></b><small>tax +25% per level, +1 building slot, faster growth</small></span>
+        <span><b>Development ${econ.development} <small>of ${view.developmentCap}</small></b><small>tax +${Math.round(TAX_PER_DEVELOPMENT * 100)}% per level, +1 building slot, faster growth</small></span>
         <button class="action compact" data-uc-develop="1"${why(devBlockers)}>Develop · ${developmentCost(me, selected)}</button>
       </div>
       <div class="uc-builds">${buildRows}</div>`;

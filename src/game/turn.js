@@ -51,6 +51,9 @@ import { isAllied } from './alliances.js';
 const isAlliedTo = (world, a, b) => b >= 0 && isAllied(world.nations[a], b);
 import { isNode, nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
 
+/** İkmal: kendi kontrolüne bu kadar hex mesafede yıpranma yok (bkz. supplyAttrition). */
+const SUPPLY_FREE_HEXES = 7;
+
 /** Başlangıç hazinesi: ilk binaya ya da birkaç alaya yeter. */
 const STARTING_GOLD = 100;
 
@@ -381,25 +384,6 @@ export class TurnManager {
    * Sahipsiz province ise isgal degil YERLESIMDIR — ama yalnizca kendi
    * sinirina bitisikse (bkz. canSettle).
    */
-  /**
-   * Province BÜTÜNÜNÜN işgali: ordu merkez düğümüne girince kümenin bütün
-   * kareleri ele geçer (bkz. world/provinceGraph). Kare başına `occupy`
-   * kuralları (savaş şartı, şöhret, kontrol) aynen uygulanır; şöhret de kare
-   * kare toplandığı için eski hex hex alma toplamıyla aynıdır.
-   * @returns {boolean} en az bir kare el değiştirdi mi
-   */
-  occupyProvince(tile, nationId) {
-    const province = this.world.provinces?.[tile?.provinceId];
-    if (!province) return this.occupy(tile, nationId);
-    // Sahipsiz küme claim ile zaten bütün olarak alınır.
-    if (tile.owner < 0) return this.occupy(tile, nationId);
-    let any = false;
-    for (const idx of province.tileIdx) {
-      if (this.occupy(this.world.tiles[idx], nationId)) any = true;
-    }
-    return any;
-  }
-
   occupy(tile, nationId) {
     if (!tile?.terrain.passable) return false;
     if (tile.owner < 0) {
@@ -880,7 +864,6 @@ export class TurnManager {
         if (candidate.terrain.water || !candidate.terrain.passable) return;
         if (controllerOf(candidate) !== unit.nationId) return;
         home++;
-        // Ordu yalnız province merkezinde durur.
         if (!isNode(world, candidate) || stackFull(candidate)) return;
         const distance = world.wrapDistance(tile.q, tile.r, candidate.q, candidate.r);
         if (distance < bestDistance) { bestDistance = distance; best = candidate; }
@@ -900,8 +883,9 @@ export class TurnManager {
 
   /**
    * İKMAL YIPRANMASI. Düşman topraklarında, kendi (ya da müttefik) kontrolündeki
-   * en yakın province'ten 3 adımdan uzak kara tümeni haftada güç kaybeder:
-   * uzaklık başına %1, tavan %3. Derin akın bedavaya değil; demiryolu ve
+   * en yakın hexten SUPPLY_FREE_HEXES adımdan uzak kara tümeni haftada güç
+   * kaybeder: fazla hex başına %1, tavan %3 (küme adımıyla 3'tü; bir küme ~7
+   * hex boyundadır). Derin akın bedavaya değil; demiryolu ve
    * lojistik teknolojileri (modifiers 'supply') kaybı azaltır. Ölen adam
    * nüfustan düşer (applyArmyLosses).
    */
@@ -915,12 +899,12 @@ export class TurnManager {
         return holder === owner || isAlliedTo(world, owner, holder);
       };
       if (friendly(unit.tile)) continue;
-      // BFS province grafında: kendi/müttefik kontrolüne en yakın adım.
+      // BFS hex grafında: kendi/müttefik kontrolüne en yakın adım.
       let distance = 0;
       let frontier = [unit.tile];
       const seen = new Set(frontier);
       let found = false;
-      while (frontier.length && distance < 5 && !found) {
+      while (frontier.length && distance < SUPPLY_FREE_HEXES + 3 && !found) {
         distance++;
         const next = [];
         for (const node of frontier) {
@@ -934,9 +918,9 @@ export class TurnManager {
         }
         frontier = next;
       }
-      if (found && distance < 3) continue;
+      if (found && distance <= SUPPLY_FREE_HEXES) continue;
       const nation = world.nations[owner];
-      const rate = Math.min(0.03, 0.01 * (distance - 2)) * Math.max(0, 1 - mod(nation, 'supply'));
+      const rate = Math.min(0.03, 0.01 * (distance - SUPPLY_FREE_HEXES)) * Math.max(0, 1 - mod(nation, 'supply'));
       if (rate <= 0) continue;
       const casualties = unit.regiments.reduce((sum, r) => sum + r.strength, 0) * rate;
       applyArmyLosses(unit, casualties, 0, world);

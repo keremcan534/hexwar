@@ -64,8 +64,12 @@ yasasının tüketim malına etkisi (sanayi ülkesinde −%10.8, eşiğin 2.16 k
 Eğitim yasası bir önceki taramada ölüydü: okuryazarlık sabit adımla
 yaklaşıyordu, şimdi oransal (TASARIM.md §8). Bataryada kalan bulgular
 yeniden yazımdan ÖNCE de vardı: province boy tavanı (200×160'ta 1 province),
-ülke sayısı 101 (scale, ORTA), sınır kartopu tohuma göre %22-42 (eşik
-%33; yeniden yazımdan önce %39-51).
+ülke sayısı 101 (scale, ORTA). Sınır kartopu %32-40 (eşik %33): ordu
+hex hex yürüdüğünden beri savaşlar kısa (ortanca ~20 hafta); zafer puanı
+(kümenin merkez hexi) eklendi, barış masası eşikleri denendi ve ölçümde
+etkisiz çıktı. Bağlayan kaldıraç küçük devletin iki-üç barışta tükenmesi.
+Hex düğümlü hareket grafı: `src/world/provinceGraph.js`; kümeye oyuncu
+"state" der.
 
 Sistemlerin kod yeri: ekonomi `src/game/economy.js` + `src/game/econ/*`,
 siyaset `politics.js` (+ `laws.js`, `modifiers.js`, `agenda.js`,

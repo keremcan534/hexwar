@@ -11,7 +11,8 @@
 
 import {
   BUILDINGS, BUILDING_IDS, CONSTRUCTION_TIMBER, DEVELOPMENT_CAP_BASE, DEVELOPMENT_COST,
-  DEVELOPMENT_MAX, DEVELOPMENT_WEEKS, FACTORY_COST_GROWTH, POP_UNIT, RAILWAY_IRON, RESOURCE_IDS,
+  DEVELOPMENT_COST_EXPONENT, DEVELOPMENT_MAX, DEVELOPMENT_WEEKS, FACTORY_COST_GROWTH, POP_UNIT,
+  RAILWAY_IRON, RESOURCE_IDS,
 } from './econ/defs.js';
 import { lawOption } from './laws.js';
 import { mod } from './modifiers.js';
@@ -94,7 +95,7 @@ export function developmentCost(nation, province) {
   if (!econ) return Infinity;
   const target = econ.development + 1 + queuedFor(nation, province.id, 'develop');
   const scale = Math.max(1, Math.sqrt(econ.population / POP_UNIT));
-  return Math.round(DEVELOPMENT_COST * target * target * scale * costFactor(nation));
+  return Math.round(DEVELOPMENT_COST * target ** DEVELOPMENT_COST_EXPONENT * scale * costFactor(nation));
 }
 
 /**

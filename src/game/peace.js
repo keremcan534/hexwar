@@ -90,6 +90,9 @@ export function demandLimit(score) {
   // Tavan 6'dan 4'e: 50 yilda uc tohumdan birinde haritanin %44'u el
   // degistiriyordu (audit:borders). Savas sinir duzeltir, ulke yutmaz.
   if (s < 15) return 0;
+  // 30 -> 40 / 70 -> 80 denendi (2026-10-08, hex yürüyüşü): kartopu ölçümü
+  // gürültü içinde kaldı (%40.4 -> %39.9), geri alındı — bağlayan kaldıraç
+  // masa değil, küçük devletin iki-üç barışta tükenmesi.
   if (s < 30) return 1;
   // 55 -> 70 (2026-09-04): kusatma genisligi savaslari kesinlestirince 50
   // yilda el degistiren kume payi %39a cikti; ucuncu kume daha buyuk zafer ister.
@@ -158,6 +161,16 @@ export const WAR_SCORE_WEIGHTS = {
  * skora hiç yansımıyor (payı %5, katkısı 4 puan).
  */
 const OCCUPATION_GAIN = 1.8;
+
+/**
+ * ZAFER PUANI (HOI4): ordu hex hex yürür ama kümenin warscore payının çoğu
+ * MERKEZ hexinden gelir; kalan kısmı işgal edilen hex payıdır. Hex
+ * yürüyüşünde savunan birkaç hexi tutarken saldıran boş hexlere akıyor, skor
+ * hızla birikiyordu: ortanca savaş 51 → 19 haftaya indi, 50 yılda el
+ * değiştiren pay %35 → %41-53'e çıktı. Merkez kümenin kalesi, şehri ve
+ * yönetimidir; onu almadan küme kazanılmış sayılmaz.
+ */
+export const VICTORY_POINT_SHARE = 0.75;
 
 /** Toprak dışı talepler. Hepsinin gerçek bir oyun etkisi vardır. */
 export const PEACE_TERMS = {
@@ -333,7 +346,9 @@ export function warScore(world, a, b) {
     for (const idx of province.tileIdx) {
       if (controllerOf(world.tiles[idx]) === nationId) count++;
     }
-    return count / Math.max(1, province.tileIdx.length);
+    const hexes = count / Math.max(1, province.tileIdx.length);
+    const center = province.center && controllerOf(province.center) === nationId ? 1 : 0;
+    return VICTORY_POINT_SHARE * center + (1 - VICTORY_POINT_SHARE) * hexes;
   };
   for (const province of world.provinces ?? []) {
     if (province.owner === b) {

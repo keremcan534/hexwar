@@ -134,7 +134,9 @@ zinciri yoktur (TASARIM.md §1-§8, `src/game/econ/`).
 
 - **Altın** province vergisinden (nüfus × kalkınma × statü × vergi yasası ×
   istikrar) ve ihracattan gelir; ordu/donanma bakımı, bina bakımı, eğitim,
-  ithalat ve faize gider. Eksiye düşen hazine otomatik borçlanır; borç tavanı
+  ithalat ve faize gider. Yarım yıllık gelirden fazlası kasada yatarsa
+  **enflasyon** fazlanın haftada %0.5'ini eritir: biriktirmek değil
+  harcamak ödüllenir. Eksiye düşen hazine otomatik borçlanır; borç tavanı
   aşılırsa **iflas**: borç silinir, 52 hafta kredi yok, istikrar −20, ordu
   yarı hızda toplanır.
 - **Sekiz kaynak** akıştır, stok yoktur. **Her province bir kaynak
@@ -169,9 +171,9 @@ Haritadaki tümenler birkaç alaydan oluşur. Aynı province'te dört dost tüme
 yana durabilir; birbirleriyle birleşmezler. Düşmanla temas province'e bağlı tek
 bir muharebe açar: karedeki bütün savunanlar ve oraya saldıran takviyeler aynı
 savaşa katılır. Arazi, kale ve siper savunanı güçlendirir; **nehir aşarak**
-saldıran −%25 alır (province sınırının çoğu nehirse); **barut** (güherçile)
+saldıran −%25 alır (hexler arası kenar nehirse); **barut** (güherçile)
 kıtlığı gücü %30'a kadar, **at** kıtlığı süvari ve topçuyu %40'a kadar düşürür.
-Düşman topraklarında kendi kontrolünden üç adımdan uzak tümen haftada güç
+Düşman topraklarında kendi kontrolünden yedi hexten uzak tümen haftada güç
 kaybeder (ikmal yıpranması). Asker sayısı ve moral 20 raunda kadar haftalar
 boyunca aşınır. Morali kırılan taraf
 iki province gerideki baskısı düşük bir hatta çekilir ve dört hafta toparlanır.
@@ -277,7 +279,7 @@ Bina province'e aittir ve toprakla el değiştirir: çiftlik, maden, fabrika,
 tersane, kışla, kale, demiryolu, üniversite. Bedel peşin, süre haftalarla;
 aynı anda yürüyen proje inşaat yuvasıyla sınırlıdır, yürüyen proje kereste
 (demiryolu ayrıca demir) yer. Bina yuvası **kalkınma + 1**'dir. **Kalkınma**
-(1-10) altınla, 12 haftada bir kademe yükselir: vergi +%25, bir yuva, hızlı
+(1-10) altınla, 12 haftada bir kademe yükselir: vergi +%15, bir yuva, hızlı
 büyüme; tavanı teknoloji ve okuryazarlık açar. Construction ekranı province
 listesi, kuruluş kataloğu ve kuyruktur; AUTO kıtlığa göre kurar.
 
@@ -402,15 +404,16 @@ tarayıcı olmadan Node ile de test edilebilir.
   kenarlarının tam birleşimidir. Dolgu (her kipte), tıklama, ızgara ve imleç
   aynı hücre tablosunu okur (`cellAt`/`cellOutline`); Canvas2D yedeğinde
   arazi/kaynak dolgusu hex kalır. Seçim ve imleç ızgara kapalıyken
-  province'i gösterir; ordu seçiliyken imleç hedef province'i çerçeveler.
-- Ordular PROVINCE grafında yürür (`world/provinceGraph.js`): karada yalnız
-  province merkez karesinde durur, komşu province'in merkezine geçer;
-  denizde hex hex gider, kıyı province'ine ona değen deniz karesinden
-  çıkılır. Adım maliyeti merkezler arası hex mesafesi × arazi (tempo hex
-  yürüyüşüyle aynı). Province'e girmek bütün karelerini işgal eder; cephe,
-  komşuluk, saldırı ve geri çekilme bu graftan sorulur. Province düğümünün
-  yığın tavanı 8 (muharebe genişliği 4). v22 kaydı yüklenirken ordular
-  province merkezine taşınır.
+  province'i gösterir; ordu seçiliyken çevresinde yerel hex ızgarası belirir
+  ve imleç hedef hexi çerçeveler.
+- HOI4 modeli: ekonomi, bina ve kültür province KÜMESİNDEDİR (oyuncunun
+  gözünde "state"); ordular HEX hex yürür (`world/provinceGraph.js`) — her
+  organik hücre bir HOI4 province'idir. Girilen hex işgal edilir; kümenin
+  sahipliği barış masasında değişir, işgal payı kümenin üretimini düşürür.
+  Adım maliyeti hedef hexin arazisi, gemiye binme/inme ayrıca 4. Hex başına
+  yığın tavanı 4; nehir kenarını aşan saldırı −%25; kendi kontrolünden 7
+  hexten uzak tümen ikmal yıpranması yer. Cephe, komşuluk, saldırı ve geri
+  çekilme bu graftan sorulur.
 - Çizim sürekli çalışan bir animasyon döngüsü yerine gerektiğinde yenilenir;
   simülasyon saati hafif bir zamanlayıcıyla ilerler.
 - Deniz yüzeyi `render/water.js`'te ayrı bir katmandır: açılışta üretilen

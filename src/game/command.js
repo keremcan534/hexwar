@@ -24,7 +24,7 @@ import { atWar } from './diplomacy.js';
 import { estimateBattle, selectAssault, startBattle } from './battles.js';
 import { hasDirective, orderMove } from './movement.js';
 import { controllerOf } from './control.js';
-import { PROVINCE_STACK, armyPower, isMoving, unitsOn } from './units.js';
+import { MAX_STACK, armyPower, isMoving, unitsOn } from './units.js';
 import { nodeNeighbors, nodesAdjacent } from '../world/provinceGraph.js';
 
 const FIRST = [
@@ -496,13 +496,10 @@ function scanBorders(world) {
   const out = world.nations.map(() => ({
     byNation: new Map(), hostile: [], foreign: [], frontier: [],
   }));
-  // Cephe PROVINCE düzeyindedir: ordu province merkezinde durur ve komşu
-  // province'e yürür (bkz. world/provinceGraph). Cephe karesi = kendi
-  // kontrolümüzdeki province'in merkez düğümü; komşu province'in kontrolü de
-  // merkezinden okunur (işgal province bütününe yazılır, bkz. occupyProvince).
-  for (const province of world.provinces ?? []) {
-    const tile = province.center;
-    if (!tile) continue;
+  // Cephe HEX düzeyindedir: ordu hex hex yürür (bkz. world/provinceGraph).
+  // Cephe karesi = düşmana/yabancıya bakan kendi kontrolümüzdeki hex.
+  for (const tile of world.tiles) {
+    if (tile.terrain.water || !tile.terrain.passable) continue;
     const owner = controllerOf(tile);
     if (owner < 0) continue;
     const entry = out[owner];
@@ -510,9 +507,8 @@ function scanBorders(world) {
     let foreign = false;
     let hostile = false;
     let frontier = false;
-    for (const id of province.neighbors ?? []) {
-      const near = world.provinces[id]?.center;
-      if (!near) continue;
+    for (const near of nodeNeighbors(world, tile)) {
+      if (near.terrain.water) continue;
       const nearOwner = controllerOf(near);
       if (nearOwner === owner) continue;
       // Sahipsiz toprak da bir sinirdir: baristaki ordu grubunun ilerledigi yer.
@@ -528,7 +524,7 @@ function scanBorders(world) {
     }
     if (foreign) entry.foreign.push(tile);
     if (hostile) entry.hostile.push(tile);
-    // Yabanci sinira da bakan province iki listede birden olmasin.
+    // Yabanci sinira da bakan kare iki listede birden olmasin.
     if (frontier && !foreign) entry.frontier.push(tile);
   }
   return out;
@@ -606,7 +602,7 @@ function assignPosts(world, divisions, front) {
   index.clear();
   for (let i = 0; i < front.length; i++) index.set(front[i], i);
   // Tumen sayisi cepheyi asarsa mevkiler katlanir; yigin tavani asilmaz.
-  const capacity = Math.max(1, Math.min(PROVINCE_STACK, Math.ceil(divisions.length / front.length)));
+  const capacity = Math.max(1, Math.min(MAX_STACK, Math.ceil(divisions.length / front.length)));
   const count = postCountScratch;
   const gap = postGapScratch;
   count.length = front.length;
@@ -807,7 +803,7 @@ function march(game, divisions) {
     // Zaten oraya yuruyorsa yolu yeniden kurmayiz: her hafta yeni yol vermek
     // orduyu ilerledigi yerde durdurup bastan baslatiyordu.
     if (isMoving(unit)) continue;
-    // Dolu mevkiye yürünmez: bir province düğümü PROVINCE_STACK tümen alır
+    // Dolu mevkiye yürünmez: bir hex MAX_STACK tümen alır
     // ve başka grupların tümenleri de orada durabilir. Mevkiye en yakın boş
     // kendi düğümümüz yedek mevkidir (bkz. nearestFreeOwnNode).
     const canEnter = game.canEnterFor(unit);
@@ -1000,7 +996,10 @@ function pickWalkInTarget(world, unit, reserved, { general = null, enemy = false
     // yavaslatti; kaldirildi. Cikinti kurali (tek kenar, dort dusman kenar)
     // duruyor.
     if (hostileLand && friendlySides === 1 && enemySides >= 4) continue;
-    const score = (tile.city ? 20 : 0) + friendlySides * 28 - enemySides * 14;
+    // Küme merkezi zafer puanıdır (peace.VICTORY_POINT_SHARE): warscore'un
+    // çoğu oradan gelir, YZ de oraya yürümeyi tercih eder.
+    const center = tile.provinceId >= 0 && world.provinces?.[tile.provinceId]?.center === tile;
+    const score = (tile.city ? 20 : 0) + (center ? 24 : 0) + friendlySides * 28 - enemySides * 14;
     if (score > bestScore) {
       bestScore = score;
       best = tile;

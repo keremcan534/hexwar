@@ -13,7 +13,7 @@
 // ve deterministik kalmanın bedeli budur.
 
 import {
-  BUILDINGS, BUILDING_IDS, CROWN_REVENUE, DEBT, EQUIPMENT_IDS, POP_UNIT, RESOURCE_IDS,
+  BUILDINGS, BUILDING_IDS, CROWN_REVENUE, DEBT, EQUIPMENT_IDS, INFLATION, POP_UNIT, RESOURCE_IDS,
   SALTPETER_PER_FOOD, TAX_PER_DEVELOPMENT, TAX_PER_UNIT, UPKEEP,
 } from './econ/defs.js';
 import { lawOption } from './laws.js';
@@ -397,9 +397,16 @@ export function finishEconomy(game, ctx) {
  * borç silinir, 52 hafta borç yok, istikrar ve ordu düzeni çöker
  * (politics/turn okur: `nation.bankruptUntil`).
  */
+/** Enflasyon rezervi: bunun üstündeki altın her hafta erir (bkz. INFLATION). */
+export function inflationReserve(nation) {
+  return Math.max(INFLATION.floor, INFLATION.reserveWeeks * Math.max(0, nation?.economy?.incomeAvg ?? 0));
+}
+
 function closeTreasury(nation, turn) {
   const economy = nation.economy;
   const bankrupt = (nation.bankruptUntil ?? 0) > turn;
+  const idle = (nation.gold ?? 0) - inflationReserve(nation);
+  if (idle > 0) settle(nation, 'inflation', -idle * INFLATION.rate);
   if ((nation.gold ?? 0) < 0 && !bankrupt) {
     const borrow = -nation.gold;
     settle(nation, 'borrow', borrow);
@@ -438,6 +445,7 @@ export function economyView(world, nation) {
     upkeep: economy?.upkeep ?? upkeepBreakdown(world, nation),
     education: educationCost(nation),
     maintenance: economy?.maintenance ?? maintenanceCost(world, nation),
+    inflationReserve: inflationReserve(nation),
     ic: economy?.ic,
     consumer: economy?.consumer,
     lines: economy?.lines,

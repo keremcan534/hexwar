@@ -39,7 +39,10 @@ import {
 import {
   dequeueResearch, effectiveTechCost, queueResearch, researchNow, researchPointsOf,
 } from '../game/technology.js';
-import { researchRateLines, techInspector, technologyScreen } from './technologyScreen.js';
+import {
+  TECH_ZOOMS, researchRateLines, techInspector, technologyScreen,
+} from './technologyScreen.js';
+import { depositsOf } from '../game/econ/deposits.js';
 import { motionOn } from './motion.js';
 import { formatPopulation, populationOf, weeklyBalanceOf } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS } from '../game/econ/defs.js';

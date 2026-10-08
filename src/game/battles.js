@@ -22,7 +22,7 @@ import { provinceName } from './provinces.js';
 import { resourceRatio } from './econ/resources.js';
 import { mod } from './modifiers.js';
 import { controllerOf } from './control.js';
-import { nodeNeighbors, riverBorder } from '../world/provinceGraph.js';
+import { nodeNeighbors, riverBetween } from '../world/provinceGraph.js';
 
 /** Muharebe bu kadar raunttan sonra zorla biter; kazanan guce gore belirlenir. */
 export const MAX_ROUNDS = 20;
@@ -135,9 +135,7 @@ export const RIVER_PENALTY = 0.25;
 /** Saldıranın çıkış province'i ile muharebe province'i arasında nehir var mı? */
 export function crossesRiver(world, from, target) {
   if (!from || !target || from.terrain.water) return false;
-  const a = world.provinces?.[from.provinceId];
-  const b = world.provinces?.[target.provinceId];
-  return Boolean(a && b && a !== b && riverBorder(world, a, b));
+  return riverBetween(world, from, target);
 }
 
 /** Süvari ve topçunun at payı: sürüsüz kalan kol ağırlaşır. */

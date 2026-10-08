@@ -76,15 +76,19 @@ export const BUILDINGS = {
 };
 export const BUILDING_IDS = Object.keys(BUILDINGS);
 
-/** Her fabrika bir sonrakini %3 pahalılaştırır: sanayi hamlesi hep artan bedeldir. */
+/** Her fabrika bir sonrakini %5 pahalılaştırır: sanayi hamlesi hep artan bedeldir. */
 export const FACTORY_COST_GROWTH = 0.05;
 
 /**
- * Kalkınma: bir kademe 12 hafta, bedel 10 × (hedef)² × √(nüfus birimi).
- * Kalabalık province'i kalkındırmak pahalı ama en hızlı geri döner.
+ * Kalkınma: bir kademe 12 hafta, bedel 15 × hedef^2.5 × √(nüfus birimi).
+ * Kalabalık province'i kalkındırmak pahalı ama en hızlı geri döner. Üs 2'yken
+ * (20 × hedef²) zengin ülkeler 1890'da her province'i 10'a çıkarıp harcayacak
+ * yer bulamıyordu (ölçüldü: 1900 medyan hazine ~28 bin, en zengin 330 bin);
+ * üst kademeler artık çağın sonuna dek süren bir altın yatağıdır.
  */
 export const DEVELOPMENT_WEEKS = 12;
-export const DEVELOPMENT_COST = 20;
+export const DEVELOPMENT_COST = 15;
+export const DEVELOPMENT_COST_EXPONENT = 2.5;
 export const DEVELOPMENT_MAX = 10;
 /** Kalkınma tavanının tabanı (teknoloji ve okuryazarlık ekler). */
 export const DEVELOPMENT_CAP_BASE = 3;
@@ -170,14 +174,40 @@ export const TAX_PER_UNIT = 0.45;
  * beylik asgari ordusunu ve başkent binalarını taşıyamayıp on yılda üç kez
  * iflas ediyordu (audit:econ).
  */
-export const CROWN_REVENUE = 2;
-export const TAX_PER_DEVELOPMENT = 0.25;
+export const CROWN_REVENUE = 4;
+/**
+ * Kalkınma kademesi başına vergi payı. 0.25 kalkınma → vergi → kalkınma
+ * döngüsünü fazla besliyordu: medyan vergi 1846-1896 arasında 3.3 katına
+ * çıkarken gider düz kalıyordu.
+ */
+export const TAX_PER_DEVELOPMENT = 0.15;
 
 /** Alay başına haftalık bakım (altın); savaşta seferi gider çarpanı. */
 export const UPKEEP = { land: 0.6, sea: 1.0, warMultiplier: 1.5 };
 
 /** Alay kuruluş bedeli (altın). Asıl bedel teçhizat ve insan gücüdür. */
 export const RECRUIT_GOLD = { INFANTRY: 12, CAVALRY: 20, ARTILLERY: 22, WARSHIP: 30 };
+
+/**
+ * ENFLASYON: kasada yatan altın erir. Rezervin (yarım yıllık gelir, en az 300)
+ * üstündeki altının haftada %0.5'i değer kaybeder ve bütçede kendi satırında
+ * görünür. Cümlesi: "Biriktirdiğin para erir; harca ya da yatırım yap."
+ * Yokken geç oyunda hazine anlamsızlaşıyordu (bkz. DEVELOPMENT_COST notu).
+ */
+export const INFLATION = { rate: 0.005, reserveWeeks: 26, floor: 300 };
+
+/**
+ * YZ ordusu: vergi gelirinin bu payını kara ordusu bakımına ayırmayı göze
+ * alır (insan gücü tavanı içinde). Ordu hedefi yalnız toprak büyüklüğüne
+ * bağlıyken 40 milyonluk ülke ~27 alay tutup altın yığıyordu.
+ */
+export const ARMY_BUDGET_SHARE = 0.15;
+/**
+ * Bütçe ordusunun tavanı: toprak hedefinin bu katı. Tavansız (pay 0.2)
+ * zengin dev 112 alaya çıkıp kartopunu %53'e taşıdı, savaştaki ulusların
+ * iflası 10 katına çıktı (ulus-yıl başına 0.020).
+ */
+export const ARMY_BUDGET_CAP = 2;
 
 /** Borç: haftalık faiz, tavan (haftalık gelirin katı, mutlak taban). */
 export const DEBT = { interest: 0.003, capWeeks: 20, capFloor: 150, bankruptcyWeeks: 52 };

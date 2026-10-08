@@ -96,7 +96,7 @@ const CONSOLIDATION_WEEKS = 2;
  * boş kareler toplayıp her orduya ayrı bir varış noktası veririz.
  */
 function spreadTargets(world, center, count) {
-  // Province düğümü birden çok tümen alır: yalnız tavan aşılınca yayılınır.
+  // Hex birden çok tümen alır: yalnız yığın tavanı aşılınca yayılınır.
   if (count <= 1 || count <= stackCapacity(center)) return [center];
   const targets = [center];
   const seen = new Set([center]);
@@ -566,9 +566,8 @@ export class Game {
   }
 
   /**
-   * Adım maliyeti. `from` verilirse province grafının kenar maliyeti
-   * (merkezler arası hex mesafesi × arazi; bkz. provinceGraph.nodeStepCost):
-   * province'i boydan boya geçmek hex hex yürüyüşle aynı sürer.
+   * Adım maliyeti: hedef hexin arazisi; gemiye binme/inmede ek bedel
+   * (bkz. provinceGraph.nodeStepCost).
    */
   costForUnit() {
     const world = this.world;
@@ -578,14 +577,14 @@ export class Game {
   }
 
   /**
-   * Bir birimin düğüme girişi: yerleş, province'i al, şehirlerini ele geçir.
-   * İşgal province BÜTÜNÜNE yazılır — ordu merkezde durur, kümenin öbür
-   * karelerinde onu durduracak kimse yoktur (bkz. world/provinceGraph).
+   * Bir birimin hexe girişi: yerleş, hexi işgal et, şehri varsa ele geçir.
+   * Hex modelinde işgal girilen HEXE yazılır; kümenin (state) sahipliği
+   * barış masasında değişir (bkz. world/provinceGraph).
    */
   enterTile(unit, tile) {
     const previousController = controllerOf(tile);
     placeUnit(unit, tile);
-    const occupied = this.turns.occupyProvince(tile, unit.nationId);
+    const occupied = this.turns.occupy(tile, unit.nationId);
     const conquered = occupied && previousController >= 0
       && previousController !== unit.nationId;
     if (conquered) {
@@ -593,10 +592,7 @@ export class Game {
         unit.attackReadyAt ?? 0, this.turns.turn + CONSOLIDATION_WEEKS,
       );
     }
-    const province = this.world.provinces?.[tile.provinceId];
-    const cities = conquered
-      ? (province?.tileIdx ?? []).map((idx) => this.world.tiles[idx].city).filter(Boolean)
-      : [];
+    const cities = conquered && tile.city ? [tile.city] : [];
     for (const city of cities) {
       if (city.nationId === unit.nationId) continue;
       // Sehir hukuken eski ulkede kalir; baris antlasmasi devri kesinlestirir.

@@ -54,9 +54,9 @@ province üstünde kalır. Sınıf, meslek, ihtiyaç sepeti, fiyat yok.
 edilmiş kültürü, ya da sahibin ana kültürünün ana yurdu, ya da 25 yıldır
 elde. **Statü:** çekirdek 1, çekirdek dışı `0.25 + 0.75 × uyum/100`, işgal 0.
 
-**Kalkınma** vergiyi (×(1 + 0.25·kalkınma)), bina yuvasını (kalkınma + 1),
+**Kalkınma** vergiyi (×(1 + 0.15·kalkınma)), bina yuvasını (kalkınma + 1),
 el tezgâhı tüketim malını ve nüfus artışını büyütür. Altınla, 12 haftada bir
-kademe; bedel `20 × hedef² × √(nüfus ÷ 100 bin)` (kalabalık province'i
+kademe; bedel `15 × hedef^2.5 × √(nüfus ÷ 100 bin)` (kalabalık province'i
 kalkındırmak pahalı ama daha çok vergi getirir). Tavan: 3 + teknoloji +
 okuryazarlık × 4.
 
@@ -111,9 +111,10 @@ güherçile barışta da 41-58 ihtiyaç, fiyat 2.6-3.0.
 
 ## 6. Altın, borç, iflas
 
-- Vergi = taç geliri 2 + Σ province `nüfus/100k × 0.45 × (1+0.25·kalkınma) × statü` × vergi yasası × `(0.8+0.4·istikrar)` × tüketim malı bonusu.
+- Vergi = taç geliri 4 + Σ province `nüfus/100k × 0.45 × (1+0.15·kalkınma) × statü` × vergi yasası × `(0.8+0.4·istikrar)` × tüketim malı bonusu.
 - Bakım: kara alayı 0.6, savaş gemisi 1.0 altın/hafta; savaşta ×1.5. Bina bakımı §7 tablosunda.
 - Altın sıfırın altına inerse otomatik borç. Faiz haftada %0.3. Tavan `max(150, 20 × haftalık gelir)`.
+- **Enflasyon:** rezervin (`max(300, 26 × haftalık gelir)`) üstünde yatan altının haftada %0.5'i erir; bütçede "Inflation" satırı. Cümlesi: biriktirdiğin para erir, harca. Yokken geç oyun hazinesi anlamsızlaşıyordu: 1890'da zengin ülkelerde her province kalkınma 10, bütün yuvalar dolu, 1900 medyan hazine ~28 bin, en zengin 330 bin. Enflasyon + kalkınma vergisi 0.25 → 0.15 + kalkınma bedeli üssü 2 → 2.5 + YZ bütçe ordusuyla 1896 medyan hazine ~1.7 bin (yarım yıllık vergi), medyan kalkınma 6.9.
 - **İflas** (tavan aşılırsa): borç silinir, istikrar −20 ve ordu düzeni −50 (52 hafta), inşaat kuyruğu iptal, 52 hafta borç yok.
 
 ## 7. İnşaat
@@ -164,9 +165,9 @@ yavaşlar. Her bina haftalık bakım öder (bütçede "maintenance"). Sayılar
 
 ## 11. Askerî
 
-- Hareket, muharebe, cephe, general, planlama, eğitim kuyruğu, seferberlik olduğu gibi kalır (province grafı).
+- Hareket HOI4 modelidir: ekonomi province kümesinde ("state"), ordu HEX hex yürür ve girdiği hexi işgal eder (`world/provinceGraph.js`). Muharebe, cephe, general, planlama, eğitim kuyruğu, seferberlik olduğu gibi kalır.
 - Alay: altın + insan gücü + teçhizat. Teçhizat yoksa kuyrukta bekler, eksik tümen takviye alamaz.
-- Muharebe: nehir aşarak saldırı −%25 (province sınırının çoğu nehirse); güherçile eksikliği −%30'a kadar; at eksikliği süvari ve topçuyu vurur; kale +%15/kademe.
+- Muharebe: nehir aşarak saldırı −%25 (saldırılan hexle arasındaki kenar nehirse); güherçile eksikliği −%30'a kadar; at eksikliği süvari ve topçuyu vurur; kale +%15/kademe.
 - Donanma: muharebe, abluka, nakliye.
 - **Teslim:** başkenti ve şehirlerinin yarısı düşen ülke, savaş desteği düşükse her makul barışı kabul eder.
 
@@ -175,6 +176,12 @@ yavaşlar. Her bina haftalık bakım öder (bütçede "maintenance"). Sayılar
 İlişki, ittifak, rakip, kriz/ultimatom, barış masası, şöhret ve koalisyon
 aynen kalır. Eklenen: savaş ilanı SG ister (soydaş/çekirdek hedefe ucuz),
 ambargo (SG). Barış talepleri: toprak, kurtarma, vasal, tazminat, askersizleştirme.
+
+**Zafer puanı (HOI4):** ordu hex hex yürür ama bir kümenin warscore payının
+%75'i MERKEZ hexinden, %25'i işgal edilen hex payından gelir
+(`peace.VICTORY_POINT_SHARE`). Yokken savunan birkaç hexi tutarken saldıran
+boş hexlere akıyor, savaşlar kısalıyordu (ortanca 51 → 19 hafta). Barışta
+alınabilecek küme: warscore 15'te 1, 30'da 2, 70'te 3.
 
 ## 13. Teknoloji
 
@@ -195,7 +202,10 @@ büyük bonus. Küçük ülke de kendi hikâyesini kazanabilir.
 
 ## 15. YZ
 
-Kişilik (ulusun `focus` ve `aggression`'ı) ağırlıkları seçer. Her sistemin
+Kişilik (ulusun `focus` ve `aggression`'ı) ağırlıkları seçer. Ordu hedefi
+`min(insan gücü, max(4 + toprak/12, min(vergi × 0.15 / bakım, 2 × toprak hedefi)))`:
+zengin ülke toprağından büyük ordu tutar ama tavanlı (tavansız dev 112 alaya
+çıkıp kartopunu büyütüyordu). Her sistemin
 kendi YZ rutini vardır: yasa, inşaat, kalkınma, hat ağırlığı, ticaret yasası,
 ambargo, kültür politikası, gündem, danışman, olay seçimi. AUTO devri aynı
 rutinleri oyuncu için çalıştırır.

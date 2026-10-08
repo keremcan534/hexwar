@@ -26,7 +26,8 @@ import {
   BRANCH, STANCE, assignDivisions, commandSize, generalOfArmy, officersOf, setStance,
 } from './command.js';
 import { equipmentStock, setLineWeight } from './econ/industry.js';
-import { UNIT_EQUIPMENT } from './econ/defs.js';
+import { ARMY_BUDGET_CAP, ARMY_BUDGET_SHARE, UNIT_EQUIPMENT, UPKEEP } from './econ/defs.js';
+import { mod } from './modifiers.js';
 import { LAWS, lawIndex } from './laws.js';
 import { politicsAI, setLaw } from './politics.js';
 import { planConstruction } from './construction.js';
@@ -262,12 +263,15 @@ function diplomacy(game, nation, rng) {
  */
 function desiredArmy(world, nation) {
   const byLand = 4 + Math.floor(nation.tiles / 12);
+  // Bütçe: zengin ülke toprağından büyük ordu tutabilir (bkz. ARMY_BUDGET_SHARE).
+  const tax = Math.max(0, nation.economy?.ledger?.tax ?? 0);
+  const byBudget = Math.floor(tax * ARMY_BUDGET_SHARE / (UPKEEP.land * Math.max(0.3, 1 + mod(nation, 'upkeep'))));
   // İnsan gücü tavanı: askerlik yasasının havuzu (silah altındakiler dahil)
   // ordunun gerçek sınırıdır; havuzun beşte biri takviyeye kalsın.
   const soldiers = nation.economy?.soldiers ?? 0;
   const byPeople = Math.floor((nationManpower(world, nation.id) + soldiers) * 0.8
     / UNIT_TYPES.INFANTRY.manpower);
-  return Math.max(2, Math.min(byLand, byPeople || 2));
+  return Math.max(2, Math.min(Math.max(byLand, Math.min(byBudget, byLand * ARMY_BUDGET_CAP)), byPeople || 2));
 }
 
 /**

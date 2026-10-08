@@ -36,6 +36,8 @@ export const LEDGER_LINES = {
   recruitment: { kind: 'expense', label: 'Recruitment' },
   education: { kind: 'expense', label: 'Education' },
   maintenance: { kind: 'expense', label: 'Building upkeep' },
+  // Rezervin üstünde yatan altının erimesi (economy.js closeTreasury).
+  inflation: { kind: 'expense', label: 'Inflation' },
   interest: { kind: 'expense', label: 'Debt interest' },
   // Ulusal harekete karşı sıkıyönetim (movements.js).
   unrest: { kind: 'expense', label: 'Martial law' },
