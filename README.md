@@ -280,8 +280,14 @@ tersane, kışla, kale, demiryolu, üniversite. Bedel peşin, süre haftalarla;
 aynı anda yürüyen proje inşaat yuvasıyla sınırlıdır, yürüyen proje kereste
 (demiryolu ayrıca demir) yer. Bina yuvası **kalkınma + 1**'dir. **Kalkınma**
 (1-10) altınla, 12 haftada bir kademe yükselir: vergi +%15, bir yuva, hızlı
-büyüme; tavanı teknoloji ve okuryazarlık açar. Construction ekranı province
-listesi, kuruluş kataloğu ve kuyruktur; AUTO kıtlığa göre kurar.
+büyüme; tavanı teknoloji ve okuryazarlık açar. Construction ekranı HOI4
+kalıbındadır: önce bina seçilir, sonra bütün state'ler o binanın o state'te
+getireceği **gerçek** kazançla sıralanır (`src/game/buildPreview.js`: kademe
+geçici eklenir, oyunun kendi formülü yeniden okunur). Kaynak binaları değerle
+sıralanır — evde kullanılan kaynak piyasa fiyatı, kullanılmayan ise yalnız
+dünyanın aldığı oranda değerlidir. Satırda kur, ya da "en iyi N"; AUTO
+kıtlığa göre kurar. Gıda her state'te nüfus × verimden doğar; çiftlik o
+state'in gıdasını %25 artırır, yani kazancı nüfusa ve toprağa bağlıdır.
 
 ### Ulusal hareketler
 

@@ -16,7 +16,6 @@
 
 import {
   BUILDINGS, BUILDING_IDS, DEVELOPMENT_MAX, EQUIPMENT, EQUIPMENT_IDS, RESOURCES, RESOURCE_IDS,
-  TAX_PER_DEVELOPMENT,
 } from '../game/econ/defs.js';
 import { LAWS, lawIndex } from '../game/laws.js';
 import { economyView, formatPopulation, populationOf } from '../game/economy.js';
@@ -28,7 +27,7 @@ import {
   moveProject, queueBuilding, queueDevelopment,
 } from '../game/construction.js';
 import { buildingLevels, buildingSlots, provinceName, growthRateOf } from '../game/provinces.js';
-import { depositsOf, fertilityOf } from '../game/econ/deposits.js';
+import { depositsOf } from '../game/econ/deposits.js';
 import {
   PARTIES, appointGovernment, dismissAdvisor, enactRegime, governmentView,
   hireAdvisor, runPropaganda, setLaw,
@@ -46,7 +45,8 @@ import {
   badge, blockedAttr, chain, empty, esc, kpi, kpiRow, ledger, meter, num, panel, pct, pips, pts,
   segmented, short, signed, spark, tipAttr, tone,
 } from './kit.js';
-import { buildingArt, equipmentArt, lawArt, ledgerArt, resourceArt } from './icons/art.js';
+import { buildingArt, emblemArt, equipmentArt, lawArt, ledgerArt, resourceArt } from './icons/art.js';
+import { buildPreview } from '../game/buildPreview.js';
 
 const turnOf = (game) => game.turns?.turn ?? game.world?.turn ?? 0;
 
@@ -324,8 +324,6 @@ export function renderConstruction(game, me, state) {
   const view = constructionView(world, me);
   const own = (world.provinces ?? []).filter((p) => p.owner === me.id && p.econ)
     .sort((a, b) => b.econ.population - a.econ.population || a.id - b.id);
-  if (state.province == null || !own.some((p) => p.id === state.province)) state.province = own[0]?.id ?? null;
-  const selected = world.provinces?.[state.province];
   const active = view.queue.filter((q) => q.active).length;
 
   const kpis = kpiRow([
@@ -345,70 +343,139 @@ export function renderConstruction(game, me, state) {
         <button class="k-btn sm danger" data-uc-proj-cancel="${item.id}"${tipAttr({ text: 'Cancel\n75% of the unspent cost comes back.' })}>✕</button>
       </span></div>`).join('')}</div>` : empty('Nothing under construction — pick a state below and build.');
 
-  const list = own.map((province) => {
-    const econ = province.econ;
-    const levels = buildingLevels(econ);
-    const slots = buildingSlots(econ);
-    const main = depositsOf(province);
-    return `<button class="k-state${province.id === state.province ? ' on' : ''}" data-uc-prov="${province.id}"${tipAttr('state', province.id)}>
-      <span class="k-state-res">${resourceArt(main[0]?.id, 'md')}</span>
-      <span class="k-state-name"><b>${esc(provinceName(province.center))}</b><small>${formatPopulation(econ.population)}${econ.core === false ? ' · <em>not core</em>' : ''}</small></span>
-      <span class="k-state-goods">${main.map((line) => `<span>${line === main[0] ? '' : resourceArt(line.id, 'xs')}<b>${esc(RESOURCES[line.id].name)}</b><small>×${num(line.size, 0)}</small></span>`).join('')}</span>
-      <span class="k-state-blds">${BUILDING_IDS.filter((id) => (econ.buildings[id] ?? 0) > 0).map((id) => `<span>${buildingArt(id, 'sm')}<i>${econ.buildings[id]}</i></span>`).join('') || '<small class="k-dim">no buildings</small>'}</span>
-      <span class="k-state-dev"><small>Development</small>${pips(econ.development, DEVELOPMENT_MAX, view.developmentCap)}</span>
-      <span class="k-state-slots${levels >= slots ? ' full' : ''}"><small>Slots</small>${meter(slots ? levels / slots : 0, { tone: levels >= slots ? 'warn' : 'pos' })}<b>${levels}/${slots}</b></span>
+  // HOI4 MODELİ: önce NE kurulacağı seçilir, sonra bütün state'ler o binanın
+  // o state'te getireceği GERÇEK kazançla sıralı listelenir (buildPreview).
+  // Eski akış state → bina idi ve kartlar genel etkiyi yazıyordu ("Food
+  // +25%"); oyuncu kırk state'te tek tek gezip ne alacağını bilmeden basıyordu.
+  if (!state.build || !(state.build === 'develop' || BUILDINGS[state.build])) state.build = 'mine';
+  const pick = state.build;
+  const rows = buildCandidates(world, me, pick, state);
+  const ready = rows.filter((row) => !row.blockers.length);
+
+  const options = [...BUILDING_IDS, 'develop'].map((id) => {
+    const info = BUILDINGS[id];
+    const name = info?.name ?? 'Develop';
+    const effect = info?.effect ?? 'Tax and one more building slot';
+    const art = id === 'develop' ? emblemArt('infrastructure', 'md') : buildingArt(id, 'md');
+    const can = own.filter((p) => !(id === 'develop' ? developBlockers(world, me, p) : buildBlockers(world, me, p, id)).length).length;
+    return `<button class="k-bopt${id === pick ? ' on' : ''}" data-uc-pick="${id}"${id === 'develop' ? '' : tipAttr('building', id)}>
+      <span class="k-bopt-art">${art}</span>
+      <span class="k-bopt-t"><b>${esc(name)}</b><small>${esc(effect)}</small></span>
+      <em class="${can ? '' : 'none'}"${tipAttr({ text: `${can} state${can === 1 ? '' : 's'} can take one now` })}>${can}</em>
     </button>`;
   }).join('');
 
-  let detail = empty('Select a state.');
-  if (selected?.econ) {
-    const econ = selected.econ;
-    const devBlockers = developBlockers(world, me, selected);
-    const levels = buildingLevels(econ);
-    const slots = buildingSlots(econ);
-    const deposits = depositsOf(selected);
-    const cards = BUILDING_IDS.map((id) => {
-      const info = BUILDINGS[id];
-      const blockers = buildBlockers(world, me, selected, id);
-      const cost = buildingCost(world, me, selected, id);
-      const level = econ.buildings[id] ?? 0;
-      return `<div class="k-build${level > 0 ? ' has' : ''}"${tipAttr('building', id)}>
-        ${buildingArt(id, 'lg')}
-        <div class="k-build-body">
-          <b>${esc(info.name)}</b>
-          <span class="k-build-lv">${pips(level, info.max)}</span>
-          <small>${esc(info.effect)}</small>
-        </div>
-        <button class="k-btn" data-uc-build="${id}"${blockedAttr(blockers)}><b>${cost}</b><small>${info.weeks} wk</small></button>
-      </div>`;
-    }).join('');
-    detail = `<div class="k-statehead">
-        <div class="k-statehead-t">
-          <h4>${esc(provinceName(selected.center))}</h4>
-          <div class="k-chips">
-            ${deposits.map((line) => `<span class="k-chip"${tipAttr('resource', line.id)}>${resourceArt(line.id, 'xs')}${esc(RESOURCES[line.id].name)} <b>×${num(line.size, 1)}</b></span>`).join('')}
-            <span class="k-chip"${tipAttr({ text: 'Fertility\nHow well the land feeds its people, against the world average.' })}>Fertility <b>${Math.round(fertilityOf(selected) * 100)}%</b></span>
-            <span class="k-chip">${formatPopulation(econ.population)} people</span>
-            <span class="k-chip ${econ.core === false ? 'neg' : ''}"${tipAttr('state', selected.id)}>${econ.core === false ? `Not core · ${pct(econ.status)}` : 'Core'}</span>
-          </div>
-        </div>
-        <div class="k-devbox"${tipAttr({ text: `Development\nEach level: tax +${Math.round(TAX_PER_DEVELOPMENT * 100)}%, one more building slot, faster growth. Cost rises steeply with the level and the state's population.` })}>
-          <small>Development</small>
-          <span>${pips(econ.development, DEVELOPMENT_MAX, view.developmentCap)}<b>${econ.development}</b></span>
-          <button class="k-btn" data-uc-develop="1"${blockedAttr(devBlockers)}><b>Develop</b><small>${developmentCost(me, selected)} gold · 12 wk</small></button>
-        </div>
-      </div>
-      <div class="k-slotsline"><small>Building slots</small>${meter(slots ? levels / slots : 0, { tone: levels >= slots ? 'neg' : 'pos' })}<b>${levels} / ${slots}</b></div>
-      <div class="k-builds">${cards}</div>`;
-  }
+  // Kaynak süzgeci: kazancı olan kaynaklar ("bütün kömür state'leri").
+  const unfiltered = state.resFilter ? buildCandidates(world, me, pick, { ...state, resFilter: null }) : rows;
+  const resIds = [...new Set(unfiltered.flatMap((row) => row.preview.gains.map((g) => g.resource).filter(Boolean)))];
+  if (state.resFilter && !resIds.includes(state.resFilter)) state.resFilter = null;
+  const filters = resIds.length > 1 ? `<div class="k-wfilter">
+      <button class="k-wchip${state.resFilter ? '' : ' on'}" data-uc-res="">All</button>
+      ${resIds.map((id) => `<button class="k-wchip${state.resFilter === id ? ' on' : ''}" data-uc-res="${id}">${resourceArt(id, 'xs')}${esc(RESOURCES[id].name)}</button>`).join('')}
+    </div>` : '';
+
+  const unused = (id) => (me.economy?.resources?.[id]?.need ?? 0) < 0.01;
+  const gainHtml = (preview) => {
+    if (!preview.gains.length) return `<span class="k-wgain none">${esc(preview.note || 'no gain')}</span>`;
+    const [main, ...rest] = preview.gains;
+    const idle = main.resource && unused(main.resource);
+    return `<span class="k-wgain${idle ? ' idle' : ''}">
+      ${main.resource ? resourceArt(main.resource, 'xs') : ''}<b>${esc(main.text)}</b>${main.resource ? '<small>/wk</small>' : ''}
+      ${rest.length ? `<em>${rest.map((g) => esc(g.text)).join(' · ')}</em>` : ''}
+    </span>`;
+  };
+  const gainTip = (row) => {
+    const lines = [`${row.name}: what one more ${pick === 'develop' ? 'development level' : BUILDINGS[pick].name} does`];
+    for (const g of row.preview.gains) {
+      lines.push(g.from != null ? `${g.label}: ${num(g.from, 2)} → ${num(g.to, 2)} per week` : g.text);
+      if (g.resource && unused(g.resource)) {
+        const bought = Math.min(1, world.market?.balance?.[g.resource] ?? 1);
+        lines.push(`  ${g.label} has no use at home: it can only be exported, and the world buys ${Math.round(bought * 100)}% of what it produces`);
+      }
+    }
+    if (row.preview.worth > 0.005) {
+      // Geri dönüş NET kazançla: bakım her hafta değerden düşer.
+      const net = row.preview.worth - (BUILDINGS[pick]?.upkeep ?? 0);
+      lines.push(`Worth ≈ ${num(row.preview.worth, 2)} gold/wk to you${net > 0.005
+        ? ` (pays for itself in ~${Math.ceil(row.cost / net)} weeks after upkeep)` : ', less than its upkeep'}`);
+    }
+    else if (row.preview.worth != null) lines.push('Worth almost nothing to you today: no use at home, no buyer abroad');
+    if (row.preview.note) lines.push(row.preview.note);
+    if (pick !== 'develop') lines.push(`Upkeep: ${BUILDINGS[pick].upkeep} gold/wk`);
+    return { text: lines.join('\n') };
+  };
+
+  const header = `<div class="k-wrow head"><span></span><span>State</span><span>${pick === 'develop' ? 'Development' : 'Level'}</span><span>Slots</span><span>You get</span><span></span></div>`;
+  const table = rows.length ? rows.map((row) => {
+    const econ = row.province.econ;
+    const level = pick === 'develop' ? pips(econ.development, DEVELOPMENT_MAX, view.developmentCap)
+      : pips(econ.buildings[pick] ?? 0, BUILDINGS[pick].max);
+    return `<div class="k-wrow${row.blockers.length ? ' off' : ''}">
+      <span class="k-wrow-res">${resourceArt(depositsOf(row.province)[0]?.id, 'sm')}</span>
+      <span class="k-wrow-name"><button class="k-link" data-uc-focus="${row.province.id}"${tipAttr('state', row.province.id)}>${esc(row.name)}</button>
+        <small>${formatPopulation(econ.population)}${econ.core === false ? ' · <em>not core</em>' : ''}</small></span>
+      <span class="k-wrow-lv">${level}</span>
+      <span class="k-wrow-slots${row.levels >= row.slots ? ' full' : ''}">${row.levels}/${row.slots}</span>
+      <span class="k-wrow-gain"${tipAttr(gainTip(row))}>${gainHtml(row.preview)}</span>
+      <button class="k-btn" data-uc-buildat="${row.province.id}"${blockedAttr(row.blockers)}><b>${row.cost}</b><small>${row.weeks} wk</small></button>
+    </div>`;
+  }).join('') : empty(state.showAll ? 'You own no states.' : 'No state can take this now — show all to see why.');
+
+  // Toplu kurulum: en iyi N state, sıradaki sırayla. Fabrika her kurulumda
+  // pahalanır; toplam bu yüzden "≈".
+  const bulk = [3, 5].filter((n) => ready.length >= n || n === 3).map((n) => {
+    const take = ready.slice(0, n);
+    const total = take.reduce((sum, row) => sum + row.cost, 0);
+    const blockers = !take.length ? ['No state can take one now']
+      : (me.gold ?? 0) < total ? [`Needs ≈${total} gold`] : [];
+    return `<button class="k-btn sm" data-uc-bulk="${n}"${blockers.length ? blockedAttr(blockers) : tipAttr({ text: `Queue one in each of the ${take.length} best states:\n${take.map((r) => `${r.name} — ${r.preview.gains[0]?.text ?? ''}`).join('\n')}` })}>Best ${Math.min(n, Math.max(1, take.length))} · ≈${total}</button>`;
+  }).join('');
+  const showAll = `<button class="k-btn sm${state.showAll ? ' on' : ''}" data-uc-showall="1"${tipAttr({ text: 'Also list states where it cannot be built (full, maximum level, no coast...), with the reason on the button.' })}>${state.showAll ? 'Hide unavailable' : 'Show all'}</button>`;
+  const pickName = pick === 'develop' ? 'Develop' : BUILDINGS[pick].name;
 
   return `${kpis}
-    ${panel('Under construction', queue, { sub: 'timber shortages slow every site', right: `${active} building · ${view.queue.length - active} waiting` })}
-    <div class="k-split">
-      ${panel('States', `<div class="k-states">${list}</div>`, { sub: 'development · slots', cls: 'k-statelist' })}
-      ${panel('Build', detail, { sub: 'paid up front · weekly upkeep', cls: 'k-statedetail' })}
-    </div>`;
+    <div class="k-split k-cons">
+      ${panel('Build', `<div class="k-bopts">${options}</div>`, { sub: 'pick what to build', cls: 'k-bcat' })}
+      ${panel(`${pickName} — where`, `${filters}<div class="k-wtable">${header}${table}</div>`, {
+    sub: `best first · ${ready.length} of ${rows.length} ready`, right: `${bulk}${showAll}`, cls: 'k-where',
+  })}
+    </div>
+    ${panel('Under construction', queue, { sub: 'timber shortages slow every site', right: `${active} building · ${view.queue.length - active} waiting` })}`;
 }
+
+/**
+ * Seçili bina için state satırları, kazanca göre sıralı. Ekran ve "en iyi N"
+ * düğmesi AYNI listeyi okur — düğmenin kurduğu, ekranın gösterdiğidir.
+ * Kalıcı engeli olan state (tavan, slot, kıyı...) `showAll` yoksa düşer;
+ * altın ve kuyruk geçici engeldir, satır kalır ve düğme sebebini söyler.
+ */
+function buildCandidates(world, me, pick, state = {}) {
+  const transient = (text) => /gold$/.test(text) || /queue is full/.test(text);
+  const out = [];
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== me.id || !province.econ) continue;
+    const blockers = pick === 'develop' ? developBlockers(world, me, province) : buildBlockers(world, me, province, pick);
+    if (!state.showAll && blockers.some((b) => !transient(b))) continue;
+    const preview = buildPreview(world, me, province, pick);
+    const filter = state.resFilter;
+    if (filter && !preview.gains.some((g) => g.resource === filter)) continue;
+    const score = filter ? preview.gains.find((g) => g.resource === filter).value : preview.score;
+    out.push({
+      province,
+      name: provinceName(province.center),
+      blockers,
+      preview,
+      score,
+      cost: pick === 'develop' ? developmentCost(me, province) : buildingCost(world, me, province, pick),
+      weeks: pick === 'develop' ? 12 : BUILDINGS[pick].weeks,
+      levels: buildingLevels(province.econ),
+      slots: buildingSlots(province.econ),
+    });
+  }
+  const hard = (row) => row.blockers.some((b) => !transient(b));
+  return out.sort((a, b) => hard(a) - hard(b) || b.score - a.score || b.province.econ.population - a.province.econ.population);
+}
+
 
 // ============================================================ POPULATION ===
 
@@ -612,20 +679,28 @@ export function bindStateScreens(screens) {
     setEmbargo(me, Number(el.dataset.ucEmbargoLift), false);
     screens.refresh();
   });
-  on('[data-uc-prov]', (el) => {
-    state.province = Number(el.dataset.ucProv);
-    const province = game.world.provinces?.[state.province];
+  // İnşaat: bina seç → state satırında kur. Ekran kapanmaz; peş peşe
+  // kırk state'e basmak kırk tık olmasın diye "en iyi N" de var.
+  const queueAt = (province) => (state.build === 'develop'
+    ? queueDevelopment(game, me, province)
+    : queueBuilding(game, me, province, state.build));
+  on('[data-uc-pick]', (el) => { state.build = el.dataset.ucPick; state.resFilter = null; screens.refresh(); });
+  on('[data-uc-res]', (el) => { state.resFilter = el.dataset.ucRes || null; screens.refresh(); });
+  on('[data-uc-showall]', () => { state.showAll = !state.showAll; screens.refresh(); });
+  on('[data-uc-focus]', (el) => {
+    const province = game.world.provinces?.[Number(el.dataset.ucFocus)];
     if (province?.center) game.focusTile?.(province.center);
+  });
+  on('[data-uc-buildat]', (el) => {
+    const province = game.world.provinces?.[Number(el.dataset.ucBuildat)];
+    if (province) queueAt(province);
     screens.refresh();
   });
-  on('[data-uc-build]', (el) => {
-    const province = game.world.provinces?.[state.province];
-    if (province) queueBuilding(game, me, province, el.dataset.ucBuild);
-    screens.refresh();
-  });
-  on('[data-uc-develop]', () => {
-    const province = game.world.provinces?.[state.province];
-    if (province) queueDevelopment(game, me, province);
+  on('[data-uc-bulk]', (el) => {
+    const ready = buildCandidates(game.world, me, state.build, state).filter((row) => !row.blockers.length);
+    for (const row of ready.slice(0, Number(el.dataset.ucBulk))) {
+      if (!queueAt(row.province)) break;
+    }
     screens.refresh();
   });
   on('[data-uc-proj-top]', (el) => { moveProject(game, me, Number(el.dataset.ucProjTop), 'top'); screens.refresh(); });
