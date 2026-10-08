@@ -23,7 +23,7 @@ export function pay(nation, cost, line = 'outlay') {
 }
 
 export function formatCost(cost) {
-  return cost?.gold ? `${cost.gold}⬤` : '';
+  return cost?.gold ? `${cost.gold} gold` : '';
 }
 
 const NAME_A = ['White', 'Black', 'Blue', 'New', 'Old', 'Salt', 'Iron', 'High', 'Grand', 'Red'];

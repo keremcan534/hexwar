@@ -9,6 +9,8 @@
 // burada tek bir eşik ya da toplam hesaplanmaz. Simgeler satır içi çizgi-SVG:
 // birim rozetleri harita odası sayacı gibi okunur, emoji yoktur.
 
+import { TRAIT_GLYPH, glyph } from './icons/glyphs.js';
+import { equipmentArt } from './icons/art.js';
 import { formatPopulation } from '../game/economy.js';
 import { UNIT_CATEGORIES } from '../game/military.js';
 import { subayPortresi } from './icons/subaylar.js';
@@ -135,7 +137,7 @@ function leaderDetail(leader, loose) {
     ? `<i title="${esc(note)}"><small>${esc(label)}</small><b>+${Math.round(value * 100)}%</b></i>`
     : '');
   const traits = leader.traits.map((trait) => `<em title="${esc(trait.desc)}">
-    ${trait.icon} ${esc(trait.name)}</em>`).join('') || '<em class="void">No traits</em>';
+    ${glyph(TRAIT_GLYPH[trait.id], 'inline')} ${esc(trait.name)}</em>`).join('') || '<em class="void">No traits</em>';
   return `<div class="mil-leader-detail">
     <div class="mil-detail-head">
       <b>${esc(leader.rank)} ${esc(leader.name)}</b>
@@ -282,7 +284,7 @@ function buildRow(option, state) {
   ].filter(Boolean).join(' · ');
   const equipment = option.equipment.map((item) => `<em class="${item.stock >= item.amount ? '' : 'short'}"
     title="${esc(`${item.name}: ${item.amount} needed, ${item.stock.toFixed(1)} in stock`)}">
-    ${item.amount}${item.icon}</em>`).join('');
+    ${item.amount}${equipmentArt(item.id, 'xs')}</em>`).join('');
   const reason = blocked
     ? option.blockers.map((blocker) => blocker.text).join('\n')
     : `${option.weeks} weeks of training · ${option.gold} gold on order`
@@ -404,7 +406,7 @@ function dispositionBand(summary, composition, logistics, spent) {
       title="${esc(`${item.name}: ${item.stock.toFixed(1)} in stock, ${item.required.toFixed(1)} needed`
       + `, ${item.producedPerWeek.toFixed(1)}/week from the production line`
       + (item.etaWeeks ? ` — ${item.etaWeeks} weeks to cover the gap` : ''))}">
-      ${item.icon}${item.stock.toFixed(0)}</span>`;
+      ${equipmentArt(item.id, 'xs')}${item.stock.toFixed(0)}</span>`;
   }).join('');
   const orgValue = summary.organization == null ? '—' : `${Math.round(summary.organization)}%`;
   return `<footer class="mil-disposition">

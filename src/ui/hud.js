@@ -33,6 +33,7 @@ import { showEndScreen } from './endScreen.js';
 import { formatPopulation, weeklyBalanceOf } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS, BUILDINGS, BUILDING_IDS, DEVELOPMENT_MAX } from '../game/econ/defs.js';
 import { buildingArt, resourceArt } from './icons/art.js';
+import { TRAIT_GLYPH, glyph } from './icons/glyphs.js';
 import { meter as kitMeter, pips as kitPips, tipAttr } from './kit.js';
 import { depositsOf, fertilityOf } from '../game/econ/deposits.js';
 import { powerIncome } from '../game/politics.js';
@@ -246,7 +247,7 @@ export class Hud {
       const left = crisisLeft(world, me.id, other.id, this.game.turns.turn);
       return `<button class="war-chip crisis" data-crisis-target="${other.id}"
         title="Ultimatum: war with ${escapeHtml(other.name)} begins in ${left} weeks. Mobilize from the Military screen.">
-        <span class="war-name">⏳ ${escapeHtml(other.name)}</span>
+        <span class="war-name">${glyph('hourglass', 'inline')} ${escapeHtml(other.name)}</span>
         <b class="war-score">${left}w</b>
       </button>`;
     }).join('');
@@ -258,7 +259,7 @@ export class Hud {
       return `<button class="war-chip ${tone}${offered ? ' offered' : ''}" data-war-target="${other.id}"
         title="${offered ? `${escapeHtml(other.name)} has proposed terms`
     : `Open peace talks with ${escapeHtml(other.name)}`}">
-        <span class="war-name">${offered ? '🕊 ' : ''}${escapeHtml(other.name)}</span>
+        <span class="war-name">${offered ? `${glyph('dove', 'inline')} ` : ''}${escapeHtml(other.name)}</span>
         <b class="war-score">${score >= 0 ? '+' : ''}${score}</b>
       </button>`;
     }).join('');
@@ -773,7 +774,7 @@ export class Hud {
         .sort((a, b) => Number(atWar(game.world, me.id, b.id))
           - Number(atWar(game.world, me.id, a.id)) || a.name.localeCompare(b.name));
       target.innerHTML = `<option value="">All active fronts</option>${options.map((nation) => (
-        `<option value="${nation.id}">${atWar(game.world, me.id, nation.id) ? '⚔ ' : ''}${escapeHtml(nation.name)}</option>`
+        `<option value="${nation.id}">${escapeHtml(nation.name)}${atWar(game.world, me.id, nation.id) ? ' — at war' : ''}</option>`
       )).join('')}`;
       target.value = active.target == null ? '' : String(active.target);
       for (const btn of el.commandTools.querySelectorAll('[data-stance]')) {
@@ -1007,7 +1008,7 @@ export class Hud {
         formatPopulation(me.economy?.population ?? 0), 'data-macro="population"', 'macro-live')
         + statCell('army', 'Army', formatPopulation(army), 'data-tip="army"')
         + statCell('manpower', 'Recruits', formatPopulation(nationManpower(world, me.id)), 'data-tip="manpower"')
-        + statCell('gdp', 'IC', `${ic.total.toFixed(1)}<em class="stat-flow">${ic.military.toFixed(1)}⚔</em>`,
+        + statCell('gdp', 'IC', `${ic.total.toFixed(1)}<em class="stat-flow">${ic.military.toFixed(1)}${glyph('swords', 'inline')}</em>`,
           'data-macro="ic" data-tip="ic"', 'macro-live')
         + resourceChips(me);
       this.ensureMacroCards();
@@ -1565,7 +1566,7 @@ export class Hud {
       </div>`;
     }
     const traits = general.traits
-      .map((id) => `${TRAITS[id].icon} ${escapeHtml(TRAITS[id].name)}`).join(' · ') || 'no traits';
+      .map((id) => `${glyph(TRAIT_GLYPH[id], 'inline')} ${escapeHtml(TRAITS[id].name)}`).join(' · ') || 'no traits';
     const stance = aggressionInfo(general.aggression);
     return `<div class="action-row">
       <div class="k">commander — ${escapeHtml(general.name)} · skill ${general.skill}/${MAX_SKILL}
@@ -1617,7 +1618,7 @@ export class Hud {
     const cards = officersOf(me, branch).map((general) => {
       const size = commandSize(general);
       const traits = general.traits
-        .map((id) => `<em title="${escapeHtml(TRAITS[id].desc)}">${TRAITS[id].icon} ${escapeHtml(TRAITS[id].name)}</em>`)
+        .map((id) => `<em title="${escapeHtml(TRAITS[id].desc)}">${glyph(TRAIT_GLYPH[id], 'inline')} ${escapeHtml(TRAITS[id].name)}</em>`)
         .join('') || '<em>no traits</em>';
       return `<button class="general-card" data-pick-general="${general.id}">
         <b>${escapeHtml(general.name)}</b>

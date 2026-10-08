@@ -2,6 +2,8 @@
 // Oyun katmanı ne olduğunu söyler (game/notifications.js), burası nasıl
 // göründüğüne ve ne zaman kaybolduğuna karar verir.
 
+import { NOTIFY_GLYPH, glyph } from './icons/glyphs.js';
+
 /** Aynı anda görünecek kart sayısı; telefonda üçten fazlası haritayı yutuyor. */
 const MAX_CARDS = 5;
 const MAX_CARDS_NARROW = 3;
@@ -58,7 +60,7 @@ export class Notifications {
     const count = this.cards.size;
     const alert = [...this.cards.keys()].some((entry) => entry.tone === 'bad' || entry.tone === 'war');
     this.tray.hidden = count === 0;
-    this.tray.textContent = `🔔 ${count}`;
+    this.tray.innerHTML = `${glyph('bell', 'inline')} ${count}`;
     this.tray.classList.toggle('notify-alert', alert);
   }
 
@@ -132,7 +134,7 @@ export class Notifications {
       : '';
     const body = entry.title ? (entry.body ?? '') : entry.text;
     card.innerHTML = `
-      <span class="notify-icon" aria-hidden="true">${entry.icon}
+      <span class="notify-icon" aria-hidden="true">${glyph(NOTIFY_GLYPH[entry.kind] ?? 'info')}
         <b class="notify-count${entry.count > 1 ? ' shown' : ''}">${entry.count > 1 ? entry.count : ''}</b>
       </span>
       <span class="notify-text">

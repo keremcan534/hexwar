@@ -44,6 +44,7 @@ import {
 } from './technologyScreen.js';
 import { depositsOf } from '../game/econ/deposits.js';
 import { resourceArt } from './icons/art.js';
+import { TERM_GLYPH, glyph } from './icons/glyphs.js';
 import { motionOn } from './motion.js';
 import { formatPopulation, populationOf, weeklyBalanceOf } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS } from '../game/econ/defs.js';
@@ -766,7 +767,7 @@ export class Screens {
         : 'They have no foreign-culture provinces.';
       return `<button class="peace-term ${picked ? 'picked' : ''}" data-peace-term="${term.id}"
         ${usable ? '' : 'disabled'} title="${esc(usable ? term.desc : why)}">
-        <span class="peace-term-icon">${term.icon}</span>
+        <span class="peace-term-icon">${glyph(TERM_GLYPH[term.id])}</span>
         <span class="peace-term-body"><b>${esc(term.name)}</b>
           <small>${esc(usable ? term.desc : why)}</small></span>
         <span class="peace-term-cost">${term.cost}</span>
@@ -791,7 +792,7 @@ export class Screens {
     return `${esc(province.name)}${starred ? ' ★' : ''} (${provinceWarCost(world, province)})`;
   }).join(' · ')}</span></div>` : '');
     const terms = offer.terms?.length ? `<div class="offer-line"><small>Terms</small>
-      <span>${offer.terms.map((id) => `${PEACE_TERMS[id].icon} ${esc(PEACE_TERMS[id].name)}`)
+      <span>${offer.terms.map((id) => `${glyph(TERM_GLYPH[id], 'inline')} ${esc(PEACE_TERMS[id].name)}`)
     .join(' · ')}</span></div>` : '';
     const white = !offer.demands?.length && !offer.concessions?.length && !terms;
     // Teklifin bedeli oyuncunun gözünden: pozitif sayı "bu kadarını veriyorum".
@@ -813,7 +814,7 @@ export class Screens {
   resourceLine(me) {
     const weekly = weeklyBalanceOf(me);
     const sign = `${weekly >= 0 ? '+' : ''}${Math.round(weekly)}`;
-    return `<span>⬤ <b>${Math.round(me.gold)}</b> ${sign}</span>
+    return `<span>${glyph('coin', 'inline')} <b>${Math.round(me.gold)}</b> ${sign}</span>
       <span>PP <b>${Math.round(me.power ?? 0)}</b></span>
       <span>IC <b>${(me.economy?.ic?.total ?? 0).toFixed(1)}</b></span>
       <span>STB <b>${Math.round((me.stability ?? 0) * 100)}%</b></span>

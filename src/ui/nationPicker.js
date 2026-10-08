@@ -8,6 +8,7 @@
 //
 // Katman: ui. Oyun durumuna yalnız game üzerinden erişir.
 
+import { resourceArt } from './icons/art.js';
 import { nationBrief, nationRoster } from '../game/nationBrief.js';
 import { formatPopulation } from '../game/economy.js';
 import { flagDataUrl } from '../render/flagPainter.js';
@@ -105,7 +106,7 @@ export class NationPicker {
       ['Government', `${brief.government} · ${brief.party}`],
       ['Economy', `${brief.economicPolicy} · ${brief.tradePolicy}`],
       ['Resources', brief.goods.length
-        ? brief.goods.map((g) => `${g.icon} ${g.name} (${g.provinces})`).join(' · ')
+        ? brief.goods.map((g) => `${resourceArt(g.id, 'xs')} ${g.name} (${g.provinces})`).join(' · ')
         : 'none of note'],
       ['Industry', brief.industry.count
         ? `${brief.industry.count} factor${brief.industry.count === 1 ? 'y' : 'ies'}${brief.industry.dockyards ? ` · ${brief.industry.dockyards} dockyard` : ''}`
@@ -118,7 +119,7 @@ export class NationPicker {
       return `<button class="np-neighbour" data-pick="${n.id}" title="Preview ${esc(n.name)}">
         <b>${esc(n.name)}</b>
         <span class="${tone}">${n.ratio === Infinity ? '—' : `${n.ratio.toFixed(1)}×`}</span>
-        <small>${n.good ? `${n.good.icon} ${esc(n.good.name)}` : ''}</small>
+        <small>${n.good ? `${resourceArt(n.good.id, 'xs')} ${esc(n.good.name)}` : ''}</small>
       </button>`;
     }).join('');
     const notes = brief.notes.map((note) => `<li class="${note.tone}">${esc(note.text)}</li>`).join('');

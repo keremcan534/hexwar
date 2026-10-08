@@ -200,7 +200,7 @@ export function registerStateTooltips(game) {
         { label: 'Resources', value: deposits || 'none' },
         { label: 'Fertility', value: `${Math.round(fertilityOf(province) * 100)}% of world average` },
         { label: 'Compliance', value: `${Math.round(econ.control ?? 0)}%` },
-        { label: 'Status', value: econ.core ? 'core — counts in full' : `not core — counts at ${pct(econ.status)}`, tone: econ.core ? 'good' : 'bad' },
+        { label: 'Status', value: econ.core !== false ? 'core — counts in full' : `not core — counts at ${pct(econ.status)}`, tone: econ.core !== false ? 'good' : 'bad' },
       ],
       text: built ? `Buildings: ${built}.` : 'No buildings yet.',
     };

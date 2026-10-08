@@ -12854,3 +12854,316 @@ button.k-agenda:hover { border-color: var(--gold); background: rgba(186, 160, 10
 .event-card.ev .ev-kicker { font-size: 10.5px; letter-spacing: var(--ls-label); text-transform: uppercase; }
 .event-card.ev .ev-opt small { font-size: 12px; }
 .event-card.ev .ev-later small { font-size: 11.5px; }
+
+/* ==========================================================================
+   §42 KİT DERİNLİĞİ — "düz renk, efektsiz, yapıştırma" geri bildirimi
+   (Kerem, 2026-10-08). Paradox panelinin dört katmanı burada: (1) gren
+   dokusu ve ışıklı degrade, (2) siyah dış hat + pirinç iç kıl çizgi + iç
+   gölge (kabartma), (3) dört köşede pirinç süs, (4) metal başlık plakası ve
+   ortası elmaslı alt çizgi. Gösterge simgesi oyuk bir yuvaya oturur.
+   ========================================================================== */
+
+:root {
+  --brass-hair: rgba(186, 160, 100, 0.30);
+  --brass-tick: rgba(214, 186, 120, 0.75);
+  /* Köşe süsü: her köşede 12 px'lik L. Sekiz degrade, tek sözde öğe. */
+  --corner-ticks:
+    linear-gradient(var(--brass-tick), var(--brass-tick)) left top / 12px 1px no-repeat,
+    linear-gradient(var(--brass-tick), var(--brass-tick)) left top / 1px 12px no-repeat,
+    linear-gradient(var(--brass-tick), var(--brass-tick)) right top / 12px 1px no-repeat,
+    linear-gradient(var(--brass-tick), var(--brass-tick)) right top / 1px 12px no-repeat,
+    linear-gradient(var(--brass-tick), var(--brass-tick)) left bottom / 12px 1px no-repeat,
+    linear-gradient(var(--brass-tick), var(--brass-tick)) left bottom / 1px 12px no-repeat,
+    linear-gradient(var(--brass-tick), var(--brass-tick)) right bottom / 12px 1px no-repeat,
+    linear-gradient(var(--brass-tick), var(--brass-tick)) right bottom / 1px 12px no-repeat;
+}
+
+/* --- Panel ------------------------------------------------------------- */
+.k-panel {
+  position: relative;
+  border: 1px solid #020405;
+  border-radius: 2px;
+  background:
+    var(--ui-grain),
+    radial-gradient(130% 90% at 18% 0%, rgba(255, 238, 200, 0.045), transparent 55%),
+    linear-gradient(180deg, rgba(27, 36, 39, 0.96) 0%, rgba(15, 22, 25, 0.97) 38%, rgba(9, 14, 16, 0.98) 100%);
+  box-shadow:
+    inset 0 0 0 1px var(--brass-hair),
+    inset 0 1px 0 1px rgba(255, 232, 180, 0.06),
+    inset 0 0 28px rgba(0, 0, 0, 0.45),
+    0 3px 0 rgba(0, 0, 0, 0.35),
+    0 8px 22px rgba(0, 0, 0, 0.4);
+}
+.k-panel::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  background: var(--corner-ticks);
+  pointer-events: none;
+}
+.k-head {
+  margin: 1px 1px 0;
+  padding: 8px 14px 9px;
+  border-bottom: 0;
+  border-image: none;
+  background:
+    linear-gradient(180deg, rgba(196, 168, 110, 0.16), rgba(130, 104, 60, 0.06) 55%, rgba(0, 0, 0, 0.12)),
+    var(--ui-grain);
+  box-shadow: inset 0 1px 0 rgba(255, 236, 190, 0.08), inset 0 -1px 0 rgba(0, 0, 0, 0.6);
+}
+/* Alt çizgi: pirinç kıl çizgi, ortasında küçük elmas. */
+.k-head::after {
+  content: "";
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: -1px;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(186, 160, 100, 0.55) 12%, rgba(186, 160, 100, 0.55) 88%, transparent);
+}
+.k-head::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -4px;
+  width: 6px;
+  height: 6px;
+  background: var(--gold);
+  box-shadow: 0 0 0 1px #050708;
+  transform: translateX(-50%) rotate(45deg);
+  z-index: 1;
+}
+.k-head h3 {
+  color: #d4bc82;
+  font-size: 15.5px;
+  letter-spacing: 0.08em;
+  text-shadow: 0 1px 0 #000, 0 0 12px rgba(214, 186, 120, 0.15);
+}
+.k-body { padding: 12px 14px 14px; }
+
+/* --- Gösterge kutusu: plaka --------------------------------------------- */
+.k-kpi {
+  border: 1px solid #020405;
+  border-radius: 2px;
+  background:
+    var(--ui-grain),
+    linear-gradient(180deg, rgba(42, 50, 50, 0.95) 0%, rgba(20, 28, 31, 0.97) 48%, rgba(11, 17, 19, 0.98) 100%);
+  box-shadow:
+    inset 0 0 0 1px var(--brass-hair),
+    inset 0 1px 0 1px rgba(255, 232, 180, 0.07),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.35),
+    0 3px 0 rgba(0, 0, 0, 0.35),
+    0 6px 16px rgba(0, 0, 0, 0.35);
+}
+.k-kpi::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  background: var(--corner-ticks);
+  pointer-events: none;
+  opacity: 0.7;
+}
+.k-kpi[data-tip]:hover {
+  border-color: #020405;
+  background:
+    var(--ui-grain),
+    linear-gradient(180deg, rgba(52, 58, 54, 0.95) 0%, rgba(24, 32, 34, 0.97) 48%, rgba(12, 18, 20, 0.98) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(214, 186, 120, 0.55),
+    inset 0 1px 0 1px rgba(255, 232, 180, 0.1),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.35),
+    0 0 14px rgba(214, 186, 120, 0.12),
+    0 6px 16px rgba(0, 0, 0, 0.35);
+}
+.k-kpi.hero {
+  background:
+    var(--ui-grain),
+    radial-gradient(90% 120% at 0% 0%, rgba(214, 186, 120, 0.16), transparent 60%),
+    linear-gradient(180deg, rgba(46, 50, 44, 0.95) 0%, rgba(22, 28, 28, 0.97) 50%, rgba(12, 17, 18, 0.98) 100%);
+  box-shadow:
+    inset 0 0 0 1px rgba(214, 186, 120, 0.5),
+    inset 0 1px 0 1px rgba(255, 232, 180, 0.1),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.35),
+    0 3px 0 rgba(0, 0, 0, 0.35),
+    0 6px 16px rgba(0, 0, 0, 0.35);
+}
+.k-kpi-body b { text-shadow: 0 1px 0 #000, 0 2px 6px rgba(0, 0, 0, 0.5); }
+.k-kpi.hero .k-kpi-body b { color: #e2c88a; text-shadow: 0 1px 0 #000, 0 0 16px rgba(214, 186, 120, 0.25); }
+/* Simge yuvası: oyuk, içe gölgeli yuvarlak. Simge "basılı" değil "oturmuş" durur. */
+.k-kpi-ico {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 40%, #0d1416, #050809 75%);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.9),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.8),
+    0 1px 0 rgba(255, 232, 180, 0.1),
+    0 0 0 2px rgba(120, 96, 54, 0.45);
+}
+.k-kpi-ico .art-md { width: 46px; height: 46px; }
+.k-kpi-ico .art-plate { border-radius: 50%; overflow: hidden; }
+.k-kpi-meter { height: 3px; bottom: 5px; box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.8); }
+.k-kpi-meter > i { box-shadow: 0 0 6px currentColor; }
+
+/* --- Satırlar: dönüşümlü zemin, belirgin hover --------------------------- */
+.k-ledger > .k-row:nth-child(even),
+.k-res-row:not(.head):nth-child(odd),
+.k-people:nth-child(even),
+.k-restless:nth-child(even),
+.k-states > .k-state:nth-child(even) { background-color: rgba(255, 240, 210, 0.022); }
+.k-row[data-tip]:hover,
+.k-res-row:not(.head):hover,
+.k-restless:hover { background-color: rgba(214, 186, 120, 0.08); box-shadow: inset 2px 0 0 var(--gold); }
+.k-row { border-bottom-color: rgba(174, 139, 74, 0.09); }
+
+/* Alt kartlar (yasa, hat, bina, parti, karar...): aynı plaka dili, sığ. */
+.k-law, .k-line, .k-build, .k-party, .k-seat, .k-dec, .k-agenda, .k-proj, .k-mkt, .k-pill {
+  border-color: #030506;
+  background:
+    linear-gradient(180deg, rgba(36, 44, 45, 0.85), rgba(14, 20, 22, 0.9));
+  box-shadow:
+    inset 0 0 0 1px rgba(186, 160, 100, 0.18),
+    inset 0 1px 0 1px rgba(255, 232, 180, 0.05),
+    0 2px 4px rgba(0, 0, 0, 0.4);
+}
+.k-law:hover, .k-line:hover, .k-build:hover, .k-party:hover, .k-mkt:hover, .k-pill:hover,
+button.k-dec:hover:not([disabled]), button.k-agenda:hover {
+  border-color: #030506;
+  box-shadow:
+    inset 0 0 0 1px rgba(214, 186, 120, 0.5),
+    inset 0 1px 0 1px rgba(255, 232, 180, 0.08),
+    0 0 12px rgba(214, 186, 120, 0.1),
+    0 2px 4px rgba(0, 0, 0, 0.4);
+}
+.k-build.has, .k-party.ruling, .k-agenda.now {
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(214, 186, 120, 0.10), transparent 60%),
+    linear-gradient(180deg, rgba(40, 46, 42, 0.88), rgba(15, 21, 22, 0.92));
+}
+
+/* Boş durum: koca kutu değil, ince şerit. */
+.k-empty { padding: 4px 0; font-size: 12.5px; font-style: italic; }
+
+/* --- State listesi: genişliği kullanan satır ---------------------------- */
+.k-statelist { container-type: inline-size; }
+.k-state {
+  grid-template-columns: 44px minmax(140px, 1.2fr) minmax(150px, 1.3fr) minmax(120px, 1.4fr) auto 128px;
+  gap: 14px;
+  min-height: 54px;
+  padding: 5px 12px 5px 8px;
+}
+.k-state-res .art-md { width: 40px; height: 40px; }
+.k-state-name b { font-family: var(--font-display); font-size: 15px; font-weight: 400; }
+.k-state-goods { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.k-state-goods > span { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.k-state-goods b { color: var(--text); font-size: 12.5px; font-weight: 600; }
+.k-state-goods small { color: var(--text-mute); font-size: 11px; }
+.k-state-blds { display: flex; flex-wrap: wrap; gap: 4px; }
+.k-state-blds > span { position: relative; }
+.k-state-blds i {
+  position: absolute;
+  right: -3px;
+  bottom: -3px;
+  min-width: 12px;
+  padding: 0 2px;
+  border-radius: 2px;
+  background: var(--gold-dark);
+  color: var(--text);
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+  line-height: 12px;
+  text-align: center;
+}
+.k-state-dev, .k-state-slots { display: flex; flex-direction: column; gap: 3px; }
+.k-state-dev small, .k-state-slots small { color: var(--text-faint); font-size: 9.5px; font-weight: 600; letter-spacing: var(--ls-label); text-transform: uppercase; }
+.k-state-slots { display: grid; grid-template-columns: 1fr auto; align-items: center; column-gap: 8px; }
+.k-state-slots small { grid-column: 1 / -1; }
+.k-state-slots .k-meter { width: auto; }
+.k-state-slots > b { color: var(--text); font-size: 12.5px; font-variant-numeric: tabular-nums; }
+.k-state-slots.full > b { color: var(--amber); }
+/* Dar sütunda (bölünmüş düzen) ikincil sütunlar düşer. */
+@container (max-width: 640px) {
+  .k-state { grid-template-columns: 40px minmax(0, 1fr) auto 90px; gap: 10px; }
+  .k-state-goods, .k-state-blds { display: none; }
+  .k-state-dev small { display: none; }
+}
+/* Paneller içerik kadar: ilk haftada boş "Expenses" paneli komşusunun boyuna
+   uzayıp koca bir boş kutu oluyordu. */
+.k-cols-2, .k-cols-3 { align-items: start; }
+.k-state .k-pips > i { width: 7px; height: 11px; }
+@media (max-width: 1365px) {
+  /* Üç sütun ikiye inince üçüncü panel tam genişlik: yarım satır boş kalmasın. */
+  .k-cols-3 > :nth-child(3):last-child { grid-column: 1 / -1; }
+}
+/* Dar sütun: kalkınma pulları adın altına iner, ad kesilmez. */
+@container (max-width: 640px) {
+  .k-state {
+    grid-template-columns: 40px minmax(0, 1fr) 84px;
+    grid-template-areas: "res name slots" "res dev slots";
+    row-gap: 3px;
+  }
+  .k-state-res { grid-area: res; }
+  .k-state-name { grid-area: name; }
+  .k-state-dev { grid-area: dev; }
+  .k-state-slots { grid-area: slots; }
+}
+.k-chart:not(.tall) { height: auto; }
+
+/* --- Çizgi ikonlar (ui/icons/glyphs.js) --------------------------------- */
+.glyph { display: inline-block; width: 1.15em; height: 1.15em; flex: none; vertical-align: -0.2em; color: var(--gold-bright); }
+.glyph.inline { width: 1em; height: 1em; margin-right: 1px; }
+.notify-icon .glyph { width: 22px; height: 22px; }
+.peace-term-icon .glyph { width: 22px; height: 22px; }
+.tech-row-label .glyph { width: 15px; height: 15px; }
+.mil-disposition .art-xs, .mil-build .art-xs { width: 15px; height: 15px; margin: 0 2px; }
+
+/* --- §42b Eski ekranlar (Military, Technology) aynı derinlik dilinde ------- */
+.ui-kpis { gap: 8px; border: 0; background: none; }
+.ui-kpi {
+  position: relative;
+  padding: 10px 14px 12px;
+  border: 1px solid #020405;
+  border-radius: 2px;
+  background:
+    var(--ui-grain),
+    linear-gradient(180deg, rgba(42, 50, 50, 0.95) 0%, rgba(20, 28, 31, 0.97) 48%, rgba(11, 17, 19, 0.98) 100%);
+  box-shadow:
+    inset 0 0 0 1px var(--brass-hair),
+    inset 0 1px 0 1px rgba(255, 232, 180, 0.07),
+    inset 0 -10px 18px rgba(0, 0, 0, 0.35),
+    0 3px 0 rgba(0, 0, 0, 0.35),
+    0 6px 16px rgba(0, 0, 0, 0.35);
+}
+.ui-kpi::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  background: var(--corner-ticks);
+  opacity: 0.7;
+  pointer-events: none;
+}
+.ui-kpi[data-tip]:hover { background: var(--ui-grain), linear-gradient(180deg, rgba(52, 58, 54, 0.95), rgba(12, 18, 20, 0.98)); }
+.ui-kpi > b { text-shadow: 0 1px 0 #000, 0 2px 6px rgba(0, 0, 0, 0.5); }
+.mil-col {
+  position: relative;
+  border: 1px solid #020405;
+  border-radius: 2px;
+  background:
+    var(--ui-grain),
+    radial-gradient(130% 90% at 18% 0%, rgba(255, 238, 200, 0.04), transparent 55%),
+    linear-gradient(180deg, rgba(27, 36, 39, 0.96) 0%, rgba(15, 22, 25, 0.97) 38%, rgba(9, 14, 16, 0.98) 100%);
+  box-shadow:
+    inset 0 0 0 1px var(--brass-hair),
+    inset 0 0 28px rgba(0, 0, 0, 0.45),
+    0 3px 0 rgba(0, 0, 0, 0.35),
+    0 8px 22px rgba(0, 0, 0, 0.4);
+}
+.mil-col::after {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  background: var(--corner-ticks);
+  pointer-events: none;
+}

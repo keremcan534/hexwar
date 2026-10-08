@@ -300,7 +300,33 @@ const CITY_OFFSET = 0.3;
 const UNIT_ON_CITY_OFFSET = 0.22;
 
 /** Emir rozetleri; orders.js'teki ORDER değerleriyle eşleşir. */
-const ORDER_BADGE = { auto: '⚙', hold: '⏸' };
+/**
+ * Emir rozeti: 'hold' iki dikey çubuk, 'auto' dişli. Emoji metniydi; tuvalde
+ * emoji her işletim sisteminde başka çizilir ve küçük boyda leke olur.
+ */
+function drawOrderBadge(ctx, order, x, y, size) {
+  if (order !== 'hold' && order !== 'auto') return;
+  ctx.save();
+  if (order === 'hold') {
+    const w = size * 0.28;
+    ctx.fillRect(x - size * 0.42, y - size * 0.5, w, size);
+    ctx.fillRect(x + size * 0.14, y - size * 0.5, w, size);
+  } else {
+    ctx.lineWidth = size * 0.18;
+    ctx.strokeStyle = ctx.fillStyle;
+    ctx.beginPath();
+    ctx.arc(x, y, size * 0.3, 0, Math.PI * 2);
+    ctx.stroke();
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2;
+      ctx.beginPath();
+      ctx.moveTo(x + Math.cos(a) * size * 0.38, y + Math.sin(a) * size * 0.38);
+      ctx.lineTo(x + Math.cos(a) * size * 0.56, y + Math.sin(a) * size * 0.56);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
 
 /**
  * TARAF RENGI — "bu kimin ordusu" sorusunun TEK cevabi. Ulus rengi yetmiyordu:
@@ -3753,7 +3779,7 @@ export class Renderer {
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillStyle = '#f7e7b3';
-      ctx.fillText(ORDER_BADGE[spec.order] ?? '', left + width * 0.1, top + height * 0.58);
+      drawOrderBadge(ctx, spec.order, left + width * 0.1, top + height * 0.58, height * 0.34);
     }
 
     if (spec.selected) {
@@ -3871,9 +3897,9 @@ export class Renderer {
       const d = compactMen(defenders.reduce((sum, army) => sum + menUnderArms(army), 0));
       const textY = y - 1.5 / zoom;
       ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
-      ctx.fillText(`${a} ⚔ ${d}`, x + 0.7 / zoom, textY + 0.7 / zoom);
+      ctx.fillText(`${a} : ${d}`, x + 0.7 / zoom, textY + 0.7 / zoom);
       ctx.fillStyle = '#e9dcc0';
-      ctx.fillText(`${a} ⚔ ${d}`, x, textY);
+      ctx.fillText(`${a} : ${d}`, x, textY);
     }
   }
 

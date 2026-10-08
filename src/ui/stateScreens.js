@@ -140,16 +140,18 @@ export function renderBudget(game, me, state) {
     { label: 'Weekly tax', value: tax.total, text: num(tax.total), tone: 'pos', tip: 'ledger', arg: 'tax' },
   );
 
-  const treasuryPanel = panel('Treasury', `<div class="k-chart tall">${spark(history.map((entry) => entry.gold), { width: 420, height: 110 })}</div>
+  const treasuryPanel = panel('Treasury', `<div class="k-chart${history.length > 1 ? ' tall' : ''}">${spark(history.map((entry) => entry.gold), { width: 420, height: 110 })}</div>
       <div class="k-chart-legend"><span>${history.length} weeks</span><span>now <b>${short(view.gold)}</b></span></div>`, { sub: 'gold, last 52 weeks' });
 
   return `${kpis}
     ${bankrupt ? `<div class="k-alert neg"><b>Bankrupt</b> for ${view.bankruptUntil - turn} more weeks — no credit, stability −20, the army trains and recovers at half speed.</div>` : ''}
-    <div class="k-cols-3">
+    <div class="k-cols-2">
       ${panel('Income', `${ledger([...income, { label: 'Total', value: signed(totalIn), tone: 'pos', strong: true }])}
         <small class="k-sublabel">How the tax line is built</small>${taxChain}`, { sub: 'last week' })}
-      ${panel('Expenses', expenses.length ? ledger([...expenses, { label: 'Total', value: signed(totalOut), tone: 'neg', strong: true }]) : empty('Nothing spent last week.'), { sub: 'last week' })}
-      ${treasuryPanel}
+      <div class="k-stack">
+        ${panel('Expenses', expenses.length ? ledger([...expenses, { label: 'Total', value: signed(totalOut), tone: 'neg', strong: true }]) : empty('Nothing spent last week.'), { sub: 'last week' })}
+        ${treasuryPanel}
+      </div>
     </div>
     ${panel('Fiscal laws', `<div class="k-laws two">${lawCard(world, me, 'tax', state.confirm)}${lawCard(world, me, 'education', state.confirm)}</div>
       <p class="k-note">Education costs <b>${num(view.education, 1)}</b> gold a week and moves literacy toward <b>${pct(view.literacyTarget)}</b> (now ${pct(view.literacy)}).</p>`,
@@ -330,7 +332,7 @@ export function renderConstruction(game, me, state) {
     kpi({ icon: buildingArt('mine', 'md'), label: 'Building now', value: `${active} / ${view.slots}`, sub: 'construction slots', tip: { text: 'Construction slots\nProjects that advance at once: 2 + one per five states, plus technology. Waiting projects start as slots free up.' }, meter: view.slots ? active / view.slots : 0, cls: 'hero' }),
     kpi({ label: 'Queued', value: String(view.queue.length - active), sub: 'waiting for a slot', tip: { text: 'Queue\nPaid up front; they wait for a free construction slot. ▲ moves a project to the front.' } }),
     kpi({ label: 'Development cap', value: String(view.developmentCap), sub: `of ${DEVELOPMENT_MAX}`, tip: { text: 'Development cap\nThe highest development any state may reach: 3, plus technology, plus literacy × 4.' } }),
-    kpi({ label: 'States', value: String(own.length), sub: `${own.filter((p) => p.econ.core).length} core`, tip: { text: 'States\nNon-core states count at their compliance: less tax, fewer recruits, less industry.' } }),
+    kpi({ label: 'States', value: String(own.length), sub: `${own.filter((p) => p.econ.core !== false).length} core`, tip: { text: 'States\nNon-core states count at their compliance: less tax, fewer recruits, less industry.' } }),
     kpi({ label: 'Treasury', value: short(me.gold), sub: 'buildings are paid up front', tip: 'treasury' }),
   ]);
 
@@ -349,10 +351,12 @@ export function renderConstruction(game, me, state) {
     const slots = buildingSlots(econ);
     const main = depositsOf(province);
     return `<button class="k-state${province.id === state.province ? ' on' : ''}" data-uc-prov="${province.id}"${tipAttr('state', province.id)}>
-      <span class="k-state-res">${main.map((line) => resourceArt(line.id, 'xs')).join('')}</span>
-      <span class="k-state-name"><b>${esc(provinceName(province.center))}</b><small>${formatPopulation(econ.population)}${econ.core ? '' : ' · <em>not core</em>'}</small></span>
-      <span class="k-state-dev">${pips(econ.development, DEVELOPMENT_MAX, view.developmentCap)}</span>
-      <span class="k-state-slots${levels >= slots ? ' full' : ''}">${levels}/${slots}</span>
+      <span class="k-state-res">${resourceArt(main[0]?.id, 'md')}</span>
+      <span class="k-state-name"><b>${esc(provinceName(province.center))}</b><small>${formatPopulation(econ.population)}${econ.core === false ? ' · <em>not core</em>' : ''}</small></span>
+      <span class="k-state-goods">${main.map((line) => `<span>${line === main[0] ? '' : resourceArt(line.id, 'xs')}<b>${esc(RESOURCES[line.id].name)}</b><small>×${num(line.size, 0)}</small></span>`).join('')}</span>
+      <span class="k-state-blds">${BUILDING_IDS.filter((id) => (econ.buildings[id] ?? 0) > 0).map((id) => `<span>${buildingArt(id, 'sm')}<i>${econ.buildings[id]}</i></span>`).join('') || '<small class="k-dim">no buildings</small>'}</span>
+      <span class="k-state-dev"><small>Development</small>${pips(econ.development, DEVELOPMENT_MAX, view.developmentCap)}</span>
+      <span class="k-state-slots${levels >= slots ? ' full' : ''}"><small>Slots</small>${meter(slots ? levels / slots : 0, { tone: levels >= slots ? 'warn' : 'pos' })}<b>${levels}/${slots}</b></span>
     </button>`;
   }).join('');
 
@@ -385,7 +389,7 @@ export function renderConstruction(game, me, state) {
             ${deposits.map((line) => `<span class="k-chip"${tipAttr('resource', line.id)}>${resourceArt(line.id, 'xs')}${esc(RESOURCES[line.id].name)} <b>×${num(line.size, 1)}</b></span>`).join('')}
             <span class="k-chip"${tipAttr({ text: 'Fertility\nHow well the land feeds its people, against the world average.' })}>Fertility <b>${Math.round(fertilityOf(selected) * 100)}%</b></span>
             <span class="k-chip">${formatPopulation(econ.population)} people</span>
-            <span class="k-chip ${econ.core ? '' : 'neg'}"${tipAttr('state', selected.id)}>${econ.core ? 'Core' : `Not core · ${pct(econ.status)}`}</span>
+            <span class="k-chip ${econ.core === false ? 'neg' : ''}"${tipAttr('state', selected.id)}>${econ.core === false ? `Not core · ${pct(econ.status)}` : 'Core'}</span>
           </div>
         </div>
         <div class="k-devbox"${tipAttr({ text: `Development\nEach level: tax +${Math.round(TAX_PER_DEVELOPMENT * 100)}%, one more building slot, faster growth. Cost rises steeply with the level and the state's population.` })}>
