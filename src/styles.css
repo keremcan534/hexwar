@@ -13167,3 +13167,242 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
   background: var(--corner-ticks);
   pointer-events: none;
 }
+
+/* ==========================================================================
+   §43 ÜST ÇUBUK — "manyak bir şey olsun" (Kerem, 2026-10-08)
+   Metal şerit: gren + üstten ışık + alt kenarda çift pirinç kordon ve ortada
+   arma elması. Beş ana gösterge oyuk yuvada, çevresinde dolum halkası;
+   ikincil dört gösterge 2x2 blok; kaynaklar halkalı madalyon tepsisi.
+   ========================================================================== */
+
+.topbar {
+  background:
+    var(--ui-grain),
+    radial-gradient(60% 140% at 50% -20%, rgba(214, 186, 120, 0.10), transparent 60%),
+    linear-gradient(180deg, #273032 0%, #182023 38%, #0d1315 78%, #080c0e 100%);
+  border-bottom: 0;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 236, 190, 0.10),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.9),
+    0 1px 0 #050708,
+    0 3px 0 #6e5a32,
+    0 4px 0 #2a2214,
+    0 5px 0 rgba(214, 186, 120, 0.35),
+    0 14px 30px rgba(0, 0, 0, 0.55);
+}
+/* Arma elması: alt kordonun tam ortasında. */
+.topbar::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  width: 12px;
+  height: 12px;
+  background: linear-gradient(135deg, #e8cf8f, #8a6d36 55%, #4a3a1c);
+  box-shadow: 0 0 0 1px #050708, 0 0 10px rgba(214, 186, 120, 0.4);
+  transform: translateX(-50%) rotate(45deg);
+  pointer-events: none;
+  z-index: 2;
+}
+
+/* --- Künye: çerçeveli bayrak, altın ad -------------------------------- */
+.nation-flag {
+  box-shadow:
+    0 0 0 1px #050708,
+    0 0 0 3px #7a6436,
+    0 0 0 4px #050708,
+    0 4px 10px rgba(0, 0, 0, 0.6);
+}
+.nation-text b {
+  color: #e2c88a;
+  text-shadow: 0 1px 0 #000, 0 0 14px rgba(214, 186, 120, 0.2);
+}
+
+/* --- Ana gösterge ------------------------------------------------------ */
+.top-stats { gap: 2px; }
+.tb-gauge {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 12px 6px 8px;
+  border-radius: 3px;
+  cursor: help;
+  transition: background-color 0.15s ease;
+}
+.tb-gauge + .tb-gauge::before {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 12px;
+  bottom: 12px;
+  width: 1px;
+  background: linear-gradient(180deg, transparent, rgba(214, 186, 120, 0.45), transparent);
+}
+.tb-gauge:hover { background: radial-gradient(80% 100% at 30% 50%, rgba(214, 186, 120, 0.12), transparent 70%); }
+.tb-socket {
+  position: relative;
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 38%, #111a1d, #040607 78%);
+  box-shadow:
+    inset 0 2px 6px rgba(0, 0, 0, 0.95),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.9),
+    0 1px 0 rgba(255, 232, 180, 0.12),
+    0 0 0 1px rgba(120, 96, 54, 0.55);
+}
+.tb-ico { display: grid; place-items: center; width: 28px; height: 28px; }
+.tb-ico .art-sm { width: 28px; height: 28px; }
+.tb-ico .art-plate { border-radius: 50%; overflow: hidden; }
+.tb-ico .glyph { width: 22px; height: 22px; color: #d8bd7e; filter: drop-shadow(0 1px 0 #000); }
+.tb-ring { position: absolute; inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px); transform: rotate(-90deg); pointer-events: none; }
+.tb-ring circle { fill: none; stroke-width: 3; }
+.tb-ring .trk { stroke: rgba(0, 0, 0, 0.55); }
+.tb-ring .val { stroke: var(--gold-bright); stroke-linecap: round; filter: drop-shadow(0 0 2px rgba(214, 186, 120, 0.6)); }
+.tb-ring.pos .val { stroke: #9cc067; filter: drop-shadow(0 0 3px rgba(156, 192, 103, 0.55)); }
+.tb-ring.warn .val { stroke: #d6a24c; filter: drop-shadow(0 0 3px rgba(214, 162, 76, 0.55)); }
+.tb-ring.neg .val { stroke: #cf5d3e; filter: drop-shadow(0 0 4px rgba(207, 93, 62, 0.7)); }
+.tb-ring.war .val { stroke: #c9835a; filter: drop-shadow(0 0 3px rgba(201, 131, 90, 0.55)); }
+.tb-ring.gold .val { stroke: #e2c88a; }
+.tb-ring.dim .val { stroke: rgba(152, 148, 134, 0.6); filter: none; }
+.tb-gv { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.tb-gv small {
+  color: var(--text-mute);
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.tb-gv b {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 400;
+  line-height: 1;
+  font-variant-numeric: tabular-nums lining-nums;
+  text-shadow: 0 1px 0 #000, 0 2px 6px rgba(0, 0, 0, 0.6);
+  white-space: nowrap;
+}
+.tb-gv b .stat-flow { font-family: var(--font-ui); font-size: 11px; font-weight: 600; text-shadow: none; }
+.tb-hero .tb-gv b { color: #e8cf8f; font-size: 22px; text-shadow: 0 1px 0 #000, 0 0 14px rgba(214, 186, 120, 0.3); }
+.tb-hero .tb-socket { box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.95), 0 0 0 1px #050708, 0 0 0 2px #8a6d36, 0 0 12px rgba(214, 186, 120, 0.25); }
+
+/* --- İkincil göstergeler: 2x2 ----------------------------------------- */
+.tb-minis {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, auto);
+  gap: 3px 14px;
+  margin-left: 6px;
+  padding: 4px 12px;
+  border-left: 1px solid rgba(214, 186, 120, 0.3);
+  border-right: 1px solid rgba(214, 186, 120, 0.3);
+}
+.tb-mini { display: inline-flex; align-items: center; gap: 6px; cursor: help; white-space: nowrap; }
+.tb-mini-ico { display: grid; place-items: center; width: 20px; height: 20px; }
+.tb-mini-ico .art-xs { width: 20px; height: 20px; }
+.tb-mini-ico .art-plate { border-radius: 50%; overflow: hidden; }
+.tb-mini b { color: var(--text); font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; text-shadow: 0 1px 0 #000; }
+.tb-mini b .stat-flow { margin-left: 3px; color: var(--text-dim); font-size: 10.5px; }
+.tb-mini small { color: var(--text-faint); font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.tb-mini:hover b { color: #f0e2bf; }
+
+/* --- Kaynak tepsisi: halkalı madalyonlar ------------------------------ */
+.tb-res { display: grid; grid-template-columns: repeat(4, 30px); gap: 4px 6px; margin-left: 8px; }
+.tb-resi {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  cursor: help;
+}
+.tb-resi .art-sm { width: 22px; height: 22px; }
+.tb-resi .tb-ring { inset: 0; width: 100%; height: 100%; }
+.tb-resi .tb-ring circle { stroke-width: 3.4; }
+.tb-resi b {
+  position: absolute;
+  left: 50%;
+  bottom: -6px;
+  padding: 0 3px;
+  border-radius: 2px;
+  background: rgba(5, 8, 9, 0.85);
+  color: var(--text-dim);
+  font-size: 8.5px;
+  font-weight: 700;
+  line-height: 11px;
+  transform: translateX(-50%);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.tb-resi:hover b, .tb-resi.short b, .tb-resi.tight b { opacity: 1; }
+.tb-resi.short b { color: #f08a6b; }
+.tb-resi.tight b { color: #e0b467; }
+.tb-resi.idle .art-sm { filter: grayscale(0.85) brightness(0.6); }
+.tb-resi em {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  color: #9cc067;
+  font-size: 8px;
+  font-style: normal;
+  text-shadow: 0 0 3px #000;
+}
+.tb-resi.short { animation: tb-pulse 1.8s ease-in-out infinite; }
+@keyframes tb-pulse {
+  0%, 100% { filter: none; }
+  50% { filter: drop-shadow(0 0 5px rgba(207, 93, 62, 0.75)); }
+}
+@media (prefers-reduced-motion: reduce) { .tb-resi.short { animation: none; } }
+
+/* --- Takvim plakası ---------------------------------------------------- */
+.turn-badge {
+  padding: 4px 14px 5px;
+  border-radius: 2px;
+  background:
+    var(--ui-grain),
+    linear-gradient(180deg, rgba(60, 50, 32, 0.6), rgba(20, 16, 10, 0.75));
+  box-shadow:
+    inset 0 0 0 1px rgba(214, 186, 120, 0.45),
+    inset 0 1px 0 rgba(255, 236, 190, 0.12),
+    0 0 0 1px #050708,
+    0 3px 8px rgba(0, 0, 0, 0.5);
+}
+.turn-badge b { color: #e8cf8f; text-shadow: 0 1px 0 #000, 0 0 14px rgba(214, 186, 120, 0.25); }
+
+/* Dar pencere: göstergeler ikinci satırda, ortalanmış ve aynı ritimde. */
+@media (max-width: 1365px) {
+  .tb-socket { width: 38px; height: 38px; }
+  .tb-ico, .tb-ico .art-sm { width: 24px; height: 24px; }
+  .tb-gv b { font-size: 17px; }
+  .tb-hero .tb-gv b { font-size: 19px; }
+  .tb-gauge { padding: 4px 9px 4px 6px; gap: 7px; }
+}
+/* Ana göstergeler halkalı yuva aldıktan sonra tek satıra ancak ~1800 pikselde
+   sığıyor (1600'de Altın künyenin, kaynak tepsisi takvimin üstüne biniyordu;
+   başsız tarayıcıda ölçüldü). Altında iki satır: künye + takvim üstte,
+   göstergeler altta ortalı. --hud-top JS'le ölçüldüğü için alt katmanlar kayar. */
+@media (max-width: 1799px) {
+  .topbar {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "left right"
+      "stats stats";
+    row-gap: 0;
+    padding-top: calc(var(--safe-top) + 6px);
+    padding-bottom: 6px;
+  }
+  .top-stats {
+    justify-content: center;
+    padding-top: 4px;
+    border-top: 1px solid rgba(214, 186, 120, 0.16);
+  }
+}

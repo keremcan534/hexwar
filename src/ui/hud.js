@@ -32,7 +32,7 @@ import { Screens } from './screens.js';
 import { showEndScreen } from './endScreen.js';
 import { formatPopulation, weeklyBalanceOf } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS, BUILDINGS, BUILDING_IDS, DEVELOPMENT_MAX } from '../game/econ/defs.js';
-import { buildingArt, resourceArt } from './icons/art.js';
+import { buildingArt, equipmentArt, lawArt, ledgerArt, resourceArt } from './icons/art.js';
 import { TRAIT_GLYPH, glyph } from './icons/glyphs.js';
 import { meter as kitMeter, pips as kitPips, tipAttr } from './kit.js';
 import { depositsOf, fertilityOf } from '../game/econ/deposits.js';
@@ -73,30 +73,30 @@ const AREA_OF_SCREEN = Object.fromEntries(
 const SPEED_NAMES = { 1: 'Normal speed', 2: 'Fast', 4: 'Very fast', 8: 'Fastest' };
 
 /**
- * Üst çubuk gösterge simgeleri: harita kipi düğmeleriyle aynı çizgi dili
- * (16'lık kutu, yuvarlak uç). Yedi hücrenin YEDİSİ de simge taşır; tek
- * hücrenin boyalı madalyonu ızgarayı bozuyordu.
+ * ÜST ÇUBUK GÖSTERGESİ: oyuk yuvada simge (madalyon ya da çizgi ikon),
+ * çevresinde isteğe bağlı dolum halkası (istikrar, savaş desteği, SG,
+ * şöhret), yanında versal etiket ve değer. Eski hücre etiket+sayıdan ibaretti
+ * ve çubuk "web dashboard" okunuyordu (Kerem: "üst taraf hiç hoşuma gitmedi").
  */
-const STAT_ICONS = {
-  treasury: '<ellipse cx="8" cy="4.7" rx="4.6" ry="1.9"/><path d="M3.4 4.7v3.2c0 1 2.1 1.9 4.6 1.9s4.6-.9 4.6-1.9V4.7M3.4 7.9v3.3c0 1 2.1 1.9 4.6 1.9s4.6-.9 4.6-1.9V7.9"/>',
-  stability: '<path d="M2.8 13.4h10.4M3.8 11.5h8.4M5 11.5V6.3M8 11.5V6.3M11 11.5V6.3M3 6.3h10L8 2.7z"/>',
-  infamy: '<path d="M8 1.7 9.7 4v5.7H6.3V4zM4.4 9.7h7.2M8 9.7v3.6M6.5 13.4h3"/>',
-  population: '<circle cx="6" cy="5.3" r="2"/><path d="M2.4 12.9c0-2.1 1.6-3.6 3.6-3.6s3.6 1.5 3.6 3.6"/><circle cx="11.2" cy="6.1" r="1.6"/><path d="M10.5 9.4h.7c1.5 0 2.6 1.3 2.6 3.1"/>',
-  army: '<path d="M3 13 12.2 3.8M12.2 3.8l1.3-1.3M4.1 10.3l1.6 1.6M13 13 3.8 3.8M3.8 3.8 2.5 2.5M11.9 10.3l-1.6 1.6"/>',
-  manpower: '<circle cx="6.4" cy="5.3" r="2.1"/><path d="M2.5 13.1c0-2.2 1.7-3.8 3.9-3.8s3.9 1.6 3.9 3.8M12.4 4.6v4.2M10.3 6.7h4.2"/>',
-  gdp: '<path d="M2.5 13.5h11M4 13.5V9.6h2.1v3.9M7 13.5V7.1h2.1v6.4M10 13.5V4.4h2.1v9.1"/>',
-  power: '<path d="M8 1.8 9.6 5.6l4 .4-3 2.7.9 4-3.5-2.1-3.5 2.1.9-4-3-2.7 4-.4z"/>',
-  warsupport: '<path d="M3 14V2.5M3 3h8.5l-1.6 2.5L11.5 8H3"/>',
-};
+function ringSvg(share, tone = '') {
+  const r = 17.5;
+  const c = 2 * Math.PI * r;
+  const f = Math.max(0, Math.min(1, share ?? 0));
+  return `<svg class="tb-ring ${tone}" viewBox="0 0 40 40" aria-hidden="true">
+    <circle class="trk" cx="20" cy="20" r="${r}"/>
+    <circle class="val" cx="20" cy="20" r="${r}" stroke-dasharray="${(f * c).toFixed(2)} ${c.toFixed(2)}"/></svg>`;
+}
 
-/**
- * Tek gösterge hücresi. Yedisi aynı kalıptan çıkar: simgeli versal etiket,
- * altında değer; genişlik ve eksen CSS'te ortak (bkz. styles.css §3 .top-stat).
- */
-function statCell(icon, label, value, attrs = '', cls = '') {
-  return `<span class="top-stat${cls ? ` ${cls}` : ''}" tabindex="0" ${attrs}>
-      <small><svg class="stat-ico" viewBox="0 0 16 16" aria-hidden="true">${STAT_ICONS[icon]}</svg>${label}</small>
-      <b>${value}</b>
+/** İkincil gösterge (nüfus, ordu, havuz, sanayi): küçük ikon, değer, etiket. */
+function miniCell(icon, label, value, attrs = '', cls = '') {
+  return `<span class="tb-mini${cls ? ` ${cls}` : ''}" tabindex="0" ${attrs}>
+      <span class="tb-mini-ico">${icon}</span><b>${value}</b><small>${label}</small></span>`;
+}
+
+function statCell(icon, label, value, attrs = '', cls = '', ring = null) {
+  return `<span class="tb-gauge${cls ? ` ${cls}` : ''}" tabindex="0" ${attrs}>
+      <span class="tb-socket">${ring ? ringSvg(ring.share, ring.tone) : ''}<span class="tb-ico">${icon}</span></span>
+      <span class="tb-gv"><small>${label}</small><b>${value}</b></span>
     </span>`;
 }
 
@@ -1004,12 +1004,12 @@ export class Hud {
         .filter((unit) => unit.nationId === me.id && unit.type.domain === 'land')
         .reduce((sum, unit) => sum + menUnderArms(unit), 0);
       const ic = me.economy?.ic ?? { total: 0, civil: 0, military: 0 };
-      this.el.macroStats.innerHTML = statCell('population', 'People',
+      this.el.macroStats.innerHTML = `<span class="tb-minis">${miniCell(lawArt('citizenship', 'xs'), 'People',
         formatPopulation(me.economy?.population ?? 0), 'data-macro="population"', 'macro-live')
-        + statCell('army', 'Army', formatPopulation(army), 'data-tip="army"')
-        + statCell('manpower', 'Recruits', formatPopulation(nationManpower(world, me.id)), 'data-tip="manpower"')
-        + statCell('gdp', 'IC', `${ic.total.toFixed(1)}<em class="stat-flow">${ic.military.toFixed(1)}${glyph('swords', 'inline')}</em>`,
-          'data-macro="ic" data-tip="ic"', 'macro-live')
+        + miniCell(equipmentArt('rifles', 'xs'), 'Army', formatPopulation(army), 'data-tip="army"')
+        + miniCell(ledgerArt('army', 'xs'), 'Recruits', formatPopulation(nationManpower(world, me.id)), 'data-tip="manpower"')
+        + miniCell(buildingArt('factory', 'xs'), 'IC', `${ic.total.toFixed(1)}<em class="stat-flow">${ic.military.toFixed(1)}${glyph('swords', 'inline')}</em>`,
+          'data-macro="ic" data-tip="ic"', 'macro-live')}</span>`
         + resourceChips(me);
       this.ensureMacroCards();
       this.mountTopFlag();
@@ -1828,25 +1828,33 @@ function resourcesHtml(nation) {
   const warSupport = Math.round((nation.warSupport ?? 0) * 100);
   const power = powerIncome(nation);
   const stabilityClass = stability < 30 ? 'res-neg' : stability < 45 ? 'res-warn' : '';
-  return statCell('treasury', 'Gold', `${treasuryLabel(nation.gold)}${flow}`, 'data-tip="treasury"')
-    + statCell('power', 'Power', `${Math.round(nation.power ?? 0)}<em class="stat-flow res-pos">+${power.total.toFixed(1)}</em>`, 'data-tip="power"')
-    + statCell('stability', 'Stability', `<span class="${stabilityClass}">${stability}%</span>`,
-      'role="button" data-why="stability" data-tip="stability"', 'stat-why')
-    + statCell('warsupport', 'War Sup.', `${warSupport}%`, 'data-tip="warsupport"')
-    + statCell('infamy', 'Infamy', `<span class="${infamyClass}">${infamy.toFixed(1)}</span>`, 'data-tip="infamy"');
+  const tone = (v, warn, bad) => (v < bad ? 'neg' : v < warn ? 'warn' : 'pos');
+  return statCell(ledgerArt('tax', 'sm'), 'Gold', `${treasuryLabel(nation.gold)}${flow}`, 'data-tip="treasury"', 'tb-hero')
+    + statCell(glyph('crown'), 'Power', `${Math.round(nation.power ?? 0)}<em class="stat-flow res-pos">+${power.total.toFixed(1)}</em>`,
+      'data-tip="power"', '', { share: (nation.power ?? 0) / 500, tone: 'gold' })
+    + statCell(glyph('column'), 'Stability', `<span class="${stabilityClass}">${stability}%</span>`,
+      'role="button" data-why="stability" data-tip="stability"', 'stat-why', { share: stability / 100, tone: tone(stability, 45, 30) })
+    + statCell(lawArt('conscription', 'sm'), 'War Sup.', `${warSupport}%`, 'data-tip="warsupport"', '',
+      { share: warSupport / 100, tone: 'war' })
+    + statCell(glyph('warning'), 'Infamy', `<span class="${infamyClass}">${infamy.toFixed(1)}</span>`, 'data-tip="infamy"', '',
+      { share: infamy / INFAMY_COALITION, tone: infamy >= INFAMY_COALITION ? 'neg' : infamy >= INFAMY_COALITION * 0.6 ? 'warn' : 'dim' });
 }
 
 /** Kaynak çipleri: karşılanma oranı; eksik olan kırmızı yanar, talebi olmayan (1836'da petrol) çizgi. */
 function resourceChips(nation) {
   const records = nation.economy?.resources ?? {};
-  return `<span class="res-chips">${RESOURCE_IDS.map((id) => {
+  // KAYNAK TEPSİSİ: her madalyonun çevresinde karşılanma halkası; talebi
+  // olmayan (1836'da petrol) soluk, eksik olan kırmızı halka, ihracatçı ▲.
+  return `<span class="tb-res">${RESOURCE_IDS.map((id) => {
     const record = records[id];
     const need = (record?.need ?? 0) > 0.01;
     const ratio = need ? record.ratio : 1;
     const cls = !need ? 'idle' : ratio < 0.8 ? 'short' : ratio < 0.98 ? 'tight' : 'ok';
+    const ringTone = { short: 'neg', tight: 'warn', ok: 'pos', idle: 'dim' }[cls];
     const surplus = (record?.exported ?? 0) > 0.05;
-    return `<span class="res-chip ${cls}" data-tip="resource" data-tip-arg="${id}" tabindex="0">
-      ${resourceArt(id, 'xs')}<b>${need ? `${Math.round(ratio * 100)}%` : '—'}</b>${surplus ? '<em>▲</em>' : ''}</span>`;
+    return `<span class="tb-resi ${cls}" data-tip="resource" data-tip-arg="${id}" tabindex="0">
+      ${ringSvg(need ? ratio : 0, ringTone)}${resourceArt(id, 'sm')}${surplus ? '<em>▲</em>' : ''}
+      <b>${need ? `${Math.round(ratio * 100)}%` : '—'}</b></span>`;
   }).join('')}</span>`;
 }
 
