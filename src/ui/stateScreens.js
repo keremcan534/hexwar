@@ -15,11 +15,13 @@
 // STATE'tir (ekonomi, bina, kalkınma); ordunun yürüdüğü hex PROVINCE'tir.
 
 import {
-  BUILDINGS, BUILDING_IDS, DEVELOPMENT_MAX, EQUIPMENT, EQUIPMENT_IDS, RESOURCES, RESOURCE_IDS,
+  BUILDINGS, BUILDING_IDS, DEVELOPMENT_MAX, DEVELOPMENT_WEEKS, EQUIPMENT, EQUIPMENT_IDS, RESOURCES, RESOURCE_IDS,
 } from '../game/econ/defs.js';
 import { LAWS, lawIndex } from '../game/laws.js';
 import { economyView, formatPopulation, populationOf } from '../game/economy.js';
-import { consumerStability, consumerTaxBonus, lineAllocation, setLineWeight } from '../game/econ/industry.js';
+import {
+  LINE_PRIORITIES, consumerStability, consumerTaxBonus, lineAllocation, linePriorityOf, setLinePriority,
+} from '../game/econ/industry.js';
 import { embargoed, setEmbargo } from '../game/econ/trade.js';
 import { equipmentLogistics } from '../game/reinforcement.js';
 import {
@@ -148,16 +150,18 @@ export function renderBudget(game, me, state) {
   return `${kpis}
     ${bankrupt ? `<div class="k-alert neg"><b>Bankrupt</b> for ${view.bankruptUntil - turn} more weeks — no credit, stability −20, the army trains and recovers at half speed.</div>` : ''}
     <div class="k-cols-2">
-      ${panel('Income', `${ledger([...income, { label: 'Total', value: signed(totalIn), tone: 'pos', strong: true }])}
-        <small class="k-sublabel">How the tax line is built</small>${taxChain}`, { sub: 'last week' })}
+      <div class="k-stack">
+        ${panel('Income', `${ledger([...income, { label: 'Total', value: signed(totalIn), tone: 'pos', strong: true }])}
+          <small class="k-sublabel">How the tax line is built</small>${taxChain}`, { sub: 'last week' })}
+        ${panel('Fiscal laws', `<div class="k-laws two">${lawCard(world, me, 'tax', state.confirm, { compact: true })}${lawCard(world, me, 'education', state.confirm, { compact: true })}</div>
+          <p class="k-note">Education costs <b>${num(view.education, 1)}</b> gold a week and moves literacy toward <b>${pct(view.literacyTarget)}</b> (now ${pct(view.literacy)}).</p>`,
+        { sub: `${governmentView(world, me).lawCost} political power per change` })}
+      </div>
       <div class="k-stack">
         ${panel('Expenses', expenses.length ? ledger([...expenses, { label: 'Total', value: signed(totalOut), tone: 'neg', strong: true }]) : empty('Nothing spent last week.'), { sub: 'last week' })}
         ${treasuryPanel}
       </div>
-    </div>
-    ${panel('Fiscal laws', `<div class="k-laws two">${lawCard(world, me, 'tax', state.confirm)}${lawCard(world, me, 'education', state.confirm)}</div>
-      <p class="k-note">Education costs <b>${num(view.education, 1)}</b> gold a week and moves literacy toward <b>${pct(view.literacyTarget)}</b> (now ${pct(view.literacy)}).</p>`,
-    { sub: `${governmentView(world, me).lawCost} political power per change` })}`;
+    </div>`;
 }
 
 // ================================================================== TRADE ===
@@ -218,7 +222,7 @@ export function renderTrade(game, me, state) {
     return `<div class="k-mkt"${tipAttr('resource', id)}>
       ${resourceArt(id, 'sm')}
       <span><em>${esc(RESOURCES[id].name)}</em><b>${num(price, 2)}</b><small>${price >= base ? '+' : '−'}${Math.abs(Math.round((price / base - 1) * 100))}% vs base</small></span>
-      ${spark(market.history?.[id] ?? [], { width: 90, height: 24, cls: 'mini' })}
+      ${spark(market.history?.[id] ?? [], { width: 90, height: 24, cls: 'mini', zero: false })}
     </div>`;
   }).join('');
 
@@ -284,61 +288,66 @@ export function renderIndustry(game, me, state) {
     </div>
     <div class="k-legend"><span><i class="a"></i>Workshops ${num(consumer.cottage)}</span><span><i class="b"></i>Civilian industry ${num(consumer.civil)}</span><span><i class="mark"></i>Wanted ${num(consumer.need)}</span></div>`;
 
-  // CEPHANE KATI: askerî IC şeridi + hat başına konveyör. Ağırlık 0-10 pul;
-  // her pulun kartı o ağırlıkta paylaşımın ne olacağını oyunun kendi
-  // hesabıyla (lineAllocation) söyler — eski ▲3▼ "3 ne demek" sorusunu
-  // cevapsız bırakıyordu.
+  // ÜRETİM HATLARI — üç kart (2026-10-08 üçüncü sürüm; Kerem: "arayüzsel
+  // facia"). Önceki satırda beş ayrı görsel vardı (pay şeridi, çubuk düğmeler,
+  // girdi madalyonları, akan bant, çıktı) ve satır bir bulmaca gibi okunuyordu.
+  // Kart üç soruya cevap verir: durum ne (şerit), elde ne var (stok + haftalık),
+  // ne yapayım (tek öncelik sırası). Malzeme ve verim tek küçük satır; ayrıntı
+  // bilgi kartında. Öncelik düğmelerinin kartı yeni paylaşımı gösterir
+  // (lineAllocation — oyunun kendi hesabı).
   const military = ic.military ?? 0;
   const dockyards = ic.dockyards ?? 0;
   const now = lineAllocation(me, military, dockyards);
   const LINE_TONE = { rifles: 'brass', guns: 'copper', ships: 'steel' };
-  const totalIc = EQUIPMENT_IDS.reduce((sum, id) => sum + now[id].ic, 0);
-  const ribbon = `<div class="k-alloc"${tipAttr({ text: `Military industry ${num(military, 2)} IC\nThe economy law sends this share of industry to the army; the lines split it by weight.` })}>
-      ${EQUIPMENT_IDS.filter((id) => now[id].ic > 0).map((id) => `<i class="${LINE_TONE[id]}" style="flex:${(totalIc > 0 ? now[id].ic / totalIc * 100 : 0).toFixed(2)} 1 0"><b>${esc(EQUIPMENT[id].name)}</b><small>${num(now[id].ic, 2)} IC · ${pct(totalIc > 0 ? now[id].ic / totalIc : 0)}</small></i>`).join('')
-        || '<em>No military industry: the economy law sends nothing to the army.</em>'}
-    </div>`;
 
-  const pipTip = (id, weight) => {
+  const preview = (id, weight, title) => {
     const next = lineAllocation(me, military, dockyards, { [id]: weight });
     const rows = EQUIPMENT_IDS.filter((other) => now[other].usable).map((other) => {
-      const a = now[other];
-      const b = next[other];
-      const changed = Math.abs(b.output - a.output) > 0.005;
-      return `${EQUIPMENT[other].name}: ${num(a.output, 2)} → ${num(b.output, 2)}/wk${changed ? (b.output > a.output ? '  ▲' : '  ▼') : ''}`;
+      const a = now[other].output;
+      const b = next[other].output;
+      return `${EQUIPMENT[other].name}: ${num(a, 2)} → ${num(b, 2)} a week${Math.abs(b - a) > 0.005 ? (b > a ? '  ▲' : '  ▼') : ''}`;
     });
-    return { text: [`Weight ${weight}`, ...rows].join('\n') };
+    return { text: [title, ...rows].join('\n') };
   };
 
   const lines = EQUIPMENT_IDS.map((id) => {
     const info = EQUIPMENT[id];
-    const line = view.lines?.[id] ?? { weight: 0, efficiency: 0, ic: 0, output: 0, limit: 1 };
+    const line = view.lines?.[id] ?? { weight: 0, efficiency: 0, mode: 'auto' };
     const alloc = now[id];
     const log = logistics.find((row) => row.id === id) ?? { stock: 0, required: 0, etaWeeks: null };
     const blocked = !alloc.usable;
-    const pips = Array.from({ length: 11 }, (_, w) => `<button class="k-wpip${w <= line.weight && w > 0 ? ' on' : ''}${w === line.weight ? ' cur' : ''}" data-uc-weightset="${id}:${w}"${blocked ? ' disabled' : tipAttr(pipTip(id, w))}>${w === 0 ? '0' : ''}</button>`).join('');
-    const inputs = Object.entries(alloc.inputs).map(([res, amount]) => {
-      const ratio = me.economy?.resources?.[res]?.ratio ?? 1;
-      const cls = ratio < 0.8 ? 'short' : ratio < 0.98 ? 'tight' : 'ok';
-      return `<span class="k-lin ${cls}"${tipAttr('resource', res)}>${resourceArt(res, 'sm')}<b>${num(amount, 2)}</b><small>${pct(ratio)}</small></span>`;
-    }).join('') || '<span class="k-dim">no inputs</span>';
-    const moving = alloc.output > 0.005;
+    const auto = line.mode !== 'manual';
+    const current = linePriorityOf(line.weight);
     const deficit = Math.max(0, log.required - log.stock);
-    const status = blocked ? badge('needs a dockyard', 'neg')
-      : log.required <= 0.5 ? `<span class="k-lstat ok"><b>Surplus</b><small>${short(log.stock)} in stock · army needs none</small></span>`
-        : deficit <= 0 ? `<span class="k-lstat ok"><b>Covered</b><small>${short(log.stock)} / ${short(log.required)} needed</small></span>`
-          : `<span class="k-lstat short"><b>Short ${short(deficit)}</b><small>${log.etaWeeks != null ? `full in ~${log.etaWeeks} wk` : 'not filling — raise the weight'}</small></span>`;
-    const effTip = { text: `Efficiency ${pct(line.efficiency)}\nA running line gains a little every week up to its cap; an idle line slowly forgets. Output = IC × efficiency ÷ ${num(info.ic, 2)} IC each.${line.limit < 1 ? `\nMaterials cover only ${pct(line.limit)}: output is cut to match.` : ''}` };
-    return `<div class="k-lrow ${LINE_TONE[id]}${blocked ? ' off' : ''}${moving ? ' run' : ''}">
-      <span class="k-lrow-art"${tipAttr('line', id)}>${equipmentArt(id, 'lg', ironclad)}</span>
-      <span class="k-lrow-name"><b>${esc(info.name)}</b><small>${num(info.ic, 2)} IC each · ${num(alloc.ic, 2)} IC now</small></span>
-      <span class="k-lrow-weight"><small>Weight</small><span class="k-wpips">${pips}</span></span>
-      <span class="k-lrow-flow">
-        <span class="k-lins">${inputs}</span>
-        <span class="k-belt"${tipAttr(effTip)}><i></i><em>${pct(line.efficiency)}</em></span>
-        <span class="k-lout"><b>${num(alloc.output, 2)}</b><small>/wk</small>${alloc.limit < 1 ? badge(`materials ${pct(alloc.limit)}`, 'neg') : ''}</span>
-      </span>
-      <span class="k-lrow-stat">${status}</span>
-    </div>`;
+
+    const state = blocked ? { cls: 'off', text: 'Needs a dockyard', sub: 'build one on a coast' }
+      : deficit > 0.5 ? { cls: 'short', text: `Short ${short(deficit)}`, sub: log.etaWeeks != null ? `covered in ~${log.etaWeeks} weeks` : 'not filling — raise the priority' }
+        : log.required > 0.5 ? { cls: 'ok', text: 'Covered', sub: `the army needs ${short(log.required)}` }
+          : { cls: 'idle', text: 'Stocked', sub: 'the army needs nothing now' };
+
+    const choices = [
+      `<button class="lc-pri${auto ? ' on' : ''}" data-uc-linepri="${id}:auto"${blocked ? ' disabled' : tipAttr({ text: `Auto — running at ${current.name}\nProduces what the army lacks: stops when the depot is full, speeds up in war.` })}>Auto</button>`,
+      ...LINE_PRIORITIES.map((level) => `<button class="lc-pri${!auto && current.id === level.id ? ' on' : ''}" data-uc-linepri="${id}:${level.id}"${blocked ? ' disabled' : tipAttr(preview(id, level.weight, `${level.name} priority`))}>${level.name}</button>`),
+    ].join('');
+
+    const materials = Object.entries(alloc.inputs).map(([res, amount]) => {
+      const ratio = me.economy?.resources?.[res]?.ratio ?? 1;
+      return `<span class="${ratio < 0.8 ? 'short' : ''}"${tipAttr('resource', res)}>${resourceArt(res, 'xs')}${num(amount, 2)}</span>`;
+    }).join('');
+
+    return `<article class="lc ${LINE_TONE[id]} ${state.cls}">
+      <header class="lc-state"><b>${state.text}</b><small>${state.sub}</small></header>
+      <div class="lc-id">
+        <span class="lc-art"${tipAttr('line', id)}>${equipmentArt(id, 'lg', ironclad)}</span>
+        <div><h4>${esc(info.name)}</h4><small>${num(alloc.ic, 2)} IC · ${auto ? `Auto (${current.name})` : `${current.name} priority`}</small></div>
+      </div>
+      <div class="lc-nums">
+        <span${tipAttr({ text: `${info.name} in the depot\n${num(log.stock, 1)} ready${log.required > 0.5 ? `\nThe army needs ${num(log.required, 1)} (reinforcement and training)` : ''}` })}><small>In depot</small><b>${short(log.stock)}</b></span>
+        <span${tipAttr({ text: `Output\n${num(alloc.ic, 2)} IC × ${pct(line.efficiency)} efficiency ÷ ${num(info.ic, 2)} IC each${alloc.limit < 1 ? `\nMaterials cover only ${pct(alloc.limit)}: output cut to match` : ''}\n\nEfficiency grows while the line runs and fades while it is idle.` })}><small>Per week</small><b class="out">+${num(alloc.output, 2)}</b></span>
+      </div>
+      <div class="lc-pris" role="group" aria-label="${esc(info.name)} priority">${choices}</div>
+      <footer class="lc-foot"><span class="lc-mats">${materials || '<span>no materials</span>'}</span><span${tipAttr({ text: 'Efficiency\nA running line gains a little every week up to its cap; an idle line slowly forgets.' })}>efficiency ${pct(line.efficiency)}</span></footer>
+    </article>`;
   }).join('');
 
   return `${kpis}
@@ -347,7 +356,7 @@ export function renderIndustry(game, me, state) {
       ${panel('Consumer goods', `${consumerBar}<p class="k-note">Covered <b class="${consumer.ratio < 0.95 ? 'neg' : 'pos'}">${pct(consumer.ratio)}</b> · stability ${pts(consumerStability(consumer.ratio))} · tax bonus +${pct(consumerTaxBonus(consumer.ratio))}</p>`, { sub: 'the people\'s share of industry' })}
     </div>
     ${panel('Economy law', lawCard(world, me, 'economy', state.confirm), { sub: 'how much industry works for the army' })}
-    ${panel('Production lines', `${ribbon}<div class="k-lrows">${lines}</div>`, { sub: 'military industry is shared by weight · hover a step to see the new split', right: `${num(military, 2)} military IC` })}`;
+    ${panel('Production lines', `<div class="lcs">${lines}</div>`, { sub: 'pick a priority — Auto makes what the army lacks · hover a choice to see the new split', right: `${num(military, 2)} IC to the army (economy law)` })}`;
 }
 
 // ========================================================== CONSTRUCTION ===
@@ -360,7 +369,7 @@ export function renderConstruction(game, me, state) {
   const active = view.queue.filter((q) => q.active).length;
 
   const kpis = kpiRow([
-    kpi({ icon: buildingArt('mine', 'md'), label: 'Building now', value: `${active} / ${view.slots}`, sub: 'construction slots', tip: { text: 'Construction slots\nProjects that advance at once: 2 + one per five states, plus technology. Waiting projects start as slots free up.' }, meter: view.slots ? active / view.slots : 0, cls: 'hero' }),
+    kpi({ icon: buildingArt('mine', 'md'), label: 'Building now', value: `${active} / ${view.slots}`, sub: 'construction slots', tip: { text: 'Construction slots\nProjects that advance at once: 2 + one per ten states, plus technology. Waiting projects start as slots free up.' }, meter: view.slots ? active / view.slots : 0, cls: 'hero' }),
     kpi({ label: 'Queued', value: String(view.queue.length - active), sub: 'waiting for a slot', tip: { text: 'Queue\nPaid up front; they wait for a free construction slot. ▲ moves a project to the front.' } }),
     kpi({ label: 'Development cap', value: String(view.developmentCap), sub: `of ${DEVELOPMENT_MAX}`, tip: { text: 'Development cap\nThe highest development any state may reach: 3, plus technology, plus literacy × 4.' } }),
     kpi({ label: 'States', value: String(own.length), sub: `${own.filter((p) => p.econ.core !== false).length} core`, tip: { text: 'States\nNon-core states count at their compliance: less tax, fewer recruits, less industry.' } }),
@@ -603,7 +612,7 @@ function buildCandidates(world, me, pick, state = {}) {
       preview,
       score,
       cost: pick === 'develop' ? developmentCost(me, province) : buildingCost(world, me, province, pick),
-      weeks: pick === 'develop' ? 12 : BUILDINGS[pick].weeks,
+      weeks: pick === 'develop' ? DEVELOPMENT_WEEKS : BUILDINGS[pick].weeks,
       levels: buildingLevels(province.econ),
       slots: buildingSlots(province.econ),
     });
@@ -825,19 +834,30 @@ export function renderPolitics(game, me, state) {
       || empty('New proposals arrive next week.')}</div>`;
   const recent = (me.agenda?.log ?? []).slice(0, 3).map((entry) => `<li>${esc(entry.text)}</li>`).join('');
 
-  const decisionTiles = decisions.map((decision) => `<button class="k-dec" data-uc-decision="${decision.id}"${decision.blockers.length ? blockedAttr(decision.blockers) : tipAttr('decision', decision.id)}>
+  // Karar kutucuğu tek satır ad + bedel, etki ikinci satırda kısaltılmış;
+  // tamamı bilgi kartında. Eski kutucuk üç satırdı ve ekranı taşırıyordu.
+  const decisionTiles = decisions.map((decision) => `<button class="k-dec slim" data-uc-decision="${decision.id}"${decision.blockers.length ? blockedAttr(decision.blockers) : tipAttr('decision', decision.id)}>
       <b>${esc(decision.name)}</b><span class="k-cost">${decision.cost}</span><small>${esc(decision.desc)}</small></button>`).join('');
 
+  // DÜZEN: tam genişlik, iki sütun. Eski düzen yedi paneli alt alta diziyordu
+  // ve 1080p'de 500px taşıyordu; gövde `overflow: hidden` olduğu için
+  // Danışmanlar ve Kararlar fareyle HİÇ görülemiyordu (ölçüldü).
   return `${kpis}
-    <div class="k-cols-3">
-      ${panel('Stability', parts(view.stabilityParts), { sub: 'target, piece by piece', right: `→ ${pct(view.stabilityTarget)}`, tip: 'stability' })}
-      ${panel('War support', parts(view.warSupportParts), { sub: 'target, piece by piece', right: `→ ${pct(view.warSupportTarget)}`, tip: 'warsupport' })}
-      ${panel('National agenda', agendaBody + (recent ? `<ul class="k-log">${recent}</ul>` : ''), { sub: 'one project at a time' })}
-    </div>
-    ${panel('Parties', `<div class="k-parties">${parties}</div>${regimes ? `<div class="k-actions">${regimes}</div>` : ''}`, { sub: esc(view.government.desc) })}
-    ${panel('Laws', `<div class="k-laws">${laws}</div>`, { sub: `${view.lawCost} political power per change · 26-week lock · click twice to enact` })}
-    ${panel('Advisors', `<div class="k-seats">${seats}</div>`, { sub: 'one per seat · 50 political power · hover a candidate for their effects' })}
-    ${panel('Decisions', `<div class="k-decs">${decisionTiles}</div>`, { sub: 'spend political power' })}`;
+    <div class="k-split k-pol">
+      <div class="k-stack">
+        ${panel('Parties', `<div class="k-parties">${parties}</div>${regimes ? `<div class="k-actions">${regimes}</div>` : ''}`, { sub: esc(view.government.desc) })}
+        ${panel('Laws', `<div class="k-laws">${laws}</div>`, { sub: `${view.lawCost} political power per change · 26-week lock · click twice to enact` })}
+        ${panel('Decisions', `<div class="k-decs">${decisionTiles}</div>`, { sub: 'spend political power · hover for the full effect' })}
+      </div>
+      <div class="k-stack">
+        <div class="k-cols-2 k-pol-why">
+          ${panel('Stability', parts(view.stabilityParts), { right: `→ ${pct(view.stabilityTarget)}`, tip: 'stability' })}
+          ${panel('War support', parts(view.warSupportParts), { right: `→ ${pct(view.warSupportTarget)}`, tip: 'warsupport' })}
+        </div>
+        ${panel('National agenda', agendaBody + (recent ? `<ul class="k-log">${recent}</ul>` : ''), { sub: 'one project at a time' })}
+        ${panel('Advisors', `<div class="k-seats">${seats}</div>`, { sub: 'one per seat · 50 political power' })}
+      </div>
+    </div>`;
 }
 
 // ================================================================== BIND ===
@@ -876,14 +896,9 @@ export function bindStateScreens(screens) {
     const [lawId, index] = el.dataset.ucLaw.split(':');
     confirmThen(`law:${lawId}:${index}`, () => setLaw(game, me, lawId, Number(index)));
   });
-  on('[data-uc-weightset]', (el) => {
-    const [id, weight] = el.dataset.ucWeightset.split(':');
-    setLineWeight(me, id, Number(weight));
-    screens.refresh();
-  });
-  on('[data-uc-weight]', (el) => {
-    const [id, delta] = el.dataset.ucWeight.split(':');
-    setLineWeight(me, id, (me.economy?.lines?.[id]?.weight ?? 0) + Number(delta));
+  on('[data-uc-linepri]', (el) => {
+    const [id, priority] = el.dataset.ucLinepri.split(':');
+    setLinePriority(me, id, priority);
     screens.refresh();
   });
   on('[data-uc-embargo-lift]', (el) => {

@@ -109,7 +109,7 @@ export class MovementDock {
       <div class="md-acts">
         ${button('concessions', `Concede · ${a.concessions.cost.toFixed(0)} PP`, a.concessions,
     `Temporary: −${a.concessions.drop}% progress and calmer states, once a year.`)}
-        ${button('martial', `Martial law · £${a.martial.cost.toFixed(1)}/w`, a.martial,
+        ${button('martial', `Martial law · ${a.martial.cost.toFixed(1)} gold/wk`, a.martial,
     `Temporary: for ${a.martial.weeks} weeks the movement loses ground; costs money every week and some stability.`)}
         ${button('accept', 'Accept', a.accept,
     'Permanent: they become an accepted culture — full taxes and recruits, and the movement dies down. The old nation resents it for two years.')}

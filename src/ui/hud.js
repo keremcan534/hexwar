@@ -31,7 +31,7 @@ import { LEAVE_MS, hidePanel, motionOn, panelOpen, togglePanel } from './motion.
 import { Screens } from './screens.js';
 import { showEndScreen } from './endScreen.js';
 import { formatPopulation, weeklyBalanceOf } from '../game/economy.js';
-import { RESOURCES, RESOURCE_IDS, BUILDINGS, BUILDING_IDS, DEVELOPMENT_MAX } from '../game/econ/defs.js';
+import { RESOURCES, RESOURCE_IDS, BUILDINGS, BUILDING_IDS, DEVELOPMENT_MAX, DEVELOPMENT_WEEKS } from '../game/econ/defs.js';
 import { buildingArt, emblemArt, resourceArt, traitArt } from './icons/art.js';
 import { glyph } from './icons/glyphs.js';
 import { refreshTooltips } from './tooltip.js';
@@ -1577,7 +1577,7 @@ export class Hud {
     const cells = BUILDING_IDS.map((id) => cell(id, buildingArt(id, 'sm'), BUILDINGS[id].name,
       buildingCost(world, me, area, id), BUILDINGS[id].weeks, buildBlockers(world, me, area, id),
       buildPreview(world, me, area, id)));
-    cells.push(cell('develop', emblemArt('infrastructure', 'sm'), 'Develop', developmentCost(me, area), 12,
+    cells.push(cell('develop', emblemArt('infrastructure', 'sm'), 'Develop', developmentCost(me, area), DEVELOPMENT_WEEKS,
       developBlockers(world, me, area), buildPreview(world, me, area, 'develop')));
     return `<div class="qb">${head}<div class="qb-grid">${cells.join('')}</div></div>`;
   }

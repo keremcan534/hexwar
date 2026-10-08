@@ -53,6 +53,7 @@ import {
   renderIndustry, renderPolitics, renderPopulation, renderTrade,
 } from './stateScreens.js';
 import { refreshTooltips } from './tooltip.js';
+import { kpi as kitKpi, kpiRow as kitKpiRow, panel as kitPanel, spark as kitSpark } from './kit.js';
 
 /** Ekranın kapanış geçişi (styles.css §6 .screen.hidden) bitene kadar gövde kalır. */
 const SCREEN_CLOSE_MS = 220;
@@ -854,22 +855,74 @@ export class Screens {
    * bir toast'i kacirinca tarihini kaybediyordu (kor beta B-013). Burada
    * yalnizca ULUSAL (tier 2+) olaylar durur — her fabrika, her fiyat degil.
    */
+  /**
+   * KRONİK: solda ulusun tarihi (zaman çizelgesi, yıl başlıkları), sağda
+   * büyük güçlerin sıralaması ve son iki yılın eğrileri. Eskiden yalnız liste
+   * vardı ve oyunun ilk yılında ekran tek cümlelik boş bir kutuydu.
+   */
   render_chronicle(me) {
+    const world = this.game.world;
     const entries = ensureChronicle(me);
-    if (!entries.length) {
-      return `<p class="empty">Nothing of national consequence has been recorded yet.
-        Wars, treaties, debt, defaults and changes of government are written here.</p>`;
-    }
-    // En yeni ustte: oyuncu once "az once ne oldu" diye bakar.
-    const rows = [...entries].reverse().map((entry) => `
-      <li class="chron-row tier-${entry.tier ?? 2}">
-        <b class="chron-year">${chronicleYear(entry.turn)}</b>
-        <span class="chron-text">
-          <b>${esc(entry.title)}</b>
-          ${entry.detail ? `<small>${esc(entry.detail)}</small>` : ''}
-        </span>
-      </li>`).join('');
-    return `<div class="chronicle"><ol class="chron-list">${rows}</ol></div>`;
+    const board = scoreboard(world);
+    const rank = board.findIndex((row) => row.nation.id === me.id) + 1;
+    const mine = board[rank - 1];
+    const history = me.economy?.history ?? [];
+    const year = chronicleYear(this.game.turns.turn);
+
+    const kpis = kitKpiRow([
+      kitKpi({ label: 'Year', value: String(year), sub: `${Math.max(0, 1900 - Number(year))} years to 1900`, cls: 'hero' }),
+      kitKpi({ label: 'Rank', value: rank ? `${rank}<small> / ${board.length}</small>` : '—', sub: 'among the powers', tip: { text: 'Rank\nBy hegemony score: industry, population, land, prestige and the national goal. The leader in 1900 wins.' } }),
+      kitKpi({ label: 'Score', value: String(mine?.total ?? 0), sub: board[0] && board[0].nation.id !== me.id ? `leader ${board[0].total}` : 'you lead', meter: board[0] ? (mine?.total ?? 0) / Math.max(1, board[0].total) : 0 }),
+      kitKpi({ label: 'Entries', value: String(entries.length), sub: 'in the chronicle' }),
+    ]);
+
+    // Zaman çizelgesi: en yeni üstte, yıl değişince yıl başlığı.
+    let lastYear = null;
+    const rows = [...entries].reverse().map((entry) => {
+      const y = chronicleYear(entry.turn);
+      const head = y !== lastYear ? `<li class="chron-yearhead">${y}</li>` : '';
+      lastYear = y;
+      return `${head}<li class="chron-row tier-${entry.tier ?? 2}">
+        <i class="chron-dot" aria-hidden="true"></i>
+        <span class="chron-text"><b>${esc(entry.title)}</b>${entry.detail ? `<small>${esc(entry.detail)}</small>` : ''}</span>
+      </li>`;
+    }).join('');
+    const timeline = rows ? `<ol class="chron-list">${rows}</ol>`
+      : `<div class="chron-empty"><b>The pages are still blank.</b>
+          <p>Wars and treaties, debts and defaults, new governments, great proclamations and lost provinces will be written here as they happen.</p></div>`;
+
+    // Büyük güçler.
+    const top = board.slice(0, 10);
+    if (rank > 10) top.push(mine);
+    const leader = Math.max(1, board[0]?.total ?? 1);
+    const powers = top.map((row) => {
+      const at = board.indexOf(row) + 1;
+      return `<li class="chron-power${row.nation.id === me.id ? ' me' : ''}" data-tip="text" data-tip-text="${esc(`${row.nation.name}\nScore ${row.total}: economy ${row.economy ?? '—'}, land and prestige the rest`)}">
+        <em>${at}</em><span class="chron-flag" data-flag-nation="${row.nation.id}" data-flag-w="30" data-flag-h="20"></span>
+        <b>${esc(row.nation.name)}</b><span class="chron-bar"><i style="width:${(row.total / leader * 100).toFixed(1)}%"></i></span><span>${row.total}</span></li>`;
+    }).join('');
+
+    // Son iki yıl.
+    const series = (key) => history.map((h) => h[key]).filter(Number.isFinite);
+    const fmt = (v) => (Math.abs(v) >= 1e6 ? `${(v / 1e6).toFixed(2)}M` : Math.abs(v) >= 1e4 ? `${(v / 1e3).toFixed(0)}K` : Math.round(v * 10) / 10);
+    const trend = (label, key) => {
+      const list = series(key);
+      const last = list[list.length - 1] ?? 0;
+      const first = list[0] ?? 0;
+      const change = first ? (last - first) / Math.abs(first) : 0;
+      return `<div class="chron-trend"><small>${label}</small><b>${fmt(last)}</b><em class="${change >= 0 ? 'pos' : 'neg'}">${change >= 0 ? '+' : ''}${(change * 100).toFixed(0)}%</em>
+        ${kitSpark(list, { width: 160, height: 30, zero: false })}</div>`;
+    };
+    const trends = `<div class="chron-trends">${trend('Population', 'population')}${trend('Treasury', 'gold')}${trend('Industry', 'ic')}${trend('Income', 'income')}</div>`;
+
+    return `${kpis}
+      <div class="k-split chron-split">
+        ${kitPanel('Chronicle', timeline, { sub: 'newest first' })}
+        <div class="k-stack">
+          ${kitPanel('Great powers', `<ol class="chron-powers">${powers}</ol>`, { sub: 'hegemony score · the leader in 1900 wins' })}
+          ${kitPanel('The last two years', trends, { sub: `${history.length} weeks` })}
+        </div>
+      </div>`;
   }
 
   render_nation(me) {
@@ -1014,7 +1067,7 @@ export class Screens {
         // is bulgusuydu — KARAR (egitim yuvasi/techizat kisiti) aynen duruyor,
         // yalniz AYNI tiklamanin tekrarina gerek kalmiyor. Kisit dolunca
         // dongü kendiliginden durur (buyUnit reddeder).
-        const wanted = event.shiftKey ? 5 : 1;
+        const wanted = Number(btn.dataset.count) || (event.shiftKey ? 5 : 1);
         let ordered = 0;
         for (let i = 0; i < wanted; i++) {
           if (!game.turns.buyUnit(me, btn.dataset.militaryBuild)) break;

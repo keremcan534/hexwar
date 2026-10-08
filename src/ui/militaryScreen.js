@@ -9,7 +9,9 @@
 // burada tek bir eşik ya da toplam hesaplanmaz. Simgeler satır içi çizgi-SVG:
 // birim rozetleri harita odası sayacı gibi okunur, emoji yoktur.
 
-import { equipmentArt, traitArt } from './icons/art.js';
+import { emblemArt, equipmentArt, traitArt } from './icons/art.js';
+import { glyph } from './icons/glyphs.js';
+import { kpi, kpiRow, tipAttr } from './kit.js';
 import { formatPopulation } from '../game/economy.js';
 import { UNIT_CATEGORIES } from '../game/military.js';
 import { subayPortresi } from './icons/subaylar.js';
@@ -52,48 +54,44 @@ const band = (title, note = '') => `<h4 class="mil-band">${esc(title)}${
    ÜST KÜNYE — ülkenin askerî durumu tek satırda
    -------------------------------------------------------------------------- */
 
-/**
- * Ortak ozet seridi (§7B .ui-kpis). Kisa not hucrede gorunur, uzun dokum
- * gecikmeli kartta: eskiden notun tamami yalniz `title` balonundaydi ve
- * serit "sayi + simge" disinda hicbir sey soylemiyordu.
- */
-function figure(label, value, sub, note, tone = '') {
-  return `<div class="ui-kpi ${tone}" title="${esc(note)}">
-    <small>${esc(label)}</small><b>${esc(value)}</b><span>${esc(sub)}</span>
-  </div>`;
-}
-
 function headerStrip(summary) {
   const crises = (summary.crises ?? [])
     .map((crisis) => `${crisis.name} (war in ${crisis.left}w)`);
   const wars = summary.wars.length || crises.length
     ? summary.wars.map((war) => war.name).concat(crises).join(', ')
     : 'At peace';
-  return `<header class="ui-kpis mil-kpis">
-    ${figure('Standing army', `${summary.divisions}`,
-    `${summary.regiments} regiments · ${formatPopulation(summary.men)} men`,
-    `${summary.regiments} regiments · ${formatPopulation(summary.men)} men`
-      + ` · ${pct(summary.strength)} of establishment`
-      + (summary.inBattle ? ` · ${summary.inBattle} in battle` : '')
-      + (summary.marching ? ` · ${summary.marching} marching` : ''))}
-    ${figure('Manpower pool', formatPopulation(summary.manpower), 'men who can still be raised',
-    'People your states can still put under arms. Recruits leave the state'
-      + ' population; only survivors return when a division is disbanded.')}
-    ${figure('Officers', `${summary.officers}`,
-    summary.unassigned ? `${summary.unassigned} unit(s) without a commander`
-      : `${summary.officers} generals · ${summary.admirals} admirals`,
-    `${summary.officers} generals, ${summary.admirals} admirals`
-      + (summary.unassigned ? ` · ${summary.unassigned} unit(s) without a commander` : ''),
-    summary.unassigned ? 'warn' : '')}
-    ${figure('In training', `${summary.training}`, `${summary.trainingCapacity} can train at once`,
-    `${summary.trainingCapacity} can train at once · ${formatPopulation(summary.trainingManpower)}`
-      + ' men committed when they march out')}
-    ${figure('Wars', `${summary.wars.length}${crises.length ? ` +${crises.length}` : ''}`, wars, wars,
-    summary.wars.length ? 'hot' : crises.length ? 'warn' : '')}
-    ${figure('Upkeep', `${summary.upkeepGold.toFixed(1)}`, 'gold per week',
-    `${summary.armyCost.toFixed(1)} army and ${summary.navyCost.toFixed(1)} navy upkeep last week;`
-      + ' half again more while at war. Equipment comes from the production lines (Factories).')}
-  </header>`;
+  return kpiRow([
+    kpi({
+      icon: emblemArt('soldiers', 'md'), label: 'Standing army', value: formatPopulation(summary.men),
+      sub: `${summary.regiments} regiments · ${pct(summary.strength)} strength`, cls: 'hero',
+      meter: summary.strength, meterTone: summary.strength < 0.7 ? 'warn' : 'pos',
+      tip: { text: `Standing army\n${summary.regiments} regiments in ${summary.divisions} divisions, ${formatPopulation(summary.men)} men`
+        + `\n${pct(summary.strength)} of full strength`
+        + (summary.inBattle ? `\n${summary.inBattle} in battle` : '') + (summary.marching ? `\n${summary.marching} marching` : '') },
+    }),
+    kpi({
+      icon: emblemArt('recruits', 'md'), label: 'Manpower', value: formatPopulation(summary.manpower), sub: 'men who can still be raised',
+      tip: { text: 'Manpower\nPeople your states can still put under arms. The conscription law sets the share; barracks raise it.' },
+    }),
+    kpi({
+      label: 'Officers', value: String(summary.officers),
+      sub: summary.unassigned ? `${summary.unassigned} unit(s) without a commander` : `${summary.admirals} admirals`,
+      cls: summary.unassigned ? 'warn' : '',
+    }),
+    kpi({
+      label: 'In training', value: `${summary.training}<small> / ${summary.trainingCapacity}</small>`,
+      sub: 'training at once', meter: summary.trainingCapacity ? Math.min(1, summary.training / summary.trainingCapacity) : 0,
+    }),
+    kpi({
+      icon: emblemArt('war_support', 'md'), label: 'Wars', value: summary.wars.length ? String(summary.wars.length) : 'Peace',
+      sub: summary.wars.length || crises.length ? wars : 'no war, no crisis', cls: summary.wars.length ? 'hot' : '',
+      tip: { text: `Wars\n${wars}` },
+    }),
+    kpi({
+      icon: emblemArt('gold', 'md'), label: 'Upkeep', value: summary.upkeepGold.toFixed(1), sub: 'gold a week',
+      tip: { text: `Upkeep\n${summary.armyCost.toFixed(1)} army · ${summary.navyCost.toFixed(1)} navy last week; half again more at war.\nEquipment comes from the production lines (Factories).` },
+    }),
+  ]);
 }
 
 /* --------------------------------------------------------------------------
@@ -243,7 +241,7 @@ function commandColumn(state, roster, looseByBranch, trainCost, canTrain, mobili
         title="${esc(canTrain
     ? `Trains a new officer for ${trainCost} gold. Each addition to the staff costs more.`
     : `The treasury cannot cover the ${trainCost} gold this commission costs.`)}">
-        ${branch === 'navy' ? 'Create Admiral' : 'Create General'} · ${trainCost}£</button>
+        ${branch === 'navy' ? 'Create Admiral' : 'Create General'} · ${trainCost} gold</button>
       ${toggle('autoCreate', 'Auto-create leaders', roster.options.autoCreate,
     'The staff renews itself once a year: retirements are replaced and the corps grows'
     + ' with the army, paid from the treasury.')}
@@ -258,8 +256,7 @@ function commandColumn(state, roster, looseByBranch, trainCost, canTrain, mobili
    -------------------------------------------------------------------------- */
 
 function statsBox(stats) {
-  const rows = stats.map((row) => `<div class="mil-stat ${row.live ? '' : 'is-dead'}"
-    title="${esc(row.note)}">
+  const rows = stats.map((row) => `<div class="mil-stat ${row.live ? '' : 'is-dead'}"${tipAttr({ text: `${row.label}\n${row.note}` })}>
     <span>${esc(row.label)}</span><b>${esc(row.value)}</b>
   </div>`).join('');
   return `<section class="mil-stats">
@@ -272,50 +269,75 @@ function statsBox(stats) {
    ORTA SÜTUN — asker alımı
    -------------------------------------------------------------------------- */
 
-function buildRow(option, state) {
+/** Saldırı/güç/hız çubukları: seçeneklerin en büyüğüne göre. */
+let STAT_MAX = { attack: 1, hp: 1, moves: 1 };
+
+function statBar(label, value, max) {
+  return `<span class="mil-sbar"><small>${label}</small><i><b style="width:${Math.round(Math.min(1, value / Math.max(1, max)) * 100)}%"></b></i><em>${value}</em></span>`;
+}
+
+function buildRow(option) {
   const blocked = !option.canBuild;
-  const stats = [
-    `attack ${option.attack}`,
-    `strength ${option.hp}`,
-    `speed ${option.moves}`,
-    option.support ? 'support arm' : null,
-    option.entrenched ? 'digs in' : null,
-  ].filter(Boolean).join(' · ');
-  const equipment = option.equipment.map((item) => `<em class="${item.stock >= item.amount ? '' : 'short'}"
-    title="${esc(`${item.name}: ${item.amount} needed, ${item.stock.toFixed(1)} in stock`)}">
-    ${item.amount}${equipmentArt(item.id, 'xs')}</em>`).join('');
-  const reason = blocked
-    ? option.blockers.map((blocker) => blocker.text).join('\n')
-    : `${option.weeks} weeks of training · ${option.gold} gold on order`
-      + `\nRaised in ${option.source?.province ?? 'a province'}`
-      + ` (${option.source?.region ?? '—'}), pool ${formatPopulation(option.sourcePool)}`;
-  const where = option.source
-    ? `${option.source.province} · ${option.source.region}`
-    : 'no recruitment source';
-  return `<div class="mil-build-row ${blocked ? 'is-blocked' : ''}" title="${esc(reason)}">
-    <i class="mil-build-mark" aria-hidden="true">${counter(option.id)}</i>
-    <div class="mil-build-text">
+  // Teçhizat eksikse alay eğitimi bekletmez; o oranda güçle çıkar (HOI4).
+  let fill = 1;
+  const equipment = option.equipment.map((item) => {
+    const have = Math.min(item.amount, Math.max(0, item.stock));
+    fill = Math.min(fill, item.amount > 0 ? have / item.amount : 1);
+    return `<span class="mil-chip kit ${item.stock >= item.amount ? '' : 'short'}"${tipAttr({ text: `${item.name}\n${item.amount} per regiment · ${item.stock.toFixed(1)} in the depot` })}>${equipmentArt(item.id, 'xs')}<b>${item.amount}</b></span>`;
+  }).join('');
+  const where = option.source ? `${option.source.province} · ${option.source.region}` : 'no state can raise it';
+  const traits = [option.support ? 'support arm' : null, option.entrenched ? 'digs in' : null].filter(Boolean).join(' · ');
+  const why = blocked ? option.blockers.map((b) => b.text).join('\n') : '';
+  const orderTip = blocked ? `Not possible now\n${why}`
+    : `Order one ${option.name} regiment\n${option.weeks} weeks · ${option.gold} gold · ${formatPopulation(option.manpower)} men`
+      + `\nRaised in ${option.source?.province ?? '—'} (pool ${formatPopulation(option.sourcePool)})`
+      + (fill < 1 ? `\nShort of equipment: it marches out at about ${Math.round(Math.max(0.1, fill) * 100)}% strength and fills up as equipment arrives.` : '');
+  return `<div class="mil-unit ${blocked ? 'is-blocked' : ''}">
+    <i class="mil-unit-mark" aria-hidden="true">${counter(option.id)}</i>
+    <div class="mil-unit-id">
       <b>${esc(option.name)}<small>${esc(option.role)}</small></b>
-      <small class="mil-build-where">${esc(where)}</small>
-      <small class="mil-build-stats">${esc(stats)}</small>
+      <span class="mil-unit-where">${esc(where)}${traits ? ` · ${esc(traits)}` : ''}</span>
     </div>
-    <div class="mil-build-cost">
-      <span title="Training time at full military funding.">${option.weeks}w</span>
-      <span title="Paid from the treasury when the order is placed.">${option.gold}£</span>
-      <span title="Drawn from the state's population when the unit marches out.">
-        ${option.manpower.toLocaleString('en-US')}</span>
-      <span class="mil-build-kit">${equipment || '<em class="void">—</em>'}</span>
+    <div class="mil-unit-stats">
+      ${statBar('Attack', option.attack, STAT_MAX.attack)}
+      ${statBar('Strength', option.hp, STAT_MAX.hp)}
+      ${statBar('Speed', option.moves, STAT_MAX.moves)}
     </div>
-    <button class="mil-btn build" data-military-build="${option.id}" ${blocked ? 'disabled' : ''}
-      title="${esc(blocked ? option.blockers.map((b) => b.text).join('\n')
-    : `Order one ${option.name} regiment. Shift+click orders five —`
-      + ' training slots, equipment and manpower still limit throughput.')}">
-      ${blocked ? 'Blocked' : 'Order'}</button>
+    <div class="mil-unit-cost">
+      <span class="mil-chip"${tipAttr({ text: 'Training time at full military funding.' })}>${glyph('hourglass', 'inline')}<b>${option.weeks}</b><small>wk</small></span>
+      <span class="mil-chip gold"${tipAttr({ text: 'Paid from the treasury when the order is placed.' })}>${emblemArt('gold', 'xs')}<b>${option.gold}</b></span>
+      <span class="mil-chip"${tipAttr({ text: 'Men drawn from the state when the regiment marches out.' })}>${emblemArt('people', 'xs')}<b>${formatPopulation(option.manpower)}</b></span>
+      ${equipment}
+      ${fill < 1 && !blocked ? `<span class="mil-chip warn"${tipAttr({ text: 'Short of equipment\nTraining does not wait: the regiment marches out at this strength and the production lines fill it up later.' })}><b>${Math.round(Math.max(0.1, fill) * 100)}%</b><small>str</small></span>` : ''}
+    </div>
+    <div class="mil-unit-acts">
+      <button class="k-btn primary" data-military-build="${option.id}" ${blocked ? 'disabled aria-disabled="true"' : ''}${tipAttr({ text: orderTip })}>Order</button>
+      <button class="k-btn sm" data-military-build="${option.id}" data-count="5" ${blocked ? 'disabled' : ''}${tipAttr({ text: 'Order five (Shift+click on Order does the same). Training slots, equipment and manpower still limit how fast they come.' })}>×5</button>
+    </div>
     ${blocked ? `<p class="mil-blocked-why">${esc(option.blockers[0].text)}</p>` : ''}
   </div>`;
 }
 
-function buildColumn(state, options, summary) {
+/** Teçhizat deposu: stok, ordunun ihtiyacı, haftalık üretim. */
+function equipmentPanel(logistics) {
+  const rows = logistics.map((item) => {
+    const short = item.required > item.stock + 0.5;
+    const share = item.required > 0 ? Math.min(1, item.stock / item.required) : 1;
+    return `<div class="mil-eq ${short ? 'short' : ''}"${tipAttr({ text: `${item.name}\n${item.stock.toFixed(1)} in the depot · ${item.required.toFixed(1)} needed (reinforcement + training)\n${item.producedPerWeek.toFixed(2)} a week from the production line${item.etaWeeks ? `\n~${item.etaWeeks} weeks to cover the gap` : ''}` })}>
+      ${equipmentArt(item.id, 'sm')}
+      <b>${esc(item.name)}</b>
+      <span class="mil-eq-bar"><i style="width:${(share * 100).toFixed(0)}%"></i></span>
+      <span class="mil-eq-num"><b>${item.stock.toFixed(0)}</b><small>${item.required > 0.5 ? ` / ${item.required.toFixed(0)}` : ' ready'}</small></span>
+      <span class="mil-eq-rate">+${item.producedPerWeek.toFixed(2)}<small>/wk</small></span>
+    </div>`;
+  }).join('');
+  return `<section class="mil-eqs">
+    ${band('Equipment', 'set the lines on the Factories screen')}
+    ${rows}
+  </section>`;
+}
+
+function buildColumn(state, options, summary, logistics = []) {
   const category = state.category ?? 'all';
   const visible = options.filter((option) => {
     if (category !== 'all' && option.category !== category) return false;
@@ -327,7 +349,12 @@ function buildColumn(state, options, summary) {
   const tabs = UNIT_CATEGORIES.map(([id, label]) => `
     <button data-military-category="${id}" class="${category === id ? 'active' : ''}"
       aria-pressed="${category === id}">${esc(label)}</button>`).join('');
-  const rows = visible.map((option) => buildRow(option, state)).join('')
+  STAT_MAX = {
+    attack: Math.max(1, ...options.map((o) => o.attack)),
+    hp: Math.max(1, ...options.map((o) => o.hp)),
+    moves: Math.max(1, ...options.map((o) => o.moves)),
+  };
+  const rows = visible.map((option) => buildRow(option)).join('')
     || '<p class="mil-empty">No arm of this kind can be raised yet.</p>';
   return `<section class="mil-col mil-build">
     ${band('Build army', `${summary.trainingCapacity} training slots`)}
@@ -336,6 +363,7 @@ function buildColumn(state, options, summary) {
     <label class="mil-check" title="Shows arms that history has not opened yet, with the year they arrive.">
       <input type="checkbox" data-military-locked ${state.showLocked ? 'checked' : ''} />
       Show arms not yet available</label>
+    ${equipmentPanel(logistics)}
   </section>`;
 }
 
@@ -352,7 +380,8 @@ function queueRow(row) {
         ? 'trained — no state can spare the men or the ground'
         : row.queued
           ? 'waiting for a training slot'
-          : `${row.left} ${row.left === 1 ? 'week' : 'weeks'} left`;
+          : `${row.left} ${row.left === 1 ? 'week' : 'weeks'} left`
+            + (row.short ? ` · marches out at ${Math.round(Math.max(0.1, row.fill) * 100)}% strength unless ${row.short} arrive` : '');
   return `<div class="mil-queue-row ${row.stalled || row.frozen ? 'is-stalled' : ''} ${row.queued || row.awaiting ? 'is-waiting' : ''}"
     title="${esc(`${row.name} — ${row.province} (${row.region})\n${state}`)}">
     <i class="mil-build-mark" aria-hidden="true">${counter(row.typeId)}</i>
@@ -452,7 +481,7 @@ export function militaryScreen(state, data) {
     data.summary.mobilization)}
         ${statsBox(data.stats)}
       </div>
-      ${buildColumn(state, data.options, data.summary)}
+      ${buildColumn(state, data.options, data.summary, data.logistics)}
       ${queueColumn(data.queue, data.summary)}
     </div>
     ${dispositionBand(data.summary, data.composition, data.logistics, data.spent)}
