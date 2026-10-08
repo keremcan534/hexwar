@@ -39,6 +39,10 @@ import { meter as kitMeter, pips as kitPips, tipAttr } from './kit.js';
 import { depositsOf, fertilityOf } from '../game/econ/deposits.js';
 import { powerIncome } from '../game/politics.js';
 import { buildingLevels, buildingSlots } from '../game/provinces.js';
+import { buildPreview } from '../game/buildPreview.js';
+import {
+  buildBlockers, buildingCost, developBlockers, developmentCost, queueBuilding, queueDevelopment,
+} from '../game/construction.js';
 import {
   canRecruit, disband, equipmentCostLabel, nationManpower, rallyTile, setRallyPoint,
   trainingWeeks,
@@ -682,6 +686,13 @@ export class Hud {
       // rakam, ok, Enter, B, F, S). Kullanmadığı tuş haritaya düşer.
       if (this.screens?.active && this.screens.handleKey(event)) {
         event.preventDefault();
+        return;
+      }
+      // B: haritada seçili kendi state'inde hızlı inşa şeridini aç/kapat.
+      if (event.code === 'KeyB' && this.el.sheetBody.querySelector('[data-qb-toggle]')) {
+        event.preventDefault();
+        this.quickBuildOpen = !this.quickBuildOpen;
+        this.showTile(this.game.selected);
         return;
       }
       const pan = PAN_KEYS[event.code];
@@ -1433,6 +1444,7 @@ export class Hud {
         <div class="pv-state-row"><small>Development</small>${kitPips(econ.development, DEVELOPMENT_MAX)}<b>${econ.development}</b><em>${levels}/${slots} slots</em></div>
         <div class="pv-state-blds">${built.length ? built.map((id) => `<span${tipAttr('building', id)}>${buildingArt(id, 'sm')}<i>${econ.buildings[id]}</i></span>`).join('') : '<small class="k-dim">No buildings</small>'}</div>
         <div class="pv-state-row"><small>Compliance</small>${kitMeter((econ.control ?? 0) / 100, { tone: econ.core === false ? 'warn' : 'pos', wide: true })}<b>${Math.round(econ.control)}%</b>${econ.core === false ? `<em class="neg">counts at ${Math.round((econ.status ?? 0) * 100)}%</em>` : '<em>core</em>'}</div>
+        ${area && area.owner === this.game.turns.playerNation ? this.quickBuildHtml(area) : ''}
       </div>`;
     }
     // Küme kimliği en üstte: hangi province'in parçası olduğu ilk bakışta okunsun.
@@ -1536,6 +1548,38 @@ export class Hud {
       </div>`;
 
     this.bindActions();
+  }
+
+  /**
+   * HIZLI İNŞA (Kerem: "istediğimiz state'e hızlı bina dikmek için ekran
+   * açmadan bir + koysak"). Haritada kendi state'ine tıklayınca kartın altında
+   * bir "+ Build" şeridi: her bina madalyon, altında o state'te getireceği ana
+   * kazanç (buildPreview — Construction ekranıyla aynı hesap) ve bedel. Tık
+   * kuyruğa koyar; kurulamazsa sebebi kartta. Şerit kapalıyken tek satırdır.
+   */
+  quickBuildHtml(area) {
+    const world = this.game.world;
+    const me = world.nations[this.game.turns.playerNation];
+    if (!me) return '';
+    const open = this.quickBuildOpen ?? false;
+    const head = `<button class="qb-head${open ? ' on' : ''}" data-qb-toggle aria-expanded="${open}">
+      <i aria-hidden="true">${open ? '−' : '+'}</i>Build here<small>${open ? 'click a building to queue it' : `${BUILDING_IDS.filter((id) => !buildBlockers(world, me, area, id).length).length} can be built · B`}</small></button>`;
+    if (!open) return `<div class="qb">${head}</div>`;
+    const cell = (id, art, name, cost, weeks, blockers, preview) => {
+      const main = preview.gains[0];
+      const gain = main ? main.text : (preview.note || '—');
+      const tip = blockers.length
+        ? ['Not possible now', ...blockers].join('\n')
+        : [`${name} · ${cost} gold · ${weeks} wk`, ...preview.gains.map((g) => g.text), preview.note].filter(Boolean).join('\n');
+      return `<button class="qb-cell${blockers.length ? ' off' : ''}" data-qb="${id}"${blockers.length ? ' aria-disabled="true"' : ''} data-tip="text" data-tip-text="${escapeHtml(tip)}">
+        ${art}<b>${escapeHtml(gain)}</b><small>${cost}</small></button>`;
+    };
+    const cells = BUILDING_IDS.map((id) => cell(id, buildingArt(id, 'sm'), BUILDINGS[id].name,
+      buildingCost(world, me, area, id), BUILDINGS[id].weeks, buildBlockers(world, me, area, id),
+      buildPreview(world, me, area, id)));
+    cells.push(cell('develop', emblemArt('infrastructure', 'sm'), 'Develop', developmentCost(me, area), 12,
+      developBlockers(world, me, area), buildPreview(world, me, area, 'develop')));
+    return `<div class="qb">${head}<div class="qb-grid">${cells.join('')}</div></div>`;
   }
 
   /** Ordu karti: tip, mevcut, STR/ORG, bilesim, dagitma. */
@@ -1836,6 +1880,28 @@ export class Hud {
   bindActions() {
     const { game } = this;
     const me = game.world.nations[game.turns.playerNation];
+    const toggle = this.el.sheetBody.querySelector('[data-qb-toggle]');
+    if (toggle) {
+      toggle.onclick = () => {
+        this.quickBuildOpen = !this.quickBuildOpen;
+        this.showTile(game.selected);
+      };
+    }
+    for (const btn of this.el.sheetBody.querySelectorAll('[data-qb]')) {
+      btn.onclick = () => {
+        if (btn.getAttribute('aria-disabled') === 'true') return;
+        const area = game.world.provinces?.[game.selected?.provinceId];
+        if (!area || !me) return;
+        const id = btn.dataset.qb;
+        const ok = id === 'develop' ? queueDevelopment(game, me, area) : queueBuilding(game, me, area, id);
+        if (ok) {
+          // Onay: hücre bir kez parlar; üst çubuk altını hemen düşürür.
+          game.emit('politics', me.id);
+          this.showTile(game.selected);
+          this.el.sheetBody.querySelector(`[data-qb="${id}"]`)?.classList.add('qb-done');
+        }
+      };
+    }
     // ORDUYU DAGIT. `disband()` zaten vardi ve hayatta kalanlarin insan gucunu
     // TOPLANDIKLARI province'lere iade ediyordu — eksik olan sadece dugmeydi,
     // yani oyuncunun elinde ordu kucultme araci hic yoktu (kullanici bildirimi).

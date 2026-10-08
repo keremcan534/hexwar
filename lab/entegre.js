@@ -93,11 +93,9 @@ async function baslat() {
 
   const acKapa = () => { panel.ac(!panel.acikMi()); return panel.acikMi(); };
 
-  // Aç/kapa üç yoldan: `b` (laboratuvardan kalan alışkanlık), `"` (Türkçe
-  // klavyede 1'in solundaki tuş, KeyboardEvent.code 'Backquote') ve konsolda
-  // `dev`. Oyunun tuşları WASD, oklar, boşluk, +/-, N, Escape ve F3; `b`
-  // src/ altında hiçbir yere bağlı değil. Oyun bir gün `b`yi bir göreve
-  // bağlarsa buradaki satır silinir, diğer iki yol kalır.
+  // Aç/kapa iki yoldan: `"` (Türkçe klavyede 1'in solundaki tuş,
+  // KeyboardEvent.code 'Backquote') ve konsolda `dev`. `b` eskiden üçüncü
+  // yoldu; oyun onu hızlı inşaya bağladı (2026-10-08), o yüzden silindi.
   // Laboratuvar tuşları (1-6, k, o) yalnız panel AÇIKKEN çalışır: oyunda
   // harf tuşları er geç bir göreve bağlanır ve tasarım tezgâhı oyunu ele
   // geçirmemeli.
@@ -112,11 +110,6 @@ async function baslat() {
       return;
     }
     if (e.ctrlKey || e.altKey || e.metaKey) return;
-    if (e.key === 'b' || e.key === 'B') {
-      e.preventDefault();
-      acKapa();
-      return;
-    }
     if (!panel.acikMi()) return;
     const onayarlar = ['master', 'sot', 'gercek', 'durgun', 'kerem', 'kerem2'];
     const n = '123456'.indexOf(e.key);
