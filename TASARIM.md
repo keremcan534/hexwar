@@ -55,7 +55,7 @@ edilmiş kültürü, ya da sahibin ana kültürünün ana yurdu, ya da 25 yıld�
 elde. **Statü:** çekirdek 1, çekirdek dışı `0.25 + 0.75 × uyum/100`, işgal 0.
 
 **Kalkınma** vergiyi (×(1 + 0.15·kalkınma)), bina yuvasını (kalkınma + 1),
-el tezgâhı tüketim malını ve nüfus artışını büyütür. Altınla, 12 haftada bir
+el tezgâhı tüketim malını ve nüfus artışını büyütür. Altınla, 18 haftada bir
 kademe; bedel `15 × hedef^2.5 × √(nüfus ÷ 100 bin)` (kalabalık province'i
 kalkındırmak pahalı ama daha çok vergi getirir). Tavan: 3 + teknoloji +
 okuryazarlık × 4.
@@ -106,8 +106,8 @@ güherçile barışta da 41-58 ihtiyaç, fiyat 2.6-3.0.
 - `IC = Σ fabrika × (1 + teknoloji) × kömür × (0.85 + 0.3·istikrar) × (1 − askerlik cezası) × statü`.
 - **Ekonomi yasası** askerî payı belirler: Sivil %10 · Kısmi %25 · Savaş %50 (savaşta ya da savaş desteği ≥50) · Topyekûn %80 (savaşta ve savaş desteği ≥70).
 - **Tüketim malı:** ihtiyaç `nüfus/100k × 0.6 × çağ (1→1.8)`; arz el tezgâhı (`nüfus/100k × 0.5 × (1+0.03·kalkınma)`) + sivil IC. Oran 1'in altındaysa istikrar düşer (−20'ye kadar), üstündeyse vergi artar (+%20'ye kadar). Çağ ilerledikçe ihtiyaç büyür: sanayileşmeyen ülke huzursuzlaşır.
-- **Üretim hatları:** Tüfek (0.5 IC, demir 0.2 + kereste 0.1), Top (2 IC, demir 1), Gemi (3 IC, kereste 1.5; zırhlı teknolojisiyle demir+kömür; tersane şart). Oyuncu ağırlık verir; askerî IC ağırlıkla dağılır. Verim hat başına %20–%100: çalışırken haftada +1 puan, boşta −0.5.
-- **Teçhizat stoğu** ulusaldır, tavansız. Alay ihtiyacı: piyade 10 tüfek; süvari 6 tüfek; topçu 4 tüfek + 6 top; savaş gemisi 10 gemi. Takviye kaybolan güç oranında teçhizat yer.
+- **Üretim hatları:** Tüfek (0.5 IC, demir 0.2 + kereste 0.1), Top (2 IC, demir 1), Gemi (3 IC, kereste 1.5; zırhlı teknolojisiyle demir+kömür; tersane şart). Hat başına öncelik: **Auto** (varsayılan; depo ordunun ihtiyacını karşılayınca durur, savaşta hızlanır) ya da elle Off/Low/Normal/High (ağırlık 0/1/3/6); elle seçilen hatta hiçbir otomasyon dokunmaz. Askerî IC ağırlıkla dağılır. Verim hat başına %20–%100: çalışırken haftada +1 puan, boşta −0.5.
+- **Teçhizat stoğu** ulusaldır, tavansız. Alay ihtiyacı: piyade 10 tüfek; süvari 6 tüfek; topçu 4 tüfek + 6 top; savaş gemisi 10 gemi. Takviye kaybolan güç oranında teçhizat yer. **Teçhizat eğitimi bekletmez (HOI4):** eğitim biterken eksik kalan teçhizat oranında alay o güçle ve o oranda insanla çıkar (en az %10), takviye ikisini birlikte tamamlar.
 
 ## 6. Altın, borç, iflas
 
@@ -126,14 +126,19 @@ yavaşlar. Her bina haftalık bakım öder (bütçede "maintenance"). Sayılar
 
 | Bina | Bedel | Bakım/hf | Hafta | Etki | Şart |
 |---|---|---|---|---|---|
-| Çiftlik | 80 | 0.05 | 12 | gıda +%25 (en çok 3) | — |
-| Maden | 120 | 0.15 | 16 | yatak +%50 (en çok 3) | yatak |
-| Fabrika | 250 (+%5/fabrika) | 0.4 | 26 | +1 IC (en çok 5) | kalkınma ≥2 |
-| Tersane | 200 | 0.4 | 30 | gemi hattı, liman (en çok 3) | kıyı |
-| Kışla | 100 | 0.2 | 16 | insan gücü +%20, hızlı eğitim (en çok 2) | — |
-| Kale | 120 | 0.2 | 20 | savunma +%15/kademe (en çok 3) | — |
-| Demiryolu | 150 (+%50/kademe) | 0.15 | 20 | kaynak +%10, hareket, ikmal (en çok 5) | — |
-| Üniversite | 200 | 0.4 | 30 | araştırma +0.3, okuryazarlık (en çok 2) | kalkınma ≥4 |
+| Çiftlik | 80 | 0.05 | 18 | gıda +%25 (en çok 3) | — |
+| Maden | 120 | 0.15 | 24 | yatak +%50 (en çok 3) | yatak |
+| Fabrika | 250 (+%5/fabrika) | 0.4 | 39 | +1 IC (en çok 5) | kalkınma ≥2 |
+| Tersane | 200 | 0.4 | 45 | gemi hattı, liman (en çok 3) | kıyı |
+| Kışla | 100 | 0.2 | 24 | insan gücü +%20, hızlı eğitim (en çok 2) | — |
+| Kale | 120 | 0.2 | 30 | savunma +%15/kademe (en çok 3) | — |
+| Demiryolu | 150 (+%50/kademe) | 0.15 | 30 | kaynak +%10, hareket, ikmal (en çok 5) | — |
+| Üniversite | 200 | 0.4 | 45 | araştırma +0.3, okuryazarlık (en çok 2) | kalkınma ≥4 |
+
+İnşaat yuvası `2 + state/10 + teknoloji` (eskiden state/5). Yuva ve süreler
+2026-10-08'de birlikte değişti: 32 state'li ülke ilk yıl her ~1.5 haftada bir
+bina bitiriyordu, oyuncu ekranı sürekli kollamak zorundaydı (ölçüm: büyük
+ülkenin 1840 tamamlanması haftada 0.65 → 0.31).
 
 ## 8. Nüfus, insan gücü, okuryazarlık
 

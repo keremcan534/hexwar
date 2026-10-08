@@ -27,7 +27,7 @@ import {
 import {
   MAX_TRAINING_QUEUE, nationManpower, recruitBlockers, recruitmentEquipmentCost,
   recruitmentSource, regionManpower, trainingCapacity, trainingQueue, trainingSpeed,
-  trainingWeeks, weeksLeft,
+  trainingWeeks, weeksLeft, orderFill,
 } from './recruitment.js';
 import { BASE_REINFORCEMENT_RATE, reinforcementNeed } from './reinforcement.js';
 import {
@@ -285,11 +285,12 @@ export function trainingRows(game, nation) {
       queued: !done && item.waiting === 'capacity',
       // Askersizleştirme antlaşması sırayı dondurur (bkz. recruitment.js).
       frozen: item.waiting === 'treaty',
-      // Teçhizat üretim hattından bekleniyor (recruitment.queueRecruit).
-      awaiting: item.waiting === 'equipment'
-        ? Object.entries(item.missing ?? {}).filter(([, v]) => v > 1e-9)
-          .map(([id, v]) => `${v.toFixed(1)} ${EQUIPMENT[id]?.name ?? id}`).join(', ')
-        : null,
+      // Teçhizat eğitimi bekletmez (HOI4): eksik kalırsa alay bu oranda
+      // güçle çıkar. Ekran oranı ve eksiği gösterir.
+      fill: orderFill(item),
+      awaiting: null,
+      short: Object.entries(item.missing ?? {}).filter(([, v]) => v > 1e-9)
+        .map(([id, v]) => `${Math.ceil(v)} ${EQUIPMENT[id]?.name ?? id}`).join(', ') || null,
       index,
       first: index === 0,
       last: index === queue.length - 1,

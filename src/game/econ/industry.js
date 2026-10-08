@@ -28,6 +28,9 @@ export function ensureIndustry(economy) {
   for (const id of EQUIPMENT_IDS) {
     const line = economy.lines[id] ?? {};
     economy.lines[id] = {
+      // 'auto' (varsayılan): ağırlığı autoLineWeights verir. 'manual': oyuncu
+      // seçti, hiçbir otomasyon dokunmaz.
+      mode: line.mode === 'manual' ? 'manual' : 'auto',
       weight: Number.isFinite(line.weight) ? clamp(line.weight, 0, 10) : DEFAULT_WEIGHTS[id],
       efficiency: Number.isFinite(line.efficiency) ? line.efficiency : LINE_EFFICIENCY.start,
       ic: line.ic ?? 0,
@@ -40,13 +43,82 @@ export function ensureIndustry(economy) {
   return economy;
 }
 
-/** Hat ağırlığını oyuncu/YZ değiştirir (0-10). Verim korunur. */
+/** Hat ağırlığını değiştirir (0-10). Verim korunur. Kipe dokunmaz. */
 export function setLineWeight(nation, id, weight) {
   const economy = nation?.economy;
   if (!economy || !EQUIPMENT[id]) return false;
   ensureIndustry(economy);
   economy.lines[id].weight = clamp(Math.round(weight), 0, 10);
   return true;
+}
+
+/**
+ * Oyuncunun öncelik seçimi. Kademeler ağırlıktır; 'auto' hattı otomasyona
+ * geri verir. Eski arayüz 0-10 ağırlıktı ve ekonomi otomasyonu (AUTO, ekranda
+ * görünmeyen) dört haftada bir oyuncunun ağırlığının ÜSTÜNE yazıyordu
+ * (Kerem: "weight kısmı çok düzgün çalışmıyor"). Elle seçilen hat artık
+ * 'manual'dır ve hiçbir otomasyon ona dokunmaz.
+ */
+export const LINE_PRIORITIES = [
+  { id: 'off', name: 'Off', weight: 0 },
+  { id: 'low', name: 'Low', weight: 1 },
+  { id: 'normal', name: 'Normal', weight: 3 },
+  { id: 'high', name: 'High', weight: 6 },
+];
+
+export function setLinePriority(nation, id, priority) {
+  const economy = nation?.economy;
+  if (!economy || !EQUIPMENT[id]) return false;
+  ensureIndustry(economy);
+  const line = economy.lines[id];
+  if (priority === 'auto') {
+    line.mode = 'auto';
+    return true;
+  }
+  const level = LINE_PRIORITIES.find((p) => p.id === priority);
+  if (!level) return false;
+  line.mode = 'manual';
+  line.weight = level.weight;
+  return true;
+}
+
+/** Ağırlığın okunur kademesi (otomasyonun seçtiği de dahil). */
+export function linePriorityOf(weight) {
+  let best = LINE_PRIORITIES[0];
+  for (const level of LINE_PRIORITIES) if (weight >= level.weight) best = level;
+  return best;
+}
+
+/**
+ * OTOMATİK HAT: depo ordunun ihtiyacını karşılıyorsa hat durur, eksikse açılır
+ * (eski economyAI kuralı, aynı eşikler). Yalnız 'auto' kipindeki hatlara
+ * yazar; dört haftada bir. YZ ulusları ve oyuncunun Auto hatları aynı kural.
+ */
+export function autoLineWeights(world, nation) {
+  const economy = nation.economy;
+  if (!economy) return;
+  ensureIndustry(economy);
+  const lines = economy.lines;
+  if (!EQUIPMENT_IDS.some((id) => lines[id].mode === 'auto')) return;
+  const war = (economy.warFronts ?? 0) > 0;
+  let regiments = 0;
+  let guns = 0;
+  for (const unit of world.units) {
+    if (unit.nationId !== nation.id) continue;
+    regiments += unit.regiments?.length ?? 0;
+    for (const regiment of unit.regiments ?? []) if (regiment.typeId === 'ARTILLERY') guns++;
+  }
+  // Depo doluysa hat durur: barışta yığılan tüfek demir yer ama kimseyi
+  // silahlandırmaz (ölçüldü: 1900'de dünya demiri %40'ta, depolar taşkın).
+  const rifles = equipmentStock(nation, 'rifles');
+  const want = {
+    rifles: rifles < regiments * 4 + 30 ? (war ? 5 : 3) : rifles < regiments * 10 + 80 ? 1 : 0,
+    guns: equipmentStock(nation, 'guns') < guns * 3 + 6 ? (war ? 2 : 1) : 0,
+    ships: economy.coastal ? ((economy.blockade ?? 0) > 0 || nation.focus === 'military' ? 2 : 1) : 0,
+  };
+  for (const id of EQUIPMENT_IDS) {
+    if (lines[id].mode === 'auto') lines[id].weight = clamp(want[id] ?? 0, 0, 10);
+  }
 }
 
 /**

@@ -25,7 +25,7 @@ import {
 import {
   BRANCH, STANCE, assignDivisions, commandSize, generalOfArmy, officersOf, setStance,
 } from './command.js';
-import { equipmentStock, setLineWeight } from './econ/industry.js';
+import { autoLineWeights, equipmentStock } from './econ/industry.js';
 import { ARMY_BUDGET_CAP, ARMY_BUDGET_SHARE, UNIT_EQUIPMENT, UPKEEP } from './econ/defs.js';
 import { mod } from './modifiers.js';
 import { LAWS, lawIndex } from './laws.js';
@@ -355,29 +355,15 @@ function spend(game, nation) {
  * hafta (bütçe ve yuva sınırında).
  */
 export function economyAI(game, nation) {
-  const world = game.world;
   const turn = game.turns?.turn ?? 0;
   if ((turn + nation.id) % 4 !== 0) return null;
   const economy = nation.economy;
   if (!economy) return null;
-  const war = (economy.warFronts ?? 0) > 0;
-  let regiments = 0;
-  let guns = 0;
-  for (const unit of world.units) {
-    if (unit.nationId !== nation.id) continue;
-    regiments += regimentCount(unit);
-    for (const regiment of unit.regiments ?? []) if (regiment.typeId === 'ARTILLERY') guns++;
-  }
-  // Depo doluysa hat durur: barışta yığılan tüfek demir yer ama kimseyi
-  // silahlandırmaz (ölçüldü: 1900'de dünya demiri %40'ta, depolar taşkın).
-  const rifles = equipmentStock(nation, 'rifles');
-  const wantRifles = rifles < regiments * 4 + 30 ? (war ? 5 : 3)
-    : rifles < regiments * 10 + 80 ? 1 : 0;
-  const wantGuns = equipmentStock(nation, 'guns') < guns * 3 + 6 ? (war ? 2 : 1) : 0;
-  const wantShips = economy.coastal ? ((economy.blockade ?? 0) > 0 || nation.focus === 'military' ? 2 : 1) : 0;
-  setLineWeight(nation, 'rifles', wantRifles);
-  setLineWeight(nation, 'guns', wantGuns);
-  setLineWeight(nation, 'ships', wantShips);
+  // Hat ağırlıkları: yalnız 'auto' kipindeki hatlara (oyuncunun elle
+  // seçtiğine dokunmaz). Çağrı YERİ eskisiyle aynı (YZ evresi): ekonomi
+  // evresine taşınınca alay sayımı bir evre kayıyor ve kaotik simülasyon
+  // bütünüyle ayrışıyordu (ölçüldü: sınır kartopu B3 %40.5 → %51.4).
+  autoLineWeights(game.world, nation);
   // Ticaret yasası: satacak fazlası olan açılır, açığı çok ve altını az
   // olan (ithalat bedeli ×1.5) kapanmaz; ablukadaki savaşan küçültmez.
   let surplusValue = 0;

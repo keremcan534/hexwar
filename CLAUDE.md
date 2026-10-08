@@ -64,7 +64,8 @@ yasasının tüketim malına etkisi (sanayi ülkesinde −%10.8, eşiğin 2.16 k
 Eğitim yasası bir önceki taramada ölüydü: okuryazarlık sabit adımla
 yaklaşıyordu, şimdi oransal (TASARIM.md §8). Bataryada kalan bulgular
 yeniden yazımdan ÖNCE de vardı: province boy tavanı (200×160'ta 1 province),
-ülke sayısı 101 (scale, ORTA). Sınır kartopu %32-40 (eşik %33): ordu
+ülke sayısı 101 (scale, ORTA). Sınır kartopu %32-40 (eşik %33; 2026-10-08
+altı tohum × 50 yıl: %39.5 → inşaat temposu + HOI4 dağıtımıyla %36.5): ordu
 hex hex yürüdüğünden beri savaşlar kısa (ortanca ~20 hafta); zafer puanı
 (kümenin merkez hexi) eklendi, barış masası eşikleri denendi ve ölçümde
 etkisiz çıktı. Bağlayan kaldıraç küçük devletin iki-üç barışta tükenmesi.

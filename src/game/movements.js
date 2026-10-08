@@ -390,7 +390,7 @@ export function martialBlockers(world, nation, cultureId, turn = world.turn ?? 0
   if ((state?.martialUntil ?? 0) > turn) return ['Martial law is already in force.'];
   const weekly = martialCost(provinces);
   if ((nation.gold ?? 0) < weekly * 4) {
-    return [`Treasury short: martial law needs four weeks of upkeep (£${(weekly * 4).toFixed(0)}).`];
+    return [`Treasury short: martial law needs four weeks of upkeep (${(weekly * 4).toFixed(0)} gold).`];
   }
   return [];
 }

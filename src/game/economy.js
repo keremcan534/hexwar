@@ -23,13 +23,14 @@ import {
   nationProduction, unitResourceNeeds,
 } from './econ/resources.js';
 import {
-  addEquipment, computeIC, consumerGoods, consumerTaxBonus, ensureIndustry, runLines,
+  addEquipment, autoLineWeights, computeIC, consumerGoods, consumerTaxBonus, ensureIndustry, runLines,
 } from './econ/industry.js';
 import { clearTrade, computeBlockades, ensureMarket } from './econ/trade.js';
 import { closeWeek, emptyLedger, openWeek, settle } from './treasury.js';
 import { emptyBuildings, occupiedShareOf } from './provinces.js';
 import { constructionResourceNeeds } from './construction.js';
 import { treatiesOf } from './peace.js';
+import { isDelegated } from './delegation.js';
 
 /** Kaynak imtiyazı (barış şartı): yenilen yatak üretiminin beşte birini verir. */
 const CONCESSION_SHARE = 0.2;
@@ -311,6 +312,11 @@ export function runNationEconomy(game, nation, ctx) {
   });
 
   // 4. Üretim hatları (teçhizat stoğa girer; demir/kereste ihtiyacı yazılır).
+  // Oyuncunun Auto hatları, ekonomi otomasyonu KAPALIYKEN de çalışsın: o
+  // zaman kural burada (YZ ve devredilmiş oyuncu için ai.economyAI içinde).
+  if (nation.id === game.turns?.playerNation && !isDelegated(nation, 'economy') && (turn + nation.id) % 4 === 0) {
+    autoLineWeights(world, nation);
+  }
   runLines(nation, ic.military, ic.dockyards, needs);
 
   // 5. Ordu ve inşaat ihtiyacı.

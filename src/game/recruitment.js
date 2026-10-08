@@ -159,6 +159,23 @@ export function canRecruit(world, nation, typeId) {
   return Boolean(recruitmentSource(world, nation, resolveTypeId(typeId)));
 }
 
+/**
+ * Eksik teçhizatla çıkan alayın en düşük gücü. Sıfır güçlü alay haritada
+ * savaşamayan bir hayalet olurdu; HOI4'te de tümen en az bir avuç adamla çıkar.
+ */
+export const DEPLOY_FLOOR = 0.1;
+
+/** Siparişin teçhizat doluluğu (0-1): en eksik kalemin oranı. */
+export function orderFill(item) {
+  let fill = 1;
+  for (const [id, missing] of Object.entries(item.missing ?? {})) {
+    const have = item.equipment?.[id] ?? 0;
+    const total = have + Math.max(0, missing);
+    if (total > 0) fill = Math.min(fill, have / total);
+  }
+  return fill;
+}
+
 /** Depoda bulunani siparisin eksigine aktarir; eksik kaldiysa false. */
 function fillOrder(nation, item) {
   let complete = true;
@@ -243,7 +260,7 @@ export function rallyTile(world, nation) {
  * @returns {object|null} yaratılan ya da takviye edilen ordu
  */
 export function recruit(game, nation, typeId, options = {}) {
-  const { source: preferred = null, charge = true } = options;
+  const { source: preferred = null, charge = true, fill = 1 } = options;
   const world = game.world;
   const id = resolveTypeId(typeId);
   const equipmentCost = recruitmentEquipmentCost(id);
@@ -262,9 +279,18 @@ export function recruit(game, nation, typeId, options = {}) {
   const tile = deploymentTile(world, source, id);
   if (!tile) return null;
 
-  const draws = drawManpower(world, source, need);
+  // Eksik teçhizatla çıkan alay o oranda güçle ve o oranda insanla çıkar;
+  // takviye (reinforcement.js) ikisini birlikte tamamlar — insan/güç oranı
+  // korunur, takviye aynı insanı ikinci kez çekmez.
+  const share = Math.max(DEPLOY_FLOOR, Math.min(1, fill));
+  const draws = drawManpower(world, source, Math.ceil(need * share));
   if (!draws.length) return null;
   const unit = createUnit(id, nation.id, tile, nation, source);
+  if (share < 1) {
+    const regiment = unit.regiments[0];
+    regiment.strength = regiment.maxStrength * share;
+    unit.hp = regiment.strength;
+  }
   if (charge) takeEquipment(nation, equipmentCost);
   // Nereden kaç asker alındığı alayda durur: dağıtımda aynı yerlere döner.
   unit.regiments[0].draws = draws;
@@ -548,11 +574,11 @@ export function runTraining(game) {
     let slots = 0;
     for (const item of training.queue) {
       if (item.progress >= item.weeks) continue;
-      // Teçhizati gelmemis alay kisla yeri tutmaz; pazardan gelince baslar.
-      if (!fillOrder(nation, item)) {
-        item.waiting = 'equipment';
-        continue;
-      }
+      // HOI4 USULÜ: teçhizat eğitimi BEKLETMEZ. Depoda olan her hafta alınır;
+      // eğitim biterken eksik kalan teçhizat oranında alay düşük güçle çıkar
+      // (Kerem: "ekipman olmasa bile recruitle, STR düşük gelsin"). Eskiden
+      // teçhizatı tamamlanmayan sipariş kışlaya hiç girmiyordu.
+      fillOrder(nation, item);
       if (slots >= capacity) {
         item.waiting = 'capacity';
         continue;
@@ -565,7 +591,9 @@ export function runTraining(game) {
     for (const item of training.queue) {
       if (item.progress < item.weeks) continue;
       const source = world.get(item.q, item.r);
-      const unit = recruit(game, nation, item.typeId, { source, charge: false });
+      fillOrder(nation, item);
+      const fill = orderFill(item);
+      const unit = recruit(game, nation, item.typeId, { source, charge: false, fill });
       if (!unit) {
         item.waiting = 'deploy';
         continue;
@@ -575,7 +603,9 @@ export function runTraining(game) {
       completed++;
       if (nation.id === game.turns?.playerNation) {
         game.turns.addLog(
-          `${UNIT_TYPES[item.typeId].name} joined the army (${UNIT_TYPES[item.typeId].manpower} men).`,
+          `${UNIT_TYPES[item.typeId].name} joined the army${fill < 0.999
+            ? ` at ${Math.round(Math.max(DEPLOY_FLOOR, fill) * 100)}% strength — short of equipment, reinforcements will fill it`
+            : ` (${UNIT_TYPES[item.typeId].manpower} men)`}.`,
           { kind: 'ARMY', tile: unit.tile },
         );
       }

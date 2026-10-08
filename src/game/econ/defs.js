@@ -64,15 +64,17 @@ export const FOOD_NEED = 1.0;
  * yoksa geç oyunda altın birikip anlamsızlaşıyordu (ölçüldü: 1900 medyan
  * hazine 29 bin).
  */
+// Süreler 1.5×'e çıkarıldı (2026-10-08): bina "kısa sürüyor" ve ekran sürekli
+// kollanmak zorunda kalıyordu; yuva formülüyle birlikte ölçüldü.
 export const BUILDINGS = {
-  farm: { id: 'farm', name: 'Farm', cost: 80, upkeep: 0.05, weeks: 12, max: 3, effect: 'Food +25%' },
-  mine: { id: 'mine', name: 'Extraction Works', cost: 120, upkeep: 0.15, weeks: 16, max: 3, effect: 'Province resource output +50%', needsDeposit: true },
-  factory: { id: 'factory', name: 'Factory', cost: 250, upkeep: 0.4, weeks: 26, max: 5, effect: '+1 industrial capacity', minDevelopment: 2 },
-  dockyard: { id: 'dockyard', name: 'Dockyard', cost: 200, upkeep: 0.4, weeks: 30, max: 3, effect: 'Ships line +1 IC cap, naval base', coastal: true },
-  barracks: { id: 'barracks', name: 'Barracks', cost: 100, upkeep: 0.2, weeks: 16, max: 2, effect: 'Manpower +20%, training faster' },
-  fort: { id: 'fort', name: 'Fort', cost: 120, upkeep: 0.2, weeks: 20, max: 3, effect: 'Defence +15%' },
-  railway: { id: 'railway', name: 'Railway', cost: 150, upkeep: 0.15, weeks: 20, max: 5, effect: 'Resources +10%, supply, movement', costGrowth: 0.5 },
-  university: { id: 'university', name: 'University', cost: 200, upkeep: 0.4, weeks: 30, max: 2, effect: 'Research +0.3, literacy', minDevelopment: 4 },
+  farm: { id: 'farm', name: 'Farm', cost: 80, upkeep: 0.05, weeks: 18, max: 3, effect: 'Food +25%' },
+  mine: { id: 'mine', name: 'Extraction Works', cost: 120, upkeep: 0.15, weeks: 24, max: 3, effect: 'Province resource output +50%', needsDeposit: true },
+  factory: { id: 'factory', name: 'Factory', cost: 250, upkeep: 0.4, weeks: 39, max: 5, effect: '+1 industrial capacity', minDevelopment: 2 },
+  dockyard: { id: 'dockyard', name: 'Dockyard', cost: 200, upkeep: 0.4, weeks: 45, max: 3, effect: 'Ships line +1 IC cap, naval base', coastal: true },
+  barracks: { id: 'barracks', name: 'Barracks', cost: 100, upkeep: 0.2, weeks: 24, max: 2, effect: 'Manpower +20%, training faster' },
+  fort: { id: 'fort', name: 'Fort', cost: 120, upkeep: 0.2, weeks: 30, max: 3, effect: 'Defence +15%' },
+  railway: { id: 'railway', name: 'Railway', cost: 150, upkeep: 0.15, weeks: 30, max: 5, effect: 'Resources +10%, supply, movement', costGrowth: 0.5 },
+  university: { id: 'university', name: 'University', cost: 200, upkeep: 0.4, weeks: 45, max: 2, effect: 'Research +0.3, literacy', minDevelopment: 4 },
 };
 export const BUILDING_IDS = Object.keys(BUILDINGS);
 
@@ -80,13 +82,13 @@ export const BUILDING_IDS = Object.keys(BUILDINGS);
 export const FACTORY_COST_GROWTH = 0.05;
 
 /**
- * Kalkınma: bir kademe 12 hafta, bedel 15 × hedef^2.5 × √(nüfus birimi).
+ * Kalkınma: bir kademe 18 hafta, bedel 15 × hedef^2.5 × √(nüfus birimi).
  * Kalabalık province'i kalkındırmak pahalı ama en hızlı geri döner. Üs 2'yken
  * (20 × hedef²) zengin ülkeler 1890'da her province'i 10'a çıkarıp harcayacak
  * yer bulamıyordu (ölçüldü: 1900 medyan hazine ~28 bin, en zengin 330 bin);
  * üst kademeler artık çağın sonuna dek süren bir altın yatağıdır.
  */
-export const DEVELOPMENT_WEEKS = 12;
+export const DEVELOPMENT_WEEKS = 18;
 export const DEVELOPMENT_COST = 15;
 export const DEVELOPMENT_COST_EXPONENT = 2.5;
 export const DEVELOPMENT_MAX = 10;

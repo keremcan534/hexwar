@@ -39,11 +39,17 @@ export function initConstruction(world) {
   }
 }
 
-/** Aynı anda yürüyen proje sayısı: 2 + her 5 province'e bir + teknoloji. */
+/**
+ * Aynı anda yürüyen proje sayısı: 2 + her 10 province'e bir + teknoloji.
+ * Eskiden her 5'e birdi: 32 state'li ülke başlangıçta 8 yuva açıp ilk yıl her
+ * ~1.5 haftada bir bina bitiriyordu (ölçüldü) — oyuncu ekranı sürekli
+ * kollamak zorunda kalıyordu (Kerem: "çok fazla aynı anda bina dikiyoruz").
+ */
 export function constructionSlots(nation) {
-  return Math.max(1, 2 + Math.floor((nation.provinces ?? 0) / 5)
+  return Math.max(1, 2 + Math.floor((nation.provinces ?? 0) / CONSTRUCTION_STATES_PER_SLOT)
     + Math.round(mod(nation, 'constructionSlots')));
 }
+export const CONSTRUCTION_STATES_PER_SLOT = 10;
 
 /** Bina ve kalkınma bedel çarpanı: teknoloji ve ticaret yasası. */
 function costFactor(nation) {

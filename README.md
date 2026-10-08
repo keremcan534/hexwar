@@ -152,8 +152,10 @@ zinciri yoktur (TASARIM.md §1-§8, `src/game/econ/`).
   yasası ve teknoloji çarpar. **Ekonomi yasası** IC'nin ne kadarının orduya
   gideceğini söyler: sivil pay halkın **tüketim malıdır** (eksikse istikrar
   düşer, fazlası vergiyi artırır; beklenti her on yılda büyür), askerî pay
-  **üretim hatlarına** (tüfek, top, gemi) ağırlıkla dağılır ve teçhizat
-  stoğunu doldurur.
+  **üretim hatlarına** (tüfek, top, gemi) dağılır ve teçhizat stoğunu
+  doldurur. Her hattın önceliği Auto (ordunun eksiğine göre) ya da elle
+  Off/Low/Normal/High'dır; elle seçileni otomasyon ezmez. Teçhizat eksikken
+  de alay eğitilir ve eksik oranında düşük güçle çıkar, takviye tamamlar.
 
 ### Nüfus, insan gücü, okuryazarlık
 
@@ -279,7 +281,7 @@ Bina province'e aittir ve toprakla el değiştirir: çiftlik, maden, fabrika,
 tersane, kışla, kale, demiryolu, üniversite. Bedel peşin, süre haftalarla;
 aynı anda yürüyen proje inşaat yuvasıyla sınırlıdır, yürüyen proje kereste
 (demiryolu ayrıca demir) yer. Bina yuvası **kalkınma + 1**'dir. **Kalkınma**
-(1-10) altınla, 12 haftada bir kademe yükselir: vergi +%15, bir yuva, hızlı
+(1-10) altınla, 18 haftada bir kademe yükselir: vergi +%15, bir yuva, hızlı
 büyüme; tavanı teknoloji ve okuryazarlık açar. Construction ekranı HOI4
 kalıbındadır: önce bina seçilir, sonra bütün state'ler o binanın o state'te
 getireceği **gerçek** kazançla sıralanır (`src/game/buildPreview.js`: kademe
