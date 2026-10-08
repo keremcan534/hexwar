@@ -124,6 +124,12 @@ function statCell(icon, label, value, attrs = '', cls = '', ring = null) {
     </span>`;
 }
 
+/** Sekme kısayolları: künyelerin soldan sağa sırası. */
+const TAB_KEYS = {
+  F1: 'construction', F2: 'industry', F3: 'trade', F4: 'budget', F5: 'military',
+  F6: 'population', F7: 'politics', F8: 'technology', F9: 'chronicle',
+};
+
 /** Klavyeyle kamera kaydirma. Sol surukleme kutu secimine ayrildi. */
 const PAN_STEP = 90;
 const PAN_KEYS = {
@@ -660,6 +666,21 @@ export class Hud {
           this.game.emit('select', null);
           this.game.requestRender();
         }
+        return;
+      }
+      // F1-F9: sekme künyeleri soldan sağa. Sekme gizliyse (ekran kapalı)
+      // tuş hiçbir şey yapmaz ama tarayıcıya da gitmez (F5 sayfayı yenilerdi).
+      const tab = TAB_KEYS[event.code];
+      if (tab) {
+        event.preventDefault();
+        const button = document.querySelector(`#tab-bar button[data-screen="${tab}"]`);
+        if (button?.offsetParent) this.screens?.toggle(tab);
+        return;
+      }
+      // Açık ekran tuşu önce alır (her ekranda A = AUTO; Construction'da
+      // rakam, ok, Enter, B, F, S). Kullanmadığı tuş haritaya düşer.
+      if (this.screens?.active && this.screens.handleKey(event)) {
+        event.preventDefault();
         return;
       }
       const pan = PAN_KEYS[event.code];

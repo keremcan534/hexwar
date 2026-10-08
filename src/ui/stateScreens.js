@@ -352,13 +352,14 @@ export function renderConstruction(game, me, state) {
   const rows = buildCandidates(world, me, pick, state);
   const ready = rows.filter((row) => !row.blockers.length);
 
-  const options = [...BUILDING_IDS, 'develop'].map((id) => {
+  const options = BUILD_PICKS.map((id, index) => {
     const info = BUILDINGS[id];
     const name = info?.name ?? 'Develop';
     const effect = info?.effect ?? 'Tax and one more building slot';
     const art = id === 'develop' ? emblemArt('infrastructure', 'md') : buildingArt(id, 'md');
     const can = own.filter((p) => !(id === 'develop' ? developBlockers(world, me, p) : buildBlockers(world, me, p, id)).length).length;
     return `<button class="k-bopt${id === pick ? ' on' : ''}" data-uc-pick="${id}"${id === 'develop' ? '' : tipAttr('building', id)}>
+      <kbd class="k-key">${index + 1}</kbd>
       <span class="k-bopt-art">${art}</span>
       <span class="k-bopt-t"><b>${esc(name)}</b><small>${esc(effect)}</small></span>
       <em class="${can ? '' : 'none'}"${tipAttr({ text: `${can} state${can === 1 ? '' : 's'} can take one now` })}>${can}</em>
@@ -370,6 +371,7 @@ export function renderConstruction(game, me, state) {
   const resIds = [...new Set(unfiltered.flatMap((row) => row.preview.gains.map((g) => g.resource).filter(Boolean)))];
   if (state.resFilter && !resIds.includes(state.resFilter)) state.resFilter = null;
   const filters = resIds.length > 1 ? `<div class="k-wfilter">
+      <kbd class="k-key"${tipAttr({ text: 'F cycles the resource filter' })}>F</kbd>
       <button class="k-wchip${state.resFilter ? '' : ' on'}" data-uc-res="">All</button>
       ${resIds.map((id) => `<button class="k-wchip${state.resFilter === id ? ' on' : ''}" data-uc-res="${id}">${resourceArt(id, 'xs')}${esc(RESOURCES[id].name)}</button>`).join('')}
     </div>` : '';
@@ -377,7 +379,11 @@ export function renderConstruction(game, me, state) {
   const unused = (id) => (me.economy?.resources?.[id]?.need ?? 0) < 0.01;
   const gainHtml = (preview) => {
     if (!preview.gains.length) return `<span class="k-wgain none">${esc(preview.note || 'no gain')}</span>`;
-    const [main, ...rest] = preview.gains;
+    // Süzgeç açıksa süzülen kaynak ana satırdır ("bütün petrol state'leri").
+    const gains = state.resFilter
+      ? [...preview.gains].sort((x, y) => (y.resource === state.resFilter) - (x.resource === state.resFilter))
+      : preview.gains;
+    const [main, ...rest] = gains;
     const idle = main.resource && unused(main.resource);
     return `<span class="k-wgain${idle ? ' idle' : ''}">
       ${main.resource ? resourceArt(main.resource, 'xs') : ''}<b>${esc(main.text)}</b>${main.resource ? '<small>/wk</small>' : ''}
@@ -406,11 +412,12 @@ export function renderConstruction(game, me, state) {
   };
 
   const header = `<div class="k-wrow head"><span></span><span>State</span><span>${pick === 'develop' ? 'Development' : 'Level'}</span><span>Slots</span><span>You get</span><span></span></div>`;
-  const table = rows.length ? rows.map((row) => {
+  state.cursor = Math.max(0, Math.min(state.cursor ?? 0, rows.length - 1));
+  const table = rows.length ? rows.map((row, index) => {
     const econ = row.province.econ;
     const level = pick === 'develop' ? pips(econ.development, DEVELOPMENT_MAX, view.developmentCap)
       : pips(econ.buildings[pick] ?? 0, BUILDINGS[pick].max);
-    return `<div class="k-wrow${row.blockers.length ? ' off' : ''}">
+    return `<div class="k-wrow${row.blockers.length ? ' off' : ''}${index === state.cursor ? ' kb' : ''}" data-uc-row="${index}">
       <span class="k-wrow-res">${resourceArt(depositsOf(row.province)[0]?.id, 'sm')}</span>
       <span class="k-wrow-name"><button class="k-link" data-uc-focus="${row.province.id}"${tipAttr('state', row.province.id)}>${esc(row.name)}</button>
         <small>${formatPopulation(econ.population)}${econ.core === false ? ' · <em>not core</em>' : ''}</small></span>
@@ -428,19 +435,115 @@ export function renderConstruction(game, me, state) {
     const total = take.reduce((sum, row) => sum + row.cost, 0);
     const blockers = !take.length ? ['No state can take one now']
       : (me.gold ?? 0) < total ? [`Needs ≈${total} gold`] : [];
-    return `<button class="k-btn sm" data-uc-bulk="${n}"${blockers.length ? blockedAttr(blockers) : tipAttr({ text: `Queue one in each of the ${take.length} best states:\n${take.map((r) => `${r.name} — ${r.preview.gains[0]?.text ?? ''}`).join('\n')}` })}>Best ${Math.min(n, Math.max(1, take.length))} · ≈${total}</button>`;
+    const key = n === 3 ? 'B' : '⇧B';
+    return `<button class="k-btn sm" data-uc-bulk="${n}"${blockers.length ? blockedAttr(blockers) : tipAttr({ text: `Queue one in each of the ${take.length} best states:\n${take.map((r) => `${r.name} — ${r.preview.gains[0]?.text ?? ''}`).join('\n')}\n\nShortcut: ${key}` })}>Best ${Math.min(n, Math.max(1, take.length))} · ≈${total}<kbd>${key}</kbd></button>`;
   }).join('');
-  const showAll = `<button class="k-btn sm${state.showAll ? ' on' : ''}" data-uc-showall="1"${tipAttr({ text: 'Also list states where it cannot be built (full, maximum level, no coast...), with the reason on the button.' })}>${state.showAll ? 'Hide unavailable' : 'Show all'}</button>`;
+  const showAll = `<button class="k-btn sm${state.showAll ? ' on' : ''}" data-uc-showall="1"${tipAttr({ text: 'Also list states where it cannot be built (full, maximum level, no coast...), with the reason on the button.' })}>${state.showAll ? 'Hide unavailable' : 'Show all'}<kbd>S</kbd></button>`;
   const pickName = pick === 'develop' ? 'Develop' : BUILDINGS[pick].name;
 
   return `${kpis}
     <div class="k-split k-cons">
       ${panel('Build', `<div class="k-bopts">${options}</div>`, { sub: 'pick what to build', cls: 'k-bcat' })}
-      ${panel(`${pickName} — where`, `${filters}<div class="k-wtable">${header}${table}</div>`, {
+      ${panel(`${pickName} — where`, `${filters}<div class="k-wtable">${header}${table}</div>${KEY_LEGEND}`, {
     sub: `best first · ${ready.length} of ${rows.length} ready`, right: `${bulk}${showAll}`, cls: 'k-where',
   })}
     </div>
     ${panel('Under construction', queue, { sub: 'timber shortages slow every site', right: `${active} building · ${view.queue.length - active} waiting` })}`;
+}
+
+/** Katalog sırası = rakam kısayolu (1 Farm … 9 Develop). */
+const BUILD_PICKS = [...BUILDING_IDS, 'develop'];
+
+const KEY_LEGEND = `<div class="k-keys">
+  <span><kbd>1</kbd>–<kbd>9</kbd> building</span><span><kbd>↑</kbd><kbd>↓</kbd> state</span>
+  <span><kbd>Enter</kbd> build</span><span><kbd>B</kbd> best 3</span><span><kbd>⇧B</kbd> best 5</span>
+  <span><kbd>F</kbd> filter</span><span><kbd>S</kbd> show all</span><span><kbd>A</kbd> auto</span>
+</div>`;
+
+function queueAt(game, me, state, province) {
+  return state.build === 'develop'
+    ? queueDevelopment(game, me, province)
+    : queueBuilding(game, me, province, state.build);
+}
+
+/** En iyi N state'e birer tane; ekranın gösterdiği sırayla. */
+function queueBest(game, me, state, count) {
+  const ready = buildCandidates(game.world, me, state.build, state).filter((row) => !row.blockers.length);
+  let done = 0;
+  for (const row of ready.slice(0, count)) {
+    if (!queueAt(game, me, state, row.province)) break;
+    done++;
+  }
+  return done;
+}
+
+/**
+ * Construction klavyesi (screens.handleKey). Fare akışının birebir kopyası:
+ * rakam binayı seçer, oklar satırı, Enter kurar, B en iyi 3 (⇧ ile 5),
+ * F süzgeci döndürür, S kurulamayanları açar. Kırk state'e kırk tık yerine
+ * "4, B, B, B" — mikro yönetim tuşa iner (TASARIM.md ev ödevi testi).
+ */
+export function constructionKey(screens, event) {
+  const { game } = screens;
+  const me = screens.me;
+  const state = screens.uc;
+  if (!me) return false;
+  const after = () => {
+    screens.refresh();
+    game.emit('politics', me.id);
+    screens.el.body.querySelector('.k-wrow.kb')?.scrollIntoView({ block: 'nearest' });
+  };
+  const digit = /^(?:Digit|Numpad)([1-9])$/.exec(event.code);
+  if (digit) {
+    const id = BUILD_PICKS[Number(digit[1]) - 1];
+    if (!id) return false;
+    state.build = id;
+    state.resFilter = null;
+    state.cursor = 0;
+    after();
+    return true;
+  }
+  if (!state.build) return false;
+  const rows = () => buildCandidates(game.world, me, state.build, state);
+  switch (event.code) {
+    case 'ArrowDown':
+    case 'ArrowUp': {
+      const step = event.code === 'ArrowDown' ? 1 : -1;
+      state.cursor = Math.max(0, Math.min(rows().length - 1, (state.cursor ?? 0) + step));
+      after();
+      return true;
+    }
+    case 'Enter':
+    case 'NumpadEnter': {
+      // Odaktaki düğme kendi Enter'ını kullanır (klavyeyle gezen oyuncu).
+      if (event.target?.closest?.('button, a, input, select')) return false;
+      const row = rows()[state.cursor ?? 0];
+      if (row && !row.blockers.length) queueAt(game, me, state, row.province);
+      after();
+      return true;
+    }
+    case 'KeyB':
+      queueBest(game, me, state, event.shiftKey ? 5 : 3);
+      after();
+      return true;
+    case 'KeyF': {
+      const all = buildCandidates(game.world, me, state.build, { ...state, resFilter: null });
+      const ids = [null, ...new Set(all.flatMap((row) => row.preview.gains.map((g) => g.resource).filter(Boolean)))];
+      if (ids.length <= 2) return true;
+      const at = ids.indexOf(state.resFilter ?? null);
+      state.resFilter = ids[(at + (event.shiftKey ? ids.length - 1 : 1)) % ids.length];
+      state.cursor = 0;
+      after();
+      return true;
+    }
+    case 'KeyS':
+      state.showAll = !state.showAll;
+      state.cursor = 0;
+      after();
+      return true;
+    default:
+      return false;
+  }
 }
 
 /**
@@ -681,28 +784,21 @@ export function bindStateScreens(screens) {
   });
   // İnşaat: bina seç → state satırında kur. Ekran kapanmaz; peş peşe
   // kırk state'e basmak kırk tık olmasın diye "en iyi N" de var.
-  const queueAt = (province) => (state.build === 'develop'
-    ? queueDevelopment(game, me, province)
-    : queueBuilding(game, me, province, state.build));
-  on('[data-uc-pick]', (el) => { state.build = el.dataset.ucPick; state.resFilter = null; screens.refresh(); });
-  on('[data-uc-res]', (el) => { state.resFilter = el.dataset.ucRes || null; screens.refresh(); });
-  on('[data-uc-showall]', () => { state.showAll = !state.showAll; screens.refresh(); });
+  on('[data-uc-pick]', (el) => { state.build = el.dataset.ucPick; state.resFilter = null; state.cursor = 0; screens.refresh(); });
+  on('[data-uc-res]', (el) => { state.resFilter = el.dataset.ucRes || null; state.cursor = 0; screens.refresh(); });
+  on('[data-uc-showall]', () => { state.showAll = !state.showAll; state.cursor = 0; screens.refresh(); });
   on('[data-uc-focus]', (el) => {
     const province = game.world.provinces?.[Number(el.dataset.ucFocus)];
     if (province?.center) game.focusTile?.(province.center);
   });
   on('[data-uc-buildat]', (el) => {
     const province = game.world.provinces?.[Number(el.dataset.ucBuildat)];
-    if (province) queueAt(province);
+    const row = el.closest('[data-uc-row]');
+    if (row) state.cursor = Number(row.dataset.ucRow);
+    if (province) queueAt(game, me, state, province);
     screens.refresh();
   });
-  on('[data-uc-bulk]', (el) => {
-    const ready = buildCandidates(game.world, me, state.build, state).filter((row) => !row.blockers.length);
-    for (const row of ready.slice(0, Number(el.dataset.ucBulk))) {
-      if (!queueAt(row.province)) break;
-    }
-    screens.refresh();
-  });
+  on('[data-uc-bulk]', (el) => { queueBest(game, me, state, Number(el.dataset.ucBulk)); screens.refresh(); });
   on('[data-uc-proj-top]', (el) => { moveProject(game, me, Number(el.dataset.ucProjTop), 'top'); screens.refresh(); });
   on('[data-uc-proj-cancel]', (el) => { cancelProject(game, me, Number(el.dataset.ucProjCancel)); screens.refresh(); });
   on('[data-uc-accept]', (el) => { acceptCulture(game, me, Number(el.dataset.ucAccept)); screens.refresh(); });

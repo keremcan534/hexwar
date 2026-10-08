@@ -304,28 +304,28 @@ export function registerTooltips(game) {
    */
   provideTooltip('tab', (screen) => {
     const TAB = {
-      construction: ['Construction', 'Build capacity and the national build queue.'],
-      industry: ['Factories', 'Every plant you own: output, workers, profit and upgrades.'],
-      trade: ['Trade', 'The world market: prices, what you buy and sell, and the tariff.'],
-      budget: ['Budget', 'Taxes, spending, debt and the weekly balance.'],
-      military: ['Military', 'Regiments, training, equipment and mobilization.'],
-      population: ['Population', 'Classes, needs, employment, literacy and unrest.'],
-      politics: ['Politics', 'Parties, laws and the legitimacy of the government.'],
-      technology: ['Technology', 'The research tree, the queue and what each technology does.'],
-      chronicle: ['Chronicle', 'The history of your nation, event by event.'],
+      construction: ['Construction', 'Pick a building, see what it yields in every state, build.', 'F1'],
+      industry: ['Factories', 'Industrial capacity, consumer goods and the production lines.', 'F2'],
+      trade: ['Trade', 'Your resources, the world market and embargoes.', 'F3'],
+      budget: ['Budget', 'Taxes, spending, debt and the weekly balance.', 'F4'],
+      military: ['Military', 'Regiments, training, equipment and commanders.', 'F5'],
+      population: ['Population', 'Peoples, unrest, citizenship and national goals.', 'F6'],
+      politics: ['Politics', 'Government, laws, advisors, agenda and decisions.', 'F7'],
+      technology: ['Technology', 'The research tree, the queue and what each technology does.', 'F8'],
+      chronicle: ['Chronicle', 'The history of your nation, event by event.', 'F9'],
     };
     const row = TAB[screen];
     if (!row) return null;
     const nation = me();
     const areaId = DELEGATION_IDS.find((id) => DELEGATION_AREAS[id].screen === screen);
-    if (!areaId || !nation) return { type: 'simple', title: row[0], text: row[1] };
+    if (!areaId || !nation) return { type: 'simple', title: `${row[0]} · ${row[2]}`, text: row[1] };
     const on = isDelegated(nation, areaId);
     return {
       type: 'simple',
-      title: `${row[0]} · ${on ? 'AUTO' : 'manual'}`,
+      title: `${row[0]} · ${row[2]} · ${on ? 'AUTO' : 'manual'}`,
       text: `${row[1]} ${on
-        ? `The government runs it: ${DELEGATION_AREAS[areaId].desc} Turn AUTO off on the screen to take it back.`
-        : 'You run this portfolio yourself; AUTO on the screen hands it to the government.'}`,
+        ? `The government runs it: ${DELEGATION_AREAS[areaId].desc} Turn AUTO off in the screen header (A) to take it back.`
+        : 'You run this portfolio yourself; AUTO in the screen header (A) hands it to the government.'}`,
     };
   });
 

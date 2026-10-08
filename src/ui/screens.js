@@ -49,7 +49,7 @@ import { motionOn } from './motion.js';
 import { formatPopulation, populationOf, weeklyBalanceOf } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS } from '../game/econ/defs.js';
 import {
-  bindStateScreens, declareEmbargo, embargoBlockers, renderBudget, renderConstruction,
+  bindStateScreens, constructionKey, declareEmbargo, embargoBlockers, renderBudget, renderConstruction,
   renderIndustry, renderPolitics, renderPopulation, renderTrade,
 } from './stateScreens.js';
 
@@ -206,6 +206,7 @@ export class Screens {
       root: document.getElementById('screen'),
       title: document.getElementById('screen-title'),
       res: document.getElementById('screen-res'),
+      auto: document.getElementById('screen-auto'),
       body: document.getElementById('screen-body'),
     };
 
@@ -409,9 +410,9 @@ export class Screens {
     // AUTO seridi TEK YERDEN eklenir: alti ekranin her birine ayri ayri
     // yazmak, birini unutmanin ve iki farkli kalip cikmasinin garantisiydi.
     const autoArea = DELEGATION_IDS.find((id) => DELEGATION_AREAS[id].screen === this.active);
+    if (this.el.auto) this.el.auto.innerHTML = me && autoArea ? this.autoPill(me, autoArea) : '';
     this.el.body.innerHTML = me
-      ? (autoArea ? this.autoStrip(me, autoArea) : '')
-        + (this[`render_${this.active}`]?.(me) ?? '')
+      ? (this[`render_${this.active}`]?.(me) ?? '')
       : '<p class="empty">Your nation has been eliminated.</p>';
     this.bind();
     // Gövde her tazelemede baştan kurulduğu için bayrak kapları da yenidir;
@@ -1285,22 +1286,42 @@ export class Screens {
    * altındaki malı seçilir.
    */
   /**
-   * AUTO seridi. Ekranin ustunde tek satir: alanin adi, anahtar ve hukumetin
-   * son anlamli eylemi. Otomasyon gunlugu DEGILDIR — alan basina tek satir.
+   * AUTO hapı: başlıkta, ekran adının yanında. Alanın tarifi ve hükûmetin son
+   * eylemi bilgi kartındadır; hapın yanında yalnız son eylemin tek satırı
+   * durur. Eskiden gövdenin tepesinde üç satırlık şeritti ve her ekranın asıl
+   * içeriğini aşağı itiyordu. Kısayol: A.
    */
-  autoStrip(me, areaId) {
+  autoPill(me, areaId) {
     const area = DELEGATION_AREAS[areaId];
     if (!area) return '';
     const on = isDelegated(me, areaId);
     const last = on ? lastDelegatedAction(me, areaId) : null;
-    return `<div class="auto-strip${on ? ' on' : ''}">
-      <span class="auto-label">${esc(area.name)}</span>
-      <button class="auto-toggle${on ? ' on' : ''}" data-auto="${areaId}"
-        aria-pressed="${on}">AUTO <b>${on ? 'ON' : 'OFF'}</b></button>
-      <span class="auto-desc">${on ? esc(area.desc) : 'You hold this portfolio yourself.'}</span>
-      ${last ? `<span class="auto-last"><b>${esc(last.text)}</b>
-        <em>${esc(last.reason)}</em></span>` : ''}
-    </div>`;
+    const tip = [
+      `${area.name} · ${on ? 'run by the government' : 'in your hands'}`,
+      on ? area.desc : 'You hold this portfolio yourself. Turn AUTO on to hand it to the government; your own orders always come first.',
+      last ? `\nLast: ${last.text}\n${last.reason}` : '',
+      '\nShortcut: A',
+    ].filter(Boolean).join('\n');
+    return `<button class="auto-pill${on ? ' on' : ''}" data-auto="${areaId}" aria-pressed="${on}"
+        data-tip="text" data-tip-text="${esc(tip)}"><i class="auto-led" aria-hidden="true"></i>AUTO <b>${on ? 'ON' : 'OFF'}</b><kbd>A</kbd></button>
+      ${last ? `<span class="auto-last">${esc(last.text)}</span>` : ''}`;
+  }
+
+  /**
+   * Açık ekranın klavyesi. HUD her tuşu önce buraya sorar; true dönerse tuş
+   * tüketilmiştir (harita kaymaz). Space ve +/− saatindir, buraya gelmez.
+   */
+  handleKey(event) {
+    const me = this.me;
+    if (!me || !this.active) return false;
+    if (event.code === 'KeyA' && !event.shiftKey) {
+      const areaId = DELEGATION_IDS.find((id) => DELEGATION_AREAS[id].screen === this.active);
+      if (!areaId) return false;
+      this.el.auto?.querySelector('[data-auto]')?.click();
+      return true;
+    }
+    if (this.active === 'construction') return constructionKey(this, event);
+    return false;
   }
 
   render_trade(me) {
@@ -1322,8 +1343,8 @@ export class Screens {
       };
     }
 
-    // AUTO anahtarlari her ekranda ayni kalipla baglanir.
-    for (const btn of this.el.body.querySelectorAll('[data-auto]')) {
+    // AUTO anahtari baslikta (autoPill); her ekranda ayni kalip.
+    for (const btn of this.el.root.querySelectorAll('[data-auto]')) {
       btn.onclick = () => {
         const areaId = btn.dataset.auto;
         const next = !isDelegated(me, areaId);

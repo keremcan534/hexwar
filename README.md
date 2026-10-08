@@ -289,6 +289,15 @@ dünyanın aldığı oranda değerlidir. Satırda kur, ya da "en iyi N"; AUTO
 kıtlığa göre kurar. Gıda her state'te nüfus × verimden doğar; çiftlik o
 state'in gıdasını %25 artırır, yani kazancı nüfusa ve toprağa bağlıdır.
 
+### Klavye
+
+Saat: Space duraklat/sürdür, + / − hız. Sekmeler soldan sağa F1-F9.
+Esc açık paneli/ekranı kapatır. Açık ekran tuşu önce alır, kullanmadığı tuş
+haritaya düşer (WASD/oklar kamera). Her ekranda **A** AUTO'yu çevirir (hap
+başlıkta durur). Construction: 1-9 bina, ↑↓ state, Enter kur, B en iyi 3,
+⇧B en iyi 5, F kaynak süzgeci, S kurulamayanları göster. Ekranda her
+kısayolun rozeti vardır.
+
 ### Ulusal hareketler
 
 Kabul edilmeyen her halk, çoğunlukta olduğu kümelerde bir **ulusal hareket**

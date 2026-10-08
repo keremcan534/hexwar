@@ -13859,3 +13859,102 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
 .k-wgain.idle b { color: var(--text-dim); }
 .k-wgain.none { color: var(--text-faint); font-size: 12px; font-style: italic; }
 .k-wrow .k-btn { min-height: 34px; }
+
+/* ==========================================================================
+   §47 AUTO HAPI ve KISAYOL ROZETLERİ (Kerem 2026-10-08: "auto kısmı çok yer
+   kaplıyor ... klavye kısayollarını unutma")
+   ========================================================================== */
+.screen-auto {
+  display: flex;
+  align-items: center;
+  align-self: center;
+  gap: 10px;
+  min-width: 0;
+  margin-left: auto;
+  margin-right: 10px;
+}
+.screen-auto:empty { display: none; }
+.auto-pill {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 6px 0 10px;
+  border: 0;
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(10, 14, 16, 0.9), rgba(4, 6, 7, 0.9));
+  box-shadow: 0 0 0 1px #050708, 0 0 0 2px rgba(122, 100, 54, 0.6), inset 0 1px 3px rgba(0, 0, 0, 0.8);
+  color: var(--text-dim);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  cursor: pointer;
+}
+.auto-pill b { color: var(--text-mute); letter-spacing: 0.08em; }
+.auto-pill:hover { box-shadow: 0 0 0 1px #050708, 0 0 0 2px #b39457, inset 0 1px 3px rgba(0, 0, 0, 0.8); color: var(--text); }
+.auto-led {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #3a3a34;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.8);
+}
+.auto-pill.on { color: var(--gold-bright); }
+.auto-pill.on b { color: #b9d68a; }
+.auto-pill.on .auto-led { background: #9cc067; box-shadow: 0 0 6px rgba(156, 192, 103, 0.8), inset 0 -1px 1px rgba(0, 0, 0, 0.4); }
+.auto-last {
+  overflow: hidden;
+  max-width: 360px;
+  color: var(--text-mute);
+  font-size: 11.5px;
+  font-style: italic;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Tuş rozeti: ekranın her yerinde aynı küçük tuş başlığı. */
+.screen kbd,
+.k-key {
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: linear-gradient(180deg, #2a2e2c, #151918);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(174, 139, 74, 0.35);
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+}
+.k-btn kbd, .auto-pill kbd { margin-left: 6px; }
+
+/* Katalog: rakam rozeti en solda. */
+.k-bopt { grid-template-columns: 16px 44px minmax(0, 1fr) auto; }
+.k-bopt.on .k-key { background: linear-gradient(180deg, #8a6d36, #5a4520); color: #f6e2a8; }
+.k-wfilter .k-key { align-self: center; margin-right: 2px; }
+
+/* Klavye imleci: Enter bu satırı kurar. */
+.k-wrow.kb { background-color: rgba(214, 186, 120, 0.1); box-shadow: inset 3px 0 0 var(--gold-bright), inset 0 0 0 1px rgba(214, 186, 120, 0.25); }
+.k-wrow.kb .k-btn:not([disabled]) { border-color: var(--gold); background-color: rgba(214, 186, 120, 0.16); }
+
+/* Kısayol satırı: tablonun altında tek satır, soluk. */
+.k-keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 14px;
+  margin-top: 8px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(174, 139, 74, 0.12);
+  color: var(--text-faint);
+  font-size: 11px;
+}
+.k-keys span { display: inline-flex; align-items: center; gap: 3px; }
+/* Başlık düğmelerinde tuş rozeti aynı satırda. */
+.k-head-r .k-btn { flex-direction: row; align-items: center; gap: 0; }
