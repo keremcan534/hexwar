@@ -32,7 +32,7 @@ import { Screens } from './screens.js';
 import { showEndScreen } from './endScreen.js';
 import { formatPopulation, weeklyBalanceOf } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS, BUILDINGS, BUILDING_IDS, DEVELOPMENT_MAX } from '../game/econ/defs.js';
-import { buildingArt, emblemArt, equipmentArt, lawArt, ledgerArt, resourceArt, traitArt } from './icons/art.js';
+import { buildingArt, emblemArt, resourceArt, traitArt } from './icons/art.js';
 import { glyph } from './icons/glyphs.js';
 import { meter as kitMeter, pips as kitPips, tipAttr } from './kit.js';
 import { depositsOf, fertilityOf } from '../game/econ/deposits.js';
@@ -981,6 +981,9 @@ export class Hud {
       const dash = ring?.getAttribute('stroke-dasharray');
       const old = prev.get(key);
       prev.set(key, { value, dash });
+      // Yeniden doğan hücrenin etiketi, havadaki fark sönene dek gizli kalır;
+      // yoksa 8x hızda yeni hafta etiketi farkın altına geri getiriyordu.
+      if (this.topDeltas?.has(key)) cell.classList.add('tb-hold');
       if (!old) continue;
       if (ring && old.dash && old.dash !== dash) {
         ring.style.transition = 'none';
@@ -1022,7 +1025,9 @@ export class Hud {
     tag.style.top = `${Math.round(anchor.top - host.top + (slot ? anchor.height / 2 : 0))}px`;
     tag.addEventListener('animationend', () => {
       tag.remove();
-      if (live.get(key) === tag) live.delete(key);
+      if (live.get(key) !== tag) return;
+      live.delete(key);
+      bar.querySelector(`[data-k="${key}"]`)?.classList.remove('tb-hold');
     }, { once: true });
     live.set(key, tag);
     bar.append(tag);
@@ -1100,11 +1105,11 @@ export class Hud {
       const ic = me.economy?.ic ?? { total: 0, civil: 0, military: 0 };
       const people = me.economy?.population ?? 0;
       const recruits = nationManpower(world, me.id);
-      this.el.macroStats.innerHTML = `<span class="tb-minis">${miniCell(lawArt('citizenship', 'xs'), 'People',
+      this.el.macroStats.innerHTML = `<span class="tb-minis">${miniCell(emblemArt('people', 'xs'), 'People',
         formatPopulation(people), `data-macro="population" ${track('pop', people, people * 0.01)}`, 'macro-live')
-        + miniCell(equipmentArt('rifles', 'xs'), 'Army', formatPopulation(army), `data-tip="army" ${track('army', army, army * 0.03 + 1)}`)
-        + miniCell(ledgerArt('army', 'xs'), 'Recruits', formatPopulation(recruits), `data-tip="manpower" ${track('mp', recruits, recruits * 0.05 + 1)}`)
-        + miniCell(buildingArt('factory', 'xs'), 'IC', `${ic.total.toFixed(1)}<em class="stat-flow">${ic.military.toFixed(1)}${glyph('swords', 'inline')}</em>`,
+        + miniCell(emblemArt('soldiers', 'xs'), 'Army', formatPopulation(army), `data-tip="army" ${track('army', army, army * 0.03 + 1)}`)
+        + miniCell(emblemArt('recruits', 'xs'), 'Recruits', formatPopulation(recruits), `data-tip="manpower" ${track('mp', recruits, recruits * 0.05 + 1)}`)
+        + miniCell(emblemArt('factory', 'xs'), 'IC', `${ic.total.toFixed(1)}<em class="stat-flow">${ic.military.toFixed(1)}${glyph('swords', 'inline')}</em>`,
           `data-macro="ic" data-tip="ic" ${track('ic', ic.total, 0.2)}`, 'macro-live')}</span>`
         + resourceChips(me);
       this.animateTopChanges(this.el.macroStats);
@@ -1929,14 +1934,14 @@ function resourcesHtml(nation) {
   // Yeşil "her şey yolunda" çubuğun en bağıran öğesiydi (Kerem, 2026-10-08).
   const tone = (v, warn, bad) => (v < bad ? 'neg' : v < warn ? 'warn' : 'brass');
   const gold = nation.gold ?? 0;
-  const cells = statCell(ledgerArt('tax', 'sm'), 'Gold', `${treasuryLabel(gold)}${flow}`,
+  const cells = statCell(emblemArt('gold'), 'Gold', `${treasuryLabel(gold)}${flow}`,
     `data-tip="treasury" ${track('gold', gold, Math.max(25, Math.abs(gold) * 0.08))}`, 'tb-hero')
     + statCell(emblemArt('power'), 'Power', `${Math.round(nation.power ?? 0)}<em class="stat-flow res-pos">+${power.total.toFixed(1)}</em>`,
       `data-tip="power" ${track('power', nation.power ?? 0, 25)}`, '', { share: (nation.power ?? 0) / 500, tone: 'gold' })
     + statCell(emblemArt('stability'), 'Stability', `<span class="${stabilityClass}">${stability}%</span>`,
       `role="button" data-why="stability" data-tip="stability" ${track('stab', stability, 1)}`, 'stat-why',
       { share: stability / 100, tone: tone(stability, 45, 30) })
-    + statCell(lawArt('conscription', 'sm'), 'War Sup.', `${warSupport}%`, `data-tip="warsupport" ${track('ws', warSupport, 1)}`, '',
+    + statCell(emblemArt('war_support'), 'War Sup.', `${warSupport}%`, `data-tip="warsupport" ${track('ws', warSupport, 1)}`, '',
       { share: warSupport / 100, tone: 'war' })
     + statCell(emblemArt('infamy'), 'Infamy', `<span class="${infamyClass}">${infamy.toFixed(1)}</span>`,
       `data-tip="infamy" ${track('inf', infamy, 0.5, -1)}`, '',

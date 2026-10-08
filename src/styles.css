@@ -13731,3 +13731,10 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
 }
 .time-btn.time-pause { position: relative; }
 .turn-control.is-paused .time-pause .ico-play { color: #f3c77a; filter: drop-shadow(0 0 4px rgba(243, 199, 122, 0.6)); }
+/* İkincil göstergelerin amblemleri çerçevesiz: madalyondan biraz büyük durmalı. */
+.tb-mini-ico { width: 24px; height: 24px; }
+.tb-mini-ico .art-emblem { width: 24px; height: 24px; }
+/* Hazine yuvası pirinç kenarlı kalır; amblem içinde biraz daha iri. */
+.tb-hero .tb-ico .art-emblem { width: 36px; height: 36px; }
+.tb-hold .tb-gv small,
+.tb-mini.tb-hold > small { opacity: 0; }
