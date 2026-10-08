@@ -40,7 +40,7 @@ import {
   dequeueResearch, effectiveTechCost, queueResearch, researchNow, researchPointsOf,
 } from '../game/technology.js';
 import {
-  TECH_ZOOMS, researchRateLines, techInspector, technologyScreen,
+  TECH_ZOOMS, researchRateLines, techGrid, techInspector, technologyScreen,
 } from './technologyScreen.js';
 import { depositsOf } from '../game/econ/deposits.js';
 import { resourceArt } from './icons/art.js';
@@ -1137,7 +1137,9 @@ export class Screens {
     const turn = world.turn ?? 1;
     const year = 1836 + Math.floor((turn - 1) * 7 / 365);
     const standing = techStanding(world, me);
-    return technologyScreen(me, {
+    // Görünüm saklanır: inceleme paneli fare/klavyeyle tek başına yenilenirken
+    // aynı fiyat ve hız dökümünü okur.
+    return technologyScreen(me, this.techView = {
       year,
       yearExact: 1836 + ((turn - 1) * 7) / 365,
       rate: researchPointsOf(me),
@@ -1162,7 +1164,7 @@ export class Screens {
     this.tech.inspect = techId;
     const panel = this.el.body.querySelector('[data-tech-inspector]');
     if (panel) {
-      panel.innerHTML = techInspector(me, techId);
+      panel.innerHTML = techInspector(me, techId, this.techView);
       panel.classList.remove('is-swapping');
       void panel.offsetWidth;
       panel.classList.add('is-swapping');
@@ -1343,7 +1345,64 @@ export class Screens {
       return true;
     }
     if (this.active === 'construction') return constructionKey(this, event);
+    if (this.active === 'technology') return this.techKey(event);
     return false;
+  }
+
+  /**
+   * Teknoloji klavyesi: oklar ağaçta gezer (aşağı/yukarı en yakın yıla atlar),
+   * Enter araştırır, Q kuyruğa ekler ya da çıkarır, [ ] yakınlaştırır.
+   */
+  techKey(event) {
+    const me = this.me;
+    const rows = techGrid();
+    if (!rows.length) return false;
+    const current = this.tech.inspect ?? me.research?.current ?? me.research?.queue?.[0] ?? rows[0][0].id;
+    let r = rows.findIndex((row) => row.some((t) => t.id === current));
+    if (r < 0) r = 0;
+    const c = Math.max(0, rows[r].findIndex((t) => t.id === current));
+    const go = (id) => {
+      this.inspectTech(me, id);
+      this.el.body.querySelector(`.tech-node[data-tech="${CSS.escape(id)}"]`)
+        ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+    };
+    switch (event.code) {
+      case 'ArrowRight':
+        if (c < rows[r].length - 1) go(rows[r][c + 1].id);
+        return true;
+      case 'ArrowLeft':
+        if (c > 0) go(rows[r][c - 1].id);
+        return true;
+      case 'ArrowDown':
+      case 'ArrowUp': {
+        const next = r + (event.code === 'ArrowDown' ? 1 : -1);
+        if (next < 0 || next >= rows.length) return true;
+        const year = rows[r][c].year;
+        const best = rows[next].reduce((a, b) => (Math.abs(b.year - year) < Math.abs(a.year - year) ? b : a));
+        go(best.id);
+        return true;
+      }
+      case 'Enter':
+      case 'NumpadEnter':
+        // Odaktaki düğme kendi Enter'ını kullanır.
+        if (event.target?.closest?.('button, input, select')) return false;
+        researchNow(me, current);
+        this.refresh();
+        return true;
+      case 'KeyQ':
+        if ((me.research?.queue ?? []).includes(current)) dequeueResearch(me, current);
+        else queueResearch(me, current);
+        this.refresh();
+        return true;
+      case 'BracketLeft':
+        this.zoomTech(-1);
+        return true;
+      case 'BracketRight':
+        this.zoomTech(1);
+        return true;
+      default:
+        return false;
+    }
   }
 
   render_trade(me) {

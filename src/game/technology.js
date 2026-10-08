@@ -183,15 +183,28 @@ export function availableTechs(nation) {
  */
 export const TECH_BASE_COST = 110;
 const TECH_YEAR_SCALE = 0.02;
-export function techCost(techId, year) {
+/**
+ * Fiyatın çarpanları, ekranın "neden bu kadar" dökümü için. techCost AYNI
+ * çarpanları aynı sırayla çarpar: döküm ile motor ayrışamaz.
+ */
+export function techCostFactors(techId, year) {
   const entry = INDEX.get(techId);
-  if (!entry) return Infinity;
-  const levelScale = 1 + entry.level * 0.6;
+  if (!entry) return null;
   const techYear = entry.tech.year ?? 1836;
-  const yearScale = 1 + Math.max(0, techYear - 1836) * TECH_YEAR_SCALE;
-  const early = Math.max(0, techYear - year);
-  const earlyPenalty = clamp(1 + early * 0.06, 1, 2.5);
-  return Math.round(TECH_BASE_COST * levelScale * yearScale * earlyPenalty);
+  const earlyYears = Math.max(0, techYear - year);
+  return {
+    base: TECH_BASE_COST,
+    level: 1 + entry.level * 0.6,
+    yearScale: 1 + Math.max(0, techYear - 1836) * TECH_YEAR_SCALE,
+    earlyYears,
+    early: clamp(1 + earlyYears * 0.06, 1, 2.5),
+  };
+}
+
+export function techCost(techId, year) {
+  const f = techCostFactors(techId, year);
+  if (!f) return Infinity;
+  return Math.round(f.base * f.level * f.yearScale * f.early);
 }
 
 /**
