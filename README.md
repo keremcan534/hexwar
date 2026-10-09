@@ -167,6 +167,17 @@ vatandaşlık yasası ve uyumla çarpılır. **Okuryazarlık** ulusaldır; eğit
 yasası ve üniversiteyle bir nesilde hedefe yaklaşır, araştırmayı ve kalkınma
 tavanını büyütür.
 
+**Seferberliğin bedeli:** silah altındaki çalışmaz — state'in vergisi, gıdası,
+madeni ve el tezgâhı asker/nüfus oranında düşer (state kartında "Under arms").
+
+**State focus** (Victoria 2'nin ulusal odağı): kendi state'ine tıkla, kartta beş
+madalyon — Production (çıktı +%25), Taxation (vergi +%30), Recruitment (insan
+gücü +%30), Integration (uyum iki kat hızlı, tavan +15, huzursuzluk −1),
+Assimilation (yılda nüfusun %1'i, tam okuryazarlıkta %2'si ana kültüre geçer;
+ana yurtta da işler, huzursuzlukla yavaşlar). Yuva: 1 + okuryazarlığın her
+%25'i. Tooltip getiriyi oyunun formülüyle söyler (`src/game/stateFocus.js`);
+Government AUTO boş yuvayı doldurur, senin koyduğuna dokunmaz.
+
 ### Ordu yığınları ve province muharebeleri
 
 Haritadaki tümenler birkaç alaydan oluşur. Aynı province'te dört dost tümen yan
@@ -265,6 +276,12 @@ boştaki tümenler istenirse haftalık olarak en az yüklü subaya dağıtılır
 
 Yapay zekâ aynı kuyruğu kullanır ve eğitimdeki alayları ordu hedefine sayar;
 yoksa sipariş sahaya çıkana kadar her hafta yeniden sipariş verirdi.
+
+**Who is drafted** (orta sütunun altı): halk başına kutu. Alay ve takviye yalnız
+işaretli halklardan asker çeker; ölen kendi halkının payından düşer ve şehit
+sütununa yazılır. Kendi halkını muaf tutmak mümkündür ama havuz küçülür
+(azınlık vatandaşlık yasasının izin verdiği kadar gelir) ve kabul edilmiş bir
+halk muafken kuraya kalan azınlıklar huzursuzlanır (`src/game/levy.js`).
 
 Alay kurmak province nüfusundan asker alır: piyade 30.000, süvari 20.000, topçu
 15.000 kişi; havuz askerlik yasasının oranıdır. Asker çıkış province'i ve komşularından toplanır, dağıtımda hayatta kalanlar

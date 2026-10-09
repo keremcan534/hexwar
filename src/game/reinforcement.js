@@ -9,7 +9,8 @@ import { mod } from './modifiers.js';
 import { generalOfArmy, generalRecoveryBonus } from './command.js';
 import { nationManpower, provinceManpower, trainingQueue } from './recruitment.js';
 import { UNIT_TYPES, refreshArmy, resolveTypeId } from './units.js';
-import { claimSoldiers, occupiedShareOf } from './provinces.js';
+import { occupiedShareOf } from './provinces.js';
+import { mergeLevy, takeLevy } from './levy.js';
 
 export const BASE_REINFORCEMENT_RATE = 24;
 
@@ -38,7 +39,7 @@ function menPerStrength(regiment) {
     / Math.max(1, regiment.maxStrength);
 }
 
-function appendDraw(regiment, tile, men) {
+function appendDraw(regiment, tile, men, by) {
   if (!regiment.draws) {
     const representedMen = (regiment.manpower ?? 0)
       * ((regiment.strength ?? 0) / Math.max(1, regiment.maxStrength));
@@ -47,8 +48,10 @@ function appendDraw(regiment, tile, men) {
       : [];
   }
   const existing = regiment.draws.find((draw) => draw.q === tile.q && draw.r === tile.r);
-  if (existing) existing.men += men;
-  else regiment.draws.push({ q: tile.q, r: tile.r, men });
+  if (existing) {
+    existing.men += men;
+    existing.by = mergeLevy(existing.by ?? {}, by);
+  } else regiment.draws.push({ q: tile.q, r: tile.r, men, by });
 }
 
 /**
@@ -86,8 +89,8 @@ function drawManpower(world, nationId, regiment, requested) {
     if (remaining <= 0) break;
     const take = Math.min(remaining, provinceManpower(world, tile));
     if (take <= 0) continue;
-    claimSoldiers(tile.province, take);
-    appendDraw(regiment, tile, take);
+    const cluster = world.provinces[tile.provinceId];
+    appendDraw(regiment, tile, take, takeLevy(world, cluster, world.nations[nationId], take));
     drawn += take;
     remaining -= take;
   }

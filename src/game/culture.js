@@ -53,6 +53,7 @@ import { addInfamy } from './infamy.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import { captureConstructionAt } from './construction.js';
 import { setProvinceOwner } from './provinces.js';
+import { assimilationFocusWeekly, focusBonus } from './focus.js';
 
 export const CULTURE = {
   /** Huzursuzluk olcegi 0-10 (nufus ekranindaki militanlikla ayni dil). */
@@ -96,6 +97,14 @@ export const CULTURE = {
   /** Kabulun bedeli: ana kulturlu kumelerde bu kadar hafta suren tepki. */
   BACKLASH_WEEKS: 104,
   BACKLASH_UNREST: 2.5,
+
+  /**
+   * EŞİTSİZ KURA (levy.js): kabul edilmiş bir halk kuradan muafken askere
+   * alınan kabul edilmemiş halkın kümedeki payı başına huzursuzluk. Tamamen
+   * yabancı kümede +2: kendi başına isyan eşiğine (7) taşımaz, ama savaş ve
+   * taze fetihle birleşince taşır.
+   */
+  LEVY_GRIEVANCE: 2,
 };
 
 /**
@@ -166,6 +175,23 @@ export function foreignShareOf(province, nation) {
   return 1 - acceptedShareOf(province, nation);
 }
 
+/**
+ * Eşitsiz kuranın kümedeki payı (bkz. levy.js unequalLevy). levy.js'i
+ * içe aktarmaz: o bu dosyayı okur, döngü olmasın.
+ */
+function levyGrievance(province, nation) {
+  const excluded = nation?.levyExcluded;
+  if (!excluded?.length || !excluded.some((id) => isAccepted(nation, id))) return 0;
+  const rows = province?.cultures?.length
+    ? province.cultures
+    : (province?.culture >= 0 ? [{ id: province.culture, share: 1 }] : []);
+  let share = 0;
+  for (const row of rows) {
+    if (!isAccepted(nation, row.id) && !excluded.includes(row.id)) share += row.share;
+  }
+  return share * CULTURE.LEVY_GRIEVANCE;
+}
+
 /** Kabulun ardindan gelen milliyetci tepki hala suruyor mu? */
 function backlashOf(nation, turn) {
   const until = nation?.cultureBacklashUntil ?? 0;
@@ -210,17 +236,20 @@ export function unrestBreakdown(world, province, nation, { occupied = 0, turn = 
     ? Math.max(0, Math.min(1, 1 - (nation.warSupport ?? 0.5))) : 0;
   const occupation = Math.max(0, Math.min(1, occupied)) * 1.5;
   const backlash = backlashOf(nation, turn) * (1 - foreign);
+  const levy = levyGrievance(province, nation);
   // TÜKETİM MALI: dolu raf huzursuzluğu satın alır, boş raf besler (eski
   // refah harcamasının yerini aldı). Azınlık hakları da yatıştırır.
   const consumer = nation.economy?.consumer?.ratio ?? 1;
   const welfare = Math.max(-1.5, Math.min(1, (consumer - 1) * 4));
   const rights = ((lawOption(nation, 'citizenship').ceiling ?? 1) - 0.7) / 0.3 * foreign;
+  // Entegrasyon odağı (focus.js) yatıştırır.
+  const focus = focusBonus(econ, 'unrest');
   const policy = Math.max(0.2, 1 + mod(nation, 'unrest'));
   const target = Math.max(0, Math.min(
     CULTURE.MAX_UNREST,
-    (culture + conquest + war + occupation + backlash - welfare - rights) * policy,
+    (culture + conquest + war + occupation + backlash + levy - welfare - rights - focus) * policy,
   ));
-  return { target, culture, conquest, war, occupation, backlash, welfare, rights, policy, foreign, era };
+  return { target, culture, conquest, war, occupation, backlash, levy, welfare, rights, focus, policy, foreign, era };
 }
 
 /**
@@ -285,6 +314,40 @@ function assimilate(world, province, nation, { unrest, turn }) {
 }
 
 /**
+ * ASİMİLASYON ODAĞI (focus.js): yılda nüfusun %1'i (tam okuryazarlıkta %2)
+ * ana kültüre geçer, kabul edilmeyen halklardan payları oranında. Kendiliğinden
+ * asimilasyonun aksine ANA YURT KİLİDİNİ AŞAR: kilit dünyanın kendi kendine
+ * homojenleşmesini durdurur, devletin bilinçli politikasını değil. Yavaş ve
+ * yuva sınırlı olduğu için dünyayı eritmez.
+ * @returns {boolean} çoğunluk değişti mi
+ */
+function assimilateFocus(world, province, nation, unrest) {
+  if (province.econ?.focus !== 'assimilate') return false;
+  const primary = nation.culture;
+  const rows = province.cultures;
+  if (!rows?.length || primary < 0) return false;
+  let foreign = 0;
+  for (const row of rows) if (!isAccepted(nation, row.id)) foreign += row.share;
+  const move = assimilationFocusWeekly(nation, unrest, foreign);
+  if (!(move > 0)) return false;
+  const keep = 1 - move / foreign;
+  const next = rows.map((row) => ({ id: row.id, share: isAccepted(nation, row.id) ? row.share : row.share * keep }));
+  const host = next.find((row) => row.id === primary);
+  if (host) host.share += move;
+  else next.push({ id: primary, share: move });
+  const total = next.reduce((sum, row) => sum + row.share, 0);
+  for (const row of next) row.share /= total;
+  next.sort((a, b) => b.share - a.share || a.id - b.id);
+  const before = province.culture;
+  province.cultures = next.filter((row) => row.share > 1e-6);
+  province.culture = province.cultures[0]?.id ?? before;
+  province.econ.assimilated = (province.econ.assimilated ?? 0) + move;
+  if (province.culture === before) return false;
+  for (const idx of province.tileIdx ?? []) world.tiles[idx].culture = province.culture;
+  return true;
+}
+
+/**
  * Bir kumenin haftalik kultur isleyisi. `runProvinces` icinden, sahiplik ve
  * isgal payi zaten hesaplanmisken cagrilir.
  *
@@ -324,9 +387,12 @@ export function runProvinceCulture(world, province, nation, { occupied, turn }) 
     ? (econ.revoltWeeks ?? 0) + 1
     : Math.max(0, (econ.revoltWeeks ?? 0) - 2);
 
-  const recolored = occupied <= 0
-    ? assimilate(world, province, nation, { unrest: econ.unrest, turn })
-    : false;
+  let recolored = false;
+  if (occupied <= 0) {
+    const drift = assimilate(world, province, nation, { unrest: econ.unrest, turn });
+    const focused = assimilateFocus(world, province, nation, econ.unrest);
+    recolored = drift || focused;
+  }
   return { recolored, revolt: econ.revoltWeeks >= CULTURE.REVOLT_WEEKS };
 }
 

@@ -29,6 +29,7 @@ import {
   unassignGeneral,
 } from '../game/command.js';
 import { militaryScreen } from './militaryScreen.js';
+import { levyView, setLevied } from '../game/levy.js';
 import { governmentType, rulingParty } from '../game/politics.js';
 import { TIER, announce, chronicleYear, ensureChronicle, memoryOf } from '../game/chronicle.js';
 import { allianceAppeal, alliesOf, breakAlliance, formAlliance, isAllied } from '../game/alliances.js';
@@ -1008,6 +1009,7 @@ export class Screens {
       stats: militaryStats(world, me),
       composition: armyComposition(world, me.id),
       logistics: equipmentLogistics(world, me),
+      levy: levyView(world, me),
       // Lojistik ekrani kaldirildi (Military'nin alt bandi ayni stok tablosunu
       // zaten gosteriyordu). Ekranin tek ozgun bilgisi buydu: denge tablosu
       // STOKU anlatir, bu satir AKISI — stok dusuyorsa sebebi budur.
@@ -1050,6 +1052,12 @@ export class Screens {
     for (const btn of body.querySelectorAll('[data-military-category]')) {
       btn.onclick = () => {
         this.military.category = btn.dataset.militaryCategory;
+        this.refresh();
+      };
+    }
+    for (const box of body.querySelectorAll('[data-military-levy]')) {
+      box.onchange = () => {
+        setLevied(me, Number(box.dataset.militaryLevy), box.checked);
         this.refresh();
       };
     }

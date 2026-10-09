@@ -161,11 +161,12 @@ export function computeIC(world, nation) {
  * Tüketim malı. İhtiyaç nüfusla ve ÇAĞLA büyür; el tezgâhı nüfus ve
  * kalkınmayla. Fabrikasız ülke 1836'da idare eder, 1880'de etmez.
  */
-export function consumerGoods(nation, { population, development, civil, turn }) {
+export function consumerGoods(nation, { population, workforce = population, development, civil, turn }) {
   const units = Math.max(0, population) / 100000;
   const era = 1 + CONSUMER_ERA_GROWTH * clamp((turn ?? 0) / ERA_TURNS, 0, 1);
   const need = units * CONSUMER_NEED * era * Math.max(0.3, 1 + mod(nation, 'consumerNeed'));
-  const cottage = units * COTTAGE_OUTPUT * (1 + COTTAGE_PER_DEVELOPMENT * development);
+  // Tezgâhı silah altındaki değil evdeki dokur; ihtiyaç ise bütün nüfusundur.
+  const cottage = Math.max(0, workforce) / 100000 * COTTAGE_OUTPUT * (1 + COTTAGE_PER_DEVELOPMENT * development);
   const supply = cottage + civil;
   return { need, cottage, civil, supply, ratio: need > 0 ? supply / need : 1, era };
 }

@@ -28,11 +28,13 @@ const CAUSES = [
   ['war', 'War weariness'],
   ['occupation', 'Occupation'],
   ['backlash', 'Backlash'],
+  ['levy', 'Unequal levy'],
 ];
 /** Eksi yönde yatıştıranlar. */
 const RELIEFS = [
   ['welfare', 'Consumer goods'],
   ['rights', 'Minority rights'],
+  ['focus', 'Integration focus'],
 ];
 
 function atPeace(world, nation) {

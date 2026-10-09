@@ -35,6 +35,7 @@ import { unificationAI } from './unification.js';
 import { decisionsAI } from './decisions.js';
 import { delegationActive, noteDelegated } from './delegation.js';
 import { nodeNeighbors } from '../world/provinceGraph.js';
+import { autoFocus } from './stateFocus.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
 // 1.4 -> 1.6 -> 1.8 (2026-09-04: kusatma ve bos cepheye yuruyus savaslari
@@ -594,6 +595,8 @@ export function runNationAI(game, nation, rng) {
   manageBrokenProvinces(game, nation);
   // Ulusal hareketler: taviz, sikiyonetim, vassal, katliam — oyuncuyla ayni kapi.
   manageMovements(game, nation);
+  // State odakları: çeyrekte bir, boş yuvaya (stateFocus.js autoFocus).
+  if (((game.turns?.turn ?? world.turn ?? 0) + nation.id) % 13 === 0) autoFocus(world, nation);
   austerityAI(game, nation);
   spend(game, nation);
   politicsAI(game, nation);
@@ -654,6 +657,11 @@ export function runDelegatedAI(game, nation, rng) {
     if (manageAcceptance(game, nation)) {
       noteDelegated(game, nation, 'reforms', 'A minority was made an accepted culture.',
         'Their provinces were close to revolt and they are numerous enough to matter.');
+    }
+    // Boş odak yuvası da hükûmetin işidir; oyuncunun koyduğu odak yerinde kalır.
+    if ((turn + nation.id) % 13 === 0 && autoFocus(game.world, nation)) {
+      noteDelegated(game, nation, 'reforms', 'A state focus was set.',
+        'A focus slot was empty.');
     }
     // Kirik kume bir hukumet sorunudur: devredilmisse hukumet cozer.
     const broken = manageBrokenProvinces(game, nation);

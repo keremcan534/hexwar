@@ -126,6 +126,9 @@ const NATION_FIELDS = [
   // geçici değiştiriciler, kalıcı fikirler, gündem ve bekleyen olay kartları.
   'power', 'stability', 'warSupport', 'prestige', 'bankruptUntil', 'embargoes', 'claims',
   'goal', 'startProvinces', 'timed', 'ideas', 'agenda', 'cards', 'fullName', 'formerName',
+  // Kura (levy.js): kuradan çıkarılan halklar ve halk halk şehit defteri.
+  // Türetilemez: yazılmazsa yüklenen oyun kutuları ve savaşın hafızasını kaybeder.
+  'levyExcluded', 'fallen',
 ];
 
 export function serialize(game) {
@@ -157,7 +160,9 @@ export function serialize(game) {
   const provinces = (world.provinces ?? []).map((province) => (
     province.econ ? [
       province.id,
-      { ...province.econ },
+      // `levied` (halk halk silah altındaki) iç nesnedir: sığ kopya canlı
+      // dünyayla paylaşılır, kayıt sonradan değişirdi.
+      { ...province.econ, ...(province.econ.levied ? { levied: { ...province.econ.levied } } : {}) },
       // Pay YUVARLANMAZ. 5 haneye kirpmak denendi ve save-audit yakaladi:
       // paylar toplami 1'den kayiyor, asimilasyon baska bir hafta cogunlugu
       // ceviriyor ve yuklenen oyun kesintisiz kosudan dallaniyordu.

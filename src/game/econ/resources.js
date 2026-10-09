@@ -14,6 +14,7 @@ import {
 } from './defs.js';
 import { depositsOf, fertilityOf } from './deposits.js';
 import { mod } from '../modifiers.js';
+import { focusBonus } from '../focus.js';
 
 export function emptyResourceMap(value = 0) {
   const out = {};
@@ -30,6 +31,19 @@ export function emptyResourceRecord() {
 }
 
 /**
+ * SEFERBERLİĞİN BEDELİ: silah altındaki adam tarlada, madende, tezgâhta ve
+ * vergi defterinde değildir (ama yemek yer: gıda ihtiyacı bütün nüfustur).
+ * Eski ekonomide bu bedel rgoLaborScale'deydi; yeniden yazımda kaybolmuştu
+ * ve kışlada tutulan ordunun evde hiçbir karşılığı kalmamıştı — "top mu
+ * tereyağı mı" ikilemi yoktu.
+ */
+export function workforceShare(econ) {
+  const people = Math.max(0, econ?.population ?? 0);
+  if (!(people > 0)) return 0;
+  return Math.max(0, Math.min(1, 1 - Math.max(0, econ.soldiers ?? 0) / people));
+}
+
+/**
  * Province'in haftalık kaynak çıktısı. Statü (çekirdek/uyum/işgal) her
  * kaynağı çarpar; demiryolu yatakları büyütür, çiftlik gıdayı, maden yatağı.
  * `out` verilirse içine yazar (tahsis yok).
@@ -41,16 +55,19 @@ export function provinceOutput(province, nation, out = emptyResourceMap()) {
   const status = econ.status ?? 1;
   if (status <= 0) return out;
   const buildings = econ.buildings ?? {};
-  const units = Math.max(0, econ.population ?? 0) / 100000;
+  const work = workforceShare(econ);
+  const units = Math.max(0, econ.population ?? 0) / 100000 * work;
   const fertilizer = Math.max(0, mod(nation, 'saltpeterFood')) * resourceRatio(nation, 'SALTPETER');
   const food = units * (FOOD_BASE + FOOD_FERTILITY * fertilityOf(province))
     * (1 + 0.25 * (buildings.farm ?? 0)) * (1 + mod(nation, 'food') + fertilizer);
-  out.FOOD = food * status;
+  // Üretim odağı (focus.js) gıdayı ve yatakları birlikte çarpar.
+  const focus = 1 + focusBonus(econ, 'output');
+  out.FOOD = food * status * focus;
   const rail = 1 + 0.1 * (buildings.railway ?? 0);
   const mine = 1 + 0.5 * (buildings.mine ?? 0);
   const extra = 1 + mod(nation, 'resources');
   for (const line of depositsOf(province)) {
-    out[line.id] += line.size * (DEPOSIT_OUTPUT[line.id] ?? 0.3) * mine * rail * extra * status;
+    out[line.id] += line.size * (DEPOSIT_OUTPUT[line.id] ?? 0.3) * mine * rail * extra * status * work * focus;
   }
   return out;
 }

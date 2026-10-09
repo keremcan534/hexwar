@@ -20,7 +20,7 @@ import { lawOption } from './laws.js';
 import { mod, refreshModifiers } from './modifiers.js';
 import {
   battleSaltpeterNeed, emptyResourceMap, emptyResourceRecord, foodNeed,
-  nationProduction, unitResourceNeeds,
+  nationProduction, unitResourceNeeds, workforceShare,
 } from './econ/resources.js';
 import {
   addEquipment, autoLineWeights, computeIC, consumerGoods, consumerTaxBonus, ensureIndustry, runLines,
@@ -31,6 +31,7 @@ import { emptyBuildings, occupiedShareOf } from './provinces.js';
 import { constructionResourceNeeds } from './construction.js';
 import { treatiesOf } from './peace.js';
 import { isDelegated } from './delegation.js';
+import { focusBonus } from './focus.js';
 
 /** Kaynak imtiyazı (barış şartı): yenilen yatak üretiminin beşte birini verir. */
 const CONCESSION_SHARE = 0.2;
@@ -193,6 +194,16 @@ export function beginEconomy(game) {
   return { turn };
 }
 
+/**
+ * Bir state'in vergi tabanı (ulusal çarpanlardan önce). Silah altındaki vergi
+ * vermez (econ/resources.js workforceShare); vergi odağı çarpar (focus.js).
+ */
+export function provinceTaxBase(econ) {
+  return econ.population * workforceShare(econ) / POP_UNIT * TAX_PER_UNIT
+    * (1 + TAX_PER_DEVELOPMENT * econ.development) * (econ.status ?? 1)
+    * (1 + focusBonus(econ, 'tax'));
+}
+
 /** Haftalık vergi, dökümüyle (ekran aynı döküm fonksiyonunu okur). */
 export function taxBreakdown(world, nation) {
   // Taç gelirleri başkent elde olduğu sürece akar.
@@ -200,9 +211,7 @@ export function taxBreakdown(world, nation) {
   let base = capital?.owner === nation.id ? CROWN_REVENUE : 0;
   for (const province of world.provinces ?? []) {
     if (province.owner !== nation.id || !province.econ) continue;
-    const econ = province.econ;
-    base += econ.population / POP_UNIT * TAX_PER_UNIT
-      * (1 + TAX_PER_DEVELOPMENT * econ.development) * (econ.status ?? 1);
+    base += provinceTaxBase(province.econ);
   }
   const law = lawOption(nation, 'tax').tax;
   const stability = 0.8 + 0.4 * clamp(nation.stability ?? 0.5, 0, 1);
@@ -308,7 +317,8 @@ export function runNationEconomy(game, nation, ctx) {
   needs.COAL += ic.coalNeed;
   needs.OIL += ic.oilNeed ?? 0;
   economy.consumer = consumerGoods(nation, {
-    population, development: economy.development, civil: ic.civil, turn,
+    population, workforce: Math.max(0, population - soldiers),
+    development: economy.development, civil: ic.civil, turn,
   });
 
   // 4. Üretim hatları (teçhizat stoğa girer; demir/kereste ihtiyacı yazılır).

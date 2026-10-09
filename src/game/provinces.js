@@ -15,6 +15,7 @@ import { DEFAULT_ZONE, ZONE_RULES } from '../world/macro.js';
 import { CULTURE, isAccepted, runProvinceCulture } from './culture.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import { assignDeposits } from './econ/deposits.js';
+import { focusBonus } from './focus.js';
 import { BUILDING_IDS, DEVELOPMENT_MAX, POP_UNIT } from './econ/defs.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -183,6 +184,8 @@ export function setProvinceOwner(world, province, nationId) {
   if (province.owner !== nationId && province.econ && Number.isFinite(world.turn)) {
     province.econ.ownedSince = world.turn;
   }
+  // Odak eski sahibin kararıdır; yeni sahibin yuvasını işgal etmesin.
+  if (province.owner !== nationId && province.econ) province.econ.focus = null;
   province.owner = nationId;
 }
 
@@ -379,10 +382,12 @@ export function runProvinces(game) {
     const accepted = isAccepted(nation, province.culture);
     // UYUM TAVANI: kabul edilmiş halk tam oturur; azınlık vatandaşlık
     // yasasının izin verdiği kadar.
-    const ceiling = accepted ? 100 : 100 * citizenship.ceiling;
+    // Entegrasyon odağı (focus.js) tavanı yükseltir, kazanımı iki katına çıkarır.
+    const ceiling = Math.min(100, (accepted ? 100 : 100 * citizenship.ceiling) + focusBonus(econ, 'ceiling'));
     const drag = (econ.unrest ?? 0) * CULTURE.CONTROL_DRAG;
+    const gain = (accepted ? 1.5 : citizenship.control) * (0.45 + stability) * Math.max(1, focusBonus(econ, 'control'));
     econ.control = clamp(
-      econ.control + (((accepted ? 1.5 : citizenship.control) * (0.45 + stability)) - drag)
+      econ.control + (gain - drag)
         * (1 - occupied) - occupied * 2,
       0,
       ceiling,

@@ -337,7 +337,45 @@ function equipmentPanel(logistics) {
   </section>`;
 }
 
-function buildColumn(state, options, summary, logistics = []) {
+/**
+ * KURA: hangi halkın oğlu askere gider. Kutu kaldırılan halktan ne alay ne
+ * takviye çekilir; ölen asker kendi halkının payından düşer (game/levy.js).
+ */
+function levyPanel(levy) {
+  if (!levy?.rows?.length) return '';
+  const rows = levy.rows.map((row) => {
+    const status = row.primary ? 'your people' : row.accepted ? 'accepted' : 'not accepted';
+    const tip = row.levied
+      ? `${row.name} — drafted\n${formatPopulation(row.free)} more men can be called up`
+        + ` · ${formatPopulation(row.held)} under arms now`
+        + `\nTheir dead fall from their own share of the population.`
+        + (row.accepted ? '' : `\nNot accepted: only part of them serve (Citizenship law).`)
+      : `${row.name} — exempt\nNo regiment or reinforcement draws on them;`
+        + ` their men stay in the fields and pay tax.`
+        + (row.accepted
+          ? `\nSparing an accepted people angers the unaccepted peoples you still draft.` : '');
+    return `<label class="mil-levy-row ${row.levied ? '' : 'off'}"${tipAttr({ text: tip })}>
+      <input type="checkbox" data-military-levy="${row.id}" ${row.levied ? 'checked' : ''} />
+      <span class="mil-levy-name"><b>${esc(row.name)}</b><small class="${row.accepted ? 'acc' : ''}">${esc(status)} · ${pct(row.share)}</small></span>
+      <span class="mil-levy-num">${row.levied ? formatPopulation(row.free) : '<i>exempt</i>'}</span>
+      <span class="mil-levy-num">${row.held >= 1 ? formatPopulation(row.held) : '—'}</span>
+      <span class="mil-levy-num fallen">${row.fallen >= 1 ? formatPopulation(row.fallen) : '—'}</span>
+    </label>`;
+  }).join('');
+  const warn = levy.nobody
+    ? '<p class="mil-levy-warn">No people is ticked: no regiment can be raised or reinforced.</p>'
+    : levy.unequal
+      ? `<p class="mil-levy-warn">Unequal levy: the unaccepted peoples who still serve resent it — up to +${levy.grievance} unrest in ${levy.grieved} ${levy.grieved === 1 ? 'state' : 'states'}.</p>`
+      : '';
+  return `<section class="mil-levy">
+    ${band('Who is drafted', `${formatPopulation(levy.fallen)} fallen so far`)}
+    <div class="mil-levy-head"><span></span><span>People</span><span>Can give</span><span>Under arms</span><span>Fallen</span></div>
+    <div class="mil-levy-list">${rows}</div>
+    ${warn}
+  </section>`;
+}
+
+function buildColumn(state, options, summary, logistics = [], levy = null) {
   const category = state.category ?? 'all';
   const visible = options.filter((option) => {
     if (category !== 'all' && option.category !== category) return false;
@@ -360,6 +398,7 @@ function buildColumn(state, options, summary, logistics = []) {
     ${band('Build army', `${summary.trainingCapacity} training slots`)}
     <nav class="mil-tabs mil-arms">${tabs}</nav>
     <div class="mil-build-list">${rows}</div>
+    ${levyPanel(levy)}
     <label class="mil-check" title="Shows arms that history has not opened yet, with the year they arrive.">
       <input type="checkbox" data-military-locked ${state.showLocked ? 'checked' : ''} />
       Show arms not yet available</label>
@@ -481,7 +520,7 @@ export function militaryScreen(state, data) {
     data.summary.mobilization)}
         ${statsBox(data.stats)}
       </div>
-      ${buildColumn(state, data.options, data.summary, data.logistics)}
+      ${buildColumn(state, data.options, data.summary, data.logistics, data.levy)}
       ${queueColumn(data.queue, data.summary, data.logistics)}
     </div>
     ${dispositionBand(data.summary, data.composition, data.logistics, data.spent)}

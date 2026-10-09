@@ -10,7 +10,6 @@ import {
   UNIT_TYPES, createUnit, removeUnit, resolveTypeId, stackFull, unitAvailable, unitsOn,
 } from './units.js';
 import { orderMove } from './movement.js';
-import { lawOption } from './laws.js';
 import { mod } from './modifiers.js';
 import { EQUIPMENT, UNIT_EQUIPMENT } from './econ/defs.js';
 import { addEquipment, equipmentStock, takeEquipment } from './econ/industry.js';
@@ -18,8 +17,8 @@ import { UNIT_COSTS, canAfford, pay } from './cities.js';
 import { settle } from './treasury.js';
 import { underTreaty } from './peace.js';
 import { controllerOf } from './control.js';
-import { acceptedShareOf, foreignManpowerShare } from './culture.js';
-import { claimSoldiers, occupiedShareOf, releaseSoldiers } from './provinces.js';
+import { levyAvailable, levyExcluded, releaseDraw, takeLevy } from './levy.js';
+import { occupiedShareOf } from './provinces.js';
 import { nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
 
 /** Alayın kuruluş teçhizatı (econ/defs.js UNIT_EQUIPMENT). */
@@ -33,30 +32,21 @@ export function equipmentCostLabel(typeId) {
     .join(' ');
 }
 
-const clamp01 = (value) => Math.max(0, Math.min(1, value));
 
 /**
  * Kümenin verebileceği asker sayısı. Havuz ASKERLİK YASASININ oranıdır
  * (nüfusun %2-15'i); kışla ve teknoloji büyütür. Kabul edilmemiş halk
  * vatandaşlık yasasının izin verdiği kadar gelir (Vic2), huzursuz küme az
  * verir, çekirdek dışı küme uyumu oranında. Silah altındakiler havuzdan düşer.
+ * Halk halk açılımı ve kura kutuları levy.js'tedir: yalnız işaretli halklar sayılır.
  */
 export function provinceManpower(world, tile) {
-  const econ = tile?.province;
-  if (!econ) return 0;
+  if (!tile?.province) return 0;
   const cluster = world?.provinces?.[tile.provinceId];
   if (!cluster || cluster.owner < 0) return 0;
   const nation = world.nations?.[cluster.owner];
   if (!nation) return 0;
-  const rate = lawOption(nation, 'conscription').rate
-    * (1 + 0.2 * (econ.buildings?.barracks ?? 0))
-    * Math.max(0.2, 1 + mod(nation, 'manpower'));
-  const accepted = acceptedShareOf(cluster, nation);
-  const willing = accepted + (1 - accepted) * foreignManpowerShare(nation);
-  const calm = 1 - clamp01((econ.unrest ?? 0) / 10) * 0.6;
-  const status = econ.status ?? 1;
-  const pool = Math.max(0, econ.population) * rate * willing * calm * status;
-  return Math.max(0, Math.round(pool - Math.max(0, econ.soldiers ?? 0)));
+  return Math.max(0, Math.round(levyAvailable(world, cluster, nation)));
 }
 
 /** Ulusun toplam insan gücü: sahip olunan, işgalsiz kümelerin toplamı. */
@@ -207,8 +197,9 @@ function drawManpower(world, source, amount) {
     if (remaining <= 0) break;
     const take = Math.min(remaining, provinceManpower(world, tile));
     if (take <= 0) continue;
-    claimSoldiers(tile.province, take);
-    draws.push({ q: tile.q, r: tile.r, men: take });
+    const cluster = world.provinces[tile.provinceId];
+    const by = takeLevy(world, cluster, world.nations[cluster.owner], take);
+    draws.push({ q: tile.q, r: tile.r, men: take, by });
     remaining -= take;
   }
   return draws;
@@ -321,7 +312,7 @@ export function disband(game, unit) {
       // insan CIKARMAMISTI: yalnizca tutma birakilir, adam sivil hayata doner.
       // Province el degistirmis olsa bile tutmayi birakmak dogrudur — o
       // insanlar artik yeni sahibin nufusunun parcasidir.
-      releaseSoldiers(world.get(draw.q, draw.r)?.province, draw.men);
+      releaseDraw(world, unit.nationId, draw, draw.men);
     }
   }
   removeUnit(world, unit);
@@ -446,9 +437,12 @@ export function recruitBlockers(game, nation, typeId, options = {}) {
   if (!source) {
     blockers.push({
       id: 'source',
-      text: UNIT_TYPES[id].domain === 'sea'
+      text: (UNIT_TYPES[id].domain === 'sea'
         ? `No coastal province can spare ${UNIT_TYPES[id].manpower} men for a crew.`
-        : `No province can spare ${UNIT_TYPES[id].manpower} men.`,
+        : `No province can spare ${UNIT_TYPES[id].manpower} men.`)
+        // Kura kutusu kapalıysa sebep çoğu zaman odur: oyuncu kendi kararını
+        // "asker yok" diye okumasın.
+        + (levyExcluded(nation).length ? ' Some peoples are exempt from the levy (Who is drafted).' : ''),
     });
   }
   if (trainingQueue(nation).length >= MAX_TRAINING_QUEUE) {

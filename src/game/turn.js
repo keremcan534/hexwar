@@ -38,10 +38,11 @@ import {
 } from './command.js';
 import {
   initProvinces, provincePopulation, provinceSoldiers, refreshProvinceOwner,
-  releaseSoldiers, runProvinces, setProvinceOwner,
+  runProvinces, setProvinceOwner,
 } from './provinces.js';
 import { initPolitics, runPolitics } from './politics.js';
 import { runMovements } from './movements.js';
+import { releaseDraw } from './levy.js';
 import { captureConstructionAt, initConstruction, runConstruction } from './construction.js';
 import { controllerOf, setController } from './control.js';
 import { runNationalEvents, runWorldStories } from './events.js';
@@ -942,7 +943,7 @@ export class TurnManager {
     // "askerde" gorunur ve province bir daha onlari asker olarak veremezdi.
     for (const regiment of unit.regiments ?? []) {
       for (const draw of regiment.draws ?? []) {
-        releaseSoldiers(this.world.get(draw.q, draw.r)?.province, draw.men ?? 0, true);
+        releaseDraw(this.world, unit.nationId, draw, draw.men ?? 0, true);
       }
       regiment.draws = [];
     }

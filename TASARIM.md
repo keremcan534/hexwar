@@ -142,8 +142,10 @@ bina bitiriyordu, oyuncu ekranı sürekli kollamak zorundaydı (ölçüm: büyü
 
 ## 8. Nüfus, insan gücü, okuryazarlık
 
-- Artış haftalık `%0.012 × gıda × tüketim malı × istikrar × barış` (savaşta ×0.6); kıtlıkta azalış. Ölen asker nüfustan düşer.
-- İnsan gücü: province `nüfus × askerlik oranı × (kabul payı + yabancı pay × vatandaşlık oranı) × statü − silah altındakiler`.
+- Artış haftalık `%0.012 × gıda × tüketim malı × istikrar × barış` (savaşta ×0.6); kıtlıkta azalış. Ölen asker nüfustan, **kendi halkının payından** düşer.
+- **Seferberliğin bedeli:** silah altındaki çalışmaz. Province'in vergisi, gıdası, maden çıktısı ve el tezgâhı `1 − asker/nüfus` ile çarpılır (gıda İHTİYACI bütün nüfustur). Ölçüm: 12 alay (360 bin) orta boy ülkede vergi ve gıdada −%1.4; alayın toplandığı state'te −%7'ye kadar (state kartında "Under arms").
+- İnsan gücü: province `nüfus × askerlik oranı × (kabul payı + yabancı pay × vatandaşlık oranı) × statü − silah altındakiler`, halk halk hesaplanır (`levy.js`).
+- **Kura (Who is drafted):** Military ekranında halk başına kutu; alay ve takviye yalnız işaretli halklardan çeker, ölen kendi halkının payından düşer, ulusun şehit defterine yazılır. Kabul edilmiş bir halk muafken kuraya kalan kabul edilmemiş halk huzursuzlanır (küme payı × 2; isyan eşiği 7). Ölçüm (Lorria, %52 azınlık, 12 alay, %60 kayıp): kendi halkı muaf → kendi şehidi 0, payı %48.0 → %48.4; insan gücü 1.34M → 441K; 30 state'in 27'sinde ort. +1.25 huzursuzluk. YZ varsayılanda herkesi askere alır.
 - Askerlik: Gönüllü %3 · Sınırlı %6 (IC −%3) · Yaygın %10 (IC −%8, savaş desteği ≥50) · Topyekûn %16 (IC −%20, istikrar −5, savaş desteği ≥80). Alay 30 bin kişidir; 8 milyonluk ülke Sınırlı'da ~16 alay besler (ilk ayarda %4 kuruluş ordusunu havuzla eşitliyordu, yeni alay kurulamıyordu).
 - Okuryazarlık ulusal; eğitim yasası (hedef %12 / %40 / %75) ve üniversiteyle hedefe ORANSAL yaklaşır (haftada açığın 0.0013'ü: 15 yılda %63, 30 yılda %86). Sabit adım denendi ve geri alındı: hedef iki yasada da aynı taraftayken yasa görünmüyordu. Araştırmayı, kalkınma tavanını ve milliyetçiliği büyütür.
 
@@ -167,6 +169,7 @@ bina bitiriyordu, oyuncu ekranı sürekli kollamak zorundaydı (ölçüm: büyü
 - Politikalar: kabul (SG), ödün (SG), sıkıyönetim (altın/hafta), baskı (SG + şöhret), sürgün, soydaşa bırakma, vasal olarak bırakma.
 - **Birleşme:** soydaş toprak gerekçesi yarı fiyat; küçük soydaş devlet ilişki ve güç farkıyla barışla katılır; ana yurdun %80'i toplanınca "Büyük X" kurulur.
 - **Ulusların Baharı:** 1848 dolayında dünya dalgası: milliyetçilik ve liberaller sıçrar.
+- **State odağı** (Vic2 ulusal odağı, `focus.js` + `stateFocus.js`): yuva 1 + okuryazarlığın her %25'i (en çok 5) — state sayısıyla değil okuryazarlıkla büyür (ev ödevi testi). Production çıktı +%25 · Taxation vergi +%30 · Recruitment insan gücü +%30 · Integration uyum kazancı ×2, tavan +15, huzursuzluk −1 · Assimilation yılda nüfusun `%1 × (1 + okuryazarlık)`'ı ana kültüre (ana yurt kilidini aşar; sakinlik çarpanı kendiliğinden asimilasyonla aynı). Fetihte odak düşer. YZ çeyrekte bir boş yuvaya koyar: uyumu düşük fetih → Integration, kalabalık azınlık → Assimilation, gerisi en kalabalık çekirdeğe Taxation. Ölçüm (2 tohum, 104 hafta barış, aynı state, dürtü kolu sıfır oynadı): çıktı +%25, vergi +%30, verilebilir asker +%46/+%390, uyum %85 → %100 ve huzursuzluk −1.2, yabancı pay 2 yılda −1.5 puan.
 
 ## 11. Askerî
 

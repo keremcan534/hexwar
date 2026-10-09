@@ -6,7 +6,7 @@
 
 import { controllerOf } from './control.js';
 import { POPULATION_SCALE } from './populationScale.js';
-import { releaseSoldiers } from './provinces.js';
+import { releaseDraw } from './levy.js';
 
 /** Kara birimi denize girdiginde bu hizla yol alir (bindirilmis hali). */
 export const EMBARKED_MOVES = 4;
@@ -283,11 +283,12 @@ export function applyArmyLosses(unit, casualties, organizationLoss = 0, world = 
       const keep = representedMen > 0 ? Math.max(0, representedMen - menLoss) / representedMen : 0;
       for (const draw of regiment.draws) {
         const before = Math.max(0, draw.men ?? 0);
-        draw.men = before * keep;
         // OLEN ADAM ARTIK NUFUSTAN DUSER. Eskiden askerler zaten nufusun
         // disindaydi, yani bir ordunun yok olmasi ulke nufusunu HIC
         // degistirmiyordu — savasin insan bedeli hicbir sayacta gorunmuyordu.
-        releaseSoldiers(world?.get(draw.q, draw.r)?.province, before - draw.men, true);
+        // Kendi halkinin payindan duser (levy.js).
+        if (world) releaseDraw(world, unit.nationId, draw, before * (1 - keep), true);
+        else draw.men = before * keep;
       }
       regiment.draws = regiment.draws.filter((draw) => draw.men > 0.01);
     }

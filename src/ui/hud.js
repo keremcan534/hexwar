@@ -37,6 +37,9 @@ import { glyph } from './icons/glyphs.js';
 import { refreshTooltips } from './tooltip.js';
 import { meter as kitMeter, pips as kitPips, tipAttr } from './kit.js';
 import { depositsOf, fertilityOf } from '../game/econ/deposits.js';
+import { workforceShare } from '../game/econ/resources.js';
+import { FOCUSES, focusSlots, nextSlotAt } from '../game/focus.js';
+import { focusBlockers, focusPreview, focusedStates, setFocus } from '../game/stateFocus.js';
 import { powerIncome } from '../game/politics.js';
 import { buildingLevels, buildingSlots } from '../game/provinces.js';
 import { buildPreview } from '../game/buildPreview.js';
@@ -1417,6 +1420,7 @@ export class Hud {
           parts.conquest > 0.5 ? 'recent conquest' : null,
           parts.war > 0.5 ? 'war weariness' : null,
           parts.backlash > 0.3 ? 'nationalist backlash' : null,
+          parts.levy > 0.3 ? 'unequal levy' : null,
         ].filter(Boolean).join(', ');
         stats.push(['Unrest', `${unrest.toFixed(1)}/10${why ? ` · ${why}` : ''}`
           + (movement?.progress > 0.5
@@ -1438,13 +1442,17 @@ export class Hud {
       const slots = buildingSlots(econ);
       const built = BUILDING_IDS.filter((id) => (econ.buildings?.[id] ?? 0) > 0);
       stats.unshift(['Population', formatPopulation(econ.population)]);
+      // Seferberliğin bedeli state'te okunsun: silah altındaki çalışmaz
+      // (econ/resources.js workforceShare) — vergi, gıda ve maden o oranda düşer.
+      const away = 1 - workforceShare(econ);
+      if (away >= 0.005) stats.splice(1, 0, ['Under arms', `${formatPopulation(econ.soldiers)} · output −${(away * 100).toFixed(1)}%`]);
       stateHtml = `<div class="pv-state"${area ? tipAttr('state', area.id) : ''}>
         <div class="pv-state-res">${deposits.map((line) => `<span${tipAttr('resource', line.id)}>${resourceArt(line.id, 'sm')}<b>${escapeHtml(RESOURCES[line.id].name)}</b><small>×${line.size.toFixed(1)}</small></span>`).join('')}
           ${area ? `<span class="pv-fert"><small>Fertility</small><b>${Math.round(fertilityOf(area) * 100)}%</b></span>` : ''}</div>
         <div class="pv-state-row"><small>Development</small>${kitPips(econ.development, DEVELOPMENT_MAX)}<b>${econ.development}</b><em>${levels}/${slots} slots</em></div>
         <div class="pv-state-blds">${built.length ? built.map((id) => `<span${tipAttr('building', id)}>${buildingArt(id, 'sm')}<i>${econ.buildings[id]}</i></span>`).join('') : '<small class="k-dim">No buildings</small>'}</div>
         <div class="pv-state-row"><small>Compliance</small>${kitMeter((econ.control ?? 0) / 100, { tone: econ.core === false ? 'warn' : 'pos', wide: true })}<b>${Math.round(econ.control)}%</b>${econ.core === false ? `<em class="neg">counts at ${Math.round((econ.status ?? 0) * 100)}%</em>` : '<em>core</em>'}</div>
-        ${area && area.owner === this.game.turns.playerNation ? this.quickBuildHtml(area) : ''}
+        ${area && area.owner === this.game.turns.playerNation ? this.focusRowHtml(area) + this.quickBuildHtml(area) : ''}
       </div>`;
     }
     // Küme kimliği en üstte: hangi province'in parçası olduğu ilk bakışta okunsun.
@@ -1557,6 +1565,36 @@ export class Hud {
    * kazanç (buildPreview — Construction ekranıyla aynı hesap) ve bedel. Tık
    * kuyruğa koyar; kurulamazsa sebebi kartta. Şerit kapalıyken tek satırdır.
    */
+  /**
+   * STATE FOCUS (Vic2 ulusal odağı, state başına; game/focus.js). Kartta tek
+   * satır: beş madalyon, seçili olan yanık; tooltip o state'teki getiriyi
+   * oyunun formülüyle söyler (stateFocus.focusPreview). Aynı odağa tık kaldırır.
+   */
+  focusRowHtml(area) {
+    const world = this.game.world;
+    const me = world.nations[this.game.turns.playerNation];
+    if (!me || !area.econ) return '';
+    const current = area.econ.focus ?? null;
+    const used = focusedStates(world, me).length;
+    const slots = focusSlots(me);
+    const next = nextSlotAt(me);
+    const buttons = FOCUSES.map((focus) => {
+      const on = current === focus.id;
+      const blockers = on ? [] : focusBlockers(world, me, area, focus.id);
+      const preview = blockers.length ? null : focusPreview(world, me, area, focus.id);
+      const tip = [
+        `${focus.name}${on ? ' — active (click to remove)' : ''}`,
+        focus.desc,
+        ...(preview?.lines ?? []),
+        ...(blockers.length ? ['', 'Not possible now', ...blockers] : []),
+      ].join('\n');
+      return `<button class="pv-focus-btn${on ? ' on' : ''}${blockers.length ? ' off' : ''}" data-focus="${focus.id}"${blockers.length ? ' aria-disabled="true"' : ''} data-tip="text" data-tip-text="${escapeHtml(tip)}" aria-pressed="${on}">${emblemArt(focus.art, 'xs')}</button>`;
+    }).join('');
+    const name = current ? FOCUSES.find((f) => f.id === current)?.name : 'none';
+    const slotTip = `Focus slots: ${used} of ${slots} in use.\nOne slot, plus one for every 25% literacy${next != null ? ` — the next at ${Math.round(next * 100)}%` : ''}.`;
+    return `<div class="pv-state-row pv-focus"><small>Focus</small><span class="pv-focus-btns">${buttons}</span><b>${escapeHtml(name)}</b><em data-tip="text" data-tip-text="${escapeHtml(slotTip)}">${used}/${slots}</em></div>`;
+  }
+
   quickBuildHtml(area) {
     const world = this.game.world;
     const me = world.nations[this.game.turns.playerNation];
@@ -1885,6 +1923,17 @@ export class Hud {
       toggle.onclick = () => {
         this.quickBuildOpen = !this.quickBuildOpen;
         this.showTile(game.selected);
+      };
+    }
+    for (const btn of this.el.sheetBody.querySelectorAll('[data-focus]')) {
+      btn.onclick = () => {
+        if (btn.getAttribute('aria-disabled') === 'true') return;
+        const area = game.world.provinces?.[game.selected?.provinceId];
+        if (!area || !me) return;
+        if (setFocus(game.world, me, area, btn.dataset.focus)) {
+          game.emit('politics', me.id);
+          this.showTile(game.selected);
+        }
       };
     }
     for (const btn of this.el.sheetBody.querySelectorAll('[data-qb]')) {

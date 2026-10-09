@@ -9,7 +9,7 @@
 //
 // Bedeli üç kanaldan akar, hiçbiri burada yazılmaz:
 //   - insan: alay province nüfusundan çıkar (claimSoldiers), tarla ve tezgah
-//     boşalır (rgoLaborScale / civilianLower zaten silah altındakini düşer)
+//     boşalır, vergi düşer (econ/resources.js workforceShare)
 //   - para: alay bakımı düzenli alayla aynıdır (cities.js UNIT_UPKEEP)
 //   - teçhizat: her yedek alay depodan yarım tüfek takımı (5) çeker
 // Seferber alay 0.7 güçle dövüşür (units.js CONSCRIPT_POWER).
