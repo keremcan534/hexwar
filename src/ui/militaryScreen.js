@@ -70,7 +70,7 @@ function headerStrip(summary) {
         + (summary.inBattle ? `\n${summary.inBattle} in battle` : '') + (summary.marching ? `\n${summary.marching} marching` : '') },
     }),
     kpi({
-      icon: emblemArt('recruits', 'md'), label: 'Manpower', value: formatPopulation(summary.manpower), sub: 'men who can still be raised',
+      icon: emblemArt('recruits', 'md'), label: 'Manpower', value: formatPopulation(summary.manpower), sub: 'still to be raised',
       tip: { text: 'Manpower\nPeople your states can still put under arms. The conscription law sets the share; barracks raise it.' },
     }),
     kpi({
@@ -363,7 +363,6 @@ function buildColumn(state, options, summary, logistics = []) {
     <label class="mil-check" title="Shows arms that history has not opened yet, with the year they arrive.">
       <input type="checkbox" data-military-locked ${state.showLocked ? 'checked' : ''} />
       Show arms not yet available</label>
-    ${equipmentPanel(logistics)}
   </section>`;
 }
 
@@ -404,7 +403,7 @@ function queueRow(row) {
   </div>`;
 }
 
-function queueColumn(rows, summary) {
+function queueColumn(rows, summary, logistics = []) {
   const soonest = rows.filter((row) => !row.stalled)
     .reduce((best, row) => (best == null || row.left < best ? row.left : best), null);
   const list = rows.map(queueRow).join('')
@@ -417,6 +416,7 @@ function queueColumn(rows, summary) {
       <span><small>Next to march out</small><b>${soonest == null ? '—' : `${soonest}w`}</b></span>
     </div>
     <div class="mil-queue-list">${list}</div>
+    ${equipmentPanel(logistics)}
   </section>`;
 }
 
@@ -482,7 +482,7 @@ export function militaryScreen(state, data) {
         ${statsBox(data.stats)}
       </div>
       ${buildColumn(state, data.options, data.summary, data.logistics)}
-      ${queueColumn(data.queue, data.summary)}
+      ${queueColumn(data.queue, data.summary, data.logistics)}
     </div>
     ${dispositionBand(data.summary, data.composition, data.logistics, data.spent)}
   </div>`;

@@ -487,7 +487,7 @@ export function renderConstruction(game, me, state) {
     <div class="k-split k-cons">
       ${panel('Build', `<div class="k-bopts">${options}</div>`, { sub: 'pick what to build', cls: 'k-bcat' })}
       ${panel(`${pickName} — where`, `${filters}<div class="k-wtable">${header}${table}</div>${KEY_LEGEND}`, {
-    sub: `best first · ${ready.length} of ${rows.length} ready`, right: `${bulk}${showAll}`, cls: 'k-where',
+    sub: `${ready.length} of ${rows.length} ready`, right: `${bulk}${showAll}`, cls: 'k-where',
   })}
     </div>
     ${panel('Under construction', queue, { sub: 'timber shortages slow every site', right: `${active} building · ${view.queue.length - active} waiting` })}`;

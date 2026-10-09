@@ -43,6 +43,11 @@ game.renderer.lastDrawn;   // son karede çizilen hex sayısı
 
 Performans hedefi: kare süresi uzak zoomda < 2 ms, yakın zoomda < 5 ms.
 
+Arayüz iki sondayla doğrulanır (konsola yapıştır ya da başsız CDP ile enjekte et):
+`scripts/ui/layout-probe.js` → `__layoutProbe()` (ulaşılamayan içerik, taşma,
+yan yana sütun simetrisi; 1920/1600/1366/1280'de hepsi boş olmalı) ve
+`scripts/ui/jitter-probe.js` → `__jitDump()` (8x akarken kayma/açılıp kapanma).
+
 ## Mekanik eklemeden önce
 
 Oyunun yönü **Uluslar Çağı**dır: Age of History sadeliği, HOI4'ün savaş ve

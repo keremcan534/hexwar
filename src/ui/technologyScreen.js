@@ -38,7 +38,7 @@ const START_YEAR = 1836;
 const END_YEAR = 1900;
 /** Yil basina piksel ve dugum eni birlikte secildi: 1920'de %90 agac sigar. */
 const PX_PER_YEAR = 15;
-const NODE_W = 160;
+const NODE_W = 172;
 /** Ayni klasorde iki teknoloji yillari yakinsa ust uste binmesin. */
 const NODE_GAP = 6;
 
@@ -207,7 +207,7 @@ export function technologyScreen(nation, view) {
       meter: progress, meterTone: 'pos', cls: 'hero tech-now-kpi',
     }),
     kpi({ label: 'Per week', value: `${num(view.rate, 2)} RP`, sub: 'literacy is the main source', tip: { text: ['Research points a week', ...view.rateLines].join('\n') } }),
-    kpi({ icon: emblemArt('society', 'md'), label: 'Literacy', value: `${Math.round((nation.economy?.literacy ?? 0) * 100)}%`, sub: 'education law and universities', tip: 'term', arg: 'literacy' }),
+    kpi({ icon: emblemArt('society', 'md'), label: 'Literacy', value: `${Math.round((nation.economy?.literacy ?? 0) * 100)}%`, sub: 'schools and universities', tip: 'term', arg: 'literacy' }),
     kpi({ label: 'Technologies', value: `${done}<small> / ${total}</small>`, sub: view.rank ? `rank ${view.rank} of ${view.of}` : '', meter: total ? done / total : 0 }),
   ]);
 
