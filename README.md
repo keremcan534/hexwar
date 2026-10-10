@@ -45,6 +45,10 @@ npm run diagnose:military
 | Yürüt | seç, sonra hedefe dokun | sağ tık |
 | Seçimi bırak | boş yere dokun | boş yere sol tık · `Esc` |
 | Cephe yönet | general + hedef + Offensive | general + hedef + Offensive |
+| Seçime ekle / çıkar | — | `Shift`+tık · `Ctrl`+tık (kutu seçimde de) |
+| Bütün ordu | — | tümene çift tık (generalinin bütün tümenleri) |
+| Kontrol grubu | — | `Ctrl`+`1-9` kaydet · `1-9` çağır · iki kez bas: kamera gider |
+| Bekle / Dur / Taarruz | kart düğmeleri | `H` bekle · `X` dur · `O` seçili generalin taarruzu |
 | Zaman | duraklat, 1×, 2×, 4×, 8× | `boşluk` duraklat · `+` / `−` hız |
 
 Giriş HOI4 semantiğindedir: **sol tuş seçer, sağ tuş yürütür**. Sol tuş sürükleme
@@ -52,6 +56,8 @@ masaüstünde klasör seçer gibi kutu seçimi yapar, bu yüzden kamera orta tu�
 `WASD`/ok tuşlarıyla gezer. Sağ tuşu tıklamak ya da sürükleyip bırakmak seçili
 tümenleri hedef province'e yürütür; birden çok tümen seçiliyse hedefler çevreye
 yayılır, hepsi tek province'e tıkışmaz.
+
+Savaş haritası: bütün generallerin **cephesi** görünür (taarruzdaki kırmızı, bekleyen mavi; seçili general dolgulu), her cephede generalin baş harfi ve planlama yayı. Seçiliyken fareyi düşmanın üstüne getirmek **saldırı oranını** muharebenin kendi terazisiyle gösterir (yeşil = generalin duruş eşiğinin üstü). Haritada bir orduya tıklamak generalini etkin yapar; general kartında ATK/HOLD ve planlama çubuğu, tümen listesinde yürüyüşün kalan haftası durur. Listede satıra tıklamak yalnız o tümeni seçer, `Shift`+tık seçimden çıkarır.
 
 Oyun haftalık adımlarla gerçek zamanlı akar. Saat penceresi sağ üsttedir; boşluk
 tuşu duraklatır ve duraklatmadan önceki hızı hatırlar, `+`/`−` kademe değiştirir.

@@ -1,4 +1,4 @@
-// Geliştirici performans kaplaması. F3 açar/kapar; ?perf=1 açık başlatır.
+// Geliştirici performans kaplaması. Shift+F3 açar/kapar; ?perf=1 açık başlatır.
 //
 // Kaplamanın kendisi ölçümü kirletmemeli: 4 Hz'te tek textContent yazımı +
 // küçük bir çizgi grafik. Kare döngüsüne katılmaz, kendi zamanlayıcısında
@@ -16,7 +16,9 @@ export class PerfOverlay {
     this.root = null;
 
     window.addEventListener('keydown', (e) => {
-      if (e.code === 'F3') {
+      // Shift+F3: düz F3 Trade sekmesidir (hud.js TAB_KEYS); ikisi aynı basışta
+      // birlikte açılıyordu.
+      if (e.code === 'F3' && e.shiftKey) {
         e.preventDefault();
         this.toggle();
       }

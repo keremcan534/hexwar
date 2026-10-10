@@ -395,7 +395,7 @@ function retreatArmy(game, army, awayFrom) {
   if (!target) {
     const nation = game.world.nations[army.nationId];
     game.turns.addLog(
-      `${nation?.name ?? 'A division'} surrendered at ${awayFrom.q}, ${awayFrom.r}; no retreat route remained.`,
+      `${nation?.name ?? 'A division'} surrendered at ${provinceName(awayFrom)}; no retreat route remained.`,
       {
         kind: 'BATTLE',
         silent: army.nationId !== game.turns.playerNation,

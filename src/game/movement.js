@@ -19,6 +19,25 @@ import {
   clearPath, isMoving, resetEntrenchment, speedOf, stackFull, unitsOn,
 } from './units.js';
 
+/**
+ * Yürüyüşün kalan haftası: yolun adım bedelleri toplamı, birikmiş ilerleme
+ * düşülür, haftalık hıza (komutan bonusu dahil) bölünür. "6 left" adım
+ * sayısıydı; oyuncu adımı değil zamanı sorar.
+ */
+export function etaWeeks(game, unit) {
+  if (!isMoving(unit)) return 0;
+  const costOf = game.costForUnit();
+  let total = -(unit.progress ?? 0);
+  let from = unit.tile;
+  for (const step of unit.path) {
+    total += Math.max(0.01, costOf(step, from));
+    from = step;
+  }
+  const general = generalOfArmy(game.world.nations[unit.nationId], unit);
+  const speed = Math.max(0.1, speedOf(unit) + generalMarchBonus(general));
+  return Math.max(1, Math.ceil(Math.max(0, total) / speed));
+}
+
 /** Yol tikaninca bu kadar kez yeniden hesaplanir, sonra emir duser. */
 const MAX_REROUTES = 2;
 

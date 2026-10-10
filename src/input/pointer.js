@@ -6,6 +6,8 @@
 //   sağ tık            → seçili birimleri yürüt
 //   sağ sürükle        → bırakılan province'e yürüt
 //   orta sürükle       → kamerayı kaydır (sol tuş artık seçim için ayrıldı)
+//   shift / ctrl       → seçime ekle / seçimden çıkar (tık ve kutu)
+//   çift tık           → tümenin generalinin bütün ordusu
 //   tekerlek           → yakınlaş
 //
 // Dokunmatikte sağ tuş yok: tek parmak kaydırır, basılı tutup sürüklemek kutu
@@ -22,6 +24,13 @@ const MARQUEE_MIN = 10;
  * harita bırakınca kendi kendine kayıyordu (ölçüldü: 600 ms beklemede 82 px).
  */
 const FLICK_IDLE_MS = 80;
+/** İki tık bu kadar ms içinde ve aynı yerdeyse çift tıktır. */
+const DOUBLE_TAP_MS = 320;
+
+/** Değiştirici tuşlar: oyun katmanı olay nesnesini görmez, yalnız bunu. */
+function modsOf(e) {
+  return { shift: Boolean(e?.shiftKey), ctrl: Boolean(e?.ctrlKey || e?.metaKey) };
+}
 
 export class PointerController {
   /**
@@ -42,6 +51,7 @@ export class PointerController {
     this.rightDrag = null;   // { id, points[] } — sag tus yuruyus jesti
     this.marquee = null;     // { id, start, current, active } — kutu secimi
     this.longPress = 0;
+    this.lastTap = null;     // { t, x, y } — çift tık algısı
 
     el.style.touchAction = 'none';
     el.addEventListener('pointerdown', this.onDown, { passive: false });
@@ -255,7 +265,7 @@ export class PointerController {
       // Sürüklenmediyse bu bir sağ tıktır: yürüyüş emri.
       if (moved < TAP_MOVE_LIMIT) {
         this.handlers.onRightDragCancel?.();
-        this.handlers.onRightTap?.(last.x, last.y);
+        this.handlers.onRightTap?.(last.x, last.y, modsOf(e));
       } else {
         this.handlers.onRightDragEnd?.(points);
       }
@@ -268,8 +278,9 @@ export class PointerController {
       const rect = this.marqueeRect();
       this.marquee = null;
       this.release(e.pointerId);
-      if (active) this.handlers.onMarqueeEnd?.(rect);
-      else this.handlers.onTap?.(start.x, start.y);
+      const mods = modsOf(e);
+      if (active) this.handlers.onMarqueeEnd?.(rect, mods);
+      else this.tap(start.x, start.y, mods);
       this.handlers.onChange?.();
       return;
     }
@@ -292,13 +303,26 @@ export class PointerController {
     if (isTap) {
       this.velocity.x = 0;
       this.velocity.y = 0;
-      this.handlers.onTap?.(rec.x, rec.y);
+      this.tap(rec.x, rec.y, {});
     }
 
     if (this.pointers.size < 2) this.resetPinch();
     if (this.pointers.size === 0) this.gesture = null;
     this.handlers.onChange?.();
   };
+
+  /** Tık ve (aynı yerde, kısa arayla ikinciyse) çift tık. */
+  tap(x, y, mods) {
+    this.handlers.onTap?.(x, y, mods);
+    const now = performance.now();
+    const last = this.lastTap;
+    if (last && now - last.t < DOUBLE_TAP_MS && Math.hypot(x - last.x, y - last.y) < TAP_MOVE_LIMIT) {
+      this.lastTap = null;
+      this.handlers.onDoubleTap?.(x, y, mods);
+      return;
+    }
+    this.lastTap = { t: now, x, y };
+  }
 
   onWheel = (e) => {
     e.preventDefault();

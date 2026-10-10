@@ -57,6 +57,7 @@ import {
 } from '../game/command.js';
 import { controllerOf, isOccupied } from '../game/control.js';
 import { tileDefense } from '../game/battles.js';
+import { etaWeeks } from '../game/movement.js';
 import { POPULATION_SCALE } from '../game/populationScale.js';
 import { worldRows } from '../world/worldgen.js';
 
@@ -619,6 +620,15 @@ export class Hud {
   bindKeys() {
     window.addEventListener('keydown', (event) => {
       if (takesText(event.target)) return;
+      // Ctrl+1..9: seçimi kontrol grubuna yaz (tarayıcının sekme kısayolundan önce).
+      const digit = /^Digit([1-9])$/.exec(event.code)?.[1];
+      if (digit && (event.ctrlKey || event.metaKey) && !event.altKey
+        && !document.body.classList.contains('menu-open') && this.game.selection.length) {
+        event.preventDefault();
+        const count = this.game.assignControlGroup(Number(digit));
+        this.flashHint(`Group ${digit}: ${count} ${count === 1 ? 'division' : 'divisions'}`);
+        return;
+      }
       if (event.ctrlKey || event.altKey || event.metaKey) return;
       // Perde açıkken boşluk/ok tuşları arkadaki haritayı sürmesin.
       if (document.body.classList.contains('menu-open')) return;
@@ -679,7 +689,7 @@ export class Hud {
       // F1-F9: sekme künyeleri soldan sağa. Sekme gizliyse (ekran kapalı)
       // tuş hiçbir şey yapmaz ama tarayıcıya da gitmez (F5 sayfayı yenilerdi).
       const tab = TAB_KEYS[event.code];
-      if (tab) {
+      if (tab && !event.shiftKey) {
         event.preventDefault();
         const button = document.querySelector(`#tab-bar button[data-screen="${tab}"]`);
         if (button?.offsetParent) this.screens?.toggle(tab);
@@ -689,6 +699,38 @@ export class Hud {
       // rakam, ok, Enter, B, F, S). Kullanmadığı tuş haritaya düşer.
       if (this.screens?.active && this.screens.handleKey(event)) {
         event.preventDefault();
+        return;
+      }
+      // 1..9: kontrol grubunu çağır; aynı tuşa hemen tekrar basmak kamerayı oraya götürür.
+      if (digit && this.game.controlGroups?.[digit]?.length) {
+        event.preventDefault();
+        const now = performance.now();
+        const again = this.lastGroupKey?.digit === digit && now - this.lastGroupKey.t < 450;
+        this.lastGroupKey = { digit, t: now };
+        this.game.recallControlGroup(Number(digit), { focus: again });
+        return;
+      }
+      // H: bekle aç/kapa · X / Delete: dur (yürüyüş ve emir düşer) · O: taarruz.
+      if (event.code === 'KeyH' && this.game.selection.length) {
+        event.preventDefault();
+        const hold = this.game.toggleHoldSelection();
+        this.flashHint(hold ? 'Holding position' : 'Hold lifted');
+        this.showTile(this.game.selected);
+        return;
+      }
+      if ((event.code === 'KeyX' || event.code === 'Delete') && this.game.selection.length) {
+        event.preventDefault();
+        const stopped = this.game.stopSelection();
+        this.flashHint(`${stopped} ${stopped === 1 ? 'division stops' : 'divisions stop'}`);
+        this.showTile(this.game.selected);
+        return;
+      }
+      if (event.code === 'KeyO' && this.game.activeGeneral) {
+        event.preventDefault();
+        const stance = this.game.toggleOffensive();
+        this.flashHint(stance === 'advance' ? `${this.game.activeGeneral.name}: offensive` : `${this.game.activeGeneral.name}: holding the line`);
+        this.showCommand();
+        this.showTile(this.game.selected);
         return;
       }
       // B: haritada seçili kendi state'inde hızlı inşa şeridini aç/kapat.
@@ -749,6 +791,8 @@ export class Hud {
     if (list.length) {
       el.divisionsCount.textContent =
         `${list.length} ${list.length === 1 ? 'division' : 'divisions'} selected`;
+      el.divisionsCount.title = 'Shift+click adds · Ctrl+click removes · double-click selects the whole army'
+        + ' · Ctrl+1-9 saves a group, 1-9 recalls it · H hold · X stop';
       el.divisionsBody.innerHTML = list.map((unit) => {
         const general = generalOfArmy(me, unit);
         // Denizdeki tumen SAVASAMAZ ve konvoy tuketir — bu iki gercek
@@ -757,10 +801,11 @@ export class Hud {
           : unit.battleId ? 'in battle'
             : (unit.retreatUntil ?? 0) > game.turns.turn ? 'retreating'
               : (unit.attackReadyAt ?? 0) > game.turns.turn ? 'reorganizing'
-                : isMoving(unit) ? `marching (${unit.path.length} left)`
+                : isMoving(unit) ? `marching · ~${etaWeeks(game, unit)} wk`
                   : 'holding';
         return `<div class="division-row">
-          <button class="division-main" data-focus-unit="${unit.id}">
+          <button class="division-main" data-focus-unit="${unit.id}"
+            title="Click: select only this division · Shift+click: drop it from the selection">
             <span class="unit-badge" style="background:${me.color}">${unit.type.glyph}</span>
             <span class="division-text">
               <b>${regimentCount(unit)}× ${escapeHtml(unit.type.name)} · ${formatPopulation(menUnderArms(unit))} men</b>
@@ -772,11 +817,19 @@ export class Hud {
       }).join('');
 
       for (const btn of el.divisionsBody.querySelectorAll('[data-focus-unit]')) {
-        btn.onclick = () => {
+        btn.onclick = (event) => {
           const unit = game.world.units.find((u) => u.id === Number(btn.dataset.focusUnit));
           if (!unit) return;
+          // Seçimden tek tümen ayıklamak eskiden imkânsızdı: satır yalnız
+          // kamerayı taşıyordu.
+          if (event.shiftKey || event.ctrlKey) {
+            game.selectUnits(game.selection.filter((u) => u !== unit));
+            game.requestRender();
+            return;
+          }
           game.camera.centerOn(unit.tile.x, unit.tile.y);
           game.selected = unit.tile;
+          game.selectUnits([unit]);
           game.emit('select', unit.tile);
           game.requestRender();
         };
@@ -807,17 +860,23 @@ export class Hud {
     // alta durunca resme 24px kaliyordu ve yuz kaybolup pirinc bir noktaya
     // donuyordu (olculdu). Resim kutuyu kaplar, ad ve yildiz uzerine binen
     // koyu seritte okunur — HOI4'un komutan portresi kalibi.
-    return `<button class="command-slot has-art ${active?.id === general.id ? 'active' : ''}"
-        data-general="${general.id}" title="${escapeHtml(hint)}">
+    // Duruş ve planlama kartta: hangi generalin saldırdığı, hangisinin hazır
+    // olduğu portreye bakınca okunur (eskiden yalnız seçince görünüyordu).
+    const advancing = general.stance === 'advance';
+    const ready = Math.max(0, Math.min(1, general.planning ?? 0));
+    return `<button class="command-slot has-art ${active?.id === general.id ? 'active' : ''} ${advancing ? 'is-advancing' : ''}"
+        data-general="${general.id}" title="${escapeHtml(`${hint}\n${advancing ? 'On the offensive' : 'Holding the line'} · plan ${Math.round(ready * 100)}%`)}">
         <span class="portrait">${subayPortresi(general)}</span>
+        <span class="command-stance">${advancing ? 'ATK' : 'HOLD'}</span>
+        <span class="command-plan"><i style="width:${(ready * 100).toFixed(0)}%"></i></span>
         <span class="command-name">
           <b>${escapeHtml(general.name.split(' ')[0])}</b>
           <small>${'★'.repeat(general.skill)} · ${size}</small>
         </span>
       </button>`;
   }).join('')}
-    <button class="command-slot empty" data-new-command="1"
-      title="Assign the selected divisions to a commander">
+    <button class="command-slot empty" data-new-command="1" ${selected ? '' : 'disabled'}
+      title="${selected ? `Assign the ${selected} selected division(s) to a commander` : 'Select divisions first (click, box-drag or double-click an army)'}">
       <span class="portrait">+</span><b>Assign</b></button>`;
 
     // Boolean sart: togglePanel `force ?? !acik` okur ve null "cevir" demektir.
@@ -858,7 +917,28 @@ export class Hud {
       };
     }
     const create = el.commandBar.querySelector('[data-new-command]');
-    if (create) create.onclick = () => this.openGeneralPicker(game.selection);
+    if (create) create.onclick = () => { if (game.selection.length) this.openGeneralPicker(game.selection); };
+  }
+
+  /**
+   * Kısayolun tek satırlık onayı: komuta şeridinin üstünde belirir ve söner.
+   * Klavyeyle verilen emir görünmezdi; oyuncu tuşun tuttuğunu bilmeliydi.
+   */
+  flashHint(text) {
+    let el = this.el.flashHint;
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'flash-hint';
+      el.setAttribute('role', 'status');
+      document.body.appendChild(el);
+      this.el.flashHint = el;
+    }
+    el.textContent = text;
+    el.classList.remove('show');
+    void el.offsetWidth;
+    el.classList.add('show');
+    clearTimeout(this.flashTimer);
+    this.flashTimer = setTimeout(() => el.classList.remove('show'), 1400);
   }
 
   setLayer(flag, value) {
@@ -1628,9 +1708,9 @@ export class Hud {
       <div class="unit-row">
         <span class="unit-badge" style="background:${world.nations[unit.nationId].color}">${unit.type.glyph}</span>
         <div style="flex:1;min-width:0">
-          <div class="tile-title">${regimentCount(unit)}-regiment Army${unit.nationId === this.game.turns.playerNation ? '' : ' (enemy)'}${
+          <div class="tile-title">${escapeHtml(unit.type.name)} division${unit.nationId === this.game.turns.playerNation ? '' : ' (enemy)'}${
   this.game.selection.length > 1 ? `<small class="tile-more"> · ${this.game.selection.length} divisions selected, showing the first</small>` : ''}</div>
-          <div class="tile-sub">${formatPopulation(menUnderArms(unit))} men · STR ${Math.round(strengthRatio(unit) * 100)}% · ORG ${Math.round(organizationOf(unit))}% · speed ${speedOf(unit)}${isMoving(unit) ? ` · MARCHING (${unit.path.length} left)` : ''}${unit.battleId ? ' · IN BATTLE' : ''}${(unit.retreatUntil ?? 0) > this.game.turns.turn ? ' · RETREATING' : ''}</div>
+          <div class="tile-sub">${formatPopulation(menUnderArms(unit))} men · STR ${Math.round(strengthRatio(unit) * 100)}% · ORG ${Math.round(organizationOf(unit))}% · speed ${speedOf(unit)}${isMoving(unit) ? ` · MARCHING, ~${etaWeeks(this.game, unit)} wk` : ''}${unit.battleId ? ' · IN BATTLE' : ''}${(unit.retreatUntil ?? 0) > this.game.turns.turn ? ' · RETREATING' : ''}</div>
           <div class="army-composition">${Object.entries(unit.regiments?.reduce((out, regiment) => {
             out[regiment.typeId] = (out[regiment.typeId] ?? 0) + 1;
             return out;
@@ -1753,10 +1833,9 @@ export class Hud {
         <button class="action" data-order="${ORDER.AUTO}"
           title="Delegate the ${selectedCount} selected unit(s) to the AI: they pick targets and fight on their own until you cancel.">Delegate (AUTO)</button>
         <button class="action" data-order="${ORDER.HOLD}"
-          title="Hold position: the selected unit(s) stand fast and leave the next-idle cycle.">Hold</button>
-        ${own.order
-    ? '<button class="action" data-order="clear">Cancel Orders</button>'
-    : ''}
+          title="Hold position: the selected unit(s) stand fast and leave the next-idle cycle. Key: H">Hold <kbd>H</kbd></button>
+        <button class="action" data-order="clear"
+          title="Stop: the march, the right-click order and AUTO/HOLD are dropped. A commander's division returns to its post next week. Key: X">Stop <kbd>X</kbd></button>
       </div>`);
     }
 

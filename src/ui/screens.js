@@ -14,6 +14,7 @@ import {
 } from '../game/peace.js';
 import { INFAMY_COALITION } from '../game/infamy.js';
 import { maxHpOf, menUnderArms, organizationOf, soldiersOf } from '../game/units.js';
+import { provinceName } from '../game/provinces.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { hydrateFlags } from '../render/flagWave.js';
 import { hegemonyScore, scoreboard, GOALS } from '../game/hegemony.js';
@@ -1336,7 +1337,7 @@ export class Screens {
       const organizationTotal = Math.max(1, mine.organization + enemy.organization);
       const position = Math.max(2, Math.min(98, (mine.organization / organizationTotal) * 100));
       return `<div class="front-card card">
-        <div class="card-head"><h3>Battle of ${battle.q}, ${battle.r}</h3>
+        <div class="card-head"><h3>Battle of ${esc(provinceName(world.get(battle.q, battle.r)))}</h3>
           <small>round ${battle.rounds}/${MAX_ROUNDS} · province terrain modifies the defender</small></div>
         <div class="front-numbers">
           <span><small>${esc(me.name)} · ${mine.divisions} divisions</small><b>${formatPopulation(mine.men)} · STR ${Math.round(mine.strength * 100)}% · ORG ${Math.round(mine.organization)}%</b></span>

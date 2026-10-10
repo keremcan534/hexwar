@@ -2121,6 +2121,8 @@ export class Renderer {
       this.drawMovement(ctx, world, state.selectedUnit, state.playerNation);
       this.drawUnitCounters(ctx, world, state.selectedUnit, rect, state.playerNation);
       this.drawBattles(ctx, world, rect);
+      this.drawFrontBadges(ctx);
+      this.drawAssaultOdds(ctx, state.hoverOdds);
     }
     this.drawSelection(ctx, state.selection);
     perf?.add('r.actors', performance.now() - t0);
@@ -3138,34 +3140,133 @@ export class Renderer {
    * ayni bant icinde boyanir ve sinir degisince goruntu kendiliginden ilerler.
    */
   drawFronts(ctx, world, state) {
-    const tiles = state.front ?? [];
-    const general = state.activeGeneral;
-    if (!general || !tiles.length || general.nationId !== state.playerNation) return;
-
+    // BÜTÜN CEPHELER görünür (HOI4): eskiden yalnız seçili generalin cephesi
+    // çiziliyordu, savaşta haritada hiçbir cephe hattı yoktu. Seçili olan
+    // dolgulu ve kalın; ötekiler ince çizgi. Her cephede generalin rozeti:
+    // baş harfi ve planlama yayı.
+    const fronts = state.fronts ?? [];
+    const active = state.activeGeneral;
+    this.frontBadges = [];
+    if (!fronts.length) return;
     const zoom = this.camera.zoom;
-    const attack = general.stance === 'advance';
-    const glow = attack ? '#ff9382' : '#8fcdef';
-    const band = new Path2D();
-    for (const tile of tiles) this.cellPath(band, world, tile);
+    const order = [...fronts].sort((a, b) => Number(a.general === active) - Number(b.general === active));
+    for (const { general, tiles } of order) {
+      const isActive = general === active;
+      const attack = general.stance === 'advance';
+      const glow = attack ? '#ff9382' : '#8fcdef';
+      const band = new Path2D();
+      for (const tile of tiles) this.cellPath(band, world, tile);
+      if (isActive) {
+        ctx.globalAlpha = 0.3;
+        ctx.fillStyle = glow;
+        ctx.fill(band);
+      } else {
+        ctx.globalAlpha = 0.1;
+        ctx.fillStyle = glow;
+        ctx.fill(band);
+      }
+      ctx.globalAlpha = isActive ? 1 : 0.6;
+      ctx.lineWidth = (isActive ? (attack ? 3.5 : 2.5) : 1.6) / zoom;
+      ctx.strokeStyle = glow;
+      ctx.stroke(band);
+      ctx.globalAlpha = 1;
+      // Rozet sayaçlardan SONRA çizilir (drawFrontBadges): önce çizilince
+      // cephedeki tümen sayacının altında kalıyordu.
+      this.frontBadges.push({ general, at: this.frontAnchor(tiles), glow, isActive });
+    }
+  }
 
-    ctx.globalAlpha = 0.3;
-    ctx.fillStyle = glow;
-    ctx.fill(band);
-    ctx.globalAlpha = 1;
-    ctx.lineWidth = (attack ? 3.5 : 2.5) / zoom;
-    ctx.strokeStyle = glow;
-    ctx.stroke(band);
+  /**
+   * Cephe rozetleri, sayaçların üstünde. Rozet karenin sol üstüne kayar (sayaç
+   * ortadadır); aynı kareyi paylaşan generallerin rozetleri yan yana dizilir.
+   */
+  drawFrontBadges(ctx) {
+    const badges = this.frontBadges ?? [];
+    if (!badges.length) return;
+    const zoom = this.camera.zoom;
+    const r = Math.max(HEX_SIZE * 0.24, 8 / zoom);
+    const seen = new Map();
+    for (const badge of badges) {
+      const key = `${badge.at.q}:${badge.at.r}`;
+      const index = seen.get(key) ?? 0;
+      seen.set(key, index + 1);
+      const at = { x: badge.at.x - HEX_SIZE * 0.8 + index * r * 2.5, y: badge.at.y - HEX_SIZE * 0.8 };
+      this.drawFrontBadge(ctx, badge.general, at, badge.glow, badge.isActive, zoom);
+    }
+  }
 
+  /** Cephenin ağırlık merkezine en yakın karesi: rozet her hafta zıplamasın. */
+  frontAnchor(tiles) {
+    let x = 0;
+    let y = 0;
+    for (const tile of tiles) { x += tile.x; y += tile.y; }
+    x /= tiles.length;
+    y /= tiles.length;
+    let best = tiles[0];
+    let bestD = Infinity;
+    for (const tile of tiles) {
+      const d = (tile.x - x) ** 2 + (tile.y - y) ** 2;
+      if (d < bestD) { bestD = d; best = tile; }
+    }
+    return best;
+  }
+
+  /** Generalin cephe rozeti: baş harf, duruş rengi, planlama yayı. */
+  drawFrontBadge(ctx, general, at, glow, isActive, zoom) {
+    const r = Math.max(HEX_SIZE * 0.24, 8 / zoom);
     const ready = Math.max(0, Math.min(1, general.planning ?? 0));
-    const marker = tiles[Math.floor(tiles.length / 2)];
+    ctx.save();
     ctx.beginPath();
-    ctx.arc(
-      marker.x, marker.y, HEX_SIZE * 0.26,
-      -Math.PI / 2, -Math.PI / 2 + ready * Math.PI * 2,
-    );
-    ctx.lineWidth = 4 / zoom;
+    ctx.arc(at.x, at.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(10, 14, 16, 0.88)';
+    ctx.fill();
+    ctx.lineWidth = (isActive ? 2 : 1.3) / zoom;
+    ctx.strokeStyle = glow;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(at.x, at.y, r + 3 / zoom, -Math.PI / 2, -Math.PI / 2 + ready * Math.PI * 2);
+    ctx.lineWidth = 3 / zoom;
     ctx.strokeStyle = ready >= 1 ? '#e5ca84' : 'rgba(229, 202, 132, 0.65)';
     ctx.stroke();
+    ctx.fillStyle = isActive ? '#f6e2a8' : '#d8c9a0';
+    ctx.font = `700 ${(r * 1.05).toFixed(2)}px Georgia, serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText((general.name ?? '?').charAt(0).toUpperCase(), at.x, at.y + r * 0.06);
+    ctx.restore();
+  }
+
+  /**
+   * Saldırı önizlemesi: imleçteki düşman karesinin üstünde oran etiketi.
+   * Yeşil ≥ eşik (generalin duruşu), sarı ≥ 1.1, kırmızı altı. Bitişik seçili
+   * tümen yoksa "move adjacent" der: oran ancak bitişikten okunur.
+   */
+  drawAssaultOdds(ctx, odds) {
+    if (!odds?.tile) return;
+    const zoom = this.camera.zoom;
+    const { tile, ratio, count, needs } = odds;
+    const text = ratio == null ? 'Move adjacent to attack'
+      : `${ratio.toFixed(1)} : 1 · ${count} div${ratio >= needs ? ' · favourable' : ratio >= 1.1 ? ' · even' : ' · costly'}`;
+    const color = ratio == null ? '#cfc4a4' : ratio >= needs ? '#9fd27a' : ratio >= 1.1 ? '#e7c46a' : '#ef8a6c';
+    const size = 12 / zoom;
+    ctx.save();
+    ctx.font = `700 ${size.toFixed(2)}px system-ui, sans-serif`;
+    const w = ctx.measureText(text).width + 14 / zoom;
+    const h = 20 / zoom;
+    const x = tile.x - w / 2;
+    const y = tile.y - HEX_SIZE * 0.95 - h;
+    ctx.fillStyle = 'rgba(10, 14, 16, 0.9)';
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.2 / zoom;
+    ctx.beginPath();
+    ctx.rect(x, y, w, h);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = color;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(text, tile.x, y + h / 2 + 0.5 / zoom);
+    ctx.restore();
   }
 
   /**

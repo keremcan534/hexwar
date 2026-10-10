@@ -12,7 +12,7 @@ import { randomSeed } from '../core/rng.js';
 import {
   armyPower, clearPath, organizationOf, placeUnit, stackCapacity, stackFull, unitsOn,
 } from './units.js';
-import { orderMove, setDirective } from './movement.js';
+import { clearDirective, orderMove, setDirective } from './movement.js';
 import { TurnManager } from './turn.js';
 import { atWar, crisisLeft, declareWar, inCrisis } from './diplomacy.js';
 import { demobilize, isMobilized, mobilize } from './mobilization.js';
@@ -34,11 +34,12 @@ import {
   ORDER, clearOrder, executeOrders, idleUnits, setOrder,
 } from './orders.js';
 import {
-  BREAK_ORGANIZATION, MAX_ASSAULT_WIDTH, assaultWidth, battleAt, selectAssault, startBattle,
+  BREAK_ORGANIZATION, MAX_ASSAULT_WIDTH, assaultWidth, battleAt, estimateBattle, selectAssault,
+  startBattle,
 } from './battles.js';
 import {
-  STANCE, assignDivisions, divisionsOf, frontTilesOf, generalOfArmy, refreshFront, setTarget,
-  toggleStance,
+  BRANCH, STANCE, aggressionInfo, assignDivisions, branchOf, divisionsOf, frontTilesOf, generalOfArmy,
+  officersOf, refreshFront, setTarget, toggleStance,
 } from './command.js';
 
 /**
@@ -160,7 +161,8 @@ export class Game {
     }, 100);
 
     this.input = new PointerController(canvas, this.camera, {
-      onTap: (x, y) => this.handleTap(x, y),
+      onTap: (x, y, mods) => this.handleTap(x, y, mods),
+      onDoubleTap: (x, y) => this.handleDoubleTap(x, y),
       onHover: (x, y) => this.handleHover(x, y),
       onChange: () => this.requestRender(),
       onRightTap: (x, y) => this.handleRightTap(x, y),
@@ -172,7 +174,7 @@ export class Game {
       },
       onMarqueeStart: (x, y) => this.beginMarquee(x, y),
       onMarqueeMove: (rect) => this.updateMarquee(rect),
-      onMarqueeEnd: (rect) => this.finishMarquee(rect),
+      onMarqueeEnd: (rect, mods) => this.finishMarquee(rect, mods),
     });
 
     this.onResize = () => {
@@ -282,9 +284,24 @@ export class Game {
    * Sol tık = seçim (HOI4). Üstünde ordu varsa onu seçer, yoksa seçimi bırakır.
    * Yürütme sağ tuşa taşındı; sol tık artık asla emir vermez.
    */
-  handleTap(sx, sy) {
+  handleTap(sx, sy, mods = {}) {
     const hitUnit = this.unitAtScreen(sx, sy);
     const tile = hitUnit?.tile ?? this.tileAtScreen(sx, sy);
+    // SHIFT EKLER, CTRL ÇIKARIR (HOI4/RTS). Eyalet seçimi değişmez: oyuncu
+    // ordu topluyordur, altındaki province paneli araya girmesin.
+    if (mods.shift || mods.ctrl) {
+      const own = unitsOn(tile).filter((u) => u.nationId === this.turns.playerNation);
+      if (own.length) {
+        const set = new Set(this.selection);
+        for (const unit of own) {
+          if (mods.ctrl) set.delete(unit);
+          else set.add(unit);
+        }
+        this.selectUnits([...set]);
+        this.requestRender();
+        return;
+      }
+    }
     const previous = this.selected;
     this.selected = tile;
 
@@ -305,6 +322,82 @@ export class Game {
     this.selectUnits(armyActive ? [] : own);
     this.emit('select', tile);
     this.requestRender();
+  }
+
+  /**
+   * Çift tık: tümenin generalinin bütün ordusu (HOI4). Generali yoksa ekranda
+   * görünen aynı koldan (kara/deniz) bütün kendi tümenlerimiz.
+   */
+  handleDoubleTap(sx, sy) {
+    const hit = this.unitAtScreen(sx, sy);
+    if (!hit || hit.nationId !== this.turns.playerNation) return [];
+    const nation = this.world.nations[this.turns.playerNation];
+    const general = generalOfArmy(nation, hit);
+    if (general) return this.selectGeneral(general);
+    const domain = hit.type.domain;
+    const w = this.camera.viewWidth;
+    const h = this.camera.viewHeight;
+    const visible = this.world.units.filter((unit) => {
+      if (unit.nationId !== nation.id || unit.hp <= 0 || unit.type.domain !== domain) return false;
+      const p = this.camera.worldToScreenNear(unit.tile.x, unit.tile.y, sx);
+      return p.x >= 0 && p.x <= w && p.y >= 0 && p.y <= h;
+    });
+    this.selectUnits(visible);
+    this.requestRender();
+    return visible;
+  }
+
+  /**
+   * DUR: seçili tümenlerin yürüyüşü, sağ tık emri ve AUTO/HOLD düşer. Seçim
+   * değişmez. Generalin tümeni ertesi hafta cephedeki yerine döner.
+   */
+  stopSelection() {
+    let stopped = 0;
+    for (const unit of this.selection) {
+      if (!unit || unit.hp <= 0 || unit.battleId) continue;
+      clearOrder(unit);
+      clearDirective(unit);
+      clearPath(unit);
+      stopped++;
+    }
+    this.emit('units', this.selectedUnit);
+    this.emit('selection', this.selection);
+    this.requestRender();
+    return stopped;
+  }
+
+  /** Bekle (HOLD) aç/kapa: seçimin hepsi bekliyorsa kalkar, yoksa hepsi bekler. */
+  toggleHoldSelection() {
+    const units = this.selection.filter((unit) => unit && unit.hp > 0);
+    if (!units.length) return null;
+    const allHold = units.every((unit) => unit.order?.type === ORDER.HOLD);
+    for (const unit of units) {
+      if (allHold) this.clearUnitOrder(unit);
+      else this.setUnitOrder(unit, ORDER.HOLD);
+    }
+    this.emit('selection', this.selection);
+    return !allHold;
+  }
+
+  /** Kontrol grubu (Ctrl+1..9): seçimi numaraya yazar. */
+  assignControlGroup(slot) {
+    this.controlGroups ??= {};
+    this.controlGroups[slot] = this.selection.map((unit) => unit.id);
+    return this.controlGroups[slot].length;
+  }
+
+  /** Grubu geri çağırır; ikinci basış kamerayı oraya götürür. */
+  recallControlGroup(slot, { focus = false } = {}) {
+    const ids = new Set(this.controlGroups?.[slot] ?? []);
+    if (!ids.size) return [];
+    const units = this.world.units.filter((unit) => ids.has(unit.id) && unit.hp > 0);
+    this.selectUnits(units);
+    if (focus && units[0]) {
+      this.camera.centerOn(units[0].tile.x, units[0].tile.y);
+      this.camera.zoom = Math.max(this.camera.zoom, 0.6);
+    }
+    this.requestRender();
+    return units;
   }
 
   /**
@@ -447,6 +540,14 @@ export class Game {
         }
       }
     });
+    // Sessiz tık yok: hiçbir tümen yola çıkamadıysa sebebi yazılır.
+    if (!issued) {
+      const owner = controllerOf(tile);
+      const why = owner >= 0 && owner !== player && !atWar(this.world, owner, player)
+        ? `${this.world.nations[owner]?.name ?? 'a foreign nation'} is not at war with us — no passage`
+        : 'no road leads there';
+      this.reportOrder(tile, 0, 0, new Map([['path', why]]));
+    }
 
     this.emit('units', this.selectedUnit);
     this.requestRender();
@@ -468,9 +569,34 @@ export class Game {
     );
     this.selected_ = mine;
     this.selectedUnit = mine[0] ?? null;
+    this.syncActiveGeneral(mine);
     this.emit('units', this.selectedUnit);
     this.emit('selection', mine);
     return mine;
+  }
+
+  /**
+   * Seçim tek bir kara generalinin tümenleriyse o general etkin olur: cephesi
+   * çizilir, alt şeridin hedef/taarruz/duruş araçları açılır. Eskiden haritada
+   * orduya tıklamak generali değiştirmiyordu; başka generalin cephesi çizili
+   * kalıyor, araçlar yanlış generale gidiyordu.
+   */
+  syncActiveGeneral(units) {
+    const nation = this.world?.nations[this.turns.playerNation];
+    if (!nation) return;
+    let general = null;
+    for (const unit of units) {
+      const own = generalOfArmy(nation, unit);
+      if (!own || branchOf(own) !== BRANCH.ARMY || (general && own !== general)) {
+        general = null;
+        break;
+      }
+      general = own;
+    }
+    if (general === this.activeGeneral) return;
+    this.activeGeneral = general;
+    if (general) refreshFront(this.world, general);
+    this.emit('command', general);
   }
 
   /** Tek birim seçimi: eski çağrı yerleri bozulmasın diye korunuyor. */
@@ -490,7 +616,7 @@ export class Game {
   }
 
   /** Kutunun içinde kalan kendi ordularımızı seçer. */
-  finishMarquee(rect) {
+  finishMarquee(rect, mods = {}) {
     this.marquee = null;
     if (!this.world || !rect) {
       this.requestRender();
@@ -512,9 +638,16 @@ export class Game {
     // Kutu seçimi *yalnızca* tümen seçer. Seçili province'i değiştirmez:
     // değiştirince altındaki province paneli (bina yerleştirme dahil) açılıyor,
     // oyuncu sadece birlik seçmek isterken şehir ekranıyla karşılaşıyordu.
-    this.selectUnits(picked);
+    // Shift kutusu ekler, Ctrl kutusu çıkarır.
+    let next = picked;
+    if (mods.shift) next = [...new Set([...this.selection, ...picked])];
+    else if (mods.ctrl) {
+      const drop = new Set(picked);
+      next = this.selection.filter((unit) => !drop.has(unit));
+    }
+    this.selectUnits(next);
     this.requestRender();
-    return picked;
+    return next;
   }
 
   /**
@@ -726,6 +859,8 @@ export class Game {
     refreshFront(this.world, general);
     const divisions = divisionsOf(this.world, general);
     this.selectUnits(divisions);
+    // Tümensiz general de seçilebilir (araçları ve cephesi görünsün).
+    this.activeGeneral = general;
     if (divisions.length) {
       this.selected = divisions[0].tile;
       this.emit('select', this.selected);
@@ -763,7 +898,8 @@ export class Game {
     if (!unit) return;
     clearOrder(unit);
     clearPath(unit);
-    this.selectUnit(unit);
+    // Seçim DEĞİŞMEZ: döngüde çağrıldığında selectUnit çoklu seçimi son
+    // tümene indiriyordu.
     this.emit('units', this.selectedUnit);
     this.requestRender();
   }
@@ -1103,7 +1239,48 @@ export class Game {
     const tile = this.tileAtScreen(sx, sy);
     if (tile === this.hovered) return;
     this.hovered = tile;
+    this.hoverOdds = this.assaultOdds(tile);
     this.requestRender();
+  }
+
+  /**
+   * SALDIRI ÖNİZLEMESİ: seçili ve hedefe bitişik tümenlerin gücü / savunanın
+   * gücü, muharebenin kendi terazisiyle (estimateBattle — arazi, nehir, kale,
+   * siper, general dahil). Oyuncu sağ tıklamadan önce oranı görür; eskiden
+   * savaş kör tıklamaydı. Bitişik tümen yoksa önizleme yok.
+   */
+  assaultOdds(tile) {
+    if (!tile || !this.selection.length || !this.world) return null;
+    const player = this.turns.playerNation;
+    const node = nodeOf(this.world, tile);
+    const defenders = unitsOn(node).filter((unit) => unit.nationId !== player
+      && atWar(this.world, unit.nationId, player));
+    if (!defenders.length) return null;
+    const attackers = this.selection.filter((unit) => unit.hp > 0 && !unit.embarked
+      && unit.type.domain === defenders[0].type.domain
+      && nodesAdjacent(this.world, unit.tile, node));
+    if (!attackers.length) return { tile: node, ratio: null, count: 0 };
+    const { attack, defense } = estimateBattle(this.world, attackers, defenders);
+    const general = this.activeGeneral;
+    return {
+      tile: node,
+      ratio: attack / Math.max(1e-6, defense),
+      count: Math.min(attackers.length, MAX_ASSAULT_WIDTH),
+      needs: aggressionInfo(general?.aggression ?? 2)?.risk ?? 1.5,
+    };
+  }
+
+  /** Oyuncunun bütün kara generallerinin cepheleri (çizim için). */
+  playerFronts() {
+    const nation = this.world?.nations[this.turns.playerNation];
+    if (!nation) return [];
+    const out = [];
+    for (const general of officersOf(nation, BRANCH.ARMY)) {
+      if (!general.divisions?.length) continue;
+      const tiles = frontTilesOf(this.world, general);
+      if (tiles.length) out.push({ general, tiles });
+    }
+    return out;
   }
 
   /**
@@ -1149,6 +1326,8 @@ export class Game {
           playerNation: this.turns.playerNation,
           activeGeneral: this.activeGeneral,
           front: this.frontTiles(),
+          fronts: this.playerFronts(),
+          hoverOdds: this.hoverOdds,
           selection: this.selection,
           marquee: this.marquee,
         });

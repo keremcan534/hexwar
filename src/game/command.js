@@ -292,8 +292,12 @@ export function postTileOf(world, unit) {
 export function assignDivisions(nation, generalId, armies) {
   const general = generalById(nation, generalId);
   if (!general) return 0;
+  // Gemi generale, tümen amirale gitmez: karışık seçimde yalnız kolu tutanlar
+  // devredilir (eskiden gemi kara generaline geçip 12'lik tavanı yiyordu).
+  const naval = branchOf(general) === BRANCH.NAVY;
   const list = (Array.isArray(armies) ? armies : [armies])
-    .filter((army) => army && army.nationId === nation.id);
+    .filter((army) => army && army.nationId === nation.id
+      && (army.type?.domain === 'sea') === naval);
   if (!list.length) return 0;
   const ids = new Set(list.map((army) => army.id));
   for (const other of generalsOf(nation)) {
