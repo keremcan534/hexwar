@@ -20,11 +20,12 @@ const units = (nation) => Math.max(1, (nation.economy?.population ?? 0) / 100000
 export const DECISIONS = {
   industrial_subsidies: {
     name: 'Industrial Subsidies', cost: 75, cooldown: 104,
-    desc: 'Construction +20% speed and building cost −10% for a year.',
+    desc: 'Construction +20% speed and building cost −10% for two years.',
     available: () => true,
     weight: (nation) => ((nation.economy?.consumer?.ratio ?? 1) < 1.05 ? 1.6 : 0.8),
     apply: (game, nation) => {
-      addTimedModifier(nation, 'decision-subsidies', 'Industrial Subsidies', 52, { construction: 0.2, buildCost: -0.1 }, game.turns.turn);
+      // Süre = bekleme: etki boşluksuz sürer (52 haftada yarı zaman boştu).
+      addTimedModifier(nation, 'decision-subsidies', 'Industrial Subsidies', 104, { construction: 0.2, buildCost: -0.1 }, game.turns.turn);
       return 'Credit flows to the builders.';
     },
   },
@@ -56,7 +57,9 @@ export const DECISIONS = {
     name: 'Grand Manoeuvres', cost: 50, cooldown: 104,
     desc: 'Organisation recovery +15% and training speed +15% for a year.',
     available: () => true,
-    weight: (nation) => (atWar(nation) || nation.focus === 'military' ? 1.4 : 0.6),
+    // Barış ağırlığı YZ tabanının (0.5) altında: manevra savaşta ya da askerî
+    // odakta alınır. 0.6'da barışta da alınıyor, SG'nin büyük payını yiyordu.
+    weight: (nation) => (atWar(nation) || nation.focus === 'military' ? 1.4 : 0.4),
     apply: (game, nation) => {
       addTimedModifier(nation, 'decision-drills', 'Grand Manoeuvres', 52, { organization: 0.15, training: 0.15 }, game.turns.turn);
       return 'The army drills in the autumn fields.';
@@ -128,11 +131,11 @@ export const DECISIONS = {
   },
   research_grants: {
     name: 'Research Grants', cost: 60, cooldown: 104,
-    desc: 'Research +15% for a year.',
+    desc: 'Research +15% for two years.',
     available: () => true,
     weight: () => 0.9,
     apply: (game, nation) => {
-      addTimedModifier(nation, 'decision-research', 'Research Grants', 52, { research: 0.15 }, game.turns.turn);
+      addTimedModifier(nation, 'decision-research', 'Research Grants', 104, { research: 0.15 }, game.turns.turn);
       return 'The academies receive the crown\'s purse.';
     },
   },

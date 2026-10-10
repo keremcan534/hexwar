@@ -111,6 +111,10 @@ export function autoFocus(world, nation) {
     // Tamamlanmış entegrasyon yuvayı boşa tutmasın.
     else if (cluster.econ.focus === 'integrate' && cluster.econ.core && (cluster.econ.unrest ?? 0) < 0.5) {
       cluster.econ.focus = null;
+    // Tamamlanmış asimilasyon da: YZ'nin Assimilation yuva-yıllarının %55'i
+    // zaten %1'in altında yabancısı kalmış state'lerdeydi (ölçüldü).
+    } else if (cluster.econ.focus === 'assimilate' && foreignShareOf(cluster, nation) < 0.01) {
+      cluster.econ.focus = null;
     }
   }
   let free = focusSlots(nation) - focusedStates(world, nation).length;

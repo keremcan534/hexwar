@@ -12,7 +12,7 @@
 //   npm run audit:econ -- 1040    (hafta sayısı)
 
 import { headless, scanInvariants, section, sub, finding, reportFindings, table, pct } from './harness.mjs';
-import { RESOURCE_IDS } from '../../src/game/econ/defs.js';
+import { RESOURCES, RESOURCE_IDS } from '../../src/game/econ/defs.js';
 import { POWER_CAP } from '../../src/game/politics.js';
 
 const WEEKS = Number(process.argv[2] ?? 520);
@@ -66,7 +66,8 @@ for (const seed of SEEDS) {
     }
     totals.priceWeeks++;
     for (const id of RESOURCE_IDS) {
-      const base = { FOOD: 1, COAL: 1.6, IRON: 2, TIMBER: 1.2, HORSES: 2.2, SALTPETER: 3 }[id];
+      // Taban fiyat tanımdan: elle yazılmış tablo petrol ve kauçuğu hiç saymıyordu.
+      const base = RESOURCES[id].price;
       const ratio = world.market.prices[id] / base;
       if (ratio <= 0.62) totals.floor[id]++;
       if (ratio >= 1.95) totals.ceiling[id]++;

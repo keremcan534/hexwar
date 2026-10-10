@@ -343,7 +343,12 @@ export function planConstruction(game, nation, { reserve = 60 } = {}) {
     if ((economy.resources?.[id]?.balance ?? 0) < 0) { wants.push('mine'); break; }
   }
   if (economy.coastal && !own.some((p) => (p.econ.buildings.dockyard ?? 0) > 0)) wants.push('dockyard');
-  wants.push('factory', 'railway', 'develop');
+  // Demiryolu SONDA ve yalnız evde demir fazlası varken: tek etkisi yatak +%10,
+  // en iyi state'te geri dönüşü 639-1514 hafta. İkinci sıradayken YZ'nin
+  // 1836-46 projelerinin %40'ıydı; listeden tamamen çıkınca 1899 dünya IC'si
+  // +%35 ama demir talebi 30 yıl sıfıra iniyordu (demirin tek barış alıcısı).
+  wants.push('factory', 'develop');
+  if ((economy.resources?.IRON?.balance ?? 0) > 0) wants.push('railway');
   const tryBuild = (buildingId) => {
     const candidates = buildingId === 'mine'
       ? byPopulation.filter((p) => p.deposits?.some((d) => (economy.resources?.[d.id]?.balance ?? 0) < 0))

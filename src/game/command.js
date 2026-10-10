@@ -110,9 +110,11 @@ export const STANCE = { HOLD: 'hold', ADVANCE: 'advance' };
  * cepheyi parcalamamali.
  */
 const AGGRESSION = {
-  1: { label: 'Careful', cadence: 5, risk: 1.6 },
-  2: { label: 'Balanced', cadence: 3, risk: 1.2 },
-  3: { label: 'Aggressive', cadence: 2, risk: 0.9 },
+  // Risk ×1.25: oyunda %50 kazanma noktası ~1.5'te; 1.2 eşiği taarruzların
+  // yalnız %27'sini kazandırıyordu ve ekrandaki "1.2 gerek" yanıltıyordu.
+  1: { label: 'Careful', cadence: 5, risk: 2.0 },
+  2: { label: 'Balanced', cadence: 3, risk: 1.5 },
+  3: { label: 'Aggressive', cadence: 2, risk: 1.125 },
 };
 
 export function aggressionInfo(level) {
@@ -877,6 +879,9 @@ function pickOperation(game, general, divisions, info) {
   for (const tile of targets) {
     const participants = operationParticipants(game, divisions, tile);
     if (!participants.length) continue;
+    // Yalnız topçudan oluşan taarruz yok: taarruzların %17-20'si tek başına
+    // topçuydu — destek kolu yalnız kaldığında kırılgandır (units.js).
+    if (participants.every((unit) => unit.type.support)) continue;
     const defenders = unitsOn(tile).filter((unit) => unit.nationId !== general.nationId);
     if (defenders.some((unit) => !atWar(world, unit.nationId, general.nationId))) continue;
     // Tartma muharebenin kendi terazisiyle yapilir (bkz. battles.estimateBattle):

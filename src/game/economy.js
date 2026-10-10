@@ -206,9 +206,10 @@ export function provinceTaxBase(econ) {
 
 /** Haftalık vergi, dökümüyle (ekran aynı döküm fonksiyonunu okur). */
 export function taxBreakdown(world, nation) {
-  // Taç gelirleri başkent elde olduğu sürece akar.
-  const capital = nation.capital ? world.provinces?.[nation.capital.provinceId] : null;
-  let base = capital?.owner === nation.id ? CROWN_REVENUE : 0;
+  // Taç gelirleri devlet yaşadıkça akar. Başkente bağlıyken başkentini
+  // barışta veren küçük devlet bir daha hiç kalkamıyordu: iflasların %74'ü
+  // başkentsiz artık devletlerin tekrar tekrar batmasıydı (ölçüldü, 6 tohum).
+  let base = CROWN_REVENUE;
   for (const province of world.provinces ?? []) {
     if (province.owner !== nation.id || !province.econ) continue;
     base += provinceTaxBase(province.econ);
@@ -307,7 +308,10 @@ export function runNationEconomy(game, nation, ctx) {
     break;
   }
   const needs = emptyResourceMap();
-  needs.FOOD = foodNeed(population);
+  // İşgal altındaki halkı işgalci besler: o pay da ithal edilince savaştaki
+  // gerçek iflasların neredeyse hepsi borç tavanına dayanmış gıda ithalatıydı
+  // (son 26 haftada ithalat altınının %75-83'ü; 43 → 13, 6 tohum).
+  needs.FOOD = foodNeed(population * (1 - (economy.occupiedShare ?? 0)));
   // Gübre: gıda bonusu güherçile ister (bkz. SALTPETER_PER_FOOD).
   if (mod(nation, 'saltpeterFood') > 0) needs.SALTPETER += produced.FOOD * SALTPETER_PER_FOOD;
 

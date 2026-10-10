@@ -46,11 +46,13 @@ export const UNIT_TYPES = {
   },
   CAVALRY: {
     id: 'CAVALRY', name: 'Cavalry', glyph: 'C', domain: 'land',
-    moves: 6, attack: 6, hp: 90, manpower: 2000 * POPULATION_SCALE,
+    // Asker başına değerde süvari ve topçu piyadenin 1.6-3.3 katıydı; insan
+    // gücü bağlayan kaynak olduğu için bedel oradan (ölçüldü, muharebe tezgâhı).
+    moves: 6, attack: 6, hp: 90, manpower: 3000 * POPULATION_SCALE,
   },
   ARTILLERY: {
     id: 'ARTILLERY', name: 'Artillery', glyph: 'A', domain: 'land',
-    moves: 2, attack: 9, hp: 70, manpower: 1500 * POPULATION_SCALE,
+    moves: 2, attack: 7, hp: 70, manpower: 3000 * POPULATION_SCALE,
     /** Topcu ates destegidir: yalniz kaldiginda kirilgan, yigin icinde belirleyici. */
     support: true,
   },

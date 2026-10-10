@@ -70,7 +70,7 @@ Eğitim yasası bir önceki taramada ölüydü: okuryazarlık sabit adımla
 yaklaşıyordu, şimdi oransal (TASARIM.md §8). Bataryada kalan bulgular
 yeniden yazımdan ÖNCE de vardı: province boy tavanı (200×160'ta 1 province),
 ülke sayısı 101 (scale, ORTA). Sınır kartopu %32-40 (eşik %33; 2026-10-08
-altı tohum × 50 yıl: %39.5 → inşaat temposu + HOI4 dağıtımıyla %36.5; 2026-10-09 A/B BORDER1-6: kura + seferberlik bedeli + state odağı öncesi %38.3, sonrası %38.5 — tohum başına ±10 gürültü, etkisiz): ordu
+altı tohum × 50 yıl: %39.5 → inşaat temposu + HOI4 dağıtımıyla %36.5; 2026-10-09 A/B BORDER1-6: kura + seferberlik bedeli + state odağı öncesi %38.3, sonrası %38.5 — tohum başına ±10 gürültü, etkisiz; 2026-10-11 denge geçişi: **%38.5 → %30.9**, birleşme hariç savaş payı %31.3 → %25.3, 50 yılda savaş 77 → 65 — bağlayan kaldıraç YZ'nin hedefin müttefiklerini yarım ağırlıkla sayması, ai.js ALLY_WEIGHT; audit:borders artık savaş payını da yazar ve eşiği ona uygular): ordu
 hex hex yürüdüğünden beri savaşlar kısa (ortanca ~20 hafta); zafer puanı
 (kümenin merkez hexi) eklendi, barış masası eşikleri denendi ve ölçümde
 etkisiz çıktı. Bağlayan kaldıraç küçük devletin iki-üç barışta tükenmesi.

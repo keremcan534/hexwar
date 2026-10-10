@@ -177,7 +177,10 @@ export function runMovements(game) {
       // Ayaklanmadan sonra hareket bir sure toparlanir: yenilgi hafizasi.
       if ((state.calmUntil ?? 0) > turn) delta = Math.min(delta, 0);
       if (martial) {
-        delta = Math.min(delta, 0) - MOVEMENT.MARTIAL_PULL;
+        // Sıkıyönetim YAVAŞLATIR, dondurmaz. Min(delta, 0) her hareketi 100'ün
+        // altında tutuyordu: 24 koşuda tek ayaklanma, vergi bedeli %0.2.
+        // Baskı yüksekse hareket sıkıyönetime rağmen büyür.
+        delta -= MOVEMENT.MARTIAL_PULL;
         settle(nation, 'unrest', -martialCost(provinces));
         repression += MOVEMENT.MARTIAL_STABILITY;
       }

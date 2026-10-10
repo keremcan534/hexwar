@@ -89,7 +89,7 @@ export const ADVISOR_SLOTS = {
   ] },
   military: { name: 'Military', types: [
     { id: 'drill_master', title: 'Drill Master', effects: { training: 0.25 } },
-    { id: 'quartermaster', title: 'Quartermaster', effects: { reinforce: 0.25, lineGain: 0.3 } },
+    { id: 'quartermaster', title: 'Quartermaster', effects: { reinforce: 0.25, lineEfficiency: 0.05 } },
     { id: 'strategist', title: 'Strategist', effects: { attack: 0.06 } },
     { id: 'fortifier', title: 'Military Engineer', effects: { defense: 0.08 } },
     { id: 'recruiter', title: 'Recruiting Sergeant', effects: { manpower: 0.15 } },
@@ -197,7 +197,9 @@ export function legitimacyOf(nation) {
   if (!politics) return { gap: 0, hit: 0, leader: 'conservative' };
   const leader = leadingParty(nation);
   const gap = Math.max(0, (politics.support[leader] ?? 0) - (politics.support[politics.ruling] ?? 0));
-  return { gap, hit: -gap * 0.004, leader };
+  // 0.004 ölçümde gürültüydü: muhafazakârlar ulus-haftaların %92-98'inde
+  // iktidardaydı, sosyalist ve cumhuriyet hiç görülmedi.
+  return { gap, hit: -gap * 0.01, leader };
 }
 
 // Değiştirici kaynakları: iktidar partisi, hükûmet biçimi, danışmanlar.
@@ -584,7 +586,10 @@ export function stabilityBreakdown(world, nation, turn = world.turn ?? 0) {
 /** Savaş desteği hedefinin dökümü. */
 export function warSupportBreakdown(world, nation, { kin = 0 } = {}) {
   const politics = nation.politics;
-  const parts = [{ label: 'Base', value: 0.4 }];
+  // Taban 0.4'teyken dağılım düzdü (barış p50 0.66, savaş 0.64) ve onu okuyan
+  // bütün kapılar (YZ savaş 0.3, teslim 0.2, bezginlik 0.35) p10'un altında
+  // kalıyordu: savaş desteği ölü bir frendi.
+  const parts = [{ label: 'Base', value: 0.25 }];
   const push = (label, value) => {
     if (Math.abs(value) >= 0.005) parts.push({ label, value });
   };
@@ -701,20 +706,22 @@ export function politicsAI(game, nation, { appoint = true } = {}) {
     if (economyLaw < 2 && tryLaw('economy', economyLaw + 1)) return;
     if (conscription < 2 && tryLaw('conscription', conscription + 1)) return;
   } else if ((politics.warWeeks ?? 0) === 0) {
-    if (economyLaw > 1 && tryLaw('economy', 1)) return;
+    // Barışta sivil ekonomiye döner: kısmi seferberlikte IC'nin ~%25'i hiçbir
+    // şey üretmiyordu (teçhizat hiç bağlamıyor; ölçüldü), tüketim malı açığı
+    // %11-20'ydi. Sivile dönünce açık %3-6, IC ve sınırlar gürültü içinde.
+    if (economyLaw > 0 && tryLaw('economy', 0)) return;
     if (conscription > 1 && tryLaw('conscription', 1)) return;
   }
   // 3. Barış yasaları: tüketim malı eksikse sivil ekonomi, okul, ticaret.
   if (!atWar && (economy.consumer?.ratio ?? 1) < 0.95 && economyLaw > 0 && tryLaw('economy', economyLaw - 1)) return;
-  if (!atWar && economyLaw === 0 && (economy.consumer?.ratio ?? 1) > 1.1 && tryLaw('economy', 1)) return;
   const education = lawIndex(nation, 'education');
   if (education < 2 && (economy.ledger?.net ?? 0) > economy.population / 100000 * 0.15
     && tryLaw('education', education + 1)) return;
   if ((nation.stability ?? 0.5) < 0.35 && lawIndex(nation, 'tax') === 2 && tryLaw('tax', 1)) return;
   if ((nation.gold ?? 0) < 0 && lawIndex(nation, 'tax') === 0 && tryLaw('tax', 1)) return;
-  // 4. Mutlakiyette halkın partisi (meşruiyet cezası 6 puanı aşınca).
+  // 4. Mutlakiyette halkın partisi (fark 8 puanı aşınca: ceza 8 istikrar).
   const legitimacy = legitimacyOf(nation);
-  if (appoint && legitimacy.gap > 15 && appointGovernment(game, nation, legitimacy.leader)) return;
+  if (appoint && legitimacy.gap > 8 && appointGovernment(game, nation, legitimacy.leader)) return;
 }
 
 /** Siyaset ekranının modeli. */

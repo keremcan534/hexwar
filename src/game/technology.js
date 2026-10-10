@@ -45,7 +45,7 @@ export const TECHNOLOGIES = {
   industry: {
     Power: [
       t('stationary_steam', 'Stationary Steam Engine', 1836, { ic: 0.08 }, 'Steam replaces the water wheel in the mills.'),
-      t('mechanical_production', 'Mechanical Production', 1846, { ic: 0.08, lineGain: 0.2 }, 'Machine tools speed up every production line.'),
+      t('mechanical_production', 'Mechanical Production', 1846, { ic: 0.08, lineEfficiency: 0.05 }, 'Machine tools raise the efficiency of every production line.'),
       t('compound_engines', 'Compound Steam Engines', 1860, { ic: 0.10 }, 'More power from the same coal.'),
       t('electrical_power', 'Electrical Power', 1880, { ic: 0.12, oilIc: 0.05 }, 'Dynamos light the factory floor; oil lubricates every shaft.'),
     ],
@@ -61,13 +61,13 @@ export const TECHNOLOGIES = {
       t('early_railways', 'Early Railways', 1836, { construction: 0.10, constructionSlots: 1 }, 'The first lines between mine and port.'),
       t('iron_railways', 'Iron Railways', 1848, { developmentCap: 1, supply: 0.15 }, 'Rails tie the provinces together.'),
       t('steel_railways', 'Steel Railways', 1862, { construction: 0.15, developmentCap: 1 }, 'Heavier trains, cheaper building.'),
-      t('integral_rail', 'Integral Rail System', 1878, { constructionSlots: 1, supply: 0.15, rubberArmy: 0.05 }, 'A national network, with insulated telegraph along every line.'),
+      t('integral_rail', 'Integral Rail System', 1878, { construction: 0.1, supply: 0.15, rubberArmy: 0.05 }, 'A national network, with insulated telegraph along every line.'),
     ],
     Agriculture: [
-      t('crop_rotation', 'Crop Rotation', 1838, { food: 0.10 }, 'Four-field rotation raises yields.'),
-      t('mechanized_farming', 'Mechanised Farming', 1852, { food: 0.10, growth: 0.05 }, 'Reapers and threshers.'),
+      t('crop_rotation', 'Crop Rotation', 1838, { food: 0.03 }, 'Four-field rotation raises yields.'),
+      t('mechanized_farming', 'Mechanised Farming', 1852, { food: 0.03, growth: 0.05 }, 'Reapers and threshers.'),
       t('fertilizers', 'Chemical Fertilisers', 1868, { saltpeterFood: 0.15 }, 'Guano and Chilean nitrate: richer harvests for whoever controls the saltpeter.'),
-      t('refrigeration', 'Refrigeration', 1884, { food: 0.10, consumerNeed: -0.05, developmentCap: 1 }, 'Food travels across the world.'),
+      t('refrigeration', 'Refrigeration', 1884, { food: 0.03, consumerNeed: -0.05, developmentCap: 1 }, 'Food travels across the world.'),
     ],
   },
   army: {
@@ -78,7 +78,7 @@ export const TECHNOLOGIES = {
       t('modern_doctrine', 'Modern Doctrine', 1882, { defense: 0.08, attack: 0.06, training: 0.15, rubberArmy: 0.10 }, 'Firepower, dispersion and the field telegraph.'),
     ],
     Arms: [
-      t('percussion_caps', 'Percussion Caps', 1840, { attack: 0.05, lineGain: 0.1 }, 'Muskets that fire in the rain.'),
+      t('percussion_caps', 'Percussion Caps', 1840, { attack: 0.05 }, 'Muskets that fire in the rain.'),
       t('breech_loaders', 'Breech-Loading Rifles', 1852, { attack: 0.08 }, 'Reload lying down.'),
       t('rifled_artillery', 'Rifled Artillery', 1864, { attack: 0.06, defense: 0.05 }, 'Guns that hit what they aim at.'),
       t('machine_guns', 'Machine Guns', 1884, { defense: 0.12 }, 'The defence dominates the field.'),
@@ -182,7 +182,10 @@ export function availableTechs(nation) {
  * geçiriyordu (erken ceza %12/3× denendi, yetmedi).
  */
 export const TECH_BASE_COST = 110;
-const TECH_YEAR_SCALE = 0.02;
+// 0.02'de herkes 40 teknolojiyi ~1892'de bitirip 320-440 hafta boş kalıyordu
+// ve 1900'de değiştirici toplamları uluslar arasında aynıydı. 0.03: ortanca
+// ~1897'de biter, boş hafta %60-80 azalır (3 tohum, eşli).
+const TECH_YEAR_SCALE = 0.03;
 /**
  * Fiyatın çarpanları, ekranın "neden bu kadar" dökümü için. techCost AYNI
  * çarpanları aynı sırayla çarpar: döküm ile motor ayrışamaz.

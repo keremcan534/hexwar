@@ -36,12 +36,15 @@ import { decisionsAI } from './decisions.js';
 import { delegationActive, noteDelegated } from './delegation.js';
 import { nodeNeighbors } from '../world/provinceGraph.js';
 import { autoFocus } from './stateFocus.js';
+import { alliesOf } from './alliances.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
 // 1.4 -> 1.6 -> 1.8 (2026-09-04: kusatma ve bos cepheye yuruyus savaslari
 // kesinlestirdi, 50 yilda %39-45 kume el degistirdi): 50 yilda haritanin ucte birinden fazlasi el degistiriyordu
 // (audit:borders %35-39); daha kesin ustunluk ister, daha az savas acar.
 const WAR_THRESHOLD = 1.8;
+/** Hedefin müttefiklerinin güç oranındaki ağırlığı (bkz. diplomacy hedef seçimi). */
+const ALLY_WEIGHT = 0.5;
 
 /**
  * ZATEN SAVAŞTA olan bir ülkeye saldırmak için gereken üstünlük ve sınır.
@@ -225,7 +228,14 @@ function diplomacy(game, nation, rng) {
     const contact = contacts[nation.id][other.id];
     if (!contact) continue;
     if (truceLeft(world, nation.id, other.id, game.turns.turn) > 0) continue;
-    const ratio = myPower / Math.max(1, nationStrength(world, other));
+    // HEDEFİN MÜTTEFİKLERİ yarım ağırlıkla sayılır: savaş ilanı onları da
+    // çağırır (callAlliesToWar). Saymadığında kartopu %38'di; 0.5 ile %24
+    // (6 tohumun 5'i <= %33). 0.25 gürültüde kaldı, 1.0 %19'a aşırı düşürdü.
+    const allied = alliesOf(other).reduce((sum, id) => {
+      const ally = world.nations[id];
+      return ally?.alive && ally.id !== nation.id ? sum + nationStrength(world, ally) : sum;
+    }, 0);
+    const ratio = myPower / Math.max(1, nationStrength(world, other) + ALLY_WEIGHT * allied);
     if (ratio < WAR_THRESHOLD) continue;
     // Çullanma sınırı: üçüncü saldırgan hiç binmez, ikincisi ancak açık ara
     // üstünlük ve gerçek bir sınırla biner (bkz. SECOND_FRONT_THRESHOLD).
@@ -332,7 +342,9 @@ function spend(game, nation) {
   const fleet = world.units.filter(
     (u) => u.nationId === nation.id && u.type.domain === 'sea',
   ).length + trainingCount(nation, 'WARSHIP');
-  if (hasPort && fleet < 1 + Math.floor(cities / 3)
+  // Donanma YZ dünyasında ölü kaldıraçtı (bütün gemileri silmek hiçbir şey
+  // değiştirmedi); YZ getirisi ölçülmeyen filoya daha az öder.
+  if (hasPort && fleet < Math.floor(cities / 4)
     && equipmentStock(nation, 'ships') >= UNIT_EQUIPMENT.WARSHIP.ships
     && canAfford(nation, UNIT_COSTS.WARSHIP)
     && game.turns.buyUnit(nation, 'WARSHIP')) {

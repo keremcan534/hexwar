@@ -79,9 +79,9 @@ yoktur, teknoloji yayıldıkça değerlenir — petrol patlaması.
 | Demir | × 0.074 | tüfek, top, demiryolu inşaatı | hat yavaşlar |
 | Kereste | × 0.097 | inşaat, gemi, tüfek | inşaat yavaşlar |
 | At | × 0.075 | süvari (0.5/hafta), topçu (0.25/hafta) | süvari/topçu gücü düşer |
-| Güherçile | × 0.13 | muharebe (alay başı 0.5), tüfek ve top hattı, 1868 sonrası gübre (gıda birimi başı 0.02) | muharebe gücü −%30'a kadar, gübre bonusu kaybolur |
+| Güherçile | × 0.13 | muharebe (alay başı 0.5), tüfek ve top hattı, 1868 sonrası gübre (gıda birimi başı 0.01; 0.02'de gübre talebin %94-99'uydu ve güherçileyi tavana çakıyordu) | muharebe gücü −%30'a kadar, gübre bonusu kaybolur |
 | Petrol | × 0.2 (yalnız petrol lekesi) | 1868 sonrası fabrikalar (0.12/IC) | IC bonusu (en çok +%15) karşılanan oranda |
-| Kauçuk | × 0.12 (yalnız kauçuk lekesi) | 1878 sonrası her kara alayı (0.08/hafta) | muharebe bonusu (en çok +%15) karşılanan oranda |
+| Kauçuk | × 0.17 (yalnız kauçuk lekesi; 0.12'de ulus-haftaların %74-78'inde kıttı) | 1878 sonrası her kara alayı (0.08/hafta) | muharebe bonusu (en çok +%15) karşılanan oranda |
 
 Kaynak hex'i başı çıktı işletme (+%50/kademe, en çok 3), demiryolu ve
 statüyle çarpılır. **Çağ kaynakları ceza değil bonus taşır:** teknolojisi
@@ -132,7 +132,7 @@ yavaşlar. Her bina haftalık bakım öder (bütçede "maintenance"). Sayılar
 | Tersane | 200 | 0.4 | 45 | gemi hattı, liman (en çok 3) | kıyı |
 | Kışla | 100 | 0.2 | 24 | insan gücü +%20, hızlı eğitim (en çok 2) | — |
 | Kale | 120 | 0.2 | 30 | savunma +%15/kademe (en çok 3) | — |
-| Demiryolu | 150 (+%50/kademe) | 0.15 | 30 | kaynak +%10, hareket, ikmal (en çok 5) | — |
+| Demiryolu | 150 (+%50/kademe) | 0.15 | 30 | kaynak +%10 (en çok 5); YZ/AUTO yalnız en sonda ve evde demir fazlası varken kurar — geri dönüşü 639-1514 hafta | — |
 | Üniversite | 200 | 0.4 | 45 | araştırma +0.3, okuryazarlık (en çok 2) | kalkınma ≥4 |
 
 İnşaat yuvası `2 + state/10 + teknoloji` (eskiden state/5). Yuva ve süreler
@@ -153,7 +153,7 @@ bina bitiriyordu, oyuncu ekranı sürekli kollamak zorundaydı (ölçüm: büyü
 
 - **SG:** haftada `(1 + hükûmet + parti + danışman) × (0.5 + istikrar)`, tavan 500. Harcandığı yer: yasa, hükûmet, danışman, propaganda, kültür politikası, savaş gerekçesi, ambargo ve KARARLAR (sübvansiyon, savaş tahvili, manevra, nüfus sayımı, af, araştırma bursu…; süreli değiştirici, bekleme süreli).
 - **İstikrar** hedefe haftada 1 puan yaklaşır. Hedef: 50 + tüketim malı + gıda + vergi yasası + savaş + işgal + huzursuzluk + meşruiyet + parti + olay/gündem.
-- **Savaş desteği** hedefe haftada 1 puan yaklaşır. Hedef: 40 + saldırganlık + yabancı yönetimdeki soydaşlar + savunma savaşı − kayıp − savaş süresi + milliyetçi destek.
+- **Savaş desteği** hedefe haftada 1 puan yaklaşır. Hedef: 25 + saldırganlık (taban 40'tayken dağılım düzdü ve onu okuyan kapılar hiç tetiklenmiyordu) + yabancı yönetimdeki soydaşlar + savunma savaşı − kayıp − savaş süresi + milliyetçi destek.
 - **Hükûmet biçimi:** Mutlakiyet (SG +0.5, seçim yok, iktidar partisini sen seçersin), Meşruti (4 yılda seçim), Cumhuriyet (seçim, istikrar +5). Kararla ya da isyanla değişir.
 - **Dört parti:** Muhafazakâr, Liberal, Milliyetçi, Sosyalist (1848'den sonra). Destek sürücüleri: istikrar, okuryazarlık, tüketim malı, savaş, soydaşlar, sanayi. İktidar partisi bonus verir ve yasa aralığını sınırlar. Halkın istediği iktidarda değilse **meşruiyet cezası**. SG ile propaganda.
 - **Altı yasa** (SG 50, 26 hafta kilit): Vergi (3), Askerlik (4), Ekonomi (4), Ticaret (4), Vatandaşlık (3), Eğitim (3).
@@ -166,7 +166,7 @@ bina bitiriyordu, oyuncu ekranı sürekli kollamak zorundaydı (ölçüm: büyü
 - Huzursuzluk = kabul edilmemiş pay × vatandaşlık × çağın milliyetçiliği + fetih + savaş + işgal − tüketim malı fazlası; garnizon ve istikrar düşürür.
 - **Uyum** (çekirdek dışı): huzursuzluk düşükken artar; vergi, asker ve IC o oranda gelir.
 - **İsyancılar haritada gerçek ordulardır** (Özgür X devletleri): hareket aşamaları → ayaklanma → bağımsızlık savaşı.
-- Politikalar: kabul (SG), ödün (SG), sıkıyönetim (altın/hafta), baskı (SG + şöhret), sürgün, soydaşa bırakma, vasal olarak bırakma.
+- Politikalar: kabul (SG), ödün (SG), sıkıyönetim (altın/hafta; hareketi YAVAŞLATIR, dondurmaz — dondurunca 24 koşuda tek ayaklanma vardı), baskı (SG + şöhret), sürgün, soydaşa bırakma, vasal olarak bırakma.
 - **Birleşme:** soydaş toprak gerekçesi yarı fiyat; küçük soydaş devlet ilişki ve güç farkıyla barışla katılır; ana yurdun %80'i toplanınca "Büyük X" kurulur.
 - **Ulusların Baharı:** 1848 dolayında dünya dalgası: milliyetçilik ve liberaller sıçrar.
 - **State odağı** (Vic2 ulusal odağı, `focus.js` + `stateFocus.js`): yuva 1 + okuryazarlığın her %25'i (en çok 5) — state sayısıyla değil okuryazarlıkla büyür (ev ödevi testi). Production çıktı +%25 · Taxation vergi +%30 · Recruitment insan gücü +%30 · Integration uyum kazancı ×2, tavan +15, huzursuzluk −1 · Assimilation yılda nüfusun `%1 × (1 + okuryazarlık)`'ı ana kültüre (ana yurt kilidini aşar; sakinlik çarpanı kendiliğinden asimilasyonla aynı). Fetihte odak düşer. YZ çeyrekte bir boş yuvaya koyar: uyumu düşük fetih → Integration, kalabalık azınlık → Assimilation, gerisi en kalabalık çekirdeğe Taxation. Ölçüm (2 tohum, 104 hafta barış, aynı state, dürtü kolu sıfır oynadı): çıktı +%25, vergi +%30, verilebilir asker +%46/+%390, uyum %85 → %100 ve huzursuzluk −1.2, yabancı pay 2 yılda −1.5 puan.
@@ -199,7 +199,7 @@ savunma, zırhlı gemi, okuryazarlık, istikrar. Araştırma = 1 + okuryazarlık
 + üniversite × 0.3. Bedel `110 × (1 + 0.6·kademe) × (1 + 0.02·(yıl − 1836))`,
 yılından önce araştırmak yılda +%6 (tavan 2.5×). Yıl çarpanı ağacı takvime
 bağlar: ölçümde orta ülke 1876'da 30, 1886'da 36 teknolojide, 40'ını
-1886-96 arasında bitirir (çarpansız 1881-86'da bitip son on beş yıl boştu).
+1886-96 arasında bitirir (çarpansız 1881-86'da bitip son on beş yıl boştu). 2026-10-11: yıl ölçeği 0.02 → 0.03; herkes ~1892'de bitirip 320-440 hafta boş kalıyordu, şimdi ortanca ~1897.
 
 ## 14. Zafer (1900)
 

@@ -18,6 +18,7 @@ import { provinceManpower } from './recruitment.js';
 import { formatPopulation, taxBreakdown } from './economy.js';
 import { mod } from './modifiers.js';
 import { priceOf } from './econ/trade.js';
+import { lawOption } from './laws.js';
 
 const before = emptyResourceMap();
 const after = emptyResourceMap();
@@ -49,6 +50,34 @@ export function resourceValue(world, nation, id) {
   const used = (nation.economy?.resources?.[id]?.need ?? 0) > 0.01;
   const balance = world.market?.balance?.[id] ?? 1;
   return priceOf(world, id) * (used ? 1 : Math.max(0, Math.min(1, balance)));
+}
+
+/**
+ * `delta` birim ek kaynağın ULUSA haftalık altın değeri. Karşılanmamış iç
+ * ihtiyacı kapatan kısım fiyatındadır; fazlası yalnız ticaret yasasının ihraç
+ * payı kadar satılır ve dünya talebinin doldurduğu oranda para eder. Birim
+ * değerle (resourceValue) çarpmak çiftlik/maden kazancını 2.6-3.1 kat (çok
+ * ülke kurunca çiftlikte 25 kat) şişiriyordu; bu biçim ölçülen brütü %3-11
+ * içinde tutar (2026-10-11 kalibrasyonu).
+ */
+export function gainValue(world, nation, id, delta) {
+  const r = nation.economy?.resources?.[id];
+  if (!r || !(delta > 0)) return Math.max(0, delta) * resourceValue(world, nation, id);
+  const price = priceOf(world, id);
+  const cover = Math.min(delta, Math.max(0, r.wanted ?? 0));
+  let value = cover * price;
+  const rest = delta - cover;
+  if (rest > 0) {
+    const trade = lawOption(nation, 'trade');
+    const share = trade.export ?? 0;
+    const surplus = Math.max(0, (r.produced ?? 0) - (r.need ?? 0));
+    const before = Math.min(surplus, (r.produced ?? 0) * share);
+    const after = Math.min(surplus + rest, ((r.produced ?? 0) + delta) * share);
+    const market = world.market;
+    const fill = market?.offered?.[id] > 0 ? Math.min(1, (market.wanted?.[id] ?? 0) / market.offered[id]) : 0;
+    value += Math.max(0, after - before) * fill * price * (trade.exportIncome ?? 1);
+  }
+  return value;
 }
 
 /**
@@ -85,13 +114,12 @@ export function buildPreview(world, nation, province, buildingId) {
         label: RESOURCES[id].name, resource: id, value: delta,
         from: before[id], to: after[id], text: `+${fmt(delta)} ${RESOURCES[id].name}`,
       });
-      // Sıralama DEĞERLE: kömür ile petrol aynı birim değil (resourceValue).
-      out.score += delta * resourceValue(world, nation, id);
+      // Sıralama DEĞERLE: kömür ile petrol aynı birim değil (gainValue).
+      out.score += gainValue(world, nation, id, delta);
     }
     out.gains.sort((a, b) => b.value * resourceValue(world, nation, b.resource)
       - a.value * resourceValue(world, nation, a.resource));
     out.worth = out.score;
-    if (buildingId === 'railway') out.note = 'Also: supply range and movement in this state.';
     if (!out.gains.length) out.note = status <= 0 ? 'Occupied: produces nothing.' : 'Nothing to boost here.';
     return out;
   }

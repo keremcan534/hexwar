@@ -283,8 +283,8 @@ sütununa yazılır. Kendi halkını muaf tutmak mümkündür ama havuz küçül
 (azınlık vatandaşlık yasasının izin verdiği kadar gelir) ve kabul edilmiş bir
 halk muafken kuraya kalan azınlıklar huzursuzlanır (`src/game/levy.js`).
 
-Alay kurmak province nüfusundan asker alır: piyade 30.000, süvari 20.000, topçu
-15.000 kişi; havuz askerlik yasasının oranıdır. Asker çıkış province'i ve komşularından toplanır, dağıtımda hayatta kalanlar
+Alay kurmak province nüfusundan asker alır: piyade, süvari ve topçu 30.000 kişi
+(süvari ve topçu asker başına piyadenin 1.6-3.3 katı değerliydi); havuz askerlik yasasının oranıdır. Asker çıkış province'i ve komşularından toplanır, dağıtımda hayatta kalanlar
 aynı yerlere döner, savaşta ölenler kalıcı kayıptır. Üst şeritteki **MANPOWER**
 kalan asker havuzunu gösterir.
 

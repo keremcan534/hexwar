@@ -45,7 +45,8 @@ export const ERA_DEPOSIT_IDS = ['OIL', 'RUBBER'];
  */
 export const DEPOSIT_OUTPUT = {
   FOOD: 0.05, COAL: 0.185, IRON: 0.074, TIMBER: 0.097, HORSES: 0.075, SALTPETER: 0.13,
-  OIL: 0.2, RUBBER: 0.12,
+  // Kauçuk 0.12'de ulus-haftaların %74-78'inde kıttı; 0.17 üretim/ihtiyacı ~1'e getirir.
+  OIL: 0.2, RUBBER: 0.17,
 };
 
 /**
@@ -73,7 +74,7 @@ export const BUILDINGS = {
   dockyard: { id: 'dockyard', name: 'Dockyard', cost: 200, upkeep: 0.4, weeks: 45, max: 3, effect: 'Ships line +1 IC cap, naval base', coastal: true },
   barracks: { id: 'barracks', name: 'Barracks', cost: 100, upkeep: 0.2, weeks: 24, max: 2, effect: 'Manpower +20%, training faster' },
   fort: { id: 'fort', name: 'Fort', cost: 120, upkeep: 0.2, weeks: 30, max: 3, effect: 'Defence +15%' },
-  railway: { id: 'railway', name: 'Railway', cost: 150, upkeep: 0.15, weeks: 30, max: 5, effect: 'Resources +10%, supply, movement', costGrowth: 0.5 },
+  railway: { id: 'railway', name: 'Railway', cost: 150, upkeep: 0.15, weeks: 30, max: 5, effect: 'Resources +10%', costGrowth: 0.5 },
   university: { id: 'university', name: 'University', cost: 200, upkeep: 0.4, weeks: 45, max: 2, effect: 'Research +0.3, literacy', minDevelopment: 4 },
 };
 export const BUILDING_IDS = Object.keys(BUILDINGS);
@@ -153,7 +154,9 @@ export const RUBBER_PER_REGIMENT = 0.08;
  * bulur; yalnız muharebe yaktığında güherçile province'leri barışta boştu
  * (ölçüldü: 64 yılda dünya talebi 0-7, üretim 27-55).
  */
-export const SALTPETER_PER_FOOD = 0.02;
+// 0.02'de gübre talebin %94-99'uydu: güherçile tabandan tavana çakılıyor
+// (%60-84 kıt), savaş barutu %79-86'ya düşüyordu — zaten fazla olan gıda için.
+export const SALTPETER_PER_FOOD = 0.01;
 
 /**
  * Tüketim malı: ihtiyaç ve el tezgâhı arzı nüfus birimi başına. Çağ çarpanı

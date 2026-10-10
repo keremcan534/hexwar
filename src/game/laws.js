@@ -13,7 +13,9 @@ export const LAWS = {
   tax: {
     id: 'tax', name: 'Taxation', icon: '⚖',
     options: [
-      { id: 'low', name: 'Low Taxes', tax: 0.8, stability: 0.05, desc: 'Tax ×0.8, stability +5' },
+      // Eski hâli (×0.8, istikrar +5) baskındı, YZ hiç seçmiyordu: büyüme
+      // eklenince gerçek bir seçim (eşli: nüfus +%5.7, vergi −%13.5).
+      { id: 'low', name: 'Low Taxes', tax: 0.85, stability: 0.05, growth: 0.15, desc: 'Tax ×0.85, stability +5, growth +15%' },
       { id: 'normal', name: 'Normal Taxes', tax: 1.0, desc: 'Tax ×1.0' },
       { id: 'high', name: 'High Taxes', tax: 1.25, stability: -0.07, growth: -0.15, desc: 'Tax ×1.25, stability −7, growth −15%' },
     ],
@@ -57,7 +59,8 @@ export const LAWS = {
       // control: uyumun haftalık kazanım çarpanı; assimilation: erime hızı.
       { id: 'residency', name: 'Residency', unrest: 1.0, manpower: 0.15, control: 0.6, assimilation: 0.6, ceiling: 0.7, desc: 'Minorities have no rights: high unrest, few recruits' },
       { id: 'limited', name: 'Limited Citizenship', unrest: 0.7, manpower: 0.3, control: 0.85, assimilation: 1.0, ceiling: 0.85, desc: 'Partial rights for minorities' },
-      { id: 'full', name: 'Full Citizenship', unrest: 0.45, manpower: 0.5, control: 1.25, assimilation: 1.4, ceiling: 1.0, desc: 'Equal rights: calm minorities, more recruits' },
+      // Bedelsizken Limited'e her ölçüde baskındı; istikrar −5 onu seçim yapar.
+      { id: 'full', name: 'Full Citizenship', unrest: 0.45, manpower: 0.5, control: 1.25, assimilation: 1.4, ceiling: 1.0, stability: -0.05, desc: 'Equal rights: calm minorities, more recruits · stability −5' },
     ],
     default: 1,
   },

@@ -427,7 +427,14 @@ export function liberationHeir(world, province, a, b) {
 }
 
 export function termAvailable(world, a, b, termId) {
-  if (termId === 'VASSALIZE') return canVassalize(world, a, b);
+  // Koalisyonun hedefi üyeyi vasal yapamaz: ceza ödüle dönüyordu, hedef
+  // üyelerden vasal ve tazminat topluyordu (toprak zaten kapalı, bkz.
+  // occupiedProvincesOf). Tazminat ve imtiyaz açık kalır.
+  if (termId === 'VASSALIZE') {
+    const rec = relation(world, a, b);
+    if (rec?.reason === 'coalition' && rec.aggressor === b) return false;
+    return canVassalize(world, a, b);
+  }
   if (termId === 'LIBERATE') {
     const target = world.nations[b];
     return (world.provinces ?? []).some(

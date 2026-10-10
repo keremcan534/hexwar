@@ -103,10 +103,14 @@ export function autoLineWeights(world, nation) {
   const war = (economy.warFronts ?? 0) > 0;
   let regiments = 0;
   let guns = 0;
+  let warships = 0;
   for (const unit of world.units) {
     if (unit.nationId !== nation.id) continue;
     regiments += unit.regiments?.length ?? 0;
-    for (const regiment of unit.regiments ?? []) if (regiment.typeId === 'ARTILLERY') guns++;
+    for (const regiment of unit.regiments ?? []) {
+      if (regiment.typeId === 'ARTILLERY') guns++;
+      else if (regiment.typeId === 'WARSHIP') warships++;
+    }
   }
   // Depo doluysa hat durur: barışta yığılan tüfek demir yer ama kimseyi
   // silahlandırmaz (ölçüldü: 1900'de dünya demiri %40'ta, depolar taşkın).
@@ -114,7 +118,11 @@ export function autoLineWeights(world, nation) {
   const want = {
     rifles: rifles < regiments * 4 + 30 ? (war ? 5 : 3) : rifles < regiments * 10 + 80 ? 1 : 0,
     guns: equipmentStock(nation, 'guns') < guns * 3 + 6 ? (war ? 2 : 1) : 0,
-    ships: economy.coastal ? ((economy.blockade ?? 0) > 0 || nation.focus === 'military' ? 2 : 1) : 0,
+    // Gemi hattının da tavanı var: tavansızken filonun ihtiyacının 1000-1850
+    // katı gemi yığılıyor, askerî IC'nin %33-50'sini ve (zırhlıyla) dünya
+    // demirinin %93-98'ini yiyordu (ölçüldü 2026-10-11, 3 tohum + 160x96).
+    ships: !economy.coastal || equipmentStock(nation, 'ships') >= warships * 10 + 30 ? 0
+      : ((economy.blockade ?? 0) > 0 || nation.focus === 'military' ? 2 : 1),
   };
   for (const id of EQUIPMENT_IDS) {
     if (lines[id].mode === 'auto') lines[id].weight = clamp(want[id] ?? 0, 0, 10);
