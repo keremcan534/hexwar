@@ -14838,3 +14838,5 @@ body:is(.screen-open, .notify-quiet) .notify-tray { justify-content: center; min
 .pv-focus-btn .art-xs { width: 18px; height: 18px; }
 .pv-state-row.pv-focus > b { flex: 1; min-width: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .pv-state-row.pv-focus > em { margin-left: 0; cursor: help; }
+
+.tq-first { margin: 6px 0 0; color: var(--gold); font-size: 11.5px; cursor: help; }

@@ -6,7 +6,7 @@
 // HOI4'ün asıl ikilemi budur: topyekûn savaş orduyu doyurur, halkı aç bırakır.
 
 import {
-  COAL_PER_IC, CONSUMER_ERA_GROWTH, CONSUMER_NEED, COTTAGE_OUTPUT,
+  COAL_PER_IC, IRON_PER_IC, TIMBER_PER_IC, CONSUMER_ERA_GROWTH, CONSUMER_NEED, COTTAGE_OUTPUT,
   COTTAGE_PER_DEVELOPMENT, DOCKYARD_IC, EQUIPMENT, EQUIPMENT_IDS, ERA_TURNS, FACTORY_IC,
   LINE_EFFICIENCY, OIL_PER_IC,
 } from './defs.js';
@@ -143,6 +143,8 @@ export function computeIC(world, nation) {
     dockyards += (province.econ.buildings?.dockyard ?? 0) * status;
   }
   const coal = 0.6 + 0.4 * Math.min(1, resourceRatio(nation, 'COAL'));
+  const iron = 0.85 + 0.15 * Math.min(1, resourceRatio(nation, 'IRON'));
+  const timber = 0.9 + 0.1 * Math.min(1, resourceRatio(nation, 'TIMBER'));
   const stability = 0.85 + 0.3 * clamp(nation.stability ?? 0.5, 0, 1);
   const law = 1 + (lawOption(nation, 'conscription').ic ?? 0);
   const tech = 1 + mod(nation, 'ic');
@@ -150,14 +152,16 @@ export function computeIC(world, nation) {
   // petrol istemez (bkz. OIL_PER_IC).
   const oilBonus = Math.max(0, mod(nation, 'oilIc'));
   const oil = 1 + oilBonus * Math.min(1, resourceRatio(nation, 'OIL'));
-  const total = raw * coal * stability * law * tech * oil;
+  const total = raw * coal * iron * timber * stability * law * tech * oil;
   const share = lawOption(nation, 'economy').military;
   return {
     raw,
     dockyards,
     coalNeed: raw * COAL_PER_IC,
+    ironNeed: raw * IRON_PER_IC,
+    timberNeed: raw * TIMBER_PER_IC,
     oilNeed: oilBonus > 0 ? raw * OIL_PER_IC : 0,
-    factors: { coal, stability, law, tech, oil },
+    factors: { coal, iron, timber, stability, law, tech, oil },
     total,
     military: total * share,
     civil: total * (1 - share),

@@ -76,12 +76,14 @@ yoktur, teknoloji yayıldıkça değerlenir — petrol patlaması.
 |---|---|---|---|
 | Gıda | nüfus × verim × (1 + 0.25 çiftlik); tahıl ambarı ayrıca hex başı 0.05 | nüfus | nüfus azalır, istikrar düşer |
 | Kömür | kaynak hex'i × 0.185 | fabrikalar (0.35/IC) | IC × (0.6 + 0.4 oran) |
-| Demir | × 0.074 | tüfek, top, demiryolu inşaatı | hat yavaşlar |
-| Kereste | × 0.097 | inşaat, gemi, tüfek | inşaat yavaşlar |
+| Demir | × 0.074 | fabrikalar (0.05/IC), tüfek, top, demiryolu inşaatı | hat yavaşlar; IC × (0.85 + 0.15 oran) |
+| Kereste | × 0.097 | fabrikalar (0.06/IC), inşaat, gemi, tüfek | inşaat yavaşlar; IC × (0.9 + 0.1 oran) |
 | At | × 0.075 | süvari (0.5/hafta), topçu (0.25/hafta) | süvari/topçu gücü düşer |
 | Güherçile | × 0.13 | muharebe (alay başı 0.5), tüfek ve top hattı, 1868 sonrası gübre (gıda birimi başı 0.01; 0.02'de gübre talebin %94-99'uydu ve güherçileyi tavana çakıyordu) | muharebe gücü −%30'a kadar, gübre bonusu kaybolur |
 | Petrol | × 0.2 (yalnız petrol lekesi) | 1868 sonrası fabrikalar (0.12/IC) | IC bonusu (en çok +%15) karşılanan oranda |
 | Kauçuk | × 0.17 (yalnız kauçuk lekesi; 0.12'de ulus-haftaların %74-78'inde kıttı) | 1878 sonrası her kara alayı (0.08/hafta) | muharebe bonusu (en çok +%15) karşılanan oranda |
+
+Fabrikanın demir ve kereste işlemesi 2026-10-11'de eklendi: gemi fazlası (tavansız hat) kalkınca ve YZ demiryolunu bırakınca demir talebi 1846-76 arası SIFIRDI, kereste fiyatı ulus-haftaların %94'ünde tabandaydı. Şimdi demir üretim/ihtiyaç 1.2-1.7, kereste 1.1-1.5 (50 yıl); IC ve iflas gürültü içinde.
 
 Kaynak hex'i başı çıktı işletme (+%50/kademe, en çok 3), demiryolu ve
 statüyle çarpılır. **Çağ kaynakları ceza değil bonus taşır:** teknolojisi
@@ -169,7 +171,7 @@ bina bitiriyordu, oyuncu ekranı sürekli kollamak zorundaydı (ölçüm: büyü
 - Politikalar: kabul (SG), ödün (SG), sıkıyönetim (altın/hafta; hareketi YAVAŞLATIR, dondurmaz — dondurunca 24 koşuda tek ayaklanma vardı), baskı (SG + şöhret), sürgün, soydaşa bırakma, vasal olarak bırakma.
 - **Birleşme:** soydaş toprak gerekçesi yarı fiyat; küçük soydaş devlet ilişki ve güç farkıyla barışla katılır; ana yurdun %80'i toplanınca "Büyük X" kurulur.
 - **Ulusların Baharı:** 1848 dolayında dünya dalgası: milliyetçilik ve liberaller sıçrar.
-- **State odağı** (Vic2 ulusal odağı, `focus.js` + `stateFocus.js`): yuva 1 + okuryazarlığın her %25'i (en çok 5) — state sayısıyla değil okuryazarlıkla büyür (ev ödevi testi). Production çıktı +%25 · Taxation vergi +%30 · Recruitment insan gücü +%30 · Integration uyum kazancı ×2, tavan +15, huzursuzluk −1 · Assimilation yılda nüfusun `%1 × (1 + okuryazarlık)`'ı ana kültüre (ana yurt kilidini aşar; sakinlik çarpanı kendiliğinden asimilasyonla aynı). Fetihte odak düşer. YZ çeyrekte bir boş yuvaya koyar: uyumu düşük fetih → Integration, kalabalık azınlık → Assimilation, gerisi en kalabalık çekirdeğe Taxation. Ölçüm (2 tohum, 104 hafta barış, aynı state, dürtü kolu sıfır oynadı): çıktı +%25, vergi +%30, verilebilir asker +%46/+%390, uyum %85 → %100 ve huzursuzluk −1.2, yabancı pay 2 yılda −1.5 puan.
+- **State odağı** (Vic2 ulusal odağı, `focus.js` + `stateFocus.js`): yuva 1 + okuryazarlığın her %25'i (en çok 5) — state sayısıyla değil okuryazarlıkla büyür (ev ödevi testi). Production çıktı +%25 · Taxation vergi +%30 · Recruitment insan gücü +%30 · Integration uyum kazancı ×2, tavan +15, huzursuzluk −1 · Assimilation yılda nüfusun `%2 × (1 + okuryazarlık)`'ı ana kültüre (2026-10-11: %1'de hiçbir yuvaya değmiyordu) (ana yurt kilidini aşar; sakinlik çarpanı kendiliğinden asimilasyonla aynı). Fetihte odak düşer. YZ çeyrekte bir boş yuvaya koyar: uyumu düşük fetih → Integration, kalabalık azınlık → Assimilation, gerisi en kalabalık çekirdeğe Taxation. Ölçüm (2 tohum, 104 hafta barış, aynı state, dürtü kolu sıfır oynadı): çıktı +%25, vergi +%30, verilebilir asker +%46/+%390, uyum %85 → %100 ve huzursuzluk −1.2, yabancı pay 2 yılda −1.5 puan.
 
 ## 11. Askerî
 
@@ -204,7 +206,7 @@ bağlar: ölçümde orta ülke 1876'da 30, 1886'da 36 teknolojide, 40'ını
 ## 14. Zafer (1900)
 
 Puan = IC × 4 + nüfus (milyon) × 3 + çekirdek province + prestij. Prestij
-kazanılan savaştan, Büyük X'ten, gündemden gelir. Her ülkenin bir **ulusal
+kazanılan savaştan, Büyük X'ten, gündemden ve bir teknolojiyi **dünyada ilk** bulmaktan (+5, Vic2) gelir. İlk keşif yokken araştırma hızı skoru oynatmıyordu (+%50 araştırma → +%1.5, gürültü ±%1.7); şimdi +%0.7/+%10/+%12.5 (gürültü ±%1.1). Her ülkenin bir **ulusal
 hedefi** vardır (Birleşmiş Ulus / İmparatorluğu Koru / Sanayi Devi); tutarsa
 büyük bonus. Küçük ülke de kendi hikâyesini kazanabilir.
 

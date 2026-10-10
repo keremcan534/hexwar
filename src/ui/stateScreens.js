@@ -272,6 +272,8 @@ export function renderIndustry(game, me, state) {
     { label: 'Factories', value: ic.raw, text: num(ic.raw), tip: 'building', arg: 'factory' },
     [
       { label: 'Coal', value: f.coal ?? 1, tip: 'resource', arg: 'COAL' },
+      { label: 'Iron', value: f.iron ?? 1, tip: 'resource', arg: 'IRON' },
+      { label: 'Timber', value: f.timber ?? 1, tip: 'resource', arg: 'TIMBER' },
       { label: 'Stability', value: f.stability ?? 1, tip: 'stability' },
       { label: 'Conscription', value: f.law ?? 1, tip: 'law', arg: 'conscription' },
       { label: 'Technology', value: f.tech ?? 1, tip: { text: 'Technology and ministers\nAll industrial capacity modifiers.' } },

@@ -239,6 +239,14 @@ export function startResearch(nation, techId) {
   return true;
 }
 
+/** Bir teknolojiyi dünyada ilk bulan ulusun prestiji. */
+export const FIRST_TECH_PRESTIGE = 5;
+
+/** Bu teknolojiyi henüz kimse bulmadı mı (ilk keşif prestiji açık mı)? */
+export function firstDiscoveryOpen(world, techId) {
+  return !(world?.nations ?? []).some((other) => other.alive !== false && other.research?.done?.includes(techId));
+}
+
 /** Bir haftalık araştırma; tamamlanan teknolojinin kimliğini döndürür. */
 export function advanceResearch(nation, year, world = null) {
   const research = ensureResearch(nation);
@@ -250,6 +258,14 @@ export function advanceResearch(nation, year, world = null) {
   research.points -= cost;
   research.done.push(techId);
   research.current = null;
+  // DÜNYADA İLK (Vic2): bulan ilk ulus prestij alır, prestij zafer skoruna
+  // girer. Yokken araştırma hızı 1900 skorunu gürültünün üstünde hiç
+  // oynatmıyordu (+%50 araştırma → skor +%1.5, gürültü ±%1.7): herkes her
+  // teknolojiyi er geç alıyor, "önce almak" hiçbir sayıya yazılmıyordu.
+  if (world && !world.nations.some((other) => other !== nation && other.research?.done?.includes(techId))) {
+    nation.prestige = (nation.prestige ?? 0) + FIRST_TECH_PRESTIGE;
+    research.firsts = (research.firsts ?? 0) + 1;
+  }
   refreshModifiers(nation, world?.turn ?? 0);
   return techId;
 }

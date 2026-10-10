@@ -141,6 +141,15 @@ export const FACTORY_IC = 1.0;
 export const DOCKYARD_IC = 1.0;
 export const COAL_PER_IC = 0.35;
 /**
+ * Fabrika demir ve kereste de işler. Gemi fazlası (tavansız hat) kalkınca ve
+ * YZ demiryolunu bırakınca ikisinin barışta hiç alıcısı kalmamıştı: demir
+ * talebi 1846-76 arası SIFIR, kereste fiyatı ulus-haftaların %94'ünde
+ * tabandaydı (ölçüldü 2026-10-11). Bağ kömürden hafif: eksik demir IC'yi en
+ * çok %15, kereste %10 düşürür (computeIC).
+ */
+export const IRON_PER_IC = 0.05;
+export const TIMBER_PER_IC = 0.06;
+/**
  * Petrol: rafineri teknolojisi (`oilIc` değiştiricisi) olan ülkede fabrika
  * IC başına haftalık petrol ister; IC bonusu yalnız karşılanan oranda gelir.
  * Teknolojisi olmayan ülke petrol istemez — eksik petrol bonusu alır, cezayı

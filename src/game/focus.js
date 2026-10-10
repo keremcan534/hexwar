@@ -33,7 +33,7 @@ export const FOCUSES = [
   },
   {
     id: 'assimilate', name: 'Assimilation', art: 'people',
-    desc: 'Each year 1% of the people (2% at full literacy) take up your culture — even in a people\'s homeland.',
+    desc: 'Each year 2% of the people (4% at full literacy) take up your culture — even in a people\'s homeland.',
   },
 ];
 
@@ -41,7 +41,10 @@ export const FOCUS_BY_ID = Object.fromEntries(FOCUSES.map((focus) => [focus.id, 
 
 export const FOCUS = {
   /** Asimilasyon odağı: yılda nüfusun bu payı, okuryazarlıkla iki katına kadar. */
-  ASSIMILATE_YEAR: 0.01,
+  // %1'de iki yuva 20 yılda yabancı payı yalnız 0.05-0.14 düşürüyordu ve
+  // Integration onu her tohumda geçiyordu: odak hiç seçilmeye değmiyordu.
+  // %2'de gerçek seçim (eşli: 0.26-0.63 düşüş, ulusal vergi −%0.5-2).
+  ASSIMILATE_YEAR: 0.02,
   /** Her bu kadar okuryazarlık bir yuva daha açar (taban bir yuva). */
   LITERACY_PER_SLOT: 0.25,
   MAX_SLOTS: 5,

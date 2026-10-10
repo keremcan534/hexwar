@@ -173,7 +173,7 @@ madeni ve el tezgâhı asker/nüfus oranında düşer (state kartında "Under ar
 **State focus** (Victoria 2'nin ulusal odağı): kendi state'ine tıkla, kartta beş
 madalyon — Production (çıktı +%25), Taxation (vergi +%30), Recruitment (insan
 gücü +%30), Integration (uyum iki kat hızlı, tavan +15, huzursuzluk −1),
-Assimilation (yılda nüfusun %1'i, tam okuryazarlıkta %2'si ana kültüre geçer;
+Assimilation (yılda nüfusun %2'si, tam okuryazarlıkta %4'ü ana kültüre geçer;
 ana yurtta da işler, huzursuzlukla yavaşlar). Yuva: 1 + okuryazarlığın her
 %25'i. Tooltip getiriyi oyunun formülüyle söyler (`src/game/stateFocus.js`);
 Government AUTO boş yuvayı doldurur, senin koyduğuna dokunmaz.

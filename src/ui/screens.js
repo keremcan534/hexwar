@@ -38,7 +38,7 @@ import {
   DELEGATION_AREAS, DELEGATION_IDS, isDelegated, lastDelegatedAction, setDelegation,
 } from '../game/delegation.js';
 import {
-  dequeueResearch, effectiveTechCost, queueResearch, researchNow, researchPointsOf,
+  dequeueResearch, effectiveTechCost, firstDiscoveryOpen, queueResearch, researchNow, researchPointsOf,
 } from '../game/technology.js';
 import {
   TECH_ZOOMS, researchRateLines, techGrid, techInspector, technologyScreen,
@@ -1211,6 +1211,8 @@ export class Screens {
       // Liste fiyati basmak, motorun dusecegi sayiyla celisir ve
       // UI_TRUTH_FIXES'in kapattigi hata sinifini yeniden acardi.
       costOf: (techId) => effectiveTechCost(world, me, techId, year),
+      // Henüz kimse bulmadıysa ilk bulan prestij alır (technology.js).
+      firstOpen: (techId) => firstDiscoveryOpen(world, techId),
       inspect: this.tech.inspect,
       zoom: this.tech.zoom,
     });

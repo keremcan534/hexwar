@@ -319,6 +319,8 @@ export function runNationEconomy(game, nation, ctx) {
   const ic = computeIC(world, nation);
   economy.ic = ic;
   needs.COAL += ic.coalNeed;
+  needs.IRON += ic.ironNeed ?? 0;
+  needs.TIMBER += ic.timberNeed ?? 0;
   needs.OIL += ic.oilNeed ?? 0;
   economy.consumer = consumerGoods(nation, {
     population, workforce: Math.max(0, population - soldiers),
