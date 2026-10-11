@@ -205,6 +205,19 @@ tahkimat, nehir, plan, komutan, doktrin, barut, at, destek kolu, kuşatma) ve
 "kimin hattı kaç haftada kırılır" tahmini — hepsi motorun kendi formülünden.
 Muharebe bitince sonuç yazılır ve haritada bir an VICTORY / DEFEAT belirir.
 
+**Cephe hattı:** her generalin kendi sektörü vardır (aynı sınırı tutanlar onu
+tümen sayısı oranında bölüşür). Harita sektörün düşmana bakan kenarını
+sınırın üstünde kalın, dişli bir çizgiyle çizer — taarruzda kırmızı ve iri
+dişli, beklemede mavi — ve hiçbir generalin tutmadığı düşman sınırını kesik
+kırmızıyla işaretler (boş cephe). Sayaçlarda siper kademesi (1-3 çizgi),
+geri çekilme («) ve toparlanma (Z) görünür; bir yığının üstüne gelmek
+tümenlerin künyesini açar (düşmanınki dahil). Savaş çiplerinin altındaki
+**muharebe şeridi** süren bütün muharebeleri bizim açımızdan güç oranıyla
+sıralar (önce tehlikede olanlar); çipe tık muharebe penceresini açar.
+Barış masasında **Best deal** savaş puanını YZ'nin kuralıyla doldurur;
+masa, puanın izin verdiği state sayısını yazar. Diplomasi ekranı: savaş
+çubuğundaki **Diplomacy** ya da `F10`.
+
 **Kuşatma:** cephedeki tümenin çekilecek kendi toprağı kalmazsa cebe düşer:
 gücü −%25, yenilirse teslim olur. Harita cepleri halkayla işaretler (bizimki
 kırmızı ENCIRCLED, düşmanınki altın POCKET); yeni cep ve teslimler tek

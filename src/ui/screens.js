@@ -8,7 +8,8 @@ import {
   MIN_WAR_TURNS, ULTIMATUM_WEEKS, atWar, crisisLeft, nationStrength, relation, truceLeft,
 } from '../game/diplomacy.js';
 import {
-  MAX_DEMAND_PROVINCES, PEACE_TERMS, concedeKeyForTile, demandKeyForTile, occupiedProvincesOf,
+  PEACE_TERMS, buildOffer, concedeKeyForTile, demandKeyForTile, demandLimit,
+  occupiedProvincesOf,
   offerCost, offerRefusal, provinceFromKey, provinceKeyOf, provinceWarCost, signPeace,
   termAvailable, warGoalOf, warScore,
 } from '../game/peace.js';
@@ -674,7 +675,7 @@ export class Screens {
       if (!province) return '';
       const starred = province.tileIdx.some((idx) => world.tiles[idx].city);
       return `<div class="peace-tile ${kind}">
-        <span>${esc(province.name)}${starred ? ' ★' : ''} · ${province.tileIdx.length} hex${esc(rgoOf(province))}</span>
+        <span>${esc(province.name)}${starred ? ' ★' : ''} · ${province.tileIdx.length} hex${rgoOf(province)}</span>
         <b>${provinceWarCost(world, province)}</b>
         <button class="peace-drop" data-drop-tile="${esc(key)}" data-drop-kind="${kind}" title="Remove">✕</button>
       </div>`;
@@ -711,7 +712,7 @@ export class Screens {
         return `<button class="peace-offer-row${near ? ' adjacent' : ''}"
           data-take-tile="${esc(key)}" title="${esc(province.name)} — ${cost} war score">
           <span class="por-name">${esc(province.name)}${starred ? ' ★' : ''}</span>
-          <span class="por-meta">${province.tileIdx.length} hex${esc(rgoOf(province))} · ${Math.round(share * 100)}% held${
+          <span class="por-meta">${province.tileIdx.length} hex${rgoOf(province)} · ${Math.round(share * 100)}% held${
   near ? ' · borders you' : ''}</span>
           <b class="por-cost${afford ? '' : ' res-neg'}">${cost}</b>
         </button>`;
@@ -737,7 +738,7 @@ export class Screens {
             : { cls: 'open', text: 'not occupied yet' };
       return `<div class="peace-goal ${state.cls}">
         <span class="pg-label">War goal</span>
-        <b class="pg-name">${esc(goal.name)}${esc(rgoOf(goal))}</b>
+        <b class="pg-name">${esc(goal.name)}${rgoOf(goal)}</b>
         <span class="pg-state">${state.text}</span>
         ${!onTable && held && !lost
     ? `<button class="pg-add" data-take-tile="${esc(key)}">Add</button>` : ''}
@@ -759,6 +760,8 @@ export class Screens {
       <div class="row-buttons">
         <button class="action" data-sign-peace="1" ${acceptable ? '' : 'disabled'}>
           ${offer.demands.length || offer.concessions.length ? 'Sign treaty' : 'Sign white peace'}</button>
+        <button class="action" data-fill-peace="1" ${budget > 0 ? '' : 'disabled'}
+          title="Fill the war score: occupied states first, borders yours before islands, the rest as terms — the same rule the AI uses.">Best deal</button>
         <button class="action" data-clear-peace="1">Clear</button>
       </div>
     </div>
@@ -771,7 +774,9 @@ export class Screens {
       <div class="card-head"><h3>${tab === 'take' ? `Demands from ${esc(target.name)}`
     : tab === 'give' ? 'States you offer' : 'Additional terms'}</h3>
         <small>${tab === 'take'
-    ? `at most ${MAX_DEMAND_PROVINCES} states · click a row or the map`
+    ? (demandLimit(score) > 0
+      ? `your war score allows ${demandLimit(score)} ${demandLimit(score) === 1 ? 'state' : 'states'} · click a row or the map`
+      : 'war score 15 lets you demand a state — terms only for now')
     : tab === 'give' ? 'giving land lowers the price of the treaty'
       : 'terms that do not move borders'}</small></div>
       ${tab === 'terms' ? this.peaceTermList(world, me, target)
@@ -1616,6 +1621,24 @@ export class Screens {
     for (const btn of this.el.body.querySelectorAll('[data-take-tile]')) {
       btn.onclick = () => {
         this.peaceSelection.demands.add(btn.dataset.takeTile);
+        game.renderer.updatePeaceSelection(this.peaceSelection);
+        game.requestRender();
+        this.refresh();
+      };
+    }
+    // EN İYİ TEKLİF: YZ'nin kendi kuralıyla (peace.buildOffer) bütçe dolar —
+    // önce bitişik işgal, kalan puan şartlara. Toprağı tek tek eklemek
+    // savaş başına onlarca tıktı (ev ödevi testi).
+    const fillPeace = this.el.body.querySelector('[data-fill-peace]');
+    if (fillPeace) {
+      fillPeace.onclick = () => {
+        const me = game.world.nations[game.turns.playerNation];
+        const best = buildOffer(game.world, me.id, this.peaceTarget, { appetite: 1 });
+        this.peaceSelection = {
+          demands: new Set(best.demands),
+          concessions: new Set(),
+          terms: new Set(best.terms),
+        };
         game.renderer.updatePeaceSelection(this.peaceSelection);
         game.requestRender();
         this.refresh();

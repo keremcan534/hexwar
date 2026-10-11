@@ -68,6 +68,8 @@ const EVENTS = [
   'diplomacy',
   // Muharebe penceresi açılsın (ui/battlePanel.js): yük muharebe kimliği.
   'inspect',
+  // İmleç bir yığının üstüne geldi/ayrıldı (ui/unitHover.js): { tile, x, y } ya da null.
+  'hover',
 ];
 
 /** Muharebe sonucu yazısının ömrü (ms). */
@@ -867,6 +869,7 @@ export class Game {
     const general = this.activeGeneral;
     if (!general) return null;
     const target = setTarget(this.world, general, nationId);
+    this.gapStamp = (this.gapStamp ?? 0) + 1;
     this.emit('command', general);
     this.requestRender();
     return target;
@@ -908,6 +911,7 @@ export class Game {
     if (!general || !nation || !this.selection.length) return 0;
     const moved = assignDivisions(nation, general.id, this.selection);
     refreshFront(this.world, general);
+    this.gapStamp = (this.gapStamp ?? 0) + 1;
     this.activeGeneral = general;
     this.emit('command', general);
     this.emit('selection', this.selection);
@@ -1268,6 +1272,14 @@ export class Game {
   }
 
   handleHover(sx, sy) {
+    // Birim künyesi: imleç bir yığının üstündeyse onu, değilse boşu duyurur
+    // (yalnız değişince; künye imleci kendi izler).
+    const hit = this.unitAtScreen(sx, sy);
+    const hoverTile = hit?.tile ?? null;
+    if (hoverTile !== this.hoverUnitTile) {
+      this.hoverUnitTile = hoverTile;
+      this.emit('hover', hoverTile ? { tile: hoverTile, x: sx, y: sy } : null);
+    }
     const tile = this.tileAtScreen(sx, sy);
     if (tile === this.hovered) return;
     this.hovered = tile;
@@ -1330,6 +1342,32 @@ export class Game {
     this.floaterTimer = setTimeout(tick, 33);
   }
 
+  /**
+   * Düşmana bakan ama hiçbir generalin sektöründe olmayan kendi karelerimiz.
+   * Haftada bir kurulur (cephe ve denetim haftalık değişir), kare başına
+   * değil: bütün haritayı her karede taramak çizim bütçesini yerdi.
+   */
+  frontGaps() {
+    const world = this.world;
+    const me = this.turns?.playerNation;
+    if (!world || me == null || me < 0) return [];
+    const key = `${world.turn}:${this.gapStamp ?? 0}`;
+    if (this.gapCache?.key === key) return this.gapCache.tiles;
+    const held = new Set();
+    for (const { tiles } of this.playerFronts()) for (const tile of tiles) held.add(tile);
+    const tiles = [];
+    const atWarWith = new Set(world.nations.filter((n) => n.alive && n.id !== me
+      && (atWar(world, n.id, me) || inCrisis(world, n.id, me))).map((n) => n.id));
+    if (atWarWith.size) {
+      for (const tile of world.tiles) {
+        if (tile.terrain.water || controllerOf(tile) !== me || held.has(tile)) continue;
+        if (nodeNeighbors(world, tile).some((near) => atWarWith.has(controllerOf(near)))) tiles.push(tile);
+      }
+    }
+    this.gapCache = { key, tiles };
+    return tiles;
+  }
+
   /** Oyuncunun bütün kara generallerinin cepheleri (çizim için). */
   playerFronts() {
     const nation = this.world?.nations[this.turns.playerNation];
@@ -1387,6 +1425,7 @@ export class Game {
           activeGeneral: this.activeGeneral,
           front: this.frontTiles(),
           fronts: this.playerFronts(),
+          frontGaps: this.frontGaps(),
           hoverOdds: this.hoverOdds,
           floaters: this.floaters,
           selection: this.selection,

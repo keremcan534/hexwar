@@ -26,6 +26,26 @@ export class BattlePanel {
     this.root.hidden = true;
     this.root.setAttribute('aria-label', 'Battle');
     document.body.appendChild(this.root);
+    // SÜREN MUHAREBELER ŞERİDİ: savaş çiplerinin altında oyuncunun bütün
+    // muharebeleri; tıklayınca kamera gider, pencere açılır. Muharebeyi
+    // haritada aramak gerekmesin.
+    this.strip = document.createElement('div');
+    this.strip.className = 'battle-strip';
+    this.strip.id = 'battle-strip';
+    this.strip.hidden = true;
+    this.strip.setAttribute('aria-label', 'Battles in progress');
+    document.body.appendChild(this.strip);
+    this.strip.addEventListener('click', (event) => {
+      const chip = event.target.closest('[data-strip-battle]');
+      if (!chip) return;
+      const id = Number(chip.dataset.stripBattle);
+      const battle = this.game.world?.battleSystem?.battles?.find((item) => item.id === id);
+      if (!battle) return;
+      const tile = this.game.world.get(battle.q, battle.r);
+      if (tile) this.game.focusTile(tile);
+      this.open(id);
+    });
+
     this.root.addEventListener('click', (event) => {
       if (event.target.closest('[data-battle-close]')) this.close();
       const focus = event.target.closest('[data-battle-focus]');
@@ -39,15 +59,45 @@ export class BattlePanel {
     game.on('battles', (battle) => {
       if (battle?.id === this.battleId && battle.result) this.result = { winner: battle.result };
       this.refresh();
+      this.refreshStrip();
     });
-    game.on('turn', () => this.refresh());
-    game.on('world', () => this.close());
+    game.on('turn', () => { this.refresh(); this.refreshStrip(); });
+    game.on('world', () => { this.close(); this.refreshStrip(); });
     // Esc önce açık pencereyi kapatır (hud.js Esc sırası).
     game.inspectorClose = () => {
       if (this.root.hidden) return false;
       this.close();
       return true;
     };
+  }
+
+  /** Oyuncunun süren muharebeleri: en çok altı çip, gerisi "+N". */
+  refreshStrip() {
+    // Şerit savaş çubuğunun HEMEN altında: çubuk mutlak konumlu ve yüksekliği
+    // çip sayısıyla değişir; sabit bir üst değer çiplerin üstüne biniyordu.
+    const bar = document.getElementById('war-bar');
+    const rect = bar && !bar.classList.contains('hidden') ? bar.getBoundingClientRect() : null;
+    if (rect?.height) this.strip.style.top = `${Math.round(rect.bottom + 2)}px`;
+    const world = this.game.world;
+    const me = this.game.turns?.playerNation;
+    const battles = (world?.battleSystem?.battles ?? [])
+      .filter((b) => b.attackerNation === me || b.defenderNation === me);
+    this.strip.hidden = !battles.length;
+    if (!battles.length) { this.strip.innerHTML = ''; return; }
+    const views = battles.map((b) => battleView(world, b, me)).filter(Boolean);
+    // Önce kaybetme tehlikesi olanlar: oyuncunun gözü oraya gitmeli.
+    const ours = (v) => (v.mine === 'attacker' ? v.ratio : 1 / Math.max(1e-6, v.ratio));
+    views.sort((a, b) => ours(a) - ours(b) || a.id - b.id);
+    const shown = views.slice(0, 6);
+    const more = views.length - shown.length;
+    this.strip.innerHTML = shown.map((v) => {
+      const r = ours(v);
+      const tone = r >= 1.3 ? 'good' : r >= 0.9 ? 'even' : 'bad';
+      const verb = v.mine === 'attacker' ? 'Attacking' : 'Defending';
+      return `<button class="bs-chip ${tone}" data-strip-battle="${v.id}"${tipAttr({ text: `Battle of ${v.name}\n${verb} · week ${v.round}/${v.maxRounds} · our power ${r.toFixed(2)} : 1\nClick to open the battle.` })}>
+        <i class="bs-dir">${v.mine === 'attacker' ? '➤' : '⛨'}</i><b>${esc(v.name)}</b><span>${r.toFixed(1)}:1</span>
+      </button>`;
+    }).join('') + (more > 0 ? `<span class="bs-more">+${more}</span>` : '');
   }
 
   get isOpen() {

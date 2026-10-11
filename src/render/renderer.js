@@ -1,7 +1,7 @@
 // Canvas2D hex çizimi. Görünmeyen hexler kırpılır, aynı renkler tek path'te toplanır,
 // uzaklaşınca tüm dünya önceden pişirilmiş tek dokudan basılır.
 
-import { HEX_CORNERS, SQRT3, wrapCol } from '../core/hex.js';
+import { DIRS, HEX_CORNERS, SQRT3, wrapCol } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { englishCityName } from '../game/cities.js';
 import { POPULATION_SCALE } from '../game/populationScale.js';
@@ -3150,6 +3150,9 @@ export class Renderer {
     const fronts = state.fronts ?? [];
     const active = state.activeGeneral;
     this.frontBadges = [];
+    // BOŞ CEPHE: düşmana bakan ama hiçbir generalin sektöründe olmayan
+    // sınırımız kesik kırmızıyla — "burayı kimse tutmuyor".
+    if (state.frontGaps?.length) this.drawFrontEdges(ctx, world, state.frontGaps, state.playerNation, { gap: true });
     if (!fronts.length) return;
     const zoom = this.camera.zoom;
     const order = [...fronts].sort((a, b) => Number(a.general === active) - Number(b.general === active));
@@ -3157,22 +3160,19 @@ export class Renderer {
       const isActive = general === active;
       const attack = general.stance === 'advance';
       const glow = attack ? '#ff9382' : '#8fcdef';
-      const band = new Path2D();
-      for (const tile of tiles) this.cellPath(band, world, tile);
+      // Seçili generalin sektörü hafif dolgulu (hangi kareler onun); cephenin
+      // kendisi her generalde SINIRIN ÜSTÜNDE dişli çizgi (drawFrontEdges).
       if (isActive) {
-        ctx.globalAlpha = 0.3;
+        const band = new Path2D();
+        for (const tile of tiles) this.cellPath(band, world, tile);
+        ctx.globalAlpha = 0.16;
         ctx.fillStyle = glow;
         ctx.fill(band);
-      } else {
-        ctx.globalAlpha = 0.1;
-        ctx.fillStyle = glow;
-        ctx.fill(band);
+        ctx.globalAlpha = 1;
       }
-      ctx.globalAlpha = isActive ? 1 : 0.6;
-      ctx.lineWidth = (isActive ? (attack ? 3.5 : 2.5) : 1.6) / zoom;
-      ctx.strokeStyle = glow;
-      ctx.stroke(band);
-      ctx.globalAlpha = 1;
+      this.drawFrontEdges(ctx, world, tiles, state.playerNation, {
+        color: glow, attack, active: isActive,
+      });
       // Rozet sayaçlardan SONRA çizilir (drawFrontBadges): önce çizilince
       // cephedeki tümen sayacının altında kalıyordu.
       this.frontBadges.push({ general, at: this.frontAnchor(tiles), glow, isActive });
@@ -3363,6 +3363,86 @@ export class Renderer {
       ctx.fillStyle = f.won ? '#f3d27a' : '#ff7a5c';
       ctx.fillText(f.text, f.tile.x, y);
     }
+    ctx.restore();
+  }
+
+  /**
+   * CEPHE ÇİZGİSİ (HOI4): sektör karelerinin düşman denetimindeki komşuya
+   * bakan HÜCRE KENARLARI (borderMesh.cellEdge — haritadaki organik sınırın
+   * kendisi) kalın çizgi, her kenarın ortasında düşmana dönük diş. Taarruzda
+   * dişler büyür. `gap`: kimsenin tutmadığı sınır, kesik ve dişsiz.
+   */
+  drawFrontEdges(ctx, world, tiles, playerNation, { color = '#8fcdef', attack = false, active = false, gap = false } = {}) {
+    if (!tiles?.length || playerNation == null || playerNation < 0) return;
+    const zoom = this.camera.zoom;
+    const mesh = this.mesh?.world === world ? this.mesh : null;
+    const P = world.wrapWidth || 0;
+    const line = new Path2D();
+    const teeth = new Path2D();
+    let edges = 0;
+    const tooth = HEX_SIZE * (attack ? 0.3 : 0.2);
+    for (const tile of tiles) {
+      if (tile.terrain?.water) continue;
+      for (let d = 0; d < 6; d++) {
+        const near = world.get(tile.q + DIRS[d][0], tile.r + DIRS[d][1]);
+        if (!near || near.terrain.water) continue;
+        const owner = controllerOf(near);
+        if (owner < 0 || owner === playerNation) continue;
+        if (!atWar(world, owner, playerNation) && !inCrisis(world, owner, playerNation)) continue;
+        let pts;
+        if (mesh) pts = cellEdge(mesh, tile.row * world.cols + tile.col, d);
+        else {
+          const a = HEX_CORNERS[d];
+          const b = HEX_CORNERS[(d + 1) % 6];
+          pts = [a[0] * HEX_SIZE, a[1] * HEX_SIZE, b[0] * HEX_SIZE, b[1] * HEX_SIZE];
+        }
+        const m = pts.length / 2;
+        line.moveTo(tile.x + pts[0], tile.y + pts[1]);
+        for (let i = 1; i < m; i++) line.lineTo(tile.x + pts[i * 2], tile.y + pts[i * 2 + 1]);
+        edges++;
+        if (gap) continue;
+        // Diş: kenar ortasından düşman merkezine doğru küçük üçgen.
+        const mid = Math.floor(m / 2);
+        const mx = tile.x + pts[mid * 2];
+        const my = tile.y + pts[mid * 2 + 1];
+        let dx = near.x - tile.x;
+        if (P) dx -= P * Math.round(dx / P);
+        const dy = near.y - tile.y;
+        const len = Math.hypot(dx, dy) || 1;
+        const ux = dx / len;
+        const uy = dy / len;
+        const half = tooth * 0.75;
+        teeth.moveTo(mx - uy * half, my + ux * half);
+        teeth.lineTo(mx + ux * tooth, my + uy * tooth);
+        teeth.lineTo(mx + uy * half, my - ux * half);
+        teeth.closePath();
+      }
+    }
+    if (!edges) return;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    if (gap) {
+      ctx.setLineDash([7 / zoom, 6 / zoom]);
+      ctx.lineWidth = 2.4 / zoom;
+      ctx.strokeStyle = 'rgba(255, 96, 70, 0.8)';
+      ctx.stroke(line);
+      ctx.restore();
+      return;
+    }
+    const width = (active ? 5 : 3.6) / zoom;
+    ctx.lineWidth = width + 3 / zoom;
+    ctx.strokeStyle = 'rgba(6, 10, 14, 0.65)';
+    ctx.stroke(line);
+    ctx.lineWidth = width;
+    ctx.strokeStyle = color;
+    ctx.globalAlpha = active ? 1 : 0.85;
+    ctx.stroke(line);
+    ctx.fillStyle = color;
+    ctx.fill(teeth);
+    ctx.lineWidth = 1 / zoom;
+    ctx.strokeStyle = 'rgba(6, 10, 14, 0.7)';
+    ctx.stroke(teeth);
     ctx.restore();
   }
 
@@ -3803,7 +3883,56 @@ export class Renderer {
 
       const sprite = this.unitSprite(unit, nation, Math.min(stack.length, 9), unit === selectedUnit, side);
       ctx.drawImage(sprite.canvas, left - sprite.margin, top - sprite.margin, sprite.w, sprite.h);
+      this.drawCounterState(ctx, world, stack, left, top, width, height, zoom);
     }
+  }
+
+  /**
+   * Sayaç durumu, sprite'ın ÜSTÜNE (önbelleğe girmez, her hafta değişir):
+   *   siper  — sol altta 1-3 toprak çizgisi (giderek kazılan mevzi)
+   *   «      — geri çekiliyor (amber), Z — toparlanıyor (mavi)
+   * Siper simülasyondaydı ama hiçbir yerde görünmüyordu; saldırıyı tartan
+   * oyuncu "bu tümen kazılı mı" sorusunu haritada okuyamıyordu.
+   */
+  drawCounterState(ctx, world, stack, left, top, width, height, zoom) {
+    const turn = world.turn ?? 0;
+    let dig = 0;
+    let retreating = false;
+    let reorganizing = false;
+    for (const unit of stack) {
+      dig = Math.max(dig, unit.entrenchment ?? 0);
+      if ((unit.retreatUntil ?? 0) > turn) retreating = true;
+      else if ((unit.attackReadyAt ?? 0) > turn && !unit.battleId) reorganizing = true;
+    }
+    const pips = dig >= 0.25 ? 3 : dig >= 0.14 ? 2 : dig >= 0.05 ? 1 : 0;
+    if (pips) {
+      const pw = 6 / zoom;
+      const ph = 2.2 / zoom;
+      const x = left + 2 / zoom;
+      for (let i = 0; i < pips; i++) {
+        const y = top + height + 2.5 / zoom + i * (ph + 1.2 / zoom);
+        ctx.fillStyle = 'rgba(8, 10, 12, 0.85)';
+        ctx.fillRect(x - 0.8 / zoom, y - 0.8 / zoom, pw + 1.6 / zoom, ph + 1.6 / zoom);
+        ctx.fillStyle = '#b48a4e';
+        ctx.fillRect(x, y, pw, ph);
+      }
+    }
+    if (!retreating && !reorganizing) return;
+    const r = 6 / zoom;
+    const cx = left - 1 / zoom;
+    const cy = top + height / 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(8, 10, 12, 0.9)';
+    ctx.fill();
+    ctx.lineWidth = 1.2 / zoom;
+    ctx.strokeStyle = retreating ? '#e7b04a' : '#8fcdef';
+    ctx.stroke();
+    ctx.fillStyle = retreating ? '#e7b04a' : '#8fcdef';
+    ctx.font = `800 ${(9 / zoom).toFixed(2)}px system-ui, sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(retreating ? '«' : 'Z', cx, cy + 0.4 / zoom);
   }
 
   /**

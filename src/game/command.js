@@ -567,13 +567,111 @@ function frontFor(general, borders) {
     // tutamayan grup en azindan kendi sinirini tutar.
   }
   if (entry.hostile.length) return entry.hostile;
-  return entry.foreign.concat(entry.frontier);
+  // Tek dizi: aynı kaynağı paylaşan generaller sektörlere bölünsün (kimlikle gruplanır).
+  entry.peace ??= entry.foreign.concat(entry.frontier);
+  return entry.peace;
 }
 
-/** Tek bir grubun cephesini yeniden hesaplar (hedef degisince gerekir). */
+// --- Cephe sektorleri ------------------------------------------------------
+
+/**
+ * CEPHEYI BOLMEK (HOI4). Ayni kaynagi paylasan generaller (hedefsizken hepsi
+ * "dusmana bakan butun sinir", ayni hedefe bakanlar o ulkenin siniri) eskiden
+ * AYNI listeyi aliyordu: her biri butun sinira mevki dagitiyor, generaller
+ * dar bir cepheye ust uste yigiliyordu (olculdu: 7 general, 2 state'lik
+ * cephe). Artik liste sinir boyunca siralanir ve tumen sayisi oraninda
+ * ARDISIK dilimlere kesilir: her generalin kendi sektoru olur.
+ *
+ * Siralama: cephe kareleri bitisiklige gore parcalara ayrilir; her parca bir
+ * uctan (en uzak kareden) baslayan BFS mesafesiyle dizilir — sinirin seyrini
+ * izleyen kararli bir sira. Butun secimler kare sirasi ve kimlikle bozulur:
+ * determinizm korunur.
+ */
+function orderAlongBorder(world, tiles) {
+  if (tiles.length <= 2) return tiles;
+  const member = new Set(tiles);
+  const seen = new Set();
+  const parts = [];
+  const bfs = (start) => {
+    const dist = new Map([[start, 0]]);
+    const queue = [start];
+    for (let head = 0; head < queue.length; head++) {
+      const tile = queue[head];
+      for (const near of nodeNeighbors(world, tile)) {
+        if (!member.has(near) || dist.has(near)) continue;
+        dist.set(near, dist.get(tile) + 1);
+        queue.push(near);
+      }
+    }
+    return { dist, order: queue };
+  };
+  for (const tile of tiles) {
+    if (seen.has(tile)) continue;
+    const first = bfs(tile);
+    for (const t of first.order) seen.add(t);
+    // Uç: ilk BFS'in en uzak karesi; ikinci BFS onun mesafesiyle dizer.
+    const second = bfs(first.order[first.order.length - 1]);
+    parts.push(second.order);
+  }
+  // Büyük parça önce: sektörler önce ana cepheyi böler.
+  parts.sort((a, b) => b.length - a.length);
+  return parts.flat();
+}
+
+/**
+ * Ulusun bütün kara generallerinin sektörleri: generalId → kare listesi.
+ * Tümensiz general kaynağın tamamını görür (cizim icin), bölüşüme girmez.
+ */
+function nationSectors(world, nation, borders, unitById = null) {
+  const out = new Map();
+  const groups = new Map();
+  for (const general of officersOf(nation, BRANCH.ARMY)) {
+    const source = frontFor(general, borders);
+    let size = 0;
+    for (const id of general.divisions) {
+      const unit = unitById ? unitById.get(id) : null;
+      if (unitById ? (unit && unit.hp > 0 && unit.type.domain === 'land') : true) size++;
+    }
+    if (!size || !source.length) {
+      out.set(general.id, source);
+      continue;
+    }
+    const group = groups.get(source) ?? { source, members: [] };
+    group.members.push({ general, size });
+    groups.set(source, group);
+  }
+  for (const { source, members } of groups.values()) {
+    if (members.length === 1) {
+      out.set(members[0].general.id, source);
+      continue;
+    }
+    members.sort((a, b) => a.general.id - b.general.id);
+    const ordered = orderAlongBorder(world, source);
+    const total = members.reduce((sum, m) => sum + m.size, 0);
+    const n = ordered.length;
+    let used = 0;
+    let start = 0;
+    members.forEach((m, index) => {
+      used += m.size;
+      let end = index === members.length - 1 ? n : Math.round((used / total) * n);
+      // Her generale en az bir kare (cephe generalden kısaysa paylaşılır).
+      if (end <= start) end = Math.min(n, start + 1);
+      const slice = ordered.slice(Math.min(start, n - 1), Math.max(end, Math.min(start, n - 1) + 1));
+      out.set(m.general.id, slice);
+      start = end;
+    });
+  }
+  return out;
+}
+
+/** Tek bir grubun cephesini (sektörünü) yeniden hesaplar (hedef değişince gerekir). */
 export function refreshFront(world, general) {
   if (!general) return [];
-  const front = frontFor(general, scanBorders(world));
+  const nation = world.nations[general.nationId];
+  const borders = scanBorders(world);
+  const unitById = new Map(world.units.map((unit) => [unit.id, unit]));
+  const sectors = nation ? nationSectors(world, nation, borders, unitById) : null;
+  const front = sectors?.get(general.id) ?? frontFor(general, borders);
   general.front = front.map((tile) => ({ q: tile.q, r: tile.r }));
   return front;
 }
@@ -1193,7 +1291,7 @@ function runGroup(game, nation, general, context) {
     }
     divisions.push(unit);
   }
-  const front = frontFor(general, context.borders);
+  const front = context.sectors?.get(general.id) ?? frontFor(general, context.borders);
   general.front = front.map((tile) => ({ q: tile.q, r: tile.r }));
 
   if (!divisions.length) {
@@ -1377,6 +1475,8 @@ export function* runNationCommandSteps(game, nation, context) {
   if (!nation.alive) return;
   refreshOfficerCorps(game, nation, context.rng);
   autoAssignCommands(game.world, nation, context.unitById);
+  // Sektörler ulus başına bir kez: generaller aynı sınırı bölüşür.
+  context.sectors = nationSectors(game.world, nation, context.borders, context.unitById);
   for (const general of generalsOf(nation)) {
     runGroup(game, nation, general, context);
     yield;

@@ -290,6 +290,8 @@ export class Hud {
         <b class="war-score">${left}w</b>
       </button>`;
     }).join('');
+    const diplomacyChip = `<button class="war-chip diplomacy" data-open-diplomacy="1"
+      title="Wars, battles, alliances and peace offers (F10)">${glyph('dove', 'inline')} Diplomacy</button>`;
     bar.innerHTML = crisisChips + wars.map((other) => {
       const score = warScore(world, me.id, other.id);
       const tone = score > 8 ? 'winning' : score < -8 ? 'losing' : 'even';
@@ -301,7 +303,9 @@ export class Hud {
         <span class="war-name">${offered ? `${glyph('dove', 'inline')} ` : ''}${escapeHtml(other.name)}</span>
         <b class="war-score">${score >= 0 ? '+' : ''}${score}</b>
       </button>`;
-    }).join('');
+    }).join('') + diplomacyChip;
+    const diplomacy = bar.querySelector('[data-open-diplomacy]');
+    if (diplomacy) diplomacy.onclick = () => this.screens.open('diplomacy');
     for (const chip of bar.querySelectorAll('[data-war-target]')) {
       const id = Number(chip.dataset.warTarget);
       // Teklif bekleyen savasta masa degil, teklifin durdugu diplomasi ekrani acilir.
@@ -689,6 +693,14 @@ export class Hud {
       }
       // F1-F9: sekme künyeleri soldan sağa. Sekme gizliyse (ekran kapalı)
       // tuş hiçbir şey yapmaz ama tarayıcıya da gitmez (F5 sayfayı yenilerdi).
+      // F10: diplomasi ve savaşlar (sekmesi yok; muharebe listesi, savaş
+      // açıklaması ve barış teklifleri orada).
+      if (event.code === 'F10') {
+        event.preventDefault();
+        if (this.screens?.active === 'diplomacy') this.screens.close();
+        else this.screens?.open('diplomacy');
+        return;
+      }
       const tab = TAB_KEYS[event.code];
       if (tab && !event.shiftKey) {
         event.preventDefault();
@@ -1488,7 +1500,9 @@ export class Hud {
       // patlar (bkz. culture.js unrestBreakdown).
       const cluster = world.provinces?.[tile.provinceId];
       const unrest = cluster?.econ?.unrest ?? 0;
-      if (cluster?.econ && unrest >= 0.5) {
+      // Satır HER ZAMAN durur (sakin state'te 0.0): eşikte belirip kaybolan
+      // satır kartı 24 px oynatıyordu (jitter-probe, 8x savaş).
+      if (cluster?.econ) {
         // Isyan artik halkin HAREKETIDIR (movements.js): kumenin sayaci yok.
         const rebels = foreignShareOf(cluster, nation) >= CULTURE.REVOLT_FOREIGN_MIN
           ? rebelCultureOf(cluster, nation) : null;
@@ -1526,7 +1540,9 @@ export class Hud {
       // Seferberliğin bedeli state'te okunsun: silah altındaki çalışmaz
       // (econ/resources.js workforceShare) — vergi, gıda ve maden o oranda düşer.
       const away = 1 - workforceShare(econ);
-      if (away >= 0.005) stats.splice(1, 0, ['Under arms', `${formatPopulation(econ.soldiers)} · output −${(away * 100).toFixed(1)}%`]);
+      // Her zaman: asker gelip gittikçe belirip kaybolmasın (yalnız değer değişir).
+      stats.splice(1, 0, ['Under arms', away >= 0.0005
+        ? `${formatPopulation(econ.soldiers)} · output −${(away * 100).toFixed(1)}%` : 'none']);
       stateHtml = `<div class="pv-state"${area ? tipAttr('state', area.id) : ''}>
         <div class="pv-state-res">${deposits.map((line) => `<span${tipAttr('resource', line.id)}>${resourceArt(line.id, 'sm')}<b>${escapeHtml(RESOURCES[line.id].name)}</b><small>×${line.size.toFixed(1)}</small></span>`).join('')}
           ${area ? `<span class="pv-fert"><small>Fertility</small><b>${Math.round(fertilityOf(area) * 100)}%</b></span>` : ''}</div>
@@ -1553,7 +1569,10 @@ export class Hud {
       stats.unshift(['State', `${cluster.name} · ${hexes} ${hexes === 1 ? 'province' : 'provinces'}`]);
     }
 
-    const unitBlock = this.unitBlockHtml(tile.unit);
+    // Province kartı birim GÖSTERMEZ: karedeki tümen her hafta gelip gidiyor,
+    // kart 147 px uzayıp kısalıyordu (jitter-probe, 8x savaş). Birimi imleç
+    // künyesi (ui/unitHover.js) ve seçim kartı gösterir.
+    const unitBlock = '';
 
     // Ülke varsa bayrağı, yoksa arazi rengi göster.
     const emblem = nation
@@ -1597,7 +1616,9 @@ export class Hud {
     // Artakalan durum bilgileri (Status, Territory, Occupation, Worked By):
     // seyrek ama önemli — kendi uyarı satırlarında durur.
     // Değerler düz metin; şehir adı kayıttan aynen döner (içe aktarılan kayıt).
-    const notes = stats.map(([k, v]) => `<span class="pv-note"><small>${k}</small>${escapeHtml(String(v))}</span>`).join('');
+    // Değer TEK SATIR (tamamı başlıkta): uzayan sebep listesi satırı ikiye
+    // kırıp kartı oynatmasın.
+    const notes = stats.map(([k, v]) => `<span class="pv-note" title="${escapeHtml(`${k}: ${v}`)}"><small>${k}</small><span class="pv-val">${escapeHtml(String(v))}</span></span>`).join('');
 
     body.innerHTML = unitBlock + this.actionsHtml(tile) + `
       <div class="province-view">
@@ -1792,8 +1813,10 @@ export class Hud {
 
     // Secili ordunun komutani ve cephesi. Ordu kipinde karenin ilk birimi
     // degil SECILI ordu esas alinir: yigindaki baska tumen paneli ele gecirmesin.
-    const army = armyOnly && game.selectedUnit ? game.selectedUnit
-      : tile.unit && tile.unit.nationId === game.turns.playerNation ? tile.unit : null;
+    // Province kartında ordu satırı YOK: karedeki tümen her hafta gelip
+    // gidiyor, komutan/cephe/emir satırları (123 px) kartı oynatıyordu
+    // (jitter-probe, 8x savaş). Ordu satırları ordu SEÇİLİYKEN, ordu kartında.
+    const army = armyOnly && game.selectedUnit ? game.selectedUnit : null;
     if (army) {
       rows.push(this.commanderRow(me, army));
       rows.push(this.frontRow(me, army));
@@ -1883,9 +1906,11 @@ export class Hud {
     // kitliyordu ve hicbir yer soylemiyordu (olculdu — sahte-yokluk hissi).
     const nextAssault = Math.max(0, (general.nextAssaultAt ?? 0) - this.game.turns.turn);
     const cadence = nextAssault > 0 ? ` · next assault in ${nextAssault}w` : '';
+    // Cephe artık generalin SEKTÖRÜDÜR: aynı sınırı tutan generaller onu
+    // tümen sayıları oranında bölüşür (command.nationSectors).
     return `<div class="action-row">
-      <div class="k">front — ${attack ? 'advancing' : 'holding'} against ${escapeHtml(target)} ·
-        ${front.length} provinces · ${commandSize(general)} divisions · planning ${ready}%${cadence}</div>
+      <div class="k">front — ${attack ? 'advancing' : 'holding'} a sector of ${front.length} ${front.length === 1 ? 'province' : 'provinces'} against ${escapeHtml(target)} ·
+        ${commandSize(general)} divisions · planning ${ready}%${cadence}</div>
       <div class="meter"><i style="width:${ready}%"></i></div>
       <button class="action" data-command-stance="${general.id}"
         title="${attack ? 'Halting resets accumulated planning — the army regroups.' : 'Planning accumulated while holding carries into the offensive.'}">
