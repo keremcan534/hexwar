@@ -284,7 +284,7 @@ export function technologyScreen(nation, view) {
   }).join('');
 
   const ticks = [];
-  for (let year = 1840; year <= END_YEAR; year += 10) {
+  for (let year = Math.floor(START_YEAR / 10) * 10 + 10; year <= END_YEAR; year += 10) {
     ticks.push(`<span style="left:${(year - START_YEAR) * PX_PER_YEAR}px">${year}</span>`);
   }
   const nowX = Math.max(0, (view.yearExact - START_YEAR) * PX_PER_YEAR);

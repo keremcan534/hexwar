@@ -17,6 +17,7 @@ import { POPULATION_SCALE } from './populationScale.js';
 import { assignDeposits } from './econ/deposits.js';
 import { focusBonus } from './focus.js';
 import { BUILDING_IDS, DEVELOPMENT_MAX, POP_UNIT } from './econ/defs.js';
+import { START_POPULATION } from './era.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -79,7 +80,9 @@ function initialProvinceEcon(world, province) {
     1 + (rule.dev ?? 0) * 0.9 + (coastal ? 0.5 : 0) + clamp(density, -1, 2) * 0.6,
   ), 1, 5);
   return {
-    population: Math.round(population),
+    // Kalkınma yukarıda ŞABLONUN yoğunluğundan çıktı; çağ katı onu kaydırmasın
+    // (1900 kalkınması kademeye göre economy.initEconomy'de eklenir).
+    population: Math.round(population * START_POPULATION),
     hexes: members.length,
     development,
     buildings: emptyBuildings(),

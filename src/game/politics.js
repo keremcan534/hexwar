@@ -18,11 +18,10 @@ import { makeRng } from '../core/rng.js';
 import { LAWS, LAW_IDS, lawIndex, lawSum } from './laws.js';
 import { mod, refreshModifiers, registerModifierSource } from './modifiers.js';
 import { consumerStability } from './econ/industry.js';
+import { START_EDUCATION, START_GOVERNMENT } from './era.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
-/** 1848: sosyalistler sahneye çıkar (Ulusların Baharı yılı). */
-export const SOCIALIST_TURN = 625;
 export const POWER_CAP = 500;
 export const LAW_COST = 50;
 export const LAW_LOCK = 26;
@@ -116,9 +115,10 @@ const LAST_NAMES = ['Ardent', 'Bellmar', 'Corvin', 'Dravic', 'Eslow', 'Falke', '
 // ------------------------------------------------------------------ DURUM ---
 
 function freshPolitics(world, nation) {
-  const tier = nation.devTier ?? 0;
-  const government = tier >= 2 ? 'constitutional' : 'absolutism';
-  const support = { conservative: 45, liberal: 25, nationalist: 30, socialist: 0 };
+  const tier = Math.max(0, Math.min(2, nation.devTier ?? 0));
+  const government = START_GOVERNMENT[tier];
+  // 1900: sosyalist hareket kurulmuştur; destek ilk haftadan hedefe yaklaşır.
+  const support = { conservative: 40, liberal: 25, nationalist: 25, socialist: 10 };
   return {
     government,
     ruling: 'conservative',
@@ -155,8 +155,9 @@ export function initPolitics(world) {
   for (const nation of world.nations) {
     nation.politics = null;
     ensurePolitics(world, nation);
-    // Gelişmiş çekirdek okullu başlar; geri kalanlar okulsuz.
-    if ((nation.devTier ?? 0) >= 2) nation.politics.laws.education = 1;
+    // Eğitim yasası başlangıç okuryazarlığını taşır (era.js): yoksa okuryazarlık
+    // ilk on yılda yasanın hedefine geri akar.
+    nation.politics.laws.education = START_EDUCATION[Math.max(0, Math.min(2, nation.devTier ?? 0))];
     nation.stability = 0.6;
     nation.warSupport = clamp(0.4 + ((nation.aggression ?? 1) - 1) * 0.3, 0.25, 0.6);
     nation.power = 25;
@@ -302,7 +303,6 @@ export function rulingBlockers(world, nation, partyId, turn = world.turn ?? 0) {
   if (!PARTIES[partyId]) return ['Unknown party'];
   if (politics.ruling === partyId) return ['Already in government'];
   if (governmentOf(nation).elections) out.push('Decided by elections');
-  if (partyId === 'socialist' && turn < SOCIALIST_TURN) out.push('No socialist movement yet');
   if ((politics.rulingLock ?? 0) > turn) out.push(`Government formed recently (${politics.rulingLock - turn} weeks)`);
   if ((nation.power ?? 0) < RULING_CHANGE_COST) out.push(`Needs ${RULING_CHANGE_COST} political power`);
   return out;
@@ -393,7 +393,6 @@ const PROPAGANDA_WEEKS = 52;
 export function propagandaBlockers(world, nation, partyId, turn = world.turn ?? 0) {
   const out = [];
   if (!PARTIES[partyId]) return ['Unknown party'];
-  if (partyId === 'socialist' && turn < SOCIALIST_TURN) out.push('No socialist movement yet');
   if ((nation.politics.propaganda?.until ?? 0) > turn) out.push('A campaign is already running');
   if ((nation.power ?? 0) < PROPAGANDA_COST) out.push(`Needs ${PROPAGANDA_COST} political power`);
   return out;
@@ -546,14 +545,13 @@ export function supportTargets(world, nation, { turn, kin, spring }) {
       + (lawIndex(nation, 'trade') >= 2 ? 5 : 0) + (spring ? 12 : 0),
     nationalist: 15 + kin * 40 + ((nation.warSupport ?? 0.5) - 0.5) * 20 + minority * 15
       + (spring ? 8 : 0),
-    socialist: turn < SOCIALIST_TURN ? 0
-      : 5 + Math.min(20, icPerUnit * 60) + clamp(1 - consumer, 0, 0.4) * 40 + (1 - stability) * 10,
+    socialist: 5 + Math.min(20, icPerUnit * 60) + clamp(1 - consumer, 0, 0.4) * 40 + (1 - stability) * 10,
   };
   const propaganda = nation.politics.propaganda;
   if (propaganda && propaganda.until > turn && raw[propaganda.party] > 0) raw[propaganda.party] += 12;
   let sum = 0;
   for (const id of PARTY_IDS) {
-    raw[id] = id === 'socialist' && turn < SOCIALIST_TURN ? 0 : Math.max(2, raw[id]);
+    raw[id] = Math.max(2, raw[id]);
     sum += raw[id];
   }
   for (const id of PARTY_IDS) raw[id] = raw[id] / sum * 100;

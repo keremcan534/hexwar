@@ -9,7 +9,9 @@ import {
 import {
   advanceMovement, clearDirective, orderMove, resumeDirectives,
 } from './movement.js';
-import { disband, queueRecruit, recruit, runTraining } from './recruitment.js';
+import { disband, nationManpower, queueRecruit, recruit, runTraining } from './recruitment.js';
+import { START_ARMY, START_FLEET, START_GOLD } from './era.js';
+import { POP_UNIT } from './econ/defs.js';
 import { runReinforcements } from './reinforcement.js';
 import { runDelegatedAI, runNationAI } from './ai.js';
 import { runDiplomacyAI } from './alliances.js';
@@ -26,7 +28,7 @@ import { cityName, createCity, refreshCities } from './cities.js';
 import {
   beginEconomy, finishEconomy, initEconomy, runNationEconomy,
 } from './economy.js';
-import { runResearch } from './technology.js';
+import { initResearch, runResearch } from './technology.js';
 import { runAgenda } from './agenda.js';
 import { runEventCards } from './eventCards.js';
 import { assignGoals } from './hegemony.js';
@@ -56,8 +58,6 @@ import { isNode, nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
 /** İkmal: kendi kontrolüne bu kadar hex mesafede yıpranma yok (bkz. supplyAttrition). */
 const SUPPLY_FREE_HEXES = 7;
 
-/** Başlangıç hazinesi: ilk binaya ya da birkaç alaya yeter. */
-const STARTING_GOLD = 100;
 
 /**
  * KIRIK ISARETI SAHIBE AITTIR. `econ.brokenSince`/`brokenCulture` "bu ulus bu
@@ -125,7 +125,8 @@ export class TurnManager {
 
     for (const nation of world.nations) {
       nation.alive = nation.tiles > 0;
-      nation.gold = STARTING_GOLD;
+      // Tabandır: yaşayan ulusun hazinesi nüfusuyla birlikte initEconomy'de kurulur.
+      nation.gold = START_GOLD.base;
       nation.debt = 0;
       nation.prestige = 0;
       nation.infamy = 0;
@@ -145,30 +146,34 @@ export class TurnManager {
         }
       }
     }
+    // Çağdan eski teknolojiler bilinir: kuruluş (kalkınma tavanı, IC) onların
+    // değiştiricileriyle kurulur.
+    initResearch(world);
     initEconomy(world);
     for (const nation of world.nations) {
       if (!nation.alive) continue;
-      // BASLANGIC ORDUSU ULKENIN BOYUNA GORE.
+      // BASLANGIC ORDUSU: 1900'un kitle ordusu nufusla olceklenir
+      // (era.START_ARMY, kademeye gore), sinirini tutabilsin diye province
+      // basina en az uc tumenlik taban vardir. Eskiden herkes 1 piyade + 1
+      // suvariyle basliyordu ve yirmi dort eyaletli imparatorluk ilk savasta
+      // kagit gibi yiritiliyordu.
       //
-      // Eskiden herkes 1 piyade + 1 suvari ile basliyordu: uc eyaletli minor de,
-      // yirmi dort eyaletli imparatorluk da. Sonucu buyuk ulkenin sinirini
-      // savunamamasiydi -- iki tumen yirmi dort eyaletin cevresine dagilamaz,
-      // dolayisiyla imparatorluk ilk savasta kagit gibi yiritiliyordu ve
-      // oyuncunun bunu duzeltmek icin once yillarca asker toplamasi gerekiyordu.
-      //
-      // Olcek eyalet sayisi: oyuncunun haritada gordugu, sinir uzunluguyla
-      // dogru orantili ve kayda giren tek sayi. Tavan var, cunku baslangic
-      // ordusu bakim gideri demek (cities.js UNIT_UPKEEP: 1.4 altin + 1 gida
-      // tumen basi) ve devasa bir ulke kendini ilk haftada iflas ettirmemeli.
-      // `nation.provinces` sayaci ilk province gecisinden SONRA yazilir; bu
-      // kurulum aninda henuz 0'dir, o yuzden kumeler dogrudan sayilir.
-      const size = Math.max(1, (world.provinces ?? [])
-        .filter((p) => p.owner === nation.id && p.econ).length);
-      const count = (v, lo, hi) => Math.max(lo, Math.min(hi, Math.round(v)));
-      const plan = [
-        ...Array(count(size / 4, 2, 8)).fill('INFANTRY'),
-        ...Array(count(size / 10, 1, 3)).fill('CAVALRY'),
-      ];
+      // Tavan insan gucu havuzudur: plan havuzun %80'ini gecmez. Asagidaki
+      // spawnAt yedegi havuzdan cekmez; plan havuzu asarsa baslangic
+      // askerlerinin bir kismi hicbir nufusta olmazdi (olculdu, 1836: %26-30).
+      // Bilesim YZ'ninkiyle ayni: her ucuncu alay topcu, her altincisi suvari.
+      const own = (world.provinces ?? []).filter((p) => p.owner === nation.id && p.econ);
+      const tier = Math.max(0, Math.min(2, nation.devTier ?? 0));
+      const people = own.reduce((sum, p) => sum + p.econ.population, 0) / POP_UNIT;
+      const pool = Math.floor(nationManpower(world, nation.id) * 0.8 / UNIT_TYPES.INFANTRY.manpower);
+      const regiments = Math.max(2, Math.min(pool,
+        Math.max(Math.round(own.length / 3), Math.round(people * START_ARMY[tier]))));
+      const plan = Array.from({ length: regiments }, (_, i) => (
+        i % 3 === 2 ? 'ARTILLERY' : i % 6 === 4 ? 'CAVALRY' : 'INFANTRY'));
+      // Donanma: kıyıda tersanesi olan ulus kademesine göre gemiyle başlar.
+      if (own.some((p) => p.econ.buildings?.dockyard > 0)) {
+        for (let i = 0; i < START_FLEET[tier]; i++) plan.push('WARSHIP');
+      }
       for (const typeId of plan) {
         // recruit() insan gucu havuzundan ceker ve havuz bitince null doner:
         // plan bir HEDEFTIR, garanti degil. Nufusu yetmeyen ulke daha az

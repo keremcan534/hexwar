@@ -13,7 +13,7 @@
 import { makeRng } from '../core/rng.js';
 import { addTimedModifier, refreshModifiers } from './modifiers.js';
 import { settle } from './treasury.js';
-import { changeGovernment, SOCIALIST_TURN } from './politics.js';
+import { changeGovernment } from './politics.js';
 import { addInfamy } from './infamy.js';
 import { BUILDINGS } from './econ/defs.js';
 import { buildingLevels, buildingSlots } from './provinces.js';
@@ -85,8 +85,7 @@ export const EVENT_CARDS = {
   strike: {
     title: 'General Strike',
     text: 'Workers in the mill towns down tools: the shops are empty and the wages are not.',
-    trigger: (world, nation) => (world.turn ?? 0) >= SOCIALIST_TURN
-      && (nation.economy?.consumer?.ratio ?? 1) < 0.9 && (nation.economy?.ic?.total ?? 0) >= 3,
+    trigger: (world, nation) => (nation.economy?.consumer?.ratio ?? 1) < 0.9 && (nation.economy?.ic?.total ?? 0) >= 3,
     chance: 0.03,
     options: [
       { label: 'Concede higher wages', detail: 'Industry −5% for a year; stability +3; socialists gain',

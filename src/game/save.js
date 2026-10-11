@@ -90,7 +90,12 @@ import { ensureDelegation, restoreDelegation } from './delegation.js';
 // taşır, ulusun ekonomisi IC/kaynak/teçhizat stoğu, siyaseti SG/istikrar/
 // savaş desteği/parti/yasa/danışman. Eski kayıtlar TEMİZ REDDEDİLİR: göç
 // edilecek bir eşdeğer yoktur (sınıf parası bina değildir).
-export const SAVE_VERSION = 24;
+//
+// v25: ÇAĞ 1900-1945 (calendar.js, era.js). Tur numarası artık 1900'den
+// sayılır ve kampanya 2401 haftadır; 1836 kaydı yeni takvimde yanlış yılı
+// gösterir, 3341. turdaki bir kayıt yüklenir yüklenmez zaferle biterdi.
+// Şema aynı ama takvim değil: eski kayıtlar TEMİZ REDDEDİLİR.
+export const SAVE_VERSION = 25;
 /** Göçü bilinen eski sürümler: deserialize bunları da kabul eder. */
 const MIGRATABLE_VERSIONS = new Set([]);
 const STORAGE_KEY = 'hexwar.save';

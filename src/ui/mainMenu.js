@@ -26,14 +26,14 @@ import {
 import { gameDate } from './hud.js';
 import { worldRows } from '../world/worldgen.js';
 import { MenuMusic } from './menuMusic.js';
-import { START_YEAR } from '../game/calendar.js';
+import { ERA_NAME, START_YEAR } from '../game/calendar.js';
 
 /**
  * Oyunun adı. Menüde tek yerden yazılır; başlığı değiştirmek için markup'a
  * ya da CSS'e dokunmak gerekmez.
  */
 export const GAME_TITLE = 'Imperial Eye';
-export const GAME_EYEBROW = `The Long Century · ${START_YEAR}`;
+export const GAME_EYEBROW = `${ERA_NAME} · ${START_YEAR}`;
 /** Alt şeritteki sürüm künyesi. Kayıt biçimi sürümü de burada okunur. */
 export const BUILD_LABEL = `v0.1.0 · save ${SAVE_VERSION}`;
 

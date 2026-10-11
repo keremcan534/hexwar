@@ -52,8 +52,9 @@ export function archetypePlan(rng) {
       provinces: rng.int(24, 32), dev: 0, extraCity: true,
     },
     {
+      // dev = 1900 kademesi (game/era.js tabloları): demiryolu hamlesindeki dev.
       role: 'kuzey-imparatorlugu', zone: 'kuzey-bozkiri',
-      provinces: rng.int(24, 31), dev: 0, extraCity: true, acceptNeighbors: 1,
+      provinces: rng.int(24, 31), dev: 1, extraCity: true, acceptNeighbors: 1,
     },
     {
       role: 'bilesik-monarsi', zone: 'yogun-bati',
@@ -64,8 +65,9 @@ export function archetypePlan(rng) {
       provinces: rng.int(12, 18), dev: 1, acceptNeighbors: 1,
     },
     {
+      // 1900'ün en büyük sanayisi: yeni dünyanın federasyonu.
       role: 'yeni-federasyon', zone: 'yeni-kuzey', coastal: true,
-      provinces: rng.int(10, 16), dev: 1, extraCity: true,
+      provinces: rng.int(10, 16), dev: 2, extraCity: true,
     },
     {
       role: 'ada-modernlesicisi', zone: 'dogu-adalari',

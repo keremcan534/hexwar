@@ -97,10 +97,14 @@ makinede oyunun kendi hareketleri yine oynar.
 
 ## Ana sistemler
 
-### Oyunun amacı: 1900 puanı ve ulusal hedef
+### Oyunun amacı: kampanya sonu puanı ve ulusal hedef
 
-Oyun 1836'da başlar, bir tur bir haftadır ve **1900'de biter** (`FINAL_TURN`
-3340). Erken zafer yoktur: kazanan, son turda en yüksek puana sahip ülkedir.
+Oyun 1 Ocak 1900'de başlar, bir tur bir haftadır ve **1945'in son haftasında
+biter** (2401 hafta; dönem `calendar.js`'teki iki yıldır). Erken zafer yoktur:
+kazanan, son turda en yüksek puana sahip ülkedir. 1900 dünyası kademeye göre
+kurulur (`era.js`): sanayileşmiş çekirdek, yarı sanayi ve tarım ülkesi
+arasındaki makas, 1836 dünyasının başsız 64 yılda vardığı 1900 halinden
+ölçülmüştür.
 Puan dört eksenden gelir (`hegemony.js`): **sanayi** (IC × 4), **nüfus**
 (milyon × 3), **çekirdek province** (× 1) ve **prestij** (kazanılan savaş,
 gündem, Büyük X). Her ülke kuruluşta bir **ulusal hedef** alır — bölünmüş
@@ -407,6 +411,8 @@ src/
   input/     birleşik fare ve klavye girişi
   game/
     game.js          gerçek zaman saati ve oyun kabuğu
+    calendar.js      takvim: dönem (1900-1945), tur ↔ tarih, kampanya uzunluğu
+    era.js           1900 kuruluş tabloları (kademe başına)
     turn.js          haftalık simülasyon adımı (sıra: TASARIM.md §16)
     economy.js       ekonomi orkestrası: vergi, bakım, okuryazarlık, borç/iflas
     econ/defs.js     kaynak, bina, teçhizat ve ekonomi sabitleri (formül yok)
@@ -427,14 +433,14 @@ src/
     culture.js       huzursuzluk, asimilasyon, kabul
     movements.js     ulusal hareketler ve isyan ordusu
     technology.js    40 teknoloji, araştırma, yayılım
-    hegemony.js      1900 puanı ve ulusal hedef
+    hegemony.js      kampanya sonu puanı ve ulusal hedef
     command.js       generaller, cephe ve planlama
     battles.js       province muharebesi (nehir, barut, at, kale)
     recruitment.js   alay siparişi, eğitim kuyruğu, insan gücü
     reinforcement.js insan ve teçhizat takviyesi
     diplomacy.js     savaş, gerekçe, ateşkes, temas
     ai.js            ülke yapay zekâsı (AUTO aynı fonksiyonları kullanır)
-    save.js          sürümlü kayıt (v24)
+    save.js          sürümlü kayıt (v25)
   ui/
     hud.js           üst çubuk, il paneli, komuta paneli
     screens.js       ekran kabuğu, dosya kartı, barış masası, diplomasi, ordu

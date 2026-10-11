@@ -138,6 +138,31 @@ export function ensureResearch(nation) {
   return research;
 }
 
+/**
+ * Kuruluş: yılı kampanyanın başlangıcından ESKİ teknolojiler herkesçe
+ * bilinir (1900 dünyası buharı, demiryolunu, makineli tüfeği tanır).
+ * Klasör sırası korunur: bilinen kademeler hep klasörün başındadır.
+ */
+export function initResearch(world) {
+  const known = [];
+  for (const folders of Object.values(TECHNOLOGIES)) {
+    for (const list of Object.values(folders)) {
+      for (const tech of list) {
+        if ((tech.year ?? START_YEAR) >= START_YEAR) break;
+        known.push(tech.id);
+      }
+    }
+  }
+  for (const nation of world.nations) {
+    const research = ensureResearch(nation);
+    research.done = [...known];
+    research.current = null;
+    research.queue = [];
+    research.points = 0;
+    refreshModifiers(nation, world.turn ?? 0);
+  }
+}
+
 export function hasTech(nation, techId) {
   return !!nation.research?.done?.includes(techId);
 }

@@ -6,7 +6,8 @@ sayılar başsız ölçümle ayarlanır ve ayarlandıkça burada güncellenir.
 ## Hedef tek cümlede
 
 Age of History'nin sadeliği, HOI4'ün savaş ve üretim omurgası, Victoria 2'nin
-halkları. 1836–1900, bir tur bir hafta.
+halkları. 1900–1945, bir tur bir hafta (2026-10-12'de 1836–1900'den taşındı;
+takvim `calendar.js`, kuruluş tabloları `era.js`).
 
 Eski yön ("Victoria'nın dünyası, ev ödevi olmadan") 42 mal, üç sınıf, fiyat
 zinciri ve 5.400 satırlık `economy.js` üretti; oyuncu kararlarının çoğu bir
@@ -201,12 +202,12 @@ alınabilecek küme: warscore 15'te 1, 30'da 2, 70'te 3.
 5 dal (Sanayi, Altyapı, Ordu, Donanma, Toplum) × 8 seviye. Her teknolojinin
 etkisi somut: IC, verim tavanı, kaynak, kalkınma tavanı, inşaat, ikmal, saldırı,
 savunma, zırhlı gemi, okuryazarlık, istikrar. Araştırma = 1 + okuryazarlık × 6
-+ üniversite × 0.3. Bedel `110 × (1 + 0.6·kademe) × (1 + 0.02·(yıl − 1836))`,
++ üniversite × 0.3. Bedel `110 × (1 + 0.6·kademe) × (1 + 0.03·(yıl − START_YEAR))`,
 yılından önce araştırmak yılda +%6 (tavan 2.5×). Yıl çarpanı ağacı takvime
 bağlar: ölçümde orta ülke 1876'da 30, 1886'da 36 teknolojide, 40'ını
 1886-96 arasında bitirir (çarpansız 1881-86'da bitip son on beş yıl boştu). 2026-10-11: yıl ölçeği 0.02 → 0.03; herkes ~1892'de bitirip 320-440 hafta boş kalıyordu, şimdi ortanca ~1897.
 
-## 14. Zafer (1900)
+## 14. Zafer (kampanya sonu)
 
 Puan = IC × 4 + nüfus (milyon) × 3 + çekirdek province + prestij. Prestij
 kazanılan savaştan, Büyük X'ten, gündemden ve bir teknolojiyi **dünyada ilk** bulmaktan (+5, Vic2) gelir. İlk keşif yokken araştırma hızı skoru oynatmıyordu (+%50 araştırma → +%1.5, gürültü ±%1.7); şimdi +%0.7/+%10/+%12.5 (gürültü ±%1.1). Her ülkenin bir **ulusal

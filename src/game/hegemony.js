@@ -1,12 +1,13 @@
-// ZAFER — 1900'de en yüksek puan (TASARIM.md §14).
+// ZAFER — kampanyanın sonunda en yüksek puan (TASARIM.md §14).
 //
 // Puan dört eksenden: SANAYİ (IC), NÜFUS, ÇEKİRDEK TOPRAK ve PRESTİJ.
 // Toprak tek yol değildir; sanayi ve prestij barışçı bir yol açar. Her
 // ulusun bir de ULUSAL HEDEFİ vardır (kuruluşta, durumuna göre): tutarsa
 // büyük bonus — küçük ülke de kendi hikâyesini kazanabilir.
 //
-// Erken zafer yoktur: kampanya 1900'de biter (önceki ölçüm: 1910 sonrası
-// harita donuyordu, oyuncunun önüne gelen karar sıfıra yaklaşıyordu).
+// Erken zafer yoktur: kampanya END_YEAR'ın son haftasında biter (calendar.js).
+// 1836 çağında ölçülmüştü: 1910 sonrası harita donuyor, oyuncunun önüne gelen
+// karar sıfıra yaklaşıyordu.
 
 import { isCore } from './provinces.js';
 import { CAMPAIGN_TURNS, END_YEAR, START_YEAR } from './calendar.js';

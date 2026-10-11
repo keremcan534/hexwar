@@ -9,6 +9,7 @@
 // kesitinden ya da bugunku durumdan gelir.
 
 import { chronicleYear, ensureChronicle } from '../game/chronicle.js';
+import { ERA_NAME } from '../game/calendar.js';
 import { governmentType } from '../game/politics.js';
 import { scoreboard } from '../game/hegemony.js';
 import { formatPopulation } from '../game/economy.js';
@@ -35,7 +36,7 @@ function highlights(chronicle, limit = 10) {
  * secilmez — ulkenin nereden nereye gittigi soylenir.
  */
 function closingLine(nation, opening, board) {
-  if (!opening) return 'The century closes on a state still finding its shape.';
+  if (!opening) return 'The age closes on a state still finding its shape.';
   const now = {
     population: nation.economy?.population ?? 0,
     gdp: nation.economy?.ic?.total ?? 0,
@@ -53,8 +54,8 @@ function closingLine(nation, opening, board) {
   const article = (word) => (/^[aeiou]/i.test(word) ? 'an' : 'a');
   const form = (opening.government || 'state').toLowerCase();
   const start = opening.literacy < 0.05 && opening.factories <= 2
-    ? 'It entered the century with land, poverty and ambition.'
-    : `It entered the century as ${article(form)} ${form}.`;
+    ? 'It entered the age with land, poverty and ambition.'
+    : `It entered the age as ${article(form)} ${form}.`;
   const territory = land > 4 ? 'larger' : land < -4 ? 'smaller' : 'much the same size';
   const built = industry > 6 ? 'industrial' : industry > 0 ? 'partly industrialised' : 'still agrarian';
   const learned = schooled > 0.2 ? 'literate' : schooled > 0.05 ? 'better schooled' : 'largely unschooled';
@@ -91,7 +92,7 @@ export function showEndScreen(game, result) {
     <li class="epilogue-event tier-${entry.tier ?? 2}">
       <b>${chronicleYear(entry.turn)}</b>
       <span>${esc(entry.title)}</span>
-    </li>`).join('') || '<li class="epilogue-event empty"><span>A century without recorded upheaval.</span></li>';
+    </li>`).join('') || '<li class="epilogue-event empty"><span>An age without recorded upheaval.</span></li>';
 
   // Teknoloji satiri: acilis kesiti + guncel konum (identity.techStanding).
   const standing = techStanding(world, nation);
@@ -122,7 +123,7 @@ export function showEndScreen(game, result) {
   host.innerHTML = `
     <article class="epilogue-sheet" role="dialog" aria-label="Campaign epilogue">
       <header class="epilogue-head">
-        <small>The Long Century</small>
+        <small>${esc(ERA_NAME)}</small>
         <h1>${esc(nation.name)}</h1>
         <p class="epilogue-span">${startYear}–${endYear}</p>
       </header>
@@ -130,11 +131,11 @@ export function showEndScreen(game, result) {
       <section class="epilogue-metrics">${metrics}</section>
       ${tallyLine}
       <section class="epilogue-timeline">
-        <h2>The century in brief</h2>
+        <h2>The age in brief</h2>
         <ol>${timeline}</ol>
       </section>
       <footer class="epilogue-foot">
-        <p>The century is over. Its consequences are not.</p>
+        <p>The age is over. Its consequences are not.</p>
         <button class="action primary" data-epilogue-close>Close</button>
       </footer>
     </article>`;

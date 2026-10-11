@@ -1,10 +1,10 @@
 // TAKVİM — oyunun tek zaman kaynağı.
 //
-// Bir tur bir haftadır; kampanya START_YEAR'ın 1 Ocak'ında başlar, END_YEAR'da
-// biter. Eskiden "1836" yedi ayrı yerde elle yazılmıştı (HUD tarihi, kronik
-// yılı, teknoloji takvimi, birim açılışı, teknoloji ekranı, ipuçları) ve çağ
-// uzunluğu iki ayrı sabitteydi (3330 ve 3340 hafta). Dönemi değiştirmek
-// (1836-1900 → 1900-1945) artık bu iki yılı değiştirmektir.
+// Bir tur bir haftadır; kampanya START_YEAR'ın 1 Ocak'ında başlar, END_YEAR
+// yılının son haftasıyla biter. Eskiden "1836" yedi ayrı yerde elle yazılmıştı
+// (HUD tarihi, kronik yılı, teknoloji takvimi, birim açılışı, teknoloji ekranı,
+// ipuçları) ve çağ uzunluğu iki ayrı sabitteydi (3330 ve 3340 hafta). Dönem
+// 1836-1900'den 1900-1945'e bu iki yılla taşındı.
 //
 // İki ayrı "yıl" bilerek var:
 //   calendarYear  — ETİKET: gerçek takvim (artık yıllar dahil). HUD ve kronik.
@@ -12,9 +12,12 @@
 //                   cezası ve birim takvimi bunu okur; formülünü değiştirmek
 //                   bütün teknoloji takvimini birkaç gün kaydırırdı.
 
-export const START_YEAR = 1836;
-export const END_YEAR = 1900;
+export const START_YEAR = 1900;
+/** Son oynanan yıl: "1900-1945" iki ucuyla birlikte. */
+export const END_YEAR = 1945;
 export const DAYS_PER_TURN = 7;
+/** Çağın adı (ana menü, bitiş ekranı). */
+export const ERA_NAME = 'The Age of Steel';
 
 /**
  * Turun (ve hafta içindeki günün) tarihi, UTC. Tur 1 = START_YEAR-01-01.
@@ -56,12 +59,12 @@ export function turnOfYear(year) {
 }
 
 /**
- * Kampanyanın tur sayısı: zafer END_YEAR'ın ilk haftasında ilan edilir
- * (hegemony.FINAL_TURN). Eskiden elle 3340 yazılıydı; o tur 29 Aralık 1899'a
- * düşüyordu ve bitiş ekranı "1836–1899" diyordu. Çağ çarpanları (tüketim malı
+ * Kampanyanın tur sayısı: zafer END_YEAR'ın son haftasında ilan edilir
+ * (hegemony.FINAL_TURN), bitiş ekranı "1900–1945" der. Eskiden elle 3340
+ * yazılıydı; o tur 29 Aralık 1899'a düşüyordu. Çağ çarpanları (tüketim malı
  * beklentisi, milliyetçilik) 0'dan 1'e bu sürede yükselir.
  */
-export const CAMPAIGN_TURNS = turnOfYear(END_YEAR);
+export const CAMPAIGN_TURNS = turnOfYear(END_YEAR + 1) - 1;
 
 /** Çağın ilerleyişi 0..1: kampanya boyunca doğrusal. */
 export function eraProgress(turn) {

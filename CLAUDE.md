@@ -89,4 +89,4 @@ değiştirici toplamına yazılır (`modifiers.js MODIFIER_KEYS`): yeni anahtar�
 okuyucusu yoksa `audit:tech-effect` yakalar.
 
 Yeni kampanyada AUTO açık başlar (`delegation.DEFAULT_AUTO_AREAS`; diplomasi
-hariç). Kayıt sürümü 24'tür; eski kayıtlar temiz reddedilir.
+hariç). Kayıt sürümü 25'tir (1900 takvimi); eski kayıtlar temiz reddedilir.

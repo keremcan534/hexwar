@@ -27,11 +27,15 @@ import {
 } from './econ/industry.js';
 import { clearTrade, computeBlockades, ensureMarket } from './econ/trade.js';
 import { closeWeek, emptyLedger, openWeek, settle } from './treasury.js';
-import { emptyBuildings, occupiedShareOf } from './provinces.js';
+import { buildingLevels, buildingSlots, emptyBuildings, occupiedShareOf } from './provinces.js';
+import { fertilityOf } from './econ/deposits.js';
 import { constructionResourceNeeds } from './construction.js';
 import { treatiesOf } from './peace.js';
 import { isDelegated } from './delegation.js';
 import { focusBonus } from './focus.js';
+import {
+  START_BUILDINGS, START_DEVELOPMENT, START_DEVELOPMENT_CAP, START_GOLD, START_LITERACY, START_STOCK,
+} from './era.js';
 
 /** Kaynak imtiyazı (barış şartı): yenilen yatak üretiminin beşte birini verir. */
 const CONCESSION_SHARE = 0.2;
@@ -65,12 +69,8 @@ export function debtCapacity(nation) {
   return Math.max(DEBT.capFloor, DEBT.capWeeks * Math.max(0, nation?.economy?.incomeAvg ?? 0));
 }
 
-/** Başlangıç okuryazarlığı: 1836'nın gelişmiş çekirdeği daha okur-yazar. */
-const START_LITERACY = [0.08, 0.16, 0.28];
 /** Okuryazarlığın hedefe haftalık yaklaşma payı: 15 yılda açığın %63ü, 30 yılda %86sı. */
 const LITERACY_RATE = 0.0013;
-/** Nüfus birimi başına başlangıç fabrikası (gelişmişlik kademesine göre). */
-const START_FACTORIES = [0.025, 0.05, 0.09];
 
 /** Ulusun ekonomi kaydı. Kayıttan gelen alanlar korunur, eksikler dolar. */
 export function initNationEconomy(world, nation) {
@@ -95,8 +95,35 @@ export function initNationEconomy(world, nation) {
 }
 
 /**
- * 1836 kuruluşu: başkent kalkınması, ilk fabrikalar, kale, kışla, tersane,
- * başlangıç teçhizat deposu. Bir kez, `turns.start`ta.
+ * Kuruluşta bir binayı sıralı province'lere kademe kademe dağıtır: önce her
+ * uygun province'e birer kademe, sonra ikinciler. Yuva (kalkınma + 1), bina
+ * tavanı ve binanın kendi şartları (kalkınma, kıyı, yatak) korunur — kuruluş
+ * oyuncunun kendi kuramayacağı bir province bırakmaz.
+ */
+function placeBuildings(ranked, id, levels) {
+  const info = BUILDINGS[id];
+  let left = Math.round(levels);
+  for (let level = 1; left > 0 && level <= info.max; level++) {
+    let placed = false;
+    for (const province of ranked) {
+      if (left <= 0) break;
+      const econ = province.econ;
+      if ((econ.buildings[id] ?? 0) >= level) continue;
+      if (buildingLevels(econ) >= buildingSlots(econ)) continue;
+      if (info.minDevelopment && econ.development < info.minDevelopment) continue;
+      if (info.coastal && !province.coastal) continue;
+      if (info.needsDeposit && !province.deposits?.length) continue;
+      econ.buildings[id] = (econ.buildings[id] ?? 0) + 1;
+      left--;
+      placed = true;
+    }
+    if (!placed) break;
+  }
+}
+
+/**
+ * ÇAĞ KURULUŞU (era.js): kalkınma, sanayi, demiryolu, maden, okul, kale,
+ * tersane, teçhizat deposu ve hazine — kademeye göre. Bir kez, `turns.start`ta.
  */
 export function initEconomy(world) {
   ensureMarket(world);
@@ -107,37 +134,46 @@ export function initEconomy(world) {
     if (!own.length) continue;
     const tier = clamp(nation.devTier ?? 0, 0, 2);
     const capital = world.provinces[nation.capital?.provinceId] ?? own[0];
-    if (capital?.econ) {
-      capital.econ.development = Math.min(6, capital.econ.development + 1 + tier);
-      capital.econ.buildings.fort = 1;
-      capital.econ.buildings.barracks = 1;
-      if (tier >= 2) capital.econ.buildings.university = 1;
-      if (tier >= 2) capital.econ.buildings.railway = 1;
+    for (const province of own) {
+      const bonus = START_DEVELOPMENT[tier] + (province === capital ? 1 + tier : 0);
+      const dev = province.econ.development;
+      province.econ.development = Math.max(dev, Math.min(START_DEVELOPMENT_CAP, dev + bonus));
     }
-    const units = own.reduce((sum, p) => sum + p.econ.population, 0) / POP_UNIT;
-    let factories = Math.round(units * START_FACTORIES[tier]);
-    if (tier >= 1) factories = Math.max(1, factories);
-    // Fabrikalar kalkınmışa: önce başkent, sonra kalkınma ve nüfus sırası.
+    // Sanayi kalkınmışa: önce başkent, sonra kalkınma ve nüfus sırası.
     const ranked = [...own].sort((a, b) => (
       (b === capital) - (a === capital)
       || b.econ.development - a.econ.development
       || b.econ.population - a.econ.population
       || a.id - b.id));
-    for (let pass = 0; pass < 2 && factories > 0; pass++) {
-      for (const province of ranked) {
-        if (factories <= 0) break;
-        if (province.econ.development < BUILDINGS.factory.minDevelopment) continue;
-        province.econ.buildings.factory++;
-        factories--;
-      }
-    }
-    const coastal = ranked.find((p) => p.coastal);
-    if (coastal && (units >= 10 || nation.coastal)) coastal.econ.buildings.dockyard = 1;
+    const units = own.reduce((sum, p) => sum + p.econ.population, 0) / POP_UNIT;
+    // Başkent kalesiz ve kışlasız kalmaz; kalan kademeler tabloya göre dağılır.
+    capital.econ.buildings.fort = Math.max(1, capital.econ.buildings.fort ?? 0);
+    capital.econ.buildings.barracks = Math.max(1, capital.econ.buildings.barracks ?? 0);
+    const coastal = ranked.filter((p) => p.coastal);
+    const fertile = [...own].sort((a, b) => fertilityOf(b) - fertilityOf(a) || a.id - b.id);
+    // Kıyısı olan büyük ya da denizci ulus tersanesiz başlamaz (eski kural).
+    const yardFloor = coastal.length && (units >= 10 || nation.coastal) ? 1 : 0;
+    // Tablo sırası yerleşim sırasıdır (era.START_BUILDINGS): yuva önce gelene.
+    const plan = {
+      dockyard: [coastal, Math.max(yardFloor, coastal.length * START_BUILDINGS.dockyard[tier])],
+      university: [ranked, own.length * START_BUILDINGS.university[tier]],
+      factory: [ranked, Math.max(tier >= 1 ? 1 : 0, units * START_BUILDINGS.factory[tier])],
+      railway: [ranked, own.length * START_BUILDINGS.railway[tier]],
+      mine: [ranked, own.filter((p) => p.deposits?.length).length * START_BUILDINGS.mine[tier]],
+      farm: [fertile, own.length * START_BUILDINGS.farm[tier]],
+      fort: [ranked, own.length * START_BUILDINGS.fort[tier] - 1],
+      barracks: [ranked, own.length * START_BUILDINGS.barracks[tier] - 1],
+    };
+    for (const id of Object.keys(START_BUILDINGS)) placeBuildings(plan[id][0], id, plan[id][1]);
     const economy = nation.economy;
-    economy.stock.rifles = 40 + units * 1.0;
-    economy.stock.guns = 4 + units * 0.1;
-    economy.stock.ships = coastal ? 10 + units * 0.3 : 0;
+    economy.stock.rifles = 40 + units * START_STOCK.rifles[tier];
+    economy.stock.guns = 4 + units * START_STOCK.guns[tier];
+    economy.stock.ships = coastal.length ? 10 + units * START_STOCK.ships[tier] : 0;
     economy.population = populationOf(world, nation);
+    nation.gold = START_GOLD.base + Math.round(units * START_GOLD.perUnit);
+    // Kuruluş hazinesi defterin açılış bakiyesidir: hafta initNationEconomy'de
+    // 100 altınla açılmıştı, yeniden açılmazsa fark "uzlaşmamış" kalır.
+    openWeek(nation);
   }
 }
 
