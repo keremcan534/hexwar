@@ -22,6 +22,7 @@ import { BUILDINGS, RESOURCES } from '../game/econ/defs.js';
 import { describeEffects, modifierBreakdown, MODIFIER_KEYS } from '../game/modifiers.js';
 import { powerIncome } from '../game/politics.js';
 import { nationManpower } from '../game/recruitment.js';
+import { yearOfTurn } from '../game/calendar.js';
 
 const pct = (v, d = 0) => `${((v ?? 0) * 100).toFixed(d)}%`;
 const coin = (v) => `${(v ?? 0).toFixed(1)}`;
@@ -368,7 +369,7 @@ export function registerTooltips(game) {
     if (!nation || !entry) return null;
     const { tech, categoryId, folder } = entry;
     const world = game.world;
-    const year = 1836 + Math.floor(((world.turn ?? 1) - 1) * 7 / 365);
+    const year = yearOfTurn(world.turn ?? 1);
     const research = nation.research ?? {};
     const queue = research.queue ?? [];
     const done = hasTech(nation, tech.id);

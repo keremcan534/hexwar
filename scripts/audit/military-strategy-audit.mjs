@@ -22,6 +22,7 @@ import { armyPower, regimentCount, soldiersOf, isMoving } from '../../src/game/u
 import { destinationOf } from '../../src/game/movement.js';
 import { findPath } from '../../src/core/pathfind.js';
 import { nodeNeighbors } from '../../src/world/provinceGraph.js';
+import { calendarYear } from '../../src/game/calendar.js';
 
 const WEEKS = Number(process.argv[2] ?? 400);
 
@@ -144,7 +145,7 @@ for (let w = 0; w < WEEKS; w++) {
 
   if (w % 50 === 0 || w === WEEKS - 1) {
     history.push({
-      week: w, year: 1836 + Math.floor(w / 52),
+      week: w, year: calendarYear(w + 1),
       stranded: [...strandedAge.values()].filter((a) => a >= 4).length,
       idle: [...idleAge.values()].filter((a) => a >= 8).length,
       wars: countWars(),

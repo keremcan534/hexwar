@@ -29,13 +29,12 @@ import {
 import { describeEffects, mod } from '../game/modifiers.js';
 import { isDelegated } from '../game/delegation.js';
 import { badge, chain, kpi, kpiRow, num, tipAttr } from './kit.js';
+import { END_YEAR, START_YEAR } from '../game/calendar.js';
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ));
 
-const START_YEAR = 1836;
-const END_YEAR = 1900;
 /** Yil basina piksel ve dugum eni birlikte secildi: 1920'de %90 agac sigar. */
 const PX_PER_YEAR = 15;
 const NODE_W = 172;
@@ -141,7 +140,7 @@ export function techInspector(nation, techId, view) {
     { label: 'Base', value: factors.base, text: String(factors.base) },
     [
       { label: 'Tier', value: factors.level, tip: { text: 'Tier\nLater technologies in a line cost more.' } },
-      { label: 'Era', value: factors.yearScale, tip: { text: 'Era\nThe later its year, the more it costs (+3% a year after 1836).' } },
+      { label: 'Era', value: factors.yearScale, tip: { text: `Era\nThe later its year, the more it costs (+3% a year after ${START_YEAR}).` } },
       ...(early ? [{ label: `${factors.earlyYears} yr early`, value: factors.early, tip: { text: `Early research\n+6% for every year before ${tech.year} (at most 2.5×). Wait, and it gets cheaper.` } }] : []),
       ...(discount > 0.005 ? [{ label: 'Neighbours', value: 1 - discount, tip: { text: 'Diffusion\nNeighbours who already know it make it cheaper (up to −35%).' } }] : []),
     ],
@@ -171,7 +170,7 @@ export function techInspector(nation, techId, view) {
     </div>
     ${tech.desc ? `<p class="tq-desc">${esc(tech.desc)}</p>` : ''}
     <div class="tq-sec"><small>Effects</small>${effects || '<p class="tq-note">No direct effect.</p>'}</div>
-    ${state !== 'done' && view.firstOpen?.(tech.id) ? `<p class="tq-first"${tipAttr({ text: `First in the world\nNo nation has this yet. Whoever completes it first gains ${FIRST_TECH_PRESTIGE} prestige, and prestige counts toward the 1900 score.` })}>◆ No one has it yet — first to finish gains +${FIRST_TECH_PRESTIGE} prestige</p>` : ''}
+    ${state !== 'done' && view.firstOpen?.(tech.id) ? `<p class="tq-first"${tipAttr({ text: `First in the world\nNo nation has this yet. Whoever completes it first gains ${FIRST_TECH_PRESTIGE} prestige, and prestige counts toward the ${END_YEAR} score.` })}>◆ No one has it yet — first to finish gains +${FIRST_TECH_PRESTIGE} prestige</p>` : ''}
     ${costChain ? `<div class="tq-sec"><small>Cost</small>${costChain}
       <p class="tq-note">≈ ${weeksLabel(Math.ceil(left / rate))} at ${num(view.rate, 2)} RP a week${state === 'active' ? ` · ${Math.floor(research.points ?? 0)} / ${cost} done` : ''}</p></div>` : ''}
     ${pathHtml}

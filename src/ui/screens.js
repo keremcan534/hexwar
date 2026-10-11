@@ -57,6 +57,7 @@ import {
 } from './stateScreens.js';
 import { refreshTooltips } from './tooltip.js';
 import { kpi as kitKpi, kpiRow as kitKpiRow, panel as kitPanel, spark as kitSpark } from './kit.js';
+import { END_YEAR, exactYearOfTurn, yearOfTurn } from '../game/calendar.js';
 
 /** Ekranın kapanış geçişi (styles.css §6 .screen.hidden) bitene kadar gövde kalır. */
 const SCREEN_CLOSE_MS = 220;
@@ -83,10 +84,6 @@ function esc(s) {
   ));
 }
 
-/**
- * `availableFrom` tur numarasini takvim yilina cevirir. Cag kapisi turla
- * saklanir ama oyuncu yil dusunur; recruitment.js ile ayni donusum.
- */
 /**
  * Guc karsilastirmasini duz dille yazar.
  *
@@ -616,7 +613,7 @@ export class Screens {
       .map((n) => esc(n.name));
     const rival = target.rivalId != null ? world.nations[target.rivalId] : null;
     const memoryRows = memoryOf(target).slice(-3).reverse().map((m) => {
-      const year = 1836 + Math.floor(((m.turn ?? 1) - 1) * 7 / 365);
+      const year = chronicleYear(m.turn);
       const other = esc(world.nations[m.other]?.name ?? '?');
       const text = {
         war_with: `war with ${other}`,
@@ -877,8 +874,8 @@ export class Screens {
     const year = chronicleYear(this.game.turns.turn);
 
     const kpis = kitKpiRow([
-      kitKpi({ label: 'Year', value: String(year), sub: `${Math.max(0, 1900 - Number(year))} years to 1900`, cls: 'hero' }),
-      kitKpi({ label: 'Rank', value: rank ? `${rank}<small> / ${board.length}</small>` : '—', sub: 'among the powers', tip: { text: 'Rank\nBy hegemony score: industry, population, land, prestige and the national goal. The leader in 1900 wins.' } }),
+      kitKpi({ label: 'Year', value: String(year), sub: `${Math.max(0, END_YEAR - Number(year))} years to ${END_YEAR}`, cls: 'hero' }),
+      kitKpi({ label: 'Rank', value: rank ? `${rank}<small> / ${board.length}</small>` : '—', sub: 'among the powers', tip: { text: `Rank\nBy hegemony score: industry, population, land, prestige and the national goal. The leader in ${END_YEAR} wins.` } }),
       kitKpi({ label: 'Score', value: String(mine?.total ?? 0), sub: board[0] && board[0].nation.id !== me.id ? `leader ${board[0].total}` : 'you lead', meter: board[0] ? (mine?.total ?? 0) / Math.max(1, board[0].total) : 0 }),
       kitKpi({ label: 'Entries', value: String(entries.length), sub: 'in the chronicle' }),
     ]);
@@ -926,7 +923,7 @@ export class Screens {
       <div class="k-split chron-split">
         ${kitPanel('Chronicle', timeline, { sub: 'newest first' })}
         <div class="k-stack">
-          ${kitPanel('Great powers', `<ol class="chron-powers">${powers}</ol>`, { sub: 'hegemony score · the leader in 1900 wins' })}
+          ${kitPanel('Great powers', `<ol class="chron-powers">${powers}</ol>`, { sub: `hegemony score · the leader in ${END_YEAR} wins` })}
           ${kitPanel('The last two years', trends, { sub: `${history.length} weeks` })}
         </div>
       </div>`;
@@ -1202,13 +1199,13 @@ export class Screens {
   render_technology(me) {
     const world = this.game.world;
     const turn = world.turn ?? 1;
-    const year = 1836 + Math.floor((turn - 1) * 7 / 365);
+    const year = yearOfTurn(turn);
     const standing = techStanding(world, me);
     // Görünüm saklanır: inceleme paneli fare/klavyeyle tek başına yenilenirken
     // aynı fiyat ve hız dökümünü okur.
     return technologyScreen(me, this.techView = {
       year,
-      yearExact: 1836 + ((turn - 1) * 7) / 365,
+      yearExact: exactYearOfTurn(turn),
       rate: researchPointsOf(me),
       rateLines: researchRateLines(me),
       rank: standing.rank,

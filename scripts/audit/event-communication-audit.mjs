@@ -13,6 +13,7 @@ import {
   finding, reportFindings, n1,
 } from './harness.mjs';
 import { TIER } from '../../src/game/chronicle.js';
+import { calendarYear } from '../../src/game/calendar.js';
 
 function show(rows, keys) {
   console.log(table(rows, keys.map((key, i) => ({
@@ -120,8 +121,8 @@ sub('TEST 3 — vakayiname yogunlugu (on yil basina)');
   show([{
     'toplam kayit': entries.length,
     'on yil basina': n1(perDecade),
-    'ilk kayit': entries.length ? 1836 + Math.floor(entries[0].turn / 52) : '—',
-    'son kayit': entries.length ? 1836 + Math.floor(entries[entries.length - 1].turn / 52) : '—',
+    'ilk kayit': entries.length ? calendarYear(entries[0].turn) : '—',
+    'son kayit': entries.length ? calendarYear(entries[entries.length - 1].turn) : '—',
   }], ['toplam kayit', 'on yil basina', 'ilk kayit', 'son kayit']);
   // Hedef: on yilda birkac satir. 12'den fazlasi gunluk olur, tarih olmaz.
   if (perDecade > 12) {

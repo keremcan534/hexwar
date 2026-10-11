@@ -13,6 +13,7 @@
 
 import { makeRng } from '../core/rng.js';
 import { MODIFIER_KEYS, mod, refreshModifiers, registerModifierSource } from './modifiers.js';
+import { START_YEAR, yearOfTurn } from './calendar.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -141,11 +142,6 @@ export function hasTech(nation, techId) {
   return !!nation.research?.done?.includes(techId);
 }
 
-/** Turun takvim yılı. */
-export function yearOfTurn(turn) {
-  return 1836 + Math.floor((Math.max(1, turn ?? 1) - 1) * 7 / 365);
-}
-
 // Teknoloji etkileri değiştirici kaynağıdır (modifiers.js toplar).
 registerModifierSource((nation) => {
   const out = [];
@@ -175,11 +171,11 @@ export function availableTechs(nation) {
 /**
  * Liste fiyatı: kademe ileri teknolojiyi pahalılaştırır, aktivasyon yılından
  * önce araştırmak yılda %6 (tavan 2.5×) daha pahalıdır, ve teknolojinin KENDİ
- * yılı fiyatı büyütür (1836'dan sonra yılda %2). Yıl çarpanı olmadan ağaç
- * 1866'ya dek takvimi izleyip sonra koşuyordu: araştırma puanı okuryazarlıkla
- * ~2.5'ten ~5.5'e çıkarken 1870 sonrası teknolojiler erken olanlar kadar
- * ucuzdu ve orta ülke 40 teknolojiyi 1881-86'da bitirip son on beş yılı boş
- * geçiriyordu (erken ceza %12/3× denendi, yetmedi).
+ * yılı fiyatı büyütür (kampanyanın ilk yılından sonra yılda %3). Yıl çarpanı
+ * olmadan ağaç 1866'ya dek takvimi izleyip sonra koşuyordu: araştırma puanı
+ * okuryazarlıkla ~2.5'ten ~5.5'e çıkarken 1870 sonrası teknolojiler erken
+ * olanlar kadar ucuzdu ve orta ülke 40 teknolojiyi 1881-86'da bitirip son on
+ * beş yılı boş geçiriyordu (erken ceza %12/3× denendi, yetmedi).
  */
 export const TECH_BASE_COST = 110;
 // 0.02'de herkes 40 teknolojiyi ~1892'de bitirip 320-440 hafta boş kalıyordu
@@ -193,12 +189,12 @@ const TECH_YEAR_SCALE = 0.03;
 export function techCostFactors(techId, year) {
   const entry = INDEX.get(techId);
   if (!entry) return null;
-  const techYear = entry.tech.year ?? 1836;
+  const techYear = entry.tech.year ?? START_YEAR;
   const earlyYears = Math.max(0, techYear - year);
   return {
     base: TECH_BASE_COST,
     level: 1 + entry.level * 0.6,
-    yearScale: 1 + Math.max(0, techYear - 1836) * TECH_YEAR_SCALE,
+    yearScale: 1 + Math.max(0, techYear - START_YEAR) * TECH_YEAR_SCALE,
     earlyYears,
     early: clamp(1 + earlyYears * 0.06, 1, 2.5),
   };

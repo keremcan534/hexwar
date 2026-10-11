@@ -9,8 +9,9 @@
 // harita donuyordu, oyuncunun önüne gelen karar sıfıra yaklaşıyordu).
 
 import { isCore } from './provinces.js';
+import { CAMPAIGN_TURNS, END_YEAR, START_YEAR } from './calendar.js';
 
-export const FINAL_TURN = 3340;
+export const FINAL_TURN = CAMPAIGN_TURNS;
 
 export const SCORE_WEIGHTS = { ic: 4, population: 3, core: 1, prestige: 1 };
 
@@ -22,11 +23,11 @@ export const GOALS = {
   },
   empire: {
     id: 'empire', name: 'Preserve the Empire', bonus: 80,
-    desc: 'Many peoples, one crown. Hold at least 90% of our 1836 provinces in 1900.',
+    desc: `Many peoples, one crown. Hold at least 90% of our ${START_YEAR} provinces in ${END_YEAR}.`,
   },
   industry: {
     id: 'industry', name: 'Industrial Giant', bonus: 80,
-    desc: 'Become one of the three greatest industrial powers by 1900.',
+    desc: `Become one of the three greatest industrial powers by ${END_YEAR}.`,
   },
 };
 

@@ -48,6 +48,7 @@ import {
 import { buildingArt, emblemArt, equipmentArt, lawArt, ledgerArt, resourceArt } from './icons/art.js';
 import { buildPreview } from '../game/buildPreview.js';
 import { peoplesView } from '../game/peoplesView.js';
+import { END_YEAR } from '../game/calendar.js';
 import {
   MOVEMENT, crackdown, declareMartialLaw, grantConcessions, releaseAsVassal,
 } from '../game/movements.js';
@@ -768,7 +769,7 @@ export function renderPopulation(game, me, state) {
             <small>Homeland held</small>${meter(held, { tone: 'pos', mark: 0.8, wide: true })}<b>${status.owned} / ${status.total}</b>
           </div>
           <div class="k-unify-sub"><span>Kin under foreign rule <b class="${(economy.kinAbroad ?? 0) > 0.1 ? 'neg' : ''}">${pct(economy.kinAbroad ?? 0)}</b></span>
-            ${goal ? `<span${tipAttr({ text: `${goal.name}\n${goal.desc}` })}>Goal: <b>${esc(goal.name)}</b> ${goalMet(world, me) ? badge('on track', 'pos') : badge(`+${goal.bonus} in 1900`, 'dim')}</span>` : ''}</div>
+            ${goal ? `<span${tipAttr({ text: `${goal.name}\n${goal.desc}` })}>Goal: <b>${esc(goal.name)}</b> ${goalMet(world, me) ? badge('on track', 'pos') : badge(`+${goal.bonus} in ${END_YEAR}`, 'dim')}</span>` : ''}</div>
           ${unionRows ? `<div class="k-unions">${unionRows}</div>` : ''}
           <button class="k-btn wide" data-uc-form="1"${blockedAttr(formBlockers)}>Proclaim the Great ${esc(status.culture)} Empire</button>`, { sub: status.formed == null ? 'unification' : status.formed === me.id ? 'proclaimed' : 'claimed by another' })}
       </div>

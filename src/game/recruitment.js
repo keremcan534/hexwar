@@ -20,6 +20,7 @@ import { controllerOf } from './control.js';
 import { levyAvailable, levyExcluded, releaseDraw, takeLevy } from './levy.js';
 import { occupiedShareOf } from './provinces.js';
 import { nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
+import { calendarYear } from './calendar.js';
 
 /** Alayın kuruluş teçhizatı (econ/defs.js UNIT_EQUIPMENT). */
 export function recruitmentEquipmentCost(typeId) {
@@ -420,7 +421,7 @@ export function recruitBlockers(game, nation, typeId, options = {}) {
   const source = 'source' in options ? options.source : recruitmentSource(world, nation, id);
   const blockers = [];
   if (!unitAvailable(id, turn, nation)) {
-    const year = 1836 + Math.floor(((UNIT_TYPES[id].availableFrom ?? 1) - 1) * 7 / 365);
+    const year = calendarYear(UNIT_TYPES[id].availableFrom ?? 1);
     // Kapali dugme sebepsiz olmaz: takvim TEK yol degil, arastirma da acar.
     blockers.push({ id: 'era', text: `Not fielded before ${year} — or research it first.` });
   }

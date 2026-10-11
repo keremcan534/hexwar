@@ -60,6 +60,7 @@ import { tileDefense } from '../game/battles.js';
 import { etaWeeks } from '../game/movement.js';
 import { POPULATION_SCALE } from '../game/populationScale.js';
 import { worldRows } from '../world/worldgen.js';
+import { dateOfTurn } from '../game/calendar.js';
 
 const ORDER_LABELS = {
   [ORDER.AUTO]: 'automatic (AI controlled)',
@@ -2245,17 +2246,7 @@ function grouped(value) {
 }
 
 export function gameDate(turn, day = 0) {
-  const date = new Date(Date.UTC(1836, 0, 1));
-  // Hafta sistemin adımı, gün ise saatin adımı: tarih gün gün ilerler.
-  //
-  // `day || (turn-1)*7` DEGIL, ikisinin BUYUGU. Eski hali `day` sifirdan
-  // farkli olur olmaz tur sayacini tamamen devre disi birakiyordu ve
-  // `game.clock` kayda girmedigi icin (save.js) yuklemeden sonra day 0'dan,
-  // turn 305'ten basliyordu: oyuncu oynat'a bastigi ilk saniyede day 1 olunca
-  // takvim 2 OCAK 1836'ya cokuyor ve oturumun sonuna kadar orada kaliyordu.
-  // Tur her zaman bir TABAN verir; gun yalnizca hafta icini ilerletir.
-  date.setUTCDate(date.getUTCDate() + Math.max(0, day, (turn - 1) * 7));
-  return date.toLocaleDateString('en-GB', {
+  return dateOfTurn(turn, day).toLocaleDateString('en-GB', {
     day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
   }).toUpperCase();
 }

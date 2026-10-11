@@ -228,6 +228,3 @@ export const DEBT = { interest: 0.003, capWeeks: 20, capFloor: 150, bankruptcyWe
 
 /** Ticaret: fiyat bandı ve haftalık yaklaşma (fiyat = taban × (dünya ihtiyacı ÷ dünya üretimi)^1.5). */
 export const TRADE = { minPrice: 0.6, maxPrice: 2.0, priceSpeed: 0.1 };
-
-/** Oyunun son turu (1900); çağ çarpanları buna göre ölçeklenir. */
-export const ERA_TURNS = 3340;

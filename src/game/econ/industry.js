@@ -7,12 +7,13 @@
 
 import {
   COAL_PER_IC, IRON_PER_IC, TIMBER_PER_IC, CONSUMER_ERA_GROWTH, CONSUMER_NEED, COTTAGE_OUTPUT,
-  COTTAGE_PER_DEVELOPMENT, DOCKYARD_IC, EQUIPMENT, EQUIPMENT_IDS, ERA_TURNS, FACTORY_IC,
+  COTTAGE_PER_DEVELOPMENT, DOCKYARD_IC, EQUIPMENT, EQUIPMENT_IDS, FACTORY_IC,
   LINE_EFFICIENCY, OIL_PER_IC,
 } from './defs.js';
 import { lawOption } from '../laws.js';
 import { mod } from '../modifiers.js';
 import { resourceRatio } from './resources.js';
+import { eraProgress } from '../calendar.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -175,7 +176,7 @@ export function computeIC(world, nation) {
  */
 export function consumerGoods(nation, { population, workforce = population, development, civil, turn }) {
   const units = Math.max(0, population) / 100000;
-  const era = 1 + CONSUMER_ERA_GROWTH * clamp((turn ?? 0) / ERA_TURNS, 0, 1);
+  const era = 1 + CONSUMER_ERA_GROWTH * eraProgress(turn);
   const need = units * CONSUMER_NEED * era * Math.max(0.3, 1 + mod(nation, 'consumerNeed'));
   // Tezgâhı silah altındaki değil evdeki dokur; ihtiyaç ise bütün nüfusundur.
   const cottage = Math.max(0, workforce) / 100000 * COTTAGE_OUTPUT * (1 + COTTAGE_PER_DEVELOPMENT * development);

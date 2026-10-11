@@ -54,6 +54,7 @@ import { POPULATION_SCALE } from './populationScale.js';
 import { captureConstructionAt } from './construction.js';
 import { setProvinceOwner } from './provinces.js';
 import { assimilationFocusWeekly, focusBonus } from './focus.js';
+import { eraProgress } from './calendar.js';
 
 export const CULTURE = {
   /** Huzursuzluk olcegi 0-10 (nufus ekranindaki militanlikla ayni dil). */
@@ -108,14 +109,13 @@ export const CULTURE = {
 };
 
 /**
- * MİLLİYETÇİLİK ÇAĞI: 1836'da 1, 1900'de 1.8; Ulusların Baharı sürerken
- * (world.spring, eventCards.js) ayrıca ×1.3. Tek yerde: huzursuzluk, parti
- * desteği ve olaylar buradan okur.
+ * MİLLİYETÇİLİK ÇAĞI: kampanyanın başında 1, sonunda 1.8; Ulusların Baharı
+ * sürerken (world.spring, eventCards.js) ayrıca ×1.3. Tek yerde: huzursuzluk,
+ * parti desteği ve olaylar buradan okur.
  */
 export function nationalismEra(turn, world = null) {
-  const progress = Math.max(0, Math.min(1, (turn ?? 0) / 3330));
   const spring = (world?.spring?.until ?? 0) > (turn ?? 0) ? 1.3 : 1;
-  return (1 + progress * 0.8) * spring;
+  return (1 + eraProgress(turn) * 0.8) * spring;
 }
 
 /** Kabulün SG bedeli: halkı devlete ortak etmek siyasi bir hamledir. */

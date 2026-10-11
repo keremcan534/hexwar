@@ -81,7 +81,8 @@ Sistemlerin kod yeri: ekonomi `src/game/economy.js` + `src/game/econ/*`,
 siyaset `politics.js` (+ `laws.js`, `modifiers.js`, `agenda.js`,
 `decisions.js`, `eventCards.js`), kültür `culture.js` + `movements.js` +
 `unification.js`, ordu `recruitment.js`/`reinforcement.js`/`battles.js`,
-zafer `hegemony.js`. Ekranlar sayı üretmez; `economyView`, `governmentView`,
+zafer `hegemony.js`, takvim `calendar.js` (dönem = START_YEAR/END_YEAR;
+başka yerde yıl ya da kampanya uzunluğu yazılmaz). Ekranlar sayı üretmez; `economyView`, `governmentView`,
 `constructionView`, `agendaView` gibi döküm fonksiyonlarını basar
 (`src/ui/stateScreens.js`). Teknoloji/danışman/parti/olay etkileri tek
 değiştirici toplamına yazılır (`modifiers.js MODIFIER_KEYS`): yeni anahtarın
