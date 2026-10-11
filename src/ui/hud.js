@@ -665,6 +665,7 @@ export class Hud {
         // secimi silip paneli birakirdi.
         // Ayar ve katman panelleri de "acik panel"dir: kor oyun testinde
         // Escape yonetim ekranini kapatiyor ama World Settings'i birakiyordu.
+        if (this.game.inspectorClose?.()) return;
         const openPanel = [this.el.settings, this.el.layers].find((panel) => panelOpen(panel));
         if (openPanel) {
           hidePanel(openPanel);

@@ -332,6 +332,10 @@ export function serialize(game) {
       retreatUntil: u.retreatUntil ?? 0,
       attackReadyAt: u.attackReadyAt ?? 0,
       entrenchment: u.entrenchment ?? 0,
+      // Kuşatma bayrağı (battles.markEncircled): haftanın muharebesinden önce
+      // kurulur ve o hafta YZ'nin saldırı tahmini onu okur. Yazılmazsa yüklenen
+      // oyunun ilk haftası cebi görmez ve kesintisiz koşudan dallanır.
+      encircled: u.encircled ? 1 : 0,
       // Cephede tuttuğu province: yüklemede tümenler yerlerinde kalsın.
       post: u.post ? { ...u.post } : null,
       // Oyuncunun bekleyen emri (movement.js directive): ültimatomda verilen
@@ -580,6 +584,7 @@ export function deserialize(game, data) {
     unit.organization = saved.organization ?? saved.morale ?? unit.organization;
     unit.morale = unit.organization;
     unit.retreatUntil = saved.retreatUntil ?? 0;
+    unit.encircled = Boolean(saved.encircled);
     unit.attackReadyAt = saved.attackReadyAt ?? 0;
     unit.entrenchment = Math.max(0, Math.min(0.35, saved.entrenchment ?? 0));
     unit.post = saved.post ? { ...saved.post } : null;

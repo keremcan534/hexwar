@@ -2,6 +2,7 @@
 // Oyun katmanı ne olduğunu söyler (game/notifications.js), burası nasıl
 // göründüğüne ve ne zaman kaybolduğuna karar verir.
 
+import { battleAt } from '../game/battles.js';
 import { NOTIFY_GLYPH, glyph } from './icons/glyphs.js';
 
 /** Aynı anda görünecek kart sayısı; telefonda üçten fazlası haritayı yutuyor. */
@@ -152,7 +153,12 @@ export class Notifications {
     };
     // Karta tıklamak olayın geçtiği yere gider: HOI4'te uyarıya tıklamak gibi.
     card.onclick = () => {
-      if (entry.tile) this.game.focusTile(entry.tile);
+      if (entry.tile) {
+        this.game.focusTile(entry.tile);
+        // Muharebe sürüyorsa penceresi de açılır (ui/battlePanel.js).
+        const battle = battleAt(this.game.world, entry.tile);
+        if (battle) this.game.emit('inspect', battle.id);
+      }
       this.remove(entry);
     };
     card.classList.toggle('notify-linked', Boolean(entry.tile));

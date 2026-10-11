@@ -30,6 +30,10 @@ export const NOTIFY = {
   DIPLOMACY: { icon: '📜', tone: 'info', label: 'Diplomacy', ttl: 10000, tier: 1 },
   BATTLE: { icon: '⚔', tone: 'bad', label: 'Battle', ttl: 9000, tier: 0 },
   FIELD_WIN: { icon: '🎖', tone: 'good', label: 'Battle won', ttl: 10000, tier: 1 },
+  // KUŞATMA (pockets.js): düşman cebi fırsattır, bizimki tehlike — ikisi de
+  // HOI4'ün en okunur anı, sıradan muharebe satırından ayrı ton.
+  POCKET: { icon: '⛓', tone: 'good', label: 'Encirclement', ttl: 14000, tier: 2 },
+  ENCIRCLED: { icon: '⛓', tone: 'bad', label: 'Encircled', ttl: 0, tier: 2 },
   CONQUEST: { icon: '🏴', tone: 'war', label: 'Conquest', ttl: 14000, tier: 2 },
   CITY: { icon: '🏛', tone: 'good', label: 'City', ttl: 11000, tier: 1 },
   BUILDING: { icon: '🏗', tone: 'info', label: 'Construction', ttl: 10000, tier: 0 },

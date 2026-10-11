@@ -14923,3 +14923,74 @@ body:is(.screen-open, .notify-quiet) .notify-tray { justify-content: center; min
   background: rgba(0, 0, 0, 0.55);
 }
 .command-slot.has-art .command-plan i { display: block; height: 100%; border-radius: 1px; background: #e5ca84; }
+
+/* ==========================================================================
+   §63 MUHAREBE PENCERESİ (ui/battlePanel.js) — HOI4'ün savaş penceresi.
+   Malzeme hareket panelinin (§33) emaye + pirinç dilidir. Yer sabit: harita
+   ortasının üstü; satır yükseklikleri sabit, haftalık tazelemede kaymaz.
+   ========================================================================== */
+.battle-panel {
+  position: fixed;
+  top: calc(var(--header-bottom, 140px) + 10px);
+  right: var(--sp-3);
+  z-index: calc(var(--z-notify) + 1);
+  width: min(600px, calc(100vw - 32px));
+  max-height: calc(100vh - var(--header-bottom, 140px) - 170px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  border-radius: 4px;
+  background-color: rgba(12, 19, 23, 0.95);
+  background-image: var(--light-top), var(--surface-card);
+  box-shadow: 0 0 0 1px #000, 0 0 0 2px rgba(122, 98, 54, 0.75), 0 18px 40px rgba(0, 0, 0, 0.6);
+  color: var(--text);
+}
+.battle-panel[hidden] { display: none; }
+
+.bp-head { display: grid; grid-template-columns: minmax(0, 1fr) auto auto auto; align-items: center; gap: 8px; padding: 10px 12px 6px; border-bottom: 1px solid rgba(174, 139, 74, 0.25); }
+.bp-head small { color: var(--text-mute); font-size: 10.5px; letter-spacing: 0.04em; text-transform: uppercase; }
+.bp-head h3 { margin: 1px 0 0; font-family: var(--font-display, Georgia, serif); font-size: 18px; letter-spacing: 0.03em; }
+.bp-round { padding: 3px 8px; border-radius: 3px; background: rgba(0, 0, 0, 0.35); box-shadow: inset 0 0 0 1px rgba(174, 139, 74, 0.35); color: var(--gold); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; cursor: help; }
+.bp-btn { width: 28px; height: 28px; border: 1px solid rgba(174, 139, 74, 0.35); border-radius: 3px; background: rgba(0, 0, 0, 0.3); color: var(--text-dim); cursor: pointer; }
+.bp-btn:hover { border-color: var(--gold); color: var(--text); }
+
+.bp-balance { display: grid; grid-template-columns: 64px minmax(0, 1fr); align-items: center; gap: 10px; padding: 10px 12px 4px; cursor: help; }
+.bp-ratio { color: var(--gold-bright, #f0d68a); font-size: 17px; font-weight: 800; font-variant-numeric: tabular-nums; text-align: right; }
+.bp-power { display: flex; height: 12px; overflow: hidden; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8), inset 0 1px 2px rgba(0, 0, 0, 0.6); }
+.bp-power i { display: block; height: 100%; transition: width 400ms ease; }
+.bp-power i + i { box-shadow: inset 2px 0 0 rgba(0, 0, 0, 0.7); }
+
+.bp-forecast { min-height: 20px; margin: 4px 12px 8px; color: var(--text-dim); font-size: 12.5px; cursor: help; }
+.bp-forecast b { color: var(--text); }
+.bp-forecast.good b { color: #a9d47e; }
+.bp-forecast.bad b { color: #ef8a6c; }
+
+.bp-sides { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 0 12px 12px; align-items: stretch; }
+.bp-side { display: flex; flex-direction: column; gap: 7px; padding: 8px 9px; border-radius: 3px; background: rgba(0, 0, 0, 0.25); box-shadow: inset 0 0 0 1px rgba(174, 139, 74, 0.18); }
+.bp-side.mine { box-shadow: inset 0 0 0 1px rgba(214, 186, 120, 0.55); }
+.bp-side header { display: flex; align-items: baseline; gap: 6px; }
+.bp-side header b { font-size: 14px; }
+.bp-side header small { margin-left: auto; color: var(--text-mute); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+.bp-flag { display: inline-block; width: 12px; height: 12px; align-self: center; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8); }
+.bp-gen { color: var(--text-dim); font-size: 12px; cursor: help; }
+.bp-gen em { color: var(--gold); font-style: normal; letter-spacing: -1px; }
+.bp-gen.none { color: var(--text-faint); font-style: italic; }
+.bp-stats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 4px; }
+.bp-stats span { display: grid; gap: 1px; padding: 3px 5px; border-radius: 2px; background: rgba(0, 0, 0, 0.3); cursor: help; }
+.bp-stats small { color: var(--text-mute); font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.05em; }
+.bp-stats b { font-size: 13px; font-variant-numeric: tabular-nums; }
+.bp-divs { display: grid; grid-template-columns: repeat(auto-fill, minmax(52px, 1fr)); gap: 4px; }
+.bp-div { display: grid; grid-template-columns: 16px minmax(0, 1fr); align-items: center; gap: 4px; padding: 3px 4px; border-radius: 2px; background: rgba(0, 0, 0, 0.32); cursor: help; }
+.bp-glyph { color: var(--gold); font-size: 11px; font-style: normal; font-weight: 800; text-align: center; }
+.bp-bars { display: grid; gap: 2px; }
+.bp-bars b { display: block; height: 4px; border-radius: 1px; }
+.bp-bars b.org { background: linear-gradient(90deg, #4f8bb0, #8fcdef); }
+.bp-bars b.str { background: linear-gradient(90deg, #5f7a3c, #a9c674); }
+.bp-factors { display: grid; gap: 2px; margin: 0; padding: 0; list-style: none; }
+.bp-factors li { display: flex; justify-content: space-between; gap: 8px; padding: 2px 4px; font-size: 12px; cursor: help; }
+.bp-factors li:nth-child(odd) { background: rgba(255, 255, 255, 0.025); }
+.bp-factors li b { font-variant-numeric: tabular-nums; }
+.bp-factors li b.pos { color: #a9d47e; }
+.bp-factors li b.neg { color: #ef8a6c; }
+.bp-factors li.none span { color: var(--text-faint); font-style: italic; }
+.bp-loss { margin: auto 0 0; color: var(--text-mute); font-size: 11.5px; }
+.bp-loss b { color: #ef8a6c; }

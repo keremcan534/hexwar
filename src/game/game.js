@@ -66,7 +66,12 @@ const EVENTS = [
   // Iliski hafta ICINDE degisti (elle savas ilani, ittifak kurma/bozma):
   // diplomasi harita kipi rengini onbellekten okur, tazelenmesi gerekir.
   'diplomacy',
+  // Muharebe penceresi açılsın (ui/battlePanel.js): yük muharebe kimliği.
+  'inspect',
 ];
+
+/** Muharebe sonucu yazısının ömrü (ms). */
+const FLOATER_MS = 2400;
 
 /** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */
 const SPEEDS = [0, 1, 2, 4, 8];
@@ -140,6 +145,7 @@ export class Game {
     this.selected_ = [];     // seçili ordular (bkz. selectUnits)
     this.turns = new TurnManager(this);
     this.listeners = Object.fromEntries(EVENTS.map((name) => [name, []]));
+    this.listeners.battles.push((battle) => this.addBattleFloater(battle));
     // Bildirim merkezi: günlüğe düşen olayı karta çevirir (bkz. notifications.js).
     this.notifications = new NotificationCenter(this);
     // YZ'den gelip oyuncunun cevabını bekleyen barış teklifleri.
@@ -259,6 +265,26 @@ export class Game {
     return this.world.get(q, r) ?? null;
   }
 
+  /**
+   * Ekrandaki muharebe künyesi (renderer.drawBattles ile aynı yer ve boy:
+   * karenin 0.8 hex üstü, yakında 74×22 px, uzakta 7 px'lik nişan).
+   */
+  battleAtScreen(sx, sy) {
+    const battles = this.world?.battleSystem?.battles;
+    if (!battles?.length || !this.camera?.worldToScreenNear) return null;
+    const far = this.camera.zoom < 0.34;
+    for (const battle of battles) {
+      const tile = this.world.get(battle.q, battle.r);
+      if (!tile) continue;
+      const p = this.camera.worldToScreenNear(tile.x, tile.y - HEX_SIZE * 0.8, sx);
+      const hit = far
+        ? Math.hypot(p.x - sx, p.y - sy) <= 10
+        : Math.abs(p.x - sx) <= 39 && Math.abs(p.y - sy) <= 13;
+      if (hit) return battle;
+    }
+    return null;
+  }
+
   /** Gorunen amblemin kenari komsu province sayilmasin. */
   unitAtScreen(sx, sy) {
     if (!this.world || !this.camera?.worldToScreenNear) return null;
@@ -285,6 +311,12 @@ export class Game {
    * Yürütme sağ tuşa taşındı; sol tık artık asla emir vermez.
    */
   handleTap(sx, sy, mods = {}) {
+    // Muharebe künyesine tık muharebe penceresini açar; seçim değişmez.
+    const battle = this.battleAtScreen(sx, sy);
+    if (battle) {
+      this.emit('inspect', battle.id);
+      return;
+    }
     const hitUnit = this.unitAtScreen(sx, sy);
     const tile = hitUnit?.tile ?? this.tileAtScreen(sx, sy);
     // SHIFT EKLER, CTRL ÇIKARIR (HOI4/RTS). Eyalet seçimi değişmez: oyuncu
@@ -1270,6 +1302,34 @@ export class Game {
     };
   }
 
+  /**
+   * Muharebe sonucu haritada bir an yazar ("VICTORY", kayıp). Yalnız oyuncunun
+   * muharebeleri. Animasyon sınırlıdır: yazılar sönünce kare isteği de biter
+   * (sürekli rAF döngüsü yok).
+   */
+  addBattleFloater(battle) {
+    const me = this.turns.playerNation;
+    if (!battle?.result || (battle.attackerNation !== me && battle.defenderNation !== me)) return;
+    const tile = this.world?.get(battle.q, battle.r);
+    if (!tile) return;
+    const mineAttacking = battle.attackerNation === me;
+    const won = (battle.result === 'attacker') === mineAttacking;
+    this.floaters = (this.floaters ?? []).filter((f) => performance.now() - f.t0 < FLOATER_MS);
+    this.floaters.push({ tile, text: won ? 'VICTORY' : 'DEFEAT', won, t0: performance.now() });
+    this.pumpFloaters();
+  }
+
+  pumpFloaters() {
+    if (this.floaterTimer) return;
+    const tick = () => {
+      this.floaterTimer = 0;
+      this.floaters = (this.floaters ?? []).filter((f) => performance.now() - f.t0 < FLOATER_MS);
+      this.requestRender();
+      if (this.floaters.length) this.floaterTimer = setTimeout(tick, 33);
+    };
+    this.floaterTimer = setTimeout(tick, 33);
+  }
+
   /** Oyuncunun bütün kara generallerinin cepheleri (çizim için). */
   playerFronts() {
     const nation = this.world?.nations[this.turns.playerNation];
@@ -1328,6 +1388,7 @@ export class Game {
           front: this.frontTiles(),
           fronts: this.playerFronts(),
           hoverOdds: this.hoverOdds,
+          floaters: this.floaters,
           selection: this.selection,
           marquee: this.marquee,
         });

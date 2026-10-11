@@ -19,6 +19,7 @@ import {
   generalSiegeRelief, generalVariance, planningBonus,
 } from './command.js';
 import { provinceName } from './provinces.js';
+import { recordSurrender } from './pockets.js';
 import { resourceRatio } from './econ/resources.js';
 import { mod } from './modifiers.js';
 import { controllerOf } from './control.js';
@@ -129,6 +130,14 @@ export function tileDefense(tile) {
     + 0.15 * (tile.province?.buildings?.fort ?? 0);
 }
 
+/**
+ * KUŞATMA CEZASI: kaçış yolu olmayan (ikmali kesik) tümen gücünün bu kadarını
+ * kaybeder. Yokken cep yalnız "yenilirse teslim olur" demekti ve siperindeki
+ * kuşatılmış tümen tam güçle dövüşüp saldıranı püskürtüyordu (ölçüldü: cebe
+ * 3'e 3 taarruz 9 haftada geri atıldı). HOI4'ün en okunur anı cebi kapatmaktır.
+ */
+export const ENCIRCLED_PENALTY = 0.25;
+
 /** Nehir aşarak saldırı cezası (province sınırının çoğu nehirse). */
 export const RIVER_PENALTY = 0.25;
 
@@ -154,7 +163,7 @@ function terrainDefense(world, army) {
 }
 
 /** Bir tarafin en yetenekli komutani: zar oynakligi ve kusatma ondan gelir. */
-function leadGeneral(world, units) {
+export function leadGeneral(world, units) {
   let best = null;
   for (const unit of units) {
     const general = generalOfArmy(world.nations[unit.nationId], unit);
@@ -169,6 +178,16 @@ function leadGeneral(world, units) {
  * silebilir — kusatmanin karsiligi budur.
  */
 export function battleUnitPower(world, unit, defending, relief = 0, target = null) {
+  const f = battleUnitFactors(world, unit, defending, relief, target);
+  return f.base * f.powder * f.horses * f.doctrine * f.naval * f.rubber * f.river * f.terrain
+    * f.general * f.planning * f.supply;
+}
+
+/**
+ * Gücün çarpanları ayrı ayrı. Muharebe penceresi (battleView) dökümü buradan
+ * okur; motor da aynı çarpımı yapar — pencere ile muharebe ayrışamaz.
+ */
+export function battleUnitFactors(world, unit, defending, relief = 0, target = null) {
   const nation = world.nations[unit.nationId];
   const general = generalOfArmy(nation, unit);
   // Hat piyadesi savunurken arazi/tahkimat katkısını iki kat alır (1.5
@@ -187,19 +206,37 @@ export function battleUnitPower(world, unit, defending, relief = 0, target = nul
   const rubber = unit.type?.domain === 'sea'
     ? 1 : 1 + Math.max(0, mod(nation, 'rubberArmy')) * resourceRatio(nation, 'RUBBER');
   const river = !defending && crossesRiver(world, unit.tile, target) ? 1 - RIVER_PENALTY : 1;
-  return armyPower(unit)
-    * powder
-    * horses
-    * doctrine
-    * naval
-    * rubber
-    * river
-    * terrain
-    * generalModifier(general, { defending, army: unit })
-    * (defending ? 1 : planningBonus(nation, unit));
+  return {
+    base: armyPower(unit),
+    powder,
+    horses,
+    doctrine,
+    naval,
+    rubber,
+    river,
+    terrain,
+    general: generalModifier(general, { defending, army: unit }),
+    planning: defending ? 1 : planningBonus(nation, unit),
+    // Bayrak haftalık, muharebeden hemen önce kurulur (markEncircled).
+    supply: unit.encircled ? 1 - ENCIRCLED_PENALTY : 1,
+  };
 }
 
-function sidePower(world, units, defending, relief, target = null) {
+/**
+ * Bir rauntun kaybı (zar çekildikten sonra). Motor ve pencerenin tahmini aynı
+ * sabitleri okur: "kim kaç rauntta kırılır" motorla ayrışmasın.
+ */
+export function roundLosses(attackerRoll, defenderRoll, attackerCount, defenderCount) {
+  const total = Math.max(1, attackerRoll + defenderRoll);
+  return {
+    attackerCasualties: (16 + (defenderRoll / total) * 34) * attackerCount,
+    defenderCasualties: (12 + (attackerRoll / total) * 28) * defenderCount,
+    attackerOrganizationLoss: 6 + (defenderRoll / total) * 5,
+    defenderOrganizationLoss: 5.5 + (attackerRoll / total) * 4.5,
+  };
+}
+
+export function sidePower(world, units, defending, relief, target = null) {
   // Destek kolu (topcu, hava) tek basina kirilgandir, hat birligiyle yiginda
   // belirleyicidir — UNIT_ROLE bunu bastan beri vaat ediyordu, simulasyonda
   // karsiligi yoktu. Carpani taraf bilesiminden turetiyoruz: yalniz destek
@@ -387,21 +424,42 @@ function retreatDestination(world, army, awayFrom) {
   return candidates[0]?.tile ?? null;
 }
 
-function retreatArmy(game, army, awayFrom) {
+/**
+ * Haftalık: savaştaki ve cephedeki her kara tümeninin kuşatılmış olup
+ * olmadığı. Muharebeden HEMEN ÖNCE kurulur (turn.js); bayrak kayda girmez,
+ * yüklemede ilk hafta aynı durumdan yeniden kurulur — gelecek değişmez.
+ */
+export function markEncircled(world) {
+  for (const unit of world.units) unit.encircled = isEncircled(world, unit);
+}
+
+/**
+ * Cephedeki (savaştığı birinin denetimine bitişik) kara tümeninin kaçış yolu
+ * yok mu? Saf: bayrak yazmaz — harita gösterimi (pockets.js) de bunu okur.
+ */
+export function isEncircled(world, unit) {
+  if (!unit || unit.hp <= 0 || unit.embarked || unit.type?.domain !== 'land' || !unit.tile) return false;
+  const front = nodeNeighbors(world, unit.tile).some((near) => {
+    const owner = controllerOf(near);
+    return owner >= 0 && owner !== unit.nationId && atWar(world, owner, unit.nationId);
+  });
+  return front && !retreatDestination(world, unit, unit.tile);
+}
+
+/** Tümenin çekilebileceği bir kare var mı (yoksa cepte: pockets.js)? */
+export function hasRetreatRoute(world, army) {
+  return Boolean(army?.tile && retreatDestination(world, army, army.tile));
+}
+
+function retreatArmy(game, army, awayFrom, captor = -1) {
   if (!army || !game.world.units.includes(army)) return false;
   const target = retreatDestination(game.world, army, awayFrom);
   // Cep, ada veya dolu geri hat: province'ten cikamayan maglup tumen teslim
   // olur. Aksi halde karede kalip kazananin isgalini sonsuza dek engelliyordu.
+  // Duyuru haftalık ve toplu (pockets.js): tümen başına kuru satır yerine
+  // "4 tümen, 120 bin kişi teslim oldu".
   if (!target) {
-    const nation = game.world.nations[army.nationId];
-    game.turns.addLog(
-      `${nation?.name ?? 'A division'} surrendered at ${provinceName(awayFrom)}; no retreat route remained.`,
-      {
-        kind: 'BATTLE',
-        silent: army.nationId !== game.turns.playerNation,
-        tile: awayFrom,
-      },
-    );
+    recordSurrender(game.world, army, awayFrom, captor);
     game.turns.killUnit(army);
     return false;
   }
@@ -452,12 +510,15 @@ function finishBattle(game, battle, attackerWon) {
     }
   }
   const awayFrom = tile ?? losers[0]?.tile;
+  const captor = attackerWon ? battle.attackerNation : battle.defenderNation;
   for (const unit of losers) {
     if (!world.units.includes(unit)) continue;
     if (soldiersOf(unit) <= 0) game.turns.killUnit(unit);
-    else retreatArmy(game, unit, awayFrom);
+    else retreatArmy(game, unit, awayFrom, captor);
   }
   if (attackerWon) occupyAfterBattle(game, attackers, tile);
+  // Pencere kapanmış muharebenin sonucunu buradan okur (kayda girmez).
+  battle.result = attackerWon ? 'attacker' : 'defender';
 
   const nation = world.nations[attackerWon ? battle.attackerNation : battle.defenderNation];
   if (nation) {
@@ -542,15 +603,13 @@ function resolveRound(game, battle) {
   const roll = (general) => 1 - swing(general) / 2 + game.turns.rng() * swing(general);
   const attackerRoll = attackerBase * roll(attackerLead);
   const defenderRoll = defenderBase * roll(defenderLead);
-  const total = Math.max(1, attackerRoll + defenderRoll);
 
   // Raund basina kayip dusuk, raund sayisi yuksek: muharebe kisa ve kesin
   // degil, uzun ve asindiricidir. Kayip tumen basinadir, boylece kalabalik
   // taraf toplamda daha cok kaybeder ama tumen basina ayni asinmayi yasar.
-  const attackerCasualties = (16 + (defenderRoll / total) * 34) * attackers.length;
-  const defenderCasualties = (12 + (attackerRoll / total) * 28) * defenders.length;
-  const attackerOrganizationLoss = 6 + (defenderRoll / total) * 5;
-  const defenderOrganizationLoss = 5.5 + (attackerRoll / total) * 4.5;
+  const {
+    attackerCasualties, defenderCasualties, attackerOrganizationLoss, defenderOrganizationLoss,
+  } = roundLosses(attackerRoll, defenderRoll, attackers.length, defenders.length);
 
   distributeLosses(attackers, attackerCasualties, attackerOrganizationLoss, world);
   distributeLosses(defenders, defenderCasualties, defenderOrganizationLoss, world);
@@ -585,7 +644,8 @@ function resolveRound(game, battle) {
     if (!world.units.includes(unit) || soldiersOf(unit) <= 0) continue;
     if (organizationOf(unit) > BREAK_ORGANIZATION) continue;
     removeFromBattles(world, unit);
-    retreatArmy(game, unit, battleTile ?? unit.tile);
+    retreatArmy(game, unit, battleTile ?? unit.tile,
+      unit.nationId === battle.attackerNation ? battle.defenderNation : battle.attackerNation);
   }
 
   const { attackers: liveAttackers, defenders: liveDefenders } = battleSides(world, battle);

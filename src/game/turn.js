@@ -32,7 +32,7 @@ import { runEventCards } from './eventCards.js';
 import { assignGoals } from './hegemony.js';
 import { computeIC } from './econ/industry.js';
 import { mod, refreshModifiers } from './modifiers.js';
-import { initBattles, removeFromBattles, runBattles } from './battles.js';
+import { initBattles, removeFromBattles, runBattles, markEncircled } from './battles.js';
 import {
   beginCommand, finishCommand, initCommand, releaseArmy, runNationCommandSteps, seedGenerals,
 } from './command.js';
@@ -43,6 +43,7 @@ import {
 import { initPolitics, runPolitics } from './politics.js';
 import { runMovements } from './movements.js';
 import { releaseDraw } from './levy.js';
+import { updatePockets } from './pockets.js';
 import { captureConstructionAt, initConstruction, runConstruction } from './construction.js';
 import { controllerOf, setController } from './control.js';
 import { runNationalEvents, runWorldStories } from './events.js';
@@ -635,7 +636,10 @@ export class TurnManager {
     yield* pause('construction');
     // Haritadaki ordular çarpıştıkları province üzerinde haftalık muharebe çözer.
     this.phase = 'battles';
+    markEncircled(this.world);
     runBattles(this.game);
+    // Cepler ve teslimler: yalnız okur ve duyurur (pockets.js).
+    updatePockets(this.game);
     this.checkElimination();
     mark('battles');
     // Oyuncunun sürekli emirleri yeni turun hakkıyla işlensin: tur açıldığında

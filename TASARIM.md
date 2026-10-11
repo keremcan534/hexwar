@@ -178,6 +178,8 @@ bina bitiriyordu, oyuncu ekranı sürekli kollamak zorundaydı (ölçüm: büyü
 - Hareket HOI4 modelidir: ekonomi province kümesinde ("state"), ordu HEX hex yürür ve girdiği hexi işgal eder (`world/provinceGraph.js`). Muharebe, cephe, general, planlama, eğitim kuyruğu, seferberlik olduğu gibi kalır.
 - Alay: altın + insan gücü + teçhizat. Teçhizat yoksa kuyrukta bekler, eksik tümen takviye alamaz.
 - Muharebe: nehir aşarak saldırı −%25 (saldırılan hexle arasındaki kenar nehirse); güherçile eksikliği −%30'a kadar; at eksikliği süvari ve topçuyu vurur; kale +%15/kademe.
+- **Kuşatma (cep):** cephedeki tümenin kendi denetimindeki topraktan çekilecek yeri yoksa kuşatılmıştır: gücü −%25 (`battles.ENCIRCLED_PENALTY`), yenilirse teslim olur. Bayrak haftalık, muharebeden önce kurulur ve kayda girer. Yokken cebe 3'e 3 taarruz 9 haftada geri atılıyordu. Harita cepleri halkayla işaretler; teslimler haftalık tek bildirimde toplanır (`pockets.js`).
+- **Muharebe penceresi** (`battleView.js`): taraflar, tümenler, çarpan dökümü (`battleUnitFactors` — motorun kendi çarpımı) ve "kim kaç haftada kırılır" tahmini (`roundLosses` — motorun kayıp sabitleri). Ekran sayı kurmaz.
 - Donanma: muharebe, abluka, nakliye.
 - **Teslim:** başkenti ve şehirlerinin yarısı düşen ülke, savaş desteği düşükse her makul barışı kabul eder.
 

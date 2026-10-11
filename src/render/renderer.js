@@ -2119,9 +2119,12 @@ export class Renderer {
       // muharebe de siyasettir (bkz. mapMode yorumu).
       this.drawFronts(ctx, world, state);
       this.drawMovement(ctx, world, state.selectedUnit, state.playerNation);
+      this.drawOffensiveArrows(ctx, world, state.playerNation);
       this.drawUnitCounters(ctx, world, state.selectedUnit, rect, state.playerNation);
       this.drawBattles(ctx, world, rect);
+      this.drawPockets(ctx, world, state.playerNation);
       this.drawFrontBadges(ctx);
+      this.drawFloaters(ctx, state.floaters);
       this.drawAssaultOdds(ctx, state.hoverOdds);
     }
     this.drawSelection(ctx, state.selection);
@@ -3185,14 +3188,182 @@ export class Renderer {
     if (!badges.length) return;
     const zoom = this.camera.zoom;
     const r = Math.max(HEX_SIZE * 0.24, 8 / zoom);
-    const seen = new Map();
+    // Aynı cepheyi paylaşan generaller (hedefsizken hepsi aynı sınırı tutar):
+    // en çok üç rozet, seçili olan önce; kalanı "+N" çipi. Yedi rozet yan yana
+    // dizilince cephenin kendisini örtüyordu.
+    const groups = new Map();
     for (const badge of badges) {
       const key = `${badge.at.q}:${badge.at.r}`;
-      const index = seen.get(key) ?? 0;
-      seen.set(key, index + 1);
-      const at = { x: badge.at.x - HEX_SIZE * 0.8 + index * r * 2.5, y: badge.at.y - HEX_SIZE * 0.8 };
-      this.drawFrontBadge(ctx, badge.general, at, badge.glow, badge.isActive, zoom);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(badge);
     }
+    for (const list of groups.values()) {
+      list.sort((a, b) => Number(b.isActive) - Number(a.isActive));
+      const shown = list.slice(0, 3);
+      const base = list[0].at;
+      shown.forEach((badge, index) => {
+        const at = { x: base.x - HEX_SIZE * 0.8 + index * r * 2.5, y: base.y - HEX_SIZE * 0.8 };
+        this.drawFrontBadge(ctx, badge.general, at, badge.glow, badge.isActive, zoom);
+      });
+      const more = list.length - shown.length;
+      if (more > 0) {
+        const x = base.x - HEX_SIZE * 0.8 + shown.length * r * 2.5;
+        const y = base.y - HEX_SIZE * 0.8;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(x, y, r * 0.8, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(10, 14, 16, 0.85)';
+        ctx.fill();
+        ctx.lineWidth = 1 / zoom;
+        ctx.strokeStyle = 'rgba(216, 201, 160, 0.6)';
+        ctx.stroke();
+        ctx.fillStyle = '#d8c9a0';
+        ctx.font = `700 ${(r * 0.85).toFixed(2)}px system-ui, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText(`+${more}`, x, y + r * 0.05);
+        ctx.restore();
+      }
+    }
+  }
+
+  /**
+   * TAARRUZ OKLARI (HOI4): düşman denetimindeki hedefe yürüyen tümenlerimizin
+   * çıkış karesinden hedefe kalın, kavisli ok. Aynı çıkış-hedef çifti tek ok;
+   * birden çok tümen varsa sayısı yazılır. Kesik yürüyüş çizgisi "nereye"
+   * diyordu, "nereye vuruyoruz" demiyordu.
+   */
+  drawOffensiveArrows(ctx, world, playerNation) {
+    if (playerNation == null || playerNation < 0) return;
+    const zoom = this.camera.zoom;
+    const P = world.wrapWidth;
+    const arrows = new Map();
+    for (const unit of world.units) {
+      if (unit.nationId !== playerNation || unit.type?.domain !== 'land' || unit.hp <= 0) continue;
+      const end = unit.directive ? world.get(unit.directive.q, unit.directive.r)
+        : unit.path?.[unit.path.length - 1];
+      if (!end || end === unit.tile) continue;
+      const owner = controllerOf(end);
+      if (owner < 0 || owner === playerNation
+        || !(atWar(world, owner, playerNation) || inCrisis(world, owner, playerNation))) continue;
+      const key = `${unit.tile.q},${unit.tile.r}>${end.q},${end.r}`;
+      const arrow = arrows.get(key) ?? { from: unit.tile, to: end, count: 0 };
+      arrow.count++;
+      arrows.set(key, arrow);
+    }
+    if (!arrows.size) return;
+    ctx.save();
+    for (const { from, to, count } of arrows.values()) {
+      let dx = to.x - from.x;
+      if (P) dx -= P * Math.round(dx / P);
+      const dy = to.y - from.y;
+      const len = Math.hypot(dx, dy);
+      if (len < 1) continue;
+      const ux = dx / len;
+      const uy = dy / len;
+      // Başı ve sonu sayaçtan biraz geri: ok rozetin altında kaybolmasın.
+      const sx = from.x + ux * HEX_SIZE * 0.45;
+      const sy = from.y + uy * HEX_SIZE * 0.45;
+      const ex = from.x + dx - ux * HEX_SIZE * 0.35;
+      const ey = to.y - uy * HEX_SIZE * 0.35;
+      const bend = Math.min(len * 0.18, HEX_SIZE * 1.2);
+      const cx = (sx + ex) / 2 - uy * bend;
+      const cy = (sy + ey) / 2 + ux * bend;
+      const width = Math.max(HEX_SIZE * 0.18, (5 + Math.min(4, count) * 1.2) / zoom);
+      ctx.beginPath();
+      ctx.moveTo(sx, sy);
+      ctx.quadraticCurveTo(cx, cy, ex - ux * width * 1.4, ey - uy * width * 1.4);
+      ctx.lineCap = 'round';
+      ctx.lineWidth = width + 3 / zoom;
+      ctx.strokeStyle = 'rgba(40, 8, 4, 0.5)';
+      ctx.stroke();
+      ctx.lineWidth = width;
+      ctx.strokeStyle = 'rgba(214, 72, 52, 0.78)';
+      ctx.stroke();
+      // Ok başı: eğrinin son teğeti yönünde.
+      const tx = ex - cx;
+      const ty = ey - cy;
+      const tl = Math.hypot(tx, ty) || 1;
+      const hx = tx / tl;
+      const hy = ty / tl;
+      const head = width * 2.4;
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex - hx * head - hy * head * 0.75, ey - hy * head + hx * head * 0.75);
+      ctx.lineTo(ex - hx * head + hy * head * 0.75, ey - hy * head - hx * head * 0.75);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(232, 92, 66, 0.92)';
+      ctx.fill();
+      ctx.lineWidth = 1.2 / zoom;
+      ctx.strokeStyle = 'rgba(40, 8, 4, 0.7)';
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * CEPLER (game/pockets.js): kaçış yolu kalmayan tümenlerin karesinde kesik
+   * halka. Bizimki kırmızı ve "ENCIRCLED", düşmanınki altın ve "POCKET".
+   */
+  drawPockets(ctx, world, playerNation) {
+    const pockets = world.pockets;
+    if (!pockets?.length) return;
+    const zoom = this.camera.zoom;
+    ctx.save();
+    for (const pocket of pockets) {
+      const tile = world.get(pocket.q, pocket.r);
+      if (!tile) continue;
+      const ours = pocket.nationId === playerNation;
+      const color = ours ? '#ff5a3c' : '#f0c75e';
+      const r = Math.max(HEX_SIZE * 0.95, 16 / zoom);
+      ctx.beginPath();
+      ctx.arc(tile.x, tile.y, r, 0, Math.PI * 2);
+      ctx.setLineDash([5 / zoom, 4 / zoom]);
+      ctx.lineWidth = 2.6 / zoom;
+      ctx.strokeStyle = color;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (zoom < 0.34) continue;
+      const text = `${ours ? 'ENCIRCLED' : 'POCKET'} · ${pocket.units.length}`;
+      ctx.font = `800 ${(10 / zoom).toFixed(2)}px system-ui, sans-serif`;
+      const w = ctx.measureText(text).width + 10 / zoom;
+      const h = 15 / zoom;
+      const y = tile.y + r + 2 / zoom;
+      ctx.fillStyle = 'rgba(10, 12, 14, 0.9)';
+      ctx.fillRect(tile.x - w / 2, y, w, h);
+      ctx.lineWidth = 1 / zoom;
+      ctx.strokeStyle = color;
+      ctx.strokeRect(tile.x - w / 2, y, w, h);
+      ctx.fillStyle = color;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, tile.x, y + h / 2 + 0.5 / zoom);
+    }
+    ctx.restore();
+  }
+
+  /** Muharebe sonucu: karenin üstünde yükselip sönen "VICTORY"/"DEFEAT". */
+  drawFloaters(ctx, floaters) {
+    if (!floaters?.length) return;
+    const zoom = this.camera.zoom;
+    const now = performance.now();
+    ctx.save();
+    for (const f of floaters) {
+      const age = (now - f.t0) / 2400;
+      if (age >= 1) continue;
+      const alpha = age < 0.15 ? age / 0.15 : 1 - Math.max(0, (age - 0.55) / 0.45);
+      const y = f.tile.y - HEX_SIZE * (1.3 + age * 0.9);
+      ctx.globalAlpha = Math.max(0, alpha);
+      ctx.font = `800 ${(17 / zoom).toFixed(2)}px Georgia, serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineWidth = 4 / zoom;
+      ctx.strokeStyle = 'rgba(8, 10, 12, 0.85)';
+      ctx.strokeText(f.text, f.tile.x, y);
+      ctx.fillStyle = f.won ? '#f3d27a' : '#ff7a5c';
+      ctx.fillText(f.text, f.tile.x, y);
+    }
+    ctx.restore();
   }
 
   /** Cephenin ağırlık merkezine en yakın karesi: rozet her hafta zıplamasın. */

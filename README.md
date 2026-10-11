@@ -198,6 +198,19 @@ boyunca aşınır. Morali kırılan taraf
 iki province gerideki baskısı düşük bir hatta çekilir ve dört hafta toparlanır.
 Kazanan province'i işgal eder ama ikmal kurmadan yeni taarruza geçemez.
 
+**Muharebe penceresi:** haritadaki muharebe künyesine (ya da muharebe
+bildirimine) tıkla. İki taraf bayrak ve generalleriyle, güç oranı, ortalama
+moral/güç, tümenlerin moral ve güç çubukları, çarpan dökümü (arazi ve
+tahkimat, nehir, plan, komutan, doktrin, barut, at, destek kolu, kuşatma) ve
+"kimin hattı kaç haftada kırılır" tahmini — hepsi motorun kendi formülünden.
+Muharebe bitince sonuç yazılır ve haritada bir an VICTORY / DEFEAT belirir.
+
+**Kuşatma:** cephedeki tümenin çekilecek kendi toprağı kalmazsa cebe düşer:
+gücü −%25, yenilirse teslim olur. Harita cepleri halkayla işaretler (bizimki
+kırmızı ENCIRCLED, düşmanınki altın POCKET); yeni cep ve teslimler tek
+bildirimle duyurulur ("4 tümen, 120 bin kişi teslim oldu"). Düşman toprağına
+yürüyen tümenlerimiz kalın kırmızı **taarruz oklarıyla** çizilir.
+
 ### Seçim ve komuta arayüzü
 
 Kutu seçimi yapıldığında **solda tümen listesi** açılır: her satırda alayların

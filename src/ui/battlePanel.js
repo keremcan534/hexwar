@@ -1,0 +1,139 @@
+// MUHAREBE PENCERESİ (HOI4'ün savaş penceresi). Haritadaki muharebe künyesine
+// ya da muharebe bildirimine tıklayınca açılır, her hafta tazelenir, muharebe
+// bitince sonucu gösterip açık kalır (oyuncu kapatır).
+//
+// Panel sayı kurmaz: her şey game/battleView.js'ten gelir — motorun kendi
+// çarpanları ve kayıp sabitleri. "Kim kaç haftada kırılır" bir tahmindir ve
+// öyle yazılır.
+
+import { battleView } from '../game/battleView.js';
+import { formatPopulation } from '../game/economy.js';
+import { esc, tipAttr } from './kit.js';
+
+const pct = (v) => `${Math.round(v * 100)}%`;
+const mult = (v) => `×${v.toFixed(2)}`;
+
+export class BattlePanel {
+  constructor(game) {
+    this.game = game;
+    this.battleId = null;
+    this.last = null;      // son görünüm: muharebe bitince sonucu bununla yazar
+    this.result = null;    // { winner: 'attacker'|'defender' }
+
+    this.root = document.createElement('aside');
+    this.root.className = 'battle-panel';
+    this.root.id = 'battle-panel';
+    this.root.hidden = true;
+    this.root.setAttribute('aria-label', 'Battle');
+    document.body.appendChild(this.root);
+    this.root.addEventListener('click', (event) => {
+      if (event.target.closest('[data-battle-close]')) this.close();
+      const focus = event.target.closest('[data-battle-focus]');
+      if (focus && this.last) {
+        const tile = this.game.world.get(this.last.q, this.last.r);
+        if (tile) this.game.focusTile(tile);
+      }
+    });
+
+    game.on('inspect', (battleId) => this.open(battleId));
+    game.on('battles', (battle) => {
+      if (battle?.id === this.battleId && battle.result) this.result = { winner: battle.result };
+      this.refresh();
+    });
+    game.on('turn', () => this.refresh());
+    game.on('world', () => this.close());
+    // Esc önce açık pencereyi kapatır (hud.js Esc sırası).
+    game.inspectorClose = () => {
+      if (this.root.hidden) return false;
+      this.close();
+      return true;
+    };
+  }
+
+  get isOpen() {
+    return !this.root.hidden;
+  }
+
+  open(battleId) {
+    this.battleId = battleId;
+    this.result = null;
+    this.last = null;
+    this.root.hidden = false;
+    this.refresh();
+  }
+
+  close() {
+    this.root.hidden = true;
+    this.battleId = null;
+    this.last = null;
+  }
+
+  refresh() {
+    if (this.root.hidden || this.battleId == null) return;
+    const world = this.game.world;
+    const battle = world?.battleSystem?.battles?.find((item) => item.id === this.battleId);
+    if (battle) this.last = battleView(world, battle, this.game.turns.playerNation);
+    if (!this.last) { this.close(); return; }
+    this.root.innerHTML = this.html(this.last, !battle);
+  }
+
+  side(view, side, key) {
+    const general = side.general
+      ? `<span class="bp-gen"${tipAttr({ text: `${side.general.name}\nSkill ${side.general.skill}/5${side.general.traits.length ? ` · ${side.general.traits.join(', ')}` : ''}` })}>${esc(side.general.name)} <em>${'★'.repeat(side.general.skill)}</em></span>`
+      : '<span class="bp-gen none">no commander</span>';
+    const divisions = side.divisions.map((d) => `<div class="bp-div"${tipAttr({ text: `${d.name} division\n${formatPopulation(d.men)} men · strength ${pct(d.strength)} · organisation ${Math.round(d.organization)}%${d.entrenchment > 0.005 ? ` · dug in +${pct(d.entrenchment)}` : ''}` })}>
+        <i class="bp-glyph">${esc(d.glyph)}</i>
+        <span class="bp-bars"><b class="org" style="width:${Math.max(0, Math.min(100, d.organization)).toFixed(0)}%"></b><b class="str" style="width:${(d.strength * 100).toFixed(0)}%"></b></span>
+      </div>`).join('');
+    const factors = side.factors.map((f) => `<li${tipAttr({ text: `${f.label}\n${f.tip}` })}><span>${esc(f.label)}</span><b class="${f.value >= 1 ? 'pos' : 'neg'}">${mult(f.value)}</b></li>`).join('')
+      || '<li class="none"><span>No modifiers</span></li>';
+    return `<section class="bp-side ${key}${view.mine === key ? ' mine' : ''}">
+      <header><i class="bp-flag" style="background:${esc(side.color)}"></i><b>${esc(side.name)}</b><small>${key === 'attacker' ? 'attacking' : 'defending'}${view.mine === key ? ' · you' : ''}</small></header>
+      ${general}
+      <div class="bp-stats">
+        <span${tipAttr({ text: 'Men in the battle' })}><small>Men</small><b>${formatPopulation(side.men)}</b></span>
+        <span${tipAttr({ text: 'Organisation: a division breaks and retreats at 15%' })}><small>Org</small><b>${Math.round(side.organization)}%</b></span>
+        <span${tipAttr({ text: 'Strength left' })}><small>Str</small><b>${pct(side.strength)}</b></span>
+        <span${tipAttr({ text: key === 'attacker' ? 'Divisions in the assault / combat width (more with attacks from several sides)' : 'Divisions defending / stack limit' })}><small>Width</small><b>${esc(side.width)}</b></span>
+      </div>
+      <div class="bp-divs">${divisions}</div>
+      <ul class="bp-factors">${factors}</ul>
+      <p class="bp-loss">Losses so far <b>${formatPopulation(side.losses)}</b></p>
+    </section>`;
+  }
+
+  html(view, over) {
+    const a = view.attacker;
+    const d = view.defender;
+    const share = a.power / Math.max(1e-6, a.power + d.power);
+    const f = view.forecast;
+    const we = view.mine;
+    const nameOf = (key) => (key === 'attacker' ? a.name : d.name);
+    let forecast;
+    if (over) {
+      const winner = this.result?.winner ?? f.likely;
+      const ours = we && winner === we;
+      forecast = `<p class="bp-forecast ${we ? (ours ? 'good' : 'bad') : ''}"><b>${esc(nameOf(winner))} won.</b> ${winner === 'attacker' ? 'The defenders were driven out.' : 'The assault was thrown back.'}</p>`;
+    } else {
+      const breaker = f.likely === 'attacker' ? 'defender' : 'attacker';
+      const weeks = Math.min(breaker === 'defender' ? f.defenderBreaks : f.attackerBreaks, f.roundsLeft);
+      const good = we ? f.likely === we : null;
+      forecast = `<p class="bp-forecast ${good == null ? '' : good ? 'good' : 'bad'}"${tipAttr({ text: 'Forecast\nIf the dice stay average: organisation lost per week against what each side has left. A division breaks and retreats at 15%. The battle ends by week 20 at the latest.' })}>
+        <b>${esc(nameOf(breaker))}'s line breaks in ~${Math.max(1, weeks)} ${weeks === 1 ? 'week' : 'weeks'}</b>
+        · ${esc(nameOf(f.likely))} is likely to win</p>`;
+    }
+    return `<header class="bp-head">
+        <div><small>${view.river ? 'River crossing · ' : ''}${esc(view.terrain)} · defence +${pct(view.defense)}</small>
+          <h3>Battle of ${esc(view.name)}</h3></div>
+        <span class="bp-round"${tipAttr({ text: 'One round a week; the battle ends after 20 at most.' })}>${over ? 'Over' : `Week ${view.round} / ${view.maxRounds}`}</span>
+        <button class="bp-btn" data-battle-focus title="Show on the map">⌖</button>
+        <button class="bp-btn" data-battle-close title="Close (Esc)">✕</button>
+      </header>
+      <div class="bp-balance"${tipAttr({ text: `Combat power\nThe battle's own scales: strength × terrain × river × plan × commander × doctrine × supplies. ${view.ratio.toFixed(2)} : 1 for the attacker.` })}>
+        <span class="bp-ratio">${view.ratio.toFixed(1)} : 1</span>
+        <span class="bp-power"><i style="width:${(share * 100).toFixed(1)}%;background:${esc(a.color)}"></i><i style="width:${((1 - share) * 100).toFixed(1)}%;background:${esc(d.color)}"></i></span>
+      </div>
+      ${forecast}
+      <div class="bp-sides">${this.side(view, a, 'attacker')}${this.side(view, d, 'defender')}</div>`;
+  }
+}

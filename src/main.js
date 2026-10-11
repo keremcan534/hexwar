@@ -8,6 +8,7 @@ import { MainMenu } from './ui/mainMenu.js';
 import { Notifications } from './ui/notifications.js';
 import { AlertStrip } from './ui/alerts.js';
 import { MovementDock } from './ui/movementDock.js';
+import { BattlePanel } from './ui/battlePanel.js';
 import { NationPicker } from './ui/nationPicker.js';
 import { PerfOverlay } from './ui/perfOverlay.js';
 import { EventCards } from './ui/eventCard.js';
@@ -30,6 +31,7 @@ const hud = new Hud(game);
 new Notifications(game);
 // Sag ust: ulusal hareketler (bildirim kartlari sag alttaki sayaca indi).
 new MovementDock(game);
+new BattlePanel(game);
 // Seçenekli olay kartları: açılınca saati durdurur (bkz. ui/eventCard.js).
 new EventCards(game);
 
