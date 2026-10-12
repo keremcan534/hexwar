@@ -20,7 +20,7 @@ import { controllerOf } from './control.js';
 import { levyAvailable, levyExcluded, releaseDraw, takeLevy } from './levy.js';
 import { occupiedShareOf } from './provinces.js';
 import { nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
-import { calendarYear } from './calendar.js';
+import { techById, unlockTechOf } from './technology.js';
 
 /** Alayın kuruluş teçhizatı (econ/defs.js UNIT_EQUIPMENT). */
 export function recruitmentEquipmentCost(typeId) {
@@ -348,6 +348,8 @@ export const TRAINING_WEEKS = {
   CAVALRY: 10,
   ARTILLERY: 12,
   WARSHIP: 16,
+  ARMOR: 14,
+  AIRCRAFT: 12,
 };
 
 /** Kuyruk tavanı: sıra sonsuz uzayıp planlamayı anlamsızlaştırmasın. */
@@ -420,10 +422,10 @@ export function recruitBlockers(game, nation, typeId, options = {}) {
   // birden soruyor; hesabı bir kez yapıp buraya vermek taramayı yarıya indirir.
   const source = 'source' in options ? options.source : recruitmentSource(world, nation, id);
   const blockers = [];
-  if (!unitAvailable(id, turn, nation)) {
-    const year = calendarYear(UNIT_TYPES[id].availableFrom ?? 1);
-    // Kapali dugme sebepsiz olmaz: takvim TEK yol degil, arastirma da acar.
-    blockers.push({ id: 'era', text: `Not fielded before ${year} — or research it first.` });
+  if (!unitAvailable(id, nation)) {
+    // Kapali dugme sebepsiz olmaz: hangi teknoloji acar, adiyla.
+    const tech = techById(unlockTechOf(id))?.tech;
+    blockers.push({ id: 'era', text: `Requires ${tech ? `${tech.name} (${tech.year})` : 'research'}.` });
   }
   if (underTreaty(nation, 'DEMILITARIZE', turn)) {
     blockers.push({ id: 'treaty', text: 'A peace treaty forbids raising new divisions.' });

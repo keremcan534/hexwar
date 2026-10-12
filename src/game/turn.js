@@ -28,7 +28,7 @@ import { cityName, createCity, refreshCities } from './cities.js';
 import {
   beginEconomy, finishEconomy, initEconomy, runNationEconomy,
 } from './economy.js';
-import { initResearch, runResearch } from './technology.js';
+import { runResearch } from './technology.js';
 import { runAgenda } from './agenda.js';
 import { runEventCards } from './eventCards.js';
 import { assignGoals } from './hegemony.js';
@@ -146,9 +146,8 @@ export class TurnManager {
         }
       }
     }
-    // Çağdan eski teknolojiler bilinir: kuruluş (kalkınma tavanı, IC) onların
-    // değiştiricileriyle kurulur.
-    initResearch(world);
+    // Kuruluş mirasın değiştiricileriyle kurulur (insan gücü havuzu, IC).
+    for (const nation of world.nations) refreshModifiers(nation, world.turn);
     initEconomy(world);
     for (const nation of world.nations) {
       if (!nation.alive) continue;

@@ -49,6 +49,7 @@ import { buildingArt, emblemArt, equipmentArt, lawArt, ledgerArt, resourceArt } 
 import { buildPreview } from '../game/buildPreview.js';
 import { peoplesView } from '../game/peoplesView.js';
 import { END_YEAR } from '../game/calendar.js';
+import { techById, unlockTechOf } from '../game/technology.js';
 import {
   MOVEMENT, crackdown, declareMartialLaw, grantConcessions, releaseAsVassal,
 } from '../game/movements.js';
@@ -301,7 +302,13 @@ export function renderIndustry(game, me, state) {
   const military = ic.military ?? 0;
   const dockyards = ic.dockyards ?? 0;
   const now = lineAllocation(me, military, dockyards);
-  const LINE_TONE = { rifles: 'brass', guns: 'copper', ships: 'steel' };
+  const LINE_TONE = { rifles: 'brass', guns: 'copper', ships: 'steel', tanks: 'iron', aircraft: 'sky' };
+  // Kapalı hattın nedeni: gemi tersane, tank ve uçak kolunu açan teknolojiyi ister.
+  const lockOf = (id) => {
+    if (id === 'ships') return { cls: 'off', text: 'Needs a dockyard', sub: 'build one on a coast' };
+    const tech = techById(unlockTechOf(EQUIPMENT[id]?.unit))?.tech;
+    return { cls: 'off', text: `Needs ${tech?.name ?? 'research'}`, sub: tech ? `technology of ${tech.year}` : '' };
+  };
 
   const preview = (id, weight, title) => {
     const next = lineAllocation(me, military, dockyards, { [id]: weight });
@@ -323,7 +330,7 @@ export function renderIndustry(game, me, state) {
     const current = linePriorityOf(line.weight);
     const deficit = Math.max(0, log.required - log.stock);
 
-    const state = blocked ? { cls: 'off', text: 'Needs a dockyard', sub: 'build one on a coast' }
+    const state = blocked ? lockOf(id)
       : deficit > 0.5 ? { cls: 'short', text: `Short ${short(deficit)}`, sub: log.etaWeeks != null ? `covered in ~${log.etaWeeks} weeks` : 'not filling — raise the priority' }
         : log.required > 0.5 ? { cls: 'ok', text: 'Covered', sub: `the army needs ${short(log.required)}` }
           : { cls: 'idle', text: 'Stocked', sub: 'the army needs nothing now' };

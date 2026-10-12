@@ -44,14 +44,17 @@ export const MODIFIER_KEYS = {
   defense: { label: 'Land defence', format: 'pct' }, // battles
   organization: { label: 'Organisation recovery', format: 'pct' }, // turn
   naval: { label: 'Naval strength', format: 'pct' }, // battles
+  armor: { label: 'Armour strength', format: 'pct' }, // battles (ARMOR)
+  air: { label: 'Air wing strength', format: 'pct' }, // battles (AIRCRAFT)
   upkeep: { label: 'Army upkeep', format: 'pct' }, // economy
   infamyDecay: { label: 'Infamy decay', format: 'pct' }, // infamy
   supply: { label: 'Supply in enemy land', format: 'pct' }, // turn (yıpranma)
   ironclad: { label: 'Ironclad ships (iron and coal instead of timber)', format: 'flag' }, // econ/industry
   // Çağ kaynakları: bonus yalnız kaynak ihtiyacı karşılandığı oranda gelir.
-  oilIc: { label: 'Industrial capacity while oil needs are met', format: 'pct' }, // econ/industry
-  rubberArmy: { label: 'Land combat while rubber needs are met', format: 'pct' }, // battles
-  saltpeterFood: { label: 'Food output while saltpeter needs are met', format: 'pct' }, // econ/resources
+  // `short`: dar yerlerin (teknoloji düğümü) adı; tam ad ipucunda kalır.
+  oilIc: { label: 'Industrial capacity while oil needs are met', short: 'Industry (with oil)', format: 'pct' }, // econ/industry
+  rubberArmy: { label: 'Land combat while rubber needs are met', short: 'Land combat (with rubber)', format: 'pct' }, // battles
+  saltpeterFood: { label: 'Food output while saltpeter needs are met', short: 'Food (with saltpeter)', format: 'pct' }, // econ/resources
 };
 
 /** Geçici etkiler (olay, gündem): `{ id, label, until, effects }`. */
@@ -117,7 +120,7 @@ export function modifierBreakdown(nation, key) {
 }
 
 /** Etkiler nesnesini okunur satırlara çevirir ("+10% Industrial capacity"). */
-export function describeEffects(effects) {
+export function describeEffects(effects, { short = false } = {}) {
   const lines = [];
   for (const [key, value] of Object.entries(effects ?? {})) {
     const meta = MODIFIER_KEYS[key];
@@ -131,7 +134,7 @@ export function describeEffects(effects) {
     const text = meta.format === 'pct' ? `${sign}${Math.round(abs * 100)}%`
       : meta.format === 'pts' ? `${sign}${Math.round(abs * 100)}`
         : `${sign}${Number(abs.toFixed(2))}`;
-    lines.push(`${text} ${meta.label}`);
+    lines.push(`${text} ${short ? meta.short ?? meta.label : meta.label}`);
   }
   return lines;
 }

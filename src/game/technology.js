@@ -1,12 +1,13 @@
 // TEKNOLOJİ ve araştırma (TASARIM.md §13).
 //
-// Beş dal × iki klasör × dört kademe = 40 teknoloji, 1836-1890. Klasör
+// Beş dal × iki klasör (Ordu'da üç: havacılık) × beş kademe (havacılıkta altı) = 56 teknoloji,
+// 1900-1940. 1836-1890 ağacı MİRAS'tır: herkes bilir, araştırılmaz. Klasör
 // içinde DOĞRUSAL ilerleyiş (Vic2 kuralı). Her teknolojinin etkisi somuttur
 // ve modifiers.js anahtarlarına yazılır — "+%2'lik dolgu düğme" yoktur; her
 // anahtarın okuyucusu MODIFIER_KEYS tablosunda yazar.
 //
 // Takvim ÜST SINIR değil, maliyet çarpanıdır: aktivasyon yılından önce
-// araştırmak pahalıdır (yılda %6, tavan 2.5 kat). Yayılım: temas ettiğin
+// araştırmak pahalıdır (yıl başına ×1.15, tavan 8 kat). Yayılım: temas ettiğin
 // komşuların sahip olduğu teknoloji %35'e kadar ucuzlar.
 //
 // Katman notu: saf veri + hesap; ekonomiyi import ETMEZ.
@@ -26,11 +27,11 @@ export const TECH_CATEGORIES = {
 };
 
 export const TECH_FOLDERS = {
-  industry: ['Power', 'Metallurgy'],
-  infrastructure: ['Railways', 'Agriculture'],
-  army: ['Doctrine', 'Arms'],
+  industry: ['Production', 'Materials'],
+  infrastructure: ['Transport', 'Agriculture'],
+  army: ['Doctrine', 'Arms', 'Aviation'],
   navy: ['Shipbuilding', 'Naval Doctrine'],
-  society: ['Philosophy', 'Public Instruction'],
+  society: ['Politics', 'Science'],
 };
 
 /** Teknoloji etkileri modifiers.js anahtarlarıdır; ekran adları oradan. */
@@ -38,11 +39,18 @@ export const TECH_MODS = Object.fromEntries(
   Object.entries(MODIFIER_KEYS).map(([key, meta]) => [key, meta.label]),
 );
 
-function t(id, name, year, effects, desc = '') {
-  return { id, name, year, effects, desc };
+function t(id, name, year, effects, desc = '', extra = {}) {
+  return { id, name, year, effects, desc, ...extra };
 }
 
-export const TECHNOLOGIES = {
+/**
+ * MİRAS: 1836-1890 ağacının 40 düğümü. 1900 dünyası bunları zaten bilir;
+ * araştırılmaz, etkileri her ulusa aynı sırayla yazılır (değiştirici toplamı
+ * eski "hepsi araştırılmış" haliyle kayan noktası kayan noktasına aynı —
+ * katlama parmak iziyle kanıtlandı). Ekran ve ipucu onları adlarıyla gösterir:
+ * "+%12 savunma" makineli tüfekten gelir.
+ */
+export const HERITAGE_TREE = {
   industry: {
     Power: [
       t('stationary_steam', 'Stationary Steam Engine', 1836, { ic: 0.08 }, 'Steam replaces the water wheel in the mills.'),
@@ -115,6 +123,109 @@ export const TECHNOLOGIES = {
   },
 };
 
+/** Mirasın düz listesi: değiştirici kaynağının sırası. */
+export const HERITAGE = Object.values(HERITAGE_TREE).flatMap((folders) => Object.values(folders).flat());
+
+/**
+ * 1900-1945 AĞACI. Kademeler ~8-9 yıl arayla; son kademe 1935-40'tadır ki
+ * sanayi ülkesi ağacı savaşın içinde bitirebilsin, tarım ülkesi yarıda
+ * kalsın (araştırma hızı okuryazarlıkla 3'ten 7'ye: makas buradan da açılır).
+ * İki kademe birim AÇAR (`unlocks`): tank Landships'le, uçak Military
+ * Aviation'la. Açılan kolun gücü kendi anahtarıyla büyür (armor, air).
+ */
+export const TECHNOLOGIES = {
+  industry: {
+    Production: [
+      t('electric_motors', 'Electric Motors', 1901, { ic: 0.06 }, 'Every machine its own motor; the line shaft comes down.'),
+      t('assembly_line', 'Assembly Line', 1909, { ic: 0.08, lineEfficiency: 0.05 }, 'Moving belts and interchangeable parts.'),
+      t('mass_production', 'Mass Production', 1917, { ic: 0.08, lineGain: 0.25 }, 'Whole factories retooled for war in weeks.'),
+      t('machine_tools', 'Precision Machine Tools', 1926, { ic: 0.10, lineEfficiency: 0.05 }, 'Tolerances measured in thousandths of an inch.'),
+      t('flow_production', 'Flow Production', 1935, { ic: 0.12, lineGain: 0.25 }, 'Factories that never stop.'),
+    ],
+    Materials: [
+      t('electric_steel', 'Electric Steel', 1902, { resources: 0.08 }, 'Arc furnaces turn scrap into fine steel.'),
+      t('refined_petroleum', 'Refined Petroleum', 1910, { oilIc: 0.10 }, 'Cracking towers turn crude into fuel — for the factories that can get it.'),
+      t('industrial_chemistry', 'Industrial Chemistry', 1918, { saltpeterFood: 0.10, resources: 0.05 }, 'Nitrogen from the air: fertiliser and explosives.'),
+      t('light_alloys', 'Light Alloys', 1927, { lineEfficiency: 0.05, air: 0.10 }, 'Aluminium for engines and airframes.'),
+      t('synthetic_fuel', 'Synthetic Fuel', 1936, { oilIc: 0.10, resources: 0.05 }, 'Coal hydrogenated into petrol.'),
+    ],
+  },
+  infrastructure: {
+    Transport: [
+      t('trunk_lines', 'Trunk Lines', 1903, { construction: 0.10, supply: 0.10 }, 'Double track between every capital and its ports.'),
+      t('motor_lorries', 'Motor Lorries', 1911, { supply: 0.15, constructionSlots: 1 }, 'Supply moves on where the rails end.'),
+      t('paved_highways', 'Paved Highways', 1920, { construction: 0.10, developmentCap: 1 }, 'Concrete roads open the interior.'),
+      t('electrified_railways', 'Electrified Railways', 1929, { construction: 0.10, supply: 0.10, developmentCap: 1 }, 'Heavier trains, faster turnaround.'),
+      t('motorised_logistics', 'Motorised Logistics', 1938, { supply: 0.15, constructionSlots: 1 }, 'Divisions fed by columns of trucks.'),
+    ],
+    Agriculture: [
+      t('steam_threshers', 'Steam Threshers', 1902, { food: 0.03 }, 'The harvest is brought in by engine.'),
+      t('agricultural_colleges', 'Agricultural Colleges', 1912, { food: 0.03, growth: 0.05 }, 'Science reaches the village.'),
+      t('tractors', 'Tractors', 1921, { food: 0.04, growth: 0.05 }, 'One machine does the work of ten horses.'),
+      t('hybrid_crops', 'Hybrid Crops', 1930, { food: 0.04, developmentCap: 1 }, 'Bred for yield, sown by the million.'),
+      t('mechanised_agriculture', 'Mechanised Agriculture', 1939, { food: 0.04, consumerNeed: -0.05 }, 'Cheap bread leaves money for everything else.'),
+    ],
+  },
+  army: {
+    Doctrine: [
+      t('fire_and_movement', 'Fire and Movement', 1901, { attack: 0.05 }, 'Rushes covered by rifle fire.'),
+      t('trench_warfare', 'Trench Warfare', 1912, { defense: 0.10, organization: 0.10 }, 'Dig in, wire in, hold.'),
+      t('infiltration_tactics', 'Infiltration Tactics', 1918, { attack: 0.08, reinforce: 0.10 }, 'Storm troops bypass the strongpoints.'),
+      t('combined_arms', 'Combined Arms', 1928, { attack: 0.05, defense: 0.05, armor: 0.10, training: 0.10 }, 'Infantry, guns and tanks fight as one.'),
+      t('mobile_warfare', 'Mobile Warfare', 1937, { attack: 0.08, armor: 0.15, organization: 0.10 }, 'Break through, then never stop moving.'),
+    ],
+    Arms: [
+      t('smokeless_powder', 'Smokeless Powder', 1900, { attack: 0.04, defense: 0.04 }, 'Longer range, and no cloud to give the rifleman away.'),
+      t('light_machine_guns', 'Light Machine Guns', 1909, { defense: 0.08 }, 'A machine gun every section can carry.'),
+      t('landships', 'Landships', 1916, {}, 'Armoured tractors that cross the trenches.', { unlocks: 'ARMOR' }),
+      t('light_tanks', 'Light Tanks', 1926, { armor: 0.20 }, 'Turreted, sprung and fast.'),
+      t('medium_tanks', 'Medium Tanks', 1936, { armor: 0.20, attack: 0.03 }, 'A gun that can kill other tanks.'),
+    ],
+    // Uçağın öncülü balondur: açılım ilk kademe olsaydı (kademe çarpanı 1.0)
+    // "erken" seçeneklerin en ucuzu olur, YZ 1910'un uçağını 1904'te alırdı.
+    Aviation: [
+      t('observation_balloons', 'Observation Balloons', 1900, { attack: 0.02, defense: 0.02 }, 'Tethered eyes above the guns.'),
+      t('military_aviation', 'Military Aviation', 1910, {}, 'Kites with engines: the eyes of the army.', { unlocks: 'AIRCRAFT' }),
+      t('fighter_aircraft', 'Fighter Aircraft', 1916, { air: 0.20 }, 'Guns that fire through the propeller.'),
+      t('metal_airframes', 'All-Metal Airframes', 1924, { air: 0.20 }, 'Duralumin replaces wood and canvas.'),
+      t('close_air_support', 'Close Air Support', 1932, { air: 0.15, attack: 0.03 }, 'Dive bombers as flying artillery.'),
+      t('monoplane_fighters', 'Monoplane Fighters', 1939, { air: 0.25 }, 'Retractable gear, closed cockpits, 500 km an hour.'),
+    ],
+  },
+  navy: {
+    Shipbuilding: [
+      t('pre_dreadnoughts', 'Pre-Dreadnoughts', 1901, { naval: 0.06 }, 'Steel battleships with mixed batteries.'),
+      t('dreadnoughts', 'Dreadnoughts', 1906, { naval: 0.15 }, 'All big guns, turbine-driven.'),
+      t('submarines', 'Submarines', 1914, { naval: 0.10 }, 'The torpedo boat that hides under the sea.'),
+      t('aircraft_carriers', 'Aircraft Carriers', 1924, { naval: 0.12, air: 0.05 }, 'An airfield that sails with the fleet.'),
+      t('radar', 'Radar', 1937, { naval: 0.10, defense: 0.03 }, 'Seeing through night and fog.'),
+    ],
+    'Naval Doctrine': [
+      t('blue_water_doctrine', 'Blue-Water Doctrine', 1902, { naval: 0.05, exportIncome: 0.05 }, 'A fleet built to fight on the high seas.'),
+      t('fire_control', 'Fire Control', 1912, { naval: 0.08 }, 'Range-keeping clocks and gun directors.'),
+      t('convoy_system', 'Convoy System', 1918, { exportIncome: 0.10 }, 'Merchantmen sail in escorted groups.'),
+      t('naval_aviation', 'Naval Aviation', 1928, { naval: 0.08, air: 0.05 }, 'Scouts and torpedo bombers from the deck.'),
+      t('carrier_task_forces', 'Carrier Task Forces', 1940, { naval: 0.12 }, 'The carrier becomes the capital ship.'),
+    ],
+  },
+  society: {
+    Politics: [
+      t('social_insurance', 'Social Insurance', 1903, { stability: 0.03, consumerNeed: -0.03 }, 'Pensions and sickness pay buy loyalty.'),
+      t('total_mobilisation', 'Total Mobilisation', 1913, { manpower: 0.10, warSupport: 0.04 }, 'The nation in arms.'),
+      t('propaganda_ministry', 'Propaganda Ministry', 1919, { warSupport: 0.06, power: 0.25 }, 'Posters, newsreels and the wireless.'),
+      t('planned_economy', 'Planned Economy', 1929, { ic: 0.05, construction: 0.05 }, 'Five-year plans and state trusts.'),
+      t('welfare_state', 'Welfare State', 1937, { stability: 0.05, growth: 0.05 }, 'From the cradle to the grave.'),
+    ],
+    Science: [
+      t('wireless_telegraphy', 'Wireless Telegraphy', 1901, { research: 0.05 }, 'Messages across the ocean in seconds.'),
+      t('research_laboratories', 'Research Laboratories', 1910, { research: 0.08 }, 'Industry hires the chemists.'),
+      t('mass_higher_education', 'Mass Higher Education', 1920, { research: 0.05, literacy: 0.05 }, 'Universities for the many.'),
+      t('electronics', 'Electronics', 1930, { research: 0.07, defense: 0.02 }, 'Valves, radio and the first computing machines.'),
+      t('nuclear_physics', 'Nuclear Physics', 1940, { research: 0.10 }, 'The atom is split.'),
+    ],
+  },
+};
+
 const INDEX = new Map();
 for (const [categoryId, folders] of Object.entries(TECHNOLOGIES)) {
   for (const [folder, list] of Object.entries(folders)) {
@@ -124,6 +235,21 @@ for (const [categoryId, folders] of Object.entries(TECHNOLOGIES)) {
 
 export function techById(id) {
   return INDEX.get(id) ?? null;
+}
+
+/** Birim tipi → onu açan teknoloji (tek kaynak: ağaçtaki `unlocks`). */
+const UNLOCKS = new Map();
+for (const [id, entry] of INDEX) if (entry.tech.unlocks) UNLOCKS.set(entry.tech.unlocks, id);
+
+/** Bu kolu açan teknolojinin kimliği; teknolojisiz kol için null. */
+export function unlockTechOf(typeId) {
+  return UNLOCKS.get(typeId) ?? null;
+}
+
+/** Ulus bu kolu kurabilir mi (teknolojisi gerekmiyorsa her zaman). */
+export function unitUnlocked(nation, typeId) {
+  const techId = UNLOCKS.get(typeId);
+  return !techId || !!nation?.research?.done?.includes(techId);
 }
 
 export function ensureResearch(nation) {
@@ -138,38 +264,14 @@ export function ensureResearch(nation) {
   return research;
 }
 
-/**
- * Kuruluş: yılı kampanyanın başlangıcından ESKİ teknolojiler herkesçe
- * bilinir (1900 dünyası buharı, demiryolunu, makineli tüfeği tanır).
- * Klasör sırası korunur: bilinen kademeler hep klasörün başındadır.
- */
-export function initResearch(world) {
-  const known = [];
-  for (const folders of Object.values(TECHNOLOGIES)) {
-    for (const list of Object.values(folders)) {
-      for (const tech of list) {
-        if ((tech.year ?? START_YEAR) >= START_YEAR) break;
-        known.push(tech.id);
-      }
-    }
-  }
-  for (const nation of world.nations) {
-    const research = ensureResearch(nation);
-    research.done = [...known];
-    research.current = null;
-    research.queue = [];
-    research.points = 0;
-    refreshModifiers(nation, world.turn ?? 0);
-  }
-}
-
 export function hasTech(nation, techId) {
   return !!nation.research?.done?.includes(techId);
 }
 
-// Teknoloji etkileri değiştirici kaynağıdır (modifiers.js toplar).
+// Teknoloji etkileri değiştirici kaynağıdır (modifiers.js toplar). Miras
+// önce: araştırılan teknolojiler onun üstüne eklenir.
 registerModifierSource((nation) => {
-  const out = [];
+  const out = HERITAGE.map((tech) => ({ label: tech.name, effects: tech.effects }));
   for (const techId of nation?.research?.done ?? []) {
     const entry = INDEX.get(techId);
     if (entry) out.push({ label: entry.tech.name, effects: entry.tech.effects });
@@ -195,7 +297,7 @@ export function availableTechs(nation) {
 
 /**
  * Liste fiyatı: kademe ileri teknolojiyi pahalılaştırır, aktivasyon yılından
- * önce araştırmak yılda %6 (tavan 2.5×) daha pahalıdır, ve teknolojinin KENDİ
+ * önce araştırmak yıl başına ×1.15 (tavan 8×) daha pahalıdır, ve teknolojinin KENDİ
  * yılı fiyatı büyütür (kampanyanın ilk yılından sonra yılda %3). Yıl çarpanı
  * olmadan ağaç 1866'ya dek takvimi izleyip sonra koşuyordu: araştırma puanı
  * okuryazarlıkla ~2.5'ten ~5.5'e çıkarken 1870 sonrası teknolojiler erken
@@ -207,6 +309,15 @@ export const TECH_BASE_COST = 110;
 // ve 1900'de değiştirici toplamları uluslar arasında aynıydı. 0.03: ortanca
 // ~1897'de biter, boş hafta %60-80 azalır (3 tohum, eşli).
 const TECH_YEAR_SCALE = 0.03;
+/**
+ * ERKEN ARAŞTIRMA: yıl başına ×1.15, tavan 8 (HOI4'ün "zamanından önce"
+ * kuralının yumuşağı). 1836 ağacında yılda +%6 / tavan 2.5× yetiyordu çünkü
+ * araştırma yavaştı; 1900'ün okuryazar dünyası 2-3 kat hızlı araştırıyor ve
+ * ölçümde 1910'un uçağı 1900'de açıldı. Üstel ceza birkaç yıl öne geçmeye
+ * izin verir, on yıl öne (×4) geçmeye vermez.
+ */
+const EARLY_BASE = 1.15;
+const EARLY_CAP = 8;
 /**
  * Fiyatın çarpanları, ekranın "neden bu kadar" dökümü için. techCost AYNI
  * çarpanları aynı sırayla çarpar: döküm ile motor ayrışamaz.
@@ -221,7 +332,7 @@ export function techCostFactors(techId, year) {
     level: 1 + entry.level * 0.6,
     yearScale: 1 + Math.max(0, techYear - START_YEAR) * TECH_YEAR_SCALE,
     earlyYears,
-    early: clamp(1 + earlyYears * 0.06, 1, 2.5),
+    early: Math.min(EARLY_CAP, EARLY_BASE ** earlyYears),
   };
 }
 
@@ -405,6 +516,11 @@ export function researchPriorities(nation) {
   weights.naval = economy.coastal ? ((economy.blockade ?? 0) > 0 ? 2.5 : 1) : 0.2;
   weights.ironclad = economy.coastal ? 0.1 : 0;
   weights.research = 1.3;
+  // Açılan kolun gücü: savaşta ve sanayisi olan ülkede değerli.
+  const industrial = (economy.ic?.total ?? 0) >= 20;
+  weights.armor = war ? 1.5 : industrial ? 1 : 0.5;
+  weights.air = weights.armor;
+  weights.unlocks = war || industrial ? 1.5 : 0.6;
   weights.developmentCap = 0.12;
   weights.constructionSlots = 0.08;
   weights.power = 0.12;
@@ -413,6 +529,13 @@ export function researchPriorities(nation) {
 
 export const SCHOOL_BONUS = 1.4;
 const VALUE_FLOOR = 0.01;
+/**
+ * Yeni kol açmanın değeri, etki toplamıyla aynı ölçekte. Yokken açılım
+ * teknolojilerinin etkisi boş olduğundan değeri tabanda kalıyordu. 0.2'de
+ * (güçlü bir kademe) erken yıllarda her şeyden cazipti: ölçümde 1910'un
+ * uçağı 1902'de, 1916'nın tankı 1909'da açıldı.
+ */
+const UNLOCK_VALUE = 0.08;
 
 /** Teknolojinin bu ulusa değeri ve değeri taşıyan kalem (`lead`). */
 export function techValue(tech, priorities = null) {
@@ -425,6 +548,11 @@ export function techValue(tech, priorities = null) {
     const part = Math.abs(amount) * (weights[key] ?? 1);
     value += part;
     if (part > leadValue) { leadValue = part; lead = key; }
+  }
+  if (tech.unlocks) {
+    const part = UNLOCK_VALUE * (weights.unlocks ?? 1);
+    value += part;
+    if (part > leadValue) { leadValue = part; lead = 'unlocks'; }
   }
   return { value, lead };
 }

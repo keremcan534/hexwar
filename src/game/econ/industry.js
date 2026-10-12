@@ -14,11 +14,22 @@ import { lawOption } from '../laws.js';
 import { mod } from '../modifiers.js';
 import { resourceRatio } from './resources.js';
 import { eraProgress } from '../calendar.js';
+import { unitUnlocked } from '../technology.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 /** Varsayılan hat ağırlıkları: tüfek önce, top sonra, gemi tersane varsa. */
-const DEFAULT_WEIGHTS = { rifles: 3, guns: 1, ships: 1 };
+const DEFAULT_WEIGHTS = { rifles: 3, guns: 1, ships: 1, tanks: 1, aircraft: 1 };
+
+/**
+ * Hat çalışabilir mi: gemi tersane, tank ve uçak kolunu açan teknolojiyi
+ * ister. Kapalı hattın ağırlığı paya girmez (IC boşa bölünmez).
+ */
+function lineUsable(nation, id, dockyards) {
+  if (id === 'ships' && dockyards <= 0) return false;
+  const unit = EQUIPMENT[id]?.unit;
+  return !unit || unitUnlocked(nation, unit);
+}
 
 export function ensureIndustry(economy) {
   economy.stock ??= {};
@@ -105,12 +116,16 @@ export function autoLineWeights(world, nation) {
   let regiments = 0;
   let guns = 0;
   let warships = 0;
+  let armour = 0;
+  let air = 0;
   for (const unit of world.units) {
     if (unit.nationId !== nation.id) continue;
     regiments += unit.regiments?.length ?? 0;
     for (const regiment of unit.regiments ?? []) {
       if (regiment.typeId === 'ARTILLERY') guns++;
       else if (regiment.typeId === 'WARSHIP') warships++;
+      else if (regiment.typeId === 'ARMOR') armour++;
+      else if (regiment.typeId === 'AIRCRAFT') air++;
     }
   }
   // Depo doluysa hat durur: barışta yığılan tüfek demir yer ama kimseyi
@@ -124,6 +139,13 @@ export function autoLineWeights(world, nation) {
     // demirinin %93-98'ini yiyordu (ölçüldü 2026-10-11, 3 tohum + 160x96).
     ships: !economy.coastal || equipmentStock(nation, 'ships') >= warships * 10 + 30 ? 0
       : ((economy.blockade ?? 0) > 0 || nation.focus === 'military' ? 2 : 1),
+    // Tank ve uçak: kol açıksa bir alaylık yedek + kolun takviye payı. İki
+    // alaylık yedekte dünyada ~1200 tank ve ~1500 uçak depoda yatıyordu
+    // (ölçüldü, 30 yıl): ağır teçhizattır, parça başına 0.8/0.6 IC.
+    tanks: !unitUnlocked(nation, 'ARMOR') || equipmentStock(nation, 'tanks') >= armour * 2 + 8 ? 0
+      : (war ? 3 : 1),
+    aircraft: !unitUnlocked(nation, 'AIRCRAFT') || equipmentStock(nation, 'aircraft') >= air * 2 + 8 ? 0
+      : (war ? 2 : 1),
   };
   for (const id of EQUIPMENT_IDS) {
     if (lines[id].mode === 'auto') lines[id].weight = clamp(want[id] ?? 0, 0, 10);
@@ -213,14 +235,13 @@ export function lineAllocation(nation, militaryIC, dockyards, weights = null) {
   const weightOf = (id) => weights?.[id] ?? lines[id].weight;
   let weightSum = 0;
   for (const id of EQUIPMENT_IDS) {
-    const usable = id !== 'ships' || dockyards > 0;
-    if (usable) weightSum += weightOf(id);
+    if (lineUsable(nation, id, dockyards)) weightSum += weightOf(id);
   }
   const out = {};
   for (const id of EQUIPMENT_IDS) {
     const line = lines[id];
     const equipment = EQUIPMENT[id];
-    const usable = id !== 'ships' || dockyards > 0;
+    const usable = lineUsable(nation, id, dockyards);
     let ic = usable && weightSum > 0 ? militaryIC * weightOf(id) / weightSum : 0;
     // Tersane kapasitesi: gemi hattına kademe başına DOCKYARD_IC girebilir.
     if (id === 'ships') ic = Math.min(ic, dockyards * DOCKYARD_IC);

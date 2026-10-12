@@ -23,6 +23,7 @@ import { describeEffects, modifierBreakdown, MODIFIER_KEYS } from '../game/modif
 import { powerIncome } from '../game/politics.js';
 import { nationManpower } from '../game/recruitment.js';
 import { yearOfTurn } from '../game/calendar.js';
+import { UNIT_TYPES } from '../game/units.js';
 
 const pct = (v, d = 0) => `${((v ?? 0) * 100).toFixed(d)}%`;
 const coin = (v) => `${(v ?? 0).toFixed(1)}`;
@@ -133,12 +134,12 @@ export function registerTooltips(game) {
     const uses = {
       FOOD: 'Feeds the people. Below 70% the population shrinks.',
       COAL: 'Fuels the factories: short coal costs up to 40% of industrial capacity.',
-      IRON: 'Rifles, artillery, railways and ironclads.',
-      TIMBER: 'Construction sites, rifle stocks and sailing ships.',
+      IRON: 'Rifles, artillery, tanks, railways and steel warships.',
+      TIMBER: 'Construction sites, rifle stocks and early airframes.',
       HORSES: 'Cavalry and artillery: without them they fight up to 40% weaker.',
-      SALTPETER: 'Gunpowder: every regiment in battle burns it; short powder costs up to 30% of strength. Rifle and artillery lines use it too, and after Chemical Fertilisers (1868) the farms.',
-      OIL: 'Nobody needs it in 1836. After the Open Hearth Furnace (1868) and Electrical Power (1880) factories run on it: up to +15% industrial capacity, in proportion to the oil you have.',
-      RUBBER: 'Nobody needs it in 1836. After Integral Rail (1878) and Modern Doctrine (1882) every land regiment wants it: up to +15% in battle, in proportion to the rubber you have.',
+      SALTPETER: 'Gunpowder: every regiment in battle burns it; short powder costs up to 30% of strength. Rifle and artillery lines use it too, and so do fertilised farms.',
+      OIL: 'The fuel of the age. Factories run on it (+15% industrial capacity, more with Refined Petroleum and Synthetic Fuel, in proportion to the oil you have); tanks and aircraft move on it and lose up to 60% of their strength without it.',
+      RUBBER: 'Tyres and field telegraph: every land regiment wants it, up to +15% in battle in proportion to the rubber you have. Tanks and aircraft are built with it.',
     }[id];
     return {
       type: 'breakdown',
@@ -381,6 +382,9 @@ export function registerTooltips(game) {
     const effects = describeEffects(tech.effects).map((line) => ({
       label: line, value: '', tone: line.startsWith('−') ? 'bad' : 'good',
     }));
+    if (tech.unlocks && UNIT_TYPES[tech.unlocks]) {
+      effects.push({ label: `Unlocks ${UNIT_TYPES[tech.unlocks].name}: a new arm and production line`, value: '', tone: 'good' });
+    }
     if (tech.desc) effects.unshift({ label: tech.desc, value: '' });
 
     const rows = [];

@@ -64,6 +64,14 @@ export const UNIT_ROLE = {
     category: 'naval', role: 'Fleet',
     desc: 'Screens the coast and carries the war beyond it. Raised in a coastal province.',
   },
+  ARMOR: {
+    category: 'armour', role: 'Breakthrough',
+    desc: "The strongest division in a battle line. Ignores most of the enemy's trenches when it attacks; runs on oil.",
+  },
+  AIRCRAFT: {
+    category: 'support', role: 'Air support',
+    desc: 'Flying artillery: decisive over a stack, fragile alone. Rivers do not slow it; runs on oil.',
+  },
 };
 
 export const UNIT_CATEGORIES = [
@@ -71,7 +79,8 @@ export const UNIT_CATEGORIES = [
   ['line', 'Infantry'],
   ['horse', 'Cavalry'],
   ['guns', 'Artillery'],
-  ['support', 'Support'],
+  ['armour', 'Armour'],
+  ['support', 'Air'],
   ['naval', 'Naval'],
 ];
 
@@ -215,7 +224,6 @@ function placeOf(world, nationId, tile) {
  */
 export function recruitOptions(game, nation) {
   const world = game.world;
-  const turn = game.turns?.turn ?? world.turn ?? 0;
   return Object.keys(UNIT_TYPES).map((id) => {
     const type = UNIT_TYPES[id];
     const source = recruitmentSource(world, nation, id);
@@ -248,7 +256,7 @@ export function recruitOptions(game, nation) {
       support: Boolean(type.support),
       entrenched: Boolean(type.entrenched),
       upkeep: type.domain === 'sea' ? UPKEEP.sea : UPKEEP.land,
-      available: unitAvailable(id, turn, nation),
+      available: unitAvailable(id, nation),
       blockers,
       canBuild: blockers.length === 0,
       source: source ? placeOf(world, nation.id, source) : null,

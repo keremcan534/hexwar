@@ -7,6 +7,7 @@
 import { controllerOf } from './control.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import { releaseDraw } from './levy.js';
+import { unitUnlocked } from './technology.js';
 
 /** Kara birimi denize girdiginde bu hizla yol alir (bindirilmis hali). */
 export const EMBARKED_MOVES = 4;
@@ -60,19 +61,38 @@ export const UNIT_TYPES = {
     id: 'WARSHIP', name: 'Warship', glyph: 'W', domain: 'sea',
     moves: 7, attack: 6, hp: 80, manpower: 1000 * POPULATION_SCALE,
   },
+  // 1900 kolları: teknoloji açar (technology.js `unlocks`), petrol yürütür.
+  ARMOR: {
+    id: 'ARMOR', name: 'Armour', glyph: 'T', domain: 'land',
+    // Tümen başına en yüksek güç: muharebe genişliği tümen saydığı için tank
+    // genişliğin değeridir. Yarısı kadar insan, altı katı sanayi ister.
+    moves: 4, attack: 10, hp: 100, manpower: 1500 * POPULATION_SCALE,
+    /** Saldırırken savunanın siper payının bu kadarını yok sayar (bkz. battles). */
+    breakthrough: 0.6,
+    fuel: true,
+  },
+  AIRCRAFT: {
+    id: 'AIRCRAFT', name: 'Air Wing', glyph: 'P', domain: 'land',
+    moves: 6, attack: 8, hp: 60, manpower: 500 * POPULATION_SCALE,
+    /** Topçu gibi destek kolu: yığında belirleyici, tek başına kırılgan. */
+    support: true,
+    /** Nehir aşarak saldırma cezası uçağa işlemez. */
+    air: true,
+    fuel: true,
+  },
 };
 
 /**
- * Bu tur o birim tipi kurulabilir mi? 1836-1900 kolları baştan açıktır;
- * zırhlı ve hava kolu 1900'den sonra açıldığı için kaldırıldı. İmza, takvim
- * kapısı geri gelirse çağıranlar değişmesin diye korunur.
+ * Bu ulus o kolu kurabilir mi? Piyade, süvari, topçu ve gemi baştan açıktır;
+ * zırhlıyı ve uçağı teknoloji açar. Takvim kapısı yoktur: önce araştıran önce
+ * kurar (erken araştırmanın bedeli teknolojinin fiyatındadır).
  */
-export function unitAvailable(typeId, turn = 0, _nation = null) {
-  return (UNIT_TYPES[typeId]?.availableFrom ?? 0) <= turn;
+export function unitAvailable(typeId, nation) {
+  return !!UNIT_TYPES[typeId] && unitUnlocked(nation, typeId);
 }
 
 /** Kaldırılan birim tipleri: eski kayıtlar yüklenirken bunlara çevrilir. */
-export const LEGACY_UNIT_TYPES = { SCOUT: 'INFANTRY', ARMOR: 'INFANTRY', AIRCRAFT: 'ARTILLERY' };
+export const LEGACY_UNIT_TYPES = { SCOUT: 'INFANTRY' };
 
 export function resolveTypeId(typeId) {
   return UNIT_TYPES[typeId] ? typeId : (LEGACY_UNIT_TYPES[typeId] ?? 'INFANTRY');

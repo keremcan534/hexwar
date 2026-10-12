@@ -8,8 +8,8 @@
 // bunları GÖRMESİYDİ: savaş kör tıklamaydı.
 
 import {
-  BREAK_ORGANIZATION, MAX_ASSAULT_WIDTH, MAX_DEFENSE_DIVISIONS, MAX_ROUNDS, battleSides,
-  battleUnitFactors, crossesRiver, leadGeneral, roundLosses, sidePower, tileDefense,
+  BREAK_ORGANIZATION, MAX_ASSAULT_WIDTH, MAX_DEFENSE_DIVISIONS, MAX_ROUNDS, assaultBreakthrough,
+  battleSides, battleUnitFactors, crossesRiver, leadGeneral, roundLosses, sidePower, tileDefense,
 } from './battles.js';
 import { generalSiegeRelief } from './command.js';
 import { UNIT_TYPES, menUnderArms, organizationOf, strengthRatio } from './units.js';
@@ -24,18 +24,20 @@ const FACTORS = [
   ['doctrine', 'Doctrine', 'Attack or defence technology, advisors and ideas.'],
   ['powder', 'Gunpowder', 'Saltpeter supply: a shortage costs up to 30%.'],
   ['horses', 'Horses', 'Cavalry and artillery without horses are slowed.'],
+  ['fuel', 'Fuel', 'Tanks and aircraft without oil lose up to 60%.'],
+  ['arm', 'Armour & air', 'Tank and aircraft technology.'],
   ['rubber', 'Rubber', 'Field telegraph and tyres, as far as rubber is met.'],
   ['support', 'Support arm', 'Artillery in a mixed stack +20%; alone it is brittle (−35%).'],
   ['supply', 'Encircled', 'Cut off with no way out: −25%. Close a pocket and it fights at three quarters.'],
 ];
 
 /** Tarafın çarpanları: tümenlerin ham gücüyle ağırlıklı ortalama. */
-function sideFactors(world, units, defending, relief, target) {
+function sideFactors(world, units, defending, relief, target, breakthrough = 0) {
   const hasLine = units.some((unit) => !unit.type?.support);
   const sum = {};
   let weight = 0;
   for (const unit of units) {
-    const f = battleUnitFactors(world, unit, defending, relief, target);
+    const f = battleUnitFactors(world, unit, defending, relief, target, breakthrough);
     const w = Math.max(1e-6, f.base);
     weight += w;
     const support = unit.type?.support ? (hasLine ? 1.2 : 0.65) : 1;
@@ -56,7 +58,7 @@ function menPerStrength(units) {
   return UNIT_TYPES.INFANTRY.manpower / 1000;
 }
 
-function sideOf(world, battle, units, defending, relief, target) {
+function sideOf(world, battle, units, defending, relief, target, breakthrough = 0) {
   const nationId = defending ? battle.defenderNation : battle.attackerNation;
   const nation = world.nations[nationId];
   const general = leadGeneral(world, units);
@@ -69,13 +71,13 @@ function sideOf(world, battle, units, defending, relief, target) {
     name: nation?.name ?? '?',
     color: nation?.color ?? '#888',
     general: general ? { name: general.name, skill: general.skill, traits: [...(general.traits ?? [])] } : null,
-    power: sidePower(world, units, defending, relief, target),
+    power: sidePower(world, units, defending, relief, target, breakthrough),
     men,
     strength: men > 0 ? strength / men : 0,
     organization,
     width: `${units.length} / ${defending ? MAX_DEFENSE_DIVISIONS : MAX_ASSAULT_WIDTH}`,
     losses: Math.round((defending ? battle.defenderLosses : battle.attackerLosses) * menPerStrength(units)),
-    factors: sideFactors(world, units, defending, relief, target),
+    factors: sideFactors(world, units, defending, relief, target, breakthrough),
     divisions: units.map((unit) => ({
       id: unit.id,
       name: unit.type?.name ?? 'Division',
@@ -97,8 +99,9 @@ export function battleView(world, battle, playerNation = -1) {
   const tile = world.get(battle.q, battle.r);
   const { attackers, defenders } = battleSides(world, battle);
   const relief = generalSiegeRelief(leadGeneral(world, attackers));
+  const breakthrough = assaultBreakthrough(attackers);
   const attacker = sideOf(world, battle, attackers, false, relief, tile);
-  const defender = sideOf(world, battle, defenders, true, relief, tile);
+  const defender = sideOf(world, battle, defenders, true, relief, tile, breakthrough);
   const ratio = attacker.power / Math.max(1e-6, defender.power);
 
   // TAHMİN: zar ortalamasıyla (roll = 1) bir raundun örgütlenme kaybı; her

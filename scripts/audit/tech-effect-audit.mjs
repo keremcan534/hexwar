@@ -15,7 +15,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { MODIFIER_KEYS } from '../../src/game/modifiers.js';
-import { TECHNOLOGIES } from '../../src/game/technology.js';
+import { HERITAGE, TECHNOLOGIES } from '../../src/game/technology.js';
 import { ADVISOR_SLOTS, GOVERNMENTS, PARTIES } from '../../src/game/politics.js';
 import { section, sub, finding, reportFindings } from './harness.mjs';
 
@@ -38,6 +38,8 @@ for (const folders of Object.values(TECHNOLOGIES)) {
     for (const tech of list) effectSources.push([`tech ${tech.id}`, tech.effects]);
   }
 }
+// Miras (1836-1890 ağacı) her ulusa uygulanır: anahtarları da okunmalı.
+for (const tech of HERITAGE) effectSources.push([`heritage ${tech.id}`, tech.effects]);
 for (const party of Object.values(PARTIES)) effectSources.push([`party ${party.id}`, party.effects]);
 for (const government of Object.values(GOVERNMENTS)) effectSources.push([`government ${government.id}`, government.effects]);
 for (const slot of Object.values(ADVISOR_SLOTS)) {

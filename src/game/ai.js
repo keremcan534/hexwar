@@ -287,16 +287,23 @@ function desiredArmy(world, nation) {
 
 /**
  * Sıradaki kol. Gövde piyade, hız süvari, ateş gücü topçu: her üçüncü alay
- * topçu (top stoğu varsa), her beşinci süvari (at açığı yoksa).
+ * topçu (top stoğu varsa), her beşinci süvari (at açığı yoksa). Kol açıksa,
+ * teçhizatı depodaysa ve petrolü yetiyorsa her dördüncü alay tank, her
+ * altıncısı uçak: yakıtsız tank demirdir (battles.fuelFactor).
  */
 function affordableUnit(game, nation, army) {
   const world = game.world;
   const horses = nation.economy?.resources?.HORSES?.ratio ?? 1;
-  const order = army >= 3 && army % 3 === 0 && equipmentStock(nation, 'guns') >= UNIT_EQUIPMENT.ARTILLERY.guns
-    ? ['ARTILLERY', 'INFANTRY']
-    : army >= 4 && army % 5 === 0 && horses >= 0.9 ? ['CAVALRY', 'INFANTRY'] : ['INFANTRY'];
+  const oil = nation.economy?.resources?.OIL?.ratio ?? 1;
+  const stocked = (typeId) => Object.entries(UNIT_EQUIPMENT[typeId])
+    .every(([id, amount]) => equipmentStock(nation, id) >= amount);
+  const order = army >= 3 && army % 4 === 1 && oil >= 0.7 && stocked('ARMOR') ? ['ARMOR', 'INFANTRY']
+    : army >= 3 && army % 6 === 2 && oil >= 0.7 && stocked('AIRCRAFT') ? ['AIRCRAFT', 'INFANTRY']
+      : army >= 3 && army % 3 === 0 && equipmentStock(nation, 'guns') >= UNIT_EQUIPMENT.ARTILLERY.guns
+        ? ['ARTILLERY', 'INFANTRY']
+        : army >= 4 && army % 5 === 0 && horses >= 0.9 ? ['CAVALRY', 'INFANTRY'] : ['INFANTRY'];
   for (const id of order) {
-    if (!unitAvailable(id, game.turns.turn, nation)) continue;
+    if (!unitAvailable(id, nation)) continue;
     if (canAfford(nation, UNIT_COSTS[id]) && canRecruit(world, nation, id)) return id;
   }
   return null;

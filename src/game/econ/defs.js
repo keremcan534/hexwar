@@ -115,6 +115,10 @@ export const EQUIPMENT = {
     ironclad: { IRON: 0.5, COAL: 0.2 },
     needsDockyard: true,
   },
+  // 1900 kollarının teçhizatı: hat, kolu açan teknolojiyle açılır (`unit`).
+  // Çelik, petrol ve kauçuk ister — tank ve uçak çağın kıt kaynaklarını yer.
+  tanks: { id: 'tanks', name: 'Tanks', glyph: '⛟', ic: 0.8, resources: { IRON: 0.4, OIL: 0.05, RUBBER: 0.05 }, unit: 'ARMOR' },
+  aircraft: { id: 'aircraft', name: 'Aircraft', glyph: '✈', ic: 0.6, resources: { IRON: 0.1, TIMBER: 0.05, OIL: 0.05, RUBBER: 0.03 }, unit: 'AIRCRAFT' },
 };
 export const EQUIPMENT_IDS = Object.keys(EQUIPMENT);
 
@@ -124,12 +128,17 @@ export const UNIT_EQUIPMENT = {
   CAVALRY: { rifles: 6 },
   ARTILLERY: { rifles: 4, guns: 6 },
   WARSHIP: { ships: 10 },
+  // Tank alayı ~6.6 IC'lik teçhizat (piyade 1, topçu 2.8): güç genişlik başına.
+  ARMOR: { tanks: 8, rifles: 2 },
+  AIRCRAFT: { aircraft: 8 },
 };
 
-/** Alay başına haftalık kaynak bakımı (at sürüsü). */
+/** Alay başına haftalık kaynak bakımı (at sürüsü, yakıt). */
 export const UNIT_RESOURCES = {
   CAVALRY: { HORSES: 0.5 },
   ARTILLERY: { HORSES: 0.25 },
+  ARMOR: { OIL: 0.4 },
+  AIRCRAFT: { OIL: 0.3 },
 };
 
 /** Muharebedeki alay başına haftalık barut (güherçile). */
@@ -200,7 +209,7 @@ export const TAX_PER_DEVELOPMENT = 0.15;
 export const UPKEEP = { land: 0.6, sea: 1.0, warMultiplier: 1.5 };
 
 /** Alay kuruluş bedeli (altın). Asıl bedel teçhizat ve insan gücüdür. */
-export const RECRUIT_GOLD = { INFANTRY: 12, CAVALRY: 20, ARTILLERY: 22, WARSHIP: 30 };
+export const RECRUIT_GOLD = { INFANTRY: 12, CAVALRY: 20, ARTILLERY: 22, WARSHIP: 30, ARMOR: 30, AIRCRAFT: 26 };
 
 /**
  * ENFLASYON: kasada yatan altın erir. Rezervin (yarım yıllık gelir, en az 300)

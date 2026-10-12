@@ -23,9 +23,10 @@
 
 import { emblemArt } from './icons/art.js';
 import {
-  TECH_CATEGORIES, TECH_FOLDERS, TECHNOLOGIES, canResearch, hasTech, researchPath, techById,
+  HERITAGE, TECH_CATEGORIES, TECH_FOLDERS, TECHNOLOGIES, canResearch, hasTech, researchPath, techById,
   FIRST_TECH_PRESTIGE, techCostFactors,
 } from '../game/technology.js';
+import { UNIT_TYPES } from '../game/units.js';
 import { describeEffects, mod } from '../game/modifiers.js';
 import { isDelegated } from '../game/delegation.js';
 import { badge, chain, kpi, kpiRow, num, tipAttr } from './kit.js';
@@ -35,8 +36,12 @@ const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
 ));
 
-/** Yil basina piksel ve dugum eni birlikte secildi: 1920'de %90 agac sigar. */
-const PX_PER_YEAR = 15;
+/**
+ * Yil basina piksel ve dugum eni birlikte secildi. Kademeler ~8-9 yil arayla,
+ * dugum 172 px: 15 px/yilda dugumler yillarinin onune itilip zincirlesiyor,
+ * eksen agactan kopuyordu. 22'de dugum yilinin ustunde durur.
+ */
+const PX_PER_YEAR = 22;
 const NODE_W = 172;
 /** Ayni klasorde iki teknoloji yillari yakinsa ust uste binmesin. */
 const NODE_GAP = 6;
@@ -91,6 +96,21 @@ export function researchRateLines(nation) {
   ].filter(Boolean);
 }
 
+/** Teknolojinin açtığı kol ("Unlocks Armour"); açmıyorsa boş. */
+function unlockLine(tech) {
+  const type = tech.unlocks ? UNIT_TYPES[tech.unlocks] : null;
+  return type ? `Unlocks ${type.name}` : '';
+}
+
+/** Mirasın toplam etkisi, anahtar başına (ipucu satırları). */
+function heritageLines() {
+  const sum = {};
+  for (const tech of HERITAGE) {
+    for (const [key, value] of Object.entries(tech.effects)) sum[key] = (sum[key] ?? 0) + value;
+  }
+  return describeEffects(sum);
+}
+
 function stateOf(nation, research, tech) {
   if (hasTech(nation, tech.id)) return 'done';
   if (research.current === tech.id) return 'active';
@@ -134,14 +154,14 @@ export function techInspector(nation, techId, view) {
     const [value, ...label] = line.split(' ');
     const signed = /^[+−]/.test(value);
     return `<div class="tq-eff"><b class="${value.startsWith('−') ? 'neg' : 'pos'}">${signed ? esc(value) : '◆'}</b><span>${esc(signed ? label.join(' ') : line)}</span></div>`;
-  }).join('');
+  }).join('') + (tech.unlocks ? `<div class="tq-eff"><b class="pos">◆</b><span>${esc(unlockLine(tech))} — a new arm, with its own production line</span></div>` : '');
 
   const costChain = factors && state !== 'done' ? chain(
     { label: 'Base', value: factors.base, text: String(factors.base) },
     [
       { label: 'Tier', value: factors.level, tip: { text: 'Tier\nLater technologies in a line cost more.' } },
       { label: 'Era', value: factors.yearScale, tip: { text: `Era\nThe later its year, the more it costs (+3% a year after ${START_YEAR}).` } },
-      ...(early ? [{ label: `${factors.earlyYears} yr early`, value: factors.early, tip: { text: `Early research\n+6% for every year before ${tech.year} (at most 2.5×). Wait, and it gets cheaper.` } }] : []),
+      ...(early ? [{ label: `${factors.earlyYears} yr early`, value: factors.early, tip: { text: `Early research\n×1.15 for every year before ${tech.year} (at most 8×). Wait, and it gets cheaper.` } }] : []),
       ...(discount > 0.005 ? [{ label: 'Neighbours', value: 1 - discount, tip: { text: 'Diffusion\nNeighbours who already know it make it cheaper (up to −35%).' } }] : []),
     ],
     { label: 'RP', value: cost, text: String(cost), tone: early ? 'neg' : '' },
@@ -208,7 +228,8 @@ export function technologyScreen(nation, view) {
     }),
     kpi({ label: 'Per week', value: `${num(view.rate, 2)} RP`, sub: 'literacy is the main source', tip: { text: ['Research points a week', ...view.rateLines].join('\n') } }),
     kpi({ icon: emblemArt('society', 'md'), label: 'Literacy', value: `${Math.round((nation.economy?.literacy ?? 0) * 100)}%`, sub: 'schools and universities', tip: 'term', arg: 'literacy' }),
-    kpi({ label: 'Technologies', value: `${done}<small> / ${total}</small>`, sub: view.rank ? `rank ${view.rank} of ${view.of}` : '', meter: total ? done / total : 0 }),
+    kpi({ label: 'Technologies', value: `${done}<small> / ${total}</small>`, sub: view.rank ? `rank ${view.rank} of ${view.of}` : '', meter: total ? done / total : 0,
+      tip: { text: [`Inherited from the nineteenth century: ${HERITAGE.length} technologies every nation already knows`, ...heritageLines()].join('\n') } }),
   ]);
 
   // --- Kuyruk: bitis tarihleriyle ---------------------------------------
@@ -254,7 +275,7 @@ export function technologyScreen(nation, view) {
         const queued = queue.indexOf(tech.id);
         const factors = techCostFactors(tech.id, view.year);
         const early = state !== 'done' && factors && factors.earlyYears > 0;
-        const effect = describeEffects(tech.effects)[0] ?? '';
+        const effect = unlockLine(tech) || describeEffects(tech.effects, { short: true })[0] || '';
         const meta = state === 'done' ? `<span class="ok">✓ ${tech.year}</span>`
           : state === 'active' ? `${Math.round(progress * 100)}% · ${weeksLabel(weeksNow)}`
             : early ? `<span class="early">${tech.year} · +${Math.round((factors.early - 1) * 100)}% early</span>`

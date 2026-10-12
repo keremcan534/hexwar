@@ -11,7 +11,7 @@
 
 import { atWar, recordWarCasualties } from './diplomacy.js';
 import {
-  MAX_STACK, applyArmyLosses, armyPower, clearPath, organizationOf, placeUnit, recoverArmy,
+  MAX_STACK, UNIT_TYPES, applyArmyLosses, armyPower, clearPath, organizationOf, placeUnit, recoverArmy,
   resetEntrenchment, soldiersOf, stackFull, unitsOn,
 } from './units.js';
 import {
@@ -147,6 +147,35 @@ export function crossesRiver(world, from, target) {
   return riverBetween(world, from, target);
 }
 
+/**
+ * YAKIT: tank ve uçak petrolle yürür; petrolsüz kol gücünün %60'ına dek
+ * kaybeder (at gibi, ama daha sert: atsız top yavaş, yakıtsız tank demirdir).
+ */
+function fuelFactor(unit, oil) {
+  const regiments = unit.regiments ?? [];
+  if (!regiments.length || oil >= 1) return 1;
+  let fuelled = 0;
+  for (const regiment of regiments) if (UNIT_TYPES[regiment.typeId]?.fuel) fuelled++;
+  return 1 - (fuelled / regiments.length) * 0.6 * (1 - oil);
+}
+
+/**
+ * ATILIM: saldıran yığındaki tankların payı kadar savunanın siperi yok sayılır
+ * (tip breakthrough). Pay alay sayısıyla: bir tank ve iki piyade tümeni
+ * siperin %20'sini siler. Generalin arazi rahatlatmasından ayrıdır.
+ */
+export function assaultBreakthrough(units) {
+  let total = 0;
+  let weighted = 0;
+  for (const unit of units ?? []) {
+    for (const regiment of unit.regiments ?? []) {
+      total++;
+      weighted += UNIT_TYPES[regiment.typeId]?.breakthrough ?? 0;
+    }
+  }
+  return total ? weighted / total : 0;
+}
+
 /** Süvari ve topçunun at payı: sürüsüz kalan kol ağırlaşır. */
 function horseFactor(unit, horses) {
   const regiments = unit.regiments ?? [];
@@ -177,39 +206,46 @@ export function leadGeneral(world, units) {
  * Saldiran muhendis general, savunanin arazi/tahkimat bonusunun bir kismini
  * silebilir — kusatmanin karsiligi budur.
  */
-export function battleUnitPower(world, unit, defending, relief = 0, target = null) {
-  const f = battleUnitFactors(world, unit, defending, relief, target);
-  return f.base * f.powder * f.horses * f.doctrine * f.naval * f.rubber * f.river * f.terrain
-    * f.general * f.planning * f.supply;
+export function battleUnitPower(world, unit, defending, relief = 0, target = null, breakthrough = 0) {
+  const f = battleUnitFactors(world, unit, defending, relief, target, breakthrough);
+  return f.base * f.powder * f.horses * f.fuel * f.arm * f.doctrine * f.naval * f.rubber * f.river
+    * f.terrain * f.general * f.planning * f.supply;
 }
 
 /**
  * Gücün çarpanları ayrı ayrı. Muharebe penceresi (battleView) dökümü buradan
  * okur; motor da aynı çarpımı yapar — pencere ile muharebe ayrışamaz.
  */
-export function battleUnitFactors(world, unit, defending, relief = 0, target = null) {
+export function battleUnitFactors(world, unit, defending, relief = 0, target = null, breakthrough = 0) {
   const nation = world.nations[unit.nationId];
   const general = generalOfArmy(nation, unit);
   // Hat piyadesi savunurken arazi/tahkimat katkısını iki kat alır (1.5
   // denendi: kartopunu %42-50'ye taşıdı; 2'de kaldı).
   const terrainScale = unit.type?.entrenched ? 2 : 1;
   const terrain = defending
-    ? (1 + terrainDefense(world, unit) * terrainScale * (1 - relief)) * (1 + (unit.entrenchment ?? 0))
+    ? (1 + terrainDefense(world, unit) * terrainScale * (1 - relief))
+      * (1 + (unit.entrenchment ?? 0) * (1 - breakthrough))
     : 1;
   // BARUT: muharebedeki her alay güherçile yakar (econ/resources). Kıtlıkta
   // güç %30'a kadar düşer — güherçile yatağı savaşın asıl hedefi olur.
   const powder = 0.7 + 0.3 * resourceRatio(nation, 'SALTPETER');
   const horses = horseFactor(unit, resourceRatio(nation, 'HORSES'));
+  const fuel = fuelFactor(unit, resourceRatio(nation, 'OIL'));
+  // Kolun kendi teknolojisi: tankın ve uçağın gücü ayrı anahtarla büyür.
+  const arm = unit.type?.id === 'ARMOR' ? Math.max(0.3, 1 + mod(nation, 'armor'))
+    : unit.type?.id === 'AIRCRAFT' ? Math.max(0.3, 1 + mod(nation, 'air')) : 1;
   const doctrine = Math.max(0.3, 1 + (defending ? mod(nation, 'defense') : mod(nation, 'attack')));
   const naval = unit.type?.domain === 'sea' ? Math.max(0.3, 1 + mod(nation, 'naval')) : 1;
   // KAUÇUK: saha telgrafı ve lastik; bonus karşılanan kauçuk oranında.
   const rubber = unit.type?.domain === 'sea'
     ? 1 : 1 + Math.max(0, mod(nation, 'rubberArmy')) * resourceRatio(nation, 'RUBBER');
-  const river = !defending && crossesRiver(world, unit.tile, target) ? 1 - RIVER_PENALTY : 1;
+  const river = !defending && !unit.type?.air && crossesRiver(world, unit.tile, target) ? 1 - RIVER_PENALTY : 1;
   return {
     base: armyPower(unit),
     powder,
     horses,
+    fuel,
+    arm,
     doctrine,
     naval,
     rubber,
@@ -236,7 +272,7 @@ export function roundLosses(attackerRoll, defenderRoll, attackerCount, defenderC
   };
 }
 
-export function sidePower(world, units, defending, relief, target = null) {
+export function sidePower(world, units, defending, relief, target = null, breakthrough = 0) {
   // Destek kolu (topcu, hava) tek basina kirilgandir, hat birligiyle yiginda
   // belirleyicidir — UNIT_ROLE bunu bastan beri vaat ediyordu, simulasyonda
   // karsiligi yoktu. Carpani taraf bilesiminden turetiyoruz: yalniz destek
@@ -244,7 +280,7 @@ export function sidePower(world, units, defending, relief, target = null) {
   const hasLine = units.some((unit) => !unit.type?.support);
   return units.reduce((sum, unit) => {
     const arm = unit.type?.support ? (hasLine ? 1.2 : 0.65) : 1;
-    return sum + battleUnitPower(world, unit, defending, relief, target) * arm;
+    return sum + battleUnitPower(world, unit, defending, relief, target, breakthrough) * arm;
   }, 0);
 }
 
@@ -265,7 +301,8 @@ export function estimateBattle(world, attackers, defenders) {
   const relief = generalSiegeRelief(leadGeneral(world, front));
   return {
     attack: sidePower(world, front, false, 0, defenders[0]?.tile ?? null),
-    defense: sidePower(world, defenders.slice(0, MAX_DEFENSE_DIVISIONS), true, relief),
+    defense: sidePower(world, defenders.slice(0, MAX_DEFENSE_DIVISIONS), true, relief, null,
+      assaultBreakthrough(front)),
   };
 }
 
@@ -597,7 +634,7 @@ function resolveRound(game, battle) {
   const relief = generalSiegeRelief(attackerLead);
   const roundTile = world.get(battle.q, battle.r);
   const attackerBase = sidePower(world, attackers, false, 0, roundTile);
-  const defenderBase = sidePower(world, defenders, true, relief);
+  const defenderBase = sidePower(world, defenders, true, relief, null, assaultBreakthrough(attackers));
   // Trickster generalin zar araligi genistir: hem daha iyi hem daha kotu ceker.
   const swing = (general) => 0.36 * (1 + generalVariance(general));
   const roll = (general) => 1 - swing(general) / 2 + game.turns.rng() * swing(general);
@@ -653,7 +690,7 @@ function resolveRound(game, battle) {
     finishBattle(game, battle, liveAttackers.length > 0 && liveDefenders.length === 0);
   } else if (battle.rounds >= MAX_ROUNDS) {
     const attackerScore = sidePower(world, liveAttackers, false, 0, battleTile);
-    const defenderScore = sidePower(world, liveDefenders, true, relief);
+    const defenderScore = sidePower(world, liveDefenders, true, relief, null, assaultBreakthrough(liveAttackers));
     finishBattle(game, battle, attackerScore > defenderScore);
   }
 }

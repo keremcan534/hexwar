@@ -36,6 +36,8 @@ const EQUIPMENT_FILE = {
   guns: 'resources/artillery',
   ships: 'resources/clipper_convoy',
   ironclads: 'resources/steamer_convoy',
+  tanks: 'resources/tanks',
+  aircraft: 'resources/aeroplane',
 };
 
 /** Bütçe satırları: eski bütçe madalyonları (halka içte). */

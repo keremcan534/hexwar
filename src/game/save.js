@@ -134,6 +134,10 @@ const NATION_FIELDS = [
   // Kura (levy.js): kuradan çıkarılan halklar ve halk halk şehit defteri.
   // Türetilemez: yazılmazsa yüklenen oyun kutuları ve savaşın hafızasını kaybeder.
   'levyExcluded', 'fallen',
+  // Kararların bekleme süreleri (decisions.js). Yazılmazsa yüklenen oyunda
+  // bekleyen her karar hemen yeniden alınabiliyordu: 1900 dünyasında SG bol
+  // olduğundan kaydet-yükle üçüncü haftada dallanıyordu (ölçüldü).
+  'decisions',
 ];
 
 export function serialize(game) {
@@ -453,8 +457,13 @@ export function deserialize(game, data) {
   // oyunda fethin yaşı sıfırlanıp çekirdek kayboluyordu (audit:save).
   for (const province of world.provinces ?? []) {
     const since = province.econ?.ownedSince;
+    const focus = province.econ?.focus ?? null;
     refreshProvinceOwner(world, province);
     if (Number.isFinite(since)) province.econ.ownedSince = since;
+    // State odağı da: setProvinceOwner sahip değişince onu siler (yeni sahibin
+    // yuvası). Burada sahip DEĞİŞMİYOR, üretilen dünyadan kayıttakine dönüyor;
+    // silinince fethedilmiş state'lerin Integration odağı yüklemede kayboluyordu.
+    if (province.econ) province.econ.focus = focus;
   }
 
   // 4) Uluslar

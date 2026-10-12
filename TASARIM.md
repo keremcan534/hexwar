@@ -109,8 +109,8 @@ güherçile barışta da 41-58 ihtiyaç, fiyat 2.6-3.0.
 - `IC = Σ fabrika × (1 + teknoloji) × kömür × (0.85 + 0.3·istikrar) × (1 − askerlik cezası) × statü`.
 - **Ekonomi yasası** askerî payı belirler: Sivil %10 · Kısmi %25 · Savaş %50 (savaşta ya da savaş desteği ≥50) · Topyekûn %80 (savaşta ve savaş desteği ≥70).
 - **Tüketim malı:** ihtiyaç `nüfus/100k × 0.6 × çağ (1→1.8)`; arz el tezgâhı (`nüfus/100k × 0.5 × (1+0.03·kalkınma)`) + sivil IC. Oran 1'in altındaysa istikrar düşer (−20'ye kadar), üstündeyse vergi artar (+%20'ye kadar). Çağ ilerledikçe ihtiyaç büyür: sanayileşmeyen ülke huzursuzlaşır.
-- **Üretim hatları:** Tüfek (0.5 IC, demir 0.2 + kereste 0.1), Top (2 IC, demir 1), Gemi (3 IC, kereste 1.5; zırhlı teknolojisiyle demir+kömür; tersane şart). Hat başına öncelik: **Auto** (varsayılan; depo ordunun ihtiyacını karşılayınca durur, savaşta hızlanır) ya da elle Off/Low/Normal/High (ağırlık 0/1/3/6); elle seçilen hatta hiçbir otomasyon dokunmaz. Askerî IC ağırlıkla dağılır. Verim hat başına %20–%100: çalışırken haftada +1 puan, boşta −0.5.
-- **Teçhizat stoğu** ulusaldır, tavansız. Alay ihtiyacı: piyade 10 tüfek; süvari 6 tüfek; topçu 4 tüfek + 6 top; savaş gemisi 10 gemi. Takviye kaybolan güç oranında teçhizat yer. **Teçhizat eğitimi bekletmez (HOI4):** eğitim biterken eksik kalan teçhizat oranında alay o güçle ve o oranda insanla çıkar (en az %10), takviye ikisini birlikte tamamlar.
+- **Üretim hatları:** Tüfek (0.5 IC, demir 0.2 + kereste 0.1), Top (2 IC, demir 1), Gemi (3 IC, kereste 1.5; zırhlı teknolojisiyle demir+kömür; tersane şart), Tank (0.8 IC; demir 0.4, petrol ve kauçuk 0.05) ve Uçak (0.6 IC; demir, kereste, petrol, kauçuk) — ikisi kolu açan teknolojiyle açılır. Hat başına öncelik: **Auto** (varsayılan; depo ordunun ihtiyacını karşılayınca durur, savaşta hızlanır) ya da elle Off/Low/Normal/High (ağırlık 0/1/3/6); elle seçilen hatta hiçbir otomasyon dokunmaz. Askerî IC ağırlıkla dağılır. Verim hat başına %20–%100: çalışırken haftada +1 puan, boşta −0.5.
+- **Teçhizat stoğu** ulusaldır, tavansız. Alay ihtiyacı: piyade 10 tüfek; süvari 6 tüfek; topçu 4 tüfek + 6 top; savaş gemisi 10 gemi; zırhlı 8 tank + 2 tüfek; hava 8 uçak. Tank ve uçak alay başına haftada 0.4/0.3 petrol yakar; petrolsüz güç %60'a dek düşer. Tankın atılımı (`breakthrough` 0.6): saldıran yığındaki tank payı kadar savunanın siperi yok sayılır. Takviye kaybolan güç oranında teçhizat yer. **Teçhizat eğitimi bekletmez (HOI4):** eğitim biterken eksik kalan teçhizat oranında alay o güçle ve o oranda insanla çıkar (en az %10), takviye ikisini birlikte tamamlar.
 
 ## 6. Altın, borç, iflas
 
@@ -199,13 +199,21 @@ alınabilecek küme: warscore 15'te 1, 30'da 2, 70'te 3.
 
 ## 13. Teknoloji
 
-5 dal (Sanayi, Altyapı, Ordu, Donanma, Toplum) × 8 seviye. Her teknolojinin
-etkisi somut: IC, verim tavanı, kaynak, kalkınma tavanı, inşaat, ikmal, saldırı,
-savunma, zırhlı gemi, okuryazarlık, istikrar. Araştırma = 1 + okuryazarlık × 6
+5 dal (Sanayi, Altyapı, Ordu, Donanma, Toplum) × 2 klasör × 5 kademe, Ordu'da
+üçüncü klasör Havacılık (6 kademe): 56 teknoloji, 1900-1940. 1836-1890 ağacının
+40 düğümü **miras**tır: herkes bilir, araştırılmaz, etkileri aynı sırayla
+değiştirici toplamına yazılır (katlama parmak iziyle birebir kanıtlandı). Her
+teknolojinin etkisi somut: IC, verim tavanı/artışı, kaynak, petrol, kalkınma
+tavanı, inşaat, ikmal, saldırı, savunma, zırh, hava, donanma, araştırma,
+istikrar. İki kademe kol AÇAR (`unlocks`): Landships tankı, Military Aviation
+uçağı; açılım YZ için 0.08 değerindedir (0.2'de uçak 1902'de açılıyordu).
+Havacılığın öncülü Observation Balloons'tur: açılım ilk kademe olsaydı
+kademe çarpanı 1.0 ile erken seçeneklerin en ucuzu olurdu. Araştırma = 1 + okuryazarlık × 6
 + üniversite × 0.3. Bedel `110 × (1 + 0.6·kademe) × (1 + 0.03·(yıl − START_YEAR))`,
-yılından önce araştırmak yılda +%6 (tavan 2.5×). Yıl çarpanı ağacı takvime
-bağlar: ölçümde orta ülke 1876'da 30, 1886'da 36 teknolojide, 40'ını
-1886-96 arasında bitirir (çarpansız 1881-86'da bitip son on beş yıl boştu). 2026-10-11: yıl ölçeği 0.02 → 0.03; herkes ~1892'de bitirip 320-440 hafta boş kalıyordu, şimdi ortanca ~1897.
+yılından önce araştırmak yıl başına ×1.15 (tavan 8×; 1900 dünyası 2-3 kat hızlı araştırdığı için yılda +%6 / 2.5× uçağı 1910 yerine 1900'de açtırıyordu). Yıl çarpanı ağacı takvime
+bağlar. 1900 ağacında ölçüm (2 tohum, 160×96): 1929'da medyan 34/55, sanayi
+kademesi 40 (takvimde), tarım kademesi ~33; önde gidenler uçağı 1906-07, tankı
+1915'te açar. (1836 ağacı: yıl ölçeği 0.03 ile ortanca ~1897'de bitiyordu.)
 
 ## 14. Zafer (kampanya sonu)
 

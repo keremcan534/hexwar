@@ -408,6 +408,28 @@ function natoSymbol(path, typeId, cx, cy, r) {
       path.moveTo(cx - r * 0.15, cy + h * 0.3);
       path.lineTo(cx - r * 0.15, cy - h * 1.5);
       break;
+    case 'ARMOR': {
+      // Palet: yatay hap biçimi (NATO zırhlısı).
+      const pw = w * 0.85;
+      const ph = h * 0.55;
+      path.moveTo(cx - pw + ph, cy - ph);
+      path.lineTo(cx + pw - ph, cy - ph);
+      path.arc(cx + pw - ph, cy, ph, -Math.PI / 2, Math.PI / 2);
+      path.lineTo(cx - pw + ph, cy + ph);
+      path.arc(cx - pw + ph, cy, ph, Math.PI / 2, Math.PI * 1.5);
+      break;
+    }
+    case 'AIRCRAFT':
+      // Pervane: merkezde buluşan iki üçgen (NATO hava).
+      path.moveTo(cx, cy);
+      path.lineTo(cx - w, cy - h * 0.7);
+      path.lineTo(cx - w, cy + h * 0.7);
+      path.closePath();
+      path.moveTo(cx, cy);
+      path.lineTo(cx + w, cy - h * 0.7);
+      path.lineTo(cx + w, cy + h * 0.7);
+      path.closePath();
+      break;
     default:
       path.ellipse(cx, cy, w * 0.5, h * 0.5, 0, 0, Math.PI * 2);
   }

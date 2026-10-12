@@ -241,5 +241,73 @@ sub('3. Kaydetmeden 100 hafta devam vs kaydedip yukleyip 100 hafta devam');
   }
 }
 
+// 4) KAYDA HIC GIRMEYEN ALAN. 1. bolum kayit -> yukle -> kayit turunu karsilastirir;
+// hic yazilmayan bir alan iki kayitta da yoktur ve gorunmez. 2026-10-12'de
+// karar bekleme sureleri (nation.decisions) boyle kaciyordu: yuklenen oyunda
+// bekleyen karar hemen yeniden alinabiliyor, 1900 dunyasinda kaydet-yukle
+// ucuncu haftada dallaniyordu. Bu bolum canli dunyayi yuklenen dunyayla derin
+// karsilastirir; turetilen ve tani alanlari asagida adlariyla istisnadir.
+sub('4. Canli <-> yuklenen durum: kayda hic girmeyen alanlar');
+{
+  // Turetilen (ilk haftalik isleyiste yeniden kurulur) ya da yalniz tani/duyuru.
+  const DERIVED = [
+    /^nations\[\]\.generals\[\]\.front/, // sinirdan turetilir (command.js)
+    /^world\.contacts$/, /^world\.techHolders$/, // tur basinda yeniden hesaplanir
+    /^world\.(commandWorst|storyState|pockets|surrenders)$/, // tani ve duyuru
+    /^turns\.(phase|lastProfile)$/, // tani
+    /^units\[\]\.lastRetreat$/, // yalniz yazilir, okuyan yok
+    /^nations\[\]\.regimentsKilled$/, // oyuncu duyurusunun haftalik sayaci (events.js sifirlar)
+  ];
+  // Tembel kurulan kayitlar: bir tarafta hic yok, obur tarafta bos varsayilan.
+  const LAZY = [/^nations\[\]\.(delegation|training)$/];
+  // undefined <-> null / 0 / [] / false: okuyucular hepsini bos sayar.
+  const empty = (v) => v == null || v === 0 || v === false
+    || (Array.isArray(v) && v.length === 0)
+    || (v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0);
+  // Kendi kayit noktasi: 100. haftada kararlarin ve uzun omurlu sayaclarin
+  // cogu henuz bos (karar bekleme suresi 100. haftada hic yoktu, 160'ta var).
+  const live = headless(SEED);
+  run(live, 160);
+  const fresh = headless(SEED);
+  deserialize(fresh, JSON.parse(JSON.stringify(serialize(live))));
+  const seen = new WeakSet();
+  const missing = new Map();
+  const note = (path, a, b) => {
+    const key = path.replace(/\.\d+(?=\.|$)/g, '[]');
+    if (DERIVED.some((re) => re.test(key))) return;
+    if ((a === undefined || b === undefined) && LAZY.some((re) => re.test(key))) return;
+    if (!missing.has(key)) missing.set(key, { n: 0, example: `${path}: ${JSON.stringify(a)?.slice(0, 60)} -> ${JSON.stringify(b)?.slice(0, 60)}` });
+    missing.get(key).n++;
+  };
+  const walk = (a, b, path, depth = 0) => {
+    if (depth > 7 || typeof a === 'function' || typeof b === 'function') return;
+    if (typeof a === 'number' && typeof b === 'number') {
+      if (Math.abs(a - b) > 1e-9 * Math.max(1, Math.abs(a))) note(path, a, b);
+      return;
+    }
+    if (a === b || (empty(a) && empty(b))) return;
+    if (a == null || b == null || typeof a !== 'object' || typeof b !== 'object') { note(path, a, b); return; }
+    if (seen.has(a)) return;
+    seen.add(a);
+    if (a.terrain && a.q !== undefined) { if (a.q !== b.q || a.r !== b.r) note(path, `${a.q},${a.r}`, `${b.q},${b.r}`); return; }
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) walk(a[k], b[k], `${path}.${k}`, depth + 1);
+  };
+  live.world.nations.forEach((n, i) => walk(n, fresh.world.nations[i], `nations.${i}`));
+  for (const key of Object.keys(live.world)) {
+    if (['nations', 'tiles', 'provinces', 'units', 'cities'].includes(key)) continue;
+    walk(live.world[key], fresh.world[key], `world.${key}`);
+  }
+  (live.world.provinces ?? []).forEach((p, i) => walk(p, fresh.world.provinces[i], `provinces.${i}`));
+  const flat = (units) => units.map((u) => ({ ...u, tile: [u.tile.q, u.tile.r] }));
+  walk(flat(live.world.units), flat(fresh.world.units), 'units');
+  for (const key of Object.keys(live.turns)) {
+    if (!['game', 'world', 'log'].includes(key)) walk(live.turns[key], fresh.turns[key], `turns.${key}`);
+  }
+  if (!missing.size) console.log('  OK  canli durumun her alani kayittan geri geliyor.');
+  for (const [key, { n, example }] of missing) {
+    console.log(`  - ${key} (${n}) ${example}`);
+    finding('HIGH', 'Kayda girmeyen alan', 'canli durumun her alani yuklemede geri gelmeli', `${key}: ${example}`);
+  }
+}
 
 process.exit(reportFindings() > 0 ? 1 : 0);

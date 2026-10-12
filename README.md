@@ -162,7 +162,7 @@ zinciri yoktur (TASARIM.md §1-§8, `src/game/econ/`).
   yasası ve teknoloji çarpar. **Ekonomi yasası** IC'nin ne kadarının orduya
   gideceğini söyler: sivil pay halkın **tüketim malıdır** (eksikse istikrar
   düşer, fazlası vergiyi artırır; beklenti her on yılda büyür), askerî pay
-  **üretim hatlarına** (tüfek, top, gemi) dağılır ve teçhizat stoğunu
+  **üretim hatlarına** (tüfek, top, gemi; teknolojiyle tank ve uçak) dağılır ve teçhizat stoğunu
   doldurur. Her hattın önceliği Auto (ordunun eksiğine göre) ya da elle
   Off/Low/Normal/High'dır; elle seçileni otomasyon ezmez. Teçhizat eksikken
   de alay eğitilir ve eksik oranında düşük güçle çıkar, takviye tamamlar.
@@ -296,8 +296,13 @@ Alay artık düğmeye basılan hafta belirmez, **siparişe** dönüşür:
 - Depoda teçhizat yoksa sipariş yine verilir: eksik, üretim hattından
   geldikçe dolar; alay teçhizatı tamamlanana dek kışla yeri tutmadan bekler.
   Teçhizat: piyade 10 tüfek, süvari 6 tüfek, topçu 4 tüfek + 6 top, savaş
-  gemisi 10 gemi.
-- Eğitim süresi kola göredir (piyade 8, süvari 10, topçu 12, gemi 16 hafta);
+  gemisi 10 gemi, zırhlı 8 tank + 2 tüfek, hava 8 uçak.
+- **Zırhlı** (Landships, 1916) ve **hava kolu** (Military Aviation, 1910)
+  teknolojiyle açılır ve petrolle yürür: petrolsüz kol gücünün %60'ına dek
+  kaybeder. Tank tümen başına en güçlü koldur ve saldırırken savunanın
+  siperinin büyük kısmını yok sayar (atılım); uçak topçu gibi destek koludur,
+  nehir cezası işlemez. İkisinin gücü kendi teknolojisiyle büyür.
+- Eğitim süresi kola göredir (piyade 8, süvari 10, topçu 12, uçak 12, tank 14, gemi 16 hafta);
   doktrin ve danışman kısaltır, iflas iki katına çıkarır.
 - Aynı anda kaç alayın eğitildiğini şehir sayısı ve kışlalar belirler; sıradakiler bekler.
   Öncelik okları kapasitenin kime gideceğini değiştirir.
@@ -432,7 +437,7 @@ src/
     construction.js  bina ve kalkınma kuyruğu
     culture.js       huzursuzluk, asimilasyon, kabul
     movements.js     ulusal hareketler ve isyan ordusu
-    technology.js    40 teknoloji, araştırma, yayılım
+    technology.js    56 teknoloji (1900-1940), 1836-1890 mirası, araştırma, yayılım
     hegemony.js      kampanya sonu puanı ve ulusal hedef
     command.js       generaller, cephe ve planlama
     battles.js       province muharebesi (nehir, barut, at, kale)
