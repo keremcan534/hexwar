@@ -158,11 +158,11 @@ bina bitiriyordu, oyuncu ekranı sürekli kollamak zorundaydı (ölçüm: büyü
 - **İstikrar** hedefe haftada 1 puan yaklaşır. Hedef: 50 + tüketim malı + gıda + vergi yasası + savaş + işgal + huzursuzluk + meşruiyet + parti + olay/gündem.
 - **Savaş desteği** hedefe haftada 1 puan yaklaşır. Hedef: 25 + saldırganlık (taban 40'tayken dağılım düzdü ve onu okuyan kapılar hiç tetiklenmiyordu) + yabancı yönetimdeki soydaşlar + savunma savaşı − kayıp − savaş süresi + milliyetçi destek.
 - **Hükûmet biçimi:** Mutlakiyet (SG +0.5, seçim yok, iktidar partisini sen seçersin), Meşruti (4 yılda seçim), Cumhuriyet (seçim, istikrar +5). Kararla ya da isyanla değişir.
-- **Dört parti:** Muhafazakâr, Liberal, Milliyetçi, Sosyalist (1848'den sonra). Destek sürücüleri: istikrar, okuryazarlık, tüketim malı, savaş, soydaşlar, sanayi. İktidar partisi bonus verir ve yasa aralığını sınırlar. Halkın istediği iktidarda değilse **meşruiyet cezası**. SG ile propaganda.
+- **Dört parti:** Muhafazakâr, Liberal, Milliyetçi, Sosyalist (1900'de dördü de sahnede). Destek sürücüleri: istikrar, okuryazarlık, tüketim malı, savaş, soydaşlar, sanayi. İktidar partisi bonus verir ve yasa aralığını sınırlar. Halkın istediği iktidarda değilse **meşruiyet cezası**. SG ile propaganda.
 - **Altı yasa** (SG 50, 26 hafta kilit): Vergi (3), Askerlik (4), Ekonomi (4), Ticaret (4), Vatandaşlık (3), Eğitim (3).
 - **Danışmanlar:** Ekonomi, Ordu, Siyaset yuvası; ikişer aday, SG 50, tek bonus.
 - **Ulusal gündem:** duruma uyan 3 seçenekten biri, 12–20 hafta, somut sonuç.
-- **Olaylar:** sistemlere bağlı, seçenekli kartlar (kıtlık, grev, seçim, Ulusların Baharı, savaş bezginliği…).
+- **Olaylar:** sistemlere bağlı, seçenekli kartlar (kıtlık, grev, seçim, savaş bezginliği, devrim, güçlü adam, motor patlaması…).
 
 ## 10. Kültür (Victoria 2'nin kalbi)
 
@@ -171,7 +171,7 @@ bina bitiriyordu, oyuncu ekranı sürekli kollamak zorundaydı (ölçüm: büyü
 - **İsyancılar haritada gerçek ordulardır** (Özgür X devletleri): hareket aşamaları → ayaklanma → bağımsızlık savaşı.
 - Politikalar: kabul (SG), ödün (SG), sıkıyönetim (altın/hafta; hareketi YAVAŞLATIR, dondurmaz — dondurunca 24 koşuda tek ayaklanma vardı), baskı (SG + şöhret), sürgün, soydaşa bırakma, vasal olarak bırakma.
 - **Birleşme:** soydaş toprak gerekçesi yarı fiyat; küçük soydaş devlet ilişki ve güç farkıyla barışla katılır; ana yurdun %80'i toplanınca "Büyük X" kurulur.
-- **Ulusların Baharı:** 1848 dolayında dünya dalgası: milliyetçilik ve liberaller sıçrar.
+- **Dünya olayları** (`worldEvents.js`): harita uydurma olduğu için olay ulus seçmez, tarihin akıntısını değiştirir. Tohuma bağlı yılda başlar, süresince dört kanaldan okunur (geçici değiştirici, milliyetçilik, parti hedefi, YZ savaş gerilimi) ve başlarken her ulusa kartını yollar. **Barut fıçısı** (~1913, 5 yıl): savaş desteği +8, milliyetçilik ×1.3, YZ güç eşiği ×0.85 ve ilan zarı ×2 — Büyük Savaş ittifak zincirinden doğar. **Kızıl yıllar** (~1917): sosyalist hedef +12; uzun savaşta çöken devlete devrim kartı. **Büyük grip** (1918): nüfus artışı −%50, istikrar −3. **Buhran** (~1929, 4 yıl): ihracat −%30, vergi −%10, istikrar −4, sosyalist ve milliyetçi hedefler artar. 1920 sonrası istikrarsız ülkede milliyetçiler güçlenirse **güçlü adam** kartı (kararname rejimi).
 - **State odağı** (Vic2 ulusal odağı, `focus.js` + `stateFocus.js`): yuva 1 + okuryazarlığın her %25'i (en çok 5) — state sayısıyla değil okuryazarlıkla büyür (ev ödevi testi). Production çıktı +%25 · Taxation vergi +%30 · Recruitment insan gücü +%30 · Integration uyum kazancı ×2, tavan +15, huzursuzluk −1 · Assimilation yılda nüfusun `%2 × (1 + okuryazarlık)`'ı ana kültüre (2026-10-11: %1'de hiçbir yuvaya değmiyordu) (ana yurt kilidini aşar; sakinlik çarpanı kendiliğinden asimilasyonla aynı). Fetihte odak düşer. YZ çeyrekte bir boş yuvaya koyar: uyumu düşük fetih → Integration, kalabalık azınlık → Assimilation, gerisi en kalabalık çekirdeğe Taxation. Ölçüm (2 tohum, 104 hafta barış, aynı state, dürtü kolu sıfır oynadı): çıktı +%25, vergi +%30, verilebilir asker +%46/+%390, uyum %85 → %100 ve huzursuzluk −1.2, yabancı pay 2 yılda −1.5 puan.
 
 ## 11. Askerî

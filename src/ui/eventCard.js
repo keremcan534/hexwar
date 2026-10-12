@@ -17,15 +17,20 @@ const EVENT_SCENE = {
   famine: 'field-road',
   bumper_harvest: 'field-road',
   strike: 'rail-yard',
-  railway_mania: 'rail-yard',
+  motor_boom: 'rail-yard',
+  depression: 'rail-yard',
   great_inventor: 'rail-yard',
   war_weariness: 'coast-fort',
   border_incident: 'coast-fort',
   veterans: 'coast-fort',
   cholera: 'tulip-night',
+  influenza: 'tulip-night',
   liberal_agitation: 'palace-square',
-  springtime: 'palace-square',
+  revolution: 'palace-square',
+  // Menünün savaş gemisi: barut fıçısının sahnesi.
+  mobilisation: 'main-menu',
   court_scandal: 'palace-hall',
+  strongman: 'palace-hall',
   emigration: 'harbour-dawn',
 };
 

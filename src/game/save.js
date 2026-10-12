@@ -205,8 +205,10 @@ export function serialize(game) {
     rngState: turns.rng.state(),
     log: turns.log.slice(0, 20),
     market: world.market,
-    // Ulusların Baharı takvimi ve kurulmuş büyük uluslar (unification.js).
-    spring: world.spring ?? null,
+    // Dünya olayları takvimi (worldEvents.js) ve kurulmuş büyük uluslar
+    // (unification.js). Takvim tohumdan yeniden kurulabilir ama `fired`
+    // bayrakları kurulamaz: yazılmazsa başlamış olay yüklemede yeniden ateşlenir.
+    worldEvents: world.worldEvents ?? null,
     formedNations: world.formedNations ?? null,
     battleSystem: {
       nextId: world.battleSystem?.nextId ?? 1,
@@ -658,7 +660,7 @@ export function deserialize(game, data) {
   // Eski kayitlarda bu alan yok: o zaman zar taze baslar, yani bugunku davranis.
   if (Number.isFinite(data.rngState)) turns.rng.seedState(data.rngState);
   turns.log = data.log ?? [];
-  world.spring = data.spring ?? null;
+  world.worldEvents = data.worldEvents ?? null;
   world.formedNations = data.formedNations ?? null;
   ensureEconomy(world);
   for (const nation of world.nations) ensurePolitics(world, nation);

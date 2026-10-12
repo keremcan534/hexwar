@@ -221,7 +221,7 @@ export function hasClaimOn(world, a, b) {
 }
 
 export function warDeclarationCost(world, a, b, reason = null) {
-  if (reason === 'alliance' || reason === 'coalition' || reason === 'independence') return 0;
+  if (reason === 'alliance' || reason === 'coalition' || reason === 'independence' || reason === 'crisis') return 0;
   return hasClaimOn(world, a, b) ? WAR_COST.justified : WAR_COST.unjustified;
 }
 

@@ -37,6 +37,7 @@ import { delegationActive, noteDelegated } from './delegation.js';
 import { nodeNeighbors } from '../world/provinceGraph.js';
 import { autoFocus } from './stateFocus.js';
 import { alliesOf } from './alliances.js';
+import { worldWarTension } from './worldEvents.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
 // 1.4 -> 1.6 -> 1.8 (2026-09-04: kusatma ve bos cepheye yuruyus savaslari
@@ -207,7 +208,10 @@ function diplomacy(game, nation, rng) {
     && myPower > committed * 2
     && warScore(world, nation.id, wars[0].id) > 20;
   if (wars.length >= 2 || (wars.length === 1 && !canOpenSecond)) return;
-  if (rng() > DECLARE_CHANCE) return;
+  // Dünya gerilimi (barut fıçısı): ilan zarı ve güç eşiği gevşer; zar sayısı
+  // değişmez (tek çekiliş) ki gerilimsiz yıllarda determinizm aynı kalsın.
+  const tension = worldWarTension(world, game.turns.turn);
+  if (rng() > DECLARE_CHANCE * tension.declare) return;
   const regiments = world.units
     .filter((unit) => unit.nationId === nation.id && unit.type.domain === 'land')
     .reduce((sum, unit) => sum + regimentCount(unit), 0);
@@ -236,7 +240,7 @@ function diplomacy(game, nation, rng) {
       return ally?.alive && ally.id !== nation.id ? sum + nationStrength(world, ally) : sum;
     }, 0);
     const ratio = myPower / Math.max(1, nationStrength(world, other) + ALLY_WEIGHT * allied);
-    if (ratio < WAR_THRESHOLD) continue;
+    if (ratio < WAR_THRESHOLD * tension.threshold) continue;
     // Çullanma sınırı: üçüncü saldırgan hiç binmez, ikincisi ancak açık ara
     // üstünlük ve gerçek bir sınırla biner (bkz. SECOND_FRONT_THRESHOLD).
     const fronts = attackerCount(world, other.id);

@@ -264,7 +264,7 @@ export const AGENDA = {
     name: 'National Romanticism', weeks: 12,
     desc: 'Poets, anthems and a national epic.',
     reward: 'War support +8 for 2 years, prestige +5',
-    weight: (world, nation) => (world.turn > 400 ? 1 : 0.5),
+    weight: () => 1,
     apply: (game, nation) => {
       nation.prestige = (nation.prestige ?? 0) + 5;
       addTimedModifier(nation, 'agenda-romantic', 'National Romanticism', 104, { warSupport: 0.08 }, game.turns.turn);

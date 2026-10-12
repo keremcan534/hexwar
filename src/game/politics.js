@@ -19,6 +19,7 @@ import { LAWS, LAW_IDS, lawIndex, lawSum } from './laws.js';
 import { mod, refreshModifiers, registerModifierSource } from './modifiers.js';
 import { consumerStability } from './econ/industry.js';
 import { START_EDUCATION, START_GOVERNMENT } from './era.js';
+import { worldPartyTargets } from './worldEvents.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -318,7 +319,7 @@ export function appointGovernment(game, nation, partyId) {
   return true;
 }
 
-function setRuling(game, nation, partyId, turn) {
+export function setRuling(game, nation, partyId, turn) {
   if (nation.politics.ruling === partyId) return;
   nation.politics.ruling = partyId;
   refreshModifiers(nation, turn);
@@ -531,7 +532,7 @@ function warPosture(world, nation) {
 }
 
 /** Parti desteği hedefleri (toplam 100'e normalize). */
-export function supportTargets(world, nation, { turn, kin, spring }) {
+export function supportTargets(world, nation, { turn, kin, wave = {} }) {
   const economy = nation.economy ?? {};
   const literacy = economy.literacy ?? 0.1;
   const stability = nation.stability ?? 0.5;
@@ -542,10 +543,11 @@ export function supportTargets(world, nation, { turn, kin, spring }) {
     conservative: 30 + (stability - 0.5) * 30 + (1 - literacy) * 15
       + (nation.politics.government === 'absolutism' ? 10 : 0),
     liberal: 10 + literacy * 45 + clamp(consumer - 1, 0, 0.5) * 20
-      + (lawIndex(nation, 'trade') >= 2 ? 5 : 0) + (spring ? 12 : 0),
+      + (lawIndex(nation, 'trade') >= 2 ? 5 : 0) + (wave.liberal ?? 0),
     nationalist: 15 + kin * 40 + ((nation.warSupport ?? 0.5) - 0.5) * 20 + minority * 15
-      + (spring ? 8 : 0),
-    socialist: 5 + Math.min(20, icPerUnit * 60) + clamp(1 - consumer, 0, 0.4) * 40 + (1 - stability) * 10,
+      + (wave.nationalist ?? 0),
+    socialist: 5 + Math.min(20, icPerUnit * 60) + clamp(1 - consumer, 0, 0.4) * 40 + (1 - stability) * 10
+      + (wave.socialist ?? 0),
   };
   const propaganda = nation.politics.propaganda;
   if (propaganda && propaganda.until > turn && raw[propaganda.party] > 0) raw[propaganda.party] += 12;
@@ -621,7 +623,8 @@ export function runPolitics(game) {
   const world = game.world;
   const turn = game.turns?.turn ?? world.turn ?? 0;
   const kin = kinTable(world);
-  const spring = (world.spring?.until ?? 0) > turn;
+  // Dünya olayının dalgası (kızıl yıllar, buhran): parti hedeflerine eklenir.
+  const wave = worldPartyTargets(world, turn);
   for (const nation of world.nations) {
     if (!nation.alive) continue;
     const politics = ensurePolitics(world, nation);
@@ -630,7 +633,7 @@ export function runPolitics(game) {
     economy.kinAbroad = kinShare;
 
     // Parti desteği hedefe ayda ~%12 yaklaşır.
-    const targets = supportTargets(world, nation, { turn, kin: kinShare, spring });
+    const targets = supportTargets(world, nation, { turn, kin: kinShare, wave });
     for (const id of PARTY_IDS) politics.support[id] += (targets[id] - politics.support[id]) * 0.03;
 
     // Savaş sayaçları: kayıp yılda yarıya iner, savaş haftası barışta söner.

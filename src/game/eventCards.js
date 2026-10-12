@@ -6,17 +6,20 @@
 // değiştirici, bina. YZ ağırlıkla hemen seçer; oyuncuya kart açılır, sekiz
 // hafta cevapsız kalırsa ilk seçenek uygulanır (oyun kilitlenmez).
 //
-// Dünya olayı: ULUSLARIN BAHARI (1848 dolayı). İki yıl boyunca milliyetçilik
-// çağı ×1.3 (culture.nationalismEra), liberal ve milliyetçi destek sıçrar,
-// her ulusa kendi kartı gelir.
+// Dünya olayları (worldEvents.js): barut fıçısı, kızıl yıllar, büyük grip,
+// buhran. Başlarken her ulusa kendi kartı gelir (`world: true` kartlar), etkisi
+// süresince değiştirici, milliyetçilik, parti ve savaş gerilimi kanallarından.
 
 import { makeRng } from '../core/rng.js';
 import { addTimedModifier, refreshModifiers } from './modifiers.js';
 import { settle } from './treasury.js';
-import { changeGovernment } from './politics.js';
+import { changeGovernment, setRuling } from './politics.js';
 import { addInfamy } from './infamy.js';
-import { BUILDINGS } from './econ/defs.js';
-import { buildingLevels, buildingSlots } from './provinces.js';
+import { turnOfYear } from './calendar.js';
+import { WORLD_EVENTS, WORLD_EVENT_IDS, worldEventActive, worldEventSchedule } from './worldEvents.js';
+import { declareWar } from './diplomacy.js';
+import { scoreboard } from './hegemony.js';
+import { suggestWarGoal } from './peace.js';
 
 const units = (nation) => Math.max(1, (nation.economy?.population ?? 0) / 100000);
 const atWar = (nation) => (nation.economy?.warFronts ?? 0) > 0;
@@ -25,9 +28,6 @@ const atWar = (nation) => (nation.economy?.warFronts ?? 0) > 0;
 export const EVENT_TIMEOUT = 8;
 /** Ulus başına haftada en çok bir kart; aynı kart bu kadar hafta tekrarlanmaz. */
 const DEFAULT_COOLDOWN = 260;
-/** Ulusların Baharı: 1848 dolayı, iki yıl. */
-const SPRING_TURN = 625;
-const SPRING_WEEKS = 104;
 
 function timed(game, nation, id, label, weeks, effects) {
   addTimedModifier(nation, id, label, weeks, effects, game.turns?.turn ?? 0);
@@ -40,21 +40,6 @@ function bump(nation, party, amount) {
   support[party] = Math.max(0, support[party] + amount);
 }
 
-function grantRailways(world, nation, count) {
-  const list = (world.provinces ?? [])
-    .filter((p) => p.owner === nation.id && p.econ)
-    .sort((a, b) => b.econ.population - a.econ.population || a.id - b.id);
-  let given = 0;
-  for (const province of list) {
-    if (given >= count) break;
-    const econ = province.econ;
-    if ((econ.buildings.railway ?? 0) >= BUILDINGS.railway.max) continue;
-    if (buildingLevels(econ) >= buildingSlots(econ)) continue;
-    econ.buildings.railway++;
-    given++;
-  }
-  return given;
-}
 
 /**
  * Kart tablosu. `trigger` koşul (bool), `chance` haftalık olasılık,
@@ -124,22 +109,90 @@ export const EVENT_CARDS = {
         } },
     ],
   },
-  railway_mania: {
-    title: 'Railway Mania',
-    text: 'Speculators float a railway company on every street. Should the state join in?',
-    trigger: (world, nation) => (world.turn ?? 0) > 300 && (nation.gold ?? 0) >= 120
-      && (nation.economy?.ic?.total ?? 0) >= 2,
+  motor_boom: {
+    title: 'The Motor Boom',
+    text: 'Workshops that built bicycles now build motorcars. Their investors want the state to stand behind the loans.',
+    trigger: (world, nation) => (world.turn ?? 0) >= turnOfYear(1908) && (nation.gold ?? 0) >= 120
+      && (nation.economy?.ic?.total ?? 0) >= 8,
     chance: 0.012,
     options: [
-      { label: 'Guarantee the bonds', detail: 'Costs 80 gold; +1 railway in two provinces',
+      { label: 'Guarantee the loans', detail: 'Costs 80 gold; industry +4% for three years',
         ai: () => 1.5,
         apply: (game, nation) => {
           settle(nation, 'outlay', -80);
-          grantRailways(game.world, nation, 2);
+          timed(game, nation, 'event-motor', 'Motor industry', 156, { ic: 0.04 });
         } },
-      { label: 'Tax the speculators', detail: '+40 gold',
+      { label: 'Tax the boom', detail: '+40 gold',
         ai: () => 1,
         apply: (game, nation) => settle(nation, 'tax', 40) },
+    ],
+  },
+  // KIZIL YILLAR: uzun savaşın ya da dalganın çökerttiği devlette devrim.
+  revolution: {
+    title: 'Bread, Peace and Land',
+    text: 'Soldiers\' councils sit in the barracks and the factories. The crowd in the capital will not go home.',
+    // Kızıl yıllarda savaşın yıprattığı ve istikrarı düşük ülke; başka
+    // zaman yalnız iki yılı aşan, desteği tükenmiş savaşta. İlk ayarda
+    // (istikrar < 0.3) 35 yılda dört devrim çıktı: medyan istikrar ~0.6.
+    trigger: (world, nation) => (worldEventActive(world, 'red_years', world.turn ?? 0)
+      && (nation.stability ?? 0.5) < 0.45 && (nation.politics?.warWeeks ?? 0) >= 26)
+      || ((nation.stability ?? 0.5) < 0.35 && atWar(nation)
+        && (nation.politics?.warWeeks ?? 0) >= 104 && (nation.warSupport ?? 0.5) < 0.35),
+    chance: 0.05,
+    options: [
+      { label: 'Proclaim the republic', detail: 'Becomes a Republic; stability +6 for a year; war support −10; the left gains',
+        available: (nation) => nation.politics?.government !== 'republic',
+        ai: (nation) => ((nation.stability ?? 0.5) < 0.25 ? 2 : 1),
+        apply: (game, nation) => {
+          changeGovernment(game, nation, 'republic', game.turns.turn,
+            { effects: { stability: 0.06 }, weeks: 52, name: 'The Republic' });
+          timed(game, nation, 'event-revolution', 'Revolution', 52, { warSupport: -0.1 });
+          bump(nation, 'socialist', 10);
+          bump(nation, 'liberal', 5);
+        } },
+      { label: 'Bow to the councils', detail: 'Stability +4 for a year; war support −10; socialists gain',
+        available: (nation) => nation.politics?.government === 'republic',
+        ai: () => 1.4,
+        apply: (game, nation) => {
+          timed(game, nation, 'event-revolution', 'Councils', 52, { stability: 0.04, warSupport: -0.1 });
+          bump(nation, 'socialist', 15);
+        } },
+      { label: 'Crush the soviets', detail: 'Costs 30 political power; stability −6 and unrest +30% for two years; nationalists gain',
+        available: (nation) => (nation.power ?? 0) >= 30,
+        ai: (nation) => (nation.politics?.government === 'absolutism' ? 1.5 : 0.8),
+        apply: (game, nation) => {
+          nation.power -= 30;
+          timed(game, nation, 'event-revolution', 'White terror', 104, { stability: -0.06, unrest: 0.3 });
+          bump(nation, 'nationalist', 6);
+        } },
+    ],
+  },
+  // AŞIRILAR ÇAĞI: istikrarsız cumhuriyette uniformalı kurtarıcı.
+  strongman: {
+    title: 'The Strongman',
+    text: 'A decorated veteran promises order, bread and revenge. His followers march in uniform.',
+    trigger: (world, nation) => (world.turn ?? 0) >= turnOfYear(1920)
+      && nation.politics?.government !== 'absolutism'
+      && (nation.politics?.support?.nationalist ?? 0) >= 28 && (nation.stability ?? 0.5) < 0.5,
+    chance: 0.02,
+    options: [
+      { label: 'Give him the chancellery', detail: 'Rule by decree: no elections, nationalists govern; war support +10 and stability +5 for two years',
+        ai: (nation) => ((nation.stability ?? 0.5) < 0.35 ? 2 : 0.9),
+        apply: (game, nation) => {
+          changeGovernment(game, nation, 'absolutism', game.turns.turn,
+            { effects: { stability: 0.05, warSupport: 0.1 }, weeks: 104, name: 'The New Order' });
+          setRuling(game, nation, 'nationalist', game.turns.turn);
+          nation.politics.rulingLock = game.turns.turn + 52;
+          bump(nation, 'liberal', -10);
+        } },
+      { label: 'Defend the constitution', detail: 'Costs 40 political power; stability −4 for a year; nationalists lose ground',
+        available: (nation) => (nation.power ?? 0) >= 40,
+        ai: () => 1.2,
+        apply: (game, nation) => {
+          nation.power -= 40;
+          timed(game, nation, 'event-strongman', 'Emergency laws', 52, { stability: -0.04 });
+          bump(nation, 'nationalist', -8);
+        } },
     ],
   },
   cholera: {
@@ -285,22 +338,57 @@ export const EVENT_CARDS = {
         } },
     ],
   },
-  springtime: {
-    title: 'The Springtime of Nations',
-    text: 'Revolution sweeps the continent! Crowds demand constitutions and national freedom.',
+  // --- Dünya olaylarının kartları (worldEvents.js `card`): zarla değil,
+  // olay başlarken her ulusa bir kez gelir.
+  mobilisation: {
+    title: 'The Powder Keg',
+    text: 'Alliances harden into camps. The general staffs open their railway timetables and every frontier waits for a spark.',
     world: true,
     options: [
-      { label: 'Grant reforms', detail: 'Liberals gain; stability +4 for two years',
-        ai: (nation) => (nation.politics?.government === 'absolutism' ? 0.8 : 1.5),
+      { label: 'Mobilise the reserves', detail: 'Manpower +15% and war support +5 for two years; stability −3',
+        ai: (nation) => (nation.aggression ?? 1) * (nation.rivalId != null ? 1.3 : 0.9),
         apply: (game, nation) => {
-          bump(nation, 'liberal', 8);
-          timed(game, nation, 'event-spring', 'Reforms of 1848', 104, { stability: 0.04 });
+          timed(game, nation, 'event-keg', 'Mobilised reserves', 104, { manpower: 0.15, warSupport: 0.05, stability: -0.03 });
         } },
-      { label: 'Hold firm', detail: 'Stability −6 and unrest +20% for two years',
-        ai: (nation) => (nation.politics?.government === 'absolutism' ? 1.4 : 0.6),
+      { label: 'Armed neutrality', detail: 'Stability +3 for two years',
+        ai: () => 1,
+        apply: (game, nation) => timed(game, nation, 'event-keg', 'Armed neutrality', 104, { stability: 0.03 }) },
+    ],
+  },
+  influenza: {
+    title: 'The Great Influenza',
+    text: 'A new influenza runs through the barracks and then the cities. Unlike any plague before it, it kills the young.',
+    world: true,
+    options: [
+      { label: 'Close the schools and theatres', detail: 'Tax −10% for half a year; fewer die',
+        ai: (nation) => ((nation.gold ?? 0) > units(nation) ? 1.4 : 0.8),
         apply: (game, nation) => {
-          timed(game, nation, 'event-spring', 'Repression of 1848', 104, { stability: -0.06, unrest: 0.2 });
-          bump(nation, 'nationalist', 4);
+          timed(game, nation, 'event-influenza', 'Quarantine', 26, { tax: -0.1 });
+          timed(game, nation, 'event-influenza-care', 'Public health', 52, { growth: 0.25 });
+        } },
+      { label: 'Keep the factories running', detail: 'Stability −3 for a year',
+        ai: () => 1,
+        apply: (game, nation) => timed(game, nation, 'event-influenza', 'Open cities', 52, { stability: -0.03 }) },
+    ],
+  },
+  depression: {
+    title: 'The Great Depression',
+    text: 'The exchanges have crashed. Banks fail, factories close, and the unemployed queue for soup.',
+    world: true,
+    options: [
+      { label: 'Balance the budget', detail: 'Spending cuts bring in gold; stability −4 for two years',
+        cost: (nation) => Math.round(units(nation) * 0.6),
+        ai: (nation) => ((nation.debt ?? 0) > 0 ? 2 : 0.9),
+        apply: (game, nation, option) => {
+          settle(nation, 'tax', option.cost(nation));
+          timed(game, nation, 'event-depression', 'Austerity', 104, { stability: -0.04 });
+        } },
+      { label: 'Public works', detail: 'Costs gold; construction +25% and stability +3 for two years',
+        cost: (nation) => Math.round(units(nation) * 0.8),
+        ai: (nation) => ((nation.gold ?? 0) > units(nation) * 1.5 ? 1.6 : 0.5),
+        apply: (game, nation, option) => {
+          settle(nation, 'outlay', -option.cost(nation));
+          timed(game, nation, 'event-depression', 'Public works', 104, { construction: 0.25, stability: 0.03 });
         } },
     ],
   },
@@ -362,21 +450,69 @@ function fire(game, nation, id, turn) {
   }
 }
 
+/** Büyük güçlerin sayısı: kıvılcım bunların arasında aranır. */
+const GREAT_POWERS = 8;
+
+/**
+ * BÜYÜK SAVAŞ KIVILCIMI: en güçlü devletler arasında rakip ya da sınır
+ * komşusu çiftlerden en gerilimlisi savaşa girer (kriz gerekçesi bedelsiz).
+ * Ağırlık: rakiplik ×2, sınırın uzunluğu, iki gücün puanı. Saldırgan savaş
+ * desteği yüksek olandır; oyuncu otomatik saldırgan yapılmaz (declareWar
+ * kuralı) — o zaman rolü karşı taraf alır. İttifak, ateşkes ya da çullanma
+ * tavanı bir çifti kapatırsa sıradakine geçilir.
+ * @returns {object|null} { aggressor, target }
+ */
+export function sparkGreatWar(game) {
+  const world = game.world;
+  const board = scoreboard(world).slice(0, GREAT_POWERS);
+  const player = game.turns?.playerNation;
+  const pairs = [];
+  for (const x of board) {
+    for (const y of board) {
+      const a = x.nation;
+      const b = y.nation;
+      if (a.id >= b.id) continue;
+      const contact = world.contacts?.[a.id]?.[b.id] ?? 0;
+      const rival = a.rivalId === b.id || b.rivalId === a.id;
+      if (!rival && contact <= 0) continue;
+      pairs.push({ a, b, weight: (rival ? 2 : 1) * (1 + Math.log(1 + contact)) * (x.total + y.total) });
+    }
+  }
+  pairs.sort((p, q) => q.weight - p.weight || p.a.id - q.a.id || p.b.id - q.b.id);
+  for (const { a, b } of pairs) {
+    let aggressor = (a.warSupport ?? 0) >= (b.warSupport ?? 0) ? a : b;
+    let target = aggressor === a ? b : a;
+    if (aggressor.id === player) [aggressor, target] = [target, aggressor];
+    const goal = suggestWarGoal(world, aggressor.id, target.id);
+    if (declareWar(game, aggressor.id, target.id, { reason: 'crisis', goal: goal?.id ?? null })) {
+      return { aggressor, target };
+    }
+  }
+  return null;
+}
+
 /** Haftalık: dünya olayı, sonra ulus başına en çok bir kart; zaman aşımı. */
 export function runEventCards(game) {
   const world = game.world;
   const turn = game.turns?.turn ?? world.turn ?? 0;
-  // ULUSLARIN BAHARI: tohuma bağlı bir haftada, bir kez.
-  if (!world.spring) {
-    const offset = Math.floor(makeRng(`${world.seed}-spring`)() * 40) - 20;
-    world.spring = { start: SPRING_TURN + offset, until: SPRING_TURN + offset + SPRING_WEEKS, fired: false };
-  }
-  if (!world.spring.fired && turn >= world.spring.start) {
-    world.spring.fired = true;
+  // DÜNYA OLAYLARI: tohuma bağlı haftada, bir kez; etkisi her ulusa yazılır.
+  const schedule = worldEventSchedule(world);
+  for (const id of WORLD_EVENT_IDS) {
+    const entry = schedule[id];
+    if (entry.fired || turn < entry.start) continue;
+    entry.fired = true;
+    const event = WORLD_EVENTS[id];
     for (const nation of world.nations) {
-      if (nation.alive && nation.politics) fire(game, nation, 'springtime', turn);
+      if (!nation.alive || !nation.politics) continue;
+      if (event.effects) {
+        addTimedModifier(nation, `world-${id}`, event.title, entry.until - turn, event.effects, turn);
+        refreshModifiers(nation, turn);
+      }
+      if (event.card) fire(game, nation, event.card, turn);
     }
-    game.turns.addLog('The Springtime of Nations: revolution sweeps the world.', { kind: 'NATION' });
+    const spark = event.spark ? sparkGreatWar(game) : null;
+    game.turns.addLog(spark ? `${event.log} ${spark.aggressor.name} declares war on ${spark.target.name}.` : event.log,
+      { kind: 'NATION' });
   }
   for (const nation of world.nations) {
     if (!nation.alive || !nation.politics) continue;

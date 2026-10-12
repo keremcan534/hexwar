@@ -389,7 +389,7 @@ gerekçesi (soydaş ya da talep varsa 20, yoksa 60), ambargo (25) ve kararlar
 (sübvansiyon, savaş tahvili, manevra, nüfus sayımı, af, araştırma bursu...).
 **İstikrar** ve **savaş desteği** dökümlü bir hedefe haftada bir puan
 yaklaşır; ekran parçaları basar. Dört parti (Muhafazakâr, Liberal,
-Milliyetçi, 1848'den sonra Sosyalist) iktidarda bonus verir ve yasa aralığını
+Milliyetçi, Sosyalist) iktidarda bonus verir ve yasa aralığını
 sınırlar; halkın istediği parti iktidarda değilse **meşruiyet cezası**
 istikrardan düşer. Mutlakiyette hükûmeti taç atar; Meşrutiyet ve Cumhuriyet
 dört yılda bir seçer. **Altı yasa**: vergi, askerlik, ekonomi, ticaret,
@@ -431,7 +431,8 @@ src/
     politics.js      SG, istikrar, savaş desteği, partiler, seçim, yasa, danışman
     agenda.js        ulusal gündem şablonları
     decisions.js     SG kararları
-    eventCards.js    seçenekli olay kartları, Ulusların Baharı
+    eventCards.js    seçenekli olay kartları (devrim, güçlü adam, dünya olaylarının kartları)
+    worldEvents.js   çağın dünya olayları: barut fıçısı, kızıl yıllar, büyük grip, buhran
     unification.js   Büyük X ve barışla birleşme
     provinces.js     tek pop: nüfus, uyum, çekirdek, statü
     construction.js  bina ve kalkınma kuyruğu
@@ -528,5 +529,5 @@ Uluslar Çağı'nın ilk tam sürümünden sonra açık kalanlar (TASARIM.md):
 - Tümen şablonu (karma alaylı tümen kurma ekranı)
 - Büyük güçlerin başkalarının savaşına müdahalesi
 - Ulusal gündemde ülkeye özgü (kültür/bölge) şablonlar
-- Olay kartlarının sayısını artırmak (şu an 13 kart + Ulusların Baharı)
+- Olay kartlarının sayısını artırmak (şu an 14 kart + 3 dünya olayı kartı)
 - Ticaret akışı harita kipi
