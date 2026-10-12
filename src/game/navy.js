@@ -40,8 +40,11 @@ export const REPAIR_PER_WEEK = 0.05;
 /** Bu sağlığın altına düşen gemi limana döner; şu sağlıkta yeniden çıkar. */
 export const RETURN_BELOW = 0.4;
 export const RESUME_AT = 0.85;
-/** Muharebe: tarafın verdiği hasar = gücü × bu × zar (gemi-sağlık birimi). */
-export const BATTLE_DAMAGE = 0.3;
+/**
+ * Muharebe: tarafın verdiği hasar = sağlığı × nitelik oranı × bu × zar
+ * (gemi-sağlık birimi). 0.5: denk iki filo muharebe başına ~1-2 gemi yitirir.
+ */
+export const BATTLE_DAMAGE = 0.5;
 /** Hasar parça parça dağılır: parça başına bir geminin sağlığından düşen. */
 const SHOT = 0.2;
 /**
@@ -56,7 +59,7 @@ export const WITHDRAW_WEEKS = 6;
  * böyledir: zayıf filo limanda kalır, güçlüsü ablukayı kurar; kesin
  * muharebe ancak denk filolar arasında olur.
  */
-export const EVADE_RATIO = 0.4;
+export const EVADE_RATIO = 0.5;
 /** İç sular: kendi kıyısına değen bölgede filo güçlüdür (üs, kıyı topçusu). */
 export const HOME_WATERS = 0.2;
 /** Abluka için düşman kıyısının province başına istenen filo gücü. */
@@ -211,44 +214,68 @@ function coastProvincesIn(world, nationId, zone) {
   return count;
 }
 
-/** Filonun toplam savaş gücü (teknolojiyle). YZ cesaret ölçüsü ve diplomasi. */
-export function fleetStrength(nation) {
-  const naval = Math.max(0.3, 1 + mod(nation, 'naval'));
-  return shipsOf(nation).reduce((sum, ship) => sum + ship.hp, 0) * naval;
+/** Limanda bekleyen gemi: onarımda ya da yenilip çekilmiş (hold haftasına dek). */
+export function docked(ship, turn) {
+  return ship.repairing || (ship.hold ?? 0) > turn;
 }
 
 /**
- * OTOMATİK AMİRALLİK. YZ ve oyuncunun Auto bölgeleri aynı kural:
- * barışta iç sular (en geniş kıyı Normal, ötekiler Low); savaşta düşmanla
- * paylaşılan ya da düşman gemisinin girdiği iç sular High, filomuz yetiyorsa
- * düşman kıyısı Normal (abluka). Ulaşılamayan bölge (başka su kütlesi) yok.
+ * Filonun toplam savaş gücü (teknolojiyle). YZ cesaret ölçüsü ve diplomasi.
+ * `turn` verilirse yalnız denize çıkabilen gemiler sayılır.
+ */
+export function fleetStrength(nation, turn = null) {
+  const naval = Math.max(0.3, 1 + mod(nation, 'naval'));
+  return shipsOf(nation).reduce((sum, ship) => (
+    turn != null && docked(ship, turn) ? sum : sum + ship.hp
+  ), 0) * naval;
+}
+
+/**
+ * Düşmanın bulunduğu denize YZ ancak hazır filosunun bu payı oradaki düşmanı
+ * geçiyorsa girer; geçmiyorsa filo limanda kalır (fleet in being) ve ancak
+ * tersane açığı kapatınca döner. Eskiden "düşman iki kat güçlü değilse git"
+ * kuralıyla yenilen filo her altı haftada aynı denize dönüyordu (ölçüldü:
+ * 15 yılda tekrar eden muharebelerin yarısı tam altı hafta arayla).
+ */
+export const CONTEST_RATIO = 0.75;
+
+/**
+ * OTOMATİK AMİRALLİK. YZ ve oyuncunun Auto bölgeleri aynı kural.
+ * Barışta iç sular (en geniş kıyı Normal, ötekiler Low). Savaşta filo
+ * TOPLANIR: yalnız en geniş iç su Normal kalır, düşmanla paylaşılan iç sular
+ * High, filomuz yetiyorsa düşman kıyısı Normal (abluka); düşman gemisinin
+ * olduğu deniz CONTEST_RATIO ile ya High ya hiç. Barıştaki dağınık düzen
+ * savaşta bir-iki gemilik çatışmalar doğuruyordu (ölçüldü: muharebelerin
+ * %93'ü toplam 2-3 gemi). Ulaşılamayan bölge (başka su kütlesi) yok.
  */
 export function autoZoneWeights(world, nation, presence = null) {
   const out = new Map();
   const home = homeZones(world, nation.id);
   if (!home.size) return out;
   const sorted = [...home.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]);
-  sorted.forEach(([zoneId], index) => out.set(zoneId, index === 0 ? 3 : 1));
   const enemies = (world.nations ?? []).filter((other) => other.alive
     && other.id !== nation.id && atWar(world, nation.id, other.id));
+  sorted.forEach(([zoneId], index) => {
+    if (index === 0) out.set(zoneId, 3);
+    else if (!enemies.length) out.set(zoneId, 1);
+  });
   if (!enemies.length) return out;
-  const ours = fleetStrength(nation);
+  const turn = world.turn ?? 0;
+  const ours = fleetStrength(nation, turn);
   const reach = reachableZones(world, home);
   for (const enemy of enemies) {
-    const theirs = fleetStrength(enemy);
-    const confident = ours > 0 && ours >= theirs * 0.8;
+    const confident = ours > 0 && ours >= fleetStrength(enemy, turn) * 0.8;
     for (const [zoneId] of homeZones(world, enemy.id)) {
       if (!reach.has(zoneId) || (reach.get(zoneId) ?? 99) > 4) continue;
       if (home.has(zoneId)) out.set(zoneId, 6);
       else if (confident) out.set(zoneId, Math.max(out.get(zoneId) ?? 0, 3));
     }
-    // Düşman gemisinin girdiği iç sular: denk ya da güçlüysek oraya;
-    // düşman iki kat güçlüyse filo limanda kalır (gemiyi kıyıma yollamaz).
-    for (const [zoneId] of home) {
-      const there = presence?.get(zoneId)?.get(enemy.id)?.strength ?? 0;
-      if (there <= 0) continue;
-      out.set(zoneId, there > ours * 2 ? 0 : 6);
-    }
+  }
+  if (!presence) return out;
+  for (const zoneId of new Set([...home.keys(), ...out.keys()])) {
+    const there = zoneBalance(world, presence, nation.id, zoneId).hostile;
+    if (there <= 0) continue;
+    out.set(zoneId, ours * CONTEST_RATIO >= there ? 6 : 0);
   }
   return out;
 }
@@ -265,18 +292,38 @@ function reachableZones(world, home) {
   return out;
 }
 
+/**
+ * Auto filoyu en az bu kadar gemilik kollar hâlinde tutar: N hazır gemi en
+ * çok N/3 denizi tutar (en az bir). Dağınık düzende savaşan iki donanma
+ * denizlere birer gemi serpiyor, "muharebe"lerin %93'ü toplam 2-3 gemilik
+ * çatışma oluyordu (ölçüldü, 2 tohum × 15 yıl). Elle seçilen deniz kolu sayılır
+ * ama kuralın dışındadır: oyuncunun tercihi bölünmez.
+ */
+export const SQUADRON = 3;
+
+function readyCount(nation, turn) {
+  return shipsOf(nation).filter((ship) => !docked(ship, turn) && ship.hp >= RETURN_BELOW).length;
+}
+
 /** Bölgelerin etkin ağırlığı: elle seçilen kalır, gerisi otomatik. */
 export function zoneWeights(world, nation, presence = null, override = null) {
   const auto = autoZoneWeights(world, nation, presence);
-  const out = new Map();
-  for (const [zoneId, weight] of auto) out.set(zoneId, weight);
+  const manual = new Map();
   for (const [key, entry] of Object.entries(nation?.navy?.zones ?? {})) {
-    if (entry?.mode === 'manual') out.set(Number(key), entry.weight ?? 0);
+    if (entry?.mode === 'manual') manual.set(Number(key), entry.weight ?? 0);
   }
-  if (override) for (const [zoneId, weight] of Object.entries(override)) out.set(Number(zoneId), weight);
+  if (override) for (const [zoneId, weight] of Object.entries(override)) manual.set(Number(zoneId), weight);
   // Ulaşılamayan bölgeye gemi gönderilmez (başka su kütlesi).
   const reach = reachableZones(world, homeZones(world, nation.id));
-  for (const zoneId of [...out.keys()]) if (!reach.has(zoneId)) out.delete(zoneId);
+  const home = homeZones(world, nation.id);
+  const used = [...manual].filter(([zoneId, weight]) => weight > 0 && reach.has(zoneId)).length;
+  const slots = Math.max(0, Math.max(1, Math.floor(readyCount(nation, world.turn ?? 0) / SQUADRON)) - used);
+  const ranked = [...auto].filter(([zoneId, weight]) => weight > 0 && !manual.has(zoneId) && reach.has(zoneId))
+    .sort((a, b) => b[1] - a[1] || (home.get(b[0]) ?? 0) - (home.get(a[0]) ?? 0) || a[0] - b[0]);
+  const out = new Map();
+  for (const [zoneId, weight] of auto) if (!manual.has(zoneId) && reach.has(zoneId)) out.set(zoneId, weight);
+  ranked.forEach(([zoneId], index) => { if (index >= slots) out.set(zoneId, 0); });
+  for (const [zoneId, weight] of manual) if (reach.has(zoneId)) out.set(zoneId, weight);
   return out;
 }
 
@@ -285,7 +332,7 @@ export function zoneWeights(world, nation, presence = null, override = null) {
  * de bunu çağırır (`override`): ekran oyunla ayrışamaz.
  */
 export function navyTargets(world, nation, presence = null, override = null) {
-  const ready = shipsOf(nation).filter((ship) => !ship.repairing && ship.hp >= RETURN_BELOW).length;
+  const ready = readyCount(nation, world.turn ?? 0);
   const weights = [...zoneWeights(world, nation, presence, override).entries()]
     .filter(([, weight]) => weight > 0).sort((a, b) => a[0] - b[0]);
   const total = weights.reduce((sum, [, weight]) => sum + weight, 0);
@@ -359,10 +406,10 @@ function allocate(world, nation, turn, presence) {
   const home = homeZones(world, nation.id);
   for (const ship of ships) {
     if (!ship.repairing && ship.hp < RETURN_BELOW) ship.repairing = true;
-    if (ship.repairing) sendHome(world, nation, ship, turn);
+    if (docked(ship, turn)) sendHome(world, nation, ship, turn);
   }
   const { targets } = navyTargets(world, nation, presence);
-  const ready = ships.filter((ship) => !ship.repairing);
+  const ready = ships.filter((ship) => !docked(ship, turn));
   const count = new Map();
   const free = [];
   // Yerinde kalan kalır: kotası dolu bölgenin fazlası serbest bırakılır.
@@ -462,6 +509,30 @@ export function zoneBalance(world, presence, nationId, zoneId) {
   return { friendly, hostile, control };
 }
 
+const NO_SEAS = new Set();
+
+/**
+ * Düşmanın tuttuğu denizler (payı TRANSPORT_HOLD üstü): ordu oraya binemez,
+ * başka bir bölgeden de geçemez. Yalnız zaten o denizdeki ordu içinde yürüyüp
+ * kıyıya çıkabilir (game.canEnterFor). Kayıp tek başına yetmiyordu: YZ riski
+ * bilmeden geçiyor, 45 yılda 12 milyon asker denizde ölüyordu (ölçüldü).
+ * Hâkimiyet tablosundan ulus başına haftada bir kurulur.
+ */
+export function closedSeas(world, nationId) {
+  const state = world.navyState;
+  if (!state?.presence?.size || nationId == null || nationId < 0) return NO_SEAS;
+  state.closed ??= new Map();
+  let closed = state.closed.get(nationId);
+  if (closed) return closed;
+  closed = new Set();
+  for (const zoneId of state.presence.keys()) {
+    const { friendly, hostile } = zoneBalance(world, state.presence, nationId, zoneId);
+    if (hostile > 0 && hostile / (hostile + friendly) > TRANSPORT_HOLD) closed.add(zoneId);
+  }
+  state.closed.set(nationId, closed);
+  return closed;
+}
+
 /** Düşmanın bu kıyıya uyguladığı abluka (0-1): hâkimiyet payı × kapsam. */
 function blockadeShare(world, presence, nationId, zone) {
   const { friendly, hostile } = zoneBalance(world, presence, nationId, zone.id);
@@ -518,8 +589,17 @@ function fight(game, zone, presence, friendIds, hostileIds, rng, turn) {
   const world = game.world;
   const sides = [sideOf(world, presence, zone, friendIds), sideOf(world, presence, zone, hostileIds)];
   const [a, b] = sides;
-  const damageToB = BATTLE_DAMAGE * a.strength * (0.75 + rng() * 0.5);
-  const damageToA = BATTLE_DAMAGE * b.strength * (0.75 + rng() * 0.5);
+  // Hasar = karşı tarafın SAĞLIĞI × nitelik oranı. Nitelik (güç ÷ sağlık:
+  // teknoloji, amiral, iç sular) kimin kazanacağını söyler, dönemin
+  // ölümcüllüğünü değil. Güçle orantılıyken bütün dünyanın deniz teknolojisi
+  // 1940'a dek ~2.5 katına çıkıyor, sağlık sabit kaldığından muharebe başına
+  // batan gemi 2'den 3.4'e tırmanıyordu (ölçüldü, 2 tohum × 45 yıl).
+  const hp = (side) => side.entries.reduce((sum, entry) => sum + entry.hp, 0);
+  const hpA = hp(a);
+  const hpB = hp(b);
+  const quality = (a.strength / Math.max(1e-9, hpA)) / Math.max(1e-9, b.strength / Math.max(1e-9, hpB));
+  const damageToB = BATTLE_DAMAGE * hpA * quality * (0.75 + rng() * 0.5);
+  const damageToA = BATTLE_DAMAGE * hpB / quality * (0.75 + rng() * 0.5);
   applyDamage(b.entries, damageToB, rng);
   applyDamage(a.entries, damageToA, rng);
   const report = {
@@ -563,15 +643,31 @@ function fight(game, zone, presence, friendIds, hostileIds, rng, turn) {
       if (entry.ship.hp < RETURN_BELOW) {
         entry.ship.repairing = true;
         sendHome(world, nation, entry.ship, turn);
-      } else if (index !== report.winner) {
-        entry.ship.at = -1;
-        entry.ship.eta = turn + WITHDRAW_WEEKS;
       }
     }
+    if (index !== report.winner) withdraw(world, side.nationIds, zone.id, turn);
     const enemySunk = report.sides[1 - index].sunk.length;
     for (const admiral of side.admirals) addExperience(admiral, 8 + 6 * enemySunk);
   });
   return report;
+}
+
+/**
+ * Yenilen ya da kaçınan ulusların o denize atanmış BÜTÜN gemileri (yoldakiler
+ * dahil) limana döner ve WITHDRAW_WEEKS orada kalır (onarılır). Yalnız
+ * muharebedekiler dönünce yoldaki gemiler ertesi hafta tek tek gelip yeniden
+ * çarpışıyordu (ölçüldü: aynı denizde tekrar eden muharebelerin yarısı altı
+ * haftadan kısa arayla, neredeyse hepsi toplam 2-3 gemi).
+ */
+function withdraw(world, nationIds, zoneId, turn) {
+  for (const id of nationIds) {
+    const nation = world.nations[id];
+    for (const ship of shipsOf(nation)) {
+      if (ship.zone !== zoneId && ship.at !== zoneId) continue;
+      ship.hold = Math.max(ship.hold ?? 0, turn + WITHDRAW_WEEKS);
+      sendHome(world, nation, ship, turn);
+    }
+  }
 }
 
 function resolveBattles(game, presence, rng, turn) {
@@ -599,12 +695,7 @@ function resolveBattles(game, presence, rng, turn) {
       const b = strength(hostile);
       if (Math.min(a, b) < EVADE_RATIO * Math.max(a, b)) {
         // Zayıf taraf çatışmaya girmez: limana çekilir, deniz güçlünündür.
-        for (const id of a < b ? side : hostile) {
-          for (const ship of present.get(id).ships) {
-            ship.at = -1;
-            ship.eta = turn + WITHDRAW_WEEKS;
-          }
-        }
+        withdraw(world, a < b ? side : hostile, zoneId, turn);
         continue;
       }
       reports.push(fight(game, zones[zoneId], presence, side, hostile, rng, turn));
@@ -698,6 +789,7 @@ export function runNavy(game) {
   const reports = resolveBattles(game, presence, rng, turn);
   if (reports.length) presence = buildPresence(world);
   state.presence = presence;
+  state.closed = new Map();
   state.blockade = computeBlockade(world, presence);
   state.losses = [...interceptTransports(game, presence).entries()];
   for (const report of reports) state.reports.push(report);
@@ -714,6 +806,7 @@ export function refreshNavyState(world) {
   seaZonesOf(world);
   const state = ensureNavyState(world);
   state.presence = buildPresence(world);
+  state.closed = new Map();
   state.blockade = computeBlockade(world, state.presence);
   return state;
 }
@@ -815,6 +908,7 @@ export function navyView(world, nation, override = null) {
     };
   }).sort((a, b) => (b.weight - a.weight) || (b.ourCoast - a.ourCoast) || (a.zone.id - b.zone.id));
   const inPort = ships.filter((ship) => ship.zone < 0 && ship.at < 0);
+  const turn = world.turn ?? 0;
   return {
     ships,
     ready,
@@ -823,6 +917,7 @@ export function navyView(world, nation, override = null) {
     sailing: ships.filter((ship) => ship.zone >= 0 && ship.at < 0).length,
     inPort: inPort.length,
     repairing: ships.filter((ship) => ship.repairing).length,
+    withdrawn: ships.filter((ship) => !ship.repairing && (ship.hold ?? 0) > turn).length,
     strength: fleetStrength(nation),
     blockade: state.blockade?.[nation.id] ?? 0,
     rows,

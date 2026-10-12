@@ -55,7 +55,8 @@
   // İzlenen kaplar: her 100 ms konum/boyut.
   const WATCH = ['#hud-header', '.topbar', '.top-stats', '.tb-cartouche', '.tb-minis', '.tb-res', '.turn-control',
     '.nation-badge', '#tab-bar', '.sheet', '#movement-dock', '.movement-dock', '.notify-tray', '#notifications',
-    '.command-bar', '#command-bar', '#divisions', '.screen', '.minimap', '.map-modes', '.toast', '.event-card'];
+    '.command-bar', '#command-bar', '#divisions', '.screen', '.minimap', '.map-modes', '.toast', '.event-card',
+    '#navy-dock', '.nd-head', '.nd-bar', '.nd-list', '.nd-reports'];
   const last = {};
   setInterval(() => {
     J.samples++;

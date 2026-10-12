@@ -7,6 +7,8 @@ import { Camera } from '../render/camera.js';
 import { CACHE_ZOOM, Renderer } from '../render/renderer.js';
 import { PointerController } from '../input/pointer.js';
 import { pixelToHex } from '../core/hex.js';
+import { findPath } from '../core/pathfind.js';
+import { seaZonesOf } from '../world/seaZones.js';
 import { nodeNeighbors, nodeOf, nodeStepCost, nodesAdjacent } from '../world/provinceGraph.js';
 import { randomSeed } from '../core/rng.js';
 import {
@@ -27,6 +29,7 @@ import { PerfMonitor } from '../core/perf.js';
 /** Masadaki teklif bu kadar hafta cevapsız kalırsa geri çekilir. */
 const PEACE_OFFER_TTL = 6;
 import { refreshCities } from './cities.js';
+import { closedSeas } from './navy.js';
 import { refreshModifiers } from './modifiers.js';
 import { controllerOf } from './control.js';
 import { loadFromStorage, saveToStorage } from './save.js';
@@ -514,7 +517,7 @@ export class Game {
           if (ok) { issued++; continue; }
           waiting++;
           for (const b of blockers) reasons.set(b.id, b.text);
-          if (!adjacent && !blockers.length) reasons.set('path', 'no open road yet');
+          if (!adjacent && !blockers.length) reasons.set('path', this.noRoadReason(unit, tile, 'no open road yet'));
         }
         this.reportOrder(tile, issued, waiting, reasons);
       } else {
@@ -539,7 +542,7 @@ export class Game {
             issued = 1;
           } else {
             waiting = 1;
-            reasons.set('path', 'no open road yet');
+            reasons.set('path', this.noRoadReason(lead, tile, 'no open road yet'));
           }
         }
         this.reportOrder(tile, issued, waiting, reasons);
@@ -581,13 +584,33 @@ export class Game {
       const owner = controllerOf(tile);
       const why = owner >= 0 && owner !== player && !atWar(this.world, owner, player)
         ? `${this.world.nations[owner]?.name ?? 'a foreign nation'} is not at war with us — no passage`
-        : 'no road leads there';
+        : this.noRoadReason(this.selection.find((unit) => unit?.hp > 0 && !unit.battleId), tile, 'no road leads there');
       this.reportOrder(tile, 0, 0, new Map([['path', why]]));
     }
 
     this.emit('units', this.selectedUnit);
     this.requestRender();
     return issued > 0;
+  }
+
+  /**
+   * Yol yoksa sebep: deniz hâkimiyeti mi? Hâkimiyetsiz yol varsa onun ilk
+   * kapalı denizi söylenir; oyuncu "yol yok"u haritada göremezdi.
+   */
+  noRoadReason(unit, tile, fallback) {
+    if (!unit || unit.type?.domain !== 'land') return fallback;
+    const closed = closedSeas(this.world, unit.nationId);
+    if (!closed.size) return fallback;
+    const path = findPath(this.world, unit.tile, nodeOf(this.world, tile), {
+      canEnter: this.canEnterFor(unit, { seaControl: false }),
+      costOf: this.costForUnit(unit),
+      neighbors: (near) => nodeNeighbors(this.world, near),
+    });
+    const here = unit.tile?.terrain?.water ? unit.tile.seaZone : -1;
+    const blocked = path?.find((step) => step.terrain.water && step.seaZone !== here && closed.has(step.seaZone));
+    if (!blocked) return fallback;
+    const zone = seaZonesOf(this.world).zones[blocked.seaZone];
+    return `the enemy navy holds ${zone?.name ?? 'the sea'}; win it first (Seas map, M)`;
   }
 
   /** Seçili ordular. `selectedUnit` ilk seçilendir; tekil kullanan kod bozulmasın. */
@@ -710,7 +733,7 @@ export class Game {
    * Birimin girebileceği kareler. Kara birimi denize girebilir ("bindirilmiş"),
    * gemi karaya çıkamaz.
    */
-  canEnterFor(unit) {
+  canEnterFor(unit, { seaControl = true } = {}) {
     const world = this.world;
     // Barış içindeki ülkenin toprağına girilmez: sınırlar ancak savaşla aşılır.
     const allowed = (tile) => {
@@ -730,8 +753,14 @@ export class Game {
     if (unit.type.domain === 'sea') {
       return (tile) => tile.terrain.navigable && openOrFriendly(tile);
     }
+    // Düşmanın tuttuğu deniz kapalıdır (navy.closedSeas); o denizde zaten
+    // olan ordu içinde yürüyüp kıyıya çıkabilir, yoksa kurtulamazdı.
+    const closed = seaControl ? closedSeas(world, unit.nationId) : null;
+    const here = unit.tile?.terrain?.water ? unit.tile.seaZone : -1;
+    const open = (tile) => !closed?.size || !tile.terrain.water
+      || !closed.has(tile.seaZone) || tile.seaZone === here;
     return (tile) => (tile.terrain.passable || tile.terrain.navigable)
-      && openOrFriendly(tile) && allowed(tile);
+      && openOrFriendly(tile) && allowed(tile) && open(tile);
   }
 
   /**

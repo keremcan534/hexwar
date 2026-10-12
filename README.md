@@ -89,6 +89,7 @@ tazelenir:
 | Unrest | Küme başına huzursuzluk (0–10); 6'nın üstü ulusal hareketi besler. |
 | Industry | Küme başına fabrika kademesi — bütün ülkeler, sanayi kalpleri. |
 | Infamy | Ülkelerin şöhreti; koalisyon eşiğine (22) yaklaşan kızarır. |
+| Seas (M) | Deniz bölgeleri hâkimiyet rengiyle (yeşil bizim, kırmızı düşman, kehribar çekişmeli), bölge adları, filoların bayraklı işaretleri ve son muharebeler; solda donanma paneli açılır (bkz. Donanma). |
 
 Arayüz hareketleri (ekran/panel açılış-kapanışı, sekme ışığı, bayrak dalgası)
 **Settings → Interface animations** anahtarındadır; varsayılan açık. Sistemin
@@ -157,8 +158,8 @@ zinciri yoktur (TASARIM.md §1-§8, `src/game/econ/`).
   teknolojileri yayıldıkça değerlenir (bonus, kaynak karşılandığı oranda).
   Fazla, ticaret yasasının izin verdiği payda satılır; açık altın yettiği
   sürece kendiliğinden alınır. Dünya fiyatı `taban × (dünya ihtiyacı ÷ dünya
-  üretimi)^1.5`. Ambargo, abluka (düşman savaş gemisi kıyının iki hex
-  yakınında) ve bağımlılık uyarısı ikili akıştan gelir.
+  üretimi)^1.5`. Ambargo, abluka (düşmanın kıyının denizindeki hâkimiyeti,
+  bkz. Donanma) ve bağımlılık uyarısı ikili akıştan gelir.
 - **Sanayi (IC)** fabrika kademesinden gelir; kömür, istikrar, askerlik
   yasası ve teknoloji çarpar. **Ekonomi yasası** IC'nin ne kadarının orduya
   gideceğini söyler: sivil pay halkın **tüketim malıdır** (eksikse istikrar
@@ -334,6 +335,41 @@ Bir province seçilip **toplanma noktası** atanabilir; yeni kurulan alaylar
 çıktıkları yerden oraya kendi yürür ve oradaki dost tümenlerle konumlanır. Nokta
 haritada altın renkli artı-daire ile işaretlenir.
 
+### Donanma: deniz hâkimiyeti
+
+Savaş gemisi haritada sürülen bir birim değildir, ulusun **filosudur**; filo
+gemi gemi değil **deniz deniz** yönetilir. Okyanus tohumdan adlı deniz
+bölgelerine bölünür (Strait of …, … Bight, Bay of …; 160×96'da ~31). Gemi
+eğitim kuyruğundan çıkıp limana katılır; mürettebatı nüfustan gelir, gemi
+batarsa onlar da ölür (`src/game/navy.js`, `src/world/seaZones.js`).
+
+- **Öncelik**: Seas haritasında (M) soldaki panelde her denizin Auto · Off ·
+  Low · Normal · High düğmeleri vardır — Factories'teki üretim hatlarıyla aynı
+  kademeler. Amirallik hazır gemileri ağırlığa göre böler, gemi kendisi gider
+  (bölge grafında iki adım bir hafta). Düğmenin üstünde durmak yeni paylaşımı
+  satırlarda önizler; **All to Auto** elle seçimleri siler.
+- **Auto** yapay zekânın kuralıdır. Barışta iç sular; savaşta filo toplanır:
+  düşmanla paylaşılan iç sular High, filo yetiyorsa düşman kıyısı (abluka).
+  Düşman gemisinin olduğu denize ancak hazır filonun dörtte üçü oradakini
+  geçiyorsa girilir, geçmiyorsa filo limanda bekler. Auto filoyu en az üç
+  gemilik kollar hâlinde tutar: altı hazır gemi en çok iki denizi tutar.
+- **Hâkimiyet** denizin tek sayısıdır: dost güç ÷ (dost + düşman); güç =
+  sağlık × deniz teknolojisi × amiral, kendi kıyısında +%20. Üç şey ondan
+  okunur:
+  - **Abluka**: düşmanın kıyının denizindeki payı × kapsam (kıyı province'i
+    başına 0.6 güç); ulusun ortalaması deniz ticaretini o oranda keser.
+  - **Kapalı deniz**: düşmanın yarıdan fazlasını tuttuğu denize ordu binemez
+    ve oradan geçemez; orada yakalanan ordu haftada %4 × pay adam kaybeder.
+    Emir yürümezse sebebi yazılır (*the enemy navy holds …*).
+  - **Muharebe**: aynı denizdeki savaşan filolar çarpışır ve muharebe adını
+    alır (*Battle of …*). Teknoloji, amiral ve iç sular kimin daha çok hasar
+    vereceğini belirler. Güçlünün yarısına varmayan taraf çatışmaz, limana
+    çekilir (fleet in being). Yenilenin o denize giden bütün gemileri altı
+    hafta limanda kalır; sağlığı 0.4'ün altına düşen gemi onarıma döner
+    (haftada %5, gemi teçhizatı yer; tersanesiz yarı hız).
+- Amiraller en kalabalık denizlere atanır (Military ekranı); panelin altında
+  son muharebeler durur.
+
 ### İnşaat ve kalkınma
 
 Bina province'e aittir ve toprakla el değiştirir: çiftlik, maden, fabrika,
@@ -368,7 +404,8 @@ haritaya düşer (WASD/oklar kamera). Her ekranda **A** AUTO'yu çevirir (hap
 başlıkta durur). Construction: 1-9 bina, ↑↓ state, Enter kur, B en iyi 3,
 ⇧B en iyi 5, F kaynak süzgeci, S kurulamayanları göster. Factories: ↑↓ hat,
 ←→ önceliği Auto · Off · Low · Normal · High sırasında kaydırır; bir
-önceliğin üstünde durmak yeni paylaşımı çubukta ve satırlarda gösterir. Haritada kendi
+önceliğin üstünde durmak yeni paylaşımı çubukta ve satırlarda gösterir. **M** deniz
+haritasını (Seas) ve donanma panelini açıp kapatır. Haritada kendi
 state'in seçiliyken **B** kartın altındaki hızlı inşa şeridini açar (her bina
 o state'teki kazancı ve bedeliyle; tık kuyruğa koyar). Ekranda her
 kısayolun rozeti vardır.
@@ -414,8 +451,8 @@ iktidar partisi devredilmez.
 ```text
 src/
   core/      hex matematiği, seed'li PRNG, gürültü, yol bulma
-  world/     arazi, prosedürel dünya, nehirler, province üreteci, hareket grafı
-  render/    kamera, Canvas2D/WebGL harita ve sınır ağı
+  world/     arazi, prosedürel dünya, nehirler, province üreteci, hareket grafı, deniz bölgeleri
+  render/    kamera, Canvas2D/WebGL harita, sınır ağı, deniz haritası (seaLayer.js)
   input/     birleşik fare ve klavye girişi
   game/
     game.js          gerçek zaman saati ve oyun kabuğu
@@ -445,15 +482,17 @@ src/
     hegemony.js      kampanya sonu puanı ve ulusal hedef
     command.js       generaller, cephe ve planlama
     battles.js       province muharebesi (nehir, barut, at, kale)
+    navy.js          donanma: deniz önceliği, hâkimiyet, muharebe, abluka, kapalı deniz
     recruitment.js   alay siparişi, eğitim kuyruğu, insan gücü
     reinforcement.js insan ve teçhizat takviyesi
     diplomacy.js     savaş, gerekçe, ateşkes, temas
     ai.js            ülke yapay zekâsı (AUTO aynı fonksiyonları kullanır)
-    save.js          sürümlü kayıt (v25)
+    save.js          sürümlü kayıt (v26)
   ui/
     hud.js           üst çubuk, il paneli, komuta paneli
     screens.js       ekran kabuğu, dosya kartı, barış masası, diplomasi, ordu
     stateScreens.js  Budget, Trade, Factories, Construction, Population, Politics
+    navyDock.js      Seas haritasının donanma paneli (deniz önceliği, hâkimiyet, raporlar)
     eventCard.js     olay kartı penceresi
     tooltipData.js   gecikmeli bilgi kartlarının içerik sağlayıcıları
 ```
