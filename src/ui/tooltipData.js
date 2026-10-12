@@ -312,7 +312,8 @@ export function registerTooltips(game) {
       trade: ['Trade', 'Your resources, the world market and embargoes.', 'F3'],
       budget: ['Budget', 'Taxes, spending, debt and the weekly balance.', 'F4'],
       military: ['Military', 'Regiments, training, equipment and commanders.', 'F5'],
-      population: ['Population', 'Peoples, unrest, citizenship and national goals.', 'F6'],
+      population: ['Population', 'Growth, literacy, manpower and the unification of your people.', 'F6'],
+      cultures: ['Cultures', 'Every people in the nation: rights, assimilation, deportation, resettlement, movements and state focus.', ''],
       politics: ['Politics', 'Government, laws, advisors, agenda and decisions.', 'F7'],
       technology: ['Technology', 'The research tree, the queue and what each technology does.', 'F8'],
       chronicle: ['Chronicle', 'The history of your nation, event by event.', 'F9'],
@@ -321,11 +322,12 @@ export function registerTooltips(game) {
     if (!row) return null;
     const nation = me();
     const areaId = DELEGATION_IDS.find((id) => DELEGATION_AREAS[id].screen === screen);
-    if (!areaId || !nation) return { type: 'simple', title: `${row[0]} · ${row[2]}`, text: row[1] };
+    const key = row[2] ? ` · ${row[2]}` : '';
+    if (!areaId || !nation) return { type: 'simple', title: `${row[0]}${key}`, text: row[1] };
     const on = isDelegated(nation, areaId);
     return {
       type: 'simple',
-      title: `${row[0]} · ${row[2]} · ${on ? 'AUTO' : 'manual'}`,
+      title: `${row[0]}${key} · ${on ? 'AUTO' : 'manual'}`,
       text: `${row[1]} ${on
         ? `The government runs it: ${DELEGATION_AREAS[areaId].desc} Turn AUTO off in the screen header (A) to take it back.`
         : 'You run this portfolio yourself; AUTO in the screen header (A) hands it to the government.'}`,

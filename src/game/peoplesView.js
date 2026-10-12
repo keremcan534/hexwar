@@ -13,9 +13,13 @@
 // Katman: game. DOM yok.
 
 import {
-  ACCEPT_POWER, CULTURE, acceptBlockers, acceptedCultures, cultureMix, expelBlockers,
+  ACCEPT_POWER, CULTURE, acceptBlockers, acceptedCultures, cultureMix,
   releaseBlockers, unrestBreakdown,
 } from './culture.js';
+import {
+  POLICY, concentrateBlockers, deportBlockers, deportDestinations, deportInfamy, emptiedProvinces,
+  forceBlockers, forcedAssimilation, reservationFor, resettleBlockers, resettlementPlan,
+} from './culturePolicy.js';
 import { movementView } from './movements.js';
 import { nationManpower } from './recruitment.js';
 import { growthFactors, occupiedShareOf, provinceName } from './provinces.js';
@@ -29,6 +33,8 @@ const CAUSES = [
   ['occupation', 'Occupation'],
   ['backlash', 'Backlash'],
   ['levy', 'Unequal levy'],
+  ['reservation', 'Reservation'],
+  ['forced', 'Forced assimilation'],
 ];
 /** Eksi yönde yatıştıranlar. */
 const RELIEFS = [
@@ -156,7 +162,7 @@ export function peoplesView(world, nation, turn, { limit = 10 } = {}) {
         preview: acceptPreview(world, nation, row.id, homes, turn),
       },
       release: row.accepted ? null : { blockers: releaseBlockers(world, nation, row.id) },
-      expel: row.accepted ? null : { blockers: expelBlockers(world, nation, row.id) },
+      expel: row.accepted ? null : { blockers: deportBlockers(world, nation, row.id) },
     };
   });
 
@@ -199,4 +205,91 @@ export function peoplesView(world, nation, turn, { limit = 10 } = {}) {
     status,
     unions,
   };
+}
+
+/**
+ * SEÇİLİ HALK (Cultures ekranı): nerede yaşar, soydaşı kim, dört politikanın
+ * engelleri ve önizlemesi. Sayılar culturePolicy'nin kendi fonksiyonlarından
+ * gelir; ekran formül kurmaz.
+ */
+export function peopleDetail(world, nation, cultureId, turn = world.turn ?? 0) {
+  const own = (world.provinces ?? []).filter((p) => p.owner === nation.id && p.econ);
+  const row = cultureMix(world, nation).find((item) => item.id === cultureId);
+  if (!row) return null;
+  const homes = own.map((province) => {
+    const share = shareIn(province, cultureId);
+    return {
+      id: province.id,
+      name: provinceName(province.center),
+      people: Math.round((province.econ.population ?? 0) * share),
+      share,
+      majority: province.culture === cultureId,
+      unrest: province.econ.unrest ?? 0,
+      homeland: province.homeland === cultureId,
+      focus: province.econ.focus ?? null,
+      reservation: province.econ.reservation === cultureId,
+    };
+  }).filter((home) => home.people > 0).sort((a, b) => b.people - a.people || a.id - b.id);
+  const people = homes.reduce((sum, home) => sum + home.people, 0);
+  const kin = world.nations.filter((other) => other.alive && other.id !== nation.id && other.culture === cultureId)
+    .map((other) => ({ id: other.id, name: other.name }));
+  const destinations = deportDestinations(world, nation, cultureId).slice(0, 3)
+    .map((id) => ({ id, name: world.nations[id]?.name ?? '?', kin: world.nations[id]?.culture === cultureId }));
+  const reservation = reservationFor(world, nation, cultureId);
+  const confined = reservation ? homes.filter((home) => home.id !== reservation.id).reduce((sum, home) => sum + home.people, 0) : 0;
+  // Zorla asimilasyon: yılda eriyecek insan (haftalık oran × 52) ve o halkın
+  // yaşadığı yerlerde huzursuzluk hedefine eklenecek ortalama.
+  const forcedUnrest = people > 0
+    ? homes.reduce((sum, home) => sum + home.share * CULTURE.FORCED_UNREST * home.people, 0) / people : 0;
+  return {
+    id: cultureId,
+    name: world.cultures?.[cultureId]?.name ?? '?',
+    color: world.cultures?.[cultureId]?.color ?? '#888',
+    accepted: row.accepted,
+    primary: row.primary,
+    share: row.share,
+    people,
+    homes,
+    kin,
+    focusStates: homes.filter((home) => home.focus === 'assimilate').length,
+    forced: forcedAssimilation(nation, cultureId),
+    force: {
+      blockers: forceBlockers(world, nation, cultureId),
+      yearly: Math.round(people * (1 - (1 - CULTURE.FORCED_RATE) ** 52)),
+      unrest: forcedUnrest,
+      infamy: POLICY.FORCED_INFAMY,
+    },
+    deport: {
+      blockers: deportBlockers(world, nation, cultureId),
+      destinations,
+      infamy: deportInfamy(people),
+    },
+    confine: {
+      blockers: concentrateBlockers(world, nation, cultureId),
+      target: reservation ? { id: reservation.id, name: provinceName(reservation.center) } : null,
+      people: confined,
+      infamy: deportInfamy(confined) / 2,
+      unrest: CULTURE.RESERVATION_UNREST,
+    },
+    release: { blockers: releaseBlockers(world, nation, cultureId) },
+    accept: row.accepted ? null : {
+      blockers: acceptBlockers(world, nation, cultureId, turn),
+      preview: acceptPreview(world, nation, cultureId, own.filter((p) => shareIn(p, cultureId) > 0.01), turn),
+    },
+  };
+}
+
+/** Boşalan province'ler ve iskân planı (Cultures ekranı). */
+export function resettlementView(world, nation) {
+  const emptied = emptiedProvinces(world, nation).map((province) => ({
+    id: province.id,
+    name: provinceName(province.center),
+    population: province.econ.population ?? 0,
+    from: province.econ.emptiedFrom ?? 0,
+  })).sort((a, b) => (b.from - b.population) - (a.from - a.population) || a.id - b.id);
+  const ongoing = nation.resettlement?.targets?.length ? {
+    weeks: nation.resettlement.weeks,
+    left: nation.resettlement.targets.reduce((sum, row) => sum + Math.max(0, row.left), 0),
+  } : null;
+  return { emptied, plan: resettlementPlan(world, nation), blockers: resettleBlockers(world, nation), ongoing };
 }

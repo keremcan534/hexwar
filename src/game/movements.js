@@ -36,7 +36,7 @@
 // Katman: game. DOM yok; ekran movementView'u okur, hicbir sayiyi kendisi kurmaz.
 
 import {
-  CULTURE, acceptBlockers, acceptCulture, cultureMix, expelBlockers, expelCulture,
+  CULTURE, acceptBlockers, acceptCulture, cultureMix,
   isAccepted, movementProvinces,
 } from './culture.js';
 import { atWar, relation, startRebellionWar } from './diplomacy.js';
@@ -49,6 +49,7 @@ import { initNationEconomy } from './economy.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import { captureConstructionAt } from './construction.js';
 import { setProvinceOwner } from './provinces.js';
+import { deport, deportBlockers } from './culturePolicy.js';
 
 export const MOVEMENT = {
   /** Bu huzursuzlugun altinda hareket soner, ustunde buyur. */
@@ -640,7 +641,7 @@ export function movementView(world, nation) {
         },
         accept: { blockers: acceptBlockers(world, nation, cultureId, turn) },
         vassal: { blockers: vassalBlockers(world, nation, cultureId), provinces: provinces.length },
-        expel: { blockers: expelBlockers(world, nation, cultureId), people: peopleOf(provinces, cultureId) },
+        expel: { blockers: deportBlockers(world, nation, cultureId), people: peopleOf(provinces, cultureId) },
       },
     });
   }
@@ -696,5 +697,5 @@ export function manageMovements(game, nation, { crackdown: allowCrackdown = true
   return null;
 }
 
-/** Surgun de bir hareket araci; ekran expelCulture'u dogrudan cagirir. */
-export { expelCulture };
+/** Sürgün de bir hareket aracı (culturePolicy.deport: soydaşa/komşuya). */
+export { deport };

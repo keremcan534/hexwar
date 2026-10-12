@@ -54,7 +54,7 @@ import { formatPopulation, populationOf, weeklyBalanceOf } from '../game/economy
 import { RESOURCES, RESOURCE_IDS } from '../game/econ/defs.js';
 import {
   bindStateScreens, constructionKey, declareEmbargo, embargoBlockers, industryKey, renderBudget, renderConstruction,
-  renderIndustry, renderPolitics, renderPopulation, renderTrade,
+  renderCultures, renderIndustry, renderPolitics, renderPopulation, renderTrade,
 } from './stateScreens.js';
 import { refreshTooltips } from './tooltip.js';
 import { renderNationOverview, trackOverviewEvents } from './nationOverview.js';
@@ -70,7 +70,8 @@ const TITLES = {
   industry: 'Industry & Production',
   military: 'Military',
   budget: 'Budget',
-  population: 'Peoples',
+  population: 'Population',
+  cultures: 'Cultures',
   politics: 'Government',
   peace: 'Peace Talks',
   diplomacy: 'Diplomacy',
@@ -1161,6 +1162,10 @@ export class Screens {
     return renderBudget(this.game, me, this.uc);
   }
 
+
+  render_cultures(me) {
+    return renderCultures(this.game, me, this.uc);
+  }
 
   render_population(me) {
     return renderPopulation(this.game, me, this.uc);

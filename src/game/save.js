@@ -150,6 +150,8 @@ const NATION_FIELDS = [
   'navy', 'shipsLost',
   // Odak listesi: kabine boş odak yuvalarını doldursun mu (false = hayır).
   'focusAuto',
+  // Kültür politikaları (culturePolicy.js): zorla asimilasyon listesi, iskân.
+  'forcedAssimilation', 'resettlement',
   // Çıkarma (landings.js): düşman başına son deneme haftası.
   'landings',
 ];
@@ -191,8 +193,8 @@ export function serialize(game) {
       // ceviriyor ve yuklenen oyun kesintisiz kosudan dallaniyordu.
       (province.cultures ?? []).map((row) => [row.id, row.share]),
       // Dorduncu alan: ANA YURT. Normalde uretimden tohumla birebir gelir ve
-      // yazilmasi gerekmezdi — ama SURGUN onu siliyor (culture.js
-      // expelCulture). Yazilmazsa yuklenen dunya surgunu geri alir ve
+      // yazilmasi gerekmezdi — ama SURGUN ve TOPLAMA onu siliyor
+      // (culturePolicy.js). Yazilmazsa yuklenen dunya surgunu geri alir ve
       // gitmis bir halk kendi yurdunda yeniden bagisik olur.
       province.homeland ?? -1,
       // Beşinci alan: tarihî çekirdek. Büyük X kurulunca ana yurt çekirdek

@@ -336,6 +336,8 @@ export class Hud {
     };
     $('btn-close-settings').onclick = () => hidePanel(el.settings);
 
+    // Kültür dağılımı çipi kip ve vurgu değişince eşitlenir.
+    game.on('mapmode', () => this.syncCultureChip());
     // Harita modları: sağ alt köşedeki düğme kümesi
     for (const btn of document.querySelectorAll('.mode-btn[data-mode]')) {
       btn.onclick = () => {
@@ -343,6 +345,8 @@ export class Hud {
         for (const other of document.querySelectorAll('.mode-btn[data-mode]')) {
           other.classList.toggle('active', other === btn);
         }
+        // Kültür dağılımı yalnız kültür kipindedir: başka kipe geçince söner.
+        if (btn.dataset.mode !== 'cultures') game.renderer.cultureHighlight = null;
         // Donanma paneli (navyDock) deniz haritasıyla açılıp kapanır.
         game.emit('mapmode', btn.dataset.mode);
         togglePanel(el.rgoLegend, btn.dataset.mode === 'resources');
@@ -1662,7 +1666,7 @@ export class Hud {
         <div class="pv-lines">
           ${line('State', province)}
           ${culture == null ? '' : `<span class="pv-line" data-tip="culture" tabindex="0">
-            <small>Culture</small><b>${escapeHtml(String(culture))}</b></span>`}
+            <small>Culture</small><b>${this.cultureLinks(tile) ?? escapeHtml(String(culture))}</b></span>`}
           ${line('Language', language)}
           ${migration ? line('Migration', migration) : ''}
           ${line('Nation', size)}
@@ -1745,6 +1749,53 @@ export class Hud {
         <button type="button" class="pv-fl-all" data-focus-clear-all${states.length ? '' : ' disabled'}>Clear all</button>
       </div>
     </div>`;
+  }
+
+  /**
+   * Kültür satırı tıklanır: halkın adına basınca kültür haritası o halkın
+   * bütün dünyadaki dağılımını gösterir (renderer.drawCultureHighlight).
+   */
+  cultureLinks(tile) {
+    const world = this.game.world;
+    const mix = (world.provinces?.[tile?.provinceId]?.cultures ?? []).filter((row) => row.share >= 0.05);
+    if (!mix.length) return null;
+    return mix.map((row) => `<button type="button" class="pv-cult" data-culture-hi="${row.id}">${escapeHtml(world.cultures[row.id]?.name ?? '?')}</button>${mix.length > 1 ? ` ${Math.round(row.share * 100)}%` : ''}`).join(' · ');
+  }
+
+  /** Kültür haritasında bir halkın dağılımını açar (çip ✕ ile kapanır). */
+  showCulture(id) {
+    const game = this.game;
+    game.renderer.cultureHighlight = id;
+    const btn = document.querySelector('.mode-btn[data-mode="cultures"]');
+    if (game.renderer.mapMode !== 'cultures' && btn) btn.click();
+    else game.emit('mapmode', 'cultures');
+    game.requestRender();
+  }
+
+  /** Dağılım çipi: hangi halk gösteriliyor, kapat. */
+  syncCultureChip() {
+    const game = this.game;
+    let chip = document.getElementById('culture-chip');
+    if (!chip) {
+      chip = document.createElement('div');
+      chip.id = 'culture-chip';
+      chip.className = 'culture-chip';
+      chip.hidden = true;
+      document.body.appendChild(chip);
+      chip.addEventListener('click', (event) => {
+        if (!event.target.closest('[data-culture-clear]')) return;
+        game.renderer.cultureHighlight = null;
+        this.syncCultureChip();
+        game.requestRender();
+      });
+    }
+    const id = game.renderer.cultureHighlight;
+    const culture = id != null ? game.world?.cultures?.[id] : null;
+    const on = Boolean(culture) && game.renderer.mapMode === 'cultures';
+    chip.hidden = !on;
+    if (on) {
+      chip.innerHTML = `<i style="background:${culture.color}"></i><b>${escapeHtml(culture.name)}</b><span>share in every province, ours and abroad</span><button type="button" data-culture-clear aria-label="Clear">✕</button>`;
+    }
   }
 
   quickBuildHtml(area) {
@@ -2078,6 +2129,12 @@ export class Hud {
       toggle.onclick = () => {
         this.quickBuildOpen = !this.quickBuildOpen;
         this.showTile(game.selected);
+      };
+    }
+    for (const btn of this.el.sheetBody.querySelectorAll('[data-culture-hi]')) {
+      btn.onclick = (event) => {
+        event.stopPropagation();
+        this.showCulture(Number(btn.dataset.cultureHi));
       };
     }
     const focusList = this.el.sheetBody.querySelector('[data-focus-list]');

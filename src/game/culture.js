@@ -56,6 +56,7 @@ import { setProvinceOwner } from './provinces.js';
 import { assimilationFocusWeekly, focusBonus } from './focus.js';
 import { eraProgress } from './calendar.js';
 import { worldNationalism } from './worldEvents.js';
+import { deport, deportBlockers } from './culturePolicy.js';
 
 export const CULTURE = {
   /** Huzursuzluk olcegi 0-10 (nufus ekranindaki militanlikla ayni dil). */
@@ -93,6 +94,11 @@ export const CULTURE = {
   EXPEL_INFAMY_PER_POP: 40000 * POPULATION_SCALE,
   /** Surgun en az bu kadar sohret uretir: kucuk halki surmek de ucuz degildir. */
   EXPEL_INFAMY_MIN: 8,
+  // Kültür politikaları (culturePolicy.js): rezervasyon state'inin ve zorla
+  // asimilasyonun huzursuzluğu, zorla asimilasyonun haftalık erime payı.
+  RESERVATION_UNREST: 3,
+  FORCED_UNREST: 2.5,
+  FORCED_RATE: 0.002,
 
   /** Kulturu kabul etmek icin gereken asgari ulusal nufus payi. */
   ACCEPT_MIN_SHARE: 0.08,
@@ -257,12 +263,22 @@ export function unrestBreakdown(world, province, nation, { occupied = 0, turn = 
   const rights = ((lawOption(nation, 'citizenship').ceiling ?? 1) - 0.7) / 0.3 * foreign;
   // Entegrasyon odağı (focus.js) yatıştırır.
   const focus = focusBonus(econ, 'unrest');
+  // REZERVASYON ve ZORLA ASİMİLASYON (culturePolicy.js): toplanan halkın
+  // state'i kaynar; çocukları elinden alınan halk her yerde homurdanır.
+  const reservation = econ.reservation >= 0
+    && province.cultures?.some((row) => row.id === econ.reservation) ? CULTURE.RESERVATION_UNREST : 0;
+  let forced = 0;
+  for (const id of nation.forcedAssimilation ?? []) {
+    forced += (province.cultures?.find((row) => row.id === id)?.share ?? 0) * CULTURE.FORCED_UNREST;
+  }
   const policy = Math.max(0.2, 1 + mod(nation, 'unrest'));
   const target = Math.max(0, Math.min(
     CULTURE.MAX_UNREST,
-    (culture + conquest + war + occupation + backlash + levy - welfare - rights - focus) * policy,
+    (culture + conquest + war + occupation + backlash + levy + reservation + forced - welfare - rights - focus) * policy,
   ));
-  return { target, culture, conquest, war, occupation, backlash, levy, welfare, rights, focus, policy, foreign, era };
+  return {
+    target, culture, conquest, war, occupation, backlash, levy, reservation, forced, welfare, rights, focus, policy, foreign, era,
+  };
 }
 
 /**
@@ -361,6 +377,38 @@ function assimilateFocus(world, province, nation, unrest) {
 }
 
 /**
+ * ZORLA ASİMİLASYON (culturePolicy.js): ilan edilen halkın payı haftada
+ * FORCED_RATE oranında ana kültüre geçer. Ne sakinlik ister ne ana yurt
+ * kilidine takılır: devletin zoru budur; bedeli huzursuzluk ve şöhrettir.
+ * @returns {boolean} çoğunluk değişti mi
+ */
+function assimilateForced(world, province, nation) {
+  const forced = nation.forcedAssimilation;
+  const primary = nation.culture;
+  const rows = province.cultures;
+  if (!forced?.length || !rows?.length || primary < 0) return false;
+  let move = 0;
+  const next = rows.map((row) => {
+    if (!forced.includes(row.id) || isAccepted(nation, row.id)) return { ...row };
+    const give = row.share * CULTURE.FORCED_RATE;
+    move += give;
+    return { id: row.id, share: row.share - give };
+  });
+  if (!(move > 0)) return false;
+  const host = next.find((row) => row.id === primary);
+  if (host) host.share += move;
+  else next.push({ id: primary, share: move });
+  next.sort((a, b) => b.share - a.share || a.id - b.id);
+  const before = province.culture;
+  province.cultures = next.filter((row) => row.share > 1e-6);
+  province.culture = province.cultures[0]?.id ?? before;
+  province.econ.assimilated = (province.econ.assimilated ?? 0) + move;
+  if (province.culture === before) return false;
+  for (const idx of province.tileIdx ?? []) world.tiles[idx].culture = province.culture;
+  return true;
+}
+
+/**
  * Bir kumenin haftalik kultur isleyisi. `runProvinces` icinden, sahiplik ve
  * isgal payi zaten hesaplanmisken cagrilir.
  *
@@ -404,7 +452,8 @@ export function runProvinceCulture(world, province, nation, { occupied, turn }) 
   if (occupied <= 0) {
     const drift = assimilate(world, province, nation, { unrest: econ.unrest, turn });
     const focused = assimilateFocus(world, province, nation, econ.unrest);
-    recolored = drift || focused;
+    const forced = assimilateForced(world, province, nation);
+    recolored = drift || focused || forced;
   }
   return { recolored, revolt: econ.revoltWeeks >= CULTURE.REVOLT_WEEKS };
 }
@@ -588,7 +637,7 @@ export function brokenByCulture(world, nation) {
     share: mix.find((item) => item.id === row.id)?.share ?? 0,
     accept: acceptBlockers(world, nation, row.id),
     release: releaseBlockers(world, nation, row.id),
-    expel: expelBlockers(world, nation, row.id),
+    expel: deportBlockers(world, nation, row.id),
   })).sort((a, b) => b.provinces.length - a.provinces.length || a.id - b.id);
 }
 
@@ -669,92 +718,6 @@ export function releaseToKin(game, nation, cultureId) {
 }
 
 /** Surgunu engelleyen ne varsa. Bos dizi = surulebilir. */
-export function expelBlockers(world, nation, cultureId) {
-  // Surgun artik yalniz kirik kumeye degil, yasayan bir ulusal harekete de
-  // acik: hareketi kokunden sokmenin en pahali yolu (bkz. movements.js).
-  if (!brokenProvinces(world, nation, cultureId).length
-    && !movementProvinces(world, nation, cultureId).length) {
-    return ['No broken province or national movement of theirs to clear.'];
-  }
-  if (cultureId === nation.culture) return ['They are our own people.'];
-  if (isAccepted(nation, cultureId)) return ['They are an accepted culture of this state.'];
-  return [];
-}
-
-/**
- * SURGUN. Halki butun topraklarimizdan cikarir: paylari silinir, o paya
- * denk gelen nufus GIDER. Kume temizlenir ama bos kalir — surgun toprak
- * kazandirmaz, yalniz sorunu kaldirir.
- *
- * Bedeli sohrettir ve surulen insan sayisiyla olculur. Kucuk bir halki
- * surmek de ucuz degildir (EXPEL_INFAMY_MIN): olcek degil, eylem cezalidir.
- */
-export function expelCulture(game, nation, cultureId) {
-  const world = game.world;
-  if (expelBlockers(world, nation, cultureId).length) return 0;
-  let expelled = 0;
-  const recolored = [];
-  for (const province of world.provinces ?? []) {
-    if (province.owner !== nation.id || !province.econ) continue;
-    const rows = province.cultures;
-    if (!rows?.length) continue;
-    const row = rows.find((item) => item.id === cultureId);
-    if (!row || row.share <= 0) continue;
-    const gone = Math.round((province.econ.population ?? 0) * row.share);
-    expelled += gone;
-    province.econ.population = Math.max(0, (province.econ.population ?? 0) - gone);
-    const kalan = rows.filter((item) => item.id !== cultureId);
-    if (!kalan.length) {
-      // Bastan asagi o halkin oldugu kume bos kalir: yonetenin kulturu yazilir.
-      province.cultures = [{ id: nation.culture, share: 1 }];
-    } else {
-      const total = kalan.reduce((sum, item) => sum + item.share, 0);
-      province.cultures = kalan.map((item) => ({ id: item.id, share: item.share / total }));
-    }
-    province.cultures.sort((a, b) => b.share - a.share || a.id - b.id);
-    const before = province.culture;
-    province.culture = province.cultures[0]?.id ?? before;
-    if (province.culture !== before) {
-      for (const idx of province.tileIdx ?? []) world.tiles[idx].culture = province.culture;
-      recolored.push(province);
-    }
-    // Halk gitti, ana yurt kaydi da gitti: burasi artik kimsenin yurdu degil.
-    if (province.homeland === cultureId) province.homeland = -1;
-    // Yalniz BU halkin kirdigi kumenin isareti silinir: baska bir halk
-    // yuzunden kirilmis kume, onlar surulunce duzelmis olmaz.
-    if (province.econ.brokenCulture === cultureId) {
-      province.econ.brokenSince = null;
-      province.econ.brokenCulture = null;
-      province.econ.unrest = Math.min(province.econ.unrest ?? 0, CULTURE.AFTER_REVOLT_UNREST);
-    }
-  }
-  if (!expelled) return 0;
-  const cost = Math.max(
-    CULTURE.EXPEL_INFAMY_MIN, expelled / CULTURE.EXPEL_INFAMY_PER_POP,
-  );
-  addInfamy(nation, cost);
-  world.cultureExpulsions = (world.cultureExpulsions ?? 0) + 1;
-  if (recolored.length) {
-    const tiles = [];
-    for (const province of recolored) {
-      for (const idx of province.tileIdx ?? []) tiles.push(world.tiles[idx]);
-    }
-    game.renderer?.invalidateTiles(tiles.filter(Boolean));
-  }
-  const name = world.cultures?.[cultureId]?.name ?? 'a foreign people';
-  if (nation.id === game.turns?.playerNation) {
-    announce(game, nation, {
-      kind: 'CRISIS', tier: TIER.MAJOR, key: `expel-${cultureId}`,
-      title: `The ${name} are driven out`,
-      detail: `${Math.round(expelled / POPULATION_SCALE).toLocaleString('en-US')} people`
-        + ' are gone and their provinces are quiet — and empty. The world has'
-        + ' taken note of what we did.',
-    });
-  }
-  game.emit?.('provinces', null);
-  return expelled;
-}
-
 /**
  * YZ karari: kirik kume ne olacak? Oyuncu ile AYNI kapilardan gecer.
  * Sira ucuzdan pahaliya: ortak et, birak, sur. Surgun son caredir ve
@@ -781,7 +744,8 @@ export function manageBrokenProvinces(game, nation) {
     if (group.expel.length) continue;
     const eldest = Math.min(...group.provinces.map((p) => p.econ.brokenSince ?? turn));
     if (turn - eldest < CULTURE.REVOLT_COOLDOWN * 2) continue;
-    if (expelCulture(game, nation, group.id)) return { action: 'expel', culture: group.id };
+    // Sürgün artık halkı yok etmez, soydaşa/komşuya gönderir (culturePolicy).
+    if (deport(game, nation, group.id)) return { action: 'expel', culture: group.id };
   }
   return null;
 }

@@ -45,6 +45,7 @@ import {
 import { initPolitics, runPolitics } from './politics.js';
 import { runNavy } from './navy.js';
 import { runSeaLanes } from './seaLanes.js';
+import { runResettlements } from './culturePolicy.js';
 import { runMovements } from './movements.js';
 import { releaseDraw } from './levy.js';
 import { updatePockets } from './pockets.js';
@@ -617,6 +618,8 @@ export class TurnManager {
     decayInfamy(world);
     // Sıra önemli: sahiplik savaşta değişmiş olabilir, önce işçiler yeniden dağıtılır.
     runProvinces(this.game);
+    // İskân göçü (culturePolicy): boşalmış province'ler kendi halkımızla dolar.
+    runResettlements(this.game);
     // Ulusal hareketler kumelerin bu haftaki huzursuzlugunu okur; kopus
     // sahiplik degistirdigi icin isciler bundan SONRA dagitilir.
     runMovements(this.game);

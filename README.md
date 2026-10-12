@@ -408,15 +408,35 @@ dünyanın aldığı oranda değerlidir. Satırda kur, ya da "en iyi N"; AUTO
 kıtlığa göre kurar. Gıda her state'te nüfus × verimden doğar; çiftlik o
 state'in gıdasını %25 artırır, yani kazancı nüfusa ve toprağa bağlıdır.
 
-### Population ekranı
+### Population ve Cultures ekranları
 
-Tek döküm: `src/game/peoplesView.js`. Halklar tablosu (pay, yaşadığı state,
-huzursuzluk, hareket aşaması) ve **Kabul önizlemesi**: halk geçici olarak kabul
-edilmiş sayılır, `nationManpower` ve `unrestBreakdown` yeniden okunur — düğme
-kilitliyken de görünür. Huzursuz state'ler sebepleriyle (yabancı yönetim,
-taze fetih, savaş yorgunluğu; tüketim malı ve haklar yatıştırır). Ulusal
-hareketler eylemleriyle, büyüme çarpanlarıyla (`provinces.growthFactors`,
-`growthRateOf` aynı çarpanları okur).
+Tek döküm: `src/game/peoplesView.js`. **Population** nüfusun kendisidir:
+büyüme çarpanları (`provinces.growthFactors`, `growthRateOf` aynı çarpanları
+okur), okuryazarlık ve eğitim yasası, insan gücü ve halkının birleşmesi.
+
+**Cultures** (sekmesi Population'ın yanında, kısayolu yok) ülkedeki bütün
+halklardır. Solda halklar tablosu (pay, yaşadığı state, huzursuzluk, hareket
+aşaması, politika rozetleri) ve huzursuz state'ler sebepleriyle; satıra
+tıklanınca sağda halkın kartı açılır: nerede yaşadığı (state çipleri tıklanınca
+haritada gider), soydaş devleti ve üç basamaklı politika zinciri:
+
+1. **Haklar** — kabul; önizleme halk geçici olarak kabul edilmiş sayılıp
+   `nationManpower` ve `unrestBreakdown` yeniden okunarak kurulur.
+2. **Eritme** — en kalabalık state'lerine asimilasyon odağı; **zorla
+   asimilasyon** (yeni doğanlar bizden sayılır: yılda ~%10'u erir, ana yurtta
+   da; yaşadıkları yerde huzursuzluk, ilanında şöhret).
+3. **Uzaklaştırma** — yalnız ayaklanan ya da hareketi Agitation'a varmış
+   halka: soydaşa bırakma, **sürgün** (halk soydaş devlete, yoksa komşulara
+   gider — varış devleti en çok kendi nüfusu kadarını alır) ve **toplama**
+   (tek state'e rezervasyon: öteki state'ler temizlenir, orada huzursuzluk +3).
+
+Sürgün ve toplamanın boşalttığı province'ler **Empty land** panelinde durur:
+**iskân** kendi halkımızdan göçmeni en kalabalık province'lerden iki yılda
+taşır (altın peşin; plan donörlerin verebileceğinden fazlasını vaat etmez).
+Altında ulusal hareketler, bütün state odakları (kabine anahtarıyla) ve
+vatandaşlık yasası. **Show on map** ya da province panelindeki halk adı, kültür
+haritasında o halkın her province'teki payını (bizde ve yurt dışında) gösterir.
+Kod: `src/game/culturePolicy.js`.
 
 ### Klavye
 

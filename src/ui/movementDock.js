@@ -11,7 +11,8 @@
 import {
   MOVEMENT, crackdown, declareMartialLaw, grantConcessions, movementView, releaseAsVassal,
 } from '../game/movements.js';
-import { acceptCulture, expelCulture } from '../game/culture.js';
+import { acceptCulture } from '../game/culture.js';
+import { deport } from '../game/culturePolicy.js';
 import { formatPopulation } from '../game/economy.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
@@ -118,7 +119,7 @@ export class MovementDock {
         ${button('crackdown', `Crush · ${formatPopulation(a.crackdown.dead)}`, a.crackdown,
     `Permanent: ${formatPopulation(a.crackdown.dead)} of them die. −${a.crackdown.drop}% progress, heavy infamy, lost stability, and our other peoples grow bolder.`)}
         ${button('expel', 'Expel', a.expel,
-    `Permanent: drive all ${formatPopulation(a.expel.people)} of them out of our lands. The movement ends with them; the world will not forget it.`)}
+    `Permanent: drive all ${formatPopulation(a.expel.people)} of them across the border to their kin or a neighbour. The movement ends with them; the world will not forget it.`)}
       </div>
     </section>`;
   }
@@ -163,7 +164,7 @@ export class MovementDock {
       accept: () => acceptCulture(game, nation, cultureId),
       vassal: () => releaseAsVassal(game, nation, cultureId),
       crackdown: () => crackdown(game, nation, cultureId),
-      expel: () => expelCulture(game, nation, cultureId),
+      expel: () => deport(game, nation, cultureId),
     }[id];
     if (run?.()) {
       game.emit?.('economy', nation.economy);

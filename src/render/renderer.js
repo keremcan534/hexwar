@@ -2119,6 +2119,8 @@ export class Renderer {
       this.sea.drawZones(ctx, world, rect, state.playerNation);
       this.sea.drawLanes(ctx, world, rect, state.playerNation);
     }
+    // Kültür kipinde seçili halkın dağılımı (Cultures ekranı / province paneli).
+    if (this.mapMode === 'cultures') this.drawCultureHighlight(ctx, world, rect);
     // ORDU SECILIYKEN EYALET VURGUSU YOK. Secili kare panelin baglamidir
     // (ordunun durdugu yer) ama haritada eyalet cercevesi cizmek, oyuncuya
     // "eyalet de secildi" diyordu (Kerem: asker seciliyken state secme bugu).
@@ -2556,6 +2558,52 @@ export class Renderer {
    * Yalnız yeterince yakında çizilir; uzak zoomda çizgi aralığı piksel altına
    * inip moiré üretir ve renk çamura döner.
    */
+  /**
+   * KÜLTÜR DAĞILIMI (Kerem 2026-10-12: "kültür mapmodunun dağılımını
+   * geliştirebiliriz"). Seçili halkın (`cultureHighlight`) her province'teki
+   * payı, sınır tanımadan: payı olmayan yer kararır, payı olan yer onun
+   * renginde payı kadar doygun. Yurt dışındaki soydaşlar da görünür. Yollar
+   * altı pay kovasında toplanır ve yalnız halk, hafta ya da sınır ağı
+   * değişince kurulur; kare başına kova başına bir doldurma.
+   */
+  drawCultureHighlight(ctx, world, rect) {
+    const id = this.cultureHighlight;
+    if (id == null || this.mapMode !== 'cultures') return;
+    const culture = world.cultures?.[id];
+    if (!culture) return;
+    const mesh = this.borderMeshFor(world);
+    const key = `${id}:${world.turn ?? 0}`;
+    if (this.cultureHi?.key !== key || this.cultureHi.mesh !== mesh) {
+      const index = this.meshIndex(mesh);
+      const buckets = Array.from({ length: 6 }, () => new Path2D());
+      const none = new Path2D();
+      for (const [pid, entry] of index.provinces) {
+        const share = world.provinces?.[pid]?.cultures?.find((row) => row.id === id)?.share ?? 0;
+        const path = share >= 0.01 ? buckets[Math.min(5, Math.floor(share * 6))] : none;
+        for (const rid of entry.regions) {
+          for (const loop of this.regionLoops(mesh.regions[rid])) appendPts(path, loop, true, 0);
+        }
+      }
+      this.cultureHi = { key, mesh, buckets, none };
+    }
+    const P = world.wrapWidth || 0;
+    ctx.save();
+    for (const dx of P ? [-P, 0, P] : [0]) {
+      ctx.save();
+      ctx.translate(dx, 0);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = 'rgba(6, 9, 11, 0.66)';
+      ctx.fill(this.cultureHi.none);
+      ctx.fillStyle = culture.color;
+      this.cultureHi.buckets.forEach((path, i) => {
+        ctx.globalAlpha = 0.32 + 0.12 * i;
+        ctx.fill(path);
+      });
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
   drawCultureMix(ctx, world, tiles, scale, rect) {
     if (scale < CULTURE_STRIPE_MIN_ZOOM) return;
     // Tarama province'in YUMUŞAK çokgenine kırpılır: hex yoluna kırpılınca

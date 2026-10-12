@@ -257,7 +257,10 @@ sub('4. Canli <-> yuklenen durum: kayda hic girmeyen alanlar');
     /^turns\.(phase|lastProfile)$/, // tani
     /^units\[\]\.lastRetreat$/, // yalniz yazilir, okuyan yok
     /^nations\[\]\.regimentsKilled$/, // oyuncu duyurusunun haftalik sayaci (events.js sifirlar)
-    /^world\.(navyState|seaZones)$/, // donanma: haftalik ve tohumdan turetilir (navy.js, seaZones.js)
+    // Donanma: haftalik ve tohumdan turetilir (navy.js, seaZones.js). Alt
+    // alanlar da (abluka dizisi ayni hafta el degistiren kiyida bayatlar ama
+    // ekonomiden once her hafta yeniden kurulur; okunmadan tazelenir).
+    /^world\.(navyState|seaZones)([.[]|$)/,
   ];
   // Tembel kurulan kayitlar: bir tarafta hic yok, obur tarafta bos varsayilan.
   const LAZY = [/^nations\[\]\.(delegation|training)$/];
