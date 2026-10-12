@@ -15,7 +15,7 @@ import {
 } from './peace.js';
 import { INFAMY_COALITION } from './infamy.js';
 import {
-  UNIT_TYPES, isConscript, isMoving, regimentCount, unitAvailable, unitsOn,
+  SHIP_CLASSES, UNIT_TYPES, isConscript, isMoving, regimentCount, shipClassOf, unitAvailable, unitsOn,
 } from './units.js';
 import { destinationOf, orderMove } from './movement.js';
 import { controllerOf } from './control.js';
@@ -38,7 +38,9 @@ import { nodeNeighbors } from '../world/provinceGraph.js';
 import { autoFocus } from './stateFocus.js';
 import { alliesOf } from './alliances.js';
 import { worldWarTension } from './worldEvents.js';
-import { shipsOf } from './navy.js';
+import {
+  classIndexOf, fleetEquivalent, isObsolete, scrapShips, shipsOf,
+} from './navy.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
 // 1.4 -> 1.6 -> 1.8 (2026-09-04: kusatma ve bos cepheye yuruyus savaslari
@@ -350,12 +352,30 @@ function spend(game, nation) {
     + trainingCount(nation) - trainingCount(nation, 'WARSHIP');
 
   // Donanma artık abluka ve geçiş kaybıyla ölçülen bir kaldıraçtır (navy.js):
-  // hedef kıyı uzunluğu, sanayi ve savaştaki düşman filosuyla büyür.
-  const fleet = shipsOf(nation).length + trainingCount(nation, 'WARSHIP');
-  if (fleet < desiredFleet(world, nation)
+  // hedef kıyı uzunluğu, sanayi ve savaştaki düşman filosuyla büyür. Hedef
+  // gemi EŞDEĞERİdir (eski gövde sınıf gücü oranında sayılır); gövde tavanı
+  // ayrıdır, bakımı ve mürettebatı o tutar.
+  const building = trainingCount(nation, 'WARSHIP');
+  const fleet = fleetEquivalent(nation) + building;
+  const hulls = shipsOf(nation).length + building;
+  const wanted = desiredFleet(world, nation);
+  if (fleet < wanted && hulls < fleetCap(nation)
     && equipmentStock(nation, 'ships') >= UNIT_EQUIPMENT.WARSHIP.ships
     && canAfford(nation, UNIT_COSTS.WARSHIP)) {
     game.turns.buyUnit(nation, 'WARSHIP');
+  }
+  // MODERNLEŞME (dretnot anı): barışta çeyrekte bir, gövde tavanı doluysa ya
+  // da filo hedefi tutuyorsa en eski gövde hurdaya; boşalan yere yeni sınıf
+  // kurulur. Yokken eski zırhlılar tavanı tutuyor, YZ hiç dretnot kurmuyordu.
+  if (!atWarNow && (turn + nation.id) % 13 === 0) {
+    const old = shipsOf(nation).filter((ship) => isObsolete(nation, ship));
+    if (old.length && (hulls >= fleetCap(nation) || fleet >= wanted)) {
+      const oldest = old.reduce((a, b) => ((b.gen ?? 0) < (a.gen ?? 0)
+        || ((b.gen ?? 0) === (a.gen ?? 0) && b.hp < a.hp) ? b : a));
+      scrapShips(world, nation, [oldest]);
+      noteDelegated(game, nation, 'recruitment', `Scrapped the obsolete ${shipClassOf(oldest).name.toLowerCase()} ${oldest.name}.`,
+        `A ${SHIP_CLASSES[classIndexOf(nation)].name.toLowerCase()} takes her berth.`);
+    }
   }
 
   for (let i = 0; i < 3; i++) {
@@ -489,14 +509,22 @@ export function desiredFleet(world, nation) {
   if (!coastal) return 0;
   const ic = nation.economy?.ic?.total ?? 0;
   // Savaşta bütün kıyılı düşmanların filosu birlikte sayılır: iki düşmana
-  // karşı tek filonun %80'ini kuran ülke ikisine birden yeniliyordu.
+  // karşı tek filonun %80'ini kuran ülke ikisine birden yeniliyordu. Düşman
+  // gemisi bizim sınıfımız cinsinden sayılır: dretnot iki eski zırhlıdır.
+  const top = SHIP_CLASSES[classIndexOf(nation)].power;
   let enemyShips = 0;
   for (const other of world.nations) {
     if (!other.alive || other.id === nation.id || !atWar(world, nation.id, other.id)) continue;
-    if (other.economy?.coastal) enemyShips += shipsOf(other).length;
+    if (!other.economy?.coastal) continue;
+    for (const ship of shipsOf(other)) enemyShips += shipClassOf(ship).power / top;
   }
   const target = Math.max(Math.round(coastal * 0.25 + ic / 60), Math.ceil(enemyShips * 0.8));
-  return Math.max(1, Math.min(target, 4 + Math.round(ic / 25)));
+  return Math.max(1, Math.min(target, fleetCap(nation)));
+}
+
+/** Gövde tavanı: bakım ve mürettebat sanayiyle ölçeklenir. */
+export function fleetCap(nation) {
+  return 4 + Math.round((nation.economy?.ic?.total ?? 0) / 25);
 }
 
 function adjacentEnemy(world, unit) {

@@ -15257,8 +15257,12 @@ body.picker-open .navy-dock { display: none; }
   cursor: pointer;
 }
 .nd-close:hover { border-color: var(--gold); color: var(--text); }
-.nd-status { flex: none; margin: 0; padding: 6px 12px; overflow: hidden; background: rgba(120, 160, 130, 0.07); color: var(--text-mute); font-size: 12px; white-space: nowrap; text-overflow: ellipsis; cursor: help; }
+/* Sabit yükseklik: hurda düğmesi gelip gidince satır boyu oynamasın. */
+.nd-status { display: flex; flex: none; align-items: center; gap: 8px; height: 30px; padding: 0 10px 0 12px; background: rgba(120, 160, 130, 0.07); color: var(--text-mute); font-size: 12px; }
+.nd-status > span { flex: 1; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; cursor: help; }
 .nd-status.bad { background: var(--red-wash); color: #ff8f6e; font-weight: 600; }
+.nd-scrap { flex: none; min-height: 20px; padding: 1px 8px; font-size: 11px; font-weight: 500; }
+.nd-scrap.confirm { border-color: rgba(214, 74, 58, 0.8); color: #ff8f6e; }
 .nd-empty { margin: 0; padding: 10px 12px; color: var(--text-mute); font-size: 12px; line-height: 1.45; }
 
 .nd-bar {

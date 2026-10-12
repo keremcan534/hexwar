@@ -233,6 +233,8 @@ export function serialize(game) {
     // Son deniz muharebeleri (navy.js, 26 hafta): donanma panelinin geçmişi.
     // Hâkimiyet ve abluka türetilir, raporlar türetilemez.
     navyReports: world.navyState?.reports ?? [],
+    // Her gemi sınıfının dünyadaki ilk gemisi (dretnot anı): bir kez duyurulur.
+    navyFirsts: world.navyFirsts ?? {},
     // Birim kimlik sayaci (bkz. units.unitIdCursor).
     unitSystem: { nextId: unitIdCursor() },
     tiles,
@@ -727,6 +729,7 @@ export function deserialize(game, data) {
   }
   // Deniz durumu türetilmiştir (hâkimiyet, abluka): ekran ve ilk haftanın
   // ekonomisi boş tablo okumasın.
+  world.navyFirsts = data.navyFirsts && typeof data.navyFirsts === 'object' ? data.navyFirsts : {};
   refreshNavyState(world).reports = Array.isArray(data.navyReports) ? data.navyReports : [];
   game.setSpeed(0);
 

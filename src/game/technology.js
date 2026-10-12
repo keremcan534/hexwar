@@ -195,9 +195,11 @@ export const TECHNOLOGIES = {
   navy: {
     Shipbuilding: [
       t('pre_dreadnoughts', 'Pre-Dreadnoughts', 1901, { naval: 0.06 }, 'Steel battleships with mixed batteries.'),
-      t('dreadnoughts', 'Dreadnoughts', 1906, { naval: 0.15 }, 'All big guns, turbine-driven.'),
+      // Sınıf yükseltir (navy.js SHIP_CLASSES), 'naval' değil: eski gövdeyi
+      // güçlendirmez, ilk dretnot herkesin filosunu eskitir.
+      t('dreadnoughts', 'Dreadnoughts', 1906, { shipClass: 1 }, 'All big guns, turbine-driven. New warships are dreadnoughts; every older battleship is obsolete.'),
       t('submarines', 'Submarines', 1914, { naval: 0.10 }, 'The torpedo boat that hides under the sea.'),
-      t('aircraft_carriers', 'Aircraft Carriers', 1924, { naval: 0.12, air: 0.05 }, 'An airfield that sails with the fleet.'),
+      t('aircraft_carriers', 'Aircraft Carriers', 1924, { shipClass: 1, air: 0.05 }, 'An airfield that sails with the fleet. New warships are carrier groups; battleships are outclassed.'),
       t('radar', 'Radar', 1937, { naval: 0.10, defense: 0.03 }, 'Seeing through night and fog.'),
     ],
     'Naval Doctrine': [
@@ -515,6 +517,8 @@ export function researchPriorities(nation) {
   weights.food = (economy.resources?.FOOD?.ratio ?? 1) < 1 ? 2.5 : 0.8;
   weights.naval = economy.coastal ? ((economy.blockade ?? 0) > 0 ? 2.5 : 1) : 0.2;
   weights.ironclad = economy.coastal ? 0.1 : 0;
+  // Bir sınıf eskiden 'naval +0.15'ti: değerleme aynı ölçekte kalır.
+  weights.shipClass = 0.15 * weights.naval;
   weights.research = 1.3;
   // Açılan kolun gücü: savaşta ve sanayisi olan ülkede değerli.
   const industrial = (economy.ic?.total ?? 0) >= 20;

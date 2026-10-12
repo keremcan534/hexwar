@@ -8,7 +8,8 @@
 // yerinde önizler; satırın üstünde durmak bölgeyi haritada işaretler.
 
 import {
-  NAVY_PRIORITIES, NAVY_STEPS, SQUADRON, navyView, resetZonePriorities, setZonePriority,
+  NAVY_PRIORITIES, NAVY_STEPS, SCRAP_REFUND, SQUADRON, navyView, resetZonePriorities, scrapObsolete,
+  setZonePriority,
 } from '../game/navy.js';
 import { linePriorityOf } from '../game/econ/industry.js';
 import { tipAttr } from './kit.js';
@@ -33,6 +34,8 @@ export class NavyDock {
     this.game = game;
     this.preview = null;
     this.focus = null;
+    this.confirmScrap = false;
+    this.confirmTimer = 0;
     this.root = document.createElement('aside');
     this.root.className = 'navy-dock';
     this.root.id = 'navy-dock';
@@ -103,7 +106,7 @@ export class NavyDock {
   html(view) {
     const head = `<header class="nd-head">
         <span class="nd-title">Navy</span>
-        <span class="nd-sum"${tipAttr({ text: `Fleet\n${view.total} warships: ${view.atSea} at sea, ${view.sailing} under way, ${view.inPort} in port${view.repairing ? ` (${view.repairing} repairing)` : ''}${view.withdrawn ? `, ${view.withdrawn} withdrawn after a defeat or to avoid a stronger fleet (back in a few weeks)` : ''}.\nShips are built on the Military screen (Naval) and need ships equipment from the dockyards.` })}>
+        <span class="nd-sum"${tipAttr({ text: `Fleet\n${view.total} warships: ${view.atSea} at sea, ${view.sailing} under way, ${view.inPort} in port${view.repairing ? ` (${view.repairing} repairing)` : ''}${view.withdrawn ? `, ${view.withdrawn} withdrawn after a defeat or to avoid a stronger fleet (back in a few weeks)` : ''}.${view.classes.length ? `\n${view.classes.map((c) => `${c.count} ${c.count === 1 ? c.name.toLowerCase() : c.plural}`).join(', ')}. New hulls are ${view.current.plural}.` : ''}\nShips are built on the Military screen (Naval) and need ships equipment from the dockyards.` })}>
           <b>${view.total}</b> ships · ${view.atSea} at sea${view.sailing ? ` · ${view.sailing} under way` : ''}${view.repairing ? ` · ${view.repairing} repairing` : ''}${view.withdrawn ? ` · ${view.withdrawn} withdrawn` : ''}
         </span>
         <button class="k-btn sm" type="button" data-nd-auto${Object.keys(this.me()?.navy?.zones ?? {}).length
@@ -114,9 +117,15 @@ export class NavyDock {
     // Durum satırı HEP vardır: abluka başlayıp bitince gelip giden satır
     // altındaki çubuğu ve listeyi 30 piksel oynatıyordu (8x jitter sondası).
     const blockaded = view.blockade > 0.01;
-    const blockade = `<p class="nd-status${blockaded ? ' bad' : ''}"${tipAttr({ text: 'Blockade\nEnemy warships holding the seas off your coast cut sea trade (with partners you do not border) by their share. Win the sea back, or trade by land.' })}>${blockaded
+    // Eskimiş gövde (dretnot anı): hurdaya ayırma iki tık ister, yıkıcıdır.
+    const ratio = (cls) => Math.round(cls.power / view.current.power * 100);
+    const oldest = view.classes[view.classes.length - 1];
+    const scrap = view.obsolete
+      ? `<button class="k-btn xs nd-scrap${this.confirmScrap ? ' confirm' : ''}" type="button" data-nd-scrap${tipAttr({ text: `Scrap obsolete ships\n${view.obsolete} of your warships are older than the ${view.current.name.toLowerCase()} you can now build: ${oldest ? `${oldest.plural} fight at ${ratio(oldest)}% of one` : 'they fight weaker'}, yet cost the same upkeep and crew. Scrapping sends the crews home and returns ${Math.round(SCRAP_REFUND * 100)}% of the ships equipment.` })}>${this.confirmScrap ? `Confirm: scrap ${view.obsolete}` : `Scrap ${view.obsolete} obsolete`}</button>`
+      : '';
+    const blockade = `<div class="nd-status${blockaded ? ' bad' : ''}"><span${tipAttr({ text: 'Blockade\nEnemy warships holding the seas off your coast cut sea trade (with partners you do not border) by their share. Win the sea back, or trade by land.' })}>${blockaded
       ? `Our coast is blockaded — sea trade −${pct(view.blockade)}`
-      : 'Our coasts are open — sea trade flows'}</p>`;
+      : 'Our coasts are open — sea trade flows'}</span>${scrap}</div>`;
     if (!view.total && !view.rows.length) {
       return `${head}<p class="nd-empty">No coast, no navy.</p>`;
     }
@@ -264,6 +273,25 @@ export class NavyDock {
       const [zoneId, step] = pri.dataset.ndPri.split(':');
       setZonePriority(nation, Number(zoneId), step);
       this.refresh();
+      this.game.requestRender?.();
+      return;
+    }
+    if (event.target.closest?.('[data-nd-scrap]')) {
+      // İki tık: ilki onay ister, dört saniye içinde ikincisi hurdaya ayırır.
+      clearTimeout(this.confirmTimer);
+      if (!this.confirmScrap) {
+        this.confirmScrap = true;
+        this.confirmTimer = setTimeout(() => { this.confirmScrap = false; this.refresh(); }, 4000);
+        this.refresh();
+        return;
+      }
+      this.confirmScrap = false;
+      const count = scrapObsolete(this.game.world, nation);
+      if (count) {
+        this.game.turns?.addLog(`${count} obsolete warship${count === 1 ? '' : 's'} scrapped: the crews go home, the yards take back the steel.`, { kind: 'NAVAL', key: 'scrap' });
+      }
+      this.refresh();
+      this.game.emit?.('economy');
       this.game.requestRender?.();
       return;
     }

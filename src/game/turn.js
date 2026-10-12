@@ -118,6 +118,8 @@ export class TurnManager {
     this.turnJob = null;
     this.rng = makeRng(`${world.seed}-turns`);
     world.turn = 1;
+    // Gemi sınıflarının dünyadaki ilkleri (navy.js commissionShip) kayda girer.
+    world.navyFirsts = {};
     initRelations(world);
     // Province population must exist before the standing army is raised:
     // starting regiments are real residents too, not free abstract manpower.

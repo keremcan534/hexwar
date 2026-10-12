@@ -367,8 +367,15 @@ batarsa onlar da ölür (`src/game/navy.js`, `src/world/seaZones.js`).
     çekilir (fleet in being). Yenilenin o denize giden bütün gemileri altı
     hafta limanda kalır; sağlığı 0.4'ün altına düşen gemi onarıma döner
     (haftada %5, gemi teçhizatı yer; tersanesiz yarı hız).
+- **Gemi sınıfı**: gemi kızağa konduğu günün sınıfını taşır — dretnot öncesi
+  ×1, dretnot ×1.7 (Dreadnoughts, 1906), uçak gemisi grubu ×2.4 (Aircraft
+  Carriers, 1924). Teknoloji eski gövdeyi güçlendirmez; dünyada ilk dretnot
+  denize inince herkesin filosu eskir ve haber adıyla gelir. Eskiyen gemiler
+  panelin durum satırından iki tıkla hurdaya ayrılır (mürettebat eve, gemi
+  teçhizatının %30'u depoya). Military ekranındaki kart kızağa konacak sınıfı
+  söyler (*Warship: Dreadnought*).
 - Amiraller en kalabalık denizlere atanır (Military ekranı); panelin altında
-  son muharebeler durur.
+  son muharebe durur.
 
 ### İnşaat ve kalkınma
 

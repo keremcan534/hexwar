@@ -24,7 +24,7 @@ import { mod } from './modifiers.js';
 import { atWar } from './diplomacy.js';
 import { isAllied } from './alliances.js';
 import { BRANCH, addExperience, generalModifier, officersOf } from './command.js';
-import { applyArmyLosses, soldiersOf } from './units.js';
+import { SHIP_CLASSES, applyArmyLosses, shipClassOf, soldiersOf } from './units.js';
 import { releaseDraw } from './levy.js';
 import {
   seaZonesOf, zoneDistances, zonesOfProvince,
@@ -118,11 +118,13 @@ export function navyState(world) {
 export function commissionShip(world, nation, { home, hp = 1, draws = [], turn = 0 }) {
   const navy = ensureNavy(nation);
   const id = navy.nextId++;
+  const gen = classIndexOf(nation);
   const ship = {
     id,
     name: shipName(world, nation, id),
     hp: Math.max(0.1, Math.min(1, hp)),
     built: turn,
+    gen,
     home,
     zone: -1,
     at: -1,
@@ -131,7 +133,61 @@ export function commissionShip(world, nation, { home, hp = 1, draws = [], turn =
     draws,
   };
   navy.ships.push(ship);
+  // DÜNYADA İLK: yeni sınıfın ilk gemisi bir kez, adıyla duyurulur (announce).
+  world.navyFirsts ??= {};
+  if (gen > 0 && !world.navyFirsts[gen]) {
+    world.navyFirsts[gen] = { nation: nation.id, ship: ship.name, turn, announced: false };
+  }
   return ship;
+}
+
+// ------------------------------------------------------------ SINIF ---
+
+/** Ulusun şu an kızağa koyabildiği sınıf (teknoloji: shipClass toplamı). */
+export function classIndexOf(nation) {
+  return Math.max(0, Math.min(SHIP_CLASSES.length - 1, Math.round(mod(nation, 'shipClass'))));
+}
+
+/** Gemi ulusun kurabildiği sınıfın gerisinde mi (eskimiş). */
+export function isObsolete(nation, ship) {
+  return (ship.gen ?? 0) < classIndexOf(nation);
+}
+
+/**
+ * Filonun bugünkü sınıf cinsinden gemi eşdeğeri: eski gövde sınıf gücü
+ * oranında sayılır. YZ filo hedefini bununla ölçer; gövde sayısıyla ölçünce
+ * dretnotlu düşmana karşı eski zırhlılarıyla "yeterli" sanıyordu.
+ */
+export function fleetEquivalent(nation) {
+  const top = SHIP_CLASSES[classIndexOf(nation)].power;
+  return shipsOf(nation).reduce((sum, ship) => sum + shipClassOf(ship).power / top, 0);
+}
+
+/**
+ * Gemileri hurdaya ayırır: mürettebat eve döner, gemi teçhizatının %30'u
+ * (sağlıkla) depoya geri gelir. Eski gövde aynı bakımı yer, aynı mürettebatı
+ * tutar; yer açmanın tek yolu budur.
+ */
+export const SCRAP_REFUND = 0.3;
+
+export function scrapShips(world, nation, ships) {
+  const gone = new Set(ships);
+  if (!gone.size) return 0;
+  const perShip = UNIT_EQUIPMENT.WARSHIP?.ships ?? 10;
+  let refund = 0;
+  for (const ship of gone) {
+    for (const draw of ship.draws ?? []) releaseDraw(world, nation.id, draw, draw.men ?? 0);
+    ship.draws = [];
+    refund += perShip * SCRAP_REFUND * ship.hp;
+  }
+  nation.navy.ships = nation.navy.ships.filter((ship) => !gone.has(ship));
+  if (nation.economy?.stock) nation.economy.stock.ships = (nation.economy.stock.ships ?? 0) + refund;
+  return gone.size;
+}
+
+/** Bütün eskimiş gemileri hurdaya ayırır (panel düğmesi). */
+export function scrapObsolete(world, nation) {
+  return scrapShips(world, nation, shipsOf(nation).filter((ship) => isObsolete(nation, ship)));
 }
 
 function shipName(world, nation, id) {
@@ -226,7 +282,7 @@ export function docked(ship, turn) {
 export function fleetStrength(nation, turn = null) {
   const naval = Math.max(0.3, 1 + mod(nation, 'naval'));
   return shipsOf(nation).reduce((sum, ship) => (
-    turn != null && docked(ship, turn) ? sum : sum + ship.hp
+    turn != null && docked(ship, turn) ? sum : sum + ship.hp * shipClassOf(ship).power
   ), 0) * naval;
 }
 
@@ -454,10 +510,10 @@ function allocate(world, nation, turn, presence) {
 
 // -------------------------------------------------------- GÜÇ TABLOSU ---
 
-/** Geminin bölgedeki gücü: sağlık × teknoloji × iç sular × amiral. */
+/** Geminin bölgedeki gücü: sağlık × teknoloji × sınıf × iç sular × amiral. */
 function shipStrength(nation, ship, home, admiral) {
   const naval = Math.max(0.3, 1 + mod(nation, 'naval'));
-  return ship.hp * naval * (home ? 1 + HOME_WATERS : 1)
+  return ship.hp * naval * shipClassOf(ship).power * (home ? 1 + HOME_WATERS : 1)
     * generalModifier(admiral, { defending: home });
 }
 
@@ -811,7 +867,34 @@ export function refreshNavyState(world) {
   return state;
 }
 
+/**
+ * Yeni sınıfın dünyadaki ilk gemisi: herkese duyurulur, bir kez. Oyuncunun
+ * filosu o gün eskir; haber bunu söylemeli, yoksa güç düşüşü sessiz kalır.
+ */
+function announceFirsts(game) {
+  const world = game.world;
+  const player = game.turns?.playerNation ?? -1;
+  for (const [key, first] of Object.entries(world.navyFirsts ?? {})) {
+    if (first.announced) continue;
+    first.announced = true;
+    if (player < 0) continue;
+    const gen = Number(key);
+    const cls = SHIP_CLASSES[gen];
+    const older = SHIP_CLASSES[gen - 1];
+    if (!cls || !older) continue;
+    const ratio = Math.round(older.power / cls.power * 100);
+    const who = world.nations[first.nation]?.name ?? 'A rival';
+    const text = first.nation === player
+      ? `Our ${first.ship} is the world's first ${cls.name.toLowerCase()}. Every ${older.name.toLowerCase()} afloat — ours too — now fights at ${ratio}% of her.`
+      : gen === 1
+        ? `The Dreadnought Revolution: ${who} commissions ${first.ship}, the first all-big-gun battleship. Every fleet afloat is obsolete — ${older.plural} fight at ${ratio}% of a dreadnought.`
+        : `The carrier age: ${who} commissions ${first.ship}, a capital ship with its own air wing. ${older.plural[0].toUpperCase()}${older.plural.slice(1)} fight at ${ratio}% of a carrier group.`;
+    game.turns.addLog(text, { kind: 'NAVAL', key: `first-class-${gen}` });
+  }
+}
+
 function announce(game, reports, losses) {
+  announceFirsts(game);
   const player = game.turns?.playerNation ?? -1;
   if (player < 0) return;
   const world = game.world;
@@ -918,6 +1001,11 @@ export function navyView(world, nation, override = null) {
     inPort: inPort.length,
     repairing: ships.filter((ship) => ship.repairing).length,
     withdrawn: ships.filter((ship) => !ship.repairing && (ship.hold ?? 0) > turn).length,
+    // Sınıf dökümü (yeniden eskiye) ve eskimiş gövde sayısı.
+    classes: SHIP_CLASSES.map((cls, gen) => ({ ...cls, gen, count: ships.filter((ship) => (ship.gen ?? 0) === gen).length }))
+      .filter((row) => row.count > 0).reverse(),
+    current: SHIP_CLASSES[classIndexOf(nation)],
+    obsolete: ships.filter((ship) => isObsolete(nation, ship)).length,
     strength: fleetStrength(nation),
     blockade: state.blockade?.[nation.id] ?? 0,
     rows,

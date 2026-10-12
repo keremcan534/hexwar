@@ -21,7 +21,7 @@ import {
   FLANK_WIDTH, MAX_ASSAULT_DIVISIONS, MAX_ASSAULT_WIDTH, MAX_DEFENSE_DIVISIONS,
 } from './battles.js';
 import {
-  MAX_ENTRENCHMENT, UNIT_TYPES, isMoving, maxHpOf, menUnderArms, organizationOf, soldiersOf,
+  MAX_ENTRENCHMENT, SHIP_CLASSES, UNIT_TYPES, isMoving, maxHpOf, menUnderArms, organizationOf, soldiersOf,
   unitAvailable,
 } from './units.js';
 import {
@@ -31,6 +31,7 @@ import {
 } from './recruitment.js';
 import { BASE_REINFORCEMENT_RATE, reinforcementNeed } from './reinforcement.js';
 import { seaZonesOf } from '../world/seaZones.js';
+import { classIndexOf } from './navy.js';
 import {
   MOBILIZATION, conscriptUnits, isMobilized, mobilizationBlockers, mobilizationTarget,
 } from './mobilization.js';
@@ -240,14 +241,20 @@ export function recruitOptions(game, nation) {
         stock: equipmentStock(nation, equipmentId),
       }));
     const info = UNIT_ROLE[id] ?? {};
+    // Gemi kızağa konduğu günün sınıfını alır (dretnot anı): kart onu söyler.
+    const gen = type.domain === 'sea' ? classIndexOf(nation) : 0;
+    const shipClass = type.domain === 'sea' ? SHIP_CLASSES[gen] : null;
+    const classNote = gen > 0
+      ? ` New hulls are ${shipClass.plural}: a ${SHIP_CLASSES[gen - 1].name.toLowerCase()} fights at ${Math.round(SHIP_CLASSES[gen - 1].power / shipClass.power * 100)}% of one.`
+      : '';
     return {
       id,
-      name: type.name,
+      name: shipClass ? `${type.name}: ${shipClass.name}` : type.name,
       glyph: type.glyph,
       domain: type.domain,
       category: unitCategory(id),
       role: info.role ?? '',
-      desc: info.desc ?? '',
+      desc: `${info.desc ?? ''}${classNote}`,
       manpower: type.manpower,
       weeks: trainingWeeks(id),
       gold: cost.gold ?? 0,

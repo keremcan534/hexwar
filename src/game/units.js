@@ -83,6 +83,24 @@ export const UNIT_TYPES = {
 };
 
 /**
+ * GEMİ SINIFI (dretnot anı, navy.js). Gemi kızağa konduğu günün teknolojisiyle
+ * bir sınıf alır ve onu ömrü boyunca taşır: Dreadnoughts (1906) ve Aircraft
+ * Carriers (1924) YENİ gemiyi güçlendirir, eskiyi değil. `power` geminin
+ * gücünü çarpar (sağlık × deniz teknolojisi × sınıf × amiral). Diplomasi ve
+ * donanma aynı tabloyu okur.
+ */
+export const SHIP_CLASSES = [
+  { id: 'pre', name: 'Pre-dreadnought', plural: 'pre-dreadnoughts', power: 1 },
+  { id: 'dreadnought', name: 'Dreadnought', plural: 'dreadnoughts', power: 1.7 },
+  { id: 'carrier', name: 'Carrier group', plural: 'carrier groups', power: 2.4 },
+];
+
+export function shipClassOf(ship) {
+  const gen = Math.max(0, Math.min(SHIP_CLASSES.length - 1, Math.round(ship?.gen ?? 0)));
+  return SHIP_CLASSES[gen];
+}
+
+/**
  * Bu ulus o kolu kurabilir mi? Piyade, süvari, topçu ve gemi baştan açıktır;
  * zırhlıyı ve uçağı teknoloji açar. Takvim kapısı yoktur: önce araştıran önce
  * kurar (erken araştırmanın bedeli teknolojinin fiyatındadır).

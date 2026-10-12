@@ -44,6 +44,7 @@ export const MODIFIER_KEYS = {
   defense: { label: 'Land defence', format: 'pct' }, // battles
   organization: { label: 'Organisation recovery', format: 'pct' }, // turn
   naval: { label: 'Naval strength', format: 'pct' }, // battles
+  shipClass: { label: 'Warship class (new hulls; older ones obsolete)', format: 'num' }, // navy
   armor: { label: 'Armour strength', format: 'pct' }, // battles (ARMOR)
   air: { label: 'Air wing strength', format: 'pct' }, // battles (AIRCRAFT)
   upkeep: { label: 'Army upkeep', format: 'pct' }, // economy

@@ -77,6 +77,8 @@ etkisiz çıktı. Bağlayan kaldıraç küçük devletin iki-üç barışta tük
 2026-10-12 1900 geçişi (45 yıllık kampanya): barışçıl birleşme kapısı ve
 "barış devlet silmez" (başkent masaya gelmez) sonrası audit:borders 3 tohum ×
 45 yıl: savaş payı %14-22, ulus 27→25 / 23→22 / 28→26 (önce 27→14, 23→13).
+2026-10-12 donanma (kapalı deniz: düşmanın tuttuğu denize ordu binemez)
+sonrası: savaş payı %18.0 / %13.8 / %19.3, ulus 27→29 / 23→24 / 28→27.
 Hex düğümlü hareket grafı: `src/world/provinceGraph.js`; kümeye oyuncu
 "state" der.
 
