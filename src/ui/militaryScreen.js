@@ -55,7 +55,7 @@ const band = (title, note = '') => `<h4 class="mil-band">${esc(title)}${
    ÜST KÜNYE — ülkenin askerî durumu tek satırda
    -------------------------------------------------------------------------- */
 
-function headerStrip(summary) {
+function headerStrip(summary, composition = [], spent = null) {
   const crises = (summary.crises ?? [])
     .map((crisis) => `${crisis.name} (war in ${crisis.left}w)`);
   const wars = summary.wars.length || crises.length
@@ -64,11 +64,16 @@ function headerStrip(summary) {
   return kpiRow([
     kpi({
       icon: emblemArt('soldiers', 'md'), label: 'Standing army', value: formatPopulation(summary.men),
-      sub: `${summary.regiments} regiments · ${pct(summary.strength)} strength`, cls: 'hero',
+      sub: `${summary.regiments} regiments · ${pct(summary.strength)} strength`,
       meter: summary.strength, meterTone: summary.strength < 0.7 ? 'warn' : 'pos',
+      // Eski alt bandın (sefer düzeni, saha durumu, takviye) bilgisi burada:
+      // bant ordu kartını ve teçhizat panelini tekrar ediyordu.
       tip: { text: `Standing army\n${summary.regiments} regiments in ${summary.divisions} divisions, ${formatPopulation(summary.men)} men`
-        + `\n${pct(summary.strength)} of full strength`
-        + (summary.inBattle ? `\n${summary.inBattle} in battle` : '') + (summary.marching ? `\n${summary.marching} marching` : '') },
+        + (composition.length ? `\n${composition.map((entry) => `${entry.count} ${entry.name}`).join(' · ')}` : '')
+        + `\n${pct(summary.strength)} of full strength · ${summary.organization == null ? '—' : `${Math.round(summary.organization)}%`} organization`
+        + `\n${summary.inBattle} engaged · ${summary.marching} on the march · ${summary.unassigned} without an officer`
+        + `\nReinforcement: ${formatPopulation(summary.reinforcedMen)} men last week, ${formatPopulation(summary.reinforcementDemand)} strength still missing`
+        + (spent ? ` (cost ${spent.rifles.toFixed(1)} rifles, ${spent.guns.toFixed(1)} guns)` : '') },
     }),
     kpi({
       icon: emblemArt('recruits', 'md'), label: 'Manpower', value: formatPopulation(summary.manpower), sub: 'still to be raised',
@@ -260,10 +265,7 @@ function statsBox(stats) {
   const rows = stats.map((row) => `<div class="mil-stat ${row.live ? '' : 'is-dead'}"${tipAttr({ text: `${row.label}\n${row.note}` })}>
     <span>${esc(row.label)}</span><b>${esc(row.value)}</b>
   </div>`).join('');
-  return `<section class="mil-stats">
-    ${band('National military')}
-    <div class="mil-stat-grid">${rows}</div>
-  </section>`;
+  return `<div class="mil-stats"><div class="mil-stat-grid">${rows}</div></div>`;
 }
 
 /* --------------------------------------------------------------------------
@@ -369,14 +371,38 @@ function levyPanel(levy) {
       ? `<p class="mil-levy-warn">Unequal levy: the unaccepted peoples who still serve resent it — up to +${levy.grievance} unrest in ${levy.grieved} ${levy.grieved === 1 ? 'state' : 'states'}.</p>`
       : '';
   return `<section class="mil-levy">
-    ${band('Who is drafted', `${formatPopulation(levy.fallen)} fallen so far`)}
     <div class="mil-levy-head"><span></span><span>People</span><span>Can give</span><span>Under arms</span><span>Fallen</span></div>
     <div class="mil-levy-list">${rows}</div>
     ${warn}
   </section>`;
 }
 
-function buildColumn(state, options, summary, logistics = [], levy = null) {
+/**
+ * ORTA SÜTUN ÜÇ GÖRÜNÜM (Kerem: "military sekmesi çok karmaşık"). Kura
+ * tablosu alay listesinin altında yarı yüksekliği yiyordu (768'de liste tek
+ * kart gösteriyordu); ulusal göstergeler sol sütunun kaydırmasının altında
+ * kalıyordu. Şimdi her biri kendi sekmesinde, sütunun tam boyunda.
+ */
+const VIEWS = [
+  ['build', 'Build army'],
+  ['levy', 'Who is drafted'],
+  ['stats', 'Army stats'],
+];
+
+function buildColumn(state, options, summary, logistics = [], levy = null, stats = []) {
+  const view = VIEWS.some(([id]) => id === state.view) ? state.view : 'build';
+  const note = view === 'build' ? `${summary.trainingCapacity} training slots`
+    : view === 'levy' ? `${formatPopulation(levy?.fallen ?? 0)} fallen so far` : 'doctrine, technology and laws';
+  const viewbar = `<header class="mil-viewbar">
+    <nav class="mil-views" role="tablist">${VIEWS.map(([id, label]) => `<button type="button" role="tab" data-military-view="${id}" class="${view === id ? 'active' : ''}" aria-selected="${view === id}">${esc(label)}</button>`).join('')}</nav>
+    <em>${esc(note)}</em>
+  </header>`;
+  if (view === 'levy') {
+    return `<section class="mil-col mil-build is-levy">${viewbar}${levyPanel(levy) || '<p class="mil-empty">No people to draft.</p>'}</section>`;
+  }
+  if (view === 'stats') {
+    return `<section class="mil-col mil-build is-stats">${viewbar}${statsBox(stats)}</section>`;
+  }
   const category = state.category ?? 'all';
   const visible = options.filter((option) => {
     if (category !== 'all' && option.category !== category) return false;
@@ -396,10 +422,9 @@ function buildColumn(state, options, summary, logistics = [], levy = null) {
   const rows = visible.map((option) => buildRow(option)).join('')
     || '<p class="mil-empty">No arm of this kind can be raised yet.</p>';
   return `<section class="mil-col mil-build">
-    ${band('Build army', `${summary.trainingCapacity} training slots`)}
+    ${viewbar}
     <nav class="mil-tabs mil-arms">${tabs}</nav>
     <div class="mil-build-list">${rows}</div>
-    ${levyPanel(levy)}
     <label class="mil-check" title="Shows arms that history has not opened yet, with the year they arrive.">
       <input type="checkbox" data-military-locked ${state.showLocked ? 'checked' : ''} />
       Show arms not yet available</label>
@@ -461,49 +486,6 @@ function queueColumn(rows, summary, logistics = []) {
 }
 
 /* --------------------------------------------------------------------------
-   ALT BANT — kuvvet künyesi
-   -------------------------------------------------------------------------- */
-
-function dispositionBand(summary, composition, logistics, spent) {
-  const arms = composition.map((entry) => `<span title="${esc(`${entry.count} ${entry.name} regiments`)}">
-    <i aria-hidden="true">${counter(entry.id)}</i>${entry.count}</span>`).join('')
-    || '<span class="void">no regiments</span>';
-  const supply = logistics.map((item) => {
-    const short = item.balance < 0;
-    return `<span class="${short ? 'short' : ''}"
-      title="${esc(`${item.name}: ${item.stock.toFixed(1)} in stock, ${item.required.toFixed(1)} needed`
-      + `, ${item.producedPerWeek.toFixed(1)}/week from the production line`
-      + (item.etaWeeks ? ` — ${item.etaWeeks} weeks to cover the gap` : ''))}">
-      ${equipmentArt(item.id, 'xs')}${item.stock.toFixed(0)}</span>`;
-  }).join('');
-  const orgValue = summary.organization == null ? '—' : `${Math.round(summary.organization)}%`;
-  return `<footer class="mil-disposition">
-    <div class="mil-disp-cell">
-      <small>Order of battle</small>
-      <div class="mil-arms">${arms}</div>
-    </div>
-    <div class="mil-disp-cell">
-      <small>Field state</small>
-      <b>${pct(summary.strength)} strength · ${orgValue} organization</b>
-      <em>${summary.inBattle} engaged · ${summary.marching} on the march
-        · ${summary.unassigned} without an officer</em>
-    </div>
-    <div class="mil-disp-cell">
-      <small>Reinforcement</small>
-      <b>${formatPopulation(summary.reinforcedMen)} men last week</b>
-      <em>${formatPopulation(summary.reinforcementDemand)} strength still missing from the ranks${spent
-    ? ` · cost ${spent.rifles.toFixed(1)} rifles, ${spent.guns.toFixed(1)} guns`
-    : ''}</em>
-    </div>
-    <div class="mil-disp-cell">
-      <small>Stockpile</small>
-      <div class="mil-supply">${supply}</div>
-      <em>upkeep ${summary.upkeepGold.toFixed(1)} gold a week</em>
-    </div>
-  </footer>`;
-}
-
-/* --------------------------------------------------------------------------
    ÇERÇEVE
    -------------------------------------------------------------------------- */
 
@@ -514,16 +496,14 @@ function dispositionBand(summary, composition, logistics, spent) {
  */
 export function militaryScreen(state, data) {
   return `<div class="mil">
-    ${headerStrip(data.summary)}
+    ${headerStrip(data.summary, data.composition, data.spent)}
     <div class="mil-cols">
       <div class="mil-left">
         ${commandColumn(state, data.roster, data.loose, data.trainCost, data.canTrain,
     data.summary.mobilization)}
-        ${statsBox(data.stats)}
       </div>
-      ${buildColumn(state, data.options, data.summary, data.logistics, data.levy)}
+      ${buildColumn(state, data.options, data.summary, data.logistics, data.levy, data.stats)}
       ${queueColumn(data.queue, data.summary, data.logistics)}
     </div>
-    ${dispositionBand(data.summary, data.composition, data.logistics, data.spent)}
   </div>`;
 }

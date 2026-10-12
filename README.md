@@ -286,11 +286,12 @@ havuzu yoktur, savaş sonucu haritadaki ordulardan çıkar.
 
 ### Askerî ekran ve eğitim kuyruğu
 
-Military ekranı üç sütundur: solda **komuta** (generaller, amiraller, seçili
-subayın çarpanları, otomatik kadro/atama anahtarları ve ulusal askerî
-göstergeler), ortada **kurulabilir kollar**, sağda **eğitim kuyruğu**. Altta
-ordunun künyesi durur: kol dağılımı, mevcut/organizasyon, haftalık takviye ve
-teçhizat stoğu.
+Military ekranı altı eşit göstergenin altında üç sütundur: solda **komuta**
+(generaller, amiraller, seçili subayın çarpanları, toplu emir ve seferberlik),
+ortada üç görünüm — **Build army** (kurulabilir kollar), **Who is drafted**
+(kura) ve **Army stats** (ulusal askerî göstergeler) — sağda **eğitim
+kuyruğu** ve teçhizat. Ordunun kol dağılımı, saha durumu ve haftalık takviyesi
+Standing army kartının ipucundadır.
 
 Alay artık düğmeye basılan hafta belirmez, **siparişe** dönüşür:
 
@@ -374,7 +375,7 @@ batarsa onlar da ölür (`src/game/navy.js`, `src/world/seaZones.js`).
   denize inince herkesin filosu eskir ve haber adıyla gelir. Eskiyen gemiler
   panelin durum satırından iki tıkla hurdaya ayrılır (mürettebat eve, gemi
   teçhizatının %30'u depoya). Military ekranındaki kart kızağa konacak sınıfı
-  söyler (*Warship: Dreadnought*).
+  rol satırında söyler (*Fleet · Dreadnought*).
 - **Ticaret yolları ve denizaltı**: kara komşusu olmayan ülkelerle ticaret
   deniz haritasında görünen yollardan akar (kalınlık yük; bizimki pirinç).
   Yol düşmanın tuttuğu bir denizden geçerse yük kesilir, gemiler dolaşabiliyorsa

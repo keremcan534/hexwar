@@ -7110,7 +7110,7 @@ body.menu-open .sheet { visibility: hidden; }
 .screen-body > .mil {
   flex: 1 1 auto;
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-rows: auto minmax(0, 1fr);
   gap: 5px;
   min-height: 0;
 }
@@ -7128,7 +7128,7 @@ body.menu-open .sheet { visibility: hidden; }
    yükseklikte kalıyordu.) */
 .mil-left {
   display: grid;
-  grid-template-rows: minmax(min-content, 1fr) auto;
+  grid-template-rows: minmax(min-content, 1fr);
   gap: 5px;
   min-height: 0;
   overflow-x: hidden;
@@ -7140,7 +7140,6 @@ body.menu-open .sheet { visibility: hidden; }
 /* Ortak çerçeve yığını: dış siyah kenar → ince pirinç hat → oyuk koyu yüzey. */
 .mil-col,
 .mil-stats,
-.mil-disposition,
 .mil-leader-detail {
   border: 1px solid #0a0f12;
   outline: 1px solid rgba(168, 138, 75, 0.45);
@@ -7692,47 +7691,9 @@ body.menu-open .sheet { visibility: hidden; }
 .mil-icon:disabled { color: var(--text-faint); cursor: not-allowed; opacity: 0.5; }
 .mil-icon.danger:hover { border-color: rgba(169, 94, 74, 0.7); color: #c98771; }
 
-/* --- 21.6 Alt bant: kuvvet künyesi --- */
+.mil-arms { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 
-.mil-disposition {
-  display: grid;
-  grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  gap: 1px;
-}
-
-.mil-disp-cell {
-  display: grid;
-  align-content: start;
-  gap: 2px;
-  padding: 6px 10px;
-  border-right: 1px solid rgba(168, 138, 75, 0.16);
-}
-
-.mil-disp-cell:last-child { border-right: 0; }
-
-.mil-disp-cell > small {
-  color: var(--text-mute);
-  font-size: 9px;
-  letter-spacing: var(--ls-label);
-  text-transform: uppercase;
-}
-
-.mil-disp-cell > b {
-  color: var(--text);
-  font-family: var(--font-mono);
-  font-size: 12px;
-  font-variant-numeric: tabular-nums;
-  font-weight: 600;
-}
-
-.mil-disp-cell > em { color: var(--text-dim); font-size: 10px; font-style: normal; }
-
-.mil-arms,
-.mil-supply { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
-
-.mil-arms span,
-.mil-supply span {
+.mil-arms span {
   display: flex;
   align-items: center;
   gap: 3px;
@@ -7744,7 +7705,6 @@ body.menu-open .sheet { visibility: hidden; }
 
 .mil-arms i { display: grid; place-items: center; color: #a98f5c; }
 .mil-arms i svg { width: 16px; height: 16px; }
-.mil-supply span.short { color: #c98771; }
 .mil-arms .void { color: var(--text-faint); font-family: var(--font-ui); }
 
 .mil-empty {
@@ -7763,7 +7723,6 @@ body.menu-open .sheet { visibility: hidden; }
 @media (max-width: 1180px) {
   .mil-cols { grid-template-columns: 320px minmax(0, 1fr); }
   .mil-queue { grid-column: 1 / -1; }
-  .mil-disposition { grid-auto-flow: row; grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 @media (max-width: 900px) {
@@ -7782,7 +7741,6 @@ body.menu-open .sheet { visibility: hidden; }
   .mil-build-list,
   .mil-queue-list { max-height: 320px; }
 
-  .mil-disposition { grid-template-columns: minmax(0, 1fr); }
 
   /* Telefonda satır iki kata iner: üstte kol ve düğme, altta bedel. Tek
      satırda dört bedel + düğme 350px'e sığmıyor, sağ kenardan taşıyordu. */
@@ -8597,7 +8555,6 @@ body.menu-open .sheet { visibility: hidden; }
 .ui-panel,
 .mil-col,
 .mil-stats,
-.mil-disposition,
 .mil-leader-detail,
 .pol-gov,
 .pol-laws,
@@ -9804,7 +9761,7 @@ svg.res-glyph {
 .pop-nav, .pop-panel, .pop-table, .pop-detail,
 .ledger-col, .bank-rows,
 .trade-cat, .trade-detail, .trade-struct-block,
-.mil-col, .mil-stats, .mil-disposition, .mil-leader-detail,
+.mil-col, .mil-stats, .mil-leader-detail,
 .pol-gov, .pol-laws,
 .chron-row,
 .mil-build, .mil-command, .mil-queue, .mil-plan,
@@ -10977,7 +10934,7 @@ body.picker-open .sheet { display: none; }
 .pop-nav, .pop-panel, .pop-table, .pop-detail,
 .ledger-col, .bank-rows,
 .trade-cat, .trade-detail, .trade-struct-block,
-.mil-col, .mil-stats, .mil-disposition, .mil-leader-detail,
+.mil-col, .mil-stats, .mil-leader-detail,
 .pol-gov, .pol-laws,
 .mil-build, .mil-command, .mil-queue, .mil-plan,
 .ui-panel,
@@ -13009,7 +12966,7 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
 .notify-icon .glyph { width: 22px; height: 22px; }
 .peace-term-icon .glyph { width: 22px; height: 22px; }
 .tech-row-label .glyph { width: 15px; height: 15px; }
-.mil-disposition .art-xs, .mil-build .art-xs { width: 15px; height: 15px; margin: 0 2px; }
+.mil-build .art-xs { width: 15px; height: 15px; margin: 0 2px; }
 
 /* --- §42b Eski ekranlar (Military, Technology) aynı derinlik dilinde ------- */
 .ui-kpis { gap: 8px; border: 0; background: none; }
@@ -14347,7 +14304,7 @@ body:is(.screen-open, .notify-quiet) .notify-tray { justify-content: center; min
    kalktı; birim satırı: sayaç, kimlik, saldırı/güç/hız çubukları, etiketli
    bedel çipleri, Order + ×5. Orta sütunun boş altı teçhizat deposu.
    ========================================================================== */
-.mil, .mil b, .mil-stat b, .mil-disposition b, .mil-queue-head b { font-family: var(--font-ui); }
+.mil, .mil b, .mil-stat b, .mil-queue-head b { font-family: var(--font-ui); }
 .mil .k-kpis { margin-bottom: 8px; grid-template-columns: minmax(0, 1.5fr) repeat(5, minmax(0, 1fr)); }
 .mil .k-kpi-body > b small { color: var(--text-mute); font-size: 13px; }
 
@@ -14427,7 +14384,6 @@ body:is(.screen-open, .notify-quiet) .notify-tray { justify-content: center; min
 
 /* Ulusal göstergeler ve alt bant: mono yerine kit tipi */
 .mil-stat b { font-size: 12.5px; font-weight: 700; font-variant-numeric: tabular-nums; }
-.mil-disposition b { font-size: 13px; font-weight: 600; }
 .mil-unit-id > b small { white-space: nowrap; }
 .mil-unit { grid-template-columns: 52px minmax(190px, 1fr) 160px minmax(210px, auto) auto; }
 
@@ -15378,3 +15334,60 @@ body.picker-open .navy-dock { display: none; }
   .tb-minis { grid-template-columns: 76px 72px 76px 72px; }
   .tb-res { grid-template-columns: repeat(8, 26px); }
 }
+
+/* §60 MILITARY SADELEŞTİRME (Kerem 2026-10-12: "çok karmaşık, sadeleştirme,
+   simetri"). Altı gösterge eşit; alt bant kalktı (bilgisi ordu kartının
+   ipucunda); orta sütun üç görünüm: Build army · Who is drafted · Army stats. */
+.mil .k-kpis { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+.mil .k-kpis > .k-kpi { min-width: 0; }
+.mil-viewbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-width: 0;
+  padding: 3px 8px 3px 4px;
+  border-bottom: 1px solid var(--head-line);
+  background: var(--head-wash);
+}
+.mil-viewbar > em {
+  min-width: 0;
+  margin-left: auto;
+  overflow: hidden;
+  color: var(--head-note);
+  font-size: 11px;
+  font-style: normal;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mil-views { display: flex; gap: 2px; }
+.mil-views button {
+  position: relative;
+  padding: 4px 10px;
+  border: 0;
+  background: none;
+  color: var(--text-dim);
+  font-family: var(--font-ui);
+  font-size: var(--fs-label);
+  font-weight: 650;
+  letter-spacing: var(--ls-label);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.mil-views button:hover { color: var(--text); }
+.mil-views button.active { color: var(--gold-bright); }
+.mil-views button.active::after {
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -4px;
+  height: 2px;
+  background: #d8b86a;
+}
+/* Kura ve göstergeler sütunun tam boyunu kullanır. */
+.mil-build.is-levy,
+.mil-build.is-stats { grid-template-rows: auto minmax(0, 1fr); }
+.mil-build.is-levy .mil-levy { display: grid; grid-template-rows: auto minmax(0, 1fr) auto; min-height: 0; margin-top: 4px; }
+.mil-build.is-levy .mil-levy-list { max-height: none; min-height: 0; }
+.mil-build.is-stats .mil-stats { min-height: 0; padding: 6px; overflow-y: auto; border: 0; outline: 0; background: none; box-shadow: none; }
+.mil-build.is-stats .mil-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }

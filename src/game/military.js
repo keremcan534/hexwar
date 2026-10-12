@@ -253,11 +253,12 @@ export function recruitOptions(game, nation) {
       : '';
     return {
       id,
-      name: shipClass ? `${type.name}: ${shipClass.name}` : type.name,
+      name: type.name,
       glyph: type.glyph,
       domain: type.domain,
       category: unitCategory(id),
-      role: info.role ?? '',
+      // Sınıf rol satırında: "Warship: Pre-dreadnought" kartta iki satıra kırılıyordu.
+      role: shipClass ? `${info.role ?? 'Fleet'} · ${shipClass.name}` : (info.role ?? ''),
       desc: `${info.desc ?? ''}${classNote}`,
       manpower: type.manpower,
       weeks: trainingWeeks(id),

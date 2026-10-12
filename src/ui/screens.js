@@ -1017,6 +1017,12 @@ export class Screens {
         this.refresh();
       };
     }
+    for (const btn of body.querySelectorAll('[data-military-view]')) {
+      btn.onclick = () => {
+        this.military.view = btn.dataset.militaryView;
+        this.refresh();
+      };
+    }
     for (const btn of body.querySelectorAll('[data-military-category]')) {
       btn.onclick = () => {
         this.military.category = btn.dataset.militaryCategory;
