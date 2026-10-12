@@ -38,6 +38,7 @@ import { nodeNeighbors } from '../world/provinceGraph.js';
 import { autoFocus } from './stateFocus.js';
 import { alliesOf } from './alliances.js';
 import { worldWarTension } from './worldEvents.js';
+import { planLandings } from './landings.js';
 import {
   classIndexOf, fleetEquivalent, fleetStrength, isObsolete, scrapShips, shipsOf, subsOf, surfaceOf,
 } from './navy.js';
@@ -673,6 +674,8 @@ export function runNationAI(game, nation, rng) {
   unificationAI(game, nation);
   decisionsAI(game, nation);
   manageCommand(game, nation);
+  // Çıkarma (landings.js): kara sınırı olmayan düşmana, dört haftada bir.
+  if (((game.turns?.turn ?? world.turn ?? 0) + nation.id) % 4 === 0) planLandings(game, nation);
   // Kara tümenleri komuta katmanından, donanma deniz bölgelerinden yönetilir
   // (navy.js autoZoneWeights): burada birim birim iş kalmadı.
 }

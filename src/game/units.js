@@ -9,8 +9,13 @@ import { POPULATION_SCALE } from './populationScale.js';
 import { releaseDraw } from './levy.js';
 import { unitUnlocked } from './technology.js';
 
-/** Kara birimi denize girdiginde bu hizla yol alir (bindirilmis hali). */
-export const EMBARKED_MOVES = 4;
+/**
+ * Kara birimi denize girdiginde bu hizla yol alir (bindirilmis hali).
+ * 4'ken derin okyanusta haftada 2 hex gidiyordu: filo haftada iki bolge
+ * (~35 hex) asarken cikarma birligi okyanusu 10-15 haftada geciyor, aylarca
+ * acikta kaliyordu (olculdu, landings.js izi). 12: okyanus 6, kiyi 12 hex.
+ */
+export const EMBARKED_MOVES = 12;
 
 /** Stationary land divisions dig in by this amount each weekly tick. */
 export const ENTRENCHMENT_RATE = 0.05;

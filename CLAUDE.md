@@ -78,7 +78,9 @@ etkisiz çıktı. Bağlayan kaldıraç küçük devletin iki-üç barışta tük
 "barış devlet silmez" (başkent masaya gelmez) sonrası audit:borders 3 tohum ×
 45 yıl: savaş payı %14-22, ulus 27→25 / 23→22 / 28→26 (önce 27→14, 23→13).
 2026-10-12 donanma (kapalı deniz: düşmanın tuttuğu denize ordu binemez)
-sonrası: savaş payı %18.0 / %13.8 / %19.3, ulus 27→29 / 23→24 / 28→27.
+sonrası: savaş payı %18.0 / %13.8 / %19.3, ulus 27→29 / 23→24 / 28→27;
+YZ çıkarması (`landings.js`) sonrası %18.0 / %17.3 / %29.3, ulus 27→26 /
+23→24 / 28→29 (barışta kalan kıyı başı yeni sahiplik teması açar).
 Hex düğümlü hareket grafı: `src/world/provinceGraph.js`; kümeye oyuncu
 "state" der.
 

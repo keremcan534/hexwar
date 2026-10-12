@@ -382,6 +382,11 @@ batarsa onlar da ölür (`src/game/navy.js`, `src/world/seaZones.js`).
   batırır (kesilen yol kırmızı kesik). Savaş gemisi denizaltıyı avlar; Auto,
   yükümüzün batırıldığı denize eskort yollar. Panelin durum satırı yollarda
   kesilen payı yazar.
+- **Çıkarma**: ordu açık denizden karşı kıyıya yürür (orduya kıyıyı göster);
+  düşmanın tuttuğu deniz kapalıdır. Yapay zekâ kara sınırı olmayan düşmanına
+  güç üstünlüğü varsa savunmasız bir kıyıya 2-3 tümenlik öncü çıkarır; kıyı
+  başı tutulunca generalin cephesi oraya taşınır ve ordunun gerisi denizden
+  gelir. Kıyını denizde tutmak çıkarmanın tek kesin cevabıdır.
 - Amiraller en kalabalık denizlere atanır (Military ekranı); panelin altında
   son muharebe durur.
 
@@ -499,6 +504,7 @@ src/
     battles.js       province muharebesi (nehir, barut, at, kale)
     navy.js          donanma: deniz önceliği, hâkimiyet, muharebe, abluka, kapalı deniz, gemi sınıfı
     seaLanes.js      deniz ticaret yolları, denizaltı akını ve eskort
+    landings.js      yapay zekânın çıkarma harekâtı (kara sınırı olmayan düşmana)
     recruitment.js   alay siparişi, eğitim kuyruğu, insan gücü
     reinforcement.js insan ve teçhizat takviyesi
     diplomacy.js     savaş, gerekçe, ateşkes, temas
@@ -558,7 +564,8 @@ tarayıcı olmadan Node ile de test edilebilir.
   gözünde "state"); ordular HEX hex yürür (`world/provinceGraph.js`) — her
   organik hücre bir HOI4 province'idir. Girilen hex işgal edilir; kümenin
   sahipliği barış masasında değişir, işgal payı kümenin üretimini düşürür.
-  Adım maliyeti hedef hexin arazisi, gemiye binme/inme ayrıca 4. Hex başına
+  Adım maliyeti hedef hexin arazisi, gemiye binme/inme ayrıca 4; bindirilmiş
+  ordu haftada 12 hareket yapar (okyanus hexi 2, kıyı suyu 1). Hex başına
   yığın tavanı 4; nehir kenarını aşan saldırı −%25; kendi kontrolünden 7
   hexten uzak tümen ikmal yıpranması yer. Cephe, komşuluk, saldırı ve geri
   çekilme bu graftan sorulur.

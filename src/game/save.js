@@ -148,6 +148,8 @@ const NATION_FIELDS = [
   // Donanma (navy.js): gemiler (sağlık, liman, yol, mürettebat), bölge
   // öncelikleri; batan gemi sayacı. Türetilemez.
   'navy', 'shipsLost',
+  // Çıkarma (landings.js): düşman başına son deneme haftası.
+  'landings',
 ];
 
 export function serialize(game) {
