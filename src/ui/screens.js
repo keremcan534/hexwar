@@ -19,7 +19,7 @@ import { maxHpOf, menUnderArms, organizationOf, soldiersOf } from '../game/units
 import { provinceName } from '../game/provinces.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { hydrateFlags } from '../render/flagWave.js';
-import { hegemonyScore, scoreboard, GOALS } from '../game/hegemony.js';
+import { hegemonyScore, scoreboard } from '../game/hegemony.js';
 import { MAX_ROUNDS, battleSides, battlesFor } from '../game/battles.js';
 import { cancelTraining, moveTrainingTo, prioritizeTraining } from '../game/recruitment.js';
 import { equipmentLogistics } from '../game/reinforcement.js';
@@ -33,7 +33,7 @@ import {
 } from '../game/command.js';
 import { militaryScreen } from './militaryScreen.js';
 import { levyView, setLevied } from '../game/levy.js';
-import { governmentType, rulingParty } from '../game/politics.js';
+import { rulingParty } from '../game/politics.js';
 import { TIER, announce, chronicleYear, ensureChronicle, memoryOf } from '../game/chronicle.js';
 import { allianceAppeal, alliesOf, breakAlliance, formAlliance, isAllied } from '../game/alliances.js';
 import { characterLine, techStanding } from '../game/identity.js';
@@ -57,6 +57,7 @@ import {
   renderIndustry, renderPolitics, renderPopulation, renderTrade,
 } from './stateScreens.js';
 import { refreshTooltips } from './tooltip.js';
+import { renderNationOverview, trackOverviewEvents } from './nationOverview.js';
 import { kpi as kitKpi, kpiRow as kitKpiRow, panel as kitPanel, spark as kitSpark } from './kit.js';
 import { END_YEAR, exactYearOfTurn, yearOfTurn } from '../game/calendar.js';
 
@@ -254,6 +255,7 @@ export class Screens {
       if (this.active === 'peace') this.pickPeaceTile(tile);
     });
     game.on('world', () => this.close());
+    trackOverviewEvents(game);
   }
 
   get me() {
@@ -858,10 +860,6 @@ export class Screens {
       <span>WS <b>${Math.round((me.warSupport ?? 0) * 100)}%</b></span>`;
   }
 
-  myCities(me) {
-    return this.game.world.cities.filter((c) => c.nationId === me.id);
-  }
-
   // --- Ülke özeti: bayrağa dokununca açılan stratejik durum ekranı ---
   /**
    * Ulusal vakayiname: kampanyanin hafizasi. Hizli oynayan oyuncu 11 saniyelik
@@ -939,55 +937,7 @@ export class Screens {
   }
 
   render_nation(me) {
-    const world = this.game.world;
-    const cities = this.myCities(me);
-    const units = world.units.filter((u) => u.nationId === me.id);
-    const population = me.economy?.population ?? 0;
-    const culture = world.cultures[me.culture]?.name ?? 'Unknown';
-    const capital = cities.find((city) => city.tile === me.capital) ?? cities[0];
-    const wars = world.nations.filter(
-      (nation) => nation.alive && nation.id !== me.id && atWar(world, me.id, nation.id),
-    );
-    const board = scoreboard(world);
-    const score = board.find((entry) => entry.nation.id === me.id);
-    const rank = board.findIndex((entry) => entry.nation.id === me.id) + 1;
-    const goal = GOALS[me.goal];
-    const resources = RESOURCE_IDS.map((id) => {
-      const record = me.economy?.resources?.[id];
-      const ratio = record?.need > 0.01 ? Math.round(record.ratio * 100) : null;
-      return `<span><small>${resourceArt(id, 'xs')} ${RESOURCES[id].name}</small><b class="${ratio != null && ratio < 90 ? 'res-neg' : ''}">${ratio == null ? '—' : `${ratio}%`}</b></span>`;
-    }).join('');
-    return `<div class="nation-hero card">
-        <span class="flag-hero" data-flag-nation="${me.id}" data-flag-w="210" data-flag-h="140"></span>
-        <div class="nation-identity">
-          <h3>${esc(me.fullName)}</h3>
-          <small>${esc(culture)} · ${esc(governmentType(me))} · ${esc(rulingParty(me).name)}</small>
-        </div>
-        <button class="action focus-capital" data-focus-capital="1">Focus Capital</button>
-      </div>
-      <div class="overview-stats">
-        <div><span>Score</span><b>${score?.total ?? 0}</b><small>Rank ${rank || '—'} · leader ${board[0]?.total ?? 0}</small></div>
-        <div><span>Industry</span><b>${(me.economy?.ic?.total ?? 0).toFixed(1)}</b><small>IC · ${score?.industry ?? 0} points</small></div>
-        <div><span>Population</span><b>${formatPopulation(population)}</b><small>${cities.length} ${cities.length === 1 ? 'city' : 'cities'}</small></div>
-        <div><span>Armed Forces</span><b>${units.length}</b><small>power ${nationStrength(world, me).toFixed(1)}</small></div>
-        <div><span>Prestige</span><b>${Math.round(me.prestige ?? 0)}</b><small>wars won, agenda, great nation</small></div>
-        <div><span>Core provinces</span><b>${score?.land ?? 0}</b><small>${me.provinces ?? 0} provinces held</small></div>
-      </div>
-      <div class="card">
-        <div class="card-head"><h3>Resources</h3><small>share of need covered</small></div>
-        <div class="economy-ledger">${resources}</div>
-      </div>
-      <div class="card">
-        <div class="card-head"><h3>State of the Nation</h3><small>${goal ? `goal: ${esc(goal.name)}` : ''}</small></div>
-        <div class="detail-list">
-          <div><span>Capital</span><b>${esc(capital?.name ?? 'Lost')}</b></div>
-          <div><span>Treasury</span><b>${Math.round(me.gold)} · ${weeklyBalanceOf(me) >= 0 ? '+' : ''}${weeklyBalanceOf(me).toFixed(1)}/wk</b></div>
-          <div><span>Stability · War support</span><b>${Math.round((me.stability ?? 0) * 100)}% · ${Math.round((me.warSupport ?? 0) * 100)}%</b></div>
-          <div><span>Infamy</span><b>${Math.round(me.infamy ?? 0)}/${INFAMY_COALITION}</b></div>
-          <div><span>Wars</span><b>${wars.length ? wars.map((w) => esc(w.name)).join(', ') : 'At peace'}</b></div>
-          ${goal ? `<div><span>National goal</span><b>${esc(goal.desc)}</b></div>` : ''}
-        </div>
-      </div>`;
+    return renderNationOverview(this.game, me);
   }
 
   // --- İnşaat: şehir başına bina yuvaları ---
@@ -1751,6 +1701,9 @@ export class Screens {
     }
     for (const btn of this.el.body.querySelectorAll('[data-nation]')) {
       btn.onclick = () => this.openDossier(Number(btn.dataset.nation));
+    }
+    for (const btn of this.el.body.querySelectorAll('[data-open-screen]')) {
+      btn.onclick = () => this.open(btn.dataset.openScreen);
     }
     for (const btn of this.el.body.querySelectorAll('[data-accept-offer]')) {
       btn.onclick = () => {

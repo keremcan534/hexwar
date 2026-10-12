@@ -1,0 +1,706 @@
+/* ==========================================================================
+   ÜLKE ÖZETİ (Nation Overview) — ui/nationOverview.js
+   Ayrı dosya: ekranın bütün görünümü tek yerde, styles.css'in sırasına
+   bağlı değil. Hepsi `.nov` ya da `.screen[data-screen='nation']` altında.
+   ========================================================================== */
+
+.screen[data-screen='nation'] {
+  /* Harita panelin arkasından seçilir: ekran haritanın üstünde bir levha,
+     haritayı silen bir perde değil. */
+  background:
+    var(--ui-grain),
+    radial-gradient(ellipse 70% 45% at 50% 0%, rgba(201, 168, 102, 0.07), transparent 70%),
+    linear-gradient(rgba(6, 11, 13, 0.86), rgba(6, 11, 13, 0.9));
+}
+
+/* Başlık gövdeye taşındı (süslü başlık); kapatma düğmesi köşede kalır. */
+.screen[data-screen='nation'] .screen-head {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 6;
+  padding: 12px 14px;
+  border: 0;
+}
+.screen[data-screen='nation'] .screen-head::after { display: none; }
+.screen[data-screen='nation'] .screen-heading {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.screen[data-screen='nation'] .screen-body { padding-top: 6px; }
+
+/* Savaş çipleri ve muharebe şeridi ekranın tepesinde ORTADA asılı durur;
+   bu ekranın başlığı da ortada. Ekran açıkken gizlenir: savaşlar "At War"
+   sütununda (bayrak → barış masası, skor rozetle) ve durum satırlarında.
+   visibility, display değil: kapanınca yer değiştirmeden geri gelir. */
+body:has(#screen[data-screen='nation']:not(.hidden)) :is(#war-bar, #battle-strip) { visibility: hidden; }
+
+.nov {
+  --nov-gold: #d7b46a;
+  --nov-gold-hi: #f1dba4;
+  --nov-gold-lo: #9c7a3e;
+  --nov-ink: #e6dcc3;
+  --nov-dim: #a49d8b;
+  --nov-line: rgba(201, 168, 102, 0.42);
+  --nov-good: #9db67c;
+  --nov-warn: #d0a050;
+  --nov-bad: #c8705a;
+  --nov-gap: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--nov-gap);
+  color: var(--nov-ink);
+  font-family: var(--font-display);
+}
+
+.nov :where(h2, h3, h4, p) { margin: 0; max-width: none; }
+.nov i { font-style: normal; }
+
+/* --- Başlık ------------------------------------------------------------- */
+
+.nov-title {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  gap: 18px;
+  text-align: center;
+}
+.nov-title h2 {
+  font-size: 40px;
+  font-weight: 400;
+  line-height: 1.05;
+  letter-spacing: 0.015em;
+  background: linear-gradient(180deg, var(--nov-gold-hi) 8%, var(--nov-gold) 55%, var(--nov-gold-lo) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.75));
+}
+.nov-title p {
+  margin-top: 6px;
+  color: var(--nov-dim);
+  font-size: 11.5px;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+}
+.nov-title p i { margin: 0 0.5em; color: var(--nov-gold-lo); }
+
+.nov-flourish {
+  display: flex;
+  align-items: center;
+  justify-self: end;
+  width: min(250px, 100%);
+  color: var(--nov-gold);
+}
+.nov-flourish::before {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(215, 180, 106, 0.7));
+}
+.nov-flourish.is-right { justify-self: start; transform: scaleX(-1); }
+.nov-curl { width: 44px; height: 24px; flex: none; }
+
+/* --- Panel çerçevesi ------------------------------------------------------ */
+
+.nov-panel {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  border: 1px solid var(--nov-line);
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(17, 29, 34, 0.95), rgba(9, 16, 19, 0.97));
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.85),
+    inset 0 0 0 3px rgba(4, 8, 10, 0.75),
+    inset 0 0 0 4px rgba(201, 168, 102, 0.13),
+    inset 0 0 42px rgba(0, 0, 0, 0.42),
+    0 10px 26px rgba(0, 0, 0, 0.38);
+}
+
+/* Köşe süsü: dört köşede pirinç gönye, tek sözde-öğede sekiz gradyan. */
+.nov-panel::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  z-index: 4;
+  pointer-events: none;
+  --c: rgba(225, 191, 118, 0.8);
+  background:
+    linear-gradient(var(--c), var(--c)) top left / 16px 1px,
+    linear-gradient(var(--c), var(--c)) top left / 1px 16px,
+    linear-gradient(var(--c), var(--c)) top right / 16px 1px,
+    linear-gradient(var(--c), var(--c)) top right / 1px 16px,
+    linear-gradient(var(--c), var(--c)) bottom left / 16px 1px,
+    linear-gradient(var(--c), var(--c)) bottom left / 1px 16px,
+    linear-gradient(var(--c), var(--c)) bottom right / 16px 1px,
+    linear-gradient(var(--c), var(--c)) bottom right / 1px 16px;
+  background-repeat: no-repeat;
+}
+
+/* Sanat yuvası (ui/nationOverview.js OVERVIEW_ART). */
+.nov-art {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background-size: cover;
+  background-repeat: no-repeat;
+}
+
+.nov-head {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 16px;
+  border-bottom: 1px solid rgba(201, 168, 102, 0.2);
+  background: linear-gradient(180deg, rgba(201, 168, 102, 0.07), transparent);
+}
+.nov-head h4 {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--nov-gold-hi);
+  font-size: 19px;
+  font-weight: 400;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.nov .nov-head-icon { width: 24px; height: 24px; color: var(--nov-gold); }
+.nov-head-note { flex: none; color: var(--nov-dim); font-size: 12.5px; }
+
+.nov-link {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 12px;
+  border: 1px solid rgba(201, 168, 102, 0.55);
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(40, 46, 44, 0.85), rgba(14, 20, 22, 0.92));
+  box-shadow: inset 0 1px rgba(241, 219, 164, 0.08), 0 0 0 1px rgba(0, 0, 0, 0.7);
+  color: var(--nov-ink);
+  font-family: var(--font-display);
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.nov-link span { color: var(--nov-gold); }
+.nov-link:hover { border-color: var(--nov-gold); color: #fff3d6; }
+
+/* --- Üst sıra: künye + ilişkiler ---------------------------------------- */
+
+.nov-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1.62fr) minmax(0, 1fr);
+  gap: var(--nov-gap);
+  height: 250px;
+}
+
+.nov-hero { display: block; }
+.nov-hero .nov-art { filter: none; }
+.nov-hero-shade {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background:
+    linear-gradient(90deg, rgba(7, 12, 14, 0.05) 0%, rgba(7, 12, 14, 0.18) 20%, rgba(7, 12, 14, 0.74) 36%, rgba(7, 12, 14, 0.66) 72%, rgba(7, 12, 14, 0.3) 100%),
+    linear-gradient(0deg, rgba(5, 9, 11, 0.62), transparent 45%);
+}
+
+/* Tören sancağı: gönder, mızrak başı, kordon-püskül, halkalar ve
+   dalgalanan bez (render/flagWave.js 'banner'). Bezin gönder kenarı
+   kıpırdamaz; halkalar ve kordon bu yüzden durağan çizilebilir. */
+.nov-standard {
+  position: absolute;
+  z-index: 1;
+  top: 0;
+  bottom: 0;
+  left: 32px;
+  width: 280px;
+  transform-origin: 0 0;
+}
+.nov-pole {
+  position: absolute;
+  z-index: 0;
+  top: 47px;
+  bottom: -4px;
+  left: 10px;
+  width: 8px;
+  border-radius: 3px;
+  background:
+    repeating-linear-gradient(180deg, transparent 0 46px, rgba(0, 0, 0, 0.35) 46px 48px, rgba(255, 236, 190, 0.25) 48px 49px),
+    linear-gradient(90deg, #22190b, #6b4f24 18%, #d9b56a 42%, #fff0c4 52%, #b48c48 66%, #4a3718 88%, #1c1409);
+  box-shadow: 4px 0 8px rgba(0, 0, 0, 0.55);
+}
+.nov-flag {
+  position: absolute;
+  z-index: 1;
+  top: 56px;
+  left: 18px;
+  filter: drop-shadow(10px 12px 9px rgba(0, 0, 0, 0.5));
+}
+.nov-flag canvas { display: block; }
+.nov-ring {
+  position: absolute;
+  z-index: 2;
+  left: 7px;
+  width: 15px;
+  height: 7px;
+  border: 2px solid #c79f55;
+  border-radius: 50%;
+  border-top-color: #f3dc9f;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.7), inset 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.nov-ring.is-top { top: 57px; }
+.nov-ring.is-mid { top: 124px; }
+.nov-ring.is-low { top: 190px; }
+.nov-finial {
+  position: absolute;
+  z-index: 3;
+  top: 4px;
+  left: 0;
+  width: 64px;
+  height: 150px;
+  overflow: visible;
+  filter: drop-shadow(2px 3px 2px rgba(0, 0, 0, 0.6));
+}
+
+.nov-identity {
+  position: absolute;
+  z-index: 2;
+  top: 26px;
+  bottom: 18px;
+  left: 300px;
+  right: 92px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.nov-identity h3 {
+  overflow: hidden;
+  font-size: 34px;
+  font-weight: 400;
+  line-height: 1.1;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  background: linear-gradient(180deg, var(--nov-gold-hi) 10%, var(--nov-gold) 60%, var(--nov-gold-lo));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.85));
+  margin-bottom: 2px;
+}
+.nov-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  color: var(--nov-ink);
+  font-size: 16px;
+  white-space: nowrap;
+}
+.nov-meta span { display: inline-flex; align-items: center; gap: 8px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.nov-meta i { color: var(--nov-gold-lo); }
+.nov-meta .glyph { width: 19px; height: 19px; color: var(--nov-gold); }
+.nov-intro {
+  margin-top: 4px;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  color: #cfc6b1;
+  font-size: 15px;
+  line-height: 1.5;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.nov-intro em { color: var(--nov-ink); font-style: italic; }
+.nov-fleur {
+  position: absolute;
+  z-index: 1;
+  right: 26px;
+  top: 50%;
+  width: 56px;
+  height: 56px;
+  color: rgba(215, 180, 106, 0.16);
+  transform: translateY(-50%);
+}
+
+/* İlişkiler: üç sütun, rozet + iki bayrak yuvası + "+N" satırı. */
+.nov-relations { display: flex; flex-direction: column; }
+.nov-rel-cols {
+  flex: 1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin: 10px 10px 12px;
+  border-radius: 2px;
+  background: rgba(3, 7, 9, 0.35);
+  box-shadow: inset 0 0 0 1px rgba(201, 168, 102, 0.1);
+}
+.nov-rel {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  justify-items: center;
+  gap: 5px;
+  padding: 10px 6px 8px;
+  min-width: 0;
+}
+.nov-rel + .nov-rel { border-left: 1px solid rgba(201, 168, 102, 0.16); }
+.nov-rel b { color: var(--nov-ink); font-size: 16px; font-weight: 400; }
+.nov-rel-badge {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  --tone: var(--nov-gold);
+  background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--tone) 38%, #10191c), #0a1113 75%);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8), inset 0 0 0 2px color-mix(in srgb, var(--tone) 70%, #000), 0 0 14px color-mix(in srgb, var(--tone) 30%, transparent);
+}
+.nov-rel-badge .glyph { width: 24px; height: 24px; color: color-mix(in srgb, var(--tone) 55%, #fff6dc); }
+.nov-rel.tone-ally .nov-rel-badge { --tone: #6f9a5c; }
+.nov-rel.tone-rival .nov-rel-badge { --tone: #b4513f; }
+.nov-rel.tone-war .nov-rel-badge { --tone: #c9a35c; }
+.nov-rel-flags { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; }
+.nov-rel-flags em { color: var(--nov-dim); font-size: 13px; font-style: italic; }
+.nov-rel-flag {
+  display: grid;
+  place-items: center;
+  width: 54px;
+  height: 38px;
+  padding: 0;
+  border: 1px solid rgba(201, 168, 102, 0.5);
+  border-radius: 2px;
+  background: #0a1113;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8), 0 3px 8px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+}
+.nov-rel-flag:hover { border-color: var(--nov-gold-hi); }
+/* Arma çerçevesi: dışta siyah hat, pirinç kenar, içte gölge. */
+.nov-rel-flag {
+  border: 1px solid #b8914c;
+  border-top-color: #f0d79a;
+  border-bottom-color: #7a5a26;
+  background: linear-gradient(180deg, #3a2c14, #120d06);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.85),
+    inset 0 0 0 2px #1a1309,
+    inset 0 0 0 3px rgba(240, 215, 154, 0.18),
+    0 4px 10px rgba(0, 0, 0, 0.55);
+}
+.nov-rel-flag > span:first-child {
+  position: relative;
+  display: block;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.7);
+}
+
+.nov-rel-flag { position: relative; }
+.nov-war-score {
+  position: absolute;
+  right: -7px;
+  bottom: -7px;
+  min-width: 24px;
+  padding: 0 4px;
+  border: 1px solid rgba(201, 168, 102, 0.55);
+  border-radius: 2px;
+  background: #0b1214;
+  color: var(--nov-ink);
+  font-family: var(--font-ui);
+  font-size: 10.5px;
+  line-height: 15px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.nov-war-score.pos { color: var(--nov-good); }
+.nov-war-score.neg { color: var(--nov-bad); }
+.nov-rel-more { color: var(--nov-dim); font-size: 12.5px; }
+
+/* --- Altı gösterge ------------------------------------------------------ */
+
+.nov-stats {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: var(--nov-gap);
+  height: 114px;
+}
+.nov-stat {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 12px 0 14px;
+}
+.nov-stat .nov-art {
+  left: 28%;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 50%);
+  mask-image: linear-gradient(90deg, transparent, #000 50%);
+  opacity: 0.8;
+}
+.nov-stat::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(90deg, rgba(9, 16, 19, 0.2) 40%, rgba(9, 16, 19, 0.45));
+}
+.nov-stat-icon { flex: none; display: grid; place-items: center; width: 46px; height: 46px; }
+.nov-stat-icon .glyph {
+  width: 42px;
+  height: 42px;
+  color: var(--nov-gold);
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.9));
+}
+.nov-stat-text { display: grid; min-width: 0; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95), 0 0 10px rgba(0, 0, 0, 0.7); }
+.nov-stat-text > * { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.nov-stat-text span { color: var(--nov-ink); font-size: 16px; }
+.nov-stat-text b {
+  color: #f3e6c4;
+  font-size: 31px;
+  font-weight: 400;
+  line-height: 1.15;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.nov-stat-text small { color: #b7af9b; font-size: 12.5px; }
+.nov-stat-text small i { color: var(--nov-gold-lo); margin: 0 2px; }
+
+/* --- Stratejik kaynaklar -------------------------------------------------- */
+
+.nov-resources {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr);
+  align-items: stretch;
+  height: 82px;
+}
+.nov-res-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 14px 0 18px;
+  border-right: 1px solid rgba(201, 168, 102, 0.2);
+}
+.nov-res-head h4 { color: var(--nov-gold-hi); font-size: 19px; font-weight: 400; white-space: nowrap; }
+.nov-res-head small { display: block; color: var(--nov-dim); font-size: 12.5px; line-height: 1.25; white-space: nowrap; }
+.nov-res-grid {
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
+  gap: 8px;
+  padding: 9px 10px;
+}
+.nov-res {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 0 10px;
+  border: 1px solid rgba(201, 168, 102, 0.22);
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(24, 35, 40, 0.75), rgba(10, 17, 20, 0.85));
+}
+.nov-res > div { display: grid; min-width: 0; }
+.nov-res small { overflow: hidden; color: var(--nov-ink); font-size: 14px; white-space: nowrap; text-overflow: ellipsis; }
+.nov-res b { color: #f3e6c4; font-size: 19px; font-weight: 400; font-variant-numeric: lining-nums tabular-nums; }
+.nov-res.is-short b { color: var(--nov-warn); }
+.nov-res.is-low b { color: var(--nov-bad); }
+.nov-res.is-low { border-color: rgba(200, 112, 90, 0.45); }
+.nov-res.is-none b { color: var(--nov-dim); }
+
+/* --- Alt sıra ------------------------------------------------------------- */
+
+.nov-bottom {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(0, 1.15fr) minmax(0, 1fr);
+  gap: var(--nov-gap);
+  height: 268px;
+}
+.nov-bottom > .nov-panel { display: flex; flex-direction: column; }
+
+/* min-height 0: satır izleri içeriğe değil panele göre bölünür (yoksa en
+   uzun satır bütün 1fr izleri kendi boyuna çekip paneli taşırıyordu). */
+.nov-rows {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: repeat(6, minmax(0, 1fr)) auto;
+  padding: 6px 18px 10px;
+}
+.nov-row {
+  display: grid;
+  grid-template-columns: 18px auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  font-size: 14.5px;
+  line-height: 18px;
+}
+.nov-row + .nov-row { border-top: 1px solid rgba(201, 168, 102, 0.07); }
+.nov-row .glyph { width: 17px; height: 17px; color: var(--nov-gold); }
+.nov-row > span { color: var(--nov-ink); }
+.nov-row > b {
+  min-width: 0;
+  overflow: hidden;
+  color: #f3e6c4;
+  font-weight: 400;
+  text-align: right;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-variant-numeric: lining-nums tabular-nums;
+}
+.nov-row > b small { color: var(--nov-dim); font-size: 13px; }
+.nov-row > b small.pos { color: var(--nov-good); }
+.nov-row > b small.neg { color: var(--nov-bad); }
+.nov-row.is-bad > b { color: var(--nov-bad); }
+.nov-row.is-goal { align-items: start; padding-top: 6px; }
+.nov-row.is-goal > b { white-space: normal; }
+.nov-goal {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: 13.5px;
+  line-height: 1.35;
+}
+.nov-ellipsis { display: block; overflow: hidden; text-overflow: ellipsis; }
+.nov-capital {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #f3e6c4;
+  font: inherit;
+  cursor: pointer;
+}
+.nov-capital .glyph { width: 14px; height: 14px; opacity: 0.7; }
+.nov-capital:hover { color: #fff3d6; text-decoration: underline; text-decoration-color: var(--nov-gold-lo); }
+
+.nov-event-list {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-rows: repeat(5, minmax(0, 1fr));
+  margin: 0;
+  padding: 6px 16px 10px;
+  list-style: none;
+}
+.nov-event-list li {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  font-size: 14px;
+}
+.nov-event-list li + li { border-top: 1px solid rgba(201, 168, 102, 0.07); }
+.nov-event-list li > span { overflow: hidden; color: var(--nov-ink); white-space: nowrap; text-overflow: ellipsis; }
+.nov-event-list time { color: var(--nov-dim); font-size: 12.5px; white-space: nowrap; font-variant-numeric: lining-nums tabular-nums; }
+.nov-event-list .glyph { width: 17px; height: 17px; }
+.nov-event-list .tone-good .glyph { color: var(--nov-good); }
+.nov-event-list .tone-bad .glyph,
+.nov-event-list .tone-war .glyph { color: var(--nov-bad); }
+.nov-event-list .tone-info .glyph { color: var(--nov-gold); }
+.nov-event-list .is-empty > span { color: var(--nov-dim); font-style: italic; }
+
+.nov-outlook .nov-art { left: 30%; opacity: 0.85; }
+.nov-outlook-shade {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background: linear-gradient(90deg, rgba(8, 14, 16, 0.97) 30%, rgba(8, 14, 16, 0.72) 62%, rgba(8, 14, 16, 0.35));
+}
+.nov-outlook-text {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  min-height: 0;
+  overflow: hidden;
+  padding: 12px 18px 12px 18px;
+  max-width: 82%;
+}
+.nov-outlook-text p {
+  position: relative;
+  padding-left: 15px;
+  color: #d7cfba;
+  font-size: 14px;
+  line-height: 1.45;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+.nov-outlook-text p::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.58em;
+  width: 5px;
+  height: 5px;
+  background: var(--nov-gold);
+  transform: rotate(45deg);
+}
+.nov-outlook-text p.tone-good::before { background: var(--nov-good); }
+.nov-outlook-text p.tone-warn::before { background: var(--nov-warn); }
+.nov-outlook-text p.tone-bad::before,
+.nov-outlook-text p.tone-war::before { background: var(--nov-bad); }
+
+/* --- Dar pencere (1280-1600) --------------------------------------------- */
+
+@media (max-width: 1600px) {
+  .nov { --nov-gap: 10px; }
+  .nov-top { height: 216px; }
+  .nov-standard { left: 24px; transform: scale(0.88); }
+  .nov-identity { left: 262px; right: 64px; top: 22px; }
+  .nov-identity h3 { font-size: 29px; }
+  .nov-meta { font-size: 14.5px; }
+  .nov-intro { font-size: 14px; }
+  .nov-fleur { right: 14px; width: 44px; height: 44px; }
+  .nov-stats { height: 98px; }
+  .nov-stat { gap: 8px; padding: 0 8px 0 10px; }
+  .nov-stat-icon { width: 36px; height: 36px; }
+  .nov-stat-icon .glyph { width: 34px; height: 34px; }
+  .nov-stat-text span { font-size: 14px; }
+  .nov-stat-text b { font-size: 26px; }
+  .nov-stat-text small { font-size: 11.5px; }
+  .nov-resources { grid-template-columns: 196px minmax(0, 1fr); height: 74px; }
+  .nov-res-head { padding: 0 10px 0 14px; gap: 9px; }
+  .nov-res-head h4 { font-size: 16.5px; }
+  .nov-res-head small { font-size: 11.5px; }
+  .nov-res-head h4 + small { max-width: 15ch; white-space: normal; }
+  .nov-res-grid { gap: 6px; padding: 8px; }
+  .nov-res { gap: 7px; padding: 0 7px; }
+  .nov-res .art-md { width: 32px; height: 32px; }
+  .nov-res small { font-size: 12.5px; }
+  .nov-res b { font-size: 16.5px; }
+  .nov-bottom { height: 232px; }
+  .nov-head { min-height: 42px; padding: 0 12px; }
+  .nov-head h4 { font-size: 17px; }
+  .nov-row { font-size: 13.5px; }
+  .nov-event-list li { font-size: 13px; gap: 9px; }
+  .nov-event-list time { font-size: 11.5px; }
+  .nov-outlook-text p { font-size: 13px; }
+  .nov-title h2 { font-size: 32px; }
+  .nov-title p { margin-top: 4px; }
+  .nov-rel { gap: 3px; padding: 8px 4px 6px; }
+  .nov-rel-badge { width: 36px; height: 36px; }
+  .nov-rel-badge .glyph { width: 21px; height: 21px; }
+  .nov-rel b { font-size: 15px; }
+  .nov-outlook-text { max-width: 90%; }
+}
+
+@media (max-width: 1400px) {
+  /* Görünüm satırları öncelik sırasıyla gelir; dar sütunda sonuncusu düşer. */
+  .nov-outlook-text p:nth-child(n + 4) { display: none; }
+  .nov-outlook-text { gap: 6px; padding: 10px 14px; }
+  .nov-outlook-text p { font-size: 12.5px; line-height: 1.4; }
+  .nov-standard { transform: scale(0.78); }
+  .nov-identity { left: 232px; }
+  .nov-stat-icon { display: none; }
+  .nov-stat { padding: 0 10px 0 14px; }
+}
