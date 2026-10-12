@@ -169,7 +169,7 @@
      eyalet kunyesi + hegemonya seridi + asker alim satirini tasitiyordu. */
   --sheet-max: min(64vh, 640px);
   --topbar-height: 74px;
-  --tabbar-height: 58px;
+  --tabbar-height: 38px;
   /* Künye yüksekliği çubuktan küçük: plakanın üstünde ve altında nefes
      kalmazsa şerit tek parça pirinç levhaya dönüyor. Dokuz künyenin toplam
      genişliğini de bu belirler (42px'te ~1410px, 1440'lık ekrana sığar). */
@@ -778,125 +778,119 @@ select:focus-visible {
    geniş ekranda sağda 180px boş duvar bırakıyordu. Yükseklik dokuz künyenin
    en-boy oranları toplamından (32.9) ve ayraçlardan çıkar; 1614px'te 46px. */
 .tab-bar {
-  --tab-plate-h: clamp(34px, calc((100vw - 104px) / 32.9), 46px);
   position: relative;
   z-index: 0;
   display: flex;
-  align-items: center;
-  justify-content: safe center;
-  gap: 6px;
+  align-items: stretch;
   height: var(--tabbar-height);
-  padding: 0 var(--sp-5);
+  padding: 0 var(--sp-3) 0 var(--sp-4);
+  border: 0;
+  border-top: 1px solid rgba(190, 158, 96, 0.12);
+  border-bottom: 1px solid rgba(190, 158, 96, 0.26);
+  border-radius: 0;
+  /* Resim künyeler yerine kendi çizgimiz: koyu deri şerit, pirinç yazı.
+     58 px'lik plaka şeridi 38 px'e indi; yeni sekmeye (Cultures) yer açıldı. */
+  background:
+    var(--ui-grain),
+    linear-gradient(180deg, rgba(16, 21, 24, 0.95) 0%, rgba(8, 11, 13, 0.97) 100%);
+  -webkit-backdrop-filter: var(--glass-blur);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: inset 0 1px rgba(232, 210, 160, 0.05), 0 6px 18px rgba(0, 0, 0, 0.3);
+}
+
+.tab-list {
+  display: flex;
+  flex: 1;
+  align-items: stretch;
+  justify-content: safe center;
+  gap: 2px;
+  min-width: 0;
   overflow-x: auto;
   overflow-y: hidden;
   scrollbar-width: none;
-  border: 0;
-  border-bottom: 1px solid rgba(190, 158, 96, 0.14);
-  border-radius: 0;
-  /* Künyeler bir DUVARA asılıdır: arkada Victoria duvar kâğıdı, üstünde koyu
-     bir perde. Perde olmadan desen pirinç çerçevelerle yarışıyor; perdesiz
-     bırakmak da şeridi bir kumaş parçasına çeviriyordu. Desen okunacak kadar
-     var, künyeyi bastıracak kadar değil. */
-  background:
-    var(--ui-grain),
-    linear-gradient(180deg, rgba(10, 14, 17, 0.62) 0%, rgba(6, 9, 11, 0.78) 100%),
-    url('../assets/ui/wallpaper.jpg') center / 420px repeat;
-  -webkit-backdrop-filter: var(--glass-blur);
-  backdrop-filter: var(--glass-blur);
-  box-shadow: inset 0 1px rgba(232, 210, 160, 0.04), 0 6px 18px rgba(0, 0, 0, 0.3);
 }
+.tab-list::-webkit-scrollbar { display: none; }
 
-.tab-bar::-webkit-scrollbar { display: none; }
-
-/* Sekmenin tüm yüzü tek resim. Yükseklik ortak, GENİŞLİK oranla gelir:
-   künyeyi kelime uzunluğu belirledi, dokuzunu eşit genişliğe zorlamak ya
-   kısa adları boş emayede yüzdürür ya uzunları ezerdi. */
-.tab-bar button {
+.tab-bar [data-screen] {
   position: relative;
+  display: inline-flex;
   flex: 0 0 auto;
-  height: var(--tab-plate-h);
-  align-self: center;
-  padding: 0;
+  align-items: center;
+  gap: 7px;
+  padding: 0 13px;
   border: 0;
-  background: center / contain no-repeat var(--plate);
+  border-radius: 0;
+  background: none;
   box-shadow: none;
-  cursor: pointer;
-  /* Pasif künye geri çekilir; parlaklık üç durumun tek kaldıracı, bu yüzden
-     hover ve aktif için ayrı resim üretmek gerekmiyor. */
-  filter: brightness(0.78) saturate(0.86);
-  transition: filter 120ms ease-out;
-}
-
-/* Etiket DOM'da kalır, ekranda kalmaz: ad resmin içinde kazılı. */
-.tab-bar button b {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
+  color: var(--text-dim);
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-variant: small-caps;
+  letter-spacing: 0.05em;
   white-space: nowrap;
+  cursor: pointer;
+  transition: color 120ms ease-out, background-color 120ms ease-out;
 }
+.tab-bar [data-screen] b { font-weight: 400; }
+.tab-ico { display: inline-flex; color: rgba(214, 186, 120, 0.72); }
+.tab-ico .glyph { width: 17px; height: 17px; color: inherit; vertical-align: 0; }
 
-.tab-bar button:hover { filter: brightness(0.96) saturate(0.94); }
+.tab-bar [data-screen]:hover { color: var(--text); background: rgba(186, 160, 100, 0.07); }
+.tab-bar [data-screen]:hover .tab-ico { color: var(--gold-bright); }
 
-/* Aktif künye tam parlaklıkta: pirinç, ışığa dönmüş plaka. */
-.tab-bar button.active {
-  filter: brightness(1.14) saturate(1.02)
-    drop-shadow(0 0 6px rgba(190, 158, 96, 0.22));
+/* Aktif sekme ekranın başlığıdır: pirinç yazı, altında yanan hat. */
+.tab-bar [data-screen].active {
+  color: #f2dc9e;
+  background: linear-gradient(180deg, rgba(186, 160, 100, 0.16), rgba(186, 160, 100, 0.04));
 }
-
-/* AUTO: hükûmetin yürüttüğü portföyün künyesi kendi ışığıyla yanar —
-   oksitlenmiş pirincin yeşili (verdigris). Parıltı plakanın biçimini izler
-   (drop-shadow resmin alfasına oturur), altındaki ince lamba "çalışıyor"
-   der. Elle yönetilen künye ışıksızdır (Kerem: otomatik olanlar parlasın). */
-.tab-bar button.is-auto {
-  filter: brightness(0.9) saturate(0.92)
-    drop-shadow(0 0 2px rgba(112, 204, 166, 0.62))
-    drop-shadow(0 0 7px rgba(112, 204, 166, 0.22));
-}
-
-.tab-bar button.is-auto:hover {
-  filter: brightness(1.02) saturate(0.98)
-    drop-shadow(0 0 2px rgba(126, 216, 178, 0.75))
-    drop-shadow(0 0 9px rgba(126, 216, 178, 0.3));
-}
-
-.tab-bar button.is-auto.active {
-  filter: brightness(1.14) saturate(1.02)
-    drop-shadow(0 0 2px rgba(126, 216, 178, 0.8))
-    drop-shadow(0 0 9px rgba(190, 158, 96, 0.28));
-}
-
-.tab-bar button.is-auto::before {
+.tab-bar [data-screen].active .tab-ico { color: #f2dc9e; }
+.tab-bar [data-screen].active::after {
   content: "";
   position: absolute;
-  left: 50%;
-  bottom: -4px;
-  width: 30%;
+  left: 10px;
+  right: 10px;
+  bottom: 0;
   height: 2px;
-  border-radius: 2px;
-  transform: translateX(-50%);
+  border-radius: 2px 2px 0 0;
+  background: #d8b86a;
+  box-shadow: 0 0 8px rgba(216, 184, 106, 0.55);
+}
+
+/* AUTO: hükûmetin yürüttüğü portföyün sekmesinde yeşil lamba (Kerem:
+   otomatik olanlar parlasın). */
+.tab-bar [data-screen].is-auto::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  right: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
   pointer-events: none;
   background: #86dcb6;
   box-shadow: 0 0 6px 1px rgba(134, 220, 182, 0.65);
 }
 
-:root[data-motion="on"] .tab-bar button.is-auto::before { animation: auto-lamp 3.4s ease-in-out infinite; }
+:root[data-motion="on"] .tab-bar [data-screen].is-auto::before { animation: auto-lamp 3.4s ease-in-out infinite; }
 
 @keyframes auto-lamp {
   0%, 100% { opacity: 1; }
   50% { opacity: 0.45; }
 }
 
-.tab-bar button[data-screen="construction"] { --plate: url('../assets/tabs/construction.png'); aspect-ratio: 676 / 152; }
-.tab-bar button[data-screen="industry"]     { --plate: url('../assets/tabs/industry.png');     aspect-ratio: 575 / 156; }
-.tab-bar button[data-screen="trade"]        { --plate: url('../assets/tabs/trade.png');        aspect-ratio: 469 / 154; }
-.tab-bar button[data-screen="budget"]       { --plate: url('../assets/tabs/budget.png');       aspect-ratio: 487 / 154; }
-.tab-bar button[data-screen="military"]     { --plate: url('../assets/tabs/military.png');     aspect-ratio: 555 / 154; }
-.tab-bar button[data-screen="population"]   { --plate: url('../assets/tabs/population.png');   aspect-ratio: 601 / 155; }
-.tab-bar button[data-screen="politics"]     { --plate: url('../assets/tabs/politics.png');     aspect-ratio: 506 / 156; }
-.tab-bar button[data-screen="technology"]   { --plate: url('../assets/tabs/technology.png');   aspect-ratio: 626 / 153; }
-.tab-bar button[data-screen="chronicle"]    { --plate: url('../assets/tabs/chronicle.png');    aspect-ratio: 572 / 154; }
+/* Ekran açıkken AUTO hapı ve kapat çubuğun sağ ucunda: sekme değişince
+   sabit yerde dururlar, tık noktaları kaymaz. */
+.tab-tools { display: none; flex: none; align-items: center; gap: 8px; padding-left: 10px; }
+body.screen-open .tab-tools { display: flex; }
+.tab-tools .screen-auto { margin: 0; }
+/* Son devir cümlesi hapın ipucundadır ("Last: …"); çubukta sekmeleri itiyordu. */
+.tab-tools .auto-last { display: none; }
+/* 1366 altında on sekme + AUTO + kapat sığsın: aralık ve yazı daralır. */
+@media (max-width: 1365px) {
+  .tab-bar [data-screen] { gap: 5px; padding: 0 8px; font-size: 13px; }
+  .tab-ico .glyph { width: 15px; height: 15px; }
+}
+.tab-close { width: 28px; height: 28px; }
 
 /* ==========================================================================
    6. EKRAN KABUĞU — soldan açılan tam boy yönetim paneli
@@ -1028,7 +1022,9 @@ select:focus-visible {
 
 .screen-heading { flex: none; min-width: 0; }
 
-#screen-close { flex: none; margin-left: auto; }
+/* Sekmesi olan ekranda başlık satırı yok: başlık aktif sekmedir, AUTO ve
+   kapat sekme çubuğundadır. Diplomasi/dosya/barış başlığını korur. */
+.screen[data-tabbed="1"] .screen-head { display: none; }
 
 /* "STRATEGIC COMMAND" üst etiketi kaldırıldı: her ekranda tekrar eden,
    bilgi taşımayan bir başlıktı ve asıl başlığın önüne geçiyordu. */
@@ -4963,7 +4959,9 @@ body:has(#layer-menu:not(.hidden)) .rgo-map-legend { right: calc(var(--sp-3) + 1
   .flag-hero { width: 150px; }
   /* Dar ekranda künye küçülür — genişlik orana bağlı, elle verilen
      min-width ve yan dolgu resmi kutunun içinde ezerdi. */
-  .tab-bar { --tab-plate-h: 34px; justify-content: flex-start; padding-inline: var(--sp-1); }
+  .tab-bar { padding-inline: var(--sp-1); }
+  .tab-list { justify-content: flex-start; }
+  .tab-bar [data-screen] { padding: 0 9px; font-size: 13px; }
 }
 
 @media (max-width: 560px) {
@@ -10833,25 +10831,7 @@ body.picker-open .sheet { display: none; }
 :root[data-motion="on"] .screen-body.is-entering > :nth-child(3) { animation-delay: 70ms; }
 :root[data-motion="on"] .screen-body.is-entering > :nth-child(n+4) { animation-delay: 105ms; }
 
-/* Sekme künyesi: üstüne gelince kalkar, basınca oturur; seçilen künyeden
-   bir kez ışık geçer. Işık künyenin kendi resmine maskelenir: saydam
-   köşelerde dikdörtgen parıltı görünmesin. */
-:root[data-motion="on"] .tab-bar button {
-  transition: filter 120ms ease-out, transform 160ms cubic-bezier(0.2, 0.7, 0.2, 1);
-}
-:root[data-motion="on"] .tab-bar button:hover { transform: translateY(-2px); }
-:root[data-motion="on"] .tab-bar button:active { transform: translateY(0) scale(0.98); }
-:root[data-motion="on"] .tab-bar button.active::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: linear-gradient(105deg, transparent 30%, rgba(255, 238, 190, 0.5) 50%, transparent 70%) no-repeat;
-  background-size: 55% 100%;
-  -webkit-mask: var(--plate) center / contain no-repeat;
-  mask: var(--plate) center / contain no-repeat;
-  animation: tab-glint 720ms ease-out 1 both;
-}
+/* Sekme hareketi: renk geçişi .tab-bar [data-screen] kuralındadır. */
 
 /* Bilgi paneli ve seçili tümen listesi belirirken aşağıdan gelir; panelin
    konusu değişince (başka kare, başka ordu) içerik süzülür. */
@@ -13319,6 +13299,7 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
   }
 }
 
+
 /* §44 Amblemler (gravür sheet'i, 2026-10-08): dal başlığı ve üst çubuk. */
 .tech-band-head .art-emblem { width: 26px; height: 26px; margin: 0 3px 0 -2px; }
 /* Başlık satırında etiket ağaç sütununa taşabilir; altındaki satırlar taşmaz. */
@@ -14891,6 +14872,36 @@ body:is(.screen-open, .notify-quiet) .notify-tray { justify-content: center; min
 .pv-focus-btn .art-xs { width: 18px; height: 18px; }
 .pv-state-row.pv-focus > b { flex: 1; min-width: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .pv-state-row.pv-focus > em { margin-left: 0; cursor: help; }
+/* Odak sayacı: tık bütün odakların listesini açar. */
+.pv-focus-count {
+  flex: none;
+  padding: 1px 6px;
+  border: 1px solid rgba(186, 160, 100, 0.35);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.18);
+  color: var(--text-dim);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.pv-focus-count:hover, .pv-focus-count.on { border-color: rgba(214, 186, 120, 0.75); color: var(--text); }
+.pv-focus-count i { font-style: normal; opacity: 0.7; }
+.pv-focus-list { margin: 2px 0 8px; padding: 4px 0 0; border-top: 1px solid var(--line); }
+.pv-fl-row { display: grid; grid-template-columns: 20px minmax(70px, auto) 1fr 22px; align-items: center; gap: 6px; padding: 3px 0; border-bottom: 1px solid rgba(255, 255, 255, 0.04); }
+.pv-fl-art .art-xs { width: 18px; height: 18px; }
+.pv-fl-name { overflow: hidden; padding: 0; border: 0; background: none; color: var(--gold); font: inherit; font-size: 12px; text-align: left; text-overflow: ellipsis; white-space: nowrap; cursor: pointer; }
+.pv-fl-name:hover { text-decoration: underline; }
+.pv-fl-what { overflow: hidden; color: var(--text-mute); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.pv-fl-what b { color: var(--text-dim); font-weight: 600; }
+.pv-fl-x { width: 22px; height: 20px; padding: 0; border: 1px solid transparent; border-radius: 3px; background: none; color: var(--text-mute); cursor: pointer; }
+.pv-fl-x:hover { border-color: rgba(214, 74, 58, 0.7); color: #ff8f6e; }
+.pv-fl-empty { margin: 4px 0; color: var(--text-mute); font-size: 11.5px; }
+.pv-fl-foot { display: flex; align-items: center; gap: 6px; padding-top: 5px; color: var(--text-mute); font-size: 11px; }
+.pv-fl-foot > span { flex: 1; }
+.pv-fl-foot button { padding: 2px 8px; border: 1px solid rgba(186, 160, 100, 0.35); border-radius: 3px; background: rgba(0, 0, 0, 0.18); color: var(--text-dim); font-size: 11px; cursor: pointer; }
+.pv-fl-foot button:hover:not([disabled]) { border-color: rgba(214, 186, 120, 0.75); color: var(--text); }
+.pv-fl-foot button[disabled] { cursor: default; opacity: 0.4; }
+.pv-fl-auto.on { border-color: rgba(143, 211, 154, 0.55); color: #b9d68a; }
 
 .tq-first { margin: 6px 0 0; color: var(--gold); font-size: 11.5px; cursor: help; }
 
@@ -15320,3 +15331,50 @@ body.picker-open .navy-dock { display: none; }
 .nd-report b { color: var(--text); font-family: var(--font-display); font-size: 13px; font-weight: 400; }
 .nd-report span { color: #b9d68a; }
 .nd-report.lost span { color: #ff8f6e; }
+
+/* §59 ÜST ŞERİT SIKIŞIK ÖLÇÜ — dosyanın sonunda: §50'nin sabit değer yuvalarını
+   aynı özgüllükle ezer (önce gelince §50 kazanıyordu). */
+/* SIKIŞIK ÖLÇÜ (Kerem 2026-10-12: "üst kısım epey yer kaplıyor, üstte boşluk
+   var"). 1366-1899 aralığında iki satır künyeyle saat arasında ~990 piksel
+   boş bırakıyor, şerit 141 piksel tutuyordu. Göstergeler küçük yuva ve ince
+   yazıyla ölçülür; değer yuvaları yine SABİTTİR (§50, kıpırdamaz), yalnız
+   orantılı küçülür. 1600 ve üstü TEK SATIR: göstergeler künyeyle saatin
+   arasına oturur. Altında iki satır kalır ama kısa (sığdırmak için kaynak
+   tepsisini atmak gerekirdi; kıtlık uyarısı orada). */
+@media (min-width: 1366px) and (max-width: 1899px) {
+  .tb-socket { width: 34px; height: 34px; }
+  .tb-ico, .tb-ico .art-sm, .tb-ico .art-emblem { width: 22px; height: 22px; }
+  .tb-ico .glyph { width: 18px; height: 18px; }
+  .tb-gauge { gap: 6px; padding: 3px 8px 3px 5px; }
+  .tb-gv b { font-size: 16px; }
+  .tb-hero .tb-gv b { font-size: 17px; }
+  .tb-gv small { font-size: 8.5px; letter-spacing: 0.08em; }
+  .tb-gv b .stat-flow { font-size: 10px; }
+  .tb-cartouche > .tb-gauge:nth-child(1) { --gv-w: 92px; }
+  .tb-cartouche > .tb-gauge:nth-child(2) { --gv-w: 64px; }
+  .tb-cartouche > .tb-gauge:nth-child(3) { --gv-w: 56px; }
+  .tb-cartouche > .tb-gauge:nth-child(4) { --gv-w: 54px; }
+  .tb-cartouche > .tb-gauge:nth-child(5) { --gv-w: 46px; }
+  /* Mini göstergenin etiketi ikonunun ipucundadır. */
+  .tb-minis { grid-template-columns: 76px 72px; gap: 2px 10px; margin-left: 4px; padding: 2px 8px; }
+  .tb-mini small { display: none; }
+  .tb-mini b { font-size: 12.5px; }
+  .tb-res { grid-template-columns: repeat(4, 26px); gap: 2px 4px; margin-left: 6px; }
+  .top-stats { padding-top: 2px; }
+}
+@media (min-width: 1600px) and (max-width: 1899px) {
+  .topbar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "left stats right";
+    column-gap: 10px;
+    padding-top: var(--safe-top);
+    padding-bottom: 0;
+  }
+  .top-stats { justify-content: center; padding-top: 0; border-top: 0; }
+}
+@media (min-width: 1366px) and (max-width: 1599px) {
+  /* İki satırın alt satırı yatay dizilir: mini göstergeler ve kaynak
+     madalyonları tek sıra, satır kartuş boyunda kalır. */
+  .tb-minis { grid-template-columns: 76px 72px 76px 72px; }
+  .tb-res { grid-template-columns: repeat(8, 26px); }
+}

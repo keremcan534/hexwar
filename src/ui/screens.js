@@ -48,7 +48,7 @@ import {
 } from './technologyScreen.js';
 import { depositsOf } from '../game/econ/deposits.js';
 import { resourceArt } from './icons/art.js';
-import { TERM_GLYPH, glyph } from './icons/glyphs.js';
+import { TAB_GLYPH, TERM_GLYPH, glyph } from './icons/glyphs.js';
 import { motionOn } from './motion.js';
 import { formatPopulation, populationOf, weeklyBalanceOf } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS } from '../game/econ/defs.js';
@@ -214,8 +214,12 @@ export class Screens {
       body: document.getElementById('screen-body'),
     };
 
-    for (const btn of document.querySelectorAll('#tab-bar button')) {
+    for (const btn of document.querySelectorAll('#tab-bar [data-screen]')) {
       btn.onclick = () => this.toggle(btn.dataset.screen);
+      // Sekme yüzü kendi çizgimiz: glif + ad (resim künyeler kalktı).
+      if (!btn.querySelector('.tab-ico')) {
+        btn.insertAdjacentHTML('afterbegin', `<i class="tab-ico">${glyph(TAB_GLYPH[btn.dataset.screen] ?? 'info')}</i>`);
+      }
     }
     document.getElementById('screen-close').onclick = () => this.close();
 
@@ -274,10 +278,12 @@ export class Screens {
     clearTimeout(this.closeTimer);
     this.active = name;
     this.el.root.dataset.screen = name;
+    // Sekmesi olan ekranın başlığı sekmenin kendisidir: başlık satırı gizlenir.
+    this.el.root.dataset.tabbed = document.querySelector(`#tab-bar [data-screen="${name}"]`) ? '1' : '0';
     document.body.classList.add('screen-open');
     this.el.root.classList.remove('hidden');
     this.el.root.setAttribute('aria-hidden', 'false');
-    for (const btn of document.querySelectorAll('#tab-bar button')) {
+    for (const btn of document.querySelectorAll('#tab-bar [data-screen]')) {
       btn.classList.toggle('active', btn.dataset.screen === name);
     }
     this.el.body.scrollTop = 0;
@@ -355,7 +361,7 @@ export class Screens {
     clearTimeout(this.closeTimer);
     if (motionOn()) this.closeTimer = setTimeout(clear, SCREEN_CLOSE_MS);
     else clear();
-    for (const btn of document.querySelectorAll('#tab-bar button')) {
+    for (const btn of document.querySelectorAll('#tab-bar [data-screen]')) {
       btn.classList.remove('active');
     }
   }

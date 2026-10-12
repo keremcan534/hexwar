@@ -83,16 +83,26 @@
        ve kazınmış ad resmin içindedir. Etiket DOM'da kalır ama görünmez —
        resim erişilebilirlik ağacına girmez, ekran okuyucu adı metinden okur.
        Genişliği kelime belirler; her sekmenin oranı CSS'te yazılıdır. -->
+  <!-- Sekmeler kendi çizgimizle (glif + yazı; glif screens.js'te takılır).
+       Ekran açıkken başlık aktif sekmenin kendisidir: AUTO ve kapat çubuğun
+       sağ ucunda durur (Kerem: resim künyeler yerine kendi UI'mız, ekranın
+       ayrı başlık satırı gereksiz). -->
   <nav class="tab-bar" id="tab-bar" aria-label="National management">
-    <button data-screen="construction" data-tip="tab" data-tip-arg="construction"><b>Construction</b></button>
-    <button data-screen="industry" data-tip="tab" data-tip-arg="industry"><b>Factories</b></button>
-    <button data-screen="trade" data-tip="tab" data-tip-arg="trade"><b>Trade</b></button>
-    <button data-screen="budget" data-tip="tab" data-tip-arg="budget"><b>Budget</b></button>
-    <button data-screen="military" data-tip="tab" data-tip-arg="military"><b>Military</b></button>
-    <button data-screen="population" data-tip="tab" data-tip-arg="population"><b>Population</b></button>
-    <button data-screen="politics" data-tip="tab" data-tip-arg="politics"><b>Politics</b></button>
-    <button data-screen="technology" data-tip="tab" data-tip-arg="technology"><b>Technology</b></button>
-    <button data-screen="chronicle" data-tip="tab" data-tip-arg="chronicle"><b>Chronicle</b></button>
+    <div class="tab-list">
+      <button data-screen="construction" data-tip="tab" data-tip-arg="construction"><b>Construction</b></button>
+      <button data-screen="industry" data-tip="tab" data-tip-arg="industry"><b>Factories</b></button>
+      <button data-screen="trade" data-tip="tab" data-tip-arg="trade"><b>Trade</b></button>
+      <button data-screen="budget" data-tip="tab" data-tip-arg="budget"><b>Budget</b></button>
+      <button data-screen="military" data-tip="tab" data-tip-arg="military"><b>Military</b></button>
+      <button data-screen="population" data-tip="tab" data-tip-arg="population"><b>Population</b></button>
+      <button data-screen="politics" data-tip="tab" data-tip-arg="politics"><b>Politics</b></button>
+      <button data-screen="technology" data-tip="tab" data-tip-arg="technology"><b>Technology</b></button>
+      <button data-screen="chronicle" data-tip="tab" data-tip-arg="chronicle"><b>Chronicle</b></button>
+    </div>
+    <div class="tab-tools">
+      <div class="screen-auto" id="screen-auto"></div>
+      <button class="icon-btn tab-close" id="screen-close" aria-label="Close" data-tip="text" data-tip-text="Close (Esc)">✕</button>
+    </div>
   </nav>
   <!-- Aktif savaslar: EU4/HOI4'teki gibi menunun altinda kirmizi parlayan
        kutucuklar. Icerik hud.js showWars tarafindan uretilir. -->
@@ -109,11 +119,9 @@
         <span>STRATEGIC COMMAND</span>
         <h2 id="screen-title">—</h2>
       </div>
-      <!-- AUTO başlıkta tek hap: gövdenin tepesinde 90px'lik şerit her ekranda
-           asıl içeriği ekranın altına itiyordu (Kerem: "çok yer kaplıyor"). -->
-      <div class="screen-auto" id="screen-auto"></div>
+      <!-- AUTO ve kapat sekme çubuğundadır (tab-tools). Başlık satırı yalnız
+           sekmesi olmayan ekranlarda (diplomasi, dosya, barış) görünür. -->
       <div class="screen-res" id="screen-res"></div>
-      <button class="icon-btn" id="screen-close" aria-label="Close">✕</button>
     </header>
     <div class="screen-body" id="screen-body"></div>
     <i class="screen-rail" aria-hidden="true"></i>

@@ -61,6 +61,12 @@ export const NOTIFY_GLYPH = {
   RELIEF: 'wheat', NATION: 'skull', HEGEMONY: 'crown', INFO: 'info',
 };
 
+/** Üst sekme → ikon (sekme yüzü glif + ad; resim künyelerin yerine). */
+export const TAB_GLYPH = {
+  construction: 'crane', industry: 'factory', trade: 'scales', budget: 'coin', military: 'swords',
+  population: 'people', cultures: 'mask', politics: 'ballot', technology: 'flask', chronicle: 'scroll',
+};
+
 /** Barış şartı → ikon. */
 export const TERM_GLYPH = {
   REPARATIONS: 'coin', DEMILITARIZE: 'swords', CONCESSION: 'pick', LIBERATE: 'flag', VASSALIZE: 'crown',
