@@ -728,7 +728,9 @@ export function runDelegatedAI(game, nation, rng) {
         'Their provinces were close to revolt and they are numerous enough to matter.');
     }
     // Boş odak yuvası da hükûmetin işidir; oyuncunun koyduğu odak yerinde kalır.
-    if ((turn + nation.id) % 13 === 0 && autoFocus(game.world, nation)) {
+    // Oyuncu odak listesinden "kabine dokunmasın" derse (focusAuto false)
+    // boşalttığı yuvalar boş kalır: yoksa sildiği odak bir çeyrekte geri geliyordu.
+    if ((turn + nation.id) % 13 === 0 && nation.focusAuto !== false && autoFocus(game.world, nation)) {
       noteDelegated(game, nation, 'reforms', 'A state focus was set.',
         'A focus slot was empty.');
     }

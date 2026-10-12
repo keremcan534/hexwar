@@ -714,7 +714,7 @@ export class Hud {
       const tab = TAB_KEYS[event.code];
       if (tab && !event.shiftKey) {
         event.preventDefault();
-        const button = document.querySelector(`#tab-bar button[data-screen="${tab}"]`);
+        const button = document.querySelector(`#tab-bar [data-screen="${tab}"]`);
         if (button?.offsetParent) this.screens?.toggle(tab);
         return;
       }
@@ -1704,9 +1704,47 @@ export class Hud {
       ].join('\n');
       return `<button class="pv-focus-btn${on ? ' on' : ''}${blockers.length ? ' off' : ''}" data-focus="${focus.id}"${blockers.length ? ' aria-disabled="true"' : ''} data-tip="text" data-tip-text="${escapeHtml(tip)}" aria-pressed="${on}">${emblemArt(focus.art, 'xs')}</button>`;
     }).join('');
-    const name = current ? FOCUSES.find((f) => f.id === current)?.name : 'none';
-    const slotTip = `Focus slots: ${used} of ${slots} in use.\nOne slot, plus one for every 25% literacy${next != null ? ` — the next at ${Math.round(next * 100)}%` : ''}.`;
-    return `<div class="pv-state-row pv-focus"><small>Focus</small><span class="pv-focus-btns">${buttons}</span><b>${escapeHtml(name)}</b><em data-tip="text" data-tip-text="${escapeHtml(slotTip)}">${used}/${slots}</em></div>`;
+    // Odak yoksa ad yazılmaz: dar kartta "none" sayaca sıkışıp "n…" oluyordu.
+    const name = current ? FOCUSES.find((f) => f.id === current)?.name : '';
+    const slotTip = `Focus slots: ${used} of ${slots} in use.\nOne slot, plus one for every 25% literacy${next != null ? ` — the next at ${Math.round(next * 100)}%` : ''}.\nClick: every focused state in one list.`;
+    const open = this.focusListOpen ?? false;
+    return `<div class="pv-state-row pv-focus"><small>Focus</small><span class="pv-focus-btns">${buttons}</span><b>${escapeHtml(name)}</b><button type="button" class="pv-focus-count${open ? ' on' : ''}" data-focus-list aria-expanded="${open}" data-tip="text" data-tip-text="${escapeHtml(slotTip)}">${used}/${slots} <i aria-hidden="true">${open ? '▴' : '▾'}</i></button></div>${open ? this.focusListHtml(me) : ''}`;
+  }
+
+  /**
+   * BÜTÜN ODAKLAR tek listede (Kerem: "hepsini tek tek silmek için aramak
+   * istemiyorum"). Satır: state (tık → oraya git), odak, getirisi, kaldır.
+   * Varsayılan AUTO'da kabine boş yuvayı çeyrekte bir doldurur; anahtar onu
+   * durdurur, yoksa silinen odak geri geliyordu.
+   */
+  focusListHtml(me) {
+    const world = this.game.world;
+    const states = focusedStates(world, me)
+      .sort((a, b) => (a.econ.focus ?? '').localeCompare(b.econ.focus ?? '') || a.name.localeCompare(b.name));
+    const free = Math.max(0, focusSlots(me) - states.length);
+    const rows = states.map((state) => {
+      const focus = FOCUSES.find((f) => f.id === state.econ.focus);
+      const line = focusPreview(world, me, state, focus.id)?.lines?.[0] ?? focus.desc;
+      return `<div class="pv-fl-row">
+        <span class="pv-fl-art">${emblemArt(focus.art, 'xs')}</span>
+        <button type="button" class="pv-fl-name" data-focus-go="${state.id}" data-tip="text" data-tip-text="${escapeHtml(`${state.name}\nShow this state.`)}">${escapeHtml(state.name)}</button>
+        <span class="pv-fl-what"><b>${escapeHtml(focus.name)}</b> ${escapeHtml(line)}</span>
+        <button type="button" class="pv-fl-x" data-focus-clear="${state.id}" aria-label="Remove the ${escapeHtml(focus.name)} focus from ${escapeHtml(state.name)}" data-tip="text" data-tip-text="${escapeHtml(`Remove the focus from ${state.name}`)}">✕</button>
+      </div>`;
+    }).join('');
+    const cabinet = me.focusAuto !== false;
+    const delegated = isDelegated(me, 'reforms');
+    const autoTip = delegated
+      ? 'The cabinet (AUTO) puts a focus in every empty slot each quarter.\nTurn it off to keep the slots you clear empty.'
+      : 'Government is not on AUTO: empty slots stay empty either way.';
+    return `<div class="pv-focus-list">
+      ${rows || '<p class="pv-fl-empty">No state has a focus.</p>'}
+      <div class="pv-fl-foot">
+        <span>${free ? `${free} free slot${free === 1 ? '' : 's'}` : 'All slots in use'}</span>
+        <button type="button" class="pv-fl-auto${cabinet && delegated ? ' on' : ''}" data-focus-auto${delegated ? '' : ' disabled'} data-tip="text" data-tip-text="${escapeHtml(autoTip)}">Cabinet fills: ${cabinet && delegated ? 'on' : 'off'}</button>
+        <button type="button" class="pv-fl-all" data-focus-clear-all${states.length ? '' : ' disabled'}>Clear all</button>
+      </div>
+    </div>`;
   }
 
   quickBuildHtml(area) {
@@ -2040,6 +2078,37 @@ export class Hud {
       toggle.onclick = () => {
         this.quickBuildOpen = !this.quickBuildOpen;
         this.showTile(game.selected);
+      };
+    }
+    const focusList = this.el.sheetBody.querySelector('[data-focus-list]');
+    if (focusList) {
+      focusList.onclick = () => {
+        this.focusListOpen = !this.focusListOpen;
+        this.showTile(game.selected);
+      };
+    }
+    const clearFocus = (states) => {
+      if (!me || !states.length) return;
+      for (const state of states) setFocus(game.world, me, state, null);
+      game.emit('politics', me.id);
+      this.showTile(game.selected);
+    };
+    for (const btn of this.el.sheetBody.querySelectorAll('[data-focus-clear]')) {
+      btn.onclick = () => clearFocus([game.world.provinces?.[Number(btn.dataset.focusClear)]].filter(Boolean));
+    }
+    const clearAll = this.el.sheetBody.querySelector('[data-focus-clear-all]');
+    if (clearAll) clearAll.onclick = () => clearFocus(me ? focusedStates(game.world, me) : []);
+    const focusAuto = this.el.sheetBody.querySelector('[data-focus-auto]');
+    if (focusAuto && me) {
+      focusAuto.onclick = () => {
+        me.focusAuto = me.focusAuto === false ? true : false;
+        this.showTile(game.selected);
+      };
+    }
+    for (const btn of this.el.sheetBody.querySelectorAll('[data-focus-go]')) {
+      btn.onclick = () => {
+        const state = game.world.provinces?.[Number(btn.dataset.focusGo)];
+        if (state?.center) game.focusTile(state.center);
       };
     }
     for (const btn of this.el.sheetBody.querySelectorAll('[data-focus]')) {
