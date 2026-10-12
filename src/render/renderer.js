@@ -3729,8 +3729,7 @@ export class Renderer {
     // Coğrafya kipi fiziksel dünyayı yalnız başına gösterir: şehir de siyasettir.
     if (!world.cities?.length || this.mapMode === 'geography') return;
     const zoom = this.camera.zoom;
-    // Ayrıntı işaretleri (yıldız, çapa, diş konturu) uzak zoomda okunmaz;
-    // orada yalnız levha kalır, çizim maliyeti de düşer.
+    // Çapa uzak zoomda okunmaz; orada yalnız işaret kalır.
     const detailed = zoom >= 0.3;
 
     for (const city of world.cities) {
@@ -3738,57 +3737,36 @@ export class Renderer {
       if (t.x < rect.minX || t.x > rect.maxX || t.y < rect.minY || t.y > rect.maxY) continue;
       const nation = world.nations[city.nationId];
       const isCapital = nation.capital === t;
-      const ink = this.nationInk(nation);
-      const s = HEX_SIZE * (isCapital ? 0.52 : 0.44);
-      // Şehir hexin üst yarısına: aynı karedeki birim onu tamamen örtüyordu.
+      // KALE LEVHASI KALDIRILDI (Kerem: "şu kale gibi olan işareti kaldır"):
+      // şehir artık state zafer puanıyla aynı dilde küçük pirinç bir
+      // baklavadır, başkent pirinç yıldız; adı etiket katmanında yazar.
+      // İşgal edilen şehir işgalcinin rengini alır (zafer puanıyla aynı).
+      const s = HEX_SIZE * 0.44;
       const cy = t.y - HEX_SIZE * CITY_OFFSET;
-
-      // Zemin gölgesi: levha haritaya "basılı" değil "oturmuş" dursun.
-      // shadowBlur DEĞİL — Gauss gölgesi şehir başına ölçülür maliyet
-      // biriktiriyordu; kaydırılmış yarı saydam blok aynı derinliği verir.
-      const off = 1.6 / zoom;
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
-      ctx.fillRect(t.x - s + off * 0.4, cy - s * 0.7 + off, s * 2, s * 1.4);
-
-      ctx.beginPath();
-      ctx.rect(t.x - s, cy - s * 0.7, s * 2, s * 1.4);
-      ctx.fillStyle = ink;
-      ctx.fill();
-      ctx.lineWidth = 1.6 / zoom;
-      ctx.strokeStyle = 'rgba(4, 8, 10, 0.8)';
-      ctx.stroke();
-
-      // Üst ışık: tek çizgilik fildişi vurgu, levhayı metal gibi toplar.
-      ctx.fillStyle = 'rgba(238, 228, 200, 0.28)';
-      ctx.fillRect(t.x - s, cy - s * 0.7, s * 2, Math.max(0.8 / zoom, s * 0.16));
-
-      // Burçlar: seviye arttıkça üstte daha çok diş.
-      const teeth = 1 + city.level;
-      const w = (s * 2) / (teeth * 2 - 1);
-      ctx.beginPath();
-      for (let i = 0; i < teeth; i++) {
-        ctx.rect(t.x - s + i * w * 2, cy - s * 0.7 - w * 0.8, w, w * 0.8);
+      const holder = controllerOf(t);
+      const occupied = holder >= 0 && holder !== city.nationId;
+      const fill = occupied ? this.nationInk(world.nations[holder]) : isCapital ? '#dfc180' : '#baa064';
+      ctx.lineWidth = Math.max(1 / zoom, HEX_SIZE * 0.035);
+      ctx.strokeStyle = 'rgba(8, 10, 12, 0.85)';
+      ctx.fillStyle = fill;
+      const mark = new Path2D();
+      if (isCapital) this.starPath(mark, t.x, cy, HEX_SIZE * 0.3);
+      else {
+        const r = HEX_SIZE * (0.18 + 0.03 * Math.min(3, city.level ?? 0));
+        mark.moveTo(t.x, cy - r);
+        mark.lineTo(t.x + r * 0.8, cy);
+        mark.lineTo(t.x, cy + r);
+        mark.lineTo(t.x - r * 0.8, cy);
+        mark.closePath();
       }
-      ctx.fillStyle = ink;
-      ctx.fill();
-      if (detailed) ctx.stroke();
+      ctx.fill(mark);
+      ctx.stroke(mark);
 
       if (!detailed) continue;
 
-      // Başkent: sur üstünde pirinç yıldız — bayrağın yanındaki taht nişanı.
-      if (isCapital) {
-        const star = new Path2D();
-        this.starPath(star, t.x, cy - s * 1.35, s * 0.4);
-        ctx.fillStyle = '#dfc180';
-        ctx.fill(star);
-        ctx.lineWidth = 1 / zoom;
-        ctx.strokeStyle = 'rgba(40, 28, 8, 0.85)';
-        ctx.stroke(star);
-      }
-
-      // Liman: levhanın sağında küçük çapa. Deniz ticareti tek bakışta okunur.
+      // Liman: işaretin sağında küçük çapa. Deniz ticareti tek bakışta okunur.
       if (this.isPort(world, city)) {
-        const ax = t.x + s * 1.5;
+        const ax = t.x + s * 1.1;
         const ay = cy + s * 0.05;
         const ah = s * 0.5;
         const anchor = new Path2D();
