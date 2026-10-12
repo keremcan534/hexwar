@@ -105,7 +105,8 @@ biter** (2401 hafta; dönem `calendar.js`'teki iki yıldır). Erken zafer yoktur
 kazanan, son turda en yüksek puana sahip ülkedir. 1900 dünyası kademeye göre
 kurulur (`era.js`): sanayileşmiş çekirdek, yarı sanayi ve tarım ülkesi
 arasındaki makas, 1836 dünyasının başsız 64 yılda vardığı 1900 halinden
-ölçülmüştür.
+ölçülmüştür; mutlak düzey onun yarısıdır (sanayi ülkesinde bina yuvalarının
+~%56'sı, tarım ülkesinde ~%44'ü dolu başlar). Sanayileşme oyunun işidir.
 Puan dört eksenden gelir (`hegemony.js`): **sanayi** (IC × 4), **nüfus**
 (milyon × 3), **çekirdek province** (× 1) ve **prestij** (kazanılan savaş,
 gündem, Büyük X). Her ülke kuruluşta bir **ulusal hedef** alır — bölünmüş
