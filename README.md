@@ -366,7 +366,9 @@ Saat: Space duraklat/sürdür, + / − hız. Sekmeler soldan sağa F1-F9.
 Esc açık paneli/ekranı kapatır. Açık ekran tuşu önce alır, kullanmadığı tuş
 haritaya düşer (WASD/oklar kamera). Her ekranda **A** AUTO'yu çevirir (hap
 başlıkta durur). Construction: 1-9 bina, ↑↓ state, Enter kur, B en iyi 3,
-⇧B en iyi 5, F kaynak süzgeci, S kurulamayanları göster. Haritada kendi
+⇧B en iyi 5, F kaynak süzgeci, S kurulamayanları göster. Factories: ↑↓ hat,
+←→ önceliği Auto · Off · Low · Normal · High sırasında kaydırır; bir
+önceliğin üstünde durmak yeni paylaşımı çubukta ve satırlarda gösterir. Haritada kendi
 state'in seçiliyken **B** kartın altındaki hızlı inşa şeridini açar (her bina
 o state'teki kazancı ve bedeliyle; tık kuyruğa koyar). Ekranda her
 kısayolun rozeti vardır.

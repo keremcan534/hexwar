@@ -258,12 +258,22 @@ export function lineAllocation(nation, militaryIC, dockyards, weights = null) {
   return out;
 }
 
+/** Hat veriminin tavanı (teknolojiyle yükselir). Ekran da bunu okur. */
+export function lineEfficiencyCap(nation) {
+  return clamp(LINE_EFFICIENCY.cap + mod(nation, 'lineEfficiency'), 0.3, 1);
+}
+
+/** Çalışan hattın haftalık verim kazancı. */
+export function lineEfficiencyGain(nation) {
+  return LINE_EFFICIENCY.gain * (1 + mod(nation, 'lineGain'));
+}
+
 export function runLines(nation, militaryIC, dockyards, needs) {
   const economy = nation.economy;
   ensureIndustry(economy);
   const lines = economy.lines;
-  const cap = clamp(LINE_EFFICIENCY.cap + mod(nation, 'lineEfficiency'), 0.3, 1);
-  const gain = LINE_EFFICIENCY.gain * (1 + mod(nation, 'lineGain'));
+  const cap = lineEfficiencyCap(nation);
+  const gain = lineEfficiencyGain(nation);
   const allocation = lineAllocation(nation, militaryIC, dockyards);
   const produced = {};
   for (const id of EQUIPMENT_IDS) {

@@ -14,6 +14,7 @@ import { describeEffects } from '../game/modifiers.js';
 import { economyView, formatPopulation } from '../game/economy.js';
 import { BUILDINGS, BUILDING_IDS, EQUIPMENT, RESOURCES } from '../game/econ/defs.js';
 import { depositsOf, fertilityOf } from '../game/econ/deposits.js';
+import { linePriorityOf } from '../game/econ/industry.js';
 import { provinceName, buildingLevels, buildingSlots } from '../game/provinces.js';
 import { LEDGER_LINES } from '../game/treasury.js';
 
@@ -169,13 +170,14 @@ export function registerStateTooltips(game) {
     if (!info || !nation?.economy) return null;
     const line = nation.economy.lines?.[id] ?? {};
     const recipe = Object.entries(info.resources ?? {}).map(([res, amount]) => `${amount} ${RESOURCES[res]?.name ?? res}`).join(', ');
+    const priority = linePriorityOf(line.weight ?? 0);
     return {
       type: 'breakdown',
       title: `${info.name} line`,
       value: `${(line.output ?? 0).toFixed(1)} per week`,
-      text: `Each unit costs ${info.ic} IC and ${recipe || 'no materials'}. Military industry is shared between lines by weight.`,
+      text: `Each unit costs ${info.ic} IC and ${recipe || 'no materials'}. The army's share of industry is split between the lines by priority.`,
       rows: [
-        { label: 'Weight', value: String(line.weight ?? 0) },
+        { label: 'Priority', value: line.mode === 'manual' ? `${priority.name} (yours)` : `Auto · ${priority.id === 'off' ? 'stopped' : priority.name}` },
         { label: 'Industry on this line', value: `${(line.ic ?? 0).toFixed(2)} IC` },
         { label: 'Efficiency', value: pct(line.efficiency), tone: (line.efficiency ?? 0) < 0.4 ? 'bad' : 'good' },
         { label: 'Materials available', value: pct(line.limit ?? 1), tone: (line.limit ?? 1) < 1 ? 'bad' : 'good' },

@@ -53,7 +53,7 @@ import { motionOn } from './motion.js';
 import { formatPopulation, populationOf, weeklyBalanceOf } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS } from '../game/econ/defs.js';
 import {
-  bindStateScreens, constructionKey, declareEmbargo, embargoBlockers, renderBudget, renderConstruction,
+  bindStateScreens, constructionKey, declareEmbargo, embargoBlockers, industryKey, renderBudget, renderConstruction,
   renderIndustry, renderPolitics, renderPopulation, renderTrade,
 } from './stateScreens.js';
 import { refreshTooltips } from './tooltip.js';
@@ -324,8 +324,10 @@ export class Screens {
     this.heightFor = null;
     this.el.root.style.minHeight = '';
     if (this.active === 'peace') this.restoreMapMode();
-    // Bekleyen onaylar ekranla birlikte duser.
+    // Bekleyen onaylar, hat önizlemesi ve klavye vurgusu ekranla birlikte duser.
     this.uc.confirm = null;
+    this.uc.linePreview = null;
+    this.uc.lineKeyboard = false;
     this.warConfirm = null;
     this.active = null;
     // Genişlik sınıfı (dar/geniş panel) kapanış hareketi bitene dek kalır;
@@ -1418,6 +1420,7 @@ export class Screens {
       return true;
     }
     if (this.active === 'construction') return constructionKey(this, event);
+    if (this.active === 'industry') return industryKey(this, event);
     if (this.active === 'technology') return this.techKey(event);
     return false;
   }

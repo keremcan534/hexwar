@@ -15,12 +15,14 @@
 // STATE'tir (ekonomi, bina, kalkınma); ordunun yürüdüğü hex PROVINCE'tir.
 
 import {
-  BUILDINGS, BUILDING_IDS, DEVELOPMENT_MAX, DEVELOPMENT_WEEKS, EQUIPMENT, EQUIPMENT_IDS, RESOURCES, RESOURCE_IDS,
+  BUILDINGS, BUILDING_IDS, DEVELOPMENT_MAX, DEVELOPMENT_WEEKS, EQUIPMENT, EQUIPMENT_IDS, LINE_EFFICIENCY, RESOURCES,
+  RESOURCE_IDS,
 } from '../game/econ/defs.js';
 import { LAWS, lawIndex } from '../game/laws.js';
 import { economyView, formatPopulation, populationOf } from '../game/economy.js';
 import {
-  LINE_PRIORITIES, consumerStability, consumerTaxBonus, lineAllocation, linePriorityOf, setLinePriority,
+  LINE_PRIORITIES, consumerStability, consumerTaxBonus, lineAllocation, lineEfficiencyCap, lineEfficiencyGain,
+  linePriorityOf, setLinePriority,
 } from '../game/econ/industry.js';
 import { embargoed, setEmbargo } from '../game/econ/trade.js';
 import { equipmentLogistics } from '../game/reinforcement.js';
@@ -292,81 +294,278 @@ export function renderIndustry(game, me, state) {
     </div>
     <div class="k-legend"><span><i class="a"></i>Workshops ${num(consumer.cottage)}</span><span><i class="b"></i>Civilian industry ${num(consumer.civil)}</span><span><i class="mark"></i>Wanted ${num(consumer.need)}</span></div>`;
 
-  // ÜRETİM HATLARI — üç kart (2026-10-08 üçüncü sürüm; Kerem: "arayüzsel
-  // facia"). Önceki satırda beş ayrı görsel vardı (pay şeridi, çubuk düğmeler,
-  // girdi madalyonları, akan bant, çıktı) ve satır bir bulmaca gibi okunuyordu.
-  // Kart üç soruya cevap verir: durum ne (şerit), elde ne var (stok + haftalık),
-  // ne yapayım (tek öncelik sırası). Malzeme ve verim tek küçük satır; ayrıntı
-  // bilgi kartında. Öncelik düğmelerinin kartı yeni paylaşımı gösterir
-  // (lineAllocation — oyunun kendi hesabı).
-  const military = ic.military ?? 0;
-  const dockyards = ic.dockyards ?? 0;
-  const now = lineAllocation(me, military, dockyards);
-  const LINE_TONE = { rifles: 'brass', guns: 'copper', ships: 'steel', tanks: 'iron', aircraft: 'sky' };
-  // Kapalı hattın nedeni: gemi tersane, tank ve uçak kolunu açan teknolojiyi ister.
-  const lockOf = (id) => {
-    if (id === 'ships') return { cls: 'off', text: 'Needs a dockyard', sub: 'build one on a coast' };
-    const tech = techById(unlockTechOf(EQUIPMENT[id]?.unit))?.tech;
-    return { cls: 'off', text: `Needs ${tech?.name ?? 'research'}`, sub: tech ? `technology of ${tech.year}` : '' };
-  };
-
-  const preview = (id, weight, title) => {
-    const next = lineAllocation(me, military, dockyards, { [id]: weight });
-    const rows = EQUIPMENT_IDS.filter((other) => now[other].usable).map((other) => {
-      const a = now[other].output;
-      const b = next[other].output;
-      return `${EQUIPMENT[other].name}: ${num(a, 2)} → ${num(b, 2)} a week${Math.abs(b - a) > 0.005 ? (b > a ? '  ▲' : '  ▼') : ''}`;
-    });
-    return { text: [title, ...rows].join('\n') };
-  };
-
-  const lines = EQUIPMENT_IDS.map((id) => {
-    const info = EQUIPMENT[id];
-    const line = view.lines?.[id] ?? { weight: 0, efficiency: 0, mode: 'auto' };
-    const alloc = now[id];
-    const log = logistics.find((row) => row.id === id) ?? { stock: 0, required: 0, etaWeeks: null };
-    const blocked = !alloc.usable;
-    const auto = line.mode !== 'manual';
-    const current = linePriorityOf(line.weight);
-    const deficit = Math.max(0, log.required - log.stock);
-
-    const state = blocked ? lockOf(id)
-      : deficit > 0.5 ? { cls: 'short', text: `Short ${short(deficit)}`, sub: log.etaWeeks != null ? `covered in ~${log.etaWeeks} weeks` : 'not filling — raise the priority' }
-        : log.required > 0.5 ? { cls: 'ok', text: 'Covered', sub: `the army needs ${short(log.required)}` }
-          : { cls: 'idle', text: 'Stocked', sub: 'the army needs nothing now' };
-
-    const choices = [
-      `<button class="lc-pri${auto ? ' on' : ''}" data-uc-linepri="${id}:auto"${blocked ? ' disabled' : tipAttr({ text: `Auto — running at ${current.name}\nProduces what the army lacks: stops when the depot is full, speeds up in war.` })}>Auto</button>`,
-      ...LINE_PRIORITIES.map((level) => `<button class="lc-pri${!auto && current.id === level.id ? ' on' : ''}" data-uc-linepri="${id}:${level.id}"${blocked ? ' disabled' : tipAttr(preview(id, level.weight, `${level.name} priority`))}>${level.name}</button>`),
-    ].join('');
-
-    const materials = Object.entries(alloc.inputs).map(([res, amount]) => {
-      const ratio = me.economy?.resources?.[res]?.ratio ?? 1;
-      return `<span class="${ratio < 0.8 ? 'short' : ''}"${tipAttr('resource', res)}>${resourceArt(res, 'xs')}${num(amount, 2)}</span>`;
-    }).join('');
-
-    return `<article class="lc ${LINE_TONE[id]} ${state.cls}">
-      <header class="lc-state"><b>${state.text}</b><small>${state.sub}</small></header>
-      <div class="lc-id">
-        <span class="lc-art"${tipAttr('line', id)}>${equipmentArt(id, 'lg', ironclad)}</span>
-        <div><h4>${esc(info.name)}</h4><small>${num(alloc.ic, 2)} IC · ${auto ? `Auto (${current.name})` : `${current.name} priority`}</small></div>
+  // ÜRETİM HATLARI — tablo (dördüncü sürüm, 2026-10-12). Üç kartlık sürüm
+  // beş hatta 573 px tutuyordu (Kerem: "vibecoded, boşluk israfı"): her kart
+  // aynı etiketleri tekrarlıyor, kilitli hat tam boy kart kaplıyor, duran hat
+  // iki dev "+0.00" basıyordu. Askerî IC'nin hiçbir hatta gitmeyip BOŞA aktığı
+  // ise hiçbir yerde görünmüyordu (barışta Auto depolar doluyken bütün hatları
+  // durdurur: UI1900 tohumunun en sanayili devletinde 13. haftada 28 IC'nin
+  // tamamı). Yeni düzen
+  // HOI4'ün üretim listesi: yasa → askerî IC → dağılım çubuğu (boşa akan pay
+  // taralı) → hat başına tek satır. Öncelik düğmesinin üstünde durmak çubuğu ve
+  // satırları yeni paylaşımla YERİNDE gösterir (paintLineSplit).
+  const split = lineSplit(me);
+  const military = split.military;
+  // İmleç vurgusu yalnız klavye kullanılınca: fareyle oynayana kalıcı bir
+  // "seçili satır" gürültüdür.
+  const cursor = lineCursor(me, state, split).id;
+  const highlight = state.lineKeyboard ? cursor : null;
+  const rows = EQUIPMENT_IDS.map((id) => lineRow(me, id, { split, view, logistics, ironclad, cursor: highlight })).join('');
+  // Boş payın iki kaynağı: bütün hatlar durmuş ya da tersane tavanı (gemi
+  // hattının tavanı aşan payı öteki hatlara geçmez, bkz. lineAllocation).
+  const idleText = split.shipCapped
+    ? 'The dockyards cap the ship line; the rest of its share is not passed on to the other lines. Build dockyards or lower its priority.'
+    : `No line takes it: every open line is stopped. ${lawIndex(me, 'economy') > 0
+      ? 'Lower the economy law to give it back to the people, or set a line to Low to stock up.'
+      : 'Civilian Economy is already the lowest law: set a line to Low to stock up for war.'}`;
+  const total = `<div class="pl-total"${tipAttr({ text: `Military industry\n${pct(ic.share)} of ${num(ic.total)} IC goes to the army (economy law). The lines share it by priority; what no line takes is lost.` })}>
+      <small>To the army</small><b>${num(military, 1)}<i> IC</i></b><em>${pct(ic.share)} of ${num(ic.total, 1)}</em>
+    </div>`;
+  const anyManual = EQUIPMENT_IDS.some((id) => view.lines?.[id]?.mode === 'manual');
+  const bulk = `<button class="k-btn sm" data-uc-lines-auto${anyManual
+    ? tipAttr({ text: 'All lines to Auto\nThe ministry makes what the army lacks again; your own priorities are dropped.' })
+    : ' disabled'}>All to Auto</button>`;
+  const body = `<div class="pl-top">
+      ${lawCard(world, me, 'economy', state.confirm, { compact: true })}
+      ${total}
+    </div>
+    ${splitBar(split, idleText)}
+    <div class="pl-table">
+      <div class="pl-row head">
+        <span${tipAttr({ text: 'Lines\n↑ ↓ pick a line for the keyboard.' })}>Line <kbd class="k-key">↑↓</kbd></span>
+        <span${tipAttr({ text: `Priority\nThe army's industry is split between the lines by shares: ${LINE_PRIORITIES.map((level) => `${level.name} ${level.weight}`).join(' · ')}. Hover a priority to see the new split.\n← → step the picked line's priority.` })}>Priority <kbd class="k-key">←→</kbd></span>
+        <span class="r">Industry</span>
+        <span>Efficiency</span>
+        <span class="r">Output / wk</span>
+        <span class="r">Depot</span>
+        <span>Army</span>
+        <span>Materials / wk</span>
       </div>
-      <div class="lc-nums">
-        <span${tipAttr({ text: `${info.name} in the depot\n${num(log.stock, 1)} ready${log.required > 0.5 ? `\nThe army needs ${num(log.required, 1)} (reinforcement and training)` : ''}` })}><small>In depot</small><b>${short(log.stock)}</b></span>
-        <span${tipAttr({ text: `Output\n${num(alloc.ic, 2)} IC × ${pct(line.efficiency)} efficiency ÷ ${num(info.ic, 2)} IC each${alloc.limit < 1 ? `\nMaterials cover only ${pct(alloc.limit)}: output cut to match` : ''}\n\nEfficiency grows while the line runs and fades while it is idle.` })}><small>Per week</small><b class="out">+${num(alloc.output, 2)}</b></span>
-      </div>
-      <div class="lc-pris" role="group" aria-label="${esc(info.name)} priority">${choices}</div>
-      <footer class="lc-foot"><span class="lc-mats">${materials || '<span>no materials</span>'}</span><span${tipAttr({ text: 'Efficiency\nA running line gains a little every week up to its cap; an idle line slowly forgets.' })}>efficiency ${pct(line.efficiency)}</span></footer>
-    </article>`;
-  }).join('');
+      ${rows}
+    </div>`;
 
   return `${kpis}
-    <div class="k-cols-2">
-      ${panel('Industrial capacity', icChain, { sub: 'factories × multipliers' })}
+    <div class="k-split wide-left">
+      ${panel('Industrial capacity', icChain, { sub: 'factories × multipliers', cls: 'k-icpanel' })}
       ${panel('Consumer goods', `${consumerBar}<p class="k-note">Covered <b class="${consumer.ratio < 0.95 ? 'neg' : 'pos'}">${pct(consumer.ratio)}</b> · stability ${pts(consumerStability(consumer.ratio))} · tax bonus +${pct(consumerTaxBonus(consumer.ratio))}</p>`, { sub: 'the people\'s share of industry' })}
     </div>
-    ${panel('Economy law', lawCard(world, me, 'economy', state.confirm), { sub: 'how much industry works for the army' })}
-    ${panel('Production lines', `<div class="lcs">${lines}</div>`, { sub: 'pick a priority — Auto makes what the army lacks · hover a choice to see the new split', right: `${num(military, 2)} IC to the army (economy law)` })}`;
+    ${panel('Production lines', body, { sub: 'the army\'s share of industry, split by priority · hover a priority to preview', right: bulk, cls: 'pl-panel' })}`;
+}
+
+// --------------------------------------------------------- ÜRETİM HATLARI ---
+
+/** Hat rengi: dağılım çubuğunun dilimi ve satırın sol kenarı aynı renktir. */
+const LINE_TONE = { rifles: 'brass', guns: 'copper', ships: 'steel', tanks: 'iron', aircraft: 'sky' };
+/** Öncelik sırası; klavyenin ← → adımı bu sırayı izler. */
+const LINE_STEPS = ['auto', ...LINE_PRIORITIES.map((level) => level.id)];
+
+/**
+ * Askerî IC'nin hatlara dağılımı ve hiçbir hatta gitmeyip boşa akan pay.
+ * `override` önizleme ağırlığıdır ({ guns: 6 }). Hesap lineAllocation'dır:
+ * önizleme oyunla ayrışamaz. Tersane tavanını görmek için aynı paylaşım
+ * tavansız da hesaplanır (gemi hattına düşen fazlalık hiçbir yere gitmez).
+ */
+function lineSplit(me, override = null) {
+  const ic = me.economy?.ic ?? {};
+  const military = ic.military ?? 0;
+  const dockyards = ic.dockyards ?? 0;
+  const alloc = lineAllocation(me, military, dockyards, override);
+  const used = EQUIPMENT_IDS.reduce((sum, id) => sum + alloc[id].ic, 0);
+  const free = dockyards > 0 ? lineAllocation(me, military, Infinity, override).ships.ic : 0;
+  return { military, alloc, idle: Math.max(0, military - used), shipCapped: free > alloc.ships.ic + 1e-6 };
+}
+
+const icText = (value) => (value > 0.005 ? num(value, 1) : '—');
+const outText = (value) => (value > 0.005 ? `+${num(value, value >= 10 ? 1 : 2)}` : '—');
+const shareOf = (value, total) => (total > 0 ? Math.max(0, Math.min(1, value / total)) : 0);
+const segWidth = (value, total) => `${(shareOf(value, total) * 100).toFixed(2)}%`;
+
+/** Klavye imleci: yalnız açık hatlarda gezer; kapanan hattan ilk açık hatta düşer. */
+function lineCursor(me, state, split = lineSplit(me)) {
+  const usable = EQUIPMENT_IDS.filter((id) => split.alloc[id].usable);
+  if (!usable.includes(state.lineCursor)) state.lineCursor = usable[0] ?? null;
+  return { usable, id: state.lineCursor };
+}
+
+/** Dağılım çubuğu: açık hatların dilimleri + taralı boş pay. */
+function splitBar(split, idleText) {
+  const segs = EQUIPMENT_IDS.filter((id) => split.alloc[id].usable).map((id) => {
+    const value = split.alloc[id].ic;
+    const name = EQUIPMENT[id].name;
+    return `<i class="pl-seg ${LINE_TONE[id]}" data-pl-seg="${id}" style="width:${segWidth(value, split.military)}"${tipAttr({ text: `${name} line\n${num(value, 1)} IC: ${pct(shareOf(value, split.military))} of the army's industry.` })}><span>${esc(name)} <b data-pl-segv="${id}">${num(value, 1)}</b></span></i>`;
+  }).join('');
+  const idle = `<i class="pl-seg idle" data-pl-seg="idle" style="width:${segWidth(split.idle, split.military)}"${tipAttr({ text: `Idle military industry\n${num(split.idle, 1)} IC makes nothing this week.\n${idleText}` })}><span>Idle <b data-pl-segv="idle">${num(split.idle, 1)}</b> IC — makes nothing</span></i>`;
+  return `<div class="pl-bar" data-pl-bar>${segs}${idle}</div>`;
+}
+
+/** Kapalı hattın nedeni ve ona götüren düğme. */
+function lineLock(me, id) {
+  if (id === 'ships') {
+    return {
+      text: 'Needs a <b>dockyard</b> — warships are built only on a coast.',
+      button: '<button class="k-btn sm" data-uc-goto-build="dockyard">Build a dockyard</button>',
+    };
+  }
+  const techId = unlockTechOf(EQUIPMENT[id]?.unit);
+  const tech = techById(techId)?.tech;
+  const research = me.research ?? {};
+  const status = research.current === techId ? ' · researching now'
+    : research.queue?.includes(techId) ? ' · in the research queue' : '';
+  return {
+    text: `Needs <b>${esc(tech?.name ?? 'research')}</b>${tech ? ` · technology of ${tech.year}` : ''}${status}`,
+    button: tech ? `<button class="k-btn sm" data-uc-goto-tech="${esc(techId)}">Show in Technology</button>` : '',
+  };
+}
+
+/** Hat satırı: kimlik · öncelik · IC · verim · çıktı · depo · ordu · malzeme. */
+function lineRow(me, id, { split, view, logistics, ironclad, cursor }) {
+  const info = EQUIPMENT[id];
+  const alloc = split.alloc[id];
+  const tone = LINE_TONE[id];
+  const nameCell = (sub) => `<span class="pl-name"${tipAttr('line', id)}>
+      <span class="pl-art">${equipmentArt(id, 'sm', ironclad)}</span>
+      <span class="pl-id"><b>${esc(info.name)}</b>${sub ? `<small>${sub}</small>` : ''}</span>
+    </span>`;
+
+  if (!alloc.usable) {
+    const lock = lineLock(me, id);
+    return `<div class="pl-row locked ${tone}" data-pl-row="${id}">
+      ${nameCell('')}
+      <span class="pl-lock">${lock.text}</span>
+      <span class="pl-go">${lock.button}</span>
+    </div>`;
+  }
+
+  const line = view.lines?.[id] ?? { weight: 0, efficiency: 0, mode: 'auto' };
+  const auto = line.mode !== 'manual';
+  const current = linePriorityOf(line.weight);
+  const log = logistics.find((row) => row.id === id) ?? { stock: 0, required: 0, etaWeeks: null };
+  const deficit = Math.max(0, log.required - log.stock);
+  const military = split.military;
+
+  // Auto ışığı yanar; Auto'nun şu an çalıştığı kademe dipte ince ışıkla
+  // işaretlenir. Kademe düğmelerinin bilgi kartı yok: üstünde durmak yeni
+  // paylaşımı çubukta ve satırlarda zaten gösteriyor, kart onu örtüyordu.
+  const steps = LINE_STEPS.map((step) => {
+    const level = LINE_PRIORITIES.find((p) => p.id === step);
+    const on = step === 'auto' ? auto : !auto && current.id === step;
+    const at = auto && current.id === step;
+    const tip = level ? null
+      : { text: `Auto${auto ? ` — now ${current.id === 'off' ? 'stopped' : current.name}` : ''}\nThe ministry makes what the army lacks: the line stops when the depot is full and speeds up in war.` };
+    return `<button class="pl-pb${level ? '' : ' auto'}${on ? ' on' : ''}${at ? ' at' : ''}" data-uc-linepri="${id}:${step}"${on ? ' aria-pressed="true"' : ''}${tipAttr(tip)}>${level ? level.name : 'Auto'}</button>`;
+  });
+
+  const capped = id === 'ships' && split.shipCapped;
+  const icTip = `${info.name} line\n${num(alloc.ic, 2)} IC: ${pct(shareOf(alloc.ic, military))} of the army's industry${capped ? `\nThe dockyards take at most ${num(alloc.ic, 1)} IC; the rest of this line's share is idle. Build dockyards to use it.` : ''}`;
+
+  const eff = line.efficiency ?? 0;
+  const cap = lineEfficiencyCap(me);
+  const running = alloc.ic > 0;
+  const trend = running ? (eff < cap - 0.0005 ? 'up' : '') : (eff > LINE_EFFICIENCY.floor + 0.0005 ? 'down' : '');
+  const effTip = `Efficiency ${pct(eff)}\nA running line gains ${num(lineEfficiencyGain(me) * 100, 1)}% a week up to its cap of ${pct(cap)}; an idle line forgets ${num(LINE_EFFICIENCY.decay * 100, 1)}% a week, down to ${pct(LINE_EFFICIENCY.floor)}. Switching a line on and off wastes industry.`;
+
+  const outTip = `Output\n${num(alloc.ic, 2)} IC × ${pct(eff)} efficiency ÷ ${num(info.ic, 2)} IC each${alloc.limit < 0.995 && running ? `\nMaterials cover only ${pct(alloc.limit)}: output cut to match.` : ''}`;
+  const starved = running && alloc.limit < 0.995;
+
+  const army = deficit > 0.5
+    ? { cls: 'short', text: `Short ${short(deficit)}`, sub: log.etaWeeks != null ? `~${log.etaWeeks} wk to fill` : 'not filling' }
+    : log.required > 0.5 ? { cls: 'ok', text: 'Covered', sub: `needs ${short(log.required)}` }
+      : { cls: 'idle', text: 'Equipped', sub: 'nothing missing' };
+  const armyTip = deficit > 0.5
+    ? `Short of ${info.name.toLowerCase()}\nThe army needs ${num(log.required, 1)} for reinforcement and training; the depot holds ${num(log.stock, 1)}.${log.etaWeeks == null ? '\nThis line is not filling the gap: raise its priority.' : ''}`
+    : log.required > 0.5 ? `${info.name}\nThe army needs ${num(log.required, 1)} for reinforcement and training; the depot covers it.`
+      : `${info.name}\nNothing is missing: no regiment is short of them and no training waits for them.`;
+
+  const recipe = id === 'ships' && ironclad ? info.ironclad : info.resources;
+  const mats = Object.keys(recipe ?? {}).map((res) => {
+    const amount = alloc.inputs[res] ?? 0;
+    const scarce = amount > 0.005 && (me.economy?.resources?.[res]?.ratio ?? 1) < 0.8;
+    return `<span class="pl-mat${amount > 0.005 ? '' : ' idle'}${scarce ? ' short' : ''}"${tipAttr('resource', res)}>${resourceArt(res, 'xs')}${amount > 0.005 ? `<b>${num(amount, amount >= 10 ? 0 : amount >= 1 ? 1 : 2)}</b>` : ''}</span>`;
+  }).join('');
+
+  return `<div class="pl-row ${tone}${cursor === id ? ' kb' : ''}${deficit > 0.5 ? ' short' : ''}" data-pl-row="${id}">
+    ${nameCell(auto ? `Auto · ${current.id === 'off' ? 'stopped' : current.name}` : 'Manual')}
+    <span class="pl-pri" role="group" aria-label="${esc(info.name)} priority">${steps[0]}<span class="pl-tiers">${steps.slice(1).join('')}</span></span>
+    <span class="pl-ic"${tipAttr({ text: icTip })}><b class="${running ? '' : 'none'}${capped ? ' cap' : ''}" data-pl-ic="${id}">${icText(alloc.ic)}</b><small data-pl-share="${id}">${running ? pct(shareOf(alloc.ic, military)) : ''}</small></span>
+    <span class="pl-eff"${tipAttr({ text: effTip })}>${meter(eff, { mark: cap, tone: running ? 'pos' : '' })}<b>${pct(eff)}</b><i class="pl-trend ${trend}"></i></span>
+    <span class="pl-out"${tipAttr({ text: outTip })}><b class="${alloc.output > 0.005 ? '' : 'none'}" data-pl-out="${id}">${outText(alloc.output)}</b>${starved ? `<small class="warn">materials ${pct(alloc.limit)}</small>` : ''}</span>
+    <span class="pl-depot"${tipAttr({ text: `${info.name} in the depot\n${num(log.stock, 1)} ready.` })}><b>${short(log.stock)}</b></span>
+    <span class="pl-army ${army.cls}"${tipAttr({ text: armyTip })}><b>${army.text}</b><small>${army.sub}</small></span>
+    <span class="pl-mats">${mats}</span>
+  </div>`;
+}
+
+/**
+ * Önizleme: dağılım çubuğunu ve satırların IC/çıktı hücrelerini verilen
+ * ağırlıkla yerinde yazar; `override` yoksa şimdiki hâline döndürür. Hücreler
+ * sabit genişlikte olduğundan satır oynamaz (styles.css §56).
+ */
+function paintLineSplit(root, me, override = null) {
+  if (!root.querySelector('[data-pl-bar]')) return;
+  const split = lineSplit(me, override);
+  const base = override ? lineSplit(me) : split;
+  const mark = (el, now, was) => {
+    el.classList.toggle('none', now <= 0.005);
+    el.classList.toggle('pv-up', !!override && now > was + 0.005);
+    el.classList.toggle('pv-down', !!override && now < was - 0.005);
+  };
+  for (const id of [...EQUIPMENT_IDS, 'idle']) {
+    const value = id === 'idle' ? split.idle : split.alloc[id].ic;
+    const seg = root.querySelector(`[data-pl-seg="${id}"]`);
+    if (seg) seg.style.width = segWidth(value, split.military);
+    const segValue = root.querySelector(`[data-pl-segv="${id}"]`);
+    if (segValue) segValue.textContent = num(value, 1);
+    if (id === 'idle') continue;
+    const icCell = root.querySelector(`[data-pl-ic="${id}"]`);
+    if (icCell) {
+      icCell.textContent = icText(value);
+      mark(icCell, value, base.alloc[id].ic);
+    }
+    const share = root.querySelector(`[data-pl-share="${id}"]`);
+    if (share) share.textContent = value > 0.005 ? pct(shareOf(value, split.military)) : '';
+    const out = root.querySelector(`[data-pl-out="${id}"]`);
+    if (out) {
+      out.textContent = outText(split.alloc[id].output);
+      mark(out, split.alloc[id].output, base.alloc[id].output);
+    }
+  }
+  root.querySelector('[data-pl-bar]').classList.toggle('preview', !!override);
+}
+
+/** Önizlenen düğmenin ağırlığı. Auto'nun ağırlığını kural dört haftada bir yazar: önizlenmez. */
+function previewWeights(key) {
+  const [id, step] = String(key ?? '').split(':');
+  const level = LINE_PRIORITIES.find((p) => p.id === step);
+  return level && EQUIPMENT[id] ? { [id]: level.weight } : null;
+}
+
+/**
+ * Factories klavyesi: ↑ ↓ hat seçer, ← → önceliğini Auto · Off · Low ·
+ * Normal · High sırasında kaydırır. Kapalı hat atlanır.
+ */
+export function industryKey(screens, event) {
+  const me = screens.me;
+  const state = screens.uc;
+  if (!me?.economy) return false;
+  const vertical = event.code === 'ArrowDown' || event.code === 'ArrowUp';
+  const horizontal = event.code === 'ArrowLeft' || event.code === 'ArrowRight';
+  if (!vertical && !horizontal) return false;
+  const { usable, id } = lineCursor(me, state);
+  if (!id) return true;
+  if (vertical) {
+    const step = event.code === 'ArrowDown' ? 1 : -1;
+    state.lineCursor = usable[Math.max(0, Math.min(usable.length - 1, usable.indexOf(id) + step))];
+  } else {
+    const line = me.economy.lines?.[id];
+    const now = line?.mode === 'manual' ? linePriorityOf(line.weight).id : 'auto';
+    const index = LINE_STEPS.indexOf(now) + (event.code === 'ArrowRight' ? 1 : -1);
+    const next = LINE_STEPS[Math.max(0, Math.min(LINE_STEPS.length - 1, index))];
+    if (next !== now) setLinePriority(me, id, next);
+  }
+  state.lineKeyboard = true;
+  screens.refresh();
+  screens.game.emit('politics', me.id);
+  return true;
 }
 
 // ========================================================== CONSTRUCTION ===
@@ -909,7 +1108,26 @@ export function bindStateScreens(screens) {
   on('[data-uc-linepri]', (el) => {
     const [id, priority] = el.dataset.ucLinepri.split(':');
     setLinePriority(me, id, priority);
+    state.lineCursor = id;
     screens.refresh();
+  });
+  on('[data-uc-lines-auto]', () => {
+    for (const id of EQUIPMENT_IDS) setLinePriority(me, id, 'auto');
+    screens.refresh();
+  });
+  // Kapalı hattan yoluna: Technology o teknolojiyi inceleyerek, Construction
+  // tersane seçili açılır.
+  on('[data-uc-goto-tech]', (el) => {
+    const techId = el.dataset.ucGotoTech;
+    screens.tech.inspect = techId;
+    screens.open('technology');
+    root.querySelector(`.tech-node[data-tech="${CSS.escape(techId)}"]`)?.scrollIntoView({ block: 'center', inline: 'center' });
+  });
+  on('[data-uc-goto-build]', (el) => {
+    state.build = el.dataset.ucGotoBuild;
+    state.resFilter = null;
+    state.cursor = 0;
+    screens.open('construction');
   });
   on('[data-uc-embargo-lift]', (el) => {
     setEmbargo(me, Number(el.dataset.ucEmbargoLift), false);
@@ -970,6 +1188,28 @@ export function bindStateScreens(screens) {
   on('[data-uc-dismiss]', (el) => { dismissAdvisor(game, me, el.dataset.ucDismiss); screens.refresh(); });
   on('[data-uc-agenda]', (el) => { chooseAgenda(game, me, el.dataset.ucAgenda); screens.refresh(); });
   on('[data-uc-decision]', (el) => { takeDecision(game, me, el.dataset.ucDecision); screens.refresh(); });
+
+  // Üretim hattı önizlemesi. Dinleyici kalıcı gövdededir: haftalık tazeleme
+  // düğmeleri yeniden kurar, imleç yerinde durdukça önizleme
+  // `state.linePreview` ile geri yazılır; başka bir öğeye geçince silinir.
+  if (root.querySelector('[data-pl-bar]')) {
+    root.onpointerover = (event) => {
+      const key = event.target.closest?.('[data-uc-linepri]')?.dataset.ucLinepri ?? null;
+      if (key === state.linePreview) return;
+      state.linePreview = key;
+      paintLineSplit(root, me, previewWeights(key));
+    };
+    root.onpointerleave = () => {
+      if (!state.linePreview) return;
+      state.linePreview = null;
+      paintLineSplit(root, me, null);
+    };
+    if (state.linePreview) paintLineSplit(root, me, previewWeights(state.linePreview));
+  } else {
+    root.onpointerover = null;
+    root.onpointerleave = null;
+    state.linePreview = null;
+  }
 }
 
 /** Dosya kartından ambargo (SG bedeli diplomasi katmanında; burada kapı). */
