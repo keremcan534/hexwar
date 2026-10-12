@@ -66,6 +66,10 @@ export const UNIT_ROLE = {
     category: 'naval', role: 'Fleet',
     desc: 'Screens the coast and carries the war beyond it. Raised in a coastal province.',
   },
+  SUBMARINE: {
+    category: 'naval', role: 'Commerce raider',
+    desc: "Does not fight for the sea: in war it hunts the enemy's trade lanes and sinks cargo. Warships escorting a lane sink submarines.",
+  },
   ARMOR: {
     category: 'armour', role: 'Breakthrough',
     desc: "The strongest division in a battle line. Ignores most of the enemy's trenches when it attacks; runs on oil.",
@@ -242,8 +246,8 @@ export function recruitOptions(game, nation) {
       }));
     const info = UNIT_ROLE[id] ?? {};
     // Gemi kızağa konduğu günün sınıfını alır (dretnot anı): kart onu söyler.
-    const gen = type.domain === 'sea' ? classIndexOf(nation) : 0;
-    const shipClass = type.domain === 'sea' ? SHIP_CLASSES[gen] : null;
+    const gen = id === 'WARSHIP' ? classIndexOf(nation) : 0;
+    const shipClass = id === 'WARSHIP' ? SHIP_CLASSES[gen] : null;
     const classNote = gen > 0
       ? ` New hulls are ${shipClass.plural}: a ${SHIP_CLASSES[gen - 1].name.toLowerCase()} fights at ${Math.round(SHIP_CLASSES[gen - 1].power / shipClass.power * 100)}% of one.`
       : '';
@@ -264,7 +268,7 @@ export function recruitOptions(game, nation) {
       moves: type.moves,
       support: Boolean(type.support),
       entrenched: Boolean(type.entrenched),
-      upkeep: type.domain === 'sea' ? UPKEEP.sea : UPKEEP.land,
+      upkeep: id === 'SUBMARINE' ? UPKEEP.sub : type.domain === 'sea' ? UPKEEP.sea : UPKEEP.land,
       available: unitAvailable(id, nation),
       blockers,
       canBuild: blockers.length === 0,

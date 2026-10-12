@@ -74,13 +74,20 @@ export function computeBlockades(world) {
   }
 }
 
-/** Çiftin yol katsayısı: kara komşusu 1, deniz (1-abluka)², yol yoksa 0. */
+/**
+ * Çiftin yol katsayısı: kara komşusu 1; deniz (1-abluka)² × yol katsayısı
+ * (seaLanes: aradaki düşman denizi ve denizaltı akını); yol yoksa 0.
+ * `lane` ayrı döner: kesilen yük panel için sayılır.
+ */
 function routeFactor(world, a, b) {
-  if (world.contacts?.[a]?.[b] > 0) return 1;
+  if (world.contacts?.[a]?.[b] > 0) return { route: 1, base: 1, lane: 1, sea: false };
   const ea = world.nations[a].economy;
   const eb = world.nations[b].economy;
-  if (!ea?.coastal || !eb?.coastal) return 0;
-  return (1 - (ea.blockade ?? 0)) * (1 - (eb.blockade ?? 0));
+  if (!ea?.coastal || !eb?.coastal) return { route: 0, base: 0, lane: 1, sea: false };
+  const base = (1 - (ea.blockade ?? 0)) * (1 - (eb.blockade ?? 0));
+  const n = world.nations.length;
+  const lane = world.navyState?.laneFactor?.get(a < b ? a * n + b : b * n + a) ?? 1;
+  return { route: base * lane, base, lane, sea: true };
 }
 
 /**
@@ -93,6 +100,17 @@ export function clearTrade(world, turn) {
   const market = ensureMarket(world);
   const nations = world.nations.filter((n) => n.alive && n.economy?.resources);
   const n = world.nations.length;
+  // Çift başına yol, haftada bir: iç döngü kaynak × geçiş × çift kez sorar.
+  const routes = new Map();
+  const routeOf = (a, b) => {
+    const key = a * n + b;
+    let row = routes.get(key);
+    if (!row) routes.set(key, (row = routeFactor(world, a, b)));
+    return row;
+  };
+  // Deniz akışı (çift → {value, lost}, altın): deniz haritası yolları çizer,
+  // panel kesilen payı yazar (seaLanes.seaLaneView). Türetilmiştir.
+  const seaFlows = new Map();
   // flows[r][i][e]: kaynak r'de i'nin e'den aldığı (seyrek: Map).
   const flowsByRes = {};
   for (const id of RESOURCE_IDS) {
@@ -131,8 +149,8 @@ export function clearTrade(world, turn) {
             if (e === i || !(offers[e] > 1e-9)) continue;
             if (world.relations?.[i]?.[e]?.state === 'war') continue;
             if (embargoed(world, i, e)) continue;
-            const route = routeFactor(world, i, e);
-            if (route <= 0) continue;
+            const route = routeOf(i, e);
+            if (route.route <= 0) continue;
             options.push({ e, route });
             reach += offers[e];
           }
@@ -150,10 +168,18 @@ export function clearTrade(world, turn) {
         for (const step of plan) {
           // Deniz yolu ablukayla kesilir: ithalatçı daha azını alır, ihracatçı
           // daha azını satar (mal yolda kalmaz, hiç yüklenmez).
-          const amount = step.share * fill[step.e] * step.route;
+          const amount = step.share * fill[step.e] * step.route.route;
           addFlow(step.i, step.e, amount);
           usedOffer[step.e] += amount;
           gotWant[step.i] += amount;
+          if (step.route.sea) {
+            const key = step.i < step.e ? step.i * n + step.e : step.e * n + step.i;
+            const row = seaFlows.get(key) ?? { value: 0, lost: 0 };
+            const price = market.prices[id];
+            row.value += amount * price;
+            row.lost += step.share * fill[step.e] * step.route.base * (1 - step.route.lane) * price;
+            seaFlows.set(key, row);
+          }
         }
         for (let k = 0; k < n; k++) {
           offers[k] = Math.max(0, offers[k] - usedOffer[k]);
@@ -243,6 +269,7 @@ export function clearTrade(world, turn) {
     history.push(Number(market.prices[id].toFixed(3)));
     if (history.length > 52) history.shift();
   }
+  if (world.navyState) world.navyState.flows = seaFlows;
 }
 
 /**

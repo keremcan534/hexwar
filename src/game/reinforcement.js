@@ -115,8 +115,8 @@ export function reinforcementNeed(world, nation) {
   }
   // Filonun onarımı da gemi teçhizatı yer (navy.js repair): yaralı gövdenin
   // eksiği tam geminin teçhizatı oranında.
-  const perShip = UNIT_EQUIPMENT.WARSHIP?.ships ?? 10;
   for (const ship of nation.navy?.ships ?? []) {
+    const perShip = UNIT_EQUIPMENT[ship.kind === 'sub' ? 'SUBMARINE' : 'WARSHIP']?.ships ?? 10;
     if (ship.hp < 1) equipment.ships = (equipment.ships ?? 0) + (1 - ship.hp) * perShip;
   }
   return {

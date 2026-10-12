@@ -9,6 +9,7 @@ import {
   createUnit, placeUnit, refreshArmy, resetUnitIds, resolveTypeId, stackFull, unitIdCursor, unitsOn,
 } from './units.js';
 import { refreshNavyState } from './navy.js';
+import { refreshSeaLanes } from './seaLanes.js';
 import { nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
 import { createCity, englishCityName } from './cities.js';
 import { generateWorld } from '../world/worldgen.js';
@@ -731,6 +732,7 @@ export function deserialize(game, data) {
   // ekonomisi boş tablo okumasın.
   world.navyFirsts = data.navyFirsts && typeof data.navyFirsts === 'object' ? data.navyFirsts : {};
   refreshNavyState(world).reports = Array.isArray(data.navyReports) ? data.navyReports : [];
+  refreshSeaLanes(world);
   game.setSpeed(0);
 
   game.selected = null;

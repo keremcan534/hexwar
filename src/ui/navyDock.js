@@ -12,6 +12,7 @@ import {
   setZonePriority,
 } from '../game/navy.js';
 import { linePriorityOf } from '../game/econ/industry.js';
+import { seaTradeLoss } from '../game/seaLanes.js';
 import { tipAttr } from './kit.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
@@ -106,8 +107,8 @@ export class NavyDock {
   html(view) {
     const head = `<header class="nd-head">
         <span class="nd-title">Navy</span>
-        <span class="nd-sum"${tipAttr({ text: `Fleet\n${view.total} warships: ${view.atSea} at sea, ${view.sailing} under way, ${view.inPort} in port${view.repairing ? ` (${view.repairing} repairing)` : ''}${view.withdrawn ? `, ${view.withdrawn} withdrawn after a defeat or to avoid a stronger fleet (back in a few weeks)` : ''}.${view.classes.length ? `\n${view.classes.map((c) => `${c.count} ${c.count === 1 ? c.name.toLowerCase() : c.plural}`).join(', ')}. New hulls are ${view.current.plural}.` : ''}\nShips are built on the Military screen (Naval) and need ships equipment from the dockyards.` })}>
-          <b>${view.total}</b> ships · ${view.atSea} at sea${view.sailing ? ` · ${view.sailing} under way` : ''}${view.repairing ? ` · ${view.repairing} repairing` : ''}${view.withdrawn ? ` · ${view.withdrawn} withdrawn` : ''}
+        <span class="nd-sum"${tipAttr({ text: `Fleet\n${view.total} warships: ${view.atSea} at sea, ${view.sailing} under way, ${view.inPort} in port${view.repairing ? ` (${view.repairing} repairing)` : ''}${view.withdrawn ? `, ${view.withdrawn} withdrawn after a defeat or to avoid a stronger fleet (back in a few weeks)` : ''}.${view.classes.length ? `\n${view.classes.map((c) => `${c.count} ${c.count === 1 ? c.name.toLowerCase() : c.plural}`).join(', ')}. New hulls are ${view.current.plural}.` : ''}${view.subs ? `\n${view.subs} submarine${view.subs === 1 ? '' : 's'} (${view.subsAtSea} hunting): in war they go by themselves where the enemy's trade lanes cross and his escorts are thin.` : ''}\nShips are built on the Military screen (Naval) and need ships equipment from the dockyards.` })}>
+          <b>${view.total}</b> ships · ${view.atSea} at sea${view.sailing ? ` · ${view.sailing} under way` : ''}${view.repairing ? ` · ${view.repairing} repairing` : ''}${view.withdrawn ? ` · ${view.withdrawn} withdrawn` : ''}${view.subs ? ` · U×${view.subs}` : ''}
         </span>
         <button class="k-btn sm" type="button" data-nd-auto${Object.keys(this.me()?.navy?.zones ?? {}).length
           ? tipAttr({ text: 'All seas to Auto\nThe admiralty guards your home waters. In war it gathers the fleet: shared waters first, the enemy coast when the fleet is strong enough to blockade, and it stays in port rather than meet a stronger fleet.' })
@@ -123,9 +124,13 @@ export class NavyDock {
     const scrap = view.obsolete
       ? `<button class="k-btn xs nd-scrap${this.confirmScrap ? ' confirm' : ''}" type="button" data-nd-scrap${tipAttr({ text: `Scrap obsolete ships\n${view.obsolete} of your warships are older than the ${view.current.name.toLowerCase()} you can now build: ${oldest ? `${oldest.plural} fight at ${ratio(oldest)}% of one` : 'they fight weaker'}, yet cost the same upkeep and crew. Scrapping sends the crews home and returns ${Math.round(SCRAP_REFUND * 100)}% of the ships equipment.` })}>${this.confirmScrap ? `Confirm: scrap ${view.obsolete}` : `Scrap ${view.obsolete} obsolete`}</button>`
       : '';
-    const blockade = `<div class="nd-status${blockaded ? ' bad' : ''}"><span${tipAttr({ text: 'Blockade\nEnemy warships holding the seas off your coast cut sea trade (with partners you do not border) by their share. Win the sea back, or trade by land.' })}>${blockaded
+    // Yollarda kesilen pay (seaLanes): düşmanın tuttuğu ara deniz ve akın.
+    const laneLoss = seaTradeLoss(this.game.world, this.me()?.id ?? -1);
+    const cut = !blockaded && laneLoss > 0.02;
+    const blockade = `<div class="nd-status${blockaded || cut ? ' bad' : ''}"><span${tipAttr({ text: 'Sea trade\nTrade with partners you do not border sails along the lanes on the naval map. Enemy warships holding the seas off your coast blockade it; an enemy sea on the way, or submarines on a lane, sink the cargo that passes. Win those seas, or send warships to escort the lanes.' })}>${blockaded
       ? `Our coast is blockaded — sea trade −${pct(view.blockade)}`
-      : 'Our coasts are open — sea trade flows'}</span>${scrap}</div>`;
+      : cut ? `Raiders and enemy seas cut our sea trade −${pct(laneLoss)}`
+        : 'Our coasts are open — sea trade flows'}</span>${scrap}</div>`;
     if (!view.total && !view.rows.length) {
       return `${head}<p class="nd-empty">No coast, no navy.</p>`;
     }
@@ -181,6 +186,8 @@ export class NavyDock {
     }
     if (row.ourBlockade > 0.01) effects.push(`<span class="bad">our coast blockaded ${pct(row.ourBlockade)}</span>`);
     if (row.transportRisk > 0.005) effects.push(`<span class="bad">transports lose ${pct(row.transportRisk)}/wk</span>`);
+    if (row.raidedShare > 0.01) effects.push(`<span class="bad">${row.enemySubs} enemy U-boat${row.enemySubs === 1 ? '' : 's'}: our cargo −${pct(row.raidedShare)}</span>`);
+    if (row.ourSubs) effects.push(`<span class="good">our U-boats ${row.ourSubs}${row.raidingShare > 0.01 ? `: enemy cargo −${pct(row.raidingShare)}` : ''}</span>`);
     if (enemy) effects.push(`<span class="bad">${enemy} enemy ${enemy === 1 ? 'ship' : 'ships'}</span>`);
     if (row.admiral) effects.push(`<span${tipAttr({ text: `Admiral ${row.admiral.name}\nSkill ${row.admiral.skill}: the fleet on this sea fights ${Math.round(row.admiral.skill * 6)}% harder.` })}>Adm. ${esc(row.admiral.name.split(' ').pop())}</span>`);
     const tone = toneOf(row);

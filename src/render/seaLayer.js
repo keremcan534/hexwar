@@ -12,6 +12,7 @@ import { HEX_SIZE } from '../world/worldgen.js';
 import { seaZonesOf } from '../world/seaZones.js';
 import { atWar } from '../game/diplomacy.js';
 import { isAllied } from '../game/alliances.js';
+import { seaLaneView } from '../game/seaLanes.js';
 import { drawFlag } from './flagPainter.js';
 
 /** Ton dokusunun ölçeği (doku pikseli / dünya pikseli). */
@@ -100,6 +101,20 @@ function chaikin(points) {
   return out;
 }
 
+/**
+ * Sarmal dünyada bir noktanın ekrana düşen kopyaları (kaydırma listesi).
+ * Ton, ad ve işaretler yalnız ana kopyaya çiziliyordu: dikişin öbür yanında
+ * deniz tonsuz kalıyordu.
+ */
+function copiesIn(x, y, rect, P, margin = 0) {
+  if (y < rect.minY - margin || y > rect.maxY + margin) return [];
+  const out = [];
+  for (const dx of P ? [-P, 0, P] : [0]) {
+    if (x + dx >= rect.minX - margin && x + dx <= rect.maxX + margin) out.push(dx);
+  }
+  return out;
+}
+
 /** Oyuncuya göre ilişki: ours · ally · enemy · other. */
 function relationTo(world, playerId, nationId) {
   if (playerId < 0) return 'other';
@@ -165,6 +180,130 @@ export class SeaLayer {
     const y0 = world.bounds.minY;
     this.geo = { world, zones, paths, borders, anchors, P, x0, y0, h: world.bounds.maxY - y0 };
     return this.geo;
+  }
+
+  /**
+   * İki komşu bölgenin derin noktaları arasında SU ÜSTÜNDEN giden çizgi
+   * (yalnız iki bölgenin hexlerinden BFS). Düz çizgi yarımadaları kesiyordu.
+   * Sarmal dünyada x açılır: çizgi dikiş yerinde sıçramaz. Dünya başına önbellek.
+   */
+  edgeLine(world, a, b) {
+    const geo = this.geometry(world);
+    geo.edges ??= new Map();
+    const key = a < b ? `${a}-${b}` : `${b}-${a}`;
+    if (geo.edges.has(key)) return geo.edges.get(key);
+    const [from, to] = a < b ? [a, b] : [b, a];
+    const start = world.tiles[geo.zones[from].anchor];
+    const goal = world.tiles[geo.zones[to].anchor];
+    const prev = new Map([[start, null]]);
+    const queue = [start];
+    for (let head = 0; head < queue.length && !prev.has(goal); head++) {
+      const tile = queue[head];
+      for (let d = 0; d < 6; d++) {
+        const near = world.get(tile.q + DIRS[d][0], tile.r + DIRS[d][1]);
+        if (!near || prev.has(near) || (near.seaZone !== from && near.seaZone !== to)) continue;
+        prev.set(near, tile);
+        queue.push(near);
+      }
+    }
+    let line = null;
+    if (prev.has(goal)) {
+      const tiles = [];
+      for (let t = goal; t; t = prev.get(t)) tiles.push(t);
+      tiles.reverse();
+      const P = geo.P;
+      const pts = [];
+      let shift = 0;
+      let lastX = null;
+      tiles.forEach((tile, index) => {
+        if (lastX != null && P) {
+          if (tile.x + shift - lastX > P / 2) shift -= P;
+          else if (lastX - (tile.x + shift) > P / 2) shift += P;
+        }
+        lastX = tile.x + shift;
+        // Her ikinci hex: basamak kaybolur, Chaikin gerisini yumuşatır.
+        if (index % 2 === 0 || index === tiles.length - 1) pts.push(tile.x + shift, tile.y);
+      });
+      line = chaikin(chaikin(pts));
+    }
+    geo.edges.set(key, line);
+    return line;
+  }
+
+  /**
+   * Haftalık yol ağı: bölge kenarı başına taşınan yük (altın), oyuncunun
+   * yükü mü, kesilen pay. Akış haftada bir değişir: önbellek akışa bağlı.
+   */
+  laneEdges(world, playerId) {
+    const state = world.navyState;
+    if (this.lanes?.flows === state?.flows && this.lanes?.player === playerId && this.lanes?.world === world) {
+      return this.lanes.edges;
+    }
+    const edges = new Map();
+    for (const lane of seaLaneView(world)) {
+      const mine = lane.a === playerId || lane.b === playerId;
+      const cut = lane.factor < 0.98;
+      for (let i = 1; i < lane.path.length; i++) {
+        const a = lane.path[i - 1];
+        const b = lane.path[i];
+        const key = a < b ? a * 1000 + b : b * 1000 + a;
+        const row = edges.get(key) ?? { a: Math.min(a, b), b: Math.max(a, b), value: 0, mine: 0, cut: 0 };
+        row.value += lane.value + lane.lost;
+        if (mine) row.mine += lane.value + lane.lost;
+        if (cut) row.cut += lane.value + lane.lost;
+        edges.set(key, row);
+      }
+    }
+    const list = [...edges.values()].sort((x, y) => x.value - y.value);
+    this.lanes = { world, flows: state?.flows, player: playerId, edges: list };
+    return list;
+  }
+
+  /**
+   * Seas kipi: deniz ticaret yolları. Kalınlık taşınan yükün karekökü;
+   * oyuncunun yükü pirinç, başkalarınınki soluk; kesilen (düşman denizinden
+   * ya da denizaltı akınından geçen) yolun üstünde kırmızı kesik çizgi.
+   */
+  drawLanes(ctx, world, rect, playerId) {
+    const edges = this.laneEdges(world, playerId);
+    if (!edges.length) return;
+    const zoom = this.renderer.camera.zoom;
+    const geo = this.geometry(world);
+    const shifts = geo.P ? [-geo.P, 0, geo.P] : [0];
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const edge of edges) {
+      const line = this.edgeLine(world, edge.a, edge.b);
+      if (!line || line.length < 4) continue;
+      // Kalınlık ekran pikselidir (zoom'dan bağımsız okunur): ince yol bölge
+      // sınırının kesik çizgisiyle karışıyordu.
+      const width = Math.min(10, 1.6 + Math.sqrt(edge.value) * 0.7) / zoom;
+      const ours = edge.mine > edge.value * 0.25;
+      for (const dx of shifts) {
+        // Kaba görünürlük: çizginin uçlarından biri ekran çevresindeyse çiz.
+        const x1 = line[0] + dx;
+        const x2 = line[line.length - 2] + dx;
+        if (Math.max(x1, x2) < rect.minX - 200 || Math.min(x1, x2) > rect.maxX + 200) continue;
+        ctx.beginPath();
+        ctx.moveTo(line[0] + dx, line[1]);
+        for (let i = 2; i < line.length; i += 2) ctx.lineTo(line[i] + dx, line[i + 1]);
+        ctx.lineWidth = width + 2.4 / zoom;
+        ctx.strokeStyle = 'rgba(6, 12, 16, 0.45)';
+        ctx.stroke();
+        ctx.lineWidth = width;
+        ctx.strokeStyle = ours ? 'rgba(240, 208, 128, 0.88)' : 'rgba(226, 214, 186, 0.5)';
+        ctx.stroke();
+        if (edge.cut > edge.value * 0.2) {
+          ctx.setLineDash([7 / zoom, 6 / zoom]);
+          ctx.lineWidth = Math.max(1.6 / zoom, width * 0.55);
+          ctx.strokeStyle = 'rgba(255, 112, 84, 0.92)';
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+      }
+    }
+    ctx.restore();
   }
 
   /** Yumuşak kıyılı kara (sınır ağı bölgelerinin birleşimi), üç kopya. */
@@ -254,7 +393,11 @@ export class SeaLayer {
     const tex = this.texture(world, this.zoneKeys(world, playerId));
     ctx.save();
     ctx.imageSmoothingEnabled = true;
-    ctx.drawImage(tex.canvas, geo.x0, geo.y0, geo.P || tex.canvas.width / TINT_SCALE, geo.h);
+    const w = geo.P || tex.canvas.width / TINT_SCALE;
+    for (const dx of geo.P ? [-geo.P, 0, geo.P] : [0]) {
+      if (geo.x0 + dx > rect.maxX || geo.x0 + dx + w < rect.minX) continue;
+      ctx.drawImage(tex.canvas, geo.x0 + dx, geo.y0, w, geo.h);
+    }
     ctx.restore();
     const zoom = this.renderer.camera.zoom;
     const size = 12.5 / zoom;
@@ -267,22 +410,24 @@ export class SeaLayer {
     ctx.strokeStyle = 'rgba(6, 12, 16, 0.85)';
     ctx.fillStyle = 'rgba(214, 232, 244, 0.9)';
     geo.zones.forEach((zone, id) => {
-      const at = geo.anchors[id];
-      if (at.x < rect.minX || at.x > rect.maxX || at.y < rect.minY || at.y > rect.maxY) return;
-      const lit = id === this.highlight;
-      ctx.fillStyle = lit ? '#f0d795' : 'rgba(214, 232, 244, 0.9)';
-      ctx.strokeText(zone.name, at.x, at.y - 6 / zoom);
-      ctx.fillText(zone.name, at.x, at.y - 6 / zoom);
-      if (lit) {
-        // Paneldeki satırın bölgesi: derin noktada pirinç halka.
-        ctx.save();
-        ctx.strokeStyle = 'rgba(240, 215, 149, 0.9)';
-        ctx.lineWidth = 2 / zoom;
-        ctx.setLineDash([6 / zoom, 4 / zoom]);
-        ctx.beginPath();
-        ctx.arc(at.x, at.y + 11 / zoom, 34 / zoom, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.restore();
+      const anchor = geo.anchors[id];
+      for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
+        const at = { x: anchor.x + dx, y: anchor.y };
+        const lit = id === this.highlight;
+        ctx.fillStyle = lit ? '#f0d795' : 'rgba(214, 232, 244, 0.9)';
+        ctx.strokeText(zone.name, at.x, at.y - 6 / zoom);
+        ctx.fillText(zone.name, at.x, at.y - 6 / zoom);
+        if (lit) {
+          // Paneldeki satırın bölgesi: derin noktada pirinç halka.
+          ctx.save();
+          ctx.strokeStyle = 'rgba(240, 215, 149, 0.9)';
+          ctx.lineWidth = 2 / zoom;
+          ctx.setLineDash([6 / zoom, 4 / zoom]);
+          ctx.beginPath();
+          ctx.arc(at.x, at.y + 11 / zoom, 34 / zoom, 0, Math.PI * 2);
+          ctx.stroke();
+          ctx.restore();
+        }
       }
     });
     ctx.restore();
@@ -295,77 +440,103 @@ export class SeaLayer {
    */
   drawFleets(ctx, world, rect, playerId, everyone = false) {
     const state = world.navyState;
-    if (!state?.presence?.size) return;
+    if (!state?.presence?.size && !state?.subs?.size) return;
     const geo = this.geometry(world);
     const zoom = this.renderer.camera.zoom;
     const turn = world.turn ?? 0;
     const order = { ours: 0, ally: 1, enemy: 2, other: 3 };
     const h = 14 / zoom;
-    const flagW = 15 / zoom;
-    const flagH = 10 / zoom;
-    const pad = 3 / zoom;
+    const rowsOf = (here, keep) => [...here.entries()]
+      .map(([nationId, entry]) => ({ nationId, count: entry.ships.length, rel: relationTo(world, playerId, nationId) }))
+      .filter(keep)
+      .sort((a, b) => order[a.rel] - order[b.rel] || b.count - a.count || a.nationId - b.nationId)
+      .slice(0, 3);
     ctx.save();
     ctx.font = `700 ${10.5 / zoom}px "Segoe UI", Arial, sans-serif`;
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
-    for (const [zoneId, here] of state.presence) {
-      const at = geo.anchors[zoneId];
-      if (!at || at.x < rect.minX || at.x > rect.maxX || at.y < rect.minY || at.y > rect.maxY) continue;
-      const rows = [...here.entries()]
-        .map(([nationId, entry]) => ({ nationId, ships: entry.ships.length, rel: relationTo(world, playerId, nationId) }))
-        .filter((row) => everyone || row.rel !== 'other')
-        .sort((a, b) => order[a.rel] - order[b.rel] || b.ships - a.ships || a.nationId - b.nationId)
-        .slice(0, 3);
+    for (const [zoneId, here] of state.presence ?? []) {
+      const anchor = geo.anchors[zoneId];
+      if (!anchor) continue;
+      const rows = rowsOf(here, (row) => everyone || row.rel !== 'other');
       if (!rows.length) continue;
-      const widths = rows.map((row) => flagW + pad * 3 + ctx.measureText(String(row.ships)).width);
-      const total = widths.reduce((sum, w) => sum + w, 0) + (rows.length - 1) * pad;
-      let x = at.x - total / 2;
-      const y = at.y + 4 / zoom;
-      rows.forEach((row, index) => {
-        const w = widths[index];
-        ctx.fillStyle = 'rgba(8, 14, 18, 0.88)';
-        ctx.strokeStyle = MARK_COLORS[row.rel];
-        ctx.lineWidth = 1.2 / zoom;
-        ctx.beginPath();
-        ctx.roundRect(x, y, w, h, 2.5 / zoom);
-        ctx.fill();
-        ctx.stroke();
-        const nation = world.nations[row.nationId];
-        if (nation?.flag) {
-          ctx.save();
-          ctx.translate(x + pad, y + (h - flagH) / 2);
-          drawFlag(ctx, nation.flag, 0, 0, flagW, flagH);
-          ctx.restore();
-        }
-        ctx.fillStyle = MARK_COLORS[row.rel];
-        ctx.fillText(String(row.ships), x + pad * 2 + flagW, y + h / 2 + 0.5 / zoom);
-        x += w + pad;
-      });
+      for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
+        this.badges(ctx, world, anchor.x + dx, anchor.y + 4 / zoom, rows, { zoom, sub: false });
+      }
+    }
+    // Denizaltılar: filo satırının altında kesik kenarlı kapsül, "U" + sayı.
+    // Seas kipinde herkesinki, öteki kiplerde yalnız bizim ve düşmanınki.
+    for (const [zoneId, here] of state.subs ?? []) {
+      const anchor = geo.anchors[zoneId];
+      if (!anchor) continue;
+      const rows = rowsOf(here, (row) => everyone || row.rel === 'ours' || row.rel === 'enemy');
+      if (!rows.length) continue;
+      for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
+        this.badges(ctx, world, anchor.x + dx, anchor.y + 4 / zoom + h + 3 / zoom, rows, { zoom, sub: true });
+      }
     }
     // Son iki haftanın deniz muharebeleri: bölgede kırmızı çapraz kılıç.
     for (const report of state.reports ?? []) {
       if (turn - report.turn > BATTLE_MARK_WEEKS) continue;
-      const at = geo.anchors[report.zone];
-      if (!at || at.x < rect.minX || at.x > rect.maxX || at.y < rect.minY || at.y > rect.maxY) continue;
+      const anchor = geo.anchors[report.zone];
+      if (!anchor) continue;
       const mine = playerId >= 0 && report.sides.some((side) => side.nations.includes(playerId));
       if (!everyone && !mine) continue;
-      const r = 7 / zoom;
-      const cx = at.x;
-      const cy = at.y - 22 / zoom;
-      ctx.fillStyle = 'rgba(30, 6, 4, 0.85)';
-      ctx.strokeStyle = '#ff8f6e';
-      ctx.lineWidth = 1.4 / zoom;
-      ctx.beginPath();
-      ctx.arc(cx, cy, r, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(cx - r * 0.5, cy - r * 0.5);
-      ctx.lineTo(cx + r * 0.5, cy + r * 0.5);
-      ctx.moveTo(cx + r * 0.5, cy - r * 0.5);
-      ctx.lineTo(cx - r * 0.5, cy + r * 0.5);
-      ctx.stroke();
+      for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
+        this.battleMark(ctx, anchor.x + dx, anchor.y - 22 / zoom, zoom);
+      }
     }
     ctx.restore();
+  }
+
+  /** Ulus başına bayrak + sayı rozetleri, ortalı tek satır. */
+  badges(ctx, world, cx, y, rows, { zoom, sub }) {
+    const pad = 3 / zoom;
+    const flagW = (sub ? 12 : 15) / zoom;
+    const flagH = (sub ? 8 : 10) / zoom;
+    const h = (sub ? 12.6 : 14) / zoom;
+    const texts = rows.map((row) => (sub ? `U${row.count}` : String(row.count)));
+    const widths = texts.map((text) => flagW + pad * 3 + ctx.measureText(text).width);
+    const total = widths.reduce((sum, w) => sum + w, 0) + (rows.length - 1) * pad;
+    let x = cx - total / 2;
+    rows.forEach((row, index) => {
+      const w = widths[index];
+      ctx.fillStyle = sub ? 'rgba(4, 8, 10, 0.92)' : 'rgba(8, 14, 18, 0.88)';
+      ctx.strokeStyle = MARK_COLORS[row.rel];
+      ctx.lineWidth = (sub ? 1 : 1.2) / zoom;
+      if (sub) ctx.setLineDash([3 / zoom, 2 / zoom]);
+      ctx.beginPath();
+      ctx.roundRect(x, y, w, h, sub ? h / 2 : 2.5 / zoom);
+      ctx.fill();
+      ctx.stroke();
+      if (sub) ctx.setLineDash([]);
+      const nation = world.nations[row.nationId];
+      if (nation?.flag) {
+        ctx.save();
+        ctx.translate(x + pad * (sub ? 1.5 : 1), y + (h - flagH) / 2);
+        drawFlag(ctx, nation.flag, 0, 0, flagW, flagH);
+        ctx.restore();
+      }
+      ctx.fillStyle = MARK_COLORS[row.rel];
+      ctx.fillText(texts[index], x + pad * 2 + flagW, y + h / 2 + 0.5 / zoom);
+      x += w + pad;
+    });
+  }
+
+  battleMark(ctx, cx, cy, zoom) {
+    const r = 7 / zoom;
+    ctx.fillStyle = 'rgba(30, 6, 4, 0.85)';
+    ctx.strokeStyle = '#ff8f6e';
+    ctx.lineWidth = 1.4 / zoom;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(cx - r * 0.5, cy - r * 0.5);
+    ctx.lineTo(cx + r * 0.5, cy + r * 0.5);
+    ctx.moveTo(cx + r * 0.5, cy - r * 0.5);
+    ctx.lineTo(cx - r * 0.5, cy + r * 0.5);
+    ctx.stroke();
   }
 }

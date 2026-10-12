@@ -39,7 +39,7 @@ import { autoFocus } from './stateFocus.js';
 import { alliesOf } from './alliances.js';
 import { worldWarTension } from './worldEvents.js';
 import {
-  classIndexOf, fleetEquivalent, isObsolete, scrapShips, shipsOf,
+  classIndexOf, fleetEquivalent, fleetStrength, isObsolete, scrapShips, shipsOf, subsOf, surfaceOf,
 } from './navy.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
@@ -349,7 +349,7 @@ function spend(game, nation) {
   let army = world.units
     .filter((u) => u.nationId === nation.id && !isConscript(u))
     .reduce((sum, unit) => sum + regimentCount(unit), 0)
-    + trainingCount(nation) - trainingCount(nation, 'WARSHIP');
+    + trainingCount(nation) - trainingCount(nation, 'WARSHIP') - trainingCount(nation, 'SUBMARINE');
 
   // Donanma artık abluka ve geçiş kaybıyla ölçülen bir kaldıraçtır (navy.js):
   // hedef kıyı uzunluğu, sanayi ve savaştaki düşman filosuyla büyür. Hedef
@@ -357,12 +357,19 @@ function spend(game, nation) {
   // ayrıdır, bakımı ve mürettebatı o tutar.
   const building = trainingCount(nation, 'WARSHIP');
   const fleet = fleetEquivalent(nation) + building;
-  const hulls = shipsOf(nation).length + building;
+  const hulls = surfaceOf(nation).length + building;
   const wanted = desiredFleet(world, nation);
   if (fleet < wanted && hulls < fleetCap(nation)
     && equipmentStock(nation, 'ships') >= UNIT_EQUIPMENT.WARSHIP.ships
     && canAfford(nation, UNIT_COSTS.WARSHIP)) {
     game.turns.buyUnit(nation, 'WARSHIP');
+  }
+  // DENİZALTI (Submarines): ticaret akını filonun yerine değil yanınadır.
+  const subs = subsOf(nation).length + trainingCount(nation, 'SUBMARINE');
+  if (unitAvailable('SUBMARINE', nation) && subs < desiredSubs(world, nation)
+    && equipmentStock(nation, 'ships') >= UNIT_EQUIPMENT.SUBMARINE.ships
+    && canAfford(nation, UNIT_COSTS.SUBMARINE)) {
+    game.turns.buyUnit(nation, 'SUBMARINE');
   }
   // MODERNLEŞME (dretnot anı): barışta çeyrekte bir, gövde tavanı doluysa ya
   // da filo hedefi tutuyorsa en eski gövde hurdaya; boşalan yere yeni sınıf
@@ -520,6 +527,21 @@ export function desiredFleet(world, nation) {
   }
   const target = Math.max(Math.round(coastal * 0.25 + ic / 60), Math.ceil(enemyShips * 0.8));
   return Math.max(1, Math.min(target, fleetCap(nation)));
+}
+
+/**
+ * Denizaltı hedefi: barışta küçük bir filotilla, savaşta gövde tavanının
+ * yarısı; düşman yüzey filosu bizimkinden güçlüyse bir buçuk katı — zayıf
+ * deniz gücünün cevabı ticaret akınıdır (1915-17'nin dersi).
+ */
+export function desiredSubs(world, nation) {
+  if (!nation.economy?.coastal || !unitAvailable('SUBMARINE', nation)) return 0;
+  const enemies = world.nations.filter((other) => other.alive && other.id !== nation.id
+    && atWar(world, nation.id, other.id) && other.economy?.coastal);
+  if (!enemies.length) return 2;
+  const theirs = enemies.reduce((sum, enemy) => sum + fleetStrength(enemy), 0);
+  const base = Math.max(2, Math.round(fleetCap(nation) / 2));
+  return theirs > fleetStrength(nation) * 1.2 ? Math.round(base * 1.5) : base;
 }
 
 /** Gövde tavanı: bakım ve mürettebat sanayiyle ölçeklenir. */

@@ -128,6 +128,7 @@ export const UNIT_EQUIPMENT = {
   CAVALRY: { rifles: 6 },
   ARTILLERY: { rifles: 4, guns: 6 },
   WARSHIP: { ships: 10 },
+  SUBMARINE: { ships: 5 },
   // Tank alayı ~6.6 IC'lik teçhizat (piyade 1, topçu 2.8): güç genişlik başına.
   ARMOR: { tanks: 8, rifles: 2 },
   AIRCRAFT: { aircraft: 8 },
@@ -211,10 +212,10 @@ export const CROWN_REVENUE = 4;
 export const TAX_PER_DEVELOPMENT = 0.15;
 
 /** Alay başına haftalık bakım (altın); savaşta seferi gider çarpanı. */
-export const UPKEEP = { land: 0.6, sea: 1.0, warMultiplier: 1.5 };
+export const UPKEEP = { land: 0.6, sea: 1.0, sub: 0.5, warMultiplier: 1.5 };
 
 /** Alay kuruluş bedeli (altın). Asıl bedel teçhizat ve insan gücüdür. */
-export const RECRUIT_GOLD = { INFANTRY: 12, CAVALRY: 20, ARTILLERY: 22, WARSHIP: 30, ARMOR: 30, AIRCRAFT: 26 };
+export const RECRUIT_GOLD = { INFANTRY: 12, CAVALRY: 20, ARTILLERY: 22, WARSHIP: 30, SUBMARINE: 16, ARMOR: 30, AIRCRAFT: 26 };
 
 /**
  * ENFLASYON: kasada yatan altın erir. Rezervin (yarım yıllık gelir, en az 300)

@@ -1361,7 +1361,8 @@ function wantedOfficers(world, nation, branch) {
   if (branch === BRANCH.NAVY) {
     // Filosu olmayan ülke amiral yetiştirmez; amiral deniz bölgesi yönetir
     // (navy.js assignAdmirals), dört gemiye bir.
-    const ships = nation.navy?.ships?.length ?? 0;
+    // Amiral yüzey filosuna: denizaltı akını amiralsiz yürür (seaLanes.js).
+    const ships = (nation.navy?.ships ?? []).filter((ship) => ship.kind !== 'sub').length;
     return ships ? Math.min(MAX_ADMIRALS, Math.max(1, Math.ceil(ships / 4))) : 0;
   }
   let units = 0;

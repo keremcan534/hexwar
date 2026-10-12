@@ -44,6 +44,7 @@ import {
 } from './provinces.js';
 import { initPolitics, runPolitics } from './politics.js';
 import { runNavy } from './navy.js';
+import { runSeaLanes } from './seaLanes.js';
 import { runMovements } from './movements.js';
 import { releaseDraw } from './levy.js';
 import { updatePockets } from './pockets.js';
@@ -607,6 +608,11 @@ export class TurnManager {
     this.phase = 'navy';
     runNavy(this.game);
     yield* pause('navy');
+    // Denizaltı akını ve ticaret yolları: hâkimiyetten sonra, ekonomiden önce
+    // (bu haftanın ticareti yol katsayısını okur).
+    this.phase = 'lanes';
+    runSeaLanes(this.game);
+    yield* pause('lanes');
     this.phase = 'provinces';
     decayInfamy(world);
     // Sıra önemli: sahiplik savaşta değişmiş olabilir, önce işçiler yeniden dağıtılır.

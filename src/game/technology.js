@@ -198,7 +198,8 @@ export const TECHNOLOGIES = {
       // Sınıf yükseltir (navy.js SHIP_CLASSES), 'naval' değil: eski gövdeyi
       // güçlendirmez, ilk dretnot herkesin filosunu eskitir.
       t('dreadnoughts', 'Dreadnoughts', 1906, { shipClass: 1 }, 'All big guns, turbine-driven. New warships are dreadnoughts; every older battleship is obsolete.'),
-      t('submarines', 'Submarines', 1914, { naval: 0.10 }, 'The torpedo boat that hides under the sea.'),
+      // Kol açar (seaLanes.js): denizaltı düşman ticaret yolunda yük batırır.
+      t('submarines', 'Submarines', 1914, {}, 'The torpedo boat that hides under the sea: raiders that sink enemy cargo without holding the sea.', { unlocks: 'SUBMARINE' }),
       t('aircraft_carriers', 'Aircraft Carriers', 1924, { shipClass: 1, air: 0.05 }, 'An airfield that sails with the fleet. New warships are carrier groups; battleships are outclassed.'),
       t('radar', 'Radar', 1937, { naval: 0.10, defense: 0.03 }, 'Seeing through night and fog.'),
     ],

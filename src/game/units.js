@@ -61,6 +61,12 @@ export const UNIT_TYPES = {
     id: 'WARSHIP', name: 'Warship', glyph: 'W', domain: 'sea',
     moves: 7, attack: 6, hp: 80, manpower: 1000 * POPULATION_SCALE,
   },
+  // Denizaltı (Submarines, 1914): hâkimiyet aramaz, düşman ticaret yolunda
+  // yük batırır (seaLanes.js). Küçük mürettebat, yarı bakım.
+  SUBMARINE: {
+    id: 'SUBMARINE', name: 'Submarine', glyph: 'U', domain: 'sea',
+    moves: 7, attack: 3, hp: 40, manpower: 250 * POPULATION_SCALE,
+  },
   // 1900 kolları: teknoloji açar (technology.js `unlocks`), petrol yürütür.
   ARMOR: {
     id: 'ARMOR', name: 'Armour', glyph: 'T', domain: 'land',

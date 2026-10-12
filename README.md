@@ -298,13 +298,13 @@ Alay artık düğmeye basılan hafta belirmez, **siparişe** dönüşür:
 - Depoda teçhizat yoksa sipariş yine verilir: eksik, üretim hattından
   geldikçe dolar; alay teçhizatı tamamlanana dek kışla yeri tutmadan bekler.
   Teçhizat: piyade 10 tüfek, süvari 6 tüfek, topçu 4 tüfek + 6 top, savaş
-  gemisi 10 gemi, zırhlı 8 tank + 2 tüfek, hava 8 uçak.
+  gemisi 10 gemi, denizaltı 5 gemi, zırhlı 8 tank + 2 tüfek, hava 8 uçak.
 - **Zırhlı** (Landships, 1916) ve **hava kolu** (Military Aviation, 1910)
   teknolojiyle açılır ve petrolle yürür: petrolsüz kol gücünün %60'ına dek
   kaybeder. Tank tümen başına en güçlü koldur ve saldırırken savunanın
   siperinin büyük kısmını yok sayar (atılım); uçak topçu gibi destek koludur,
   nehir cezası işlemez. İkisinin gücü kendi teknolojisiyle büyür.
-- Eğitim süresi kola göredir (piyade 8, süvari 10, topçu 12, uçak 12, tank 14, gemi 16 hafta);
+- Eğitim süresi kola göredir (piyade 8, süvari 10, topçu 12, uçak 12, tank 14, gemi 16, denizaltı 10 hafta);
   doktrin ve danışman kısaltır, iflas iki katına çıkarır.
 - Aynı anda kaç alayın eğitildiğini şehir sayısı ve kışlalar belirler; sıradakiler bekler.
   Öncelik okları kapasitenin kime gideceğini değiştirir.
@@ -374,6 +374,14 @@ batarsa onlar da ölür (`src/game/navy.js`, `src/world/seaZones.js`).
   panelin durum satırından iki tıkla hurdaya ayrılır (mürettebat eve, gemi
   teçhizatının %30'u depoya). Military ekranındaki kart kızağa konacak sınıfı
   söyler (*Warship: Dreadnought*).
+- **Ticaret yolları ve denizaltı**: kara komşusu olmayan ülkelerle ticaret
+  deniz haritasında görünen yollardan akar (kalınlık yük; bizimki pirinç).
+  Yol düşmanın tuttuğu bir denizden geçerse yük kesilir, gemiler dolaşabiliyorsa
+  dolaşır. **Denizaltı** (Submarines, 1914) hâkimiyet aramaz: savaşta düşmanın
+  yollarının kesiştiği, eskortu zayıf denizlere kendiliğinden gider ve yük
+  batırır (kesilen yol kırmızı kesik). Savaş gemisi denizaltıyı avlar; Auto,
+  yükümüzün batırıldığı denize eskort yollar. Panelin durum satırı yollarda
+  kesilen payı yazar.
 - Amiraller en kalabalık denizlere atanır (Military ekranı); panelin altında
   son muharebe durur.
 
@@ -489,7 +497,8 @@ src/
     hegemony.js      kampanya sonu puanı ve ulusal hedef
     command.js       generaller, cephe ve planlama
     battles.js       province muharebesi (nehir, barut, at, kale)
-    navy.js          donanma: deniz önceliği, hâkimiyet, muharebe, abluka, kapalı deniz
+    navy.js          donanma: deniz önceliği, hâkimiyet, muharebe, abluka, kapalı deniz, gemi sınıfı
+    seaLanes.js      deniz ticaret yolları, denizaltı akını ve eskort
     recruitment.js   alay siparişi, eğitim kuyruğu, insan gücü
     reinforcement.js insan ve teçhizat takviyesi
     diplomacy.js     savaş, gerekçe, ateşkes, temas

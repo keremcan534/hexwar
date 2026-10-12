@@ -97,8 +97,24 @@ export function ensureNavy(nation) {
   return navy;
 }
 
+/** Bütün gövdeler (bakım, mürettebat, onarım, ad). */
 export function shipsOf(nation) {
   return nation?.navy?.ships ?? [];
+}
+
+/**
+ * Denizaltı (seaLanes.js) havuzdadır ama hâkimiyet aramaz: deniz kontrolü,
+ * muharebe, abluka ve amirallik yalnız YÜZEY gemilerini sayar.
+ */
+export const isSub = (ship) => ship?.kind === 'sub';
+
+/** Yüzey filosu: hâkimiyet, muharebe, abluka, dağıtım. */
+export function surfaceOf(nation) {
+  return shipsOf(nation).filter((ship) => !isSub(ship));
+}
+
+export function subsOf(nation) {
+  return shipsOf(nation).filter(isSub);
 }
 
 /** Dünyanın türetilmiş deniz durumu: hafta hafta yeniden kurulur, kayda girmez. */
@@ -115,16 +131,19 @@ export function navyState(world) {
  * Yeni gemi: eğitim kuyruğundan (recruitment.recruit) ya da kuruluştan gelir.
  * Mürettebat nüfustan çekilmiştir (`draws`); gemi batarsa onlar da ölür.
  */
-export function commissionShip(world, nation, { home, hp = 1, draws = [], turn = 0 }) {
+export function commissionShip(world, nation, { home, hp = 1, draws = [], turn = 0, kind = 'ship' }) {
   const navy = ensureNavy(nation);
   const id = navy.nextId++;
-  const gen = classIndexOf(nation);
+  const sub = kind === 'sub';
+  // Denizaltının sınıfı yoktur: dretnot onu eskitmez.
+  const gen = sub ? 0 : classIndexOf(nation);
   const ship = {
     id,
-    name: shipName(world, nation, id),
+    name: sub ? subName(nation) : shipName(world, nation, id),
     hp: Math.max(0.1, Math.min(1, hp)),
     built: turn,
     gen,
+    ...(sub ? { kind: 'sub' } : {}),
     home,
     zone: -1,
     at: -1,
@@ -150,7 +169,7 @@ export function classIndexOf(nation) {
 
 /** Gemi ulusun kurabildiği sınıfın gerisinde mi (eskimiş). */
 export function isObsolete(nation, ship) {
-  return (ship.gen ?? 0) < classIndexOf(nation);
+  return !isSub(ship) && (ship.gen ?? 0) < classIndexOf(nation);
 }
 
 /**
@@ -160,7 +179,7 @@ export function isObsolete(nation, ship) {
  */
 export function fleetEquivalent(nation) {
   const top = SHIP_CLASSES[classIndexOf(nation)].power;
-  return shipsOf(nation).reduce((sum, ship) => sum + shipClassOf(ship).power / top, 0);
+  return surfaceOf(nation).reduce((sum, ship) => sum + shipClassOf(ship).power / top, 0);
 }
 
 /**
@@ -173,21 +192,32 @@ export const SCRAP_REFUND = 0.3;
 export function scrapShips(world, nation, ships) {
   const gone = new Set(ships);
   if (!gone.size) return 0;
-  const perShip = UNIT_EQUIPMENT.WARSHIP?.ships ?? 10;
   let refund = 0;
   for (const ship of gone) {
     for (const draw of ship.draws ?? []) releaseDraw(world, nation.id, draw, draw.men ?? 0);
     ship.draws = [];
-    refund += perShip * SCRAP_REFUND * ship.hp;
+    refund += hullEquipment(ship) * SCRAP_REFUND * ship.hp;
   }
   nation.navy.ships = nation.navy.ships.filter((ship) => !gone.has(ship));
   if (nation.economy?.stock) nation.economy.stock.ships = (nation.economy.stock.ships ?? 0) + refund;
   return gone.size;
 }
 
+/** Gövdenin kuruluş teçhizatı (onarım ve hurda oranı buna göre). */
+export function hullEquipment(ship) {
+  return UNIT_EQUIPMENT[isSub(ship) ? 'SUBMARINE' : 'WARSHIP']?.ships ?? 10;
+}
+
 /** Bütün eskimiş gemileri hurdaya ayırır (panel düğmesi). */
 export function scrapObsolete(world, nation) {
   return scrapShips(world, nation, shipsOf(nation).filter((ship) => isObsolete(nation, ship)));
+}
+
+/** Denizaltı adı: U-1, U-2... (ulus başına sayaç). */
+function subName(nation) {
+  const navy = ensureNavy(nation);
+  navy.nextSub = (navy.nextSub ?? 0) + 1;
+  return `U-${navy.nextSub}`;
 }
 
 function shipName(world, nation, id) {
@@ -203,7 +233,7 @@ function shipName(world, nation, id) {
 }
 
 /** Gemi batar: mürettebat ölür, nüfustan düşer. */
-function sinkShip(world, nation, ship) {
+export function sinkShip(world, nation, ship) {
   for (const draw of ship.draws ?? []) releaseDraw(world, nation.id, draw, draw.men ?? 0, true);
   ship.draws = [];
   nation.navy.ships = nation.navy.ships.filter((other) => other !== ship);
@@ -281,7 +311,7 @@ export function docked(ship, turn) {
  */
 export function fleetStrength(nation, turn = null) {
   const naval = Math.max(0.3, 1 + mod(nation, 'naval'));
-  return shipsOf(nation).reduce((sum, ship) => (
+  return surfaceOf(nation).reduce((sum, ship) => (
     turn != null && docked(ship, turn) ? sum : sum + ship.hp * shipClassOf(ship).power
   ), 0) * naval;
 }
@@ -327,6 +357,11 @@ export function autoZoneWeights(world, nation, presence = null) {
       else if (confident) out.set(zoneId, Math.max(out.get(zoneId) ?? 0, 3));
     }
   }
+  // ESKORT: düşman denizaltısının yükümüzü batırdığı deniz Normal
+  // (seaLanes.js raid tablosu); yüzey gemisi orada denizaltıyı avlar.
+  for (const [zoneId, row] of world.navyState?.raid ?? []) {
+    if ((row.get(nation.id) ?? 0) > 0.05 && reach.has(zoneId)) out.set(zoneId, Math.max(out.get(zoneId) ?? 0, 3));
+  }
   if (!presence) return out;
   for (const zoneId of new Set([...home.keys(), ...out.keys()])) {
     const there = zoneBalance(world, presence, nation.id, zoneId).hostile;
@@ -358,7 +393,7 @@ function reachableZones(world, home) {
 export const SQUADRON = 3;
 
 function readyCount(nation, turn) {
-  return shipsOf(nation).filter((ship) => !docked(ship, turn) && ship.hp >= RETURN_BELOW).length;
+  return surfaceOf(nation).filter((ship) => !docked(ship, turn) && ship.hp >= RETURN_BELOW).length;
 }
 
 /** Bölgelerin etkin ağırlığı: elle seçilen kalır, gerisi otomatik. */
@@ -426,7 +461,7 @@ function homeZoneOf(world, nation, ship) {
     .reduce((best, row) => (best < 0 || zones[row.zoneId].size > zones[best].size ? row.zoneId : best), -1);
 }
 
-function travelWeeks(world, from, to) {
+export function travelWeeks(world, from, to) {
   if (from < 0 || to < 0) return 1;
   const d = zoneDistances(world, from)[to];
   return Number.isFinite(d) ? 1 + Math.floor(d / ZONES_PER_WEEK) : Infinity;
@@ -437,7 +472,7 @@ function travelWeeks(world, from, to) {
  * (filo bir üsse bağlı değildir); denizdeki gemi bulunduğu yerden gider,
  * oradan yol yoksa (başka su kütlesi) önce limana döner.
  */
-function shipTravel(world, nation, ship, to, home) {
+export function shipTravel(world, nation, ship, to, home) {
   const from = ship.at >= 0 ? ship.at : ship.zone;
   if (from >= 0) {
     const direct = travelWeeks(world, from, to);
@@ -448,7 +483,7 @@ function shipTravel(world, nation, ship, to, home) {
   return from >= 0 && Number.isFinite(best) ? best + 1 : best;
 }
 
-function sendHome(world, nation, ship, turn) {
+export function sendHome(world, nation, ship, turn) {
   if (ship.zone < 0 && ship.at < 0) return;
   const from = ship.at >= 0 ? ship.at : ship.zone;
   ship.zone = -1;
@@ -458,7 +493,7 @@ function sendHome(world, nation, ship, turn) {
 }
 
 function allocate(world, nation, turn, presence) {
-  const ships = shipsOf(nation);
+  const ships = surfaceOf(nation);
   const home = homeZones(world, nation.id);
   for (const ship of ships) {
     if (!ship.repairing && ship.hp < RETURN_BELOW) ship.repairing = true;
@@ -521,7 +556,7 @@ function assignAdmirals(nation) {
   const admirals = officersOf(nation, BRANCH.NAVY)
     .sort((a, b) => b.skill - a.skill || a.id - b.id);
   const counts = new Map();
-  for (const ship of shipsOf(nation)) if (ship.at >= 0) counts.set(ship.at, (counts.get(ship.at) ?? 0) + 1);
+  for (const ship of surfaceOf(nation)) if (ship.at >= 0) counts.set(ship.at, (counts.get(ship.at) ?? 0) + 1);
   const zones = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]).map(([zoneId]) => zoneId);
   admirals.forEach((admiral, index) => { admiral.seaZone = zones[index] ?? null; });
   return new Map(admirals.filter((a) => a.seaZone != null).map((a) => [a.seaZone, a]));
@@ -534,7 +569,7 @@ function buildPresence(world) {
     if (!nation.alive || !shipsOf(nation).length) continue;
     const admirals = assignAdmirals(nation);
     const home = homeZones(world, nation.id);
-    for (const ship of shipsOf(nation)) {
+    for (const ship of surfaceOf(nation)) {
       if (ship.at < 0) continue;
       if (!presence.has(ship.at)) presence.set(ship.at, new Map());
       const zone = presence.get(ship.at);
@@ -718,7 +753,7 @@ function fight(game, zone, presence, friendIds, hostileIds, rng, turn) {
 function withdraw(world, nationIds, zoneId, turn) {
   for (const id of nationIds) {
     const nation = world.nations[id];
-    for (const ship of shipsOf(nation)) {
+    for (const ship of surfaceOf(nation)) {
       if (ship.zone !== zoneId && ship.at !== zoneId) continue;
       ship.hold = Math.max(ship.hold ?? 0, turn + WITHDRAW_WEEKS);
       sendHome(world, nation, ship, turn);
@@ -800,8 +835,8 @@ function repair(world, nation, turn) {
   if (!ships.length) return;
   const dockyards = nation.economy?.ic?.dockyards ?? 0;
   const speed = REPAIR_PER_WEEK * (dockyards > 0 ? 1 : 0.5);
-  const perShip = UNIT_EQUIPMENT.WARSHIP?.ships ?? 10;
   for (const ship of ships) {
+    const perShip = hullEquipment(ship);
     if (ship.zone >= 0 || ship.at >= 0 || ship.eta > turn || ship.hp >= 1) {
       if (ship.repairing && ship.hp >= RESUME_AT) ship.repairing = false;
       continue;
@@ -935,7 +970,7 @@ export function navyView(world, nation, override = null) {
   const presence = state.presence;
   const zones = seaZonesOf(world).zones;
   const home = homeZones(world, nation.id);
-  const ships = shipsOf(nation);
+  const ships = surfaceOf(nation);
   const { targets, ready } = navyTargets(world, nation, presence, override);
   const weights = zoneWeights(world, nation, presence);
   const auto = autoZoneWeights(world, nation, presence);
@@ -948,6 +983,9 @@ export function navyView(world, nation, override = null) {
     if (ship.at >= 0) interest.add(ship.at);
   }
   for (const key of Object.keys(nation.navy?.zones ?? {})) interest.add(Number(key));
+  // Denizaltı (seaLanes.js): bizimkinin avlandığı ve yükümüzün batırıldığı denizler.
+  for (const ship of subsOf(nation)) if (ship.at >= 0) interest.add(ship.at);
+  for (const [zoneId, row] of state.raid ?? []) if (row.has(nation.id)) interest.add(zoneId);
   const reach = reachableZones(world, home);
   const rows = [...interest].filter((zoneId) => zones[zoneId] && reach.has(zoneId)).map((zoneId) => {
     const zone = zones[zoneId];
@@ -988,6 +1026,13 @@ export function navyView(world, nation, override = null) {
       transportRisk: balance.hostile > 0 && balance.hostile / (balance.hostile + balance.friendly) > TRANSPORT_HOLD
         ? TRANSPORT_LOSS * balance.hostile / (balance.hostile + balance.friendly) : 0,
       admiral: officersOf(nation, BRANCH.NAVY).find((a) => a.seaZone === zoneId) ?? null,
+      // Akın: yükümüzün bu denizde batırılan payı ve oradaki düşman denizaltısı;
+      // bizim denizaltımız ve düşman yükünden batırdığı en büyük pay.
+      raidedShare: state.raid?.get(zoneId)?.get(nation.id) ?? 0,
+      enemySubs: [...(state.subs?.get(zoneId) ?? [])]
+        .filter(([otherId]) => atWar(world, nation.id, otherId)).reduce((sum, [, entry]) => sum + entry.ships.length, 0),
+      ourSubs: state.subs?.get(zoneId)?.get(nation.id)?.ships.length ?? 0,
+      raidingShare: enemies.reduce((best, enemy) => Math.max(best, state.raid?.get(zoneId)?.get(enemy.id) ?? 0), 0),
     };
   }).sort((a, b) => (b.weight - a.weight) || (b.ourCoast - a.ourCoast) || (a.zone.id - b.zone.id));
   const inPort = ships.filter((ship) => ship.zone < 0 && ship.at < 0);
@@ -1001,6 +1046,8 @@ export function navyView(world, nation, override = null) {
     inPort: inPort.length,
     repairing: ships.filter((ship) => ship.repairing).length,
     withdrawn: ships.filter((ship) => !ship.repairing && (ship.hold ?? 0) > turn).length,
+    subs: subsOf(nation).length,
+    subsAtSea: subsOf(nation).filter((ship) => ship.at >= 0).length,
     // Sınıf dökümü (yeniden eskiye) ve eskimiş gövde sayısı.
     classes: SHIP_CLASSES.map((cls, gen) => ({ ...cls, gen, count: ships.filter((ship) => (ship.gen ?? 0) === gen).length }))
       .filter((row) => row.count > 0).reverse(),

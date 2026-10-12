@@ -279,6 +279,7 @@ export function recruit(game, nation, typeId, options = {}) {
     if (charge) takeEquipment(nation, equipmentCost);
     return commissionShip(world, nation, {
       home: source.provinceId, hp: share, draws, turn: game.turns?.turn ?? world.turn ?? 0,
+      kind: id === 'SUBMARINE' ? 'sub' : 'ship',
     });
   }
   const unit = createUnit(id, nation.id, tile, nation, source);
@@ -352,6 +353,7 @@ export const TRAINING_WEEKS = {
   CAVALRY: 10,
   ARTILLERY: 12,
   WARSHIP: 16,
+  SUBMARINE: 10,
   ARMOR: 14,
   AIRCRAFT: 12,
 };
@@ -603,7 +605,7 @@ export function runTraining(game) {
       done = true;
       completed++;
       if (nation.id === game.turns?.playerNation && UNIT_TYPES[item.typeId].domain === 'sea') {
-        game.turns.addLog(`The ${unit.name} joined the fleet${fill < 0.999
+        game.turns.addLog(`${item.typeId === 'SUBMARINE' ? `Submarine ${unit.name} joined the flotilla` : `The ${unit.name} joined the fleet`}${fill < 0.999
           ? ` at ${Math.round(Math.max(DEPLOY_FLOOR, fill) * 100)}% — short of ships equipment, she repairs in port`
           : ''}.`, { kind: 'NAVAL', key: 'commissioned' });
       } else if (nation.id === game.turns?.playerNation) {

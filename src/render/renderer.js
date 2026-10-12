@@ -2115,7 +2115,10 @@ export class Renderer {
 
     t0 = performance.now();
     // Seas kipi: bölge tonları ve adları suyun üstünde, şehir ve birimlerin altında.
-    if (this.mapMode === 'seas') this.sea.drawZones(ctx, world, rect, state.playerNation);
+    if (this.mapMode === 'seas') {
+      this.sea.drawZones(ctx, world, rect, state.playerNation);
+      this.sea.drawLanes(ctx, world, rect, state.playerNation);
+    }
     // ORDU SECILIYKEN EYALET VURGUSU YOK. Secili kare panelin baglamidir
     // (ordunun durdugu yer) ama haritada eyalet cercevesi cizmek, oyuncuya
     // "eyalet de secildi" diyordu (Kerem: asker seciliyken state secme bugu).

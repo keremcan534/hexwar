@@ -40,6 +40,7 @@ const COUNTER_ART = {
   ARMOR: 'armor',
   ARTILLERY: 'artillery',
   WARSHIP: 'warship',
+  SUBMARINE: 'warship',
   AIRCRAFT: 'aircraft',
 };
 

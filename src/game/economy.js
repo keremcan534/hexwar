@@ -186,14 +186,19 @@ export function ensureEconomy(world) {
   }
 }
 
-/** Ulusun kara alayı ve gemi sayısı (gemiler filodadır, haritada değil). */
+/**
+ * Ulusun kara alayı ve gemi sayısı (gemiler filodadır, haritada değil).
+ * Denizaltı yarım gemi bakımı yer (UPKEEP.sub / UPKEEP.sea).
+ */
 function regimentsOf(world, nation) {
   let land = 0;
   for (const unit of world.units ?? []) {
     if (unit.nationId !== nation.id) continue;
     land += unit.regiments?.length ?? 1;
   }
-  return { land, sea: nation.navy?.ships?.length ?? 0 };
+  let sea = 0;
+  for (const ship of nation.navy?.ships ?? []) sea += ship.kind === 'sub' ? UPKEEP.sub / UPKEEP.sea : 1;
+  return { land, sea };
 }
 
 /**
