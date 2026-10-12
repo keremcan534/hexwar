@@ -15193,3 +15193,180 @@ body:is(.screen-open, .notify-quiet) .notify-tray { justify-content: center; min
 .war-chip.diplomacy:hover { opacity: 1; }
 
 .pv-note .pv-val { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ==========================================================================
+   §58 DONANMA PANELİ (ui/navyDock.js) — deniz haritası (Seas kipi) açıkken
+   solda. Satır bir deniz bölgesi: ad · etiket · gemi; öncelik (üretim
+   hattının düğme dili, .pl-pb) · hâkimiyet çubuğu; tek satırlık etki. Üstte
+   filonun bölgelere dağılımı (önizlemede yerinde değişir).
+   ========================================================================== */
+.navy-dock {
+  position: fixed;
+  top: calc(var(--hud-top) + var(--tabbar-height) + var(--sp-2));
+  /* Uyarı şeridi (alert-strip) aynı köşededir: panel onun sağından başlar. */
+  left: calc(var(--sp-3) + 46px);
+  z-index: var(--z-notify);
+  width: min(430px, calc(100vw - var(--sp-3) * 2));
+  max-height: calc(100vh - var(--hud-top) - var(--tabbar-height) - 140px);
+  display: flex;
+  flex-direction: column;
+  border-radius: 4px;
+  background-color: rgba(12, 19, 23, 0.95);
+  background-image: var(--light-top), var(--surface-card);
+  background-blend-mode: normal, var(--blend-card);
+  box-shadow:
+    0 0 0 1px #000,
+    0 0 0 2px rgba(122, 98, 54, 0.75),
+    0 14px 34px rgba(0, 0, 0, 0.6),
+    inset 0 1px 0 rgba(255, 236, 196, 0.14);
+  overflow: hidden;
+}
+.navy-dock[hidden] { display: none; }
+body.screen-open .navy-dock,
+body.menu-open .navy-dock,
+body.picker-open .navy-dock { display: none; }
+
+.nd-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background-color: rgba(26, 31, 30, 0.96);
+  background-image: var(--plate-metal);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.7), 0 1px 0 rgba(255, 236, 196, 0.06);
+}
+.nd-title { color: var(--gold-bright); font-size: var(--fs-label); font-weight: 650; letter-spacing: var(--ls-label); text-transform: uppercase; }
+.nd-sum { flex: 1; min-width: 0; overflow: hidden; color: var(--text-dim); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; cursor: help; }
+.nd-sum b { color: var(--text); }
+.nd-close {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text-dim);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.nd-close:hover { border-color: var(--gold); color: var(--text); }
+.nd-alert { margin: 0; padding: 6px 12px; background: var(--red-wash); color: #ff8f6e; font-size: 12px; font-weight: 600; cursor: help; }
+.nd-empty { margin: 0; padding: 10px 12px; color: var(--text-mute); font-size: 12px; line-height: 1.45; }
+
+.nd-bar {
+  display: flex;
+  flex: none;
+  height: 18px;
+  margin: 8px 10px 4px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--surface-sunken);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(174, 139, 74, 0.16);
+  transition: box-shadow 0.12s ease;
+}
+.nd-bar.preview { box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.7), 0 0 0 1px var(--gold); }
+.nd-seg {
+  display: flex;
+  flex: none;
+  align-items: center;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
+  box-shadow: inset -1px 0 0 rgba(0, 0, 0, 0.6);
+  font-style: normal;
+  cursor: help;
+  transition: width 0.2s ease;
+  container-type: inline-size;
+}
+.nd-seg > span { padding: 0 6px; overflow: hidden; color: #10140f; font-size: 10.5px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+@container (max-width: 40px) { .nd-seg > span { display: none; } }
+.nd-seg.ours { background: linear-gradient(180deg, #8fcf98, #4f8a58); }
+.nd-seg.enemy { background: linear-gradient(180deg, #e9846c, #9a3e2c); }
+.nd-seg.contested { background: linear-gradient(180deg, #e8bd66, #9b7330); }
+.nd-seg.empty { background: linear-gradient(180deg, #a7bccb, #5b6f7f); }
+
+.nd-list { flex: 1 1 auto; min-height: 0; padding: 2px 10px 8px; overflow-y: auto; }
+.nd-row { --ln: #8fb8d6; position: relative; padding: 7px 8px 6px 12px; border-bottom: 1px solid var(--line); }
+.nd-row:last-child { border-bottom: 0; }
+.nd-row::before {
+  content: '';
+  position: absolute;
+  top: 7px;
+  bottom: 7px;
+  left: 0;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: var(--nd-tone, #5b6f7f);
+}
+.nd-row.ours { --nd-tone: #6fbf7c; }
+.nd-row.enemy { --nd-tone: #d8644c; }
+.nd-row.contested { --nd-tone: #e0a848; }
+.nd-row:hover, .nd-row.focus { background-color: rgba(186, 160, 100, 0.06); }
+.nd-row.focus { box-shadow: inset 0 0 0 1px rgba(214, 186, 120, 0.3); }
+.nd-row-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.nd-name {
+  min-width: 0;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font-family: var(--font-display);
+  font-size: 14.5px;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.nd-name:hover { color: var(--gold-bright); }
+.nd-tag {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--line-strong);
+  border-radius: 2px;
+  color: var(--text-mute);
+  font-size: 9.5px;
+  font-style: normal;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: help;
+}
+.nd-tag.home { border-color: rgba(131, 154, 107, 0.5); color: var(--green); }
+.nd-tag.enemy { border-color: rgba(169, 94, 74, 0.55); color: #e0866a; }
+.nd-ships { display: inline-flex; flex: none; align-items: baseline; gap: 3px; margin-left: auto; cursor: help; }
+.nd-ships b { min-width: 14px; color: var(--text); font-size: 14px; font-variant-numeric: tabular-nums; text-align: right; transition: color 0.12s ease; }
+.nd-ships b.pv-up { color: #b9d68a; }
+.nd-ships b.pv-down { color: #ff8f6e; }
+.nd-ships small { color: var(--text-mute); font-size: 10.5px; }
+.nd-row-mid { display: flex; align-items: center; gap: 10px; margin-top: 5px; }
+.nd-pri .pl-pb { height: 22px; padding: 0 7px; font-size: 10.5px; }
+.nd-pri .pl-pb.auto { min-width: 40px; }
+.nd-ctl {
+  flex: 1;
+  min-width: 40px;
+  height: 6px;
+  overflow: hidden;
+  border-radius: 1px;
+  background: rgba(214, 74, 58, 0.55);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.6);
+  cursor: help;
+}
+.nd-ctl i { display: block; height: 100%; background: linear-gradient(180deg, #a9c674, #5f7a3c); transition: width 0.2s ease; }
+.nd-ctl.empty { background: var(--surface-sunken); }
+.nd-ctlv { flex: none; min-width: 32px; color: var(--text); font-size: 11.5px; font-variant-numeric: tabular-nums; text-align: right; }
+.nd-ctlv.dim { color: var(--text-faint); }
+.nd-fx { display: flex; flex-wrap: wrap; gap: 2px 6px; margin-top: 4px; color: var(--text-mute); font-size: 11px; }
+.nd-fx > i { color: var(--text-faint); font-style: normal; }
+.nd-fx .good { color: #b9d68a; }
+.nd-fx .bad { color: #ff8f6e; }
+.nd-fx .dim { color: var(--text-faint); }
+.nd-fx [data-tip] { cursor: help; }
+.nd-reports { flex: none; padding: 6px 12px 9px; border-top: 1px solid var(--line-strong); }
+.nd-reports > small { display: block; margin-bottom: 3px; color: var(--text-mute); font-size: 10px; font-weight: 600; letter-spacing: var(--ls-label); text-transform: uppercase; }
+.nd-report { display: flex; flex-direction: column; padding: 3px 0; font-size: 11.5px; }
+.nd-report b { color: var(--text); font-family: var(--font-display); font-size: 13px; font-weight: 400; }
+.nd-report span { color: #b9d68a; }
+.nd-report.lost span { color: #ff8f6e; }

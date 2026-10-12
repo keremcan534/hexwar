@@ -21,6 +21,7 @@ import { levyAvailable, levyExcluded, releaseDraw, takeLevy } from './levy.js';
 import { occupiedShareOf } from './provinces.js';
 import { nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
 import { techById, unlockTechOf } from './technology.js';
+import { commissionShip } from './navy.js';
 
 /** Alayın kuruluş teçhizatı (econ/defs.js UNIT_EQUIPMENT). */
 export function recruitmentEquipmentCost(typeId) {
@@ -210,15 +211,9 @@ function drawManpower(world, source, amount) {
  * Alayın haritaya çıkacağı düğüm: kaynak province'in merkezi ya da komşu bir
  * province (bkz. world/provinceGraph). Gemi province'e değen deniz karesine iner.
  */
-function deploymentTile(world, source, typeId) {
+function deploymentTile(world, source) {
   // Eski kuyruk kaydı province'in herhangi bir karesini tutabilir.
   source = nodeOf(world, source);
-  const domain = UNIT_TYPES[resolveTypeId(typeId)].domain;
-  if (domain === 'sea') {
-    return nodeNeighbors(world, source).find(
-      (tile) => tile.terrain.navigable && !stackFull(tile),
-    ) ?? null;
-  }
   // Tümenler birleşmediği için dolu olmayan yığına inmek serbest — ama
   // yalnız kendi kontrolümüzde ve yabancı tümen yokken: işgal edilmiş
   // kaynakta alay düşman yığınının ÜSTÜNE doğuyordu.
@@ -268,7 +263,8 @@ export function recruit(game, nation, typeId, options = {}) {
       ? preferred : null;
   const source = usable ?? recruitmentSource(world, nation, id);
   if (!source) return null;
-  const tile = deploymentTile(world, source, id);
+  const naval = UNIT_TYPES[id].domain === 'sea';
+  const tile = naval ? source : deploymentTile(world, source);
   if (!tile) return null;
 
   // Eksik teçhizatla çıkan alay o oranda güçle ve o oranda insanla çıkar;
@@ -277,6 +273,14 @@ export function recruit(game, nation, typeId, options = {}) {
   const share = Math.max(DEPLOY_FLOOR, Math.min(1, fill));
   const draws = drawManpower(world, source, Math.ceil(need * share));
   if (!draws.length) return null;
+  if (naval) {
+    // Gemi haritaya inmez: ulusun filosuna katılır (navy.js), limanı bu kıyı.
+    // Eksik teçhizatla çıkan gemi o sağlıkla doğar ve limanda onarılır.
+    if (charge) takeEquipment(nation, equipmentCost);
+    return commissionShip(world, nation, {
+      home: source.provinceId, hp: share, draws, turn: game.turns?.turn ?? world.turn ?? 0,
+    });
+  }
   const unit = createUnit(id, nation.id, tile, nation, source);
   if (share < 1) {
     const regiment = unit.regiments[0];
@@ -598,7 +602,11 @@ export function runTraining(game) {
       item.finished = true;
       done = true;
       completed++;
-      if (nation.id === game.turns?.playerNation) {
+      if (nation.id === game.turns?.playerNation && UNIT_TYPES[item.typeId].domain === 'sea') {
+        game.turns.addLog(`The ${unit.name} joined the fleet${fill < 0.999
+          ? ` at ${Math.round(Math.max(DEPLOY_FLOOR, fill) * 100)}% — short of ships equipment, she repairs in port`
+          : ''}.`, { kind: 'NAVAL', key: 'commissioned' });
+      } else if (nation.id === game.turns?.playerNation) {
         game.turns.addLog(
           `${UNIT_TYPES[item.typeId].name} joined the army${fill < 0.999
             ? ` at ${Math.round(Math.max(DEPLOY_FLOOR, fill) * 100)}% strength — short of equipment, reinforcements will fill it`

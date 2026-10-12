@@ -30,6 +30,7 @@ import {
   trainingWeeks, weeksLeft, orderFill,
 } from './recruitment.js';
 import { BASE_REINFORCEMENT_RATE, reinforcementNeed } from './reinforcement.js';
+import { seaZonesOf } from '../world/seaZones.js';
 import {
   MOBILIZATION, conscriptUnits, isMobilized, mobilizationBlockers, mobilizationTarget,
 } from './mobilization.js';
@@ -117,7 +118,8 @@ function averageOrganization(units) {
  */
 export function militarySummary(world, nation) {
   const army = divisionsOfNation(world, nation.id);
-  const fleet = divisionsOfNation(world, nation.id, { naval: true });
+  // Filo haritada değil havuzdadır (navy.js): durum gövde sağlığıdır.
+  const fleet = nation.navy?.ships ?? [];
   const queue = trainingQueue(nation);
   const reinforcement = nation.economy?.reinforcement ?? {};
 
@@ -164,7 +166,8 @@ export function militarySummary(world, nation) {
     capacity,
     strength: capacity > 0 ? soldiers / capacity : 1,
     organization: averageOrganization(army),
-    navalOrganization: averageOrganization(fleet),
+    navalOrganization: fleet.length
+      ? fleet.reduce((sum, ship) => sum + ship.hp, 0) / fleet.length * 100 : null,
     inBattle,
     marching,
     fleet: fleet.length,
@@ -172,8 +175,7 @@ export function militarySummary(world, nation) {
     manpowerDemand: need.manpower,
     officers: officers.length,
     admirals: admirals.length,
-    unassigned: army.filter((unit) => !commanded.has(unit.id)).length
-      + fleet.filter((unit) => !commanded.has(unit.id)).length,
+    unassigned: army.filter((unit) => !commanded.has(unit.id)).length,
     training: queue.length,
     trainingCapacity: trainingCapacity(world, nation),
     trainingSpeed: trainingSpeed(nation),
@@ -379,10 +381,12 @@ export function commandRoster(world, nation) {
       recovery: traitSum(general, 'recovery'),
       planningRate: traitSum(general, 'planning'),
       variance: traitSum(general, 'variance'),
-      assignment: commandSize(general) === 0
-        ? 'Unassigned'
-        : naval
-          ? `${commandSize(general)} ${commandSize(general) === 1 ? 'ship' : 'ships'}`
+      // Amiral deniz bölgesi yönetir (navy.js assignAdmirals): en kalabalık
+      // filomuzun bölgesine en yetenekli amiral.
+      assignment: naval
+        ? admiralPost(world, nation, general)
+        : commandSize(general) === 0
+          ? 'Unassigned'
           : `${commandSize(general)} ${commandSize(general) === 1 ? 'division' : 'divisions'}`
             + (target ? ` · facing ${target}` : general.front?.length ? ' · holding the border' : ''),
     };
@@ -392,6 +396,13 @@ export function commandRoster(world, nation) {
     navy: officersOf(nation, BRANCH.NAVY).map(build),
     options: ensureCommandOptions(nation),
   };
+}
+
+function admiralPost(world, nation, general) {
+  if (general.seaZone == null) return 'In port';
+  const zone = seaZonesOf(world).zones[general.seaZone];
+  const ships = (nation.navy?.ships ?? []).filter((ship) => ship.at === general.seaZone).length;
+  return `${zone?.name ?? 'At sea'} · ${ships} ${ships === 1 ? 'ship' : 'ships'}`;
 }
 
 /** Komutanı olmayan tümenler — otomatik dağıtım kapalıyken oyuncunun işi. */
@@ -456,12 +467,12 @@ export function militaryStats(world, nation) {
     },
     {
       id: 'naval-org',
-      label: 'Naval Organization',
+      label: 'Fleet Condition',
       value: summary.navalOrganization == null ? '—' : `${summary.navalOrganization.toFixed(0)}%`,
       live: summary.navalOrganization != null,
       note: summary.navalOrganization == null
-        ? 'You have no fleet at sea.'
-        : 'Weighted average across the fleet.',
+        ? 'You have no warships.'
+        : 'Average hull condition. Damaged ships return to port and repair from the ships depot.',
     },
     {
       id: 'recruit-time',

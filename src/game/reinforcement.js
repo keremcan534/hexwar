@@ -113,6 +113,12 @@ export function reinforcementNeed(world, nation) {
       for (const [id, per] of perStrength(regiment)) equipment[id] += missing * per;
     }
   }
+  // Filonun onarımı da gemi teçhizatı yer (navy.js repair): yaralı gövdenin
+  // eksiği tam geminin teçhizatı oranında.
+  const perShip = UNIT_EQUIPMENT.WARSHIP?.ships ?? 10;
+  for (const ship of nation.navy?.ships ?? []) {
+    if (ship.hp < 1) equipment.ships = (equipment.ships ?? 0) + (1 - ship.hp) * perShip;
+  }
   return {
     strength: Math.round(strength),
     manpower: Math.ceil(manpower),

@@ -118,7 +118,7 @@ export function nationBrief(world, nation) {
   const population = populationOf(world, nation);
   const cities = world.cities.filter((city) => city.nationId === nation.id).length;
   const divisions = world.units.filter((unit) => unit.nationId === nation.id && unit.type.domain === 'land').length;
-  const ships = world.units.filter((unit) => unit.nationId === nation.id && unit.type.domain === 'sea').length;
+  const ships = nation.navy?.ships?.length ?? 0;
   const power = nationStrength(world, nation);
   const party = rulingParty(nation);
   // Kabul edilmis kultur yabanci sayilmaz (nation.accepted): vatandaslik

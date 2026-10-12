@@ -8,6 +8,7 @@ import { MainMenu } from './ui/mainMenu.js';
 import { Notifications } from './ui/notifications.js';
 import { AlertStrip } from './ui/alerts.js';
 import { MovementDock } from './ui/movementDock.js';
+import { NavyDock } from './ui/navyDock.js';
 import { BattlePanel } from './ui/battlePanel.js';
 import { UnitHover } from './ui/unitHover.js';
 import { NationPicker } from './ui/nationPicker.js';
@@ -32,6 +33,8 @@ const hud = new Hud(game);
 new Notifications(game);
 // Sag ust: ulusal hareketler (bildirim kartlari sag alttaki sayaca indi).
 new MovementDock(game);
+// Sol: donanma paneli, yalnız deniz haritası (Seas kipi) açıkken.
+new NavyDock(game);
 new BattlePanel(game);
 new UnitHover(game);
 // Seçenekli olay kartları: açılınca saati durdurur (bkz. ui/eventCard.js).

@@ -70,6 +70,8 @@ const EVENTS = [
   'inspect',
   // İmleç bir yığının üstüne geldi/ayrıldı (ui/unitHover.js): { tile, x, y } ya da null.
   'hover',
+  // Harita kipi değişti (hud.js düğmeleri): deniz haritasında donanma paneli açılır.
+  'mapmode',
 ];
 
 /** Muharebe sonucu yazısının ömrü (ms). */
@@ -787,6 +789,10 @@ export class Game {
     const out = [];
     const defender = unitsOn(tile).find((other) => other.nationId !== unit.nationId);
     if (!defender) return [{ id: 'empty', text: 'no enemy there', wait: false }];
+    // Denizdeki birliğe karadan saldırılmaz; ona ancak donanma ulaşır (navy.js
+    // geçiş kaybı). Eskiden kıyıdaki ordu bindirilmiş birliğe saldırıp
+    // kazanınca denize "biniyordu", gemi de kara hexine yerleşebiliyordu.
+    if (tile.terrain?.water) return [{ id: 'sea', text: 'at sea; only a navy can reach them', wait: false }];
     if (!nodesAdjacent(this.world, unit.tile, tile)) {
       out.push({ id: 'far', text: 'not adjacent', wait: true });
     }

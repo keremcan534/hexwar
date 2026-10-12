@@ -123,11 +123,12 @@ export function autoLineWeights(world, nation) {
     regiments += unit.regiments?.length ?? 0;
     for (const regiment of unit.regiments ?? []) {
       if (regiment.typeId === 'ARTILLERY') guns++;
-      else if (regiment.typeId === 'WARSHIP') warships++;
       else if (regiment.typeId === 'ARMOR') armour++;
       else if (regiment.typeId === 'AIRCRAFT') air++;
     }
   }
+  // Gemiler haritada değil filodadır (navy.js).
+  warships = nation.navy?.ships?.length ?? 0;
   // Depo doluysa hat durur: barışta yığılan tüfek demir yer ama kimseyi
   // silahlandırmaz (ölçüldü: 1900'de dünya demiri %40'ta, depolar taşkın).
   const rifles = equipmentStock(nation, 'rifles');

@@ -8,6 +8,7 @@
 import {
   createUnit, placeUnit, refreshArmy, resetUnitIds, resolveTypeId, stackFull, unitIdCursor, unitsOn,
 } from './units.js';
+import { refreshNavyState } from './navy.js';
 import { nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
 import { createCity, englishCityName } from './cities.js';
 import { generateWorld } from '../world/worldgen.js';
@@ -95,7 +96,12 @@ import { ensureDelegation, restoreDelegation } from './delegation.js';
 // sayılır ve kampanya 2401 haftadır; 1836 kaydı yeni takvimde yanlış yılı
 // gösterir, 3341. turdaki bir kayıt yüklenir yüklenmez zaferle biterdi.
 // Şema aynı ama takvim değil: eski kayıtlar TEMİZ REDDEDİLİR.
-export const SAVE_VERSION = 25;
+//
+// v26: DONANMA HAVUZU (navy.js). Savaş gemisi artık haritada birim değil,
+// ulusun filosudur (nation.navy: gemiler, mürettebat draws'ı, bölge
+// öncelikleri). v25 kaydındaki gemi birimleri bu şemada anlamsızdır:
+// eski kayıtlar TEMİZ REDDEDİLİR.
+export const SAVE_VERSION = 26;
 /** Göçü bilinen eski sürümler: deserialize bunları da kabul eder. */
 const MIGRATABLE_VERSIONS = new Set([]);
 const STORAGE_KEY = 'hexwar.save';
@@ -138,6 +144,9 @@ const NATION_FIELDS = [
   // bekleyen her karar hemen yeniden alınabiliyordu: 1900 dünyasında SG bol
   // olduğundan kaydet-yükle üçüncü haftada dallanıyordu (ölçüldü).
   'decisions',
+  // Donanma (navy.js): gemiler (sağlık, liman, yol, mürettebat), bölge
+  // öncelikleri; batan gemi sayacı. Türetilemez.
+  'navy', 'shipsLost',
 ];
 
 export function serialize(game) {
@@ -221,6 +230,9 @@ export function serialize(game) {
       battles: (world.battleSystem?.battles ?? []).map((battle) => ({ ...battle })),
     },
     commandSystem: { nextId: world.commandSystem?.nextId ?? 1 },
+    // Son deniz muharebeleri (navy.js, 26 hafta): donanma panelinin geçmişi.
+    // Hâkimiyet ve abluka türetilir, raporlar türetilemez.
+    navyReports: world.navyState?.reports ?? [],
     // Birim kimlik sayaci (bkz. units.unitIdCursor).
     unitSystem: { nextId: unitIdCursor() },
     tiles,
@@ -713,6 +725,9 @@ export function deserialize(game, data) {
         .filter((id) => id != null);
     }
   }
+  // Deniz durumu türetilmiştir (hâkimiyet, abluka): ekran ve ilk haftanın
+  // ekonomisi boş tablo okumasın.
+  refreshNavyState(world).reports = Array.isArray(data.navyReports) ? data.navyReports : [];
   game.setSpeed(0);
 
   game.selected = null;

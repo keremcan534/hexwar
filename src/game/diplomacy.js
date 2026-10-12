@@ -3,7 +3,7 @@
 // barış varsayılan, savaş bir karar.
 
 import { DIRS } from '../core/hex.js';
-import { armyPower } from './units.js';
+import { UNIT_TYPES, armyPower } from './units.js';
 import { captureConstructionAt } from './construction.js';
 import { noteCasualties } from './politics.js';
 import { controllerOf } from './control.js';
@@ -484,6 +484,8 @@ export function nationStrength(world, nation) {
   for (const unit of world.units) {
     if (unit.nationId === nation.id) power += armyPower(unit);
   }
+  // Filo haritada değil havuzdadır (navy.js): eski WARSHIP birimiyle aynı ağırlık.
+  for (const ship of nation.navy?.ships ?? []) power += UNIT_TYPES.WARSHIP.attack * ship.hp;
   for (const city of world.cities) {
     if (city.nationId === nation.id) power += 3;
   }

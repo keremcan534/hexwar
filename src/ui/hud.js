@@ -343,6 +343,8 @@ export class Hud {
         for (const other of document.querySelectorAll('.mode-btn[data-mode]')) {
           other.classList.toggle('active', other === btn);
         }
+        // Donanma paneli (navyDock) deniz haritasıyla açılıp kapanır.
+        game.emit('mapmode', btn.dataset.mode);
         togglePanel(el.rgoLegend, btn.dataset.mode === 'resources');
         togglePanel(el.populationLegend, btn.dataset.mode === 'population');
         this.showModeLegend();
@@ -656,6 +658,13 @@ export class Hud {
         this.game.stepSpeed(-1);
         return;
       }
+      if (event.code === 'KeyM') {
+        // Deniz haritası: aç/kapa (N sıradaki boştaki birimdir).
+        event.preventDefault();
+        const mode = this.game.renderer?.mapMode === 'seas' ? 'political' : 'seas';
+        document.querySelector(`.mode-btn[data-mode="${mode}"]`)?.click();
+        return;
+      }
       if (event.code === 'KeyN') {
         // "Siradaki bosta birim": fonksiyon bastan beri vardi (selectNextIdle),
         // hicbir tus/dugme cagirmiyordu. HOLD emirli birimler dongude gorunmez.
@@ -809,9 +818,9 @@ export class Hud {
         + ' · Ctrl+1-9 saves a group, 1-9 recalls it · H hold · X stop';
       el.divisionsBody.innerHTML = list.map((unit) => {
         const general = generalOfArmy(me, unit);
-        // Denizdeki tumen SAVASAMAZ ve konvoy tuketir — bu iki gercek
-        // ekranda hic soylenmiyordu (survey: SURFACE karari).
-        const state = unit.embarked ? 'at sea — cannot fight, consumes convoys'
+        // Denizdeki tumen SAVASAMAZ; dusmanin tuttugu denizde adam kaybeder
+        // (navy.js gecis kaybi). Konvoy bedeli 83f147d'de kalkmisti.
+        const state = unit.embarked ? 'at sea — cannot fight; enemy-held seas cost men'
           : unit.battleId ? 'in battle'
             : (unit.retreatUntil ?? 0) > game.turns.turn ? 'retreating'
               : (unit.attackReadyAt ?? 0) > game.turns.turn ? 'reorganizing'
@@ -1462,9 +1471,11 @@ export class Hud {
     // Territory · Defense 0%" yazıyordu (Kerem'in ekran görüntüsü): kimsenin
     // almadığı bir toprak varmış gibi okunuyordu. Suyun künyesi kendi adıdır.
     const water = tile.terrain.water;
-    const title = water ? tile.terrain.name : (nation ? nation.fullName : 'Unclaimed Territory');
+    // Deniz bölgesinin adı (navy.js, Seas kipi): donanma bölge bölge yönetilir.
+    const seaZone = water && tile.seaZone >= 0 ? world.seaZones?.zones?.[tile.seaZone] : null;
+    const title = seaZone ? seaZone.name : water ? tile.terrain.name : (nation ? nation.fullName : 'Unclaimed Territory');
     const sub = water
-      ? `${tile.terrain.navigable ? 'Navigable water' : 'Impassable water'} · ${tile.q}, ${tile.r}`
+      ? `${seaZone ? `${tile.terrain.name} · ` : ''}${tile.terrain.navigable ? 'Navigable water' : 'Impassable water'} · ${tile.q}, ${tile.r}`
       : `${tile.terrain.name} · ${tile.q}, ${tile.r}${tile.coastal ? ' · coast' : ''}`;
 
     const stats = water ? [] : [

@@ -38,6 +38,7 @@ import { nodeNeighbors } from '../world/provinceGraph.js';
 import { autoFocus } from './stateFocus.js';
 import { alliesOf } from './alliances.js';
 import { worldWarTension } from './worldEvents.js';
+import { shipsOf } from './navy.js';
 
 /** Savaş ilanı için gereken güç üstünlüğü. */
 // 1.4 -> 1.6 -> 1.8 (2026-09-04: kusatma ve bos cepheye yuruyus savaslari
@@ -325,7 +326,6 @@ function waitingForEquipment(nation) {
  */
 function spend(game, nation) {
   const world = game.world;
-  const cities = world.cities.filter((c) => c.nationId === nation.id).length;
   const turn = game.turns?.turn ?? 0;
   const atWarNow = world.nations.some((other) => other.alive && other.id !== nation.id
     && atWar(world, other.id, nation.id));
@@ -343,23 +343,19 @@ function spend(game, nation) {
   if (waitingForEquipment(nation) >= 2) return;
 
   const target = desiredArmy(world, nation);
+  // Kuyruktaki gemi ordu sayılmaz: filoya katılır (navy.js).
   let army = world.units
     .filter((u) => u.nationId === nation.id && !isConscript(u))
     .reduce((sum, unit) => sum + regimentCount(unit), 0)
-    + trainingCount(nation);
+    + trainingCount(nation) - trainingCount(nation, 'WARSHIP');
 
-  // Kıyı ülkeleri mütevazı bir donanma tutar (gemi stoğu varsa).
-  const hasPort = world.cities.some((c) => c.nationId === nation.id && c.tile.coastal);
-  const fleet = world.units.filter(
-    (u) => u.nationId === nation.id && u.type.domain === 'sea',
-  ).length + trainingCount(nation, 'WARSHIP');
-  // Donanma YZ dünyasında ölü kaldıraçtı (bütün gemileri silmek hiçbir şey
-  // değiştirmedi); YZ getirisi ölçülmeyen filoya daha az öder.
-  if (hasPort && fleet < Math.floor(cities / 4)
+  // Donanma artık abluka ve geçiş kaybıyla ölçülen bir kaldıraçtır (navy.js):
+  // hedef kıyı uzunluğu, sanayi ve savaştaki düşman filosuyla büyür.
+  const fleet = shipsOf(nation).length + trainingCount(nation, 'WARSHIP');
+  if (fleet < desiredFleet(world, nation)
     && equipmentStock(nation, 'ships') >= UNIT_EQUIPMENT.WARSHIP.ships
-    && canAfford(nation, UNIT_COSTS.WARSHIP)
-    && game.turns.buyUnit(nation, 'WARSHIP')) {
-    army++;
+    && canAfford(nation, UNIT_COSTS.WARSHIP)) {
+    game.turns.buyUnit(nation, 'WARSHIP');
   }
 
   for (let i = 0; i < 3; i++) {
@@ -480,26 +476,27 @@ function nearestFrontier(world, from, nationId, maxNodes = 900) {
   return null;
 }
 
-/** Gemiler için hedef: en yakın düşman gemisi ya da kıyı şehri. */
-function navalGoal(world, unit) {
-  let best = null;
-  let bestDist = Infinity;
-  const consider = (tile) => {
-    const d = world.wrapDistance(tile.q, tile.r, unit.tile.q, unit.tile.r);
-    if (d < bestDist) {
-      bestDist = d;
-      best = tile;
-    }
-  };
-  for (const other of world.units) {
-    if (other.nationId === unit.nationId || !atWar(world, other.nationId, unit.nationId)) continue;
-    if (other.embarked || other.type.domain === 'sea') consider(other.tile);
+/**
+ * DONANMA HEDEFİ (gemi sayısı). Kıyı province'i başına çeyrek gemi + her 60
+ * IC'ye bir; savaşta kıyısı olan düşmanın filosunun %80'i. Tavan sanayiyle:
+ * tersanesi zayıf ülke deniz yarışına girmez.
+ */
+export function desiredFleet(world, nation) {
+  let coastal = 0;
+  for (const province of world.provinces ?? []) {
+    if (province.owner === nation.id && province.coastal) coastal++;
   }
-  for (const city of world.cities) {
-    if (city.nationId === unit.nationId || !atWar(world, city.nationId, unit.nationId)) continue;
-    if (city.tile.coastal) consider(city.tile);
+  if (!coastal) return 0;
+  const ic = nation.economy?.ic?.total ?? 0;
+  // Savaşta bütün kıyılı düşmanların filosu birlikte sayılır: iki düşmana
+  // karşı tek filonun %80'ini kuran ülke ikisine birden yeniliyordu.
+  let enemyShips = 0;
+  for (const other of world.nations) {
+    if (!other.alive || other.id === nation.id || !atWar(world, nation.id, other.id)) continue;
+    if (other.economy?.coastal) enemyShips += shipsOf(other).length;
   }
-  return best;
+  const target = Math.max(Math.round(coastal * 0.25 + ic / 60), Math.ceil(enemyShips * 0.8));
+  return Math.max(1, Math.min(target, 4 + Math.round(ic / 25)));
 }
 
 function adjacentEnemy(world, unit) {
@@ -550,10 +547,8 @@ export function runUnitAI(game, unit, rng) {
     return;
   }
 
-  // 2) Değilse hedefe ilerle: gemiler denizi, kara birimleri sınırı kollar.
-  const goal = unit.type.domain === 'sea'
-    ? navalGoal(world, unit)
-    : (enemyCityNear(world, unit) ?? nearestFrontier(world, unit.tile, unit.nationId));
+  // 2) Değilse hedefe ilerle: düşman şehri ya da sınır.
+  const goal = enemyCityNear(world, unit) ?? nearestFrontier(world, unit.tile, unit.nationId);
   if (!goal || goal === unit.tile) return;
 
   // Yürüyüş sürekli olduğu için her hafta yeniden yol aramaya gerek yok:
@@ -628,10 +623,8 @@ export function runNationAI(game, nation, rng) {
   unificationAI(game, nation);
   decisionsAI(game, nation);
   manageCommand(game, nation);
-  // Kara tümenleri komuta katmanından yönetilir; burada yalnız donanma kalır.
-  for (const unit of [...world.units]) {
-    if (unit.nationId === nation.id && unit.type.domain === 'sea') runUnitAI(game, unit, rng);
-  }
+  // Kara tümenleri komuta katmanından, donanma deniz bölgelerinden yönetilir
+  // (navy.js autoZoneWeights): burada birim birim iş kalmadı.
 }
 
 /**

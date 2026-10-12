@@ -208,7 +208,7 @@ export function leadGeneral(world, units) {
  */
 export function battleUnitPower(world, unit, defending, relief = 0, target = null, breakthrough = 0) {
   const f = battleUnitFactors(world, unit, defending, relief, target, breakthrough);
-  return f.base * f.powder * f.horses * f.fuel * f.arm * f.doctrine * f.naval * f.rubber * f.river
+  return f.base * f.powder * f.horses * f.fuel * f.arm * f.doctrine * f.rubber * f.river
     * f.terrain * f.general * f.planning * f.supply;
 }
 
@@ -235,10 +235,8 @@ export function battleUnitFactors(world, unit, defending, relief = 0, target = n
   const arm = unit.type?.id === 'ARMOR' ? Math.max(0.3, 1 + mod(nation, 'armor'))
     : unit.type?.id === 'AIRCRAFT' ? Math.max(0.3, 1 + mod(nation, 'air')) : 1;
   const doctrine = Math.max(0.3, 1 + (defending ? mod(nation, 'defense') : mod(nation, 'attack')));
-  const naval = unit.type?.domain === 'sea' ? Math.max(0.3, 1 + mod(nation, 'naval')) : 1;
   // KAUÇUK: saha telgrafı ve lastik; bonus karşılanan kauçuk oranında.
-  const rubber = unit.type?.domain === 'sea'
-    ? 1 : 1 + Math.max(0, mod(nation, 'rubberArmy')) * resourceRatio(nation, 'RUBBER');
+  const rubber = 1 + Math.max(0, mod(nation, 'rubberArmy')) * resourceRatio(nation, 'RUBBER');
   const river = !defending && !unit.type?.air && crossesRiver(world, unit.tile, target) ? 1 - RIVER_PENALTY : 1;
   return {
     base: armyPower(unit),
@@ -247,7 +245,6 @@ export function battleUnitFactors(world, unit, defending, relief = 0, target = n
     fuel,
     arm,
     doctrine,
-    naval,
     rubber,
     river,
     terrain,

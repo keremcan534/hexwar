@@ -51,7 +51,7 @@ export function glyph(name, cls = '') {
 
 /** Bildirim türü → ikon. */
 export const NOTIFY_GLYPH = {
-  WAR: 'swords', PEACE: 'dove', DIPLOMACY: 'scroll', BATTLE: 'swords', FIELD_WIN: 'medal',
+  WAR: 'swords', PEACE: 'dove', DIPLOMACY: 'scroll', BATTLE: 'swords', FIELD_WIN: 'medal', NAVAL: 'anchor',
   CONQUEST: 'flag', CITY: 'column', BUILDING: 'crane', INDUSTRY: 'factory', RESEARCH: 'flask',
   ARMY: 'shield', COMMANDER: 'medal', POLITICS: 'ballot', CRISIS: 'warning', HUNGER: 'bread',
   RELIEF: 'wheat', NATION: 'skull', HEGEMONY: 'crown', INFO: 'info',

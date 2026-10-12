@@ -43,6 +43,7 @@ import {
   runProvinces, setProvinceOwner,
 } from './provinces.js';
 import { initPolitics, runPolitics } from './politics.js';
+import { runNavy } from './navy.js';
 import { runMovements } from './movements.js';
 import { releaseDraw } from './levy.js';
 import { updatePockets } from './pockets.js';
@@ -185,7 +186,9 @@ export class TurnManager {
           // ve savas olumlerinin %8.7-9.1'i nufustan hicbir sey
           // goturmuyordu (olculdu, 2 tohum, 260 hafta).
           ?? recruit(this.game, nation, typeId, { charge: false })
-          ?? this.spawnAt(nation, typeId, { fallbackToCapital: true });
+          // Gemi haritaya inmez (navy.js): kıyıda mürettebat yoksa gemi de yok.
+          ?? (UNIT_TYPES[typeId].domain === 'sea' ? null
+            : this.spawnAt(nation, typeId, { fallbackToCapital: true }));
         if (!unit) break;
         // Only an emergency fallback can lack province draws. Mark it
         // explicitly so disbanding can never create population from nothing.
@@ -597,6 +600,11 @@ export class TurnManager {
     resumeDirectives(this.game);
     advanceMovement(this.game);
     yield* pause('movement');
+    // Donanma yürüyüşten SONRA (denizdeki ordu bu haftanın yerini okur),
+    // ekonomiden ÖNCE (abluka bu haftanın ticaretine girer). Kendi zar akışı.
+    this.phase = 'navy';
+    runNavy(this.game);
+    yield* pause('navy');
     this.phase = 'provinces';
     decayInfamy(world);
     // Sıra önemli: sahiplik savaşta değişmiş olabilir, önce işçiler yeniden dağıtılır.

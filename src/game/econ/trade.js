@@ -54,40 +54,24 @@ export function setEmbargo(nation, targetId, on) {
 }
 
 /**
- * ABLUKA: düşman savaş gemisinin 2 hex yakınındaki kıyı province'leri.
- * Ulusun ablukadaki kıyı province payı deniz ticaretini o oranda keser.
- * Haftada bir, ekonomi başında.
+ * ABLUKA deniz hâkimiyetinden okunur (navy.js): kıyı province'i başına
+ * düşmanın değdiği denizdeki hâkimiyet payı × kapsam; ulusun ortalaması
+ * deniz ticaretini o oranda keser. Eski kural "2 hex yakındaki herhangi bir
+ * düşman gemisi"ydi: tek yaralı gemi bütün kıyıyı kapatıyordu ve savunanın
+ * filosu buna itiraz edemiyordu. Haftada bir, ekonomi başında (donanma
+ * fazından sonra).
  */
 export function computeBlockades(world) {
-  const blockaded = new Set();
-  for (const unit of world.units ?? []) {
-    if (unit.type?.domain !== 'sea' || !unit.tile) continue;
-    const enemy = unit.nationId;
-    const center = unit.tile;
-    for (let dq = -2; dq <= 2; dq++) {
-      for (let dr = Math.max(-2, -dq - 2); dr <= Math.min(2, -dq + 2); dr++) {
-        const tile = world.get(center.q + dq, center.r + dr);
-        if (!tile || tile.terrain.water || tile.provinceId < 0) continue;
-        const province = world.provinces?.[tile.provinceId];
-        if (!province || province.owner < 0 || province.owner === enemy) continue;
-        if (world.relations?.[enemy]?.[province.owner]?.state !== 'war') continue;
-        blockaded.add(province.id);
-      }
-    }
-  }
   const coastal = new Array(world.nations.length).fill(0);
-  const blocked = new Array(world.nations.length).fill(0);
   for (const province of world.provinces ?? []) {
-    if (province.owner < 0 || !province.coastal) continue;
-    coastal[province.owner]++;
-    if (blockaded.has(province.id)) blocked[province.owner]++;
+    if (province.owner >= 0 && province.coastal) coastal[province.owner]++;
   }
+  const naval = world.navyState?.blockade ?? [];
   for (const nation of world.nations) {
     if (!nation.economy) continue;
     nation.economy.coastal = coastal[nation.id] > 0;
-    nation.economy.blockade = coastal[nation.id] ? blocked[nation.id] / coastal[nation.id] : 0;
+    nation.economy.blockade = coastal[nation.id] ? Math.max(0, Math.min(1, naval[nation.id] ?? 0)) : 0;
   }
-  return blockaded;
 }
 
 /** Çiftin yol katsayısı: kara komşusu 1, deniz (1-abluka)², yol yoksa 0. */

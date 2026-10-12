@@ -92,4 +92,7 @@ değiştirici toplamına yazılır (`modifiers.js MODIFIER_KEYS`): yeni anahtar�
 okuyucusu yoksa `audit:tech-effect` yakalar.
 
 Yeni kampanyada AUTO açık başlar (`delegation.DEFAULT_AUTO_AREAS`; diplomasi
-hariç). Kayıt sürümü 25'tir (1900 takvimi); eski kayıtlar temiz reddedilir.
+hariç). Kayıt sürümü 26'dır (donanma havuzu, navy.js); eski kayıtlar temiz
+reddedilir. Donanma deniz bölgeleriyle yönetilir: `src/world/seaZones.js`
+(bölümleme), `src/game/navy.js` (dağıtım, hâkimiyet, muharebe, abluka),
+`src/render/seaLayer.js` (Seas kipi, M), `src/ui/navyDock.js` (panel).

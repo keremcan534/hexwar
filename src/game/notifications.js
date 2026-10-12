@@ -29,6 +29,8 @@ export const NOTIFY = {
   PEACE: { icon: '🕊', tone: 'good', label: 'Peace', ttl: 0, tier: 2 },
   DIPLOMACY: { icon: '📜', tone: 'info', label: 'Diplomacy', ttl: 10000, tier: 1 },
   BATTLE: { icon: '⚔', tone: 'bad', label: 'Battle', ttl: 9000, tier: 0 },
+  // Deniz muharebesi ve denizde batan nakliye (navy.js): bölge başına tek kart.
+  NAVAL: { icon: '⚓', tone: 'war', label: 'Naval', ttl: 12000, tier: 1 },
   FIELD_WIN: { icon: '🎖', tone: 'good', label: 'Battle won', ttl: 10000, tier: 1 },
   // KUŞATMA (pockets.js): düşman cebi fırsattır, bizimki tehlike — ikisi de
   // HOI4'ün en okunur anı, sıradan muharebe satırından ayrı ton.

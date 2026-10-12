@@ -14,6 +14,7 @@ import { terrainShade } from '../world/terrain.js';
 import { RESOURCES } from '../game/econ/defs.js';
 import { controllerOf, isOccupied } from '../game/control.js';
 import { WaterLayer } from './water.js';
+import { SeaLayer } from './seaLayer.js';
 import { LandMaterial } from './material.js';
 import { SurfaceGL } from './surfaceGL.js';
 import {
@@ -536,13 +537,15 @@ export class Renderer {
     this.meshCheck = true;
     /**
      * 'political' | 'terrain' | 'geography' | 'cultures' | 'resources'
-     * | 'population' | 'peace'
+     * | 'population' | 'seas' | 'peace'
      *
      * 'geography': fiziksel coğrafya önizlemesi. Ülke, sınır, province kenarı,
      * ızgara ve etiket kapalı — yalnız kara, deniz ve arazi. Kıtaların biçimi
      * siyasi katmandan bağımsız değerlendirilebilsin diye vardır.
      */
     this.mapMode = 'political';
+    // Deniz bölgeleri (Seas kipi) ve filo işaretleri (seaLayer.js).
+    this.sea = new SeaLayer(this);
     /** (ülke,arazi) ve (kültür,arazi) renk önbelleği; her karede yeniden hesaplanmasın. */
     this.tintCache = new Map();
     this.corners = HEX_CORNERS.map(([x, y]) => [x * HEX_SIZE, y * HEX_SIZE]);
@@ -2111,6 +2114,8 @@ export class Renderer {
     }
 
     t0 = performance.now();
+    // Seas kipi: bölge tonları ve adları suyun üstünde, şehir ve birimlerin altında.
+    if (this.mapMode === 'seas') this.sea.drawZones(ctx, world, rect, state.playerNation);
     // ORDU SECILIYKEN EYALET VURGUSU YOK. Secili kare panelin baglamidir
     // (ordunun durdugu yer) ama haritada eyalet cercevesi cizmek, oyuncuya
     // "eyalet de secildi" diyordu (Kerem: asker seciliyken state secme bugu).
@@ -2143,6 +2148,7 @@ export class Renderer {
       this.drawMovement(ctx, world, state.selectedUnit, state.playerNation);
       this.drawOffensiveArrows(ctx, world, state.playerNation);
       this.drawUnitCounters(ctx, world, state.selectedUnit, rect, state.playerNation);
+      this.sea.drawFleets(ctx, world, rect, state.playerNation, this.mapMode === 'seas');
       this.drawBattles(ctx, world, rect);
       this.drawPockets(ctx, world, state.playerNation);
       this.drawFrontBadges(ctx);

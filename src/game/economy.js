@@ -186,17 +186,14 @@ export function ensureEconomy(world) {
   }
 }
 
-/** Ulusun kara ve deniz alayı sayısı. */
+/** Ulusun kara alayı ve gemi sayısı (gemiler filodadır, haritada değil). */
 function regimentsOf(world, nation) {
   let land = 0;
-  let sea = 0;
   for (const unit of world.units ?? []) {
     if (unit.nationId !== nation.id) continue;
-    const count = unit.regiments?.length ?? 1;
-    if (unit.type?.domain === 'sea') sea += count;
-    else land += count;
+    land += unit.regiments?.length ?? 1;
   }
-  return { land, sea };
+  return { land, sea: nation.navy?.ships?.length ?? 0 };
 }
 
 /**

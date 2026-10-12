@@ -1358,15 +1358,15 @@ export const MAX_ADMIRALS = 4;
 
 /** Bir kolda kaç subay isteniyor: kadro emrettiği tümen sayısıyla büyür. */
 function wantedOfficers(world, nation, branch) {
+  if (branch === BRANCH.NAVY) {
+    // Filosu olmayan ülke amiral yetiştirmez; amiral deniz bölgesi yönetir
+    // (navy.js assignAdmirals), dört gemiye bir.
+    const ships = nation.navy?.ships?.length ?? 0;
+    return ships ? Math.min(MAX_ADMIRALS, Math.max(1, Math.ceil(ships / 4))) : 0;
+  }
   let units = 0;
   for (const unit of world.units) {
-    if (unit.nationId !== nation.id) continue;
-    const naval = unit.type.domain === 'sea';
-    if (naval === (branch === BRANCH.NAVY)) units++;
-  }
-  if (branch === BRANCH.NAVY) {
-    // Filosu olmayan ülke amiral yetiştirmez; deniz kadrosu donanmayı izler.
-    return units ? Math.min(MAX_ADMIRALS, Math.max(1, Math.ceil(units / 3))) : 0;
+    if (unit.nationId === nation.id) units++;
   }
   return Math.min(MAX_GENERALS, Math.max(2, Math.ceil(units / 4)));
 }
