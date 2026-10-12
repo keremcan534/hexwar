@@ -124,7 +124,7 @@ function separateNeighborColors(world, nations, rng) {
     nation.sat = base.sat;
     nation.light = light;
     nation.color = `hsl(${Math.round(hue)} ${base.sat}% ${Math.round(light)}%)`;
-    nation.flag = makeFlag(rng, base);
+    nation.flag = makeFlag(rng, base, nation.fullName);
   }
 }
 
@@ -187,16 +187,19 @@ export function generateNations(world, options = {}) {
     const id = nations.length;
     const name = makeName(rng, usedNames);
     const palette = makeColor(id, rng);
+    // Unvan bayraktan önce çekilir (eskiden de nesne içinde öyleydi): akış
+    // sırası aynı, bayrak artık unvanı da bilir (taç mı yıldız mı).
+    const title = rng.pick(TITLES);
     const nation = {
       id,
       name,
-      fullName: `${name} ${rng.pick(TITLES)}`,
+      fullName: `${name} ${title}`,
       color: palette.color,
       // Politik harita kipi ülke rengini arazi parlaklığıyla oynatabilsin.
       hue: palette.hue,
       sat: palette.sat,
       light: palette.light,
-      flag: makeFlag(rng, palette),
+      flag: makeFlag(rng, palette, title),
       capital: seedProvince.center,
       culture: seedProvince.culture ?? -1,
       // Kabul edilen kültürler: birincil + (bileşik monarşi gibi) komşu halklar.
@@ -332,7 +335,7 @@ function appendRebelStates(world, nations, seed) {
       hue: palette.hue,
       sat: palette.sat,
       light: palette.light,
-      flag: makeFlag(rng, palette),
+      flag: makeFlag(rng, palette, 'Free State'),
       capital: culture.origin,
       culture: culture.id,
       accepted: [culture.id],
