@@ -57,6 +57,20 @@ export function setWarGoal(world, a, b, provinceId) {
 }
 
 /** Bu savasta `a`nin hedefledigi kume (yoksa null). */
+/**
+ * BARIŞ DEVLET SİLMEZ: başkent state'i masada istenemez. Victoria kuralı —
+ * savaş sınır düzeltir, ülke yutmaz. Yokken 1900 dünyası 45 yılda ulusların
+ * yarısını kaybediyordu (audit:borders, 78×62: 27 → 14, 23 → 13) ve
+ * silinmelerin çoğu tek barışla bütünüyle ilhak edilen 1-3 state'lik küçük
+ * devletlerdi. Küçük devlet küçülür, vasal olabilir; silinme çöküşle (ordusu
+ * ve şehri kalmayan devlet) ya da barışçıl birleşmeyle olur.
+ */
+export function capitalProvinceOf(world, nationId) {
+  const nation = world.nations?.[nationId];
+  const province = world.provinces?.[nation?.capital?.provinceId];
+  return province && province.owner === nationId ? province : null;
+}
+
 export function warGoalOf(world, a, b) {
   const id = relation(world, a, b)?.goals?.[a];
   return id == null ? null : (world.provinces?.[id] ?? null);
@@ -73,8 +87,11 @@ export function suggestWarGoal(world, a, b) {
   }
   let best = null;
   let bestScore = -Infinity;
+  const capital = capitalProvinceOf(world, b);
   for (const province of world.provinces ?? []) {
     if (province.owner !== b || !province.econ) continue;
+    // Başkent masada istenemez: hedef olamaz (bkz. capitalProvinceOf).
+    if (province === capital) continue;
     // Bitisik kume daha degerli: alindiginda harita temiz kalir.
     const score = provinceValue(world, province) * (mine.has(province.id) ? 2 : 1);
     if (score > bestScore) { bestScore = score; best = province; }
@@ -453,12 +470,15 @@ export function termAvailable(world, a, b, termId) {
 export function demandKeyForTile(world, tile, targetId) {
   const province = world.provinces?.[tile?.provinceId];
   if (!province || province.owner !== targetId) return null;
+  // Haritadan tıklanan başkent de masaya gelmez (capitalProvinceOf).
+  if (province === capitalProvinceOf(world, targetId)) return null;
   return provinceKeyOf(province);
 }
 
 export function concedeKeyForTile(world, tile, ownId) {
   const province = world.provinces?.[tile?.provinceId];
   if (!province || province.owner !== ownId) return null;
+  if (province === capitalProvinceOf(world, ownId)) return null;
   return provinceKeyOf(province);
 }
 
@@ -593,8 +613,11 @@ export function occupiedProvincesOf(world, a, b) {
   const rec = relation(world, a, b);
   if (rec?.reason === 'coalition' && rec.aggressor === b) return [];
   const held = [];
+  const capital = capitalProvinceOf(world, b);
   for (const province of world.provinces ?? []) {
     if (province.owner !== b || !province.econ) continue;
+    // Başkent state'i masaya gelmez: barış devlet silmez (capitalProvinceOf).
+    if (province === capital) continue;
     let count = 0;
     for (const idx of province.tileIdx) {
       if (controllerOf(world.tiles[idx]) === a) count++;
@@ -797,9 +820,12 @@ export function signPeace(game, a, b, offer) {
   const repeatScale = Math.min(2.5, 1 + 0.5 * Math.max(0, repeats - 1));
   const transfer = (keys, from, to) => {
     const taken = [];
+    const capital = capitalProvinceOf(world, from);
     for (const key of keys ?? []) {
       const province = provinceFromKey(world, key);
       if (!province || province.owner !== from) continue;
+      // Eski kayıttaki ya da bayat bir teklif başkenti taşısa bile devredilmez.
+      if (province === capital) continue;
       taken.push(province);
       // Devir küme bütünüyle: sınır hiçbir kümeyi ikiye bölmez.
       game.turns.claimAtPeace(province.center, to);

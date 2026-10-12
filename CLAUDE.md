@@ -74,6 +74,9 @@ altı tohum × 50 yıl: %39.5 → inşaat temposu + HOI4 dağıtımıyla %36.5; 
 hex hex yürüdüğünden beri savaşlar kısa (ortanca ~20 hafta); zafer puanı
 (kümenin merkez hexi) eklendi, barış masası eşikleri denendi ve ölçümde
 etkisiz çıktı. Bağlayan kaldıraç küçük devletin iki-üç barışta tükenmesi.
+2026-10-12 1900 geçişi (45 yıllık kampanya): barışçıl birleşme kapısı ve
+"barış devlet silmez" (başkent masaya gelmez) sonrası audit:borders 3 tohum ×
+45 yıl: savaş payı %14-22, ulus 27→25 / 23→22 / 28→26 (önce 27→14, 23→13).
 Hex düğümlü hareket grafı: `src/world/provinceGraph.js`; kümeye oyuncu
 "state" der.
 

@@ -57,7 +57,9 @@ export const WORLD_EVENTS = {
     title: 'The Great Depression',
     log: 'The exchanges crash: trade collapses and the unemployed queue for bread.',
     year: 1929, jitter: 1, weeks: 208,
-    effects: { exportIncome: -0.3, tax: -0.1, stability: -0.04 },
+    // İstikrar −4'te buhran dünyayı %70'ten %65'e indiriyordu: aşırılar çağı
+    // doğmuyordu (45 yılda bir güçlü adam).
+    effects: { exportIncome: -0.3, tax: -0.15, stability: -0.08 },
     parties: { socialist: 6, nationalist: 8 },
     card: 'depression',
   },

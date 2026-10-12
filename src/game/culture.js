@@ -110,12 +110,25 @@ export const CULTURE = {
 };
 
 /**
- * MİLLİYETÇİLİK ÇAĞI: kampanyanın başında 1, sonunda 1.8; barut fıçısı
+ * MİLLİYETÇİLİK ÇAĞI: kampanyanın başında 1.5, sonunda 1.8; barut fıçısı
  * sürerken (worldEvents.js) ayrıca ×1.3. Tek yerde: huzursuzluk, parti desteği
  * ve olaylar buradan okur.
+ *
+ * Neden 1.5'ten: 1900 milliyetçiliğin zirvesine yakındır. Kültür sistemi 1836
+ * oyununda ayarlandı ve orada Ulusların Baharı'nın "sürüyor mu" kontrolü
+ * yalnız bitişe bakıyordu: çarpan ilk günden ~1850'ye dek fiilen ×1.3'tü.
+ * Kontrol doğru yazılınca (worldEvents.activeWorldEvents) 1900'ün ilk on
+ * yılında çarpan 1.02'ye indi ve hiçbir hareket ilerlemedi (audit:culture-
+ * unrest "isyan ölü"). 1.3 eski fiili düzeyi geri koyuyordu ama 1900'ün daha
+ * durgun sınırlarında (barış devlet silmez, birleşme kapısı: daha az taze
+ * fetih) en yüksek huzursuzluk 5.8'de kaldı, hareket eşiği 6. 1.5'te en ileri
+ * hareket %64'e varır; tek kültürlü ulusun güvenlik kilidi bozulmaz.
  */
+export const NATIONALISM_START = 1.5;
+export const NATIONALISM_END = 1.8;
 export function nationalismEra(turn, world = null) {
-  return (1 + eraProgress(turn) * 0.8) * (1 + worldNationalism(world, turn ?? 0));
+  return (NATIONALISM_START + eraProgress(turn) * (NATIONALISM_END - NATIONALISM_START))
+    * (1 + worldNationalism(world, turn ?? 0));
 }
 
 /** Kabulün SG bedeli: halkı devlete ortak etmek siyasi bir hamledir. */

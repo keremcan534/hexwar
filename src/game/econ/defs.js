@@ -148,7 +148,12 @@ export const BATTLE_SALTPETER = 0.5;
 export const FACTORY_IC = 1.0;
 /** Tersane kademesi başına gemi hattına girebilen IC. */
 export const DOCKYARD_IC = 1.0;
-export const COAL_PER_IC = 0.35;
+/**
+ * IC başına kömür. 0.35 1836 ölçeğindeydi; 1900 dünyasının sanayisi kömür
+ * üretimini aştı: gözlemcide (2 tohum, 1900-1945) dünya arz/ihtiyacı bütün
+ * kampanya 0.66-0.97, herkese ~%10 IC kesintisi — fark yaratmayan düz ceza.
+ */
+export const COAL_PER_IC = 0.28;
 /**
  * Fabrika demir ve kereste de işler. Gemi fazlası (tavansız hat) kalkınca ve
  * YZ demiryolunu bırakınca ikisinin barışta hiç alıcısı kalmamıştı: demir

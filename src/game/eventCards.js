@@ -131,18 +131,20 @@ export const EVENT_CARDS = {
   revolution: {
     title: 'Bread, Peace and Land',
     text: 'Soldiers\' councils sit in the barracks and the factories. The crowd in the capital will not go home.',
-    // Kızıl yıllarda savaşın yıprattığı ve istikrarı düşük ülke; başka
-    // zaman yalnız iki yılı aşan, desteği tükenmiş savaşta. İlk ayarda
-    // (istikrar < 0.3) 35 yılda dört devrim çıktı: medyan istikrar ~0.6.
+    // Kızıl yıllarda savaşta ya da savaştan yeni çıkmış, istikrarı ortalamanın
+    // altındaki ülke; başka zaman yalnız iki yılı aşan, desteği tükenmiş
+    // savaşta. Ölçüm (2 tohum, tam kampanya): dünya istikrarı Büyük Savaş ve
+    // buhran sırasında bile ortalama %64-78; 0.45 eşiğiyle 45 yılda 2-4 devrim.
     trigger: (world, nation) => (worldEventActive(world, 'red_years', world.turn ?? 0)
-      && (nation.stability ?? 0.5) < 0.45 && (nation.politics?.warWeeks ?? 0) >= 26)
+      && (nation.stability ?? 0.5) < 0.6 && (atWar(nation) || (nation.politics?.warWeeks ?? 0) >= 13))
       || ((nation.stability ?? 0.5) < 0.35 && atWar(nation)
         && (nation.politics?.warWeeks ?? 0) >= 104 && (nation.warSupport ?? 0.5) < 0.35),
     chance: 0.05,
     options: [
       { label: 'Proclaim the republic', detail: 'Becomes a Republic; stability +6 for a year; war support −10; the left gains',
         available: (nation) => nation.politics?.government !== 'republic',
-        ai: (nation) => ((nation.stability ?? 0.5) < 0.25 ? 2 : 1),
+        // Kaybedilen ya da sevilmeyen savaş tacı düşürür.
+        ai: (nation) => ((nation.stability ?? 0.5) < 0.45 || (nation.warSupport ?? 0.5) < 0.4 ? 2 : 1.1),
         apply: (game, nation) => {
           changeGovernment(game, nation, 'republic', game.turns.turn,
             { effects: { stability: 0.06 }, weeks: 52, name: 'The Republic' });
@@ -159,7 +161,7 @@ export const EVENT_CARDS = {
         } },
       { label: 'Crush the soviets', detail: 'Costs 30 political power; stability −6 and unrest +30% for two years; nationalists gain',
         available: (nation) => (nation.power ?? 0) >= 30,
-        ai: (nation) => (nation.politics?.government === 'absolutism' ? 1.5 : 0.8),
+        ai: (nation) => (nation.politics?.government === 'absolutism' ? 1.4 : 0.8),
         apply: (game, nation) => {
           nation.power -= 30;
           timed(game, nation, 'event-revolution', 'White terror', 104, { stability: -0.06, unrest: 0.3 });
@@ -173,11 +175,11 @@ export const EVENT_CARDS = {
     text: 'A decorated veteran promises order, bread and revenge. His followers march in uniform.',
     trigger: (world, nation) => (world.turn ?? 0) >= turnOfYear(1920)
       && nation.politics?.government !== 'absolutism'
-      && (nation.politics?.support?.nationalist ?? 0) >= 28 && (nation.stability ?? 0.5) < 0.5,
+      && (nation.politics?.support?.nationalist ?? 0) >= 25 && (nation.stability ?? 0.5) < 0.6,
     chance: 0.02,
     options: [
       { label: 'Give him the chancellery', detail: 'Rule by decree: no elections, nationalists govern; war support +10 and stability +5 for two years',
-        ai: (nation) => ((nation.stability ?? 0.5) < 0.35 ? 2 : 0.9),
+        ai: (nation) => ((nation.stability ?? 0.5) < 0.5 ? 2 : 0.9),
         apply: (game, nation) => {
           changeGovernment(game, nation, 'absolutism', game.turns.turn,
             { effects: { stability: 0.05, warSupport: 0.1 }, weeks: 104, name: 'The New Order' });
@@ -217,7 +219,9 @@ export const EVENT_CARDS = {
     chance: 0.02,
     options: [
       { label: 'Grant a constitution', detail: 'Becomes a Constitutional Monarchy; stability +6 for a year',
-        ai: (nation) => ((nation.stability ?? 0.5) < 0.4 ? 2 : 0.8),
+        // Liberaller güçlüyse taç da yoldan çekilir: yokken YZ hep sansürü
+        // seçiyordu ve 45 yılın sonunda 39 ulusun 29-32'si mutlakiyetti.
+        ai: (nation) => ((nation.stability ?? 0.5) < 0.4 || (nation.politics?.support?.liberal ?? 0) >= 35 ? 2 : 0.8),
         apply: (game, nation) => changeGovernment(game, nation, 'constitutional', game.turns.turn,
           { effects: { stability: 0.06 }, weeks: 52, name: 'New Constitution' }) },
       { label: 'Censor the press', detail: 'Costs 30 political power; stability −4 for a year',

@@ -120,7 +120,8 @@ seçim yüzeyine döner (Construction ekranıyla aynı kalıp): karşı tarafın
 kırmızı, istediklerin yeşil, verdiklerin turuncu.
 
 Her province'in bir bedeli vardır (nüfus + gelişmişlik + şehir primi) ve toplam
-talep warscore'unu aşamaz. Warscore işgal ettiğin toprak, kaybettiğin toprak ve
+talep warscore'unu aşamaz. Başkent state'i masaya gelmez: barış devlet silmez,
+küçük devlet küçülür ya da vasal olur. Warscore işgal ettiğin toprak, kaybettiğin toprak ve
 askerî üstünlükten hesaplanır; işgal payı en ağır kalemdir.
 
 Victoria'da olduğu gibi savaşlar ülke yutmaz, sınır düzeltir: **bir anlaşmada en

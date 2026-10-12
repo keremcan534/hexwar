@@ -8,12 +8,13 @@ import {
   MIN_WAR_TURNS, ULTIMATUM_WEEKS, atWar, crisisLeft, nationStrength, relation, truceLeft,
 } from '../game/diplomacy.js';
 import {
-  PEACE_TERMS, buildOffer, concedeKeyForTile, demandKeyForTile, demandLimit,
+  PEACE_TERMS, buildOffer, capitalProvinceOf, concedeKeyForTile, demandKeyForTile, demandLimit,
   occupiedProvincesOf,
   offerCost, offerRefusal, provinceFromKey, provinceKeyOf, provinceWarCost, signPeace,
   termAvailable, warGoalOf, warScore,
 } from '../game/peace.js';
 import { INFAMY_COALITION } from '../game/infamy.js';
+import { controllerOf } from '../game/control.js';
 import { maxHpOf, menUnderArms, organizationOf, soldiersOf } from '../game/units.js';
 import { provinceName } from '../game/provinces.js';
 import { flagDataUrl } from '../render/flagPainter.js';
@@ -691,10 +692,16 @@ export class Screens {
     const takeable = () => {
       const held = occupiedProvincesOf(world, me.id, target.id)
         .filter((entry) => !selection.demands.has(provinceKeyOf(entry.province)));
+      // İşgal edilmiş başkent listede yoktur: oyuncu nedenini görmeli.
+      const capital = capitalProvinceOf(world, target.id);
+      const capitalHeld = capital && capital.tileIdx.some((idx) => controllerOf(world.tiles[idx]) === me.id);
+      const capitalNote = capitalHeld
+        ? `<p class="empty">${esc(capital.name)} ★ is ${esc(target.name)}'s capital: a peace treaty does not erase a state. Vassalize them instead (Terms).</p>`
+        : '';
       if (!held.length) {
         return `<p class="empty">${offer.demands.length
           ? 'Every occupied state is already on the table.'
-          : `Nothing to demand yet — occupy ${esc(target.name)}'s provinces first.`}</p>`;
+          : `Nothing to demand yet — occupy ${esc(target.name)}'s provinces first.`}</p>${capitalNote}`;
       }
       // Kendi sinirima komsu olan kume once gelir: bitisik alinan toprak
       // haritayi temiz birakir (bkz. peace.js contiguousPick).
@@ -713,7 +720,7 @@ export class Screens {
   near ? ' · borders you' : ''}</span>
           <b class="por-cost${afford ? '' : ' res-neg'}">${cost}</b>
         </button>`;
-      }).join('');
+      }).join('') + capitalNote;
     };
 
     const tab = ['give', 'terms'].includes(this.peaceTab) ? this.peaceTab : 'take';

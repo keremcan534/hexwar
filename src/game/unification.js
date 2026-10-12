@@ -21,6 +21,13 @@ export const FORMATION_POWER = 100;
 export const UNION_POWER = 120;
 /** Barış birleşmesi için asgari nüfus oranı (biz / onlar). */
 export const UNION_RATIO = 3;
+/**
+ * Küçük soydaş tacını ancak çalkantıdayken ya da milliyetçiler iktidardayken
+ * bırakır. Yokken 1900 dünyası ilk dört yılda ulusların beşte birini barışla
+ * yutuyordu (ölçüldü, 3 tohum: elemelerin 24/29'u birleşme): her 3× büyük
+ * soydaş 120 SG'yi biriktirdiği an komşusunu alıyordu.
+ */
+export const UNION_STABILITY = 0.45;
 
 function homeland(world, cultureId) {
   return (world.provinces ?? []).filter((p) => p.homeland === cultureId && p.econ);
@@ -89,6 +96,9 @@ export function unionBlockers(world, nation, other, turn = world.turn ?? 0, play
   const mine = nation.economy?.population ?? 0;
   const theirs = Math.max(1, other.economy?.population ?? 0);
   if (mine / theirs < UNION_RATIO) out.push(`We must be ${UNION_RATIO}× their size (now ${(mine / theirs).toFixed(1)}×)`);
+  if ((other.stability ?? 0.5) >= UNION_STABILITY && other.politics?.ruling !== 'nationalist') {
+    out.push(`Their government is secure (stability ${Math.round((other.stability ?? 0.5) * 100)}%): only turmoil or a nationalist cabinet gives up the crown`);
+  }
   if ((other.treaties ?? []).some((t) => t.type === 'ALLIANCE' && (t.until ?? Infinity) > turn
     && (world.nations[t.partner]?.economy?.population ?? 0) > mine)) {
     out.push('A stronger ally guarantees their independence');

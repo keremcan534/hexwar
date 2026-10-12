@@ -76,7 +76,7 @@ yoktur, teknoloji yayıldıkça değerlenir — petrol patlaması.
 | Kaynak | Province üretimi | Tüketen | Eksikse |
 |---|---|---|---|
 | Gıda | nüfus × verim × (1 + 0.25 çiftlik); tahıl ambarı ayrıca hex başı 0.05 | nüfus | nüfus azalır, istikrar düşer |
-| Kömür | kaynak hex'i × 0.185 | fabrikalar (0.35/IC) | IC × (0.6 + 0.4 oran) |
+| Kömür | kaynak hex'i × 0.185 | fabrikalar (0.28/IC; 1900'ün sanayisinde 0.35 dünyayı kalıcı %25-30 kıtlıkta tutuyordu) | IC × (0.6 + 0.4 oran) |
 | Demir | × 0.074 | fabrikalar (0.05/IC), tüfek, top, demiryolu inşaatı | hat yavaşlar; IC × (0.85 + 0.15 oran) |
 | Kereste | × 0.097 | fabrikalar (0.06/IC), inşaat, gemi, tüfek | inşaat yavaşlar; IC × (0.9 + 0.1 oran) |
 | At | × 0.075 | süvari (0.5/hafta), topçu (0.25/hafta) | süvari/topçu gücü düşer |
@@ -166,12 +166,12 @@ bina bitiriyordu, oyuncu ekranı sürekli kollamak zorundaydı (ölçüm: büyü
 
 ## 10. Kültür (Victoria 2'nin kalbi)
 
-- Huzursuzluk = kabul edilmemiş pay × vatandaşlık × çağın milliyetçiliği + fetih + savaş + işgal − tüketim malı fazlası; garnizon ve istikrar düşürür.
+- Huzursuzluk = kabul edilmemiş pay × vatandaşlık × çağın milliyetçiliği + fetih + savaş + işgal − tüketim malı fazlası; garnizon ve istikrar düşürür. Milliyetçilik çağı 1900'de **1.5**, 1945'te 1.8 (barut fıçısında ×1.3): 1836 oyununda Ulusların Baharı kontrolü yalnız bitişe baktığı için çarpan ilk 14 yıl fiilen ×1.3'tü ve kültür sistemi buna göre ayarlanmıştı; kontrol düzelince 1900'ün ilk on yılında hiçbir hareket ilerlemedi (audit:culture-unrest "isyan ölü"). 1.5'te en ileri hareket %64.
 - **Uyum** (çekirdek dışı): huzursuzluk düşükken artar; vergi, asker ve IC o oranda gelir.
 - **İsyancılar haritada gerçek ordulardır** (Özgür X devletleri): hareket aşamaları → ayaklanma → bağımsızlık savaşı.
 - Politikalar: kabul (SG), ödün (SG), sıkıyönetim (altın/hafta; hareketi YAVAŞLATIR, dondurmaz — dondurunca 24 koşuda tek ayaklanma vardı), baskı (SG + şöhret), sürgün, soydaşa bırakma, vasal olarak bırakma.
-- **Birleşme:** soydaş toprak gerekçesi yarı fiyat; küçük soydaş devlet ilişki ve güç farkıyla barışla katılır; ana yurdun %80'i toplanınca "Büyük X" kurulur.
-- **Dünya olayları** (`worldEvents.js`): harita uydurma olduğu için olay ulus seçmez, tarihin akıntısını değiştirir. Tohuma bağlı yılda başlar, süresince dört kanaldan okunur (geçici değiştirici, milliyetçilik, parti hedefi, YZ savaş gerilimi) ve başlarken her ulusa kartını yollar. **Barut fıçısı** (~1913, 5 yıl): savaş desteği +8, milliyetçilik ×1.3, YZ güç eşiği ×0.85 ve ilan zarı ×2 — Büyük Savaş ittifak zincirinden doğar. **Kızıl yıllar** (~1917): sosyalist hedef +12; uzun savaşta çöken devlete devrim kartı. **Büyük grip** (1918): nüfus artışı −%50, istikrar −3. **Buhran** (~1929, 4 yıl): ihracat −%30, vergi −%10, istikrar −4, sosyalist ve milliyetçi hedefler artar. 1920 sonrası istikrarsız ülkede milliyetçiler güçlenirse **güçlü adam** kartı (kararname rejimi).
+- **Birleşme:** soydaş toprak gerekçesi yarı fiyat; küçük soydaş devlet güç farkıyla (3× nüfus, 120 SG) barışla katılır — ama yalnız **çalkantıdayken (istikrar < %45) ya da milliyetçi kabineyle**: yokken 1900 dünyası ilk dört yılda ulusların beşte birini barışla yutuyordu (elemelerin 24/29'u birleşme; kapıyla ilk 4 yılda ort. 9.7 → 4 eleme). Ana yurdun %80'i toplanınca "Büyük X" kurulur.
+- **Dünya olayları** (`worldEvents.js`): harita uydurma olduğu için olay ulus seçmez, tarihin akıntısını değiştirir. Tohuma bağlı yılda başlar, süresince dört kanaldan okunur (geçici değiştirici, milliyetçilik, parti hedefi, YZ savaş gerilimi) ve başlarken her ulusa kartını yollar. **Barut fıçısı** (~1913, 5 yıl): savaş desteği +8, milliyetçilik ×1.3, YZ güç eşiği ×0.85 ve ilan zarı ×2 — Büyük Savaş ittifak zincirinden doğar. **Kızıl yıllar** (~1917): sosyalist hedef +12; savaşta ya da savaştan yeni çıkmış, istikrarı %60'ın altındaki devlete devrim kartı (kaybedilen ya da sevilmeyen savaş tacı düşürür). **Büyük grip** (1918): nüfus artışı −%50, istikrar −3. **Buhran** (~1929, 4 yıl): ihracat −%30, vergi −%15, istikrar −8, sosyalist ve milliyetçi hedefler artar. 1920 sonrası mutlakiyet olmayan, milliyetçileri %25'i aşan ve istikrarı %60'ın altındaki ülkeye **güçlü adam** kartı (kararname rejimi). Eşikler dünyanın ölçülmüş istikrarına göredir: gözlemcide ortalama istikrar Büyük Savaş ve buhran sırasında bile %64-78'di; ilk eşiklerle (0.45/0.5) 45 yılda 2-9 devrim ve 0-1 güçlü adam çıkıyordu. Liberaller %35'i aşınca taç anayasa verir.
 - **State odağı** (Vic2 ulusal odağı, `focus.js` + `stateFocus.js`): yuva 1 + okuryazarlığın her %25'i (en çok 5) — state sayısıyla değil okuryazarlıkla büyür (ev ödevi testi). Production çıktı +%25 · Taxation vergi +%30 · Recruitment insan gücü +%30 · Integration uyum kazancı ×2, tavan +15, huzursuzluk −1 · Assimilation yılda nüfusun `%2 × (1 + okuryazarlık)`'ı ana kültüre (2026-10-11: %1'de hiçbir yuvaya değmiyordu) (ana yurt kilidini aşar; sakinlik çarpanı kendiliğinden asimilasyonla aynı). Fetihte odak düşer. YZ çeyrekte bir boş yuvaya koyar: uyumu düşük fetih → Integration, kalabalık azınlık → Assimilation, gerisi en kalabalık çekirdeğe Taxation. Ölçüm (2 tohum, 104 hafta barış, aynı state, dürtü kolu sıfır oynadı): çıktı +%25, vergi +%30, verilebilir asker +%46/+%390, uyum %85 → %100 ve huzursuzluk −1.2, yabancı pay 2 yılda −1.5 puan.
 
 ## 11. Askerî
@@ -196,6 +196,15 @@ ambargo (SG). Barış talepleri: toprak, kurtarma, vasal, tazminat, askersizleş
 (`peace.VICTORY_POINT_SHARE`). Yokken savunan birkaç hexi tutarken saldıran
 boş hexlere akıyor, savaşlar kısalıyordu (ortanca 51 → 19 hafta). Barışta
 alınabilecek küme: warscore 15'te 1, 30'da 2, 70'te 3.
+
+**Barış devlet silmez:** başkent state'i masada istenemez (`peace.capitalProvinceOf`;
+YZ teklifi, oyuncunun listesi, haritadan tıklama ve savaş hedefi aynı kuralı
+okur, antlaşmanın devir adımı da başkenti atlar). Küçük devlet küçülür ve vasal
+olabilir; silinme yalnız çöküşle (ordusu ve şehri kalmayan devlet) ya da
+barışçıl birleşmeyle olur. Yokken 1900 dünyası 45 yılda ulusların yarısını
+kaybediyordu (audit:borders 78×62: 27 → 14, 23 → 13) — silinmelerin çoğu
+tek barışla bütünüyle ilhak edilen 1-3 state'lik devletlerdi. Kuralla
+27 → 25, 23 → 22, 28 → 26; haritanın %14-26'sı yine el değiştirir.
 
 ## 13. Teknoloji
 
