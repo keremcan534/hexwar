@@ -5,5 +5,6 @@
 
 import './debugStyles.js';
 import './vic3.js';
+import './hoi4.js';
 
 export { registerGfxStyle, getGfxStyle, gfxStyleNames, readGfxParam } from './registry.js';

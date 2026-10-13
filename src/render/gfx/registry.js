@@ -21,6 +21,7 @@
 // ===================================================================== TANIM
 //   registerGfxStyle({
 //     name: 'atlas',          // ?gfx=atlas
+//     label: 'Atlas',         // insanın okuduğu ad (isteğe bağlı)
 //     id: 3,                  // uGfx değeri: tam sayı > 0, benzersiz (901-903 hata ayıklama)
 //     glsl: `...`,            // ZORUNLU: vec3 gfxLand(GfxLand L) + vec3 gfxPost(GfxLand L, vec3 col)
 //     tune: { ... },          // canlı ayarlar; tune.heightScale uHeightScale'i ezer (vars. 100)
@@ -46,6 +47,9 @@
 //                             //          mode, terrain, extra, tune }
 //                             // çizgi kalınlığı: px / info.scale. Sarmal: x ± world.wrapWidth.
 //                             // Pişen geçişin verisi değişince renderer.invalidateCache().
+//     lines(mode, scale, far) → { province?: pen, country?: pen } | null,
+//                             // sınır kalemi; pen = [{ w: px, color, dash?: [px..], cap? }]
+//                             // sırayla çizilir. null ya da eksik alan = klasik kalem.
 //     terrain: true,          // false: arazi pişirmesi istenmez (doku birimleri boş yedekli)
 //     bakeOptions: { ... },   // terrainBake BAKE üzerine (sigmaB, ridgeAmp...). Farklı ayar
 //                             // ayrı pişirme demektir; arazi stiller arası tek yuvada tutulur.
