@@ -11818,24 +11818,16 @@ button.uc-agenda:hover { border-color: var(--gold); }
 .art-lg { width: 64px; height: 64px; }
 .art-xl { width: 96px; height: 96px; }
 
-/* Halkasız madalyon: emaye disk + pirinç halka, boyalı setle aynı aile.
-   Zemin ORTA ton: koyu emayede kömür, tank, varil kayboluyordu; açık zeminde
-   pamuk ve yelken. Kayrak mavisi ikisini de koyu dış çizgileriyle ayırır. */
-.art-disc:not(.ringed) {
+/* Eşya nesnesi (kaynak, teçhizat, bütçe kalemi): çerçevesiz, arkasında yumuşak
+   sıcak ışık. Disk + halka her ikonu aynı daireye çeviriyordu (siluet kaybolur)
+   ve nesneyi %74'e küçültüyordu; 18 px'te ince nesne boş daireye dönüyordu.
+   Işık koyu nesneyi (kömür, tank) koyu panelden ayırır; sıcak tonu arayüzün
+   altın-kahve paletinden çıkmaz (kayrak mavisi disk yabancı duruyordu). */
+.art-item {
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 38%, #56636e 0%, #3c4852 62%, #27313a 100%);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.8),
-    inset 0 0 0 2px #6f5a31,
-    inset 0 0 0 3px rgba(0, 0, 0, 0.55),
-    inset 0 2px 6px rgba(0, 0, 0, 0.6);
+  background: radial-gradient(circle at 50% 50%, rgba(236, 208, 150, 0.24) 0%, rgba(236, 208, 150, 0.09) 48%, transparent 71%);
 }
-.art-disc:not(.ringed) img { width: 74%; height: 74%; }
-/* Küçük boyda halka incelir (xs'te tek piksel); nesne %74'te kalırsa 18 px
-   diskte 13 px'e iner ve ince nesne (tüfek, kılıç) boş daireye döner. */
-.art-sm.art-disc:not(.ringed) img { width: 80%; height: 80%; }
-.art-xs.art-disc:not(.ringed) img { width: 88%; height: 88%; }
-.art-xs.art-disc:not(.ringed) { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8), inset 0 0 0 1px #6f5a31; }
+.art-item img { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.85)); }
 
 /* Gravür plaka: sıcak, mat kâğıt-koyu zemin, ince pirinç kenar. */
 .art-plate {

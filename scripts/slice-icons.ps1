@@ -13,6 +13,12 @@
 #     kopuk duman ya da bayrak yine kendi ikonunda kalir.
 # Ikon yalniz KENDI bilesenlerini tasir; kutusuna giren komsu parcasi alinmaz.
 #
+# ZEMIN RENGI (-Key): varsayilan beyaz. Beyaz zeminde nesnenin kendi beyazi
+# (parlama, pamuk, yelken) zeminle karisir; asagidaki delik sorunu bundandir.
+# Sheet duz mor (-Key FF00FF) istenirse karismaz: kapali her mor parca kesin
+# deliktir ve kendiliginden saydamlasir, -Holes gerekmez. Mor sheet webp'de
+# renk alt-ornekleme ile kenara yayilir: tolerans 60, kenar bandi 2 piksel.
+#
 # NEDEN KENARDAN TASMA (flood fill) ILE BEYAZ SILINIR: ikonlarin ICINDE de
 # beyaz var (capa halati, cadir bezi, mermer sutun, kar). Duz "beyaza yakin
 # pikseli sil" kurali bu beyazlari da delerdi. Tasma yalniz KENARDAN baslar,
@@ -53,8 +59,11 @@ param(
   [Parameter(Mandatory = $true)][string]$Sheet,
   [Parameter(Mandatory = $true)][string]$Out,
   [int]$Size = 240,
-  # Beyaz toleransi: 255-Tolerance ustundeki her kanal "beyaz" sayilir.
-  [int]$Tolerance = 24,
+  # Zemin rengi (hex, ornek FF00FF). Bkz. baslik.
+  [string]$Key = 'FFFFFF',
+  # Zemin toleransi: her kanalda zemin renginden en cok bu kadar uzak piksel
+  # zemin sayilir. Verilmezse beyazda 24, renkli zeminde 60.
+  [int]$Tolerance = -1,
   # Bu kadar pikselden kucuk bilesen toz kabul edilir (antialias kirintisi):
   # kendi basina ikon olmaz, ancak bir ikonun yanina iliserek kalir.
   [int]$MinArea = 900,
@@ -71,7 +80,8 @@ param(
   # "ad:alan" o ikonun esigini yukseltir: delik buyuk, parlama kucukse ayirir.
   [string[]]$Holes = @(),
   # Zemine bitisik arindirilacak bant genisligi (piksel). 0 = kapali.
-  [int]$Fringe = 1,
+  # Verilmezse beyazda 1, renkli zeminde 2.
+  [int]$Fringe = -1,
   # Her ikonun delik adaylarini <ad>.holes.png'de macenta boyar.
   [switch]$HoleDebug,
   [string[]]$Names = @(),
@@ -110,10 +120,13 @@ public class IconSheet {
   byte[] px;          // BGRA
   bool[] bg;          // arka plan maskesi
   int[] lab;          // bilesen etiketi, 0 = arka plan
-  int tol;            // beyaz toleransi: zemin ve delik ayni olcuyle
+  int tol;            // zemin toleransi: zemin ve delik ayni olcuyle
+  int kr, kg, kb;     // zemin rengi
+  public bool WhiteKey { get { return kr == 255 && kg == 255 && kb == 255; } }
   public List<IconComp> Comps = new List<IconComp>();
 
-  public IconSheet(string path, int tolerance) {
+  public IconSheet(string path, int tolerance, int key) {
+    kr = (key >> 16) & 255; kg = (key >> 8) & 255; kb = key & 255;
     using (Bitmap raw = new Bitmap(path))
     using (Bitmap bmp = new Bitmap(raw.Width, raw.Height, PixelFormat.Format32bppArgb)) {
       using (Graphics g = Graphics.FromImage(bmp)) g.DrawImageUnscaled(raw, 0, 0);
@@ -132,8 +145,8 @@ public class IconSheet {
   bool IsBackgroundColor(int i, int tol) {
     int b = px[i], g = px[i + 1], r = px[i + 2], a = px[i + 3];
     if (a < 16) return true;                       // zaten saydam
-    int lo = Math.Min(b, Math.Min(g, r));
-    return lo >= 255 - tol;                        // beyaza yakin
+    int d = Math.Max(Math.Abs(r - kr), Math.Max(Math.Abs(g - kg), Math.Abs(b - kb)));
+    return d <= tol;                               // zemin rengine yakin
   }
 
   // Tasma YALNIZ kenardan baslar: nesnenin icindeki beyaz kapali kalir.
@@ -303,7 +316,7 @@ public class IconSheet {
       buf[i * 4] = px[src]; buf[i * 4 + 1] = px[src + 1]; buf[i * 4 + 2] = px[src + 2];
       buf[i * 4 + 3] = 255;
     }
-    if (fringe > 0) Defringe(buf, keep, w, h, fringe);
+    if (fringe > 0) Defringe(buf, keep, w, h, fringe, kr, kg, kb);
     // Arindirmadan kalan neredeyse saydam kirinti koyu diskte leke olur.
     for (int i = 0; i < w * h; i++)
       if (buf[i * 4 + 3] < 16) { buf[i * 4] = 0; buf[i * 4 + 1] = 0; buf[i * 4 + 2] = 0; buf[i * 4 + 3] = 0; }
@@ -384,14 +397,16 @@ public class IconSheet {
     }
   }
 
-  // Kenar bandi (zemine 'r' piksel yakin) beyazla karisimdan ayristirilir:
-  // P = a*Q + (1-a)*255. Q bandin hemen icindeki gercek renktir (bant disi
-  // tutulan komsularin ortalamasi). P, Q kadar ya da ondan koyuysa beyazla
-  // karismamistir (keskin kenar, koyu dis cizgi) ve dokunulmaz; duz
-  // color-to-alpha bu kenarlari da koyultup delerdi. Ici olmayan ince yapida
-  // (halat, zincir, direk teli) Q yoktur: orada color-to-alpha uygulanir.
+  // Kenar bandi (zemine 'r' piksel yakin) zemin rengi K ile karisimdan
+  // ayristirilir: P = a*Q + (1-a)*K. Q bandin hemen icindeki gercek renktir
+  // (bant disi tutulan komsularin ortalamasi). P, Q kadar ya da ondan fazla
+  // K'dan uzaksa zeminle karismamistir (keskin kenar, koyu dis cizgi) ve
+  // dokunulmaz; duz color-to-alpha bu kenarlari da koyultup delerdi. Ici
+  // olmayan ince yapida (halat, zincir, direk teli) Q yoktur: orada K'ya karsi
+  // color-to-alpha uygulanir.
   // Bant ve referans ARINDIRMADAN ONCEKI degerlerden okunur: asinma zincirlenmez.
-  static void Defringe(byte[] buf, bool[] keep, int w, int h, int r) {
+  static void Defringe(byte[] buf, bool[] keep, int w, int h, int r, int kr, int kg, int kb) {
+    double[] k = { kb, kg, kr };              // BGRA sirasi
     bool[] band = new bool[w * h];
     for (int y = 0; y < h; y++) for (int x = 0; x < w; x++) {
       int i = y * w + x;
@@ -417,21 +432,25 @@ public class IconSheet {
       int di = i * 4;
       double[] p = { src[di], src[di + 1], src[di + 2] };
       double[] q = n > 0 ? new double[] { qb / n, qg / n, qr / n } : null;
-      double a;
+      double a = 0;
       if (q != null) {
-        // En guvenilir kanal: Q'nun beyazdan en uzak oldugu kanal.
+        // En guvenilir kanal: Q'nun zemin renginden en uzak oldugu kanal.
         int c0 = 0;
-        for (int c = 1; c < 3; c++) if (q[c] < q[c0]) c0 = c;
-        double span = 255 - q[c0];
-        if (span < 8) continue;                 // ic de beyaza yakin: ayristirilamaz
-        a = (255 - p[c0]) / span;
+        for (int c = 1; c < 3; c++) if (Math.Abs(q[c] - k[c]) > Math.Abs(q[c0] - k[c0])) c0 = c;
+        double span = q[c0] - k[c0];
+        if (Math.Abs(span) < 8) continue;      // ic de zemine yakin: ayristirilamaz
+        a = (p[c0] - k[c0]) / span;
       } else {
-        a = (255 - Math.Min(p[0], Math.Min(p[1], p[2]))) / 255.0;
+        for (int c = 0; c < 3; c++) {
+          double ac = p[c] > k[c] ? (k[c] < 255 ? (p[c] - k[c]) / (255 - k[c]) : 0)
+                    : p[c] < k[c] ? (k[c] - p[c]) / k[c] : 0;
+          if (ac > a) a = ac;
+        }
       }
-      if (a >= 1) continue;                     // beyazla karismamis
+      if (a >= 1) continue;                     // zeminle karismamis
       if (a <= 0) { buf[di] = 0; buf[di + 1] = 0; buf[di + 2] = 0; buf[di + 3] = 0; continue; }
       for (int c = 0; c < 3; c++) {
-        double v = q != null ? q[c] : 255 - (255 - p[c]) / a;
+        double v = q != null ? q[c] : k[c] + (p[c] - k[c]) / a;
         buf[di + c] = (byte)Math.Max(0, Math.Min(255, Math.Round(v)));
       }
       buf[di + 3] = (byte)Math.Round(a * 255);
@@ -460,7 +479,11 @@ $sheetPath = (Resolve-Path $Sheet).Path
 #      degiskendir (PowerShell buyuk/kucuk harf ayirmaz) ve TIPLIDIR, yani
 #      nesne atansa bile ToString()'e cevrilir. Hata "String does not contain
 #      a method named ..." olarak dusuyordu.
-$slicer = [IconSheet]::new($sheetPath, $Tolerance)
+$keyValue = [Convert]::ToInt32($Key.TrimStart('#'), 16)
+$white = $keyValue -eq 0xFFFFFF
+if ($Tolerance -lt 0) { $Tolerance = if ($white) { 24 } else { 60 } }
+if ($Fringe -lt 0) { $Fringe = if ($white) { 1 } else { 2 } }
+$slicer = [IconSheet]::new($sheetPath, $Tolerance, $keyValue)
 if ($Grid) {
   if ($Grid -notmatch '^(\d+)x(\d+)$') { throw "-Grid SUTUNxSATIR olmali (ornek 4x3): $Grid" }
   $groups = $slicer.GroupsByGrid([int]$Matches[1], [int]$Matches[2], $MinArea, $MergeGap)
@@ -501,6 +524,8 @@ foreach ($group in $groups) {
   if (-not $DryRun) {
     $clean = $holePick.ContainsKey($name)
     $area = if ($clean) { $holePick[$name] } else { $HoleArea }
+    # Renkli zeminde kapali zemin parcasi parlama olamaz: her boyda delik.
+    if (-not $white) { $clean = $true; $area = 1 }
     # .NET'e $null giden string bos dizeye doner; Save bos dizeyi "yok" sayar.
     $debug = if ($HoleDebug) { Join-Path $Out "$name.holes.png" } else { '' }
     $slicer.Save($group, (Join-Path $Out "$name.png"), $Size, [int]($box.Width * 0.04), $area, $clean, $Fringe, $debug)

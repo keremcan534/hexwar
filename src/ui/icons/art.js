@@ -5,10 +5,9 @@
 // kaynağıydı: her işletim sisteminde başka çizilir, boyu metinle oynar.
 //
 // İki sanat ailesi var ve sunumları bilinçli olarak ayrı:
-//   - Kaynak madalyonları: 2026-10 setinde sanat ÇERÇEVESİZ nesnedir; emaye
-//     diski ve pirinç halkayı her ikona aynı biçimde CSS çizer (`art-disc`).
-//     Halkası resmin içinde gelen eski set ile halkasız gravürlerin yan yana
-//     "iki setten yapıştırılmış" durması bununla bitti.
+//   - Eşya (kaynak, teçhizat, bütçe kalemi): çerçevesiz nesne, arkasında CSS'in
+//     yumuşak ışığı (`art-item`). Disk + halka her ikonu aynı daireye çevirip
+//     nesneyi küçültüyordu; küçük boyda ayırt edilemiyordu.
 //   - Bina ve yasa sahneleri (gravür): dikdörtgen "plaka" çerçeve (`art-plate`).
 //   - Amblemler (teknoloji dalı, üst çubuk göstergesi, general özelliği):
 //     çerçevesiz nesne + gölge (`art-emblem`). Metin satırının içinde de
@@ -64,7 +63,7 @@ function img(file, alt, cls) {
 export function resourceArt(id, size = 'sm') {
   const file = RESOURCE_FILE[id];
   if (!file) return '';
-  return img(file, id.toLowerCase(), `art-${size} art-disc`);
+  return img(file, id.toLowerCase(), `art-${size} art-item`);
 }
 
 /** Bina sahnesi (gravür plaka). */
@@ -80,7 +79,7 @@ export function lawArt(id, size = 'md') {
 /** Teçhizat madalyonu; zırhlı teknolojisiyle gemi buharlıya döner. */
 export function equipmentArt(id, size = 'md', ironclad = false) {
   const file = EQUIPMENT_FILE[id === 'ships' && ironclad ? 'ironclads' : id];
-  return file ? img(file, id, `art-${size} art-disc`) : '';
+  return file ? img(file, id, `art-${size} art-item`) : '';
 }
 
 /** Bütçe satırı madalyonu. */
@@ -88,7 +87,7 @@ export function ledgerArt(id, size = 'xs') {
   const file = LEDGER_FILE[id];
   if (!file) return '';
   const plate = file.startsWith('buildings/');
-  return img(file, id, `art-${size} ${plate ? 'art-plate' : 'art-disc'}`);
+  return img(file, id, `art-${size} ${plate ? 'art-plate' : 'art-item'}`);
 }
 
 /** Amblem: teknoloji dalı (industry…society) ya da gösterge (power, stability, infamy). */
