@@ -438,6 +438,23 @@ function natoSymbol(path, typeId, cx, cy, r) {
   }
 }
 
+/**
+ * Stil kalemi: [{w, color, dash?, cap?}] sırayla çizilir. Kalınlık ve kesik
+ * ekran pikselinde verilir, burada dünyaya çevrilir: zoom değişse de çizgi
+ * aynı incelikte kalsın (ctx dünya dönüşümünde).
+ */
+function strokePen(ctx, path, pen, scale) {
+  for (const s of pen) {
+    ctx.lineWidth = s.w / scale;
+    ctx.strokeStyle = s.color;
+    ctx.lineCap = s.cap ?? 'round';
+    ctx.setLineDash(s.dash ? s.dash.map((v) => v / scale) : []);
+    ctx.stroke(path);
+  }
+  ctx.setLineDash([]);
+  ctx.lineCap = 'round';
+}
+
 /** Açılmış koordinatlı nokta dizisini `dx` kaydırarak yola ekler. */
 function appendPts(path, pts, closed, dx = 0, reverse = false) {
   const m = pts.length / 2;
@@ -3338,7 +3355,11 @@ export class Renderer {
     if (bands && this.mapMode === 'political' && this.showCountryBorders && !this.glSurface()) {
       this.drawMeshBands(ctx, world, mesh, rect);
     }
-    if (nProv) {
+    // Görsel stil sınırı kendi kalemiyle çizebilir (gfx stil `lines`); stil
+    // yoksa ya da null dönerse aşağıdaki klasik kalem aynen çalışır.
+    const pen = this.gfx.style?.lines?.(this.mapMode, scale, far) ?? null;
+    if (nProv && pen?.province) strokePen(ctx, prov, pen.province, scale);
+    else if (nProv) {
       // Kalınlık zoomla açılır: uzakta province ağı ülke sınırını boğmasın,
       // yakında okunan kalın bir mürekkep olsun. Geniş ve soluk bir omuz,
       // üstüne çekirdek: kalın çizginin kenarı yumuşar, kâğıda sinmiş durur.
@@ -3355,7 +3376,8 @@ export class Renderer {
       ctx.stroke(prov);
     }
     this.drawRivers(ctx, world, mesh, rect, scale, far);
-    if (nMajor) {
+    if (nMajor && pen?.country) strokePen(ctx, major, pen.country, scale);
+    else if (nMajor) {
       // Ülke sınırı: tek yol, tek darbe. Eskiden her ülke kendi kenarını
       // çiziyordu ve ortak sınır iki kez boyanıp kıyıdan koyu çıkıyordu;
       // yumuşak ağda zincir tek, alfa ortak sınırın eski koyuluğunda.

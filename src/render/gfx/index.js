@@ -7,6 +7,7 @@ import './debugStyles.js';
 import './vic3.js';
 import './atlas.js';
 import './threeD.js';
+import './hoi4.js';
 
 export {
   registerGfxStyle, getGfxStyle, gfxStyleNames, gfxStyleOptions, readGfxParam,

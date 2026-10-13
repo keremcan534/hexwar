@@ -58,6 +58,9 @@
 //     labelInk: { country: {fill, stroke, strokeK, shadow, shadowBlur},  // yazı mürekkebi
 //                 state: {fill, stroke, width}, city: {fill, capital, stroke, widthK} }
 //                             // (getter olabilir; null = oyunun yazısı)
+//     lines(mode, scale, far) → { province?: pen, country?: pen } | null,
+//                             // sınır kalemi; pen = [{ w: px, color, dash?: [px..], cap? }]
+//                             // sırayla çizilir. null ya da eksik alan = klasik kalem.
 //     terrain: true,          // false: arazi pişirmesi istenmez (doku birimleri boş yedekli)
 //     bakeOptions: { ... },   // terrainBake BAKE üzerine (sigmaB, ridgeAmp...). Farklı ayar
 //                             // ayrı pişirme demektir; arazi stiller arası tek yuvada tutulur.
