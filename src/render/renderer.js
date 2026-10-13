@@ -764,13 +764,15 @@ export class Renderer {
   /**
    * Stilin Canvas2D mürekkep geçişi. 'under' ve 'over' statik katmana ve uzak
    * önbelleğe PİŞER (sınır çizgilerinin altı/üstü; değişince invalidateCache),
-   * 'live' her karede şehirlerin altında çizilir.
+   * 'live' her karede şehirlerin altında çizilir. `clip`: statik katmanın
+   * şerit/dilim kırpması (rect onun 2.5 hex yakalı hali; yoksa null) —
+   * yoğun mürekkep yalnız görünecek alanı üretsin.
    */
-  gfxInk(slot, ctx, world, rect, scale, far) {
+  gfxInk(slot, ctx, world, rect, scale, far, clip = null) {
     const fn = this.gfx.style?.ink?.[slot];
     if (!fn) return;
     fn(ctx, {
-      world, rect, scale, far, renderer: this, mode: this.mapMode,
+      world, rect, clip, scale, far, renderer: this, mode: this.mapMode,
       terrain: this.gfxTerrainFor(world),
       extra: this.gfx.extra.get(this.gfx.style.name)?.value ?? null,
       tune: this.gfxTune,
@@ -1831,7 +1833,9 @@ export class Renderer {
       job = {
         world, ...g, P: world.wrapWidth || 0, pair,
         b: setup(pair.base), t: setup(pair.top),
-        slice: 0, slices: 3, tiles: 0,
+        // Stil mürekkebi dilime iş ekler: altı dilimde kare başına yük yarıya
+        // iner (klasikte üç, değişmedi).
+        slice: 0, slices: this.gfx.style?.ink ? 6 : 3, tiles: 0,
         mode: this.mapMode, grid: this.layerKey(), dpr: this.dpr,
       };
       this.staticJob = job;
@@ -1929,9 +1933,9 @@ export class Renderer {
     if (this.showGrid && scale >= GRID_MIN_ZOOM && this.mapMode !== 'geography') {
       this.drawGrid(t, world, tiles, scale);
     }
-    if (this.gfx.style?.ink) this.gfxInk('under', t, world, rect, scale, false);
+    if (this.gfx.style?.ink) this.gfxInk('under', t, world, rect, scale, false, clip);
     this.drawMeshInk(t, world, rect, scale);
-    if (this.gfx.style?.ink) this.gfxInk('over', t, world, rect, scale, false);
+    if (this.gfx.style?.ink) this.gfxInk('over', t, world, rect, scale, false, clip);
 
     if (clip) {
       b.restore();
@@ -3111,6 +3115,13 @@ export class Renderer {
   drawRivers(ctx, world, mesh, rect, scale, far = false) {
     if (!world.rivers?.edges?.length) return;
     const geo = this.riverGeometry(world, mesh);
+    // Görsel stil nehri kendi mürekkebiyle çizebilir (bkz. gfx/registry.js
+    // `rivers`); klasikte kanca yok, aşağıdaki yol birebir aynı.
+    const styleRivers = this.gfx.style?.rivers;
+    if (styleRivers) {
+      styleRivers(ctx, { world, rect, scale, far, renderer: this, mode: this.mapMode, tune: this.gfxTune }, geo);
+      return;
+    }
     const P = world.wrapWidth || 0;
     const shifts = (this.riverShifts ??= []);
     const paths = [new Path2D(), new Path2D(), new Path2D()];
@@ -4948,6 +4959,9 @@ export class Renderer {
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
+    // Görsel stil yazı mürekkebini değiştirebilir (açık kâğıt zeminde açık
+    // renkli ad okunmuyor); stil yoksa aşağıdaki değerler birebir klasik.
+    const ink = this.gfx.style?.labelInk ?? null;
 
     // --- 1. Ülke adları ---
     // Haritaya gömülü his: boyut zoomla birlikte hafifçe büyür (sabit ekran
@@ -5031,16 +5045,16 @@ export class Renderer {
         // koyulaşır. Geniş bir hale yazıyı zeminden koparıp "üstte yüzen HTML"
         // gibi gösteriyordu; dar ve koyu bir kontur ise harfi haritanın içine
         // oturtur. Mürekkep de ısıtıldı: nötr fildişi yerine hafif sıcak.
-        ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-        ctx.shadowBlur = 2.5;
-        ctx.shadowOffsetY = 1;
+        ctx.shadowColor = ink ? ink.country.shadow : 'rgba(0, 0, 0, 0.5)';
+        ctx.shadowBlur = ink ? ink.country.shadowBlur : 2.5;
+        ctx.shadowOffsetY = ink ? 0 : 1;
         ctx.lineJoin = 'round';
-        ctx.lineWidth = Math.max(1.2, size * 0.075);
-        ctx.strokeStyle = 'rgba(8, 10, 11, 0.55)';
+        ctx.lineWidth = Math.max(1.2, size * (ink ? ink.country.strokeK : 0.075));
+        ctx.strokeStyle = ink ? ink.country.stroke : 'rgba(8, 10, 11, 0.55)';
         ctx.strokeText(L.name, 0, 0);
         ctx.shadowBlur = 0;
         ctx.shadowOffsetY = 0;
-        ctx.fillStyle = 'rgba(240, 229, 200, 0.97)';
+        ctx.fillStyle = ink ? ink.country.fill : 'rgba(240, 229, 200, 0.97)';
         ctx.fillText(L.name, 0, 0);
         ctx.letterSpacing = '0px';
         ctx.restore();
@@ -5095,10 +5109,10 @@ export class Renderer {
         const a = fade(key, fits ? zoomAlpha : 0);
         if (a <= 0.01) continue;
         ctx.globalAlpha = a;
-        ctx.lineWidth = 1.6;
-        ctx.strokeStyle = 'rgba(8, 11, 11, 0.32)';
+        ctx.lineWidth = ink ? ink.state.width : 1.6;
+        ctx.strokeStyle = ink ? ink.state.stroke : 'rgba(8, 11, 11, 0.32)';
         ctx.strokeText(pr.name, p.x, p.y);
-        ctx.fillStyle = 'rgba(226, 219, 198, 0.92)';
+        ctx.fillStyle = ink ? ink.state.fill : 'rgba(226, 219, 198, 0.92)';
         ctx.fillText(pr.name, p.x, p.y);
         if (!more) continue;
         for (const mx of more) {
@@ -5152,10 +5166,12 @@ export class Renderer {
         if (a <= 0.01) continue;
         ctx.globalAlpha = a;
         ctx.font = isCapital ? capFont : cityFont;
-        ctx.lineWidth = isCapital ? 1.9 : 1.6;
-        ctx.strokeStyle = 'rgba(6, 10, 10, 0.4)';
+        ctx.lineWidth = (isCapital ? 1.9 : 1.6) * (ink ? ink.city.widthK : 1);
+        ctx.strokeStyle = ink ? ink.city.stroke : 'rgba(6, 10, 10, 0.4)';
         ctx.strokeText(name, p.x, ly);
-        ctx.fillStyle = isCapital ? 'rgba(240, 231, 208, 0.95)' : 'rgba(223, 214, 192, 0.85)';
+        ctx.fillStyle = ink
+          ? (isCapital ? ink.city.capital : ink.city.fill)
+          : (isCapital ? 'rgba(240, 231, 208, 0.95)' : 'rgba(223, 214, 192, 0.85)');
         ctx.fillText(name, p.x, ly);
         for (let i = 1; i < xs.length; i++) {
           if (collides(xs[i] - w / 2 - 2, ry, w + 4, 15)) continue;
