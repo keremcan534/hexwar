@@ -60,6 +60,9 @@ uniform float u3Mode;      // 0 siyasi/kültür, 1 coğrafya/arazi, 2 veri kipi
 uniform float u3Relief;    // tepe gölgesi kazancı
 uniform float u3Lo;        // gölge tarafı tabanı
 uniform float u3Hi;        // ışık tarafı tavanı
+uniform float u3PolRelief; // siyasi kipte aynıları (ayrı: bkz. gfxLand)
+uniform float u3PolLo;
+uniform float u3PolHi;
 uniform float u3Shadow;    // düşen gölge derinliği (0 kapatır)
 uniform float u3Cavity;    // eğrilik (sırt açık, vadi koyu; ortalaması sıfır)
 uniform float u3Erosion;   // yakın zoom oluk genliği
@@ -178,9 +181,9 @@ vec3 gfxLand(GfxLand L) {
   float slope = gfxSlope(N);
   // Siyasi kipte geometri kabartmayı zaten taşır; aynı ışık ülke renginde
   // "saten kumaş" gibi parlıyordu (ikinci tur): payı kısılır.
-  float k = nature ? u3Relief : u3Relief * 0.75;
-  float lo = nature ? u3Lo : mix(u3Lo, 1.0, 0.25);
-  float hi = nature ? u3Hi : mix(u3Hi, 1.0, 0.30);
+  float k = nature ? u3Relief : u3PolRelief;
+  float lo = nature ? u3Lo : u3PolLo;
+  float hi = nature ? u3Hi : u3PolHi;
   float sh = gfxHillshade(N, L.Ldir, k, lo, hi);
   GfxBiome b = gfxBiomeAt(L.world);
   // Malzeme gürültüsü PERİYODİK ve ekranda söner (hex kimliği yok, bulut yok:
@@ -206,7 +209,14 @@ vec3 gfxLand(GfxLand L) {
   float lap = gfxHeight(L.world + vec2(s, 0.0)) + gfxHeight(L.world - vec2(s, 0.0))
     + gfxHeight(L.world + vec2(0.0, s)) + gfxHeight(L.world - vec2(0.0, s)) - 4.0 * T.r;
   float cav = clamp(-lap * u3Cavity * h3d(T.r), -0.08, 0.08);
-  return col * mix(1.0, sh * (1.0 + cav), L.damp);
+  // Sıcak ışık / serin gölge: güneşe dönük yamaç hafif sıcak, gölgeli yamaç
+  // gökten hafif mavi alır. Parlaklık nötr (kanal ağırlıkları luma'ya göre),
+  // yalnız tonda; kabartmayı derinleştirir, haritayı karartmaz.
+  float lit = clamp((sh - 1.0) * 4.0, -1.0, 1.0);
+  vec3 tint = lit > 0.0 ? mix(vec3(1.0), vec3(1.035, 1.0, 0.94), lit)
+                        : mix(vec3(1.0), vec3(0.965, 0.995, 1.07), -lit);
+  tint /= gfxLuma(tint);
+  return col * mix(vec3(1.0), sh * (1.0 + cav) * mix(vec3(1.0), tint, nature ? 1.0 : 0.5), L.damp);
 }
 
 vec3 gfxPost(GfxLand L, vec3 col) {
@@ -285,6 +295,13 @@ const tune = {
   relief: 0.6,
   lo: 0.78,
   hi: 1.22,
+  // Siyasi kipte geometri kabartmayı zaten taşır; aynı keskin ışık ülke
+  // renginde "katlanmış saten" gibi duruyordu (dağ yamacı tanh tavanına
+  // vurup düz parlak/düz koyu plakalar oluyordu). Kazanç düşük, aralık
+  // geniş: dağ yamacı doğrusal bölgede kalır, yüzey mat okunur.
+  polRelief: 0.16,
+  polLo: 0.76,
+  polHi: 1.24,
   shadow: 0.24,
   cavity: 2.0,
   erosion: 0.022,
@@ -352,6 +369,15 @@ function enter3D(r) {
     S.overlay = map ? InkOverlay3D.create(map) : null;
   }
   if (S.overlay) S.overlay.canvas.style.display = 'block';
+  // Yönetim ekranı açıkken harita geri çekilir (styles.css: body.screen-open
+  // #map); mürekkep artık bu tuvalde olduğu için aynı kural ona da.
+  if (!document.getElementById('gfx3d-style')) {
+    const st = document.createElement('style');
+    st.id = 'gfx3d-style';
+    st.textContent = '#map-3d-ink{transition:filter 180ms ease}'
+      + 'body.screen-open #map-3d-ink{filter:saturate(0.72) brightness(0.82)}';
+    document.head.appendChild(st);
+  }
   if (!S.inkCanvas) {
     S.inkCanvas = document.createElement('canvas');
     S.inkCtx = S.inkCanvas.getContext('2d', { alpha: true });
@@ -496,18 +522,25 @@ function renderWrap(r, world, state, inner) {
   const bh = b.maxY - b.minY;
   // Mürekkep tuvali oyunun zoom'unda (yazı ve çizgi bugünkü boyunda);
   // çok büyürse (uzak zoom, geniş eğim) tavanla küçültülür.
+  // TUVAL KAMERASI KABA ADIMA OTURUR. Kaydırırken kamera her kare alt
+  // piksel kayınca tuvaldeki her yazı ve çizgi yeni konumda yeniden
+  // rasterleşiyor ve dokuya yükleme o işi bekliyordu (z0.6'da kare başına
+  // birkaç ms). Merkez SNAP piksellik adımlara yuvarlanınca içerik adım
+  // içinde aynı piksellerde kalır; tuval her yandan bir adım payla büyür.
   const MAXPX = 4096;
-  const inkZoom = Math.min(cam.zoom, MAXPX / (bw * dpr), MAXPX / (bh * dpr));
-  const cssW = Math.ceil((bw * inkZoom) / 64) * 64;
-  const cssH = Math.ceil((bh * inkZoom) / 64) * 64;
+  const SNAP = 128;
+  const inkZoom = Math.min(cam.zoom, MAXPX / (bw * dpr + SNAP * 2), MAXPX / (bh * dpr + SNAP * 2));
+  const cssW = Math.ceil((bw * inkZoom + SNAP * 2) / 64) * 64;
+  const cssH = Math.ceil((bh * inkZoom + SNAP * 2) / 64) * 64;
   const pw = Math.round(cssW * dpr);
   const ph = Math.round(cssH * dpr);
   if (S.inkCanvas.width !== pw || S.inkCanvas.height !== ph) {
     S.inkCanvas.width = pw;
     S.inkCanvas.height = ph;
   }
-  const cx = (b.minX + b.maxX) / 2;
-  const cy = (b.minY + b.maxY) / 2;
+  const step = SNAP / inkZoom;
+  const cx = Math.round((b.minX + b.maxX) / 2 / step) * step;
+  const cy = Math.round((b.minY + b.maxY) / 2 / step) * step;
   const rect = {
     x0: cx - cssW / (2 * inkZoom), y0: cy - cssH / (2 * inkZoom),
     w: cssW / inkZoom, h: cssH / inkZoom,
@@ -569,6 +602,9 @@ registerGfxStyle({
     u3Relief: t.relief,
     u3Lo: t.lo,
     u3Hi: t.hi,
+    u3PolRelief: t.polRelief,
+    u3PolLo: t.polLo,
+    u3PolHi: t.polHi,
     u3Shadow: t.shadow,
     u3Cavity: t.cavity,
     u3Erosion: t.erosion,

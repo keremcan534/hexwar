@@ -188,7 +188,8 @@ export class InkOverlay3D {
     const gl = this.gl;
     if (!this.heightTex || !this.terrain) return false;
     const f = this.terrain.field;
-    const T = (this.timings ??= { up: 0, mip: 0, draw: 0, n: 0 });
+    // Teşhis: yükleme ve mip CPU süresi toplamı (game.renderer.gfx3d.overlay.timings).
+    const T = (this.timings ??= { up: 0, mip: 0, n: 0 });
     let t = performance.now();
     // ÇİFT DOKU + yerinde yükleme: önceki karenin hâlâ okuduğu dokuyu yeniden
     // tanımlamak sürücüyü bekletiyordu (kaydırırken z0.6'da kare başına ~11 ms
