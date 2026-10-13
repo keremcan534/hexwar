@@ -279,14 +279,14 @@ function statBar(label, value, max) {
   return `<span class="mil-sbar"><small>${label}</small><i><b style="width:${Math.round(Math.min(1, value / Math.max(1, max)) * 100)}%"></b></i><em>${value}</em></span>`;
 }
 
-function buildRow(option) {
+function buildRow(option, ironclad) {
   const blocked = !option.canBuild;
   // Teçhizat eksikse alay eğitimi bekletmez; o oranda güçle çıkar (HOI4).
   let fill = 1;
   const equipment = option.equipment.map((item) => {
     const have = Math.min(item.amount, Math.max(0, item.stock));
     fill = Math.min(fill, item.amount > 0 ? have / item.amount : 1);
-    return `<span class="mil-chip kit ${item.stock >= item.amount ? '' : 'short'}"${tipAttr({ text: `${item.name}\n${item.amount} per regiment · ${item.stock.toFixed(1)} in the depot` })}>${equipmentArt(item.id, 'xs')}<b>${item.amount}</b></span>`;
+    return `<span class="mil-chip kit ${item.stock >= item.amount ? '' : 'short'}"${tipAttr({ text: `${item.name}\n${item.amount} per regiment · ${item.stock.toFixed(1)} in the depot` })}>${equipmentArt(item.id, 'xs', ironclad)}<b>${item.amount}</b></span>`;
   }).join('');
   const where = option.source ? `${option.source.province} · ${option.source.region}` : 'no state can raise it';
   const traits = [option.support ? 'support arm' : null, option.entrenched ? 'digs in' : null].filter(Boolean).join(' · ');
@@ -322,12 +322,12 @@ function buildRow(option) {
 }
 
 /** Teçhizat deposu: stok, ordunun ihtiyacı, haftalık üretim. */
-function equipmentPanel(logistics) {
+function equipmentPanel(logistics, ironclad) {
   const rows = logistics.map((item) => {
     const short = item.required > item.stock + 0.5;
     const share = item.required > 0 ? Math.min(1, item.stock / item.required) : 1;
     return `<div class="mil-eq ${short ? 'short' : ''}"${tipAttr({ text: `${item.name}\n${item.stock.toFixed(1)} in the depot · ${item.required.toFixed(1)} needed (reinforcement + training)\n${item.producedPerWeek.toFixed(2)} a week from the production line${item.etaWeeks ? `\n~${item.etaWeeks} weeks to cover the gap` : ''}` })}>
-      ${equipmentArt(item.id, 'sm')}
+      ${equipmentArt(item.id, 'sm', ironclad)}
       <b>${esc(item.name)}</b>
       <span class="mil-eq-bar"><i style="width:${(share * 100).toFixed(0)}%"></i></span>
       <span class="mil-eq-num"><b>${item.stock.toFixed(0)}</b><small>${item.required > 0.5 ? ` / ${item.required.toFixed(0)}` : ' ready'}</small></span>
@@ -389,7 +389,7 @@ const VIEWS = [
   ['stats', 'Army stats'],
 ];
 
-function buildColumn(state, options, summary, logistics = [], levy = null, stats = []) {
+function buildColumn(state, options, summary, logistics = [], levy = null, stats = [], ironclad = false) {
   const view = VIEWS.some(([id]) => id === state.view) ? state.view : 'build';
   const note = view === 'build' ? `${summary.trainingCapacity} training slots`
     : view === 'levy' ? `${formatPopulation(levy?.fallen ?? 0)} fallen so far` : 'doctrine, technology and laws';
@@ -419,7 +419,7 @@ function buildColumn(state, options, summary, logistics = [], levy = null, stats
     hp: Math.max(1, ...options.map((o) => o.hp)),
     moves: Math.max(1, ...options.map((o) => o.moves)),
   };
-  const rows = visible.map((option) => buildRow(option)).join('')
+  const rows = visible.map((option) => buildRow(option, ironclad)).join('')
     || '<p class="mil-empty">No arm of this kind can be raised yet.</p>';
   return `<section class="mil-col mil-build">
     ${viewbar}
@@ -468,7 +468,7 @@ function queueRow(row) {
   </div>`;
 }
 
-function queueColumn(rows, summary, logistics = []) {
+function queueColumn(rows, summary, logistics = [], ironclad = false) {
   const soonest = rows.filter((row) => !row.stalled)
     .reduce((best, row) => (best == null || row.left < best ? row.left : best), null);
   const list = rows.map(queueRow).join('')
@@ -481,7 +481,7 @@ function queueColumn(rows, summary, logistics = []) {
       <span><small>Next to march out</small><b>${soonest == null ? '—' : `${soonest}w`}</b></span>
     </div>
     <div class="mil-queue-list">${list}</div>
-    ${equipmentPanel(logistics)}
+    ${equipmentPanel(logistics, ironclad)}
   </section>`;
 }
 
@@ -502,8 +502,8 @@ export function militaryScreen(state, data) {
         ${commandColumn(state, data.roster, data.loose, data.trainCost, data.canTrain,
     data.summary.mobilization)}
       </div>
-      ${buildColumn(state, data.options, data.summary, data.logistics, data.levy, data.stats)}
-      ${queueColumn(data.queue, data.summary, data.logistics)}
+      ${buildColumn(state, data.options, data.summary, data.logistics, data.levy, data.stats, data.ironclad)}
+      ${queueColumn(data.queue, data.summary, data.logistics, data.ironclad)}
     </div>
   </div>`;
 }

@@ -23,6 +23,7 @@ import { hegemonyScore, scoreboard } from '../game/hegemony.js';
 import { MAX_ROUNDS, battleSides, battlesFor } from '../game/battles.js';
 import { cancelTraining, moveTrainingTo, prioritizeTraining } from '../game/recruitment.js';
 import { equipmentLogistics } from '../game/reinforcement.js';
+import { mod } from '../game/modifiers.js';
 import {
   armyComposition, commandRoster, militaryStats, militarySummary, recruitOptions, trainingRows,
   unassignedDivisions,
@@ -978,6 +979,8 @@ export class Screens {
       stats: militaryStats(world, me),
       composition: armyComposition(world, me.id),
       logistics: equipmentLogistics(world, me),
+      // Zırhlı teknolojisiyle gemi buharlıya döner; Factories ekranıyla aynı resim.
+      ironclad: mod(me, 'ironclad') > 0,
       levy: levyView(world, me),
       // Lojistik ekrani kaldirildi (Military'nin alt bandi ayni stok tablosunu
       // zaten gosteriyordu). Ekranin tek ozgun bilgisi buydu: denge tablosu

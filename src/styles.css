@@ -11831,6 +11831,10 @@ button.uc-agenda:hover { border-color: var(--gold); }
     inset 0 2px 6px rgba(0, 0, 0, 0.6);
 }
 .art-disc:not(.ringed) img { width: 74%; height: 74%; }
+/* Küçük boyda halka incelir (xs'te tek piksel); nesne %74'te kalırsa 18 px
+   diskte 13 px'e iner ve ince nesne (tüfek, kılıç) boş daireye döner. */
+.art-sm.art-disc:not(.ringed) img { width: 80%; height: 80%; }
+.art-xs.art-disc:not(.ringed) img { width: 88%; height: 88%; }
 .art-xs.art-disc:not(.ringed) { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8), inset 0 0 0 1px #6f5a31; }
 
 /* Gravür plaka: sıcak, mat kâğıt-koyu zemin, ince pirinç kenar. */
