@@ -2048,6 +2048,17 @@ export class Renderer {
   }
 
   render(world, state = {}) {
+    // Stil kareyi sarmalayabilir (eğik kamera: mürekkep ekran dışına, yüzey
+    // mesh'e; bkz. gfx/threeD.js). Klasikte ve sarmalamayan stilde dal yok.
+    const wrap = this.gfx.style?.renderWrap;
+    if (wrap && !this.inRenderWrap) {
+      this.inRenderWrap = true;
+      try {
+        return wrap(this, world, state, () => this.render(world, state));
+      } finally {
+        this.inRenderWrap = false;
+      }
+    }
     const ctx = this.ctx;
     const cam = this.camera;
     // GL bağlamı geri geldiğinde dokular bu dünyadan yeniden kurulur.
@@ -5032,7 +5043,9 @@ export class Renderer {
         // gibi gösteriyordu; dar ve koyu bir kontur ise harfi haritanın içine
         // oturtur. Mürekkep de ısıtıldı: nötr fildişi yerine hafif sıcak.
         ctx.shadowColor = 'rgba(0, 0, 0, 0.5)';
-        ctx.shadowBlur = 2.5;
+        // Stil kısabilir (eğik kamera: mürekkep tuvali dokuya alınırken
+        // bulanık gölgenin GPU bedeli kareyi bekletiyordu, bkz. gfx/threeD.js).
+        ctx.shadowBlur = this.labelBlur ?? 2.5;
         ctx.shadowOffsetY = 1;
         ctx.lineJoin = 'round';
         ctx.lineWidth = Math.max(1.2, size * 0.075);
