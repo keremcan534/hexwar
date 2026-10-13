@@ -6,7 +6,7 @@
 
 import { controllerOf } from './control.js';
 import { POPULATION_SCALE } from './populationScale.js';
-import { releaseDraw } from './levy.js';
+import { releaseCasualties } from './levy.js';
 import { unitUnlocked } from './technology.js';
 
 /**
@@ -337,8 +337,9 @@ export function applyArmyLosses(unit, casualties, organizationLoss = 0, world = 
         // OLEN ADAM ARTIK NUFUSTAN DUSER. Eskiden askerler zaten nufusun
         // disindaydi, yani bir ordunun yok olmasi ulke nufusunu HIC
         // degistirmiyordu — savasin insan bedeli hicbir sayacta gorunmuyordu.
-        // Kendi halkinin payindan duser (levy.js).
-        if (world) releaseDraw(world, unit.nationId, draw, before * (1 - keep), true);
+        // Kendi halkinin payindan duser (levy.js). Kaybin yalniz bir payi
+        // olur; yarali eve doner (levy.DEATH_SHARE).
+        if (world) releaseCasualties(world, unit.nationId, draw, before * (1 - keep));
         else draw.men = before * keep;
       }
       regiment.draws = regiment.draws.filter((draw) => draw.men > 0.01);

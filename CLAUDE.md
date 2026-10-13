@@ -84,7 +84,9 @@ YZ çıkarması (`landings.js`) sonrası %18.0 / %17.3 / %29.3, ulus 27→26 /
 2026-10-13 (1900 yarı başlangıç tabanı, 6 tohum BORDER1-6 × 45 yıl): savaş
 payı %9.0 / 22.0 / 13.1 / 17.2 / 17.0 / 26.8 (ort. %17.5); eğitim kuyruğu
 insanı sipariş anında tutunca %21.2 / 29.9 / 13.1 / 11.0 / 12.8 / 30.1
-(ort. %19.7, tohum farkı +12…−6: gürültü), ulus toplamı 163 → 162.
+(ort. %19.7, tohum farkı +12…−6: gürültü), ulus toplamı 163 → 162;
+yaralı eve dönünce (`levy.DEATH_SHARE`) %10.6 / 26.8 / 13.9 / 19.4 / 15.1 /
+28.6 (ort. %19.1), ulus 164.
 Hex düğümlü hareket grafı: `src/world/provinceGraph.js`; kümeye oyuncu
 "state" der.
 

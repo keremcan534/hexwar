@@ -174,7 +174,8 @@ zinciri yoktur (TASARIM.md §1-§8, `src/game/econ/`).
 
 Province tek poptur: nüfus, kalkınma, binalar, uyum ve huzursuzluk. Nüfus
 gıda, tüketim malı, istikrar ve barışla büyür; gıda %70'in altına inerse
-kıtlıkta erir; ölen asker nüfustan düşer. **İnsan gücü** askerlik yasasının
+kıtlıkta erir; ölen asker nüfustan düşer (savaş kaybının üçte biri ölür,
+kalanı yaralı ve esir olarak evine döner). **İnsan gücü** askerlik yasasının
 oranıdır (Gönüllü %3 · Sınırlı %6 · Yaygın %10 · Topyekûn %16), kışla,
 vatandaşlık yasası ve uyumla çarpılır. **Okuryazarlık** ulusaldır; eğitim
 yasası ve üniversiteyle bir nesilde hedefe yaklaşır, araştırmayı ve kalkınma
@@ -331,7 +332,8 @@ halk muafken kuraya kalan azınlıklar huzursuzlanır (`src/game/levy.js`).
 
 Alay kurmak province nüfusundan asker alır: piyade, süvari ve topçu 30.000 kişi
 (süvari ve topçu asker başına piyadenin 1.6-3.3 katı değerliydi); havuz askerlik yasasının oranıdır. Asker çıkış province'i ve komşularından toplanır, dağıtımda hayatta kalanlar
-aynı yerlere döner, savaşta ölenler kalıcı kayıptır. Üst şeritteki **MANPOWER**
+aynı yerlere döner. Muharebe ve teslim kaybının üçte biri ölür ve kalıcı
+kayıptır; kalanı yaralı ve esir olarak province'ine (nüfusa ve havuza) döner. Üst şeritteki **MANPOWER**
 kalan asker havuzunu gösterir.
 
 Bir province seçilip **toplanma noktası** atanabilir; yeni kurulan alaylar

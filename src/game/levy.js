@@ -180,6 +180,23 @@ export function releaseDraw(world, nationId, draw, men, died = false) {
 }
 
 /**
+ * KAYIP ÖLÜM DEĞİLDİR (Kerem 2026-10-13: yaralı "dönsün"). Eskiden muharebede
+ * eriyen ve teslim olan her adam ölü sayılıyordu; ölçüldü (NAVY2 1900-1940):
+ * savaş ölümü 115M, doğum 122M — uzun savaşlı dünyada nüfus kırk yıl düz
+ * kaldı, her beş yıl bir Büyük Savaş kadar can gitti. Büyük Savaş'ta ~38M
+ * askerî kaybın ~10M'u ölüydü; gerisi yaralı ve esirdi. Kaybın DEATH_SHARE'i
+ * ölür, kalanı yaralı/esir olarak evine (nüfusa ve havuza) döner.
+ */
+export const DEATH_SHARE = 1 / 3;
+
+/** Muharebe ya da teslim kaybı: payı ölür, kalanı eve döner. */
+export function releaseCasualties(world, nationId, draw, men) {
+  const dead = Math.max(0, men) * DEATH_SHARE;
+  releaseDraw(world, nationId, draw, dead, true);
+  releaseDraw(world, nationId, draw, Math.max(0, men) - dead);
+}
+
+/**
  * Ölüm kümenin bileşimini kaydırır: ölen halkın payı, ölenler kadar küçülür.
  * Satır silinmez (eşik altı satırı asimilasyon toplar); çoğunluk değişirse
  * kareler yeni rengi alır.

@@ -47,7 +47,7 @@ import { runNavy } from './navy.js';
 import { runSeaLanes } from './seaLanes.js';
 import { runResettlements } from './culturePolicy.js';
 import { runMovements } from './movements.js';
-import { releaseDraw } from './levy.js';
+import { releaseCasualties } from './levy.js';
 import { updatePockets } from './pockets.js';
 import { captureConstructionAt, initConstruction, runConstruction } from './construction.js';
 import { controllerOf, setController } from './control.js';
@@ -970,11 +970,12 @@ export class TurnManager {
     const owner = this.world.nations[unit.nationId];
     if (owner) owner.regimentsKilled = (owner.regimentsKilled ?? 0) + regimentCount(unit);
     // Yok edilen (ya da teslim olan) tumende hala tutulan adamlar KAYIPTIR:
-    // nufustan da duserler. Kalan tutma birakilmazsa o insanlar sonsuza dek
+    // payi olur, kalani esir/yarali olarak eve doner (levy.DEATH_SHARE).
+    // Kalan tutma birakilmazsa o insanlar sonsuza dek
     // "askerde" gorunur ve province bir daha onlari asker olarak veremezdi.
     for (const regiment of unit.regiments ?? []) {
       for (const draw of regiment.draws ?? []) {
-        releaseDraw(this.world, unit.nationId, draw, draw.men ?? 0, true);
+        releaseCasualties(this.world, unit.nationId, draw, draw.men ?? 0);
       }
       regiment.draws = [];
     }
