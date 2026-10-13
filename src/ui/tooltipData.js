@@ -284,13 +284,13 @@ export function registerTooltips(game) {
 
   provideTooltip('mapmode', (mode) => {
     const table = {
-      political: ['Political map', 'Borders, nations and armies. Occupied hexes carry a hatch; the front of the selected commander is outlined.'],
+      political: ['Army map', 'Borders, nations and armies: divisions, fronts, battles and offensives. Occupied hexes carry a hatch; the front of the selected commander is outlined.'],
       terrain: ['Terrain', 'Relief and vegetation without borders: where armies slow down and where the land is rich.'],
       geography: ['Geography', 'The bare world as the generator drew it — continents, seas and straits, no borders or units.'],
       cultures: ['Cultures', 'Who lives where. Hatching marks states whose majority differs from the owner\'s culture.'],
       resources: ['Resources', 'What every state produces: food, coal, iron, timber, horses or saltpeter — and the oil and rubber fields that only matter once industry and armies need them.'],
       population: ['Population', 'How many people live in each state, in four bands.'],
-      seas: ['Naval map', 'The seas, region by region. Green waters are yours, red the enemy\'s, amber contested. Give each sea a priority and the admiralty sails the fleet there; whoever holds a sea blockades the coasts on it and sinks the transports crossing it. Shortcut: M.'],
+      seas: ['Navy map', 'The seas, region by region. Green waters are yours, red the enemy\'s, amber contested. Give each sea a priority and the admiralty sails the fleet there; whoever holds a sea blockades the coasts on it and sinks the transports crossing it. Shortcut: M.'],
       diplomacy: ['Diplomacy', 'Who is at war with whom. Green is the nation you look from, red its enemies, blue its allies; hatching marks occupied land. Click any nation to see the map through its eyes.'],
       unrest: ['Unrest', 'How close each state is to revolt, 0 to 10. Above 7 a revolt starts to brew; foreign culture, hunger and occupation drive it.'],
       industry: ['Industry', 'Factory levels in each state, across every nation — where the industrial heartlands are.'],

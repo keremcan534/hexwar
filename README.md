@@ -57,7 +57,7 @@ masaüstünde klasör seçer gibi kutu seçimi yapar, bu yüzden kamera orta tu�
 tümenleri hedef province'e yürütür; birden çok tümen seçiliyse hedefler çevreye
 yayılır, hepsi tek province'e tıkışmaz.
 
-Savaş haritası: bütün generallerin **cephesi** görünür (taarruzdaki kırmızı, bekleyen mavi; seçili general dolgulu), her cephede generalin baş harfi ve planlama yayı. Seçiliyken fareyi düşmanın üstüne getirmek **saldırı oranını** muharebenin kendi terazisiyle gösterir (yeşil = generalin duruş eşiğinin üstü). Haritada bir orduya tıklamak generalini etkin yapar; general kartında ATK/HOLD ve planlama çubuğu, tümen listesinde yürüyüşün kalan haftası durur. Listede satıra tıklamak yalnız o tümeni seçer, `Shift`+tık seçimden çıkarır.
+Savaş haritası: bütün generallerin **cephesi** görünür (taarruzdaki kırmızı, bekleyen mavi; seçili general dolgulu), her cephede generalin baş harfi ve planlama yayı. Seçiliyken fareyi düşmanın üstüne getirmek **saldırı oranını** muharebenin kendi terazisiyle gösterir (yeşil = generalin duruş eşiğinin üstü). Haritada bir orduya tıklamak generalini etkin yapar; general kartında ATK/HOLD ve planlama çubuğu, ordu panelinin tümen listesinde yürüyüşün kalan haftası durur. Listede satıra tıklamak yalnız o tümeni seçer, `Shift`+tık seçimden çıkarır.
 
 Oyun haftalık adımlarla gerçek zamanlı akar. Saat penceresi sağ üsttedir; boşluk
 tuşu duraklatır ve duraklatmadan önceki hızı hatırlar, `+`/`−` kademe değiştirir.
@@ -71,17 +71,19 @@ komşuların gücü, dikkat satırları); "Play as" oyuncu ulusunu değiştirir.
 akmaya başlarsa kartta duran ülke seçilmiş sayılır.
 
 Ekran yerleşimi Vic2 düzenindedir: seçili province penceresi **sol altta**, saat
-**sağ üstte**, harita kipleri **sağ altta**. Dar ekranda panel genişler ve kipler
-onun üstüne çıkar.
+**sağ üstte**, harita kipleri **sağ altta**, komutan kartları ikisinin arasında
+**orta altta**. Dar ekranda panel genişler ve kipler onun üstüne çıkar.
 
 Üst çubuk üç bölgedir ve tek eksene oturur: solda künye (dalgalanan bayrak +
 ülke adı + tek satır özet), **ortada oyunun bütün ekonomisi** (altın ve haftalık
 akış, Siyasi Güç, istikrar, savaş desteği, şöhret, nüfus, ordu, insan gücü,
 IC ve altı kaynağın karşılanma çipi), sağda tarih, saat durumu ve hız kanalı. Sekme künyeleri de ortalanır ve pencere genişledikçe büyür.
 
-Harita kipleri üç ailedir: coğrafya (siyasi, arazi, coğrafya, kültür, kaynak,
-nüfus), **veri** ve katmanlar. Veri kipleri simülasyondan boyanır ve her hafta
-tazelenir:
+Harita kipleri HOI4 düzenindedir: iki önemli görünüm **büyük düğme** — **Army**
+(siyasi harita: tümenler, cepheler, muharebeler) ve **Navy** (denizler, `M`) —
+geri kalanlar yanlarında küçük ızgara: coğrafya (arazi, coğrafya, kültür, kaynak,
+nüfus), **veri** ve katmanlar. Hava gücü sistemi yok; Air düğmesi o gelince
+eklenir. Veri kipleri simülasyondan boyanır ve her hafta tazelenir:
 
 | Kip | Ne gösterir |
 | --- | --- |
@@ -234,18 +236,29 @@ yürüyen tümenlerimiz kalın kırmızı **taarruz oklarıyla** çizilir.
 
 ### Seçim ve komuta arayüzü
 
-Kutu seçimi yapıldığında **solda tümen listesi** açılır: her satırda alayların
-bileşimi, asker sayısı, morali, durumu (bekliyor / yürüyor / muharebede /
-çekiliyor) ve komutanı görünür. Satıra tıklamak kamerayı o tümene götürür.
+Tümen seçilince sol alttaki pencere **ordu paneline** döner (`src/ui/armyPanel.js`),
+tek bir panel: başlıkta kaç tümen ve bileşimi, dört gösterge (asker, güç, düzen,
+yürüyen), **tümen listesi** (her satırda harita sayacı, kol, bulunduğu state, güç
+ve düzen çubukları, durum rozeti: hafta / Ready / Battle / Retreat / Auto / Hold),
+**komutan** (portre, yıldız, özellik; Change / Release), **cephe** (sektör,
+planlama, Offensive) ve **emirler** (Auto / Hold `H` / Stop `X`, tek tümende
+Disband). Liste panelin esneyen tek parçasıdır; panel sekme çubuğunun altına dek
+boy alır. Tek tümen seçiliyken liste yerine durumu başlıkta yazar. Satıra
+tıklamak yalnız o tümeni seçer, `Shift`+tık seçimden çıkarır. Eskiden liste sol
+üstte ayrı bir panel, ayrıntı sol altta yalnız ilk tümendi; ikisi birbirini
+sıkıştırıyordu (1600×900'de 9 tümenden 2 satır).
 
-**Komuta paneli ekranın orta altında her zaman durur**: ülkenin her generali için
-bir portre yuvası, sonda **+** (Assign) yuvası. Portreye **sol tık** o generalin
-bütün tümenlerini seçer, **sağ tık** o an seçili tümenleri ona devreder — 10
-tümenden 5'ini seçip başka bir generale sağ tıklamak onları o komutaya geçirir.
-**+** seçimi listeden bir subaya bağlar.
+**Komutan kartları ekranın orta altında her zaman durur** (HOI4 ordu çubuğu):
+her kara generali için dikey kart — üstte duruş (HOLD / ATK / RES = tümensiz
+yedek) ve tümen sayısı, ortada madalyon portre, altta ad, yetenek yıldızları ve
+planlama çubuğu — sonda **Assign** kartı. Karta **sol tık** o generalin bütün
+tümenlerini seçer, **sağ tık** o an seçili tümenleri ona devreder — 10 tümenden
+5'ini seçip başka bir generale sağ tıklamak onları o komutaya geçirir. **Assign**
+seçimi listeden bir subaya bağlar. Kartlar sığmazsa 58 px'e dek daralır, satır
+sarmaz (1280'de sekiz general + Assign tek satır).
 
-Bir general seçiliyken portrelerin üstünde **hedef ülke**, **Offensive** ve
-**duruş 1-2-3** araçları çıkar. Hedef, grubun hangi ülkeyle olan sınırı tutacağını;
+Bir general seçiliyken kartların üstünde **hedef ülke**, **Offensive** ve
+**duruş** (Careful / Balanced / Aggressive) araçları çıkar. Hedef, grubun hangi ülkeyle olan sınırı tutacağını;
 duruş ise taarruz sıklığını ve kabul edilen güç riskini belirler. Hedef ülke
 barıştayken de seçilebilir; tümenler savaş ilan etmeden o ülkenin sınırına dizilir.
 
@@ -536,7 +549,8 @@ src/
     ai.js            ülke yapay zekâsı (AUTO aynı fonksiyonları kullanır)
     save.js          sürümlü kayıt (v26)
   ui/
-    hud.js           üst çubuk, il paneli, komuta paneli
+    hud.js           üst çubuk, il paneli, komuta rıhtımı (olaylar)
+    armyPanel.js     ordu paneli (seçim listesi, komutan, cephe, emir) ve komutan kartları
     screens.js       ekran kabuğu, dosya kartı, barış masası, diplomasi, ordu
     stateScreens.js  Budget, Trade, Factories, Construction, Population, Politics
     navyDock.js      Seas haritasının donanma paneli (deniz önceliği, hâkimiyet, raporlar)
