@@ -23,6 +23,8 @@
 import { SQRT3 } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { makeRng, fbm } from './textures.js';
+import { GpuTimer } from './gpuTimer.js';
+import { TERRAIN_GLSL } from './gfx/terrainGLSL.js';
 
 const HEX_STEP = SQRT3 * HEX_SIZE;
 const ROW_H = HEX_SIZE * 1.5;
@@ -34,6 +36,30 @@ const DIST_MAX = HEX_STEP * 9;
 const WAVE_SIZE = 256;
 /** Su en fazla bu sıklıkta güncellenir (ms). Hareket zaten yavaş. */
 const FRAME_MS = 33;
+
+/** Her programda aranan uniformlar (klasik + stil). */
+const COMMON_UNIFORMS = ['uViewport', 'uDpr', 'uCam', 'uZoom', 'uTime', 'uWrap',
+  'uGrid', 'uHexSize', 'uFieldOrigin', 'uFieldSpan', 'uDistMax', 'uDetail',
+  'uHex', 'uDist', 'uWave',
+  'uShallow', 'uTeal', 'uPetrol', 'uAbyss', 'uShelf',
+  'uSpecAmp', 'uFresAmp', 'uFoamAmp',
+  'uWaveAmp', 'uWaveShade', 'uRefract',
+  'uOwner', 'uChar', 'uElev', 'uElevSize',
+  'uLandRelief', 'uLandGrain', 'uGrade', 'uSeaMaterial',
+  'uOverlay', 'uOverlayOn', 'uDataMode',
+  'uSegHead', 'uSegData', 'uSegW', 'uRemap', 'uSegOn', 'uRegion', 'uHexBlend', 'uBand', 'uBandOn'];
+/** Yalnız stil programlarının ortak parçası (gfx/terrainGLSL.js). */
+const GFX_UNIFORMS = ['uGfx', 'uTerrH', 'uBiome', 'uGfxHex', 'uGfxHexOn',
+  'uTerrTexel', 'uBiomeTexel', 'uHeightScale'];
+
+/**
+ * Doku birimleri. 0-10 klasik program; 11-13 arazi temeli; 14-15 stilin
+ * kendi dokuları (style.textures). WebGL2 en az 16 birim garanti eder.
+ */
+export const GFX_UNITS = { height: 11, biome: 12, hex: 13, style: [14, 15] };
+
+/** Işık eğiminin varsayılan ölçeği: 1 yükseklik birimi = bu kadar dünya birimi. */
+const DEFAULT_HEIGHT_SCALE = 100;
 
 const VERT = `#version 300 es
 // Tek üçgen tüm ekranı kaplar: dörtgene göre bir vertex az, kenar dikişi yok.
@@ -103,6 +129,7 @@ uniform highp sampler2D uRegion;   // RGBA8, NEAREST: RG bolge kimligi + 1 (deni
 uniform float uHexBlend;           // 1 = bolge dokusu yuklu, hex suzmesi acik
 uniform sampler2D uBand;           // R8, LINEAR: ulke sinirina uzaklik / BAND_REACH (alan izgarasi)
 uniform float uBandOn;             // 1 = siyasi kip: ulke kenar golgesi
+uniform int uGfx;                  // gorsel stil kimligi; klasikte 0 (bkz. gfx/registry.js)
 
 const float SQ3 = 1.7320508;
 
@@ -289,6 +316,8 @@ void hexBlend(vec2 world, vec2 raw, vec2 cell, vec2 fill, out vec3 base, out vec
   if (hw > 1e-4) ch = hs / hw;
 }
 
+//@GFX_CHUNK
+
 /**
  * KARA MALZEMESI.
  *
@@ -303,6 +332,13 @@ vec3 landColor(vec2 world, vec2 cell, vec2 raw, vec2 fill, vec3 Ldir) {
   vec3 base;
   vec4 ch;
   hexBlend(world, raw, cell, fill, base, ch);
+#ifdef GFX
+  // GORSEL STIL: malzeme (kabartma, pigment, isik) stilin. Isgal taramasi
+  // ve ulke kenar golgesi bilgi tasidigi icin ortak kalir (stil isterse
+  // GFX_NO_HATCH / GFX_NO_BAND / GFX_CUSTOM_BAND ile kapatir ya da degistirir).
+  GfxLand L = gfxLandInput(world, cell, raw, fill, base, ch, Ldir);
+  vec3 col = gfxLand(L);
+#else
   float reliefGain = ch.r * 2.0;
   float grainAmt = ch.g;
   float warmth = (ch.b - 0.5) * 2.0;
@@ -337,7 +373,9 @@ vec3 landColor(vec2 world, vec2 cell, vec2 raw, vec2 fill, vec3 Ldir) {
   // Isik/golge rengi: sirt sicak, cukur soguk (§23).
   float t = (shade - 0.5) * 2.0 + warmth * 0.35;
   col += vec3(0.028, 0.014, -0.020) * t * 0.55 * damp;
+#endif
 
+#ifndef GFX_NO_HATCH
   // --- ISGAL TARAMASI ---
   // Canvas2D'deki ile ayni okuma (%46 murekkep + acik capraz cizgiler), ama
   // artik YUZEYIN ISIGINI aliyor ve her zoomda keskin: cizgi ekran uzayinda
@@ -354,7 +392,9 @@ vec3 landColor(vec2 world, vec2 cell, vec2 raw, vec2 fill, vec3 Ldir) {
       col = mix(col, vec3(0.839, 0.784, 0.659), line * 0.5);
     }
   }
+#endif
 
+#ifndef GFX_NO_BAND
   // --- ULKE KENAR GOLGESI ---
   // Ulke kesilmis kagit gibi kenarinda koyulasir: sinirda ~%24, BAND_REACH
   // icinde dogrusal soner. Eskiden Canvas2D'de ulkenin cokgenine kirpilmis
@@ -362,11 +402,20 @@ vec3 landColor(vec2 world, vec2 cell, vec2 raw, vec2 fill, vec3 Ldir) {
   // tasiriyordu. Ton ulkenin kendi rengi, koyulasmis: her yan kendi tonunda.
   if (uBandOn > 0.5 && texelFetch(uRegion, ivec2(fill), 0).b > 0.5) {
     float bd = texture(uBand, (world - uFieldOrigin) / uFieldSpan).r;
+#if defined(GFX) && defined(GFX_CUSTOM_BAND)
+    col = gfxBand(L, col, bd);
+#else
     col = mix(col, col * 0.52, 0.24 * clamp(1.0 - bd, 0.0, 1.0));
+#endif
   }
+#endif
+#ifdef GFX
+  return clamp(gfxPost(L, col), 0.0, 1.0);
+#else
   // Kuresel derece: orta ton cevresinde S egrisi + soguk golge/sicak isik.
   vec3 gr = col * col * (3.0 - 2.0 * col);
   return clamp(mix(col, gr, uGrade), 0.0, 1.0);
+#endif
 }
 
 vec3 seaColor(vec2 world, vec2 cell, vec3 Ldir);
@@ -523,9 +572,29 @@ function compile(gl, type, src) {
   if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
     const log = gl.getShaderInfoLog(sh);
     gl.deleteShader(sh);
-    throw new Error('shader: ' + log);
+    const err = new Error('shader: ' + log);
+    err.source = src;
+    throw err;
   }
   return sh;
+}
+
+/** Derleme günlüğündeki "0:LINE" satırlarını kaynaktan ±2 satırla gösterir. */
+function shaderContext(src, log) {
+  if (!src || !log) return '';
+  const lines = src.split('\n');
+  const seen = new Set();
+  const out = [];
+  for (const m of log.matchAll(/\d+:(\d+):/g)) {
+    const n = +m[1];
+    if (seen.has(n) || seen.size >= 6) continue;
+    seen.add(n);
+    for (let i = Math.max(1, n - 2); i <= Math.min(lines.length, n + 2); i++) {
+      out.push(`${i === n ? '>>' : '  '} ${String(i).padStart(4)} | ${lines[i - 1]}`);
+    }
+    out.push('');
+  }
+  return out.join('\n');
 }
 
 /**
@@ -670,6 +739,16 @@ export class SurfaceGL {
     // Dalga verisi CPU'da bir kez üretilir: bağlam geri geldiğinde yalnız
     // yeniden yüklenir, yeniden hesaplanmaz.
     this.wave = buildWaveTexture();
+    /**
+     * GÖRSEL STİL (bkz. gfx/registry.js). null = klasik: program bugünkü
+     * kaynağın aynısı, aşağıdaki hiçbir doku kurulmaz. Arazi temeli ve stil
+     * verisi CPU'da tutulur; bağlam kaybından sonra draw() tembelce yeniden
+     * yükler.
+     */
+    this.gfx = null;
+    this.terrain = null;
+    this.gfxHexData = null;
+    this.gfxExtra = null;
     this.initGL();
 
     /**
@@ -705,28 +784,17 @@ export class SurfaceGL {
    */
   initGL() {
     const gl = this.gl;
-    const prog = gl.createProgram();
-    gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
-    gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, FRAG));
-    gl.linkProgram(prog);
-    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-      throw new Error('program: ' + gl.getProgramInfoLog(prog));
-    }
-    this.prog = prog;
+    // Program önbelleği: anahtar stilin GLSL kaynağı (aynı GLSL'i paylaşan
+    // stiller tek derleme, uGfx ile ayrılır). Klasik her zaman kurulur.
+    this.programs = new Map();
+    const classic = this.buildProgram(null);
+    this.programs.set('classic', classic);
+    this.prog = classic.prog;
+    this.u = classic.u;
     this.vao = gl.createVertexArray();
-    this.u = {};
-    for (const name of ['uViewport', 'uDpr', 'uCam', 'uZoom', 'uTime', 'uWrap',
-      'uGrid', 'uHexSize', 'uFieldOrigin', 'uFieldSpan', 'uDistMax', 'uDetail',
-      'uHex', 'uDist', 'uWave',
-      'uShallow', 'uTeal', 'uPetrol', 'uAbyss', 'uShelf',
-      'uSpecAmp', 'uFresAmp', 'uFoamAmp',
-      'uWaveAmp', 'uWaveShade', 'uRefract',
-      'uOwner', 'uChar', 'uElev', 'uElevSize',
-      'uLandRelief', 'uLandGrain', 'uGrade', 'uSeaMaterial',
-      'uOverlay', 'uOverlayOn', 'uDataMode',
-      'uSegHead', 'uSegData', 'uSegW', 'uRemap', 'uSegOn', 'uRegion', 'uHexBlend', 'uBand', 'uBandOn']) {
-      this.u[name] = gl.getUniformLocation(prog, name);
-    }
+    // GPU zaman ölçümü: eklenti yoksa null, çizim ölçümsüz sürer. Eski
+    // ölçerin sorguları kaybolan bağlamındır; silinmez, bırakılır.
+    this.timer = GpuTimer.create(gl);
 
     const wave = this.wave;
     this.waveTex = this.makeTex(gl.RGBA8, gl.RGBA, wave.size, wave.size, wave.data,
@@ -749,6 +817,271 @@ export class SurfaceGL {
     this.borderMesh = null;
     this.lastCam = null;
     this.lastDraw = 0;
+    // Stil dokuları: CPU kopyaları (terrain, gfxHexData, gfxExtra) durur,
+    // tutamaklar yeni bağlamda draw() içinde yeniden kurulur.
+    this.terrTex = null;
+    this.biomeTex = null;
+    this.gfxHexTex = null;
+    this.gfxDummy = null;
+    this.gfxDummyArray = null;
+    this.styleTex = new Map();
+  }
+
+  /**
+   * FRAG'ı stil için derler. Klasik (style = null) bugünkü kaynağın aynısıdır:
+   * işaret satırı boşalır, `#ifdef GFX` blokları ön işlemcide düşer.
+   */
+  buildProgram(style) {
+    const gl = this.gl;
+    let src = FRAG;
+    if (style) {
+      src = src.replace('#version 300 es\n', '#version 300 es\n#define GFX 1\n')
+        .replace('//@GFX_CHUNK', `${TERRAIN_GLSL}\n// ===== STİL: ${style.name} =====\n${style.glsl}\n`);
+    } else {
+      src = src.replace('//@GFX_CHUNK', '');
+    }
+    const prog = gl.createProgram();
+    gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
+    gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, src));
+    gl.linkProgram(prog);
+    if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      const err = new Error('program: ' + gl.getProgramInfoLog(prog));
+      err.source = src;
+      throw err;
+    }
+    const u = {};
+    const names = style
+      ? [...COMMON_UNIFORMS, ...GFX_UNIFORMS, ...Object.keys(style.textures ?? {})]
+      : COMMON_UNIFORMS;
+    for (const name of names) u[name] = gl.getUniformLocation(prog, name);
+    // Stilin kendi uniformları ilk kullanımda aranır (adları uniforms() döndürür).
+    return { prog, u, extra: new Map(), style };
+  }
+
+  /**
+   * Stilin programı; derleme hatasında null (çağıran klasikle çizer). Hata
+   * SESLİ olmalı: sessiz geri düşüşte stil "klasikle aynı" görünüyor ve
+   * önizlemenin yanlış olduğu ancak görüntü farkından anlaşılıyordu. Günlük
+   * hatalı satırları bağlamıyla basar, `gfxError`da da durur.
+   */
+  programFor(style) {
+    const key = style.glsl;
+    if (this.programs.has(key)) return this.programs.get(key);
+    let p = null;
+    try {
+      p = this.buildProgram(style);
+      this.gfxError = null;
+    } catch (err) {
+      this.gfxError = `${style.name}: ${err.message}`;
+      console.error(`[gfx] ${style.name} DERLENEMEDİ — klasik çiziliyor.\n${err.message}\n${shaderContext(err.source, err.message)}`);
+    }
+    this.programs.set(key, p);
+    return p;
+  }
+
+  /**
+   * Etkin stil (null = klasik). Arazi verisi dünya başına ayrı gelir
+   * (setTerrain). Stilin kendi dokuları (birim 14-15) o stile aittir: aynı
+   * adlı dokusu olan başka bir stile geçişte eskisi bağlı kalmasın.
+   */
+  setGfxStyle(style) {
+    if ((style ?? null) !== this.gfx) this.dropStyleTextures();
+    this.gfx = style ?? null;
+    this.lastDraw = 0;
+  }
+
+  dropStyleTextures() {
+    for (const t of this.styleTex.values()) if (t?.tex && !this.lost) this.gl.deleteTexture(t.tex);
+    this.styleTex.clear();
+  }
+
+  /**
+   * Arazi temeli (terrainBake sonucu). CPU kopyası saklanır; dokular bir
+   * sonraki çizimde kurulur. Aynı dünyanın yeni pişirmesi eskisinin yerini alır.
+   */
+  setTerrain(terrain, extra = null) {
+    if (terrain === this.terrain && extra === this.gfxExtra && this.terrTex) return;
+    const gl = this.gl;
+    if (this.terrain !== terrain) {
+      if (this.terrTex && !this.lost) gl.deleteTexture(this.terrTex);
+      if (this.biomeTex && !this.lost) gl.deleteTexture(this.biomeTex);
+      this.terrTex = null;
+      this.biomeTex = null;
+    }
+    // Stil dokuları arazi/ekstradan kurulur (create(gl, host)): ikisi de değişti.
+    this.dropStyleTextures();
+    this.terrain = terrain;
+    this.gfxExtra = extra;
+    this.lastDraw = 0;
+  }
+
+  /** Stilin hex başına RGBA8 verisi (birim 13); null boşaltır. */
+  setGfxHexData(data) {
+    this.gfxHexData = data;
+    this.lastDraw = 0;
+    const gl = this.gl;
+    // Aynı boyutta yerinde tazelenir (updateOwners deseni): tur başına yeni
+    // doku tahsisi gereksiz.
+    const dims = this.gfxHexDims;
+    if (data && this.gfxHexTex && !this.lost && this.grid && dims
+      && dims.w === this.grid.cols && dims.h === this.grid.rows
+      && data.length === dims.w * dims.h * 4) {
+      gl.bindTexture(gl.TEXTURE_2D, this.gfxHexTex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.grid.cols, this.grid.rows,
+        gl.RGBA, gl.UNSIGNED_BYTE, data);
+      return;
+    }
+    if (this.gfxHexTex && !this.lost) gl.deleteTexture(this.gfxHexTex);
+    this.gfxHexTex = null;
+  }
+
+  /** Stil çizilebilir mi: program derlendi ve arazi bu dünyanın. */
+  gfxReady() {
+    const s = this.gfx;
+    if (!s || !this.world) return false;
+    if (s.terrain !== false && this.terrain?.world !== this.world) return false;
+    return !!this.programFor(s);
+  }
+
+  /**
+   * Arazi dokuları. Yükseklik RGBA16F (Float32 kaynaktan; sürücü yarıya
+   * çevirir), mip'li: uzak zoomda eğim alt-pikselden kumlanmasın. RGBA16F'e
+   * generateMipmap ancak renk tamponu olabiliyorsa (EXT_color_buffer_float)
+   * izinli; yoksa mipler CPU'da kutu süzgeciyle kurulur (x sarmal).
+   */
+  ensureGfxTextures() {
+    const gl = this.gl;
+    const T = this.terrain;
+    if (T && !this.terrTex) {
+      const H = T.height;
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, tex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, H.w, H.h, 0, gl.RGBA, gl.FLOAT, H.data);
+      if (gl.getExtension('EXT_color_buffer_float')) {
+        gl.generateMipmap(gl.TEXTURE_2D);
+      } else {
+        H.mips ??= cpuMips(H.data, H.w, H.h);
+        H.mips.forEach((m, i) => gl.texImage2D(gl.TEXTURE_2D, i + 1, gl.RGBA16F, m.w, m.h, 0,
+          gl.RGBA, gl.FLOAT, m.data));
+      }
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      this.terrTex = tex;
+    }
+    if (T && !this.biomeTex) {
+      const B = T.biome;
+      const tex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, B.w, B.h, B.layers, 0,
+        gl.RGBA, gl.UNSIGNED_BYTE, B.data);
+      gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_S, gl.REPEAT);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      this.biomeTex = tex;
+    }
+    if (this.gfxHexData && !this.gfxHexTex && this.grid
+      && this.gfxHexData.length === this.grid.cols * this.grid.rows * 4) {
+      this.gfxHexTex = this.makeTex(gl.RGBA8, gl.RGBA, this.grid.cols, this.grid.rows,
+        this.gfxHexData, gl.NEAREST, gl.REPEAT, gl.CLAMP_TO_EDGE);
+      this.gfxHexDims = { w: this.grid.cols, h: this.grid.rows };
+    }
+    // Örnekleyiciler veri yokken de geçerli bir dokuya bağlanmalı.
+    if (!this.gfxDummy) {
+      this.gfxDummy = this.makeTex(gl.RGBA8, gl.RGBA, 1, 1, new Uint8Array(4),
+        gl.NEAREST, gl.CLAMP_TO_EDGE);
+    }
+    if (!this.gfxDummyArray) {
+      const t = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D_ARRAY, t);
+      gl.texImage3D(gl.TEXTURE_2D_ARRAY, 0, gl.RGBA8, 1, 1, 3, 0, gl.RGBA, gl.UNSIGNED_BYTE,
+        new Uint8Array(12));
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      this.gfxDummyArray = t;
+    }
+    // Stilin kendi dokuları: create(gl, host) bir kez, bağlam başına.
+    const s = this.gfx;
+    for (const [name, spec] of Object.entries(s?.textures ?? {})) {
+      if (this.styleTex.has(name)) continue;
+      let tex = null;
+      try {
+        tex = spec.create(gl, this.gfxHost());
+      } catch (err) {
+        console.error(`[gfx] ${s.name}.${name} dokusu kurulamadı:`, err.message);
+      }
+      this.styleTex.set(name, { tex, unit: spec.unit, target: spec.target ?? gl.TEXTURE_2D });
+    }
+  }
+
+  /** Stil dokusu kurucularına verilen bağlam. */
+  gfxHost() {
+    return {
+      gl: this.gl, world: this.world, terrain: this.terrain, extra: this.gfxExtra,
+      makeTex: (...a) => this.makeTex(...a),
+    };
+  }
+
+  /** Stil programına ortak arazi + stil uniformları ve dokuları. */
+  bindGfx(P, info) {
+    const gl = this.gl;
+    const u = P.u;
+    const s = this.gfx;
+    this.ensureGfxTextures();
+    gl.uniform1i(u.uGfx, s.id);
+    const T = this.terrain;
+    gl.uniform2f(u.uTerrTexel, T?.height.texel[0] ?? 1, T?.height.texel[1] ?? 1);
+    gl.uniform2f(u.uBiomeTexel, T?.biome.texel[0] ?? 1, T?.biome.texel[1] ?? 1);
+    gl.uniform1f(u.uHeightScale, s.tune.heightScale ?? DEFAULT_HEIGHT_SCALE);
+    gl.activeTexture(gl.TEXTURE0 + GFX_UNITS.height);
+    gl.bindTexture(gl.TEXTURE_2D, this.terrTex ?? this.gfxDummy);
+    gl.uniform1i(u.uTerrH, GFX_UNITS.height);
+    gl.activeTexture(gl.TEXTURE0 + GFX_UNITS.biome);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, this.biomeTex ?? this.gfxDummyArray);
+    gl.uniform1i(u.uBiome, GFX_UNITS.biome);
+    gl.activeTexture(gl.TEXTURE0 + GFX_UNITS.hex);
+    gl.bindTexture(gl.TEXTURE_2D, this.gfxHexTex ?? this.gfxDummy);
+    gl.uniform1i(u.uGfxHex, GFX_UNITS.hex);
+    gl.uniform1f(u.uGfxHexOn, this.gfxHexTex ? 1 : 0);
+    // Konum adla, program başına önbellekli: aynı GLSL'i paylaşan iki stil
+    // tek programdır ama uniform/doku adları farklı olabilir.
+    const loc = (name) => {
+      let l = P.extra.get(name);
+      if (l === undefined) {
+        l = gl.getUniformLocation(P.prog, name);
+        P.extra.set(name, l);
+      }
+      return l;
+    };
+    for (const [name, t] of this.styleTex) {
+      // Kurulamayan doku boş bırakılmaz: örnekleyici türüne uygun yedek.
+      const fallback = t.target === gl.TEXTURE_2D_ARRAY ? this.gfxDummyArray : this.gfxDummy;
+      gl.activeTexture(gl.TEXTURE0 + t.unit);
+      gl.bindTexture(t.target, t.tex ?? fallback);
+      gl.uniform1i(loc(name), t.unit);
+    }
+    // Stil uniformları: sayı → float, 2-4 dizi → vecN, {int} → int.
+    const vals = s.uniforms?.(s.tune, info) ?? {};
+    for (const [name, v] of Object.entries(vals)) {
+      const l = loc(name);
+      if (l == null) continue;
+      if (typeof v === 'number' || typeof v === 'boolean') gl.uniform1f(l, +v);
+      else if (v && typeof v === 'object' && 'int' in v) gl.uniform1i(l, v.int | 0);
+      else if (v?.length === 2) gl.uniform2fv(l, v);
+      else if (v?.length === 3) gl.uniform3fv(l, v);
+      else if (v?.length === 4) gl.uniform4fv(l, v);
+    }
+  }
+
+  /** Son karelerin GPU süresi (ms, kayan ortalama); ölçüm yoksa null. */
+  gpuMs() {
+    return this.timer?.ema ?? null;
   }
 
   makeTex(internal, format, w, h, data, filter, wrap, wrapT = wrap) {
@@ -945,6 +1278,13 @@ export class SurfaceGL {
     this.lastCam = { x: camera.x, y: camera.y, zoom: camera.zoom };
 
     const gl = this.gl;
+    // Önceki karelerin GPU süresi (sonuç birkaç kare gecikmeli gelir).
+    this.timer?.poll();
+    // Stil hazır değilse (arazi pişiyor, derleme hatası) klasik çizilir:
+    // yarım veriyle boş/siyah kara göstermektense eski görünüm.
+    const P = this.gfxReady() ? this.programFor(this.gfx) : this.programs.get('classic');
+    this.prog = P.prog;
+    this.u = P.u;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
     gl.clearColor(0, 0, 0, 0);
     gl.clear(gl.COLOR_BUFFER_BIT);
@@ -1028,8 +1368,46 @@ export class SurfaceGL {
     gl.activeTexture(gl.TEXTURE10);
     gl.bindTexture(gl.TEXTURE_2D, this.bandTex ?? this.distTex);
     gl.uniform1i(u.uBand, 10);
+    if (P !== this.programs.get('classic')) {
+      this.bindGfx(P, { camera, time, world: this.world, seaMaterial: this.seaMaterial });
+    }
 
+    this.timer?.begin();
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    this.timer?.end();
     return true;
   }
+}
+
+/**
+ * RGBA float mip zinciri, 2x2 kutu (x sarmal, y kenetli). Yalnız sürücü
+ * RGBA16F'e generateMipmap izni vermezse kullanılır.
+ */
+function cpuMips(src, w, h) {
+  const out = [];
+  let cur = src;
+  let cw = w;
+  let ch = h;
+  while (cw > 1 || ch > 1) {
+    const nw = Math.max(1, cw >> 1);
+    const nh = Math.max(1, ch >> 1);
+    const dst = new Float32Array(nw * nh * 4);
+    for (let y = 0; y < nh; y++) {
+      const y0 = Math.min(ch - 1, y * 2);
+      const y1 = Math.min(ch - 1, y * 2 + 1);
+      for (let x = 0; x < nw; x++) {
+        const x0 = (x * 2) % cw;
+        const x1 = (x * 2 + 1) % cw;
+        for (let c = 0; c < 4; c++) {
+          dst[(y * nw + x) * 4 + c] = 0.25 * (cur[(y0 * cw + x0) * 4 + c] + cur[(y0 * cw + x1) * 4 + c]
+            + cur[(y1 * cw + x0) * 4 + c] + cur[(y1 * cw + x1) * 4 + c]);
+        }
+      }
+    }
+    out.push({ w: nw, h: nh, data: dst });
+    cur = dst;
+    cw = nw;
+    ch = nh;
+  }
+  return out;
 }

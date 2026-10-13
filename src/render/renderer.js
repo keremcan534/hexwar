@@ -17,6 +17,8 @@ import { WaterLayer } from './water.js';
 import { SeaLayer } from './seaLayer.js';
 import { LandMaterial } from './material.js';
 import { SurfaceGL } from './surfaceGL.js';
+import { terrainBakeJob } from './terrainBake.js';
+import { getGfxStyle, gfxStyleNames, readGfxParam } from './gfx/index.js';
 import {
   buildBorderMesh, borderKeys, sameKeys, updateMeshGroups, meshGlTable, meshRegionData,
   bandFieldJob, BAND_REACH, LINE_COUNTRY, LINE_PROVINCE, LINE_COAST, cellAt, cellOutline, cellEdge,
@@ -508,6 +510,16 @@ function tileStep(tile) {
   return (((h ^ (h >>> 16)) >>> 0) % 5) - 2;
 }
 
+/**
+ * Stilin pişirme ayarlarının anahtarı; aynı ayarlı stiller araziyi paylaşır.
+ * Stil nesnesinde bir kez hesaplanır: her karede JSON.stringify gereksiz.
+ */
+function bakeKey(style) {
+  if (!style) return '{}';
+  style.bakeKey ??= JSON.stringify(style.bakeOptions ?? {});
+  return style.bakeKey;
+}
+
 export class Renderer {
   constructor(canvas, camera) {
     this.canvas = canvas;
@@ -577,6 +589,192 @@ export class Renderer {
     this.staticJob = null;
     this.staticSpare = null;
     this.farJob = null;
+    /**
+     * GÖRSEL STİL (?gfx=, setGfxStyle). 'classic' iken hiçbir kanca çalışmaz.
+     * `terrain` dünya başına arazi temeli (stiller arası ortak), `extra`
+     * stilin kendi pişirmesi (stil adına göre), `job` dilimli pişirme.
+     */
+    this.gfxStyle = 'classic';
+    this.gfx = { style: null, job: null, terrain: null, extra: new Map(), hexDirty: true, hexWorld: null, bakeLog: null };
+    this.gfxTune = null;
+    this.pendingGfx = readGfxParam();
+  }
+
+  /**
+   * Görsel stil anahtarı. Konsoldan:  game.renderer.setGfxStyle('debug-height')
+   * Bilinmeyen ad klasiğe düşer. Stil değişince pişmiş her katman bayattır
+   * (mürekkep geçişleri ve uOwner rengi stile bağlı olabilir).
+   */
+  setGfxStyle(name = 'classic') {
+    let style = null;
+    if (name !== 'classic') {
+      style = getGfxStyle(name);
+      if (!style) {
+        console.warn(`[gfx] bilinmeyen stil "${name}"; seçenekler: ${gfxStyleNames().join(', ')}`);
+        name = 'classic';
+      }
+    }
+    const prev = this.gfx.style;
+    if (prev && prev !== style) prev.detach?.(this);
+    this.gfxStyle = name;
+    this.gfx.style = style;
+    this.gfx.hexDirty = true;
+    this.gfx.job = null;
+    this.gfxTune = style?.tune ?? null;
+    this.waterGL?.setGfxStyle(style);
+    if (!style) this.waterGL?.setGfxHexData(null);
+    else {
+      style.attach?.(this);
+      // Bu dünyanın arazisi (ve stilin ekstrası) hazırsa hemen yüklenir.
+      const world = this.renderWorld;
+      if (world && !this.gfxNeedsBake(world)) this.gfxUpload(world);
+    }
+    this.invalidateCache();
+    this.staticLayers = null;
+    this.staticDirty = true;
+    this.requestFrame?.();
+    return name;
+  }
+
+  /** Bu dünya için arazi temeli ya da stilin ek pişirmesi eksik mi? */
+  gfxNeedsBake(world) {
+    const s = this.gfx.style;
+    if (!s || !world) return false;
+    if (s.terrain !== false && !this.gfxTerrainFor(world, s)) return true;
+    if (s.bake && this.gfx.extra.get(s.name)?.world !== world) return true;
+    return false;
+  }
+
+  /**
+   * Arazi pişirmesini bütçe kadar ilerletir; bitince GL'ye yükler ve true
+   * döner. Dilim ölçümü `gfx.bakeLog`ta (en uzun adım, adım sayısı, toplam).
+   */
+  stepGfxBake(world, budgetMs) {
+    const g = this.gfx;
+    const s = g.style;
+    if (!s) return true;
+    if (!g.job || g.job.world !== world || g.job.style !== s) {
+      const renderer = this;
+      const it = (function* () {
+        let terrain = renderer.gfxTerrainFor(world, s);
+        if (!terrain && s.terrain !== false) {
+          terrain = yield* terrainBakeJob(world, s.bakeOptions);
+          terrain.optsKey = bakeKey(s);
+        }
+        let extra = g.extra.get(s.name);
+        if (s.bake && extra?.world !== world) {
+          extra = { world, value: yield* s.bake(world, terrain, renderer) };
+        }
+        return { terrain, extra };
+      })();
+      g.job = { world, style: s, it, steps: 0, maxStep: 0, maxSlice: 0, busy: 0, t0: performance.now() };
+    }
+    const job = g.job;
+    const t0 = performance.now();
+    let done = null;
+    // Bütçe ÖNGÖRÜLÜ: sıradaki dilim (yakın geçmişin en uzunu kadar) bütçeyi
+    // taşıracaksa durulur. "Bütçe dolana dek" döngüsü son dilimi bütçenin
+    // üstüne ekliyordu: 14 ms bütçe 23 ms adım veriyordu. Tahmin söner ki tek
+    // soğuk (JIT/GC) dilim pişirmenin geri kalanını yavaşlatmasın.
+    for (;;) {
+      const s0 = performance.now();
+      const r = job.it.next();
+      const now = performance.now();
+      const dt = now - s0;
+      job.maxSlice = Math.max(job.maxSlice, dt);
+      job.est = Math.max(dt, (job.est ?? 0) * 0.85);
+      if (r.done) {
+        done = r.value;
+        break;
+      }
+      if (now - t0 + job.est > budgetMs) break;
+    }
+    const dt = performance.now() - t0;
+    job.steps++;
+    job.busy += dt;
+    job.maxStep = Math.max(job.maxStep, dt);
+    if (!done) {
+      this.requestFrame?.();
+      return false;
+    }
+    if (done.terrain) g.terrain = done.terrain;
+    if (done.extra) g.extra.set(s.name, done.extra);
+    g.bakeLog = {
+      steps: job.steps, maxStepMs: +job.maxStep.toFixed(2), maxSliceMs: +job.maxSlice.toFixed(2),
+      busyMs: +job.busy.toFixed(1),
+      wallMs: +(performance.now() - job.t0).toFixed(0), timings: g.terrain?.timings,
+    };
+    g.job = null;
+    this.gfxUpload(world);
+    this.invalidateCache();
+    this.requestFrame?.();
+    return true;
+  }
+
+  /**
+   * Stil açıkken kare başına: arazi eksikse bir dilim pişir (ısıtma bitmiş,
+   * stil sonradan seçilmiş olabilir), hex verisi kirliyse yeniden kur.
+   */
+  gfxFrame(world) {
+    const wgl = this.waterGL;
+    if (this.gfxNeedsBake(world)) {
+      const t = performance.now();
+      this.stepGfxBake(world, 8);
+      this.perf?.add('r.gfxbake', performance.now() - t);
+    } else if (wgl.terrain?.world !== world && this.gfx.style.terrain !== false) {
+      // Yeni bağlam ya da önceki dünyadan kalan arazi: hazır olanı yükle.
+      this.gfxUpload(world);
+    }
+    const s = this.gfx.style;
+    if (!s.hexData) return;
+    // İnşaat ve nüfus artışı renderer'a haber vermez: stil ucuz bir imza
+    // verirse (hexDataKey) değişim kendiliğinden yakalanır.
+    const key = s.hexDataKey ? s.hexDataKey(world, this) : null;
+    if (this.gfx.hexDirty || this.gfx.hexWorld !== world || key !== this.gfx.hexKey) {
+      this.gfx.hexDirty = false;
+      this.gfx.hexWorld = world;
+      this.gfx.hexKey = key;
+      wgl.setGfxHexData(s.hexData(world, this));
+    }
+  }
+
+  /** Hazır arazi + stil ekstrasını GL'ye verir. */
+  gfxUpload(world) {
+    const s = this.gfx.style;
+    if (!s || !this.waterGL) return;
+    this.waterGL.setTerrain(this.gfxTerrainFor(world, s), this.gfx.extra.get(s.name)?.value ?? null);
+  }
+
+  /**
+   * Bu dünya ve stilin pişirme ayarlarıyla kurulmuş arazi; yoksa null.
+   * Arazi stiller arası paylaşılır, ayarları farklı bir stil kendi pişirir.
+   */
+  gfxTerrainFor(world, style = this.gfx.style) {
+    const t = this.gfx.terrain;
+    if (!t || t.world !== world) return null;
+    return t.optsKey === bakeKey(style) ? t : null;
+  }
+
+  /** Stilin hex başına verisini (birim 13) bir sonraki karede yeniden kur. */
+  gfxRefreshHexData() {
+    this.gfx.hexDirty = true;
+    this.requestFrame?.();
+  }
+
+  /**
+   * Stilin Canvas2D mürekkep geçişi. 'under' ve 'over' statik katmana ve uzak
+   * önbelleğe PİŞER (sınır çizgilerinin altı/üstü; değişince invalidateCache),
+   * 'live' her karede şehirlerin altında çizilir.
+   */
+  gfxInk(slot, ctx, world, rect, scale, far) {
+    const fn = this.gfx.style?.ink?.[slot];
+    if (!fn) return;
+    fn(ctx, {
+      world, rect, scale, far, renderer: this, mode: this.mapMode,
+      terrain: this.gfxTerrainFor(world),
+      extra: this.gfx.extra.get(this.gfx.style.name)?.value ?? null,
+      tune: this.gfxTune,
+    });
   }
 
   /**
@@ -616,6 +814,11 @@ export class Renderer {
     // resize BURADA çağrılmaz: kurucu, düzen (layout) oturmadan çalışıyor ve
     // tuval o anda 0x0 ölçülüyor. Ölçüyü Game ilk kareden sonra verir.
     this.invalidateCache();
+    // GPU süresi konsoldan/başsız ölçümden: son karelerin kayan ortalaması (ms).
+    globalThis.__gpuMs = () => this.waterGL?.gpuMs() ?? null;
+    // ?gfx= ile açılan stil yüzey bağlanınca devreye girer (klasikte hiçbir şey).
+    if (this.pendingGfx && this.pendingGfx !== 'classic') this.setGfxStyle(this.pendingGfx);
+    this.pendingGfx = null;
     return true;
   }
 
@@ -687,11 +890,16 @@ export class Renderer {
     const cols = world.cols;
     const rows = world.rows;
     const out = new Uint8Array(cols * rows * 4);
+    const hook = this.gfx.style?.tileColor;
     for (let i = 0; i < cols * rows; i++) {
       const tile = world.tiles[i];
       if (!tile) continue;
       // Deniz de yazılır: düz-deniz kiplerinde shader rengi buradan okur.
-      const rgb = this.cssToRgb(this.tileColor(tile, world));
+      // Stil yalnız KARA rengini değiştirebilir: deniz pikselleri birebir kalsın.
+      const css = hook && !tile.terrain.water
+        ? (hook(tile, world, this) ?? this.tileColor(tile, world))
+        : this.tileColor(tile, world);
+      const rgb = this.cssToRgb(css);
       const p = i * 4;
       out[p] = rgb[0];
       out[p + 1] = rgb[1];
@@ -805,7 +1013,9 @@ export class Renderer {
     // kare zinciri duraklatılmış haritada bile sonsuza dek tam hızda dönüyordu.
     const near = this.camera.zoom >= CACHE_ZOOM;
     const band = !!this.bandJob && this.mapMode === 'political' && this.glSurface();
-    return (!!this.staticJob && near) || !!this.farJob || band;
+    // Stil arazisi pişiyorsa kare zinciri sürsün (klasikte style null, maliyet yok).
+    const gfx = !!this.gfx.style && this.glSurface() && this.gfxNeedsBake(this.renderWorld);
+    return (!!this.staticJob && near) || !!this.farJob || band || gfx;
   }
 
   /**
@@ -872,6 +1082,11 @@ export class Renderer {
       return true;
     }
     if (this.waterGL && !this.stepBandJob(this.mesh, 10)) return true;
+    // Görsel stilin arazisi de perde arkasında pişer (yalnız stil açıksa).
+    if (this.waterGL && !this.waterGL.lost && this.gfxNeedsBake(world)) {
+      this.stepGfxBake(world, 10);
+      return true;
+    }
     if (this.water.warmStep(this.ctx)) return true;
     if (!this.cache) {
       this.stepCacheBuild(world, 10);
@@ -919,6 +1134,8 @@ export class Renderer {
     this.seaFrame = null;
     this.dropStaticJob();
     this.farJob = null;
+    // Stilin hex verisi (gelişmişlik vb.) de sahiplik/kip ile değişebilir.
+    if (this.gfx) this.gfx.hexDirty = true;
   }
 
   /**
@@ -933,6 +1150,7 @@ export class Renderer {
       // Bölge (province, sahip) değişmiş olabilir; ağ ancak anahtarlar
       // gerçekten değiştiyse yeniden kurulur (bkz. borderMeshFor).
       this.meshCheck = true;
+      this.gfx.hexDirty = true;
     }
     // İŞGAL DOKUSU HER ZAMAN KİRLENİR — sahiplik bayrağına BAĞLANAMAZ.
     // occupy() bilerek `ownershipChanged: false` geçer (etiket yerleşimi
@@ -1711,7 +1929,9 @@ export class Renderer {
     if (this.showGrid && scale >= GRID_MIN_ZOOM && this.mapMode !== 'geography') {
       this.drawGrid(t, world, tiles, scale);
     }
+    if (this.gfx.style?.ink) this.gfxInk('under', t, world, rect, scale, false);
     this.drawMeshInk(t, world, rect, scale);
+    if (this.gfx.style?.ink) this.gfxInk('over', t, world, rect, scale, false);
 
     if (clip) {
       b.restore();
@@ -1884,6 +2104,7 @@ export class Renderer {
         this.waterGL.updateOverlay(this.surfaceOverlayData(world));
         this.perf?.add('r.surfaceoverlay', performance.now() - t);
       }
+      if (this.gfx.style) this.gfxFrame(world);
       this.waterGL.draw(cam, this.waterTime);
     }
     this.water.animatedThisFrame = false;
@@ -2143,6 +2364,7 @@ export class Renderer {
       if (hexMarks || armySelected || hovered < 0) this.drawHighlight(ctx, state.hovered, 'rgba(255,255,255,0.45)', 2);
       else if (hovered !== selectedProvince) this.drawProvinceHighlight(ctx, world, hovered, rect, true);
     }
+    if (this.gfx.style?.ink?.live) this.gfxInk('live', ctx, world, rect, cam.zoom, cam.zoom < CACHE_ZOOM);
     this.drawCities(ctx, world, rect);
     // Zafer puanı: ordu seçiliyken (hedef seçimi) ya da yakın zoomda.
     if (armySelected || this.camera.zoom >= 0.9) this.drawVictoryPoints(ctx, world, rect);
@@ -2260,7 +2482,9 @@ export class Renderer {
         if (j.bandAt < this.meshIndex(mesh).groupList.length) return true;
       }
       if (this.mapMode === 'cultures') this.drawCultureMix(j.ctx, world, null, j.scale, rect);
+      if (this.gfx.style?.ink) this.gfxInk('under', j.ctx, world, rect, j.scale, true);
       this.drawMeshInk(j.ctx, world, rect, j.scale, true, false);
+      if (this.gfx.style?.ink) this.gfxInk('over', j.ctx, world, rect, j.scale, true);
       const b = world.bounds;
       this.cache = {
         canvas: j.canvas, x: WRAP_X0, y: b.minY, w: P,

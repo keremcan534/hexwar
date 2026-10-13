@@ -160,4 +160,46 @@ section('URETIM DETERMINIZMI');
   } else console.log(`  Ayni tohum iki uretimde ayni parmak izi: ${a}.`);
 }
 
+// Görsel stillerin arazi temeli (render/terrainBake.js) sarmalda dikişsiz
+// olmalı: x sütunu 0 ile W−1 arasındaki adım, iç komşu adımlarından büyük
+// değil. Gürültü kafesi tam sayı periyotlu değilse dikişte basamak çıkar.
+section('ARAZI TEMELI DIKISI (terrainBake)');
+{
+  const { bakeTerrain } = await import('../../src/render/terrainBake.js');
+  const world = generateWorld(SEED, SIZES[0]);
+  const T = bakeTerrain(world);
+  const check = (name, w, h, at) => {
+    let seam = 0;
+    let inner = 0;
+    let innerN = 0;
+    for (let j = 0; j < h; j++) {
+      seam += Math.abs(at(0, j) - at(w - 1, j));
+      for (let i = 1; i < w; i += 7) {
+        inner += Math.abs(at(i, j) - at(i - 1, j));
+        innerN++;
+      }
+    }
+    seam /= h;
+    inner /= innerN;
+    const ratio = seam / Math.max(inner, 1e-9);
+    if (ratio > 2) finding('HIGH', 'arazi dikisi', `${name}: dikis adimi ~ ic adim`, `oran ${ratio.toFixed(2)}`);
+    else console.log(`  ${name}: dikis adimi ${seam.toFixed(5)} / ic adim ${inner.toFixed(5)} (oran ${ratio.toFixed(2)}).`);
+  };
+  const H = T.height;
+  check('yukseklik', H.w, H.h, (i, j) => H.data[(j * H.w + i) * 4]);
+  const B = T.biome;
+  const layer = B.w * B.h * 4;
+  for (const [k, name] of [[0, 'orman'], [6, 'kar'], [11, 'nem']]) {
+    check(`biyom ${name}`, B.w, B.h, (i, j) => B.data[(k >> 2) * layer + (j * B.w + i) * 4 + (k & 3)]);
+  }
+  let nan = 0;
+  for (const v of H.data) if (!Number.isFinite(v)) nan++;
+  if (nan) finding('CRITICAL', 'arazi NaN', 'yukseklik sonlu', `${nan} teksel`);
+  const again = bakeTerrain(world);
+  let diff = 0;
+  for (let i = 0; i < H.data.length; i++) if (H.data[i] !== again.height.data[i]) diff++;
+  if (diff) finding('CRITICAL', 'arazi determinizmi', 'ayni dunya ayni arazi', `${diff} teksel farkli`);
+  else console.log('  Iki pisirme bit bit ayni; NaN yok.');
+}
+
 process.exit(reportFindings() > 0 ? 1 : 0);
