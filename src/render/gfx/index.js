@@ -6,5 +6,6 @@
 import './debugStyles.js';
 import './vic3.js';
 import './atlas.js';
+import './threeD.js';
 
 export { registerGfxStyle, getGfxStyle, gfxStyleNames, readGfxParam } from './registry.js';

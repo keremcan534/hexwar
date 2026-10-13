@@ -58,6 +58,14 @@
 //     bakeOptions: { ... },   // terrainBake BAKE üzerine (sigmaB, ridgeAmp...). Farklı ayar
 //                             // ayrı pişirme demektir; arazi stiller arası tek yuvada tutulur.
 //     attach(renderer), detach(renderer),  // stil seçilince / bırakılınca
+//     renderWrap(renderer, world, state, inner),  // kareyi sarmalar: inner() oyunun
+//                             // karesidir. Eğik kamera (gfx/threeD.js) bununla
+//                             // mürekkebi ekran dışına çizer ve SurfaceGL'e
+//                             // waterGL.view3d (gfx/view3d.js) verir: yüzey o
+//                             // karede tam ekran üçgen yerine arazi mesh'i çizer
+//                             // (FRAG `#define GFX_MESH`; stil GLSL'i
+//                             // vec3 gfxMeshFinal(vec3 col, vec3 wpos, float land, vec3 Ldir)
+//                             // tanımlamalı, uZoom/uDetail piksel başınadır).
 //   })
 //
 // ===================================================================== GLSL

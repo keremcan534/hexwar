@@ -68,6 +68,48 @@ void main() {
   gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
 }`;
 
+/**
+ * EĞİK KAMERA MESH'İ (yalnız view3d'li stil, bkz. gfx/view3d.js). Izgara
+ * tampon değil gl_VertexID'den kurulur: kare başına dünyaya çivili yeni bir
+ * pencere çizilir ve hiçbir şey yüklenmez. Yükseklik arazi temelinden
+ * (birim 11), adıma uygun mipten; deniz düz (z = 0), kara kıyıda 0'dan
+ * yükselir — kıyı kararı fragment'te fillCells'tedir, mesh yalnız şekildir.
+ * Mürekkep örtüsü (gfx/inkOverlay.js) AYNI kodu kullanır: iki bağlamın
+ * yüzeyi piksel piksel üst üste binmeli.
+ */
+export const MESH_VERT_BODY = `
+uniform highp sampler2D uTerrH;
+uniform vec2 uFieldOrigin;
+uniform vec2 uFieldSpan;
+uniform float uHeightScale;
+uniform float uHeightCurve;   // 0 doğrusal; >0 ova basık, dağ yüksek: z = h(1 − c + c·h)
+uniform mat4 uViewProj;
+uniform vec2 uGridOrigin;
+uniform float uGridStep;
+uniform int uGridCols;
+uniform float uGridLod;
+out vec3 vWorld;
+void main() {
+  int q = gl_VertexID / 6;
+  int c = gl_VertexID - q * 6;
+  int qx = q % uGridCols;
+  int qy = q / uGridCols;
+  // İki üçgen: (0,0)(1,0)(0,1) ve (1,0)(1,1)(0,1).
+  int ox = (c == 1 || c == 3 || c == 4) ? 1 : 0;
+  int oy = (c == 2 || c == 4 || c == 5) ? 1 : 0;
+  vec2 w = uGridOrigin + vec2(float(qx + ox), float(qy + oy)) * uGridStep;
+  float h = max(textureLod(uTerrH, (w - uFieldOrigin) / uFieldSpan, uGridLod).r, 0.0);
+  float z = h * (1.0 - uHeightCurve + uHeightCurve * h) * uHeightScale;
+  vWorld = vec3(w, z);
+  gl_Position = uViewProj * vec4(w, z, 1.0);
+}`;
+const MESH_VERT = `#version 300 es
+precision highp float;
+precision highp int;
+${MESH_VERT_BODY}`;
+const MESH_UNIFORMS = ['uViewProj', 'uGridOrigin', 'uGridStep', 'uGridCols', 'uGridLod',
+  'uEye', 'uFocalPx', 'uHeightCurve'];
+
 const FRAG = `#version 300 es
 precision highp float;
 out vec4 fragColor;
@@ -130,6 +172,20 @@ uniform float uHexBlend;           // 1 = bolge dokusu yuklu, hex suzmesi acik
 uniform sampler2D uBand;           // R8, LINEAR: ulke sinirina uzaklik / BAND_REACH (alan izgarasi)
 uniform float uBandOn;             // 1 = siyasi kip: ulke kenar golgesi
 uniform int uGfx;                  // gorsel stil kimligi; klasikte 0 (bkz. gfx/registry.js)
+#ifdef GFX_MESH
+// EGIK KAMERA: dunya noktasi vertexten gelir, piksel ayak izi her pikselde
+// farklidir (yakin alt kenar buyuk, uzak ust kenar kucuk). LOD'u uZoom'dan
+// okuyan her islev (kiyi AA, gurultu sonumu, mip secimi, deniz ayrintisi)
+// piksel basina gercek olcegi gorsun diye ikisi burada yerel degiskene
+// baglanir; main her pikselde doldurur.
+in vec3 vWorld;
+uniform vec3 uEye;       // goz, dunya birimi
+uniform float uFocalPx;  // odak, GL pikseli
+float gZoom;
+float gDetail;
+#define uZoom gZoom
+#define uDetail gDetail
+#endif
 
 const float SQ3 = 1.7320508;
 
@@ -426,6 +482,40 @@ vec3 surfaceAt(vec2 world, vec2 cell, vec2 raw, vec2 fill, vec3 Ldir) {
   return landColor(world, cell, raw, fill, Ldir);
 }
 
+#ifdef GFX_MESH
+void main() {
+  vec2 world = vWorld.xy;
+  // Piksel ayak izi: göze uzaklık / odak, zemin düzlemine eğik bakışta
+  // derinlik ekseninde uzar (geometrik ortalama: kenar AA'sı ne bulanık ne testere).
+  vec3 toEye = uEye - vWorld;
+  float dist = length(toEye);
+  float cosInc = clamp(toEye.z / max(dist, 1e-3), 0.12, 1.0);
+  float pxw = dist / uFocalPx / sqrt(cosInc);
+  gZoom = 1.0 / max(pxw * uDpr, 1e-5);
+  gDetail = clamp((gZoom - 0.35) / 1.1, 0.0, 1.0);
+  vec2 cr = hexAt(world);
+  float col = cr.x;
+  float row = cr.y;
+  if (uWrap > 0.0) col = mod(col, uGrid.x);
+  vec3 Ldir = normalize(vec3(-0.55, -0.68, 0.48));
+  // Eğik bakış dünyanın kutup kenarının ötesini de görür (düz yolda kamera
+  // kilidi bunu saklar). Orası boş bırakılmaz: açık deniz tonu (kenar
+  // satırın denizi sürdürülünce kenara değen kıyının sığlığı sonsuza uzayan
+  // açık bir şerit oluyordu). Mürekkep örtüsü orayı sise boğar.
+  if (row < 0.0 || row > uGrid.y - 1.0) {
+    fragColor = vec4(uSeaMaterial > 0.5 ? uAbyss : texelFetch(uOwner, ivec2(col, clamp(row, 0.0, uGrid.y - 1.0)), 0).rgb, 1.0);
+    return;
+  }
+  vec2 cell = vec2(col, row);
+  float mixW;
+  vec4 fc = fillCells(world, cr, cell, mixW);
+  vec3 c = surfaceAt(world, cell, cr, fc.xy, Ldir);
+  if (mixW > 0.0) c = mix(c, surfaceAt(world, cell, cr, fc.zw, Ldir), mixW);
+  float land = texelFetch(uHex, ivec2(fc.xy), 0).r < 0.5 ? 1.0 : 0.0;
+  c = gfxMeshFinal(c, vWorld, land, Ldir);
+  fragColor = vec4(clamp(c, 0.0, 1.0), 1.0);
+}
+#else
 void main() {
   vec2 px = gl_FragCoord.xy / uDpr;
   // Canvas2D ile aynı eksen: y aşağı.
@@ -448,6 +538,7 @@ void main() {
   if (mixW > 0.0) c = mix(c, surfaceAt(world, cell, cr, fc.zw, Ldir), mixW);
   fragColor = vec4(c, 1.0);
 }
+#endif
 
 vec3 seaColor(vec2 world, vec2 cell, vec3 Ldir) {
   if (uSeaMaterial < 0.5) {
@@ -825,23 +916,58 @@ export class SurfaceGL {
     this.gfxDummy = null;
     this.gfxDummyArray = null;
     this.styleTex = new Map();
+    // Eğik kamera çizim tamponu (MSAA renk + derinlik); boyutla birlikte kurulur.
+    this.meshFbo = null;
+  }
+
+  /**
+   * Eğik kamera hedefi. Tuvalin kendi tamponunda derinlik ve kenar
+   * yumuşatma yok (düz yol ikisine de ihtiyaç duymaz, bedelini de ödemez);
+   * mesh ise dağın arkasını örtmek için derinlik, silueti testere olmasın
+   * diye çoklu örnek ister. Çizim buraya yapılır, sonra tuvale çözülür.
+   */
+  ensureMeshFbo(w, h) {
+    const gl = this.gl;
+    const F = this.meshFbo;
+    if (F && F.w === w && F.h === h) return F;
+    if (F) {
+      gl.deleteFramebuffer(F.fb);
+      gl.deleteRenderbuffer(F.color);
+      gl.deleteRenderbuffer(F.depth);
+    }
+    const samples = Math.min(4, gl.getParameter(gl.MAX_SAMPLES) || 0);
+    const fb = gl.createFramebuffer();
+    const color = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, color);
+    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, w, h);
+    const depth = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
+    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.DEPTH_COMPONENT24, w, h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, color);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindRenderbuffer(gl.RENDERBUFFER, null);
+    this.meshFbo = { fb, color, depth, w, h, samples };
+    return this.meshFbo;
   }
 
   /**
    * FRAG'ı stil için derler. Klasik (style = null) bugünkü kaynağın aynısıdır:
    * işaret satırı boşalır, `#ifdef GFX` blokları ön işlemcide düşer.
    */
-  buildProgram(style) {
+  buildProgram(style, mesh = false) {
     const gl = this.gl;
     let src = FRAG;
     if (style) {
-      src = src.replace('#version 300 es\n', '#version 300 es\n#define GFX 1\n')
+      const defs = mesh ? '#define GFX 1\n#define GFX_MESH 1\n' : '#define GFX 1\n';
+      src = src.replace('#version 300 es\n', `#version 300 es\n${defs}`)
         .replace('//@GFX_CHUNK', `${TERRAIN_GLSL}\n// ===== STİL: ${style.name} =====\n${style.glsl}\n`);
     } else {
       src = src.replace('//@GFX_CHUNK', '');
     }
     const prog = gl.createProgram();
-    gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, VERT));
+    gl.attachShader(prog, compile(gl, gl.VERTEX_SHADER, mesh ? MESH_VERT : VERT));
     gl.attachShader(prog, compile(gl, gl.FRAGMENT_SHADER, src));
     gl.linkProgram(prog);
     if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
@@ -851,11 +977,12 @@ export class SurfaceGL {
     }
     const u = {};
     const names = style
-      ? [...COMMON_UNIFORMS, ...GFX_UNIFORMS, ...Object.keys(style.textures ?? {})]
+      ? [...COMMON_UNIFORMS, ...GFX_UNIFORMS, ...Object.keys(style.textures ?? {}),
+        ...(mesh ? MESH_UNIFORMS : [])]
       : COMMON_UNIFORMS;
     for (const name of names) u[name] = gl.getUniformLocation(prog, name);
     // Stilin kendi uniformları ilk kullanımda aranır (adları uniforms() döndürür).
-    return { prog, u, extra: new Map(), style };
+    return { prog, u, extra: new Map(), style, mesh };
   }
 
   /**
@@ -864,12 +991,12 @@ export class SurfaceGL {
    * önizlemenin yanlış olduğu ancak görüntü farkından anlaşılıyordu. Günlük
    * hatalı satırları bağlamıyla basar, `gfxError`da da durur.
    */
-  programFor(style) {
-    const key = style.glsl;
+  programFor(style, mesh = false) {
+    const key = mesh ? `${style.glsl}\u0000mesh` : style.glsl;
     if (this.programs.has(key)) return this.programs.get(key);
     let p = null;
     try {
-      p = this.buildProgram(style);
+      p = this.buildProgram(style, mesh);
       this.gfxError = null;
     } catch (err) {
       this.gfxError = `${style.name}: ${err.message}`;
@@ -1272,17 +1399,22 @@ export class SurfaceGL {
     if (this.lost || !this.world || !this.debug.enabled) return false;
     const now = performance.now();
     const moved = this.lastCam?.x !== camera.x || this.lastCam?.y !== camera.y
-      || this.lastCam?.zoom !== camera.zoom;
+      || this.lastCam?.zoom !== camera.zoom || this.lastView !== this.view3d;
     if (!force && !moved && now - this.lastDraw < FRAME_MS) return false;
     this.lastDraw = now;
     this.lastCam = { x: camera.x, y: camera.y, zoom: camera.zoom };
+    this.lastView = this.view3d;
 
     const gl = this.gl;
     // Önceki karelerin GPU süresi (sonuç birkaç kare gecikmeli gelir).
     this.timer?.poll();
     // Stil hazır değilse (arazi pişiyor, derleme hatası) klasik çizilir:
     // yarım veriyle boş/siyah kara göstermektense eski görünüm.
-    const P = this.gfxReady() ? this.programFor(this.gfx) : this.programs.get('classic');
+    const ready = this.gfxReady();
+    // Eğik kamera (view3d, bkz. gfx/view3d.js) yalnız arazi hazırken: mesh'in
+    // şekli yükseklik dokusundan gelir. Mesh programı derlenemezse düz yol.
+    const meshP = ready && this.view3d ? this.programFor(this.gfx, true) : null;
+    const P = meshP ?? (ready ? this.programFor(this.gfx) : this.programs.get('classic'));
     this.prog = P.prog;
     this.u = P.u;
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
@@ -1372,9 +1504,44 @@ export class SurfaceGL {
       this.bindGfx(P, { camera, time, world: this.world, seaMaterial: this.seaMaterial });
     }
 
+    if (meshP) return this.drawMesh(P, this.view3d);
     this.timer?.begin();
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     this.timer?.end();
+    return true;
+  }
+
+  /** Eğik kamera: dünyaya çivili ızgara, MSAA + derinlik tamponuna, sonra tuvale. */
+  drawMesh(P, v) {
+    const gl = this.gl;
+    const u = P.u;
+    const G = v.grid;
+    gl.uniformMatrix4fv(u.uViewProj, false, v.viewProj);
+    gl.uniform2f(u.uGridOrigin, G.x0, G.y0);
+    gl.uniform1f(u.uGridStep, G.step);
+    gl.uniform1i(u.uGridCols, G.cols);
+    gl.uniform1f(u.uGridLod, G.lod);
+    gl.uniform3f(u.uEye, v.eye[0], v.eye[1], v.eye[2]);
+    gl.uniform1f(u.uFocalPx, v.f * this.dpr);
+    gl.uniform1f(u.uHeightCurve, v.heightCurve ?? 0);
+    const w = this.canvas.width;
+    const h = this.canvas.height;
+    const F = this.ensureMeshFbo(w, h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, F.fb);
+    gl.viewport(0, 0, w, h);
+    gl.clearColor(0, 0, 0, 0);
+    gl.clearDepth(1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    gl.enable(gl.DEPTH_TEST);
+    gl.depthFunc(gl.LEQUAL);
+    this.timer?.begin();
+    gl.drawArrays(gl.TRIANGLES, 0, G.cols * G.rows * 6);
+    gl.disable(gl.DEPTH_TEST);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, F.fb);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
+    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    this.timer?.end();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     return true;
   }
 }
