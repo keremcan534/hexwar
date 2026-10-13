@@ -122,16 +122,19 @@ vec3 vicFieldColor(float a) {
   c = mix(c, vec3(0.81, 0.71, 0.43), smoothstep(0.64, 0.78, a));
   return mix(VIC_PAL[VK_FIELDS], c, mix(0.30, 1.0, smoothstep(0.9, 2.2, uZoom)));
 }
-/** Kasaba: sokak toprağı, avlu bahçesi, kiremit ve arduvaz çatı (kısık tonlar). */
-vec3 vicUrbanColor(float a, float h) {
-  vec3 ground = mix(vec3(0.36, 0.40, 0.27), vec3(0.57, 0.54, 0.47), smoothstep(0.38, 0.46, a));
+/**
+ * Kasaba: zemin çevrenin rengini alır (çölde kum avlu, ovada bahçe; avlu
+ * koyu, sokak açık), çatı kiremit ya da arduvaz (kısık tonlar).
+ */
+vec3 vicUrbanColor(float a, float h, vec3 surround) {
+  vec3 ground = surround * mix(0.82, 1.10, smoothstep(0.38, 0.46, a));
   vec3 roof = mix(vec3(0.48, 0.46, 0.43), vec3(0.62, 0.45, 0.34), smoothstep(0.48, 0.60, a));
   return mix(ground, roof * (0.86 + a * 0.30), smoothstep(0.08, 0.30, h));
 }
 
-vec3 vicLayerColor(int k, VicS s, float texAmp) {
+vec3 vicLayerColor(int k, VicS s, float texAmp, vec3 surround) {
   if (k == VK_FIELDS) return vicFieldColor(s.a);
-  if (k == VK_URBAN) return vicUrbanColor(s.a, s.h);
+  if (k == VK_URBAN) return vicUrbanColor(s.a, s.h, surround);
   float r = s.a / vicMean(k);
   return VIC_PAL[k] * (1.0 + (r - 1.0) * texAmp);
 }
@@ -178,7 +181,9 @@ vec4 vicDev(GfxLand L, out float town) {
     if (v.b > 0.004) {
       float R = (uVicFarm.z + uVicFarm.w * v.b) * stepX;
       float dd = d / R * (1.0 + wob);
-      town = max(town, 1.0 - smoothstep(0.55, 1.0, dd));
+      // Çekirdek + seyrek dış mahalle: dış halkada pay düşük, yükseklikle
+      // karışımda yalnız evler (yüksek) kazanır, sokak/avlu çayıra döner.
+      town = max(town, max(1.0 - smoothstep(0.55, 1.0, dd), 0.42 * (1.0 - smoothstep(1.0, 1.8, dd))));
     }
   }
   return ws > 1e-4 ? acc / ws : vec4(0.0);
@@ -194,7 +199,7 @@ vec3 gfxLand(GfxLand L) {
   float slope = length(g) * hexW;           // yükseklik birimi / hex
   // Siyasi kipte oluk kısık (ülke rengi üstünde çizik gibi baskın kalıyordu)
   // ve zoom solgununa bağlı; arazi kipinde orta zoomda da açık.
-  float texT = uVicMode > 0.5 && uVicMode < 1.5 ? smoothstep(0.28, 0.95, uZoom) : emerge;
+  float texT = uVicMode > 0.5 && uVicMode < 1.5 ? smoothstep(0.25, 0.80, uZoom) : emerge;
   g += gfxErosionGrad(L.world, g, T.b, uVicDetail.w * (uVicMode < 0.5 ? emerge * 0.65 : texT));
   // Oluklu eğim: kar oluk duvarından dökülür, kaya orada çıkar (yakında
   // sırt-vadi dalı okunur; uzakta oluk sönük, taban eğimine eşit).
@@ -248,6 +253,12 @@ vec3 gfxLand(GfxLand L) {
   w[VK_FIELDS] = fieldW;
   // Kasaba yalnız yakında: uzakta province merkezleri benek benek okunuyordu.
   town *= (1.0 - snowCov) * flatG * smoothstep(1.2, 1.9, uZoom);
+  // Kasabanın zemini için çevre rengi, kasaba payı binmeden ÖNCE: merkezde
+  // diğer ağırlıklar sıfıra iner ve sonradan çıkarmak sıfıra bölüyordu (siyah iz).
+  vec3 surround = vec3(0.0);
+  float sw = 0.0;
+  for (int k = 0; k < 11; k++) { surround += VIC_PAL[k] * w[k]; sw += w[k]; }
+  surround /= max(sw, 1e-3);
   for (int k = 0; k < 11; k++) w[k] *= 1.0 - town;
   w[VK_URBAN] = town;
 
@@ -316,11 +327,19 @@ vec3 gfxLand(GfxLand L) {
   if (uVicMode > 0.5) {
     // ARAZİ / COĞRAFYA: siyasetsiz alt katman, iklim renkleriyle.
     float kT = mix(uVicLightT.y, uVicLightT.x, texT);
-    float hT = gfxHillshade(N, L.Ldir, kT, mix(0.86, uVicLightT.z, texT), mix(1.16, uVicLightT.w, texT));
-    vec3 c1 = vicLayerColor(i1, s1, uVicDetail.y);
-    vec3 c2 = vicLayerColor(i2, s2, uVicDetail.y);
+    // Kar zaten beyaza yakın: ışık tarafı tavana çarpıp plastik parlıyordu.
+    // Karda üst sınır alçak, gölge tarafı derin (beyaz kalır, biçimi gölge anlatır).
+    float hiT = mix(mix(1.16, uVicLightT.w, texT), 1.06, snowCov);
+    float loT = mix(mix(0.86, uVicLightT.z, texT), 0.66, snowCov);
+    float hT = gfxHillshade(N, L.Ldir, kT, loT, hiT);
+    vec3 c1 = vicLayerColor(i1, s1, uVicDetail.y, surround);
+    vec3 c2 = vicLayerColor(i2, s2, uVicDetail.y, surround);
     vec3 sub = mix(palSmooth, mix(c1, c2, t), texT);
-    vec3 col = sub * mix(1.0, hT, L.damp);
+    // Sırt/vadi tonu: pişmiş ayrıntı yüksekliği (h − taban) ortalaması ~0 bir
+    // alan; sırt bir tık açık, vadi bir tık koyu. Çarpan değil sınırlı toplam
+    // bir pay: orta zoomda kabartma yumuşak hamur gibi okunmasın.
+    float cav = clamp(ridge * 0.9, -0.07, 0.07) * smoothstep(0.05, 0.5, T.b);
+    vec3 col = sub * mix(1.0, hT * (1.0 + cav), L.damp);
     // Karın gölgesi soğuk: düz gri gölge karı plastik gösteriyordu.
     float shadeAmt = clamp((1.0 - hT) * 2.5, 0.0, 1.0);
     return mix(col, col * vec3(0.90, 0.96, 1.08), snowCov * shadeAmt);
@@ -352,7 +371,7 @@ const TUNE = {
   tilesFine: 40,
   tilesCoarse: 12,
   // Siyasi ışık: yakın kazanç, uzak kazanç, alt/üst sınır (Kerem: 0.88..1.28).
-  reliefNear: 0.9,
+  reliefNear: 0.75,
   reliefFar: 0.45,
   lightLo: 0.82,
   lightHi: 1.20,
@@ -362,13 +381,13 @@ const TUNE = {
   lightTLo: 0.72,
   lightTHi: 1.30,
   // Doku payları ve doku eğimi, yakın zoom oluk genliği.
-  texPol: 0.48,
+  texPol: 0.60,
   texTerr: 0.85,
   bump: 3.0,
   erosion: 0.022,
   // Siyasi tül: biyom parlaklık payı, toplam çarpan sınırları, karın açılması.
   biomeLum: 0.22,
-  modLo: 0.80,
+  modLo: 0.82,
   modHi: 1.30,
   snowLift: 0.10,
   // Kar eşiği/yumuşaklığı, sırt payı, eğim payı.
@@ -473,7 +492,7 @@ function vicHexData(world) {
   return out;
 }
 
-registerGfxStyle({
+const VIC3 = registerGfxStyle({
   name: 'vic3',
   id: 3,
   glsl: GLSL,
@@ -484,8 +503,12 @@ registerGfxStyle({
       // TEXTURE_2D_ARRAY (WebGL2 sabiti; gl nesnesi burada yok).
       target: 0x8C1A,
       create(gl) {
+        // Süre ölçülür (getGfxStyle('vic3').texBuildMs): üretim stil seçilince
+        // bir kez, ortalama okuması GPU'yu bekler; takılma bütçesi görünür olsun.
+        const t0 = performance.now();
         const r = buildVicTextures(gl, 14);
         means = r.means;
+        VIC3.texBuildMs = +(performance.now() - t0).toFixed(1);
         return r.tex;
       },
     },

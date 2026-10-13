@@ -34,7 +34,6 @@ const FS = `#version 300 es
 precision highp float;
 precision highp int;
 out vec4 oCol;
-uniform int uLayer;
 uniform float uSize;
 
 uint hashU(uvec3 v) {
@@ -134,6 +133,7 @@ vec2 crowns(vec2 uv, int N, uint s, float cover, float r0, float r1, float lobes
 // Gölge katmana özel yazılmaz: main() her katmanda yükseklikten güneşe doğru
 // yürüyerek düşen gölgeyi albedoya işler (ağaç, çit, ev, kumul aynı kuralla).
 
+#if LAYER == 0
 void lForest(vec2 uv, out float h, out float a) {
   float clump = fbm(uv, ivec2(5), 3, 11u);
   vec2 big = crowns(uv, 44, 21u, 0.78 + clump * 0.60, 0.52, 0.86, 1.0);
@@ -148,7 +148,9 @@ void lForest(vec2 uv, out float h, out float a) {
   float ground = 0.22 + fbm(uv, ivec2(40), 2, 47u) * 0.06;
   a = mix(ground, tone, crown);
 }
+#endif
 
+#if LAYER == 1
 void lJungle(vec2 uv, out float h, out float a) {
   float clump = fbm(uv, ivec2(4), 3, 13u);
   vec2 big = crowns(uv, 32, 23u, 0.95 + clump * 0.3, 0.62, 1.0, 1.0);
@@ -161,7 +163,9 @@ void lJungle(vec2 uv, out float h, out float a) {
   float crown = smoothstep(0.0, 0.16, hb);
   a = mix(0.20, 0.60 + (id - 0.5) * 0.36 + fbm(uv, ivec2(14), 3, 43u) * 0.08 + leaf * 0.05, crown);
 }
+#endif
 
+#if LAYER == 2
 void lGrass(vec2 uv, out float h, out float a) {
   float base = fbm(uv, ivec2(7), 5, 51u);
   float patchy = fbm(uv, ivec2(3), 3, 55u);
@@ -173,7 +177,9 @@ void lGrass(vec2 uv, out float h, out float a) {
   // okunuyordu); bitkiyi boyu ve düşen gölgesi anlatır.
   a = mix(a, 0.47 + (shrub.y - 0.5) * 0.10, smoothstep(0.0, 0.25, shrub.x));
 }
+#endif
 
+#if LAYER == 3
 void lSteppe(vec2 uv, out float h, out float a) {
   float base = fbm(uv, ivec2(6), 5, 61u);
   float streak = fbm(uv, ivec2(128, 20), 3, 63u);
@@ -183,11 +189,13 @@ void lSteppe(vec2 uv, out float h, out float a) {
   a = 0.48 + base * 0.12 + streak * 0.04 + bare * 0.14;
   a *= 1.0 - smoothstep(0.0, 0.3, tuft.x) * 0.06;
 }
+#endif
 
 float duneProfile(float s, float crest) {
   return s < crest ? smoothstep(0.0, crest, s) : 1.0 - smoothstep(crest, 1.0, s);
 }
 
+#if LAYER == 4
 void lDesert(vec2 uv, out float h, out float a) {
   float warp = fbm(uv, ivec2(3), 3, 71u);
   // Tam sayı katsayılar: dalga cephesi döşemeye tam sayı kez sığar.
@@ -197,8 +205,10 @@ void lDesert(vec2 uv, out float h, out float a) {
   h = d1 * 0.62 + d2 * 0.26 + rip * 0.04 + fbm(uv, ivec2(12), 3, 75u) * 0.05;
   a = 0.50 + (d1 - 0.5) * 0.08 + fbm(uv, ivec2(9), 4, 77u) * 0.12;
 }
+#endif
 
 /** Tundra: liken lekeleri, don tümsekleri, sığ göletler (çokgen çatlak yok: ızgara gibi okunuyordu). */
+#if LAYER == 5
 void lTundra(vec2 uv, out float h, out float a) {
   float lich = fbm(uv, ivec2(14), 4, 83u);
   float base = fbm(uv, ivec2(6), 4, 85u);
@@ -209,15 +219,19 @@ void lTundra(vec2 uv, out float h, out float a) {
   a = mix(a, 0.44 + (shrub.y - 0.5) * 0.08, smoothstep(0.0, 0.25, shrub.x));
   a = mix(a, 0.30, pond);
 }
+#endif
 
+#if LAYER == 6
 void lSnow(vec2 uv, out float h, out float a) {
   float base = fbm(uv, ivec2(4), 5, 91u);
   float sast = 1.0 - abs(fbm(uv, ivec2(40, 10), 3, 93u));
   h = 0.5 + base * 0.35 + sast * 0.08;
   a = 0.50 + fbm(uv, ivec2(10), 3, 95u) * 0.06;
 }
+#endif
 
 /** Kaya: sırtlı gürültü + testere dişi katman + kıvrık çatlak çizgileri + moloz. */
+#if LAYER == 7
 void lRock(vec2 uv, out float h, out float a) {
   float r = 1.0 - abs(fbm(uv, ivec2(6), 5, 101u));
   float warp = fbm(uv, ivec2(3), 3, 103u);
@@ -231,7 +245,9 @@ void lRock(vec2 uv, out float h, out float a) {
   a = 0.50 + sin(3.14159265 * ph) * 0.08 + (peb.y - 0.5) * 0.10 * step(0.01, peb.x)
     + fbm(uv, ivec2(24), 3, 109u) * 0.10 - crack * 0.14;
 }
+#endif
 
+#if LAYER == 8
 void lMarsh(vec2 uv, out float h, out float a) {
   float pool = smoothstep(0.10, 0.17, fbm(uv, ivec2(7), 5, 111u));
   float reed = fbm(uv, ivec2(160, 48), 2, 113u);
@@ -239,19 +255,23 @@ void lMarsh(vec2 uv, out float h, out float a) {
   h = (1.0 - pool) * (0.30 + reed * 0.10 + clump.x * 0.35);
   a = mix(0.54 + reed * 0.16 - clump.x * 0.08, 0.24, pool);
 }
+#endif
 
+#if LAYER == 9
 void lBeach(vec2 uv, out float h, out float a) {
   float w = fbm(uv, ivec2(4), 3, 121u);
   float rip = sin(6.2831853 * (uv.x * 48.0 + uv.y * 20.0 + w * 6.0)) * 0.5 + 0.5;
   h = 0.40 + rip * 0.05 + fbm(uv, ivec2(12), 4, 123u) * 0.12;
   a = 0.50 + fbm(uv, ivec2(20), 4, 125u) * 0.10 + gnoise(uv * 256.0, ivec2(256), 127u) * 0.05;
 }
+#endif
 
 /**
  * TARLA: blok başına 2-5 şerit (Avrupa tarla deseni), bazı şeritler enine
  * bölünür. Parsel başına ürün tonu; sürüm izi şerit boyunca. Çit yalnız bazı
  * BLOK kenarlarında ve tek tek ağaçtan: çizgi ağı gibi değil, ağaç sırası gibi.
  */
+#if LAYER == 10
 void lFields(vec2 uv, out float h, out float a) {
   vec2 q = uv + vec2(fbm(uv, ivec2(4), 3, 131u), fbm(uv, ivec2(4), 3, 133u)) * 0.018;
   const int N = 7;
@@ -286,12 +306,14 @@ void lFields(vec2 uv, out float h, out float a) {
   a *= 1.0 - seam * 0.12;
   a = mix(a, 0.30, hedgeT);
 }
+#endif
 
 /**
  * KASABA: sokak ızgarası; blok kenarında ev sırası, ortası avlu (koyu bahçe).
  * Ev çatısının sırtı sokağa paralel. Yerleşim izi shader'da province
  * merkezine bağlanır; doku yalnız malzemedir.
  */
+#if LAYER == 11
 void lUrban(vec2 uv, out float h, out float a) {
   const int N = 26;
   // Bükülmüş ızgara: sokaklar kıvrılır, kasaba piksel ızgarası gibi durmaz.
@@ -322,29 +344,45 @@ void lUrban(vec2 uv, out float h, out float a) {
   a = mix(a, 0.34 + rh.w * 0.06, yard);
   a = mix(a, 0.42 + rh.z * 0.30, house);
 }
-
-void layerAt(int L, vec2 uv, out float h, out float a) {
-  if (L == 0) lForest(uv, h, a);
-  else if (L == 1) lJungle(uv, h, a);
-  else if (L == 2) lGrass(uv, h, a);
-  else if (L == 3) lSteppe(uv, h, a);
-  else if (L == 4) lDesert(uv, h, a);
-  else if (L == 5) lTundra(uv, h, a);
-  else if (L == 6) lSnow(uv, h, a);
-  else if (L == 7) lRock(uv, h, a);
-  else if (L == 8) lMarsh(uv, h, a);
-  else if (L == 9) lBeach(uv, h, a);
-  else if (L == 10) lFields(uv, h, a);
-  else lUrban(uv, h, a);
-}
+#endif
 
 void main() {
-  vec2 uv = (gl_FragCoord.xy) / uSize;
-  float t = 1.0 / uSize;
-  float h, a, hx, hy, ax, ay;
-  layerAt(uLayer, uv, h, a);
-  layerAt(uLayer, uv + vec2(t, 0.0), hx, ax);
-  layerAt(uLayer, uv + vec2(0.0, t), hy, ay);
+  vec2 uv = gl_FragCoord.xy / uSize;
+  float h, a;
+  LAYER_FN(uv, h, a);
+  oCol = vec4(clamp(a, 0.0, 1.0), clamp(h, 0.0, 1.0), 0.0, 1.0);
+}`;
+
+/**
+ * İKİNCİ GEÇİŞ: eğim ve düşen gölge, birinci geçişin (albedo, yükseklik)
+ * çıktısından. Ayrı geçiş olmasının nedeni derleme süresi: katman işlevini
+ * eğim ve gölge için altı kez çağıran tek program ANGLE/D3D derleyicisinde
+ * 45 saniye sürdü (ölçüldü); katman başına tek çağrılı küçük programlar +
+ * bu basit geçiş toplamda bunun küçük bir kesridir.
+ */
+const FS_POST = `#version 300 es
+precision highp float;
+precision highp int;
+out vec4 oCol;
+uniform highp sampler2D uSrc;
+uniform int uN;
+ivec2 wr(ivec2 q) { return (q % uN + uN) % uN; }
+float hAt(vec2 q) {
+  vec2 f = floor(q);
+  vec2 t = q - f;
+  ivec2 i = ivec2(f);
+  float a = texelFetch(uSrc, wr(i), 0).g;
+  float b = texelFetch(uSrc, wr(i + ivec2(1, 0)), 0).g;
+  float c = texelFetch(uSrc, wr(i + ivec2(0, 1)), 0).g;
+  float d = texelFetch(uSrc, wr(i + ivec2(1, 1)), 0).g;
+  return mix(mix(a, b, t.x), mix(c, d, t.x), t.y);
+}
+void main() {
+  ivec2 p = ivec2(gl_FragCoord.xy);
+  vec4 c = texelFetch(uSrc, p, 0);
+  float h = c.g;
+  float hx = texelFetch(uSrc, wr(p + ivec2(1, 0)), 0).g;
+  float hy = texelFetch(uSrc, wr(p + ivec2(0, 1)), 0).g;
   // DÜŞEN GÖLGE: güneş sabit (Ldir, denizle ortak), yani gölge albedoya
   // pişirilebilir. Işığa doğru üç adım; yükseklik birimi ~6 teksel boy,
   // güneş açısı tan ≈ 0.55. Mip'te ortalamaya karışır, shader oranı ortalamayla
@@ -353,33 +391,57 @@ void main() {
   float occ = 0.0;
   for (int i = 1; i <= 3; i++) {
     float d = float(i) * 2.0;
-    float hl, al;
-    layerAt(uLayer, uv + Ld * d * t, hl, al);
-    occ = max(occ, (hl - h) * 6.0 - d * 0.55);
+    occ = max(occ, (hAt(vec2(p) + Ld * d) - h) * 6.0 - d * 0.55);
   }
-  a *= 1.0 - 0.42 * smoothstep(0.0, 1.5, occ);
+  float a = c.r * (1.0 - 0.42 * smoothstep(0.0, 1.5, occ));
   vec2 g = vec2(hx - h, hy - h) * ${GRAD_SCALE.toFixed(1)};
-  oCol = vec4(clamp(a, 0.0, 1.0), clamp(h, 0.0, 1.0), clamp(0.5 + g, 0.0, 1.0));
+  oCol = vec4(clamp(a, 0.0, 1.0), h, clamp(0.5 + g, 0.0, 1.0));
 }`;
 
 function compile(gl, type, src) {
   const sh = gl.createShader(type);
   gl.shaderSource(sh, src);
   gl.compileShader(sh);
-  if (!gl.getShaderParameter(sh, gl.COMPILE_STATUS)) {
-    const log = gl.getShaderInfoLog(sh);
-    gl.deleteShader(sh);
-    throw new Error('vic3 doku üreteci: ' + log);
-  }
   return sh;
 }
+
+/**
+ * Programlar önce HEPSİ başlatılır, durum sonra sorulur: sürücü (ANGLE)
+ * derlemeyi iş parçacıklarına dağıtabilsin. Her programın durumunu hemen
+ * sormak derlemeleri sıraya diziyordu.
+ */
+function linkAll(gl, vs, sources) {
+  const out = sources.map((src) => {
+    const prog = gl.createProgram();
+    const fs = compile(gl, gl.FRAGMENT_SHADER, src);
+    gl.attachShader(prog, vs);
+    gl.attachShader(prog, fs);
+    gl.linkProgram(prog);
+    return { prog, fs };
+  });
+  let err = null;
+  for (const { prog, fs } of out) {
+    if (!err && !gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+      err = new Error('vic3 doku üreteci: ' + (gl.getShaderInfoLog(fs) || gl.getProgramInfoLog(prog)));
+    }
+    gl.deleteShader(fs);
+  }
+  if (err) {
+    for (const { prog } of out) gl.deleteProgram(prog);
+    throw err;
+  }
+  return out.map((o) => o.prog);
+}
+
+const LAYER_FN = ['lForest', 'lJungle', 'lGrass', 'lSteppe', 'lDesert', 'lTundra', 'lSnow',
+  'lRock', 'lMarsh', 'lBeach', 'lFields', 'lUrban'];
 
 /**
  * Dizi dokuyu üretir. Çağıran SurfaceGL'in çizim akışının ortasındadır
  * (bindGfx içinden): program, VAO, çerçeve tamponu, görüntü alanı ve etkin
  * doku birimi eski hâline döndürülür, yoksa ana çizimin uniformları bu
  * programa yazılırdı.
- * @returns {{tex: WebGLTexture, means: Float32Array}} means: katman başına albedo ortalaması
+ * @returns {{tex: WebGLTexture, means: Float32Array, compileMs: number}} means: katman başına albedo ortalaması
  */
 export function buildVicTextures(gl, unit) {
   const prev = {
@@ -388,45 +450,63 @@ export function buildVicTextures(gl, unit) {
     fb: gl.getParameter(gl.FRAMEBUFFER_BINDING),
     vp: gl.getParameter(gl.VIEWPORT),
     active: gl.getParameter(gl.ACTIVE_TEXTURE),
+    tex2d: null,
   };
   const size = VIC_TEX_SIZE;
   const n = VIC_LAYERS.length;
   const levels = Math.log2(size) + 1;
-  const prog = gl.createProgram();
+  const t0 = performance.now();
   const vs = compile(gl, gl.VERTEX_SHADER, VS);
-  const fs = compile(gl, gl.FRAGMENT_SHADER, FS);
-  gl.attachShader(prog, vs);
-  gl.attachShader(prog, fs);
-  gl.linkProgram(prog);
-  gl.deleteShader(vs);
-  gl.deleteShader(fs);
-  if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
-    const log = gl.getProgramInfoLog(prog);
-    gl.deleteProgram(prog);
-    throw new Error('vic3 doku üreteci bağlanamadı: ' + log);
-  }
+  const progs = [];
+  let post = null;
   const means = new Float32Array(n).fill(0.5);
   const tex = gl.createTexture();
+  const tmp = gl.createTexture();
   const fb = gl.createFramebuffer();
   const vao = gl.createVertexArray();
+  let compileMs = 0;
+  gl.activeTexture(gl.TEXTURE0 + unit);
+  prev.tex2d = gl.getParameter(gl.TEXTURE_BINDING_2D);
   try {
-    gl.activeTexture(gl.TEXTURE0 + unit);
+    const sources = LAYER_FN.map((fn, k) =>
+      FS.replace('#version 300 es\n', `#version 300 es\n#define LAYER ${k}\n#define LAYER_FN ${fn}\n`));
+    sources.push(FS_POST);
+    progs.push(...linkAll(gl, vs, sources));
+    post = progs.pop();
+    compileMs = performance.now() - t0;
+    // Ara doku: yükseklik 8 bitte eğime basamak verirdi (kumul yamacı teksel
+    // başına ~2 seviye); yarım kayan noktaya çizilebiliyorsa o kullanılır.
+    const half = !!gl.getExtension('EXT_color_buffer_float');
+    gl.bindTexture(gl.TEXTURE_2D, tmp);
+    gl.texStorage2D(gl.TEXTURE_2D, 1, half ? gl.RGBA16F : gl.RGBA8, size, size);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
     gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex);
     gl.texStorage3D(gl.TEXTURE_2D_ARRAY, levels, gl.RGBA8, size, size, n);
     gl.bindFramebuffer(gl.FRAMEBUFFER, fb);
-    gl.useProgram(prog);
     gl.bindVertexArray(vao);
     gl.viewport(0, 0, size, size);
-    const uLayer = gl.getUniformLocation(prog, 'uLayer');
-    gl.uniform1f(gl.getUniformLocation(prog, 'uSize'), size);
     for (let k = 0; k < n; k++) {
+      // Ara dokuya yazarken birimden çözülür: okuma/yazma döngüsü olmasın.
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tmp, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+        throw new Error('vic3 doku üreteci: ara çerçeve tamponu eksik');
+      }
+      gl.useProgram(progs[k]);
+      gl.uniform1f(gl.getUniformLocation(progs[k], 'uSize'), size);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.framebufferTextureLayer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, tex, 0, k);
       if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
         throw new Error('vic3 doku üreteci: çerçeve tamponu eksik');
       }
-      gl.uniform1i(uLayer, k);
+      gl.useProgram(post);
+      gl.bindTexture(gl.TEXTURE_2D, tmp);
+      gl.uniform1i(gl.getUniformLocation(post, 'uSrc'), unit);
+      gl.uniform1i(gl.getUniformLocation(post, 'uN'), size);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY, tex);
     gl.generateMipmap(gl.TEXTURE_2D_ARRAY);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
     gl.texParameteri(gl.TEXTURE_2D_ARRAY, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -450,9 +530,14 @@ export function buildVicTextures(gl, unit) {
     gl.bindVertexArray(prev.vao);
     gl.deleteVertexArray(vao);
     gl.useProgram(prev.prog);
-    gl.deleteProgram(prog);
+    for (const pr of progs) gl.deleteProgram(pr);
+    if (post) gl.deleteProgram(post);
+    gl.deleteShader(vs);
+    gl.deleteTexture(tmp);
+    gl.activeTexture(gl.TEXTURE0 + unit);
+    gl.bindTexture(gl.TEXTURE_2D, prev.tex2d);
     gl.viewport(prev.vp[0], prev.vp[1], prev.vp[2], prev.vp[3]);
     gl.activeTexture(prev.active);
   }
-  return { tex, means };
+  return { tex, means, compileMs };
 }
