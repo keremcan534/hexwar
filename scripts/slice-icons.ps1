@@ -33,6 +33,13 @@
 # ADIYLA SECILEN ikonlara uygulanir (-Holes): once -HoleDebug ile kosulur,
 # adaylar <ad>.holes.png'de macenta gorunur, karar goze sorulur.
 #
+# ZEMIN YANSIMASI (spill): renkli zeminde model, yasaklansa da zemin rengini
+# nesnenin arka kenarina isik olarak yansitabiliyor (at yelesinde pembe kenar).
+# Zemine -Despill piksel yakin bolgede zemin yonundeki fazla geri alinir: mor
+# icin kirmizi ile mavinin yesili asan ORTAK payi (min(R,B) - G) ikisinden de
+# dusulur. Kizil, altin, ten, lacivert bu formulde degismez; yalniz mor/pembe
+# kayar (o renkler zaten brief'te yasak).
+#
 # KENAR HALESI: beyaz zeminle karisan antialias bandi opak kalirsa koyu diskin
 # ustunde nesnenin cevresinde ince acik cizgi kalir. Zemine bitisik -Fringe
 # piksellik bant beyazdan arindirilir (color-to-alpha): pikselin beyazla
@@ -82,6 +89,9 @@ param(
   # Zemine bitisik arindirilacak bant genisligi (piksel). 0 = kapali.
   # Verilmezse beyazda 1, renkli zeminde 2.
   [int]$Fringe = -1,
+  # Zemin yansimasi temizligi yaricapi (sheet pikseli). Verilmezse beyazda 0,
+  # renkli zeminde 14.
+  [int]$Despill = -1,
   # Her ikonun delik adaylarini <ad>.holes.png'de macenta boyar.
   [switch]$HoleDebug,
   [string[]]$Names = @(),
@@ -296,7 +306,7 @@ public class IconSheet {
 
   /// Ikonu kirp (yalniz kendi bilesenleri), delik ve haleyi temizle, kareye
   /// oturt, Size'a olcekle.
-  public void Save(IconGroup g, string path, int size, int pad, int holeArea, bool cleanHoles, int fringe, string debugPath) {
+  public void Save(IconGroup g, string path, int size, int pad, int holeArea, bool cleanHoles, int fringe, int despill, string debugPath) {
     Rectangle box = g.Box;
     int w = box.Width, h = box.Height;
     bool[] keep = new bool[w * h];
@@ -316,6 +326,7 @@ public class IconSheet {
       buf[i * 4] = px[src]; buf[i * 4 + 1] = px[src + 1]; buf[i * 4 + 2] = px[src + 2];
       buf[i * 4 + 3] = 255;
     }
+    if (despill > 0 && !WhiteKey) Despill(buf, keep, w, h, despill, kr, kg, kb);
     if (fringe > 0) Defringe(buf, keep, w, h, fringe, kr, kg, kb);
     // Arindirmadan kalan neredeyse saydam kirinti koyu diskte leke olur.
     for (int i = 0; i < w * h; i++)
@@ -395,6 +406,86 @@ public class IconSheet {
       }
       if (region.Count >= minArea) foreach (int r in region) hole[r] = true;
     }
+  }
+
+  // Zemin yansimasi: zemine 'r' piksel yakin tutulan pikselde zemin renginin
+  // YUKSEK kanallari (mor: R,B) DUSUK kanallari (mor: G) ortakca asiyorsa
+  // piksel yansima almistir. Duz cikarma (min(R,B) - G) sicak renkte yansimayi
+  // eksik olcer, kenarda koyu kizil iz kalir. Bu yuzden yuksek kanallar, hemen
+  // icerideki temiz bolgenin (yansimasiz, zeminden r'den uzak) DUSUK kanala
+  // oranina kirpilir: yansima dusuk kanali degistirmez, o capa olur. Ici
+  // olmayan ince yapida referans yoktur; orada duz cikarma uygulanir.
+  // Morumsu olmayan piksel (gercek sicak/soguk/notr renk) hic degismez.
+  // Kirpma olculen yansimanin iki katiyla sinirli: notre yakin beyaz pikselin
+  // (at alnindaki akitma) turuncu referansa kirpilip sariya donmesin.
+  static void Despill(byte[] buf, bool[] keep, int w, int h, int r, int kr, int kg, int kb) {
+    bool[] hi = { kb > 127, kg > 127, kr > 127 };      // BGRA sirasi
+    bool anyHi = hi[0] || hi[1] || hi[2], anyLo = !hi[0] || !hi[1] || !hi[2];
+    if (!anyHi || !anyLo) return;
+    int reach = r + 8;
+    int[] dist = new int[w * h];
+    Queue<int> queue = new Queue<int>();
+    for (int i = 0; i < w * h; i++) {
+      if (keep[i]) dist[i] = int.MaxValue; else { dist[i] = 0; queue.Enqueue(i); }
+    }
+    while (queue.Count > 0) {
+      int p = queue.Dequeue();
+      if (dist[p] >= reach + 1) continue;
+      int x = p % w, y = p / w;
+      for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
+        int nx = x + dx, ny = y + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        int q = ny * w + nx;
+        if (dist[q] <= dist[p] + 1) continue;
+        dist[q] = dist[p] + 1;
+        queue.Enqueue(q);
+      }
+    }
+    byte[] src = (byte[])buf.Clone();
+    for (int i = 0; i < w * h; i++) {
+      if (!keep[i] || dist[i] > r) continue;
+      int di = i * 4;
+      int spill = Spill(src, di, hi);
+      if (spill <= 6) continue;                 // sikistirma gurultusu
+      int lo = LoChannel(src, di, hi);
+      int x0 = i % w, y0 = i / w;
+      double sb = 0, sg = 0, sr = 0; int n = 0;
+      for (int dy = -reach; dy <= reach; dy++) for (int dx = -reach; dx <= reach; dx++) {
+        int nx = x0 + dx, ny = y0 + dy;
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+        int j = ny * w + nx;
+        if (!keep[j] || dist[j] <= r || Spill(src, j * 4, hi) > 0) continue;
+        sb += src[j * 4]; sg += src[j * 4 + 1]; sr += src[j * 4 + 2]; n++;
+      }
+      if (n >= 4) {
+        double[] q = { sb / n, sg / n, sr / n };
+        double anchor = src[di + lo];
+        for (int c = 0; c < 3; c++) {
+          if (!hi[c]) continue;
+          double limit = Math.Max(anchor * (q[c] + 1) / (q[lo] + 1), src[di + c] - 2.0 * spill);
+          if (src[di + c] > limit) buf[di + c] = (byte)Math.Max(0, Math.Min(255, Math.Round(limit)));
+        }
+      } else {
+        for (int c = 0; c < 3; c++) if (hi[c]) buf[di + c] = (byte)(src[di + c] - spill);
+      }
+    }
+  }
+
+  // Yuksek kanallarin en kucugu ile dusuk kanallarin en buyugu arasindaki fark.
+  static int Spill(byte[] px4, int di, bool[] hi) {
+    int hiMin = 255, loMax = 0;
+    for (int c = 0; c < 3; c++) {
+      int v = px4[di + c];
+      if (hi[c]) { if (v < hiMin) hiMin = v; } else if (v > loMax) loMax = v;
+    }
+    return hiMin - loMax;
+  }
+
+  // Capa: dusuk kanallardan en parlagi (mor zeminde G).
+  static int LoChannel(byte[] px4, int di, bool[] hi) {
+    int best = -1;
+    for (int c = 0; c < 3; c++) if (!hi[c] && (best < 0 || px4[di + c] > px4[di + best])) best = c;
+    return best;
   }
 
   // Kenar bandi (zemine 'r' piksel yakin) zemin rengi K ile karisimdan
@@ -483,6 +574,7 @@ $keyValue = [Convert]::ToInt32($Key.TrimStart('#'), 16)
 $white = $keyValue -eq 0xFFFFFF
 if ($Tolerance -lt 0) { $Tolerance = if ($white) { 24 } else { 60 } }
 if ($Fringe -lt 0) { $Fringe = if ($white) { 1 } else { 2 } }
+if ($Despill -lt 0) { $Despill = if ($white) { 0 } else { 14 } }
 $slicer = [IconSheet]::new($sheetPath, $Tolerance, $keyValue)
 if ($Grid) {
   if ($Grid -notmatch '^(\d+)x(\d+)$') { throw "-Grid SUTUNxSATIR olmali (ornek 4x3): $Grid" }
@@ -528,7 +620,7 @@ foreach ($group in $groups) {
     if (-not $white) { $clean = $true; $area = 1 }
     # .NET'e $null giden string bos dizeye doner; Save bos dizeyi "yok" sayar.
     $debug = if ($HoleDebug) { Join-Path $Out "$name.holes.png" } else { '' }
-    $slicer.Save($group, (Join-Path $Out "$name.png"), $Size, [int]($box.Width * 0.04), $area, $clean, $Fringe, $debug)
+    $slicer.Save($group, (Join-Path $Out "$name.png"), $Size, [int]($box.Width * 0.04), $area, $clean, $Fringe, $Despill, $debug)
   }
   $i++
 }
