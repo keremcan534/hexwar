@@ -42,10 +42,18 @@
 //       under(ctx, info),     // statik katmana + uzak önbelleğe PİŞER, sınır çizgilerinin ALTINDA
 //       over(ctx, info),      // aynı, sınır çizgilerinin ÜSTÜNDE
 //       live(ctx, info),      // her kare, şehirlerin altında (hareketli şeyler için)
-//     },                      // info = { world, rect{minX,maxX,minY,maxY}, scale, far, renderer,
+//     },                      // info = { world, rect{minX,maxX,minY,maxY}, clip, scale, far, renderer,
 //                             //          mode, terrain, extra, tune }
+//                             // clip: statik şeridin kırpması (rect onun 2.5 hex yakalı hali;
+//                             // tam kurulumda ve uzak önbellekte null). Üretim yerleşimi
+//                             // dikdörtgenden bağımsız olmalı: şeritler aynı yamaçta buluşur.
 //                             // çizgi kalınlığı: px / info.scale. Sarmal: x ± world.wrapWidth.
 //                             // Pişen geçişin verisi değişince renderer.invalidateCache().
+//     rivers(ctx, info, geo), // nehri oyunun mavi bandı yerine stil çizer (statik katman + uzak
+//                             // önbellek); geo = renderer.riverGeometry: [{pts, flow, bbox}]
+//     labelInk: { country: {fill, stroke, strokeK, shadow, shadowBlur},  // yazı mürekkebi
+//                 state: {fill, stroke, width}, city: {fill, capital, stroke, widthK} }
+//                             // (getter olabilir; null = oyunun yazısı)
 //     terrain: true,          // false: arazi pişirmesi istenmez (doku birimleri boş yedekli)
 //     bakeOptions: { ... },   // terrainBake BAKE üzerine (sigmaB, ridgeAmp...). Farklı ayar
 //                             // ayrı pişirme demektir; arazi stiller arası tek yuvada tutulur.
