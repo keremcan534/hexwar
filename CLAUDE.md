@@ -81,6 +81,10 @@ etkisiz çıktı. Bağlayan kaldıraç küçük devletin iki-üç barışta tük
 sonrası: savaş payı %18.0 / %13.8 / %19.3, ulus 27→29 / 23→24 / 28→27;
 YZ çıkarması (`landings.js`) sonrası %18.0 / %17.3 / %29.3, ulus 27→26 /
 23→24 / 28→29 (barışta kalan kıyı başı yeni sahiplik teması açar).
+2026-10-13 (1900 yarı başlangıç tabanı, 6 tohum BORDER1-6 × 45 yıl): savaş
+payı %9.0 / 22.0 / 13.1 / 17.2 / 17.0 / 26.8 (ort. %17.5); eğitim kuyruğu
+insanı sipariş anında tutunca %21.2 / 29.9 / 13.1 / 11.0 / 12.8 / 30.1
+(ort. %19.7, tohum farkı +12…−6: gürültü), ulus toplamı 163 → 162.
 Hex düğümlü hareket grafı: `src/world/provinceGraph.js`; kümeye oyuncu
 "state" der.
 

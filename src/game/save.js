@@ -108,6 +108,15 @@ const MIGRATABLE_VERSIONS = new Set([]);
 const STORAGE_KEY = 'hexwar.save';
 
 /**
+ * Siparişin tuttuğu insanlar (recruitment.js): halk defteriyle derin kopya.
+ * Alanı olmayan v26 kaydının siparişi eski yoldan, sahaya çıkarken toplanır.
+ */
+function copyDraws(item) {
+  if (!Array.isArray(item.draws)) return {};
+  return { draws: item.draws.map((draw) => ({ ...draw, by: { ...(draw.by ?? {}) } })) };
+}
+
+/**
  * Bölümleme parmak izi. Kayıt, kümelerin seed'den birebir yeniden
  * üretileceğine güvenir; worldgen kayarsa econ satırları yanlış kümelere
  * oturur. Checksum uyuşmazsa yükleme sessiz bozulma yerine temiz reddeder.
@@ -283,7 +292,7 @@ export function serialize(game) {
         training: {
           nextId: ensureTraining(n).nextId,
           queue: ensureTraining(n).queue.map((item) => ({
-            ...item, equipment: { ...item.equipment },
+            ...item, equipment: { ...item.equipment }, ...copyDraws(item),
           })),
         },
         command: { ...ensureCommandOptions(n) },
@@ -545,7 +554,7 @@ export function deserialize(game, data) {
       ? {
         nextId: saved.training.nextId ?? 1,
         queue: (saved.training.queue ?? []).map((item) => ({
-          ...item, equipment: { ...(item.equipment ?? {}) },
+          ...item, equipment: { ...(item.equipment ?? {}) }, ...copyDraws(item),
         })),
       }
       : null;

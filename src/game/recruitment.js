@@ -84,36 +84,20 @@ export function regionManpower(world, tile) {
   );
 }
 
-/**
- * Kuyruğun her çıkış kümesine yazdığı yük: kaç sipariş, kaç asker. Sayılmasaydı
- * on sipariş de ülkenin EN KALABALIK tek kümesini gösterir, hepsi aynı havuza
- * yazılır ve sıra ilerledikçe sonrakiler "asker yok" diye takılırdı.
- */
-function committedManpower(nation) {
-  const promised = new Map();
-  for (const item of trainingQueue(nation)) {
-    const key = `${item.q}:${item.r}`;
-    const entry = promised.get(key);
-    const men = UNIT_TYPES[item.typeId]?.manpower ?? 0;
-    if (entry) {
-      entry.men += men;
-      entry.orders++;
-    } else {
-      promised.set(key, { men, orders: 1 });
-    }
-  }
-  return promised;
+/** Kıyı province'i: merkezinin bir komşusu denize değiyorsa tersane olur. */
+function coastal(world, center) {
+  return nodeNeighbors(world, center).some((tile) => tile.terrain.navigable);
 }
 
 /**
- * Alayın çıkacağı küme (merkez karesiyle): bölgesi en kalabalık olan, kuyruğa
- * söz verilenler düşüldükten sonra. Şehirli küme eşitlikte öncelikli — asker
- * toplamak şehirde daha kolaydır.
+ * Alayın çıkacağı küme (merkez karesiyle): bölgesi en kalabalık olan. Şehirli
+ * küme eşitlikte öncelikli — asker toplamak şehirde daha kolaydır. Kuyruktaki
+ * siparişler insanlarını zaten tutar (queueRecruit), havuz onları düşmüştür:
+ * ikinci sipariş kendiliğinden bir sonraki kalabalık bölgeye gider.
  */
 export function recruitmentSource(world, nation, typeId) {
   const id = resolveTypeId(typeId);
   const need = UNIT_TYPES[id].manpower;
-  const promised = committedManpower(nation);
   // Gemi tersaneden çıkar: iç bölgedeki kalabalık küme donanmaya kaynak olamaz.
   // Kontrol burada, çünkü kuyruk "neden kuramıyorum"u kuruluş anında değil
   // sıraya girerken söylemeli.
@@ -124,22 +108,37 @@ export function recruitmentSource(world, nation, typeId) {
     if (province.owner !== nation.id || !province.econ) continue;
     if (occupiedShareOf(world, province) > 0) continue;
     const center = province.center;
-    const load = promised.get(`${center.q}:${center.r}`);
-    const available = regionManpower(world, center) - (load?.men ?? 0);
+    const available = regionManpower(world, center);
     if (available < need) continue;
-    // Kıyı province'i: herhangi bir karesi denize değiyorsa tersane olur.
-    if (naval && !nodeNeighbors(world, center).some((tile) => tile.terrain.navigable)) continue;
+    if (naval && !coastal(world, center)) continue;
     const hasCity = province.tileIdx.some((idx) => world.tiles[idx].city);
-    // Meşgul kışla daha az çekicidir. Havuzu tek başına yeterli olsa bile beş
-    // alayı aynı kasabadan toplamak hem gerçekçi değil hem de o bölgenin
-    // RGO'sunu tek seferde çökertiyor; bölen kuyruğu eyaletlere yayar.
-    const score = (available + (hasCity ? 3000 : 0)) / (1 + (load?.orders ?? 0));
+    const score = available + (hasCity ? 3000 : 0);
     if (score > bestScore) {
       bestScore = score;
       best = province.center;
     }
   }
   return best;
+}
+
+/**
+ * Eğitimi biten alayın sahaya çıkacağı küme. İnsanları sipariş anında
+ * toplanmıştır; burada yalnız YER aranır: söz verilen küme hâlâ bizim ve
+ * işgalsizse o, değilse elimizdeki ilk işgalsiz küme (şehirli önce; gemi
+ * için kıyı).
+ */
+function deploySource(world, nation, id, preferred) {
+  const naval = UNIT_TYPES[id].domain === 'sea';
+  const usable = (province) => province?.owner === nation.id && province.econ
+    && occupiedShareOf(world, province) === 0 && (!naval || coastal(world, province.center));
+  if (preferred?.province && usable(world.provinces?.[preferred.provinceId])) return preferred;
+  let fallback = null;
+  for (const province of world.provinces ?? []) {
+    if (!usable(province)) continue;
+    if (province.tileIdx.some((idx) => world.tiles[idx].city)) return province.center;
+    fallback ??= province.center;
+  }
+  return fallback;
 }
 
 // TECHIZAT ARTIK KAPI DEGIL (Victoria usulu). Depoda yoksa siparis yine
@@ -243,11 +242,12 @@ export function rallyTile(world, nation) {
  * `options.source` eğitim kuyruğunun seçtiği çıkış kümesidir — kuyruğa girerken
  * söz verilen yer hâlâ bizimse alay oradan çıkar, kaybedildiyse taze bir kaynak
  * seçilir. `options.charge` false ise teçhizat kuyruğa girerken zaten
- * düşülmüştür; ikinci kez alınmaz.
+ * düşülmüştür; ikinci kez alınmaz. `options.draws` sipariş anında toplanmış
+ * insanlardır: verilirse havuza bir daha bakılmaz, yalnız yer aranır.
  * @returns {object|null} yaratılan ya da takviye edilen ordu
  */
 export function recruit(game, nation, typeId, options = {}) {
-  const { source: preferred = null, charge = true, fill = 1 } = options;
+  const { source: preferred = null, charge = true, fill = 1, draws: held = null } = options;
   const world = game.world;
   const id = resolveTypeId(typeId);
   const equipmentCost = recruitmentEquipmentCost(id);
@@ -256,12 +256,13 @@ export function recruit(game, nation, typeId, options = {}) {
   const need = UNIT_TYPES[id].manpower;
   // Söz verilen kaynak savaşta işgal edildiyse taze kaynak seçilir
   // (recruitmentSource da işgalli kümeyi atlar).
-  const usable = preferred && preferred.province
+  const usable = !held && preferred && preferred.province
     && world.provinces?.[preferred.provinceId]?.owner === nation.id
     && occupiedShareOf(world, world.provinces[preferred.provinceId]) === 0
     && regionManpower(world, preferred) >= need
       ? preferred : null;
-  const source = usable ?? recruitmentSource(world, nation, id);
+  const source = held ? deploySource(world, nation, id, preferred)
+    : usable ?? recruitmentSource(world, nation, id);
   if (!source) return null;
   const naval = UNIT_TYPES[id].domain === 'sea';
   const tile = naval ? source : deploymentTile(world, source);
@@ -269,9 +270,16 @@ export function recruit(game, nation, typeId, options = {}) {
 
   // Eksik teçhizatla çıkan alay o oranda güçle ve o oranda insanla çıkar;
   // takviye (reinforcement.js) ikisini birlikte tamamlar — insan/güç oranı
-  // korunur, takviye aynı insanı ikinci kez çekmez.
+  // korunur, takviye aynı insanı ikinci kez çekmez. Sipariş anında tutulan
+  // insanların fazlası evine döner.
   const share = Math.max(DEPLOY_FLOOR, Math.min(1, fill));
-  const draws = drawManpower(world, source, Math.ceil(need * share));
+  let draws;
+  if (held) {
+    if (share < 1) for (const draw of held) releaseDraw(world, nation.id, draw, (draw.men ?? 0) * (1 - share));
+    draws = held.filter((draw) => draw.men > 0.01);
+  } else {
+    draws = drawManpower(world, source, Math.ceil(need * share));
+  }
   if (!draws.length) return null;
   if (naval) {
     // Gemi haritaya inmez: ulusun filosuna katılır (navy.js), limanı bu kıyı.
@@ -341,8 +349,12 @@ export function disband(game, unit) {
      3. GÖRÜNÜRLÜK — "ne geliyor, ne zaman" sorusunun tek bir cevabı olur;
         oyuncu da YZ de aynı kuyruğu kullanır.
 
-   Altın ve teçhizat sıraya GİRERKEN düşülür (sipariş verilmiştir), insan gücü
-   ise alay sahaya çıkarken toplanır — asker yıllar önceden ambara konmaz. */
+   Altın, teçhizat ve İNSAN sıraya GİRERKEN düşülür: sipariş verilmiştir,
+   kışladaki adam askerdir (HOI4). Eskiden insan alay sahaya çıkarken
+   toplanıyordu; komşu bölgeler aynı havuzu paylaştığı ve takviye her hafta
+   havuzu önden içtiği için eğitimi biten alay "asker yok" diye bekliyordu.
+   Ölçüldü (NAVY2, 160×96): kuyruğun %52-74'ü bu bekleyişteydi, ortanca 50-80
+   hafta, p90 450 hafta; altını ve teçhizatı yıllarca kilitli kalıyordu. */
 
 /**
  * Bir alayın kaç haftada yetiştiği. Piyade taban; süvari at, topçu top,
@@ -461,7 +473,8 @@ export function recruitBlockers(game, nation, typeId, options = {}) {
 }
 
 /**
- * Sıraya bir alay ekler. Altın ve teçhizat burada düşer: sipariş verilmiştir.
+ * Sıraya bir alay ekler. Altın, teçhizat ve insan burada düşer: sipariş
+ * verilmiştir, kışladaki adam havuzdan çıkmıştır (draws).
  * @returns {object|null} kuyruk kaydı
  */
 export function queueRecruit(game, nation, typeId) {
@@ -472,6 +485,7 @@ export function queueRecruit(game, nation, typeId) {
   if (!source) return null;
   const cost = UNIT_COSTS[id];
   if (cost && !pay(nation, cost, 'recruitment')) return null;
+  const draws = drawManpower(world, source, UNIT_TYPES[id].manpower);
   // Depodan alınabilen alınır; eksik siparişe yazılır ve üretim hattından
   // geldikçe dolar (alay teçhizatı tamamlanmadan eğitime başlamaz).
   const equipment = {};
@@ -493,9 +507,10 @@ export function queueRecruit(game, nation, typeId) {
     gold: cost?.gold ?? 0,
     equipment,
     missing,
+    draws,
     queuedAt: game.turns?.turn ?? world.turn ?? 0,
     // Bu hafta ilerleyemiyorsa nedeni: 'capacity' (kışla dolu) ya da
-    // 'deploy' (eğitim bitti, çıkacak yer/insan yok).
+    // 'deploy' (eğitim bitti, çıkacak boş kare yok).
     waiting: null,
   };
   training.queue.push(item);
@@ -520,7 +535,15 @@ export function cancelTraining(game, nation, itemId) {
   for (const [equipmentId, amount] of Object.entries(item.equipment ?? {})) {
     addEquipment(nation, equipmentId, amount * share);
   }
+  // Kışladaki adamların hepsi evine döner: insan harcanmış pay değildir.
+  releaseQueued(game.world, nation, item);
   return true;
+}
+
+/** Siparişin tuttuğu insanları bırakır (iptal, ülkenin silinmesi). */
+export function releaseQueued(world, nation, item) {
+  for (const draw of item.draws ?? []) releaseDraw(world, nation.id, draw, draw.men ?? 0);
+  item.draws = [];
 }
 
 /** Kuyrukta bir basamak yukarı/aşağı. Öncelik = kapasiteyi kimin yiyeceği. */
@@ -596,7 +619,9 @@ export function runTraining(game) {
       const source = world.get(item.q, item.r);
       fillOrder(nation, item);
       const fill = orderFill(item);
-      const unit = recruit(game, nation, item.typeId, { source, charge: false, fill });
+      // Eski kayıttan gelen siparişin insanı tutulmamıştır: havuzdan çekilir.
+      const draws = item.draws?.length ? item.draws : null;
+      const unit = recruit(game, nation, item.typeId, { source, charge: false, fill, draws });
       if (!unit) {
         item.waiting = 'deploy';
         continue;

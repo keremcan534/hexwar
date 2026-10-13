@@ -302,7 +302,7 @@ export function trainingRows(game, nation) {
       left: weeksLeft(nation, item),
       province: place.province,
       region: place.region,
-      // Eğitim bitti ama sahaya çıkamıyor: insan gücü ya da boş kare yok.
+      // Eğitim bitti ama sahaya çıkamıyor: boş kare yok (insan sipariş anında tutuldu).
       stalled: done && item.waiting === 'deploy',
       queued: !done && item.waiting === 'capacity',
       // Askersizleştirme antlaşması sırayı dondurur (bkz. recruitment.js).

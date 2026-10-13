@@ -295,8 +295,9 @@ Standing army kartının ipucundadır.
 
 Alay artık düğmeye basılan hafta belirmez, **siparişe** dönüşür:
 
-- Altın ve teçhizat sıraya girerken düşer, insan gücü alay sahaya çıkarken
-  toplanır. İptal, harcanmamış payı geri verir.
+- Altın, teçhizat ve insan gücü sıraya girerken düşer: kışladaki adam
+  havuzdan çıkmıştır, eğitimi biten alay "asker yok" diye beklemez. İptal,
+  harcanmamış payı ve adamların hepsini geri verir.
 - Depoda teçhizat yoksa sipariş yine verilir: eksik, üretim hattından
   geldikçe dolar; alay teçhizatı tamamlanana dek kışla yeri tutmadan bekler.
   Teçhizat: piyade 10 tüfek, süvari 6 tüfek, topçu 4 tüfek + 6 top, savaş

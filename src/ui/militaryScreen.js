@@ -441,7 +441,7 @@ function queueRow(row) {
     : row.awaiting
       ? `waiting for equipment — buying ${row.awaiting} abroad`
       : row.stalled
-        ? 'trained — no state can spare the men or the ground'
+        ? 'trained — no free ground to muster on'
         : row.queued
           ? 'waiting for a training slot'
           : `${row.left} ${row.left === 1 ? 'week' : 'weeks'} left`

@@ -9,7 +9,7 @@ import {
 import {
   advanceMovement, clearDirective, orderMove, resumeDirectives,
 } from './movement.js';
-import { disband, nationManpower, queueRecruit, recruit, runTraining } from './recruitment.js';
+import { disband, nationManpower, queueRecruit, recruit, releaseQueued, runTraining } from './recruitment.js';
 import { START_ARMY, START_FLEET, START_GOLD } from './era.js';
 import { POP_UNIT } from './econ/defs.js';
 import { runReinforcements } from './reinforcement.js';
@@ -757,6 +757,10 @@ export class TurnManager {
       if (hasUnits || hasCities) continue;
 
       nation.alive = false;
+      // Kışladaki adamlar evine döner: sipariş insanı tutar (recruitment.js),
+      // bırakılmazsa province'ler varise "silah altında" geçerdi.
+      for (const item of nation.training?.queue ?? []) releaseQueued(world, nation, item);
+      if (nation.training) nation.training.queue = [];
       // ILISKILER DE OLUR. Elenen ulusun savas kayitlari eskiden oldugu gibi
       // kaliyordu: dunyada artik var olmayan bir ulke sonsuza kadar "savasta"
       // gorunuyor ve `atWar` sorgusu yapan her tuketici onu sayabiliyordu.
