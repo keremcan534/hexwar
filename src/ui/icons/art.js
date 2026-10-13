@@ -5,10 +5,10 @@
 // kaynağıydı: her işletim sisteminde başka çizilir, boyu metinle oynar.
 //
 // İki sanat ailesi var ve sunumları bilinçli olarak ayrı:
-//   - Eşya (kaynak, teçhizat, bütçe kalemi): çerçevesiz nesne, arkasında CSS'in
-//     yumuşak ışığı (`art-item`). Disk + halka her ikonu aynı daireye çevirip
-//     nesneyi küçültüyordu; küçük boyda ayırt edilemiyordu.
-//   - Bina ve yasa sahneleri (gravür): dikdörtgen "plaka" çerçeve (`art-plate`).
+//   - Eşya (kaynak, teçhizat, bütçe kalemi, yasa, bina): çerçevesiz nesne ya da
+//     diorama, arkasında CSS'in yumuşak ışığı (`art-item`). Disk + halka her
+//     ikonu aynı daireye çevirip nesneyi küçültüyordu; küçük boyda ayırt
+//     edilemiyordu. Koyu plaka da bina listesinde çerçevesiz satırla çelişti.
 //   - Amblemler (teknoloji dalı, üst çubuk göstergesi, general özelliği):
 //     çerçevesiz nesne + gölge (`art-emblem`). Metin satırının içinde de
 //     durdukları için disk ya da plaka onları satırdan taşırırdı.
@@ -66,14 +66,14 @@ export function resourceArt(id, size = 'sm') {
   return img(file, id.toLowerCase(), `art-${size} art-item`);
 }
 
-/** Bina sahnesi (gravür plaka). */
+/** Bina dioraması. */
 export function buildingArt(id, size = 'md') {
-  return img(`buildings/${id}`, id, `art-${size} art-plate`);
+  return img(`buildings/${id}`, id, `art-${size} art-item`);
 }
 
-/** Yasa amblemi (gravür plaka). */
+/** Yasa nesnesi. */
 export function lawArt(id, size = 'md') {
-  return img(`laws/${id}`, id, `art-${size} art-plate`);
+  return img(`laws/${id}`, id, `art-${size} art-item`);
 }
 
 /** Teçhizat madalyonu; zırhlı teknolojisiyle gemi buharlıya döner. */
@@ -86,8 +86,7 @@ export function equipmentArt(id, size = 'md', ironclad = false) {
 export function ledgerArt(id, size = 'xs') {
   const file = LEDGER_FILE[id];
   if (!file) return '';
-  const plate = file.startsWith('buildings/');
-  return img(file, id, `art-${size} ${plate ? 'art-plate' : 'art-item'}`);
+  return img(file, id, `art-${size} art-item`);
 }
 
 /** Amblem: teknoloji dalı (industry…society) ya da gösterge (power, stability, infamy). */

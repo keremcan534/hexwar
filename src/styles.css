@@ -11533,8 +11533,10 @@ button.uc-agenda:hover { border-color: var(--gold); }
 .art-lg { width: 64px; height: 64px; }
 .art-xl { width: 96px; height: 96px; }
 
-/* Eşya nesnesi (kaynak, teçhizat, bütçe kalemi): çerçevesiz, arkasında yumuşak
-   sıcak ışık. Disk + halka her ikonu aynı daireye çeviriyordu (siluet kaybolur)
+/* Eşya nesnesi (kaynak, teçhizat, bütçe kalemi, yasa, bina): çerçevesiz,
+   arkasında yumuşak sıcak ışık. Yasa ve bina da 2026-10 setinde nesne/diorama
+   oldu; koyu plaka bina listesinde çerçevesiz "Develop" satırıyla çelişiyordu.
+   Disk + halka her ikonu aynı daireye çeviriyordu (siluet kaybolur)
    ve nesneyi %74'e küçültüyordu; 18 px'te ince nesne boş daireye dönüyordu.
    Işık koyu nesneyi (kömür, tank) koyu panelden ayırır; sıcak tonu arayüzün
    altın-kahve paletinden çıkmaz (kayrak mavisi disk yabancı duruyordu). */
@@ -11544,19 +11546,6 @@ button.uc-agenda:hover { border-color: var(--gold); }
 }
 .art-item img { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.85)); }
 
-/* Gravür plaka: sıcak, mat kâğıt-koyu zemin, ince pirinç kenar. */
-.art-plate {
-  border-radius: 3px;
-  background:
-    radial-gradient(ellipse at 50% 35%, rgba(214, 190, 140, 0.13), transparent 70%),
-    linear-gradient(180deg, #221d16, #15120e);
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.85),
-    inset 0 0 0 1px rgba(174, 139, 74, 0.35),
-    inset 0 1px 0 rgba(255, 230, 180, 0.06);
-}
-.art-plate img { width: 88%; height: 88%; filter: saturate(0.92) contrast(1.04); }
-.art-xs.art-plate img, .art-sm.art-plate img { width: 100%; height: 100%; }
 .art-unit img { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)); }
 /* Amblem: çerçevesiz gravür nesnesi; koyu zeminde kopmasın diye çift gölge. */
 .art-emblem img { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 4px rgba(0, 0, 0, 0.35)); }
@@ -12564,7 +12553,6 @@ button.k-agenda:hover { border-color: var(--gold); background: rgba(186, 160, 10
     0 0 0 2px rgba(120, 96, 54, 0.45);
 }
 .k-kpi-ico .art-md { width: 46px; height: 46px; }
-.k-kpi-ico .art-plate { border-radius: 50%; overflow: hidden; }
 .k-kpi-meter { height: 3px; bottom: 5px; box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.8); }
 .k-kpi-meter > i { box-shadow: 0 0 6px currentColor; }
 
@@ -12819,7 +12807,6 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
 }
 .tb-ico { display: grid; place-items: center; width: 28px; height: 28px; }
 .tb-ico .art-sm { width: 28px; height: 28px; }
-.tb-ico .art-plate { border-radius: 50%; overflow: hidden; }
 .tb-ico .glyph { width: 22px; height: 22px; color: #d8bd7e; filter: drop-shadow(0 1px 0 #000); }
 .tb-ring { position: absolute; inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px); transform: rotate(-90deg); pointer-events: none; }
 .tb-ring circle { fill: none; stroke-width: 3; }
@@ -12871,7 +12858,6 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
 .tb-mini { display: inline-flex; align-items: center; gap: 6px; cursor: help; white-space: nowrap; }
 .tb-mini-ico { display: grid; place-items: center; width: 20px; height: 20px; }
 .tb-mini-ico .art-xs { width: 20px; height: 20px; }
-.tb-mini-ico .art-plate { border-radius: 50%; overflow: hidden; }
 .tb-mini b { color: var(--text); font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; text-shadow: 0 1px 0 #000; }
 .tb-mini b .stat-flow { margin-left: 3px; color: var(--text-dim); font-size: 10.5px; }
 .tb-mini small { color: var(--text-faint); font-size: 9px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }

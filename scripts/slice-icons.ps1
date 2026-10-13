@@ -33,12 +33,12 @@
 # ADIYLA SECILEN ikonlara uygulanir (-Holes): once -HoleDebug ile kosulur,
 # adaylar <ad>.holes.png'de macenta gorunur, karar goze sorulur.
 #
-# ZEMIN YANSIMASI (spill): renkli zeminde model, yasaklansa da zemin rengini
-# nesnenin arka kenarina isik olarak yansitabiliyor (at yelesinde pembe kenar).
-# Zemine -Despill piksel yakin bolgede zemin yonundeki fazla geri alinir: mor
-# icin kirmizi ile mavinin yesili asan ORTAK payi (min(R,B) - G) ikisinden de
-# dusulur. Kizil, altin, ten, lacivert bu formulde degismez; yalniz mor/pembe
-# kayar (o renkler zaten brief'te yasak).
+# RENKLI ZEMIN AYRISTIRMA: her piksel P = a*C + (1-a)*K karisimi sayilir; C'de
+# mor yoktur (brief yasaklar). Uc durum ayri cozulur (bkz. UnmixKeyed): kenar
+# ve sac teli yakindaki temiz renge gore saydamlasir; opak yansima (at
+# yelesinde pembe) rengi kirpilarak duzelir; buhar, duman, halat ve kafes arasi
+# notr karisim olarak saydamlasir. Duz color-to-alpha mor zemine karsi rengi
+# en uzak kanala, yani YESILE iter (halatlarda yesil cizgi kaliyordu).
 #
 # KENAR HALESI: beyaz zeminle karisan antialias bandi opak kalirsa koyu diskin
 # ustunde nesnenin cevresinde ince acik cizgi kalir. Zemine bitisik -Fringe
@@ -89,9 +89,14 @@ param(
   # Zemine bitisik arindirilacak bant genisligi (piksel). 0 = kapali.
   # Verilmezse beyazda 1, renkli zeminde 2.
   [int]$Fringe = -1,
-  # Zemin yansimasi temizligi yaricapi (sheet pikseli). Verilmezse beyazda 0,
-  # renkli zeminde 14.
+  # Renkli zeminde orta duzey mor sizintinin islendigi mesafe (zemine
+  # piksel). Verilmezse 14. Daha icerideki hafif morumsuluk gercek kizildir.
   [int]$Despill = -1,
+  # Renkli zeminde, zeminden uzak (icerdeki) pikselde bu mor fazlasinin
+  # ustu yari saydam karisim sayilir. 55: gercek kizil (kadife, muhur mumu)
+  # ~20, demir cevherinin mor yuzleri ~42 (olculdu). Sheet'te koyu kizil ve
+  # mor hic yoksa (techizat, binalar) 25'e inebilir.
+  [int]$Inner = 55,
   # Her ikonun delik adaylarini <ad>.holes.png'de macenta boyar.
   [switch]$HoleDebug,
   [string[]]$Names = @(),
@@ -306,7 +311,7 @@ public class IconSheet {
 
   /// Ikonu kirp (yalniz kendi bilesenleri), delik ve haleyi temizle, kareye
   /// oturt, Size'a olcekle.
-  public void Save(IconGroup g, string path, int size, int pad, int holeArea, bool cleanHoles, int fringe, int despill, string debugPath) {
+  public void Save(IconGroup g, string path, int size, int pad, int holeArea, bool cleanHoles, int fringe, int despill, int inner, string debugPath) {
     Rectangle box = g.Box;
     int w = box.Width, h = box.Height;
     bool[] keep = new bool[w * h];
@@ -326,8 +331,8 @@ public class IconSheet {
       buf[i * 4] = px[src]; buf[i * 4 + 1] = px[src + 1]; buf[i * 4 + 2] = px[src + 2];
       buf[i * 4 + 3] = 255;
     }
-    if (despill > 0 && !WhiteKey) Despill(buf, keep, w, h, despill, kr, kg, kb);
-    if (fringe > 0) Defringe(buf, keep, w, h, fringe, kr, kg, kb);
+    if (WhiteKey) { if (fringe > 0) Defringe(buf, keep, w, h, fringe, kr, kg, kb); }
+    else UnmixKeyed(buf, keep, w, h, Math.Max(1, fringe), despill, inner, kr, kg, kb);
     // Arindirmadan kalan neredeyse saydam kirinti koyu diskte leke olur.
     for (int i = 0; i < w * h; i++)
       if (buf[i * 4 + 3] < 16) { buf[i * 4] = 0; buf[i * 4 + 1] = 0; buf[i * 4 + 2] = 0; buf[i * 4 + 3] = 0; }
@@ -408,29 +413,120 @@ public class IconSheet {
     }
   }
 
-  // Zemin yansimasi: zemine 'r' piksel yakin tutulan pikselde zemin renginin
-  // YUKSEK kanallari (mor: R,B) DUSUK kanallari (mor: G) ortakca asiyorsa
-  // piksel yansima almistir. Duz cikarma (min(R,B) - G) sicak renkte yansimayi
-  // eksik olcer, kenarda koyu kizil iz kalir. Bu yuzden yuksek kanallar, hemen
-  // icerideki temiz bolgenin (yansimasiz, zeminden r'den uzak) DUSUK kanala
-  // oranina kirpilir: yansima dusuk kanali degistirmez, o capa olur. Ici
-  // olmayan ince yapida referans yoktur; orada duz cikarma uygulanir.
-  // Morumsu olmayan piksel (gercek sicak/soguk/notr renk) hic degismez.
-  // Kirpma olculen yansimanin iki katiyla sinirli: notre yakin beyaz pikselin
-  // (at alnindaki akitma) turuncu referansa kirpilip sariya donmesin.
-  static void Despill(byte[] buf, bool[] keep, int w, int h, int r, int kr, int kg, int kb) {
-    bool[] hi = { kb > 127, kg > 127, kr > 127 };      // BGRA sirasi
-    bool anyHi = hi[0] || hi[1] || hi[2], anyLo = !hi[0] || !hi[1] || !hi[2];
-    if (!anyHi || !anyLo) return;
-    int reach = r + 8;
+  // RENKLI ZEMIN AYRISTIRMA. Mor fazlasi e = min(K'nin yuksek kanallari) -
+  // max(dusuk kanallari); mor zeminde min(R,B) - G. Hedef: zemine 'band'
+  // piksel yakin her piksel, zemine 'reach' piksel yakin morumsu piksel ve
+  // daha icerde belirgin morumsu (e > inner) her piksel: model yelken
+  // araligina, vinc kafesine yari saydam mor boyayabiliyor.
+  //   1. Yakin referans Q (4 px icinde, bantta olmayan, mor fazlasi olmayan
+  //      piksel ortalamasi) ile tutarli karisim: her kanal ayni a'yi verir ->
+  //      renk Q, saydamlik a. Kenar, sac teli, basak kilcigi.
+  //   2. Tutarsiz, kenara yakin, e orta (<= STRONG), uzak temiz referans
+  //      var: opak yansima. Yuksek
+  //      kanallar referansin dusuk kanala oranina kirpilir; dusuk kanal (G)
+  //      yansimadan etkilenmez, capa olur. Kirpma e'nin iki katiyla sinirli:
+  //      at alnindaki beyaz akitma turuncu referansa kirpilip sariya donmesin.
+  //   3. Geri kalan (referans yok, e buyuk ya da icerde): notr karisim. C'nin mor
+  //      fazlasi tam sifir sayilir: a = 1 - e/aralik, C = K + (P - K)/a.
+  //      Buhar, duman, halat, vinc kafesi, yelken arasi: gri/beyaz kalir.
+  // Icerde e <= inner dokunulmaz (bkz. -Inner).
+  // Butun okumalar ISLEMDEN ONCEKI degerlerden: duzeltme zincirlenmez.
+  static void UnmixKeyed(byte[] buf, bool[] keep, int w, int h, int band, int reach, int inner, int kr, int kg, int kb) {
+    const int STRONG = 120, NEAR = 4;
+    double[] k = { kb, kg, kr };                       // BGRA sirasi
+    bool[] hi = { kb > 127, kg > 127, kr > 127 };
+    double kHi = 255, kLo = 0;
+    for (int c = 0; c < 3; c++) { if (hi[c]) kHi = Math.Min(kHi, k[c]); else kLo = Math.Max(kLo, k[c]); }
+    double span = kHi - kLo;
+    if (span < 64) return;                             // soluk zemin: ayristirilamaz
+    int far = reach + 8;
+    int[] dist = Distance(keep, w, h, Math.Max(band, far) + 1);
+    byte[] src = (byte[])buf.Clone();
+    int[] ex = new int[w * h];
+    bool[] near = new bool[w * h], deep = new bool[w * h];
+    for (int i = 0; i < w * h; i++) {
+      if (!keep[i]) continue;
+      ex[i] = Spill(src, i * 4, hi);
+      near[i] = ex[i] <= 6 && dist[i] > band;
+      deep[i] = ex[i] <= 0 && dist[i] > reach;
+    }
+    for (int i = 0; i < w * h; i++) {
+      if (!keep[i]) continue;
+      int e = ex[i];
+      bool edge = dist[i] <= band, inReach = dist[i] <= reach;
+      if (!edge && e <= 6) continue;
+      if (!inReach && e <= inner) continue;
+      int di = i * 4, x0 = i % w, y0 = i / w;
+      double[] p = { src[di], src[di + 1], src[di + 2] };
+      double[] q = Mean(src, near, w, h, x0, y0, NEAR);
+      if (q != null) {
+        double sum = 0, wsum = 0, amin = 2, amax = -1;
+        for (int c = 0; c < 3; c++) {
+          double d = q[c] - k[c];
+          if (Math.Abs(d) < 40) continue;
+          double ac = (p[c] - k[c]) / d;
+          sum += ac * Math.Abs(d); wsum += Math.Abs(d);
+          amin = Math.Min(amin, ac); amax = Math.Max(amax, ac);
+        }
+        if (wsum > 0 && amax - amin <= 0.15 && amin >= -0.08 && amax <= 1.08) {
+          double a = Math.Max(0, Math.Min(1, sum / wsum));
+          if (a < 0.97) Write(buf, di, q, a);
+          continue;
+        }
+      }
+      if (e <= 6) continue;
+      if (inReach && e <= STRONG) {
+        double[] r = Mean(src, deep, w, h, x0, y0, far);
+        if (r != null) {
+          int lo = LoChannel(src, di, hi);
+          for (int c = 0; c < 3; c++) {
+            if (!hi[c]) continue;
+            double limit = Math.Max(p[lo] * (r[c] + 1) / (r[lo] + 1), p[c] - 2.0 * e);
+            if (p[c] > limit) buf[di + c] = (byte)Math.Max(0, Math.Min(255, Math.Round(limit)));
+          }
+          continue;
+        }
+      }
+      double an = 1 - e / span;
+      if (an <= 0.02) { buf[di] = 0; buf[di + 1] = 0; buf[di + 2] = 0; buf[di + 3] = 0; continue; }
+      double[] cn = new double[3];
+      for (int c = 0; c < 3; c++) cn[c] = k[c] + (p[c] - k[c]) / an;
+      Write(buf, di, cn, an);
+    }
+  }
+
+  // Secili piksellerin kare komsuluktaki ortalamasi (BGR); 3'ten azsa null.
+  static double[] Mean(byte[] src, bool[] pick, int w, int h, int x0, int y0, int r) {
+    double b = 0, g = 0, rr = 0; int n = 0;
+    for (int dy = -r; dy <= r; dy++) for (int dx = -r; dx <= r; dx++) {
+      int nx = x0 + dx, ny = y0 + dy;
+      if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      int j = ny * w + nx;
+      if (!pick[j]) continue;
+      b += src[j * 4]; g += src[j * 4 + 1]; rr += src[j * 4 + 2]; n++;
+    }
+    return n >= 3 ? new double[] { b / n, g / n, rr / n } : null;
+  }
+
+  static void Write(byte[] buf, int di, double[] c, double a) {
+    for (int ch = 0; ch < 3; ch++) buf[di + ch] = (byte)Math.Max(0, Math.Min(255, Math.Round(c[ch])));
+    buf[di + 3] = (byte)Math.Round(a * 255);
+  }
+
+  // Tutulmayan (zemin, delik) piksele 8 komsulukla uzaklik; 'cap'te kesilir.
+  // Kutunun disi zemindir: kutu nesnenin sinirlayici kutusudur.
+  static int[] Distance(bool[] keep, int w, int h, int cap) {
     int[] dist = new int[w * h];
     Queue<int> queue = new Queue<int>();
     for (int i = 0; i < w * h; i++) {
-      if (keep[i]) dist[i] = int.MaxValue; else { dist[i] = 0; queue.Enqueue(i); }
+      int x = i % w, y = i / w;
+      if (!keep[i]) { dist[i] = 0; queue.Enqueue(i); }
+      else if (x == 0 || y == 0 || x == w - 1 || y == h - 1) { dist[i] = 1; queue.Enqueue(i); }
+      else dist[i] = int.MaxValue;
     }
     while (queue.Count > 0) {
       int p = queue.Dequeue();
-      if (dist[p] >= reach + 1) continue;
+      if (dist[p] >= cap) continue;
       int x = p % w, y = p / w;
       for (int dy = -1; dy <= 1; dy++) for (int dx = -1; dx <= 1; dx++) {
         int nx = x + dx, ny = y + dy;
@@ -441,34 +537,7 @@ public class IconSheet {
         queue.Enqueue(q);
       }
     }
-    byte[] src = (byte[])buf.Clone();
-    for (int i = 0; i < w * h; i++) {
-      if (!keep[i] || dist[i] > r) continue;
-      int di = i * 4;
-      int spill = Spill(src, di, hi);
-      if (spill <= 6) continue;                 // sikistirma gurultusu
-      int lo = LoChannel(src, di, hi);
-      int x0 = i % w, y0 = i / w;
-      double sb = 0, sg = 0, sr = 0; int n = 0;
-      for (int dy = -reach; dy <= reach; dy++) for (int dx = -reach; dx <= reach; dx++) {
-        int nx = x0 + dx, ny = y0 + dy;
-        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
-        int j = ny * w + nx;
-        if (!keep[j] || dist[j] <= r || Spill(src, j * 4, hi) > 0) continue;
-        sb += src[j * 4]; sg += src[j * 4 + 1]; sr += src[j * 4 + 2]; n++;
-      }
-      if (n >= 4) {
-        double[] q = { sb / n, sg / n, sr / n };
-        double anchor = src[di + lo];
-        for (int c = 0; c < 3; c++) {
-          if (!hi[c]) continue;
-          double limit = Math.Max(anchor * (q[c] + 1) / (q[lo] + 1), src[di + c] - 2.0 * spill);
-          if (src[di + c] > limit) buf[di + c] = (byte)Math.Max(0, Math.Min(255, Math.Round(limit)));
-        }
-      } else {
-        for (int c = 0; c < 3; c++) if (hi[c]) buf[di + c] = (byte)(src[di + c] - spill);
-      }
-    }
+    return dist;
   }
 
   // Yuksek kanallarin en kucugu ile dusuk kanallarin en buyugu arasindaki fark.
@@ -620,7 +689,7 @@ foreach ($group in $groups) {
     if (-not $white) { $clean = $true; $area = 1 }
     # .NET'e $null giden string bos dizeye doner; Save bos dizeyi "yok" sayar.
     $debug = if ($HoleDebug) { Join-Path $Out "$name.holes.png" } else { '' }
-    $slicer.Save($group, (Join-Path $Out "$name.png"), $Size, [int]($box.Width * 0.04), $area, $clean, $Fringe, $Despill, $debug)
+    $slicer.Save($group, (Join-Path $Out "$name.png"), $Size, [int]($box.Width * 0.04), $area, $clean, $Fringe, $Despill, $Inner, $debug)
   }
   $i++
 }
