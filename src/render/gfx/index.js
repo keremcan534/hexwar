@@ -4,5 +4,6 @@
 // yardımcıları), render/terrainBake.js (veri), gfx/devData.js (gelişmişlik).
 
 import './debugStyles.js';
+import './vic3.js';
 
 export { registerGfxStyle, getGfxStyle, gfxStyleNames, readGfxParam } from './registry.js';
