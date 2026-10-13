@@ -598,6 +598,11 @@ export class Renderer {
     this.gfx = { style: null, job: null, terrain: null, extra: new Map(), hexDirty: true, hexWorld: null, bakeLog: null };
     this.gfxTune = null;
     this.pendingGfx = readGfxParam();
+    // Eğik kameranın iki geçişi (gfx/threeD.js): 'ink' zemine giydirilen
+    // çizgiler, 'marks' ekrana dik basılan işaretler; `upright` o geçişin
+    // iğnesi. Klasikte ikisi de null ve hiçbir dal çalışmaz.
+    this.markPass = null;
+    this.upright = null;
   }
 
   /**
@@ -2178,11 +2183,13 @@ export class Renderer {
     }
 
     // Seçim kutusu ekran uzayında: kamera dönüşümünün dışında çizilir.
-    if (state.marquee) this.drawMarquee(ctx, state.marquee);
+    // Eğik kamerada bu kare ekran dışı mürekkep tuvalidir; kutu ve yazı
+    // renderMarks'ta ekrana basılır.
+    if (state.marquee && !this.markPass) this.drawMarquee(ctx, state.marquee);
 
     // Etiketler her zoomda: uzak görünümde ülke adları haritayı "atlas"
     // yapar; yoğunluğu zoom LOD'u ve çarpışma ayıklaması yönetir.
-    if (this.showLabels && this.mapMode !== 'geography'
+    if (this.showLabels && this.mapMode !== 'geography' && !this.markPass
       && world.nations?.length) {
       const t0 = performance.now();
       this.drawLabels(ctx, world);
@@ -2380,15 +2387,85 @@ export class Renderer {
       else if (hovered !== selectedProvince) this.drawProvinceHighlight(ctx, world, hovered, rect, true);
     }
     if (this.gfx.style?.ink?.live) this.gfxInk('live', ctx, world, rect, cam.zoom, cam.zoom < CACHE_ZOOM);
-    this.drawCities(ctx, world, rect);
+    // Eğik kamerada (markPass 'ink') bu tuval araziye giydirilir: yalnız zemine
+    // yatan çizgi kalır, işaretler drawMarkers'la ekrana dik basılır. Klasikte
+    // markPass yok; sıra aynı.
+    const marks = !this.markPass;
+    if (marks) this.drawCities(ctx, world, rect);
     // Zafer puanı: ordu seçiliyken (hedef seçimi) ya da yakın zoomda.
-    if (armySelected || this.camera.zoom >= 0.9) this.drawVictoryPoints(ctx, world, rect);
+    if (marks && (armySelected || this.camera.zoom >= 0.9)) this.drawVictoryPoints(ctx, world, rect);
     if (this.mapMode !== 'geography') {
       // Coğrafya kipi fiziksel dünyayı yalnız başına gösterir: ordu, cephe ve
       // muharebe de siyasettir (bkz. mapMode yorumu).
       this.drawFronts(ctx, world, state);
       this.drawMovement(ctx, world, state.selectedUnit, state.playerNation);
       this.drawOffensiveArrows(ctx, world, state.playerNation);
+      if (marks) {
+        this.drawUnitCounters(ctx, world, state.selectedUnit, rect, state.playerNation);
+        this.sea.drawFleets(ctx, world, rect, state.playerNation, this.mapMode === 'seas');
+        this.drawBattles(ctx, world, rect);
+        this.drawPockets(ctx, world, state.playerNation);
+        this.drawFrontBadges(ctx);
+        this.drawFloaters(ctx, state.floaters);
+        this.drawAssaultOdds(ctx, state.hoverOdds);
+      }
+    }
+    if (marks) this.drawSelection(ctx, state.selection);
+    perf?.add('r.actors', performance.now() - t0);
+  }
+
+  /**
+   * Eğik kameralı stilin DİK İŞARET geçişi (gfx/threeD.js renderWrap çağırır).
+   * Mürekkep geçişi yalnız zemine yatan çizgiyi çizdi; şehir, birim, künye,
+   * bayrak ve yazılar burada ekran tuvaline basılır. `pin.pin(ctx, x, y)`
+   * öğeyi dünya çapasının izdüşümüne (arazi yüksekliği dahil) dik oturtur,
+   * ekran dışındaysa false döner; `pin.shift` sarmal kopyanın kaymasıdır.
+   * bbox: görünür zemin (dünya birimi).
+   */
+  renderMarks(world, state, pin, bbox) {
+    const ctx = this.ctx;
+    const cam = this.camera;
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    ctx.clearRect(0, 0, cam.viewWidth, cam.viewHeight);
+    this.upright = pin;
+    this.markPass = 'marks';
+    const t0 = performance.now();
+    try {
+      const P = world.wrapWidth || 0;
+      const m = HEX_SIZE * 2;
+      const rect = { minX: bbox.minX - m, maxX: bbox.maxX + m, minY: bbox.minY - m, maxY: bbox.maxY + m };
+      const k0 = P ? Math.floor((rect.minX - WRAP_X0) / P) : 0;
+      const k1 = P ? Math.floor((rect.maxX - WRAP_X0) / P) : 0;
+      for (let k = k0; k <= k1; k++) {
+        pin.shift = k * P;
+        ctx.save();
+        this.drawMarkers(ctx, world, state, {
+          minX: rect.minX - k * P, maxX: rect.maxX - k * P, minY: rect.minY, maxY: rect.maxY,
+        });
+        ctx.restore();
+      }
+      pin.shift = 0;
+      this.perf?.add('r.actors', performance.now() - t0);
+      ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+      if (state.marquee) this.drawMarquee(ctx, state.marquee);
+      if (this.showLabels && this.mapMode !== 'geography' && world.nations?.length) {
+        const t1 = performance.now();
+        this.drawLabels(ctx, world);
+        this.perf?.add('r.labels', performance.now() - t1);
+      }
+    } finally {
+      this.upright = null;
+      this.markPass = null;
+    }
+  }
+
+  /** renderCopy'nin işaret dizisi, aynı sırayla; yalnız dik geçişte (renderMarks). */
+  drawMarkers(ctx, world, state, rect) {
+    const armySelected = (state.selection?.length ?? 0) > 0;
+    if (this.mapMode === 'seas') this.sea.drawZoneNames(ctx, world, rect);
+    this.drawCities(ctx, world, rect);
+    if (armySelected || this.camera.zoom >= 0.9) this.drawVictoryPoints(ctx, world, rect);
+    if (this.mapMode !== 'geography') {
       this.drawUnitCounters(ctx, world, state.selectedUnit, rect, state.playerNation);
       this.sea.drawFleets(ctx, world, rect, state.playerNation, this.mapMode === 'seas');
       this.drawBattles(ctx, world, rect);
@@ -2398,7 +2475,6 @@ export class Renderer {
       this.drawAssaultOdds(ctx, state.hoverOdds);
     }
     this.drawSelection(ctx, state.selection);
-    perf?.add('r.actors', performance.now() - t0);
   }
 
   /**
@@ -3437,8 +3513,10 @@ export class Renderer {
     const height = HEX_SIZE * 1.28;
     ctx.lineWidth = 2.5 / zoom;
     ctx.strokeStyle = '#e5ca84';
+    const U = this.upright;
     for (const unit of selection) {
       if (!unit?.tile) continue;
+      if (U && !U.pin(ctx, unit.tile.x, unit.tile.y)) continue;
       const y = unit.tile.y + (unit.tile.city ? HEX_SIZE * UNIT_ON_CITY_OFFSET : 0);
       const frame = roundedRectPath(
         new Path2D(), unit.tile.x - width / 2, y - height / 2, width, height, 3 / zoom,
@@ -3526,6 +3604,7 @@ export class Renderer {
       list.sort((a, b) => Number(b.isActive) - Number(a.isActive));
       const shown = list.slice(0, 3);
       const base = list[0].at;
+      if (this.upright && !this.upright.pin(ctx, base.x, base.y)) continue;
       shown.forEach((badge, index) => {
         const at = { x: base.x - HEX_SIZE * 0.8 + index * r * 2.5, y: base.y - HEX_SIZE * 0.8 };
         this.drawFrontBadge(ctx, badge.general, at, badge.glow, badge.isActive, zoom);
@@ -3638,6 +3717,7 @@ export class Renderer {
     for (const pocket of pockets) {
       const tile = world.get(pocket.q, pocket.r);
       if (!tile) continue;
+      if (this.upright && !this.upright.pin(ctx, tile.x, tile.y)) continue;
       const ours = pocket.nationId === playerNation;
       const color = ours ? '#ff5a3c' : '#f0c75e';
       const r = Math.max(HEX_SIZE * 0.95, 16 / zoom);
@@ -3676,6 +3756,7 @@ export class Renderer {
     for (const f of floaters) {
       const age = (now - f.t0) / 2400;
       if (age >= 1) continue;
+      if (this.upright && !this.upright.pin(ctx, f.tile.x, f.tile.y)) continue;
       const alpha = age < 0.15 ? age / 0.15 : 1 - Math.max(0, (age - 0.55) / 0.45);
       const y = f.tile.y - HEX_SIZE * (1.3 + age * 0.9);
       ctx.globalAlpha = Math.max(0, alpha);
@@ -3824,6 +3905,7 @@ export class Renderer {
     const text = ratio == null ? 'Move adjacent to attack'
       : `${ratio.toFixed(1)} : 1 · ${count} div${ratio >= needs ? ' · favourable' : ratio >= 1.1 ? ' · even' : ' · costly'}`;
     const color = ratio == null ? '#cfc4a4' : ratio >= needs ? '#9fd27a' : ratio >= 1.1 ? '#e7c46a' : '#ef8a6c';
+    if (this.upright && !this.upright.pin(ctx, tile.x, tile.y)) return;
     const size = 12 / zoom;
     ctx.save();
     ctx.font = `700 ${size.toFixed(2)}px system-ui, sans-serif`;
@@ -3998,12 +4080,14 @@ export class Renderer {
     if (this.mapMode === 'geography') return;
     const zoom = this.camera.zoom;
     const r = HEX_SIZE * 0.2;
+    const U = this.upright;
     ctx.save();
     ctx.lineWidth = 1.4 / zoom;
     for (const province of world.provinces ?? []) {
       const t = province.center;
       if (!t || province.owner < 0 || t.city) continue;
       if (t.x < rect.minX || t.x > rect.maxX || t.y < rect.minY || t.y > rect.maxY) continue;
+      if (U && !U.pin(ctx, t.x, t.y)) continue;
       const holder = controllerOf(t);
       const occupied = holder >= 0 && holder !== province.owner;
       // State adı merkeze yazılır; işaret adın üstünde durur, yazıyı bölmez.
@@ -4028,10 +4112,12 @@ export class Renderer {
     const zoom = this.camera.zoom;
     // Çapa uzak zoomda okunmaz; orada yalnız işaret kalır.
     const detailed = zoom >= 0.3;
+    const U = this.upright;
 
     for (const city of world.cities) {
       const t = city.tile;
       if (t.x < rect.minX || t.x > rect.maxX || t.y < rect.minY || t.y > rect.maxY) continue;
+      if (U && !U.pin(ctx, t.x, t.y)) continue;
       const nation = world.nations[city.nationId];
       const isCapital = nation.capital === t;
       // KALE LEVHASI KALDIRILDI (Kerem: "şu kale gibi olan işareti kaldır"):
@@ -4129,6 +4215,7 @@ export class Renderer {
     const height = HEX_SIZE * 1.08;
     // Taraf ulus basina bir kez: kare icinde ayni ulusun onlarca rozeti var.
     const sides = new Map();
+    const U = this.upright;
 
     for (const unit of world.units) {
       const tile = unit.tile;
@@ -4137,6 +4224,7 @@ export class Renderer {
       }
       const stack = unitsOn(tile);
       if (stack.length > 1 && stack[0] !== unit) continue;
+      if (U && !U.pin(ctx, tile.x, tile.y)) continue;
       const nation = world.nations[unit.nationId];
       let side = sides.get(unit.nationId);
       if (!side) {
@@ -4514,6 +4602,8 @@ export class Renderer {
       const x = tile.x;
       const y = tile.y - HEX_SIZE * 0.8;
       if (x < rect.minX || x > rect.maxX || y < rect.minY || y > rect.maxY) continue;
+      const U = this.upright;
+      if (U && !U.pin(ctx, tile.x, tile.y)) continue;
 
       const attackers = (battle.attackers ?? [])
         .map((id) => unitById.get(id)).filter(Boolean);
@@ -4523,6 +4613,8 @@ export class Renderer {
       const dSoldiers = defenders.reduce((sum, army) => sum + soldiersOf(army), 0);
       // Iki olcekte de: kimin nereye vurdugu uzaktan da okunmali.
       this.drawAttackMarks(ctx, world, tile, attackers);
+      // Üçgenler kendi kenar ortalarına iğnelendi; künye karenin çapasına döner.
+      if (U) U.pin(ctx, tile.x, tile.y);
 
       // UZAK LOD: rakam okunmuyor, kalabalik okunuyor. Kirmizi bir nisan yeter;
       // tam kunye o olcekte hexleri yutup "haritayi kapatan ikon" oluyordu.
@@ -4638,6 +4730,7 @@ export class Renderer {
       // üçgen x 7230).
       const mx = target.x - dx * 0.5;
       const my = target.y - dy * 0.5;
+      if (this.upright && !this.upright.pin(ctx, mx, my)) continue;
       ctx.beginPath();
       ctx.moveTo(mx + ux * size * 0.62, my + uy * size * 0.62);
       ctx.lineTo(mx - ux * size * 0.38 - uy * size * 0.5, my - uy * size * 0.38 + ux * size * 0.5);
@@ -4956,15 +5049,25 @@ export class Renderer {
     // başına yüzlerce çağrı çöp üretmesin.
     const copyStep = P * z;
     const copyXs = (this.labelCopyXs ??= []);
-    const copiesOf = (x, margin) => {
+    // kr: eğik kamerada çapa derinliğinin ölçeği (worldToScreen'in p.kr'si);
+    // derinlik x'ten bağımsız olduğundan kopyalar aynı satırda kr × adımla dizilir.
+    const copiesOf = (x, margin, kr = 1) => {
       copyXs.length = 0;
       const hi = cam.viewWidth + margin;
+      const step = copyStep * kr;
       if (x >= -margin && x <= hi) copyXs.push(x);
-      if (copyStep > 0) {
-        for (let c = x - copyStep; c >= -margin; c -= copyStep) if (c <= hi) copyXs.push(c);
-        for (let c = x + copyStep; c <= hi; c += copyStep) if (c >= -margin) copyXs.push(c);
+      if (step > 0) {
+        for (let c = x - step; c >= -margin; c -= step) if (c <= hi) copyXs.push(c);
+        for (let c = x + step; c <= hi; c += step) if (c >= -margin) copyXs.push(c);
       }
       return copyXs;
+    };
+    // Eğik kamerada yazı çapasının çevresinde p.k kadar ölçeklenir (uzak
+    // yamaçta küçük, önde büyük; sınırlı). Düz kamerada p.k yok, dönüşüme
+    // dokunulmaz.
+    const dpr = this.dpr;
+    const around = (k, x, y) => {
+      if (k !== undefined) ctx.setTransform(dpr * k, 0, 0, dpr * k, dpr * x * (1 - k), dpr * y * (1 - k));
     };
 
     ctx.save();
@@ -5019,8 +5122,12 @@ export class Renderer {
         continue;
       }
       const p = cam.worldToScreenWrapped(L.x, L.y);
+      if (p.k !== undefined) {
+        size *= p.k;
+        spacing *= p.k;
+      }
       const w = (w100 * size) / 100 + spacing * L.name.length;
-      const xs = copiesOf(p.x, w);
+      const xs = copiesOf(p.x, w, p.kr);
       if (!xs.length || p.y < -50 || p.y > cam.viewHeight + 50) {
         // Ekran dışı: alfa sıfırlanır ki dönüşte içeri "erirken" girsin.
         this.labelAlpha.delete(key);
@@ -5057,9 +5164,7 @@ export class Renderer {
         // gibi gösteriyordu; dar ve koyu bir kontur ise harfi haritanın içine
         // oturtur. Mürekkep de ısıtıldı: nötr fildişi yerine hafif sıcak.
         ctx.shadowColor = ink ? ink.country.shadow : 'rgba(0, 0, 0, 0.5)';
-        // Stil kısabilir (eğik kamera: mürekkep tuvali dokuya alınırken
-        // bulanık gölgenin GPU bedeli kareyi bekletiyordu, bkz. gfx/threeD.js).
-        ctx.shadowBlur = ink ? ink.country.shadowBlur : (this.labelBlur ?? 2.5);
+        ctx.shadowBlur = ink ? ink.country.shadowBlur : 2.5;
         ctx.shadowOffsetY = ink ? 0 : 1;
         ctx.lineJoin = 'round';
         ctx.lineWidth = Math.max(1.2, size * (ink ? ink.country.strokeK : 0.075));
@@ -5074,7 +5179,8 @@ export class Renderer {
         // Bayrak uzak/orta zoomda kimlik verir; yakında şehir katmanı devralır.
         if (L.flag && z < 0.75) {
           ctx.globalAlpha = a;
-          drawFlag(ctx, L.flag, px - 9, p.y + bh / 2 + 3, 18, 12);
+          const fk = p.k ?? 1;
+          drawFlag(ctx, L.flag, px - 9 * fk, p.y + bh / 2 + 3 * fk, 18 * fk, 12 * fk);
           ctx.globalAlpha = 1;
         }
       }
@@ -5093,7 +5199,7 @@ export class Renderer {
         // Sahipsiz kırlar en yakın zoomda; önce devletlerin toprağı konuşsun.
         if (pr.owner < 0 && z < 1.1) continue;
         const p = cam.worldToScreenWrapped(pr.center.x, pr.center.y);
-        const xs = copiesOf(p.x, 70);
+        const xs = copiesOf(p.x, 70, p.kr);
         if (!xs.length || p.y < -20 || p.y > cam.viewHeight + 20) {
           // Ekran dışı: alfa SIFIRLANIR. Bırakılınca ad 0.85'te donuyor ve
           // görüşe geri girdiğinde erimeden, tam alfayla beliriyordu — ülke ve
@@ -5124,6 +5230,7 @@ export class Renderer {
         ctx.globalAlpha = a;
         ctx.lineWidth = ink ? ink.state.width : 1.6;
         ctx.strokeStyle = ink ? ink.state.stroke : 'rgba(8, 11, 11, 0.32)';
+        around(p.k, p.x, p.y);
         ctx.strokeText(pr.name, p.x, p.y);
         ctx.fillStyle = ink ? ink.state.fill : 'rgba(226, 219, 198, 0.92)';
         ctx.fillText(pr.name, p.x, p.y);
@@ -5131,6 +5238,7 @@ export class Renderer {
         for (const mx of more) {
           if (collides(mx - w / 2 - 3, ry, w + 6, 16)) continue;
           placed.push({ x: mx - w / 2 - 3, y: ry, w: w + 6, h: 16 });
+          around(p.k, mx, p.y);
           ctx.strokeText(pr.name, mx, p.y);
           ctx.fillText(pr.name, mx, p.y);
         }
@@ -5157,7 +5265,7 @@ export class Renderer {
           : Math.max(city.level >= 2 ? majorTarget : 0, allTarget);
         if (target <= 0 && !this.labelAlpha.has(key)) continue;
         const p = cam.worldToScreenWrapped(city.tile.x, city.tile.y);
-        const xs = copiesOf(p.x, 60);
+        const xs = copiesOf(p.x, 60, p.kr);
         if (!xs.length || p.y < -24 || p.y > cam.viewHeight + 24) {
           this.labelAlpha.delete(key);
           continue;
@@ -5181,6 +5289,7 @@ export class Renderer {
         ctx.font = isCapital ? capFont : cityFont;
         ctx.lineWidth = (isCapital ? 1.9 : 1.6) * (ink ? ink.city.widthK : 1);
         ctx.strokeStyle = ink ? ink.city.stroke : 'rgba(6, 10, 10, 0.4)';
+        around(p.k, p.x, p.y);
         ctx.strokeText(name, p.x, ly);
         ctx.fillStyle = ink
           ? (isCapital ? ink.city.capital : ink.city.fill)
@@ -5189,6 +5298,7 @@ export class Renderer {
         for (let i = 1; i < xs.length; i++) {
           if (collides(xs[i] - w / 2 - 2, ry, w + 4, 15)) continue;
           placed.push({ x: xs[i] - w / 2 - 2, y: ry, w: w + 4, h: 15 });
+          around(p.k, xs[i], p.y);
           ctx.strokeText(name, xs[i], ly);
           ctx.fillText(name, xs[i], ly);
         }

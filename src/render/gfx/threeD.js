@@ -23,14 +23,21 @@
 //   birimi: kabartma abartısı, ışık ve gölge aynı ölçeği kullanır), relief,
 //   shadow, cavity, haze, exposure.
 //
-// Bağlanmayanlar (önizleme): birim ve şehir işaretleri zemine yatık çizilir
-// (ayakta durmaz), etiketler araziyle eğilir, dağın arkasındaki hex
-// tıklanamaz; ayrıntı için rapora bakınız.
+// İKİ GEÇİŞ. Araziye yalnız ZEMİNE AİT mürekkep giydirilir (sınır, nehir,
+// kıyı, işgal taraması, seçim ve cephe çizgisi: renderer markPass 'ink').
+// Yazı ve işaretler (ülke/state/şehir adı, şehir baklavası, zafer puanı,
+// birim sayacı, bayrak, künye, filo) ekran tuvaline DİK basılır
+// (renderer.renderMarks): her öğe kendi dünya çapasının izdüşümünde, o
+// noktanın arazi yüksekliği dahil; boyu derinlikle ılımlı ölçeklenir
+// (markScale). Giydirilen yazı dağın sırtında bükülüyor, uzak kenarda
+// basık okunuyordu (Kerem: "yazı ve işaret araziye yapışmasın").
+//
+// Tıklama ve imleç: kamera izdüşümü (hookCamera) ışını yükseklik alanında
+// yürütür; dağın önündeki yamaç, arkasındaki vadiyi örter.
 
 import { registerGfxStyle } from './registry.js';
 import { makeView3D } from './view3d.js';
 import { InkOverlay3D } from './inkOverlay.js';
-import { sampleTerrain } from '../terrainBake.js';
 import { TERRAIN } from '../../world/terrain.js';
 import { HEX_SIZE } from '../../world/worldgen.js';
 
@@ -281,6 +288,7 @@ const S = {
   active: false,
   inInk: false,
   view: null,
+  memo: null,
   hMax: { terrain: null, value: 1 },
   deniz: null,
   denizCiz: null,
@@ -337,7 +345,12 @@ function heightMax(terrain) {
   return m;
 }
 
-/** Bu karenin eğik görünümü; eğim yoksa ya da arazi hazır değilse null. */
+/**
+ * Bu karenin eğik görünümü; eğim yoksa ya da arazi hazır değilse null.
+ * Aynı kamera ve ayar için tek kez kurulur: dik işaret geçişinde her yazı
+ * worldToScreen'den geçer, görünümü her çağrıda yeniden kurmak (matris +
+ * ızgara) yüzlerce kez aynı işi yapmaktı.
+ */
 function viewFor(r, cam = r.camera) {
   const t = r.gfxTune;
   if (!t || !(t.tilt > 0.01)) return null;
@@ -345,12 +358,43 @@ function viewFor(r, cam = r.camera) {
   if (!wgl || wgl.lost || !r.renderWorld || !wgl.gfxReady()) return null;
   const terrain = r.gfxTerrainFor(r.renderWorld);
   if (!terrain) return null;
+  const key = `${cam.x},${cam.y},${cam.zoom},${cam.viewWidth},${cam.viewHeight},`
+    + `${t.tilt},${t.fov},${t.heightScale},${t.heightCurve},${t.farTilt}`;
+  if (S.memo?.key === key && S.memo.terrain === terrain) return S.memo.view;
   const near = Math.min(1, Math.max(0, (cam.zoom - 0.3) / 0.6));
   const k = t.farTilt + (1 - t.farTilt) * near * near * (3 - 2 * near);
-  return makeView3D(cam, {
+  const view = makeView3D(cam, {
     tilt: t.tilt * k, fov: t.fov, heightScale: t.heightScale, heightCurve: t.heightCurve,
     hMax: heightMax(terrain),
   });
+  S.memo = { key, terrain, view };
+  return view;
+}
+
+/**
+ * terrainBake.sampleTerrain'in yalnız yükseklik kanalı (aynı çift doğrusal
+ * okuma, x sarmal): işaret ve ışın adımı başına dizi ayırmasın.
+ */
+function heightAt(terrain, x, y) {
+  const H = terrain.height;
+  const f = terrain.field;
+  const w = H.w;
+  const u = ((x - f.x0) / f.spanX) * w - 0.5;
+  const v = ((y - f.y0) / f.spanY) * H.h - 0.5;
+  let iu = Math.floor(u);
+  const iv = Math.floor(v);
+  const fu = u - iu;
+  const fv = v - iv;
+  iu = ((iu % w) + w) % w;
+  const x1 = iu + 1 === w ? 0 : iu + 1;
+  const y0 = Math.min(H.h - 1, Math.max(0, iv));
+  const y1 = Math.min(H.h - 1, Math.max(0, iv + 1));
+  const d = H.data;
+  const a = d[(y0 * w + iu) * 4];
+  const b = d[(y0 * w + x1) * 4];
+  const e = d[(y1 * w + iu) * 4];
+  const g = d[(y1 * w + x1) * 4];
+  return (a + (b - a) * fu) * (1 - fv) + (e + (g - e) * fu) * fv;
 }
 
 /** Zemin yüksekliği, dünya birimi (tıklama ışını ve işaret izdüşümü). */
@@ -358,9 +402,41 @@ function groundAt(r, x, y) {
   const terrain = r.gfxTerrainFor(r.renderWorld);
   if (!terrain) return 0;
   const t = r.gfxTune;
-  const h = Math.max(0, sampleTerrain(terrain, x, y).h);
+  const h = Math.max(0, heightAt(terrain, x, y));
   const c = t?.heightCurve ?? 0;
   return h * (1 - c + c * h) * (t?.heightScale ?? 0);
+}
+
+/**
+ * Dik işaretin derinlik ölçeği. kr = çapadaki piksel/dünya oranı ÷ hedef
+ * noktasınınki (önde > 1, arkada < 1). Tam perspektif uzak kenardaki adı
+ * okunmaz kılıyor, öndeki sayacı şişiriyordu: üs 0.7 ile yumuşar, bantta kalır.
+ */
+function markScale(kr) {
+  return Math.min(1.2, Math.max(0.78, kr ** 0.7));
+}
+
+/** Ekran kenarının ötesinde bu kadar piksele kadar çapa yine çizilir (yazı taşar). */
+const PIN_CULL = 160;
+
+/**
+ * Dik işaret iğnesi (renderer.renderMarks'a verilir). pin(ctx, x, y):
+ * dünya çapası (x + shift, y) arazinin üstünde izdüşürülür ve tuval
+ * dönüşümü öyle kurulur ki çizimin dünya koordinatı o noktada, ekrana dik ve
+ * zoom × markScale ölçeğinde düşer. Kamera arkası ya da ekran dışı: false.
+ */
+function makePin(r, v, dpr) {
+  return {
+    shift: 0,
+    pin(ctx, x, y) {
+      const wx = x + this.shift;
+      const p = v.project(wx, y, groundAt(r, wx, y));
+      if (!p || p.x < -PIN_CULL || p.x > v.W + PIN_CULL || p.y < -PIN_CULL || p.y > v.H + PIN_CULL) return false;
+      const m = v.zoom * markScale(v.f / (p.depth * v.zoom));
+      ctx.setTransform(dpr * m, 0, 0, dpr * m, dpr * (p.x - m * x), dpr * (p.y - m * y));
+      return true;
+    },
+  };
 }
 
 function enter3D(r) {
@@ -392,6 +468,7 @@ function enter3D(r) {
 function leave3D(r) {
   S.active = false;
   S.view = null;
+  S.memo = null;
   if (r.waterGL) r.waterGL.view3d = null;
   if (S.overlay) {
     S.overlay.clear();
@@ -485,11 +562,17 @@ function hookCamera(r) {
     const p = v?.pick(sx, sy, (x, y) => groundAt(r, x, y));
     return p ?? proto.screenToWorld.call(this, sx, sy);
   };
+  // Yazı katmanı (renderer.drawLabels) k ve kr'yi okur: k çapanın ölçeği
+  // (markScale), kr ham oranı (sarmal kopya adımı). Düz yolda ikisi yok.
   cam.worldToScreen = function worldToScreen3d(wx, wy) {
     if (!S.active || S.inInk) return proto.worldToScreen.call(this, wx, wy);
     const v = viewFor(r, this);
-    const p = v?.project(wx, wy, groundAt(r, wx, wy));
-    return p ? { x: p.x, y: p.y } : proto.worldToScreen.call(this, wx, wy);
+    if (!v) return proto.worldToScreen.call(this, wx, wy);
+    const p = v.project(wx, wy, groundAt(r, wx, wy));
+    // Kameranın arkası ekran dışıdır; afin yedek onu ekrana düşürüyordu.
+    if (!p) return { x: -1e5, y: -1e5, k: 1, kr: 1 };
+    const kr = v.f / (p.depth * v.zoom);
+    return { x: p.x, y: p.y, k: markScale(kr), kr };
   };
 }
 
@@ -556,11 +639,9 @@ function renderWrap(r, world, state, inner) {
   r.waterGL.view3d = v;
   S.view = v;
   S.inInk = true;
-  // Ülke adının bulanık gölgesi bu tuvalde pahalı: tuval her kare dokuya
-  // alınır ve yükleme, metin bulanıklığının GPU işini bekler (z0.6'da
-  // kaydırırken kare başına ~11 ms ölçüldü; bulanıklıksız ~0.1 ms). Koyu
-  // kontur ve 1 px gölge kalır, yazı zeminden yine ayrılır.
-  r.labelBlur = 0;
+  // Yazı ve işaret bu tuvale girmez (markPass 'ink'): dokuya alınan tuval
+  // araziyle eğilir; onlar aşağıda ekrana dik basılır.
+  r.markPass = 'ink';
   let out;
   const t0 = performance.now();
   try {
@@ -568,7 +649,7 @@ function renderWrap(r, world, state, inner) {
   } finally {
     r.perf?.add('r.3d.inner', performance.now() - t0);
     S.inInk = false;
-    r.labelBlur = undefined;
+    r.markPass = null;
     r.ctx = savedCtx;
     cam.x = saved.x;
     cam.y = saved.y;
@@ -589,11 +670,16 @@ function renderWrap(r, world, state, inner) {
     edge: t.edgeFog, edgeCol: t.edgeCol, edgeReach: HEX_W * 4,
   });
   r.perf?.add('r.3d.overlay', performance.now() - t1);
+  // Dik işaretler ve yazılar #map tuvaline (örtünün üstünde), gerçek kamerayla.
+  r.renderMarks(world, state, makePin(r, v, dpr), v.bbox);
   return out;
 }
 
 registerGfxStyle({
   name: '3d',
+  label: '3D',
+  // Eğim 0 bu stilde klasik çizimdir; menü varsayılanı bu yüzden 45.
+  controls: [{ key: 'tilt', label: 'Tilt', min: 0, max: 60, step: 1, value: 45 }],
   id: 31,
   glsl: GLSL,
   tune,

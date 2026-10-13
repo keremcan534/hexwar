@@ -72,7 +72,7 @@ function compile(gl, type, src) {
 
 export class InkOverlay3D {
   /** Tuvali #map'in hemen ardına kurar; WebGL2 yoksa null. */
-  static create(after) {
+  static create(map) {
     const canvas = document.createElement('canvas');
     canvas.id = 'map-3d-ink';
     canvas.style.cssText = 'position:fixed;inset:0;width:100%;height:100%;display:block;'
@@ -82,7 +82,9 @@ export class InkOverlay3D {
       powerPreference: 'high-performance',
     });
     if (!gl) return null;
-    after.after(canvas);
+    // #map'in ALTINA: dik işaret ve yazılar #map'e basılır (renderer
+    // renderMarks); örtünün pusu ve mürekkebi onları örtmesin.
+    map.before(canvas);
     try {
       return new InkOverlay3D(canvas, gl);
     } catch (err) {

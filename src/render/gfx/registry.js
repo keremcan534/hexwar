@@ -21,6 +21,10 @@
 // ===================================================================== TANIM
 //   registerGfxStyle({
 //     name: 'atlas',          // ?gfx=atlas
+//     label: 'Atlas',         // oyundaki "Map style" seçiminde görünen ad (yoksa name);
+//                             // 'debug-' ile başlayan ya da menu: false olan stil listelenmez
+//     controls: [             // seçimin altında kaydırıcı: tune[key] (bkz. ui/gfxStyleMenu.js)
+//       { key: 'tilt', label: 'Tilt', min: 0, max: 60, step: 1, value: 45 } ],
 //     id: 3,                  // uGfx değeri: tam sayı > 0, benzersiz (901-903 hata ayıklama)
 //     glsl: `...`,            // ZORUNLU: vec3 gfxLand(GfxLand L) + vec3 gfxPost(GfxLand L, vec3 col)
 //     tune: { ... },          // canlı ayarlar; tune.heightScale uHeightScale'i ezer (vars. 100)
@@ -112,6 +116,19 @@ export function getGfxStyle(name) {
 
 export function gfxStyleNames() {
   return ['classic', ...STYLES.keys()];
+}
+
+/**
+ * Oyuncuya sunulan stiller, kayıt sırasıyla: { name, label, controls }.
+ * Menü bunu okur; yeni stil kaydı (ör. 'hoi4') menüye kendiliğinden girer.
+ */
+export function gfxStyleOptions() {
+  const out = [{ name: 'classic', label: 'Classic', controls: [] }];
+  for (const s of STYLES.values()) {
+    if (s.name.startsWith('debug-') || s.menu === false) continue;
+    out.push({ name: s.name, label: s.label ?? s.name, controls: s.controls ?? [] });
+  }
+  return out;
 }
 
 /** `?gfx=` parametresi; yoksa ya da tarayıcı dışında 'classic'. */

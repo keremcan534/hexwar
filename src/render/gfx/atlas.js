@@ -246,7 +246,9 @@ const TUNE = {
 
 registerGfxStyle({
   name: 'atlas',
-  id: 3,
+  label: 'Atlas',
+  // vic3 de 3 idi: iki prototip ayrı dallarda doğdu, birleşince kayıt çakışıyordu.
+  id: 4,
   glsl: GLSL,
   tune: TUNE,
   uniforms: (t) => ({

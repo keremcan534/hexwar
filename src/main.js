@@ -14,6 +14,7 @@ import { UnitHover } from './ui/unitHover.js';
 import { NationPicker } from './ui/nationPicker.js';
 import { PerfOverlay } from './ui/perfOverlay.js';
 import { EventCards } from './ui/eventCard.js';
+import './ui/gfxStyleMenu.js';
 import { materials } from './render/textures.js';
 
 // Yüzey dokuları bir kez üretilip CSS'e verilir. Çalışma anında hesaplandığı

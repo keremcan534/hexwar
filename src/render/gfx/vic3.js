@@ -494,6 +494,7 @@ function vicHexData(world) {
 
 const VIC3 = registerGfxStyle({
   name: 'vic3',
+  label: 'Victoria',
   id: 3,
   glsl: GLSL,
   tune: TUNE,

@@ -399,6 +399,15 @@ export class SeaLayer {
       ctx.drawImage(tex.canvas, geo.x0 + dx, geo.y0, w, geo.h);
     }
     ctx.restore();
+    // Eğik kamerada ad araziye giydirilmez; renderer.drawMarkers dik basar.
+    if (!this.renderer.markPass) this.drawZoneNames(ctx, world, rect);
+  }
+
+  /** Bölge adları (ve paneldeki satırın halkası), derin noktada. */
+  drawZoneNames(ctx, world, rect) {
+    const geo = this.geometry(world);
+    if (!geo.zones.length) return;
+    const U = this.renderer.upright;
     const zoom = this.renderer.camera.zoom;
     const size = 12.5 / zoom;
     ctx.save();
@@ -413,6 +422,7 @@ export class SeaLayer {
       const anchor = geo.anchors[id];
       for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
         const at = { x: anchor.x + dx, y: anchor.y };
+        if (U && !U.pin(ctx, at.x, at.y)) continue;
         const lit = id === this.highlight;
         ctx.fillStyle = lit ? '#f0d795' : 'rgba(214, 232, 244, 0.9)';
         ctx.strokeText(zone.name, at.x, at.y - 6 / zoom);
@@ -446,6 +456,7 @@ export class SeaLayer {
     const turn = world.turn ?? 0;
     const order = { ours: 0, ally: 1, enemy: 2, other: 3 };
     const h = 14 / zoom;
+    const U = this.renderer.upright;
     const rowsOf = (here, keep) => [...here.entries()]
       .map(([nationId, entry]) => ({ nationId, count: entry.ships.length, rel: relationTo(world, playerId, nationId) }))
       .filter(keep)
@@ -461,6 +472,7 @@ export class SeaLayer {
       const rows = rowsOf(here, (row) => everyone || row.rel !== 'other');
       if (!rows.length) continue;
       for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
+        if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
         this.badges(ctx, world, anchor.x + dx, anchor.y + 4 / zoom, rows, { zoom, sub: false });
       }
     }
@@ -472,6 +484,7 @@ export class SeaLayer {
       const rows = rowsOf(here, (row) => everyone || row.rel === 'ours' || row.rel === 'enemy');
       if (!rows.length) continue;
       for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
+        if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
         this.badges(ctx, world, anchor.x + dx, anchor.y + 4 / zoom + h + 3 / zoom, rows, { zoom, sub: true });
       }
     }
@@ -483,6 +496,7 @@ export class SeaLayer {
       const mine = playerId >= 0 && report.sides.some((side) => side.nations.includes(playerId));
       if (!everyone && !mine) continue;
       for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
+        if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
         this.battleMark(ctx, anchor.x + dx, anchor.y - 22 / zoom, zoom);
       }
     }
