@@ -11818,10 +11818,12 @@ button.uc-agenda:hover { border-color: var(--gold); }
 .art-lg { width: 64px; height: 64px; }
 .art-xl { width: 96px; height: 96px; }
 
-/* Halkasız madalyon: emaye disk + pirinç halka, boyalı setle aynı aile. */
+/* Halkasız madalyon: emaye disk + pirinç halka, boyalı setle aynı aile.
+   Zemin ORTA ton: koyu emayede kömür, tank, varil kayboluyordu; açık zeminde
+   pamuk ve yelken. Kayrak mavisi ikisini de koyu dış çizgileriyle ayırır. */
 .art-disc:not(.ringed) {
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 38%, #24333a 0%, #142026 62%, #0b1316 100%);
+  background: radial-gradient(circle at 50% 38%, #56636e 0%, #3c4852 62%, #27313a 100%);
   box-shadow:
     0 0 0 1px rgba(0, 0, 0, 0.8),
     inset 0 0 0 2px #6f5a31,

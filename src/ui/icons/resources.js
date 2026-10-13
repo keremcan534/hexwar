@@ -59,14 +59,12 @@ export const RESOURCE_ART = {
 };
 
 /**
- * Halkası sanatın içinde olan mallar (paket 1). Amblemde CSS pirinç halka
- * yalnız bu kümenin DIŞINDAKİLERE çizilir; yoksa çift çerçeve görünür.
+ * Halkası sanatın içinde olan mallar. Amblemde CSS pirinç halka yalnız bu
+ * kümenin DIŞINDAKİLERE çizilir; yoksa çift çerçeve görünür. 2026-10 seti
+ * çerçevesiz geldi; burada kalanlar eski paket 1'in henüz yenilenmeyenleri.
  */
 export const RINGED_ART = new Set([
-  'food', 'fish', 'cattle', 'fruit', 'timber', 'paper', 'coal', 'iron',
-  'steel', 'fabric', 'dye', 'glass', 'fertilizer', 'ammunition', 'oil',
-  'rubber', 'tools', 'electric_gear', 'radio', 'telephone', 'automobile',
-  'arms', 'artillery', 'tanks', 'airplane', 'clippers', 'steamers',
+  'paper', 'steel', 'fabric', 'dye', 'glass', 'fertilizer',
 ]);
 
 /**

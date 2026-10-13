@@ -5,10 +5,10 @@
 // kaynağıydı: her işletim sisteminde başka çizilir, boyu metinle oynar.
 //
 // İki sanat ailesi var ve sunumları bilinçli olarak ayrı:
-//   - Kaynak madalyonları: eski boyalı set halkası sanatın İÇİNDE gelir;
-//     gravür setinden gelen at ve güherçile halkasızdır. Halkasızlar CSS'te
-//     aynı emaye diske ve pirinç halkaya oturtulur (`art-disc`) ki yan yana
-//     iki ayrı setten yapıştırılmış durmasınlar.
+//   - Kaynak madalyonları: 2026-10 setinde sanat ÇERÇEVESİZ nesnedir; emaye
+//     diski ve pirinç halkayı her ikona aynı biçimde CSS çizer (`art-disc`).
+//     Halkası resmin içinde gelen eski set ile halkasız gravürlerin yan yana
+//     "iki setten yapıştırılmış" durması bununla bitti.
 //   - Bina ve yasa sahneleri (gravür): dikdörtgen "plaka" çerçeve (`art-plate`).
 //   - Amblemler (teknoloji dalı, üst çubuk göstergesi, general özelliği):
 //     çerçevesiz nesne + gölge (`art-emblem`). Metin satırının içinde de
@@ -28,8 +28,6 @@ const RESOURCE_FILE = {
   OIL: 'resources/oil',
   RUBBER: 'resources/rubber',
 };
-/** Halkası sanatın içinde gelenler: CSS ikinci halka çizmez. */
-const RINGED = new Set(['FOOD', 'COAL', 'IRON', 'TIMBER', 'OIL', 'RUBBER']);
 
 const EQUIPMENT_FILE = {
   rifles: 'resources/small_arms',
@@ -40,7 +38,7 @@ const EQUIPMENT_FILE = {
   aircraft: 'resources/aeroplane',
 };
 
-/** Bütçe satırları: eski bütçe madalyonları (halka içte). */
+/** Bütçe satırları: bütçe madalyonları. */
 const LEDGER_FILE = {
   tax: 'budget/treasury',
   exports: 'budget/tariff',
@@ -66,7 +64,7 @@ function img(file, alt, cls) {
 export function resourceArt(id, size = 'sm') {
   const file = RESOURCE_FILE[id];
   if (!file) return '';
-  return img(file, id.toLowerCase(), `art-${size} art-disc${RINGED.has(id) ? ' ringed' : ''}`);
+  return img(file, id.toLowerCase(), `art-${size} art-disc`);
 }
 
 /** Bina sahnesi (gravür plaka). */
@@ -82,7 +80,7 @@ export function lawArt(id, size = 'md') {
 /** Teçhizat madalyonu; zırhlı teknolojisiyle gemi buharlıya döner. */
 export function equipmentArt(id, size = 'md', ironclad = false) {
   const file = EQUIPMENT_FILE[id === 'ships' && ironclad ? 'ironclads' : id];
-  return file ? img(file, id, `art-${size} art-disc ringed`) : '';
+  return file ? img(file, id, `art-${size} art-disc`) : '';
 }
 
 /** Bütçe satırı madalyonu. */
@@ -90,7 +88,7 @@ export function ledgerArt(id, size = 'xs') {
   const file = LEDGER_FILE[id];
   if (!file) return '';
   const plate = file.startsWith('buildings/');
-  return img(file, id, `art-${size} ${plate ? 'art-plate' : 'art-disc ringed'}`);
+  return img(file, id, `art-${size} ${plate ? 'art-plate' : 'art-disc'}`);
 }
 
 /** Amblem: teknoloji dalı (industry…society) ya da gösterge (power, stability, infamy). */
