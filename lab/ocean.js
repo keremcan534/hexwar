@@ -146,16 +146,40 @@ export const TAYF = [
 // yüzey detayına (doku, mipmap'li, takma adı yok) bırakıldı.
 
 
-/** Tayfı uniform dizisine çevirir; `olcek` dalga boylarını dünyaya uyarlar. */
+// ZOOM OKTAVLARI.
+//
+// Uzak zoomda dalga boyu `olcek` kadar büyütülür (Nyquist, yukarıda). Ölçek
+// zoom'la SÜREKLİ değişseydi faz w·(d·p) dünya orijinine göre gerilir: 10 000
+// birim ötedeki bir noktada %2'lik ölçek farkı fazı neredeyse bir tur kaydırır ve
+// oyuncu her zoom adımında denizin "yerinden oynadığını" görür. Onun yerine
+// dalga boyları 2'nin kuvvetlerinde SABİT iki takımdır; zoom yalnız iki takımın
+// ağırlığını kaydırır. Takımlar dünyaya çivili kaldığı için desen kaymaz,
+// yalnız bir oktav öbürüne yavaşça erir. Tamsayı oktavda (olcek 1, 2, 4)
+// sonuç eski tek takımın birebir aynısıdır. Fragment tarafı aynı kuralı
+// `oktavKur` ile uygular.
+export function oktav(olcek) {
+  const L = Math.log2(Math.max(1, olcek));
+  const k = Math.floor(L);
+  return { s0: 2 ** k, f: L - k };
+}
+
+/**
+ * Tayfı uniform dizisine çevirir: 12 dalga = iki oktav takımı × TAYF.
+ * Takımın ağırlığı yön vektörünün BOYUNA yazılır (shader normalize eder);
+ * böylece uniform düzeni değişmez, laboratuvar sayfaları da aynı kalır.
+ */
 export function dalgaDizisi(THREE, P, olcek = 1) {
+  const { s0, f } = oktav(olcek);
   const arr = [];
   let toplam = 0;
-  for (const d of TAYF) {
-    const yayilma = P.yayilma === undefined ? 1 : P.yayilma;
-    const a = (P.ruzgar + d.sapma * yayilma) * Math.PI / 180;
-    const gen = d.gen * P.amp * olcek;
-    toplam += gen;
-    arr.push(new THREE.Vector4(Math.cos(a), Math.sin(a), Math.max(gen, 1e-4), d.boy * olcek));
+  for (const [s, g] of [[s0, 1 - f], [s0 * 2, f]]) {
+    for (const d of TAYF) {
+      const yayilma = P.yayilma === undefined ? 1 : P.yayilma;
+      const a = (P.ruzgar + d.sapma * yayilma) * Math.PI / 180;
+      const gen = d.gen * P.amp * s;
+      toplam += gen * g;
+      arr.push(new THREE.Vector4(Math.cos(a) * g, Math.sin(a) * g, Math.max(gen, 1e-4), d.boy * s));
+    }
   }
   return { arr, toplam };
 }
@@ -290,7 +314,7 @@ export function suVertex({ yama = false } = {}) {
 
   return [
     'uniform float uTime, uChop, uHiz;',
-    'uniform vec4 uDalga[6];',
+    'uniform vec4 uDalga[12];',
     yama ? 'uniform vec2 uOrigin, uSpan;' : '',
     yama ? 'uniform vec4 uAlan; uniform sampler2D uDist; uniform sampler2D uGurultu;' : '',
     yama ? 'uniform float uDistMax, uHex, uKiyiKirilma, uKiyiMenzil, uGirdap, uEsinti;' : '',
@@ -306,8 +330,11 @@ export function suVertex({ yama = false } = {}) {
     '  vec3 kay = vec3(0.0);',
     '  vec3 ddx = vec3(1.0, 0.0, 0.0);',
     '  vec3 ddz = vec3(0.0, 0.0, 1.0);',
-    '  for (int i = 0; i < 6; i++) {',
-    '    vec2 d = normalize(uDalga[i].xy);',
+    '  for (int i = 0; i < 12; i++) {',
+    // Yön vektörünün boyu oktav ağırlığıdır (bkz. dalgaDizisi).
+    '    float g = length(uDalga[i].xy);',
+    '    if (g < 1e-3) continue;',
+    '    vec2 d = uDalga[i].xy / g;',
     '    float A = uDalga[i].z * esintiK;',
     '    float w = 6.2831853 / uDalga[i].w;',
     // Derin su dağılımı: uzun dalga hızlı gider. Hepsi aynı hızda giderse
@@ -315,6 +342,9 @@ export function suVertex({ yama = false } = {}) {
     '    float hiz = sqrt(9.81 / w) * 0.55 * uHiz;',
     '    float ph = w * dot(d, dp) + uTime * hiz;',
     '    float Q = uChop / (w * A * 6.0 + 1e-5);',
+    // Ağırlık Q'dan SONRA biner: Q·A genlikten bağımsızdır, önce binseydi
+    // sönen oktavın yatay itişi tam kalır ve iki takım çırpıntıyı ikiye katlardı.
+    '    A *= g;',
     '    float c = cos(ph), s = sin(ph);',
     '    kay.x += Q * A * d.x * c;',
     '    kay.z += Q * A * d.y * c;',
@@ -603,6 +633,41 @@ export function kirilmaFragment() {
     '  return vec2(hL - hR, hD - hU);',
     '}',
     '',
+    // OKTAV KARIŞIMI (bkz. dalgaDizisi): dünyaya çivili iki ölçek, zoom yalnız
+    // aralarındaki ağırlığı kaydırır. main() her pikselde kurar.
+    'vec2 gDip0, gDip1;',
+    'float gOF;',
+    'void oktavKur(vec2 dunya) {',
+    '  float oL = log2(max(1.0, uOlcek));',
+    '  float oK = floor(oL);',
+    '  gOF = oL - oK;',
+    '  gDip0 = dunya / exp2(oK);',
+    '  gDip1 = gDip0 * 0.5;',
+    '}',
+    'float nzD(float k, vec2 kay) {',
+    '  float a = nz(gDip0 * k + kay);',
+    '  return gOF < 0.001 ? a : mix(a, nz(gDip1 * k + kay), gOF);',
+    '}',
+    'vec2 detayEgimD(float olcek, float kay) {',
+    '  vec2 a = detayEgim(gDip0, olcek, kay);',
+    '  return gOF < 0.001 ? a : mix(a, detayEgim(gDip1, olcek, kay), gOF);',
+    '}',
+    'vec2 fasetEgim(vec2 dip) {',
+    '  vec2 tp = dip / max(0.5, uFasetOlcek);',
+    '  vec2 eks = vec2(tp.x - tp.y * 0.57735, tp.y * 1.15470);',
+    '  vec2 tab = floor(eks);',
+    '  vec2 kes = fract(eks);',
+    '  float ust = step(1.0, kes.x + kes.y);',
+    '  vec2 hucre = tab + ust * 0.5;',
+    '  return vec2(nz(hucre * 0.0137 + 0.11), nz(hucre * 0.0231 + 0.67)) - 0.5;',
+    '}',
+    'float kostikAg(vec2 dip) {',
+    '  vec2 kp = dip / (uHex * uKostikOlcek);',
+    '  float k1 = nz(kp + vec2(uTime * 0.021, uTime * 0.013));',
+    '  float k2 = nz(kp * 1.63 + vec2(-uTime * 0.017, uTime * 0.024));',
+    '  return pow(max(0.0, 1.0 - abs(k1 - k2) * 7.0), 3.0);',
+    '}',
+    '',
     'vec3 gok(vec3 dir) {',
     '  vec3 d = normalize(dir);',
     '  vec3 c = mix(uUfuk, uZenit, pow(clamp(d.y, 0.0, 1.0), 0.55));',
@@ -623,12 +688,13 @@ export function kirilmaFragment() {
     '',
     '  vec3 V = normalize(uKamera - vDunya);',
     '  vec3 N = normalize(vNrm);',
-    // Detay frekansı EKRANDA sabit tutulur: dünya biriminde sabit tutulunca
-    // uzak zoomda piksel altına iniyor ve kaynıyordu. uOlcek zoom'la büyüyen
-    // dalga ölçeğidir; konumu ona bölmek deseni ekrana çiviler.
-    '  vec2 dip = vDunya.xz / max(1.0, uOlcek);',
-    '  vec2 e1 = detayEgim(dip, 0.055, uTime);',
-    '  vec2 e2 = detayEgim(dip, 0.17, -uTime * 1.6);',
+    // Detay frekansı ekranda KABACA sabit tutulur: dünya biriminde sabit
+    // tutulunca uzak zoomda piksel altına iniyor ve kaynıyordu. Konum zoom'la
+    // sürekli bölünseydi desen her zoom adımında kayardı; o yüzden oktav
+    // karışımı (oktavKur): ölçek 2'nin kuvvetlerinde, desen dünyaya çivili.
+    '  oktavKur(vDunya.xz);',
+    '  vec2 e1 = detayEgimD(0.055, uTime);',
+    '  vec2 e2 = detayEgimD(0.17, -uTime * 1.6);',
     '  N = normalize(N + vec3(e1.x + e2.x * 0.55, 0.0, e1.y + e2.y * 0.55) * uDetay * 7.0);',
     '',
     // FASETLER — durgun suyun minik üçgenleri.
@@ -640,13 +706,8 @@ export function kirilmaFragment() {
     // faset düz olmalı, yoksa gene yumuşak dalgaya döner) ve parıltı o
     // üçgenlerde tek tek çakar.
     '  if (uFaset > 0.001) {',
-    '    vec2 tp = dip / max(0.5, uFasetOlcek);',
-    '    vec2 eks = vec2(tp.x - tp.y * 0.57735, tp.y * 1.15470);',
-    '    vec2 tab = floor(eks);',
-    '    vec2 kes = fract(eks);',
-    '    float ust = step(1.0, kes.x + kes.y);',
-    '    vec2 hucre = tab + ust * 0.5;',
-    '    vec2 fegim = vec2(nz(hucre * 0.0137 + 0.11), nz(hucre * 0.0231 + 0.67)) - 0.5;',
+    '    vec2 fegim = fasetEgim(gDip0);',
+    '    if (gOF > 0.001) fegim = mix(fegim, fasetEgim(gDip1), gOF);',
     '    N = normalize(N + vec3(fegim.x, 0.0, fegim.y) * uFaset * 1.6);',
     '  }',
     '',
@@ -675,10 +736,8 @@ export function kirilmaFragment() {
     // KOSTİK: dalganın odakladığı ışığın tabana düşen ağı. Yüzeye yapışık
     // değildir, tabana düşer — bu yüzden dalgadan bağımsız ve daha yavaş
     // kayar, ve yalnız sığ bantta görünür (derinde ışık zaten tabana ulaşmaz).
-    '  vec2 kp = dip / (uHex * uKostikOlcek);',
-    '  float k1 = nz(kp + vec2(uTime * 0.021, uTime * 0.013));',
-    '  float k2 = nz(kp * 1.63 + vec2(-uTime * 0.017, uTime * 0.024));',
-    '  float ag = pow(max(0.0, 1.0 - abs(k1 - k2) * 7.0), 3.0);',
+    '  float ag = kostikAg(gDip0);',
+    '  if (gOF > 0.001) ag = mix(ag, kostikAg(gDip1), gOF);',
     '  float kostik = ag * uKostik * (1.0 - smoothstep(0.15, 0.85, derinlik));',
     '  taban += uGunesCol * kostik * 0.55;',
     '',
@@ -708,13 +767,13 @@ export function kirilmaFragment() {
     // KÖPÜK. Tepe KIRILIRKEN oluşur (Jacobian sıkışması), yükseklikte değil.
     // Ömür kaydıracı eşiğin eteğini genişletir: köpük tepe geçtikten sonra
     // birden kaybolmaz, arkasında bir iz bırakır (FBO'suz yaklaşım).
-    '  float gn = nz(dip * 0.045 + vec2(uTime * 0.011, uTime * 0.008));',
+    '  float gn = nzD(0.045, vec2(uTime * 0.011, uTime * 0.008));',
     '  float etek = mix(0.05, 0.75, uKopukOmur);',
     '  float tepeKopuk = smoothstep(uKopukEsik, uKopukEsik + etek, vKopuk * (0.6 + gn * 0.8));',
     // Kıyı kabarması: köpük bandı sabit halka değil, dalga faziyle nefes alır.
     '  float nabiz = 0.5 + 0.5 * sin(uTime * 1.1 + toLand / (uHex * 0.7));',
     '  float kiyiKopuk = vSig * vSig * (0.35 + 0.65 * nabiz)',
-    '    * (0.3 + 0.7 * nz(dip * 0.085 - vec2(uTime * 0.02, 0.0)));',
+    '    * (0.3 + 0.7 * nzD(0.085, -vec2(uTime * 0.02, 0.0)));',
     '  float kopuk = clamp(max(tepeKopuk, kiyiKopuk) * uKopukMik, 0.0, 1.0);',
     '  col = mix(col, uKopukCol, kopuk);',
     '',
@@ -732,7 +791,7 @@ export function kirilmaFragment() {
     '    float aci = atan(kv.y, kv.x);',
     '    float kolSayisi = 3.0;',
     '    float kolDeger = 0.5 + 0.5 * sin(aci * kolSayisi + rd * 11.0 - uTime * 0.85);',
-    '    float bulut = nz(dip * 0.018 + vec2(uTime * 0.02, -uTime * 0.014));',
+    '    float bulut = nzD(0.018, vec2(uTime * 0.02, -uTime * 0.014));',
     '    float bant = smoothstep(0.30, 0.92, kolDeger * (0.5 + bulut * 1.0)) * vKasirga;',
     // Taban karartma: fırtınanın altında hava kararır, bant onun üstüne biner.
     '    col *= mix(1.0, 0.70, vKasirga * 0.85);',
@@ -744,7 +803,7 @@ export function kirilmaFragment() {
     '    col = mix(col, uKopukCol, gozDuvar * uKasirga.w * 0.35);',
     '    col *= mix(1.0, 1.35, goz * uKasirga.w);',
     // Yağmur: hızlı, ince, yalnız fırtınanın içinde.
-    '    float yagmur = nz(dip * 0.42 + vec2(uTime * 2.1, uTime * 3.3));',
+    '    float yagmur = nzD(0.42, vec2(uTime * 2.1, uTime * 3.3));',
     '    col += vec3(0.45, 0.55, 0.62) * smoothstep(0.90, 1.0, yagmur) * vKasirga * 0.45;',
     '  }',
     '',

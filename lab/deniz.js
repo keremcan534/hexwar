@@ -266,9 +266,12 @@ export function denizKur(THREE, game, { onayar = 'kerem', kayitli = null } = {})
     }
 
     // Dalga ölçeği zoom'u takip eder; genlik de aynı çarpanla ölçeklenir,
-    // diklik sabit kalır (bkz. laboratuvardaki Nyquist ölçümü).
+    // diklik sabit kalır (bkz. laboratuvardaki Nyquist ölçümü). Ölçek desene
+    // doğrudan girmez, iki oktavın AĞIRLIĞINI kaydırır (ocean.js dalgaDizisi):
+    // eskiden dalga boyu zoom'la gerilip deniz her zoomda yerinden kayıyordu.
+    // Eşik ince, çünkü artık adım konum değil yalnız ağırlık sıçratır.
     const olcek = Math.min(4, Math.max(1, 0.9 / cam.zoom));
-    if (Math.abs(olcek - sonOlcek) > 0.02) { sonOlcek = olcek; U.uOlcek.value = olcek; uygula(); }
+    if (Math.abs(olcek - sonOlcek) > 0.004) { sonOlcek = olcek; U.uOlcek.value = olcek; uygula(); }
 
     const yw = cam.viewWidth / cam.zoom;
     const yh = cam.viewHeight / cam.zoom;
