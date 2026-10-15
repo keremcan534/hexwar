@@ -12,8 +12,9 @@
 // bu dosya o kuralın bilinçli istisnasıdır — mat resim oyuncunun gördüğü ilk şey
 // ve elle yapılmış bir kompozisyon.
 //
-// Perdenin üstünde iki katman daha var: sürüklenen sis (CSS ile hareket eder,
-// bkz. .menu-fog) ve müzik (bkz. menuMusic.js).
+// Perdenin üstünde üç katman daha var: sahnenin canlı katmanı (resmi tuvalde
+// yeniden çizip duman, su, yağmur, ışık ekler; bkz. menuMotion.js), sürüklenen
+// sis (CSS ile hareket eder, bkz. .menu-fog) ve müzik (bkz. menuMusic.js).
 //
 // Menüde olmayan özelliğin düğmesi yoktur: "Continue" ancak oturumda yüklü
 // oyun varsa, "Load Game" ancak diskte kayıt varsa çıkar.
@@ -26,6 +27,7 @@ import {
 import { gameDate } from './hud.js';
 import { worldRows } from '../world/worldgen.js';
 import { MenuMusic } from './menuMusic.js';
+import { MenuMotion } from './menuMotion.js';
 import { ERA_NAME, START_YEAR } from '../game/calendar.js';
 
 /**
@@ -52,7 +54,7 @@ export const BUILD_LABEL = `v0.1.0 · save ${SAVE_VERSION}`;
  * Ortak kural: kimlik ve amblem sahnenin ORTASINDA durur, o yüzden her sahnenin
  * merkezi sakin kalmalı; kalabalık ve parlak odak kenarlara düşmeli.
  *
- * Resimler JPEG: fon fotoğrafı PNG olarak 2,4 MB tutuyordu ve menü sekiz sahne
+ * Resimler JPEG: fon fotoğrafı PNG olarak 2,4 MB tutuyordu ve menü on sahne
  * arasında dönüyor. Kalite 92'de fark görünmüyor, boyut yedide bire iniyor.
  */
 const SCENES = [
@@ -121,6 +123,24 @@ const SCENES = [
     theme: 'crescent-night',
     label: 'Crescent Night',
     tagline: 'Fortunes were made and ruined here, over flowers.',
+  },
+  {
+    src: 'assets/menu/valley-town.jpg',
+    // Kasaba ve gölcükler ufkun hemen altında; güneş yarığı sol üstte.
+    position: '50% 45%',
+    filter: 'saturate(0.85) contrast(1.08) brightness(0.96)',
+    theme: 'valley',
+    label: 'Valley Town',
+    tagline: 'Every province on the map is somebody’s whole world.',
+  },
+  {
+    src: 'assets/menu/burning-street.jpg',
+    // Alevler sol üstte, sokak sağa kaçıyor; merkez dumanlı ve sakin.
+    position: '50% 40%',
+    filter: 'saturate(0.86) contrast(1.06) brightness(0.92)',
+    theme: 'burning-street',
+    label: 'Burning Street',
+    tagline: 'Wars are declared in palaces and paid for in streets like this.',
   },
   {
     src: 'assets/menu/field-road.jpg',
@@ -222,6 +242,7 @@ export class MainMenu {
     this.el = {
       root: $('menu'),
       art: $('menu-art'),
+      live: $('menu-live'),
       title: $('menu-title'),
       eyebrow: document.querySelector('.menu-eyebrow'),
       tagline: $('menu-tagline'),
@@ -270,6 +291,8 @@ export class MainMenu {
     };
 
     this.music = new MenuMusic();
+    // Sahnenin canlı katmanı: setScene'den önce kurulmalı, ilk sahneyi o da alır.
+    this.motion = this.el.live ? new MenuMotion(this.el.live, this.el.root) : null;
 
     // Kimlik ve künye markup'tan değil buradan gelir: ismi değiştirmek tek
     // sabiti değiştirmektir (bkz. GAME_TITLE).
@@ -311,6 +334,7 @@ export class MainMenu {
       art.style.filter = scene.filter;
     }
     // Metin sahneye bağlı: tek bir cümle sekiz resmin sekizinde birden durmuyor.
+    this.motion?.setScene(scene);
     if (tagline && scene.tagline) tagline.textContent = scene.tagline;
     if (root) root.dataset.theme = scene.theme;
     this.syncThemeChips();
@@ -376,6 +400,7 @@ export class MainMenu {
       chip.onclick = () => {
         setUiMotion(chip.dataset.motionChoice);
         this.syncMotionNote();
+        this.motion?.sync();
       };
     }
     if (el.exportSave) el.exportSave.onclick = () => this.exportSave();
@@ -467,10 +492,10 @@ export class MainMenu {
     if (!motionNote) return;
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
     motionNote.textContent = uiMotion() === 'off'
-      ? 'Everything holds still: fog, flags, panels and screen transitions.'
+      ? 'Everything holds still: scenes, fog, flags, panels and screen transitions.'
       : reduced
         ? 'Your system asks for reduced motion; the game still animates because this switch is on.'
-        : 'Fog drifts, flags wave, and panels slide as they open and close.';
+        : 'Scenes come alive, flags wave, and panels slide as they open and close.';
   }
 
   /** Kaydırıcılardaki değerlerle yeni dünya kurar ve perdeyi kaldırır. */
@@ -599,6 +624,7 @@ export class MainMenu {
     this.showView('actions');
     this.el.cta.focus();
     this.music.start();
+    this.motion?.start();
     this.syncMute();
     this.syncVolume();
   }
@@ -611,6 +637,7 @@ export class MainMenu {
     document.body.classList.remove('menu-open');
     // Kampanya başlıyor: menü müziği perdeyle birlikte söner.
     this.music.stop();
+    this.motion?.stop();
     // Perde kalkarken harita ölçüsü değişmiş olabilir: menü açıkken gelen
     // resize olayları haritaya ulaşmıyordu.
     this.game.renderer.resize();

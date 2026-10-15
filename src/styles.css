@@ -5771,6 +5771,24 @@ body:is(.screen-open, .notify-quiet) .notify-stack.open .notify-card { display: 
   --menu-rail-tint: rgba(7, 10, 16, 0.3);
 }
 
+.menu[data-theme="valley"] {
+  --menu-accent: #b9ad8a;
+  --menu-line: rgba(185, 173, 138, 0.33);
+  --menu-line-soft: rgba(185, 173, 138, 0.14);
+  --menu-wash: rgba(185, 173, 138, 0.1);
+  --menu-glow: rgba(180, 170, 140, 0.2);
+  --menu-rail-tint: rgba(9, 11, 14, 0.28);
+}
+
+.menu[data-theme="burning-street"] {
+  --menu-accent: #d29a5c;
+  --menu-line: rgba(210, 154, 92, 0.36);
+  --menu-line-soft: rgba(210, 154, 92, 0.15);
+  --menu-wash: rgba(210, 154, 92, 0.11);
+  --menu-glow: rgba(224, 140, 70, 0.26);
+  --menu-rail-tint: rgba(8, 10, 16, 0.3);
+}
+
 .menu[data-theme="field-road"] {
   --menu-accent: #bda86f;
   --menu-line: rgba(189, 168, 111, 0.33);
@@ -5818,6 +5836,14 @@ body:is(.screen-open, .notify-quiet) .notify-stack.open .notify-card { display: 
   /* Sahne degisirken sert kesme olmasin: yeni resim iceri erir. */
   animation: menu-scene-in 900ms ease both;
 }
+
+/* Canlı katman img'nin yerini alır; ikisi birlikte görünürse giriş
+   animasyonunda iki kare üst üste biner. Tuval ilk kareyi çizene kadar
+   (ya da hareket kapalıyken) img görünür kalır. `inherit`, `visible` değil:
+   kapanan menünün (.menu.hidden) görünmezliği tuvale de geçmeli. */
+.menu-live { visibility: hidden; }
+.menu.is-live .menu-live { visibility: inherit; }
+.menu.is-live img.menu-art { visibility: hidden; }
 
 @keyframes menu-scene-in {
   from { opacity: 0; transform: scale(1.03); }

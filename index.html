@@ -246,6 +246,9 @@
        Sahne + vurgu rengi `data-theme` ile değişir (bkz. mainMenu.js SCENES). -->
   <section class="menu hidden" id="menu" data-theme="bombardment" aria-hidden="true" aria-label="Main menu">
     <img class="menu-art" id="menu-art" src="assets/menu/main-menu.jpg" alt="" decoding="async" />
+    <!-- Canlı katman: resmi yeniden çizer, üstüne sahneye özgü hareket koyar
+         (bkz. ui/menuMotion.js). Çizmeye başlayınca img gizlenir. -->
+    <canvas class="menu-art menu-live" id="menu-live" aria-hidden="true"></canvas>
     <i class="menu-scrim" aria-hidden="true"></i>
     <!-- Sürüklenen sis: aynı saydam doku iki katmanda, farklı hız ve
          yükseklikte. Tek katman "kayan bir resim" gibi okunuyordu; ikisi
