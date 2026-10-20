@@ -1,7 +1,8 @@
 // DÜNYA TİCARETİ — kaynak başına tek fiyat, ikili akış (TASARIM.md §4).
 //
 // İhracat yalnız FAZLADIR ve ticaret yasasının izin verdiği pay kadardır;
-// ithalat açığı kendiliğinden kapatmaya çalışır, altın yettiği sürece. Akış
+// ithalat açığı kendiliğinden kapatmaya çalışır, kalkınma fonu yettiği sürece
+// (ödeme ve gelir fona yazılır: ithalat kalkınmadan, ihracat kalkınmaya). Akış
 // ikili kurulur çünkü üç mekanik "kimden" sorusunu ister: ambargo (o çiftle
 // ticaret yok), abluka (deniz yolu kesilir) ve bağımlılık (açığın yarısından
 // fazlası tek ülkeden).
@@ -11,7 +12,7 @@
 // aynı oranda keser. İki tur yapılır ki bir yerde boşta kalan teklif ötekinin
 // karşılanmamış talebine gitsin.
 
-import { RESOURCES, RESOURCE_IDS, TRADE } from './defs.js';
+import { FUND_FLOOR_WEEKS, RESOURCES, RESOURCE_IDS, TRADE } from './defs.js';
 import { lawOption } from '../laws.js';
 import { mod } from '../modifiers.js';
 import { settle } from '../treasury.js';
@@ -38,6 +39,16 @@ export function ensureMarket(world) {
 
 export function priceOf(world, id) {
   return world.market?.prices?.[id] ?? RESOURCES[id]?.price ?? 1;
+}
+
+/**
+ * Bir kaynak biriminin ulusa değeri (IC): kullandığı kaynakta dünya fiyatı,
+ * kullanmadığında dünyanın talep payı kadar (satılabildiği oranda).
+ */
+export function resourceValue(world, nation, id) {
+  const used = (nation.economy?.resources?.[id]?.need ?? 0) > 0.01;
+  const balance = world.market?.balance?.[id] ?? 1;
+  return priceOf(world, id) * (used ? 1 : Math.max(0, Math.min(1, balance)));
 }
 
 /** Çift arasında ambargo var mı (iki yönden biri yeter)? */
@@ -108,11 +119,23 @@ export function clearTrade(world, turn) {
     if (!row) routes.set(key, (row = routeFactor(world, a, b)));
     return row;
   };
-  // Deniz akışı (çift → {value, lost}, altın): deniz haritası yolları çizer,
+  // Deniz akışı (çift → {value, lost}, IC): deniz haritası yolları çizer,
   // panel kesilen payı yazar (seaLanes.seaLaneView). Türetilmiştir.
   const seaFlows = new Map();
   // flows[r][i][e]: kaynak r'de i'nin e'den aldığı (seyrek: Map).
   const flowsByRes = {};
+  // İHRACAT ÇEKİCİLİĞİ (yasa, teknoloji, danışman, olay 'exportIncome'):
+  // eskiden ihracatçıya ithalatçının ödediğinin ×1.15-1.58'ini ödüyordu —
+  // ticaret her hafta yoktan para yaratıyordu (dünya gelirinin %4-5'i,
+  // ithalat harcamasının %53-58'i; ölçüldü) ve büyük ihracatçı oyuncu hiç eksiye
+  // düşmüyordu. TASARIM §17: ticaret miktarda VE parada denk kapanır. Çarpan
+  // artık alıcı sırasında AĞIRLIKTIR: çekici satıcı talebin daha büyük payını
+  // alır, ama sattığı malın parasını alıcı öder — fazlası değil.
+  const appeal = new Float64Array(n);
+  for (const nation of nations) {
+    appeal[nation.id] = Math.max(0.1,
+      (lawOption(nation, 'trade').exportIncome ?? 1) * (1 + mod(nation, 'exportIncome')));
+  }
   for (const id of RESOURCE_IDS) {
     const offers = new Float64Array(n);
     const wants = new Float64Array(n);
@@ -152,11 +175,11 @@ export function clearTrade(world, turn) {
             const route = routeOf(i, e);
             if (route.route <= 0) continue;
             options.push({ e, route });
-            reach += offers[e];
+            reach += offers[e] * appeal[e];
           }
           if (!(reach > 0)) continue;
           for (const option of options) {
-            const share = wants[i] * offers[option.e] / reach;
+            const share = wants[i] * offers[option.e] * appeal[option.e] / reach;
             asked[option.e] += share;
             plan.push({ i, e: option.e, share, route: option.route });
           }
@@ -208,8 +231,8 @@ export function clearTrade(world, turn) {
     market.prices[id] += (target - market.prices[id]) * TRADE.priceSpeed;
   }
 
-  // Ödeme: ithalatçının bütçesi (altın + borç payı) yetmezse BÜTÜN alımları
-  // aynı oranda kısılır; ihracatçı da o kadar az satar.
+  // Ödeme: ithalatçının bütçesi (fon + tabana kalan pay) yetmezse BÜTÜN
+  // alımları aynı oranda kısılır; ihracatçı da o kadar az satar.
   const costOf = new Float64Array(n);
   for (const id of RESOURCE_IDS) {
     for (const [i, row] of flowsByRes[id]) {
@@ -222,7 +245,7 @@ export function clearTrade(world, turn) {
   for (const nation of nations) {
     const cost = costOf[nation.id];
     if (!(cost > 0)) continue;
-    const budget = importBudget(nation, turn);
+    const budget = importBudget(nation);
     if (cost > budget) scale[nation.id] = budget > 0 ? budget / cost : 0;
   }
 
@@ -251,9 +274,11 @@ export function clearTrade(world, turn) {
         if (!(amount > 0)) continue;
         const exporter = world.nations[e];
         const price = market.prices[id];
-        settle(importer, 'imports', -amount * price * mult);
-        const exportMult = (lawOption(exporter, 'trade').exportIncome ?? 1) * (1 + mod(exporter, 'exportIncome'));
-        settle(exporter, 'exports', amount * price * exportMult);
+        // Para korunur: ihracatçı ithalatçının ödediğini alır, bir kuruş fazla
+        // değil (ithalat yasası/indirimi fiyatı iki taraf için birlikte değiştirir).
+        const paid = amount * price * mult;
+        settle(importer, 'imports', -paid);
+        settle(exporter, 'exports', paid);
         record.imported += amount;
         exporter.economy.resources[id].exported += amount;
         volume += amount;
@@ -273,12 +298,10 @@ export function clearTrade(world, turn) {
 }
 
 /**
- * İthalat bütçesi: eldeki altın + borç tavanına kalan pay. İflastaki ulus
- * yalnız eldekiyle alır.
+ * İthalat bütçesi: kalkınma fonunun tabanına kalan pay (fon eksiye
+ * haftalık çıktının FUND_FLOOR_WEEKS katı kadar inebilir). Tabana dayanan
+ * ülke ithalat yapamaz: açığı kıtlık olarak yaşar.
  */
-export function importBudget(nation, turn) {
-  const gold = Math.max(0, nation.gold ?? 0);
-  if ((nation.bankruptUntil ?? 0) > turn) return gold;
-  const room = Math.max(0, (nation.economy?.debtCap ?? 0) - (nation.debt ?? 0));
-  return gold + room;
+export function importBudget(nation) {
+  return Math.max(0, (nation.fund ?? 0) + FUND_FLOOR_WEEKS * Math.max(0, nation.economy?.outputAvg ?? 0));
 }

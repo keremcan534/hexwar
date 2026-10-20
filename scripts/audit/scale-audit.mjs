@@ -34,7 +34,11 @@ section('TAM OYUN KURULUMU + 40 HAFTA');
   const game = headless(SEED, { cols: COLS, rows: ROWS });
   const setupMs = performance.now() - t0;
   const world = game.world;
-  console.log(`  kurulum: ${setupMs.toFixed(0)} ms · ulke ${world.nations.length}`
+  // Isyanci yuvalari (kultur basina bir uyuyan Ozgur Devlet) olu dogar ve
+  // tur maliyetine girmez; bant DUZENLI ulusu sayar. Yuva dahil toplam N x N
+  // tablolarin boyudur (redesign D3: <= 135).
+  const regular = world.nations.filter((n) => n.archetype !== 'rebel');
+  console.log(`  kurulum: ${setupMs.toFixed(0)} ms · ulke ${regular.length} (+${world.nations.length - regular.length} uyuyan yuva)`
     + ` · kultur ${world.cultures.length} · sehir ${world.cities.length}`);
   if (setupMs > 8000) {
     finding('HIGH', 'kurulum suresi', '< 8000 ms', `${setupMs.toFixed(0)} ms`);
@@ -42,8 +46,12 @@ section('TAM OYUN KURULUMU + 40 HAFTA');
   // Dunya artik BOS birakilmiyor: her toprak bir devlete bagli (bkz.
   // nations.fillRemaining). Bant buna gore genis; ust sinir tur maliyetini
   // korur, alt sinir "harita dolu hissettirmeli" kuralini.
-  if (world.nations.length < 35 || world.nations.length > 75) {
-    finding('MEDIUM', 'ulke sayisi', '35-75 bandi (dolu dunya, yonetilebilir tur)',
+  if (regular.length < 35 || regular.length > 75) {
+    finding('MEDIUM', 'ulke sayisi', '35-75 duzenli ulus (dolu dunya, yonetilebilir tur)',
+      String(regular.length));
+  }
+  if (world.nations.length > 135) {
+    finding('MEDIUM', 'ulke tablosu', '<= 135 ulus yuva dahil (N x N iliski tablosu)',
       String(world.nations.length));
   }
 

@@ -1,4 +1,4 @@
-// Province katmanı — TEK POP. Nüfus, kalkınma, binalar, uyum ve huzursuzluk
+// Province katmanı — TEK POP. Nüfus, kalkınma, kale, uyum ve huzursuzluk
 // world.provinces'teki kümelerin `econ` nesnesinde yaşar (sınıf, meslek, iş
 // kadrosu yok; bkz. TASARIM.md §2).
 //
@@ -12,11 +12,11 @@ import { lawOption } from './laws.js';
 import { mod } from './modifiers.js';
 import { controllerOf } from './control.js';
 import { DEFAULT_ZONE, ZONE_RULES } from '../world/macro.js';
-import { CULTURE, isAccepted, runProvinceCulture } from './culture.js';
+import { CULTURE, acceptedShareOf, isAccepted, isHomeRule, runProvinceCulture } from './culture.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import { assignDeposits } from './econ/deposits.js';
 import { focusBonus } from './focus.js';
-import { BUILDING_IDS, DEVELOPMENT_MAX, POP_UNIT } from './econ/defs.js';
+import { DEVELOPMENT_MAX, POP_UNIT } from './econ/defs.js';
 import { START_POPULATION } from './era.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
@@ -42,13 +42,6 @@ function populationNoise(world, province) {
   const provinceFactor = Math.exp(POP_PROVINCE_SIGMA * normal)
     / Math.exp((POP_PROVINCE_SIGMA * POP_PROVINCE_SIGMA) / 2);
   return zoneFactor * provinceFactor;
-}
-
-/** Boş bina kaydı: her tür 0. */
-export function emptyBuildings() {
-  const out = {};
-  for (const id of BUILDING_IDS) out[id] = 0;
-  return out;
 }
 
 /**
@@ -85,7 +78,9 @@ function initialProvinceEcon(world, province) {
     population: Math.round(population * START_POPULATION),
     hexes: members.length,
     development,
-    buildings: emptyBuildings(),
+    // Kale (0-3): haritanın sabit özelliği, inşa edilmez (economy.initEconomy
+    // kurar, gündem verebilir). Fethedene geçer; muharebe savunmayı okur.
+    fort: 0,
     // UYUM (0-100). Çekirdek dışı province vergi, asker ve sanayiyi bu oranda
     // verir; çekirdekte yalnız huzursuzluğu ve asimilasyonu besler.
     control: province.owner >= 0 ? 100 : 0,
@@ -105,8 +100,8 @@ function ensureProvinceEcon(world, province) {
   if (!econ) return null;
   if (!Number.isFinite(econ.development)) econ.development = 1;
   econ.development = clamp(econ.development, 1, DEVELOPMENT_MAX);
-  const buildings = econ.buildings && typeof econ.buildings === 'object' ? econ.buildings : {};
-  econ.buildings = { ...emptyBuildings(), ...buildings };
+  if (!Number.isFinite(econ.fort)) econ.fort = 0;
+  econ.fort = clamp(Math.round(econ.fort), 0, 3);
   if (!Number.isFinite(econ.control)) econ.control = province.owner >= 0 ? 100 : 0;
   if (!Number.isFinite(econ.ownedSince)) econ.ownedSince = -CORE_WEEKS;
   if (!Number.isFinite(econ.unrest)) econ.unrest = 0;
@@ -189,6 +184,9 @@ export function setProvinceOwner(world, province, nationId) {
   }
   // Odak eski sahibin kararıdır; yeni sahibin yuvasını işgal etmesin.
   if (province.owner !== nationId && province.econ) province.econ.focus = null;
+  // Şikâyet eski yönetime karşıydı: yeni sahiple sayaç sıfırdan başlar
+  // (culture.accrueGrievance).
+  if (province.owner !== nationId && province.econ) province.econ.grievance = 0;
   province.owner = nationId;
 }
 
@@ -233,16 +231,6 @@ export function provinceStatus(world, province) {
 /** Nüfus birimi (100 bin kişi); ekonomi formüllerinin ortak ölçeği. */
 export function popUnits(econ) {
   return Math.max(0, econ?.population ?? 0) / POP_UNIT;
-}
-
-/** Toplam bina kademesi ve yuva tavanı (kalkınma + 1). */
-export function buildingLevels(econ) {
-  let total = 0;
-  for (const id of BUILDING_IDS) total += econ?.buildings?.[id] ?? 0;
-  return total;
-}
-export function buildingSlots(econ) {
-  return Math.round(econ?.development ?? 1) + 1;
 }
 
 // Durum adları için hece tabloları: yönetim ekranlarının ilk sütunu okunur
@@ -324,7 +312,7 @@ export function growthFactors(nation, econ, { peace = true, occupied = 0 } = {})
     consumer: 0.7 + 0.3 * Math.min(1.2, economy?.consumer?.ratio ?? 1),
     stability: 0.5 + clamp(nation?.stability ?? 0.5, 0, 1),
     development: 1 + 0.05 * (econ?.development ?? 1),
-    law: 1 + (lawOption(nation, 'tax').growth ?? 0),
+    law: 1 + (lawOption(nation, 'labour').growth ?? 0),
     mods: Math.max(0.1, 1 + mod(nation, 'growth')),
     peace: peace ? 1 : 0.6,
     occupied: 1 - occupied,
@@ -341,6 +329,31 @@ export function growthRateOf(nation, econ, options = {}) {
 // Barış durumu ulus başına bir kez (province başına bütün ulusları taramak
 // O(küme × ulus) fazladan iş).
 const atPeaceScratch = [];
+
+/**
+ * RIZA (TASARIM D8; Kerem: "farklı kültürlerin olduğu provinceler ekonomiye
+ * etki ediyor mu?"). Bugüne dek pratikte etmiyordu: 1900'de elde tutulan her
+ * province çekirdek, karışık çekirdek tam üretiyordu; hareketin uyum aşınması
+ * çekirdekte üretime hiç ulaşmıyordu. Artık çekirdek province halkının rızası
+ * ölçüsünde öder: vatandaş tam, Home Rule halkı payının %70'i (kendini
+ * yönetir), tebaa uyumu tavanının altına düştüğü ölçüde payının yarısına
+ * dek saklar. Sakin province tam öder: bu ruh hali ve konumdur, dil cezası
+ * değil. Gıdaya ve askere dokunmaz (asker zaten halkın isteğini okur).
+ */
+export const CONSENT = { SUBJECT_WITHHOLD: 0.5, HOME_RULE_QUOTA: 0.70, FLOOR: 0.5, WAR_DRAIN: 0.3, enabled: true };
+
+function consentOf(nation, province, control, ceiling, core) {
+  if (!CONSENT.enabled || !core) return 1;
+  const rows = province.cultures?.length ? province.cultures : [{ id: province.culture, share: 1 }];
+  const slack = clamp(1 - control / Math.max(1, ceiling), 0, 1);
+  let withheld = 0;
+  for (const row of rows) {
+    if (row.id === nation.culture) continue;
+    if (!isAccepted(nation, row.id)) withheld += row.share * CONSENT.SUBJECT_WITHHOLD * slack;
+    else if (isHomeRule(nation, row.id)) withheld += row.share * (1 - CONSENT.HOME_RULE_QUOTA);
+  }
+  return clamp(1 - withheld, CONSENT.FLOOR, 1);
+}
 
 export function runProvinces(game) {
   const world = game.world;
@@ -395,6 +408,13 @@ export function runProvinces(game) {
       0,
       ceiling,
     );
+    // Savaşın tebaa province'lerindeki bedeli: grev, firar, kaçakçılık.
+    // Uzun savaş çok halklı imparatorluğu kırılmadan önce kanatır.
+    const exhaustion = nation.politics?.exhaustion ?? 0;
+    if (!atPeace[nation.id] && exhaustion > 0 && !accepted) {
+      econ.control = clamp(econ.control - CONSENT.WAR_DRAIN * exhaustion * (1 - acceptedShareOf(province, nation)), 0, ceiling);
+    }
+    econ.consent = consentOf(nation, province, econ.control, ceiling, econ.core);
 
     const rate = growthRateOf(nation, econ, { peace: atPeace[nation.id], occupied });
     const before = econ.population;

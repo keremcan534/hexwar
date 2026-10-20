@@ -24,6 +24,9 @@ Mimari ve tasarım kararları için [README.md](README.md).
 - Çizimi değiştiren her şey `renderer.invalidateCache()` istemeli, yoksa uzak
   zoomda eski görüntü kalır.
 - Sürekli `requestAnimationFrame` döngüsü açma; `game.requestRender()` kullan.
+- Yazı tipleri yereldir: EB Garamond ("HW Display") + Source Sans 3 ("HW UI"),
+  `assets/fonts/` (OFL), `src/fonts.css`. Tuvalde aile adı elle yazılmaz,
+  `src/render/fonts.js` sabitleri kullanılır; yoksa harita eski fontta kalır.
 - Oyuncuya birim başına iş çıkaran her özellik, `orders.js` üzerinden
   devredilebilir olmalı. Mikro yönetim, oyuncunun sahip olduğu nesne sayısıyla
   büyüyen tek maliyettir; kırk fabrikada kırk tık ise o mekanik politikaya
@@ -61,7 +64,46 @@ varsayılmaz, ÖLÇÜLÜR:
     npm run audit:econ         # ekonomi değişmezleri (defter, ticaret korunumu, NaN) + sağlık
     npm run audit:mechanics    # her yasa/hat kaldıracı: çalışıyor / gürültü altı / ölü
     npm run audit:tech-effect  # her değiştirici anahtarının bir okuyucusu var mı
+    npm run audit:military-industry  # yedek, seferberlik, hat kullanımı, zırh/hava, tüketim malı
     npm run audit:all          # bütün batarya
+
+**Ekonomi = TEK ÇUBUK (2026-10-15, TASARIM §1, §5-§7).** Altın, vergi,
+borç, enflasyon, iflas, binalar ve inşaat kuyruğu YOK. State çıktısı
+(`econ/output.js`) = el (0.6 × işçi) + sanayi (0.2 × işçi × (kalkınma−1));
+`çıktı = faturalar (econ/bills.js: ikmal, okul, sıkıyönetim, tazminat; tavan
+%60, aşınca ikmal krizi) + ordu (hatlar, yasa × sanayi) + halk (doyurma kolu ×
+ihtiyaç; tek kol) + kalkınma` (kalan → `nation.fund` → `econ/investment.js`
+kademeleri). IC_SCALE 4: sanayi birimi eski fabrika IC'sinin 4 katı.
+Kalkınma tavanı `3 + 1900 sonrası teknoloji + okuryazarlık × 8` (okul bugün
+fatura, yarın tavan). Demir/kereste yatakları kalkınmayla dik büyür ve
+sanayi girdisi çağla azalır: ikisi olmadan geç oyunda ulusların %74'ü demir
+kıtlığındaydı. Kaynak dengesi 10 yıllık audit:econ'da GÖRÜNMEZ; 160×96 × 45
+yıl ölç: `node scripts/audit/resource-balance.mjs TOHUM`. Kalibrasyon sondası: `node scripts/audit/bar-probe.mjs TOHUM YIL [1]`
+(1 = 160×96; kollar ortam değişkeniyle: INVEST_COST, MAT_TIMBER…).
+
+**Halklar, irade, çözülme (2026-10-15, TASARIM §9-§11).** Kabul tek tık
+çözüm değil MERDİVEN: tebaa → vatandaş → Home Rule → Dominion/Özgür Devlet
+(`movements.js` talep izleri ve krizler, `nationBirth.js` bırakma; halklar
+politikası Accommodate/Balance/Repress). Barışta ayrılık uçurumda (90) bekler;
+savaş YORGUNLUĞU (`politics.exhaustion`) kırılma noktasını düşürür, yenilgi
+barış masasında şok verir. Savaş desteği = irade, yasalar barışa dek tutulur;
+Call to Arms milis (`mobilization.js LEVEE`); parti propagandası yerine
+devletin rotası karesi (`politics.js COURSE`); rıza ekonomisi
+(`provinces.js CONSENT`). İmparatorluklar çok halklı doğar (`world/peoples.js`,
+kayıt v28). Denetimler: `npm run audit:peoples` (dünya üretimi + kampanya
+halk kanalları), `npm run audit:war` (irade/yorgunluk/yasa/levée),
+`audit:homeland` (ana yurt kilidi, çeşitlilik, bırakma hep açık).
+Şartname ve temel ölçümler: `scripts/audit/_tmp/redesign/` (gitignore).
+
+Kampanya boyu grafik pano (oyuncu + dünya, 160×96, ~15 dk/koşu, paralel koş):
+`node scripts/audit/stats-dashboard.mjs SEED auto|noinvest|diplo`
+→ `scripts/audit/_tmp/stats/*.json`; `node scripts/audit/stats-dashboard-html.mjs
+[klasör] [çıktı.html] [önceki-klasör]` tek HTML'e (önce/sonra) çizer.
+2026-10-14 panodan çıkan düzeltme: sanayi savaş gücüne dönüşmüyordu (ordu
+insan gücüyle sınırlı, askerî IC %96-100 boş, zırh/hava alayı yok, tüketim
+malı 1.8). Yedek (barışta havuzun yarısı), teçhizat ×10, boşta kalan askerî
+IC halka, tüketim malı ihtiyacı 0.7 × çağ 1→2.7, 1935/1939 dünya olayları
+(TASARIM §5, §8, §10, §15).
 
 Son tarama (2026-10-08, eşli bağıl etki + 1 altınlık dürtü gürültüsü):
 8 kaldıraç · çalışıyor 8 · gürültü altı 0 · **ölü 0**. En ince pay ekonomi
@@ -87,23 +129,31 @@ insanı sipariş anında tutunca %21.2 / 29.9 / 13.1 / 11.0 / 12.8 / 30.1
 (ort. %19.7, tohum farkı +12…−6: gürültü), ulus toplamı 163 → 162;
 yaralı eve dönünce (`levy.DEATH_SHARE`) %10.6 / 26.8 / 13.9 / 19.4 / 15.1 /
 28.6 (ort. %19.1), ulus 164.
+2026-10-14 (ticaret para korunumu + kara/hava teçhizatı ×3 + biriken
+şikâyet) BORDER1-3 × 50 yıl: savaş payı %7.8 / 23.6 / 13.1, ulus 27→28 /
+23→28 / 28→29; ulus artışı şikâyetle tutarlı (ayrı A/B: politikasız çok
+kültürlü ulus state'lerinin %46 yerine %36'sını tutuyor). Batarya temiz.
 Hex düğümlü hareket grafı: `src/world/provinceGraph.js`; kümeye oyuncu
 "state" der.
 
-Sistemlerin kod yeri: ekonomi `src/game/economy.js` + `src/game/econ/*`,
+Sistemlerin kod yeri: ekonomi `src/game/economy.js` (sıra ve çubuk) +
+`src/game/econ/*` (output, bills, investment, industry, resources, trade),
 siyaset `politics.js` (+ `laws.js`, `modifiers.js`, `agenda.js`,
 `decisions.js`, `eventCards.js`), kültür `culture.js` + `culturePolicy.js` (sürgün, toplama,
 iskân, zorla asimilasyon) + `movements.js` + `unification.js`, ordu `recruitment.js`/`reinforcement.js`/`battles.js`,
 zafer `hegemony.js`, takvim `calendar.js` (dönem = START_YEAR/END_YEAR;
 başka yerde yıl ya da kampanya uzunluğu yazılmaz). Ekranlar sayı üretmez; `economyView`, `governmentView`,
-`constructionView`, `agendaView` gibi döküm fonksiyonlarını basar
+`stateYield`, `agendaView` gibi döküm fonksiyonlarını basar
 (`src/ui/stateScreens.js`). Teknoloji/danışman/parti/olay etkileri tek
 değiştirici toplamına yazılır (`modifiers.js MODIFIER_KEYS`): yeni anahtarın
 okuyucusu yoksa `audit:tech-effect` yakalar.
 
 Yeni kampanyada AUTO açık başlar (`delegation.DEFAULT_AUTO_AREAS`; diplomasi
-hariç). Kayıt sürümü 26'dır (donanma havuzu, navy.js); eski kayıtlar temiz
-reddedilir. Donanma deniz bölgeleriyle yönetilir: `src/world/seaZones.js`
+hariç). Kayıt sürümü 28'dir (halklar doğuşta; eski kayıtlar temiz
+reddedilir, menü onları "devam et" diye sunmaz). Kayıtlar yuvalıdır:
+metin IndexedDB'de, küçük dizin localStorage'da (`src/game/saveStore.js`;
+kayıt 1917'de 3,7M karakter, Chrome'un localStorage tavanı ~5M). `game.save/load`
+zaman uyumsuzdur ve `{ok, reason}` döner; ekran `screens.render_saves`. Donanma deniz bölgeleriyle yönetilir: `src/world/seaZones.js`
 (bölümleme), `src/game/navy.js` (dağıtım, hâkimiyet, muharebe, abluka,
 gemi sınıfı), `src/game/seaLanes.js` (ticaret yolları, denizaltı akını),
 `src/render/seaLayer.js` (Seas kipi, M), `src/ui/navyDock.js` (panel).

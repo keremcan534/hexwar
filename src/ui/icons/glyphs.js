@@ -36,6 +36,9 @@ const P = {
   horse: '<path d="M8 21v-5l-3-2c0-4 2-8 7-10l1-2 1 2c2 1 4 3 4 6l1 3-2 1-2-2h-2l1 4v5"/><circle cx="13.5" cy="7" r=".6" fill="currentColor"/>',
   burst: '<path d="M12 2l2 6 6-3-3 6 6 2-6 2 3 6-6-3-2 6-2-6-6 3 3-6-6-2 6-2-3-6 6 3z"/>',
   map: '<path d="M3 6l6-2 6 2 6-2v14l-6 2-6-2-6 2z"/><path d="M9 4v14M15 6v14"/>',
+  // Tek Çubuk: dört paya bölünmüş tek şerit (Economy sekmesi; altın kalktı,
+  // para işareti olan 'coin' ekonominin yüzü olamazdı).
+  bar: '<path d="M3 8h18v8H3z"/><path d="M6.5 8v8M11.5 8v8M16 8v8"/><path d="M3 19.5h18"/>',
   coin: '<circle cx="12" cy="12" r="9"/><path d="M14.5 8.5c-.6-1-1.5-1.5-2.5-1.5-1.7 0-2.5 1.2-2.5 2.5 0 3 0 4-1 6.5h6.5M8 12.5h5"/>',
   pick: '<path d="M4 9c4-5 12-5 16 0M12 6l-7 15"/><path d="M10.5 9.5l3 1.5"/>',
   hourglass: '<path d="M6 3h12M6 21h12M7 3c0 5 10 6 10 9s-10 4-10 9M17 3c0 5-10 6-10 9s10 4 10 9"/>',
@@ -61,9 +64,12 @@ export const NOTIFY_GLYPH = {
   RELIEF: 'wheat', NATION: 'skull', HEGEMONY: 'crown', INFO: 'info',
 };
 
-/** Üst sekme → ikon (sekme yüzü glif + ad; resim künyelerin yerine). */
+/**
+ * Üst sekme → ikon (sekme yüzü glif + ad; resim künyelerin yerine). Kimlikler
+ * eski adlarıdır: 'construction' Development, 'budget' Economy sekmesidir.
+ */
 export const TAB_GLYPH = {
-  construction: 'crane', industry: 'factory', trade: 'scales', budget: 'coin', military: 'swords',
+  construction: 'crane', industry: 'factory', trade: 'scales', budget: 'bar', military: 'swords',
   population: 'people', cultures: 'mask', politics: 'ballot', technology: 'flask', chronicle: 'scroll',
 };
 

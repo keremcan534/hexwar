@@ -1,0 +1,46 @@
+/* OYUNUN YAZI TİPLERİ — yerel woff2, çalışma anında dış istek yok.
+ *
+ * Kerem 2026-10-14: "web hissini almamız gerekli". Georgia + Segoe UI Windows'un
+ * varsayılanıydı; oyunun "web sayfası" görünmesinin tek başına en büyük sebebi.
+ * Seçim B2: EB Garamond (başlık, harita, büyük sayı) + Source Sans 3 (arayüz).
+ * İkisinin de varsayılan rakamı tablo hizalı (tabular lining): haftalık sayılar
+ * DOM'da da tuvalde de kaymaz — tuvalde font-variant-numeric yok.
+ *
+ * Dosyalar Google Fonts'un hazır alt kümeleridir, DEĞİŞTİRİLMEDEN taşınır
+ * (Source Sans 3'ün OFL'si "Source" adını saklı tutar: yeniden alt kümelenirse
+ * aile adı değişmeli). Lisanslar assets/fonts/<aile>/OFL.txt.
+ *
+ * Takma adlar ("HW Display", "HW UI") yalnız burada gerçek aileye bağlanır:
+ * çift değişirse yalnız bu dosya değişir. Tuval de aynı adları okur
+ * (render/fonts.js). latin-ext yalnız o harfleri içeren bir ad görününce iner.
+ */
+@font-face {
+  font-family: "HW Display"; font-style: normal; font-weight: 400 800; font-display: swap;
+  src: url(../assets/fonts/ebgaramond/ebgaramond-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "HW Display"; font-style: normal; font-weight: 400 800; font-display: swap;
+  src: url(../assets/fonts/ebgaramond/ebgaramond-latin-ext.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "HW Display"; font-style: italic; font-weight: 400 800; font-display: swap;
+  src: url(../assets/fonts/ebgaramond/ebgaramond-italic-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "HW Display"; font-style: italic; font-weight: 400 800; font-display: swap;
+  src: url(../assets/fonts/ebgaramond/ebgaramond-italic-latin-ext.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "HW UI"; font-style: normal; font-weight: 200 900; font-display: swap;
+  src: url(../assets/fonts/sourcesans3/sourcesans3-latin.woff2) format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "HW UI"; font-style: normal; font-weight: 200 900; font-display: swap;
+  src: url(../assets/fonts/sourcesans3/sourcesans3-latin-ext.woff2) format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}

@@ -11,6 +11,7 @@
 import { resourceArt } from './icons/art.js';
 import { nationBrief, nationRoster } from '../game/nationBrief.js';
 import { formatPopulation } from '../game/economy.js';
+import { money } from '../game/money.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { hidePanel, showPanel } from './motion.js';
 
@@ -108,10 +109,14 @@ export class NationPicker {
       ['Resources', brief.goods.length
         ? brief.goods.map((g) => `${resourceArt(g.id, 'xs')} ${g.name} (${g.provinces})`).join(' · ')
         : 'none of note'],
+      // Sanayi = 1'in üstündeki kalkınma kademeleri (nationBrief.industryOf);
+      // fabrika binası yok. Hazine yerine haftalık çıktı ve kalkınma fonu.
       ['Industry', brief.industry.count
-        ? `${brief.industry.count} factor${brief.industry.count === 1 ? 'y' : 'ies'}${brief.industry.dockyards ? ` · ${brief.industry.dockyards} dockyard` : ''}`
-        : 'no factories yet'],
-      ['Army', `${brief.divisions} divisions · strength ${brief.power.toFixed(1)} · treasury ${brief.treasury}`],
+        ? `${brief.industry.count} development level${brief.industry.count === 1 ? '' : 's'} above the first`
+          + `${brief.industry.dockyards ? ` · ${brief.industry.dockyards} coastal state${brief.industry.dockyards === 1 ? '' : 's'}` : ''}`
+        : 'agrarian: no development yet'],
+      ['Output', `${money(brief.output, 0)} a week · fund ${money(nation.fund ?? 0, 0)}`],
+      ['Army', `${brief.divisions} divisions · strength ${brief.power.toFixed(1)}`],
       ['Coast', brief.coastal ? 'Maritime access' : 'Landlocked'],
     ];
     const neighbours = brief.neighbours.slice(0, 5).map((n) => {

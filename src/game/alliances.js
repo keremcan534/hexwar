@@ -9,6 +9,7 @@
 //
 // Katman: game — DOM yok. diplomacy/peace'e dayanir; onlar bunu import etmez.
 
+import { IC_SCALE } from './econ/defs.js';
 import { remember } from './chronicle.js';
 import { atWar, attackerCount, declareWar, hostile, relation } from './diplomacy.js';
 import { treatiesOf } from './peace.js';
@@ -119,7 +120,8 @@ function nationPowerOf(world, nation) {
   for (const unit of world.units ?? []) {
     if (unit.nationId === nation.id) regiments += unit.regiments?.length ?? 0;
   }
-  return regiments * 3 + (nation.economy?.ic?.raw ?? 0);
+  // Ham sanayi eski fabrika kademesinin ~IC_SCALE katı: alay ağırlığı korunsun.
+  return regiments * 3 + (nation.economy?.ic?.raw ?? 0) / IC_SCALE;
 }
 
 /**

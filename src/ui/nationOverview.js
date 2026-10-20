@@ -258,7 +258,9 @@ export function renderNationOverview(game, me) {
         ${stateRow('column', 'Capital', state.capital
           ? `<button class="nov-capital" data-focus-capital="1" ${tip('Show the capital on the map')}>${esc(state.capital)}${glyph('map')}</button>`
           : 'Lost', state.capital ? '' : 'is-bad')}
-        ${stateRow('coin', 'Treasury', `${state.treasury} <small class="${state.weekly < 0 ? 'neg' : 'pos'}">(${signed(state.weekly)}/wk)</small>`)}
+        ${stateRow('factory', 'Output', `<span ${tip(`Output
+${state.output} IC a week: handwork, industry and the crown.
+Development fund: ${state.fund} IC.`)}>${state.output} IC/wk <small>fund ${state.fund}</small></span>`)}
         ${stateRow('scales', 'Stability', pct(state.stability), state.stability < 0.4 ? 'is-bad' : '')}
         ${stateRow('shield', 'War Support', pct(state.warSupport))}
         ${stateRow('warning', 'Infamy', `${state.infamy.toFixed(1)} <small>/ ${state.infamyCap}</small>`, infamyCls)}

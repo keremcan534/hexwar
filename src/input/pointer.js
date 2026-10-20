@@ -110,12 +110,16 @@ export class PointerController {
     try { this.el.releasePointerCapture?.(pointerId); } catch { /* zaten birakilmis */ }
   }
 
-  /** Secim kutusunu baslatir. Eski cizim-kipi kancasi geriye uyumludur. */
+  /**
+   * Secim kutusunu baslatir. Hat cizim araci aciksa (Front / Fallback) sol
+   * surukleme kutu degil CIZGIDIR: kendi kancalarina gider, yuruyus emri
+   * vermez.
+   */
   beginMarquee(pointerId, start) {
     if (this.handlers.isDrawMode?.()) {
-      this.rightDrag = { id: pointerId, points: [start], moved: TAP_MOVE_LIMIT + 1 };
+      this.rightDrag = { id: pointerId, points: [start], moved: 0, draw: true };
       this.capture(pointerId);
-      this.handlers.onRightDragStart?.(start.x, start.y);
+      this.handlers.onDrawStart?.(start.x, start.y);
       return;
     }
     this.marquee = { id: pointerId, start, current: start, active: false };
@@ -140,6 +144,12 @@ export class PointerController {
     // Sağ tuş: tikta veya surukleyip birakista yuruyus emri.
     if (mouse && e.button === 2) {
       e.preventDefault();
+      // Cizim aracindayken sag tik araci birakir (HOI4: sag tik iptal).
+      if (this.handlers.isDrawMode?.()) {
+        if (this.rightDrag?.draw) this.rightDrag = null;
+        this.handlers.onDrawCancel?.();
+        return;
+      }
       const p = this.localPos(e);
       // Durum capture'dan önce kurulur: capture başarısız olsa da çizim başlasın.
       this.rightDrag = { id: e.pointerId, points: [p], moved: 0 };
@@ -198,7 +208,8 @@ export class PointerController {
       const last = this.rightDrag.points[this.rightDrag.points.length - 1];
       this.rightDrag.moved += Math.hypot(p.x - last.x, p.y - last.y);
       this.rightDrag.points.push(p);
-      this.handlers.onRightDragMove?.(p.x, p.y);
+      if (this.rightDrag.draw) this.handlers.onDrawMove?.(p.x, p.y);
+      else this.handlers.onRightDragMove?.(p.x, p.y);
       return;
     }
 
@@ -258,10 +269,15 @@ export class PointerController {
 
   onUp = (e) => {
     if (this.rightDrag?.id === e.pointerId) {
-      const { points, moved } = this.rightDrag;
+      const { points, moved, draw } = this.rightDrag;
       const last = points[points.length - 1];
       this.rightDrag = null;
       this.release(e.pointerId);
+      if (draw) {
+        this.handlers.onDrawEnd?.(points);
+        this.handlers.onChange?.();
+        return;
+      }
       // Sürüklenmediyse bu bir sağ tıktır: yürüyüş emri.
       if (moved < TAP_MOVE_LIMIT) {
         this.handlers.onRightDragCancel?.();

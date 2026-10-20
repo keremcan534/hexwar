@@ -416,6 +416,8 @@ export class MainMenu {
       el.mute.onclick = () => {
         this.music.toggleMute();
         this.syncMute();
+        // Ayarlardaki ses etiketi de "off" demeli; yalnız kaydırıcı onu tazeliyordu.
+        this.syncVolume();
       };
     }
     // Sahne düğmesi: bir sonraki sahneye geçer. Temayı denemek için ayarlara
@@ -440,8 +442,11 @@ export class MainMenu {
       }
     };
     // Alt görünümdeyken Esc ana listeye döner; menünün kendisinde kapatacak
-    // bir şey yok.
-    el.root.addEventListener('keydown', (event) => {
+    // bir şey yok. Dinleyici belgededir: menü kökünde dururken arka plana
+    // (sahne resmine) bir tık odağı <body>'ye düşürüyor, Esc menüye hiç
+    // ulaşmıyor ve çekmece açık kalıyordu (ölçüldü).
+    document.addEventListener('keydown', (event) => {
+      if (!this.open_) return;
       if (event.key === 'Escape' && this.view !== 'actions') {
         event.preventDefault();
         this.showView('actions');
@@ -518,9 +523,13 @@ export class MainMenu {
    * Diskteki kaydı yükler. "Continue"dan farkı: bu, oturumdaki oyunu bırakıp
    * kayıttan okur — menüye oyun içinden dönülmüşse ikisi ayrı şeydir.
    */
-  loadSave() {
-    if (!this.game.load()) {
-      this.el.loadNote.textContent = 'no compatible save found';
+  async loadSave() {
+    // Kayıtlar artık yuvalarda (IndexedDB, zaman uyumsuz); en yenisi yüklenir.
+    // Ret nedeni yazılır: "no compatible save" sürüm farkını da, eksik veriyi
+    // de aynı cümleyle geçiştiriyordu.
+    const result = await this.game.load();
+    if (!result.ok) {
+      this.el.loadNote.textContent = result.reason;
       return;
     }
     this.resumable = true;
@@ -534,8 +543,8 @@ export class MainMenu {
    * YAZILMAZ — aynı adreste iki pencere açıksa eski oturum yeni kaydı ezerdi.
    * Dosya adı kaydın tarihini taşır: ne indirildiği görünür.
    */
-  exportSave() {
-    const text = exportSaveText();
+  async exportSave() {
+    const text = await exportSaveText();
     if (!text) {
       this.el.saveNote.textContent = 'There is no saved campaign in this window yet.';
       return;
@@ -558,7 +567,7 @@ export class MainMenu {
     const { el } = this;
     if (!file) return;
     el.importFile.value = '';
-    const result = importSaveText(await file.text());
+    const result = await importSaveText(await file.text(), file.name.replace(/\.json$/i, ''));
     if (!result.ok) {
       el.saveNote.textContent = `Could not import: ${result.reason}.`;
       return;

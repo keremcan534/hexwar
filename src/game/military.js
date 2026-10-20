@@ -33,12 +33,13 @@ import { BASE_REINFORCEMENT_RATE, reinforcementNeed } from './reinforcement.js';
 import { seaZonesOf } from '../world/seaZones.js';
 import { classIndexOf } from './navy.js';
 import {
-  MOBILIZATION, conscriptUnits, isMobilized, mobilizationBlockers, mobilizationTarget,
+  LEVEE, MOBILIZATION, conscriptUnits, isMobilized, leveeActive, leveeBlockers, leveeTarget, militiaUnits,
+  mobilizationBlockers, mobilizationTarget,
 } from './mobilization.js';
 import { CONSCRIPT_POWER } from './units.js';
 import { crisisLeft, inCrisis } from './diplomacy.js';
-import { UNIT_COSTS } from './cities.js';
-import { EQUIPMENT, UPKEEP } from './econ/defs.js';
+import { EQUIPMENT } from './econ/defs.js';
+import { supplyFactor, unitSupply } from './econ/bills.js';
 import { equipmentStock } from './econ/industry.js';
 import { provinceName } from './provinces.js';
 import { reinforcementRateOf } from './reinforcement.js';
@@ -202,11 +203,25 @@ export function militarySummary(world, nation) {
       weeks: MOBILIZATION.RAISE_WEEKS,
       share: MOBILIZATION.SHARE,
       power: CONSCRIPT_POWER,
+      // Deponun silahlandırabileceği kura alayı: seferberlik tüfeksiz durur,
+      // barıştaki tüfek hattının işi bu sayıyı hedefe taşımaktır.
+      rifles: MOBILIZATION.RIFLES,
+      armed: Math.floor(equipmentStock(nation, 'rifles') / MOBILIZATION.RIFLES),
+      // Call to Arms (levée, TASARIM D6): son umut; engeller oyunun kendi kapısından.
+      levee: {
+        active: leveeActive(nation),
+        militia: militiaUnits(world, nation.id).length,
+        target: leveeActive(nation) ? (nation.mobilization?.levee?.target ?? 0) : leveeTarget(world, nation),
+        blockers: leveeActive(nation) ? [] : leveeBlockers(world, nation, turn),
+        rate: LEVEE.RATE,
+      },
     },
-    upkeepGold: (nation.economy?.upkeep?.army ?? 0) + (nation.economy?.upkeep?.navy ?? 0),
-    // Defterin KAPANMIŞ satırları (treasury.LEDGER_LINES: `army`, `navy`).
-    armyCost: Math.abs(nation.economy?.ledger?.army ?? 0),
-    navyCost: Math.abs(nation.economy?.ledger?.navy ?? 0),
+    // Ordunun ve donanmanın haftalık ikmal faturası (econ/bills.js; çıktının
+    // önünden düşer). `supplyShare`: faturaların ödenen payı (1 = kriz yok).
+    supply: (nation.economy?.bills?.army ?? 0) + (nation.economy?.bills?.navy ?? 0),
+    armyCost: nation.economy?.bills?.army ?? 0,
+    navyCost: nation.economy?.bills?.navy ?? 0,
+    supplyShare: nation.economy?.bills?.s ?? 1,
     reinforced: reinforcement.reinforced ?? 0,
     // `reinforced` güç puanıdır; gerçek insan sayısı province'lerden çekilen
     // insan gücüdür.
@@ -235,7 +250,6 @@ export function recruitOptions(game, nation) {
     const type = UNIT_TYPES[id];
     const source = recruitmentSource(world, nation, id);
     const blockers = recruitBlockers(game, nation, id, { source });
-    const cost = UNIT_COSTS[id] ?? {};
     const equipment = Object.entries(recruitmentEquipmentCost(id))
       .map(([equipmentId, amount]) => ({
         id: equipmentId,
@@ -262,14 +276,14 @@ export function recruitOptions(game, nation) {
       desc: `${info.desc ?? ''}${classNote}`,
       manpower: type.manpower,
       weeks: trainingWeeks(id),
-      gold: cost.gold ?? 0,
       equipment,
       attack: type.attack,
       hp: type.hp,
       moves: type.moves,
       support: Boolean(type.support),
       entrenched: Boolean(type.entrenched),
-      upkeep: id === 'SUBMARINE' ? UPKEEP.sub : type.domain === 'sea' ? UPKEEP.sea : UPKEEP.land,
+      // Haftalık ikmal (IC, barışta; savaşta ×SUPPLY.war): faturaya eklenir.
+      upkeep: unitSupply(nation, id === 'SUBMARINE' ? 'sub' : type.domain === 'sea' ? 'sea' : 'land', world.turn ?? 0),
       available: unitAvailable(id, nation),
       blockers,
       canBuild: blockers.length === 0,
@@ -436,7 +450,7 @@ export function unassignedDivisions(world, nation) {
 export function militaryStats(world, nation) {
   const summary = militarySummary(world, nation);
   const organizationRegain = 10 * Math.max(0.2, 1 + (nation.mods?.organization ?? 0))
-    * ((nation.bankruptUntil ?? 0) > (world.turn ?? 0) ? 0.5 : 1);
+    * supplyFactor(nation);
   const reinforcement = reinforcementRateOf(nation);
   const powder = nation.economy?.resources?.SALTPETER?.ratio ?? 1;
   const horses = nation.economy?.resources?.HORSES?.ratio ?? 1;
@@ -461,14 +475,14 @@ export function militaryStats(world, nation) {
       value: `${Math.round(reinforcement)} men/week`,
       live: true,
       note: 'Per regiment, before manpower and equipment limits. Generals, doctrine and'
-        + ' advisors raise it; bankruptcy halves it.',
+        + ' advisors raise it; a supply crisis slows it.',
     },
     {
       id: 'organization',
       label: 'Organization Regain',
       value: `${organizationRegain.toFixed(1)}/week`,
       live: true,
-      note: 'Recovered outside combat. Doctrine raises it; bankruptcy halves it.',
+      note: 'Recovered outside combat. Doctrine raises it; a supply crisis slows it.',
     },
     {
       id: 'land-org',
@@ -492,7 +506,7 @@ export function militaryStats(world, nation) {
       value: `${Math.round(100 / trainingSpeed(nation))}%`,
       live: true,
       note: 'Of the listed training time. Doctrine and advisors shorten it;'
-        + ' bankruptcy doubles it.',
+        + ' a supply crisis lengthens it.',
     },
     {
       id: 'width',

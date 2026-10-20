@@ -7,7 +7,8 @@
 // Tasarim kurali: her olcum ayni tohumdan baslar, tek degisken oynatilir.
 // Iki kosunun farki yalnizca o degiskene atfedilebilir olmali.
 
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawn } from 'node:child_process';
+import { availableParallelism } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import { Game } from '../../src/game/game.js';
 import { TurnManager } from '../../src/game/turn.js';
@@ -18,7 +19,9 @@ import { populationOf } from '../../src/game/economy.js';
 import { nationManpower } from '../../src/game/recruitment.js';
 import { regimentCount, soldiersOf } from '../../src/game/units.js';
 import { atWar } from '../../src/game/diplomacy.js';
-import { ensureConstruction } from '../../src/game/construction.js';
+import { fundFloor } from '../../src/game/econ/investment.js';
+import { applyDefaultDelegation } from '../../src/game/delegation.js';
+import { EVENT_CARDS, resolveCard } from '../../src/game/eventCards.js';
 
 /**
  * Bassiz oyun. DOM, zamanlayici, cizim yok; simulasyon tam calisir.
@@ -97,11 +100,44 @@ export function runPeaceful(game, weeks) {
   return game;
 }
 
-/** Denetim özgesi: en çok IC'si olan canlı ülke (en zengin sinyal). */
+/**
+ * EDİLGEN OYUNCU: gerçek oyundaki gibi seçilen ulus (world.playerNation),
+ * AUTO varsayılanıyla (diplomasi hariç). Kartları YZ seçimiyle kapatır, ona
+ * gelen barış teklifini kabul eder — "AUTO'ya bırakan oyuncu" (stats-dashboard
+ * ve u5 sondasıyla aynı kurulum; ikisinin sayıları bu kurulumla ölçüldü).
+ * Dönen fonksiyon her `endTurn`'den SONRA çağrılır.
+ */
+export function passivePlayer(game) {
+  const world = game.world;
+  const player = world.nations[world.playerNation];
+  game.turns.playerNation = player.id;
+  applyDefaultDelegation(player, world.turn ?? 1);
+  const afterWeek = () => {
+    if (!player.alive) return;
+    for (const entry of [...(player.cards?.pending ?? [])]) {
+      const card = EVENT_CARDS[entry.id];
+      let best = 0;
+      let bestWeight = -Infinity;
+      card.options.forEach((option, index) => {
+        if (option.available && !option.available(player)) return;
+        const w = option.ai ? option.ai(player) : 1;
+        if (w > bestWeight) { best = index; bestWeight = w; }
+      });
+      resolveCard(game, player, entry.key, best);
+    }
+    for (const offer of [...game.pendingPeace()]) {
+      if (offer.to === player.id) game.resolvePeaceOffer(offer.id, true);
+    }
+  };
+  afterWeek.player = player;
+  return afterWeek;
+}
+
+/** Denetim özgesi: en çok sanayisi olan canlı ülke (en zengin sinyal). */
 export function pickNation(game) {
   return game.world.nations
     .filter((n) => n.alive && n.economy)
-    .sort((a, b) => (b.economy.ic?.raw ?? 0) - (a.economy.ic?.raw ?? 0) || a.id - b.id)[0];
+    .sort((a, b) => (b.economy.ic?.total ?? 0) - (a.economy.ic?.total ?? 0) || a.id - b.id)[0];
 }
 
 /** Ulkeyi oyuncu yapar: YZ maliye/sosyal kaydiraclarini geri surukleyemez. */
@@ -128,30 +164,36 @@ export function snapshotNation(world, nation) {
     id: nation.id,
     name: nation.name,
     turn: world.turn,
-    gold: nation.gold ?? 0,
-    debt: nation.debt ?? 0,
-    bankrupt: (nation.bankruptUntil ?? 0) > (world.turn ?? 0),
+    // Kalkınma fonu (eski hazine; IC) ve tabanı.
+    fund: nation.fund ?? 0,
+    fundFloor: fundFloor(nation),
+    crisis: (e.bills?.s ?? 1) < 1 - 1e-6,
     tiles: nation.tiles ?? 0,
     provinces: nation.provinces ?? 0,
     population: e.population ?? 0,
     literacy: e.literacy ?? 0,
-    // --- defter (treasury.LEDGER_LINES, işaretli) ---
+    // --- fon defteri (treasury.LEDGER_LINES, işaretli) ---
     income: L.income ?? 0,
     expenses: L.expenses ?? 0,
     net: L.net ?? 0,
-    taxRevenue: L.tax ?? 0,
+    invested: L.investment ?? 0,
     exportRevenue: L.exports ?? 0,
     treatyFlow: L.treaty ?? 0,
-    armyCost: Math.abs(L.army ?? 0),
-    navyCost: Math.abs(L.navy ?? 0),
     importCost: Math.abs(L.imports ?? 0),
-    constructionCost: Math.abs(L.construction ?? 0),
-    maintenanceCost: Math.abs(L.maintenance ?? 0),
-    educationCost: Math.abs(L.education ?? 0),
-    interestCost: Math.abs(L.interest ?? 0),
-    borrowed: L.borrow ?? 0,
-    repaid: Math.abs(L.repay ?? 0),
+    developmentCost: Math.abs(L.development ?? 0),
+    outlay: Math.abs(L.outlay ?? 0),
     unreconciled: L.unreconciled ?? 0,
+    // --- çubuk (economy.alloc) ve faturalar (econ/bills.js) ---
+    output: e.ic?.output ?? 0,
+    billsOwed: e.bills?.owed ?? 0,
+    billsPaid: e.bills?.paid ?? 0,
+    supplyShare: e.bills?.s ?? 1,
+    armyCost: e.bills?.army ?? 0,
+    navyCost: e.bills?.navy ?? 0,
+    educationCost: e.bills?.schools ?? 0,
+    peopleShare: e.alloc?.people ?? 0,
+    investShare: e.alloc?.invest ?? 0,
+    feed: e.feed?.target ?? 1,
     // --- siyaset ---
     stability: nation.stability ?? 0,
     warSupport: nation.warSupport ?? 0,
@@ -164,7 +206,10 @@ export function snapshotNation(world, nation) {
     ic: e.ic?.total ?? 0,
     factories: e.ic?.raw ?? 0,
     civilIC: e.ic?.civil ?? 0,
-    militaryIC: e.ic?.military ?? 0,
+    // Ordunun FİİLEN çektiği (hatlar), yasanın tavanı ayrı.
+    militaryIC: e.alloc?.army ?? 0,
+    militaryCap: e.ic?.military ?? 0,
+    development: e.development ?? 1,
     consumer: e.consumer?.ratio ?? 1,
     stock: { ...(e.stock ?? {}) },
     resources,
@@ -173,8 +218,6 @@ export function snapshotNation(world, nation) {
     regiments: landRegiments,
     soldiers: units.reduce((s, u) => s + soldiersOf(u), 0),
     manpower: nationManpower(world, nation.id),
-    // --- inşaat ---
-    projects: ensureConstruction(nation).queue.length,
     atWar: world.nations.some((o) => o.alive && o.id !== nation.id && atWar(world, nation.id, o.id)),
   };
 }
@@ -200,6 +243,9 @@ export function marketSnapshot(world) {
  * Her hafta çalışabilen değişmez taraması (TASARIM.md §17). İhlali olduğu
  * yerde yakalar: hafta, ülke, sistem, değer.
  */
+/** Milisin yabancı toprakta ilk görüldüğü tarama (bir haftalık pay için). */
+const militiaForeign = new WeakMap();
+
 export function scanInvariants(world) {
   const bad = [];
   const push = (system, nationId, field, value, note = '') => bad.push({
@@ -222,9 +268,24 @@ export function scanInvariants(world) {
     if (!nation.alive) continue;
     const e = nation.economy;
     if (!e) continue;
-    if (!finite(nation.gold)) push('treasury', nation.id, 'gold', nation.gold);
-    if (!finite(nation.debt ?? 0) || (nation.debt ?? 0) < 0) push('debt', nation.id, 'debt', nation.debt);
-    if (Math.abs(e.ledger?.unreconciled ?? 0) > 1e-6) push('treasury', nation.id, 'unreconciled', e.ledger.unreconciled);
+    if (!finite(nation.fund)) push('fund', nation.id, 'fund', nation.fund);
+    if (Math.abs(e.ledger?.unreconciled ?? 0) > 1e-6) push('fund', nation.id, 'unreconciled', e.ledger.unreconciled);
+    // ÇUBUK KAPANIR (TASARIM §17): çıktı = faturalar + ordu + halk + kalkınma,
+    // her pay ≥ 0; faturalar tavanı, ordu yasanın tavanını aşmaz.
+    const a = e.alloc;
+    if (a) {
+      for (const key of ['output', 'bills', 'army', 'people', 'invest']) {
+        if (!finite(a[key]) || a[key] < -1e-9) push('bar', nation.id, key, a[key]);
+      }
+      const sum = a.bills + a.army + a.people + a.invest;
+      if (Math.abs(sum - a.output) > 1e-6 * Math.max(1, a.output)) push('bar', nation.id, 'Σshares≠output', sum - a.output);
+      if (a.army > (e.ic?.military ?? 0) + 1e-6) push('bar', nation.id, 'army>law cap', a.army);
+    }
+    const b = e.bills;
+    if (b) {
+      if (!finite(b.s) || b.s < -1e-9 || b.s > 1 + 1e-9) push('bills', nation.id, 's', b.s);
+      if (b.paid > b.room + 1e-6) push('bills', nation.id, 'paid>room', b.paid - b.room);
+    }
     if (!finite(e.population) || e.population < 0) push('population', nation.id, 'population', e.population);
     for (const key of ['stability', 'warSupport']) {
       const v = nation[key];
@@ -235,7 +296,7 @@ export function scanInvariants(world) {
       const v = e.stock?.[id];
       if (!finite(v) || v < 0) push('military', nation.id, `stock.${id}`, v);
     }
-    for (const key of ['total', 'civil', 'military']) {
+    for (const key of ['total', 'output', 'civil', 'military']) {
       if (!finite(e.ic?.[key]) || e.ic[key] < 0) push('industry', nation.id, `ic.${key}`, e.ic?.[key]);
     }
     for (const id of RESOURCE_IDS) {
@@ -253,9 +314,20 @@ export function scanInvariants(world) {
     for (const [k, v] of Object.entries(e.ledger ?? {})) {
       if (typeof v === 'number' && !finite(v)) push('ledger', nation.id, k, v);
     }
-    for (const p of ensureConstruction(nation).queue) {
-      if (!finite(p.progress) || p.progress < 0) push('construction', nation.id, 'progress', p.progress);
-    }
+  }
+  // Dünya ticareti DEĞERDE de kapanır (TASARIM §17): Σ ihracat geliri =
+  // Σ ithalat bedeli (IC, fondan fona). Eskiden ihracatçıya ödenen
+  // ithalatçının ödediğinin 1.53-1.58 katıydı ve bu değişmez yalnız miktara
+  // bakıyordu.
+  let valueIn = 0;
+  let valueOut = 0;
+  for (const nation of world.nations) {
+    if (nation.economy?.tradeTurn !== world.turn) continue;
+    valueIn += nation.economy.ledger?.exports ?? 0;
+    valueOut += nation.economy.ledger?.imports ?? 0;
+  }
+  if (Math.abs(valueIn + valueOut) > 1e-6 * Math.max(1, valueIn)) {
+    push('trade', -1, 'exports≠imports (IC)', valueIn + valueOut);
   }
   // Dünya ticareti kapanır: Σ ithalat = Σ ihracat (miktar).
   for (const id of RESOURCE_IDS) {
@@ -278,8 +350,59 @@ export function scanInvariants(world) {
     if (!p) continue;
     if (!finite(p.population) || p.population < 0) push('province', province.owner, `pop#${province.id}`, p.population);
     if (!finite(p.control) || p.control < 0 || p.control > 100) push('province', province.owner, `control#${province.id}`, p.control);
-    if (!finite(p.development) || p.development < 1 || p.development > 10) push('province', province.owner, `dev#${province.id}`, p.development);
+    if (!Number.isInteger(p.development) || p.development < 1 || p.development > 10) push('province', province.owner, `dev#${province.id}`, p.development);
+    if (!Number.isInteger(p.fort ?? 0) || (p.fort ?? 0) < 0 || (p.fort ?? 0) > 3) push('province', province.owner, `fort#${province.id}`, p.fort);
     if ((p.soldiers ?? 0) < 0) push('province', province.owner, `soldiers#${province.id}`, p.soldiers);
+    // Silah altındaki nüfusun içindedir (provinces.claimSoldiers): asker
+    // sayısı nüfusu aşarsa ölü adam askerde kalmış demektir.
+    if ((p.soldiers ?? 0) > (p.population ?? 0) + 1e-6) push('province', province.owner, `soldiers>pop#${province.id}`, (p.soldiers ?? 0) - (p.population ?? 0));
+    // Rıza (redesign D8): yalnız alan varsa denetlenir; yoksa mekanik henüz yok.
+    if (typeof p.consent === 'number' && !(p.consent >= 0.5 - 1e-9 && p.consent <= 1 + 1e-9)) {
+      push('province', province.owner, `consent#${province.id}`, p.consent);
+    }
+  }
+
+  // YENİDEN TASARIMIN DEĞİŞMEZLERİ (redesign §5). Her biri KORUMALIDIR: alan
+  // yoksa (paket henüz inmediyse) kontrol atlanır, sahte ihlal üretmez.
+  for (const nation of world.nations) {
+    if (!nation.alive) continue;
+    const politics = nation.politics;
+    if (typeof politics?.exhaustion === 'number'
+      && !(politics.exhaustion >= -1e-9 && politics.exhaustion <= 1 + 1e-9)) {
+      push('politics', nation.id, 'exhaustion', politics.exhaustion);
+    }
+    const course = politics?.course;
+    if (course && typeof course === 'object'
+      && ![course.x, course.y].every((v) => finite(v) && v >= -1 - 1e-9 && v <= 1 + 1e-9)) {
+      push('politics', nation.id, 'course', `${course.x},${course.y}`);
+    }
+    for (const [cultureId, record] of Object.entries(nation.movements ?? {})) {
+      const progress = record?.progress;
+      if (progress != null && !(finite(progress) && progress >= -1e-9 && progress <= 100 + 1e-9)) {
+        push('movements', nation.id, `progress#${cultureId}`, progress);
+      }
+    }
+    if (Array.isArray(nation.homeRule)) {
+      const accepted = nation.accepted?.length ? nation.accepted : [nation.culture];
+      for (const cultureId of nation.homeRule) {
+        if (!accepted.includes(cultureId)) push('culture', nation.id, `homeRule⊄accepted#${cultureId}`, cultureId);
+      }
+    }
+  }
+  // Milis yalnız kendi ulusunun sahip olduğu karede durur (redesign D6:
+  // "yalnız kendi toprağında, asla taarruz etmez").
+  for (const unit of world.units) {
+    const regiments = unit.regiments ?? [];
+    if (!regiments.length || !regiments.every((r) => r.militia)) continue;
+    // Toprak bu hafta el değiştirdiyse ya da milis muharebedeyse bir haftalık
+    // pay: milis bir sonraki seferberlik adımında evine döner (runLevee). Her
+    // devir yolu `heldSince` yazmadığı için pay birimin kendisinden tutulur:
+    // yalnız art arda iki taramada yabancı topraktaysa ihlaldir.
+    const foreign = !unit.battleId && unit.tile?.owner !== unit.nationId;
+    const seen = militiaForeign.get(unit);
+    if (!foreign) militiaForeign.delete(unit);
+    else if (seen == null || seen < (world.turn ?? 0) - 1) militiaForeign.set(unit, world.turn ?? 0);
+    else push('army', unit.nationId, `militia off own soil#${unit.id}`, `${unit.tile?.q},${unit.tile?.r}`);
   }
 
   return bad;
@@ -329,6 +452,90 @@ export function runScenarios(specs) {
   return specs.map((spec) => runScenario(spec));
 }
 
+/** Aynı anda koşacak süreç sayısı: makinenin çekirdeklerinin ikisi boş kalsın. */
+export function defaultConcurrency(jobs = Infinity) {
+  const env = Number(process.env.AUDIT_JOBS);
+  const cap = Number.isFinite(env) && env > 0 ? env : Math.max(1, availableParallelism() - 2);
+  return Math.max(1, Math.min(jobs, cap));
+}
+
+/**
+ * İşçi süreç havuzu. Her iş `node betik ...args` olarak KENDİ sürecinde koşar
+ * (bkz. runScenario: aynı süreçteki ikinci dünya başka bir oyundur), stdout'u
+ * JSON olarak döner. Sıra korunur; sonuçlar süreçten bağımsız olduğu için
+ * paralellik ölçümü değiştirmez. stderr (ilerleme satırları) olduğu gibi akar.
+ * @returns {Promise<object[]>}
+ */
+export function runWorkers(script, jobs, { concurrency = defaultConcurrency(jobs.length), cwd } = {}) {
+  const results = new Array(jobs.length);
+  let next = 0;
+  const one = (index) => new Promise((resolveJob, rejectJob) => {
+    const child = spawn(process.execPath, [script, ...jobs[index].map(String)], {
+      cwd, stdio: ['ignore', 'pipe', 'inherit'],
+    });
+    const chunks = [];
+    child.stdout.on('data', (chunk) => chunks.push(chunk));
+    child.on('error', rejectJob);
+    child.on('close', (code) => {
+      const text = Buffer.concat(chunks).toString('utf8');
+      try {
+        results[index] = JSON.parse(text);
+        resolveJob();
+      } catch {
+        rejectJob(new Error(`isci coktu (${script} ${jobs[index].join(' ')}), cikis ${code}: ${text.slice(0, 400)}`));
+      }
+    });
+  });
+  const lane = async () => {
+    while (next < jobs.length) {
+      const index = next++;
+      await one(index);
+    }
+  };
+  return Promise.all(Array.from({ length: Math.max(1, concurrency) }, lane)).then(() => results);
+}
+
+/** runScenario'nun paralel karşılığı: aynı sonuç, süreç havuzunda. */
+export function runScenariosParallel(specs, options = {}) {
+  const script = fileURLToPath(new URL('./scenario-runner.mjs', import.meta.url));
+  return runWorkers(script, specs.map((spec) => [JSON.stringify(spec)]), options);
+}
+
+// ---------------------------------------------------------------- İSTATİSTİK ---
+
+/** Sıralı yüzdelik (en yakın sıra, alt). Boş liste NaN. */
+export function quantile(list, q) {
+  const values = list.filter(Number.isFinite);
+  if (!values.length) return NaN;
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.min(sorted.length - 1, Math.floor((sorted.length - 1) * q))];
+}
+export const mean = (list) => {
+  const values = list.filter(Number.isFinite);
+  return values.length ? values.reduce((s, v) => s + v, 0) / values.length : NaN;
+};
+
+/**
+ * MEKANİK YOK: test atlanır, asla GEÇTİ basılmaz (redesign §5 kuralı).
+ * Özette ayrı sayılır; run-all bunu bulgu saymaz.
+ */
+export const skips = [];
+export function skip(test, why) {
+  skips.push({ test, why });
+  console.log(`  SKIP (not present) — ${test}: ${why}`);
+}
+
+/**
+ * BOŞ GEÇİŞ YOK: testin olay sayısı sıfırsa test bir şey ölçmemiştir; geçti
+ * değil "vacuous" diye düşer (redesign §5).
+ * @returns {boolean} olay var mı
+ */
+export function requireEvents(test, count, what) {
+  if (count > 0) return true;
+  finding('HIGH', `${test} vacuous`, `${what} > 0 (yoksa test hicbir sey olcmez)`, `${what} = ${count}`);
+  return false;
+}
+
 export const n2 = (v) => (Number.isFinite(v) ? v.toFixed(2) : String(v));
 export const n1 = (v) => (Number.isFinite(v) ? v.toFixed(1) : String(v));
 export const n0 = (v) => (Number.isFinite(v) ? Math.round(v).toLocaleString('en-US') : String(v));
@@ -374,6 +581,9 @@ export function finding(severity, mechanic, expected, actual, evidence = '') {
 
 export function reportFindings() {
   section('BULGU OZETI');
+  if (skips.length) {
+    console.log(`  atlanan (mekanik yok) ${skips.length}: ${skips.map((s) => s.test).join(', ')}`);
+  }
   if (!findings.length) {
     console.log('  Bu kosuda bulgu yok.');
     return 0;

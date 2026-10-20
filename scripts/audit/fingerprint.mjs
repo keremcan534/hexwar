@@ -8,15 +8,23 @@
 export function worldFingerprint(game) {
   const world = game.world;
   const n2 = (v) => (Number.isFinite(v) ? v.toFixed(2) : String(v));
+  // Kalkinma kademesi toplami: insaat kuyrugunun yerine ekonominin birikimi.
+  const development = new Map();
+  for (const province of world.provinces ?? []) {
+    if (province.owner < 0 || !province.econ) continue;
+    development.set(province.owner, (development.get(province.owner) ?? 0) + (province.econ.development ?? 1));
+  }
   const nations = world.nations
     .filter((n) => n.alive)
     .map((n) => [
-      n.id, n.tiles, n2(n.gold), n2(n.debt ?? 0),
+      n.id, n.tiles, n2(n.fund ?? 0),
       n.economy?.population ?? 0,
-      n2(n.economy?.ic?.raw ?? 0),
+      n2(n.economy?.ic?.output ?? 0),
+      // Cubugun paylari: faturalar / ordu / halk / kalkinma.
+      ['bills', 'army', 'people', 'invest'].map((k) => n2(n.economy?.alloc?.[k] ?? 0)).join('/'),
       n2(n.stability ?? 0),
       n2(n.infamy ?? 0),
-      (n.construction?.queue ?? []).length,
+      development.get(n.id) ?? 0,
       (n.generals ?? []).length,
       n2(n.economy?.literacy ?? 0),
       (n.research?.done ?? []).length,
@@ -54,6 +62,55 @@ export function worldFingerprint(game) {
     `battles=${world.battleSystem?.battles?.length ?? 0}`,
     `delegation=${delegation}`,
   ].join('\n');
+}
+
+/**
+ * YENİDEN TASARIMIN ALANLARI (redesign §5 "save-audit fingerprint"): parti
+ * desteği, devletin rotası, irade/yorgunluk, savaş dengesi, kaybedilen barış,
+ * milliyetler politikası, Home Rule, hareket kayıtları (ilerleme, kriz, taviz
+ * defteri), levée ve milis alay sayısı. worldFingerprint'ten AYRI tutulur:
+ * P1'in kabulü "eski alanlar bayt bayt aynı" der, yeni alanlar o kıyasa
+ * girmemeli. Her alan korumalıdır: yoksa '-' yazılır, paket inince dolar.
+ */
+export function extendedFingerprint(game) {
+  const world = game.world;
+  const n2 = (v) => (Number.isFinite(v) ? v.toFixed(2) : '-');
+  const n4 = (v) => (Number.isFinite(v) ? v.toFixed(4) : '-');
+  const militia = new Map();
+  for (const unit of world.units ?? []) {
+    let count = 0;
+    for (const r of unit.regiments ?? []) if (r.militia) count++;
+    if (count) militia.set(unit.nationId, (militia.get(unit.nationId) ?? 0) + count);
+  }
+  const rows = world.nations
+    .filter((n) => n.alive)
+    .map((n) => {
+      const p = n.politics ?? {};
+      const support = ['conservative', 'liberal', 'nationalist', 'socialist']
+        .map((id) => n2(p.support?.[id])).join('/');
+      const course = p.course ? `${n2(p.course.x)},${n2(p.course.y)}` : '-';
+      const heading = p.heading ? `${n2(p.heading.x)},${n2(p.heading.y)}` : '-';
+      const balance = p.warBalance ? `${n2(p.warBalance.best)},${n2(p.warBalance.worst)}` : '-';
+      const homeRule = Array.isArray(n.homeRule) ? [...n.homeRule].sort((a, b) => a - b).join('.') : '-';
+      const movements = Object.keys(n.movements ?? {})
+        .map(Number).sort((a, b) => a - b)
+        .map((c) => {
+          const m = n.movements[c] ?? {};
+          const crisis = m.crisis ? `${m.crisis.kind ?? '?'}@${m.crisis.since ?? '?'}` : '-';
+          const log = Array.isArray(m.concessionLog) ? m.concessionLog.join('.') : '-';
+          return `${c}~${n2(m.progress)}~${crisis}~${log}`;
+        }).join(';');
+      const levee = n.mobilization?.levee;
+      const leveeText = levee
+        ? ['active', 'since', 'until', 'target', 'raised', 'warKey', 'lastAt'].map((k) => String(levee[k] ?? '-')).join('/')
+        : '-';
+      return [
+        n.id, support, course, n2(p.courseBudget), heading, n4(p.exhaustion), balance,
+        p.lostPeaceUntil ?? '-', p.nationalities ?? '-', homeRule, movements, leveeText,
+        militia.get(n.id) ?? 0,
+      ].join(':');
+    });
+  return `peoples=${rows.join('|')}`;
 }
 
 /** FNV-1a: uzun parmak izini kisa kimlige indirger (gorsel kiyas icin). */

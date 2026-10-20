@@ -3,8 +3,7 @@
 // barış varsayılan, savaş bir karar.
 
 import { DIRS } from '../core/hex.js';
-import { UNIT_TYPES, armyPower, shipClassOf } from './units.js';
-import { captureConstructionAt } from './construction.js';
+import { UNIT_TYPES, armyPower, isMilitia, shipClassOf } from './units.js';
 import { noteCasualties } from './politics.js';
 import { controllerOf } from './control.js';
 import { TIER, announce, remember } from './chronicle.js';
@@ -225,6 +224,41 @@ export function warDeclarationCost(world, a, b, reason = null) {
   return hasClaimOn(world, a, b) ? WAR_COST.justified : WAR_COST.unjustified;
 }
 
+/** `vassalId`nin efendisi (yoksa -1). Vassal anlaşması yalnız vassalın listesinde durur. */
+export function overlordOf(world, vassalId, turn = world.turn ?? 0) {
+  const treaty = (world.nations[vassalId]?.treaties ?? []).find(
+    (t) => t.type === 'VASSALIZE' && (t.until ?? Infinity) > turn,
+  );
+  return treaty ? treaty.partner : -1;
+}
+
+/**
+ * Savaş ilanını ne engelliyor? declareWar'ın ilan edenden bağımsız kapıları
+ * (ateşkes, bağ, bedel, çullanma tavanı) burada tek yerde; ekran aynı listeyi
+ * gösterir. Önce düğme etkin görünüp ilan SESSİZCE reddediliyordu (Kerem
+ * 2026-10-15: "Ravoya'ya savaş ilan edemiyorum" — Ravoya onun vassalıydı).
+ */
+export function warBlockers(world, a, b, turn = world.turn ?? 0, reason = null) {
+  const out = [];
+  const na = world.nations[a];
+  const nb = world.nations[b];
+  if (!na || !nb || a === b) return ['No such nation'];
+  if (hostile(world, a, b)) return ['Already at war or under ultimatum'];
+  const truce = truceLeft(world, a, b, turn);
+  if (truce > 0) out.push(`Truce: ${truce} more weeks`);
+  const allied = (n, pid) => (n.treaties ?? []).some((t) => t.type === 'ALLIANCE' && t.partner === pid
+    && (t.until ?? Infinity) > turn);
+  if (allied(na, b) || allied(nb, a)) out.push('We are allied: break the alliance first');
+  if (overlordOf(world, b, turn) === a) out.push(`${nb.name} is our vassal: release or annex them instead`);
+  if (overlordOf(world, a, turn) === b) out.push(`${nb.name} is our overlord`);
+  const cost = warDeclarationCost(world, a, b, reason);
+  if (cost > 0 && (na.power ?? 0) < cost) out.push(`Needs ${cost} political power (have ${Math.floor(na.power ?? 0)})`);
+  if (attackerCount(world, b) >= MAX_ATTACKERS_ON_TARGET) {
+    out.push(`${MAX_ATTACKERS_ON_TARGET} nations are already at war with them`);
+  }
+  return out;
+}
+
 /**
  * Savaş ilanı. `manual: true` yalnız OYUNCUNUN kendi kararı için geçilir;
  * YZ ve koalisyon bu bayrağı asla kullanmaz.
@@ -235,17 +269,12 @@ export function warDeclarationCost(world, a, b, reason = null) {
 export function declareWar(game, a, b, options = {}) {
   const world = game.world;
   const manual = options.manual === true;
-  if (a === b || hostile(world, a, b)) return false;
-  if (truceLeft(world, a, b, game.turns.turn) > 0) return false;
-  // Ittifak/vasallik ciftler arasinda ilan YOK — once bozmak gerekir.
-  // (VASSALIZE kartinin "kalici baris" vaadi bu satira kadar SAHTEYDI:
-  // hicbir sey baris tarafini uygulamiyordu, yalniz haraci.)
-  const boundTo = (n, pid) => (n?.treaties ?? []).some((t) =>
-    (t.type === 'ALLIANCE' || t.type === 'VASSALIZE') && t.partner === pid
-    && (t.until ?? Infinity) > game.turns.turn);
-  if (boundTo(world.nations[a], b) || boundTo(world.nations[b], a)) return false;
+  // Ateşkes, ittifak/vassal bağı, bedel ve çullanma tavanı tek listede
+  // (warBlockers); ekran aynı listeyi gösterir. Bağlı çift arasında ilan YOK
+  // — önce bozmak gerekir (VASSALIZE kartının "kalıcı barış" vaadi bu kapıya
+  // kadar SAHTEYDİ: hiçbir şey barış tarafını uygulamıyordu, yalnız haracı).
+  if (warBlockers(world, a, b, game.turns.turn, options.reason ?? null).length) return false;
   const cost = warDeclarationCost(world, a, b, options.reason ?? null);
-  if (cost > 0 && (world.nations[a]?.power ?? 0) < cost) return false;
 
   const player = game.turns?.playerNation;
   // 1) Oyuncu ADINA otomatik savaş ilan edilemez. Koalisyon oyuncuya KARŞI
@@ -255,9 +284,8 @@ export function declareWar(game, a, b, options = {}) {
   //    Bayrak ayri tutuldu — `manual` "oyuncu dugmeye basti" demektir ve iki
   //    yolun karistirilmasi izni sessizce genisletirdi.
   if (a === player && !manual && options.delegated !== true) return false;
-  // 2) Çullanma tavanı: hiçbir ulusun üstüne üçten fazla saldırgan binmez.
-  if (attackerCount(world, b) >= MAX_ATTACKERS_ON_TARGET) return false;
-  // 3) Oyuncuya istemsiz açılan cephe sayısı ayrıca dardır.
+  // 2) Çullanma tavanı (hiçbir ulusun üstüne üçten fazla saldırgan binmez)
+  //    warBlockers'ta. 3) Oyuncuya istemsiz açılan cephe sayısı ayrıca dardır.
   if (b === player && !manual
     && attackerCount(world, player) >= MAX_PLAYER_INVOLUNTARY_FRONTS) return false;
 
@@ -271,8 +299,13 @@ export function declareWar(game, a, b, options = {}) {
   const warAt = options.reason === 'alliance' && Number.isFinite(options.warAt)
     ? options.warAt
     : game.turns.turn + ULTIMATUM_WEEKS;
+  // SALDIRGAN: müttefik çağrısında savaşı İLAN EDEN (a, savunanın müttefiki)
+  // saldırgan DEĞİLDİR; asıl saldırgan b'dir. Eskiden `aggressor: a`
+  // yazılıyordu: savunmaya gelen müttefik "saldırgan" kayıtlanıyor, işgal
+  // şöhretini o ödüyor, asıl saldırganın işgali bedava kalıyor, savaş desteği
+  // de ters dönüyordu ("War of aggression" / "Defending the homeland").
   setState(world, a, b, CRISIS, game.turns.turn, {
-    wars, warAt, reason: options.reason ?? null, aggressor: a,
+    wars, warAt, reason: options.reason ?? null, aggressor: options.reason === 'alliance' ? b : a,
   });
   // SAVAS HEDEFI. Bir savasin NEDEN acildigi hicbir yerde yazmiyordu; masada
   // "ne istiyordum?" sorusunun cevabi yoktu. Hedef kume ilan aninda saklanir
@@ -416,7 +449,6 @@ export function settleOccupations(game, a, b) {
       || (tile.owner === b && controller === a);
     if (!validTransfer) continue;
     const oldOwner = tile.owner;
-    captureConstructionAt(world, tile, controller);
     world.nations[oldOwner].tiles = Math.max(0, world.nations[oldOwner].tiles - 1);
     world.nations[controller].tiles++;
     tile.owner = controller;
@@ -482,7 +514,10 @@ export function makePeace(game, a, b, options = {}) {
 export function nationStrength(world, nation) {
   let power = 0;
   for (const unit of world.units) {
-    if (unit.nationId === nation.id) power += armyPower(unit);
+    // Milis (levée) sayılmaz: yalnız kendi toprağını tutar, saldırmaz.
+    // Sayılsaydı saldıranın YZ'si HOLD'a döner, kaybeden teslim teklif
+    // etmez ve savaş skoru şişerdi (redesign D6, ai.js:193/766).
+    if (unit.nationId === nation.id && !isMilitia(unit)) power += armyPower(unit);
   }
   // Filo haritada değil havuzdadır (navy.js): eski WARSHIP birimiyle aynı ağırlık.
   for (const ship of nation.navy?.ships ?? []) {

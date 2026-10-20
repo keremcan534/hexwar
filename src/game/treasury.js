@@ -1,5 +1,5 @@
 /**
- * HAZINE — paranin tek gecis noktasi.
+ * FON DEFTERİ — kalkınma fonunun (eski hazine) tek geçiş noktası. Birim IC.
  *
  * Onceki mimaride 27 ayri cagri yeri `nation.gold`u dogrudan oynatiyor, sonra
  * ayri bir `economy.*Gold` cizik alanina tutar yaziyordu; `updateLedger` haftada
@@ -24,30 +24,21 @@
  * hem tazminat oder hem alir, hisse hem satar hem alir.
  */
 export const LEDGER_LINES = {
-  tax: { kind: 'income', label: 'Taxes' },
+  // TEK ÇUBUK (2026-10-15): stok artık KALKINMA FONUDUR (IC). Altın, vergi,
+  // borç, enflasyon ve bina bakımı yoktur; faturalar (ikmal, okul,
+  // sıkıyönetim) çıktının önünden düşer ve bu deftere girmez (econ/bills.js).
+  investment: { kind: 'income', label: 'Invested output' },
   exports: { kind: 'income', label: 'Exports' },
   // Haraç ve tazminat iki yöne akar: alan için gelir, ödeyen için gider.
   treaty: { kind: 'income', label: 'Tribute & reparations' },
+  // Tek seferlik kazanç (bereketli hasat, motor patlaması).
+  grant: { kind: 'income', label: 'Windfalls' },
 
-  army: { kind: 'expense', label: 'Army upkeep' },
-  navy: { kind: 'expense', label: 'Navy upkeep' },
   imports: { kind: 'expense', label: 'Imports' },
-  construction: { kind: 'expense', label: 'Construction' },
-  recruitment: { kind: 'expense', label: 'Recruitment' },
-  education: { kind: 'expense', label: 'Education' },
-  maintenance: { kind: 'expense', label: 'Building upkeep' },
-  // Rezervin üstünde yatan altının erimesi (economy.js closeTreasury).
-  inflation: { kind: 'expense', label: 'Inflation' },
-  interest: { kind: 'expense', label: 'Debt interest' },
-  // Ulusal harekete karşı sıkıyönetim (movements.js).
-  unrest: { kind: 'expense', label: 'Martial law' },
-  // Generaller, olay seçenekleri, gündem: tek seferlik devlet harcaması.
+  // Fondan alınan kalkınma kademeleri.
+  development: { kind: 'expense', label: 'Development' },
+  // Generaller, iskân, olay seçenekleri, gündem: tek seferlik devlet harcaması.
   outlay: { kind: 'expense', label: 'State purchases' },
-
-  // Bilanço hareketleri: gelir/gider DEĞİLDİR, hazineyi değiştirir.
-  borrow: { kind: 'financing', label: 'Borrowed' },
-  repay: { kind: 'financing', label: 'Repaid' },
-  default: { kind: 'financing', label: 'Defaulted' },
 };
 
 export const LEDGER_LINE_IDS = Object.keys(LEDGER_LINES);
@@ -74,7 +65,7 @@ export function ledgerWeekOf(nation) {
 export function openWeek(nation) {
   if (!nation?.economy) return;
   nation.economy.ledgerWeek = emptyWeek();
-  nation.economy.ledgerOpenGold = nation.gold ?? 0;
+  nation.economy.ledgerOpenFund = nation.fund ?? 0;
 }
 
 /**
@@ -92,7 +83,7 @@ export function settle(nation, line, amount) {
     // kaybolmasindansa gurultu yapmasi yeglenir.
     throw new Error(`settle(): unknown ledger line "${line}"`);
   }
-  nation.gold = (nation.gold ?? 0) + amount;
+  nation.fund = (nation.fund ?? 0) + amount;
   const week = ledgerWeekOf(nation);
   if (week) week[line] += amount;
   return amount;
@@ -125,8 +116,8 @@ export function closeWeek(nation, turn) {
   const delta = net + financing;
 
   // KIMLIK DENETIMI. Hazineye settle() disindan dokunulduysa burada yakalanir.
-  const opened = economy.ledgerOpenGold;
-  const drift = Number.isFinite(opened) ? (nation.gold ?? 0) - opened - delta : 0;
+  const opened = economy.ledgerOpenFund;
+  const drift = Number.isFinite(opened) ? (nation.fund ?? 0) - opened - delta : 0;
 
   economy.ledger = {
     lastUpdated: turn,
@@ -138,13 +129,12 @@ export function closeWeek(nation, turn) {
     delta,
     // Sifirdan farkliysa bir yerde kayitsiz para hareketi var demektir.
     unreconciled: Math.abs(drift) < 1e-6 ? 0 : drift,
-    debt: nation.debt ?? 0,
   };
 
-  // 52 haftalik hazine izi: butce ekranindaki grafik buradan cizilir.
-  economy.treasuryHistory ??= [];
-  economy.treasuryHistory.push(Number((nation.gold ?? 0).toFixed(1)));
-  if (economy.treasuryHistory.length > 52) economy.treasuryHistory.shift();
+  // 52 haftalık fon izi: ekonomi ekranındaki grafik buradan çizilir.
+  economy.fundHistory ??= [];
+  economy.fundHistory.push(Number((nation.fund ?? 0).toFixed(1)));
+  if (economy.fundHistory.length > 52) economy.fundHistory.shift();
 
   // Yeni hafta HEMEN acilir. Tur disinda yapilan alimlar (oyuncu duraklatmisken
   // birim satin alir) boylece bir sonraki kapanisin defterine duser; acilis
@@ -164,7 +154,6 @@ export function emptyLedger() {
     financing: 0,
     delta: 0,
     unreconciled: 0,
-    debt: 0,
   };
 }
 

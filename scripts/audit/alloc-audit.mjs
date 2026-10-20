@@ -29,6 +29,8 @@ const SIZE = flags.has('--small') ? {} : { cols: 160, rows: 96 };
 // bir dugumun bayti, TAHSISATI YAPAN karenin dosyasina yazilir.
 const SUBSYSTEM = [
   [/game\/economy\.js/, 'economy'],
+  // Tek Cubuk: cikti, faturalar, yatirim ve hatlar econ/ altinda.
+  [/game\/econ\//, 'economy'],
   [/game\/population\.js/, 'population'],
   [/game\/census\.js/, 'population'],
   [/game\/tradeLedger\.js/, 'trade-ledger'],
@@ -42,7 +44,6 @@ const SUBSYSTEM = [
   [/game\/recruitment\.js/, 'recruitment'],
   [/game\/reinforcement\.js/, 'reinforcement'],
   [/game\/provinces\.js/, 'provinces'],
-  [/game\/construction\.js/, 'construction'],
   [/game\/politics\.js/, 'politics'],
   [/game\/diplomacy\.js/, 'diplomacy'],
   [/game\/infamy\.js/, 'infamy'],

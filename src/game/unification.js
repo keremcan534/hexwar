@@ -93,6 +93,12 @@ export function unionBlockers(world, nation, other, turn = world.turn ?? 0, play
   if (!other?.alive || other.culture !== nation.culture) return ['Not a kindred state'];
   if (other.id === playerId) out.push('They will not give up their crown');
   if (atWar(world, nation.id, other.id)) out.push('We are at war with them');
+  // Savaştaki devlet barışla katılamaz: işgal ettiği toprak oyuncunun elinden
+  // birleşmeyle kayıyor, savaş ganimetsiz bitiyordu (Kerem 2026-10-15:
+  // "ülkeyi işgal ettim, Ravoya yedi"; Loranov savaşın ortasında Ravoya'ya katıldı).
+  const fighting = (n) => world.nations.some((o) => o.alive && o.id !== n.id && atWar(world, n.id, o.id));
+  if (fighting(other)) out.push('They are at war: no crown is handed over in the middle of a war');
+  if (fighting(nation)) out.push('We are at war: a union waits for the peace');
   const mine = nation.economy?.population ?? 0;
   const theirs = Math.max(1, other.economy?.population ?? 0);
   if (mine / theirs < UNION_RATIO) out.push(`We must be ${UNION_RATIO}× their size (now ${(mine / theirs).toFixed(1)}×)`);

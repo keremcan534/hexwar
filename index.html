@@ -7,6 +7,10 @@
   <meta name="mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
   <title>Imperial Eye</title>
+  <!-- Yazı tipleri yerel (src/fonts.css); ilk karede gereken iki dosya önden. -->
+  <link rel="preload" as="font" type="font/woff2" href="assets/fonts/sourcesans3/sourcesans3-latin.woff2" crossorigin />
+  <link rel="preload" as="font" type="font/woff2" href="assets/fonts/ebgaramond/ebgaramond-latin.woff2" crossorigin />
+  <link rel="stylesheet" href="src/fonts.css" />
   <link rel="stylesheet" href="src/styles.css" />
   <link rel="stylesheet" href="src/overview.css" />
 </head>
@@ -68,6 +72,7 @@
               <button class="time-btn time-notch" data-speed="1" aria-label="Normal speed" data-tip="time" data-tip-arg="1"><i></i></button>
               <button class="time-btn time-notch" data-speed="2" aria-label="Fast" data-tip="time" data-tip-arg="2"><i></i></button>
               <button class="time-btn time-notch" data-speed="4" aria-label="Very fast" data-tip="time" data-tip-arg="4"><i></i></button>
+              <button class="time-btn time-notch" data-speed="6" aria-label="Rapid" data-tip="time" data-tip-arg="6"><i></i></button>
               <button class="time-btn time-notch" data-speed="8" aria-label="Fastest" data-tip="time" data-tip-arg="8"><i></i></button>
             </span>
             <small class="turn-status" id="turn-status">Paused</small>
@@ -89,10 +94,10 @@
        ayrı başlık satırı gereksiz). -->
   <nav class="tab-bar" id="tab-bar" aria-label="National management">
     <div class="tab-list">
-      <button data-screen="construction" data-tip="tab" data-tip-arg="construction"><b>Construction</b></button>
+      <button data-screen="construction" data-tip="tab" data-tip-arg="construction"><b>Development</b></button>
       <button data-screen="industry" data-tip="tab" data-tip-arg="industry"><b>Factories</b></button>
       <button data-screen="trade" data-tip="tab" data-tip-arg="trade"><b>Trade</b></button>
-      <button data-screen="budget" data-tip="tab" data-tip-arg="budget"><b>Budget</b></button>
+      <button data-screen="budget" data-tip="tab" data-tip-arg="budget"><b>Economy</b></button>
       <button data-screen="military" data-tip="tab" data-tip-arg="military"><b>Military</b></button>
       <button data-screen="population" data-tip="tab" data-tip-arg="population"><b>Population</b></button>
       <button data-screen="cultures" data-tip="tab" data-tip-arg="cultures"><b>Cultures</b></button>
@@ -209,8 +214,8 @@
     <button class="primary" id="btn-generate">Generate New World</button>
     <div class="action-row" style="margin-top:14px">
       <div class="k">save game</div>
-      <button class="action" id="btn-save">Save</button>
-      <button class="action" id="btn-load">Load</button>
+      <button class="action" id="btn-save">Quick Save</button>
+      <button class="action" id="btn-load">Saves…</button>
     </div>
     <div class="action-row" style="margin-top:10px">
       <div class="k">menu</div>
@@ -234,6 +239,12 @@
       <button class="tool-btn stance" data-stance="1" title="Careful: attacks rarely and only with a clear advantage (2.0 : 1)">Careful</button>
       <button class="tool-btn stance" data-stance="2" title="Balanced: attacks at 1.5 : 1">Balanced</button>
       <button class="tool-btn stance" data-stance="3" title="Aggressive: attacks often, even at 1.1 : 1">Aggressive</button>
+      <span class="tool-sep"></span>
+      <span class="tool-label">Lines</span>
+      <button class="tool-btn line" id="btn-draw-front" title="Draw a front: drag along the border. Only that stretch becomes this commander's front, and it follows the border as it moves. Right click or Esc cancels.">✎ Front</button>
+      <button class="tool-btn line" id="btn-draw-fallback" title="Draw a fallback line inside your own territory. The divisions hold it when you order Fall back, or by themselves when half the group is routed.">✎ Fallback</button>
+      <button class="tool-btn" id="btn-fall-back" title="Fall back: the divisions leave the front and hold the fallback line. Offensive returns them to the front.">⤺ Fall back</button>
+      <button class="tool-btn quiet" id="btn-clear-lines" title="Erase this commander's drawn lines: the front becomes automatic again.">✕</button>
     </div>
     <div class="command-bar" id="command-bar" aria-label="Commanders"></div>
   </div>

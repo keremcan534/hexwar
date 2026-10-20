@@ -10,7 +10,6 @@
 import {
   MAX_ATTACKERS_ON_TARGET, atWar, declareWar, nationStrength, attackerCount,
 } from './diplomacy.js';
-import { isOccupied } from './control.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import { mod } from './modifiers.js';
 
@@ -26,7 +25,8 @@ export const INFAMY = {
    * şöhreti 0'ın üstüne çıkmadı — yani fethin diplomatik bedeli hiç işlemedi.
    *
    * Artık asıl fren oransaldır (DECAY_RATIO, bugün %1.2/tur; ilk sürüm %3
-   * idi): fethi bırakan ülke birkaç on yılda temizlenir.
+   * idi): fethi bırakan ülke 1-3 yılda temizlenir (ölçüldü: tek ilhaklık
+   * ~4.4 şöhret 62 haftada sıfırlandı).
    */
   DECAY_PER_TURN: 0.05,
   /**
@@ -54,10 +54,6 @@ export const INFAMY = {
  */
 export const INFAMY_COALITION = 22;
 
-/** İşgalden sonra karenin hiç üretmediği tur sayısı. */
-export const OCCUPATION_TURNS = 5;
-/** Yabancı kültürlü karenin kalıcı verim kaybı. */
-export const FOREIGN_YIELD_PENALTY = 0.3;
 
 /**
  * ILHAK sohreti — fethin KALICI diplomatik bedeli.
@@ -154,38 +150,21 @@ export function tileInfamy(tile, nation) {
   return INFAMY.FOREIGN_CULTURE_TILE;
 }
 
+/**
+ * Haftalık unutulma. Devlet adamı danışmanı hızlandırır (modifiers
+ * 'infamyDecay'). Tek kaynak: bilgi kartı da bunu okur — eskiden kart
+ * danışman çarpanını atlayıp yanlış hız gösteriyordu.
+ */
+export function infamyDecayOf(nation) {
+  return (INFAMY.DECAY_PER_TURN + (nation?.infamy ?? 0) * INFAMY.DECAY_RATIO)
+    * Math.max(0.2, 1 + mod(nation, 'infamyDecay'));
+}
+
 export function decayInfamy(world) {
   for (const nation of world.nations) {
     if (!nation.alive) continue;
-    const current = nation.infamy ?? 0;
-    // Devlet adamı danışmanı unutulmayı hızlandırır (modifiers 'infamyDecay').
-    const rate = (INFAMY.DECAY_PER_TURN + current * INFAMY.DECAY_RATIO)
-      * Math.max(0.2, 1 + mod(nation, 'infamyDecay'));
-    addInfamy(nation, -rate);
+    addInfamy(nation, -infamyDecayOf(nation));
   }
-}
-
-/**
- * Karenin verim çarpanı: taze işgal sıfır, yabancı halk eksik üretir.
- * Fethin 45-50 turda kâra geçmesini sağlayan yer burası.
- *
- * `cultureOrNation` bir kültür id'si YA DA ülke nesnesi olabilir: ülke
- * verilirse kabul edilen kültür listesi (accepted) tam sayılır — bileşik
- * monarşinin ikinci halkı "yabancı" değildir.
- */
-export function tileEfficiency(tile, cultureOrNation, turn) {
-  if (tile.owner < 0) return 1;
-  if (isOccupied(tile)) return 0;
-  const held = turn - (tile.heldSince ?? 0);
-  if (held < OCCUPATION_TURNS) return 0;
-  const nation = typeof cultureOrNation === 'object' && cultureOrNation !== null
-    ? cultureOrNation : null;
-  const primary = nation ? nation.culture : cultureOrNation;
-  if (tile.culture >= 0 && primary >= 0 && tile.culture !== primary) {
-    if (nation?.accepted?.includes(tile.culture)) return 1;
-    return 1 - FOREIGN_YIELD_PENALTY;
-  }
-  return 1;
 }
 
 /**

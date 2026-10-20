@@ -66,15 +66,18 @@ function rawGoods(world, provinces, limit = 3) {
     }));
 }
 
-/** Kurulu sanayi: fabrika kademesi ve tersane. */
+/**
+ * Kurulu sanayi: 1'in üstündeki kalkınma kademeleri (sanayi kalkınmadır,
+ * fabrika binası yoktur) ve kıyı state'leri (tersane kapasitesi).
+ */
 function industryOf(provinces) {
-  let factories = 0;
-  let dockyards = 0;
+  let levels = 0;
+  let coastal = 0;
   for (const province of provinces) {
-    factories += province.econ?.buildings?.factory ?? 0;
-    dockyards += province.econ?.buildings?.dockyard ?? 0;
+    levels += Math.max(0, (province.econ?.development ?? 1) - 1);
+    if (province.coastal) coastal++;
   }
-  return { count: factories, levels: factories, dockyards };
+  return { count: levels, levels, dockyards: coastal };
 }
 
 /**
@@ -176,7 +179,7 @@ export function nationBrief(world, nation) {
     divisions,
     ships,
     power,
-    treasury: Math.round(nation.gold ?? 0),
+    output: Math.round(nation.economy?.ic?.output ?? 0),
     neighbours,
     notes,
     line: characterLine(world, nation),

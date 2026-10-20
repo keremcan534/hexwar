@@ -1,16 +1,14 @@
-// SANAYİ — IC, tüketim malı ve askerî üretim hatları (TASARIM.md §5).
+// SANAYİ — tüketim malı ihtiyacı ve askerî üretim hatları (TASARIM.md §5).
 //
-// Tek kavram, iki kullanım: fabrikalar IC verir; ekonomi yasası IC'nin ne
-// kadarının orduya gideceğini söyler. Sivil pay halkın TÜKETİM MALIDIR (eksikse
-// istikrar düşer, fazlası vergiyi artırır), askerî pay üretim hatlarına akar.
+// Çıktının kendisi econ/output.js'tedir. Ekonomi yasası SANAYİNİN ne kadarını
+// ordunun çekebileceğini söyler; hatlar ağırlıkla paylaşır, çekmedikleri pay
+// halka ve kalkınmaya kalır. Halkın payı doyurma kolundan gelir (FEED).
 // HOI4'ün asıl ikilemi budur: topyekûn savaş orduyu doyurur, halkı aç bırakır.
 
 import {
-  COAL_PER_IC, IRON_PER_IC, TIMBER_PER_IC, CONSUMER_ERA_GROWTH, CONSUMER_NEED, COTTAGE_OUTPUT,
-  COTTAGE_PER_DEVELOPMENT, DOCKYARD_IC, EQUIPMENT, EQUIPMENT_IDS, FACTORY_IC,
-  LINE_EFFICIENCY, OIL_PER_IC,
+  CONSUMER_ERA_GROWTH, CONSUMER_NEED, EQUIPMENT, EQUIPMENT_IDS, FEED, LINE_EFFICIENCY, POP_UNIT,
+  UNIT_EQUIPMENT,
 } from './defs.js';
-import { lawOption } from '../laws.js';
 import { mod } from '../modifiers.js';
 import { resourceRatio } from './resources.js';
 import { eraProgress } from '../calendar.js';
@@ -22,8 +20,8 @@ const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 const DEFAULT_WEIGHTS = { rifles: 3, guns: 1, ships: 1, tanks: 1, aircraft: 1 };
 
 /**
- * Hat çalışabilir mi: gemi tersane, tank ve uçak kolunu açan teknolojiyi
- * ister. Kapalı hattın ağırlığı paya girmez (IC boşa bölünmez).
+ * Hat çalışabilir mi: gemi kıyı kalkınması (tersane kapasitesi), tank ve uçak
+ * kolunu açan teknolojiyi ister. Kapalı hattın ağırlığı paya girmez (IC boşa bölünmez).
  */
 function lineUsable(nation, id, dockyards) {
   if (id === 'ships' && dockyards <= 0) return false;
@@ -50,8 +48,9 @@ export function ensureIndustry(economy) {
       limit: line.limit ?? 1,
     };
   }
-  economy.ic ??= { raw: 0, total: 0, civil: 0, military: 0 };
-  economy.consumer ??= { need: 0, cottage: 0, civil: 0, supply: 0, ratio: 1 };
+  economy.ic ??= { raw: 0, total: 0, output: 0, hand: 0, civil: 0, military: 0 };
+  economy.consumer ??= { need: 0, supply: 0, ratio: 1, feed: FEED.peace };
+  economy.feed ??= { mode: 'auto', target: FEED.peace };
   return economy;
 }
 
@@ -102,11 +101,15 @@ export function linePriorityOf(weight) {
 }
 
 /**
- * OTOMATİK HAT: depo ordunun ihtiyacını karşılıyorsa hat durur, eksikse açılır
- * (eski economyAI kuralı, aynı eşikler). Yalnız 'auto' kipindeki hatlara
- * yazar; dört haftada bir. YZ ulusları ve oyuncunun Auto hatları aynı kural.
+ * OTOMATİK HAT: depo ordunun ihtiyacını karşılıyorsa hat durur, eksikse açılır.
+ * Yalnız 'auto' kipindeki hatlara yazar; dört haftada bir. YZ ulusları ve
+ * oyuncunun Auto hatları aynı kural.
+ *
+ * `reserve.rifles`: seferberliğin depodan isteyeceği tüfek (çağıran
+ * mobilization.mobilizationRifleReserve ile hesaplar; bu dosya seferberliği
+ * import etmez). Barışta hattın işi yedeği silahlandırmaktır.
  */
-export function autoLineWeights(world, nation) {
+export function autoLineWeights(world, nation, reserve = {}) {
   const economy = nation.economy;
   if (!economy) return;
   ensureIndustry(economy);
@@ -132,20 +135,26 @@ export function autoLineWeights(world, nation) {
   // Depo doluysa hat durur: barışta yığılan tüfek demir yer ama kimseyi
   // silahlandırmaz (ölçüldü: 1900'de dünya demiri %40'ta, depolar taşkın).
   const rifles = equipmentStock(nation, 'rifles');
+  const mobilization = Math.max(0, reserve.rifles ?? 0);
   const want = {
-    rifles: rifles < regiments * 4 + 30 ? (war ? 5 : 3) : rifles < regiments * 10 + 80 ? 1 : 0,
+    rifles: rifles < regiments * 4 + 30 ? (war ? 5 : 3)
+      : rifles < regiments * 10 + 80 + mobilization ? (war ? 3 : 1) : 0,
     guns: equipmentStock(nation, 'guns') < guns * 3 + 6 ? (war ? 2 : 1) : 0,
     // Gemi hattının da tavanı var: tavansızken filonun ihtiyacının 1000-1850
     // katı gemi yığılıyor, askerî IC'nin %33-50'sini ve (zırhlıyla) dünya
     // demirinin %93-98'ini yiyordu (ölçüldü 2026-10-11, 3 tohum + 160x96).
     ships: !economy.coastal || equipmentStock(nation, 'ships') >= warships * 10 + 30 ? 0
       : ((economy.blockade ?? 0) > 0 || nation.focus === 'military' ? 2 : 1),
-    // Tank ve uçak: kol açıksa bir alaylık yedek + kolun takviye payı. İki
-    // alaylık yedekte dünyada ~1200 tank ve ~1500 uçak depoda yatıyordu
-    // (ölçüldü, 30 yıl): ağır teçhizattır, parça başına 0.8/0.6 IC.
-    tanks: !unitUnlocked(nation, 'ARMOR') || equipmentStock(nation, 'tanks') >= armour * 2 + 8 ? 0
+    // Tank ve uçak: kol açıksa bir alaylık kit + alay başına üçte bir takım
+    // takviye payı (tüfekle aynı oran). Eşik "2 × alay + 8" iken kit 8'den
+    // 24'e çıktı (UNIT_EQUIPMENT ×3) ve eşik kitin altında kaldı: YZ alayı
+    // ancak kit depodaysa kurduğu için 30 yılda dünyada 1 zırhlı, 0 hava
+    // alayı vardı, depolarda ~240 tank ve ~250 uçak yatıyordu (ölçüldü).
+    tanks: !unitUnlocked(nation, 'ARMOR')
+      || equipmentStock(nation, 'tanks') >= armour * 8 + UNIT_EQUIPMENT.ARMOR.tanks ? 0
       : (war ? 3 : 1),
-    aircraft: !unitUnlocked(nation, 'AIRCRAFT') || equipmentStock(nation, 'aircraft') >= air * 2 + 8 ? 0
+    aircraft: !unitUnlocked(nation, 'AIRCRAFT')
+      || equipmentStock(nation, 'aircraft') >= air * 8 + UNIT_EQUIPMENT.AIRCRAFT.aircraft ? 0
       : (war ? 2 : 1),
   };
   for (const id of EQUIPMENT_IDS) {
@@ -154,67 +163,45 @@ export function autoLineWeights(world, nation) {
 }
 
 /**
- * Ulusun bu haftaki IC'si. `raw` fabrika kademesi × statü; çarpanlar kömür
- * (geçen haftanın oranı), istikrar, askerlik yasası ve teknoloji.
+ * Tüketim malı İHTİYACI: nüfusla ve ÇAĞLA büyür (1900'de 1, 1945'te 2.7).
+ * Arz halkın payıdır (doyurma kolu × ihtiyaç; econ/output.js çıktısından).
+ * Sanayileşmeyen ülkenin çıktısı ihtiyacın büyümesine yetişmez.
  */
-export function computeIC(world, nation) {
-  let raw = 0;
-  let dockyards = 0;
-  for (const province of world.provinces ?? []) {
-    if (province.owner !== nation.id || !province.econ) continue;
-    const status = province.econ.status ?? 1;
-    raw += (province.econ.buildings?.factory ?? 0) * FACTORY_IC * status;
-    dockyards += (province.econ.buildings?.dockyard ?? 0) * status;
-  }
-  const coal = 0.6 + 0.4 * Math.min(1, resourceRatio(nation, 'COAL'));
-  const iron = 0.85 + 0.15 * Math.min(1, resourceRatio(nation, 'IRON'));
-  const timber = 0.9 + 0.1 * Math.min(1, resourceRatio(nation, 'TIMBER'));
-  const stability = 0.85 + 0.3 * clamp(nation.stability ?? 0.5, 0, 1);
-  const law = 1 + (lawOption(nation, 'conscription').ic ?? 0);
-  const tech = 1 + mod(nation, 'ic');
-  // Petrol bonusu karşılanan petrol oranındadır; rafinerisi olmayan ülke
-  // petrol istemez (bkz. OIL_PER_IC).
-  const oilBonus = Math.max(0, mod(nation, 'oilIc'));
-  const oil = 1 + oilBonus * Math.min(1, resourceRatio(nation, 'OIL'));
-  const total = raw * coal * iron * timber * stability * law * tech * oil;
-  const share = lawOption(nation, 'economy').military;
-  return {
-    raw,
-    dockyards,
-    coalNeed: raw * COAL_PER_IC,
-    ironNeed: raw * IRON_PER_IC,
-    timberNeed: raw * TIMBER_PER_IC,
-    oilNeed: oilBonus > 0 ? raw * OIL_PER_IC : 0,
-    factors: { coal, iron, timber, stability, law, tech, oil },
-    total,
-    military: total * share,
-    civil: total * (1 - share),
-    share,
-  };
+export function consumerNeed(nation, population, turn) {
+  const era = 1 + CONSUMER_ERA_GROWTH * eraProgress(turn);
+  const need = Math.max(0, population) / POP_UNIT * CONSUMER_NEED * era
+    * Math.max(0.3, 1 + mod(nation, 'consumerNeed'));
+  return { need, era };
 }
 
 /**
- * Tüketim malı. İhtiyaç nüfusla ve ÇAĞLA büyür; el tezgâhı nüfus ve
- * kalkınmayla. Fabrikasız ülke 1836'da idare eder, 1880'de etmez.
+ * Halkın doyurulma hedefi (ihtiyacın katı). 'auto' kipinde YZ evresi yazar
+ * (ai.autoFeed); 'manual' kipine hiçbir otomasyon dokunmaz.
  */
-export function consumerGoods(nation, { population, workforce = population, development, civil, turn }) {
-  const units = Math.max(0, population) / 100000;
-  const era = 1 + CONSUMER_ERA_GROWTH * eraProgress(turn);
-  const need = units * CONSUMER_NEED * era * Math.max(0.3, 1 + mod(nation, 'consumerNeed'));
-  // Tezgâhı silah altındaki değil evdeki dokur; ihtiyaç ise bütün nüfusundur.
-  const cottage = Math.max(0, workforce) / 100000 * COTTAGE_OUTPUT * (1 + COTTAGE_PER_DEVELOPMENT * development);
-  const supply = cottage + civil;
-  return { need, cottage, civil, supply, ratio: need > 0 ? supply / need : 1, era };
+export function feedTarget(nation) {
+  const feed = nation?.economy?.feed;
+  const target = Number.isFinite(feed?.target) ? feed.target : FEED.peace;
+  return clamp(target, FEED.min, FEED.max);
+}
+
+/** Oyuncunun doyurma seçimi: kol ya da 'auto'. */
+export function setFeed(nation, target) {
+  const economy = nation?.economy;
+  if (!economy) return false;
+  economy.feed ??= { mode: 'auto', target: FEED.peace };
+  if (target === 'auto') {
+    economy.feed.mode = 'auto';
+    return true;
+  }
+  if (!Number.isFinite(target)) return false;
+  economy.feed.mode = 'manual';
+  economy.feed.target = clamp(Math.round(target / FEED.step) * FEED.step, FEED.min, FEED.max);
+  return true;
 }
 
 /** Tüketim malının istikrara katkısı (puan/100). Eksik ağır, fazla hafif. */
 export function consumerStability(ratio) {
   return clamp((ratio - 1) * 0.3, -0.2, 0.06);
-}
-
-/** Tüketim malı fazlasının vergiye katkısı (kesir). */
-export function consumerTaxBonus(ratio) {
-  return clamp((ratio - 1) * 0.5, 0, 0.2);
 }
 
 /**
@@ -244,8 +231,9 @@ export function lineAllocation(nation, militaryIC, dockyards, weights = null) {
     const equipment = EQUIPMENT[id];
     const usable = lineUsable(nation, id, dockyards);
     let ic = usable && weightSum > 0 ? militaryIC * weightOf(id) / weightSum : 0;
-    // Tersane kapasitesi: gemi hattına kademe başına DOCKYARD_IC girebilir.
-    if (id === 'ships') ic = Math.min(ic, dockyards * DOCKYARD_IC);
+    // Tersane kapasitesi (kıyı kalkınması, econ/output.js): gemi hattına en
+    // çok bu kadar IC girebilir.
+    if (id === 'ships') ic = Math.min(ic, dockyards);
     const recipe = id === 'ships' && ironclad ? equipment.ironclad : equipment.resources;
     const potential = ic > 0 ? ic * line.efficiency / equipment.ic : 0;
     let limit = 1;
@@ -257,6 +245,22 @@ export function lineAllocation(nation, militaryIC, dockyards, weights = null) {
     out[id] = { usable, ic, potential, limit, inputs, output: potential * clamp(limit, 0, 1) };
   }
   return out;
+}
+
+/**
+ * Askerî payın hatlara giden kısmı. Kalanı (bütün hatlar durmuşken ya da
+ * tersane tavanı aşılınca) HALKA DÖNER: tüketim malı üretir. Ekonomi yasası
+ * böylece ordunun en çok ne kadar çekebileceğidir, boşa yakılan bir pay değil.
+ *
+ * Eskiden bu pay boşa gidiyordu (Factories ekranında taralı "Idle"): barışta
+ * Auto depolar doluyken askerî IC dünyada ortanca %96-100 boştu (ölçüldü,
+ * 3 tohum × 45 yıl, 160×96) — Kerem: "barışta askerî fabrikalara ihtiyaç yok".
+ */
+export function militaryDraw(nation, militaryIC, dockyards) {
+  const allocation = lineAllocation(nation, militaryIC, dockyards);
+  let used = 0;
+  for (const id of EQUIPMENT_IDS) used += allocation[id].ic;
+  return Math.max(0, Math.min(militaryIC, used));
 }
 
 /** Hat veriminin tavanı (teknolojiyle yükselir). Ekran da bunu okur. */

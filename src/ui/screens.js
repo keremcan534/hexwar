@@ -1,11 +1,11 @@
 // Ulusal ekranların kabuğu: sekme açma/kapama, yeniden çizim, ortak bağlama.
-// Uluslar Çağı ekranları (Budget, Trade, Factories, Construction, Population,
+// Uluslar Çağı ekranları (Economy, Trade, Factories, Development, Population,
 // Politics) ui/stateScreens.js'tedir; burada dosya kartı, barış masası,
 // diplomasi, ordu, teknoloji ve vakayiname kalır.
 
 import { canAfford, pay } from '../game/cities.js';
 import {
-  MIN_WAR_TURNS, ULTIMATUM_WEEKS, atWar, crisisLeft, nationStrength, relation, truceLeft,
+  MIN_WAR_TURNS, ULTIMATUM_WEEKS, atWar, crisisLeft, nationStrength, overlordOf, relation, truceLeft, warBlockers,
 } from '../game/diplomacy.js';
 import {
   PEACE_TERMS, buildOffer, capitalProvinceOf, concedeKeyForTile, demandKeyForTile, demandLimit,
@@ -15,9 +15,9 @@ import {
 } from '../game/peace.js';
 import { INFAMY_COALITION } from '../game/infamy.js';
 import { controllerOf } from '../game/control.js';
+import { callToArms } from '../game/mobilization.js';
 import { maxHpOf, menUnderArms, organizationOf, soldiersOf } from '../game/units.js';
 import { provinceName } from '../game/provinces.js';
-import { flagDataUrl } from '../render/flagPainter.js';
 import { hydrateFlags } from '../render/flagWave.js';
 import { hegemonyScore, scoreboard } from '../game/hegemony.js';
 import { MAX_ROUNDS, battleSides, battlesFor } from '../game/battles.js';
@@ -29,48 +29,54 @@ import {
   unassignedDivisions,
 } from '../game/military.js';
 import {
-  BRANCH, assignDivisions, createGeneral, generalCost, officersOf, setCommandOption, setStance,
-  unassignGeneral,
+  BRANCH, assignDivisions, borderNationIds, createGeneral, generalCost, officersOf, retireGeneral, setCommandOption,
+  setStance, unassignGeneral,
 } from '../game/command.js';
 import { militaryScreen } from './militaryScreen.js';
 import { levyView, setLevied } from '../game/levy.js';
 import { rulingParty } from '../game/politics.js';
 import { TIER, announce, chronicleYear, ensureChronicle, memoryOf } from '../game/chronicle.js';
 import { allianceAppeal, alliesOf, breakAlliance, formAlliance, isAllied } from '../game/alliances.js';
+import { annexBlockers, annexCost, annexVassal, releaseVassal } from '../game/vassals.js';
 import { characterLine, techStanding } from '../game/identity.js';
 import {
-  DELEGATION_AREAS, DELEGATION_IDS, isDelegated, lastDelegatedAction, setDelegation,
+  DELEGATION_AREAS, headerAreaOf, isDelegated, lastDelegatedAction, setDelegation,
 } from '../game/delegation.js';
 import {
   dequeueResearch, effectiveTechCost, firstDiscoveryOpen, queueResearch, researchNow, researchPointsOf,
 } from '../game/technology.js';
 import {
-  TECH_ZOOMS, researchRateLines, techGrid, techInspector, technologyScreen,
+  TECH_ZOOMS, defaultInspect, researchRateLines, techGrid, techInspector, technologyScreen,
 } from './technologyScreen.js';
 import { depositsOf } from '../game/econ/deposits.js';
 import { resourceArt } from './icons/art.js';
 import { TAB_GLYPH, TERM_GLYPH, glyph } from './icons/glyphs.js';
 import { motionOn } from './motion.js';
-import { formatPopulation, populationOf, weeklyBalanceOf } from '../game/economy.js';
+import { formatPopulation, populationOf } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS } from '../game/econ/defs.js';
 import {
   bindStateScreens, constructionKey, declareEmbargo, embargoBlockers, industryKey, renderBudget, renderConstruction,
   renderCultures, renderIndustry, renderPolitics, renderPopulation, renderTrade,
 } from './stateScreens.js';
-import { refreshTooltips } from './tooltip.js';
+import { quietScroll, refreshTooltips } from './tooltip.js';
 import { renderNationOverview, trackOverviewEvents } from './nationOverview.js';
-import { kpi as kitKpi, kpiRow as kitKpiRow, panel as kitPanel, spark as kitSpark } from './kit.js';
-import { END_YEAR, exactYearOfTurn, yearOfTurn } from '../game/calendar.js';
+import { autoPill as pillHtml, kpi as kitKpi, kpiRow as kitKpiRow, panel as kitPanel, spark as kitSpark, tipAttr } from './kit.js';
+import { END_YEAR, dateOfTurn, exactYearOfTurn, yearOfTurn } from '../game/calendar.js';
+import { SAVE_VERSION, exportSaveText, importSaveText, readableVersion } from '../game/save.js';
+import { LEGACY_SLOT, MAX_MANUAL, deleteSave, listSaves, manualCount } from '../game/saveStore.js';
+import { diplomacyView } from '../game/diplomacyView.js';
+import { warOverview, worldConflicts } from '../game/warView.js';
+import { conflictDetailHtml, conflictFocusTile } from './warDetail.js';
 
 /** Ekranın kapanış geçişi (styles.css §6 .screen.hidden) bitene kadar gövde kalır. */
 const SCREEN_CLOSE_MS = 220;
 
 const TITLES = {
   nation: 'Nation Overview',
-  construction: 'Construction',
+  construction: 'Development',
   industry: 'Industry & Production',
   military: 'Military',
-  budget: 'Budget',
+  budget: 'Economy',
   population: 'Population',
   cultures: 'Cultures',
   politics: 'Government',
@@ -80,7 +86,13 @@ const TITLES = {
   trade: 'Resources & Trade',
   technology: 'Technology',
   chronicle: 'National Chronicle',
+  saves: 'Save & Load',
 };
+
+/** Kayıt satırındaki oyun tarihi (hud.gameDate ile aynı biçim; hud bu dosyayı içe aldığı için kopya). */
+const saveDate = (turn) => dateOfTurn(turn).toLocaleDateString('en-GB', {
+  day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+});
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -105,29 +117,23 @@ function strengthPhrase(myPower, theirPower) {
   return 'evenly matched';
 }
 
-/**
- * Vergi satirinin aritmetigi — defter satiri da tooltip'i de (tooltipData
- * 'budget') BUNU okur; iki kopya ayrisinca kart satirla celisiyordu.
- * `collected` gecen haftanin oraniyla kapanmis tutardir: oran o haftadan beri
- * degistiyse (oyuncu ya da AUTO) "matrah x oran = tahsilat" yalan olur.
- * Kapanmis oran formulden degil matrahtan turer: collected / base.
- */
-export function taxSettlement(cfg) {
-  const settledRate = cfg.base > 0 ? (cfg.collected / cfg.base) * 100 : cfg.value;
-  const stale = Math.abs(settledRate - cfg.value) > 0.5;
-  const projected = cfg.base * cfg.value / 100;
-  return { settledRate, stale, projected, amount: stale ? projected : cfg.collected };
-}
-
 /** Yeniden çizimde kaydırma konumu korunacak iç listeler. */
 const SCROLL_KEEPERS = [
   '.census-scroll', '.census-browser-list', '.trade-goods-scroll', '.trade-detail',
   '.pol-left', '.pol-panel', '.pol-issues-scroll',
   '.mil-leader-list', '.mil-build-list', '.mil-queue-list', '.mil-left',
   '.xch-list', '.xch-dossier', '.tech-tree', '.tech-inspector',
+  // Kalkınma ekranının state listesi kendi kaydıracıdır: her tık ve her hafta
+  // listeyi başa atıyordu (ölçüldü: scrollTop 674 → 0).
+  '.k-wtable',
+  // Diplomasi ulus tablosu da kendi kaydıracıdır.
+  '.dip-table',
 ];
 
 const TECH_ZOOM_KEY = 'hexwar.techZoom';
+
+/** Serbest metinli bilgi kartı özniteliği (yerel `title` yerine; bkz. tooltip.js). */
+const tipAttrText = (text) => tipAttr({ text });
 
 /** Kayitli yakinlik; tarayici deposu kapaliysa (gizli pencere) %100. */
 function readTechZoom() {
@@ -146,48 +152,6 @@ function writeTechZoom(value) {
     // Depo yoksa tercih yalniz bu oturumda yasar.
   }
 }
-
-/**
- * Defter piktogramları: tek renk, 16px, sekme çubuğuyla aynı çizgi dili.
- * Emoji değil — referans ekrandaki küçük sınıf/kurum figürlerinin karşılığı.
- */
-const PICTO_SHELL = (inner) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor"
-  stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${inner}</svg>`;
-const PICTO = {
-  lower: PICTO_SHELL('<circle cx="6" cy="4.5" r="1.8"/><path d="M3.5 13v-3.5c0-1.4 1.1-2.5 2.5-2.5s2.5 1.1 2.5 2.5V13M11 4l2 9M10 6.5l3-1"/>'),
-  middle: PICTO_SHELL('<circle cx="8" cy="5" r="1.8"/><path d="M5.5 3.2h5M5 13v-3c0-1.7 1.3-3 3-3s3 1.3 3 3v3M8 8.5v3"/>'),
-  upper: PICTO_SHELL('<path d="M5.5 4.5V2.5h5v2M4.5 4.5h7M5 13v-3c0-1.7 1.3-3 3-3s3 1.3 3 3v3M11.5 9.5l1.5 3.5"/>'),
-  soldier: PICTO_SHELL('<circle cx="8" cy="5" r="1.8"/><path d="M5.5 3h5M5 13v-3c0-1.7 1.3-3 3-3s3 1.3 3 3v3M12 4v9"/>'),
-  stockpile: PICTO_SHELL('<path d="M2.5 9h5v4.5h-5zM8.5 9h5v4.5h-5zM5.5 4.5h5V9h-5z"/><path d="M8 4.5V9M5 11h0M11 11h0"/>'),
-  document: PICTO_SHELL('<path d="M4.5 2.5h5l2.5 2.5v8.5h-7.5z"/><path d="M9.5 2.5V5H12M6 8h4M6 10.5h4"/>'),
-  book: PICTO_SHELL('<path d="M8 4c-1.2-1-3-1.2-5-1v9c2-.2 3.8 0 5 1 1.2-1 3-1.2 5-1V3c-2-.2-3.8 0-5 1z"/><path d="M8 4v9"/>'),
-  health: PICTO_SHELL('<path d="M8 13.5S3 10 3 6.4C3 4.5 4.4 3 6.2 3 7 3 7.6 3.4 8 4c.4-.6 1-1 1.8-1C11.6 3 13 4.5 13 6.4c0 3.6-5 7.1-5 7.1z"/>'),
-  welfare: PICTO_SHELL('<path d="M2.5 9.5c2 0 3-1 4.5-1s2.5.8 4 .8M11 9.3l2.5-1.1M4 13h8M7 4a1.6 1.6 0 1 0 2 0l-1-1z"/>'),
-  construction: PICTO_SHELL('<path d="M2.5 13.5h11M4 13.5V8l4-3 4 3v5.5M6.5 13.5v-3h3v3"/>'),
-  factory: PICTO_SHELL('<path d="M2 13.5h12M3 13.5V7l3 2V7l3 2V4.5h3v9M5 11h1M8 11h1"/>'),
-  city: PICTO_SHELL('<path d="M2 13.5h12M3.5 13.5V6l3-2.5L9.5 6v7.5M11 13.5V8h2.5v5.5M5.5 8.5h2M5.5 11h2"/>'),
-  crate: PICTO_SHELL('<path d="M3 5.5h10v7.5H3z"/><path d="M3 5.5l1.5-2h7l1.5 2M8 5.5V13M3 9h10"/>'),
-};
-
-/**
- * Boyalı bütçe madalyonları. Mal ikonlarıyla aynı aile (pirinç halka, koyu
- * sahne) ama ayrı klasör: bunlar mal değil, defter kalemi. Boyası olmayan
- * kalem yukarıdaki çizgi PICTO'suna düşer — karışık set kazası olmasın diye
- * ikisi de aynı kutuya, aynı ölçüde oturur (bkz. .ledger-picto).
- */
-const LEDGER_ART = (name) =>
-  `<img class="ledger-art" src="assets/icons/budget/${name}.png" alt="" loading="lazy" decoding="async">`;
-
-const LEDGER = {
-  taxLower: LEDGER_ART('lower_class_tax'),
-  taxMiddle: LEDGER_ART('middle_class_tax'),
-  taxUpper: LEDGER_ART('upper_class_tax'),
-  tariff: LEDGER_ART('tariff'),
-  welfare: LEDGER_ART('welfare'),
-  treasury: LEDGER_ART('treasury'),
-  armyFunding: LEDGER_ART('army'),
-  education: LEDGER_ART('education'),
-};
 
 export class Screens {
   constructor(game) {
@@ -228,10 +192,20 @@ export class Screens {
     // Tur ilerlediğinde ya da bir şey satın alındığında açık ekran tazelenir.
     // Tek bir hafta bu olaylardan on üç tane yayar (ölçüldü); hepsi aynı
     // kareye toplanır, yoksa ekran haftada birkaç kez baştan kurulur.
+    // 'construction' olayı kalktı (TEK ÇUBUK): kalkınma 'economy' ile gelir.
     for (const event of [
-      'turn', 'units', 'economy', 'battles', 'provinces', 'politics', 'peace', 'construction',
+      'turn', 'units', 'economy', 'battles', 'provinces', 'politics', 'peace',
     ]) {
-      game.on(event, () => this.scheduleRefresh());
+      game.on(event, () => {
+        // Canlı oyunda hafta kapanışı kareler arasına dilimlenir (turn.js
+        // pumpTurn) ve olaylar farklı karelerde gelir: kare başına toplamak
+        // yetmiyordu, açık ekran 8x'te haftada ~6 kez baştan kuruluyor, oyuncu
+        // sekmede "git gel" görüyordu (Kerem 2026-10-15; ölçüldü: 4 sn'de 30
+        // gövde yazımı). Kapanış sürerken gelen olay beklenir; iş bitince
+        // yayılan 'turn' tek tazeleme yapar (tabLedger.js ile aynı bekçi).
+        if (game.turns?.turnJob && event !== 'turn') return;
+        this.scheduleRefresh();
+      });
     }
     // SURUKLEME SIRASINDA TAZELEME YOK. Haftalik tik ekrani bastan kurar ve
     // parmagin altindaki kaydiraci DOM'dan kaldirir: surukleme sessizce
@@ -326,7 +300,10 @@ export class Screens {
       root.style.minHeight = '';
       this.heightFor = this.active;
     }
-    const height = root.offsetHeight;
+    // Kilit tavanı geçemez: min-height max-height'i ezer ve ekran pencereden
+    // taşıyordu (1920'de alt kenar 1089 px, ölçüldü).
+    const cap = parseFloat(getComputedStyle(root).maxHeight) || Infinity;
+    const height = Math.min(root.offsetHeight, cap);
     if (height > (parseFloat(root.style.minHeight) || 0)) root.style.minHeight = `${height}px`;
   }
 
@@ -339,6 +316,9 @@ export class Screens {
     this.uc.linePreview = null;
     this.uc.lineKeyboard = false;
     this.warConfirm = null;
+    this.vassalConfirm = null;
+    this.saveConfirm = null;
+    this.saveNote = null;
     this.active = null;
     // Genişlik sınıfı (dar/geniş panel) kapanış hareketi bitene dek kalır;
     // yoksa dossier kapanırken bir anda tam boy panele dönüşüp kayardı.
@@ -394,7 +374,9 @@ export class Screens {
   restoreScroll(saved) {
     for (const [selector, top, left] of saved) {
       const node = this.el.body.querySelector(selector);
-      if (!node) continue;
+      if (!node || (!top && !left)) continue;
+      // Geri yükleme oyuncunun kaydırması değil: açık ipucu kartları kapanmasın.
+      quietScroll(node);
       node.scrollTop = top;
       node.scrollLeft = left ?? 0;
     }
@@ -435,15 +417,14 @@ export class Screens {
     const refocus = focused?.dataset?.policy && this.el.body.contains(focused)
       ? `[data-policy="${focused.dataset.policy}"]` : null;
     this.el.title.textContent = TITLES[this.active] ?? '—';
-    // Construction artik eski sehir kaynaklariyla degil state-slot kapasitesiyle
-    // calisir; eski gold/food/timber/iron seridi bu ekranda gosterilmez.
+    // Eski sehir kaynak seridi (altin/gida/kereste/demir) hicbir ekranda yok.
     // Sanayi ekraninin alt sekmeleri de kalkti: santiyeler artik ayri bir
     // pencerede degil, ekranin sag rayinda duruyor (bkz. industryScreen).
     // Üst çubuk zaten bütün sayaçları gösterir; ekran başlığı tekrar etmez.
     this.el.res.innerHTML = '';
     // AUTO seridi TEK YERDEN eklenir: alti ekranin her birine ayri ayri
     // yazmak, birini unutmanin ve iki farkli kalip cikmasinin garantisiydi.
-    const autoArea = DELEGATION_IDS.find((id) => DELEGATION_AREAS[id].screen === this.active);
+    const autoArea = headerAreaOf(this.active);
     if (this.el.auto) this.el.auto.innerHTML = me && autoArea ? this.autoPill(me, autoArea) : '';
     this.el.body.innerHTML = me
       ? (this[`render_${this.active}`]?.(me) ?? '')
@@ -456,6 +437,7 @@ export class Screens {
     this.lockHeight();
     refreshTooltips();
     if (refocus) this.el.body.querySelector(refocus)?.focus({ preventScroll: true });
+    this.onRefresh?.();
     this.game.perf?.add('ui.screen', performance.now() - t0);
   }
 
@@ -487,13 +469,20 @@ export class Screens {
     const truce = truceLeft(world, me.id, target.id, turn);
     const rec = relation(world, me.id, target.id);
     const locked = war && turn - rec.since < MIN_WAR_TURNS;
+    const vassal = overlordOf(world, target.id, turn) === me.id;
+    const overlord = overlordOf(world, me.id, turn) === target.id;
+    // İlanı ne engelliyorsa başlıkta yazar: düğme etkin görünüp sessizce
+    // reddetmesin (Ravoya, 2026-10-15).
+    const warWhy = war || crisis ? [] : warBlockers(world, me.id, target.id, turn);
+    const annexWhy = vassal ? annexBlockers(world, me, target, turn) : [];
     const board = scoreboard(world);
     const rankOf = (id) => board.findIndex((row) => row.nation.id === id) + 1;
     const score = hegemonyScore(world, target);
     const myPower = nationStrength(world, me);
     const power = nationStrength(world, target);
     const cities = world.cities.filter((city) => city.nationId === target.id).length;
-    const factories = (target.economy?.ic?.total ?? 0).toFixed(1);
+    const industry = (target.economy?.ic?.total ?? 0).toFixed(1);
+    const output = (target.economy?.ic?.output ?? 0).toFixed(1);
     const party = rulingParty(target);
     const offer = this.game.peaceOffers.find(
       (entry) => entry.from === target.id && entry.to === me.id,
@@ -506,6 +495,8 @@ export class Screens {
           : truce ? `<span class="tag truce">truce ${truce}w</span>`
             : '<span class="tag peace">at peace</span>',
       allied ? '<span class="tag ally">ally</span>' : '',
+      vassal ? '<span class="tag ally">our vassal</span>' : '',
+      overlord ? '<span class="tag ally">our overlord</span>' : '',
       me.rivalId === target.id ? '<span class="tag rival">our rival</span>' : '',
       target.rivalId === me.id ? '<span class="tag rival">sees us as the rival</span>' : '',
     ].filter(Boolean).join(' ');
@@ -516,7 +507,7 @@ export class Screens {
         <div class="grow">
           <h2>${esc(target.name)} ${status}</h2>
           <div class="dossier-sub">${esc(party?.name ?? 'No government')}
-            · infamy ${Math.round(target.infamy ?? 0)}/${INFAMY_COALITION}</div>
+            · infamy ${(target.infamy ?? 0).toFixed(1)}/${INFAMY_COALITION}</div>
         </div>
         <div class="dossier-rank"><small>rank</small><b>#${rankOf(target.id)}</b></div>
       </div>
@@ -530,7 +521,8 @@ export class Screens {
         <div><span>Population</span><b>${formatPopulation(populationOf(world, target))}</b></div>
         <div><span>Territory</span><b>${target.tiles}</b><small>hexes</small></div>
         <div><span>Cities</span><b>${cities}</b></div>
-        <div><span>Industry</span><b>${factories} IC</b></div>
+        <div><span>Output</span><b>${output} IC/wk</b></div>
+        <div><span>Industry</span><b>${industry} IC</b></div>
       </div>
       ${this.dossierIdentity(world, target)}
     </div>
@@ -539,13 +531,16 @@ export class Screens {
       <div class="card-head"><h3>Diplomacy</h3>
         <small>${war ? 'a treaty is negotiated state by state at the peace table'
     : truce ? 'a truce forbids a new declaration until it lapses'
-      : 'declaring war costs infamy for every state you take'}</small></div>
+      : vassal ? esc(annexWhy[0] ?? 'they pay us tribute and can never be attacked: release or annex them')
+        : warWhy.length ? esc(warWhy[0])
+          : 'declaring war costs infamy for every state you take'}</small></div>
       <div class="row-buttons dossier-actions">
         ${war
     ? `<button class="action" data-peace="${target.id}" ${locked ? 'disabled' : ''}>Peace Talks${locked ? ` (${MIN_WAR_TURNS - (turn - rec.since)}w)` : ''}</button>`
     : allied
       ? `<button class="action" data-break-alliance="${target.id}">Break Alliance</button>`
-      : `<button class="action${this.warConfirm === target.id ? ' confirming' : ''}" data-war="${target.id}" ${truce ? 'disabled' : ''}>${
+      : vassal ? this.vassalButtons(world, target, annexWhy, 'action')
+      : `<button class="action${this.warConfirm === target.id ? ' confirming' : ''}" data-war="${target.id}" ${warWhy.length ? `disabled title="${esc(warWhy.join(' · '))}"` : ''}>${
         this.warConfirm === target.id
           ? `Click again to declare war: ${ULTIMATUM_WEEKS}-week ultimatum, infamy per state taken`
           : 'Declare War'}</button>
@@ -557,6 +552,105 @@ export class Screens {
     </div>`;
   }
 
+
+  /** Kayıt ekranının düğmeleri. Yükle, üstüne yaz ve sil geri alınmaz: ilk tık onay ister. */
+  bindSaves(game) {
+    const body = this.el.body;
+    const note = (text) => { this.saveNote = text; this.refresh(); };
+    const confirmThen = (key, act) => {
+      if (this.saveConfirm !== key) {
+        this.saveConfirm = key;
+        clearTimeout(this.saveConfirmTimer);
+        this.saveConfirmTimer = setTimeout(() => {
+          if (this.saveConfirm !== key) return;
+          this.saveConfirm = null;
+          this.refresh();
+        }, 8000);
+        this.refresh();
+        return;
+      }
+      this.saveConfirm = null;
+      clearTimeout(this.saveConfirmTimer);
+      act();
+    };
+    const nameInput = body.querySelector('#save-name');
+    if (nameInput) nameInput.oninput = () => { this.saveName = nameInput.value; };
+    const saveNew = body.querySelector('[data-save-new]');
+    if (saveNew) {
+      saveNew.onclick = async () => {
+        const name = (this.saveName ?? '').trim() || nameInput?.placeholder || null;
+        note('Saving…');
+        const result = await game.save(name);
+        if (result.ok) this.saveName = '';
+        note(result.ok ? `Saved “${name}”.` : `Could not save: ${result.reason}.`);
+      };
+    }
+    for (const btn of body.querySelectorAll('[data-save-load]')) {
+      const slot = btn.dataset.saveLoad;
+      btn.onclick = () => confirmThen(`load:${slot}`, async () => {
+        note('Loading…');
+        const result = await game.load(slot);
+        // Başarılı yükleme 'world' yayar ve ekran kapanır; not yalnız rette kalır.
+        this.saveNote = result.ok ? null : `Could not load: ${result.reason}.`;
+        if (!result.ok) this.refresh();
+      });
+    }
+    for (const btn of body.querySelectorAll('[data-save-over]')) {
+      const slot = btn.dataset.saveOver;
+      btn.onclick = () => confirmThen(`over:${slot}`, async () => {
+        const old = listSaves().find((row) => row.slot === slot);
+        note('Saving…');
+        const result = await game.save(old?.name ?? null, slot);
+        note(result.ok ? `Overwrote “${old?.name ?? 'save'}”.` : `Could not save: ${result.reason}.`);
+      });
+    }
+    for (const btn of body.querySelectorAll('[data-save-del]')) {
+      const slot = btn.dataset.saveDel;
+      btn.onclick = () => confirmThen(`del:${slot}`, async () => {
+        await deleteSave(slot);
+        note('Save deleted.');
+      });
+    }
+    for (const btn of body.querySelectorAll('[data-save-export]')) {
+      btn.onclick = async () => {
+        const slot = btn.dataset.saveExport;
+        const text = await exportSaveText(slot);
+        if (!text) { note('That save is missing from browser storage.'); return; }
+        const save = listSaves().find((row) => row.slot === slot);
+        const stem = `${save?.name || (slot === LEGACY_SLOT ? 'autosave' : 'campaign')}`
+          .toLowerCase().replace(/[^\w]+/g, '-').replace(/^-|-$/g, '');
+        const link = document.createElement('a');
+        link.href = URL.createObjectURL(new Blob([text], { type: 'application/json' }));
+        link.download = `imperial-eye-${stem || 'campaign'}.json`;
+        document.body.append(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+        note(`Exported ${link.download}.`);
+      };
+    }
+    const importBtn = body.querySelector('[data-save-import]');
+    const importFile = body.querySelector('#save-import-file');
+    if (importBtn && importFile) {
+      importBtn.onclick = () => importFile.click();
+      importFile.onchange = async () => {
+        const file = importFile.files?.[0];
+        if (!file) return;
+        const result = await importSaveText(await file.text(), file.name.replace(/\.json$/i, ''));
+        note(result.ok ? `Imported “${result.info.name}”: load it from the list.` : `Could not import: ${result.reason}.`);
+      };
+    }
+  }
+
+  /** Vassal satırı: bırak ya da ilhak et (ikisi de geri alınmaz, iki tık). */
+  vassalButtons(world, target, annexWhy, cls) {
+    const confirming = (kind) => this.vassalConfirm === `${kind}:${target.id}`;
+    const release = `<button class="${cls}${confirming('release') ? ' confirming' : ''}" data-release-vassal="${target.id}"${tipAttrText(`Release ${target.name}\nThe tribute stops and they become fully independent. Only then can you declare war on them.`)}>${confirming('release') ? 'Confirm release?' : 'Release'}</button>`;
+    const annex = `<button class="${cls}${confirming('annex') ? ' confirming' : ''}" data-annex-vassal="${target.id}"${annexWhy.length
+      ? ` disabled${tipAttrText(`Annex ${target.name}\n${annexWhy.join('\n')}`)}`
+      : tipAttrText(`Annex ${target.name}\nTheir provinces join us and their army disbands. Their peoples become our subjects, and it costs a quarter of a conquest's infamy.`)}>${confirming('annex') ? 'Confirm annex?' : `Annex · ${annexCost(world, target)} PP`}</button>`;
+    return `${release}${annex}`;
+  }
 
   /** Barış görüşmesini açar ve haritayı seçim kipine alır. */
   openPeaceTalks(targetId) {
@@ -858,16 +952,6 @@ export class Screens {
     </div>`;
   }
 
-  resourceLine(me) {
-    const weekly = weeklyBalanceOf(me);
-    const sign = `${weekly >= 0 ? '+' : ''}${Math.round(weekly)}`;
-    return `<span>${glyph('coin', 'inline')} <b>${Math.round(me.gold)}</b> ${sign}</span>
-      <span>PP <b>${Math.round(me.power ?? 0)}</b></span>
-      <span>IC <b>${(me.economy?.ic?.total ?? 0).toFixed(1)}</b></span>
-      <span>STB <b>${Math.round((me.stability ?? 0) * 100)}%</b></span>
-      <span>WS <b>${Math.round((me.warSupport ?? 0) * 100)}%</b></span>`;
-  }
-
   // --- Ülke özeti: bayrağa dokununca açılan stratejik durum ekranı ---
   /**
    * Ulusal vakayiname: kampanyanin hafizasi. Hizli oynayan oyuncu 11 saniyelik
@@ -908,7 +992,7 @@ export class Screens {
     }).join('');
     const timeline = rows ? `<ol class="chron-list">${rows}</ol>`
       : `<div class="chron-empty"><b>The pages are still blank.</b>
-          <p>Wars and treaties, debts and defaults, new governments, great proclamations and lost provinces will be written here as they happen.</p></div>`;
+          <p>Wars and treaties, supply crises, new governments, great proclamations and lost provinces will be written here as they happen.</p></div>`;
 
     // Büyük güçler.
     const top = board.slice(0, 10);
@@ -916,7 +1000,8 @@ export class Screens {
     const leader = Math.max(1, board[0]?.total ?? 1);
     const powers = top.map((row) => {
       const at = board.indexOf(row) + 1;
-      return `<li class="chron-power${row.nation.id === me.id ? ' me' : ''}" data-tip="text" data-tip-text="${esc(`${row.nation.name}\nScore ${row.total}: economy ${row.economy ?? '—'}, land and prestige the rest`)}">
+      // Rakibin satırı dosyasını açar (Screens.bind [data-nation]).
+      return `<li class="chron-power${row.nation.id === me.id ? ' me' : ''}"${row.nation.id === me.id ? '' : ` data-nation="${row.nation.id}" role="button" tabindex="0"`} data-tip="text" data-tip-text="${esc(`${row.nation.name}\nScore ${row.total}: economy ${row.economy ?? '—'}, land and prestige the rest`)}">
         <em>${at}</em><span class="chron-flag" data-flag-nation="${row.nation.id}" data-flag-w="30" data-flag-h="20"></span>
         <b>${esc(row.nation.name)}</b><span class="chron-bar"><i style="width:${(row.total / leader * 100).toFixed(1)}%"></i></span><span>${row.total}</span></li>`;
     }).join('');
@@ -932,7 +1017,8 @@ export class Screens {
       return `<div class="chron-trend"><small>${label}</small><b>${fmt(last)}</b><em class="${change >= 0 ? 'pos' : 'neg'}">${change >= 0 ? '+' : ''}${(change * 100).toFixed(0)}%</em>
         ${kitSpark(list, { width: 160, height: 30, zero: false })}</div>`;
     };
-    const trends = `<div class="chron-trends">${trend('Population', 'population')}${trend('Treasury', 'gold')}${trend('Industry', 'ic')}${trend('Income', 'income')}</div>`;
+    // Geçmiş kaydı { population, fund, ic, output } taşır (altın ve gelir kalktı).
+    const trends = `<div class="chron-trends">${trend('Population', 'population')}${trend('Output', 'output')}${trend('Industry', 'ic')}${trend('Development fund', 'fund')}</div>`;
 
     return `${kpis}
       <div class="k-split chron-split">
@@ -948,8 +1034,7 @@ export class Screens {
     return renderNationOverview(this.game, me);
   }
 
-  // --- İnşaat: şehir başına bina yuvaları ---
-
+  // --- Kalkınma (sekme kimliği eski: 'construction') ---
 
   render_construction(me) {
     return renderConstruction(this.game, me, this.uc);
@@ -994,7 +1079,8 @@ export class Screens {
         army: loose.filter((unit) => unit.type.domain !== 'sea').length,
         navy: loose.filter((unit) => unit.type.domain === 'sea').length,
       },
-      trainCost: cost.gold,
+      // Subay komisyonu tek seferlik bir alımdır: kalkınma fonundan, IC.
+      trainCost: cost.ic,
       canTrain: canAfford(me, cost),
     });
   }
@@ -1065,6 +1151,15 @@ export class Screens {
     for (const btn of body.querySelectorAll('[data-military-top]')) {
       btn.onclick = () => {
         if (moveTrainingTo(me, btn.dataset.militaryTop, 'top')) this.refresh();
+      };
+    }
+    const leveeBtn = body.querySelector('[data-military-levee]');
+    if (leveeBtn) {
+      leveeBtn.onclick = () => {
+        // Iki tik: son umut geri alinmaz (savas ilani ile ayni kalip).
+        if (leveeBtn.dataset.armed !== '1') { leveeBtn.dataset.armed = '1'; leveeBtn.textContent = 'Confirm the Call to Arms?'; return; }
+        if (me) callToArms(game, me);
+        this.refresh();
       };
     }
     const mobilizeBtn = body.querySelector('[data-military-mobilize]');
@@ -1139,6 +1234,35 @@ export class Screens {
           .filter((unit) => (unit.type.domain === 'sea') === naval));
         game.emit('command', general);
         game.requestRender();
+        this.refresh();
+      };
+    }
+    // Subayı emekli et: iki tık (ilk tık kurar, 4 sn sonra söner).
+    const retire = body.querySelector('[data-military-retire]');
+    if (retire) {
+      retire.onclick = () => {
+        const id = Number(retire.dataset.militaryRetire);
+        if (this.military.retireConfirm !== id) {
+          this.military.retireConfirm = id;
+          clearTimeout(this.retireTimer);
+          this.retireTimer = setTimeout(() => {
+            this.military.retireConfirm = null;
+            if (this.active === 'military') this.refresh();
+          }, 4000);
+          this.refresh();
+          return;
+        }
+        clearTimeout(this.retireTimer);
+        this.military.retireConfirm = null;
+        const general = retireGeneral(game.world, me, id);
+        if (general) {
+          game.turns.addLog(`${general.branch === BRANCH.NAVY ? 'Admiral' : 'General'} ${general.name} retired from the staff.`,
+            { kind: 'COMMANDER' });
+          if (game.activeGeneral?.id === id) game.activeGeneral = null;
+          this.military.leader = null;
+          game.emit('command', null);
+          game.requestRender();
+        }
         this.refresh();
       };
     }
@@ -1260,90 +1384,203 @@ export class Screens {
   }
 
   // --- Diplomasi: ilişki listesi ve savaş/barış eylemleri ---
+  /**
+   * KAYITLAR. Eskiden World Settings'te tek yuvaya yazan iki düğme vardı:
+   * otomatik kayıt elle alınanı eziyor, yükleme onaysız kampanyayı
+   * değiştiriyor, ret "no compatible save" diye geçiştiriliyordu. Şimdi
+   * yuvalar (saveStore: IndexedDB), onaylı yükle/üstüne yaz/sil, dosyaya
+   * aktarma ve ret nedeni.
+   */
+  render_saves(me) {
+    const rows = listSaves();
+    const manual = manualCount();
+    const full = manual >= MAX_MANUAL;
+    const confirming = (key) => this.saveConfirm === key;
+    const defaultName = `${me.name} · ${saveDate(this.game.turns.turn)}`;
+    const when = (iso) => (iso ? new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }) : '—');
+    const button = (key, attr, label, confirmLabel, extra = '') => `<button class="k-btn sm${confirming(key) ? ' confirming' : ''}" ${attr}${extra}>${confirming(key) ? confirmLabel : label}</button>`;
+    const row = (save) => {
+      const readable = readableVersion(save.version);
+      const title = save.name || (save.auto ? 'Autosave' : 'Saved game');
+      const stale = readable ? '' : ` disabled${tipAttrText(`Made by another version (save v${save.version}); this build reads v${SAVE_VERSION}.`)}`;
+      const actions = [
+        button(`load:${save.slot}`, `data-save-load="${save.slot}"`, 'Load', 'Confirm load?', stale
+          || tipAttrText('Load this campaign. Progress since your last save is lost.\nClick twice to confirm.')),
+        save.auto ? '' : button(`over:${save.slot}`, `data-save-over="${save.slot}"`, 'Overwrite', 'Confirm overwrite?',
+          tipAttrText('Save the current campaign into this slot, replacing it.\nClick twice to confirm.')),
+        `<button class="k-btn sm" data-save-export="${save.slot}"${tipAttrText('Download this save as a file.')}>Export</button>`,
+        button(`del:${save.slot}`, `data-save-del="${save.slot}"`, 'Delete', 'Confirm delete?'),
+      ].join('');
+      const facts = [save.nation, Number.isFinite(save.turn) ? saveDate(save.turn) : null, save.seed != null ? `seed ${save.seed}` : null]
+        .filter(Boolean).join(' · ');
+      return `<div class="save-row${readable ? '' : ' stale'}">
+        <div class="save-main"><span class="save-title"><b>${esc(title)}</b>${save.auto ? '<span class="tag">auto</span>' : ''}</span><small>${esc(facts)}</small></div>
+        <div class="save-when"><small>${esc(when(save.savedAt))}</small><small>${save.chars ? `${(save.chars / 1e6).toFixed(1)} MB` : ''}</small></div>
+        <div class="save-actions">${actions}</div>
+      </div>`;
+    };
+    return `<div class="card">
+      <div class="card-head"><h3>Save campaign</h3><small>${manual}/${MAX_MANUAL} slots · the game also autosaves every ten weeks into its own slot</small></div>
+      <div class="save-new">
+        <input type="text" id="save-name" maxlength="60" placeholder="${esc(defaultName)}" value="${esc(this.saveName ?? '')}" />
+        <button class="action" data-save-new${full ? ` disabled title="All ${MAX_MANUAL} slots are used: overwrite or delete one"` : ''}>Save</button>
+      </div>
+      ${this.saveNote ? `<p class="save-note">${esc(this.saveNote)}</p>` : ''}
+    </div>
+    <div class="card">
+      <div class="card-head"><h3>Saved games</h3><small>kept in this browser · export a save to move it to another window</small></div>
+      ${rows.length ? `<div class="save-list">${rows.map(row).join('')}</div>` : '<p class="empty">No saves yet.</p>'}
+      <div class="row-buttons"><button class="action" data-save-import>Import from file…</button>
+        <input type="file" id="save-import-file" accept=".json,application/json" hidden /></div>
+    </div>`;
+  }
+
   render_diplomacy(me) {
+    // DİPLOMASİ MASASI (Kerem: "diplomasi ekranı çok zayıf"). Eskiden 63
+    // ulusluk sırasız bir isim duvarıydı. Artık: üstte ulusun diplomatik
+    // durumu (şöhret, savaş, müttefik, ateşkes, rakip), solda süzülebilir ulus
+    // tablosu (ilişki, güç oranı, ittifaka yanaşır mı, gerekçe ve bedel,
+    // eylem), sağda bekleyen teklifler, savaşlarımız ve ittifaklarımız.
+    // Sayılar game/diplomacyView ve game/warView'dandır.
     const world = this.game.world;
     const turn = this.game.turns.turn;
-    const others = world.nations.filter((n) => n.alive && n.id !== me.id);
-    if (!others.length) return '<p class="empty">No other nations remain.</p>';
-
-    const myPower = nationStrength(world, me);
-    const rows = others.map((n) => {
-      const war = atWar(world, n.id, me.id);
-      const crisis = crisisLeft(world, n.id, me.id, turn);
-      const rec = relation(world, n.id, me.id);
-      const truce = truceLeft(world, n.id, me.id, turn);
-      const locked = war && turn - rec.since < MIN_WAR_TURNS;
-      const power = nationStrength(world, n);
-      const tag = war ? '<span class="tag war">war</span>'
-        : crisis ? `<span class="tag crisis">war in ${crisis}w</span>`
-          : truce ? `<span class="tag truce">truce ${truce}</span>`
-            : '<span class="tag peace">peace</span>';
-      const action = war
-        ? `<button class="action" data-peace="${n.id}" ${locked ? 'disabled' : ''}>Offer Peace${locked ? ` (${MIN_WAR_TURNS - (turn - rec.since)})` : ''}</button>`
-        : crisis
-          ? `<button class="action" disabled title="The ultimatum runs out in ${crisis} weeks; mobilize from the Military screen.">Ultimatum (${crisis}w)</button>`
-          : `<button class="action${this.warConfirm === n.id ? ' confirming' : ''}" data-war="${n.id}" ${truce ? 'disabled' : ''}>${
-            this.warConfirm === n.id ? 'Click again to declare war' : 'Declare War'}</button>`;
-
-      return `<div class="card">
-        <div class="rel-row">
-          <img class="flag" src="${flagDataUrl(n)}" alt="">
-          <button class="grow rel-open" data-nation="${n.id}" title="Open dossier">
-            <div class="name">${esc(n.name)} ${tag}</div>
-            <div class="meta">${n.tiles} hexes · ${strengthPhrase(myPower, power)} · infamy ${Math.round(n.infamy ?? 0)}</div>
-          </button>
-          ${action}
-        </div>
-      </div>`;
-    }).join('');
-
-    const forceStats = (armies) => {
-      // `soldiers` GUC PUANIDIR ve STR oraninin paydasidir; ekranda "kac
-      // kisi" yazacaksak insan sayisi ayri okunur (units.menUnderArms).
-      const men = armies.reduce((sum, army) => sum + menUnderArms(army), 0);
-      const soldiers = armies.reduce((sum, army) => sum + soldiersOf(army), 0);
-      const maxStrength = armies.reduce((sum, army) => sum + maxHpOf(army), 0);
-      const organization = soldiers > 0
-        ? armies.reduce((sum, army) => sum + organizationOf(army) * soldiersOf(army), 0) / soldiers
-        : 0;
-      const strength = maxStrength > 0 ? soldiers / maxStrength : 0;
-      return { men, soldiers, strength, organization, divisions: armies.length };
+    const view = diplomacyView(world, me, turn);
+    if (!view?.rows.length) return '<p class="empty">No other nations remain.</p>';
+    const filter = this.dipFilter ?? 'all';
+    const FILTERS = [['all', 'All'], ['neighbours', 'Neighbours'], ['war', 'Wars'], ['allies', 'Allies']];
+    // DÜNYANIN SAVAŞLARI (Kerem: "warsta hala yok"): Wars süzgeci yalnız
+    // bizim savaşlarımızı gösteriyordu; barıştaki oyuncu boş liste görüyordu.
+    // Artık başka uluslarla savaşanlar da "At war elsewhere" altında, karşı
+    // tarafla birlikte gelir; satır savaşın ayrıntı paneline açılır.
+    const conflicts = worldConflicts(world, me.id, turn);
+    const warring = new Map();
+    for (const c of conflicts) {
+      for (const [mine, theirs] of [[c.attackers, c.defenders], [c.defenders, c.attackers]]) {
+        for (const n of mine) warring.set(n.id, { key: c.key, foes: theirs.map((x) => x.name) });
+      }
+    }
+    const ours = (row) => row.standing === 'war' || row.standing === 'crisis';
+    const groupOf = (row) => (filter === 'war' && !ours(row) ? 'elsewhere' : row.standing);
+    const pass = (row) => (filter === 'neighbours' ? row.neighbour
+      : filter === 'war' ? ours(row) || warring.has(row.id)
+        : filter === 'allies' ? ['ally', 'vassal', 'overlord'].includes(row.standing) : true);
+    const rows = view.rows.filter(pass);
+    // Süzgeçte bizim savaşlarımız önce, öbürleri arkada (sıra kendi içinde korunur).
+    if (filter === 'war') rows.sort((a, b) => Number(!ours(a)) - Number(!ours(b)));
+    const GROUP = {
+      war: 'At war', crisis: 'Ultimatum', ally: 'Allies', vassal: 'Vassals', overlord: 'Overlord', truce: 'Truce', rival: 'Rivals', neighbour: 'Neighbours', other: 'Other nations',
+      elsewhere: 'At war elsewhere',
     };
-    const battleRows = battlesFor(world, me.id).map((battle) => {
-      const mineAttacks = battle.attackerNation === me.id;
-      const { attackers, defenders } = battleSides(world, battle);
-      const mine = forceStats(mineAttacks ? attackers : defenders);
-      const enemy = forceStats(mineAttacks ? defenders : attackers);
-      const enemyId = mineAttacks ? battle.defenderNation : battle.attackerNation;
-      const organizationTotal = Math.max(1, mine.organization + enemy.organization);
-      const position = Math.max(2, Math.min(98, (mine.organization / organizationTotal) * 100));
-      return `<div class="front-card card">
-        <div class="card-head"><h3>Battle of ${esc(provinceName(world.get(battle.q, battle.r)))}</h3>
-          <small>round ${battle.rounds}/${MAX_ROUNDS} · province terrain modifies the defender</small></div>
-        <div class="front-numbers">
-          <span><small>${esc(me.name)} · ${mine.divisions} divisions</small><b>${formatPopulation(mine.men)} · STR ${Math.round(mine.strength * 100)}% · ORG ${Math.round(mine.organization)}%</b></span>
-          <strong>VS</strong>
-          <span><small>${esc(world.nations[enemyId].name)} · ${enemy.divisions} divisions</small><b>${formatPopulation(enemy.men)} · STR ${Math.round(enemy.strength * 100)}% · ORG ${Math.round(enemy.organization)}%</b></span>
-        </div>
-        <div class="front-track"><i style="left:${position}%"></i></div>
-        <p class="hint">losses: ${battle.attackerLosses} attacker / ${battle.defenderLosses} defender · the broken army retreats automatically</p>
+    const foesText = (id) => {
+      const foes = warring.get(id).foes;
+      return `vs ${foes.slice(0, 2).join(', ')}${foes.length > 2 ? ` +${foes.length - 2}` : ''}`;
+    };
+    const relationText = (row) => (groupOf(row) === 'elsewhere' ? foesText(row.id) : null) ?? ({
+      war: `at war · ${row.score > 0 ? '+' : ''}${row.score}`,
+      crisis: `war in ${row.crisis}w`,
+      ally: 'allied',
+      vassal: 'our vassal',
+      overlord: 'our overlord',
+      truce: `truce · ${row.truce}w`,
+      rival: row.rivalOfUs ? 'their rival' : 'our rival',
+      neighbour: 'neighbour',
+      other: '—',
+    }[row.standing]);
+    const action = (row) => {
+      if (row.standing === 'war') {
+        return `<button class="k-btn sm" data-peace="${row.id}"${row.talksIn ? ` disabled${tipAttrText(`Peace talks open after ${row.talksIn} more weeks of war.`)}` : ''}>${row.talksIn ? `Talks · ${row.talksIn}w` : 'Peace talks'}</button>`;
+      }
+      if (row.standing === 'crisis') return `<small class="dip-note">ultimatum · ${row.crisis}w</small>`;
+      if (row.standing === 'ally') return `<button class="k-btn sm" data-break-alliance="${row.id}"${tipAttrText('Dissolve the alliance. Former partners remember such things.')}>Break</button>`;
+      if (row.standing === 'vassal') return this.vassalButtons(world, world.nations[row.id], row.annexBlockers, 'k-btn sm');
+      if (row.standing === 'overlord') return '<small class="dip-note">our overlord</small>';
+      if (row.standing === 'truce') return `<small class="dip-note">truce · ${row.truce}w</small>`;
+      const confirming = this.warConfirm === row.id;
+      const war = row.warBlockers.length
+        ? `<button class="k-btn sm danger" data-war="${row.id}" disabled${tipAttrText(`Declare war on ${row.name}\n${row.warBlockers.join('\n')}`)}>War · ${row.warCost}</button>`
+        : `<button class="k-btn sm danger${confirming ? ' confirming' : ''}" data-war="${row.id}"${tipAttrText(`Declare war on ${row.name}\n${row.claim ? 'Justified: you have a claim or kin there.' : 'Unjustified: no claim or kin.'} Costs ${row.warCost} political power, starts an ${ULTIMATUM_WEEKS}-week ultimatum, and every state you take adds infamy.${confirming ? '' : '\nClick twice to confirm.'}`)}>${confirming ? 'Confirm war?' : `War · ${row.warCost}`}</button>`;
+      const ally = `<button class="k-btn sm" data-ally="${row.id}"${row.allyBlocker ? ` disabled${tipAttrText(`Alliance\n${row.allyBlocker}`)}` : tipAttrText(`Propose an alliance to ${row.name}\nThey are willing: an attack on one becomes a call to the other.`)}>Ally</button>`;
+      return `${war}${ally}`;
+    };
+    let lastGroup = null;
+    const table = rows.map((row) => {
+      const group = groupOf(row);
+      const heading = group !== lastGroup ? `<div class="dip-group">${GROUP[group]}</div>` : '';
+      lastGroup = group;
+      const ratio = Math.max(0.02, Math.min(4, row.ratio));
+      const bar = Math.round(Math.min(1, ratio / 3) * 100);
+      const willing = row.standing === 'ally' ? '<b class="pos">ally</b>'
+        : row.allyBlocker ? `<span class="dim"${tipAttrText(`Alliance\n${row.allyBlocker}`)}>no</span>`
+          : row.standing === 'war' ? '<span class="dim">—</span>' : '<b class="pos">willing</b>';
+      const tags = [
+        // "Komşu" ilişki sütununda zaten yazıyorsa alt satırda tekrarlanmaz.
+        row.neighbour && row.standing !== 'neighbour' ? 'neighbour' : '',
+        row.embargoByUs ? 'embargoed' : row.embargoByThem ? 'embargoes us' : '',
+        row.infamy >= view.infamyCap ? 'infamous' : '',
+      ].filter(Boolean).join(' · ');
+      return `${heading}<div class="dip-row s-${row.standing}">
+        <span class="flag" data-flag-nation="${row.id}" data-flag-w="30" data-flag-h="20" data-flag-style="crest"></span>
+        <button class="dip-name" data-nation="${row.id}"${tipAttrText(`${row.name}\nOpen the dossier: identity, memories, embargo and every action.`)}><b>${esc(row.name)}</b><small>${esc(tags)}</small></button>
+        ${group === 'elsewhere'
+    ? `<button class="dip-rel dip-rel-war" data-dip-conflict="${warring.get(row.id).key}"${tipAttrText('Open this war: sides, score, losses and occupied states.')}>${esc(relationText(row))}</button>`
+    : `<span class="dip-rel">${esc(relationText(row))}</span>`}
+        <span class="dip-power"${tipAttrText(`Strength\n${row.name} is ${row.ratio >= 1 ? `${row.ratio.toFixed(1)}× as strong as` : `${(row.ratio * 100).toFixed(0)}% as strong as`} your nation (army, industry and population).`)}><i style="width:${bar}%"></i><b>×${row.ratio.toFixed(row.ratio < 10 ? 1 : 0)}</b></span>
+        <span class="dip-ally">${willing}</span>
+        <span class="dip-claim${row.claim ? ' pos' : ''}"${tipAttrText(row.claim ? 'War justification\nA claim or kin under their rule: war costs 20 political power.' : 'War justification\nNo claim and no kin: war costs 60 political power.')}>${row.claim ? 'claim' : '—'}</span>
+        <span class="dip-act">${action(row)}</span>
       </div>`;
-    }).join('');
+    }).join('') || '<p class="empty">No nation matches this filter.</p>';
+    const filters = `<div class="dip-filters">${FILTERS.map(([id, label]) => `<button class="k-btn sm${filter === id ? ' on' : ''}" data-dip-filter="${id}" aria-pressed="${filter === id}">${label}</button>`).join('')}</div>`;
+    const head = '<div class="dip-row head"><span></span><span>Nation</span><span>Relation</span><span>Strength</span><span>Alliance</span><span>Claim</span><span></span></div>';
 
-    const offers = (this.game.peaceOffers ?? [])
-      .filter((entry) => entry.to === me.id)
-      .map((entry) => this.peaceOfferCard(entry)).join('');
+    const kpis = kitKpiRow([
+      kitKpi({ label: 'Infamy', value: `${view.infamy.toFixed(1)} / ${view.infamyCap}`, sub: view.infamy >= view.infamyCap ? 'coalitions can form' : 'coalition threshold', tip: 'infamy', meter: view.infamy / view.infamyCap, meterTone: view.infamy >= view.infamyCap ? 'neg' : view.infamy >= view.infamyCap * 0.6 ? 'warn' : '', cls: 'hero' }),
+      kitKpi({ label: 'Wars', value: String(view.wars), sub: view.crises ? `${view.crises} ultimatum${view.crises === 1 ? '' : 's'}` : 'at war with you' }),
+      kitKpi({ label: 'Allies', value: `${view.allies} / ${view.maxAllies}`, sub: 'an attack on one calls the other' }),
+      kitKpi({ label: 'Truces', value: String(view.truces), sub: 'no new war until they lapse' }),
+      kitKpi({ label: 'Rival', value: esc(view.rival ?? 'none'), sub: view.rivalsOfUs.length ? `rival of ${esc(view.rivalsOfUs.slice(0, 2).join(', '))}` : 'nobody names you rival', cls: 'is-text' }),
+    ]);
 
-    return `<div class="card">
-        <div class="card-head"><h3>${esc(me.name)}</h3>
-          <small>infamy ${Math.round(me.infamy ?? 0)}/${INFAMY_COALITION} · coalition at ${INFAMY_COALITION}</small></div>
-      </div>
-      ${offers}
-      <div class="card doctrine-card">
-        <div class="card-head"><h3>How war works now</h3><small>one map, one combat system</small></div>
-        <p class="hint">Select divisions and order a destination. Friendly divisions share provinces without merging. Entering an enemy army starts a weekly battle; low organization forces retreat and the winner occupies the province. Only a division with no connected retreat route surrenders.</p>
-      </div>
-      ${battleRows || '<div class="card"><p class="empty">No battles under way.</p></div>'}${rows}`;
+    const wars = warOverview(world, me.id, turn);
+    const warList = wars.wars.length || wars.crises.length
+      ? `${wars.crises.map((c) => `<div class="dip-war crisis"><b>${esc(c.name)}</b><small>ultimatum · war in ${c.weeksLeft}w</small></div>`).join('')}${wars.wars.map((w) => `<div class="dip-war ${w.score > 8 ? 'winning' : w.score < -8 ? 'losing' : 'even'}" data-tip="war" data-tip-arg="${w.enemyId}">
+          <b>${esc(w.name)}</b><em>${w.score > 0 ? '+' : ''}${w.score}</em>
+          <small>${w.lossesOurs > 0 ? `−${formatPopulation(w.lossesOurs)}` : '0'} / ${w.lossesTheirs > 0 ? `−${formatPopulation(w.lossesTheirs)}` : '0'} men · ${w.weeks}w · holds ${w.holdTheirs}/${w.holdOurs}</small>
+        </div>`).join('')}`
+      : '<p class="empty">At peace.</p>';
+    const offers = (this.game.peaceOffers ?? []).filter((entry) => entry.to === me.id).map((entry) => this.peaceOfferCard(entry)).join('');
+    const focus = this.warFocus ? conflicts.find((c) => c.key === this.warFocus) ?? null : null;
+    // Seçili savaş bittiyse panel sessizce kapanır.
+    if (this.warFocus && !focus) this.warFocus = null;
+    const sideName = (list) => `${esc(list[0].name)}${list.length > 1 ? ` +${list.length - 1}` : ''}`;
+    const worldList = conflicts.length
+      ? conflicts.map((c) => `<button class="dip-war dip-conflict${focus?.key === c.key ? ' on' : ''}" data-dip-conflict="${c.key}">
+          <span class="dip-cflags"><span class="flag" data-flag-nation="${c.lead[0]}" data-flag-w="24" data-flag-h="16" data-flag-style="crest"></span><span class="flag" data-flag-nation="${c.lead[1]}" data-flag-w="24" data-flag-h="16" data-flag-style="crest"></span></span>
+          <b>${sideName(c.attackers)} <i>vs</i> ${sideName(c.defenders)}</b><em>${c.score > 0 ? '+' : ''}${c.score}</em>
+          <small>${c.weeks}w · held ${c.holdA}/${c.holdB}${c.battles ? ` · ${c.battles} ${c.battles === 1 ? 'battle' : 'battles'}` : ''}</small>
+        </button>`).join('')
+      : '<p class="empty">No other wars in the world.</p>';
+    const allies = alliesOf(me).map((id) => world.nations[id]).filter(Boolean);
+    const allyList = allies.length
+      ? allies.map((n) => `<div class="dip-war"><b>${esc(n.name)}</b><button class="k-btn sm" data-break-alliance="${n.id}">Break</button></div>`).join('')
+      : `<p class="empty">No allies. ${view.maxAllies} seats free.</p>`;
+
+    return `${kpis}
+      <div class="k-split dip-split">
+        ${kitPanel('Nations', `${filters}<div class="dip-table">${head}${table}</div>`, { sub: `${view.rows.length} nations · ${view.neighbours} neighbours`, cls: 'dip-nations' })}
+        <div class="k-stack">
+          ${focus ? this.conflictPanel(focus) : ''}
+          ${offers ? kitPanel('Peace offers', offers, { sub: 'answer within six weeks' }) : ''}
+          ${kitPanel('Our wars', warList, { sub: 'score · losses · weeks · states held', right: '' })}
+          ${kitPanel('World wars', worldList, { sub: `${conflicts.length} ${conflicts.length === 1 ? 'war' : 'wars'} · click for details` })}
+          ${kitPanel('Alliances', allyList, { sub: `${view.allies} of ${view.maxAllies}` })}
+        </div>
+      </div>`;
+  }
+
+  /** Savaşın ayrıntı paneli: gövde ui/warDetail.js'te (sağ üst panelle ortak). */
+  conflictPanel(c) {
+    return kitPanel(`${c.attackers[0].name} vs ${c.defenders[0].name}`, conflictDetailHtml(this.game.world, c), { sub: 'war details', cls: 'dip-cpanel' });
   }
 
   // --- Ticaret: tek dünya pazarı, ülke bazlı haftalık mal akışı ---
@@ -1364,16 +1601,7 @@ export class Screens {
     const area = DELEGATION_AREAS[areaId];
     if (!area) return '';
     const on = isDelegated(me, areaId);
-    const last = on ? lastDelegatedAction(me, areaId) : null;
-    const tip = [
-      `${area.name} · ${on ? 'run by the government' : 'in your hands'}`,
-      on ? area.desc : 'You hold this portfolio yourself. Turn AUTO on to hand it to the government; your own orders always come first.',
-      last ? `\nLast: ${last.text}\n${last.reason}` : '',
-      '\nShortcut: A',
-    ].filter(Boolean).join('\n');
-    return `<button class="auto-pill${on ? ' on' : ''}" data-auto="${areaId}" aria-pressed="${on}"
-        data-tip="text" data-tip-text="${esc(tip)}"><i class="auto-led" aria-hidden="true"></i>AUTO <b>${on ? 'ON' : 'OFF'}</b><kbd>A</kbd></button>
-      ${last ? `<span class="auto-last">${esc(last.text)}</span>` : ''}`;
+    return pillHtml(area, { on, last: on ? lastDelegatedAction(me, areaId) : null, key: 'A' });
   }
 
   /**
@@ -1384,9 +1612,9 @@ export class Screens {
     const me = this.me;
     if (!me || !this.active) return false;
     if (event.code === 'KeyA' && !event.shiftKey) {
-      const areaId = DELEGATION_IDS.find((id) => DELEGATION_AREAS[id].screen === this.active);
-      if (!areaId) return false;
-      this.el.auto?.querySelector('[data-auto]')?.click();
+      const pill = this.el.auto?.querySelector('[data-auto]');
+      if (!pill) return false;
+      pill.click();
       return true;
     }
     if (this.active === 'construction') return constructionKey(this, event);
@@ -1403,7 +1631,17 @@ export class Screens {
     const me = this.me;
     const rows = techGrid();
     if (!rows.length) return false;
-    const current = this.tech.inspect ?? me.research?.current ?? me.research?.queue?.[0] ?? rows[0][0].id;
+    // İlk tuş vurgunun görünmesini sağlar, atlamaz: incelenen yoksa önce
+    // varsayılan düğüm (technologyScreen.defaultInspect) seçilir.
+    if (!this.tech.inspect && /^Arrow|^Enter$|^NumpadEnter$|^KeyQ$/.test(event.code)
+      && !event.target?.closest?.('#screen-body button, #screen-body input, #screen-body select')) {
+      const first = defaultInspect(me) ?? rows[0][0].id;
+      this.inspectTech(me, first);
+      this.el.body.querySelector(`.tech-node[data-tech="${CSS.escape(first)}"]`)
+        ?.scrollIntoView({ block: 'nearest', inline: 'nearest' });
+      return true;
+    }
+    const current = this.tech.inspect ?? defaultInspect(me) ?? rows[0][0].id;
     let r = rows.findIndex((row) => row.some((t) => t.id === current));
     if (r < 0) r = 0;
     const c = Math.max(0, rows[r].findIndex((t) => t.id === current));
@@ -1431,7 +1669,10 @@ export class Screens {
       case 'Enter':
       case 'NumpadEnter':
         // Odaktaki düğme kendi Enter'ını kullanır.
-        if (event.target?.closest?.('button, input, select')) return false;
+        // Yalnız ekranın İÇİNDEKİ odaklı denetim kendi Enter'ını kullanır:
+        // fareyle tıklanan sekme düğmesi odakta kalınca Enter o düğmeyi
+        // çalıştırıp ekranı KAPATIYORDU.
+        if (event.target?.closest?.('#screen-body button, #screen-body input, #screen-body select')) return false;
         researchNow(me, current);
         this.refresh();
         return true;
@@ -1470,8 +1711,11 @@ export class Screens {
       };
     }
 
-    // AUTO anahtari baslikta (autoPill); her ekranda ayni kalip.
-    for (const btn of this.el.root.querySelectorAll('[data-auto]')) {
+    // AUTO anahtari sekme seridinde (#screen-auto, #screen'in DISINDA): kok
+    // altinda aranirsa hic baglanmaz ve hap tiklamaya cevap vermez. Panel
+    // ici anahtarlar (Agenda) govdededir; ikisi de ayni yoldan baglanir.
+    const pills = [...(this.el.auto?.querySelectorAll('[data-auto]') ?? []), ...this.el.body.querySelectorAll('[data-auto]')];
+    for (const btn of pills) {
       btn.onclick = () => {
         const areaId = btn.dataset.auto;
         const next = !isDelegated(me, areaId);
@@ -1708,6 +1952,31 @@ export class Screens {
         this.refresh();
       };
     }
+    this.bindSaves(game);
+    // Vassal: bırakma ve ilhak geri alınmaz; ilk tık onay ister (savaşla aynı kalıp).
+    const vassalAction = (btn, kind, act) => {
+      btn.onclick = () => {
+        const id = Number(kind === 'release' ? btn.dataset.releaseVassal : btn.dataset.annexVassal);
+        const key = `${kind}:${id}`;
+        if (this.vassalConfirm !== key) {
+          this.vassalConfirm = key;
+          clearTimeout(this.vassalConfirmTimer);
+          this.vassalConfirmTimer = setTimeout(() => {
+            if (this.vassalConfirm !== key) return;
+            this.vassalConfirm = null;
+            this.refresh();
+          }, 8000);
+          this.refresh();
+          return;
+        }
+        this.vassalConfirm = null;
+        clearTimeout(this.vassalConfirmTimer);
+        if (act(game, me, id)) game.requestRender();
+        this.refresh();
+      };
+    };
+    for (const btn of this.el.body.querySelectorAll('[data-release-vassal]')) vassalAction(btn, 'release', releaseVassal);
+    for (const btn of this.el.body.querySelectorAll('[data-annex-vassal]')) vassalAction(btn, 'annex', annexVassal);
     // Eskiden bu düğme tek tıkla işgalleri devreden otomatik barışı yapıyordu.
     // Artık oyuncunun tek barış yolu var: masa.
     for (const btn of this.el.body.querySelectorAll('[data-peace]')) {
@@ -1721,6 +1990,35 @@ export class Screens {
     }
     for (const btn of this.el.body.querySelectorAll('[data-nation]')) {
       btn.onclick = () => this.openDossier(Number(btn.dataset.nation));
+    }
+    // Dünya savaşının ayrıntı paneli (Wars süzgeci, World wars listesi, sağ üst panel).
+    for (const btn of this.el.body.querySelectorAll('[data-dip-conflict]')) {
+      btn.onclick = () => {
+        this.warFocus = this.warFocus === btn.dataset.dipConflict ? null : btn.dataset.dipConflict;
+        this.refresh();
+        if (this.warFocus) this.el.body.querySelector('.dip-cpanel')?.scrollIntoView({ block: 'nearest' });
+      };
+    }
+    const closeConflict = this.el.body.querySelector('.dip-cpanel [data-cd-close]');
+    if (closeConflict) closeConflict.onclick = () => { this.warFocus = null; this.refresh(); };
+    for (const btn of this.el.body.querySelectorAll('.dip-cpanel [data-cd-nation]')) {
+      btn.onclick = () => this.openDossier(Number(btn.dataset.cdNation));
+    }
+    const look = this.el.body.querySelector('.dip-cpanel [data-cd-look]');
+    if (look) {
+      look.onclick = () => {
+        const c = worldConflicts(game.world, game.turns.playerNation).find((x) => x.key === look.dataset.cdLook);
+        const tile = conflictFocusTile(game.world, c);
+        this.close();
+        if (tile) game.focusTile(tile);
+      };
+    }
+    // Diplomasi tablosunun süzgeci (Hepsi · Komşular · Savaşlar · Müttefikler).
+    for (const btn of this.el.body.querySelectorAll('[data-dip-filter]')) {
+      btn.onclick = () => {
+        this.dipFilter = btn.dataset.dipFilter;
+        this.refresh();
+      };
     }
     for (const btn of this.el.body.querySelectorAll('[data-open-screen]')) {
       btn.onclick = () => this.open(btn.dataset.openScreen);

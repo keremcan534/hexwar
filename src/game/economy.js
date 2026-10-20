@@ -1,40 +1,43 @@
-// EKONOMİ — haftalık kapanışın orkestrası (TASARIM.md §1-§8).
+// EKONOMİ — haftalık kapanışın orkestrası (TASARIM.md §1-§8, "Tek Çubuk").
 //
-// Eski dosya 5.400 satırdı: 42 mal, 29 fabrika türü, üç sınıf, fiyat bandı,
-// şirketler. Yerine gelen model altı kaynak, IC ve altındır; hesabın kendisi
-// econ/ altındaki küçük dosyalardadır, burası yalnız SIRAYI tutar:
+// Tek akış: state'ler ÇIKTI üretir → FATURALAR önden düşer (ikmal, okul,
+// sıkıyönetim) → ORDU hatları ekonomi yasasının tavanına kadar sanayiden
+// çeker → HALK doyurma hedefi kadar alır → KALAN kalkınma fonuna akar. Altın,
+// vergi, borç, enflasyon ve binalar yoktur (2026-10-15; eski model ölçümü
+// econ/defs.js başında). Hesabın kendisi econ/ altındaki küçük dosyalardadır,
+// burası yalnız SIRAYI tutar:
 //
 //   beginEconomy   abluka, değiştiriciler, savaş yükü
-//   runNationEconomy (ulus başına) kaynak üretimi → IC → tüketim malı →
-//                  hatlar → ihtiyaçlar → ticaret teklifi → vergi ve giderler
-//   finishEconomy  dünya ticareti → oranlar → borç/iflas → defter kapanışı
+//   runNationEconomy (ulus başına) kaynak üretimi → çıktı → faturalar →
+//                  hatlar → halk → yatırım → ihtiyaçlar → ticaret teklifi
+//   finishEconomy  dünya ticareti (fondan) → oranlar → kademe alımı → defter
 //
 // Kaynak oranının etkisi bir hafta gecikir (mal bir haftada gelir); döngüsüz
 // ve deterministik kalmanın bedeli budur.
 
 import {
-  BUILDINGS, BUILDING_IDS, CROWN_REVENUE, DEBT, EQUIPMENT_IDS, INFLATION, POP_UNIT, RESOURCE_IDS,
-  SALTPETER_PER_FOOD, TAX_PER_DEVELOPMENT, TAX_PER_UNIT, UPKEEP,
+  EQUIPMENT_IDS, FUND_RESERVE_WEEKS, POP_UNIT, RESOURCE_IDS, SALTPETER_PER_FOOD,
 } from './econ/defs.js';
 import { lawOption } from './laws.js';
 import { mod, refreshModifiers } from './modifiers.js';
 import {
   battleSaltpeterNeed, emptyResourceMap, emptyResourceRecord, foodNeed,
-  nationProduction, unitResourceNeeds, workforceShare,
+  nationProduction, unitResourceNeeds,
 } from './econ/resources.js';
 import {
-  addEquipment, autoLineWeights, computeIC, consumerGoods, consumerTaxBonus, ensureIndustry, runLines,
+  addEquipment, consumerNeed, ensureIndustry, feedTarget, runLines,
 } from './econ/industry.js';
+import { computeOutput } from './econ/output.js';
+import { billsOf } from './econ/bills.js';
+import {
+  buyDevelopment, developmentCap, fundFloor, investEfficiency, investmentNeeds, investmentTarget,
+} from './econ/investment.js';
 import { clearTrade, computeBlockades, ensureMarket } from './econ/trade.js';
 import { closeWeek, emptyLedger, openWeek, settle } from './treasury.js';
-import { buildingLevels, buildingSlots, emptyBuildings, occupiedShareOf } from './provinces.js';
-import { fertilityOf } from './econ/deposits.js';
-import { constructionResourceNeeds } from './construction.js';
+import { occupiedShareOf } from './provinces.js';
 import { treatiesOf } from './peace.js';
-import { isDelegated } from './delegation.js';
-import { focusBonus } from './focus.js';
 import {
-  START_BUILDINGS, START_DEVELOPMENT, START_DEVELOPMENT_CAP, START_GOLD, START_LITERACY, START_STOCK,
+  START_DEVELOPMENT, START_DEVELOPMENT_CAP, START_FORT, START_LITERACY, START_STOCK,
 } from './era.js';
 
 /** Kaynak imtiyazı (barış şartı): yenilen yatak üretiminin beşte birini verir. */
@@ -59,14 +62,38 @@ export function populationOf(world, nation) {
   return total;
 }
 
-/** Geçen haftanın kapanmış net bakiyesi (tahmin değil). */
+/** Geçen haftanın kapanmış fon hareketi (tahmin değil). */
 export function weeklyBalanceOf(nation) {
   return nation?.economy?.ledger?.net ?? 0;
 }
 
-/** Borç tavanı: haftalık gelirin katı, mutlak tabanla. */
-export function debtCapacity(nation) {
-  return Math.max(DEBT.capFloor, DEBT.capWeeks * Math.max(0, nation?.economy?.incomeAvg ?? 0));
+/**
+ * Province'teki kabul edilmiş nüfusu toplama ekler (haftalık defter ve ekran
+ * aynı formül). Toplam dışarıdan taşınır: toplama sırası eskisiyle birebir
+ * aynı kalsın, kayan nokta sonucu (determinizm) değişmesin.
+ */
+function addAcceptedPeople(total, province, acceptedIds) {
+  const people = province.econ.population;
+  const rows = province.cultures?.length ? province.cultures : [{ id: province.culture, share: 1 }];
+  for (const row of rows) if (acceptedIds.includes(row.id)) total += people * row.share;
+  return total;
+}
+
+/**
+ * Kabul edilmiş halkın payı, defteri beklemeden. İlk hafta kapanmadan
+ * `economy.acceptedShare` yok ve ekran "Full citizens 100%" diyordu (gerçek
+ * %86). Saf okuma; haftalık defter aynı alt formülü kullanır.
+ */
+export function acceptedShareOf(world, nation) {
+  const acceptedIds = nation.accepted?.length ? nation.accepted : [nation.culture];
+  let population = 0;
+  let accepted = 0;
+  for (const province of world.provinces ?? []) {
+    if (province.owner !== nation.id || !province.econ) continue;
+    population += province.econ.population;
+    accepted = addAcceptedPeople(accepted, province, acceptedIds);
+  }
+  return population > 0 ? accepted / population : 1;
 }
 
 /** Okuryazarlığın hedefe haftalık yaklaşma payı: 15 yılda açığın %63ü, 30 yılda %86sı. */
@@ -81,49 +108,22 @@ export function initNationEconomy(world, nation) {
   economy.resources ??= {};
   for (const id of RESOURCE_IDS) economy.resources[id] ??= emptyResourceRecord();
   economy.ledger ??= emptyLedger();
-  economy.incomeAvg ??= 0;
+  economy.outputAvg ??= 0;
   economy.history ??= [];
   economy.blockade ??= 0;
   economy.coastal ??= false;
   economy.famineDeaths ??= 0;
   ensureIndustry(economy);
-  nation.gold ??= 0;
-  nation.debt ??= 0;
+  nation.fund ??= 0;
   nation.embargoes ??= [];
   if (!economy.ledgerWeek) openWeek(nation);
   return economy;
 }
 
 /**
- * Kuruluşta bir binayı sıralı province'lere kademe kademe dağıtır: önce her
- * uygun province'e birer kademe, sonra ikinciler. Yuva (kalkınma + 1), bina
- * tavanı ve binanın kendi şartları (kalkınma, kıyı, yatak) korunur — kuruluş
- * oyuncunun kendi kuramayacağı bir province bırakmaz.
- */
-function placeBuildings(ranked, id, levels) {
-  const info = BUILDINGS[id];
-  let left = Math.round(levels);
-  for (let level = 1; left > 0 && level <= info.max; level++) {
-    let placed = false;
-    for (const province of ranked) {
-      if (left <= 0) break;
-      const econ = province.econ;
-      if ((econ.buildings[id] ?? 0) >= level) continue;
-      if (buildingLevels(econ) >= buildingSlots(econ)) continue;
-      if (info.minDevelopment && econ.development < info.minDevelopment) continue;
-      if (info.coastal && !province.coastal) continue;
-      if (info.needsDeposit && !province.deposits?.length) continue;
-      econ.buildings[id] = (econ.buildings[id] ?? 0) + 1;
-      left--;
-      placed = true;
-    }
-    if (!placed) break;
-  }
-}
-
-/**
- * ÇAĞ KURULUŞU (era.js): kalkınma, sanayi, demiryolu, maden, okul, kale,
- * tersane, teçhizat deposu ve hazine — kademeye göre. Bir kez, `turns.start`ta.
+ * ÇAĞ KURULUŞU (era.js): kalkınma, kaleler, teçhizat deposu — kademeye göre.
+ * Bir kez, `turns.start`ta. Fon sıfırdan başlar: ilk kademe ilk haftaların
+ * yatırımıdır.
  */
 export function initEconomy(world) {
   ensureMarket(world);
@@ -139,40 +139,28 @@ export function initEconomy(world) {
       const dev = province.econ.development;
       province.econ.development = Math.max(dev, Math.min(START_DEVELOPMENT_CAP, dev + bonus));
     }
-    // Sanayi kalkınmışa: önce başkent, sonra kalkınma ve nüfus sırası.
+    // Kale haritanın sabit bir özelliğidir (inşa edilmez): başkent en az bir
+    // kademe, kalanı kademe tablosuna göre en kalabalık state'lere.
     const ranked = [...own].sort((a, b) => (
       (b === capital) - (a === capital)
-      || b.econ.development - a.econ.development
       || b.econ.population - a.econ.population
       || a.id - b.id));
+    capital.econ.fort = Math.max(1, capital.econ.fort ?? 0);
+    let forts = Math.round(own.length * START_FORT[tier]) - 1;
+    for (const province of ranked) {
+      if (forts <= 0) break;
+      if (province === capital) continue;
+      province.econ.fort = Math.min(3, (province.econ.fort ?? 0) + 1);
+      forts--;
+    }
     const units = own.reduce((sum, p) => sum + p.econ.population, 0) / POP_UNIT;
-    // Başkent kalesiz ve kışlasız kalmaz; kalan kademeler tabloya göre dağılır.
-    capital.econ.buildings.fort = Math.max(1, capital.econ.buildings.fort ?? 0);
-    capital.econ.buildings.barracks = Math.max(1, capital.econ.buildings.barracks ?? 0);
-    const coastal = ranked.filter((p) => p.coastal);
-    const fertile = [...own].sort((a, b) => fertilityOf(b) - fertilityOf(a) || a.id - b.id);
-    // Kıyısı olan büyük ya da denizci ulus tersanesiz başlamaz (eski kural).
-    const yardFloor = coastal.length && (units >= 10 || nation.coastal) ? 1 : 0;
-    // Tablo sırası yerleşim sırasıdır (era.START_BUILDINGS): yuva önce gelene.
-    const plan = {
-      dockyard: [coastal, Math.max(yardFloor, coastal.length * START_BUILDINGS.dockyard[tier])],
-      university: [ranked, own.length * START_BUILDINGS.university[tier]],
-      factory: [ranked, Math.max(tier >= 1 ? 1 : 0, units * START_BUILDINGS.factory[tier])],
-      railway: [ranked, own.length * START_BUILDINGS.railway[tier]],
-      mine: [ranked, own.filter((p) => p.deposits?.length).length * START_BUILDINGS.mine[tier]],
-      farm: [fertile, own.length * START_BUILDINGS.farm[tier]],
-      fort: [ranked, own.length * START_BUILDINGS.fort[tier] - 1],
-      barracks: [ranked, own.length * START_BUILDINGS.barracks[tier] - 1],
-    };
-    for (const id of Object.keys(START_BUILDINGS)) placeBuildings(plan[id][0], id, plan[id][1]);
+    const coastal = own.some((p) => p.coastal);
     const economy = nation.economy;
     economy.stock.rifles = 40 + units * START_STOCK.rifles[tier];
     economy.stock.guns = 4 + units * START_STOCK.guns[tier];
-    economy.stock.ships = coastal.length ? 10 + units * START_STOCK.ships[tier] : 0;
+    economy.stock.ships = coastal ? 10 + units * START_STOCK.ships[tier] : 0;
     economy.population = populationOf(world, nation);
-    nation.gold = START_GOLD.base + Math.round(units * START_GOLD.perUnit);
-    // Kuruluş hazinesi defterin açılış bakiyesidir: hafta initNationEconomy'de
-    // 100 altınla açılmıştı, yeniden açılmazsa fark "uzlaşmamış" kalır.
+    nation.fund = 0;
     openWeek(nation);
   }
 }
@@ -182,23 +170,8 @@ export function ensureEconomy(world) {
   ensureMarket(world);
   for (const nation of world.nations) initNationEconomy(world, nation);
   for (const province of world.provinces ?? []) {
-    if (province.econ && !province.econ.buildings) province.econ.buildings = emptyBuildings();
+    if (province.econ && !Number.isFinite(province.econ.fort)) province.econ.fort = 0;
   }
-}
-
-/**
- * Ulusun kara alayı ve gemi sayısı (gemiler filodadır, haritada değil).
- * Denizaltı yarım gemi bakımı yer (UPKEEP.sub / UPKEEP.sea).
- */
-function regimentsOf(world, nation) {
-  let land = 0;
-  for (const unit of world.units ?? []) {
-    if (unit.nationId !== nation.id) continue;
-    land += unit.regiments?.length ?? 1;
-  }
-  let sea = 0;
-  for (const ship of nation.navy?.ships ?? []) sea += ship.kind === 'sub' ? UPKEEP.sub / UPKEEP.sea : 1;
-  return { land, sea };
 }
 
 /**
@@ -232,73 +205,36 @@ export function beginEconomy(game) {
   return { turn };
 }
 
-/**
- * Bir state'in vergi tabanı (ulusal çarpanlardan önce). Silah altındaki vergi
- * vermez (econ/resources.js workforceShare); vergi odağı çarpar (focus.js).
- */
-export function provinceTaxBase(econ) {
-  return econ.population * workforceShare(econ) / POP_UNIT * TAX_PER_UNIT
-    * (1 + TAX_PER_DEVELOPMENT * econ.development) * (econ.status ?? 1)
-    * (1 + focusBonus(econ, 'tax'));
-}
-
-/** Haftalık vergi, dökümüyle (ekran aynı döküm fonksiyonunu okur). */
-export function taxBreakdown(world, nation) {
-  // Taç gelirleri devlet yaşadıkça akar. Başkente bağlıyken başkentini
-  // barışta veren küçük devlet bir daha hiç kalkamıyordu: iflasların %74'ü
-  // başkentsiz artık devletlerin tekrar tekrar batmasıydı (ölçüldü, 6 tohum).
-  let base = CROWN_REVENUE;
-  for (const province of world.provinces ?? []) {
-    if (province.owner !== nation.id || !province.econ) continue;
-    base += provinceTaxBase(province.econ);
-  }
-  const law = lawOption(nation, 'tax').tax;
-  const stability = 0.8 + 0.4 * clamp(nation.stability ?? 0.5, 0, 1);
-  const consumer = 1 + consumerTaxBonus(nation.economy?.consumer?.ratio ?? 1);
-  const mods = Math.max(0.2, 1 + mod(nation, 'tax'));
-  return {
-    base, law, stability, consumer, mods,
-    total: base * law * stability * consumer * mods,
-  };
-}
-
-/** Ordu ve donanma bakımı (altın/hafta). */
-export function upkeepBreakdown(world, nation) {
-  const { land, sea } = regimentsOf(world, nation);
-  const war = (nation.economy?.warFronts ?? 0) > 0 ? UPKEEP.warMultiplier : 1;
-  const mods = Math.max(0.3, 1 + mod(nation, 'upkeep'));
-  return {
-    land, sea, war,
-    army: land * UPKEEP.land * war * mods,
-    navy: sea * UPKEEP.sea * war * mods,
-  };
-}
-
-/** Bina bakımı (altın/hafta): kademe başına BUILDINGS[*].upkeep. */
-export function maintenanceCost(world, nation) {
-  let total = 0;
-  for (const province of world.provinces ?? []) {
-    if (province.owner !== nation.id || !province.econ) continue;
-    for (const id of BUILDING_IDS) {
-      total += (province.econ.buildings?.[id] ?? 0) * (BUILDINGS[id].upkeep ?? 0);
-    }
-  }
-  return total;
-}
-
-/** Eğitim gideri (altın/hafta): nüfus × yasanın birim bedeli. */
+/** Okul faturası (IC/hafta): nüfus × yasanın birim bedeli. */
 export function educationCost(nation) {
   return (nation.economy?.population ?? 0) / POP_UNIT * (lawOption(nation, 'education').cost ?? 0);
 }
 
-/** Okuryazarlık hedefi: eğitim yasası + üniversite + teknoloji. */
+/**
+ * Okuryazarlık hedefi: eğitim yasası + teknoloji. Okullar faturanın ödenen
+ * payı kadar çalışır (ikmal krizinde hedef o oranda düşer).
+ */
 export function literacyTarget(world, nation) {
-  let universities = 0;
-  for (const province of world.provinces ?? []) {
-    if (province.owner === nation.id) universities += province.econ?.buildings?.university ?? 0;
+  const paid = nation.economy?.bills?.s ?? 1;
+  return clamp((lawOption(nation, 'education').literacy + mod(nation, 'literacy')) * paid, 0.02, 0.98);
+}
+
+/**
+ * ÇUBUK: haftanın çıktısının paylaşımı. Saf hesap; runNationEconomy uygular,
+ * ekran aynı sonucu `economy.alloc`tan okur. `drawn` hatların fiilen çektiği
+ * askerî IC'dir (tavanın altında kalabilir: depo doluysa hatlar durur).
+ */
+export function splitOutput({ output, billsPaid, armyCap, drawn, need, feed, investable }) {
+  const free = Math.max(0, output - billsPaid);
+  const army = Math.min(drawn, armyCap, free);
+  let people = Math.min(feed * need, free - army);
+  let invest = free - army - people;
+  // Yatırılacak state yoksa (hepsi tavanda ya da işgalde) kalan halka döner.
+  if (!investable) {
+    people += invest;
+    invest = 0;
   }
-  return clamp(lawOption(nation, 'education').literacy + Math.min(0.15, universities * 0.02)
-    + mod(nation, 'literacy'), 0.02, 0.98);
+  return { output, bills: billsPaid, free, army, armyCap, people, invest };
 }
 
 export function runNationEconomy(game, nation, ctx) {
@@ -307,7 +243,7 @@ export function runNationEconomy(game, nation, ctx) {
   const economy = nation.economy;
   const turn = ctx.turn;
 
-  // 1. Nüfus ve ortalama kalkınma (el tezgâhı için).
+  // 1. Nüfus ve ortalama kalkınma.
   let population = 0;
   let devWeighted = 0;
   let soldiers = 0;
@@ -319,8 +255,7 @@ export function runNationEconomy(game, nation, ctx) {
     population += people;
     devWeighted += people * province.econ.development;
     soldiers += province.econ.soldiers ?? 0;
-    const rows = province.cultures?.length ? province.cultures : [{ id: province.culture, share: 1 }];
-    for (const row of rows) if (acceptedIds.includes(row.id)) accepted += people * row.share;
+    accepted = addAcceptedPeople(accepted, province, acceptedIds);
   }
   economy.population = population;
   economy.soldiers = soldiers;
@@ -347,38 +282,60 @@ export function runNationEconomy(game, nation, ctx) {
   }
   const needs = emptyResourceMap();
   // İşgal altındaki halkı işgalci besler: o pay da ithal edilince savaştaki
-  // gerçek iflasların neredeyse hepsi borç tavanına dayanmış gıda ithalatıydı
-  // (son 26 haftada ithalat altınının %75-83'ü; 43 → 13, 6 tohum).
+  // gerçek iflasların neredeyse hepsi borç tavanına dayanmış gıda ithalatıydı.
   needs.FOOD = foodNeed(population * (1 - (economy.occupiedShare ?? 0)));
   // Gübre: gıda bonusu güherçile ister (bkz. SALTPETER_PER_FOOD).
   if (mod(nation, 'saltpeterFood') > 0) needs.SALTPETER += produced.FOOD * SALTPETER_PER_FOOD;
 
-  // 3. IC ve tüketim malı.
-  const ic = computeIC(world, nation);
+  // 3. Çıktı (el + sanayi + taç) ve sanayinin kaynak ihtiyacı.
+  const ic = computeOutput(world, nation, turn);
   economy.ic = ic;
   needs.COAL += ic.coalNeed;
-  needs.IRON += ic.ironNeed ?? 0;
-  needs.TIMBER += ic.timberNeed ?? 0;
-  needs.OIL += ic.oilNeed ?? 0;
-  economy.consumer = consumerGoods(nation, {
-    population, workforce: Math.max(0, population - soldiers),
-    development: economy.development, civil: ic.civil, turn,
+  needs.IRON += ic.ironNeed;
+  needs.TIMBER += ic.timberNeed;
+  needs.OIL += ic.oilNeed;
+
+  // 4. Faturalar önden düşer.
+  const bills = billsOf(world, nation, ic.output, turn);
+  economy.bills = bills;
+
+  // 5. Ordu: hatlar yasanın tavanına kadar sanayiden çeker, serbest çıktıyı
+  // aşamaz. Çekilmeyen pay halka ve kalkınmaya kalır.
+  const armyCap = Math.min(ic.military, Math.max(0, ic.output - bills.paid));
+  runLines(nation, armyCap, ic.dockyards, needs);
+  let drawn = 0;
+  for (const id of EQUIPMENT_IDS) drawn += economy.lines[id].ic;
+
+  // 6. Halk ve kalkınma.
+  const { need, era } = consumerNeed(nation, population, turn);
+  const feed = feedTarget(nation);
+  const target = investmentTarget(world, nation);
+  // Uygun state yoksa (hepsi tavanda) kalan halka döner, ama fon önce
+  // FUND_RESERVE_WEEKS haftalık çıktılık yedeğe dolar: yoksa tavandaki ülkenin
+  // fonuna hiç para girmez ve ithalat onu tabana çeker (audit:econ, tavan
+  // bağlayınca fonu tabanda ulus-hafta %0.1 → %1.5).
+  const investable = Boolean(target)
+    || (nation.fund ?? 0) < FUND_RESERVE_WEEKS * Math.max(0, economy.outputAvg ?? 0);
+  economy.investable = investable;
+  const alloc = splitOutput({
+    output: ic.output, billsPaid: bills.paid, armyCap, drawn, need, feed, investable,
   });
+  economy.alloc = alloc;
+  economy.consumer = { need, supply: alloc.people, ratio: need > 0 ? alloc.people / need : 1, feed, era };
+  // Eski okuyucular için: sivil = halkın payı, dönen = tavanın çekilmeyen kısmı.
+  ic.civil = alloc.people;
+  ic.drawn = alloc.army;
+  ic.returned = Math.max(0, armyCap - alloc.army);
+  const efficiency = investEfficiency(nation);
+  economy.investEfficiency = efficiency;
+  investmentNeeds(alloc.invest, needs, turn);
+  if (alloc.invest > 0) settle(nation, 'investment', alloc.invest * efficiency);
 
-  // 4. Üretim hatları (teçhizat stoğa girer; demir/kereste ihtiyacı yazılır).
-  // Oyuncunun Auto hatları, ekonomi otomasyonu KAPALIYKEN de çalışsın: o
-  // zaman kural burada (YZ ve devredilmiş oyuncu için ai.economyAI içinde).
-  if (nation.id === game.turns?.playerNation && !isDelegated(nation, 'economy') && (turn + nation.id) % 4 === 0) {
-    autoLineWeights(world, nation);
-  }
-  runLines(nation, ic.military, ic.dockyards, needs);
-
-  // 5. Ordu ve inşaat ihtiyacı.
+  // 7. Ordunun kaynak ihtiyacı.
   unitResourceNeeds(world, nation, needs);
   needs.SALTPETER += battleSaltpeterNeed(world, nation);
-  constructionResourceNeeds(nation, needs);
 
-  // 6. Ticaret teklifi: fazla, yasanın payına kadar satılır; açık alınır.
+  // 8. Ticaret teklifi: fazla, yasanın payına kadar satılır; açık alınır.
   const exportShare = lawOption(nation, 'trade').export;
   for (const id of RESOURCE_IDS) {
     const record = economy.resources[id];
@@ -389,30 +346,16 @@ export function runNationEconomy(game, nation, ctx) {
     record.wanted = surplus < 0 ? -surplus : 0;
   }
 
-  // 7. Hazine: vergi, bakım, eğitim, faiz.
-  const tax = taxBreakdown(world, nation);
-  economy.tax = tax;
-  settle(nation, 'tax', tax.total);
-  const upkeep = upkeepBreakdown(world, nation);
-  economy.upkeep = upkeep;
-  settle(nation, 'army', -upkeep.army);
-  settle(nation, 'navy', -upkeep.navy);
-  settle(nation, 'education', -educationCost(nation));
-  economy.maintenance = maintenanceCost(world, nation);
-  settle(nation, 'maintenance', -economy.maintenance);
-  if ((nation.debt ?? 0) > 0) settle(nation, 'interest', -nation.debt * DEBT.interest);
-
-  // 8. Okuryazarlık hedefe ORANSAL yaklaşır (zaman sabiti ~15 yıl: bir
+  // 9. Okuryazarlık hedefe ORANSAL yaklaşır (zaman sabiti ~15 yıl: bir
   // nesil). Eskiden sabit ±0.0003/hafta adımdı ve hedef iki kolda da aynı
-  // taraftayken yasa görünmezdi: %9'luk ülke "okulsuz" (%12) ve "herkese
-  // okul" (%75) altında AYNI hızla tırmanıyordu (audit:mechanics: ölü).
-  const target = literacyTarget(world, nation);
-  economy.literacyTarget = target;
-  economy.literacy += (target - economy.literacy) * LITERACY_RATE;
+  // taraftayken yasa görünmezdi (audit:mechanics: ölü).
+  const literacy = literacyTarget(world, nation);
+  economy.literacyTarget = literacy;
+  economy.literacy += (literacy - economy.literacy) * LITERACY_RATE;
 }
 
 /**
- * Haftanın kapanışı: ticaret, oranlar, borç ve iflas, defter. Oran
+ * Haftanın kapanışı: ticaret, oranlar, kademe alımı, defter. Oran
  * `(üretim + ithalat − ihracat) / ihtiyaç`; ihtiyacı olmayan kaynak 1 sayılır.
  */
 export function finishEconomy(game, ctx) {
@@ -429,6 +372,7 @@ export function finishEconomy(game, ctx) {
       holder.concessionIn[id] = (holder.concessionIn[id] ?? 0) + amount;
     }
   }
+  const raised = [];
   for (const nation of world.nations) {
     const economy = nation.economy;
     if (!economy || !nation.alive) continue;
@@ -438,74 +382,56 @@ export function finishEconomy(game, ctx) {
       record.balance = available - record.need;
       record.ratio = record.need > 1e-9 ? clamp(available / record.need, 0, 1) : 1;
     }
-    closeTreasury(nation, turn);
+    for (const province of buyDevelopment(world, nation)) raised.push(province);
+    closeFund(nation, turn);
     economy.history.push({
       turn,
       population: Math.round(economy.population),
-      gold: Math.round(nation.gold),
+      fund: Math.round(nation.fund),
       ic: Number((economy.ic?.total ?? 0).toFixed(2)),
-      income: Number((economy.ledger?.income ?? 0).toFixed(2)),
+      output: Number((economy.ic?.output ?? 0).toFixed(2)),
     });
     if (economy.history.length > 104) economy.history.shift();
+  }
+  if (raised.length) {
+    const tiles = [];
+    for (const province of raised) {
+      for (const idx of province.tileIdx ?? []) tiles.push(world.tiles[idx]);
+    }
+    game.renderer?.invalidateTiles?.(tiles.filter(Boolean), false);
   }
   game.emit?.('economy', null);
 }
 
-/**
- * Borç ve iflas, sonra defter. Altın eksiye düşerse açık otomatik borçla
- * kapanır; fazla altının bir kısmı borcu öder. Borç tavanı aşılırsa İFLAS:
- * borç silinir, 52 hafta borç yok, istikrar ve ordu düzeni çöker
- * (politics/turn okur: `nation.bankruptUntil`).
- */
-/** Enflasyon rezervi: bunun üstündeki altın her hafta erir (bkz. INFLATION). */
-export function inflationReserve(nation) {
-  return Math.max(INFLATION.floor, INFLATION.reserveWeeks * Math.max(0, nation?.economy?.incomeAvg ?? 0));
-}
-
-function closeTreasury(nation, turn) {
+/** Haftanın fon defteri ve çıktı ortalaması (fon tabanı, YZ ve ekran okur). */
+function closeFund(nation, turn) {
   const economy = nation.economy;
-  const bankrupt = (nation.bankruptUntil ?? 0) > turn;
-  const idle = (nation.gold ?? 0) - inflationReserve(nation);
-  if (idle > 0) settle(nation, 'inflation', -idle * INFLATION.rate);
-  if ((nation.gold ?? 0) < 0 && !bankrupt) {
-    const borrow = -nation.gold;
-    settle(nation, 'borrow', borrow);
-    nation.debt = (nation.debt ?? 0) + borrow;
-  } else if ((nation.gold ?? 0) > 50 && (nation.debt ?? 0) > 0) {
-    const repay = Math.min(nation.debt, (nation.gold - 50) * 0.25);
-    settle(nation, 'repay', -repay);
-    nation.debt -= repay;
-  }
-  const ledger = closeWeek(nation, turn);
-  const income = Math.max(0, ledger?.income ?? 0);
-  economy.incomeAvg = economy.incomeAvg > 0 ? economy.incomeAvg * 0.9 + income * 0.1 : income;
-  economy.debtCap = debtCapacity(nation);
-  if (!bankrupt && (nation.debt ?? 0) > economy.debtCap) {
-    nation.debt = 0;
-    nation.bankruptUntil = turn + DEBT.bankruptcyWeeks;
-    economy.bankruptcies = (economy.bankruptcies ?? 0) + 1;
-    economy.justBankrupt = turn;
-  }
+  closeWeek(nation, turn);
+  const output = Math.max(0, economy.ic?.output ?? 0);
+  economy.outputAvg = economy.outputAvg > 0 ? economy.outputAvg * 0.9 + output * 0.1 : output;
 }
 
 /**
- * Ekonomi ekranının döküm modeli: altın satırları, IC dağılımı, tüketim malı,
+ * Ekonomi ekranının döküm modeli: çubuk, faturalar, fon, IC, tüketim malı,
  * kaynaklar. Ekran bunu basar, formül kurmaz.
  */
 export function economyView(world, nation) {
   const economy = nation.economy;
   const ledger = economy?.ledger ?? emptyLedger();
   return {
-    gold: nation.gold ?? 0,
-    debt: nation.debt ?? 0,
-    debtCap: economy?.debtCap ?? debtCapacity(nation),
-    bankruptUntil: nation.bankruptUntil ?? 0,
+    fund: nation.fund ?? 0,
+    fundFloor: fundFloor(nation),
     ledger,
-    tax: economy?.tax ?? taxBreakdown(world, nation),
-    upkeep: economy?.upkeep ?? upkeepBreakdown(world, nation),
+    // İlk hafta kapanmadan defter boştur: ekran sıfırları "geçen hafta"
+    // diye sunmasın.
+    settled: Boolean(economy?.ledger?.lastUpdated),
+    alloc: economy?.alloc ?? null,
+    bills: economy?.bills ?? null,
+    feed: economy?.feed ?? null,
+    investTarget: economy?.investTarget ?? null,
+    investEfficiency: economy?.investEfficiency ?? 1,
+    developmentCap: developmentCap(nation),
     education: educationCost(nation),
-    maintenance: economy?.maintenance ?? maintenanceCost(world, nation),
-    inflationReserve: inflationReserve(nation),
     ic: economy?.ic,
     consumer: economy?.consumer,
     lines: economy?.lines,

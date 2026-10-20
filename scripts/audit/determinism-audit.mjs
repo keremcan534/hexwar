@@ -17,12 +17,31 @@ import {
 const SEED = 'determinism-audit';
 const WEEKS = 40;
 
-/** Dunyanin kompakt parmak izi. */
+/** Ulus basina kalkinma kademesi toplami (state'ler tam sayi kademelidir). */
+function developmentSums(world) {
+  const sums = new Map();
+  for (const province of world.provinces ?? []) {
+    if (province.owner < 0 || !province.econ) continue;
+    sums.set(province.owner, (sums.get(province.owner) ?? 0) + (province.econ.development ?? 1));
+  }
+  return sums;
+}
+
+/**
+ * Dunyanin kompakt parmak izi. Ulus basina fon, cikti, kalkinma toplami ve
+ * cubugun paylari (fatura/ordu/halk/kalkinma): ekonominin her kanali ayri
+ * bir sayi, biri sapsa iz ayrisir.
+ */
 function fingerprint(game) {
   let pop = 0;
   game.world.forEach((t) => { if (t.province) pop += t.province.population; });
+  const dev = developmentSums(game.world);
   const nations = game.world.nations.filter((n) => n.alive)
-    .map((n) => `${n.id}:${n.gold.toFixed(2)}:${n.tiles}:${(n.economy.ic?.raw ?? 0).toFixed(2)}`).join(',');
+    .map((n) => {
+      const a = n.economy.alloc ?? {};
+      const bar = ['bills', 'army', 'people', 'invest'].map((k) => (a[k] ?? 0).toFixed(2)).join('/');
+      return `${n.id}:${(n.fund ?? 0).toFixed(2)}:${n.tiles}:${(n.economy.ic?.output ?? 0).toFixed(2)}:${dev.get(n.id) ?? 0}:${bar}`;
+    }).join(',');
   return {
     population: pop,
     units: game.world.units.length,
@@ -101,9 +120,10 @@ console.log('  (bkz. harness.runScenario — butun denetimler bu yuzden surec iz
     seed: SEED, warmup: 0, weeks: WEEKS, asPlayer: false,
   }));
   const same = out.every((r) => r.snap.population === out[0].snap.population
-    && r.snap.gold === out[0].snap.gold);
+    && r.snap.fund === out[0].snap.fund && r.snap.output === out[0].snap.output);
   console.log(`  3 ayri surec: nufus ${out.map((r) => n0(r.snap.population)).join(' / ')}`
-    + ` · hazine ${out.map((r) => n2(r.snap.gold)).join(' / ')}`);
+    + ` · fon ${out.map((r) => n2(r.snap.fund)).join(' / ')}`
+    + ` · cikti ${out.map((r) => n2(r.snap.output)).join(' / ')}`);
   console.log(`  ${same ? 'OK  ayri sureclerde determinizm TAM.' : 'BOZUK: ayri sureclerde de degisiyor.'}`);
 }
 

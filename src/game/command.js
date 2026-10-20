@@ -19,13 +19,14 @@
 //
 // Katman notu: burasi saf veri + hesap + emir. DOM'a dokunmaz.
 
-import { settle } from './treasury.js';
+import { spend } from './econ/investment.js';
 import { atWar } from './diplomacy.js';
 import { estimateBattle, selectAssault, startBattle } from './battles.js';
 import { hasDirective, orderMove } from './movement.js';
 import { controllerOf } from './control.js';
-import { MAX_STACK, armyPower, isMoving, unitsOn } from './units.js';
+import { MAX_STACK, armyPower, isMilitia, isMoving, unitsOn } from './units.js';
 import { nodeNeighbors, nodesAdjacent } from '../world/provinceGraph.js';
+import { HEX_SIZE } from '../world/worldgen.js';
 
 const FIRST = [
   'Aleron', 'Bertran', 'Casimir', 'Dorian', 'Edric', 'Faelan', 'Gideon', 'Halvard',
@@ -327,6 +328,20 @@ export function unassignGeneral(world, nation, generalId) {
   return true;
 }
 
+/**
+ * Subayı kadrodan emekli eder: tümenleri komutasız kalır (otomatik dağıtım
+ * açıksa haftaya en az yüklü subaya geçer). Eskiden subay silmenin yolu
+ * yoktu; kadro ordu büyüdükçe büyüyor, ordu küçülünce boşta subaylar komuta
+ * şeridinde birikiyordu (Kerem: "general silme yok, geldikçe geliyor").
+ */
+export function retireGeneral(world, nation, generalId) {
+  const general = generalById(nation, generalId);
+  if (!general) return null;
+  unassignGeneral(world, nation, generalId);
+  nation.generals = generalsOf(nation).filter((other) => other.id !== general.id);
+  return general;
+}
+
 /** Belirli bir tumeni her komutadan cikarir (dagilan/olen tumen). */
 export function releaseArmy(nation, armyId) {
   for (const general of generalsOf(nation)) {
@@ -379,6 +394,8 @@ export function setStance(world, general, stance) {
   if (general.stance === stance) return general.stance;
   general.stance = stance;
   if (stance === STANCE.HOLD) general.planning = 0;
+  // Taarruz geri çekilmeyi bitirir: grup cephesine döner.
+  else if (general.fallingBack) general.fallingBack = false;
   return general.stance;
 }
 
@@ -484,9 +501,9 @@ export function addExperience(general, amount) {
   return promoted;
 }
 
-/** Yeni subay yetistirmenin bedeli; kadro buyudukce pahalanir. */
+/** Yeni subay yetistirmenin bedeli (IC, kalkınma fonundan); kadro buyudukce pahalanir. */
 export function generalCost(nation) {
-  return { gold: 60 + generalsOf(nation).length * 25 };
+  return { ic: 90 + generalsOf(nation).length * 37.5 };
 }
 
 // --- Cephenin turetilmesi --------------------------------------------------
@@ -589,6 +606,11 @@ function frontFor(general, borders) {
  */
 function orderAlongBorder(world, tiles) {
   if (tiles.length <= 2) return tiles;
+  return borderParts(world, tiles).flat();
+}
+
+/** Sınır karelerinin bitişik parçaları, her biri bir uçtan sıralı; büyük parça önce. */
+function borderParts(world, tiles) {
   const member = new Set(tiles);
   const seen = new Set();
   const parts = [];
@@ -615,8 +637,244 @@ function orderAlongBorder(world, tiles) {
   }
   // Büyük parça önce: sektörler önce ana cepheyi böler.
   parts.sort((a, b) => b.length - a.length);
-  return parts.flat();
+  return parts;
 }
+
+// --- Çizilen hatlar (HOI4) -------------------------------------------------
+
+/**
+ * ÇİZİLEN CEPHE VE GERİ ÇEKİLME HATTI (Kerem: "frontline çizme hoi4 usülü
+ * hala yok, fallback line çizmede yok").
+ *
+ * Eski çizim kaldırılmıştı çünkü çizilen hat SINIRLA ÇELİŞİYORDU: sınır
+ * oynayınca hat baştan kuruluyor, tümenler her hafta yeniden diziliyordu.
+ * Burada çizgi bir hat değil, SINIRIN BİR PARÇASINI SEÇER: iki uç (a, b) ve
+ * karşıdaki uluslar saklanır; cephe her hafta o ulusların gerçek sınırında
+ * iki uca en yakın kareler arasındaki dilimdir, uçlar da sınırla birlikte
+ * kayar. Mevkisi hâlâ dilimde olan tümen yerinde kalır (assignPosts).
+ *
+ * Geri çekilme hattı kendi toprağımızdaki kare dizisidir; "Fall back"
+ * emriyle (ya da grubun yarısı bozgundayken kendiliğinden) tümenler cephe
+ * yerine bu karelere mevkilenir ve taarruz durur. YZ hat çizmez: denge
+ * ölçümleri değişmez.
+ */
+/** Çizginin bu kadar hex yakınındaki sınır karesi seçilir. */
+const LINE_REACH = 2;
+/** Saklanan çizgi noktası tavanı (kayıt boyu). */
+const LINE_POINTS = 64;
+
+const pointOf = (tile) => ({ q: tile.q, r: tile.r });
+
+/** Diziyi en çok `max` noktaya eşit aralıkla seyreltir; uçlar korunur. */
+function thinPoints(list, max = LINE_POINTS) {
+  if (list.length <= max) return list;
+  const out = [];
+  for (let i = 0; i < max; i++) out.push(list[Math.round((i * (list.length - 1)) / (max - 1))]);
+  return out;
+}
+
+/** Çizginin karelerinden tekrarsız kara kareleri (çizim sırasıyla). */
+function strokeLand(tiles) {
+  const seen = new Set();
+  const out = [];
+  for (const tile of tiles) {
+    if (!tile || tile.terrain.water || !tile.terrain.passable || seen.has(tile)) continue;
+    seen.add(tile);
+    out.push(tile);
+  }
+  return out;
+}
+
+function nearestTo(world, list, point) {
+  let best = -1;
+  let bestD = Infinity;
+  for (let i = 0; i < list.length; i++) {
+    const d = world.wrapDistance(list[i].q, list[i].r, point.q, point.r);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best;
+}
+
+/** Karşıdaki ulusların sınır kareleri, tekrarsız (bir kare iki ülkeye bakabilir). */
+function facingSource(entry, facing) {
+  const seen = new Set();
+  const out = [];
+  for (const id of facing) {
+    for (const tile of entry.byNation.get(id) ?? []) {
+      if (seen.has(tile)) continue;
+      seen.add(tile);
+      out.push(tile);
+    }
+  }
+  return out;
+}
+
+/** Komşu iki hex merkezinin arası (piksel). */
+const HEX_STEP = HEX_SIZE * Math.sqrt(3);
+/** Cephe bandının kalınlığı: çizgiye en yakın sınır karesinden bu kadar hex öteye kadar. */
+const LINE_BAND = 3;
+/** Çizginin uçlarından taşma payı (hex): uçtaki kare kaybolunca cephe kısalmasın. */
+const LINE_END_SLACK = 0.5;
+
+/**
+ * Çizilen cephenin bu haftaki kareleri; çizilmiş cephe yoksa null.
+ *
+ * Seçim ÇİZGİYE İZDÜŞÜMLE yapılır, uç kareler sınıra yapıştırılmaz: önceki
+ * deneme iki ucu her hafta en yakın sınır karesine taşıyordu ve sınır
+ * oynadıkça uçlar birbirine yaklaşıp tek kareye çöküyordu (ölçüldü: 3 → 1
+ * kare, 6 haftada). Şimdi çizgi değişmez; karşıdaki ulusların sınır
+ * karelerinden izdüşümü çizginin boyu içinde kalanlar alınır, en yakın
+ * banttan LINE_BAND hex derinliğe kadar. Cephe ilerleyince bant da
+ * ilerler (en yakın sınır uzaklaşır), boy ise çizilen boy kalır.
+ */
+function lineFront(world, general, borders) {
+  const line = general.line;
+  const entry = borders[general.nationId];
+  if (!line || !entry) return null;
+  const source = facingSource(entry, line.facing ?? []);
+  const anchor = (line.path ?? []).map((p) => world.get(p.q, p.r)).filter(Boolean);
+  if (!source.length || !anchor.length) return [];
+  const P = world.wrapWidth || 0;
+  // Çizgi tek parça kalsın diye her nokta bir öncekinin yanına sarılır.
+  const pts = [];
+  for (const tile of anchor) {
+    let x = tile.x;
+    if (pts.length && P) x -= P * Math.round((x - pts[pts.length - 1].x) / P);
+    pts.push({ x, y: tile.y });
+  }
+  const slack = LINE_END_SLACK * HEX_STEP;
+  const measure = (tile) => {
+    let best = Infinity;
+    let along = 0;
+    let total = 0;
+    let at = 0;
+    for (let i = 0; i < Math.max(1, pts.length - 1); i++) {
+      const p = pts[i];
+      const q = pts[Math.min(i + 1, pts.length - 1)];
+      let x = tile.x;
+      if (P) x -= P * Math.round((x - p.x) / P);
+      const sx = q.x - p.x;
+      const sy = q.y - p.y;
+      const len2 = sx * sx + sy * sy;
+      const len = Math.sqrt(len2);
+      const t = len2 ? ((x - p.x) * sx + (tile.y - p.y) * sy) / len2 : 0;
+      const c = Math.max(0, Math.min(1, t));
+      const d = Math.hypot(x - (p.x + sx * c), tile.y - (p.y + sy * c));
+      if (d < best) {
+        best = d;
+        // Uç parçalarda izdüşümün çizgi dışına taşması ölçülür.
+        at = total + t * len;
+      }
+      total += len;
+    }
+    along = at;
+    return { d: best, along, total };
+  };
+  const rows = [];
+  let nearest = Infinity;
+  for (const tile of source) {
+    const m = measure(tile);
+    if (m.along < -slack || m.along > m.total + slack) continue;
+    rows.push({ tile, d: m.d, along: m.along });
+    if (m.d < nearest) nearest = m.d;
+  }
+  const front = rows.filter((row) => row.d <= nearest + LINE_BAND * HEX_STEP);
+  if (!front.length) return [];
+  // Uç iğneleri (yalnız çizim): dilimin çizgi boyunca iki ucu.
+  let lo = front[0];
+  let hi = front[0];
+  for (const row of front) {
+    if (row.along < lo.along) lo = row;
+    if (row.along > hi.along) hi = row;
+  }
+  line.a = pointOf(lo.tile);
+  line.b = pointOf(hi.tile);
+  return front.map((row) => row.tile);
+}
+
+/**
+ * Generale sınır boyunca çizilen cepheyi verir. `tiles`: çizginin geçtiği
+ * kareler, çizim sırasıyla. Hedef seçimi (target) çizilmiş cephenin altında
+ * kalır; hat silinince geri gelir.
+ * @returns {{ ok: boolean, error?: string, tiles?: object[] }}
+ */
+export function setFrontLine(world, general, tiles) {
+  if (!general || branchOf(general) === BRANCH.NAVY) return { ok: false, error: 'Only an army commander holds a front.' };
+  const stroke = strokeLand(tiles);
+  if (stroke.length < 2) return { ok: false, error: 'Drag along the border to draw a front.' };
+  const entry = scanBorders(world)[general.nationId];
+  const picked = (entry?.foreign ?? []).filter((tile) => stroke.some((s) => world.wrapDistance(tile.q, tile.r, s.q, s.r) <= LINE_REACH));
+  if (!picked.length) return { ok: false, error: 'A front must follow your border with another nation.' };
+  const facing = new Set();
+  for (const tile of picked) {
+    for (const near of nodeNeighbors(world, tile)) {
+      if (near.terrain.water) continue;
+      const owner = controllerOf(near);
+      if (owner >= 0 && owner !== general.nationId) facing.add(owner);
+    }
+  }
+  const first = picked[nearestTo(world, picked, stroke[0])];
+  const last = picked[nearestTo(world, picked, stroke[stroke.length - 1])];
+  general.line = {
+    a: pointOf(first),
+    b: pointOf(last),
+    facing: [...facing].sort((x, y) => x - y),
+    path: thinPoints(stroke).map(pointOf),
+  };
+  general.planning = 0;
+  return { ok: true, tiles: refreshFront(world, general) };
+}
+
+/**
+ * Geri çekilme hattı: çizginin kendi kontrolümüzdeki kara kareleri.
+ * @returns {{ ok: boolean, error?: string, tiles?: object[] }}
+ */
+export function setFallbackLine(world, general, tiles) {
+  if (!general || branchOf(general) === BRANCH.NAVY) return { ok: false, error: 'Only an army commander holds a line.' };
+  const own = strokeLand(tiles).filter((tile) => controllerOf(tile) === general.nationId);
+  if (own.length < 2) return { ok: false, error: 'Draw the fallback line inside your own territory.' };
+  general.fallback = thinPoints(own).map(pointOf);
+  return { ok: true, tiles: own };
+}
+
+/** Geri çekilme hattının bugün hâlâ elimizde olan kareleri. */
+export function fallbackTilesOf(world, general) {
+  if (!general?.fallback?.length) return [];
+  const out = [];
+  for (const point of general.fallback) {
+    const tile = world.get(point.q, point.r);
+    if (tile && !tile.terrain.water && controllerOf(tile) === general.nationId) out.push(tile);
+  }
+  return out;
+}
+
+/**
+ * Geri çekil / cepheye dön. Geri çekilmek taarruzu durdurur ve planı sıfırlar
+ * (yeni hatta yerleşmek yeniden hazırlıktır); Offensive cepheye döndürür.
+ */
+export function setFallingBack(general, on) {
+  if (!general) return false;
+  general.fallingBack = Boolean(on) && Boolean(general.fallback?.length);
+  if (general.fallingBack) {
+    general.stance = STANCE.HOLD;
+    general.planning = 0;
+  }
+  return general.fallingBack;
+}
+
+/** Çizilen hatları siler: cephe yeniden otomatik (hedef ya da bütün sınır). */
+export function clearLines(world, general, which = 'all') {
+  if (!general) return;
+  if (which === 'all' || which === 'front') general.line = null;
+  if (which === 'all' || which === 'fallback') {
+    general.fallback = null;
+    general.fallingBack = false;
+  }
+  refreshFront(world, general);
+}
+
+/** Grubun en az yarısı bozgundan çekiliyorsa hat yarılmıştır. */
+const COLLAPSE_SHARE = 0.5;
 
 /**
  * Ulusun bütün kara generallerinin sektörleri: generalId → kare listesi.
@@ -626,6 +884,13 @@ function nationSectors(world, nation, borders, unitById = null) {
   const out = new Map();
   const groups = new Map();
   for (const general of officersOf(nation, BRANCH.ARMY)) {
+    // Çizilmiş cephe paylaşılmaz: oyuncu o dilimi bu generale verdi. Dilim
+    // boşaldıysa (karşıdaki ülke sınırdan çekildi) otomatik cepheye düşer.
+    const drawn = general.line ? lineFront(world, general, borders) : null;
+    if (drawn?.length) {
+      out.set(general.id, drawn);
+      continue;
+    }
     const source = frontFor(general, borders);
     let size = 0;
     for (const id of general.divisions) {
@@ -1313,8 +1578,21 @@ function runGroup(game, nation, general, context) {
   // Hafif profil: turun en pahalı grubu parça dökümüyle kaydedilir
   // (world.commandWorst; beginCommand sıfırlar). Donma avında "hangi general,
   // hangi parça?" sorusunu tur başına birkaç performance.now ile yanıtlar.
+  // HAT YARILDI: geri çekilme hattı çizilmişse ve grubun yarısı bozgundan
+  // çekiliyorsa tümenler kendiliğinden o hatta döner (HOI4 fallback).
+  if (general.fallback?.length && !general.fallingBack && managed.length >= 2) {
+    const routed = managed.filter((unit) => (unit.retreatUntil ?? 0) > game.turns.turn).length;
+    if (routed >= managed.length * COLLAPSE_SHARE) {
+      setFallingBack(general, true);
+      if (nation.id === game.turns.playerNation) {
+        game.turns.addLog?.(`${general.name}'s front broke: falling back to the fallback line.`, { kind: 'COMMANDER' });
+      }
+    }
+  }
+  const fallback = general.fallingBack ? fallbackTilesOf(world, general) : null;
+
   const t0 = performance.now();
-  assignPosts(world, managed, front);
+  assignPosts(world, managed, fallback?.length ? fallback : front);
   const t1 = performance.now();
   march(game, managed);
   const t2 = performance.now();
@@ -1329,7 +1607,7 @@ function runGroup(game, nation, general, context) {
   general.planning = Math.max(0, Math.min(1, (general.planning ?? 0)
     + PLANNING_RATE * (settled / Math.max(1, managed.length)) * (1 + staff)));
 
-  if (general.stance === STANCE.ADVANCE) advance(game, general, divisions);
+  if (general.stance === STANCE.ADVANCE && !fallback?.length) advance(game, general, divisions);
   const t3 = performance.now();
   if (!world.commandWorst || t3 - t0 > world.commandWorst.total) {
     world.commandWorst = {
@@ -1391,6 +1669,24 @@ function refreshOfficerCorps(game, nation, rng) {
   }
   // Otomatik kadro kapalıysa boşalan yer boş kalır: subayı oyuncu yetiştirir.
   if (!ensureCommandOptions(nation).autoCreate) return;
+  // KADRO KÜÇÜLÜR DE. İhtiyaç (wantedOfficers) orduyla büyüyordu ama hiç
+  // inmiyordu: seferberlik ya da kayıplardan sonra tümeni olmayan subaylar
+  // kalıcı oluyordu. İhtiyacı bir kişiden fazla aşan kadroda haftada BİR boşta
+  // (tümensiz) subay emekli olur — en düşük yetenek, sonra en az deneyim.
+  // Yalnız boştakiler: cephedeki komutaya dokunulmaz, savaş planı bozulmaz.
+  for (const branch of [BRANCH.ARMY, BRANCH.NAVY]) {
+    const staff = officersOf(nation, branch);
+    if (staff.length <= wantedOfficers(world, nation, branch) + 1) continue;
+    const idle = staff.filter((general) => !general.divisions.length)
+      .sort((a, b) => a.skill - b.skill || (a.xp ?? 0) - (b.xp ?? 0) || a.id - b.id)[0];
+    if (!idle) continue;
+    retireGeneral(world, nation, idle.id);
+    if (nation.id === game.turns.playerNation) {
+      const rank = branch === BRANCH.NAVY ? 'Admiral' : 'General';
+      game.turns.addLog(`${rank} ${idle.name} retired: the staff is larger than the forces need.`,
+        { kind: 'COMMANDER' });
+    }
+  }
   // Komutasız tümen kalmasın: ordu büyüdükçe kadro da büyür. Kontrol HER
   // HAFTA — yılda bir yetmiyordu: seferberlik orduyu sekiz haftada iki-uc
   // katina cikariyor ve yeni tumenler bir yila kadar komutansiz bekliyordu
@@ -1398,9 +1694,7 @@ function refreshOfficerCorps(game, nation, rng) {
   for (const branch of [BRANCH.ARMY, BRANCH.NAVY]) {
     const wanted = wantedOfficers(world, nation, branch);
     if (officersOf(nation, branch).length >= wanted) continue;
-    const cost = generalCost(nation);
-    if (nation.gold < cost.gold) return;
-    settle(nation, 'outlay', -cost.gold);
+    if (!spend(nation, generalCost(nation).ic)) return;
     // createGeneral kadroya kendisi yazar; burada ikinci kez push edilince
     // ayni subay listede iki kez duruyordu — dockta "JORUND / JORUND" ve
     // subay sayisinin fazla gorunmesi buradandi (Open Beta 4, B-12).
@@ -1430,7 +1724,7 @@ export function autoAssignCommands(world, nation, unitById = null) {
     if (!officers.length) continue;
     const naval = branch === BRANCH.NAVY;
     const loose = world.units
-      .filter((unit) => unit.nationId === nation.id && !held.has(unit.id)
+      .filter((unit) => unit.nationId === nation.id && !held.has(unit.id) && !isMilitia(unit)
         && (unit.type.domain === 'sea') === naval)
       .sort((a, b) => a.id - b.id);
     for (const unit of loose) {

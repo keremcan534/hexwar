@@ -57,6 +57,12 @@
         out.columns.push(`${label} bottoms differ ${spread}px`);
       }
     }
+    // Sekme şeridi kaydırma çubuğu gizli bir kaydırıcıdır (overflow-x: auto):
+    // taşan sekme yukarıdaki "ulaşılamayan" sınamasına girmez ama kırpılır.
+    const tabs = document.querySelector('#tab-bar .tab-list');
+    if (tabs && visible(tabs) && tabs.scrollWidth > tabs.clientWidth + 1) {
+      out.offscreen.push(`div.tab-list overflows ${tabs.scrollWidth - tabs.clientWidth}px`);
+    }
     const body = root.querySelector('.screen-body');
     if (body) {
       const b = body.getBoundingClientRect();

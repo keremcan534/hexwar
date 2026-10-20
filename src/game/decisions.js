@@ -7,8 +7,8 @@
 // aynı tabloyu, duruma göre ağırlıkla kullanır.
 
 import { addTimedModifier, refreshModifiers } from './modifiers.js';
-import { settle } from './treasury.js';
 import { addEquipment } from './econ/industry.js';
+import { inSupplyCrisis } from './econ/bills.js';
 
 const atWar = (nation) => (nation.economy?.warFronts ?? 0) > 0;
 const units = (nation) => Math.max(1, (nation.economy?.population ?? 0) / 100000);
@@ -20,25 +20,26 @@ const units = (nation) => Math.max(1, (nation.economy?.population ?? 0) / 100000
 export const DECISIONS = {
   industrial_subsidies: {
     name: 'Industrial Subsidies', cost: 75, cooldown: 104,
-    desc: 'Construction +20% speed and building cost −10% for two years.',
+    desc: 'Investment +30% for two years: every IC put into development goes further.',
     available: () => true,
     weight: (nation) => ((nation.economy?.consumer?.ratio ?? 1) < 1.05 ? 1.6 : 0.8),
     apply: (game, nation) => {
       // Süre = bekleme: etki boşluksuz sürer (52 haftada yarı zaman boştu).
-      addTimedModifier(nation, 'decision-subsidies', 'Industrial Subsidies', 104, { construction: 0.2, buildCost: -0.1 }, game.turns.turn);
+      addTimedModifier(nation, 'decision-subsidies', 'Industrial Subsidies', 104, { investment: 0.3 }, game.turns.turn);
       return 'Credit flows to the builders.';
     },
   },
   war_bonds: {
     name: 'War Bonds', cost: 50, cooldown: 52,
-    desc: 'Raise six weeks of income from patriotic savers; war support +3 for half a year.',
+    desc: 'Patriotic savers fund the war: output +8% for a year, then −2% for four years as the bonds are repaid; war support +3 for half a year.',
     available: (nation) => atWar(nation),
-    weight: (nation) => ((nation.gold ?? 0) < 100 ? 2.5 : 1),
+    weight: (nation) => (inSupplyCrisis(nation) ? 2.5 : 1),
     apply: (game, nation) => {
-      const amount = Math.round(Math.max(20, (nation.economy?.incomeAvg ?? 0) * 6));
-      settle(nation, 'tax', amount);
-      addTimedModifier(nation, 'decision-bonds', 'War Bonds', 26, { warSupport: 0.03 }, game.turns.turn);
-      return `${amount} gold raised.`;
+      // Gelecekten borç: altın yok, bedel sonraki yılların çıktısıdır.
+      addTimedModifier(nation, 'decision-bonds', 'War Bonds', 52, { output: 0.08 }, game.turns.turn);
+      addTimedModifier(nation, 'decision-bonds-repay', 'War Bonds repaid', 208, { output: -0.02 }, game.turns.turn);
+      addTimedModifier(nation, 'decision-bonds-support', 'War Bonds', 26, { warSupport: 0.03 }, game.turns.turn);
+      return 'The bonds sell out; the factories run double shifts.';
     },
   },
   requisition: {
@@ -89,11 +90,11 @@ export const DECISIONS = {
   },
   national_census: {
     name: 'National Census', cost: 40, cooldown: 260,
-    desc: 'Tax income +5% for two years.',
+    desc: 'Output +3% for two years.',
     available: () => true,
     weight: () => 1,
     apply: (game, nation) => {
-      addTimedModifier(nation, 'decision-census', 'National Census', 104, { tax: 0.05 }, game.turns.turn);
+      addTimedModifier(nation, 'decision-census', 'National Census', 104, { output: 0.03 }, game.turns.turn);
       return 'Every household counted.';
     },
   },
@@ -117,16 +118,17 @@ export const DECISIONS = {
       return 'The papers beat the drum.';
     },
   },
-  debt_moratorium: {
-    name: 'Debt Moratorium', cost: 80, cooldown: 520,
-    desc: 'A quarter of the debt is written off; stability −4 and import cost +10% for half a year.',
-    available: (nation) => (nation.debt ?? 0) > 50,
-    weight: (nation) => ((nation.debt ?? 0) > (nation.economy?.debtCap ?? Infinity) * 0.5 ? 3 : 0),
+  // Borç moratoryumunun yerine (borç yok): faturaların tavanını yükseltir,
+  // ikmal krizinden çıkışın siyasi bedeli.
+  requisition_economy: {
+    name: 'Requisition the Economy', cost: 80, cooldown: 156,
+    desc: 'The state takes what the army needs: the bill ceiling rises from 60% to 75% of output for half a year; stability −5.',
+    available: (nation) => inSupplyCrisis(nation)
+      || (nation.economy?.bills?.owed ?? 0) > 0.5 * (nation.economy?.ic?.output ?? Infinity),
+    weight: (nation) => (inSupplyCrisis(nation) ? 3 : 0),
     apply: (game, nation) => {
-      const cut = Math.round((nation.debt ?? 0) / 4);
-      nation.debt -= cut;
-      addTimedModifier(nation, 'decision-moratorium', 'Debt Moratorium', 26, { stability: -0.04, importCost: 0.1 }, game.turns.turn);
-      return `${cut} gold of debt repudiated.`;
+      addTimedModifier(nation, 'decision-requisition-economy', 'Requisitioned Economy', 26, { obligationCap: 0.15, stability: -0.05 }, game.turns.turn);
+      return 'Ministries take over the mills and the rail.';
     },
   },
   research_grants: {

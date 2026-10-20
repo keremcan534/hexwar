@@ -10,11 +10,16 @@
 //   4. kirilmis kulturler: az yerde cogunluk, cok yerde azinlik
 //   5. cizgi okunabilirligi: cogunluk-azinlik renk ayrimi
 //   6. determinizm: ayni tohum ayni dokuyu verir
+//   7. halklar dogusta (redesign D3, 2026-10-15): imparatorluklarin etkin
+//      halk sayisi (ENC, nufus agirlikli), ana halk = cekirdegin en buyuk
+//      halki, koloni halki kabul edilmemis. Esikler TASARIM KARARIDIR
+//      (redesign §5/§6 P2), taban degil.
 //
 // Bu dosya URETIM KODU DEGILDIR ve src/ altina hicbir sey sizdirmaz.
 
 import { generateWorld } from '../../src/world/worldgen.js';
 import { generateNations } from '../../src/world/nations.js';
+import { initProvinces } from '../../src/game/provinces.js';
 
 const SEEDS = ['CULTURE-A', 'CULTURE-B', 'CULTURE-C'];
 const MINORITY = 0.15;
@@ -22,6 +27,8 @@ const MINORITY = 0.15;
 function build(seed) {
   const world = generateWorld(seed, { cols: 160, rows: 96 });
   generateNations(world, { seed: `${seed}-nations` });
+  // Nufus (ENC agirligi) dunya uretiminde yoktur; tur 1 nufusu buradan gelir.
+  initProvinces(world);
   return world;
 }
 
@@ -91,8 +98,45 @@ function measure(world) {
     }
   }
 
+  // D3: imparatorluklarin ENC'si (nufus agirlikli, sahip olunan butun kumeler),
+  // ana halk kurali (cekirdegin hex agirlikli en buyugu) ve koloni halki.
+  const ARCH = {
+    'kuzey-imparatorlugu': 'kuzey', 'bilesik-monarsi': 'bilesik', 'kavsak-imparatorlugu': 'kavsak', 'dogu-devi': 'dogu',
+  };
+  const enc = {};
+  let wrongPrim = 0;
+  for (const nation of world.nations) {
+    if (nation.archetype === 'rebel' || nation.tiles <= 0) continue;
+    const votes = new Map();
+    for (const province of provinces) {
+      if (province.owner !== nation.id || province.coreOf !== nation.id) continue;
+      for (const row of province.cultures ?? []) {
+        votes.set(row.id, (votes.get(row.id) ?? 0) + province.tileIdx.length * row.share);
+      }
+    }
+    const top = [...votes].sort((a, b) => b[1] - a[1] || a[0] - b[0])[0]?.[0];
+    if (top !== undefined && top !== nation.culture) wrongPrim++;
+    if (!ARCH[nation.archetype]) continue;
+    const mix = new Map();
+    let pop = 0;
+    for (const province of provinces) {
+      if (province.owner !== nation.id) continue;
+      const w = province.econ?.population ?? 0;
+      pop += w;
+      for (const row of province.cultures ?? []) mix.set(row.id, (mix.get(row.id) ?? 0) + w * row.share);
+    }
+    const simpson = [...mix.values()].reduce((sum, v) => sum + (v / Math.max(1, pop)) ** 2, 0);
+    enc[ARCH[nation.archetype]] = simpson > 0 ? 1 / simpson : 0;
+  }
+  const maritime = world.nations.find((n) => n.archetype === 'denizci-imparatorluk');
+  const colonyAccepted = maritime ? provinces.filter((p) => p.owner === maritime.id && p.coreOf !== maritime.id
+    && maritime.accepted.includes(p.culture)).length : 0;
+
   return {
     cultures: cultures.length,
+    enc,
+    wrongPrim,
+    colonyAccepted,
     families: families.size,
     provinces: provinces.length,
     mixedPct: provinces.length ? mixed.length / provinces.length : 0,
@@ -117,10 +161,12 @@ const deterministic = JSON.stringify(twin) === JSON.stringify(
 
 const avg = (key) => runs.reduce((s, r) => s + r[key], 0) / runs.length;
 
+const ENC_FLOOR = { kuzey: [3.5, Infinity], bilesik: [5.0, Infinity], kavsak: [3.5, Infinity], dogu: [1.6, 2.8] };
 const results = {
   structure: {
-    // Eski dunya 22 kulturluydu ve tek renk bloklar halinde okunuyordu.
-    enoughCultures: runs.every((r) => r.cultures >= 30),
+    // Eski dunya 22 kulturluydu ve tek renk bloklar halinde okunuyordu. D3'ten
+    // beri imparatorluklarin alt halklari +18-24 kultur ekler (tasarim: 54-62).
+    enoughCultures: runs.every((r) => r.cultures >= 54 && r.cultures <= 62),
     enoughFamilies: runs.every((r) => r.families >= 6),
     mixWellFormed: runs.every((r) => r.malformed === 0),
   },
@@ -138,6 +184,15 @@ const results = {
   history: {
     // Eskiden genis, simdi iki-uc yerde cogunluk kalan halklar.
     shatteredCultures: runs.every((r) => r.shattered >= 1),
+  },
+  peoples: {
+    // D3 ENC tabanlari (Avusturya-Macaristan ~7.3, Rusya ~4.2, Osmanli ~3-3.5).
+    empiresManyPeoplesDeep: runs.every((r) => Object.entries(ENC_FLOOR)
+      .every(([k, [lo, hi]]) => r.enc[k] === undefined || (r.enc[k] >= lo && r.enc[k] <= hi))),
+    // Ana halk cekirdegin en buyuk halki (eskiden baskent kumesinin cogunlugu:
+    // tohum basina 11-15 yanlis ana halk).
+    primaryIsLargestCorePeople: runs.every((r) => r.wrongPrim === 0),
+    colonyNotAccepted: runs.every((r) => r.colonyAccepted === 0),
   },
   readability: {
     // Cizgi zemine karismamali, yoksa tarama bilgi tasimaz.
@@ -163,6 +218,9 @@ console.log(JSON.stringify({
       threePlus: r.threePlus,
       multiEthnic: `${(r.multiEthnicPct * 100).toFixed(0)}%`,
       bigAvg: +r.bigAvgPeoples.toFixed(1),
+      enc: Object.fromEntries(Object.entries(r.enc).map(([k, v]) => [k, +v.toFixed(2)])),
+      wrongPrim: r.wrongPrim,
+      weakPairs: r.weakPairs,
       shattered: r.shatteredDetail,
     })),
   },

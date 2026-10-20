@@ -3,27 +3,30 @@
 // DEĞİLDİR artık — işçi kareleri ve şehir altını kalktı (bkz. TASARIM.md);
 // şehrin boyu bulunduğu province'in nüfusundan okunur.
 
-import { RECRUIT_GOLD } from './econ/defs.js';
-import { settle } from './treasury.js';
+import { canSpend, spend } from './econ/investment.js';
+import { money } from './money.js';
 
-/** Alay kuruluş bedeli (altın). Asıl bedel teçhizat ve insan gücüdür. */
+/**
+ * Kurulabilen alay türleri. Alayın peşin bedeli YOKTUR (2026-10-15, altın
+ * kalktı): bedeli insan gücü, teçhizat ve haftalık ikmal faturasıdır
+ * (econ/bills.js). Anahtarlar ekranın sipariş listesidir.
+ */
 export const UNIT_COSTS = Object.fromEntries(
-  Object.entries(RECRUIT_GOLD).map(([id, gold]) => [id, { gold }]),
+  ['INFANTRY', 'CAVALRY', 'ARTILLERY', 'WARSHIP', 'SUBMARINE', 'ARMOR', 'AIRCRAFT'].map((id) => [id, {}]),
 );
 
+/** Tek seferlik bedel (`{ ic }`, general gibi) kalkınma fonundan ödenebilir mi? */
 export function canAfford(nation, cost) {
-  return (nation?.gold ?? 0) >= (cost?.gold ?? 0);
+  return canSpend(nation, cost?.ic ?? 0);
 }
 
-/** Altını TEK KAPIDAN öder (treasury.settle); yetmiyorsa hiçbir şey yapmaz. */
-export function pay(nation, cost, line = 'outlay') {
-  if (!canAfford(nation, cost)) return false;
-  if (cost?.gold) settle(nation, line, -cost.gold);
-  return true;
+/** Bedeli TEK KAPIDAN öder (fon, 'outlay'); yetmiyorsa hiçbir şey yapmaz. */
+export function pay(nation, cost) {
+  return spend(nation, cost?.ic ?? 0);
 }
 
 export function formatCost(cost) {
-  return cost?.gold ? `${cost.gold} gold` : '';
+  return cost?.ic ? money(cost.ic, 0) : '';
 }
 
 const NAME_A = ['White', 'Black', 'Blue', 'New', 'Old', 'Salt', 'Iron', 'High', 'Grand', 'Red'];

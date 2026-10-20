@@ -7,6 +7,7 @@
 // (haftada en çok bir). Kare başına maliyet kopya başına tek drawImage ve
 // birkaç işaret.
 
+import { FONT_DISPLAY, FONT_UI } from './fonts.js';
 import { DIRS, HEX_CORNERS } from '../core/hex.js';
 import { HEX_SIZE } from '../world/worldgen.js';
 import { seaZonesOf } from '../world/seaZones.js';
@@ -411,7 +412,7 @@ export class SeaLayer {
     const zoom = this.renderer.camera.zoom;
     const size = 12.5 / zoom;
     ctx.save();
-    ctx.font = `italic ${size}px Georgia, "Times New Roman", serif`;
+    ctx.font = `italic ${size}px ${FONT_DISPLAY}`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.lineJoin = 'round';
@@ -463,7 +464,7 @@ export class SeaLayer {
       .sort((a, b) => order[a.rel] - order[b.rel] || b.count - a.count || a.nationId - b.nationId)
       .slice(0, 3);
     ctx.save();
-    ctx.font = `700 ${10.5 / zoom}px "Segoe UI", Arial, sans-serif`;
+    ctx.font = `700 ${10.5 / zoom}px ${FONT_UI}`;
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
     for (const [zoneId, here] of state.presence ?? []) {

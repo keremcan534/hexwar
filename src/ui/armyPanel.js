@@ -221,7 +221,10 @@ function frontHtml(game, me, units) {
   const attack = general.stance === 'advance';
   const target = general.target == null ? 'all active borders' : game.world.nations[general.target]?.name ?? 'unknown nation';
   const nextAssault = Math.max(0, (general.nextAssaultAt ?? 0) - (game.turns?.turn ?? 0));
-  const line = `${attack ? 'Advancing' : 'Holding'} ${front.length} ${front.length === 1 ? 'province' : 'provinces'} · ${target}`;
+  const back = general.fallingBack && general.fallback?.length;
+  const line = back
+    ? `Falling back · holding the fallback line`
+    : `${attack ? 'Advancing' : 'Holding'} ${front.length} ${front.length === 1 ? 'province' : 'provinces'} · ${general.line ? 'drawn front' : target}`;
   const tip = `Front\nThe commander's sector of the border${general.target == null ? '' : ` with ${target}`}: ${front.length} provinces for ${commandSize(general)} divisions. `
     + 'Divisions take posts along it by themselves.\nPlanning grows while they hold their posts; an offensive spends it, halting resets it.'
     + (nextAssault > 0 ? `\nNext assault in ${nextAssault} weeks (stance tempo).` : '');
@@ -255,11 +258,17 @@ function ordersHtml(game, me, units) {
   const [only] = standing;
   const label = standing.size > 1 ? 'mixed orders'
     : count > 1 ? `all ${only.replace(/^follows /, 'follow ')}` : only;
-  const disband = count === 1
-    ? `<button class="ap-btn quiet" type="button" data-disband="${lead.id}" ${lead.battleId ? 'disabled' : ''}${tipAttr({ text: lead.battleId
-      ? 'A division in battle cannot be disbanded.'
-      : 'Disband this division. Survivors walk home: their manpower returns to the provinces that raised them and the upkeep stops. The dead do not come back.' })}>Disband</button>`
-    : '';
+  // Terhis tek ve çoklu seçimde aynı düğme: çoklu seçimde düğme hiç yoktu
+  // (Kerem), kırk tümen için kırk ayrı seçim gerekiyordu. Muharebedekiler
+  // atlanır; kimlik listesi düğmeye yazılır, kurulu hâl o listeye bağlıdır.
+  const free = units.filter((unit) => !unit.battleId);
+  const ids = free.map((unit) => unit.id).join(',');
+  const armed = Boolean(ids) && disbandArmed === ids;
+  const what = count === 1 ? 'this division' : `the ${free.length} selected ${free.length === 1 ? 'division' : 'divisions'}`;
+  const skipped = count - free.length;
+  const disband = `<button class="ap-btn quiet ap-disband${armed ? ' danger' : ''}" type="button" data-disband="${ids}" ${free.length ? '' : 'disabled'}${tipAttr({ text: !free.length
+    ? (count === 1 ? 'A division in battle cannot be disbanded.' : 'Every selected division is in battle; none can be disbanded.')
+    : `Disband ${what}. Survivors walk home: their manpower returns to the provinces that raised them and the upkeep stops. The dead do not come back.${skipped ? `\n${skipped} in battle ${skipped === 1 ? 'stays' : 'stay'}.` : ''}${armed ? '' : '\nClick twice to confirm.'}` })}>${armed ? 'Confirm disband?' : count === 1 ? 'Disband' : `Disband ${free.length}`}</button>`;
   return `<section class="ap-sec ap-orders">
       <h4>Orders <span>${esc(label)}</span></h4>
       <div class="ap-actions">
@@ -269,6 +278,16 @@ function ordersHtml(game, me, units) {
         ${disband}
       </div>
     </section>`;
+}
+
+/**
+ * İki tıklı terhis. Disband, Hold/Stop ile aynı satırda tek tıkla tümeni
+ * siliyordu — geri alınamaz eylem, komşu düğmeye kayan bir tıkla. İlk tık
+ * bu kimliği "onay bekliyor" yapar (hud.js birkaç saniye sonra söndürür).
+ */
+let disbandArmed = null;
+export function armDisband(id) {
+  disbandArmed = id;
 }
 
 /** Sol alt panel: seçili tümenlerin tamamı (tek seçimde ayrıntı). */
@@ -331,7 +350,7 @@ export function generalPickerHtml(game, me, list, { branch = BRANCH.ARMY, costLa
  * sarıyordu; dikey kart aynı genişliğe tek satır sığar. Tümensiz general
  * "yedek" olarak söner.
  */
-export function commandCardsHtml(game, me, { active = null, selected = 0 } = {}) {
+export function commandCardsHtml(game, me, { active = null, selected = 0, retireArm = null } = {}) {
   const cards = officersOf(me, BRANCH.ARMY).map((general) => {
     const size = commandSize(general);
     const advancing = general.stance === 'advance';
@@ -347,15 +366,18 @@ export function commandCardsHtml(game, me, { active = null, selected = 0 } = {})
         <b class="cmd-name">${esc(first)}</b>
         <span class="cmd-stars">${'★'.repeat(general.skill)}<i>${'★'.repeat(Math.max(0, MAX_SKILL - general.skill))}</i></span>
         <span class="cmd-plan"><i style="width:${(ready * 100).toFixed(0)}%"></i></span>
+        <span class="cmd-x${retireArm === general.id ? ' armed' : ''}" role="button" data-cmd-retire="${general.id}" aria-label="Retire ${esc(general.name)}"${tipAttr({ text: retireArm === general.id ? `Click again to retire ${general.name}` : `Retire ${general.name}\nTwo clicks. ${size ? `Their ${size} divisions are left without a commander.` : 'They command no divisions.'}` })}>${retireArm === general.id ? '✓' : '✕'}</span>
       </button>`;
   }).join('');
   const assignTip = selected
     ? `Give the ${selected} selected ${selected === 1 ? 'division' : 'divisions'} to a commander`
     : 'Select divisions first: click, box-drag or double-click an army';
-  return `${cards}<button class="cmd-card cmd-assign" type="button" data-new-command="1" ${selected ? '' : 'disabled'}${tipAttr({ text: assignTip })}>
+  // Assign kartı BAŞTA: şerit taşınca (≈10 komutan) sondaki kart kaydırılıp
+  // görünmez oluyordu ve kaydırma çubuğu gizli (ölçüldü). Kaydırma tekerlekle.
+  return `<button class="cmd-card cmd-assign" type="button" data-new-command="1" ${selected ? '' : 'disabled'}${tipAttr({ text: assignTip })}>
       <span class="cmd-top">${selected ? `<b class="cmd-size">${selected}</b>` : ''}</span>
       <span class="cmd-portrait cmd-plus">+</span>
       <b class="cmd-name">Assign</b>
       <span class="cmd-stars">${selected ? 'selected' : 'select first'}</span>
-    </button>`;
+    </button>${cards}`;
 }

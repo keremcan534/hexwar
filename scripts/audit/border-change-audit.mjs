@@ -26,6 +26,11 @@ function runSeed(seed) {
   const game = headless(seed);
   const world = game.world;
   const before = world.provinces.map((province) => province.owner);
+  // Başlangıç sahibinin ana halkı: toprak sonunda KENDİ halkının devletine
+  // geçtiyse (ayaklanma, bırakma, LIBERATE, soydaşın irredentası) bu yutma
+  // değil çözülmedir (TASARIM §10, 2026-10-15). Kartopu yalnız yabancı
+  // toprağın el değiştirmesidir.
+  const primaryBefore = before.map((owner) => (owner >= 0 ? world.nations[owner]?.culture : -1));
   const nationsBefore = world.nations.filter((nation) => nation.alive).length;
   const wars = new Set();
   // BARIŞÇIL BİRLEŞME kartopu değildir: küçük soydaş devletin "Büyük X"e
@@ -55,12 +60,15 @@ function runSeed(seed) {
 
   let changed = 0;
   let union = 0;
+  let national = 0;
   const gainers = new Set();
   for (let i = 0; i < before.length; i++) {
     const owner = world.provinces[i].owner;
     if (owner === before[i]) continue;
     changed++;
     if (viaUnion.has(i)) union++;
+    else if (owner >= 0 && world.nations[owner]?.culture === world.provinces[i].culture
+      && primaryBefore[i] !== world.provinces[i].culture) national++;
     if (owner >= 0) gainers.add(owner);
   }
   return {
@@ -68,6 +76,7 @@ function runSeed(seed) {
     provinces: before.length,
     changed,
     union,
+    national,
     gainers: gainers.size,
     wars: wars.size,
     nationsBefore,
@@ -84,7 +93,8 @@ console.log(table(rows, [
   { label: 'kume', get: (r) => r.provinces },
   { label: 'sahibi degisen', get: (r) => r.changed },
   { label: 'pay', get: (r) => pct(r.changed / r.provinces) },
-  { label: 'savas payi', get: (r) => pct((r.changed - r.union) / r.provinces) },
+  { label: 'halk payi', get: (r) => pct(r.national / r.provinces) },
+  { label: 'savas payi', get: (r) => pct((r.changed - r.union - r.national) / r.provinces) },
   { label: 'kazanan ulke', get: (r) => r.gainers },
   { label: 'ulke (once -> sonra)', get: (r) => `${r.nationsBefore} -> ${r.nationsAfter}` },
 ]));
@@ -128,12 +138,12 @@ sub('TEST 2 — birden fazla ulke kazaniyor mu?');
 sub('TEST 3 — degisim sinirli mi? (Victoria olcegi)');
 {
   // Eşik SAVAŞ payına uygulanır (birleşme hariç); toplam da yazılır.
-  const runaway = rows.filter((r) => (r.changed - r.union) / r.provinces > 0.33);
+  const runaway = rows.filter((r) => (r.changed - r.union - r.national) / r.provinces > 0.33);
   const wiped = rows.filter((r) => r.nationsBefore - r.nationsAfter > r.nationsBefore * 0.25);
   if (runaway.length) {
     finding('HIGH', 'kartopu',
       "bir kosuda haritanin ucte birinden fazlasi el degistirmemeli",
-      runaway.map((r) => `${r.seed} savas ${pct((r.changed - r.union) / r.provinces)} (toplam ${pct(r.changed / r.provinces)})`).join(', '),
+      runaway.map((r) => `${r.seed} savas ${pct((r.changed - r.union - r.national) / r.provinces)} (toplam ${pct(r.changed / r.provinces)})`).join(', '),
       'savas sinir duzeltir, ulke yutmaz');
   } else if (wiped.length) {
     finding('HIGH', 'ulke silinmesi',
@@ -141,7 +151,7 @@ sub('TEST 3 — degisim sinirli mi? (Victoria olcegi)');
       wiped.map((r) => `${r.seed} ${r.nationsBefore} -> ${r.nationsAfter}`).join(', '));
   } else {
     const share = rows.reduce((sum, r) => sum + r.changed / r.provinces, 0) / rows.length;
-    const war = rows.reduce((sum, r) => sum + (r.changed - r.union) / r.provinces, 0) / rows.length;
+    const war = rows.reduce((sum, r) => sum + (r.changed - r.union - r.national) / r.provinces, 0) / rows.length;
     console.log(`  -> Haritanin ortalama ${pct(share)}'i el degisti (savasla ${pct(war)}), ulke sayisi korundu. DOGRU.`);
   }
 }

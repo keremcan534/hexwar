@@ -73,8 +73,12 @@ export class UnitHover {
       </div>`;
     }).join('');
     const more = stack.length > 6 ? `<p class="uh-more">+${stack.length - 6} more</p>` : '';
-    const side = nation?.id === me ? 'yours' : 'other';
-    this.root.innerHTML = `<header class="uh-head ${side}"><i style="background:${esc(nation?.color ?? '#888')}"></i><b>${esc(nation?.name ?? '?')}</b><small>${stack.length} ${stack.length === 1 ? 'division' : 'divisions'}</small></header>${rows}${more}`;
+    // Taraf haritayla AYNI kaynaktan (renderer.sideOf): kart eskiden yalnız
+    // "benim / diğer" biliyordu, savaştığımız ordu tarafsız garnizonla aynı
+    // başlıkla açılıyordu.
+    const side = nation ? this.game.renderer.sideOf(world, nation.id, me) : 'other';
+    const tag = { hostile: 'Enemy', ally: 'Ally' }[side];
+    this.root.innerHTML = `<header class="uh-head ${side}"><i style="background:${esc(nation?.color ?? '#888')}"></i><b>${esc(nation?.name ?? '?')}</b>${tag ? `<em class="uh-side">${tag}</em>` : ''}<small>${stack.length} ${stack.length === 1 ? 'division' : 'divisions'}</small></header>${rows}${more}`;
     this.root.hidden = false;
   }
 }

@@ -17,7 +17,7 @@
 
 import { lawOption } from './laws.js';
 import { mod } from './modifiers.js';
-import { CULTURE, cultureMix, foreignManpowerShare, isAccepted } from './culture.js';
+import { CULTURE, cultureMix, foreignManpowerShare, isAccepted, isHomeRule } from './culture.js';
 import { claimSoldiers, releaseSoldiers } from './provinces.js';
 import { focusBonus } from './focus.js';
 
@@ -67,7 +67,6 @@ export function culturePools(world, cluster, nation) {
   const econ = cluster?.econ;
   if (!econ || !nation) return [];
   const rate = lawOption(nation, 'conscription').rate
-    * (1 + 0.2 * (econ.buildings?.barracks ?? 0))
     * Math.max(0.2, 1 + mod(nation, 'manpower'))
     * (1 + focusBonus(econ, 'manpower'));
   const calm = 1 - clamp01((econ.unrest ?? 0) / 10) * 0.6;
@@ -76,7 +75,9 @@ export function culturePools(world, cluster, nation) {
   const foreign = foreignManpowerShare(nation);
   const levied = econ.levied ?? {};
   const rows = cultureRows(cluster).map((row) => {
-    const willing = isAccepted(nation, row.id) ? 1 : foreign;
+    // Home Rule halkı kendi milisini tutar: askerinin yarısını gönderir
+    // (TASARIM D1; vatandaş tam, tebaa vatandaşlık yasasının payı kadar).
+    const willing = isAccepted(nation, row.id) ? (isHomeRule(nation, row.id) ? 0.5 : 1) : foreign;
     return {
       id: row.id,
       share: row.share,
@@ -189,9 +190,16 @@ export function releaseDraw(world, nationId, draw, men, died = false) {
  */
 export const DEATH_SHARE = 1 / 3;
 
+/**
+ * Milisin (levée, redesign D6) ölüm payı: eğitimsiz, siperi ve sıhhiyesi
+ * olmayan halk ordusu kaybının yarısını ölü verir — levée'nin demografik
+ * izi budur. Milis bayrağını P6 yazar; o gelene kadar her kayıp DEATH_SHARE.
+ */
+export const MILITIA_DEATH_SHARE = 0.5;
+
 /** Muharebe ya da teslim kaybı: payı ölür, kalanı eve döner. */
-export function releaseCasualties(world, nationId, draw, men) {
-  const dead = Math.max(0, men) * DEATH_SHARE;
+export function releaseCasualties(world, nationId, draw, men, militia = false) {
+  const dead = Math.max(0, men) * (militia ? MILITIA_DEATH_SHARE : DEATH_SHARE);
   releaseDraw(world, nationId, draw, dead, true);
   releaseDraw(world, nationId, draw, Math.max(0, men) - dead);
 }

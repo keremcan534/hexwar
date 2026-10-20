@@ -2,25 +2,21 @@
 //
 // Buradaki hicbir sey oyunun kurallarini degistirmez. Her hafta ulkenin
 // durumuna bakar, gecen haftayla karsilastirir ve GECIS oldugunda konusur.
-// Kor Beta #2'nin bir numarali sikayeti buydu: oyuncu borclandigini, ordusunun
+// Kor Beta #2'nin bir numarali sikayeti buydu: oyuncu ikmal krizine girdigini, ordusunun
 // yok oldugunu, rejiminin degistigini ve baskentini kaybettigini oyundan
 // ogrenemiyordu (OPEN_BETA_2_MASTER_VERDICT, soru 5).
 //
 // Tekrar engelleme tasarima gomulu: durum makinesi yalnizca DEGISIMDE konusur,
-// borc surdugu her hafta degil.
+// kriz surdugu her hafta degil.
 
 import { TIER, announce, captureOpening } from './chronicle.js';
-import { debtCapacity } from './economy.js';
 import { governmentType, rulingParty } from './politics.js';
 import { controllerOf } from './control.js';
 import { regimentCount } from './units.js';
 import { scoreboard } from './hegemony.js';
 import { atWar } from './diplomacy.js';
+import { money } from './money.js';
 
-/** Kredinin bu kadari tukendiyse borc "kritik" sayilir. */
-const DEBT_CRITICAL = 0.75;
-/** Bunun altindaki borc gecici bir acik sayilir, ulusal olay degil. */
-const DEBT_FLOOR = 120;
 /** Ordunun bir haftada bu orandan fazlasi giderse bozgun sayilir. */
 const ROUT_SHARE = 0.34;
 /**
@@ -37,22 +33,18 @@ const ROUT_FLOOR = 3;
 
 /**
  * Ilk gozlem TEMEL CIZGIDIR, olay degil. Kayittan donen (ya da yeni kurulan)
- * ulke borclu/isgal altinda olabilir; bunu "yeni olmus" gibi duyurmak
+ * ulke krizde/isgal altinda olabilir; bunu "yeni olmus" gibi duyurmak
  * yuklemeden sonra sahte tarih uretirdi.
  */
 function ensureEventState(nation) {
   nation.events ??= {};
   const state = nation.events;
-  state.debt ??= null;
+  state.supply ??= null;
   state.government ??= null;
   state.party ??= null;
   state.capital ??= null;
   state.regiments ??= -1;
   return state;
-}
-
-function money(value) {
-  return `${Math.round(value).toLocaleString('en-US')} gold`;
 }
 
 /**
@@ -80,74 +72,35 @@ function regimentsOf(world, nationId) {
 }
 
 /**
- * Borc durumu: temiz → borclu → kritik → temerrut. Yalnizca gecis konusur;
- * "borcun var" diye her hafta uyarmak bildirim cehennemidir.
- *
- * Esik ANLAMLI olmali: bir haftalik £7'lik acik ulusal olay degildir. Bir
- * aylik gelir esigi hem histerezis saglar (kucuk acik gidip gelirken kart
- * ucusmaz) hem de olayi gercekten haber degeri olan yere baglar.
+ * İkmal durumu: temiz → kriz. Yalnızca geçiş konuşur. Kriz, faturaların
+ * (ikmal, okul, sıkıyönetim) çıktının tavan payını aştığı haftadır
+ * (econ/bills.js); iflasın yerine geçti.
  */
-function debtPhase(nation) {
-  if ((nation.bankruptUntil ?? 0) > (nation.economy?.ledger?.lastUpdated ?? 0)) return 'default';
-  const debt = Math.max(0, nation.debt ?? 0);
-  if (debt <= 0.01) return 'clear';
-  const monthlyIncome = Math.max(0, nation.economy?.ledger?.income ?? 0) * 4;
-  if (debt < Math.max(DEBT_FLOOR, monthlyIncome)) return 'minor';
-  return debt >= debtCapacity(nation) * DEBT_CRITICAL ? 'critical' : 'indebted';
+function supplyPhase(nation) {
+  return (nation.economy?.bills?.s ?? 1) < 1 - 1e-6 ? 'crisis' : 'clear';
 }
 
-function announceDebt(game, nation, state, from, to) {
-  // Borc evresi degisince onceki evrenin kalici karti duser: ekranda hep
-  // BUGUNKU evre durur, 1839'un temerrut karti 1865'te durmaz (B-5). Anahtarlar
-  // ulkeler arasi ortak; yalniz oyuncunun kendi kartlari dusurulur.
-  if (nation.id === game.turns?.playerNation) {
-    game.notifications?.dismissKeys?.(['debt-begins', 'debt-critical', 'debt-default']);
-  }
-  const ledger = nation.economy?.ledger ?? {};
-  const weekly = ledger.net ?? 0;
-  const interest = Math.abs(nation.economy?.ledger?.interest ?? 0);
-  const line = `Debt ${money(nation.debt ?? 0)} · weekly ${weekly >= 0 ? '+' : ''}${money(weekly)} · interest ${money(interest)}/wk`;
-  // 'minor' gecis konusmaz: kucuk acik gelir gider, haber degeri yoktur.
-  if (to === 'minor') return;
+function announceSupply(game, nation, state, from, to) {
+  if (nation.id === game.turns?.playerNation) game.notifications?.dismissKeys?.(['supply-crisis']);
   const turn = game.world?.turn ?? 0;
-  if (to === 'indebted' && from !== 'critical' && from !== 'default') {
-    if (throttled(state, 'debt-begins', turn)) return;
+  const bills = nation.economy?.bills ?? {};
+  if (to === 'crisis') {
+    if (throttled(state, 'supply-crisis', turn, 52)) return;
     announce(game, nation, {
-      kind: 'CRISIS', tier: TIER.MAJOR, key: 'debt-begins',
-      title: 'The treasury borrows',
-      detail: `Revenue no longer covers the state's obligations. ${line}`,
+      kind: 'CRISIS', tier: TIER.MAJOR, key: 'supply-crisis',
+      title: 'Supply crisis',
+      detail: `The state's bills (${money(bills.owed ?? 0, 0)} a week) outgrow what the country can spare;`
+        + ` only ${Math.round((bills.s ?? 1) * 100)}% is paid. The army reinforces, trains and recovers slower.`,
       halt: false, ttl: 0,
     });
     return;
   }
-  if (to === 'critical') {
-    if (throttled(state, 'debt-critical', turn)) return;
+  if (to === 'clear' && from === 'crisis') {
+    if (throttled(state, 'supply-clear', turn, 52)) return;
     announce(game, nation, {
-      kind: 'CRISIS', tier: TIER.MAJOR, key: 'debt-critical',
-      title: 'Credit is running out',
-      detail: `Lenders are close to refusing the state. ${line}`,
-      halt: false, ttl: 0,
-    });
-    return;
-  }
-  if (to === 'default') {
-    if (throttled(state, 'debt-default', turn)) return;
-    announce(game, nation, {
-      kind: 'CRISIS', tier: TIER.EXISTENTIAL, key: 'debt-default',
-      title: 'The state defaults',
-      detail: `Obligations went unpaid; creditors will lend less and charge more. ${line}`,
-      halt: true, ttl: 0,
-    });
-    return;
-  }
-  // Borcun kapanmasi ancak GERCEK bir borctan sonra haberdir: 'minor'den
-  // temizlige donus gunluk isleyistir.
-  if (to === 'clear' && (from === 'indebted' || from === 'critical' || from === 'default')) {
-    if (throttled(state, 'debt-clear', turn)) return;
-    announce(game, nation, {
-      kind: 'POLITICS', tier: TIER.MAJOR, key: 'debt-clear',
-      title: 'The debt is cleared',
-      detail: 'The treasury owes nothing. Credit recovers from here.',
+      kind: 'POLITICS', tier: TIER.MINOR, key: 'supply-clear',
+      title: 'Supply restored',
+      detail: 'The state pays its bills in full again.',
     });
   }
 }
@@ -183,12 +136,12 @@ export function runNationalEvents(game, nation) {
     nation.opening ? null : scoreboard(world).findIndex((row) => row.nation.id === nation.id) + 1);
 
   // --- KAMPANYA SAYACLARI ------------------------------------------------
-  // Kapanis ekraninin "savas sayisi / zirve hazine / en kotu borc" satirlari
-  // icin ucuz, haftalik sayaclar (REMAINING_PRESENTATION_DEBT #3'un cozumu:
-  // uydurma sayi gostermek yerine sayac tutuluyor). ~10 satir, kayda ~40 bayt.
-  const tally = nation.tally ??= { warsFought: 0, peakGold: 0, worstDebt: 0 };
-  tally.peakGold = Math.max(tally.peakGold, Math.round(nation.gold ?? 0));
-  tally.worstDebt = Math.max(tally.worstDebt, Math.round(nation.debt ?? 0));
+  // Kapanis ekraninin "savas sayisi / zirve cikti / kriz haftalari" satirlari
+  // icin ucuz, haftalik sayaclar (uydurma sayi gostermek yerine sayac
+  // tutuluyor). ~10 satir, kayda ~40 bayt.
+  const tally = nation.tally ??= { warsFought: 0 };
+  tally.peakOutput = Math.max(tally.peakOutput ?? 0, Math.round(nation.economy?.ic?.output ?? 0));
+  tally.crisisWeeks = (tally.crisisWeeks ?? 0) + (supplyPhase(nation) === 'crisis' ? 1 : 0);
   state.atWarWith ??= {};
   for (const other of world.nations) {
     if (!other.alive || other.id === nation.id) continue;
@@ -204,10 +157,10 @@ export function runNationalEvents(game, nation) {
   // --- ACLIK ARKI --------------------------------------------------------
   runHungerArc(game, nation, state);
 
-  // --- BORC / TEMERRUT ---------------------------------------------------
-  const phase = debtPhase(nation);
-  if (state.debt !== null && phase !== state.debt) announceDebt(game, nation, state, state.debt, phase);
-  state.debt = phase;
+  // --- IKMAL KRIZI -------------------------------------------------------
+  const phase = supplyPhase(nation);
+  if (state.supply !== null && phase !== state.supply) announceSupply(game, nation, state, state.supply, phase);
+  state.supply = phase;
 
   // --- REJIM -------------------------------------------------------------
   const form = governmentType(nation);

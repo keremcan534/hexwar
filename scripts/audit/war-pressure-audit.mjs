@@ -39,6 +39,9 @@ function runSeed(seed) {
   const world = game.world;
   const n = world.nations.length;
   const startOwners = world.provinces.map((p) => p.owner);
+  // Başlangıç sahibinin ana halkı: toprağın kendi halkına dönmesi çözülmedir,
+  // kartopu değil (TASARIM §10, 2026-10-15; bkz. border-change-audit).
+  const startPrimary = startOwners.map((owner) => (owner >= 0 ? world.nations[owner]?.culture : -1));
 
   const open = new Map();          // "a:b" -> baslangic turu
   const wars = [];                 // { a, b, start, end, weeks, secondFront }
@@ -122,10 +125,13 @@ function runSeed(seed) {
   }
 
   let changed = 0;
+  let national = 0;
   const gainers = new Set();
   for (let i = 0; i < startOwners.length; i++) {
     const owner = world.provinces[i].owner;
     if (owner === startOwners[i]) continue;
+    if (owner >= 0 && world.nations[owner]?.culture === world.provinces[i].culture
+      && startPrimary[i] !== world.provinces[i].culture) national++;
     changed++;
     if (owner >= 0) { gainers.add(owner); annexed[owner]++; }
   }
@@ -164,6 +170,7 @@ function runSeed(seed) {
     infamyOver: [...infamyPeak].filter((v) => v >= INFAMY_COALITION).length,
     thresholdNationWeeks,
     changed,
+    national,
     provinces: startOwners.length,
     gainers: gainers.size,
     topAnnexer: Math.max(...annexed),
@@ -327,7 +334,7 @@ sub('TEST 6 — savasin stratejik govdesi');
 // --- TEST 7: eski hata geri gelmedi mi? ---
 sub('TEST 7 — savas hala toprak uretiyor mu? (gerileme kapisi)');
 {
-  const share = avg('changed') / avg('provinces');
+  const share = (avg('changed') - avg('national')) / avg('provinces');
   console.log(`  ${YEARS} yilda degisen kume orani ${pct(share)}`
     + ` · toprak kazanan ulke ${n1(avg('gainers'))}`
     + ` · ulke ${rows.map((r) => `${r.aliveStart}->${r.alive}`).join(' ')}`);

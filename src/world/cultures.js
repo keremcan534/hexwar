@@ -38,7 +38,7 @@ const DEFAULT_TAIL = ['en', 'ani', 'ir', 'oy', 'ash', 'uk', 'iel', 'ar', 'os', '
  * Doygunluk ve açıklık aileye göre hafifçe kayar — akraba halklar akraba
  * tonlarda okunur ama birbirinden ayırt edilir.
  */
-function cultureColor(index, family, rng) {
+export function cultureColor(index, family, rng) {
   const hue = (index * 137.508 + rng.range(0, 12)) % 360;
   // Ton TEK BAŞINA yetmez: 38 kültür 360 dereceye yayılınca iki halk ~10
   // derece yakınına düşebiliyor ve özellikle azınlık taramasında çizgi
@@ -50,7 +50,7 @@ function cultureColor(index, family, rng) {
   return { color: `hsl(${hue.toFixed(0)} ${sat}% ${light}%)`, hue, sat, light };
 }
 
-function cultureName(rng, used, family) {
+export function cultureName(rng, used, family) {
   const tails = FAMILY_TAIL[family] ?? DEFAULT_TAIL;
   for (let i = 0; i < 60; i++) {
     const name = rng.pick(STEM) + rng.pick(tails);
@@ -169,7 +169,7 @@ export function generateCultures(world, rng, options = {}) {
    -------------------------------------------------------------------------- */
 
 /** Payları toplamı 1 olacak şekilde normalize eder, cılızları atar. */
-function normalizeMix(mix, floor = 0.04) {
+export function normalizeMix(mix, floor = 0.04) {
   let total = 0;
   for (const share of mix.values()) total += share;
   if (total <= 0) return [];

@@ -54,15 +54,18 @@ export function archetypePlan(rng) {
     {
       // dev = 1900 kademesi (game/era.js tabloları): demiryolu hamlesindeki dev.
       role: 'kuzey-imparatorlugu', zone: 'kuzey-bozkiri',
-      provinces: rng.int(24, 31), dev: 1, extraCity: true, acceptNeighbors: 1,
+      // Başlangıçta kabul edilen komşu halk YOK (2026-10-15, redesign D3):
+      // bileşik monarşi bununla %92-99 kabullü doğuyor, "halklar hapishanesi"
+      // yalnız kâğıtta kalıyordu. Halklar artık world/peoples.js'ten doğar.
+      provinces: rng.int(24, 31), dev: 1, extraCity: true,
     },
     {
       role: 'bilesik-monarsi', zone: 'yogun-bati',
-      provinces: rng.int(14, 20), dev: 1, extraCity: true, acceptNeighbors: 2,
+      provinces: rng.int(14, 20), dev: 1, extraCity: true,
     },
     {
       role: 'kavsak-imparatorlugu', zone: 'kavsak',
-      provinces: rng.int(12, 18), dev: 1, acceptNeighbors: 1,
+      provinces: rng.int(12, 18), dev: 1,
     },
     {
       // 1900'ün en büyük sanayisi: yeni dünyanın federasyonu.

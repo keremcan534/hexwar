@@ -189,7 +189,7 @@ body:has(#screen[data-screen='nation']:not(.hidden)) :is(#war-bar, #battle-strip
   color: var(--nov-ink);
   font-family: var(--font-display);
   font-size: 12.5px;
-  cursor: pointer;
+  cursor: var(--cur-pointer);
 }
 .nov-link span { color: var(--nov-gold); }
 .nov-link:hover { border-color: var(--nov-gold); color: #fff3d6; }
@@ -380,7 +380,7 @@ body:has(#screen[data-screen='nation']:not(.hidden)) :is(#war-bar, #battle-strip
   border-radius: 2px;
   background: #0a1113;
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8), 0 3px 8px rgba(0, 0, 0, 0.5);
-  cursor: pointer;
+  cursor: var(--cur-pointer);
 }
 .nov-rel-flag:hover { border-color: var(--nov-gold-hi); }
 /* Arma çerçevesi: dışta siyah hat, pirinç kenar, içte gölge. */
@@ -576,7 +576,7 @@ body:has(#screen[data-screen='nation']:not(.hidden)) :is(#war-bar, #battle-strip
   background: none;
   color: #f3e6c4;
   font: inherit;
-  cursor: pointer;
+  cursor: var(--cur-pointer);
 }
 .nov-capital .glyph { width: 14px; height: 14px; opacity: 0.7; }
 .nov-capital:hover { color: #fff3d6; text-decoration: underline; text-decoration-color: var(--nov-gold-lo); }

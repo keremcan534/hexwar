@@ -34,6 +34,10 @@
     "audit:mechanics": "node scripts/audit/mechanic-health-audit.mjs",
     "audit:culture-unrest": "node scripts/audit/culture-unrest-audit.mjs",
     "audit:homeland": "node scripts/audit/homeland-audit.mjs",
-    "audit:econ": "node scripts/audit/econ-audit.mjs"
+    "audit:peoples": "node scripts/audit/peoples-audit.mjs",
+    "audit:war": "node scripts/audit/war-support-audit.mjs",
+    "audit:snapshot": "node scripts/audit/snapshot.mjs",
+    "audit:econ": "node scripts/audit/econ-audit.mjs",
+    "audit:military-industry": "node scripts/audit/military-industry-audit.mjs"
   }
 }

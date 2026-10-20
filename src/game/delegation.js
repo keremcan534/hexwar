@@ -16,14 +16,15 @@ export const DELEGATION_AREAS = {
   economy: {
     id: 'economy',
     name: 'Economy',
-    screen: 'economy',
-    desc: 'The ministry weighs the production lines toward what the army lacks and opens or closes trade to fit the balance of resources.',
-  },
-  construction: {
-    id: 'construction',
-    name: 'Construction',
-    screen: 'construction',
-    desc: 'Factories where consumer goods run short, farms where food does, mines on scarce deposits, railways and development for the populous heartland.',
+    // "economy" adında bir ekran YOK: anahtar bu alanın kaldıraçlarının
+    // durduğu üç ekranın başlığında görünür (hat ağırlıkları, ticaret yasası,
+    // vergi/eğitim kemeri). Tek ekrana bağlıyken hiçbir yerde hap çıkmıyor,
+    // varsayılan AÇIK devir kapatılamıyordu.
+    // Kalkınma ekranı da burada: fonun hedefi bir simülasyon kuralıdır (YZ
+    // değil), oyuncu onu Develop odağıyla yönlendirir; ekrandaki tek
+    // otomasyon halkın doyurulma kolu bu alandadır.
+    screen: ['industry', 'trade', 'budget', 'construction'],
+    desc: 'The ministry sets how well the people are fed, weighs the production lines toward what the army lacks and sets the trade law to the balance of resources. When the state’s bills outrun its output it cuts school spending, lengthens the working week or, in peacetime, stands down a regiment.',
   },
   reforms: {
     id: 'reforms',
@@ -36,13 +37,16 @@ export const DELEGATION_AREAS = {
     id: 'agenda',
     name: 'Agenda',
     screen: 'politics',
+    // Politics başlığındaki hap Government'ındır; gündemin anahtarı kendi
+    // panelinde durur (iki hap sekme şeridine sığmaz, şeridi kaydırır).
+    inPanel: true,
     desc: 'The cabinet picks the national agenda that fits the country best when the last one completes.',
   },
   recruitment: {
     id: 'recruitment',
     name: 'Recruitment',
     screen: 'military',
-    desc: 'The general staff orders regiments, mobilises the reserve when an enemy outweighs the army — and disbands regiments if the state goes bankrupt in peacetime.',
+    desc: 'The general staff orders regiments, keeps half the manpower as a reserve that mobilises when an enemy outweighs the army, stands down regiments beyond that in peacetime — and stands down regiments when the state cannot supply them.',
   },
   research: {
     id: 'research',
@@ -60,6 +64,26 @@ export const DELEGATION_AREAS = {
 
 export const DELEGATION_IDS = Object.keys(DELEGATION_AREAS);
 
+/** Alanın anahtarının göründüğü ekranlar (bir alan birden çok ekranda olabilir). */
+export function screensOfArea(areaId) {
+  const screen = DELEGATION_AREAS[areaId]?.screen;
+  return screen == null ? [] : [].concat(screen);
+}
+
+/**
+ * Bir ekranın bütün devir alanları. Ekran→alan eşlemesi TEK yerdedir: sekme
+ * lambası, sekme kartı ve hap ayrı ayrı `find`/`fromEntries` kurunca biri
+ * ilk, biri son alanı seçiyor ve Politics'te lamba ile hap ayrışıyordu.
+ */
+export function areasOfScreen(screen) {
+  return DELEGATION_IDS.filter((id) => screensOfArea(id).includes(screen));
+}
+
+/** Ekran başlığındaki hapın alanı (panel içi anahtarlar hariç). */
+export function headerAreaOf(screen) {
+  return areasOfScreen(screen).find((id) => !DELEGATION_AREAS[id].inPanel) ?? null;
+}
+
 /**
  * Yeni kampanyada hükûmete devredilmiş BAŞLAYAN alanlar: üst sekme
  * şeridindeki bütün portföyler (Kerem: "barlarımız hepsi otomatikte
@@ -67,7 +91,7 @@ export const DELEGATION_IDS = Object.keys(DELEGATION_AREAS);
  * savaş ilan eder — ilk haftada habersiz bir savaş başlatmak "kolaylık" değil.
  */
 export const DEFAULT_AUTO_AREAS = [
-  'economy', 'construction', 'reforms', 'agenda', 'recruitment', 'research',
+  'economy', 'reforms', 'agenda', 'recruitment', 'research',
 ];
 
 /**

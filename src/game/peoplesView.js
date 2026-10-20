@@ -7,15 +7,16 @@
 // büyüme çarpanları (provinces.growthFactors). Burada tek dökümde toplanır.
 //
 // KABUL ÖNİZLEMESİ (arayüz ilkesi: basmadan önce sonucu göster): halk geçici
-// olarak kabul edilmiş sayılır, oyunun kendi formülü (nationManpower,
-// unrestBreakdown) yeniden okunur, liste birebir geri konur.
+// olarak kabul edilmiş (geri almada: yabancı) sayılır, oyunun kendi formülü
+// (nationManpower, unrestBreakdown) yeniden okunur, liste birebir geri konur.
 //
 // Katman: game. DOM yok.
 
 import {
   ACCEPT_POWER, CULTURE, acceptBlockers, acceptedCultures, cultureMix,
-  releaseBlockers, unrestBreakdown,
+  revokeBlockers, unrestBreakdown,
 } from './culture.js';
+import { releaseLabel, releasePeopleBlockers } from './nationBirth.js';
 import {
   POLICY, concentrateBlockers, deportBlockers, deportDestinations, deportInfamy, emptiedProvinces,
   forceBlockers, forcedAssimilation, reservationFor, resettleBlockers, resettlementPlan,
@@ -28,6 +29,7 @@ import { UNION_POWER, UNION_RATIO, unionBlockers, unionCandidates, unificationSt
 /** Huzursuzluk dökümünün oyuncuya okunan adları (artı yönde besleyenler). */
 const CAUSES = [
   ['culture', 'Foreign rule'],
+  ['grievance', 'Years of foreign rule'],
   ['conquest', 'Fresh conquest'],
   ['war', 'War weariness'],
   ['occupation', 'Occupation'],
@@ -74,18 +76,22 @@ function targetUnrest(world, nation, provinces, cultureId, turn) {
  * state'lerindeki huzursuzluk hedefi önce/sonra. Kabul listesi birebir geri
  * konur (alan hiç yoksa silinir).
  */
-function acceptPreview(world, nation, cultureId, provinces, turn) {
+function withAccepted(nation, list, read) {
   const had = Object.prototype.hasOwnProperty.call(nation, 'accepted');
   const saved = nation.accepted;
-  const before = { recruits: nationManpower(world, nation.id), unrest: targetUnrest(world, nation, provinces, cultureId, turn) };
-  nation.accepted = [...acceptedCultures(nation), cultureId];
-  let after;
+  nation.accepted = list;
   try {
-    after = { recruits: nationManpower(world, nation.id), unrest: targetUnrest(world, nation, provinces, cultureId, turn) };
+    return read();
   } finally {
     if (had) nation.accepted = saved;
     else delete nation.accepted;
   }
+}
+
+function acceptPreview(world, nation, cultureId, provinces, turn) {
+  const read = () => ({ recruits: nationManpower(world, nation.id), unrest: targetUnrest(world, nation, provinces, cultureId, turn) });
+  const before = read();
+  const after = withAccepted(nation, [...acceptedCultures(nation), cultureId], read);
   return {
     recruits: Math.max(0, after.recruits - before.recruits),
     unrestFrom: before.unrest,
@@ -93,6 +99,23 @@ function acceptPreview(world, nation, cultureId, provinces, turn) {
     power: ACCEPT_POWER,
     backlash: CULTURE.BACKLASH_UNREST,
     backlashWeeks: CULTURE.BACKLASH_WEEKS,
+  };
+}
+
+/**
+ * Geri almanın bedeli, aynı yoldan: halk geçici olarak yabancı sayılır.
+ * Hedef, şikâyet birikmeden önceki ilk adımdır; şikâyet yıllar içinde üstüne
+ * biner (culture.accrueGrievance).
+ */
+function revokePreview(world, nation, cultureId, provinces, turn) {
+  const read = () => ({ recruits: nationManpower(world, nation.id), unrest: targetUnrest(world, nation, provinces, cultureId, turn) });
+  const before = read();
+  const after = withAccepted(nation, acceptedCultures(nation).filter((id) => id !== cultureId), read);
+  return {
+    recruits: Math.max(0, before.recruits - after.recruits),
+    unrestFrom: before.unrest,
+    unrestTo: after.unrest,
+    power: ACCEPT_POWER,
   };
 }
 
@@ -161,7 +184,8 @@ export function peoplesView(world, nation, turn, { limit = 10 } = {}) {
         blockers: acceptBlockers(world, nation, row.id, turn),
         preview: acceptPreview(world, nation, row.id, homes, turn),
       },
-      release: row.accepted ? null : { blockers: releaseBlockers(world, nation, row.id) },
+      // Bırakma hakkı olan halklar için de açıktır: vatandaş da ayrılabilir.
+      release: { blockers: releasePeopleBlockers(world, nation, row.id), label: releaseLabel(world, nation, row.id) },
       expel: row.accepted ? null : { blockers: deportBlockers(world, nation, row.id) },
     };
   });
@@ -271,10 +295,14 @@ export function peopleDetail(world, nation, cultureId, turn = world.turn ?? 0) {
       infamy: deportInfamy(confined) / 2,
       unrest: CULTURE.RESERVATION_UNREST,
     },
-    release: { blockers: releaseBlockers(world, nation, cultureId) },
+    release: { blockers: releasePeopleBlockers(world, nation, cultureId), label: releaseLabel(world, nation, cultureId) },
     accept: row.accepted ? null : {
       blockers: acceptBlockers(world, nation, cultureId, turn),
       preview: acceptPreview(world, nation, cultureId, own.filter((p) => shareIn(p, cultureId) > 0.01), turn),
+    },
+    revoke: !row.accepted || row.primary ? null : {
+      blockers: revokeBlockers(world, nation, cultureId),
+      preview: revokePreview(world, nation, cultureId, own.filter((p) => shareIn(p, cultureId) > 0.01), turn),
     },
   };
 }

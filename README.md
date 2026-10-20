@@ -226,7 +226,7 @@ tümenlerin künyesini açar (düşmanınki dahil). Savaş çiplerinin altındak
 sıralar (önce tehlikede olanlar); çipe tık muharebe penceresini açar.
 Barış masasında **Best deal** savaş puanını YZ'nin kuralıyla doldurur;
 masa, puanın izin verdiği state sayısını yazar. Diplomasi ekranı: savaş
-çubuğundaki **Diplomacy** ya da `F10`.
+çubuğundaki **Diplomacy** ya da `P`.
 
 **Kuşatma:** cephedeki tümenin çekilecek kendi toprağı kalmazsa cebe düşer:
 gücü −%25, yenilirse teslim olur. Harita cepleri halkayla işaretler (bizimki
@@ -456,7 +456,8 @@ Kod: `src/game/culturePolicy.js`.
 
 ### Klavye
 
-Saat: Space duraklat/sürdür, + / − hız. Sekmeler soldan sağa F1-F9.
+Saat: Space duraklat/sürdür, + / − hız. Sekmeler soldan sağa F1-F10;
+P diplomasi ekranı.
 Esc açık paneli/ekranı kapatır. Açık ekran tuşu önce alır, kullanmadığı tuş
 haritaya düşer (WASD/oklar kamera). Her ekranda **A** AUTO'yu çevirir (hap
 başlıkta durur). Construction: 1-9 bina, ↑↓ state, Enter kur, B en iyi 3,

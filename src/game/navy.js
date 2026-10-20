@@ -208,6 +208,24 @@ export function hullEquipment(ship) {
   return UNIT_EQUIPMENT[isSub(ship) ? 'SUBMARINE' : 'WARSHIP']?.ships ?? 10;
 }
 
+/**
+ * Oyuncunun seçerek hurdası (Kerem 2026-10-15: "gemi silme yok"): yalnız
+ * eskimiş gövde gidebiliyordu, fazla filonun bakımından kurtulmanın yolu
+ * yoktu. Grup bir sınıftır (`gen`) ya da `'sub'`. Önce limandaki, sonra en
+ * hasarlı, sonra en eski gövde gider: denizde nöbet tutan filo yarıda boşalmasın.
+ */
+export function scrapPicks(nation, group, count = Infinity) {
+  const inGroup = (ship) => (group === 'sub' ? isSub(ship) : !isSub(ship) && (ship.gen ?? 0) === group);
+  const atSea = (ship) => (ship.zone >= 0 || ship.at >= 0 ? 1 : 0);
+  return shipsOf(nation).filter(inGroup)
+    .sort((a, b) => atSea(a) - atSea(b) || a.hp - b.hp || a.built - b.built || a.id - b.id)
+    .slice(0, Math.max(0, count));
+}
+
+export function scrapGroup(world, nation, group, count = Infinity) {
+  return scrapShips(world, nation, scrapPicks(nation, group, count));
+}
+
 /** Bütün eskimiş gemileri hurdaya ayırır (panel düğmesi). */
 export function scrapObsolete(world, nation) {
   return scrapShips(world, nation, shipsOf(nation).filter((ship) => isObsolete(nation, ship)));
@@ -1053,6 +1071,21 @@ export function navyView(world, nation, override = null) {
       .filter((row) => row.count > 0).reverse(),
     current: SHIP_CLASSES[classIndexOf(nation)],
     obsolete: ships.filter((ship) => isObsolete(nation, ship)).length,
+    // Hurda satırları (navyDock "Fleet"): grup başına gövde, limandaki pay.
+    fleet: [
+      ...SHIP_CLASSES.map((cls, gen) => {
+        const hulls = ships.filter((ship) => (ship.gen ?? 0) === gen);
+        return {
+          group: gen, name: cls.name, plural: cls.plural, count: hulls.length,
+          inPort: hulls.filter((ship) => ship.zone < 0 && ship.at < 0).length,
+          obsolete: gen < classIndexOf(nation),
+        };
+      }).filter((row) => row.count > 0).reverse(),
+      ...(subsOf(nation).length ? [{
+        group: 'sub', name: 'Submarine', plural: 'submarines', count: subsOf(nation).length,
+        inPort: subsOf(nation).filter((ship) => ship.zone < 0 && ship.at < 0).length, obsolete: false,
+      }] : []),
+    ],
     strength: fleetStrength(nation),
     blockade: state.blockade?.[nation.id] ?? 0,
     rows,

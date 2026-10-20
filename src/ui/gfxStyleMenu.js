@@ -53,7 +53,7 @@ function urlParams() {
 const CSS = `
 #settings .gfx-field select { padding: var(--sp-2) var(--sp-3); border: 1px solid var(--line);
   border-radius: var(--radius); background: var(--surface-sunken); color: var(--text);
-  font-family: var(--font-ui); font-size: var(--fs-md); cursor: pointer; }
+  font-family: var(--font-ui); font-size: var(--fs-md); cursor: var(--cur-pointer); }
 #settings .gfx-head + .gfx-field { margin-top: var(--sp-2); }
 .gfx-field option { background: var(--surface-1); color: var(--text); }
 `;
@@ -187,8 +187,10 @@ export function mountGfxStyleMenu(game) {
   const q = urlParams();
   const stored = load(STYLE_KEY);
   const known = (n) => options.some((o) => o.name === n);
-  // Yeni oyuncu: kayıt yok → Classic.
-  const initial = q.get('gfx') || (known(stored) ? stored : 'classic');
+  // Yeni oyuncu: kayıt yok → Victoria (2026-10-14, Kerem görsel yönü seçti:
+  // kâğıt harita masası; Classic düz dolgusu "paint" gibi okunuyordu).
+  // Settings'ten seçilen stil kayıtlıdır ve önceliklidir.
+  const initial = q.get('gfx') || (known(stored) ? stored : (known('vic3') ? 'vic3' : 'classic'));
   applyGfxStyle(game, initial);
   if (document.querySelector('.gfx-settings')) return;
 

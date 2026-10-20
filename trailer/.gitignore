@@ -1,0 +1,9 @@
+# Üretilen büyük dosyalar: hepsi betiklerden yeniden üretilir.
+footage/
+out/
+scratch/
+audio/out/
+audio/*.wav
+audio/sfx/
+# Lisanslı müzik: depoya girmez (bkz. README "Müzik lisansı").
+audio/source.mp3

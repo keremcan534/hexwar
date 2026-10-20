@@ -298,9 +298,36 @@ function createRegiment(typeId, nation, home = null) {
  * hissi — sayica cok, tek tek zayif (bkz. mobilization.js).
  */
 export const CONSCRIPT_POWER = 0.7;
+export const MILITIA_POWER = 0.4;
 
 export function isConscript(unit) {
   return Boolean(unit?.regiments?.some((regiment) => regiment.conscript));
+}
+
+/**
+ * Milis tümeni (levée, redesign D6): BÜTÜN alayları `militia`. Milis kendi
+ * havuzundan gelir (kanun havuzu değil), yalnız kendi toprağını tutar; bu
+ * yüzden güç oranlarına (nationStrength), YZ'nin ordu planına ve daimi ordu
+ * sayımlarına girmez. Bayrağı P6 yazar; o gelene kadar hiçbir tümen milis
+ * değildir ve bu yardımcıyı okuyan her dal eski davranıştadır.
+ */
+export function isMilitia(unit) {
+  const regiments = unit?.regiments;
+  if (!regiments?.length) return false;
+  // Düz döngü: nationStrength her hafta binlerce kez çağrılır (YZ güç
+  // oranları); düzenli tümende ilk alayda false döner, kapanış kurmaz.
+  for (let i = 0; i < regiments.length; i++) {
+    if (regiments[i].militia !== true) return false;
+  }
+  return true;
+}
+
+/**
+ * Düzenli (daimi) tümen: ne kura ne milis. YZ'nin "ordum kaç alay" sayımları
+ * bunu okur; eski `!isConscript` sayımıyla milis yokken birebir aynıdır.
+ */
+export function isRegular(unit) {
+  return !isConscript(unit) && !isMilitia(unit);
 }
 
 export function armyPower(unit) {
@@ -312,7 +339,7 @@ export function armyPower(unit) {
     const type = UNIT_TYPES[regiment.typeId];
     const strength = regiment.strength / Math.max(1, regiment.maxStrength);
     const organization = regiment.organization ?? regiment.morale ?? 100;
-    const quality = regiment.conscript ? CONSCRIPT_POWER : 1;
+    const quality = regiment.militia ? MILITIA_POWER : regiment.conscript ? CONSCRIPT_POWER : 1;
     return sum + type.attack * strength * (0.45 + organization / 180) * quality;
   }, 0);
 }
@@ -339,7 +366,7 @@ export function applyArmyLosses(unit, casualties, organizationLoss = 0, world = 
         // degistirmiyordu — savasin insan bedeli hicbir sayacta gorunmuyordu.
         // Kendi halkinin payindan duser (levy.js). Kaybin yalniz bir payi
         // olur; yarali eve doner (levy.DEATH_SHARE).
-        if (world) releaseCasualties(world, unit.nationId, draw, before * (1 - keep));
+        if (world) releaseCasualties(world, unit.nationId, draw, before * (1 - keep), regiment.militia === true);
         else draw.men = before * keep;
       }
       regiment.draws = regiment.draws.filter((draw) => draw.men > 0.01);

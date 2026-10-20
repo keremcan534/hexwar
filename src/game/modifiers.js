@@ -15,19 +15,18 @@
  * puan (istikrar/savaş desteği 0-100 ölçeğinde), 'num' düz sayı.
  */
 export const MODIFIER_KEYS = {
-  ic: { label: 'Industrial capacity', format: 'pct' }, // econ/industry
+  ic: { label: 'Industrial capacity', format: 'pct' }, // econ/output
   lineEfficiency: { label: 'Production efficiency cap', format: 'pct' }, // econ/industry
   lineGain: { label: 'Production efficiency growth', format: 'pct' }, // econ/industry
   consumerNeed: { label: 'Consumer goods need', format: 'pct' }, // econ/industry
   food: { label: 'Food output', format: 'pct' }, // econ/resources
   resources: { label: 'Deposit output', format: 'pct' }, // econ/resources
-  tax: { label: 'Tax income', format: 'pct' }, // economy
-  exportIncome: { label: 'Export income', format: 'pct' }, // econ/trade
+  output: { label: 'National output', format: 'pct' }, // econ/output
+  // Alıcı sırasında ağırlık: çekici satıcı talebin büyük payını alır (econ/trade).
+  exportIncome: { label: 'Export appeal', format: 'pct' }, // econ/trade
   importCost: { label: 'Import cost', format: 'pct' }, // econ/trade
-  construction: { label: 'Construction speed', format: 'pct' }, // construction
-  buildCost: { label: 'Building cost', format: 'pct' }, // construction
-  developmentCap: { label: 'Development cap', format: 'num' }, // construction
-  constructionSlots: { label: 'Construction slots', format: 'num' }, // construction
+  investment: { label: 'Investment efficiency', format: 'pct' }, // econ/investment
+  developmentCap: { label: 'Development cap', format: 'num' }, // econ/investment
   growth: { label: 'Population growth', format: 'pct' }, // provinces
   literacy: { label: 'Literacy target', format: 'pct' }, // economy
   research: { label: 'Research speed', format: 'pct' }, // technology
@@ -47,13 +46,15 @@ export const MODIFIER_KEYS = {
   shipClass: { label: 'Warship class (new hulls; older ones obsolete)', format: 'num' }, // navy
   armor: { label: 'Armour strength', format: 'pct' }, // battles (ARMOR)
   air: { label: 'Air wing strength', format: 'pct' }, // battles (AIRCRAFT)
-  upkeep: { label: 'Army upkeep', format: 'pct' }, // economy
+  upkeep: { label: 'Army supply cost', format: 'pct' }, // econ/bills
+  // Faturaların çıktıdan alabileceği payın tavanı (Requisition the Economy).
+  obligationCap: { label: 'Bill ceiling', format: 'pct' }, // econ/bills
   infamyDecay: { label: 'Infamy decay', format: 'pct' }, // infamy
   supply: { label: 'Supply in enemy land', format: 'pct' }, // turn (yıpranma)
   ironclad: { label: 'Ironclad ships (iron and coal instead of timber)', format: 'flag' }, // econ/industry
   // Çağ kaynakları: bonus yalnız kaynak ihtiyacı karşılandığı oranda gelir.
   // `short`: dar yerlerin (teknoloji düğümü) adı; tam ad ipucunda kalır.
-  oilIc: { label: 'Industrial capacity while oil needs are met', short: 'Industry (with oil)', format: 'pct' }, // econ/industry
+  oilIc: { label: 'Industrial capacity while oil needs are met', short: 'Industry (with oil)', format: 'pct' }, // econ/output
   rubberArmy: { label: 'Land combat while rubber needs are met', short: 'Land combat (with rubber)', format: 'pct' }, // battles
   saltpeterFood: { label: 'Food output while saltpeter needs are met', short: 'Food (with saltpeter)', format: 'pct' }, // econ/resources
 };

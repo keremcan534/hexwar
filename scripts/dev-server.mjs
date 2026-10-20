@@ -20,6 +20,9 @@ const contentTypes = new Map([
   [".png", "image/png"],
   [".svg", "image/svg+xml"],
   [".webp", "image/webp"],
+  // Oyunun yazı tipleri (src/fonts.css).
+  [".woff2", "font/woff2"],
+  [".txt", "text/plain; charset=utf-8"],
 ]);
 
 function localPath(url) {

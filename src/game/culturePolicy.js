@@ -26,9 +26,10 @@ import {
 } from './culture.js';
 import { addInfamy } from './infamy.js';
 import { TIER, announce } from './chronicle.js';
-import { settle } from './treasury.js';
+import { canSpend, spend } from './econ/investment.js';
 import { POP_UNIT } from './econ/defs.js';
 import { formatPopulation } from './economy.js';
+import { money } from './money.js';
 
 // Rezervasyon ve zorla asimilasyonun huzursuzluk/erime sabitleri
 // culture.CULTURE'dadır (RESERVATION_UNREST, FORCED_UNREST, FORCED_RATE):
@@ -40,8 +41,8 @@ export const POLICY = {
   SETTLE_TARGET: 0.6,
   /** Göçün süresi (hafta). */
   SETTLE_WEEKS: 104,
-  /** Nüfus birimi (100 bin) göçmen başına peşin altın. */
-  SETTLE_GOLD: 6,
+  /** Nüfus birimi (100 bin) göçmen başına peşin bedel (IC, kalkınma fonundan). */
+  SETTLE_COST: 9,
   /** Bir donör province haftada en çok nüfusunun bu payını verir. */
   SETTLE_DONOR_CAP: 0.003,
   /**
@@ -317,22 +318,22 @@ export function resettlementPlan(world, nation) {
   const scale = need > 0 ? Math.min(1, capacity / need) : 0;
   targets = targets.map((row) => ({ id: row.id, need: Math.floor(row.need * scale) })).filter((row) => row.need > 0);
   const people = targets.reduce((sum, row) => sum + row.need, 0);
-  return { targets, people, need, gold: Math.ceil(unitOf(people) * POLICY.SETTLE_GOLD) };
+  return { targets, people, need, cost: Math.ceil(unitOf(people) * POLICY.SETTLE_COST) };
 }
 
 export function resettleBlockers(world, nation) {
   if (nation.resettlement?.targets?.length) return ['Settlers are already on their way.'];
   const plan = resettlementPlan(world, nation);
   if (!plan.people) return ['No province of ours stands empty.'];
-  if ((nation.gold ?? 0) < plan.gold) return [`The treasury needs ${plan.gold} gold for the settlers.`];
+  if (!canSpend(nation, plan.cost)) return [`The development fund cannot cover ${money(plan.cost, 0)} for the settlers.`];
   return [];
 }
 
-/** İskânı başlatır: altın peşin, göç SETTLE_WEEKS boyunca haftalık. */
+/** İskânı başlatır: bedel fondan peşin, göç SETTLE_WEEKS boyunca haftalık. */
 export function startResettlement(world, nation) {
   if (resettleBlockers(world, nation).length) return null;
   const plan = resettlementPlan(world, nation);
-  settle(nation, 'outlay', -plan.gold);
+  spend(nation, plan.cost);
   nation.resettlement = {
     targets: plan.targets.map((row) => ({ id: row.id, left: row.need })),
     weeks: POLICY.SETTLE_WEEKS,
@@ -478,7 +479,7 @@ export function concentrate(game, nation, cultureId) {
 export function resettle(game, nation) {
   const plan = startResettlement(game.world, nation);
   if (plan && nation.id === game.turns?.playerNation) {
-    game.turns?.addLog?.(`Settlers set out: ${count(plan.people)} of our people will fill ${plan.targets.length} empty province${plan.targets.length === 1 ? '' : 's'} over two years (${plan.gold} gold).`,
+    game.turns?.addLog?.(`Settlers set out: ${count(plan.people)} of our people will fill ${plan.targets.length} empty province${plan.targets.length === 1 ? '' : 's'} over two years (${money(plan.cost, 0)}).`,
       { kind: 'POLITICS', key: 'resettle' });
   }
   return plan;

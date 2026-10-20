@@ -5,7 +5,7 @@
 // eğitimli bir ülkede beş. Ev ödevi testi: odak sayısı state sayısıyla değil
 // okuryazarlıkla büyür, yani imparatorluk büyüdükçe iş artmaz.
 //
-// Etkiler oyunun kendi formüllerine çarpan olarak girer (vergi economy.js,
+// Etkiler oyunun kendi formüllerine çarpan olarak girer (kalkınma econ/investment.js,
 // çıktı econ/resources.js, insan gücü levy.js, uyum provinces.js, huzursuzluk
 // ve asimilasyon culture.js); ekran önizlemesi aynı formülleri geçici odakla
 // okur — önizleme oyunla ayrışamaz.
@@ -19,9 +19,11 @@ export const FOCUSES = [
     id: 'production', name: 'Production', art: 'industry', output: 0.25,
     desc: 'Food and resource output +25%.',
   },
+  // Vergi odağının yerine (2026-10-15, altın kalktı): kalkınma fonu önce
+  // bu state'e gider ve kademeleri dörtte bir ucuzdur (econ/investment.js).
   {
-    id: 'tax', name: 'Taxation', art: 'gold', tax: 0.3,
-    desc: 'Tax from this state +30%.',
+    id: 'develop', name: 'Develop', art: 'industry', develop: 0.25,
+    desc: 'The development fund goes here first; its levels cost 25% less.',
   },
   {
     id: 'recruit', name: 'Recruitment', art: 'recruits', manpower: 0.3,
@@ -55,7 +57,7 @@ export function focusOf(econ) {
   return FOCUS_BY_ID[econ?.focus] ?? null;
 }
 
-/** Odağın bir etki anahtarı (output/tax/manpower/control/ceiling/unrest); yoksa 0. */
+/** Odağın bir etki anahtarı (output/develop/manpower/control/ceiling/unrest); yoksa 0. */
 export function focusBonus(econ, key) {
   return focusOf(econ)?.[key] ?? 0;
 }

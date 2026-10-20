@@ -1,0 +1,306 @@
+<title>HexWar Denge Panosu</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=EB+Garamond:wght@500;600&family=Source+Sans+3:wght@400;600;700&display=swap">
+<style>
+/* Düzen: bakanlık defteri — üstte hüküm listesi, altında soru başına bir bölüm, bölüm içinde iki sütun grafik. */
+:root {
+  --bg: #eef0ed;
+  --surface: #fbfcfa;
+  --ink: #1a1f24;
+  --ink-2: #4d565e;
+  --ink-3: #7a838b;
+  --rule: #d5d9d4;
+  --grid: #e3e6e1;
+  --accent: #284f74;
+  --s1: #2a78d6; --s2: #eb6834; --s3: #1baf7a; --s4: #eda100;
+  --band: rgba(42,120,214,.13);
+  --before: #8d9389;
+  --ok: #2f7d4a; --warn: #a86a00; --bad: #b3362f;
+  --ok-bg: #e2efe5; --warn-bg: #f6ead2; --bad-bg: #f5dfdc;
+  --display: "EB Garamond", "Garamond", "Georgia", serif;
+  --ui: "Source Sans 3", "Segoe UI", system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #111417; --surface: #181c20; --ink: #e9ecee; --ink-2: #b3bbc2; --ink-3: #8a939b;
+    --rule: #2b3137; --grid: #252a2f; --accent: #8fb6dc;
+    --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --band: rgba(57,135,229,.18); --before: #7f878d;
+    --ok: #6cc08a; --warn: #e0a640; --bad: #ec7a70; --ok-bg: #1d2e23; --warn-bg: #33291a; --bad-bg: #36201e;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #111417; --surface: #181c20; --ink: #e9ecee; --ink-2: #b3bbc2; --ink-3: #8a939b;
+  --rule: #2b3137; --grid: #252a2f; --accent: #8fb6dc;
+  --s1: #3987e5; --s2: #d95926; --s3: #199e70; --s4: #c98500; --band: rgba(57,135,229,.18); --before: #7f878d;
+  --ok: #6cc08a; --warn: #e0a640; --bad: #ec7a70; --ok-bg: #1d2e23; --warn-bg: #33291a; --bad-bg: #36201e;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font: 15px/1.5 var(--ui); margin: 0; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-inline: 20px; padding-block: 28px 64px; }
+header { border-bottom: 2px solid var(--ink); padding-bottom: 14px; margin-bottom: 22px; display: flex; flex-wrap: wrap; gap: 8px 24px; align-items: end; justify-content: space-between; }
+h1 { font: 600 2.4rem/1.05 var(--display); margin: 0; letter-spacing: .005em; }
+.meta { color: var(--ink-2); font-size: .86rem; font-variant-numeric: tabular-nums; }
+h2 { font: 600 1.55rem/1.15 var(--display); margin: 0 0 4px; text-wrap: balance; }
+.q { color: var(--ink-2); margin: 0 0 14px; max-width: 75ch; }
+.eyebrow { font-size: .72rem; text-transform: uppercase; letter-spacing: .09em; color: var(--ink-3); font-weight: 700; }
+section { margin-top: 40px; }
+.verdicts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 10px; }
+.verdict { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 12px 14px; display: grid; gap: 6px; align-content: start; min-width: 0; }
+.verdict .top { display: flex; gap: 10px; align-items: baseline; justify-content: space-between; }
+.verdict b { font-weight: 700; }
+.verdict p { margin: 0; color: var(--ink-2); font-size: .92rem; }
+.big { font: 600 1.6rem/1 var(--display); font-variant-numeric: tabular-nums; }
+.chip { font-size: .72rem; font-weight: 700; padding: 2px 8px; border-radius: 99px; white-space: nowrap; letter-spacing: .02em; }
+.chip.bad { color: var(--bad); background: var(--bad-bg); }
+.chip.warn { color: var(--warn); background: var(--warn-bg); }
+.chip.ok { color: var(--ok); background: var(--ok-bg); }
+.chip.info { color: var(--accent); background: var(--grid); }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(440px, 1fr)); gap: 14px; }
+@media (max-width: 520px) { .grid2, .verdicts { grid-template-columns: 1fr; } h1 { font-size: 1.9rem; } }
+.card { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 14px 10px; min-width: 0; position: relative; }
+.card h3 { font: 700 .95rem/1.3 var(--ui); margin: 0; }
+.card .sub { color: var(--ink-3); font-size: .8rem; margin: 2px 0 6px; }
+.card .read { color: var(--ink-2); font-size: .86rem; margin: 8px 0 2px; border-top: 1px solid var(--grid); padding-top: 8px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .8rem; color: var(--ink-2); margin-bottom: 4px; }
+.legend i { display: inline-block; width: 14px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 5px; }
+.legend i.dash { background-image: linear-gradient(90deg, currentColor 60%, transparent 0) !important; background-size: 5px 3px; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { fill: var(--ink-3); font: 11px var(--ui); font-variant-numeric: tabular-nums; }
+.tip { position: absolute; pointer-events: none; background: var(--ink); color: var(--surface); font-size: .78rem; padding: 6px 8px; border-radius: 4px; white-space: nowrap; z-index: 3; font-variant-numeric: tabular-nums; line-height: 1.45; }
+.tip .sw { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; }
+table { border-collapse: collapse; width: 100%; font-size: .88rem; font-variant-numeric: tabular-nums; }
+th, td { text-align: right; padding: 6px 8px; border-bottom: 1px solid var(--grid); }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--ink-3); font-weight: 600; font-size: .78rem; text-transform: uppercase; letter-spacing: .05em; }
+.tablewrap { overflow-x: auto; }
+.note { font-size: .82rem; color: var(--ink-3); margin-top: 10px; max-width: 80ch; }
+.meta-list { margin: 8px 0 0; padding-left: 18px; color: var(--ink-2); font-size: .88rem; }
+.changes { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; overflow-x: auto; }
+.changes table { min-width: 640px; }
+.changes td { vertical-align: top; text-align: left; padding: 10px 12px; }
+.changes td.n { width: 2.2em; color: var(--ink-3); font: 600 1.1rem/1 var(--display); }
+.changes td b { display: block; font-weight: 700; margin-bottom: 2px; }
+.changes td span { color: var(--ink-2); font-size: .88rem; }
+.changes td.ba { white-space: nowrap; text-align: right; font-variant-numeric: tabular-nums; font-size: .9rem; }
+.changes td.ba s { color: var(--ink-3); text-decoration: none; }
+.changes td.ba em { font-style: normal; font-weight: 700; color: var(--ink); }
+.changes td.ba small { display: block; color: var(--ink-3); font-size: .75rem; }
+.changes tr:last-child td { border-bottom: 0; }
+.lede { max-width: 78ch; color: var(--ink-2); margin: 0 0 18px; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div>
+      <div class="eyebrow">Uluslar Çağı · başsız ölçüm · önce / sonra</div>
+      <h1>HexWar Denge Panosu</h1>
+    </div>
+    <div class="meta" id="meta"></div>
+  </header>
+
+  <p class="lede" id="lede"></p>
+
+  <div class="eyebrow" style="margin-bottom:8px">Ne değişti</div>
+  <div class="changes" id="changes"></div>
+
+  <section>
+    <div class="eyebrow" style="margin-bottom:8px">Hüküm: senin sorularına</div>
+    <div class="verdicts" id="verdicts"></div>
+  </section>
+
+  <section id="s-equip">
+    <h2>Sanayi artık savaş gücüne dönüşüyor mu?</h2>
+    <p class="q" id="q-equip"></p>
+    <div class="grid2">
+      <div class="card" id="c-ratio"></div>
+      <div class="card" id="c-reserve"></div>
+      <div class="card" id="c-draw"></div>
+      <div class="card" id="c-consumer"></div>
+    </div>
+  </section>
+
+  <section id="s-bar">
+    <h2>Çubuk: çıktı nereye gidiyor?</h2>
+    <p class="q" id="q-bar"></p>
+    <div class="grid2">
+      <div class="card" id="c-bar"></div>
+      <div class="card" id="c-worldbar"></div>
+      <div class="card" id="c-supply"></div>
+      <div class="card" id="c-army-cost"></div>
+      <div class="card" id="c-fund"></div>
+      <div class="card" id="c-prices"></div>
+    </div>
+  </section>
+
+  <section id="s-dev">
+    <h2>Kalkınma ve getirisi</h2>
+    <p class="q" id="q-dev"></p>
+    <div class="grid2">
+      <div class="card" id="c-dev"></div>
+      <div class="card" id="c-levels"></div>
+      <div class="card" id="c-noinvest"></div>
+      <div class="card" id="c-noinvest-pop"></div>
+    </div>
+  </section>
+
+  <section id="s-length">
+    <h2>Geç oyun ve kampanya uzunluğu</h2>
+    <p class="q" id="q-length"></p>
+    <div class="grid2">
+      <div class="card" id="c-worldwar"></div>
+      <div class="card" id="c-diplowar"></div>
+    </div>
+  </section>
+
+  <section id="s-load">
+    <h2>Hız ve iş yükü</h2>
+    <p class="q" id="q-load"></p>
+    <div class="grid2">
+      <div class="card" id="c-notes"></div>
+      <div class="card" id="c-speed"></div>
+    </div>
+  </section>
+
+  <section>
+    <div class="eyebrow">Yöntem ve açık kalanlar</div>
+    <ul class="meta-list" id="method"></ul>
+  </section>
+</div>
+
+<script>
+const D = __DATA__;
+const X0 = D.meta.startYear, X1 = D.meta.endYear + 1;
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+const fmt = (v, d = 0) => v == null ? '–' : Number(v).toLocaleString('tr-TR', { maximumFractionDigits: d, minimumFractionDigits: d });
+const NS = 'http://www.w3.org/2000/svg';
+const el = (tag, attrs = {}, parent) => { const n = document.createElementNS(NS, tag); for (const [k, v] of Object.entries(attrs)) n.setAttribute(k, v); if (parent) parent.appendChild(n); return n; };
+
+function niceMax(v) { if (!(v > 0)) return 1; const p = 10 ** Math.floor(Math.log10(v)); const m = v / p; return (m <= 1 ? 1 : m <= 2 ? 2 : m <= 2.5 ? 2.5 : m <= 5 ? 5 : 10) * p; }
+
+function head(card, title, sub, read) {
+  card.innerHTML = `<h3>${title}</h3><div class="sub">${sub}</div>`;
+  const body = document.createElement('div'); card.appendChild(body);
+  if (read) { const r = document.createElement('div'); r.className = 'read'; r.innerHTML = read; card.appendChild(r); }
+  return body;
+}
+function legend(body, series) {
+  if (series.length < 2) return;
+  const lg = document.createElement('div'); lg.className = 'legend';
+  lg.innerHTML = series.map((s) => `<span style="color:var(${s.color})"><i class="${s.dash ? 'dash' : ''}" style="background:var(${s.color})"></i><span style="color:var(--ink-2)">${s.name}</span></span>`).join('');
+  body.appendChild(lg);
+}
+
+/** Çizgi grafiği: ortanca çizgi + tohum bandı, yatay referanslar, artı imleç. */
+function lineChart(card, { title, sub, read, series, refs = [], unit = '', digits = 0, yMax, yMin = 0, x0 = X0, x1 = X1 }) {
+  const body = head(card, title, sub, read);
+  // Eski şemalı "önce" koşusunda olmayan metrik boş seri gelir: çizilmez.
+  series = series.filter((s) => s.data?.length);
+  if (!series.length) { body.insertAdjacentHTML('beforeend', '<p class="note">Bu metrik için veri yok.</p>'); return; }
+  legend(body, series);
+  const W = 520, H = 230, m = { l: 44, r: 12, t: 10, b: 24 };
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': title });
+  body.appendChild(svg);
+  const all = series.flatMap((s) => s.data.flatMap((p) => s.band === false ? [p[1]] : [p[1], p[3]])).concat(refs.map((r) => r.y));
+  const top = yMax ?? niceMax(Math.max(...all.filter(Number.isFinite)) * 1.05);
+  const sx = (x) => m.l + (x - x0) / (x1 - x0) * (W - m.l - m.r);
+  const sy = (y) => m.t + (1 - (Math.min(top, Math.max(yMin, y)) - yMin) / (top - yMin)) * (H - m.t - m.b);
+  for (let i = 0; i <= 4; i++) {
+    const v = yMin + (top - yMin) * i / 4;
+    el('line', { x1: m.l, x2: W - m.r, y1: sy(v), y2: sy(v), stroke: 'var(--grid)', 'stroke-width': 1 }, svg);
+    const t = el('text', { x: m.l - 6, y: sy(v) + 4, 'text-anchor': 'end' }, svg); t.textContent = fmt(v, top - yMin < 4 ? 1 : 0) + unit;
+  }
+  for (let y = Math.ceil(x0 / 5) * 5; y <= x1; y += 5) {
+    const t = el('text', { x: sx(y), y: H - 6, 'text-anchor': 'middle' }, svg); t.textContent = y;
+  }
+  el('line', { x1: m.l, x2: W - m.r, y1: sy(yMin), y2: sy(yMin), stroke: 'var(--ink-3)', 'stroke-width': 1 }, svg);
+  for (const r of refs) {
+    el('line', { x1: m.l, x2: W - m.r, y1: sy(r.y), y2: sy(r.y), stroke: 'var(--ink-2)', 'stroke-width': 1, 'stroke-dasharray': '4 3' }, svg);
+    const t = el('text', { x: W - m.r - 2, y: sy(r.y) - 4, 'text-anchor': 'end' }, svg); t.textContent = r.label; t.style.fill = 'var(--ink-2)';
+  }
+  for (const s of series) {
+    if (s.band !== false && s.data.some((p) => p[2] !== p[3])) {
+      const up = s.data.map((p) => `${sx(p[0])},${sy(p[3])}`), dn = s.data.slice().reverse().map((p) => `${sx(p[0])},${sy(p[2])}`);
+      el('polygon', { points: up.concat(dn).join(' '), fill: `var(${s.color})`, 'fill-opacity': .12, stroke: 'none' }, svg);
+    }
+  }
+  for (const s of series) {
+    el('polyline', { points: s.data.map((p) => `${sx(p[0])},${sy(p[1])}`).join(' '), fill: 'none', stroke: `var(${s.color})`, 'stroke-width': 2, 'stroke-linejoin': 'round', 'stroke-dasharray': s.dash ? '5 3' : 'none' }, svg);
+    const e = s.data.at(-1); if (e) el('circle', { cx: sx(e[0]), cy: sy(e[1]), r: 3, fill: `var(${s.color})`, stroke: 'var(--surface)', 'stroke-width': 1.5 }, svg);
+  }
+  // Artı imleç
+  const cross = el('line', { y1: m.t, y2: H - m.b, stroke: 'var(--ink-3)', 'stroke-width': 1, visibility: 'hidden' }, svg);
+  const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; card.appendChild(tip);
+  const hit = el('rect', { x: m.l, y: m.t, width: W - m.l - m.r, height: H - m.t - m.b, fill: 'transparent' }, svg);
+  hit.addEventListener('pointermove', (ev) => {
+    const box = svg.getBoundingClientRect();
+    const x = x0 + ((ev.clientX - box.left) / box.width * W - m.l) / (W - m.l - m.r) * (x1 - x0);
+    const rows = series.map((s) => { let best = s.data[0]; for (const p of s.data) if (Math.abs(p[0] - x) < Math.abs(best[0] - x)) best = p; return [s, best]; });
+    const px = rows[0][1][0];
+    cross.setAttribute('x1', sx(px)); cross.setAttribute('x2', sx(px)); cross.setAttribute('visibility', 'visible');
+    tip.innerHTML = `<b>${Math.floor(px)}</b><br>` + rows.map(([s, p]) => `<span class="sw" style="background:var(${s.color})"></span>${s.name}: ${fmt(p[1], digits)}${unit}${s.band !== false && p[2] !== p[3] ? ` <span style="opacity:.7">(${fmt(p[2], digits)}–${fmt(p[3], digits)})</span>` : ''}`).join('<br>');
+    tip.hidden = false;
+    const cb = card.getBoundingClientRect();
+    let left = ev.clientX - cb.left + 12; if (left + tip.offsetWidth > cb.width - 4) left = ev.clientX - cb.left - tip.offsetWidth - 12;
+    tip.style.left = left + 'px'; tip.style.top = (ev.clientY - cb.top + 10) + 'px';
+  });
+  hit.addEventListener('pointerleave', () => { tip.hidden = true; cross.setAttribute('visibility', 'hidden'); });
+}
+
+/** Yatay çubuk: kategori başına tek değer. */
+function barChart(card, { title, sub, read, rows, unit = '', digits = 0, color = '--s1', refs = [] }) {
+  const body = head(card, title, sub, read);
+  const W = 520, rowH = 26, m = { l: 150, r: 64, t: 6, b: 6 };
+  const H = m.t + m.b + rows.length * rowH;
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': title }); body.appendChild(svg);
+  const top = niceMax(Math.max(...rows.map((r) => r[1]), ...refs.map((r) => r.v)));
+  const sx = (v) => m.l + v / top * (W - m.l - m.r);
+  rows.forEach(([label, v, c], i) => {
+    const y = m.t + i * rowH;
+    const t = el('text', { x: m.l - 8, y: y + 17, 'text-anchor': 'end' }, svg); t.textContent = label; t.style.fill = 'var(--ink-2)';
+    const w = Math.max(2, sx(v) - m.l);
+    el('path', { d: `M${m.l},${y + 5} h${w - 4} a4,4 0 0 1 4,4 v8 a4,4 0 0 1 -4,4 h${-(w - 4)} z`, fill: `var(${c ?? color})` }, svg);
+    const vt = el('text', { x: m.l + w + 6, y: y + 17 }, svg); vt.textContent = fmt(v, digits) + unit; vt.style.fill = 'var(--ink)';
+  });
+  for (const r of refs) {
+    el('line', { x1: sx(r.v), x2: sx(r.v), y1: 0, y2: H, stroke: 'var(--ink-2)', 'stroke-dasharray': '4 3' }, svg);
+    const t = el('text', { x: sx(r.v) + 4, y: H - 2 }, svg); t.textContent = r.label;
+  }
+}
+
+/** Yıllık sütun grafiği. */
+function columnChart(card, { title, sub, read, data, unit = '', color = '--s1', digits = 0 }) {
+  const body = head(card, title, sub, read);
+  if (!data?.length) { body.insertAdjacentHTML('beforeend', '<p class="note">Bu metrik için veri yok.</p>'); return; }
+  const W = 520, H = 210, m = { l: 40, r: 10, t: 10, b: 24 };
+  const svg = el('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': title }); body.appendChild(svg);
+  const top = niceMax(Math.max(...data.map((d) => d[1])) * 1.05);
+  const bw = (W - m.l - m.r) / data.length;
+  const sy = (v) => m.t + (1 - v / top) * (H - m.t - m.b);
+  for (let i = 0; i <= 4; i++) {
+    const v = top * i / 4;
+    el('line', { x1: m.l, x2: W - m.r, y1: sy(v), y2: sy(v), stroke: 'var(--grid)' }, svg);
+    const t = el('text', { x: m.l - 6, y: sy(v) + 4, 'text-anchor': 'end' }, svg); t.textContent = fmt(v);
+  }
+  const tip = document.createElement('div'); tip.className = 'tip'; tip.hidden = true; card.appendChild(tip);
+  data.forEach(([year, v, lo, hi], i) => {
+    const x = m.l + i * bw;
+    const h = Math.max(1, sy(0) - sy(v));
+    el('rect', { x: x + 1, y: sy(v), width: Math.max(1, bw - 2), height: h, rx: Math.min(3, bw / 3), fill: `var(${color})` }, svg);
+    if (year % 5 === 0) { const t = el('text', { x: x + bw / 2, y: H - 6, 'text-anchor': 'middle' }, svg); t.textContent = year; }
+    const hit = el('rect', { x, y: m.t, width: bw, height: H - m.t - m.b, fill: 'transparent' }, svg);
+    hit.addEventListener('pointermove', (ev) => {
+      tip.innerHTML = `<b>${year}</b><br>${fmt(v, digits)}${unit} <span style="opacity:.7">(tohumlar ${fmt(lo, digits)}–${fmt(hi, digits)})</span>`;
+      tip.hidden = false; const cb = card.getBoundingClientRect();
+      let left = ev.clientX - cb.left + 12; if (left + tip.offsetWidth > cb.width - 4) left = ev.clientX - cb.left - tip.offsetWidth - 12;
+      tip.style.left = left + 'px'; tip.style.top = (ev.clientY - cb.top + 10) + 'px';
+    });
+    hit.addEventListener('pointerleave', () => { tip.hidden = true; });
+  });
+  el('line', { x1: m.l, x2: W - m.r, y1: sy(0), y2: sy(0), stroke: 'var(--ink-3)' }, svg);
+}
+
+const $ = (id) => document.getElementById(id);
+__RENDER__
+</script>

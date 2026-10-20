@@ -17,6 +17,10 @@ export function esc(s) {
   ));
 }
 
+// Ortak para birimi oyun katmanında tanımlıdır (game/money.js): oyunun kendi
+// cümleleri de aynı sembolü yazar. Kit yalnız yeniden dışa aktarır.
+export { CURRENCY, money, signedMoney } from '../game/money.js';
+
 export const num = (value, digits = 1) => (Number.isFinite(value) ? value.toFixed(digits) : '—');
 export const signed = (value, digits = 1) => `${value >= 0 ? '+' : '−'}${Math.abs(value ?? 0).toFixed(digits)}`;
 export const pct = (value) => `${Math.round((value ?? 0) * 100)}%`;
@@ -63,6 +67,22 @@ export function kpi({ icon = '', label, value, sub = '', tip = null, arg = '', c
 
 export function kpiRow(items) {
   return `<div class="k-kpis" style="--n:${items.length}">${items.join('')}</div>`;
+}
+
+/**
+ * AUTO hapı. Oyun durumunu çağıran okur (kit durum okumaz): `area`
+ * DELEGATION_AREAS kaydı, `on` anahtarın hâli, `last` hükûmetin son eylemi.
+ * `key` verilmezse rozet yazılmaz (panel içi anahtarın kısayolu yok).
+ */
+export function autoPill(area, { on, last = null, key = '' } = {}) {
+  const tip = [
+    `${area.name} · ${on ? 'run by the government' : 'in your hands'}`,
+    on ? area.desc : 'You hold this portfolio yourself. Turn AUTO on to hand it to the government; your own orders always come first.',
+    on && last ? `\nLast: ${last.text}\n${last.reason}` : '',
+    key ? `\nShortcut: ${key}` : '',
+  ].filter(Boolean).join('\n');
+  return `<button class="auto-pill${on ? ' on' : ''}" data-auto="${area.id}" aria-pressed="${on}"
+      data-tip="text" data-tip-text="${esc(tip)}"><i class="auto-led" aria-hidden="true"></i>AUTO <b>${on ? 'ON' : 'OFF'}</b>${key ? `<kbd>${esc(key)}</kbd>` : ''}</button>`;
 }
 
 /** Panel: pirinç başlık şeridi + gövde. `right` başlığın sağ ucu (özet/düğme). */

@@ -4,6 +4,7 @@ import { makeRng } from '../core/rng.js';
 import { makeFlag } from './flags.js';
 import { growRegions } from './regions.js';
 import { archetypePlan } from './macro.js';
+import { cultureChecksum, subjectPeoples } from './peoples.js';
 
 const SYL_START = ['Ar', 'Bel', 'Cor', 'Dra', 'El', 'Fen', 'Gor', 'Hal', 'Ir', 'Kaz', 'Lor', 'Mar', 'Nor', 'Oss', 'Pra', 'Quen', 'Rav', 'Sar', 'Tur', 'Ul', 'Vas', 'Wyn', 'Yar', 'Zen'];
 const SYL_MID = ['a', 'e', 'i', 'o', 'an', 'en', 'ir', 'or', 'al', 'ath', 'esh', 'ov', 'ur', 'yl'];
@@ -201,9 +202,11 @@ export function generateNations(world, options = {}) {
       light: palette.light,
       flag: makeFlag(rng, palette, title),
       capital: seedProvince.center,
+      // Geçici: doldurmadan sonra çekirdeğin en büyük halkı yazılır
+      // (assignPrimaryCultures). Kabul ve özerklik listeleri de orada kurulur.
       culture: seedProvince.culture ?? -1,
-      // Kabul edilen kültürler: birincil + (bileşik monarşi gibi) komşu halklar.
       accepted: [],
+      homeRule: [],
       archetype: role,
       devTier: dev ?? 0,
       extraCity: Boolean(extraCity),
@@ -271,21 +274,18 @@ export function generateNations(world, options = {}) {
         claimCluster(province, id, false);
       }
     }
-    // Kabul edilen kültürler: ev topraklarında en yaygın yabancı halklar.
-    const votes = new Map();
-    for (const province of world.provinces) {
-      if (province.coreOf !== id || province.culture < 0) continue;
-      if (province.culture === nation.culture) continue;
-      votes.set(province.culture, (votes.get(province.culture) ?? 0) + 1);
-    }
-    const acceptedNeighbors = [...votes.entries()]
-      .sort((a, b) => b[1] - a[1] || a[0] - b[0])
-      .slice(0, spec.acceptNeighbors ?? 0)
-      .map(([cultureId]) => cultureId);
-    nation.accepted = [nation.culture, ...acceptedNeighbors].filter((c) => c >= 0);
   }
 
   fillRemaining(world, nations, rng, { graph, makeNation, claimCluster });
+  // Ana halk ve imparatorlukların alt halkları (redesign D3). İkisi de ana zar
+  // akışından çekmez: ad, renk ve sınır aşağıdaki geçişlerde bit bit aynı kalır.
+  assignPrimaryCultures(world, nations);
+  // Üretim karnesi (denetim okur, oyun okumaz): imparatorluk başına gruplar.
+  world.subjectPeoples = subjectPeoples(world, nations, makeRng(`${world.seed}-peoples`));
+  // Geçiş ana halkın çevresini alt halklara çevirir; iki-üç halkın eşit
+  // paylaştığı imparatorlukta (ve diasporanın değdiği yarı yarıya devlette)
+  // en büyük halk değişebilir. Kural geçişten SONRA da doğru kalsın.
+  assignPrimaryCultures(world, nations, { settle: true });
 
   // Oyuncunun başlangıç devleti TEK PARÇA olmalı. Arketip planının amiral
   // gemisi (denizaşırı kolonili imparatorluk) hep 0 numaraya doğar ve
@@ -297,9 +297,58 @@ export function generateNations(world, options = {}) {
   separateNeighborColors(world, nations, rng);
   computeStats(world, nations);
   appendRebelStates(world, nations, `${seed}-rebels`);
+  // Kayıt v28: üretilen halk yerleşiminin izi (bkz. peoples.cultureChecksum).
+  world.cultureChecksum = cultureChecksum(world);
 
   world.nations = nations;
   return nations;
+}
+
+/**
+ * ANA HALK = çekirdeğin en büyük halkı (redesign D3).
+ *
+ * Eskiden başkent kümesinin çoğunluğuydu (makeNation: seedProvince.culture).
+ * Doldurma devletlerinin başkenti kümenin kenarına düştüğü için (pickSpreadSeeds)
+ * tohum başına 11-15 ulus azınlık halkını ana halk sanıyordu ve dünyanın
+ * yabancı nüfus payına 7-13 puan ekliyordu (ölçüldü, 4 tohum 160×96). Ağırlık
+ * hex × satır payıdır: üretimde nüfus yoktur. Koloniler (coreOf −1) oy
+ * vermez, yoksa denizci imparatorluğun ana halkı Hindistan'ı olurdu. Zar yok.
+ * Kabul listesi yalnız ana halktır; özerk halklar ayrı listede (homeRule ⊆ accepted).
+ */
+export function assignPrimaryCultures(world, nations, { settle = false } = {}) {
+  const votes = nations.map(() => new Map());
+  for (const province of world.provinces ?? []) {
+    const box = votes[province.coreOf];
+    if (!box) continue;
+    const hexes = province.tileIdx.length;
+    const rows = province.cultures?.length
+      ? province.cultures
+      : (province.culture >= 0 ? [{ id: province.culture, share: 1 }] : []);
+    for (const row of rows) box.set(row.id, (box.get(row.id) ?? 0) + hexes * row.share);
+  }
+  for (const nation of nations) {
+    let best = -1;
+    let most = -1;
+    for (const [id, weight] of votes[nation.id]) {
+      if (weight > most || (weight === most && id < best)) {
+        most = weight;
+        best = id;
+      }
+    }
+    if (settle) {
+      // Yeniden oylama: kabul ve özerklik listeleri korunur, yalnız ana halk
+      // değiştiyse yeni ana halk listelerden çıkar, eskisi tebaa olur.
+      if (best < 0 || best === nation.culture) continue;
+      nation.culture = best;
+      nation.accepted = [best, ...nation.accepted.slice(1).filter((c) => c !== best)];
+      nation.homeRule = nation.homeRule.filter((c) => c !== best);
+      if (nation.movements) delete nation.movements[best];
+      continue;
+    }
+    if (best >= 0) nation.culture = best;
+    nation.accepted = nation.culture >= 0 ? [nation.culture] : [];
+    nation.homeRule = [];
+  }
 }
 
 /**
@@ -339,6 +388,7 @@ function appendRebelStates(world, nations, seed) {
       capital: culture.origin,
       culture: culture.id,
       accepted: [culture.id],
+      homeRule: [],
       archetype: 'rebel',
       rebelCulture: culture.id,
       devTier: 0,
@@ -588,7 +638,6 @@ function fillRemaining(world, nations, rng, { graph, makeNation, claimCluster })
     for (const p of cluster) {
       if (p.owner === -1) claimCluster(p, born[0].id, true);
     }
-    for (const nation of born) nation.accepted = [nation.culture].filter((c) => c >= 0);
   }
 }
 

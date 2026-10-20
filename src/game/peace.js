@@ -192,8 +192,8 @@ export const VICTORY_POINT_SHARE = 0.75;
 /** Toprak dışı talepler. Hepsinin gerçek bir oyun etkisi vardır. */
 export const PEACE_TERMS = {
   REPARATIONS: {
-    id: 'REPARATIONS', name: 'War Reparations', icon: '£', cost: 18, turns: 260,
-    desc: 'They pay you a share of their treasury income for five years.',
+    id: 'REPARATIONS', name: 'War Reparations', icon: '⚙', cost: 18, turns: 260,
+    desc: 'They pay you a tenth of their output for five years, into your development fund.',
   },
   DEMILITARIZE: {
     id: 'DEMILITARIZE', name: 'Demilitarisation', icon: '⚔', cost: 24, turns: 208,
@@ -213,7 +213,7 @@ export const PEACE_TERMS = {
   },
   VASSALIZE: {
     id: 'VASSALIZE', name: 'Vassalise', icon: '👑', cost: 65,
-    desc: 'They become your vassal: permanent peace and a tribute of their income.',
+    desc: 'They become your vassal: permanent peace and a tribute of 7.5% of their output.',
   },
 };
 
@@ -232,13 +232,12 @@ export function provinceValue(world, province) {
   for (const idx of province.tileIdx) {
     if (world.tiles[idx].city) cities++;
   }
-  // Kalkınma ve binalar değeri büyütür: sanayi havzası ve demiryolu
-  // kavşağı barış masasında da pahalıdır.
-  let buildings = 0;
-  for (const level of Object.values(econ.buildings ?? {})) buildings += level;
+  // Kalkınma ve kale değeri büyütür: sanayi havzası barış masasında da
+  // pahalıdır. Binalar 2026-10-15'te kalktı (kademe başına 3 puandı); sanayi
+  // artık kalkınmanın kendisidir, ağırlığı 1.2'den 1.5'e çıktı.
   return Math.max(1, Math.round(
     2 * econ.hexes + econ.population / (3000 * POPULATION_SCALE)
-      + (econ.development ?? 1) * 1.2 * econ.hexes + buildings * 3 + cities * 12,
+      + (econ.development ?? 1) * 1.5 * econ.hexes + (econ.fort ?? 0) * 3 + cities * 12,
   ));
 }
 
@@ -416,10 +415,16 @@ export function canVassalize(world, a, b) {
 /**
  * Serbest bırakılan kümenin gideceği devlet: aynı kültürden, yaşayan, iki
  * tarafın dışında bir ulus. Sınır komşusu olan önce gelir (akraba toprağa
- * yapışır); yoksa başkenti en yakın akraba. Hiçbiri yoksa -1: küme
- * serbest bırakılamaz — sahipsiz toprak üretilmez.
+ * yapışır); yoksa başkenti en yakın akraba. Akraba yoksa kayıtlı yedek
+ * (halkın Özgür Devlet yuvası, bkz. registerLiberationFallback) denenir.
+ * Hiçbiri yoksa -1: küme serbest bırakılamaz — sahipsiz toprak üretilmez.
  */
 export function liberationHeir(world, province, a, b) {
+  return resolveLiberationHeir(world, province, a, b).heir;
+}
+
+/** Yaşayan akraba mirasçı (eski kural, değişmedi): komşu önce, yoksa en yakın başkent. */
+function livingKinHeir(world, province, a, b) {
   const kin = (id) => {
     const nation = world.nations[id];
     return id >= 0 && id !== a && id !== b && nation?.alive && nation.culture === province.culture;
@@ -441,6 +446,64 @@ export function liberationHeir(world, province, a, b) {
     }
   }
   return best;
+}
+
+/**
+ * KURTARMA YEDEĞİ KAYDI (redesign D2/D7, P1 dikişi). Yaşayan akraba yoksa
+ * kümenin halkı kendi Özgür Devleti'ne (uyuyan yuvaya) gidebilmeli; yuvayı
+ * uyandırma kodu nationBirth.js'te yaşar (P3) ve buraya kendini kaydeder.
+ * peace.js hiçbir şey içe almaz: nationBirth → peace yönü serbest, tersi
+ * döngü kurardı (§3 #14).
+ *
+ * Bir yedek iki fonksiyon taşır:
+ *   heir(world, province, a, b) → ulus kimliği ya da -1 (taraflardan biri olamaz)
+ *   claim(game, province, heir, {a, b}) → true: kümeyi devralır VE gerekiyorsa
+ *     yuvayı AYNI çağrıda uyandırır. Uyuyan yuva tur evreleri ya da kayıt
+ *     arasında toprak tutmaz (D7).
+ * Kayıt boşken her şey eski kuraldır: akrabası olmayan küme serbest kalmaz.
+ */
+export function registerLiberationFallback(fallback) {
+  if (typeof fallback?.heir !== 'function' || typeof fallback?.claim !== 'function') {
+    throw new TypeError('registerLiberationFallback: { heir, claim } fonksiyonları gerekli');
+  }
+  return addTo(liberationFallbacks(), fallback);
+}
+
+/**
+ * Kayıt listeleri modül gövdesi koşmadan da var olmalı: peace.js bir içe alma
+ * döngüsünün içinde (peace → diplomacy → units → levy → provinces → culture →
+ * culturePolicy → economy → peace). Döngüde peace.js'ten önce değerlendirilen
+ * bir modül yükleme anında kaydolursa modül düzeyi `const` henüz TDZ'de olur
+ * ve ReferenceError atar. Fonksiyon bildirimi örnekleme anında hazırdır;
+ * liste onun özelliğinde tembel kurulur.
+ */
+function liberationFallbacks() {
+  return (liberationFallbacks.list ??= []);
+}
+
+function peaceHooks() {
+  return (peaceHooks.list ??= []);
+}
+
+/** Kayıt sırası korunur (determinizm), aynı fonksiyon iki kez girmez; dönen fonksiyon kaydı siler. */
+function addTo(list, entry) {
+  if (!list.includes(entry)) list.push(entry);
+  return () => {
+    const index = list.indexOf(entry);
+    if (index >= 0) list.splice(index, 1);
+  };
+}
+
+/** Mirasçı ve onu veren yedek (yaşayan akrabaysa yedek null). */
+function resolveLiberationHeir(world, province, a, b) {
+  const kin = livingKinHeir(world, province, a, b);
+  const fallbacks = liberationFallbacks();
+  if (kin >= 0 || !fallbacks.length) return { heir: kin, fallback: null };
+  for (const fallback of fallbacks) {
+    const heir = fallback.heir(world, province, a, b);
+    if (Number.isInteger(heir) && heir >= 0 && heir !== a && heir !== b) return { heir, fallback };
+  }
+  return { heir: -1, fallback: null };
 }
 
 export function termAvailable(world, a, b, termId) {
@@ -529,11 +592,20 @@ export function acceptanceTolerance(world, receiverId, proposerId) {
   const rec = world.relations?.[receiverId]?.[proposerId];
   const weeks = Math.max(0, (world.turn ?? 0) - (rec?.since ?? 0));
   const weariness = clamp(weeks / 312, 0, 1) * 15;
-  const raw = 10 + Math.max(0, fronts - 1) * 15
-    + ((receiver?.stability ?? 0.6) < 0.4 ? 15 : 0)
-    // TESLİM: savaş desteği çökmüş ülke kötü barışı da kabul eder.
-    + ((receiver?.warSupport ?? 0.5) < 0.2 ? 20 : 0)
-    + weariness;
+  // YORGUNLUK DALI (redesign D5, P1'de uyur): `politics.exhaustion` sayıyken
+  // "irade < 0.2 → +20" ile "hafta/312 × 15" yerine +35 × yorgunluk (aynı
+  // azami). Barışı iradenin çöküşü değil savaşın bedeli getirir. Dal ayrı
+  // ifade: eski toplamın sırası (kayan nokta) olduğu gibi kalır.
+  const exhaustion = receiver?.politics?.exhaustion;
+  const raw = typeof exhaustion === 'number'
+    ? 10 + Math.max(0, fronts - 1) * 15
+      + ((receiver?.stability ?? 0.6) < 0.4 ? 15 : 0)
+      + 35 * clamp(exhaustion, 0, 1)
+    : 10 + Math.max(0, fronts - 1) * 15
+      + ((receiver?.stability ?? 0.6) < 0.4 ? 15 : 0)
+      // TESLİM: savaş desteği çökmüş ülke kötü barışı da kabul eder.
+      + ((receiver?.warSupport ?? 0.5) < 0.2 ? 20 : 0)
+      + weariness;
   // TAVAN: tolerans, kazanilan ustunlugun tamamini silemez.
   //
   // Bu kapi canli oyunda yakalandi (seed BETA1836, 1840, Vasheim-Draesh):
@@ -785,9 +857,15 @@ function applyTerms(game, a, b, terms) {
       for (const province of world.provinces ?? []) {
         if (province.owner !== b || !province.econ) continue;
         if (province.culture === loser.culture) continue;
-        const heir = liberationHeir(world, province, a, b);
+        const { heir, fallback } = resolveLiberationHeir(world, province, a, b);
         if (heir < 0) continue;
-        game.turns.claimAtPeace(province.center, heir);
+        // Yedek mirasçı (Özgür Devlet yuvası) kümeyi kendisi alır ve uyanır;
+        // reddederse küme yerinde kalır (eski "akrabasız küme" kuralı).
+        if (fallback) {
+          if (!fallback.claim(game, province, heir, { a, b })) continue;
+        } else {
+          game.turns.claimAtPeace(province.center, heir);
+        }
         province.econ.control = 60;
       }
       continue;
@@ -838,10 +916,11 @@ export function signPeace(game, a, b, offer) {
   transfer(offer?.concessions, a, b);
   applyTerms(game, a, b, offer?.terms);
   // ZAFER PRESTİJ GETİRİR (puan tablosu, hegemony.js): kazanan alır,
-  // kaybeden verir. Beyaz barışta kimse kazanmaz.
+  // kaybeden verir. Beyaz barışta kimse kazanmaz. Net kazanç barış
+  // kancalarına da gider (onPeace: kaybeden = net kazancı küçük olan).
+  const gainA = (offer?.demands ?? []).length + (offer?.terms ?? []).length;
+  const gainB = (offer?.concessions ?? []).length;
   {
-    const gainA = (offer?.demands ?? []).length + (offer?.terms ?? []).length;
-    const gainB = (offer?.concessions ?? []).length;
     const award = (winner, loser, size) => {
       const prize = Math.min(20, 5 + size * 3);
       world.nations[winner].prestige = (world.nations[winner].prestige ?? 0) + prize;
@@ -891,5 +970,90 @@ export function signPeace(game, a, b, offer) {
       body: parts.length ? `${parts.join(' · ')}.` : 'A white peace: the borders stand as they are.',
     });
   }
-  return makePeace(game, a, b, { settle: false });
+  const signed = makePeace(game, a, b, { settle: false });
+  // BARIŞ KANCALARI en sonda: toprak, şartlar ve iadeler yerinde, ilişki
+  // artık barış. Kayıt boşken (P8'e dek) hiçbir şey çağrılmaz.
+  const hooks = peaceHooks();
+  if (signed && hooks.length) {
+    const event = {
+      a, b, offer, gainA, gainB,
+      loser: gainA > gainB ? b : gainB > gainA ? a : null,
+      white: !(offer?.demands?.length || offer?.concessions?.length || offer?.terms?.length),
+      turn: game.turns.turn,
+    };
+    // Kopya üzerinde: kanca kendini silerse sıra kaymasın.
+    for (const hook of [...hooks]) hook(game, event);
+  }
+  return signed;
+}
+
+/**
+ * BARIŞ KANCASI KAYDI (redesign D2, P1 dikişi). `fn(game, event)` her
+ * `signPeace`in sonunda, kayıt sırasıyla, eşzamanlı çağrılır:
+ *   event = { a, b, offer, gainA, gainB, loser (kimlik | null), white, turn }
+ * Kaybeden, ödül kuralıyla aynı ölçüttür: net kazancı küçük olan taraf.
+ * Yenilgi şoku (movements.defeatShock, P8) buradan kaydolur; peace.js onu
+ * içe almaz — barış hareketlerden habersiz kalır, döngü kurulmaz (§3 #14).
+ * Dönen fonksiyon kaydı siler.
+ */
+export function onPeace(fn) {
+  if (typeof fn !== 'function') throw new TypeError('onPeace: fonksiyon gerekli');
+  return addTo(peaceHooks(), fn);
+}
+
+/**
+ * VASSALLIĞIN SONU (redesign D2, P1 dikişi): `overlordId`nin efendi olduğu
+ * bütün VASSALIZE anlaşmaları düşer. Tükenmiş kaybedenin dominyonları kendi
+ * yoluna gider (P8 yenilgi şoku çağırır). Serbest kalanların kimlikleri artan
+ * sırayla döner (dünya listesi kimlik sırasındadır).
+ */
+export function endVassalage(world, overlordId) {
+  const freed = [];
+  for (const nation of world.nations) {
+    if (!nation.treaties?.length) continue;
+    const kept = nation.treaties.filter(
+      (treaty) => !(treaty.type === 'VASSALIZE' && treaty.partner === overlordId),
+    );
+    if (kept.length === nation.treaties.length) continue;
+    nation.treaties = kept;
+    freed.push(nation.id);
+  }
+  return freed;
+}
+
+/** Savaş dengesi kaç haftada bir tazelenir (turn.js her hafta çağırır). */
+export const WAR_BALANCE_WEEKS = 4;
+
+/**
+ * SAVAŞ DENGESİ ÖNBELLEĞİ (redesign D5, P1 dikişi). Dört haftada bir, her
+ * savaşan ulus için düşmanlarına karşı en iyi ve en kötü warscore
+ * `politics.warBalance = {best, worst}`a yazılır; savaşta olmayanın kaydı
+ * silinir. turn.js siyasetten ÖNCE çağırır: irade ve yorgunluk (P5) bunu
+ * okur, ama politics.js peace.js'i içe almaz (döngü olurdu).
+ *
+ * NEDEN ÖNBELLEK: warScore her kümeyi ve her birimi gezer; ulus × düşman ×
+ * hafta okunsa savaş zirvesinde tur süresi şişerdi. Dört haftalık bayatlık
+ * iradenin haftada 0.01-0.03'lük yaklaşımı yanında görünmez.
+ * Kayda girer (politics bütün saklanır): yüklenen oyun ayrışmaz. Zar
+ * çekmez, hiçbir şeyin sırasını değiştirmez, yalnız bu alanı yazar.
+ */
+export function updateWarBalance(world) {
+  if ((world.turn ?? 0) % WAR_BALANCE_WEEKS !== 0) return false;
+  for (const nation of world.nations) {
+    const politics = nation.politics;
+    if (!politics) continue;
+    let best = -Infinity;
+    let worst = Infinity;
+    if (nation.alive) {
+      for (const foe of world.nations) {
+        if (foe === nation || !foe.alive || !atWar(world, nation.id, foe.id)) continue;
+        const score = warScore(world, nation.id, foe.id);
+        if (score > best) best = score;
+        if (score < worst) worst = score;
+      }
+    }
+    if (best > -Infinity) politics.warBalance = { best, worst };
+    else if (politics.warBalance !== undefined) delete politics.warBalance;
+  }
+  return true;
 }

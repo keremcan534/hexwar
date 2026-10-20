@@ -6,55 +6,54 @@ import {
 } from '../game/cities.js';
 import { UNIT_TYPES, menUnderArms } from '../game/units.js';
 import {
-  MIN_WAR_TURNS, ULTIMATUM_WEEKS, atWar, crisisLeft, inCrisis, relation, truceLeft,
+  MIN_WAR_TURNS, ULTIMATUM_WEEKS, atWar, crisisLeft, inCrisis, overlordOf, relation, truceLeft, warBlockers,
 } from '../game/diplomacy.js';
-import { warScore } from '../game/peace.js';
-import { INFAMY_COALITION, OCCUPATION_TURNS, tileEfficiency } from '../game/infamy.js';
+import { INFAMY_COALITION } from '../game/infamy.js';
 import {
   CULTURE, foreignShareOf, rebelCultureOf, unrestBreakdown,
 } from '../game/culture.js';
 import { stageOf } from '../game/movements.js';
 import { savedInfo } from '../game/save.js';
-import { DELEGATION_AREAS, DELEGATION_IDS, isDelegated } from '../game/delegation.js';
+import { areasOfScreen, isDelegated } from '../game/delegation.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { mountFlag } from '../render/flagWave.js';
 import {
-  DATA_MODES, DIPLOMACY_COLORS, INDUSTRY_RAMP, INFAMY_RAMP, UNREST_RAMP, diplomacyStanding, rampColor,
+  DATA_MODES, DIPLOMACY_COLORS, INFAMY_RAMP, UNREST_RAMP, developmentShade, diplomacyStanding, rampColor,
 } from '../render/renderer.js';
 import { bindMacroCards } from './macroCard.js';
-import { armyPanelHtml, commandCardsHtml, generalPickerHtml } from './armyPanel.js';
+import { armDisband, armyPanelHtml, commandCardsHtml, generalPickerHtml } from './armyPanel.js';
 import { LEAVE_MS, hidePanel, motionOn, panelOpen, togglePanel } from './motion.js';
 import { Screens } from './screens.js';
+import { TabLedger } from './tabLedger.js';
 import { showEndScreen } from './endScreen.js';
-import { formatPopulation, weeklyBalanceOf } from '../game/economy.js';
-import { RESOURCES, RESOURCE_IDS, BUILDINGS, BUILDING_IDS, DEVELOPMENT_MAX, DEVELOPMENT_WEEKS } from '../game/econ/defs.js';
-import { buildingArt, emblemArt, resourceArt } from './icons/art.js';
+import { formatPopulation } from '../game/economy.js';
+import { RESOURCES, RESOURCE_IDS, DEVELOPMENT_MAX } from '../game/econ/defs.js';
+import { developmentCap, fundFloor, investmentTarget, levelCost } from '../game/econ/investment.js';
+import { inSupplyCrisis } from '../game/econ/bills.js';
+import { emblemArt, resourceArt } from './icons/art.js';
 import { glyph } from './icons/glyphs.js';
-import { refreshTooltips } from './tooltip.js';
-import { meter as kitMeter, pips as kitPips, tipAttr } from './kit.js';
+import { provideTooltip, quietScroll, refreshTooltips } from './tooltip.js';
+import { CURRENCY, meter as kitMeter, money, pips as kitPips, tipAttr } from './kit.js';
+import { stateCultures, stateYield } from '../game/stateView.js';
 import { depositsOf, fertilityOf } from '../game/econ/deposits.js';
 import { workforceShare } from '../game/econ/resources.js';
-import { FOCUSES, focusSlots, nextSlotAt } from '../game/focus.js';
+import { FOCUSES, FOCUS_BY_ID, focusSlots, nextSlotAt } from '../game/focus.js';
 import { focusBlockers, focusPreview, focusedStates, setFocus } from '../game/stateFocus.js';
 import { powerIncome } from '../game/politics.js';
-import { buildingLevels, buildingSlots } from '../game/provinces.js';
-import { buildPreview } from '../game/buildPreview.js';
-import {
-  buildBlockers, buildingCost, developBlockers, developmentCost, queueBuilding, queueDevelopment,
-} from '../game/construction.js';
 import {
   canRecruit, disband, equipmentCostLabel, nationManpower, rallyTile, setRallyPoint,
   trainingWeeks,
 } from '../game/recruitment.js';
 import {
   BRANCH, assignDivisions, createGeneral, generalById,
-  borderNationIds, generalCost, refreshFront, setAggression, unassignGeneral,
+  borderNationIds, generalCost, refreshFront, retireGeneral, setAggression, unassignGeneral,
 } from '../game/command.js';
 import { controllerOf, isOccupied } from '../game/control.js';
 import { tileDefense } from '../game/battles.js';
 import { POPULATION_SCALE } from '../game/populationScale.js';
 import { worldRows } from '../world/worldgen.js';
 import { dateOfTurn } from '../game/calendar.js';
+import { WarDock } from './warDock.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -63,13 +62,9 @@ const GRID_KEY = 'hexwar.map.hexGrid';
 /** Sınır katmanları; anahtar yoksa açık (varsayılan görünüm). */
 const BORDER_KEYS = { showCountryBorders: 'hexwar.map.countryBorders', showProvinceBorders: 'hexwar.map.provinceBorders' };
 
-/** Sekme ekranı → devir alanı (Military → recruitment, Politics → reforms…). */
-const AREA_OF_SCREEN = Object.fromEntries(
-  DELEGATION_IDS.map((id) => [DELEGATION_AREAS[id].screen, id]),
-);
 
 /** Saat durum satırında hızın adı (düğmelerin aria-label'ıyla aynı). */
-const SPEED_NAMES = { 1: 'Normal speed', 2: 'Fast', 4: 'Very fast', 8: 'Fastest' };
+const SPEED_NAMES = { 1: 'Normal speed', 2: 'Fast', 4: 'Very fast', 6: 'Rapid', 8: 'Fastest' };
 
 /**
  * ÜST ÇUBUK GÖSTERGESİ: oyuk yuvada simge (madalyon ya da çizgi ikon),
@@ -89,7 +84,7 @@ function ringSvg(share, tone = '') {
 /**
  * DEĞİŞİM İZİ: hücre bir anahtar, sayısal değer ve eşik taşır; HUD bir önceki
  * değerle karşılaştırıp hücreyi bir kez parlatır, halkayı eski dolumdan yeniye
- * kaydırır (animateTopChanges). Eşik gürültüyü keser: altın her hafta oynar,
+ * kaydırır (animateTopChanges). Eşik gürültüyü keser: çıktı her hafta oynar,
  * her hafta parlarsa 8x hızda çubuk sürekli yanıp söner. `pol` -1: artışı kötü
  * (şöhret).
  */
@@ -101,9 +96,8 @@ function track(key, value, eps, pol = 1) {
 function deltaLabel(key, delta) {
   const sign = delta > 0 ? '+' : '−';
   const abs = Math.abs(delta);
-  if (key === 'gold') return `${sign}${abs >= 10000 ? `${(abs / 1000).toFixed(1)}K` : Math.round(abs)}`;
   if (key === 'stab' || key === 'ws') return `${sign}${Math.round(abs)}%`;
-  if (key === 'inf' || key === 'ic') return `${sign}${abs.toFixed(1)}`;
+  if (key === 'inf' || key === 'ic' || key === 'out') return `${sign}${abs.toFixed(1)}`;
   if (key === 'power') return `${sign}${Math.round(abs)}`;
   if (key === 'pop' || key === 'army' || key === 'mp') return `${sign}${formatPopulation(abs)}`;
   if (key.startsWith('r-')) return `${sign}${Math.round(abs * 100)}%`;
@@ -116,17 +110,53 @@ function miniCell(icon, label, value, attrs = '', cls = '') {
       <span class="tb-mini-ico">${icon}</span><b>${value}</b><small>${label}</small></span>`;
 }
 
-function statCell(icon, label, value, attrs = '', cls = '', ring = null) {
+/** `extra`: değerin altına giren ek satır (Output hücresinin çubuğu). */
+function statCell(icon, label, value, attrs = '', cls = '', ring = null, extra = '') {
   return `<span class="tb-gauge${cls ? ` ${cls}` : ''}" tabindex="0" ${attrs}>
       <span class="tb-socket">${ring ? ringSvg(ring.share, ring.tone) : ''}<span class="tb-ico">${icon}</span></span>
-      <span class="tb-gv"><small>${label}</small><b>${value}</b></span>
+      <span class="tb-gv"><small>${label}</small><b>${value}</b>${extra}</span>
     </span>`;
 }
 
-/** Sekme kısayolları: künyelerin soldan sağa sırası. */
+/**
+ * TEK ÇUBUK (TASARIM.md §1): haftanın çıktısı dört paya bölünür — faturalar,
+ * ordu, halk, kalkınma (economy.alloc; toplamı çıktıya birebir eşit). Hücrenin
+ * altındaki ince şerit bu bölüşümü ekran açmadan okutur. Stil satır içidir:
+ * styles.css başka bir elde; `tb-bar` sınıfı CSS'e taşınabilsin diye durur.
+ * Renkler sabit ve soluk: gri fatura, kırmızı ordu, yeşil halk, mavi kalkınma.
+ */
+const BAR_SEGMENTS = [
+  ['bills', 'hsl(40 6% 52%)'],
+  ['army', 'hsl(8 50% 48%)'],
+  ['people', 'hsl(95 32% 46%)'],
+  ['invest', 'hsl(208 42% 52%)'],
+];
+function outputBar(alloc, crisis) {
+  const total = Math.max(1e-6, alloc?.output ?? 0);
+  const segments = alloc ? BAR_SEGMENTS.map(([key, color]) => {
+    const share = Math.max(0, alloc[key] ?? 0) / total;
+    return share > 0.002 ? `<i style="flex:${share.toFixed(4)} 1 0;background:${color}"></i>` : '';
+  }).join('') : '';
+  // Kriz nabzı mevcut kare dizilerinden kurulur: kaynak çipinin kıtlık
+  // parıltısı (tb-pulse, kırmızı gölge) + duraklatma satırının soluklaşması
+  // (turn-paused-pulse): değer sütunu taşmayı kırptığı için (.tb-gv overflow)
+  // gölge tek başına yarım kalır. Hareket kapalıysa yalnız kırmızı değer kalır.
+  const pulse = crisis && motionOn()
+    ? ';animation:tb-pulse 1.8s ease-in-out infinite,turn-paused-pulse 1.8s ease-in-out infinite' : '';
+  return `<span class="tb-bar" aria-hidden="true" style="display:flex;gap:1px;height:3px;margin-top:2px;overflow:hidden;border-radius:1px;background:rgba(0,0,0,.5)${pulse}">${segments}</span>`;
+}
+
+/**
+ * Sekme kısayolları: künyelerin soldan sağa sırası, on sekme F1-F10.
+ * Cultures sonradan eklenince tablo dokuz tuşta kalmıştı: F7 yedinci sekmeyi
+ * (Cultures) değil Politics'i açıyordu, Cultures'ın tuşu yoktu. Diplomasi
+ * (sekmesi yok) P'ye geçti; F11/F12 tarayıcınındır. Kimlikler eski adlarını
+ * taşır (kayıt, devir tablosu, ekran kancaları onlara bağlı): 'construction'
+ * künyede Development, 'budget' Economy yazar (Tek Çubuk, 2026-10-15).
+ */
 const TAB_KEYS = {
   F1: 'construction', F2: 'industry', F3: 'trade', F4: 'budget', F5: 'military',
-  F6: 'population', F7: 'politics', F8: 'technology', F9: 'chronicle',
+  F6: 'population', F7: 'cultures', F8: 'politics', F9: 'technology', F10: 'chronicle',
 };
 
 /** Klavyeyle kamera kaydirma. Sol surukleme kutu secimine ayrildi. */
@@ -193,9 +223,68 @@ export class Hud {
       warBar: $('war-bar'),
     };
     this.screens = new Screens(game);
+    // Sağ üst savaş paneli (bkz. ui/warDock.js); ekranları HUD açar.
+    this.warDock = new WarDock(game, {
+      openTalks: (id) => this.screens.openPeaceTalks(id),
+      openDossier: (id) => this.screens.openDossier(id),
+      openScreen: (name) => this.screens.open(name),
+    });
+    // Vic2 üst menüsü: her sekme kendi alanının canlı satırını taşır. Ekran
+    // içindeki bazı eylemler (araştırmayı başlat, kuyruğa ekle) olay yaymaz;
+    // ekranın her tazelemesi sekmeleri de tazeler ki satır bir hafta gecikmesin.
+    this.tabLedger = new TabLedger(game);
+    this.screens.onRefresh = () => this.tabLedger.schedule();
     this.buildRgoLegend();
     this.buildPopulationLegend();
+    this.registerOutputTip();
     this.bind();
+  }
+
+  /**
+   * Output hücresinin bilgi kartı: haftanın çıktısı nereden geldi, nereye
+   * gitti, fonda ne var. Kart hücreyle birlikte burada durur (eski 'treasury'
+   * kartı altın defteriydi); sayılar yalnız economy.ic / alloc / bills /
+   * consumer alanlarından okunur, formül kurulmaz.
+   */
+  registerOutputTip() {
+    const { game } = this;
+    provideTooltip('topbar-output', () => {
+      const nation = game.world?.nations[game.turns.playerNation];
+      const economy = nation?.economy;
+      if (!economy?.ic) return null;
+      const { ic, alloc, bills, consumer } = economy;
+      const n = (v) => (v ?? 0).toFixed(1);
+      const crisis = inSupplyCrisis(nation);
+      const summary = alloc
+        ? `${n(alloc.output)} IC: ${n(alloc.bills)} bills · ${n(alloc.army)} army · ${n(alloc.people)} people · ${n(alloc.invest)} development.`
+        : 'The first week has not closed yet.';
+      const crisisLine = crisis && bills
+        ? ` <b>Supply crisis:</b> the bills (${money(bills.owed, 1)}) are above the ceiling of ${money(bills.room, 1)};`
+          + ` only ${Math.round((bills.s ?? 0) * 100)}% is paid, so reinforcement, training and order suffer.`
+        : '';
+      const efficiency = economy.investEfficiency ?? 1;
+      const rows = [
+        { label: 'Handwork', value: `+${n(ic.hand)}` },
+        { label: 'Industry', value: `+${n(ic.total)}` },
+        { label: 'Crown', value: `+${n(ic.crown)}` },
+        alloc ? { label: crisis ? `Bills (${Math.round((bills?.s ?? 0) * 100)}% paid)` : 'Bills: supply, schools', value: `−${n(alloc.bills)}`, tone: crisis ? 'bad' : '' } : null,
+        alloc ? { label: `Army (cap ${n(alloc.armyCap)})`, value: `−${n(alloc.army)}` } : null,
+        alloc ? { label: `People (fed ×${(consumer?.feed ?? 1).toFixed(2)})`, value: `−${n(alloc.people)}` } : null,
+        alloc ? { label: efficiency !== 1 ? `Development (×${efficiency.toFixed(2)} into the fund)` : 'Development', value: n(alloc.invest), tone: alloc.invest > 0 ? 'good' : '' } : null,
+      ].filter(Boolean);
+      // Fonun hedefi canlı: Develop odağı hafta ortasında değişebilir.
+      const target = investmentTarget(game.world, nation);
+      return {
+        type: 'breakdown',
+        title: 'Output',
+        value: `${n(ic.output)} IC / week`,
+        text: `${summary}${crisisLine}`,
+        rowsLabel: 'This week',
+        rows,
+        footer: `${CURRENCY.label}: ${money(nation.fund ?? 0, 0)} (it may dip to ${money(fundFloor(nation), 0)})`
+          + (target ? ` · saving for ${escapeHtml(target.name)}, level ${(target.econ.development ?? 1) + 1} at ${money(levelCost(target), 0)}.` : '.'),
+      };
+    });
   }
 
   /**
@@ -253,12 +342,16 @@ export class Hud {
     const wars = world.nations.filter(
       (other) => other.alive && other.id !== me.id && atWar(world, me.id, other.id),
     );
-    // Ültimatomlar da çubukta durur: savaş henüz yok ama geri sayım var ve
-    // seferberlik kararı bu pencerede verilir.
+    // Ültimatomlar: savaş henüz yok ama geri sayım var (bildirimi aşağıda düşer).
     const crises = world.nations.filter(
       (other) => other.alive && other.id !== me.id && inCrisis(world, me.id, other.id),
     );
-    bar.classList.toggle('hidden', wars.length + crises.length === 0);
+    // Savaşların GÖSTERİMİ sağ üst panelde (ui/warDock.js, HOI4 savaş
+    // kutuları): sekme şeridinin altındaki ortalı çipler kayıp, süre, işgal
+    // ve hedef göstermiyordu. Şerit boş kalır (muharebe şeridi onun altına
+    // yerleşiyordu); burada yalnız savaş/ültimatom bildirimlerinin temizliği.
+    bar.classList.add('hidden');
+    bar.innerHTML = '';
     // Savaş bittiyse savaş kartı da biter. Kart `ttl: 0` ile kalıcıdır ve
     // kendiliğinden kapanmaz; barış onu geçersiz kılan tek olaydır. İlan
     // kartı da ültimatom bitince düşer (anahtar `crisis-<id>`; CRISIS türü
@@ -269,40 +362,6 @@ export class Hud {
       .filter((entry) => entry.key?.startsWith('crisis-') && !openCrisis.has(entry.key))
       .map((entry) => entry.key);
     if (staleCrisis.length) this.game.notifications.dismissKeys(staleCrisis);
-    const crisisChips = crises.map((other) => {
-      const left = crisisLeft(world, me.id, other.id, this.game.turns.turn);
-      return `<button class="war-chip crisis" data-crisis-target="${other.id}"
-        title="Ultimatum: war with ${escapeHtml(other.name)} begins in ${left} weeks. Mobilize from the Military screen.">
-        <span class="war-name">${glyph('hourglass', 'inline')} ${escapeHtml(other.name)}</span>
-        <b class="war-score">${left}w</b>
-      </button>`;
-    }).join('');
-    const diplomacyChip = `<button class="war-chip diplomacy" data-open-diplomacy="1"
-      title="Wars, battles, alliances and peace offers (F10)">${glyph('dove', 'inline')} Diplomacy</button>`;
-    bar.innerHTML = crisisChips + wars.map((other) => {
-      const score = warScore(world, me.id, other.id);
-      const tone = score > 8 ? 'winning' : score < -8 ? 'losing' : 'even';
-      // Bekleyen teklif menude kaybolmamali: savas kutucugu zaten ustte duruyor.
-      const offered = this.game.hasPeaceOffer(me.id, other.id);
-      return `<button class="war-chip ${tone}${offered ? ' offered' : ''}" data-war-target="${other.id}"
-        title="${offered ? `${escapeHtml(other.name)} has proposed terms`
-    : `Open peace talks with ${escapeHtml(other.name)}`}">
-        <span class="war-name">${offered ? `${glyph('dove', 'inline')} ` : ''}${escapeHtml(other.name)}</span>
-        <b class="war-score">${score >= 0 ? '+' : ''}${score}</b>
-      </button>`;
-    }).join('') + diplomacyChip;
-    const diplomacy = bar.querySelector('[data-open-diplomacy]');
-    if (diplomacy) diplomacy.onclick = () => this.screens.open('diplomacy');
-    for (const chip of bar.querySelectorAll('[data-war-target]')) {
-      const id = Number(chip.dataset.warTarget);
-      // Teklif bekleyen savasta masa degil, teklifin durdugu diplomasi ekrani acilir.
-      chip.onclick = () => (this.game.hasPeaceOffer(me.id, id)
-        ? this.screens.open('diplomacy')
-        : this.screens.openPeaceTalks(id));
-    }
-    for (const chip of bar.querySelectorAll('[data-crisis-target]')) {
-      chip.onclick = () => this.screens.open('military');
-    }
   }
 
   bind() {
@@ -438,12 +497,18 @@ export class Hud {
       this.picker?.open();
     };
 
-    $('btn-save').onclick = () => {
-      this.el.saveInfo.textContent = game.save() ? 'Game saved.' : 'Could not save (storage may be disabled).';
+    // Hızlı kayıt yeni yuvaya yazar; liste, yükleme ve dosya işleri kayıt
+    // ekranındadır (screens.render_saves). Ekran açılınca saat durur: kayıt
+    // seçerken kampanya akmasın.
+    $('btn-save').onclick = async () => {
+      this.el.saveInfo.textContent = 'Saving…';
+      const result = await game.save(`${game.world.nations[game.turns.playerNation]?.name ?? 'Campaign'} · ${gameDate(game.turns.turn)}`);
+      this.el.saveInfo.textContent = result.ok ? 'Saved to a new slot. Saves… lists, loads and exports them.' : `Could not save: ${result.reason}.`;
     };
     $('btn-load').onclick = () => {
-      this.el.saveInfo.textContent = game.load() ? 'Game loaded.' : 'No compatible save found.';
-      this.refreshSaveInfo();
+      hidePanel(el.settings);
+      game.setSpeed(0);
+      this.screens.open('saves');
     };
 
     for (const btn of document.querySelectorAll('.time-btn[data-speed]')) {
@@ -452,6 +517,35 @@ export class Hud {
     // Saat biriminin yuvarlak düğmesi Space'in aynısı: duraklatıkken oynatır.
     $('btn-pause').onclick = () => game.togglePause();
     this.bindKeys();
+    // Ordu paneline basılı fare: tıklama sürerken panel yeniden yazılmaz
+    // (bkz. showTile, armyOnly). Bırakınca bekleyen tazeleme koşar.
+    this.el.sheetBody.addEventListener('pointerdown', () => { this.sheetPressed = true; });
+    // Province panelinin ✕'i (ordu panelinde vardı, bunda yoktu: panel yalnız
+    // Esc ya da haritaya tıkla kapanıyordu). Esc ile aynı yol: seçim düşer.
+    this.el.sheetBody.addEventListener('click', (event) => {
+      if (!event.target.closest('[data-tile-close]')) return;
+      this.game.selected = null;
+      this.game.emit('select', null);
+      this.game.requestRender();
+    });
+    // Komutan şeridinin kaydırma çubuğu gizli: taşan kartlara fare tekerleğiyle
+    // ulaşılır (dikey tekerlek yatay kaydırır; harita yakınlaşmaz).
+    this.el.commandBar?.addEventListener('wheel', (event) => {
+      const bar = this.el.commandBar;
+      if (!event.deltaY || bar.scrollWidth <= bar.clientWidth) return;
+      event.preventDefault();
+      bar.scrollLeft += event.deltaY;
+    }, { passive: false });
+    const release = () => {
+      if (!this.sheetPressed) return;
+      this.sheetPressed = false;
+      if (this.armyRewritePending) {
+        this.armyRewritePending = false;
+        requestAnimationFrame(() => this.showTile(this.game.selected));
+      }
+    };
+    window.addEventListener('pointerup', release);
+    window.addEventListener('pointercancel', release);
     this.bindCommandDock();
     this.trackHeaderHeight();
     // HOI4'teki ülke bayrağı gibi ulusal durum panelini açar.
@@ -494,20 +588,28 @@ export class Hud {
       if (game.selected) this.showTile(game.selected);
     });
     // Otomatik kayit da elle kayit da ayni satiri tazeler (bkz. game.flushAutosave).
-    game.on('save', () => this.refreshSaveInfo());
+    game.on('save', (event) => {
+      this.refreshSaveInfo();
+      // Başarısız otomatik kayıt söylenir: eskiden kota dolunca kampanya
+      // kaydedilmeden akıyor, oyuncu kaydı olduğunu sanıyordu.
+      if (event?.error) {
+        this.el.saveInfo.textContent = `Autosave failed: ${event.error}.`;
+        game.turns.addLog(`Autosave failed: ${event.error}. Export or overwrite a save from Saves….`, {
+          kind: 'INFO', key: 'autosave-failed',
+        });
+      }
+    });
     // Gün tiki yalnız tarihi oynatır. Eskiden her gün tam onTurn koşuyordu:
     // hız 8'de saniyede 8 kez skorbord + ordu toplamı + üç innerHTML bloğu
     // (ölçüldü: tik başına ~1-2.4 ms + DOM çöpü). Haftalık kapanış zaten
     // 'turn'/'economy' olaylarıyla tam tazeliyor.
     game.on('clock', () => this.onDay());
-    game.on('economy', () => this.onTurn());
-    // Ekran düğmeleri (yasa, danışman, karar, olay kartı) SG ve altını anında harcar.
-    game.on('politics', () => this.onTurn());
-    // İnşaat/yatırım kararı hazineden ANINDA para düşer ama haftalık tik
-    // gelene kadar üst çubuk eski rakamı gösteriyordu: oyuncu £220 sanıp
-    // £0 ile karar veriyordu (kör beta B-006). Ekonomi ekranı bu olayı zaten
-    // dinliyordu; üst çubuk dinlemiyordu.
-    game.on('construction', () => this.onTurn());
+    // Fondan ANINDA düşen alım (general, olay seçeneği) ve doyurma kolu
+    // 'economy' yayar; haftalık tiki beklerse oyuncu eski rakamla karar
+    // veriyordu (kör beta B-006). Eski 'construction' olayı artık yok.
+    game.on('economy', () => this.queueTurn());
+    // Ekran düğmeleri (yasa, danışman, karar, olay kartı) SG'yi anında harcar.
+    game.on('politics', () => this.queueTurn());
     // Kampanya sonu (1945) tek satirlik bir metinle geciyordu; 'victory'
     // olayinin hicbir dinleyicisi yoktu. Artik yuzyilin kapanis sayfasi acilir.
     game.on('victory', (result) => showEndScreen(game, result));
@@ -529,20 +631,43 @@ export class Hud {
     });
     game.on('battles', () => {
       if (game.selected) this.showTile(game.selected);
-      this.onTurn();
+      this.queueTurn();
     });
     game.on('provinces', () => {
       if (game.selected) this.showTile(game.selected);
-      this.onTurn();
+      this.queueTurn();
     });
     game.on('selection', (units) => this.showSelection(units));
     game.on('command', () => this.showCommand());
     // AUTO anahtarı çevrilince künyenin ışığı hemen yanar/söner.
     game.on('delegation', () => this.syncTabAuto());
+    game.on('orderRefused', ({ text }) => this.flashHint(text));
     game.on('units', () => {
       this.showTile(this.game.selected);
-      this.onTurn();
+      this.queueTurn();
     });
+  }
+
+  /**
+   * Hafta içi olaylardan gelen üst çubuk tazelemesini birleştirir. Bu olaylar
+   * (units, battles, provinces, economy...) hafta kapanışında YZ ulusları için
+   * de ateşleniyor: 8x'te üst çubuk haftada ~48 kez baştan innerHTML
+   * yazılıyordu (ölçüldü), imlecin altındaki hücre her seferinde yenilenip
+   * hover/bilgi kartı zamanlayıcısı sıfırlanıyordu.
+   *   - Kapanış sürerken hiç tazelenmez: 'turn' olayı en sonda tam tazeler.
+   *   - Duraklatılmışken oyuncunun eylemi bir sonraki karede görünür
+   *     (fondan yapılan alım anında görünmeli, kör beta B-006).
+   *   - Saat akarken en fazla 250 ms'de bir.
+   */
+  queueTurn() {
+    if (this.game.turns?.turnJob || this.turnQueued) return;
+    this.turnQueued = true;
+    const since = performance.now() - (this.lastTurnAt ?? 0);
+    const wait = this.game.clock?.speed ? Math.max(0, 250 - since) : 0;
+    setTimeout(() => requestAnimationFrame(() => {
+      this.turnQueued = false;
+      this.onTurn();
+    }), wait);
   }
 
   /**
@@ -567,13 +692,17 @@ export class Hud {
     // üzerinden yapılan güncelleme bu tarayıcıda her zaman yerleşimi yeniden
     // hesaplatmıyor.
     // Bildirim yığını da aynı ölçüye bağlanır: sabit bir CSS değeriyle
-    // konumlandırıldığında sekme şeridinin üstüne biniyor ve Budget/Politics
+    // konumlandırıldığında sekme şeridinin üstüne biniyor ve Economy/Politics
     // sekmelerini kapatıyordu.
     const notify = document.getElementById('notify-stack');
     const apply = () => {
       const top = Math.round(header.getBoundingClientRect().height) + 16;
       screen.style.top = `${top}px`;
-      screen.style.maxHeight = `calc(100vh - ${top}px - 12px)`;
+      // Alttaki 52 px bildirim tepsisinindir: ekran açıkken tepsi o şeride
+      // iner (styles.css, body.screen-open .notify-stack). Eskiden tepsi
+      // ekranın sağ alt köşesine biniyor, Military'de teçhizat değerlerini,
+      // Diplomacy'de Declare War düğmelerini örtüyordu (ölçüldü).
+      screen.style.maxHeight = `calc(100vh - ${top}px - 52px)`;
       if (notify) notify.style.top = `${top}px`;
       // Tumen listesi de baslik yuksekligine gore yer bulur: sabit 140px
       // tahmini, savas seridi acilinca listeyi cipin ustune bindiriyordu
@@ -670,6 +799,13 @@ export class Hud {
         // Ayar ve katman panelleri de "acik panel"dir: kor oyun testinde
         // Escape yonetim ekranini kapatiyor ama World Settings'i birakiyordu.
         if (this.game.inspectorClose?.()) return;
+        // Açık hat çizim aracı her şeyden önce bırakılır.
+        if (this.game.drawTool) {
+          this.game.setDrawTool(null);
+          this.showCommand();
+          return;
+        }
+        if (this.warDock?.closeDetail()) return;
         const openPanel = [this.el.settings, this.el.layers].find((panel) => panelOpen(panel));
         if (openPanel) {
           hidePanel(openPanel);
@@ -677,6 +813,12 @@ export class Hud {
         }
         if (this.screens?.active) {
           this.screens.close();
+          return;
+        }
+        // Komutan seçicisinde Esc "geri" demektir (✕ gibi); seçimi silmez.
+        if (this.el.sheetBody.querySelector('.army-panel.is-picker')) {
+          this.sheetPicker = null;
+          this.showTile(this.game.selected);
           return;
         }
         this.game.selectGeneral(null);
@@ -691,11 +833,12 @@ export class Hud {
         }
         return;
       }
-      // F1-F9: sekme künyeleri soldan sağa. Sekme gizliyse (ekran kapalı)
+      // F1-F10: sekme künyeleri soldan sağa. Sekme gizliyse (ekran kapalı)
       // tuş hiçbir şey yapmaz ama tarayıcıya da gitmez (F5 sayfayı yenilerdi).
-      // F10: diplomasi ve savaşlar (sekmesi yok; muharebe listesi, savaş
-      // açıklaması ve barış teklifleri orada).
-      if (event.code === 'F10') {
+      // P: diplomasi ve savaşlar (sekmesi yok; muharebe listesi, savaş
+      // açıklaması ve barış teklifleri orada). Açık ekran tuşu önce alamaz:
+      // P hiçbir ekranda kullanılmıyor.
+      if (event.code === 'KeyP' && !event.shiftKey && !event.ctrlKey) {
         event.preventDefault();
         if (this.screens?.active === 'diplomacy') this.screens.close();
         else this.screens?.open('diplomacy');
@@ -708,8 +851,8 @@ export class Hud {
         if (button?.offsetParent) this.screens?.toggle(tab);
         return;
       }
-      // Açık ekran tuşu önce alır (her ekranda A = AUTO; Construction'da
-      // rakam, ok, Enter, B, F, S). Kullanmadığı tuş haritaya düşer.
+      // Açık ekran tuşu önce alır (her ekranda A = AUTO, ekranın kendi
+      // kısayolları). Kullanmadığı tuş haritaya düşer.
       if (this.screens?.active && this.screens.handleKey(event)) {
         event.preventDefault();
         return;
@@ -746,11 +889,12 @@ export class Hud {
         this.showTile(this.game.selected);
         return;
       }
-      // B: haritada seçili kendi state'inde hızlı inşa şeridini aç/kapat.
-      if (event.code === 'KeyB' && this.el.sheetBody.querySelector('[data-qb-toggle]')) {
+      // B: haritada seçili kendi state'inde Develop odağını aç/kapat (eski
+      // hızlı inşa tuşu; inşa kalktı, kalkınmayı yönlendiren tek kol bu odak).
+      if (event.code === 'KeyB' && !event.ctrlKey && this.el.sheetBody.querySelector('[data-develop]')) {
         event.preventDefault();
-        this.quickBuildOpen = !this.quickBuildOpen;
-        this.showTile(this.game.selected);
+        const area = this.game.world?.provinces?.[this.game.selected?.provinceId];
+        if (area) this.toggleDevelop(area);
         return;
       }
       const pan = PAN_KEYS[event.code];
@@ -771,6 +915,25 @@ export class Hud {
     $('btn-offensive').onclick = () => {
       game.toggleOffensive();
       this.showCommand();
+    };
+    // Hat araçları (HOI4): araç açıkken haritada sol sürükleme çizer.
+    const tool = (kind) => () => {
+      game.setDrawTool(game.drawTool === kind ? null : kind);
+      if (game.drawTool) this.flashHint(kind === 'front' ? 'Drag along the border to draw the front' : 'Drag inside your territory to draw the fallback line');
+      this.showCommand();
+    };
+    $('btn-draw-front').onclick = tool('front');
+    $('btn-draw-fallback').onclick = tool('fallback');
+    $('btn-fall-back').onclick = () => {
+      const on = game.toggleFallBack();
+      if (on != null) this.flashHint(on ? `${game.activeGeneral.name}: falling back` : `${game.activeGeneral.name}: back to the front`);
+      this.showCommand();
+      this.showTile(game.selected);
+    };
+    $('btn-clear-lines').onclick = () => {
+      game.clearCommandLines();
+      this.showCommand();
+      this.showTile(game.selected);
     };
     $('command-target').onchange = (event) => {
       const value = event.target.value;
@@ -816,7 +979,8 @@ export class Hud {
     // Kartlar armyPanel.commandCardsHtml'de: madalyon portre, tam ad,
     // yıldız, tümen sayısı, duruş ve plan çubuğu (eski 58 px kutuda portre
     // 26 px'lik köşeye sıkışıp rozetin altında kalıyordu).
-    el.commandBar.innerHTML = commandCardsHtml(game, me, { active, selected });
+    const retireArm = this.retireArm && this.retireArm.until > performance.now() ? this.retireArm.id : null;
+    el.commandBar.innerHTML = commandCardsHtml(game, me, { active, selected, retireArm });
 
     // Boolean sart: togglePanel `force ?? !acik` okur ve null "cevir" demektir.
     // General secili degilken arac cubugu her showCommand'da gorunup kayboluyordu.
@@ -840,11 +1004,46 @@ export class Hud {
       for (const btn of el.commandTools.querySelectorAll('[data-stance]')) {
         btn.classList.toggle('active', Number(btn.dataset.stance) === (active.aggression ?? 2));
       }
+      $('btn-draw-front').classList.toggle('active', game.drawTool === 'front');
+      $('btn-draw-front').classList.toggle('has-line', Boolean(active.line));
+      $('btn-draw-fallback').classList.toggle('active', game.drawTool === 'fallback');
+      $('btn-draw-fallback').classList.toggle('has-line', Boolean(active.fallback?.length));
+      const fallBack = $('btn-fall-back');
+      fallBack.disabled = !active.fallback?.length;
+      fallBack.classList.toggle('active', Boolean(active.fallingBack));
+      fallBack.textContent = active.fallingBack ? '↑ To front' : '⤺ Fall back';
+      $('btn-clear-lines').disabled = !active.line && !active.fallback?.length;
     }
 
     for (const btn of el.commandBar.querySelectorAll('[data-general]')) {
       const general = generalById(me, Number(btn.dataset.general));
       btn.onclick = () => game.selectGeneral(general);
+      // Kartın köşesindeki ✕: iki tıkla emeklilik (Kerem: "aşağıda generalleri
+      // silme yok"). İlk tık 3 sn ✓'ye döner; ikincisi emekli eder, tümenleri
+      // komutasız kalır. Kart düğmesine geçmesin diye yayılma kesilir.
+      const x = btn.querySelector('[data-cmd-retire]');
+      if (x) {
+        x.onclick = (event) => {
+          event.stopPropagation();
+          if (this.retireArm?.id !== general.id || this.retireArm.until < performance.now()) {
+            this.retireArm = { id: general.id, until: performance.now() + 3000 };
+            clearTimeout(this.retireTimer);
+            this.retireTimer = setTimeout(() => { this.retireArm = null; this.showCommand(); }, 3000);
+            this.showCommand();
+            return;
+          }
+          clearTimeout(this.retireTimer);
+          this.retireArm = null;
+          const gone = retireGeneral(game.world, me, general.id);
+          if (gone) {
+            game.turns.addLog(`General ${gone.name} retired from the staff.`, { kind: 'COMMANDER' });
+            if (game.activeGeneral?.id === general.id) game.activeGeneral = null;
+            game.emit('command', null);
+            game.requestRender();
+          }
+          this.showCommand();
+        };
+      }
       btn.oncontextmenu = (event) => {
         event.preventDefault();
         if (!game.selection.length) return;
@@ -873,6 +1072,10 @@ export class Hud {
       this.el.flashHint = el;
     }
     el.textContent = text;
+    // Komuta şeridinin hemen üstü: araç satırı açıkken sabit 132 px satırın
+    // üstüne biniyordu (hat çizim ipucu düğmeleri örtüyordu).
+    const dock = document.getElementById('command-dock')?.getBoundingClientRect();
+    el.style.bottom = dock && dock.height ? `${Math.round(window.innerHeight - dock.top + 10)}px` : '';
     el.classList.remove('show');
     void el.offsetWidth;
     el.classList.add('show');
@@ -977,7 +1180,7 @@ export class Hud {
     // kaydi olmadigini saniyordu (kor beta B-029). Tarih ve "autosave"
     // kelimesi artik satirda kaliyor.
     this.el.saveInfo.textContent = info
-      ? `Autosave · ${info.seed} · ${gameDate(info.turn)}`
+      ? `Last save · ${info.name ?? (info.auto ? 'autosave' : info.seed)} · ${gameDate(info.turn)}`
       : 'No save yet. The game autosaves every ten weeks.';
   }
 
@@ -1029,6 +1232,11 @@ export class Hud {
    */
   animateTopChanges(root) {
     const prev = (this.topPrev ??= new Map());
+    // Fark yalnız SAKİN hızda (≤2x) uçar. 4x/8x'te hafta ~1 sn: her hafta
+    // yeşil/kırmızı bir fark etiketin yerine geçiyor, ana hücrenin etiketi
+    // hiç görünmüyor, War Support'unki zamanın %70'inde gizli kalıyordu
+    // (ölçüldü). Hızlı akışta değerin kendisi yeter; halka geçişi kalır.
+    const calm = (this.game.clock?.speed ?? 0) <= 2;
     for (const cell of root.querySelectorAll('[data-k]')) {
       const key = cell.dataset.k;
       const value = Number(cell.dataset.v);
@@ -1048,7 +1256,7 @@ export class Hud {
         ring.style.strokeDasharray = dash;
       }
       const delta = value - old.value;
-      if (Math.abs(delta) < Number(cell.dataset.eps || 0) || delta === 0) continue;
+      if (!calm || Math.abs(delta) < Number(cell.dataset.eps || 0) || delta === 0) continue;
       const good = delta * Number(cell.dataset.pol || 1) > 0;
       cell.classList.add(good ? 'tb-good' : 'tb-bad');
       this.floatDelta(cell, key, delta, good);
@@ -1129,6 +1337,7 @@ export class Hud {
     // Üst bar tazelemesi hem kare içinde (tur dilimi) hem kare dışında
     // (saat tiki) tetiklenir; maliyeti iki durumda da ölçülür.
     const t0 = performance.now();
+    this.lastTurnAt = t0;
     this.lastDateLabel = gameDate(turns.turn, this.game.clock.day);
     this.lastSpeedShown = this.game.clock.speed;
     this.el.turnValue.textContent = gameDate(turns.turn, this.game.clock.day);
@@ -1157,15 +1366,19 @@ export class Hud {
       const army = world.units
         .filter((unit) => unit.nationId === me.id && unit.type.domain === 'land')
         .reduce((sum, unit) => sum + menUnderArms(unit), 0);
-      const ic = me.economy?.ic ?? { total: 0, civil: 0, military: 0 };
+      const ic = me.economy?.ic ?? { total: 0, military: 0 };
+      // Ordunun bu hafta fiilen çektiği / yasanın izin verdiği tavan: tavanın
+      // altında kalan pay halka ve kalkınmaya döner (economy.splitOutput).
+      const drawn = me.economy?.alloc?.army ?? ic.drawn ?? 0;
+      const armyCap = me.economy?.alloc?.armyCap ?? ic.military ?? 0;
       const people = me.economy?.population ?? 0;
       const recruits = nationManpower(world, me.id);
       this.el.macroStats.innerHTML = `<span class="tb-minis">${miniCell(emblemArt('people', 'xs'), 'People',
         formatPopulation(people), `data-macro="population" ${track('pop', people, people * 0.01)}`, 'macro-live')
         + miniCell(emblemArt('soldiers', 'xs'), 'Army', formatPopulation(army), `data-tip="army" ${track('army', army, army * 0.03 + 1)}`)
         + miniCell(emblemArt('recruits', 'xs'), 'Recruits', formatPopulation(recruits), `data-tip="manpower" ${track('mp', recruits, recruits * 0.05 + 1)}`)
-        + miniCell(emblemArt('factory', 'xs'), 'IC', `${ic.total.toFixed(1)}<em class="stat-flow">${ic.military.toFixed(1)}${glyph('swords', 'inline')}</em>`,
-          `data-macro="ic" data-tip="ic" ${track('ic', ic.total, 0.2)}`, 'macro-live')}</span>`
+        + miniCell(emblemArt('factory', 'xs'), 'Industry', `${ic.total.toFixed(1)}<em class="stat-flow">${drawn.toFixed(1)}/${armyCap.toFixed(1)}${glyph('swords', 'inline')}</em>`,
+          `data-macro="ic" ${track('ic', ic.total, 0.2)}`, 'macro-live')}</span>`
         + resourceChips(me);
       this.animateTopChanges(this.el.macroStats);
       this.ensureMacroCards();
@@ -1189,14 +1402,19 @@ export class Hud {
       this.el.topNation.textContent = '—';
       this.el.topSub.textContent = 'eliminated';
     }
-    if (!this.game.selected) this.clearSheet();
+    // Kutu seçimi ve kontrol grubu kare SEÇMEZ (game.finishMarquee): ordu
+    // seçiliyken panel ordunundur; üst çubuk tazelemesi onu silmemeli —
+    // kutuyla seçilen tümenlerin paneli 0.3-0.6 sn sonra kayboluyordu.
+    if (!this.game.selected && !this.game.selectedUnit) this.clearSheet();
     refreshTooltips();
     this.game.perf?.add('ui.hud', performance.now() - t0);
   }
 
   /**
    * Veri kipi haftalık tazelenir: renk simülasyondan gelir (huzursuzluk,
-   * işçi, şöhret, savaş) ve kip açıkken hafta kapanınca eskir. Nüfus kipi de
+   * kalkınma, şöhret, savaş) ve kip açıkken hafta kapanınca eskir; kalkınma
+   * kademeleri hafta kapanışında alındığı için 'turn' tazelemesi yeter
+   * (refreshModeColors önbelleği düşürür). Nüfus kipi de
    * aynı yoldan tazelenir — eskiden ilk açıldığı haftanın nüfusunda kalıyordu.
    */
   refreshDataMode() {
@@ -1255,12 +1473,21 @@ export class Hud {
         + [[0, 'Calm'], [0.35, 'Restless'], [0.7, 'Boiling'], [1, 'Revolt']]
           .map(([t, label]) => chip(rampColor(UNREST_RAMP, t), label)).join('');
     } else if (mode === 'industry') {
-      html = '<header><b>Industry</b><small>factory levels by state, every nation</small></header>'
-        + chip(rampColor(INDUSTRY_RAMP, 0), 'None')
-        + [[1000, '1K'], [10000, '10K'], [100000, '100K+']]
-          .map(([workers, label]) => chip(
-            rampColor(INDUSTRY_RAMP, 0.08 + 0.92 * (Math.log10(workers) - 3) / 2.3), label,
-          )).join('');
+      // Sanayi kipi kalkınma kademesini boyar (fabrika binası yok; sanayi
+      // 1'in üstündeki her kademeden gelir). Çipin sayısı oyuncunun o banttaki
+      // state sayısıdır; renk bandın orta kademesinin harita rengi.
+      const bands = [[1, 1], [2, 3], [4, 5], [6, 7], [8, DEVELOPMENT_MAX]];
+      const counts = bands.map(() => 0);
+      for (const province of world.provinces ?? []) {
+        if (province.owner !== me?.id || !province.econ) continue;
+        const level = province.econ.development ?? 1;
+        const at = bands.findIndex(([lo, hi]) => level >= lo && level <= hi);
+        if (at >= 0) counts[at]++;
+      }
+      html = `<header><b>Development</b><small>by state, every nation · numbers are yours${me ? ` · your cap ${developmentCap(me)}` : ''}</small></header>`
+        + bands.map(([lo, hi], index) => chip(
+          developmentShade(Math.ceil((lo + hi) / 2)), lo === hi ? `Level ${lo}` : `${lo}–${hi}`, me ? counts[index] : null,
+        )).join('');
     } else if (mode === 'infamy') {
       html = `<header><b>Infamy</b><small>coalitions form at ${INFAMY_COALITION}</small></header>`
         + [[0, 'Clean'], [0.3, `${Math.round(INFAMY_COALITION * 0.3)}`], [0.65, `${Math.round(INFAMY_COALITION * 0.65)}`],
@@ -1286,14 +1513,16 @@ export class Hud {
 
   /**
    * Sekme künyesinin AUTO ışığı. Portföyü hükûmete devredilmiş ekranın
-   * künyesi yanar (styles.css §5 .is-auto); eşleme DELEGATION_AREAS.screen
+   * künyesi yanar (styles.css §5 .is-auto); eşleme delegation.areasOfScreen
    * alanından okunur, elle yazılmış ikinci bir tablo tutulmaz.
    */
   syncTabAuto() {
     const me = this.game.world?.nations[this.game.turns.playerNation];
     for (const btn of document.querySelectorAll('#tab-bar button[data-screen]')) {
-      const area = AREA_OF_SCREEN[btn.dataset.screen];
-      btn.classList.toggle('is-auto', Boolean(me?.alive && area && isDelegated(me, area)));
+      // Ekranın HERHANGİ bir alanı devredilmişse lamba yanar (Politics:
+      // Government ya da Agenda); hangisinin açık olduğu sekme kartındadır.
+      const on = me?.alive && areasOfScreen(btn.dataset.screen).some((area) => isDelegated(me, area));
+      btn.classList.toggle('is-auto', Boolean(on));
     }
   }
 
@@ -1359,6 +1588,7 @@ export class Hud {
     // Panelin KONUSU degisince icerik suzulur (styles.css §31); ayni karenin
     // haftalik tazelenmesi oynatmaz.
     const subject = armyOnly ? `u${lead.id}` : `t${tile.q},${tile.r}`;
+    const sameSubject = subject === this.sheetSubject;
     if (subject !== this.sheetSubject) {
       this.sheetSubject = subject;
       body.classList.remove('is-swapping');
@@ -1369,7 +1599,30 @@ export class Hud {
     // orduyla ilgili degil ve paneli ikiye boluyordu (Kerem: askerleri
     // sectigimde province ya da hex statlarini gormek istemiyorum).
     if (armyOnly) {
-      body.innerHTML = armyPanelHtml(this.game, this.game.selection);
+      // Ordu paneli 'units'/'battles'/'provinces' olaylarıyla saniyede 2-3
+      // kez baştan yazılıyordu: 8x'te Hold'a 10 gerçek tıkın 3'ü kayboldu,
+      // tümen listesi her seferinde başa döndü, komutan seçicisi 0.1 sn'de
+      // ordu paneline geri döndü (ölçüldü). Üç kural:
+      //   - seçici açıkken ve seçim aynıyken dokunma (seçimi oyuncu kapatır);
+      //   - içerik aynıysa yazma; fare panelde basılıyken yazma (bırakınca);
+      //   - aynı orduda liste kaydırması korunur.
+      const selKey = this.game.selection.map((unit) => unit.id).join(',');
+      if (this.sheetPicker === selKey && body.querySelector('.army-panel.is-picker')) return;
+      this.sheetPicker = null;
+      const html = armyPanelHtml(this.game, this.game.selection);
+      if (sameSubject && html === this.lastArmyHtml && body.querySelector('.army-panel:not(.is-picker)')) return;
+      if (this.sheetPressed) {
+        this.armyRewritePending = true;
+        return;
+      }
+      const keep = sameSubject ? (body.querySelector('.ap-list')?.scrollTop ?? 0) : 0;
+      body.innerHTML = html;
+      this.lastArmyHtml = html;
+      const list = keep ? body.querySelector('.ap-list') : null;
+      if (list) {
+        quietScroll(list);
+        list.scrollTop = keep;
+      }
       this.bindActions();
       return;
     }
@@ -1389,10 +1642,14 @@ export class Hud {
     const water = tile.terrain.water;
     // Deniz bölgesinin adı (navy.js, Seas kipi): donanma bölge bölge yönetilir.
     const seaZone = water && tile.seaZone >= 0 ? world.seaZones?.zones?.[tile.seaZone] : null;
-    const title = seaZone ? seaZone.name : water ? tile.terrain.name : (nation ? nation.fullName : 'Unclaimed Territory');
+    // BAŞLIK STATE'İN ADIDIR, ülke alt satırda: kart bir state'i anlatıyor
+    // ama başlıkta ülkenin uzun adı, state adı en altta duruyordu.
+    const area = water ? null : world.provinces?.[tile.provinceId];
+    const title = seaZone ? seaZone.name : water ? tile.terrain.name
+      : (area?.name ?? (nation ? nation.fullName : 'Unclaimed Territory'));
     const sub = water
       ? `${seaZone ? `${tile.terrain.name} · ` : ''}${tile.terrain.navigable ? 'Navigable water' : 'Impassable water'} · ${tile.q}, ${tile.r}`
-      : `${tile.terrain.name} · ${tile.q}, ${tile.r}${tile.coastal ? ' · coast' : ''}`;
+      : `${area && nation ? `${nation.fullName} · ` : ''}${tile.terrain.name}${tile.coastal ? ' · coast' : ''}`;
 
     const stats = water ? [] : [
       ['Defense', `${Math.round(tileDefense(tile) * 100)}%`],
@@ -1408,18 +1665,18 @@ export class Hud {
           .join(' · ')
         : world.cultures[tile.culture].name;
       stats.push(['Culture', label]);
-      const family = world.cultures[tile.culture].family;
-      if (family) stats.push(['Language', family]);
+      // Dil satırı kalktı (Kerem: "language önemsiz"); dil ailesi kültür
+      // kartının ipucunda kalabilir, panelde yer kaplamaz.
     }
-    // Fethin bedeli karede görünsün: işgal süresi ve verim kaybı.
+    // DURUM yalnız GERÇEK durumu söyler. "foreign culture −30%" ve "postwar
+    // integration (N weeks)" satırları eski hex modelinden kalmaydı: simülasyon
+    // o cezaları hiçbir yerde uygulamıyordu (infamy.tileEfficiency yalnız bu
+    // panelde okunuyordu). Yabancı halkın gerçek bedeli huzursuzluk ve kuradır
+    // (aşağıdaki satır ve ipucu); fethin bedeli uyumdur (Compliance çubuğu).
     if (nation && tile.culture >= 0) {
-      const held = (world.turn ?? 0) - (tile.heldSince ?? 0);
-      const eff = tileEfficiency(tile, nation, world.turn ?? 0);
       const acceptedCulture = tile.culture === nation.culture
         || nation.accepted?.includes(tile.culture);
       if (isOccupied(tile)) stats.push(['Status', `occupied by ${controller?.name ?? '?'}`]);
-      else if (eff === 0) stats.push(['Status', `postwar integration (${OCCUPATION_TURNS - held} weeks)`]);
-      else if (eff < 1) stats.push(['Status', `foreign culture −${Math.round((1 - eff) * 100)}%`]);
       else if (acceptedCulture && tile.culture !== nation.culture) {
         stats.push(['Status', 'accepted culture']);
       }
@@ -1440,6 +1697,7 @@ export class Hud {
         });
         const why = [
           parts.culture > 0.5 ? `${Math.round(parts.foreign * 100)}% not accepted` : null,
+          parts.grievance > 0.5 ? 'years of foreign rule' : null,
           parts.conquest > 0.5 ? 'recent conquest' : null,
           parts.war > 0.5 ? 'war weariness' : null,
           parts.backlash > 0.3 ? 'nationalist backlash' : null,
@@ -1452,32 +1710,36 @@ export class Hud {
             : '')]);
       }
     }
-    if (nation) stats.push(['Nation Size', `${nation.provinces ?? 0} states`]);
+    // "Nation · 27 states" satırı kalktı (Kerem: o ekranda gereksiz); ülke
+    // künyesi başlıkta, ölçüsü üst çubukta.
     // STATE KARTI (HOI4 modeli: küme = state, hex = province). Ekonomi not
     // satırlarına dökülünce hiyerarşisiz bir metin yığını oluyordu; kart
-    // kaynağı, kalkınmayı, binaları ve uyumu simgeyle tek bakışta verir.
+    // kaynağı, çıktıyı, kalkınmayı, kaleyi ve uyumu simgeyle tek bakışta verir.
+    // Bina yuvası ve hızlı inşa şeridi kalktı (Tek Çubuk, 2026-10-15): state'in
+    // tek ekonomik ölçüsü kalkınma kademesidir, kalkınmayı fon alır.
     let stateHtml = '';
     if (tile.province) {
       const econ = tile.province;
       const area = world.provinces?.[tile.provinceId];
       const deposits = area ? depositsOf(area) : [];
-      const levels = buildingLevels(econ);
-      const slots = buildingSlots(econ);
-      const built = BUILDING_IDS.filter((id) => (econ.buildings?.[id] ?? 0) > 0);
+      const y = area ? stateYield(world, area) : null;
+      const own = Boolean(area) && area.owner === this.game.turns.playerNation;
       stats.unshift(['Population', formatPopulation(econ.population)]);
       // Seferberliğin bedeli state'te okunsun: silah altındaki çalışmaz
-      // (econ/resources.js workforceShare) — vergi, gıda ve maden o oranda düşer.
+      // (econ/resources.js workforceShare) — çıktı, gıda ve maden o oranda düşer.
       const away = 1 - workforceShare(econ);
       // Her zaman: asker gelip gittikçe belirip kaybolmasın (yalnız değer değişir).
       stats.splice(1, 0, ['Under arms', away >= 0.0005
         ? `${formatPopulation(econ.soldiers)} · output −${(away * 100).toFixed(1)}%` : 'none']);
       stateHtml = `<div class="pv-state"${area ? tipAttr('state', area.id) : ''}>
-        <div class="pv-state-res">${deposits.map((line) => `<span${tipAttr('resource', line.id)}>${resourceArt(line.id, 'sm')}<b>${escapeHtml(RESOURCES[line.id].name)}</b><small>×${line.size.toFixed(1)}</small></span>`).join('')}
-          ${area ? `<span class="pv-fert"><small>Fertility</small><b>${Math.round(fertilityOf(area) * 100)}%</b></span>` : ''}</div>
-        <div class="pv-state-row"><small>Development</small>${kitPips(econ.development, DEVELOPMENT_MAX)}<b>${econ.development}</b><em>${levels}/${slots} slots</em></div>
-        <div class="pv-state-blds">${built.length ? built.map((id) => `<span${tipAttr('building', id)}>${buildingArt(id, 'sm')}<i>${econ.buildings[id]}</i></span>`).join('') : '<small class="k-dim">No buildings</small>'}</div>
+        <div class="pv-state-res">${deposits.map((line) => `<span${tipAttr('deposit', `${area.id}:${line.id}`)}>${resourceArt(line.id, 'sm')}<b>${escapeHtml(RESOURCES[line.id].name)}</b><small>×${line.size.toFixed(1)}</small></span>`).join('')}
+          ${area ? `<span class="pv-fert"${tipAttr('fertility', area.id)}><small>Fertility</small><b>${Math.round(fertilityOf(area) * 100)}%</b></span>` : ''}</div>
+        ${area ? this.incomeRowHtml(area, y) : ''}
+        ${this.developmentRowHtml(econ, y)}
+        ${own && y ? this.nextLevelRowHtml(area, y) : ''}
+        ${this.fortRowHtml(econ)}
         <div class="pv-state-row"><small>Compliance</small>${kitMeter((econ.control ?? 0) / 100, { tone: econ.core === false ? 'warn' : 'pos', wide: true })}<b>${Math.round(econ.control)}%</b>${econ.core === false ? `<em class="neg">counts at ${Math.round((econ.status ?? 0) * 100)}%</em>` : '<em>core</em>'}</div>
-        ${area && area.owner === this.game.turns.playerNation ? this.focusRowHtml(area) + this.quickBuildHtml(area) : ''}
+        ${own ? this.focusRowHtml(area) : ''}
       </div>`;
     }
     // Küme kimliği en üstte: hangi province'in parçası olduğu ilk bakışta okunsun.
@@ -1489,12 +1751,13 @@ export class Hud {
       if (cluster.owner >= 0 && occupiedMembers > 0) {
         stats.unshift(['Occupation', `${occupiedMembers}/${cluster.tileIdx.length} hexes lost`]);
       }
-      // Çekirdek dışı toprak: vergi, asker ve sanayi uyum oranında gelir.
+      // Çekirdek dışı toprak: çıktı, asker ve mal uyum oranında gelir.
       if (cluster.owner >= 0 && cluster.econ?.core === false) {
         stats.unshift(['Territory', 'non-core: yields by compliance']);
       }
+      // State adı artık başlıkta; burada yalnız kaç province'ten oluştuğu.
       const hexes = cluster.tileIdx.length;
-      stats.unshift(['State', `${cluster.name} · ${hexes} ${hexes === 1 ? 'province' : 'provinces'}`]);
+      stats.unshift(['State', `${hexes} ${hexes === 1 ? 'province' : 'provinces'}`]);
     }
 
     // Province kartı birim GÖSTERMEZ: karedeki tümen her hafta gelip gidiyor,
@@ -1530,8 +1793,6 @@ export class Hud {
     // basmak "Hills - 97,63 - Hills" gibi bir tekrar uretiyordu.
     take('Terrain');
     const culture = take('Culture');
-    const language = take('Language');
-    const size = take('Nation Size');
     const migration = take('Migration');
 
     // `tip` verilirse olcu gecikmeli bilgi karti tasir (bkz. ui/tooltip.js).
@@ -1546,7 +1807,11 @@ export class Hud {
     // Değerler düz metin; şehir adı kayıttan aynen döner (içe aktarılan kayıt).
     // Değer TEK SATIR (tamamı başlıkta): uzayan sebep listesi satırı ikiye
     // kırıp kartı oynatmasın.
-    const notes = stats.map(([k, v]) => `<span class="pv-note" title="${escapeHtml(`${k}: ${v}`)}"><small>${k}</small><span class="pv-val">${escapeHtml(String(v))}</span></span>`).join('');
+    // Huzursuzluk satırı dökümünü bilgi kartında taşır (neyden geliyor).
+    const noteTip = (k, v) => (k === 'Unrest' && cluster
+      ? tipAttr('unrest', cluster.id)
+      : ` data-tip="text" data-tip-text="${escapeHtml(`${k}: ${v}`)}"`);
+    const notes = stats.map(([k, v]) => `<span class="pv-note"${noteTip(k, v)}><small>${k}</small><span class="pv-val">${escapeHtml(String(v))}</span></span>`).join('');
 
     body.innerHTML = unitBlock + this.actionsHtml(tile) + `
       <div class="province-view">
@@ -1556,6 +1821,7 @@ export class Hud {
             <div class="tile-title">${escapeHtml(title)}</div>
             <div class="tile-sub">${escapeHtml(sub)}</div>
           </div>
+          <button class="ap-x pv-x" type="button" data-tile-close aria-label="Close" data-tip="text" data-tip-text="Close · Esc">✕</button>
         </div>
 
         ${stateHtml}
@@ -1575,13 +1841,11 @@ export class Hud {
 
         ${notes ? `<div class="pv-notes">${notes}</div>` : ''}
 
+        ${culture == null || !cluster ? '' : this.cultureBlockHtml(cluster)}
+
         <div class="pv-lines">
           ${line('State', province)}
-          ${culture == null ? '' : `<span class="pv-line" data-tip="culture" tabindex="0">
-            <small>Culture</small><b>${this.cultureLinks(tile) ?? escapeHtml(String(culture))}</b></span>`}
-          ${line('Language', language)}
           ${migration ? line('Migration', migration) : ''}
-          ${line('Nation', size)}
         </div>
       </div>`;
 
@@ -1589,12 +1853,99 @@ export class Hud {
   }
 
   /**
-   * HIZLI İNŞA (Kerem: "istediğimiz state'e hızlı bina dikmek için ekran
-   * açmadan bir + koysak"). Haritada kendi state'ine tıklayınca kartın altında
-   * bir "+ Build" şeridi: her bina madalyon, altında o state'te getireceği ana
-   * kazanç (buildPreview — Construction ekranıyla aynı hesap) ve bedel. Tık
-   * kuyruğa koyar; kurulamazsa sebebi kartta. Şerit kapalıyken tek satırdır.
+   * KALKINMA SATIRI: 1..10 pul, sahibinin tavanının üstü kilitli (kit.pips
+   * `cap`). Tavanı araştırma ve okuryazarlık açar (investment.developmentCap);
+   * kilitli pul oyuncuya "neden burada duruyor" sorusunun cevabını gösterir.
    */
+  developmentRowHtml(econ, y) {
+    const level = econ.development ?? 1;
+    const cap = y?.cap ?? DEVELOPMENT_MAX;
+    const tip = [
+      `Development ${level} of ${DEVELOPMENT_MAX}`,
+      'Every level above the first adds industry here; industry needs coal and grows with technology.',
+      'The development fund buys levels state by state, the best gain for the cost first.',
+      y ? `The owner's cap is level ${cap}: research and literacy raise it.` : '',
+    ].filter(Boolean).join('\n');
+    return `<div class="pv-state-row"${tipAttr({ text: tip })}><small>Development</small>${kitPips(level, DEVELOPMENT_MAX, cap)}<b>${level}</b><em>cap ${cap}</em></div>`;
+  }
+
+  /**
+   * SONRAKİ KADEME + DEVELOP ANAHTARI (eski hızlı inşa şeridinin yerine).
+   * İnşa kuyruğu yok: fon kademeyi kendisi alır, oyuncunun tek kolu fonu bu
+   * state'e öncelikle yollayan Develop odağıdır. Anahtar stateFocus.setFocus'un
+   * kendisidir (B aynı kapıdan geçer); sayılar stateView.stateYield'den.
+   */
+  nextLevelRowHtml(area, y) {
+    const world = this.game.world;
+    const me = world.nations[this.game.turns.playerNation];
+    if (!me) return '';
+    const develop = FOCUS_BY_ID.develop;
+    const on = area.econ.focus === 'develop';
+    const blockers = on ? [] : focusBlockers(world, me, area, 'develop');
+    // Hedef CANLI okunur (economy.investTarget hafta kapanışının kaydıdır):
+    // odak az önce konduysa kart "fon başka yerde" demesin.
+    const target = investmentTarget(world, me);
+    const next = y.next;
+    const saving = target?.id === area.id;
+    const targetName = target?.name ?? null;
+    const rowTip = next ? [
+      `Level ${next.level} costs ${money(next.cost, 0)} from the development fund`,
+      `It adds about ${money(next.gain, 2)} a week: industry, and deposits at today's prices.`,
+      saving
+        ? `The fund is saving for it now: ${money(Math.max(0, me.fund ?? 0), 0)} of ${money(next.cost, 0)}.`
+        : targetName ? `The fund is saving for ${targetName} first.` : 'The fund has no state to develop yet.',
+    ] : [`At the cap (level ${y.cap})`, 'Research and literacy raise the cap.'];
+    const current = !on && area.econ.focus ? FOCUS_BY_ID[area.econ.focus]?.name : null;
+    const buttonTip = on
+      ? [`${develop.name} focus — active`, develop.desc, 'Click or B: remove it.']
+      : blockers.length
+        ? [`${develop.name} focus`, 'Not possible now', ...blockers]
+        : [`${develop.name} focus`, develop.desc, ...(focusPreview(world, me, area, 'develop')?.lines ?? []),
+          current ? `Replaces the ${current} focus.` : '', 'Click or B: set it.'].filter(Boolean);
+    const button = `<button type="button" class="pv-focus-count${on ? ' on' : ''}" data-develop aria-pressed="${on}"${
+      blockers.length ? ' aria-disabled="true" style="opacity:.45"' : ''} data-tip="text" data-tip-text="${escapeHtml(buttonTip.join('\n'))}">${develop.name} <i aria-hidden="true">B</i></button>`;
+    const value = next
+      ? `<b>${money(next.cost, 0)}</b><em>+${money(next.gain, 2)}/wk</em>`
+      : `<b>At cap</b><em>level ${y.cap}</em>`;
+    return `<div class="pv-state-row pv-develop"${tipAttr({ text: rowTip.join('\n') })}><small>Next level</small>${value}${button}</div>`;
+  }
+
+  /**
+   * KALE: haritanın sabit özelliği (0-3), inşa edilmez; savunma ölçüsü onu
+   * zaten içerir (battles.tileDefense). Satır yalnız kademeyi söyler — oranı
+   * burada yeniden yazmak savaş formülünün ikinci kopyası olurdu.
+   */
+  fortRowHtml(econ) {
+    const fort = Math.max(0, Math.min(3, econ.fort ?? 0));
+    const tip = `${fort ? `Fort level ${fort} of 3` : 'No fort'}\n`
+      + `${fort ? 'Every hex of the state defends better (see Defense). ' : ''}`
+      + 'Forts come with the map and a few national programmes; they cannot be built.';
+    return `<div class="pv-state-row"${tipAttr({ text: tip })}><small>Fort</small>${kitPips(fort, 3)}<b>${fort}</b><em>${fort ? 'raises defense' : 'none'}</em></div>`;
+  }
+
+  /**
+   * Develop odağını çevirir (karttaki anahtar ve B). Konamazsa sebebi kısa
+   * ipucuyla söylenir: tuş sessizce hiçbir şey yapmasın (focusBlockers).
+   */
+  toggleDevelop(area) {
+    const { game } = this;
+    const me = game.world?.nations[game.turns.playerNation];
+    if (!me || !area?.econ || area.owner !== me.id) return false;
+    const on = area.econ.focus === 'develop';
+    if (!on) {
+      const blockers = focusBlockers(game.world, me, area, 'develop');
+      if (blockers.length) {
+        this.flashHint(blockers[0]);
+        return false;
+      }
+    }
+    if (!setFocus(game.world, me, area, on ? null : 'develop')) return false;
+    game.emit('politics', me.id);
+    this.flashHint(on ? `${area.name}: Develop focus removed` : `${area.name}: the development fund comes here first`);
+    this.showTile(game.selected);
+    return true;
+  }
+
   /**
    * STATE FOCUS (Vic2 ulusal odağı, state başına; game/focus.js). Kartta tek
    * satır: beş madalyon, seçili olan yanık; tooltip o state'teki getiriyi
@@ -1667,6 +2018,46 @@ export class Hud {
    * Kültür satırı tıklanır: halkın adına basınca kültür haritası o halkın
    * bütün dünyadaki dağılımını gösterir (renderer.drawCultureHighlight).
    */
+  /**
+   * STATE ÇIKTISI (Kerem: "kazandığımız state'e gelir kaç"). Vergi yok:
+   * state'in katkısı haftalık çıktısıdır, el emeği + sanayi (ulusal
+   * çarpanlarla, stateView.stateYield → econ/output.provinceOutputOf). Mallar
+   * dünya fiyatıyla ayrıca değerlidir; döküm bilgi kartında
+   * (tooltipState 'state-income').
+   */
+  incomeRowHtml(area, y = stateYield(this.game.world, area)) {
+    if (!y) return '';
+    return `<div class="pv-state-row pv-income"${tipAttr('state-income', area.id)}><small>Output</small>
+      <b>${money(y.total, 2)}<i>/wk</i></b><em>Hand ${y.hand.toFixed(2)} · Industry ${y.industry.toFixed(2)}</em></div>`;
+  }
+
+  /**
+   * KÜLTÜR PASTASI (Kerem: "kültür için pasta, kültürün aylık değişimi").
+   * Dilim = pay; satırda aylık değişim oyunun haftalık kayma formülünden
+   * (stateView.stateCultures → culture.projectCultureWeek). Ad tıklanınca
+   * kültür haritası o halkı gösterir (data-culture-hi).
+   */
+  cultureBlockHtml(area) {
+    const rows = stateCultures(this.game.world, area).filter((row) => row.share >= 0.005);
+    if (!rows.length) return '';
+    let at = 0;
+    const stops = rows.map((row) => {
+      const from = at;
+      at += row.share * 100;
+      return `${row.color} ${from.toFixed(2)}% ${at.toFixed(2)}%`;
+    }).join(', ');
+    const change = (m) => (Math.abs(m) < 0.0005 ? '<em class="flat">±0</em>'
+      : `<em class="${m > 0 ? 'up' : 'down'}">${m > 0 ? '+' : '−'}${Math.abs(m * 100).toFixed(1)}%/mo</em>`);
+    const tag = (row) => (row.primary ? 'primary' : row.accepted ? 'accepted' : 'not accepted');
+    const legend = rows.map((row) => `<li${tipAttr('culture-row', `${area.id}:${row.id}`)}>
+        <i style="background:${row.color}"></i>
+        <button type="button" class="pv-cult" data-culture-hi="${row.id}">${escapeHtml(row.name)}</button>
+        <small class="${row.primary || row.accepted ? '' : 'neg'}">${tag(row)}</small>
+        <b>${(row.share * 100).toFixed(row.share < 0.1 ? 1 : 0)}%</b>${change(row.monthly)}
+      </li>`).join('');
+    return `<div class="pv-cultures"><span class="pv-pie" style="background:conic-gradient(${stops})" aria-hidden="true"></span><ul>${legend}</ul></div>`;
+  }
+
   cultureLinks(tile) {
     const world = this.game.world;
     const mix = (world.provinces?.[tile?.provinceId]?.cultures ?? []).filter((row) => row.share >= 0.05);
@@ -1710,31 +2101,6 @@ export class Hud {
     }
   }
 
-  quickBuildHtml(area) {
-    const world = this.game.world;
-    const me = world.nations[this.game.turns.playerNation];
-    if (!me) return '';
-    const open = this.quickBuildOpen ?? false;
-    const head = `<button class="qb-head${open ? ' on' : ''}" data-qb-toggle aria-expanded="${open}">
-      <i aria-hidden="true">${open ? '−' : '+'}</i>Build here<small>${open ? 'click a building to queue it' : `${BUILDING_IDS.filter((id) => !buildBlockers(world, me, area, id).length).length} can be built · B`}</small></button>`;
-    if (!open) return `<div class="qb">${head}</div>`;
-    const cell = (id, art, name, cost, weeks, blockers, preview) => {
-      const main = preview.gains[0];
-      const gain = main ? main.text : (preview.note || '—');
-      const tip = blockers.length
-        ? ['Not possible now', ...blockers].join('\n')
-        : [`${name} · ${cost} gold · ${weeks} wk`, ...preview.gains.map((g) => g.text), preview.note].filter(Boolean).join('\n');
-      return `<button class="qb-cell${blockers.length ? ' off' : ''}" data-qb="${id}"${blockers.length ? ' aria-disabled="true"' : ''} data-tip="text" data-tip-text="${escapeHtml(tip)}">
-        ${art}<b>${escapeHtml(gain)}</b><small>${cost}</small></button>`;
-    };
-    const cells = BUILDING_IDS.map((id) => cell(id, buildingArt(id, 'sm'), BUILDINGS[id].name,
-      buildingCost(world, me, area, id), BUILDINGS[id].weeks, buildBlockers(world, me, area, id),
-      buildPreview(world, me, area, id)));
-    cells.push(cell('develop', emblemArt('infrastructure', 'sm'), 'Develop', developmentCost(me, area), DEVELOPMENT_WEEKS,
-      developBlockers(world, me, area), buildPreview(world, me, area, 'develop')));
-    return `<div class="qb">${head}<div class="qb-grid">${cells.join('')}</div></div>`;
-  }
-
   /** Ordu karti: tip, mevcut, STR/ORG, bilesim, dagitma. */
   /**
    * Karede yapılabilecek eylemler: şehirde birim al, savaş/barış, toplanma
@@ -1755,8 +2121,12 @@ export class Hud {
         const disabled = canAfford(me, cost) && canRecruit(game.world, me, id) ? '' : 'disabled';
         // Alay artik siparistir: kac hafta egitildigi dugmede yazmali, yoksa
         // oyuncu tikladiktan sonra haritada birim arar (bkz. recruitment.js).
+        // Peşin bedel yok (cities.UNIT_COSTS boş, formatCost ''): boş parça
+        // düğmede "Infantry ·  · ..." diye çift ayraç bırakmasın.
+        const label = [UNIT_TYPES[id].name, formatCost(cost), equipmentCostLabel(id), `${trainingWeeks(id)}w`]
+          .filter(Boolean).join(' · ');
         return `<button class="action" data-buy="${id}" ${disabled}
-          title="Ordered into training; the full order book with reasons is on the Military screen.">${UNIT_TYPES[id].name} · ${formatCost(cost)} · ${equipmentCostLabel(id)} · ${trainingWeeks(id)}w</button>`;
+          title="Ordered into training. No up-front cost: men, equipment and a weekly supply bill. The full order book with reasons is on the Military screen.">${label}</button>`;
       }).join('');
       // Alim listesi KATLI acilir. Alti alay dugmesi kutuyu tek basina ~180px
       // sisiriyor ve baskent karesinde bilgi kismini ekranin disina itiyordu;
@@ -1783,9 +2153,13 @@ export class Hud {
       const rec = relation(game.world, foreign, game.turns.playerNation);
       const locked = war && game.turns.turn - rec.since < MIN_WAR_TURNS;
       const truce = truceLeft(game.world, foreign, game.turns.playerNation, game.turns.turn);
+      const vassal = overlordOf(game.world, foreign, game.turns.turn) === game.turns.playerNation;
+      // Engel varsa düğme kapanır ve nedeni ipucunda: eskiden ilan sessizce
+      // reddediliyordu (vassal Ravoya, 2026-10-15).
+      const warWhy = war || crisis ? [] : warBlockers(game.world, game.turns.playerNation, foreign, game.turns.turn);
       const state = war ? 'at war'
         : crisis ? `war in ${crisis} weeks`
-          : truce ? `truce (${truce} turns)` : 'at peace';
+          : truce ? `truce (${truce} turns)` : vassal ? 'our vassal' : 'at peace';
       rows.push(`<div class="action-row">
         <div class="k">${escapeHtml(other.name)} — ${state}</div>
         <button class="action wide" data-dossier="${foreign}">Open ${escapeHtml(other.name)} Dossier</button>
@@ -1793,10 +2167,11 @@ export class Hud {
     ? `<button class="action wide" data-peace="${foreign}" ${locked ? 'disabled' : ''}>Offer Peace${locked ? ` (${MIN_WAR_TURNS - (game.turns.turn - rec.since)} weeks)` : ''}</button>`
     : crisis
       ? `<button class="action wide" disabled title="The ultimatum runs out in ${crisis} weeks; mobilize from the Military screen.">Ultimatum (${crisis} weeks)</button>`
-      : `<button class="action wide${this.warConfirm === foreign ? ' confirming' : ''}" data-war="${foreign}" ${truce ? 'disabled' : ''}>${
+      : `<button class="action wide${this.warConfirm === foreign ? ' confirming' : ''}" data-war="${foreign}" ${warWhy.length ? `disabled title="${escapeHtml(warWhy.join(' · '))}"` : ''}>${
         this.warConfirm === foreign
           ? `Click again to declare war: ${ULTIMATUM_WEEKS}-week ultimatum, infamy for every state taken`
-          : `Declare War${truce ? ` (${truce} turns)` : ''}`}</button>`}
+          : truce ? `Declare War (${truce} turns)`
+            : warWhy.length ? `Declare War · ${escapeHtml(vassal ? 'release or annex in their dossier' : warWhy[0])}` : 'Declare War'}</button>`}
       </div>`);
     }
 
@@ -1838,10 +2213,13 @@ export class Hud {
     this.el.sheetBody.innerHTML = generalPickerHtml(game, me, list, {
       branch, costLabel: formatCost(cost), affordable: canAfford(me, cost),
     });
+    // Seçici bu seçim için açık kalır; zaman akarken showTile onu ezmez.
+    this.sheetPicker = game.selection.map((unit) => unit.id).join(',');
 
     for (const btn of this.el.sheetBody.querySelectorAll('[data-pick-general]')) {
       btn.onclick = () => {
         assignDivisions(me, Number(btn.dataset.pickGeneral), list);
+        this.sheetPicker = null;
         game.activeGeneral = generalById(me, Number(btn.dataset.pickGeneral));
         refreshFront(game.world, game.activeGeneral);
         this.showTile(game.selected);
@@ -1850,7 +2228,10 @@ export class Hud {
       };
     }
     for (const back of this.el.sheetBody.querySelectorAll('[data-close-generals]')) {
-      back.onclick = () => this.showTile(game.selected);
+      back.onclick = () => {
+        this.sheetPicker = null;
+        this.showTile(game.selected);
+      };
     }
     const train = this.el.sheetBody.querySelector('[data-train-general]');
     if (train) {
@@ -1887,17 +2268,27 @@ export class Hud {
       pulse: (metric) => {
         const me = game.world.nations[game.turns.playerNation];
         const history = me?.economy?.history ?? [];
-        if (history.length < 2) return null;
         const key = metric === 'ic' ? 'ic' : 'population';
-        const delta = history.at(-1)[key] - history.at(-2)[key];
+        const delta = history.length >= 2 ? history.at(-1)[key] - history.at(-2)[key] : null;
         const year = history.length >= 53 ? history.at(-1)[key] - history.at(-53)[key] : null;
         const fmt = metric === 'ic'
           ? (v) => `${v >= 0 ? '+' : '−'}${Math.abs(v).toFixed(2)}`
           : (v) => `${v >= 0 ? '+' : '−'}${formatPopulation(Math.abs(v))}`;
         const tone = (v) => (v > 0 ? 'up' : v < 0 ? 'down' : '');
+        // IC hücresinde İKİ kart üst üste açılıyordu (data-tip="ic" bilgi
+        // kartı + bu geçmiş kartı, iki farklı sayıyla). Döküm buraya taşındı:
+        // tek kart, eğri + kırılım. Dar ekranda gizlenen askerî pay da burada.
+        const ic = metric === 'ic' ? me?.economy?.ic : null;
+        const factor = (label, f) => ({ label, value: `×${(f ?? 1).toFixed(2)}`, tone: (f ?? 1) < 1 ? 'down' : '' });
         return [
-          { label: 'Change vs last week', value: fmt(delta), tone: tone(delta) },
+          delta != null ? { label: 'Change vs last week', value: fmt(delta), tone: tone(delta) } : null,
           year != null ? { label: 'Change over a year', value: fmt(year), tone: tone(year) } : null,
+          // Ordu sanayiden çeker; tavanın çekilmeyen kısmı halka ve kalkınmaya
+          // döner (economy.splitOutput), o yüzden iki sayı yan yana.
+          ic ? { label: 'Army draws · cap', value: `${(me.economy.alloc?.army ?? ic.drawn ?? 0).toFixed(1)} · ${(me.economy.alloc?.armyCap ?? ic.military ?? 0).toFixed(1)}` } : null,
+          ic ? factor('Coal', ic.factors?.coal) : null,
+          ic ? factor('Technology', ic.factors?.tech) : null,
+          ic ? factor('Stability', ic.factors?.stability) : null,
         ].filter(Boolean);
       },
       ranking: (metric) => game.world.nations
@@ -1912,11 +2303,12 @@ export class Hud {
   bindActions() {
     const { game } = this;
     const me = game.world.nations[game.turns.playerNation];
-    const toggle = this.el.sheetBody.querySelector('[data-qb-toggle]');
-    if (toggle) {
-      toggle.onclick = () => {
-        this.quickBuildOpen = !this.quickBuildOpen;
-        this.showTile(game.selected);
+    // Develop anahtarı: engelliyse de tıklanır ki sebep ipucuyla söylensin.
+    const develop = this.el.sheetBody.querySelector('[data-develop]');
+    if (develop) {
+      develop.onclick = () => {
+        const area = game.world.provinces?.[game.selected?.provinceId];
+        if (area) this.toggleDevelop(area);
       };
     }
     for (const btn of this.el.sheetBody.querySelectorAll('[data-culture-hi]')) {
@@ -1967,33 +2359,40 @@ export class Hud {
         }
       };
     }
-    for (const btn of this.el.sheetBody.querySelectorAll('[data-qb]')) {
-      btn.onclick = () => {
-        if (btn.getAttribute('aria-disabled') === 'true') return;
-        const area = game.world.provinces?.[game.selected?.provinceId];
-        if (!area || !me) return;
-        const id = btn.dataset.qb;
-        const ok = id === 'develop' ? queueDevelopment(game, me, area) : queueBuilding(game, me, area, id);
-        if (ok) {
-          // Onay: hücre bir kez parlar; üst çubuk altını hemen düşürür.
-          game.emit('politics', me.id);
-          this.showTile(game.selected);
-          this.el.sheetBody.querySelector(`[data-qb="${id}"]`)?.classList.add('qb-done');
-        }
-      };
-    }
     // ORDUYU DAGIT. `disband()` zaten vardi ve hayatta kalanlarin insan gucunu
     // TOPLANDIKLARI province'lere iade ediyordu — eksik olan sadece dugmeydi,
     // yani oyuncunun elinde ordu kucultme araci hic yoktu (kullanici bildirimi).
     for (const btn of this.el.sheetBody.querySelectorAll('[data-disband]')) {
       btn.onclick = () => {
-        // `dataset` her zaman DIZE dondurur; birim kimligi sayi olabilir.
-        const unit = game.world.units.find((u) => String(u.id) === btn.dataset.disband);
-        if (!unit || unit.battleId) return;
-        if (disband(game, unit)) {
-          // Seçimden de düşsün: yalnız selectedUnit sıfırlanınca ölü birlik
+        // Düğme kimlik LİSTESİ taşır (tek ya da çoklu seçim; bkz. armyPanel).
+        // `dataset` dize döndürür; birim kimliği sayı olabilir.
+        const ids = btn.dataset.disband;
+        const wanted = new Set(ids.split(',').filter(Boolean));
+        const units = game.world.units.filter((u) => wanted.has(String(u.id)) && !u.battleId);
+        if (!units.length) return;
+        // İlk tık kurar, ikincisi siler (bkz. armyPanel.armDisband); kurulu
+        // düğme 4 sn sonra kendiliğinden söner.
+        if (this.disbandArmed !== ids) {
+          this.disbandArmed = ids;
+          armDisband(ids);
+          clearTimeout(this.disbandTimer);
+          this.disbandTimer = setTimeout(() => {
+            this.disbandArmed = null;
+            armDisband(null);
+            this.showTile(game.selected);
+          }, 4000);
+          this.showTile(game.selected);
+          return;
+        }
+        clearTimeout(this.disbandTimer);
+        this.disbandArmed = null;
+        armDisband(null);
+        const gone = new Set(units.filter((unit) => disband(game, unit)));
+        if (gone.size) {
+          // Seçimden de düşsünler: yalnız selectedUnit sıfırlanınca ölü birlik
           // seçili listede kalıyor, sağ tık ona yürüyüş emri veriyordu.
-          game.selectUnits(game.selection.filter((u) => u !== unit));
+          game.selectUnits(game.selection.filter((u) => !gone.has(u)));
+          if (gone.size > 1) this.flashHint(`${gone.size} divisions disbanded`);
           this.showTile(game.selected);
           game.requestRender();
         }
@@ -2097,10 +2496,16 @@ export class Hud {
         // tumen devredilir. Secim bossa karedeki birim esas alinir.
         const units = game.selection.length ? game.selection
           : (game.selected?.unit ? [game.selected.unit] : []);
+        const order = btn.dataset.order;
+        // Yanan Hold/Auto düğmesi anahtar gibi görünüyordu ama ikinci tık
+        // hiçbir şey yapmıyordu (H tuşu ise çeviriyordu): hepsi zaten bu
+        // emirdeyse ikinci tık emri kaldırır.
+        const allSame = order !== 'clear' && units.length && units.every((unit) => unit.order?.type === order);
         for (const unit of units) {
-          if (btn.dataset.order === 'clear') game.clearUnitOrder(unit);
-          else game.setUnitOrder(unit, btn.dataset.order);
+          if (order === 'clear' || allSame) game.clearUnitOrder(unit);
+          else game.setUnitOrder(unit, order);
         }
+        if (allSame) this.flashHint(order === 'hold' ? 'Hold lifted' : 'Auto lifted');
         this.showTile(game.selected);
       };
     }
@@ -2109,30 +2514,37 @@ export class Hud {
 
 /** Üst çubuk: oyunun bütün ekonomisi (TASARIM.md §1). */
 function resourcesHtml(nation) {
-  // TEK BAKIYE: kapanmış defterin net'i (treasury.closeWeek).
-  const weekly = weeklyBalanceOf(nation);
-  const flowClass = weekly < 0 ? 'res-neg' : weekly > 0 ? 'res-pos' : '';
-  const flowValue = Math.abs(weekly) >= 1000 ? `${(weekly / 1000).toFixed(1)}K` : `${Math.round(weekly)}`;
-  const flow = `<em class="stat-flow ${flowClass}">${weekly >= 0 ? '+' : ''}${flowValue}</em>`;
   const infamy = nation.infamy ?? 0;
   const infamyClass = infamy >= INFAMY_COALITION ? 'res-neg'
     : infamy >= INFAMY_COALITION * 0.6 ? 'res-warn' : '';
   const stability = Math.round((nation.stability ?? 0) * 100);
   const warSupport = Math.round((nation.warSupport ?? 0) * 100);
+  const exhaustion = Math.round((nation.politics?.exhaustion ?? 0) * 100);
   const power = powerIncome(nation);
   const stabilityClass = stability < 30 ? 'res-neg' : stability < 45 ? 'res-warn' : '';
   // Sakin halka: yolunda giden gösterge pirinçtir, renk yalnız uyarıda çıkar.
   // Yeşil "her şey yolunda" çubuğun en bağıran öğesiydi (Kerem, 2026-10-08).
   const tone = (v, warn, bad) => (v < bad ? 'neg' : v < warn ? 'warn' : 'brass');
-  const gold = nation.gold ?? 0;
-  const cells = statCell(emblemArt('gold'), 'Gold', `${treasuryLabel(gold)}${flow}`,
-    `data-tip="treasury" ${track('gold', gold, Math.max(25, Math.abs(gold) * 0.08))}`, 'tb-hero')
+  // TEK ÇUBUK: ana gösterge haftanın çıktısıdır (hazine yok). Altındaki şerit
+  // çıktının dört paya bölünüşü; faturalar tavanı aşınca (ikmal krizi) değer
+  // kırmızıya döner ve şerit nabız atar — krizin bedeli takviye, eğitim ve
+  // düzendir (econ/bills.supplyFactor), oyuncu onu ekran açmadan görmeli.
+  const output = nation.economy?.ic?.output ?? 0;
+  const crisis = inSupplyCrisis(nation);
+  const cells = statCell(emblemArt('industry'), 'Output',
+    `<span class="${crisis ? 'res-neg' : ''}">${outputLabel(output)}</span><em class="stat-flow">IC</em>`,
+    `data-tip="topbar-output" ${track('out', output, Math.max(0.5, output * 0.02))}`, `tb-hero${crisis ? ' tb-crisis' : ''}`,
+    null, outputBar(nation.economy?.alloc, crisis))
     + statCell(emblemArt('power'), 'Power', `${Math.round(nation.power ?? 0)}<em class="stat-flow res-pos">+${power.total.toFixed(1)}</em>`,
       `data-tip="power" ${track('power', nation.power ?? 0, 25)}`, '', { share: (nation.power ?? 0) / 500, tone: 'gold' })
     + statCell(emblemArt('stability'), 'Stability', `<span class="${stabilityClass}">${stability}%</span>`,
       `role="button" data-why="stability" data-tip="stability" ${track('stab', stability, 1)}`, 'stat-why',
       { share: stability / 100, tone: tone(stability, 45, 30) })
-    + statCell(emblemArt('war_support'), 'War Sup.', `${warSupport}%`, `data-tip="warsupport" ${track('ws', warSupport, 1)}`, '',
+    // Yorgunluk iradenin yanında: savaşın bedeli ekran açmadan okunsun
+    // (0.60'tan sonra halklarımız kopmaya başlar; TASARIM §9-10).
+    + statCell(emblemArt('war_support'), 'War Sup.', `${warSupport}%${exhaustion >= 5
+      ? `<em class="stat-flow ${exhaustion >= 60 ? 'res-neg' : exhaustion >= 45 ? 'res-warn' : ''}" title="War exhaustion">exh ${exhaustion}%</em>` : ''}`,
+    `data-tip="warsupport" ${track('ws', warSupport, 1)}`, '',
       { share: warSupport / 100, tone: 'war' })
     + statCell(emblemArt('infamy'), 'Infamy', `<span class="${infamyClass}">${infamy.toFixed(1)}</span>`,
       `data-tip="infamy" ${track('inf', infamy, 0.5, -1)}`, '',
@@ -2159,12 +2571,11 @@ function resourceChips(nation) {
   }).join('')}</span>`;
 }
 
-/** Hazine: altı haneye kadar ayraçlı tam sayı, üstü K/M. */
-function treasuryLabel(value) {
-  const n = Math.round(value ?? 0);
-  if (Math.abs(n) >= 1e6) return `${(n / 1e6).toFixed(2)}M`;
-  if (Math.abs(n) >= 1e5) return `${(n / 1e3).toFixed(0)}K`;
-  return grouped(n);
+/** Çıktı: 100'ün altında bir ondalık, üstü tam sayı, on binden sonra K. */
+function outputLabel(value) {
+  const v = value ?? 0;
+  if (Math.abs(v) >= 1e4) return `${(v / 1e3).toFixed(1)}K`;
+  return Math.abs(v) >= 100 ? String(Math.round(v)) : v.toFixed(1);
 }
 
 /**
@@ -2185,11 +2596,6 @@ function stabilityWhy(nation) {
   const lines = parts.map((part) => `${part.label.padEnd(30)} ${pt(part.value)}`);
   lines.push(`= Target ${(nation.politics.stabilityTarget * 100).toFixed(1)}% (now ${(nation.stability * 100).toFixed(1)}%)`);
   return lines.join('\n');
-}
-
-/** Binlik ayraçlı tam sayı: 3847 → 3,847. */
-function grouped(value) {
-  return Math.round(value ?? 0).toLocaleString('en-US');
 }
 
 export function gameDate(turn, day = 0) {

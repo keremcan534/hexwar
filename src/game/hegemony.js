@@ -14,7 +14,9 @@ import { CAMPAIGN_TURNS, END_YEAR, START_YEAR } from './calendar.js';
 
 export const FINAL_TURN = CAMPAIGN_TURNS;
 
-export const SCORE_WEIGHTS = { ic: 4, population: 3, core: 1, prestige: 1 };
+// Sanayi birimi 2026-10-15'te eski fabrika IC'sinin IC_SCALE (4) katı oldu:
+// ağırlık 4 → 1, skorun bileşimi aynı kaldı.
+export const SCORE_WEIGHTS = { ic: 1, population: 3, core: 1, prestige: 1 };
 
 /** Ulusal hedefler ve bonusları. */
 export const GOALS = {

@@ -32,34 +32,21 @@ export const START_EDUCATION = [0, 1, 2];
 export const START_GOVERNMENT = ['absolutism', 'constitutional', 'constitutional'];
 
 /**
- * Her province'e eklenen kalkınma (başkent ayrıca +1+kademe alır).
- * Kalkınma yuvayı (kalkınma + 1) da belirler: simülasyonun 1900 sanayi ülkesi
- * ~7 kalkınmada province başına ~2.8 fabrika, ~2.7 demiryolu ve ~1 madene yer
- * buluyordu; +3'te fabrika ve demiryolu yuvayı doldurup tersaneyi dışarıda
- * bırakıyordu (denizci imparatorluk tersanesiz başladı, ölçüldü).
+ * Her province'e eklenen kalkınma (başkent ayrıca +1+kademe alır). Kalkınma
+ * 2026-10-15'ten beri sanayinin kendisidir (1'in üstündeki her kademe sanayi
+ * ekler): kademe farkı çağın "sanayileş ya da ezil" makasıdır.
  */
 export const START_DEVELOPMENT = [0, 1, 3];
 /** Kuruluşta kalkınma bu tavanı geçmez: üst kademeler çağın yatırımıdır. */
 export const START_DEVELOPMENT_CAP = 7;
 
 /**
- * Bina kademeleri. `factory` nüfus birimi (100 bin) başına; diğerleri
- * province başına ortalama (mine yataklı, dockyard kıyı province başına).
- * Yuva (kalkınma + 1) ve bina tavanı her zaman korunur. Tablo sırası
- * yerleşim sırasıdır: yuva önce gelene düşer.
+ * Kale kademesi, state başına ortalama (başkent en az bir). Kale haritanın
+ * sabit bir özelliğidir: 2026-10-15'ten beri bina yoktur ve kale inşa
+ * edilmez (YZ eski bina modelinde de hiç kale kurmuyordu; kaleler yalnız
+ * kuruluştan ve gündemden geliyordu).
  */
-export const START_BUILDINGS = {
-  // Az ve vazgeçilmez olanlar önce: tersane ve üniversite yuvasız kalmasın.
-  dockyard: [0.08, 0.15, 0.25],
-  university: [0, 0.02, 0.05],
-  // Simülasyonun 1900 tavanı sanayi ülkesinde 0.6'ydı; yarısı oyuncuya kalır.
-  factory: [0.05, 0.15, 0.22],
-  railway: [0.3, 0.8, 0.9],
-  mine: [0.15, 0.4, 0.5],
-  farm: [0.2, 0.3, 0.3],
-  fort: [0.1, 0.15, 0.2],
-  barracks: [0.05, 0.1, 0.1],
-};
+export const START_FORT = [0.1, 0.15, 0.2];
 
 /** Nüfus birimi başına başlangıç teçhizat deposu. */
 export const START_STOCK = {
@@ -69,14 +56,11 @@ export const START_STOCK = {
 };
 
 /**
- * Kuruluş ordusu: nüfus birimi başına alay (1 alay = 30 bin asker; 0.15 →
- * nüfusun ~%4.5'i). Simülasyonun 1900 dengesi ~0.25'ti (%6-7): YZ orduyu
- * havuz tavanına dek doldurur. Kuruluş onun altında kalır ki seferberlik
- * (askerlik yasası) bir karar olsun.
+ * Kuruluş ordusu: nüfus birimi başına alay (1 alay = 30 bin asker; 0.1 →
+ * nüfusun ~%3'ü). Barış ordusu havuzun yarısını geçmez (defs.ARMY_POOL_SHARE):
+ * kuruluş 0.12-0.17 iken havuzun %60-85'iydi ve AUTO oyuncunun ordusunu ilk
+ * yıl ayda bir alay terhis ederek yarıya indiriyordu (ölçüldü: 18 → 11).
  */
-export const START_ARMY = [0.12, 0.15, 0.17];
-/** Kıyısında tersanesi olan ulusun kuruluş donanması (savaş gemisi alayı). */
+export const START_ARMY = [0.08, 0.1, 0.11];
+/** Kıyılı ulusun kuruluş donanması (savaş gemisi alayı). */
 export const START_FLEET = [0, 1, 3];
-
-/** Başlangıç hazinesi: taban + nüfus birimi başına. */
-export const START_GOLD = { base: 100, perUnit: 8 };

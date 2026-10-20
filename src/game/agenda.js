@@ -2,8 +2,8 @@
 //
 // Ağaç yerine DURUMA UYAN ÜÇ SEÇENEK: ulusun o anki sorunlarından (borç,
 // soydaş, tüketim malı, kıyı, düşman) uygun şablonlar tartılır, üçü sunulur,
-// biri seçilir, 12-20 hafta sonra SOMUT bir sonuç verir (bina, teçhizat,
-// geçici değiştirici, savaş gerekçesi). Bitince yeni üçlü gelir.
+// biri seçilir, 12-20 hafta sonra SOMUT bir sonuç verir (kalkınma, kale,
+// teçhizat, geçici değiştirici, savaş gerekçesi). Bitince yeni üçlü gelir.
 //
 // Neden ağaç değil: 69 ülkeye elle ağaç yazılamaz ve prosedürel dünyada
 // "senin tarihin" önceden bilinmez. Şablon + koşul + ağırlık, her ülkeye
@@ -11,13 +11,13 @@
 
 import { makeRng } from '../core/rng.js';
 import { addIdea, addTimedModifier, refreshModifiers } from './modifiers.js';
-import { BUILDINGS, DEVELOPMENT_MAX } from './econ/defs.js';
+import { DEVELOPMENT_MAX, IC_SCALE } from './econ/defs.js';
 import { addEquipment } from './econ/industry.js';
-import { buildingLevels, buildingSlots, provinceName } from './provinces.js';
+import { provinceName } from './provinces.js';
 import { cultureMix } from './culture.js';
 import { addInfamy } from './infamy.js';
 import { kinAbroadShare } from './politics.js';
-import { developmentCap } from './construction.js';
+import { developmentCap } from './econ/investment.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -29,22 +29,31 @@ function ownProvinces(world, nation) {
   return (world.provinces ?? []).filter((p) => p.owner === nation.id && p.econ && (p.econ.status ?? 1) > 0);
 }
 
-/** Province'e bina kademesi ekler (yuva ve tavan sınırında); eklenen sayıyı döndürür. */
-function grantBuilding(world, provinces, buildingId, count) {
-  const info = BUILDINGS[buildingId];
-  let given = 0;
+/**
+ * Sıradaki province'lere birer kalkınma kademesi verir (tavanın bir üstüne
+ * dek: gündem fonun yetişemediği yere uzanır). Bina yoktur (2026-10-15):
+ * eski fabrika/tersane ödülleri kalkınmadır.
+ */
+function grantDevelopment(nation, provinces, count) {
+  const cap = Math.min(DEVELOPMENT_MAX, developmentCap(nation) + 1);
   const names = [];
   for (const province of provinces) {
-    if (given >= count) break;
-    const econ = province.econ;
-    if ((econ.buildings[buildingId] ?? 0) >= info.max) continue;
-    if (buildingLevels(econ) >= buildingSlots(econ)) continue;
-    if (info.minDevelopment && econ.development < info.minDevelopment) continue;
-    if (info.coastal && !province.coastal) continue;
-    if (info.needsDeposit && !province.deposits?.length) continue;
-    econ.buildings[buildingId]++;
+    if (names.length >= count) break;
+    if ((province.econ.development ?? 1) >= cap) continue;
+    province.econ.development++;
     names.push(provinceName(province.center));
-    given++;
+  }
+  return names;
+}
+
+/** Kale kademesi (en çok 3): haritanın sabit özelliği, yalnız gündemle artar. */
+function grantFort(provinces, count) {
+  const names = [];
+  for (const province of provinces) {
+    if (names.length >= count) break;
+    if ((province.econ.fort ?? 0) >= 3) continue;
+    province.econ.fort = (province.econ.fort ?? 0) + 1;
+    names.push(provinceName(province.center));
   }
   return names;
 }
@@ -60,23 +69,25 @@ export const AGENDA = {
   railway_push: {
     name: 'Railway Push', weeks: 16,
     desc: 'Lay track between the heartland\'s largest towns.',
-    reward: '+1 Railway in the three most populous provinces',
+    reward: 'Investment +20% for 2 years',
     weight: (world, nation) => (ownProvinces(world, nation).length >= 3 ? 1.2 : 0),
     apply: (game, nation) => {
-      const names = grantBuilding(game.world, byPopulation(ownProvinces(game.world, nation)), 'railway', 3);
-      return names.length ? `Railways opened in ${names.join(', ')}.` : 'The line was surveyed but no slot was free.';
+      addTimedModifier(nation, 'agenda-railway', 'Railway Push', 104, { investment: 0.2 }, game.turns.turn);
+      return 'The new lines carry timber and steel to every site.';
     },
   },
   industrial_drive: {
     name: 'Industrial Drive', weeks: 20,
     desc: 'State credit for the first mills of a new industry.',
-    reward: '+1 Factory in the two most developed provinces',
+    // Eskiden iki fabrika verirdi; kalkınma kademesi bir fabrikadan çok daha
+    // büyüktür (state'in bütün işçisinin sanayisi): gündem ödülleri kademe
+    // verdiğinde küçük ülkelerin kalkınmasını fon değil gündem sürüyordu
+    // (ölçüldü, BAR1 × 20 yıl: ortanca 2.9 → 5.7). Ödül yatırımı hızlandırır.
+    reward: 'Investment +25% for 2 years',
     weight: (world, nation) => ((nation.economy?.consumer?.ratio ?? 1) < 1 ? 2 : 1),
     apply: (game, nation) => {
-      const list = ownProvinces(game.world, nation)
-        .sort((a, b) => b.econ.development - a.econ.development || b.econ.population - a.econ.population);
-      const names = grantBuilding(game.world, list, 'factory', 2);
-      return names.length ? `New factories in ${names.join(', ')}.` : 'No province had room for a factory.';
+      addTimedModifier(nation, 'agenda-industry', 'Industrial Drive', 104, { investment: 0.25 }, game.turns.turn);
+      return 'State credit flows to the new mills.';
     },
   },
   army_reform: {
@@ -89,30 +100,28 @@ export const AGENDA = {
       return 'The reformed army drills to the new manual.';
     },
   },
+  // Eskiden depoya bedava tüfek ve top koyuyordu (savaşta ağırlık ×2; bir
+  // tohumda savaş ortasında +275 tüfek): teçhizat kıtlığını kendiliğinden
+  // siliyordu. Artık hatların kendisini hızlandırır — mal yine fabrikadan çıkar.
   arsenal_program: {
     name: 'Arsenal Programme', weeks: 12,
-    desc: 'Fill the depots before the next war.',
-    reward: 'Rifles and artillery delivered to the depot',
+    desc: 'Retool the arsenals before the next war.',
+    reward: 'Production efficiency cap +10% and growth +50% for a year',
     weight: (world, nation) => ((nation.economy?.warFronts ?? 0) > 0 ? 2 : 0.9),
     apply: (game, nation) => {
-      const rifles = Math.round(20 + popUnits(nation) * 0.6);
-      const guns = Math.round(4 + popUnits(nation) * 0.08);
-      addEquipment(nation, 'rifles', rifles);
-      addEquipment(nation, 'guns', guns);
-      return `${rifles} rifles and ${guns} guns delivered.`;
+      addTimedModifier(nation, 'agenda-arsenal', 'Arsenal Programme', 52, { lineEfficiency: 0.1, lineGain: 0.5 }, game.turns.turn);
+      return 'The arsenals retool: the production lines run faster for a year.';
     },
   },
   land_reform: {
     name: 'Land Reform', weeks: 16,
     desc: 'Enclosure, drainage and model farms.',
-    reward: '+1 Farm in the three most fertile provinces, stability +5 for a year',
+    reward: 'Food output +10% for 3 years, stability +5 for a year',
     weight: (world, nation) => ((nation.economy?.resources?.FOOD?.ratio ?? 1) < 1 ? 2.5 : 0.7),
     apply: (game, nation) => {
-      const list = ownProvinces(game.world, nation)
-        .sort((a, b) => (b.fertility ?? 1) * b.econ.population - (a.fertility ?? 1) * a.econ.population);
-      const names = grantBuilding(game.world, list, 'farm', 3);
+      addTimedModifier(nation, 'agenda-land-food', 'Model Farms', 156, { food: 0.1 }, game.turns.turn);
       addTimedModifier(nation, 'agenda-land', 'Land Reform', 52, { stability: 0.05 }, game.turns.turn);
-      return names.length ? `Model farms in ${names.join(', ')}.` : 'The reform calmed the countryside.';
+      return 'Model farms spread through the countryside.';
     },
   },
   literacy_campaign: {
@@ -137,20 +146,20 @@ export const AGENDA = {
         const owner = world.provinces[id]?.owner;
         return owner >= 0 && owner !== nation.id;
       }));
-      const names = grantBuilding(world, byPopulation(border), 'fort', 3);
+      const names = grantFort(byPopulation(border), 3);
       return names.length ? `Forts raised in ${names.join(', ')}.` : 'The border was surveyed.';
     },
   },
   naval_ambition: {
     name: 'Naval Ambition', weeks: 20,
-    desc: 'A dockyard and a squadron to fly the flag.',
-    reward: '+1 Dockyard and a stock of ships',
+    desc: 'Shipyards and a squadron to fly the flag.',
+    reward: '+1 development in the largest port and a stock of ships',
     weight: (world, nation) => (nation.economy?.coastal ? ((nation.economy?.blockade ?? 0) > 0 ? 2 : 0.9) : 0),
     apply: (game, nation) => {
-      const names = grantBuilding(game.world, byPopulation(ownProvinces(game.world, nation).filter((p) => p.coastal)), 'dockyard', 1);
+      const names = grantDevelopment(nation, byPopulation(ownProvinces(game.world, nation).filter((p) => p.coastal)), 1);
       const ships = Math.round(10 + popUnits(nation) * 0.2);
       addEquipment(nation, 'ships', ships);
-      return `${names.length ? `A dockyard at ${names[0]}; ` : ''}${ships} ships fitted out.`;
+      return `${names.length ? `The yards of ${names[0]} grow; ` : ''}${ships} ships fitted out.`;
     },
   },
   bread_and_circuses: {
@@ -166,7 +175,7 @@ export const AGENDA = {
   open_markets: {
     name: 'Open the Markets', weeks: 12,
     desc: 'Commercial treaties with every port that will sign.',
-    reward: 'Export income +25%, import cost −10% for 2 years',
+    reward: 'Export appeal +25%, import cost −10% for 2 years',
     weight: (world, nation) => (nation.economy?.coastal ? 1 : 0.5),
     apply: (game, nation) => {
       addTimedModifier(nation, 'agenda-markets', 'Open Markets', 104, { exportIncome: 0.25, importCost: -0.1 }, game.turns.turn);
@@ -209,23 +218,11 @@ export const AGENDA = {
       return 'A new generation of officers.';
     },
   },
-  debt_conversion: {
-    name: 'Debt Conversion', weeks: 12,
-    desc: 'Refinance the national debt at a lower rate.',
-    reward: 'A third of the debt written off, stability −3 for half a year',
-    weight: (world, nation) => ((nation.debt ?? 0) > 50 ? 2.4 : 0),
-    apply: (game, nation) => {
-      const cut = Math.round((nation.debt ?? 0) / 3);
-      nation.debt = Math.max(0, (nation.debt ?? 0) - cut);
-      addTimedModifier(nation, 'agenda-debt', 'Debt Conversion', 26, { stability: -0.03 }, game.turns.turn);
-      return `${cut} gold of debt converted away.`;
-    },
-  },
   great_exhibition: {
     name: 'Great Exhibition', weeks: 20,
     desc: 'Show the world the marvels of our industry.',
     reward: 'Prestige +10, research +10% for 2 years',
-    weight: (world, nation) => ((nation.economy?.ic?.total ?? 0) >= 4 ? 1.2 : 0),
+    weight: (world, nation) => ((nation.economy?.ic?.total ?? 0) >= 4 * IC_SCALE ? 1.2 : 0),
     apply: (game, nation) => {
       nation.prestige = (nation.prestige ?? 0) + 10;
       addTimedModifier(nation, 'agenda-exhibition', 'Great Exhibition', 104, { research: 0.1 }, game.turns.turn);
@@ -284,29 +281,21 @@ export const AGENDA = {
   develop_heartland: {
     name: 'Develop the Heartland', weeks: 16,
     desc: 'Roads, markets and town charters for the core provinces.',
-    reward: '+1 development in the three most populous provinces',
+    reward: '+1 development in the most populous province',
     weight: () => 1.1,
     apply: (game, nation) => {
-      const cap = Math.min(DEVELOPMENT_MAX, developmentCap(nation) + 1);
-      const names = [];
-      for (const province of byPopulation(ownProvinces(game.world, nation))) {
-        if (names.length >= 3) break;
-        if (province.econ.development >= cap) continue;
-        province.econ.development++;
-        names.push(provinceName(province.center));
-      }
+      const names = grantDevelopment(nation, byPopulation(ownProvinces(game.world, nation)), 1);
       return names.length ? `${names.join(', ')} developed.` : 'The heartland is already developed.';
     },
   },
   coal_and_iron: {
     name: 'Coal and Iron', weeks: 16,
     desc: 'Open new pits in the richest seams.',
-    reward: '+1 Mine in two deposit provinces',
+    reward: 'Deposit output +15% for 3 years',
     weight: (world, nation) => (ownProvinces(world, nation).some((p) => p.deposits?.length) ? 1.1 : 0),
     apply: (game, nation) => {
-      const list = byPopulation(ownProvinces(game.world, nation).filter((p) => p.deposits?.length));
-      const names = grantBuilding(game.world, list, 'mine', 2);
-      return names.length ? `New mines in ${names.join(', ')}.` : 'The surveyors found no free ground.';
+      addTimedModifier(nation, 'agenda-mines', 'Coal and Iron', 156, { resources: 0.15 }, game.turns.turn);
+      return 'New pits open in the richest seams.';
     },
   },
   conscription_drive: {
@@ -321,12 +310,12 @@ export const AGENDA = {
   },
   tax_census: {
     name: 'Cadastral Survey', weeks: 12,
-    desc: 'Map every field; tax what is really there.',
-    reward: 'Tax income +10% for 3 years',
-    weight: (world, nation) => ((nation.gold ?? 0) < 50 ? 1.6 : 0.8),
+    desc: 'Map every field and workshop; organise what is really there.',
+    reward: 'Output +7% for 3 years',
+    weight: (world, nation) => ((nation.fund ?? 0) < 0 ? 1.6 : 0.8),
     apply: (game, nation) => {
-      addTimedModifier(nation, 'agenda-census', 'Cadastral Survey', 156, { tax: 0.1 }, game.turns.turn);
-      return 'The survey is complete; the treasury smiles.';
+      addTimedModifier(nation, 'agenda-census', 'Cadastral Survey', 156, { output: 0.07 }, game.turns.turn);
+      return 'The survey is complete; the ministries know what the land can give.';
     },
   },
   peace_dividend: {

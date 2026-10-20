@@ -13,6 +13,8 @@
 import { makeRng } from '../core/rng.js';
 import { addTimedModifier, refreshModifiers } from './modifiers.js';
 import { settle } from './treasury.js';
+import { canSpend, spend } from './econ/investment.js';
+import { IC_SCALE } from './econ/defs.js';
 import { changeGovernment, setRuling } from './politics.js';
 import { addInfamy } from './infamy.js';
 import { turnOfYear } from './calendar.js';
@@ -20,9 +22,28 @@ import { WORLD_EVENTS, WORLD_EVENT_IDS, worldEventActive, worldEventSchedule } f
 import { declareWar } from './diplomacy.js';
 import { scoreboard } from './hegemony.js';
 import { suggestWarGoal } from './peace.js';
+import { money } from './money.js';
 
 const units = (nation) => Math.max(1, (nation.economy?.population ?? 0) / 100000);
 const atWar = (nation) => (nation.economy?.warFronts ?? 0) > 0;
+const exhaustionOf = (nation) => nation.politics?.exhaustion ?? 0;
+
+/**
+ * Devrim kartının eşikleri (redesign D5). Kızıl yıllar kolu da yorgunluk
+ * ister: kızıl yıllar bitkin devleti devirir, yalnız istikrarsız olanı değil.
+ * MAX_OCCUPIED: kalabalık KENDİ başkentimizde toplanır — toprağının çoğu
+ * işgal altındaki ülkede devrim değil teslim olur. Ölçüm (P5, STAT3 1904-16):
+ * yorgunluğu ≥ 0.75 savaşta kalanların çoğu koalisyonun ezdiği, %50-100'ü
+ * işgal altında 60-170 hafta bekleyen ülkelerdi.
+ * CHANCE: bu kapılarla haftalık 0.05'te 16 | 11 | 18, 0.03'te dört koşuda
+ * 5-13 devrim/kampanya (STAT1-3); kapı haftalarından kestirim (gerçekleşenle
+ * ±2 tuttu) 0.015'te on iki tohum-koşusunun hepsinde 2.9-7.8.
+ */
+export const REVOLUTION = {
+  RED_YEARS_EXHAUSTION: 0.6, RED_YEARS_STABILITY: 0.5,
+  EXHAUSTION: 0.75, STABILITY: 0.45, MAX_OCCUPIED: 0.25,
+  CHANCE: 0.015,
+};
 
 /** Cevapsız kart bu kadar hafta sonra ilk seçenekle kapanır. */
 export const EVENT_TIMEOUT = 8;
@@ -52,11 +73,12 @@ export const EVENT_CARDS = {
     trigger: (world, nation) => (nation.economy?.resources?.FOOD?.ratio ?? 1) < 0.85,
     chance: 0.06,
     options: [
-      { label: 'Open the state granaries', detail: 'Costs gold; stability +4 for half a year',
-        cost: (nation) => Math.round(units(nation) * 0.8),
-        ai: (nation) => ((nation.gold ?? 0) > units(nation) ? 2 : 0.5),
+      { label: 'Open the state granaries', detail: 'Paid from the development fund; stability +4 for half a year',
+        cost: (nation) => Math.round(units(nation) * 1.2),
+        available: (nation) => canSpend(nation, Math.round(units(nation) * 1.2)),
+        ai: (nation) => (canSpend(nation, units(nation) * 2.4) ? 2 : 0.5),
         apply: (game, nation, option) => {
-          settle(nation, 'outlay', -option.cost(nation));
+          spend(nation, option.cost(nation));
           timed(game, nation, 'event-famine', 'Granaries opened', 26, { stability: 0.04 });
         } },
       { label: 'Let the market decide', detail: 'Stability −6 for half a year, socialists gain',
@@ -70,7 +92,7 @@ export const EVENT_CARDS = {
   strike: {
     title: 'General Strike',
     text: 'Workers in the mill towns down tools: the shops are empty and the wages are not.',
-    trigger: (world, nation) => (nation.economy?.consumer?.ratio ?? 1) < 0.9 && (nation.economy?.ic?.total ?? 0) >= 3,
+    trigger: (world, nation) => (nation.economy?.consumer?.ratio ?? 1) < 0.9 && (nation.economy?.ic?.total ?? 0) >= 3 * IC_SCALE,
     chance: 0.03,
     options: [
       { label: 'Concede higher wages', detail: 'Industry −5% for a year; stability +3; socialists gain',
@@ -91,8 +113,10 @@ export const EVENT_CARDS = {
   war_weariness: {
     title: 'The Nation Tires of War',
     text: 'Casualty lists fill the newspapers. Mothers march on the ministry.',
+    // Bezginlik iradeden değil YORGUNLUKTAN gelir (redesign D5 merdiveni 0.45):
+    // irade artık savaşta toplanıyor, kayıp ve savaş yılı yorgunluğu besliyor.
     trigger: (world, nation) => atWar(nation) && (nation.politics?.warWeeks ?? 0) >= 52
-      && (nation.warSupport ?? 0.5) < 0.35,
+      && exhaustionOf(nation) >= 0.45,
     chance: 0.04,
     options: [
       { label: 'Promise an honourable peace', detail: 'Stability +5 for a year; war support −5',
@@ -112,34 +136,49 @@ export const EVENT_CARDS = {
   motor_boom: {
     title: 'The Motor Boom',
     text: 'Workshops that built bicycles now build motorcars. Their investors want the state to stand behind the loans.',
-    trigger: (world, nation) => (world.turn ?? 0) >= turnOfYear(1908) && (nation.gold ?? 0) >= 120
-      && (nation.economy?.ic?.total ?? 0) >= 8,
+    trigger: (world, nation) => (world.turn ?? 0) >= turnOfYear(1908) && canSpend(nation, 180)
+      && (nation.economy?.ic?.total ?? 0) >= 8 * IC_SCALE,
     chance: 0.012,
     options: [
-      { label: 'Guarantee the loans', detail: 'Costs 80 gold; industry +4% for three years',
+      { label: 'Guarantee the loans', detail: `Costs ${money(120, 0)} from the development fund; industry +4% for three years`,
+        available: (nation) => canSpend(nation, 120),
         ai: () => 1.5,
         apply: (game, nation) => {
-          settle(nation, 'outlay', -80);
+          spend(nation, 120);
           timed(game, nation, 'event-motor', 'Motor industry', 156, { ic: 0.04 });
         } },
-      { label: 'Tax the boom', detail: '+40 gold',
+      { label: 'Tax the boom', detail: `+${money(60, 0)} to the development fund`,
         ai: () => 1,
-        apply: (game, nation) => settle(nation, 'tax', 40) },
+        apply: (game, nation) => settle(nation, 'grant', 60) },
     ],
   },
   // KIZIL YILLAR: uzun savaşın ya da dalganın çökerttiği devlette devrim.
   revolution: {
     title: 'Bread, Peace and Land',
     text: 'Soldiers\' councils sit in the barracks and the factories. The crowd in the capital will not go home.',
-    // Kızıl yıllarda savaşta ya da savaştan yeni çıkmış, istikrarı ortalamanın
-    // altındaki ülke; başka zaman yalnız iki yılı aşan, desteği tükenmiş
-    // savaşta. Ölçüm (2 tohum, tam kampanya): dünya istikrarı Büyük Savaş ve
-    // buhran sırasında bile ortalama %64-78; 0.45 eşiğiyle 45 yılda 2-4 devrim.
-    trigger: (world, nation) => (worldEventActive(world, 'red_years', world.turn ?? 0)
-      && (nation.stability ?? 0.5) < 0.6 && (atWar(nation) || (nation.politics?.warWeeks ?? 0) >= 13))
-      || ((nation.stability ?? 0.5) < 0.35 && atWar(nation)
-        && (nation.politics?.warWeeks ?? 0) >= 104 && (nation.warSupport ?? 0.5) < 0.35),
-    chance: 0.05,
+    // Kızıl yıllarda savaşta ya da savaştan yeni çıkmış, bitkin ve istikrarsız
+    // ülke; başka zaman merdivenin devrim basamağında (yorgunluk 0.75,
+    // istikrar < 0.45), savaşta. İki kolda da kalabalık KENDİ başkentinde
+    // toplanır (işgal < %25).
+    //
+    // P0 sayımı 30 | 34 | 26 devrim/kampanya verdi (yorum 2-4 diyordu): eski
+    // ikinci kol (iki yıllık savaş + irade < 0.35 + istikrar < 0.35) 1904-12
+    // kümesini, kızıl yıllar kolu (istikrar < 0.6, savaşta) 1917-20'deki
+    // 18-22'yi üretiyordu. P5 ölçümü (STAT1-3): eşikler yorgunluğa taşınınca
+    // ilk sürümde 39 | 58 | 70 (ikinci kol her yerde), kızıl yıllara 0.6
+    // yorgunluk eklenince 16 | 11 | 18 — kızıl yıllar kolu %50-100 işgal
+    // altındaki ve isyancı devletleri de deviriyordu.
+    trigger: (world, nation) => {
+      const exhaustion = exhaustionOf(nation);
+      const stability = nation.stability ?? 0.5;
+      if ((nation.economy?.occupiedShare ?? 0) >= REVOLUTION.MAX_OCCUPIED) return false;
+      if (worldEventActive(world, 'red_years', world.turn ?? 0)
+        && stability < REVOLUTION.RED_YEARS_STABILITY && exhaustion >= REVOLUTION.RED_YEARS_EXHAUSTION
+        && (atWar(nation) || (nation.politics?.warWeeks ?? 0) >= 13)) return true;
+      return stability < REVOLUTION.STABILITY && atWar(nation) && exhaustion >= REVOLUTION.EXHAUSTION;
+    },
+    // Haftalık olasılık sabitten okunur (kalibrasyon kolu).
+    get chance() { return REVOLUTION.CHANCE; },
     options: [
       { label: 'Proclaim the republic', detail: 'Becomes a Republic; stability +6 for a year; war support −10; the left gains',
         available: (nation) => nation.politics?.government !== 'republic',
@@ -205,7 +244,7 @@ export const EVENT_CARDS = {
     options: [
       { label: 'Quarantine the cities', detail: 'Tax −10% for half a year',
         ai: () => 1.3,
-        apply: (game, nation) => timed(game, nation, 'event-cholera', 'Quarantine', 26, { tax: -0.1 }) },
+        apply: (game, nation) => timed(game, nation, 'event-cholera', 'Quarantine', 26, { output: -0.07 }) },
       { label: 'Keep the markets open', detail: 'Growth −40% and stability −3 for a year',
         ai: () => 1,
         apply: (game, nation) => timed(game, nation, 'event-cholera', 'Cholera', 52, { growth: -0.4, stability: -0.03 }) },
@@ -240,10 +279,11 @@ export const EVENT_CARDS = {
     trigger: (world, nation) => (nation.economy?.literacy ?? 0) >= 0.25,
     chance: 0.006,
     options: [
-      { label: 'Fund his laboratory', detail: 'Costs 50 gold; research +15% for a year',
-        ai: (nation) => ((nation.gold ?? 0) > 100 ? 1.6 : 0.4),
+      { label: 'Fund his laboratory', detail: `Costs ${money(75, 0)} from the development fund; research +15% for a year`,
+        available: (nation) => canSpend(nation, 75),
+        ai: (nation) => (canSpend(nation, 150) ? 1.6 : 0.4),
         apply: (game, nation) => {
-          settle(nation, 'outlay', -50);
+          spend(nation, 75);
           timed(game, nation, 'event-inventor', 'State laboratory', 52, { research: 0.15 });
         } },
       { label: 'Let industry buy the patent', detail: 'Industry +3% for two years',
@@ -276,10 +316,12 @@ export const EVENT_CARDS = {
       && (nation.economy?.resources?.FOOD?.produced ?? 0) > (nation.economy?.resources?.FOOD?.need ?? 0) * 1.1,
     chance: 0.006,
     options: [
-      { label: 'Sell it abroad', detail: '+ gold',
-        cost: (nation) => Math.round(units(nation) * 0.6),
+      { label: 'Sell it abroad', detail: '+ money',
+        cost: (nation) => Math.round(units(nation) * 0.9),
         ai: () => 1.2,
-        apply: (game, nation, option) => settle(nation, 'exports', option.cost(nation)) },
+        // Defterde 'grant' satırına: 'exports' alıcısız ihracat geliri gibi
+        // görünüyor, ticaretin para korunumunu bozuyordu.
+        apply: (game, nation, option) => settle(nation, 'grant', option.cost(nation)) },
       { label: 'Feed the people', detail: 'Growth +20% for a year',
         ai: () => 1,
         apply: (game, nation) => timed(game, nation, 'event-harvest', 'Bumper harvest', 52, { growth: 0.2 }) },
@@ -327,11 +369,12 @@ export const EVENT_CARDS = {
     chance: 0.25,
     cooldown: 104,
     options: [
-      { label: 'Pensions and parades', detail: 'Costs gold; stability +5 for a year',
-        cost: (nation) => Math.round(units(nation) * 0.5),
-        ai: (nation) => ((nation.gold ?? 0) > units(nation) ? 1.5 : 0.4),
+      { label: 'Pensions and parades', detail: 'Costs money; stability +5 for a year',
+        cost: (nation) => Math.round(units(nation) * 0.75),
+        available: (nation) => canSpend(nation, Math.round(units(nation) * 0.75)),
+        ai: (nation) => (canSpend(nation, units(nation) * 1.5) ? 1.5 : 0.4),
         apply: (game, nation, option) => {
-          settle(nation, 'outlay', -option.cost(nation));
+          spend(nation, option.cost(nation));
           timed(game, nation, 'event-veterans', 'Veterans honoured', 52, { stability: 0.05 });
         } },
       { label: 'Send them home', detail: 'Stability −3 for a year; nationalists gain',
@@ -359,15 +402,29 @@ export const EVENT_CARDS = {
         apply: (game, nation) => timed(game, nation, 'event-keg', 'Armed neutrality', 104, { stability: 0.03 }) },
     ],
   },
+  rearmament: {
+    title: 'The Road to War',
+    text: 'The treaties of the last war are dead letters. Every staff draws up its plans, and every arsenal wants orders.',
+    world: true,
+    options: [
+      { label: 'Rearm', detail: 'Production efficiency cap +10% and efficiency growth +50% for three years; war support +5',
+        ai: (nation) => (nation.aggression ?? 1) * (nation.rivalId != null ? 1.4 : 1),
+        apply: (game, nation) => timed(game, nation, 'event-rearm', 'Rearmament', 156,
+          { lineEfficiency: 0.1, lineGain: 0.5, warSupport: 0.05 }) },
+      { label: 'Seek peace in our time', detail: 'Stability +4 for three years',
+        ai: () => 1.1,
+        apply: (game, nation) => timed(game, nation, 'event-rearm', 'Appeasement', 156, { stability: 0.04 }) },
+    ],
+  },
   influenza: {
     title: 'The Great Influenza',
     text: 'A new influenza runs through the barracks and then the cities. Unlike any plague before it, it kills the young.',
     world: true,
     options: [
-      { label: 'Close the schools and theatres', detail: 'Tax −10% for half a year; fewer die',
-        ai: (nation) => ((nation.gold ?? 0) > units(nation) ? 1.4 : 0.8),
+      { label: 'Close the schools and theatres', detail: 'Output −7% for half a year; fewer die',
+        ai: (nation) => ((nation.economy?.bills?.s ?? 1) >= 1 ? 1.4 : 0.8),
         apply: (game, nation) => {
-          timed(game, nation, 'event-influenza', 'Quarantine', 26, { tax: -0.1 });
+          timed(game, nation, 'event-influenza', 'Quarantine', 26, { output: -0.07 });
           timed(game, nation, 'event-influenza-care', 'Public health', 52, { growth: 0.25 });
         } },
       { label: 'Keep the factories running', detail: 'Stability −3 for a year',
@@ -380,19 +437,20 @@ export const EVENT_CARDS = {
     text: 'The exchanges have crashed. Banks fail, factories close, and the unemployed queue for soup.',
     world: true,
     options: [
-      { label: 'Balance the budget', detail: 'Spending cuts bring in gold; stability −4 for two years',
-        cost: (nation) => Math.round(units(nation) * 0.6),
-        ai: (nation) => ((nation.debt ?? 0) > 0 ? 2 : 0.9),
+      { label: 'Balance the budget', detail: 'Pensions and wages cut: the development fund gains; stability −4 for two years',
+        cost: (nation) => Math.round(units(nation) * 0.9),
+        ai: (nation) => ((nation.fund ?? 0) < 0 ? 2 : 0.9),
         apply: (game, nation, option) => {
-          settle(nation, 'tax', option.cost(nation));
+          settle(nation, 'grant', option.cost(nation));
           timed(game, nation, 'event-depression', 'Austerity', 104, { stability: -0.04 });
         } },
-      { label: 'Public works', detail: 'Costs gold; construction +25% and stability +3 for two years',
-        cost: (nation) => Math.round(units(nation) * 0.8),
-        ai: (nation) => ((nation.gold ?? 0) > units(nation) * 1.5 ? 1.6 : 0.5),
+      { label: 'Public works', detail: 'Paid from the development fund; investment +25% and stability +3 for two years',
+        cost: (nation) => Math.round(units(nation) * 1.2),
+        available: (nation) => canSpend(nation, Math.round(units(nation) * 1.2)),
+        ai: (nation) => (canSpend(nation, units(nation) * 2.4) ? 1.6 : 0.5),
         apply: (game, nation, option) => {
-          settle(nation, 'outlay', -option.cost(nation));
-          timed(game, nation, 'event-depression', 'Public works', 104, { construction: 0.25, stability: 0.03 });
+          spend(nation, option.cost(nation));
+          timed(game, nation, 'event-depression', 'Public works', 104, { investment: 0.25, stability: 0.03 });
         } },
     ],
   },
@@ -463,10 +521,25 @@ const GREAT_POWERS = 8;
  * Ağırlık: rakiplik ×2, sınırın uzunluğu, iki gücün puanı. Saldırgan savaş
  * desteği yüksek olandır; oyuncu otomatik saldırgan yapılmaz (declareWar
  * kuralı) — o zaman rolü karşı taraf alır. İttifak, ateşkes ya da çullanma
- * tavanı bir çifti kapatırsa sıradakine geçilir.
- * @returns {object|null} { aggressor, target }
+ * tavanı bir çifti kapatırsa sıradakine geçilir. `count` kadar AYRI çift
+ * (ikinci büyük savaş iki cepheden başlar).
+ * @returns {object[]} [{ aggressor, target }]
  */
-export function sparkGreatWar(game) {
+export function sparkGreatWar(game, count = 1) {
+  const sparks = [];
+  const busy = new Set();
+  for (let i = 0; i < count; i++) {
+    const spark = sparkOne(game, busy);
+    if (!spark) break;
+    sparks.push(spark);
+    busy.add(spark.aggressor.id);
+    busy.add(spark.target.id);
+  }
+  return sparks;
+}
+
+/** Tek kıvılcım; `busy` bu olayda zaten savaşa sokulmuş uluslardır. */
+function sparkOne(game, busy) {
   const world = game.world;
   const board = scoreboard(world).slice(0, GREAT_POWERS);
   const player = game.turns?.playerNation;
@@ -475,7 +548,7 @@ export function sparkGreatWar(game) {
     for (const y of board) {
       const a = x.nation;
       const b = y.nation;
-      if (a.id >= b.id) continue;
+      if (a.id >= b.id || busy.has(a.id) || busy.has(b.id)) continue;
       const contact = world.contacts?.[a.id]?.[b.id] ?? 0;
       const rival = a.rivalId === b.id || b.rivalId === a.id;
       if (!rival && contact <= 0) continue;
@@ -514,9 +587,9 @@ export function runEventCards(game) {
       }
       if (event.card) fire(game, nation, event.card, turn);
     }
-    const spark = event.spark ? sparkGreatWar(game) : null;
-    game.turns.addLog(spark ? `${event.log} ${spark.aggressor.name} declares war on ${spark.target.name}.` : event.log,
-      { kind: 'NATION' });
+    const sparks = event.spark ? sparkGreatWar(game, event.spark === true ? 1 : event.spark) : [];
+    const said = sparks.map((spark) => `${spark.aggressor.name} declares war on ${spark.target.name}.`).join(' ');
+    game.turns.addLog(said ? `${event.log} ${said}` : event.log, { kind: 'NATION' });
   }
   for (const nation of world.nations) {
     if (!nation.alive || !nation.politics) continue;
@@ -555,7 +628,7 @@ export function pendingCards(nation) {
       options: card.options.map((option, index) => ({
         index,
         label: option.label,
-        detail: option.cost ? `${option.detail} (${option.cost(nation)} gold)` : option.detail,
+        detail: option.cost ? `${option.detail} (${money(option.cost(nation), 0)})` : option.detail,
         available: optionAvailable(option, nation),
       })),
     };

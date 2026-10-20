@@ -59,27 +59,61 @@ export const WORLD_EVENTS = {
     year: 1929, jitter: 1, weeks: 208,
     // İstikrar −4'te buhran dünyayı %70'ten %65'e indiriyordu: aşırılar çağı
     // doğmuyordu (45 yılda bir güçlü adam).
-    effects: { exportIncome: -0.3, tax: -0.15, stability: -0.08 },
+    effects: { exportIncome: -0.3, output: -0.10, stability: -0.08 },
     parties: { socialist: 6, nationalist: 8 },
     card: 'depression',
+  },
+  // ÇAĞIN DORUĞU (2026-10-14). 1933'ten sonra takvim boştu: savaşan oyuncu
+  // 1923'ten sonra hiç savaşmıyor, oyunun son yirmi yılı boş geçiyordu
+  // (istatistik panosu, 3 tohum × 1900-1945; Kerem: "tarih aralığı az geldi,
+  // oyun uzunmuş hissi verilsin"). Yeniden silahlanma barut fıçısının ikinci
+  // turudur ve askerî sanayiye iş verir; kıvılcım 1914'ünkiyle aynı kapıdır.
+  rearmament: {
+    title: 'The Road to War',
+    log: 'The road to war: the treaties of the last war are torn up and the arsenals reopen.',
+    year: 1935, jitter: 1, weeks: 260,
+    effects: { warSupport: 0.05 },
+    nationalism: 0.2,
+    parties: { nationalist: 6 },
+    war: { threshold: 0.85, declare: 2 },
+    card: 'rearmament',
+  },
+  second_great_war: {
+    title: 'The Second Great War',
+    log: 'The world goes to war again, and this time the factories decide it.',
+    year: 1939, jitter: 1, weeks: 312,
+    effects: { warSupport: 0.05 },
+    // İki ayrı çift: tek kıvılcım küçük dünyalarda 1940-44 savaş payını
+    // %1-10'da bırakıyordu (78×62, 3 tohum) — ikinci savaş birinciden büyük olmalı.
+    spark: 2,
   },
 };
 export const WORLD_EVENT_IDS = Object.keys(WORLD_EVENTS);
 
 /** Takvim: tohuma bağlı başlangıç haftaları (bir kez kurulur, kayda girer). */
 export function worldEventSchedule(world) {
-  if (world.worldEvents) return world.worldEvents;
+  if (world.worldEvents) {
+    // Takvimden sonra eklenen olay (kayıttan dönen dünya): kendi zarıyla
+    // yerleşir, öncekilerin haftaları değişmez.
+    for (const id of WORLD_EVENT_IDS) {
+      if (!world.worldEvents[id]) world.worldEvents[id] = scheduleOne(id, makeRng(`${world.seed}-world-events-${id}`));
+    }
+    return world.worldEvents;
+  }
   const rng = makeRng(`${world.seed}-world-events`);
   const schedule = {};
-  for (const id of WORLD_EVENT_IDS) {
-    const event = WORLD_EVENTS[id];
-    // Yıl içinde rastgele hafta, ± jitter yıl: her dünyada aynı yıl olmasın.
-    const shift = Math.round((rng() * 2 - 1) * event.jitter * 52 + rng() * 52);
-    const start = Math.max(2, turnOfYear(event.year) + shift);
-    schedule[id] = { start, until: start + event.weeks, fired: false };
-  }
+  // Yeni olaylar listenin SONUNA eklenir: sıralı zar eskilerin haftasını korur.
+  for (const id of WORLD_EVENT_IDS) schedule[id] = scheduleOne(id, rng);
   world.worldEvents = schedule;
   return schedule;
+}
+
+function scheduleOne(id, rng) {
+  const event = WORLD_EVENTS[id];
+  // Yıl içinde rastgele hafta, ± jitter yıl: her dünyada aynı yıl olmasın.
+  const shift = Math.round((rng() * 2 - 1) * event.jitter * 52 + rng() * 52);
+  const start = Math.max(2, turnOfYear(event.year) + shift);
+  return { start, until: start + event.weeks, fired: false };
 }
 
 /** Bu hafta süren olaylar. */

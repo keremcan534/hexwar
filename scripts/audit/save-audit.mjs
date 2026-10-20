@@ -13,6 +13,7 @@ import {
   headless, run, section, sub, table, finding, reportFindings, n1, n2, n0, pct,
 } from './harness.mjs';
 import { serialize, deserialize, SAVE_VERSION } from '../../src/game/save.js';
+import { extendedFingerprint } from './fingerprint.mjs';
 
 const SEED = 'save-audit';
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -20,21 +21,30 @@ const TMP = join(HERE, '_tmp');
 mkdirSync(TMP, { recursive: true });
 const SAVE_FILE = join(TMP, 'save-audit.json');
 
-/** Karsilastirilabilir, kompakt dunya parmak izi. */
+/**
+ * Karsilastirilabilir, kompakt dunya parmak izi. Ekonomi Tek Cubuk'tur (kayit
+ * surumu 27): fon, cikti, kalkinma kademesi toplami ve cubugun paylari.
+ * Insaat kuyrugu yok (nation.construction kalkti).
+ */
 function fingerprint(game) {
   const world = game.world;
+  const development = new Map();
+  for (const province of world.provinces ?? []) {
+    if (province.owner < 0 || !province.econ) continue;
+    development.set(province.owner, (development.get(province.owner) ?? 0) + (province.econ.development ?? 1));
+  }
   const nations = world.nations.filter((n) => n.alive).map((n) => [
     n.id,
-    Number((n.gold ?? 0).toFixed(3)),
-    Number((n.debt ?? 0).toFixed(3)),
+    Number((n.fund ?? 0).toFixed(3)),
     n.tiles,
-    (n.economy.ic?.raw ?? 0),
+    (n.economy.ic?.output ?? 0).toFixed(3),
     (n.economy.ic?.total ?? 0).toFixed(3),
+    development.get(n.id) ?? 0,
+    ['bills', 'army', 'people', 'invest'].map((k) => (n.economy.alloc?.[k] ?? 0).toFixed(3)).join('/'),
     (n.economy.consumer?.ratio ?? 0).toFixed(4),
     Number((n.stability ?? 0).toFixed(6)),
     JSON.stringify(n.politics?.laws ?? {}), Number((n.power ?? 0).toFixed(3)),
     Number((n.warSupport ?? 0).toFixed(6)),
-    (n.construction?.queue ?? []).length,
     world.units.filter((u) => u.nationId === n.id).length,
   ].join(','));
   let pop = 0;
@@ -56,6 +66,10 @@ function fingerprint(game) {
     wars: wars.join(' '),
     nations: nations.join('|'),
     prices,
+    // Yeniden tasarımın alanları (redesign §5, korumalı): destek, rota,
+    // yorgunluk, savaş dengesi, Home Rule, hareket kayıtları, levée, milis.
+    // Kayda girmeyen yeni alan kaydet-yükle sonrası burada ayrışır.
+    peoples: extendedFingerprint(game),
   };
 }
 
@@ -128,8 +142,8 @@ sub('1. Kayit -> yukle -> kayit: hangi alanlar tasinmiyor?');
     }
     lost.push(`${path}: ${JSON.stringify(x)} -> ${JSON.stringify(y)}`);
   };
-  // Karsilastirma DISKTEKI kayda karsi yapilir. serialize() economy/politics/
-  // construction icin CANLI REFERANS dondurur; bellekteki `payload` nesnesi
+  // Karsilastirma DISKTEKI kayda karsi yapilir. serialize() economy/politics
+  // icin CANLI REFERANS dondurur; bellekteki `payload` nesnesi
   // sonraki turlarda yerinde degisir ve karsilastirmayi yalancilar.
   const onDisk = JSON.parse(readFileSync(SAVE_FILE, 'utf8'));
   for (const key of ['turn', 'playerNation', 'seed']) compare(key, onDisk[key], again[key]);

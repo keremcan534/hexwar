@@ -11,10 +11,9 @@ import {
 } from './units.js';
 import { orderMove } from './movement.js';
 import { mod } from './modifiers.js';
-import { EQUIPMENT, UNIT_EQUIPMENT } from './econ/defs.js';
+import { CONSCRIPT_KIT, EQUIPMENT, UNIT_EQUIPMENT } from './econ/defs.js';
 import { addEquipment, equipmentStock, takeEquipment } from './econ/industry.js';
-import { UNIT_COSTS, canAfford, pay } from './cities.js';
-import { settle } from './treasury.js';
+import { supplyFactor } from './econ/bills.js';
 import { underTreaty } from './peace.js';
 import { controllerOf } from './control.js';
 import { levyAvailable, levyExcluded, releaseDraw, takeLevy } from './levy.js';
@@ -313,7 +312,18 @@ export function recruit(game, nation, typeId, options = {}) {
 export function disband(game, unit) {
   const world = game.world;
   if (!unit?.regiments?.length) return false;
+  const nation = world.nations?.[unit.nationId];
   for (const regiment of unit.regiments) {
+    // Silah depoya döner (HOI4), hayatta kalan güç oranında: kayıp güç
+    // takviyede zaten teçhizat yemişti. Kura alayı yalnız aldığı yarım
+    // takımı geri verir. Eskiden terhis teçhizatı siliyordu: seferberliğin
+    // her bitişi kura başına 15 tüfeği yok ediyordu.
+    // Milis (levée) teçhizatsız çıkar: terhisi depoya tüfek İADE ETMEZ (yoksa
+    // her levée sonu yoktan 30 tüfek/alay yaratıyordu).
+    const kit = regiment.militia ? {} : regiment.conscript ? CONSCRIPT_KIT
+      : UNIT_EQUIPMENT[resolveTypeId(regiment.typeId)] ?? {};
+    const alive = Math.max(0, Math.min(1, (regiment.strength ?? 0) / Math.max(1, regiment.maxStrength ?? 1)));
+    for (const [equipmentId, amount] of Object.entries(kit)) addEquipment(nation, equipmentId, amount * alive);
     // Yalnız hayatta kalanlar döner: ölenler kalıcı kayıptır.
     // Askerin toplandığı province'ler biliniyorsa oraya, bilinmiyorsa
     // (eski kayıt) alayın kurulduğu province'e döner.
@@ -374,7 +384,9 @@ export const TRAINING_WEEKS = {
 export const MAX_TRAINING_QUEUE = 24;
 
 /** Şehirsiz ülkenin bile kışlası vardır; taban kapasite budur. */
-export const BASE_TRAINING_CAPACITY = 2;
+// Kışla binası 2026-10-15'te kalktı (her iki kademesi bir yuvaydı; YZ hiç
+// kurmuyordu, kuruluşta başkentte bir kademe vardı): taban bir arttı.
+export const BASE_TRAINING_CAPACITY = 3;
 
 export function trainingWeeks(typeId) {
   return TRAINING_WEEKS[resolveTypeId(typeId)] ?? 8;
@@ -400,22 +412,15 @@ export function trainingCapacity(world, nation) {
   for (const city of world.cities ?? []) {
     if (city.nationId === nation.id && controllerOf(city.tile) === nation.id) cities++;
   }
-  // Kışla binası düz yuva ekler: her iki kademe bir alay daha.
-  let barracks = 0;
-  for (const province of world.provinces ?? []) {
-    if (province.owner === nation.id) barracks += province.econ?.buildings?.barracks ?? 0;
-  }
-  return Math.max(1, Math.min(12, BASE_TRAINING_CAPACITY + Math.floor(cities / 2)
-    + Math.floor(barracks / 2)));
+  return Math.max(1, Math.min(12, BASE_TRAINING_CAPACITY + Math.floor(cities / 2)));
 }
 
 /**
  * Haftada kaç haftalık eğitim ilerler: teknoloji ve danışman hızlandırır,
- * iflas eden devletin kışlası yarı hızda işler. 1.0 = ilan edilen süre.
+ * ikmal krizindeki devletin kışlası yavaşlar. 1.0 = ilan edilen süre.
  */
 export function trainingSpeed(nation) {
-  const bankrupt = (nation.bankruptUntil ?? 0) > (nation.economy?.ledger?.lastUpdated ?? 0);
-  return Math.max(0.2, 1 + mod(nation, 'training')) * (bankrupt ? 0.5 : 1);
+  return Math.max(0.2, 1 + mod(nation, 'training')) * supplyFactor(nation);
 }
 
 /** Kuyruktaki alay sayısı; tip verilirse yalnız o tip. */
@@ -448,13 +453,6 @@ export function recruitBlockers(game, nation, typeId, options = {}) {
   if (underTreaty(nation, 'DEMILITARIZE', turn)) {
     blockers.push({ id: 'treaty', text: 'A peace treaty forbids raising new divisions.' });
   }
-  const cost = UNIT_COSTS[id];
-  if (cost && !canAfford(nation, cost)) {
-    blockers.push({
-      id: 'gold',
-      text: `Treasury short: ${cost.gold} needed, ${Math.floor(nation.gold ?? 0)} on hand.`,
-    });
-  }
   if (!source) {
     blockers.push({
       id: 'source',
@@ -483,8 +481,6 @@ export function queueRecruit(game, nation, typeId) {
   if (recruitBlockers(game, nation, id).length) return null;
   const source = recruitmentSource(world, nation, id);
   if (!source) return null;
-  const cost = UNIT_COSTS[id];
-  if (cost && !pay(nation, cost, 'recruitment')) return null;
   const draws = drawManpower(world, source, UNIT_TYPES[id].manpower);
   // Depodan alınabilen alınır; eksik siparişe yazılır ve üretim hattından
   // geldikçe dolar (alay teçhizatı tamamlanmadan eğitime başlamaz).
@@ -504,7 +500,6 @@ export function queueRecruit(game, nation, typeId) {
     progress: 0,
     q: source.q,
     r: source.r,
-    gold: cost?.gold ?? 0,
     equipment,
     missing,
     draws,
@@ -520,7 +515,8 @@ export function queueRecruit(game, nation, typeId) {
 /**
  * Siparişi iptal eder. İade harcanmamış paydır: yarısı eğitilmiş alayın
  * silahı da yarı yarıya tüketilmiştir. Tam iade olsaydı kuyruk bedava bir
- * depo olurdu — sıraya sok, hazine sıkışınca boşalt.
+ * depo olurdu. (Alayın altın bedeli 2026-10-15'te kalktı: bedeli insan,
+ * teçhizat ve haftalık ikmaldir.)
  */
 export function cancelTraining(game, nation, itemId) {
   const training = ensureTraining(nation);
@@ -528,10 +524,6 @@ export function cancelTraining(game, nation, itemId) {
   if (index < 0) return false;
   const [item] = training.queue.splice(index, 1);
   const share = Math.max(0, 1 - item.progress / Math.max(1, item.weeks));
-  // IADE DEFTERLIDIR. Eski surumde bu satir hazineyi buyutuyor ama `pay()`in
-  // yazdigi kalemi geri almiyordu; olculdu: 25 altinlik bir siparis iptali
-  // haftalik Δhazine kimligini tam 25.000 kadar bozuyordu (L9 ihlali).
-  settle(nation, 'recruitment', Math.floor((item.gold ?? 0) * share));
   for (const [equipmentId, amount] of Object.entries(item.equipment ?? {})) {
     addEquipment(nation, equipmentId, amount * share);
   }

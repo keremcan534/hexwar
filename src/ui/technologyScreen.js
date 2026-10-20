@@ -7,7 +7,7 @@
 // / kilitli / erken" ayni gri kutuydu, tik-shift-sag tik gizli kuraldi.
 //
 // Simdi:
-//   - DUGUM: ad + ANA ETKI ("+10% Construction"), durumuna gore bes ayri gorunus
+//   - DUGUM: ad + ANA ETKI ("+10% Investment efficiency"), durumuna gore bes ayri gorunus
 //     (bitti altin ✓, arastiriliyor parlak + dolan cubuk, acik parlak cerceve,
 //     kilitli soluk + kilit, erken taramali + "+18% early").
 //   - MASA: yurutulen teknoloji, hiz, okuryazarlik, toplam; kuyruk her
@@ -23,9 +23,19 @@
 
 import { emblemArt } from './icons/art.js';
 import {
-  HERITAGE, TECH_CATEGORIES, TECH_FOLDERS, TECHNOLOGIES, canResearch, hasTech, researchPath, techById,
+  HERITAGE, TECH_CATEGORIES, TECH_FOLDERS, TECHNOLOGIES, availableTechs, canResearch, hasTech, researchPath, techById,
   FIRST_TECH_PRESTIGE, techCostFactors,
 } from '../game/technology.js';
+
+/**
+ * İncelenecek varsayılan düğüm: araştırılan → kuyruk başı → ilk açık
+ * teknoloji. Sağdaki inceleme paneli (~320 px) ilk açılışta boş kalıyordu.
+ * Klavye (screens.techKey) de aynı zinciri kullanır.
+ */
+export function defaultInspect(nation) {
+  const research = nation.research ?? {};
+  return research.current ?? research.queue?.[0] ?? availableTechs(nation)[0]?.id ?? null;
+}
 import { UNIT_TYPES } from '../game/units.js';
 import { describeEffects, mod } from '../game/modifiers.js';
 import { isDelegated } from '../game/delegation.js';
@@ -86,12 +96,11 @@ function layoutRow(list) {
 export function researchRateLines(nation) {
   const economy = nation.economy ?? {};
   const lit = Math.max(0, Math.min(1, economy.literacy ?? 0));
-  const universities = economy.universities ?? 0;
   const bonus = mod(nation, 'research');
+  // Üniversite binası 2026-10-15'te kalktı: hız yalnız okuryazarlık ve çarpanlar.
   return [
     'Base  =  +1.00',
     `Literacy ${(lit * 100).toFixed(0)}% × 6  =  +${(lit * 6).toFixed(2)}`,
-    `Universities ${universities} × 0.3  =  +${(universities * 0.3).toFixed(2)}`,
     bonus ? `Technology, ministers, party  =  ×${(1 + bonus).toFixed(2)}` : null,
   ].filter(Boolean);
 }
@@ -206,7 +215,7 @@ export function technologyScreen(nation, view) {
   const queue = research.queue ?? [];
   const costOf = view.costOf;
   const zoom = TECH_ZOOMS.includes(view.zoom) ? view.zoom : 1;
-  const inspect = view.inspect ?? research.current ?? queue[0] ?? null;
+  const inspect = view.inspect ?? defaultInspect(nation);
   const rate = Math.max(1e-6, view.rate);
 
   // --- Masa: yurutulen teknoloji ve hiz -------------------------------
@@ -227,7 +236,7 @@ export function technologyScreen(nation, view) {
       meter: progress, meterTone: 'pos', cls: 'hero tech-now-kpi',
     }),
     kpi({ label: 'Per week', value: `${num(view.rate, 2)} RP`, sub: 'literacy is the main source', tip: { text: ['Research points a week', ...view.rateLines].join('\n') } }),
-    kpi({ icon: emblemArt('society', 'md'), label: 'Literacy', value: `${Math.round((nation.economy?.literacy ?? 0) * 100)}%`, sub: 'schools and universities', tip: 'term', arg: 'literacy' }),
+    kpi({ icon: emblemArt('society', 'md'), label: 'Literacy', value: `${Math.round((nation.economy?.literacy ?? 0) * 100)}%`, sub: 'set by the education law', tip: 'term', arg: 'literacy' }),
     kpi({ label: 'Technologies', value: `${done}<small> / ${total}</small>`, sub: view.rank ? `rank ${view.rank} of ${view.of}` : '', meter: total ? done / total : 0,
       tip: { text: [`Inherited from the nineteenth century: ${HERITAGE.length} technologies every nation already knows`, ...heritageLines()].join('\n') } }),
   ]);

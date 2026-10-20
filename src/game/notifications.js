@@ -38,7 +38,7 @@ export const NOTIFY = {
   ENCIRCLED: { icon: '⛓', tone: 'bad', label: 'Encircled', ttl: 0, tier: 2 },
   CONQUEST: { icon: '🏴', tone: 'war', label: 'Conquest', ttl: 14000, tier: 2 },
   CITY: { icon: '🏛', tone: 'good', label: 'City', ttl: 11000, tier: 1 },
-  BUILDING: { icon: '🏗', tone: 'info', label: 'Construction', ttl: 10000, tier: 0 },
+  BUILDING: { icon: '🏗', tone: 'info', label: 'Development', ttl: 10000, tier: 0 },
   INDUSTRY: { icon: '🏭', tone: 'info', label: 'Industry', ttl: 10000, tier: 0 },
   RESEARCH: { icon: '🔬', tone: 'good', label: 'Research', ttl: 0, tier: 1 },
   ARMY: { icon: '🛡', tone: 'info', label: 'Army', ttl: 8000, tier: 1 },

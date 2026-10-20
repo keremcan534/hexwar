@@ -23,7 +23,7 @@
 //   units.js      UNIT_TYPES[*].manpower
 //   infamy.js     POP_PER_POINT
 //   ai.js         ordu büyüklüğü tavanı
-//   construction.js bölge inşa gücü kademesi
+//   (eski) construction.js bölge inşa gücü kademesi
 //   peace.js      barış masasında province değeri
 //   tradeLedger.js hane talebi birimi
 //   renderer.js   nüfus harita kipinin logaritmik bandı

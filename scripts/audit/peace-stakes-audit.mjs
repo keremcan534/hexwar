@@ -124,33 +124,32 @@ if (concede.length === 0) {
 
 // --- TEST 4: yorgunluk kapiyi eninde sonunda aciyor (donmus savas panzehiri) ---
 sub('TEST 4 — yorgunluk toleransi');
-const rec = world.relations[victim.id][aggressor.id];
-const originalSince = rec.since;
+// 2026-10-15 (TASARIM §9): tolerans artık savaşın TAKVİMİNDEN değil
+// kazananın YORGUNLUĞUNDAN gevşer (peace.acceptanceTolerance, +35 × yorgunluk).
+// Eski test savaş yılını oynatıyordu ve yeni kuralda hep sabit çıkıyordu.
+const politics = aggressor.politics ?? (aggressor.politics = {});
+const savedExhaustion = politics.exhaustion;
 const tolRows = [];
-for (const years of [0, 2, 4, 6, 10]) {
-  rec.since = (world.turn ?? 0) - years * 52;
-  const relAggr = world.relations[aggressor.id][victim.id];
-  const savedAggr = relAggr.since;
-  relAggr.since = rec.since;
+for (const exhaustion of [0, 0.2, 0.4, 0.6, 0.8]) {
+  politics.exhaustion = exhaustion;
   tolRows.push({
-    years,
+    years: exhaustion,
     tol: acceptanceTolerance(world, aggressor.id, victim.id),
     white: offerRefusal(world, victim.id, aggressor.id, white) === null ? 'kabul' : 'ret',
   });
-  relAggr.since = savedAggr;
 }
-rec.since = originalSince;
+politics.exhaustion = savedExhaustion;
 console.log(table(tolRows, [
-  { label: 'savas yili', get: (r) => r.years },
+  { label: 'yorgunluk', get: (r) => r.years },
   { label: 'tolerans', get: (r) => n1(r.tol) },
   { label: 'beyaz baris', get: (r) => r.white },
 ]));
 if (tolRows[0].tol >= tolRows[tolRows.length - 1].tol) {
   finding('MEDIUM', 'yorgunluk etkisi',
     'uzayan savas kabul esigini gevsetmeli (donmus savas panzehiri)',
-    'tolerans savas suresiyle artmiyor');
+    'tolerans yorgunlukla artmiyor');
 } else {
-  console.log('  -> Tolerans savas suresiyle gevsiyor. DOGRU.');
+  console.log('  -> Tolerans yorgunlukla gevsiyor. DOGRU.');
 }
 
 // --- TEST 5: YIPRANMIS KAZANAN da bedava imzalamaz ---

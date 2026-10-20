@@ -6,6 +6,9 @@
 // değişirse eski kayıtlar geçersizleşir, o yüzden SAVE_VERSION var.
 
 import {
+  AUTO_SLOT, listSaves, newSlotId, readSave, writeSave,
+} from './saveStore.js';
+import {
   createUnit, placeUnit, refreshArmy, resetUnitIds, resolveTypeId, stackFull, unitIdCursor, unitsOn,
 } from './units.js';
 import { refreshNavyState } from './navy.js';
@@ -13,13 +16,14 @@ import { refreshSeaLanes } from './seaLanes.js';
 import { nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
 import { createCity, englishCityName } from './cities.js';
 import { generateWorld } from '../world/worldgen.js';
+import { generateNations } from '../world/nations.js';
+import { cultureChecksum } from '../world/peoples.js';
 import { ensureEconomy } from './economy.js';
 import { ensureCommand, ensureCommandOptions } from './command.js';
 import { ensureTraining } from './recruitment.js';
 import { ensureBattles } from './battles.js';
 import { ensureProvinces, refreshProvinceOwner } from './provinces.js';
 import { ensurePolitics } from './politics.js';
-import { ensureConstruction } from './construction.js';
 import { ensureDelegation, restoreDelegation } from './delegation.js';
 
 // Ordu sistemi yeniden yazıldı: cephe artık saklanmıyor (sınırdan türetiliyor),
@@ -102,10 +106,22 @@ import { ensureDelegation, restoreDelegation } from './delegation.js';
 // ulusun filosudur (nation.navy: gemiler, mürettebat draws'ı, bölge
 // öncelikleri). v25 kaydındaki gemi birimleri bu şemada anlamsızdır:
 // eski kayıtlar TEMİZ REDDEDİLİR.
-export const SAVE_VERSION = 26;
+//
+// v27: TEK ÇUBUK (2026-10-15). Altın, borç, iflas, binalar ve inşaat kuyruğu
+// kalktı: ulusun stoğu kalkınma fonudur (`nation.fund`, IC), province'te
+// bina yerine sabit kale (`econ.fort`), ekonomide çubuk ve doyurma kolu.
+// v26 kayıtlarının altını ve binaları bu şemada anlamsızdır: TEMİZ REDDEDİLİR.
+//
+// v28: HALKLAR DOĞUŞTA (2026-10-15, redesign D3; world/peoples.js). Ana halk
+// artık çekirdeğin en büyük halkıdır, imparatorluklar alt halklarla doğar
+// (yeni kültürler, yeni ana yurtlar, yeni Özgür Devlet yuvaları) ve başlangıçta
+// komşu halk kabul edilmez. Aynı tohum başka bir halk haritası üretir: v27
+// kaydının kültür satırları, ana yurtları ve ulus dizinleri yanlış halklara
+// otururdu. Eski kayıtlar TEMİZ REDDEDİLİR. Yeni ulus alanı `homeRule`
+// (özerk halklar, accepted'ın alt kümesi).
+export const SAVE_VERSION = 28;
 /** Göçü bilinen eski sürümler: deserialize bunları da kabul eder. */
 const MIGRATABLE_VERSIONS = new Set([]);
-const STORAGE_KEY = 'hexwar.save';
 
 /**
  * Siparişin tuttuğu insanlar (recruitment.js): halk defteriyle derin kopya.
@@ -139,13 +155,13 @@ function partitionChecksum(world) {
 // OYUN ICINDE DEGISIR (acceptCulture); yazilmazsa yuklemede imparatorlugun
 // butun siyasi kazanimi silinir.
 const NATION_FIELDS = [
-  'gold', 'infamy', 'alive', 'debt', 'mobilization', 'cultureBacklashUntil', 'accepted',
+  'fund', 'infamy', 'alive', 'mobilization', 'cultureBacklashUntil', 'accepted',
   // Ulusal hareketler (movements.js): ilerleme, sikiyonetim/taviz/katliam
   // tarihleri. Turetilemez: yazilmazsa yuklenen oyunda bomba sifirlanir.
   'movements',
-  // Uluslar Çağı: siyasi sayaçlar, iflas, ambargo, talepler, zafer hedefi,
+  // Uluslar Çağı: siyasi sayaçlar, ambargo, talepler, zafer hedefi,
   // geçici değiştiriciler, kalıcı fikirler, gündem ve bekleyen olay kartları.
-  'power', 'stability', 'warSupport', 'prestige', 'bankruptUntil', 'embargoes', 'claims',
+  'power', 'stability', 'warSupport', 'prestige', 'embargoes', 'claims',
   'goal', 'startProvinces', 'timed', 'ideas', 'agenda', 'cards', 'fullName', 'formerName',
   // Kura (levy.js): kuradan çıkarılan halklar ve halk halk şehit defteri.
   // Türetilemez: yazılmazsa yüklenen oyun kutuları ve savaşın hafızasını kaybeder.
@@ -159,10 +175,20 @@ const NATION_FIELDS = [
   'navy', 'shipsLost',
   // Odak listesi: kabine boş odak yuvalarını doldursun mu (false = hayır).
   'focusAuto',
+  // Kurtarıcı geçişi (nationBirth.js): kopan devletin eski efendisinin
+  // düşmanlarına verdiği askerî geçiş. Yazılmazsa yüklenen oyunda ordu cepte kalır.
+  'passage',
   // Kültür politikaları (culturePolicy.js): zorla asimilasyon listesi, iskân.
   'forcedAssimilation', 'resettlement',
+  // Oyuncunun kabulünü geri aldığı halklar (culture.revokeCulture). Yazılmazsa
+  // yüklenen oyunda AUTO kabine oyuncunun geri aldığını yeniden kabul edebilir.
+  'revoked',
   // Çıkarma (landings.js): düşman başına son deneme haftası.
   'landings',
+  // Özerk halklar (redesign D1/D3): accepted'ın alt kümesi. Kuruluşta iki
+  // imparatorlukta doğar, oyunda bunalımla değişir; yazılmazsa yüklenen oyun
+  // özerkliği sessizce vatandaşlığa indirirdi.
+  'homeRule',
 ];
 
 export function serialize(game) {
@@ -218,6 +244,8 @@ export function serialize(game) {
     seed: world.seed,
     options: world.genOptions ?? {},
     provinceChecksum: partitionChecksum(world),
+    // Halk yerleşiminin üretim izi (v28): bölümleme izi kültüre kördür.
+    cultureChecksum: world.cultureChecksum ?? null,
     provinces,
     turn: turns.turn,
     playerNation: turns.playerNation,
@@ -260,7 +288,6 @@ export function serialize(game) {
         // Arastirma: biriken puan + tamamlanan teknolojiler. Kayit disi
         // kalirsa oyuncu yuzyillik teknoloji birikimini yuklemede kaybeder.
         research: n.research ?? null,
-        construction: ensureConstruction(n),
         // Ulusal vakayiname ve olay durum makinesi. Turetilemez veri:
         // yazilmazsa yuklemeden sonra oyun ayni borcu/rejimi ikinci kez
         // duyurur ve kampanyanin tarihi silinir (bkz. chronicle.js).
@@ -438,8 +465,15 @@ export function deserialize(game, data) {
   // yanlış kümelere oturacağına yükleme temiz reddedilir. Sınama CANLI oyuna
   // dokunmadan, ayrı kurulan dünyada yapılır: newWorld önce çağrılınca
   // reddedilen yükleme süren kampanyayı silip yerine boş dünya bırakıyordu.
+  const fresh = generateWorld(data.seed, options);
   if (Number.isFinite(data.provinceChecksum)
-    && data.provinceChecksum !== partitionChecksum(generateWorld(data.seed, options))) return false;
+    && data.provinceChecksum !== partitionChecksum(fresh)) return false;
+  // Halk izi de aynı ayrı dünyada sınanır: alt halk geçişi (world/peoples.js)
+  // ulus üretiminin içindedir, bölümleme izi onu görmez.
+  if (Number.isFinite(data.cultureChecksum)) {
+    generateNations(fresh, { seed: `${data.seed}-nations`, count: options.nationCount ?? null });
+    if (data.cultureChecksum !== cultureChecksum(fresh)) return false;
+  }
 
   game.newWorld(data.seed, options);
   const world = game.world;
@@ -490,12 +524,16 @@ export function deserialize(game, data) {
   for (const province of world.provinces ?? []) {
     const since = province.econ?.ownedSince;
     const focus = province.econ?.focus ?? null;
+    const grievance = province.econ?.grievance;
     refreshProvinceOwner(world, province);
     if (Number.isFinite(since)) province.econ.ownedSince = since;
     // State odağı da: setProvinceOwner sahip değişince onu siler (yeni sahibin
     // yuvası). Burada sahip DEĞİŞMİYOR, üretilen dünyadan kayıttakine dönüyor;
     // silinince fethedilmiş state'lerin Integration odağı yüklemede kayboluyordu.
     if (province.econ) province.econ.focus = focus;
+    // Biriken şikâyet de aynı sebeple (setProvinceOwner sıfırlar): yoksa
+    // fethedilmiş state'lerin yılları yüklemede siliniyordu (audit:save).
+    if (province.econ && Number.isFinite(grievance)) province.econ.grievance = grievance;
   }
 
   // 4) Uluslar
@@ -533,8 +571,6 @@ export function deserialize(game, data) {
       delete nation.research.idleNotifiedAt;
       delete nation.research.idleSince;   // 0174f86'nin eski adi
     }
-    nation.construction = saved.construction ?? null;
-    ensureConstruction(nation);
     // Eski kayitta yoktur: bos tarih ve bos durum makinesiyle baslar. Durum
     // makinesi bos oldugunda ilk hafta mevcut durumu "baslangic" sayar,
     // dolayisiyla yuklemeden sonra sahte olay uretmez.
@@ -762,73 +798,109 @@ export function deserialize(game, data) {
   return true;
 }
 
-export function saveToStorage(game, slot = STORAGE_KEY) {
+/**
+ * Kaydı okuyan herkesin aynı soruyu sorması için tek yer: bu yapı bu metni
+ * açabilir mi? Ret nedeni oyuncuya yazılır; eskiden yükleme sessizce
+ * `false` dönüyor, ekran her başarısızlığa "no compatible save" diyordu.
+ */
+function parseSave(text) {
+  let data = null;
   try {
-    localStorage.setItem(slot, JSON.stringify(serialize(game)));
-    return true;
+    data = JSON.parse(text);
   } catch (err) {
-    // Kota dolabilir ya da gizli sekmede depolama kapalı olabilir.
-    return false;
+    return { reason: 'the save is damaged (not valid JSON)' };
   }
+  if (!data || typeof data !== 'object' || !Number.isFinite(data.turn) || data.seed == null) {
+    return { reason: 'not a save file' };
+  }
+  if (data.version !== SAVE_VERSION && !MIGRATABLE_VERSIONS.has(data.version)) {
+    return { reason: `save version ${data.version} cannot be read by this build (needs ${SAVE_VERSION})` };
+  }
+  return { data };
 }
 
-export function loadFromStorage(game, slot = STORAGE_KEY) {
-  try {
-    const raw = localStorage.getItem(slot);
-    if (!raw) return false;
-    return deserialize(game, JSON.parse(raw));
-  } catch (err) {
-    return false;
-  }
+function metaOf(game, data, name) {
+  return {
+    name: name || null,
+    seed: data.seed,
+    turn: data.turn,
+    savedAt: data.savedAt,
+    version: data.version,
+    nation: game.world?.nations?.[data.playerNation]?.name ?? null,
+  };
 }
 
+/**
+ * Kampanyayı yuvaya yazar (saveStore: IndexedDB). Serileştirme eşzamanlıdır
+ * (~20 ms); yazım arka planda biter.
+ * @returns {Promise<{ok: boolean, reason?: string}>}
+ */
+export async function saveToSlot(game, slot = AUTO_SLOT, name = null) {
+  let data;
+  let text;
+  try {
+    data = serialize(game);
+    text = JSON.stringify(data);
+  } catch (err) {
+    console.error('[save] serialize failed', err);
+    return { ok: false, reason: 'the campaign could not be written (see the console)' };
+  }
+  return writeSave(slot, text, { ...metaOf(game, data, name), auto: slot === AUTO_SLOT });
+}
+
+/**
+ * Yuvadaki kaydı yükler. Doğrulama dünyaya dokunmadan önce yapılır; ret
+ * süren kampanyayı silmez (bkz. deserialize).
+ * @returns {Promise<{ok: boolean, reason?: string}>}
+ */
+export async function loadFromSlot(game, slot) {
+  const text = await readSave(slot);
+  if (!text) return { ok: false, reason: 'the save data is missing from browser storage' };
+  const parsed = parseSave(text);
+  if (!parsed.data) return { ok: false, reason: parsed.reason };
+  try {
+    if (!deserialize(game, parsed.data)) {
+      return { ok: false, reason: 'this save was made by a different world generator and cannot be rebuilt' };
+    }
+  } catch (err) {
+    console.error('[save] load failed', err);
+    return { ok: false, reason: 'loading failed (see the console)' };
+  }
+  return { ok: true };
+}
+
+/** En yeni kayıt (menünün "Load Game"i ve üst satır için); yoksa null. */
+export function savedInfo() {
+  return listSaves().find((row) => row.version === SAVE_VERSION || MIGRATABLE_VERSIONS.has(row.version)) ?? null;
+}
+
+/** Bu yapının okuyabildiği sürüm mü (liste satırını soluklaştırmak için). */
+export function readableVersion(version) {
+  return version === SAVE_VERSION || MIGRATABLE_VERSIONS.has(version);
+}
 
 /**
  * Kaydın ham metni — dosyaya aktarmak için. Tarayıcı deposu ADRES başınadır:
  * oyun başka bir adresten açılınca (başlatıcının penceresi, başka port)
  * önceki kayıt görünmez. Dosya, kaydın adresler arasında taşınma yoludur.
  */
-export function exportSaveText(slot = STORAGE_KEY) {
-  try {
-    return localStorage.getItem(slot);
-  } catch (err) {
-    return null;
-  }
+export async function exportSaveText(slot = savedInfo()?.slot) {
+  return slot ? readSave(slot) : null;
 }
 
 /**
- * Dosyadan gelen kaydı depoya yazar. Yüklemeden ÖNCE doğrulanır: bozuk ya da
- * bu sürümün okuyamadığı bir dosya çalışan kaydın üstüne yazılmamalı.
- * @returns {{ ok: boolean, reason?: string, info?: object }}
+ * Dosyadan gelen kaydı YENİ bir yuvaya yazar. Doğrulanmadan yazılmaz; hiçbir
+ * mevcut kaydın üstüne gelmez.
+ * @returns {Promise<{ ok: boolean, reason?: string, info?: object }>}
  */
-export function importSaveText(text, slot = STORAGE_KEY) {
-  let data = null;
-  try {
-    data = JSON.parse(text);
-  } catch (err) {
-    return { ok: false, reason: 'not a save file' };
-  }
-  if (!data || typeof data !== 'object' || !Number.isFinite(data.turn) || data.seed == null) {
-    return { ok: false, reason: 'not a save file' };
-  }
-  if (data.version !== SAVE_VERSION && !MIGRATABLE_VERSIONS.has(data.version)) {
-    return { ok: false, reason: `save version ${data.version} cannot be read by this build` };
-  }
-  try {
-    localStorage.setItem(slot, text);
-  } catch (err) {
-    return { ok: false, reason: 'browser storage is full or disabled' };
-  }
-  return { ok: true, info: { seed: data.seed, turn: data.turn, savedAt: data.savedAt } };
-}
-
-export function savedInfo(slot = STORAGE_KEY) {
-  try {
-    const raw = localStorage.getItem(slot);
-    if (!raw) return null;
-    const data = JSON.parse(raw);
-    return { seed: data.seed, turn: data.turn, savedAt: data.savedAt };
-  } catch (err) {
-    return null;
-  }
+export async function importSaveText(text, name = 'Imported') {
+  const parsed = parseSave(text);
+  if (!parsed.data) return { ok: false, reason: parsed.reason };
+  const data = parsed.data;
+  const slot = newSlotId();
+  // Yuvanın zamanı içe alma anıdır: menünün "Load Game"i en yeni kaydı açar
+  // ve oyuncu az önce aldığı dosyayı oynamak ister.
+  const info = { name, seed: data.seed, turn: data.turn, savedAt: new Date().toISOString(), version: data.version, nation: null };
+  const result = await writeSave(slot, text, { ...info, auto: false });
+  return result.ok ? { ok: true, info: { ...info, slot } } : result;
 }

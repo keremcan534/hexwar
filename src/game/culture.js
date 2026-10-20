@@ -51,10 +51,10 @@ import { mod } from './modifiers.js';
 import { TIER, announce } from './chronicle.js';
 import { addInfamy } from './infamy.js';
 import { POPULATION_SCALE } from './populationScale.js';
-import { captureConstructionAt } from './construction.js';
 import { setProvinceOwner } from './provinces.js';
 import { assimilationFocusWeekly, focusBonus } from './focus.js';
 import { eraProgress } from './calendar.js';
+import { isOccupied } from './control.js';
 import { worldNationalism } from './worldEvents.js';
 import { deport, deportBlockers } from './culturePolicy.js';
 
@@ -65,6 +65,22 @@ export const CULTURE = {
   CULTURE_WEIGHT: 6,
   /** Haftalik yaklasma: huzursuzluk zirvelemez, birikir (~yarilanma 34 hafta). */
   APPROACH: 0.02,
+  /**
+   * BİRİKEN ŞİKÂYET (Kerem 2026-10-14: "diğer kültürler eninde sonunda maks
+   * unreste ulaşmalı, sürekli + unrestte olmalı"). Huzursuzluk bir hedefe
+   * oturuyordu (yabancı çoğunluklu state'lerde ortanca 5.3) ve hiç
+   * tırmanmıyordu. Şikâyet kabul edilmeyen halkın payı × vatandaşlık ağırlığı
+   * kadar her hafta birikir ve hedefe eklenir: tam yabancı state Residency'de
+   * ~4, Limited'da ~14, Full'da ~33 yılda tavana varır. Durduranlar: kabul
+   * (yabancı pay → 0), asimilasyon, taviz (−1.5), sıkıyönetim ve entegrasyon
+   * odağı (birikmeyi durdurur), vatandaşlık yasası (hızı ölçekler), toprağı
+   * bırakmak. Ölçüldü (3 tohum × 45 yıl, 78×62): ortanca/p90 5.3/7.0 →
+   * 6.6/8.4, kararlılık 70.3 → 69.9, savaşla el değiştiren state %16.7 → %18.8
+   * (tohum gürültüsü içinde); politikasız çok kültürlü uluslar state'lerinin
+   * %46 yerine %36'sını tutabildi. Güvenlik kilidi değişmez: yabancısı olmayan
+   * state'te birikme sıfırdır.
+   */
+  GRIEVANCE_DRIFT: 0.01,
   /** Bu esigin ustunde gecen her hafta isyan sayacini buyutur. */
   REVOLT_UNREST: 7,
   /** Sayac bu kadar haftaya ulasinca kume kopar (~alti mevsim). */
@@ -178,6 +194,38 @@ export function isAccepted(nation, cultureId) {
 }
 
 /**
+ * HALKIN KONUMU (TASARIM D1, merdiven): ana halk · tebaa (hakkı yok) ·
+ * vatandaş (kabul edilmiş) · Home Rule (kendini yönetir; daima kabul
+ * listesinin alt kümesi). `isAccepted` "hakkı var" anlamını korur, otuzu aşkın
+ * okuyucusu doğru kalır; özerkliğin ayrı bedeli (asker isteği, rıza)
+ * `isHomeRule`dan okunur.
+ */
+export function isHomeRule(nation, cultureId) {
+  return Array.isArray(nation?.homeRule) && nation.homeRule.includes(cultureId);
+}
+
+export function standingOf(nation, cultureId) {
+  if (cultureId === nation?.culture) return 'primary';
+  if (!isAccepted(nation, cultureId)) return 'subject';
+  return isHomeRule(nation, cultureId) ? 'homeRule' : 'citizen';
+}
+
+/** Hakkı olan, ana halk dışındaki halkların sayısı (kabul bedeli bununla artar). */
+export function rightsHolders(nation) {
+  return acceptedCultures(nation).filter((id) => id !== nation.culture);
+}
+
+/**
+ * Vatandaşlık bedeli her yeni halkta artar: 1900'de YZ ilk on yılda 24-29
+ * halkı kabul ediyordu (ölçüldü); tek fiyat haklar merdivenini bir alışveriş
+ * listesine çeviriyordu.
+ */
+export const ACCEPT_STEP = 50;
+export function acceptPrice(nation) {
+  return ACCEPT_POWER + ACCEPT_STEP * rightsHolders(nation).length;
+}
+
+/**
  * Kumede kabul edilen halkin payi. `province.cultures` yoksa (eski kayit ya
  * da uretilmemis kume) cogunluga bakilir — davranis eskisiyle ayni kalir.
  */
@@ -227,6 +275,8 @@ function backlashOf(nation, turn) {
 export function unrestBreakdown(world, province, nation, { occupied = 0, turn = 0 } = {}) {
   const econ = province.econ;
   const foreign = foreignShareOf(province, nation);
+  // Yılların biriktirdiği şikâyet (accrueGrievance): hedefe olduğu gibi eklenir.
+  const grievance = Math.max(0, econ.grievance ?? 0);
   const era = nationalismEra(turn, world);
   // ANA KAYNAK: yabanci pay x haklar x cag. Tek kulturlu kumede sifirdir.
   //
@@ -251,8 +301,21 @@ export function unrestBreakdown(world, province, nation, { occupied = 0, turn = 
   // kultur ama en buyuk kaynagi savas oluyordu.
   // Savaş yorgunluğu artık savaş desteğinin tersidir: halk savaşı
   // istemiyorsa her kümede homurdanır.
-  const war = (nation.economy?.warFronts ?? 0) > 0
-    ? Math.max(0, Math.min(1, 1 - (nation.warSupport ?? 0.5))) : 0;
+  //
+  // YORGUNLUK DALI (redesign D5, P1'de uyur): `politics.exhaustion` yazılınca
+  // terim iradeden yorgunluğa geçer. Eski 1 − WS iradeyi yükselten her şeyin
+  // azınlığı da yatıştırmasına yol açıyordu (savaşta irade yükselir, kopuş
+  // azalırdı — D2 ile doğrudan çelişki). Yorgunluk barıştan sonra yavaşça
+  // söndüğü için terim de barışta bir süre kalır; en çok uzun, kanlı ya da
+  // kaybedilen savaş yabancı kümeyi kızdırır.
+  const exhaustion = nation.politics?.exhaustion;
+  const war = exhaustion == null
+    ? ((nation.economy?.warFronts ?? 0) > 0
+      ? Math.max(0, Math.min(1, 1 - (nation.warSupport ?? 0.5))) : 0)
+    : 2.0 * Math.max(0, Math.min(1, exhaustion)) * (0.3 + 0.7 * foreign);
+  // LEVÉE (redesign D6, P6'ya kadar 0): her halk tam oranla silah altına
+  // çağrılınca kendi devleti olmayan halk buna içerler.
+  const levee = nation.mobilization?.levee?.active ? 1.5 * foreign : 0;
   const occupation = Math.max(0, Math.min(1, occupied)) * 1.5;
   const backlash = backlashOf(nation, turn) * (1 - foreign);
   const levy = levyGrievance(province, nation);
@@ -274,11 +337,33 @@ export function unrestBreakdown(world, province, nation, { occupied = 0, turn = 
   const policy = Math.max(0.2, 1 + mod(nation, 'unrest'));
   const target = Math.max(0, Math.min(
     CULTURE.MAX_UNREST,
-    (culture + conquest + war + occupation + backlash + levy + reservation + forced - welfare - rights - focus) * policy,
+    // `levee` 0 iken toplam bit bit aynıdır (x + 0 === x): P1 dikişi davranışı değiştirmez.
+    (culture + grievance + conquest + war + occupation + backlash + levy + reservation + forced + levee
+      - welfare - rights - focus) * policy,
   ));
   return {
-    target, culture, conquest, war, occupation, backlash, levy, reservation, forced, welfare, rights, focus, policy, foreign, era,
+    target, culture, grievance, conquest, war, levee, occupation, backlash, levy, reservation, forced, welfare, rights, focus, policy, foreign, era,
   };
+}
+
+/**
+ * Kendiliğinden asimilasyonun haftalık oranı (0 = durur). assimilate ve
+ * önizleme (projectCultureWeek) aynı oranı okur.
+ */
+function assimilationRate(world, province, nation, unrest) {
+  const econ = province.econ;
+  const control = Math.max(0, Math.min(1, (econ.control ?? 0) / 100));
+  if (control < 0.5) return 0;
+  // Huzursuz halk erimez: isyan esigine yaklasan kumede asimilasyon durur.
+  const calm = Math.max(0, 1 - (unrest / CULTURE.MAX_UNREST) * 1.3);
+  if (calm <= 0) return 0;
+  const literacy = Math.max(0, Math.min(1, nation.economy?.literacy ?? 0));
+  const urban = province.tileIdx?.some((idx) => world.tiles[idx]?.city) ? 1.5 : 1;
+  // Asimilasyoncu toplum daha hizli eritir, cok kulturlu toplum yavaslatir.
+  const rate = CULTURE.ASSIMILATE_BASE
+    * (0.5 + literacy) * assimilationRights(nation) * control * urban * calm
+    * Math.max(0.2, 1 + mod(nation, 'assimilation'));
+  return rate > 0 ? rate : 0;
 }
 
 /**
@@ -290,17 +375,7 @@ function assimilate(world, province, nation, { unrest, turn }) {
   const primary = nation.culture;
   if (!rows?.length || primary < 0) return false;
   const econ = province.econ;
-  const control = Math.max(0, Math.min(1, (econ.control ?? 0) / 100));
-  if (control < 0.5) return false;
-  // Huzursuz halk erimez: isyan esigine yaklasan kumede asimilasyon durur.
-  const calm = Math.max(0, 1 - (unrest / CULTURE.MAX_UNREST) * 1.3);
-  if (calm <= 0) return false;
-  const literacy = Math.max(0, Math.min(1, nation.economy?.literacy ?? 0));
-  const urban = province.tileIdx?.some((idx) => world.tiles[idx]?.city) ? 1.5 : 1;
-  // Asimilasyoncu toplum daha hizli eritir, cok kulturlu toplum yavaslatir.
-  const rate = CULTURE.ASSIMILATE_BASE
-    * (0.5 + literacy) * assimilationRights(nation) * control * urban * calm
-    * Math.max(0.2, 1 + mod(nation, 'assimilation'));
+  const rate = assimilationRate(world, province, nation, unrest);
   if (!(rate > 0)) return false;
 
   let moved = 0;
@@ -409,14 +484,101 @@ function assimilateForced(world, province, nation) {
 }
 
 /**
+ * Haftalık kültür kaymasının ÖNİZLEMESİ — runProvinceCulture'ın üç adımı
+ * (kendiliğinden asimilasyon, asimilasyon odağı, zorla asimilasyon) aynı
+ * sırayla ve aynı formülle, KOPYA paylar üzerinde. Durum yazmaz; state
+ * kartı "aylık değişim"i buradan okur (stateView.stateCultures). Göç ve
+ * sürgün gibi tek seferlik olaylar dahil değildir.
+ */
+export function projectCultureWeek(world, province, nation) {
+  let rows = (province.cultures ?? []).map((row) => ({ ...row }));
+  const econ = province.econ;
+  const primary = nation?.culture ?? -1;
+  if (!econ || !rows.length || primary < 0) return rows;
+  // İşgal altındaki kümede asimilasyon işlemez (runProvinceCulture).
+  if (province.tileIdx?.some((idx) => isOccupied(world.tiles[idx]))) return rows;
+  const toPrimary = (list, moved) => {
+    const host = list.find((row) => row.id === primary);
+    if (host) host.share += moved;
+    else list.push({ id: primary, share: moved });
+    return list;
+  };
+  // 1. Kendiliğinden asimilasyon (assimilate).
+  const rate = assimilationRate(world, province, nation, econ.unrest ?? 0);
+  if (rate > 0) {
+    let moved = 0;
+    const next = [];
+    for (const row of rows) {
+      if (row.id === primary || isAccepted(nation, row.id) || row.id === province.homeland) {
+        next.push({ ...row });
+        continue;
+      }
+      const give = row.share * rate;
+      moved += give;
+      const left = row.share - give;
+      if (left >= CULTURE.SHARE_FLOOR) next.push({ id: row.id, share: left });
+      else moved += left;
+    }
+    if (moved > 0) {
+      toPrimary(next, moved);
+      const total = next.reduce((sum, row) => sum + row.share, 0);
+      for (const row of next) row.share /= total;
+      rows = next;
+    }
+  }
+  // 2. Asimilasyon odağı (assimilateFocus).
+  if (econ.focus === 'assimilate') {
+    let foreign = 0;
+    for (const row of rows) if (!isAccepted(nation, row.id)) foreign += row.share;
+    const move = assimilationFocusWeekly(nation, econ.unrest ?? 0, foreign);
+    if (move > 0) {
+      const keep = 1 - move / foreign;
+      const next = toPrimary(rows.map((row) => ({ id: row.id, share: isAccepted(nation, row.id) ? row.share : row.share * keep })), move);
+      const total = next.reduce((sum, row) => sum + row.share, 0);
+      for (const row of next) row.share /= total;
+      rows = next.filter((row) => row.share > 1e-6);
+    }
+  }
+  // 3. Zorla asimilasyon (assimilateForced).
+  const forced = nation.forcedAssimilation;
+  if (forced?.length) {
+    let move = 0;
+    const next = rows.map((row) => {
+      if (!forced.includes(row.id) || isAccepted(nation, row.id)) return { ...row };
+      const give = row.share * CULTURE.FORCED_RATE;
+      move += give;
+      return { id: row.id, share: row.share - give };
+    });
+    if (move > 0) rows = toPrimary(next, move).filter((row) => row.share > 1e-6);
+  }
+  return rows;
+}
+
+/**
  * Bir kumenin haftalik kultur isleyisi. `runProvinces` icinden, sahiplik ve
  * isgal payi zaten hesaplanmisken cagrilir.
  *
  * @returns {{ recolored: boolean, revolt: boolean }}
  */
+/**
+ * Şikâyet birikimi (bkz. CULTURE.GRIEVANCE_DRIFT). Tavan yabancı payla
+ * ölçeklenir: yarı yabancı state'in şikâyeti en çok 5'e çıkar. Entegrasyon
+ * odağı ve süren sıkıyönetim birikmeyi durdurur (azaltmaz).
+ */
+function accrueGrievance(province, nation, turn) {
+  const econ = province.econ;
+  const foreign = foreignShareOf(province, nation);
+  const rebel = foreign > 0 ? rebelCultureOf(province, nation) : -1;
+  const paused = econ.focus === 'integrate'
+    || (rebel >= 0 && (nation.movements?.[rebel]?.martialUntil ?? 0) > turn);
+  const feed = paused ? 0 : CULTURE.GRIEVANCE_DRIFT * foreign * rightsWeight(nation);
+  econ.grievance = Math.max(0, Math.min(CULTURE.MAX_UNREST * foreign, (econ.grievance ?? 0) + feed));
+}
+
 export function runProvinceCulture(world, province, nation, { occupied, turn }) {
   const econ = province.econ;
   if (!econ) return { recolored: false, revolt: false };
+  accrueGrievance(province, nation, turn);
   const { target } = unrestBreakdown(world, province, nation, { occupied, turn });
   // ILK DOKUNUSTA SIFIRDAN BASLA, HEDEFTEN DEGIL. Once `?? target` yaziliydi
   // ve 1836 dunyasi ilk haftada tam huzursuzlukla aciliyordu: tarayicida
@@ -521,7 +683,8 @@ export function acceptBlockers(world, nation, cultureId, turn = world.turn ?? 0)
   if (lawIndex(nation, 'citizenship') === 0) {
     out.push('Residency law grants political rights to the national culture only.');
   }
-  if ((nation.power ?? 0) < ACCEPT_POWER) out.push(`Needs ${ACCEPT_POWER} political power.`);
+  const price = acceptPrice(nation);
+  if ((nation.power ?? 0) < price) out.push(`Needs ${price} political power.`);
   const row = cultureMix(world, nation).find((item) => item.id === cultureId);
   const share = row?.share ?? 0;
   if (share < CULTURE.ACCEPT_MIN_SHARE) {
@@ -535,17 +698,28 @@ export function acceptBlockers(world, nation, cultureId, turn = world.turn ?? 0)
 }
 
 /**
- * Bir kulturu kabul eder. Kazanc anlik ve buyuktur (tam verim, tam asker
- * havuzu, sonen huzursuzluk); bedel ana kulturde iki yil suren milliyetci
- * tepkidir (bkz. unrestBreakdown backlash).
+ * Bir halka eşit vatandaşlık verir. Kazanç anlık (tam asker havuzu, sönen
+ * huzursuzluk); bedel ana kültürde iki yıl süren milliyetçi tepki ve
+ * MERDİVENİN BİR SONRAKİ BASAMAĞIDIR: halk artık Home Rule ister (Kerem
+ * 2026-10-15: "halklar her zaman daha fazlasını ister"). Ayrılık hareketinin
+ * birikimi yarıya iner ama talep izinde en az 25'ten başlar — kabul bir son
+ * değil, yeni bir pazarlıktır.
  */
 export function acceptCulture(game, nation, cultureId) {
   const world = game.world;
   const turn = game.turns?.turn ?? world.turn ?? 0;
   if (acceptBlockers(world, nation, cultureId, turn).length) return false;
-  nation.power -= ACCEPT_POWER;
+  nation.power -= acceptPrice(nation);
   nation.accepted = [...acceptedCultures(nation), cultureId];
   nation.cultureBacklashUntil = turn + CULTURE.BACKLASH_WEEKS;
+  const movements = nation.movements ?? (nation.movements = {});
+  const before = movements[cultureId]?.progress ?? 0;
+  movements[cultureId] = { progress: Math.max(25, Math.round(before * 0.5)), track: 'citizen' };
+  // Elle yeniden kabul, geri almayı da geri alır: kabine yine serbest.
+  if (isRevoked(nation, cultureId)) {
+    nation.revoked = nation.revoked.filter((id) => id !== cultureId);
+    if (!nation.revoked.length) delete nation.revoked;
+  }
   // ORTAK ETMEK KIRIGI KAPATIR. Halk artik yabanci sayilmadigi icin
   // huzursuzluk hedefi duser ve sadakat geri gelir; isaret hemen silinir ki
   // "hala kirik" gorunup ucuncu bir cikis aranmasin.
@@ -560,8 +734,62 @@ export function acceptCulture(game, nation, cultureId) {
     announce(game, nation, {
       kind: 'POLITICS', tier: TIER.MAJOR, key: `accept-${cultureId}`,
       title: `${name} are now an accepted culture`,
-      detail: 'They pay full taxes, fill the ranks and calm down — but the old'
-        + ' nation resents sharing the state for the next two years.',
+      detail: 'They fill the ranks and calm down — but the old nation resents sharing'
+        + ' the state for two years, and they will soon ask for Home Rule.',
+    });
+  }
+  game.emit?.('provinces', null);
+  return true;
+}
+
+/** Oyuncu bu halkın kabulünü geri aldı mı? Kabine (AUTO) onu yeniden kabul etmez. */
+export function isRevoked(nation, cultureId) {
+  return Array.isArray(nation?.revoked) && nation.revoked.includes(cultureId);
+}
+
+/** Geri almayı engelleyen ne varsa. Bos dizi = geri alinabilir. */
+export function revokeBlockers(world, nation, cultureId) {
+  if (cultureId === nation.culture) return ['They are our own people.'];
+  if (!isAccepted(nation, cultureId)) return ['Not an accepted culture.'];
+  return [];
+}
+
+/**
+ * KABULU GERI ALMA (Kerem 2026-10-14: "accepted culturesi cikarma olmali").
+ * Kabul tek yonlu bir kapiydi; ustelik AUTO kabine (manageAcceptance,
+ * manageBrokenProvinces, manageMovements) oyuncu adina da kabul ediyordu.
+ *
+ * Geri almanin kendi fiyati yok, bedeli kabulun kazancinin tersidir ve oyunun
+ * kendi formullerinden gelir: halk yeniden yabancidir — asker havuzu
+ * vatandaslik yasasinin payina iner, huzursuzluk hedefi yukselir, sikayet
+ * birikmeye baslar, sonen hareketi kaldigi yerden doner. Kazanci: halk yeniden
+ * eritilebilir (diasporada asimilasyon, odak, zorla asimilasyon) ve isyan
+ * ederse kriz kapilari (surgun, toplama) acilir. Odenen SG ve suren
+ * milliyetci tepki geri gelmez: kabul-geri al-kabul dongusu her seferinde
+ * 100 SG ve iki yillik tepki ister. YZ geri almaz; listede yalniz oyuncunun
+ * kararlari durur.
+ */
+export function revokeCulture(game, nation, cultureId) {
+  const world = game.world;
+  if (revokeBlockers(world, nation, cultureId).length) return false;
+  const next = acceptedCultures(nation).filter((id) => id !== cultureId);
+  // Bos dizi `?? [culture]` okuyan yerlerde (hegemony) herkesi yabanci yapardi.
+  const wasHomeRule = isHomeRule(nation, cultureId);
+  if (next.length) nation.accepted = next;
+  else delete nation.accepted;
+  if (wasHomeRule) nation.homeRule = nation.homeRule.filter((id) => id !== cultureId);
+  nation.revoked = [...new Set([...(nation.revoked ?? []), cultureId])].sort((a, b) => a - b);
+  // Hakkını kaybeden halk talebini ayrılığa çevirir (merdivenin "ret" basamağı):
+  // vatandaş Direniş'ten (60), özerk halk uçurumun kenarından (90) başlar.
+  const movements = nation.movements ?? (nation.movements = {});
+  movements[cultureId] = { progress: wasHomeRule ? 90 : 60 };
+  const name = world.cultures?.[cultureId]?.name ?? 'a people';
+  if (nation.id === game.turns?.playerNation) {
+    announce(game, nation, {
+      kind: 'POLITICS', tier: TIER.MAJOR, key: `revoke-${cultureId}`,
+      title: `${name} are no longer an accepted culture`,
+      detail: 'They lose their full rights: fewer of them answer the levy, their unrest'
+        + ' climbs and their old movement can stir again. They can be assimilated once more.',
     });
   }
   game.emit?.('provinces', null);
@@ -681,8 +909,6 @@ export function releaseToKin(game, nation, cultureId) {
       const tile = world.tiles[idx];
       if (!tile) continue;
       nation.tiles = Math.max(0, nation.tiles - 1);
-      // Eski sahibin inşaat projesi devirle düşer (bkz. movements.transfer).
-      captureConstructionAt(world, tile, heir);
       tile.owner = heir;
       tile.controller = heir;
       tile.heldSince = game.turns?.turn ?? 0;
@@ -730,7 +956,7 @@ export function manageBrokenProvinces(game, nation) {
   const groups = brokenByCulture(world, nation);
   if (!groups.length) return null;
   for (const group of groups) {
-    if (!group.accept.length && acceptCulture(game, nation, group.id)) {
+    if (!group.accept.length && !isRevoked(nation, group.id) && acceptCulture(game, nation, group.id)) {
       return { action: 'accept', culture: group.id };
     }
   }
@@ -756,11 +982,19 @@ export function manageBrokenProvinces(game, nation) {
  * Yilda bir, ulus basina farkli haftada.
  */
 export function manageAcceptance(game, nation) {
+  // KAPALI (TASARIM D1): takvimli yıllık kabul 1900-09'da 24-29 halkı kabul
+  // ediyordu (ölçüldü) ve yabancı payının %47 → %5 düşüşünün ~%78'iydi.
+  // Kabul artık yalnız hareketin bir krizine verilen cevaptır (manageMovements).
+  return false;
+}
+
+/** Eski yıllık kural (ölçüm kolları için duruyor; oyun çağırmaz). */
+export function legacyManageAcceptance(game, nation) {
   const world = game.world;
   const turn = game.turns?.turn ?? world.turn ?? 0;
   if ((turn + nation.id) % 52 !== 0) return false;
   const mix = cultureMix(world, nation);
-  const candidate = mix.find((row) => !row.accepted
+  const candidate = mix.find((row) => !row.accepted && !isRevoked(nation, row.id)
     && row.share >= CULTURE.ACCEPT_MIN_SHARE * 1.5);
   if (!candidate) return false;
   // Kabul, isyan riski gercekse alinir: sakin bir imparatorluk kimseyi

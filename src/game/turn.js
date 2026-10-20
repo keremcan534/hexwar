@@ -10,8 +10,8 @@ import {
   advanceMovement, clearDirective, orderMove, resumeDirectives,
 } from './movement.js';
 import { disband, nationManpower, queueRecruit, recruit, releaseQueued, runTraining } from './recruitment.js';
-import { START_ARMY, START_FLEET, START_GOLD } from './era.js';
-import { POP_UNIT } from './econ/defs.js';
+import { START_ARMY, START_FLEET } from './era.js';
+import { ARMY_POOL_SHARE, POP_UNIT } from './econ/defs.js';
 import { runReinforcements } from './reinforcement.js';
 import { runDelegatedAI, runNationAI } from './ai.js';
 import { runDiplomacyAI } from './alliances.js';
@@ -32,7 +32,7 @@ import { runResearch } from './technology.js';
 import { runAgenda } from './agenda.js';
 import { runEventCards } from './eventCards.js';
 import { assignGoals } from './hegemony.js';
-import { computeIC } from './econ/industry.js';
+import { computeOutput } from './econ/output.js';
 import { mod, refreshModifiers } from './modifiers.js';
 import { initBattles, removeFromBattles, runBattles, markEncircled } from './battles.js';
 import {
@@ -49,10 +49,10 @@ import { runResettlements } from './culturePolicy.js';
 import { runMovements } from './movements.js';
 import { releaseCasualties } from './levy.js';
 import { updatePockets } from './pockets.js';
-import { captureConstructionAt, initConstruction, runConstruction } from './construction.js';
+import { supplyFactor } from './econ/bills.js';
 import { controllerOf, setController } from './control.js';
 import { runNationalEvents, runWorldStories } from './events.js';
-import { expireTreaties, treatiesOf } from './peace.js';
+import { expireTreaties, updateWarBalance } from './peace.js';
 import { isAllied } from './alliances.js';
 
 const isAlliedTo = (world, a, b) => b >= 0 && isAllied(world.nations[a], b);
@@ -130,9 +130,8 @@ export class TurnManager {
 
     for (const nation of world.nations) {
       nation.alive = nation.tiles > 0;
-      // Tabandır: yaşayan ulusun hazinesi nüfusuyla birlikte initEconomy'de kurulur.
-      nation.gold = START_GOLD.base;
-      nation.debt = 0;
+      // Kalkınma fonu sıfırdan başlar (economy.initEconomy).
+      nation.fund = 0;
       nation.prestige = 0;
       nation.infamy = 0;
       if (!nation.alive) continue;
@@ -169,13 +168,23 @@ export class TurnManager {
       const own = (world.provinces ?? []).filter((p) => p.owner === nation.id && p.econ);
       const tier = Math.max(0, Math.min(2, nation.devTier ?? 0));
       const people = own.reduce((sum, p) => sum + p.econ.population, 0) / POP_UNIT;
-      const pool = Math.floor(nationManpower(world, nation.id) * 0.8 / UNIT_TYPES.INFANTRY.manpower);
-      const regiments = Math.max(2, Math.min(pool,
+      const manpower = nationManpower(world, nation.id);
+      const pool = Math.floor(manpower * 0.8 / UNIT_TYPES.INFANTRY.manpower);
+      // Barış tavanı (ai.armyPlan ile aynı: havuzun barış payı, +1 terhis
+      // payı). Alt halklar doğduğundan beri (redesign D3) tebaa kuraya
+      // vatandaşlık yasasının payıyla girer ve imparatorlukların havuzu küçüldü:
+      // kuruluş ordusu tavanı aşıyor, YZ/AUTO onu ilk yıl ayda bir alay terhis
+      // ediyordu (ölçüldü, STAT1-3: kuzey 11/12/10 → 7/8/8, bileşik 9/11/7 →
+      // 6/7/5). Tavanı kuruluşta uygulamak aynı orduya terhis çalkantısı
+      // olmadan varır; tavanın altındaki ulusun ordusu değişmez.
+      const peaceCap = Math.floor(manpower * ARMY_POOL_SHARE.peace / UNIT_TYPES.INFANTRY.manpower) + 1;
+      const regiments = Math.max(2, Math.min(pool, peaceCap,
         Math.max(Math.round(own.length / 3), Math.round(people * START_ARMY[tier]))));
       const plan = Array.from({ length: regiments }, (_, i) => (
         i % 3 === 2 ? 'ARTILLERY' : i % 6 === 4 ? 'CAVALRY' : 'INFANTRY'));
-      // Donanma: kıyıda tersanesi olan ulus kademesine göre gemiyle başlar.
-      if (own.some((p) => p.econ.buildings?.dockyard > 0)) {
+      // Donanma: kıyılı büyük ya da denizci ulus kademesine göre gemiyle başlar
+      // (tersane binası yok; eski kural tersaneyi bu koşulla veriyordu).
+      if (own.some((p) => p.coastal) && (people >= 10 || nation.coastal)) {
         for (let i = 0; i < START_FLEET[tier]; i++) plan.push('WARSHIP');
       }
       for (const typeId of plan) {
@@ -202,7 +211,6 @@ export class TurnManager {
       nation.economy.soldiers = provinceSoldiers(world, nation.id);
     }
     initPolitics(world);
-    initConstruction(world);
     initBattles(world);
     initCommand(world);
     seedGenerals(world, this.rng);
@@ -210,15 +218,18 @@ export class TurnManager {
     assignGoals(world);
     for (const nation of world.nations) {
       refreshModifiers(nation, this.turn);
-      // Açılış karesi IC 0.0 göstermesin ve ilk haftanın YZ'si boş IC
-      // okumasın: computeIC saf okumadır, altın oynatmaz. Kaynak oranları
-      // ilk haftanın ticaretiyle gelir.
-      if (nation.alive && nation.economy) nation.economy.ic = computeIC(world, nation);
+      // Açılış karesi IC 0.0 göstermesin ve ilk haftanın YZ'si boş çıktı
+      // okumasın: computeOutput saf okumadır. Kaynak oranları ilk haftanın
+      // ticaretiyle gelir; fon tabanı ve YZ ordu hedefi ortalamayı okur.
+      if (nation.alive && nation.economy) {
+        nation.economy.ic = computeOutput(world, nation, this.turn);
+        nation.economy.outputAvg = nation.economy.ic.output;
+      }
     }
   }
 
   /**
-   * Alayı EĞİTİM SIRASINA sokar. Altın ve teçhizat siparişte düşer, insan gücü
+   * Alayı EĞİTİM SIRASINA sokar. Teçhizat siparişte düşer, insan gücü
    * alay sahaya çıkarken toplanır (bkz. recruitment.js eğitim kuyruğu). Alay
    * artık düğmeye basılan hafta belirmez: ordu kurmak zaman ister.
    * @returns {object|null} kuyruk kaydı
@@ -333,9 +344,6 @@ export class TurnManager {
         addInfamy(nation, tileInfamy(member, nation));
         world.nations[member.owner].tiles--;
       }
-      // Proje ve fabrika devri sahiplik yazılmadan ÖNCE: eski sahip
-      // tile.owner'dan okunur. Sonra çağrılınca hiçbir şey yakalanmıyordu.
-      captureConstructionAt(world, member, nationId);
       // İşgal saati sıfırlanır: taze fetih bir süre üretmez, sonra asimile olur.
       member.heldSince = this.turn;
       member.owner = nationId;
@@ -369,7 +377,6 @@ export class TurnManager {
       if (member.owner >= 0) {
         world.nations[member.owner].tiles = Math.max(0, world.nations[member.owner].tiles - 1);
       }
-      captureConstructionAt(world, member, nationId);
       member.owner = nationId;
       member.controller = nationId;
       member.heldSince = this.turn;
@@ -548,11 +555,10 @@ export class TurnManager {
       // duzenini yavasca kurar; strength ise asagida nufus ve ekipman harcayan
       // reinforcement sistemi olmadan bedava dolmaz.
       if (!unit.battleId) {
-        // Toparlanma doktrinle hızlanır; iflas eden devletin ordusu yarı
-        // hızda toplanır (maaş ödenmiyor).
+        // Toparlanma doktrinle hızlanır; ikmal krizindeki devletin ordusu
+        // yavaş toplanır (faturalar tam ödenmiyor).
         const owner = world.nations[unit.nationId];
-        const bankrupt = (owner?.bankruptUntil ?? 0) > this.turn;
-        const fundingFactor = Math.max(0.2, 1 + mod(owner, 'organization')) * (bankrupt ? 0.5 : 1);
+        const fundingFactor = Math.max(0.2, 1 + mod(owner, 'organization')) * supplyFactor(owner);
         const organizationRecovery = ((unit.retreatUntil ?? 0) > this.turn ? 6 : 10)
           * fundingFactor;
         for (const regiment of unit.regiments ?? []) {
@@ -649,14 +655,16 @@ export class TurnManager {
     finishEconomy(this.game, economyContext);
     this.payTreaties();
     yield* pause('economy');
-    this.phase = 'construction';
-    runConstruction(this.game);
+    this.phase = 'politics';
+    // Savaş dengesi siyasetten ÖNCE (dört haftada bir): irade/yorgunluk onu
+    // okur ama politics.js peace.js'i içe almaz (redesign D5, §3 #14).
+    updateWarBalance(world);
     // Siyaset ekonomiden SONRA: istikrar ve parti desteği bu haftanın
     // tüketim malını, gıdasını ve savaşını okur.
     runPolitics(this.game);
     runAgenda(this.game);
     runEventCards(this.game);
-    yield* pause('construction');
+    yield* pause('politics');
     // Haritadaki ordular çarpıştıkları province üzerinde haftalık muharebe çözer.
     this.phase = 'battles';
     markEncircled(this.world);
@@ -705,8 +713,9 @@ export class TurnManager {
   }
 
   /**
-   * Anlaşma yükümlülükleri. Tazminat ve vassal haracı gelirin bir payıdır:
-   * sabit bir rakam olsaydı zengin ülke için anlamsız, fakir için yıkıcı olurdu.
+   * Anlaşma yükümlülükleri. Tazminat ve vassal haracı ÇIKTININ bir payıdır
+   * (kalkınma fonundan fona): sabit bir rakam olsaydı zengin ülke için
+   * anlamsız, fakir için yıkıcı olurdu.
    */
   payTreaties() {
     const world = this.world;
@@ -720,26 +729,18 @@ export class TurnManager {
     //
     // Sıfırlama ayrı geçiştir: alacaklı ülkeye yazılan geliri, ana döngü ona
     // sıra gelince silerdi.
+    // Ödeyen payını faturalarında ödedi (econ/bills.js TREATY_SHARE: çıktının
+    // %10'u tazminat, %7.5'i haraç; eskiden altın gelirinin %20'si ve %15'iydi,
+    // çıktı eski verginin ~1.5 katı). İkmal krizindeyse ödenen pay kadar.
+    // Alan ülkenin fonuna burada yazılır (gelecek haftanın defterine düşer).
     for (const nation of world.nations) {
       if (!nation.alive) continue;
-      for (const treaty of treatiesOf(nation)) {
-        const holder = world.nations[treaty.partner];
+      const bills = nation.economy?.bills;
+      for (const row of bills?.treaties ?? []) {
+        const holder = world.nations[row.partner];
         if (!holder?.alive) continue;
-        const share = treaty.type === 'VASSALIZE' ? 0.15
-          : treaty.type === 'REPARATIONS' ? 0.2 : 0;
-        if (!share) continue;
-        // TABAN DUZELTILDI. peace.js "a share of their treasury income" vaat
-        // ediyor; eski kod `budget.net.gold` uzerinden hesapliyordu ve o sayi
-        // vergiyi, gumrugu ve dis hesabi HARIC tutuyordu. Olculdu: 520 haftalik
-        // kosuda treatyCost her ulkede tam olarak 0'di — savasi kazanip
-        // tazminat dayatmak hicbir sey transfer etmiyordu. Artik defterin
-        // kapanmis GELIR satiri esas alinir: vaat edilen sey buydu.
-        // Taban: geçen haftanın kapanmış GELİR satırı (vergi + ihracat).
-        const base = Math.max(0, nation.economy?.ledger?.income ?? 0);
-        const due = base * share;
-        if (due <= 0) continue;
-        settle(nation, 'treaty', -due);
-        settle(holder, 'treaty', due);
+        const paid = row.owed * (bills.s ?? 1);
+        if (paid > 0) settle(holder, 'treaty', paid);
       }
     }
   }
@@ -975,7 +976,7 @@ export class TurnManager {
     // "askerde" gorunur ve province bir daha onlari asker olarak veremezdi.
     for (const regiment of unit.regiments ?? []) {
       for (const draw of regiment.draws ?? []) {
-        releaseCasualties(this.world, unit.nationId, draw, draw.men ?? 0);
+        releaseCasualties(this.world, unit.nationId, draw, draw.men ?? 0, regiment.militia === true);
       }
       regiment.draws = [];
     }

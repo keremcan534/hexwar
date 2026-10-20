@@ -10,6 +10,7 @@
 
 import { atWar } from './diplomacy.js';
 import { scoreboard } from './hegemony.js';
+import { IC_SCALE } from './econ/defs.js';
 
 const REFRESH_EVERY = 26;
 
@@ -17,7 +18,7 @@ const LINES = {
   occupied: 'A state administered, for now, from someone else\'s map.',
   losing_war: 'The war goes badly, and everyone in the capital knows it.',
   at_war: 'A nation with its affairs on the table and its army in the field.',
-  debt_crisis: 'Creditors read its budgets more closely than its ministers do.',
+  supply_crisis: 'Its armies eat faster than its workshops can feed them.',
   revolutionary: 'The old order holds the buildings; the street holds the rest.',
   tech_leader: 'Others debate the future. Here, it is already being built.',
   industrializing: 'Chimneys rise faster than church spires now.',
@@ -37,14 +38,16 @@ function pickTag(world, nation) {
   if ((economy.occupiedShare ?? 0) > 0.35) return 'occupied';
   const anyWar = world.nations.some((o) => o.alive && o.id !== nation.id
     && atWar(world, nation.id, o.id));
-  if (anyWar && (nation.warSupport ?? 0.5) < 0.3) return 'losing_war';
+  // Kaybedilen savaş YORGUNLUKTUR (redesign D5 merdiveni 0.6): irade savaşta
+  // toplandığı için artık "her şey kötü gidiyor"u söylemez.
+  if (anyWar && (nation.politics?.exhaustion ?? 0) >= 0.6) return 'losing_war';
   const turn = world.turn ?? 0;
-  if ((nation.bankruptUntil ?? 0) > turn
-    || (nation.debt ?? 0) > (economy.debtCap ?? Infinity) * 0.75) return 'debt_crisis';
+  if ((economy.bills?.s ?? 1) < 0.9) return 'supply_crisis';
   if ((nation.stability ?? 1) < 0.15) return 'revolutionary';
   if (anyWar) return 'at_war';
   // DONUSUM
-  const factories = economy.ic?.raw ?? 0;
+  // Ham sanayi (kalkınma × işçi); eski fabrika kademesinin ~IC_SCALE katı.
+  const factories = (economy.ic?.raw ?? 0) / IC_SCALE;
   const education = nation.politics?.laws?.education ?? 0;
   const research = nation.research?.done?.length ?? 0;
   const board = scoreboard(world);
@@ -61,10 +64,10 @@ function pickTag(world, nation) {
   if (factories >= 10 && education >= 1) return 'industrializing';
   // KIMLIK
   if (rank > 0 && rank <= 3) return 'great_power';
-  if (rank > 0 && rank <= 6 && (economy.ledger?.net ?? 0) < 0) return 'declining_power';
+  if (rank > 0 && rank <= 6 && (economy.bills?.owed ?? 0) > 0.45 * (economy.ic?.output ?? Infinity)) return 'declining_power';
   if (research <= techBottom && research < 5) return 'tech_laggard';
-  const income = economy.ledger?.income ?? 0;
-  if (income > 0 && (economy.ledger?.exports ?? 0) / income > 0.3) return 'trade_power';
+  const output = economy.ic?.output ?? 0;
+  if (output > 0 && (economy.ledger?.exports ?? 0) / output > 0.08) return 'trade_power';
   if (factories < 3) return 'agrarian';
   return 'generic';
 }
@@ -76,7 +79,7 @@ function pickTag(world, nation) {
 export function characterLine(world, nation) {
   const turn = world.turn ?? 0;
   const cache = nation.identity;
-  const crisisTags = ['occupied', 'losing_war', 'debt_crisis', 'revolutionary', 'at_war'];
+  const crisisTags = ['occupied', 'losing_war', 'supply_crisis', 'revolutionary', 'at_war'];
   if (cache && turn - cache.turn < REFRESH_EVERY) {
     // Kriz basladi/bitti mi? Aninda yansit; digerleri bekler.
     const tag = pickTag(world, nation);

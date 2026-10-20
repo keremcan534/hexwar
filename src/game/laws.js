@@ -5,19 +5,24 @@
 // modül döngüsü doğardı.
 //
 // Seçenek alanları bir yerde OKUNMUYORSA o alan burada yazılmaz (ilke 1).
-// Okuyucular: tax → economy.js vergi; conscription → recruitment insan gücü,
-// economy IC cezası; economy → industry askerî pay; trade → trade.js; citizenship
-// → culture/provinces/recruitment; education → economy okuryazarlık + gider.
+// `warSupport` yasayı ÇIKARMA eşiğidir; savaşta yasa barışa kadar durur
+// (politics.js enforceLawRequirements). `needsTotalWar`: yalnız toplam savaşta
+// çıkarılır (politics.js totalWarState).
+// Okuyucular: labour → econ/output.js çıktı, politics istikrar, provinces
+// büyüme; conscription → recruitment insan gücü, çıktı cezası; economy →
+// sanayinin askerî payı (econ/output.js); trade → trade.js, yatırım verimi;
+// citizenship → culture/provinces/recruitment; education → okuryazarlık +
+// okul faturası (econ/bills.js).
 
 export const LAWS = {
-  tax: {
-    id: 'tax', name: 'Taxation', icon: '⚖',
+  // Vergi yasasının yerine (2026-10-15, altın kalktı): aynı üç kademe, aynı
+  // istikrar ve büyüme bedeli; çarptığı şey artık vergi değil ÇIKTI.
+  labour: {
+    id: 'labour', name: 'Labour', icon: '⚖',
     options: [
-      // Eski hâli (×0.8, istikrar +5) baskındı, YZ hiç seçmiyordu: büyüme
-      // eklenince gerçek bir seçim (eşli: nüfus +%5.7, vergi −%13.5).
-      { id: 'low', name: 'Low Taxes', tax: 0.85, stability: 0.05, growth: 0.15, desc: 'Tax ×0.85, stability +5, growth +15%' },
-      { id: 'normal', name: 'Normal Taxes', tax: 1.0, desc: 'Tax ×1.0' },
-      { id: 'high', name: 'High Taxes', tax: 1.25, stability: -0.07, growth: -0.15, desc: 'Tax ×1.25, stability −7, growth −15%' },
+      { id: 'short', name: 'Ten-Hour Day', output: 0.92, stability: 0.05, growth: 0.15, desc: 'Output ×0.92, stability +5, growth +15%' },
+      { id: 'standard', name: 'Standard Week', output: 1.0, desc: 'Output ×1.0' },
+      { id: 'long', name: 'Long Hours', output: 1.12, stability: -0.07, growth: -0.15, desc: 'Output ×1.12, stability −7, growth −15%' },
     ],
     default: 1,
   },
@@ -26,18 +31,22 @@ export const LAWS = {
     options: [
       { id: 'volunteer', name: 'Volunteer Army', rate: 0.03, desc: 'Manpower 3% of population' },
       { id: 'limited', name: 'Limited Conscription', rate: 0.06, ic: -0.03, desc: 'Manpower 6%, industry −3%' },
-      { id: 'extensive', name: 'Extensive Conscription', rate: 0.10, ic: -0.08, warSupport: 0.5, desc: 'Manpower 10%, industry −8% · needs war support 50%' },
-      { id: 'total', name: 'Total Mobilisation', rate: 0.16, ic: -0.2, stability: -0.05, warSupport: 0.8, desc: 'Manpower 16%, industry −20%, stability −5 · needs war support 80%' },
+      { id: 'extensive', name: 'Extensive Conscription', rate: 0.10, ic: -0.08, warSupport: 0.5, desc: 'Manpower 10%, industry −8% · needs war support 50%; held until the peace' },
+      // 3. KADEME (redesign D5): 0.8 saldıranın her savaş haftasındaki p90'ının
+      // üstündeydi; ~39 bin ulus-savaş-haftasının hiçbirinde kullanılmadı (u5).
+      // 0.65 + toplam savaş şartı: eşik ulaşılabilir, ama yalnız toprağı
+      // işgal edilen, bir yıldır savaşan ya da büyük savaşa giren ülkeye.
+      { id: 'total', name: 'Total Mobilisation', rate: 0.16, ic: -0.2, stability: -0.05, warSupport: 0.65, needsTotalWar: true, desc: 'Manpower 16%, industry −20%, stability −5 · only in a total war, needs war support 65%' },
     ],
     default: 1,
   },
   economy: {
     id: 'economy', name: 'Economy', icon: '🏭',
     options: [
-      { id: 'civilian', name: 'Civilian Economy', military: 0.10, desc: '10% of industry to the army' },
-      { id: 'partial', name: 'Partial Mobilisation', military: 0.25, desc: '25% of industry to the army' },
-      { id: 'war', name: 'War Economy', military: 0.5, warSupport: 0.5, atWarOr: true, desc: '50% to the army · needs war or war support 50%' },
-      { id: 'total', name: 'Total War Economy', military: 0.8, warSupport: 0.7, needsWar: true, stability: -0.05, desc: '80% to the army, stability −5 · needs war and war support 70%' },
+      { id: 'civilian', name: 'Civilian Economy', military: 0.10, desc: 'Army draws up to 10% of industry' },
+      { id: 'partial', name: 'Partial Mobilisation', military: 0.25, desc: 'Army draws up to 25% of industry' },
+      { id: 'war', name: 'War Economy', military: 0.5, warSupport: 0.5, atWarOr: true, desc: 'Army draws up to 50% · needs war or war support 50%' },
+      { id: 'total', name: 'Total War Economy', military: 0.8, warSupport: 0.6, needsWar: true, needsTotalWar: true, stability: -0.05, desc: 'Army draws up to 80%, stability −5 · only in a total war, needs war support 60%' },
     ],
     default: 0,
   },
@@ -46,8 +55,8 @@ export const LAWS = {
     options: [
       { id: 'closed', name: 'Closed Economy', export: 0, importCost: 1.5, stability: 0.03, desc: 'No exports, imports +50% dearer, stability +3' },
       { id: 'limited', name: 'Limited Exports', export: 0.25, importCost: 1.0, desc: 'Export up to 25% of output' },
-      { id: 'export', name: 'Export Focus', export: 0.5, importCost: 1.0, exportIncome: 1.15, desc: 'Export up to 50%, export income +15%' },
-      { id: 'free', name: 'Free Trade', export: 0.8, importCost: 0.9, construction: -0.1, desc: 'Export up to 80%, imports −10%, construction −10% cost' },
+      { id: 'export', name: 'Export Focus', export: 0.5, importCost: 1.0, exportIncome: 1.15, desc: 'Export up to 50%; buyers favour your goods (+15% export appeal)' },
+      { id: 'free', name: 'Free Trade', export: 0.8, importCost: 0.9, investment: 0.1, desc: 'Export up to 80%, imports −10%, investment +10%' },
     ],
     default: 1,
   },
@@ -68,8 +77,8 @@ export const LAWS = {
     id: 'education', name: 'Education', icon: '🎓',
     options: [
       { id: 'none', name: 'No Public Schools', literacy: 0.12, cost: 0, desc: 'Literacy drifts to 12%' },
-      { id: 'basic', name: 'Primary Schools', literacy: 0.4, cost: 0.05, desc: 'Literacy target 40%, costs gold' },
-      { id: 'universal', name: 'Universal Education', literacy: 0.75, cost: 0.12, desc: 'Literacy target 75%, costs more gold' },
+      { id: 'basic', name: 'Primary Schools', literacy: 0.4, cost: 0.075, desc: 'Literacy target 40%; schools cost 0.075 IC per 100k a week' },
+      { id: 'universal', name: 'Universal Education', literacy: 0.75, cost: 0.18, desc: 'Literacy target 75%; schools cost 0.18 IC per 100k a week' },
     ],
     default: 0,
   },

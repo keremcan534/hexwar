@@ -2,6 +2,9 @@
 // Çizim yalnızca bir şey değiştiğinde yapılır (mobil pil dostu).
 
 import { generateWorld, HEX_SIZE } from '../world/worldgen.js';
+// Yan etki: LIBERATE için Özgür Devlet yedek mirasçısını peace.js'e kaydeder
+// (başsız denetimler arayüzü yüklemez; kayıt oyunun çekirdeğinde olmalı).
+import { hasPassage } from './nationBirth.js';
 import { generateNations } from '../world/nations.js';
 import { Camera } from '../render/camera.js';
 import { CACHE_ZOOM, Renderer } from '../render/renderer.js';
@@ -12,7 +15,7 @@ import { seaZonesOf } from '../world/seaZones.js';
 import { nodeNeighbors, nodeOf, nodeStepCost, nodesAdjacent } from '../world/provinceGraph.js';
 import { randomSeed } from '../core/rng.js';
 import {
-  armyPower, clearPath, organizationOf, placeUnit, stackCapacity, stackFull, unitsOn,
+  armyPower, clearPath, isMilitia, organizationOf, placeUnit, stackCapacity, stackFull, unitsOn,
 } from './units.js';
 import { clearDirective, orderMove, setDirective } from './movement.js';
 import { TurnManager } from './turn.js';
@@ -32,7 +35,8 @@ import { refreshCities } from './cities.js';
 import { closedSeas } from './navy.js';
 import { refreshModifiers } from './modifiers.js';
 import { controllerOf } from './control.js';
-import { loadFromStorage, saveToStorage } from './save.js';
+import { loadFromSlot, savedInfo, saveToSlot } from './save.js';
+import { AUTO_SLOT, newSlotId } from './saveStore.js';
 import {
   ORDER, clearOrder, executeOrders, idleUnits, setOrder,
 } from './orders.js';
@@ -41,8 +45,9 @@ import {
   startBattle,
 } from './battles.js';
 import {
-  BRANCH, STANCE, aggressionInfo, assignDivisions, branchOf, divisionsOf, frontTilesOf, generalOfArmy,
-  officersOf, refreshFront, setTarget, toggleStance,
+  BRANCH, STANCE, aggressionInfo, assignDivisions, branchOf, clearLines, divisionsOf, fallbackTilesOf,
+  frontTilesOf, generalOfArmy, officersOf, refreshFront, setFallbackLine, setFallingBack, setFrontLine,
+  setTarget, toggleStance,
 } from './command.js';
 
 /**
@@ -60,6 +65,8 @@ const EVENTS = [
   'nation', 'politics', 'notify', 'notify-clear', 'notify-dismiss',
   // AUTO devri (bkz. delegation.js).
   'delegation',
+  // Sağ tık emri reddedildi: sebep haritada kısa satırla söylenir (hud.flashHint).
+  'orderRefused',
   // Oyuncuya açılan olay kartı (bkz. eventCards.js).
   'card',
   // Kayit yazildi (otomatik ya da elle): ayar paneli etiketini tazeler.
@@ -80,8 +87,13 @@ const EVENTS = [
 /** Muharebe sonucu yazısının ömrü (ms). */
 const FLOATER_MS = 2400;
 
-/** Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. */
-const SPEEDS = [0, 1, 2, 4, 8];
+/**
+ * Saat kademeleri: 0 duraklatma, gerisi gerçek zaman çarpanı. 6×, 4× ile 8×
+ * arasındaki boşluğu doldurur (2026-10-14, Kerem: "hız ayarı yetersiz"):
+ * 4×'te barış yılı 91 sn sürüyordu, 8×'te savaş yılında saniyede ~1.7 olay
+ * kartı düşüyordu.
+ */
+const SPEEDS = [0, 1, 2, 4, 6, 8];
 
 /**
  * Bir oyun günü kaç ms sürer (1x hızda) ve haftada kaç gün var.
@@ -185,6 +197,12 @@ export class Game {
         const last = points?.[points.length - 1];
         if (last) this.handleRightTap(last.x, last.y);
       },
+      // Hat çizimi (Front / Fallback aracı açıkken sol sürükleme).
+      isDrawMode: () => Boolean(this.drawTool && this.activeGeneral),
+      onDrawStart: (x, y) => this.extendStroke(x, y, true),
+      onDrawMove: (x, y) => this.extendStroke(x, y),
+      onDrawEnd: () => this.finishStroke(),
+      onDrawCancel: () => this.setDrawTool(null),
       onMarqueeStart: (x, y) => this.beginMarquee(x, y),
       onMarqueeMove: (rect) => this.updateMarquee(rect),
       onMarqueeEnd: (rect, mods) => this.finishMarquee(rect, mods),
@@ -295,11 +313,18 @@ export class Game {
   /** Gorunen amblemin kenari komsu province sayilmasin. */
   unitAtScreen(sx, sy) {
     if (!this.world || !this.camera?.worldToScreenNear) return null;
-    const hitRadius = Math.max(9, HEX_SIZE * 0.92 * this.camera.zoom);
+    // Yarıçap çizilen sayaçtan gelir: sayaç ekranda tavanlıdır (bkz.
+    // renderer.counterZoom); çizilmeyen sayaç (uzakta üçüncü taraf) tıklanmaz.
+    const renderer = this.renderer;
+    const hitRadius = Math.max(9, HEX_SIZE * 0.92 * renderer.counterZoom());
+    const player = this.turns.playerNation;
+    // Taraf yalnız üçüncü taraf gizliyken sorulur (her fare hareketinde koşar).
+    const hideOthers = !renderer.counterVisible('other');
     let best = null;
     let bestDistance = Infinity;
     for (const unit of this.world.units) {
       if (!unit?.tile || unit.hp <= 0) continue;
+      if (hideOthers && renderer.sideOf(this.world, unit.nationId, player) === 'other') continue;
       const y = unit.tile.y + (unit.tile.city ? HEX_SIZE * 0.22 : 0);
       // Sarmal temsilci İMLECE göre: dikişin öbür yanındaki ve dar dünyada
       // tekrarlanan bantta çizilen kopya da tıklanabilsin.
@@ -727,6 +752,9 @@ export class Game {
       text = `No order for ${where}: ${why}.`;
     }
     if (text) this.turns.addLog(text, { kind: 'ARMY', tile, key: `order:${tile.q}:${tile.r}` });
+    // Reddedilen emrin sebebi yalnız bildirim sayacına gidiyordu: oyuncu sağ
+    // tıkladığı yerde hiçbir şey olmadığını görüyor, nedenini bilmiyordu.
+    if (!issued && !waiting && why) this.emit('orderRefused', { tile, text: `No order: ${why}` });
   }
 
   /**
@@ -739,7 +767,9 @@ export class Game {
     const allowed = (tile) => {
       const controller = controllerOf(tile);
       return controller < 0 || controller === unit.nationId
-        || atWar(world, controller, unit.nationId);
+        || atWar(world, controller, unit.nationId)
+        // Kurtarıcı geçişi (nationBirth.js): kopan devletin toprağından geçilir.
+        || hasPassage(world, controller, unit.nationId);
     };
 
     // Dost tümenler aynı province'te yan yana durabilir (birleşmezler).
@@ -752,6 +782,11 @@ export class Game {
 
     if (unit.type.domain === 'sea') {
       return (tile) => tile.terrain.navigable && openOrFriendly(tile);
+    }
+    // MİLİS (levée, TASARIM D6) kendi toprağını tutar ve terk edilmiş kendi
+    // toprağını geri alır; yabancı toprağa ve düşman tümenine girmez (saldırmaz).
+    if (isMilitia(unit)) {
+      return (tile) => tile.terrain.passable && tile.owner === unit.nationId && openOrFriendly(tile);
     }
     // Düşmanın tuttuğu deniz kapalıdır (navy.closedSeas); o denizde zaten
     // olan ordu içinde yürüyüp kıyıya çıkabilir, yoksa kurtulamazdı.
@@ -876,14 +911,12 @@ export class Game {
     return true;
   }
 
-  // --- Komuta duruşu: cephe çizilmez, generale verilir ---
+  // --- Komuta duruşu ve çizilen hatlar ---
 
   /**
-   * Taarruz aç/kapa. Cephe artık elle çizilmiyor: seçili generalin ordu grubu
-   * ya hattını tutar ya da önündeki province'lere yürür (bkz. command.js).
-   *
-   * Çizim kalktı çünkü çizilen hat sınırla çelişiyordu — sınır değişince hat
-   * yeniden kuruluyor, tümenler her hafta baştan diziliyordu.
+   * Taarruz aç/kapa: seçili generalin ordu grubu ya hattını tutar ya da
+   * önündeki province'lere yürür (bkz. command.js). Taarruz, geri çekilmiş
+   * grubu cephesine döndürür.
    */
   toggleOffensive() {
     const general = this.activeGeneral;
@@ -892,6 +925,98 @@ export class Game {
     this.emit('command', general);
     this.requestRender();
     return stance;
+  }
+
+  /**
+   * Hat çizim aracı: 'front' | 'fallback' | null. Seçili generale uygulanır;
+   * bir çizimden sonra kapanır (HOI4'te de araç tek çizgiliktir).
+   */
+  setDrawTool(kind) {
+    const next = kind && this.activeGeneral ? kind : null;
+    if (next === (this.drawTool ?? null) && !this.drawStroke) return;
+    this.drawTool = next;
+    this.drawStroke = null;
+    this.canvas?.classList?.toggle('is-drawing', Boolean(next));
+    this.emit('command', this.activeGeneral);
+    this.requestRender();
+  }
+
+  /** Çizilen çizgiye ekran noktası ekler (dünya koordinatında saklanır). */
+  extendStroke(sx, sy, start = false) {
+    if (!this.drawTool) return;
+    const p = this.camera.screenToWorld(sx, sy);
+    if (start || !this.drawStroke) this.drawStroke = [];
+    this.drawStroke.push({ x: p.x, y: p.y });
+    this.requestRender();
+  }
+
+  /** Çizgiyi karelere çevirip generale yazar; olmazsa sebebi söylenir. */
+  finishStroke() {
+    const kind = this.drawTool;
+    const general = this.activeGeneral;
+    const points = this.drawStroke ?? [];
+    this.drawStroke = null;
+    if (!kind || !general) return;
+    // Hızlı sürüklemede olaylar seyrek gelir: noktalar arası yarım hexte bir
+    // örneklenir ki çizgi kare atlamasın.
+    const tiles = [];
+    const step = HEX_SIZE * 0.5;
+    const add = (x, y) => {
+      const tile = this.renderer?.tileAtWorld
+        ? this.renderer.tileAtWorld(this.world, x, y)
+        : (() => { const h = pixelToHex(x, y, HEX_SIZE); return this.world.get(h.q, h.r); })();
+      if (tile && tiles[tiles.length - 1] !== tile) tiles.push(tile);
+    };
+    for (let i = 0; i < points.length; i++) {
+      const a = points[i];
+      const b = points[i + 1];
+      add(a.x, a.y);
+      if (!b) break;
+      const n = Math.floor(Math.hypot(b.x - a.x, b.y - a.y) / step);
+      for (let k = 1; k < n; k++) add(a.x + ((b.x - a.x) * k) / n, a.y + ((b.y - a.y) * k) / n);
+    }
+    const result = kind === 'front'
+      ? setFrontLine(this.world, general, tiles)
+      : setFallbackLine(this.world, general, tiles);
+    this.drawTool = null;
+    this.canvas?.classList?.toggle('is-drawing', false);
+    if (!result.ok) this.emit('orderRefused', { tile: null, text: result.error });
+    this.gapStamp = (this.gapStamp ?? 0) + 1;
+    this.emit('command', general);
+    this.requestRender();
+  }
+
+  /** Geri çekil / cepheye dön (seçili general). */
+  toggleFallBack() {
+    const general = this.activeGeneral;
+    if (!general?.fallback?.length) return null;
+    const on = setFallingBack(general, !general.fallingBack);
+    this.emit('command', general);
+    this.requestRender();
+    return on;
+  }
+
+  /** Seçili generalin çizilen hatlarını siler. */
+  clearCommandLines(which = 'all') {
+    const general = this.activeGeneral;
+    if (!general) return;
+    clearLines(this.world, general, which);
+    this.gapStamp = (this.gapStamp ?? 0) + 1;
+    this.emit('command', general);
+    this.requestRender();
+  }
+
+  /** Oyuncunun generallerinin geri çekilme hatları (çizim için). */
+  playerFallbacks() {
+    const nation = this.world?.nations[this.turns.playerNation];
+    if (!nation) return [];
+    const out = [];
+    for (const general of officersOf(nation, BRANCH.ARMY)) {
+      if (!general.fallback?.length) continue;
+      const tiles = fallbackTilesOf(this.world, general);
+      if (tiles.length) out.push({ general, tiles });
+    }
+    return out;
   }
 
   /** Seçili generalin taarruzu yürüyor mu? */
@@ -919,6 +1044,12 @@ export class Game {
 
   /** Generali seçer ve komuta ettiği bütün tümenleri seçili yapar. */
   selectGeneral(general) {
+    // Araç generale bağlıdır: başka generale geçince çizim bırakılır.
+    if (this.drawTool && general !== this.activeGeneral) {
+      this.drawTool = null;
+      this.drawStroke = null;
+      this.canvas?.classList?.toggle('is-drawing', false);
+    }
     this.activeGeneral = general ?? null;
     if (!general) {
       this.emit('command', null);
@@ -1005,20 +1136,35 @@ export class Game {
     if (idleFor < 600) return;
     this.pendingAutosave = false;
     const t0 = performance.now();
-    const ok = saveToStorage(this);
+    // Otomatik kayıt kendi yuvasına yazar: elle alınan kayıtları artık ezmez.
+    // Ret sessiz kalmaz — eskiden kota dolunca kampanya kaydedilmeden akıyordu.
+    const pending = saveToSlot(this, AUTO_SLOT);
     this.perf?.event('autosave', performance.now() - t0);
-    if (ok) this.emit('save', { auto: true });
+    pending.then((result) => {
+      if (result.ok) this.emit('save', { auto: true });
+      else this.emit('save', { auto: true, error: result.reason });
+    });
   }
 
-  save() {
+  /**
+   * Elle kayıt. `slot` verilmezse yeni yuva açılır; verilirse üstüne yazılır.
+   * @returns {Promise<{ok: boolean, reason?: string}>}
+   */
+  async save(name = null, slot = null) {
     if (this.turns.turnJob) this.turns.endTurn();
-    const ok = saveToStorage(this);
-    if (ok) this.emit('save', { auto: false });
-    return ok;
+    const result = await saveToSlot(this, slot ?? newSlotId(), name);
+    if (result.ok) this.emit('save', { auto: false });
+    return result;
   }
 
-  load() {
-    return loadFromStorage(this);
+  /**
+   * Yuvadaki kaydı yükler; yuva verilmezse en yenisi.
+   * @returns {Promise<{ok: boolean, reason?: string}>}
+   */
+  async load(slot = null) {
+    const target = slot ?? savedInfo()?.slot;
+    if (!target) return { ok: false, reason: 'there is no saved campaign in this browser' };
+    return loadFromSlot(this, target);
   }
 
   /**
@@ -1448,7 +1594,17 @@ export class Game {
     this.frameHandle = 0;
     this.perf?.beginFrame(ts);
     const moving = this.input.update();
-    if (this.dirty || moving) {
+    // Yalnız su tiki: 2B harita değişmediyse GL deniz tek başına çizilir
+    // (bkz. renderer.canDrawWaterOnly). Kapı kapalıysa eski yol: tam kare.
+    const waterOnly = this.waterPending && !this.dirty && !moving && this.world
+      && this.renderer.canDrawWaterOnly();
+    if (this.waterPending && !waterOnly) this.dirty = true;
+    this.waterPending = false;
+    if (waterOnly) {
+      const t0 = performance.now();
+      this.renderer.drawWaterOnly();
+      this.perf?.add('render.water', performance.now() - t0);
+    } else if (this.dirty || moving) {
       this.dirty = false;
       if (this.world) {
         const t0 = performance.now();
@@ -1461,6 +1617,9 @@ export class Game {
           front: this.frontTiles(),
           fronts: this.playerFronts(),
           frontGaps: this.frontGaps(),
+          fallbacks: this.playerFallbacks(),
+          drawTool: this.drawTool ?? null,
+          drawStroke: this.drawStroke ?? null,
           hoverOdds: this.hoverOdds,
           floaters: this.floaters,
           selection: this.selection,
@@ -1524,7 +1683,10 @@ export class Game {
       if (covered) this.scheduleWaterFrame(250);
       else {
         this.lastWaterAt = performance.now();
-        this.requestRender();
+        // Kirli işareti KOYMAZ: su tiki haritayı değiştirmez; kare yalnız
+        // GL denizini çizebilir (frame → canDrawWaterOnly).
+        this.waterPending = true;
+        if (!this.frameHandle) this.frameHandle = requestAnimationFrame(this.frame);
       }
     }, delay);
   }

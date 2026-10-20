@@ -9,6 +9,13 @@
 import { battleView } from '../game/battleView.js';
 import { formatPopulation } from '../game/economy.js';
 import { esc, tipAttr } from './kit.js';
+import { refreshTooltips } from './tooltip.js';
+
+/**
+ * Güç oranı yazısı: bir taraf sıfıra inince "1000000.00 : 1" basıyordu.
+ * Şerit ve pencere aynı biçimi kullanır.
+ */
+const fmtRatio = (r) => (!Number.isFinite(r) || r >= 99 ? '99+' : r < 0.01 ? '0' : r.toFixed(1));
 
 const pct = (v) => `${Math.round(v * 100)}%`;
 const mult = (v) => `×${v.toFixed(2)}`;
@@ -85,19 +92,23 @@ export class BattlePanel {
     this.strip.hidden = !battles.length;
     if (!battles.length) { this.strip.innerHTML = ''; return; }
     const views = battles.map((b) => battleView(world, b, me)).filter(Boolean);
-    // Önce kaybetme tehlikesi olanlar: oyuncunun gözü oraya gitmeli.
     const ours = (v) => (v.mine === 'attacker' ? v.ratio : 1 / Math.max(1e-6, v.ratio));
-    views.sort((a, b) => ours(a) - ours(b) || a.id - b.id);
+    // SIRA SABİT (muharebe kimliği): tehlikeye göre sıralama her hafta
+    // değişiyor, çipler imlecin altından yer değiştiriyordu. Tehlike rengi
+    // (good/even/bad) gözü yine doğru çipe götürür.
+    views.sort((a, b) => a.id - b.id);
     const shown = views.slice(0, 6);
     const more = views.length - shown.length;
     this.strip.innerHTML = shown.map((v) => {
       const r = ours(v);
       const tone = r >= 1.3 ? 'good' : r >= 0.9 ? 'even' : 'bad';
       const verb = v.mine === 'attacker' ? 'Attacking' : 'Defending';
-      return `<button class="bs-chip ${tone}" data-strip-battle="${v.id}"${tipAttr({ text: `Battle of ${v.name}\n${verb} · week ${v.round}/${v.maxRounds} · our power ${r.toFixed(2)} : 1\nClick to open the battle.` })}>
-        <i class="bs-dir">${v.mine === 'attacker' ? '➤' : '⛨'}</i><b>${esc(v.name)}</b><span>${r.toFixed(1)}:1</span>
+      return `<button class="bs-chip ${tone}" data-strip-battle="${v.id}"${tipAttr({ text: `Battle of ${v.name}\n${verb} · week ${v.round}/${v.maxRounds} · our power ${fmtRatio(r)} : 1\nClick to open the battle.` })}>
+        <i class="bs-dir">${v.mine === 'attacker' ? '➤' : '⛨'}</i><b>${esc(v.name)}</b><span>${fmtRatio(r)}:1</span>
       </button>`;
     }).join('') + (more > 0 ? `<span class="bs-more">+${more}</span>` : '');
+    // Açık şerit kartı yeni çipe bağlansın; muharebe bittiyse kapansın.
+    refreshTooltips();
   }
 
   get isOpen() {
@@ -116,6 +127,27 @@ export class BattlePanel {
     this.root.hidden = true;
     this.battleId = null;
     this.last = null;
+    this.strip.style.maxWidth = '';
+  }
+
+  /**
+   * Pencere ve şerit birbirine ve alttaki komuta araçlarına binmesin: sabit
+   * `100vh - 170px` tavanı 1280×720'de Stance düğmelerini, açık pencere
+   * 1366'da şerit çiplerini örtüyordu (ölçüldü). Taban, pencereyle yatayda
+   * çakışan alt öğelerin (komuta rıhtımı, bildirim tepsisi, harita kipleri)
+   * en üstüdür; şerit pencerenin soluna sığar.
+   */
+  fit() {
+    if (this.root.hidden) return;
+    const me = this.root.getBoundingClientRect();
+    let floor = window.innerHeight;
+    for (const id of ['command-dock', 'command-tools', 'notify-stack', 'map-modes']) {
+      const r = document.getElementById(id)?.getBoundingClientRect();
+      if (r?.height && r.right > me.left && r.left < me.right && r.top > me.top) floor = Math.min(floor, r.top);
+    }
+    this.root.style.maxHeight = `${Math.max(180, Math.floor(floor - me.top - 8))}px`;
+    const strip = this.strip.getBoundingClientRect();
+    this.strip.style.maxWidth = strip.width ? `${Math.max(120, Math.floor(me.left - strip.left - 8))}px` : '';
   }
 
   refresh() {
@@ -125,6 +157,7 @@ export class BattlePanel {
     if (battle) this.last = battleView(world, battle, this.game.turns.playerNation);
     if (!this.last) { this.close(); return; }
     this.root.innerHTML = this.html(this.last, !battle);
+    this.fit();
   }
 
   side(view, side, key) {
@@ -176,11 +209,11 @@ export class BattlePanel {
         <div><small>${view.river ? 'River crossing · ' : ''}${esc(view.terrain)} · defence +${pct(view.defense)}</small>
           <h3>Battle of ${esc(view.name)}</h3></div>
         <span class="bp-round"${tipAttr({ text: 'One round a week; the battle ends after 20 at most.' })}>${over ? 'Over' : `Week ${view.round} / ${view.maxRounds}`}</span>
-        <button class="bp-btn" data-battle-focus title="Show on the map">⌖</button>
-        <button class="bp-btn" data-battle-close title="Close (Esc)">✕</button>
+        <button class="bp-btn" data-battle-focus aria-label="Show on the map"${tipAttr({ text: 'Show on the map' })}>⌖</button>
+        <button class="bp-btn" data-battle-close aria-label="Close"${tipAttr({ text: 'Close · Esc' })}>✕</button>
       </header>
       <div class="bp-balance"${tipAttr({ text: `Combat power\nThe battle's own scales: strength × terrain × river × plan × commander × doctrine × supplies. ${view.ratio.toFixed(2)} : 1 for the attacker.` })}>
-        <span class="bp-ratio">${view.ratio.toFixed(1)} : 1</span>
+        <span class="bp-ratio">${fmtRatio(view.mine ? (view.mine === 'attacker' ? view.ratio : 1 / Math.max(1e-6, view.ratio)) : view.ratio)} : 1<small>${view.mine ? 'you : them' : 'attacker : defender'}</small></span>
         <span class="bp-power"><i style="width:${(share * 100).toFixed(1)}%;background:${esc(a.color)}"></i><i style="width:${((1 - share) * 100).toFixed(1)}%;background:${esc(d.color)}"></i></span>
       </div>
       ${forecast}

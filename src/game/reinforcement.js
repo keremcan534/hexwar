@@ -3,6 +3,7 @@
 // kaybolan her güç puanı, alayın kuruluş teçhizatından payını yer
 // (UNIT_EQUIPMENT / maxStrength). Üretim hattı durursa ordu erir.
 
+import { supplyFactor } from './econ/bills.js';
 import { EQUIPMENT, EQUIPMENT_IDS, UNIT_EQUIPMENT } from './econ/defs.js';
 import { equipmentStock } from './econ/industry.js';
 import { mod } from './modifiers.js';
@@ -14,13 +15,12 @@ import { mergeLevy, takeLevy } from './levy.js';
 
 export const BASE_REINFORCEMENT_RATE = 24;
 
-/** Haftalık takviye hızı (güç puanı): komutan, teknoloji, iflas. */
+/** Haftalık takviye hızı (güç puanı): komutan, teknoloji, ikmal krizi. */
 export function reinforcementRateOf(nation, general = null) {
-  const bankrupt = (nation.bankruptUntil ?? 0) > (nation.economy?.ledger?.lastUpdated ?? 0);
   return BASE_REINFORCEMENT_RATE
     * (1 + generalRecoveryBonus(general))
     * Math.max(0.2, 1 + mod(nation, 'reinforce'))
-    * (bankrupt ? 0.5 : 1);
+    * supplyFactor(nation);
 }
 
 /** Güç puanı başına teçhizat: kuruluş teçhizatı / alayın tam gücü. */
@@ -106,6 +106,7 @@ export function reinforcementNeed(world, nation) {
   for (const unit of world.units) {
     if (unit.nationId !== nation.id || !unit.regiments?.length) continue;
     for (const regiment of unit.regiments) {
+      if (regiment.militia) continue;
       const missing = missingStrength(regiment);
       if (missing <= 0) continue;
       strength += missing;
@@ -175,6 +176,8 @@ function reinforceNation(game, nation) {
     const general = generalOfArmy(nation, unit);
     const rate = reinforcementRateOf(nation, general);
     for (const regiment of unit.regiments) {
+      // Milis takviye almaz (levée, TASARIM D6): eriyen milis eriyip gider.
+      if (regiment.militia) continue;
       const missing = missingStrength(regiment);
       if (missing <= 0) continue;
       log.demand += missing;

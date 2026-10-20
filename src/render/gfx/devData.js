@@ -15,7 +15,7 @@
 //
 // Katman notu: DOM'a dokunmaz.
 
-import { DEVELOPMENT_MAX, BUILDINGS } from '../../game/econ/defs.js';
+import { DEVELOPMENT_MAX } from '../../game/econ/defs.js';
 
 /**
  * Province merkezleri: dünya konumu ve ekonomi. Yerleşim, yol ya da etiket
@@ -52,19 +52,19 @@ export function devHexData(world) {
   }
   per.sort((a, b) => a - b);
   const median = per.length ? Math.max(1, per[per.length >> 1]) : 1;
-  const factoryMax = BUILDINGS.factory.max;
-  const farmMax = BUILDINGS.farm.max;
+  // Bina yok (2026-10-15): sanayi, tarla ve demiryolu ipuçları kalkınmadan
+  // türer — sanayi 1'in üstündeki kademeler, tarla verim × kalkınma, ray 5+.
   for (const p of provinces) {
     const e = p.econ;
     const idx = p.tileIdx;
     if (!e || !idx?.length) continue;
-    const b = e.buildings ?? {};
-    const r = Math.round(Math.min(1, (e.development ?? 0) / DEVELOPMENT_MAX) * 255);
+    const dev = e.development ?? 1;
+    const r = Math.round(Math.min(1, dev / DEVELOPMENT_MAX) * 255);
     const dens = Math.log2(Math.max(1, e.population / idx.length) / median);
     const g = Math.round(Math.max(0, Math.min(1, 0.5 + dens * 0.25)) * 255);
-    const bl = Math.round(Math.min(1, (b.factory ?? 0) / factoryMax) * 255);
-    const farm = Math.max(0, Math.min(farmMax, b.farm ?? 0));
-    const flags = ((b.railway ?? 0) > 0 ? 64 : 0) + farm * 16;
+    const bl = Math.round(Math.max(0, Math.min(1, (dev - 1) / (DEVELOPMENT_MAX - 1))) * 255);
+    const farm = Math.max(0, Math.min(3, Math.round((p.fertility ?? 1) * dev / 3)));
+    const flags = (dev >= 5 ? 64 : 0) + farm * 16;
     const centre = p.center ? p.center.row * cols + p.center.col : -1;
     for (const i of idx) {
       const o = i * 4;
@@ -78,8 +78,8 @@ export function devHexData(world) {
 }
 
 /**
- * Ucuz imza: kalkınma, nüfus ve bina değişince değişir. İnşaat ve nüfus
- * artışı renderer'a haber vermez (agenda.grantBuilding, tur sonu); stil bu
+ * Ucuz imza: kalkınma ve nüfus değişince değişir. Kalkınma kademesi ve nüfus
+ * artışı renderer'a her zaman haber vermez (gündem ödülü, tur sonu); stil bu
  * imzayı hexDataKey olarak verirse veri kendiliğinden tazelenir.
  */
 export function devHexKey(world) {
@@ -87,9 +87,7 @@ export function devHexKey(world) {
   for (const p of world.provinces ?? []) {
     const e = p.econ;
     if (!e) continue;
-    const b = e.buildings ?? {};
-    h = (Math.imul(h, 31) + (e.development ?? 0) * 7 + (b.factory ?? 0) * 13 + (b.farm ?? 0) * 17
-      + (b.railway ?? 0) * 19 + Math.round((e.population ?? 0) / 20000)) | 0;
+    h = (Math.imul(h, 31) + (e.development ?? 0) * 7 + Math.round((e.population ?? 0) / 20000)) | 0;
   }
   return h;
 }

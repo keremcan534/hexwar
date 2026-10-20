@@ -67,16 +67,16 @@ export const HERITAGE_TREE = {
   },
   infrastructure: {
     Railways: [
-      t('early_railways', 'Early Railways', 1836, { construction: 0.10, constructionSlots: 1 }, 'The first lines between mine and port.'),
-      t('iron_railways', 'Iron Railways', 1848, { developmentCap: 1, supply: 0.15 }, 'Rails tie the provinces together.'),
-      t('steel_railways', 'Steel Railways', 1862, { construction: 0.15, developmentCap: 1 }, 'Heavier trains, cheaper building.'),
-      t('integral_rail', 'Integral Rail System', 1878, { construction: 0.1, supply: 0.15, rubberArmy: 0.05 }, 'A national network, with insulated telegraph along every line.'),
+      t('early_railways', 'Early Railways', 1836, { investment: 0.10 }, 'The first lines between mine and port.'),
+      t('iron_railways', 'Iron Railways', 1848, { supply: 0.15 }, 'Rails tie the provinces together.'),
+      t('steel_railways', 'Steel Railways', 1862, { investment: 0.15 }, 'Heavier trains, cheaper building.'),
+      t('integral_rail', 'Integral Rail System', 1878, { investment: 0.1, supply: 0.15, rubberArmy: 0.05 }, 'A national network, with insulated telegraph along every line.'),
     ],
     Agriculture: [
       t('crop_rotation', 'Crop Rotation', 1838, { food: 0.03 }, 'Four-field rotation raises yields.'),
       t('mechanized_farming', 'Mechanised Farming', 1852, { food: 0.03, growth: 0.05 }, 'Reapers and threshers.'),
       t('fertilizers', 'Chemical Fertilisers', 1868, { saltpeterFood: 0.15 }, 'Guano and Chilean nitrate: richer harvests for whoever controls the saltpeter.'),
-      t('refrigeration', 'Refrigeration', 1884, { food: 0.03, consumerNeed: -0.05, developmentCap: 1 }, 'Food travels across the world.'),
+      t('refrigeration', 'Refrigeration', 1884, { food: 0.03, consumerNeed: -0.05 }, 'Food travels across the world.'),
     ],
   },
   army: {
@@ -116,9 +116,9 @@ export const HERITAGE_TREE = {
     ],
     'Public Instruction': [
       t('public_schools', 'Public Schools', 1840, { literacy: 0.05 }, 'Every village a schoolhouse.'),
-      t('university_reform', 'University Reform', 1854, { research: 0.10, developmentCap: 1 }, 'Research universities.'),
+      t('university_reform', 'University Reform', 1854, { research: 0.10 }, 'Research universities.'),
       t('mass_press', 'Mass Press', 1868, { warSupport: 0.05, literacy: 0.05 }, 'Cheap newspapers shape opinion.'),
-      t('modern_bureaucracy', 'Modern Bureaucracy', 1882, { tax: 0.08, developmentCap: 1 }, 'Census, cadastre, civil service.'),
+      t('modern_bureaucracy', 'Modern Bureaucracy', 1882, { output: 0.05 }, 'Census, cadastre, civil service.'),
     ],
   },
 };
@@ -152,11 +152,11 @@ export const TECHNOLOGIES = {
   },
   infrastructure: {
     Transport: [
-      t('trunk_lines', 'Trunk Lines', 1903, { construction: 0.10, supply: 0.10 }, 'Double track between every capital and its ports.'),
-      t('motor_lorries', 'Motor Lorries', 1911, { supply: 0.15, constructionSlots: 1 }, 'Supply moves on where the rails end.'),
-      t('paved_highways', 'Paved Highways', 1920, { construction: 0.10, developmentCap: 1 }, 'Concrete roads open the interior.'),
-      t('electrified_railways', 'Electrified Railways', 1929, { construction: 0.10, supply: 0.10, developmentCap: 1 }, 'Heavier trains, faster turnaround.'),
-      t('motorised_logistics', 'Motorised Logistics', 1938, { supply: 0.15, constructionSlots: 1 }, 'Divisions fed by columns of trucks.'),
+      t('trunk_lines', 'Trunk Lines', 1903, { investment: 0.10, supply: 0.10 }, 'Double track between every capital and its ports.'),
+      t('motor_lorries', 'Motor Lorries', 1911, { supply: 0.15, upkeep: -0.05 }, 'Supply moves on where the rails end.'),
+      t('paved_highways', 'Paved Highways', 1920, { investment: 0.10, developmentCap: 1 }, 'Concrete roads open the interior.'),
+      t('electrified_railways', 'Electrified Railways', 1929, { investment: 0.10, supply: 0.10, developmentCap: 1 }, 'Heavier trains, faster turnaround.'),
+      t('motorised_logistics', 'Motorised Logistics', 1938, { supply: 0.15, upkeep: -0.05 }, 'Divisions fed by columns of trucks.'),
     ],
     Agriculture: [
       t('steam_threshers', 'Steam Threshers', 1902, { food: 0.03 }, 'The harvest is brought in by engine.'),
@@ -216,7 +216,7 @@ export const TECHNOLOGIES = {
       t('social_insurance', 'Social Insurance', 1903, { stability: 0.03, consumerNeed: -0.03 }, 'Pensions and sickness pay buy loyalty.'),
       t('total_mobilisation', 'Total Mobilisation', 1913, { manpower: 0.10, warSupport: 0.04 }, 'The nation in arms.'),
       t('propaganda_ministry', 'Propaganda Ministry', 1919, { warSupport: 0.06, power: 0.25 }, 'Posters, newsreels and the wireless.'),
-      t('planned_economy', 'Planned Economy', 1929, { ic: 0.05, construction: 0.05 }, 'Five-year plans and state trusts.'),
+      t('planned_economy', 'Planned Economy', 1929, { ic: 0.05, investment: 0.05 }, 'Five-year plans and state trusts.'),
       t('welfare_state', 'Welfare State', 1937, { stability: 0.05, growth: 0.05 }, 'From the cradle to the grave.'),
     ],
     Science: [
@@ -346,23 +346,14 @@ export function techCost(techId, year) {
 }
 
 /**
- * Haftalık araştırma puanı: taban 1 + okuryazarlık × 6 + üniversite kademesi
- * × 0.3; teknoloji, danışman ve parti çarpar.
+ * Haftalık araştırma puanı: taban 1 + okuryazarlık × 6; teknoloji, danışman
+ * ve parti çarpar. (Üniversite binası 2026-10-15'te kalktı: dünyada üç taneydi.)
  */
-export function researchPointsOf(nation, world = null) {
+export function researchPointsOf(nation) {
   const economy = nation.economy;
   if (!economy) return 0;
   const literacy = clamp(economy.literacy ?? 0, 0, 1);
-  let universities = 0;
-  if (world) {
-    for (const province of world.provinces ?? []) {
-      if (province.owner === nation.id) universities += province.econ?.buildings?.university ?? 0;
-    }
-    economy.universities = universities;
-  } else {
-    universities = economy.universities ?? 0;
-  }
-  const base = 1 + literacy * 6 + universities * 0.3;
+  const base = 1 + literacy * 6;
   return base * Math.max(0.2, 1 + mod(nation, 'research'));
 }
 
@@ -385,7 +376,7 @@ export function firstDiscoveryOpen(world, techId) {
 /** Bir haftalık araştırma; tamamlanan teknolojinin kimliğini döndürür. */
 export function advanceResearch(nation, year, world = null) {
   const research = ensureResearch(nation);
-  research.points += researchPointsOf(nation, world);
+  research.points += researchPointsOf(nation);
   const techId = research.current;
   if (!techId) return null;
   const cost = world ? effectiveTechCost(world, nation, techId, year) : techCost(techId, year);
@@ -522,12 +513,13 @@ export function researchPriorities(nation) {
   weights.shipClass = 0.15 * weights.naval;
   weights.research = 1.3;
   // Açılan kolun gücü: savaşta ve sanayisi olan ülkede değerli.
-  const industrial = (economy.ic?.total ?? 0) >= 20;
+  const industrial = (economy.ic?.total ?? 0) >= 80;
   weights.armor = war ? 1.5 : industrial ? 1 : 0.5;
   weights.air = weights.armor;
   weights.unlocks = war || industrial ? 1.5 : 0.6;
   weights.developmentCap = 0.12;
-  weights.constructionSlots = 0.08;
+  weights.investment = 0.10;
+  weights.upkeep = -0.6;
   weights.power = 0.12;
   return { weights };
 }

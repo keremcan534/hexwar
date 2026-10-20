@@ -27,8 +27,9 @@ function show(rows, keys) {
  */
 function measure(seed, weeks) {
   const game = headless(seed);
+  // En cok sanayisi olan ulke (harness.pickNation ile ayni olcut).
   const nation = alive(game)
-    .sort((a, b) => (b.economy.ic?.raw ?? 0) - (a.economy.ic?.raw ?? 0) || a.id - b.id)[0];
+    .sort((a, b) => (b.economy.ic?.total ?? 0) - (a.economy.ic?.total ?? 0) || a.id - b.id)[0];
   asPlayer(game, nation);
   const tiers = [0, 0, 0, 0];
   const titles = new Map();

@@ -37,8 +37,19 @@ const EQUIPMENT_FILE = {
   aircraft: 'resources/aeroplane',
 };
 
-/** Bütçe satırları: bütçe madalyonları. */
+/**
+ * Defter satırları: bütçe madalyonları. Tek Çubuk'un fon defteri (treasury.js
+ * LEDGER_LINES) ve çubuğun payları yeni kimliklerle gelir; eski kimlikler
+ * (tax, maintenance, construction...) hâlâ okuyan ekran kalabilir diye durur.
+ */
 const LEDGER_FILE = {
+  investment: 'buildings/factory',
+  development: 'buildings/mine',
+  grant: 'budget/upper_class_tax',
+  schools: 'budget/education',
+  martial: 'resources/small_arms',
+  people: 'budget/welfare',
+  bills: 'budget/army',
   tax: 'budget/treasury',
   exports: 'budget/tariff',
   treaty: 'budget/upper_class_tax',

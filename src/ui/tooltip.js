@@ -160,7 +160,46 @@ function makeCard(depth) {
   document.body.appendChild(card);
   card.addEventListener('pointerenter', () => clearTimeout(closeTimer));
   card.addEventListener('pointerleave', scheduleClose);
+  card.addEventListener('pointermove', (event) => passThrough(card, event));
   return card;
+}
+
+/**
+ * Kart okunacak yer değilse geçilecek yerdir. Kart kaynağın altına açılır;
+ * dikey listede (inşaat seçenekleri, state satırları, yasalar) bu bir sonraki
+ * iki düğmenin üstü demek. İmleç karta geçince kart açık kalıyor, alttaki
+ * düğmeye yapılan İLK tık kartın üstüne düşüp kayboluyordu (ölçüldü: Farm →
+ * Extraction Works, ilk tık seçimi değiştirmiyor). İçinde iç içe terim
+ * (data-tip) olmayan kartın altında başka bir denetim varsa kart çekilir.
+ */
+function passThrough(card, event) {
+  if (card.querySelector('[data-tip]')) return;
+  const depth = layers.findIndex((layer) => layer.card === card);
+  if (depth < 0) return;
+  const source = layers[depth].source;
+  const below = document.elementsFromPoint(event.clientX, event.clientY)
+    .find((el) => !card.contains(el) && !el.classList?.contains('tip-card'));
+  const control = below?.closest?.('button, a, input, select, [role="button"], [data-tip]');
+  if (control && control !== source && !source?.contains(control) && !control.contains(source)) {
+    closeFrom(depth);
+  }
+}
+
+/**
+ * Programla geri yüklenen kaydırma konumları. Ekranlar her tazelemede
+ * gövdeyi baştan kurup iç listelerin konumunu geri yazar; bu bir `scroll`
+ * olayı doğurur ve "kaydırma kartı düşürür" kuralı oyunda AÇIK OLAN HER
+ * KARTI haftada bir kapatıyordu — kaydırılmış bir ekran açıkken hiçbir ipucu
+ * yarım saniyeden uzun yaşamıyordu (ölçüldü). Oyuncunun kaydırması değildir.
+ */
+const quietScrolls = new WeakMap();
+export function quietScroll(node) {
+  quietScrolls.set(node, performance.now());
+}
+function onScroll(event) {
+  const at = quietScrolls.get(event.target);
+  if (at != null && performance.now() - at < 300) return;
+  hideTooltips();
 }
 
 /** Kaynağın yanına yerleştirir; ekran kenarında yön değiştirir. */
@@ -212,15 +251,36 @@ function scheduleClose() {
  * HUD ve ekranlar her tazelemenin sonunda çağırır.
  */
 export function refreshTooltips() {
-  for (const layer of layers) {
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers[i];
     const old = layer.source;
     if (!old || old.isConnected) continue;
+    let found = false;
     for (const element of document.querySelectorAll('[data-tip]')) {
       if (element.dataset.tip === old.dataset.tip && sameSource(old, element)) {
         refresh(layer, element);
+        found = true;
         break;
       }
     }
+    // Kaynağı silinip yerine aynı kimlikte öğe gelmeyen kart askıda kalıyordu
+    // (biten muharebenin şerit çipi: ölü muharebe, "1000000.00 : 1").
+    if (!found) {
+      closeFrom(i);
+      break;
+    }
+  }
+}
+
+/**
+ * Kaynağı YERİNDE duran kartlar için: sekme düğmeleri haftalık yeniden
+ * kurulmaz, yalnız içlerindeki sayı değişir (tabLedger.js). refreshTooltips
+ * bağlı kaynağı atlar; burada `root` içindeki açık kart yeniden çizilir.
+ */
+export function refreshTooltipsWithin(root) {
+  for (const layer of layers) {
+    const source = layer.source;
+    if (source?.isConnected && root.contains(source)) refresh(layer, source);
   }
 }
 
@@ -264,6 +324,13 @@ function refresh(layer, element) {
   if (!data) return;
   const html = render(data);
   if (layer.card.innerHTML !== html) layer.card.innerHTML = html;
+  // Biçim de değişebilir (canlı sekme kartı oyuncu elenince sadeleşir):
+  // eski `tip-breakdown` kalınca kart yanlış genişlikte kalıyordu.
+  const type = `tip-${data.type ?? 'simple'}`;
+  if (!layer.card.classList.contains(type)) {
+    layer.card.classList.remove('tip-simple', 'tip-breakdown', 'tip-mechanic');
+    layer.card.classList.add(type);
+  }
 }
 
 function open(element, depth) {
@@ -353,5 +420,5 @@ export function mountTooltips() {
   // Kaydırma ve tıklama kartı düşürür: yanlış yerde asılı kalmasın.
   document.addEventListener('pointerdown', hideTooltips, true);
   window.addEventListener('blur', hideTooltips);
-  document.addEventListener('scroll', hideTooltips, true);
+  document.addEventListener('scroll', onScroll, true);
 }

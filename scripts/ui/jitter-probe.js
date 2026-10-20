@@ -53,8 +53,10 @@
   }).observe(document.body, { subtree: true, attributes: true, attributeFilter: ['hidden', 'class', 'style', 'aria-hidden'] });
 
   // İzlenen kaplar: her 100 ms konum/boyut.
+  // Sekme listesi ortalıdır: herhangi bir sekme genişlerse ilk ve son sekme
+  // kayar; ikisini izlemek bütün sekme defterini (tabLedger.js) izler.
   const WATCH = ['#hud-header', '.topbar', '.top-stats', '.tb-cartouche', '.tb-minis', '.tb-res', '.turn-control',
-    '.nation-badge', '#tab-bar', '.sheet', '#movement-dock', '.movement-dock', '.notify-tray', '#notifications',
+    '.nation-badge', '#tab-bar', '.tab-list', '#tab-bar [data-screen="construction"]', '#tab-bar [data-screen="chronicle"]', '.sheet', '#movement-dock', '.movement-dock', '.notify-tray', '#notifications',
     '.command-bar', '#command-bar', '#command-dock', '.army-panel', '.screen', '.minimap', '.map-modes', '.toast', '.event-card',
     '#navy-dock', '.nd-head', '.nd-bar', '.nd-list', '.nd-reports'];
   const last = {};

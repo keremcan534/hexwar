@@ -62,9 +62,17 @@ const params = new URLSearchParams(location.search);
 const seed = params.get('seed');
 // Dünya menüden önce kurulur: perde kalktığı anda oyun hazır olmalı, ayrıca
 // kayıt yüklenmeden "Devam Et"in gerçekten devam edeceği bilinemez.
-const resumable = !seed && game.load();
+// Kayıtlar IndexedDB yuvalarındadır (game/saveStore.js): okuma zaman uyumsuz,
+// menü yükleme bitmeden kurulmaz.
+// window.game bekleyişten ÖNCE: sonraki modül (lab/entegre.js, deniz) onu
+// değerlendirildiği anda okur ve üst düzey await onu beklemez.
+window.game = game;
+let resumable = false;
 if (seed) game.newWorld(seed);
-else if (!resumable) game.newWorld();
+else {
+  resumable = (await game.load()).ok;
+  if (!resumable) game.newWorld();
+}
 
 // Ülke seçimi: yeni dünya kurulunca perde kalkar, oyuncu ülkesini haritadan
 // ya da listeden seçer (bkz. ui/nationPicker.js). Kayıttan dönüşte açılmaz.

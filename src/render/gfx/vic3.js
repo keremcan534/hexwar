@@ -21,7 +21,7 @@
 import { registerGfxStyle } from './registry.js';
 import { buildVicTextures, VIC_LAYERS, GRAD_SCALE } from './vic3Textures.js';
 import { devHexKey } from './devData.js';
-import { DEVELOPMENT_MAX, BUILDINGS } from '../../game/econ/defs.js';
+import { DEVELOPMENT_MAX } from '../../game/econ/defs.js';
 
 const GLSL = `
 uniform highp sampler2DArray uVicTex;   // birim 14 — ayrıntı dokuları (vic3Textures.js)
@@ -370,25 +370,29 @@ const TUNE = {
   // döşeme 4 hex; 12 → kaba 13 hex.
   tilesFine: 40,
   tilesCoarse: 12,
-  // Siyasi ışık: yakın kazanç, uzak kazanç, alt/üst sınır (Kerem: 0.88..1.28).
-  reliefNear: 0.75,
+  // Siyasi ışık: yakın kazanç, uzak kazanç, alt/üst sınır.
+  // 2026-10-14 (Kerem: "paintten çizilmiş gibi"): ülke rengi düz kova dolgusu
+  // gibi okunuyordu; kabartma ve aralık açıldı (0.75 / 0.82..1.20 →
+  // 1.5 / 0.64..1.42). Ton ve doygunluk yine ülkenin: komşular ayrışır,
+  // suluboya yok — yalnız parlaklık araziden.
+  reliefNear: 1.5,
   reliefFar: 0.45,
-  lightLo: 0.82,
-  lightHi: 1.20,
+  lightLo: 0.64,
+  lightHi: 1.42,
   // Arazi kipi ışığı.
   reliefT: 1.15,
   reliefTFar: 0.7,
   lightTLo: 0.72,
   lightTHi: 1.30,
   // Doku payları ve doku eğimi, yakın zoom oluk genliği.
-  texPol: 0.60,
+  texPol: 1.2,
   texTerr: 0.85,
   bump: 3.0,
   erosion: 0.022,
   // Siyasi tül: biyom parlaklık payı, toplam çarpan sınırları, karın açılması.
-  biomeLum: 0.22,
-  modLo: 0.82,
-  modHi: 1.30,
+  biomeLum: 0.42,
+  modLo: 0.62,
+  modHi: 1.50,
   snowLift: 0.10,
   // Kar eşiği/yumuşaklığı, sırt payı, eğim payı.
   snowAt: 0.48,
@@ -404,9 +408,10 @@ const TUNE = {
   farmAt: 0.76,
   townR: 0.12,
   townGrow: 0.42,
-  // Zoom solgunu: arazi 0.45 → 1.6 belirir, yakın ayrıntı 1.4 → 3.0.
-  z0: 0.45,
-  z1: 1.6,
+  // Zoom solgunu: arazi 0.3 → 1.0 belirir (eskiden 0.45 → 1.6: orta zoomda
+  // arazi hiç görünmüyordu), yakın ayrıntı 1.4 → 3.0.
+  z0: 0.3,
+  z1: 1.0,
   zn0: 1.4,
   zn1: 3.0,
   // Hata ayıklama görünümü: 1 kar, 2 kaya, 3 tarla, 4 kasaba.
@@ -457,7 +462,6 @@ function vicHexData(world) {
   pops.sort((a, b) => a - b);
   const median = per.length ? Math.max(1, per[per.length >> 1]) : 1;
   const popMed = pops.length ? Math.max(1, pops[pops.length >> 1]) : 1;
-  const farmMax = BUILDINGS.farm.max;
   const cityAt = new Map();
   for (const c of world.cities ?? []) {
     const t = c.tile;
@@ -467,11 +471,11 @@ function vicHexData(world) {
     const e = p.econ;
     const idx = p.tileIdx;
     if (!e || !idx?.length) continue;
-    const b = e.buildings ?? {};
     const dens = Math.log2(Math.max(1, e.population / idx.length) / median);
-    // Tarla yoğunluğu: nüfus yoğunluğu (oktav), tarla binası ve kalkınma.
-    const farmLv = Math.max(0, Math.min(farmMax, b.farm ?? 0)) / farmMax;
+    // Tarla yoğunluğu: nüfus yoğunluğu (oktav), verim × kalkınma (tarla
+    // binası 2026-10-15'te kalktı) ve kalkınma.
     const dev = Math.min(1, (e.development ?? 0) / DEVELOPMENT_MAX);
+    const farmLv = Math.max(0, Math.min(1, (p.fertility ?? 1) * (e.development ?? 1) / 9));
     const farm = Math.max(0, Math.min(1, 0.42 + dens * 0.22 + farmLv * 0.35 + dev * 0.15));
     const g = Math.round(Math.max(0, Math.min(1, 0.5 + dens * 0.25)) * 255);
     const centre = p.center ? p.center.row * cols + p.center.col : -1;
@@ -486,7 +490,7 @@ function vicHexData(world) {
       out[o] = Math.round(farm * 255);
       out[o + 1] = g;
       out[o + 2] = i === centre ? Math.round(size * 255) : 0;
-      out[o + 3] = ((b.railway ?? 0) > 0 ? 64 : 0) + (i === centre ? 128 : 0);
+      out[o + 3] = ((e.development ?? 1) >= 5 ? 64 : 0) + (i === centre ? 128 : 0);
     }
   }
   return out;

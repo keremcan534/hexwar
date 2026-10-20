@@ -5,11 +5,11 @@
 // doğmaz, yalnız "bu hafta yetiyor mu" sorusu kalır (TASARIM.md §3).
 //
 // Ticaret bu haftanın üretimi ve ihtiyacıyla kurulur (finishEconomy), oran ise
-// bir SONRAKİ haftanın tüketicilerine (IC kömürü, hat demiri, inşaat
+// bir SONRAKİ haftanın tüketicilerine (sanayi kömürü, hat demiri, yatırım
 // kerestesi, muharebe barutu, süvari atı) yansır: "mal bir haftada gelir".
 
 import {
-  BATTLE_SALTPETER, DEPOSIT_OUTPUT, FOOD_BASE, FOOD_FERTILITY, FOOD_NEED,
+  BATTLE_SALTPETER, DEPOSIT_DEV, DEPOSIT_DEV_BY, DEPOSIT_OUTPUT, FOOD_BASE, FOOD_FERTILITY, FOOD_NEED,
   RESOURCE_IDS, RUBBER_PER_REGIMENT, UNIT_RESOURCES,
 } from './defs.js';
 import { depositsOf, fertilityOf } from './deposits.js';
@@ -43,10 +43,21 @@ export function workforceShare(econ) {
   return Math.max(0, Math.min(1, 1 - Math.max(0, econ.soldiers ?? 0) / people));
 }
 
+/** Kaynağın kalkınma eğrisi: demir ve kereste sanayiyle daha dik büyür. */
+export function depositDevOf(id) {
+  return DEPOSIT_DEV_BY[id] ?? DEPOSIT_DEV;
+}
+
+/** Yatak çıktısının kalkınma çarpanı (maden ve demiryolu binalarının yerine). */
+export function depositDevFactor(econ, id) {
+  const curve = depositDevOf(id);
+  return curve.base + curve.perDev * (econ?.development ?? 1);
+}
+
 /**
  * Province'in haftalık kaynak çıktısı. Statü (çekirdek/uyum/işgal) her
- * kaynağı çarpar; demiryolu yatakları büyütür, çiftlik gıdayı, maden yatağı.
- * `out` verilirse içine yazar (tahsis yok).
+ * kaynağı çarpar; kalkınma yatakları büyütür. `out` verilirse içine yazar
+ * (tahsis yok).
  */
 export function provinceOutput(province, nation, out = emptyResourceMap()) {
   for (const id of RESOURCE_IDS) out[id] = 0;
@@ -54,22 +65,55 @@ export function provinceOutput(province, nation, out = emptyResourceMap()) {
   if (!econ) return out;
   const status = econ.status ?? 1;
   if (status <= 0) return out;
-  const buildings = econ.buildings ?? {};
   const work = workforceShare(econ);
   const units = Math.max(0, econ.population ?? 0) / 100000 * work;
   const fertilizer = Math.max(0, mod(nation, 'saltpeterFood')) * resourceRatio(nation, 'SALTPETER');
   const food = units * (FOOD_BASE + FOOD_FERTILITY * fertilityOf(province))
-    * (1 + 0.25 * (buildings.farm ?? 0)) * (1 + mod(nation, 'food') + fertilizer);
+    * (1 + mod(nation, 'food') + fertilizer);
   // Üretim odağı (focus.js) gıdayı ve yatakları birlikte çarpar.
   const focus = 1 + focusBonus(econ, 'output');
   out.FOOD = food * status * focus;
-  const rail = 1 + 0.1 * (buildings.railway ?? 0);
-  const mine = 1 + 0.5 * (buildings.mine ?? 0);
   const extra = 1 + mod(nation, 'resources');
   for (const line of depositsOf(province)) {
-    out[line.id] += line.size * (DEPOSIT_OUTPUT[line.id] ?? 0.3) * mine * rail * extra * status * work * focus;
+    out[line.id] += line.size * (DEPOSIT_OUTPUT[line.id] ?? 0.3) * depositDevFactor(econ, line.id)
+      * extra * status * work * focus * (econ.consent ?? 1);
   }
   return out;
+}
+
+/**
+ * provinceOutput'un DÖKÜMÜ — aynı formül, çarpan çarpan (state kartının
+ * bilgi kartları: "Timber ×1.5 ne demek, fertility ne demek"). Üretimi bu
+ * fonksiyon yapmaz; formül değişirse ikisi birlikte değişmeli.
+ */
+export function outputBreakdown(province, nation) {
+  const econ = province?.econ;
+  if (!econ) return null;
+  const status = Math.max(0, econ.status ?? 1);
+  const work = workforceShare(econ);
+  const units = Math.max(0, econ.population ?? 0) / 100000 * work;
+  const fertility = fertilityOf(province);
+  const fertilizer = Math.max(0, mod(nation, 'saltpeterFood')) * resourceRatio(nation, 'SALTPETER');
+  const focus = 1 + focusBonus(econ, 'output');
+  const foodMods = 1 + mod(nation, 'food') + fertilizer;
+  const perUnit = FOOD_BASE + FOOD_FERTILITY * fertility;
+  const extra = 1 + mod(nation, 'resources');
+  return {
+    status, work, focus,
+    food: {
+      units, fertility, perUnit, mods: foodMods,
+      need: foodNeed(econ.population ?? 0),
+      total: status > 0 ? units * perUnit * foodMods * status * focus : 0,
+    },
+    deposits: depositsOf(province).map((line) => {
+      const base = DEPOSIT_OUTPUT[line.id] ?? 0.3;
+      const dev = depositDevFactor(econ, line.id);
+      return {
+        id: line.id, size: line.size, base, dev, extra,
+        total: status > 0 ? line.size * base * dev * extra * status * work * focus * (econ.consent ?? 1) : 0,
+      };
+    }),
+  };
 }
 
 const scratch = emptyResourceMap();

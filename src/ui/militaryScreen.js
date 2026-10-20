@@ -11,8 +11,9 @@
 
 import { emblemArt, equipmentArt, traitArt } from './icons/art.js';
 import { glyph } from './icons/glyphs.js';
-import { kpi, kpiRow, tipAttr } from './kit.js';
+import { kpi, kpiRow, money, tipAttr } from './kit.js';
 import { formatPopulation } from '../game/economy.js';
+import { SUPPLY } from '../game/econ/defs.js';
 import { UNIT_CATEGORIES } from '../game/military.js';
 import { subayPortresi } from './icons/subaylar.js';
 
@@ -64,7 +65,8 @@ function headerStrip(summary, composition = [], spent = null) {
   return kpiRow([
     kpi({
       icon: emblemArt('soldiers', 'md'), label: 'Standing army', value: formatPopulation(summary.men),
-      sub: `${summary.regiments} regiments · ${pct(summary.strength)} strength`,
+      // Önce güç: dar ekranda üç nokta az önemli parçayı kessin.
+      sub: `${pct(summary.strength)} · ${summary.regiments} regiments`,
       meter: summary.strength, meterTone: summary.strength < 0.7 ? 'warn' : 'pos',
       // Eski alt bandın (sefer düzeni, saha durumu, takviye) bilgisi burada:
       // bant ordu kartını ve teçhizat panelini tekrar ediyordu.
@@ -77,7 +79,7 @@ function headerStrip(summary, composition = [], spent = null) {
     }),
     kpi({
       icon: emblemArt('recruits', 'md'), label: 'Manpower', value: formatPopulation(summary.manpower), sub: 'still to be raised',
-      tip: { text: 'Manpower\nPeople your states can still put under arms. The conscription law sets the share; barracks raise it.' },
+      tip: { text: 'Manpower\nPeople your states can still put under arms. The conscription law sets the share; technology, advisors and the Recruitment focus raise it.' },
     }),
     kpi({
       label: 'Officers', value: String(summary.officers),
@@ -93,11 +95,30 @@ function headerStrip(summary, composition = [], spent = null) {
       sub: summary.wars.length || crises.length ? wars : 'no war, no crisis', cls: summary.wars.length ? 'hot' : '',
       tip: { text: `Wars\n${wars}` },
     }),
-    kpi({
-      icon: emblemArt('gold', 'md'), label: 'Upkeep', value: summary.upkeepGold.toFixed(1), sub: 'gold a week',
-      tip: { text: `Upkeep\n${summary.armyCost.toFixed(1)} army · ${summary.navyCost.toFixed(1)} navy last week; half again more at war.\nEquipment comes from the production lines (Factories).` },
-    }),
+    supplyKpi(summary),
   ]);
+}
+
+/**
+ * İKMAL: ordunun ve donanmanın haftalık faturası (econ/bills.js). Altın yok;
+ * fatura çıktının önünden düşer. Faturaların toplamı tavanı aşınca ödenen pay
+ * (supplyShare) 1'in altına iner — ikmal krizi; kutu o zaman uyarır.
+ */
+function supplyKpi(summary) {
+  const share = summary.supplyShare ?? 1;
+  const crisis = share < 1 - 1e-6;
+  return kpi({
+    icon: emblemArt('army', 'md'), label: 'Supply', value: `${(summary.supply ?? 0).toFixed(1)}<small> IC/wk</small>`,
+    sub: crisis ? `supply crisis · ${pct(share)} paid` : 'off the top of output',
+    cls: crisis ? 'warn' : '',
+    meter: crisis ? share : null, meterTone: 'warn',
+    tip: { text: `Army supply\n${(summary.armyCost ?? 0).toFixed(1)} army · ${(summary.navyCost ?? 0).toFixed(1)} navy a week, ×${SUPPLY.war} at war. `
+      + 'Every regiment and ship is a weekly bill that comes off the top of output, before the people and development.'
+      + (crisis
+        ? `\nSupply crisis: the state's bills pass their ceiling and only ${pct(share)} is paid. Reinforcement, training and organisation recovery slow down and stability falls.`
+        : '')
+      + '\nEquipment comes from the production lines (Factories).' },
+  });
 }
 
 /* --------------------------------------------------------------------------
@@ -130,7 +151,7 @@ function leaderRow(leader, selected) {
 }
 
 /** Seçili subayın künyesi: çarpanlar ve emrindeki kuvvet. */
-function leaderDetail(leader, loose) {
+function leaderDetail(leader, loose, retireConfirm = null) {
   if (!leader) {
     return `<div class="mil-leader-detail is-empty">
       <p>Select an officer to read their bonuses.</p>
@@ -182,6 +203,10 @@ function leaderDetail(leader, loose) {
       + ' can be handed to someone else (or picked up automatically).'
     : 'This officer has nothing to release.')}">
         Release ${leader.divisions || ''} ${leader.branch === 'navy' ? 'ships' : 'divisions'}</button>
+      <button class="mil-btn mil-retire${retireConfirm === leader.id ? ' danger' : ''}" data-military-retire="${leader.id}"${tipAttr({ text: retireConfirm === leader.id
+    ? 'Click again to retire this officer.'
+    : `Retire ${leader.name} from the staff. ${leader.divisions ? `Their ${leader.divisions} ${leader.branch === 'navy' ? 'ships' : 'divisions'} go to other officers (or wait for one).` : 'They command nothing.'}
+Click twice to confirm.` })}>${retireConfirm === leader.id ? 'Confirm retire?' : 'Retire'}</button>
     </div>
   </div>`;
 }
@@ -190,23 +215,48 @@ function leaderDetail(leader, loose) {
  * Seferberlik satırı: tek düğme, tek cümle. Neden kapalıysa yazar (engel
  * listesi game/mobilization.js'ten gelir; ekran eşik hesaplamaz).
  */
+/** Call to Arms: son umut (TASARIM D6). Tek cümle, iki tık; engel oyunun kapısından. */
+function leveeRow(l) {
+  if (!l) return '';
+  const tip = l.active
+    ? `The nation is in arms: ${l.militia} of ${l.target} militia regiments raised. They fight at 40% on our own soil, never attack, and go home at the peace.`
+    : `Call to Arms
+~${l.target} militia regiments (${Math.round(l.rate * 100)}% of our free people, every people) · fight at 40% on our own soil, never attack · stability −5 · exhaustion +10, and more while they stand · subjects resent the draft.${l.blockers.length ? `
+${l.blockers.join(' ')}` : ''}`;
+  return `<button class="mil-btn mil-big levee${l.active ? ' on' : ''}" data-military-levee
+      ${l.active || l.blockers.length ? 'disabled' : ''}${tipAttr({ text: tip })}>${l.active ? `⚑ Nation in arms · ${l.militia}/${l.target}` : '⚑ Call to Arms'}</button>`;
+}
+
 function mobilizationRow(m) {
   if (!m) return '';
+  // Depo hazırlığı: seferberlik tüfeksiz durur (kura alayı yarım takım alır).
+  const short = !m.active && m.target > 0 && (m.armed ?? m.target) < m.target;
+  const depot = m.target > 0
+    ? ` The depot arms ${Math.min(m.armed ?? m.target, m.target)} of ${m.target} (${m.rifles ?? 15} rifles each)${short ? ': the rest wait for the rifle line.' : '.'}`
+    : '';
   const note = m.active
     ? `${m.conscripts} of ${m.target} conscript regiments under arms. They fight at ${Math.round(m.power * 100)}%,`
-      + ' cost normal upkeep, strain stability, and go home when the last war ends.'
+      + ' draw normal supply, strain stability, and go home when the last war ends.'
     : m.blockers.length
       ? `${m.blockers.join(' ')} Would raise ${m.target} conscript regiments over ${m.weeks} weeks.`
       : `Raise ${m.target} conscript regiments over ${m.weeks} weeks (${Math.round(m.share * 100)}% of the`
         + ` manpower pool). They fight at ${Math.round(m.power * 100)}% and leave farms and factories short.`;
   const status = m.active
-    ? `${m.conscripts}/${m.target} conscript ${m.target === 1 ? 'regiment' : 'regiments'}`
+    ? `${m.conscripts}/${m.target} conscript ${m.target === 1 ? 'regiment' : 'regiments'} under arms`
     : m.blockers.length ? m.blockers[0] : `${m.target} regiments in ${m.weeks} weeks`;
-  return `<div class="mil-theater mil-mobilize" role="group" aria-label="Mobilization" title="${esc(note)}">
-    <small>Reserve</small>
-    <button class="mil-btn ${m.active ? 'on' : ''}" data-military-mobilize
-      ${!m.active && m.blockers.length ? 'disabled' : ''}>${m.active ? '■ Demobilize' : '⚑ Mobilize'}</button>
-    <em>${esc(status)}</em>
+  const ready = !m.active && m.target > 0
+    ? `<em class="mil-reserve-depot${short ? ' short' : ''}">Depot arms ${Math.min(m.armed ?? m.target, m.target)}/${m.target}</em>`
+    : '';
+  // YEDEK KARTI: seferberlik savaşın en büyük tek kararı ama 74 px'lik, 10 px
+  // yazılı bir düğme ve üç noktayla kesilen bir satırdı (Kerem: "oyuncu
+  // göremez"). Artık başlıklı kart, tam genişlik düğme, durum cümlesi
+  // kesilmeden yazılır; ayrıntı bilgi kartında.
+  return `<div class="mil-reserve${m.active ? ' is-active' : ''}" role="group" aria-label="Mobilization"${tipAttr({ text: `Mobilization
+${note}${depot}` })}>
+    <div class="mil-reserve-head"><small>Reserve</small><em>${esc(status)}</em>${ready}</div>
+    <button class="mil-btn mil-big ${m.active ? 'on' : ''}" data-military-mobilize
+      ${!m.active && m.blockers.length ? 'disabled' : ''}>${m.active ? '■ Demobilize the reserve' : '⚑ Mobilize the reserve'}</button>
+    ${leveeRow(m.levee)}
   </div>`;
 }
 
@@ -221,9 +271,15 @@ function commandColumn(state, roster, looseByBranch, trainCost, canTrain, mobili
       ? 'No admirals. One is trained once you keep a fleet at sea.'
       : 'No officers in the staff.'}</p>`;
 
-  const toggle = (key, label, on, note) => `<button class="mil-toggle ${on ? 'on' : ''}"
-    data-military-auto="${key}" title="${esc(note)}" aria-pressed="${on}">
-    <i aria-hidden="true">${on ? '✓' : ''}</i>${esc(label)}</button>`;
+  // Kadro anahtarları AUTO hapı diliyle: tam genişlik satır, ad + tek satır
+  // ne yaptığı + AÇIK/KAPALI. Eskiden 10 px'lik onay kutusuydu ve sütunun en
+  // altında, çoğu ekranda görünür alanın dışında kalıyordu.
+  const toggle = (key, label, on, note, line) => `<button class="mil-switch ${on ? 'on' : ''}"
+    data-military-auto="${key}" aria-pressed="${on}"${tipAttr({ text: `${label}
+${note}` })}>
+    <span class="mil-switch-text"><b>${esc(label)}</b><small>${esc(line)}</small></span>
+    <span class="auto-pill${on ? ' on' : ''}" aria-hidden="true"><i class="auto-led"></i>AUTO <b>${on ? 'ON' : 'OFF'}</b></span>
+  </button>`;
 
   return `<aside class="mil-col mil-command">
     ${band('Command', `${roster.army.length} generals · ${roster.navy.length} admirals`)}
@@ -233,9 +289,16 @@ function commandColumn(state, roster, looseByBranch, trainCost, canTrain, mobili
       <button data-military-branch="navy" class="${branch === 'navy' ? 'active' : ''}"
         aria-pressed="${branch === 'navy'}">Admirals</button>
     </nav>
-    <div class="mil-leader-list">${rows}</div>
-    ${leaderDetail(selected, loose)}
+    ${/* Eylemler listenin ÜSTÜNDE: altta dururken 1366'da ekranın görünür
+          alanının dışına düşüyordu (yedek kartı, kadro anahtarları). */''}
     <div class="mil-command-actions">
+      <div class="mil-switches">
+      ${toggle('autoCreate', 'Auto-create leaders', roster.options.autoCreate,
+    'The staff renews itself: retirements are replaced, the corps grows with the army and idle officers'
+    + ' retire when it shrinks. New officers are paid from the development fund.', 'staff grows and shrinks with the army')}
+      ${toggle('autoAssign', 'Auto-assign leaders', roster.options.autoAssign,
+    'Every division without a commander is handed to the least burdened officer each week.', 'loose divisions get a commander')}
+      </div>
       ${branch === 'navy' ? '' : `<div class="mil-theater" role="group" aria-label="All commands">
         <small>All commands</small>
         <button class="mil-btn" data-military-all-stance="advance"
@@ -245,15 +308,12 @@ function commandColumn(state, roster, looseByBranch, trainCost, canTrain, mobili
       </div>${mobilizationRow(mobilization)}`}
       <button class="mil-btn wide" data-military-train="${branch}" ${canTrain ? '' : 'disabled'}
         title="${esc(canTrain
-    ? `Trains a new officer for ${trainCost} gold. Each addition to the staff costs more.`
-    : `The treasury cannot cover the ${trainCost} gold this commission costs.`)}">
-        ${branch === 'navy' ? 'Create Admiral' : 'Create General'} · ${trainCost} gold</button>
-      ${toggle('autoCreate', 'Auto-create leaders', roster.options.autoCreate,
-    'The staff renews itself once a year: retirements are replaced and the corps grows'
-    + ' with the army, paid from the treasury.')}
-      ${toggle('autoAssign', 'Auto-assign leaders', roster.options.autoAssign,
-    'Every division without a commander is handed to the least burdened officer each week.')}
+    ? `Trains a new officer for ${money(trainCost, 0)}, paid from the development fund. Each addition to the staff costs more.`
+    : `The development fund cannot cover the ${money(trainCost, 0)} this commission costs without sinking below its floor.`)}">
+        ${branch === 'navy' ? 'Create Admiral' : 'Create General'} · ${money(trainCost, 0)}</button>
     </div>
+    <div class="mil-leader-list">${rows}</div>
+    ${leaderDetail(selected, loose, state.retireConfirm)}
   </aside>`;
 }
 
@@ -291,8 +351,10 @@ function buildRow(option, ironclad) {
   const where = option.source ? `${option.source.province} · ${option.source.region}` : 'no state can raise it';
   const traits = [option.support ? 'support arm' : null, option.entrenched ? 'digs in' : null].filter(Boolean).join(' · ');
   const why = blocked ? option.blockers.map((b) => b.text).join('\n') : '';
+  // Alayın peşin bedeli yok (TEK ÇUBUK): insan, teçhizat ve haftalık ikmal.
+  const supply = (option.upkeep ?? 0).toFixed(2);
   const orderTip = blocked ? `Not possible now\n${why}`
-    : `Order one ${option.name} regiment\n${option.weeks} weeks · ${option.gold} gold · ${formatPopulation(option.manpower)} men`
+    : `Order one ${option.name} regiment\n${option.weeks} weeks · ${formatPopulation(option.manpower)} men · ${supply} IC a week in supply`
       + `\nRaised in ${option.source?.province ?? '—'} (pool ${formatPopulation(option.sourcePool)})`
       + (fill < 1 ? `\nShort of equipment: it marches out at about ${Math.round(Math.max(0.1, fill) * 100)}% strength and fills up as equipment arrives.` : '');
   return `<div class="mil-unit ${blocked ? 'is-blocked' : ''}">
@@ -307,8 +369,8 @@ function buildRow(option, ironclad) {
       ${statBar('Speed', option.moves, STAT_MAX.moves)}
     </div>
     <div class="mil-unit-cost">
-      <span class="mil-chip"${tipAttr({ text: 'Training time at full military funding.' })}>${glyph('hourglass', 'inline')}<b>${option.weeks}</b><small>wk</small></span>
-      <span class="mil-chip gold"${tipAttr({ text: 'Paid from the treasury when the order is placed.' })}>${emblemArt('gold', 'xs')}<b>${option.gold}</b></span>
+      <span class="mil-chip"${tipAttr({ text: 'Training time with the army fully supplied; a supply crisis lengthens it.' })}>${glyph('hourglass', 'inline')}<b>${option.weeks}</b><small>wk</small></span>
+      <span class="mil-chip"${tipAttr({ text: `Weekly supply\n${supply} IC a week in peace, ×${SUPPLY.war} at war: a bill that comes off the top of output for as long as it serves. Nothing is paid up front.` })}>${emblemArt('army', 'xs')}<b>${(option.upkeep ?? 0).toFixed(1)}</b><small>/wk</small></span>
       <span class="mil-chip"${tipAttr({ text: 'Men drawn from the state when the regiment marches out.' })}>${emblemArt('people', 'xs')}<b>${formatPopulation(option.manpower)}</b></span>
       ${equipment}
       ${fill < 1 && !blocked ? `<span class="mil-chip warn"${tipAttr({ text: 'Short of equipment\nTraining does not wait: the regiment marches out at this strength and the production lines fill it up later.' })}><b>${Math.round(Math.max(0.1, fill) * 100)}%</b><small>str</small></span>` : ''}
@@ -354,7 +416,7 @@ function levyPanel(levy) {
         + `\nTheir dead fall from their own share of the population.`
         + (row.accepted ? '' : `\nNot accepted: only part of them serve (Citizenship law).`)
       : `${row.name} — exempt\nNo regiment or reinforcement draws on them;`
-        + ` their men stay in the fields and pay tax.`
+        + ` their men stay in the fields and the workshops.`
         + (row.accepted
           ? `\nSparing an accepted people angers the unaccepted peoples you still draft.` : '');
     return `<label class="mil-levy-row ${row.levied ? '' : 'off'}"${tipAttr({ text: tip })}>
@@ -404,11 +466,15 @@ function buildColumn(state, options, summary, logistics = [], levy = null, stats
     return `<section class="mil-col mil-build is-stats">${viewbar}${statsBox(stats)}</section>`;
   }
   const category = state.category ?? 'all';
+  // Seçilen kategoride henüz açık kol yoksa (1900'de Armour, Air) kilitliler
+  // geliş yılıyla gösterilir: boş liste "bu sekme bozuk" gibi okunuyordu.
+  const categoryOpen = category === 'all'
+    || options.some((option) => option.category === category && option.available);
   const visible = options.filter((option) => {
     if (category !== 'all' && option.category !== category) return false;
     // Tarihi gelmemiş kol varsayılan olarak listede durmaz: 1836'da tank
     // satırı, oyuncunun yüz yıl boyunca hiçbir şey yapamayacağı bir satırdır.
-    if (!state.showLocked && !option.available) return false;
+    if (!state.showLocked && !option.available && categoryOpen) return false;
     return true;
   });
   const tabs = UNIT_CATEGORIES.map(([id, label]) => `
@@ -463,7 +529,7 @@ function queueRow(row) {
       <button class="mil-icon" data-military-down="${row.id}" ${row.last ? 'disabled' : ''}
         title="Move down.">▼</button>
       <button class="mil-icon danger" data-military-cancel="${row.id}"
-        title="Cancel the order. Only the unspent share of the gold and equipment comes back.">✕</button>
+        title="Cancel the order. The unspent share of the equipment comes back and the men go home.">✕</button>
     </div>
   </div>`;
 }

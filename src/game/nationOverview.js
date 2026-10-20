@@ -11,13 +11,13 @@ import { alliesOf } from './alliances.js';
 import { ensureChronicle } from './chronicle.js';
 import { END_YEAR, calendarYear } from './calendar.js';
 import { atWar, nationStrength } from './diplomacy.js';
-import { weeklyBalanceOf } from './economy.js';
 import { RESOURCES, RESOURCE_IDS } from './econ/defs.js';
 import { GOALS, goalMet, scoreboard } from './hegemony.js';
 import { characterLine } from './identity.js';
 import { INFAMY_COALITION } from './infamy.js';
 import { warScore } from './peace.js';
 import { governmentType, rulingParty } from './politics.js';
+import { money } from './money.js';
 
 /** Son olaylar kutusu hep bu kadar satır tutar; kutu değerle boy değiştirmez. */
 export const RECENT_EVENTS = 5;
@@ -93,8 +93,8 @@ function outlookOf(ctx) {
   if (short) {
     problems.push({ tone: short.ratio < 0.5 ? 'bad' : 'warn', text: `${short.name} covers only ${Math.round(short.ratio * 100)}% of national need; imports or new production must close the gap.` });
   }
-  const weekly = weeklyBalanceOf(nation);
-  if (weekly < 0) problems.push({ tone: 'bad', text: `The treasury runs a deficit of ${Math.abs(weekly).toFixed(1)} gold a week.` });
+  const bills = nation.economy?.bills;
+  if (bills && bills.s < 1) problems.push({ tone: 'bad', text: `Supply crisis: the state's bills (${money(bills.owed, 0)}) exceed ${Math.round(bills.room / Math.max(1, nation.economy?.ic?.output ?? 1) * 100)}% of output; only ${Math.round(bills.s * 100)}% is paid.` });
   if ((nation.stability ?? 1) < 0.4) problems.push({ tone: 'bad', text: `Stability has fallen to ${Math.round((nation.stability ?? 0) * 100)}%.` });
   if ((nation.infamy ?? 0) >= INFAMY_COALITION * 0.6) {
     problems.push({ tone: 'warn', text: `Infamy stands at ${Math.round(nation.infamy)} of ${INFAMY_COALITION}; at ${INFAMY_COALITION} the powers form a coalition.` });
@@ -229,8 +229,8 @@ export function nationOverview(world, nation) {
     resources,
     state: {
       capital: capitalName,
-      treasury: Math.round(nation.gold ?? 0),
-      weekly: weeklyBalanceOf(nation),
+      output: Math.round(nation.economy?.ic?.output ?? 0),
+      fund: Math.round(nation.fund ?? 0),
       stability: nation.stability ?? 0,
       warSupport: nation.warSupport ?? 0,
       infamy: nation.infamy ?? 0,

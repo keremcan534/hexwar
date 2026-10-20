@@ -8,12 +8,13 @@
 // yerinde önizler; satırın üstünde durmak bölgeyi haritada işaretler.
 
 import {
-  NAVY_PRIORITIES, NAVY_STEPS, SCRAP_REFUND, SQUADRON, navyView, resetZonePriorities, scrapObsolete,
+  NAVY_PRIORITIES, NAVY_STEPS, SCRAP_REFUND, SQUADRON, navyView, resetZonePriorities, scrapGroup, scrapObsolete,
   setZonePriority,
 } from '../game/navy.js';
 import { linePriorityOf } from '../game/econ/industry.js';
 import { seaTradeLoss } from '../game/seaLanes.js';
 import { tipAttr } from './kit.js';
+import { quietScroll } from './tooltip.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -37,6 +38,8 @@ export class NavyDock {
     this.focus = null;
     this.confirmScrap = false;
     this.confirmTimer = 0;
+    this.confirmKey = null;
+    this.fleetOpen = false;
     this.root = document.createElement('aside');
     this.root.className = 'navy-dock';
     this.root.id = 'navy-dock';
@@ -48,6 +51,10 @@ export class NavyDock {
     // satırları yeniden kurar, imleç yerinde durdukça önizleme geri yazılır.
     this.root.addEventListener('pointerover', (event) => this.onOver(event));
     this.root.addEventListener('pointerleave', () => this.hover(null, null));
+    // Filo katının açık/kapalı hâli tazelemeden sağ çıksın ('toggle' kabarmaz).
+    this.root.addEventListener('toggle', (event) => {
+      if (event.target.matches?.('.nd-fleet')) this.fleetOpen = event.target.open;
+    }, true);
     for (const name of ['turn', 'world', 'mapmode', 'politics']) game.on?.(name, () => this.refresh());
     window.addEventListener('resize', () => this.fit());
     // Deniz haritasında suya tıklamak bölgesini panelde öne çıkarır.
@@ -87,7 +94,19 @@ export class NavyDock {
       return;
     }
     const view = navyView(this.game.world, nation);
-    this.root.innerHTML = this.html(view);
+    // Aynı içerik yeniden yazılmaz; yazılırsa bölge listesinin kaydırması
+    // korunur — haftalık tazeleme listeyi her hafta başa atıyordu.
+    const html = this.html(view);
+    if (html !== this.lastHtml || !this.root.firstChild) {
+      const keep = this.root.querySelector('.nd-list')?.scrollTop ?? 0;
+      this.root.innerHTML = html;
+      this.lastHtml = html;
+      const list = keep ? this.root.querySelector('.nd-list') : null;
+      if (list) {
+        quietScroll(list);
+        list.scrollTop = keep;
+      }
+    }
     if (this.preview) this.paint();
     this.fit();
   }
@@ -98,10 +117,16 @@ export class NavyDock {
    */
   fit() {
     if (this.root.hidden) return;
-    const modes = document.getElementById('map-modes')?.getBoundingClientRect();
-    const floor = modes?.height ? modes.top : window.innerHeight;
-    const top = this.root.getBoundingClientRect().top;
-    this.root.style.maxHeight = `${Math.max(160, Math.floor(floor - top - 10))}px`;
+    // Taban yatayda çakışan en üst alt öğe: harita kipleri, bildirim tepsisi,
+    // komuta rıhtımı. Yalnız kipler sayılınca 1366×768'de panel bildirim
+    // zilini ve Assign kartının köşesini örtüyordu (ölçüldü).
+    const me = this.root.getBoundingClientRect();
+    let floor = window.innerHeight;
+    for (const id of ['map-modes', 'notify-stack', 'command-dock']) {
+      const r = document.getElementById(id)?.getBoundingClientRect();
+      if (r?.height && r.right > me.left && r.left < me.right && r.top > me.top) floor = Math.min(floor, r.top);
+    }
+    this.root.style.maxHeight = `${Math.max(160, Math.floor(floor - me.top - 10))}px`;
   }
 
   html(view) {
@@ -134,6 +159,7 @@ export class NavyDock {
     if (!view.total && !view.rows.length) {
       return `${head}<p class="nd-empty">No coast, no navy.</p>`;
     }
+    const fleet = view.fleet.length ? this.fleetHtml(view) : '';
     const empty = !view.total
       ? `<p class="nd-empty">No warships yet. Build them on the Military screen (Naval): a coastal state supplies the crew, the dockyards the ships equipment.</p>` : '';
     const rows = view.rows.map((row) => this.rowHtml(row, view)).join('');
@@ -144,10 +170,34 @@ export class NavyDock {
     const reports = `<div class="nd-reports"${older ? tipAttr({ text: `Earlier battles\n${older}` }) : ''}><small>Last sea battle${view.reports.length > 1 ? ` · ${view.reports.length} in six months` : ''}</small>${recent.length
       ? this.reportHtml(recent[0])
       : '<div class="nd-report quiet"><b>—</b><span>No sea battles in the last six months.</span></div>'}</div>`;
-    return `${head}${blockade}${empty}
+    return `${head}${blockade}${fleet}${empty}
       <div class="nd-bar" data-nd-bar>${this.barHtml(view)}</div>
       <div class="nd-list">${rows}</div>
       ${reports}`;
+  }
+
+  /**
+   * Filo katı: sınıf (ve denizaltı) başına gövde sayısı ve hurda. Gemi gemi
+   * liste yok — denizler gibi grup grup; hangi gövdenin gideceğini
+   * navy.scrapPicks seçer (önce limandaki, sonra en hasarlı).
+   */
+  fleetHtml(view) {
+    const button = (row, count) => {
+      const key = `${row.group}:${count}`;
+      const n = count === 'all' ? row.count : 1;
+      const confirming = this.confirmKey === key;
+      const what = n === 1 ? `one ${row.name.toLowerCase()}` : `all ${row.count} ${row.plural}`;
+      return `<button class="k-btn xs${confirming ? ' confirm' : ''}" type="button" data-nd-scrapg="${key}"${tipAttr({ text: `Scrap ${what}\nShips in port go first, then the most damaged. The crew goes home, the upkeep stops and the yards take back ${Math.round(SCRAP_REFUND * 100)}% of the ships equipment.\nClick twice to confirm.` })}>${confirming ? `Confirm −${n}` : count === 'all' ? 'Scrap all' : 'Scrap 1'}</button>`;
+    };
+    const title = (row) => (row.count === 1 ? row.name : row.plural.charAt(0).toUpperCase() + row.plural.slice(1));
+    const rows = view.fleet.map((row) => `<div class="nd-frow">
+        <b>${row.count}</b><span>${esc(title(row))}${row.obsolete ? ' <em class="nd-tag">obsolete</em>' : ''}</span>
+        <small>${row.inPort} in port</small>
+        <span class="nd-fbtn">${button(row, 1)}${row.count > 1 ? button(row, 'all') : ''}</span>
+      </div>`).join('');
+    const hulls = view.fleet.reduce((sum, row) => sum + row.count, 0);
+    return `<details class="nd-fleet"${this.fleetOpen ? ' open' : ''}>
+      <summary>Fleet · ${hulls} ${hulls === 1 ? 'hull' : 'hulls'}<small>scrap ships</small></summary>${rows}</details>`;
   }
 
   barHtml(view) {
@@ -296,6 +346,30 @@ export class NavyDock {
       const count = scrapObsolete(this.game.world, nation);
       if (count) {
         this.game.turns?.addLog(`${count} obsolete warship${count === 1 ? '' : 's'} scrapped: the crews go home, the yards take back the steel.`, { kind: 'NAVAL', key: 'scrap' });
+      }
+      this.refresh();
+      this.game.emit?.('economy');
+      this.game.requestRender?.();
+      return;
+    }
+    const pick = event.target.closest?.('[data-nd-scrapg]');
+    if (pick) {
+      // İki tık: ilki onay ister, dört saniye içinde ikincisi hurdaya ayırır.
+      const key = pick.dataset.ndScrapg;
+      clearTimeout(this.confirmTimer);
+      if (this.confirmKey !== key) {
+        this.confirmKey = key;
+        this.confirmTimer = setTimeout(() => { this.confirmKey = null; this.refresh(); }, 4000);
+        this.refresh();
+        return;
+      }
+      this.confirmKey = null;
+      const [groupText, countText] = key.split(':');
+      const group = groupText === 'sub' ? 'sub' : Number(groupText);
+      const count = scrapGroup(this.game.world, nation, group, countText === 'all' ? Infinity : Number(countText));
+      if (count) {
+        const what = group === 'sub' ? `submarine${count === 1 ? '' : 's'}` : `warship${count === 1 ? '' : 's'}`;
+        this.game.turns?.addLog(`${count} ${what} scrapped: the crews go home, the yards take back the steel.`, { kind: 'NAVAL', key: 'scrap' });
       }
       this.refresh();
       this.game.emit?.('economy');

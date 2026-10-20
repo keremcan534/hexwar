@@ -149,6 +149,7 @@ const live = new Set();
 /** Hareket kapalıyken bekleyen (büyük ama duran) bayraklar; ayar açılınca canlanır. */
 const parked = new Set();
 let rafId = 0;
+let timerId = 0;
 let lastFrame = 0;
 
 /** Görünürlük: ekrandan çıkan bayrak çizilmez; geri girince saat yeniden kurulur. */
@@ -196,8 +197,7 @@ function reducedMotion() {
 }
 
 function loop(now) {
-  rafId = requestAnimationFrame(loop);
-  if (now - lastFrame < TUNE.frameMs) return;
+  rafId = 0;
   lastFrame = now;
   const time = now / 1000;
   let drawn = 0;
@@ -205,18 +205,34 @@ function loop(now) {
   // Görünen bayrak kalmadıysa saat DURUR: gizli bayrak için her karede rAF
   // istemek sürekli döngü demekti (bkz. CLAUDE.md). Perde kalkınca sınıf
   // gözcüsü, ekrana geri giren bayrak için görünürlük gözcüsü yeniden kurar.
-  if (!drawn) stopClock();
+  if (!drawn) return;
+  schedule();
+}
+
+/**
+ * Sonraki kare zamanlayıcıyla beklenir, rAF yalnız çizim anında istenir.
+ * Eskiden döngü her vsync'te rAF'ı yeniden kuruyor, 33 ms dolmadıysa boş
+ * dönüyordu: üst çubuktaki bayrak hep görünür olduğundan oyun duraklatılmış
+ * ve fare kıpırdamıyorken bile sayfa her vsync'te (60-144/sn) kare ve stil
+ * hesabı üretiyordu (ölçüldü: 5 sn'de 1161-1203 geri çağrı). Şimdi ~30/sn.
+ */
+function schedule() {
+  const wait = Math.max(0, TUNE.frameMs - (performance.now() - lastFrame));
+  timerId = setTimeout(() => {
+    timerId = 0;
+    rafId = requestAnimationFrame(loop);
+  }, wait);
 }
 
 function startClock() {
-  if (rafId || document.hidden || !live.size) return;
-  lastFrame = 0;
+  if (rafId || timerId || document.hidden || !live.size) return;
   rafId = requestAnimationFrame(loop);
 }
 
 function stopClock() {
-  if (!rafId) return;
+  clearTimeout(timerId);
   cancelAnimationFrame(rafId);
+  timerId = 0;
   rafId = 0;
 }
 

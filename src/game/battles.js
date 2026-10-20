@@ -23,6 +23,7 @@ import { recordSurrender } from './pockets.js';
 import { resourceRatio } from './econ/resources.js';
 import { mod } from './modifiers.js';
 import { controllerOf } from './control.js';
+import { hasPassage } from './nationBirth.js';
 import { nodeNeighbors, riverBetween } from '../world/provinceGraph.js';
 
 /** Muharebe bu kadar raunttan sonra zorla biter; kazanan guce gore belirlenir. */
@@ -127,7 +128,7 @@ export function battleSides(world, battle) {
  */
 export function tileDefense(tile) {
   return (tile.terrain.defense ?? 0) + (tile.city ? 0.12 + tile.city.level * 0.04 : 0)
-    + 0.15 * (tile.province?.buildings?.fort ?? 0);
+    + 0.15 * (tile.province?.fort ?? 0);
 }
 
 /**
@@ -447,7 +448,8 @@ function retreatDestination(world, army, awayFrom) {
     }
     for (const near of nodeNeighbors(world, tile)) {
       if (seen.has(near) || !near.terrain.passable) continue;
-      if (controllerOf(near) !== army.nationId) continue;
+      // Geçiş izni olan topraktan çekilinir (kopan devlet, nationBirth.js).
+      if (controllerOf(near) !== army.nationId && !hasPassage(world, controllerOf(near), army.nationId)) continue;
       seen.add(near);
       queue.push({ tile: near, depth: depth + 1 });
     }

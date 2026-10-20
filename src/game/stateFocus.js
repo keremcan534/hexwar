@@ -4,11 +4,14 @@
 
 import { FOCUS_BY_ID, assimilationFocusWeekly, focusOf, focusSlots, nextSlotAt } from './focus.js';
 import { provinceOutput } from './econ/resources.js';
-import { formatPopulation, provinceTaxBase, taxBreakdown } from './economy.js';
-import { resourceValue } from './buildPreview.js';
+import { formatPopulation } from './economy.js';
+import { resourceValue } from './econ/trade.js';
+import { developmentCap, levelCost, weeklyInvestment } from './econ/investment.js';
+import { INVEST } from './econ/defs.js';
 import { provinceManpower } from './recruitment.js';
 import { foreignShareOf, isAccepted } from './culture.js';
 import { occupiedShareOf } from './provinces.js';
+import { money } from './money.js';
 
 export function focusedStates(world, nation) {
   return (world.provinces ?? []).filter((p) => p.owner === nation.id && p.econ?.focus && focusOf(p.econ));
@@ -63,8 +66,7 @@ export function focusPreview(world, nation, cluster, focusId) {
     const out = provinceOutput(cluster, nation);
     let value = 0;
     for (const [id, amount] of Object.entries(out)) value += amount * resourceValue(world, nation, id);
-    const share = cluster.owner === nation.id ? stateTax(world, nation, cluster) : 0;
-    return { value, tax: share, men: provinceManpower(world, cluster.center) };
+    return { value, cost: levelCost(cluster), men: provinceManpower(world, cluster.center) };
   };
   let before;
   let after;
@@ -77,8 +79,12 @@ export function focusPreview(world, nation, cluster, focusId) {
     econ.focus = saved;
   }
   const lines = [];
-  if (focusId === 'production') lines.push(`+${(after.value - before.value).toFixed(2)} gold-worth of goods a week`);
-  if (focusId === 'tax') lines.push(`+${(after.tax - before.tax).toFixed(2)} gold a week`);
+  if (focusId === 'production') lines.push(`+${money(after.value - before.value, 2)} worth of goods a week`);
+  if (focusId === 'develop') {
+    lines.push((econ.development ?? 1) < developmentCap(nation)
+      ? `Next level ${money(before.cost, 0)} → ${money(after.cost, 0)}; the development fund comes here first`
+      : 'At the development cap: research and literacy raise it');
+  }
   if (focusId === 'recruit') lines.push(`+${formatPopulation(after.men - before.men)} men to draft`);
   if (focusId === 'integrate') {
     lines.push(econ.core ? 'Core state: unrest −1' : `Compliance ${Math.round(econ.control ?? 0)}% grows twice as fast`);
@@ -93,21 +99,37 @@ export function focusPreview(world, nation, cluster, focusId) {
   return { lines, before, after };
 }
 
-/** Bir state'in haftalık vergisi: kendi tabanı × ulusal çarpanlar. */
-function stateTax(world, nation, cluster) {
-  const all = taxBreakdown(world, nation);
-  return provinceTaxBase(cluster.econ) * all.law * all.stability * all.consumer * all.mods;
+/**
+ * Develop odağı fonun TAMAMINI o state'e bağlar (investmentTarget). YZ onu
+ * en kalabalık çekirdeğe koyuyordu: büyük state'in kademesi en pahalısıdır ve
+ * yoksul ülkede fon yıllarca tek kademeyi bekliyordu (ölçüldü: mh2 Kazgrad,
+ * haftada 5.7 IC yatırım, odaklı kademe 2110 IC, 5 yılda sıfır kademe; aynı
+ * ülkenin 200-500 IC'lik state'leri boştaydı). YZ odağı yalnız sıradaki
+ * kademesi bu kadar haftalık yatırımla alınabilecek state'e koyar, iki katını
+ * aşınca kaldırır (arada gidip gelmesin).
+ */
+const DEVELOP_FOCUS_WEEKS = 52;
+
+/** Odakla birlikte sıradaki kademe kaç haftalık yatırım. */
+function developWeeks(nation, cluster) {
+  const weekly = weeklyInvestment(nation);
+  if (!(weekly > 0)) return Infinity;
+  const cost = levelCost(cluster) * (cluster.econ.focus === 'develop' ? 1 : INVEST.focusDiscount);
+  return cost / weekly;
 }
 
 /**
  * YZ ve devredilmiş hükûmet aynı kapıdan geçer: boş yuvalara en çok getirecek
  * odak. Uyum düşük fethedilmiş state → Integration; kalabalık azınlık →
- * Assimilation; gerisi en kalabalık çekirdeğe Taxation. Var olan odak,
- * geçersizleşmedikçe yerinde kalır (oyuncunun kararını ezmez).
+ * Assimilation; gerisi tavanın altındaki, kademesi bir yılda alınabilen en
+ * kalabalık çekirdeğe Develop. Var olan odak, geçersizleşmedikçe yerinde kalır.
  */
 export function autoFocus(world, nation) {
   for (const cluster of focusedStates(world, nation)) {
     if (focusBlockers(world, nation, cluster, cluster.econ.focus).length) cluster.econ.focus = null;
+    else if (cluster.econ.focus === 'develop' && developWeeks(nation, cluster) > 2 * DEVELOP_FOCUS_WEEKS) {
+      cluster.econ.focus = null;
+    }
     // Tamamlanmış entegrasyon yuvayı boşa tutmasın.
     else if (cluster.econ.focus === 'integrate' && cluster.econ.core && (cluster.econ.unrest ?? 0) < 0.5) {
       cluster.econ.focus = null;
@@ -119,6 +141,7 @@ export function autoFocus(world, nation) {
   }
   let free = focusSlots(nation) - focusedStates(world, nation).length;
   if (free <= 0) return 0;
+  const cap = developmentCap(nation);
   const picks = [];
   for (const cluster of world.provinces ?? []) {
     if (cluster.owner !== nation.id || !cluster.econ || cluster.econ.focus) continue;
@@ -129,10 +152,17 @@ export function autoFocus(world, nation) {
     if (!econ.core && (econ.control ?? 0) < 70) {
       picks.push({ cluster, id: 'integrate', score: people * (1 - (econ.control ?? 0) / 100) * 3 });
     }
-    if (foreign >= 0.25 && (econ.unrest ?? 0) < 6 && !isAccepted(nation, cluster.culture)) {
+    // Kabine bir halkı KENDİ ana yurdunda eritmez (ana yurt kilidi): odak
+    // kilidi aşar ve ana yurtta yitirilen nüfus %5.1-5.4'e çıkmıştı (eşik %5,
+    // audit:homeland T2a); dünya çeşitliliği başlangıcın 0.65 katına iniyordu.
+    // Oyuncu elle yine koyabilir.
+    if (foreign >= 0.25 && (econ.unrest ?? 0) < 6 && !isAccepted(nation, cluster.culture)
+      && cluster.homeland !== cluster.culture) {
       picks.push({ cluster, id: 'assimilate', score: people * foreign * 1.5 });
     }
-    if (econ.core) picks.push({ cluster, id: 'tax', score: people * (1 + 0.15 * (econ.development ?? 1)) * 0.5 });
+    if (econ.core && (econ.development ?? 1) < cap && developWeeks(nation, cluster) <= DEVELOP_FOCUS_WEEKS) {
+      picks.push({ cluster, id: 'develop', score: people * 0.5 });
+    }
   }
   picks.sort((a, b) => b.score - a.score || a.cluster.id - b.cluster.id);
   let placed = 0;
