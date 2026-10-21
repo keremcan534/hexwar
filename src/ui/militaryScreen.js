@@ -203,7 +203,7 @@ function leaderDetail(leader, loose, retireConfirm = null) {
       + ' can be handed to someone else (or picked up automatically).'
     : 'This officer has nothing to release.')}">
         Release ${leader.divisions || ''} ${leader.branch === 'navy' ? 'ships' : 'divisions'}</button>
-      <button class="mil-btn mil-retire${retireConfirm === leader.id ? ' danger' : ''}" data-military-retire="${leader.id}"${tipAttr({ text: retireConfirm === leader.id
+      <button class="mil-btn mil-retire danger${retireConfirm === leader.id ? ' confirming' : ''}" data-military-retire="${leader.id}"${tipAttr({ text: retireConfirm === leader.id
     ? 'Click again to retire this officer.'
     : `Retire ${leader.name} from the staff. ${leader.divisions ? `Their ${leader.divisions} ${leader.branch === 'navy' ? 'ships' : 'divisions'} go to other officers (or wait for one).` : 'They command nothing.'}
 Click twice to confirm.` })}>${retireConfirm === leader.id ? 'Confirm retire?' : 'Retire'}</button>
@@ -216,18 +216,19 @@ Click twice to confirm.` })}>${retireConfirm === leader.id ? 'Confirm retire?' :
  * listesi game/mobilization.js'ten gelir; ekran eşik hesaplamaz).
  */
 /** Call to Arms: son umut (TASARIM D6). Tek cümle, iki tık; engel oyunun kapısından. */
-function leveeRow(l) {
+function leveeRow(l, arming = false) {
   if (!l) return '';
-  const tip = l.active
+  const tip = arming && !l.active ? 'Click again to call the nation to arms. It cannot be undone until the peace.' : l.active
     ? `The nation is in arms: ${l.militia} of ${l.target} militia regiments raised. They fight at 40% on our own soil, never attack, and go home at the peace.`
     : `Call to Arms
 ~${l.target} militia regiments (${Math.round(l.rate * 100)}% of our free people, every people) · fight at 40% on our own soil, never attack · stability −5 · exhaustion +10, and more while they stand · subjects resent the draft.${l.blockers.length ? `
 ${l.blockers.join(' ')}` : ''}`;
-  return `<button class="mil-btn mil-big levee${l.active ? ' on' : ''}" data-military-levee
-      ${l.active || l.blockers.length ? 'disabled' : ''}${tipAttr({ text: tip })}>${l.active ? `⚑ Nation in arms · ${l.militia}/${l.target}` : '⚑ Call to Arms'}</button>`;
+  const confirming = arming && !l.active && !l.blockers.length;
+  return `<button class="mil-btn mil-big levee danger${l.active ? ' on' : ''}${confirming ? ' confirming' : ''}" data-military-levee
+      ${l.active || l.blockers.length ? 'disabled' : ''}${tipAttr({ text: tip })}>${l.active ? `⚑ Nation in arms · ${l.militia}/${l.target}` : confirming ? 'Confirm the Call to Arms?' : '⚑ Call to Arms'}</button>`;
 }
 
-function mobilizationRow(m) {
+function mobilizationRow(m, leveeArming = false) {
   if (!m) return '';
   // Depo hazırlığı: seferberlik tüfeksiz durur (kura alayı yarım takım alır).
   const short = !m.active && m.target > 0 && (m.armed ?? m.target) < m.target;
@@ -254,9 +255,9 @@ function mobilizationRow(m) {
   return `<div class="mil-reserve${m.active ? ' is-active' : ''}" role="group" aria-label="Mobilization"${tipAttr({ text: `Mobilization
 ${note}${depot}` })}>
     <div class="mil-reserve-head"><small>Reserve</small><em>${esc(status)}</em>${ready}</div>
-    <button class="mil-btn mil-big ${m.active ? 'on' : ''}" data-military-mobilize
+    <button class="mil-btn mil-big ${m.active ? 'on' : 'primary'}" data-military-mobilize
       ${!m.active && m.blockers.length ? 'disabled' : ''}>${m.active ? '■ Demobilize the reserve' : '⚑ Mobilize the reserve'}</button>
-    ${leveeRow(m.levee)}
+    ${leveeRow(m.levee, leveeArming)}
   </div>`;
 }
 
@@ -305,7 +306,7 @@ ${note}` })}>
           title="Order every army command to advance. One click instead of one per general; individual commands can still be overridden.">➤ Advance</button>
         <button class="mil-btn" data-military-all-stance="hold"
           title="Order every army command to hold its front.">■ Hold</button>
-      </div>${mobilizationRow(mobilization)}`}
+      </div>${mobilizationRow(mobilization, state.leveeConfirm)}`}
       <button class="mil-btn wide" data-military-train="${branch}" ${canTrain ? '' : 'disabled'}
         title="${esc(canTrain
     ? `Trains a new officer for ${money(trainCost, 0)}, paid from the development fund. Each addition to the staff costs more.`
@@ -377,7 +378,7 @@ function buildRow(option, ironclad) {
     </div>
     <div class="mil-unit-acts">
       <button class="k-btn primary" data-military-build="${option.id}" ${blocked ? 'disabled aria-disabled="true"' : ''}${tipAttr({ text: orderTip })}>Order</button>
-      <button class="k-btn sm" data-military-build="${option.id}" data-count="5" ${blocked ? 'disabled' : ''}${tipAttr({ text: 'Order five (Shift+click on Order does the same). Training slots, equipment and manpower still limit how fast they come.' })}>×5</button>
+      <button class="k-btn sm" data-military-build="${option.id}" data-count="5" ${blocked ? 'disabled' : ''}${tipAttr({ text: 'Order five (Shift+click on Order does the same). Ordering stops when no province can spare the men or the queue is full; training slots and equipment set how fast they come.' })}>×5</button>
     </div>
     ${blocked ? `<p class="mil-blocked-why">${esc(option.blockers[0].text)}</p>` : ''}
   </div>`;

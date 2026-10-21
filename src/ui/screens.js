@@ -21,8 +21,9 @@ import { provinceName } from '../game/provinces.js';
 import { hydrateFlags } from '../render/flagWave.js';
 import { hegemonyScore, scoreboard } from '../game/hegemony.js';
 import { MAX_ROUNDS, battleSides, battlesFor } from '../game/battles.js';
-import { cancelTraining, moveTrainingTo, prioritizeTraining } from '../game/recruitment.js';
+import { cancelTraining, moveTrainingTo, prioritizeTraining, recruitBlockers } from '../game/recruitment.js';
 import { equipmentLogistics } from '../game/reinforcement.js';
+import { billsOf } from '../game/econ/bills.js';
 import { mod } from '../game/modifiers.js';
 import {
   armyComposition, commandRoster, militaryStats, militarySummary, recruitOptions, trainingRows,
@@ -55,7 +56,7 @@ import { motionOn } from './motion.js';
 import { formatPopulation, populationOf } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS } from '../game/econ/defs.js';
 import {
-  bindStateScreens, constructionKey, declareEmbargo, embargoBlockers, industryKey, renderBudget, renderConstruction,
+  bindStateScreens, constructionKey, declareEmbargo, holdConstructionOrder, embargoBlockers, industryKey, renderBudget, renderConstruction,
   renderCultures, renderIndustry, renderPolitics, renderPopulation, renderTrade,
 } from './stateScreens.js';
 import { quietScroll, refreshTooltips } from './tooltip.js';
@@ -70,6 +71,9 @@ import { conflictDetailHtml, conflictFocusTile } from './warDetail.js';
 
 /** Ekranın kapanış geçişi (styles.css §6 .screen.hidden) bitene kadar gövde kalır. */
 const SCREEN_CLOSE_MS = 220;
+
+/** İki-tık onayının ömrü (bkz. Screens.armConfirm). */
+export const CONFIRM_MS = 8000;
 
 const TITLES = {
   nation: 'Nation Overview',
@@ -100,6 +104,44 @@ function esc(s) {
   ));
 }
 
+/** Odak geri gelince imleci de geri isteyen denetimler (yazı alanları). */
+const CARET_TYPES = new Set(['text', 'search', 'url', 'tel', 'password', 'email', 'number']);
+
+/**
+ * Gövde yeniden kurulmadan önce odaktaki denetimin kimliği: id ya da ilk
+ * data-* özniteliği, yazı alanında imleç ve seçim. Yalnız yazı alanı, seçim
+ * kutusu, kaydıraç ve onay kutusu ile KLAVYEYLE odaklanmış düğme geri gelir:
+ * fareyle tıklanmış düğmeye odak geri verilseydi sonraki Enter onu ikinci kez
+ * basardı (Development'ta Enter imleçteki satırın odağıdır).
+ */
+function focusMemo(el, body) {
+  if (!el || el === document.body || !body.contains(el)) return null;
+  const field = el.tagName === 'INPUT' || el.tagName === 'SELECT' || el.tagName === 'TEXTAREA';
+  if (!field && !el.matches(':focus-visible')) return null;
+  // Bütün data-* öznitelikleri birlikte: Order ile ×5 aynı data-military-build'i taşır.
+  const selector = el.id ? `#${CSS.escape(el.id)}` : [...el.attributes]
+    .filter((a) => a.name.startsWith('data-') && !a.name.startsWith('data-tip'))
+    .map((a) => `[${a.name}="${CSS.escape(a.value)}"]`).join('');
+  if (!selector) return null;
+  const caret = (el.tagName === 'TEXTAREA' || (el.tagName === 'INPUT' && CARET_TYPES.has(el.type)))
+    ? { start: el.selectionStart, end: el.selectionEnd, dir: el.selectionDirection, left: el.scrollLeft } : null;
+  return { selector, caret };
+}
+
+function restoreFocus(memo, body) {
+  const el = body.querySelector(memo.selector);
+  if (!el || el.disabled) return;
+  el.focus({ preventScroll: true });
+  if (memo.caret && el.setSelectionRange) {
+    try {
+      el.setSelectionRange(memo.caret.start, memo.caret.end, memo.caret.dir ?? 'none');
+      el.scrollLeft = memo.caret.left;
+    } catch {
+      // number gibi seçim taşımayan türler: odak yeter.
+    }
+  }
+}
+
 /**
  * Guc karsilastirmasini duz dille yazar.
  *
@@ -128,6 +170,8 @@ const SCROLL_KEEPERS = [
   '.k-wtable',
   // Diplomasi ulus tablosu da kendi kaydıracıdır.
   '.dip-table',
+  // Pencere kipindeki ekranların sütunları (styles.css §68).
+  '.screen-body > .k-split > :nth-child(1)', '.screen-body > .k-split > :nth-child(2)',
 ];
 
 const TECH_ZOOM_KEY = 'hexwar.techZoom';
@@ -212,22 +256,35 @@ export class Screens {
     // kopuyor, oyuncu "kaydirac tutmuyor" sanip tekrar deniyordu (kor oyun
     // testi: egitim 0 -> 0 -> 50, ordu 100'de takili). Tazeleme birakilana
     // kadar bekletilir.
+    // Aynı bekçi her BASIŞI da kapsar: basma ile bırakma arasında gövde
+    // yeniden kurulursa tıklama ölü düğmede kalır ve hiç gelmez. 8x'te insan
+    // tıkının (120 ms) altıda biri kayboluyordu (ölçüldü: Military çipleri ve
+    // Factories öncelikleri 60 tıkta 10'ar). AUTO hapı gövdenin dışındadır
+    // ama o da tazelemede yeniden yazılır.
     this.dragging = false;
     this.refreshPending = false;
-    this.el.body.addEventListener('pointerdown', (event) => {
-      if (event.target?.matches?.('input[type="range"]')) this.dragging = true;
-    });
+    const startPress = () => { this.dragging = true; };
+    this.el.body.addEventListener('pointerdown', startPress);
+    this.el.auto?.addEventListener('pointerdown', startPress);
     const endDrag = () => {
       if (!this.dragging) return;
       this.dragging = false;
       if (this.refreshPending) {
-        this.refreshPending = false;
-        // `change` olayi pointerup'tan sonra gelir; onun refresh'i onde olsun.
-        setTimeout(() => this.scheduleRefresh(), 0);
+        // `change` ve `click` pointerup'tan sonra gelir; onların refresh'i
+        // önde olsun. Tıklama zaten tazelediyse bekleyen iş düşer (refresh
+        // bayrağı siler), gövde ikinci kez kurulmaz.
+        setTimeout(() => {
+          if (!this.refreshPending) return;
+          this.refreshPending = false;
+          this.scheduleRefresh();
+        }, 0);
       }
     };
-    window.addEventListener('pointerup', endDrag);
-    window.addEventListener('pointercancel', endDrag);
+    // Yakalama evresinde: bırakışı yutan bir öğe ekranı donmuş bırakmasın.
+    window.addEventListener('pointerup', endDrag, true);
+    window.addEventListener('pointercancel', endDrag, true);
+    // Pencere odağı giderken pointerup gelmeyebilir: ekran donmuş kalmasın.
+    window.addEventListener('blur', endDrag);
     // Haritada yabancı toprağa sağ tık: o ülkenin paneli açılır.
     game.on('nation', (nationId) => this.openDossier(nationId));
     // Haritayi secim yuzeyi yapan tek ekran baris masasidir.
@@ -251,6 +308,9 @@ export class Screens {
     // Baris kipi haritayi ele gecirir; ekrandan cikarken geri verilmeli.
     if (this.active === 'peace' && name !== this.active) this.restoreMapMode();
     const switching = this.active !== name;
+    // Kurulu "Confirm" başka sekmeye taşınmaz: Cultures'ta kurulup Politics'e
+    // geçip dönen oyuncunun tek tıkı zorla asimilasyonu yürürlüğe koyuyordu.
+    if (switching) this.dropConfirms();
     clearTimeout(this.closeTimer);
     this.active = name;
     this.el.root.dataset.screen = name;
@@ -307,17 +367,41 @@ export class Screens {
     if (height > (parseFloat(root.style.minHeight) || 0)) root.style.minHeight = `${height}px`;
   }
 
+  /** Bekleyen iki-tık onaylarının hepsi ve süre sayaçları. */
+  dropConfirms() {
+    this.uc.confirm = null;
+    this.warConfirm = null;
+    this.vassalConfirm = null;
+    this.saveConfirm = null;
+    this.military.retireConfirm = null;
+    this.military.leveeConfirm = false;
+    for (const timer of ['ucConfirmTimer', 'warConfirmTimer', 'vassalConfirmTimer', 'saveConfirmTimer', 'retireTimer', 'leveeTimer']) {
+      clearTimeout(this[timer]);
+    }
+  }
+
+  /**
+   * İki-tık onayının süresi. İlk tık onayı kurar; CONFIRM_MS içinde ikinci tık
+   * gelmezse söner. Bütün ekranlar aynı süreyi kullanır: eskiden kayıt/savaş
+   * 8 sn, emeklilik 4 sn, Cultures/Politics hiç sönmüyordu.
+   */
+  armConfirm(timer, still, drop) {
+    clearTimeout(this[timer]);
+    this[timer] = setTimeout(() => {
+      if (!still()) return;
+      drop();
+      this.refresh();
+    }, CONFIRM_MS);
+  }
+
   close() {
     this.heightFor = null;
     this.el.root.style.minHeight = '';
     if (this.active === 'peace') this.restoreMapMode();
     // Bekleyen onaylar, hat önizlemesi ve klavye vurgusu ekranla birlikte duser.
-    this.uc.confirm = null;
+    this.dropConfirms();
     this.uc.linePreview = null;
     this.uc.lineKeyboard = false;
-    this.warConfirm = null;
-    this.vassalConfirm = null;
-    this.saveConfirm = null;
     this.saveNote = null;
     this.active = null;
     // Genişlik sınıfı (dar/geniş panel) kapanış hareketi bitene dek kalır;
@@ -406,16 +490,22 @@ export class Screens {
       this.refreshPending = true;
       return;
     }
+    this.refreshPending = false;
     // Ekran kurulumu büyük innerHTML yazımıdır; maliyeti ölçülür.
     const t0 = performance.now();
     const me = this.me;
-    const scroll = this.captureScroll();
-    // Odaktaki bütçe kaydıracı yeniden çizimden sonra geri gelir: okla her
-    // adım `change` → `economy` → tazeleme demek; eski eleman DOM'dan kalkınca
-    // odak gövdeye düşüyor, ikinci ok tuşu kaydıracı değil haritayı sürüyordu.
-    const focused = document.activeElement;
-    const refocus = focused?.dataset?.policy && this.el.body.contains(focused)
-      ? `[data-policy="${focused.dataset.policy}"]` : null;
+    // Kaydırma yalnız AYNI ekranın tazelemesinde geri gelir: sütun seçicileri
+    // ortaktır, Politics'te kaydırılan sol sütun Cultures'a taşınıyordu.
+    const scroll = this.renderedFor === this.active ? this.captureScroll() : [];
+    // Development satırları imlecin altında yer değiştirmez (stateScreens.js).
+    if (this.active === 'construction' && this.renderedFor === this.active) holdConstructionOrder(this.el.body, this.uc);
+    else this.uc.devHold = null;
+    this.renderedFor = this.active;
+    // Odaktaki denetim yeniden çizimden sonra geri gelir: eski eleman DOM'dan
+    // kalkınca odak gövdeye düşüyordu. Bütçe kaydıracında ikinci ok tuşu
+    // haritayı sürüyordu; saat akarken kayıt adı yazan oyuncunun kalan
+    // harfleri kısayola gidiyordu ("p" Diplomacy'yi açtı, ölçüldü).
+    const refocus = focusMemo(document.activeElement, this.el.body);
     this.el.title.textContent = TITLES[this.active] ?? '—';
     // Eski sehir kaynak seridi (altin/gida/kereste/demir) hicbir ekranda yok.
     // Sanayi ekraninin alt sekmeleri de kalkti: santiyeler artik ayri bir
@@ -436,7 +526,7 @@ export class Screens {
     this.restoreScroll(scroll);
     this.lockHeight();
     refreshTooltips();
-    if (refocus) this.el.body.querySelector(refocus)?.focus({ preventScroll: true });
+    if (refocus) restoreFocus(refocus, this.el.body);
     this.onRefresh?.();
     this.game.perf?.add('ui.screen', performance.now() - t0);
   }
@@ -536,18 +626,19 @@ export class Screens {
           : 'declaring war costs infamy for every state you take'}</small></div>
       <div class="row-buttons dossier-actions">
         ${war
-    ? `<button class="action" data-peace="${target.id}" ${locked ? 'disabled' : ''}>Peace Talks${locked ? ` (${MIN_WAR_TURNS - (turn - rec.since)}w)` : ''}</button>`
+    ? `<button class="k-btn" data-peace="${target.id}" ${locked ? 'disabled' : ''}>Peace Talks${locked ? ` (${MIN_WAR_TURNS - (turn - rec.since)}w)` : ''}</button>`
     : allied
-      ? `<button class="action" data-break-alliance="${target.id}">Break Alliance</button>`
-      : vassal ? this.vassalButtons(world, target, annexWhy, 'action')
-      : `<button class="action${this.warConfirm === target.id ? ' confirming' : ''}" data-war="${target.id}" ${warWhy.length ? `disabled title="${esc(warWhy.join(' · '))}"` : ''}>${
-        this.warConfirm === target.id
-          ? `Click again to declare war: ${ULTIMATUM_WEEKS}-week ultimatum, infamy per state taken`
-          : 'Declare War'}</button>
-         <button class="action" data-ally="${target.id}">Propose Alliance</button>`}
-        ${(me.embargoes ?? []).includes(target.id) ? '' : `<button class="action" data-embargo="${target.id}"
-          ${embargoBlockers(world, me, target).length ? `disabled title="${esc(embargoBlockers(world, me, target).join(' · '))}"` : ''}>Embargo · 25 PP</button>`}
-        <button class="action" data-locate="${target.id}">Show on map</button>
+      ? `<button class="k-btn" data-break-alliance="${target.id}">Break Alliance</button>`
+      : vassal ? this.vassalButtons(world, target, annexWhy, 'k-btn')
+      // Diplomasi tablosundaki savaş düğmesiyle aynı dil: kısa onay, ayrıntı kartta.
+      : `<button class="k-btn danger${this.warConfirm === target.id ? ' confirming' : ''}" data-war="${target.id}"${warWhy.length
+        ? ` disabled${tipAttrText(`Declare war on ${target.name}\n${warWhy.join('\n')}`)}`
+        : tipAttrText(`Declare war on ${target.name}\nA ${ULTIMATUM_WEEKS}-week ultimatum, then war. Every state you take adds infamy.${this.warConfirm === target.id ? '' : '\nClick twice to confirm.'}`)}>${
+        this.warConfirm === target.id ? 'Confirm war?' : 'Declare War'}</button>
+         <button class="k-btn" data-ally="${target.id}">Propose Alliance</button>`}
+        ${(me.embargoes ?? []).includes(target.id) ? '' : `<button class="k-btn" data-embargo="${target.id}"
+          ${embargoBlockers(world, me, target).length ? `disabled${tipAttrText(`Embargo\n${embargoBlockers(world, me, target).join('\n')}`)}` : ''}>Embargo · 25 PP</button>`}
+        <button class="k-btn" data-locate="${target.id}">Show on map</button>
       </div>
     </div>`;
   }
@@ -560,12 +651,7 @@ export class Screens {
     const confirmThen = (key, act) => {
       if (this.saveConfirm !== key) {
         this.saveConfirm = key;
-        clearTimeout(this.saveConfirmTimer);
-        this.saveConfirmTimer = setTimeout(() => {
-          if (this.saveConfirm !== key) return;
-          this.saveConfirm = null;
-          this.refresh();
-        }, 8000);
+        this.armConfirm('saveConfirmTimer', () => this.saveConfirm === key, () => { this.saveConfirm = null; });
         this.refresh();
         return;
       }
@@ -645,8 +731,9 @@ export class Screens {
   /** Vassal satırı: bırak ya da ilhak et (ikisi de geri alınmaz, iki tık). */
   vassalButtons(world, target, annexWhy, cls) {
     const confirming = (kind) => this.vassalConfirm === `${kind}:${target.id}`;
-    const release = `<button class="${cls}${confirming('release') ? ' confirming' : ''}" data-release-vassal="${target.id}"${tipAttrText(`Release ${target.name}\nThe tribute stops and they become fully independent. Only then can you declare war on them.`)}>${confirming('release') ? 'Confirm release?' : 'Release'}</button>`;
-    const annex = `<button class="${cls}${confirming('annex') ? ' confirming' : ''}" data-annex-vassal="${target.id}"${annexWhy.length
+    // İkisi de geri alınmaz: tehlike rolü (styles.css §69).
+    const release = `<button class="${cls} danger${confirming('release') ? ' confirming' : ''}" data-release-vassal="${target.id}"${tipAttrText(`Release ${target.name}\nThe tribute stops and they become fully independent. Only then can you declare war on them.`)}>${confirming('release') ? 'Confirm release?' : 'Release'}</button>`;
+    const annex = `<button class="${cls} danger${confirming('annex') ? ' confirming' : ''}" data-annex-vassal="${target.id}"${annexWhy.length
       ? ` disabled${tipAttrText(`Annex ${target.name}\n${annexWhy.join('\n')}`)}`
       : tipAttrText(`Annex ${target.name}\nTheir provinces join us and their army disbands. Their peoples become our subjects, and it costs a quarter of a conquest's infamy.`)}>${confirming('annex') ? 'Confirm annex?' : `Annex · ${annexCost(world, target)} PP`}</button>`;
     return `${release}${annex}`;
@@ -868,11 +955,11 @@ export class Screens {
       <p class="hint ${acceptable ? '' : 'res-warn'}">${acceptable
     ? 'They will sign this treaty.' : esc(refusal)}</p>
       <div class="row-buttons">
-        <button class="action" data-sign-peace="1" ${acceptable ? '' : 'disabled'}>
+        <button class="k-btn primary" data-sign-peace="1" ${acceptable ? '' : 'disabled'}>
           ${offer.demands.length || offer.concessions.length ? 'Sign treaty' : 'Sign white peace'}</button>
-        <button class="action" data-fill-peace="1" ${budget > 0 ? '' : 'disabled'}
-          title="Fill the war score: occupied states first, borders yours before islands, the rest as terms — the same rule the AI uses.">Best deal</button>
-        <button class="action" data-clear-peace="1">Clear</button>
+        <button class="k-btn" data-fill-peace="1" ${budget > 0 ? '' : 'disabled'}
+          ${tipAttrText('Best deal\nFill the war score: occupied states first, borders yours before islands, the rest as terms — the same rule the AI uses.')}>Best deal</button>
+        <button class="k-btn" data-clear-peace="1">Clear</button>
       </div>
     </div>
     <div class="sub-tabs peace-tabs">
@@ -946,8 +1033,8 @@ export class Screens {
       ${tileLine(offer.concessions, 'They cede to us')}
       ${terms}
       <div class="row-buttons">
-        <button class="action" data-accept-offer="${entry.id}">Accept terms</button>
-        <button class="action" data-reject-offer="${entry.id}">Fight on</button>
+        <button class="k-btn primary" data-accept-offer="${entry.id}">Accept terms</button>
+        <button class="k-btn" data-reject-offer="${entry.id}">Fight on</button>
       </div>
     </div>`;
   }
@@ -1056,8 +1143,16 @@ export class Screens {
     const world = this.game.world;
     const cost = generalCost(me);
     const loose = unassignedDivisions(world, me);
+    const summary = militarySummary(world, me);
+    // İlk hafta kapanmadan fatura yazılmamıştır ve ikmal "0.0 IC/wk" görünüyordu;
+    // ordu ilk günden fatura keser. Kapanışın kullandığı billsOf bugünkü
+    // orduyla aynı sayıyı verir (Economy ekranı da onu basar).
+    if (!me.economy?.bills && (me.economy?.ic?.output ?? 0) > 0) {
+      const bills = billsOf(world, me, me.economy.ic.output, this.game.turns.turn);
+      Object.assign(summary, { supply: bills.army + bills.navy, armyCost: bills.army, navyCost: bills.navy, supplyShare: bills.s });
+    }
     return militaryScreen(this.military, {
-      summary: militarySummary(world, me),
+      summary,
       roster: commandRoster(world, me),
       options: recruitOptions(this.game, me),
       queue: trainingRows(this.game, me),
@@ -1145,7 +1240,13 @@ export class Screens {
           if (!game.turns.buyUnit(me, btn.dataset.militaryBuild)) break;
           ordered++;
         }
-        if (ordered) this.refresh();
+        // Kısıt dolunca kalan siparişler sessizce düşüyordu: ×5 iki alay
+        // verip susuyordu (ölçüldü). Kalanın sebebi günlüğe yazılır.
+        if (ordered < wanted) {
+          const why = recruitBlockers(game, me, btn.dataset.militaryBuild)[0]?.text ?? 'The order was refused.';
+          game.turns.addLog(wanted > 1 ? `${ordered} of ${wanted} ordered. ${why}` : why, { kind: 'ARMY' });
+        }
+        this.refresh();
       };
     }
     for (const btn of body.querySelectorAll('[data-military-top]')) {
@@ -1156,9 +1257,18 @@ export class Screens {
     const leveeBtn = body.querySelector('[data-military-levee]');
     if (leveeBtn) {
       leveeBtn.onclick = () => {
-        // Iki tik: son umut geri alinmaz (savas ilani ile ayni kalip).
-        if (leveeBtn.dataset.armed !== '1') { leveeBtn.dataset.armed = '1'; leveeBtn.textContent = 'Confirm the Call to Arms?'; return; }
-        if (me) callToArms(game, me);
+        // Iki tik: son umut geri alinmaz (savas ilani ile ayni kalip). Onay
+        // durumu ekranda tutulur: dugmenin kendi ozniteligindeyken haftalik
+        // tazeleme onu sessizce siliyor, ikinci tik yeniden "kur" oluyordu.
+        if (!this.military.leveeConfirm) {
+          this.military.leveeConfirm = true;
+          this.armConfirm('leveeTimer', () => this.military.leveeConfirm, () => { this.military.leveeConfirm = false; });
+          this.refresh();
+          return;
+        }
+        this.military.leveeConfirm = false;
+        clearTimeout(this.leveeTimer);
+        callToArms(game, me);
         this.refresh();
       };
     }
@@ -1237,18 +1347,14 @@ export class Screens {
         this.refresh();
       };
     }
-    // Subayı emekli et: iki tık (ilk tık kurar, 4 sn sonra söner).
+    // Subayı emekli et: iki tık (ilk tık kurar, CONFIRM_MS sonra söner).
     const retire = body.querySelector('[data-military-retire]');
     if (retire) {
       retire.onclick = () => {
         const id = Number(retire.dataset.militaryRetire);
         if (this.military.retireConfirm !== id) {
           this.military.retireConfirm = id;
-          clearTimeout(this.retireTimer);
-          this.retireTimer = setTimeout(() => {
-            this.military.retireConfirm = null;
-            if (this.active === 'military') this.refresh();
-          }, 4000);
+          this.armConfirm('retireTimer', () => this.military.retireConfirm === id, () => { this.military.retireConfirm = null; });
           this.refresh();
           return;
         }
@@ -1898,12 +2004,7 @@ export class Screens {
         const id = Number(btn.dataset.war);
         if (this.warConfirm !== id) {
           this.warConfirm = id;
-          clearTimeout(this.warConfirmTimer);
-          this.warConfirmTimer = setTimeout(() => {
-            if (this.warConfirm !== id) return;
-            this.warConfirm = null;
-            this.refresh();
-          }, 8000);
+          this.armConfirm('warConfirmTimer', () => this.warConfirm === id, () => { this.warConfirm = null; });
           this.refresh();
           return;
         }
@@ -1960,12 +2061,7 @@ export class Screens {
         const key = `${kind}:${id}`;
         if (this.vassalConfirm !== key) {
           this.vassalConfirm = key;
-          clearTimeout(this.vassalConfirmTimer);
-          this.vassalConfirmTimer = setTimeout(() => {
-            if (this.vassalConfirm !== key) return;
-            this.vassalConfirm = null;
-            this.refresh();
-          }, 8000);
+          this.armConfirm('vassalConfirmTimer', () => this.vassalConfirm === key, () => { this.vassalConfirm = null; });
           this.refresh();
           return;
         }
@@ -1990,6 +2086,16 @@ export class Screens {
     }
     for (const btn of this.el.body.querySelectorAll('[data-nation]')) {
       btn.onclick = () => this.openDossier(Number(btn.dataset.nation));
+    }
+    // Düğme gibi görünen, klavyeye düğme diye kendini tanıtan satırlar
+    // (Kronik'teki güçler) Enter'a da yanıt verir; <li> bunu kendisi yapmaz.
+    // Yalnız Enter: Space bütün düğmelerde saattir (hud.bindKeys).
+    for (const el of this.el.body.querySelectorAll('[role="button"]:not(button)')) {
+      el.onkeydown = (event) => {
+        if (event.key !== 'Enter' || event.repeat) return;
+        event.preventDefault();
+        el.click();
+      };
     }
     // Dünya savaşının ayrıntı paneli (Wars süzgeci, World wars listesi, sağ üst panel).
     for (const btn of this.el.body.querySelectorAll('[data-dip-conflict]')) {

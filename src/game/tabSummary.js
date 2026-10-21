@@ -9,7 +9,9 @@ import { isDelegated, lastDelegatedAction } from './delegation.js';
 import { equipmentLogistics } from './reinforcement.js';
 import { militarySummary, trainingRows } from './military.js';
 import { growthFactors, provinceName } from './provinces.js';
-import { developmentCap, fundFloor, investEfficiency } from './econ/investment.js';
+import {
+  developmentCap, fundFloor, investEfficiency, investmentTarget, levelCost,
+} from './econ/investment.js';
 import { atWar } from './diplomacy.js';
 import { unificationStatus } from './unification.js';
 import { movementView } from './movements.js';
@@ -82,25 +84,31 @@ export function worstShortfall(logistics) {
  */
 function constructionSummary(world, nation, turn) {
   const economy = nation.economy;
-  const target = economy.investTarget;
-  const province = target ? world.provinces?.[target.provinceId] : null;
-  const invest = (economy.alloc?.invest ?? 0) * investEfficiency(nation);
+  // Hedef CANLI okunur (Development ekranının ve fonun kuralı): hafta
+  // kapanışının kaydı (economy.investTarget) ilk hafta henüz yoktur ve sekme
+  // "At the cap" diyordu; odak değişince de bir hafta eski hedefi gösteriyordu.
+  const province = investmentTarget(world, nation);
+  const target = province && { level: (province.econ.development ?? 1) + 1, cost: levelCost(province) };
+  // İlk hafta kapanmadan pay yoktur: "fona bir şey akmıyor" demek yalan olur.
+  const settled = Boolean(economy.alloc);
+  const invest = (economy.alloc?.invest ?? 0) * (economy.investEfficiency ?? investEfficiency(nation));
   const fund = nation.fund ?? 0;
   const left = target ? Math.max(0, target.cost - fund) : 0;
   const last = isDelegated(nation, 'economy') ? lastDelegatedAction(nation, 'economy') : null;
   return {
     auto: isDelegated(nation, 'economy'),
+    settled,
     fund,
     floor: fundFloor(nation),
     invest,
     developmentCap: developmentCap(nation),
-    next: target && province && {
+    next: target && {
       name: `${provinceName(province.center)} → ${target.level}`,
       province: provinceName(province.center),
       level: target.level,
       cost: target.cost,
       progress: target.cost > 0 ? Math.max(0, Math.min(1, fund / target.cost)) : 0,
-      weeksLeft: invest > 0.01 ? Math.ceil(left / invest) : null,
+      weeksLeft: !settled ? null : left <= 0 ? 0 : invest > 0.01 ? Math.ceil(left / invest) : null,
     },
     timber: economy.resources?.TIMBER?.ratio ?? 1,
     lastAuto: last && { text: last.text, ago: Math.max(0, turn - (last.turn ?? turn)) },
@@ -121,6 +129,9 @@ function industrySummary(nation, logistics) {
   }
   const short = worstShortfall(logistics);
   return {
+    // Halkın payı ilk hafta kapanınca ölçülür (alloc ile birlikte yazılır);
+    // o zamana dek economy.consumer bir yer tutucudur ve "%100" uydurmadır.
+    settled: Boolean(economy.alloc),
     consumer: consumer.ratio ?? 1,
     ic: ic.total ?? 0,
     civil: ic.civil ?? 0,
@@ -157,6 +168,8 @@ function tradeSummary(world, nation) {
   const exports = ledger.exports ?? 0;
   const imports = ledger.imports ?? 0;
   return {
+    // Defter ilk hafta kapanınca yazılır (economyView.settled ile aynı ölçüt).
+    settled: Boolean(ledger.lastUpdated),
     exports,
     imports,
     // Ticaret ekranının KPI'ı ile aynı: ihracat geliri − ithalat bedeli.
@@ -181,7 +194,10 @@ function budgetSummary(nation, turn) {
   const bills = economy.bills ?? { owed: 0, paid: 0, room: 0, s: 1 };
   const history = economy.fundHistory ?? [];
   return {
-    output: alloc.output,
+    // İlk hafta kapanmadan paylaşım yoktur (alloc null); çıktı yine bellidir
+    // ve üst çubuğun OUTPUT hücresiyle aynı yerden okunur.
+    settled: Boolean(economy.alloc),
+    output: economy.ic?.output ?? alloc.output,
     bills: alloc.bills,
     owed: bills.owed,
     room: bills.room,

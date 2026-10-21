@@ -1431,8 +1431,7 @@ body.screen-open .layer-menu { display: none; }
 .dip-war.losing { border-left-color: #d0573f; } .dip-war.losing em { color: #f0907a; }
 .dip-war.even em { color: #e7c46a; }
 .dip-war.crisis { border-left-color: var(--amber); }
-.k-btn.sm.danger { border-color: rgba(214, 74, 58, 0.55); color: #f0a08f; }
-.k-btn.sm.danger.confirming { background: rgba(214, 74, 58, 0.2); color: #ffb3a3; }
+/* Savaş düğmesinin kırmızısı tehlike rolündendir (§69). */
 @media (max-width: 1599px) {
   .k-split.dip-split { grid-template-columns: minmax(0, 1fr); }
   .dip-row { grid-template-columns: 30px minmax(120px, 1.4fr) minmax(90px, 1fr) 96px 58px 46px 150px; gap: 8px; }
@@ -4082,9 +4081,9 @@ body.screen-open .layer-menu { display: none; }
    ve 18 merdiveni kaldırıldı (bkz. game/politics.js).
    ========================================================================== */
 
+/* Yükseklik içerikten (§68): zorunlu tam boy 1440p'de 208 px boş kuyruktu. */
 .screen[data-screen='politics'] {
   width: min(1320px, 98vw);
-  height: calc(100vh - var(--screen-top) - var(--sp-3));
 }
 
 .screen[data-screen='politics'] .screen-body {
@@ -4369,10 +4368,9 @@ button.pol-level { cursor: var(--cur-pointer); }
    pahali" sorusu tek bakista cevaplanamaz. Govde kaydirilmaz; kaydirma
    katalog ile dosya paneline aittir. */
 /* Genişlik ortak kabuktan (1560px): yoğun ekranlar da aynı çerçevede durur,
-   1920px'de iki ayrı ekran genişliği göz için iki ayrı oyun demekti. */
-.screen[data-screen='trade'] {
-  height: calc(100vh - var(--screen-top) - var(--sp-3));
-}
+   1920px'de iki ayrı ekran genişliği göz için iki ayrı oyun demekti.
+   Yükseklik içerikten (§68): zorunlu tam boy 1080p'de 272, 1440p'de 640 px
+   boş duvar kâğıdıydı (ölçüldü, LS-02). */
 
 .screen[data-screen='trade'] .screen-body {
   gap: 0;
@@ -6987,12 +6985,10 @@ body.menu-open .sheet { visibility: hidden; }
    kabuğu taklit edilmez — yapı onun, boya bizim.
    ========================================================================== */
 
-/* Askerî defter de ekranın tamamını ister: kadro, sipariş ve kuyruk tek
-   bakışta görülmeli. Gövde kaydırılmaz; kaydırma sütunların kendisine aittir
-   (bkz. §16 ve §17'deki aynı karar). */
-.screen[data-screen='military'] {
-  height: calc(100vh - var(--screen-top) - var(--sp-3));
-}
+/* Askerî defter: kadro, sipariş ve kuyruk tek bakışta görülmeli. Gövde
+   kaydırılmaz; kaydırma sütunların kendisine aittir (bkz. §16 ve §17'deki
+   aynı karar). Ekran en uzun sütun kadardır, pencereyi aşınca sütunlar kayar:
+   zorunlu tam boy orta ve sağ sütunun altında boş alan bırakıyordu (§68). */
 
 .screen[data-screen='military'] .screen-body {
   gap: 0;
@@ -8262,16 +8258,7 @@ body.menu-open .sheet { visibility: hidden; }
   .epilogue-foot { flex-direction: column; align-items: stretch; }
 }
 
-/* Iki tikli onay: savas ilani ve yasa dugmeleri ayni vurguyu tasir. */
-.action.confirming { border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright) inset; color: var(--gold-bright); }
-/* Province kartının "Declare War"ı yıkıcı eylemdir: onay kipi pirinç değil
-   kırmızı (Diplomasi tablosundaki .k-btn.danger.confirming ile aynı dil). */
-#sheet-body .action.danger.confirming {
-  border-color: rgba(214, 74, 58, 0.85);
-  background-color: rgba(214, 74, 58, 0.2);
-  box-shadow: 0 0 0 1px rgba(214, 74, 58, 0.85) inset;
-  color: #ffb3a3;
-}
+/* Iki tikli onayin rengi rolundendir (§69): savas ilani kirmizi, yasa kehribar. */
 /* Komutanin taarruz bakisi: neden saldirdigi ya da saldirmadigi (military.js assaultLine). */
 .mil-assault { margin: 4px 8px 6px; color: var(--text-dim); font-size: var(--fs-sm); line-height: 1.35; }
 
@@ -8291,7 +8278,9 @@ body.menu-open .sheet { visibility: hidden; }
   margin-top: var(--sp-1);
   font-size: var(--fs-sm);
 }
-.dossier-identity span {
+/* Yalnız etiket: değerin içindeki kaynak resmi de bir <span>'dır ve blok
+   olunca her ikon kendi satırına düşüyordu (Exports sütunu alt alta). */
+.dossier-identity > div > span {
   display: block;
   font-size: var(--fs-label);
   letter-spacing: var(--ls-label);
@@ -12205,10 +12194,11 @@ button.uc-agenda:hover { border-color: var(--gold); }
 
 /* --- Bölünmüş kontrol, düğme ------------------------------------------ */
 .k-seg { display: flex; flex-wrap: wrap; gap: 0; }
+/* Küçük kademe (§69): satır düğmesi ve öncelik düğmesiyle aynı boy. */
 .k-seg-b {
-  min-height: 28px;
+  min-height: var(--btn-h-sm, 26px);
   margin-left: -1px;
-  padding: 4px 12px;
+  padding: 3px 12px;
   border: 1px solid var(--line-strong);
   background: rgba(0, 0, 0, 0.28);
   color: var(--text-dim);
@@ -12253,7 +12243,7 @@ button.uc-agenda:hover { border-color: var(--gold); }
 .k-btn:hover:not([disabled]) { border-color: var(--gold); background-color: rgba(186, 160, 100, 0.14); }
 .k-btn[disabled] { border-color: var(--line); background: rgba(0, 0, 0, 0.2); color: var(--text-faint); cursor: var(--cur-no); }
 .k-btn[disabled] b, .k-btn[disabled] small { color: var(--text-faint); }
-.k-btn.sm { min-height: 24px; padding: 2px 8px; font-size: 11.5px; }
+.k-btn.sm { min-height: var(--btn-h-sm, 26px); padding: 2px 8px; font-size: 11.5px; }
 .k-btn.wide { width: 100%; min-height: 34px; }
 .k-btn.danger:hover:not([disabled]) { border-color: var(--red); background: var(--red-wash); }
 .k-actions { display: flex; flex-wrap: wrap; gap: 8px; }
@@ -14329,7 +14319,8 @@ body:is(.screen-open, .notify-quiet) .notify-tray { justify-content: center; min
 .k-pol .k-seat-name { grid-row: span 2; }
 .k-pol .k-seat-cands { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
 .k-pol .k-law { padding: 8px 10px; }
-.k-pol .k-law .k-seg-b { padding: 3px 7px; font-size: 11px; }
+/* Bölünmüş kontrol bütün ekranlarda aynı yazıda (§69): Politics'te 11 px idi. */
+.k-pol .k-law .k-seg-b { padding: 3px 7px; font-size: 11.5px; }
 .k-pol .k-law-art .art-md { width: 34px; height: 34px; }
 .k-pol .k-seat-who.vacant { min-height: 0; padding: 4px 8px; }
 .k-pol .k-cand { padding: 4px 8px; }
@@ -14590,7 +14581,8 @@ body:is(.screen-open, .notify-quiet) .notify-tray { justify-content: center; min
     column-gap: 10px;
     padding-left: 13px;
   }
-  .pl-pb { padding: 0 8px; font-size: 11px; }
+  /* Yazı küçülmez (§69 küçük kademe 11.5 px); yer dolgudan açılır. */
+  .pl-pb { padding: 0 7px; }
   .pl-pb.auto { min-width: 46px; }
   .pl-id b { font-size: 14.5px; }
   .pl-mats { gap: 8px; }
@@ -15392,6 +15384,204 @@ body.picker-open .navy-dock { display: none; }
 body.screen-open .culture-chip { display: none; }
 .pv-cult { padding: 0; border: 0; background: none; color: inherit; font: inherit; text-decoration: underline dotted rgba(214, 186, 120, 0.5); text-underline-offset: 3px; cursor: var(--cur-pointer); }
 .pv-cult:hover { color: var(--gold-bright); }
+
+/* ==========================================================================
+   §68 YÖNETİM PENCERESİ (2026-10-21, tamamlama pası: LS-02, LS-03). Ekran
+   içeriği kadar uzar; pencereyi aşınca GÖVDE değil sütunlar kayar ve
+   göstergeler başlıkta çivili kalır. Eskiden Trade, Military ve Politics
+   zorla tam boydu (1440p'de panelin yarısı boş duvar kâğıdı), Cultures,
+   Politics ve Diplomacy 720p'de bir web sayfası gibi baştan sona kayıyordu
+   (Cultures 1307 px). Yan yana sütunların eşit boyu §57'dendir.
+   ========================================================================== */
+
+/* Gövdesi kayan ekranlarda (Trade, Economy, Factories, Population,
+   Development) gösterge şeridi yerinde durur. Negatif kenar boşluğu dolguyu
+   yerleşimden düşer: şerit ancak yapıştığında altındakini örter. */
+.screen-body > .k-kpis:first-child {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  margin-bottom: -8px;
+  padding-bottom: 8px;
+  background: rgb(11, 18, 21);
+  box-shadow: 0 7px 8px -7px rgba(0, 0, 0, 0.75);
+}
+
+/* Uzun iki sütunlu ekranlar pencere gibi davranır. */
+:is(.screen[data-screen='politics'], .screen[data-screen='cultures'],
+  .screen[data-screen='diplomacy'], .screen[data-screen='chronicle']) .screen-body {
+  overflow: hidden;
+}
+:is(.screen[data-screen='politics'], .screen[data-screen='cultures'],
+  .screen[data-screen='diplomacy'], .screen[data-screen='chronicle']) .screen-body > .k-split {
+  flex: 1 1 auto;
+  min-height: 0;
+  grid-template-rows: minmax(0, 1fr);
+}
+/* Kaydırma çubuğunun yeri hep ayrılır: içerik eşiği geçince metin yeniden
+   kırılıp sütun oynamasın. */
+:is(.screen[data-screen='politics'], .screen[data-screen='cultures'],
+  .screen[data-screen='diplomacy'], .screen[data-screen='chronicle']) .screen-body > .k-split > * {
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gold) var(--surface-sunken);
+}
+/* Dar pencerede de iki sütun: tek sütuna inince 720p'de Cultures dört ekran
+   boyu tek kaydırmaydı. Sağ sütun okunur kalacak kadar geniş. */
+@media (max-width: 1365px) {
+  .screen[data-screen='politics'] .k-split.k-pol { grid-template-columns: minmax(0, 1.5fr) minmax(380px, 1fr); }
+  .screen[data-screen='cultures'] .k-split.k-cult { grid-template-columns: minmax(0, 1.55fr) minmax(340px, 1fr); }
+  .screen[data-screen='chronicle'] .k-split.chron-split { grid-template-columns: minmax(0, 1.2fr) minmax(360px, 1fr); }
+}
+
+/* Diplomasi: ulus tablosu sütunun kalan boyunu alır ve yalnız o kayar; süzgeç
+   ve başlık yerinde. Eski tavan (100vh − 360px) 1440p'de tabloyu 680 px'te
+   kesiyordu: büyük pencerede fazladan boy daha çok ulus satırıdır. */
+.screen[data-screen='diplomacy'] .k-split.dip-split { grid-template-columns: minmax(0, 1fr) minmax(280px, 340px); }
+.screen[data-screen='diplomacy'] .dip-split > .dip-nations { overflow: hidden; scrollbar-gutter: auto; }
+.screen[data-screen='diplomacy'] .dip-nations > .k-body { flex: 1 1 auto; min-height: 0; }
+.screen[data-screen='diplomacy'] .dip-table { flex: 1 1 auto; min-height: 0; max-height: none; scrollbar-gutter: stable; scrollbar-color: var(--gold) var(--surface-sunken); }
+@media (max-width: 1599px) {
+  .screen[data-screen='diplomacy'] .k-split.dip-split { grid-template-columns: minmax(0, 1fr) minmax(260px, 300px); }
+}
+
+/* Boş kronik: "sayfalar boş" notu panelin ortasında durur; tepede asılı tek
+   satır, altında yarım ekran boşluk bozuk bir kutu gibi okunuyordu. */
+.chron-split > .k-panel > .k-body > .chron-empty { margin: auto; }
+
+/* ==========================================================================
+   §69 DÜĞME ROLLERİ (2026-10-21, LS-08). Üç rol, bir kez tanımlı:
+     primary   — dolu pirinç: kartın TEK ana eylemi (Order, Research now,
+                 Accept, Mobilize). Seçili bölünmüş kontrolle aynı metal.
+     secondary — .k-btn'in kendisi: çerçeveli, soluk pirinç.
+     danger    — kırmızı kenar ve yazı, onay durumunda kırmızı dolgu: geri
+                 alınmaz eylemler (savaş ilanı, sürgün, katliam, ilhak,
+                 bırakma, geri alma, emeklilik, Call to Arms).
+   Rol .k-btn, .action ve .mil-btn'e aynı anlamla takılır. Eskiden "Declare
+   War" bir yerde kırmızı, iki yerde nötrdü ve onayı ALTIN yanıyordu (altın
+   seçili/olumlu rengidir); askerî ekranın kendi 10 px büyük harf ailesi vardı.
+   Boylar iki kademe: küçük 26 px / 11.5 px (satır düğmesi, bölünmüş kontrol,
+   öncelik), normal 32 px / 12.5 px.
+   ========================================================================== */
+:root {
+  --btn-h: 32px;
+  --btn-h-sm: 26px;
+  --btn-fs: 12.5px;
+  --btn-fs-sm: 11.5px;
+  --danger-line: rgba(214, 74, 58, 0.6);
+  --danger-ink: #f0a08f;
+}
+
+/* Boylar yerinde tanımlıdır (.k-btn §kit, .k-seg-b, .pl-pb §56): burada
+   yeniden yazılsaydı aynı sınıfı kullanan harita panelleri de değişirdi. */
+
+/* Askerî ekranın düğmeleri öteki ekranların ikincil düğmesidir: büyük harf,
+   10 px ve metal topuz kalktı. Bölünmüş seçimler (Generals/Admirals, kol
+   süzgeci) .k-seg-b'nin dilini konuşur. */
+.screen .mil .mil-btn {
+  min-height: var(--btn-h);
+  padding: 4px 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(186, 160, 100, 0.14), rgba(186, 160, 100, 0.04));
+  box-shadow: none;
+  color: var(--text);
+  font: 600 var(--btn-fs) var(--font-ui);
+  letter-spacing: 0;
+  text-shadow: none;
+  text-transform: none;
+  transform: none;
+  filter: none;
+}
+.screen .mil .mil-btn:not(.primary):not(.danger):hover:not(:disabled) {
+  border-color: var(--gold);
+  background-color: rgba(186, 160, 100, 0.14);
+  color: var(--text);
+  box-shadow: none;
+  transform: none;
+  filter: none;
+}
+.screen .mil .mil-btn:active:not(:disabled) { transform: translateY(1px); filter: brightness(0.94); }
+.screen .mil .mil-btn:disabled {
+  border-style: solid;
+  border-color: var(--line);
+  background: rgba(0, 0, 0, 0.2);
+  color: var(--text-faint);
+  opacity: 1;
+}
+.screen .mil .mil-btn.mil-big { min-height: 36px; padding: 6px 14px; font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
+.screen .mil .mil-btn.on:not(:disabled) { border-color: var(--amber); color: #e7c46a; }
+.screen .mil .mil-tabs { gap: 0; }
+.screen .mil .mil-tabs button {
+  min-height: var(--btn-h-sm);
+  margin-left: -1px;
+  padding: 3px 9px;
+  border: 1px solid var(--line-strong);
+  border-radius: 0;
+  background: rgba(0, 0, 0, 0.28);
+  box-shadow: none;
+  color: var(--text-dim);
+  font: 600 var(--btn-fs-sm) var(--font-ui);
+  letter-spacing: 0;
+  text-shadow: none;
+  text-transform: none;
+  transform: none;
+  filter: none;
+}
+.screen .mil .mil-tabs button:first-child { margin-left: 0; border-radius: 3px 0 0 3px; }
+.screen .mil .mil-tabs button:last-child { border-radius: 0 3px 3px 0; }
+.screen .mil .mil-tabs button:hover:not(.active) { background: rgba(186, 160, 100, 0.12); color: var(--text); }
+.screen .mil .mil-tabs button.active {
+  position: relative;
+  z-index: 1;
+  border-color: var(--gold);
+  background: linear-gradient(180deg, var(--metal-hi), var(--metal-mid) 55%, var(--metal-lo));
+  color: var(--metal-ink);
+}
+
+/* PRIMARY */
+:is(.k-btn, .action, .mil-btn).primary:not([disabled]) {
+  border-color: var(--gold-bright);
+  background: linear-gradient(180deg, var(--metal-hi), var(--metal-mid) 58%, var(--metal-lo));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.26), inset 0 -1px 0 rgba(55, 35, 8, 0.5), 0 1px 2px rgba(0, 0, 0, 0.45);
+  color: var(--metal-ink);
+  font-weight: 700;
+  text-shadow: 0 1px 0 rgba(255, 236, 196, 0.22);
+}
+:is(.k-btn, .action, .mil-btn).primary:not([disabled]) :is(b, small, kbd) { color: var(--metal-ink); }
+:is(.k-btn, .action, .mil-btn).primary:hover:not([disabled]) { border-color: #e2c88a; filter: brightness(1.1); }
+:is(.k-btn, .action, .mil-btn).primary:active:not([disabled]) { filter: brightness(0.92); }
+
+/* DANGER */
+:is(.k-btn, .action, .mil-btn).danger:not([disabled]) {
+  border-color: var(--danger-line);
+  color: var(--danger-ink);
+}
+:is(.k-btn, .action, .mil-btn).danger:not([disabled]) :is(b, small) { color: var(--danger-ink); }
+:is(.k-btn, .action, .mil-btn).danger:hover:not([disabled]) {
+  border-color: #d9583f;
+  background: rgba(214, 74, 58, 0.14);
+  color: #ffb9a8;
+}
+/* Kurulu onay KIRMIZI dolar: tek tık ötesi geri dönüşü olmayan eylemdir. */
+:is(.k-btn, .action, .mil-btn).danger.confirming:not([disabled]) {
+  border-color: #e0553f;
+  background: rgba(214, 74, 58, 0.32);
+  box-shadow: 0 0 0 1px rgba(224, 85, 63, 0.5);
+  color: #ffe2da;
+}
+:is(.k-btn, .action, .mil-btn).danger[disabled] { border-color: var(--line); color: var(--text-faint); }
+/* Tehlikesiz onay (yasa, hükûmet, kayıt) kehribar: altın seçilinin rengidir. */
+:is(.k-btn, .action, .mil-btn).confirming:not(.danger):not([disabled]) {
+  border-color: var(--amber);
+  background: rgba(183, 142, 72, 0.25);
+  box-shadow: none;
+  color: var(--text);
+}
 
 /* ==========================================================================
    §65 ORDU ARAYÜZÜ III — harita kipleri, komutan kartları, ordu paneli

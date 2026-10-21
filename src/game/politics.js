@@ -1239,8 +1239,10 @@ export function governmentView(world, nation, turn = world.turn ?? 0) {
   // İlk hafta kapanmadan haftalık döküm yok: Stability/War support panelleri
   // yalnız başlıkla boş açılıyor, "heading to" bugünkü değeri söylüyordu.
   // Saf dökümlerden okunur; durum YAZILMAZ (simülasyon aynı kalır).
-  const stabilityNow = politics.stabilityParts ? null : stabilityBreakdown(world, nation, turn);
-  const warNow = politics.warSupportParts ? null
+  // Boş dizi de "henüz yok" demektir: freshPolitics ikisini [] ile tohumlar
+  // (truthy), yedek döküm bu yüzden hiç çalışmıyordu.
+  const stabilityNow = politics.stabilityParts?.length ? null : stabilityBreakdown(world, nation, turn);
+  const warNow = politics.warSupportParts?.length ? null
     : warSupportBreakdown(world, nation, { kin: nation.economy?.kinAbroad ?? 0, irredenta: nation.economy?.irredenta ?? null, turn });
   return {
     government: governmentOf(nation),
@@ -1260,11 +1262,11 @@ export function governmentView(world, nation, turn = world.turn ?? 0) {
     power: nation.power ?? 0,
     powerIncome: powerIncome(nation),
     stability: nation.stability ?? 0,
-    stabilityTarget: politics.stabilityTarget ?? stabilityNow?.target ?? nation.stability,
-    stabilityParts: politics.stabilityParts ?? stabilityNow?.parts ?? [],
+    stabilityTarget: stabilityNow?.target ?? politics.stabilityTarget ?? nation.stability,
+    stabilityParts: stabilityNow?.parts ?? politics.stabilityParts ?? [],
     warSupport: nation.warSupport ?? 0,
-    warSupportTarget: politics.warSupportTarget ?? warNow?.target ?? nation.warSupport,
-    warSupportParts: politics.warSupportParts ?? warNow?.parts ?? [],
+    warSupportTarget: warNow?.target ?? politics.warSupportTarget ?? nation.warSupport,
+    warSupportParts: warNow?.parts ?? politics.warSupportParts ?? [],
     // Yorgunluk paneli (P10): değer, hedef, parçalar, merdiven, toplam savaş.
     exhaustion: politics.exhaustion ?? 0,
     exhaustionTarget: politics.exhaustionTarget ?? politics.exhaustion ?? 0,

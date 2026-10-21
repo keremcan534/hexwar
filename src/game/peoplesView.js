@@ -13,7 +13,7 @@
 // Katman: game. DOM yok.
 
 import {
-  ACCEPT_POWER, CULTURE, acceptBlockers, acceptedCultures, cultureMix,
+  CULTURE, acceptBlockers, acceptPrice, acceptedCultures, cultureMix,
   revokeBlockers, unrestBreakdown,
 } from './culture.js';
 import { releaseLabel, releasePeopleBlockers } from './nationBirth.js';
@@ -96,7 +96,9 @@ function acceptPreview(world, nation, cultureId, provinces, turn) {
     recruits: Math.max(0, after.recruits - before.recruits),
     unrestFrom: before.unrest,
     unrestTo: after.unrest,
-    power: ACCEPT_POWER,
+    // Bedel her hakkı olan halkla artar (culture.acceptPrice): sabit 100
+    // yazıp 150 kesiyorduk; düğme, kart, engel ve kesinti aynı sayıyı okusun.
+    power: acceptPrice(nation),
     backlash: CULTURE.BACKLASH_UNREST,
     backlashWeeks: CULTURE.BACKLASH_WEEKS,
   };
@@ -110,12 +112,14 @@ function acceptPreview(world, nation, cultureId, provinces, turn) {
 function revokePreview(world, nation, cultureId, provinces, turn) {
   const read = () => ({ recruits: nationManpower(world, nation.id), unrest: targetUnrest(world, nation, provinces, cultureId, turn) });
   const before = read();
-  const after = withAccepted(nation, acceptedCultures(nation).filter((id) => id !== cultureId), read);
+  const without = acceptedCultures(nation).filter((id) => id !== cultureId);
+  const after = withAccepted(nation, without, read);
   return {
     recruits: Math.max(0, before.recruits - after.recruits),
     unrestFrom: before.unrest,
     unrestTo: after.unrest,
-    power: ACCEPT_POWER,
+    // Yeniden kabulün bedeli, bu halk listeden düştükten SONRAki fiyattır.
+    power: withAccepted(nation, without, () => acceptPrice(nation)),
   };
 }
 

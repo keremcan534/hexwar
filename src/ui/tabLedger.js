@@ -70,6 +70,14 @@ export function cellFor(id, s) {
       // kendiliğinden alınır (econ/investment.js). Dolgu fonun bedele oranı,
       // değer kalan hafta: sekmenin "araştırma çubuğu" sıradaki kademedir.
       if (x.next) {
+        if (!x.settled) {
+          // İlk hafta: hedef belli, fona akan pay henüz yok. Nötr "—": sarı
+          // "Saving" bir durma uyarısıdır, kampanyanın ilk karesinde yalandı.
+          return {
+            name: x.next.name, value: '—', short: percent(x.next.progress),
+            fill: x.next.progress, kind: 'progress', tone: '',
+          };
+        }
         if (x.next.weeksLeft == null) {
           // Fona hiçbir şey akmıyor (faturalar, ordu ve halk çıktının
           // tamamını alıyor): kalan hafta yok, birikim durmuş — sarı.
@@ -100,6 +108,7 @@ export function cellFor(id, s) {
           tone: eta ? 'warn' : 'neg', alert: true,
         };
       }
+      if (!x.settled) return { name: 'Consumer goods', value: '—', fill: 0, kind: 'gauge', tone: '' };
       return {
         name: 'Consumer goods', value: percent(x.consumer),
         fill: Math.min(1, x.consumer), kind: 'gauge', tone: x.consumer < 0.95 ? 'neg' : '',
@@ -116,8 +125,8 @@ export function cellFor(id, s) {
         };
       }
       return {
-        name: 'Balance', value: amount(x.balance, { sign: true }), fill: 0, kind: 'gauge',
-        tone: x.dependency ? 'warn' : toneOf(x.balance), lead, leadKey,
+        name: 'Balance', value: x.settled ? amount(x.balance, { sign: true }) : '—', fill: 0, kind: 'gauge',
+        tone: x.dependency ? 'warn' : x.settled ? toneOf(x.balance) : '', lead, leadKey,
       };
     }
     case 'budget': {
@@ -132,6 +141,13 @@ export function cellFor(id, s) {
       // İz her hafta değişir; anahtar dizinin kendisi.
       const leadKey = `${history.length}:${history[history.length - 1] ?? ''}:${history[0] ?? ''}`;
       const load = x.room > 0 ? Math.min(1, x.owed / x.room) : 0;
+      if (!x.settled) {
+        // İlk hafta: çıktı üst çubuktaki değerdir; faturaların tavanı henüz ölçülmedi.
+        return {
+          name: 'Output', value: Number.isFinite(x.output) ? `${amount(x.output)}/wk` : '—',
+          short: Number.isFinite(x.output) ? amount(x.output) : '—', fill: 0, kind: 'gauge', tone: '', lead, leadKey,
+        };
+      }
       if (inCrisis(x)) {
         return {
           name: 'Supply crisis', value: `${percent(x.supplyShare)} paid`, short: `Crisis ${percent(x.supplyShare)}`,
@@ -243,8 +259,11 @@ export function tabLedgerTip(id, s = latest) {
       } else {
         row('Next level', 'none — every state is at the cap or not under control');
       }
-      row('Invested a week', x.invest > 0.01 ? amount(x.invest, { sign: true, unit: true }) : 'nothing — bills, army and people take it all',
-        x.invest > 0.01 ? 'pos' : 'warn');
+      if (!x.settled) row('Invested a week', 'the first weekly report comes after week 1');
+      else {
+        row('Invested a week', x.invest > 0.01 ? amount(x.invest, { sign: true, unit: true }) : 'nothing — bills, army and people take it all',
+          x.invest > 0.01 ? 'pos' : 'warn');
+      }
       row('Development fund', `${amount(x.fund, { unit: true })} · floor ${amount(x.floor, { unit: true })}`, x.fund < 0 ? 'warn' : '');
       row('Development cap', `${x.developmentCap}`);
       if (x.timber < 0.95) row('Timber', `${percent(x.timber)} — investment slowed`, 'warn');
@@ -252,7 +271,8 @@ export function tabLedgerTip(id, s = latest) {
       break;
     case 'industry': {
       const stab = consumerStability(x.consumer);
-      row('Consumer goods', `${percent(x.consumer)} · ${minus(`${stab >= 0 ? '+' : ''}${Math.round(stab * 100)}`)} stability`, x.consumer < 0.95 ? 'neg' : '');
+      if (!x.settled) row('Consumer goods', 'measured when the first week closes');
+      else row('Consumer goods', `${percent(x.consumer)} · ${minus(`${stab >= 0 ? '+' : ''}${Math.round(stab * 100)}`)} stability`, x.consumer < 0.95 ? 'neg' : '');
       row('Industry', `${x.ic.toFixed(1)} IC · the army may draw ${x.military.toFixed(1)}`);
       if (x.topLine) row('Top production line', `${EQUIPMENT[x.topLine.id]?.name ?? x.topLine.id} +${x.topLine.output.toFixed(1)}/wk`);
       else row('Production lines', `stopped · ${x.idle.toFixed(1)} IC back to the people and development`);
@@ -262,6 +282,11 @@ export function tabLedgerTip(id, s = latest) {
       break;
     }
     case 'trade':
+      if (!x.settled) {
+        row('Trade', 'the first weekly report comes after week 1');
+        if (x.embargoes) row('Embargoes', String(x.embargoes));
+        break;
+      }
       row('Exports', amount(x.exports, { sign: true, unit: true }), x.exports > 0 ? 'pos' : '');
       row('Imports', amount(x.imports, { sign: true, unit: true }), x.imports < 0 ? 'neg' : '');
       row('Top export', x.topExport ? `${RESOURCES[x.topExport.id]?.name ?? x.topExport.id} ▲${x.topExport.amount.toFixed(1)}` : 'none');
@@ -277,6 +302,12 @@ export function tabLedgerTip(id, s = latest) {
       const share = (v) => (x.output > 0 ? percent(v / x.output) : '—');
       const change = fundChange(x.history);
       row('Output', `${amount(x.output, { unit: true })} a week`);
+      if (!x.settled) {
+        // Paylar ilk hafta kapanınca yazılır; sıfırları "geçen hafta" diye sunmayız.
+        row('Bills, army, people, development', 'the first weekly report comes after week 1');
+        row('Development fund', `${amount(x.fund, { unit: true })} · floor ${amount(x.floor, { unit: true })}`, x.fund < 0 ? 'warn' : '');
+        break;
+      }
       row('Bills', `${amount(x.bills, { unit: true })} · ${share(x.bills)} · ceiling ${amount(x.room, { unit: true })}`,
         inCrisis(x) ? 'neg' : x.room > 0 && x.owed / x.room > 0.85 ? 'warn' : '');
       if (inCrisis(x)) row('Supply crisis', `only ${percent(x.supplyShare)} paid — reinforcement, training and organisation slowed`, 'neg');

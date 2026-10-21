@@ -188,7 +188,8 @@ export function techInspector(nation, techId, view) {
   if (state !== 'done' && state !== 'active') {
     actions.push(`<button type="button" class="k-btn primary" data-tech-now="${id}">Research now<kbd>Enter</kbd></button>`);
     actions.push(queued
-      ? `<button type="button" class="k-btn danger" data-tech-dequeue="${id}">Remove from queue<kbd>Q</kbd></button>`
+      // Geri alınabilir: tehlike rolü değil (styles.css §69), ikincil düğme.
+      ? `<button type="button" class="k-btn" data-tech-dequeue="${id}">Remove from queue<kbd>Q</kbd></button>`
       : `<button type="button" class="k-btn" data-tech-queue="${id}">Add to queue<kbd>Q</kbd></button>`);
   }
 
