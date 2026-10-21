@@ -16672,3 +16672,73 @@ button.dip-war.dip-conflict.on { border-left-color: var(--gold-bright); }
 .save-main small, .save-when small { color: var(--text-mute); font-size: 11px; }
 .save-when { display: grid; text-align: right; }
 .save-actions { display: flex; gap: 4px; justify-content: flex-end; }
+
+/* ==========================================================================
+   §70 DAR BAŞLIK (2026-10-21, faz 1b). 1280-1599'da üst çubuk TEK SATIR:
+   iki satıra kırılan çubuk 1366'da 158, 1280'de 185 px tutuyor, yönetim
+   ekranlarına 542 / 467 px bırakıyordu (ölçüldü). Değerlerin hiçbiri
+   gizlenmez; yalnız ETİKETLER ipucuna çekilir (mini göstergelerin adı
+   simgesinin kartında) ve kutular sıkışır: arma, yuva, kaynak madalyonu,
+   saat plakası. Gösterge değer yuvaları §50'deki gibi SABİT kalır (1366
+   ölçüsü). Künye özeti iki satıra kırılabilir: "At peace" kesilmez.
+   Sonda: 1280 ve 1366'da başlık 120 px (1920 ile aynı), çakışma/kırpma yok
+   (scratch/phase1b/hdr.mjs).
+   ========================================================================== */
+@media (min-width: 1280px) and (max-width: 1599px) {
+  .topbar {
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    grid-template-areas: "left stats right";
+    column-gap: 6px;
+    row-gap: 0;
+    padding: var(--safe-top) 10px 0;
+  }
+  .top-stats { justify-content: center; padding-top: 0; border-top: 0; }
+  .nation-crest { width: 60px; height: calc(100% + 14px); padding-top: 6px; }
+  .nation-crest .nation-flag { width: 50px; height: 33px; }
+  .nation-badge { padding-left: 68px; gap: 10px; }
+  .nation-text { max-width: 132px; gap: 4px; }
+  .nation-text b { font-size: 19px; }
+  .nation-text small { white-space: normal; line-height: 1.25; }
+  .tb-cartouche { margin: 0 4px; padding: 1px 6px; }
+  .tb-socket { width: 30px; height: 30px; }
+  .tb-ico, .tb-ico .art-sm, .tb-ico .art-emblem { width: 20px; height: 20px; }
+  .tb-ico .glyph { width: 16px; height: 16px; }
+  .tb-hero .tb-ico .art-emblem { width: 26px; height: 26px; }
+  .tb-gauge { gap: 5px; padding: 3px 5px 3px 3px; }
+  .tb-gv small { letter-spacing: 0.08em; }
+  .tb-gv b { font-size: 16px; }
+  .tb-hero .tb-gv b { font-size: 17px; }
+  .tb-cartouche > .tb-gauge:nth-child(1) { --gv-w: 92px; }
+  .tb-cartouche > .tb-gauge:nth-child(2) { --gv-w: 64px; }
+  .tb-cartouche > .tb-gauge:nth-child(3) { --gv-w: 56px; }
+  .tb-cartouche > .tb-gauge:nth-child(4) { --gv-w: 54px; }
+  .tb-cartouche > .tb-gauge:nth-child(5) { --gv-w: 46px; }
+  /* Mini göstergeler 2x2, kaynak madalyonları 4x2: çubuk boyunda iki sıra. */
+  .tb-minis { grid-template-columns: 76px 72px; gap: 2px 8px; margin-left: 2px; padding: 2px 6px; }
+  .tb-mini small, .tb-mini b .stat-flow { display: none; }
+  .tb-mini b { font-size: 12.5px; }
+  .tb-res { grid-template-columns: repeat(4, 24px); gap: 2px 3px; margin-left: 4px; }
+  .tb-resi { width: 24px; height: 24px; }
+  .tb-resi .art-sm { width: 18px; height: 18px; }
+  .topbar-right, .turn-control { gap: 8px; }
+  /* Durum satırı ("Paused · sebep") kesilirse tamamı saatin ipucundadır. */
+  .turn-badge { width: 136px; }
+  .turn-badge b { font-size: 18px; }
+  .time-btn.time-pause { width: 32px; height: 32px; }
+  .topbar-right > .icon-btn { width: 30px; height: 30px; }
+}
+/* Sanayi minisi iki değer taşır ("61.9 0.0/6.2⚔"): adıyla birlikte 174 px
+   istiyor, yuva 116 px — 1920'de "INDUSTRY" tek harfe kesiliyordu (ölçüldü).
+   Adı simgesinde ve makro kartının başlığında; değerler kalır. */
+.tb-mini.has-flow > small { display: none; }
+@media (min-width: 1280px) and (max-width: 1365px) {
+  .nation-crest { width: 56px; }
+  .nation-crest .nation-flag { width: 46px; height: 31px; }
+  .nation-badge { padding-left: 62px; gap: 8px; }
+  .nation-text { max-width: 120px; }
+  .tb-cartouche { gap: 0; }
+  .tb-gauge { padding: 3px 4px 3px 2px; }
+  .tb-res { grid-template-columns: repeat(4, 22px); gap: 2px; }
+  .tb-resi { width: 22px; height: 22px; }
+  .tb-resi .art-sm { width: 16px; height: 16px; }
+}

@@ -1507,7 +1507,16 @@ export class Hud {
         : 'Space pauses; + and − change the speed.';
     }
     if (status.textContent !== text) status.textContent = text;
-    if (status.title !== title) status.title = title;
+    // Kartın başlığı satırın TAMAMI: dar çubukta (1280-1599, §70) durum
+    // sebebi kesilir, bütünü bir hover ötededir. `title` yazılmaz: ilk
+    // hover onu data-tip'e devşirince sonraki yazımlar yok sayılıyor, kart
+    // ilk gördüğü durumda donuyordu.
+    const tip = `${text}\n${title}`;
+    if (status.dataset.tipText !== tip) {
+      status.removeAttribute('title');
+      status.dataset.tip = 'text';
+      status.dataset.tipText = tip;
+    }
   }
 
   onTurn() {
@@ -1557,7 +1566,7 @@ export class Hud {
         + miniCell(emblemArt('soldiers', 'xs'), 'Army', formatPopulation(army), `data-tip="army" ${track('army', army, army * 0.03 + 1)}`)
         + miniCell(emblemArt('recruits', 'xs'), 'Recruits', formatPopulation(recruits), `data-tip="manpower" ${track('mp', recruits, recruits * 0.05 + 1)}`)
         + miniCell(emblemArt('factory', 'xs'), 'Industry', `${ic.total.toFixed(1)}<em class="stat-flow">${drawn.toFixed(1)}/${armyCap.toFixed(1)}${glyph('swords', 'inline')}</em>`,
-          `data-macro="ic" ${track('ic', ic.total, 0.2)}`, 'macro-live')}</span>`
+          `data-macro="ic" ${track('ic', ic.total, 0.2)}`, 'macro-live has-flow')}</span>`
         + resourceChips(me);
       this.animateTopChanges(this.el.macroStats);
       this.ensureMacroCards();

@@ -14,6 +14,15 @@
     return `${el.tagName.toLowerCase()}${id}${cls}`;
   };
   const visible = (el) => el.getClientRects().length > 0 && getComputedStyle(el).visibility !== 'hidden';
+  // Kaydırılan bir kabın içindeki öğe pencerenin altında kalabilir: kaydırınca
+  // ulaşılır (ayar paneli, ülke seçici). Kabın KENDİSİ taşarsa o yakalanır.
+  const inScroller = (el) => {
+    for (let p = el.parentElement; p && p !== document.body; p = p.parentElement) {
+      const oy = getComputedStyle(p).overflowY;
+      if ((oy === 'auto' || oy === 'scroll') && p.scrollHeight > p.clientHeight + 1) return true;
+    }
+    return false;
+  };
   window.__layoutProbe = (root = document.querySelector('#screen:not(.hidden)') ?? document.body) => {
     const vw = innerWidth;
     const vh = innerHeight;
@@ -36,7 +45,7 @@
       const dx = hiddenX ? el.scrollWidth - el.clientWidth : 0;
       if (dy > 4 || dx > 4) out.unreachable.push(`${describe(el)} hidden ${dx > 4 ? `${dx}px wide ` : ''}${dy > 4 ? `${dy}px tall` : ''}`);
       const r = el.getBoundingClientRect();
-      if (r.width > 0 && (r.right > vw + 1 || r.bottom > vh + 1) && !el.closest('[style*="overflow"], .screen-body, .tech-tree, .k-states, .k-wtable, .mil-build-list, .mil-queue-list, .sheet, .battle-panel, .divisions-body, .nd-list, .np-body, .np-roster')) {
+      if (r.width > 0 && (r.right > vw + 1 || r.bottom > vh + 1) && !el.closest('[style*="overflow"], .screen-body, .tech-tree, .k-states, .k-wtable, .mil-build-list, .mil-queue-list, .sheet, .battle-panel, .divisions-body, .nd-list, .np-body, .np-roster') && !inScroller(el)) {
         if (out.offscreen.length < 8) out.offscreen.push(`${describe(el)} ${Math.round(r.right)}x${Math.round(r.bottom)}`);
       }
     }
