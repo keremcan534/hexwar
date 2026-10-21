@@ -551,7 +551,10 @@ function draw(flag, time) {
 export function mountFlag(host, nation, cssW, cssH, style = 'wave') {
   if (!host || !nation?.flag) return null;
 
-  const dpr = Math.min(2, window.devicePixelRatio || 1);
+  // Kap arayüz ölçeğiyle yakınlaştırılmışsa (ui/uiScale.js, 1440p'de 1.33)
+  // bez o ölçekte görünür: tuval yoğunluğu da onunla çarpılır, yoksa bayrak
+  // büyütülmüş bulanık bir resim olurdu. Tuvalin CSS ölçüsü yine yerel px.
+  const dpr = Math.min(2, window.devicePixelRatio || 1) * Math.min(2, host.currentCSSZoom || 1);
   const w = Math.round(cssW * dpr);
   const h = Math.round(cssH * dpr);
 

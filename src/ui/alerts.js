@@ -16,6 +16,7 @@
 import { activeAlerts } from '../game/alerts.js';
 import { EVENT_TIMEOUT, pendingCards } from '../game/eventCards.js';
 import { gameDate, onEscape } from './hud.js';
+import { localRect } from './uiScale.js';
 
 /** Bekleyen karar düğmesinin mühürlü mektubu (16'lık ızgara, şeritle aynı çizgi). */
 const DECISION_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35"
@@ -225,7 +226,7 @@ export class AlertStrip {
     // panelin sol üst köşesi uyarı düğmesinin altına giriyordu (ölçüldü).
     // Yalnız değişince yazılır; histerezis sayesinde seyrek değişir.
     const pins = this.root.querySelectorAll('.alert-decision, .alert-pin, .alert-restore');
-    const bottom = pins.length ? Math.round(pins[pins.length - 1].getBoundingClientRect().bottom) : 0;
+    const bottom = pins.length ? Math.round(localRect(pins[pins.length - 1]).bottom) : 0;
     if (bottom !== this.lastBottom) {
       this.lastBottom = bottom;
       document.documentElement.style.setProperty('--alerts-bottom', `${bottom}px`);

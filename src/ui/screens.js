@@ -53,6 +53,7 @@ import { depositsOf } from '../game/econ/deposits.js';
 import { resourceArt } from './icons/art.js';
 import { TAB_GLYPH, TERM_GLYPH, glyph } from './icons/glyphs.js';
 import { motionOn } from './motion.js';
+import { localRect, toLocal } from './uiScale.js';
 import { formatPopulation, populationOf } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS } from '../game/econ/defs.js';
 import {
@@ -1466,9 +1467,10 @@ export class Screens {
     this.tech.zoom = next;
     writeTechZoom(next);
     if (!tree || !inner) return;
+    // İmleç görsel px, kaydırma yerel px (ui/uiScale.js).
     const box = tree.getBoundingClientRect();
-    const offsetX = anchor ? anchor.x - box.left : 0;
-    const offsetY = anchor ? anchor.y - box.top : 0;
+    const offsetX = anchor ? toLocal(anchor.x - box.left) : 0;
+    const offsetY = anchor ? toLocal(anchor.y - box.top) : 0;
     const contentX = (tree.scrollLeft + offsetX) / before;
     const contentY = (tree.scrollTop + offsetY) / before;
     inner.style.zoom = String(next);
@@ -1897,7 +1899,7 @@ export class Screens {
         pop.className = 'why-pop';
         pop.dataset.anchor = el.dataset.why ?? '';
         pop.textContent = el.dataset.whyText;
-        const rect = el.getBoundingClientRect();
+        const rect = localRect(el);
         pop.style.top = `${Math.round(rect.bottom + 6)}px`;
         pop.style.left = `${Math.round(rect.left)}px`;
         document.body.append(pop);

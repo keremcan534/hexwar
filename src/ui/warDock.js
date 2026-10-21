@@ -17,6 +17,7 @@ import { hydrateFlags } from '../render/flagWave.js';
 import { esc, tipAttr } from './kit.js';
 import { refreshTooltipsWithin } from './tooltip.js';
 import { conflictDetailHtml, conflictFocusTile, scoreBarHtml } from './warDetail.js';
+import { localRect, viewport } from './uiScale.js';
 
 /**
  * Düşmanın savaş yorgunluğu (politics.exhaustion; TASARIM §9). Görünmezken
@@ -151,7 +152,8 @@ export class WarDock {
    * kayar ama içeriği aynı kaldığı için eskiden yeniden ölçülmüyordu.
    */
   measure() {
-    const rect = this.root.getBoundingClientRect();
+    // CSS değişkeni yakınlaştırılmış köklerde okunur: yerel px (ui/uiScale.js).
+    const rect = localRect(this.root);
     // Gizliyken (ekran/menü açık) ölçü 0'dır; eski değer korunur.
     if (!rect.height) return;
     const bottom = Math.round(rect.bottom);
@@ -215,9 +217,9 @@ export class WarDock {
     const card = this.root.querySelector('.wd-detail');
     if (!card) return;
     const row = this.root.querySelector(`[data-wd-conflict="${this.openKey}"]`);
-    const rootTop = this.root.getBoundingClientRect().top;
-    const want = row ? row.getBoundingClientRect().top - rootTop : 0;
-    const room = window.innerHeight - rootTop - card.offsetHeight - 12;
+    const rootTop = localRect(this.root).top;
+    const want = row ? localRect(row).top - rootTop : 0;
+    const room = viewport().h - rootTop - card.offsetHeight - 12;
     card.style.top = `${Math.max(0, Math.min(want, room))}px`;
   }
 

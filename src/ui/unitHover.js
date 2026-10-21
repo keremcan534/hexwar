@@ -10,6 +10,7 @@ import { formatPopulation } from '../game/economy.js';
 import { generalOfArmy } from '../game/command.js';
 import { menUnderArms, organizationOf, strengthRatio, unitsOn } from '../game/units.js';
 import { esc } from './kit.js';
+import { toLocal, viewport } from './uiScale.js';
 
 export class UnitHover {
   constructor(game) {
@@ -41,13 +42,17 @@ export class UnitHover {
     this.place(rect.left + hit.x, rect.top + hit.y);
   }
 
-  place(x, y) {
+  place(clientX, clientY) {
+    // İmleç görsel px, kart yerel px'te yazılır (ui/uiScale.js); offset* zaten yereldir.
+    const x = toLocal(clientX);
+    const y = toLocal(clientY);
+    const view = viewport();
     const w = this.root.offsetWidth || 260;
     const h = this.root.offsetHeight || 120;
     let left = x + 18;
     let top = y + 18;
-    if (left + w > window.innerWidth - 8) left = x - w - 14;
-    if (top + h > window.innerHeight - 8) top = y - h - 14;
+    if (left + w > view.w - 8) left = x - w - 14;
+    if (top + h > view.h - 8) top = y - h - 14;
     this.root.style.transform = `translate(${Math.round(left)}px, ${Math.round(top)}px)`;
   }
 

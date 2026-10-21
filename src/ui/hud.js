@@ -55,6 +55,7 @@ import { POPULATION_SCALE } from '../game/populationScale.js';
 import { worldRows } from '../world/worldgen.js';
 import { dateOfTurn } from '../game/calendar.js';
 import { WarDock } from './warDock.js';
+import { localRect, onUiScale, toLocal, viewport } from './uiScale.js';
 
 const $ = (id) => document.getElementById(id);
 
@@ -769,14 +770,16 @@ export class Hud {
     const tabBar = document.getElementById('tab-bar');
     const rootStyle = document.documentElement.style;
     const apply = () => {
-      const height = Math.round(header.getBoundingClientRect().height);
+      // Bütün ölçüler YEREL px (ui/uiScale.js): değişkenleri okuyan paneller
+      // yakınlaştırılmış köklerdir, görsel px 1440p'de 1.33 kat aşağı atardı.
+      const height = Math.round(localRect(header).height);
       const top = height + 16;
       screen.style.top = `${top}px`;
       // Alttaki 52 px bildirim tepsisinindir: ekran açıkken tepsi o şeride
       // iner (styles.css, body.screen-open .notify-stack). Eskiden tepsi
       // ekranın sağ alt köşesine biniyor, Military'de teçhizat değerlerini,
       // Diplomacy'de Declare War düğmelerini örtüyordu (ölçüldü).
-      screen.style.maxHeight = `calc(100vh - ${top}px - 52px)`;
+      screen.style.maxHeight = `calc(100vh / var(--ui) - ${top}px - 52px)`;
       // Tumen listesi de baslik yuksekligine gore yer bulur: sabit 140px
       // tahmini, savas seridi acilinca listeyi cipin ustune bindiriyordu
       // (1280x720, Open Beta 4 B-14).
@@ -787,7 +790,7 @@ export class Hud {
       // (ayar paneli, uyarı şeridi, hareket paneli, --screen-top) 74 px'lik
       // varsayılanla kalıyor, 1280'de üç satıra dağılan çubuğun altına
       // giriyordu (LS-04).
-      const bar = tabBar?.getBoundingClientRect();
+      const bar = tabBar ? localRect(tabBar) : null;
       const hudTop = bar?.height ? Math.round(bar.top) : height - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabbar-height')) || 0);
       rootStyle.setProperty('--hud-top', `${Math.max(0, hudTop)}px`);
       // Sağ sütun savaş panelinin alt kenarına göre dizilir; panel başlıkla
@@ -803,6 +806,9 @@ export class Hud {
       this.headerObserver.observe(header);
     }
     window.addEventListener('resize', apply);
+    // Ölçek değişince başlığın yerel yüksekliği aynı kalabilir (gözlemci
+    // susar) ama görsel ölçüden türeyen her şey yeniden yazılmalı.
+    onUiScale(() => requestAnimationFrame(apply));
   }
 
   /**
@@ -1243,8 +1249,9 @@ export class Hud {
     el.textContent = text;
     // Komuta şeridinin hemen üstü: araç satırı açıkken sabit 132 px satırın
     // üstüne biniyordu (hat çizim ipucu düğmeleri örtüyordu).
-    const dock = document.getElementById('command-dock')?.getBoundingClientRect();
-    el.style.bottom = dock && dock.height ? `${Math.round(window.innerHeight - dock.top + 10)}px` : '';
+    const dock = document.getElementById('command-dock');
+    const box = dock ? localRect(dock) : null;
+    el.style.bottom = box && box.height ? `${Math.round(viewport().h - box.top + 10)}px` : '';
     el.classList.remove('show');
     void el.offsetWidth;
     el.classList.add('show');
@@ -1320,7 +1327,7 @@ export class Hud {
 
   /** Balonu kaynagin altina oturtur; hucre her tazelemede yeniden cizilir. */
   placeWhy(anchor) {
-    const rect = anchor.getBoundingClientRect();
+    const rect = localRect(anchor);
     this.whyPop.style.top = `${Math.round(rect.bottom + 6)}px`;
     this.whyPop.style.left = `${Math.round(rect.left)}px`;
   }
@@ -1453,8 +1460,8 @@ export class Hud {
     const slot = cell.querySelector('.tb-gv small, :scope > small');
     const anchor = (slot ?? cell).getBoundingClientRect();
     tag.className = `tb-delta ${good ? 'good' : 'bad'} ${slot ? 'at-label' : 'at-top'}`;
-    tag.style.left = `${Math.round(anchor.left - host.left + (slot ? 0 : anchor.width / 2))}px`;
-    tag.style.top = `${Math.round(anchor.top - host.top + (slot ? anchor.height / 2 : 0))}px`;
+    tag.style.left = `${Math.round(toLocal(anchor.left - host.left + (slot ? 0 : anchor.width / 2)))}px`;
+    tag.style.top = `${Math.round(toLocal(anchor.top - host.top + (slot ? anchor.height / 2 : 0)))}px`;
     tag.addEventListener('animationend', () => {
       tag.remove();
       if (live.get(key) !== tag) return;
@@ -1679,7 +1686,7 @@ export class Hud {
     const me = this.game.world?.nations[this.game.turns.playerNation];
     const host = this.el.topFlag;
     if (!me || !host) return;
-    const box = host.getBoundingClientRect();
+    const box = localRect(host);
     mountFlag(host, me, Math.round(box.width) || 60, Math.round(box.height) || 40);
   }
 

@@ -28,6 +28,8 @@
 //
 // Katman notu: yalnız DOM. Oyun durumuna sağlayıcılar üzerinden erişir.
 
+import { localRect, viewport } from './uiScale.js';
+
 /**
  * Birinci katman: oyuncu gerçekten "ne bu?" diye durmuş olmalı. 550 ms'de
  * kart imleç üst çubukta gezerken sekme sekme açılıyordu; Paradox bandının
@@ -251,22 +253,24 @@ const clampTo = (value, min, max) => Math.max(min, Math.min(value, max));
  * satırlarını ve öteki terimleri örtüyordu (T-05).
  */
 function place(card, anchor, depth) {
-  const a = anchor.getBoundingClientRect();
+  // Bütün hesap YEREL px'te (ui/uiScale.js): kart yakınlaştırılmış bir
+  // köktür, yazılan left/top ölçekle çarpılır. Görsel dikdörtgenle hesap
+  // 1440p'de kartı kaynağın 1.33 katı uzağına atıyordu.
   // Bazı bağlamlarda (gizli sekme, gömülü panel) `innerWidth` 0 döner ve
-  // kartı köşeye sıkıştırırdı; belge kutusu daha güvenilir bir tabandır.
-  const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
-  const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+  // kartı köşeye sıkıştırırdı; viewport() belge kutusuna düşer.
+  const a = localRect(anchor);
+  const { w: vw, h: vh } = viewport();
   card.style.visibility = 'hidden';
   card.style.left = '0px';
   card.style.top = '0px';
   card.style.maxHeight = `${vh - EDGE * 2}px`;
-  let box = card.getBoundingClientRect();
+  let box = localRect(card);
   const fitsRight = (x) => x + box.width <= vw - EDGE;
   let left = null;
   let top = null;
 
   if (depth > 0 && layers[depth - 1]) {
-    const parent = rectOf(layers[depth - 1].card);
+    const parent = localRect(layers[depth - 1].card);
     if (fitsRight(parent.right + GAP)) left = parent.right + GAP;
     else if (parent.left - GAP - box.width >= EDGE) left = parent.left - GAP - box.width;
     if (left != null) {
@@ -278,7 +282,7 @@ function place(card, anchor, depth) {
       const above = parent.top - GAP - EDGE;
       if (box.height > Math.max(below, above)) {
         card.style.maxHeight = `${Math.max(below, above)}px`;
-        box = card.getBoundingClientRect();
+        box = localRect(card);
       }
       top = below >= above ? parent.bottom + GAP : parent.top - GAP - box.height;
       left = clampTo(parent.left, EDGE, vw - box.width - EDGE);
@@ -296,7 +300,7 @@ function place(card, anchor, depth) {
       top = clampTo(a.top, EDGE, vh - box.height - EDGE);
     } else {
       card.style.maxHeight = `${Math.max(below, above)}px`;
-      box = card.getBoundingClientRect();
+      box = localRect(card);
       top = below >= above ? a.bottom + GAP : a.top - GAP - box.height;
     }
     if (left == null) {

@@ -10,6 +10,7 @@ import { battleView } from '../game/battleView.js';
 import { formatPopulation } from '../game/economy.js';
 import { esc, tipAttr } from './kit.js';
 import { refreshTooltips } from './tooltip.js';
+import { localRect, toLocal } from './uiScale.js';
 
 /**
  * Güç oranı yazısı: bir taraf sıfıra inince "1000000.00 : 1" basıyordu.
@@ -83,7 +84,7 @@ export class BattlePanel {
     // Şerit savaş çubuğunun HEMEN altında: çubuk mutlak konumlu ve yüksekliği
     // çip sayısıyla değişir; sabit bir üst değer çiplerin üstüne biniyordu.
     const bar = document.getElementById('war-bar');
-    const rect = bar && !bar.classList.contains('hidden') ? bar.getBoundingClientRect() : null;
+    const rect = bar && !bar.classList.contains('hidden') ? localRect(bar) : null;
     if (rect?.height) this.strip.style.top = `${Math.round(rect.bottom + 2)}px`;
     const world = this.game.world;
     const me = this.game.turns?.playerNation;
@@ -145,9 +146,10 @@ export class BattlePanel {
       const r = document.getElementById(id)?.getBoundingClientRect();
       if (r?.height && r.right > me.left && r.left < me.right && r.top > me.top) floor = Math.min(floor, r.top);
     }
-    this.root.style.maxHeight = `${Math.max(180, Math.floor(floor - me.top - 8))}px`;
+    // Ölçüler görsel px, yazılan tavan yerel px (ui/uiScale.js).
+    this.root.style.maxHeight = `${Math.max(180, Math.floor(toLocal(floor - me.top) - 8))}px`;
     const strip = this.strip.getBoundingClientRect();
-    this.strip.style.maxWidth = strip.width ? `${Math.max(120, Math.floor(me.left - strip.left - 8))}px` : '';
+    this.strip.style.maxWidth = strip.width ? `${Math.max(120, Math.floor(toLocal(me.left - strip.left) - 8))}px` : '';
   }
 
   refresh() {

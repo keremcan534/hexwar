@@ -1,5 +1,7 @@
 // Giriş noktası.
 
+// İlk modül: arayüz ölçeği (--ui) HUD kurulup ölçmeden önce yazılsın.
+import './ui/uiScale.js';
 import { Game } from './game/game.js';
 import { Hud } from './ui/hud.js';
 import { mountTooltips } from './ui/tooltip.js';

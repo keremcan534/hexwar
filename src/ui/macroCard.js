@@ -10,6 +10,8 @@
 // durma) burada tek yerde durur; ileride genel tooltip yöneticisi bunu
 // devralabilir.
 
+import { localRect, viewport } from './uiScale.js';
+
 const HOVER_DELAY = 420;
 const GRACE = 200;
 
@@ -128,15 +130,17 @@ export function bindMacroCards(root, api) {
 
   /** Kaynağın ÜSTÜNDE açılır; ekranın sağına taşarsa sola yaslanır. */
   const place = (element) => {
-    const anchor = element.getBoundingClientRect();
+    // Yerel px (ui/uiScale.js): kart yakınlaştırılmış bir köktür.
+    const anchor = localRect(element);
     card.classList.remove('hidden');
-    const box = card.getBoundingClientRect();
+    const box = localRect(card);
+    const view = viewport();
     const margin = 8;
     let left = anchor.left + anchor.width / 2 - box.width / 2;
-    left = Math.max(margin, Math.min(left, window.innerWidth - box.width - margin));
+    left = Math.max(margin, Math.min(left, view.w - box.width - margin));
     // Üst çubuğun altına açılır; yer yoksa üstüne çıkar.
     let top = anchor.bottom + 6;
-    if (top + box.height > window.innerHeight - margin) {
+    if (top + box.height > view.h - margin) {
       top = Math.max(margin, anchor.top - box.height - 6);
     }
     card.style.left = `${Math.round(left)}px`;
