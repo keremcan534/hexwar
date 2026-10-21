@@ -199,7 +199,7 @@ export function maxCoalitionAttackers() {
  * esigi gecen ulkeye birkac hafta icinde butun komsularini birden bindiriyordu.
  * Koalisyon nadir ve dramatik bir olay olmali, haftalik bir vergi degil.
  */
-const COALITION_CHANCE = 0.08;
+export const COALITION_CHANCE = 0.08;
 
 export function checkCoalitions(game, rng) {
   const world = game.world;

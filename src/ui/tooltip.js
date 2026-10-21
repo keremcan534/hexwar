@@ -15,6 +15,13 @@
 // `data-tip="saglayici"` (+ isteğe bağlı `data-tip-arg`) taşır. Yeni bir
 // tooltip eklemek = bir öznitelik yazmak.
 //
+// NEDEN GEOMETRİ: kart tıklamayı yutmaz (pointer-events yalnız terimlerde
+// açık, bkz. styles.css §29). Kartın altındaki düğmeye yapılan tık o düğmeye
+// gider; kartın "içinde" olmak bu yüzden olay hedefiyle değil, imlecin kartın
+// dikdörtgeninde olmasıyla ölçülür. Eskiden kart imleç altındaki denetimin
+// üstüne girince anında kapanıyordu (passThrough): üst çubuk kartlarının üst
+// yarısı sekme şeridinin üstündeydi ve hiçbirine girilemiyordu (T-01).
+//
 // İÇERİK BURADA HESAPLANMAZ. Sağlayıcılar alan katmanının döküm
 // fonksiyonlarını okur (bkz. tooltipData.js); tooltip kodu hiçbir simülasyon
 // formülünü kopyalamaz — kopyalasaydı ekranla motor zamanla ayrışırdı.
@@ -22,17 +29,25 @@
 // Katman notu: yalnız DOM. Oyun durumuna sağlayıcılar üzerinden erişir.
 
 /**
- * Birinci katman: oyuncu gerçekten "ne bu?" diye durmuş olmalı. 800 ms
- * "tooltip yok" diye okunuyordu (kör oyun testi); Paradox bandı 450–700 ms.
+ * Birinci katman: oyuncu gerçekten "ne bu?" diye durmuş olmalı. 550 ms'de
+ * kart imleç üst çubukta gezerken sekme sekme açılıyordu; Paradox bandının
+ * üst ucu (~700 ms) okumak için duranı gezinenden ayırır. Vurgu anlıktır.
  */
-const DELAY = 550;
+const DELAY = 700;
 /** İç içe katman: zaten okuma kipindedir, daha kısa. */
 const NESTED_DELAY = 300;
 /** Kaynakla kart arasında gezerken kapanmasın diye mühlet. */
-const GRACE = 220;
+const GRACE = 260;
+/**
+ * Karta doğru giden imleç mühleti tazeler ama sonsuza dek değil: yolda başka
+ * kaynakların üstünden geçen çapraz hareket (kaynak çipleri, sekme şeridi)
+ * GRACE'ten uzun sürebilir; yaklaşmayı bırakan imleç kartı bırakmış sayılır.
+ */
+const TRAVEL = 1200;
 /** Derinlik sınırı: sonsuz zincir okunmaz hale gelir. */
 const MAX_DEPTH = 3;
 const EDGE = 8;
+const GAP = 6;
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -53,18 +68,21 @@ function esc(s) {
  *   { type:'mechanic',  title, text, effects, rows, footer }
  *
  * `rows` bir FORMÜLÜN parçalarıdır: "neden bu değer" sorusunun cevabı.
- * `effects` sonuçlardır: "bu değer neyi değiştiriyor".
+ * `effects` sonuçlardır: "bu değer neyi değiştiriyor". `text`, `note` ve
+ * `footer` ham HTML'dir (tipTerm terimleri buradan girer); satır etiketleri
+ * kaçırılır, yalnız `labelHtml` verilen satır terim taşıyabilir.
  */
 function render(data) {
   if (!data) return '';
+  const label = (row) => row.labelHtml ?? esc(row.label);
   const rows = (data.rows ?? []).map((row) => `
     <div class="tip-row ${row.tone ?? ''}">
-      <span>${esc(row.label)}</span>
+      <span>${label(row)}</span>
       <b>${esc(String(row.value))}</b>
     </div>`).join('');
   const effects = (data.effects ?? []).map((row) => `
     <div class="tip-effect">
-      <span>${esc(row.label)}</span>
+      <span>${label(row)}</span>
       <b class="${row.tone ?? ''}">${esc(String(row.value))}</b>
     </div>`).join('');
   // Başlıksız kart (yalnız açıklama cümlesi) boş bir başlık şeridi taşımaz.
@@ -76,7 +94,7 @@ function render(data) {
   return `${head}
     ${data.note ? `<div class="tip-note">${data.note}</div>` : ''}
     ${data.text ? `<p class="tip-text">${data.text}</p>` : ''}
-    ${effects ? `<div class="tip-block"><small>Effects</small>${effects}</div>` : ''}
+    ${effects ? `<div class="tip-block"><small>${esc(data.effectsLabel ?? 'Effects')}</small>${effects}</div>` : ''}
     ${rows ? `<div class="tip-block"><small>${esc(data.rowsLabel ?? 'Why')}</small>${rows}</div>` : ''}
     ${data.footer ? `<p class="tip-foot">${data.footer}</p>` : ''}`;
 }
@@ -133,56 +151,75 @@ export function provideTooltip(id, fn) {
 }
 
 /**
- * Sağlayıcının içeriği, kart açmadan. Kalıcı bilgi paneli (teknoloji ekranının
- * inceleme paneli) kartla aynı sağlayıcıyı okur: iki ayrı döküm yazılsaydı
- * panel ile kart zamanla farklı sayı söylerdi.
+ * Sağlayıcının içeriği, kart açmadan. Kalıcı bir panel kartla aynı sayıyı
+ * söylemek isterse buradan okur (iki ayrı döküm zamanla ayrışır); içerik
+ * taraması da her sağlayıcıyı fare olmadan bununla çağırır.
  */
 export function tooltipHtml(id, arg = '') {
   const provider = providers.get(id);
   return provider ? render(provider(arg, null)) : '';
 }
 
-/** İçeriğin içinde ikincil terim: `tipTerm('research', 'Research Points')`. */
+/**
+ * İçeriğin içinde ikincil terim: `tipTerm('term', 'stability', 'stability')`.
+ * Terim kartın içinde kendi kartını açar (iç içe katman); sağlayıcı yoksa
+ * vurgulu kelime yalan söylemesin diye düz metin yazılır.
+ */
 export function tipTerm(id, label, arg = '') {
-  return `<b class="tip-term" data-tip="${esc(id)}"${arg ? ` data-tip-arg="${esc(arg)}"` : ''}>${esc(label)}</b>`;
+  if (!providers.has(id)) return esc(label);
+  // <span>, <b> değil: satır değerinin `.tip-row b` rengi (kırmızı/yeşil) terimi boyuyordu.
+  return `<span class="tip-term" data-tip="${esc(id)}"${arg ? ` data-tip-arg="${esc(arg)}"` : ''}>${esc(label)}</span>`;
 }
 
-/** Açık katmanlar. Her katman kendi kartını ve zamanlayıcısını taşır. */
+/** Açık katmanlar: { card, source, depth }. Dizin = derinlik. */
 const layers = [];
-let openTimer = null;
-let closeTimer = null;
+/** Açılmayı bekleyen kaynak: { element, depth, timer }. */
+let pending = null;
+/** Kapanmayı bekleyen derinlik: { depth, timer, since, dist }. */
+let closing = null;
+/** Son bilinen imleç (kart pointer-events taşımadığı için geometri buradan). */
+const pointer = { x: -1, y: -1, buttons: 0 };
+let observer = null;
 let mounted = false;
+
+const rectOf = (card) => card.getBoundingClientRect();
+const within = (r, x, y) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom;
+function distanceTo(r, x, y) {
+  const dx = Math.max(r.left - x, 0, x - r.right);
+  const dy = Math.max(r.top - y, 0, y - r.bottom);
+  return Math.hypot(dx, dy);
+}
+
+/** Öğeyi içeren kartın katmanı (-1: ekranın kendisi). */
+function cardIndexOf(element) {
+  if (!element?.closest) return -1;
+  for (let i = layers.length - 1; i >= 0; i--) {
+    if (layers[i].card.contains(element)) return i;
+  }
+  return -1;
+}
+
+/** İmlecin geometrik olarak içinde durduğu en derin kart (-1: hiçbiri). */
+function insideIndex() {
+  for (let i = layers.length - 1; i >= 0; i--) {
+    if (within(rectOf(layers[i].card), pointer.x, pointer.y)) return i;
+  }
+  return -1;
+}
+
+/** Bir öğenin hangi katmanın içinde olduğunu bulur (0 = ekranın kendisi). */
+function depthOf(element) {
+  const index = cardIndexOf(element);
+  return index < 0 ? 0 : index + 1;
+}
 
 function makeCard(depth) {
   const card = document.createElement('div');
   card.className = 'tip-card';
+  card.setAttribute('role', 'tooltip');
   card.dataset.depth = String(depth);
   document.body.appendChild(card);
-  card.addEventListener('pointerenter', () => clearTimeout(closeTimer));
-  card.addEventListener('pointerleave', scheduleClose);
-  card.addEventListener('pointermove', (event) => passThrough(card, event));
   return card;
-}
-
-/**
- * Kart okunacak yer değilse geçilecek yerdir. Kart kaynağın altına açılır;
- * dikey listede (inşaat seçenekleri, state satırları, yasalar) bu bir sonraki
- * iki düğmenin üstü demek. İmleç karta geçince kart açık kalıyor, alttaki
- * düğmeye yapılan İLK tık kartın üstüne düşüp kayboluyordu (ölçüldü: Farm →
- * Extraction Works, ilk tık seçimi değiştirmiyor). İçinde iç içe terim
- * (data-tip) olmayan kartın altında başka bir denetim varsa kart çekilir.
- */
-function passThrough(card, event) {
-  if (card.querySelector('[data-tip]')) return;
-  const depth = layers.findIndex((layer) => layer.card === card);
-  if (depth < 0) return;
-  const source = layers[depth].source;
-  const below = document.elementsFromPoint(event.clientX, event.clientY)
-    .find((el) => !card.contains(el) && !el.classList?.contains('tip-card'));
-  const control = below?.closest?.('button, a, input, select, [role="button"], [data-tip]');
-  if (control && control !== source && !source?.contains(control) && !control.contains(source)) {
-    closeFrom(depth);
-  }
 }
 
 /**
@@ -197,37 +234,90 @@ export function quietScroll(node) {
   quietScrolls.set(node, performance.now());
 }
 function onScroll(event) {
+  // Uzun kartın kendi kaydırması okumanın parçasıdır.
+  if (event.target?.closest?.('.tip-card')) return;
   const at = quietScrolls.get(event.target);
   if (at != null && performance.now() - at < 300) return;
   hideTooltips();
 }
 
-/** Kaynağın yanına yerleştirir; ekran kenarında yön değiştirir. */
-function place(card, anchor) {
-  const rect = anchor.getBoundingClientRect();
+const clampTo = (value, min, max) => Math.max(min, Math.min(value, max));
+
+/**
+ * Yerleşim. Birinci katman kaynağın altına, sığmazsa üstüne; ikisi de
+ * yetmezse YANINA (tam ekran boyu) açılır, o da olmazsa geniş tarafa boyu
+ * kısılıp kaydırılır — kaynağı hiç örtmez. İç katman üst kartın yanına
+ * açılır (sağ, kenarda sol): terimin altına açılan kart üst kartın kalan
+ * satırlarını ve öteki terimleri örtüyordu (T-05).
+ */
+function place(card, anchor, depth) {
+  const a = anchor.getBoundingClientRect();
+  // Bazı bağlamlarda (gizli sekme, gömülü panel) `innerWidth` 0 döner ve
+  // kartı köşeye sıkıştırırdı; belge kutusu daha güvenilir bir tabandır.
+  const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
+  const vh = window.innerHeight || document.documentElement.clientHeight || 800;
   card.style.visibility = 'hidden';
   card.style.left = '0px';
   card.style.top = '0px';
-  const box = card.getBoundingClientRect();
-  // Bazi baglamlarda (gizli sekme, gomulu panel) `innerWidth` 0 doner ve
-  // karti koseye sikistirirdi; belge kutusu daha guvenilir bir tabandir.
-  const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
-  const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+  card.style.maxHeight = `${vh - EDGE * 2}px`;
+  let box = card.getBoundingClientRect();
+  const fitsRight = (x) => x + box.width <= vw - EDGE;
+  let left = null;
+  let top = null;
 
-  // Dikey: altına sığıyorsa alta, sığmıyorsa üste.
-  let top = rect.bottom + 6;
-  if (top + box.height > vh - EDGE) {
-    const above = rect.top - box.height - 6;
-    top = above >= EDGE ? above : Math.max(EDGE, vh - box.height - EDGE);
+  if (depth > 0 && layers[depth - 1]) {
+    const parent = rectOf(layers[depth - 1].card);
+    if (fitsRight(parent.right + GAP)) left = parent.right + GAP;
+    else if (parent.left - GAP - box.width >= EDGE) left = parent.left - GAP - box.width;
+    if (left != null) {
+      // Terimin satırına hizalı: göz satırdan karta yatay kayar.
+      top = clampTo(a.top - 8, EDGE, vh - box.height - EDGE);
+    } else {
+      // Yan yana sığmayan dar ekranda üst kartın altına/üstüne, üstüne asla.
+      const below = vh - EDGE - (parent.bottom + GAP);
+      const above = parent.top - GAP - EDGE;
+      if (box.height > Math.max(below, above)) {
+        card.style.maxHeight = `${Math.max(below, above)}px`;
+        box = card.getBoundingClientRect();
+      }
+      top = below >= above ? parent.bottom + GAP : parent.top - GAP - box.height;
+      left = clampTo(parent.left, EDGE, vw - box.width - EDGE);
+    }
+  } else {
+    const below = vh - EDGE - (a.bottom + GAP);
+    const above = a.top - GAP - EDGE;
+    if (box.height <= below) top = a.bottom + GAP;
+    else if (box.height <= above) top = a.top - GAP - box.height;
+    else if (fitsRight(a.right + GAP)) {
+      left = a.right + GAP;
+      top = clampTo(a.top, EDGE, vh - box.height - EDGE);
+    } else if (a.left - GAP - box.width >= EDGE) {
+      left = a.left - GAP - box.width;
+      top = clampTo(a.top, EDGE, vh - box.height - EDGE);
+    } else {
+      card.style.maxHeight = `${Math.max(below, above)}px`;
+      box = card.getBoundingClientRect();
+      top = below >= above ? a.bottom + GAP : a.top - GAP - box.height;
+    }
+    if (left == null) {
+      // Yatay: sola hizalı başlar, sağa taşarsa kaynağın sağ kenarına yaslanır.
+      left = a.left;
+      if (!fitsRight(left)) left = a.right - box.width;
+      left = clampTo(left, EDGE, vw - box.width - EDGE);
+    }
   }
-  // Yatay: sola hizalı başlar, sağa taşarsa kaynağın sağ kenarına yaslanır.
-  let left = rect.left;
-  if (left + box.width > vw - EDGE) left = rect.right - box.width;
-  left = Math.max(EDGE, Math.min(left, vw - box.width - EDGE));
-
   card.style.left = `${Math.round(left)}px`;
-  card.style.top = `${Math.round(top)}px`;
+  card.style.top = `${Math.round(Math.max(EDGE, top))}px`;
   card.style.visibility = '';
+  markScroll(card);
+}
+
+/**
+ * Boyu ekrana sığmayan kart kendi içinde kaydırılır; kaydırma çubuğu ve
+ * tekerlek ancak kart olay alırsa çalışır. Yalnız bu kartlar tıklamayı tutar.
+ */
+function markScroll(card) {
+  card.classList.toggle('tip-scroll', card.scrollHeight > card.clientHeight + 1);
 }
 
 /** Verilen derinlikten AŞAĞIYI kapatır (üst katmanlar kalır). */
@@ -236,40 +326,153 @@ function closeFrom(depth) {
     const layer = layers.pop();
     layer.card.remove();
   }
+  if (closing && closing.depth >= layers.length) cancelClose();
+  if (!layers.length) observer?.disconnect();
 }
 
-function scheduleClose() {
-  clearTimeout(closeTimer);
-  closeTimer = setTimeout(() => closeFrom(0), GRACE);
+function cancelClose() {
+  if (!closing) return;
+  clearTimeout(closing.timer);
+  closing = null;
+}
+
+function cancelPending() {
+  if (!pending) return;
+  clearTimeout(pending.timer);
+  pending = null;
+}
+
+/**
+ * `depth`ten aşağısı GRACE sonra kapanır. İmleç o derinliğin kartına
+ * yaklaştıkça (uzaklık ilk kez küçüldükçe) mühlet TRAVEL tavanına dek tazelenir.
+ */
+function closeLater(depth) {
+  // Kapanacak kartların en yakını: iç karta giden imleç üst kartla iç kart
+  // arasındaki boşluktan geçerken kök derinlik kapanmaya aday olur.
+  let dist = Infinity;
+  for (let i = depth; i < layers.length; i++) {
+    dist = Math.min(dist, distanceTo(rectOf(layers[i].card), pointer.x, pointer.y));
+  }
+  const now = performance.now();
+  if (closing && closing.depth === depth) {
+    if (dist < closing.dist - 0.5 && now - closing.since < TRAVEL) {
+      clearTimeout(closing.timer);
+      closing.timer = setTimeout(fireClose, GRACE);
+    }
+    closing.dist = Math.min(closing.dist, dist);
+    return;
+  }
+  cancelClose();
+  closing = { depth, since: now, dist, timer: setTimeout(fireClose, GRACE) };
+}
+
+function fireClose() {
+  const depth = closing?.depth;
+  closing = null;
+  if (depth != null) closeFrom(depth);
+}
+
+/**
+ * Kaynağı açılmaya aday yapar. Bekleme olayın KENDİ zaman damgasından
+ * sayılır: ana iş parçacığı meşgulken olay geç dağıtılınca kart da o kadar
+ * gecikiyordu (ölçüldü: 550 ms hedefe 562-1000 ms).
+ */
+function want(element, depth, stamp) {
+  if (pending && pending.depth === depth && sameSource(pending.element, element)) {
+    pending.element = element;
+    return;
+  }
+  cancelPending();
+  const wait = (depth ? NESTED_DELAY : DELAY) - Math.max(0, performance.now() - stamp);
+  const entry = { element, depth, timer: 0 };
+  entry.timer = setTimeout(() => {
+    if (pending !== entry) return;
+    pending = null;
+    // Beklerken kaynak yeniden kurulduysa (haftalık tazeleme) aynı kimlikteki
+    // yeni düğüm açılır; terim üst kartın içinde aranır.
+    const element = entry.element.isConnected ? entry.element
+      : findSame(entry.element, entry.depth ? layers[entry.depth - 1]?.card : document);
+    if (element) open(element, entry.depth);
+  }, Math.max(0, wait));
+  pending = entry;
+}
+
+/**
+ * Her imleç olayında katmanların hâli yeniden kurulur: hangi kaynak "sıcak",
+ * kaç katman kalmalı, hangisi beklemeli. Kartın altında kalan öğe görünmez
+ * sayılır — kartı okuyan imleç alttaki sekmenin kartını açmamalı.
+ */
+function track(target, stamp = performance.now()) {
+  pruneOrphans();
+  const inside = insideIndex();
+  const own = cardIndexOf(target);
+  let hot = null;
+  let host = 0;
+  if (inside >= 0 && own < inside) {
+    host = inside + 1;
+  } else if (own >= 0) {
+    host = own + 1;
+    const term = target.closest('[data-tip]');
+    hot = term && layers[own].card.contains(term) ? term : null;
+  } else {
+    hot = adopt(target?.closest?.(SOURCE) ?? null);
+  }
+  let keep = host;
+  if (hot && layers[host] && sameSource(layers[host].source, hot)) {
+    // Aynı kaynağın üstünde gezinmek yeniden açmaz; yeniden kurulmuş aynı
+    // kaynak (haftalık tazeleme) kartı yerinde günceller.
+    if (layers[host].source !== hot) refresh(layers[host], hot);
+    keep = host + 1;
+    hot = null;
+  }
+  // Basılı tuşla gezen imleç (sürükleme, kaydırma çubuğu) kart açmaz.
+  if (hot && host < MAX_DEPTH && !pointer.buttons) want(hot, host, stamp);
+  else cancelPending();
+  if (layers.length > keep) closeLater(keep);
+  else cancelClose();
+  return inside;
+}
+
+/**
+ * Kaynağı DOM'dan düşen katman: haftalık tazelemede aynı kimlikte yeni öğe
+ * varsa ona bağlanır, yoksa kapanır. Kaynağı silinen kart eskiden imleç
+ * oynayana dek havada kalıyordu (Esc ile kapanan province paneli, T-02).
+ */
+function pruneOrphans() {
+  for (let i = 0; i < layers.length; i++) {
+    const layer = layers[i];
+    if (layer.source?.isConnected) continue;
+    // İç katmanın terimi yalnız ÜST kartında aranır: aynı terim başka bir
+    // kartta da olabilir (istikrar hem güç hem çıktı kartında).
+    const found = findSame(layer.source, layer.depth ? layers[layer.depth - 1]?.card : document);
+    if (found) {
+      refresh(layer, found);
+      continue;
+    }
+    closeFrom(i);
+    return;
+  }
+}
+
+/** Aynı kimlikteki yeni kaynak; ekran düzeyinde aranırken kartların terimleri sayılmaz. */
+function findSame(old, root = document) {
+  if (!old?.dataset?.tip || !root) return null;
+  for (const element of root.querySelectorAll('[data-tip]')) {
+    if (root === document && element.closest('.tip-card')) continue;
+    if (element.dataset.tip === old.dataset.tip && sameSource(old, element)) return element;
+  }
+  return null;
 }
 
 /**
  * Açık kartları canlı tutar. Kaynağı haftalık tazelemede yeniden kurulduysa
  * aynı kimlikteki yeni öğe bulunur ve içerik YERİNDE güncellenir: kart ne
  * kapanır ne kayar, ama eski sayıyı da göstermez (ölçüldü: hazine kartı açık
- * kalırken "134 gold" diyordu, çubuk 122). Bulunamazsa kart olduğu gibi kalır.
+ * kalırken "134 gold" diyordu, çubuk 122). Bulunamazsa kart kapanır.
  * HUD ve ekranlar her tazelemenin sonunda çağırır.
  */
 export function refreshTooltips() {
-  for (let i = 0; i < layers.length; i++) {
-    const layer = layers[i];
-    const old = layer.source;
-    if (!old || old.isConnected) continue;
-    let found = false;
-    for (const element of document.querySelectorAll('[data-tip]')) {
-      if (element.dataset.tip === old.dataset.tip && sameSource(old, element)) {
-        refresh(layer, element);
-        found = true;
-        break;
-      }
-    }
-    // Kaynağı silinip yerine aynı kimlikte öğe gelmeyen kart askıda kalıyordu
-    // (biten muharebenin şerit çipi: ölü muharebe, "1000000.00 : 1").
-    if (!found) {
-      closeFrom(i);
-      break;
-    }
-  }
+  pruneOrphans();
 }
 
 /**
@@ -286,8 +489,8 @@ export function refreshTooltipsWithin(root) {
 
 /** Tümünü kapatır ve bekleyen zamanlayıcıları temizler (panel kapanışı). */
 export function hideTooltips() {
-  clearTimeout(openTimer);
-  clearTimeout(closeTimer);
+  cancelPending();
+  cancelClose();
   closeFrom(0);
 }
 
@@ -310,55 +513,74 @@ function sameSource(a, b) {
   return true;
 }
 
-/** Açık kartın içeriğini yerinde tazeler: kapanmaz, yeri değişmez. */
+function contentOf(element) {
+  const provider = providers.get(element.dataset.tip);
+  if (!provider) return null;
+  try {
+    return provider(element.dataset.tipArg ?? '', element);
+  } catch (error) {
+    // Bozuk bir sağlayıcı ekranı düşürmez: tooltip yoksa yoktur. Ama sessiz
+    // de kalmaz — kayıp kart eskiden iz bırakmıyordu.
+    console.warn(`tooltip '${element.dataset.tip}':`, error);
+    return null;
+  }
+}
+
+/** Açık kartın içeriğini yerinde tazeler: kapanmaz, ekrandan taşmadıkça yeri değişmez. */
 function refresh(layer, element) {
   layer.source = element;
-  const provider = providers.get(element.dataset.tip);
-  if (!provider) return;
-  let data = null;
-  try {
-    data = provider(element.dataset.tipArg ?? '', element);
-  } catch {
-    data = null;
-  }
+  const data = contentOf(element);
   if (!data) return;
   const html = render(data);
-  if (layer.card.innerHTML !== html) layer.card.innerHTML = html;
+  const card = layer.card;
+  // Son yazılan dizgiyle karşılaştırılır, `innerHTML` ile değil: tarayıcının
+  // geri serileştirmesi (&#39; → ') hiç eşit çıkmıyor, kart her tazelemede
+  // baştan yazılıyordu ve imlecin altındaki terim düğümü değişiyordu.
+  if (layer.html !== html) {
+    const scroll = card.scrollTop;
+    card.innerHTML = html;
+    card.scrollTop = scroll;
+    layer.html = html;
+  }
   // Biçim de değişebilir (canlı sekme kartı oyuncu elenince sadeleşir):
   // eski `tip-breakdown` kalınca kart yanlış genişlikte kalıyordu.
   const type = `tip-${data.type ?? 'simple'}`;
-  if (!layer.card.classList.contains(type)) {
-    layer.card.classList.remove('tip-simple', 'tip-breakdown', 'tip-mechanic');
-    layer.card.classList.add(type);
+  if (!card.classList.contains(type)) {
+    card.classList.remove('tip-simple', 'tip-breakdown', 'tip-mechanic');
+    card.classList.add(type);
   }
+  const r = rectOf(card);
+  const vh = window.innerHeight || document.documentElement.clientHeight || 800;
+  const vw = window.innerWidth || document.documentElement.clientWidth || 1280;
+  if (r.bottom > vh - EDGE + 1 || r.right > vw - EDGE + 1) place(card, element, layer.depth);
+  else markScroll(card);
 }
 
 function open(element, depth) {
-  const id = element.dataset.tip;
-  const provider = providers.get(id);
-  if (!provider) return;
-  let data = null;
-  try {
-    data = provider(element.dataset.tipArg ?? '', element);
-  } catch {
-    // Bozuk bir sağlayıcı ekranı düşürmez: tooltip yoksa yoktur.
-    data = null;
-  }
+  const data = contentOf(element);
   if (!data) return;
   closeFrom(depth);
+  if (closing && closing.depth >= depth) cancelClose();
   const card = makeCard(depth);
-  card.innerHTML = render(data);
+  const html = render(data);
+  card.innerHTML = html;
   card.classList.add(`tip-${data.type ?? 'simple'}`);
-  place(card, element);
-  layers.push({ card, source: element, depth });
+  place(card, element, depth);
+  layers.push({ card, source: element, depth, html });
+  watch();
 }
 
-/** Bir öğenin hangi katmanın içinde olduğunu bulur (0 = ekranın kendisi). */
-function depthOf(element) {
-  for (let i = layers.length - 1; i >= 0; i--) {
-    if (layers[i].card.contains(element)) return layers[i].depth + 1;
-  }
-  return 0;
+/**
+ * Kaynağı silen her DOM değişikliği (panel kapanışı, ekran değişimi) kartı
+ * hemen sınar; imleç kıpırdamasa da yetim kart kalmaz. Yalnız kart açıkken
+ * dinlenir: kapalıyken haftalık HUD yazımları hiç maliyet doğurmaz.
+ */
+function watch() {
+  if (typeof MutationObserver === 'undefined') return;
+  observer ??= new MutationObserver(() => {
+    if (layers.length) pruneOrphans();
+  });
+  observer.observe(document.body, { childList: true, subtree: true });
 }
 
 /**
@@ -369,35 +591,33 @@ export function mountTooltips() {
   if (mounted) return;
   mounted = true;
 
+  const note = (event) => {
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+    pointer.buttons = event.buttons ?? 0;
+  };
+
   document.addEventListener('pointerover', (event) => {
-    const element = adopt(event.target.closest?.(SOURCE));
-    if (!element) return;
-    const depth = depthOf(element);
-    if (depth >= MAX_DEPTH) return;
-    // Aynı kaynağın üstünde gezinmek yeniden açmaz; yeniden kurulmuş aynı
-    // kaynak (haftalık tazeleme) kartı yerinde günceller.
-    if (layers[depth] && sameSource(layers[depth].source, element)) {
-      clearTimeout(closeTimer);
-      clearTimeout(openTimer);
-      if (layers[depth].source !== element) refresh(layers[depth], element);
-      return;
-    }
-    clearTimeout(closeTimer);
-    clearTimeout(openTimer);
+    note(event);
     // GECİKME: anlık açılan kart, imleç ekranda gezerken yanıp söner. Anlık
     // olan yalnız görsel vurgudur (CSS :hover); BİLGİ gecikmeyle gelir.
-    openTimer = setTimeout(() => open(element, depth), depth ? NESTED_DELAY : DELAY);
+    track(event.target, event.timeStamp);
   });
 
+  window.addEventListener('pointermove', (event) => {
+    note(event);
+    if (!layers.length && !pending) return;
+    const inside = track(event.target, event.timeStamp);
+    // Kartın altındaki öğe imleci görmez: harita kart altındaki hexi
+    // vurgulamasın, birim künyesi kartın üstüne açılmasın. Tık yine geçer.
+    if (inside >= 0 && cardIndexOf(event.target) < 0 && !event.buttons) event.stopPropagation();
+  }, { capture: true, passive: true });
+
   document.addEventListener('pointerout', (event) => {
-    const element = event.target.closest?.('[data-tip]');
-    if (!element) return;
-    const to = event.relatedTarget;
-    // Karta doğru çıkıyorsa kapatma: oyuncu içeriği okumaya gidiyor.
-    if (to && layers.some((layer) => layer.card.contains(to))) return;
-    if (to && to.closest?.(SOURCE)) { clearTimeout(openTimer); return; }
-    clearTimeout(openTimer);
-    scheduleClose();
+    // Pencereden çıkan imleç: arkasından pointerover gelmez.
+    if (event.relatedTarget) return;
+    cancelPending();
+    if (layers.length) closeLater(0);
   });
 
   // KLAVYE. Sekmeyle gezen oyuncu da aynı açıklamayı alır. Yalnız
@@ -408,17 +628,47 @@ export function mountTooltips() {
     if (!element) return;
     const depth = depthOf(element);
     if (depth >= MAX_DEPTH) return;
-    clearTimeout(closeTimer);
-    clearTimeout(openTimer);
-    openTimer = setTimeout(() => open(element, depth), DELAY);
+    if (layers[depth] && sameSource(layers[depth].source, element)) return;
+    want(element, depth, event.timeStamp);
   });
-  document.addEventListener('focusout', () => {
-    clearTimeout(openTimer);
-    scheduleClose();
+  document.addEventListener('focusout', (event) => {
+    if (pending?.element === event.target) cancelPending();
+    const index = layers.findIndex((layer) => layer.source === event.target);
+    if (index >= 0 && insideIndex() < index && !event.target.matches?.(':hover')) closeLater(index);
   });
 
-  // Kaydırma ve tıklama kartı düşürür: yanlış yerde asılı kalmasın.
-  document.addEventListener('pointerdown', hideTooltips, true);
+  // Tık kartı düşürür ve ALTINDAKİ denetime gider (kart tıklamayı tutmaz).
+  // Terime tık beklemeden açar; uzun kartın içine tık kaydırma içindir.
+  window.addEventListener('pointerdown', (event) => {
+    const own = cardIndexOf(event.target);
+    if (own < 0) {
+      hideTooltips();
+      return;
+    }
+    const term = event.target.closest('[data-tip]');
+    if (!term || !layers[own].card.contains(term) || own + 1 >= MAX_DEPTH) return;
+    cancelPending();
+    if (!(layers[own + 1] && sameSource(layers[own + 1].source, term))) open(term, own + 1);
+  }, true);
+
+  // Tekerlek de tık gibi kartın ALTINA gider (kart olay almaz): harita kartın
+  // altında yakınlaşırken kart eski yerinde asılı kalıyordu. Uzun kartın
+  // kendi kaydırması okumadır, kartı kapatmaz.
+  window.addEventListener('wheel', (event) => {
+    if (!layers.length || cardIndexOf(event.target) >= 0) return;
+    note(event);
+    if (insideIndex() >= 0) hideTooltips();
+  }, { capture: true, passive: true });
+
+  // Esc evrensel "kapat"tır; kartı kapatır ama zinciri kesmez (panel de kapanır).
+  window.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && (layers.length || pending)) hideTooltips();
+  }, true);
+
+  // Kaydırma ve odak kaybı kartı düşürür: yanlış yerde asılı kalmasın.
   window.addEventListener('blur', hideTooltips);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) hideTooltips();
+  });
   document.addEventListener('scroll', onScroll, true);
 }

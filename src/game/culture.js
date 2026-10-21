@@ -98,6 +98,8 @@ export const CULTURE = {
   REVOLT_COOLDOWN: 104,
   /** Sadakat kazancindan huzursuzluk basina dusen pay. */
   CONTROL_DRAG: 0.15,
+  /** Bu uyumun altında kimse erimez (assimilationRate; kart da buradan okur). */
+  ASSIMILATE_CONTROL: 0.5,
 
   /** Haftalik asimilasyon tabani: notr kosulda tam donusum ~60 yil. */
   ASSIMILATE_BASE: 0.0008,
@@ -353,7 +355,7 @@ export function unrestBreakdown(world, province, nation, { occupied = 0, turn = 
 function assimilationRate(world, province, nation, unrest) {
   const econ = province.econ;
   const control = Math.max(0, Math.min(1, (econ.control ?? 0) / 100));
-  if (control < 0.5) return 0;
+  if (control < CULTURE.ASSIMILATE_CONTROL) return 0;
   // Huzursuz halk erimez: isyan esigine yaklasan kumede asimilasyon durur.
   const calm = Math.max(0, 1 - (unrest / CULTURE.MAX_UNREST) * 1.3);
   if (calm <= 0) return 0;

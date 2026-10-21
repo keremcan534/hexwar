@@ -6,8 +6,9 @@
 // sorularını cevaplar; ekran ile kart aynı fonksiyondan okur, ayrışamaz.
 
 import { provideTooltip } from './tooltip.js';
+import { lawTerm, term } from './tooltipGlossary.js';
 import { LAWS } from '../game/laws.js';
-import { governmentView, PARTIES } from '../game/politics.js';
+import { ADVISOR_COST, LAW_LOCK, governmentView, PARTIES } from '../game/politics.js';
 import { decisionsView } from '../game/decisions.js';
 import { AGENDA } from '../game/agenda.js';
 import { describeEffects } from '../game/modifiers.js';
@@ -19,13 +20,14 @@ import { depositsOf, fertilityOf } from '../game/econ/deposits.js';
 import { linePriorityOf } from '../game/econ/industry.js';
 import { developmentCap } from '../game/econ/investment.js';
 import { FOCUS_BY_ID } from '../game/focus.js';
-import { provinceName } from '../game/provinces.js';
+import { occupiedShareOf, provinceName } from '../game/provinces.js';
 import { LEDGER_LINES } from '../game/treasury.js';
 import { stateCultures, stateYield } from '../game/stateView.js';
 import { depositDevOf, outputBreakdown } from '../game/econ/resources.js';
 import { priceOf } from '../game/econ/trade.js';
 import { CULTURE, unrestBreakdown } from '../game/culture.js';
-import { money, signedMoney } from './kit.js';
+import { MOVEMENT } from '../game/movements.js';
+import { esc, money, signedMoney } from './kit.js';
 
 const signed = (value, digits = 1) => `${value >= 0 ? '+' : '−'}${Math.abs(value ?? 0).toFixed(digits)}`;
 const pct = (value) => `${Math.round((value ?? 0) * 100)}%`;
@@ -44,18 +46,20 @@ function effectRows(effects) {
  * Fon defteri satırı → ne olduğu, neyle oynanır. Faturalar (ikmal, okul,
  * sıkıyönetim) bu deftere girmez: çıktının önünden düşer (kart 'bills').
  */
-const LEDGER_TEXT = {
-  investment: 'The output left after the bills, the army\'s lines and the people, multiplied by investment efficiency '
-    + '(technology, advisors, the trade law, timber and iron). Feed the people less and more flows in.',
-  exports: 'Surplus resources sold abroad at the world price, up to the share your trade law allows.',
-  treaty: 'Reparations and tribute from peace treaties, paid or received.',
-  grant: 'One-off windfalls: a rich harvest, a boom, an event choice.',
-  imports: 'Shortages are bought automatically at the world price while the fund is above its floor.',
-  development: `Development levels the fund bought. A level costs ${INVEST.cost} × the state's people in 100k × the new `
-    + `level ${INVEST.exponent === 2 ? 'squared' : `to the power ${INVEST.exponent}`}; the Develop focus takes `
+// İşlev: terimler sağlayıcılar kurulduktan SONRA yazılmalı (modül yüklenirken
+// sözlük henüz yok, tipTerm düz metin dönerdi).
+const ledgerText = (id) => ({
+  investment: () => `The output left after the ${term('bills')}, the army's lines and the people, multiplied by investment efficiency `
+    + `(technology, advisors, the trade law, timber and iron). ${term('feeding', 'Feed the people')} less and more flows in.`,
+  exports: () => `Surplus resources sold abroad at the world price, up to the share your ${lawTerm('trade', 'trade law')} allows.`,
+  treaty: () => 'Reparations and tribute from peace treaties, paid or received.',
+  grant: () => 'One-off windfalls: a rich harvest, a boom, an event choice.',
+  imports: () => `Shortages are bought automatically at the world price while the ${term('fund', 'fund')} is above its floor.`,
+  development: () => `${term('development', 'Development')} levels the fund bought. A level costs ${INVEST.cost} × the state's people in 100k × the new `
+    + `level ${INVEST.exponent === 2 ? 'squared' : `to the power ${INVEST.exponent}`}; the ${term('develop', 'Develop focus')} takes `
     + `${Math.round((1 - INVEST.focusDiscount) * 100)}% off.`,
-  outlay: 'One-off purchases: new generals and admirals, settlers, event choices and agenda projects.',
-};
+  outlay: () => `One-off purchases: new ${term('officers', 'generals and admirals')}, settlers, event choices and agenda projects.`,
+})[id]?.() ?? '';
 
 export function registerStateTooltips(game) {
   const me = () => game.world.nations[game.turns.playerNation];
@@ -71,7 +75,7 @@ export function registerStateTooltips(game) {
       type: 'mechanic',
       title: law.name,
       text: law.options.map((option, index) => `${index === row?.current ? '▸ ' : ''}<b>${option.name}</b> — ${option.desc}`).join('<br>'),
-      footer: `Changing a law costs ${view.lawCost} political power and locks it for 26 weeks.${row?.lock ? ` Locked for ${row.lock} more weeks.` : ''}`,
+      footer: `Changing a law costs ${view.lawCost} ${term('power', 'political power')} and locks it for ${LAW_LOCK} weeks.${row?.lock ? ` Locked for ${row.lock} more weeks.` : ''}`,
     };
   });
 
@@ -91,7 +95,7 @@ export function registerStateTooltips(game) {
       text: option.desc,
       footer: current ? 'This is the current law.'
         : blockers.length ? blockers.join(' · ')
-          : `Click twice to enact: ${view.lawCost} political power, then locked for 26 weeks.`,
+          : `Click twice to enact: ${view.lawCost} ${term('power', 'political power')}, then locked for ${LAW_LOCK} weeks.`,
     };
   });
 
@@ -103,7 +107,7 @@ export function registerStateTooltips(game) {
       type: 'breakdown',
       title: LEDGER_LINES[id].label,
       value: `${signedMoney(ledger[id] ?? 0)} last week`,
-      text: LEDGER_TEXT[id] ?? '',
+      text: ledgerText(id),
     };
   });
 
@@ -122,7 +126,7 @@ export function registerStateTooltips(game) {
         { label: 'Popular support', value: `${Math.round(row?.support ?? 0)}%` },
         { label: 'In government', value: row?.ruling ? 'yes' : 'no' },
       ],
-      footer: 'The ruling party grants its bonus and bounds which laws you may pass. If the people want another party, legitimacy costs stability.',
+      footer: `The ruling party grants its bonus and bounds which laws you may pass. If the people want another party, ${term('legitimacy')} costs ${term('stability')}.`,
     };
   });
 
@@ -140,7 +144,7 @@ export function registerStateTooltips(game) {
       text: `${seat.name} seat.`,
       effects: effectRows(person.effects),
       footer: seat.hired?.id === id ? 'Serving now. Dismissing frees the seat.'
-        : person.blockers?.length ? person.blockers.join(' · ') : 'Hire for 50 political power; replaces whoever holds the seat.',
+        : person.blockers?.length ? person.blockers.join(' · ') : `Hire for ${ADVISOR_COST} ${term('power', 'political power')}; replaces whoever holds the seat.`,
     };
   });
 
@@ -183,7 +187,8 @@ export function registerStateTooltips(game) {
       type: 'breakdown',
       title: `${info.name} line`,
       value: `${(line.output ?? 0).toFixed(1)} per week`,
-      text: `Each unit costs ${info.ic} IC and ${recipe || 'no materials'}. The army's share of industry is split between the lines by priority.`,
+      text: `Each unit costs ${info.ic} IC and ${recipe || 'no materials'}. The army's share of ${term('industry')} `
+        + `(set by the ${lawTerm('economy', 'economy law')}) is split between the lines by priority.`,
       rows: [
         { label: 'Priority', value: line.mode === 'manual' ? `${priority.name} (yours)` : `Auto · ${priority.id === 'off' ? 'stopped' : priority.name}` },
         { label: 'Industry on this line', value: `${(line.ic ?? 0).toFixed(2)} IC` },
@@ -210,13 +215,18 @@ export function registerStateTooltips(game) {
       type: 'breakdown',
       title: `${provinceName(province.center)} — what it makes`,
       value: `${money(y.total, 2)} / week`,
-      text: `Output goes into ${owner?.name ?? 'the owner'}'s weekly bar: bills, the army, the people and development. Goods are valued at the world price: sold abroad they add to the development fund, used at home they save imports.`,
+      text: `${term('output', 'Output')} goes into ${esc(owner?.name ?? 'the owner')}'s weekly bar: ${term('bills')}, the army, `
+        + `the people and ${term('development')}. Goods are valued at the world price: sold abroad they add to the `
+        + `${term('fund', 'development fund')}, used at home they save imports.`,
       rowsLabel: 'This week',
       rows: [
         { label: `Handwork (${HAND_OUTPUT} per 100k workers)`, value: money(y.hand, 2) },
         { label: `Industry (development ${y.development}: ${Math.max(0, y.development - 1)} × ${INDUSTRY_PER_DEV} per 100k workers)`, value: money(y.industry, 2) },
         out ? { label: 'Workforce (not under arms)', value: pct(out.work), tone: out.work < 0.97 ? 'bad' : '' } : null,
         out ? { label: 'Status', value: pct(out.status), tone: out.status < 1 ? 'bad' : '' } : null,
+        // Rıza el, sanayi ve yatakları çarpar (econ/output.js); satırı yokken çarpanlar toplamı tutmuyordu.
+        (province.econ?.consent ?? 1) < 0.995
+          ? { label: 'Consent', labelHtml: term('consent', 'Consent'), value: pct(province.econ.consent), tone: 'bad' } : null,
         ...y.goods.map((g) => ({ label: `${RESOURCES[g.id]?.name ?? g.id}: ${g.amount.toFixed(2)} / week × ${money(g.price, 2)}`, value: `≈${money(g.value, 2)}` })),
         y.next
           ? { label: `Level ${y.next.level} would cost ${money(y.next.cost, 0)} and add`, value: `+${money(y.next.gain, 2)} / week`, tone: 'good' }
@@ -238,7 +248,9 @@ export function registerStateTooltips(game) {
       type: 'breakdown',
       title: `${name} deposit ×${row.size.toFixed(1)}`,
       value: `${row.total.toFixed(2)} / week`,
-      text: `×${row.size.toFixed(1)} is the size of the deposit: this state digs ${row.size.toFixed(1)} times the base amount of ${name.toLowerCase()}. Development raises it; men under arms and a non-core status lower it.`,
+      text: `×${row.size.toFixed(1)} is the size of the deposit: this state digs ${row.size.toFixed(1)} times the base amount of `
+        + `${name.toLowerCase()}. ${term('development', 'Development')} raises it; men under arms, a non-core status `
+        + `(${term('compliance')}) and withheld ${term('consent')} lower it.`,
       rows: [
         { label: 'Base output', value: row.base.toFixed(3) },
         { label: 'Deposit size', value: `×${row.size.toFixed(2)}` },
@@ -247,6 +259,8 @@ export function registerStateTooltips(game) {
         { label: 'Workforce (not under arms)', value: pct(out.work), tone: out.work < 0.97 ? 'bad' : '' },
         { label: 'Status', value: pct(out.status), tone: out.status < 1 ? 'bad' : '' },
         out.focus !== 1 ? { label: 'State focus', value: `×${out.focus.toFixed(2)}`, tone: 'good' } : null,
+        (province.econ?.consent ?? 1) < 0.995
+          ? { label: 'Consent', labelHtml: term('consent', 'Consent'), value: pct(province.econ.consent), tone: 'bad' } : null,
         { label: 'Worth at the world price', value: `≈${money(row.total * priceOf(game.world, resId), 2)} / week` },
       ].filter(Boolean),
     };
@@ -280,29 +294,34 @@ export function registerStateTooltips(game) {
     const province = game.world.provinces?.[Number(id)];
     const nation = game.world.nations[province?.owner];
     if (!province?.econ || !nation) return null;
-    const p = unrestBreakdown(game.world, province, nation, { occupied: 0, turn: turn() });
+    // İşgal payı simülasyonla aynı kaynaktan (culture.runProvinceCulture,
+    // peoplesView): 0 verilince işgal altındaki state'in hedefi düşük, işgal
+    // satırı hiç yoktu (T-10).
+    const p = unrestBreakdown(game.world, province, nation, { occupied: occupiedShareOf(game.world, province), turn: turn() });
     const now = province.econ.unrest ?? 0;
-    const row = (label, value, positiveIsBad = true) => (Math.abs(value) < 0.05 ? null
-      : { label, value: signed(positiveIsBad ? value : -value), tone: (positiveIsBad ? value : -value) > 0 ? 'bad' : 'good' });
+    const row = (label, value, positiveIsBad = true, labelHtml = null) => (Math.abs(value) < 0.05 ? null
+      : { label, labelHtml, value: signed(positiveIsBad ? value : -value), tone: (positiveIsBad ? value : -value) > 0 ? 'bad' : 'good' });
     return {
       type: 'breakdown',
       title: `Unrest ${now.toFixed(1)} / ${CULTURE.MAX_UNREST}`,
       value: `heading to ${p.target.toFixed(1)}`,
-      text: `Unrest moves ${Math.round(CULTURE.APPROACH * 100)}% of the way to its target each week. Above ${CULTURE.REVOLT_UNREST} a people that is not accepted organises; its national movement grows.`,
+      text: `${term('unrest', 'Unrest')} moves ${Math.round(CULTURE.APPROACH * 100)}% of the way to its target each week. `
+        + `Where the states of a people that is not accepted pass ${MOVEMENT.CALM} on average, its national movement grows; below, it fades.`,
       rows: [
-        row(`Not accepted (${pct(p.foreign)} of the people)`, p.culture),
+        row(`Not accepted (${pct(p.foreign)} of the people)`, p.culture, true, `Not ${term('acceptance', 'accepted')} (${pct(p.foreign)} of the people)`),
         row('Years of foreign rule (grows until you act)', p.grievance),
-        row('Recent conquest', p.conquest),
-        row('War weariness', p.war),
+        row('Recent conquest', p.conquest, true, `Recent conquest (${term('compliance')})`),
+        row('War exhaustion', p.war, true, term('exhaustion', 'War exhaustion')),
         row('Occupation', p.occupation),
+        row('Call to Arms', p.levee),
         row('Nationalist backlash', p.backlash),
         row('Unequal levy', p.levy),
         row('Reservation', p.reservation),
         row('Forced assimilation', p.forced),
-        row('Consumer goods', p.welfare, false),
-        row('Minority rights (citizenship law)', p.rights, false),
+        row('Consumer goods', p.welfare, false, term('consumer', 'Consumer goods')),
+        row('Minority rights (citizenship law)', p.rights, false, `Minority rights (${lawTerm('citizenship', 'citizenship law')})`),
         row('Integration focus', p.focus, false),
-        p.policy !== 1 ? { label: 'Laws, advisors, technology', value: `×${p.policy.toFixed(2)}` } : null,
+        Math.abs(p.policy - 1) >= 0.005 ? { label: 'Laws, advisors, technology', value: `×${p.policy.toFixed(2)}` } : null,
       ].filter(Boolean),
     };
   });
@@ -316,12 +335,14 @@ export function registerStateTooltips(game) {
     const econ = province.econ ?? {};
     // Neden erimiyor / neden eriyor: assimilate'in kapıları (culture.js).
     let why;
+    const gate = CULTURE.ASSIMILATE_CONTROL * 100;
     if (row.primary) why = 'The nation\'s own people: it absorbs the others.';
-    else if (row.accepted) why = 'Accepted: it counts as one of the nation\'s own peoples and does not assimilate.';
+    else if (row.accepted) why = `${term('acceptance', 'Accepted')}: it counts as one of the nation's own peoples and does not assimilate.`;
     else if (row.homeland) why = 'This is their homeland: a people does not melt away in its own land. Only resettlement, deportation, a state focus or forced assimilation changes that.';
-    else if ((econ.control ?? 0) < 50) why = 'Compliance below 50%: nobody assimilates in a state that is not under control.';
-    else if ((econ.unrest ?? 0) >= CULTURE.MAX_UNREST / 1.3) why = 'Too restless to assimilate: calm the state first.';
-    else why = 'Slowly assimilates into the nation\'s people: literacy, cities, compliance and the citizenship law set the pace; unrest slows it.';
+    else if ((econ.control ?? 0) < gate) why = `${term('compliance', 'Compliance')} below ${gate}%: nobody assimilates in a state that is not under control.`;
+    else if ((econ.unrest ?? 0) >= CULTURE.MAX_UNREST / 1.3) why = `Too restless to assimilate (${term('unrest')}): calm the state first.`;
+    else why = `Slowly assimilates into the nation's people: ${term('literacy')}, cities, ${term('compliance')} and the `
+      + `${lawTerm('citizenship', 'citizenship law')} set the pace; ${term('unrest')} slows it.`;
     return {
       type: 'breakdown',
       title: `${row.name} — ${(row.share * 100).toFixed(1)}%`,
@@ -349,11 +370,12 @@ export function registerStateTooltips(game) {
       title: provinceName(province.center),
       value: `${formatPopulation(econ.population)} people`,
       rows: [
-        { label: 'Development', value: owner ? `${econ.development} / cap ${developmentCap(owner)}` : String(econ.development) },
+        { label: 'Development', labelHtml: term('development', 'Development'), value: owner ? `${econ.development} / cap ${developmentCap(owner)}` : String(econ.development) },
         (econ.fort ?? 0) > 0 ? { label: 'Fortifications', value: `level ${econ.fort}` } : null,
         { label: 'Resources', value: deposits || 'none' },
         { label: 'Fertility', value: `${Math.round(fertilityOf(province) * 100)}% of world average` },
-        { label: 'Compliance', value: `${Math.round(econ.control ?? 0)}%` },
+        { label: 'Compliance', labelHtml: term('compliance', 'Compliance'), value: `${Math.round(econ.control ?? 0)}%` },
+        (econ.consent ?? 1) < 0.995 ? { label: 'Consent', labelHtml: term('consent', 'Consent'), value: pct(econ.consent), tone: 'bad' } : null,
         { label: 'Status', value: econ.core !== false ? 'core — counts in full' : `not core — counts at ${pct(econ.status)}`, tone: econ.core !== false ? 'good' : 'bad' },
         focus ? { label: 'Focus', value: focus.name } : null,
       ].filter(Boolean),

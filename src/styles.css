@@ -10083,7 +10083,7 @@ svg.res-glyph {
 /* ==========================================================================
    29. GECİKMELİ BİLGİ KARTI (tooltip)
 
-   ANLIK hover yalnızca görsel vurgudur; BİLGİ 550 ms sonra gelir. Ayrım
+   ANLIK hover yalnızca görsel vurgudur; BİLGİ ~700 ms sonra gelir. Ayrım
    bilinçli: imleç ekranda gezerken kart yanıp sönmemeli.
    ========================================================================== */
 
@@ -10093,41 +10093,64 @@ svg.res-glyph {
 button[data-tip] { cursor: var(--cur-pointer); }
 button[data-tip]:disabled { cursor: var(--cur-no); }
 
-/* Satır içi metin kaynağında noktalı alt çizgi. Blok kaynakta (özet hücresi,
-   satır, kart) alt çizgi bütün metni çizer ve gürültü olur; onlar kendi hover
-   zeminini taşır (bkz. §7B .ui-kpi). */
-:is(span, small, b, em, strong, label, dt, dd, td, th, h3, h4, i)[data-tip]:hover {
+/* HER kaynak imleç değdiği anda tepki verir (Paradox: "bunun açıklaması
+   var"). Blok kaynakta (hücre, satır, düğme, çip) içe doğru ince pirinç
+   kenar: outline kutuyu büyütmez ve kaynağın kendi gölgesini/kenarını
+   ezmez — eski box-shadow kenarı düğmelerin kabartma gölgesini siliyordu.
+   Kaynakların çoğunun hiç vurgusu yoktu (div, li, başlık şeridi). Odaktaki
+   öğenin halkası kalır. */
+:where([data-tip], [title], [data-tooltip]):hover:not(:focus-visible) {
+  outline: 1px solid rgba(190, 158, 96, 0.42);
+  outline-offset: -1px;
+}
+
+/* Satır içi metin kaynağında (yalnız metin taşıyan) kenar yerine noktalı
+   pirinç alt çizgi: kelimenin etrafına kutu çizmek satırı böler. Düğme
+   rolündeki span (komutanın ✕'i) metin değil denetimdir; boş işaret (çubuk
+   dilimi, tavan çentiği) çizgiyi gösteremez: ikisi de kenar alır. */
+:where(span, small, b, em, strong, i, label, abbr, dt, dd, td, th, h3, h4)[data-tip]:not(:has(*), :empty, [role="button"], [role="tab"], [role="link"]):hover {
+  outline: none;
   text-decoration-line: underline;
   text-decoration-style: dotted;
-  text-decoration-color: var(--gold);
+  text-decoration-color: var(--gold-bright);
   text-underline-offset: 3px;
 }
 
-/* Düğme ve blok kaynaklarda alt çizgi yerine ince pirinç kenar. */
-button[data-tip]:hover,
-.pv-metric[data-tip]:hover,
-.pv-rgo[data-tip]:hover,
-.fac-workers[data-tip]:hover,
-.fac-profit[data-tip]:hover,
-.ind-good[data-tip]:hover {
-  text-decoration: none;
-  box-shadow: inset 0 0 0 1px rgba(190, 158, 96, 0.35);
-}
-
+/* Kart tıklamayı TUTMAZ: altındaki düğmeye yapılan tık o düğmeye gider
+   (liste satırının kartı bir alttaki iki düğmenin üstündedir). Kartın
+   "içinde" olmayı tooltip.js imlecin geometrisinden okur. Yalnız terimler
+   ve kaydırılan uzun kart olay alır. */
 .tip-card {
   position: fixed;
   z-index: calc(var(--z-notify) + 1);
   width: 300px;
   max-width: calc(100vw - 16px);
+  max-height: calc(100vh - 16px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: var(--sp-3);
   border: 1px solid var(--line-brass);
   border-radius: var(--radius);
   background: var(--ui-grain), var(--panel-tone), var(--surface-1);
   background-blend-mode: soft-light, normal, normal;
   box-shadow: var(--frame-glass);
-  pointer-events: auto;
+  pointer-events: none;
+  scrollbar-color: var(--gold-dark) transparent;
+  scrollbar-width: thin;
   animation: tip-in 120ms ease-out;
 }
+
+.tip-card.tip-scroll { pointer-events: auto; }
+.tip-card::-webkit-scrollbar { width: 5px; }
+.tip-card::-webkit-scrollbar-track { background: transparent; }
+.tip-card::-webkit-scrollbar-thumb {
+  border-radius: 3px;
+  background: linear-gradient(180deg, rgba(190, 158, 96, 0.55), rgba(89, 72, 42, 0.55));
+}
+
+/* İç katman üst kartın yanında durur; ince üst pirinç çizgi zinciri okutur. */
+.tip-card:not([data-depth="0"]) { border-top-color: rgba(190, 158, 96, 0.6); }
 
 @keyframes tip-in {
   from { opacity: 0; transform: translateY(-2px); }
@@ -10207,15 +10230,20 @@ button[data-tip]:hover,
   line-height: 1.45;
 }
 
-/* İkincil terim: kartın İÇİNDE kendi açıklaması olan kelime. */
+/* İkincil terim: kartın İÇİNDE kendi açıklaması olan kelime. Alt çizgi hover
+   beklemeden görünür — oyuncu neyin açıldığını aramamalı. Kalınlık metin
+   içi vurgudan (b) hafif: paragraf terimlerle kararmasın. */
 .tip-term {
   color: var(--gold-bright);
-  text-decoration: underline dotted rgba(190, 158, 96, 0.6);
+  font-weight: 600;
+  text-decoration: underline dotted rgba(190, 158, 96, 0.75);
   text-underline-offset: 2px;
+  white-space: nowrap;
+  pointer-events: auto;
   cursor: var(--cur-default);
 }
 
-.tip-term:hover { color: #e4d5b2; }
+.tip-term:hover { color: #efe0bc; text-decoration-color: var(--gold-bright); }
 
 :root[data-motion="off"] .tip-card { animation: none; }
 

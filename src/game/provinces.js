@@ -291,7 +291,7 @@ export function releaseSoldiers(econ, men, died = false) {
  * altına inerse KITLIK: nüfus erir.
  */
 const GROWTH_BASE = 0.00012;
-const FAMINE_THRESHOLD = 0.7;
+export const FAMINE_THRESHOLD = 0.7;
 const FAMINE_RATE = 0.0006;
 
 /**

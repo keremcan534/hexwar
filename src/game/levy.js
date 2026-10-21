@@ -29,6 +29,12 @@ export function cultureRows(cluster) {
   return cluster?.culture >= 0 ? [{ id: cluster.culture, share: 1 }] : [];
 }
 
+/**
+ * Home Rule halkının kuraya gönderdiği pay. Sabit, çünkü bilgi kartı da
+ * aynı sayıyı söyler (kart sayı uydurmaz, buradan okur).
+ */
+export const HOME_RULE_LEVY = 0.5;
+
 /** Kuradan çıkarılan halklar. Varsayılan boş: yeni fethedilen halk kuraya girer. */
 export function levyExcluded(nation) {
   return Array.isArray(nation?.levyExcluded) ? nation.levyExcluded : [];
@@ -77,7 +83,7 @@ export function culturePools(world, cluster, nation) {
   const rows = cultureRows(cluster).map((row) => {
     // Home Rule halkı kendi milisini tutar: askerinin yarısını gönderir
     // (TASARIM D1; vatandaş tam, tebaa vatandaşlık yasasının payı kadar).
-    const willing = isAccepted(nation, row.id) ? (isHomeRule(nation, row.id) ? 0.5 : 1) : foreign;
+    const willing = isAccepted(nation, row.id) ? (isHomeRule(nation, row.id) ? HOME_RULE_LEVY : 1) : foreign;
     return {
       id: row.id,
       share: row.share,

@@ -152,7 +152,7 @@ export function crossesRiver(world, from, target) {
  * YAKIT: tank ve uçak petrolle yürür; petrolsüz kol gücünün %60'ına dek
  * kaybeder (at gibi, ama daha sert: atsız top yavaş, yakıtsız tank demirdir).
  */
-function fuelFactor(unit, oil) {
+export function fuelFactor(unit, oil) {
   const regiments = unit.regiments ?? [];
   if (!regiments.length || oil >= 1) return 1;
   let fuelled = 0;
@@ -178,7 +178,7 @@ export function assaultBreakthrough(units) {
 }
 
 /** Süvari ve topçunun at payı: sürüsüz kalan kol ağırlaşır. */
-function horseFactor(unit, horses) {
+export function horseFactor(unit, horses) {
   const regiments = unit.regiments ?? [];
   if (!regiments.length || horses >= 1) return 1;
   let mounted = 0;
@@ -186,6 +186,15 @@ function horseFactor(unit, horses) {
     if (regiment.typeId === 'CAVALRY' || regiment.typeId === 'ARTILLERY') mounted++;
   }
   return 1 - (mounted / regiments.length) * 0.4 * (1 - horses);
+}
+
+/**
+ * BARUT: muharebedeki her alay güherçile yakar (econ/resources). Kıtlıkta
+ * güç %30'a kadar düşer — güherçile yatağı savaşın asıl hedefi olur. Ayrı
+ * fonksiyon: kaynak kartı aynı çarpanı okur.
+ */
+export function powderFactor(saltpeter) {
+  return 0.7 + 0.3 * saltpeter;
 }
 
 function terrainDefense(world, army) {
@@ -227,9 +236,7 @@ export function battleUnitFactors(world, unit, defending, relief = 0, target = n
     ? (1 + terrainDefense(world, unit) * terrainScale * (1 - relief))
       * (1 + (unit.entrenchment ?? 0) * (1 - breakthrough))
     : 1;
-  // BARUT: muharebedeki her alay güherçile yakar (econ/resources). Kıtlıkta
-  // güç %30'a kadar düşer — güherçile yatağı savaşın asıl hedefi olur.
-  const powder = 0.7 + 0.3 * resourceRatio(nation, 'SALTPETER');
+  const powder = powderFactor(resourceRatio(nation, 'SALTPETER'));
   const horses = horseFactor(unit, resourceRatio(nation, 'HORSES'));
   const fuel = fuelFactor(unit, resourceRatio(nation, 'OIL'));
   // Kolun kendi teknolojisi: tankın ve uçağın gücü ayrı anahtarla büyür.

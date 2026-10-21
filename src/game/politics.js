@@ -29,9 +29,13 @@ import { IC_SCALE } from './econ/defs.js';
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 export const POWER_CAP = 500;
+/** İstikrarın hedefine haftalık yaklaşması (bilgi kartı da buradan okur). */
+export const STABILITY_STEP = 0.01;
 export const LAW_COST = 50;
 export const LAW_LOCK = 26;
 export const ELECTION_WEEKS = 208;
+/** Meşrutiyette taç muhafazakârları bu kadar destek farkına dek iktidarda tutar (bilgi kartı da okur). */
+export const CROWN_MARGIN = 10;
 
 export const GOVERNMENTS = {
   absolutism: {
@@ -1050,7 +1054,7 @@ export function runPolitics(game) {
     const stability = stabilityBreakdown(world, nation, turn);
     politics.stabilityParts = stability.parts;
     politics.stabilityTarget = stability.target;
-    nation.stability = approach(nation.stability ?? 0.5, stability.target, 0.01);
+    nation.stability = approach(nation.stability ?? 0.5, stability.target, STABILITY_STEP);
 
     const war = warSupportBreakdown(world, nation, { kin: kinShare, irredenta, turn });
     politics.warSupportParts = war.parts;
@@ -1074,7 +1078,7 @@ export function runPolitics(game) {
       const leader = leadingParty(nation);
       const keepCrown = politics.government === 'constitutional'
         && politics.ruling === 'conservative'
-        && (politics.support[leader] ?? 0) - (politics.support.conservative ?? 0) <= 10;
+        && (politics.support[leader] ?? 0) - (politics.support.conservative ?? 0) <= CROWN_MARGIN;
       const winner = keepCrown ? 'conservative' : leader;
       if (nation.id === game.turns?.playerNation) {
         game.turns.addLog(`Elections: ${PARTIES[winner].name} win ${Math.round(politics.support[winner])}% of the vote.`,
