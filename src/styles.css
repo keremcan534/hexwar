@@ -228,6 +228,13 @@
 
 * { box-sizing: border-box; }
 
+/* Kaydırma çubuğu VARSAYILANI: ince pirinç çubuk, şeffaf yatak. Temasız
+   kalan her kaydırıcı (rıhtım listeleri, ülke seçici, yeni bir panel)
+   Windows'un gri, oklu çubuğuna düşüyordu (LS-06, LS-09). `*` özgüllüğü
+   sıfırdır: kendi çubuğunu tanımlayan ya da gizleyen (scrollbar-width:
+   none) her bileşen kuralı bunu ezer. */
+* { scrollbar-width: thin; scrollbar-color: var(--gold-dark) transparent; }
+
 /* Tıklanabilir her şey pirinç imleç alır (sınıfta ayrıca yazılmasa da);
    yazı kutusu yazı imlecini korur. :where — özgüllük sıfır, sınıf kuralı kazanır. */
 :where(button:not(:disabled), select, summary, a[href], label[for]) { cursor: var(--cur-pointer); }
