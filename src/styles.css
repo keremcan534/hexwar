@@ -2346,6 +2346,22 @@ body.screen-open .layer-menu { display: none; }
   object-fit: contain;
 }
 
+/* Vesikalık: kare fotoğraf, yüz üst üçte birde. Hafif yakınlaştırma omuz
+   boşluğunu kırpar; 50 px'lik kartta yüz okunur kalsın diye. Çerçeve
+   kutunun kendisinde (overflow), resim kırpılır. */
+.officer-photo {
+  object-fit: cover;
+  object-position: 50% 30%;
+  transform: scale(1.12);
+  transform-origin: 50% 30%;
+}
+:is(.cmd-portrait, .ap-portrait, .mil-portrait.has-art):has(.officer-photo) {
+  overflow: hidden;
+  border-radius: 2px;
+  background: #0b1114;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 0 2px rgba(174, 139, 74, 0.5);
+}
+
 /* --- Cephe kartı --- */
 .front-card { border-left: 3px solid var(--red); }
 
@@ -7107,7 +7123,9 @@ body.menu-open .sheet { visibility: hidden; }
 
 .mil-leader {
   display: grid;
-  grid-template-columns: 26px minmax(0, 1fr) auto;
+  /* İlk sütun vesikalığın boyunda (40 px): 26 px'lik sütuna sığmayan resim
+     adın ilk harfini örtüyordu. */
+  grid-template-columns: 40px minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--sp-2);
   padding: 4px 6px;
@@ -15794,7 +15812,7 @@ body.picker-open .notify-stack { visibility: hidden; }
 .cmd-stance.is-reserve { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.2); color: var(--text-mute); }
 .cmd-size { color: var(--text); font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; line-height: 1; }
 .cmd-portrait { display: block; flex: 0 0 auto; width: 50px; height: 50px; border-radius: 50%; }
-.cmd-portrait .officer-art { width: 100%; height: 100%; object-fit: contain; }
+.cmd-portrait .officer-art:not(.officer-photo) { width: 100%; height: 100%; object-fit: contain; }
 .cmd-name {
   max-width: 100%;
   overflow: hidden;
@@ -16008,7 +16026,7 @@ body.picker-open .notify-stack { visibility: hidden; }
 .ap-cmd-acts { display: grid; gap: 4px; }
 .ap-cmd-acts .ap-btn { min-height: 25px; padding: 0 10px; }
 .ap-portrait { display: block; width: 52px; height: 52px; border-radius: 50%; }
-.ap-portrait .officer-art { width: 100%; height: 100%; object-fit: contain; }
+.ap-portrait .officer-art:not(.officer-photo) { width: 100%; height: 100%; object-fit: contain; }
 .ap-portrait.is-empty { display: grid; place-items: center; border: 1px dashed rgba(214, 186, 120, 0.45); color: var(--gold); font-size: 22px; }
 .ap-cmd-who { display: grid; gap: 2px; min-width: 0; }
 .ap-cmd-who b {
