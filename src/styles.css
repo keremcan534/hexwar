@@ -14384,7 +14384,10 @@ body:is(.screen-open, .notify-quiet) .notify-tray { justify-content: center; min
 .k-pol .k-decs { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
 .k-dec.slim { display: grid; grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: auto auto; align-items: center; gap: 1px 6px; min-height: 0; padding: 6px 8px; text-align: left; }
 .k-dec.slim > b { overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
-.k-dec.slim > small { grid-column: 1 / -1; overflow: hidden; color: var(--text-mute); font-size: var(--fs-label); text-overflow: ellipsis; white-space: nowrap; }
+/* Etki satırı kararın ta kendisi: tek satırlık kesme 1920'de on bir kararın
+   yedisinde etkinin yarısını yutuyordu ("Investment +30% for two years: every
+   IC p…"). İki satır çoğunu tam gösterir; daha uzunu (War Bonds) kartta. */
+.k-dec.slim > small { display: -webkit-box; grid-column: 1 / -1; overflow: hidden; color: var(--text-mute); font-size: var(--fs-label); line-height: 1.3; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .k-pol-why { gap: 10px; }
 /* Yorgunluk merdiveni (TASARIM D5): geçilen basamaklar parlak. */
 .k-pol-ladder { margin: 6px 0 0; font-size: 11px; color: var(--text-dim, var(--text)); opacity: 0.75; }

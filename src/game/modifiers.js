@@ -43,7 +43,7 @@ export const MODIFIER_KEYS = {
   defense: { label: 'Land defence', format: 'pct' }, // battles
   organization: { label: 'Organisation recovery', format: 'pct' }, // turn
   naval: { label: 'Naval strength', format: 'pct' }, // battles
-  shipClass: { label: 'Warship class (new hulls; older ones obsolete)', format: 'num' }, // navy
+  shipClass: { label: 'Warship class (new hulls; older ones obsolete)', short: 'Warship class', format: 'num' }, // navy
   armor: { label: 'Armour strength', format: 'pct' }, // battles (ARMOR)
   air: { label: 'Air wing strength', format: 'pct' }, // battles (AIRCRAFT)
   upkeep: { label: 'Army supply cost', format: 'pct' }, // econ/bills
@@ -51,7 +51,7 @@ export const MODIFIER_KEYS = {
   obligationCap: { label: 'Bill ceiling', format: 'pct' }, // econ/bills
   infamyDecay: { label: 'Infamy decay', format: 'pct' }, // infamy
   supply: { label: 'Supply in enemy land', format: 'pct' }, // turn (yıpranma)
-  ironclad: { label: 'Ironclad ships (iron and coal instead of timber)', format: 'flag' }, // econ/industry
+  ironclad: { label: 'Ironclad ships (iron and coal instead of timber)', short: 'Ironclad ships', format: 'flag' }, // econ/industry
   // Çağ kaynakları: bonus yalnız kaynak ihtiyacı karşılandığı oranda gelir.
   // `short`: dar yerlerin (teknoloji düğümü) adı; tam ad ipucunda kalır.
   oilIc: { label: 'Industrial capacity while oil needs are met', short: 'Industry (with oil)', format: 'pct' }, // econ/output
@@ -128,7 +128,7 @@ export function describeEffects(effects, { short = false } = {}) {
     const meta = MODIFIER_KEYS[key];
     if (!meta || !value) continue;
     if (meta.format === 'flag') {
-      lines.push(meta.label);
+      lines.push(short ? meta.short ?? meta.label : meta.label);
       continue;
     }
     const sign = value > 0 ? '+' : '−';
