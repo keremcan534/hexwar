@@ -16731,6 +16731,9 @@ button.dip-war.dip-conflict.on { border-left-color: var(--gold-bright); }
    istiyor, yuva 116 px — 1920'de "INDUSTRY" tek harfe kesiliyordu (ölçüldü).
    Adı simgesinde ve makro kartının başlığında; değerler kalır. */
 .tb-mini.has-flow > small { display: none; }
+/* Ekran açılınca odak kökündedir (LS-10): kökün halkası çizilmez, Tab
+   gövdenin ilk denetimine geçer ve halka orada yanar. */
+#screen:focus, #screen:focus-visible { outline: none; }
 @media (min-width: 1280px) and (max-width: 1365px) {
   .nation-crest { width: 56px; }
   .nation-crest .nation-flag { width: 46px; height: 31px; }

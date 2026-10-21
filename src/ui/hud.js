@@ -106,15 +106,25 @@ function deltaLabel(key, delta) {
   return '';
 }
 
+/**
+ * Sekme durağı yalnız EYLEMİ olan hücreye (LS-10): istikrar dökümü
+ * (role="button") ve makro kartının sıralaması (data-macro). Yalnız ipucu
+ * taşıyan gösterge ve madalyon Tab'da 36 durak tutuyor, ekranın ilk
+ * denetimine varmadan oyuncuyu üst çubukta gezdiriyordu (ölçüldü).
+ */
+function stopAttr(attrs) {
+  return /role="button"|data-macro=/.test(attrs) ? ' tabindex="0"' : '';
+}
+
 /** İkincil gösterge (nüfus, ordu, havuz, sanayi): küçük ikon, değer, etiket. */
 function miniCell(icon, label, value, attrs = '', cls = '') {
-  return `<span class="tb-mini${cls ? ` ${cls}` : ''}" tabindex="0" ${attrs}>
+  return `<span class="tb-mini${cls ? ` ${cls}` : ''}"${stopAttr(attrs)} ${attrs}>
       <span class="tb-mini-ico">${icon}</span><b>${value}</b><small>${label}</small></span>`;
 }
 
 /** `extra`: değerin altına giren ek satır (Output hücresinin çubuğu). */
 function statCell(icon, label, value, attrs = '', cls = '', ring = null, extra = '') {
-  return `<span class="tb-gauge${cls ? ` ${cls}` : ''}" tabindex="0" ${attrs}>
+  return `<span class="tb-gauge${cls ? ` ${cls}` : ''}"${stopAttr(attrs)} ${attrs}>
       <span class="tb-socket">${ring ? ringSvg(ring.share, ring.tone) : ''}<span class="tb-ico">${icon}</span></span>
       <span class="tb-gv"><small>${label}</small><b>${value}</b>${extra}</span>
     </span>`;
@@ -875,6 +885,15 @@ export class Hud {
 
   bindKeys() {
     window.addEventListener('keydown', (event) => {
+      // Pencere açıkken Tab içinde döner (LS-10). Yazı kutusundan da: kayıt
+      // adı kutusundaki Tab ekrandan çıkıp harita kiplerine gidiyordu.
+      if (event.code === 'Tab' && !event.ctrlKey && !event.altKey && !event.metaKey && !modalLayer()) {
+        const roots = this.focusWindow();
+        if (roots) {
+          this.windowTab(event, roots);
+          return;
+        }
+      }
       if (takesText(event.target)) return;
       // Modal açıkken (olay kartı, kapanış sayfası) tuşlar arkaya sızmaz:
       // Space kartın durdurduğu saati yeniden başlatıyor, F7 kartın altında
@@ -1054,6 +1073,44 @@ export class Hud {
         this.game.requestRender();
       }
     });
+  }
+
+  /**
+   * Odak penceresi: ayar paneli (yönetim ekranının üstünde de açılır) ya da
+   * açık yönetim ekranı — kendi künyesi (sekme şeridi: sekmeler, AUTO,
+   * kapat) ve gövdesi. Yoksa null: harita oyununda Tab serbest.
+   */
+  focusWindow() {
+    if (panelOpen(this.el.settings)) return [this.el.settings];
+    if (document.body.classList.contains('screen-open')) {
+      return [document.getElementById('tab-bar'), document.getElementById('screen')].filter(Boolean);
+    }
+    return null;
+  }
+
+  /**
+   * Pencere içinde bir sonraki/önceki durak. Odak pencerenin dışında ya da
+   * durak olmayan bir yerdeyse (ekran açılınca kökün kendisi) belge sırasında
+   * ondan sonraki ilk durağa gider; uçta başa sarar.
+   */
+  windowTab(event, roots) {
+    const stops = roots.flatMap((root) => [...root.querySelectorAll(FOCUSABLE)])
+      .filter((el) => el.getClientRects().length && !el.closest('[inert], .hidden')
+        && getComputedStyle(el).visibility !== 'hidden');
+    if (!stops.length) return;
+    event.preventDefault();
+    const back = event.shiftKey;
+    const active = document.activeElement;
+    let at = stops.indexOf(active);
+    if (at < 0) {
+      const after = (el) => Boolean(active && active !== document.body
+        && (active.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING));
+      at = back ? stops.findLastIndex((el) => !after(el) && !el.contains(active)) : stops.findIndex(after);
+      if (at < 0) at = back ? stops.length - 1 : 0;
+      stops[at].focus();
+      return;
+    }
+    stops[(at + (back ? -1 : 1) + stops.length) % stops.length].focus();
   }
 
   /**
@@ -1562,11 +1619,11 @@ export class Hud {
       const people = me.economy?.population ?? 0;
       const recruits = nationManpower(world, me.id);
       this.el.macroStats.innerHTML = `<span class="tb-minis">${miniCell(emblemArt('people', 'xs'), 'People',
-        formatPopulation(people), `data-macro="population" ${track('pop', people, people * 0.01)}`, 'macro-live')
+        formatPopulation(people), `role="button" data-macro="population" ${track('pop', people, people * 0.01)}`, 'macro-live')
         + miniCell(emblemArt('soldiers', 'xs'), 'Army', formatPopulation(army), `data-tip="army" ${track('army', army, army * 0.03 + 1)}`)
         + miniCell(emblemArt('recruits', 'xs'), 'Recruits', formatPopulation(recruits), `data-tip="manpower" ${track('mp', recruits, recruits * 0.05 + 1)}`)
         + miniCell(emblemArt('factory', 'xs'), 'Industry', `${ic.total.toFixed(1)}<em class="stat-flow">${drawn.toFixed(1)}/${armyCap.toFixed(1)}${glyph('swords', 'inline')}</em>`,
-          `data-macro="ic" ${track('ic', ic.total, 0.2)}`, 'macro-live has-flow')}</span>`
+          `role="button" data-macro="ic" ${track('ic', ic.total, 0.2)}`, 'macro-live has-flow')}</span>`
         + resourceChips(me);
       this.animateTopChanges(this.el.macroStats);
       this.ensureMacroCards();
@@ -2753,7 +2810,7 @@ function resourceChips(nation) {
     const cls = !need ? 'idle' : ratio < 0.8 ? 'short' : ratio < 0.98 ? 'tight' : 'ok';
     const ringTone = { short: 'neg', tight: 'warn', ok: 'brass', idle: 'dim' }[cls];
     const surplus = (record?.exported ?? 0) > 0.05;
-    return `<span class="tb-resi ${cls}" data-tip="resource" data-tip-arg="${id}" tabindex="0" ${track(`r-${id}`, need ? ratio : 1, 0.05)}>
+    return `<span class="tb-resi ${cls}" data-tip="resource" data-tip-arg="${id}" ${track(`r-${id}`, need ? ratio : 1, 0.05)}>
       ${ringSvg(need ? ratio : 0, ringTone)}${resourceArt(id, 'sm')}${surplus ? '<em>▲</em>' : ''}
       <b>${need ? `${Math.round(ratio * 100)}%` : '—'}</b></span>`;
   }).join('')}</span>`;

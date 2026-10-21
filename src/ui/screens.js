@@ -105,6 +105,18 @@ function esc(s) {
   ));
 }
 
+/**
+ * Yönetim ekranının ARKASINDA kalan harita araçları (LS-10). Hepsi ekran
+ * açıkken zaten gizlidir (styles.css body.screen-open); `inert` onları
+ * klavye ve erişilebilirlik ağacından da çıkarır. Harita kipleri bilerek
+ * listede yok: ekranın altında görünür kalır ve fareyle haritayı çevirir;
+ * Tab'ı hud.windowTab pencerede tutar.
+ */
+const MAP_TOOLS = '#command-dock, #sheet, #layer-menu, .rgo-map-legend, #movement-dock, #war-dock, #navy-dock, .battle-panel, .battle-strip';
+function setMapToolsInert(on) {
+  for (const el of document.querySelectorAll(MAP_TOOLS)) el.inert = on;
+}
+
 /** Odak geri gelince imleci de geri isteyen denetimler (yazı alanları). */
 const CARET_TYPES = new Set(['text', 'search', 'url', 'tel', 'password', 'email', 'number']);
 
@@ -313,6 +325,9 @@ export class Screens {
     // geçip dönen oyuncunun tek tıkı zorla asimilasyonu yürürlüğe koyuyordu.
     if (switching) this.dropConfirms();
     clearTimeout(this.closeTimer);
+    // Odak pencereye geçer (LS-10); kapanınca açanına döner.
+    const opening = !this.active;
+    if (opening) this.returnFocus = document.activeElement;
     this.active = name;
     this.el.root.dataset.screen = name;
     // Sekmesi olan ekranın başlığı sekmenin kendisidir: başlık satırı gizlenir.
@@ -326,6 +341,10 @@ export class Screens {
     this.el.body.scrollTop = 0;
     this.refresh();
     if (switching) this.playEnter();
+    if (opening) setMapToolsInert(true);
+    // Kök odaklanır, ilk denetim değil: F-tuşuyla açılan ekranda rastgele bir
+    // düğmenin halkası yanmasın; Tab oradan gövdenin ilk denetimine gider.
+    if (switching && !this.el.root.contains(document.activeElement)) this.el.root.focus({ preventScroll: true });
   }
 
   /**
@@ -430,6 +449,13 @@ export class Screens {
     else clear();
     for (const btn of document.querySelectorAll('#tab-bar [data-screen]')) {
       btn.classList.remove('active');
+    }
+    setMapToolsInert(false);
+    const back = this.returnFocus;
+    this.returnFocus = null;
+    if (this.el.root.contains(document.activeElement)) {
+      if (back?.isConnected && back.getClientRects().length && !this.el.root.contains(back)) back.focus({ preventScroll: true });
+      else document.activeElement.blur();
     }
   }
 

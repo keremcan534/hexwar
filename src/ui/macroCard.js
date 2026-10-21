@@ -188,14 +188,25 @@ export function bindMacroCards(root, api) {
     closeTimer = setTimeout(hide, GRACE);
   });
 
-  root.addEventListener('click', (event) => {
-    const element = event.target.closest('[data-macro]');
-    if (!element) return;
+  const toggleRank = (element) => {
     cancelOpen();
     cancelClose();
     source = element;
     mode = mode === 'rank' ? 'history' : 'rank';
     draw(element);
+  };
+  root.addEventListener('click', (event) => {
+    const element = event.target.closest('[data-macro]');
+    if (element) toggleRank(element);
+  });
+  // Hücre bir sekme durağıdır (role="button"): Enter tıkla aynı işi görür.
+  // Space değil — Space oyunda saattir (hud.bindKeys).
+  root.addEventListener('keydown', (event) => {
+    if (event.key !== 'Enter') return;
+    const element = event.target.closest?.('[data-macro]');
+    if (!element) return;
+    event.preventDefault();
+    toggleRank(element);
   });
 
   // Ekran kapanirken artik kart kalmasin; zamanlayici da temizlenir.
