@@ -1187,7 +1187,7 @@ export function renderPopulation(game, me, state) {
     <div class="k-split k-pop">
       <div class="k-stack">
         ${panel('Growth', growthBody, { sub: 'why the population grows' })}
-        ${panel('Education', lawCard(world, me, 'education', state.confirm, { compact: true }), { sub: 'literacy speeds research and assimilation and opens focus slots' })}
+        ${panel('Education', lawCard(world, me, 'education', state.confirm, { compact: true }), { sub: 'literacy: research, assimilation, focus slots' })}
       </div>
       <div class="k-stack">
         ${panel(`The ${esc(status.culture)} nation`, `
@@ -1455,8 +1455,8 @@ export function renderPolitics(game, me, state) {
       <svg class="k-course-sq" data-uc-course viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" role="img" aria-label="Course of the state">
         <rect x="0.5" y="0.5" width="${S - 1}" height="${S - 1}" fill="rgba(0,0,0,0.25)" stroke="rgba(242,226,184,0.35)"/>
         <line x1="${S / 2}" y1="0" x2="${S / 2}" y2="${S}" stroke="rgba(242,226,184,0.12)"/><line x1="0" y1="${S / 2}" x2="${S}" y2="${S / 2}" stroke="rgba(242,226,184,0.12)"/>
-        <text x="${S / 2}" y="11" text-anchor="middle" font-size="9" fill="rgba(242,226,184,0.6)">Order</text>
-        <text x="${S / 2}" y="${S - 4}" text-anchor="middle" font-size="9" fill="rgba(242,226,184,0.6)">Reform</text>
+        <text x="${S / 2}" y="12" text-anchor="middle" font-size="11" fill="rgba(242,226,184,0.6)">Order</text>
+        <text x="${S / 2}" y="${S - 4}" text-anchor="middle" font-size="11" fill="rgba(242,226,184,0.6)">Reform</text>
         ${corners}${ring}
         <circle cx="${px(c.course.x)}" cy="${px(c.course.y)}" r="5" fill="#f2e2b8"/>
       </svg>

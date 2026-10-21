@@ -413,7 +413,7 @@ body:has(#screen[data-screen='nation']:not(.hidden)) :is(#war-bar, #battle-strip
   background: #0b1214;
   color: var(--nov-ink);
   font-family: var(--font-ui);
-  font-size: 10.5px;
+  font-size: var(--fs-label);
   line-height: 15px;
   text-align: center;
   font-variant-numeric: tabular-nums;
