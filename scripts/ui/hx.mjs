@@ -103,7 +103,7 @@ async function waitFor(expr, timeout = 30000) {
 }
 
 const KEYMAP = {
-  Escape: { key: 'Escape', code: 'Escape', keyCode: 27 }, Enter: { key: 'Enter', code: 'Enter', keyCode: 13 },
+  Escape: { key: 'Escape', code: 'Escape', keyCode: 27 }, Enter: { key: 'Enter', code: 'Enter', keyCode: 13, text: '\r' },
   Space: { key: ' ', code: 'Space', keyCode: 32 }, Tab: { key: 'Tab', code: 'Tab', keyCode: 9 },
   ArrowUp: { key: 'ArrowUp', code: 'ArrowUp', keyCode: 38 }, ArrowDown: { key: 'ArrowDown', code: 'ArrowDown', keyCode: 40 },
   ArrowLeft: { key: 'ArrowLeft', code: 'ArrowLeft', keyCode: 37 }, ArrowRight: { key: 'ArrowRight', code: 'ArrowRight', keyCode: 39 },
