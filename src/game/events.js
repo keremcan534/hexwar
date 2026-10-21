@@ -98,7 +98,7 @@ function announceSupply(game, nation, state, from, to) {
   if (to === 'clear' && from === 'crisis') {
     if (throttled(state, 'supply-clear', turn, 52)) return;
     announce(game, nation, {
-      kind: 'POLITICS', tier: TIER.MINOR, key: 'supply-clear',
+      kind: 'POLITICS', tier: TIER.IMPORTANT, key: 'supply-clear',
       title: 'Supply restored',
       detail: 'The state pays its bills in full again.',
     });

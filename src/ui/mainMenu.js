@@ -24,7 +24,7 @@
 import {
   SAVE_VERSION, exportSaveText, importSaveText, savedInfo,
 } from '../game/save.js';
-import { gameDate } from './hud.js';
+import { campaignSaveState, gameDate } from './hud.js';
 import { worldRows } from '../world/worldgen.js';
 import { MenuMusic } from './menuMusic.js';
 import { MenuMotion } from './menuMotion.js';
@@ -375,8 +375,9 @@ export class MainMenu {
   bind() {
     const { el } = this;
 
-    el.resume.onclick = () => this.close();
+    el.resume.onclick = () => this.resume();
     el.random.onclick = () => {
+      if (!this.confirmDiscard(el.random, 'random')) return;
       this.game.newWorld();
       this.close();
       this.onWorldBuilt?.();
@@ -389,12 +390,19 @@ export class MainMenu {
     // Birincil eylem: kayıt varsa kampanyayı sürdürür, yoksa yeni dünya kurar.
     el.cta.onclick = () => {
       const fresh = !this.resumable;
-      if (fresh) this.game.newWorld();
+      if (!fresh) {
+        this.resume();
+        return;
+      }
+      this.game.newWorld();
       this.close();
-      if (fresh) this.onWorldBuilt?.();
+      this.onWorldBuilt?.();
     };
     el.build.onclick = () => this.build();
-    el.load.onclick = () => this.loadSave();
+    el.load.onclick = () => {
+      if (!this.confirmDiscard(el.load, 'load')) return;
+      this.loadSave();
+    };
     el.exit.onclick = () => this.exit();
     for (const chip of el.motionChoices ?? []) {
       chip.onclick = () => {
@@ -503,9 +511,52 @@ export class MainMenu {
         : 'Scenes come alive, flags wave, and panels slide as they open and close.';
   }
 
+  /**
+   * Oturumdaki kampanyayı atan eylemin onayı. Oyun içinden açılan menüde
+   * "Random World", "Generate World" ve "Load Game" tek tıkla süren
+   * kampanyayı siliyordu; kayıt ekranı aynı işi iki tıkla yapıyor (B-05).
+   * Kaybedilecek bir şey yoksa (kayıtlı, ya da hiç oynanmamış dünya) onay
+   * istenmez. İlk tık düğmenin notunu uyarıya çevirir; 8 sn sonra söner.
+   * @returns {boolean} eylem şimdi yapılsın mı
+   */
+  confirmDiscard(button, key) {
+    if (!this.resumable) return true;
+    const state = campaignSaveState(this.game);
+    if (!state.unsaved) return true;
+    if (this.discardArmed === key) {
+      this.disarmDiscard();
+      return true;
+    }
+    this.disarmDiscard();
+    this.discardArmed = key;
+    // Şerit düğmesinin notu uyarıya döner; notu olmayan düğme (Generate
+    // World) kendi yazısını değiştirir.
+    const note = button.querySelector('small') ?? button;
+    this.discardNote = { button, note, text: note.textContent, title: button.title };
+    button.classList.add('is-confirming');
+    note.textContent = note === button
+      ? 'Click again to abandon this campaign'
+      : `click again to abandon this campaign · ${state.note}`;
+    button.title = state.note;
+    this.discardTimer = setTimeout(() => this.disarmDiscard(), 8000);
+    return false;
+  }
+
+  disarmDiscard() {
+    clearTimeout(this.discardTimer);
+    this.discardArmed = null;
+    const armed = this.discardNote;
+    this.discardNote = null;
+    if (!armed) return;
+    armed.button.classList.remove('is-confirming');
+    armed.note.textContent = armed.text;
+    armed.button.title = armed.title;
+  }
+
   /** Kaydırıcılardaki değerlerle yeni dünya kurar ve perdeyi kaldırır. */
   build() {
     const { el } = this;
+    if (!this.confirmDiscard(el.build, 'build')) return;
     const cols = Number(el.size.value);
     const nations = Number(el.nations.value);
     this.game.newWorld(el.seed.value.trim() || undefined, {
@@ -613,6 +664,15 @@ export class MainMenu {
   open() {
     this.open_ = true;
     this.onOpen?.();
+    this.disarmDiscard();
+    // Perde inerken saat durur: menü açıkken haftalar kapanıyor, YZ oynuyor,
+    // muharebeler bitiyordu ve "Continue · 22 JAN" notu çoktan eskimişti
+    // (B-04). Continue eski hızı geri verir.
+    const speed = this.game.clock?.speed ?? 0;
+    if (speed > 0) {
+      this.resumeSpeed = speed;
+      this.game.setSpeed(0);
+    }
     // Düğme ancak işe yarıyorsa görünür: "Continue" oturumdaki oyunu sürdürür,
     // "Load Game" diskte kayıt varsa okur.
     const info = savedInfo();
@@ -638,9 +698,20 @@ export class MainMenu {
     this.syncVolume();
   }
 
+  /** "Continue": oturumdaki kampanyaya döner, menü açılırken akan saati geri verir. */
+  resume() {
+    const speed = this.resumeSpeed ?? 0;
+    this.resumeSpeed = 0;
+    this.close();
+    if (speed > 0 && this.game.world && !this.game.turns?.victory) this.game.setSpeed(speed);
+  }
+
   close() {
     if (!this.open_) return;
     this.open_ = false;
+    this.disarmDiscard();
+    // Başka bir yoldan çıkış (yeni dünya, yükleme) eski hızı taşımaz.
+    if (this.resumeSpeed) this.resumeSpeed = 0;
     this.el.root.classList.add('hidden');
     this.el.root.setAttribute('aria-hidden', 'true');
     document.body.classList.remove('menu-open');

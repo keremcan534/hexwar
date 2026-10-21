@@ -80,19 +80,67 @@ function metricRow(label, from, to) {
   </div>`;
 }
 
+/** "1st", "2nd", "3rd", "11th". */
+function ordinal(n) {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  return `${n}${({ 1: 'st', 2: 'nd', 3: 'rd' })[n % 10] ?? 'th'}`;
+}
+
+/**
+ * HÜKÜM: kampanyanın sorusu "1945'te önde olan kazanır"dı ve sayfa onu hiç
+ * cevaplamıyordu — hegemonu adlandırmıyor, oyuncunun kazanıp kazanmadığını
+ * söylemiyordu (B-11). Sayılar zafer kontrolünün kendi tablosundandır.
+ */
+function verdict(nation, result, board, rank) {
+  const leader = result?.nation ?? board[0]?.nation ?? null;
+  const points = (row) => Math.round(row?.total ?? 0);
+  const mine = board[rank] ?? null;
+  if (!leader) return { won: false, title: 'The age is over', line: '' };
+  if (leader.id === nation.id) {
+    const second = board[1];
+    return {
+      won: true,
+      title: 'Victory',
+      line: `${nation.name} stands first among the powers with ${points(mine)} points`
+        + `${second ? `, ahead of ${second.nation.name} (${points(second)})` : ''}. The hegemony of the age is yours.`,
+    };
+  }
+  return {
+    won: false,
+    title: 'Defeat',
+    line: `${leader.name} established hegemony with ${Math.round(result?.score ?? points(board[0]))} points.`
+      + (rank >= 0 ? ` ${nation.name} finished ${ordinal(rank + 1)} of ${board.length} with ${points(mine)}.` : ''),
+  };
+}
+
+/** Kapanış sayfasını kaldırır (Esc ve "Keep viewing the map"); kaldırdıysa true. */
+export function closeEndScreen() {
+  const host = document.getElementById('epilogue');
+  if (!host) return false;
+  host.remove();
+  // Sayfa açılmadan önce odak haritadaydı; kaybolan düğmede kalmasın.
+  document.activeElement?.blur?.();
+  return true;
+}
+
 /**
  * Ekrani kurar ve DOM'a takar. `victory` olayindan cagrilir; oyun zaten
  * durmustur (turn.js zafer sonrasi yeni tur baslatmaz).
+ * @param {{ onMenu?: Function }} [options] ana menüyü açan geri çağrı (HUD verir)
  */
-export function showEndScreen(game, result) {
+export function showEndScreen(game, result, { onMenu = null } = {}) {
   if (document.getElementById('epilogue')) return null;
   const world = game.world;
   const nation = world.nations[game.turns.playerNation];
   if (!nation) return null;
+  // Saat zaferde durur: zaman akıyor görünüp hiçbir şey kıpırdamıyordu (B-12).
+  if (game.clock?.speed) game.setSpeed(0);
   const opening = nation.opening ?? null;
   const chronicle = ensureChronicle(nation);
   const board = result?.board ?? scoreboard(world);
   const rank = board.findIndex((row) => row.nation.id === nation.id);
+  const judged = verdict(nation, result ?? game.turns?.victory, board, rank);
   const endYear = chronicleYear(world.turn);
   const startYear = chronicleYear(opening?.turn ?? 1);
 
@@ -133,12 +181,16 @@ export function showEndScreen(game, result) {
   host.id = 'epilogue';
   host.className = 'epilogue';
   host.innerHTML = `
-    <article class="epilogue-sheet" role="dialog" aria-label="Campaign epilogue">
+    <article class="epilogue-sheet" role="dialog" aria-modal="true" aria-label="Campaign epilogue" tabindex="-1">
       <header class="epilogue-head">
         <small>${esc(ERA_NAME)}</small>
         <h1>${esc(nation.name)}</h1>
         <p class="epilogue-span">${startYear}–${endYear}</p>
       </header>
+      <div class="epilogue-verdict ${judged.won ? 'won' : 'lost'}">
+        <b>${esc(judged.title)}</b>
+        <p>${esc(judged.line)}</p>
+      </div>
       <p class="epilogue-line">${esc(closingLine(nation, opening, board))}</p>
       <section class="epilogue-metrics">${metrics}</section>
       ${tallyLine}
@@ -148,10 +200,23 @@ export function showEndScreen(game, result) {
       </section>
       <footer class="epilogue-foot">
         <p>The age is over. Its consequences are not.</p>
-        <button class="action primary" data-epilogue-close>Close</button>
+        <span class="epilogue-acts">
+          <button class="action" data-epilogue-close>Keep viewing the map</button>
+          ${onMenu ? '<button class="action primary" data-epilogue-menu>Main menu</button>' : ''}
+        </span>
       </footer>
     </article>`;
   document.body.append(host);
-  host.querySelector('[data-epilogue-close]').onclick = () => host.remove();
+  host.querySelector('[data-epilogue-close]').onclick = () => closeEndScreen();
+  const menu = host.querySelector('[data-epilogue-menu]');
+  if (menu) {
+    menu.onclick = () => {
+      closeEndScreen();
+      onMenu();
+    };
+  }
+  // Modal odağı alır: Tab sayfanın düğmelerinde döner, Space arkaya sızmaz
+  // (hud.modalKey). İlk odak birincil eylemde.
+  (menu ?? host.querySelector('[data-epilogue-close]')).focus({ preventScroll: true });
   return host;
 }

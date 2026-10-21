@@ -17,6 +17,12 @@ const TEXT_PREFIX = 'hexwar.save:';
 export const LEGACY_KEY = 'hexwar.save';
 export const LEGACY_SLOT = 'legacy';
 export const AUTO_SLOT = 'auto';
+/**
+ * Hızlı kayıt yuvası: ayar panelindeki "Quick Save" hep bunun üstüne yazar.
+ * Her tık yeni yuva açtığında tavan aşılıyordu (15/12, her biri MB'larca).
+ * Elle kayıt tavanına sayılmaz: otomatik kayıt gibi tek, kendini yenileyen yuva.
+ */
+export const QUICK_SLOT = 'quick';
 /** Elle alınan kayıt sayısı tavanı: her biri birkaç MB, liste de okunur kalmalı. */
 export const MAX_MANUAL = 12;
 
@@ -107,7 +113,7 @@ export function newSlotId() {
 }
 
 export function manualCount() {
-  return readIndex().filter((row) => !row.auto).length;
+  return readIndex().filter((row) => !row.auto && row.slot !== QUICK_SLOT).length;
 }
 
 /**

@@ -16,6 +16,8 @@ import { acceptCulture, acceptPrice } from '../game/culture.js';
 import { releasePeople } from '../game/nationBirth.js';
 import { deport } from '../game/culturePolicy.js';
 import { formatPopulation } from '../game/economy.js';
+import { FINAL_TURN } from '../game/hegemony.js';
+import { END_YEAR } from '../game/calendar.js';
 import { money } from './kit.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
@@ -34,6 +36,18 @@ const TRACK_STAGES = {
 };
 const trackStage = (track, progress) => (TRACK_STAGES[track] ?? [])
   .filter(([at]) => progress >= at).at(-1)?.[1] ?? '';
+
+/**
+ * Kalan süre: iki yıla dek hafta, sonrası yıl; kampanyanın ötesi "not before
+ * 1945". Ham hafta "~1928w" yazıyordu ve 1900-1945 kampanyasında YIL gibi
+ * okunuyordu (HUD-04).
+ */
+function etaLabel(weeks, turn) {
+  if (turn + weeks > FINAL_TURN) return `not before ${END_YEAR}`;
+  if (weeks <= 104) return `in ~${weeks}w`;
+  const years = Math.round(weeks / 52);
+  return `in ~${years} ${years === 1 ? 'year' : 'years'}`;
+}
 
 const STANCES = [
   ['accommodate', 'Accommodate', 'Grant rights early and say yes to their demands.'],
@@ -75,7 +89,12 @@ export class MovementDock {
     // tek kulturlu devlet bu paneli hic gormez.
     const live = rows.filter((row) => row.progress > 0.5 || row.trend > 0);
     this.root.hidden = !live.length;
-    if (!live.length) { this.root.innerHTML = ''; return; }
+    if (!live.length) {
+      this.root.innerHTML = '';
+      this.last = '';
+      this.shownIds = null;
+      return;
+    }
     const worst = live[0];
     const head = `<button class="md-head" data-md-toggle type="button"
         title="${this.collapsed ? 'Show' : 'Hide'} the national movements">
@@ -92,8 +111,25 @@ export class MovementDock {
         ${STANCES.map(([id, label, tip]) => `<button type="button" class="md-stance${id === stance ? ' on' : ''}"
           data-md-stance="${id}" title="${esc(tip)}">${label}</button>`).join('')}
       </div>`;
-    this.root.innerHTML = head + (this.collapsed ? '' : `${policy}<div class="md-list">${
+    const html = head + (this.collapsed ? '' : `${policy}<div class="md-list">${
       live.map((row) => this.rowHtml(row)).join('')}</div>`);
+    // Aynı metin yeniden yazılmaz: panel turn/provinces/economy olaylarında
+    // haftada birkaç kez tazeleniyor ve her yazım giriş animasyonunu baştan
+    // oynatıyordu — satır kayarken liste taşıyor, sistem kaydırma çubuğu
+    // belirip metni ikinci satıra itiyordu (LS-05: 40 sn'de 50 kayma).
+    if (html === this.last) return;
+    this.last = html;
+    const list = this.root.querySelector('.md-list');
+    const scroll = list?.scrollTop ?? 0;
+    this.root.innerHTML = html;
+    const fresh = this.root.querySelector('.md-list');
+    if (fresh && scroll) fresh.scrollTop = scroll;
+    // Giriş animasyonu yalnız YENİ halka: listede zaten duran satır yerinde kalır.
+    const ids = new Set(live.map((row) => row.cultureId));
+    for (const section of this.root.querySelectorAll('.md-row[data-md-row]')) {
+      if (!this.shownIds?.has(Number(section.dataset.mdRow))) section.classList.add('md-new');
+    }
+    this.shownIds = ids;
   }
 
   rowHtml(row) {
@@ -104,12 +140,14 @@ export class MovementDock {
         + `<i class="md-tick brink" style="left:${MOVEMENT.BRINK}%"></i>`
       : (TRACK_STAGES[row.track] ?? []).slice(1).map(([at]) => `<i class="md-tick" style="left:${at}%"></i>`).join('');
     const ask = row.track === 'homeRule' ? 'a state of their own' : 'Home Rule';
+    const eta = row.eta != null ? etaLabel(row.eta, this.game.turns?.turn ?? this.game.world?.turn ?? 1) : null;
     const pace = row.crisis ? `answer within ${row.crisis.left}w`
       : row.atBrink ? 'at the brink — they rise the moment the state falters'
         : row.martialLeft > 0 ? `martial law · ${row.martialLeft}w`
           : row.calmLeft > 0 ? `exhausted · ${row.calmLeft}w`
-            : row.eta != null ? (subject ? `rises in ~${row.eta}w` : `asks for ${ask} in ~${row.eta}w`)
-              : 'fading';
+            : eta ? (subject ? `rises ${eta}` : `asks for ${ask} ${eta}`)
+              // İlk haftanın kapanışından önce eğilim yoktur: "sönüyor" demek yalan olur.
+              : row.trend < -0.01 ? 'fading' : 'steady';
     const trend = row.trend > 0.05 ? '▲' : row.trend < -0.05 ? '▼' : '■';
     const swatch = row.color ? `style="--md-color:${esc(row.color)}"` : '';
     const where = row.provinces.length === 1
@@ -159,7 +197,7 @@ export class MovementDock {
         ${button('expel', 'Expel', a.expel,
     `Permanent: drive all ${formatPopulation(a.expel.people)} of them across the border to their kin or a neighbour. The movement ends with them; the world will not forget it.`)}`;
     }
-    return `<section class="md-row stage-${subject ? stage.index : 0}${row.crisis ? ' crisis' : ''}" ${swatch}>
+    return `<section class="md-row stage-${subject ? stage.index : 0}${row.crisis ? ' crisis' : ''}" data-md-row="${row.cultureId}" ${swatch}>
       <header class="md-row-head">
         <i class="md-swatch" aria-hidden="true"></i>
         <button type="button" class="md-name" data-md-focus="${row.cultureId}"

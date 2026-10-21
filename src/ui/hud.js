@@ -12,8 +12,9 @@ import { INFAMY_COALITION } from '../game/infamy.js';
 import {
   CULTURE, foreignShareOf, rebelCultureOf, unrestBreakdown,
 } from '../game/culture.js';
-import { stageOf } from '../game/movements.js';
+import { crisisNoticeKey, stageOf } from '../game/movements.js';
 import { savedInfo } from '../game/save.js';
+import { QUICK_SLOT, listSaves } from '../game/saveStore.js';
 import { areasOfScreen, isDelegated } from '../game/delegation.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { mountFlag } from '../render/flagWave.js';
@@ -25,7 +26,7 @@ import { armDisband, armyPanelHtml, commandCardsHtml, generalPickerHtml } from '
 import { LEAVE_MS, hidePanel, motionOn, panelOpen, togglePanel } from './motion.js';
 import { Screens } from './screens.js';
 import { TabLedger } from './tabLedger.js';
-import { showEndScreen } from './endScreen.js';
+import { closeEndScreen, showEndScreen } from './endScreen.js';
 import { formatPopulation } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS, DEVELOPMENT_MAX } from '../game/econ/defs.js';
 import { developmentCap, fundFloor, investmentTarget, levelCost } from '../game/econ/investment.js';
@@ -187,6 +188,23 @@ function takesText(el) {
 function ownsArrows(el) {
   return el?.tagName === 'SELECT' || (el?.tagName === 'INPUT' && el.type === 'range');
 }
+
+/**
+ * Esc'in kapattığı küçük katmanlar (bildirim tepsisi, uyarı penceresi). Her
+ * kanca kapattıysa true döner; HUD sırayla sorar ve bir basışta tek katman
+ * kapanır. Katmanlar main.js'te HUD'dan sonra kurulur, birbirini tanımaz.
+ */
+export function onEscape(game, close) {
+  (game.escapeHooks ??= []).push(close);
+}
+
+/** Klavyeyi tutan modal: kapanış sayfası olay kartından önce gelir (üsttedir). */
+function modalLayer() {
+  return document.getElementById('epilogue')
+    ?? document.querySelector('.event-card-layer');
+}
+
+const FOCUSABLE = 'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export class Hud {
   constructor(game) {
@@ -362,6 +380,25 @@ export class Hud {
       .filter((entry) => entry.key?.startsWith('crisis-') && !openCrisis.has(entry.key))
       .map((entry) => entry.key);
     if (staleCrisis.length) this.game.notifications.dismissKeys(staleCrisis);
+    this.sweepMovementCrises(me);
+  }
+
+  /**
+   * Hareket krizi kartı kalıcıdır (cevap isteyen tek karar); kriz kapanınca
+   * — oyuncu, kabine ya da halkın gidişi — kart da düşer (CH-01). Kapanış
+   * altı ayrı yoldan gelebildiği için kart durumdan okunur, yoldan değil.
+   */
+  sweepMovementCrises(me = this.game.world?.nations[this.game.turns.playerNation]) {
+    const center = this.game.notifications;
+    if (!center?.active?.length) return;
+    const stale = center.active
+      .filter((entry) => entry.key?.startsWith('movement-crisis-'))
+      .filter((entry) => {
+        const cultureId = Number(entry.key.slice('movement-crisis-'.length));
+        return !me?.alive || !me.movements?.[cultureId]?.crisis || entry.key !== crisisNoticeKey(cultureId);
+      })
+      .map((entry) => entry.key);
+    if (stale.length) center.dismissKeys(stale);
   }
 
   bind() {
@@ -375,11 +412,17 @@ export class Hud {
     $('btn-settings').onclick = () => {
       togglePanel(el.settings);
       hidePanel(el.layers);
+      this.disarmGenerate();
       // Etiket yalniz dunya kurulunca yaziliyordu: 65 hafta sonra panel hala
       // "No save yet" diyordu, oysa otomatik kayit coktan yazilmisti.
       this.refreshSaveInfo();
+      const epilogue = $('btn-epilogue');
+      if (epilogue) epilogue.hidden = !game.turns?.victory;
     };
-    $('btn-close-settings').onclick = () => hidePanel(el.settings);
+    $('btn-close-settings').onclick = () => {
+      hidePanel(el.settings);
+      this.disarmGenerate();
+    };
 
     // Kültür dağılımı çipi kip ve vurgu değişince eşitlenir.
     game.on('mapmode', () => this.syncCultureChip());
@@ -482,7 +525,21 @@ export class Hud {
     el.inNations.oninput = sync;
     sync();
 
+    // Yeni dünya süren kampanyayı atar: iki tık ister (kayıt ekranındaki gibi
+    // 8 sn'lik onay). Panelin en büyük düğmesiydi ve tek tıkla kampanyayı
+    // siliyordu (B-03).
     $('btn-generate').onclick = () => {
+      if (!this.generateArmed && this.game.world) {
+        const btn = $('btn-generate');
+        this.generateArmed = true;
+        btn.classList.add('confirming');
+        btn.textContent = 'Click again to discard this campaign';
+        this.el.saveInfo.textContent = campaignSaveState(game).note;
+        clearTimeout(this.generateTimer);
+        this.generateTimer = setTimeout(() => this.disarmGenerate(), 8000);
+        return;
+      }
+      this.disarmGenerate();
       const cols = Number(el.inSize.value);
       const rows = worldRows(cols);
       const nations = Number(el.inNations.value);
@@ -497,13 +554,17 @@ export class Hud {
       this.picker?.open();
     };
 
-    // Hızlı kayıt yeni yuvaya yazar; liste, yükleme ve dosya işleri kayıt
-    // ekranındadır (screens.render_saves). Ekran açılınca saat durur: kayıt
-    // seçerken kampanya akmasın.
+    // Hızlı kayıt TEK yuvayı döndürür (saveStore.QUICK_SLOT): her tık yeni
+    // yuva açıyordu, 12'lik tavanı aşıp 15/12'ye çıktı, her biri MB'larca
+    // (B-08). Liste, yükleme ve dosya işleri kayıt ekranındadır
+    // (screens.render_saves). Ekran açılınca saat durur: kayıt seçerken
+    // kampanya akmasın.
     $('btn-save').onclick = async () => {
       this.el.saveInfo.textContent = 'Saving…';
-      const result = await game.save(`${game.world.nations[game.turns.playerNation]?.name ?? 'Campaign'} · ${gameDate(game.turns.turn)}`);
-      this.el.saveInfo.textContent = result.ok ? 'Saved to a new slot. Saves… lists, loads and exports them.' : `Could not save: ${result.reason}.`;
+      const result = await game.save(`Quick save · ${game.world.nations[game.turns.playerNation]?.name ?? 'Campaign'} · ${gameDate(game.turns.turn)}`, QUICK_SLOT);
+      this.el.saveInfo.textContent = result.ok
+        ? 'Quick save written — it replaces the previous quick save. Saves… keeps named slots, loads and exports.'
+        : `Could not save: ${result.reason}.`;
     };
     $('btn-load').onclick = () => {
       hidePanel(el.settings);
@@ -512,10 +573,17 @@ export class Hud {
     };
 
     for (const btn of document.querySelectorAll('.time-btn[data-speed]')) {
-      btn.onclick = () => game.setSpeed(Number(btn.dataset.speed));
+      btn.onclick = () => { if (!this.clockLocked()) game.setSpeed(Number(btn.dataset.speed)); };
     }
     // Saat biriminin yuvarlak düğmesi Space'in aynısı: duraklatıkken oynatır.
-    $('btn-pause').onclick = () => game.togglePause();
+    $('btn-pause').onclick = () => { if (!this.clockLocked()) game.togglePause(); };
+    const epilogue = $('btn-epilogue');
+    if (epilogue) {
+      epilogue.onclick = () => {
+        hidePanel(el.settings);
+        this.openEpilogue();
+      };
+    }
     this.bindKeys();
     // Ordu paneline basılı fare: tıklama sürerken panel yeniden yazılmaz
     // (bkz. showTile, armyOnly). Bırakınca bekleyen tazeleme koşar.
@@ -612,7 +680,10 @@ export class Hud {
     game.on('politics', () => this.queueTurn());
     // Kampanya sonu (1945) tek satirlik bir metinle geciyordu; 'victory'
     // olayinin hicbir dinleyicisi yoktu. Artik yuzyilin kapanis sayfasi acilir.
-    game.on('victory', (result) => showEndScreen(game, result));
+    game.on('victory', (result) => {
+      this.openEpilogue(result);
+      this.showClockStatus();
+    });
     // "WHY THE PRICE MOVES" kalibi istikrara: dokum vardi ama YALNIZ hover
     // tooltip'inde duruyordu — kor beta testcisi 80 yil boyunca bulamadi
     // (B-003). Tiklama da ayni metni acar; tooltip ikincil yol olarak kalir.
@@ -636,6 +707,8 @@ export class Hud {
     game.on('provinces', () => {
       if (game.selected) this.showTile(game.selected);
       this.queueTurn();
+      // Kriz cevapları (Home Rule, taviz, ret, Dominion) 'provinces' yayar.
+      this.sweepMovementCrises();
     });
     game.on('selection', (units) => this.showSelection(units));
     game.on('command', () => this.showCommand());
@@ -691,23 +764,36 @@ export class Hud {
     // başlayacağı. Ölçü doğrudan elemanın `style`'ına yazılır — CSS değişkeni
     // üzerinden yapılan güncelleme bu tarayıcıda her zaman yerleşimi yeniden
     // hesaplatmıyor.
-    // Bildirim yığını da aynı ölçüye bağlanır: sabit bir CSS değeriyle
-    // konumlandırıldığında sekme şeridinin üstüne biniyor ve Economy/Politics
-    // sekmelerini kapatıyordu.
-    const notify = document.getElementById('notify-stack');
+    // Bildirim yığını artık sağ altta, zilin üstündedir (ui/notifications.js):
+    // başlık ölçüsüne bağlanmaz.
+    const tabBar = document.getElementById('tab-bar');
+    const rootStyle = document.documentElement.style;
     const apply = () => {
-      const top = Math.round(header.getBoundingClientRect().height) + 16;
+      const height = Math.round(header.getBoundingClientRect().height);
+      const top = height + 16;
       screen.style.top = `${top}px`;
       // Alttaki 52 px bildirim tepsisinindir: ekran açıkken tepsi o şeride
       // iner (styles.css, body.screen-open .notify-stack). Eskiden tepsi
       // ekranın sağ alt köşesine biniyor, Military'de teçhizat değerlerini,
       // Diplomacy'de Declare War düğmelerini örtüyordu (ölçüldü).
       screen.style.maxHeight = `calc(100vh - ${top}px - 52px)`;
-      if (notify) notify.style.top = `${top}px`;
       // Tumen listesi de baslik yuksekligine gore yer bulur: sabit 140px
       // tahmini, savas seridi acilinca listeyi cipin ustune bindiriyordu
       // (1280x720, Open Beta 4 B-14).
-      document.documentElement.style.setProperty('--header-bottom', `${top}px`);
+      rootStyle.setProperty('--header-bottom', `${top}px`);
+      // `--hud-top` = üst çubuğun GERÇEK alt kenarı (sekme şeridinin başladığı
+      // yer). Yorum bunu yıllardır söylüyordu ama yazılan tek değişken
+      // --header-bottom'du: `--hud-top + --tabbar-height` okuyan her kural
+      // (ayar paneli, uyarı şeridi, hareket paneli, --screen-top) 74 px'lik
+      // varsayılanla kalıyor, 1280'de üç satıra dağılan çubuğun altına
+      // giriyordu (LS-04).
+      const bar = tabBar?.getBoundingClientRect();
+      const hudTop = bar?.height ? Math.round(bar.top) : height - (parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--tabbar-height')) || 0);
+      rootStyle.setProperty('--hud-top', `${Math.max(0, hudTop)}px`);
+      // Sağ sütun savaş panelinin alt kenarına göre dizilir; panel başlıkla
+      // birlikte kayınca ölçü eski kalıyordu (1280'de hareket paneli savaş
+      // panelinin üstüne biniyordu).
+      this.warDock?.measure();
       // Künye kırılım eşiğinde küçülür: bayrak tuvali yeni kutuya göre takılır.
       this.mountTopFlag();
     };
@@ -743,9 +829,55 @@ export class Hud {
     };
   }
 
+  /**
+   * Kampanyanın kapanış sayfası. Kapatılınca kampanya çıkmaza düşüyordu: geri
+   * açacak düğme ve yeni oyuna yol yoktu (B-12). Sayfa ana menüye götürür;
+   * ayar panelindeki "Epilogue" düğmesi onu yeniden açar.
+   */
+  openEpilogue(result = this.game.turns?.victory) {
+    if (!result) return null;
+    return showEndScreen(this.game, result, {
+      onMenu: () => {
+        hidePanel(this.el.settings);
+        this.menu?.reopen();
+      },
+    });
+  }
+
+  /** "Generate New World" onayını bozar (panel kapanınca ya da süre dolunca). */
+  disarmGenerate() {
+    clearTimeout(this.generateTimer);
+    if (!this.generateArmed) return;
+    this.generateArmed = false;
+    const btn = $('btn-generate');
+    btn?.classList.remove('confirming');
+    if (btn) btn.textContent = 'Generate New World';
+    this.refreshSaveInfo();
+  }
+
+  /**
+   * Kampanya bittiyse saat kilitlidir: oynat düğmesi saati "akıtıyor" ama
+   * hiçbir şey kıpırdamıyordu (game.js zaferden sonra tur açmaz). Oyuncuya
+   * neden olduğu söylenir.
+   */
+  clockLocked() {
+    if (!this.game.turns?.victory) return false;
+    if (this.game.clock?.speed) this.game.setSpeed(0);
+    this.flashHint('The age is over · reopen the epilogue from the menu (☰)');
+    return true;
+  }
+
   bindKeys() {
     window.addEventListener('keydown', (event) => {
       if (takesText(event.target)) return;
+      // Modal açıkken (olay kartı, kapanış sayfası) tuşlar arkaya sızmaz:
+      // Space kartın durdurduğu saati yeniden başlatıyor, F7 kartın altında
+      // ekran açıyor, Tab üst çubukta geziyordu (B-13).
+      const modal = modalLayer();
+      if (modal) {
+        this.modalKey(event, modal);
+        return;
+      }
       // Ctrl+1..9: seçimi kontrol grubuna yaz (tarayıcının sekme kısayolundan önce).
       const digit = /^Digit([1-9])$/.exec(event.code)?.[1];
       if (digit && (event.ctrlKey || event.metaKey) && !event.altKey
@@ -764,17 +896,17 @@ export class Hud {
         // kutusunun kendi Space tıklamasını da iptal eder: tek tuş, tek eylem
         // (kutu hem dönüp hem oyunu durdurmasın). Odaktaki denetimi Enter sürer.
         event.preventDefault();
-        this.game.togglePause();
+        if (!this.clockLocked()) this.game.togglePause();
         return;
       }
       if (event.key === '+' || event.key === '=' || event.code === 'NumpadAdd') {
         event.preventDefault();
-        this.game.stepSpeed(1);
+        if (!this.clockLocked()) this.game.stepSpeed(1);
         return;
       }
       if (event.key === '-' || event.key === '_' || event.code === 'NumpadSubtract') {
         event.preventDefault();
-        this.game.stepSpeed(-1);
+        if (!this.clockLocked()) this.game.stepSpeed(-1);
         return;
       }
       if (event.code === 'KeyM') {
@@ -798,7 +930,15 @@ export class Hud {
         // secimi silip paneli birakirdi.
         // Ayar ve katman panelleri de "acik panel"dir: kor oyun testinde
         // Escape yonetim ekranini kapatiyor ama World Settings'i birakiyordu.
+        // Küçük balonlar önce: "neden" balonu açıkken Esc seçimi siliyor,
+        // balon ise ekranda kalıyordu (HUD-01).
+        if (this.whyPop) {
+          this.closeWhy();
+          return;
+        }
         if (this.game.inspectorClose?.()) return;
+        // Bildirim tepsisi ve uyarı penceresi (HUD-07): kendileri kaydolur.
+        if ((this.game.escapeHooks ?? []).some((close) => close())) return;
         // Açık hat çizim aracı her şeyden önce bırakılır.
         if (this.game.drawTool) {
           this.game.setDrawTool(null);
@@ -809,6 +949,7 @@ export class Hud {
         const openPanel = [this.el.settings, this.el.layers].find((panel) => panelOpen(panel));
         if (openPanel) {
           hidePanel(openPanel);
+          this.disarmGenerate();
           return;
         }
         if (this.screens?.active) {
@@ -907,6 +1048,34 @@ export class Hud {
         this.game.requestRender();
       }
     });
+  }
+
+  /**
+   * Modal açıkken klavye: Tab yalnız modalın içinde döner, Enter odaktaki
+   * düğmeyi sürer, Esc kapanış sayfasını kapatır (olay kartı bir karar ister,
+   * Esc onu geçiştirmez). Space ve kısayollar hiçbir şey yapmaz — Space
+   * oyunda saattir ve kartın açık olduğu an saatin duruk kalması gerekir.
+   */
+  modalKey(event, modal) {
+    if (event.code === 'Tab') {
+      event.preventDefault();
+      const stops = [...modal.querySelectorAll(FOCUSABLE)].filter((el) => el.offsetParent);
+      if (!stops.length) return;
+      const at = stops.indexOf(document.activeElement);
+      const next = at < 0 ? (event.shiftKey ? stops.length - 1 : 0)
+        : (at + (event.shiftKey ? -1 : 1) + stops.length) % stops.length;
+      stops[next].focus();
+      return;
+    }
+    if (event.code === 'Escape') {
+      event.preventDefault();
+      if (modal.id === 'epilogue') closeEndScreen(this.game);
+      return;
+    }
+    if (event.code === 'Enter' || event.code === 'NumpadEnter') return;
+    // Ctrl+R gibi tarayıcı kısayollarına karışılmaz; oyunun tuşları yutulur.
+    if (event.ctrlKey || event.altKey || event.metaKey) return;
+    event.preventDefault();
   }
 
   /** Komuta panelinin sabit dugmeleri: plan araclari ve durus kademesi. */
@@ -1305,7 +1474,10 @@ export class Hud {
     control.classList.toggle('is-paused', paused);
     let text;
     let title;
-    if (paused) {
+    if (this.game.turns?.victory) {
+      text = 'Campaign over';
+      title = 'The age is over. Reopen the epilogue from the menu (☰).';
+    } else if (paused) {
       const reason = clock.haltedBy;
       text = reason ? `Paused · ${reason}` : 'Paused';
       title = reason
@@ -2167,7 +2339,7 @@ export class Hud {
     ? `<button class="action wide" data-peace="${foreign}" ${locked ? 'disabled' : ''}>Offer Peace${locked ? ` (${MIN_WAR_TURNS - (game.turns.turn - rec.since)} weeks)` : ''}</button>`
     : crisis
       ? `<button class="action wide" disabled title="The ultimatum runs out in ${crisis} weeks; mobilize from the Military screen.">Ultimatum (${crisis} weeks)</button>`
-      : `<button class="action wide${this.warConfirm === foreign ? ' confirming' : ''}" data-war="${foreign}" ${warWhy.length ? `disabled title="${escapeHtml(warWhy.join(' · '))}"` : ''}>${
+      : `<button class="action wide danger${this.warConfirm === foreign ? ' confirming' : ''}" data-war="${foreign}" ${warWhy.length ? `disabled title="${escapeHtml(warWhy.join(' · '))}"` : ''}>${
         this.warConfirm === foreign
           ? `Click again to declare war: ${ULTIMATUM_WEEKS}-week ultimatum, infamy for every state taken`
           : truce ? `Declare War (${truce} turns)`
@@ -2602,6 +2774,35 @@ export function gameDate(turn, day = 0) {
   return dateOfTurn(turn, day).toLocaleDateString('en-GB', {
     day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
   }).toUpperCase();
+}
+
+/**
+ * Süren kampanya kayıtta mı? Kampanyayı atan düğmeler (yeni dünya, rastgele
+ * dünya, en yeni kaydı yükle) onaylarında bunu söyler: oyuncu neyi
+ * kaybedeceğini bilmeli (B-03, B-05). Kayıt künyesi tohum + ulus + turu
+ * taşır; aynı kampanyanın bu tura ya da sonrasına ait kaydı varsa kayıp yok.
+ * @returns {{ unsaved: boolean, note: string }}
+ */
+export function campaignSaveState(game) {
+  const world = game.world;
+  const nation = world?.nations?.[game.turns?.playerNation];
+  if (!world || !nation) return { unsaved: false, note: '' };
+  const turn = game.turns.turn ?? 1;
+  let last = null;
+  for (const row of listSaves()) {
+    if (row.seed !== world.seed || (row.nation != null && row.nation !== nation.name)) continue;
+    if (Number.isFinite(row.turn) && row.turn > (last?.turn ?? -Infinity)) last = row;
+  }
+  if (last && last.turn >= turn) return { unsaved: false, note: `This campaign is saved (${gameDate(last.turn)}).` };
+  // İlk haftada kaybedilecek bir şey yok: dünya az önce kuruldu.
+  if (!last && turn <= 1) return { unsaved: false, note: 'The current world has not been played yet.' };
+  const weeks = last ? turn - last.turn : 0;
+  return {
+    unsaved: true,
+    note: last
+      ? `Unsaved: the last save is ${weeks} ${weeks === 1 ? 'week' : 'weeks'} old (${gameDate(last.turn)}).`
+      : 'This campaign has never been saved.',
+  };
 }
 
 function formatNumber(n) {

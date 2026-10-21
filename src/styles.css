@@ -1260,6 +1260,14 @@ body.screen-open .layer-menu { display: none; }
 
 #settings .primary:active { filter: brightness(0.92); }
 
+/* Onay kipi: ikinci tık kampanyayı atar (B-03); kırmızı, pirinç değil. */
+#settings .primary.confirming {
+  border-color: var(--red);
+  background: linear-gradient(180deg, #6e3326, #45201a);
+  color: #ffd9cf;
+  text-shadow: none;
+}
+
 /* Eylem düğmesi çelik-pirinç ailesinden: eski ham mavi kenarlık (111,181,218)
    arayüzün tek "web" rengiydi ve paletin dışında duruyordu. */
 .action {
@@ -1911,14 +1919,20 @@ body.screen-open .layer-menu { display: none; }
 .layer-menu label { display: flex; align-items: center; gap: var(--sp-2); cursor: var(--cur-pointer); }
 .layer-menu input { width: 18px; height: 18px; accent-color: var(--gold); }
 
+/* World Settings. Üst kenar ÖLÇÜLEN başlığın altıdır (--hud-top + sekme
+   şeridi; hud.trackHeaderHeight yazar): eskiden yalnız üst çubuğu sayıyordu,
+   başlık ve ✕ sekme şeridinin altında kalıyor, ✕'e tık arkadaki sekmeyi
+   açıyordu (B-01, LS-04). Katman komuta rıhtımının ve açık ekranın üstünde:
+   düğmeleri rıhtım portrelerinin altında kalıyor, ekran açıkken panel
+   tamamen görünmüyordu (B-02). */
 .panel {
   position: fixed;
-  top: calc(var(--hud-top) + var(--sp-2));
+  top: calc(var(--hud-top) + var(--tabbar-height) + var(--sp-2));
   left: var(--sp-3);
   right: var(--sp-3);
-  z-index: var(--z-map-tools);
+  z-index: calc(var(--z-command) + 1);
   max-width: 420px;
-  max-height: calc(100% - var(--safe-top) - 130px);
+  max-height: calc(100vh - var(--hud-top) - var(--tabbar-height) - var(--sp-2) - var(--sp-3) - var(--safe-bottom));
   margin-inline: auto;
   padding: var(--sp-4);
   overflow-y: auto;
@@ -1929,6 +1943,19 @@ body.screen-open .layer-menu { display: none; }
 }
 
 .panel-head { display: flex; align-items: center; justify-content: space-between; }
+
+/* Başlık ve ✕ kaydırmada yerinde kalır: 720p'de panel kaydırılınca kapat
+   düğmesi hiçbir konumda görünmüyordu (LS-04). Opak zemin: altından kayan
+   alanlar camın içinden okunmasın. */
+#settings .panel-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  margin: calc(-1 * var(--sp-4)) calc(-1 * var(--sp-4)) var(--sp-2);
+  padding: var(--sp-4) var(--sp-4) var(--sp-2);
+  border-bottom: 1px solid var(--line);
+  background: var(--ui-grain), linear-gradient(180deg, rgba(16, 22, 26, 0.98), rgba(11, 16, 19, 0.98));
+}
 
 .panel h2 {
   margin: 0;
@@ -5162,12 +5189,29 @@ body:has(#layer-menu:not(.hidden)) .rgo-map-legend { right: calc(var(--sp-3) + 1
 
 .notify-sticky .notify-timer { display: none; }
 
-/* Ekran acikken yigin tek bir sayaca cekilir: kartlar ekranin sag sutununu
+/* Kartlar zilde toplanir (sessiz kip hep acik): kartlar ekranin sag sutununu
    ortup Build/Close dugmelerini ve kaydiraclari yutuyordu (Open Beta 4, B-3).
-   Pilin ustune gelince ya da tiklaninca kartlar altinda acilir; ekran
-   kapaninca kurallar devreden cikar, kartlar eski yerinde. */
+   Liste ZILIN USTUNDE ayri bir kutudur ve yalniz tiklamayla acilir: eskiden
+   imlec zile gelince (:hover) acilan yigin zili yukari kaciriyor, tik altina
+   kayan karti okunmadan siliyordu (HUD-05, CH-03). */
+:root { --notify-bell-h: 36px; }
+.notify-list {
+  display: none;
+  flex-direction: column;
+  gap: var(--sp-2);
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px;
+  pointer-events: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gold-dark) transparent;
+}
+.notify-stack.open .notify-list { display: flex; }
 .notify-tray {
   display: none;
+  flex: none;
+  height: var(--notify-bell-h);
   align-self: flex-end;
   align-items: center;
   gap: var(--sp-2);
@@ -5187,12 +5231,12 @@ body:has(#layer-menu:not(.hidden)) .rgo-map-legend { right: calc(var(--sp-3) + 1
 .notify-tray.bump { animation: notify-bump 0.4s ease; }
 .notify-tray[hidden] { display: none !important; }
 body:is(.screen-open, .notify-quiet) .notify-tray { display: inline-flex; }
-body:is(.screen-open, .notify-quiet) .notify-stack .notify-card { display: none; }
-body:is(.screen-open, .notify-quiet) .notify-stack:hover,
-body:is(.screen-open, .notify-quiet) .notify-stack.open { pointer-events: auto; }
-body:is(.screen-open, .notify-quiet) .notify-stack:hover .notify-card,
-body:is(.screen-open, .notify-quiet) .notify-stack.open .notify-card { display: grid; }
-/* Imlec yiginin ustundeyken sayac durur; serit de durmali. */
+.notify-tray[aria-expanded="true"] { border-color: var(--gold); border-left-color: var(--gold); color: var(--gold-bright); }
+/* Okunmamis kart: zilin sol kenari parlak kalir (sayi tek basina "yeni mi,
+   eski mi" demiyordu). */
+.notify-tray.unseen:not(.notify-alert) { border-left-color: var(--gold-bright); }
+.notify-list .notify-card { flex: none; }
+/* Imlec yiginin ustundeyken ya da tepsi kapaliyken sayac durur; serit de durmali. */
 .notify-stack.paused .notify-timer { animation-play-state: paused; }
 
 @keyframes notify-drain {
@@ -6229,6 +6273,14 @@ body:is(.screen-open, .notify-quiet) .notify-stack.open .notify-card { display: 
 
 .menu-item.is-active .menu-icon { color: var(--menu-accent); border-color: var(--menu-line); }
 .menu-item.is-active::before { height: 60%; }
+
+/* Süren kampanyayı atacak ikinci tık bekleniyor (mainMenu.confirmDiscard):
+   uyarı kırmızı, pirinç değil; not satırı kesilmesin. */
+.menu-item.is-confirming .menu-text b,
+.menu-btn.is-confirming { color: #f0a08f; }
+.menu-item.is-confirming .menu-text small { color: #e7b2a4; white-space: normal; max-width: 260px; }
+.menu-item.is-confirming::before { height: 60%; background: #c0503a; }
+.menu-btn.is-confirming { border-color: rgba(214, 74, 58, 0.7); background: rgba(214, 74, 58, 0.16); }
 
 /* Serit araclari satirlarla ayni hizada durur; ayrac onlari isten ayirir. */
 /* Serit 66px oldugu icin araclar alt alta durur. */
@@ -8151,6 +8203,8 @@ body.menu-open .sheet { visibility: hidden; }
 }
 
 .epilogue-event b { font-family: var(--font-display); color: var(--gold); }
+/* Boş vakayinamenin tek cümlesi yıl sütununa sıkışıp dört satıra bölünüyordu. */
+.epilogue-event.empty span { grid-column: 1 / -1; }
 .epilogue-event span { font-size: var(--fs-base); color: var(--text-dim); }
 .epilogue-event.tier-3 span { color: var(--text); }
 
@@ -8173,6 +8227,34 @@ body.menu-open .sheet { visibility: hidden; }
 
 /* Kapat dugmesi satiri yutmasin: metin solda, dugme kendi genisliginde. */
 .epilogue-foot .action { flex: 0 0 auto; min-width: 9rem; }
+.epilogue-acts { display: flex; flex: none; gap: var(--sp-2); }
+.epilogue-sheet:focus { outline: none; }
+
+/* Hüküm: kampanyanın sorusunun cevabı (B-11). Kazanınca pirinç, kaybedince
+   tuğla; ikisi de başlığın hemen altında, sayfanın ilk okunan satırı. */
+.epilogue-verdict {
+  margin: 0 0 var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line-strong);
+  border-left: 4px solid var(--red);
+  background: linear-gradient(90deg, rgba(169, 94, 74, 0.14), transparent 70%);
+  text-align: left;
+}
+.epilogue-verdict.won {
+  border-left-color: var(--gold-bright);
+  background: linear-gradient(90deg, rgba(214, 186, 120, 0.16), transparent 70%);
+}
+.epilogue-verdict b {
+  display: block;
+  font-family: var(--font-display);
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #e9a08a;
+}
+.epilogue-verdict.won b { color: var(--gold-bright); }
+.epilogue-verdict p { margin: var(--sp-1) 0 0; color: var(--text); font-size: var(--fs-base); line-height: var(--lh-body); }
 
 @media (max-width: 620px) {
   .epilogue-sheet { padding: var(--sp-4); }
@@ -8182,6 +8264,14 @@ body.menu-open .sheet { visibility: hidden; }
 
 /* Iki tikli onay: savas ilani ve yasa dugmeleri ayni vurguyu tasir. */
 .action.confirming { border-color: var(--gold-bright); box-shadow: 0 0 0 1px var(--gold-bright) inset; color: var(--gold-bright); }
+/* Province kartının "Declare War"ı yıkıcı eylemdir: onay kipi pirinç değil
+   kırmızı (Diplomasi tablosundaki .k-btn.danger.confirming ile aynı dil). */
+#sheet-body .action.danger.confirming {
+  border-color: rgba(214, 74, 58, 0.85);
+  background-color: rgba(214, 74, 58, 0.2);
+  box-shadow: 0 0 0 1px rgba(214, 74, 58, 0.85) inset;
+  color: #ffb3a3;
+}
 /* Komutanin taarruz bakisi: neden saldirdigi ya da saldirmadigi (military.js assaultLine). */
 .mil-assault { margin: 4px 8px 6px; color: var(--text-dim); font-size: var(--fs-sm); line-height: 1.35; }
 
@@ -10174,8 +10264,8 @@ body:is(.screen-open, .notify-quiet) .notify-stack {
   bottom: calc(var(--sp-3) + 46px);
   right: var(--sp-3);
   width: min(268px, calc(100vw - var(--sp-3) * 2));
-  max-height: 42vh;
-  overflow: hidden;
+  /* Liste kendi içinde kayar (.notify-list); zil her zaman görünür kalır. */
+  max-height: 62vh;
 }
 
 /* Ekran açıkken kart sıkışır ama METNİ KALIR: uyarının gövdesini gizlemek
@@ -10341,6 +10431,38 @@ body.screen-open .alert-pop { display: none; }
 }
 
 .alert-restore:hover { color: var(--gold-bright); border-color: var(--gold); }
+
+/* Bekleyen karar (ertelenen olay kartı): şeridin başında, pirinç mühür ve
+   sayı. Uyarı değil bir çağrı: tıklayınca kart yeniden açılır (B-10). */
+.alert-decision {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 1px solid var(--gold);
+  border-radius: var(--radius);
+  background: linear-gradient(180deg, rgba(214, 186, 120, 0.16), transparent), var(--surface-2);
+  color: var(--gold-bright);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), 0 0 10px rgba(214, 186, 120, 0.25);
+  cursor: var(--cur-pointer);
+}
+.alert-decision svg { width: 17px; height: 17px; }
+.alert-decision b {
+  position: absolute;
+  top: -6px;
+  right: -7px;
+  min-width: 15px;
+  padding: 0 3px;
+  border-radius: 8px;
+  background: var(--gold-dark);
+  color: var(--text);
+  font-size: var(--fs-label);
+  line-height: 15px;
+  text-align: center;
+}
+.alert-decision:hover { border-color: var(--gold-bright); color: var(--text); }
 
 
 /* ==========================================================================
@@ -10561,9 +10683,10 @@ body.screen-open .alert-pop { display: none; }
   z-index: var(--z-sheet);
   display: flex;
   flex-direction: column;
-  gap: var(--sp-3);
-  padding: var(--sp-4);
-  overflow: auto;
+  /* Gövde kayar (.np-body), eylem satırı tabanda sabit (LS-09). Boy sabit:
+     içerik adaya göre değişince Play düğmesi her seçimde yer değiştiriyordu. */
+  height: calc(100vh - var(--header-bottom, 130px) - var(--sp-5) - var(--safe-bottom, 0px));
+  overflow: hidden;
   border: 1px solid var(--line-brass);
   border-radius: var(--radius-lg);
   background: var(--ui-grain), var(--panel-tone), var(--surface-1);
@@ -10572,6 +10695,23 @@ body.screen-open .alert-pop { display: none; }
   font-size: var(--fs-base);
 }
 .nation-picker.hidden { display: none; }
+.np-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: var(--sp-3);
+  min-height: 0;
+  padding: var(--sp-4);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+/* Panelin ve listenin çubuğu pirinç ve ince: beyaz Windows çubuğu ok
+   düğmeleriyle pirinç panelin içinde duruyordu (LS-09). */
+.np-body,
+.np-roster {
+  scrollbar-width: thin;
+  scrollbar-color: var(--gold-dark) transparent;
+}
 .np-head { display: flex; flex-direction: column; gap: 2px; }
 .np-head small {
   font-size: var(--fs-xs, 0.7rem);
@@ -10605,7 +10745,14 @@ body.screen-open .alert-pop { display: none; }
 .np-notes li.bad { color: var(--red, #d9736a); }
 .np-notes li.good { color: var(--green, #8fbf8a); }
 .np-notes li.warn { color: var(--gold-bright); }
-.np-actions { display: flex; gap: var(--sp-2); }
+.np-actions {
+  display: flex;
+  flex: none;
+  gap: var(--sp-2);
+  padding: var(--sp-3) var(--sp-4);
+  border-top: 1px solid var(--line-brass);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.02), rgba(0, 0, 0, 0.18));
+}
 .np-play {
   flex: 1; padding: 10px 12px; font: inherit; font-weight: 700; letter-spacing: 0.04em;
   border: 1px solid var(--gold-bright); border-radius: var(--radius);
@@ -10617,6 +10764,8 @@ body.screen-open .alert-pop { display: none; }
   background: none; color: var(--text-dim); cursor: var(--cur-pointer);
 }
 .np-roster { display: flex; flex-direction: column; gap: 2px; max-height: 240px; overflow: auto; }
+/* Kısa pencerede liste kısalır: iç içe iki kaydırıcının içteki az yer kaplasın. */
+@media (max-height: 800px) { .np-roster { max-height: 168px; } }
 .np-row {
   display: grid; grid-template-columns: 12px 1fr auto; gap: var(--sp-2); align-items: center;
   padding: 4px 6px; border: 1px solid transparent; border-radius: var(--radius);
@@ -11190,6 +11339,13 @@ body:is(.screen-open, .picker-open, .menu-open) .war-dock { display: none; }
 .wd-world .wd-name i { color: var(--text-mute); font-style: italic; font-weight: 400; }
 .wd-world .wd-score { color: #e7c46a; }
 .wd-world .wd-bar i { background: #c9a65c; }
+/* Dünya savaşı satırı: puan, önde olan tarafın adının hemen yanında (HUD-08);
+   ad satırı puan sütununu da kullanır, adlar ayrı ayrı kısalır. */
+.wd-world .wd-name { grid-column: 2 / 4; display: flex; align-items: baseline; gap: 4px; min-width: 0; }
+.wd-world .wd-name > i { flex: none; }
+.wd-side { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.wd-side small { color: var(--text-mute); font-size: 10.5px; font-weight: 500; }
+.wd-lead { flex: none; color: #e7c46a; font-size: 12.5px; font-style: normal; font-variant-numeric: tabular-nums; font-weight: 800; }
 .wd-more { display: block; padding: 2px 4px; overflow: hidden; color: var(--text-mute); font-size: 10.5px; text-overflow: ellipsis; white-space: nowrap; }
 
 .md-head {
@@ -11232,6 +11388,17 @@ body:is(.screen-open, .picker-open, .menu-open) .war-dock { display: none; }
   gap: 6px;
   padding: 6px;
   overflow-y: auto;
+  /* Oluk sabit ve ince pirinç: sistemin 15 px'lik beyaz çubuğu belirip
+     kaybolurken satırı daraltıyor, metni ikinci satıra itiyordu (LS-05/06). */
+  scrollbar-gutter: stable;
+  scrollbar-width: thin;
+  scrollbar-color: var(--gold-dark) transparent;
+}
+/* Donanma panelinin listesi de pirinç cam panelin içinde beyaz Windows
+   çubuğu gösteriyordu (LS-06); yalnız çubuk, yerleşim navyDock'ta. */
+.nd-list {
+  scrollbar-width: thin;
+  scrollbar-color: var(--gold-dark) transparent;
 }
 
 .md-row {
@@ -11245,7 +11412,8 @@ body:is(.screen-open, .picker-open, .menu-open) .war-dock { display: none; }
   transition: transform 150ms var(--lift-ease), box-shadow 150ms ease;
 }
 .md-row:hover { transform: translateY(-1px); box-shadow: var(--relief-lifted), inset 3px 0 0 var(--md-color); }
-:root[data-motion="on"] .md-row { animation: relief-card-in 260ms var(--lift-ease) both; }
+/* Yalnız listeye yeni giren satır süzülür (ui/movementDock.js md-new). */
+:root[data-motion="on"] .md-row.md-new { animation: relief-card-in 260ms var(--lift-ease) both; }
 
 .md-row-head { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
 .md-swatch {
@@ -12511,6 +12679,9 @@ button.k-agenda:hover { border-color: var(--gold); background: rgba(186, 160, 10
   background: linear-gradient(180deg, #121b1f, #0b1215);
   box-shadow: var(--frame-brass), 0 30px 80px rgba(0, 0, 0, 0.65);
 }
+/* Kart açılınca odağı kendisi alır (seçenek değil); halka gerekmez. */
+.event-card.ev:focus { outline: none; }
+.ev-opt:focus-visible { outline: 2px solid var(--gold-bright); outline-offset: 1px; }
 .ev-scene {
   position: relative;
   height: 190px;
@@ -14672,15 +14843,25 @@ body:is(.screen-open, .notify-quiet) .notify-tray { justify-content: center; min
    Malzeme hareket panelinin (§33) emaye + pirinç dilidir. Yer sabit: harita
    ortasının üstü; satır yükseklikleri sabit, haftalık tazelemede kaymaz.
    ========================================================================== */
+/* Sağ sütunun (savaş paneli + ulusal hareketler, 318 px) SOLUNDA durur:
+   sağa yaslıyken iki paneli de tamamen örtüyordu, muharebe izlenirken savaş
+   puanı, barış teklifi ve kriz düğmeleri okunmuyordu (HUD-10). Sol sütunun
+   (province kartı) sağında biter ve muharebe şeridinin satırının altından
+   başlar: 1280'de kartın 42 px'ini ve pencereyi açan çipin kendisini
+   örtüyordu, öteki muharebeye geçilemiyordu. */
 .battle-panel {
   position: fixed;
-  top: calc(var(--header-bottom, 140px) + 10px);
-  right: var(--sp-3);
+  top: calc(var(--header-bottom, 140px) + 38px);
+  right: calc(var(--sp-3) + min(318px, calc(100vw - var(--sp-3) * 2)) + var(--sp-2));
   z-index: calc(var(--z-notify) + 1);
-  width: min(600px, calc(100vw - 32px));
-  max-height: calc(100vh - var(--header-bottom, 140px) - 170px);
+  width: min(600px, calc(100vw - 318px - var(--sheet-width) - var(--sp-3) * 2 - var(--sp-2) * 2));
+  max-height: calc(100vh - var(--header-bottom, 140px) - 198px);
   overflow-y: auto;
   scrollbar-gutter: stable;
+  /* Pencere 720p'de kayar: oklu beyaz Windows çubuğu pirinç çerçevede
+     duruyordu (LS-06 ile aynı dil). */
+  scrollbar-width: thin;
+  scrollbar-color: var(--gold-dark) transparent;
   border-radius: 4px;
   background-color: rgba(12, 19, 23, 0.95);
   background-image: var(--light-top), var(--surface-card);
@@ -15257,15 +15438,19 @@ body.screen-open .culture-chip { display: none; }
 .mm-grid .mode-btn.active::after { left: 5px; right: 5px; bottom: 0; }
 .map-modes > .mode-sep { margin: 6px 2px; }
 
-/* Lejant, katman menüsü ve sessiz bildirim yığını kutunun hemen üstünde
-   (yığın eski 44 px'lik şeride göre 46 px yukarıdaydı, yeni kutuya biniyordu). */
+/* Bildirim zili kutunun hemen üstünde (yığın eski 44 px'lik şeride göre
+   46 px yukarıdaydı, yeni kutuya biniyordu); lejant ve katman menüsü zilin
+   üstünde. Üçü aynı şeritteydi ve zil lejantın son çipini örtüyordu (HUD-06). */
 body:is(.screen-open, .notify-quiet) .notify-stack { bottom: calc(var(--sp-3) + var(--mm-h) + var(--sp-1)); }
 /* Ekran açıkken tepsi ekranın ALTINDAKİ şeritte (hud.trackHeaderHeight
    ekranı alttan 52 px kısa tutar): içeriğin üstüne binmez. */
 body.screen-open .notify-stack { bottom: 8px; }
+/* Ülke seçimi sırasında zil yok: 720p'de seçicinin sağ alt köşesine biniyordu
+   ve seçimden önce okunacak bildirim olmaz. */
+body.picker-open .notify-stack { visibility: hidden; }
 @media (min-width: 561px) {
   .layer-menu,
-  .rgo-map-legend { bottom: calc(var(--safe-bottom) + var(--sp-3) + var(--mm-h) + var(--sp-2)); }
+  .rgo-map-legend { bottom: calc(var(--safe-bottom) + var(--sp-3) + var(--mm-h) + var(--sp-1) + var(--notify-bell-h) + var(--sp-2)); }
 }
 
 /* --- Komuta rıhtımı: sol panel ile kip kutusunun ARASINDA ortalanır.
@@ -15898,7 +16083,8 @@ button.dip-war.dip-conflict.on { border-left-color: var(--gold-bright); }
 .cd-side:hover { background: rgba(186, 160, 100, 0.08); }
 .cd-side .flag { display: inline-block; flex: none; width: 24px; height: 16px; }
 .cd-side b { overflow: hidden; font-size: 12.5px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.cd-score { display: grid; grid-template-columns: auto minmax(60px, 1fr) auto auto; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
+.cd-score { display: grid; grid-template-columns: auto minmax(60px, 1fr) auto; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); }
+.cd-score .cd-lead { margin: 0 4px; }
 .cd-score .wd-bar { grid-column: auto; }
 .cd-score .wd-bar i { background: #e7c46a; }
 .cd-score em { color: #e7c46a; font-style: normal; font-weight: 800; font-variant-numeric: tabular-nums; }

@@ -135,31 +135,36 @@ export class NationPicker {
         <small>#${row.rank} · ${row.provinces} prov.${row.contiguous ? '' : ' · split'}</small>
       </button>`).join('');
 
+    // Gövde kayar, eylem satırı panelin TABANINDA sabit: 720p'de "Play as"
+    // ekranın altında kalıyor, panel beyaz sistem çubuğuyla bir web sayfası
+    // gibi kaydırılıyordu (LS-09). Oyunun ilk kararı her yükseklikte görünür.
     this.root.innerHTML = `
-      <header class="np-head">
-        <small>Choose your nation</small>
-        <span>Click any nation on the map, or pick from the list.</span>
-      </header>
-      <div class="np-hero">
-        <img class="np-flag" src="${flagDataUrl(nation)}" alt="">
-        <div>
-          <h3>${esc(brief.fullName)}</h3>
-          <small>${esc(brief.culture)} founding culture${brief.suggested ? ' · suggested start' : ''}</small>
+      <div class="np-body">
+        <header class="np-head">
+          <small>Choose your nation</small>
+          <span>Click any nation on the map, or pick from the list.</span>
+        </header>
+        <div class="np-hero">
+          <img class="np-flag" src="${flagDataUrl(nation)}" alt="">
+          <div>
+            <h3>${esc(brief.fullName)}</h3>
+            <small>${esc(brief.culture)} founding culture${brief.suggested ? ' · suggested start' : ''}</small>
+          </div>
+        </div>
+        <p class="np-line">${esc(brief.line)}</p>
+        <dl class="np-facts">
+          ${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')}
+        </dl>
+        ${neighbours ? `<div class="np-block"><small>Neighbours · strength relative to yours</small><div class="np-neighbours">${neighbours}</div></div>` : ''}
+        ${notes ? `<ul class="np-notes">${notes}</ul>` : ''}
+        <div class="np-block np-roster-block">
+          <small>All nations, by rank</small>
+          <div class="np-roster">${roster}</div>
         </div>
       </div>
-      <p class="np-line">${esc(brief.line)}</p>
-      <dl class="np-facts">
-        ${facts.map(([k, v]) => `<div><dt>${esc(k)}</dt><dd>${v}</dd></div>`).join('')}
-      </dl>
-      ${neighbours ? `<div class="np-block"><small>Neighbours · strength relative to yours</small><div class="np-neighbours">${neighbours}</div></div>` : ''}
-      ${notes ? `<ul class="np-notes">${notes}</ul>` : ''}
       <div class="np-actions">
         <button class="np-play" data-play="1">Play as ${esc(brief.name)}</button>
         ${brief.suggested ? '' : '<button class="np-alt" data-suggested="1">Back to suggested</button>'}
-      </div>
-      <div class="np-block np-roster-block">
-        <small>All nations, by rank</small>
-        <div class="np-roster">${roster}</div>
       </div>`;
     // Secili satir listede gorunur kalsin. scrollIntoView DEGIL: o, butun
     // kaydirilabilir atalari kaydirip panelin basligini ekran disina itiyordu.
@@ -171,7 +176,8 @@ export class NationPicker {
         list.scrollTop = Math.max(0, top - list.clientHeight / 2);
       }
     }
-    this.root.scrollTop = 0;
+    const body = this.root.querySelector('.np-body');
+    if (body) body.scrollTop = 0;
     // Aday degisince kart suzulur (styles.css §31). Sinif kisa sure sonra
     // sokulur: ayni adayin yeniden cizimi animasyonu tekrar oynatmasin.
     if (this.shown !== nation.id) {

@@ -14,6 +14,12 @@
 // sıkması olduğu için — yeni bir hafta gerçekten yeni bir durumdur.
 
 import { activeAlerts } from '../game/alerts.js';
+import { EVENT_TIMEOUT, pendingCards } from '../game/eventCards.js';
+import { gameDate, onEscape } from './hud.js';
+
+/** Bekleyen karar düğmesinin mühürlü mektubu (16'lık ızgara, şeritle aynı çizgi). */
+const DECISION_ICON = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35"
+  stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 4h11v8h-11z"/><path d="m2.5 4 5.5 4.2L13.5 4"/><circle cx="11.6" cy="11.4" r="2" fill="currentColor" stroke="none"/></svg>`;
 
 /**
  * Histerezis (hafta). Uyarılar geçen haftanın saf fonksiyonudur: eşiğin
@@ -86,9 +92,25 @@ export class AlertStrip {
       this.open = null;
       this.streaks.clear();
     });
+    // Olay kartı açılıp kapanınca (ui/eventCard.js) bekleyen karar düğmesi
+    // tazelenir; kart açıkken düğme durmaz.
+    game.on?.('card', () => this.refresh());
+    // Esc açık pencereyi kapatır (hud.js Esc sırası): eskiden pencere kalıyor,
+    // aynı basış arkadaki seçimi siliyordu (HUD-07).
+    onEscape(game, () => {
+      if (!this.open) return false;
+      this.open = null;
+      this.refresh(true);
+      return true;
+    });
   }
 
   onClick(event) {
+    if (event.target.closest('[data-alert-decision]')) {
+      const me = this.game.turns?.playerNation;
+      if (me != null) this.game.emit('card', { nationId: me, reopen: true });
+      return;
+    }
     const mute = event.target.closest('[data-alert-mute]');
     if (mute) {
       this.muted.add(mute.dataset.alertMute);
@@ -166,7 +188,17 @@ export class AlertStrip {
     for (const alert of all) shownNow.set(alert.id, alert);
     const hiddenCount = all.length - shown.length;
 
-    const html = shown.map((alert) => {
+    // BEKLEYEN KARAR: "Decide later" denen olay kartı hiçbir yerde
+    // listelenmiyordu, sekiz hafta sonra kabine sessizce seçiyordu (B-10).
+    // Kart açıkken düğme durmaz (kart zaten ekranda).
+    const waiting = document.querySelector('.event-card-layer') ? [] : pendingCards(me);
+    const decision = waiting.length
+      ? `<button class="alert-decision" data-alert-decision="1" aria-label="${waiting.length} ${waiting.length === 1 ? 'decision' : 'decisions'} waiting"
+          data-tip="text" data-tip-text="${esc(`${waiting.length === 1 ? 'A decision is' : `${waiting.length} decisions are`} waiting\n${waiting.map((card) => `${card.title} · the cabinet decides by ${gameDate(card.turn + EVENT_TIMEOUT)}`).join('\n')}\nClick to decide now.`)}">
+          ${DECISION_ICON}<b>${waiting.length}</b></button>`
+      : '';
+
+    const html = decision + shown.map((alert) => {
       const isOpen = this.open === alert.id;
       return `<div class="alert-item ${alert.kind.tone}${isOpen ? ' open' : ''}">
         <button class="alert-pin" data-alert-open="${esc(alert.id)}"
@@ -192,7 +224,7 @@ export class AlertStrip {
     // Sol alttaki ordu paneli bu sütunun altında durmalı: 1366×768'de uzun
     // panelin sol üst köşesi uyarı düğmesinin altına giriyordu (ölçüldü).
     // Yalnız değişince yazılır; histerezis sayesinde seyrek değişir.
-    const pins = this.root.querySelectorAll('.alert-pin, .alert-restore');
+    const pins = this.root.querySelectorAll('.alert-decision, .alert-pin, .alert-restore');
     const bottom = pins.length ? Math.round(pins[pins.length - 1].getBoundingClientRect().bottom) : 0;
     if (bottom !== this.lastBottom) {
       this.lastBottom = bottom;

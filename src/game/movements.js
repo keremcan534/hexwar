@@ -37,7 +37,7 @@
 
 import {
   CULTURE, acceptBlockers, acceptCulture, acceptPrice, cultureMix,
-  isAccepted, isHomeRule, isRevoked, movementProvinces, nationalismEra, rightsHolders,
+  isAccepted, isHomeRule, isRevoked, movementProvinces, nationalismEra, rightsHolders, standingOf,
 } from './culture.js';
 import { addTimedModifier } from './modifiers.js';
 import { endVassalage, onPeace } from './peace.js';
@@ -509,11 +509,19 @@ export function answerCrisis(game, nation, cultureId, choice = { player: false }
   return answer;
 }
 
+/** Hareket krizinin bildirim anahtarı; kriz kapanınca kart da düşer (hud.sweepNotices). */
+export const crisisNoticeKey = (cultureId) => `movement-crisis-${cultureId}`;
+
 function openCrisisNotice(game, nation, cultureId, kind) {
   const world = game.world;
   const name = cultureName(world, cultureId);
+  // KALICI kart (ttl 0): eskiden ttl'e HAFTA (13) yazılıyordu, kart 13 ms'de
+  // kayboluyor ama saati durduruyordu — oyuncu durmuş saatin nedenini
+  // açamıyordu (CH-01). Anahtar ad alanlı: `crisis-<id>` savaş ültimatomunun
+  // ULUS kimliğine bağlı anahtarıydı, kültür kimliği eşit çıkınca ilgisiz bir
+  // savaş ilanı bu kartı birleştiriyor ya da düşürüyordu.
   announce(game, nation, {
-    kind: 'CRISIS', tier: TIER.MAJOR, key: `crisis-${cultureId}`, ttl: MOVEMENT.CRISIS_WEEKS,
+    kind: 'CRISIS', tier: TIER.MAJOR, key: crisisNoticeKey(cultureId), ttl: 0,
     title: kind === 'homeRule' ? `The ${name} demand Home Rule` : `The ${name} demand a state of their own`,
     detail: `Answer on the Cultures screen within ${MOVEMENT.CRISIS_WEEKS} weeks, or your cabinet answers by your Nationalities policy.`,
   });
@@ -597,7 +605,7 @@ export function runMovements(game) {
       const answer = answerCrisis(game, nation, cultureId, { player: true });
       // Savaşta bağımsızlık krizi barışı bekler (cevap yok): her hafta yazılmasın.
       if (answer) announce(game, nation, {
-        kind: 'POLITICS', tier: TIER.MINOR, key: `cabinet-crisis-${cultureId}`,
+        kind: 'POLITICS', tier: TIER.IMPORTANT, key: `cabinet-crisis-${cultureId}`,
         title: `Your cabinet answered the ${cultureName(world, cultureId)}`,
         detail: answer === 'concessions' ? 'It bought time with concessions, by your Nationalities policy.'
           : 'It granted their demand, by your Nationalities policy.',
@@ -887,8 +895,11 @@ export function declareMartialLaw(game, nation, cultureId) {
   const state = stateOf(nation, cultureId);
   state.martialUntil = turn + MOVEMENT.MARTIAL_WEEKS;
   if (nation.id === game.turns?.playerNation) {
+    // Bir yönetim kararı, kriz değil: CRISIS türü saati durduruyordu ve AUTO
+    // kabinesinin her 26 haftalık yenilemesi yılda on kez oyunu kesiyordu
+    // (CH-07). Saat yalnız oyuncunun cevaplaması gereken şeyde durur.
     announce(game, nation, {
-      kind: 'CRISIS', tier: TIER.MINOR, key: `martial-${cultureId}`,
+      kind: 'POLITICS', tier: TIER.IMPORTANT, halt: false, key: `martial-${cultureId}`,
       title: `Martial law over the ${cultureName(world, cultureId)}`,
       detail: `For ${MOVEMENT.MARTIAL_WEEKS} weeks the movement loses ground — at a weekly cost and some stability.`,
     });
@@ -936,7 +947,7 @@ export function grantConcessions(game, nation, cultureId) {
   }
   if (nation.id === game.turns?.playerNation) {
     announce(game, nation, {
-      kind: 'POLITICS', tier: TIER.MINOR, key: `concession-${cultureId}`,
+      kind: 'POLITICS', tier: TIER.IMPORTANT, key: `concession-${cultureId}`,
       title: `Concessions to the ${cultureName(world, cultureId)}`,
       detail: 'Schools in their tongue, local offices, a lighter levy. The movement cools — for now.',
     });
@@ -1088,8 +1099,15 @@ export function releaseAsVassal(game, nation, cultureId) {
 /**
  * Oyuncunun (ya da herhangi bir ulusun) hareketleri, ilerlemeye gore. Ekran
  * ve YZ ayni listeyi okur; satir basina engeller (blockers) ve bedeller hazir.
+ *
+ * İz (tebaa / vatandaş / Home Rule) kayıtta yoksa halkın hakkından okunur:
+ * dünya üretimi Home Rule halkını izsiz tohumluyor ve iz ilk haftalık
+ * kapanışta yazılıyor; o hafta panel onu hakkı olmayan bir "tebaa" sanıp
+ * ezme/sürgün düğmeleri gösteriyordu (HUD-03). `storedTrack` yalnız kayıtlı
+ * izi okur — YZ bunu ister, kararı ekranın türettiği ize göre değişmesin.
+ * @param {{ storedTrack?: boolean }} [options]
  */
-export function movementView(world, nation) {
+export function movementView(world, nation, { storedTrack = false } = {}) {
   if (!nation?.alive) return [];
   const turn = world.turn ?? 0;
   const groups = movementProvinces(world, nation);
@@ -1100,7 +1118,9 @@ export function movementView(world, nation) {
   const shaken = faltering(nation, turn, world);
   for (const cultureId of ids) {
     const state = nation.movements?.[cultureId] ?? { progress: 0 };
-    const track = state.track === 'citizen' || state.track === 'homeRule' ? state.track : 'subject';
+    const stored = state.track === 'citizen' || state.track === 'homeRule' ? state.track : null;
+    const standing = !stored && !storedTrack && state.track == null ? standingOf(nation, cultureId) : null;
+    const track = stored ?? (standing === 'citizen' || standing === 'homeRule' ? standing : 'subject');
     const provinces = track === 'subject' ? (groups.get(cultureId) ?? []) : demandProvinces(world, nation, cultureId);
     if (!provinces.length && (state.progress ?? 0) <= 0) continue;
     const progress = state.progress ?? 0;
@@ -1173,7 +1193,8 @@ export function manageMovements(game, nation, { crackdown: allowCrackdown = true
   const stance = nationalitiesStance(nation);
   const shaken = faltering(nation, turn, world);
   const mix = cultureMix(world, nation);
-  for (const row of movementView(world, nation)) {
+  // Kayıtlı iz: görünümün türettiği iz ilk haftada kararı değiştirebilirdi.
+  for (const row of movementView(world, nation, { storedTrack: true })) {
     if (!row.provinces.length || row.crisis) continue;
     const { actions, progress } = row;
     const culture = row.cultureId;

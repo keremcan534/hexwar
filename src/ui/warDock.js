@@ -16,7 +16,7 @@ import { formatPopulation } from '../game/economy.js';
 import { hydrateFlags } from '../render/flagWave.js';
 import { esc, tipAttr } from './kit.js';
 import { refreshTooltipsWithin } from './tooltip.js';
-import { conflictDetailHtml, conflictFocusTile } from './warDetail.js';
+import { conflictDetailHtml, conflictFocusTile, scoreBarHtml } from './warDetail.js';
 
 /**
  * Düşmanın savaş yorgunluğu (politics.exhaustion; TASARIM §9). Görünmezken
@@ -51,6 +51,9 @@ export class WarDock {
     this.root.addEventListener('click', (event) => this.onClick(event));
     this.last = '';
     this.bottom = -1;
+    // Ekran kapanınca panel yeniden görünür (0 → gerçek boy): içerik o arada
+    // değiştiyse alt kenar yeniden ölçülmeli.
+    if (typeof ResizeObserver === 'function') new ResizeObserver(() => this.measure()).observe(this.root);
     // Açık ayrıntı kartının çatışma anahtarı (satıra tıklayınca panelin yanında).
     this.openKey = null;
     for (const name of ['turn', 'peace', 'diplomacy', 'world', 'player']) {
@@ -138,9 +141,20 @@ export class WarDock {
     hydrateFlags(this.root, world.nations);
     refreshTooltipsWithin(this.root);
     this.placeDetail();
-    // Sağ sütunun altındaki ulusal hareketler paneli bu panelin altından
-    // başlar; ölçü yalnız değişince yazılır (kutu sayısı haftada bir değişir).
-    const bottom = Math.round(this.root.getBoundingClientRect().bottom);
+    this.measure();
+  }
+
+  /**
+   * Sağ sütunun altındaki ulusal hareketler paneli bu panelin altından
+   * başlar; ölçü yalnız değişince yazılır (kutu sayısı haftada bir değişir).
+   * HUD de başlık yüksekliği değişince çağırır: panel başlıkla birlikte
+   * kayar ama içeriği aynı kaldığı için eskiden yeniden ölçülmüyordu.
+   */
+  measure() {
+    const rect = this.root.getBoundingClientRect();
+    // Gizliyken (ekran/menü açık) ölçü 0'dır; eski değer korunur.
+    if (!rect.height) return;
+    const bottom = Math.round(rect.bottom);
     if (bottom !== this.bottom) {
       this.bottom = bottom;
       document.documentElement.style.setProperty('--war-dock-bottom', `${bottom}px`);
@@ -188,8 +202,9 @@ export class WarDock {
       this.openKey = null;
       return '';
     }
+    const lead = (id) => esc(this.game.world.nations[id]?.name ?? '?');
     return `<section class="wd-detail" role="dialog" aria-label="War details">
-        <header class="wd-detail-head"><b>${esc(c.attackers[0].name)} <i>vs</i> ${esc(c.defenders[0].name)}</b>
+        <header class="wd-detail-head"><b>${lead(c.lead[0])} <i>vs</i> ${lead(c.lead[1])}</b>
           <button type="button" class="wd-detail-x" data-cd-close aria-label="Close"${tipAttr({ text: 'Close (Esc)' })}>✕</button></header>
         ${conflictDetailHtml(this.game.world, c, { close: false })}
       </section>`;
@@ -218,25 +233,28 @@ export class WarDock {
     const WORLD_ROWS = 8;
     const flag = (id) => `<span class="wd-flag" data-flag-nation="${id}" data-flag-w="24" data-flag-h="16" data-flag-style="crest"></span>`;
     const loss = (n) => (n > 0 ? `−${formatPopulation(n)}` : '0');
-    const side = (list) => `${esc(list[0].name)}${list.length > 1 ? ` +${list.length - 1}` : ''}`;
+    const nameOf = (id) => this.game.world.nations[id]?.name ?? '?';
+    // Taraf öncüsünün adıyla (bayraklar da öncüleri gösterir); müttefik sayısı
+    // ayrı ve soluk "& 2": "+2" puanla karışıyordu.
+    const side = (id, list) => `<span class="wd-side">${esc(nameOf(id))}${list.length > 1 ? `<small> &amp; ${list.length - 1}</small>` : ''}</span>`;
     const rows = conflicts.slice(0, WORLD_ROWS).map((c) => {
-      const half = Math.min(50, Math.abs(c.score) / 2);
-      const bar = c.score >= 0
-        ? `<i style="left:50%;width:${half.toFixed(1)}%"></i>` : `<i style="left:${(50 - half).toFixed(1)}%;width:${half.toFixed(1)}%"></i>`;
+      // Saldıran solda: puan ve çubuk önde olanın TARAFINDA (HUD-08; warDetail.scoreBarHtml).
+      const ahead = c.score > 0 ? 0 : c.score < 0 ? 1 : -1;
+      const score = ahead >= 0 ? `<em class="wd-lead">+${Math.abs(c.score)}</em>` : '';
       const tip = `${c.attackers.map((n) => n.name).join(', ')}\nagainst ${c.defenders.map((n) => n.name).join(', ')}`
-        + `\n\nWar score ${c.score > 0 ? '+' : ''}${c.score} for ${c.attackers[0].name} · ${c.weeks} weeks`
-        + `\nLosses: ${c.attackers[0].name}'s side ${loss(c.lossesA)}, ${c.defenders[0].name}'s side ${loss(c.lossesB)} men`
+        + `\n\n${ahead >= 0 ? `${nameOf(c.lead[ahead])} leads the war score by ${Math.abs(c.score)}` : 'War score even'} · ${c.weeks} weeks`
+        + `\nLosses: ${nameOf(c.lead[0])}'s side ${loss(c.lossesA)}, ${nameOf(c.lead[1])}'s side ${loss(c.lossesB)} men`
         + `\nStates held: ${c.holdA} by the attackers, ${c.holdB} by the defenders`
         + `${c.reason === 'alliance' ? '\nAllies were called in.' : c.reason === 'coalition' ? '\nA coalition war.' : ''}`
         + '\n\nClick for the war details.';
       return `<button type="button" class="wd-row wd-world${this.openKey === c.key ? ' is-open' : ''}" data-wd-conflict="${c.key}"${tipAttr({ text: tip })}>
-        <span class="wd-flags">${flag(c.lead[0])}${flag(c.lead[1])}</span><b class="wd-name">${side(c.attackers)} <i>vs</i> ${side(c.defenders)}</b><em class="wd-score">${c.score > 0 ? '+' : ''}${c.score}</em>
-        <span class="wd-bar" aria-hidden="true">${bar}</span>
+        <span class="wd-flags">${flag(c.lead[0])}${flag(c.lead[1])}</span><b class="wd-name">${side(c.lead[0], c.attackers)}${ahead === 0 ? score : ''} <i>vs</i> ${ahead === 1 ? score : ''}${side(c.lead[1], c.defenders)}</b>
+        ${scoreBarHtml(c.score)}
         <small class="wd-meta"><span class="wd-loss">${loss(c.lossesA)}</span> / <span class="wd-loss">${loss(c.lossesB)}</span> · ${c.weeks}w · ⚑ ${c.holdA}/${c.holdB}</small>
       </button>`;
     }).join('');
     const more = conflicts.length > WORLD_ROWS
-      ? `<small class="wd-more">+${conflicts.length - WORLD_ROWS} more: ${esc(conflicts.slice(WORLD_ROWS).map((c) => `${c.attackers[0].name} vs ${c.defenders[0].name}`).join(', '))}</small>` : '';
+      ? `<small class="wd-more">+${conflicts.length - WORLD_ROWS} more: ${esc(conflicts.slice(WORLD_ROWS).map((c) => `${nameOf(c.lead[0])} vs ${nameOf(c.lead[1])}`).join(', '))}</small>` : '';
     return `<div class="wd-sec${mine ? ' split' : ''}">Elsewhere in the world</div>${rows}${more}`;
   }
 }
