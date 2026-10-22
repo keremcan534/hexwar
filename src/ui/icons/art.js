@@ -19,15 +19,15 @@ const BASE = 'assets/icons';
 
 /**
  * Kaynak ikonları gerçek fotoğraftan çizilen sette (Kerem, 2026-10-22;
- * assets/incoming/kaynak-foto-1.webp, saydam zeminli 4x2). Kereste için o
- * sette karşılık yok: kaynak yeniden tasarımında kereste alüminyuma döner
- * (resources-photo/aluminium.png hazır bekliyor), o güne dek eski boyalı ikon.
+ * assets/incoming/kaynak-foto-1.webp, saydam zeminli 4x2). Kaynak yeniden
+ * tasarımında demir ÇELİK, kereste ALÜMİNYUM olur (Kerem): ikonlar şimdiden
+ * o kimliği taşır — külçe çelik, profil alüminyum.
  */
 const RESOURCE_FILE = {
   FOOD: 'resources-photo/food',
   COAL: 'resources-photo/coal',
-  IRON: 'resources-photo/iron',
-  TIMBER: 'resources/timber',
+  IRON: 'resources-photo/steel',
+  TIMBER: 'resources-photo/aluminium',
   HORSES: 'resources-photo/horses',
   SALTPETER: 'resources-photo/nitrates',
   OIL: 'resources-photo/oil',
