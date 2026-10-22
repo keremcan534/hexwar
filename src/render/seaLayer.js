@@ -14,6 +14,7 @@ import { seaZonesOf } from '../world/seaZones.js';
 import { atWar } from '../game/diplomacy.js';
 import { isAllied } from '../game/alliances.js';
 import { seaLaneView } from '../game/seaLanes.js';
+import { seaZoneMarks } from '../game/navy.js';
 import { drawFlag } from './flagPainter.js';
 
 /** Ton dokusunun ölçeği (doku pikseli / dünya pikseli). */
@@ -35,6 +36,10 @@ export const SEA_COLORS = {
 const MARK_COLORS = {
   ours: '#8fd39a', ally: '#8cb8ea', enemy: '#ff8f6e', other: '#b9c3cc',
 };
+/** Kapalı deniz taraması (dünya pikseli): kırmızı çapraz çizgi. */
+const HATCH = { color: 'rgba(214, 74, 58, 0.42)', width: 6, gap: 40 };
+/** Yoldaki gemilerimizin rota çizgisi (pirinç). */
+const ROUTE_COLOR = 'rgba(240, 208, 128, 0.9)';
 
 const CORNERS = HEX_CORNERS.map(([x, y]) => [x * HEX_SIZE, y * HEX_SIZE]);
 
@@ -176,10 +181,20 @@ export class SeaLayer {
       const tile = world.tiles[zone.anchor];
       return { x: tile.x, y: tile.y };
     });
+    // Tarama yalnız bölgenin kutusunda çizilir (kırpma yolu bölgenin kendisi).
+    const boxes = zones.map((zone) => {
+      let minX = Infinity; let minY = Infinity; let maxX = -Infinity; let maxY = -Infinity;
+      for (const idx of zone.tiles) {
+        const tile = world.tiles[idx];
+        minX = Math.min(minX, tile.x); maxX = Math.max(maxX, tile.x);
+        minY = Math.min(minY, tile.y); maxY = Math.max(maxY, tile.y);
+      }
+      return { minX: minX - HEX_SIZE, minY: minY - HEX_SIZE, maxX: maxX + HEX_SIZE, maxY: maxY + HEX_SIZE };
+    });
     const P = world.wrapWidth || 0;
     const x0 = -(Math.sqrt(3) * HEX_SIZE) / 2;
     const y0 = world.bounds.minY;
-    this.geo = { world, zones, paths, borders, anchors, P, x0, y0, h: world.bounds.maxY - y0 };
+    this.geo = { world, zones, paths, borders, anchors, boxes, P, x0, y0, h: world.bounds.maxY - y0 };
     return this.geo;
   }
 
@@ -326,18 +341,43 @@ export class SeaLayer {
   /** Bölge başına oyuncunun bakışından renk anahtarı (boş deniz null). */
   zoneKeys(world, playerId) {
     const presence = world.navyState?.presence;
+    const marks = playerId >= 0 ? seaZoneMarks(world, playerId) : null;
     return this.geometry(world).zones.map((zone) => {
       const here = presence?.get(zone.id);
       if (!here?.size) return null;
       const seen = new Set();
       for (const [nationId] of here) seen.add(relationTo(world, playerId, nationId));
       const friendly = seen.has('ours') || seen.has('ally');
-      if (friendly && seen.has('enemy')) return 'contested';
-      if (seen.has('enemy')) return 'enemy';
+      // Kapalı deniz imzaya girer (':c'): doku yalnız kapalı küme değişince basılır.
+      const closed = marks?.get(zone.id)?.closed ? ':c' : '';
+      if (friendly && seen.has('enemy')) return `contested${closed}`;
+      if (seen.has('enemy')) return `enemy${closed}`;
       if (seen.has('ours')) return 'ours';
       if (seen.has('ally')) return 'ally';
       return 'other';
     });
+  }
+
+  /**
+   * Bölgeyi kapalı deniz taramasıyla doldurur (doku tuvali, dünya uzayı).
+   * Çizgiler bölge kutusunda, bölge yoluyla kırpılır.
+   */
+  hatchZone(ctx, geo, id, dx, alpha = 1) {
+    const box = geo.boxes[id];
+    ctx.save();
+    ctx.translate(dx, 0);
+    ctx.clip(geo.paths[id]);
+    ctx.strokeStyle = HATCH.color;
+    ctx.globalAlpha = alpha;
+    ctx.lineWidth = HATCH.width;
+    ctx.beginPath();
+    const span = box.maxY - box.minY;
+    for (let x = box.minX - span; x < box.maxX; x += HATCH.gap) {
+      ctx.moveTo(x, box.maxY);
+      ctx.lineTo(x + span, box.minY);
+    }
+    ctx.stroke();
+    ctx.restore();
   }
 
   texture(world, keys) {
@@ -359,7 +399,7 @@ export class SeaLayer {
     ctx.filter = 'blur(2px)';
     keys.forEach((key, id) => {
       if (!key) return;
-      ctx.fillStyle = SEA_COLORS[key];
+      ctx.fillStyle = SEA_COLORS[key.split(':')[0]];
       for (const dx of shifts) {
         ctx.save();
         ctx.translate(dx, 0);
@@ -368,6 +408,12 @@ export class SeaLayer {
       }
     });
     ctx.filter = 'none';
+    // KAPALI DENİZ (oyuncunun ordusu giremez): çapraz kırmızı tarama, kara
+    // oyulmadan önce (kıyıda taşmasın).
+    keys.forEach((key, id) => {
+      if (!key?.endsWith(':c')) return;
+      for (const dx of shifts) this.hatchZone(ctx, geo, id, dx);
+    });
     // Deniz haritasının kesik bölge sınırları. Kalınlık dünya pikselidir:
     // doku dörtte bir ölçekte, 3 px'lik çizgi dokuda kayboluyordu.
     ctx.strokeStyle = 'rgba(196, 220, 236, 0.45)';
@@ -401,11 +447,80 @@ export class SeaLayer {
     }
     ctx.restore();
     // Eğik kamerada ad araziye giydirilmez; renderer.drawMarkers dik basar.
-    if (!this.renderer.markPass) this.drawZoneNames(ctx, world, rect);
+    if (!this.renderer.markPass) this.drawZoneNames(ctx, world, rect, playerId);
+  }
+
+  /**
+   * Siyasi kiplerde ordu seçiliyken kapalı denizler (§7.2): sefer emri tam
+   * o an verilir. Ayrı küçük doku (yalnız kapalı bölgeler, %60 saydam);
+   * imzası kapalı küme. Deniz kipinde ana doku zaten tarar.
+   */
+  drawClosed(ctx, world, rect, playerId) {
+    if (playerId < 0) return;
+    const marks = seaZoneMarks(world, playerId);
+    const closed = [...marks.values()].filter((m) => m.closed).map((m) => m.zone).sort((a, b) => a - b);
+    if (!closed.length) return;
+    const geo = this.geometry(world);
+    const land = this.landPath(world);
+    const sig = closed.join(',');
+    if (!(this.closedTex?.world === world && this.closedTex.sig === sig && this.closedTex.land === land)) {
+      const width = Math.max(1, Math.ceil(geo.P * TINT_SCALE));
+      const height = Math.max(1, Math.ceil(geo.h * TINT_SCALE));
+      const canvas = this.closedTex?.canvas ?? document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const c = canvas.getContext('2d');
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.clearRect(0, 0, width, height);
+      c.setTransform(TINT_SCALE, 0, 0, TINT_SCALE, -geo.x0 * TINT_SCALE, -geo.y0 * TINT_SCALE);
+      const shifts = geo.P ? [-geo.P, 0, geo.P] : [0];
+      for (const id of closed) {
+        for (const dx of shifts) {
+          c.save();
+          c.translate(dx, 0);
+          c.fillStyle = 'rgba(214, 74, 58, 0.12)';
+          c.fill(geo.paths[id]);
+          c.restore();
+          this.hatchZone(c, geo, id, dx, 0.6);
+        }
+      }
+      c.globalCompositeOperation = 'destination-out';
+      c.fill(land);
+      c.globalCompositeOperation = 'source-over';
+      this.closedTex = { world, sig, land, canvas };
+    }
+    const w = geo.P || this.closedTex.canvas.width / TINT_SCALE;
+    for (const dx of geo.P ? [-geo.P, 0, geo.P] : [0]) {
+      if (geo.x0 + dx > rect.maxX || geo.x0 + dx + w < rect.minX) continue;
+      ctx.drawImage(this.closedTex.canvas, geo.x0 + dx, geo.y0, w, geo.h);
+    }
+    if (this.renderer.markPass) return;
+    const zoom = this.renderer.camera.zoom;
+    ctx.save();
+    ctx.font = `700 ${11 / zoom}px ${FONT_UI}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    for (const id of closed) {
+      const anchor = geo.anchors[id];
+      for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
+        this.closedTag(ctx, anchor.x + dx, anchor.y - 30 / zoom, zoom);
+      }
+    }
+    ctx.restore();
+  }
+
+  /** "CLOSED TO OUR TROOPS" etiketi (dünya uzayı). */
+  closedTag(ctx, x, y, zoom) {
+    ctx.lineWidth = 3 / zoom;
+    ctx.strokeStyle = 'rgba(6, 12, 16, 0.9)';
+    ctx.fillStyle = '#ff8f6e';
+    ctx.strokeText('CLOSED TO OUR TROOPS', x, y);
+    ctx.fillText('CLOSED TO OUR TROOPS', x, y);
   }
 
   /** Bölge adları (ve paneldeki satırın halkası), derin noktada. */
-  drawZoneNames(ctx, world, rect) {
+  drawZoneNames(ctx, world, rect, playerId = -1) {
     const geo = this.geometry(world);
     if (!geo.zones.length) return;
     const U = this.renderer.upright;
@@ -419,15 +534,26 @@ export class SeaLayer {
     ctx.lineWidth = 3 / zoom;
     ctx.strokeStyle = 'rgba(6, 12, 16, 0.85)';
     ctx.fillStyle = 'rgba(214, 232, 244, 0.9)';
+    const marks = playerId >= 0 ? seaZoneMarks(world, playerId) : new Map();
+    const closed = new Set([...marks.values()].filter((m) => m.closed).map((m) => m.zone));
     geo.zones.forEach((zone, id) => {
       const anchor = geo.anchors[id];
       for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
         const at = { x: anchor.x + dx, y: anchor.y };
         if (U && !U.pin(ctx, at.x, at.y)) continue;
         const lit = id === this.highlight;
+        ctx.lineWidth = 3 / zoom;
+        ctx.strokeStyle = 'rgba(6, 12, 16, 0.85)';
         ctx.fillStyle = lit ? '#f0d795' : 'rgba(214, 232, 244, 0.9)';
         ctx.strokeText(zone.name, at.x, at.y - 6 / zoom);
         ctx.fillText(zone.name, at.x, at.y - 6 / zoom);
+        if (closed.has(id)) {
+          ctx.save();
+          ctx.font = `700 ${11 / zoom}px ${FONT_UI}`;
+          ctx.textBaseline = 'middle';
+          this.closedTag(ctx, at.x, at.y - 30 / zoom, zoom);
+          ctx.restore();
+        }
         if (lit) {
           // Paneldeki satırın bölgesi: derin noktada pirinç halka.
           ctx.save();
@@ -489,19 +615,233 @@ export class SeaLayer {
         this.badges(ctx, world, anchor.x + dx, anchor.y + 4 / zoom + h + 3 / zoom, rows, { zoom, sub: true });
       }
     }
-    // Son iki haftanın deniz muharebeleri: bölgede kırmızı çapraz kılıç.
-    for (const report of state.reports ?? []) {
-      if (turn - report.turn > BATTLE_MARK_WEEKS) continue;
+    // Son iki haftanın deniz muharebeleri ve kaçınmaları: bölge adının
+    // solunda disk. Bizimki sonuca göre renkli (yeşil zafer, kırmızı yenilgi),
+    // başkalarınınki gri (yalnız deniz kipinde); yakın zoomda etiket.
+    const marks = playerId >= 0 ? seaZoneMarks(world, playerId) : new Map();
+    const placed = new Set();
+    for (const report of [...(state.reports ?? [])].reverse()) {
+      if (turn - report.turn > BATTLE_MARK_WEEKS || placed.has(report.zone)) continue;
       const anchor = geo.anchors[report.zone];
       if (!anchor) continue;
       const mine = playerId >= 0 && report.sides.some((side) => side.nations.includes(playerId));
       if (!everyone && !mine) continue;
+      placed.add(report.zone);
+      const own = mine ? marks.get(report.zone)?.battle : null;
+      const tone = own ? (own.won ? MARK_COLORS.ours : MARK_COLORS.enemy) : MARK_COLORS.other;
+      const label = own ? `${own.won ? 'Victory' : 'Defeat'}${own.won && own.sunk ? ` · ${own.sunk} sunk` : ''}${!own.won && own.lost ? ` · ${own.lost} lost` : ''}` : null;
+      const fresh = report.turn === turn;
       for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
         if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
-        this.battleMark(ctx, anchor.x + dx, anchor.y - 22 / zoom, zoom);
+        const at = this.markAt(ctx, world, report.zone, anchor.x + dx, anchor.y, zoom);
+        this.battleMark(ctx, at.x, at.y, zoom, { tone, label, fresh });
+      }
+    }
+    for (const [zoneId, mark] of marks) {
+      if (!mark.evaded || placed.has(zoneId)) continue;
+      const anchor = geo.anchors[zoneId];
+      if (!anchor) continue;
+      placed.add(zoneId);
+      for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
+        if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
+        const at = this.markAt(ctx, world, zoneId, anchor.x + dx, anchor.y, zoom);
+        this.evasionMark(ctx, at.x, at.y, zoom, { us: mark.evaded.us, fresh: mark.evaded.turn === turn });
       }
     }
     ctx.restore();
+  }
+
+  /**
+   * İşaret yeri: bölge adının solu (ad derin noktanın üstünde ortalı). Eski
+   * yer adın üstüne biniyordu. Ad genişliği bölge başına önbellekte.
+   */
+  markAt(ctx, world, zoneId, x, y, zoom) {
+    const geo = this.geometry(world);
+    geo.nameW ??= new Map();
+    if (!geo.nameW.has(zoneId)) {
+      ctx.save();
+      ctx.font = `italic 12.5px ${FONT_DISPLAY}`;
+      geo.nameW.set(zoneId, ctx.measureText(geo.zones[zoneId]?.name ?? '').width);
+      ctx.restore();
+    }
+    return { x: x - (geo.nameW.get(zoneId) / 2 + 12) / zoom, y: y - 12 / zoom };
+  }
+
+  /**
+   * DENİZ KİPİ BİLGİSİ (filo rozetlerinin altında, satır satır): yoldaki
+   * gemilerimizin hayalet rozeti (+3 · 2 wk) ve abluka hapları (bize karşı
+   * kırmızı, bizimki yeşil). Sayılar seaZoneMarks'tan; burada hesap yok.
+   */
+  drawSeaInfo(ctx, world, rect, playerId) {
+    if (playerId < 0) return;
+    const geo = this.geometry(world);
+    const state = world.navyState;
+    const marks = seaZoneMarks(world, playerId);
+    if (!marks.size) return;
+    const zoom = this.renderer.camera.zoom;
+    const U = this.renderer.upright;
+    const turn = world.turn ?? 0;
+    ctx.save();
+    ctx.font = `600 ${12 / zoom}px ${FONT_UI}`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+    for (const [zoneId, mark] of marks) {
+      const anchor = geo.anchors[zoneId];
+      if (!anchor) continue;
+      const pills = [];
+      for (const row of mark.underway) {
+        const weeks = Math.max(0, row.eta - turn);
+        pills.push({ text: `+${row.count} · ${weeks <= 0 ? 'this wk' : `${weeks} wk`}`, color: ROUTE_COLOR, dash: true, flag: true });
+      }
+      if (zoom >= 0.35) {
+        if (mark.onUs > 0.01) pills.push({ text: `Blockading us ${Math.round(mark.onUs * 100)}%`, color: MARK_COLORS.enemy });
+        const byUs = [...mark.byUs].sort((a, b) => b.share - a.share);
+        for (const row of byUs.slice(0, mark.onUs > 0.01 ? 1 : 2)) {
+          pills.push({ text: `We blockade ${world.nations[row.nation]?.name ?? '?'} ${Math.round(row.share * 100)}%`, color: MARK_COLORS.ours });
+        }
+        if (byUs.length > (mark.onUs > 0.01 ? 1 : 2)) pills.push({ text: `+${byUs.length - (mark.onUs > 0.01 ? 1 : 2)}`, color: MARK_COLORS.ours });
+      }
+      if (!pills.length) continue;
+      // Rozet satırlarının altından başla: filo (14) ve denizaltı (12.6) satırı.
+      let top = 4;
+      if (state?.presence?.get(zoneId)?.size) top += 14 + 3;
+      if (state?.subs?.get(zoneId)?.size) top += 12.6 + 3;
+      for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
+        if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
+        let y = anchor.y + top / zoom;
+        for (const pill of pills) {
+          this.pill(ctx, world, anchor.x + dx, y, pill, zoom, playerId);
+          y += 17 / zoom;
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  /** Koyu kapsül içinde tek satır (ortalı). Hayalet rozet kesik kenarlı, bayraklı. */
+  pill(ctx, world, cx, y, pill, zoom, playerId) {
+    const pad = 4 / zoom;
+    const h = 15 / zoom;
+    const flagW = pill.flag ? 15 / zoom : 0;
+    const w = ctx.measureText(pill.text).width + pad * 2 + (flagW ? flagW + pad : 0);
+    const x = cx - w / 2;
+    ctx.fillStyle = 'rgba(8, 14, 18, 0.86)';
+    ctx.strokeStyle = pill.color;
+    ctx.lineWidth = 1.2 / zoom;
+    if (pill.dash) ctx.setLineDash([3 / zoom, 2 / zoom]);
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 2.5 / zoom);
+    ctx.fill();
+    ctx.stroke();
+    if (pill.dash) ctx.setLineDash([]);
+    let tx = x + pad;
+    const flag = pill.flag ? world.nations[playerId]?.flag : null;
+    if (flag) {
+      ctx.save();
+      ctx.globalAlpha = 0.7;
+      ctx.translate(tx, y + (h - 10 / zoom) / 2);
+      drawFlag(ctx, flag, 0, 0, flagW, 10 / zoom);
+      ctx.restore();
+      tx += flagW + pad;
+    }
+    ctx.fillStyle = pill.color;
+    ctx.fillText(pill.text, tx, y + h / 2 + 0.5 / zoom);
+  }
+
+  /**
+   * Yoldaki gemilerimiz (NAVY-11): çıkış denizinden hedefe su üstünden kesik
+   * pirinç çizgi ve ok ucu. Bölge yolu komşuluk grafında BFS; parçalar
+   * edgeLine (ticaret yollarıyla aynı çizgi). Yalnız deniz kipi.
+   */
+  drawUnderway(ctx, world, rect, playerId) {
+    if (playerId < 0) return;
+    const marks = seaZoneMarks(world, playerId);
+    const geo = this.geometry(world);
+    const zoom = this.renderer.camera.zoom;
+    const shifts = geo.P ? [-geo.P, 0, geo.P] : [0];
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const [zoneId, mark] of marks) {
+      for (const row of mark.underway) {
+        if (!(row.from >= 0) || row.from === zoneId) continue;
+        const route = this.zoneRoute(world, row.from, zoneId);
+        if (!route || route.length < 2) continue;
+        const pts = [];
+        let shift = 0;
+        for (let i = 1; i < route.length; i++) {
+          const line = this.edgeLine(world, route[i - 1], route[i]);
+          if (!line || line.length < 4) continue;
+          // edgeLine küçükten büyüğe çizilir: yön ters ise çevir.
+          const forward = route[i - 1] < route[i];
+          const seg = [];
+          for (let k = 0; k < line.length; k += 2) seg.push([line[k], line[k + 1]]);
+          if (!forward) seg.reverse();
+          for (const [x, y] of seg) {
+            if (pts.length && geo.P) {
+              const lastX = pts[pts.length - 1][0];
+              if (x + shift - lastX > geo.P / 2) shift -= geo.P;
+              else if (lastX - (x + shift) > geo.P / 2) shift += geo.P;
+            }
+            pts.push([x + shift, y]);
+          }
+        }
+        if (pts.length < 2) continue;
+        for (const dx of shifts) {
+          const xs = pts.map((p) => p[0] + dx);
+          if (Math.max(...xs) < rect.minX - 200 || Math.min(...xs) > rect.maxX + 200) continue;
+          ctx.beginPath();
+          ctx.moveTo(pts[0][0] + dx, pts[0][1]);
+          for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0] + dx, pts[i][1]);
+          ctx.setLineDash([10 / zoom, 6 / zoom]);
+          ctx.lineWidth = 5.4 / zoom;
+          ctx.strokeStyle = 'rgba(6, 12, 16, 0.55)';
+          ctx.stroke();
+          ctx.lineWidth = 3 / zoom;
+          ctx.strokeStyle = ROUTE_COLOR;
+          ctx.stroke();
+          ctx.setLineDash([]);
+          // Ok ucu hedefte.
+          const [x1, y1] = pts[pts.length - 1];
+          const [x0, y0] = pts[Math.max(0, pts.length - 3)];
+          const a = Math.atan2(y1 - y0, x1 - x0);
+          const L = 11 / zoom;
+          ctx.beginPath();
+          ctx.moveTo(x1 + dx, y1);
+          ctx.lineTo(x1 + dx - L * Math.cos(a - 0.45), y1 - L * Math.sin(a - 0.45));
+          ctx.lineTo(x1 + dx - L * Math.cos(a + 0.45), y1 - L * Math.sin(a + 0.45));
+          ctx.closePath();
+          ctx.fillStyle = ROUTE_COLOR;
+          ctx.fill();
+        }
+      }
+    }
+    ctx.restore();
+  }
+
+  /** İki bölge arasında komşuluk grafında en kısa bölge dizisi (BFS, önbellekli). */
+  zoneRoute(world, from, to) {
+    const geo = this.geometry(world);
+    geo.routes ??= new Map();
+    const key = `${from}>${to}`;
+    if (geo.routes.has(key)) return geo.routes.get(key);
+    const prev = new Map([[from, -1]]);
+    const queue = [from];
+    for (let head = 0; head < queue.length && !prev.has(to); head++) {
+      for (const next of geo.zones[queue[head]].neighbors) {
+        if (prev.has(next)) continue;
+        prev.set(next, queue[head]);
+        queue.push(next);
+      }
+    }
+    let route = null;
+    if (prev.has(to)) {
+      route = [];
+      for (let z = to; z >= 0; z = prev.get(z)) route.push(z);
+      route.reverse();
+    }
+    geo.routes.set(key, route);
+    return route;
   }
 
   /** Ulus başına bayrak + sayı rozetleri, ortalı tek satır. */
@@ -538,11 +878,16 @@ export class SeaLayer {
     });
   }
 
-  battleMark(ctx, cx, cy, zoom) {
-    const r = 7 / zoom;
+  /**
+   * Muharebe diski (çapraz kılıç). Yeni işaret ilk haftasında 1.25 ölçekle
+   * çizilir (tek seferlik; sürekli canlandırma yok, CLAUDE.md).
+   */
+  battleMark(ctx, cx, cy, zoom, { tone = '#ff8f6e', label = null, fresh = false } = {}) {
+    const r = (fresh ? 8.75 : 7) / zoom;
+    ctx.save();
     ctx.fillStyle = 'rgba(30, 6, 4, 0.85)';
-    ctx.strokeStyle = '#ff8f6e';
-    ctx.lineWidth = 1.4 / zoom;
+    ctx.strokeStyle = tone;
+    ctx.lineWidth = 1.6 / zoom;
     ctx.beginPath();
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fill();
@@ -553,5 +898,40 @@ export class SeaLayer {
     ctx.moveTo(cx + r * 0.5, cy - r * 0.5);
     ctx.lineTo(cx - r * 0.5, cy + r * 0.5);
     ctx.stroke();
+    if (label && zoom >= 0.5) this.markLabel(ctx, cx - r - 4 / zoom, cy, label, tone, zoom);
+    ctx.restore();
+  }
+
+  /** Kaçınma diski: gri, "↩"; etiket "refused" (biz) / "they refused". */
+  evasionMark(ctx, cx, cy, zoom, { us, fresh }) {
+    const r = (fresh ? 8.75 : 7) / zoom;
+    const tone = us ? '#c9c2b0' : MARK_COLORS.ours;
+    ctx.save();
+    ctx.fillStyle = 'rgba(10, 14, 18, 0.88)';
+    ctx.strokeStyle = tone;
+    ctx.lineWidth = 1.4 / zoom;
+    ctx.beginPath();
+    ctx.arc(cx, cy, r, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = tone;
+    ctx.font = `700 ${11 / zoom}px ${FONT_UI}`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('↩', cx, cy + 0.5 / zoom);
+    if (zoom >= 0.5) this.markLabel(ctx, cx - r - 4 / zoom, cy, us ? 'refused' : 'they refused', tone, zoom);
+    ctx.restore();
+  }
+
+  markLabel(ctx, right, cy, text, tone, zoom) {
+    ctx.font = `600 ${12 / zoom}px ${FONT_UI}`;
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 3 / zoom;
+    ctx.strokeStyle = 'rgba(6, 12, 16, 0.9)';
+    ctx.strokeText(text, right, cy);
+    ctx.fillStyle = tone;
+    ctx.fillText(text, right, cy);
   }
 }

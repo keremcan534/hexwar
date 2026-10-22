@@ -28,7 +28,8 @@ import {
   BRANCH, MAX_SKILL, TRAITS, aggressionInfo, commandSize, frontTilesOf, generalOfArmy, officersOf,
 } from '../game/command.js';
 import { ORDER } from '../game/orders.js';
-import { etaWeeks } from '../game/movement.js';
+import { destinationOf, etaWeeks } from '../game/movement.js';
+import { transportRiskAt, zoneStatus } from '../game/navy.js';
 import { formatPopulation } from '../game/economy.js';
 import { subayPortresi } from './icons/subaylar.js';
 import { traitArt } from './icons/art.js';
@@ -60,7 +61,7 @@ function placeName(world, tile) {
  */
 export function unitStatus(game, unit) {
   const turn = game.turns?.turn ?? 0;
-  if (unit.embarked) return { key: 'sea', chip: 'At sea', text: 'at sea · cannot fight, enemy-held seas cost men' };
+  if (unit.embarked) return seaStatus(game, unit);
   if (unit.battleId) return { key: 'battle', chip: 'Battle', text: 'in battle' };
   if ((unit.retreatUntil ?? 0) > turn) return { key: 'retreat', chip: 'Retreat', text: 'retreating' };
   if ((unit.attackReadyAt ?? 0) > turn) return { key: 'regroup', chip: 'Regroup', text: 'reorganizing after an attack' };
@@ -75,6 +76,29 @@ export function unitStatus(game, unit) {
   if (unit.order?.type === ORDER.AUTO) return { key: 'auto', chip: 'Auto', text: 'delegated to the AI' };
   if (unit.order?.type === ORDER.HOLD) return { key: 'hold', chip: 'Hold', text: 'holding position' };
   return { key: 'ready', chip: 'Ready', text: 'in position' };
+}
+
+/**
+ * Denizdeki tümen: hangi deniz (hâkimiyetiyle), nereye çıkacak, kaç hafta;
+ * düşmanın tuttuğu denizde haftalık adam kaybı. Eski satır ("cannot fight,
+ * enemy-held seas cost men") 1080p'de kesiliyor, yeri ve süreyi söylemiyordu.
+ */
+function seaStatus(game, unit) {
+  const world = game.world;
+  const zoneId = unit.tile?.seaZone ?? -1;
+  const status = zoneId >= 0 ? zoneStatus(world, unit.nationId, zoneId) : null;
+  const here = placeName(world, unit.tile);
+  const goalTile = unit.directive ? world.get(unit.directive.q, unit.directive.r) : destinationOf(unit);
+  const goal = goalTile ? placeName(world, goalTile) : null;
+  const eta = isMoving(unit) ? etaWeeks(game, unit) : 0;
+  const state = status?.state === 'held' ? 'held' : status?.state ?? 'open';
+  let text = `at sea · ${here} (${state})${goal && goal !== here ? ` · lands near ${goal}${eta ? ` ~${eta} wk` : ''}` : ''}`;
+  const risk = zoneId >= 0 ? transportRiskAt(world, unit.nationId, zoneId) : 0;
+  if (risk > 0) {
+    const holder = world.nations[status.holders[0]]?.name ?? 'the enemy';
+    text += ` · ${holder} holds ${Math.round(status.share * 100)}%: −${(risk * 100).toFixed(1)}% men a week`;
+  }
+  return { key: 'sea', chip: eta ? `Sea ${eta} wk` : 'At sea', text, warn: risk > 0 };
 }
 
 /** İnce dolum çubuğu (güç / düzen). */
@@ -113,15 +137,16 @@ function headHtml(game, me, units) {
   const single = units.length === 1;
   const status = single ? unitStatus(game, lead) : null;
   const title = single ? `${lead.type.name} Division` : `${units.length} Divisions`;
+  // Denizdeki tümenin cümlesi yerini zaten söyler (deniz adı tekrar etmesin).
   const sub = single
-    ? `${placeName(game.world, lead.tile)} · ${status.text}`
+    ? (status.key === 'sea' ? status.text : `${placeName(game.world, lead.tile)} · ${status.text}`)
     : composition(units);
   const badge = single
     ? `<span class="ap-badge" style="--nation:${me.color}">${counter(lead, 'ap-counter')}</span>`
     : `<span class="ap-badge is-count" style="--nation:${me.color}">${units.length}</span>`;
   return `<header class="ap-head">
       ${badge}
-      <span class="ap-title"><b>${esc(title)}</b><small>${esc(sub)}</small></span>
+      <span class="ap-title"><b>${esc(title)}</b><small class="${status?.warn ? 'warn' : ''}"${single && status.key === 'sea' ? tipAttr({ text: `${sub}\nDivisions embark from any coast; no transports or ports are needed. At sea they cannot fight and cannot enter a sea the enemy holds; in one they lose men every week.` }) : ''}>${esc(sub)}</small></span>
       <button class="ap-x" type="button" data-ap-clear aria-label="Clear selection"${tipAttr({ text: 'Clear selection · Esc' })}>✕</button>
     </header>`;
 }
@@ -228,8 +253,14 @@ function frontHtml(game, me, units) {
   const tip = `Front\nThe commander's sector of the border${general.target == null ? '' : ` with ${target}`}: ${front.length} provinces for ${commandSize(general)} divisions. `
     + 'Divisions take posts along it by themselves.\nPlanning grows while they hold their posts; an offensive spends it, halting resets it.'
     + (nextAssault > 0 ? `\nNext assault in ${nextAssault} weeks (stance tempo).` : '');
+  // Emir verilen tümen cepheyi değil emri izler: panel "Advancing" derken
+  // tümen okyanusu oyuncunun emriyle geçiyordu.
+  const ordered = units.filter((unit) => unit.directive).length;
+  const note = ordered
+    ? `<p class="ap-front-note">${ordered === units.length ? (ordered === 1 ? 'this division follows' : 'these divisions follow') : `${ordered} of these divisions follow`} your order, not the front</p>`
+    : '';
   return `<section class="ap-sec ap-front">
-      <h4>Front <span class="ap-front-line"${tipAttr({ text: tip })}>${esc(line)}</span></h4>
+      <h4>Front <span class="ap-front-line"${tipAttr({ text: tip })}>${esc(line)}</span></h4>${note}
       <div class="ap-plan">
         <span class="ap-plan-meter"${tipAttr({ text: `Planning ${Math.round(ready * 100)}%\nAttacks gain from planning; each assault spends some of it.` })}><i style="width:${(ready * 100).toFixed(0)}%"></i></span>
         <b>${Math.round(ready * 100)}%</b>
@@ -242,10 +273,20 @@ function frontHtml(game, me, units) {
  * Tümenin DURAN emri — bu haftaki hâli (unitStatus) değil. Başlık "ne
  * yapıyor"u söyler; emir satırı "kimin sözünü dinliyor"u.
  */
-function standingOrder(me, unit) {
+function standingOrder(game, me, unit) {
   if (unit.order?.type === ORDER.AUTO) return 'delegated to the AI';
   if (unit.order?.type === ORDER.HOLD) return 'holding position';
-  if (unit.directive) return 'moving on your order';
+  // Deniz aşırı emir (movement S5): tümen hedefe varana dek sürer.
+  if (unit.directive?.sea) {
+    const tile = game.world.get(unit.directive.q, unit.directive.r);
+    return `sailing on your order → ${placeName(game.world, tile)}`;
+  }
+  // Yolu olmayan emir bekliyordur (kapalı deniz, dolu yığın): "moving" demek
+  // yerinde duran tümen için yalandı (T10: altı hafta "moving", tek kare yok).
+  if (unit.directive) {
+    const tile = game.world.get(unit.directive.q, unit.directive.r);
+    return `${unit.path?.length ? 'moving' : 'waiting'} on your order → ${placeName(game.world, tile)}`;
+  }
   return generalOfArmy(me, unit) ? 'follows the commander' : 'awaiting orders';
 }
 
@@ -254,7 +295,7 @@ function ordersHtml(game, me, units) {
   const count = units.length;
   const orders = units.map((unit) => unit.order?.type ?? null);
   const all = (type) => orders.every((order) => order === type);
-  const standing = new Set(units.map((unit) => standingOrder(me, unit)));
+  const standing = new Set(units.map((unit) => standingOrder(game, me, unit)));
   const [only] = standing;
   const label = standing.size > 1 ? 'mixed orders'
     : count > 1 ? `all ${only.replace(/^follows /, 'follow ')}` : only;

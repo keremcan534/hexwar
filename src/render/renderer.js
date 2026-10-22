@@ -16,6 +16,7 @@ import { DEVELOPMENT_MAX, RESOURCES } from '../game/econ/defs.js';
 import { controllerOf, isOccupied } from '../game/control.js';
 import { WaterLayer } from './water.js';
 import { SeaLayer } from './seaLayer.js';
+import { zoneStatus } from '../game/navy.js';
 import { LandMaterial } from './material.js';
 import { SurfaceGL } from './surfaceGL.js';
 import { terrainBakeJob } from './terrainBake.js';
@@ -2462,18 +2463,22 @@ export class Renderer {
     }
 
     t0 = performance.now();
-    // Seas kipi: bölge tonları ve adları suyun üstünde, şehir ve birimlerin altında.
-    if (this.mapMode === 'seas') {
-      this.sea.drawZones(ctx, world, rect, state.playerNation);
-      this.sea.drawLanes(ctx, world, rect, state.playerNation);
-    }
-    // Kültür kipinde seçili halkın dağılımı (Cultures ekranı / province paneli).
-    if (this.mapMode === 'cultures') this.drawCultureHighlight(ctx, world, rect);
     // ORDU SECILIYKEN EYALET VURGUSU YOK. Secili kare panelin baglamidir
     // (ordunun durdugu yer) ama haritada eyalet cercevesi cizmek, oyuncuya
     // "eyalet de secildi" diyordu (Kerem: asker seciliyken state secme bugu).
     // Orduyu gosteren isaret drawSelection'in halkasidir.
     const armySelected = (state.selection?.length ?? 0) > 0;
+    // Seas kipi: bölge tonları ve adları suyun üstünde, şehir ve birimlerin altında.
+    if (this.mapMode === 'seas') {
+      this.sea.drawZones(ctx, world, rect, state.playerNation);
+      this.sea.drawLanes(ctx, world, rect, state.playerNation);
+      this.sea.drawUnderway(ctx, world, rect, state.playerNation);
+    } else if (armySelected && this.mapMode !== 'geography') {
+      // Ordu seçiliyken kapalı denizler taralı: sefer emri tam bu an verilir.
+      this.sea.drawClosed(ctx, world, rect, state.playerNation);
+    }
+    // Kültür kipinde seçili halkın dağılımı (Cultures ekranı / province paneli).
+    if (this.mapMode === 'cultures') this.drawCultureHighlight(ctx, world, rect);
     if (armySelected && !this.showGrid) this.drawArmyGrid(ctx, world, state.selection);
     // Izgara kapalıyken seçim ve imleç PROVINCE'i gösterir: hex çerçevesi,
     // gizlenen peteği tek karede geri getiriyordu. Province'i olmayan kare
@@ -2509,6 +2514,7 @@ export class Renderer {
       if (marks) {
         this.drawUnitCounters(ctx, world, state.selectedUnit, rect, state.playerNation);
         this.sea.drawFleets(ctx, world, rect, state.playerNation, this.mapMode === 'seas');
+        if (this.mapMode === 'seas') this.sea.drawSeaInfo(ctx, world, rect, state.playerNation);
         this.drawBattles(ctx, world, rect);
         this.drawPockets(ctx, world, state.playerNation);
         this.drawFrontBadges(ctx);
@@ -2568,12 +2574,13 @@ export class Renderer {
   /** renderCopy'nin işaret dizisi, aynı sırayla; yalnız dik geçişte (renderMarks). */
   drawMarkers(ctx, world, state, rect) {
     const armySelected = (state.selection?.length ?? 0) > 0;
-    if (this.mapMode === 'seas') this.sea.drawZoneNames(ctx, world, rect);
+    if (this.mapMode === 'seas') this.sea.drawZoneNames(ctx, world, rect, state.playerNation);
     this.drawCities(ctx, world, rect);
     if (armySelected || this.camera.zoom >= 0.9) this.drawVictoryPoints(ctx, world, rect);
     if (this.mapMode !== 'geography') {
       this.drawUnitCounters(ctx, world, state.selectedUnit, rect, state.playerNation);
       this.sea.drawFleets(ctx, world, rect, state.playerNation, this.mapMode === 'seas');
+      if (this.mapMode === 'seas') this.sea.drawSeaInfo(ctx, world, rect, state.playerNation);
       this.drawBattles(ctx, world, rect);
       this.drawPockets(ctx, world, state.playerNation);
       this.drawFrontBadges(ctx);
@@ -4216,30 +4223,92 @@ export class Renderer {
 
     // Dikişi aşan yol çizgileri periyot kadar sıçramasın: her adım en yakın
     // sarmal temsilciyle çizilir, hat kopyanın kenarından dışarı akar.
+    // Yol KARA ve DENİZ koşularına bölünür: deniz koşusu pirinç (düşman payı
+    // olan denizde kehribar), biniş ve çıkış düğümünde çapa işareti. Deniz
+    // aşırı emir eskiden düz beyaz kesik çizgiydi; nereden binip nereye
+    // çıkacağı haritada görünmüyordu.
     const P = world.wrapWidth;
+    const status = new Map();
+    const seaTone = (tile) => {
+      const zoneId = tile.seaZone ?? -1;
+      if (zoneId < 0) return 'open';
+      if (!status.has(zoneId)) status.set(zoneId, zoneStatus(world, playerNation, zoneId).state);
+      return status.get(zoneId);
+    };
     for (const unit of world.units) {
       if (!unit.path?.length || unit.nationId !== playerNation) continue;
       const active = unit === selectedUnit;
-      ctx.beginPath();
-      ctx.moveTo(unit.tile.x, unit.tile.y);
+      const alpha = active ? 1 : 0.4;
+      const runs = [];
+      let prev = unit.tile;
       let px = unit.tile.x;
+      let run = null;
+      const anchors = [];
       for (const tile of unit.path) {
         const dx = tile.x - px;
-        px += P ? dx - P * Math.round(dx / P) : dx;
-        ctx.lineTo(px, tile.y);
+        const nx = px + (P ? dx - P * Math.round(dx / P) : dx);
+        const water = Boolean(prev.terrain?.water || tile.terrain?.water);
+        const tone = water ? (['contested', 'held'].includes(seaTone(tile.terrain?.water ? tile : prev)) ? 'amber' : 'sea') : 'land';
+        if (!prev.terrain?.water && tile.terrain?.water) anchors.push([px, prev.y]);
+        if (prev.terrain?.water && !tile.terrain?.water) anchors.push([nx, tile.y]);
+        if (!run || run.tone !== tone) {
+          run = { tone, pts: [[px, prev.y]] };
+          runs.push(run);
+        }
+        run.pts.push([nx, tile.y]);
+        px = nx;
+        prev = tile;
       }
-      ctx.lineWidth = (active ? 3 : 2) / zoom;
-      ctx.strokeStyle = active ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.35)';
-      ctx.setLineDash([6 / zoom, 5 / zoom]);
-      ctx.stroke();
+      for (const r of runs) {
+        ctx.beginPath();
+        ctx.moveTo(r.pts[0][0], r.pts[0][1]);
+        for (let i = 1; i < r.pts.length; i++) ctx.lineTo(r.pts[i][0], r.pts[i][1]);
+        ctx.lineWidth = (active ? 3 : 2) / zoom;
+        if (r.tone === 'land') {
+          ctx.strokeStyle = `rgba(255,255,255,${0.9 * alpha})`;
+          ctx.setLineDash([6 / zoom, 5 / zoom]);
+        } else {
+          ctx.strokeStyle = r.tone === 'amber' ? `rgba(232,189,102,${0.95 * alpha})` : `rgba(222,196,120,${0.9 * alpha})`;
+          ctx.setLineDash([10 / zoom, 6 / zoom]);
+        }
+        ctx.stroke();
+      }
       ctx.setLineDash([]);
+      ctx.strokeStyle = active ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.35)';
 
       // Hedef işareti: yolun sonunda içi boş halka.
       const end = unit.path[unit.path.length - 1];
       ctx.beginPath();
       ctx.arc(px, end.y, HEX_SIZE * 0.3, 0, Math.PI * 2);
       ctx.stroke();
+      if (active) for (const [ax, ay] of anchors) this.drawAnchorGlyph(ctx, ax, ay, zoom);
     }
+  }
+
+  /** Çapa işareti (biniş/çıkış düğümü): halka + gövde + kol, 0.3 hex. */
+  drawAnchorGlyph(ctx, x, y, zoom) {
+    const r = HEX_SIZE * 0.3;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineWidth = 4 / zoom;
+    ctx.strokeStyle = 'rgba(6, 12, 16, 0.75)';
+    const glyph = () => {
+      ctx.beginPath();
+      ctx.arc(x, y - r * 0.7, r * 0.22, 0, Math.PI * 2);
+      ctx.moveTo(x, y - r * 0.48);
+      ctx.lineTo(x, y + r * 0.75);
+      ctx.moveTo(x - r * 0.45, y - r * 0.15);
+      ctx.lineTo(x + r * 0.45, y - r * 0.15);
+      ctx.moveTo(x - r * 0.6, y + r * 0.35);
+      ctx.quadraticCurveTo(x - r * 0.4, y + r * 0.85, x, y + r * 0.75);
+      ctx.quadraticCurveTo(x + r * 0.4, y + r * 0.85, x + r * 0.6, y + r * 0.35);
+      ctx.stroke();
+    };
+    glyph();
+    ctx.lineWidth = 1.8 / zoom;
+    ctx.strokeStyle = 'rgba(240, 215, 149, 0.95)';
+    glyph();
+    ctx.restore();
   }
 
   /** Denize komşu şehir limandır; kimlik başına bir kez hesaplanır. */

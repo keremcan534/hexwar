@@ -35,6 +35,7 @@ import { emblemArt, resourceArt } from './icons/art.js';
 import { glyph } from './icons/glyphs.js';
 import { provideTooltip, quietScroll, refreshTooltips } from './tooltip.js';
 import { CURRENCY, meter as kitMeter, money, pips as kitPips, tipAttr } from './kit.js';
+import { waterLines } from './navyText.js';
 import { stateCultures, stateYield } from '../game/stateView.js';
 import { depositsOf, fertilityOf } from '../game/econ/deposits.js';
 import { workforceShare } from '../game/econ/resources.js';
@@ -726,6 +727,10 @@ export class Hud {
     // AUTO anahtarı çevrilince künyenin ışığı hemen yanar/söner.
     game.on('delegation', () => this.syncTabAuto());
     game.on('orderRefused', ({ text }) => this.flashHint(text));
+    // Deniz aşırı emrin makbuzu (game.noteCrossing) uzun bir cümledir: 4 sn.
+    game.on('orderNote', ({ text }) => this.flashHint(text, { ms: 4000 }));
+    // Donanma panelinin öncelik onayı (navyDock): plan neyi değiştirdi.
+    game.on('navyOrder', ({ text }) => this.flashHint(text, { ms: 2600 }));
     game.on('units', () => {
       this.showTile(this.game.selected);
       this.queueTurn();
@@ -1294,7 +1299,7 @@ export class Hud {
    * Kısayolun tek satırlık onayı: komuta şeridinin üstünde belirir ve söner.
    * Klavyeyle verilen emir görünmezdi; oyuncu tuşun tuttuğunu bilmeliydi.
    */
-  flashHint(text) {
+  flashHint(text, { ms = 1400 } = {}) {
     let el = this.el.flashHint;
     if (!el) {
       el = document.createElement('div');
@@ -1313,7 +1318,7 @@ export class Hud {
     void el.offsetWidth;
     el.classList.add('show');
     clearTimeout(this.flashTimer);
-    this.flashTimer = setTimeout(() => el.classList.remove('show'), 1400);
+    this.flashTimer = setTimeout(() => el.classList.remove('show'), ms);
   }
 
   setLayer(flag, value) {
@@ -1896,7 +1901,8 @@ export class Hud {
       ? `${seaZone ? `${tile.terrain.name} · ` : ''}${tile.terrain.navigable ? 'Navigable water' : 'Impassable water'} · ${tile.q}, ${tile.r}`
       : `${area && nation ? `${nation.fullName} · ` : ''}${tile.terrain.name}${tile.coastal ? ' · coast' : ''}`;
 
-    const stats = water ? [] : [
+    // Deniz karesi: hâkimiyet, kapalı deniz, abluka, yollar (navyText).
+    const stats = water ? waterLines(this.game, tile) : [
       ['Defense', `${Math.round(tileDefense(tile) * 100)}%`],
       ['Terrain', tile.terrain.name],
     ];

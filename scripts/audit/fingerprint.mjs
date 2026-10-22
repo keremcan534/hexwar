@@ -110,7 +110,27 @@ export function extendedFingerprint(game) {
         militia.get(n.id) ?? 0,
       ].join(':');
     });
-  return `peoples=${rows.join('|')}`;
+  return `peoples=${rows.join('|')}\nnavy=${navyFingerprint(game)}`;
+}
+
+/**
+ * DONANMA: gemi gemi atama, varış, bekleme, onarım ve sağlık; muharebe
+ * raporları ve abluka. Çekirdek izde donanma terimi yoktu: yalnız donanmayı
+ * değiştiren bir yama "davranış aynı" kıyasından sızabiliyordu.
+ */
+export function navyFingerprint(game) {
+  const world = game.world;
+  const n6 = (v) => (Number.isFinite(v) ? v.toFixed(6) : '-');
+  const fleets = world.nations
+    .filter((n) => n.alive && n.navy?.ships?.length)
+    .map((n) => `${n.id}#${n.navy.ships.map((s) => [
+      s.id, Math.round((s.hp ?? 0) * 1e6), s.zone, s.at, s.eta, s.hold ?? 0, s.repairing ? 1 : 0,
+    ].join(',')).join(';')}`)
+    .join('|');
+  const state = world.navyState;
+  const reports = (state?.reports ?? []).map((r) => `${r.turn}-${r.zone}-${r.winner}`).join(',');
+  const blockade = (state?.blockade ?? []).map(n6).join(',');
+  return `${fleets}\nnavyReports=${reports}\nblockade=${blockade}`;
 }
 
 /** FNV-1a: uzun parmak izini kisa kimlige indirger (gorsel kiyas icin). */

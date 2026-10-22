@@ -47,6 +47,7 @@ import {
 import { agendaView, chooseAgenda } from '../game/agenda.js';
 import { decisionsView, takeDecision } from '../game/decisions.js';
 import { acceptCulture, revokeCulture } from '../game/culture.js';
+import { blockadeCause, blockadeTip } from './navyText.js';
 import { releasePeople } from '../game/nationBirth.js';
 import { concentrate, deport, forceAssimilation, forcedAssimilation, resettle } from '../game/culturePolicy.js';
 import { FOCUSES, FOCUS_BY_ID, focusSlots } from '../game/focus.js';
@@ -496,8 +497,9 @@ export function renderTrade(game, me, state) {
       tip: { text: 'Shortages\nResources the country needs but could not fully make or buy last week.' },
     }),
     kpi({
-      label: 'Blockade', value: pct(view.blockade), sub: view.blockade > 0 ? 'of our coast is cut' : 'sea lanes open',
-      tip: { text: 'Blockade\nEnemy warships within two hexes of our coastal states cut that share of seaborne imports.' },
+      // NAVY-06: eski metin kalkmış hex modelini anlatıyordu; kural navyText'te.
+      label: 'Blockade', value: pct(view.blockade), sub: view.blockade > 0 ? 'of our sea trade is cut' : 'sea lanes open',
+      tip: { text: blockadeTip(world, view.blockade, blockadeCause(world, me.id)) },
       meter: view.blockade, meterTone: 'neg',
     }),
   ]);

@@ -134,6 +134,11 @@ export function resolveTypeId(typeId) {
  */
 export function speedOf(unit) {
   if (unit.embarked) return EMBARKED_MOVES;
+  return marchSpeedOf(unit);
+}
+
+/** Karadaki yürüyüş hızı (bindirilmiş olsa da): deniz aşırı emrin kara bacakları. */
+export function marchSpeedOf(unit) {
   if (unit.regiments?.length) {
     return Math.min(...unit.regiments.map(
       (regiment) => UNIT_TYPES[resolveTypeId(regiment.typeId)].moves,

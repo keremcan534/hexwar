@@ -462,3 +462,36 @@ export function seaTradeLoss(world, nationId) {
   }
   return value + lost > 0 ? lost / (value + lost) : 0;
 }
+
+/**
+ * Kesilen yollarımız ve SEBEPLERİ (panelin TRADE satırı): ortağı, kaybedilen
+ * pay ve yolun ara denizlerinden hangisi düşmanın elinde (`held`) ya da
+ * denizaltı akınında (`raid`), kimin. Katsayıyı kuran aynı kesinti tablosu.
+ */
+export function laneCutsView(world, nationId) {
+  const state = world.navyState;
+  if (!state) return [];
+  const out = [];
+  for (const lane of seaLaneView(world)) {
+    if ((lane.a !== nationId && lane.b !== nationId) || !(lane.lost > 0)) continue;
+    const partner = lane.a === nationId ? lane.b : lane.a;
+    const cause = [];
+    lane.path.forEach((zoneId, index) => {
+      const end = index === 0 || index === lane.path.length - 1;
+      for (const side of [lane.a, lane.b]) {
+        const cut = cutsOf(world, state, side);
+        if (!cut) continue;
+        if (!end && cut.closed[zoneId] > 0) {
+          const by = [...(state.presence?.get(zoneId) ?? [])].filter(([id]) => atWar(world, id, side)).map(([id]) => id);
+          if (!cause.some((c) => c.zone === zoneId && c.kind === 'held')) cause.push({ zone: zoneId, kind: 'held', by, share: cut.closed[zoneId] });
+        }
+        if (cut.raid[zoneId] > 0) {
+          const by = [...(state.subs?.get(zoneId) ?? [])].filter(([id]) => atWar(world, id, side)).map(([id]) => id);
+          if (!cause.some((c) => c.zone === zoneId && c.kind === 'raid')) cause.push({ zone: zoneId, kind: 'raid', by, share: cut.raid[zoneId] });
+        }
+      }
+    });
+    out.push({ partner, lost: lane.lost, lostShare: lane.lost / Math.max(1e-9, lane.value + lane.lost), cause });
+  }
+  return out.sort((x, y) => y.lost - x.lost || x.partner - y.partner);
+}

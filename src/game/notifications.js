@@ -111,6 +111,8 @@ export class NotificationCenter {
         existing.ttl = meta.ttl ?? kind.ttl;
       }
       existing.tile = meta.tile ?? existing.tile;
+      // Deniz kaydı (navy.js rapor/kaçınma kimliği): kart Seas haritasında açılır.
+      existing.report = meta.report ?? existing.report ?? null;
       existing.at = now;
       this.game.emit('notify', { entry: existing, repeated: true });
       return existing;
@@ -132,6 +134,7 @@ export class NotificationCenter {
       title: meta.title ?? null,
       body: meta.body ?? null,
       tile: meta.tile ?? null,
+      report: meta.report ?? null,
       turn: this.game.turns?.turn ?? 0,
       count: 1,
       at: now,

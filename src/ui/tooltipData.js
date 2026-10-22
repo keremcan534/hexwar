@@ -678,8 +678,8 @@ export function registerTooltips(game) {
       // Renk sürekli bir logaritmik ölçektir (renderer.populationTint); lejant yalnız dört durak gösterir.
       population: () => ['Population', 'How many people live in each state, on one continuous scale from empty to crowded; the legend marks four points on it.'],
       seas: () => ['Navy map', `The seas, region by region. Green waters are yours, red the enemy's, amber contested (${term('seacontrol', 'sea control')}). `
-        + `Give each sea a priority and the admiralty sails the fleet there; whoever holds a sea ${term('blockade', 'blockades')} the coasts on it `
-        + 'and closes it to the enemy\'s transports. Shortcut: M.'],
+        + `Click any sea to give it a priority and the admiralty sails the fleet there; whoever holds a sea ${term('blockade', 'blockades')} the coasts on it `
+        + "and closes it to the enemy's transports. Hatched seas are closed to our troops. Shortcut: M."],
       diplomacy: () => ['Diplomacy', 'Who is at war with whom. Green is the nation you look from, red its enemies, blue its allies; hatching marks occupied land. Click any nation to see the map through its eyes.'],
       unrest: () => ['Unrest', `How restless each state is, 0 to ${CULTURE.MAX_UNREST} (${term('unrest')}). Where a subject people's states pass ${MOVEMENT.CALM} on average, `
         + `its national movement grows; foreign rule, fresh conquest, war exhaustion, occupation and short ${term('consumer', 'consumer goods')} drive it.`],

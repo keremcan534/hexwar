@@ -296,6 +296,8 @@ export function serialize(game) {
     // Son deniz muharebeleri (navy.js, 26 hafta): donanma panelinin geçmişi.
     // Hâkimiyet ve abluka türetilir, raporlar türetilemez.
     navyReports: world.navyState?.reports ?? [],
+    // Kaçınma kayıtları (navy.js, 26 hafta): "neden muharebe olmadı" geçmişi.
+    navyEvasions: world.navyState?.evasions ?? [],
     // Her gemi sınıfının dünyadaki ilk gemisi (dretnot anı): bir kez duyurulur.
     navyFirsts: world.navyFirsts ?? {},
     // Birim kimlik sayaci (bkz. units.unitIdCursor).
@@ -419,6 +421,8 @@ export function serialize(game) {
       // haftalik konvoy tedariki £27 fazla yaziliyordu.
       reroutes: u.reroutes ?? 0,
       embarked: u.embarked,
+      // Denize bindiği hafta (movement.stepInto): çıkarma notu "11 hafta denizde" der.
+      embarkedAt: u.embarkedAt ?? null,
       order: u.order
         ? { type: u.order.type, tq: u.order.target?.q, tr: u.order.target?.r }
         : null,
@@ -689,6 +693,7 @@ export function deserialize(game, data) {
     unit.progress = saved.progress ?? 0;
     unit.reroutes = saved.reroutes ?? 0;
     unit.embarked = saved.embarked;
+    if (saved.embarkedAt != null) unit.embarkedAt = saved.embarkedAt;
     if (saved.regiments?.length) {
       unit.regiments = saved.regiments.map((regiment) => ({
         ...regiment,
@@ -819,15 +824,19 @@ export function deserialize(game, data) {
   // Deniz durumu türetilmiştir (hâkimiyet, abluka): ekran ve ilk haftanın
   // ekonomisi boş tablo okumasın.
   world.navyFirsts = data.navyFirsts && typeof data.navyFirsts === 'object' ? data.navyFirsts : {};
-  refreshNavyState(world).reports = Array.isArray(data.navyReports) ? data.navyReports : [];
+  // Değiştirici toplamları ve şehir boyları kayda girmez: kaynaklarından
+  // kurulur. Deniz tablosundan ÖNCE: filo gücü 'naval' değiştiricisini okur,
+  // yoksa yüklenen hafta düşman filosu ~%6 zayıf görünüyordu (14.7 → 13.8).
+  game.recomputeEconomy();
+  const navy = refreshNavyState(world);
+  navy.reports = Array.isArray(data.navyReports) ? data.navyReports : [];
+  navy.evasions = Array.isArray(data.navyEvasions) ? data.navyEvasions : [];
   refreshSeaLanes(world);
   game.setSpeed(0);
 
   game.selected = null;
   game.activeGeneral = null;
   game.selectUnit(null);
-  // Değiştirici toplamları ve şehir boyları kayda girmez: kaynaklarından kurulur.
-  game.recomputeEconomy();
   game.renderer.invalidateCache();
   game.emit('world', world);
   game.emit('turn', turns.turn);

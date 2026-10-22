@@ -17,7 +17,7 @@ import { randomSeed } from '../core/rng.js';
 import {
   armyPower, clearPath, isMilitia, organizationOf, placeUnit, stackCapacity, stackFull, unitsOn,
 } from './units.js';
-import { clearDirective, orderMove, setDirective } from './movement.js';
+import { clearDirective, crossingReceipt, orderMove, setDirective } from './movement.js';
 import { TurnManager } from './turn.js';
 import { atWar, crisisLeft, declareWar, inCrisis } from './diplomacy.js';
 import { cbOf, ensureDiplo, removeTreaty } from './relations.js';
@@ -34,7 +34,7 @@ import { PerfMonitor } from '../core/perf.js';
 /** Masadaki teklif bu kadar hafta cevapsız kalırsa geri çekilir. */
 const PEACE_OFFER_TTL = 6;
 import { refreshCities } from './cities.js';
-import { closedSeas } from './navy.js';
+import { closedSeas, zoneStatus } from './navy.js';
 import { refreshModifiers } from './modifiers.js';
 import { controllerOf } from './control.js';
 import { loadFromSlot, savedInfo, saveToSlot } from './save.js';
@@ -87,6 +87,9 @@ const EVENTS = [
   // Harita karesi çizildi (kamera/dünya bu karenin): haritaya iğneli DOM
   // katmanları (ui/frontPlates.js) konumunu aynı görevde, boyamadan önce yazar.
   'frame',
+  // Donanma (navy.js, ui/navyDock.js): deniz aşırı emrin makbuzu, öncelik
+  // onayı ve bir deniz kaydının (muharebe/kaçınma) kartını açma isteği.
+  'orderNote', 'navyOrder', 'navalReport',
 ];
 
 /** Muharebe sonucu yazısının ömrü (ms). */
@@ -580,6 +583,7 @@ export class Game {
       // Emir SECIMI DEGISTIRMEZ: hedef kare secili eyalet olursa panel ve
       // vurgu hedefe atliyor, oyuncu "asker seciliyken state seciliyor"
       // goruyordu. Ordu secili kalir, panel yalniz tazelenir.
+      this.noteCrossing(selected, tile);
       this.emit('units', this.selectedUnit);
       this.requestRender();
       return issued + waiting > 0;
@@ -617,10 +621,25 @@ export class Game {
         : this.noRoadReason(this.selection.find((unit) => unit?.hp > 0 && !unit.battleId), tile, 'no road leads there');
       this.reportOrder(tile, 0, 0, new Map([['path', why]]));
     }
+    this.noteCrossing(this.selection, tile);
 
     this.emit('units', this.selectedUnit);
     this.requestRender();
     return issued > 0;
+  }
+
+  /**
+   * Deniz aşırı emrin makbuzu: yolu suya değen ilk tümenin binişi, denizleri
+   * (hâkimiyetiyle), çıkışı ve süresi tek cümlede (ui/hud dört saniye
+   * gösterir). Emir haritada çizilir ama "neden bu yoldan, ne kadar sürer,
+   * hangi deniz kapalı" görünmüyordu.
+   */
+  noteCrossing(units, tile) {
+    const moving = (units ?? []).filter((unit) => unit?.hp > 0 && unit.type?.domain === 'land' && unit.path?.length
+      && (unit.embarked || unit.path.some((step) => step.terrain?.water)));
+    if (!moving.length) return;
+    const text = crossingReceipt(this, moving[0], tile, moving.length);
+    if (text) this.emit('orderNote', { text });
   }
 
   /**
@@ -640,7 +659,9 @@ export class Game {
     const blocked = path?.find((step) => step.terrain.water && step.seaZone !== here && closed.has(step.seaZone));
     if (!blocked) return fallback;
     const zone = seaZonesOf(this.world).zones[blocked.seaZone];
-    return `the enemy navy holds ${zone?.name ?? 'the sea'}; win it first (Seas map, M)`;
+    const status = zoneStatus(this.world, unit.nationId, blocked.seaZone);
+    const holders = status.holders.map((id) => this.world.nations[id]?.name).filter(Boolean).join(', ');
+    return `the enemy navy holds ${zone?.name ?? 'the sea'} (${holders ? `${holders}, ` : ''}${Math.round(status.share * 100)}%); win it first (Seas map, M)`;
   }
 
   /** Seçili ordular. `selectedUnit` ilk seçilendir; tekil kullanan kod bozulmasın. */
@@ -744,7 +765,9 @@ export class Game {
    * bekliyor, ya anlamsız — üçü de yazılır; sessiz tık yok.
    */
   reportOrder(tile, issued, waiting, reasons) {
-    const where = provinceName(tile);
+    // Emrin sonraki notları (bekliyor, bırakıldı, karaya çıktı) state adını
+    // yazar; tık anında başka ad (Ostermark ↔ Elmgau) aynı emri iki yer sandırıyordu.
+    const where = this.world.provinces?.[tile.provinceId]?.name ?? provinceName(tile);
     const why = [...reasons.values()].join('; ');
     let text;
     if (issued && waiting) {
@@ -760,6 +783,9 @@ export class Game {
     // Reddedilen emrin sebebi yalnız bildirim sayacına gidiyordu: oyuncu sağ
     // tıkladığı yerde hiçbir şey olmadığını görüyor, nedenini bilmiyordu.
     if (!issued && !waiting && why) this.emit('orderRefused', { tile, text: `No order: ${why}` });
+    // Bekleyen emir de görünür olmalı: yalnız bildirim sayacına düşüyordu,
+    // oyuncu sağ tıkın "hiçbir şey yapmadığını" görüyordu (kapalı deniz).
+    else if (!issued && waiting && text) this.emit('orderNote', { text });
   }
 
   /**

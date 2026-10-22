@@ -244,15 +244,20 @@ export class Notifications {
     };
     // Karta tıklamak olayın geçtiği yere gider: HOI4'te uyarıya tıklamak gibi.
     card.onclick = () => {
+      // Deniz kaydı (muharebe/kaçınma): Seas haritası açılır, kartı panelde.
+      if (entry.report && this.game.renderer?.mapMode !== 'seas') {
+        document.querySelector('.mode-btn[data-mode="seas"]')?.click();
+      }
       if (entry.tile) {
         this.game.focusTile(entry.tile);
         // Muharebe sürüyorsa penceresi de açılır (ui/battlePanel.js).
         const battle = battleAt(this.game.world, entry.tile);
         if (battle) this.game.emit('inspect', battle.id);
       }
+      if (entry.report) this.game.emit('navalReport', entry.report);
       this.remove(entry);
     };
-    card.classList.toggle('notify-linked', Boolean(entry.tile));
+    card.classList.toggle('notify-linked', Boolean(entry.tile || entry.report));
     return card;
   }
 
