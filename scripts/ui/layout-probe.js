@@ -33,13 +33,19 @@
       const hiddenY = cs.overflowY === 'hidden' || cs.overflowY === 'clip';
       const hiddenX = cs.overflowX === 'hidden' || cs.overflowX === 'clip';
       const oneLine = cs.whiteSpace === 'nowrap' && cs.textOverflow === 'ellipsis';
-      if (oneLine && el.scrollWidth > el.clientWidth + 1) {
+      // Çok satırlı kırpma (-webkit-line-clamp) da kasıtlıdır ve … çizer:
+      // "ulaşılamayan" sayılırsa iki satırlık karar etkisi sahte alarm verir.
+      const clamped = Number(cs.webkitLineClamp) > 0 && el.scrollHeight > el.clientHeight + 1;
+      if ((oneLine && el.scrollWidth > el.clientWidth + 1) || clamped) {
         out.ellipsis++;
-        if (out.ellipsisSamples.length < 8) out.ellipsisSamples.push(`${describe(el)} "${el.textContent.trim().slice(0, 30)}"`);
+        if (out.ellipsisSamples.length < 8) out.ellipsisSamples.push(`${describe(el)}${clamped ? ` [${cs.webkitLineClamp} lines]` : ''} "${el.textContent.trim().slice(0, 30)}"`);
         continue;
       }
       // Kasıtlı maskeler: ilerleme çubukları, yuvarlak madalyonlar, kaydırılan kaplar.
       if (el.clientHeight < 12 || el.clientWidth < 12) continue;
+      // Metinsiz süs katmanı (aria-hidden, ör. menüdeki kayan sis): taşması
+      // tasarımdır, oyuncunun okuyacağı bir şey kırpılmaz.
+      if (el.getAttribute('aria-hidden') === 'true' && !el.textContent.trim()) continue;
       if (/meter|bar|ring|art|flag|socket|pip|spark|chart|canvas|belt/i.test(el.className)) continue;
       const dy = hiddenY ? el.scrollHeight - el.clientHeight : 0;
       const dx = hiddenX ? el.scrollWidth - el.clientWidth : 0;
