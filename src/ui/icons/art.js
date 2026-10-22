@@ -34,13 +34,19 @@ const RESOURCE_FILE = {
   RUBBER: 'resources-photo/rubber',
 };
 
+/**
+ * Teçhizat da fotoğraftan çizilen sette (assets/incoming/techizat-foto-1.webp).
+ * Eski setin savaş gemisi YELKENLİ klipperdi (1900-1945'te); artık dretnot —
+ * eski zırhlı da aynı gövdeyi taşır. Denizaltı, milis ve ikmal sandığı
+ * equipment-photo'da hazır: donanma paneli ve Call to Arms satırı için.
+ */
 const EQUIPMENT_FILE = {
-  rifles: 'resources/small_arms',
-  guns: 'resources/artillery',
-  ships: 'resources/clipper_convoy',
-  ironclads: 'resources/steamer_convoy',
-  tanks: 'resources/tanks',
-  aircraft: 'resources/aeroplane',
+  rifles: 'equipment-photo/rifles',
+  guns: 'equipment-photo/guns',
+  ships: 'equipment-photo/dreadnought',
+  ironclads: 'equipment-photo/dreadnought',
+  tanks: 'equipment-photo/tanks',
+  aircraft: 'equipment-photo/aircraft',
 };
 
 /**
