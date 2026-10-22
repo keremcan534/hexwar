@@ -17,15 +17,21 @@
 
 const BASE = 'assets/icons';
 
+/**
+ * Kaynak ikonları gerçek fotoğraftan çizilen sette (Kerem, 2026-10-22;
+ * assets/incoming/kaynak-foto-1.webp, saydam zeminli 4x2). Kereste için o
+ * sette karşılık yok: kaynak yeniden tasarımında kereste alüminyuma döner
+ * (resources-photo/aluminium.png hazır bekliyor), o güne dek eski boyalı ikon.
+ */
 const RESOURCE_FILE = {
-  FOOD: 'resources/grain',
-  COAL: 'resources/coal',
-  IRON: 'resources/iron',
+  FOOD: 'resources-photo/food',
+  COAL: 'resources-photo/coal',
+  IRON: 'resources-photo/iron',
   TIMBER: 'resources/timber',
-  HORSES: 'resources/horses',
-  SALTPETER: 'resources/saltpeter',
-  OIL: 'resources/oil',
-  RUBBER: 'resources/rubber',
+  HORSES: 'resources-photo/horses',
+  SALTPETER: 'resources-photo/nitrates',
+  OIL: 'resources-photo/oil',
+  RUBBER: 'resources-photo/rubber',
 };
 
 const EQUIPMENT_FILE = {
