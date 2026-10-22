@@ -523,30 +523,17 @@ export class FrontPlates {
       const h = HEX_SIZE * (framed ? 1.28 : 1.08) * ze + (framed ? 3 : 0) + 8;
       push(s.x, s.y + (tile.city ? cityPad / 2 : 0), w, h + (tile.city ? cityPad : 0));
     }
-    // Filo rozetleri (seaLayer.drawFleets): bölge çapasının altında sabit
-    // ekran ölçüsünde, en çok üç ulus yan yana + denizaltı satırı. Yalnız
-    // çizilen taraflar (üçüncü ülkenin filosu Seas kipi dışında çizilmez).
-    const navy = world.navyState;
-    const seaGeo = navy?.presence?.size || navy?.subs?.size ? r.sea?.geometry?.(world) : null;
-    if (seaGeo) {
-      for (const here of [navy.presence, navy.subs]) {
-        for (const [zoneId, fleets] of here ?? []) {
-          const anchor = seaGeo.anchors[zoneId];
-          if (!anchor) continue;
-          let drawn = false;
-          for (const nationId of fleets.keys()) {
-            let side = sides.get(nationId);
-            if (!side) {
-              side = r.sideOf(world, nationId, me);
-              sides.set(nationId, side);
-            }
-            if (side !== 'other' || r.mapMode === 'seas') { drawn = true; break; }
-          }
-          if (!drawn) continue;
-          const s = cam.worldToScreenWrapped(anchor.x, anchor.y);
-          // Kutu deniz muharebesi nişanını (çapanın 22 px üstü) da örter.
-          push(s.x, s.y + 4, 140, 62);
-        }
+    // Deniz işaretleri: filo/denizaltı rozetleri, muharebe ve kaçınma diski
+    // (etiketiyle), Seas kipinin abluka ve yoldaki gemi hapları, kapalı deniz
+    // yazısı. Kutular seaLayer'ın kendi yerleşiminden: elle tutulan 140×62'lik
+    // kutu donanma geçişinin haplarını ve disk etiketlerini kapsamıyordu.
+    // Kipler renderer.renderCopy ile aynı (coğrafya kipinde deniz işareti yok).
+    if (r.sea && r.mapMode !== 'geography') {
+      const seas = r.mapMode === 'seas';
+      const closed = !seas && selected.size > 0;
+      for (const b of r.sea.markBoxes(world, me, { seas, closed, zoom })) {
+        const s = cam.worldToScreenWrapped(b.x, b.y);
+        push(s.x + b.dx + b.w / 2, s.y + b.dy + b.h / 2, b.w + 4, b.h + 4);
       }
     }
     const far = zoom < FAR_ZOOM;

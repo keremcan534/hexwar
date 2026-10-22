@@ -41,6 +41,47 @@ const HATCH = { color: 'rgba(214, 74, 58, 0.42)', width: 6, gap: 40 };
 /** Yoldaki gemilerimizin rota çizgisi (pirinç). */
 const ROUTE_COLOR = 'rgba(240, 208, 128, 0.9)';
 
+/**
+ * İşaretlerin ekran ölçüleri (px; dünyaya /zoom ile çizilir). TEK kaynak:
+ * çizim de cephe levhalarının engel kutuları da (markBoxes) buradan okur.
+ * Levha engeli elle tutulan 140×62'lik bir kutuydu; donanma işaretleri
+ * (abluka hapları, muharebe etiketi, kapalı deniz yazısı) onu aşınca levha
+ * onları örtüyordu.
+ */
+const MARK = {
+  badgeTop: 4, badgeH: 14, subH: 12.6, rowGap: 3, badgePad: 3, flagW: 15, subFlagW: 12,
+  pillH: 15, pillStep: 17, pillPad: 4, pillFlagW: 15,
+  disc: 7, discFresh: 8.75, labelGap: 4, closedRise: 30,
+};
+const MARK_FONT = {
+  badge: (zoom) => `700 ${10.5 / zoom}px ${FONT_UI}`,
+  pill: (zoom) => `600 ${12 / zoom}px ${FONT_UI}`,
+  label: (zoom) => `600 ${12 / zoom}px ${FONT_UI}`,
+  closed: (zoom) => `700 ${11 / zoom}px ${FONT_UI}`,
+  name: (zoom) => `italic ${12.5 / zoom}px ${FONT_DISPLAY}`,
+};
+const CLOSED_TEXT = 'CLOSED TO OUR TROOPS';
+/** Muharebe/kaçınma diskinin etiketi bu zoomdan yakında yazılır. */
+const LABEL_ZOOM = 0.5;
+const REL_ORDER = { ours: 0, ally: 1, enemy: 2, other: 3 };
+
+/** Rozet satırının yerleşimi; `measure(text)` o anki yazı tipinde genişlik. */
+function badgeLayout(measure, rows, sub, zoom) {
+  const pad = MARK.badgePad / zoom;
+  const flagW = (sub ? MARK.subFlagW : MARK.flagW) / zoom;
+  const texts = rows.map((row) => (sub ? `U${row.count}` : String(row.count)));
+  const widths = texts.map((text) => flagW + pad * 3 + measure(text));
+  const total = widths.reduce((sum, w) => sum + w, 0) + (rows.length - 1) * pad;
+  return { pad, flagW, texts, widths, total };
+}
+
+/** Hap genişliği (bayraklı hayalet rozet dahil). */
+function pillWidth(measure, pill, zoom) {
+  const pad = MARK.pillPad / zoom;
+  const flagW = pill.flag ? MARK.pillFlagW / zoom : 0;
+  return measure(pill.text) + pad * 2 + (flagW ? flagW + pad : 0);
+}
+
 const CORNERS = HEX_CORNERS.map(([x, y]) => [x * HEX_SIZE, y * HEX_SIZE]);
 
 function appendLoop(path, pts, dx) {
@@ -129,6 +170,15 @@ function relationTo(world, playerId, nationId) {
   if (player && isAllied(player, nationId)) return 'ally';
   if (atWar(world, playerId, nationId)) return 'enemy';
   return 'other';
+}
+
+/** Bölgedeki ulus satırları: ilişki sırası, sonra gemi sayısı; en çok üç. */
+function fleetRows(world, playerId, here, keep) {
+  return [...here.entries()]
+    .map(([nationId, entry]) => ({ nationId, count: entry.ships.length, rel: relationTo(world, playerId, nationId) }))
+    .filter(keep)
+    .sort((a, b) => REL_ORDER[a.rel] - REL_ORDER[b.rel] || b.count - a.count || a.nationId - b.nationId)
+    .slice(0, 3);
 }
 
 export class SeaLayer {
@@ -497,14 +547,14 @@ export class SeaLayer {
     if (this.renderer.markPass) return;
     const zoom = this.renderer.camera.zoom;
     ctx.save();
-    ctx.font = `700 ${11 / zoom}px ${FONT_UI}`;
+    ctx.font = MARK_FONT.closed(zoom);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
     for (const id of closed) {
       const anchor = geo.anchors[id];
       for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
-        this.closedTag(ctx, anchor.x + dx, anchor.y - 30 / zoom, zoom);
+        this.closedTag(ctx, anchor.x + dx, anchor.y - MARK.closedRise / zoom, zoom);
       }
     }
     ctx.restore();
@@ -515,8 +565,8 @@ export class SeaLayer {
     ctx.lineWidth = 3 / zoom;
     ctx.strokeStyle = 'rgba(6, 12, 16, 0.9)';
     ctx.fillStyle = '#ff8f6e';
-    ctx.strokeText('CLOSED TO OUR TROOPS', x, y);
-    ctx.fillText('CLOSED TO OUR TROOPS', x, y);
+    ctx.strokeText(CLOSED_TEXT, x, y);
+    ctx.fillText(CLOSED_TEXT, x, y);
   }
 
   /** Bölge adları (ve paneldeki satırın halkası), derin noktada. */
@@ -525,9 +575,8 @@ export class SeaLayer {
     if (!geo.zones.length) return;
     const U = this.renderer.upright;
     const zoom = this.renderer.camera.zoom;
-    const size = 12.5 / zoom;
     ctx.save();
-    ctx.font = `italic ${size}px ${FONT_DISPLAY}`;
+    ctx.font = MARK_FONT.name(zoom);
     ctx.textAlign = 'center';
     ctx.textBaseline = 'bottom';
     ctx.lineJoin = 'round';
@@ -549,9 +598,9 @@ export class SeaLayer {
         ctx.fillText(zone.name, at.x, at.y - 6 / zoom);
         if (closed.has(id)) {
           ctx.save();
-          ctx.font = `700 ${11 / zoom}px ${FONT_UI}`;
+          ctx.font = MARK_FONT.closed(zoom);
           ctx.textBaseline = 'middle';
-          this.closedTag(ctx, at.x, at.y - 30 / zoom, zoom);
+          this.closedTag(ctx, at.x, at.y - MARK.closedRise / zoom, zoom);
           ctx.restore();
         }
         if (lit) {
@@ -580,27 +629,20 @@ export class SeaLayer {
     if (!state?.presence?.size && !state?.subs?.size) return;
     const geo = this.geometry(world);
     const zoom = this.renderer.camera.zoom;
-    const turn = world.turn ?? 0;
-    const order = { ours: 0, ally: 1, enemy: 2, other: 3 };
-    const h = 14 / zoom;
+    const h = MARK.badgeH / zoom;
     const U = this.renderer.upright;
-    const rowsOf = (here, keep) => [...here.entries()]
-      .map(([nationId, entry]) => ({ nationId, count: entry.ships.length, rel: relationTo(world, playerId, nationId) }))
-      .filter(keep)
-      .sort((a, b) => order[a.rel] - order[b.rel] || b.count - a.count || a.nationId - b.nationId)
-      .slice(0, 3);
     ctx.save();
-    ctx.font = `700 ${10.5 / zoom}px ${FONT_UI}`;
+    ctx.font = MARK_FONT.badge(zoom);
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
     for (const [zoneId, here] of state.presence ?? []) {
       const anchor = geo.anchors[zoneId];
       if (!anchor) continue;
-      const rows = rowsOf(here, (row) => everyone || row.rel !== 'other');
+      const rows = fleetRows(world, playerId, here, (row) => everyone || row.rel !== 'other');
       if (!rows.length) continue;
       for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
         if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
-        this.badges(ctx, world, anchor.x + dx, anchor.y + 4 / zoom, rows, { zoom, sub: false });
+        this.badges(ctx, world, anchor.x + dx, anchor.y + MARK.badgeTop / zoom, rows, { zoom, sub: false });
       }
     }
     // Denizaltılar: filo satırının altında kesik kenarlı kapsül, "U" + sayı.
@@ -608,47 +650,61 @@ export class SeaLayer {
     for (const [zoneId, here] of state.subs ?? []) {
       const anchor = geo.anchors[zoneId];
       if (!anchor) continue;
-      const rows = rowsOf(here, (row) => everyone || row.rel === 'ours' || row.rel === 'enemy');
+      const rows = fleetRows(world, playerId, here, (row) => everyone || row.rel === 'ours' || row.rel === 'enemy');
       if (!rows.length) continue;
       for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
         if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
-        this.badges(ctx, world, anchor.x + dx, anchor.y + 4 / zoom + h + 3 / zoom, rows, { zoom, sub: true });
+        this.badges(ctx, world, anchor.x + dx, anchor.y + MARK.badgeTop / zoom + h + MARK.rowGap / zoom, rows, { zoom, sub: true });
       }
     }
-    // Son iki haftanın deniz muharebeleri ve kaçınmaları: bölge adının
-    // solunda disk. Bizimki sonuca göre renkli (yeşil zafer, kırmızı yenilgi),
-    // başkalarınınki gri (yalnız deniz kipinde); yakın zoomda etiket.
+    for (const mark of this.recentMarks(world, playerId, everyone)) {
+      const anchor = geo.anchors[mark.zone];
+      for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
+        if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
+        const at = this.markAt(ctx, world, mark.zone, anchor.x + dx, anchor.y, zoom);
+        if (mark.kind === 'battle') this.battleMark(ctx, at.x, at.y, zoom, mark);
+        else this.evasionMark(ctx, at.x, at.y, zoom, mark);
+      }
+    }
+    ctx.restore();
+  }
+
+  /**
+   * Son iki haftanın deniz muharebeleri ve kaçınmaları, bölge başına bir:
+   * bölge adının solunda disk. Bizimki sonuca göre renkli (yeşil zafer,
+   * kırmızı yenilgi), başkalarınınki gri (yalnız deniz kipinde); yakın
+   * zoomda etiket. Çizim ve levha engeli (markBoxes) aynı listeyi okur.
+   */
+  recentMarks(world, playerId, everyone) {
+    const state = world.navyState;
+    const anchors = this.geometry(world).anchors;
+    const turn = world.turn ?? 0;
     const marks = playerId >= 0 ? seaZoneMarks(world, playerId) : new Map();
+    const out = [];
     const placed = new Set();
-    for (const report of [...(state.reports ?? [])].reverse()) {
+    for (const report of [...(state?.reports ?? [])].reverse()) {
       if (turn - report.turn > BATTLE_MARK_WEEKS || placed.has(report.zone)) continue;
-      const anchor = geo.anchors[report.zone];
-      if (!anchor) continue;
+      if (!anchors[report.zone]) continue;
       const mine = playerId >= 0 && report.sides.some((side) => side.nations.includes(playerId));
       if (!everyone && !mine) continue;
       placed.add(report.zone);
       const own = mine ? marks.get(report.zone)?.battle : null;
-      const tone = own ? (own.won ? MARK_COLORS.ours : MARK_COLORS.enemy) : MARK_COLORS.other;
-      const label = own ? `${own.won ? 'Victory' : 'Defeat'}${own.won && own.sunk ? ` · ${own.sunk} sunk` : ''}${!own.won && own.lost ? ` · ${own.lost} lost` : ''}` : null;
-      const fresh = report.turn === turn;
-      for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
-        if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
-        const at = this.markAt(ctx, world, report.zone, anchor.x + dx, anchor.y, zoom);
-        this.battleMark(ctx, at.x, at.y, zoom, { tone, label, fresh });
-      }
+      out.push({
+        kind: 'battle',
+        zone: report.zone,
+        tone: own ? (own.won ? MARK_COLORS.ours : MARK_COLORS.enemy) : MARK_COLORS.other,
+        label: own ? `${own.won ? 'Victory' : 'Defeat'}${own.won && own.sunk ? ` · ${own.sunk} sunk` : ''}${!own.won && own.lost ? ` · ${own.lost} lost` : ''}` : null,
+        fresh: report.turn === turn,
+      });
     }
     for (const [zoneId, mark] of marks) {
       if (!mark.evaded || placed.has(zoneId)) continue;
-      const anchor = geo.anchors[zoneId];
-      if (!anchor) continue;
+      if (!anchors[zoneId]) continue;
       placed.add(zoneId);
-      for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
-        if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
-        const at = this.markAt(ctx, world, zoneId, anchor.x + dx, anchor.y, zoom);
-        this.evasionMark(ctx, at.x, at.y, zoom, { us: mark.evaded.us, fresh: mark.evaded.turn === turn });
-      }
+      const us = mark.evaded.us;
+      out.push({ kind: 'evasion', zone: zoneId, us, label: us ? 'refused' : 'they refused', fresh: mark.evaded.turn === turn });
     }
-    ctx.restore();
+    return out;
   }
 
   /**
@@ -656,15 +712,21 @@ export class SeaLayer {
    * yer adın üstüne biniyordu. Ad genişliği bölge başına önbellekte.
    */
   markAt(ctx, world, zoneId, x, y, zoom) {
+    const off = this.markOffset(world, zoneId, ctx);
+    return { x: x + off.x / zoom, y: y + off.y / zoom };
+  }
+
+  /** İşaret diskinin merkezi, bölge çapasına göre ekran px. */
+  markOffset(world, zoneId, ctx = this.meter()) {
     const geo = this.geometry(world);
     geo.nameW ??= new Map();
     if (!geo.nameW.has(zoneId)) {
       ctx.save();
-      ctx.font = `italic 12.5px ${FONT_DISPLAY}`;
+      ctx.font = MARK_FONT.name(1);
       geo.nameW.set(zoneId, ctx.measureText(geo.zones[zoneId]?.name ?? '').width);
       ctx.restore();
     }
-    return { x: x - (geo.nameW.get(zoneId) / 2 + 12) / zoom, y: y - 12 / zoom };
+    return { x: -(geo.nameW.get(zoneId) / 2 + 12), y: -12 };
   }
 
   /**
@@ -675,55 +737,133 @@ export class SeaLayer {
   drawSeaInfo(ctx, world, rect, playerId) {
     if (playerId < 0) return;
     const geo = this.geometry(world);
-    const state = world.navyState;
     const marks = seaZoneMarks(world, playerId);
     if (!marks.size) return;
     const zoom = this.renderer.camera.zoom;
     const U = this.renderer.upright;
-    const turn = world.turn ?? 0;
     ctx.save();
-    ctx.font = `600 ${12 / zoom}px ${FONT_UI}`;
+    ctx.font = MARK_FONT.pill(zoom);
     ctx.textBaseline = 'middle';
     ctx.textAlign = 'left';
     for (const [zoneId, mark] of marks) {
       const anchor = geo.anchors[zoneId];
       if (!anchor) continue;
-      const pills = [];
-      for (const row of mark.underway) {
-        const weeks = Math.max(0, row.eta - turn);
-        pills.push({ text: `+${row.count} · ${weeks <= 0 ? 'this wk' : `${weeks} wk`}`, color: ROUTE_COLOR, dash: true, flag: true });
-      }
-      if (zoom >= 0.35) {
-        if (mark.onUs > 0.01) pills.push({ text: `Blockading us ${Math.round(mark.onUs * 100)}%`, color: MARK_COLORS.enemy });
-        const byUs = [...mark.byUs].sort((a, b) => b.share - a.share);
-        for (const row of byUs.slice(0, mark.onUs > 0.01 ? 1 : 2)) {
-          pills.push({ text: `We blockade ${world.nations[row.nation]?.name ?? '?'} ${Math.round(row.share * 100)}%`, color: MARK_COLORS.ours });
-        }
-        if (byUs.length > (mark.onUs > 0.01 ? 1 : 2)) pills.push({ text: `+${byUs.length - (mark.onUs > 0.01 ? 1 : 2)}`, color: MARK_COLORS.ours });
-      }
+      const { pills, top } = this.seaInfoPills(world, zoneId, mark, zoom);
       if (!pills.length) continue;
-      // Rozet satırlarının altından başla: filo (14) ve denizaltı (12.6) satırı.
-      let top = 4;
-      if (state?.presence?.get(zoneId)?.size) top += 14 + 3;
-      if (state?.subs?.get(zoneId)?.size) top += 12.6 + 3;
       for (const dx of copiesIn(anchor.x, anchor.y, rect, geo.P)) {
         if (U && !U.pin(ctx, anchor.x + dx, anchor.y)) continue;
         let y = anchor.y + top / zoom;
         for (const pill of pills) {
           this.pill(ctx, world, anchor.x + dx, y, pill, zoom, playerId);
-          y += 17 / zoom;
+          y += MARK.pillStep / zoom;
         }
       }
     }
     ctx.restore();
   }
 
+  /** Yazı ölçmek için çizilmeyen küçük tuval (markBoxes kare dışında da ölçer). */
+  meter() {
+    this.meterCtx ??= document.createElement('canvas').getContext('2d');
+    return this.meterCtx;
+  }
+
+  /**
+   * ÇİZİLEN deniz işaretlerinin kutuları — cephe levhaları bunları örtmez.
+   * Her kutu: tür, bölge çapası (dünya) + çapaya göre ekran px ofseti ve ölçüsü
+   * (işaretler zoomdan bağımsız ekran ölçüsündedir). Yerleşim çizimin kendi
+   * yardımcılarından (badgeLayout, seaInfoPills, recentMarks, markOffset)
+   * okunur; kipler renderer'daki gibi: `seas` herkesin filosu + haplar +
+   * kapalı deniz yazısı, `closed` siyasi kipte ordu seçiliyken kapalı deniz
+   * yazısı.
+   */
+  markBoxes(world, playerId, { seas = false, closed = false, zoom = 1 } = {}) {
+    const out = [];
+    const state = world.navyState;
+    if (!state) return out;
+    const geo = this.geometry(world);
+    const ctx = this.meter();
+    const measure = (text) => ctx.measureText(text).width;
+    const box = (kind, zoneId, dx, dy, w, h) => {
+      const anchor = geo.anchors[zoneId];
+      if (anchor) out.push({ kind, x: anchor.x, y: anchor.y, dx, dy, w, h });
+    };
+    // drawFleets ile aynı kapı: hiç filo yoksa disk de çizilmez.
+    if (state.presence?.size || state.subs?.size) {
+      ctx.font = MARK_FONT.badge(1);
+      for (const [zoneId, here] of state.presence ?? []) {
+        const rows = fleetRows(world, playerId, here, (row) => seas || row.rel !== 'other');
+        if (!rows.length) continue;
+        const { total } = badgeLayout(measure, rows, false, 1);
+        box('fleet', zoneId, -total / 2, MARK.badgeTop, total, MARK.badgeH);
+      }
+      for (const [zoneId, here] of state.subs ?? []) {
+        const rows = fleetRows(world, playerId, here, (row) => seas || row.rel === 'ours' || row.rel === 'enemy');
+        if (!rows.length) continue;
+        const { total } = badgeLayout(measure, rows, true, 1);
+        box('subs', zoneId, -total / 2, MARK.badgeTop + MARK.badgeH + MARK.rowGap, total, MARK.subH);
+      }
+      ctx.font = MARK_FONT.label(1);
+      for (const mark of this.recentMarks(world, playerId, seas)) {
+        const at = this.markOffset(world, mark.zone, ctx);
+        const r = mark.fresh ? MARK.discFresh : MARK.disc;
+        const label = mark.label && zoom >= LABEL_ZOOM ? measure(mark.label) + MARK.labelGap : 0;
+        // Etiket 12 px; kutu diskin ve yazının yüksekliğinin büyüğü.
+        const h = Math.max(r * 2, 16);
+        box(mark.kind, mark.zone, at.x - r - label, at.y - h / 2, r * 2 + label, h);
+      }
+    }
+    if (playerId >= 0 && (seas || closed)) {
+      const marks = seaZoneMarks(world, playerId);
+      ctx.font = MARK_FONT.closed(1);
+      const tag = measure(CLOSED_TEXT);
+      for (const [zoneId, mark] of marks) {
+        if (mark.closed) box('closed', zoneId, -tag / 2, -MARK.closedRise - 8, tag, 16);
+      }
+      if (seas) {
+        ctx.font = MARK_FONT.pill(1);
+        for (const [zoneId, mark] of marks) {
+          const { pills, top } = this.seaInfoPills(world, zoneId, mark, zoom);
+          pills.forEach((pill, index) => {
+            const w = pillWidth(measure, pill, 1);
+            box('pill', zoneId, -w / 2, top + index * MARK.pillStep, w, MARK.pillH);
+          });
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Bölgenin hapları ve ilk hapın çapadan uzaklığı (ekran px). */
+  seaInfoPills(world, zoneId, mark, zoom) {
+    const state = world.navyState;
+    const turn = world.turn ?? 0;
+    const pills = [];
+    for (const row of mark.underway) {
+      const weeks = Math.max(0, row.eta - turn);
+      pills.push({ text: `+${row.count} · ${weeks <= 0 ? 'this wk' : `${weeks} wk`}`, color: ROUTE_COLOR, dash: true, flag: true });
+    }
+    if (zoom >= 0.35) {
+      if (mark.onUs > 0.01) pills.push({ text: `Blockading us ${Math.round(mark.onUs * 100)}%`, color: MARK_COLORS.enemy });
+      const byUs = [...mark.byUs].sort((a, b) => b.share - a.share);
+      for (const row of byUs.slice(0, mark.onUs > 0.01 ? 1 : 2)) {
+        pills.push({ text: `We blockade ${world.nations[row.nation]?.name ?? '?'} ${Math.round(row.share * 100)}%`, color: MARK_COLORS.ours });
+      }
+      if (byUs.length > (mark.onUs > 0.01 ? 1 : 2)) pills.push({ text: `+${byUs.length - (mark.onUs > 0.01 ? 1 : 2)}`, color: MARK_COLORS.ours });
+    }
+    // Rozet satırlarının altından başla: filo ve denizaltı satırı.
+    let top = MARK.badgeTop;
+    if (state?.presence?.get(zoneId)?.size) top += MARK.badgeH + MARK.rowGap;
+    if (state?.subs?.get(zoneId)?.size) top += MARK.subH + MARK.rowGap;
+    return { pills, top };
+  }
+
   /** Koyu kapsül içinde tek satır (ortalı). Hayalet rozet kesik kenarlı, bayraklı. */
   pill(ctx, world, cx, y, pill, zoom, playerId) {
-    const pad = 4 / zoom;
-    const h = 15 / zoom;
-    const flagW = pill.flag ? 15 / zoom : 0;
-    const w = ctx.measureText(pill.text).width + pad * 2 + (flagW ? flagW + pad : 0);
+    const pad = MARK.pillPad / zoom;
+    const h = MARK.pillH / zoom;
+    const flagW = pill.flag ? MARK.pillFlagW / zoom : 0;
+    const w = pillWidth((text) => ctx.measureText(text).width, pill, zoom);
     const x = cx - w / 2;
     ctx.fillStyle = 'rgba(8, 14, 18, 0.86)';
     ctx.strokeStyle = pill.color;
@@ -846,13 +986,9 @@ export class SeaLayer {
 
   /** Ulus başına bayrak + sayı rozetleri, ortalı tek satır. */
   badges(ctx, world, cx, y, rows, { zoom, sub }) {
-    const pad = 3 / zoom;
-    const flagW = (sub ? 12 : 15) / zoom;
+    const { pad, flagW, texts, widths, total } = badgeLayout((text) => ctx.measureText(text).width, rows, sub, zoom);
     const flagH = (sub ? 8 : 10) / zoom;
-    const h = (sub ? 12.6 : 14) / zoom;
-    const texts = rows.map((row) => (sub ? `U${row.count}` : String(row.count)));
-    const widths = texts.map((text) => flagW + pad * 3 + ctx.measureText(text).width);
-    const total = widths.reduce((sum, w) => sum + w, 0) + (rows.length - 1) * pad;
+    const h = (sub ? MARK.subH : MARK.badgeH) / zoom;
     let x = cx - total / 2;
     rows.forEach((row, index) => {
       const w = widths[index];
@@ -883,7 +1019,7 @@ export class SeaLayer {
    * çizilir (tek seferlik; sürekli canlandırma yok, CLAUDE.md).
    */
   battleMark(ctx, cx, cy, zoom, { tone = '#ff8f6e', label = null, fresh = false } = {}) {
-    const r = (fresh ? 8.75 : 7) / zoom;
+    const r = (fresh ? MARK.discFresh : MARK.disc) / zoom;
     ctx.save();
     ctx.fillStyle = 'rgba(30, 6, 4, 0.85)';
     ctx.strokeStyle = tone;
@@ -898,13 +1034,13 @@ export class SeaLayer {
     ctx.moveTo(cx + r * 0.5, cy - r * 0.5);
     ctx.lineTo(cx - r * 0.5, cy + r * 0.5);
     ctx.stroke();
-    if (label && zoom >= 0.5) this.markLabel(ctx, cx - r - 4 / zoom, cy, label, tone, zoom);
+    if (label && zoom >= LABEL_ZOOM) this.markLabel(ctx, cx - r - MARK.labelGap / zoom, cy, label, tone, zoom);
     ctx.restore();
   }
 
   /** Kaçınma diski: gri, "↩"; etiket "refused" (biz) / "they refused". */
   evasionMark(ctx, cx, cy, zoom, { us, fresh }) {
-    const r = (fresh ? 8.75 : 7) / zoom;
+    const r = (fresh ? MARK.discFresh : MARK.disc) / zoom;
     const tone = us ? '#c9c2b0' : MARK_COLORS.ours;
     ctx.save();
     ctx.fillStyle = 'rgba(10, 14, 18, 0.88)';
@@ -919,12 +1055,12 @@ export class SeaLayer {
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('↩', cx, cy + 0.5 / zoom);
-    if (zoom >= 0.5) this.markLabel(ctx, cx - r - 4 / zoom, cy, us ? 'refused' : 'they refused', tone, zoom);
+    if (zoom >= LABEL_ZOOM) this.markLabel(ctx, cx - r - MARK.labelGap / zoom, cy, us ? 'refused' : 'they refused', tone, zoom);
     ctx.restore();
   }
 
   markLabel(ctx, right, cy, text, tone, zoom) {
-    ctx.font = `600 ${12 / zoom}px ${FONT_UI}`;
+    ctx.font = MARK_FONT.label(zoom);
     ctx.textAlign = 'right';
     ctx.textBaseline = 'middle';
     ctx.lineJoin = 'round';
