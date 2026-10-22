@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Beste Atölyesi</title>
+<link rel="stylesheet" href="src/fonts.css">
+<style>
+  :root { --bg: #14110d; --panel: #1f1a14; --line: #3a3126; --ink: #eadfc8; --dim: #9c8f78; --gold: #d4a64a; --red: #b8402e; --cell: 13px; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: radial-gradient(ellipse at top, #2a2015, var(--bg) 60%); color: var(--ink); font: 15px "HW UI", system-ui, sans-serif; min-height: 100vh; }
+  /* minmax(0, 1fr): ezgi ızgarası (~880 px) sütunu genişletmesin, kendi içinde kaysın. */
+  main { max-width: 1000px; margin: 0 auto; padding: 32px 20px 60px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 16px; }
+  h1 { font: 600 38px "HW Display", Georgia, serif; margin: 0; }
+  h1 small { display: block; font: 14px "HW UI", sans-serif; color: var(--dim); margin-top: 4px; }
+  h1 a { color: var(--gold); }
+  h2 { font: 600 20px "HW Display", serif; margin: 0 0 10px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 16px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  button, select, input[type=text] { font: 600 14px "HW UI", sans-serif; color: var(--ink); background: #2c241a; border: 1px solid #5a4a33; border-radius: 4px; padding: 7px 12px; }
+  button { cursor: pointer; }
+  button:hover, select:hover { border-color: var(--gold); }
+  button.primary { background: #6b2a1d; border-color: var(--red); }
+  button[aria-pressed="true"] { background: #4a3a22; border-color: var(--gold); color: #fff; }
+  label { color: var(--dim); font-size: 13px; display: inline-flex; gap: 6px; align-items: center; }
+  input[type=range] { accent-color: var(--gold); }
+  #status { color: var(--dim); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .order { display: flex; gap: 6px; flex-wrap: wrap; min-height: 44px; align-items: center; }
+  .chip { display: inline-flex; align-items: center; gap: 2px; background: #2c241a; border: 1px solid #5a4a33; border-radius: 4px; padding: 3px; }
+  .chip b { font: 600 18px "HW Display", serif; padding: 0 8px; cursor: pointer; }
+  .chip.now { border-color: var(--gold); background: #4a3a22; }
+  .chip button { padding: 2px 6px; font-size: 12px; border: none; background: none; color: var(--dim); }
+  .chip button:hover { color: var(--ink); }
+  .grid-form { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
+  .grid-form label { flex-direction: column; align-items: stretch; }
+  .roll { overflow-x: auto; margin-top: 12px; border: 1px solid var(--line); border-radius: 4px; background: #18140f; }
+  .roll-inner { display: grid; grid-template-columns: 48px repeat(64, var(--cell)); width: max-content; user-select: none; }
+  .lbl { font-size: 11px; color: var(--dim); padding: 0 6px; display: flex; align-items: center; height: 18px; border-bottom: 1px solid #241e16; }
+  .lbl.sharp { color: #d08a5a; }
+  .c { height: 18px; border-bottom: 1px solid #241e16; border-left: 1px solid #221c15; cursor: pointer; }
+  .c.beat { border-left-color: #352b20; }
+  .c.bar { border-left: 2px solid #5a4a33; }
+  .c.sharp { background: #1e1712; }
+  .c:hover { background: #3a2e20; }
+  .c.on { background: #8a6a2a; }
+  .c.head { background: var(--gold); }
+  .c.play { box-shadow: inset 0 0 0 9px rgba(184, 64, 46, 0.35); }
+  .hint { color: var(--dim); font-size: 13px; margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Beste Atölyesi<small>Oyunun gerçek kayıtlarıyla kendi parçanı yap: bölümleri kur, akorları ve çalgıları seç, ezgiyi ızgaraya yaz, sırayı diz. <a href="muziklab.html">Müzik Lab →</a></small></h1>
+
+  <section>
+    <div class="row">
+      <input type="text" id="title" maxlength="60" style="width: 230px">
+      <label>Tempo <input type="range" id="tempo" min="50" max="170"> <span id="tempoV"></span></label>
+      <button id="undo" title="Ctrl+Z">↶ Geri al</button>
+      <button id="redo" title="Ctrl+Y">↷ Yinele</button>
+      <button class="primary" id="play">▶ Çal</button>
+      <button id="stop">■ Durdur</button>
+      <label><input type="checkbox" id="soloSec"> Yalnız seçili bölüm</label>
+      <label>Gitar tonu <select id="tone"></select></label>
+    </div>
+    <div class="row" style="margin-top: 10px">
+      <button id="wav">WAV indir</button>
+      <button id="export">Kaydet (.json)</button>
+      <button id="importBtn">Yükle (.json)</button>
+      <input type="file" id="importFile" accept=".json,application/json" hidden>
+      <button id="demo">Örneği yükle</button>
+      <button id="blank">Boş sayfa</button>
+      <span id="status"></span>
+    </div>
+  </section>
+
+  <section>
+    <h2>Sıra</h2>
+    <div class="order" id="order"></div>
+    <div class="row" style="margin-top: 10px">
+      <span style="color: var(--dim); font-size: 13px">Sona ekle:</span>
+      <button data-add="A">+ A</button><button data-add="B">+ B</button><button data-add="C">+ C</button><button data-add="D">+ D</button>
+      <span id="length" style="color: var(--dim); font-size: 13px"></span>
+    </div>
+  </section>
+
+  <section>
+    <div class="row" style="justify-content: space-between">
+      <div class="row" id="secTabs"></div>
+      <div class="row">
+        <label>Kopyala → <select id="copyTo"><option value="">—</option><option>A</option><option>B</option><option>C</option><option>D</option></select></label>
+      </div>
+    </div>
+    <h2 style="margin-top: 14px">Akorlar (her ölçüye bir)</h2>
+    <div class="grid-form" id="chords"></div>
+    <h2 style="margin-top: 16px">Çalgılar</h2>
+    <div class="grid-form" id="styles"></div>
+    <div class="row" style="margin-top: 12px">
+      <label>Güç <input type="range" id="power" min="0" max="100" style="width: 220px"></label>
+      <span class="hint" style="margin: 0">Hafifte kemanın/piyanonun yumuşak kaydı, güçlüde forte kaydı ve sert vuruşlar.</span>
+    </div>
+    <h2 style="margin-top: 16px">Ezgi</h2>
+    <div class="row">
+      <span style="color: var(--dim); font-size: 13px">Nota uzunluğu:</span>
+      <span class="row" id="lens"></span>
+      <button id="clearMel">Ezgiyi temizle</button>
+    </div>
+    <div class="roll"><div class="roll-inner" id="roll"></div></div>
+    <p class="hint">Ctrl+Z geri alır, Ctrl+Y yineler (100 adım; son 40'ı sayfa kapansa da kalır). Boş kareye tıkla: nota ekler (seçili uzunlukta, çalıp dinletir). Notaya tıkla: siler. Satırlar Mi minör (Sol majör) sesleri; turuncu satır Re#, armonik minörün "doğu" rengi. Değişiklik çalarken bir sonraki adımda duyulur; parça her değişiklikte bu tarayıcıya kendiliğinden kaydedilir.</p>
+  </section>
+</main>
+<script type="module">
+import { MusicPlayer, renderPiece, toWav } from './src/audio/musicEngine.js';
+import { CHORDS, SCALE_ROWS, STYLES, STEPS_PER_SECTION, demoSong, makeUserScore, noteName, normalizeSong } from './src/audio/userSong.js';
+import { AMP_PRESET_NAMES, ampPreset, setAmpPreset } from './src/audio/guitar.js';
+import { loadOrchestra } from './src/audio/orchestra.js';
+
+const $ = (id) => document.getElementById(id);
+const STORE = 'hexwar:besteci';
+// Geri alma geçmişi de saklanır: Kerem "Boş sayfa"ya yanlışlıkla basıp bir
+// parçayı kaybetti; o zaman ne geri al vardı ne de diskte bir kopya (uygulama
+// içi tarayıcı depoyu bellekte tutuyor). Artık sayfa kapanıp açılsa da geri dönülür.
+const HISTORY = 'hexwar:besteci:gecmis';
+const UNDO_MAX = 100;
+const UNDO_KEEP = 40;
+const KEYS = ['A', 'B', 'C', 'D'];
+const LENS = [[1, '1/16'], [2, '1/8'], [4, '1/4'], [8, '1/2'], [16, 'Tam']];
+
+// Şarkı nesnesi tek ve kalıcı: partisyon sınıfı ona bağlı, yükleme içeriğini değiştirir.
+const song = normalizeSong(readStore() ?? demoSong());
+let current = 'A';
+let noteLen = 4;
+let soloKey = null;
+
+function readStore() {
+  try { return JSON.parse(localStorage.getItem(STORE)); } catch { return null; }
+}
+// Geri al: her değişiklikten ÖNCEKİ hâl yığına girer. Kaydırıcı sürükleme gibi
+// art arda değişiklikler (700 ms içinde) tek adım sayılır, yoksa yığın dolardı.
+const undoStack = readHistory();
+const redoStack = [];
+let lastSnap = JSON.stringify(song);
+let lastPush = -Infinity;
+
+function readHistory() {
+  try { const h = JSON.parse(localStorage.getItem(HISTORY)); return Array.isArray(h) ? h : []; } catch { return []; }
+}
+function writeStore() {
+  try {
+    localStorage.setItem(STORE, lastSnap);
+    localStorage.setItem(HISTORY, JSON.stringify(undoStack.slice(-UNDO_KEEP)));
+  } catch { /* özel pencere: kayıt yok, parça yine çalar */ }
+}
+function save() {
+  const snap = JSON.stringify(song);
+  if (snap !== lastSnap) {
+    const now = performance.now();
+    if (now - lastPush > 700) {
+      undoStack.push(lastSnap);
+      if (undoStack.length > UNDO_MAX) undoStack.shift();
+      redoStack.length = 0;
+    }
+    lastPush = now;
+    lastSnap = snap;
+    writeStore();
+  }
+  renderLength();
+  paintUndo();
+}
+/** Yığından bir hâli şarkıya uygula (yeni geri al adımı açmadan). */
+function restore(snap) {
+  const next = normalizeSong(JSON.parse(snap));
+  for (const k of Object.keys(song)) delete song[k];
+  Object.assign(song, next);
+  lastSnap = JSON.stringify(song);
+  lastPush = -Infinity;
+  writeStore();
+  renderAll();
+  paintUndo();
+}
+function undo() {
+  if (!undoStack.length) return status('geri alınacak adım yok');
+  redoStack.push(lastSnap);
+  restore(undoStack.pop());
+  status(`geri alındı (${undoStack.length} adım daha)`);
+}
+function redo() {
+  if (!redoStack.length) return status('yinelenecek adım yok');
+  undoStack.push(lastSnap);
+  restore(redoStack.pop());
+  status('yinelendi');
+}
+function paintUndo() {
+  $('undo').disabled = !undoStack.length;
+  $('redo').disabled = !redoStack.length;
+}
+$('undo').onclick = undo;
+$('redo').onclick = redo;
+document.addEventListener('keydown', (e) => {
+  // Başlık kutusunda tarayıcının kendi metin geri alması çalışsın.
+  if (e.target instanceof Element && e.target.matches('input[type=text]')) return;
+  if (!(e.ctrlKey || e.metaKey)) return;
+  const k = e.key.toLowerCase();
+  if (k === 'z' && !e.shiftKey) { e.preventDefault(); undo(); }
+  else if (k === 'y' || (k === 'z' && e.shiftKey)) { e.preventDefault(); redo(); }
+});
+
+function replaceSong(raw) {
+  const next = normalizeSong(raw);
+  for (const k of Object.keys(song)) delete song[k];
+  Object.assign(song, next);
+  save();
+  renderAll();
+}
+
+// Çalım: "yalnız seçili bölüm" açıkken sıra o bölümden ibaret görünür.
+const view = {
+  get tempo() { return song.tempo; },
+  get sections() { return song.sections; },
+  get order() { return soloKey ? [soloKey] : song.order; },
+};
+const Score = makeUserScore(view);
+const player = new MusicPlayer(Score, { volume: 0.85 });
+player.onStep = () => paintPlayhead();
+
+// ------------------------------------------------------------- üst çubuk
+
+$('title').oninput = (e) => { song.title = e.target.value; save(); };
+$('tempo').oninput = (e) => { song.tempo = Number(e.target.value); $('tempoV').textContent = `${song.tempo} BPM`; save(); };
+$('play').onclick = async () => {
+  soloKey = $('soloSec').checked ? current : null;
+  player.stop(0.05);
+  await player.start();
+};
+$('stop').onclick = () => { player.stop(0.4); paintPlayhead(); };
+$('soloSec').onchange = (e) => { soloKey = e.target.checked ? current : null; };
+$('tone').innerHTML = Object.entries(AMP_PRESET_NAMES).map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
+$('tone').value = ampPreset();
+$('tone').onchange = (e) => setAmpPreset(e.target.value);
+
+$('export').onclick = () => {
+  const blob = new Blob([JSON.stringify(song, null, 1)], { type: 'application/json' });
+  download(blob, `besteci-${slug(song.title)}.json`);
+};
+$('importBtn').onclick = () => $('importFile').click();
+$('importFile').onchange = async (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  try { replaceSong(JSON.parse(await f.text())); status(`"${song.title}" yüklendi`); } catch { status('dosya okunamadı (JSON değil)'); }
+  e.target.value = '';
+};
+$('demo').onclick = () => { replaceSong(demoSong()); status('örnek yüklendi — vazgeçersen Ctrl+Z'); };
+$('blank').onclick = () => {
+  const empty = { title: 'Yeni parça', tempo: 100, sections: {}, order: ['A'] };
+  for (const k of KEYS) empty.sections[k] = { chords: ['Em', 'C', 'D', 'Em'], drums: 'yok', bass: 'uzun', guitar: 'yok', piano: 'akor', lead: 'vln', power: 0.5, melody: [] };
+  replaceSong(empty);
+  status('boş sayfa — vazgeçersen Ctrl+Z');
+};
+$('wav').onclick = async () => {
+  status('WAV hazırlanıyor…');
+  const Offline = makeUserScore(song);
+  const bars = song.order.length * 4;
+  const seconds = (bars * 4 * 60) / song.tempo + 4;
+  const { buffer } = await renderPiece(Offline, { bars, level: () => 1, micro: () => 0 }, { seconds });
+  download(new Blob([toWav(buffer)], { type: 'audio/wav' }), `besteci-${slug(song.title)}.wav`);
+  status(`WAV hazır (${seconds.toFixed(0)} sn)`);
+};
+
+function download(blob, name) {
+  const url = URL.createObjectURL(blob);
+  Object.assign(document.createElement('a'), { href: url, download: name }).click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+}
+const slug = (s) => s.toLowerCase().replace(/[^a-z0-9ğüşıöç]+/gi, '-').replace(/^-|-$/g, '') || 'parca';
+function status(text) { $('status').textContent = text; }
+
+// ------------------------------------------------------------- sıra
+
+function renderOrder() {
+  const playing = player.playing && !soloKey ? Score.locate(player.bar).slot : -1;
+  $('order').innerHTML = song.order.map((k, i) => `<span class="chip${i === playing ? ' now' : ''}" data-i="${i}">
+    <button data-mv="-1" title="sola">◀</button><b>${k}</b><button data-mv="1" title="sağa">▶</button><button data-rm title="çıkar">✕</button></span>`).join('');
+}
+$('order').onclick = (e) => {
+  const chip = e.target.closest('.chip');
+  if (!chip) return;
+  const i = Number(chip.dataset.i);
+  if (e.target.matches('b')) { selectSection(song.order[i]); return; }
+  if (e.target.dataset.mv) {
+    const j = i + Number(e.target.dataset.mv);
+    if (j < 0 || j >= song.order.length) return;
+    [song.order[i], song.order[j]] = [song.order[j], song.order[i]];
+  } else if ('rm' in e.target.dataset) {
+    if (song.order.length === 1) return status('sırada en az bir bölüm kalmalı');
+    song.order.splice(i, 1);
+  } else return;
+  save();
+  renderOrder();
+};
+for (const b of document.querySelectorAll('[data-add]')) b.onclick = () => { song.order.push(b.dataset.add); save(); renderOrder(); };
+
+function renderLength() {
+  const bars = song.order.length * 4;
+  $('length').textContent = `· ${song.order.length} bölüm, ${bars} ölçü, ~${Math.round((bars * 4 * 60) / song.tempo)} sn`;
+}
+
+// ------------------------------------------------------------- bölüm
+
+$('secTabs').innerHTML = KEYS.map((k) => `<button data-sec="${k}">Bölüm ${k}</button>`).join('');
+for (const b of $('secTabs').children) b.onclick = () => selectSection(b.dataset.sec);
+
+function selectSection(k) {
+  current = k;
+  if ($('soloSec').checked) soloKey = k;
+  for (const b of $('secTabs').children) b.setAttribute('aria-pressed', String(b.dataset.sec === k));
+  renderSection();
+}
+
+const STYLE_LABELS = { drums: 'Davul', bass: 'Bas', guitar: 'Gitar', piano: 'Piyano', lead: 'Ezgi çalgısı' };
+function renderSection() {
+  const sec = song.sections[current];
+  $('chords').innerHTML = sec.chords.map((c, i) => `<label>Ölçü ${i + 1}<select data-chord="${i}">${Object.keys(CHORDS).map((n) => `<option${n === c ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`).join('');
+  $('styles').innerHTML = Object.entries(STYLE_LABELS).map(([f, label]) => `<label>${label}<select data-style="${f}">${Object.entries(STYLES[f]).map(([v, n]) => `<option value="${v}"${v === sec[f] ? ' selected' : ''}>${n}</option>`).join('')}</select></label>`).join('');
+  $('power').value = Math.round(sec.power * 100);
+  renderRoll();
+}
+$('chords').onchange = (e) => { song.sections[current].chords[Number(e.target.dataset.chord)] = e.target.value; save(); };
+$('styles').onchange = (e) => { song.sections[current][e.target.dataset.style] = e.target.value; save(); };
+$('power').oninput = (e) => { song.sections[current].power = Number(e.target.value) / 100; save(); };
+$('copyTo').onchange = (e) => {
+  const to = e.target.value;
+  e.target.value = '';
+  if (!to || to === current) return;
+  song.sections[to] = structuredClone(song.sections[current]);
+  save();
+  status(`Bölüm ${current} → ${to} kopyalandı`);
+};
+
+// ------------------------------------------------------------- ezgi ızgarası
+
+$('lens').innerHTML = LENS.map(([n, label]) => `<button data-len="${n}">${label}</button>`).join('');
+for (const b of $('lens').children) b.onclick = () => { noteLen = Number(b.dataset.len); paintLens(); };
+function paintLens() { for (const b of $('lens').children) b.setAttribute('aria-pressed', String(Number(b.dataset.len) === noteLen)); }
+
+function renderRoll() {
+  let html = '';
+  for (const m of SCALE_ROWS) {
+    const sharp = m % 12 === 3;
+    html += `<div class="lbl${sharp ? ' sharp' : ''}">${noteName(m)}</div>`;
+    for (let s = 0; s < STEPS_PER_SECTION; s++) {
+      const cls = ['c', s % 16 === 0 ? 'bar' : s % 4 === 0 ? 'beat' : '', sharp ? 'sharp' : ''].filter(Boolean).join(' ');
+      html += `<div class="${cls}" data-m="${m}" data-s="${s}"></div>`;
+    }
+  }
+  $('roll').innerHTML = html;
+  paintNotes();
+}
+
+function paintNotes() {
+  const cells = $('roll').querySelectorAll('.c');
+  for (const c of cells) c.classList.remove('on', 'head');
+  for (const [st, m, len] of song.sections[current].melody) {
+    for (let s = st; s < st + len && s < STEPS_PER_SECTION; s++) {
+      const c = $('roll').querySelector(`.c[data-m="${m}"][data-s="${s}"]`);
+      c?.classList.add(s === st ? 'head' : 'on');
+    }
+  }
+}
+
+$('roll').onclick = (e) => {
+  const c = e.target.closest('.c');
+  if (!c) return;
+  const m = Number(c.dataset.m), s = Number(c.dataset.s);
+  const mel = song.sections[current].melody;
+  const hit = mel.findIndex(([st, mm, len]) => mm === m && s >= st && s < st + len);
+  if (hit >= 0) mel.splice(hit, 1);
+  else {
+    mel.push([s, m, Math.min(noteLen, STEPS_PER_SECTION - s)]);
+    mel.sort((a, b) => a[0] - b[0]);
+    preview(m);
+  }
+  save();
+  paintNotes();
+};
+$('clearMel').onclick = () => { song.sections[current].melody = []; save(); paintNotes(); };
+
+// Eklenen notayı seçili ezgi çalgısıyla kısaca dinlet (çalım bağlamından ayrı).
+let previewOrc = null;
+async function preview(m) {
+  const lead = song.sections[current].lead;
+  if (lead === 'yok') return;
+  if (!previewOrc) {
+    const ctx = new AudioContext();
+    previewOrc = loadOrchestra(ctx).then((orc) => ({ ctx, orc }));
+  }
+  const { ctx, orc } = await previewOrc;
+  await ctx.resume();
+  const inst = lead === 'vln' ? 'vln' : lead === 'piano' ? 'piano' : 'lead';
+  orc.play(inst, ctx.destination, ctx.currentTime + 0.01, { midi: m, layer: 1, vel: inst === 'lead' ? 0.25 : 0.6, dur: 0.45, release: 0.25 });
+}
+
+// Çalma imleci: çalan bölüm ekrandaki bölümse o adımın sütunu.
+let lastPlay = [];
+function paintPlayhead() {
+  for (const c of lastPlay) c.classList.remove('play');
+  lastPlay = [];
+  renderOrder();
+  if (!player.playing) return;
+  const { key, sectionBar } = Score.locate(player.bar);
+  if (key !== current) return;
+  const s = sectionBar * 16 + player.step;
+  lastPlay = [...$('roll').querySelectorAll(`.c[data-s="${s}"]`)];
+  for (const c of lastPlay) c.classList.add('play');
+}
+
+function renderAll() {
+  $('title').value = song.title;
+  $('tempo').value = song.tempo;
+  $('tempoV').textContent = `${song.tempo} BPM`;
+  renderOrder();
+  renderLength();
+  selectSection(current);
+}
+
+paintLens();
+renderAll();
+paintUndo();
+player.preload();
+window.besteci = { song, player };
+</script>
+</body>
+</html>

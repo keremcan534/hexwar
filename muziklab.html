@@ -1,0 +1,317 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<title>Müzik Lab</title>
+<link rel="stylesheet" href="src/fonts.css">
+<style>
+  :root { --bg: #14110d; --panel: #1f1a14; --line: #3a3126; --ink: #eadfc8; --dim: #9c8f78; --gold: #d4a64a; --red: #b8402e; }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: radial-gradient(ellipse at top, #2a2015, var(--bg) 60%); color: var(--ink); font: 15px "HW UI", system-ui, sans-serif; min-height: 100vh; }
+  main { max-width: 980px; margin: 0 auto; padding: 36px 24px; display: grid; gap: 18px; }
+  h1 { font: 600 40px "HW Display", Georgia, serif; margin: 0; letter-spacing: 0.02em; }
+  h1 small { display: block; font: 14px "HW UI", sans-serif; color: var(--dim); letter-spacing: 0; margin-top: 4px; }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 18px; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+  button { font: 600 14px "HW UI", sans-serif; color: var(--ink); background: #2c241a; border: 1px solid #5a4a33; border-radius: 4px; padding: 9px 16px; cursor: pointer; }
+  button:hover { border-color: var(--gold); }
+  button.primary { background: #6b2a1d; border-color: var(--red); }
+  .tabs button[aria-pressed="true"] { background: #4a3a22; border-color: var(--gold); color: #fff; }
+  label { color: var(--dim); font-size: 13px; }
+  input[type=range] { width: 260px; accent-color: var(--gold); }
+  .stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 14px; }
+  .stat { background: #18140f; border: 1px solid var(--line); border-radius: 4px; padding: 10px 12px; }
+  .stat b { display: block; font: 600 26px "HW Display", serif; color: var(--gold); font-variant-numeric: tabular-nums; }
+  .stat span { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; }
+  #pad { height: 150px; border: 1px dashed #6b5a40; border-radius: 6px; display: grid; place-items: center; color: var(--dim); user-select: none; cursor: crosshair; transition: background 80ms; text-align: center; }
+  #pad.flash { background: #3a1d14; }
+  .layers { display: grid; grid-template-columns: repeat(auto-fit, minmax(90px, 1fr)); gap: 8px; margin-top: 14px; }
+  .layer { text-align: center; font-size: 12px; color: var(--dim); }
+  .layer i { display: block; height: 70px; background: #18140f; border: 1px solid var(--line); border-radius: 3px; position: relative; overflow: hidden; margin-bottom: 4px; }
+  .layer i::after { content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: calc(var(--v, 0) * 100%); background: linear-gradient(#e0b65a, #8a3b22); transition: height 200ms; }
+  canvas { width: 100%; height: 120px; display: block; background: #18140f; border: 1px solid var(--line); border-radius: 4px; margin-top: 12px; }
+  #info { color: var(--dim); font-size: 13px; margin-top: 8px; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Müzik Lab<small>Gerçek kayıtlar: gitar/bas Karoryfer, davullar ve solo keman VSCO 2 CE, piyano VCSL Steinway B (hepsi CC0). Mikro senin el hızın; sayfanın her yerinde tık ve tuş sayılır. <a href="besteci.html" style="color: var(--gold)">Beste atölyesi →</a></small></h1>
+
+  <section>
+    <div class="row tabs" id="tabs"></div>
+    <p id="about" style="color: var(--dim); margin: 12px 0 0"></p>
+  </section>
+
+  <section>
+    <div class="row">
+      <button class="primary" id="demo">▶ Gösteri</button>
+      <button id="wav">WAV indir</button>
+      <span id="info"></span>
+    </div>
+    <canvas id="wave" width="1860" height="240"></canvas>
+  </section>
+
+  <section>
+    <div class="row">
+      <button class="primary" id="live">▶ Canlı başlat</button>
+      <button id="end">Bitir</button>
+      <button id="stop">■ Sustur</button>
+      <label><span id="levelName">Yoğunluk</span> <input id="level" type="range" min="0" max="100" value="45"></label>
+      <label>Gitar tonu <select id="tone"></select></label>
+      <label><input id="manual" type="checkbox"> Mikroyu elle sabitle</label>
+      <input id="micro" type="range" min="0" max="100" value="20" disabled>
+    </div>
+    <div class="stats">
+      <div class="stat"><b id="apm">0</b><span>APM</span></div>
+      <div class="stat"><b id="microv">0.00</b><span>Mikro</span></div>
+      <div class="stat"><b id="bpm">0</b><span>Tempo</span></div>
+      <div class="stat"><b id="pos">1/1 · 1</b><span>Ölçü/geçiş · vuruş</span></div>
+    </div>
+    <div class="layers" id="layers"></div>
+  </section>
+
+  <section>
+    <div class="row">
+      <strong style="font: 600 18px 'HW Display', serif; margin-right: 8px">Olay müzikleri</strong>
+      <button class="primary" data-cue="savasIlani">▶ Savaş ilanı</button>
+      <button class="primary" data-cue="zafer">▶ Zafer</button>
+      <button class="primary" data-cue="yenilgi">▶ Yenilgi</button>
+    </div>
+    <p style="color: var(--dim); margin: 10px 0 0">Tek seferlik, 6-8 sn. Hepsi Mi merkezli: hangi döngünün üstüne vurursa vursun tondan düşmez.</p>
+  </section>
+
+  <section>
+    <div id="pad">Tıkla, tuşlara bas — el hızın müziği sürer.</div>
+  </section>
+</main>
+<script type="module">
+import { CuePlayer, MusicPlayer, renderCue, renderPiece, toWav, analyze } from './src/audio/musicEngine.js';
+import { BattleScore, BATTLE_DEMO } from './src/audio/battleMusic.js';
+import { PeaceScore, PEACE_DEMO } from './src/audio/peaceMusic.js';
+import { MarchScore, MARCH_DEMO } from './src/audio/marchMusic.js';
+import { StateScore, STATE_DEMO } from './src/audio/stateMusic.js';
+import { NavalScore, NAVAL_DEMO } from './src/audio/navalMusic.js';
+import { UnrestScore, UNREST_DEMO } from './src/audio/unrestMusic.js';
+import { Cues } from './src/audio/cues.js';
+import { AMP_PRESETS, AMP_PRESET_NAMES, ampPreset, setAmpPreset } from './src/audio/guitar.js';
+
+const PIECES = {
+  savas: {
+    title: 'Savaş', Score: BattleScore, demo: BATTLE_DEMO, level: 'Yoğunluk', start: 0.45,
+    about: 'Mi minör, ağır gitar + gerçek bas + davullar. Yoğunluk bölükleri açar; el hızı riffi koşturur, en üstte double kick.',
+    names: { drums: 'Davul', kick: 'Kick', gtr: 'Gitar', bass: 'Bas', snare: 'Trampet', lead: 'Lead' },
+  },
+  baris: {
+    title: 'Barış / Gerilim', Score: PeaceScore, demo: PEACE_DEMO, level: 'Gerilim', start: 0,
+    about: 'Mi minör, solo keman ağıdı + temiz gitar arpeji + Steinway piyano. Gerilim yükseldikçe kalp atışı, keman tremolosu, bas nabzı ve piyanonun alçak oktavı gelir.',
+    names: { arp: 'Arpej', bass: 'Bas', vln: 'Keman', trem: 'Tremolo', drums: 'Kalp', pulse: 'Nabız', piano: 'Piyano' },
+  },
+  sefer: {
+    title: 'Seferberlik', Score: MarchScore, demo: MARCH_DEMO, level: 'Seferberlik', start: 0.4,
+    about: 'Mi minör, barıştan savaşa köprü. Taiko adımları ve piyano alçak oktavı yürür; seferberlik arttıkça bas ve kısık gitar yürüyüşe katılır, keman marş temasını çalar, en üstte gitar duvarı savaşı haber verir.',
+    names: { drums: 'Taiko', piano: 'Piyano', bass: 'Bas', mute: 'Yürüyüş', vln: 'Keman', gtr: 'Gitar duvarı' },
+  },
+  devlet: {
+    title: 'Devlet', Score: StateScore, demo: STATE_DEMO, level: 'Sıcaklık', start: 0.3,
+    about: 'Sol majör, diplomasi ve ekonomi ekranları için. Piyano öncülüğünde, geniş rubato; sıcaklık arttıkça bas, keman ve temiz gitar katılır.',
+    names: { piano: 'Piyano', bass: 'Bas', vln: 'Keman', gtr: 'Gitar' },
+  },
+  deniz: {
+    title: 'Deniz', Score: NavalScore, demo: NAVAL_DEMO, level: 'Deniz savaşı', start: 0.2,
+    about: 'Mi Dor, donanma için. Piyano dalga gibi inip çıkar, timpani kabarıp söner; deniz savaşında kürek vuruşları, toplar, keman tremolosu ve gitar duvarı.',
+    names: { piano: 'Piyano', bass: 'Bas', vln: 'Keman', trem: 'Tremolo', drums: 'Davul/top', gtr: 'Gitar duvarı' },
+  },
+  kargasa: {
+    title: 'Kargaşa', Score: UnrestScore, demo: UNREST_DEMO, level: 'Huzursuzluk', start: 0.3,
+    about: 'Mi Frig, halk hareketleri ve ayaklanma için. 3+3+3+3+4 vurgulu tedirgin ostinato, Mi-Fa sürtünmesi; ayaklanmada keman tremolosu ve bozulmuş Mi-Fa riffi.',
+    names: { ost: 'Ostinato', vln: 'Keman', trem: 'Tremolo', bass: 'Bas', mute: 'Pedal', drums: 'Davul', gtr: 'Riff' },
+  },
+};
+
+// Olay müzikleri: her basışta yeni karıştırıcı, üst üste çalabilir.
+const cues = new CuePlayer(Cues);
+for (const b of document.querySelectorAll('[data-cue]')) b.onclick = () => cues.play(b.dataset.cue);
+
+const $ = (id) => document.getElementById(id);
+
+// Gitar tonu: bütün çalan ritim amfileri anında geçer (savaş, seferberlik, olaylar).
+$('tone').innerHTML = Object.entries(AMP_PRESET_NAMES).map(([k, n]) => `<option value="${k}">${n}</option>`).join('');
+$('tone').value = ampPreset();
+$('tone').onchange = (e) => setAmpPreset(e.target.value);
+let key = 'savas';
+let piece = PIECES[key];
+let music = null;
+let detach = null;
+let rendered = {};
+let demoSrc = null;
+let playCtx = null;
+
+function selectPiece(k) {
+  music?.stop(0.3);
+  detach?.();
+  demoSrc?.stop();
+  key = k;
+  piece = PIECES[k];
+  music = new MusicPlayer(piece.Score);
+  detach = music.attachInput(window);
+  music.onStep = (m) => { if (m.step % 4 === 0) paintStats(); };
+  // Örnekler (~6 MB) seçilince yüklenir; ilk tıkta beklenmez.
+  music.preload();
+  music.setLevel(piece.start);
+  $('level').value = piece.start * 100;
+  $('levelName').textContent = piece.level;
+  $('about').textContent = piece.about;
+  $('demo').textContent = `▶ ${piece.demo.seconds} sn ${piece.title.toLowerCase()} gösterisi`;
+  $('layers').innerHTML = Object.entries(piece.names).map(([n, t]) => `<div class="layer"><i id="L-${n}"></i>${t}</div>`).join('');
+  for (const b of $('tabs').children) b.setAttribute('aria-pressed', String(b.dataset.k === k));
+  $('info').textContent = '';
+  if (rendered[k]) drawWave(rendered[k].buffer, rendered[k].hitAt);
+  else $('wave').getContext('2d').clearRect(0, 0, 1860, 240);
+  window.music = music;
+}
+
+$('tabs').innerHTML = Object.entries(PIECES).map(([k, p]) => `<button data-k="${k}">${p.title}</button>`).join('');
+for (const b of $('tabs').children) b.onclick = () => selectPiece(b.dataset.k);
+
+function paintStats() {
+  $('apm').textContent = Math.round(music.meter.apm());
+  $('microv').textContent = music.micro.toFixed(2);
+  $('bpm').textContent = Math.round(music.bpm);
+  $('pos').textContent = `${(music.bar % piece.Score.BARS) + 1}/${Math.floor(music.bar / piece.Score.BARS) + 1} · ${Math.floor(music.step / 4) + 1}`;
+  const lv = piece.Score.layerLevels(music.level);
+  for (const [k, v] of Object.entries(lv)) $('L-' + k)?.style.setProperty('--v', music.playing ? v : 0);
+}
+// Müzik çalmazken de APM düşüşü görünsün; sayfa açıkken yeterli.
+setInterval(paintStats, 250);
+
+$('live').onclick = () => { demoSrc?.stop(); music.start(); };
+$('end').onclick = () => music.end();
+$('stop').onclick = () => music.stop();
+$('level').oninput = (e) => music.setLevel(e.target.value / 100);
+$('manual').onchange = (e) => {
+  $('micro').disabled = !e.target.checked;
+  music.setMicro(e.target.checked ? $('micro').value / 100 : null);
+};
+$('micro').oninput = (e) => music.setMicro(e.target.value / 100);
+$('pad').addEventListener('pointerdown', () => {
+  $('pad').classList.add('flash');
+  setTimeout(() => $('pad').classList.remove('flash'), 70);
+});
+
+// Döküm sürerken sekme değişebilir: parça başta yakalanır, ekran yalnız hâlâ
+// o sekmedeyse güncellenir (yoksa öbür parçanın boş sonucunu okuyup çöküyordu).
+async function getDemo(k = key) {
+  const p = PIECES[k];
+  if (!rendered[k]) {
+    $('info').textContent = 'kayıtlar kuruluyor…';
+    const t0 = performance.now();
+    rendered[k] = await renderPiece(p.Score, p.demo, { seconds: p.demo.seconds });
+    if (k === key) {
+      const a = analyze(rendered[k].buffer);
+      $('info').textContent = `${rendered[k].buffer.duration.toFixed(1)} sn · tepe ${a.peak} · ${a.overall} dBFS · ${Math.round(performance.now() - t0)} ms'de üretildi`;
+      drawWave(rendered[k].buffer, rendered[k].hitAt);
+    }
+  }
+  return rendered[k];
+}
+
+function drawWave(buf, hitAt) {
+  const c = $('wave');
+  const g = c.getContext('2d');
+  const d = buf.getChannelData(0);
+  const W = c.width, H = c.height, step = Math.ceil(d.length / W);
+  g.clearRect(0, 0, W, H);
+  g.fillStyle = '#d4a64a';
+  for (let x = 0; x < W; x++) {
+    let lo = 0, hi = 0;
+    for (let i = x * step; i < Math.min(d.length, (x + 1) * step); i++) { lo = Math.min(lo, d[i]); hi = Math.max(hi, d[i]); }
+    g.fillRect(x, H / 2 - hi * H / 2, 1, Math.max(1, (hi - lo) * H / 2));
+  }
+  g.fillStyle = '#b8402e';
+  g.fillRect(Math.round(hitAt / buf.duration * W), 0, 2, H);
+}
+
+$('demo').onclick = async () => {
+  music.stop(0.3);
+  const k = key;
+  const { buffer } = await getDemo(k);
+  // Döküm bitene dek başka sekmeye geçildiyse eski parçayı çalma.
+  if (k !== key) return;
+  playCtx ??= new AudioContext();
+  await playCtx.resume();
+  demoSrc?.stop();
+  demoSrc = playCtx.createBufferSource();
+  demoSrc.buffer = buffer;
+  demoSrc.connect(playCtx.destination);
+  demoSrc.start();
+};
+
+$('wav').onclick = async () => {
+  const k = key;
+  const { buffer } = await getDemo(k);
+  const url = URL.createObjectURL(new Blob([toWav(buffer)], { type: 'audio/wav' }));
+  const a = Object.assign(document.createElement('a'), { href: url, download: `hexwar-${k}-${PIECES[k].demo.seconds}sn.wav` });
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 5000);
+};
+
+// Başsız döküm için (scripts/audio/render-music.mjs, form-probe.mjs). `fixed`
+// = { bars, seconds, level, micro }: gösteri eğrisi yerine sabit ayar (iki
+// döngü geçişini aynı koşulda karşılaştırmak için).
+window.__renderPiece = async (k, solo = null, fixed = null) => {
+  const p = PIECES[k];
+  const curve = fixed ? { bars: fixed.bars, level: () => fixed.level, micro: () => fixed.micro } : p.demo;
+  const seconds = fixed ? fixed.seconds : p.demo.seconds;
+  const { buffer, hitAt, barTimes } = await renderPiece(p.Score, curve, { seconds, solo });
+  const bytes = new Uint8Array(toWav(buffer));
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { hitAt, barTimes, analysis: analyze(buffer), wav: btoa(bin), buses: Object.keys(p.names) };
+};
+
+// Olay müziği dökümü (render-music.mjs olay:<ad>).
+window.__renderCue = async (name) => {
+  const { buffer } = await renderCue(Cues, name);
+  const bytes = new Uint8Array(toWav(buffer));
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { hitAt: 0, barTimes: [0], analysis: analyze(buffer), wav: btoa(bin), buses: [] };
+};
+window.cues = cues;
+
+// Gitar A/B dökümü: savaşın aynı iki ölçüsü (Em, C; tam yoğunluk) her ön ayarla
+// sırayla, aralarında kuyruk payı. Lead susturulur: yalnız ritim gitarı karşılaştırılır.
+window.__renderGuitarAB = async () => {
+  const names = Object.keys(AMP_PRESETS);
+  const sr = 44100, dt = 60 / BattleScore.tempoFor(0.6) / 4;
+  const seconds = names.length * (32 * dt + 1.2) + 1;
+  const ctx = new OfflineAudioContext(2, Math.round(seconds * sr), sr);
+  const score = await BattleScore.create(ctx, ctx.destination);
+  score.bus.lead.trim.gain.value = 0;
+  let t = 0.05;
+  const marks = [];
+  for (const name of names) {
+    score.gtrL.setPreset(name, t);
+    score.gtrR.setPreset(name, t);
+    const start = t;
+    for (const bar of [4, 5]) for (let step = 0; step < 16; step++) { score.scheduleStep(t, dt, bar, step, 0.95, 0.6); t += dt; }
+    marks.push({ name, start, end: t });
+    t += 1.2;
+  }
+  const buffer = await ctx.startRendering();
+  const L = buffer.getChannelData(0);
+  for (const m of marks) {
+    let acc = 0, n = 0;
+    for (let i = Math.floor(m.start * sr); i < Math.floor(m.end * sr); i++, n++) acc += L[i] * L[i];
+    m.rms = +(10 * Math.log10(acc / n + 1e-12)).toFixed(1);
+  }
+  const bytes = new Uint8Array(toWav(buffer));
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return { marks, analysis: analyze(buffer), wav: btoa(bin) };
+};
+
+selectPiece('savas');
+</script>
+</body>
+</html>

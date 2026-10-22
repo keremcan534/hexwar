@@ -1,0 +1,992 @@
+{
+ "bdrum": [
+  {
+   "f": "bdrum-01.ogg",
+   "layer": 1
+  },
+  {
+   "f": "bdrum-02.ogg",
+   "layer": 1
+  },
+  {
+   "f": "bdrum-03.ogg",
+   "layer": 0
+  },
+  {
+   "f": "bdrum-04.ogg",
+   "layer": 0
+  }
+ ],
+ "taiko": [
+  {
+   "f": "taiko-01.ogg",
+   "layer": 1
+  },
+  {
+   "f": "taiko-02.ogg",
+   "layer": 1
+  },
+  {
+   "f": "taiko-03.ogg",
+   "layer": 1
+  },
+  {
+   "f": "taiko-04.ogg",
+   "layer": 0
+  }
+ ],
+ "taikoHi": [
+  {
+   "f": "taikoHi-01.ogg",
+   "layer": 1
+  },
+  {
+   "f": "taikoHi-02.ogg",
+   "layer": 1
+  },
+  {
+   "f": "taikoHi-03.ogg",
+   "layer": 1
+  },
+  {
+   "f": "taikoHi-04.ogg",
+   "layer": 0
+  }
+ ],
+ "snare": [
+  {
+   "f": "snare-01.ogg",
+   "layer": 2
+  },
+  {
+   "f": "snare-02.ogg",
+   "layer": 2
+  },
+  {
+   "f": "snare-03.ogg",
+   "layer": 1
+  },
+  {
+   "f": "snare-04.ogg",
+   "layer": 1
+  },
+  {
+   "f": "snare-05.ogg",
+   "layer": 0
+  },
+  {
+   "f": "snare-06.ogg",
+   "layer": 0
+  }
+ ],
+ "timp": [
+  {
+   "f": "timp-01.ogg",
+   "layer": 1,
+   "root": 41.5
+  },
+  {
+   "f": "timp-02.ogg",
+   "layer": 0,
+   "root": 46.8
+  },
+  {
+   "f": "timp-03.ogg",
+   "layer": 1,
+   "root": 46.8
+  },
+  {
+   "f": "timp-04.ogg",
+   "layer": 0,
+   "root": 49.5
+  },
+  {
+   "f": "timp-05.ogg",
+   "layer": 1,
+   "root": 49.5
+  },
+  {
+   "f": "timp-06.ogg",
+   "layer": 1,
+   "root": 54.6
+  }
+ ],
+ "gtr": [
+  {
+   "f": "gtr-01.ogg",
+   "layer": 1,
+   "root": 40.17
+  },
+  {
+   "f": "gtr-02.ogg",
+   "layer": 1,
+   "root": 40.18
+  },
+  {
+   "f": "gtr-03.ogg",
+   "layer": 1,
+   "root": 40.13
+  },
+  {
+   "f": "gtr-04.ogg",
+   "layer": 1,
+   "root": 40.14
+  },
+  {
+   "f": "gtr-05.ogg",
+   "layer": 1,
+   "root": 45.05
+  },
+  {
+   "f": "gtr-06.ogg",
+   "layer": 1,
+   "root": 45.05
+  },
+  {
+   "f": "gtr-07.ogg",
+   "layer": 1,
+   "root": 45.04
+  },
+  {
+   "f": "gtr-08.ogg",
+   "layer": 1,
+   "root": 45.06
+  },
+  {
+   "f": "gtr-09.ogg",
+   "layer": 1,
+   "root": 47.11
+  },
+  {
+   "f": "gtr-10.ogg",
+   "layer": 1,
+   "root": 47.09
+  },
+  {
+   "f": "gtr-11.ogg",
+   "layer": 1,
+   "root": 47.08
+  },
+  {
+   "f": "gtr-12.ogg",
+   "layer": 1,
+   "root": 47.08
+  },
+  {
+   "f": "gtr-13.ogg",
+   "layer": 1,
+   "root": 48.1
+  },
+  {
+   "f": "gtr-14.ogg",
+   "layer": 1,
+   "root": 48.08
+  },
+  {
+   "f": "gtr-15.ogg",
+   "layer": 1,
+   "root": 48.07
+  },
+  {
+   "f": "gtr-16.ogg",
+   "layer": 1,
+   "root": 48.07
+  },
+  {
+   "f": "gtr-17.ogg",
+   "layer": 1,
+   "root": 50.16
+  },
+  {
+   "f": "gtr-18.ogg",
+   "layer": 1,
+   "root": 50.17
+  },
+  {
+   "f": "gtr-19.ogg",
+   "layer": 1,
+   "root": 50.18
+  },
+  {
+   "f": "gtr-20.ogg",
+   "layer": 1,
+   "root": 50.17
+  },
+  {
+   "f": "gtr-21.ogg",
+   "layer": 1,
+   "root": 52.19
+  },
+  {
+   "f": "gtr-22.ogg",
+   "layer": 1,
+   "root": 52.18
+  },
+  {
+   "f": "gtr-23.ogg",
+   "layer": 1,
+   "root": 52.16
+  },
+  {
+   "f": "gtr-24.ogg",
+   "layer": 1,
+   "root": 52.18
+  },
+  {
+   "f": "gtr-25.ogg",
+   "layer": 1,
+   "root": 54.14
+  },
+  {
+   "f": "gtr-26.ogg",
+   "layer": 1,
+   "root": 54.13
+  },
+  {
+   "f": "gtr-27.ogg",
+   "layer": 1,
+   "root": 54.15
+  },
+  {
+   "f": "gtr-28.ogg",
+   "layer": 1,
+   "root": 54.16
+  },
+  {
+   "f": "gtr-29.ogg",
+   "layer": 1,
+   "root": 55.18
+  },
+  {
+   "f": "gtr-30.ogg",
+   "layer": 1,
+   "root": 55.17
+  },
+  {
+   "f": "gtr-31.ogg",
+   "layer": 1,
+   "root": 55.19
+  },
+  {
+   "f": "gtr-32.ogg",
+   "layer": 1,
+   "root": 55.2
+  },
+  {
+   "f": "gtr-33.ogg",
+   "layer": 1,
+   "root": 57.25
+  },
+  {
+   "f": "gtr-34.ogg",
+   "layer": 1,
+   "root": 57.19
+  },
+  {
+   "f": "gtr-35.ogg",
+   "layer": 1,
+   "root": 57.19
+  },
+  {
+   "f": "gtr-36.ogg",
+   "layer": 1,
+   "root": 57.23
+  },
+  {
+   "f": "gtr-37.ogg",
+   "layer": 1,
+   "root": 59.1
+  },
+  {
+   "f": "gtr-38.ogg",
+   "layer": 1,
+   "root": 59.11
+  },
+  {
+   "f": "gtr-39.ogg",
+   "layer": 1,
+   "root": 59.11
+  },
+  {
+   "f": "gtr-40.ogg",
+   "layer": 1,
+   "root": 59.11
+  },
+  {
+   "f": "gtr-41.ogg",
+   "layer": 1,
+   "root": 60.21
+  },
+  {
+   "f": "gtr-42.ogg",
+   "layer": 1,
+   "root": 60.17
+  },
+  {
+   "f": "gtr-43.ogg",
+   "layer": 1,
+   "root": 60.17
+  },
+  {
+   "f": "gtr-44.ogg",
+   "layer": 1,
+   "root": 60.18
+  },
+  {
+   "f": "gtr-45.ogg",
+   "layer": 1,
+   "root": 62.1
+  },
+  {
+   "f": "gtr-46.ogg",
+   "layer": 1,
+   "root": 62.13
+  },
+  {
+   "f": "gtr-47.ogg",
+   "layer": 1,
+   "root": 62.11
+  },
+  {
+   "f": "gtr-48.ogg",
+   "layer": 1,
+   "root": 62.08
+  }
+ ],
+ "gtrMute": [
+  {
+   "f": "gtrMute-01.ogg",
+   "layer": 1,
+   "root": 40.04
+  },
+  {
+   "f": "gtrMute-02.ogg",
+   "layer": 1,
+   "root": 40.29
+  },
+  {
+   "f": "gtrMute-03.ogg",
+   "layer": 1,
+   "root": 40.06
+  },
+  {
+   "f": "gtrMute-04.ogg",
+   "layer": 1,
+   "root": 40.09
+  },
+  {
+   "f": "gtrMute-05.ogg",
+   "layer": 1,
+   "root": 47.1
+  },
+  {
+   "f": "gtrMute-06.ogg",
+   "layer": 1,
+   "root": 47.09
+  },
+  {
+   "f": "gtrMute-07.ogg",
+   "layer": 1,
+   "root": 47.09
+  },
+  {
+   "f": "gtrMute-08.ogg",
+   "layer": 1,
+   "root": 47.09
+  },
+  {
+   "f": "gtrMute-09.ogg",
+   "layer": 1,
+   "root": 52.28
+  },
+  {
+   "f": "gtrMute-10.ogg",
+   "layer": 1,
+   "root": 52.26
+  },
+  {
+   "f": "gtrMute-11.ogg",
+   "layer": 1,
+   "root": 52.25
+  },
+  {
+   "f": "gtrMute-12.ogg",
+   "layer": 1,
+   "root": 52.25
+  }
+ ],
+ "lead": [
+  {
+   "f": "lead-01.ogg",
+   "layer": 1,
+   "root": 57.16
+  },
+  {
+   "f": "lead-02.ogg",
+   "layer": 1,
+   "root": 57.15
+  },
+  {
+   "f": "lead-03.ogg",
+   "layer": 1,
+   "root": 59.07
+  },
+  {
+   "f": "lead-04.ogg",
+   "layer": 1,
+   "root": 59.09
+  },
+  {
+   "f": "lead-05.ogg",
+   "layer": 1,
+   "root": 60.13
+  },
+  {
+   "f": "lead-06.ogg",
+   "layer": 1,
+   "root": 60.11
+  },
+  {
+   "f": "lead-07.ogg",
+   "layer": 1,
+   "root": 62.1
+  },
+  {
+   "f": "lead-08.ogg",
+   "layer": 1,
+   "root": 62.1
+  },
+  {
+   "f": "lead-09.ogg",
+   "layer": 1,
+   "root": 63.1
+  },
+  {
+   "f": "lead-10.ogg",
+   "layer": 1,
+   "root": 63.1
+  },
+  {
+   "f": "lead-11.ogg",
+   "layer": 1,
+   "root": 64.06
+  },
+  {
+   "f": "lead-12.ogg",
+   "layer": 1,
+   "root": 64.07
+  },
+  {
+   "f": "lead-13.ogg",
+   "layer": 1,
+   "root": 66.06
+  },
+  {
+   "f": "lead-14.ogg",
+   "layer": 1,
+   "root": 66.05
+  },
+  {
+   "f": "lead-15.ogg",
+   "layer": 1,
+   "root": 67.07
+  },
+  {
+   "f": "lead-16.ogg",
+   "layer": 1,
+   "root": 67.07
+  },
+  {
+   "f": "lead-17.ogg",
+   "layer": 1,
+   "root": 69.02
+  },
+  {
+   "f": "lead-18.ogg",
+   "layer": 1,
+   "root": 69.01
+  },
+  {
+   "f": "lead-19.ogg",
+   "layer": 1,
+   "root": 71
+  },
+  {
+   "f": "lead-20.ogg",
+   "layer": 1,
+   "root": 71.01
+  },
+  {
+   "f": "lead-21.ogg",
+   "layer": 1,
+   "root": 71.98
+  },
+  {
+   "f": "lead-22.ogg",
+   "layer": 1,
+   "root": 72
+  },
+  {
+   "f": "lead-23.ogg",
+   "layer": 1,
+   "root": 74
+  },
+  {
+   "f": "lead-24.ogg",
+   "layer": 1,
+   "root": 73.99
+  },
+  {
+   "f": "lead-25.ogg",
+   "layer": 1,
+   "root": 74.96
+  },
+  {
+   "f": "lead-26.ogg",
+   "layer": 1,
+   "root": 74.96
+  },
+  {
+   "f": "lead-27.ogg",
+   "layer": 1,
+   "root": 75.95
+  },
+  {
+   "f": "lead-28.ogg",
+   "layer": 1,
+   "root": 75.95
+  },
+  {
+   "f": "lead-29.ogg",
+   "layer": 1,
+   "root": 77.89
+  },
+  {
+   "f": "lead-30.ogg",
+   "layer": 1,
+   "root": 77.89
+  },
+  {
+   "f": "lead-31.ogg",
+   "layer": 1,
+   "root": 78.91
+  },
+  {
+   "f": "lead-32.ogg",
+   "layer": 1,
+   "root": 78.92
+  }
+ ],
+ "bass": [
+  {
+   "f": "bass-01.ogg",
+   "layer": 1,
+   "root": 28.14
+  },
+  {
+   "f": "bass-02.ogg",
+   "layer": 1,
+   "root": 28.14
+  },
+  {
+   "f": "bass-03.ogg",
+   "layer": 1,
+   "root": 33.16
+  },
+  {
+   "f": "bass-04.ogg",
+   "layer": 1,
+   "root": 33.15
+  },
+  {
+   "f": "bass-05.ogg",
+   "layer": 1,
+   "root": 35.18
+  },
+  {
+   "f": "bass-06.ogg",
+   "layer": 1,
+   "root": 35.19
+  },
+  {
+   "f": "bass-07.ogg",
+   "layer": 1,
+   "root": 36.14
+  },
+  {
+   "f": "bass-08.ogg",
+   "layer": 1,
+   "root": 36.11
+  },
+  {
+   "f": "bass-09.ogg",
+   "layer": 1,
+   "root": 38.11
+  },
+  {
+   "f": "bass-10.ogg",
+   "layer": 1,
+   "root": 38.1
+  }
+ ],
+ "bassMute": [
+  {
+   "f": "bassMute-01.ogg",
+   "layer": 1,
+   "root": 28.06
+  },
+  {
+   "f": "bassMute-02.ogg",
+   "layer": 1,
+   "root": 28.03
+  },
+  {
+   "f": "bassMute-03.ogg",
+   "layer": 1,
+   "root": 27.98
+  },
+  {
+   "f": "bassMute-04.ogg",
+   "layer": 1,
+   "root": 28.01
+  }
+ ],
+ "vln": [
+  {
+   "f": "vln-01.ogg",
+   "layer": 0,
+   "root": 64.02
+  },
+  {
+   "f": "vln-02.ogg",
+   "layer": 1,
+   "root": 64.04
+  },
+  {
+   "f": "vln-03.ogg",
+   "layer": 0,
+   "root": 66.98
+  },
+  {
+   "f": "vln-04.ogg",
+   "layer": 1,
+   "root": 66.99
+  },
+  {
+   "f": "vln-05.ogg",
+   "layer": 0,
+   "root": 69.06
+  },
+  {
+   "f": "vln-06.ogg",
+   "layer": 1,
+   "root": 69.07
+  },
+  {
+   "f": "vln-07.ogg",
+   "layer": 0,
+   "root": 72.01
+  },
+  {
+   "f": "vln-08.ogg",
+   "layer": 1,
+   "root": 72
+  },
+  {
+   "f": "vln-09.ogg",
+   "layer": 0,
+   "root": 76.09
+  },
+  {
+   "f": "vln-10.ogg",
+   "layer": 1,
+   "root": 76.18
+  },
+  {
+   "f": "vln-11.ogg",
+   "layer": 0,
+   "root": 79.07
+  },
+  {
+   "f": "vln-12.ogg",
+   "layer": 1,
+   "root": 79.09
+  },
+  {
+   "f": "vln-13.ogg",
+   "layer": 0,
+   "root": 80.96
+  },
+  {
+   "f": "vln-14.ogg",
+   "layer": 1,
+   "root": 81.08
+  },
+  {
+   "f": "vln-15.ogg",
+   "layer": 0,
+   "root": 83.96
+  },
+  {
+   "f": "vln-16.ogg",
+   "layer": 1,
+   "root": 84.05
+  }
+ ],
+ "vlnTrem": [
+  {
+   "f": "vlnTrem-01.ogg",
+   "layer": 1,
+   "root": 64.02
+  },
+  {
+   "f": "vlnTrem-02.ogg",
+   "layer": 1,
+   "root": 67.02
+  },
+  {
+   "f": "vlnTrem-03.ogg",
+   "layer": 1,
+   "root": 68.98
+  },
+  {
+   "f": "vlnTrem-04.ogg",
+   "layer": 1,
+   "root": 72.03
+  },
+  {
+   "f": "vlnTrem-05.ogg",
+   "layer": 1,
+   "root": 75.99
+  },
+  {
+   "f": "vlnTrem-06.ogg",
+   "layer": 1,
+   "root": 78.98
+  },
+  {
+   "f": "vlnTrem-07.ogg",
+   "layer": 1,
+   "root": 81.01
+  }
+ ],
+ "piano": [
+  {
+   "f": "piano-01.ogg",
+   "layer": 0,
+   "root": 52.06
+  },
+  {
+   "f": "piano-02.ogg",
+   "layer": 1,
+   "root": 52.09
+  },
+  {
+   "f": "piano-03.ogg",
+   "layer": 0,
+   "root": 54.05
+  },
+  {
+   "f": "piano-04.ogg",
+   "layer": 1,
+   "root": 54.1
+  },
+  {
+   "f": "piano-05.ogg",
+   "layer": 0,
+   "root": 56.01
+  },
+  {
+   "f": "piano-06.ogg",
+   "layer": 1,
+   "root": 56.05
+  },
+  {
+   "f": "piano-07.ogg",
+   "layer": 0,
+   "root": 58.08
+  },
+  {
+   "f": "piano-08.ogg",
+   "layer": 1,
+   "root": 58.16
+  },
+  {
+   "f": "piano-09.ogg",
+   "layer": 0,
+   "root": 60.03
+  },
+  {
+   "f": "piano-10.ogg",
+   "layer": 1,
+   "root": 60.06
+  },
+  {
+   "f": "piano-11.ogg",
+   "layer": 0,
+   "root": 62.03
+  },
+  {
+   "f": "piano-12.ogg",
+   "layer": 1,
+   "root": 62.07
+  },
+  {
+   "f": "piano-13.ogg",
+   "layer": 0,
+   "root": 64.01
+  },
+  {
+   "f": "piano-14.ogg",
+   "layer": 1,
+   "root": 64.05
+  },
+  {
+   "f": "piano-15.ogg",
+   "layer": 0,
+   "root": 66.05
+  },
+  {
+   "f": "piano-16.ogg",
+   "layer": 1,
+   "root": 66.11
+  },
+  {
+   "f": "piano-17.ogg",
+   "layer": 0,
+   "root": 68.05
+  },
+  {
+   "f": "piano-18.ogg",
+   "layer": 1,
+   "root": 68.08
+  },
+  {
+   "f": "piano-19.ogg",
+   "layer": 0,
+   "root": 70.03
+  },
+  {
+   "f": "piano-20.ogg",
+   "layer": 1,
+   "root": 70.04
+  },
+  {
+   "f": "piano-21.ogg",
+   "layer": 0,
+   "root": 72.03
+  },
+  {
+   "f": "piano-22.ogg",
+   "layer": 1,
+   "root": 72.09
+  },
+  {
+   "f": "piano-23.ogg",
+   "layer": 0,
+   "root": 74.01
+  },
+  {
+   "f": "piano-24.ogg",
+   "layer": 1,
+   "root": 74.03
+  },
+  {
+   "f": "piano-25.ogg",
+   "layer": 0,
+   "root": 75.99
+  },
+  {
+   "f": "piano-26.ogg",
+   "layer": 1,
+   "root": 76.03
+  },
+  {
+   "f": "piano-27.ogg",
+   "layer": 0,
+   "root": 77.97
+  },
+  {
+   "f": "piano-28.ogg",
+   "layer": 1,
+   "root": 78.02
+  },
+  {
+   "f": "piano-29.ogg",
+   "layer": 0,
+   "root": 79.99
+  },
+  {
+   "f": "piano-30.ogg",
+   "layer": 1,
+   "root": 80
+  },
+  {
+   "f": "piano-31.ogg",
+   "layer": 0,
+   "root": 82
+  },
+  {
+   "f": "piano-32.ogg",
+   "layer": 1,
+   "root": 82.03
+  },
+  {
+   "f": "piano-33.ogg",
+   "layer": 0,
+   "root": 84.06
+  },
+  {
+   "f": "piano-34.ogg",
+   "layer": 1,
+   "root": 84.08
+  }
+ ],
+ "pianoLow": [
+  {
+   "f": "pianoLow-01.ogg",
+   "layer": 1,
+   "root": 27.92
+  },
+  {
+   "f": "pianoLow-02.ogg",
+   "layer": 1,
+   "root": 36.07
+  },
+  {
+   "f": "pianoLow-03.ogg",
+   "layer": 1,
+   "root": 37.98
+  },
+  {
+   "f": "pianoLow-04.ogg",
+   "layer": 1,
+   "root": 40.08
+  },
+  {
+   "f": "pianoLow-05.ogg",
+   "layer": 1,
+   "root": 42.03
+  },
+  {
+   "f": "pianoLow-06.ogg",
+   "layer": 1,
+   "root": 44.12
+  },
+  {
+   "f": "pianoLow-07.ogg",
+   "layer": 1,
+   "root": 46.01
+  },
+  {
+   "f": "pianoLow-08.ogg",
+   "layer": 1,
+   "root": 48.04
+  },
+  {
+   "f": "pianoLow-09.ogg",
+   "layer": 1,
+   "root": 50.07
+  }
+ ]
+}

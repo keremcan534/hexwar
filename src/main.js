@@ -16,6 +16,7 @@ import { UnitHover } from './ui/unitHover.js';
 import { FrontPlates } from './ui/frontPlates.js';
 import { NationPicker } from './ui/nationPicker.js';
 import { PerfOverlay } from './ui/perfOverlay.js';
+import { GameMusic } from './ui/gameMusic.js';
 import { EventCards } from './ui/eventCard.js';
 import { Ambience } from './ui/ambience.js';
 import './ui/gfxStyleMenu.js';
@@ -95,6 +96,9 @@ const menu = new MainMenu(game, {
 if (!seed) menu.open();
 else picker.open();
 hud.bindMenu(menu);
+// Oyun müziği: savaş/barış/seferberlik/devlet/deniz/kargaşa, oyunun hâline göre
+// (bkz. ui/gameMusic.js). Menü açıkken susar, menü müziği çalar.
+game.music = new GameMusic(game, hud.screens, menu);
 
 // Harita ambiyansı (bkz. ui/ambience.js): Settings paneline kendi "audio"
 // satırını ekler. Konsoldan denetim için oyuna bağlı: game.ambience.state().
