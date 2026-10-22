@@ -15391,6 +15391,8 @@ button.nd-place:hover { color: var(--gold-bright); }
 .nd-tl .k { color: var(--text-mute); white-space: nowrap; }
 .nd-tl .v { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nd-subs { padding-top: 2px !important; padding-bottom: 2px !important; }
+/* Denizaltı resmi yatay: kare 18 px'te gövde 6 px'e iner; satır 22 px'i aşmaz. */
+.nd-tl .k .art { width: 24px; height: 20px; margin: 0 3px 0 -3px; }
 
 /* FLEET: kapalıyken tek satır (sınıf karışımı + eskiler). */
 .nd-fleet { flex: none; border-bottom: 1px solid var(--line); }
@@ -15765,6 +15767,9 @@ body.screen-open .culture-chip { display: none; }
   opacity: 1;
 }
 .screen .mil .mil-btn.mil-big { min-height: 36px; padding: 6px 14px; font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
+/* Milis resmi düğmenin 24 px içine sığar; kapalıyken yazıyla birlikte söner. */
+.screen .mil .mil-btn.levee .art { width: 24px; height: 24px; margin: -4px 6px -4px 0; }
+.screen .mil .mil-btn.levee:disabled .art { opacity: 0.45; filter: grayscale(0.7); }
 .screen .mil .mil-btn.on:not(:disabled) { border-color: var(--amber); color: #e7c46a; }
 .screen .mil .mil-tabs { gap: 0; }
 .screen .mil .mil-tabs button {

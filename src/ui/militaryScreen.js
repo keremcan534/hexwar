@@ -9,7 +9,7 @@
 // burada tek bir eşik ya da toplam hesaplanmaz. Simgeler satır içi çizgi-SVG:
 // birim rozetleri harita odası sayacı gibi okunur, emoji yoktur.
 
-import { emblemArt, equipmentArt, traitArt } from './icons/art.js';
+import { emblemArt, equipmentArt, kitArt, traitArt } from './icons/art.js';
 import { glyph } from './icons/glyphs.js';
 import { kpi, kpiRow, money, tipAttr } from './kit.js';
 import { formatPopulation } from '../game/economy.js';
@@ -108,7 +108,7 @@ function supplyKpi(summary) {
   const share = summary.supplyShare ?? 1;
   const crisis = share < 1 - 1e-6;
   return kpi({
-    icon: emblemArt('army', 'md'), label: 'Supply', value: `${(summary.supply ?? 0).toFixed(1)}<small> IC/wk</small>`,
+    icon: kitArt('supply', 'md'), label: 'Supply', value: `${(summary.supply ?? 0).toFixed(1)}<small> IC/wk</small>`,
     sub: crisis ? `supply crisis · ${pct(share)} paid` : 'off the top of output',
     cls: crisis ? 'warn' : '',
     meter: crisis ? share : null, meterTone: 'warn',
@@ -225,7 +225,7 @@ function leveeRow(l, arming = false) {
 ${l.blockers.join(' ')}` : ''}`;
   const confirming = arming && !l.active && !l.blockers.length;
   return `<button class="mil-btn mil-big levee danger${l.active ? ' on' : ''}${confirming ? ' confirming' : ''}" data-military-levee
-      ${l.active || l.blockers.length ? 'disabled' : ''}${tipAttr({ text: tip })}>${l.active ? `⚑ Nation in arms · ${l.militia}/${l.target}` : confirming ? 'Confirm the Call to Arms?' : '⚑ Call to Arms'}</button>`;
+      ${l.active || l.blockers.length ? 'disabled' : ''}${tipAttr({ text: tip })}>${kitArt('militia')}${l.active ? `Nation in arms · ${l.militia}/${l.target}` : confirming ? 'Confirm the Call to Arms?' : 'Call to Arms'}</button>`;
 }
 
 function mobilizationRow(m, leveeArming = false) {
@@ -371,7 +371,7 @@ function buildRow(option, ironclad) {
     </div>
     <div class="mil-unit-cost">
       <span class="mil-chip"${tipAttr({ text: 'Training time with the army fully supplied; a supply crisis lengthens it.' })}>${glyph('hourglass', 'inline')}<b>${option.weeks}</b><small>wk</small></span>
-      <span class="mil-chip"${tipAttr({ text: `Weekly supply\n${supply} IC a week in peace, ×${SUPPLY.war} at war: a bill that comes off the top of output for as long as it serves. Nothing is paid up front.` })}>${emblemArt('army', 'xs')}<b>${(option.upkeep ?? 0).toFixed(1)}</b><small>/wk</small></span>
+      <span class="mil-chip"${tipAttr({ text: `Weekly supply\n${supply} IC a week in peace, ×${SUPPLY.war} at war: a bill that comes off the top of output for as long as it serves. Nothing is paid up front.` })}>${kitArt('supply', 'xs')}<b>${(option.upkeep ?? 0).toFixed(1)}</b><small>/wk</small></span>
       <span class="mil-chip"${tipAttr({ text: 'Men drawn from the state when the regiment marches out.' })}>${emblemArt('people', 'xs')}<b>${formatPopulation(option.manpower)}</b></span>
       ${equipment}
       ${fill < 1 && !blocked ? `<span class="mil-chip warn"${tipAttr({ text: 'Short of equipment\nTraining does not wait: the regiment marches out at this strength and the production lines fill it up later.' })}><b>${Math.round(Math.max(0.1, fill) * 100)}%</b><small>str</small></span>` : ''}

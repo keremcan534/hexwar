@@ -61,7 +61,7 @@ import {
   autoPill, badge, blockedAttr, chain, empty, esc, kpi, kpiRow, ledger, meter, money, num, panel, pct, pips, pts,
   segmented, short, signed, signedMoney, spark, tipAttr, tone,
 } from './kit.js';
-import { buildingArt, emblemArt, equipmentArt, lawArt, ledgerArt, resourceArt } from './icons/art.js';
+import { buildingArt, emblemArt, equipmentArt, kitArt, lawArt, ledgerArt, resourceArt } from './icons/art.js';
 import { peopleDetail, peoplesView, resettlementView } from '../game/peoplesView.js';
 import { END_YEAR } from '../game/calendar.js';
 import { techById, unlockTechOf } from '../game/technology.js';
@@ -418,7 +418,7 @@ export function renderBudget(game, me, state) {
     </div>`;
   };
   const billRows = [
-    billRow(ledgerArt('army'), 'Army supply', `${bills.land} regiment${bills.land === 1 ? '' : 's'} × ${num(perRegiment, 2)}${bills.atWar ? ` · war ×${SUPPLY.war}` : ''}`, bills.army,
+    billRow(kitArt('supply'), 'Army supply', `${bills.land} regiment${bills.land === 1 ? '' : 's'} × ${num(perRegiment, 2)}${bills.atWar ? ` · war ×${SUPPLY.war}` : ''}`, bills.army,
       `Army supply\nEvery regiment costs ${num(SUPPLY.land, 1)} IC a week in 1900, growing with the era; ×${SUPPLY.war} at war. A big peacetime army slows growth.`),
     billRow(ledgerArt('navy'), 'Navy supply', `${num(bills.sea, bills.sea % 1 ? 1 : 0)} ship${bills.sea === 1 ? '' : 's'}`, bills.navy,
       `Navy supply\nEvery warship costs ${num(SUPPLY.sea, 1)} IC a week in 1900 (submarines half), growing with the era; ×${SUPPLY.war} at war.`),

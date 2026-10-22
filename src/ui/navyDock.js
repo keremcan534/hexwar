@@ -25,6 +25,7 @@ import { destinationOf, etaWeeks } from '../game/movement.js';
 import { isDelegated } from '../game/delegation.js';
 import { dateOfTurn } from '../game/calendar.js';
 import { tipAttr } from './kit.js';
+import { kitArt } from './icons/art.js';
 import { quietScroll } from './tooltip.js';
 import { toLocal } from './uiScale.js';
 import {
@@ -557,9 +558,9 @@ export class NavyDock {
     return `<section class="nd-trade"><h4 class="nd-sec">Trade &amp; transports</h4>${lines.join('')}</section>`;
   }
 
-  tlHtml(label, value, tone, tip, attr = '') {
+  tlHtml(label, value, tone, tip, attr = '', icon = '') {
     const tag = attr ? 'button' : 'div';
-    return `<${tag} class="nd-tl${attr ? ' click' : ''}"${attr ? ` type="button" ${attr}` : ''}${tipAttr({ text: tip })}><span class="k">${esc(label)}</span><span class="v ${tone}">${value}</span></${tag}>`;
+    return `<${tag} class="nd-tl${attr ? ' click' : ''}"${attr ? ` type="button" ${attr}` : ''}${tipAttr({ text: tip })}><span class="k">${icon}${esc(label)}</span><span class="v ${tone}">${value}</span></${tag}>`;
   }
 
   /** SUBMARINES: tek satır (emir yok: tasarım gereği kendi başlarına giderler). */
@@ -580,7 +581,8 @@ export class NavyDock {
         ? `U×${view.subs} · ${hunting.reduce((s, h) => s + h.ships, 0)} hunting${hunting.length ? ` in ${esc(hunting.slice(0, 2).map((h) => seaName(world, h.zone)).join(', '))}${hunting.length > 2 ? '…' : ''}` : ''}${best > 0.01 ? ` · enemy cargo −${pct(best)}` : ''}`
         : `U×${view.subs} · in port (peace)`;
     }
-    return `<section class="nd-subs">${this.tlHtml('Submarines', text, view.subs ? '' : 'dim', 'Submarines\nNo orders by design: in war they go by themselves where the enemy\'s trade lanes cross and his escorts are thin, and sink a share of the cargo that passes. Enemy warships in the same sea hunt them.')}</section>`;
+    // Emri olmayan tek satır: resim onu filonun emir satırlarından ayırır.
+    return `<section class="nd-subs">${this.tlHtml('Submarines', text, view.subs ? '' : 'dim', 'Submarines\nNo orders by design: in war they go by themselves where the enemy\'s trade lanes cross and his escorts are thin, and sink a share of the cargo that passes. Enemy warships in the same sea hunt them.', '', kitArt('submarine'))}</section>`;
   }
 
   /**
