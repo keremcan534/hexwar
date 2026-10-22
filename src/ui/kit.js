@@ -86,9 +86,13 @@ export function autoPill(area, { on, last = null, key = '' } = {}) {
 }
 
 /** Panel: pirinç başlık şeridi + gövde. `right` başlığın sağ ucu (özet/düğme). */
-export function panel(title, body, { sub = '', right = '', cls = '', tip = null, arg = '' } = {}) {
+/**
+ * Panel. `icon` (art.js HTML'i) başlığın önüne oturur; başlık yüksekliğini
+ * değiştirmez (CSS negatif kenar), panel listesi kaymaz.
+ */
+export function panel(title, body, { sub = '', right = '', cls = '', tip = null, arg = '', icon = '' } = {}) {
   return `<section class="k-panel ${cls}">
-    <header class="k-head"${tipAttr(tip, arg)}><h3>${esc(title)}</h3>${sub ? `<small>${sub}</small>` : ''}${right ? `<span class="k-head-r">${right}</span>` : ''}</header>
+    <header class="k-head"${tipAttr(tip, arg)}><h3>${icon}${esc(title)}</h3>${sub ? `<small>${sub}</small>` : ''}${right ? `<span class="k-head-r">${right}</span>` : ''}</header>
     <div class="k-body">${body}</div>
   </section>`;
 }

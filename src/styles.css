@@ -16935,3 +16935,22 @@ button.dip-war.dip-conflict.on { border-left-color: var(--gold-bright); }
   .tb-resi { width: 22px; height: 22px; }
   .tb-resi .art-sm { width: 16px; height: 16px; }
 }
+
+/* --- Fotoğraf ikon setleri (art.js gauge/diplomacy/navy/event) ---------
+   Düğme, başlık ve satır içindeki resimler negatif kenarla oturur: resimli
+   satır resimsiz hâlinden yüksek olmamalı (masa, defter ve filo listeleri
+   sabit yuvalıdır; bir piksel bile jitter sondasında kayma diye görünür). */
+/* .k-btn sütun yönlüdür (etiket + alt satır): resim yazının ÜSTÜNE biniyor,
+   düğme bir satır uzuyordu. Resimli düğme satır yönünde. */
+.k-btn.has-art { flex-direction: row; align-items: center; justify-content: center; }
+.k-btn.has-art .art-inline { width: 1.45em; height: 1.45em; margin: -0.35em 0.3em -0.35em -0.1em; }
+.k-btn.has-art .art-xs { margin: -4px 6px -4px -2px; }
+.k-btn.has-art:disabled .art { opacity: 0.5; filter: grayscale(0.7); }
+.k-head h3 .art { width: 22px; height: 22px; margin: -4px 6px -4px 0; }
+.k-move-head .art-xs { width: 20px; height: 20px; margin: -2px 0; }
+.md-row-head .art { align-self: center; width: 18px; height: 18px; margin: -3px 0; }
+.dip-csec h4 .art-inline { margin-right: 0.35em; }
+.dip-req-main b .art-inline { margin-right: 0.3em; }
+.nd-glyph .art { width: 22px; height: 22px; margin: 0 -4px; }
+.nd-last-head h4 .art { width: 18px; height: 18px; margin: -3px 4px -3px 0; }
+.nd-card-title b .art { width: 22px; height: 22px; margin: -4px 6px -4px 0; }

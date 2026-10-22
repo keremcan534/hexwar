@@ -61,7 +61,10 @@ import {
   autoPill, badge, blockedAttr, chain, empty, esc, kpi, kpiRow, ledger, meter, money, num, panel, pct, pips, pts,
   segmented, short, signed, signedMoney, spark, tipAttr, tone,
 } from './kit.js';
-import { buildingArt, emblemArt, equipmentArt, kitArt, lawArt, ledgerArt, resourceArt } from './icons/art.js';
+import {
+  buildingArt, diplomacyArt, emblemArt, equipmentArt, eventArt, gaugeArt, kitArt, lawArt, ledgerArt, movementArt,
+  resourceArt,
+} from './icons/art.js';
 import { peopleDetail, peoplesView, resettlementView } from '../game/peoplesView.js';
 import { END_YEAR } from '../game/calendar.js';
 import { techById, unlockTechOf } from '../game/technology.js';
@@ -76,12 +79,6 @@ const turnOf = (game) => game.turns?.turn ?? game.world?.turn ?? 0;
  * okunuyordu (Cultures hareket kartı). İki yılın altında hafta kalır.
  */
 const span = (weeks) => (weeks < 104 ? `${weeks} wk` : `${Math.round(weeks / 52)} years`);
-
-/**
- * Yeni yasanın sanat setinde resmi yok: en yakın eskisinin amblemi. Labour
- * vergi yasasının yerine geldi (aynı üç kademe), resmi de onunkidir.
- */
-const LAW_ART = { labour: 'tax' };
 
 /**
  * Yasa kartı: gravür amblem, ad, yürürlükteki seçenek, seçenekler bölünmüş
@@ -106,7 +103,7 @@ function lawCard(world, nation, lawId, confirm, { compact = false } = {}) {
     };
   });
   return `<div class="k-law${compact ? ' compact' : ''}">
-    <span class="k-law-art"${tipAttr('law', lawId)}>${lawArt(LAW_ART[lawId] ?? lawId, compact ? 'md' : 'lg')}</span>
+    <span class="k-law-art"${tipAttr('law', lawId)}>${lawArt(lawId, compact ? 'md' : 'lg')}</span>
     <div class="k-law-main">
       <div class="k-law-head"${tipAttr('law', lawId)}>
         <b>${esc(law.name)}</b>
@@ -369,24 +366,24 @@ export function renderBudget(game, me, state) {
 
   const kpis = kpiRow([
     kpi({
-      icon: emblemArt('industry', 'md'), label: 'Output', value: num(output, 1), cls: 'hero',
+      icon: gaugeArt('output', 'md'), label: 'Output', value: num(output, 1), cls: 'hero',
       sub: `IC a week · hand ${num(ic.hand ?? 0, 0)} · industry ${num(ic.total ?? 0, 0)} · crown ${num(ic.crown ?? 0, 0)}`,
       tip: { text: 'Output\nEvery state produces each week: handwork from every 100k workers, industry from every development level above 1 (it needs coal and grows with research). The capital adds a flat 4. The Factories screen shows every factor.' },
     }),
     kpi({
-      label: 'Bills', value: `${num(bills.owed, 1)} / ${num(bills.room, 0)}`, cls: crisis ? 'crisis' : '',
+      icon: ledgerArt('bills', 'md'), label: 'Bills', value: `${num(bills.owed, 1)} / ${num(bills.room, 0)}`, cls: crisis ? 'crisis' : '',
       sub: crisis ? `<span class="neg">supply crisis · ${pct(bills.s)} paid</span>` : `${pct(output > 0 ? bills.owed / output : 0)} of output · ceiling ${pct(cap)}`,
       tip: { text: `Bills\nArmy and navy supply, schools and martial law come off the top of output, at most ${pct(cap)} of it (${num(bills.room, 1)} IC). Above that the nation is in a SUPPLY CRISIS: every bill is paid in part, reinforcement, training and order recover slower and stability falls.` },
       meter: billShare, meterTone: crisis ? 'neg' : billShare > 0.8 ? 'warn' : 'pos',
     }),
     kpi({
-      label: 'Development fund', value: short(view.fund),
+      icon: ledgerArt('development', 'md'), label: 'Development fund', value: short(view.fund),
       sub: next ? `next level ${money(next.cost, 0)} · floor ${money(view.fundFloor, 0)}` : `floor ${money(view.fundFloor, 0)}`,
       tip: { text: 'Development fund\nWhat is left after bills, the army and the people flows here and buys development levels state by state. Generals, settlers, event choices and imports are paid from it too; it may dip to the floor (four weeks of output below zero).' },
       meter: next && next.cost > 0 ? view.fund / next.cost : 0, meterTone: view.fund < 0 ? 'warn' : 'pos',
     }),
     kpi({
-      label: 'Consumer goods', value: settled ? pct(consumer.ratio) : '—',
+      icon: ledgerArt('people', 'md'), label: 'Consumer goods', value: settled ? pct(consumer.ratio) : '—',
       sub: settled ? `${pts(consumerStability(consumer.ratio))} stability · fed ×${num(consumer.feed ?? feedTarget(me), 2)}`
         : `${FIRST_WEEK} · target ×${num(feedTarget(me), 2)}`,
       tip: { text: 'Consumer goods\nThe people\'s share of output against what they want (it grows every decade). Short shelves cost stability and growth; full ones, up to ×1.2, add a little of both. The handle on the bar sets it.' },
@@ -422,9 +419,9 @@ export function renderBudget(game, me, state) {
       `Army supply\nEvery regiment costs ${num(SUPPLY.land, 1)} IC a week in 1900, growing with the era; ×${SUPPLY.war} at war. A big peacetime army slows growth.`),
     billRow(ledgerArt('navy'), 'Navy supply', `${num(bills.sea, bills.sea % 1 ? 1 : 0)} ship${bills.sea === 1 ? '' : 's'}`, bills.navy,
       `Navy supply\nEvery warship costs ${num(SUPPLY.sea, 1)} IC a week in 1900 (submarines half), growing with the era; ×${SUPPLY.war} at war.`),
-    billRow(ledgerArt('education'), 'Schools', esc(school.name), bills.schools,
+    billRow(ledgerArt('schools'), 'Schools', esc(school.name), bills.schools,
       'Schools\nThe education law\'s bill per 100k people. In a supply crisis the schools work only as far as they are paid.'),
-    billRow(ledgerArt('unrest'), 'Martial law', 'against national movements', bills.martial,
+    billRow(ledgerArt('martial'), 'Martial law', 'against national movements', bills.martial,
       'Martial law\nHolding down a national movement costs a weekly bill while it lasts.'),
   ].join('');
   const billsTable = `<div class="ec-bills">
@@ -591,14 +588,14 @@ export function renderIndustry(game, me, state) {
 
   const kpis = kpiRow([
     kpi({ icon: buildingArt('factory', 'md'), label: 'Industry', value: num(ic.total), sub: `${pct(ic.output > 0 ? ic.total / ic.output : 0)} of output · the army draws from it`, tip: 'ic', cls: 'hero' }),
-    kpi({ label: 'Output', value: num(ic.output), sub: `hand ${num(ic.hand ?? 0, 0)} + industry ${num(ic.total ?? 0, 0)} + crown ${num(ic.crown ?? 0, 0)}`, tip: { text: 'Output\nHandwork, industry and the crown: everything the country makes in a week. Bills, the army, the people and development share it (Economy screen).' } }),
+    kpi({ icon: gaugeArt('output', 'md'), label: 'Output', value: num(ic.output), sub: `hand ${num(ic.hand ?? 0, 0)} + industry ${num(ic.total ?? 0, 0)} + crown ${num(ic.crown ?? 0, 0)}`, tip: { text: 'Output\nHandwork, industry and the crown: everything the country makes in a week. Bills, the army, the people and development share it (Economy screen).' } }),
     kpi({
       label: 'Army draws', value: settled ? `${num(drawn, 1)} / ${num(armyCap, 1)}` : '—',
       sub: settled ? `up to ${pct(ic.share)} of industry · economy law` : `up to ${pct(ic.share)} of industry · ${FIRST_WEEK}`,
       tip: 'law', arg: 'economy', meter: settled && armyCap > 0 ? drawn / armyCap : 0,
     }),
     kpi({
-      label: 'Consumer goods', value: settled ? pct(consumer.ratio) : '—',
+      icon: ledgerArt('people', 'md'), label: 'Consumer goods', value: settled ? pct(consumer.ratio) : '—',
       sub: settled ? `${pts(consumerStability(consumer.ratio))} stability · fed ×${num(consumer.feed ?? feed, 2)}` : `${FIRST_WEEK} · target ×${num(feed, 2)}`,
       tip: { text: 'Consumer goods\nThe people\'s share of output against what they want, which grows every decade. A shortage costs stability and growth; the handle on the Economy screen sets the share.' },
       meter: settled ? Math.min(1, consumer.ratio) : 0, meterTone: consumer.ratio < 0.95 ? 'neg' : 'pos',
@@ -1161,9 +1158,9 @@ export function renderPopulation(game, me, state) {
   // Halklar, huzursuzluk ve hareketler Cultures sekmesindedir (renderCultures):
   // bu ekran nüfusun kendisidir — büyüme, okuryazarlık, insan gücü, birleşme.
   const kpis = kpiRow([
-    kpi({ icon: emblemArt('people', 'md'), label: 'Population', value: formatPopulation(economy.population ?? populationOf(world, me)), sub: `${yearly(g.rate)} a year${view.realized != null ? ` · last year ${signed(view.realized * 100, 2)}%` : ''}`, tip: { text: 'Population\nGrows with food, consumer goods, stability, development and peace; war and famine shrink it. The Growth panel shows every factor.' } }),
+    kpi({ icon: gaugeArt('population', 'md'), label: 'Population', value: formatPopulation(economy.population ?? populationOf(world, me)), sub: `${yearly(g.rate)} a year${view.realized != null ? ` · last year ${signed(view.realized * 100, 2)}%` : ''}`, tip: { text: 'Population\nGrows with food, consumer goods, stability, development and peace; war and famine shrink it. The Growth panel shows every factor.' } }),
     kpi({ icon: lawArt('education', 'md'), label: 'Literacy', value: pct(economy.literacy), sub: `heading for ${pct(economy.literacyTarget ?? literacyTarget(world, me))}`, tip: 'law', arg: 'education', meter: economy.literacy, meterTone: 'pos' }),
-    kpi({ icon: emblemArt('recruits', 'md'), label: 'Manpower', value: formatPopulation(nationManpower(world, me.id)), sub: 'men who can still be raised', tip: 'manpower' }),
+    kpi({ icon: gaugeArt('manpower', 'md'), label: 'Manpower', value: formatPopulation(nationManpower(world, me.id)), sub: 'men who can still be raised', tip: 'manpower' }),
     kpi({ icon: lawArt('citizenship', 'md'), label: 'Full citizens', value: pct(economy.acceptedShare ?? acceptedShareOf(world, me)), sub: 'of the population · Cultures tab', tip: 'law', arg: 'citizenship', meter: economy.acceptedShare ?? acceptedShareOf(world, me) }),
   ]);
 
@@ -1205,7 +1202,7 @@ export function renderPopulation(game, me, state) {
           <div class="k-unify-sub"><span>Kin under foreign rule <b class="${(economy.kinAbroad ?? 0) > 0.1 ? 'neg' : ''}">${pct(economy.kinAbroad ?? 0)}</b></span>
             ${goal ? `<span${tipAttr({ text: `${goal.name}\n${goal.desc}` })}>Goal: <b>${esc(goal.name)}</b> ${goalMet(world, me) ? badge('on track', 'pos') : badge(`+${goal.bonus} in ${END_YEAR}`, 'dim')}</span>` : ''}</div>
           ${unionRows ? `<div class="k-unions">${unionRows}</div>` : ''}
-          <button class="k-btn wide" data-uc-form="1"${blockedAttr(formBlockers)}>Proclaim the Great ${esc(status.culture)} Empire</button>`, { sub: status.formed == null ? 'unification' : status.formed === me.id ? 'proclaimed' : 'claimed by another' })}
+          <button class="k-btn wide has-art" data-uc-form="1"${blockedAttr(formBlockers)}>${eventArt('unification')}Proclaim the Great ${esc(status.culture)} Empire</button>`, { sub: status.formed == null ? 'unification' : status.formed === me.id ? 'proclaimed' : 'claimed by another', icon: eventArt('unification', 'sm') })}
       </div>
     </div>`;
 }
@@ -1237,7 +1234,7 @@ export function renderCultures(game, me, state) {
   const kpis = kpiRow([
     kpi({ icon: emblemArt('people', 'md'), label: 'Peoples', value: String(view.peoples.length), sub: unaccepted ? `${unaccepted} without full rights` : 'all accepted', tip: { text: 'Peoples\nEvery people living in your states. Those you have not accepted pay less, serve less and feed national movements.' } }),
     kpi({ icon: lawArt('citizenship', 'md'), label: 'Full citizens', value: pct(economy.acceptedShare ?? acceptedShareOf(world, me)), sub: 'of the population', tip: 'law', arg: 'citizenship', meter: economy.acceptedShare ?? acceptedShareOf(world, me) }),
-    kpi({ icon: emblemArt('infamy', 'md'), label: 'Unrest', value: num(view.unrest, 1), sub: view.boiling ? `${view.boiling} state${view.boiling === 1 ? '' : 's'} at revolt level` : `revolt level is ${view.revoltAt}`, tip: { text: `Unrest (0-10)\nPopulation-weighted across your states. Above ${view.revoltAt} a state can rise; where an unaccepted people is the majority, unrest above 6 feeds their national movement.` }, meter: view.unrest / 10, meterTone: view.unrest >= 4 ? 'neg' : 'warn' }),
+    kpi({ icon: eventArt('revolution', 'md'), label: 'Unrest', value: num(view.unrest, 1), sub: view.boiling ? `${view.boiling} state${view.boiling === 1 ? '' : 's'} at revolt level` : `revolt level is ${view.revoltAt}`, tip: { text: `Unrest (0-10)\nPopulation-weighted across your states. Above ${view.revoltAt} a state can rise; where an unaccepted people is the majority, unrest above 6 feeds their national movement.` }, meter: view.unrest / 10, meterTone: view.unrest >= 4 ? 'neg' : 'warn' }),
     kpi({ label: 'Movements', value: String(view.movements.length), sub: worst ? `${esc(worst.name)} · ${esc(worst.stage.name)} ${Math.round(worst.progress)}%` : 'none growing', cls: worst && worst.progress >= 50 ? 'warn' : '', tip: { text: 'National movements\nA people without rights that is the majority somewhere organises; at 100% their states break away.' } }),
     kpi({ label: 'Empty land', value: String(settle.emptied.length), sub: settle.ongoing ? `settlers on the way · ${settle.ongoing.weeks} wk` : settle.emptied.length ? 'provinces half empty' : 'every province lived in', cls: settle.emptied.length && !settle.ongoing ? 'warn' : '', tip: { text: 'Empty land\nProvinces that lost half their people to deportation or confinement. Settlers of our own people can fill them.' } }),
   ]);
@@ -1298,22 +1295,22 @@ export function renderCultures(game, me, state) {
   // --- Ulusal hareketler --------------------------------------------------
   const moveCards = view.movements.map((row) => {
     const a = row.actions;
-    const act = (id, label, cfg, tip, cls = '') => {
+    const act = (id, label, cfg, tip, cls = '', art = '') => {
       const key = `move:${id}:${row.cultureId}`;
       const arming = state.confirm === key;
-      return `<button class="k-btn sm ${cls}${arming ? ' confirming' : ''}" data-uc-move="${id}:${row.cultureId}"${cfg.blockers.length ? blockedAttr(cfg.blockers) : tipAttr({ text: tip })}>${arming ? 'Confirm' : label}</button>`;
+      return `<button class="k-btn sm ${cls}${art ? ' has-art' : ''}${arming ? ' confirming' : ''}" data-uc-move="${id}:${row.cultureId}"${cfg.blockers.length ? blockedAttr(cfg.blockers) : tipAttr({ text: tip })}>${art}${arming ? 'Confirm' : label}</button>`;
     };
     const ticks = MOVEMENT.STAGES.slice(1).map((s) => `<i style="left:${s.at}%"></i>`).join('');
     const pace = row.martialLeft > 0 ? `martial law · ${row.martialLeft} wk`
       : row.calmLeft > 0 ? `exhausted · ${row.calmLeft} wk`
         : row.eta != null ? `breaks away in ~${span(row.eta)}` : 'fading';
     return `<div class="k-move s${row.stage.index}" style="--mv:${row.color ?? '#888'}">
-      <div class="k-move-head"><i></i><b>${esc(row.name)}</b><span class="k-stage s${row.stage.index}">${esc(row.stage.name)}</span><small>${pace}</small></div>
+      <div class="k-move-head"><i></i>${movementArt(row.track)}<b>${esc(row.name)}</b><span class="k-stage s${row.stage.index}">${esc(row.stage.name)}</span><small>${pace}</small></div>
       <div class="k-move-bar"${tipAttr({ text: `${Math.round(row.progress)}% — at 100% ${row.provinces.length} state${row.provinces.length === 1 ? '' : 's'} break away${row.heir ? ` and ${row.heir.name} goes to war with us` : ''}.\nIt grows while their unrest stays above ${row.calm} (now ${num(row.pressure, 1)}).` })}><i class="fill" style="width:${row.progress.toFixed(1)}%"></i>${ticks}</div>
       <div class="k-move-acts">
-        ${act('concessions', `Concede · ${a.concessions.cost} PP`, a.concessions, `Temporary: −${a.concessions.drop}% progress and calmer states. Once a year.`)}
-        ${act('martial', `Martial law · ${money(a.martial.cost, 1)}/wk`, a.martial, `Temporary: for ${a.martial.weeks} weeks the movement loses ground; it adds a weekly bill (paid off the top of output) and costs some stability.`)}
-        ${act('vassal', `Release ${a.vassal.provinces} as vassal`, a.vassal, 'Permanent: their states become our vassal. The land goes, the war never comes, they pay us 15% of their income.', 'danger')}
+        ${act('concessions', `Concede · ${a.concessions.cost} PP`, a.concessions, `Temporary: −${a.concessions.drop}% progress and calmer states. Once a year.`, '', eventArt('concession'))}
+        ${act('martial', `Martial law · ${money(a.martial.cost, 1)}/wk`, a.martial, `Temporary: for ${a.martial.weeks} weeks the movement loses ground; it adds a weekly bill (paid off the top of output) and costs some stability.`, '', eventArt('martial_law'))}
+        ${act('vassal', `Release ${a.vassal.provinces} as vassal`, a.vassal, 'Permanent: their states become our vassal. The land goes, the war never comes, they pay us 15% of their income.', 'danger', diplomacyArt('vassal'))}
         ${act('crackdown', `Crush · ${formatPopulation(a.crackdown.dead)} die`, a.crackdown, `Permanent: ${formatPopulation(a.crackdown.dead)} of them die. −${a.crackdown.drop}% progress, heavy infamy, lost stability; our other peoples grow bolder.`, 'danger')}
       </div>
     </div>`;
@@ -1433,9 +1430,9 @@ export function renderPolitics(game, me, state) {
   const decisions = decisionsView(me, turn);
 
   const kpis = kpiRow([
-    kpi({ label: 'Political power', value: String(Math.round(view.power)), sub: `${signed(view.powerIncome.total, 2)} / week · cap 500`, tip: 'power', meter: view.power / 500, cls: 'hero' }),
-    kpi({ label: 'Stability', value: pct(view.stability), sub: `heading to ${pct(view.stabilityTarget)}`, tip: 'stability', meter: view.stability, meterTone: view.stability < 0.35 ? 'neg' : 'pos' }),
-    kpi({ label: 'War support', value: pct(view.warSupport), sub: `heading to ${pct(view.warSupportTarget)}`, tip: 'warsupport', meter: view.warSupport, meterTone: 'warn' }),
+    kpi({ icon: gaugeArt('power', 'md'), label: 'Political power', value: String(Math.round(view.power)), sub: `${signed(view.powerIncome.total, 2)} / week · cap 500`, tip: 'power', meter: view.power / 500, cls: 'hero' }),
+    kpi({ icon: gaugeArt('stability', 'md'), label: 'Stability', value: pct(view.stability), sub: `heading to ${pct(view.stabilityTarget)}`, tip: 'stability', meter: view.stability, meterTone: view.stability < 0.35 ? 'neg' : 'pos' }),
+    kpi({ icon: gaugeArt('war_support', 'md'), label: 'War support', value: pct(view.warSupport), sub: `heading to ${pct(view.warSupportTarget)}`, tip: 'warsupport', meter: view.warSupport, meterTone: 'warn' }),
     // Rejim adı sayı değil metin: 24 px tek satır "Constitutional M…" diye
     // kesiliyordu; metin KPI'si küçük ve iki satırlık sabit yuvadadır.
     kpi({ label: 'Government', cls: 'is-text', value: esc(view.government.name), sub: view.nextElection ? `election in ${Math.max(0, view.nextElection - turn)} weeks` : 'no elections', tip: { text: `${view.government.name}\n${view.government.desc}` } }),
@@ -1532,6 +1529,8 @@ export function renderPolitics(game, me, state) {
         </div>
         ${view.exhaustion > 0.005 || view.exhaustionParts.length ? panel('War exhaustion', `${parts(view.exhaustionParts.map((part) => ({ ...part, value: -part.value })))}
           <p class="k-pol-ladder">${view.exhaustionLadder.map((step) => `<span class="${step.passed ? 'passed' : ''}">${Math.round(step.at * 100)}% ${esc(step.text)}</span>`).join(' · ')}</p>`, {
+    // Üst çubukta "War Sup." hücresindeki yorgunluk aynı miğferle yazılır.
+    icon: gaugeArt('exhaustion', 'sm'),
     right: `${pct(view.exhaustion)} → ${pct(view.exhaustionTarget)}`,
     sub: 'what the war costs: casualties, years, occupation, hunger, men under arms',
   }) : ''}

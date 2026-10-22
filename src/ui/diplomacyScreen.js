@@ -29,8 +29,12 @@ import { declareIndependence } from '../game/vassals.js';
 import { proposeUnion } from '../game/unification.js';
 import { AUTONOMY, ENVOY, GUARANTEE } from '../game/dipDefs.js';
 import { esc, kpi as kitKpi, kpiRow as kitKpiRow, panel as kitPanel, tipAttr } from './kit.js';
+import { diplomacyArt, eventArt, gaugeArt } from './icons/art.js';
 
 const tip = (text) => tipAttr({ text });
+// Düğme ve başlık içindeki resim metin boyunda ('inline': negatif kenarlı
+// 1.5em): satır ve masa yüksekliği resimsiz hâliyle aynı kalır.
+const dart = (id) => diplomacyArt(id, 'inline');
 // Yuvarlanmış değere göre işaret: −0.04 "−0" değil "+0" yazar.
 const fmt = (v, digits = 1) => {
   const r = Number(v.toFixed(digits));
@@ -115,6 +119,8 @@ function warButton(screens, row, cls = 'k-btn sm danger') {
   return `<button type="button" class="${cls}${confirming ? ' confirming' : ''}" data-war="${row.id}"${tip(`${row.warLabel} — ${row.name}\n${row.warTip}${confirming ? '' : '\nClick twice to confirm.'}`)}>${esc(label)}</button>`;
 }
 
+// Masa satırının eylem sütunu dar ve sabit: resim düğmeyi iki satıra bölüyordu
+// (1920'de bile). Resimli eylemler dosyadadır; masa yalın kalır.
 function actionCell(screens, world, row, commitments) {
   if (row.standing === 'war') {
     return `<button type="button" class="k-btn sm" data-peace="${row.id}"${row.talksIn ? ` disabled${tip(`Peace talks open after ${row.talksIn} more weeks of war.`)}` : ''}>${row.talksIn ? `Talks · ${row.talksIn}w` : 'Peace talks'}</button>`;
@@ -146,7 +152,7 @@ function requestRow(req) {
   return `<div class="dip-req k-${req.kind}">
     <span class="flag" data-flag-nation="${req.flag}" data-flag-w="30" data-flag-h="20" data-flag-style="crest"></span>
     <div class="dip-req-main">
-      <b>${esc(req.title)}</b>
+      <b>${dart(req.topic)}${esc(req.title)}</b>
       <small>${esc(req.body)}</small>
       <small class="dip-req-meta"><em>${req.weeksLeft} w</em> · if unanswered: ${esc(req.onTimeout)}</small>
     </div>
@@ -171,8 +177,15 @@ function autonomyTip(name, a) {
 function commitmentsPanel(screens, world, view) {
   const c = view.commitments;
   const sections = [];
+  // Bölüm başlığı anlaşmanın resmini taşır; satırlar yalın kalır (bir resim
+  // bölüm başına yeter, satır başına tekrar yüksekliği ve gürültüyü artırırdı).
+  const SECTION_ART = {
+    Allies: 'alliance', Vassals: 'vassal', 'Guarantees we give': 'guarantee', 'Guaranteed by': 'guarantee',
+    Pacts: 'pact', 'Casus belli': 'demand', Overlord: 'vassal',
+  };
   const section = (title, rows) => {
-    if (rows.length) sections.push(`<div class="dip-csec"><h4>${esc(title)}</h4>${rows.join('')}</div>`);
+    const art = SECTION_ART[title];
+    if (rows.length) sections.push(`<div class="dip-csec"><h4>${art ? dart(art) : ''}${esc(title)}</h4>${rows.join('')}</div>`);
   };
   section('Allies', c.allies.map((a) => `<div class="dip-crow"><button type="button" class="dip-cname" data-nation="${a.id}">${esc(a.name)}</button><small>${a.cause ? `cause: ${esc(a.cause)}` : 'an attack on one calls the other'}</small>${breakButton(a)}</div>`));
   section('Vassals', c.vassals.map((v) => `<div class="dip-crow"><button type="button" class="dip-cname" data-nation="${v.id}">${esc(v.name)}</button><span class="dip-cauto"${tip(autonomyTip(v.name, { value: v.autonomy, target: v.target, parts: v.parts }))}>${autonomyMeter(v.autonomy)}<em>${Math.round(v.autonomy)}</em></span>${screens.vassalButtons(world, world.nations[v.id], v.annexBlockers, 'k-btn sm')}</div>`));
@@ -268,9 +281,10 @@ export function renderDiplomacyScreen(screens, me) {
     view.upkeepParts.envoys ? `${view.upkeepParts.envoys} envoy${view.upkeepParts.envoys === 1 ? '' : 's'}` : '',
   ].filter(Boolean).join(' · ') || 'nothing pledged';
   const kpis = kitKpiRow([
-    kitKpi({ label: 'Infamy', value: `${view.infamy.toFixed(1)} / ${view.infamyCap}`, sub: view.infamy >= view.infamyCap ? 'coalitions can form' : 'coalition threshold', tip: 'infamy', meter: view.infamy / view.infamyCap, meterTone: view.infamy >= view.infamyCap ? 'neg' : view.infamy >= view.infamyCap * 0.6 ? 'warn' : '', cls: 'hero' }),
-    kitKpi({ label: 'Wars', value: String(view.wars), sub: view.crises ? `${view.crises} ultimatum${view.crises === 1 ? '' : 's'}` : 'at war with you' }),
-    kitKpi({ label: 'Allies', value: `${view.allies} / ${view.maxAllies}`, sub: 'an attack on one calls the other' }),
+    // Kötü şöhret ve savaş üst çubuğun resimleriyle: aynı sayı iki resimle iki ayrı sayı sanılır.
+    kitKpi({ icon: gaugeArt('infamy', 'md'), label: 'Infamy', value: `${view.infamy.toFixed(1)} / ${view.infamyCap}`, sub: view.infamy >= view.infamyCap ? 'coalitions can form' : 'coalition threshold', tip: 'infamy', meter: view.infamy / view.infamyCap, meterTone: view.infamy >= view.infamyCap ? 'neg' : view.infamy >= view.infamyCap * 0.6 ? 'warn' : '', cls: 'hero' }),
+    kitKpi({ icon: gaugeArt('war_support', 'md'), label: 'Wars', value: String(view.wars), sub: view.crises ? `${view.crises} ultimatum${view.crises === 1 ? '' : 's'}` : 'at war with you' }),
+    kitKpi({ icon: diplomacyArt('alliance', 'md'), label: 'Allies', value: `${view.allies} / ${view.maxAllies}`, sub: 'an attack on one calls the other' }),
     kitKpi({ label: 'Envoys', value: `${view.envoys.used} / ${view.envoys.slots}`, sub: `+${view.envoys.rate} a week each, up to +${view.envoys.cap}`, tip: { text: `Envoys\nAn envoy raises how a court regards us by ${view.envoys.rate} a week, up to +${view.envoys.cap}. Send one with ☆ in a row or from a dossier.` } }),
     kitKpi({ label: 'Commitments', value: view.upkeep > 0 ? `−${view.upkeep.toFixed(2)} PP/wk` : '0 PP/wk', sub: commitmentsSub, tip: { text: `Commitments\nEnvoys cost ${ENVOY.UPKEEP} and each guarantee we give ${GUARANTEE.UPKEEP} political power a week. If power runs dry the newest envoy is recalled, then the newest guarantee.` } }),
     kitKpi({
@@ -320,13 +334,17 @@ export function renderDiplomacyScreen(screens, me) {
 
 // ---------------------------------------------------------------- DOSYA ---
 
-function dossierButton({ act, arg, label, blockers = [], tipText, cls = 'k-btn', confirmKey = null, screens = null, confirmLabel = null }) {
+function dossierButton({ act, arg, label, blockers = [], tipText, cls = 'k-btn', confirmKey = null, screens = null, confirmLabel = null, art = '' }) {
   const confirming = confirmKey && screens?.dipConfirm === confirmKey;
+  const pic = art ? (DOSSIER_EVENT_ART.has(art) ? eventArt(art, 'inline') : dart(art)) : '';
+  const klass = `${cls}${pic ? ' has-art' : ''}`;
   if (blockers.length) {
-    return `<button type="button" class="${cls}" data-dip-act="${act}" data-dip-arg="${esc(arg)}" disabled${tip(`${label}\n${blockers.join('\n')}`)}>${esc(label)}</button>`;
+    return `<button type="button" class="${klass}" data-dip-act="${act}" data-dip-arg="${esc(arg)}" disabled${tip(`${label}\n${blockers.join('\n')}`)}>${pic}${esc(label)}</button>`;
   }
-  return `<button type="button" class="${cls}${confirming ? ' confirming' : ''}" data-dip-act="${act}" data-dip-arg="${esc(arg)}"${tip(`${label}\n${tipText}${confirmKey && !confirming ? '\nClick twice to confirm.' : ''}`)}>${esc(confirming ? (confirmLabel ?? 'Confirm?') : label)}</button>`;
+  return `<button type="button" class="${klass}${confirming ? ' confirming' : ''}" data-dip-act="${act}" data-dip-arg="${esc(arg)}"${tip(`${label}\n${tipText}${confirmKey && !confirming ? '\nClick twice to confirm.' : ''}`)}>${pic}${esc(confirming ? (confirmLabel ?? 'Confirm?') : label)}</button>`;
 }
+/** Dosya düğmelerinden resmi tarih setinden gelenler (birlik ilanı diplomasi değil, halkın birleşmesi). */
+const DOSSIER_EVENT_ART = new Set(['unification']);
 
 /** ÜLKE DOSYASI (yabancı toprağa sağ tık). */
 export function renderDossierScreen(screens, me) {
@@ -404,26 +422,26 @@ export function renderDossierScreen(screens, me) {
   const v = view.verdicts;
   const rows = [];
   if (war) {
-    rows.push(['War', `<button type="button" class="k-btn" data-peace="${target.id}" ${locked ? 'disabled' : ''}>Peace Talks${locked ? ` (${MIN_WAR_TURNS - (turn - rec.since)}w)` : ''}</button>`]);
+    rows.push(['War', `<button type="button" class="k-btn has-art" data-peace="${target.id}" ${locked ? 'disabled' : ''}>${dart('peace')}Peace Talks${locked ? ` (${MIN_WAR_TURNS - (turn - rec.since)}w)` : ''}</button>`]);
   } else {
     const agreements = [];
     if (allied) {
       if (view.allyBreak) agreements.push(breakButton(view.allyBreak, 'k-btn'));
     } else if (!vassal && !overlord) {
       agreements.push(dossierButton({
-        act: 'ally', arg: target.id, label: 'Propose alliance',
+        act: 'ally', arg: target.id, label: 'Propose alliance', art: 'alliance',
         blockers: v.ally.blockers.length ? v.ally.blockers : (v.ally.accept ? [] : [v.ally.sentence]),
         tipText: `${v.ally.sentence}\nAn attack on one becomes a call to the other.`,
       }));
     }
     if (view.pact) {
       if (view.pact.denounced == null) {
-        agreements.push(dossierButton({ act: 'renew', arg: target.id, label: `Renew pact · ${view.costs.nap}`, blockers: v.nap.blockers.length ? v.nap.blockers : (v.nap.verdict.accept ? [] : [v.nap.sentence]), tipText: `${v.nap.sentence}\nFive more years.` }));
+        agreements.push(dossierButton({ act: 'renew', arg: target.id, label: `Renew pact · ${view.costs.nap}`, art: 'pact', blockers: v.nap.blockers.length ? v.nap.blockers : (v.nap.verdict.accept ? [] : [v.nap.sentence]), tipText: `${v.nap.sentence}\nFive more years.` }));
         agreements.push(dossierButton({ act: 'denounce', arg: target.id, label: 'Denounce pact', tipText: `The pact ends in 26 weeks; ${target.name} takes it badly (relations −15).` }));
       }
     } else if (!allied && !vassal && !overlord) {
       agreements.push(dossierButton({
-        act: 'nap', arg: target.id, label: `Non-aggression pact · ${view.costs.nap}`,
+        act: 'nap', arg: target.id, label: `Non-aggression pact · ${view.costs.nap}`, art: 'pact',
         blockers: v.nap.blockers.length ? v.nap.blockers : (v.nap.verdict.accept ? [] : [v.nap.sentence]),
         tipText: `${v.nap.sentence}\nFive years in which neither of us may declare war; a denunciation gives 26 weeks' notice. Breaking it costs +8 infamy and every partner's trust.`,
       }));
@@ -437,7 +455,7 @@ export function renderDossierScreen(screens, me) {
       }));
     } else if (!allied && !vassal && !overlord) {
       agreements.push(dossierButton({
-        act: 'guarantee', arg: target.id, label: `Guarantee independence · ${view.costs.guarantee} + ${view.costs.guaranteeUpkeep}/wk`,
+        act: 'guarantee', arg: target.id, label: `Guarantee independence · ${view.costs.guarantee} + ${view.costs.guaranteeUpkeep}/wk`, art: 'guarantee',
         blockers: v.guarantee.blockers,
         tipText: 'If anyone declares war on them, we are called. Our strength counts in every attacker\'s odds against them, and no kindred state may absorb them while we guarantee them.',
       }));
@@ -451,13 +469,13 @@ export function renderDossierScreen(screens, me) {
       }));
     }
     if (v.union) {
-      agreements.push(dossierButton({ act: 'union', arg: target.id, label: `Propose union · ${v.union.cost} PP`, blockers: v.union.blockers, tipText: 'Their whole state joins ours in peace. A little infamy, much prestige.' }));
+      agreements.push(dossierButton({ act: 'union', arg: target.id, label: `Propose union · ${v.union.cost} PP`, art: 'unification', blockers: v.union.blockers, tipText: 'Their whole state joins ours in peace. A little infamy, much prestige.' }));
     }
     if (vassal) agreements.push(screens.vassalButtons(world, target, view.annexBlockers ?? [], 'k-btn'));
     if (agreements.length) rows.push(['Agreements', agreements.join('')]);
     if (!vassal && !overlord && !allied) {
       const pressure = view.demands.map((d) => dossierButton({
-        act: 'demand', arg: `${target.id}:${d.provinceId}`, label: `Demand ${d.name} · ${view.costs.demand} PP, +${view.costs.demandInfamy} infamy`,
+        act: 'demand', arg: `${target.id}:${d.provinceId}`, label: `Demand ${d.name} · ${view.costs.demand} PP, +${view.costs.demandInfamy} infamy`, art: 'demand',
         blockers: d.blockers, tipText: `"Give us ${d.name} or war." Now ${d.text}. If they refuse we hold a free cause for war for a year.`,
         cls: 'k-btn danger', confirmKey: `demand:${target.id}:${d.provinceId}`, screens, confirmLabel: `Confirm: demand ${d.name}?`,
       }));
@@ -467,7 +485,7 @@ export function renderDossierScreen(screens, me) {
       rows.push(['Pressure', pressure.join('')]);
     }
   }
-  const embargo = v.embargo.active ? '' : `<button type="button" class="k-btn" data-embargo="${target.id}"${v.embargo.blockers.length ? ` disabled${tip(`Embargo\n${v.embargo.blockers.join('\n')}`)}` : tip(`Embargo ${target.name}\nCuts trade both ways. Costs ${v.embargo.cost} political power; ${target.name} −20 in relations.`)}>Embargo · ${v.embargo.cost} PP</button>`;
+  const embargo = v.embargo.active ? '' : `<button type="button" class="k-btn has-art" data-embargo="${target.id}"${v.embargo.blockers.length ? ` disabled${tip(`Embargo\n${v.embargo.blockers.join('\n')}`)}` : tip(`Embargo ${target.name}\nCuts trade both ways. Costs ${v.embargo.cost} political power; ${target.name} −20 in relations.`)}>${dart('embargo')}Embargo · ${v.embargo.cost} PP</button>`;
   rows.push(['Other', `${embargo}<button type="button" class="k-btn" data-locate="${target.id}">Show on map</button>`]);
   const actions = rows.map(([label, body]) => `<div class="dip-arow"><span class="dip-alabel">${esc(label)}</span><div class="row-buttons dossier-actions">${body}</div></div>`).join('');
 

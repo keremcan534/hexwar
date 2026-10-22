@@ -9,7 +9,7 @@
 // burada tek bir eşik ya da toplam hesaplanmaz. Simgeler satır içi çizgi-SVG:
 // birim rozetleri harita odası sayacı gibi okunur, emoji yoktur.
 
-import { emblemArt, equipmentArt, kitArt, traitArt } from './icons/art.js';
+import { emblemArt, equipmentArt, gaugeArt, kitArt, traitArt } from './icons/art.js';
 import { glyph } from './icons/glyphs.js';
 import { kpi, kpiRow, money, tipAttr } from './kit.js';
 import { formatPopulation } from '../game/economy.js';
@@ -62,6 +62,8 @@ function headerStrip(summary, composition = [], spent = null) {
   const wars = summary.wars.length || crises.length
     ? summary.wars.map((war) => war.name).concat(crises).join(', ')
     : 'At peace';
+  // İnsan gücü ve savaş kutusu üst çubuğun resimleriyle (gaugeArt): aynı
+  // kavram iki ekranda iki ayrı resimle görünürse oyuncu iki ayrı sayı sanır.
   return kpiRow([
     kpi({
       icon: emblemArt('soldiers', 'md'), label: 'Standing army', value: formatPopulation(summary.men),
@@ -78,7 +80,7 @@ function headerStrip(summary, composition = [], spent = null) {
         + (spent ? ` (cost ${spent.rifles.toFixed(1)} rifles, ${spent.guns.toFixed(1)} guns)` : '') },
     }),
     kpi({
-      icon: emblemArt('recruits', 'md'), label: 'Manpower', value: formatPopulation(summary.manpower), sub: 'still to be raised',
+      icon: gaugeArt('manpower', 'md'), label: 'Manpower', value: formatPopulation(summary.manpower), sub: 'still to be raised',
       tip: { text: 'Manpower\nPeople your states can still put under arms. The conscription law sets the share; technology, advisors and the Recruitment focus raise it.' },
     }),
     kpi({
@@ -91,7 +93,7 @@ function headerStrip(summary, composition = [], spent = null) {
       sub: 'training at once', meter: summary.trainingCapacity ? Math.min(1, summary.training / summary.trainingCapacity) : 0,
     }),
     kpi({
-      icon: emblemArt('war_support', 'md'), label: 'Wars', value: summary.wars.length ? String(summary.wars.length) : 'Peace',
+      icon: gaugeArt('war_support', 'md'), label: 'Wars', value: summary.wars.length ? String(summary.wars.length) : 'Peace',
       sub: summary.wars.length || crises.length ? wars : 'no war, no crisis', cls: summary.wars.length ? 'hot' : '',
       tip: { text: `Wars\n${wars}` },
     }),
@@ -372,7 +374,7 @@ function buildRow(option, ironclad) {
     <div class="mil-unit-cost">
       <span class="mil-chip"${tipAttr({ text: 'Training time with the army fully supplied; a supply crisis lengthens it.' })}>${glyph('hourglass', 'inline')}<b>${option.weeks}</b><small>wk</small></span>
       <span class="mil-chip"${tipAttr({ text: `Weekly supply\n${supply} IC a week in peace, ×${SUPPLY.war} at war: a bill that comes off the top of output for as long as it serves. Nothing is paid up front.` })}>${kitArt('supply', 'xs')}<b>${(option.upkeep ?? 0).toFixed(1)}</b><small>/wk</small></span>
-      <span class="mil-chip"${tipAttr({ text: 'Men drawn from the state when the regiment marches out.' })}>${emblemArt('people', 'xs')}<b>${formatPopulation(option.manpower)}</b></span>
+      <span class="mil-chip"${tipAttr({ text: 'Men drawn from the state when the regiment marches out.' })}>${gaugeArt('manpower', 'xs')}<b>${formatPopulation(option.manpower)}</b></span>
       ${equipment}
       ${fill < 1 && !blocked ? `<span class="mil-chip warn"${tipAttr({ text: 'Short of equipment\nTraining does not wait: the regiment marches out at this strength and the production lines fill it up later.' })}><b>${Math.round(Math.max(0.1, fill) * 100)}%</b><small>str</small></span>` : ''}
     </div>

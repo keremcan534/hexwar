@@ -129,7 +129,12 @@ function warAction(world, me, other, turn) {
 function requestView(world, me, rec, turn) {
   const from = world.nations[rec.kind === 'call' ? rec.defender : rec.from];
   const weeksLeft = Math.max(0, rec.expires - turn);
-  const base = { id: rec.id, kind: rec.kind, flag: from?.id ?? null, weeksLeft };
+  // `topic`: kaydın konusu (ekran onu resimle gösterir; sayı değil, ad).
+  // Çağrı garantörden gelebilir, öneri üç antlaşmadan biridir.
+  const topic = rec.kind === 'call' ? ({ guarantor: 'guarantee', overlord: 'vassal', vassal: 'vassal' }[rec.via] ?? 'alliance')
+    : rec.kind === 'proposal' ? ({ ALLIANCE: 'alliance', NAP: 'pact' }[rec.treaty] ?? 'guarantee')
+      : 'demand';
+  const base = { id: rec.id, kind: rec.kind, topic, flag: from?.id ?? null, weeksLeft };
   if (rec.kind === 'call') {
     const aggressor = world.nations[rec.aggressor];
     const startsIn = Math.max(0, (rec.warAt ?? turn) - turn);

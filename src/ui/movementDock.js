@@ -19,6 +19,7 @@ import { formatPopulation } from '../game/economy.js';
 import { FINAL_TURN } from '../game/hegemony.js';
 import { END_YEAR } from '../game/calendar.js';
 import { money } from './kit.js';
+import { eventArt, movementArt } from './icons/art.js';
 
 const esc = (value) => String(value ?? '').replace(/[&<>"']/g, (ch) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;',
@@ -143,7 +144,9 @@ export class MovementDock {
     const eta = row.eta != null ? etaLabel(row.eta, this.game.turns?.turn ?? this.game.world?.turn ?? 1) : null;
     const pace = row.crisis ? `answer within ${row.crisis.left}w`
       : row.atBrink ? 'at the brink — they rise the moment the state falters'
-        : row.martialLeft > 0 ? `martial law · ${row.martialLeft}w`
+        // Sıkıyönetim süresi Cultures'taki düğmenin resmiyle: oyuncu hangi
+        // emrin işlediğini metni okumadan tanır.
+        : row.martialLeft > 0 ? `${eventArt('martial_law', 'inline')}martial law · ${row.martialLeft}w`
           : row.calmLeft > 0 ? `exhausted · ${row.calmLeft}w`
             : eta ? (subject ? `rises ${eta}` : `asks for ${ask} ${eta}`)
               // İlk haftanın kapanışından önce eğilim yoktur: "sönüyor" demek yalan olur.
@@ -199,7 +202,7 @@ export class MovementDock {
     }
     return `<section class="md-row stage-${subject ? stage.index : 0}${row.crisis ? ' crisis' : ''}" data-md-row="${row.cultureId}" ${swatch}>
       <header class="md-row-head">
-        <i class="md-swatch" aria-hidden="true"></i>
+        <i class="md-swatch" aria-hidden="true"></i>${movementArt(row.track)}
         <button type="button" class="md-name" data-md-focus="${row.cultureId}"
           title="Show their states on the map">${esc(row.name)}</button>
         <span class="md-stage">${esc(chip)} · ${esc(stageName)}</span>

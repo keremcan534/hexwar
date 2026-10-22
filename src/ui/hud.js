@@ -31,7 +31,7 @@ import { formatPopulation } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS, DEVELOPMENT_MAX } from '../game/econ/defs.js';
 import { developmentCap, fundFloor, investmentTarget, levelCost } from '../game/econ/investment.js';
 import { inSupplyCrisis } from '../game/econ/bills.js';
-import { emblemArt, resourceArt } from './icons/art.js';
+import { emblemArt, gaugeArt, resourceArt } from './icons/art.js';
 import { glyph } from './icons/glyphs.js';
 import { provideTooltip, quietScroll, refreshTooltips } from './tooltip.js';
 import { CURRENCY, meter as kitMeter, money, pips as kitPips, tipAttr } from './kit.js';
@@ -1623,10 +1623,10 @@ export class Hud {
       const armyCap = me.economy?.alloc?.armyCap ?? ic.military ?? 0;
       const people = me.economy?.population ?? 0;
       const recruits = nationManpower(world, me.id);
-      this.el.macroStats.innerHTML = `<span class="tb-minis">${miniCell(emblemArt('people', 'xs'), 'People',
+      this.el.macroStats.innerHTML = `<span class="tb-minis">${miniCell(gaugeArt('population', 'xs'), 'People',
         formatPopulation(people), `role="button" data-macro="population" ${track('pop', people, people * 0.01)}`, 'macro-live')
         + miniCell(emblemArt('soldiers', 'xs'), 'Army', formatPopulation(army), `data-tip="army" ${track('army', army, army * 0.03 + 1)}`)
-        + miniCell(emblemArt('recruits', 'xs'), 'Recruits', formatPopulation(recruits), `data-tip="manpower" ${track('mp', recruits, recruits * 0.05 + 1)}`)
+        + miniCell(gaugeArt('manpower', 'xs'), 'Recruits', formatPopulation(recruits), `data-tip="manpower" ${track('mp', recruits, recruits * 0.05 + 1)}`)
         + miniCell(emblemArt('factory', 'xs'), 'Industry', `${ic.total.toFixed(1)}<em class="stat-flow">${drawn.toFixed(1)}/${armyCap.toFixed(1)}${glyph('swords', 'inline')}</em>`,
           `role="button" data-macro="ic" ${track('ic', ic.total, 0.2)}`, 'macro-live has-flow')}</span>`
         + resourceChips(me);
@@ -2771,22 +2771,25 @@ function resourcesHtml(nation) {
   // düzendir (econ/bills.supplyFactor), oyuncu onu ekran açmadan görmeli.
   const output = nation.economy?.ic?.output ?? 0;
   const crisis = inSupplyCrisis(nation);
-  const cells = statCell(emblemArt('industry'), 'Output',
+  const cells = statCell(gaugeArt('output'), 'Output',
     `<span class="${crisis ? 'res-neg' : ''}">${outputLabel(output)}</span><em class="stat-flow">IC</em>`,
     `data-tip="topbar-output" ${track('out', output, Math.max(0.5, output * 0.02))}`, `tb-hero${crisis ? ' tb-crisis' : ''}`,
     null, outputBar(nation.economy?.alloc, crisis))
-    + statCell(emblemArt('power'), 'Power', `${Math.round(nation.power ?? 0)}<em class="stat-flow res-pos">+${power.total.toFixed(1)}</em>`,
+    + statCell(gaugeArt('power'), 'Power', `${Math.round(nation.power ?? 0)}<em class="stat-flow res-pos">+${power.total.toFixed(1)}</em>`,
       `data-tip="power" ${track('power', nation.power ?? 0, 25)}`, '', { share: (nation.power ?? 0) / 500, tone: 'gold' })
-    + statCell(emblemArt('stability'), 'Stability', `<span class="${stabilityClass}">${stability}%</span>`,
+    + statCell(gaugeArt('stability'), 'Stability', `<span class="${stabilityClass}">${stability}%</span>`,
       `role="button" data-why="stability" data-tip="stability" ${track('stab', stability, 1)}`, 'stat-why',
       { share: stability / 100, tone: tone(stability, 45, 30) })
     // Yorgunluk iradenin yanında: savaşın bedeli ekran açmadan okunsun
-    // (0.60'tan sonra halklarımız kopmaya başlar; TASARIM §9-10).
-    + statCell(emblemArt('war_support'), 'War Sup.', `${warSupport}%${exhaustion >= 5
-      ? `<em class="stat-flow ${exhaustion >= 60 ? 'res-neg' : exhaustion >= 45 ? 'res-warn' : ''}" title="War exhaustion">exh ${exhaustion}%</em>` : ''}`,
+    // (0.60'tan sonra halklarımız kopmaya başlar; TASARIM §9-10). "exh"
+    // kısaltması okunmuyordu; sargılı miğfer yorgunluğun kendi resmidir.
+    // Göstergeler hud-photo setinden (art.gaugeArt); teknoloji dallarının
+    // amblemleri ayrı dosyalardır, burada değişmeleri o ekranı değiştirmez.
+    + statCell(gaugeArt('war_support'), 'War Sup.', `${warSupport}%${exhaustion >= 5
+      ? `<em class="stat-flow ${exhaustion >= 60 ? 'res-neg' : exhaustion >= 45 ? 'res-warn' : ''}" title="War exhaustion">${gaugeArt('exhaustion', 'inline')}${exhaustion}%</em>` : ''}`,
     `data-tip="warsupport" ${track('ws', warSupport, 1)}`, '',
       { share: warSupport / 100, tone: 'war' })
-    + statCell(emblemArt('infamy'), 'Infamy', `<span class="${infamyClass}">${infamy.toFixed(1)}</span>`,
+    + statCell(gaugeArt('infamy'), 'Infamy', `<span class="${infamyClass}">${infamy.toFixed(1)}</span>`,
       `data-tip="infamy" ${track('inf', infamy, 0.5, -1)}`, '',
       { share: infamy / INFAMY_COALITION, tone: infamy >= INFAMY_COALITION ? 'neg' : infamy >= INFAMY_COALITION * 0.6 ? 'warn' : 'dim' });
   // KARTUŞ: beş ana gösterge sekme künyeleriyle aynı pirinç çerçevede.

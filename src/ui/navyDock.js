@@ -25,7 +25,7 @@ import { destinationOf, etaWeeks } from '../game/movement.js';
 import { isDelegated } from '../game/delegation.js';
 import { dateOfTurn } from '../game/calendar.js';
 import { tipAttr } from './kit.js';
-import { kitArt } from './icons/art.js';
+import { kitArt, navyArt } from './icons/art.js';
 import { quietScroll } from './tooltip.js';
 import { toLocal } from './uiScale.js';
 import {
@@ -281,6 +281,10 @@ export class NavyDock {
     const hulls = group.ships.map((ship) => `${ship.name} — ${shipClassOf(ship).name.toLowerCase()}, hull ${pct(ship.hp)}`).join('\n');
     const lowHull = group.hull < 0.85 ? ` · hull ${pct(group.hull)}` : '';
     let glyph = '●';
+    // Hâlin resmi (navy-photo) glifin yerine oturur: nöbet = deniz hâkimiyeti,
+    // abluka, onarım, çekilme, liman. Yoldaki/dönen filonun resmi yok; ok
+    // glifi yönü daha iyi söyler.
+    let art = { station: 'sea_control', repairing: 'repair', withdrawn: 'withdrawal', idle: 'port' }[group.kind] ?? '';
     let place = group.zone?.name ?? '';
     let status = '';
     let tone = '';
@@ -291,7 +295,7 @@ export class NavyDock {
           .map((b) => `blockading ${world.nations[b.nation]?.name ?? '?'} ${pct(b.share)}`);
         // Yeşil ● zaten "nöbette" der: 220 px'lik sütunda abluka ve gövde
         // "on station · " önekiyle kesiliyordu (1920'de bile "hull 70%" yoktu).
-        if (blockading.length) status = blockading.join(', ');
+        if (blockading.length) { status = blockading.join(', '); art = 'blockade'; }
         else if (row?.hostile > 0) { status = `on station · contesting: ${str1(row.friendly)} vs ${str1(row.hostile)}`; tone = 'warn'; }
         else if (row?.why?.code === 'escort') status = 'on station · escorting the lanes';
         else status = 'on station · holding the sea';
@@ -350,7 +354,7 @@ export class NavyDock {
       ? `<button class="nd-place" type="button" data-nd-show="${zone.id}">${esc(place)}</button>`
       : `<span class="nd-place">${esc(place)}</span>`;
     return `<div class="nd-sq ${group.kind}${tone ? ` ${tone}` : ''}"${zone ? ` data-nd-hz="${zone.id}"` : ''}${tipAttr({ text: tip })}>
-        <i class="nd-glyph" aria-hidden="true">${glyph}</i>${placeHtml}<b class="nd-count">${group.kind === 'underway' ? `+${count}` : count}</b><span class="nd-sqs">${status}</span>
+        <i class="nd-glyph" aria-hidden="true">${art ? navyArt(art) : glyph}</i>${placeHtml}<b class="nd-count">${group.kind === 'underway' ? `+${count}` : count}</b><span class="nd-sqs">${status}</span>
       </div>`;
   }
 
@@ -522,14 +526,14 @@ export class NavyDock {
     }
     const tradeTip = `Sea trade\n${BLOCKADE_RULE}\nTrade between partners who do not border each other sails along the lanes on this map; an enemy-held sea on the way or U-boats on a lane sink the cargo that passes.${cuts.length ? `\n\nLanes cut now:\n${cuts.slice(0, 5).map((c) => `${world.nations[c.partner]?.name ?? '?'} −${pct(c.lostShare)} (${c.cause.map((x) => `${seaName(world, x.zone)}: ${x.kind === 'raid' ? 'U-boats' : 'held'} by ${names(world, x.by) || '?'}`).join('; ') || 'enemy seas'})`).join('\n')}` : ''}\nClick: show the worst sea.`;
     const worstZone = blockers[0]?.zone.id ?? cuts[0]?.cause[0]?.zone ?? null;
-    lines.push(this.tlHtml('Sea trade', trade, tradeTone, tradeTip, worstZone != null ? `data-nd-show="${worstZone}"` : ''));
+    lines.push(this.tlHtml('Sea trade', trade, tradeTone, tradeTip, worstZone != null ? `data-nd-show="${worstZone}"` : '', navyArt('convoy')));
     if (view.atWar) {
       const ours = view.ourBlockades.map((b) => (b.national >= 0.1
         ? `${esc(b.name)} ${pct(b.national)} of its coast` : `${esc(b.name)}: token blockade (${pct(b.national)})`));
       const tip = view.ourBlockades.length
         ? `Our blockade\n${view.ourBlockades.map((b) => `${b.seas.map((s) => `${s.zone.name}: ${pct(s.share)} of ${b.name}'s ${plural(s.coast, 'coastal state')} there (cover: our ${str1(s.strength)} strength vs ${str1(0.6 * s.coast)} needed = 0.6 per state)`).join('\n')}\n${b.name} has ${plural(b.coastal, 'coastal state')}: its sea trade with partners it does not border loses ${pct(b.national)}.`).join('\n\n')}\nEffective from 10% of the coast.`
         : 'Our blockade\nNo enemy coast is blockaded: send ships to a sea where an enemy has a coast (ENEMY COAST tag).';
-      lines.push(this.tlHtml('Our blockade', ours.join(' · ') || 'none — no enemy coast is held', ours.length ? 'good' : 'dim', tip));
+      lines.push(this.tlHtml('Our blockade', ours.join(' · ') || 'none — no enemy coast is held', ours.length ? 'good' : 'dim', tip, '', navyArt('blockade')));
     }
     const units = view.transports.reduce((sum, t) => sum + t.units.length, 0);
     let troops = 'none at sea';
@@ -547,13 +551,15 @@ export class NavyDock {
       troopTone = first.status.state === 'held' ? 'bad' : '';
     }
     const troopRows = view.transports.map((t) => `${t.zone.name}: ${plural(t.units.length, 'division')} — ${t.status.state === 'held' ? `${names(world, t.status.holders)} holds ${pct(t.status.share)}, −${pct(t.riskPerWeek)} men a week` : t.status.state}`);
-    lines.push(this.tlHtml('Troops', troops, troopTone, `Troops at sea\n${troopRows.length ? `${troopRows.join('\n')}\n\n` : ''}${TROOPS_RULE}${units ? '\nClick: select them.' : ''}`, units ? 'data-nd-troops' : ''));
+    lines.push(this.tlHtml('Troops', troops, troopTone, `Troops at sea\n${troopRows.length ? `${troopRows.join('\n')}\n\n` : ''}${TROOPS_RULE}${units ? '\nClick: select them.' : ''}`, units ? 'data-nd-troops' : '', navyArt('landing')));
     if (view.atWar) {
       const closed = view.closed.map((c) => `${esc(c.zone.name)} (${esc(names(world, c.holders) || 'the enemy')} ${pct(c.share)})`);
+      // Kapalı deniz = düşmanın deniz hâkimiyeti: aynı resim, kırmızı metin kimin
+      // elinde olduğunu söyler. Resimsiz satır sütunu kaydırıyordu.
       lines.push(this.tlHtml('Closed', closed.length ? `${closed.join(', ')} — troops cannot enter` : 'none — every sea is open to our troops',
         closed.length ? 'bad' : 'dim',
         `Closed seas\nOver half of the warships in a sea are the enemy's: our divisions cannot embark into it or sail through it. Divisions already inside may still sail out and land, losing men every week.${closed.length ? '\nHatched on the map while an army is selected.' : ''}`,
-        closed.length ? `data-nd-show="${view.closed[0].zone.id}"` : ''));
+        closed.length ? `data-nd-show="${view.closed[0].zone.id}"` : '', navyArt('sea_control')));
     }
     return `<section class="nd-trade"><h4 class="nd-sec">Trade &amp; transports</h4>${lines.join('')}</section>`;
   }
@@ -644,7 +650,7 @@ export class NavyDock {
     const fresh = actions[0] && actions[0].turn === (this.game.world.turn ?? 0) && actionId(actions[0]) !== this.lastActionId;
     if (actions[0]) this.lastActionId = actionId(actions[0]);
     return `<section class="nd-last${fresh ? ' fresh' : ''}"${older ? tipAttr({ text: `Earlier sea actions\n${older}` }) : ''}>
-        <div class="nd-last-head"><h4 class="nd-sec">Last sea action${actions.length > 1 ? ` · ${actions.length} in six months` : ''}</h4>${actions.length ? `<button class="k-btn xs" type="button" data-nd-open="${esc(actionId(actions[0]))}">Open report</button>` : ''}</div>
+        <div class="nd-last-head"><h4 class="nd-sec">${navyArt('battle')}Last sea action${actions.length > 1 ? ` · ${actions.length} in six months` : ''}</h4>${actions.length ? `<button class="k-btn xs" type="button" data-nd-open="${esc(actionId(actions[0]))}">Open report</button>` : ''}</div>
         ${lines.join('')}
       </section>`;
   }
@@ -691,7 +697,7 @@ export class NavyDock {
     const title = record.evaded ? `No battle in ${sea}` : record.name;
     const nav = `<div class="nd-card-nav">
         <button class="k-btn xs" type="button" data-nd-back>‹ Back</button>
-        <div class="nd-card-title"><b>${esc(title)}</b><small>${record.evaded ? '' : `${esc(sea)} · `}${fullDate(record.turn)}</small></div>
+        <div class="nd-card-title"><b>${navyArt(record.evaded ? 'withdrawal' : 'battle', 'sm')}${esc(title)}</b><small>${record.evaded ? '' : `${esc(sea)} · `}${fullDate(record.turn)}</small></div>
         <button class="k-btn xs" type="button" data-nd-step="${esc(earlier ?? '')}"${earlier ? '' : ' disabled'}>Earlier</button>
         <button class="k-btn xs" type="button" data-nd-step="${esc(later ?? '')}"${later ? '' : ' disabled'}>Later</button>
       </div>`;
