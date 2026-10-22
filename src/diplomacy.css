@@ -54,12 +54,11 @@
   .dip-table.v2 .dip-row > .dip-ally, .dip-table.v2 .dip-row > .dip-col-ally { display: none; }
 }
 
-/* Dar ekranda (tek sütun) sağ yığın tablonun altına iner; cevap bekleyen
-   istekler orada görünmez kalmasın: yığın açılır, istekler tablonun üstüne. */
-@media (max-width: 1599px) {
-  .k-split.dip-split > .k-stack { display: contents; }
-  .k-split.dip-split > .k-stack > .dip-requests { order: -1; }
-}
+/* Dar ekranda da iki sütun kalır (styles.css "pencere" kuralı: tablo solda,
+   sağ yığın kendi içinde kayar; istekler yığının başında). Yığını burada
+   açmak (display: contents) pencerenin tek satırlık ızgarasına beş panel
+   döküyordu: 1280×720'de ulus tablosu tek satıra eziliyor, savaşta istek
+   kartı ilk hücreyi alıp tabloyu 300 px'lik sağ sütuna itiyordu. */
 
 /* Masa: bekleyen çağrı, teklif ve talepler. */
 .dip-requests .k-panel-body, .dip-requests { gap: 6px; }
@@ -126,3 +125,8 @@
 .dip-alabel { padding-top: 5px; color: var(--text-mute); font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
 .dip-arow .dossier-actions { display: flex; flex-wrap: wrap; gap: 6px; }
 .dip-arow .dip-note { align-self: center; }
+
+/* Taahhüt başlığının alt satırı (koltuk · elçi) sağ sütunda kesiliyordu ve
+   bilgi kartı yok: sığmazsa başlığın altına iner. */
+.dip-commit > .k-head { flex-wrap: wrap; row-gap: 2px; }
+.dip-commit > .k-head small { white-space: normal; }

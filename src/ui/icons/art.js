@@ -37,8 +37,8 @@ const RESOURCE_FILE = {
 /**
  * Teçhizat da fotoğraftan çizilen sette (assets/incoming/techizat-foto-1.webp).
  * Eski setin savaş gemisi YELKENLİ klipperdi (1900-1945'te); artık dretnot —
- * eski zırhlı da aynı gövdeyi taşır. Denizaltı, milis ve ikmal sandığı
- * equipment-photo'da hazır: donanma paneli ve Call to Arms satırı için.
+ * eski zırhlı da aynı gövdeyi taşır. Setin teçhizat OLMAYAN üç resmi
+ * (denizaltı, milis, ikmal sandığı) KIT_FILE'da.
  */
 const EQUIPMENT_FILE = {
   rifles: 'equipment-photo/rifles',
@@ -47,6 +47,18 @@ const EQUIPMENT_FILE = {
   ironclads: 'equipment-photo/dreadnought',
   tanks: 'equipment-photo/tanks',
   aircraft: 'equipment-photo/aircraft',
+};
+
+/**
+ * Aynı fotoğraf setinden, teçhizat hattı olmayan nesneler: denizaltı (donanma
+ * panelinin Submarines satırı), milis (Call to Arms), ikmal sandığı (haftalık
+ * ikmal faturası). Ordu amblemi ikmali "ordu" diye okutuyordu; sandık faturanın
+ * kendisidir.
+ */
+const KIT_FILE = {
+  submarine: 'equipment-photo/submarine',
+  militia: 'equipment-photo/militia',
+  supply: 'equipment-photo/supply',
 };
 
 /**
@@ -102,6 +114,12 @@ export function lawArt(id, size = 'md') {
 /** Teçhizat madalyonu; zırhlı teknolojisiyle gemi buharlıya döner. */
 export function equipmentArt(id, size = 'md', ironclad = false) {
   const file = EQUIPMENT_FILE[id === 'ships' && ironclad ? 'ironclads' : id];
+  return file ? img(file, id, `art-${size} art-item`) : '';
+}
+
+/** Teçhizat setinin öbür nesneleri: 'submarine' | 'militia' | 'supply'. */
+export function kitArt(id, size = 'xs') {
+  const file = KIT_FILE[id];
   return file ? img(file, id, `art-${size} art-item`) : '';
 }
 
