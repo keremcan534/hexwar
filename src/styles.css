@@ -953,14 +953,17 @@ body.screen-open .tab-tools { visibility: visible; }
   border-top: 1px solid rgba(174, 139, 74, 0.34);
   border-right: 1px solid rgba(174, 139, 74, 0.34);
   border-left: 1px solid rgba(174, 139, 74, 0.34);
-  /* Victoria dokusu EN ALT katman: üstündeki koyu zemin onu neredeyse
-     tamamen yutar, geriye yalnız kâğıdın kabartması kalır. Doku okunurluğun
-     üstüne çıkarsa tablo okunmaz olur — o yüzden desen değil, DERİ. */
+  /* Her ekranın kendi tarihî fotoğrafı EN ALT katmanda (--screen-photo,
+     aşağıda ekran ekran). Kerem 2026-10-21: her ekranda aynı mavi zemin +
+     çiçekli doku tekdüzeydi; dört önizleme arasından "koyu + ekrana göre
+     fotoğraf" seçildi. Üstteki karartma fotoğrafı sahneye indirir: panel
+     aralarında ve kenarlarda okunur, tablonun altında yazıyla yarışmaz.
+     Çiçekli doku atılmadı, yasa kartlarına taşındı (.k-law). */
   background:
     var(--ui-grain),
     var(--panel-tone),
-    linear-gradient(rgba(11, 18, 21, 0.80), rgba(11, 18, 21, 0.80)),
-    url('../assets/ui/wallpaper.jpg') center / 460px repeat,
+    linear-gradient(180deg, rgba(9, 13, 15, 0.38) 0%, rgba(9, 13, 15, 0.56) 55%, rgba(9, 13, 15, 0.74) 100%),
+    var(--screen-photo, url('../assets/menu/palace-square.jpg')) center 35% / cover no-repeat,
     var(--surface-1);
   box-shadow: var(--frame-brass);
   opacity: 1;
@@ -970,6 +973,20 @@ body.screen-open .tab-tools { visibility: visible; }
     opacity 160ms ease,
     visibility 0s linear;
 }
+
+/* Ekranın fotoğrafı konusundandır: hükümet sarayın salonunda, ordu kıyı
+   tabyasında, ticaret limanda. Listede olmayan ekran saray meydanını alır. */
+#screen[data-screen="construction"] { --screen-photo: url('../assets/menu/valley-town.jpg'); }
+#screen[data-screen="industry"] { --screen-photo: url('../assets/overview/industry.jpg'); }
+#screen[data-screen="trade"] { --screen-photo: url('../assets/menu/harbour-dawn.jpg'); }
+#screen[data-screen="budget"] { --screen-photo: url('../assets/menu/rail-yard.jpg'); }
+#screen[data-screen="military"] { --screen-photo: url('../assets/menu/coast-fort.jpg'); }
+#screen[data-screen="population"] { --screen-photo: url('../assets/overview/population.jpg'); }
+#screen[data-screen="cultures"] { --screen-photo: url('../assets/overview/land.jpg'); }
+#screen[data-screen="politics"] { --screen-photo: url('../assets/menu/palace-hall.jpg'); }
+#screen[data-screen="technology"] { --screen-photo: url('../assets/menu/main-menu.jpg'); }
+#screen[data-screen="chronicle"] { --screen-photo: url('../assets/menu/burning-street.jpg'); }
+#screen:is([data-screen="diplomacy"], [data-screen="dossier"], [data-screen="peace"]) { --screen-photo: url('../assets/overview/prestige.jpg'); }
 
 /* Haritayla *çalışan* ekranlar dar kalır ve sola yaslanır: construction ile
    peace kareye tıklatarak seçim yaptırır, dossier haritadan sağ tıkla açılır.
@@ -12831,10 +12848,12 @@ button.k-agenda:hover { border-color: var(--gold); background: rgba(186, 160, 10
   position: relative;
   border: 1px solid #020405;
   border-radius: 2px;
+  /* Yarı saydam: ekranın fotoğrafı panelin altından soluk geçer (ekran
+     arka planı notu). Metin karşıtlığı yine 9:1'in üstünde ölçüldü. */
   background:
     var(--ui-grain),
     radial-gradient(130% 90% at 18% 0%, rgba(255, 238, 200, 0.045), transparent 55%),
-    linear-gradient(180deg, rgba(27, 36, 39, 0.96) 0%, rgba(15, 22, 25, 0.97) 38%, rgba(9, 14, 16, 0.98) 100%);
+    linear-gradient(180deg, rgba(27, 36, 39, 0.7) 0%, rgba(15, 22, 25, 0.75) 38%, rgba(9, 14, 16, 0.82) 100%);
   box-shadow:
     inset 0 0 0 1px var(--brass-hair),
     inset 0 1px 0 1px rgba(255, 232, 180, 0.06),
@@ -12973,6 +12992,14 @@ button.k-agenda:hover { border-color: var(--gold); background: rgba(186, 160, 10
     inset 0 1px 0 1px rgba(255, 232, 180, 0.05),
     0 2px 4px rgba(0, 0, 0, 0.4);
 }
+/* Yasa kartı ekranın eski çiçekli dokusunu taşır (Kerem: "labour,
+   conscription gibi kartların arkasına çiçek koyarız"). Karartma dokuyu
+   kabartma düzeyinde tutar; seçenek düğmeleri onun üstünde okunur. */
+.k-law {
+  background:
+    linear-gradient(180deg, rgba(24, 31, 33, 0.56), rgba(10, 15, 17, 0.7)),
+    url('../assets/ui/wallpaper.jpg') center / 320px repeat;
+}
 .k-law:hover, .k-party:hover, .k-mkt:hover, .k-pill:hover,
 button.k-dec:hover:not([disabled]), button.k-agenda:hover {
   border-color: #030506;
@@ -13042,7 +13069,8 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
   background:
     var(--ui-grain),
     radial-gradient(130% 90% at 18% 0%, rgba(255, 238, 200, 0.04), transparent 55%),
-    linear-gradient(180deg, rgba(27, 36, 39, 0.96) 0%, rgba(15, 22, 25, 0.97) 38%, rgba(9, 14, 16, 0.98) 100%);
+    /* .k-panel gibi yarı saydam: ekranın fotoğrafı sütunun altından geçer. */
+    linear-gradient(180deg, rgba(27, 36, 39, 0.7) 0%, rgba(15, 22, 25, 0.75) 38%, rgba(9, 14, 16, 0.82) 100%);
   box-shadow:
     inset 0 0 0 1px var(--brass-hair),
     inset 0 0 28px rgba(0, 0, 0, 0.45),
