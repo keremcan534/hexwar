@@ -12,7 +12,6 @@ import {
   buildOffer, demandLimit, occupiedProvincesOf, offerCost, offerMeetsExpectation, provinceKeyOf,
   signPeace, suggestWarGoal, warScore,
 } from './peace.js';
-import { INFAMY_COALITION } from './infamy.js';
 import {
   SHIP_CLASSES, UNIT_TYPES, isConscript, isMilitia, isMoving, isRegular, maxHpOf, menUnderArms, regimentCount,
   shipClassOf, unitAvailable, unitsOn,
@@ -38,20 +37,24 @@ import { decisionBlockers, decisionsAI, takeDecision } from './decisions.js';
 import { delegationActive, isDelegated, noteDelegated } from './delegation.js';
 import { nodeNeighbors } from '../world/provinceGraph.js';
 import { autoFocus } from './stateFocus.js';
-import { alliesOf } from './alliances.js';
 import { worldWarTension } from './worldEvents.js';
 import { planLandings } from './landings.js';
 import {
   classIndexOf, fleetEquivalent, fleetStrength, isObsolete, scrapShips, shipsOf, subsOf, surfaceOf,
 } from './navy.js';
+import { DEMAND, DIP_AI, WAR_GATE } from './dipDefs.js';
+import { cbOf, napBetween, removeTreaty } from './relations.js';
+import {
+  aggressionOdds, answerPendingDelegated, demandBlockers, demandCandidates, grudgeOf, hasOddsProbe, issueDemand,
+  pendingDemandBetween, probeOdds, warReadiness,
+} from './pacts.js';
 
-/** Savaş ilanı için gereken güç üstünlüğü. */
+// Savaş kapısının sabitleri (güç üstünlüğü 1.8, müttefik ağırlığı 0.5,
+// hazırlık kapıları) dipDefs.WAR_GATE'te: YZ, Tehdit sütunu, garanti isteği
+// ve talep aynı kapıyı okur (pacts.aggressionOdds / warReadiness).
 // 1.4 -> 1.6 -> 1.8 (2026-09-04: kusatma ve bos cepheye yuruyus savaslari
-// kesinlestirdi, 50 yilda %39-45 kume el degistirdi): 50 yilda haritanin ucte birinden fazlasi el degistiriyordu
-// (audit:borders %35-39); daha kesin ustunluk ister, daha az savas acar.
-const WAR_THRESHOLD = 1.8;
-/** Hedefin müttefiklerinin güç oranındaki ağırlığı (bkz. diplomacy hedef seçimi). */
-const ALLY_WEIGHT = 0.5;
+// kesinlestirdi, 50 yilda %39-45 kume el degistirdi); hedefin müttefikleri
+// yarım ağırlıkla sayılır (kartopu %38 → %24).
 
 /**
  * ZATEN SAVAŞTA olan bir ülkeye saldırmak için gereken üstünlük ve sınır.
@@ -69,7 +72,7 @@ const ALLY_WEIGHT = 0.5;
  */
 const SECOND_FRONT_THRESHOLD = 2.2;
 const SECOND_FRONT_CONTACT = 3;
-const MAX_ATTACKERS = 2;
+const MAX_ATTACKERS = WAR_GATE.MAX_ATTACKERS;
 
 /**
  * Kazanan tarafın masaya oturmadan önce savaşı taşıması gereken asgari süre ve
@@ -104,7 +107,6 @@ const FROZEN_WAR_WEEKS = 104;
  * yok, 0.85'te teslim. P1'de `politics.exhaustion` yazılmaz; okuyucular
  * `?? 0` ile kapalı kalır.
  */
-const EXHAUSTION_NO_WAR = 0.30;
 const EXHAUSTION_SURRENDER = 0.85;
 
 /**
@@ -230,27 +232,11 @@ function diplomacy(game, nation, rng) {
   // değişmez (tek çekiliş) ki gerilimsiz yıllarda determinizm aynı kalsın.
   const tension = worldWarTension(world, game.turns.turn);
   if (rng() > DECLARE_CHANCE * tension.declare) return;
-  // Milis savaş açtırmaz: yalnız kendi toprağını tutar (D6).
-  const regiments = world.units
-    .filter((unit) => unit.nationId === nation.id && unit.type.domain === 'land' && !isMilitia(unit))
-    .reduce((sum, unit) => sum + regimentCount(unit), 0);
-  // İkmali sıkışık ülke savaş açmaz: faturalar çıktının %45'ini aşıyorsa
-  // seferberlik onu krize iter (eski kapı: hazinede 20 altın).
-  const bills = nation.economy?.bills;
-  const strained = bills && (bills.s < 1 || bills.owed > 0.45 * (nation.economy?.ic?.output ?? Infinity));
-  if (regiments < 4 || strained || (nation.stability ?? 0.6) < 0.35
-    || (nation.warSupport ?? 0.5) < 0.3 || (nation.power ?? 0) < 20
-    // Yorgun ülke yeni savaş açmaz (redesign D5 merdiveni, P1'de uyur:
-    // `exhaustion` yazılana dek 0 okunur). Zar yukarıda çekildi; kapı sırası
-    // zar dizisini değiştirmez.
-    || (nation.politics?.exhaustion ?? 0) > EXHAUSTION_NO_WAR) return;
-  // Şöhreti kirlenmiş ülke yeni savaş açmaz: koalisyon riski taşıyor.
-  if ((nation.infamy ?? 0) > INFAMY_COALITION * 0.6) return;
-
-  // Iki cephesi olan devlet ucuncusunu kendisi acmaz: cullanma tavani
-  // saldirganlari sayiyordu ama kurbanin KENDI ilani dorduncu savasi
-  // dogurabiliyordu (audit:war-pressure: azami eszamanli saldirgan 4).
-  if (attackerCount(world, nation.id) >= MAX_ATTACKERS) return;
+  // Hazırlık kapıları (alay, ikmal, istikrar, irade, SG, yorgunluk, şöhret,
+  // iki cephe) zardan SONRA ve saf okumadır: kapı sırası zar dizisini
+  // değiştirmez (pacts.warReadiness; Tehdit sütunu aynı listeyi basar).
+  if (!warReadiness(world, nation).ready) return;
+  const turn = game.turns.turn;
   let bestTarget = null;
   let bestScore = 0;
   for (const other of world.nations) {
@@ -258,16 +244,20 @@ function diplomacy(game, nation, rng) {
     if (hostile(world, other.id, nation.id)) continue;
     const contact = contacts[nation.id][other.id];
     if (!contact) continue;
-    if (truceLeft(world, nation.id, other.id, game.turns.turn) > 0) continue;
-    // HEDEFİN MÜTTEFİKLERİ yarım ağırlıkla sayılır: savaş ilanı onları da
-    // çağırır (callAlliesToWar). Saymadığında kartopu %38'di; 0.5 ile %24
-    // (6 tohumun 5'i <= %33). 0.25 gürültüde kaldı, 1.0 %19'a aşırı düşürdü.
-    const allied = alliesOf(other).reduce((sum, id) => {
-      const ally = world.nations[id];
-      return ally?.alive && ally.id !== nation.id ? sum + nationStrength(world, ally) : sum;
-    }, 0);
-    const ratio = myPower / Math.max(1, nationStrength(world, other) + ALLY_WEIGHT * allied);
-    if (ratio < WAR_THRESHOLD * tension.threshold) continue;
+    if (truceLeft(world, nation.id, other.id, turn) > 0) continue;
+    // Pakt ortağı hedef değildir: declareWar zaten reddeder, burada elenir ki
+    // YZ ayı kaybetmesin, SIRADAKİ hedefi seçsin.
+    if (napBetween(world, nation.id, other.id, turn)) {
+      if (hasOddsProbe()) probeOdds(nation, other, aggressionOdds(world, nation, other, { myPower, tension, turn }), 'pact');
+      continue;
+    }
+    // HEDEFİN ARKASINDAKİLER yarım ağırlıkla sayılır: savaş ilanı onları da
+    // çağırır (callAlliesToWar → relations.defendersOf: müttefik, garantör,
+    // vassal bağı). Müttefiki saymadığında kartopu %38'di; 0.5 ile %24.
+    const odds = aggressionOdds(world, nation, other, { myPower, tension, turn });
+    probeOdds(nation, other, odds);
+    if (!odds.eligible) continue;
+    const ratio = odds.ratio;
     // Çullanma sınırı: üçüncü saldırgan hiç binmez, ikincisi ancak açık ara
     // üstünlük ve gerçek bir sınırla biner (bkz. SECOND_FRONT_THRESHOLD).
     const fronts = attackerCount(world, other.id);
@@ -276,9 +266,10 @@ function diplomacy(game, nation, rng) {
       && (ratio < SECOND_FRONT_THRESHOLD || contact < SECOND_FRONT_CONTACT)) continue;
     // Uzun sınır + zayıf komşu = cazip hedef. Rakip (nation.rivalId) daha
     // cazip: stratejik dusmanlik hedef secimini yonlendirir — mana degil,
-    // agirlik (bkz. alliances.refreshRivals).
+    // agirlik (bkz. alliances.refreshRivals). Kin (R2b) toprağımızı alanı öne
+    // çeker; uygun olmayanı uygun yapmaz.
     const score = ratio * Math.log(1 + contact)
-      * (other.id === nation.rivalId ? 1.35 : 1);
+      * (other.id === nation.rivalId ? 1.35 : 1) * grudgeOf(odds);
     if (score > bestScore) {
       bestScore = score;
       bestTarget = other;
@@ -287,12 +278,32 @@ function diplomacy(game, nation, rng) {
   // Devredilmis diplomasi oyuncu adina ilan verebilir; YZ icin bayrak
   // etkisizdir (zaten oyuncu degil).
   const delegated = nation.id === game.turns.playerNation;
+  // ÖNCE TALEP (kol `demands`): aynı zar, aynı hedef; yalnız kararın sonucu
+  // değişir — hakkımız olan bitişik bir province varsa "ver ya da savaş".
+  // Talep bir savaş kararının YERİNE geçer, yeni karar eklemez.
+  if (bestTarget && DIP_AI.demands) {
+    if (pendingDemandBetween(world, nation.id, bestTarget.id)) return;
+    const province = (nation.power ?? 0) >= DEMAND.COST ? demandCandidates(world, nation.id, bestTarget.id)[0] : null;
+    if (province && !demandBlockers(world, nation, bestTarget, turn, { province }).length) {
+      const outcome = issueDemand(game, nation, bestTarget.id, province.id);
+      if (outcome) {
+        noteDelegated(game, nation, 'diplomacy', `Ministry: we demanded ${province.name ?? 'a province'} from ${bestTarget.name}.`,
+          'They are much weaker and the province is ours by right.');
+        return;
+      }
+    }
+  }
+  // Reddedilmiş talebin gerekçesi elimizdeyse savaş onu kullanır (bedava,
+  // hedef talep edilen province).
+  const cb = bestTarget ? cbOf(nation, bestTarget.id, turn) : null;
   // YZ de hedefsiz savasa girmez: sinirina komsu, en degerli kumeyi hedefler
   // (bkz. peace.js suggestWarGoal). Boylece oyuncu masada karsi tarafin ne
   // istedigini de gorebilir.
-  const goal = bestTarget ? suggestWarGoal(game.world, nation.id, bestTarget.id) : null;
+  const goal = cb ? world.provinces?.[cb.province] ?? null
+    : bestTarget ? suggestWarGoal(game.world, nation.id, bestTarget.id) : null;
   if (bestTarget && declareWar(game, nation.id, bestTarget.id,
-    { delegated, goal: goal?.id ?? null })) {
+    { delegated, goal: goal?.id ?? null, ...(cb ? { reason: 'demand' } : {}) })) {
+    if (cb) removeTreaty(nation, 'CB', bestTarget.id);
     noteDelegated(game, nation, 'diplomacy', `War declared on ${bestTarget.name}.`,
       'The ministry judged them weaker and the border long.');
   }
@@ -835,6 +846,9 @@ export function runDelegatedAI(game, nation, rng) {
   if (!nation?.alive) return;
   const turn = game.world.turn ?? 0;
   if (delegationActive(nation, 'diplomacy', turn)) {
+    // Masadaki çağrı, teklif ve talepler önce (zar çekmez): bakanlık YZ'nin
+    // kendi ölçüleriyle cevaplar (pacts.answerPendingDelegated).
+    answerPendingDelegated(game, nation);
     answerPeaceOffers(game, nation, rng);
     diplomacy(game, nation, rng);
   }

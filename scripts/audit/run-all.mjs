@@ -27,6 +27,7 @@ const AUDITS = [
   ['culture-unrest', 'Huzursuzluk, asimilasyon, isyan'],
   ['homeland', 'Ana yurt kilidi, cesitlilik, birakma ve cikis kapilari (kampanya, 6+1 tohum)'],
   ['peace-stakes', 'Baris masasi kabul toleransi'],
+  ['diplomacy', 'Diplomasi: taahhutler, talepler, vassal ozerkligi'],
 ];
 
 const filter = process.argv.slice(2).map((s) => s.toLowerCase());

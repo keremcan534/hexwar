@@ -11,6 +11,7 @@
 import { addIdea, refreshModifiers } from './modifiers.js';
 import { addInfamy } from './infamy.js';
 import { atWar } from './diplomacy.js';
+import { guarantorsOf } from './relations.js';
 import { disband } from './recruitment.js';
 
 /** Büyük X için ana yurdun tutulması gereken payı. */
@@ -108,6 +109,10 @@ export function unionBlockers(world, nation, other, turn = world.turn ?? 0, play
   if ((other.treaties ?? []).some((t) => t.type === 'ALLIANCE' && (t.until ?? Infinity) > turn
     && (world.nations[t.partner]?.economy?.population ?? 0) > mine)) {
     out.push('A stronger ally guarantees their independence');
+  }
+  // Örtük kural artık yazılı: bağımsızlık garantisi birleşmeyi de kapatır.
+  for (const id of guarantorsOf(world, other.id)) {
+    if (id !== nation.id) out.push(`${world.nations[id].name} guarantees their independence`);
   }
   if ((nation.power ?? 0) < UNION_POWER) out.push(`Needs ${UNION_POWER} political power`);
   return out;

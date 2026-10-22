@@ -1071,7 +1071,8 @@ export function releaseAsVassal(game, nation, cultureId) {
   const unit = recruit(game, rebel, 'INFANTRY', { source: provinces[0].center, charge: false });
   if (!unit && awakened) raiseRebels(game, rebel, provinces.slice(0, 1));
   rebel.treaties = (rebel.treaties ?? []).filter((t) => !(t.type === 'VASSALIZE' && t.partner === nation.id));
-  rebel.treaties.push({ type: 'VASSALIZE', partner: nation.id, since: turn });
+  // Dominyon fethedilmiş vassaldan özgürdür (diplomasi §9.1): özerklik 30.
+  rebel.treaties.push({ type: 'VASSALIZE', partner: nation.id, since: turn, autonomy: 30 });
   const relationRec = relation(world, nation.id, rebel.id);
   if (relationRec) relationRec.truceUntil = Math.max(relationRec.truceUntil ?? 0, turn + 52);
   addInfamy(nation, -provinces.length);

@@ -22,6 +22,23 @@ import { atWar } from '../../src/game/diplomacy.js';
 import { fundFloor } from '../../src/game/econ/investment.js';
 import { applyDefaultDelegation } from '../../src/game/delegation.js';
 import { EVENT_CARDS, resolveCard } from '../../src/game/eventCards.js';
+import { DIP_AI, DIP_ARM_IDS } from '../../src/game/dipDefs.js';
+
+/**
+ * DİPLOMASİ KOLLARI (şartname §13.1): `DIP_ARMS=all` (varsayılan) · `none` ·
+ * virgüllü açılacak kollar listesi. Dünya kurulmadan ÖNCE yazılır (bar-probe
+ * ortam düğmeleriyle aynı kalıp). `none` bugünkü YZ'dir: parmak izi bayt bayt.
+ */
+{
+  const arms = (process.env.DIP_ARMS ?? 'all').trim();
+  if (arms && arms !== 'all') {
+    const on = new Set(arms === 'none' ? [] : arms.split(',').map((id) => id.trim()));
+    for (const id of on) {
+      if (!DIP_ARM_IDS.includes(id)) throw new Error(`DIP_ARMS: bilinmeyen kol "${id}" (${DIP_ARM_IDS.join(', ')})`);
+    }
+    for (const id of DIP_ARM_IDS) DIP_AI[id] = on.has(id);
+  }
+}
 
 /**
  * Bassiz oyun. DOM, zamanlayici, cizim yok; simulasyon tam calisir.
@@ -48,6 +65,10 @@ export function headless(seed, options = {}) {
   });
   game.turns = new TurnManager(game);
   game.turns.start(game.world);
+  // KAOS TABANI (HX_PLACEBO=n): kural değişmeden tur zarından n sayı atılır.
+  // Aynı tohumda none ile none + HX_PLACEBO=1 farkı, bir kolun ölçülen
+  // etkisinin yanına konacak tohum başına gürültüdür (zincir ne kadar kaotik).
+  for (let i = 0; i < Number(process.env.HX_PLACEBO ?? 0); i++) game.turns.rng();
   // -1 = hicbir ulke oyuncu degil; butun ulkeler YZ olarak isler.
   game.turns.playerNation = -1;
   return game;

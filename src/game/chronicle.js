@@ -153,3 +153,10 @@ export function remember(nation, turn, kind, otherId) {
 export function memoryOf(nation) {
   return nation?.memory ?? [];
 }
+// GECICI: Faz 3 tarih kaydedicisinin saplamasi; birlesmede gercegiyle degisir.
+export const HISTORY_KIND = { WAR: 'WAR', WAR_JOIN: 'WAR_JOIN', PEACE: 'PEACE', DIPLOMACY: 'DIPLOMACY', NAVAL: 'NAVAL', CRISIS: 'CRISIS', INDEPENDENCE: 'INDEPENDENCE', RELEASE: 'RELEASE' };
+export function recordHistory(world, entry) {
+  if (!world || !entry?.title) return null;
+  (world.history ??= []).push({ ...entry, turn: entry.turn ?? world.turn ?? 0 });
+  return entry;
+}

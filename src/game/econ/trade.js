@@ -16,6 +16,7 @@ import { FUND_FLOOR_WEEKS, RESOURCES, RESOURCE_IDS, TRADE } from './defs.js';
 import { lawOption } from '../laws.js';
 import { mod } from '../modifiers.js';
 import { settle } from '../treasury.js';
+import { deed, noteDiplomacy } from '../relations.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -62,6 +63,44 @@ export function embargoed(world, a, b) {
 export function setEmbargo(nation, targetId, on) {
   nation.embargoes = (nation.embargoes ?? []).filter((id) => id !== targetId);
   if (on) nation.embargoes.push(targetId);
+}
+
+/**
+ * AMBARGO — oyuncunun aracı (DIP-06). Eskiden SG kesintisi arayüz
+ * katmanındaydı (TASARIM ilke 2'ye aykırı) ve hedef hiçbir şey duymuyordu;
+ * şimdi bedel burada ve acısı hedefin ilişki defterine yazılır (−20). YZ
+ * ambargo kullanmaz: okuyan bir sistem yok (TASARIM §4/§15 düzeltildi).
+ */
+export const EMBARGO_POWER = 25;
+
+export function embargoBlockers(world, me, other) {
+  const out = [];
+  if (!other?.alive || other.id === me.id) return ['Not a valid target'];
+  if (embargoed(world, me.id, other.id) && (me.embargoes ?? []).includes(other.id)) return ['Already under embargo'];
+  if ((me.power ?? 0) < EMBARGO_POWER) out.push(`Needs ${EMBARGO_POWER} political power`);
+  return out;
+}
+
+export function declareEmbargo(game, me, otherId) {
+  const world = game.world;
+  const other = world.nations[otherId];
+  if (embargoBlockers(world, me, other).length) return false;
+  me.power -= EMBARGO_POWER;
+  setEmbargo(me, otherId, true);
+  const turn = game.turns?.turn ?? world.turn ?? 0;
+  deed(world, otherId, me.id, 'embargoed_us', turn);
+  noteDiplomacy(game, {
+    tier: 1, title: `${me.name} embargoes ${other.name}`, actors: [me.id, otherId], key: `embargo:${me.id}:${otherId}`,
+  });
+  game.turns?.addLog?.(`Embargo declared on ${other.name}. They will remember it (relations −20).`, { kind: 'POLITICS' });
+  return true;
+}
+
+/** Ambargoyu kaldır: bedava; kayıt defterde kendi hızıyla söner. */
+export function liftEmbargo(game, me, otherId) {
+  if (!(me.embargoes ?? []).includes(otherId)) return false;
+  setEmbargo(me, otherId, false);
+  return true;
 }
 
 /**

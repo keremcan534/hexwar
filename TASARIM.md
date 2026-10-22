@@ -128,7 +128,7 @@ güherçile barışta da 41-58 ihtiyaç, fiyat 2.6-3.0.
 - **Para korunur (2026-10-14):** ihracatçı ithalatçının ödediğini alır, fazlasını değil. `exportIncome` (yasa, teknoloji, danışman, olay) artık "ihracat çekiciliği"dir: alıcı sırasında ağırlık — çekici satıcı talebin büyük payını alır. Eskiden ihracatçıya ödenen ithalatçının ödediğinin 1.53-1.58 katıydı; ticaret her hafta dünya gelirinin %4-5'i kadar parayı yoktan yaratıyordu ve en büyük dört devletten biri olan oyuncu hiç eksiye düşmüyordu (3 tohum × 516 hafta: eksi hafta %0 / 1.9 / 0). Düzeltmeyle oyuncunun fazlası %22-85 düşer; 45 yılda eksi hafta %0 / 10 / 20. Oyuncu yine yapısal ihracatçıdır (en büyük tek parça devlet, 8 kaynağın 5-7'sinde fazla): gerçek zorluk orta boy bir ülkeyle ya da gümrük payıyla gelir — tasarım kararı, açık.
 - İkili akış: savaştaki ve ambargolu çift ticaret yapmaz. Kara komşusu doğrudan, ötekiler denizden (iki taraf da kıyılı).
 - **Abluka:** deniz hâkimiyetinden okunur (§11 Donanma): kıyı province'i başına düşmanın o kıyının denizindeki hâkimiyet payı × kapsam (province başına 0.6 filo gücü); ulusun ortalaması deniz ticaretini (alım ve satım) o oranda keser. Deniz haritasında (Seas, M) görünür.
-- **Bağımlılık:** bir kaynağın yarısından fazlası tek ülkeden geliyorsa uyarı; YZ rakibine ambargoyu silah olarak kullanır.
+- **Bağımlılık:** bir kaynağın yarısından fazlası tek ülkeden geliyorsa uyarı. **Ambargo oyuncunun aracıdır** (25 SG, `econ/trade.js declareEmbargo`): acısı hedefin ilişki defterine "Embargoes us −20" olarak yazılır. YZ ambargo kullanmaz — eski belge "YZ rakibine ambargoyu silah olarak kullanır" diyordu ama bunu yapan bir rutin yoktu (DIP-06).
 
 ## 5. Çıktı, sanayi ve üretim
 
@@ -243,6 +243,96 @@ demiryolu, tersane binaları kalktı; eğitim yuvası tabanı 2 → 3.
 aynen kalır. Eklenen: savaş ilanı SG ister (soydaş/çekirdek hedefe ucuz),
 ambargo (SG). Barış talepleri: toprak, kurtarma, vasal, tazminat, askersizleştirme.
 
+**Barışta diplomasi (2026-10-22; `relations.js` defter ve masa, `pacts.js`
+kararlar ve YZ, `dipDefs.js` bütün sabitler, ekran `ui/diplomacyScreen.js`).**
+Hedef: savaşmayan oyuncunun da anlamlı kararları olsun. Her araç bir bedel,
+okunan bir sonuç ve bir YZ kullanımı taşır; hükümler parça parça basılır
+("They would sign: 1.4 ≥ 1 — Relations +0.6 · Busy elsewhere +1").
+- **İlişki defteri:** her ulus başkasının ona YAPTIĞINI hatırlar (çağrıya
+  geldi +25, bizi yalnız bıraktı −30, ittifakı bozdu −40, pakt bozup saldırdı
+  −60, toprağımızı aldı −10/province, garanti verdi +20, ambargo −20, teklifimizi
+  geri çevirdi −10 …); kayıt haftada %1 söner (yarı ömür 69 hafta), −100..100.
+  Okuyucular: ittifak çekiciliği (değer/25), pakt ve talep hükümleri, kin
+  (olumsuz kayıt, uygun hedefler arasında ×(1 + |değer|/100) öne geçirir;
+  uygun olmayanı uygun yapmaz), koalisyon zarı (sevilene en çok yarı), YZ'nin
+  ittifak bozma çizgisi −25. **Savaş eşiği okuyucusu ölçüldü ve silindi:**
+  sevdiğine saldırmak için ×(1 + değer/100) üstünlük isteyen çarpan,
+  160×96 × 3 tohum × 20 yılda dokuz koşunun (tüm-YZ, büyük ve küçük oyuncu
+  diplomat; elçi en tehlikeli komşuda) hiçbirinde tek savaş kararını
+  döndürmedi; kaldırılınca tüm kollar açık parmak izi aynı kaldı.
+- **Elçi:** en çok 2, haftada 0.2 SG; ev sahibinin defterine haftada +0.8,
+  +40'a kadar. Elçi ittifakı tek başına açmaz (+1.6 < 2), bir yapısal
+  sebeple açar. Barışta biriken SG'nin ilk yutağı.
+- **İttifak ve çağrı:** tek eşik 2 (oyuncu da YZ de). Çağrıya katılmak
+  bedavadır ve SAVUNMADIR (saldırı savaşı yazmaz, ültimatom müttefikinkiyle
+  biter); reddetmek −30, müttefik bir sonraki çeyrekte ittifakı bozar ve
+  nedenini söyler. Sebepsiz bozmak 10 SG ve −40; çift 104 hafta yeniden
+  kurulmaz (52 ile audit:diplomacy iki çiftte kur → boz → kur sarkacı buldu).
+- **Bağımsızlık garantisi:** açık ara güçlü devletin (×1.5) küçüğe tek yönlü
+  sözü; 20 SG + haftada 0.15, en çok 3 (YZ 2). Saldırganın oranında yarım
+  ağırlıkla sayılır, saldırı garantörü çağırır, terk prestij −5 ve bütün
+  ortaklara "Broke faith with others −10". YZ: ilk 8 büyük güç, rakibiyle
+  arasındaki ve rakibinin ezebileceği küçük devlete.
+- **Saldırmazlık paktı:** 5 yıl, 15 SG, iki tarafın hükmü ≥ 1; fesih 26 hafta
+  önceden bildirilir; oyuncu ihlal edebilir (+8 şöhret, kurbana −60, öteki
+  ortaklara −20). YZ oyuncuya pakt önerir (savaştayken ya da canlı bir
+  rakibi varken: "arkayı güvenceye al"). **YZ-YZ paktı ölçüldü ve silindi:**
+  160×96, 3 tohum × 20 yıl, 8 ve 19 YZ-YZ paktı tek bir savaş kararını
+  değiştirmedi (pakt atlama sayacı 0) — iki hüküm de karşı tarafın en az
+  kendisi kadar güçlü olmasını ister, denk komşu zaten hedef değildir.
+- **Toprak talebi:** hakkımız olan (iddia, halkımız, yurdumuz) bitişik
+  province için "ver ya da savaş": 25 SG + 2 şöhret. Hedefin hükmü parçalı
+  (üstünlük, irade, province'in payı, yorgunluk, ilişki, kendi halkı); ret
+  52 haftalık bedava savaş gerekçesi verir. YZ bazı savaş ilanlarının YERİNE
+  talep eder; oyuncuya gelen talep durdurur, cevapsız kalırsa kabine hükmü
+  uygular.
+- **Vassal:** vassal ile efendi birbirini savunur, vassalın kendi dış
+  siyaseti yoktur. Özerklik 0-100: hedef `10 + 60 × min(1.5, güç oranı) −
+  0.5 × ilişki + 40 × efendinin yorgunluğu`, haftada 0.5 yaklaşır; 50'de
+  ilhak kilitlenir, 80'de vassal kopar, YZ efendi 90'da bırakır.
+- **Masa:** oyuncuya düşen kayıtlar (çağrı, talep, ittifak/pakt teklifi,
+  garanti isteği). Çağrı ve talep durdurur, teklifler durdurmaz; en çok 3
+  açık teklif, teklifler arası 4 hafta, aynı gönderen yılda bir ve geri
+  çevrilen gönderen kırgınlığı sönmeden (69 hafta) yeniden sormaz. Zaman
+  aşımı savaşa sokmaz ve söz imzalamaz.
+
+**Ölçüm (2026-10-22; kollar `DIP_ARMS=none` ile `all` aynı commit'te
+eşli; kaos tabanı `HX_PLACEBO=1`: kural aynı, tur zarından bir sayı atılır).**
+- *Sınırlar* (audit:borders, 78×62, BORDER1-6 × 45 yıl): savaş + talep payı
+  ortalaması %13.26 → %14.30 (+1.04; sınır ±4), nihai ulus toplamı 254 → 246
+  (−8; sınır ±8), en yüksek tohum %20.2 (≤ 33), TEST 1-3 DOĞRU; savaş sayısı
+  611 → 595. Placebo: %14.82, 253 ulus, 645 savaş — tohum başına savaş payı
+  −2.3…+6.2 puan, ulus −3…+4 oynuyor.
+- *Masa* (160×96, STAT1-3 × 20 yıl, hiçbir şeye cevap vermeyen pasif oyuncu):
+  yılda 0.90 / 1.05 / 1.10 kayıt, barış yılı medyanı 1 / 1 / 1, durduran 0;
+  aynı komşudan 20 yılda en çok 8. SG medyanı ±%1.2 (gizli sızıntı yok).
+  Elle oynanan 3 yılda (oyuncu testi) masaya 5 kayıt düştü: 3 garanti
+  isteği, 1 pakt, 1 ittifak teklifi. Aktif diplomat (2 elçi, garanti, pakt,
+  bakanlık cevapları, her çağrıya katılır) barışta SG tavanında 0 / 0 / 0
+  hafta geçirdi (pasif oyuncu STAT1'de 53 hafta tavanda).
+- *Dünya* (aynı census): savaş ilanı −%13.3 / −20.5 / −4.7, koalisyon
+  ilanı −%23.7 / −26.8 / +7.8, ittifak çifti −%10 / −9.2 / +2.8. Placebo
+  aynı ölçülerde −%2.0 / −14.5 / −16.5, −%22.0 / −18.3 / −25.5, +%3.0 /
+  −4.3 / −5.2 verdi: tohum başına ±%20 / ±%25 sınırı gürültü tabanında,
+  karar 6 tohumluk eşli sınır ölçüsündedir.
+- *Kaldıraçlar* (audit:diplomacy, 160×96, 3 tohum × 20 yıl): değişmez ihlali
+  0; YZ garantisi 15, talep 52, ret → savaş 48, özerklik ≥ 50: 4, vassal
+  çağrısı 11, ittifak kuruldu 237 / bozuldu 55; karar dönmesi: garantör 5,
+  vassal bağı 7. Küçük oyuncu diplomatı (`--active --small`): oyuncunun
+  paktı bir YZ savaş kararını durdurdu. **Ölçülüp silinenler:** YZ-YZ paktı
+  (8-19 pakt, pakt atlama 0) ve ilişkinin savaş eşiği (yukarıda).
+- **Açık (Kerem):** talepte verme payı %4-9 (şartname aralığı %10-60): YZ
+  en değerli haklı province'i ister — hedef ülkenin ortalama %23'ü (−0.93),
+  %60-90'ında hedefin kendi halkı (−1); üstünlük ×3.6-5 olsa da (+0.5…+0.6)
+  hüküm −1.6. Talep çoğunlukla savaşın önsözü (ret → savaş %92). En kabul
+  edilebilir adayı istemek de ölçüldü (4/55, gürültü içi) ve geri alındı.
+  audit:econ "savaşta ikmal krizi" %16.3 (taban 9.9) placebo ile %10.6 ve
+  %17.0 veriyor: ölçünün gürültüsü, diplomasi etkisi değil. **İkinci derece
+  etki (ölçüldü, açık):** 1900-09 halk kabulü 7 koşu toplamında 29 → 36
+  (placebo 27-30); kollardan garanti +3, talep +3. Daha çok barış, YZ'ye
+  kabul bedelini ve olgun hareketi bırakıyor; audit:homeland "erken hak
+  verme ≤ 6" kapısına bir koşuda (HL1 160×96: 7) değiyor.
+
 **Zafer puanı (HOI4):** ordu hex hex yürür ama bir kümenin warscore payının
 %75'i MERKEZ hexinden, %25'i işgal edilen hex payından gelir
 (`peace.VICTORY_POINT_SHARE`). Yokken savunan birkaç hexi tutarken saldıran
@@ -266,8 +356,9 @@ Efendinin iki yolu var: **Bırak** (bedelsiz; vassal bağımsız olur, sonra
 savaşılabilir) ve **İlhak** (HOI4'ün kuklayı yutması: 40 + 4 × province SG,
 bağ en az 104 hafta, iki taraf da barışta; masadaki ilhak şöhretinin dörtte
 biri — 0.5'te 12 province'lik yabancı vassal tek başına 18 yazıyordu, eşik
-22). YZ bu iki kapıyı kullanmaz: sınır dinamiğine yeni kanal açmak önce
-audit:borders ile ölçülmeli.
+22). YZ ilhak etmez; vassalını yalnız özerklik 90'da bırakır (2026-10-22,
+yukarıdaki özerklik): sınır dinamiğine yeni kanal açmak önce audit:borders
+ile ölçülmeli.
 
 ## 13. Teknoloji
 
@@ -316,12 +407,19 @@ donanmaya veren küçük kıyı devletleri; sonra %0 ve %10 (kalanı işgalle ç
 çöken kaybeden taraf, audit:econ 3 tohum × 10 yıl). **Doyurma kolu** `autoFeed` ile hat ağırlıklarıyla aynı yerde ve
 aralıkta yazılır. Her sistemin
 kendi YZ rutini vardır: yasa, hat ağırlığı, doyurma, ticaret yasası,
-ambargo, kültür politikası, gündem, danışman, olay seçimi. AUTO devri aynı
-rutinleri oyuncu için çalıştırır.
+kültür politikası, gündem, danışman, olay seçimi; diplomaside ittifak
+taraması, garanti (büyük güç, rakibinin önündeki küçük devlete), toprak
+talebi (bazı savaş ilanlarının yerine), elçi (yalnız kendi vassalı ve
+müttefikine), oyuncuya pakt/ittifak teklifi, vassal bırakma (özerklik 90).
+AUTO devri aynı rutinleri oyuncu için çalıştırır; diplomasi bakanlığı
+masadaki kayıtları cevaplar ama elçi yollamaz, garanti vermez, pakt bozmaz.
 
 ## 16. Haftalık sıra
 
-temas/koalisyon → YZ → diplomasi → tur++ → ordu düzeni → takviye → eğitim/
+temas/koalisyon → YZ → diplomasi (ültimatomlar, çağrılar, ittifak taraması,
+rakip; sonra dış siyaset `pacts.runForeignPolicy`: elçiler → masa → gerekçe
+bitimi → pakt bildirimi → vassal özerkliği → çeyreklik YZ adımı, turn % 13 = 7)
+→ tur++ → ordu düzeni → takviye → eğitim/
 seferberlik → komuta → yürüyüş → province (nüfus, uyum, kültür) → hareketler →
 **ekonomi** (ulus başına: kaynak → çıktı → faturalar → hatlar → halk →
 yatırım → ticaret teklifi; sonra dünya ticareti (fondan), fiyat, kalkınma

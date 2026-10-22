@@ -15,7 +15,7 @@
 // province'i hariç. Ana halkın izi yoktur: tek kültürlü devlet bu yolla
 // toprak kaybetmez.
 
-import { atWar, makePeace, relation } from './diplomacy.js';
+import { atWar, hostile, makePeace, relation } from './diplomacy.js';
 import { addInfamy } from './infamy.js';
 import { TIER, announce } from './chronicle.js';
 import { disband, recruit } from './recruitment.js';
@@ -24,6 +24,7 @@ import { controllerOf } from './control.js';
 import { nodeNeighbors } from '../world/provinceGraph.js';
 import { registerLiberationFallback } from './peace.js';
 import { MOVEMENT, awaken, raiseRebels, rebelStateOf, transfer } from './movements.js';
+import { AUTONOMY, DIP_AI } from './dipDefs.js';
 
 const turnOf = (game) => game.turns?.turn ?? game.world.turn ?? 0;
 const capitalProvinceOf = (world, nation) => world.provinces?.[nation.capital?.provinceId] ?? null;
@@ -145,8 +146,10 @@ export function runPassages(game) {
     for (const key of Object.keys(granter.passage)) {
       const entry = granter.passage[key];
       const grantee = world.nations[Number(key)];
-      const over = !granter.alive || !grantee?.alive || atWar(world, granter.id, grantee.id)
-        || !atWar(world, grantee.id, entry.from);
+      // Ültimatom da savaştır: çağrıyla verilen geçiş savaş başlamadan
+      // kapanmaya başlamasın (kol `passage`; kapalıyken bugünkü kural).
+      const fighting = DIP_AI.passage ? hostile(world, grantee?.id, entry.from) : atWar(world, grantee?.id, entry.from);
+      const over = !granter.alive || !grantee?.alive || atWar(world, granter.id, grantee.id) || !fighting;
       if (entry.until == null && over) entry.until = turn + PASSAGE_GRACE;
       if (entry.until != null && turn >= entry.until) {
         delete granter.passage[key];
@@ -187,7 +190,8 @@ export function releasePeople(game, nation, cultureId, { dominion = false } = {}
   grantLiberatorPassage(world, heir, nation);
   if (dominion) {
     heir.treaties = (heir.treaties ?? []).filter((t) => !(t.type === 'VASSALIZE' && t.partner === nation.id));
-    heir.treaties.push({ type: 'VASSALIZE', partner: nation.id, since: turn });
+    // Dominyon fethedilmiş vassaldan özgürdür: özerklik 30'dan başlar.
+    heir.treaties.push({ type: 'VASSALIZE', partner: nation.id, since: turn, autonomy: AUTONOMY.START_DOMINION });
   }
   const rec = relation(world, nation.id, heir.id);
   if (rec) rec.truceUntil = Math.max(rec.truceUntil ?? 0, turn + 52);

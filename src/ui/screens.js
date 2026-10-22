@@ -67,6 +67,7 @@ import { END_YEAR, dateOfTurn, exactYearOfTurn, yearOfTurn } from '../game/calen
 import { SAVE_VERSION, exportSaveText, importSaveText, readableVersion } from '../game/save.js';
 import { LEGACY_SLOT, MAX_MANUAL, deleteSave, listSaves, manualCount } from '../game/saveStore.js';
 import { diplomacyView } from '../game/diplomacyView.js';
+import { bindDiplomacyScreen, renderDiplomacyScreen, renderDossierScreen } from './diplomacyScreen.js';
 import { warOverview, worldConflicts } from '../game/warView.js';
 import { conflictDetailHtml, conflictFocusTile } from './warDetail.js';
 
@@ -392,10 +393,11 @@ export class Screens {
     this.uc.confirm = null;
     this.warConfirm = null;
     this.vassalConfirm = null;
+    this.dipConfirm = null;
     this.saveConfirm = null;
     this.military.retireConfirm = null;
     this.military.leveeConfirm = false;
-    for (const timer of ['ucConfirmTimer', 'warConfirmTimer', 'vassalConfirmTimer', 'saveConfirmTimer', 'retireTimer', 'leveeTimer']) {
+    for (const timer of ['ucConfirmTimer', 'warConfirmTimer', 'vassalConfirmTimer', 'dipConfirmTimer', 'saveConfirmTimer', 'retireTimer', 'leveeTimer']) {
       clearTimeout(this[timer]);
     }
   }
@@ -575,99 +577,7 @@ export class Screens {
    * mekanikler henüz yok, olmayan düğme koymuyoruz.
    */
   render_dossier(me) {
-    const world = this.game.world;
-    const target = world.nations[this.nationTarget];
-    if (!target?.alive) {
-      return '<p class="empty">Right-click a foreign state on the map to open its dossier.</p>';
-    }
-    const turn = this.game.turns.turn;
-    const war = atWar(world, me.id, target.id);
-    const crisis = crisisLeft(world, me.id, target.id, turn);
-    const truce = truceLeft(world, me.id, target.id, turn);
-    const rec = relation(world, me.id, target.id);
-    const locked = war && turn - rec.since < MIN_WAR_TURNS;
-    const vassal = overlordOf(world, target.id, turn) === me.id;
-    const overlord = overlordOf(world, me.id, turn) === target.id;
-    // İlanı ne engelliyorsa başlıkta yazar: düğme etkin görünüp sessizce
-    // reddetmesin (Ravoya, 2026-10-15).
-    const warWhy = war || crisis ? [] : warBlockers(world, me.id, target.id, turn);
-    const annexWhy = vassal ? annexBlockers(world, me, target, turn) : [];
-    const board = scoreboard(world);
-    const rankOf = (id) => board.findIndex((row) => row.nation.id === id) + 1;
-    const score = hegemonyScore(world, target);
-    const myPower = nationStrength(world, me);
-    const power = nationStrength(world, target);
-    const cities = world.cities.filter((city) => city.nationId === target.id).length;
-    const industry = (target.economy?.ic?.total ?? 0).toFixed(1);
-    const output = (target.economy?.ic?.output ?? 0).toFixed(1);
-    const party = rulingParty(target);
-    const offer = this.game.peaceOffers.find(
-      (entry) => entry.from === target.id && entry.to === me.id,
-    );
-
-    const allied = isAllied(me, target.id);
-    const status = [
-      war ? '<span class="tag war">at war</span>'
-        : crisis ? `<span class="tag crisis">war in ${crisis}w</span>`
-          : truce ? `<span class="tag truce">truce ${truce}w</span>`
-            : '<span class="tag peace">at peace</span>',
-      allied ? '<span class="tag ally">ally</span>' : '',
-      vassal ? '<span class="tag ally">our vassal</span>' : '',
-      overlord ? '<span class="tag ally">our overlord</span>' : '',
-      me.rivalId === target.id ? '<span class="tag rival">our rival</span>' : '',
-      target.rivalId === me.id ? '<span class="tag rival">sees us as the rival</span>' : '',
-    ].filter(Boolean).join(' ');
-
-    return `<div class="card nation-dossier">
-      <div class="dossier-head">
-        <span class="flag-hero small" data-flag-nation="${target.id}" data-flag-w="96" data-flag-h="64"></span>
-        <div class="grow">
-          <h2>${esc(target.name)} ${status}</h2>
-          <div class="dossier-sub">${esc(party?.name ?? 'No government')}
-            · infamy ${(target.infamy ?? 0).toFixed(1)}/${INFAMY_COALITION}</div>
-        </div>
-        <div class="dossier-rank"><small>rank</small><b>#${rankOf(target.id)}</b></div>
-      </div>
-      <div class="dossier-scores">
-        <span><small>Total</small><b>${score.total}</b></span>
-        <span><small>Industry</small><b>${score.industry}</b></span>
-        <span><small>Prestige</small><b>${score.prestige}</b></span>
-        <span title="${strengthPhrase(myPower, power)}"><small>Relative strength</small><b class="${myPower >= power ? 'res-pos' : 'res-neg'}">${strengthPhrase(myPower, power)}</b></span>
-      </div>
-      <div class="dossier-facts">
-        <div><span>Population</span><b>${formatPopulation(populationOf(world, target))}</b></div>
-        <div><span>Territory</span><b>${target.tiles}</b><small>hexes</small></div>
-        <div><span>Cities</span><b>${cities}</b></div>
-        <div><span>Output</span><b>${output} IC/wk</b></div>
-        <div><span>Industry</span><b>${industry} IC</b></div>
-      </div>
-      ${this.dossierIdentity(world, target)}
-    </div>
-    ${offer ? this.peaceOfferCard(offer) : ''}
-    <div class="card">
-      <div class="card-head"><h3>Diplomacy</h3>
-        <small>${war ? 'a treaty is negotiated state by state at the peace table'
-    : truce ? 'a truce forbids a new declaration until it lapses'
-      : vassal ? esc(annexWhy[0] ?? 'they pay us tribute and can never be attacked: release or annex them')
-        : warWhy.length ? esc(warWhy[0])
-          : 'declaring war costs infamy for every state you take'}</small></div>
-      <div class="row-buttons dossier-actions">
-        ${war
-    ? `<button class="k-btn" data-peace="${target.id}" ${locked ? 'disabled' : ''}>Peace Talks${locked ? ` (${MIN_WAR_TURNS - (turn - rec.since)}w)` : ''}</button>`
-    : allied
-      ? `<button class="k-btn" data-break-alliance="${target.id}">Break Alliance</button>`
-      : vassal ? this.vassalButtons(world, target, annexWhy, 'k-btn')
-      // Diplomasi tablosundaki savaş düğmesiyle aynı dil: kısa onay, ayrıntı kartta.
-      : `<button class="k-btn danger${this.warConfirm === target.id ? ' confirming' : ''}" data-war="${target.id}"${warWhy.length
-        ? ` disabled${tipAttrText(`Declare war on ${target.name}\n${warWhy.join('\n')}`)}`
-        : tipAttrText(`Declare war on ${target.name}\nA ${ULTIMATUM_WEEKS}-week ultimatum, then war. Every state you take adds infamy.${this.warConfirm === target.id ? '' : '\nClick twice to confirm.'}`)}>${
-        this.warConfirm === target.id ? 'Confirm war?' : 'Declare War'}</button>
-         <button class="k-btn" data-ally="${target.id}">Propose Alliance</button>`}
-        ${(me.embargoes ?? []).includes(target.id) ? '' : `<button class="k-btn" data-embargo="${target.id}"
-          ${embargoBlockers(world, me, target).length ? `disabled${tipAttrText(`Embargo\n${embargoBlockers(world, me, target).join('\n')}`)}` : ''}>Embargo · 25 PP</button>`}
-        <button class="k-btn" data-locate="${target.id}">Show on map</button>
-      </div>
-    </div>`;
+    return renderDossierScreen(this, me);
   }
 
 
@@ -1570,146 +1480,7 @@ export class Screens {
   }
 
   render_diplomacy(me) {
-    // DİPLOMASİ MASASI (Kerem: "diplomasi ekranı çok zayıf"). Eskiden 63
-    // ulusluk sırasız bir isim duvarıydı. Artık: üstte ulusun diplomatik
-    // durumu (şöhret, savaş, müttefik, ateşkes, rakip), solda süzülebilir ulus
-    // tablosu (ilişki, güç oranı, ittifaka yanaşır mı, gerekçe ve bedel,
-    // eylem), sağda bekleyen teklifler, savaşlarımız ve ittifaklarımız.
-    // Sayılar game/diplomacyView ve game/warView'dandır.
-    const world = this.game.world;
-    const turn = this.game.turns.turn;
-    const view = diplomacyView(world, me, turn);
-    if (!view?.rows.length) return '<p class="empty">No other nations remain.</p>';
-    const filter = this.dipFilter ?? 'all';
-    const FILTERS = [['all', 'All'], ['neighbours', 'Neighbours'], ['war', 'Wars'], ['allies', 'Allies']];
-    // DÜNYANIN SAVAŞLARI (Kerem: "warsta hala yok"): Wars süzgeci yalnız
-    // bizim savaşlarımızı gösteriyordu; barıştaki oyuncu boş liste görüyordu.
-    // Artık başka uluslarla savaşanlar da "At war elsewhere" altında, karşı
-    // tarafla birlikte gelir; satır savaşın ayrıntı paneline açılır.
-    const conflicts = worldConflicts(world, me.id, turn);
-    const warring = new Map();
-    for (const c of conflicts) {
-      for (const [mine, theirs] of [[c.attackers, c.defenders], [c.defenders, c.attackers]]) {
-        for (const n of mine) warring.set(n.id, { key: c.key, foes: theirs.map((x) => x.name) });
-      }
-    }
-    const ours = (row) => row.standing === 'war' || row.standing === 'crisis';
-    const groupOf = (row) => (filter === 'war' && !ours(row) ? 'elsewhere' : row.standing);
-    const pass = (row) => (filter === 'neighbours' ? row.neighbour
-      : filter === 'war' ? ours(row) || warring.has(row.id)
-        : filter === 'allies' ? ['ally', 'vassal', 'overlord'].includes(row.standing) : true);
-    const rows = view.rows.filter(pass);
-    // Süzgeçte bizim savaşlarımız önce, öbürleri arkada (sıra kendi içinde korunur).
-    if (filter === 'war') rows.sort((a, b) => Number(!ours(a)) - Number(!ours(b)));
-    const GROUP = {
-      war: 'At war', crisis: 'Ultimatum', ally: 'Allies', vassal: 'Vassals', overlord: 'Overlord', truce: 'Truce', rival: 'Rivals', neighbour: 'Neighbours', other: 'Other nations',
-      elsewhere: 'At war elsewhere',
-    };
-    const foesText = (id) => {
-      const foes = warring.get(id).foes;
-      return `vs ${foes.slice(0, 2).join(', ')}${foes.length > 2 ? ` +${foes.length - 2}` : ''}`;
-    };
-    const relationText = (row) => (groupOf(row) === 'elsewhere' ? foesText(row.id) : null) ?? ({
-      war: `at war · ${row.score > 0 ? '+' : ''}${row.score}`,
-      crisis: `war in ${row.crisis}w`,
-      ally: 'allied',
-      vassal: 'our vassal',
-      overlord: 'our overlord',
-      truce: `truce · ${row.truce}w`,
-      rival: row.rivalOfUs ? 'their rival' : 'our rival',
-      neighbour: 'neighbour',
-      other: '—',
-    }[row.standing]);
-    const action = (row) => {
-      if (row.standing === 'war') {
-        return `<button class="k-btn sm" data-peace="${row.id}"${row.talksIn ? ` disabled${tipAttrText(`Peace talks open after ${row.talksIn} more weeks of war.`)}` : ''}>${row.talksIn ? `Talks · ${row.talksIn}w` : 'Peace talks'}</button>`;
-      }
-      if (row.standing === 'crisis') return `<small class="dip-note">ultimatum · ${row.crisis}w</small>`;
-      if (row.standing === 'ally') return `<button class="k-btn sm" data-break-alliance="${row.id}"${tipAttrText('Dissolve the alliance. Former partners remember such things.')}>Break</button>`;
-      if (row.standing === 'vassal') return this.vassalButtons(world, world.nations[row.id], row.annexBlockers, 'k-btn sm');
-      if (row.standing === 'overlord') return '<small class="dip-note">our overlord</small>';
-      if (row.standing === 'truce') return `<small class="dip-note">truce · ${row.truce}w</small>`;
-      const confirming = this.warConfirm === row.id;
-      const war = row.warBlockers.length
-        ? `<button class="k-btn sm danger" data-war="${row.id}" disabled${tipAttrText(`Declare war on ${row.name}\n${row.warBlockers.join('\n')}`)}>War · ${row.warCost}</button>`
-        : `<button class="k-btn sm danger${confirming ? ' confirming' : ''}" data-war="${row.id}"${tipAttrText(`Declare war on ${row.name}\n${row.claim ? 'Justified: you have a claim or kin there.' : 'Unjustified: no claim or kin.'} Costs ${row.warCost} political power, starts an ${ULTIMATUM_WEEKS}-week ultimatum, and every state you take adds infamy.${confirming ? '' : '\nClick twice to confirm.'}`)}>${confirming ? 'Confirm war?' : `War · ${row.warCost}`}</button>`;
-      const ally = `<button class="k-btn sm" data-ally="${row.id}"${row.allyBlocker ? ` disabled${tipAttrText(`Alliance\n${row.allyBlocker}`)}` : tipAttrText(`Propose an alliance to ${row.name}\nThey are willing: an attack on one becomes a call to the other.`)}>Ally</button>`;
-      return `${war}${ally}`;
-    };
-    let lastGroup = null;
-    const table = rows.map((row) => {
-      const group = groupOf(row);
-      const heading = group !== lastGroup ? `<div class="dip-group">${GROUP[group]}</div>` : '';
-      lastGroup = group;
-      const ratio = Math.max(0.02, Math.min(4, row.ratio));
-      const bar = Math.round(Math.min(1, ratio / 3) * 100);
-      const willing = row.standing === 'ally' ? '<b class="pos">ally</b>'
-        : row.allyBlocker ? `<span class="dim"${tipAttrText(`Alliance\n${row.allyBlocker}`)}>no</span>`
-          : row.standing === 'war' ? '<span class="dim">—</span>' : '<b class="pos">willing</b>';
-      const tags = [
-        // "Komşu" ilişki sütununda zaten yazıyorsa alt satırda tekrarlanmaz.
-        row.neighbour && row.standing !== 'neighbour' ? 'neighbour' : '',
-        row.embargoByUs ? 'embargoed' : row.embargoByThem ? 'embargoes us' : '',
-        row.infamy >= view.infamyCap ? 'infamous' : '',
-      ].filter(Boolean).join(' · ');
-      return `${heading}<div class="dip-row s-${row.standing}">
-        <span class="flag" data-flag-nation="${row.id}" data-flag-w="30" data-flag-h="20" data-flag-style="crest"></span>
-        <button class="dip-name" data-nation="${row.id}"${tipAttrText(`${row.name}\nOpen the dossier: identity, memories, embargo and every action.`)}><b>${esc(row.name)}</b><small>${esc(tags)}</small></button>
-        ${group === 'elsewhere'
-    ? `<button class="dip-rel dip-rel-war" data-dip-conflict="${warring.get(row.id).key}"${tipAttrText('Open this war: sides, score, losses and occupied states.')}>${esc(relationText(row))}</button>`
-    : `<span class="dip-rel">${esc(relationText(row))}</span>`}
-        <span class="dip-power"${tipAttrText(`Strength\n${row.name} is ${row.ratio >= 1 ? `${row.ratio.toFixed(1)}× as strong as` : `${(row.ratio * 100).toFixed(0)}% as strong as`} your nation (army, industry and population).`)}><i style="width:${bar}%"></i><b>×${row.ratio.toFixed(row.ratio < 10 ? 1 : 0)}</b></span>
-        <span class="dip-ally">${willing}</span>
-        <span class="dip-claim${row.claim ? ' pos' : ''}"${tipAttrText(row.claim ? 'War justification\nA claim or kin under their rule: war costs 20 political power.' : 'War justification\nNo claim and no kin: war costs 60 political power.')}>${row.claim ? 'claim' : '—'}</span>
-        <span class="dip-act">${action(row)}</span>
-      </div>`;
-    }).join('') || '<p class="empty">No nation matches this filter.</p>';
-    const filters = `<div class="dip-filters">${FILTERS.map(([id, label]) => `<button class="k-btn sm${filter === id ? ' on' : ''}" data-dip-filter="${id}" aria-pressed="${filter === id}">${label}</button>`).join('')}</div>`;
-    const head = '<div class="dip-row head"><span></span><span>Nation</span><span>Relation</span><span>Strength</span><span>Alliance</span><span>Claim</span><span></span></div>';
-
-    const kpis = kitKpiRow([
-      kitKpi({ label: 'Infamy', value: `${view.infamy.toFixed(1)} / ${view.infamyCap}`, sub: view.infamy >= view.infamyCap ? 'coalitions can form' : 'coalition threshold', tip: 'infamy', meter: view.infamy / view.infamyCap, meterTone: view.infamy >= view.infamyCap ? 'neg' : view.infamy >= view.infamyCap * 0.6 ? 'warn' : '', cls: 'hero' }),
-      kitKpi({ label: 'Wars', value: String(view.wars), sub: view.crises ? `${view.crises} ultimatum${view.crises === 1 ? '' : 's'}` : 'at war with you' }),
-      kitKpi({ label: 'Allies', value: `${view.allies} / ${view.maxAllies}`, sub: 'an attack on one calls the other' }),
-      kitKpi({ label: 'Truces', value: String(view.truces), sub: 'no new war until they lapse' }),
-      kitKpi({ label: 'Rival', value: esc(view.rival ?? 'none'), sub: view.rivalsOfUs.length ? `rival of ${esc(view.rivalsOfUs.slice(0, 2).join(', '))}` : 'nobody names you rival', cls: 'is-text' }),
-    ]);
-
-    const wars = warOverview(world, me.id, turn);
-    const warList = wars.wars.length || wars.crises.length
-      ? `${wars.crises.map((c) => `<div class="dip-war crisis"><b>${esc(c.name)}</b><small>ultimatum · war in ${c.weeksLeft}w</small></div>`).join('')}${wars.wars.map((w) => `<div class="dip-war ${w.score > 8 ? 'winning' : w.score < -8 ? 'losing' : 'even'}" data-tip="war" data-tip-arg="${w.enemyId}">
-          <b>${esc(w.name)}</b><em>${w.score > 0 ? '+' : ''}${w.score}</em>
-          <small>${w.lossesOurs > 0 ? `−${formatPopulation(w.lossesOurs)}` : '0'} / ${w.lossesTheirs > 0 ? `−${formatPopulation(w.lossesTheirs)}` : '0'} men · ${w.weeks}w · holds ${w.holdTheirs}/${w.holdOurs}</small>
-        </div>`).join('')}`
-      : '<p class="empty">At peace.</p>';
-    const offers = (this.game.peaceOffers ?? []).filter((entry) => entry.to === me.id).map((entry) => this.peaceOfferCard(entry)).join('');
-    const focus = this.warFocus ? conflicts.find((c) => c.key === this.warFocus) ?? null : null;
-    // Seçili savaş bittiyse panel sessizce kapanır.
-    if (this.warFocus && !focus) this.warFocus = null;
-    const sideName = (list) => `${esc(list[0].name)}${list.length > 1 ? ` +${list.length - 1}` : ''}`;
-    const worldList = conflicts.length
-      ? conflicts.map((c) => `<button class="dip-war dip-conflict${focus?.key === c.key ? ' on' : ''}" data-dip-conflict="${c.key}">
-          <span class="dip-cflags"><span class="flag" data-flag-nation="${c.lead[0]}" data-flag-w="24" data-flag-h="16" data-flag-style="crest"></span><span class="flag" data-flag-nation="${c.lead[1]}" data-flag-w="24" data-flag-h="16" data-flag-style="crest"></span></span>
-          <b>${sideName(c.attackers)} <i>vs</i> ${sideName(c.defenders)}</b><em>${c.score > 0 ? '+' : ''}${c.score}</em>
-          <small>${c.weeks}w · held ${c.holdA}/${c.holdB}${c.battles ? ` · ${c.battles} ${c.battles === 1 ? 'battle' : 'battles'}` : ''}</small>
-        </button>`).join('')
-      : '<p class="empty">No other wars in the world.</p>';
-    const allies = alliesOf(me).map((id) => world.nations[id]).filter(Boolean);
-    const allyList = allies.length
-      ? allies.map((n) => `<div class="dip-war"><b>${esc(n.name)}</b><button class="k-btn sm" data-break-alliance="${n.id}">Break</button></div>`).join('')
-      : `<p class="empty">No allies. ${view.maxAllies} seats free.</p>`;
-
-    return `${kpis}
-      <div class="k-split dip-split">
-        ${kitPanel('Nations', `${filters}<div class="dip-table">${head}${table}</div>`, { sub: `${view.rows.length} nations · ${view.neighbours} neighbours`, cls: 'dip-nations' })}
-        <div class="k-stack">
-          ${focus ? this.conflictPanel(focus) : ''}
-          ${offers ? kitPanel('Peace offers', offers, { sub: 'answer within six weeks' }) : ''}
-          ${kitPanel('Our wars', warList, { sub: 'score · losses · weeks · states held', right: '' })}
-          ${kitPanel('World wars', worldList, { sub: `${conflicts.length} ${conflicts.length === 1 ? 'war' : 'wars'} · click for details` })}
-          ${kitPanel('Alliances', allyList, { sub: `${view.allies} of ${view.maxAllies}` })}
-        </div>
-      </div>`;
+    return renderDiplomacyScreen(this, me);
   }
 
   /** Savaşın ayrıntı paneli: gövde ui/warDetail.js'te (sağ üst panelle ortak). */
@@ -1838,6 +1609,7 @@ export class Screens {
 
     if (this.active === 'military') this.bindMilitary();
     bindStateScreens(this);
+    if (this.active === 'diplomacy' || this.active === 'dossier') bindDiplomacyScreen(this);
     for (const btn of this.el.body.querySelectorAll('[data-embargo]')) {
       btn.onclick = () => {
         declareEmbargo(game, me, Number(btn.dataset.embargo));

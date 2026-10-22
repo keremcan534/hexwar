@@ -15,6 +15,9 @@ import { ARMY_POOL_SHARE, POP_UNIT } from './econ/defs.js';
 import { runReinforcements } from './reinforcement.js';
 import { runDelegatedAI, runNationAI } from './ai.js';
 import { runDiplomacyAI } from './alliances.js';
+import { runForeignPolicy } from './pacts.js';
+import { hasPassage } from './nationBirth.js';
+import { DIP_AI } from './dipDefs.js';
 import {
   PEACE, atWar, computeContacts, initRelations, relation, resolveCrises,
 } from './diplomacy.js';
@@ -546,6 +549,10 @@ export class TurnManager {
     // hafta ilan edilenler dahil) hemen ardindan islenir.
     if (resolveCrises(this.game)) this.game.renderer.invalidateCache();
     runDiplomacyAI(this.game);
+    // Dış siyaset: elçiler, oyuncunun masası, vassal özerkliği, çeyreklik
+    // YZ sözleri (pacts.js). Çağrılar yukarıda kuyruktan çıktı; burada
+    // cevaplanmamış olanlar zaman aşımına uğrar.
+    runForeignPolicy(this.game);
     yield* pause('ai');
 
     this.turn++;
@@ -889,6 +896,9 @@ export class TurnManager {
       const holder = controllerOf(tile);
       if (holder < 0 || holder === unit.nationId) continue;
       if (atWar(world, holder, unit.nationId)) continue;
+      // Geçiş izni olan tümen kalır: kurtarıcı ve aynı cephedeki dost geçişi
+      // yalnız tek haftalık yürüyüşte işliyordu, hafta sonunda eve dönüyordu.
+      if (DIP_AI.passage && hasPassage(world, holder, unit.nationId)) continue;
 
       let best = null;
       let bestDistance = Infinity;
@@ -929,7 +939,8 @@ export class TurnManager {
       const owner = unit.nationId;
       const friendly = (tile) => {
         const holder = controllerOf(tile);
-        return holder === owner || isAlliedTo(world, owner, holder);
+        return holder === owner || isAlliedTo(world, owner, holder)
+          || (DIP_AI.passage && holder >= 0 && hasPassage(world, holder, owner));
       };
       if (friendly(unit.tile)) continue;
       // BFS hex grafında: kendi/müttefik kontrolüne en yakın adım.

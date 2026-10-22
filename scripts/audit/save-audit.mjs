@@ -14,6 +14,12 @@ import {
 } from './harness.mjs';
 import { serialize, deserialize, SAVE_VERSION } from '../../src/game/save.js';
 import { extendedFingerprint } from './fingerprint.mjs';
+import { passivePlayer } from './harness.mjs';
+import { EVENT_CARDS, resolveCard } from '../../src/game/eventCards.js';
+import { atWar, declareWar, hostile, warBlockers } from '../../src/game/diplomacy.js';
+import { formAlliance } from '../../src/game/alliances.js';
+import { postEnvoy, pushProposal } from '../../src/game/relations.js';
+import { denounceNap, issueDemand, signNap } from '../../src/game/pacts.js';
 
 const SEED = 'save-audit';
 const HERE = dirname(fileURLToPath(import.meta.url));
@@ -79,6 +85,58 @@ function diffFingerprints(a, b) {
     if (JSON.stringify(a[key]) !== JSON.stringify(b[key])) out.push(key);
   }
   return out;
+}
+
+// ------------------------------------------------- DİPLOMASİ SENARYOSU ---
+// Şartname §18.2: masada açık çağrı, ittifak teklifi, bize talep, iki elçi,
+// bitimine 10 hafta kalmış ve feshi bildirilmiş paktlar, verilen garanti,
+// savaş gerekçesi, özerkliği 48 vassal, bekleyen YZ barış teklifi. Kaydet →
+// yükle → 104 hafta; kesintisiz koşuyla aynı parmak izi ve aynı
+// defter/masa/anlaşmalar.
+const DIP_SEED = 'save-audit-dip';
+const DIP_FILE = join(TMP, 'save-audit-dip.json');
+
+/** Pasif oyuncunun haftalık işi (harness.passivePlayer'ın döngüsü; devir yeniden kurulmaz). */
+function passiveWeek(game, player) {
+  if (!player.alive) return;
+  for (const entry of [...(player.cards?.pending ?? [])]) {
+    const card = EVENT_CARDS[entry.id];
+    let best = 0;
+    let bestWeight = -Infinity;
+    card.options.forEach((option, index) => {
+      if (option.available && !option.available(player)) return;
+      const w = option.ai ? option.ai(player) : 1;
+      if (w > bestWeight) { best = index; bestWeight = w; }
+    });
+    resolveCard(game, player, entry.key, best);
+  }
+  for (const offer of [...game.pendingPeace()]) {
+    if (offer.to === player.id) game.resolvePeaceOffer(offer.id, true);
+  }
+}
+
+function diploSnapshot(game) {
+  const world = game.world;
+  return JSON.stringify({
+    diplo: world.diplo,
+    nations: world.nations.map((n) => [n.id, n.regard ?? {}, n.envoys ?? [], (n.treaties ?? [])
+      .map((t) => JSON.stringify(t)).sort(), n.rivalChosen ?? null, n.rivalLockUntil ?? 0]),
+    offers: game.peaceOffers ?? [],
+  });
+}
+
+if (process.argv[2] === '--dip-worker') {
+  const game = headless(DIP_SEED);
+  const data = JSON.parse(readFileSync(DIP_FILE, 'utf8'));
+  if (!deserialize(game, data)) {
+    process.stdout.write(JSON.stringify({ error: 'deserialize basarisiz' }));
+    process.exit(0);
+  }
+  const player = game.world.nations[game.turns.playerNation];
+  const loaded = diploSnapshot(game);
+  for (let i = 0; i < 104; i++) { game.turns.endTurn(); passiveWeek(game, player); }
+  process.stdout.write(JSON.stringify({ loaded, after: fingerprint(game), diplo: diploSnapshot(game) }));
+  process.exit(0);
 }
 
 // --------------------------------------------------------- ALT SUREC MODU ---
@@ -275,6 +333,9 @@ sub('4. Canli <-> yuklenen durum: kayda hic girmeyen alanlar');
     // alanlar da (abluka dizisi ayni hafta el degistiren kiyida bayatlar ama
     // ekonomiden once her hafta yeniden kurulur; okunmadan tazelenir).
     /^world\.(navyState|seaZones)([.[]|$)/,
+    // Faz 3 tarih kaydedicisinin GEÇİCİ saplaması (chronicle.js sonu): kaydı
+    // gerçek kaydedici yapar; saplama bilerek kaydetmez (birleşmede değişir).
+    /^world\.history([.[]|$)/,
   ];
   // Tembel kurulan kayitlar: bir tarafta hic yok, obur tarafta bos varsayilan.
   const LAZY = [/^nations\[\]\.(delegation|training)$/];
@@ -325,6 +386,109 @@ sub('4. Canli <-> yuklenen durum: kayda hic girmeyen alanlar');
   for (const [key, { n, example }] of missing) {
     console.log(`  - ${key} (${n}) ${example}`);
     finding('HIGH', 'Kayda girmeyen alan', 'canli durumun her alani yuklemede geri gelmeli', `${key}: ${example}`);
+  }
+}
+
+// 5) DİPLOMASİ: aktif sözler ve masa kayıtlarıyla kaydet → yükle → 104 hafta.
+sub('5. Diplomasi: acik cagri, teklif, talep, elci, paktlar, garanti, gerekce, vassal, baris teklifi');
+{
+  const game = headless(DIP_SEED);
+  const after = passivePlayer(game);
+  const player = after.player;
+  const world = game.world;
+  const P = player.id;
+  for (let i = 0; i < 60; i++) { game.turns.endTurn(); passiveWeek(game, player); }
+  const T = () => game.turns.turn;
+  player.power = 300;
+  const contacts = world.contacts;
+  const free = (n) => n.alive && n.id !== P && !hostile(world, n.id, P);
+  const neighbours = world.nations.filter((n) => free(n) && contacts[P]?.[n.id]).map((n) => n.id);
+  const others = world.nations.filter((n) => free(n) && !contacts[P]?.[n.id]).map((n) => n.id);
+  const pick = () => neighbours.shift() ?? others.shift();
+  const staged = {};
+  // Bekleyen YZ barış teklifi (§10.5, game.peaceOffers): bir YZ oyuncuya savaş
+  // açar; ültimatom dolunca kayıttan hemen önce beyaz barış teklifi masaya düşer.
+  const foe = [...others].reverse().concat([...neighbours].reverse()).find((id) => {
+    world.nations[id].power = Math.max(world.nations[id].power ?? 0, 80);
+    return !warBlockers(world, id, P, T()).length;
+  });
+  if (foe != null) {
+    for (const list of [neighbours, others]) if (list.includes(foe)) list.splice(list.indexOf(foe), 1);
+    staged.war = declareWar(game, foe, P, {});
+    for (let i = 0; i < 12 && staged.war && !atWar(world, foe, P); i++) { game.turns.endTurn(); passiveWeek(game, player); }
+    player.power = 300;
+  }
+  // İttifak + açık çağrı (müttefike bir YZ saldırır; çağrı bir hafta sonra masada).
+  const ally = pick();
+  formAlliance(world, P, ally, T());
+  const aggressor = world.nations.find((n) => n.alive && n.id !== P && n.id !== ally && contacts[n.id]?.[ally]
+    && !warBlockers(world, n.id, ally, T()).length && (n.power = Math.max(n.power ?? 0, 80)) && true)?.id;
+  staged.call = aggressor != null && declareWar(game, aggressor, ally, {});
+  game.turns.endTurn(); passiveWeek(game, player);
+  // İttifak teklifi, iki elçi, paktlar, garanti, gerekçe, vassal.
+  const proposer = pick();
+  pushProposal(world, { treaty: 'ALLIANCE', from: proposer, to: P }, T());
+  const e1 = pick();
+  const e2 = pick();
+  staged.envoys = [postEnvoy(world, player, e1), postEnvoy(world, player, e2)];
+  const napA = pick();
+  signNap(game, player, world.nations[napA]);
+  for (const id of [P, napA]) {
+    const t = world.nations[id].treaties.find((x) => x.type === 'NAP');
+    if (t) t.until = T() + 10;
+  }
+  const [g1, g2] = [others.shift(), others.shift()];
+  if (g1 != null && g2 != null) { signNap(game, world.nations[g1], world.nations[g2]); denounceNap(game, world.nations[g1], g2); }
+  const protege = pick();
+  if (protege != null) (player.treaties ??= []).push({ type: 'GUARANTEE', partner: protege, since: T() });
+  const cbTarget = pick();
+  const cbProvince = world.provinces.find((p) => p.owner === cbTarget && p.econ);
+  if (cbProvince) player.treaties.push({ type: 'CB', partner: cbTarget, since: T(), expires: T() + 40, province: cbProvince.id });
+  const vassal = pick();
+  if (vassal != null) {
+    const v = world.nations[vassal];
+    v.treaties = (v.treaties ?? []).filter((t) => t.type !== 'ALLIANCE');
+    v.treaties.push({ type: 'VASSALIZE', partner: P, since: T() - 120, autonomy: 48 });
+  }
+  // Bize talep: bir komşunun bitişik province'imize iddiası.
+  for (const id of world.nations.filter((n) => free(n) && contacts[P]?.[n.id]).map((n) => n.id)) {
+    const x = world.nations[id];
+    const near = new Set();
+    for (const p of world.provinces) if (p.owner === id) for (const nb of p.neighbors ?? []) near.add(nb);
+    const prov = world.provinces.find((p) => p.owner === P && p.econ && p.center && near.has(p.id)
+      && p.id !== player.capital?.provinceId);
+    if (!prov) continue;
+    x.claims = [...(x.claims ?? []), prov.id];
+    x.power = Math.max(x.power ?? 0, 60);
+    if (issueDemand(game, x, P, prov.id) === 'pending') { staged.demand = id; break; }
+  }
+  if (foe != null && atWar(world, foe, P)) {
+    staged.peaceOffer = Boolean(game.receivePeaceOffer(foe, P, { demands: [], concessions: [], terms: [] }));
+  }
+  staged.pending = (world.diplo?.pending ?? []).map((r) => `${r.kind}${r.treaty ? `:${r.treaty}` : ''}`);
+  console.log(`  kurulum: ${JSON.stringify(staged)}`);
+  writeFileSync(DIP_FILE, JSON.stringify(serialize(game)));
+  const atSaveDiplo = diploSnapshot(game);
+  for (let i = 0; i < 104; i++) { game.turns.endTurn(); passiveWeek(game, player); }
+  const contFp = fingerprint(game);
+  const contDiplo = diploSnapshot(game);
+  const loaded = JSON.parse(execFileSync(process.execPath, [fileURLToPath(import.meta.url), '--dip-worker'],
+    { encoding: 'utf8', maxBuffer: 64 * 1024 * 1024 }));
+  if (loaded.error) {
+    finding('CRITICAL', 'Diplomasi kaydi yuklenmiyor', 'kayit yuklenmeli', loaded.error);
+  } else {
+    const atLoad = loaded.loaded === atSaveDiplo;
+    const drift = diffFingerprints(contFp, loaded.after);
+    const diploSame = loaded.diplo === contDiplo;
+    console.log(`  yuklemede masa/defter/anlasmalar ayni: ${atLoad ? 'evet' : 'HAYIR'}`);
+    console.log(`  104 hafta sonra parmak izi farki: ${drift.length ? drift.join(', ') : 'YOK'} · diplomasi: ${diploSame ? 'ayni' : 'FARKLI'}`);
+    if (!atLoad) finding('HIGH', 'Diplomasi kayda tam girmiyor', 'yuklenen masa/defter kayittakiyle ayni', 'farkli');
+    if (drift.length || !diploSame) {
+      finding('HIGH', 'Diplomasi kaydet-yukle dallaniyor', 'kesintisiz ve yuklenmis kosu ayni',
+        `${drift.join(', ') || '-'}${diploSame ? '' : ' + diplomasi durumu'}`);
+    } else {
+      console.log('  OK  aktif sozler ve bekleyen kayitlar kaydet-yukle sonrasi ayni gelecegi veriyor.');
+    }
   }
 }
 

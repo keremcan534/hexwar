@@ -20,6 +20,8 @@ import {
 import { clearDirective, orderMove, setDirective } from './movement.js';
 import { TurnManager } from './turn.js';
 import { atWar, crisisLeft, declareWar, inCrisis } from './diplomacy.js';
+import { cbOf, ensureDiplo, removeTreaty } from './relations.js';
+import { pendingCallAgainst, resolvePending } from './pacts.js';
 import { demobilize, isMobilized, mobilize } from './mobilization.js';
 import { provinceName } from './provinces.js';
 import {
@@ -1228,6 +1230,11 @@ export class Game {
     this.hovered = null;
     this.notifications?.clear?.();
     this.peaceOffers = [];
+    // Eski oyuncuya yazılmış masa kayıtları yeni ulusa geçmez; teklif kapısının
+    // gönderen bekleme süreleri de yeni oyuncu için sıfırdan başlar.
+    const diplo = ensureDiplo(this.world);
+    diplo.pending = diplo.pending.filter((rec) => rec.to !== previous);
+    diplo.cooldown = {};
     this.renderer.invalidateCache();
     this.emit('player', nationId);
     this.emit('world', this.world);
@@ -1237,14 +1244,35 @@ export class Game {
   }
 
   declareWarOn(nationId, goalProvinceId = undefined) {
+    const me = this.turns.playerNation;
+    const world = this.world;
+    // Bu düşmana karşı bekleyen bir çağrı varsa Savaş düğmesi ÇAĞRIYA KATILIR:
+    // bedava, savunma, asıl saldırganla aynı takvim (DIP-01).
+    const call = pendingCallAgainst(world, me, nationId);
+    if (call) {
+      const result = resolvePending(this, call.id, 'join');
+      if (result.ok) {
+        this.emit('units', this.selectedUnit);
+        this.emit('diplomacy');
+        this.requestRender();
+      }
+      return result.ok;
+    }
+    // Reddedilen talebin gerekçesi: savaş bedava, hedef talep edilen province.
+    const cb = cbOf(world.nations[me], nationId, this.turns.turn);
     // Oyuncunun kendi karari: merkezi kapi bunu istemsiz ilandan ayirir.
     // Hedef verilmezse makul bir tane onerilir (sinira komsu, en degerli
     // kume) -- boylece hicbir savas hedefsiz baslamaz ve baris masasi her
     // zaman "bu savas neydi" sorusunu cevaplayabilir.
     const goal = goalProvinceId !== undefined
       ? goalProvinceId
-      : suggestWarGoal(this.world, this.turns.playerNation, nationId)?.id ?? null;
-    const ok = declareWar(this, this.turns.playerNation, nationId, { manual: true, goal });
+      : cb ? cb.province : suggestWarGoal(world, me, nationId)?.id ?? null;
+    // `allowBreach`: oyuncunun iki tıkla onayladığı Savaş, pakt ortağına
+    // karşıysa fiyatlı bir ihlaldir (diplomacy.breakPactOnDeclaration).
+    const ok = declareWar(this, me, nationId, {
+      manual: true, goal, allowBreach: true, ...(cb ? { reason: 'demand' } : {}),
+    });
+    if (ok && cb) removeTreaty(world.nations[me], 'CB', nationId);
     if (ok) {
       this.selectUnit(this.selectedUnit);
       this.emit('units', this.selectedUnit);

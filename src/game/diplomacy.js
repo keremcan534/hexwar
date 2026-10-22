@@ -7,6 +7,10 @@ import { UNIT_TYPES, armyPower, isMilitia, shipClassOf } from './units.js';
 import { noteCasualties } from './politics.js';
 import { controllerOf } from './control.js';
 import { TIER, announce, remember } from './chronicle.js';
+import {
+  cbOf, deed, guaranteeOf, markFaithless, napOf, noteDiplomacy, removePair,
+} from './relations.js';
+import { FAITHLESS, NAP } from './dipDefs.js';
 
 export const WAR = 'war';
 export const PEACE = 'peace';
@@ -221,6 +225,13 @@ export function hasClaimOn(world, a, b) {
 
 export function warDeclarationCost(world, a, b, reason = null) {
   if (reason === 'alliance' || reason === 'coalition' || reason === 'independence' || reason === 'crisis') return 0;
+  const na = world.nations[a];
+  // Reddedilen talebin gerekçesi (pacts.issueDemand) savaşı bedava yapar:
+  // bedel talebin kendisinde ödendi.
+  if (reason === 'demand' && cbOf(na, b, world.turn ?? 0)) return 0;
+  // Elle ilan edilen rakip haklı bir hedeftir (yalnız oyuncu ilan eder;
+  // YZ'nin bedelleri değişmez).
+  if (na?.rivalChosen != null && na.rivalId === b) return WAR_COST.justified;
   return hasClaimOn(world, a, b) ? WAR_COST.justified : WAR_COST.unjustified;
 }
 
@@ -238,19 +249,28 @@ export function overlordOf(world, vassalId, turn = world.turn ?? 0) {
  * gösterir. Önce düğme etkin görünüp ilan SESSİZCE reddediliyordu (Kerem
  * 2026-10-15: "Ravoya'ya savaş ilan edemiyorum" — Ravoya onun vassalıydı).
  */
-export function warBlockers(world, a, b, turn = world.turn ?? 0, reason = null) {
+export function warBlockers(world, a, b, turn = world.turn ?? 0, reason = null, options = {}) {
   const out = [];
   const na = world.nations[a];
   const nb = world.nations[b];
   if (!na || !nb || a === b) return ['No such nation'];
   if (hostile(world, a, b)) return ['Already at war or under ultimatum'];
   const truce = truceLeft(world, a, b, turn);
-  if (truce > 0) out.push(`Truce: ${truce} more weeks`);
+  // Bağımsızlık savaşı ateşkese takılmaz: vassalı doğuran barışın ateşkesidir.
+  if (truce > 0 && reason !== 'independence') out.push(`Truce: ${truce} more weeks`);
   const allied = (n, pid) => (n.treaties ?? []).some((t) => t.type === 'ALLIANCE' && t.partner === pid
     && (t.until ?? Infinity) > turn);
   if (allied(na, b) || allied(nb, a)) out.push('We are allied: break the alliance first');
   if (overlordOf(world, b, turn) === a) out.push(`${nb.name} is our vassal: release or annex them instead`);
   if (overlordOf(world, a, turn) === b) out.push(`${nb.name} is our overlord`);
+  // PAKT bağlar: yalnız oyuncunun onaylı Savaş tıkı (allowBreach, fiyatlı
+  // ihlal) ve dostu savunma çağrısı ('alliance', pakt ihlalsiz biter) geçer.
+  const pact = napOf(na, b, turn);
+  if (pact && reason !== 'alliance' && options.allowBreach !== true) {
+    out.push(`Non-aggression pact with ${nb.name}: ${Math.max(0, (pact.until ?? turn) - turn)} more weeks`);
+  }
+  if (guaranteeOf(na, b)) out.push('We guarantee their independence: revoke the guarantee first');
+  if (guaranteeOf(nb, a)) out.push(`${nb.name} guarantees our independence`);
   const cost = warDeclarationCost(world, a, b, reason);
   if (cost > 0 && (na.power ?? 0) < cost) out.push(`Needs ${cost} political power (have ${Math.floor(na.power ?? 0)})`);
   if (attackerCount(world, b) >= MAX_ATTACKERS_ON_TARGET) {
@@ -273,8 +293,9 @@ export function declareWar(game, a, b, options = {}) {
   // (warBlockers); ekran aynı listeyi gösterir. Bağlı çift arasında ilan YOK
   // — önce bozmak gerekir (VASSALIZE kartının "kalıcı barış" vaadi bu kapıya
   // kadar SAHTEYDİ: hiçbir şey barış tarafını uygulamıyordu, yalnız haracı).
-  if (warBlockers(world, a, b, game.turns.turn, options.reason ?? null).length) return false;
-  const cost = warDeclarationCost(world, a, b, options.reason ?? null);
+  const reason = options.reason ?? null;
+  if (warBlockers(world, a, b, game.turns.turn, reason, { allowBreach: options.allowBreach === true }).length) return false;
+  const cost = warDeclarationCost(world, a, b, reason);
 
   const player = game.turns?.playerNation;
   // 1) Oyuncu ADINA otomatik savaş ilan edilemez. Koalisyon oyuncuya KARŞI
@@ -288,6 +309,11 @@ export function declareWar(game, a, b, options = {}) {
   //    warBlockers'ta. 3) Oyuncuya istemsiz açılan cephe sayısı ayrıca dardır.
   if (b === player && !manual
     && attackerCount(world, player) >= MAX_PLAYER_INVOLUNTARY_FRONTS) return false;
+
+  // PAKT: dostu savunma çağrısı paktı ihlalsiz bitirir (pakt dostlarımıza
+  // saldırmayı hiç kapsamadı); kapıdan geçen başka her ilan onaylı bir
+  // ihlaldir ve faturası burada kesilir (şartname §7.4).
+  breakPactOnDeclaration(game, a, b, reason);
 
   if (cost > 0) world.nations[a].power -= cost;
   // Kaçıncı savaş: ateşkes uzunluğu buna bakar, o yüzden barış kaydından
@@ -318,13 +344,21 @@ export function declareWar(game, a, b, options = {}) {
   }
   remember(world.nations[a], game.turns.turn, 'war_with', b);
   remember(world.nations[b], game.turns.turn, 'war_with', a);
+  // Saldırıya uğrayan saldırganı hatırlar. Çağrıya gelen, koalisyon üyesi ve
+  // kopan vassal "saldırdı" sayılmaz: onların ilanı bir yükümlülüğün ya da
+  // bir hareketin sonucudur.
+  if (reason === null || reason === 'crisis' || reason === 'demand') {
+    deed(world, b, a, 'attacked_us', game.turns.turn);
+  }
   // Cagri-ile-savas KUYRUGA yazilir, burada cozulmez: alliances.js bu
   // dosyayi import eder, ters yon dongu olurdu. turn.js kuyrugu YZ evresi
   // sonunda bosaltir. Cagriyla acilan savas yeni cagri dogurmaz (zincir yok).
   // Müttefikler ilanla birlikte çağrılır ki ültimatom süresince onlar da
   // hazırlansın; kendi ültimatomları saldırganınkiyle aynı hafta biter.
-  if (options.reason !== 'alliance') {
-    (world.pendingWarCalls ??= []).push({ aggressor: a, defender: b, warAt });
+  // Kopan vassalın savaşı çağrı doğurmaz: efendinin dostları bir isyanı
+  // savunmaya çağrılmaz (şartname §5.2).
+  if (reason !== 'alliance' && reason !== 'independence') {
+    (world.pendingWarCalls ??= []).push({ aggressor: a, defender: b, warAt, reason });
   }
   // Savaş ilanının anlık harita izi yok (sınır rengi değişmez; işgal
   // taraması ancak kareler el değiştirince başlar) — tam geçersizleme
@@ -337,6 +371,9 @@ export function declareWar(game, a, b, options = {}) {
     // bir kart alır (bkz. resolveCrises).
     const me = world.nations[game.turns.playerNation];
     const attacked = b === game.turns.playerNation;
+    // Çağrıyla açılan savaş saldırganın takvimine biner: kalan hafta oradan.
+    const weeks = Math.max(0, warAt - game.turns.turn);
+    const defending = reason === 'alliance';
     announce(game, me, {
       kind: 'CRISIS', tier: TIER.MAJOR, key: `crisis-${other.id}`, ttl: 0,
       // Oyuncunun KENDİ tıkladığı ilan saati durdurmaz: kararı az önce verdi,
@@ -344,14 +381,68 @@ export function declareWar(game, a, b, options = {}) {
       // ilanı ise durdurur (Kerem: "oyun aşırı fazla duruyor").
       halt: !(manual && !attacked),
       title: attacked
-        ? `${other.name} declares war on us — ${ULTIMATUM_WEEKS} weeks to prepare`
-        : `War declared on ${other.name} — armies march in ${ULTIMATUM_WEEKS} weeks`,
+        ? `${other.name} declares war on us — ${weeks} weeks to prepare`
+        : `War declared on ${other.name} — armies march in ${weeks} weeks`,
       detail: attacked
         ? 'Mobilize now: the reserve arms within the ultimatum. Their armies cross once it expires.'
-        : 'Both sides may mobilize. The border opens when the ultimatum runs out; taken provinces cost infamy.',
+        : defending
+          ? `We fight as a defender beside ${world.nations[options.calledBy]?.name ?? 'our partner'}: no war of aggression, no occupation infamy.`
+          : 'Both sides may mobilize. The border opens when the ultimatum runs out; taken provinces cost infamy.',
     });
   }
   return true;
+}
+
+/**
+ * İlan kapıdan geçti ve iki taraf arasında yürürlükte bir pakt var: ya
+ * dostu savunma çağrısıdır (pakt ihlalsiz biter) ya oyuncunun onaylı
+ * ihlalidir (YZ ve devredilmiş bakanlık paktı asla çiğnemez: hedef
+ * döngüsü ortağı eler, warBlockers ihlal bayraksız ilanı reddeder).
+ */
+function breakPactOnDeclaration(game, a, b, reason) {
+  const world = game.world;
+  const turn = game.turns.turn;
+  if (!napOf(world.nations[a], b, turn)) return;
+  const na = world.nations[a];
+  const nb = world.nations[b];
+  const player = game.turns.playerNation;
+  if (reason === 'alliance') {
+    removePair(world, a, b, 'NAP');
+    for (const [me, other] of [[na, nb], [nb, na]]) {
+      if (me.id !== player) continue;
+      announce(game, me, {
+        kind: 'DIPLOMACY', tier: TIER.IMPORTANT, key: `nap:${other.id}`,
+        title: `Our pact with ${other.name} ends`,
+        detail: me === na
+          ? `We answer a friend's call against them; a pact never covered attacking our friends.`
+          : `They answer a friend's call against us; a pact never covered attacking their friends.`,
+      });
+    }
+    return;
+  }
+  // İhlal: şöhret, kurbanın kini, bütün ortakların güveni, pakt düşer.
+  markFaithless(world, a, b, FAITHLESS.pact_broken, turn);
+  na.infamy = Math.max(0, (na.infamy ?? 0) + NAP.BREACH_INFAMY);
+  deed(world, b, a, 'pact_broken', turn);
+  removePair(world, a, b, 'NAP');
+  noteDiplomacy(game, {
+    tier: 2, title: `${na.name} breaks its pact and attacks ${nb.name}`,
+    detail: `+${NAP.BREACH_INFAMY} infamy; every partner of ${na.name} trusts it less.`,
+    actors: [a, b], key: `nap:${Math.min(a, b)}:${Math.max(a, b)}`,
+  });
+  if (a === player) {
+    announce(game, na, {
+      kind: 'DIPLOMACY', tier: TIER.MAJOR, key: `nap:${b}`,
+      title: `We broke our pact with ${nb.name}`,
+      detail: `+${NAP.BREACH_INFAMY} infamy. ${nb.name} will remember the betrayal, and every partner of ours trusts us less.`,
+    });
+  } else if (b === player) {
+    announce(game, nb, {
+      kind: 'DIPLOMACY', tier: TIER.MAJOR, key: `nap:${a}`,
+      title: `${na.name} broke its pact with us`,
+      detail: 'The non-aggression pact is void; the world has seen what their word is worth.',
+    });
+  }
 }
 
 /**

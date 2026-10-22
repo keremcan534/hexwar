@@ -37,13 +37,20 @@ function runSeed(seed) {
   // katılması tasarımın parçası (unification.js). Kümenin SON el değiştirme
   // kanalı tutulur; savaş payı birleşmeyle gelenleri saymaz.
   const viaUnion = new Set();
+  // TOPRAK TALEBİ (pacts.issueDemand → applyYield): savaşsız devir. Kendi
+  // sütununda yazılır, savaş payından düşülür; şartnamenin bağlayan sınırı
+  // savaş + talep TOPLAMIDIR (talep kartopunu gizleyemez).
+  const viaDemand = new Set();
   const claim = game.turns.claimAtPeace.bind(game.turns);
   game.turns.claimAtPeace = function (tile, nationId) {
     const id = tile?.provinceId;
     const ok = claim(tile, nationId);
     if (ok && id != null) {
-      if ((new Error().stack ?? '').includes('proposeUnion')) viaUnion.add(id);
-      else viaUnion.delete(id);
+      const stack = new Error().stack ?? '';
+      viaUnion.delete(id);
+      viaDemand.delete(id);
+      if (stack.includes('proposeUnion')) viaUnion.add(id);
+      else if (stack.includes('applyYield')) viaDemand.add(id);
     }
     return ok;
   };
@@ -61,12 +68,14 @@ function runSeed(seed) {
   let changed = 0;
   let union = 0;
   let national = 0;
+  let demand = 0;
   const gainers = new Set();
   for (let i = 0; i < before.length; i++) {
     const owner = world.provinces[i].owner;
     if (owner === before[i]) continue;
     changed++;
     if (viaUnion.has(i)) union++;
+    else if (viaDemand.has(i)) demand++;
     else if (owner >= 0 && world.nations[owner]?.culture === world.provinces[i].culture
       && primaryBefore[i] !== world.provinces[i].culture) national++;
     if (owner >= 0) gainers.add(owner);
@@ -77,6 +86,7 @@ function runSeed(seed) {
     changed,
     union,
     national,
+    demand,
     gainers: gainers.size,
     wars: wars.size,
     nationsBefore,
@@ -85,6 +95,10 @@ function runSeed(seed) {
 }
 
 const rows = SEEDS.map(runSeed);
+/** Savaş payı: birleşme, halkın kendi devletine geçişi ve toprak talebi hariç. */
+function warShare(r) {
+  return (r.changed - r.union - r.national - r.demand) / r.provinces;
+}
 
 sub('KOSU SONUCLARI');
 console.log(table(rows, [
@@ -94,7 +108,8 @@ console.log(table(rows, [
   { label: 'sahibi degisen', get: (r) => r.changed },
   { label: 'pay', get: (r) => pct(r.changed / r.provinces) },
   { label: 'halk payi', get: (r) => pct(r.national / r.provinces) },
-  { label: 'savas payi', get: (r) => pct((r.changed - r.union - r.national) / r.provinces) },
+  { label: 'talep payi', get: (r) => pct(r.demand / r.provinces) },
+  { label: 'savas payi', get: (r) => pct(warShare(r)) },
   { label: 'kazanan ulke', get: (r) => r.gainers },
   { label: 'ulke (once -> sonra)', get: (r) => `${r.nationsBefore} -> ${r.nationsAfter}` },
 ]));
@@ -138,12 +153,12 @@ sub('TEST 2 — birden fazla ulke kazaniyor mu?');
 sub('TEST 3 — degisim sinirli mi? (Victoria olcegi)');
 {
   // Eşik SAVAŞ payına uygulanır (birleşme hariç); toplam da yazılır.
-  const runaway = rows.filter((r) => (r.changed - r.union - r.national) / r.provinces > 0.33);
+  const runaway = rows.filter((r) => warShare(r) > 0.33);
   const wiped = rows.filter((r) => r.nationsBefore - r.nationsAfter > r.nationsBefore * 0.25);
   if (runaway.length) {
     finding('HIGH', 'kartopu',
       "bir kosuda haritanin ucte birinden fazlasi el degistirmemeli",
-      runaway.map((r) => `${r.seed} savas ${pct((r.changed - r.union - r.national) / r.provinces)} (toplam ${pct(r.changed / r.provinces)})`).join(', '),
+      runaway.map((r) => `${r.seed} savas ${pct(warShare(r))} (toplam ${pct(r.changed / r.provinces)})`).join(', '),
       'savas sinir duzeltir, ulke yutmaz');
   } else if (wiped.length) {
     finding('HIGH', 'ulke silinmesi',
@@ -151,9 +166,15 @@ sub('TEST 3 — degisim sinirli mi? (Victoria olcegi)');
       wiped.map((r) => `${r.seed} ${r.nationsBefore} -> ${r.nationsAfter}`).join(', '));
   } else {
     const share = rows.reduce((sum, r) => sum + r.changed / r.provinces, 0) / rows.length;
-    const war = rows.reduce((sum, r) => sum + (r.changed - r.union - r.national) / r.provinces, 0) / rows.length;
+    const war = rows.reduce((sum, r) => sum + warShare(r), 0) / rows.length;
     console.log(`  -> Haritanin ortalama ${pct(share)}'i el degisti (savasla ${pct(war)}), ulke sayisi korundu. DOGRU.`);
   }
 }
+
+// Eşli kıyas (DIP_ARMS none / all) için makine satırı.
+console.log(`BORDERS_JSON ${JSON.stringify({ arms: process.env.DIP_ARMS ?? 'all', years: YEARS, rows: rows.map((r) => ({
+  seed: r.seed, war: +(warShare(r) * 100).toFixed(2), demand: +(r.demand / r.provinces * 100).toFixed(2),
+  wars: r.wars, nations: [r.nationsBefore, r.nationsAfter],
+})) })}`);
 
 process.exit(reportFindings() > 0 ? 1 : 0);

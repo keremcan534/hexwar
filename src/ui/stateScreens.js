@@ -30,7 +30,7 @@ import {
   LINE_PRIORITIES, consumerStability, feedTarget, lineAllocation, lineEfficiencyCap, lineEfficiencyGain,
   linePriorityOf, setFeed, setLinePriority,
 } from '../game/econ/industry.js';
-import { embargoed, setEmbargo } from '../game/econ/trade.js';
+import { setEmbargo } from '../game/econ/trade.js';
 import { billCap, billsOf } from '../game/econ/bills.js';
 import { developmentCap, investmentTarget, levelCost, levelGain } from '../game/econ/investment.js';
 import { outputFactors, provinceOutputOf } from '../game/econ/output.js';
@@ -1760,20 +1760,5 @@ export function bindStateScreens(screens) {
   }
 }
 
-/** Dosya kartından ambargo (SG bedeli diplomasi katmanında; burada kapı). */
-export const EMBARGO_POWER = 25;
-export function embargoBlockers(world, me, other) {
-  const out = [];
-  if (!other?.alive || other.id === me.id) return ['Not a valid target'];
-  if (embargoed(world, me.id, other.id) && (me.embargoes ?? []).includes(other.id)) return ['Already under embargo'];
-  if ((me.power ?? 0) < EMBARGO_POWER) out.push(`Needs ${EMBARGO_POWER} political power`);
-  return out;
-}
-export function declareEmbargo(game, me, otherId) {
-  const other = game.world.nations[otherId];
-  if (embargoBlockers(game.world, me, other).length) return false;
-  me.power -= EMBARGO_POWER;
-  setEmbargo(me, otherId, true);
-  game.turns?.addLog?.(`Embargo declared on ${other.name}.`, { kind: 'POLITICS' });
-  return true;
-}
+/** Dosya kartından ambargo: bedel ve kural oyun katmanında (econ/trade.js, DIP-06). */
+export { EMBARGO_POWER, embargoBlockers, declareEmbargo } from '../game/econ/trade.js';

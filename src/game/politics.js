@@ -25,6 +25,7 @@ import { consumerStability } from './econ/industry.js';
 import { START_EDUCATION, START_GOVERNMENT } from './era.js';
 import { worldPartyTargets, worldWarTension } from './worldEvents.js';
 import { IC_SCALE } from './econ/defs.js';
+import { diplomaticUpkeep } from './relations.js';
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -909,7 +910,8 @@ export const EXHAUSTION_LADDER = [
  */
 function justCause(world, nation, rec) {
   const reason = rootReason(world, rec);
-  if (reason === 'crisis' || reason === 'independence') return true;
+  // Reddedilen talep de haklı gerekçedir: hedef masada "ver" dendiğinde vermedi.
+  if (reason === 'crisis' || reason === 'independence' || reason === 'demand') return true;
   const goal = world.provinces?.[rec.goals?.[nation.id] ?? -1];
   return Boolean(goal) && (goal.culture === nation.culture || goal.homeland === nation.culture);
 }
@@ -1069,7 +1071,19 @@ export function runPolitics(game) {
     // eski rotayı tutuyordu, yüklemede ise yeniden kuruluyordu — kaydet-yükle
     // ilk haftada dallanıyordu (save-audit, ölçüldü).
     if (paid > 0) refreshModifiers(nation, turn);
-    nation.power = Math.min(POWER_CAP, (nation.power ?? 0) + income - paid);
+    // Diplomatik taahhütler (elçi 0.2, verilen garanti 0.15 / hafta): barışın
+    // SG yutağı. Taahhüt yoksa dal bugünkü satırdır (bit bit aynı); yetmezse
+    // pacts.runForeignPolicy en yeni elçiyi, sonra en yeni garantiyi bırakır.
+    const upkeep = diplomaticUpkeep(nation);
+    if (upkeep > 0) {
+      const next = (nation.power ?? 0) + income - paid - upkeep;
+      politics.upkeepShort = next < 0;
+      nation.power = Math.min(POWER_CAP, Math.max(0, next));
+    } else {
+      nation.power = Math.min(POWER_CAP, (nation.power ?? 0) + income - paid);
+      if (politics.upkeepShort) politics.upkeepShort = false;
+    }
+    politics.diplomaticUpkeep = upkeep;
 
     // Seçim: dört yılda bir, en çok destek alan parti kurar. Meşrutiyette
     // taç muhafazakârları 10 puan farka kadar iktidarda tutar.
@@ -1265,6 +1279,8 @@ export function governmentView(world, nation, turn = world.turn ?? 0) {
     course: courseView(nation),
     power: nation.power ?? 0,
     powerIncome: powerIncome(nation),
+    // Elçi ve garantilerin haftalık SG faturası (relations.diplomaticUpkeep).
+    diplomaticUpkeep: diplomaticUpkeep(nation),
     stability: nation.stability ?? 0,
     stabilityTarget: stabilityNow?.target ?? politics.stabilityTarget ?? nation.stability,
     stabilityParts: stabilityNow?.parts ?? politics.stabilityParts ?? [],

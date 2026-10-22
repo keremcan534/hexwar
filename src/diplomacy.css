@@ -1,0 +1,128 @@
+/* ==========================================================================
+   DİPLOMASİ — ui/diplomacyScreen.js (masa + ülke dosyası)
+   Ayrı dosya (overview.css emsali): styles.css'e dokunulmaz, eski kurallar
+   `.dip-table.v2` niteleyicisiyle ezilir. Satırlar sabit boylu: haftalık
+   tazelemede tablo kaymaz (jitter-probe).
+   ========================================================================== */
+
+/* Tablo: bayrak · ulus · durum · güç · ilişki · tehdit · ittifak · eylem */
+/* Her satır kendi ızgarasıdır: son sütun SABİT genişlikte olmalı, yoksa
+   eylem düğmelerinin eni satırdan satıra sütunları kaydırır. */
+.dip-table.v2 .dip-row {
+  grid-template-columns: 30px minmax(150px, 1.5fr) minmax(80px, 0.7fr) 80px 104px 96px 56px 214px;
+  gap: 8px;
+  min-height: 40px;
+}
+.dip-table.v2 .dip-power i { width: 40px; }
+.dip-table.v2 .dip-act { flex-wrap: nowrap; }
+.dip-table.v2 .dip-act .k-btn { white-space: nowrap; }
+.dip-filters .k-btn { flex-direction: row; align-items: center; gap: 5px; }
+.dip-filters .k-btn small { color: var(--text-mute); font-size: 10px; }
+
+/* İlişki hücresi: ortalı −100..+100 çubuk, değer, elçi yıldızı. */
+.dip-relcell { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.dip-relv { display: flex; align-items: center; gap: 5px; min-width: 0; }
+.dip-relv em { min-width: 26px; font-style: normal; font-size: 12px; font-variant-numeric: tabular-nums; font-weight: 700; text-align: right; }
+.dip-relv.pos em { color: #a9d47e; }
+.dip-relv.neg em { color: #f0907a; }
+.dip-relv.neutral em { color: var(--text-dim); }
+.dip-rbar { position: relative; display: block; flex: none; width: 44px; height: 6px; border-radius: 3px; background: rgba(0, 0, 0, 0.45); box-shadow: 0 0 0 1px rgba(186, 160, 100, 0.18); }
+.dip-rbar::after { content: ''; position: absolute; left: 50%; top: -2px; bottom: -2px; width: 1px; background: rgba(186, 160, 100, 0.45); }
+.dip-rbar b { position: absolute; top: 0; bottom: 0; border-radius: 3px; }
+.dip-rbar b.pos { background: linear-gradient(90deg, #6f8f4f, #a9d47e); }
+.dip-rbar b.neg { background: linear-gradient(90deg, #d0573f, #a3452f); }
+.dip-envoy {
+  flex: none; width: 22px; height: 22px; padding: 0;
+  border: 1px solid var(--line-strong); border-radius: 3px;
+  background: rgba(0, 0, 0, 0.25); color: var(--text-mute);
+  font-size: 13px; line-height: 1; cursor: var(--cur-pointer);
+}
+.dip-envoy:hover:not([disabled]) { border-color: var(--gold); color: var(--gold-bright); }
+.dip-envoy.on { border-color: var(--gold); color: #f2d27a; background: rgba(186, 160, 100, 0.14); }
+.dip-envoy[disabled] { opacity: 0.45; cursor: var(--cur-no); }
+
+/* Tehdit hücresi */
+.dip-threat { font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.dip-threat.may { color: #f0907a; }
+.dip-threat.able { color: var(--amber); }
+.dip-threat.safe { color: #a9d47e; font-weight: 500; }
+.dip-threat.none { color: var(--text-faint); font-weight: 400; }
+
+/* 1440 px altında İttifak sütunu düşer: bilgisi Ally düğmesinin durumunda. */
+@media (max-width: 1439px) {
+  .dip-table.v2 .dip-row { grid-template-columns: 30px minmax(130px, 1.4fr) minmax(76px, 0.7fr) 70px 100px 92px 214px; }
+  .dip-table.v2 .dip-row > .dip-ally, .dip-table.v2 .dip-row > .dip-col-ally { display: none; }
+}
+
+/* Dar ekranda (tek sütun) sağ yığın tablonun altına iner; cevap bekleyen
+   istekler orada görünmez kalmasın: yığın açılır, istekler tablonun üstüne. */
+@media (max-width: 1599px) {
+  .k-split.dip-split > .k-stack { display: contents; }
+  .k-split.dip-split > .k-stack > .dip-requests { order: -1; }
+}
+
+/* Masa: bekleyen çağrı, teklif ve talepler. */
+.dip-requests .k-panel-body, .dip-requests { gap: 6px; }
+.dip-req {
+  display: grid;
+  grid-template-columns: 30px minmax(0, 1fr);
+  gap: 4px 8px;
+  padding: 7px 8px;
+  border-left: 3px solid var(--gold);
+  background: rgba(0, 0, 0, 0.22);
+}
+.dip-req + .dip-req { margin-top: 6px; }
+.dip-req.k-call { border-left-color: #d0573f; }
+.dip-req.k-demand { border-left-color: var(--amber); }
+.dip-req .flag { position: relative; display: inline-block; width: 30px; height: 20px; margin-top: 2px; }
+.dip-req .flag canvas { display: block; }
+.dip-req-main { display: grid; gap: 2px; min-width: 0; }
+.dip-req-main b { color: var(--text); font-size: 12.5px; font-weight: 600; }
+.dip-req-main small { color: var(--text-dim); font-size: 11px; line-height: 1.35; }
+.dip-req-meta em { color: var(--gold-bright); font-style: normal; font-weight: 700; }
+.dip-req-acts { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; }
+
+/* Taahhütler paneli */
+.dip-csec + .dip-csec { margin-top: 8px; }
+.dip-csec h4 { margin: 0 0 3px; color: var(--gold); font-family: var(--font-display); font-size: 12.5px; font-weight: 400; font-variant: small-caps; letter-spacing: 0.06em; }
+.dip-crow { display: grid; grid-template-columns: minmax(80px, auto) minmax(0, 1fr) auto; align-items: center; gap: 6px; min-height: 28px; padding: 2px 4px; border-bottom: 1px solid rgba(186, 160, 100, 0.06); }
+.dip-crow > small { overflow: hidden; color: var(--text-mute); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.dip-crow > :last-child { display: flex; gap: 4px; justify-content: flex-end; }
+.dip-crow .k-btn { white-space: nowrap; }
+.dip-cname { padding: 0; border: 0; background: none; color: var(--text); font: inherit; font-size: 12.5px; font-weight: 600; text-align: left; cursor: var(--cur-pointer); }
+.dip-cname:hover { color: var(--gold-bright); text-decoration: underline; text-underline-offset: 2px; }
+.dip-crow .dip-cauto { display: flex; align-items: center; gap: 6px; }
+
+/* Özerklik göstergesi: 50 (ilhak kapanır) ve 80 (kopar) çentikleri. */
+.dip-auto { position: relative; display: inline-block; flex: none; width: 90px; height: 7px; border-radius: 3px; background: rgba(0, 0, 0, 0.45); box-shadow: 0 0 0 1px rgba(186, 160, 100, 0.18); }
+.dip-auto i { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px; background: linear-gradient(90deg, #8a7448, #e7b04a); }
+.dip-auto u { position: absolute; top: -2px; bottom: -2px; width: 1px; background: rgba(240, 144, 122, 0.8); }
+.dip-cauto em { color: var(--text); font-style: normal; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dip-cauto small { color: var(--text-mute); font-size: 11px; }
+
+/* Dosya: ilişki kartı */
+.dip-relations .card-head h3 b { margin-left: 6px; font-family: var(--font-ui, inherit); font-size: 15px; }
+.dip-relations .card-head h3 b.pos { color: #a9d47e; }
+.dip-relations .card-head h3 b.neg { color: #f0907a; }
+.dip-relrow { display: flex; align-items: center; gap: 10px; margin: 4px 0 6px; }
+.dip-relrow .dip-rbar { width: 160px; height: 8px; }
+.dip-parts { display: grid; gap: 2px; margin: 0 0 6px; padding: 0; list-style: none; }
+.dip-parts li { display: grid; grid-template-columns: minmax(0, 1fr) 46px 110px; gap: 8px; align-items: baseline; font-size: 12px; }
+.dip-parts li span { color: var(--text-dim); }
+.dip-parts li b { font-variant-numeric: tabular-nums; text-align: right; }
+.dip-parts li b.pos { color: #a9d47e; }
+.dip-parts li b.neg { color: #f0907a; }
+.dip-parts li small { color: var(--text-mute); font-size: 10.5px; }
+.dip-quiet { margin: 0 0 6px; color: var(--text-mute); font-size: 12px; }
+.dip-dsec { margin-top: 8px; }
+.dip-dsec h4 { margin: 0 0 4px; color: var(--gold); font-family: var(--font-display); font-size: 12.5px; font-weight: 400; font-variant: small-caps; letter-spacing: 0.06em; }
+.dip-dangers { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
+.dip-dangers li { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 2px 8px; align-items: baseline; font-size: 12px; }
+.dip-dangers li small { grid-column: 1 / -1; color: var(--text-mute); font-size: 11px; line-height: 1.35; }
+
+/* Dosya: eylem satırları */
+.dip-arow { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; align-items: start; padding: 5px 0; border-top: 1px solid rgba(186, 160, 100, 0.08); }
+.dip-arow:first-of-type { border-top: 0; }
+.dip-alabel { padding-top: 5px; color: var(--text-mute); font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
+.dip-arow .dossier-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.dip-arow .dip-note { align-self: center; }

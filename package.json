@@ -38,6 +38,7 @@
     "audit:war": "node scripts/audit/war-support-audit.mjs",
     "audit:snapshot": "node scripts/audit/snapshot.mjs",
     "audit:econ": "node scripts/audit/econ-audit.mjs",
+    "audit:diplomacy": "node scripts/audit/diplomacy-audit.mjs",
     "audit:military-industry": "node scripts/audit/military-industry-audit.mjs"
   }
 }

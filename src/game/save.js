@@ -25,6 +25,21 @@ import { ensureBattles } from './battles.js';
 import { ensureProvinces, refreshProvinceOwner } from './provinces.js';
 import { ensurePolitics } from './politics.js';
 import { ensureDelegation, restoreDelegation } from './delegation.js';
+import { copyDiplo, copyRegard } from './relations.js';
+
+/** Barış teklifinin tam kopyası (listeler ayrı dizi; canlı oyunla paylaşılmaz). */
+function copyPeaceOffer(entry) {
+  const offer = entry?.offer ?? {};
+  return {
+    ...entry,
+    offer: {
+      ...offer,
+      demands: [...(offer.demands ?? [])],
+      concessions: [...(offer.concessions ?? [])],
+      terms: [...(offer.terms ?? [])],
+    },
+  };
+}
 
 // Ordu sistemi yeniden yazıldı: cephe artık saklanmıyor (sınırdan türetiliyor),
 // komuta tek listede toplandı ve muharebe kare anahtarlı oldu. v8'de kaldırılan
@@ -189,6 +204,10 @@ const NATION_FIELDS = [
   // imparatorlukta doğar, oyunda bunalımla değişir; yazılmazsa yüklenen oyun
   // özerkliği sessizce vatandaşlığa indirirdi.
   'homeRule',
+  // Diplomasi (relations.js, pacts.js): ilişki defteri, elçiler, elle ilan
+  // edilen rakip ve kilidi. Türetilemez; yokken (eski kayıt) boş defter ve
+  // atanmış rakip — bugünkü dünya. Yüklemede derin kopyalanır (aşağıda).
+  'regard', 'envoys', 'rivalChosen', 'rivalLockUntil',
 ];
 
 export function serialize(game) {
@@ -361,6 +380,15 @@ export function serialize(game) {
     // girmezse elle ilandan hemen sonra alınan kayıtta savunanın müttefikleri
     // savaşa hiç katılmıyordu.
     pendingWarCalls: (world.pendingWarCalls ?? []).map((call) => ({ ...call })),
+    // Oyuncunun masası (çağrı, teklif, talep) ve teklif kapısının sayaçları
+    // (relations.ensureDiplo). Yazılmazsa yüklenen oyunda cevap bekleyen çağrı
+    // kaybolur ve YZ aynı teklifi farklı haftada yeniden gönderir.
+    diplo: copyDiplo(world.diplo),
+    // YZ'nin barış teklifleri. Yazılmazsa yüklemede masadan düşer ve
+    // ai.hasPeaceOffer YZ'ye farklı bir haftada yeniden teklif ettirirdi
+    // (kaydet-yükle ayrışması).
+    peaceOffers: (game.peaceOffers ?? []).map(copyPeaceOffer),
+    nextPeaceOfferId: game.nextPeaceOfferId ?? 1,
     cities: world.cities.map((c) => ({
       name: c.name,
       q: c.tile.q,
@@ -581,6 +609,12 @@ export function deserialize(game, data) {
     nation.opening = saved.opening ? { ...saved.opening } : null;
     nation.rivalId = saved.rivalId ?? null;
     nation.memory = (saved.memory ?? []).map((entry) => ({ ...entry }));
+    // Diplomasi: NATION_FIELDS takma adla atadı; derin kopya (aynı yükü iki
+    // kez deserialize eden betiklerde canlı duruma sızmasın).
+    nation.regard = copyRegard(saved.regard);
+    nation.envoys = [...(saved.envoys ?? [])];
+    nation.rivalChosen = saved.rivalChosen ?? null;
+    nation.rivalLockUntil = saved.rivalLockUntil ?? 0;
     nation.tally = saved.tally ? { ...saved.tally } : null;
     nation.rallyPoint = saved.rallyPoint ?? null;
     // Eski kayitta yok: butun alanlar kapali baslar (guvenli varsayilan).
@@ -627,6 +661,9 @@ export function deserialize(game, data) {
   }
   // Eski kayitta alan yok: kuyruk bos baslar, yani bugunku davranis.
   world.pendingWarCalls = (data.pendingWarCalls ?? []).map((call) => ({ ...call }));
+  world.diplo = copyDiplo(data.diplo) ?? { nextId: 1, pending: [], cooldown: {}, lastProposal: -9999 };
+  game.peaceOffers = (data.peaceOffers ?? []).map(copyPeaceOffer);
+  game.nextPeaceOfferId = data.nextPeaceOfferId ?? 1;
 
   // 6) Şehirler
   for (const saved of data.cities) {

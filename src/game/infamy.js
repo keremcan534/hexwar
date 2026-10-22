@@ -12,6 +12,8 @@ import {
 } from './diplomacy.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import { mod } from './modifiers.js';
+import { regardOf } from './relations.js';
+import { DIP_AI, READ } from './dipDefs.js';
 
 export const INFAMY = {
   /** Kendi halkının yaşadığı kareyi almak ucuz: haklı talep sayılır. */
@@ -228,7 +230,12 @@ export function checkCoalitions(game, rng) {
       if (!contacts[other.id][target.id]) continue;
       // Umutsuz derecede zayıf olan katılmaz; koalisyon intihar değil.
       if (nationStrength(world, other) < nationStrength(world, target) * 0.25) continue;
-      if (rng() > COALITION_CHANCE) continue;
+      // Sevilen ülkeye koalisyon zor kurulur (R3): yalnız OLUMLU ilişki zarı
+      // küçültür, kimsenin sevilmediği yerde taban aynı; zar sayısı değişmez.
+      const liked = DIP_AI.relations
+        ? 1 - Math.max(0, Math.min(READ.COALITION_CAP, regardOf(world, other.id, target.id))) / READ.COALITION_DIV
+        : 1;
+      if (rng() > COALITION_CHANCE * liked) continue;
       if (declareWar(game, other.id, target.id, { reason: 'coalition' })) {
         declared++;
         fronts++;

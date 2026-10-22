@@ -13,6 +13,8 @@ import { controllerOf } from './control.js';
 import { soldiersOf } from './units.js';
 import { annexInfamy } from './infamy.js';
 import { POPULATION_SCALE } from './populationScale.js';
+import { deed } from './relations.js';
+import { TOOK_LAND_MAX } from './dipDefs.js';
 
 /** Warscore 0-100 arasıdır; 100 tam teslimiyet demektir. */
 export const MAX_WAR_SCORE = 100;
@@ -258,6 +260,16 @@ function realmValues(world) {
   }
   realmCache.set(world, { turn: world.turn ?? 0, values });
   return values;
+}
+
+/**
+ * Kümenin sahibinin ülkesindeki payı (0-1). Toprak talebinin "ne kaybeder"
+ * terimi okur (pacts.demandVerdict): %10'luk küme −0.4.
+ */
+export function realmShare(world, province) {
+  const value = provinceValue(world, province);
+  if (!value) return 0;
+  return value / Math.max(value, realmValues(world)[province.owner] ?? value);
 }
 
 /** Toprak el değiştirdi: fiyat tablosu aynı tur içinde bile tazelenmeli. */
@@ -871,7 +883,9 @@ function applyTerms(game, a, b, terms) {
       continue;
     }
     if (termId === 'VASSALIZE') {
-      addTreaty(loser, { type: 'VASSALIZE', partner: a, since: turn });
+      // Özerklik 0'dan başlar (vassals.runVassals onu hedefe taşır).
+      addTreaty(loser, { type: 'VASSALIZE', partner: a, since: turn, autonomy: 0 });
+      deed(world, b, a, 'vassalized', turn);
       continue;
     }
     addTreaty(loser, {
@@ -911,6 +925,8 @@ export function signPeace(game, a, b, offer) {
     // Fethin KALICI diplomatik bedeli masada ödenir. İşgal şöhreti yerinde
     // kalır ama asıl kaynak burasıdır — bkz. infamy.annexInfamy.
     annexInfamy(world, world.nations[to], taken, repeatScale);
+    // Kaybeden hatırlar: province başına −10, tek barışta en çok −40.
+    if (taken.length) deed(world, from, to, 'took_land', game.turns.turn, Math.min(TOOK_LAND_MAX, taken.length));
   };
   transfer(offer?.demands, b, a);
   transfer(offer?.concessions, a, b);

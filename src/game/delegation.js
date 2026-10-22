@@ -58,7 +58,7 @@ export const DELEGATION_AREAS = {
     id: 'diplomacy',
     name: 'Diplomacy',
     screen: 'diplomacy',
-    desc: 'The foreign ministry answers peace offers and opens wars it can win.',
+    desc: 'The foreign ministry answers peace offers, proposals, demands and calls to arms, and opens wars or demands it can win. It never posts envoys, gives guarantees unasked, proposes pacts, names rivals or breaks a pact.',
   },
 };
 

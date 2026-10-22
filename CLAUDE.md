@@ -65,7 +65,20 @@ varsayılmaz, ÖLÇÜLÜR:
     npm run audit:mechanics    # her yasa/hat kaldıracı: çalışıyor / gürültü altı / ölü
     npm run audit:tech-effect  # her değiştirici anahtarının bir okuyucusu var mı
     npm run audit:military-industry  # yedek, seferberlik, hat kullanımı, zırh/hava, tüketim malı
+    npm run audit:diplomacy    # sözler, talepler, vassal özerkliği (--active: oyuncu kaldıraçları, --size=160x96)
     npm run audit:all          # bütün batarya
+
+Kaos tabanı: `HX_PLACEBO=1` (harness; kural aynı, tur zarından bir sayı
+atılır). Bir kolun tohum başına etkisini `none` ile `none + HX_PLACEBO=1`
+farkının yanına koy: 6 tohum × 45 yıl audit:borders'ta placebo savaş payını
+tohum başına −2.3…+6.2 puan, ulus sayısını −3…+4 oynatıyor.
+
+**Diplomasi (2026-10-22, TASARIM §12).** Eşli sınır ölçüsü (iki koşu aynı
+commit'te, paralel): `$env:DIP_ARMS='none'` ve `'all'` ile
+`node scripts/audit/border-change-audit.mjs 45 BORDER1,…,BORDER6`; kabul:
+savaş + talep payı ±4 puan, ulus toplamı ±8, tohum %33 altı, TEST 1-3.
+Son ölçüm %13.26 → %14.30, 254 → 246 ulus, en yüksek %20.2: dördü de tamam.
+YZ-YZ paktı ve ilişkinin savaş eşiği ölçülüp silindi (karar döndürmediler).
 
 **Ekonomi = TEK ÇUBUK (2026-10-15, TASARIM §1, §5-§7).** Altın, vergi,
 borç, enflasyon, iflas, binalar ve inşaat kuyruğu YOK. State çıktısı
@@ -140,7 +153,13 @@ Sistemlerin kod yeri: ekonomi `src/game/economy.js` (sıra ve çubuk) +
 `src/game/econ/*` (output, bills, investment, industry, resources, trade),
 siyaset `politics.js` (+ `laws.js`, `modifiers.js`, `agenda.js`,
 `decisions.js`, `eventCards.js`), kültür `culture.js` + `culturePolicy.js` (sürgün, toplama,
-iskân, zorla asimilasyon) + `movements.js` + `unification.js`, ordu `recruitment.js`/`reinforcement.js`/`battles.js`,
+iskân, zorla asimilasyon) + `movements.js` + `unification.js`, diplomasi
+`relations.js` (ilişki defteri, elçi, masa kuyruğu; yaprak) + `pacts.js`
+(savaş kapısı `aggressionOdds`, garanti, pakt, talep, rakip, YZ, haftalık
+`runForeignPolicy`) + `dipDefs.js` (bütün sabitler, `DIP_AI` kolları;
+denetim `DIP_ARMS=none|all|kol,kol`) + `alliances.js`/`vassals.js`, ekranı
+`ui/diplomacyScreen.js` (P ve ülke dosyası; `screens.js` yalnız devreder),
+ordu `recruitment.js`/`reinforcement.js`/`battles.js`,
 zafer `hegemony.js`, takvim `calendar.js` (dönem = START_YEAR/END_YEAR;
 başka yerde yıl ya da kampanya uzunluğu yazılmaz). Ekranlar sayı üretmez; `economyView`, `governmentView`,
 `stateYield`, `agendaView` gibi döküm fonksiyonlarını basar
