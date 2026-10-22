@@ -162,8 +162,18 @@ export const BILL_CAP = 0.6;
  * Halkın doyurulma hedefi (ihtiyacın katı). Tek kol budur: sağa çekmek
  * istikrar ve büyüme, sola çekmek kalkınma. Okuyucular 1.2-1.25'te tavan
  * yapar (istikrar +6, büyüme ×1.06, huzursuzluk −1).
+ *
+ * Bakanlığın (ai.autoFeed) barış hedefi ulusal odağa göredir (`byFocus`,
+ * listede olmayan odak `peace`); istikrar `unrestBelow`un altındayken
+ * `unrest` eklenir, en çok `unrestCap`. Sayılar burada durur ki AUTO
+ * düğmesinin kartı kuralı kendisinden okusun.
  */
-export const FEED = { min: 0.5, max: 1.5, step: 0.05, peace: 1.05, war: 0.85, unrest: 0.1 };
+export const FEED = {
+  min: 0.5, max: 1.5, step: 0.05, peace: 1.05, war: 0.85, unrest: 0.1,
+  byFocus: { economy: 1.0, admin: 1.1, military: 0.95 },
+  unrestBelow: 0.4,
+  unrestCap: 1.2,
+};
 
 /**
  * YATIRIM (econ/investment.js). Kalan çıktı kalkınma fonuna akar; fon bir

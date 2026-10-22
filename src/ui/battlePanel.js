@@ -7,6 +7,7 @@
 // öyle yazılır.
 
 import { battleView } from '../game/battleView.js';
+import { BREAK_ORGANIZATION, MAX_ROUNDS } from '../game/battles.js';
 import { formatPopulation } from '../game/economy.js';
 import { esc, tipAttr } from './kit.js';
 import { refreshTooltips } from './tooltip.js';
@@ -177,7 +178,7 @@ export class BattlePanel {
       ${general}
       <div class="bp-stats">
         <span${tipAttr({ text: 'Men in the battle' })}><small>Men</small><b>${formatPopulation(side.men)}</b></span>
-        <span${tipAttr({ text: 'Organisation: a division breaks and retreats at 15%' })}><small>Org</small><b>${Math.round(side.organization)}%</b></span>
+        <span${tipAttr({ text: `Organisation: a division breaks and retreats at ${BREAK_ORGANIZATION}%` })}><small>Org</small><b>${Math.round(side.organization)}%</b></span>
         <span${tipAttr({ text: 'Strength left' })}><small>Str</small><b>${pct(side.strength)}</b></span>
         <span${tipAttr({ text: key === 'attacker' ? 'Divisions in the assault / combat width (more with attacks from several sides)' : 'Divisions defending / stack limit' })}><small>Width</small><b>${esc(side.width)}</b></span>
       </div>
@@ -203,7 +204,7 @@ export class BattlePanel {
       const breaker = f.likely === 'attacker' ? 'defender' : 'attacker';
       const weeks = Math.min(breaker === 'defender' ? f.defenderBreaks : f.attackerBreaks, f.roundsLeft);
       const good = we ? f.likely === we : null;
-      forecast = `<p class="bp-forecast ${good == null ? '' : good ? 'good' : 'bad'}"${tipAttr({ text: 'Forecast\nIf the dice stay average: organisation lost per week against what each side has left. A division breaks and retreats at 15%. The battle ends by week 20 at the latest.' })}>
+      forecast = `<p class="bp-forecast ${good == null ? '' : good ? 'good' : 'bad'}"${tipAttr({ text: `Forecast\nIf the dice stay average: organisation lost per week against what each side has left. A division breaks and retreats at ${BREAK_ORGANIZATION}%. The battle ends by week ${MAX_ROUNDS} at the latest.` })}>
         <b>${esc(nameOf(breaker))}'s line breaks in ~${Math.max(1, weeks)} ${weeks === 1 ? 'week' : 'weeks'}</b>
         · ${esc(nameOf(f.likely))} is likely to win</p>`;
     }

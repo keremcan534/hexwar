@@ -18,7 +18,7 @@
 // STATE'tir (ekonomi, kalkınma, odak); ordunun yürüdüğü hex PROVINCE'tir.
 
 import {
-  DEVELOPMENT_CAP_BASE, DEVELOPMENT_CAP_LITERACY, DEVELOPMENT_MAX, EQUIPMENT, EQUIPMENT_IDS, FEED,
+  CROWN_OUTPUT, DEVELOPMENT_CAP_BASE, DEVELOPMENT_CAP_LITERACY, DEVELOPMENT_MAX, EQUIPMENT, EQUIPMENT_IDS, FEED,
   HAND_OUTPUT, INDUSTRY_PER_DEV, INVEST, LINE_EFFICIENCY,
   RESOURCES, RESOURCE_IDS, SUPPLY,
 } from '../game/econ/defs.js';
@@ -36,7 +36,9 @@ import { developmentCap, investmentTarget, levelCost, levelGain } from '../game/
 import { outputFactors, provinceOutputOf } from '../game/econ/output.js';
 import { LEDGER_LINES } from '../game/treasury.js';
 import { equipmentLogistics } from '../game/reinforcement.js';
-import { provinceName } from '../game/provinces.js';
+import {
+  FAMINE_THRESHOLD, GROWTH_PER_DEVELOPMENT, WAR_GROWTH, provinceName,
+} from '../game/provinces.js';
 import { depositsOf } from '../game/econ/deposits.js';
 import {
   PARTIES, appointGovernment, dismissAdvisor, enactRegime, governmentView,
@@ -50,7 +52,7 @@ import { concentrate, deport, forceAssimilation, forcedAssimilation, resettle } 
 import { FOCUSES, FOCUS_BY_ID, focusSlots } from '../game/focus.js';
 import { focusBlockers, focusPreview, focusedStates, setFocus } from '../game/stateFocus.js';
 import { DELEGATION_AREAS, isDelegated, lastDelegatedAction } from '../game/delegation.js';
-import { formNation, formationBlockers, proposeUnion } from '../game/unification.js';
+import { FORMATION_SHARE, formNation, formationBlockers, proposeUnion } from '../game/unification.js';
 import { GOALS, goalMet } from '../game/hegemony.js';
 import { nationManpower } from '../game/recruitment.js';
 import { describeEffects, mod } from '../game/modifiers.js';
@@ -136,8 +138,12 @@ const EMPTY_BILLS = {
 };
 /** İlk hafta kapanmadan payı olmayan değerlerin yerine yazılan not. */
 const FIRST_WEEK = 'first report after week 1';
-const FEED_TIP = 'Feed the people\nDrag right: more consumer goods — stability and growth, best near ×1.2. Drag left: more for development. The new share applies from next week.\n← → step ×0.05 · Auto hands it back to the ministry.';
-const AUTO_FEED_TIP = 'Auto\nThe ministry sets the handle: 0.95-1.10 in peace by temperament, 0.85 at war, +0.10 while stability is below 40%.';
+const FEED_TIP = `Feed the people\nDrag right: more consumer goods — stability and growth, best near ×1.2. Drag left: more for development. The new share applies from next week.\n← → step ×${num(FEED.step, 2)} · Auto hands it back to the ministry.`;
+// Kartlar sayıyı kuralın kendisinden okur (ai.autoFeed FEED'i okur): sabit
+// değişince metin eskimesin. Eski metin "kişiliğe göre" diyordu; kural ulusal odaktır.
+const PEACE_FEEDS = [FEED.peace, ...Object.values(FEED.byFocus)];
+const AUTO_FEED_TIP = `Auto\nThe ministry sets the handle by national focus: ${num(Math.min(...PEACE_FEEDS), 2)}-${num(Math.max(...PEACE_FEEDS), 2)} in peace, ${num(FEED.war, 2)} at war, +${num(FEED.unrest, 2)} while stability is below ${pct(FEED.unrestBelow)} (at most ${num(FEED.unrestCap, 2)}).`;
+const FOCUS_OFF = pct(1 - INVEST.focusDiscount);
 
 /** Fonun biriktirdiği kademe. CANLI hedef: Develop odağı hemen yansısın. */
 function nextLevelOf(world, me) {
@@ -630,7 +636,7 @@ export function renderIndustry(game, me, state) {
   const outputChain = sumChain([
     { label: 'Hand', value: ic.hand ?? 0, text: num(ic.hand ?? 0) },
     { label: 'Industry', value: ic.total ?? 0, text: num(ic.total ?? 0), tip: 'ic' },
-    { label: 'Crown', value: ic.crown ?? 0, text: num(ic.crown ?? 0, 0), tip: { text: 'Crown\nThe capital adds a flat 4 IC a week: even the smallest state keeps going.' } },
+    { label: 'Crown', value: ic.crown ?? 0, text: num(ic.crown ?? 0, 0), tip: { text: `Crown\nThe capital adds a flat ${CROWN_OUTPUT} IC a week: even the smallest state keeps going.` } },
   ], { label: 'Output', value: ic.output ?? 0, text: num(ic.output ?? 0), tone: 'pos', tip: { text: 'Output\nThe week\'s total: the Economy screen splits it between bills, the army, the people and development.' } });
   const chains = `<div class="ec-chainrow"><small>Hand</small>${handChain}</div>
     <div class="ec-chainrow"><small>Industry</small>${industryChain}</div>
@@ -1017,12 +1023,12 @@ function devRow(world, me, row, cursor) {
   const blockers = row.focus ? [] : focusBlockers(world, me, province, 'develop');
   const preview = row.focus ? null : focusPreview(world, me, province, 'develop');
   const focusTip = row.focus
-    ? 'Develop focus\nThe development fund comes here first and its levels cost 25% less.\nClick to remove it and free the slot.'
+    ? `Develop focus\nThe development fund comes here first and its levels cost ${FOCUS_OFF} less.\nClick to remove it and free the slot.`
     : ['Develop focus', ...(preview?.lines ?? []), other ? `Replaces its ${other.name} focus.` : 'Uses a focus slot.'].join('\n');
   const button = `<button class="k-btn sm ec-devbtn${row.focus ? ' on' : ''}" data-uc-develop="${province.id}"${row.focus ? ' aria-pressed="true"' : ''}${blockers.length ? blockedAttr(blockers) : tipAttr({ text: focusTip })}>${row.focus ? 'Developing' : 'Develop'}</button>`;
   const gainTip = row.open
-    ? `${row.name}: one more level\n+${num(row.gain, 2)} IC a week: more industry, and richer deposits at world prices.\nCosts ${money(row.cost, 0)}${row.focus ? ' (Develop focus: 25% off)' : ''}${payback != null ? `: pays for itself in ~${payback} weeks.` : '.'}`
-    : `${row.name}\n${row.closed === 'at the cap' ? 'At the development cap: research and literacy raise it.' : 'Compliance under 50%: the fund does not invest here yet.'}`;
+    ? `${row.name}: one more level\n+${num(row.gain, 2)} IC a week: more industry, and richer deposits at world prices.\nCosts ${money(row.cost, 0)}${row.focus ? ` (Develop focus: ${FOCUS_OFF} off)` : ''}${payback != null ? `: pays for itself in ~${payback} weeks.` : '.'}`
+    : `${row.name}\n${row.closed === 'at the cap' ? 'At the development cap: research and literacy raise it.' : `Compliance under ${pct(INVEST.minStatus)}: the fund does not invest here yet.`}`;
   const levelTip = `Development ${row.dev} of ${DEVELOPMENT_MAX}\nEvery level above 1 adds industry (${INDUSTRY_PER_DEV} IC per 100k workers). The cap is ${row.cap}.`;
   return `<div class="k-wrow k-dvrow${row.open ? '' : ' off'}${row.target ? ' target' : ''}${cursor === province.id ? ' kb' : ''}" data-uc-dvrow="${province.id}">
     <span class="k-wrow-res">${resourceArt(depositsOf(province)[0]?.id, 'sm')}</span>
@@ -1082,7 +1088,7 @@ export function renderConstruction(game, me, state) {
     }),
     kpi({
       label: 'Develop focus', value: String(developing), sub: `${focused.length} of ${slots} focus slots in use`,
-      tip: { text: 'Develop focus\nThe fund serves these states first and their levels cost 25% less. Focus slots grow with literacy and are shared with Production, Recruitment, Integration and Assimilation.' },
+      tip: { text: `Develop focus\nThe fund serves these states first and their levels cost ${FOCUS_OFF} less. Focus slots grow with literacy and are shared with Production, Recruitment, Integration and Assimilation.` },
     }),
   ]);
 
@@ -1164,13 +1170,13 @@ export function renderPopulation(game, me, state) {
     ? `<div class="k-famine"><b>Famine</b> — food covers ${pct(g.foodRatio)} of need; the population shrinks ${yearly(g.rate)} a year. Import food, or give farm states the Production focus.</div>`
     : `<div class="k-growth-top"><b class="${g.rate >= 0 ? 'pos' : 'neg'}">${yearly(g.rate)}</b><small>a year</small>${spark(view.history, { width: 200, height: 34, zero: false })}</div>
       ${chain({ label: 'Base', text: `${num(g.base * 5200, 2)}%`, value: g.base }, [
-    { label: 'Food', value: g.food, tip: { text: `Food\nShortfall slows growth; below 70% covered, famine.\nCovered ${pct(g.foodRatio)}` } },
+    { label: 'Food', value: g.food, tip: { text: `Food\nShortfall slows growth; below ${pct(FAMINE_THRESHOLD)} covered, famine.\nCovered ${pct(g.foodRatio)}` } },
     { label: 'Goods', value: g.consumer, tip: { text: 'Consumer goods\nFull shelves add growth, empty ones take it away.' } },
     { label: 'Stability', value: g.stability },
-    { label: 'Development', value: g.development, tip: { text: 'Development\nPopulation-weighted across your states: +5% per level.' } },
+    { label: 'Development', value: g.development, tip: { text: `Development\nPopulation-weighted across your states: +${pct(GROWTH_PER_DEVELOPMENT)} per level.` } },
     { label: 'Law', value: g.law },
     { label: 'Tech & ideas', value: g.mods },
-    { label: 'Peace', value: g.peace, tip: { text: 'Peace\nAt war, growth is cut by 40%.' } },
+    { label: 'Peace', value: g.peace, tip: { text: `Peace\nAt war, growth is cut by ${pct(1 - WAR_GROWTH)}.` } },
   ], { label: 'per year', text: yearly(g.rate), value: g.rate })}`;
 
   // --- Birleşme -----------------------------------------------------------
@@ -1191,8 +1197,8 @@ export function renderPopulation(game, me, state) {
       </div>
       <div class="k-stack">
         ${panel(`The ${esc(status.culture)} nation`, `
-          <div class="k-unify"${tipAttr({ text: 'Unification\nHold 80% of your people\'s homeland to proclaim the Great nation: a core on every homeland state, prestige and an end to the kin-abroad grievance.' })}>
-            <small>Homeland held</small>${meter(held, { tone: 'pos', mark: 0.8, wide: true })}<b>${status.owned} / ${status.total}</b>
+          <div class="k-unify"${tipAttr({ text: `Unification\nHold ${pct(FORMATION_SHARE)} of your people's homeland to proclaim the Great nation: a core on every homeland state, prestige and an end to the kin-abroad grievance.` })}>
+            <small>Homeland held</small>${meter(held, { tone: 'pos', mark: FORMATION_SHARE, wide: true })}<b>${status.owned} / ${status.total}</b>
           </div>
           <div class="k-unify-sub"><span>Kin under foreign rule <b class="${(economy.kinAbroad ?? 0) > 0.1 ? 'neg' : ''}">${pct(economy.kinAbroad ?? 0)}</b></span>
             ${goal ? `<span${tipAttr({ text: `${goal.name}\n${goal.desc}` })}>Goal: <b>${esc(goal.name)}</b> ${goalMet(world, me) ? badge('on track', 'pos') : badge(`+${goal.bonus} in ${END_YEAR}`, 'dim')}</span>` : ''}</div>

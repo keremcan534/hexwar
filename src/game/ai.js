@@ -469,8 +469,9 @@ function spend(game, nation) {
 
 /**
  * HALKIN DOYURULMASI — tek kolun YZ kuralı (oyuncunun AUTO'su aynı kapı).
- * Barışta kişiliğe göre ihtiyacın 0.95-1.10 katı, savaşta 0.85; istikrar
- * çökerken +0.10 (en çok 1.2). Yalnız 'auto' kipine yazar. Değiştiyse true.
+ * Barışta ulusal odağa göre (FEED.byFocus), savaşta FEED.war; istikrar
+ * çökerken +FEED.unrest (en çok FEED.unrestCap). Yalnız 'auto' kipine
+ * yazar. Değiştiyse true.
  */
 export function autoFeed(nation) {
   const economy = nation.economy;
@@ -479,10 +480,8 @@ export function autoFeed(nation) {
   if (economy.feed.mode !== 'auto') return false;
   const war = (economy.warFronts ?? 0) > 0;
   let target = war ? FEED.war
-    : nation.focus === 'economy' ? 1.0
-      : nation.focus === 'admin' ? 1.1
-        : nation.focus === 'military' ? 0.95 : FEED.peace;
-  if ((nation.stability ?? 0.5) < 0.4) target = Math.min(1.2, target + FEED.unrest);
+    : Object.hasOwn(FEED.byFocus, nation.focus ?? '') ? FEED.byFocus[nation.focus] : FEED.peace;
+  if ((nation.stability ?? 0.5) < FEED.unrestBelow) target = Math.min(FEED.unrestCap, target + FEED.unrest);
   target = Math.round(target / FEED.step) * FEED.step;
   if (Math.abs(target - economy.feed.target) < 1e-9) return false;
   economy.feed.target = target;

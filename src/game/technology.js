@@ -311,7 +311,7 @@ export const TECH_BASE_COST = 110;
 // 0.02'de herkes 40 teknolojiyi ~1892'de bitirip 320-440 hafta boş kalıyordu
 // ve 1900'de değiştirici toplamları uluslar arasında aynıydı. 0.03: ortanca
 // ~1897'de biter, boş hafta %60-80 azalır (3 tohum, eşli).
-const TECH_YEAR_SCALE = 0.03;
+export const TECH_YEAR_SCALE = 0.03;
 /**
  * ERKEN ARAŞTIRMA: yıl başına ×1.15, tavan 8 (HOI4'ün "zamanından önce"
  * kuralının yumuşağı). 1836 ağacında yılda +%6 / tavan 2.5× yetiyordu çünkü
@@ -319,8 +319,8 @@ const TECH_YEAR_SCALE = 0.03;
  * ölçümde 1910'un uçağı 1900'de açıldı. Üstel ceza birkaç yıl öne geçmeye
  * izin verir, on yıl öne (×4) geçmeye vermez.
  */
-const EARLY_BASE = 1.15;
-const EARLY_CAP = 8;
+export const EARLY_BASE = 1.15;
+export const EARLY_CAP = 8;
 /**
  * Fiyatın çarpanları, ekranın "neden bu kadar" dökümü için. techCost AYNI
  * çarpanları aynı sırayla çarpar: döküm ile motor ayrışamaz.

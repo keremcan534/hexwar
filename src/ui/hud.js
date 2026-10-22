@@ -38,7 +38,7 @@ import { CURRENCY, meter as kitMeter, money, pips as kitPips, tipAttr } from './
 import { stateCultures, stateYield } from '../game/stateView.js';
 import { depositsOf, fertilityOf } from '../game/econ/deposits.js';
 import { workforceShare } from '../game/econ/resources.js';
-import { FOCUSES, FOCUS_BY_ID, focusSlots, nextSlotAt } from '../game/focus.js';
+import { FOCUS, FOCUSES, FOCUS_BY_ID, focusSlots, nextSlotAt } from '../game/focus.js';
 import { focusBlockers, focusPreview, focusedStates, setFocus } from '../game/stateFocus.js';
 import { powerIncome } from '../game/politics.js';
 import {
@@ -1983,7 +1983,7 @@ export class Hud {
         ${this.developmentRowHtml(econ, y)}
         ${own && y ? this.nextLevelRowHtml(area, y) : ''}
         ${this.fortRowHtml(econ)}
-        <div class="pv-state-row"><small>Compliance</small>${kitMeter((econ.control ?? 0) / 100, { tone: econ.core === false ? 'warn' : 'pos', wide: true })}<b>${Math.round(econ.control)}%</b>${econ.core === false ? `<em class="neg">counts at ${Math.round((econ.status ?? 0) * 100)}%</em>` : '<em>core</em>'}</div>
+        <div class="pv-state-row"${tipAttr('control')}><small>Compliance</small>${kitMeter((econ.control ?? 0) / 100, { tone: econ.core === false ? 'warn' : 'pos', wide: true })}<b>${Math.round(econ.control)}%</b>${econ.core === false ? `<em class="neg">counts at ${Math.round((econ.status ?? 0) * 100)}%</em>` : '<em>core</em>'}</div>
         ${own ? this.focusRowHtml(area) : ''}
       </div>`;
     }
@@ -2017,23 +2017,20 @@ export class Hud {
 
     // KUTU KAYDIRILMAZ. Eski dizilim on iki eşit kutucuktu; uzun değerler üç
     // satıra sarıyor, kutu `--sheet-max`ı aşıyor ve yanında bir kaydırma
-    // çubuğu beliriyordu. Bilgi artık ÖNEME göre üç kademeye ayrılır:
-    //   1. üç ana ölçü      — nüfus, denetim, savunma
-    //   2. RGO bloğu        — tek satır: ne, ne kadar, kaç kişiyle
+    // çubuğu beliriyordu. Bilgi artık ÖNEME göre kademelenir:
+    //   1. ana ölçüler      — nüfus, savunma
+    //   2. uyarı notları    — seyrek ama önemli durumlar
     //   3. künye satırı     — kültür/dil/boyut gibi bağlam, tam satır metin
-    // Aynı bilgi, üçte bir yükseklik.
+    // Denetim ölçüsü ve RGO bloğu kalktı: hiçbir satır 'Control'/'RGO' yazmıyordu
+    // (Tek Çubuk'ta RGO yok), kutular hiç çizilmiyordu ve 'rgo' kartının
+    // sağlayıcısı yoktu. Uyum, state kartındaki Compliance satırında kartıyla durur.
     const take = (key) => {
       const at = stats.findIndex(([k]) => k === key);
       return at < 0 ? null : stats.splice(at, 1)[0][1];
     };
     const province = take('State');
     const population = take('Population');
-    const control = take('Control');
     const defense = take('Defense');
-    const rgoName = take('RGO');
-    const rgoOut = take('RGO Output');
-    const rgoWork = take('RGO Workforce');
-    const unemployed = take('Unemployed');
     // Arazi zaten baslik alt satirinda yaziyor (bkz. `sub`); ikinci kez
     // basmak "Hills - 97,63 - Hills" gibi bir tekrar uretiyordu.
     take('Terrain');
@@ -2073,16 +2070,8 @@ export class Hud {
 
         <div class="pv-metrics">
           ${metric('Population', population)}
-          ${metric('Control', control, 'control')}
           ${metric('Defense', defense, 'defense')}
         </div>
-
-        ${rgoName ? `<div class="pv-rgo" data-tip="rgo" tabindex="0">
-          <span class="pv-rgo-name">${rgoName}</span>
-          <span class="pv-rgo-out">${rgoOut ?? '—'}</span>
-          <span class="pv-rgo-work">${rgoWork ?? '—'}</span>
-          ${unemployed && unemployed !== '0' ? `<em>${unemployed} unemployed</em>` : ''}
-        </div>` : ''}
 
         ${notes ? `<div class="pv-notes">${notes}</div>` : ''}
 
@@ -2218,7 +2207,7 @@ export class Hud {
     }).join('');
     // Odak yoksa ad yazılmaz: dar kartta "none" sayaca sıkışıp "n…" oluyordu.
     const name = current ? FOCUSES.find((f) => f.id === current)?.name : '';
-    const slotTip = `Focus slots: ${used} of ${slots} in use.\nOne slot, plus one for every 25% literacy${next != null ? ` — the next at ${Math.round(next * 100)}%` : ''}.\nClick: every focused state in one list.`;
+    const slotTip = `Focus slots: ${used} of ${slots} in use.\nOne slot, plus one for every ${Math.round(FOCUS.LITERACY_PER_SLOT * 100)}% literacy (at most ${FOCUS.MAX_SLOTS})${next != null ? ` — the next at ${Math.round(next * 100)}%` : ''}.\nClick: every focused state in one list.`;
     const open = this.focusListOpen ?? false;
     return `<div class="pv-state-row pv-focus"><small>Focus</small><span class="pv-focus-btns">${buttons}</span><b>${escapeHtml(name)}</b><button type="button" class="pv-focus-count${open ? ' on' : ''}" data-focus-list aria-expanded="${open}" data-tip="text" data-tip-text="${escapeHtml(slotTip)}">${used}/${slots} <i aria-hidden="true">${open ? '▴' : '▾'}</i></button></div>${open ? this.focusListHtml(me) : ''}`;
   }

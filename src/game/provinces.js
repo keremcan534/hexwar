@@ -293,6 +293,9 @@ export function releaseSoldiers(econ, men, died = false) {
 const GROWTH_BASE = 0.00012;
 export const FAMINE_THRESHOLD = 0.7;
 const FAMINE_RATE = 0.0006;
+/** Kalkınma kademesi başına büyüme çarpanı; savaşta büyüme bu kata iner. */
+export const GROWTH_PER_DEVELOPMENT = 0.05;
+export const WAR_GROWTH = 0.6;
 
 /**
  * Büyümenin çarpanları, ekranın "neden" dökümü için. growthRateOf AYNI
@@ -311,10 +314,10 @@ export function growthFactors(nation, econ, { peace = true, occupied = 0 } = {})
     food: food >= 1 ? 1 : (food - FAMINE_THRESHOLD) / (1 - FAMINE_THRESHOLD),
     consumer: 0.7 + 0.3 * Math.min(1.2, economy?.consumer?.ratio ?? 1),
     stability: 0.5 + clamp(nation?.stability ?? 0.5, 0, 1),
-    development: 1 + 0.05 * (econ?.development ?? 1),
+    development: 1 + GROWTH_PER_DEVELOPMENT * (econ?.development ?? 1),
     law: 1 + (lawOption(nation, 'labour').growth ?? 0),
     mods: Math.max(0.1, 1 + mod(nation, 'growth')),
-    peace: peace ? 1 : 0.6,
+    peace: peace ? 1 : WAR_GROWTH,
     occupied: 1 - occupied,
   };
   f.rate = f.base * f.food * f.consumer * f.stability * f.development * f.law * f.mods

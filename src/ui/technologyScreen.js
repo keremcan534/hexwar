@@ -24,7 +24,7 @@
 import { emblemArt } from './icons/art.js';
 import {
   HERITAGE, TECH_CATEGORIES, TECH_FOLDERS, TECHNOLOGIES, availableTechs, canResearch, hasTech, researchPath, techById,
-  FIRST_TECH_PRESTIGE, techCostFactors,
+  DIFFUSION_MAX, EARLY_BASE, EARLY_CAP, FIRST_TECH_PRESTIGE, TECH_YEAR_SCALE, techCostFactors,
 } from '../game/technology.js';
 
 /**
@@ -169,9 +169,9 @@ export function techInspector(nation, techId, view) {
     { label: 'Base', value: factors.base, text: String(factors.base) },
     [
       { label: 'Tier', value: factors.level, tip: { text: 'Tier\nLater technologies in a line cost more.' } },
-      { label: 'Era', value: factors.yearScale, tip: { text: `Era\nThe later its year, the more it costs (+3% a year after ${START_YEAR}).` } },
-      ...(early ? [{ label: `${factors.earlyYears} yr early`, value: factors.early, tip: { text: `Early research\n×1.15 for every year before ${tech.year} (at most 8×). Wait, and it gets cheaper.` } }] : []),
-      ...(discount > 0.005 ? [{ label: 'Neighbours', value: 1 - discount, tip: { text: 'Diffusion\nNeighbours who already know it make it cheaper (up to −35%).' } }] : []),
+      { label: 'Era', value: factors.yearScale, tip: { text: `Era\nThe later its year, the more it costs (+${Math.round(TECH_YEAR_SCALE * 100)}% a year after ${START_YEAR}).` } },
+      ...(early ? [{ label: `${factors.earlyYears} yr early`, value: factors.early, tip: { text: `Early research\n×${num(EARLY_BASE, 2)} for every year before ${tech.year} (at most ${EARLY_CAP}×). Wait, and it gets cheaper.` } }] : []),
+      ...(discount > 0.005 ? [{ label: 'Neighbours', value: 1 - discount, tip: { text: `Diffusion\nNeighbours who already know it make it cheaper (up to −${Math.round(DIFFUSION_MAX * 100)}%).` } }] : []),
     ],
     { label: 'RP', value: cost, text: String(cost), tone: early ? 'neg' : '' },
   ) : '';
