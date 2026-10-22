@@ -962,7 +962,7 @@ body.screen-open .tab-tools { visibility: visible; }
   background:
     var(--ui-grain),
     var(--panel-tone),
-    linear-gradient(180deg, rgba(9, 13, 15, 0.38) 0%, rgba(9, 13, 15, 0.56) 55%, rgba(9, 13, 15, 0.74) 100%),
+    var(--screen-veil, linear-gradient(180deg, rgba(9, 13, 15, 0.38) 0%, rgba(9, 13, 15, 0.56) 55%, rgba(9, 13, 15, 0.74) 100%)),
     var(--screen-photo, url('../assets/menu/palace-square.jpg')) center 35% / cover no-repeat,
     var(--surface-1);
   box-shadow: var(--frame-brass);
@@ -987,6 +987,12 @@ body.screen-open .tab-tools { visibility: visible; }
 #screen[data-screen="technology"] { --screen-photo: url('../assets/menu/main-menu.jpg'); }
 #screen[data-screen="chronicle"] { --screen-photo: url('../assets/menu/burning-street.jpg'); }
 #screen:is([data-screen="diplomacy"], [data-screen="dossier"], [data-screen="peace"]) { --screen-photo: url('../assets/overview/prestige.jpg'); }
+/* Dar ekranlarda (haritayla çalışanlar) yazı panel kutusuz doğrudan fotoğrafın
+   üstündedir ve fotoğrafın en parlak yeri olan gökyüzü küçük etiketlerin
+   arkasına düşer: örtü daha koyu. */
+#screen:is([data-screen="dossier"], [data-screen="peace"], [data-screen="construction"]) {
+  --screen-veil: linear-gradient(180deg, rgba(9, 13, 15, 0.7) 0%, rgba(9, 13, 15, 0.76) 55%, rgba(9, 13, 15, 0.84) 100%);
+}
 
 /* Haritayla *çalışan* ekranlar dar kalır ve sola yaslanır: construction ile
    peace kareye tıklatarak seçim yaptırır, dossier haritadan sağ tıkla açılır.
