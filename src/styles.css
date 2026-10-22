@@ -13986,6 +13986,9 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
 .tb-cartouche > .tb-gauge:nth-child(5) { --gv-w: 56px; }
 .tb-minis { grid-template-columns: 124px 116px; }
 .tb-mini { overflow: hidden; }
+/* IC hücresi savaşta "66.0 16.5/16.5⚔" taşır: 116 px'lik yuvada kılıç 5 px
+   kesiliyordu (ölçüldü: 121 > 116). Hover çizgisi alttan, yan dolgu gereksiz. */
+.tb-mini.macro-live.has-flow { padding-inline: 0; }
 .turn-badge { flex: none; width: 168px; }
 .turn-badge b { width: 100%; }
 .turn-row { width: 100%; }
