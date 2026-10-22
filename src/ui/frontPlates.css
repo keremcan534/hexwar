@@ -1,0 +1,166 @@
+/* CEPHE LEVHALARI (ui/frontPlates.js). Ölçüler JS'teki SIZES'tan öğeye
+   yazılır (çarpışma aynı sayıyı okur); burada yalnız görünüm var.
+
+   Katman harita filmiyle aynı z-index'te (2: #map 1'in, filmin üstü) ve
+   DOM'da filmin hemen ardında: z-index'i 2 olan HUD paneli DOM sırasıyla,
+   daha yükseği kendiliğinden üstünde boyanır; levha hiçbir paneli örtmez.
+   Konum transform ile yazılır, geçiş yalnız opaklıkta: levha haritayla
+   aynı karede kımıldamalı, peşinden süzülmemeli. */
+
+.front-plates {
+  position: fixed;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+.front-plates.is-off { display: none; }
+/* Yönetim ekranı açık: harita arka plandır, levha da öyle. */
+.front-plates.is-faded { opacity: 0.14; }
+.front-plates.is-faded .fp,
+.front-plates.is-through .fp { pointer-events: none; }
+
+.fp {
+  position: absolute;
+  top: 0;
+  left: 0;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #e9dcc0;
+  font-family: var(--font-ui);
+  font-variant-numeric: tabular-nums lining-nums;
+  contain: layout style;
+  will-change: transform;
+  transition: opacity 0.18s ease;
+}
+.fp.is-hidden { visibility: hidden; opacity: 0; }
+/* İmleç üstünde: altındaki harita okunsun; ayrıntı kartta. */
+.fp.is-under { opacity: 0.4; }
+
+.fp-men {
+  display: block;
+  box-sizing: border-box;
+  overflow: hidden;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  text-align: center;
+  white-space: nowrap;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.9);
+  transition: color 0.6s ease;
+}
+/* Sayım ipucu: kayıp sönük tuğla, kazanç pirinç. Parçacık yok. */
+.fp.is-loss .fp-men { color: #d98b7a; transition-duration: 0.12s; }
+.fp.is-gain .fp-men { color: #e2c77f; transition-duration: 0.12s; }
+
+.fp-face {
+  position: relative;
+  display: block;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-radius: 2px;
+  background: #0b1013;
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.85),
+    0 0 0 2px rgba(186, 160, 100, 0.72),
+    0 4px 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Duruş şeridi portrenin dibinde, harita cephe çizgisinin renginde
+   (renderer drawFronts: taarruz mercan, savunma çelik mavi). */
+.fp-stance {
+  position: absolute;
+  height: 3px;
+  background: rgba(143, 205, 239, 0.8);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.fp.is-advancing .fp-stance { background: rgba(255, 147, 130, 0.9); }
+
+/* --- Bizim levha --------------------------------------------------------- */
+
+.fp-own {
+  display: flex;
+  align-items: center;
+  pointer-events: auto;
+  cursor: var(--cur-pointer, pointer);
+}
+.fp-own:hover .fp-face,
+.fp-own.is-active .fp-face {
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.85),
+    0 0 0 2px #e5ca84,
+    0 4px 12px rgba(0, 0, 0, 0.55);
+}
+.fp-own .fp-men {
+  border: 1px solid rgba(186, 160, 100, 0.55);
+  border-radius: 2px;
+  background: rgba(9, 13, 15, 0.92);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+
+/* Uzak (stratejik): portre ana öğe, sayı altında. */
+.front-plates[data-mode="far"] .fp-own { flex-direction: column; gap: 3px; }
+.front-plates[data-mode="far"] .fp-own .fp-face { width: 54px; height: 54px; }
+.front-plates[data-mode="far"] .fp-own .fp-men {
+  width: 100%;
+  height: 19px;
+  font-size: 13px;
+  line-height: 17px;
+}
+.front-plates[data-mode="far"] .fp-own .fp-stance { top: 51px; left: 9px; width: 50px; }
+
+/* Orta: yan yana, portre küçük. */
+.front-plates[data-mode="mid"] .fp-own .fp-face { width: 30px; height: 30px; margin-left: 1px; }
+.front-plates[data-mode="mid"] .fp-own .fp-men {
+  flex: 1 1 auto;
+  height: 22px;
+  margin-left: -1px;
+  padding: 0 5px;
+  font-size: 13px;
+  line-height: 20px;
+}
+.front-plates[data-mode="mid"] .fp-own .fp-stance { top: 28px; left: 1px; width: 30px; }
+
+/* --- Karşı levha: düşmanın cephe kuşağındaki adamı ----------------------- */
+
+.fp-enemy {
+  display: flex;
+  align-items: stretch;
+  overflow: hidden;
+  border: 1px solid rgba(207, 77, 58, 0.6);
+  border-radius: 2px;
+  background: rgba(22, 10, 8, 0.9);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.45);
+}
+.fp-flag { flex: 0 0 5px; background: #7d2f22; }
+.fp-enemy .fp-men {
+  flex: 1 1 auto;
+  padding: 0 4px;
+  color: #e6cfc4;
+  font-size: 12px;
+  font-weight: 650;
+  line-height: 18px;
+}
+
+/* --- Müttefik: sönük, tıklanmaz --------------------------------------- */
+
+.fp-ally { display: flex; opacity: 0.82; filter: saturate(0.45); }
+.fp-ally .fp-face { box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 0 2px rgba(106, 154, 203, 0.7); }
+.fp-ally .fp-men {
+  border: 1px solid rgba(106, 154, 203, 0.5);
+  border-radius: 2px;
+  background: rgba(9, 13, 15, 0.88);
+  color: #cfd6da;
+  font-size: 11px;
+  font-weight: 650;
+}
+.fp-ally .fp-stance { display: none; }
+.front-plates[data-mode="far"] .fp-ally { flex-direction: column; align-items: center; gap: 2px; }
+.front-plates[data-mode="far"] .fp-ally .fp-face { width: 36px; height: 36px; }
+.front-plates[data-mode="far"] .fp-ally .fp-men { width: 100%; height: 17px; line-height: 15px; }
+.front-plates[data-mode="mid"] .fp-ally { align-items: center; }
+.front-plates[data-mode="mid"] .fp-ally .fp-face { width: 22px; height: 22px; margin-left: 1px; }
+.front-plates[data-mode="mid"] .fp-ally .fp-men { flex: 1 1 auto; height: 18px; margin-left: -1px; padding: 0 4px; line-height: 16px; }

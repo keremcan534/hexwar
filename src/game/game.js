@@ -82,6 +82,9 @@ const EVENTS = [
   'hover',
   // Harita kipi değişti (hud.js düğmeleri): deniz haritasında donanma paneli açılır.
   'mapmode',
+  // Harita karesi çizildi (kamera/dünya bu karenin): haritaya iğneli DOM
+  // katmanları (ui/frontPlates.js) konumunu aynı görevde, boyamadan önce yazar.
+  'frame',
 ];
 
 /** Muharebe sonucu yazısının ömrü (ms). */
@@ -1626,6 +1629,7 @@ export class Game {
           marquee: this.marquee,
         });
         this.perf?.add('render', performance.now() - t0);
+        this.emit('frame');
       }
     }
     // Bekleyen hafta dilimi bu karenin bütçesinden payını alır; zincir iş

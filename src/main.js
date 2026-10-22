@@ -13,6 +13,7 @@ import { MovementDock } from './ui/movementDock.js';
 import { NavyDock } from './ui/navyDock.js';
 import { BattlePanel } from './ui/battlePanel.js';
 import { UnitHover } from './ui/unitHover.js';
+import { FrontPlates } from './ui/frontPlates.js';
 import { NationPicker } from './ui/nationPicker.js';
 import { PerfOverlay } from './ui/perfOverlay.js';
 import { EventCards } from './ui/eventCard.js';
@@ -40,6 +41,9 @@ new MovementDock(game);
 new NavyDock(game);
 new BattlePanel(game);
 new UnitHover(game);
+// Cephe levhaları: general portresi + cephedeki insan (bkz. ui/frontPlates.js).
+// Konsoldan sınama ve ölçüm için oyuna bağlı (game.frontPlates.setEnabled).
+game.frontPlates = new FrontPlates(game);
 // Seçenekli olay kartları: açılınca saati durdurur (bkz. ui/eventCard.js).
 new EventCards(game);
 
