@@ -17,6 +17,7 @@ import { FrontPlates } from './ui/frontPlates.js';
 import { NationPicker } from './ui/nationPicker.js';
 import { PerfOverlay } from './ui/perfOverlay.js';
 import { EventCards } from './ui/eventCard.js';
+import { Ambience } from './ui/ambience.js';
 import './ui/gfxStyleMenu.js';
 import { materials } from './render/textures.js';
 
@@ -94,6 +95,10 @@ const menu = new MainMenu(game, {
 if (!seed) menu.open();
 else picker.open();
 hud.bindMenu(menu);
+
+// Harita ambiyansı (bkz. ui/ambience.js): Settings paneline kendi "audio"
+// satırını ekler. Konsoldan denetim için oyuna bağlı: game.ambience.state().
+game.ambience = new Ambience(game);
 
 // Geliştirici performans kaplaması: F3 ya da ?perf=1 (bkz. ui/perfOverlay.js).
 new PerfOverlay(game);

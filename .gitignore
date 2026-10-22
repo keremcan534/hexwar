@@ -13,3 +13,8 @@ scripts/audit/_tmp/
 # ham kosu ve ekran goruntusu tasirlar. Paketin kendisi kullanicinin elinde.
 astra6/
 astra6.zip
+
+# Harita ambiyansi: YEREL SINAMA sesleri (lisansi belirsiz YouTube kayitlari).
+# Depoya girmez; yayindan once CC0/lisansli kayitlarla degistirilmeli
+# (bkz. src/ui/ambience.js basligi).
+assets/audio/ambience/
