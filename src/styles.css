@@ -17224,3 +17224,68 @@ button.dip-war.dip-conflict.on { border-left-color: var(--gold-bright); }
   .tb-resi { width: 30px; height: 30px; }
   .tb-resi .art-sm { width: 24px; height: 24px; }
 }
+
+/* ==========================================================================
+   GÖSTERGE KARTUŞU: MADALYON DİLİ (2026-11-14)
+   Oyuncu: "output power stability kısmındaki ikon ve dizaynı epey
+   iyileştirmemiz gerekli, olduramıyoruz". Eski hâl: koyu oyuk yuvada küçük
+   fotoğraf ikon, kalın pirinç kartuş çerçevesi, aralıklı versal etiket +
+   ince serif değer; ikonlar deliğe yapıştırılmış çıkartma gibi okunuyordu.
+   Statik taslakta üç dil denendi (madalyon / levha / sepya kart); levha
+   düğme gibi okundu, kart fazla süslü kaldı. Madalyon: ikon diskin
+   DIŞINA taşar (yuvanın 1.3 katı), dolum halkası diskin çevresinde, değer
+   kalın arayüz yazısıyla ve büyük; çerçeve kalktı, gruplamayı ince ayraçlar
+   yapar. Değer yuvalarının sabit eni (§50) korunur.
+   ========================================================================== */
+.tb-cartouche { gap: 0; margin: 0 8px; padding: 0 4px; background: none; box-shadow: none; }
+.tb-cartouche::before, .tb-cartouche::after { display: none; }
+.tb-gauge { gap: 10px; padding: 4px 14px 4px 8px; }
+.tb-gauge + .tb-gauge::before { top: 15px; bottom: 15px; background: linear-gradient(180deg, transparent, rgba(214, 186, 120, 0.4), transparent); }
+.tb-gauge:hover { background: radial-gradient(70% 90% at 28% 50%, rgba(214, 186, 120, 0.1), transparent 70%); }
+.tb-socket {
+  width: 40px;
+  height: 40px;
+  overflow: visible;
+  background: radial-gradient(circle at 50% 30%, rgba(222, 206, 170, 0.16), transparent 66%), #121a1d;
+  box-shadow: 0 0 0 1.5px #a98b4f, 0 0 0 3.5px rgba(5, 7, 8, 0.9), 0 3px 8px rgba(0, 0, 0, 0.7);
+}
+.tb-socket::after { display: none; }
+.tb-hero .tb-socket { box-shadow: 0 0 0 1.5px #d2b26c, 0 0 0 3.5px rgba(5, 7, 8, 0.9), 0 0 14px rgba(214, 186, 120, 0.3); }
+.tb-gauge:hover .tb-socket { box-shadow: 0 0 0 1.5px #e8cf8f, 0 0 0 3.5px rgba(5, 7, 8, 0.9), 0 0 14px rgba(214, 186, 120, 0.35); }
+/* Halka diskin çevresinde: koyu dış çizginin yerini dolum alır. */
+.tb-ring { inset: -6px; width: calc(100% + 12px); height: calc(100% + 12px); }
+.tb-ring circle { stroke-width: 2.6; }
+.tb-ico { position: absolute; left: 50%; top: 50%; z-index: 3; transform: translate(-50%, -55%); }
+.tb-ico, .tb-ico .art-sm, .tb-ico .art-emblem, .tb-hero .tb-ico .art-emblem { width: 52px; height: 52px; }
+.tb-ico .art-emblem img { filter: saturate(0.82) drop-shadow(0 3px 3px rgba(0, 0, 0, 0.85)); }
+.tb-ico .glyph { width: 26px; height: 26px; }
+.tb-gv { gap: 3px; }
+/* Sabit en (§50) yalnız YATAYDA kırpar: arayüz yazısının yazı tipi kutusu
+   line-height 1'de satırdan ~5 px taşar; dikey kırpma onu kesik sayıyordu
+   (yerleşim sondası: "tb-gv hidden 5px"). */
+.tb-cartouche > .tb-gauge .tb-gv { overflow-x: clip; overflow-y: visible; }
+.tb-gv small { color: #a29e92; font-size: var(--fs-label); font-weight: 600; letter-spacing: 0.08em; }
+.tb-gv b {
+  font-family: var(--font-ui);
+  font-size: 23px;
+  font-weight: 700;
+  color: #f0e7d2;
+  text-shadow: 0 1px 0 #000, 0 2px 6px rgba(0, 0, 0, 0.55);
+}
+.tb-hero .tb-gv b { font-size: 24px; color: #f1dca2; text-shadow: 0 1px 0 #000, 0 0 12px rgba(214, 186, 120, 0.25); }
+.tb-gv b .stat-flow { font-size: 12px; }
+
+@media (max-width: 1899px) {
+  .tb-gauge { gap: 8px; padding: 3px 11px 3px 7px; }
+  .tb-socket { width: 34px; height: 34px; }
+  .tb-ico, .tb-ico .art-sm, .tb-ico .art-emblem, .tb-hero .tb-ico .art-emblem { width: 44px; height: 44px; }
+  .tb-gv b { font-size: 19px; }
+  .tb-hero .tb-gv b { font-size: 20px; }
+}
+@media (max-width: 1599px) {
+  .tb-gauge { gap: 7px; padding: 3px 9px 3px 6px; }
+  .tb-socket { width: 30px; height: 30px; }
+  .tb-ico, .tb-ico .art-sm, .tb-ico .art-emblem, .tb-hero .tb-ico .art-emblem { width: 40px; height: 40px; }
+  .tb-gv b { font-size: 17px; }
+  .tb-hero .tb-gv b { font-size: 18px; }
+}
