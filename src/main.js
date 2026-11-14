@@ -19,6 +19,8 @@ import { PerfOverlay } from './ui/perfOverlay.js';
 import { GameMusic } from './ui/gameMusic.js';
 import { EventCards } from './ui/eventCard.js';
 import { Ambience } from './ui/ambience.js';
+import { UiSound } from './ui/uiSound.js';
+import { DiscoveryCard } from './ui/discoveryCard.js';
 import './ui/gfxStyleMenu.js';
 import { materials } from './render/textures.js';
 
@@ -113,6 +115,13 @@ game.music = new GameMusic(game, hud.screens, menu);
 // Harita ambiyansı (bkz. ui/ambience.js): Settings paneline kendi "audio"
 // satırını ekler. Konsoldan denetim için oyuna bağlı: game.ambience.state().
 game.ambience = new Ambience(game);
+
+// Arayüz sesleri (bkz. ui/uiSound.js): Settings'e kendi "interface" satırını
+// ekler; ambiyanstan SONRA kurulur ki satır onun altına gelsin. Konsoldan
+// sınama için oyuna bağlı: game.uiSound.play('discovery').
+game.uiSound = new UiSound();
+// Keşif kartı: oyuncunun araştırması bitince resimli kart (ui/discoveryCard.js).
+new DiscoveryCard(game, { screens: hud.screens, sound: game.uiSound });
 
 // Geliştirici performans kaplaması: F3 ya da ?perf=1 (bkz. ui/perfOverlay.js).
 new PerfOverlay(game);

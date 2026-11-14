@@ -90,6 +90,9 @@ const EVENTS = [
   // Donanma (navy.js, ui/navyDock.js): deniz aşırı emrin makbuzu, öncelik
   // onayı ve bir deniz kaydının (muharebe/kaçınma) kartını açma isteği.
   'orderNote', 'navyOrder', 'navalReport',
+  // Oyuncunun araştırması bitti (technology.runResearch): { techId, first }.
+  // Keşif kartı (ui/discoveryCard.js) resimli kartı açar.
+  'discovery',
 ];
 
 /** Muharebe sonucu yazısının ömrü (ms). */

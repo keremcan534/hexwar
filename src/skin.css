@@ -552,3 +552,31 @@
   background: repeating-linear-gradient(135deg, rgba(224, 160, 112, 0.1) 0 5px, transparent 5px 10px);
   pointer-events: none;
 }
+
+/* ==========================================================================
+   12. KEŞİF KARTI — müze plakasının küçük kardeşi: süslü çerçeve, resim
+       pirinç yuvada, "dünyada ilk" yanık pirinç şerit.
+   ========================================================================== */
+.discovery {
+  border-color: transparent;
+  background: none;
+  border-image: url('../assets/ui/skin/cerceve.webp') 52 fill / 16px / 0 stretch;
+  box-shadow: 0 0 30px rgba(241, 217, 156, 0.18), 0 16px 44px rgba(0, 0, 0, 0.65);
+}
+.discovery-art { margin: 10px 0 10px 10px; border-radius: 2px; }
+.discovery-art::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-image: url('../assets/ui/skin/yuva.webp') 16 / 6px / 0 stretch;
+  pointer-events: none;
+}
+.discovery-art:not(.has-art) {
+  background:
+    radial-gradient(circle at 50% 45%, rgba(241, 217, 156, 0.24), transparent 55%),
+    linear-gradient(rgba(150, 200, 245, 0.07) 1px, transparent 1px) 0 0 / 16px 16px,
+    linear-gradient(90deg, rgba(150, 200, 245, 0.07) 1px, transparent 1px) 0 0 / 16px 16px,
+    linear-gradient(180deg, #13324e, #0a1c2e);
+}
+.discovery-body h3 { text-shadow: 0 2px 6px #000; }
+.discovery-first { background: none; border-image: var(--sk-dugme-secili); text-shadow: 0 1px 0 rgba(255, 240, 200, 0.45); }

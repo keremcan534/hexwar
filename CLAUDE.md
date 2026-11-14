@@ -31,6 +31,8 @@ Mimari ve tasarım kararları için [README.md](README.md).
   `assets/incoming/arayuz-doku-sayfasi.webp`). Kaplamasız karşılaştırma: `?skin=0`.
   Teknoloji resimleri `assets/tech/<id>.webp`; görünmeleri için `src/ui/icons/art.js`
   `TECH_ART` kümesine eklenir (yoksa dalın amblemi), masa zemini `--tech-backdrop`.
+  Arayüz sesleri dosyasızdır (`src/ui/uiSound.js` SOUNDS tarifleri, Web Audio);
+  sesi düğmenin rolü seçer, yeni ses = yeni tarif.
 - Yazı tipleri yereldir: EB Garamond ("HW Display") + Source Sans 3 ("HW UI"),
   `assets/fonts/` (OFL), `src/fonts.css`. Tuvalde aile adı elle yazılmaz,
   `src/render/fonts.js` sabitleri kullanılır; yoksa harita eski fontta kalır.

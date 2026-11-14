@@ -598,9 +598,13 @@ export function runResearch(game) {
   for (const nation of world.nations) {
     if (!nation.alive || !nation.economy) continue;
     const research = ensureResearch(nation);
+    const firstsBefore = research.firsts ?? 0;
     const done = advanceResearch(nation, year, world);
     if (done && nation.id === game.turns?.playerNation) {
       game.turns.addLog(`Research complete: ${INDEX.get(done).tech.name}.`, { kind: 'RESEARCH' });
+      // Arayüzün keşif kartı (ui/discoveryCard.js) adı değil kimliği ister;
+      // "dünyada ilk" yalnız bu anda bilinir (advanceResearch firsts'i artırır).
+      game.emit?.('discovery', { techId: done, first: (research.firsts ?? 0) > firstsBefore });
     }
     if (!research.current) {
       const queued = nextQueuedTech(nation);
