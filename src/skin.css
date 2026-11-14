@@ -57,6 +57,10 @@
   --sk-cerceve-kucuk: url('../assets/ui/skin/cerceve.webp') 52 fill / 13px / 0 stretch;
   --sk-baslik: url('../assets/ui/skin/baslik.webp') 4 6 14 6 fill / 2px 3px 5px 3px / 0 stretch;
   --sk-yuva: url('../assets/ui/skin/yuva.webp') 16 fill / 6px / 0 stretch;
+  /* Yalnız resim: dilimi ve kalınlığı kuraldan kurala değişen yerler için.
+     Açık tema (src/light.css) bu adları kendi doku setine çevirir. */
+  --sk-img-cerceve: url('../assets/ui/skin/cerceve.webp');
+  --sk-img-yuva: url('../assets/ui/skin/yuva.webp');
 }
 
 /* ==========================================================================
@@ -64,7 +68,7 @@
       (outset): pencerenin içi ve ölçüsü değişmez, çerçeve dışa taşar.
    ========================================================================== */
 #screen.screen {
-  border-image: url('../assets/ui/skin/cerceve.webp') 52 / 26px / 7px stretch;
+  border-image: var(--sk-img-cerceve) 52 / 26px / 7px stretch;
 }
 
 /* ==========================================================================
@@ -223,7 +227,7 @@
 :where(.k-btn.on, .k-btn.primary, .k-seg-b.on, .mil-btn.primary, .mil-btn.on,
     .mil-tabs > button.active, .mil-views > button.active,
     .pl-pb.on, .ap-btn.primary, .ap-btn.on, .ap-btn.go, .tool-btn.active,
-    .md-stance.on, .np-play, #settings .primary) {
+    .md-stance.on, .np-play, #settings .primary, #settings .action.on) {
   border-image: var(--sk-dugme-secili);
   box-shadow: 0 0 12px rgba(201, 163, 90, 0.3), var(--sk-drop);
   color: var(--sk-dark-ink);
@@ -233,7 +237,7 @@
 :where(:is(.k-btn.on, .k-btn.primary, .k-seg-b.on, .mil-btn.primary, .mil-btn.on,
     .mil-tabs > button.active, .mil-views > button.active,
     .pl-pb.on, .ap-btn.primary, .ap-btn.on, .ap-btn.go, .tool-btn.active,
-    .md-stance.on, .np-play, #settings .primary):hover:not(:disabled)) {
+    .md-stance.on, .np-play, #settings .primary, #settings .action.on):hover:not(:disabled)) {
   filter: brightness(1.08);
 }
 
@@ -279,7 +283,7 @@
 /* Kapalı ama seçili: yürürlükteki seçenek. Kit onu HEP kapalı yazar (aynı
    yasa yeniden seçilmez, bkz. kit.js segmented); "kapalı" burada "zaten
    yürürlükte" demektir, yani tam yanık pirinç kalır. */
-:where(:is(.k-btn.on, .k-seg-b.on, .pl-pb.on, .md-stance.on):disabled) {
+:where(:is(.k-btn.on, .k-seg-b.on, .pl-pb.on, .md-stance.on, #settings .action.on):disabled) {
   border-image: var(--sk-dugme-secili);
   background: none;
   box-shadow: var(--sk-drop);
@@ -527,7 +531,7 @@
   position: absolute;
   inset: 0;
   z-index: 2;
-  border-image: url('../assets/ui/skin/yuva.webp') 16 / 7px / 0 stretch;
+  border-image: var(--sk-img-yuva) 16 / 7px / 0 stretch;
   pointer-events: none;
 }
 /* Resmi henüz olmayan teknoloji: amblem mavi kopya üstünde, ışıkla. */
@@ -560,7 +564,7 @@
 .discovery {
   border-color: transparent;
   background: none;
-  border-image: url('../assets/ui/skin/cerceve.webp') 52 fill / 16px / 0 stretch;
+  border-image: var(--sk-img-cerceve) 52 fill / 16px / 0 stretch;
   box-shadow: 0 0 30px rgba(241, 217, 156, 0.18), 0 16px 44px rgba(0, 0, 0, 0.65);
 }
 .discovery-art { margin: 10px 0 10px 10px; border-radius: 2px; }
@@ -568,7 +572,7 @@
   content: "";
   position: absolute;
   inset: 0;
-  border-image: url('../assets/ui/skin/yuva.webp') 16 / 6px / 0 stretch;
+  border-image: var(--sk-img-yuva) 16 / 6px / 0 stretch;
   pointer-events: none;
 }
 .discovery-art:not(.has-art) {

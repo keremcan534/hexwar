@@ -1,0 +1,71 @@
+/* ==========================================================================
+   AÇIK ÇELİK — renk çevirisinin yetmediği yerler.
+
+   Açık temanın renkleri elle yazılmaz: ui/theme.js bütün kuralları tarar ve
+   renkleri OKLab'da çevirip light-base/light-skin katmanlarına yazar. Bu dosya
+   yalnız çeviriyle olmayanları taşır: DOKULAR (resimdir, renk değil) ve rolü
+   değişen birkaç durum. En üst katmandadır (light-fix) ve taranmaz; her kural
+   :root[data-ui-theme="light"] altındadır, koyu temada hiçbir şey yapmaz.
+
+   Dokular assets/ui/skin/acik/: koyu setten türetildi (pirinç kenar → çelik,
+   koyu yüz → açık fırçalanmış çelik, ışık yönü aynı). Seçili levha yanan
+   pirinç yerine çelik mavisi emaye: açık temada sarı vurgu kalmasın.
+   ========================================================================== */
+
+:root[data-ui-theme="light"] {
+  --sk-dugme: url('../assets/ui/skin/acik/dugme.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-ustunde: url('../assets/ui/skin/acik/dugme-ustunde.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-basili: url('../assets/ui/skin/acik/dugme-basili.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-kapali-cerceve: url('../assets/ui/skin/acik/dugme-kapali.webp') 16 / 5px / 0 stretch;
+  --sk-dugme-secili: url('../assets/ui/skin/acik/dugme-secili.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-tehlike: url('../assets/ui/skin/acik/dugme-tehlike.webp') 16 fill / 5px / 0 stretch;
+  --sk-cerceve-kucuk: url('../assets/ui/skin/acik/cerceve.webp') 52 fill / 13px / 0 stretch;
+  --sk-baslik: url('../assets/ui/skin/acik/baslik.webp') 4 6 14 6 fill / 2px 3px 5px 3px / 0 stretch;
+  --sk-yuva: url('../assets/ui/skin/acik/yuva.webp') 16 fill / 6px / 0 stretch;
+  --sk-img-cerceve: url('../assets/ui/skin/acik/cerceve.webp');
+  --sk-img-yuva: url('../assets/ui/skin/acik/yuva.webp');
+  color-scheme: light;
+}
+
+/* Seçili / birincil levha koyu çelik mavisi: üstündeki yazı çeviride açık
+   griye (0.85 tavanı) iniyordu ve soluk okunuyordu. Yalnız bu levhada yazı
+   neredeyse beyaz olur. */
+/* Kapalı birincil düğme kapalı levhayı alır, beyaz yazı orada okunmaz:
+   yalnız açık olanlar ve "yürürlükte" (seçili + kapalı) olanlar. */
+:root[data-ui-theme="light"] :where(:is(.k-btn.on, .k-btn.primary, .k-seg-b.on, .mil-btn.primary, .mil-btn.on,
+    .mil-tabs > button.active, .mil-views > button.active,
+    .pl-pb.on, .ap-btn.primary, .ap-btn.on, .ap-btn.go, .tool-btn.active,
+    .md-stance.on, .np-play, #settings .primary, #settings .action.on):not(:disabled)),
+:root[data-ui-theme="light"] :where(:is(.k-btn.on, .k-seg-b.on, .pl-pb.on, .md-stance.on, #settings .action.on):disabled) {
+  color: #f1f5f9;
+  text-shadow: 0 1px 0 rgba(8, 22, 38, 0.6);
+}
+
+/* Kurulu onay: koyu temada pirinç levha süzgeçle kehribara çevriliyordu; çelik
+   mavisi levhada aynı süzgeç bulanık mor verir. Açık temada onay, üstünde
+   levhası + kehribar halka: "ikinci tık bekleniyor" rengi aynı kalır. */
+:root[data-ui-theme="light"] :where(:is(.k-btn, .k-seg-b, .mil-btn, .action).confirming) {
+  border-image: var(--sk-dugme-ustunde);
+  box-shadow: 0 0 0 2px #b8791a, 0 0 12px rgba(184, 121, 26, 0.5);
+  color: #3b2606;
+  filter: none;
+}
+:root[data-ui-theme="light"] :where(:is(.k-btn, .mil-btn, .action).danger.confirming) {
+  border-image: var(--sk-dugme-tehlike);
+  box-shadow: 0 0 0 2px #c0392b, 0 0 12px rgba(192, 57, 43, 0.45);
+  color: #5c120a;
+  filter: saturate(1.6) brightness(0.96);
+}
+
+/* Haritanın dışındaki boşluk haritanın parçasıdır (deniz rengi temayla
+   değişmez): açık temada gri bir kâğıda dönünce harita kenarı yırtık bir
+   kâğıt gibi kalıyordu. Koyu tema değerleri burada sabit yazılır. */
+:root[data-ui-theme="light"] :is(html, body) {
+  background: radial-gradient(circle at 50% 32%, #10181c 0%, #090e11 66%);
+}
+
+/* Eşya ikonunun arkasındaki ışık: çeviri onu koyu bir lekeye çeviriyordu.
+   Açık zeminde ışık beyaz bir hale olur. */
+:root[data-ui-theme="light"] .art-item {
+  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0.12) 48%, transparent 71%);
+}

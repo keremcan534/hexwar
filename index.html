@@ -14,13 +14,16 @@
        çalışır, kaplama (src/skin.css) onların seçici gücüne bakmadan kazanır.
        Düğme ve panel malzemesi böylece tek dosyadan değişir (bkz. skin.css). -->
   <style id="css-cascade">
-    @layer base, skin;
+    /* light-*: açık temanın çevrilmiş kopyaları (ui/theme.js). Önemli (!important)
+       bildirimlerde katman sırası tersine döner; o yüzden imp katmanları önde. */
+    @layer light-imp-base, light-imp-skin, base, skin, light-base, light-skin, light-fix;
     @import url('src/fonts.css') layer(base);
     @import url('src/styles.css') layer(base);
     @import url('src/overview.css') layer(base);
     @import url('src/ui/frontPlates.css') layer(base);
     @import url('src/diplomacy.css') layer(base);
     @import url('src/skin.css') layer(skin);
+    @import url('src/light.css') layer(light-fix);
   </style>
 </head>
 <body>

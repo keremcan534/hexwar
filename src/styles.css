@@ -12035,17 +12035,20 @@ button.uc-agenda:hover { border-color: var(--gold); }
    oldu; koyu plaka bina listesinde çerçevesiz "Develop" satırıyla çelişiyordu.
    Disk + halka her ikonu aynı daireye çeviriyordu (siluet kaybolur)
    ve nesneyi %74'e küçültüyordu; 18 px'te ince nesne boş daireye dönüyordu.
-   Işık koyu nesneyi (kömür, tank) koyu panelden ayırır; sıcak tonu arayüzün
-   altın-kahve paletinden çıkmaz (kayrak mavisi disk yabancı duruyordu). */
+   Işık koyu nesneyi (kömür, tank) koyu panelden ayırır. Işık eskiden sıcak
+   altındı; ikonların kendi pirinci de üstüne binince oyuncu "bütün ikonlarda
+   sarımsılık var" dedi: ışık artık kalay grisi, resimlerin doygunluğu %22
+   kısılır. Yalnız sarı ekseni kısan bir süzgeç denendi; kırmızıları mora,
+   altını pembeye kaydırdı (ölçüldü), düz doygunluk tonları korur. */
 .art-item {
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 50%, rgba(236, 208, 150, 0.24) 0%, rgba(236, 208, 150, 0.09) 48%, transparent 71%);
+  background: radial-gradient(circle at 50% 50%, rgba(206, 214, 222, 0.2) 0%, rgba(206, 214, 222, 0.07) 48%, transparent 71%);
 }
-.art-item img { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.85)); }
+.art-item img { filter: saturate(0.78) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.85)); }
 
 .art-unit img { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)); }
 /* Amblem: çerçevesiz gravür nesnesi; koyu zeminde kopmasın diye çift gölge. */
-.art-emblem img { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 4px rgba(0, 0, 0, 0.35)); }
+.art-emblem img { filter: saturate(0.78) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 4px rgba(0, 0, 0, 0.35)); }
 /* Metin satırı içi (general özellikleri): satır yüksekliğini itmesin. */
 .art-inline { width: 1.5em; height: 1.5em; margin: -0.3em 0.15em -0.25em 0; }
 
@@ -13039,7 +13042,9 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
 .k-chart:not(.tall) { height: auto; }
 
 /* --- Çizgi ikonlar (ui/icons/glyphs.js) --------------------------------- */
-.glyph { display: inline-block; width: 1.15em; height: 1.15em; flex: none; vertical-align: -0.2em; color: var(--gold-bright); }
+/* Varsayılan çizgi rengi kalay: pirinç altını her ikonda olunca arayüz sarıya
+   çalıyordu. Altın, seçili ve etkin hâllerin kendi rengidir. */
+.glyph { display: inline-block; width: 1.15em; height: 1.15em; flex: none; vertical-align: -0.2em; color: #c3c6c1; }
 .glyph.inline { width: 1em; height: 1em; margin-right: 1px; }
 /* Denetim glifi (kapat, ok, yıldız, eğilim): simge karakterlerinin yerine
    geçer, o yüzden yazının rengini ve boyunu alır. Karakterler Windows'ta emoji
@@ -13192,7 +13197,7 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
 }
 .tb-ico { display: grid; place-items: center; width: 28px; height: 28px; }
 .tb-ico .art-sm { width: 28px; height: 28px; }
-.tb-ico .glyph { width: 22px; height: 22px; color: #d8bd7e; filter: drop-shadow(0 1px 0 #000); }
+.tb-ico .glyph { width: 22px; height: 22px; color: #cdd0ca; filter: drop-shadow(0 1px 0 #000); }
 .tb-ring { position: absolute; inset: -1px; width: calc(100% + 2px); height: calc(100% + 2px); transform: rotate(-90deg); pointer-events: none; }
 .tb-ring circle { fill: none; stroke-width: 3; }
 .tb-ring .trk { stroke: rgba(0, 0, 0, 0.55); }

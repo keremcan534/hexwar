@@ -21,6 +21,7 @@ import { EventCards } from './ui/eventCard.js';
 import { Ambience } from './ui/ambience.js';
 import { UiSound } from './ui/uiSound.js';
 import { DiscoveryCard } from './ui/discoveryCard.js';
+import { currentTheme, initTheme, mountThemeSettings, setTheme } from './ui/theme.js';
 import './ui/gfxStyleMenu.js';
 import { materials } from './render/textures.js';
 
@@ -44,6 +45,10 @@ if (new URLSearchParams(location.search).get('skin') === '0') {
   const at = rules.findIndex((rule) => rule instanceof CSSImportRule && rule.href.endsWith('skin.css'));
   if (at >= 0) sheet.deleteRule(at);
 }
+
+// Tema (koyu / açık çelik): kayıtlı seçim ya da ?theme=light. Kaplama sökme
+// işinden SONRA kurulur ki açık kopyalar sökülmüş kurallardan üretilmesin.
+initTheme();
 
 const canvas = document.getElementById('map');
 const game = new Game(canvas);
@@ -120,6 +125,10 @@ game.ambience = new Ambience(game);
 // ekler; ambiyanstan SONRA kurulur ki satır onun altına gelsin. Konsoldan
 // sınama için oyuna bağlı: game.uiSound.play('discovery').
 game.uiSound = new UiSound();
+// Görünüm satırı (koyu / açık çelik): Settings'te grafik stilinin altına.
+// Konsoldan sınama için oyuna bağlı: game.theme.set('light').
+mountThemeSettings();
+game.theme = { set: setTheme, get: currentTheme };
 // Keşif kartı: oyuncunun araştırması bitince resimli kart (ui/discoveryCard.js).
 new DiscoveryCard(game, { screens: hud.screens, sound: game.uiSound });
 

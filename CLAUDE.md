@@ -33,6 +33,15 @@ Mimari ve tasarım kararları için [README.md](README.md).
   `TECH_ART` kümesine eklenir (yoksa dalın amblemi), masa zemini `--tech-backdrop`.
   Arayüz sesleri dosyasızdır (`src/ui/uiSound.js` SOUNDS tarifleri, Web Audio);
   sesi düğmenin rolü seçer, yeni ses = yeni tarif.
+- İki tema: koyu (varsayılan) ve "Açık çelik" (Settings → appearance,
+  denetim için `?theme=light`). Açık tema ELLE YAZILMAZ: `src/ui/theme.js`
+  kuralları tarar, renkleri OKLab'da çevirip `light-*` katmanlarına yazar; yeni
+  CSS kendiliğinden çevrilir. Çevirinin yetmediği yerler (dokular, seçili
+  levhadaki yazı) `src/light.css`'te, açık doku seti `assets/ui/skin/acik/`.
+  Harita ve ana menü çevrilmez; haritanın ya da bir resmin üstüne koyu bir ışık
+  katmanı yazarsan seçicisini `theme.js` KEEP_SEL'e ekle. İkon resimlerinin
+  doygunluğu %22 kısıktır (styles.css `.art-item img`, `.art-emblem img`):
+  sarılık orada ayarlanır.
 - Yazı tipleri yereldir: EB Garamond ("HW Display") + Source Sans 3 ("HW UI"),
   `assets/fonts/` (OFL), `src/fonts.css`. Tuvalde aile adı elle yazılmaz,
   `src/render/fonts.js` sabitleri kullanılır; yoksa harita eski fontta kalır.
