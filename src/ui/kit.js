@@ -159,7 +159,9 @@ export function badge(text, cls = '') {
  */
 export function spark(values, { width = 220, height = 42, cls = '', zero: fromZero = true } = {}) {
   const list = (values ?? []).filter(Number.isFinite);
-  if (list.length < 2) return '<small class="k-dim">Not enough history yet</small>';
+  // Yedek eğriyle AYNI boyda: veri gelince grafik yerine oturur, panel
+  // zıplamaz (eskiden tek satır yazı 60 px'lik grafiğe dönüşüyordu).
+  if (list.length < 2) return `<span class="k-spark-empty" style="--w:${width}px;--h:${height}px"><small class="k-dim">Not enough history yet</small></span>`;
   const min = fromZero ? Math.min(...list, 0) : Math.min(...list);
   const max = fromZero ? Math.max(...list, 1e-6) : Math.max(...list);
   const span = Math.max(1e-6, max - min);

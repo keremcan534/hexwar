@@ -1022,8 +1022,13 @@ export class Screens {
         <span class="chron-text"><b>${esc(entry.title)}</b>${entry.detail ? `<small>${esc(entry.detail)}</small>` : ''}</span>
       </li>`;
     }).join('');
+    // Boş kronik "boş kutu" değil kitabın İLK SAYFASI: ulusun bayrağı ve
+    // tarih. Oyunun ilk aylarında bu ekran tek cümleden ibaretti.
     const timeline = rows ? `<ol class="chron-list">${rows}</ol>`
-      : `<div class="chron-empty"><b>The pages are still blank.</b>
+      : `<div class="chron-empty chron-opening">
+          <span class="chron-opening-flag" data-flag-nation="${me.id}" data-flag-w="84" data-flag-h="56"></span>
+          <small>${esc(saveDate(this.game.turns.turn))}</small>
+          <b>The chronicle of ${esc(me.name)} opens.</b>
           <p>Wars and treaties, supply crises, new governments, great proclamations and lost provinces will be written here as they happen.</p></div>`;
 
     // Büyük güçler.
@@ -1043,8 +1048,13 @@ export class Screens {
     const fmt = (v) => (Math.abs(v) >= 1e6 ? `${(v / 1e6).toFixed(2)}M` : Math.abs(v) >= 1e4 ? `${(v / 1e3).toFixed(0)}K` : Math.round(v * 10) / 10);
     const trend = (label, key) => {
       const list = series(key);
-      const last = list[list.length - 1] ?? 0;
-      const first = list[0] ?? 0;
+      // Geçmiş yokken "0 · +0%" yazmak 12 milyonluk ülkeye sıfır nüfus
+      // dedirtiyordu: ilk hafta kapanana dek değer yerine tire.
+      if (!list.length) {
+        return `<div class="chron-trend"><small>${label}</small><b>—</b>${kitSpark(list, { width: 160, height: 30, zero: false })}</div>`;
+      }
+      const last = list[list.length - 1];
+      const first = list[0];
       const change = first ? (last - first) / Math.abs(first) : 0;
       return `<div class="chron-trend"><small>${label}</small><b>${fmt(last)}</b><em class="${change >= 0 ? 'pos' : 'neg'}">${change >= 0 ? '+' : ''}${(change * 100).toFixed(0)}%</em>
         ${kitSpark(list, { width: 160, height: 30, zero: false })}</div>`;

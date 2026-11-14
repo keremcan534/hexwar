@@ -580,3 +580,87 @@
 }
 .discovery-body h3 { text-shadow: 0 2px 6px #000; }
 .discovery-first { background: none; border-image: var(--sk-dugme-secili); text-shadow: 0 1px 0 rgba(255, 240, 200, 0.45); }
+
+/* ==========================================================================
+   13. SATIR, İKON DÜĞMESİ, ÇİP, HARİTA KİPLERİ — kalan aileler aynı dilde.
+       Satır düğme değil liste öğesidir: kabarmaz; üstüne gelince soldan
+       pirinç ışık vurur, seçili satır daha güçlü. İkon düğmesi pirinç halkalı
+       yuva (KPI madalyonunun küçüğü). Çip ince pirinç kıllı hap.
+   ========================================================================== */
+:where(.np-row, .mil-leader, .ap-row, .k-prow-pick, .chron-power[data-nation], .md-name) {
+  border-radius: 3px;
+  transition: background-color 120ms ease, box-shadow 120ms ease;
+}
+:where(.np-row, .mil-leader, .ap-row, .k-prow-pick, .chron-power[data-nation], .md-name):hover {
+  background: linear-gradient(90deg, rgba(241, 217, 156, 0.11), rgba(241, 217, 156, 0.02) 75%);
+  box-shadow: inset 2px 0 0 rgba(241, 217, 156, 0.75);
+}
+:where(.np-row.on, .mil-leader.is-open, .k-prow-pick.on, .chron-power.me) {
+  background: linear-gradient(90deg, rgba(241, 217, 156, 0.18), rgba(241, 217, 156, 0.04) 80%);
+  box-shadow: inset 3px 0 0 #f1d99c, inset 0 0 0 1px rgba(241, 217, 156, 0.22);
+}
+
+.icon-btn {
+  border-color: transparent;
+  background: radial-gradient(circle at 50% 32%, #2b3439, #0b1012 72%);
+  box-shadow: 0 0 0 1px #000, 0 0 0 2px rgba(201, 163, 90, 0.55), inset 0 2px 4px rgba(0, 0, 0, 0.8), 0 2px 4px rgba(0, 0, 0, 0.5);
+  color: #e9dcc0;
+}
+.icon-btn:hover {
+  border-color: transparent;
+  box-shadow: 0 0 0 1px #000, 0 0 0 2px var(--sk-brass-hi), 0 0 10px rgba(241, 217, 156, 0.35), inset 0 2px 4px rgba(0, 0, 0, 0.8);
+  color: #fff3d6;
+  filter: none;
+}
+
+.k-chipbtn {
+  border-color: transparent;
+  background: rgba(5, 9, 11, 0.55);
+  box-shadow: inset 0 0 0 1px rgba(201, 163, 90, 0.4);
+}
+.k-chipbtn:hover { box-shadow: inset 0 0 0 1px var(--sk-brass-hi), 0 0 8px rgba(241, 217, 156, 0.25); }
+
+/* Harita kipleri: kutu panel çerçevesi (cam bulanıklığı gereksiz: doku
+   opak); küçük kipler yuvasız ikon, etkin olan pirinç ışıkta; Ordu/Donanma
+   büyük düğmeler düğme dokusunda. */
+.map-modes {
+  border-color: transparent;
+  background: none;
+  border-image: var(--sk-cerceve-kucuk);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}
+.mode-btn { color: #cfc4ac; }
+.mode-btn:hover { background: radial-gradient(circle at 50% 50%, rgba(241, 217, 156, 0.16), transparent 70%); color: #fff3d6; filter: none; }
+.mode-btn.active { background: radial-gradient(circle at 50% 50%, rgba(241, 217, 156, 0.24), transparent 72%); box-shadow: none; color: #f6e2a8; }
+.mode-btn.mm-big { border-color: transparent; background: none; border-image: var(--sk-dugme); box-shadow: var(--sk-drop); color: var(--sk-text); }
+.mode-btn.mm-big:hover { background: none; border-image: var(--sk-dugme-ustunde); }
+.mode-btn.mm-big.active {
+  background: none;
+  border-image: var(--sk-dugme-ustunde);
+  box-shadow: 0 0 0 1px rgba(241, 217, 156, 0.6), 0 0 12px rgba(241, 217, 156, 0.3), var(--sk-drop);
+  color: #f6e2a8;
+}
+
+/* ==========================================================================
+   14. BOŞ DURUM — "henüz yok" bir hata değil, bir bekleyiş: pirinç süs çizgisi
+       ve serif italik. Tek satır soluk yazı oyunun ilk dakikalarında "yarım
+       kalmış ekran" gibi okunuyordu.
+   ========================================================================== */
+.k-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  color: #bcb49f;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-style: italic;
+}
+.k-empty::before {
+  content: "";
+  width: 96px;
+  height: 7px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='96' height='7'%3E%3Cpath d='M0 3.5H40M56 3.5H96' stroke='%23c9a35a' stroke-opacity='.55'/%3E%3Cpath d='M48 .5l3 3-3 3-3-3z' fill='%23c9a35a'/%3E%3C/svg%3E") center / contain no-repeat;
+}
+.chron-empty b { text-shadow: 0 2px 6px #000; }

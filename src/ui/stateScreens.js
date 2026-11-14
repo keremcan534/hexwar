@@ -1422,6 +1422,63 @@ function focusCard(world, me) {
 
 // ============================================================== POLITICS ===
 
+/**
+ * MECLİS: parti desteği 100 sandalyelik yarım daire (Victoria'daki gibi).
+ * Yalnız sunum: destek yüzdesi en büyük kalan yöntemiyle sandalyeye çevrilir;
+ * seçim, çoğunluk ya da koalisyon mekaniği YOK. Altındaki çubuklar kesin
+ * yüzdeyi söyler, yarım daire güç dengesini tek bakışta. Partiler soldan
+ * sağa ideoloji sırasıyla oturur; ortadaki kesik çizgi 50. sandalyedir.
+ */
+const HEMI_ORDER = ['socialist', 'liberal', 'conservative', 'nationalist'];
+const HEMI_SEATS = 100;
+function hemicycle(support) {
+  const parties = HEMI_ORDER.map((id) => support.find((party) => party.id === id)).filter(Boolean);
+  if (!parties.length) return '';
+  const total = parties.reduce((sum, party) => sum + Math.max(0, party.support), 0) || 1;
+  const quotas = parties.map((party) => (Math.max(0, party.support) / total) * HEMI_SEATS);
+  const seats = quotas.map(Math.floor);
+  let spare = HEMI_SEATS - seats.reduce((a, b) => a + b, 0);
+  for (const [, i] of quotas.map((q, i) => [q - Math.floor(q), i]).sort((a, b) => b[0] - a[0])) {
+    if (spare-- > 0) seats[i]++;
+  }
+  // Dört sıra; sıra başına sandalye yarıçapla orantılı (yay boyu eşit aralık).
+  // İç boşluk iktidar partisinin adına yer bırakır: 62'lik iç yarıçapta ad
+  // iç sıranın sandalyelerine biniyordu.
+  const W = 300;
+  const H = 158;
+  const cx = W / 2;
+  const cy = 150;
+  const rows = 4;
+  const rIn = 80;
+  const rOut = 142;
+  const radii = Array.from({ length: rows }, (_, i) => rIn + (i * (rOut - rIn)) / (rows - 1));
+  const sumR = radii.reduce((a, b) => a + b, 0);
+  const perRow = radii.map((r) => Math.round((HEMI_SEATS * r) / sumR));
+  perRow[rows - 1] += HEMI_SEATS - perRow.reduce((a, b) => a + b, 0);
+  const spots = [];
+  radii.forEach((r, row) => {
+    const n = perRow[row];
+    for (let k = 0; k < n; k++) {
+      const a = Math.PI - (k * Math.PI) / (n - 1);
+      spots.push({ a, row, x: cx + r * Math.cos(a), y: cy - r * Math.sin(a) });
+    }
+  });
+  // Açıya göre soldan sağa: her parti bir dilim olur, sıralar boyunca.
+  spots.sort((p, q) => q.a - p.a || p.row - q.row);
+  let at = 0;
+  const groups = parties.map((party, pi) => {
+    const dots = spots.slice(at, at + seats[pi]).map((spot, k) => `<circle cx="${spot.x.toFixed(1)}" cy="${spot.y.toFixed(1)}" r="5.6" style="--i:${at + k}"/>`).join('');
+    at += seats[pi];
+    return `<g class="k-hemi-party${party.ruling ? ' is-ruling' : ''}" fill="${party.color}"${tipAttr('party', party.id)}>${dots}</g>`;
+  }).join('');
+  const ruling = parties.find((party) => party.ruling);
+  return `<figure class="k-hemi" aria-label="Parliament">
+      <svg viewBox="0 0 ${W} ${H}" role="img"><title>Parliament: ${parties.map((party, i) => `${esc(party.name)} ${seats[i]}`).join(', ')}</title>
+        <line class="k-hemi-maj" x1="${cx}" y1="${cy - rOut - 9}" x2="${cx}" y2="${cy - rIn + 9}"/>${groups}</svg>
+      ${ruling ? `<figcaption><b>${esc(ruling.name)}</b><small>${Math.round(ruling.support)}% · in government</small></figcaption>` : ''}
+    </figure>`;
+}
+
 export function renderPolitics(game, me, state) {
   const world = game.world;
   const turn = turnOf(game);
@@ -1518,7 +1575,7 @@ export function renderPolitics(game, me, state) {
   return `${kpis}
     <div class="k-split k-pol">
       <div class="k-stack">
-        ${panel('Parties', `${courseSquare(view.course)}<div class="k-parties">${parties}</div>${regimes ? `<div class="k-actions">${regimes}</div>` : ''}`, { sub: esc(view.government.desc) })}
+        ${panel('Parties', `<div class="k-pol-top">${courseSquare(view.course)}${hemicycle(view.support)}</div><div class="k-parties">${parties}</div>${regimes ? `<div class="k-actions">${regimes}</div>` : ''}`, { sub: esc(view.government.desc) })}
         ${panel('Laws', `<div class="k-laws">${laws}</div>`, { sub: `${view.lawCost} political power per change · 26-week lock · click twice to enact` })}
         ${panel('Decisions', `<div class="k-decs">${decisionTiles}</div>`, { sub: 'spend political power · hover for the full effect' })}
       </div>

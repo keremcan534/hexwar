@@ -17069,3 +17069,33 @@ button.dip-war.dip-conflict.on { border-left-color: var(--gold-bright); }
 :root[data-motion="on"] .discovery.is-leaving { animation: discovery-out 240ms ease-in both; }
 @keyframes discovery-in { from { opacity: 0; transform: translate(-50%, -14px) scale(0.97); } }
 @keyframes discovery-out { to { opacity: 0; transform: translate(-50%, -10px); } }
+
+/* ==========================================================================
+   MECLİS YARIM DAİRESİ (stateScreens.hemicycle, 2026-11). Rota karesinin
+   sağındaki boşlukta; yüksekliği kareyle aynı tutulur ki Partiler paneli
+   uzayıp sağ sütunla simetrisi bozulmasın (yerleşim sondası).
+   ========================================================================== */
+.k-pol-top { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+.k-pol-top > .k-course { flex: 1 1 auto; min-width: 0; margin-bottom: 0; }
+.k-hemi { position: relative; flex: 0 1 262px; min-width: 190px; margin: 0; }
+.k-hemi svg { display: block; width: 100%; height: auto; overflow: visible; }
+.k-hemi circle { stroke: rgba(0, 0, 0, 0.7); stroke-width: 1; }
+.k-hemi-party { cursor: var(--cur-default); transition: filter 120ms ease; }
+.k-hemi-party:hover { filter: brightness(1.35); }
+.k-hemi-party.is-ruling circle { stroke: #f6e2a8; stroke-width: 1.3; }
+.k-hemi-maj { stroke: rgba(241, 217, 156, 0.6); stroke-width: 1.5; stroke-dasharray: 3 3; }
+.k-hemi figcaption { position: absolute; right: 0; bottom: 0; left: 0; text-align: center; pointer-events: none; }
+.k-hemi figcaption b { display: block; color: #fff3d6; font-family: var(--font-display); font-size: 16px; font-weight: 400; line-height: 1.1; text-shadow: 0 1px 3px #000; }
+.k-hemi figcaption small { color: var(--gold-bright); font-size: 11px; letter-spacing: 0.06em; }
+/* Açılışta sandalyeler soldan sağa dolar; yalnız ekran açılırken. */
+:root[data-motion="on"] .screen-body.is-entering .k-hemi circle { animation: hemi-seat 260ms ease-out both; animation-delay: calc(var(--i) * 4ms); }
+@keyframes hemi-seat { from { opacity: 0; transform: scale(0.4); } }
+.k-hemi circle { transform-box: fill-box; transform-origin: center; }
+
+/* --- Boş durumlar (2026-11): yedek eğri ve kroniğin ilk sayfası --------- */
+.k-spark-empty { display: flex; align-items: center; gap: 10px; width: 100%; max-width: var(--w); height: var(--h); color: var(--text-mute); }
+.k-spark-empty::before, .k-spark-empty::after { content: ""; flex: 1; border-top: 1px dashed rgba(201, 163, 90, 0.35); }
+.k-spark-empty small { font-size: 12px; font-style: italic; white-space: nowrap; }
+.chron-opening { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.chron-opening-flag { display: block; width: 84px; height: 56px; margin-bottom: 4px; box-shadow: 0 0 0 1px #050708, 0 0 0 3px rgba(201, 163, 90, 0.6), 0 8px 18px rgba(0, 0, 0, 0.6); }
+.chron-opening small { color: var(--gold); font-size: var(--fs-label); letter-spacing: 0.14em; text-transform: uppercase; }
