@@ -15983,6 +15983,56 @@ body.screen-open .culture-chip { display: none; }
 .mm-grid .mode-btn.active::after { left: 5px; right: 5px; bottom: 0; }
 .map-modes > .mode-sep { margin: 6px 2px; }
 
+/* --- Harita konsolu: saat + kipler (index.html #map-console) ------------
+   Konum konsolundur; kip kutusu onun içinde akar. Saat kutusu kiplerle aynı
+   enin üstünde: dar pencerede kipler iki satıra sarınca konsol daralır, saat
+   aynı ene oturur. */
+.map-console {
+  position: fixed;
+  right: var(--sp-3);
+  bottom: var(--sp-3);
+  z-index: var(--z-map-tools);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--sp-1);
+}
+.map-console > .map-modes { position: static; }
+/* Konsolun enini kip kutusu belirler (dar pencerede iki satıra sarıp 240 px'e
+   iner); saat kutusu ene katılmaz, yalnız ona uyar: width 0 + min-width 100%. */
+.clock-dock {
+  width: 0;
+  min-width: 100%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  padding: 4px 10px 4px 4px;
+  border: 1px solid var(--line-brass);
+  border-radius: var(--radius-lg);
+  background: var(--ui-grain), var(--panel-tone), var(--surface-1);
+  box-shadow: var(--shadow-panel);
+}
+.clock-dock > .turn-control {
+  flex: 1;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+}
+.clock-dock .turn-badge { flex: 1; min-width: 0; align-items: stretch; padding: 4px 10px 5px; text-align: left; }
+.clock-dock .turn-badge b { font-size: 20px; }
+.clock-dock .turn-row { justify-content: space-between; }
+.clock-dock .turn-status { max-width: 110px; }
+.clock-dock .time-btn.time-pause { width: 40px; height: 40px; }
+/* Ülke seçilmeden zaman akmaz: saat seçici açıkken görünmez. */
+body.picker-open .clock-dock { display: none; }
+body.picker-open .map-console { right: calc(var(--sp-3) + min(420px, calc(100vw / var(--ui) - 2 * var(--sp-3))) + var(--sp-2)); }
+@media (max-width: 560px) {
+  .map-console { bottom: calc(var(--sheet-max) + var(--safe-bottom) + var(--sp-4)); }
+}
+
 /* Bildirim zili kutunun hemen üstünde (yığın eski 44 px'lik şeride göre
    46 px yukarıdaydı, yeni kutuya biniyordu); lejant ve katman menüsü zilin
    üstünde. Üçü aynı şeritteydi ve zil lejantın son çipini örtüyordu (HUD-06). */

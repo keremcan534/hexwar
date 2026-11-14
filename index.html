@@ -72,25 +72,6 @@
          çubuğun sağ boşluğu elle tahmin edilmek zorundaydı ve tahmin tutmayınca
          kaynak değerleri saatin altında kırpılıyordu. -->
     <div class="topbar-side topbar-right">
-      <!-- SAAT BİRİMİ: duraklat düğmesi + tarih plakası + hız çentikleri tek
-           kasada. Çentikler sinyal çubuğu gibi yükselir; seçilen hıza kadar
-           olanlar yanar (Paradox hız göstergesi). -->
-      <div class="turn-control" id="turn-control">
-        <button class="time-btn time-pause active" id="btn-pause" aria-label="Pause or resume" data-tip="time" data-tip-arg="0"><svg class="ico-pause" viewBox="0 0 16 16" aria-hidden="true"><path class="bar" d="M5.8 4v8M10.2 4v8"/></svg><svg class="ico-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.4 12.2 8l-6.7 4.6z"/></svg></button>
-        <span class="turn-badge">
-          <b id="turn-value">1 JAN 1836</b>
-          <span class="turn-row">
-            <span class="time-controls" role="group" aria-label="Game speed">
-              <button class="time-btn time-notch" data-speed="1" aria-label="Normal speed" data-tip="time" data-tip-arg="1"><i></i></button>
-              <button class="time-btn time-notch" data-speed="2" aria-label="Fast" data-tip="time" data-tip-arg="2"><i></i></button>
-              <button class="time-btn time-notch" data-speed="4" aria-label="Very fast" data-tip="time" data-tip-arg="4"><i></i></button>
-              <button class="time-btn time-notch" data-speed="6" aria-label="Rapid" data-tip="time" data-tip-arg="6"><i></i></button>
-              <button class="time-btn time-notch" data-speed="8" aria-label="Fastest" data-tip="time" data-tip-arg="8"><i></i></button>
-            </span>
-            <small class="turn-status" id="turn-status">Paused</small>
-          </span>
-        </span>
-      </div>
       <button class="icon-btn" id="btn-settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></svg></button>
     </div>
   </header>
@@ -149,6 +130,30 @@
        harita, tümenler, cepheler) ve Navy (denizler, M) — geri kalan kipler
        yanlarında küçük ızgara. Hava gücü sistemi yok; Air düğmesi o gelince
        eklenir (Kerem 2026-10-13: "şimdilik yalnız Army + Navy"). -->
+  <!-- HARİTA KONSOLU: saat + harita kipleri, sağ altta tek sütun. Saat üst
+       çubuğun sağındaydı; oyuncu orayı sevmedi. Victoria 3 düzeni: zamanla
+       haritanın kipi aynı elin altında, üst çubuğun sağında yalnız menü kalır
+       ve orta grup ekranda ortalanır. Konsolun boyu hud.js'te ölçülür
+       (--mm-h): zil, lejant ve katman menüsü onun üstüne dizilir. -->
+  <div class="map-console" id="map-console">
+    <div class="clock-dock">
+      <div class="turn-control" id="turn-control">
+        <button class="time-btn time-pause active" id="btn-pause" aria-label="Pause or resume" data-tip="time" data-tip-arg="0"><svg class="ico-pause" viewBox="0 0 16 16" aria-hidden="true"><path class="bar" d="M5.8 4v8M10.2 4v8"/></svg><svg class="ico-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.4 12.2 8l-6.7 4.6z"/></svg></button>
+        <span class="turn-badge">
+          <b id="turn-value">1 JAN 1836</b>
+          <span class="turn-row">
+            <span class="time-controls" role="group" aria-label="Game speed">
+              <button class="time-btn time-notch" data-speed="1" aria-label="Normal speed" data-tip="time" data-tip-arg="1"><i></i></button>
+              <button class="time-btn time-notch" data-speed="2" aria-label="Fast" data-tip="time" data-tip-arg="2"><i></i></button>
+              <button class="time-btn time-notch" data-speed="4" aria-label="Very fast" data-tip="time" data-tip-arg="4"><i></i></button>
+              <button class="time-btn time-notch" data-speed="6" aria-label="Rapid" data-tip="time" data-tip-arg="6"><i></i></button>
+              <button class="time-btn time-notch" data-speed="8" aria-label="Fastest" data-tip="time" data-tip-arg="8"><i></i></button>
+            </span>
+            <small class="turn-status" id="turn-status">Paused</small>
+          </span>
+        </span>
+      </div>
+    </div>
   <div class="map-modes" id="map-modes">
     <div class="mm-primary">
       <button class="mode-btn mm-big active" data-mode="political" aria-label="Army map" data-tip="mapmode" data-tip-arg="political"><svg viewBox="0 0 16 16"><path d="M2.6 2.6 10.9 10.9M9.3 12.5l3.2-3.2M10.9 10.9l2.5 2.5M13.4 2.6 5.1 10.9M3.5 9.3l3.2 3.2M5.1 10.9l-2.5 2.5"/></svg><span>Army</span></button>
@@ -169,6 +174,7 @@
       <button class="mode-btn" data-mode="infamy" aria-label="Infamy map" data-tip="mapmode" data-tip-arg="infamy"><svg viewBox="0 0 16 16"><path d="M8 1.7 9.7 4v5.7H6.3V4zM4.4 9.7h7.2M8 9.7v3.6M6.5 13.4h3"/></svg></button>
       <button class="mode-btn" id="btn-layers" aria-label="Map layers" data-tip="mapmode" data-tip-arg="layers"><svg viewBox="0 0 16 16"><path d="M8 2 14 5.2 8 8.4 2 5.2zM2 8.4 8 11.6l6-3.2M2 11.2 8 14.4l6-3.2"/></svg></button>
     </div>
+  </div>
   </div>
 
   <!-- Lejand çipleri haritadaki gerçek tonlarla aynı doygunlukta olmalı;
