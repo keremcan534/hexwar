@@ -194,7 +194,7 @@ export class NavyDock {
     // zilini ve Assign kartının köşesini örtüyordu (ölçüldü).
     const me = this.root.getBoundingClientRect();
     let floor = window.innerHeight;
-    for (const id of ['map-console', 'notify-stack', 'command-dock']) {
+    for (const id of ['map-modes', 'notify-stack', 'command-dock']) {
       const r = document.getElementById(id)?.getBoundingClientRect();
       if (r?.height && r.right > me.left && r.left < me.right && r.top > me.top) floor = Math.min(floor, r.top);
     }

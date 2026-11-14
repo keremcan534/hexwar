@@ -145,7 +145,7 @@ export class BattlePanel {
     if (this.root.hidden) return;
     const me = this.root.getBoundingClientRect();
     let floor = window.innerHeight;
-    for (const id of ['command-dock', 'command-tools', 'notify-stack', 'map-console']) {
+    for (const id of ['command-dock', 'command-tools', 'notify-stack', 'map-modes']) {
       const r = document.getElementById(id)?.getBoundingClientRect();
       if (r?.height && r.right > me.left && r.left < me.right && r.top > me.top) floor = Math.min(floor, r.top);
     }

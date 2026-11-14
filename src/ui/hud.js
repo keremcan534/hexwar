@@ -628,7 +628,6 @@ export class Hud {
     window.addEventListener('pointercancel', release);
     this.bindCommandDock();
     this.trackHeaderHeight();
-    this.trackMapConsole();
     // HOI4'teki ülke bayrağı gibi ulusal durum panelini açar.
     $('nation-badge').onclick = () => this.screens.toggle('nation');
 
@@ -772,27 +771,6 @@ export class Hud {
    * tarayıcıda yeniden hesaplanmadığı için düzen ancak sayfa yenilenince
    * toparlanıyordu. ResizeObserver ölçüyü her durumda doğru tutar.
    */
-  /**
-   * Harita konsolu (saat + kipler) sağ altta; boyu kip kutusunun sarmasına ve
-   * saatin durum yazısına göre değişir. Zil, lejant ve katman menüsü
-   * `--mm-h` ile onun üstüne dizilir: sabit 68 px saat gelince tutmazdı.
-   */
-  trackMapConsole() {
-    const box = document.getElementById('map-console');
-    if (!box) return;
-    const rootStyle = document.documentElement.style;
-    const apply = () => {
-      const rect = localRect(box);
-      if (!rect.height) return;
-      rootStyle.setProperty('--mm-h', `${Math.round(rect.height)}px`);
-      // Komuta rıhtımı konsolun soluna kadar uzanır (styles.css --mm-w).
-      rootStyle.setProperty('--mm-w', `${Math.round(rect.width)}px`);
-    };
-    apply();
-    if (typeof ResizeObserver === 'function') new ResizeObserver(() => apply()).observe(box);
-    onUiScale(() => requestAnimationFrame(apply));
-  }
-
   trackHeaderHeight() {
     const header = document.querySelector('.hud-header');
     const screen = document.querySelector('.screen');
