@@ -16,6 +16,7 @@
 import { activeAlerts } from '../game/alerts.js';
 import { EVENT_TIMEOUT, pendingCards } from '../game/eventCards.js';
 import { gameDate, onEscape } from './hud.js';
+import { glyph } from './icons/glyphs.js';
 import { localRect } from './uiScale.js';
 
 /** Bekleyen karar düğmesinin mühürlü mektubu (16'lık ızgara, şeritle aynı çizgi). */
