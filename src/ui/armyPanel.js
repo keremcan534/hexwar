@@ -33,6 +33,7 @@ import { transportRiskAt, zoneStatus } from '../game/navy.js';
 import { formatPopulation } from '../game/economy.js';
 import { subayPortresi } from './icons/subaylar.js';
 import { traitArt } from './icons/art.js';
+import { glyph } from './icons/glyphs.js';
 import { esc, tipAttr } from './kit.js';
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
@@ -264,7 +265,7 @@ function frontHtml(game, me, units) {
       <div class="ap-plan">
         <span class="ap-plan-meter"${tipAttr({ text: `Planning ${Math.round(ready * 100)}%\nAttacks gain from planning; each assault spends some of it.` })}><i style="width:${(ready * 100).toFixed(0)}%"></i></span>
         <b>${Math.round(ready * 100)}%</b>
-        <button class="ap-btn ${attack ? 'danger' : 'go'}" type="button" data-command-stance="${general.id}"${tipAttr({ text: attack ? 'Halt the offensive. Accumulated planning is lost; the army regroups. Key: O' : 'Start the offensive: divisions advance along the front. Planning carries into the attack. Key: O' })}>${attack ? '■ Halt' : '➤ Offensive'}</button>
+        <button class="ap-btn ${attack ? 'danger' : 'go'}" type="button" data-command-stance="${general.id}"${tipAttr({ text: attack ? 'Halt the offensive. Accumulated planning is lost; the army regroups. Key: O' : 'Start the offensive: divisions advance along the front. Planning carries into the attack. Key: O' })}>${attack ? `${glyph('halt', 'inline')} Halt` : `${glyph('advance', 'inline')} Offensive`}</button>
       </div>
     </section>`;
 }

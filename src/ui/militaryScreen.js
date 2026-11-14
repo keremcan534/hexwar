@@ -135,7 +135,7 @@ function leaderRow(leader, selected) {
   // dogru durum her subayin kendi satirinda durursa celiski kalmaz.
   const stance = leader.branch === 'navy' || !leader.divisions ? ''
     : `<em class="mil-stance ${leader.stance === 'advance' ? 'hot' : ''}">${
-      leader.stance === 'advance' ? '➤ adv' : '■ hold'}</em>`;
+      leader.stance === 'advance' ? `${glyph('advance', 'inline')} adv` : `${glyph('halt', 'inline')} hold`}</em>`;
   return `<button class="mil-leader ${selected ? 'is-open' : ''} ${leader.divisions ? '' : 'is-idle'}"
     data-military-leader="${leader.id}"
     title="${esc(`${leader.rank} ${leader.name} — ${traits}`)}">
@@ -258,7 +258,7 @@ function mobilizationRow(m, leveeArming = false) {
 ${note}${depot}` })}>
     <div class="mil-reserve-head"><small>Reserve</small><em>${esc(status)}</em>${ready}</div>
     <button class="mil-btn mil-big ${m.active ? 'on' : 'primary'}" data-military-mobilize
-      ${!m.active && m.blockers.length ? 'disabled' : ''}>${m.active ? '■ Demobilize the reserve' : '⚑ Mobilize the reserve'}</button>
+      ${!m.active && m.blockers.length ? 'disabled' : ''}>${m.active ? `${glyph('halt', 'inline')} Demobilize the reserve` : `${glyph('flag', 'inline')} Mobilize the reserve`}</button>
     ${leveeRow(m.levee, leveeArming)}
   </div>`;
 }
@@ -305,9 +305,9 @@ ${note}` })}>
       ${branch === 'navy' ? '' : `<div class="mil-theater" role="group" aria-label="All commands">
         <small>All commands</small>
         <button class="mil-btn" data-military-all-stance="advance"
-          title="Order every army command to advance. One click instead of one per general; individual commands can still be overridden.">➤ Advance</button>
+          title="Order every army command to advance. One click instead of one per general; individual commands can still be overridden.">${glyph('advance', 'inline')} Advance</button>
         <button class="mil-btn" data-military-all-stance="hold"
-          title="Order every army command to hold its front.">■ Hold</button>
+          title="Order every army command to hold its front.">${glyph('halt', 'inline')} Hold</button>
       </div>${mobilizationRow(mobilization, state.leveeConfirm)}`}
       <button class="mil-btn wide" data-military-train="${branch}" ${canTrain ? '' : 'disabled'}
         title="${esc(canTrain

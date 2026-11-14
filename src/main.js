@@ -33,6 +33,16 @@ import { materials } from './render/textures.js';
   root.setProperty('--map-grain', `url("${mat.filmGrain.toDataURL('image/png')}")`);
 }
 
+// ?skin=0: kaplamasız açılış. Malzeme değişikliği "daha iyi mi" diye ancak
+// aynı oyunda yan yana bakılarak tartılır; katman tek kuraldan söküldüğü için
+// taban görünüm birebir geri gelir (bkz. index.html #css-cascade, skin.css).
+if (new URLSearchParams(location.search).get('skin') === '0') {
+  const sheet = document.getElementById('css-cascade')?.sheet;
+  const rules = sheet ? [...sheet.cssRules] : [];
+  const at = rules.findIndex((rule) => rule instanceof CSSImportRule && rule.href.endsWith('skin.css'));
+  if (at >= 0) sheet.deleteRule(at);
+}
+
 const canvas = document.getElementById('map');
 const game = new Game(canvas);
 const hud = new Hud(game);

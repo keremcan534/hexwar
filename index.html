@@ -10,11 +10,18 @@
   <!-- Yazı tipleri yerel (src/fonts.css); ilk karede gereken iki dosya önden. -->
   <link rel="preload" as="font" type="font/woff2" href="assets/fonts/sourcesans3/sourcesans3-latin.woff2" crossorigin />
   <link rel="preload" as="font" type="font/woff2" href="assets/fonts/ebgaramond/ebgaramond-latin.woff2" crossorigin />
-  <link rel="stylesheet" href="src/fonts.css" />
-  <link rel="stylesheet" href="src/styles.css" />
-  <link rel="stylesheet" href="src/overview.css" />
-  <link rel="stylesheet" href="src/ui/frontPlates.css" />
-  <link rel="stylesheet" href="src/diplomacy.css" />
+  <!-- Stil sırası katmanlıdır: taban dosyalar kendi aralarında eski sırayla
+       çalışır, kaplama (src/skin.css) onların seçici gücüne bakmadan kazanır.
+       Düğme ve panel malzemesi böylece tek dosyadan değişir (bkz. skin.css). -->
+  <style id="css-cascade">
+    @layer base, skin;
+    @import url('src/fonts.css') layer(base);
+    @import url('src/styles.css') layer(base);
+    @import url('src/overview.css') layer(base);
+    @import url('src/ui/frontPlates.css') layer(base);
+    @import url('src/diplomacy.css') layer(base);
+    @import url('src/skin.css') layer(skin);
+  </style>
 </head>
 <body>
   <!-- Hibrit su: WebGL2 katmanı haritanın ALTINDA. Canvas2D deniz karelerini
@@ -238,7 +245,7 @@
       <select class="command-target" id="command-target" title="Choose the nation whose border this command holds">
         <option value="">All active fronts</option>
       </select>
-      <button class="tool-btn" id="btn-offensive" title="Toggle the offensive: divisions advance along the front. Key: O">➤ Offensive</button>
+      <button class="tool-btn" id="btn-offensive" title="Toggle the offensive: divisions advance along the front. Key: O">Offensive</button>
       <span class="tool-sep"></span>
       <span class="tool-label">Stance</span>
       <button class="tool-btn stance" data-stance="1" title="Careful: attacks rarely and only with a clear advantage (2.0 : 1)">Careful</button>

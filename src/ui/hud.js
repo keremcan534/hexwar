@@ -1226,7 +1226,7 @@ export class Hud {
       const offensive = $('btn-offensive');
       const running = game.offensiveActive();
       offensive.classList.toggle('active', running);
-      offensive.textContent = running ? '■ Halt' : '➤ Offensive';
+      offensive.innerHTML = running ? `${glyph('halt', 'inline')} Halt` : `${glyph('advance', 'inline')} Offensive`;
       const target = $('command-target');
       const borderIds = new Set(borderNationIds(game.world, me.id));
       if (active.target != null) borderIds.add(active.target);

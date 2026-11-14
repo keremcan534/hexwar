@@ -24,6 +24,10 @@ Mimari ve tasarım kararları için [README.md](README.md).
 - Çizimi değiştiren her şey `renderer.invalidateCache()` istemeli, yoksa uzak
   zoomda eski görüntü kalır.
 - Sürekli `requestAnimationFrame` döngüsü açma; `game.requestRender()` kullan.
+- Arayüzün malzemesi (panel, düğme, yuva, ölçek, sekme) `src/skin.css`'tedir;
+  `index.html` taban stilleri `base`, onu `skin` katmanına alır. Yeni düğme
+  sınıfı açma: oradaki aile listesine ekle ve bütün hâllerini (seçili, onay,
+  kapalı) yaz. Kaplamasız karşılaştırma: `?skin=0`.
 - Yazı tipleri yereldir: EB Garamond ("HW Display") + Source Sans 3 ("HW UI"),
   `assets/fonts/` (OFL), `src/fonts.css`. Tuvalde aile adı elle yazılmaz,
   `src/render/fonts.js` sabitleri kullanılır; yoksa harita eski fontta kalır.

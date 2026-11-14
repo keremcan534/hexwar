@@ -1,0 +1,406 @@
+/* ==========================================================================
+   KAPLAMA (skin) — arayüzün MALZEMESİ tek dosyada.
+
+   Neden ayrı dosya: düğme ve panel görünümü 17 bin satırlık styles.css'e
+   ekran ekran dağılmıştı (adında btn/button geçen 18 sınıf, 1047 ayrı renk
+   değeri). Her ekran kendi düğmesini çizdiği için oyun "web sayfası" gibi
+   okunuyordu. Burada yalnız malzeme tanımlıdır: yüzey, kenar ışığı, gölge,
+   yazı rengi. Boy, aralık ve yerleşim styles.css'te kalır.
+
+   Neden katman: index.html stil dosyalarını `base` katmanına, bu dosyayı
+   `skin` katmanına alır. Katman sırası seçici gücünden önce gelir; kaplama
+   `.screen .mil .mil-tabs button` gibi ağır taban seçicilerini !important
+   olmadan geçer. Bedeli: kaplanan bir sınıfın BÜTÜN hâlleri
+   (seçili, onay, kapalı) burada da yazılmalı, yoksa taban hâli ezilir.
+
+   Tek kural: TIKLANAN ŞEY KABARIK, İÇERİK YUVASI ÇUKUR. Düğme ve karar
+   kartı ışığı üstten alır; yasa kartı, parti satırı, birlik satırı panele
+   oyulmuş yuvadır. Göz neye basılacağını yüzeyden okur.
+
+   Üç düğme rolü (§69 LS-08 ile aynı anlam):
+     olağan  — koyu metal yüz, ince pirinç kıl.
+     seçili / birincil — yanan pirinç yüz, koyu mürekkep yazı.
+     tehlike — kırmızı vernik; onayı kırmızı, olağan onay kehribar.
+   Karşılaştırma için kaplamasız açılış: ?skin=0 (bkz. main.js).
+   ========================================================================== */
+
+:root {
+  --sk-ink: #070a0b;
+  --sk-brass-hi: #f1d99c;
+  --sk-brass: #c9a35a;
+  --sk-brass-mid: #94733a;
+  --sk-brass-lo: #5a4320;
+  --sk-text: #ece3cd;
+  --sk-text-2: #bdb4a0;
+  --sk-dark-ink: #1c1306;
+
+  /* Yüzeyler. Paneller neredeyse opak: ekran fotoğrafı yalnız panel
+     aralarında görünür, yazının altında yarışmaz. */
+  --sk-panel: linear-gradient(180deg, rgba(27, 35, 39, 0.96) 0%, rgba(18, 25, 28, 0.96) 55%, rgba(12, 18, 20, 0.97) 100%);
+  --sk-well: linear-gradient(180deg, rgba(7, 11, 12, 0.94), rgba(13, 18, 20, 0.94));
+  --sk-plate: url('../assets/ui/skin/levha.svg'), linear-gradient(180deg, #2b3337, #1a2124);
+
+  /* Düğme yüzleri: ortada kırılan iki ton = silindirik metal. */
+  --sk-face: linear-gradient(180deg, #363e41 0%, #252c2f 48%, #1b2124 52%, #151b1d 100%);
+  --sk-face-lit: linear-gradient(180deg, #f0d48f 0%, #c9a35a 45%, #a9843f 55%, #7d5f2a 100%);
+  --sk-face-danger: linear-gradient(180deg, #7d3324 0%, #5c2117 50%, #44160f 100%);
+  --sk-face-danger-hot: linear-gradient(180deg, #b0452f 0%, #852c1d 50%, #631f14 100%);
+  --sk-face-amber: linear-gradient(180deg, #9a7128 0%, #6e5014 50%, #4f390c 100%);
+
+  /* Kenar ışığı: dış siyah hat + pirinç kıl + üst ışık + düşen gölge. */
+  --sk-ring: 0 0 0 1px #000, inset 0 0 0 1px rgba(201, 163, 90, 0.45),
+    inset 0 1px 0 1px rgba(255, 236, 190, 0.16), 0 2px 3px rgba(0, 0, 0, 0.6);
+  --sk-ring-hover: 0 0 0 1px #000, inset 0 0 0 1px var(--sk-brass-hi),
+    inset 0 1px 0 1px rgba(255, 236, 190, 0.25), 0 0 10px rgba(201, 163, 90, 0.25), 0 2px 3px rgba(0, 0, 0, 0.6);
+  --sk-ring-press: 0 0 0 1px #000, inset 0 0 0 1px rgba(201, 163, 90, 0.5), inset 0 2px 5px rgba(0, 0, 0, 0.7);
+  --sk-ring-lit: 0 0 0 1px #000, inset 0 1px 0 rgba(255, 250, 225, 0.7),
+    inset 0 -2px 0 rgba(0, 0, 0, 0.25), 0 0 12px rgba(201, 163, 90, 0.3), 0 2px 3px rgba(0, 0, 0, 0.6);
+  --sk-ring-danger: 0 0 0 1px #000, inset 0 0 0 1px rgba(232, 150, 120, 0.45),
+    inset 0 1px 0 1px rgba(255, 200, 170, 0.15), 0 2px 3px rgba(0, 0, 0, 0.6);
+  --sk-ring-amber: 0 0 0 1px #000, inset 0 0 0 1px #e7b65a, 0 0 12px rgba(231, 182, 90, 0.45), 0 2px 3px rgba(0, 0, 0, 0.6);
+  --sk-ring-off: 0 0 0 1px #000, inset 0 0 0 1px rgba(201, 163, 90, 0.16);
+  --sk-raise: 0 0 0 1px var(--sk-ink), inset 0 0 0 1px rgba(201, 163, 90, 0.36),
+    inset 0 1px 0 1px rgba(255, 232, 180, 0.08), 0 3px 6px rgba(0, 0, 0, 0.55);
+  --sk-sink: 0 0 0 1px rgba(201, 163, 90, 0.16), inset 0 0 0 1px #000, inset 0 2px 6px rgba(0, 0, 0, 0.75);
+}
+
+/* ==========================================================================
+   1. YÖNETİM PENCERESİ — köşe süsleri. Çerçeve halkaları tabanda (.screen
+      box-shadow); burada yalnız dört pirinç köşe eklenir.
+   ========================================================================== */
+#screen.screen::after {
+  content: "";
+  position: absolute;
+  inset: 2px;
+  z-index: 4;
+  pointer-events: none;
+  background:
+    url('../assets/ui/skin/kose-sol-ust.svg') top left / 34px no-repeat,
+    url('../assets/ui/skin/kose-sag-ust.svg') top right / 34px no-repeat,
+    url('../assets/ui/skin/kose-sol-alt.svg') bottom left / 34px no-repeat,
+    url('../assets/ui/skin/kose-sag-alt.svg') bottom right / 34px no-repeat;
+}
+
+/* ==========================================================================
+   2. PANEL — kabarık levha.
+   ========================================================================== */
+.k-panel,
+.screen .mil .mil-col,
+.tech-inspector,
+.tq-queue {
+  border: 0;
+  border-radius: 3px;
+  background: var(--ui-grain), var(--sk-panel);
+  box-shadow: var(--sk-raise);
+}
+/* Tabanın köşe çentikleri levhanın kendi kenar ışığıyla yarışıyordu. */
+.k-panel::after { background: none; }
+
+/* Panel başlığı: fırçalanmış metal plaka, altında pirinç çizgi. */
+.k-head,
+.screen .mil .mil-band,
+.screen .mil .mil-viewbar {
+  border: 0;
+  border-image: none;
+  border-radius: 3px 3px 0 0;
+  background:
+    linear-gradient(90deg, rgba(201, 163, 90, 0.85), rgba(201, 163, 90, 0.25) 70%, rgba(201, 163, 90, 0)) bottom / 100% 1px no-repeat,
+    var(--sk-plate);
+  box-shadow: inset 0 1px 0 rgba(255, 236, 190, 0.12), 0 1px 0 #000;
+}
+.k-head h3,
+.screen .mil .mil-band {
+  color: var(--sk-brass-hi);
+  text-shadow: 0 1px 0 #000, 0 0 12px rgba(201, 163, 90, 0.25);
+}
+.k-head small,
+.k-head-r { color: var(--sk-text-2); }
+/* Askerî ekranın sütun başlıkları da aynı yazıyla: eskiden öteki ekranlar
+   serif başlık, bu ekran 11 px düz versal kullanıyordu (iki ayrı dil). */
+.screen .mil .mil-band {
+  padding: 8px 10px 9px;
+  font-family: var(--font-display);
+  font-size: 14.5px;
+  font-weight: 400;
+  letter-spacing: 0.05em;
+}
+/* 300 px'lik sağ sütunda (1366/1280) başlık + sayaç sığmalı: 15.5 px'te
+   sütunu 18 px genişletiyordu (yerleşim sondası). */
+@media (max-width: 1599px) {
+  .screen .mil .mil-band { font-size: 13.5px; letter-spacing: 0.03em; }
+}
+
+/* ==========================================================================
+   3. GÖSTERGE KARTI (KPI) — madalyon yuvası.
+   ========================================================================== */
+.k-kpi {
+  border: 0;
+  border-radius: 3px;
+  background: var(--ui-grain), var(--sk-panel);
+  box-shadow: var(--sk-raise);
+}
+.k-kpi::before, .k-kpi::after { display: none; }
+.k-kpi[data-tip]:hover { box-shadow: var(--sk-ring-hover); }
+.k-kpi-ico:has(> .art) {
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, #263035, #0a0e10 70%);
+  box-shadow: 0 0 0 1px #000, 0 0 0 3px var(--sk-brass-mid), 0 0 0 4px #000,
+    inset 0 3px 8px rgba(0, 0, 0, 0.9), 0 4px 8px rgba(0, 0, 0, 0.6);
+}
+.k-kpi-body small { color: var(--sk-brass); }
+.k-kpi-body b { color: var(--sk-text); text-shadow: 0 2px 0 #000; }
+.k-kpi.hero .k-kpi-body b { color: var(--sk-brass-hi); }
+.k-kpi-body em { color: var(--sk-text-2); }
+.k-kpi-meter { background: #000; box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05); }
+
+/* ==========================================================================
+   4. YUVA — panele oyulmuş içerik: yasa, parti, koltuk, pazar, birlik.
+   ========================================================================== */
+.k-law,
+.k-party,
+.k-seat,
+.k-mkt,
+.k-agenda,
+.k-pill,
+.screen .mil .mil-unit {
+  border-color: transparent;
+  border-radius: 3px;
+  background: var(--ui-grain), var(--sk-well);
+  box-shadow: var(--sk-sink);
+}
+/* Parti rengi şeridi satır içi stilden gelir; yuvanın gölgesi onu örtmesin. */
+.k-party > .k-party-color { box-shadow: 0 0 6px currentColor; }
+
+/* Yasa ikonu da madalyonda: kartlar arasında göz aynı yerden başlasın. */
+.k-law-art:has(> .art) {
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 35%, #263035, #0a0e10 70%);
+  box-shadow: 0 0 0 1px #000, 0 0 0 2px var(--sk-brass-mid), 0 0 0 3px #000, inset 0 3px 8px rgba(0, 0, 0, 0.9);
+}
+
+/* ==========================================================================
+   5. DÜĞME — üç rol, bütün aileler. Aile listesi bilerek tek yerde:
+      yeni bir düğme sınıfı açmak yerine buraya eklenir.
+
+      Bütün kurallar :where() içinde, yani seçici gücü SIFIR: hâller yalnız
+      bu bölümdeki SIRAYLA çözülür (olağan < üstünde < basılı < seçili <
+      tehlike < onay < kapalı < kapalı-seçili). Listede #settings gibi bir
+      kimlik olduğu için :is() kullanılsaydı olağan kural seçili, tehlike ve
+      onay hâllerini ezerdi (ölçüldü: yürürlükteki yasa sönük görünüyordu).
+   ========================================================================== */
+:where(.k-btn, .k-seg-b, .mil-btn, .mil-tabs > button, .mil-views > button,
+    .pl-pb, .ap-btn:not(.quiet), .tool-btn, .md-act, .md-stance, .wd-dip, .np-play,
+    #settings .action, #settings .primary) {
+  border-color: transparent;
+  border-radius: 3px;
+  background: var(--sk-face);
+  box-shadow: var(--sk-ring);
+  color: var(--sk-text);
+  font-weight: 600;
+  text-shadow: 0 1px 0 #000;
+  text-transform: none;
+  transition: filter 120ms ease, box-shadow 120ms ease, transform 60ms ease;
+}
+:where(:is(.k-btn, .k-seg-b, .mil-btn, .mil-tabs > button, .mil-views > button,
+    .pl-pb, .ap-btn:not(.quiet), .tool-btn, .md-act, .md-stance, .wd-dip, .np-play,
+    #settings .action, #settings .primary) :is(b, small, em, kbd)) { color: inherit; }
+:where(:is(.k-btn, .k-seg-b, .mil-btn, .mil-tabs > button, .mil-views > button,
+    .pl-pb, .ap-btn:not(.quiet), .tool-btn, .md-act, .md-stance, .wd-dip, .np-play,
+    #settings .action, #settings .primary):hover:not(:disabled)) {
+  border-color: transparent;
+  box-shadow: var(--sk-ring-hover);
+  color: #fff6e0;
+  filter: brightness(1.18);
+  transform: none;
+}
+:where(:is(.k-btn, .k-seg-b, .mil-btn, .mil-tabs > button, .mil-views > button,
+    .pl-pb, .ap-btn:not(.quiet), .tool-btn, .md-act, .md-stance, .wd-dip, .np-play,
+    #settings .action, #settings .primary):active:not(:disabled)) {
+  box-shadow: var(--sk-ring-press);
+  filter: brightness(0.95);
+  transform: translateY(1px);
+}
+:where(:is(.k-btn, .k-seg-b, .mil-btn, .mil-tabs > button, .mil-views > button,
+    .pl-pb, .ap-btn:not(.quiet), .tool-btn, .md-act, .md-stance, .wd-dip, .np-play,
+    #settings .action, #settings .primary):focus-visible) {
+  outline: 2px solid var(--sk-brass-hi);
+  outline-offset: 2px;
+}
+
+/* Seçili / birincil: yanan pirinç. Üstüne gelince yalnız parlar (filtre
+   olağan kuraldan gelir), rengi değişmez. */
+:where(.k-btn.on, .k-btn.primary, .k-seg-b.on, .mil-btn.primary, .mil-btn.on,
+    .mil-tabs > button.active, .mil-views > button.active,
+    .pl-pb.on, .ap-btn.primary, .ap-btn.on, .ap-btn.go, .tool-btn.active,
+    .md-stance.on, .np-play, #settings .primary) {
+  background: var(--sk-face-lit);
+  box-shadow: var(--sk-ring-lit);
+  color: var(--sk-dark-ink);
+  text-shadow: 0 1px 0 rgba(255, 240, 200, 0.45);
+}
+
+/* Tehlike: kırmızı vernik. */
+:where(:is(.k-btn, .mil-btn, .action, .ap-btn:not(.quiet)).danger) {
+  background: var(--sk-face-danger);
+  box-shadow: var(--sk-ring-danger);
+  color: #ffd9cc;
+}
+
+/* Kurulu onay (ikinci tık bekleniyor). Olağan onay kehribar, tehlikeli onay
+   kırmızı dolar: geri dönüşü olmayan eylemde renk uyarıyı taşır. */
+:where(:is(.k-btn, .k-seg-b, .mil-btn, .action).confirming) {
+  background: var(--sk-face-amber);
+  box-shadow: var(--sk-ring-amber);
+  color: #fff1cf;
+}
+:where(:is(.k-btn, .mil-btn, .action).danger.confirming) {
+  background: var(--sk-face-danger-hot);
+  box-shadow: 0 0 0 1px #000, inset 0 0 0 1px #ff9b84, 0 0 14px rgba(224, 85, 63, 0.55), 0 2px 3px rgba(0, 0, 0, 0.6);
+  color: #fff0ea;
+}
+
+/* Kapalı: söner ama okunur kalır (neden kapalı olduğu bilgi kartında). */
+:where(:is(.k-btn, .k-seg-b, .mil-btn, .mil-tabs > button, .mil-views > button,
+    .pl-pb, .ap-btn:not(.quiet), .tool-btn, .md-act, .md-stance, .wd-dip, .np-play,
+    #settings .action, #settings .primary):disabled) {
+  background: linear-gradient(180deg, #1e2427, #14191b);
+  box-shadow: var(--sk-ring-off);
+  color: #8a8f8d;
+  filter: none;
+  opacity: 1;
+  text-shadow: none;
+}
+/* Kapalı ama seçili: yürürlükteki seçenek. Kit onu HEP kapalı yazar (aynı
+   yasa yeniden seçilmez, bkz. kit.js segmented); "kapalı" burada "zaten
+   yürürlükte" demektir, yani tam yanık pirinç kalır. */
+:where(:is(.k-btn.on, .k-seg-b.on, .pl-pb.on, .md-stance.on):disabled) {
+  background: var(--sk-face-lit);
+  box-shadow: 0 0 0 1px #000, inset 0 1px 0 rgba(255, 250, 225, 0.6), inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+  color: var(--sk-dark-ink);
+  filter: none;
+  text-shadow: 0 1px 0 rgba(255, 240, 200, 0.45);
+}
+
+/* Bölünmüş kontrol (yasa seçenekleri): düzensiz sarma yerine eşit ızgara.
+   Eskiden dört seçenekten biri alt satırda tek başına kalıyordu. */
+.k-seg { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px; }
+.k-seg > .k-seg-b { margin: 0; border-radius: 3px; text-align: center; white-space: normal; line-height: 1.15; }
+.k-seg > .k-seg-b:last-child:nth-child(odd) { grid-column: 1 / -1; }
+/* Bitişik kontrollerde (sekme, öncelik) halkalar üst üste binmesin. Kol
+   süzgeci dar pencerede alta kırılır: aralık ve büyüyen yazı 1366'da sağ
+   sütunu 10 px dışarı itiyordu (yerleşim sondası). */
+.screen .mil .mil-tabs,
+.pl-tiers { gap: 3px; }
+.screen .mil .mil-tabs { flex-wrap: wrap; }
+.screen .mil .mil-tabs > button,
+.pl-tiers > .pl-pb { margin-left: 0; border-radius: 3px; }
+
+/* ==========================================================================
+   6. KARAR / DANIŞMAN KARTI — tıklanan kart da kabarıktır.
+   ========================================================================== */
+:is(.k-dec, .k-cand) {
+  border-color: transparent;
+  background: var(--ui-grain), var(--sk-face);
+  box-shadow: var(--sk-ring);
+}
+:is(.k-dec, .k-cand):hover:not(:disabled) {
+  border-color: transparent;
+  background: var(--ui-grain), var(--sk-face);
+  box-shadow: var(--sk-ring-hover);
+}
+:is(.k-dec, .k-cand):disabled {
+  background: linear-gradient(180deg, #1b2124, #12171a);
+  box-shadow: var(--sk-ring-off);
+}
+
+/* ==========================================================================
+   7. ÖLÇEK — çukur yatak, parlak dolgu. Dolgu rengi tabanın gradyanıdır
+      (pos/neg/party); parlaklık gölgeyle eklenir, rengi ezmez.
+   ========================================================================== */
+.k-meter {
+  border-radius: 4px;
+  background: #050708;
+  box-shadow: inset 0 1px 3px #000, 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+.k-meter > i {
+  border-radius: 4px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.4), inset 0 -2px 0 rgba(0, 0, 0, 0.25);
+}
+
+/* Rozet: hükûmetteki parti gibi durum etiketi, küçük pirinç levha. */
+.k-badge.gold {
+  border-color: transparent;
+  background: linear-gradient(180deg, #e9cb86, #a9843f);
+  box-shadow: 0 0 0 1px #000;
+  color: var(--sk-dark-ink);
+  text-shadow: none;
+}
+
+/* ==========================================================================
+   8. SEKME ŞERİDİ — fırçalanmış plaka; etkin sekme kabarık levha olur ve
+      altındaki pencereye bağlanır. Yalnız malzeme: sekme ölçüleri tabanda
+      kayma olmasın diye ölçülerek sabitlenmiştir (bkz. styles.css .tab-led).
+   ========================================================================== */
+.tab-bar {
+  border-bottom-color: rgba(201, 163, 90, 0.45);
+  background:
+    var(--ui-grain),
+    url('../assets/ui/skin/levha.svg'),
+    linear-gradient(180deg, rgba(30, 37, 40, 0.97) 0%, rgba(12, 17, 19, 0.98) 100%);
+  box-shadow: inset 0 1px rgba(255, 236, 190, 0.08), 0 1px 0 #000, 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+.tab-bar [data-screen] { color: #c4bba6; }
+.tab-bar [data-screen]:hover {
+  background: linear-gradient(180deg, rgba(255, 236, 190, 0.08), rgba(255, 236, 190, 0));
+  color: #fff2d6;
+}
+.tab-bar [data-screen].active {
+  background:
+    linear-gradient(180deg, rgba(240, 212, 143, 0.2), rgba(201, 163, 90, 0.05) 70%, rgba(0, 0, 0, 0)),
+    var(--sk-face);
+  box-shadow: inset 0 0 0 1px rgba(201, 163, 90, 0.5), inset 0 1px 0 1px rgba(255, 236, 190, 0.2);
+  color: #f6e2a8;
+  text-shadow: 0 1px 0 #000;
+}
+
+/* ==========================================================================
+   9. BİLGİ KARTI — panel levhası, opak. Altındaki harita yazının arkasından
+      geçmesin: kart bir sayıyı açıklarken okunurluk her şeyden önce gelir.
+   ========================================================================== */
+.tip-card {
+  border-color: transparent;
+  background: var(--ui-grain), var(--sk-panel), #11181b;
+  background-blend-mode: soft-light, normal, normal;
+  box-shadow: 0 0 0 1px #000, inset 0 0 0 1px rgba(201, 163, 90, 0.38),
+    inset 0 1px 0 1px rgba(255, 236, 190, 0.08), 0 12px 30px rgba(0, 0, 0, 0.65);
+}
+.tip-card:not([data-depth="0"]) { box-shadow: 0 0 0 1px #000, inset 0 0 0 1px rgba(201, 163, 90, 0.55), inset 0 2px 0 rgba(240, 212, 143, 0.35), 0 12px 30px rgba(0, 0, 0, 0.65); }
+
+/* ==========================================================================
+   10. OKUNURLUK — düğme yazısı tek boy, açıklama satırı en az 12 px.
+       Üst çubuk ve sekme yuvaları BİLEREK dışarıda: genişlikleri kaymasın
+       diye piksel ölçüsüyle sabitlenmiştir (styles.css .tab-led, üst çubuk).
+   ========================================================================== */
+:root {
+  /* İkincil metin bir kademe açık: 11-12 px gri yazı koyu levhada
+     zor okunuyordu (5.8:1 -> ~7:1). Kapalı/süs rengi (--text-faint) aynı. */
+  --text-dim: #aba491;
+  --text-mute: #aba491;
+}
+:where(.k-btn, .k-seg-b, .pl-pb, .ap-btn, .tool-btn, .md-act, .md-stance, .wd-dip,
+       .mil-tabs > button, .mil-views > button) {
+  font-size: 12.5px;
+}
+/* Panel başlığının altyazısı ve karar açıklaması bilerek dışarıda: tek
+   satıra/iki satıra kırpılırlar, 12 px'te 1366'da yeni "…" çıkıyordu
+   (yerleşim sondası). Onlar yalnız açılan renkten yararlanır. */
+:where(.k-kpi-body em, .k-law-head small, .k-cand small, .k-prow-share small,
+       .k-prow-where small, .k-wrow-name small, .ec-dvgain small, .dip-threat) {
+  font-size: 12px;
+}
+/* Düğmedeki çizgi ikon yazının rengini alır: yanan pirinçte koyu, olağanda açık. */
+:where(:is(.k-btn, .k-seg-b, .mil-btn, .mil-tabs > button, .mil-views > button,
+    .pl-pb, .ap-btn:not(.quiet), .tool-btn, .md-act, .md-stance, .wd-dip, .np-play,
+    #settings .action, #settings .primary) .glyph) { color: inherit; }
