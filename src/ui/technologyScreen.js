@@ -39,6 +39,7 @@ export function defaultInspect(nation) {
 import { UNIT_TYPES } from '../game/units.js';
 import { describeEffects, mod } from '../game/modifiers.js';
 import { isDelegated } from '../game/delegation.js';
+import { glyph } from './icons/glyphs.js';
 import { badge, chain, kpi, kpiRow, num, tipAttr } from './kit.js';
 import { END_YEAR, START_YEAR } from '../game/calendar.js';
 
@@ -162,8 +163,8 @@ export function techInspector(nation, techId, view) {
   const effects = describeEffects(tech.effects).map((line) => {
     const [value, ...label] = line.split(' ');
     const signed = /^[+−]/.test(value);
-    return `<div class="tq-eff"><b class="${value.startsWith('−') ? 'neg' : 'pos'}">${signed ? esc(value) : '◆'}</b><span>${esc(signed ? label.join(' ') : line)}</span></div>`;
-  }).join('') + (tech.unlocks ? `<div class="tq-eff"><b class="pos">◆</b><span>${esc(unlockLine(tech))} — a new arm, with its own production line</span></div>` : '');
+    return `<div class="tq-eff"><b class="${value.startsWith('−') ? 'neg' : 'pos'}">${signed ? esc(value) : glyph('diamond', 'ctl')}</b><span>${esc(signed ? label.join(' ') : line)}</span></div>`;
+  }).join('') + (tech.unlocks ? `<div class="tq-eff"><b class="pos">${glyph('diamond', 'ctl')}</b><span>${esc(unlockLine(tech))} — a new arm, with its own production line</span></div>` : '');
 
   const costChain = factors && state !== 'done' ? chain(
     { label: 'Base', value: factors.base, text: String(factors.base) },
@@ -202,7 +203,7 @@ export function techInspector(nation, techId, view) {
     <span class="tq-meta">${statusBadge}<b>${tech.year}</b>${early ? `<em class="early">${factors.earlyYears} years early</em>` : ''}</span>
     ${tech.desc ? `<p class="tq-desc">${esc(tech.desc)}</p>` : ''}
     <div class="tq-sec"><small>Effects</small>${effects || '<p class="tq-note">No direct effect.</p>'}</div>
-    ${state !== 'done' && view.firstOpen?.(tech.id) ? `<p class="tq-first"${tipAttr({ text: `First in the world\nNo nation has this yet. Whoever completes it first gains ${FIRST_TECH_PRESTIGE} prestige, and prestige counts toward the ${END_YEAR} score.` })}>◆ No one has it yet — first to finish gains +${FIRST_TECH_PRESTIGE} prestige</p>` : ''}
+    ${state !== 'done' && view.firstOpen?.(tech.id) ? `<p class="tq-first"${tipAttr({ text: `First in the world\nNo nation has this yet. Whoever completes it first gains ${FIRST_TECH_PRESTIGE} prestige, and prestige counts toward the ${END_YEAR} score.` })}>${glyph('laurel', 'ctl')} No one has it yet — first to finish gains +${FIRST_TECH_PRESTIGE} prestige</p>` : ''}
     ${costChain ? `<div class="tq-sec"><small>Cost</small>${costChain}
       <p class="tq-note">≈ ${weeksLabel(Math.ceil(left / rate))} at ${num(view.rate, 2)} RP a week${state === 'active' ? ` · ${Math.floor(research.points ?? 0)} / ${cost} done` : ''}</p></div>` : ''}
     ${pathHtml}
@@ -293,7 +294,7 @@ export function technologyScreen(nation, view) {
         const factors = techCostFactors(tech.id, view.year);
         const early = state !== 'done' && factors && factors.earlyYears > 0;
         const effect = unlockLine(tech) || describeEffects(tech.effects, { short: true })[0] || '';
-        const meta = state === 'done' ? `<span class="ok">✓ ${tech.year}</span>`
+        const meta = state === 'done' ? `<span class="ok">${glyph('check', 'ctl')} ${tech.year}</span>`
           : state === 'active' ? `${Math.round(progress * 100)}% · ${weeksLabel(weeksNow)}`
             : early ? `<span class="early">${tech.year} · +${Math.round((factors.early - 1) * 100)}% early</span>`
               : `${tech.year} · ${costOf(tech.id)} RP`;

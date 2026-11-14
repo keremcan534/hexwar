@@ -235,7 +235,7 @@ export class Notifications {
         ${headline}
         <span class="notify-body">${escapeHtml(body)}</span>
       </span>
-      <button class="notify-close" aria-label="Dismiss">✕</button>
+      <button class="notify-close" aria-label="Dismiss">${glyph('close', 'ctl')}</button>
       <i class="notify-timer" aria-hidden="true"></i>`;
 
     card.querySelector('.notify-close').onclick = (event) => {

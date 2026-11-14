@@ -27,6 +27,7 @@ import { depositDevOf, outputBreakdown } from '../game/econ/resources.js';
 import { priceOf } from '../game/econ/trade.js';
 import { CULTURE, unrestBreakdown } from '../game/culture.js';
 import { MOVEMENT } from '../game/movements.js';
+import { glyph } from './icons/glyphs.js';
 import { esc, money, signedMoney } from './kit.js';
 
 const signed = (value, digits = 1) => `${value >= 0 ? '+' : '−'}${Math.abs(value ?? 0).toFixed(digits)}`;
@@ -74,7 +75,7 @@ export function registerStateTooltips(game) {
     return {
       type: 'mechanic',
       title: law.name,
-      text: law.options.map((option, index) => `${index === row?.current ? '▸ ' : ''}<b>${option.name}</b> — ${option.desc}`).join('<br>'),
+      text: law.options.map((option, index) => `${index === row?.current ? `${glyph('chev-right', 'ctl')} ` : ''}<b>${option.name}</b> — ${option.desc}`).join('<br>'),
       footer: `Changing a law costs ${view.lawCost} ${term('power', 'political power')} and locks it for ${LAW_LOCK} weeks.${row?.lock ? ` Locked for ${row.lock} more weeks.` : ''}`,
     };
   });

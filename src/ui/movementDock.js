@@ -18,6 +18,7 @@ import { deport } from '../game/culturePolicy.js';
 import { formatPopulation } from '../game/economy.js';
 import { FINAL_TURN } from '../game/hegemony.js';
 import { END_YEAR } from '../game/calendar.js';
+import { glyph } from './icons/glyphs.js';
 import { money } from './kit.js';
 import { eventArt, movementArt } from './icons/art.js';
 
@@ -101,7 +102,7 @@ export class MovementDock {
         title="${this.collapsed ? 'Show' : 'Hide'} the national movements">
         <span class="md-title">National movements</span>
         <span class="md-count stage-${worst.stage.index}">${live.length}</span>
-        <i class="md-chevron" aria-hidden="true">${this.collapsed ? '▸' : '▾'}</i>
+        <i class="md-chevron" aria-hidden="true">${glyph(this.collapsed ? 'chev-right' : 'chev-down', 'ctl')}</i>
       </button>`;
     this.root.classList.toggle('collapsed', this.collapsed);
     const stance = nationalitiesStance(nation);
@@ -151,7 +152,7 @@ export class MovementDock {
             : eta ? (subject ? `rises ${eta}` : `asks for ${ask} ${eta}`)
               // İlk haftanın kapanışından önce eğilim yoktur: "sönüyor" demek yalan olur.
               : row.trend < -0.01 ? 'fading' : 'steady';
-    const trend = row.trend > 0.05 ? '▲' : row.trend < -0.05 ? '▼' : '■';
+    const trend = glyph(row.trend > 0.05 ? 'up' : row.trend < -0.05 ? 'down' : 'flat', 'ctl');
     const swatch = row.color ? `style="--md-color:${esc(row.color)}"` : '';
     const where = row.provinces.length === 1
       ? esc(row.provinces[0].name ?? '1 state') : `${row.provinces.length} states`;

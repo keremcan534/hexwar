@@ -531,10 +531,12 @@ select:focus-visible {
 }
 
 .nation-text .sep {
-  margin: 0 6px;
-  color: var(--gold-dark);
-  font-size: 7px;
-  font-style: normal;
+  display: inline-block;
+  width: 4px;
+  height: 4px;
+  margin: 0 7px;
+  background: var(--gold-dark);
+  transform: rotate(45deg);
   vertical-align: 2px;
 }
 
@@ -4841,7 +4843,7 @@ body:has(#layer-menu:not(.hidden)) .rgo-map-legend { right: calc(var(--sp-3) + 1
   .turn-badge b { font-size: 21px; }
   .nation-text small,
   .turn-status { font-size: 11px; }
-  .nation-text .sep { margin: 0 4px; }
+  .nation-text .sep { margin: 0 5px; }
   .topbar-right,
   .turn-control { gap: var(--sp-3); }
   .time-btn { width: 27px; height: 27px; }
@@ -10113,8 +10115,11 @@ svg.res-glyph {
 }
 
 .sheet-fold > summary::-webkit-details-marker { display: none; }
-.sheet-fold > summary::after { content: ' ▾'; color: var(--gold); }
-.sheet-fold[open] > summary::after { content: ' ▴'; }
+.sheet-fold > summary::after {
+  content: ''; display: inline-block; width: 5px; height: 5px; margin: 0 0 3px 7px;
+  border: solid var(--gold); border-width: 0 1.5px 1.5px 0; transform: rotate(45deg);
+}
+.sheet-fold[open] > summary::after { margin-bottom: -1px; transform: rotate(-135deg); }
 .sheet-fold > summary:hover { border-color: var(--line-brass); color: var(--text); }
 .sheet-fold[open] > summary { margin-bottom: 3px; color: var(--gold-bright); }
 
@@ -13036,6 +13041,13 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
 /* --- Çizgi ikonlar (ui/icons/glyphs.js) --------------------------------- */
 .glyph { display: inline-block; width: 1.15em; height: 1.15em; flex: none; vertical-align: -0.2em; color: var(--gold-bright); }
 .glyph.inline { width: 1em; height: 1em; margin-right: 1px; }
+/* Denetim glifi (kapat, ok, yıldız, eğilim): simge karakterlerinin yerine
+   geçer, o yüzden yazının rengini ve boyunu alır. Karakterler Windows'ta emoji
+   fontundan renkli geliyordu; çizgi kalınlığı küçük boyda da okunsun diye 2. */
+.glyph.ctl { width: 1.05em; height: 1.05em; vertical-align: -0.16em; color: inherit; stroke-width: 2; }
+.stars { display: inline-flex; gap: 1px; vertical-align: -0.12em; white-space: nowrap; }
+.stars .glyph { width: 1em; height: 1em; vertical-align: 0; color: inherit; stroke-width: 1.8; }
+.stars .glyph:not(.on) { opacity: 0.32; }
 .notify-icon .glyph { width: 22px; height: 22px; }
 .peace-term-icon .glyph { width: 22px; height: 22px; }
 .tech-row-label .glyph { width: 15px; height: 15px; }
@@ -13349,6 +13361,7 @@ button.k-dec:hover:not([disabled]), button.k-agenda:hover {
 .tb-resi.ok .tb-ring circle { stroke-width: 2.4; }
 .tb-resi.ok .tb-ring .trk { stroke: rgba(0, 0, 0, 0.35); }
 .tb-resi em { color: #b8c47a; }
+.tb-resi em .glyph { filter: drop-shadow(0 0 2px #000); }
 
 /* --- Arma: alt kenardan taşan asılı plaka ------------------------------- */
 .topbar-left { align-self: stretch; }
@@ -15476,8 +15489,11 @@ button.nd-place:hover { color: var(--gold-bright); }
 .nd-fleet { flex: none; border-bottom: 1px solid var(--line); }
 .nd-fleet > summary { display: flex; align-items: center; gap: 8px; height: 30px; padding: 0 10px 0 12px; color: var(--text-mute); cursor: var(--cur-pointer); list-style: none; }
 .nd-fleet > summary::-webkit-details-marker { display: none; }
-.nd-fleet > summary::before { content: '▸'; font-size: 12px; }
-.nd-fleet[open] > summary::before { content: '▾'; }
+.nd-fleet > summary::before {
+  content: ''; flex: none; width: 5px; height: 5px; margin: 0 2px 0 -1px;
+  border: solid currentColor; border-width: 0 1.5px 1.5px 0; transform: rotate(-45deg);
+}
+.nd-fleet[open] > summary::before { margin: -3px 2px 0 0; transform: rotate(45deg); }
 .nd-fsum { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .nd-frow { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto auto; align-items: center; gap: 8px; min-height: 28px; padding: 0 10px 0 12px; }
 .nd-frow > b { color: var(--text); text-align: right; font-variant-numeric: tabular-nums; }
@@ -16562,8 +16578,11 @@ body.picker-open .notify-stack { visibility: hidden; }
   line-height: 1;
   text-shadow: 0 0 2px #000, 0 0 2px #000;
 }
-.tl-ex:not(:empty)::after { content: "▲"; color: #a9d47e; }
-.tl-im:not(:empty)::after { content: "▼"; color: #e9c27a; }
+.tl-ex:not(:empty)::after, .tl-im:not(:empty)::after {
+  content: ''; display: inline-block; width: 7px; height: 6px; margin-left: 3px; vertical-align: 1px;
+}
+.tl-ex:not(:empty)::after { background: #a9d47e; clip-path: polygon(50% 0, 100% 100%, 0 100%); }
+.tl-im:not(:empty)::after { background: #e9c27a; clip-path: polygon(0 0, 100% 0, 50% 100%); }
 
 /* Bütçe: 52 haftalık hazine izi (Vic2'nin bütçe grafiği). */
 .tl-lead .tl-spark { width: 100%; height: 12px; }

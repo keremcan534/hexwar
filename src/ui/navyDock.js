@@ -24,6 +24,7 @@ import { recruitBlockers, trainingQueue, weeksLeft } from '../game/recruitment.j
 import { destinationOf, etaWeeks } from '../game/movement.js';
 import { isDelegated } from '../game/delegation.js';
 import { dateOfTurn } from '../game/calendar.js';
+import { glyph } from './icons/glyphs.js';
 import { tipAttr } from './kit.js';
 import { kitArt, navyArt } from './icons/art.js';
 import { quietScroll } from './tooltip.js';
@@ -262,7 +263,7 @@ export class NavyDock {
   /** WHERE THE FLEET IS: grup grup (deniz ve hâl başına bir satır). */
   whereHtml(view) {
     const lines = view.squadrons.map((group) => this.squadronHtml(view, group));
-    if (!view.total) lines.push('<div class="nd-sq dim"><span class="nd-sqs">No warships yet — build them below (Fleet ▸ Build warship).</span></div>');
+    if (!view.total) lines.push('<div class="nd-sq dim"><span class="nd-sqs">No warships yet — build them below (Fleet → Build warship).</span></div>');
     let shown = lines;
     if (lines.length > WHERE_LINES) {
       const rest = view.squadrons.slice(WHERE_LINES - 1);
@@ -280,7 +281,7 @@ export class NavyDock {
     const count = group.ships.length;
     const hulls = group.ships.map((ship) => `${ship.name} — ${shipClassOf(ship).name.toLowerCase()}, hull ${pct(ship.hp)}`).join('\n');
     const lowHull = group.hull < 0.85 ? ` · hull ${pct(group.hull)}` : '';
-    let glyph = '●';
+    let sign = 'dot';
     // Hâlin resmi (navy-photo) glifin yerine oturur: nöbet = deniz hâkimiyeti,
     // abluka, onarım, çekilme, liman. Yoldaki/dönen filonun resmi yok; ok
     // glifi yönü daha iyi söyler.
@@ -308,18 +309,18 @@ export class NavyDock {
         break;
       }
       case 'underway':
-        glyph = '➜';
+        sign = 'advance';
         status = group.assembling
           ? `assembling · enter together ${dayMonth(group.eta)} (${group.weeks <= 0 ? 'this week' : `${group.weeks} wk`})`
           : `under way · arrives ${dayMonth(group.eta)} (${group.weeks <= 0 ? 'this week' : `${group.weeks} wk`})`;
         break;
       case 'returning':
-        glyph = '↩';
+        sign = 'return';
         place = 'Returning to port';
         status = `in port ${dayMonth(group.eta)} (${group.weeks} wk)`;
         break;
       case 'repairing':
-        glyph = '⚓';
+        sign = 'anchor';
         place = 'Repairing';
         status = group.stalled
           ? `hull ${pct(group.hull)} · <b class="bad">STALLED: no ships equipment</b>`
@@ -327,7 +328,7 @@ export class NavyDock {
         tone = group.stalled ? 'bad' : '';
         break;
       case 'withdrawn': {
-        glyph = '⚓';
+        sign = 'anchor';
         // Deniz adı ad sütununa: "Withdrawn … refused battle in Sea of Marburg"
         // dönüş tarihini kesiyordu; kırmızı ⚓ ve fiil "çekildi"yi söyler.
         place = group.zone?.name ?? 'Withdrawn';
@@ -336,7 +337,7 @@ export class NavyDock {
         break;
       }
       case 'idle': {
-        glyph = '⚓';
+        sign = 'anchor';
         place = 'In port';
         status = this.idleText(view);
         break;
@@ -354,7 +355,7 @@ export class NavyDock {
       ? `<button class="nd-place" type="button" data-nd-show="${zone.id}">${esc(place)}</button>`
       : `<span class="nd-place">${esc(place)}</span>`;
     return `<div class="nd-sq ${group.kind}${tone ? ` ${tone}` : ''}"${zone ? ` data-nd-hz="${zone.id}"` : ''}${tipAttr({ text: tip })}>
-        <i class="nd-glyph" aria-hidden="true">${art ? navyArt(art) : glyph}</i>${placeHtml}<b class="nd-count">${group.kind === 'underway' ? `+${count}` : count}</b><span class="nd-sqs">${status}</span>
+        <i class="nd-glyph" aria-hidden="true">${art ? navyArt(art) : glyph(sign, 'ctl')}</i>${placeHtml}<b class="nd-count">${group.kind === 'underway' ? `+${count}` : count}</b><span class="nd-sqs">${status}</span>
       </div>`;
   }
 
@@ -383,7 +384,7 @@ export class NavyDock {
     if (quiet.length) {
       const allHome = quiet.every((row) => row.home);
       const label = `${quiet.length} quiet ${allHome ? 'home ' : ''}${quiet.length === 1 ? 'sea' : 'seas'} on Auto — ${quiet.map((row) => row.zone.name).join(', ')}`;
-      rows.push(`<button class="nd-quiet" type="button" data-nd-quiet${tipAttr({ text: `Quiet seas\nNo ships of ours, no enemy, no blockade and no U-boats here; Auto sends nothing. Click to ${this.quietOpen ? 'fold them' : 'list them and give them an order'}.` })}><i aria-hidden="true">${this.quietOpen ? '▾' : '▸'}</i><span>${esc(label)}</span></button>`);
+      rows.push(`<button class="nd-quiet" type="button" data-nd-quiet${tipAttr({ text: `Quiet seas\nNo ships of ours, no enemy, no blockade and no U-boats here; Auto sends nothing. Click to ${this.quietOpen ? 'fold them' : 'list them and give them an order'}.` })}><i aria-hidden="true">${glyph(this.quietOpen ? 'chev-down' : 'chev-right', 'ctl')}</i><span>${esc(label)}</span></button>`);
       if (this.quietOpen) for (const row of quiet) rows.push(this.rowHtml(row, view));
     }
     if (!view.rows.length) rows.push('<p class="nd-empty">No sea within reach of our ports.</p>');
@@ -576,7 +577,7 @@ export class NavyDock {
     let text;
     if (!view.subs) {
       const era = recruitBlockers(this.game, me, 'SUBMARINE').find((b) => b.id === 'era');
-      text = era ? `none — ${esc(era.text.replace(/^Requires /, '').replace(/\.$/, ''))} unlocks them` : 'none — build them in Fleet ▸';
+      text = era ? `none — ${esc(era.text.replace(/^Requires /, '').replace(/\.$/, ''))} unlocks them` : 'none — build them under Fleet';
     } else {
       const hunting = [];
       for (const [zoneId, here] of world.navyState?.subs ?? []) {
@@ -737,7 +738,7 @@ export class NavyDock {
     if (us.factors && them.factors) {
       const a = us.factors;
       const b = them.factors;
-      const mark = (x, y) => (x > y + 1e-6 ? ' ▲' : '');
+      const mark = (x, y) => (x > y + 1e-6 ? ` ${glyph('up', 'ctl')}` : '');
       const adm = (f) => (f.admiral ? `${esc(f.admiral.name.split(' ').pop())}, skill ${f.admiral.skill} +${Math.round((f.admiral.mod - 1) * 100)}%` : 'none');
       const home = (f) => (f.home > 0.001 ? `+${Math.round(f.home * 20)}%` : '—');
       const rows = [

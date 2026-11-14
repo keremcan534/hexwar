@@ -48,6 +48,11 @@ const ROUTE_COLOR = 'rgba(240, 208, 128, 0.9)';
  * (abluka hapları, muharebe etiketi, kapalı deniz yazısı) onu aşınca levha
  * onları örtüyordu.
  */
+/** Kaçınma diskindeki dönüş oku, 24 birimlik kutuda (glyphs.js 'return'). Path2D
+ * ilk çizimde kurulur: modül Node'da da içe aktarılabilsin. */
+let RETURN_PATH = null;
+const returnPath = () => (RETURN_PATH ??= new Path2D('M9 6.5L4 11.5l5 5M4.5 11.5h10a5 5 0 0 1 0 10H12'));
+
 const MARK = {
   badgeTop: 4, badgeH: 14, subH: 12.6, rowGap: 3, badgePad: 3, flagW: 15, subFlagW: 12,
   pillH: 15, pillStep: 17, pillPad: 4, pillFlagW: 15,
@@ -1050,11 +1055,18 @@ export class SeaLayer {
     ctx.arc(cx, cy, r, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = tone;
-    ctx.font = `700 ${11 / zoom}px ${FONT_UI}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('↩', cx, cy + 0.5 / zoom);
+    // Dönüş oku yol olarak çizilir (ui/icons/glyphs.js 'return' ile aynı):
+    // '↩' karakteri Windows'ta emoji fontundan renkli gelebiliyordu.
+    const k = (r * 1.25) / 24;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(k, k);
+    ctx.translate(-11.75, -14);
+    ctx.lineWidth = 2.6 / zoom / k;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.stroke(returnPath());
+    ctx.restore();
     if (zoom >= LABEL_ZOOM) this.markLabel(ctx, cx - r - MARK.labelGap / zoom, cy, us ? 'refused' : 'they refused', tone, zoom);
     ctx.restore();
   }

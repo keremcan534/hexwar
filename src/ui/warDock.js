@@ -14,6 +14,7 @@
 import { warOverview } from '../game/warView.js';
 import { formatPopulation } from '../game/economy.js';
 import { hydrateFlags } from '../render/flagWave.js';
+import { glyph } from './icons/glyphs.js';
 import { esc, tipAttr } from './kit.js';
 import { refreshTooltipsWithin } from './tooltip.js';
 import { conflictDetailHtml, conflictFocusTile, scoreBarHtml } from './warDetail.js';
@@ -170,7 +171,7 @@ export class WarDock {
     const worldLine = `${elsewhere ? `${elsewhere} ${elsewhere === 1 ? 'war' : 'wars'} elsewhere` : 'no other wars'}${view.world.events.length ? ` · ${view.world.events.join(' · ')}` : ''}`;
     const head = `<header class="wd-head">
         <button type="button" class="wd-toggle" data-wd-toggle aria-expanded="${!this.collapsed}"${tipAttr({ text: `Wars\n${count ? `${count} ${count === 1 ? 'war' : 'wars'} with your nation.` : 'Your nation is at peace.'}\n${worldLine}.\nClick to ${this.collapsed ? 'open' : 'fold'} the panel.` })}>
-          <i aria-hidden="true">${this.collapsed ? '▸' : '▾'}</i><b>${count ? `At war · ${count}` : 'At peace'}</b><small>${esc(worldLine)}</small></button>
+          <i aria-hidden="true">${glyph(this.collapsed ? 'chev-right' : 'chev-down', 'ctl')}</i><b>${count ? `At war · ${count}` : 'At peace'}</b><small>${esc(worldLine)}</small></button>
         <button type="button" class="wd-dip" data-wd-diplomacy${tipAttr({ text: 'Diplomacy\nEvery nation, your treaties, wars and peace offers.\nShortcut: P' })}>Diplomacy <kbd>P</kbd></button>
       </header>`;
     if (this.collapsed || (!count && !view.crises.length && !elsewhere)) return head;
@@ -191,7 +192,7 @@ export class WarDock {
       return `<button type="button" class="wd-row wd-war ${tone}${offered ? ' offered' : ''}" data-wd-war="${w.enemyId}" data-wd-talks="${w.talksIn}" data-tip="war" data-tip-arg="${w.enemyId}">
         ${flag(w.enemyId)}<b class="wd-name">${esc(w.name)}</b><em class="wd-score">${w.score > 0 ? '+' : ''}${w.score}</em>
         <span class="wd-bar" aria-hidden="true">${bar}</span>
-        <small class="wd-meta"><span class="wd-loss">${loss(w.lossesOurs)}</span> / <span class="wd-kill">${loss(w.lossesTheirs)}</span> · ${w.weeks}w · ⚑ ${w.holdTheirs}/${w.holdOurs}${exhaustionTag(this.game.world.nations[w.enemyId])}${offered ? ' · <span class="wd-offer">offer</span>' : ''}</small>
+        <small class="wd-meta"><span class="wd-loss">${loss(w.lossesOurs)}</span> / <span class="wd-kill">${loss(w.lossesTheirs)}</span> · ${w.weeks}w · ${glyph('flag', 'ctl')} ${w.holdTheirs}/${w.holdOurs}${exhaustionTag(this.game.world.nations[w.enemyId])}${offered ? ' · <span class="wd-offer">offer</span>' : ''}</small>
       </button>`;
     }).join('');
     return `${head}<div class="wd-list">${crises}${wars}${this.worldHtml(conflicts, count + view.crises.length > 0)}</div>${this.detailHtml(conflicts)}`;
@@ -207,7 +208,7 @@ export class WarDock {
     const lead = (id) => esc(this.game.world.nations[id]?.name ?? '?');
     return `<section class="wd-detail" role="dialog" aria-label="War details">
         <header class="wd-detail-head"><b>${lead(c.lead[0])} <i>vs</i> ${lead(c.lead[1])}</b>
-          <button type="button" class="wd-detail-x" data-cd-close aria-label="Close"${tipAttr({ text: 'Close (Esc)' })}>✕</button></header>
+          <button type="button" class="wd-detail-x" data-cd-close aria-label="Close"${tipAttr({ text: 'Close (Esc)' })}>${glyph('close', 'ctl')}</button></header>
         ${conflictDetailHtml(this.game.world, c, { close: false })}
       </section>`;
   }
@@ -252,7 +253,7 @@ export class WarDock {
       return `<button type="button" class="wd-row wd-world${this.openKey === c.key ? ' is-open' : ''}" data-wd-conflict="${c.key}"${tipAttr({ text: tip })}>
         <span class="wd-flags">${flag(c.lead[0])}${flag(c.lead[1])}</span><b class="wd-name">${side(c.lead[0], c.attackers)}${ahead === 0 ? score : ''} <i>vs</i> ${ahead === 1 ? score : ''}${side(c.lead[1], c.defenders)}</b>
         ${scoreBarHtml(c.score)}
-        <small class="wd-meta"><span class="wd-loss">${loss(c.lossesA)}</span> / <span class="wd-loss">${loss(c.lossesB)}</span> · ${c.weeks}w · ⚑ ${c.holdA}/${c.holdB}</small>
+        <small class="wd-meta"><span class="wd-loss">${loss(c.lossesA)}</span> / <span class="wd-loss">${loss(c.lossesB)}</span> · ${c.weeks}w · ${glyph('flag', 'ctl')} ${c.holdA}/${c.holdB}</small>
       </button>`;
     }).join('');
     const more = conflicts.length > WORLD_ROWS

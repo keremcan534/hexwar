@@ -221,7 +221,7 @@ export function cellFor(id, s) {
           fill: x.tech.progress, kind: 'progress', tone: '',
         };
       }
-      if (x.done >= x.total) return { name: 'All researched', value: '✓', short: 'All done', fill: 1, kind: 'progress', tone: 'pos' };
+      if (x.done >= x.total) return { name: 'All researched', value: 'done', short: 'All done', fill: 1, kind: 'progress', tone: 'pos' };
       // Sıradaki teknoloji AUTO'dan bağımsız gelecek hafta başlar (runResearch).
       if (x.next) return { name: x.next, value: 'queued', short: 'Queued', fill: 0, kind: 'progress', tone: '' };
       return {
@@ -289,8 +289,8 @@ export function tabLedgerTip(id, s = latest) {
       }
       row('Exports', amount(x.exports, { sign: true, unit: true }), x.exports > 0 ? 'pos' : '');
       row('Imports', amount(x.imports, { sign: true, unit: true }), x.imports < 0 ? 'neg' : '');
-      row('Top export', x.topExport ? `${RESOURCES[x.topExport.id]?.name ?? x.topExport.id} ▲${x.topExport.amount.toFixed(1)}` : 'none');
-      row('Top import', x.topImport ? `${RESOURCES[x.topImport.id]?.name ?? x.topImport.id} ▼${x.topImport.amount.toFixed(1)}` : 'none');
+      row('Top export', x.topExport ? `${RESOURCES[x.topExport.id]?.name ?? x.topExport.id} · ${x.topExport.amount.toFixed(1)}` : 'none');
+      row('Top import', x.topImport ? `${RESOURCES[x.topImport.id]?.name ?? x.topImport.id} · ${x.topImport.amount.toFixed(1)}` : 'none');
       if (x.dependency) {
         row('Dependency', `${RESOURCES[x.dependency.id]?.name ?? x.dependency.id} ${percent(x.dependency.share)}${x.dependency.partner ? ` from ${x.dependency.partner}` : ''}`, 'warn');
       }

@@ -14,6 +14,7 @@ import { FIRST_TECH_PRESTIGE, TECH_CATEGORIES, techById } from '../game/technolo
 import { describeEffects } from '../game/modifiers.js';
 import { UNIT_TYPES } from '../game/units.js';
 import { hasTechArt, techArt } from './icons/art.js';
+import { glyph } from './icons/glyphs.js';
 import { esc } from './kit.js';
 
 /** Kartın ekranda kalma süresi; üstüne gelinince sayaç durur. */
@@ -90,7 +91,7 @@ export class DiscoveryCard {
         ${effects.length ? `<span class="discovery-eff">${effects.map(esc).join(' · ')}</span>` : ''}
         ${first ? `<span class="discovery-first">First in the world · +${FIRST_TECH_PRESTIGE} prestige</span>` : ''}
       </div>
-      <button type="button" class="icon-btn discovery-x" data-discovery-close aria-label="Close">✕</button>`;
+      <button type="button" class="icon-btn discovery-x" data-discovery-close aria-label="Close">${glyph('close', 'ctl')}</button>`;
   }
 
   pause() {

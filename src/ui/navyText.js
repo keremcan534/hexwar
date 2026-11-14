@@ -105,9 +105,9 @@ export function forecastLine(world, forecast) {
     // Satır ~60 harf (panel 432 px); uzun hâli forecastTip'te. Eskiden "(port
     // 6 wk)" ve "for this sea" kuyrukları 1920'de bile kesiliyordu.
     case 'none': return { tone: 'bad', text: `${them}'s fleet here (${str1(forecast.theirs)}) — none of ours planned` };
-    case 'refuse': return { tone: 'bad', text: `⚠ ${vs} — below half: ours will refuse battle` };
+    case 'refuse': return { tone: 'bad', text: `${vs} — below half: ours will refuse battle` };
     case 'drive': return { tone: 'good', text: `${vs} — ${them}'s fleet will refuse battle and leave` };
-    case 'unfavourable': return { tone: 'bad', text: `⚠ ${vs} — unfavourable battle` };
+    case 'unfavourable': return { tone: 'bad', text: `${vs} — unfavourable battle` };
     case 'even': return { tone: 'warn', text: `${vs} — even battle` };
     case 'favourable': return { tone: 'good', text: `${vs} — favourable battle` };
     default: return null;

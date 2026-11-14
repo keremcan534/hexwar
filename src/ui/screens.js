@@ -811,9 +811,9 @@ export class Screens {
       if (!province) return '';
       const starred = province.tileIdx.some((idx) => world.tiles[idx].city);
       return `<div class="peace-tile ${kind}">
-        <span>${esc(province.name)}${starred ? ' ★' : ''} · ${province.tileIdx.length} hex${rgoOf(province)}</span>
+        <span>${esc(province.name)}${starred ? ` ${glyph('star-on', 'ctl')}` : ''} · ${province.tileIdx.length} hex${rgoOf(province)}</span>
         <b>${provinceWarCost(world, province)}</b>
-        <button class="peace-drop" data-drop-tile="${esc(key)}" data-drop-kind="${kind}" title="Remove">✕</button>
+        <button class="peace-drop" data-drop-tile="${esc(key)}" data-drop-kind="${kind}" title="Remove">${glyph('close', 'ctl')}</button>
       </div>`;
     }).join('') : '');
 
@@ -834,7 +834,7 @@ export class Screens {
       const capital = capitalProvinceOf(world, target.id);
       const capitalHeld = capital && capital.tileIdx.some((idx) => controllerOf(world.tiles[idx]) === me.id);
       const capitalNote = capitalHeld
-        ? `<p class="empty">${esc(capital.name)} ★ is ${esc(target.name)}'s capital: a peace treaty does not erase a state. Vassalize them instead (Terms).</p>`
+        ? `<p class="empty">${esc(capital.name)} is ${esc(target.name)}'s capital: a peace treaty does not erase a state. Vassalize them instead (Terms).</p>`
         : '';
       if (!held.length) {
         return `<p class="empty">${offer.demands.length
@@ -853,7 +853,7 @@ export class Screens {
         const afford = cost <= budget - cost0;
         return `<button class="peace-offer-row${near ? ' adjacent' : ''}"
           data-take-tile="${esc(key)}" title="${esc(province.name)} — ${cost} war score">
-          <span class="por-name">${esc(province.name)}${starred ? ' ★' : ''}</span>
+          <span class="por-name">${esc(province.name)}${starred ? ` ${glyph('star-on', 'ctl')}` : ''}</span>
           <span class="por-meta">${province.tileIdx.length} hex${rgoOf(province)} · ${Math.round(share * 100)}% held${
   near ? ' · borders you' : ''}</span>
           <b class="por-cost${afford ? '' : ' res-neg'}">${cost}</b>
@@ -962,7 +962,7 @@ export class Screens {
     const province = provinceFromKey(world, key);
     if (!province) return '';
     const starred = province.tileIdx.some((idx) => world.tiles[idx].city);
-    return `${esc(province.name)}${starred ? ' ★' : ''} (${provinceWarCost(world, province)})`;
+    return `${esc(province.name)}${starred ? ` ${glyph('star-on', 'ctl')}` : ''} (${provinceWarCost(world, province)})`;
   }).join(' · ')}</span></div>` : '');
     const terms = offer.terms?.length ? `<div class="offer-line"><small>Terms</small>
       <span>${offer.terms.map((id) => `${glyph(TERM_GLYPH[id], 'inline')} ${esc(PEACE_TERMS[id].name)}`)

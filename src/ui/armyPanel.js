@@ -33,7 +33,7 @@ import { transportRiskAt, zoneStatus } from '../game/navy.js';
 import { formatPopulation } from '../game/economy.js';
 import { subayPortresi } from './icons/subaylar.js';
 import { traitArt } from './icons/art.js';
-import { glyph } from './icons/glyphs.js';
+import { glyph, stars } from './icons/glyphs.js';
 import { esc, tipAttr } from './kit.js';
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
@@ -148,7 +148,7 @@ function headHtml(game, me, units) {
   return `<header class="ap-head">
       ${badge}
       <span class="ap-title"><b>${esc(title)}</b><small class="${status?.warn ? 'warn' : ''}"${single && status.key === 'sea' ? tipAttr({ text: `${sub}\nDivisions embark from any coast; no transports or ports are needed. At sea they cannot fight and cannot enter a sea the enemy holds; in one they lose men every week.` }) : ''}>${esc(sub)}</small></span>
-      <button class="ap-x" type="button" data-ap-clear aria-label="Clear selection"${tipAttr({ text: 'Clear selection · Esc' })}>✕</button>
+      <button class="ap-x" type="button" data-ap-clear aria-label="Clear selection"${tipAttr({ text: 'Clear selection · Esc' })}>${glyph('close', 'ctl')}</button>
     </header>`;
 }
 
@@ -221,14 +221,14 @@ function commandHtml(me, units) {
   const traits = general.traits.map((id) => `<span class="ap-trait"${tipAttr({ text: `${TRAITS[id].name}\n${TRAITS[id].desc}` })}>${traitArt(id)}${esc(TRAITS[id].name)}</span>`).join('')
     || '<span class="ap-trait is-none">No traits</span>';
   const stance = aggressionInfo(general.aggression);
-  const stars = `${'★'.repeat(general.skill)}<i>${'★'.repeat(Math.max(0, MAX_SKILL - general.skill))}</i>`;
+  const starRow = stars(general.skill, MAX_SKILL);
   return `<section class="ap-sec ap-cmd">
       <h4>Commander</h4>
       <div class="ap-cmd-row">
         <span class="ap-portrait">${subayPortresi(general)}</span>
         <span class="ap-cmd-who">
           <b>${esc(general.name)}</b>
-          <small><span class="ap-stars"${tipAttr({ text: `Skill ${general.skill}/${MAX_SKILL}\nAdds to attack and defence of every division in the command.` })}>${stars}</span> · ${commandSize(general)} divisions · ${esc(stance.label)}</small>
+          <small><span class="ap-stars"${tipAttr({ text: `Skill ${general.skill}/${MAX_SKILL}\nAdds to attack and defence of every division in the command.` })}>${starRow}</span> · ${commandSize(general)} divisions · ${esc(stance.label)}</small>
           <span class="ap-traits">${traits}</span>
         </span>
         <span class="ap-cmd-acts">
@@ -360,12 +360,12 @@ export function generalPickerHtml(game, me, list, { branch = BRANCH.ARMY, costLa
     const size = commandSize(general);
     const traits = general.traits.map((id) => `<span class="ap-trait"${tipAttr({ text: `${TRAITS[id].name}\n${TRAITS[id].desc}` })}>${traitArt(id)}${esc(TRAITS[id].name)}</span>`).join('')
       || '<span class="ap-trait is-none">No traits</span>';
-    const stars = `${'★'.repeat(general.skill)}<i>${'★'.repeat(Math.max(0, MAX_SKILL - general.skill))}</i>`;
+    const starRow = stars(general.skill, MAX_SKILL);
     return `<button class="ap-pick${current?.id === general.id ? ' is-current' : ''}" type="button" data-pick-general="${general.id}">
         <span class="ap-portrait">${subayPortresi(general)}</span>
         <span class="ap-cmd-who">
           <b>${esc(general.name)}</b>
-          <small><span class="ap-stars">${stars}</span> · ${size ? `${size} ${noun}s` : 'in reserve'} · ${general.battles ?? 0} battles</small>
+          <small><span class="ap-stars">${starRow}</span> · ${size ? `${size} ${noun}s` : 'in reserve'} · ${general.battles ?? 0} battles</small>
           <span class="ap-traits">${traits}</span>
         </span>
         ${current?.id === general.id ? '<em class="ap-chip hold">Current</em>' : ''}
@@ -375,7 +375,7 @@ export function generalPickerHtml(game, me, list, { branch = BRANCH.ARMY, costLa
       <header class="ap-head">
         <span class="ap-badge is-count" style="--nation:${me.color}">${list.length}</span>
         <span class="ap-title"><b>Choose a commander</b><small>for ${list.length} selected ${list.length === 1 ? noun : `${noun}s`} · ${officers.length} on the staff</small></span>
-        <button class="ap-x" type="button" data-close-generals aria-label="Back"${tipAttr({ text: 'Back to the army' })}>✕</button>
+        <button class="ap-x" type="button" data-close-generals aria-label="Back"${tipAttr({ text: 'Back to the army' })}>${glyph('close', 'ctl')}</button>
       </header>
       <div class="ap-picks">${cards}</div>
       <div class="ap-actions">
@@ -406,9 +406,9 @@ export function commandCardsHtml(game, me, { active = null, selected = 0, retire
         <span class="cmd-top">${size ? `<em class="cmd-stance">${advancing ? 'ATK' : 'HOLD'}</em><b class="cmd-size">${size}</b>` : '<em class="cmd-stance is-reserve">RES</em>'}</span>
         <span class="cmd-portrait">${subayPortresi(general)}</span>
         <b class="cmd-name">${esc(first)}</b>
-        <span class="cmd-stars">${'★'.repeat(general.skill)}<i>${'★'.repeat(Math.max(0, MAX_SKILL - general.skill))}</i></span>
+        <span class="cmd-stars">${stars(general.skill, MAX_SKILL)}</span>
         <span class="cmd-plan"><i style="width:${(ready * 100).toFixed(0)}%"></i></span>
-        <span class="cmd-x${retireArm === general.id ? ' armed' : ''}" role="button" data-cmd-retire="${general.id}" aria-label="Retire ${esc(general.name)}"${tipAttr({ text: retireArm === general.id ? `Click again to retire ${general.name}` : `Retire ${general.name}\nTwo clicks. ${size ? `Their ${size} divisions are left without a commander.` : 'They command no divisions.'}` })}>${retireArm === general.id ? '✓' : '✕'}</span>
+        <span class="cmd-x${retireArm === general.id ? ' armed' : ''}" role="button" data-cmd-retire="${general.id}" aria-label="Retire ${esc(general.name)}"${tipAttr({ text: retireArm === general.id ? `Click again to retire ${general.name}` : `Retire ${general.name}\nTwo clicks. ${size ? `Their ${size} divisions are left without a commander.` : 'They command no divisions.'}` })}>${glyph(retireArm === general.id ? 'check' : 'close', 'ctl')}</span>
       </button>`;
   }).join('');
   const assignTip = selected

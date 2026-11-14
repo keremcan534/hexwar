@@ -10,7 +10,7 @@
 // birim rozetleri harita odası sayacı gibi okunur, emoji yoktur.
 
 import { emblemArt, equipmentArt, gaugeArt, kitArt, traitArt } from './icons/art.js';
-import { glyph } from './icons/glyphs.js';
+import { glyph, stars } from './icons/glyphs.js';
 import { kpi, kpiRow, money, tipAttr } from './kit.js';
 import { formatPopulation } from '../game/economy.js';
 import { SUPPLY } from '../game/econ/defs.js';
@@ -128,7 +128,7 @@ function supplyKpi(summary) {
    -------------------------------------------------------------------------- */
 
 function leaderRow(leader, selected) {
-  const stars = '★'.repeat(leader.skill) + '☆'.repeat(Math.max(0, 5 - leader.skill));
+  const starRow = stars(leader.skill, 5);
   const traits = leader.traits.map((trait) => trait.name).join(' · ') || 'no traits';
   // Durus SATIRDA gorunur: beta iki ekranin celisen cevap verdigini yazdi
   // ("panel ADVANCING diyor, komut holding'e donmus", B2-021) — tek bakista
@@ -145,7 +145,7 @@ function leaderRow(leader, selected) {
       <small>${leader.traits.map((trait) => `${traitArt(trait.id)}${esc(trait.name)}`).join(' · ') || 'no traits'}</small>
     </span>
     <span class="mil-leader-side">
-      <em class="mil-stars">${stars}</em>
+      <em class="mil-stars">${starRow}</em>
       ${stance}
       <small>${esc(leader.assignment)}</small>
     </span>
@@ -526,13 +526,13 @@ function queueRow(row) {
     </div>
     <div class="mil-queue-tools">
       <button class="mil-icon" data-military-top="${row.id}" ${row.first ? 'disabled' : ''}
-        title="Move to the top of the queue in one click.">⤒</button>
+        title="Move to the top of the queue in one click.">${glyph('to-top', 'ctl')}</button>
       <button class="mil-icon" data-military-up="${row.id}" ${row.first ? 'disabled' : ''}
-        title="Move up: the training slots go to the top of the queue first.">▲</button>
+        title="Move up: the training slots go to the top of the queue first.">${glyph('chev-up', 'ctl')}</button>
       <button class="mil-icon" data-military-down="${row.id}" ${row.last ? 'disabled' : ''}
-        title="Move down.">▼</button>
+        title="Move down.">${glyph('chev-down', 'ctl')}</button>
       <button class="mil-icon danger" data-military-cancel="${row.id}"
-        title="Cancel the order. The unspent share of the equipment comes back and the men go home.">✕</button>
+        title="Cancel the order. The unspent share of the equipment comes back and the men go home.">${glyph('close', 'ctl')}</button>
     </div>
   </div>`;
 }

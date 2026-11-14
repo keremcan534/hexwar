@@ -209,7 +209,7 @@ export class AlertStrip {
         ${isOpen ? `<div class="alert-pop">
           <header><small>${esc(alert.kind.label)}</small>
             <button class="alert-mute" data-alert-mute="${esc(alert.id)}"
-              title="Silence this alert until the situation changes">✕</button></header>
+              title="Silence this alert until the situation changes">${glyph('close', 'ctl')}</button></header>
           <b>${esc(alert.title)}</b>
           ${alert.easing ? `<p class="alert-easing">${esc(easingNote(alert.easing))}</p>` : ''}
           <p>${esc(alert.cause)}</p>

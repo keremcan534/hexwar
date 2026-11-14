@@ -884,7 +884,7 @@ export class Hud {
   clockLocked() {
     if (!this.game.turns?.victory) return false;
     if (this.game.clock?.speed) this.game.setSpeed(0);
-    this.flashHint('The age is over · reopen the epilogue from the menu (☰)');
+    this.flashHint('The age is over · reopen the epilogue from the main menu');
     return true;
   }
 
@@ -1248,7 +1248,14 @@ export class Hud {
       const fallBack = $('btn-fall-back');
       fallBack.disabled = !active.fallback?.length;
       fallBack.classList.toggle('active', Boolean(active.fallingBack));
-      fallBack.textContent = active.fallingBack ? '↑ To front' : '⤺ Fall back';
+      // Etiket ikon taşır (innerHTML): yalnız durum değişince yazılır ki her
+      // tazelemede düğmenin içi yeniden kurulmasın.
+      const backLabel = active.fallingBack ? 'front' : 'back';
+      if (fallBack.dataset.label !== backLabel) {
+        fallBack.dataset.label = backLabel;
+        fallBack.innerHTML = active.fallingBack
+          ? `${glyph('advance', 'ctl')} To front` : `${glyph('return', 'ctl')} Fall back`;
+      }
       $('btn-clear-lines').disabled = !active.line && !active.fallback?.length;
     }
 
@@ -1545,7 +1552,7 @@ export class Hud {
     let title;
     if (this.game.turns?.victory) {
       text = 'Campaign over';
-      title = 'The age is over. Reopen the epilogue from the menu (☰).';
+      title = 'The age is over. Reopen the epilogue from the main menu.';
     } else if (paused) {
       const reason = clock.haltedBy;
       text = reason ? `Paused · ${reason}` : 'Paused';
@@ -1639,7 +1646,7 @@ export class Hud {
       const state = wars
         ? `<span class="at-war">At war</span>`
         : 'At peace';
-      const sep = '<i class="sep">◆</i>';
+      const sep = '<i class="sep" aria-hidden="true"></i>';
       // Gerçek province sayısı üretimden gelir; savaşta kare kare işgal
       // sürerken sayaç Faz E'ye dek üretim anındaki değeri gösterir.
       const provinceCount = me.provinces || null;
@@ -2069,7 +2076,7 @@ export class Hud {
             <div class="tile-title">${escapeHtml(title)}</div>
             <div class="tile-sub">${escapeHtml(sub)}</div>
           </div>
-          <button class="ap-x pv-x" type="button" data-tile-close aria-label="Close" data-tip="text" data-tip-text="Close · Esc">✕</button>
+          <button class="ap-x pv-x" type="button" data-tile-close aria-label="Close" data-tip="text" data-tip-text="Close · Esc">${glyph('close', 'ctl')}</button>
         </div>
 
         ${stateHtml}
@@ -2215,7 +2222,7 @@ export class Hud {
     const name = current ? FOCUSES.find((f) => f.id === current)?.name : '';
     const slotTip = `Focus slots: ${used} of ${slots} in use.\nOne slot, plus one for every ${Math.round(FOCUS.LITERACY_PER_SLOT * 100)}% literacy (at most ${FOCUS.MAX_SLOTS})${next != null ? ` — the next at ${Math.round(next * 100)}%` : ''}.\nClick: every focused state in one list.`;
     const open = this.focusListOpen ?? false;
-    return `<div class="pv-state-row pv-focus"><small>Focus</small><span class="pv-focus-btns">${buttons}</span><b>${escapeHtml(name)}</b><button type="button" class="pv-focus-count${open ? ' on' : ''}" data-focus-list aria-expanded="${open}" data-tip="text" data-tip-text="${escapeHtml(slotTip)}">${used}/${slots} <i aria-hidden="true">${open ? '▴' : '▾'}</i></button></div>${open ? this.focusListHtml(me) : ''}`;
+    return `<div class="pv-state-row pv-focus"><small>Focus</small><span class="pv-focus-btns">${buttons}</span><b>${escapeHtml(name)}</b><button type="button" class="pv-focus-count${open ? ' on' : ''}" data-focus-list aria-expanded="${open}" data-tip="text" data-tip-text="${escapeHtml(slotTip)}">${used}/${slots} <i aria-hidden="true">${glyph(open ? 'chev-up' : 'chev-down', 'ctl')}</i></button></div>${open ? this.focusListHtml(me) : ''}`;
   }
 
   /**
@@ -2236,7 +2243,7 @@ export class Hud {
         <span class="pv-fl-art">${emblemArt(focus.art, 'xs')}</span>
         <button type="button" class="pv-fl-name" data-focus-go="${state.id}" data-tip="text" data-tip-text="${escapeHtml(`${state.name}\nShow this state.`)}">${escapeHtml(state.name)}</button>
         <span class="pv-fl-what"><b>${escapeHtml(focus.name)}</b> ${escapeHtml(line)}</span>
-        <button type="button" class="pv-fl-x" data-focus-clear="${state.id}" aria-label="Remove the ${escapeHtml(focus.name)} focus from ${escapeHtml(state.name)}" data-tip="text" data-tip-text="${escapeHtml(`Remove the focus from ${state.name}`)}">✕</button>
+        <button type="button" class="pv-fl-x" data-focus-clear="${state.id}" aria-label="Remove the ${escapeHtml(focus.name)} focus from ${escapeHtml(state.name)}" data-tip="text" data-tip-text="${escapeHtml(`Remove the focus from ${state.name}`)}">${glyph('close', 'ctl')}</button>
       </div>`;
     }).join('');
     const cabinet = me.focusAuto !== false;
@@ -2337,7 +2344,7 @@ export class Hud {
     const on = Boolean(culture) && game.renderer.mapMode === 'cultures';
     chip.hidden = !on;
     if (on) {
-      chip.innerHTML = `<i style="background:${culture.color}"></i><b>${escapeHtml(culture.name)}</b><span>share in every province, ours and abroad</span><button type="button" data-culture-clear aria-label="Clear">✕</button>`;
+      chip.innerHTML = `<i style="background:${culture.color}"></i><b>${escapeHtml(culture.name)}</b><span>share in every province, ours and abroad</span><button type="button" data-culture-clear aria-label="Clear">${glyph('close', 'ctl')}</button>`;
     }
   }
 
@@ -2809,7 +2816,7 @@ function resourceChips(nation) {
     const ringTone = { short: 'neg', tight: 'warn', ok: 'brass', idle: 'dim' }[cls];
     const surplus = (record?.exported ?? 0) > 0.05;
     return `<span class="tb-resi ${cls}" data-tip="resource" data-tip-arg="${id}" ${track(`r-${id}`, need ? ratio : 1, 0.05)}>
-      ${ringSvg(need ? ratio : 0, ringTone)}${resourceArt(id, 'sm')}${surplus ? '<em>▲</em>' : ''}
+      ${ringSvg(need ? ratio : 0, ringTone)}${resourceArt(id, 'sm')}${surplus ? `<em>${glyph('up', 'ctl')}</em>` : ''}
       <b>${need ? `${Math.round(ratio * 100)}%` : '—'}</b></span>`;
   }).join('')}</span>`;
 }

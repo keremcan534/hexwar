@@ -61,6 +61,7 @@ import {
   autoPill, badge, blockedAttr, chain, empty, esc, kpi, kpiRow, ledger, meter, money, num, panel, pct, pips, pts,
   segmented, short, signed, signedMoney, spark, tipAttr, tone,
 } from './kit.js';
+import { glyph } from './icons/glyphs.js';
 import {
   buildingArt, diplomacyArt, emblemArt, equipmentArt, eventArt, gaugeArt, kitArt, lawArt, ledgerArt, movementArt,
   resourceArt,
@@ -1286,7 +1287,7 @@ export function renderCultures(game, me, state) {
       `Compliance ${Math.round(row.compliance)}% · foreign ${pct(row.foreign)}`].join('\n');
     return `<div class="k-rrow">
       <span class="k-rrow-name"><i style="background:${culture?.color ?? '#888'}"></i><button class="k-link" data-uc-focus="${row.id}"${tipAttr('state', row.id)}>${esc(row.name)}</button><small>${esc(culture?.name ?? '')}</small></span>
-      <span class="k-rrow-val"${tipAttr({ text: tip })}>${meter(row.unrest / 10, { tone: row.unrest >= 7 ? 'neg' : row.unrest >= 4 ? 'warn' : 'party', mark: 0.7 })}<b class="${row.unrest >= 7 ? 'neg' : ''}">${num(row.unrest, 1)}</b><i class="k-trend ${rising ? 'up' : falling ? 'down' : ''}">${rising ? '▲' : falling ? '▼' : '■'}</i></span>
+      <span class="k-rrow-val"${tipAttr({ text: tip })}>${meter(row.unrest / 10, { tone: row.unrest >= 7 ? 'neg' : row.unrest >= 4 ? 'warn' : 'party', mark: 0.7 })}<b class="${row.unrest >= 7 ? 'neg' : ''}">${num(row.unrest, 1)}</b><i class="k-trend ${rising ? 'up' : falling ? 'down' : ''}">${glyph(rising ? 'up' : falling ? 'down' : 'flat', 'ctl')}</i></span>
       <span class="k-rrow-causes"${tipAttr({ text: tip })}>${causes || '<span class="k-dim">settling</span>'}</span>
       <span class="k-rrow-comp">${Math.round(row.compliance)}%</span>
     </div>`;
@@ -1320,7 +1321,7 @@ export function renderCultures(game, me, state) {
     <div class="k-split wide-left k-cult">
       <div class="k-stack">
         ${panel('Peoples', `<div class="k-ptable">${peopleHead}${peopleRows}</div>`, { sub: 'click a people to see what can be done' })}
-        ${panel('Restless states', restlessRows ? `<div class="k-rtable">${restlessRows}</div>${view.restlessMore ? `<small class="k-more">and ${view.restlessMore} calmer state${view.restlessMore === 1 ? '' : 's'}</small>` : ''}` : empty('Every state is calm.'), { sub: `out of 10 · revolt at ${view.revoltAt} · ▲ rising ▼ settling`, right: 'cause · compliance' })}
+        ${panel('Restless states', restlessRows ? `<div class="k-rtable">${restlessRows}</div>${view.restlessMore ? `<small class="k-more">and ${view.restlessMore} calmer state${view.restlessMore === 1 ? '' : 's'}</small>` : ''}` : empty('Every state is calm.'), { sub: `out of 10 · revolt at ${view.revoltAt} · ${glyph('up', 'ctl')} rising ${glyph('down', 'ctl')} settling`, right: 'cause · compliance' })}
       </div>
       <div class="k-stack">
         ${detail ? peopleCard(world, me, detail, state, acceptTip) : ''}
@@ -1338,7 +1339,7 @@ function peopleCard(world, me, d, state, acceptTip) {
     const arming = state.confirm === key;
     return `<button class="k-btn sm ${cls}${arming ? ' confirming' : ''}" ${attr}${blockers.length ? blockedAttr(blockers) : tipAttr({ text: tip })}>${arming ? 'Confirm' : label}</button>`;
   };
-  const homes = d.homes.slice(0, 6).map((home) => `<button type="button" class="k-chipbtn" data-uc-focus="${home.id}"${tipAttr({ text: `${home.name}\n${formatPopulation(home.people)} ${d.name} · ${pct(home.share)} of the state${home.homeland ? ' · their homeland' : ''}${home.reservation ? ' · reservation' : ''}\nUnrest ${num(home.unrest, 1)}${home.focus ? ` · focus: ${home.focus}` : ''}` })}>${esc(home.name)} <b>${pct(home.share)}</b>${home.homeland ? '<i>⌂</i>' : ''}${home.reservation ? '<i>▣</i>' : ''}</button>`).join('');
+  const homes = d.homes.slice(0, 6).map((home) => `<button type="button" class="k-chipbtn" data-uc-focus="${home.id}"${tipAttr({ text: `${home.name}\n${formatPopulation(home.people)} ${d.name} · ${pct(home.share)} of the state${home.homeland ? ' · their homeland' : ''}${home.reservation ? ' · reservation' : ''}\nUnrest ${num(home.unrest, 1)}${home.focus ? ` · focus: ${home.focus}` : ''}` })}>${esc(home.name)} <b>${pct(home.share)}</b>${home.homeland ? `<i>${glyph('home', 'ctl')}</i>` : ''}${home.reservation ? `<i>${glyph('reserve', 'ctl')}</i>` : ''}</button>`).join('');
   const more = d.homes.length > 6 ? `<small class="k-dim">+${d.homes.length - 6} more</small>` : '';
   const kin = d.kin.length ? `kin state: <b>${d.kin.map((k) => esc(k.name)).join(', ')}</b>` : 'no kin state';
 
@@ -1410,7 +1411,7 @@ function focusCard(world, me) {
   const rows = states.map((state) => {
     const focus = FOCUSES.find((f) => f.id === state.econ.focus);
     return `<div class="k-focus-row">${emblemArt(focus.art, 'xs')}<button class="k-link" data-uc-focus="${state.id}">${esc(state.name)}</button><b>${esc(focus.name)}</b>
-      <button class="k-x" data-uc-unfocus="${state.id}" aria-label="Remove the focus from ${esc(state.name)}"${tipAttr({ text: `Remove the focus from ${state.name}` })}>✕</button></div>`;
+      <button class="k-x" data-uc-unfocus="${state.id}" aria-label="Remove the focus from ${esc(state.name)}"${tipAttr({ text: `Remove the focus from ${state.name}` })}>${glyph('close', 'ctl')}</button></div>`;
   }).join('');
   const cabinet = me.focusAuto !== false && isDelegated(me, 'reforms');
   return panel('State focus', `${rows || empty('No state has a focus.')}

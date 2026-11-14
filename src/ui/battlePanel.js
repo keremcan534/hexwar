@@ -9,6 +9,8 @@
 import { battleView } from '../game/battleView.js';
 import { BREAK_ORGANIZATION, MAX_ROUNDS } from '../game/battles.js';
 import { formatPopulation } from '../game/economy.js';
+import { MAX_SKILL } from '../game/command.js';
+import { glyph, stars } from './icons/glyphs.js';
 import { esc, tipAttr } from './kit.js';
 import { refreshTooltips } from './tooltip.js';
 import { localRect, toLocal } from './uiScale.js';
@@ -106,7 +108,7 @@ export class BattlePanel {
       const tone = r >= 1.3 ? 'good' : r >= 0.9 ? 'even' : 'bad';
       const verb = v.mine === 'attacker' ? 'Attacking' : 'Defending';
       return `<button class="bs-chip ${tone}" data-strip-battle="${v.id}"${tipAttr({ text: `Battle of ${v.name}\n${verb} · week ${v.round}/${v.maxRounds} · our power ${fmtRatio(r)} : 1\nClick to open the battle.` })}>
-        <i class="bs-dir">${v.mine === 'attacker' ? '➤' : '⛨'}</i><b>${esc(v.name)}</b><span>${fmtRatio(r)}:1</span>
+        <i class="bs-dir">${glyph(v.mine === 'attacker' ? 'advance' : 'shield', 'ctl')}</i><b>${esc(v.name)}</b><span>${fmtRatio(r)}:1</span>
       </button>`;
     }).join('') + (more > 0 ? `<span class="bs-more">+${more}</span>` : '');
     // Açık şerit kartı yeni çipe bağlansın; muharebe bittiyse kapansın.
@@ -165,7 +167,7 @@ export class BattlePanel {
 
   side(view, side, key) {
     const general = side.general
-      ? `<span class="bp-gen"${tipAttr({ text: `${side.general.name}\nSkill ${side.general.skill}/5${side.general.traits.length ? ` · ${side.general.traits.join(', ')}` : ''}` })}>${esc(side.general.name)} <em>${'★'.repeat(side.general.skill)}</em></span>`
+      ? `<span class="bp-gen"${tipAttr({ text: `${side.general.name}\nSkill ${side.general.skill}/5${side.general.traits.length ? ` · ${side.general.traits.join(', ')}` : ''}` })}>${esc(side.general.name)} <em>${stars(side.general.skill, MAX_SKILL)}</em></span>`
       : '<span class="bp-gen none">no commander</span>';
     const divisions = side.divisions.map((d) => `<div class="bp-div"${tipAttr({ text: `${d.name} division\n${formatPopulation(d.men)} men · strength ${pct(d.strength)} · organisation ${Math.round(d.organization)}%${d.entrenchment > 0.005 ? ` · dug in +${pct(d.entrenchment)}` : ''}` })}>
         <i class="bp-glyph">${esc(d.glyph)}</i>
@@ -212,8 +214,8 @@ export class BattlePanel {
         <div><small>${view.river ? 'River crossing · ' : ''}${esc(view.terrain)} · defence +${pct(view.defense)}</small>
           <h3>Battle of ${esc(view.name)}</h3></div>
         <span class="bp-round"${tipAttr({ text: 'One round a week; the battle ends after 20 at most.' })}>${over ? 'Over' : `Week ${view.round} / ${view.maxRounds}`}</span>
-        <button class="bp-btn" data-battle-focus aria-label="Show on the map"${tipAttr({ text: 'Show on the map' })}>⌖</button>
-        <button class="bp-btn" data-battle-close aria-label="Close"${tipAttr({ text: 'Close · Esc' })}>✕</button>
+        <button class="bp-btn" data-battle-focus aria-label="Show on the map"${tipAttr({ text: 'Show on the map' })}>${glyph('locate', 'ctl')}</button>
+        <button class="bp-btn" data-battle-close aria-label="Close"${tipAttr({ text: 'Close · Esc' })}>${glyph('close', 'ctl')}</button>
       </header>
       <div class="bp-balance"${tipAttr({ text: `Combat power\nThe battle's own scales: strength × terrain × river × plan × commander × doctrine × supplies. ${view.ratio.toFixed(2)} : 1 for the attacker.` })}>
         <span class="bp-ratio">${fmtRatio(view.mine ? (view.mine === 'attacker' ? view.ratio : 1 / Math.max(1e-6, view.ratio)) : view.ratio)} : 1<small>${view.mine ? 'you : them' : 'attacker : defender'}</small></span>

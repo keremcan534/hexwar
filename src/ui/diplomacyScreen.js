@@ -28,6 +28,7 @@ import {
 import { declareIndependence } from '../game/vassals.js';
 import { proposeUnion } from '../game/unification.js';
 import { AUTONOMY, ENVOY, GUARANTEE } from '../game/dipDefs.js';
+import { glyph } from './icons/glyphs.js';
 import { esc, kpi as kitKpi, kpiRow as kitKpiRow, panel as kitPanel, tipAttr } from './kit.js';
 import { diplomacyArt, eventArt, gaugeArt } from './icons/art.js';
 
@@ -88,8 +89,8 @@ function relationBar(value) {
 function relationCell(row) {
   const r = row.relations;
   const star = row.envoy.posted
-    ? `<button type="button" class="dip-envoy on" data-dip-act="recall" data-dip-arg="${row.id}" aria-label="Recall our envoy from ${esc(row.name)}"${tip(`Our envoy at ${row.name}'s court\n+${ENVOY.RATE} a week up to +${ENVOY.CAP}; costs ${ENVOY.UPKEEP} political power a week.\nClick to recall (free; what was gained fades slowly).`)}>★</button>`
-    : `<button type="button" class="dip-envoy" data-dip-act="envoy" data-dip-arg="${row.id}" aria-label="Send an envoy to ${esc(row.name)}"${row.envoy.can ? tip(`Send an envoy to ${row.name}\nRelations +${ENVOY.RATE} a week, up to +${ENVOY.CAP} (about a year's work). Costs ${ENVOY.UPKEEP} political power a week; two envoys at most.`) : ` disabled${tip(`Send an envoy\n${row.envoy.blockers.join('\n')}`)}`}>☆</button>`;
+    ? `<button type="button" class="dip-envoy on" data-dip-act="recall" data-dip-arg="${row.id}" aria-label="Recall our envoy from ${esc(row.name)}"${tip(`Our envoy at ${row.name}'s court\n+${ENVOY.RATE} a week up to +${ENVOY.CAP}; costs ${ENVOY.UPKEEP} political power a week.\nClick to recall (free; what was gained fades slowly).`)}>${glyph('star-on', 'ctl')}</button>`
+    : `<button type="button" class="dip-envoy" data-dip-act="envoy" data-dip-arg="${row.id}" aria-label="Send an envoy to ${esc(row.name)}"${row.envoy.can ? tip(`Send an envoy to ${row.name}\nRelations +${ENVOY.RATE} a week, up to +${ENVOY.CAP} (about a year's work). Costs ${ENVOY.UPKEEP} political power a week; two envoys at most.`) : ` disabled${tip(`Send an envoy\n${row.envoy.blockers.join('\n')}`)}`}>${glyph('star', 'ctl')}</button>`;
   return `<span class="dip-relcell">
     <span class="dip-relv ${toneOf(r.value)}"${tip(relationsTip(row.name, r))}>${relationBar(r.value)}<em>${fmt(r.value, 0)}</em></span>${star}
   </span>`;
@@ -272,7 +273,7 @@ export function renderDiplomacyScreen(screens, me) {
     threats: view.rows.filter(threatening).length,
   };
   const filters = `<div class="dip-filters">${FILTERS.map(([id, label]) => `<button type="button" class="k-btn sm${filter === id ? ' on' : ''}" data-dip-filter="${id}" aria-pressed="${filter === id}">${label}${counts[id] != null ? ` <small>${counts[id]}</small>` : ''}</button>`).join('')}</div>`;
-  const head = `<div class="dip-row head"><span></span><span>Nation</span><span>Standing</span><span>Strength</span><span${tip('Relations\nHow they regard us: the sum of what we did to each other, fading by 1% a week. ★ = our envoy at their court.')}>Relations</span><span${tip('Threat\nCould this neighbour attack us? Their strength against ours plus half of everyone who stands behind us, against the margin they need; then whether they are ready and free.')}>Threat</span><span class="dip-col-ally">Alliance</span><span></span></div>`;
+  const head = `<div class="dip-row head"><span></span><span>Nation</span><span>Standing</span><span>Strength</span><span${tip('Relations\nHow they regard us: the sum of what we did to each other, fading by 1% a week. A lit star marks our envoy at their court.')}>Relations</span><span${tip('Threat\nCould this neighbour attack us? Their strength against ours plus half of everyone who stands behind us, against the margin they need; then whether they are ready and free.')}>Threat</span><span class="dip-col-ally">Alliance</span><span></span></div>`;
 
   const rival = view.rivalInfo;
   const commitmentsSub = [
@@ -285,7 +286,7 @@ export function renderDiplomacyScreen(screens, me) {
     kitKpi({ icon: gaugeArt('infamy', 'md'), label: 'Infamy', value: `${view.infamy.toFixed(1)} / ${view.infamyCap}`, sub: view.infamy >= view.infamyCap ? 'coalitions can form' : 'coalition threshold', tip: 'infamy', meter: view.infamy / view.infamyCap, meterTone: view.infamy >= view.infamyCap ? 'neg' : view.infamy >= view.infamyCap * 0.6 ? 'warn' : '', cls: 'hero' }),
     kitKpi({ icon: gaugeArt('war_support', 'md'), label: 'Wars', value: String(view.wars), sub: view.crises ? `${view.crises} ultimatum${view.crises === 1 ? '' : 's'}` : 'at war with you' }),
     kitKpi({ icon: diplomacyArt('alliance', 'md'), label: 'Allies', value: `${view.allies} / ${view.maxAllies}`, sub: 'an attack on one calls the other' }),
-    kitKpi({ label: 'Envoys', value: `${view.envoys.used} / ${view.envoys.slots}`, sub: `+${view.envoys.rate} a week each, up to +${view.envoys.cap}`, tip: { text: `Envoys\nAn envoy raises how a court regards us by ${view.envoys.rate} a week, up to +${view.envoys.cap}. Send one with ☆ in a row or from a dossier.` } }),
+    kitKpi({ label: 'Envoys', value: `${view.envoys.used} / ${view.envoys.slots}`, sub: `+${view.envoys.rate} a week each, up to +${view.envoys.cap}`, tip: { text: `Envoys\nAn envoy raises how a court regards us by ${view.envoys.rate} a week, up to +${view.envoys.cap}. Send one with the star in a row or from a dossier.` } }),
     kitKpi({ label: 'Commitments', value: view.upkeep > 0 ? `−${view.upkeep.toFixed(2)} PP/wk` : '0 PP/wk', sub: commitmentsSub, tip: { text: `Commitments\nEnvoys cost ${ENVOY.UPKEEP} and each guarantee we give ${GUARANTEE.UPKEEP} political power a week. If power runs dry the newest envoy is recalled, then the newest guarantee.` } }),
     kitKpi({
       label: 'Rival', value: esc(rival.name ?? 'none'),

@@ -46,6 +46,28 @@ const P = {
   // yazı tipinden çiziliyordu; bu ikisi düğmenin yazı rengini alır.
   advance: '<path d="M4 12h13M12 6l6 6-6 6"/>',
   halt: '<rect x="6" y="6" width="12" height="12" rx="1.5"/>',
+  // Arayüz denetimleri. Metin karakterleri (✕ ☰ ✓ ★ ▲ ▼ ▾ ▸ ⌂ ✎ ◆ ●) Windows'ta
+  // emoji yazı tipinden RENKLİ çiziliyordu ("her yerde emoji"); bunlar
+  // düğmenin yazı rengini alır. Dolu olanların dolgusu yolun kendisinde.
+  close: '<path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/>',
+  menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
+  check: '<path d="M5 12.5l4.5 4.5L19 7.5"/>',
+  star: '<path d="M12 3.6l2.5 5.2 5.7.8-4.1 4 1 5.7L12 16.5l-5.1 2.8 1-5.7-4.1-4 5.7-.8z"/>',
+  'star-on': '<path d="M12 3.6l2.5 5.2 5.7.8-4.1 4 1 5.7L12 16.5l-5.1 2.8 1-5.7-4.1-4 5.7-.8z" fill="currentColor"/>',
+  up: '<path d="M12 6l7 11H5z" fill="currentColor"/>',
+  down: '<path d="M12 18L5 7h14z" fill="currentColor"/>',
+  flat: '<path d="M6 12h12"/>',
+  'chev-down': '<path d="M6 9.5l6 6 6-6"/>',
+  'chev-up': '<path d="M6 14.5l6-6 6 6"/>',
+  'chev-right': '<path d="M9.5 6l6 6-6 6"/>',
+  'to-top': '<path d="M6 4.5h12"/><path d="M12 20V9.5M7 14l5-5 5 5"/>',
+  locate: '<circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/>',
+  home: '<path d="M4 11.5L12 4l8 7.5"/><path d="M6.5 10v10h11V10"/><path d="M10 20v-5h4v5"/>',
+  reserve: '<rect x="4.5" y="4.5" width="15" height="15" rx="1.5"/><rect x="9" y="9" width="6" height="6" fill="currentColor"/>',
+  pencil: '<path d="M4 20l1.2-4.8L16 4.4l3.6 3.6L8.8 18.8z"/><path d="M14 6.4l3.6 3.6"/>',
+  diamond: '<path d="M12 4.5l7.5 7.5-7.5 7.5-7.5-7.5z" fill="currentColor"/>',
+  dot: '<circle cx="12" cy="12" r="4" fill="currentColor"/>',
+  'return': '<path d="M9 6.5L4 11.5l5 5"/><path d="M4.5 11.5h10a5 5 0 0 1 0 10H12"/>',
   bell: '<path d="M6 16V11a6 6 0 0 1 12 0v5l2 2H4z"/><path d="M10 20a2 2 0 0 0 4 0"/>',
   people: '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.5 2.7-6 6-6s6 2.5 6 6"/><circle cx="17" cy="9" r="2.4"/><path d="M15.6 14.2c3 .3 5.4 2.5 5.4 5.8"/>',
   laurel: '<path d="M12 21c-4-1-7-5-7-10 0-2 .5-4 1.5-5.5M12 21c4-1 7-5 7-10 0-2-.5-4-1.5-5.5"/><path d="M5.3 14c-1.5-.3-2.5-1.5-2.8-3 1.5.2 2.6 1.3 2.8 3zM5 10c-1.3-.6-2-1.9-1.9-3.3 1.3.5 2 1.8 1.9 3.3zM8 18.3c-1.5.3-2.9-.2-3.8-1.3 1.4-.4 2.9 0 3.8 1.3zM18.7 14c1.5-.3 2.5-1.5 2.8-3-1.5.2-2.6 1.3-2.8 3zM19 10c1.3-.6 2-1.9 1.9-3.3-1.3.5-2 1.8-1.9 3.3zM16 18.3c1.5.3 2.9-.2 3.8-1.3-1.4-.4-2.9 0-3.8 1.3z"/>',
@@ -58,6 +80,16 @@ export function glyph(name, cls = '') {
   const path = P[name] ?? P.info;
   return `<svg class="glyph${cls ? ` ${cls}` : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+}
+
+/**
+ * Yetenek yıldızları (★☆ karakterleri yerine): dolu ve boş çizgi yıldız.
+ * Boşlar CSS'te söner (.stars .glyph:not(.on)).
+ */
+export function stars(filled, max = 5) {
+  let out = '';
+  for (let i = 0; i < max; i++) out += i < filled ? glyph('star-on', 'on') : glyph('star');
+  return `<span class="stars" role="img" aria-label="${filled} of ${max}">${out}</span>`;
 }
 
 /** Bildirim türü → ikon. */

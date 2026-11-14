@@ -642,7 +642,7 @@ export function registerTooltips(game) {
       type: 'simple',
       title: alert.title,
       text: `${alert.easing ? `<i>${esc(easingNote(alert.easing))}</i><br><br>` : ''}${esc(alert.cause)}<br><br><b>${esc(alert.remedy)}</b>`,
-      footer: 'Click the icon to pin the note; ✕ silences it until the situation changes.',
+      footer: 'Click the icon to pin the note; the cross silences it until the situation changes.',
     };
   });
 
