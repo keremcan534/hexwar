@@ -228,10 +228,11 @@ const hasColor = (value) => { COLOR_RE.lastIndex = 0; return COLOR_RE.test(value
 /**
  * Çevrilmeyen seçiciler: ana menü (tam ekran tablonun üstünde, açık yazı orada
  * doğru yazıdır) ve haritanın ya da bir resmin ÜSTÜNDEKİ ışık katmanları
- * (kenar karartması). Işık temadan bağımsızdır;
+ * (kenar karartması) ve saatin kâğıt takvim yaprağı (kâğıt her temada kâğıttır).
+ * Işık temadan bağımsızdır;
  * çevrilince harita kenarı beyaz sise dönüyordu.
  */
-const KEEP_SEL = /(^|[\s>+~(,])(#menu(?![\w-])|\.menu(?![\w])|\.menu-|#map(?![\w])|#map-)|^body::before$/;
+const KEEP_SEL = /(^|[\s>+~(,])(#menu(?![\w-])|\.menu(?![\w])|\.menu-|#map(?![\w])|#map-|\.tc-(cal|month|day)(?![\w-]))|^body::before$/;
 
 /** Seçici listesini üst düzey virgüllerden böler (:is(a, b) içini bölmez). */
 function splitSelectors(text) {

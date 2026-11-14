@@ -15,6 +15,8 @@
 //
 // Katman notu: yalnız HTML dizgisi üretir; oyun durumu okumaz.
 
+import { sketch } from './glyphs.js';
+
 const BASE = 'assets/icons';
 
 /**
@@ -271,9 +273,27 @@ export function hasTechArt(techId) {
   return TECH_ART.has(techId);
 }
 
-/** Teknoloji resmi; yoksa dalın amblemi. Boyutu çağıranın kabı belirler. */
-export function techArt(techId, categoryId) {
-  if (!TECH_ART.has(techId)) return emblemArt(categoryId, 'lg');
+/**
+ * Resmi gelmemiş teknolojinin yedeği: satırının (folder) teknik çizimi.
+ * Eskiden dalın parlak 3B amblemiydi; aynı amblem satır satır tekrar ediyor
+ * ve mavi kopya masada mobil oyun ikonu gibi okunuyordu (oyuncu).
+ */
+const FOLDER_SKETCH = {
+  Production: 'factory', Materials: 'flask', Transport: 'rail', Agriculture: 'wheat',
+  Doctrine: 'flag', Arms: 'swords', Aviation: 'plane',
+  Shipbuilding: 'ship', 'Naval Doctrine': 'compass',
+  Politics: 'ballot', Science: 'cap',
+};
+const CATEGORY_SKETCH = { industry: 'gear', infrastructure: 'rail', army: 'swords', navy: 'anchor', society: 'scroll' };
+
+/** Teknoloji dalının teknik çizimi (bant başlığı, kuyruk satırı). */
+export function categorySketch(categoryId, cls = '') {
+  return sketch(CATEGORY_SKETCH[categoryId] ?? 'gear', cls);
+}
+
+/** Teknoloji resmi; yoksa satırının teknik çizimi. Boyutu çağıranın kabı belirler. */
+export function techArt(techId, categoryId, folder = null) {
+  if (!TECH_ART.has(techId)) return sketch(FOLDER_SKETCH[folder] ?? CATEGORY_SKETCH[categoryId] ?? 'gear');
   return `<img class="tech-art" src="assets/tech/${techId}.webp" alt="" draggable="false" loading="lazy">`;
 }
 

@@ -21,7 +21,7 @@
 // Katman notu: saf gorunum. Simulasyonu okur, YAZMAZ — eylemler `data-*`
 // olarak isaretlenir, isleyicileri screens.js baglar.
 
-import { emblemArt, hasTechArt, techArt } from './icons/art.js';
+import { categorySketch, emblemArt, hasTechArt, techArt } from './icons/art.js';
 import {
   HERITAGE, TECH_CATEGORIES, TECH_FOLDERS, TECHNOLOGIES, availableTechs, canResearch, hasTech, researchPath, techById,
   DIFFUSION_MAX, EARLY_BASE, EARLY_CAP, FIRST_TECH_PRESTIGE, TECH_YEAR_SCALE, techCostFactors,
@@ -197,7 +197,7 @@ export function techInspector(nation, techId, view) {
   // Müze plakası: teknolojinin resmi (yoksa dalın amblemi mavi kopya
   // zemininde) ve adı. Panelin ilk bakışı budur; etkiler ve fiyat altında.
   return `<figure class="tq-hero${hasTechArt(tech.id) ? ' has-art' : ''} is-${state}" data-cat="${entry.categoryId}">
-      <span class="tq-hero-art">${techArt(tech.id, entry.categoryId)}</span>
+      <span class="tq-hero-art">${techArt(tech.id, entry.categoryId, entry.folder)}</span>
       <figcaption><small>${esc(category.name)} · ${esc(entry.folder)}</small><h3>${esc(tech.name)}</h3></figcaption>
     </figure>
     <span class="tq-meta">${statusBadge}<b>${tech.year}</b>${early ? `<em class="early">${factors.earlyYears} years early</em>` : ''}</span>
@@ -252,7 +252,7 @@ export function technologyScreen(nation, view) {
     if (!entry) return '';
     cursor += Math.ceil(costOf(id) / rate);
     return `<li class="tq-plate"><button type="button" data-dequeue="${esc(id)}" data-tech-inspect="${esc(id)}"${tipAttr({ text: `${entry.tech.name}\nDone around ${dateOf(view.yearExact + cursor * 7 / 365)}.\nClick to remove from the queue.` })}>
-      <em>${index + 1}</em>${emblemArt(entry.categoryId, 'xs')}<b>${esc(entry.tech.name)}</b><small>~${dateOf(view.yearExact + cursor * 7 / 365)}</small><i aria-hidden="true">×</i></button></li>`;
+      <em>${index + 1}</em>${categorySketch(entry.categoryId, 'inline')}<b>${esc(entry.tech.name)}</b><small>~${dateOf(view.yearExact + cursor * 7 / 365)}</small><i aria-hidden="true">×</i></button></li>`;
   }).join('');
   const zoomIndex = TECH_ZOOMS.indexOf(zoom);
   const queueRow = `<div class="tq-queue">
@@ -302,7 +302,7 @@ export function technologyScreen(nation, view) {
         return `<button class="tech-node is-${state}${early ? ' is-early' : ''}${queued >= 0 ? ' is-queued' : ''}${tech.id === inspect ? ' is-inspected' : ''}"
           style="left:${x}px;--d:${delayOf(tech.year ?? START_YEAR, row)}ms" data-tech="${esc(tech.id)}" data-cat="${categoryId}"
           aria-label="${esc(tech.name)}, ${tech.year}, ${state}">
-          <span class="tech-node-art" aria-hidden="true">${techArt(tech.id, categoryId)}</span>
+          <span class="tech-node-art" aria-hidden="true">${techArt(tech.id, categoryId, folder)}</span>
           <b>${esc(tech.name)}</b><span class="tech-node-eff">${esc(effect)}</span><small>${meta}</small>${bar}
           ${state === 'locked' ? '<i class="tech-node-lock" aria-hidden="true"></i>' : ''}
           ${queued >= 0 ? `<em class="tech-node-q">${queued + 1}</em>` : ''}
@@ -315,7 +315,7 @@ export function technologyScreen(nation, view) {
     }).join('');
     return `<section class="tech-band" data-category="${categoryId}">
       <header class="tech-band-head">
-        <span class="tech-row-label">${emblemArt(category.id)}<b>${esc(category.name)}</b>
+        <span class="tech-row-label">${categorySketch(category.id, 'band')}<b>${esc(category.name)}</b>
           <em>${have}/${all.length}</em></span>
         <span class="tech-band-bar" aria-hidden="true"><i style="width:${all.length ? (have / all.length) * 100 : 0}%"></i></span>
       </header>

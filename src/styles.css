@@ -17192,22 +17192,16 @@ button.dip-war.dip-conflict.on { border-left-color: var(--gold-bright); }
 .tb-gauge { gap: 10px; padding: 4px 14px 4px 8px; }
 .tb-gauge + .tb-gauge::before { top: 15px; bottom: 15px; background: linear-gradient(180deg, transparent, rgba(214, 186, 120, 0.4), transparent); }
 .tb-gauge:hover { background: radial-gradient(70% 90% at 28% 50%, rgba(214, 186, 120, 0.1), transparent 70%); }
-.tb-socket {
-  width: 40px;
-  height: 40px;
-  overflow: visible;
-  background: radial-gradient(circle at 50% 30%, rgba(222, 206, 170, 0.16), transparent 66%), #121a1d;
-  box-shadow: 0 0 0 1.5px #a98b4f, 0 0 0 3.5px rgba(5, 7, 8, 0.9), 0 3px 8px rgba(0, 0, 0, 0.7);
-}
+.tb-socket { width: 46px; height: 46px; overflow: visible; }
 .tb-socket::after { display: none; }
-.tb-hero .tb-socket { box-shadow: 0 0 0 1.5px #d2b26c, 0 0 0 3.5px rgba(5, 7, 8, 0.9), 0 0 14px rgba(214, 186, 120, 0.3); }
-.tb-gauge:hover .tb-socket { box-shadow: 0 0 0 1.5px #e8cf8f, 0 0 0 3.5px rgba(5, 7, 8, 0.9), 0 0 14px rgba(214, 186, 120, 0.35); }
+.tb-hero .tb-socket { box-shadow: 0 2px 6px rgba(0, 0, 0, 0.75), 0 0 14px rgba(214, 186, 120, 0.3); }
 /* Halka diskin çevresinde: koyu dış çizginin yerini dolum alır. */
 .tb-ring { inset: -6px; width: calc(100% + 12px); height: calc(100% + 12px); }
 .tb-ring circle { stroke-width: 2.6; }
-.tb-ico { position: absolute; left: 50%; top: 50%; z-index: 3; transform: translate(-50%, -55%); }
-.tb-ico, .tb-ico .art-sm, .tb-ico .art-emblem, .tb-hero .tb-ico .art-emblem { width: 52px; height: 52px; }
-.tb-ico .art-emblem img { filter: saturate(0.82) drop-shadow(0 3px 3px rgba(0, 0, 0, 0.85)); }
+/* İkon sikkenin ORTASINDA (eskiden yukarı kaydırılmıştı: "kayık" okunuyordu);
+   diski doldurur, kenara hafifçe taşar. */
+.tb-ico { position: absolute; left: 50%; top: 50%; z-index: 3; transform: translate(-50%, -50%); }
+.tb-ico, .tb-ico .art-sm, .tb-ico .art-emblem, .tb-hero .tb-ico .art-emblem { width: 48px; height: 48px; }
 .tb-ico .glyph { width: 26px; height: 26px; }
 .tb-gv { gap: 3px; }
 /* Sabit en (§50) yalnız YATAYDA kırpar: arayüz yazısının yazı tipi kutusu
@@ -17227,15 +17221,409 @@ button.dip-war.dip-conflict.on { border-left-color: var(--gold-bright); }
 
 @media (max-width: 1899px) {
   .tb-gauge { gap: 8px; padding: 3px 11px 3px 7px; }
-  .tb-socket { width: 34px; height: 34px; }
-  .tb-ico, .tb-ico .art-sm, .tb-ico .art-emblem, .tb-hero .tb-ico .art-emblem { width: 44px; height: 44px; }
+  .tb-socket { width: 40px; height: 40px; }
+  .tb-ico, .tb-ico .art-sm, .tb-ico .art-emblem, .tb-hero .tb-ico .art-emblem { width: 42px; height: 42px; }
   .tb-gv b { font-size: 19px; }
   .tb-hero .tb-gv b { font-size: 20px; }
 }
 @media (max-width: 1599px) {
   .tb-gauge { gap: 7px; padding: 3px 9px 3px 6px; }
-  .tb-socket { width: 30px; height: 30px; }
-  .tb-ico, .tb-ico .art-sm, .tb-ico .art-emblem, .tb-hero .tb-ico .art-emblem { width: 40px; height: 40px; }
+  .tb-socket { width: 34px; height: 34px; }
+  .tb-ico, .tb-ico .art-sm, .tb-ico .art-emblem, .tb-hero .tb-ico .art-emblem { width: 36px; height: 36px; }
   .tb-gv b { font-size: 17px; }
   .tb-hero .tb-gv b { font-size: 18px; }
 }
+
+/* ==========================================================================
+   SAAT: TAKVİM YAPRAĞI + TELGRAF KADRANI (2026-11-14)
+   Oyuncu: "tarih yeri çok dandik; konumu değil, grafik olarak". Eski hâl: ince
+   pirinç hatlı düz hap, tek satır tarih, beş sönük elmas. Şimdi süslü pirinç
+   kasada (pencere çerçevesi dokusu) kırmızı bantlı takvim yaprağı, altın yıl
+   ve gemi telgrafı gibi yarım kadran: lambalar seçilen hıza kadar yanar, ibre
+   seçili hıza döner (:has; JS yalnız .active/.lit yazar), ortadaki pirinç
+   topuz oynat/duraklat. Sabit ölçü (§50): yaprak, yıl yuvası ve kadran sabit
+   enlidir, tarih akarken kasa kıpırdamaz.
+   ========================================================================== */
+.turn-control {
+  --needle: -90deg;
+  position: relative;
+  gap: 12px;
+  height: 62px;
+  padding: 0 12px;
+  border-radius: 0;
+  background: none;
+  border-image: var(--sk-cerceve-kucuk);
+  box-shadow: none;
+  filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.6));
+}
+.turn-control:has(.time-notch.active[data-speed="1"]) { --needle: -60deg; }
+.turn-control:has(.time-notch.active[data-speed="2"]) { --needle: -30deg; }
+.turn-control:has(.time-notch.active[data-speed="4"]) { --needle: 0deg; }
+.turn-control:has(.time-notch.active[data-speed="6"]) { --needle: 30deg; }
+.turn-control:has(.time-notch.active[data-speed="8"]) { --needle: 60deg; }
+.turn-control.is-paused { --needle: -90deg; }
+
+/* Takvim yaprağı: duvar takvimi gibi kırmızı ay bandı, iki pirinç halka. */
+.tc-cal {
+  position: relative;
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  width: 40px;
+  height: 47px;
+  transform: rotate(-2.5deg);
+  box-shadow: 0 2px 0 rgba(0, 0, 0, 0.35), 0 3px 6px rgba(0, 0, 0, 0.65);
+}
+.tc-month {
+  position: relative;
+  display: grid;
+  place-items: center;
+  height: 15px;
+  padding-left: 0.08em;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(180deg, #a33a2b, #7a2216);
+  color: #f6e9d6;
+  font: 700 var(--fs-label)/1 var(--font-ui);
+  letter-spacing: 0.08em;
+}
+.tc-month::before,
+.tc-month::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  width: 4px;
+  height: 7px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #6e5a32, #e2c88a, #6e5a32);
+}
+.tc-month::before { left: 9px; }
+.tc-month::after { right: 9px; }
+.tc-day {
+  display: grid;
+  flex: 1;
+  place-items: center;
+  border-radius: 0 0 2px 2px;
+  background: linear-gradient(180deg, #f3ead6, #ddd0b2);
+  box-shadow: inset 0 -2px 0 rgba(120, 96, 60, 0.35);
+  color: #2a1e12;
+  font: 600 24px/1 var(--font-display);
+  font-variant-numeric: lining-nums;
+}
+
+/* Yıl + durum satırı. */
+.turn-control .turn-badge {
+  flex: none;
+  width: 80px;
+  align-items: flex-start;
+  gap: 5px;
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  text-align: left;
+}
+.turn-control .turn-badge b {
+  color: #ecd497;
+  font-size: 26px;
+  letter-spacing: 0.04em;
+  text-shadow: 0 1px 0 #000, 0 -1px 0 rgba(255, 236, 190, 0.15), 0 0 14px rgba(214, 186, 120, 0.22);
+}
+.turn-control .turn-status {
+  max-width: 80px;
+  color: #9fb9a0;
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.turn-control.is-paused .turn-status { color: #e0a54c; }
+
+/* Kadran: yarım daire yüz, yayda beş lamba, ibre, ortada topuz. */
+.tc-dial { position: relative; flex: none; width: 78px; height: 50px; }
+.tc-face {
+  position: absolute;
+  top: 4px;
+  left: 1px;
+  right: 1px;
+  height: 76px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 50% 50%, #1b2427 0%, #0d1214 62%, #0a0e10 63%);
+  box-shadow: 0 0 0 2px #8a6d36, 0 0 0 3px #050708, inset 0 0 0 1px rgba(226, 200, 138, 0.25), inset 0 6px 12px rgba(0, 0, 0, 0.8);
+  clip-path: inset(0 0 34px 0);
+  pointer-events: none;
+}
+.tc-dial .time-controls {
+  position: absolute;
+  inset: 0;
+  display: block;
+  height: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+}
+.tc-dial .time-btn.time-notch {
+  position: absolute;
+  top: 42px;
+  left: 50%;
+  width: 16px;
+  height: 16px;
+  margin: -8px 0 0 -8px;
+  padding: 0;
+  border: 0;
+  background: none;
+  box-shadow: none;
+  transform: rotate(var(--a)) translateY(-31px) rotate(calc(-1 * var(--a)));
+}
+.tc-dial .time-notch:nth-child(1) { --a: -60deg; }
+.tc-dial .time-notch:nth-child(2) { --a: -30deg; }
+.tc-dial .time-notch:nth-child(3) { --a: 0deg; }
+.tc-dial .time-notch:nth-child(4) { --a: 30deg; }
+.tc-dial .time-notch:nth-child(5) { --a: 60deg; }
+.tc-dial .time-notch i { display: none; }
+.tc-dial .time-notch::before {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #5c4a2a, #241c10);
+  box-shadow: 0 0 0 1px #050708, inset 0 1px 1px rgba(255, 230, 180, 0.2);
+}
+.tc-dial .time-notch.lit::before {
+  background: radial-gradient(circle at 40% 35%, #fff4cf, #f0c463 55%, #b07a24);
+  box-shadow: 0 0 0 1px #050708, 0 0 7px rgba(246, 200, 100, 0.75);
+}
+.tc-dial .time-notch:hover::before { box-shadow: 0 0 0 1px #050708, 0 0 0 2px rgba(226, 200, 138, 0.7); }
+.tc-needle {
+  position: absolute;
+  top: 15px;
+  left: 50%;
+  width: 3px;
+  height: 27px;
+  margin-left: -1.5px;
+  border-radius: 2px 2px 0 0;
+  background: linear-gradient(90deg, #8a6d36, #f3dca3, #8a6d36);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  transform: rotate(var(--needle));
+  transform-origin: 50% 100%;
+  transition: transform 0.5s cubic-bezier(0.3, 1.4, 0.5, 1);
+  pointer-events: none;
+}
+:root[data-motion="off"] .tc-needle { transition: none; }
+.turn-control .tc-dial .time-btn.time-pause,
+.turn-control.is-paused .tc-dial .time-btn.time-pause {
+  position: absolute;
+  top: 42px;
+  left: 50%;
+  width: 26px;
+  height: 26px;
+  margin: -13px 0 0 -13px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 30%, #fff1c8, #e2c88a 35%, #9a7a3e 70%, #5e4a26);
+  box-shadow: 0 0 0 1px #050708, 0 2px 4px rgba(0, 0, 0, 0.7), inset 0 -2px 3px rgba(0, 0, 0, 0.35);
+  color: #2a1e12;
+}
+.turn-control .tc-dial .time-btn.time-pause:hover { filter: brightness(1.12); }
+.turn-control .tc-dial .time-btn.time-pause::after { display: none; }
+.turn-control .tc-dial .time-btn.time-pause svg { width: 12px; height: 12px; }
+.turn-control.is-paused .tc-dial .time-pause .ico-play { color: #2a1e12; filter: none; }
+
+/* Dar pencerede kasa orantılı küçülür: iç ölçüler kadranın geometrisine
+   bağlı olduğu için tek tek değil, bütün olarak. */
+@media (max-width: 1899px) { .turn-control { zoom: 0.92; } }
+@media (max-width: 1599px) { .turn-control { zoom: 0.84; } }
+
+/* Ekran kartı sikkesi: ikon diskin tamamını doldurur (eskiden 54 px yuvada
+   46 px, koyu boşlukta kalıyordu). */
+.k-kpi-ico { width: 58px; height: 58px; }
+.k-kpi-ico .art-md { width: 58px; height: 58px; }
+@media (max-width: 1365px) {
+  .k-kpi-ico { width: 44px; height: 44px; }
+  .k-kpi-ico .art-md { width: 44px; height: 44px; }
+}
+
+/* ==========================================================================
+   KOMUTAN KARTI: KENARDAN KENARA PORTRE (2026-11-14)
+   Oyuncu: "generallerin fotoğrafları o kareyi tam kaplasın, RES tuşu daha
+   uygun yerde olsun". Eski kartta 50 px'lik çerçeveli portre kartın ortasında
+   yüzüyordu, RES rozeti sol üst köşeyi kesiyordu. Şimdi portre kartın üst
+   karesini doldurur, ad ve yıldızlar portrenin altına koyu geçişle biner;
+   duruş (Attack / Hold / Reserve) ve tümen sayısı alttaki şeritte, planlama
+   çubuğu şeridin alt çizgisidir.
+   ========================================================================== */
+.cmd-card {
+  display: block;
+  overflow: hidden;
+  padding: 0;
+  border-radius: 4px;
+}
+.cmd-card .cmd-portrait {
+  position: absolute;
+  inset: 0 0 22px 0;
+  width: auto;
+  height: auto;
+  border-radius: 0;
+  background: #0b1114;
+  box-shadow: none;
+}
+.cmd-card .cmd-portrait .officer-art { width: 100%; height: 100%; object-fit: cover; object-position: 50% 22%; }
+.cmd-card .cmd-portrait .officer-photo { transform: none; }
+.cmd-card .cmd-id {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 14px 3px 4px;
+  background: linear-gradient(180deg, transparent, rgba(5, 8, 10, 0.78) 45%, rgba(5, 8, 10, 0.92));
+}
+.cmd-card .cmd-name { color: #f2e8d2; font-size: 13px; text-shadow: 0 1px 0 #000; }
+.cmd-card .cmd-stars { font-size: 9px; }
+.cmd-band {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 4px 3px;
+  border-top: 1px solid rgba(214, 186, 120, 0.35);
+  background: linear-gradient(180deg, #1c2428, #0f1517);
+}
+.cmd-band .cmd-stance {
+  padding: 0;
+  background: none;
+  box-shadow: none;
+  color: #8fcdef;
+  font-size: var(--fs-label);
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.cmd-card.is-advancing .cmd-band .cmd-stance { box-shadow: none; color: #ff9382; }
+.cmd-band .cmd-stance.is-reserve { box-shadow: none; color: var(--text-mute); }
+.cmd-band .cmd-size {
+  min-width: 16px;
+  padding: 1px 4px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 0 0 1px rgba(214, 186, 120, 0.3);
+  text-align: center;
+}
+.cmd-band .cmd-plan { left: 4px; right: 4px; bottom: 2px; height: 2px; }
+.cmd-card.active { box-shadow: 0 0 0 2px var(--gold-bright), 0 0 18px rgba(186, 160, 100, 0.3); }
+.cmd-card.is-idle { opacity: 0.78; }
+/* Atama kartı: portre yerine kesik çizgili "+" alanı, aynı yerleşim. */
+.cmd-card .cmd-portrait.cmd-plus {
+  display: grid;
+  place-items: center;
+  margin: 6px 6px 0;
+  border: 1px dashed rgba(214, 186, 120, 0.55);
+  border-radius: 3px;
+  background: none;
+  color: var(--gold);
+  font-size: 22px;
+}
+.cmd-assign .cmd-id { background: none; }
+.cmd-assign .cmd-stars { color: var(--text-mute); font-size: var(--fs-label); }
+.cmd-x { z-index: 2; top: 3px; right: 3px; }
+
+/* ==========================================================================
+   ULUSAL HAREKET KARTI: MALZEME VE YAZI (2026-11-14)
+   Oyuncu: "yazılar ve fontlar yapıştırma gibi, kutucuklar çok temiz" (Home
+   Rule / Self-rule kartı). Kart artık gömük yuva dokusunda (kaplamanın
+   "içerik yuvası çukur" kuralı); hareketin adı kazınmış serif, aşama küçük
+   pirinç plaka, anlatı satırı serif italik. Kültür rengi soldaki şerit; aynı
+   rengi tekrarlayan nokta kalktı.
+   ========================================================================== */
+.md-row {
+  position: relative;
+  padding: 9px 10px 10px 15px;
+  border-radius: 2px;
+  background: none;
+  border-image: var(--sk-yuva);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.35);
+}
+.md-row:hover { transform: none; box-shadow: 0 0 0 1px rgba(214, 186, 120, 0.3), 0 2px 4px rgba(0, 0, 0, 0.35); }
+/* Kültür şeridi ayrı katman: dokunun dolgusu iç gölgeyi örtüyordu. */
+.md-row::before {
+  content: "";
+  position: absolute;
+  top: 8px;
+  bottom: 8px;
+  left: 6px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--md-color);
+  box-shadow: 0 0 6px var(--md-color);
+}
+.md-row.crisis { box-shadow: 0 0 0 1px rgba(192, 80, 58, 0.7), 0 2px 4px rgba(0, 0, 0, 0.35); }
+.md-row-head { align-items: center; gap: 7px; }
+.md-swatch { display: none; }
+.md-row-head .art { width: 26px; height: 26px; margin: -4px 0; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8)); }
+.md-name {
+  color: #efe3c6;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  line-height: 1.1;
+  text-shadow: 0 1px 0 #000, 0 -1px 0 rgba(255, 236, 196, 0.08);
+}
+.md-stage {
+  flex: none;
+  padding: 2px 6px 1px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.45), rgba(0, 0, 0, 0.25));
+  box-shadow: inset 0 0 0 1px rgba(214, 186, 120, 0.3), 0 1px 0 rgba(255, 236, 196, 0.06);
+  font-weight: 700;
+  letter-spacing: 0.09em;
+}
+.md-bar { height: 10px; border-radius: 2px; background: #07090a; box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.95), 0 1px 0 rgba(255, 236, 196, 0.07); }
+.md-fill { border-radius: 2px; }
+.md-meta {
+  color: #b8b09a;
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-style: italic;
+  line-height: 1.3;
+}
+.md-meta .md-trend { font-family: var(--font-ui); font-style: normal; }
+
+/* ==========================================================================
+   ARAŞTIRMA MASASI: TEKNİK ÇİZİM (2026-11-14)
+   Oyuncu: "teknoloji logoları mobil oyunumsu olanları kullanmışız, hatalı".
+   Resmi gelmemiş teknoloji parlak 3B dal amblemi yerine satırının teknik
+   çizimini taşır (glyphs.js sketch: ince çizgi, pafta çentikleri). Masa
+   mavi kopya olduğu için çizim onun dilidir; resimler geldikçe önüne geçer.
+   ========================================================================== */
+.sketch { display: block; flex: none; }
+.tq .tech-node-art > .sketch {
+  position: absolute;
+  top: 50%;
+  right: 6px;
+  width: 44px;
+  height: 44px;
+  color: #d6e8f5;
+  transform: translateY(-50%);
+  filter: drop-shadow(0 0 3px rgba(150, 200, 240, 0.35));
+}
+.tq .tech-node.is-done .tech-node-art > .sketch { color: #ecd7a0; filter: none; }
+.tq .tech-node.is-active .tech-node-art > .sketch { color: #ffffff; }
+.tq-hero-art > .sketch {
+  width: 112px;
+  height: 112px;
+  margin-bottom: 34px;
+  color: #d9eaf6;
+  filter: drop-shadow(0 0 6px rgba(150, 200, 240, 0.4));
+}
+.discovery-art > .sketch { width: 84px; height: 84px; color: #d9eaf6; filter: drop-shadow(0 0 6px rgba(150, 200, 240, 0.4)); }
+.tech-band-head .sketch.band { width: 24px; height: 24px; margin: 0 4px 0 -2px; color: currentColor; }
+.sketch.inline { display: inline-block; width: 1.2em; height: 1.2em; vertical-align: -0.25em; margin-right: 3px; color: currentColor; }

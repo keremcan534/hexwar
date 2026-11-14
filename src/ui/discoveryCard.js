@@ -83,7 +83,7 @@ export class DiscoveryCard {
       ...(unlock ? [`Unlocks ${unlock}`] : []),
       ...describeEffects(tech.effects),
     ].slice(0, 2);
-    return `<span class="discovery-art${hasTechArt(techId) ? ' has-art' : ''}" aria-hidden="true">${techArt(techId, entry.categoryId)}</span>
+    return `<span class="discovery-art${hasTechArt(techId) ? ' has-art' : ''}" aria-hidden="true">${techArt(techId, entry.categoryId, entry.folder)}</span>
       <div class="discovery-body">
         <small>Discovery · ${esc(category?.name ?? '')}</small>
         <h3>${esc(tech.name)}</h3>

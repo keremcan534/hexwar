@@ -241,6 +241,9 @@ export class Hud {
       lblLand: $('lbl-land'),
       lblNations: $('lbl-nations'),
       turnValue: $('turn-value'),
+      turnMonth: $('turn-month'),
+      turnDay: $('turn-day'),
+      turnCal: $('turn-cal'),
       turnStatus: $('turn-status'),
       topFlag: $('top-flag'),
       topNation: $('top-nation'),
@@ -1429,6 +1432,20 @@ export class Hud {
       : 'No save yet. The game autosaves every ten weeks.';
   }
 
+  /**
+   * Saat birimindeki tarih: takvim yaprağında ay ve gün, yanında yıl. Tek
+   * metin ("1 JAN 1900") yaprağa bölünür; tam tarih yaprağın etiketinde kalır.
+   */
+  renderDate(turn, day = 0, label = gameDate(turn, day)) {
+    const date = dateOfTurn(turn, day);
+    const month = date.toLocaleDateString('en-GB', { month: 'short', timeZone: 'UTC' }).toUpperCase();
+    const { turnMonth, turnDay, turnValue, turnCal } = this.el;
+    if (turnMonth) turnMonth.textContent = month;
+    if (turnDay) turnDay.textContent = String(date.getUTCDate());
+    turnValue.textContent = String(date.getUTCFullYear());
+    turnCal?.setAttribute('aria-label', label);
+  }
+
   /** Gün tiki: yalnız tarih yazısı ve (değiştiyse) hız düğmeleri. */
   onDay() {
     const { turns, world, clock } = this.game;
@@ -1436,7 +1453,7 @@ export class Hud {
     const label = gameDate(turns.turn, clock.day);
     if (label !== this.lastDateLabel) {
       this.lastDateLabel = label;
-      this.el.turnValue.textContent = label;
+      this.renderDate(turns.turn, clock.day, label);
     }
     if (clock.speed !== this.lastSpeedShown) {
       this.lastSpeedShown = clock.speed;
@@ -1597,7 +1614,7 @@ export class Hud {
     this.lastTurnAt = t0;
     this.lastDateLabel = gameDate(turns.turn, this.game.clock.day);
     this.lastSpeedShown = this.game.clock.speed;
-    this.el.turnValue.textContent = gameDate(turns.turn, this.game.clock.day);
+    this.renderDate(turns.turn, this.game.clock.day);
     const me = world.nations[turns.playerNation];
     const alive = world.nations.filter((n) => n.alive).length;
     const cities = world.cities.filter((c) => c.nationId === turns.playerNation).length;

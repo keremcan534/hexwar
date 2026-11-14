@@ -403,11 +403,11 @@ export function commandCardsHtml(game, me, { active = null, selected = 0, retire
       + `Click: select the command${selected ? `\nRight-click: transfer the ${selected} selected ${selected === 1 ? 'division' : 'divisions'} here` : ''}`;
     return `<button class="cmd-card${active?.id === general.id ? ' active' : ''}${advancing ? ' is-advancing' : ''}${size ? '' : ' is-idle'}"
         type="button" data-general="${general.id}"${tipAttr({ text: tip })}>
-        <span class="cmd-top">${size ? `<em class="cmd-stance">${advancing ? 'ATK' : 'HOLD'}</em><b class="cmd-size">${size}</b>` : '<em class="cmd-stance is-reserve">RES</em>'}</span>
         <span class="cmd-portrait">${subayPortresi(general)}</span>
-        <b class="cmd-name">${esc(first)}</b>
-        <span class="cmd-stars">${stars(general.skill, MAX_SKILL)}</span>
-        <span class="cmd-plan"><i style="width:${(ready * 100).toFixed(0)}%"></i></span>
+        <span class="cmd-id"><b class="cmd-name">${esc(first)}</b><span class="cmd-stars">${stars(general.skill, MAX_SKILL)}</span></span>
+        <span class="cmd-band">${size
+          ? `<em class="cmd-stance">${advancing ? 'Attack' : 'Hold'}</em><b class="cmd-size">${size}</b>`
+          : '<em class="cmd-stance is-reserve">Reserve</em>'}<span class="cmd-plan"><i style="width:${(ready * 100).toFixed(0)}%"></i></span></span>
         <span class="cmd-x${retireArm === general.id ? ' armed' : ''}" role="button" data-cmd-retire="${general.id}" aria-label="Retire ${esc(general.name)}"${tipAttr({ text: retireArm === general.id ? `Click again to retire ${general.name}` : `Retire ${general.name}\nTwo clicks. ${size ? `Their ${size} divisions are left without a commander.` : 'They command no divisions.'}` })}>${glyph(retireArm === general.id ? 'check' : 'close', 'ctl')}</span>
       </button>`;
   }).join('');
@@ -417,9 +417,8 @@ export function commandCardsHtml(game, me, { active = null, selected = 0, retire
   // Assign kartı BAŞTA: şerit taşınca (≈10 komutan) sondaki kart kaydırılıp
   // görünmez oluyordu ve kaydırma çubuğu gizli (ölçüldü). Kaydırma tekerlekle.
   return `<button class="cmd-card cmd-assign" type="button" data-new-command="1" ${selected ? '' : 'disabled'}${tipAttr({ text: assignTip })}>
-      <span class="cmd-top">${selected ? `<b class="cmd-size">${selected}</b>` : ''}</span>
       <span class="cmd-portrait cmd-plus">+</span>
-      <b class="cmd-name">Assign</b>
-      <span class="cmd-stars">${selected ? 'selected' : 'select first'}</span>
+      <span class="cmd-id"><b class="cmd-name">Assign</b><span class="cmd-stars">${selected ? `${selected} selected` : 'select first'}</span></span>
+      <span class="cmd-band"><em class="cmd-stance is-reserve">New</em></span>
     </button>${cards}`;
 }

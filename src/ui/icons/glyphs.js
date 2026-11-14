@@ -61,6 +61,11 @@ const P = {
   'chev-up': '<path d="M6 14.5l6-6 6 6"/>',
   'chev-right': '<path d="M9.5 6l6 6-6 6"/>',
   'to-top': '<path d="M6 4.5h12"/><path d="M12 20V9.5M7 14l5-5 5 5"/>',
+  // Teknik çizim (araştırma masası) için: üstten tek kanatlı uçak, yandan
+  // savaş gemisi, pusula gülü.
+  plane: '<path d="M12 3.5c1 0 1.6 1 1.6 2.4V18l2.4 1.6V21h-8v-1.4l2.4-1.6V5.9c0-1.4.6-2.4 1.6-2.4z"/><path d="M3 11.6l7.4-1.5M21 11.6l-7.4-1.5M3 11.6v1.6l7.4-.6M21 11.6v1.6l-7.4-.6"/>',
+  ship: '<path d="M2.5 15.5h19l-2.6 4H5.2z"/><path d="M6 15.5v-3h4V10h3.4v2.5H18v3"/><path d="M11.4 10V6.5h2V10M14.5 8.2h4M5 12.5h-2"/>',
+  compass: '<circle cx="12" cy="12" r="8.6"/><path d="M12 5.2l2.1 6.8-2.1 6.8-2.1-6.8z"/><path d="M5.2 12h2M16.8 12h2"/>',
   locate: '<circle cx="12" cy="12" r="6.5"/><circle cx="12" cy="12" r="1.4" fill="currentColor"/><path d="M12 2.5v4M12 17.5v4M2.5 12h4M17.5 12h4"/>',
   home: '<path d="M4 11.5L12 4l8 7.5"/><path d="M6.5 10v10h11V10"/><path d="M10 20v-5h4v5"/>',
   reserve: '<rect x="4.5" y="4.5" width="15" height="15" rx="1.5"/><rect x="9" y="9" width="6" height="6" fill="currentColor"/>',
@@ -80,6 +85,21 @@ export function glyph(name, cls = '') {
   const path = P[name] ?? P.info;
   return `<svg class="glyph${cls ? ` ${cls}` : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;
+}
+
+/**
+ * Teknik çizim: araştırma masasında (mavi kopya) teknoloji satırının resmi.
+ * Parlak 3B amblemler masada "mobil oyun ikonu" gibi okunuyordu (oyuncu).
+ * Glif, çizim pafta işaretleri arasında ince çizgiyle durur: kesik daire ve
+ * dört eksen çentiği. Renk kabından gelir (currentColor).
+ */
+export function sketch(name, cls = '') {
+  const path = P[name] ?? P.gear;
+  return `<svg class="sketch${cls ? ` ${cls}` : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+    stroke-width="1.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="10.8" stroke-width=".6" stroke-dasharray="1 1.4" opacity=".5"/>
+    <path d="M12 .6v2.4M12 21v2.4M.6 12H3M21 12h2.4" stroke-width=".6" opacity=".5"/>
+    <g transform="translate(12 12) scale(.64) translate(-12 -12)">${path}</g></svg>`;
 }
 
 /**

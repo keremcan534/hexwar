@@ -131,12 +131,37 @@
 }
 .k-kpi::before, .k-kpi::after { display: none; }
 .k-kpi[data-tip]:hover { box-shadow: 0 0 0 1px rgba(241, 217, 156, 0.35), 0 3px 8px rgba(0, 0, 0, 0.5); }
-.k-kpi-ico:has(> .art) {
+/* SİKKE: gösterge ikonunun yuvası (ekran kartı ve üst çubuk aynı dil).
+   Eski yuva koyu bir oyuktu, ikon içinde küçük ve boşlukta kalıyordu
+   (oyuncu: "büyük logolar kayık ve küçük duruyor"). Şimdi tırtıllı pirinç
+   kenarlı bir sikke: ikon ortada ve diski doldurur, kenarın üstüne hafifçe
+   taşar. Kenar konik gradyan + ince çentik deseni, maske ile halkaya kesilir. */
+.k-kpi-ico:has(> .art),
+.tb-socket {
+  position: relative;
   border-radius: 50%;
-  background: radial-gradient(circle at 50% 35%, #263035, #0a0e10 70%);
-  box-shadow: 0 0 0 1px #000, 0 0 0 3px var(--sk-brass-mid), 0 0 0 4px #000,
-    inset 0 3px 8px rgba(0, 0, 0, 0.9), 0 4px 8px rgba(0, 0, 0, 0.6);
+  background: radial-gradient(circle at 50% 40%, #233034, #0c1113 72%);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.75);
 }
+.k-kpi-ico:has(> .art)::before,
+.tb-socket::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  padding: 7.5%;
+  background:
+    repeating-conic-gradient(rgba(0, 0, 0, 0.28) 0 2deg, transparent 2deg 6deg),
+    conic-gradient(from 210deg, #6e5a32, #f3dca3 18%, #b39457 32%, #5e4a26 52%, #c9a35a 70%, #f0d795 84%, #6e5a32);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask: linear-gradient(#000 0 0) content-box exclude, linear-gradient(#000 0 0);
+  pointer-events: none;
+}
+.tb-gauge:hover .tb-socket,
+.k-kpi[data-tip]:hover .k-kpi-ico:has(> .art) { box-shadow: 0 0 0 2px rgba(241, 217, 156, 0.35), 0 2px 6px rgba(0, 0, 0, 0.75); }
+.k-kpi-ico > .art img,
+.tb-ico .art img { filter: saturate(0.82) drop-shadow(0 2px 2px rgba(0, 0, 0, 0.85)); }
 .k-kpi-body small { color: var(--sk-brass); }
 .k-kpi-body b { color: var(--sk-text); text-shadow: 0 2px 0 #000; }
 .k-kpi.hero .k-kpi-body b { color: var(--sk-brass-hi); }

@@ -42,6 +42,12 @@ Mimari ve tasarım kararları için [README.md](README.md).
   katmanı yazarsan seçicisini `theme.js` KEEP_SEL'e ekle. İkon resimlerinin
   doygunluğu %22 kısıktır (styles.css `.art-item img`, `.art-emblem img`):
   sarılık orada ayarlanır.
+- Gösterge ikonu (üst çubuk `.tb-socket`, ekran kartı `.k-kpi-ico`) tırtıllı
+  pirinç bir sikkedir: malzemesi skin.css'te, ikon ortada ve diski doldurur.
+  Saat birimi takvim yaprağı + telgraf kadranıdır; ibreyi CSS `:has()` seçili
+  hız düğmesinden döndürür, JS yalnız `.active`/`.lit` yazar (hud.js
+  `renderDate` tarihi yaprağa böler). Resmi gelmemiş teknoloji satırının
+  teknik çizimini gösterir (glyphs.js `sketch`, art.js `FOLDER_SKETCH`).
 - Yazı tipleri yereldir: EB Garamond ("HW Display") + Source Sans 3 ("HW UI"),
   `assets/fonts/` (OFL), `src/fonts.css`. Tuvalde aile adı elle yazılmaz,
   `src/render/fonts.js` sabitleri kullanılır; yoksa harita eski fontta kalır.
