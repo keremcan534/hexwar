@@ -27,7 +27,8 @@ Mimari ve tasarım kararları için [README.md](README.md).
 - Arayüzün malzemesi (panel, düğme, yuva, ölçek, sekme) `src/skin.css`'tedir;
   `index.html` taban stilleri `base`, onu `skin` katmanına alır. Yeni düğme
   sınıfı açma: oradaki aile listesine ekle ve bütün hâllerini (seçili, onay,
-  kapalı) yaz. Kaplamasız karşılaştırma: `?skin=0`.
+  kapalı) yaz. Dokular `assets/ui/skin/` (9 dilim; kaynak sayfa
+  `assets/incoming/arayuz-doku-sayfasi.webp`). Kaplamasız karşılaştırma: `?skin=0`.
 - Yazı tipleri yereldir: EB Garamond ("HW Display") + Source Sans 3 ("HW UI"),
   `assets/fonts/` (OFL), `src/fonts.css`. Tuvalde aile adı elle yazılmaz,
   `src/render/fonts.js` sabitleri kullanılır; yoksa harita eski fontta kalır.
