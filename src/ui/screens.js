@@ -44,7 +44,7 @@ import {
   DELEGATION_AREAS, headerAreaOf, isDelegated, lastDelegatedAction, setDelegation,
 } from '../game/delegation.js';
 import {
-  dequeueResearch, effectiveTechCost, firstDiscoveryOpen, queueResearch, researchNow, researchPointsOf,
+  dequeueResearch, effectiveTechCost, firstDiscoveryOpen, queueResearch, researchNow, researchPath, researchPointsOf,
 } from '../game/technology.js';
 import {
   TECH_ZOOMS, defaultInspect, researchRateLines, techGrid, techInspector, technologyScreen,
@@ -366,6 +366,14 @@ export class Screens {
     // §32: son kart 180 ms gecikip 320 ms iner; sinif erken sokulurse
     // animasyon yarida kesilip yerine siçrar.
     }, 560);
+    // Araştırma ağacının açılışı daha uzun sürer (düğümler yıllarına göre
+    // ~0.8 sn'de belirir; bkz. styles.css .is-intro). Ayrı sınıf: 560 ms'lik
+    // giriş sınıfı onu yarıda keserdi. Haftalık tazelemede takılmaz.
+    this.el.body.classList.remove('is-intro');
+    void this.el.body.offsetWidth;
+    this.el.body.classList.add('is-intro');
+    clearTimeout(this.introTimer);
+    this.introTimer = setTimeout(() => this.el.body.classList.remove('is-intro'), 1500);
   }
 
   /**
@@ -1385,6 +1393,23 @@ export class Screens {
       node.classList.remove('is-inspected');
     }
     this.el.body.querySelector(`.tech-node[data-tech="${CSS.escape(techId)}"]`)?.classList.add('is-inspected');
+    this.lightTechPath(me, techId);
+  }
+
+  /**
+   * Yol ışığı: incelenen teknolojiye giden araştırılmamış önkoşullar ve
+   * aralarındaki bağlantılar yanar. Önkoşul hep aynı satırdadır (bkz.
+   * technology.researchPath); "bunu almak için önce ne lazım" tek bakışta
+   * görünür, tıklayınca kurulacak yol da tam olarak budur.
+   */
+  lightTechPath(me, techId) {
+    for (const el of this.el.body.querySelectorAll('.tech-tree .is-path')) el.classList.remove('is-path');
+    const path = techId ? researchPath(me, techId) : [];
+    if (path.length < 2) return;
+    for (const id of path) {
+      this.el.body.querySelector(`.tech-node[data-tech="${CSS.escape(id)}"]`)?.classList.add('is-path');
+      this.el.body.querySelector(`.tech-link[data-link="${CSS.escape(id)}"]`)?.classList.add('is-path');
+    }
   }
 
   /**
@@ -1650,6 +1675,8 @@ export class Screens {
       btn.onpointerenter = () => this.inspectTech(me, btn.dataset.tech);
       btn.onfocus = () => this.inspectTech(me, btn.dataset.tech);
     }
+    // Haftalık tazeleme ağacı yeniden kurar: incelenen düğümün yolu yanık kalsın.
+    if (this.active === 'technology') this.lightTechPath(me, this.tech.inspect);
     for (const btn of this.el.body.querySelectorAll('[data-dequeue]')) {
       btn.onclick = () => {
         dequeueResearch(me, btn.dataset.dequeue);

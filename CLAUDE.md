@@ -29,6 +29,8 @@ Mimari ve tasarım kararları için [README.md](README.md).
   sınıfı açma: oradaki aile listesine ekle ve bütün hâllerini (seçili, onay,
   kapalı) yaz. Dokular `assets/ui/skin/` (9 dilim; kaynak sayfa
   `assets/incoming/arayuz-doku-sayfasi.webp`). Kaplamasız karşılaştırma: `?skin=0`.
+  Teknoloji resimleri `assets/tech/<id>.webp`; görünmeleri için `src/ui/icons/art.js`
+  `TECH_ART` kümesine eklenir (yoksa dalın amblemi), masa zemini `--tech-backdrop`.
 - Yazı tipleri yereldir: EB Garamond ("HW Display") + Source Sans 3 ("HW UI"),
   `assets/fonts/` (OFL), `src/fonts.css`. Tuvalde aile adı elle yazılmaz,
   `src/render/fonts.js` sabitleri kullanılır; yoksa harita eski fontta kalır.

@@ -258,6 +258,26 @@ export function emblemArt(id, size = 'sm') {
 }
 
 /**
+ * Teknoloji resimleri (assets/tech/<id>.webp): ChatGPT ile kol başına bir
+ * sayfa üretilip dilimlenir (kaynak sayfalar assets/incoming/). Liste elle
+ * tutulur: dosya gelmeden adı yazılsaydı tarayıcı her açılışta 56 kez 404
+ * isterdi. Resmi olmayan teknoloji dalının amblemini gösterir; resimler
+ * geldikçe yalnız bu küme büyür.
+ */
+const TECH_ART = new Set([]);
+
+/** Teknolojinin resmi var mı (inceleme panelinin büyük plakası buna göre kurulur). */
+export function hasTechArt(techId) {
+  return TECH_ART.has(techId);
+}
+
+/** Teknoloji resmi; yoksa dalın amblemi. Boyutu çağıranın kabı belirler. */
+export function techArt(techId, categoryId) {
+  if (!TECH_ART.has(techId)) return emblemArt(categoryId, 'lg');
+  return `<img class="tech-art" src="assets/tech/${techId}.webp" alt="" draggable="false" loading="lazy">`;
+}
+
+/**
  * Gösterge: Output, Power, Stability, War support, Infamy, Exhaustion,
  * Population, Manpower. Amblem sınıfı: üst çubuğun amblem yuvası ölçüsünü
  * (`.tb-ico .art-emblem`) ve çift gölgesini aynen alsın.

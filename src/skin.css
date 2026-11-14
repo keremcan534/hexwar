@@ -411,3 +411,144 @@
 :where(:is(.k-btn, .k-seg-b, .mil-btn, .mil-tabs > button, .mil-views > button,
     .pl-pb, .ap-btn:not(.quiet), .tool-btn, .md-act, .md-stance, .wd-dip, .np-play,
     #settings .action, #settings .primary) .glyph) { color: inherit; }
+
+/* ==========================================================================
+   11. ARAŞTIRMA MASASI — ağaç bir mavi kopya (blueprint) masası: bir ızgara
+       hücresi bir yıl (PX_PER_YEAR = 22), kalın çizgi on yılda bir. Düğümler
+       düğme dokusunu durumla alır: bitti yanık pirinç, açık çelik, araştırılan
+       parlak çelik + ışık, kilitli koyu. Masanın resmi geldiğinde
+       --tech-backdrop'a yazılır (assets/tech/zemin.webp); yoksa yalnız ızgara.
+   ========================================================================== */
+.tq .tech-tree {
+  border: 0;
+  outline: 0;
+  background:
+    radial-gradient(120% 90% at 40% 30%, rgba(26, 64, 98, 0) 0%, rgba(4, 12, 20, 0.6) 100%),
+    var(--tech-backdrop, linear-gradient(180deg, #11304b, #0b2136 60%, #081a2b));
+  background-size: cover;
+  border-image: var(--sk-yuva);
+}
+.tq .tech-tree-inner {
+  background:
+    linear-gradient(90deg, rgba(150, 200, 245, 0.16) 1px, transparent 1px) var(--tech-label-w) 0 / 220px 100% repeat-x,
+    linear-gradient(90deg, rgba(150, 200, 245, 0.06) 1px, transparent 1px) var(--tech-label-w) 0 / 22px 22px,
+    linear-gradient(rgba(150, 200, 245, 0.06) 1px, transparent 1px) 0 0 / 22px 22px;
+}
+/* Satır ve dal etiketleri mavi kopyanın kenar şeridi: yapışkan sütun
+   koyu lacivert, ağaca doğru erir. */
+.tq .tech-row-label {
+  background: linear-gradient(90deg, rgba(7, 19, 31, 0.97) 82%, rgba(7, 19, 31, 0));
+  color: #b9c8d6;
+  text-shadow: 0 1px 2px #000;
+}
+.tq .tech-band-head {
+  position: relative;
+  z-index: 3;
+  border-top: 0;
+  background: none;
+  border-image: var(--sk-baslik);
+}
+.tq .tech-band-head .tech-row-label { background: none; }
+.tq .tech-band-head b { font-family: var(--font-display); font-size: 15px; letter-spacing: 0.06em; text-shadow: 0 1px 0 #000, 0 0 10px color-mix(in srgb, var(--cat) 45%, transparent); }
+.tq .tech-band-bar { background: #050a0f; box-shadow: inset 0 1px 2px #000; }
+
+/* Yıl ekseni: on yıllar pirinç rakam; "şimdi" yılı yanık pirinç plaka. */
+.tq .tech-axis { height: 24px; border-bottom: 1px solid rgba(201, 163, 90, 0.45); background: rgba(7, 19, 31, 0.85); }
+.tq .tech-axis-track > span { top: 4px; color: #c9b27a; font-family: var(--font-display); font-size: 13px; letter-spacing: 0.04em; }
+.tq .tech-axis-track > .tech-now-label {
+  top: 1px;
+  padding: 1px 9px 2px;
+  border-image: var(--sk-dugme-secili);
+  color: var(--sk-dark-ink);
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 400;
+  text-shadow: 0 1px 0 rgba(255, 240, 200, 0.45);
+  box-shadow: 0 0 12px rgba(241, 217, 156, 0.45);
+}
+/* "Şimdi" çizgisi: pirinç ışık. Sağı gelecek: mavi kopya sisle örtülür
+   (orası erken, pahalı), tarama tabandan. */
+.tq .tech-now { width: 2px; background: linear-gradient(180deg, #f6e2a8, rgba(201, 163, 90, 0.4)); box-shadow: 0 0 12px rgba(246, 226, 168, 0.55), 0 0 2px #f6e2a8; }
+.tq .tech-future { background: linear-gradient(90deg, rgba(4, 11, 18, 0.15), rgba(4, 11, 18, 0.5) 240px), repeating-linear-gradient(135deg, rgba(255, 240, 210, 0.025) 0 6px, transparent 6px 14px); }
+
+/* Bağlantı: pirinç boru; araştırılmış uçtan çıkan yanık. */
+.tq .tech-link { height: 3px; margin-top: -1px; border-radius: 2px; background: linear-gradient(180deg, #3a3426, #1b1810); box-shadow: 0 1px 0 rgba(0, 0, 0, 0.6); }
+.tq .tech-link.is-lit { background: linear-gradient(180deg, #f3dc9f, #a9843f); box-shadow: 0 0 8px rgba(241, 217, 156, 0.45); }
+.tq .tech-link.is-path { background: linear-gradient(180deg, #fff1c4, #d9b468); box-shadow: 0 0 10px rgba(246, 226, 168, 0.85); }
+
+/* Düğüm hâlleri. */
+.tq .tech-node {
+  border-color: transparent;
+  background: none;
+  border-image: var(--sk-dugme);
+  box-shadow: var(--sk-drop);
+  color: var(--sk-text);
+}
+.tq .tech-node b { color: var(--sk-text); }
+.tq .tech-node-eff { color: #b9d68a; }
+.tq .tech-node small { color: #b4ab96; }
+.tq .tech-node:hover, .tq .tech-node.is-inspected {
+  border-image: var(--sk-dugme-ustunde);
+  box-shadow: 0 0 0 1px rgba(241, 217, 156, 0.5), 0 0 16px rgba(241, 217, 156, 0.3), 0 6px 14px rgba(0, 0, 0, 0.6);
+}
+.tq .tech-node.is-done, .tq .tech-node.is-done:hover, .tq .tech-node.is-done.is-inspected {
+  border-image: var(--sk-dugme-secili);
+}
+.tq .tech-node.is-done > :is(b, .tech-node-eff, small) { color: var(--sk-dark-ink); text-shadow: 0 1px 0 rgba(255, 240, 200, 0.5); }
+.tq .tech-node.is-done small .ok { color: #4a3a12; }
+.tq .tech-node.is-done .tech-node-art { mix-blend-mode: multiply; opacity: 0.42; }
+.tq .tech-node.is-active {
+  border-image: var(--sk-dugme-ustunde);
+  box-shadow: 0 0 0 1px #f0d795, 0 0 18px rgba(240, 215, 149, 0.5), var(--sk-drop);
+}
+.tq .tech-node-bar { bottom: 5px; left: 5px; max-width: calc(100% - 10px); height: 3px; }
+.tq .tech-node.is-locked {
+  background: #10161a;
+  background-clip: padding-box;
+  border-image: var(--sk-dugme-kapali-cerceve);
+  box-shadow: none;
+  opacity: 0.85;
+  filter: none;
+}
+.tq .tech-node.is-locked > :is(b, small) { color: #9aa09d; }
+.tq .tech-node.is-locked .tech-node-eff { color: #7f9361; }
+.tq .tech-node.is-queued { box-shadow: 0 0 0 1px rgba(120, 164, 190, 0.85), 0 0 10px rgba(120, 164, 190, 0.35), var(--sk-drop); }
+/* Yol ışığı: incelenen teknolojiye giden araştırılmamış önkoşullar. */
+.tq .tech-node.is-path {
+  outline: 0;
+  opacity: 1;
+  box-shadow: 0 0 0 1px rgba(246, 226, 168, 0.85), 0 0 14px rgba(246, 226, 168, 0.4), var(--sk-drop);
+}
+
+/* Müze plakası: resim pirinç çerçevede (çerçeve resmin ÜSTÜNDE durur). */
+.tq-hero { background: #0b1b2a; }
+.tq-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-image: url('../assets/ui/skin/yuva.webp') 16 / 7px / 0 stretch;
+  pointer-events: none;
+}
+/* Resmi henüz olmayan teknoloji: amblem mavi kopya üstünde, ışıkla. */
+.tq-hero:not(.has-art) {
+  background:
+    radial-gradient(circle at 50% 38%, rgba(241, 217, 156, 0.22), transparent 46%),
+    linear-gradient(rgba(150, 200, 245, 0.07) 1px, transparent 1px) 0 0 / 18px 18px,
+    linear-gradient(90deg, rgba(150, 200, 245, 0.07) 1px, transparent 1px) 0 0 / 18px 18px,
+    linear-gradient(180deg, #13324e, #0a1c2e);
+}
+/* Kilitli düğüme gelince de yanar: tıklamak onun YOLUNU sıraya koyar. */
+.tq .tech-node.is-locked:hover, .tq .tech-node.is-locked.is-inspected {
+  opacity: 1;
+  box-shadow: 0 0 0 1px rgba(241, 217, 156, 0.5), 0 0 16px rgba(241, 217, 156, 0.25), 0 6px 14px rgba(0, 0, 0, 0.6);
+}
+/* Erken (yılından önce, pahalı) taraması dokunun üstünde. */
+.tq .tech-node.is-early:not(.is-active)::after {
+  content: "";
+  position: absolute;
+  inset: 5px;
+  z-index: 0;
+  background: repeating-linear-gradient(135deg, rgba(224, 160, 112, 0.1) 0 5px, transparent 5px 10px);
+  pointer-events: none;
+}

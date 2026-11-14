@@ -21,7 +21,7 @@
 // Katman notu: saf gorunum. Simulasyonu okur, YAZMAZ — eylemler `data-*`
 // olarak isaretlenir, isleyicileri screens.js baglar.
 
-import { emblemArt } from './icons/art.js';
+import { emblemArt, hasTechArt, techArt } from './icons/art.js';
 import {
   HERITAGE, TECH_CATEGORIES, TECH_FOLDERS, TECHNOLOGIES, availableTechs, canResearch, hasTech, researchPath, techById,
   DIFFUSION_MAX, EARLY_BASE, EARLY_CAP, FIRST_TECH_PRESTIGE, TECH_YEAR_SCALE, techCostFactors,
@@ -193,11 +193,13 @@ export function techInspector(nation, techId, view) {
       : `<button type="button" class="k-btn" data-tech-queue="${id}">Add to queue<kbd>Q</kbd></button>`);
   }
 
-  return `<div class="tq-head">
-      <span class="tq-art">${emblemArt(category.id, 'lg')}</span>
-      <div><small>${esc(category.name)} · ${esc(entry.folder)}</small><h3>${esc(tech.name)}</h3>
-        <span class="tq-meta">${statusBadge}<b>${tech.year}</b>${early ? `<em class="early">${factors.earlyYears} years early</em>` : ''}</span></div>
-    </div>
+  // Müze plakası: teknolojinin resmi (yoksa dalın amblemi mavi kopya
+  // zemininde) ve adı. Panelin ilk bakışı budur; etkiler ve fiyat altında.
+  return `<figure class="tq-hero${hasTechArt(tech.id) ? ' has-art' : ''} is-${state}" data-cat="${entry.categoryId}">
+      <span class="tq-hero-art">${techArt(tech.id, entry.categoryId)}</span>
+      <figcaption><small>${esc(category.name)} · ${esc(entry.folder)}</small><h3>${esc(tech.name)}</h3></figcaption>
+    </figure>
+    <span class="tq-meta">${statusBadge}<b>${tech.year}</b>${early ? `<em class="early">${factors.earlyYears} years early</em>` : ''}</span>
     ${tech.desc ? `<p class="tq-desc">${esc(tech.desc)}</p>` : ''}
     <div class="tq-sec"><small>Effects</small>${effects || '<p class="tq-note">No direct effect.</p>'}</div>
     ${state !== 'done' && view.firstOpen?.(tech.id) ? `<p class="tq-first"${tipAttr({ text: `First in the world\nNo nation has this yet. Whoever completes it first gains ${FIRST_TECH_PRESTIGE} prestige, and prestige counts toward the ${END_YEAR} score.` })}>◆ No one has it yet — first to finish gains +${FIRST_TECH_PRESTIGE} prestige</p>` : ''}
@@ -266,6 +268,10 @@ export function technologyScreen(nation, view) {
 
   // --- Agac -------------------------------------------------------------
   let width = (END_YEAR - START_YEAR) * PX_PER_YEAR;
+  // Açılışta düğümler yıllarına göre soldan sağa belirir (styles.css
+  // .tq-intro); satır başına küçük bir kayma ağacı yukarıdan aşağı da tarar.
+  let rowIndex = 0;
+  const delayOf = (year, row) => Math.round((year - START_YEAR) * 14 + row * 16);
   const bands = CATEGORY_ORDER.filter((id) => TECHNOLOGIES[id]).map((categoryId) => {
     const category = TECH_CATEGORIES[categoryId];
     const folders = TECHNOLOGIES[categoryId];
@@ -273,12 +279,13 @@ export function technologyScreen(nation, view) {
     const have = all.filter((tech) => hasTech(nation, tech.id)).length;
     const folderRows = (TECH_FOLDERS[categoryId] ?? []).map((folder) => {
       const placed = layoutRow(folders[folder] ?? []);
+      const row = rowIndex++;
       if (placed.length) width = Math.max(width, placed[placed.length - 1].x + NODE_W);
       const links = placed.slice(1).map((node, i) => {
         const prev = placed[i];
         const left = prev.x + NODE_W;
         const lit = hasTech(nation, prev.tech.id);
-        return `<i class="tech-link${lit ? ' is-lit' : ''}" style="left:${left}px;width:${Math.max(0, node.x - left)}px"></i>`;
+        return `<i class="tech-link${lit ? ' is-lit' : ''}" data-link="${esc(node.tech.id)}" style="left:${left}px;width:${Math.max(0, node.x - left)}px;--d:${delayOf(node.tech.year ?? START_YEAR, row)}ms"></i>`;
       }).join('');
       const nodes = placed.map(({ tech, x }) => {
         const state = stateOf(nation, research, tech);
@@ -292,8 +299,9 @@ export function technologyScreen(nation, view) {
               : `${tech.year} · ${costOf(tech.id)} RP`;
         const bar = state === 'active' ? `<i class="tech-node-bar" style="width:${(progress * 100).toFixed(1)}%"></i>` : '';
         return `<button class="tech-node is-${state}${early ? ' is-early' : ''}${queued >= 0 ? ' is-queued' : ''}${tech.id === inspect ? ' is-inspected' : ''}"
-          style="left:${x}px" data-tech="${esc(tech.id)}" data-cat="${categoryId}"
+          style="left:${x}px;--d:${delayOf(tech.year ?? START_YEAR, row)}ms" data-tech="${esc(tech.id)}" data-cat="${categoryId}"
           aria-label="${esc(tech.name)}, ${tech.year}, ${state}">
+          <span class="tech-node-art" aria-hidden="true">${techArt(tech.id, categoryId)}</span>
           <b>${esc(tech.name)}</b><span class="tech-node-eff">${esc(effect)}</span><small>${meta}</small>${bar}
           ${state === 'locked' ? '<i class="tech-node-lock" aria-hidden="true"></i>' : ''}
           ${queued >= 0 ? `<em class="tech-node-q">${queued + 1}</em>` : ''}

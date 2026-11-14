@@ -14147,11 +14147,10 @@ body:is(.screen-open, .notify-quiet) .notify-tray { justify-content: center; min
   background: linear-gradient(180deg, #6d5630, #3d311c);
   color: #fbf1d6;
 }
-:root[data-motion="on"] .tq .tech-node.is-active { animation: tq-active 2.4s ease-in-out infinite; }
-@keyframes tq-active {
-  0%, 100% { box-shadow: inset 3px 0 0 var(--cat), 0 0 0 1px rgba(240, 215, 149, 0.35), 0 0 10px rgba(240, 215, 149, 0.25); }
-  50% { box-shadow: inset 3px 0 0 var(--cat), 0 0 0 1px rgba(240, 215, 149, 0.6), 0 0 18px rgba(240, 215, 149, 0.45); }
-}
+/* Araştırılan düğüm SABİT yanar (eskiden 2.4 sn'lik nabız): ağaçta göz
+   ucunda durmadan yanıp sönen tek nokta, sekmelerdeki lamba nabzıyla aynı
+   itirazı alır ("yanıp sönen butonlar"). İlerleme dolan çubuktan okunur. */
+.tq .tech-node.is-active { box-shadow: inset 3px 0 0 var(--cat), 0 0 0 1px rgba(240, 215, 149, 0.5), 0 0 16px rgba(240, 215, 149, 0.4); }
 .tq .tech-node.is-active .tech-node-eff { color: #e8d9a8; }
 .tq .tech-node-bar { height: 3px; border-radius: 0 2px 0 0; background: linear-gradient(90deg, #f6e2a8, #c9a65c); box-shadow: 0 0 6px rgba(246, 226, 168, 0.6); }
 .tq .tech-node.is-early:not(.is-active) {
@@ -14190,11 +14189,11 @@ body:is(.screen-open, .notify-quiet) .notify-tray { justify-content: center; min
   display: flex;
   flex-direction: column;
   gap: 12px;
-  padding: 14px !important;
+  padding: 14px;
   border-radius: 3px;
   background:
     radial-gradient(120% 60% at 50% 0%, rgba(214, 186, 120, 0.08), transparent 60%),
-    linear-gradient(180deg, rgba(27, 36, 39, 0.96), rgba(9, 14, 16, 0.98)) !important;
+    linear-gradient(180deg, rgba(27, 36, 39, 0.96), rgba(9, 14, 16, 0.98));
   box-shadow: inset 0 0 0 1px var(--brass-hair), 0 6px 18px rgba(0, 0, 0, 0.45);
 }
 .tq-empty { margin: 0; color: var(--text-mute); font-size: 12.5px; font-style: italic; }
@@ -14238,6 +14237,82 @@ body:is(.screen-open, .notify-quiet) .notify-tray { justify-content: center; min
 /* İnceleme panelindeki fiyat zinciri tek satıra sığsın. */
 .tq-sec .k-chain { flex-wrap: nowrap; }
 .tq-sec .k-pill { padding: 3px 5px; }
+
+/* ==========================================================================
+   ARAŞTIRMA MASASI (2026-11). Ağaç bir resim galerisi gibi okunur: her
+   düğümün arkasında teknolojinin resmi (yoksa dalın amblemi), incelemede
+   büyük "müze plakası", açılışta düğümler yıllarına göre belirir, üzerine
+   gelince önkoşul yolu yanar. Malzeme (doku, mavi kopya, ışık) skin.css'te;
+   burada yalnız yerleşim ve hareket.
+   ========================================================================== */
+/* Düğüm resmi: sağa yaslı, sola doğru kaybolur; yazı resmin soluk ucunda
+   durur. Resim grid akışına girmez (mutlak), yazı onun üstünde. */
+.tq .tech-node { overflow: hidden; }
+.tq .tech-node-art {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  width: 60%;
+  opacity: 0.34;
+  pointer-events: none;
+  -webkit-mask-image: linear-gradient(90deg, transparent 0%, #000 60%);
+  mask-image: linear-gradient(90deg, transparent 0%, #000 60%);
+}
+.tq .tech-node-art > .tech-art { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* Resmi henüz olmayan teknoloji: dalın amblemi filigran gibi. */
+.tq .tech-node-art > .art { position: absolute; top: 50%; right: 8px; width: 38px; height: 38px; transform: translateY(-50%); }
+.tq .tech-node > :is(b, .tech-node-eff, small) { position: relative; z-index: 1; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9); }
+.tq .tech-node.is-done .tech-node-art, .tq .tech-node.is-active .tech-node-art { opacity: 0.5; }
+.tq .tech-node.is-locked .tech-node-art { opacity: 0.2; filter: grayscale(1); }
+
+/* Müze plakası: incelenen teknolojinin resmi ve adı. */
+.tq-hero {
+  position: relative;
+  flex: none;
+  height: 184px;
+  margin: 0;
+  overflow: hidden;
+  border-radius: 3px;
+  background: #0b1b2a;
+}
+.tq-hero-art { position: absolute; inset: 0; display: grid; place-items: center; }
+.tq-hero-art > .tech-art { width: 100%; height: 100%; object-fit: cover; }
+.tq-hero-art > .art { width: 108px; height: 108px; margin-bottom: 34px; filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.75)); }
+.tq-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: linear-gradient(180deg, rgba(5, 8, 10, 0) 38%, rgba(5, 8, 10, 0.9));
+  pointer-events: none;
+}
+.tq-hero figcaption { position: absolute; right: 14px; bottom: 11px; left: 14px; z-index: 3; }
+.tq-hero small { color: var(--gold-bright); font-size: var(--fs-label); font-weight: 700; letter-spacing: 0.14em; text-shadow: 0 1px 2px #000; text-transform: uppercase; }
+.tq-hero h3 { margin: 2px 0 0; color: #fff3d6; font-family: var(--font-display); font-size: 25px; font-weight: 400; line-height: 1.05; text-shadow: 0 2px 8px #000, 0 1px 1px #000; }
+/* Durum resmin rengini taşır: kilitli gri, açık hafif soluk, bitti tam renk. */
+.tq-hero.is-locked .tq-hero-art { filter: grayscale(0.85) brightness(0.7); }
+.tq-hero.is-open .tq-hero-art { filter: saturate(0.8); }
+.tq-meta { margin-top: -4px; }
+.tq-desc { padding-left: 11px; border-left: 2px solid rgba(201, 163, 90, 0.55); color: #d8cfb8; font-family: var(--font-display); font-size: 15.5px; line-height: 1.35; }
+
+/* Açılış: yalnız ekran AÇILIRKEN (.is-intro, screens.playEnter); haftalık
+   tazeleme oynatmaz. Anahtar karede "to" yok: düğüm kendi hâline (kilitli
+   soluk, bitti parlak) iner, sonda sıçramaz. */
+:root[data-motion="on"] .screen-body.is-intro .tq .tech-node { animation: tq-node-in 420ms cubic-bezier(0.2, 0.75, 0.25, 1) both; animation-delay: var(--d, 0ms); }
+:root[data-motion="on"] .screen-body.is-intro .tq .tech-link { transform-origin: left center; animation: tq-link-in 360ms ease-out both; animation-delay: var(--d, 0ms); }
+:root[data-motion="on"] .screen-body.is-intro .tq .tech-now { animation: tq-fade-in 900ms ease-out both; }
+:root[data-motion="on"] .screen-body.is-intro .tq-hero { animation: tq-hero-in 560ms ease-out both; }
+@keyframes tq-node-in { from { opacity: 0; transform: translateY(8px) scale(0.96); } }
+@keyframes tq-link-in { from { opacity: 0; transform: scaleX(0); } }
+@keyframes tq-fade-in { from { opacity: 0; } }
+@keyframes tq-hero-in { from { opacity: 0; transform: scale(1.05); } }
+
+/* Yol ışığı (screens.lightTechPath): kaplamasız da görünsün diye çerçeve
+   değil dış çizgi; parıltı skin.css'te. */
+.tq .tech-node.is-path { outline: 1px solid rgba(241, 217, 156, 0.8); outline-offset: 1px; }
+.tq .tech-link.is-path { height: 3px; background: linear-gradient(90deg, #f6e2a8, #c9a65c); }
 .tq-sec .k-pill b { font-size: 14px; }
 .tq-sec .k-pill small { font-size: var(--fs-label); letter-spacing: 0.04em; }
 .tq-sec .k-chain .k-eq { margin: 0 1px; }
