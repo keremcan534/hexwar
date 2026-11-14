@@ -17173,3 +17173,54 @@ button.dip-war.dip-conflict.on { border-left-color: var(--gold-bright); }
 .chron-opening { display: flex; flex-direction: column; align-items: center; gap: 8px; }
 .chron-opening-flag { display: block; width: 84px; height: 56px; margin-bottom: 4px; box-shadow: 0 0 0 1px #050708, 0 0 0 3px rgba(201, 163, 90, 0.6), 0 8px 18px rgba(0, 0, 0, 0.6); }
 .chron-opening small { color: var(--gold); font-size: var(--fs-label); letter-spacing: 0.14em; text-transform: uppercase; }
+
+/* ==========================================================================
+   ÜST ÇUBUK: BÜYÜK KÜNYE VE İKONLAR (2026-11-14)
+   Oyuncu: "ikonları daha iyi kullanmamız lazım, üstte bayrak küçük kalıyor".
+   Saat sağ alta taşınınca (harita konsolu) çubukta yer açıldı; bu blok onu
+   künyeye ve ikonlara verir. Ölçülen eski hâl (1920): bayrak 74×50, gösterge
+   ikonu 46 px'lik yuvada 28 px, kaynak ikonu 22 px ve boşta olanlar %60
+   karartılmış griydi (oyun başında sekizinin çoğu: tepsi ölü görünüyordu).
+   Dosyanın sonunda: önceki kırılım kuralları aynı özgüllükle ezilir.
+   ========================================================================== */
+.nation-badge { padding-left: 128px; }
+.nation-crest { width: 112px; height: calc(100% + 30px); padding-top: 9px; }
+.nation-crest .nation-flag { width: 92px; height: 61px; }
+.nation-text { max-width: none; }
+.nation-text small { white-space: nowrap; }
+/* Yuva 46 px'te kalır (çubuk 74 px, "üst kısım yer kaplıyor" notu); ikon
+   yuvanın çoğunu doldurur. */
+.tb-socket { width: 46px; height: 46px; }
+.tb-ico, .tb-ico .art-sm, .tb-ico .art-emblem { width: 38px; height: 38px; }
+.tb-hero .tb-ico .art-emblem { width: 40px; height: 40px; }
+/* Mini ve kaynak blokları çubuğun boyunu belirler (74 px): ikon büyür,
+   halka ve dolgu küçülür. */
+.tb-mini-ico, .tb-mini-ico .art-xs, .tb-mini-ico .art-emblem { width: 24px; height: 24px; }
+.tb-res { grid-template-columns: repeat(4, 32px); gap: 2px 6px; padding: 3px 8px; }
+.tb-resi { width: 32px; height: 32px; }
+.tb-resi .art-sm { width: 26px; height: 26px; }
+/* Boşta (talep yok) kaynak sönük ama TANINIR: gri karartma ikonları
+   seçilemez yapıyordu; durum halkada ve ipucunda. */
+.tb-resi.idle .art-sm { filter: saturate(0.45) brightness(0.88); }
+
+@media (max-width: 1899px) {
+  .nation-badge { padding-left: 108px; }
+  .nation-crest { width: 96px; height: calc(100% + 26px); padding-top: 8px; }
+  .nation-crest .nation-flag { width: 78px; height: 52px; }
+  .tb-socket { width: 42px; height: 42px; }
+  .tb-ico, .tb-ico .art-sm, .tb-ico .art-emblem { width: 33px; height: 33px; }
+  .tb-hero .tb-ico .art-emblem { width: 35px; height: 35px; }
+  .tb-mini-ico, .tb-mini-ico .art-xs, .tb-mini-ico .art-emblem { width: 23px; height: 23px; }
+}
+@media (max-width: 1599px) {
+  .nation-badge { padding-left: 90px; gap: 10px; }
+  .nation-crest { width: 80px; height: calc(100% + 20px); padding-top: 7px; }
+  .nation-crest .nation-flag { width: 64px; height: 43px; }
+  .tb-socket { width: 38px; height: 38px; }
+  .tb-ico, .tb-ico .art-sm, .tb-ico .art-emblem { width: 29px; height: 29px; }
+  .tb-hero .tb-ico .art-emblem { width: 31px; height: 31px; }
+  .tb-mini-ico, .tb-mini-ico .art-xs, .tb-mini-ico .art-emblem { width: 21px; height: 21px; }
+  .tb-res { grid-template-columns: repeat(4, 30px); gap: 2px 5px; }
+  .tb-resi { width: 30px; height: 30px; }
+  .tb-resi .art-sm { width: 24px; height: 24px; }
+}
