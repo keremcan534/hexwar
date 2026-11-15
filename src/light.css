@@ -29,6 +29,10 @@
   --sk-yuva: url('../assets/ui/skin/acik/yuva.webp') 16 fill / 6px / 0 stretch;
   --sk-img-cerceve: url('../assets/ui/skin/acik/cerceve.webp');
   --sk-img-yuva: url('../assets/ui/skin/acik/yuva.webp');
+  /* Açık yüzey dokusu: sıcak gri keten (örgü adımı 6 px, dikişsiz). */
+  --sk-cerceve-kenar: url('../assets/ui/skin/acik/cerceve.webp') 52 / 13px / 0 stretch;
+  --sk-doku: url('../assets/ui/skin/acik/panel-doku.webp');
+  --sk-doku-renk: #cfccc7;
   /* Haritanın üstünde yüzen paneller (ayarlar, savaş rıhtımı, hareketler):
      koyu temada %70 koyu cam. Açık camda koyu harita alttan sızıp paneli
      bulanık bir orta griye çekiyordu (eski görünümün "soğuk, sönük"
@@ -60,6 +64,14 @@
      örtü (1), fotoğraf (1); yüzey renk katmanıdır, listeye girmez. */
   --screen-veil: linear-gradient(180deg, rgba(198, 193, 185, 0.55) 0%, rgba(196, 191, 183, 0.64) 55%, rgba(192, 187, 179, 0.72) 100%);
   background-blend-mode: normal, normal, normal, normal, normal, luminosity;
+}
+/* Üst çubuk açık temada keten: koyu temanın karartması burada hafif bir
+   gölgeye döner (çubuk yine panellerden bir kademe koyu). */
+:root[data-ui-theme="light"] .topbar {
+  background:
+    linear-gradient(180deg, rgba(255, 252, 246, 0.06) 0%, rgba(70, 60, 46, 0.12) 100%),
+    var(--sk-doku) 0 0 / 1254px 1254px repeat,
+    var(--sk-doku-renk);
 }
 /* Kart resmi de aynı baskı: fotoğrafın ışığı porselenin tonunda. */
 :root[data-ui-theme="light"] .k-kpi > .k-kpi-art {

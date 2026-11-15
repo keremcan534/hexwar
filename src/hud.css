@@ -204,7 +204,7 @@
   font: inherit;
   text-align: left;
   cursor: var(--cur-pointer);
-  border-image: var(--sk-cerceve-kucuk);
+  border-image: var(--sk-cerceve-kenar);
 }
 .k-kpi.auto-card .k-kpi-body b { font-size: 26px; letter-spacing: 0.04em; color: #8f9a9c; }
 .k-kpi.auto-card.is-on .k-kpi-body b { color: #a6e3b4; text-shadow: 0 0 12px rgba(120, 220, 160, 0.35), 0 2px 0 #000; }
@@ -284,3 +284,30 @@
 :root[data-motion="on"] .k-kpi > .k-kpi-art { transition: opacity 0.2s ease; }
 /* Sayı ve yazı resmin üstünde: koyu temada gölge yazıyı resimden ayırır. */
 .k-kpi-body b, .k-kpi-body small, .k-kpi-body em { text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9); }
+
+/* ==========================================================================
+   YÜZEY DOKUSU — panel, gösterge kartı, harita kipleri kutusu ve üst çubuk
+   aynı malzemeden: ortasız pirinç çerçeve + 1:1 döşenen doku (skin.css
+   --sk-doku). Koyuda fırçalanmış çelik, açıkta sıcak gri keten. Üstteki
+   --panel-tone yalnız ışık yönünü verir (sol üst aydınlık, sağ alt gölge);
+   doku her panelin kendi köşesinden başlar, paneller ayrı levhalar okunur.
+   ========================================================================== */
+.k-panel,
+.screen .mil .mil-col,
+.tech-inspector,
+.tq-queue,
+.k-kpi,
+.map-modes {
+  border-image: var(--sk-cerceve-kenar);
+  background: var(--panel-tone), var(--sk-doku) 0 0 / 1254px 1254px repeat, var(--sk-doku-renk);
+}
+/* Üst çubuk: aynı doku, bir kademe koyu (çubuk panellerin üstünde durur).
+   Cam bulanıklığı kalktı: doku opak, arkasındaki harita zaten görünmüyordu. */
+.topbar {
+  background:
+    linear-gradient(180deg, rgba(8, 11, 13, 0.28) 0%, rgba(3, 5, 6, 0.5) 100%),
+    var(--sk-doku) 0 0 / 1254px 1254px repeat,
+    var(--sk-doku-renk);
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+}

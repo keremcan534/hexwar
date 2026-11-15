@@ -92,8 +92,8 @@
   min-height: 0;
   overflow: hidden;
   border: 0;
-  border-image: var(--sk-cerceve-kucuk);
-  background: var(--sk-panel), #0c1215;
+  border-image: var(--sk-cerceve-kenar);
+  background: var(--panel-tone), var(--sk-doku) 0 0 / 1254px 1254px repeat, var(--sk-doku-renk);
   box-shadow: 0 14px 34px rgba(0, 0, 0, 0.6);
   color: var(--sk-text);
 }

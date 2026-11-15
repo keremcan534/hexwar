@@ -296,7 +296,19 @@ const TECH_ART = new Set([
  * gibi): dosya gelmeden ad yazılsaydı her ekran açılışı 404 isterdi. Görseli
  * olmayan kart ekranın kendi fotoğrafını panorama olarak taşır.
  */
-const KPI_ART = new Set([]);
+const KPI_ART = new Set([
+  // Kaynak sayfalar assets/incoming/kpi/ (Kerem'in ChatGPT seti, 2026-11-15,
+  // 2×3 macenta ayraçlı; Kalkınma iki çeşitten seçildi). Ticaret sayfası
+  // (exports, imports, trade-balance, shortages, blockade, automation) henüz
+  // yok: o kartlar panoramada kalır.
+  'output', 'industry', 'army-draws', 'consumer-goods', 'shipyards', 'bills',
+  'invested', 'next-level', 'development-cap', 'fund-floor', 'develop-focus', 'development-fund',
+  'standing-army', 'manpower', 'officers', 'in-training', 'wars', 'supply',
+  'population', 'literacy', 'full-citizens', 'peoples', 'unrest', 'movements',
+  'political-power', 'stability', 'war-support', 'government', 'legitimacy', 'empty-land',
+  'researching', 'per-week', 'technologies', 'year', 'rank', 'score',
+  'infamy', 'allies', 'envoys', 'commitments', 'rival', 'entries',
+]);
 
 /** Kartın etiketinden görsel anahtarı. */
 export function kpiKey(label) {
