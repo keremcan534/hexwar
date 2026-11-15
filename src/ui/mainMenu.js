@@ -26,6 +26,7 @@ import {
 } from '../game/save.js';
 import { campaignSaveState, gameDate } from './hud.js';
 import { worldRows } from '../world/worldgen.js';
+import { EARTH_COLS, EARTH_ROWS } from '../world/earth.js';
 import { MenuMusic } from './menuMusic.js';
 import { MenuMotion } from './menuMotion.js';
 import { ERA_NAME, START_YEAR } from '../game/calendar.js';
@@ -268,6 +269,8 @@ export class MainMenu {
       back: $('menu-back'),
       build: $('menu-build'),
       seed: $('menu-seed'),
+      seedLabel: $('menu-seed-label'),
+      mapChoices: [...document.querySelectorAll('[data-map-choice]')],
       size: $('menu-size'),
       cont: $('menu-cont'),
       land: $('menu-land'),
@@ -441,6 +444,15 @@ export class MainMenu {
 
     const sync = () => this.syncLabels();
     for (const input of [el.size, el.cont, el.land, el.nations]) input.oninput = sync;
+    // Dünya türü: Procedural ya da Earth. Earth'te coğrafya sabittir, boy ve
+    // kıta kaydırıcıları anlamsızlaşır; tohum yalnız siyaseti çizer.
+    this.mapKind = 'procedural';
+    for (const chip of el.mapChoices ?? []) {
+      chip.onclick = () => {
+        this.mapKind = chip.dataset.mapChoice;
+        this.syncLabels();
+      };
+    }
     // Enter tohum alanında dünyayı kurar: kaydırıcılara dokunmayan oyuncu
     // düğmeyi aramak zorunda kalmasın.
     el.seed.onkeydown = (event) => {
@@ -465,10 +477,19 @@ export class MainMenu {
 
   syncLabels() {
     const { el } = this;
+    const earth = this.mapKind === 'earth';
+    for (const chip of el.mapChoices ?? []) {
+      chip.setAttribute('aria-pressed', chip.dataset.mapChoice === this.mapKind ? 'true' : 'false');
+    }
+    // Earth'te kaydırıcı kapanır ama değeri kalır: Procedural'a dönen oyuncu
+    // kurduğu ayarı yerinde bulur.
+    for (const input of [el.size, el.cont, el.land]) input.disabled = earth;
+    if (el.seedLabel) el.seedLabel.textContent = earth ? 'Political seed' : 'World seed';
+    el.seed.placeholder = earth ? 'nations and borders — blank for random' : 'leave blank for random';
     const cols = Number(el.size.value);
-    el.sizeLabel.textContent = `${cols} × ${worldRows(cols)}`;
-    el.contLabel.textContent = Number(el.cont.value).toFixed(2);
-    el.landLabel.textContent = Number(el.land.value).toFixed(2);
+    el.sizeLabel.textContent = earth ? `${EARTH_COLS} × ${EARTH_ROWS} · Earth` : `${cols} × ${worldRows(cols)}`;
+    el.contLabel.textContent = earth ? 'real' : Number(el.cont.value).toFixed(2);
+    el.landLabel.textContent = earth ? 'real' : Number(el.land.value).toFixed(2);
     const nations = Number(el.nations.value);
     el.nationsLabel.textContent = nations > 0 ? String(nations) : 'automatic';
   }
@@ -559,13 +580,18 @@ export class MainMenu {
     if (!this.confirmDiscard(el.build, 'build')) return;
     const cols = Number(el.size.value);
     const nations = Number(el.nations.value);
-    this.game.newWorld(el.seed.value.trim() || undefined, {
-      cols,
-      rows: worldRows(cols),
-      continentality: Number(el.cont.value),
-      landBias: Number(el.land.value),
-      nationCount: nations > 0 ? nations : null,
-    });
+    const nationCount = nations > 0 ? nations : null;
+    // Earth: boy ve kıta ayarı yok sayılır (worldgen veriden alır). Seçenek
+    // genOptions'a girer, kayıt aynı dünyayı geri kurar.
+    this.game.newWorld(el.seed.value.trim() || undefined, this.mapKind === 'earth'
+      ? { map: 'earth', nationCount }
+      : {
+        cols,
+        rows: worldRows(cols),
+        continentality: Number(el.cont.value),
+        landBias: Number(el.land.value),
+        nationCount,
+      });
     this.close();
     this.onWorldBuilt?.();
   }

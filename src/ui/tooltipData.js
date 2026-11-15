@@ -735,7 +735,8 @@ export function registerTooltips(game) {
 
   provideTooltip('setup', (field) => {
     const table = {
-      seed: ['World seed', 'Any text. The same seed always draws the same world, nations and opening economy — share it to share a map. Blank picks a random one.'],
+      map: ['World', 'Procedural draws a new planet from the seed. Earth is the real world around 1900 — coastlines, mountains, rivers and climate from public map data — with Europe, Anatolia, India and East Asia drawn larger for play. On Earth the seed still decides every nation, border, name and people.'],
+      seed: ['World seed', 'Any text. The same seed always draws the same world, nations and opening economy — share it to share a map. Blank picks a random one. On Earth the land is fixed and the seed draws the politics.'],
       size: ['Map size', `Hex columns; rows follow the aspect. ${STANDARD_COLS} × ${STANDARD_ROWS} is the standard world the game is balanced on.`],
       cont: ['Continentality', 'How the land clumps: low values scatter islands and peninsulas, high values fuse them into a few large continents.'],
       land: ['Land ratio', `Nudges the share of land. 0.00 is the standard ${Math.round(TARGET_LAND * 100)}% land; negative drowns the coasts, positive raises them.`],

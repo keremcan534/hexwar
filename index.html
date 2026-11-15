@@ -391,8 +391,15 @@
       </header>
 
       <form class="menu-view menu-setup hidden" id="menu-setup" onsubmit="return false">
+        <div class="menu-field">
+          <span data-tip="setup" data-tip-arg="map">World</span>
+          <div class="menu-chips" id="menu-map">
+            <button type="button" class="menu-chip" data-map-choice="procedural" aria-pressed="true">Procedural</button>
+            <button type="button" class="menu-chip" data-map-choice="earth" aria-pressed="false">Earth</button>
+          </div>
+        </div>
         <label class="menu-field">
-          <span data-tip="setup" data-tip-arg="seed">World seed</span>
+          <span data-tip="setup" data-tip-arg="seed" id="menu-seed-label">World seed</span>
           <input type="text" id="menu-seed" placeholder="leave blank for random" autocomplete="off" spellcheck="false" />
         </label>
         <label class="menu-field">
@@ -465,6 +472,13 @@
           World generation, economy, population and diplomacy are simulated
           from a single seed. Every map you see was drawn by the generator in
           about a tenth of a second.
+        </p>
+        <p class="menu-note">
+          Earth map data: <b>Natural Earth</b> coastlines, lakes, rivers and
+          glaciers (public domain); <b>NOAA ETOPO1</b> relief, Amante &amp;
+          Eakins 2009 (public domain); Köppen-Geiger climate 1901–1930 by
+          Beck et al. (2023), <i>Scientific Data</i> 10, 724, licensed
+          CC&nbsp;BY&nbsp;4.0 — all reduced to the hex grid.
         </p>
         <p class="menu-note" id="menu-credits-music"></p>
         <div class="menu-setup-buttons">
