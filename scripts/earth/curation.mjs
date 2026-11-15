@@ -186,41 +186,55 @@ export const ROLE_ANCHORS = {
 
 /**
  * Dar geçitler: hex ~250 km iken rasterde kapanan ya da açılan yerler.
- * water: çizgi boyunca kara hex suya döner (deniz yolu açık kalsın).
- * land: çizgi boyunca su hex karaya döner (kıstak kopmasın).
+ * water: denizden denize su yolu açılır; land: karadan karaya köprü kurulur.
  *
- * Çizgiler komşu hex MERKEZLERİNDEN geçer: iki komşu merkez arasındaki doğru
- * yalnız o iki hexe değer, böylece çizgi tam seçilen hexleri değiştirir. Uzun
- * serbest çizgi sağlam kara hexlerini de siliyordu (Hampshire %80, Bursa %79).
- * Merkezler projeksiyona bağlıdır: mercek değişirse --probe ile yeniden seç,
- * bağlantı denetimi (SEA_LINKS, LAND_LINKS) kaymayı yakalar.
+ * Çizgi yalnız YÖNDÜR: ilk ve son nokta iki ucun denizi (ya da karası),
+ * ara noktalar rotayı tarif eder. İşleme betiği çizginin bir hex çevresinde
+ * en ucuz yolu arar ve yalnız tıkayan sınır hexini değiştirir (bkz.
+ * build-earth.mjs "geçit"). Sabit hex listesi mercek her oynadığında elle
+ * yeniden seçilmek zorundaydı; uzun serbest çizgi ise sağlam kara hexlerini
+ * siliyordu (Hampshire %80, Bursa %79). `keep`: kanalın değmeyeceği kara.
  */
 export const PASSAGES = [
-  // Tanca (%55) suya döner; Alboran zaten su. Endülüs (Málaga %71) kalır.
-  { name: 'Cebelitarık', kind: 'water', line: [[-7.65, 35.21], [-5.71, 35.39], [-3.85, 35.55]] },
-  // Marmara hexi zaten su: Gelibolu (%69) Ege'ye, İzmit (%60) Karadeniz'e açar.
-  // İstanbul hexi (%51) kara kalır, şehir boğazın başında durur.
-  { name: 'Çanakkale-İstanbul', kind: 'water', line: [[24.79, 40.85], [26.26, 40.79], [27.67, 40.74], [29.03, 40.68], [29.58, 41.6]] },
-  { name: 'Kerç', kind: 'water', line: [[36.4, 45.6], [36.6, 45.2], [36.7, 44.8]] },
-  // Yalnız Dover boğazının hexi (bugün kendiliğinden su, %48): kapanmasın diye.
-  { name: 'Manş', kind: 'water', line: [[1.1, 50.9], [1.5, 51.05]] },
-  { name: 'Kuzey Kanalı', kind: 'water', line: [[-6.2, 54.3], [-5.6, 55.0], [-6.0, 55.6]] },
-  // Kattegat → Sund → Baltık: korunan Zelanda kuzeyi (%31) suya döner, Fyn-Zelanda (%54) kalır.
-  { name: 'Sund', kind: 'water', line: [[11.17, 57.09], [11.95, 56.12], [12.72, 55.16]] },
-  { name: 'Otranto', kind: 'water', line: [[18.5, 40.6], [19.0, 40.0], [19.2, 39.5]] },
-  // Kızıldeniz bir sütun su; Aden kıyı hexi (%52) Aden Körfezi'ne açar.
-  { name: 'Bab-ül Mendeb', kind: 'water', line: [[48.13, 12.71], [45.58, 13.21], [43.06, 13.75]] },
-  // Bugün kendiliğinden açık; kapanmasın diye Hürmüz hexinden geçer.
-  { name: 'Hürmüz', kind: 'water', line: [[52.61, 26.5], [55.89, 25.63], [59.24, 24.82]] },
-  // Singapur'da boğaz 15 km: Johor hexi (%65) suya döner, Sumatra kıyısı kalır.
-  { name: 'Malakka', kind: 'water', line: [[99.2, 5.8], [100.9, 3.4], [102.1, 1.8], [104.4, 1.4]] },
-  { name: 'Bering', kind: 'water', line: [[-169.0, 64.8], [-168.9, 65.8], [-168.8, 66.9]] },
-  { name: 'Süveyş kıstağı', kind: 'land', line: [[32.2, 31.2], [32.4, 30.5], [32.5, 29.95]] },
-  { name: 'Panama', kind: 'land', line: [[-83.5, 10.0], [-82.0, 9.0], [-80.5, 8.4], [-79.6, 9.1], [-78.5, 8.8], [-77.4, 8.1]] },
-  { name: 'Orta Amerika', kind: 'land', line: [[-92.0, 15.5], [-89.0, 14.0], [-86.8, 13.2], [-85.5, 11.5], [-84.0, 10.3]] },
-  // Kra kıstağı ve Patani: yarımada 250 km'lik hexte yer yer %30'a iner.
-  { name: 'Kra', kind: 'land', line: [[98.75, 11.31], [99.88, 9.38], [101.0, 7.45], [102.13, 5.51]] },
+  { name: 'Cebelitarık', kind: 'water', line: [[-8.5, 35.8], [-5.6, 35.95], [-3.0, 36.0], [-0.5, 37.0]] },
+  // İstanbul kara kalır: şehir boğazın başında durur, kanal yanından geçer.
+  {
+    name: 'Çanakkale-İstanbul', kind: 'water', keep: [[28.95, 41.02]],
+    line: [[25.0, 40.2], [26.4, 40.25], [27.8, 40.7], [29.1, 41.1], [29.9, 41.7]],
+  },
+  { name: 'Kerç', kind: 'water', line: [[35.8, 44.6], [36.6, 45.3], [37.2, 46.1]] },
+  { name: 'Manş', kind: 'water', line: [[0.0, 50.3], [1.4, 51.0], [2.6, 51.7]] },
+  { name: 'Kuzey Kanalı', kind: 'water', line: [[-5.0, 53.8], [-5.7, 55.0], [-6.6, 56.2]] },
+  { name: 'Sund', kind: 'water', line: [[11.0, 57.4], [12.2, 56.3], [12.8, 55.5], [13.8, 54.9]] },
+  { name: 'Otranto', kind: 'water', line: [[17.8, 41.8], [19.0, 40.2], [19.5, 38.8]] },
+  { name: 'Bab-ül Mendeb', kind: 'water', line: [[40.5, 16.0], [43.4, 12.6], [46.0, 12.5], [49.5, 12.4]] },
+  { name: 'Hürmüz', kind: 'water', line: [[51.5, 27.0], [56.4, 26.4], [59.0, 24.0]] },
+  // Singapur'da boğaz 15 km: rota Malaya tarafında değil boğazın ortasından.
+  { name: 'Malakka', kind: 'water', line: [[97.0, 6.5], [100.5, 3.0], [103.6, 1.2], [105.5, 1.8]] },
+  { name: 'Bering', kind: 'water', line: [[-170.0, 63.8], [-168.9, 65.8], [-168.5, 67.8]] },
+  { name: 'Süveyş kıstağı', kind: 'land', line: [[31.0, 30.3], [32.4, 30.3], [34.2, 30.6]] },
+  { name: 'Panama', kind: 'land', line: [[-84.0, 10.3], [-82.0, 9.0], [-80.5, 8.4], [-79.6, 9.1], [-78.5, 8.8], [-76.8, 8.0]] },
+  { name: 'Orta Amerika', kind: 'land', line: [[-92.5, 15.8], [-89.0, 14.0], [-86.8, 13.2], [-85.5, 11.5], [-84.0, 10.3]] },
+  { name: 'Kra', kind: 'land', line: [[99.2, 13.0], [99.4, 10.0], [100.6, 7.2], [102.0, 5.0]] },
 ];
+
+/**
+ * Nehir ayrıntısı (Natural Earth ölçek sırası: 1 dev nehir … 6 dere). Nehir
+ * province sınırı ve geçiş engelidir; prosedürel dünyada karanın ~%5.5'i
+ * (160×96'da ~460 kenar). Ayrıntıyı merceğin büyüttüğü yerde artırmak, haritanın
+ * kalanında yalnız devleri bırakmak hex başına yoğunluğu dengeler.
+ */
+export const RIVER_DETAIL = [
+  { box: [-12, 60, 30, 72], max: 4 }, // Avrupa ve Yakın Doğu: Ren, Oder, Dinyeper, Dicle
+  { box: [60, 125, 5, 45], max: 3 }, // Güney ve Doğu Asya: İndus, Ganj, Sarı Irmak
+];
+export const RIVER_DETAIL_DEFAULT = 2;
+export function riverDetailAt(lon, lat) {
+  for (const { box: [w, e, s, n], max } of RIVER_DETAIL) {
+    if (lon >= w && lon <= e && lat >= s && lat <= n) return max;
+  }
+  return RIVER_DETAIL_DEFAULT;
+}
 
 /** Denetim: bu iki deniz noktası arasında su yolu OLMALI. */
 export const SEA_LINKS = [

@@ -17,10 +17,13 @@ import { DEFAULT_ZONE, ZONE_RULES } from '../../src/world/macro.js';
 import { finding, headless, n0, reportFindings, run, section, sub } from './harness.mjs';
 
 const SEED = 'province-audit';
-const SIZES = [
-  { cols: 78, rows: 62 },
-  { cols: 200, rows: 160 },
-];
+// --earth: aynı ölçütler gerçek Dünya haritasında (boy veriden gelir).
+const SIZES = process.argv.includes('--earth')
+  ? [{ map: 'earth', cols: 160, rows: 96 }]
+  : [
+    { cols: 78, rows: 62 },
+    { cols: 200, rows: 160 },
+  ];
 
 function assignmentHash(world) {
   let h = 0;
@@ -29,7 +32,7 @@ function assignmentHash(world) {
 }
 
 for (const size of SIZES) {
-  section(`PROVINCE BOLUMLEME — ${size.cols}x${size.rows}`);
+  section(`PROVINCE BOLUMLEME — ${size.map === 'earth' ? 'Earth ' : ''}${size.cols}x${size.rows}`);
   const world = generateWorld(SEED, size);
   generateNations(world, { seed: `${SEED}-nations` });
   const provinces = world.provinces ?? [];
@@ -63,8 +66,16 @@ for (const size of SIZES) {
   for (const p of provinces) {
     const n = p.tileIdx.length;
     histogram.set(n, (histogram.get(n) ?? 0) + 1);
-    const rule = ZONE_RULES[p.zone ?? DEFAULT_ZONE] ?? ZONE_RULES[DEFAULT_ZONE];
-    if (n > Math.max(rule.size[0], rule.size[1]) + 4) over++;
+    // Hedefi tohumun bölgesi koyar, etiketi üye çoğunluğu (provinces-gen):
+    // iki bölgenin kara sınırında (Earth'te Moğolistan-Çin) bozkır tohumundan
+    // büyüyen province çoğunlukla Çin etiketi alır. Tavan üye bölgelerin en
+    // genişidir; tek bölgeli province'te sonuç eskisiyle aynı.
+    let cap = 0;
+    for (const zone of new Set(p.tileIdx.map((i) => world.tiles[i].zone ?? DEFAULT_ZONE))) {
+      const rule = ZONE_RULES[zone] ?? ZONE_RULES[DEFAULT_ZONE];
+      cap = Math.max(cap, rule.size[0], rule.size[1]);
+    }
+    if (n > cap + 4) over++;
   }
   const sizes = [...histogram.keys()].sort((a, b) => a - b);
   console.log('  boy -> adet: ' + sizes.map((s) => `${s}:${histogram.get(s)}`).join('  '));

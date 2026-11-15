@@ -26,7 +26,7 @@ import { DIRS, HEX_CORNERS, SQRT3 } from '../../src/core/hex.js';
 import { EARTH_GRID, earthFrame } from '../../src/world/earthGrid.js';
 import { classifyEarth, KOPPEN } from '../../src/world/earthTerrain.js';
 import {
-  FALLBACK_ZONE, LAND_LINKS, LAND_SPLITS, PASSAGES, REGIONS, ROLE_ANCHORS, SEA_LINKS, ZONE_ANCHORS,
+  FALLBACK_ZONE, LAND_LINKS, LAND_SPLITS, PASSAGES, REGIONS, ROLE_ANCHORS, SEA_LINKS, ZONE_ANCHORS, riverDetailAt,
 } from './curation.mjs';
 
 const args = Object.fromEntries(process.argv.slice(2).reduce((acc, a, i, arr) => {
@@ -40,7 +40,7 @@ if (!args.src) {
 const SRC = resolve(args.src);
 const OUT = resolve(args.out ?? 'src/world/earth/earth-160x96.js');
 const PREVIEW = args.preview ? resolve(args.preview) : null;
-const MAX_RIVER_RANK = Number(args.rivers ?? 5);
+const MAX_RIVER_RANK = Number(args.rivers ?? 4);
 
 const D2R = Math.PI / 180;
 // Deneme: --lens "boylam,enlem,a,b,m;..." mercekleri geçici olarak değiştirir (modül yine üretilir).
@@ -247,11 +247,61 @@ function tilesAlong(line) {
   }
   return out;
 }
+// Geçit, çizginin bir hex çevresindeki koridorda EN UCUZ yoldur: suya
+// dönen hexin bedeli kara payı, karaya dönenin bedeli su payıdır; zaten
+// doğru türde olan hex neredeyse bedavadır. Böylece yalnız gerçekten tıkayan
+// sınır hexi değişir ve mercekler oynayınca geçit kendiliğinden uyar
+// (sabit hex listesi her mercek ayarında elle yeniden seçilmek zorundaydı).
 const passageLog = [];
 for (const p of PASSAGES) {
   const want = p.kind === 'land' ? 1 : 0;
+  const along = tilesAlong(p.line);
+  const onLine = new Set(along);
+  const corridor = new Set(along);
+  for (const t of along) for (let d = 0; d < 6; d++) { const n = nbr(t, d); if (n >= 0) corridor.add(n); }
+  // `keep`: geçidin yanında durması gereken kara (İstanbul): kanal başka hexten geçer.
+  const keep = new Set((p.keep ?? []).map(([lon, lat]) => frame.tileOf(lon, lat)));
+  const start = tileNear(p.line[0], want);
+  const goal = tileNear(p.line[p.line.length - 1], want);
+  if (start < 0 || goal < 0) {
+    log(`geçit ${p.name}: uç noktanın çevresinde ${want ? 'kara' : 'su'} yok, atlandı`);
+    passageLog.push({ name: p.name, kind: p.kind, changed: 0, failed: true });
+    continue;
+  }
+  corridor.add(start);
+  corridor.add(goal);
+  const cost = (t) => {
+    if (mask[t] === want) return 0.05 + (onLine.has(t) ? 0 : 0.15);
+    if (keep.has(t)) return Infinity;
+    const wrong = want ? 1 - landFrac[t] : landFrac[t];
+    // %90'ı yanlış türde olan hex (açık deniz ya da kara içi) yalnız başka
+    // yol yoksa değişir: yoksa Kra köprüsü yarımadanın iki ince hexi yerine
+    // tek bir körfez hexini (%1 kara) karaya çeviriyordu (ölçüldü).
+    return 0.05 + wrong + (wrong > 0.9 ? 10 : 0) + (onLine.has(t) ? 0 : 0.15);
+  };
+  const dist = new Map([[start, 0]]);
+  const prev = new Map();
+  const done = new Set();
+  for (;;) {
+    let u = -1;
+    let best = Infinity;
+    for (const [t, d] of dist) if (!done.has(t) && d < best) { best = d; u = t; }
+    if (u < 0 || u === goal) break;
+    done.add(u);
+    for (let d = 0; d < 6; d++) {
+      const v = nbr(u, d);
+      if (v < 0 || !corridor.has(v) || done.has(v)) continue;
+      const nd = best + cost(v);
+      if (nd < (dist.get(v) ?? Infinity)) { dist.set(v, nd); prev.set(v, u); }
+    }
+  }
+  if (!done.has(goal) && !dist.has(goal)) {
+    log(`geçit ${p.name}: koridorda yol yok`);
+    passageLog.push({ name: p.name, kind: p.kind, changed: 0, failed: true });
+    continue;
+  }
   const changed = [];
-  for (const t of tilesAlong(p.line)) {
+  for (let t = goal; t !== undefined; t = prev.get(t)) {
     if (mask[t] !== want) { mask[t] = want; changed.push(t); }
   }
   passageLog.push({ name: p.name, kind: p.kind, changed: changed.length });
@@ -574,16 +624,25 @@ let riverSystems = 0;
   };
   const FLOW = [1, 1, 0.9, 0.78, 0.64, 0.5, 0.4, 0.32];
   const rivers = ne('ne_10m_rivers_lake_centerlines');
+  const chains = [];
   rivers.shp.forEach((shape, i) => {
     const row = rivers.dbf[i];
     if (!(row.scalerank <= MAX_RIVER_RANK)) return;
     if (row.featurecla !== 'River' && row.featurecla !== 'Lake Centerline') return;
     const flow = FLOW[row.scalerank] ?? 0.3;
     for (const part of shape.parts) {
-      const corners = [];
+      // Ayrıntı sınırının dışına düşen nokta zinciri keser: nehir bölge
+      // kenarında biter, karşıya atlayan bir kenar çizilmez.
+      let corners = [];
       let px = null;
       let py = 0;
       for (let k = 0; k + 1 < part.length; k += 2) {
+        if (row.scalerank > riverDetailAt(part[k], part[k + 1])) {
+          if (corners.length) chains.push({ corners, flow });
+          corners = [];
+          px = null;
+          continue;
+        }
         const p = frame.toPixel(part[k], part[k + 1]);
         let x = p.x;
         if (px === null) {
@@ -604,6 +663,11 @@ let riverSystems = 0;
         px = x;
         py = p.y;
       }
+      if (corners.length) chains.push({ corners, flow });
+    }
+  });
+  for (const { corners, flow } of chains) {
+    {
       // Geri dönüşleri sil (A B A → A): kaba ızgarada kıvrım zikzaka döner.
       const clean = [];
       for (const c of corners) {
@@ -624,7 +688,7 @@ let riverSystems = 0;
         }
       }
     }
-  });
+  }
   // Nehir sistemi = kenar bileşeni (köşe üzerinden).
   const cornerOfEdge = new Map();
   const parent = new Map();

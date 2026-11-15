@@ -34,6 +34,14 @@ export const EARTH_GRID = {
     // zaten ×1.43; bu küçük mercek Boğazlar ve yaylayı ~×1.8'e taşır. Doğu-batı
     // uzun elips: sönüm Karadeniz'e ve Suriye çölüne düşer, Yunanistan'a değil.
     { lon: 34.5, lat: 39.2, a: 24, b: 14, m: 1.28 },
+    // Hindistan ve Doğu Asya: rol tasarımının iki nüfus devi. Saf Miller'da
+    // Hindistan 86, Japonya 10 hexti; denizci imparatorluğun kolonisi 2-4
+    // province kalıyor (audit:world ≥ 8 ister), doğu devi Avrupa'nın 1.5
+    // katı nüfusa ulaşamıyordu. Halka Hint Okyanusu, Tibet ve Pasifik'e düşer.
+    { lon: 79, lat: 21, a: 22, b: 22, m: 1.65 },
+    // Çin, Mançurya, Kore ve Japonya birlikte çekirdekte: merkez 122°D iken
+    // Tokyo sönüm halkasına düşüp doğu-batı ×0.86 sıkışıyordu (ölçüldü).
+    { lon: 125.5, lat: 37.5, a: 32, b: 28, m: 1.5 },
   ],
 };
 

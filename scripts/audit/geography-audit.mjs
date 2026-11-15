@@ -19,6 +19,13 @@ import { buildGeography } from '../../src/world/geography.js';
 import { generateWorld, STANDARD_COLS, STANDARD_ROWS, TARGET_LAND } from '../../src/world/worldgen.js';
 import { finding, n0, reportFindings, section, sub } from './harness.mjs';
 
+// Earth kipi: gerçek Dünya'nın ölçütleri ayrı (bkz. earth-geography.mjs).
+if (process.argv.includes('--earth')) {
+  const { runEarthGeography } = await import('./earth-geography.mjs');
+  runEarthGeography();
+  process.exit(reportFindings() > 0 ? 1 : 0);
+}
+
 const COUNT = Number(process.argv[2]) || 24;
 const SEEDS = Array.from({ length: COUNT }, (_, i) => `GEO-${String(i + 1).padStart(2, '0')}`);
 
