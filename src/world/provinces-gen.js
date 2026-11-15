@@ -30,8 +30,16 @@ export const PROVINCE_GEN_LATEST = 2;
  * [kıyı, iç] hedef çifti; katılım toleransı hedef+4.
  */
 function sizeTargetOf(tile) {
-  const rule = ZONE_RULES[tile.zone ?? DEFAULT_ZONE] ?? ZONE_RULES[DEFAULT_ZONE];
+  const rule = ruleOf(tile);
   return tile.coastal ? rule.size[0] : rule.size[1];
+}
+
+// Bölge kuralı dünyadan gelir: Earth kendi kalibrasyonunu taşır (bkz.
+// earthRules.js), prosedürel dünya ZONE_RULES'u. Yardımcılar dünyayı
+// taşımadığı için kural üretim süresince burada tutulur (generateProvinces).
+let activeRules = ZONE_RULES;
+function ruleOf(tile) {
+  return activeRules[tile.zone ?? DEFAULT_ZONE] ?? activeRules[DEFAULT_ZONE];
 }
 
 /** Tohum ızgarası hücre kenarı (offset kolon/satır). 2x2 hücre ≈ 4 hex. */
@@ -246,7 +254,7 @@ function fertilityOf(tile) {
  * toleransıyla (+4) birlikte bölge tavanının içinde kalsın (audit:province).
  */
 function targetV2(tile) {
-  const rule = ZONE_RULES[tile.zone ?? DEFAULT_ZONE] ?? ZONE_RULES[DEFAULT_ZONE];
+  const rule = ruleOf(tile);
   const raw = Math.round(sizeTargetOf(tile) * (1.15 - 0.35 * fertilityOf(tile)));
   return Math.max(2, Math.min(Math.max(rule.size[0], rule.size[1]), raw));
 }
@@ -370,6 +378,15 @@ function centerOf(world, members) {
  * geçilebilir kareye `tile.provinceId` yazar (deniz/geçilemez: -1).
  */
 export function generateProvinces(world, version = 1) {
+  activeRules = world.zoneRules ?? ZONE_RULES;
+  try {
+    return partitionWorld(world, version);
+  } finally {
+    activeRules = ZONE_RULES;
+  }
+}
+
+function partitionWorld(world, version) {
   const rng = makeRng(version >= 2 ? `${world.seed}-provinces-v2` : `${world.seed}-provinces`);
   world.forEach((tile) => { tile.provinceId = -1; });
 

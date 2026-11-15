@@ -46,7 +46,7 @@ const ISLANDS = [
 ];
 // Kabul edilen arazi tipleri: hex 250 km'lik bir ortalamadır, tek doğru yok.
 const CLIMATE_POINTS = [
-  ['Libya çölü', 25, 25, ['DESERT']], ['Tassili (Sahra dağları)', 9, 25, ['HILLS', 'MOUNTAIN', 'DESERT']], ['Arabistan', 47, 22, ['DESERT']], ['Gobi', 105, 43, ['DESERT', 'PLAINS']],
+  ['Libya çölü', 25, 25, ['DESERT']], ['Tassili (Sahra dağları)', 9, 25, ['HILLS', 'MOUNTAIN', 'DESERT']], ['Arabistan', 47, 22, ['DESERT']], ['Gobi', 108, 44, ['DESERT', 'PLAINS']],
   ['Avustralya içi', 133, -25, ['DESERT', 'PLAINS']], ['Amazon', -62, -4, ['JUNGLE']], ['Kongo', 22, 0, ['JUNGLE']],
   ['Sibirya taygası', 100, 62, ['FOREST', 'HILLS']], ['Kanada kalkanı', -80, 52, ['FOREST']],
   ['Grönland içi', -40, 75, ['ICE']], ['Himalaya', 85, 29, ['SNOW_PEAK', 'MOUNTAIN']],
@@ -115,8 +115,10 @@ export function runEarthGeography() {
   console.log(`  ${SEA_LINKS.length + LAND_LINKS.length + LAND_SPLITS.length} denetim, ${bad} hata`);
 
   sub('3. tanınırlık');
+  // İkisinde de bir hex payı: hex 250 km, mercekler biçimi ~1 hex kaydırır
+  // (Hindistan merceği Basra Körfezi'ni 1° doğuya itiyor; körfez yerinde).
   const landMiss = LAND_POINTS.filter(([, lon, lat]) => !ring(tileAt(lon, lat)).some(isLand)).map(([name]) => name);
-  const seaMiss = SEA_POINTS.filter(([, lon, lat]) => isLand(tileAt(lon, lat))).map(([name]) => name);
+  const seaMiss = SEA_POINTS.filter(([, lon, lat]) => ring(tileAt(lon, lat)).every(isLand)).map(([name]) => name);
   console.log(`  kara noktası ${LAND_POINTS.length - landMiss.length}/${LAND_POINTS.length} · deniz noktası ${SEA_POINTS.length - seaMiss.length}/${SEA_POINTS.length}`);
   if (landMiss.length) finding('HIGH', 'tanınırlık', 'kentin hexi ya da komşusu kara', landMiss.join(', '));
   if (seaMiss.length) finding('HIGH', 'tanınırlık', 'deniz noktası su', seaMiss.join(', '));

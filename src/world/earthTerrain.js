@@ -41,6 +41,13 @@ const CLIMATE = {
 // classify'ın yükseklik eşikleri, kara sıralamasının karesine çevrilmiş hâli
 // (yükseklik = SEA_LEVEL + sıra² · (1 − SEA_LEVEL), worldgen ile aynı eğri).
 const rankAt = (elevation) => Math.sqrt((elevation - SEA_LEVEL) / (1 - SEA_LEVEL));
+/**
+ * Kutup çölü: bu enlemin kuzeyindeki tundra (Kanada takımadaları, Taymır'ın
+ * ucu, Svalbard, Severnaya Zemlya) 1900'de ıssızdır; buz sayılır, province
+ * olmaz. Yoksa Miller'ın şişirdiği değersiz kıyılar onlarca province ve kopuk
+ * doldurma devleti üretiyordu (audit:world -- --earth, 36 çekirdekli konfederasyon).
+ */
+const POLAR_DESERT_LAT = 72;
 const PEAK_RANK = rankAt(0.94);
 const MOUNTAIN_RANK = rankAt(0.88);
 const HILL_RANK = rankAt(0.70);
@@ -91,10 +98,12 @@ export function seaElevation(depth) {
 /**
  * Bütün dünyayı sınıflandırır.
  * @param {object} m  n, land, elev (m; su için derinlik), relief (m), koppen, ice, lat
+ * @param {object} [o] polarDesert: Earth kural sürümü 1'in kayıtları için kapatılır
  * @returns {{ terrain: object[], elevation: Float32Array, temperature: Float32Array, moisture: Float32Array }}
  */
-export function classifyEarth(m) {
+export function classifyEarth(m, { polarDesert = true } = {}) {
   const { n } = m;
+  const polarLat = polarDesert ? POLAR_DESERT_LAT : Infinity;
   const terrain = new Array(n);
   const elevation = new Float32Array(n);
   const temperature = new Float32Array(n);
@@ -134,7 +143,7 @@ export function classifyEarth(m) {
     moisture[i] = wet;
 
     let t;
-    if (m.ice[i] || k === 'EF') t = TERRAIN.ICE;
+    if (m.ice[i] || k === 'EF' || (k === 'ET' && lat >= polarLat)) t = TERRAIN.ICE;
     else if (lr > PEAK_RANK) t = temperature[i] < 0.45 ? TERRAIN.SNOW_PEAK : TERRAIN.MOUNTAIN;
     else if (lr > MOUNTAIN_RANK) t = TERRAIN.MOUNTAIN;
     else if (k === 'ET') t = TERRAIN.TUNDRA;

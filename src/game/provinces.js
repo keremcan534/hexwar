@@ -66,7 +66,9 @@ function initialProvinceEcon(world, province) {
       + (tileAg + tileEx + tileCom) * 450;
     if (tile.coastal) coastal = true;
   }
-  const rule = ZONE_RULES[province.zone ?? DEFAULT_ZONE] ?? ZONE_RULES[DEFAULT_ZONE];
+  // Earth kendi bölge kalibrasyonunu taşır (world.zoneRules, bkz. earthRules.js).
+  const rules = world.zoneRules ?? ZONE_RULES;
+  const rule = rules[province.zone ?? DEFAULT_ZONE] ?? rules[DEFAULT_ZONE];
   population *= rule.popMul * POPULATION_SCALE * populationNoise(world, province);
   const density = Math.log2(Math.max(1, population) / 250000);
   const development = clamp(Math.round(

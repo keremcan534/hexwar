@@ -15,6 +15,7 @@ import { generateProvinces, PROVINCE_GEN_LATEST } from './provinces-gen.js';
 import { applyRivers, generateRivers } from './rivers.js';
 import { buildGeography, zoneAnchors } from './geography.js';
 import { EARTH_COLS, EARTH_ROWS, earthData } from './earth.js';
+import { EARTH_RULES_LATEST, earthOverridesFor, earthZoneRules } from './earthRules.js';
 
 /** Hex dış yarıçapı (dünya birimi). Ekran ölçeği kamera zoom'undan gelir. */
 export const HEX_SIZE = 26;
@@ -117,12 +118,18 @@ export function generateWorld(seed, options = {}) {
   if (earth) {
     opt.cols = EARTH_COLS;
     opt.rows = EARTH_ROWS;
+    // Kural sürümü kayda girer: kalibrasyon değişse de eski kampanya kendi
+    // bölümlemesiyle kurulur (save.js alanı olmayan kaydı 1 sayar).
+    opt.earthRules = opt.earthRules ?? EARTH_RULES_LATEST;
   }
   const rng = makeRng(seed);
   const world = new World(opt.cols, opt.rows, seed);
+  // Earth'ün bölge kalibrasyonu (province boyu, nüfus çarpanı; bkz. earthRules.js).
+  // `zoneOverrides` yalnız kalibrasyon betiğinin deneme kanalıdır.
+  if (earth) world.zoneRules = earthZoneRules(opt.zoneOverrides ?? earthOverridesFor(opt.earthRules));
 
   // Fiziksel coğrafya kendi rng dalını kullanır; iklim/kültür akışı kaymaz.
-  const geo = earth ? earthData() : buildGeography(seed, opt.cols, opt.rows, {
+  const geo = earth ? earthData(opt.earthRules) : buildGeography(seed, opt.cols, opt.rows, {
     targetLand: Math.min(0.55, Math.max(0.15, TARGET_LAND + opt.landBias)),
     continentality: opt.continentality,
   });

@@ -126,16 +126,66 @@ Güney/Doğu Asya'da ≤ 3 (Ganj, İndus, Sarı Irmak), başka yerde yalnız dev
 | Dünya üretimi | — | ~0.3 s |
 | Hafta (YZ, başsız) | — | ~170 ms |
 
-- `audit:geography -- --earth`: 38 geçit, 40/40 kent, 16/16 deniz, 24/24
-  ada, 19/19 iklim noktası, 10/10 büyük nehir; coğrafya tohumdan bağımsız.
-- `audit:province -- --earth`: bulgu yok.
-- `audit:world -- --earth`: yedi arketip doğar, bant tutar, Akdeniz iç deniz
-  testini geçer, Avrupa'da 12-15 devlet. İki bulgu açık: Hindistan kolonisi
-  6 province (≥ 8 istenir; nüfusu ana yurdun 2.5-3 katı) ve doğu devi Avrupa'nın
-  1.06-1.35 katı nüfus (≥ 1.5 istenir; Avrupa bilerek büyütüldü). Çözüm adayı:
-  Earth'e özgü bölge başına province boyu (aşağıda).
-- Prosedürel dünya birebir aynı: `audit:determinism` çıktısı ve 3 tohumluk
-  kare/ulus/province/6 hafta izi değişmedi.
+İlk dilim (7d67c86) ölçümü; kalibrasyon sonrası için aşağıdaki bölüme bak.
+O dilimde `audit:world -- --earth` iki bulgu veriyordu: Hindistan kolonisi
+6 province (≥ 8 istenir) ve doğu devi Avrupa'nın 1.06-1.35 katı nüfus
+(≥ 1.5 istenir). Not: coğrafya denetiminin "16/16 deniz, 19/19 iklim" sonucu
+Hindistan ve Doğu Asya merceklerinden ÖNCE ölçülmüştü; mercekler Basra
+Körfezi'ni ~1° doğuya, Gobi noktasını tepelik Alaşan'a kaydırdı (aşağıda).
+
+## Bölge kalibrasyonu (2026-11-15, kural sürümü 2)
+
+Arketip ve doldurma devleti boyları PROVINCE sayısıyla, nüfus ağırlıkları
+bölge çarpanıyla yazılıdır ve prosedürel şablonun alanlarına göre
+dengelendi. Earth'te bölgelerin kara alanı farklı (Sibirya ve Kanada Miller
+şişmesiyle dev, Hindistan ve Japonya küçük). Kural: her bölgenin province
+sayısı VE toplam nüfusu prosedürel standardın (8 tohum ortalaması) aynısı
+olsun; province başına nüfus da tasarımdaki gibi kalır, Earth yalnız biçimi
+değiştirir. İstisnalar:
+
+- **Avrupa ve Anadolu** (mercekli; Kerem'in istediği ayrıntı) prosedürel
+  kuralda kalır: büyüdükleri için daha çok province taşırlar (Anadolu-Orta
+  Doğu 22 → 34). Sayıya eşitlemek Anadolu'yu 12-14 hexlik province'lere
+  bölüyordu.
+- Boy en çok 2 kat büyür (Sibirya okunur kalsın); adalar prosedürelden iri
+  olmaz; Karayipler ve uzak adalar (Earth'te 2-4 hex) kalibre edilmez.
+
+Değerler `src/world/earthRules.js`'te, `scripts/earth/calibrate-earth.mjs
+--write` yazar (ölç → düzelt, 3-5 tur). Province üreteci ve nüfus kuralı
+dünyanın kendi tablosunu okur (`world.zoneRules`); prosedürel dünyada tablo
+yok, davranış birebir aynı.
+
+| Bölge | Province (prosedürel → Earth) | Nüfus | Boy, çarpan |
+|---|---|---|---|
+| Doğu ovası (Çin) | 95 → 83 | 102M → 103M | [2, 2], 5.56 |
+| Güney yarımada (Hindistan) | 45 → 41 | 51M → 51M | [2, 3], 5.26 |
+| Doğu adaları (Japonya) | 26 → 7 | 8M → 8M | [2, 2], 9.43 |
+| Güney kıta (Afrika) | 113 → 109 | 46M → 46M | [3, 5], 1.83 |
+| Kuzey bozkırı (Rusya, Sibirya) | 70 → 69 | 22M → 22M | [21, 29], 0.34 |
+| Yeni kuzey (K. Amerika, Avustralya) | 100 → 103 | 24M → 24M | [12, 20], 0.42 |
+| Yeni güney (G. Amerika) | 70 → 68 | 25M → 24M | [5, 7], 1.08 |
+| Kıstak (Meksika, Orta Amerika) | 22 → 15 | 5M → 5M | [2, 2], 1.75 |
+| Yoğun batı (Avrupa) | 109 → 108 | 46M → 40M | prosedürel |
+| Kavşak (Anadolu, Orta Doğu) | 22 → 34 | 9M → 12M | prosedürel |
+
+**Kutup çölü:** 72°K'nin kuzeyindeki tundra (Kanada takımadaları, Taymır'ın
+ucu, Svalbard, Severnaya Zemlya) 1900'de ıssızdır, buz sayılır ve province
+olmaz (`earthTerrain.js POLAR_DESERT_LAT`). Yoksa Miller'ın şişirdiği Arktik
+kıyıları onlarca değersiz province ve kopuk doldurma devleti üretiyordu (36
+çekirdekli takımada konfederasyonu bandı aşıyordu). ~45 province eksildi.
+
+**Ölçüm (sürüm 2):** `audit:geography -- --earth` ve `audit:province -- --earth`
+bulgusuz (16/16 deniz, 19/19 iklim, 38 geçit). `audit:world -- --earth`:
+koloni 11-12 province, doğu devi Avrupa'nın 1.8-2.6 katı nüfus; iki eski
+bulgu kapandı. Kalan: çekirdek bandı (≤ 35) bir tohumda 36. Bu doldurma
+algoritmasının eski sınırıdır, kalibrasyonun değil (10 tohumda 35'i aşan:
+prosedürel 1 (46), Earth sürüm 1 3, sürüm 2 4); kökten çözüm nations.js
+doldurmasını, dolayısıyla prosedürel dünyayı da değiştirir.
+
+**Kayıt:** kural sürümü `genOptions.earthRules` ile kayda girer (province
+üretecinin `provinceGen` deseni). Alanı olmayan eski Earth kaydı sürüm 1
+sayılır ve 7d67c86'nın dünyasını birebir kurar (kare, province ve 3 hafta izi
+aynı ölçüldü); yeni ve eski kaydın kaydet-yükle turu temiz.
 
 ## Denetim
 
@@ -145,12 +195,9 @@ Güney/Doğu Asya'da ≤ 3 (Ganj, İndus, Sarı Irmak), başka yerde yalnız dev
 - `npm run audit:determinism` + taban izi: prosedürel dünya birebir aynı kalır.
 - `scripts/ui/hx.mjs`: menüden Earth, birkaç hafta akış, iki zoomda görüntü.
 
-## Sonraki adımlar (ilk dilimden sonra)
+## Sonraki adımlar
 
-- Bölge başına province boyu Earth'e kalibre: arketip boyları province
-  sayısıyla yazılı, Earth'te bölgelerin kara alanı prosedürelden farklı
-  (Sibirya ve Kanada iri, Hindistan ve Japonya küçük). Hedef: bölge başına
-  province sayısı prosedürel standarda yakın.
+- Oyun içi World Settings paneli (Esc → ayarlar) hâlâ yalnız prosedürel dünya kurar.
 - Gerçek kaynak kuşakları (kömür, demir, petrol, kauçuk) küçük bir tabloyla.
 - Kanallar (Süveyş 1869, Kiel 1895, Panama 1914): hem kara hem deniz geçişi.
 - Daha büyük ızgara (200×120) ölçümü.

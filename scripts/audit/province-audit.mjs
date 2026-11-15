@@ -71,8 +71,9 @@ for (const size of SIZES) {
     // büyüyen province çoğunlukla Çin etiketi alır. Tavan üye bölgelerin en
     // genişidir; tek bölgeli province'te sonuç eskisiyle aynı.
     let cap = 0;
+    const rules = world.zoneRules ?? ZONE_RULES; // Earth kendi kalibrasyonunu taşır
     for (const zone of new Set(p.tileIdx.map((i) => world.tiles[i].zone ?? DEFAULT_ZONE))) {
-      const rule = ZONE_RULES[zone] ?? ZONE_RULES[DEFAULT_ZONE];
+      const rule = rules[zone] ?? rules[DEFAULT_ZONE];
       cap = Math.max(cap, rule.size[0], rule.size[1]);
     }
     if (n > cap + 4) over++;

@@ -16,6 +16,7 @@
 import DATA from './earth/earth-160x96.js';
 import { EARTH_GRID, earthFrame } from './earthGrid.js';
 import { classifyEarth } from './earthTerrain.js';
+import { EARTH_RULES_LATEST } from './earthRules.js';
 import { analyzeGeography } from './geoscore.js';
 import { distanceField } from './geography.js';
 
@@ -43,11 +44,15 @@ function unrle(b64, n) {
   return out;
 }
 
-let cached = null;
+const cache = new Map();
 
-/** Çözülmüş Earth verisi (bir kez). */
-export function earthData() {
-  if (cached) return cached;
+/**
+ * Çözülmüş Earth verisi (kural sürümü başına bir kez). Sürüm 1, kutup çölü
+ * kuralından önceki araziyi verir: o sürümle başlamış kayıt aynı dünyayı kurar.
+ */
+export function earthData(version = EARTH_RULES_LATEST) {
+  const key = version >= 2 ? 2 : 1;
+  if (cache.has(key)) return cache.get(key);
   const { cols, rows } = DATA;
   if (cols !== EARTH_GRID.cols || rows !== EARTH_GRID.rows || DATA.lon0 !== EARTH_GRID.lon0) {
     // Veri ile projeksiyon ayrışırsa çapalar ve nehirler kayar: sessizce değil, yüksek sesle düş.
@@ -70,7 +75,7 @@ export function earthData() {
     relief[i] = reliefB[i] * 32;
     lat[i] = frame.centerOf(i % cols, (i / cols) | 0).lat;
   }
-  const climate = classifyEarth({ n, land, elev, relief, koppen, ice, lat });
+  const climate = classifyEarth({ n, land, elev, relief, koppen, ice, lat }, { polarDesert: key >= 2 });
   const zones = Array.from(zoneIdx, (z) => (z ? DATA.zones[z] : null));
 
   const riverB = bytes(DATA.rivers);
@@ -88,7 +93,7 @@ export function earthData() {
   };
   const mapAnchors = (src) => Object.fromEntries(Object.entries(src).map(([k, ll]) => [k, anchorOf(ll)]));
 
-  cached = {
+  const decoded = {
     cols, rows, land, zones, rivers,
     terrain: climate.terrain,
     elevation: climate.elevation,
@@ -101,5 +106,6 @@ export function earthData() {
     stats: analyzeGeography(land, cols, rows),
     build: DATA.stats,
   };
-  return cached;
+  cache.set(key, decoded);
+  return decoded;
 }

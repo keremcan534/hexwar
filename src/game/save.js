@@ -491,7 +491,10 @@ export function deserialize(game, data) {
   // 1) Aynı seed ve ayarlarla dünyayı yeniden kur (arazi, iklim, kültür aynı).
   // Province ureteci surumu kayitla gelir; alani olmayan eski kayit v1
   // bolumlemesiyle yazilmistir (bkz. provinces-gen PROVINCE_GEN_LATEST).
+  // Earth bolge kurali da ayni desen: alani olmayan Earth kaydi kalibrasyondan
+  // once baslamistir (bkz. world/earthRules.js EARTH_RULES_LATEST).
   const options = { provinceGen: 1, ...data.options };
+  if (options.map === 'earth') options.earthRules ??= 1;
 
   // Bölümleme parmak izi tutmuyorsa worldgen kaymış demektir: econ satırları
   // yanlış kümelere oturacağına yükleme temiz reddedilir. Sınama CANLI oyuna
