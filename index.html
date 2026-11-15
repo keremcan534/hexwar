@@ -292,17 +292,10 @@
        (ui/menuPreviewWorker.js). Stil: src/menu.css. -->
   <section class="menu hidden" id="menu" data-theme="bombardment" aria-hidden="true" aria-label="Main menu">
     <img class="menu-art" id="menu-art" src="assets/menu/main-menu.jpg" alt="" decoding="async" />
-    <!-- Canlı katman: resmi yeniden çizer, üstüne sahneye özgü hareket koyar
-         (bkz. ui/menuMotion.js). Çizmeye başlayınca img gizlenir. -->
-    <canvas class="menu-art menu-live" id="menu-live" aria-hidden="true"></canvas>
-    <!-- Sürüklenen sis: aynı saydam doku iki katmanda, farklı hız ve
-         yükseklikte (bkz. .menu-fog). -->
-    <i class="menu-fog menu-fog-far" aria-hidden="true"></i>
-    <i class="menu-fog menu-fog-near" aria-hidden="true"></i>
-    <!-- Sütunun gölgesi + kenar karartması + film greni: yazı her sahnede
-         okunur, sahne yine de görünür kalır. -->
+    <!-- Arka plan YALNIZ fotoğraftır (Kerem: "animasyonlu arka plan
+         istemiyorum"): canlı katman, sis ve gren yok. Perde yalnız sütunun
+         altını koyultur. -->
     <i class="menu-scrim" aria-hidden="true"></i>
-    <i class="mm-grain" aria-hidden="true"></i>
 
     <div class="mm-column">
       <!-- Kimlik: amblem + çağ + başlık. Başlık tek yerden yazılır
@@ -319,13 +312,12 @@
       <!-- Birincil eylem: kayıt varsa kampanyanın kartı (bayrak, ulus, tarih),
            yoksa yeni kampanya. Enter onu seçer. -->
       <button class="mm-cta" id="menu-cta" type="button">
-        <span class="mm-cta-flag" id="menu-cta-flag" aria-hidden="true"></span>
-        <span class="mm-cta-text">
-          <small class="mm-cta-kicker" id="menu-cta-kicker">New campaign</small>
+        <small class="mm-cta-kicker" id="menu-cta-kicker">New campaign</small>
+        <span class="mm-cta-main">
+          <span class="mm-cta-flag" id="menu-cta-flag" aria-hidden="true"></span>
           <b id="menu-cta-label">Begin Campaign</b>
-          <em id="menu-cta-note"></em>
         </span>
-        <span class="mm-cta-go" aria-hidden="true"><svg viewBox="0 0 20 20"><path d="M7 4.5 12.8 10 7 15.5"/></svg></span>
+        <em id="menu-cta-note"></em>
       </button>
 
       <nav class="mm-nav" id="menu-rail" aria-label="Main menu">
@@ -333,22 +325,22 @@
           <span class="mm-item-text"><b>Continue</b><small id="menu-resume-note"></small></span>
         </button>
         <button class="mm-item" id="menu-create">
-          <span class="mm-item-text"><b>New Campaign</b><small>shape the world — size, continents, land</small></span>
+          <span class="mm-item-text"><b>New Campaign</b><small></small></span>
         </button>
         <button class="mm-item" id="menu-load" hidden>
           <span class="mm-item-text"><b>Load Game</b><small id="menu-load-note"></small></span>
         </button>
         <button class="mm-item" id="menu-random">
-          <span class="mm-item-text"><b>Random World</b><small>start at once on the standard map</small></span>
+          <span class="mm-item-text"><b>Random World</b><small></small></span>
         </button>
         <button class="mm-item" id="menu-settings">
-          <span class="mm-item-text"><b>Settings</b><small>music, scene, motion, save files</small></span>
+          <span class="mm-item-text"><b>Settings</b><small></small></span>
         </button>
         <button class="mm-item" id="menu-credits">
-          <span class="mm-item-text"><b>Credits</b><small>who built this world</small></span>
+          <span class="mm-item-text"><b>Credits</b><small></small></span>
         </button>
         <button class="mm-item" id="menu-exit">
-          <span class="mm-item-text"><b>Exit</b><small>leave the campaign map</small></span>
+          <span class="mm-item-text"><b>Exit</b><small></small></span>
         </button>
       </nav>
 
@@ -360,17 +352,12 @@
             <path class="mute-slash" d="M11 5.4 14.4 10.6" />
           </svg>
         </button>
-        <span class="mm-track" id="menu-track" aria-live="polite"></span>
         <span class="mm-build" id="menu-build-info">—</span>
       </footer>
     </div>
 
-    <!-- Sahnenin müze künyesi: adı, motto, önceki/sonraki sahne. -->
+    <!-- Sahne seçimi: yalnız önceki/sonraki ve sıra. -->
     <figure class="mm-caption" aria-label="Scene">
-      <figcaption>
-        <small id="menu-scene-label">Bombardment</small>
-        <p class="mm-tagline" id="menu-tagline">A coastline under the guns, an empire behind them.</p>
-      </figcaption>
       <span class="mm-scene-nav">
         <button class="mm-tool" id="menu-scene-prev" type="button" aria-label="Previous scene" title="Previous scene"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M10 3.5 5.5 8 10 12.5"/></svg></button>
         <span class="mm-scene-count" id="menu-scene-count">1 / 10</span>
@@ -392,7 +379,7 @@
             <label class="mm-seed" data-tip="setup" data-tip-arg="seed">
               <span class="mm-label">World seed</span>
               <span class="mm-seed-row">
-                <input type="text" id="menu-seed" placeholder="blank = a new world" autocomplete="off" spellcheck="false" />
+                <input type="text" id="menu-seed" placeholder="" autocomplete="off" spellcheck="false" />
                 <button type="button" class="mm-dice" id="menu-dice" title="Roll a new seed" aria-label="Roll a new seed"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3.2" y="3.2" width="13.6" height="13.6" rx="2.6"/><circle cx="7" cy="7" r="1.1"/><circle cx="13" cy="13" r="1.1"/><circle cx="13" cy="7" r="1.1"/><circle cx="7" cy="13" r="1.1"/><circle cx="10" cy="10" r="1.1"/></svg></button>
               </span>
             </label>
@@ -400,24 +387,24 @@
               <span class="mm-label">World size</span>
               <span class="mm-seg" data-preset="size">
                 <button type="button" data-value="120">Small<small>120 × 72</small></button>
-                <button type="button" data-value="160">Standard<small>160 × 96 · balanced</small></button>
+                <button type="button" data-value="160">Standard<small>160 × 96</small></button>
                 <button type="button" data-value="200">Large<small>200 × 120</small></button>
               </span>
             </div>
             <div class="mm-choice" data-tip="setup" data-tip-arg="cont">
               <span class="mm-label">Continents</span>
               <span class="mm-seg" data-preset="cont">
-                <button type="button" data-value="0.15">Archipelago<small>islands and straits</small></button>
-                <button type="button" data-value="0.5">Continents<small>the usual mix</small></button>
-                <button type="button" data-value="0.85">Supercontinent<small>a few great landmasses</small></button>
+                <button type="button" data-value="0.15">Archipelago</button>
+                <button type="button" data-value="0.5">Continents</button>
+                <button type="button" data-value="0.85">Supercontinent</button>
               </span>
             </div>
             <div class="mm-choice" data-tip="setup" data-tip-arg="land">
               <span class="mm-label">Land</span>
               <span class="mm-seg" data-preset="land">
-                <button type="button" data-value="-0.2">Drowned<small>more sea</small></button>
-                <button type="button" data-value="0">Standard<small>36% land</small></button>
-                <button type="button" data-value="0.2">Raised<small>more land</small></button>
+                <button type="button" data-value="-0.2">Less</button>
+                <button type="button" data-value="0">Standard</button>
+                <button type="button" data-value="0.2">More</button>
               </span>
             </div>
             <div class="mm-choice" data-tip="setup" data-tip-arg="nations">
@@ -457,7 +444,7 @@
               <span id="menu-preview-seed">—</span>
               <span id="menu-preview-stats"></span>
             </figcaption>
-            <span class="mm-preview-status" id="menu-preview-status">Surveying…</span>
+            <span class="mm-preview-status" id="menu-preview-status">Generating</span>
           </figure>
         </div>
         <div class="menu-setup-buttons">
@@ -499,22 +486,14 @@
             <input type="file" id="menu-import-file" accept=".json,application/json" hidden />
           </div>
         </div>
-        <p class="menu-note" id="menu-save-note">Copy your campaign to a file, or bring one in from another window.</p>
+        <p class="menu-note" id="menu-save-note"></p>
         <div class="menu-setup-buttons">
           <button type="button" class="menu-btn" data-menu-back>Back</button>
         </div>
       </div>
 
       <div class="menu-view menu-credits hidden" id="menu-credits-view">
-        <p class="menu-note">
-          <b>Imperial Eye</b> — a hex grand-strategy game of the age of steel,
-          1900 to 1945, built with no dependencies and no build step: plain ES
-          modules and Canvas2D.
-        </p>
-        <p class="menu-note">
-          World generation, economy, population and diplomacy are simulated
-          from a single seed; the same seed always draws the same world.
-        </p>
+        <p class="menu-note"><b>Imperial Eye</b></p>
         <p class="menu-note" id="menu-credits-music"></p>
         <div class="menu-setup-buttons">
           <button type="button" class="menu-btn" data-menu-back>Back</button>

@@ -12,9 +12,8 @@
 // bu dosya o kuralın bilinçli istisnasıdır — mat resim oyuncunun gördüğü ilk şey
 // ve elle yapılmış bir kompozisyon.
 //
-// Perdenin üstünde üç katman daha var: sahnenin canlı katmanı (resmi tuvalde
-// yeniden çizip duman, su, yağmur, ışık ekler; bkz. menuMotion.js), sürüklenen
-// sis (CSS ile hareket eder, bkz. .menu-fog) ve müzik (bkz. menuMusic.js).
+// Perde durgun bir fotoğraftır (canlı katman ve sis 2026-11-15'te kalktı);
+// üstünde yalnız müzik çalar (bkz. menuMusic.js).
 //
 // Menüde olmayan özelliğin düğmesi yoktur: "Continue" ancak oturumda yüklü
 // oyun varsa, "Load Game" ancak diskte kayıt varsa çıkar.
@@ -27,10 +26,9 @@ import {
 import { campaignSaveState, gameDate } from './hud.js';
 import { worldRows } from '../world/worldgen.js';
 import { MenuMusic } from './menuMusic.js';
-import { MenuMotion } from './menuMotion.js';
 import { END_YEAR, ERA_NAME, START_YEAR } from '../game/calendar.js';
 import { randomSeed } from '../core/rng.js';
-import { mountFlag } from '../render/flagWave.js';
+import { flagDataUrl } from '../render/flagPainter.js';
 import { nationRoster } from '../game/nationBrief.js';
 
 /**
@@ -314,8 +312,9 @@ export class MainMenu {
     };
 
     this.music = new MenuMusic();
-    // Sahnenin canlı katmanı: setScene'den önce kurulmalı, ilk sahneyi o da alır.
-    this.motion = this.el.live ? new MenuMotion(this.el.live, this.el.root) : null;
+    // Arka plan yalnız fotoğraftır (Kerem 2026-11-15: "animasyonlu arka plan
+    // istemiyorum"): canlı katman (menuMotion.js) artık kurulmaz.
+    this.motion = null;
 
     // Kimlik ve künye markup'tan değil buradan gelir: ismi değiştirmek tek
     // sabiti değiştirmektir (bkz. GAME_TITLE).
@@ -596,7 +595,7 @@ export class MainMenu {
     }
     this.previewBusy = true;
     el.previewBox.classList.add('is-busy');
-    el.previewStatus.textContent = 'Surveying…';
+    el.previewStatus.textContent = 'Generating';
     el.previewSeed.textContent = `seed ${seed}`;
     el.previewStats.textContent = `${options.cols} × ${options.rows}`;
     this.previewWorker.postMessage({ id, seed, options });
@@ -685,11 +684,13 @@ export class MainMenu {
       el.ctaLabel.textContent = nation.fullName ?? nation.name;
       el.ctaNote.textContent = [sessionLabel(game).split(' · ').pop(), row ? `rank ${row.rank} of ${roster.length}` : '']
         .filter(Boolean).join(' · ');
-      mountFlag(el.ctaFlag, nation, 72, 48);
+      // Durgun bayrak (2× çözünürlük, 54×36 gösterim): dalgalanan bez kartın
+      // tek hareketli öğesi oluyordu, menü artık durgun.
+      el.ctaFlag.innerHTML = `<img src="${flagDataUrl(nation, 108, 72)}" alt="" draggable="false">`;
     } else {
       el.ctaKicker.textContent = 'New campaign';
       el.ctaLabel.textContent = 'Begin Campaign';
-      el.ctaNote.textContent = 'a fresh world on the standard map';
+      el.ctaNote.textContent = '';
       el.ctaFlag.textContent = '';
     }
   }
@@ -894,7 +895,7 @@ export class MainMenu {
       // Alan boşken kurulacak dünyanın tohumu şimdiden çekilir ve yazılır:
       // önizleme ile "Generate World" aynı dünyayı gösterir.
       if (!this.pendingSeed) this.pendingSeed = randomSeed();
-      el.seed.placeholder = `${this.pendingSeed} · random`;
+      el.seed.placeholder = this.pendingSeed;
       this.syncPresets();
       this.schedulePreview(0);
       el.seed.focus();
