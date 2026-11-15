@@ -1,5 +1,5 @@
 /* ==========================================================================
-   AÇIK ÇELİK — renk çevirisinin yetmediği yerler.
+   AÇIK TEMA ("porselen & bronz") — renk çevirisinin yetmediği yerler.
 
    Açık temanın renkleri elle yazılmaz: ui/theme.js bütün kuralları tarar ve
    renkleri OKLab'da çevirip light-base/light-skin katmanlarına yazar. Bu dosya
@@ -7,9 +7,14 @@
    değişen birkaç durum. En üst katmandadır (light-fix) ve taranmaz; her kural
    :root[data-ui-theme="light"] altındadır, koyu temada hiçbir şey yapmaz.
 
-   Dokular assets/ui/skin/acik/: koyu setten türetildi (pirinç kenar → çelik,
-   koyu yüz → açık fırçalanmış çelik, ışık yönü aynı). Seçili levha yanan
-   pirinç yerine çelik mavisi emaye: açık temada sarı vurgu kalmasın.
+   Kademe (OKLab L, ölçülen): pencere gövdesi ~0.77 (koyu tepsi) < yuva ~0.83
+   (çukur) < panel ~0.85 (levha) < düğme 0.90→0.85 (kabarık). Hiçbir geniş yüzey
+   0.86'yı geçmez: önceki iki deneme beyaza yakın yüzeyle göz aldı. Kasa ve
+   çizgi bronz, yazı sıcak mürekkep; seçili/birincil levha koyu bronz emaye
+   üstünde fildişi yazı (koyu temanın "yanan pirinç"inin gün ışığındaki eşi).
+
+   Dokular assets/ui/skin/acik/: biçim (alfa, pah, köşe süsü) koyu setten,
+   renk ve ışık hesapla kurulur; esneyen iç yüzler pürüzsüzdür (gren yok).
    ========================================================================== */
 
 :root[data-ui-theme="light"] {
@@ -24,38 +29,78 @@
   --sk-yuva: url('../assets/ui/skin/acik/yuva.webp') 16 fill / 6px / 0 stretch;
   --sk-img-cerceve: url('../assets/ui/skin/acik/cerceve.webp');
   --sk-img-yuva: url('../assets/ui/skin/acik/yuva.webp');
+  /* Haritanın üstünde yüzen paneller (ayarlar, savaş rıhtımı, hareketler):
+     koyu temada %70 koyu cam. Açık camda koyu harita alttan sızıp paneli
+     bulanık bir orta griye çekiyordu (eski görünümün "soğuk, sönük"
+     griliğinin bir kaynağı). Açıkta cam neredeyse opak porselen olur. */
+  --glass-tint: rgba(206, 202, 196, 0.93);
+  --glass-deep: rgba(199, 195, 189, 0.96);
+  /* Yüzeyin büyük ölçekli ışığı (sol üstten ışık, sağ altta gölge). Adı
+     gölge değil "ton" olduğu için çeviri onu boya sayıp TERS çeviriyordu:
+     sağ alttaki gölge açık bir sise dönüyor, pencere gövdesini panellerden
+     bile açık (0.85) yapıyordu. Işık fiziksel: burada yönüyle yazılır. */
+  --panel-tone:
+    radial-gradient(120% 80% at 30% 0%, rgba(255, 252, 245, 0.14), transparent 60%),
+    radial-gradient(90% 70% at 85% 100%, rgba(66, 54, 40, 0.1), transparent 65%),
+    linear-gradient(168deg, rgba(255, 252, 245, 0.05), transparent 40%, rgba(66, 54, 40, 0.06));
   color-scheme: light;
 }
 
-/* Seçili / birincil levha koyu çelik mavisi: üstündeki yazı çeviride açık
-   griye (0.85 tavanı) iniyordu ve soluk okunuyordu. Yalnız bu levhada yazı
-   neredeyse beyaz olur. */
-/* Kapalı birincil düğme kapalı levhayı alır, beyaz yazı orada okunmaz:
-   yalnız açık olanlar ve "yürürlükte" (seçili + kapalı) olanlar. */
+/* Yönetim penceresinin gövdesi (paneller arası): panellerden bir kademe koyu
+   sıcak gri tepsi; ekranın fotoğrafı yalnız bir iz olarak sızar. Çeviride
+   koyu örtü açık bir sise dönüyor, fotoğraf üst kenarda %60 görünüp gövdeyi
+   lekeli bir maviye boyuyordu. Levhalar (0.85) bu tepsinin (~0.77) üstünde
+   kabarık okunur. */
+:root[data-ui-theme="light"] #screen {
+  --screen-veil: linear-gradient(180deg, rgba(194, 190, 184, 0.86) 0%, rgba(192, 188, 182, 0.9) 55%, rgba(188, 184, 178, 0.93) 100%);
+}
+/* Yazının doğrudan fotoğraf üstünde durduğu dar ekranlar: örtü daha kapalı. */
+:root[data-ui-theme="light"] #screen:is([data-screen="dossier"], [data-screen="peace"], [data-screen="construction"]) {
+  --screen-veil: linear-gradient(180deg, rgba(196, 192, 186, 0.93) 0%, rgba(194, 190, 184, 0.95) 55%, rgba(190, 186, 180, 0.96) 100%);
+}
+
+/* Seçili / birincil levha koyu bronz emaye, yazısı fildişi (~7:1). Çeviri
+   de mürekkebi açık yazıya çevirir (theme.js 'text' rolü); emayenin yazısı
+   yine de açıkça buradan gelir, çünkü düğme kuralları :where() ile yazıldığı
+   için bir bileşenin kendi yazı rengi onu ezebilir.
+   Kapalı birincil düğme kapalı levhayı alır, fildişi orada okunmaz: yalnız
+   açık olanlar ve "yürürlükte" (seçili + kapalı) olanlar. Aynı levhayı süs
+   olarak taşıyanlar da (biten teknoloji, "şimdi" yılı, "dünyada ilk" şeridi)
+   aynı yazıyı alır. */
 :root[data-ui-theme="light"] :where(:is(.k-btn.on, .k-btn.primary, .k-seg-b.on, .mil-btn.primary, .mil-btn.on,
     .mil-tabs > button.active, .mil-views > button.active,
     .pl-pb.on, .ap-btn.primary, .ap-btn.on, .ap-btn.go, .tool-btn.active,
     .md-stance.on, .np-play, #settings .primary, #settings .action.on):not(:disabled)),
-:root[data-ui-theme="light"] :where(:is(.k-btn.on, .k-seg-b.on, .pl-pb.on, .md-stance.on, #settings .action.on):disabled) {
-  color: #f1f5f9;
-  text-shadow: 0 1px 0 rgba(8, 22, 38, 0.6);
+:root[data-ui-theme="light"] :where(:is(.k-btn.on, .k-seg-b.on, .pl-pb.on, .md-stance.on, #settings .action.on):disabled),
+:root[data-ui-theme="light"] :where(.tq .tech-axis-track > .tech-now-label, .discovery-first),
+:root[data-ui-theme="light"] :where(.tq .tech-node.is-done > :is(b, .tech-node-eff, small)) {
+  color: #f6efe2;
+  text-shadow: 0 1px 0 rgba(36, 22, 6, 0.55);
 }
+:root[data-ui-theme="light"] :where(.tq .tech-node.is-done small .ok) { color: #e9d9b5; }
 
-/* Kurulu onay: koyu temada pirinç levha süzgeçle kehribara çevriliyordu; çelik
-   mavisi levhada aynı süzgeç bulanık mor verir. Açık temada onay, üstünde
-   levhası + kehribar halka: "ikinci tık bekleniyor" rengi aynı kalır. */
+/* Kurulu onay: koyu temada pirinç levha süzgeçle kehribara çevriliyordu;
+   bronz emayede aynı süzgeç çamurlu bir kahveye döner. Açık temada onay,
+   üstünde levhası + kehribar halka: "ikinci tık bekleniyor" rengi aynı kalır. */
 :root[data-ui-theme="light"] :where(:is(.k-btn, .k-seg-b, .mil-btn, .action).confirming) {
   border-image: var(--sk-dugme-ustunde);
-  box-shadow: 0 0 0 2px #b8791a, 0 0 12px rgba(184, 121, 26, 0.5);
+  box-shadow: 0 0 0 2px #b8791a, 0 0 12px rgba(184, 121, 26, 0.45);
   color: #3b2606;
+  text-shadow: none;
   filter: none;
 }
 :root[data-ui-theme="light"] :where(:is(.k-btn, .mil-btn, .action).danger.confirming) {
   border-image: var(--sk-dugme-tehlike);
-  box-shadow: 0 0 0 2px #c0392b, 0 0 12px rgba(192, 57, 43, 0.45);
+  box-shadow: 0 0 0 2px #b8352a, 0 0 12px rgba(184, 53, 42, 0.4);
   color: #5c120a;
-  filter: saturate(1.6) brightness(0.96);
+  filter: saturate(1.4) brightness(0.97);
 }
+
+/* Kilitli teknoloji kartı koyu temada %85 opaklıkla söner; açık zeminde aynı
+   sönme yazıyı zemine karıştırıp etki satırını 3.4:1'e indiriyordu (koyuda
+   yazı tabanı bu payı karşılıyor). Kilit burada çizgili doku, gri kasa ve
+   soluk ikonla okunur; yazı tam opak kalır. */
+:root[data-ui-theme="light"] .tq .tech-node.is-locked { opacity: 1; }
 
 /* Haritanın dışındaki boşluk haritanın parçasıdır (deniz rengi temayla
    değişmez): açık temada gri bir kâğıda dönünce harita kenarı yırtık bir
@@ -65,7 +110,7 @@
 }
 
 /* Eşya ikonunun arkasındaki ışık: çeviri onu koyu bir lekeye çeviriyordu.
-   Açık zeminde ışık beyaz bir hale olur. */
+   Açık zeminde ışık sıcak beyaz bir hale olur. */
 :root[data-ui-theme="light"] .art-item {
-  background: radial-gradient(circle at 50% 50%, rgba(255, 255, 255, 0.4) 0%, rgba(255, 255, 255, 0.12) 48%, transparent 71%);
+  background: radial-gradient(circle at 50% 50%, rgba(255, 250, 240, 0.38) 0%, rgba(255, 250, 240, 0.1) 48%, transparent 71%);
 }

@@ -56,6 +56,7 @@ import { POPULATION_SCALE } from '../game/populationScale.js';
 import { worldRows } from '../world/worldgen.js';
 import { dateOfTurn } from '../game/calendar.js';
 import { WarDock } from './warDock.js';
+import { Dropdown } from './dropdown.js';
 import { localRect, onUiScale, toLocal, viewport } from './uiScale.js';
 
 const $ = (id) => document.getElementById(id);
@@ -592,6 +593,7 @@ export class Hud {
     }
     // Saat biriminin yuvarlak düğmesi Space'in aynısı: duraklatıkken oynatır.
     $('btn-pause').onclick = () => { if (!this.clockLocked()) game.togglePause(); };
+    this.bindDialSectors();
     const epilogue = $('btn-epilogue');
     if (epilogue) {
       epilogue.onclick = () => {
@@ -1025,7 +1027,7 @@ export class Hud {
         if (button?.offsetParent) this.screens?.toggle(tab);
         return;
       }
-      // Açık ekran tuşu önce alır (her ekranda A = AUTO, ekranın kendi
+      // Açık ekran tuşu önce alır (her ekranda Shift+A = AUTO, ekranın kendi
       // kısayolları). Kullanmadığı tuş haritaya düşer.
       if (this.screens?.active && this.screens.handleKey(event)) {
         event.preventDefault();
@@ -1175,11 +1177,15 @@ export class Hud {
       this.showCommand();
       this.showTile(game.selected);
     };
-    $('command-target').onchange = (event) => {
-      const value = event.target.value;
-      game.setCommandTarget(value === '' ? null : Number(value));
-      this.showCommand();
-    };
+    // Hedef seçici oyunun kendi açılır listesidir (ui/dropdown.js): yerel
+    // select'in listesini işletim sistemi beyaz bir pencereyle çiziyordu.
+    this.targetPicker = new Dropdown($('command-target'), {
+      caption: 'Front target',
+      onChange: (value) => {
+        game.setCommandTarget(value === '' ? null : Number(value));
+        this.showCommand();
+      },
+    });
     for (const btn of document.querySelectorAll('#command-tools [data-stance]')) {
       btn.onclick = () => {
         const general = game.activeGeneral;
@@ -1230,17 +1236,30 @@ export class Hud {
       const running = game.offensiveActive();
       offensive.classList.toggle('active', running);
       offensive.innerHTML = running ? `${glyph('halt', 'inline')} Halt` : `${glyph('advance', 'inline')} Offensive`;
-      const target = $('command-target');
       const borderIds = new Set(borderNationIds(game.world, me.id));
       if (active.target != null) borderIds.add(active.target);
       const options = game.world.nations
         .filter((nation) => nation.alive && nation.id !== me.id && borderIds.has(nation.id))
         .sort((a, b) => Number(atWar(game.world, me.id, b.id))
           - Number(atWar(game.world, me.id, a.id)) || a.name.localeCompare(b.name));
-      target.innerHTML = `<option value="">All active fronts</option>${options.map((nation) => (
-        `<option value="${nation.id}">${escapeHtml(nation.name)}${atWar(game.world, me.id, nation.id) ? ' — at war' : ''}</option>`
-      )).join('')}`;
-      target.value = active.target == null ? '' : String(active.target);
+      // Savaştakiler önde ve ayrı öbekte; ülkeler arma bayrağıyla (savaş
+      // paneli ve diplomasi listesiyle aynı tuval), "bütün cepheler" pusulayla.
+      this.targetPicker.setItems([
+        { value: '', label: 'All active fronts', group: 'all', icon: (host) => { host.innerHTML = glyph('compass'); } },
+        ...options.map((nation) => {
+          const war = atWar(game.world, me.id, nation.id);
+          return {
+            value: String(nation.id),
+            label: nation.name,
+            group: war ? 'war' : 'peace',
+            tone: war ? 'war' : '',
+            glyph: war ? 'swords' : '',
+            note: war ? 'At war' : '',
+            icon: (host) => mountFlag(host, nation, 22, 15, 'crest'),
+          };
+        }),
+      ]);
+      this.targetPicker.value = active.target == null ? '' : String(active.target);
       for (const btn of el.commandTools.querySelectorAll('[data-stance]')) {
         btn.classList.toggle('active', Number(btn.dataset.stance) === (active.aggression ?? 2));
       }
@@ -1492,6 +1511,40 @@ export class Hud {
    * innerHTML ile yeniden doğar; bu yüzden önceki değer DOM'da değil burada
    * tutulur. Sürekli döngü yok: yalnız CSS geçişi ve tek seferlik animasyon.
    */
+  /**
+   * KADRAN DİLİMLERİ. Beş hız lambası yayın üstünde 16 px'lik hedeflerdi ve
+   * fareyle tutmuyordu (Kerem 2026-11-15: "saati mouse ile seçemiyorum").
+   * Kadranın üst yarısı beş dilime bölünür: imleç hangi dilimdeyse o hızın
+   * lambası yanar (data-hover), tık o hıza geçer. Ortadaki topuz duraklatır.
+   * Geometri CSS'tekiyle aynı oranlardır (topuz merkezi 42/50 yükseklikte);
+   * oranla okunduğu için kasanın zoom'u ve arayüz ölçeği hesabı bozmaz.
+   */
+  bindDialSectors() {
+    const dial = document.querySelector('.tc-dial');
+    if (!dial || dial.dataset.sectors) return;
+    dial.dataset.sectors = '1';
+    const speeds = [1, 2, 4, 6, 8];
+    const pick = (event) => {
+      const r = dial.getBoundingClientRect();
+      const dx = event.clientX - (r.left + r.width / 2);
+      const dy = event.clientY - (r.top + r.height * (42 / 50));
+      if (Math.hypot(dx, dy) < r.height * 0.3 || dy > r.height * 0.12) return null;
+      const deg = (Math.atan2(dx, -dy) * 180) / Math.PI;
+      return speeds[Math.max(0, Math.min(4, Math.round((deg + 60) / 30)))];
+    };
+    dial.addEventListener('pointermove', (event) => {
+      const speed = pick(event);
+      dial.dataset.hover = speed ?? '';
+    });
+    dial.addEventListener('pointerleave', () => { dial.dataset.hover = ''; });
+    dial.addEventListener('click', (event) => {
+      if (event.target.closest('.time-btn')) return;
+      const speed = pick(event);
+      if (speed == null || this.clockLocked()) return;
+      this.game.setSpeed(speed);
+    });
+  }
+
   animateTopChanges(root) {
     const prev = (this.topPrev ??= new Map());
     // Fark yalnız SAKİN hızda (≤2x) uçar. 4x/8x'te hafta ~1 sn: her hafta
@@ -1541,12 +1594,20 @@ export class Hud {
     live.get(key)?.remove();
     const tag = document.createElement('i');
     tag.textContent = label;
-    // Etiketin yerine oturur (CSS etiketi o sürede söndürür); etiketi
-    // olmayan kaynak madalyonunda madalyonun üstünde ortalanır.
+    // Etiket satırının SAĞ ucunda doğar, etiket yerinde kalır. Eskiden
+    // etiketin yerine oturup onu söndürüyordu: değişen göstergenin adı tam
+    // o anda kayboluyor, ekran görüntülerinde "OUTPUT/STABILITY" yazısı
+    // eksik çıkıyordu. Etiketi olmayan kaynak madalyonunda üstte ortalanır.
     const slot = cell.querySelector('.tb-gv small, :scope > small');
-    const anchor = (slot ?? cell).getBoundingClientRect();
+    let anchor = (slot ?? cell).getBoundingClientRect();
+    if (slot) {
+      // Kutunun değil YAZININ sağ ucu: etiket sütunu değer kadar geniştir.
+      const range = document.createRange();
+      range.selectNodeContents(slot);
+      anchor = range.getBoundingClientRect();
+    }
     tag.className = `tb-delta ${good ? 'good' : 'bad'} ${slot ? 'at-label' : 'at-top'}`;
-    tag.style.left = `${Math.round(toLocal(anchor.left - host.left + (slot ? 0 : anchor.width / 2)))}px`;
+    tag.style.left = `${Math.round(toLocal((slot ? anchor.right + 6 : anchor.left + anchor.width / 2) - host.left))}px`;
     tag.style.top = `${Math.round(toLocal(anchor.top - host.top + (slot ? anchor.height / 2 : 0)))}px`;
     tag.addEventListener('animationend', () => {
       tag.remove();

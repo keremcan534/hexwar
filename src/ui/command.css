@@ -1,0 +1,225 @@
+/* src/ui/command.css — kaplama katmanında (skin), skin.css'ten sonra yüklenir. */
+
+/* ==========================================================================
+   AÇILIR LİSTE (ui/dropdown.js) — komuta şeridinin hedef seçicisi.
+
+   Neden: yerel <select>'in listesini işletim sistemi çiziyordu (beyaz Windows
+   penceresi, sistem yazısı); oyunun malzemesi ona ulaşmıyordu. Düğme
+   .tool-btn ailesindendir (skin.css §5: doku, üstünde, basılı, odak hâlleri
+   oradan gelir); burada yalnız iç dizilim ve açık hâli yazılır. Liste bilgi
+   kartının levhasıdır (opak koyu çelik, pirinç saç teli): haritanın üstünde
+   okunurluk her şeyden önce gelir.
+   ========================================================================== */
+
+.hx-dd-wrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+}
+
+/* Sabit en: seçim değişince şeridin öteki düğmeleri kaymasın (yerel select de
+   en uzun seçeneğe göre sabit duruyordu). */
+.hx-dd {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: 176px;
+  padding-inline: 8px 9px;
+  text-align: left;
+}
+.hx-dd-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.hx-dd-ico {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 15px;
+}
+/* Bayrak çerçeveli bir levha: siyah hat + pirinç saç teli (savaş paneli ve
+   diplomasi listesindeki arma bayraklarıyla aynı tuval). */
+.hx-dd-ico canvas {
+  display: block;
+  border-radius: 1px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.85), 0 0 0 2px rgba(201, 163, 90, 0.32), 0 2px 3px rgba(0, 0, 0, 0.55);
+}
+.hx-dd-ico .glyph {
+  width: 17px;
+  height: 17px;
+  color: var(--sk-brass);
+  stroke-width: 1.7;
+  vertical-align: 0;
+}
+.hx-dd-mark {
+  display: inline-grid;
+  flex: none;
+  place-items: center;
+}
+.hx-dd-mark:empty { display: none; }
+.hx-dd-g {
+  width: 13px;
+  height: 13px;
+  color: inherit;
+  stroke-width: 2;
+  vertical-align: 0;
+}
+.hx-dd-mark .hx-dd-g { color: #e4765a; }
+.hx-dd-caret {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  color: var(--sk-brass);
+  transition: transform 140ms ease;
+}
+
+/* Açık: basılı levha (skin :active gibi gölgesiz ve 1 px çökük), ok döner.
+   Doku DEĞİŞTİRİLMEZ: --sk-* dokuları göreli url taşır ve tarayıcı onları
+   değişkeni KULLANAN dosyaya göre çözer — buradan (src/ui/) çağrılınca
+   /src/assets/... arıyor, düğme çerçevesiz kalıyordu. Çukur, çerçevenin
+   içine serilen gölgeli bir katmanla verilir: süzgeç yazıyı da söndürüyor,
+   açık liste "kapalı düğme" gibi okunuyordu. Seçici gücü :where()
+   ailesinden yüksek, üstünde hâli de basılı kalır. */
+.hx-dd {
+  position: relative;
+  z-index: 0;
+}
+.hx-dd[aria-expanded="true"],
+.hx-dd[aria-expanded="true"]:hover {
+  box-shadow: none;
+  color: #fff6e0;
+  transform: translateY(1px);
+}
+.hx-dd[aria-expanded="true"]::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  z-index: -1;
+  border-radius: 2px;
+  background: rgba(3, 6, 8, 0.42);
+  box-shadow: inset 0 2px 5px rgba(0, 0, 0, 0.75);
+  pointer-events: none;
+}
+.hx-dd[aria-expanded="true"] .hx-dd-caret { transform: rotate(180deg); }
+
+/* --- Liste levhası --- */
+.hx-dd-pop {
+  position: absolute;
+  left: 0;
+  z-index: 30;
+  min-width: 100%;
+  width: max-content;
+  max-width: 300px;
+  padding-bottom: 4px;
+  border-radius: 3px;
+  background: var(--ui-grain), var(--sk-panel), #11181b;
+  background-blend-mode: soft-light, normal, normal;
+  box-shadow:
+    0 0 0 1px #000,
+    inset 0 0 0 1px rgba(201, 163, 90, 0.42),
+    inset 0 1px 0 1px rgba(255, 236, 190, 0.08),
+    0 14px 32px rgba(0, 0, 0, 0.62);
+  color: var(--sk-text);
+  font-family: var(--font-ui);
+  text-shadow: 0 1px 0 #000;
+  cursor: var(--cur-default);
+}
+.hx-dd-pop[hidden] { display: none; }
+.hx-dd-pop[data-side="up"] { bottom: calc(100% + 5px); }
+.hx-dd-pop[data-side="down"] { top: calc(100% + 5px); }
+:root[data-motion="on"] .hx-dd-pop[data-side="up"]:not([hidden]) { animation: hx-dd-rise 120ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+:root[data-motion="on"] .hx-dd-pop[data-side="down"]:not([hidden]) { animation: hx-dd-drop 120ms cubic-bezier(0.2, 0.7, 0.2, 1); }
+@keyframes hx-dd-rise {
+  from { opacity: 0; transform: translateY(5px); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes hx-dd-drop {
+  from { opacity: 0; transform: translateY(-5px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Başlık: plaka yazısı, altında iki ucu sönen pirinç çizgi. */
+.hx-dd-cap {
+  padding: 7px 12px 6px;
+  background: linear-gradient(90deg, transparent, rgba(201, 163, 90, 0.45) 22%, rgba(201, 163, 90, 0.45) 78%, transparent) bottom / 100% 1px no-repeat;
+  color: var(--sk-brass);
+  font-family: var(--font-display);
+  font-size: 13.5px;
+  font-variant: small-caps;
+  letter-spacing: 0.07em;
+  line-height: 1.1;
+}
+
+.hx-dd-list {
+  position: relative;
+  max-height: 340px;
+  padding-top: 3px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(201, 163, 90, 0.5) transparent;
+}
+
+.hx-dd-opt {
+  position: relative;
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 9px;
+  min-height: 30px;
+  padding: 0 12px 0 11px;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: var(--cur-pointer);
+}
+.hx-dd-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* Gezilen satır (fare ya da ok tuşu): soluk çelik ışık. Tek vurgu; :hover
+   ayrıca boyanmaz, klavye ile fare aynı satırı gösterir. */
+.hx-dd-opt.is-active {
+  background: linear-gradient(90deg, rgba(255, 236, 190, 0.13), rgba(255, 236, 190, 0.045));
+  color: #fff6e0;
+}
+/* Seçili satır: yanan pirinç yazı ve solda pirinç çubuk. */
+.hx-dd-opt[aria-selected="true"] {
+  background: linear-gradient(90deg, rgba(201, 163, 90, 0.24), rgba(201, 163, 90, 0.06) 72%, rgba(201, 163, 90, 0));
+  color: var(--sk-brass-hi);
+}
+.hx-dd-opt[aria-selected="true"].is-active {
+  background: linear-gradient(90deg, rgba(214, 178, 104, 0.32), rgba(201, 163, 90, 0.1) 72%, rgba(201, 163, 90, 0.02));
+}
+.hx-dd-opt[aria-selected="true"]::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 5px;
+  bottom: 5px;
+  width: 3px;
+  border-radius: 0 2px 2px 0;
+  background: linear-gradient(180deg, #f1d99c, #a8823f);
+}
+
+/* Savaştaki ülke: kırmızı kılıç + versal işaret. */
+.hx-dd-note {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: #e4765a;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.hx-dd-sep {
+  height: 1px;
+  margin: 3px 10px;
+  background: linear-gradient(90deg, transparent, rgba(201, 163, 90, 0.3), transparent);
+}

@@ -722,7 +722,7 @@ export function registerTooltips(game) {
     const mode = !states.length ? ''
       : states.every((a) => a.on) ? 'AUTO' : states.some((a) => a.on) ? 'partly AUTO' : 'manual';
     const title = `${row[0]}${key}${mode ? ` · ${mode}` : ''}`;
-    const where = (a) => (a.area.inPanel ? 'its switch is in its panel' : 'AUTO in the screen header (A)');
+    const where = (a) => (a.area.inPanel ? 'its switch is in its panel' : 'the AUTO card at the end of the screen’s top row (Shift+A)');
     const text = !states.length ? row[1] : `${row[1]} ${esc(states.map((a) => (a.on
       ? `${a.area.name} is run by the government: ${a.area.desc} Turn it off with ${where(a)}.`
       : `You run ${a.area.name} yourself; ${where(a)} hands it to the government.`)).join(' '))}`;

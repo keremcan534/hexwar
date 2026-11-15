@@ -14,15 +14,25 @@
        çalışır, kaplama (src/skin.css) onların seçici gücüne bakmadan kazanır.
        Düğme ve panel malzemesi böylece tek dosyadan değişir (bkz. skin.css). -->
   <style id="css-cascade">
-    /* light-*: açık temanın çevrilmiş kopyaları (ui/theme.js). Önemli (!important)
-       bildirimlerde katman sırası tersine döner; o yüzden imp katmanları önde. */
-    @layer light-imp-base, light-imp-skin, base, skin, light-base, light-skin, light-fix;
+    /* light-*: açık temanın çevrilmiş kopyaları; dark-*: koyu temanın yazı
+       tabanı (ikisi de ui/theme.js, aynı anda yalnız biri takılır). Önemli
+       (!important) bildirimlerde katman sırası tersine döner; o yüzden imp
+       katmanları önde. */
+    @layer dark-imp-base, dark-imp-skin, light-imp-base, light-imp-skin, base, skin, dark-base, dark-skin, light-base, light-skin, light-fix;
     @import url('src/fonts.css') layer(base);
     @import url('src/styles.css') layer(base);
     @import url('src/overview.css') layer(base);
     @import url('src/ui/frontPlates.css') layer(base);
     @import url('src/diplomacy.css') layer(base);
     @import url('src/skin.css') layer(skin);
+    /* Bileşen kaplamaları: skin.css'ten sonra, aynı katmanda (eşit güçte
+       sonra gelen kazanır). Üst bölge, ekran düzeltmeleri, ülke dosyası, komut. */
+    @import url('src/hud.css') layer(skin);
+    @import url('src/ui/screens-fix.css') layer(skin);
+    @import url('src/ui/dossier.css') layer(skin);
+    @import url('src/ui/command.css') layer(skin);
+    @import url('src/ui/tech.css') layer(skin);
+    @import url('src/picker.css') layer(skin);
     @import url('src/light.css') layer(light-fix);
   </style>
 </head>
@@ -251,9 +261,9 @@
   <div class="command-dock" id="command-dock" aria-label="Army command">
     <div class="command-tools hidden" id="command-tools">
       <label class="command-target-label" for="command-target">Target</label>
-      <select class="command-target" id="command-target" title="Choose the nation whose border this command holds">
-        <option value="">All active fronts</option>
-      </select>
+      <!-- Oyun içi açılır liste (src/ui/dropdown.js); yerel select'in listesini
+           işletim sistemi beyaz bir pencereyle çiziyordu. -->
+      <button type="button" class="tool-btn hx-dd" id="command-target" data-tip="text" data-tip-text="Front target&#10;The nation whose border this command holds. All active fronts: every enemy we are at war with.">All active fronts</button>
       <button class="tool-btn" id="btn-offensive" title="Toggle the offensive: divisions advance along the front. Key: O">Offensive</button>
       <span class="tool-sep"></span>
       <span class="tool-label">Stance</span>

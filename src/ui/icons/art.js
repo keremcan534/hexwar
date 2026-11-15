@@ -29,7 +29,10 @@ const RESOURCE_FILE = {
   FOOD: 'resources-photo/food',
   COAL: 'resources-photo/coal',
   IRON: 'resources-photo/steel',
-  TIMBER: 'resources-photo/aluminium',
+  // Kereste oyunda hâlâ kaynaktır; alüminyum (1920+) yeni setin planıydı ve
+  // kereste yerine ona bağlanmıştı (Kerem: "timber iconu yanlış"). Fotoğraf
+  // setinde kereste yok; AAA setin kütükleri aynı ışıkta duruyor.
+  TIMBER: 'resources/timber',
   HORSES: 'resources-photo/horses',
   SALTPETER: 'resources-photo/nitrates',
   OIL: 'resources-photo/oil',
@@ -266,7 +269,25 @@ export function emblemArt(id, size = 'sm') {
  * isterdi. Resmi olmayan teknoloji dalının amblemini gösterir; resimler
  * geldikçe yalnız bu küme büyür.
  */
-const TECH_ART = new Set([]);
+const TECH_ART = new Set([
+  // Sanayi (assets/incoming/tech/teknoloji-sanayi.webp)
+  'electric_motors', 'assembly_line', 'mass_production', 'machine_tools', 'flow_production',
+  'electric_steel', 'refined_petroleum', 'industrial_chemistry', 'light_alloys', 'synthetic_fuel',
+  // Altyapı
+  'trunk_lines', 'motor_lorries', 'paved_highways', 'electrified_railways', 'motorised_logistics',
+  'steam_threshers', 'agricultural_colleges', 'tractors', 'hybrid_crops', 'mechanised_agriculture',
+  // Ordu ve havacılık
+  'fire_and_movement', 'trench_warfare', 'infiltration_tactics', 'combined_arms', 'mobile_warfare',
+  'smokeless_powder', 'light_machine_guns', 'landships', 'light_tanks', 'medium_tanks',
+  'observation_balloons', 'military_aviation', 'fighter_aircraft', 'metal_airframes',
+  'close_air_support', 'monoplane_fighters',
+  // Donanma
+  'pre_dreadnoughts', 'dreadnoughts', 'submarines', 'aircraft_carriers', 'radar',
+  'blue_water_doctrine', 'fire_control', 'convoy_system', 'naval_aviation', 'carrier_task_forces',
+  // Toplum
+  'social_insurance', 'total_mobilisation', 'propaganda_ministry', 'planned_economy', 'welfare_state',
+  'wireless_telegraphy', 'research_laboratories', 'mass_higher_education', 'electronics', 'nuclear_physics',
+]);
 
 /** Teknolojinin resmi var mı (inceleme panelinin büyük plakası buna göre kurulur). */
 export function hasTechArt(techId) {

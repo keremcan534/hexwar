@@ -16,15 +16,22 @@ export const DELEGATION_AREAS = {
   economy: {
     id: 'economy',
     name: 'Economy',
-    // "economy" adında bir ekran YOK: anahtar bu alanın kaldıraçlarının
-    // durduğu üç ekranın başlığında görünür (hat ağırlıkları, ticaret yasası,
-    // vergi/eğitim kemeri). Tek ekrana bağlıyken hiçbir yerde hap çıkmıyor,
-    // varsayılan AÇIK devir kapatılamıyordu.
-    // Kalkınma ekranı da burada: fonun hedefi bir simülasyon kuralıdır (YZ
-    // değil), oyuncu onu Develop odağıyla yönlendirir; ekrandaki tek
-    // otomasyon halkın doyurulma kolu bu alandadır.
-    screen: ['industry', 'trade', 'budget', 'construction'],
-    desc: 'The ministry sets how well the people are fed, weighs the production lines toward what the army lacks and sets the trade law to the balance of resources. When the state’s bills outrun its output it cuts school spending, lengthens the working week or, in peacetime, stands down a regiment.',
+    // Anahtar YALNIZ kendi kaldıracının durduğu ekrandadır. Eskiden bu alan
+    // dört ekranın (Factories, Trade, Economy, Development) başlığında aynı
+    // anahtardı: birinde kapatılan AUTO dördünde birden kapanıyordu (Kerem
+    // 2026-11-15: "auto tuşu bozulmuş, çoğu şeyi açıp kapatıyor"). Ticaret
+    // yasası kendi alanına ayrıldı; hat ağırlıkları zaten hat başına Auto
+    // kipidir, Development'ın otomasyonu yoktur (fonun hedefi simülasyon kuralı).
+    screen: 'budget',
+    desc: 'The ministry sets how well the people are fed. When the state’s bills outrun its output it cuts school spending, lengthens the working week or, in peacetime, stands down a regiment.',
+  },
+  trade: {
+    id: 'trade',
+    name: 'Trade',
+    screen: 'trade',
+    // Eski kayıtta bu alan yoktur: Economy'nin hâlini ve ısınmasını devralır
+    // (restoreDelegation), davranış kayıttan önceki gibi sürer.
+    desc: 'The ministry sets the trade law to the balance of resources: it opens the market when there is a surplus to sell and keeps it open while the country needs imports.',
   },
   reforms: {
     id: 'reforms',
@@ -91,7 +98,7 @@ export function headerAreaOf(screen) {
  * savaş ilan eder — ilk haftada habersiz bir savaş başlatmak "kolaylık" değil.
  */
 export const DEFAULT_AUTO_AREAS = [
-  'economy', 'reforms', 'agenda', 'recruitment', 'research',
+  'economy', 'trade', 'reforms', 'agenda', 'recruitment', 'research',
 ];
 
 /**
@@ -195,6 +202,12 @@ export function restoreDelegation(nation, saved) {
   if (saved) {
     for (const id of DELEGATION_IDS) state[id] = Boolean(saved[id]);
     state.since = { ...(saved.since ?? {}) };
+    // Ticaret alanı Economy'den ayrıldı: ayrılmadan önceki kayıt onu
+    // Economy'nin hâli ve ısınmasıyla açar (aynı davranış sürer).
+    if (!Object.hasOwn(saved, 'trade')) {
+      state.trade = Boolean(saved.economy);
+      if (saved.since?.economy != null) state.since.trade = saved.since.economy;
+    }
     // Son eylem satırı sınırlıdır: alan başına bir kayıt, fazlası atılır.
     for (const id of DELEGATION_IDS) {
       const entry = saved.last?.[id];

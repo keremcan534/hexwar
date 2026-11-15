@@ -41,7 +41,7 @@ import {
 } from '../game/provinces.js';
 import { depositsOf } from '../game/econ/deposits.js';
 import {
-  PARTIES, appointGovernment, dismissAdvisor, enactRegime, governmentView,
+  PARTIES, appointGovernment, courseView, dismissAdvisor, enactRegime, governmentView,
   hireAdvisor, setCourse, setLaw,
 } from '../game/politics.js';
 import { agendaView, chooseAgenda } from '../game/agenda.js';
@@ -53,13 +53,13 @@ import { concentrate, deport, forceAssimilation, forcedAssimilation, resettle } 
 import { FOCUSES, FOCUS_BY_ID, focusSlots } from '../game/focus.js';
 import { focusBlockers, focusPreview, focusedStates, setFocus } from '../game/stateFocus.js';
 import { DELEGATION_AREAS, isDelegated, lastDelegatedAction } from '../game/delegation.js';
-import { FORMATION_SHARE, formNation, formationBlockers, proposeUnion } from '../game/unification.js';
+import { FORMATION_POWER, FORMATION_SHARE, formNation, formationBlockers, proposeUnion } from '../game/unification.js';
 import { GOALS, goalMet } from '../game/hegemony.js';
 import { nationManpower } from '../game/recruitment.js';
 import { describeEffects, mod } from '../game/modifiers.js';
 import {
-  autoPill, badge, blockedAttr, chain, empty, esc, kpi, kpiRow, ledger, meter, money, num, panel, pct, pips, pts,
-  segmented, short, signed, signedMoney, spark, tipAttr, tone,
+  autoPill, badge, blockedAttr, chain, empty, esc, kpi, kpiRow, ledger, meter, money, nextSort, num, panel, pct, pips, pts,
+  segmented, short, signed, signedMoney, sortHead, sortLabel, sortRows, spark, tipAttr, tone,
 } from './kit.js';
 import { glyph } from './icons/glyphs.js';
 import {
@@ -234,7 +234,8 @@ function barHtml(base, split) {
   const at = (value) => `${(shareOf(value, Y) * 100).toFixed(2)}%`;
   const crisis = base.s < 1 - 1e-6;
   const unpaid = crisis ? `<i class="ec-unpaid" style="width:${((1 - base.s) * 100).toFixed(1)}%"></i>` : '';
-  const seg = (id, label, value, tip, extra = '') => `<i class="ec-seg ${id}" data-ec-seg="${id}" style="width:${segWidth(value, Y)}"${tipAttr({ text: tip })}><span>${label} <b data-ec-v="${id}">${num(value, 1)}</b></span>${extra}</i>`;
+  // Ad ve değer ayrı: dar dilimde önce ad düşer, değer kalır (styles.css §67).
+  const seg = (id, label, value, tip, extra = '') => `<i class="ec-seg ${id}" data-ec-seg="${id}" style="width:${segWidth(value, Y)}"${tipAttr({ text: tip })}><span><em>${label}</em><b data-ec-v="${id}">${num(value, 1)}</b></span>${extra}</i>`;
   const billsTip = `Bills\n${num(split.bills, 1)} IC a week, paid off the top: army and navy supply, schools, martial law. At most ${pct(base.room / Y)} of output (${num(base.room, 1)} IC).${crisis ? `\nSupply crisis: ${num(base.owed, 1)} IC owed, every bill paid ${pct(base.s)}. The hatched end is the unpaid share.` : ''}`;
   const armyTip = `Army\n${num(split.army, 1)} IC drawn by the production lines this week, up to ${num(base.armyCap, 1)} IC (the economy law's share of industry).`;
   const peopleTip = `People\n${num(split.people, 1)} IC of consumer goods: ${pct(split.ratio)} of what they want (${num(base.need, 1)} IC). Drag the handle to feed them better or worse.`;
@@ -502,17 +503,31 @@ export function renderTrade(game, me, state) {
     }),
   ]);
 
-  const rows = RESOURCE_IDS.map((id) => {
+  // DÜNYA PAZARI tablonun sütunlarıdır (Kerem: sekiz büyük kutu "yer
+  // israfı"; fiyat zaten tablodaydı). Fiyat, tabana göre fark ve yıllık iz
+  // satırın kendisinde; fiyatın formülü sütun başlığının bilgi kartında.
+  const resRows = RESOURCE_IDS.map((id) => {
     const info = RESOURCES[id];
     const r = resources[id] ?? {};
     const needed = (r.need ?? 0) > 0.01;
-    const ratio = needed ? r.ratio : 1;
-    const price = market.prices?.[id] ?? info.price;
-    const history = market.history?.[id] ?? [];
-    const trend = history.length > 4 ? price - history[Math.max(0, history.length - 5)] : 0;
-    // Ana tedarikçi "Bought" sütunuyla aynı eşikten: hiç alım yokken %0'lık
-    // bir tedarikçi adı yazıp sütunla çelişiyordu.
-    const partner = r.topPartner >= 0 && (r.imported ?? 0) > 0.05 ? world.nations[r.topPartner] : null;
+    return {
+      id, info, r, needed,
+      name: info.name,
+      ratio: needed ? r.ratio : 1,
+      price: market.prices?.[id] ?? info.price,
+      history: market.history?.[id] ?? [],
+      // Ana tedarikçi "Bought" sütunuyla aynı eşikten: hiç alım yokken %0'lık
+      // bir tedarikçi adı yazıp sütunla çelişiyordu.
+      partner: r.topPartner >= 0 && (r.imported ?? 0) > 0.05 ? world.nations[r.topPartner] : null,
+    };
+  });
+  const sort = state.sort?.trade ?? null;
+  const rows = sortRows(resRows, sort, RES_COLS).map((row) => {
+    const { id, info, r, needed, ratio, price, history, partner } = row;
+    const vsBase = info.price > 0 ? Math.round((price / info.price - 1) * 100) : 0;
+    const trend = history.length > 1
+      ? spark(history, { width: 64, height: 20, cls: 'mini', zero: false })
+      : '<small class="k-dim">—</small>';
     return `<div class="k-res-row${needed && ratio < 0.8 ? ' short' : ''}"${tipAttr('resource', id)}>
       <span class="k-res-name">${resourceArt(id, 'sm')}<b>${esc(info.name)}</b>${info.era && !needed && settled ? badge('no demand yet', 'dim') : ''}</span>
       <span class="k-num">${settled ? num(r.produced ?? 0) : '—'}</span>
@@ -520,24 +535,16 @@ export function renderTrade(game, me, state) {
       <span class="k-cover">${needed ? `${meter(ratio, { tone: ratio < 0.8 ? 'neg' : ratio < 0.98 ? 'warn' : 'pos' })}<b>${pct(ratio)}</b>` : `<small class="k-dim">${settled ? 'not needed' : 'after week 1'}</small>`}</span>
       <span class="k-num neg">${r.imported > 0.05 ? num(r.imported) : '—'}</span>
       <span class="k-num pos">${r.exported > 0.05 ? num(r.exported) : '—'}</span>
-      <span class="k-price"><b>${num(price, 2)}</b><i class="${trend > 0.01 ? 'up' : trend < -0.01 ? 'down' : ''}"></i></span>
+      <span class="k-price"${tipAttr({ text: `${info.name}: ${num(price, 2)} IC\nBase price ${num(info.price, 2)} IC: ${vsBase > 0 ? '+' : vsBase < 0 ? '−' : ''}${Math.abs(vsBase)}% against it.` })}><b>${num(price, 2)}</b><small class="${vsBase > 0 ? 'up' : vsBase < 0 ? 'down' : ''}">${vsBase > 0 ? '+' : vsBase < 0 ? '−' : ''}${Math.abs(vsBase)}%</small></span>
+      <span class="k-res-trend">${trend}</span>
       <span class="k-partner">${partner ? `${esc(partner.name)} <small>${pct(r.topShare)}</small>` : '<small class="k-dim">—</small>'}</span>
     </div>`;
   }).join('');
+  const col = (key) => sortHead('trade', key, RES_COLS, sort);
   const table = `<div class="k-res-table">
-      <div class="k-res-row head"><span>Resource</span><span>Made</span><span>Needed</span><span>Covered</span><span>Bought</span><span>Sold</span><span>Price</span><span>Main supplier</span></div>
+      <div class="k-res-row head">${['name', 'made', 'need', 'cover', 'bought', 'sold', 'price'].map(col).join('')}<span${tipAttr({ text: 'Trend\nThe world price over the last 52 weeks.' })}>Trend</span>${col('supplier')}</div>
       ${rows}
     </div>`;
-
-  const marketTiles = RESOURCE_IDS.map((id) => {
-    const price = market.prices?.[id] ?? 0;
-    const base = RESOURCES[id].price;
-    return `<div class="k-mkt"${tipAttr('resource', id)}>
-      ${resourceArt(id, 'sm')}
-      <span><em>${esc(RESOURCES[id].name)}</em><b>${num(price, 2)}</b><small>${price >= base ? '+' : '−'}${Math.abs(Math.round((price / base - 1) * 100))}% vs base</small></span>
-      ${spark(market.history?.[id] ?? [], { width: 90, height: 24, cls: 'mini', zero: false })}
-    </div>`;
-  }).join('');
 
   const embargoBody = embargoes.length
     ? ledger(embargoes.map((other) => ({
@@ -548,15 +555,35 @@ export function renderTrade(game, me, state) {
 
   return `${kpis}
     <div class="k-split wide-left">
-      ${panel('Resources', table, { sub: settled ? 'per week · hover a row for its uses and suppliers' : `per week · ${FIRST_WEEK}` })}
+      ${panel('Resources', table, { sub: `per week${settled ? '' : ` · ${FIRST_WEEK}`} · ${sortLabel(sort, RES_COLS) ?? 'hover a row for its uses and suppliers'}` })}
       <div class="k-stack">
         ${panel('Trade law', lawCard(world, me, 'trade', state.confirm, { compact: true })
     + '<p class="k-note">Exports sell only the surplus, up to the law\'s share of output, and pay into the development fund. Imports fill every shortage automatically while the fund is above its floor.</p>')}
         ${panel('Embargoes', embargoBody, { sub: 'no trade with these states' })}
       </div>
-    </div>
-    ${panel('World market', `<div class="k-mkts">${marketTiles}</div>`, { sub: 'price in IC = base × (world need ÷ world output)^1.5, 0.6–2× base' })}`;
+    </div>`;
 }
+
+/**
+ * Kaynak tablosunun sıralanabilir sütunları (kit.sortHead). Satır nesnesi
+ * renderTrade'de kurulur; fiyatın formülü başlığın bilgi kartındadır.
+ */
+const RES_COLS = {
+  name: { label: 'Resource', text: true, value: (row) => row.name },
+  made: { label: 'Made', cls: 'r', value: (row) => row.r.produced ?? 0 },
+  need: { label: 'Needed', cls: 'r', value: (row) => (row.needed ? row.r.need : null) },
+  cover: { label: 'Covered', value: (row) => (row.needed ? row.ratio : null) },
+  bought: { label: 'Bought', cls: 'r', value: (row) => (row.r.imported > 0.05 ? row.r.imported : 0) },
+  sold: { label: 'Sold', cls: 'r', value: (row) => (row.r.exported > 0.05 ? row.r.exported : 0) },
+  price: {
+    label: 'World price', cls: 'r', value: (row) => row.price,
+    tip: 'World price\nIC per unit, set every week by the whole world: base price × (world need ÷ world output)^1.5, held between 0.6× and 2× the base. The small figure is the change against the base price.',
+  },
+  supplier: {
+    label: 'Supplier', text: true, value: (row) => row.partner?.name ?? null,
+    tip: 'Main supplier\nThe country we bought the most from last week, and its share of what we bought.',
+  },
+};
 
 // ============================================================== INDUSTRY ===
 
@@ -681,10 +708,12 @@ export function renderIndustry(game, me, state) {
   const total = `<div class="pl-total"${tipAttr({ text: `Military industry\n${pct(ic.share)} of ${num(ic.total)} IC of industry may go to the army (economy law): the most the lines can draw. The lines share it by priority; what no line takes stays with the people and development.` })}>
       <small>To the army</small><b>${num(military, 1)}<i> IC</i></b><em>${pct(ic.share)} of ${num(ic.total, 1)}</em>
     </div>`;
+  // Toplu Auto, etkilediği sütunun başlığında durur (Kerem: panel başlığının
+  // sağ ucunda öncelik düğmelerinden uzak, "garip" duruyordu).
   const anyManual = EQUIPMENT_IDS.some((id) => view.lines?.[id]?.mode === 'manual');
-  const bulk = `<button class="k-btn sm" data-uc-lines-auto${anyManual
+  const bulk = `<button class="k-btn sm pl-bulk" data-uc-lines-auto${anyManual
     ? tipAttr({ text: 'All lines to Auto\nThe ministry makes what the army lacks again; your own priorities are dropped.' })
-    : ' disabled'}>All to Auto</button>`;
+    : ` disabled${tipAttr({ text: 'All lines to Auto\nEvery line is already on Auto.' })}`}>All to Auto</button>`;
   const body = `<div class="pl-top">
       ${lawCard(world, me, 'economy', state.confirm, { compact: true })}
       ${total}
@@ -693,7 +722,7 @@ export function renderIndustry(game, me, state) {
     <div class="pl-table">
       <div class="pl-row head">
         <span${tipAttr({ text: 'Lines\n↑ ↓ pick a line for the keyboard.' })}>Line <kbd class="k-key">↑↓</kbd></span>
-        <span${tipAttr({ text: `Priority\nThe army's industry is split between the lines by shares: ${LINE_PRIORITIES.map((level) => `${level.name} ${level.weight}`).join(' · ')}. Hover a priority to see the new split.\n← → step the picked line's priority.` })}>Priority <kbd class="k-key">←→</kbd></span>
+        <span class="pl-prihead"><span${tipAttr({ text: `Priority\nThe army's industry is split between the lines by shares: ${LINE_PRIORITIES.map((level) => `${level.name} ${level.weight}`).join(' · ')}. Hover a priority to see the new split.\n← → step the picked line's priority.` })}>Priority <kbd class="k-key">←→</kbd></span>${bulk}</span>
         <span class="r">Industry</span>
         <span>Efficiency</span>
         <span class="r">Output / wk</span>
@@ -709,7 +738,7 @@ export function renderIndustry(game, me, state) {
       ${panel('Output', chains, { sub: 'what the states make × the national factors', cls: 'ec-chainpanel' })}
       ${panel('Consumer goods', `${settled ? consumerBar : ''}${consumerNote}`, { sub: 'the people\'s share of output' })}
     </div>
-    ${panel('Production lines', body, { sub: 'the army\'s share of industry, split by priority · hover a priority to preview', right: bulk, cls: 'pl-panel' })}`;
+    ${panel('Production lines', body, { sub: 'the army\'s share of industry, split by priority · hover a priority to preview', cls: 'pl-panel' })}`;
 }
 
 // --------------------------------------------------------- ÜRETİM HATLARI ---
@@ -963,6 +992,9 @@ function developmentRows(world, me) {
       cap,
       cost,
       gain,
+      // Satır ve sıralama aynı sayıyı okur (bir kez hesaplanır).
+      out: provinceOutputOf(province, me),
+      fort: econ.fort ?? 0,
       open: !atCap && !weak,
       closed: atCap ? 'at the cap' : weak ? 'low compliance' : '',
       focus: econ.focus === 'develop',
@@ -972,6 +1004,27 @@ function developmentRows(world, me) {
   }
   const rank = (row) => (row.target ? 0 : !row.open ? 3 : row.focus ? 1 : 2);
   return rows.sort((a, b) => rank(a) - rank(b) || b.score - a.score || a.province.id - b.province.id);
+}
+
+/**
+ * Sıralanabilir sütunlar (kit.sortHead). Kalkınamayan state'in bedeli ve
+ * getirisi yoktur (null): hangi yönde sıralanırsa sıralansın sonda kalır.
+ */
+const DEV_COLS = {
+  name: { label: 'State', text: true, value: (row) => row.name },
+  dev: { label: 'Development', value: (row) => row.dev },
+  output: {
+    label: 'Hand · industry', cls: 'r', value: (row) => row.out.hand + row.out.industry,
+    tip: 'Output a week\nHandwork · industry, national factors included. Sorts by their sum.',
+  },
+  cost: { label: 'Next level', cls: 'r', value: (row) => (row.open ? row.cost : null) },
+  gain: { label: 'Gain / wk', cls: 'r', value: (row) => (row.open ? row.gain : null) },
+  fort: { label: 'Fort', cls: 'c', value: (row) => row.fort },
+};
+
+/** Ekranın, klavyenin ve imleç bekçisinin okuduğu tek sıra: oyuncunun sıralaması ya da fonunki. */
+function devOrder(world, me, state) {
+  return sortRows(developmentRows(world, me), state.sort?.construction, DEV_COLS);
 }
 
 /**
@@ -990,6 +1043,12 @@ function shownRows(rows, state) {
 
 /** screens.refresh yeniden kurmadan önce çağırır: tablo imlecin altındaysa çizili sırayı tutar. */
 export function holdConstructionOrder(body, state) {
+  // Başlığa tıklandı: imleç tablodadır ama oyuncu yeni sırayı istiyor.
+  if (state.devResort) {
+    state.devResort = false;
+    state.devHold = null;
+    return;
+  }
   const table = body.querySelector('.ec-states .k-wtable');
   state.devHold = table?.matches(':hover')
     ? [...table.querySelectorAll('[data-uc-dvrow]')].map((row) => Number(row.dataset.ucDvrow))
@@ -1016,8 +1075,7 @@ function toggleDevelop(game, me, province) {
 function devRow(world, me, row, cursor) {
   const province = row.province;
   const econ = province.econ;
-  const out = provinceOutputOf(province, me);
-  const fort = econ.fort ?? 0;
+  const { out, fort } = row;
   const payback = row.gain > 1e-6 ? Math.ceil(row.cost / row.gain) : null;
   const other = econ.focus && econ.focus !== 'develop' ? FOCUS_BY_ID[econ.focus] : null;
   const blockers = row.focus ? [] : focusBlockers(world, me, province, 'develop');
@@ -1055,7 +1113,7 @@ export function renderConstruction(game, me, state) {
   const invest = view.alloc?.invest ?? 0;
   const efficiency = view.investEfficiency ?? 1;
   const invested = invest * efficiency;
-  const rows = shownRows(developmentRows(world, me), state);
+  const rows = shownRows(devOrder(world, me, state), state);
   const next = rows.find((row) => row.target) ?? null;
   const fund = view.fund;
   const left = next ? Math.max(0, next.cost - fund) : 0;
@@ -1094,15 +1152,16 @@ export function renderConstruction(game, me, state) {
 
   const cursor = devCursor(rows, state);
   const highlight = state.lineKeyboard && state.kbScreen === 'construction' ? cursor : null;
-  const head = `<div class="k-wrow k-dvrow head"><span></span><span>State</span><span>Development</span>
-    <span class="r"${tipAttr({ text: 'Output a week\nHandwork · industry, national factors included.' })}>Hand · industry</span>
-    <span class="r">Next level</span><span class="r">Gain / wk</span><span>Fort</span><span></span></div>`;
+  const sort = state.sort?.construction ?? null;
+  const col = (key) => sortHead('construction', key, DEV_COLS, sort);
+  const head = `<div class="k-wrow k-dvrow head"><span></span>${Object.keys(DEV_COLS).map(col).join('')}<span></span></div>`;
   const body = rows.length ? rows.map((row) => devRow(world, me, row, highlight)).join('') : empty('You own no states.');
   const free = Math.max(0, slots - focused.length);
 
   return `${kpis}
     ${panel('States', `<div class="k-wtable">${head}${body}</div>${DEV_KEYS}`, {
-    sub: `in the order the fund buys · ${open} of ${rows.length} can develop`,
+    // Fonun sırası varsayılandır ve adıyla yazılır; oyuncunun sıralaması da.
+    sub: `${sortLabel(sort, DEV_COLS) ?? 'in the order the fund buys'} · ${open} of ${rows.length} can develop`,
     right: `${developing} developing · ${free} free slot${free === 1 ? '' : 's'}`,
     cls: 'ec-states',
   })}`;
@@ -1125,7 +1184,7 @@ export function constructionKey(screens, event) {
   // çalıştırıp ekranı kapatıyordu (ölçüldü).
   if (enter && event.target?.closest?.('#screen-body button, #screen-body a, #screen-body input, #screen-body select')) return false;
   // Klavye de ekranda görünen sırayla gezer (imleç tablodaysa tutulan sıra).
-  const rows = shownRows(developmentRows(game.world, me), state);
+  const rows = shownRows(devOrder(game.world, me, state), state);
   const id = devCursor(rows, state);
   if (id == null) return true;
   const at = rows.findIndex((row) => row.province.id === id);
@@ -1189,6 +1248,38 @@ export function renderPopulation(game, me, state) {
     </div>`).join('');
   const formBlockers = formationBlockers(world, me);
 
+  // ANA YURT, kimin elinde: birleşmenin asıl sorusu "hangi state'ler eksik"
+  // ve bu panel eskiden tam boy tek bir düğmenin altında boş kalıyordu.
+  // Satır başına bir tutucu (önce biz, sonra en çok tutan); çip haritada açar.
+  const holders = new Map();
+  for (const province of world.provinces ?? []) {
+    if (province.homeland !== me.culture || !province.econ) continue;
+    if (!holders.has(province.owner)) holders.set(province.owner, []);
+    holders.get(province.owner).push(province);
+  }
+  const holderRows = [...holders.entries()]
+    .sort(([a, x], [b, y]) => (a === me.id ? -1 : b === me.id ? 1 : y.length - x.length || a - b))
+    .map(([owner, list]) => {
+      const mine = owner === me.id;
+      const holder = Number.isInteger(owner) && owner >= 0 ? world.nations[owner] : null;
+      const who = mine ? 'Ours' : holder ? esc(holder.name) : 'Unclaimed';
+      const chips = list.map((province) => {
+        const name = provinceName(province.center);
+        return `<button type="button" class="k-chipbtn" data-uc-focus="${province.id}"${tipAttr({ text: `${name}\n${mine ? 'Ours' : holder ? `Held by ${holder.name}` : 'Unclaimed'} · ${status.culture} homeland\nClick to show it on the map.` })}>${esc(name)}</button>`;
+      }).join('');
+      return `<div class="k-home-row${mine ? ' mine' : ''}"><span class="k-home-who"><span>${who}</span><b>${list.length}</b></span><span class="k-home-chips">${chips}</span></div>`;
+    }).join('');
+
+  // İlan: önce sonucu söyler, sonra düğme (bedeli üstünde, engeli kartında).
+  const proclaimed = status.formed === me.id;
+  const proclaim = `<div class="k-proclaim${formBlockers.length ? '' : ' ready'}">
+      <span class="k-proclaim-art">${eventArt('unification', 'md')}</span>
+      <span class="k-proclaim-text"><b>Great ${esc(status.culture)} Empire</b>
+        <small>${status.formed == null ? `Hold ${pct(FORMATION_SHARE)} of the homeland: a core on every homeland state, prestige and an end to the kin-abroad grievance.`
+    : proclaimed ? 'Proclaimed: every homeland state is a core of ours.' : 'Another state has claimed the name.'}</small></span>
+      <button class="k-btn${formBlockers.length ? '' : ' primary'}" data-uc-form="1"${formBlockers.length ? blockedAttr(formBlockers) : tipAttr({ text: `Proclaim the Great ${status.culture} Empire\nCosts ${FORMATION_POWER} political power. Once for every people.` })}>${proclaimed ? 'Proclaimed' : 'Proclaim'}<small>${FORMATION_POWER} PP</small></button>
+    </div>`;
+
   return `${kpis}
     <div class="k-split k-pop">
       <div class="k-stack">
@@ -1200,10 +1291,11 @@ export function renderPopulation(game, me, state) {
           <div class="k-unify"${tipAttr({ text: `Unification\nHold ${pct(FORMATION_SHARE)} of your people's homeland to proclaim the Great nation: a core on every homeland state, prestige and an end to the kin-abroad grievance.` })}>
             <small>Homeland held</small>${meter(held, { tone: 'pos', mark: FORMATION_SHARE, wide: true })}<b>${status.owned} / ${status.total}</b>
           </div>
+          ${holderRows ? `<div class="k-homes">${holderRows}</div>` : ''}
           <div class="k-unify-sub"><span>Kin under foreign rule <b class="${(economy.kinAbroad ?? 0) > 0.1 ? 'neg' : ''}">${pct(economy.kinAbroad ?? 0)}</b></span>
             ${goal ? `<span${tipAttr({ text: `${goal.name}\n${goal.desc}` })}>Goal: <b>${esc(goal.name)}</b> ${goalMet(world, me) ? badge('on track', 'pos') : badge(`+${goal.bonus} in ${END_YEAR}`, 'dim')}</span>` : ''}</div>
           ${unionRows ? `<div class="k-unions">${unionRows}</div>` : ''}
-          <button class="k-btn wide has-art" data-uc-form="1"${blockedAttr(formBlockers)}>${eventArt('unification')}Proclaim the Great ${esc(status.culture)} Empire</button>`, { sub: status.formed == null ? 'unification' : status.formed === me.id ? 'proclaimed' : 'claimed by another', icon: eventArt('unification', 'sm') })}
+          ${proclaim}`, { sub: status.formed == null ? 'unification' : proclaimed ? 'proclaimed' : 'claimed by another', icon: eventArt('unification', 'sm'), cls: 'k-nation' })}
       </div>
     </div>`;
 }
@@ -1255,8 +1347,9 @@ export function renderCultures(game, me, state) {
     ? `<span class="k-stage s${move.stage.index}"${tipAttr({ text: `${move.stage.name} · ${Math.round(move.progress)}%\nAt 100% their states break away${move.heir ? ` and ${move.heir.name} goes to war with us` : ''}.${move.eta != null ? `\nAt this pace: ~${span(move.eta)}.` : ''}` })}>${esc(move.stage.name)} <b>${Math.round(move.progress)}%</b></span>`
     : '<span class="k-dim">—</span>');
   // --- Halklar: satır seçilir; politika rozetleri ------------------------
-  const peopleHead = `<div class="k-prow head"><span>People</span><span>Share</span><span>Lives in</span><span>Unrest</span><span>Movement</span><span>Policy</span></div>`;
-  const peopleRows = view.peoples.slice(0, 16).map((row) => {
+  const psort = state.sort?.cultures ?? null;
+  const peopleHead = `<div class="k-prow head">${Object.keys(PEOPLE_COLS).map((key) => sortHead('cultures', key, PEOPLE_COLS, psort)).join('')}<span>Policy</span></div>`;
+  const peopleRows = sortRows(view.peoples, psort, PEOPLE_COLS).slice(0, 16).map((row) => {
     const status = row.primary ? badge('primary', 'gold') : row.accepted ? badge('accepted', 'pos') : badge('no rights', 'dim');
     const forced = forcedAssimilation(me, row.id);
     const reservation = (world.provinces ?? []).some((p) => p.owner === me.id && p.econ?.reservation === row.id);
@@ -1320,7 +1413,7 @@ export function renderCultures(game, me, state) {
   return `${kpis}
     <div class="k-split wide-left k-cult">
       <div class="k-stack">
-        ${panel('Peoples', `<div class="k-ptable">${peopleHead}${peopleRows}</div>`, { sub: 'click a people to see what can be done' })}
+        ${panel('Peoples', `<div class="k-ptable">${peopleHead}${peopleRows}</div>`, { sub: `${sortLabel(psort, PEOPLE_COLS) ? `${sortLabel(psort, PEOPLE_COLS)} · ` : ''}click a people to see what can be done` })}
         ${panel('Restless states', restlessRows ? `<div class="k-rtable">${restlessRows}</div>${view.restlessMore ? `<small class="k-more">and ${view.restlessMore} calmer state${view.restlessMore === 1 ? '' : 's'}</small>` : ''}` : empty('Every state is calm.'), { sub: `out of 10 · revolt at ${view.revoltAt} · ${glyph('up', 'ctl')} rising ${glyph('down', 'ctl')} settling`, right: 'cause · compliance' })}
       </div>
       <div class="k-stack">
@@ -1333,6 +1426,15 @@ export function renderCultures(game, me, state) {
     </div>`;
 }
 
+/** Halklar tablosunun sıralanabilir sütunları (kit.sortHead); hareketi olmayan halk sonda. */
+const PEOPLE_COLS = {
+  name: { label: 'People', text: true, value: (row) => row.name },
+  share: { label: 'Share', value: (row) => row.share },
+  states: { label: 'Lives in', value: (row) => row.states },
+  unrest: { label: 'Unrest', value: (row) => row.unrest },
+  movement: { label: 'Movement', value: (row) => row.movement?.progress ?? null },
+};
+
 /** Seçili halkın kartı: kim, nerede, ve üç basamaklı politika zinciri. */
 function peopleCard(world, me, d, state, acceptTip) {
   const confirmBtn = (key, attr, label, tip, blockers, cls = '') => {
@@ -1343,50 +1445,58 @@ function peopleCard(world, me, d, state, acceptTip) {
   const more = d.homes.length > 6 ? `<small class="k-dim">+${d.homes.length - 6} more</small>` : '';
   const kin = d.kin.length ? `kin state: <b>${d.kin.map((k) => esc(k.name)).join(', ')}</b>` : 'no kin state';
 
+  // Basamak satırı: solda ne yapılacağı ve sonucu, sağda TEK düğme sütunu.
+  // Eskiden Accept solda, Focus/Impose sağda, Release/Deport/Confine solda
+  // tek sırada, Show on map sağ üstteydi (Kerem: "butonlar saçma yerlerde").
+  // Düğmeler aynı genişlikte: "Confirm"e dönen düğme satırı oynatmaz.
+  const act = (title, effect, button) => `<div class="k-pol-act">
+      <span class="k-pol-what"><b>${title}</b>${effect ? `<small>${effect}</small>` : ''}</span>
+      <span class="k-pol-btn">${button}</span>
+    </div>`;
+
   // 1) HAKLAR
   const rights = d.primary
-    ? '<p class="k-dim">Our own people.</p>'
+    ? act('Our own people', 'Full rights by birth: they work, serve and fill the ranks.', '')
     : d.accepted
       ? (() => {
         const r = d.revoke.preview;
         const tip = `Revoke their acceptance\nThey become foreign again: ${formatPopulation(r.recruits)} fewer recruits, unrest heads for ${num(r.unrestTo, 1)} where they live and keeps growing each year until you act, and their old movement can stir again.\nIn return they can be assimilated once more — and deported or confined if they rise.\nThe political power spent is not returned; accepting them again costs ${r.power} PP. The cabinet will not re-accept them on its own.`;
-        return `<div class="k-pol-row">${confirmBtn(`revoke:${d.id}`, `data-uc-revoke="${d.id}"`, 'Revoke', tip, d.revoke.blockers, 'danger')}
-          <span>recruits −${formatPopulation(r.recruits)} · unrest ${num(r.unrestFrom, 1)} → ${num(r.unrestTo, 1)}</span></div>
-          <p class="k-dim">Accepted: full citizens — they work, serve and feed no movement.</p>`;
+        return act('Full citizens', `they work, serve and feed no movement · revoking: recruits −${formatPopulation(r.recruits)}, unrest ${num(r.unrestFrom, 1)} → ${num(r.unrestTo, 1)}`,
+          confirmBtn(`revoke:${d.id}`, `data-uc-revoke="${d.id}"`, 'Revoke', tip, d.revoke.blockers, 'danger'));
       })()
       : (() => {
         const blocked = d.accept.blockers;
         const tip = blocked.length
           ? ` disabled aria-disabled="true"${tipAttr({ text: `Not possible now\n${blocked.join('\n')}\n\n${acceptTip({ name: d.name, accept: d.accept }).text}` })}`
           : tipAttr(acceptTip({ name: d.name, accept: d.accept }));
-        return `<div class="k-pol-row"><button class="k-btn sm primary" data-uc-accept="${d.id}"${tip}>Accept<small>${d.accept.preview.power} PP</small></button>
-          <span>recruits +${formatPopulation(d.accept.preview.recruits)} · unrest ${num(d.accept.preview.unrestFrom, 1)} → ${num(d.accept.preview.unrestTo, 1)}</span></div>`;
+        return act('Accept as full citizens', `recruits +${formatPopulation(d.accept.preview.recruits)} · unrest ${num(d.accept.preview.unrestFrom, 1)} → ${num(d.accept.preview.unrestTo, 1)}`,
+          `<button class="k-btn sm primary" data-uc-accept="${d.id}"${tip}>Accept<small>${d.accept.preview.power} PP</small></button>`);
       })();
 
   // 2) ERİTME
   const melt = d.primary || d.accepted ? '' : `
-    <div class="k-pol-row"><span class="k-pol-label">Assimilation focus</span><span>${d.focusStates} of their ${d.homes.length} state${d.homes.length === 1 ? '' : 's'}</span>
-      <button class="k-btn sm" data-uc-melt="${d.id}"${tipAttr({ text: `Assimilation focus\nPut the focus on their largest state without one: 2-4% of its people a year take up our culture. Uses a focus slot.` })}>Focus their largest state</button></div>
-    <div class="k-pol-row"><span class="k-pol-label">Forced assimilation</span>
-      <span>${d.forced ? `<b class="neg">in force</b> · ~${formatPopulation(d.force.yearly)} a year` : `~${formatPopulation(d.force.yearly)} a year · unrest +${num(d.force.unrest, 1)} · infamy +${d.force.infamy}`}</span>
-      ${d.forced
-    ? `<button class="k-btn sm" data-uc-force="${d.id}:0"${tipAttr({ text: 'Lift it\nTheir children may learn their own tongue again. What has melted stays melted.' })}>Lift</button>`
-    : confirmBtn(`force:${d.id}`, `data-uc-force="${d.id}:1"`, 'Impose', `Forced assimilation\nTheir newborns count as ours: ~${formatPopulation(d.force.yearly)} of them a year take up our culture, even in their homeland. Unrest +${num(d.force.unrest, 1)} where they live; infamy +${d.force.infamy}.`, d.force.blockers, 'danger')}</div>`;
+    ${act('Assimilation focus', `${d.focusStates} of their ${d.homes.length} state${d.homes.length === 1 ? '' : 's'} focused · 2-4% a year take our culture`,
+    `<button class="k-btn sm" data-uc-melt="${d.id}"${tipAttr({ text: 'Assimilation focus\nPut the focus on their largest state without one: 2-4% of its people a year take up our culture. Uses a focus slot.' })}>Focus largest</button>`)}
+    ${act('Forced assimilation', d.forced ? `<b class="neg">in force</b> · ~${formatPopulation(d.force.yearly)} a year` : `~${formatPopulation(d.force.yearly)} a year · unrest +${num(d.force.unrest, 1)} · infamy +${d.force.infamy}`,
+    d.forced
+      ? `<button class="k-btn sm" data-uc-force="${d.id}:0"${tipAttr({ text: 'Lift it\nTheir children may learn their own tongue again. What has melted stays melted.' })}>Lift</button>`
+      : confirmBtn(`force:${d.id}`, `data-uc-force="${d.id}:1"`, 'Impose', `Forced assimilation\nTheir newborns count as ours: ~${formatPopulation(d.force.yearly)} of them a year take up our culture, even in their homeland. Unrest +${num(d.force.unrest, 1)} where they live; infamy +${d.force.infamy}.`, d.force.blockers, 'danger'))}`;
 
-  // 3) UZAKLAŞTIRMA (kriz kapısı)
+  // 3) UZAKLAŞTIRMA (kriz kapısı): her yolun sonucu kendi satırında.
   const where = d.deport.destinations.map((row) => `${esc(row.name)}${row.kin ? ' (kin)' : ''}`).join(', ');
   const away = d.primary || d.accepted ? '' : `
-    <div class="k-pol-row">
-      ${confirmBtn(`release:${d.id}`, `data-uc-release="${d.id}"`, 'Release', `${d.release.label ?? 'Release'}\nEvery province where they are the majority leaves with them: to their kin state next door, or as their own Free State. No war; the world thinks better of us (infamy falls).`, d.release.blockers, 'danger')}
-      ${confirmBtn(`expel:${d.id}`, `data-uc-expel="${d.id}"`, 'Deport', `Deport\nAll ${formatPopulation(d.people)} of them are driven across the border${where ? ` to ${where}` : ''}. Infamy +${Math.round(d.deport.infamy)}. Their provinces empty — settlers can fill them.`, d.deport.blockers, 'danger')}
-      ${confirmBtn(`confine:${d.id}`, `data-uc-confine="${d.id}"`, d.confine.target ? `Confine to ${esc(d.confine.target.name)}` : 'Confine', `Confine\n${formatPopulation(d.confine.people)} of them are moved into ${d.confine.target?.name ?? 'one state'}. Their other homes empty; the reservation's unrest +${d.confine.unrest} and their movement feeds on it. Infamy +${Math.round(d.confine.infamy)}.`, d.confine.blockers, 'danger')}
-    </div>
+    ${act(esc(d.release.label ?? 'Release their provinces'), 'their majority provinces leave · no war, infamy falls',
+    confirmBtn(`release:${d.id}`, `data-uc-release="${d.id}"`, 'Release', `${d.release.label ?? 'Release'}\nEvery province where they are the majority leaves with them: to their kin state next door, or as their own Free State. No war; the world thinks better of us (infamy falls).`, d.release.blockers, 'danger'))}
+    ${act(`Deport all ${formatPopulation(d.people)}`, `${where ? `to ${where}` : 'across the border'} · infamy +${Math.round(d.deport.infamy)} · their land empties`,
+    confirmBtn(`expel:${d.id}`, `data-uc-expel="${d.id}"`, 'Deport', `Deport\nAll ${formatPopulation(d.people)} of them are driven across the border${where ? ` to ${where}` : ''}. Infamy +${Math.round(d.deport.infamy)}. Their provinces empty — settlers can fill them.`, d.deport.blockers, 'danger'))}
+    ${act(d.confine.target ? `Confine to ${esc(d.confine.target.name)}` : 'Confine to one state', `${formatPopulation(d.confine.people)} moved · reservation unrest +${d.confine.unrest} · infamy +${Math.round(d.confine.infamy)}`,
+    confirmBtn(`confine:${d.id}`, `data-uc-confine="${d.id}"`, 'Confine', `Confine\n${formatPopulation(d.confine.people)} of them are moved into ${d.confine.target?.name ?? 'one state'}. Their other homes empty; the reservation's unrest +${d.confine.unrest} and their movement feeds on it. Infamy +${Math.round(d.confine.infamy)}.`, d.confine.blockers, 'danger'))}
     <small class="k-pol-gate">${d.deport.blockers.length ? esc(d.deport.blockers[0]) : 'Deportation and confinement are open: they rose, or their movement reached Agitation.'}</small>`;
 
   const body = `
     <div class="k-people-head"><i style="background:${d.color}"></i><b>${esc(d.name)}</b>
       <span>${pct(d.share)} · ${formatPopulation(d.people)} · ${kin}</span>
-      <button class="k-btn sm" data-uc-showmap="${d.id}"${tipAttr({ text: `Show the ${d.name} on the culture map\nEvery province shaded by their share, ours and abroad.` })}>Show on map</button></div>
+      <span class="k-pol-btn"><button class="k-btn sm" data-uc-showmap="${d.id}"${tipAttr({ text: `Show the ${d.name} on the culture map\nEvery province shaded by their share, ours and abroad.` })}>Show on map</button></span></div>
     <div class="k-people-homes">${homes}${more}</div>
     <h4 class="k-pol-step">1 · Rights</h4>${rights}
     ${melt ? `<h4 class="k-pol-step">2 · Assimilate</h4>${melt}` : ''}
@@ -1432,6 +1542,33 @@ function focusCard(world, me) {
  */
 const HEMI_ORDER = ['socialist', 'liberal', 'conservative', 'nationalist'];
 const HEMI_SEATS = 100;
+
+/** Rota karesinin kenarı (px). Tık ve nişan aynı ölçüyü okur. */
+const COURSE_PAD = 136;
+/** Tıkla kurulan rotanın finansmanı: açık kademe ya da Düşük (tık işleyicisiyle tek kural). */
+const courseClickBudget = (me) => (me.politics.courseBudget > 0 ? me.politics.courseBudget : 0.15);
+
+/** Rota durum satırı. Finansman kapalıyken kurulu rota kıpırdamaz: söylenir. */
+function courseStatus(c) {
+  if (c.weeks != null) return `Drifting toward the ${esc(PARTIES[c.toward].name)} — ~${c.weeks} weeks, −${c.weeklyCost.toFixed(1)} PP a week`;
+  if (c.heading && !(c.budget > 0)) return 'Course set · funding is Off, so it holds still';
+  if (c.heading) return 'Holding course: free';
+  return `Leaning ${esc(PARTIES[c.leaning].name)} · no course set`;
+}
+
+/**
+ * Nişanın önizlemesi: tık bu noktaya rota kursa ne olur. Sayı oyunun
+ * courseView'ından gelir (ekran formül kurmaz): oyuncunun ulusu üstünde,
+ * yalnız yönü ve finansmanı değişmiş bir görünüm — asıl durum değişmez.
+ */
+function coursePreview(me, x, y) {
+  const probe = Object.create(me);
+  probe.politics = { ...me.politics, heading: { x, y }, courseBudget: courseClickBudget(me) };
+  const view = courseView(probe);
+  return view.weeks != null
+    ? `Click: steer toward the ${PARTIES[view.toward].name} — ~${view.weeks} weeks, −${view.weeklyCost.toFixed(1)} PP a week`
+    : 'Click: hold the course here';
+}
 function hemicycle(support) {
   const parties = HEMI_ORDER.map((id) => support.find((party) => party.id === id)).filter(Boolean);
   if (!parties.length) return '';
@@ -1504,26 +1641,45 @@ export function renderPolitics(game, me, state) {
   const parts = (list) => ledger(list.map((part) => ({ label: esc(part.label), value: pts(part.value), tone: tone(part.value) })));
 
   // DEVLETİN ROTASI (TASARIM D4): dört partili kare; nokta rota, halka yön.
+  // Kare bir SEÇİM YÜZEYİ olarak okunmalı (Kerem: "oyuncu tıklayıp
+  // tıklamaması gerektiğini bilmiyor"): ızgaralı, çerçeveli, dört kenarında
+  // eksen adı; imleci izleyen nişan ve tıklamanın sonucu durum satırında
+  // (bindStateScreens, oyunun courseView'ı); rota yokken içinde ipucu.
   const courseSquare = (c) => {
     if (!c) return '';
-    const S = 132;
+    const S = COURSE_PAD;
     const px = (v) => (((v + 1) / 2) * S).toFixed(1);
-    const corners = Object.entries(c.corners).map(([id, [x, y]]) => `<circle cx="${px(x)}" cy="${px(y)}" r="7" fill="${PARTIES[id].color}"><title>${esc(PARTIES[id].name)}</title></circle>`).join('');
-    const ring = c.heading ? `<circle cx="${px(c.heading.x)}" cy="${px(c.heading.y)}" r="7" fill="none" stroke="#f2e2b8" stroke-width="2" stroke-dasharray="3 2"/>` : '';
-    const status = c.weeks != null
-      ? `Drifting toward the ${esc(PARTIES[c.toward].name)} — ~${c.weeks} weeks, −${c.weeklyCost.toFixed(1)} PP a week`
-      : c.heading ? 'Holding course: free' : `Leaning ${esc(PARTIES[c.leaning].name)} · click the square to set a course`;
+    const tints = Object.entries(c.corners).map(([id, [x, y]]) => `<rect x="${x < 0 ? 0 : S / 2}" y="${y < 0 ? 0 : S / 2}" width="${S / 2}" height="${S / 2}" fill="${PARTIES[id].color}" opacity="0.13"/>`).join('');
+    const grid = [0.25, 0.75].map((f) => `<line x1="${S * f}" y1="0" x2="${S * f}" y2="${S}"/><line x1="0" y1="${S * f}" x2="${S}" y2="${S * f}"/>`).join('');
+    const corners = Object.entries(c.corners).map(([id, [x, y]]) => `<circle class="k-course-party" cx="${px(x)}" cy="${px(y)}" r="6" fill="${PARTIES[id].color}"/>`).join('');
+    // Hedef: açık pirinç halka + artı (ortası boş), rotadan ona kesik yol.
+    // Bugünkü yer: dolu krem nokta. İkisi biçimden ayrılır, renkten değil.
+    const target = c.heading ? `<g class="k-course-target">
+        <line class="k-course-path" x1="${px(c.course.x)}" y1="${px(c.course.y)}" x2="${px(c.heading.x)}" y2="${px(c.heading.y)}"/>
+        <g transform="translate(${px(c.heading.x)} ${px(c.heading.y)})"><circle r="7.5"/><path d="M-12 0h6M6 0h6M0 -12v6M0 6v6"/></g>
+      </g>` : '';
+    const status = courseStatus(c);
     const funding = c.budgets.map((b, i) => `<button class="k-btn sm${Math.abs(c.budget - b) < 1e-6 ? ' on' : ''}" data-uc-course-budget="${b}">${['Off', 'Low 15%', 'High 30%'][i]}</button>`).join('');
-    return `<div class="k-course"${tipAttr({ text: 'The course of the state\nWhere you steer the nation\'s politics. Support for the parties near it grows as long as you hold it there; moving costs a share of political power, holding costs nothing. Order raises war support; Reform calms your peoples. Click to set a heading, right-click to stop.' })}>
-      <svg class="k-course-sq" data-uc-course viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" role="img" aria-label="Course of the state">
-        <rect x="0.5" y="0.5" width="${S - 1}" height="${S - 1}" fill="rgba(0,0,0,0.25)" stroke="rgba(242,226,184,0.35)"/>
-        <line x1="${S / 2}" y1="0" x2="${S / 2}" y2="${S}" stroke="rgba(242,226,184,0.12)"/><line x1="0" y1="${S / 2}" x2="${S}" y2="${S / 2}" stroke="rgba(242,226,184,0.12)"/>
-        <text x="${S / 2}" y="12" text-anchor="middle" font-size="11" fill="rgba(242,226,184,0.6)">Order</text>
-        <text x="${S / 2}" y="${S - 4}" text-anchor="middle" font-size="11" fill="rgba(242,226,184,0.6)">Reform</text>
-        ${corners}${ring}
-        <circle cx="${px(c.course.x)}" cy="${px(c.course.y)}" r="5" fill="#f2e2b8"/>
-      </svg>
-      <div class="k-course-side"><small>Elite ↔ Masses · Order ↔ Reform</small><p>${status}</p><div class="k-actions">${funding}</div></div>
+    return `<div class="k-course">
+      <div class="k-course-pad">
+        <span class="k-course-ax n">Order</span><span class="k-course-ax w">Elite</span>
+        <svg class="k-course-sq${c.heading ? ' set' : ''}" data-uc-course viewBox="0 0 ${S} ${S}" width="${S}" height="${S}" role="img" aria-label="Course of the state: click to set a heading, right-click to stop">
+          <rect class="k-course-bg" x="0" y="0" width="${S}" height="${S}"/>${tints}
+          <g class="k-course-grid">${grid}</g>
+          <line class="k-course-axis" x1="${S / 2}" y1="0" x2="${S / 2}" y2="${S}"/><line class="k-course-axis" x1="0" y1="${S / 2}" x2="${S}" y2="${S / 2}"/>
+          <rect class="k-course-frame" x="0.75" y="0.75" width="${S - 1.5}" height="${S - 1.5}" rx="2"/>
+          ${c.heading ? '' : `<g class="k-course-hint"><rect x="${S / 2 - 54}" y="${S * 0.68}" width="108" height="17" rx="8.5"/><text x="${S / 2}" y="${S * 0.68 + 12.2}" text-anchor="middle">Click to set a course</text></g>`}
+          ${corners}${target}
+          <g class="k-course-ghost"><line x1="${px(c.course.x)}" y1="${px(c.course.y)}" x2="${px(c.course.x)}" y2="${px(c.course.y)}"/><g><circle r="7.5"/><path d="M-12 0h6M6 0h6M0 -12v6M0 6v6"/></g></g>
+          <circle class="k-course-now" cx="${px(c.course.x)}" cy="${px(c.course.y)}" r="5"/>
+        </svg>
+        <span class="k-course-ax e">Masses</span><span class="k-course-ax s">Reform</span>
+      </div>
+      <div class="k-course-side">
+        <small${tipAttr({ text: 'The course of the state\nWhere you steer the nation\'s politics. Support for the parties near it grows as long as you hold it there; moving costs a share of political power, holding costs nothing. Order raises war support; Reform calms your peoples.\nClick the square to set a heading, right-click it to stop.' })}>Course of the state</small>
+        <p class="k-course-status" data-course-status>${status}</p>
+        <div class="k-actions">${funding}</div>
+      </div>
     </div>`;
   };
   const parties = view.support.map((party) => {
@@ -1665,6 +1821,19 @@ export function bindStateScreens(screens) {
     setEmbargo(me, Number(el.dataset.ucEmbargoLift), false);
     screens.refresh();
   });
+  // Sıralanabilir başlıklar (kit.sortHead). 'politics' yayınlanmaz: sıra
+  // oyun durumu değildir, üst çubuğun tazelenecek bir şeyi yok.
+  for (const el of root.querySelectorAll('[data-uc-sort]')) {
+    el.onclick = () => {
+      const [table, key] = el.dataset.ucSort.split(':');
+      state.sort = { ...state.sort, [table]: nextSort(state.sort?.[table], key, el.dataset.sortFirst === 'asc') };
+      // Development: imleç tablodayken tutulan sıra yeni sıralamayı ezmesin;
+      // kaydırılmış liste başa döner (yeni sıranın ucu görünsün).
+      if (table === 'construction') state.devResort = true;
+      el.closest('.k-wtable')?.scrollTo({ top: 0 });
+      screens.refresh();
+    };
+  }
   // EKONOMİ: tutamaç (bindFeed) ve onu bakanlığa geri veren Auto.
   const feedInput = root.querySelector('[data-uc-feed]');
   if (feedInput) bindFeed(screens, feedInput);
@@ -1684,7 +1853,7 @@ export function bindStateScreens(screens) {
       const hold = state.devHold;
       if (!hold) return;
       state.devHold = null;
-      const fresh = developmentRows(game.world, me).map((row) => row.province.id);
+      const fresh = devOrder(game.world, me, state).map((row) => row.province.id);
       if (fresh.join() !== hold.join()) screens.scheduleRefresh();
     };
   }
@@ -1769,13 +1938,40 @@ export function bindStateScreens(screens) {
     confirmThen(`gov:${id}`, () => appointGovernment(game, me, id));
   });
   // Rota karesi (TASARIM D4): tık yön çizer, sağ tık durdurur; finansman üç kademe.
+  // Üstünde gezinen imleci bir nişan izler; durum satırı tıkın sonucunu söyler.
   for (const el of root.querySelectorAll('[data-uc-course]')) {
-    el.onclick = (event) => {
+    const status = root.querySelector('[data-course-status]');
+    const resting = status?.textContent ?? '';
+    const ghost = el.querySelector('.k-course-ghost');
+    const pointAt = (event) => {
       const box = el.getBoundingClientRect();
-      const x = ((event.clientX - box.left) / box.width) * 2 - 1;
-      const y = ((event.clientY - box.top) / box.height) * 2 - 1;
-      const budget = me.politics.courseBudget > 0 ? me.politics.courseBudget : 0.15;
-      setCourse(me, { x, y }, budget);
+      const clamp = (v) => Math.max(-1, Math.min(1, v));
+      return { x: clamp(((event.clientX - box.left) / box.width) * 2 - 1), y: clamp(((event.clientY - box.top) / box.height) * 2 - 1) };
+    };
+    const aim = ({ x, y }) => {
+      const px = (v) => (((v + 1) / 2) * COURSE_PAD).toFixed(1);
+      ghost?.querySelector('g')?.setAttribute('transform', `translate(${px(x)} ${px(y)})`);
+      ghost?.querySelector('line')?.setAttribute('x2', px(x));
+      ghost?.querySelector('line')?.setAttribute('y2', px(y));
+      el.classList.add('aiming');
+      if (status) status.textContent = coursePreview(me, x, y);
+      state.courseAim = { x, y };
+    };
+    el.onpointermove = (event) => aim(pointAt(event));
+    el.onpointerleave = () => {
+      el.classList.remove('aiming');
+      if (status) status.textContent = resting;
+      state.courseAim = null;
+    };
+    // Haftalık tazeleme kareyi yeniden kurar: imleç üstündeyse nişan yerinde kalsın.
+    if (state.courseAim && el.matches(':hover')) aim(state.courseAim);
+    el.onclick = (event) => {
+      // Nişanın noktası: tık olayının koordinatı tam sayıya yuvarlanır,
+      // gezinmeninki kesirlidir; önizlemedeki hafta sayısı birebir tutsun.
+      const { x, y } = state.courseAim ?? pointAt(event);
+      setCourse(me, { x, y }, courseClickBudget(me));
+      // Tıktan sonra durum satırı kurulan rotayı söyler; nişan fare oynayınca döner.
+      state.courseAim = null;
       game.emit('politics', me.id);
       screens.refresh();
     };

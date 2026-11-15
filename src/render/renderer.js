@@ -2509,7 +2509,9 @@ export class Renderer {
       // muharebe de siyasettir (bkz. mapMode yorumu).
       this.drawFronts(ctx, world, state);
       this.drawCommandLines(ctx, world, state);
-      this.drawMovement(ctx, world, state.selectedUnit, state.playerNation);
+      // Seçimin TAMAMI parlar: yalnız ilk tümen geçtiğinde çoklu seçimde
+      // diğer tümenlerin oku sönük kalıyordu (seçili olduğu okunmuyordu).
+      this.drawMovement(ctx, world, state.selection?.length ? new Set(state.selection) : state.selectedUnit, state.playerNation);
       this.drawOffensiveArrows(ctx, world, state.playerNation);
       if (marks) {
         this.drawUnitCounters(ctx, world, state.selectedUnit, rect, state.playerNation);
@@ -4221,12 +4223,19 @@ export class Renderer {
       ctx.stroke();
     }
 
-    // Dikişi aşan yol çizgileri periyot kadar sıçramasın: her adım en yakın
-    // sarmal temsilciyle çizilir, hat kopyanın kenarından dışarı akar.
-    // Yol KARA ve DENİZ koşularına bölünür: deniz koşusu pirinç (düşman payı
-    // olan denizde kehribar), biniş ve çıkış düğümünde çapa işareti. Deniz
-    // aşırı emir eskiden düz beyaz kesik çizgiydi; nereden binip nereye
-    // çıkacağı haritada görünmüyordu.
+    // YÜRÜYÜŞ OKU (HOI4). Eskiden ince beyaz kesik çizgi ve içi boş halkaydı:
+    // açık arazide kayboluyor, yön söylemiyordu (Kerem: "daha iyi yürüme
+    // ikonu"). Şimdi her zeminde okunan koyu kılıflı dolu bant, köşeleri
+    // yuvarlanmış, hedefte ok başı. Seçili ordunun oku dolgun, ötekiler ince
+    // ve soluk. Yol KARA ve DENİZ koşularına bölünür: deniz koşusu pirinç
+    // kesik (düşman payı olan denizde kehribar), kıyıda çapa rozeti — deniz
+    // aşırı emirde nereden binip nereye çıkacağı haritada görünsün.
+    //
+    // Oklar üsluba göre birkaç Path2D'de birikir: kare başına çizim çağrısı
+    // birim sayısından bağımsız (~10) ve aynı torbada üst üste binen soluk
+    // oklar alfa katlamaz (bir generalin kırk tümeni koyu bir yumak olmaz).
+    const moving = world.units.filter((unit) => unit.path?.length && unit.nationId === playerNation);
+    if (!moving.length) return;
     const P = world.wrapWidth;
     const status = new Map();
     const seaTone = (tile) => {
@@ -4235,54 +4244,324 @@ export class Renderer {
       if (!status.has(zoneId)) status.set(zoneId, zoneStatus(world, playerNation, zoneId).state);
       return status.get(zoneId);
     };
-    for (const unit of world.units) {
-      if (!unit.path?.length || unit.nationId !== playerNation) continue;
-      const active = unit === selectedUnit;
-      const alpha = active ? 1 : 0.4;
-      const runs = [];
-      let prev = unit.tile;
-      let px = unit.tile.x;
-      let run = null;
-      const anchors = [];
+    const toneOf = (a, b) => (
+      ['contested', 'held'].includes(seaTone(b.terrain?.water ? b : a)) ? 'amber' : 'sea');
+    // Kalınlıklar ekran pikselidir (x / zoom), yakında hafifçe kalınlaşır:
+    // sabit piksel ok büyüyen hexlerin içinde iplik gibi kalıyordu.
+    const k = Math.min(2.2, Math.max(0.45, zoom)) ** 0.4 / zoom;
+    const dim = this.marchSet(false, k);
+    const lit = this.marchSet(true, k);
+    // Görünmeyen ok kurulmaz: yakın zoomda ülkenin öbür ucundaki yürüyüşler
+    // her karede boşuna yol inşa ediyordu. Görünür alan geçerli dönüşümden
+    // (sarmal kopyanın kayması dahil) çıkar; dönüşüm bozuksa NaN hiçbir
+    // oku elemez.
+    const inv = ctx.getTransform().invertSelf();
+    const cw = ctx.canvas.width;
+    const ch = ctx.canvas.height;
+    const xa = [inv.e, inv.a * cw + inv.e, inv.c * ch + inv.e, inv.a * cw + inv.c * ch + inv.e];
+    const ya = [inv.f, inv.b * cw + inv.f, inv.d * ch + inv.f, inv.b * cw + inv.d * ch + inv.f];
+    const pad = HEX_SIZE * 2;
+    const vx0 = Math.min(...xa) - pad;
+    const vx1 = Math.max(...xa) + pad;
+    const vy0 = Math.min(...ya) - pad;
+    const vy1 = Math.max(...ya) + pad;
+    let coasts = null;
+    for (const unit of moving) {
+      // Dikişi aşan adım periyot kadar sıçramasın: her düğüm bir öncekine en
+      // yakın sarmal temsilciyle alınır, hat kopyanın kenarından dışarı akar.
+      const xs = [unit.tile.x];
+      const ys = [unit.tile.y];
+      const nodes = [unit.tile];
+      let x0 = unit.tile.x;
+      let x1 = x0;
+      let y0 = unit.tile.y;
+      let y1 = y0;
       for (const tile of unit.path) {
-        const dx = tile.x - px;
-        const nx = px + (P ? dx - P * Math.round(dx / P) : dx);
-        const water = Boolean(prev.terrain?.water || tile.terrain?.water);
-        const tone = water ? (['contested', 'held'].includes(seaTone(tile.terrain?.water ? tile : prev)) ? 'amber' : 'sea') : 'land';
-        if (!prev.terrain?.water && tile.terrain?.water) anchors.push([px, prev.y]);
-        if (prev.terrain?.water && !tile.terrain?.water) anchors.push([nx, tile.y]);
-        if (!run || run.tone !== tone) {
-          run = { tone, pts: [[px, prev.y]] };
-          runs.push(run);
-        }
-        run.pts.push([nx, tile.y]);
-        px = nx;
-        prev = tile;
+        const last = xs[xs.length - 1];
+        const dx = tile.x - last;
+        const nx = last + (P ? dx - P * Math.round(dx / P) : dx);
+        if (Math.abs(nx - last) + Math.abs(tile.y - ys[ys.length - 1]) < 0.5) continue;
+        xs.push(nx);
+        ys.push(tile.y);
+        nodes.push(tile);
+        if (nx < x0) x0 = nx;
+        else if (nx > x1) x1 = nx;
+        if (tile.y < y0) y0 = tile.y;
+        else if (tile.y > y1) y1 = tile.y;
       }
-      for (const r of runs) {
-        ctx.beginPath();
-        ctx.moveTo(r.pts[0][0], r.pts[0][1]);
-        for (let i = 1; i < r.pts.length; i++) ctx.lineTo(r.pts[i][0], r.pts[i][1]);
-        ctx.lineWidth = (active ? 3 : 2) / zoom;
-        if (r.tone === 'land') {
-          ctx.strokeStyle = `rgba(255,255,255,${0.9 * alpha})`;
-          ctx.setLineDash([6 / zoom, 5 / zoom]);
-        } else {
-          ctx.strokeStyle = r.tone === 'amber' ? `rgba(232,189,102,${0.95 * alpha})` : `rgba(222,196,120,${0.9 * alpha})`;
-          ctx.setLineDash([10 / zoom, 6 / zoom]);
-        }
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-      ctx.strokeStyle = active ? 'rgba(255,255,255,0.9)' : 'rgba(255,255,255,0.35)';
-
-      // Hedef işareti: yolun sonunda içi boş halka.
-      const end = unit.path[unit.path.length - 1];
-      ctx.beginPath();
-      ctx.arc(px, end.y, HEX_SIZE * 0.3, 0, Math.PI * 2);
-      ctx.stroke();
-      if (active) for (const [ax, ay] of anchors) this.drawAnchorGlyph(ctx, ax, ay, zoom);
+      if (nodes.length < 2) continue;
+      if (x1 < vx0 || x0 > vx1 || y1 < vy0 || y0 > vy1) continue;
+      const active = selectedUnit instanceof Set ? selectedUnit.has(unit) : unit === selectedUnit;
+      const strike = this.marchStrikes(world, unit, playerNation);
+      // Bitişik kareye kara saldırısında güzergâh kırmızı okun ta kendisi.
+      if (strike && nodes.length === 2 && !nodes[0].terrain?.water) continue;
+      const found = this.traceMarch(active ? lit : dim, xs, ys, nodes, toneOf, !strike);
+      if (active) coasts = found;
     }
+    ctx.save();
+    ctx.lineJoin = 'round';
+    this.strokeMarch(ctx, dim);
+    this.strokeMarch(ctx, lit);
+    ctx.restore();
+    if (coasts) for (const [x, y] of coasts) this.drawAnchorBadge(ctx, x, y, zoom);
+  }
+
+  /**
+   * Yürüyüş okunun bir üslubu: ölçüler (k = ekran pikselinin dünya karşılığı),
+   * renkler ve torbalar. Seçili ok dolgun ve kalkık (altında yumuşak gölge),
+   * soluk ok ince; ikisinde de koyu kılıf zemin ne olursa olsun bandı ayırır.
+   */
+  marchSet(active, k) {
+    const bag = () => ({ land: new Path2D(), sea: new Path2D(), amber: new Path2D() });
+    return {
+      body: (active ? 4.4 : 2.6) * k,
+      edge: (active ? 1.7 : 1.1) * k,
+      headLen: (active ? 17 : 11) * k,
+      headHalf: (active ? 10 : 6.5) * k,
+      dash: active ? [11 * k, 6 * k] : [7 * k, 5 * k],
+      lift: active ? 1.8 * k : 0,
+      ink: active
+        ? { land: 'rgba(246, 239, 220, 0.97)', sea: 'rgba(230, 200, 122, 0.97)', amber: 'rgba(240, 152, 66, 0.98)' }
+        : { land: 'rgba(236, 229, 210, 0.66)', sea: 'rgba(218, 192, 124, 0.66)', amber: 'rgba(232, 148, 72, 0.7)' },
+      casing: active ? 'rgba(12, 14, 16, 0.82)' : 'rgba(12, 14, 16, 0.42)',
+      // Bütünüyle karadan giden yol tek torbada: aynı yol önce kılıf, sonra
+      // gövde olarak basılır. Kılıfı ayrı kurmak yol komutlarını ikiye
+      // katlıyordu (200 okluk yükte maliyetin çoğu buydu).
+      solo: new Path2D(),
+      casingPath: new Path2D(),
+      runs: bag(),
+      heads: bag(),
+      used: { land: false, sea: false, amber: false },
+      hasSolo: false,
+      hasMixed: false,
+      any: false,
+    };
+  }
+
+  /**
+   * Taarruz okuyla biten yol (drawOffensiveArrows'un koşulu): yürüyüş oku o
+   * zaman başsız ve hedefin ~1 hex gerisinde biter. Hedefte iki ok başı üst
+   * üste biniyor, açık bant kırmızı ucun önünden taşıyordu; kırmızı ok
+   * "nereye vuruyoruz"u zaten söylüyor, açık bant yalnız güzergâhı.
+   */
+  marchStrikes(world, unit, playerNation) {
+    if (unit.type?.domain !== 'land' || unit.hp <= 0) return false;
+    const end = unit.path[unit.path.length - 1];
+    const goal = unit.directive ? world.get(unit.directive.q, unit.directive.r) : end;
+    if (goal !== end) return false;
+    const owner = controllerOf(end);
+    return owner >= 0 && owner !== playerNation
+      && (atWar(world, owner, playerNation) || inCrisis(world, owner, playerNation));
+  }
+
+  /**
+   * Tek okun geometrisini üslubun torbalarına yazar; kıyı noktalarını
+   * (biniş/çıkış) döndürür. Köşeler ikinci derece eğriyle yuvarlanır: kesim
+   * noktaları komşu kenarların üstündedir (teğet sürekli, taşma yok); renk
+   * değişen köşe eğri ortasından bölünür ki iki koşu tam köşede birleşsin.
+   * Kıyıyı kesen kenar KIYIDA bölünür (su karesinin kara komşusuna bakan
+   * kenarı, ~0.87 hex): renk ve çapa orada değişir, sayacın altında kalan
+   * düğümde değil.
+   */
+  traceMarch(set, xs, ys, nodes, toneOf, head) {
+    const n = xs.length;
+    const L = n - 2;
+    const len = [];
+    const ux = [];
+    const uy = [];
+    for (let e = 0; e <= L; e++) {
+      const dx = xs[e + 1] - xs[e];
+      const dy = ys[e + 1] - ys[e];
+      const l = Math.hypot(dx, dy);
+      len.push(l);
+      ux.push(dx / l);
+      uy.push(dy / l);
+    }
+    const cut = new Array(n).fill(0);
+    for (let i = 1; i <= L; i++) cut[i] = Math.min(HEX_SIZE * 0.9, len[i - 1] / 2, len[i] / 2);
+    // Ok başı son kenarın DÜZ kısmına oturur: sığmazsa önce son köşe daralır,
+    // sonra baş kısalır (en çok %40; altında baş gövdeden ayırt edilmiyor).
+    // Başsız (taarruz) yol kırmızı ok başının gerisinde biter.
+    const inset = HEX_SIZE * (head ? 0.14 : 0.9);
+    const avail = len[L] - inset;
+    let headLen = 0;
+    if (head) {
+      if (L > 0) cut[L] = Math.min(cut[L], Math.max(avail * 0.35, avail - set.headLen));
+      headLen = Math.max(set.headLen * 0.6, Math.min(set.headLen, avail - cut[L]));
+    }
+    // Gövde başın içinde biter: düz uç başın iki yanından taşmasın.
+    const stop = inset + headLen * 0.52;
+    const coast = HEX_SIZE * 0.87;
+    const solo = !nodes.some((tile) => tile.terrain?.water);
+    const casing = solo ? null : set.casingPath;
+    casing?.moveTo(xs[0], ys[0]);
+    if (solo) set.hasSolo = true;
+    else set.hasMixed = true;
+    let pen = null;
+    let penTone = null;
+    const to = (tone, x, y) => {
+      if (tone === penTone) return;
+      pen = solo ? set.solo : set.runs[tone];
+      pen.moveTo(x, y);
+      penTone = tone;
+      set.used[tone] = true;
+    };
+    const line = (x, y) => {
+      pen.lineTo(x, y);
+      casing?.lineTo(x, y);
+    };
+    const curve = (cx, cy, x, y) => {
+      pen.quadraticCurveTo(cx, cy, x, y);
+      casing?.quadraticCurveTo(cx, cy, x, y);
+    };
+    // Kenar tonları önce: köşe yalnız rengin değiştiği düğümde ikiye bölünür,
+    // öteki köşeler tek eğridir (aynı eğri, yarı komut — 200 okluk yükte
+    // maliyetin çoğu yol komutlarıydı, basma değil).
+    const fromT = [];
+    const toT = [];
+    for (let e = 0; e <= L; e++) {
+      const wa = Boolean(nodes[e].terrain?.water);
+      const wb = Boolean(nodes[e + 1].terrain?.water);
+      const sea = wa || wb ? toneOf(nodes[e], nodes[e + 1]) : 'land';
+      fromT.push(wb && !wa ? 'land' : sea);
+      toT.push(wa && !wb ? 'land' : sea);
+    }
+    const coasts = [];
+    let atX = xs[0];
+    let atY = ys[0];
+    to(fromT[0], atX, atY);
+    for (let e = 0; e <= L; e++) {
+      const s0 = e === 0 ? 0 : cut[e];
+      const s1 = Math.max(s0, len[e] - (e === L ? stop : cut[e + 1]));
+      if (e > 0 && toT[e - 1] !== fromT[e]) {
+        // Renk bu düğümde değişir: köşenin ikinci yarısı yeni torbada.
+        to(fromT[e], atX, atY);
+        const bx = xs[e] + ux[e] * cut[e];
+        const by = ys[e] + uy[e] * cut[e];
+        curve((xs[e] + bx) / 2, (ys[e] + by) / 2, bx, by);
+      }
+      if (fromT[e] !== toT[e]) {
+        const s = Math.min(s1, Math.max(s0, nodes[e + 1].terrain?.water ? len[e] - coast : coast));
+        const cx = xs[e] + ux[e] * s;
+        const cy = ys[e] + uy[e] * s;
+        line(cx, cy);
+        coasts.push([cx, cy]);
+        to(toT[e], cx, cy);
+      }
+      atX = xs[e] + ux[e] * s1;
+      atY = ys[e] + uy[e] * s1;
+      line(atX, atY);
+      if (e < L) {
+        const i = e + 1;
+        const bx = xs[i] + ux[i] * cut[i];
+        const by = ys[i] + uy[i] * cut[i];
+        if (toT[e] === fromT[i]) {
+          curve(xs[i], ys[i], bx, by);
+          atX = bx;
+          atY = by;
+        } else {
+          // Köşenin ilk yarısı: kesim noktasından eğrinin ortasına.
+          const c1x = (atX + xs[i]) / 2;
+          const c1y = (atY + ys[i]) / 2;
+          atX = (c1x + (xs[i] + bx) / 2) / 2;
+          atY = (c1y + (ys[i] + by) / 2) / 2;
+          curve(c1x, c1y, atX, atY);
+        }
+      }
+    }
+    if (head) {
+      const tx = xs[L + 1] - ux[L] * inset;
+      const ty = ys[L + 1] - uy[L] * inset;
+      const hw = set.headHalf * (headLen / set.headLen);
+      const bx = tx - ux[L] * headLen;
+      const by = ty - uy[L] * headLen;
+      // Arkası çok hafif oyuk: düz tabanlı üçgen "trafik işareti" gibi,
+      // derin oyuk fare imleci gibi duruyordu.
+      const nx = bx + ux[L] * headLen * 0.12;
+      const ny = by + uy[L] * headLen * 0.12;
+      const path = set.heads[penTone];
+      path.moveTo(tx, ty);
+      path.lineTo(bx - uy[L] * hw, by + ux[L] * hw);
+      path.lineTo(nx, ny);
+      path.lineTo(bx + uy[L] * hw, by - ux[L] * hw);
+      path.closePath();
+    } else {
+      // Başsız uç yuvarlak: gövdenin düz kesiği yarım kalmış gibi okunuyordu.
+      const end = set.heads[penTone];
+      end.moveTo(atX + set.body / 2, atY);
+      end.arc(atX, atY, set.body / 2, 0, Math.PI * 2);
+    }
+    set.any = true;
+    return coasts;
+  }
+
+  /** Bir üslubun torbalarını basar: gölge, kılıf, gövde, ok başı. */
+  strokeMarch(ctx, set) {
+    if (!set.any) return;
+    const tones = ['land', 'sea', 'amber'].filter((tone) => set.used[tone]);
+    const rims = [];
+    if (set.hasMixed) rims.push(set.casingPath);
+    if (set.hasSolo) rims.push(set.solo);
+    if (set.lift) {
+      ctx.save();
+      ctx.translate(0, set.lift);
+      ctx.lineCap = 'round';
+      ctx.lineWidth = set.body + set.edge * 2;
+      ctx.strokeStyle = 'rgba(0, 0, 0, 0.3)';
+      for (const path of rims) ctx.stroke(path);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      for (const tone of tones) ctx.fill(set.heads[tone]);
+      ctx.restore();
+    }
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = set.casing;
+    ctx.lineWidth = set.body + set.edge * 2;
+    for (const path of rims) ctx.stroke(path);
+    // Ok başının kenarı aynı yoldan: başı iki ayrı torbada kurmak yol
+    // komutlarını boşuna artırıyordu.
+    ctx.lineWidth = set.edge * 2;
+    for (const tone of tones) ctx.stroke(set.heads[tone]);
+    // Koşular uç uca eklenir: yuvarlak uç komşu rengin üstüne taşardı.
+    ctx.lineCap = 'butt';
+    ctx.lineWidth = set.body;
+    if (set.hasSolo) {
+      ctx.strokeStyle = set.ink.land;
+      ctx.stroke(set.solo);
+    }
+    if (set.hasMixed) {
+      for (const tone of tones) {
+        ctx.setLineDash(tone === 'land' ? [] : set.dash);
+        ctx.strokeStyle = set.ink[tone];
+        ctx.stroke(set.runs[tone]);
+      }
+    }
+    ctx.setLineDash([]);
+    for (const tone of tones) {
+      ctx.fillStyle = set.ink[tone];
+      ctx.fill(set.heads[tone]);
+    }
+  }
+
+  /**
+   * Kıyıdaki çapa rozeti: koyu disk, pirinç halka, çapa. Uzak zoomda en az
+   * 9 px kalır (çapa çizgisi ekran pikseli, hex ise küçülüyor: rozetsiz
+   * çapa uzakta tek bir leke oluyordu).
+   */
+  drawAnchorBadge(ctx, x, y, zoom) {
+    const r = HEX_SIZE * 0.4;
+    const f = Math.max(1, 9 / (r * zoom));
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(f, f);
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(10, 16, 20, 0.9)';
+    ctx.fill();
+    ctx.lineWidth = 1.4 / (zoom * f);
+    ctx.strokeStyle = 'rgba(230, 200, 122, 0.95)';
+    ctx.stroke();
+    this.drawAnchorGlyph(ctx, 0, r * 0.06, zoom * f);
+    ctx.restore();
   }
 
   /** Çapa işareti (biniş/çıkış düğümü): halka + gövde + kol, 0.3 hex. */
@@ -4559,11 +4838,13 @@ export class Renderer {
         const off = 1.5 / zoom;
         ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
         ctx.fillRect(left + off * 0.4, top + off, width, height);
-        const edge = SIDE_COLOR[side];
+        // Uzakta sayaç yalnız bayraktır: kendi ve müttefik bayrağı çerçevesiz
+        // (bayrak kimdir'i söyler; yeşil çerçeve yakın zoomdaki gibi fazlaydı).
+        // Yalnız düşman kızıl çerçeve taşır: uzaktan cepheyi okutan o.
+        const edge = side === 'hostile' ? SIDE_COLOR.hostile : null;
         if (edge) {
           // Taraf cercevesi bayragin DISINA tasar: bayrak kimligini yemez.
-          // Düşmanınki kalın: uzakta cepheyi ilk okutan şey o.
-          const pad = (side === 'hostile' ? 2.2 : 1.6) / zoom;
+          const pad = 1.8 / zoom;
           ctx.fillStyle = edge;
           ctx.fillRect(left - pad, top - pad, width + pad * 2, height + pad * 2);
         }
@@ -4758,11 +5039,12 @@ export class Renderer {
     ctx.fill(outer);
     ctx.restore();
 
-    // KIMIN ORDUSU — KUNYENIN ARKASINDAN. Once ince bir kontur denendi, ama
-    // pirinc kunyenin KENDI cercevesi resmin icinde oldugu icin ustune cizilen
-    // 1-2 piksellik hat kayboluyordu. Hale plakanin disina tasar ve uzaktan da
-    // okunur: benimki fildisi-pirinc, dusman tugla kirmizisi, ucuncu taraf yok.
-    const halo = SIDE_HALO[spec.allegiance] ?? null;
+    // KIMIN ORDUSU — artık YALNIZ GÖVDEDEN (SIDE_TINT). Plakanın dışına taşan
+    // hale ve taraf renkli kontur kalktı: gövde zaten tarafın tonunu taşıyor,
+    // çevresindeki yeşil hat aynı bilgiyi ikinci kez söylüyordu (Kerem
+    // 2026-11-15: "hâlâ etrafında yeşil bir çizgi var, zaten kendi renginden
+    // anlaşılıyor"). Düşman ayrıca köşesi kesik kalır (renk görmeyen göz için).
+    const halo = null;
     if (halo) {
       const pad = Math.max(1.8 / zoom, height * (spec.allegiance === 'hostile' ? 0.095 : 0.08));
       ctx.fillStyle = halo;
@@ -4809,12 +5091,10 @@ export class Renderer {
     //   benim   — fildisi-pirinc, orta
     //   dusman  — tugla kirmizisi, kalin
     //   ucuncu  — soluk, ince
-    const own = spec.allegiance === 'own';
-    const hostile = spec.allegiance === 'hostile';
-    const ally = spec.allegiance === 'ally';
-    ctx.lineWidth = (spec.selected || hostile ? 2.4 : own || ally ? 1.9 : 1.2) / zoom;
-    ctx.strokeStyle = spec.selected ? '#fff1cc'
-      : SIDE_COLOR[spec.allegiance] ?? 'rgba(206, 196, 172, 0.34)';
+    // Kontur taraf söylemez (gövde söyler): seçili birim parlak pirinç,
+    // gerisi plakayı haritadan ayıran ince koyu kenar.
+    ctx.lineWidth = (spec.selected ? 2.4 : 1.1) / zoom;
+    ctx.strokeStyle = spec.selected ? '#fff1cc' : 'rgba(6, 9, 11, 0.85)';
     ctx.stroke(outer);
 
     // Ulke rengi yalniz ust kimlik seridinde: counter haritaya karismaz.

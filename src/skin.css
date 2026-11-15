@@ -39,7 +39,7 @@
   --sk-dark-ink: #1c1306;
 
   /* Bilgi kartının düz yüzeyi (dokusuz: açıklamanın altında desen olmasın). */
-  --sk-panel: linear-gradient(180deg, rgba(27, 35, 39, 0.96) 0%, rgba(18, 25, 28, 0.96) 55%, rgba(12, 18, 20, 0.97) 100%);
+  --sk-panel: linear-gradient(180deg, rgba(17, 23, 26, 0.97) 0%, rgba(12, 17, 19, 0.97) 55%, rgba(8, 12, 13, 0.98) 100%);
   --sk-drop: 0 2px 3px rgba(0, 0, 0, 0.55);
 
   /* Dokular: assets/incoming/arayuz-doku-sayfasi.webp'den dilimlendi (tek
@@ -48,6 +48,10 @@
      Düğmede 16 px kaynak 5 px'e iner: 26 px'lik satır düğmesinde de çerçeve
      okunur, gövde ezilmez. Kenar kalınlığına (border-width) dokunulmaz:
      doku yerleşimi kaydırmaz. */
+  /* DİKKAT: göreli yol, değişkeni KULLANAN dosyanın yerinden çözülür.
+     Bu değişkenler yalnız src/ düzeyindeki stil dosyalarından (skin.css,
+     hud.css, picker.css, light.css) kullanılabilir; src/ui/*.css'ten
+     kullanılırsa /src/assets/… aranır ve doku yüklenmez (2026-11-15). */
   --sk-dugme: url('../assets/ui/skin/dugme.webp') 16 fill / 5px / 0 stretch;
   --sk-dugme-ustunde: url('../assets/ui/skin/dugme-ustunde.webp') 16 fill / 5px / 0 stretch;
   --sk-dugme-basili: url('../assets/ui/skin/dugme-basili.webp') 16 fill / 5px / 0 stretch;

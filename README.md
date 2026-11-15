@@ -459,8 +459,11 @@ Kod: `src/game/culturePolicy.js`.
 Saat: Space duraklat/sürdür, + / − hız. Sekmeler soldan sağa F1-F10;
 P diplomasi ekranı.
 Esc açık paneli/ekranı kapatır. Açık ekran tuşu önce alır, kullanmadığı tuş
-haritaya düşer (WASD/oklar kamera). Her ekranda **A** AUTO'yu çevirir (hap
-başlıkta durur). Construction: 1-9 bina, ↑↓ state, Enter kur, B en iyi 3,
+haritaya düşer (WASD/oklar kamera). Otomasyonu olan ekranda **Shift+A** AUTO'yu
+çevirir (düz A kameranındır). Her anahtar yalnız kendi ekranının kaldıracını
+yönetir: Economy besleme ve ikmal kemerini, Trade ticaret yasasını, Politics
+yasaları, Military alay alımını, Technology sıradaki araştırmayı; Factories'te
+otomasyon hat başına Auto kipidir. Construction: 1-9 bina, ↑↓ state, Enter kur, B en iyi 3,
 ⇧B en iyi 5, F kaynak süzgeci, S kurulamayanları göster. Factories: ↑↓ hat,
 ←→ önceliği Auto · Off · Low · Normal · High sırasında kaydırır; bir
 önceliğin üstünde durmak yeni paylaşımı çubukta ve satırlarda gösterir. **M** deniz

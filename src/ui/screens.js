@@ -73,6 +73,20 @@ import { conflictDetailHtml, conflictFocusTile } from './warDetail.js';
 
 /** Ekranın kapanış geçişi (styles.css §6 .screen.hidden) bitene kadar gövde kalır. */
 const SCREEN_CLOSE_MS = 220;
+/** AUTO kartının alt satırı: anahtar NEYİ devrediyor (tam tarif ipucunda). */
+const AUTO_SCOPE = {
+  economy: 'Feeding & bills',
+  trade: 'Trade law',
+  reforms: 'Laws & advisors',
+  recruitment: 'Regiments',
+  research: 'Next research',
+  diplomacy: 'Foreign ministry',
+};
+/** assets/icons/tabs-medal/ altında madalyonu olan ekranlar (sekme yüzü). */
+const TAB_MEDALS = new Set([
+  'construction', 'industry', 'trade', 'budget', 'military', 'population',
+  'cultures', 'politics', 'technology', 'chronicle', 'diplomacy', 'navy',
+]);
 
 /** İki-tık onayının ömrü (bkz. Screens.armConfirm). */
 export const CONFIRM_MS = 8000;
@@ -240,9 +254,16 @@ export class Screens {
 
     for (const btn of document.querySelectorAll('#tab-bar [data-screen]')) {
       btn.onclick = () => this.toggle(btn.dataset.screen);
-      // Sekme yüzü kendi çizgimiz: glif + ad (resim künyeler kalktı).
+      // Sekme yüzü: ekranın madalyonu + ad (Kerem'in madalyon seti,
+      // assets/incoming/sekme-madalyonlari.png). 12 px'lik çizgi glif
+      // şeritte "boş" okunuyordu ("bu kısım içinde birşeyler lazım").
+      // Madalyonu olmayan ekran eski glifini taşır.
       if (!btn.querySelector('.tab-ico')) {
-        btn.insertAdjacentHTML('afterbegin', `<i class="tab-ico">${glyph(TAB_GLYPH[btn.dataset.screen] ?? 'info')}</i>`);
+        const screen = btn.dataset.screen;
+        const face = TAB_MEDALS.has(screen)
+          ? `<img class="tab-medal" src="assets/icons/tabs-medal/${screen}.png" alt="" draggable="false">`
+          : glyph(TAB_GLYPH[screen] ?? 'info');
+        btn.insertAdjacentHTML('afterbegin', `<i class="tab-ico">${face}</i>`);
       }
     }
     document.getElementById('screen-close').onclick = () => this.close();
@@ -549,13 +570,13 @@ export class Screens {
     // pencerede degil, ekranin sag rayinda duruyor (bkz. industryScreen).
     // Üst çubuk zaten bütün sayaçları gösterir; ekran başlığı tekrar etmez.
     this.el.res.innerHTML = '';
-    // AUTO seridi TEK YERDEN eklenir: alti ekranin her birine ayri ayri
-    // yazmak, birini unutmanin ve iki farkli kalip cikmasinin garantisiydi.
-    const autoArea = headerAreaOf(this.active);
-    if (this.el.auto) this.el.auto.innerHTML = me && autoArea ? this.autoPill(me, autoArea) : '';
+    // AUTO TEK YERDEN eklenir: alti ekranin her birine ayri ayri yazmak,
+    // birini unutmanin ve iki farkli kalip cikmasinin garantisiydi.
+    const autoArea = me ? headerAreaOf(this.active) : null;
     this.el.body.innerHTML = me
       ? (this[`render_${this.active}`]?.(me) ?? '')
       : '<p class="empty">Your nation has been eliminated.</p>';
+    this.mountAuto(me, autoArea);
     this.bind();
     // Gövde her tazelemede baştan kurulduğu için bayrak kapları da yenidir;
     // canvas'lar burada takılır (kopan eskiler kendi kendini siler).
@@ -1541,7 +1562,42 @@ export class Screens {
     const area = DELEGATION_AREAS[areaId];
     if (!area) return '';
     const on = isDelegated(me, areaId);
-    return pillHtml(area, { on, last: on ? lastDelegatedAction(me, areaId) : null, key: 'A' });
+    return pillHtml(area, { on, last: on ? lastDelegatedAction(me, areaId) : null, key: 'Shift+A' });
+  }
+
+  /**
+   * AUTO anahtarı ekranın GÖSTERGE ŞERİDİNİN son kartıdır: ekran açılınca
+   * gözün ilk düştüğü sıra. Eskiden sekme çubuğunun sağ ucunda küçük bir
+   * haptı (Kerem 2026-11-15: "auto tuşunu daha görünür bir yere al").
+   * Kart neyi devrettiğini de söyler ("Trade law"); bir anahtar artık yalnız
+   * kendi ekranının kaldıracını yönetir. Şeridi olmayan bir ekran gelirse
+   * sekme çubuğundaki eski hap yedek olarak çıkar.
+   */
+  mountAuto(me, areaId) {
+    const kpis = areaId ? this.el.body.querySelector('.k-kpis') : null;
+    if (kpis) {
+      kpis.insertAdjacentHTML('beforeend', this.autoCard(me, areaId));
+      kpis.classList.add('has-auto');
+    }
+    if (this.el.auto) this.el.auto.innerHTML = areaId && !kpis ? this.autoPill(me, areaId) : '';
+  }
+
+  autoCard(me, areaId) {
+    const area = DELEGATION_AREAS[areaId];
+    if (!area) return '';
+    const on = isDelegated(me, areaId);
+    const last = on ? lastDelegatedAction(me, areaId) : null;
+    const tip = [
+      `${area.name} · ${on ? 'run by the government' : 'in your hands'}`,
+      on ? area.desc : 'You hold this yourself. Turn AUTO on to hand it to the government; your own orders always come first.',
+      on && last ? `\nLast: ${last.text}\n${last.reason}` : '',
+      '\nShortcut: Shift+A',
+    ].filter(Boolean).join('\n');
+    return `<button type="button" class="k-kpi auto-card${on ? ' is-on' : ''}" data-auto="${areaId}" aria-pressed="${on}"${tipAttr({ text: tip })}>
+      <span class="auto-switch" aria-hidden="true"><i></i></span>
+      <span class="k-kpi-body"><small>Automation</small><b>${on ? 'On' : 'Off'}</b><em>${AUTO_SCOPE[areaId] ?? area.name}</em></span>
+      <kbd class="auto-key">⇧A</kbd>
+    </button>`;
   }
 
   /**
@@ -1551,8 +1607,11 @@ export class Screens {
   handleKey(event) {
     const me = this.me;
     if (!me || !this.active) return false;
-    if (event.code === 'KeyA' && !event.shiftKey) {
-      const pill = this.el.auto?.querySelector('[data-auto]');
+    // Shift+A: düz A kameranın sola kaydırma tuşudur (hud PAN_KEYS). Ekran
+    // açıkken haritayı WASD ile kaydıran oyuncu her A'da AUTO'yu
+    // değiştiriyordu (Kerem: "auto tuşu bozulmuş").
+    if (event.code === 'KeyA' && event.shiftKey && !event.ctrlKey && !event.altKey && !event.metaKey) {
+      const pill = this.el.body.querySelector('.auto-card[data-auto]') ?? this.el.auto?.querySelector('[data-auto]');
       if (!pill) return false;
       pill.click();
       return true;

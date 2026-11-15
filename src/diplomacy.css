@@ -99,32 +99,7 @@
 .dip-cauto em { color: var(--text); font-style: normal; font-size: 12px; font-weight: 700; font-variant-numeric: tabular-nums; }
 .dip-cauto small { color: var(--text-mute); font-size: 11px; }
 
-/* Dosya: ilişki kartı */
-.dip-relations .card-head h3 b { margin-left: 6px; font-family: var(--font-ui, inherit); font-size: 15px; }
-.dip-relations .card-head h3 b.pos { color: #a9d47e; }
-.dip-relations .card-head h3 b.neg { color: #f0907a; }
-.dip-relrow { display: flex; align-items: center; gap: 10px; margin: 4px 0 6px; }
-.dip-relrow .dip-rbar { width: 160px; height: 8px; }
-.dip-parts { display: grid; gap: 2px; margin: 0 0 6px; padding: 0; list-style: none; }
-.dip-parts li { display: grid; grid-template-columns: minmax(0, 1fr) 46px 110px; gap: 8px; align-items: baseline; font-size: 12px; }
-.dip-parts li span { color: var(--text-dim); }
-.dip-parts li b { font-variant-numeric: tabular-nums; text-align: right; }
-.dip-parts li b.pos { color: #a9d47e; }
-.dip-parts li b.neg { color: #f0907a; }
-.dip-parts li small { color: var(--text-mute); font-size: 10.5px; }
-.dip-quiet { margin: 0 0 6px; color: var(--text-mute); font-size: 12px; }
-.dip-dsec { margin-top: 8px; }
-.dip-dsec h4 { margin: 0 0 4px; color: var(--gold); font-family: var(--font-display); font-size: 12.5px; font-weight: 400; font-variant: small-caps; letter-spacing: 0.06em; }
-.dip-dangers { display: grid; gap: 4px; margin: 0; padding: 0; list-style: none; }
-.dip-dangers li { display: grid; grid-template-columns: auto auto minmax(0, 1fr); gap: 2px 8px; align-items: baseline; font-size: 12px; }
-.dip-dangers li small { grid-column: 1 / -1; color: var(--text-mute); font-size: 11px; line-height: 1.35; }
-
-/* Dosya: eylem satırları */
-.dip-arow { display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 8px; align-items: start; padding: 5px 0; border-top: 1px solid rgba(186, 160, 100, 0.08); }
-.dip-arow:first-of-type { border-top: 0; }
-.dip-alabel { padding-top: 5px; color: var(--text-mute); font-size: 10.5px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; }
-.dip-arow .dossier-actions { display: flex; flex-wrap: wrap; gap: 6px; }
-.dip-arow .dip-note { align-self: center; }
+/* Ülke dosyasının kendi kuralları src/ui/dossier.css'te (kaplama katmanı). */
 
 /* Taahhüt başlığının alt satırı (koltuk · elçi) sağ sütunda kesiliyordu ve
    bilgi kartı yok: sığmazsa başlığın altına iner. */

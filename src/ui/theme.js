@@ -1,4 +1,4 @@
-// TEMA — koyu (varsayılan) ve "Açık çelik".
+// TEMA — koyu (varsayılan) ve açık ("porselen & bronz").
 //
 // Açık tema elle yazılmış ikinci bir stil dosyası DEĞİLDİR. Stil dosyaları
 // 2000'den fazla sabit renk taşıyor; elle yazılan bir eş her yeni kuralda
@@ -10,17 +10,18 @@
 // src/light.css'te durur; o dosya en üst katmandadır ve taranmaz.
 //
 // Çeviri kuralı (bkz. lightColor): açıklık TERS çevrilir, böylece her yazı-
-// zemin çifti koyu temadaki karşıtlığını aşağı yukarı korur. Pirinç ve krem
-// tonları çelik maviye döner (açık temada sarımsılık kalmasın); kırmızı,
-// yeşil, kehribar gibi anlam taşıyan renkler tonunu korur. Gölgeler fiziksel
-// ışıktır: koyu kalır, yalnız hafifler.
+// zemin çifti koyu temadaki karşıtlığını aşağı yukarı korur. Nötrler sıcak
+// bir porselen grisine, pirinç bronza döner (vurgu sıcak kalır; yüzey
+// sararmaz, kâğıt/gazete görünümü istenmiyor); kırmızı, yeşil gibi anlam
+// taşıyan renkler tonunu korur. Gölgeler fiziksel ışıktır: koyu kalır, yalnız
+// hafifler.
 //
 // Ana menü çevrilmez: tam ekran bir tablonun üstünde durur, açık yazı orada
 // doğru yazıdır.
 
 const KEY = 'hexwar:ui-theme';
 export const THEMES = ['dark', 'light'];
-const LABEL = { dark: 'Dark', light: 'Light steel' };
+const LABEL = { dark: 'Dark', light: 'Light' };
 
 /** Kaynak katman → açık temadaki eş katman (sıra index.html'de bildirilir). */
 const LAYER_OF = { base: 'light-base', skin: 'light-skin' };
@@ -82,52 +83,125 @@ function inGamut(L, C, h) {
 
 // --- Çeviri -----------------------------------------------------------------
 
-/** Çelik mavisi: açık temanın nötr ve vurgu tonu (OKLCH derece). */
-const STEEL_HUE = 245;
+/**
+ * Porselen grisi: açık temanın nötr tonu (OKLCH derece). Sıcak ama sarı değil;
+ * doygunluğu ~0.008'de kalır. Önceki çelik mavisi (245) her yüzeyi aynı soğuk
+ * maviye boyuyordu (Kerem: "aydınlık plan pek iyi değil").
+ */
+const WARM_HUE = 76;
+/** Bronz: pirinç açık temada koyulaşıp bronza döner; çizgi ve vurgu sıcak kalır. */
+const BRONZE_HUE = 72;
 
 /**
- * Bir rengi açık temaya çevirir. role 'paint' (yazı, zemin, çizgi) ya da
- * 'shadow' (gölge/parıltı: fiziksel ışık, ters çevrilmez).
+ * Açıklık eğrisi: koyu L → açık L (parçalı doğrusal, ters yönlü).
+ *
+ * Neden bu bant: ilk denemede panel 0.89'du ("çok beyaz, parlıyor"), ikincide
+ * 0.79 soğuk çelik + 0.87 dokular ("beyaz temada kör oluyorum"), üçüncüde her
+ * şey 0.68–0.74'e indirildi ve bu kez "düz, soğuk, sönük" kaldı: yüzeyler orta
+ * gride, gövde metni 5.4:1'e düştü. Şimdi yüzeyler 0.80–0.86 arasında dar bir
+ * bantta (hiçbiri beyaza yaklaşmaz) ve kademeleri ayrık; karşıtlık metnin
+ * mürekkep koyuluğundan gelir. Dayanak: zemin 0.13 → 0.85, yükseltilmiş satır
+ * 0.21 → 0.81, gövde metni 0.86 → 0.195 (panelde ~11:1), ikincil 0.72 → 0.31
+ * (yuvada da ≥7:1), soluk 0.64 → 0.40 (~5:1).
+ */
+const L_CURVE = [[0, 0.875], [0.12, 0.855], [0.24, 0.795], [0.45, 0.615], [0.6, 0.47], [0.72, 0.31], [0.86, 0.195], [1, 0.13]];
+
+function curveL(L) {
+  for (let i = 1; i < L_CURVE.length; i++) {
+    const [x1, y1] = L_CURVE[i];
+    if (L <= x1) {
+      const [x0, y0] = L_CURVE[i - 1];
+      return y0 + ((y1 - y0) * (L - x0)) / (x1 - x0);
+    }
+  }
+  return L_CURVE[L_CURVE.length - 1][1];
+}
+
+const smoothstep = (lo, hi, x) => {
+  const t = Math.min(1, Math.max(0, (x - lo) / (hi - lo)));
+  return t * t * (3 - 2 * t);
+};
+
+/** Açık yüzeyin OKLab açıklığı (panel/yuva ~0.83): yarı saydam yazı buna karışır. */
+const LIGHT_BG_L = 0.83;
+/**
+ * Yazının açık temada çıkabileceği en açık ETKİN açıklık (yuvada ~5:1).
+ * Koyu temanın yazı tabanının (TEXT_FLOOR) aynası: orada yarı saydam açık
+ * yazı tabana çekilir, burada yarı saydam koyu yazı tavana. Ölçüm: tavan
+ * yokken saydamlıkla soluklaştırılmış yazılar (duraklat yazısı, sayaç
+ * etiketleri) açık zeminde 2.6–3.5:1'e düşüyordu; 0.43'te kilitli teknoloji
+ * kartının (0.85 opaklık) yazısı 3.1:1'de kalıyordu.
+ */
+const INK_CEIL = 0.4;
+
+/**
+ * Bir rengi açık temaya çevirir. role 'paint' (zemin, çizgi), 'text' (yazı
+ * rengi: etkin açıklığı tavanla sınırlanır), 'shadow' (gölge/parıltı: fiziksel
+ * ışık, ters çevrilmez) ya da 'halo' (yazı gölgesi).
  * @returns {[number, number, number, number]} 0–1 sRGB + alfa
  */
 export function lightColor(r, g, b, a, role = 'paint') {
   const [L, C, h] = toOklch(r, g, b);
-  const brass = C < 0.115 && h >= 45 && h <= 115;
+  if (role === 'text') {
+    const out = lightColor(r, g, b, a, 'paint');
+    const [L2, C2, h2] = toOklch(out[0], out[1], out[2]);
+    // Koyu temadaki mürekkep (pirinç levha, yeşil/kırmızı dolgu üstündeki
+    // koyu yazı) açıkta koyulaşmış levhanın üstünde kalır: tavan değil
+    // fildişi alır. Çeviriyle 0.83'te kalınca koyu yeşil çubuk üstünde 3.1:1
+    // ölçülüyordu.
+    if (L < 0.32) return [...inGamut(Math.max(L2, 0.94), Math.min(C2, 0.02), h2), out[3]];
+    const eff = out[3] * L2 + (1 - out[3]) * LIGHT_BG_L;
+    if (eff <= INK_CEIL) return out;
+    // Sıkıştırarak koyulaştır: tavanın üstündeki fark %20'ye iner, sıra kalır
+    // (soluk olan yine daha soluk). Sonuç opak: saydamlık zeminle değişirdi.
+    return [...inGamut(INK_CEIL + (eff - INK_CEIL) * 0.2, C2, h2), 1];
+  }
+  const brass = C < 0.13 && h >= 45 && h <= 115;
   const neutral = C < 0.02;
   if (role === 'shadow' && L < 0.4 && C < 0.06) {
-    // Koyu gölge koyu kalır; açık zeminde aynı opaklık kirli görünür.
-    return [...inGamut(Math.min(L, 0.2), Math.min(C, 0.012), STEEL_HUE), a * 0.55];
+    // Koyu gölge koyu kalır (derinlik buradan gelir); açık zeminde aynı
+    // opaklık kirli göründüğü için yarıya iner ve sıcak bir koyuya döner.
+    return [...inGamut(Math.min(L, 0.2), 0.012, WARM_HUE), a * 0.5];
   }
   if (role === 'shadow' && L > 0.8 && C < 0.06) {
-    // Üst kenar parıltısı: açık zeminde de açık kalır.
-    return [...inGamut(Math.min(1, L), Math.min(C, 0.01), STEEL_HUE), a];
+    // Üst kenar parıltısı: açık zeminde de açık kalır, ama göz almaz.
+    return [...inGamut(Math.min(0.93, L), 0.008, WARM_HUE), a];
   }
   if (role === 'halo') {
-    // Yazı gölgesi: koyu temadaki kara kabartma açık temada açık bir alt
-    // çizgiye döner; tam opaklıkta her yazının altında parlıyordu.
-    const [r2, g2, b2] = inGamut(Math.min(0.86, 0.85 - 0.23 * Math.min(L, 0.13)), 0.008, STEEL_HUE);
-    return L < 0.3 ? [r2, g2, b2, a * 0.35] : lightColor(r, g, b, a * 0.6, 'paint');
+    // Yazı gölgesi: koyu temadaki kara kabartma açık temada yazının altında
+    // ince bir açık çizgiye döner (porselene basılmış mürekkep). Renkli parıltı
+    // koyu bir lekeye dönmesin diye hafifler.
+    if (L < 0.3) return [...inGamut(0.93, 0.008, WARM_HUE), a * 0.4];
+    return lightColor(r, g, b, a * 0.4, 'paint');
   }
-  // Açıklık ters döner. En koyu kademeler (zemin, çukur, panel) sıkışık bir
-  // banda iner ki aralarındaki fark kaybolmasın. Tavan bilerek düşük: ilk
-  // denemede panel 0.89'du ve oyuncu "çok beyaz, parlıyor" dedi; şimdi en
-  // açık yüzey bile 0.85'i geçmez (orta-açık çelik). Dayanak: panel 0.17 →
-  // 0.79, gövde metni 0.66 → 0.36, başlık metni 0.86 → 0.19.
-  let L2 = L <= 0.13 ? 0.85 - 0.23 * L : 0.82 - 0.86 * (L - 0.13);
+  let L2 = curveL(L);
   let C2;
   let h2;
   if (neutral || brass) {
-    // Pirinç ve krem çelik maviye döner; nötrler hafif soğuk bir çelik alır.
-    h2 = STEEL_HUE;
-    C2 = neutral ? 0.008 + C * 0.4 : Math.min(0.085, C * 0.8);
+    // Nötr ve krem → porselen/mürekkep: tonun yalnız izi kalır. Gerçek
+    // pirinç (doygun) → bronz. Yüzey bandında (L2 > 0.72) bronz bile hemen
+    // hemen griye iner: açık zemin sararırsa eski kâğıda döner.
+    const metal = neutral ? 0 : smoothstep(0.03, 0.075, C);
+    // Orta tondaki pirinç (çizgi, rozet, küçük versal etiket) aynı açıklıktaki
+    // griden bir kademe koyu bronza iner: --gold yazı olarak 4.1:1'de
+    // kalıyordu ve var() ile verildiği için yazı tavanı ona ulaşmıyor.
+    if (L2 > 0.3 && L2 < 0.75) L2 -= 0.05 * metal;
+    const cap = L2 > 0.72 ? 0.02 : L2 > 0.4 ? 0.085 : 0.065;
+    const ink = 0.006 + C * 0.25;
+    C2 = ink + metal * Math.max(0, Math.min(cap, C * 0.9) - ink);
+    h2 = neutral ? WARM_HUE : BRONZE_HUE + (h - 85) * 0.25;
+    // Parlak pirinç ve kehribar (vurgu, uyarı) koyu tarafta mürekkebe
+    // karışmasın: bronz bir tabanda durur.
+    if (C > 0.09 && L > 0.5) L2 = Math.max(L2, 0.37);
   } else {
     // Anlam taşıyan renk tonunu korur; açık zeminde soluk kalmasın diye biraz
     // doyar.
     h2 = h;
     C2 = Math.min(0.3, C * 1.12);
     // Parlak anlam rengi (açık kırmızı yazı) ters dönünce siyaha yaklaşıp
-    // kimliğini yitiriyordu: koyu tarafta bir tabanda durur.
-    if (C > 0.06) L2 = Math.max(L2, 0.38);
+    // kimliğini yitiriyordu: koyu tarafta bir tabanda durur. Taban 0.37: daha
+    // açığında yeşil/kırmızı sayı satır zemininde 4.5:1'in altına iniyordu.
+    if (C > 0.06) L2 = Math.max(L2, 0.37);
   }
   return [...inGamut(L2, C2, h2), a];
 }
@@ -219,9 +293,14 @@ const SHORTHANDS = ['background', 'border', 'border-top', 'border-right', 'borde
   'border-color', 'border-block', 'border-inline', 'border-block-start', 'border-block-end',
   'border-inline-start', 'border-inline-end', 'outline', 'text-decoration', 'column-rule', 'border-image'];
 
+/** Adı "-ink" ile biten değişkenler (--seg-ink, --metal-ink…) yazı rengidir. */
+const INK_VAR = /^--[\w-]*ink$/;
 const roleOf = (prop) => {
   if (SHADOW_PROP.test(prop) || (prop.startsWith('--') && SHADOW_VAR.test(prop))) return 'shadow';
-  return prop === 'text-shadow' ? 'halo' : 'paint';
+  if (prop === 'text-shadow') return 'halo';
+  // Yazı rengi: koyu temanın yazı tabanıyla aynı tanım (TEXT_PROP/TEXT_VAR)
+  // ve mürekkep değişkenleri.
+  return TEXT_PROP.test(prop) || TEXT_VAR.test(prop) || INK_VAR.test(prop) ? 'text' : 'paint';
 };
 const hasColor = (value) => { COLOR_RE.lastIndex = 0; return COLOR_RE.test(value); };
 
@@ -230,9 +309,13 @@ const hasColor = (value) => { COLOR_RE.lastIndex = 0; return COLOR_RE.test(value
  * doğru yazıdır) ve haritanın ya da bir resmin ÜSTÜNDEKİ ışık katmanları
  * (kenar karartması) ve saatin kâğıt takvim yaprağı (kâğıt her temada kâğıttır).
  * Işık temadan bağımsızdır;
- * çevrilince harita kenarı beyaz sise dönüyordu.
+ * çevrilince harita kenarı beyaz sise dönüyordu. Harita filmi (.map-film:
+ * kenar karartması + panel açıkken haritayı geri çeken örtü) sınıfla
+ * seçildiği için #map- kalıbına girmiyordu: ekran açılınca koyu harita süt
+ * beyazı bir sise boğuluyor, pencerenin çevresi büyük, parlak, gri bir alana
+ * dönüyordu.
  */
-const KEEP_SEL = /(^|[\s>+~(,])(#menu(?![\w-])|\.menu(?![\w])|\.menu-|#map(?![\w])|#map-|\.tc-(cal|month|day)(?![\w-]))|^body::before$/;
+const KEEP_SEL = /(^|[\s>+~(,])(#menu(?![\w-])|\.menu(?![\w])|\.menu-|#map(?![\w])|#map-|\.map-film(?![\w-])|\.tc-(cal|month|day)(?![\w-]))|^body::before$/;
 
 /** Seçici listesini üst düzey virgüllerden böler (:is(a, b) içini bölmez). */
 function splitSelectors(text) {
@@ -345,6 +428,118 @@ function buildSheets() {
   return sheets;
 }
 
+// --- Koyu tema: yazı tabanı ---------------------------------------------------
+//
+// Koyu temada yazı rengi elle yazılmış ~300 farklı soluk tondan geliyordu;
+// ölçüm (1274 yazı, 10 ekran): 315'i 4.5:1'in altında, tablo başlıklarının
+// gri versalı tek başına 92 yerde (Kerem: "yazı renkleri kayboluyor çoğu
+// yerde"). Soluk ton tek tek kovalanınca her yeni kural yeniden soluk
+// doğuyordu; bu yüzden açık temanın yöntemiyle çözülür: kurallar bir kez
+// taranır, yazı rengi taşıyan bildirimler aynı seçicilerle üst katmana yazılır.
+// Hiyerarşi korunur (soluk olan yine daha soluk), yalnız taban yükselir.
+
+/** Koyu zeminin OKLab açıklığı (panel ~#121a1d): yarı saydam yazı buna karışır. */
+const DARK_BG_L = 0.18;
+/** Yazının ulaşacağı en düşük etkin açıklık (~#a9afae; 4.5:1'in rahat üstü). */
+const TEXT_FLOOR = 0.76;
+/** Mürekkep: pirinç/kâğıt zemin üstündeki koyu yazı. Ona dokunulmaz. */
+const INK_L = 0.32;
+
+/** Bir yazı rengini tabana çeker; tabanın üstündeyse ya da mürekkepse aynen döner. */
+export function darkTextColor(r, g, b, a) {
+  const [L, C, h] = toOklch(r, g, b);
+  if (L < INK_L) return null;
+  const eff = a * L + (1 - a) * DARK_BG_L;
+  if (eff >= TEXT_FLOOR) return null;
+  // Sıkıştırarak kaldır: tabanın altındaki fark %30'a iner ama sıra kalır.
+  const L2 = TEXT_FLOOR - (TEXT_FLOOR - eff) * 0.3;
+  return [...inGamut(L2, Math.min(C, 0.16), h), 1];
+}
+
+function darkTextValue(value) {
+  return value.replace(COLOR_RE, (match) => {
+    const c = parseColor(match);
+    if (!c || c.some((x) => !Number.isFinite(x)) || c[3] <= 0) return match;
+    const next = darkTextColor(c[0] / 255, c[1] / 255, c[2] / 255, c[3]);
+    return next ? formatColor(next) : match;
+  });
+}
+
+/** Yazı rengi taşıyan özellikler; değişkenlerden yalnız yazı adı taşıyanlar. */
+const TEXT_PROP = /^(color|-webkit-text-fill-color)$/;
+const TEXT_VAR = /^--(text|sk-text)(-|$)/;
+const DARK_LAYER_OF = { base: 'dark-base', skin: 'dark-skin' };
+const DARK_IMPORTANT_LAYER_OF = { base: 'dark-imp-base', skin: 'dark-imp-skin' };
+
+function darkDecls(style) {
+  const normal = [];
+  const important = [];
+  let lifted = 0;
+  for (let i = 0; i < style.length; i++) {
+    const prop = style[i];
+    if (!TEXT_PROP.test(prop) && !TEXT_VAR.test(prop)) continue;
+    const value = style.getPropertyValue(prop);
+    if (!value) continue;
+    // Bütün yazı rengi bildirimleri kopyalanır, kaldırılmasa da: kopya katmanı
+    // üstte olduğundan kopyalanmayan bir bildirim (ör. seçili hâlin beyazı)
+    // kendi katmanındaki yarışı kopyaya kaybederdi.
+    const next = hasColor(value) ? darkTextValue(value) : value;
+    if (next !== value) lifted++;
+    const line = `${prop}: ${next}`;
+    if (style.getPropertyPriority(prop)) important.push(`${line} !important`); else normal.push(line);
+  }
+  return { normal, important, lifted };
+}
+
+function darkRules(rules) {
+  let normal = '';
+  let important = '';
+  let lifted = 0;
+  for (const rule of rules) {
+    if (rule instanceof CSSStyleRule) {
+      const sels = splitSelectors(rule.selectorText).filter((s) => !KEEP_SEL.test(s));
+      if (!sels.length) continue;
+      const d = darkDecls(rule.style);
+      lifted += d.lifted;
+      const sel = sels.join(', ');
+      if (d.normal.length) normal += `${sel} { ${d.normal.join('; ')} }\n`;
+      if (d.important.length) important += `${sel} { ${d.important.join('; ')} }\n`;
+    } else if (rule instanceof CSSMediaRule || rule instanceof CSSSupportsRule
+      || (typeof CSSContainerRule !== 'undefined' && rule instanceof CSSContainerRule)) {
+      const kind = rule instanceof CSSMediaRule ? '@media' : rule instanceof CSSSupportsRule ? '@supports' : '@container';
+      const inner = darkRules(rule.cssRules);
+      lifted += inner.lifted;
+      if (inner.normal) normal += `${kind} ${rule.conditionText} {\n${inner.normal}}\n`;
+      if (inner.important) important += `${kind} ${rule.conditionText} {\n${inner.important}}\n`;
+    }
+  }
+  return { normal, important, lifted };
+}
+
+function buildDarkSheets() {
+  const groups = [];
+  for (const sheet of document.styleSheets) {
+    if (sheet.ownerNode?.dataset?.lightCopy) continue;
+    collect(sheet, null, groups);
+  }
+  const sheets = [];
+  let lifted = 0;
+  for (const { href, layer, rules } of groups) {
+    const d = darkRules(rules);
+    lifted += d.lifted;
+    if (!d.lifted) continue;
+    const wrap = (text, name) => (name ? `@layer ${name} {\n${text}}\n` : text);
+    let text = '';
+    if (d.normal) text += wrap(d.normal, layer ? DARK_LAYER_OF[layer] ?? `dark-${layer}` : null);
+    if (d.important) text += wrap(d.important, layer ? DARK_IMPORTANT_LAYER_OF[layer] ?? `dark-imp-${layer}` : null);
+    const sheet = new CSSStyleSheet({ baseURL: href });
+    sheet.replaceSync(text);
+    sheets.push(sheet);
+  }
+  buildDarkSheets.lifted = lifted;
+  return sheets;
+}
+
 // --- Uygulama ---------------------------------------------------------------
 
 let current = 'dark';
@@ -363,10 +558,9 @@ function adopt(sheets) {
 function watchHead() {
   if (observer) return;
   observer = new MutationObserver((records) => {
-    if (current !== 'light') return;
     if (!records.some((r) => [...r.addedNodes].some((n) => n.nodeName === 'STYLE' || n.nodeName === 'LINK'))) return;
     clearTimeout(rebuildTimer);
-    rebuildTimer = setTimeout(() => adopt(buildSheets()), 60);
+    rebuildTimer = setTimeout(() => adopt(sheetsFor(current)), 60);
   });
   observer.observe(document.head, { childList: true });
 }
@@ -379,18 +573,19 @@ export function onThemeChange(fn) { listeners.add(fn); return () => listeners.de
  * Temayı uygular ve hatırlar. Tuval tarafı (render) DOM'a bakmaz; haritanın
  * üstündeki levhalar CSS'ten gelir, o yüzden tuval önbelleği bozulmaz.
  */
+/** Temanın üst katman kopyaları: açıkta renk çevirisi, koyuda yazı tabanı. */
+function sheetsFor(theme) {
+  return theme === 'light' ? buildSheets() : buildDarkSheets();
+}
+
 export function setTheme(name, { persist = true } = {}) {
   const next = THEMES.includes(name) ? name : 'dark';
   current = next;
   document.documentElement.dataset.uiTheme = next;
-  if (next === 'light') {
-    const t0 = performance.now();
-    adopt(buildSheets());
-    watchHead();
-    setTheme.lastBuildMs = performance.now() - t0;
-  } else {
-    adopt([]);
-  }
+  const t0 = performance.now();
+  adopt(sheetsFor(next));
+  watchHead();
+  setTheme.lastBuildMs = performance.now() - t0;
   if (persist) {
     try { localStorage.setItem(KEY, next); } catch { /* özel pencere: yalnız bu oturum */ }
   }
@@ -407,7 +602,7 @@ export function initTheme() {
   // İçe aktarılan bir stil dosyası henüz yüklenmemişse kopyası eksik kalır:
   // sayfa tam yüklenince bir kez daha kur.
   if (document.readyState !== 'complete') {
-    addEventListener('load', () => { if (current === 'light') adopt(buildSheets()); }, { once: true });
+    addEventListener('load', () => adopt(sheetsFor(current)), { once: true });
   }
   return theme;
 }

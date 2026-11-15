@@ -149,6 +149,27 @@ export function ensureCommandOptions(nation) {
   return options;
 }
 
+/**
+ * Oyuncunun kampanyası kadroyu ve atamayı ELDE başlatır (Kerem 2026-11-15:
+ * "bu kısım oto olmamalı oyun başı"). Yalnız oyuncu ulusu: YZ uluslarının
+ * subay yetiştirmenin başka yolu yok, onlarda varsayılan açık kalır.
+ * Oyuncu Military ekranında tek tıkla açar; kayıttaki tercih korunur.
+ */
+export function applyPlayerCommandDefaults(nation) {
+  const options = ensureCommandOptions(nation);
+  options.autoCreate = false;
+  options.autoAssign = false;
+  return options;
+}
+
+/** Oyuncunun bıraktığı ulus YZ'ye geçer: kadro ve atama yeniden kendiliğinden. */
+export function restoreAiCommandDefaults(nation) {
+  const options = ensureCommandOptions(nation);
+  options.autoCreate = true;
+  options.autoAssign = true;
+  return options;
+}
+
 export function setCommandOption(nation, key, value) {
   const options = ensureCommandOptions(nation);
   if (key !== 'autoCreate' && key !== 'autoAssign') return null;

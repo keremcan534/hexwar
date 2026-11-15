@@ -1,0 +1,13 @@
+/* src/ui/screens-fix.css — kaplama katmanında (skin), skin.css'ten sonra yüklenir.
+
+   Yönetim ekranlarının kaplama düzeyindeki düzeltmeleri. Burada yalnız
+   kaplamanın (skin.css) yerleşim kararını ezen kurallar durur; renk ve ölçü
+   styles.css'teki ekran bölümlerindedir. Neden: koyu temanın yazı tabanı
+   (ui/theme.js) taban renklerini bu katmanın ÜSTÜNE kopyalar; burada yazılan
+   bir yazı rengi tabandakine yenilebilir. */
+
+/* Factories · üretim hatları: ekonomi yasasının dört seçeneği tek sırada.
+   Kaplamanın 2×2 ızgarası yasa satırında dört düğmeyi solda sıkıştırıyor,
+   sağında boş bir kutu bırakıyordu (Kerem). */
+.pl-top .k-seg { display: flex; flex-wrap: nowrap; gap: 3px; }
+.pl-top .k-seg > .k-seg-b { padding-inline: 11px; white-space: nowrap; }

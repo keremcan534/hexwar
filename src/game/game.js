@@ -47,9 +47,9 @@ import {
   startBattle,
 } from './battles.js';
 import {
-  BRANCH, STANCE, aggressionInfo, assignDivisions, branchOf, clearLines, divisionsOf, fallbackTilesOf,
-  frontTilesOf, generalOfArmy, officersOf, refreshFront, setFallbackLine, setFallingBack, setFrontLine,
-  setTarget, toggleStance,
+  BRANCH, STANCE, aggressionInfo, applyPlayerCommandDefaults, assignDivisions, branchOf, clearLines,
+  divisionsOf, fallbackTilesOf, frontTilesOf, generalOfArmy, officersOf, refreshFront,
+  restoreAiCommandDefaults, setFallbackLine, setFallingBack, setFrontLine, setTarget, toggleStance,
 } from './command.js';
 
 /**
@@ -281,6 +281,9 @@ export class Game {
     // Yeni kampanya üst şeridin bütün portföyleri AUTO açık başlar
     // (bkz. delegation.DEFAULT_AUTO_AREAS). Betik koşuları buradan geçmez.
     applyDefaultDelegation(this.world.nations[this.turns.playerNation], this.world.turn ?? 1);
+    // Kadro ve atama ise elde başlar (command.applyPlayerCommandDefaults).
+    const starter = this.world.nations[this.turns.playerNation];
+    if (starter) applyPlayerCommandDefaults(starter);
     this.renderer.invalidateCache();
     this.renderer.resize();
     this.camera.setBounds(this.world.bounds, this.world.wrapWidth);
@@ -1251,7 +1254,10 @@ export class Game {
     // gibi AUTO açık başlar.
     if (previous >= 0 && previous !== nationId && this.world.nations[previous]) {
       delete this.world.nations[previous].delegation;
+      // Bırakılan ulus YZ'ye geçer: subay kadrosunu yine kendisi kurar.
+      restoreAiCommandDefaults(this.world.nations[previous]);
     }
+    if (previous !== nationId) applyPlayerCommandDefaults(nation);
     applyDefaultDelegation(nation, this.world.turn ?? 1);
     this.activeGeneral = null;
     this.selectUnits([]);

@@ -1,0 +1,50 @@
+/* ==========================================================================
+   TEKNOLOJİ MADALYONLARI — assets/tech/<id>.webp (Kerem'in ChatGPT seti,
+   2026-11-15: 56 teknoloji, pirinç boncuk çerçeveli lacivert madalyon,
+   kaynak sayfalar assets/incoming/tech/).
+
+   Neden ayrı kurallar: masa resim yuvalarını tam kaplayan FOTOĞRAF için
+   kurulmuştu (object-fit: cover, sola sönen maske, %34 opaklık). Madalyon
+   yuvarlak ve kendi çerçevesini taşır: kırpılınca çerçevesi kesilir, sönük
+   maske altında da "minnacık leke" okunur. Burada madalyon BÜTÜN görünür:
+   düğümde sağa yaslı küçük sikke, plakada büyük sikke, keşif kartında orta.
+   Kaplama katmanındadır (skin), taban kuralları ve skin.css'i eşit güçte geçer.
+   ========================================================================== */
+
+/* Düğüm: maskesiz, sağda dikey ortalı sikke. Yazı soldan akar ve sikkenin
+   altına girmesin diye düğümün sağ dolgusu sikke kadar açılır. */
+.tq .tech-node:has(.tech-node-art > .tech-art) { padding-right: 46px; }
+.tq .tech-node-art:has(> .tech-art) {
+  top: 50%;
+  right: 6px;
+  bottom: auto;
+  width: 36px;
+  height: 36px;
+  opacity: 1;
+  transform: translateY(-50%);
+  -webkit-mask-image: none;
+  mask-image: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85));
+}
+.tq .tech-node-art > .tech-art { object-fit: contain; }
+/* Hâller sikkenin kendisinde: kilitli soluk ve gri, bitmiş tam renk (yanık
+   pirinç zeminin üstünde çarpma karışımı sikkeyi kirletiyordu). */
+.tq .tech-node.is-locked .tech-node-art:has(> .tech-art) { opacity: 0.45; filter: grayscale(0.85) brightness(0.8); }
+.tq .tech-node.is-done .tech-node-art:has(> .tech-art) { mix-blend-mode: normal; opacity: 1; }
+.tq .tech-node:not(.is-locked):hover .tech-node-art:has(> .tech-art),
+.tq .tech-node.is-inspected .tech-node-art:has(> .tech-art) {
+  filter: drop-shadow(0 0 6px rgba(241, 217, 156, 0.55)) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.85));
+}
+
+/* Müze plakası: sikke ortada büyük, adı altında; zemin lacivert kadife. */
+.tq-hero.has-art { background: radial-gradient(70% 90% at 50% 38%, #14263a 0%, #0a1622 70%, #070f17 100%); }
+.tq-hero-art > .tech-art {
+  width: 132px;
+  height: 132px;
+  margin-bottom: 30px;
+  object-fit: contain;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.7));
+}
+
+/* Keşif kartı: sikke kendi yuvasını doldurmaz, ortada nefes alır. */
+.discovery-art > .tech-art { width: 84%; height: 84%; object-fit: contain; filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.65)); }

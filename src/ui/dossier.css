@@ -1,0 +1,439 @@
+/* src/ui/dossier.css — kaplama katmanında (skin), skin.css'ten sonra yüklenir. */
+/* ==========================================================================
+   ÜLKE DOSYASI ("Foreign Power", ui/diplomacyScreen.js renderDossierScreen)
+
+   Dar sol panel. Eskiden genel başlık satırı ("Foreign Power", 64 px) ve
+   altında dağınık puan/künye ızgaraları vardı; eylemler en alta düşüyor,
+   1366×768'de kaydırmadan görünmüyordu ve çarpı sekme çubuğunun öbür
+   ucundaydı. Yeni düzen yukarıdan aşağı: başlık (bayrak, ad, durum, çarpı) →
+   eylem şeridi → ilişki ölçeği → künye tablosu → kayıt.
+
+   Ritim: her bölüm aynı başlık satırıyla açılır (pirinç versal + kıl çizgi)
+   ve bölümler arası tek aralık (10 px). Sayılar tablo rakamıyla yazılır;
+   hücre ve kutu boyları sabittir, haftalık tazelemede hiçbir şey kaymaz.
+   Ulusun harita rengi (--nc, satır içi) başlığın şeridi ve ışığıdır.
+   ========================================================================== */
+
+/* Kabuk: genel başlık satırı gizlenir — tek bilgisi pencerenin adıydı ve
+   dosyanın kendi başlığı (ad, sıra, çarpı) onun işini görür. Yan dolgu
+   28'den 14'e: dar panelde her piksel bir sütun genişliğidir. */
+.screen[data-screen='dossier'] .screen-head { display: none; }
+.screen[data-screen='dossier'] .screen-body {
+  gap: 0;
+  padding: 0 14px calc(var(--safe-bottom) + 12px);
+}
+
+.dsr {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+  color: var(--sk-text);
+  font-family: var(--font-ui);
+}
+.dsr > * { flex: none; margin: 0; }
+.dsr-sec { min-width: 0; }
+
+/* --- Bölüm başlığı: pirinç versal + sağa sönen kıl çizgi ----------------- */
+.dsr-h {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  min-height: 18px;
+  margin: 0 0 5px;
+  color: #dcc38a;
+  font: 400 13px/1 var(--font-display);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 #000, 0 0 10px rgba(214, 186, 120, 0.18);
+  white-space: nowrap;
+}
+.dsr-h > span { flex: none; }
+.dsr-h::after {
+  content: "";
+  flex: 1 1 0;
+  order: 5;
+  min-width: 12px;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(201, 163, 90, 0.6), rgba(201, 163, 90, 0.05));
+}
+
+/* --- Başlık ----------------------------------------------------------------
+   Gövdenin içinde yapışkan levha: aşağı kaydırılsa da çarpı ve ad elde kalır.
+   Kenardan kenara uzanır (gövde dolgusu kadar taşar); solda ulus renginde
+   şerit, bayrağın arkasında aynı rengin ışığı. */
+.dsr-head {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: grid;
+  grid-template-columns: 90px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 14px;
+  margin: 0 -14px;
+  padding: 11px 14px 10px 20px;
+  background:
+    radial-gradient(90% 150% at 0% 0%, color-mix(in srgb, var(--nc) 38%, transparent) 0%, transparent 62%),
+    linear-gradient(180deg, rgba(26, 33, 36, 0.98) 0%, rgba(12, 17, 19, 0.98) 100%);
+  box-shadow:
+    inset 4px 0 0 var(--nc),
+    inset 0 -1px 0 rgba(201, 163, 90, 0.45),
+    0 10px 14px -8px rgba(0, 0, 0, 0.8);
+}
+/* Alt kenarda ulus renginde ince ışık: levha haritadaki lekeyle eşleşir. */
+.dsr-head::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: linear-gradient(90deg, var(--nc), color-mix(in srgb, var(--nc) 40%, transparent) 45%, transparent 85%);
+  pointer-events: none;
+}
+.dsr-flag {
+  position: relative;
+  display: block;
+  width: 90px;
+  height: 60px;
+  filter: drop-shadow(0 3px 5px rgba(0, 0, 0, 0.7));
+}
+.dsr-flag canvas { display: block; }
+.dsr-id { display: grid; gap: 3px; min-width: 0; }
+/* Sağ üstteki iki düğme yalnız ad satırının üstündedir: ad satırı onlara
+   yer bırakır, alttaki satırlar tam eni kullanır. */
+.dsr-id h2 {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  min-width: 0;
+  margin: 0;
+  padding-right: 74px;
+}
+.dsr-name {
+  overflow: hidden;
+  color: #f4e8c8;
+  font: 400 24px/1.05 var(--font-display);
+  letter-spacing: 0.01em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 2px 3px #000, 0 0 18px color-mix(in srgb, var(--nc) 45%, transparent);
+}
+.dsr-rank {
+  flex: none;
+  color: var(--sk-brass-hi);
+  font: 400 18px/1 var(--font-display);
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 1px 0 #000;
+  cursor: var(--cur-default);
+}
+.dsr-rank small {
+  margin-right: 4px;
+  color: var(--sk-brass);
+  font: 700 10.5px/1 var(--font-ui);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  vertical-align: 2px;
+}
+.dsr-gov {
+  overflow: hidden;
+  margin: 0;
+  padding-right: 34px;
+  color: #d0c7b0;
+  font-size: 12.5px;
+  line-height: 16px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsr-dot { margin: 0 6px; color: var(--sk-brass-mid); font-style: normal; font-weight: 400; }
+.dsr-party {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--pc);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.75), 0 0 7px var(--pc);
+  vertical-align: 0;
+}
+
+/* Durum çipleri: savaş/barış önce, sonra bağlar. Renk anlamdan gelir. */
+.dsr-chips { display: flex; flex-wrap: wrap; gap: 4px; min-width: 0; }
+.dsr-chip {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 7px;
+  border: 1px solid;
+  border-radius: 2px;
+  font: 700 10.5px/1 var(--font-ui);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.dsr-chip.c-peace { border-color: rgba(154, 190, 120, 0.6); background: rgba(118, 158, 88, 0.17); color: #c6e3a2; }
+.dsr-chip.c-war { border-color: rgba(228, 102, 76, 0.78); background: rgba(190, 62, 42, 0.26); color: #ffb9a6; }
+.dsr-chip.c-crisis,
+.dsr-chip.c-truce { border-color: rgba(226, 176, 96, 0.7); background: rgba(198, 148, 66, 0.17); color: #f4d08c; }
+.dsr-chip.c-ally { border-color: rgba(222, 194, 128, 0.72); background: rgba(201, 163, 90, 0.17); color: #f3dca2; }
+.dsr-chip.c-rival { border-color: rgba(206, 96, 84, 0.66); background: rgba(150, 52, 44, 0.22); color: #f4aa9c; }
+.dsr-chip.c-info { border-color: rgba(150, 184, 206, 0.55); background: rgba(108, 150, 178, 0.17); color: #c4dae8; }
+
+/* Sağ üst: haritada göster + kapat; Esc rozeti çarpının altında. */
+.dsr-tools {
+  position: absolute;
+  top: 9px;
+  right: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, 32px);
+  gap: 4px 6px;
+  justify-items: center;
+}
+.dsr-tool.icon-btn { width: 32px; height: 32px; }
+.dsr-tool.icon-btn svg { width: 18px; height: 18px; stroke-width: 1.8; }
+.dsr-close.icon-btn:hover {
+  box-shadow: 0 0 0 1px #000, 0 0 0 2px #f0a28e, 0 0 12px rgba(240, 120, 96, 0.45), inset 0 2px 4px rgba(0, 0, 0, 0.8);
+  color: #ffe2d8;
+}
+.dsr-esc { grid-column: 2; }
+.screen .dsr-esc { min-width: 30px; color: var(--sk-text-2); }
+
+/* --- Eylem şeridi ----------------------------------------------------------
+   İki sütun, sabit sıra (solda yakınlaşma, sağda baskı); her kutu iki satır:
+   ad (+ karşı tarafın hükmü) ve bedel · etki. Kutu boyu sabit (38 px). */
+.dsr-acts-h,
+.dsr-acts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  column-gap: 6px;
+}
+.dsr-acts { align-items: start; }
+.dsr-col { display: grid; gap: 4px; min-width: 0; }
+.k-btn.dsr-act {
+  display: grid;
+  grid-template-columns: 26px minmax(0, 1fr);
+  align-items: center;
+  justify-content: stretch;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  height: 38px;
+  min-height: 0;
+  padding: 2px 9px 2px 6px;
+  text-align: left;
+  white-space: nowrap;
+}
+.dsr-ico { display: grid; place-items: center; width: 26px; height: 26px; }
+.dsr-ico .art { width: 26px; height: 26px; }
+.dsr-ico .glyph { width: 21px; height: 21px; color: var(--sk-brass-hi); stroke-width: 1.7; vertical-align: 0; filter: drop-shadow(0 1px 1px #000); }
+.dsr-txt { display: grid; gap: 1px; min-width: 0; }
+.dsr-txt > b {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 650;
+  line-height: 16px;
+}
+.dsr-txt > b > span { overflow: hidden; min-width: 0; text-overflow: ellipsis; }
+.dsr-txt > small {
+  overflow: hidden;
+  color: #c4bba4;
+  font-size: 11.5px;
+  font-weight: 500;
+  line-height: 14px;
+  text-overflow: ellipsis;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.8);
+}
+.dsr-txt small em { color: var(--sk-brass-hi); font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; }
+.dsr-txt small i { font-style: normal; }
+.dsr-txt small .dsr-dot { margin: 0 4px; }
+.dsr-txt .pos { color: #b4dc8a; }
+.dsr-txt .neg { color: #f39a84; }
+.dsr-txt .warn { color: #ecc172; }
+/* Karşı tarafın hükmü: adın sağında küçük damga (kabul eder / reddeder).
+   Koyu zemin şeridi: kırmızı vernikli (talep) kutuda da okunur. */
+.dsr-vd {
+  flex: none;
+  align-self: center;
+  margin-left: auto;
+  padding: 2px 4px 1px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.42);
+  font: 700 10.5px/1 var(--font-ui);
+  font-style: normal;
+  letter-spacing: 0.07em;
+  text-shadow: none;
+  text-transform: uppercase;
+}
+.dsr-vd.pos { color: #b9e08f; }
+.dsr-vd.neg { color: #ffa890; }
+/* Kapalı kutu okunur kalır: resim söner, neden kırmızımsı yazıyla. */
+.k-btn.dsr-act:disabled .dsr-ico { opacity: 0.5; filter: grayscale(0.7); }
+.k-btn.dsr-act:disabled small em { color: #a9aaa3; }
+.k-btn.dsr-act:disabled small .neg { color: #e0a090; }
+/* Tehlike verniği (savaş, talep) kırmızı: alt satır açık pembe kalır. */
+.k-btn.dsr-act.danger:not(:disabled) small { color: #f6d6cb; }
+.k-btn.dsr-act.danger:not(:disabled) small em { color: #fff0dc; }
+.k-btn.dsr-act.danger:not(:disabled) small :is(.neg, .warn) { color: #ffe1c4; font-weight: 700; }
+.k-btn.dsr-act.danger:not(:disabled) .dsr-ico .glyph { color: #ffe0d2; }
+/* Kurulu onay: yazı zeminin rengini izler (kehribar ya da kızgın kırmızı). */
+.k-btn.dsr-act.confirming small,
+.k-btn.dsr-act.confirming small :is(em, i) { color: inherit; text-shadow: none; }
+
+/* --- İlişki: ölçek başlığın çizgisidir ------------------------------------- */
+.dsr-rel .dsr-h::after { display: none; }
+.dsr-rel .dsr-h { cursor: var(--cur-default); }
+.dsr-rbar {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 60px;
+  height: 8px;
+  border-radius: 4px;
+  background: #050708;
+  box-shadow: inset 0 1px 3px #000, 0 0 0 1px rgba(201, 163, 90, 0.28);
+}
+.dsr-rbar::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: rgba(241, 217, 156, 0.7);
+}
+.dsr-rbar b { position: absolute; top: 0; bottom: 0; border-radius: 4px; }
+.dsr-rbar b.pos { background: linear-gradient(90deg, #6f8f4f, #b4dc8a); box-shadow: 0 0 6px rgba(180, 220, 138, 0.45); }
+.dsr-rbar b.neg { background: linear-gradient(90deg, #f0907a, #b84a33); box-shadow: 0 0 6px rgba(240, 144, 122, 0.4); }
+.dsr-relv {
+  flex: none;
+  min-width: 40px;
+  font: 700 16px/1 var(--font-ui);
+  font-style: normal;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  text-align: right;
+}
+.dsr-relv.pos { color: #b4dc8a; }
+.dsr-relv.neg { color: #f39a84; }
+.dsr-relv.neutral { color: var(--sk-text); }
+.dsr-parts { display: grid; margin: 0; padding: 0; list-style: none; }
+.dsr-parts li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px 108px;
+  align-items: baseline;
+  gap: 8px;
+  min-height: 20px;
+  padding: 2px 6px;
+  border-bottom: 1px solid rgba(186, 160, 100, 0.08);
+  font-size: 12.5px;
+}
+.dsr-parts span { overflow: hidden; color: var(--sk-text); text-overflow: ellipsis; white-space: nowrap; }
+.dsr-parts b { font-variant-numeric: tabular-nums; text-align: right; }
+.dsr-parts b.pos { color: #b4dc8a; }
+.dsr-parts b.neg { color: #f39a84; }
+.dsr-parts small { color: #aba491; font-size: 11.5px; }
+.dsr-quiet { margin: 0; padding: 0 6px; color: #c4bba4; font-size: 12.5px; }
+/* Dördüncüden sonraki nedenler tek satırda toplanır (hepsi bilgi kartında):
+   uzun bir defter künyeyi 1366×768'de ekranın altına itiyordu. */
+.dsr-parts li.more { color: #aba491; font-size: 11.5px; }
+.dsr-parts li.more span { color: inherit; }
+
+/* --- Künye tablosu ----------------------------------------------------------
+   Dört sütun (anahtar · değer · anahtar · değer); uzun değer tam satır.
+   Sütunlar sabit paylı: değer haftadan haftaya değişince komşusu kaymaz. */
+.dsr-kv { display: grid; border-top: 1px solid rgba(186, 160, 100, 0.12); }
+.dsr-r {
+  display: grid;
+  grid-template-columns: 80px minmax(0, 1fr) 62px minmax(0, 1fr);
+  align-items: center;
+  column-gap: 8px;
+  min-height: 22px;
+  padding: 1px 6px;
+  border-bottom: 1px solid rgba(186, 160, 100, 0.08);
+  font-size: 12.5px;
+}
+.dsr-r:nth-child(even) { background: rgba(255, 240, 210, 0.028); }
+.dsr-r > .k { overflow: hidden; color: #aba491; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.dsr-r > .k:nth-child(3) { padding-left: 9px; border-left: 1px solid rgba(186, 160, 100, 0.16); }
+.dsr-r > .v {
+  overflow: hidden;
+  min-width: 0;
+  color: #eee4cb;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.dsr-r > .v > small { margin-left: 4px; color: #aba491; font-size: 11.5px; font-weight: 500; }
+.dsr-r.wide > .v { grid-column: 2 / -1; }
+.dsr-r > .v.flex { display: flex; flex-wrap: nowrap; align-items: center; gap: 4px 12px; }
+.dsr-r > .v .pos { color: #b4dc8a; }
+.dsr-r > .v .neg { color: #f39a84; }
+.dsr-none { color: #aba491; font-weight: 500; }
+.dsr-us { color: var(--sk-brass-hi); }
+.dsr-comma { margin-right: 4px; color: #aba491; }
+/* Ulus adı bağlantısı açık renkle yazılır: taban kuralının değişkenli rengi
+   açık temada çevrilmeyip beyaz kalıyordu (ölçüldü: "Praov" okunmuyordu). */
+.dsr-r .dip-cname { color: #eee4cb; font-size: 12.5px; }
+.dsr-r .dip-cname:hover { color: #f1d99c; }
+/* Güç: cümle + hemen yanında payımızın çubuğu (yeşil biz, kırmızı onlar). */
+.dsr-sbar {
+  position: relative;
+  flex: none;
+  display: block;
+  width: 72px;
+  height: 7px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #a3452f, #d0573f);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.55), 0 0 0 1px rgba(0, 0, 0, 0.6);
+}
+.dsr-sbar b {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px 0 0 3px;
+  background: linear-gradient(90deg, #6f8f4f, #b4dc8a);
+  box-shadow: 1px 0 0 #000;
+}
+/* Mal çipleri: resim 22 px (satır yüksekliğini itmeden). */
+.dsr-res { display: inline-flex; flex: none; align-items: center; gap: 4px; }
+.dsr-res .art { width: 22px; height: 22px; margin: -3px 0; }
+.dsr-res > small { margin-left: 1px; color: #ecc172; font-size: 11.5px; font-weight: 700; }
+.dsr-threat { display: inline-flex; flex: none; align-items: baseline; gap: 6px; }
+.dsr-r .dip-cauto em { margin-left: 4px; }
+.dsr-r .dip-cauto small { margin-left: 2px; color: #aba491; font-size: 11.5px; font-weight: 500; }
+
+/* --- Kayıt: karakter cümlesi + son hatıralar ------------------------------- */
+.dsr-quote {
+  margin: 0;
+  padding: 1px 0 1px 10px;
+  border-left: 2px solid var(--nc);
+  color: #d6ccb2;
+  font: italic 400 14px/1.35 var(--font-display);
+}
+.dsr-mem { display: grid; gap: 1px; margin: 6px 0 0; padding: 0; list-style: none; }
+.dsr-mem li {
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  gap: 8px;
+  min-height: 19px;
+  padding: 1px 6px;
+  color: var(--sk-text);
+  font-size: 12.5px;
+}
+.dsr-mem em { color: var(--sk-brass-hi); font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; }
+
+/* Barış teklifi kartı (screens.peaceOfferCard) eylem şeridinin hemen altına
+   düşer: cevap bekleyen tek şey odur. */
+.dsr > .peace-offer { margin: 0; }
+
+/* Açılış: bölümler sırayla iner (öbür ekranların §32 dili). Sınıf açılışta
+   bir kez takılır; haftalık tazeleme yeniden oynatmaz. */
+:root[data-motion="on"] .screen.is-entering .dsr > * { animation: relief-card-in 300ms var(--lift-ease) both; }
+:root[data-motion="on"] .screen.is-entering .dsr > :nth-child(2) { animation-delay: 50ms; }
+:root[data-motion="on"] .screen.is-entering .dsr > :nth-child(3) { animation-delay: 95ms; }
+:root[data-motion="on"] .screen.is-entering .dsr > :nth-child(n+4) { animation-delay: 140ms; }

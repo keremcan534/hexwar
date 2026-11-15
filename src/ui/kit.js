@@ -152,6 +152,63 @@ export function badge(text, cls = '') {
   return `<span class="k-badge ${cls}">${esc(text)}</span>`;
 }
 
+// ------------------------------------------------------------- SIRALAMA ---
+//
+// SIRALANABİLİR TABLO (Kerem: "sıralama yok"). Başlık hücresi bir düğmedir:
+// ilk tık sayıda büyükten küçüğe, adda A→Z; ikinci tık tersine çevirir;
+// üçüncü tık tablonun KENDİ sırasına döner (Development'ta fonun alacağı
+// sıra). Durum ekran nesnesindedir (screens.uc.sort), kayda girmez; bu
+// yardımcılar yalnız HTML yazar ve diziyi sıralar. Sütun tanımı tektir:
+// { label, value(row), text, cls, tip } — başlık, sıra ve özet aynı yerden.
+
+/** Başlık tıkının yeni sırası: ilk yön, ters yön, sonra tablonun kendi sırası (null). */
+export function nextSort(sort, key, text = false) {
+  const first = text ? 1 : -1;
+  if (sort?.key !== key) return { key, dir: first };
+  return sort.dir === first ? { key, dir: -first } : null;
+}
+
+/**
+ * Sıralanabilir başlık hücresi. Ok işaretinin yeri her başlıkta ayrılmıştır
+ * (seçili değilken görünmez): sıra değişince başlık yazısı kaymaz.
+ * `sort` { key, dir } (dir 1 artan, -1 azalan) ya da null.
+ */
+export function sortHead(table, key, columns, sort) {
+  const col = columns[key];
+  const on = sort?.key === key;
+  const up = on ? sort.dir > 0 : Boolean(col.text);
+  const plain = String(col.label).replace(/<[^>]+>/g, '');
+  const hint = `Click: ${col.text ? 'A→Z, again Z→A' : 'highest first, again lowest first'}; a third click restores the default order.`;
+  const tip = col.tip ? `${col.tip}\n\n${hint}` : `Sort by ${plain.toLowerCase()}\n${hint}`;
+  return `<button type="button" class="k-sort${col.cls ? ` ${col.cls}` : ''}${on ? ' on' : ''}" data-uc-sort="${table}:${key}"${col.text ? ' data-sort-first="asc"' : ''}${tipAttr({ text: tip })}><span>${col.label}</span><i class="k-sort-ind" aria-hidden="true">${up ? '▲' : '▼'}</i></button>`;
+}
+
+/**
+ * Satırları `sort`a göre dizer. Değeri olmayan (null) satır yön ne olursa
+ * olsun sonda kalır; eşitlikte tablonun kendi sırası korunur: aynı değerli
+ * satırlar haftadan haftaya yer değiştirmez.
+ */
+export function sortRows(rows, sort, columns) {
+  const read = sort ? columns[sort.key]?.value : null;
+  if (!read) return rows;
+  const blank = (value) => value == null || Number.isNaN(value);
+  return rows.map((row, index) => ({ row, index, value: read(row) }))
+    .sort((a, b) => {
+      if (blank(a.value) || blank(b.value)) return blank(a.value) === blank(b.value) ? a.index - b.index : blank(a.value) ? 1 : -1;
+      const diff = typeof a.value === 'string' ? a.value.localeCompare(b.value) : a.value - b.value;
+      return diff * sort.dir || a.index - b.index;
+    })
+    .map((entry) => entry.row);
+}
+
+/** Etkin sıralamanın adı ("sorted by gain / wk, highest first"); tablonun kendi sırasında null. */
+export function sortLabel(sort, columns) {
+  const col = sort ? columns[sort.key] : null;
+  if (!col) return null;
+  const way = col.text ? (sort.dir > 0 ? 'A→Z' : 'Z→A') : (sort.dir < 0 ? 'highest first' : 'lowest first');
+  return `sorted by ${String(col.label).replace(/<[^>]+>/g, '').toLowerCase()}, ${way}`;
+}
+
 /**
  * Sparkline (SVG). `zero: false` ölçeği sıfırdan değil verinin en altından
  * başlatır: 9.99 milyonluk nüfusun %1'lik değişimi sıfır tabanlı ölçekte düz

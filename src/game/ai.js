@@ -504,7 +504,7 @@ export function autoFeed(nation) {
  * doyurulması, hat ağırlıkları ordunun ihtiyacına göre, ticaret yasası kaynak
  * dengesine göre. Kalkınma bir simülasyon kuralıdır (econ/investment.js).
  */
-export function economyAI(game, nation) {
+export function economyAI(game, nation, { trade: tradeLaw = true } = {}) {
   const turn = game.turns?.turn ?? 0;
   if ((turn + nation.id) % 4 !== 0) return null;
   const economy = nation.economy;
@@ -531,7 +531,8 @@ export function economyAI(game, nation) {
   // ihracat payı %25'te kalan üreticiler açığı kapatamıyordu).
   if (surplusValue > income * 0.04 && trade < 2) wanted = trade + 1;
   else if (trade === 0 && deficitValue > 0) wanted = 1;
-  if (wanted !== trade && (nation.power ?? 0) >= 60) {
+  // Oyuncu ticareti elinde tutuyorsa yasa onundur (Trade AUTO kapalı).
+  if (tradeLaw && wanted !== trade && (nation.power ?? 0) >= 60) {
     if (setLaw(game, nation, 'trade', wanted)) return { action: 'trade', text: `Trade law set to ${LAWS.trade.options[wanted].name}.` };
   }
   if (fed) {
@@ -852,12 +853,20 @@ export function runDelegatedAI(game, nation, rng) {
     answerPeaceOffers(game, nation, rng);
     diplomacy(game, nation, rng);
   }
-  if (delegationActive(nation, 'economy', turn)) {
+  // Economy (besleme + ikmal kemeri) ve Trade (ticaret yasası) ayrı
+  // anahtarlardır. İkisi de açıkken (varsayılan) çağrı sırası ayrılmadan
+  // öncekiyle birebir aynıdır: kemer, sonra hatlar → besleme → yasa.
+  const economyOn = delegationActive(nation, 'economy', turn);
+  const tradeOn = delegationActive(nation, 'trade', turn);
+  if (economyOn) {
     const saved = supplyAI(game, nation);
     if (saved) noteDelegated(game, nation, 'economy', saved, 'The state\'s bills had outgrown its output.');
-    const result = economyAI(game, nation);
+  }
+  if (economyOn || tradeOn) {
+    const result = economyAI(game, nation, { trade: tradeOn });
     if (result) {
-      noteDelegated(game, nation, 'economy', result.text, result.action === 'feed'
+      const area = result.action === 'trade' ? 'trade' : 'economy';
+      noteDelegated(game, nation, area, result.text, result.action === 'feed'
         ? 'Peace, war and the mood of the people set how much of the output feeds them.'
         : 'The resource balance asked for it.');
     }
