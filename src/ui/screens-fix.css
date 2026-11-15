@@ -11,3 +11,172 @@
    sağında boş bir kutu bırakıyordu (Kerem). */
 .pl-top .k-seg { display: flex; flex-wrap: nowrap; gap: 3px; }
 .pl-top .k-seg > .k-seg-b { padding-inline: 11px; white-space: nowrap; }
+
+/* ==========================================================================
+   ECONOMY · alt yarı (Kerem 2026-11-15: "bu kısım zayıf"). İlk haftada çubuk
+   oyunun kendi formülüyle TAHMİNDİR (stateScreens.projectedBase): taranmış
+   gösterilir. Fon paneli bir hazne: ölçek (taban → sonraki kademe), şimdi,
+   bu haftanın girişi, sonraki kademe; altında giren/çıkan iki sütun.
+   ========================================================================== */
+.ec-hero.is-projected .ec-bar::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  border-radius: 4px;
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.07) 0 7px, transparent 7px 14px);
+  pointer-events: none;
+}
+
+.ec-fund { display: flex; flex-direction: column; gap: 14px; }
+.ec-fund-top { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 18px; }
+.ec-fund-now small,
+.ec-fund-next small,
+.ec-flow-col > small,
+.ec-warline > small {
+  display: block;
+  color: #c9a35a;
+  font: 700 11px/1 var(--font-ui);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+.ec-fund-now b {
+  display: block;
+  margin: 7px 0 4px;
+  color: #f3dfa6;
+  font: 400 34px/1 var(--font-display);
+  font-variant-numeric: lining-nums tabular-nums;
+  text-shadow: 0 2px 0 #000;
+}
+.ec-fund-now b.neg { color: #f08a6b; }
+.ec-fund-now em { color: #a9d47e; font: 600 13px/1.2 var(--font-ui); font-style: normal; font-variant-numeric: tabular-nums; }
+.ec-fund-next { text-align: right; }
+.ec-fund-next b { display: block; margin: 7px 0 4px; color: #f0e6cd; font: 400 21px/1.1 var(--font-display); }
+.ec-fund-next b span { color: #f3dfa6; }
+.ec-fund-next em { color: var(--text-dim); font: 600 13px/1.2 var(--font-ui); font-style: normal; font-variant-numeric: tabular-nums; }
+
+.ec-ftrack { cursor: var(--cur-default); }
+.ec-ftrack-bar {
+  position: relative;
+  height: 16px;
+  overflow: hidden;
+  border-radius: 8px;
+  background: linear-gradient(180deg, #020304, #0b1113 60%, #121a1c);
+  box-shadow: 0 0 0 1px #000, 0 0 0 2px rgba(122, 95, 48, 0.8), inset 0 2px 4px rgba(0, 0, 0, 0.9);
+}
+.ec-ftrack-bar > i,
+.ec-ftrack-bar > b { position: absolute; top: 0; bottom: 0; }
+.ec-ft-debt { background: repeating-linear-gradient(135deg, rgba(176, 72, 48, 0.3) 0 6px, transparent 6px 12px); }
+.ec-ft-fill {
+  background: linear-gradient(180deg, #f2d58f 0%, #c9a65c 55%, #8f6b2c 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 246, 214, 0.55);
+}
+.ec-ft-fill.neg { background: linear-gradient(180deg, #ef8a6c 0%, #c0573a 55%, #7a2a16 100%); }
+.ec-ft-gain {
+  background: repeating-linear-gradient(90deg, rgba(242, 213, 143, 0.55) 0 3px, rgba(242, 213, 143, 0.22) 3px 6px);
+}
+.ec-ft-zero { width: 2px; margin-left: -1px; background: rgba(232, 222, 197, 0.85); }
+.ec-ft-goal { width: 3px; margin-left: -1.5px; background: #f3dfa6; box-shadow: 0 0 8px rgba(243, 223, 166, 0.85); }
+.ec-ftrack-scale { position: relative; height: 15px; margin-top: 6px; color: var(--text-mute); font: 600 11.5px/15px var(--font-ui); font-variant-numeric: tabular-nums; }
+.ec-ftrack-scale > span { position: absolute; top: 0; white-space: nowrap; }
+.ec-ftrack-scale > .floor { left: 0; }
+.ec-ftrack-scale > .zero { transform: translateX(-50%); }
+.ec-ftrack-scale > .goal { right: 0; color: #f3dfa6; }
+
+.ec-flows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 0 24px; }
+.ec-flow-col > small { margin-bottom: 4px; }
+.ec-flow {
+  display: grid;
+  grid-template-columns: 22px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  height: 27px;
+  border-bottom: 1px solid rgba(201, 163, 90, 0.12);
+  cursor: var(--cur-default);
+}
+.ec-flow:hover { background: rgba(214, 186, 120, 0.06); }
+.ec-flow-ico { display: grid; place-items: center; width: 22px; height: 22px; }
+.ec-flow-ico .art { width: 22px; height: 22px; }
+.ec-flow-name { overflow: hidden; color: var(--text-dim); font-size: 13.5px; text-overflow: ellipsis; white-space: nowrap; }
+.ec-flow b { font-size: 13.5px; font-weight: 600; font-variant-numeric: tabular-nums; text-align: right; }
+.ec-flow.idle { opacity: 0.55; }
+.ec-flow.net { border-top: 1px solid rgba(201, 163, 90, 0.35); border-bottom: 0; }
+.ec-flow.net .ec-flow-name { color: var(--text); font-weight: 600; }
+
+/* Savaş ve okul satırı: düz yazı paragraf yerine tek veri satırı. */
+.ec-warline {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px 16px;
+  margin-top: 12px;
+  padding: 8px 12px;
+  border-radius: 2px;
+  background: rgba(0, 0, 0, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(201, 163, 90, 0.16);
+  color: var(--text-dim);
+  font-size: 13px;
+  cursor: var(--cur-default);
+}
+.ec-warline > small { margin-right: 2px; }
+.ec-warline b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+.ec-warline b.warn { color: #e9c27a; }
+.ec-warline b.neg { color: #ef8a6c; }
+
+/* ==========================================================================
+   TABLOLARDA ARA BOŞLUK YOK (Kerem 2026-11-15: "aradaki boşluklar").
+   Her satır kendi ızgarasıydı ve esnek sütunlar (ad, kapsama, tedarikçi;
+   faturada ad) pencerenin fazlasını yutuyor, sayıları uzağa itiyordu.
+   Satırlar artık tablonun ızgarasını PAYLAŞIR (subgrid): her sütun en geniş
+   içeriği kadar, kalan genişliği yalnız BİLGİ taşıyan çubuk alır (kaynakta
+   kapsama ölçeri, faturada tavanın payı, fon akışında büyüklük).
+   ========================================================================== */
+.k-res-table {
+  display: grid;
+  grid-template-columns:
+    max-content max-content max-content minmax(150px, 1fr)
+    max-content max-content max-content max-content minmax(70px, max-content);
+  column-gap: 18px;
+}
+.k-res-table > .k-res-row { grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: inherit; }
+@media (max-width: 1599px) { .k-res-table { column-gap: 12px; } }
+.k-res-name b { white-space: nowrap; }
+.k-cover > b.k-dim { color: var(--text-faint); font-weight: 400; }
+.k-meter.dim > i { background: none; }
+.k-partner { max-width: 160px; }
+
+/* Faturalar: simge · ad · tavandaki pay çubuğu · üç sayı. */
+.ec-bills {
+  display: grid;
+  grid-template-columns: 22px max-content minmax(90px, 1fr) max-content max-content max-content;
+  column-gap: 16px;
+}
+.ec-bills > .ec-brow { grid-column: 1 / -1; grid-template-columns: subgrid; column-gap: inherit; }
+.ec-bills > .ec-brow.head > span:nth-child(3) { color: var(--text-mute); }
+.ec-bbar {
+  position: relative;
+  height: 8px;
+  overflow: hidden;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.5);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(201, 163, 90, 0.16);
+}
+.ec-bbar > i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 4px;
+  background: linear-gradient(180deg, #c3c7ca, #8a9196 60%, #555b60);
+}
+.ec-bbar.total > i { background: linear-gradient(180deg, #bddc84, #93b65c 60%, #4f7329); }
+.ec-bbar.total.neg > i { background: linear-gradient(180deg, #ef8a6c, #c0573a 60%, #7a2a16); }
+.ec-brow.idle .ec-bbar { opacity: 0.5; }
+
+/* Fon akışları: simge · ad · büyüklük çubuğu · değer. */
+.ec-flow { grid-template-columns: 22px 150px minmax(30px, 1fr) 54px; gap: 10px; }
+.ec-flow-bar { position: relative; height: 6px; overflow: hidden; border-radius: 3px; background: rgba(0, 0, 0, 0.45); }
+.ec-flow-bar > i { position: absolute; top: 0; bottom: 0; left: 0; border-radius: 3px; }
+.ec-flow-bar.in > i { background: linear-gradient(180deg, #bddc84, #6f9a3e); }
+.ec-flow-bar.out > i { background: linear-gradient(180deg, #ef8a6c, #a34a2c); }
+@media (max-width: 1599px) { .ec-flow { grid-template-columns: 22px 128px minmax(24px, 1fr) 50px; gap: 8px; } }

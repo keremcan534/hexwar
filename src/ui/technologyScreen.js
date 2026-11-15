@@ -239,8 +239,8 @@ export function technologyScreen(nation, view) {
       sub: current ? `${Math.floor(research.points ?? 0)} / ${cost} RP · done ${dateOf(view.yearExact + weeksNow * 7 / 365)}` : 'pick a technology in the tree',
       meter: progress, meterTone: 'pos', cls: 'hero tech-now-kpi',
     }),
-    kpi({ label: 'Per week', value: `${num(view.rate, 2)} RP`, sub: 'literacy is the main source', tip: { text: ['Research points a week', ...view.rateLines].join('\n') } }),
-    kpi({ icon: emblemArt('society', 'md'), label: 'Literacy', value: `${Math.round((nation.economy?.literacy ?? 0) * 100)}%`, sub: 'set by the education law', tip: 'term', arg: 'literacy' }),
+    kpi({ label: 'Per week', value: `${num(view.rate, 2)} RP`, sub: '', tip: { text: ['Research points a week', ...view.rateLines].join('\n') } }),
+    kpi({ icon: emblemArt('society', 'md'), label: 'Literacy', value: `${Math.round((nation.economy?.literacy ?? 0) * 100)}%`, sub: '', tip: 'term', arg: 'literacy' }),
     kpi({ label: 'Technologies', value: `${done}<small> / ${total}</small>`, sub: view.rank ? `rank ${view.rank} of ${view.of}` : '', meter: total ? done / total : 0,
       tip: { text: [`Inherited from the nineteenth century: ${HERITAGE.length} technologies every nation already knows`, ...heritageLines()].join('\n') } }),
   ]);

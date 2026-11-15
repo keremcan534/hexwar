@@ -80,7 +80,7 @@ function headerStrip(summary, composition = [], spent = null) {
         + (spent ? ` (cost ${spent.rifles.toFixed(1)} rifles, ${spent.guns.toFixed(1)} guns)` : '') },
     }),
     kpi({
-      icon: gaugeArt('manpower', 'md'), label: 'Manpower', value: formatPopulation(summary.manpower), sub: 'still to be raised',
+      icon: gaugeArt('manpower', 'md'), label: 'Manpower', value: formatPopulation(summary.manpower), sub: '',
       tip: { text: 'Manpower\nPeople your states can still put under arms. The conscription law sets the share; technology, advisors and the Recruitment focus raise it.' },
     }),
     kpi({
@@ -90,7 +90,7 @@ function headerStrip(summary, composition = [], spent = null) {
     }),
     kpi({
       label: 'In training', value: `${summary.training}<small> / ${summary.trainingCapacity}</small>`,
-      sub: 'training at once', meter: summary.trainingCapacity ? Math.min(1, summary.training / summary.trainingCapacity) : 0,
+      sub: '', meter: summary.trainingCapacity ? Math.min(1, summary.training / summary.trainingCapacity) : 0,
     }),
     kpi({
       icon: gaugeArt('war_support', 'md'), label: 'Wars', value: summary.wars.length ? String(summary.wars.length) : 'Peace',

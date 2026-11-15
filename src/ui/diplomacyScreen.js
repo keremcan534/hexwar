@@ -288,7 +288,7 @@ export function renderDiplomacyScreen(screens, me) {
     // Kötü şöhret ve savaş üst çubuğun resimleriyle: aynı sayı iki resimle iki ayrı sayı sanılır.
     kitKpi({ icon: gaugeArt('infamy', 'md'), label: 'Infamy', value: `${view.infamy.toFixed(1)} / ${view.infamyCap}`, sub: view.infamy >= view.infamyCap ? 'coalitions can form' : 'coalition threshold', tip: 'infamy', meter: view.infamy / view.infamyCap, meterTone: view.infamy >= view.infamyCap ? 'neg' : view.infamy >= view.infamyCap * 0.6 ? 'warn' : '', cls: 'hero' }),
     kitKpi({ icon: gaugeArt('war_support', 'md'), label: 'Wars', value: String(view.wars), sub: view.crises ? `${view.crises} ultimatum${view.crises === 1 ? '' : 's'}` : 'at war with you' }),
-    kitKpi({ icon: diplomacyArt('alliance', 'md'), label: 'Allies', value: `${view.allies} / ${view.maxAllies}`, sub: 'an attack on one calls the other' }),
+    kitKpi({ icon: diplomacyArt('alliance', 'md'), label: 'Allies', value: `${view.allies} / ${view.maxAllies}`, sub: '' }),
     kitKpi({ label: 'Envoys', value: `${view.envoys.used} / ${view.envoys.slots}`, sub: `+${view.envoys.rate} a week each, up to +${view.envoys.cap}`, tip: { text: `Envoys\nAn envoy raises how a court regards us by ${view.envoys.rate} a week, up to +${view.envoys.cap}. Send one with the star in a row or from a dossier.` } }),
     kitKpi({ label: 'Commitments', value: view.upkeep > 0 ? `−${view.upkeep.toFixed(2)} PP/wk` : '0 PP/wk', sub: commitmentsSub, tip: { text: `Commitments\nEnvoys cost ${ENVOY.UPKEEP} and each guarantee we give ${GUARANTEE.UPKEEP} political power a week. If power runs dry the newest envoy is recalled, then the newest guarantee.` } }),
     kitKpi({
@@ -319,7 +319,7 @@ export function renderDiplomacyScreen(screens, me) {
       </button>`).join('')
     : '<p class="empty">No other wars in the world.</p>';
   const requests = view.requests.length
-    ? kitPanel('Requests', view.requests.map(requestRow).join(''), { sub: 'answer before they lapse', cls: 'dip-requests' })
+    ? kitPanel('Requests', view.requests.map(requestRow).join(''), { sub: '', cls: 'dip-requests' })
     : '';
 
   return `${kpis}

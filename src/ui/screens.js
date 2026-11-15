@@ -1035,9 +1035,9 @@ export class Screens {
 
     const kpis = kitKpiRow([
       kitKpi({ label: 'Year', value: String(year), sub: `${Math.max(0, END_YEAR - Number(year))} years to ${END_YEAR}`, cls: 'hero' }),
-      kitKpi({ label: 'Rank', value: rank ? `${rank}<small> / ${board.length}</small>` : '—', sub: 'among the powers', tip: { text: `Rank\nBy hegemony score: industry, population, land, prestige and the national goal. The leader in ${END_YEAR} wins.` } }),
+      kitKpi({ label: 'Rank', value: rank ? `${rank}<small> / ${board.length}</small>` : '—', sub: '', tip: { text: `Rank\nBy hegemony score: industry, population, land, prestige and the national goal. The leader in ${END_YEAR} wins.` } }),
       kitKpi({ label: 'Score', value: String(mine?.total ?? 0), sub: board[0] && board[0].nation.id !== me.id ? `leader ${board[0].total}` : 'you lead', meter: board[0] ? (mine?.total ?? 0) / Math.max(1, board[0].total) : 0 }),
-      kitKpi({ label: 'Entries', value: String(entries.length), sub: 'in the chronicle' }),
+      kitKpi({ label: 'Entries', value: String(entries.length), sub: '' }),
     ]);
 
     // Zaman çizelgesi: en yeni üstte, yıl değişince yıl başlığı.
@@ -1093,7 +1093,7 @@ export class Screens {
 
     return `${kpis}
       <div class="k-split chron-split">
-        ${kitPanel('Chronicle', timeline, { sub: 'newest first' })}
+        ${kitPanel('Chronicle', timeline, { sub: '' })}
         <div class="k-stack">
           ${kitPanel('Great powers', `<ol class="chron-powers">${powers}</ol>`, { sub: `hegemony score · the leader in ${END_YEAR} wins` })}
           ${kitPanel('The last two years', trends, { sub: `${history.length} weeks` })}

@@ -19,7 +19,7 @@
 
 import {
   CROWN_OUTPUT, DEVELOPMENT_CAP_BASE, DEVELOPMENT_CAP_LITERACY, DEVELOPMENT_MAX, EQUIPMENT, EQUIPMENT_IDS, FEED,
-  HAND_OUTPUT, INDUSTRY_PER_DEV, INVEST, LINE_EFFICIENCY,
+  FUND_RESERVE_WEEKS, HAND_OUTPUT, INDUSTRY_PER_DEV, INVEST, LINE_EFFICIENCY,
   RESOURCES, RESOURCE_IDS, SUPPLY,
 } from '../game/econ/defs.js';
 import { LAWS, lawIndex } from '../game/laws.js';
@@ -27,12 +27,12 @@ import {
   acceptedShareOf, economyView, formatPopulation, literacyTarget, populationOf, splitOutput,
 } from '../game/economy.js';
 import {
-  LINE_PRIORITIES, consumerStability, feedTarget, lineAllocation, lineEfficiencyCap, lineEfficiencyGain,
+  LINE_PRIORITIES, consumerNeed, consumerStability, feedTarget, lineAllocation, lineEfficiencyCap, lineEfficiencyGain,
   linePriorityOf, setFeed, setLinePriority,
 } from '../game/econ/industry.js';
 import { setEmbargo } from '../game/econ/trade.js';
 import { billCap, billsOf } from '../game/econ/bills.js';
-import { developmentCap, investmentTarget, levelCost, levelGain } from '../game/econ/investment.js';
+import { developmentCap, investEfficiency, investmentTarget, levelCost, levelGain } from '../game/econ/investment.js';
 import { outputFactors, provinceOutputOf } from '../game/econ/output.js';
 import { LEDGER_LINES } from '../game/treasury.js';
 import { equipmentLogistics } from '../game/reinforcement.js';
@@ -135,8 +135,6 @@ const fundArt = (id) => ledgerArt(id) || ledgerArt(FUND_ART[id]);
 const EMPTY_BILLS = {
   land: 0, sea: 0, war: 1, army: 0, navy: 0, schools: 0, martial: 0, owed: 0, room: 0, paid: 0, s: 1, atWar: false,
 };
-/** İlk hafta kapanmadan payı olmayan değerlerin yerine yazılan not. */
-const FIRST_WEEK = 'first report after week 1';
 const FEED_TIP = `Feed the people\nDrag right: more consumer goods — stability and growth, best near ×1.2. Drag left: more for development. The new share applies from next week.\n← → step ×${num(FEED.step, 2)} · Auto hands it back to the ministry.`;
 // Kartlar sayıyı kuralın kendisinden okur (ai.autoFeed FEED'i okur): sabit
 // değişince metin eskimesin. Eski metin "kişiliğe göre" diyordu; kural ulusal odaktır.
@@ -161,12 +159,12 @@ function nextLevelOf(world, me) {
  * çektiği, halkın ihtiyacı. Tutamaç yalnız halkla kalkınma arasını oynatır;
  * gerisi önizlemede sabittir. İlk hafta kapanmadan pay yoktur (null).
  */
-function barBase(world, me) {
+function barBase(world, me, turn = world.turn ?? 0) {
   const economy = me.economy;
   const alloc = economy?.alloc;
-  if (!alloc || !(alloc.output > 0)) return null;
-  const bills = economy.bills ?? EMPTY_BILLS;
   const target = nextLevelOf(world, me);
+  if (!alloc || !(alloc.output > 0)) return projectedBase(world, me, turn, target);
+  const bills = economy.bills ?? EMPTY_BILLS;
   return {
     output: alloc.output,
     bills: alloc.bills,
@@ -184,6 +182,43 @@ function barBase(world, me) {
     // çubuk gelecek haftayı gösteriyordur.
     week: economy.consumer?.feed ?? feedTarget(me),
     committed: feedTarget(me),
+    projected: false,
+  };
+}
+
+/**
+ * İLK HAFTA: pay ancak haftalık kapanışta kurulur (economy.alloc) ve oyun
+ * başında çubuk boş bir kutuydu ("The first weekly report comes after week
+ * 1" — Kerem: "bu kısım zayıf"). Kapanışın KENDİ fonksiyonlarıyla tahmin:
+ * faturalar billsOf, ordu tavanı yasanın payı, halkın ihtiyacı consumerNeed,
+ * bölüşüm splitOutput (runNationEconomy 4-6. adımlarla aynı girdiler). Hatlar
+ * henüz çekmedi: ordu payı 0. Saf okuma: dünyaya yazmaz, determinizm aynı.
+ */
+function projectedBase(world, me, turn, target) {
+  const economy = me.economy;
+  const ic = economy?.ic;
+  if (!(ic?.output > 0)) return null;
+  const bills = billsOf(world, me, ic.output, turn);
+  const armyCap = Math.min(ic.military ?? 0, Math.max(0, ic.output - bills.paid));
+  const { need } = consumerNeed(me, economy.population ?? populationOf(world, me), turn);
+  const investable = Boolean(target)
+    || (me.fund ?? 0) < FUND_RESERVE_WEEKS * Math.max(0, economy.outputAvg ?? 0);
+  return {
+    output: ic.output,
+    bills: bills.paid,
+    owed: bills.owed,
+    room: bills.room,
+    s: bills.s,
+    armyCap,
+    drawn: 0,
+    need,
+    investable,
+    efficiency: investEfficiency(me),
+    fund: me.fund ?? 0,
+    target,
+    week: feedTarget(me),
+    committed: feedTarget(me),
+    projected: true,
   };
 }
 
@@ -319,7 +354,7 @@ function bindFeed(screens, input) {
   const { game } = screens;
   const me = screens.me;
   const root = screens.el.body;
-  const base = barBase(game.world, me);
+  const base = barBase(game.world, me, turnOf(game));
   if (!base) return;
   const army = barSplit(base, base.committed).army;
   let feed = base.committed;
@@ -360,8 +395,9 @@ export function renderBudget(game, me, state) {
   const consumer = view.consumer ?? { need: 0, ratio: 1 };
   const cap = billCap(me);
   const crisis = bills.s < 1 - 1e-6;
-  const base = barBase(world, me);
+  const base = barBase(world, me, turnOf(game));
   const split = base ? barSplit(base, base.committed) : null;
+  const projected = Boolean(base?.projected);
   const next = base?.target ?? nextLevelOf(world, me);
   const auto = (view.feed?.mode ?? 'auto') === 'auto';
   const billShare = bills.room > 0 ? bills.owed / bills.room : 0;
@@ -385,22 +421,24 @@ export function renderBudget(game, me, state) {
       meter: next && next.cost > 0 ? view.fund / next.cost : 0, meterTone: view.fund < 0 ? 'warn' : 'pos',
     }),
     kpi({
-      icon: ledgerArt('people', 'md'), label: 'Consumer goods', value: settled ? pct(consumer.ratio) : '—',
+      icon: ledgerArt('people', 'md'), label: 'Consumer goods',
+      value: settled ? pct(consumer.ratio) : split ? pct(split.ratio) : '—',
       sub: settled ? `${pts(consumerStability(consumer.ratio))} stability · fed ×${num(consumer.feed ?? feedTarget(me), 2)}`
-        : `${FIRST_WEEK} · target ×${num(feedTarget(me), 2)}`,
+        : split ? `projected · fed ×${num(split.feed, 2)}` : `fed ×${num(feedTarget(me), 2)}`,
       tip: { text: 'Consumer goods\nThe people\'s share of output against what they want (it grows every decade). Short shelves cost stability and growth; full ones, up to ×1.2, add a little of both. The handle on the bar sets it.' },
-      meter: settled ? Math.min(1, consumer.ratio) : 0, meterTone: consumer.ratio < 0.95 ? 'neg' : 'pos',
+      meter: settled ? Math.min(1, consumer.ratio) : split ? Math.min(1, split.ratio) : 0,
+      meterTone: (settled ? consumer.ratio : split?.ratio ?? 1) < 0.95 ? 'neg' : 'pos',
     }),
   ]);
 
   const feedNow = feedTarget(me);
   const pending = base && Math.abs(feedNow - base.week) > 1e-6;
-  const heroRight = `${auto ? badge('auto', 'pos') : badge('manual', 'dim')}
+  const heroRight = `${projected ? badge('projected · week 1', 'dim') : ''}${auto ? badge('auto', 'pos') : badge('manual', 'dim')}
     <button class="k-btn sm" data-uc-feed-auto${auto ? ` disabled${tipAttr({ text: 'The ministry already sets the handle. Drag it to take it over.' })}` : tipAttr({ text: AUTO_FEED_TIP })}>Auto</button>`;
-  const hero = panel('This week\'s output', base ? barHtml(base, split) + barCaption(base, split) : empty('The first weekly report comes after week 1.'), {
-    sub: pending ? `new target ×${num(feedNow, 2)} applies from next week` : 'one handle: the people\'s share against development',
+  const hero = panel('This week\'s output', base ? barHtml(base, split) + barCaption(base, split) : empty('No output yet.'), {
+    sub: pending && !projected ? `×${num(feedNow, 2)} from next week` : '',
     right: heroRight,
-    cls: 'ec-hero',
+    cls: `ec-hero${projected ? ' is-projected' : ''}`,
   });
 
   // --- Faturalar ------------------------------------------------------------
@@ -408,9 +446,11 @@ export function renderBudget(game, me, state) {
   const school = LAWS.education.options[lawIndex(me, 'education')];
   const billRow = (icon, label, sub, owed, tip) => {
     const idle = owed < 0.005;
+    const ofRoom = bills.room > 0 ? Math.min(1, owed / bills.room) : 0;
     return `<div class="ec-brow${idle ? ' idle' : ''}"${tipAttr({ text: tip })}>
       <span class="k-row-ico">${icon}</span>
       <span class="ec-bname">${label}${sub ? `<small>${sub}</small>` : ''}</span>
+      <span class="ec-bbar"><i style="width:${(ofRoom * 100).toFixed(1)}%"></i></span>
       <span class="r">${idle ? '—' : num(owed, 2)}</span>
       <span class="r">${idle ? '' : pct(output > 0 ? owed / output : 0)}</span>
       <span class="r">${idle ? '' : num(owed * bills.s, 2)}</span>
@@ -427,9 +467,9 @@ export function renderBudget(game, me, state) {
       'Martial law\nHolding down a national movement costs a weekly bill while it lasts.'),
   ].join('');
   const billsTable = `<div class="ec-bills">
-      <div class="ec-brow head"><span></span><span>Bill</span><span class="r">Owed / wk</span><span class="r">Of output</span><span class="r">Paid</span></div>
+      <div class="ec-brow head"><span></span><span>Bill</span><span${tipAttr({ text: 'Share of the ceiling\nHow much of the bill ceiling each bill takes.' })}>Of the ceiling</span><span class="r">Owed / wk</span><span class="r">Of output</span><span class="r">Paid</span></div>
       ${billRows}
-      <div class="ec-brow total"><span></span><span class="ec-bname">Total</span><span class="r">${num(bills.owed, 2)}</span><span class="r">${pct(output > 0 ? bills.owed / output : 0)}</span><span class="r ${crisis ? 'neg' : ''}">${num(bills.paid ?? bills.owed, 2)}</span></div>
+      <div class="ec-brow total"><span></span><span class="ec-bname">Total</span><span class="ec-bbar total${crisis ? ' neg' : ''}"><i style="width:${(Math.min(1, billShare) * 100).toFixed(1)}%"></i></span><span class="r">${num(bills.owed, 2)}</span><span class="r">${pct(output > 0 ? bills.owed / output : 0)}</span><span class="r ${crisis ? 'neg' : ''}">${num(bills.paid ?? bills.owed, 2)}</span></div>
     </div>
     <div class="ec-ceil"${tipAttr({ text: `Bill ceiling\n${pct(cap)} of output may go to bills. The Requisition the Economy decision raises it for half a year.` })}>
       <small>Ceiling</small>${meter(billShare, { tone: crisis ? 'neg' : billShare > 0.8 ? 'warn' : 'pos', mark: 1, wide: true })}
@@ -440,31 +480,108 @@ export function renderBudget(game, me, state) {
   const warArmy = (bills.army + bills.navy) * (bills.atWar ? 1 : SUPPLY.war / (bills.war || 1));
   const warShare = output > 0 ? (warArmy + bills.schools + bills.martial) / output : 0;
   const warTone = warShare > cap ? 'neg' : warShare > cap * 0.8 ? 'warn' : '';
-  const warLine = bills.atWar
-    ? `<p class="k-note">At war: supply already costs ×${SUPPLY.war}. Bills take <b>${pct(output > 0 ? bills.owed / output : 0)}</b> of output; above <b>${pct(cap)}</b> a supply crisis starts.</p>`
-    : `<p class="k-note">At war the same army and fleet would cost <b>${num(warArmy, 1)} IC</b> a week (×${SUPPLY.war}): bills <b class="${warTone}">${pct(warShare)}</b> of output. A supply crisis starts above <b>${pct(cap)}</b>${warShare > cap ? ' — this army could not be supplied in a war' : ''}.</p>`;
+  const warTip = `In a war\nSupply costs ×${SUPPLY.war}. The same army and fleet would cost ${num(warArmy, 1)} IC a week and bills would take ${pct(warShare)} of output. Above ${pct(cap)} the nation is in a supply crisis.`;
+  const warLine = `<div class="ec-warline"${tipAttr({ text: warTip })}>
+      <small>${bills.atWar ? 'At war' : 'In a war'}</small>
+      <span>supply ×${SUPPLY.war}</span>
+      <span><b>${num(warArmy, 1)}</b> IC / wk</span>
+      <span>bills <b class="${warTone}">${pct(warShare)}</b> of output</span>
+      <span>crisis above <b>${pct(cap)}</b></span>
+    </div>`;
 
-  // --- Fon defteri ----------------------------------------------------------
+  // --- Fon --------------------------------------------------------------------
+  // Fon bir sayı listesi değil bir HAZNE: tabanından (borç sınırı) sonraki
+  // kademenin bedeline uzanan ölçekte şimdi nerede, bu hafta ne kadar
+  // dolacak, sıradaki kademe ne zaman. Eski panel yedi satırlık bir defter +
+  // boş grafikti; ilk haftada yedi satırın hepsi "—" idi (Kerem: "bu kısım
+  // zayıf"). Defter satırları sabit kalır (haftadan haftaya sıfıra düşen
+  // satır kaybolsaydı panel oynardı), iki sütunda: giren / çıkan.
   const rows = view.ledger ?? {};
-  const fundRows = FUND_LINES.map((id) => {
-    const value = rows[id] ?? 0;
-    const row = { icon: fundArt(id), label: esc(LEDGER_LINES[id]?.label ?? id), value: signed(value), tone: tone(value), tip: 'ledger', arg: id };
-    return Math.abs(value) > 0.05 ? row : { ...row, value: '—', tone: '', cls: 'idle' };
-  });
-  const net = rows.net ?? FUND_LINES.reduce((sum, id) => sum + (rows[id] ?? 0), 0);
+  const fundNow = view.fund ?? 0;
+  const floor = Math.min(0, view.fundFloor ?? 0);
+  const weekly = split ? split.invested : 0;
+  const after = fundNow + weekly;
+  const goal = Math.max(next?.cost ?? 0, after, fundNow, 1);
+  const range = goal - floor || 1;
+  const at = (x) => (((Math.max(floor, Math.min(goal, x)) - floor) / range) * 100).toFixed(2);
+  const eta = split?.eta;
+  const when = !next ? 'every state at the cap'
+    : eta == null ? 'not saving' : eta === 0 ? 'this week' : `in ${span(eta)}`;
+  const trackTip = `Development fund\nWhat is left after bills, the army and the people flows here and buys development levels state by state. It may dip to the floor, ${money(view.fundFloor, 0)} (four weeks of output below zero).`;
+  const fillFrom = fundNow < 0 ? at(fundNow) : at(0);
+  const fillTo = fundNow < 0 ? at(0) : at(fundNow);
+  const track = `<div class="ec-ftrack"${tipAttr({ text: trackTip })}>
+      <div class="ec-ftrack-bar">
+        <i class="ec-ft-debt" style="left:0;width:${at(0)}%"></i>
+        <i class="ec-ft-fill${fundNow < 0 ? ' neg' : ''}" style="left:${fillFrom}%;width:${(fillTo - fillFrom).toFixed(2)}%"></i>
+        ${weekly > 0.05 ? `<i class="ec-ft-gain" style="left:${at(fundNow)}%;width:${(at(after) - at(fundNow)).toFixed(2)}%"></i>` : ''}
+        <b class="ec-ft-zero" style="left:${at(0)}%"></b>
+        ${next ? `<b class="ec-ft-goal" style="left:${at(next.cost)}%"></b>` : ''}
+      </div>
+      <div class="ec-ftrack-scale">
+        <span class="floor">floor ${money(view.fundFloor, 0)}</span>
+        <span class="zero" style="left:${at(0)}%">0</span>
+        ${next ? `<span class="goal">${money(next.cost, 0)}</span>` : ''}
+      </div>
+    </div>`;
+  // İlk hafta kapanmadan defter boştur: akışlar tahminle (yalnız bu haftanın
+  // yatırımı) dolar, panel ilk haftadan sonra yer değiştirmez.
+  const flowSource = view.settled ? rows : split ? { investment: split.invested } : null;
+  const flowMax = Math.max(1e-6, ...FUND_LINES.map((id) => Math.abs(flowSource?.[id] ?? 0)));
+  const flowRow = (id) => {
+    const value = flowSource?.[id] ?? 0;
+    const idle = Math.abs(value) <= 0.05;
+    return `<div class="ec-flow${idle ? ' idle' : ''}"${tipAttr('ledger', id)}>
+        <span class="ec-flow-ico">${fundArt(id)}</span>
+        <span class="ec-flow-name">${esc(LEDGER_LINES[id]?.label ?? id)}</span>
+        <span class="ec-flow-bar ${value < 0 ? 'out' : 'in'}"><i style="width:${((Math.abs(value) / flowMax) * 100).toFixed(1)}%"></i></span>
+        <b class="${idle ? '' : tone(value)}">${idle ? '—' : signed(value)}</b>
+      </div>`;
+  };
+  const net = view.settled
+    ? rows.net ?? FUND_LINES.reduce((sum, id) => sum + (rows[id] ?? 0), 0)
+    : FUND_LINES.reduce((sum, id) => sum + (flowSource?.[id] ?? 0), 0);
+  const when_ = view.settled ? 'last week' : 'this week, projected';
+  const ins = FUND_LINES.filter((id) => LEDGER_LINES[id]?.kind === 'income');
+  const outs = FUND_LINES.filter((id) => LEDGER_LINES[id]?.kind !== 'income');
+  const flows = flowSource
+    ? `<div class="ec-flows">
+        <div class="ec-flow-col"><small>In · ${when_}</small>${ins.map(flowRow).join('')}</div>
+        <div class="ec-flow-col"><small>Out · ${when_}</small>${outs.map(flowRow).join('')}
+          <div class="ec-flow net"><span class="ec-flow-ico"></span><span class="ec-flow-name">Net</span><span></span><b class="${tone(net)}">${signed(net)}</b></div>
+        </div>
+      </div>`
+    : '';
   const history = me.economy?.fundHistory ?? [];
-  const fundBody = `${ledger([...fundRows, { label: 'Net', value: signed(net), tone: tone(net), strong: true }])}
-    <div class="k-chart ec-fundchart">${spark(history, { width: 420, height: 60 })}</div>
-    <div class="k-chart-legend"><span>${history.length} weeks</span><span>floor <b>${money(view.fundFloor, 0)}</b></span><span>now <b>${money(view.fund, 0)}</b></span></div>`;
+  const chart = history.length >= 2
+    ? `<div class="k-chart ec-fundchart">${spark(history, { width: 420, height: 60 })}</div>
+      <div class="k-chart-legend"><span>${history.length} weeks</span><span>floor <b>${money(view.fundFloor, 0)}</b></span><span>now <b>${money(fundNow, 0)}</b></span></div>`
+    : '';
+  const fundBody = `<div class="ec-fund">
+      <div class="ec-fund-top">
+        <div class="ec-fund-now"><small>In the fund</small><b class="${fundNow < 0 ? 'neg' : ''}">${money(fundNow, 0)}</b>
+          <em>${weekly > 0.05 ? `${projected ? '≈ ' : ''}+${num(weekly, 1)} this week` : 'nothing flows in this week'}</em></div>
+        <div class="ec-fund-next"><small>Next level</small>
+          ${next ? `<b>${esc(next.name)} <span>→ ${next.level}</span></b><em>${money(next.cost, 0)} · ${when}</em>` : `<b>${when}</b>`}</div>
+      </div>
+      ${track}
+      ${flows}
+      ${chart}
+    </div>`;
 
-  const educ = `<p class="k-note">Schools cost <b>${money(view.education, 1)}</b> a week and move literacy toward <b>${pct(view.literacyTarget)}</b> (now ${pct(view.literacy)}). Literacy raises the development cap and opens focus slots.</p>`;
+  const educTip = 'Schools\nThe education law\'s weekly bill. Literacy raises the development cap and opens focus slots.';
+  const educ = `<div class="ec-warline"${tipAttr({ text: educTip })}>
+      <small>Schools</small>
+      <span><b>${money(view.education, 1)}</b> / wk</span>
+      <span>literacy <b>${pct(view.literacy)}</b> → <b>${pct(view.literacyTarget)}</b></span>
+    </div>`;
 
   return `${kpis}
     ${crisis ? `<div class="k-alert neg"><b>Supply crisis</b> — the bills owe ${money(bills.owed, 1)} a week but only ${money(bills.room, 1)} fit under the ceiling: every bill is paid ${pct(bills.s)}. Reinforcement, training and order recover slower and stability falls until they fit. Shrink the army, lower the education law or take Requisition the Economy.</div>` : ''}
     ${hero}
     <div class="k-cols-2">
-      ${panel('Bills', `${billsTable}${warLine}`, { sub: 'paid off the top of output' })}
-      ${panel('Development fund', fundBody, { sub: view.settled ? 'IC last week · last 52 weeks' : 'first report after week 1' })}
+      ${panel('Bills', `${billsTable}${warLine}`)}
+      ${panel('Development fund', fundBody)}
     </div>
     ${panel('Economic laws', `<div class="k-laws">${lawCard(world, me, 'economy', state.confirm, { compact: true })}${lawCard(world, me, 'labour', state.confirm, { compact: true })}${lawCard(world, me, 'education', state.confirm, { compact: true })}</div>${educ}`,
     { sub: `${governmentView(world, me).lawCost} political power per change` })}`;
@@ -487,12 +604,12 @@ export function renderTrade(game, me, state) {
 
   // Ticaret fonun kalemidir: ihracat fona IC yazar, ithalat ondan öder.
   const kpis = kpiRow([
-    kpi({ icon: ledgerArt('exports', 'md'), label: 'Exports', value: flow(ledgerRows.exports ?? 0), sub: settled ? 'into the fund last week' : FIRST_WEEK, tip: 'ledger', arg: 'exports', cls: 'hero' }),
-    kpi({ label: 'Imports', value: flow(ledgerRows.imports ?? 0), sub: settled ? 'from the fund last week' : FIRST_WEEK, tip: 'ledger', arg: 'imports' }),
-    kpi({ label: 'Trade balance', value: flow((ledgerRows.exports ?? 0) + (ledgerRows.imports ?? 0)), sub: 'exports − imports', tip: { text: 'Trade balance\nWhat exports paid into the development fund minus what imports took out of it last week.' } }),
+    kpi({ icon: ledgerArt('exports', 'md'), label: 'Exports', value: flow(ledgerRows.exports ?? 0), sub: settled ? 'last week' : '', tip: 'ledger', arg: 'exports', cls: 'hero' }),
+    kpi({ label: 'Imports', value: flow(ledgerRows.imports ?? 0), sub: settled ? 'last week' : '', tip: 'ledger', arg: 'imports' }),
+    kpi({ label: 'Trade balance', value: flow((ledgerRows.exports ?? 0) + (ledgerRows.imports ?? 0)), sub: '', tip: { text: 'Trade balance\nWhat exports paid into the development fund minus what imports took out of it last week.' } }),
     kpi({
       label: 'Shortages', value: settled ? String(shortages.length) : '—',
-      sub: !settled ? FIRST_WEEK : shortages.length ? shortages.map((id) => RESOURCES[id].name).join(', ') : 'every need covered',
+      sub: !settled ? '' : shortages.length ? shortages.map((id) => RESOURCES[id].name).join(', ') : 'none',
       tip: { text: 'Shortages\nResources the country needs but could not fully make or buy last week.' },
     }),
     kpi({
@@ -529,10 +646,10 @@ export function renderTrade(game, me, state) {
       ? spark(history, { width: 64, height: 20, cls: 'mini', zero: false })
       : '<small class="k-dim">—</small>';
     return `<div class="k-res-row${needed && ratio < 0.8 ? ' short' : ''}"${tipAttr('resource', id)}>
-      <span class="k-res-name">${resourceArt(id, 'sm')}<b>${esc(info.name)}</b>${info.era && !needed && settled ? badge('no demand yet', 'dim') : ''}</span>
+      <span class="k-res-name">${resourceArt(id, 'sm')}<b>${esc(info.name)}</b></span>
       <span class="k-num">${settled ? num(r.produced ?? 0) : '—'}</span>
       <span class="k-num">${needed ? num(r.need) : '—'}</span>
-      <span class="k-cover">${needed ? `${meter(ratio, { tone: ratio < 0.8 ? 'neg' : ratio < 0.98 ? 'warn' : 'pos' })}<b>${pct(ratio)}</b>` : `<small class="k-dim">${settled ? 'not needed' : 'after week 1'}</small>`}</span>
+      <span class="k-cover">${needed ? `${meter(ratio, { tone: ratio < 0.8 ? 'neg' : ratio < 0.98 ? 'warn' : 'pos' })}<b>${pct(ratio)}</b>` : `${meter(0, { tone: 'dim' })}<b class="k-dim">${settled ? 'none' : '—'}</b>`}</span>
       <span class="k-num neg">${r.imported > 0.05 ? num(r.imported) : '—'}</span>
       <span class="k-num pos">${r.exported > 0.05 ? num(r.exported) : '—'}</span>
       <span class="k-price"${tipAttr({ text: `${info.name}: ${num(price, 2)} IC\nBase price ${num(info.price, 2)} IC: ${vsBase > 0 ? '+' : vsBase < 0 ? '−' : ''}${Math.abs(vsBase)}% against it.` })}><b>${num(price, 2)}</b><small class="${vsBase > 0 ? 'up' : vsBase < 0 ? 'down' : ''}">${vsBase > 0 ? '+' : vsBase < 0 ? '−' : ''}${Math.abs(vsBase)}%</small></span>
@@ -551,15 +668,16 @@ export function renderTrade(game, me, state) {
       label: esc(other.name),
       value: `<button class="k-btn sm" data-uc-embargo-lift="${other.id}">Lift</button>`,
     })))
-    : empty('No embargoes. Declare one from a foreign power\'s dossier (25 political power).');
+    : empty('No embargoes');
 
   return `${kpis}
     <div class="k-split wide-left">
-      ${panel('Resources', table, { sub: `per week${settled ? '' : ` · ${FIRST_WEEK}`} · ${sortLabel(sort, RES_COLS) ?? 'hover a row for its uses and suppliers'}` })}
+      ${panel('Resources', table, { sub: `per week${sortLabel(sort, RES_COLS) ? ` · ${sortLabel(sort, RES_COLS)}` : ''}` })}
       <div class="k-stack">
-        ${panel('Trade law', lawCard(world, me, 'trade', state.confirm, { compact: true })
-    + '<p class="k-note">Exports sell only the surplus, up to the law\'s share of output, and pay into the development fund. Imports fill every shortage automatically while the fund is above its floor.</p>')}
-        ${panel('Embargoes', embargoBody, { sub: 'no trade with these states' })}
+        ${panel('Trade law', lawCard(world, me, 'trade', state.confirm, { compact: true }), {
+          tip: { text: 'Trade law\nExports sell only the surplus, up to the law\'s share of output, and pay into the development fund. Imports fill every shortage automatically while the fund is above its floor.' },
+        })}
+        ${panel('Embargoes', embargoBody)}
       </div>
     </div>`;
 }
@@ -611,22 +729,26 @@ export function renderIndustry(game, me, state) {
   const feed = feedTarget(me);
   const auto = (view.feed?.mode ?? 'auto') === 'auto';
   // İlk hafta kapanmadan ordunun çektiği ve halkın payı yoktur (alloc null);
-  // economy.consumer o zamana dek "%100" yer tutucusudur.
+  // economy.consumer o zamana dek "%100" yer tutucusudur. O hafta kartlar
+  // Economy ekranının tahminini okur (projectedBase: kapanışın fonksiyonları).
   const settled = Boolean(view.alloc);
+  const projBase = settled ? null : barBase(world, me, turnOf(game));
+  const proj = projBase ? barSplit(projBase, projBase.committed) : null;
 
   const kpis = kpiRow([
-    kpi({ icon: buildingArt('factory', 'md'), label: 'Industry', value: num(ic.total), sub: `${pct(ic.output > 0 ? ic.total / ic.output : 0)} of output · the army draws from it`, tip: 'ic', cls: 'hero' }),
+    kpi({ icon: buildingArt('factory', 'md'), label: 'Industry', value: num(ic.total), sub: `${pct(ic.output > 0 ? ic.total / ic.output : 0)} of output`, tip: 'ic', cls: 'hero' }),
     kpi({ icon: gaugeArt('output', 'md'), label: 'Output', value: num(ic.output), sub: `hand ${num(ic.hand ?? 0, 0)} + industry ${num(ic.total ?? 0, 0)} + crown ${num(ic.crown ?? 0, 0)}`, tip: { text: 'Output\nHandwork, industry and the crown: everything the country makes in a week. Bills, the army, the people and development share it (Economy screen).' } }),
     kpi({
-      label: 'Army draws', value: settled ? `${num(drawn, 1)} / ${num(armyCap, 1)}` : '—',
-      sub: settled ? `up to ${pct(ic.share)} of industry · economy law` : `up to ${pct(ic.share)} of industry · ${FIRST_WEEK}`,
+      label: 'Army draws', value: settled ? `${num(drawn, 1)} / ${num(armyCap, 1)}` : proj ? `0.0 / ${num(projBase.armyCap, 1)}` : '—',
+      sub: `up to ${pct(ic.share)} of industry · economy law`,
       tip: 'law', arg: 'economy', meter: settled && armyCap > 0 ? drawn / armyCap : 0,
     }),
     kpi({
-      icon: ledgerArt('people', 'md'), label: 'Consumer goods', value: settled ? pct(consumer.ratio) : '—',
-      sub: settled ? `${pts(consumerStability(consumer.ratio))} stability · fed ×${num(consumer.feed ?? feed, 2)}` : `${FIRST_WEEK} · target ×${num(feed, 2)}`,
+      icon: ledgerArt('people', 'md'), label: 'Consumer goods', value: settled ? pct(consumer.ratio) : proj ? pct(proj.ratio) : '—',
+      sub: settled ? `${pts(consumerStability(consumer.ratio))} stability · fed ×${num(consumer.feed ?? feed, 2)}` : `projected · fed ×${num(feed, 2)}`,
       tip: { text: 'Consumer goods\nThe people\'s share of output against what they want, which grows every decade. A shortage costs stability and growth; the handle on the Economy screen sets the share.' },
-      meter: settled ? Math.min(1, consumer.ratio) : 0, meterTone: consumer.ratio < 0.95 ? 'neg' : 'pos',
+      meter: settled ? Math.min(1, consumer.ratio) : proj ? Math.min(1, proj.ratio) : 0,
+      meterTone: (settled ? consumer.ratio : proj?.ratio ?? 1) < 0.95 ? 'neg' : 'pos',
     }),
     kpi({
       label: 'Shipyards', value: num(ic.dockyards ?? 0, 1), sub: (ic.dockyards ?? 0) > 0 ? 'IC the ship line can take' : 'no developed coast',
@@ -735,10 +857,10 @@ export function renderIndustry(game, me, state) {
 
   return `${kpis}
     <div class="k-split wide-left">
-      ${panel('Output', chains, { sub: 'what the states make × the national factors', cls: 'ec-chainpanel' })}
+      ${panel('Output', chains, { cls: 'ec-chainpanel' })}
       ${panel('Consumer goods', `${settled ? consumerBar : ''}${consumerNote}`, { sub: 'the people\'s share of output' })}
     </div>
-    ${panel('Production lines', body, { sub: 'the army\'s share of industry, split by priority · hover a priority to preview', cls: 'pl-panel' })}`;
+    ${panel('Production lines', body, { cls: 'pl-panel' })}`;
 }
 
 // --------------------------------------------------------- ÜRETİM HATLARI ---
@@ -1110,15 +1232,18 @@ export function renderConstruction(game, me, state) {
   const view = economyView(world, me);
   // İlk hafta kapanmadan fona akan pay yoktur: "0.0" ve "not saving" yalandı.
   const settled = Boolean(view.alloc);
-  const invest = view.alloc?.invest ?? 0;
-  const efficiency = view.investEfficiency ?? 1;
+  const projBase = settled ? null : barBase(world, me, turnOf(game));
+  const proj = projBase ? barSplit(projBase, projBase.committed) : null;
+  const known = settled || Boolean(proj);
+  const invest = view.alloc?.invest ?? proj?.invest ?? 0;
+  const efficiency = settled ? (view.investEfficiency ?? 1) : (projBase?.efficiency ?? 1);
   const invested = invest * efficiency;
   const rows = shownRows(devOrder(world, me, state), state);
   const next = rows.find((row) => row.target) ?? null;
   const fund = view.fund;
   const left = next ? Math.max(0, next.cost - fund) : 0;
   const eta = !next ? null : left <= 0 ? 0 : invested > 0.01 ? Math.ceil(left / invested) : null;
-  const when = !settled ? FIRST_WEEK : eta == null ? 'not saving' : eta === 0 ? 'this week' : `~${span(eta)}`;
+  const when = !known ? '' : eta == null ? 'not saving' : eta === 0 ? 'this week' : `~${span(eta)}`;
   const slots = focusSlots(me);
   const focused = focusedStates(world, me);
   const developing = focused.filter((p) => p.econ.focus === 'develop').length;
@@ -1126,22 +1251,22 @@ export function renderConstruction(game, me, state) {
 
   const kpis = kpiRow([
     kpi({
-      icon: emblemArt('infrastructure', 'md'), label: 'Invested', value: settled ? num(invested, 1) : '—', cls: 'hero',
-      sub: settled ? `IC a week · ${num(invest, 1)} × ${num(efficiency, 2)} efficiency` : `IC a week · ${FIRST_WEEK}`,
+      icon: emblemArt('infrastructure', 'md'), label: 'Invested', value: known ? num(invested, 1) : '—', cls: 'hero',
+      sub: `IC a week · ${num(invest, 1)} × ${num(efficiency, 2)} efficiency${settled ? '' : ' · projected'}`,
       tip: { text: 'Invested\nWhat is left of output after bills, the army and the people, times the investment efficiency: research, advisors, Industrial Subsidies and Free Trade raise it; a timber or iron shortage cuts it by up to half.' },
     }),
     kpi({
       label: 'Next level', value: next ? `${short(fund)} / ${short(next.cost)}` : short(fund),
-      sub: next ? `${esc(next.name)} → ${next.dev + 1} · ${when}` : 'every state is at the cap',
+      sub: next ? `${esc(next.name)} → ${next.dev + 1}${when ? ` · ${when}` : ''}` : 'every state is at the cap',
       tip: { text: 'Next level\nThe fund saves for one state at a time and buys its next level as soon as it can pay: Develop-focus states first, then the best gain for the cost.' },
       meter: next && next.cost > 0 ? fund / next.cost : 0, meterTone: 'pos',
     }),
     kpi({
-      label: 'Development cap', value: String(view.developmentCap), sub: `of ${DEVELOPMENT_MAX} · research and literacy raise it`,
+      label: 'Development cap', value: String(view.developmentCap), sub: `of ${DEVELOPMENT_MAX}`,
       tip: { text: `Development cap\nNo state may develop beyond it: ${DEVELOPMENT_CAP_BASE}, plus research, plus literacy × ${DEVELOPMENT_CAP_LITERACY} (literacy now ${pct(view.literacy)}). Schools cost output today and open the cap tomorrow.` },
     }),
     kpi({
-      label: 'Fund floor', value: money(view.fundFloor, 0), sub: 'four weeks of output below zero',
+      label: 'Fund floor', value: money(view.fundFloor, 0), sub: '',
       tip: { text: 'Fund floor\nGenerals, settlers, event choices and imports may take the fund below zero, down to this floor. Below zero no level is bought until it recovers.' },
     }),
     kpi({
@@ -1220,8 +1345,8 @@ export function renderPopulation(game, me, state) {
   const kpis = kpiRow([
     kpi({ icon: gaugeArt('population', 'md'), label: 'Population', value: formatPopulation(economy.population ?? populationOf(world, me)), sub: `${yearly(g.rate)} a year${view.realized != null ? ` · last year ${signed(view.realized * 100, 2)}%` : ''}`, tip: { text: 'Population\nGrows with food, consumer goods, stability, development and peace; war and famine shrink it. The Growth panel shows every factor.' } }),
     kpi({ icon: lawArt('education', 'md'), label: 'Literacy', value: pct(economy.literacy), sub: `heading for ${pct(economy.literacyTarget ?? literacyTarget(world, me))}`, tip: 'law', arg: 'education', meter: economy.literacy, meterTone: 'pos' }),
-    kpi({ icon: gaugeArt('manpower', 'md'), label: 'Manpower', value: formatPopulation(nationManpower(world, me.id)), sub: 'men who can still be raised', tip: 'manpower' }),
-    kpi({ icon: lawArt('citizenship', 'md'), label: 'Full citizens', value: pct(economy.acceptedShare ?? acceptedShareOf(world, me)), sub: 'of the population · Cultures tab', tip: 'law', arg: 'citizenship', meter: economy.acceptedShare ?? acceptedShareOf(world, me) }),
+    kpi({ icon: gaugeArt('manpower', 'md'), label: 'Manpower', value: formatPopulation(nationManpower(world, me.id)), sub: '', tip: 'manpower' }),
+    kpi({ icon: lawArt('citizenship', 'md'), label: 'Full citizens', value: pct(economy.acceptedShare ?? acceptedShareOf(world, me)), sub: 'of the population', tip: 'law', arg: 'citizenship', meter: economy.acceptedShare ?? acceptedShareOf(world, me) }),
   ]);
 
   // --- Büyüme -------------------------------------------------------------
@@ -1283,8 +1408,8 @@ export function renderPopulation(game, me, state) {
   return `${kpis}
     <div class="k-split k-pop">
       <div class="k-stack">
-        ${panel('Growth', growthBody, { sub: 'why the population grows' })}
-        ${panel('Education', lawCard(world, me, 'education', state.confirm, { compact: true }), { sub: 'literacy: research, assimilation, focus slots' })}
+        ${panel('Growth', growthBody)}
+        ${panel('Education', lawCard(world, me, 'education', state.confirm, { compact: true }))}
       </div>
       <div class="k-stack">
         ${panel(`The ${esc(status.culture)} nation`, `
@@ -1413,7 +1538,7 @@ export function renderCultures(game, me, state) {
   return `${kpis}
     <div class="k-split wide-left k-cult">
       <div class="k-stack">
-        ${panel('Peoples', `<div class="k-ptable">${peopleHead}${peopleRows}</div>`, { sub: `${sortLabel(psort, PEOPLE_COLS) ? `${sortLabel(psort, PEOPLE_COLS)} · ` : ''}click a people to see what can be done` })}
+        ${panel('Peoples', `<div class="k-ptable">${peopleHead}${peopleRows}</div>`, { sub: sortLabel(psort, PEOPLE_COLS) ?? '' })}
         ${panel('Restless states', restlessRows ? `<div class="k-rtable">${restlessRows}</div>${view.restlessMore ? `<small class="k-more">and ${view.restlessMore} calmer state${view.restlessMore === 1 ? '' : 's'}</small>` : ''}` : empty('Every state is calm.'), { sub: `out of 10 · revolt at ${view.revoltAt} · ${glyph('up', 'ctl')} rising ${glyph('down', 'ctl')} settling`, right: 'cause · compliance' })}
       </div>
       <div class="k-stack">
@@ -1421,7 +1546,7 @@ export function renderCultures(game, me, state) {
         ${settle.emptied.length || settle.ongoing ? resettleCard(settle) : ''}
         ${panel('National movements', moveCards || empty('No movement is growing. One rises where an unaccepted people is the majority and their unrest stays above 6.'), { sub: view.movements.length ? 'act before they break away' : 'peoples without rights organise here' })}
         ${focusCard(world, me)}
-        ${panel('Citizenship', lawCard(world, me, 'citizenship', state.confirm, { compact: true }), { sub: 'rights for peoples you have not accepted' })}
+        ${panel('Citizenship', lawCard(world, me, 'citizenship', state.confirm, { compact: true }))}
       </div>
     </div>`;
 }
@@ -1511,7 +1636,7 @@ function resettleCard(v) {
   const action = v.ongoing
     ? `<p class="k-settle-on">Settlers on the way: <b>${formatPopulation(v.ongoing.left)}</b> still to arrive · ${v.ongoing.weeks} weeks left</p>`
     : `<button class="k-btn wide" data-uc-resettle="1"${v.blockers.length ? blockedAttr(v.blockers) : tipAttr({ text: `Resettle\n${formatPopulation(v.plan.people)} of our own people move from our most crowded provinces into the empty ones over two years. ${v.plan.people < v.plan.need ? `The empty land could take ${formatPopulation(v.plan.need)}; our provinces can spare no more. ` : ''}Paid now from the development fund: ${money(v.plan.cost, 0)}.` })}>Bring settlers · ${formatPopulation(v.plan.people)} · ${money(v.plan.cost, 0)}</button>`;
-  return panel('Empty land', `${rows}${v.emptied.length > 5 ? `<small class="k-more">and ${v.emptied.length - 5} more</small>` : ''}${action}`, { sub: 'provinces emptied by deportation or confinement' });
+  return panel('Empty land', `${rows}${v.emptied.length > 5 ? `<small class="k-more">and ${v.emptied.length - 5} more</small>` : ''}${action}`, {});
 }
 
 /** Bütün state odakları (province panelindeki listeyle aynı eylemler). */
@@ -1733,8 +1858,8 @@ export function renderPolitics(game, me, state) {
     <div class="k-split k-pol">
       <div class="k-stack">
         ${panel('Parties', `<div class="k-pol-top">${courseSquare(view.course)}${hemicycle(view.support)}</div><div class="k-parties">${parties}</div>${regimes ? `<div class="k-actions">${regimes}</div>` : ''}`, { sub: esc(view.government.desc) })}
-        ${panel('Laws', `<div class="k-laws">${laws}</div>`, { sub: `${view.lawCost} political power per change · 26-week lock · click twice to enact` })}
-        ${panel('Decisions', `<div class="k-decs">${decisionTiles}</div>`, { sub: 'spend political power · hover for the full effect' })}
+        ${panel('Laws', `<div class="k-laws">${laws}</div>`, { sub: `${view.lawCost} political power per change · 26-week lock` })}
+        ${panel('Decisions', `<div class="k-decs">${decisionTiles}</div>`)}
       </div>
       <div class="k-stack">
         <div class="k-cols-2 k-pol-why">
@@ -1746,10 +1871,8 @@ export function renderPolitics(game, me, state) {
     // Üst çubukta "War Sup." hücresindeki yorgunluk aynı miğferle yazılır.
     icon: gaugeArt('exhaustion', 'sm'),
     right: `${pct(view.exhaustion)} → ${pct(view.exhaustionTarget)}`,
-    sub: 'what the war costs: casualties, years, occupation, hunger, men under arms',
   }) : ''}
         ${panel('National agenda', agendaBody + (recent ? `<ul class="k-log">${recent}</ul>` : ''), {
-    sub: 'one project at a time',
     // Gündemin AUTO anahtarı kendi panelinde: başlıktaki hap Government'ın.
     right: autoPill(DELEGATION_AREAS.agenda, { on: isDelegated(me, 'agenda'), last: lastDelegatedAction(me, 'agenda') }),
   })}
