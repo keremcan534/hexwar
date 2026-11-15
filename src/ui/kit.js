@@ -20,6 +20,7 @@ export function esc(s) {
 // Ortak para birimi oyun katmanında tanımlıdır (game/money.js): oyunun kendi
 // cümleleri de aynı sembolü yazar. Kit yalnız yeniden dışa aktarır.
 export { CURRENCY, money, signedMoney } from '../game/money.js';
+import { kpiArt, kpiKey } from './icons/art.js';
 
 export const num = (value, digits = 1) => (Number.isFinite(value) ? value.toFixed(digits) : '—');
 export const signed = (value, digits = 1) => `${value >= 0 ? '+' : '−'}${Math.abs(value ?? 0).toFixed(digits)}`;
@@ -54,7 +55,11 @@ export function blockedAttr(blockers) {
  * verilirse alt kenarda ince bir dolum çubuğu (0-1) çizer.
  */
 export function kpi({ icon = '', label, value, sub = '', tip = null, arg = '', cls = '', meter = null, meterTone = '' }) {
-  return `<div class="k-kpi ${cls}"${tipAttr(tip, arg)}>
+  // Kartın arkası görsel (Kerem 2026-11-15: "şu kutuların arkası görsel
+  // olabilir"): kendi resmi ya da ekranın fotoğrafından panorama (art.kpiArt).
+  const key = kpiKey(label);
+  return `<div class="k-kpi ${cls}" data-kpi="${esc(key)}"${tipAttr(tip, arg)}>
+    ${kpiArt(key)}
     ${icon ? `<span class="k-kpi-ico">${icon}</span>` : ''}
     <span class="k-kpi-body">
       <small>${esc(label)}</small>

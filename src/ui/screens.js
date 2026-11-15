@@ -50,7 +50,7 @@ import {
   TECH_ZOOMS, defaultInspect, researchRateLines, techGrid, techInspector, technologyScreen,
 } from './technologyScreen.js';
 import { depositsOf } from '../game/econ/deposits.js';
-import { resourceArt } from './icons/art.js';
+import { kpiArt, resourceArt } from './icons/art.js';
 import { TAB_GLYPH, TERM_GLYPH, glyph } from './icons/glyphs.js';
 import { motionOn } from './motion.js';
 import { localRect, toLocal } from './uiScale.js';
@@ -267,6 +267,13 @@ export class Screens {
       }
     }
     document.getElementById('screen-close').onclick = () => this.close();
+    // Pencere boyu değişince kartların şeritteki yeri de değişir: panorama
+    // (mountKpiPanorama) kare başına bir kez yeniden hizalanır.
+    let kpiFrame = 0;
+    window.addEventListener('resize', () => {
+      if (kpiFrame || !this.active) return;
+      kpiFrame = requestAnimationFrame(() => { kpiFrame = 0; this.mountKpiPanorama(); });
+    });
 
     // Tur ilerlediğinde ya da bir şey satın alındığında açık ekran tazelenir.
     // Tek bir hafta bu olaylardan on üç tane yayar (ölçüldü); hepsi aynı
@@ -577,6 +584,7 @@ export class Screens {
       ? (this[`render_${this.active}`]?.(me) ?? '')
       : '<p class="empty">Your nation has been eliminated.</p>';
     this.mountAuto(me, autoArea);
+    this.mountKpiPanorama();
     this.bind();
     // Gövde her tazelemede baştan kurulduğu için bayrak kapları da yenidir;
     // canvas'lar burada takılır (kopan eskiler kendi kendini siler).
@@ -1582,6 +1590,26 @@ export class Screens {
     if (this.el.auto) this.el.auto.innerHTML = areaId && !kpis ? this.autoPill(me, areaId) : '';
   }
 
+  /**
+   * PANORAMA: görseli gelmemiş kartlar ekranın fotoğrafını taşır, ama her
+   * kart aynı kırpımı gösterseydi şerit beş kez tekrar eden bir resim olurdu.
+   * Fotoğraf şeridin tamamına yayılır; her kart onun kendi altına düşen
+   * dilimini gösterir (pencereden bakılan tek sahne). Kartın şeritteki yeri
+   * yalnız JS'te bilinir: sol ofset ve şerit genişliği değişken olarak yazılır.
+   */
+  mountKpiPanorama() {
+    for (const row of this.el.body.querySelectorAll('.k-kpis')) {
+      const width = row.clientWidth;
+      if (!width) continue;
+      row.style.setProperty('--kw', `${width}px`);
+      for (const card of row.children) {
+        const art = card.querySelector(':scope > .k-kpi-art.is-pano');
+        if (!art) continue;
+        art.style.setProperty('--kx', `${-(card.offsetLeft + art.offsetLeft)}px`);
+      }
+    }
+  }
+
   autoCard(me, areaId) {
     const area = DELEGATION_AREAS[areaId];
     if (!area) return '';
@@ -1593,7 +1621,8 @@ export class Screens {
       on && last ? `\nLast: ${last.text}\n${last.reason}` : '',
       '\nShortcut: Shift+A',
     ].filter(Boolean).join('\n');
-    return `<button type="button" class="k-kpi auto-card${on ? ' is-on' : ''}" data-auto="${areaId}" aria-pressed="${on}"${tipAttr({ text: tip })}>
+    return `<button type="button" class="k-kpi auto-card${on ? ' is-on' : ''}" data-kpi="automation" data-auto="${areaId}" aria-pressed="${on}"${tipAttr({ text: tip })}>
+      ${kpiArt('automation')}
       <span class="auto-switch" aria-hidden="true"><i></i></span>
       <span class="k-kpi-body"><small>Automation</small><b>${on ? 'On' : 'Off'}</b><em>${AUTO_SCOPE[areaId] ?? area.name}</em></span>
       <kbd class="auto-key">⇧A</kbd>

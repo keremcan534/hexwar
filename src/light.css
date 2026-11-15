@@ -52,8 +52,23 @@
    lekeli bir maviye boyuyordu. Levhalar (0.85) bu tepsinin (~0.77) üstünde
    kabarık okunur. */
 :root[data-ui-theme="light"] #screen {
-  --screen-veil: linear-gradient(180deg, rgba(194, 190, 184, 0.86) 0%, rgba(192, 188, 182, 0.9) 55%, rgba(188, 184, 178, 0.93) 100%);
+  /* Fotoğraf geri geldi (Kerem 2026-11-15: "arka plan görselleri gitti"):
+     örtü 0.86-0.93'ten 0.55-0.7'ye indi ve fotoğraf katmanı 'luminosity'
+     ile karışır — fotoğrafın ışığı, tepsinin sıcak tonu. Soğuk mavi resim
+     açık zeminde lekeli durmaz, sepya bir baskı gibi okunur. Katman sırası
+     styles.css #screen ile aynı: gren (1), ton (--panel-tone, 3 gradyan),
+     örtü (1), fotoğraf (1); yüzey renk katmanıdır, listeye girmez. */
+  --screen-veil: linear-gradient(180deg, rgba(198, 193, 185, 0.55) 0%, rgba(196, 191, 183, 0.64) 55%, rgba(192, 187, 179, 0.72) 100%);
+  background-blend-mode: normal, normal, normal, normal, normal, luminosity;
 }
+/* Kart resmi de aynı baskı: fotoğrafın ışığı porselenin tonunda. */
+:root[data-ui-theme="light"] .k-kpi > .k-kpi-art {
+  mix-blend-mode: luminosity;
+  opacity: 0.5;
+  filter: contrast(0.92) brightness(1.06);
+}
+:root[data-ui-theme="light"] .k-kpi:hover > .k-kpi-art { opacity: 0.64; }
+:root[data-ui-theme="light"] :is(.k-kpi-body b, .k-kpi-body small, .k-kpi-body em) { text-shadow: 0 1px 0 rgba(255, 252, 245, 0.55); }
 /* Yazının doğrudan fotoğraf üstünde durduğu dar ekranlar: örtü daha kapalı. */
 :root[data-ui-theme="light"] #screen:is([data-screen="dossier"], [data-screen="peace"], [data-screen="construction"]) {
   --screen-veil: linear-gradient(180deg, rgba(196, 192, 186, 0.93) 0%, rgba(194, 190, 184, 0.95) 55%, rgba(190, 186, 180, 0.96) 100%);

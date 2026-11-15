@@ -289,6 +289,31 @@ const TECH_ART = new Set([
   'wireless_telegraphy', 'research_laboratories', 'mass_higher_education', 'electronics', 'nuclear_physics',
 ]);
 
+/**
+ * Gösterge kartlarının arka plan görselleri (assets/kpi/<anahtar>.webp).
+ * Anahtar kartın etiketinden türer (kpiKey): "Full citizens" → full-citizens;
+ * iki ekranda aynı ad aynı görseli kullanır. Liste elle tutulur (TECH_ART
+ * gibi): dosya gelmeden ad yazılsaydı her ekran açılışı 404 isterdi. Görseli
+ * olmayan kart ekranın kendi fotoğrafını panorama olarak taşır.
+ */
+const KPI_ART = new Set([]);
+
+/** Kartın etiketinden görsel anahtarı. */
+export function kpiKey(label) {
+  return String(label ?? '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+}
+
+/**
+ * Kartın arka plan katmanı. Görseli varsa kendi resmi; yoksa `is-pano`:
+ * ekranın fotoğrafı bütün şerit boyunca tek sahne gibi akar (screens
+ * .mountKpiPanorama kartın şeritteki yerini yazar).
+ */
+export function kpiArt(key) {
+  return KPI_ART.has(key)
+    ? `<i class="k-kpi-art" style="background-image:url('assets/kpi/${key}.webp')" aria-hidden="true"></i>`
+    : '<i class="k-kpi-art is-pano" aria-hidden="true"></i>';
+}
+
 /** Teknolojinin resmi var mı (inceleme panelinin büyük plakası buna göre kurulur). */
 export function hasTechArt(techId) {
   return TECH_ART.has(techId);
