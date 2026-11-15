@@ -15,9 +15,28 @@ yine oyunun üreticisiyle rastgele. Dönem oyunun dönemidir (1900–1945).
 |---|---|
 | Veri | Natural Earth 1:10m (kara, küçük adalar, göller, tarihî göller, nehirler, buzullar; kamu malı) · NOAA ETOPO1 yükseklik/derinlik, 0.1° (ABD kamu malı) · Köppen-Geiger **1901–1930** (Beck vd. 2023, CC BY 4.0: künyede atıf) |
 | Izgara | **160 × 96**, yatay sarmal — standart dünyanın yoğunluğu ve dengesi |
-| Projeksiyon | **Miller**, 83.6°K – 63.1°G: 160×96 hex oranı tam bu aralığa denk gelir. Antarktika yok, dikiş Bering'de (−169°), Avrupa-Afrika ortada |
+| Projeksiyon | **Miller**, 83.6°K – 63.1°G: 160×96 hex oranı tam bu aralığa denk gelir. Antarktika yok, dikiş Bering'de (−169°), Avrupa-Afrika ortada. Üstüne **Avrupa ve Anadolu mercekleri** (aşağıda) |
 | Menü | New Campaign: **World: Procedural / Earth**. Earth'te boy, kıtasallık ve kara oranı kapanır; **tohum = siyaset** (ülke, sınır, ad, halk, province bölümü). Ana raydaki Random World prosedürel kalır |
 | Dağılım | Bugünkü makro roller gerçek bölgelere (aşağıdaki tablo); nüfus ve kaynak bugünkü kuraldan: arazi × bölge çarpanı |
+
+## Mercekler: Avrupa ve Anadolu büyütülür
+
+Kerem (2026-11-15): "Avrupa'nın küçük kalması bu tarz oyunlarda sıkıcı olur",
+"Türkiye de önemli". Saf Miller'da Avrupa kara hexlerinin yalnız %4.9'uydu
+(224 hex), Sibirya ve Kanada ise kutup şişmesiyle dev. Paradox haritalarının
+hilesi uygulanır: projeksiyonun üstüne yumuşak büyüteçler
+([earthGrid.js](../src/world/earthGrid.js) `EARTH_GRID.lenses`).
+
+- Profil `ρ → ρ·(1 + (m−1)(1−ρ²)²)`: merkezde iki yönde de ×m (biçim
+  bozulmaz), elips kenarında 1'e söner. m < 2.25 iken bire bir ve tersinir
+  (ileri-geri hata 4·10⁻¹³ derece).
+- **Avrupa** (16°D, 49°K; m 1.55): yogun-bati 224 → 401 hex. **Anadolu**
+  (34.5°D, 39.2°K; m 1.28, doğu-batı uzun elips): Avrupa merceğinin
+  çekirdeğinde zaten ×1.43'tü, toplam ~×1.8; kavsak 218 → 237 hex.
+- Bedeli halkadadır: Kuzey Atlantik, Arktik, Sahra'nın güneyi ve Arabistan
+  basıklaşır (Afrika 550 → 484 hex). Satır/sütun sayısı değişmez.
+- Mercek değişirse dar geçit çizgileri yeniden seçilir (`--probe`); bağlantı
+  denetimi kaymayı yakalar.
 
 ## Boru hattı
 
@@ -65,12 +84,19 @@ federasyon Atlantik kıyısı…). Ülkenin kendisi, adı ve sınırı tohumdan 
 ## Dar geçitler
 
 160 sütunda hex ~250 km: Cebelitarık (14 km) ya da İstanbul Boğazı (1 km)
-rasterde kapanır. Bu yüzden geçitler elle listelenir ve denetimle kanıtlanır:
+rasterde kapanır. Bu yüzden geçitler elle listelenir
+([curation.mjs](../scripts/earth/curation.mjs) `PASSAGES`) ve denetimle
+kanıtlanır (13 deniz yolu, 15 kara yolu, 10 ayrı kara). Çizgi komşu hex
+merkezlerinden geçer, yalnız gereken hexi değiştirir:
 
-- **Deniz yolu açık:** Cebelitarık, Çanakkale–Marmara–İstanbul, Kerç, Manş,
-  Kuzey Kanalı, Danimarka boğazları, Otranto, Bab-ül Mendeb, Hürmüz, Malakka,
-  Bering.
-- **Kara bağlı:** Süveyş kıstağı, Panama, Kra kıstağı, Kore.
+- **Suya döner:** Tanca (%55), Gelibolu (%69) ve İzmit (%60) — İstanbul hexi
+  kara kalır, Marmara zaten su —, Sund'da Zelanda kuzeyi (%31), Aden (%52),
+  Johor (%65). Manş, Kerç, Otranto, Hürmüz, Bering kendiliğinden açık;
+  çizgileri kapanmasın diye durur.
+- **Karaya döner:** Panama ve Orta Amerika (7 hex), Kra-Patani (3 hex).
+  Süveyş kendiliğinden bağlı.
+- Küçük ada: hex alanının beşte birini dolduran ada korunur (49 ada: Girit,
+  Kıbrıs, Korsika, Zelanda, Jamaika, Hawaii…).
 
 ## Denetim
 
