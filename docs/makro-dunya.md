@@ -85,6 +85,7 @@ her sahipsiz province kümesini bölge karakterine göre devletlere böler.
 | Toplam ülke (160×96) | ~53-63 |
 | Doldurma devleti boyu | bozkır 28, güney kıtası/yeni kuzey 26, yoğun-batı 10 province (harita boyuyla üsse 0.6 ölçeklenir) |
 | Üst sınır | 24 province/devlet (Voronoi sapmasını keser) |
+| Artık tavanı | kota dışı artık, devleti 32'nin üstüne taşıyamaz; tavana çarpan ≥3 province'lik artık bölge kendi devletini kurar, 1-2'lik artık komşuya katılır (2026-11-15: 160×96'da tohumların ~%40'ında artıklar tek komşuya akıp bandı aşıyordu, en çok 48) |
 | İzole ada kümesi ≤12 province | devlet değil, en yakın kıyı ülkesinin **deniz aşırı** toprağı |
 | Kara cebi ≤3 province | en KÜÇÜK komşuya katılır (bant şişmesin) |
 

@@ -433,6 +433,17 @@ const FILL_SIZE_DEFAULT = 18;
 const FILL_REFERENCE_PROVINCES = 700;
 /** Doldurma devleti için üst sınır: denetimin okunurluk bandını korur. */
 const FILL_MAX = 24;
+/**
+ * Artık dağıtımının tavanı: doldurma devleti kota dışı artıklarla bundan
+ * büyüyemez. Kota (FILL_MAX + 2) ilk büyümeyi tutuyordu ama artıklar tavansız
+ * katılıyordu: kota büyümesi bir tohumu kuşatıp kalan bölgeyi tek komşuya
+ * bırakınca hepsi ona akıyordu (ölçüldü: 70'lik kümede 26 → 45; 160x96'da
+ * tohumların ~%40'ında denetim bandı aşılıyordu, en çok 48). Değer bant
+ * (<= 35 çekirdek) ile sonradan katılan küçük ceplerin payı (3) arasındadır.
+ */
+const FILL_HARD = 32;
+/** Tavana çarpan artık bölge bu boydan itibaren kendi devletini kurar; küçüğü komşuya katılır. */
+const FILL_SPLIT_MIN = 3;
 
 /**
  * Bu boya kadar izole ada kümesi DEVLET kurmaz: en yakın kıyı ülkesinin deniz
@@ -618,31 +629,94 @@ function fillRemaining(world, nations, rng, { graph, makeNation, claimCluster })
     }
     // Kota yüzünden dışarıda kalanlar: her artık, komşu devletlerin EN KÜÇÜĞÜNE
     // katılır. Böylece küme tamamen dolar ve boylar birbirine yakın kalır.
+    // Tavanlı geçişte FILL_HARD'a dayanmış devlet artık almaz; dönüş değeri
+    // tavanın bir artığı geri çevirip çevirmediğidir.
     const index = new Map(born.map((n, i) => [n.id, i]));
-    for (let pass = 0; pass < 6; pass++) {
-      let changed = false;
-      for (const p of cluster) {
-        if (p.owner !== -1) continue;
-        let best = -1; let bestCount = Infinity;
-        for (const i of p.neighbors) {
-          const owner = provinces[i].owner;
-          const region = index.get(owner);
-          if (region === undefined || counts[region] >= bestCount) continue;
-          bestCount = counts[region];
-          best = region;
+    const spread = (capped) => {
+      let blocked = false;
+      for (let pass = 0; pass < 6; pass++) {
+        let changed = false;
+        for (const p of cluster) {
+          if (p.owner !== -1) continue;
+          let best = -1; let bestCount = Infinity;
+          for (const i of p.neighbors) {
+            const owner = provinces[i].owner;
+            const region = index.get(owner);
+            if (region === undefined || counts[region] >= bestCount) continue;
+            bestCount = counts[region];
+            best = region;
+          }
+          if (best < 0) continue;
+          if (capped && counts[best] >= FILL_HARD) { blocked = true; continue; }
+          claimCluster(p, born[best].id, true);
+          counts[best]++;
+          changed = true;
         }
-        if (best < 0) continue;
-        claimCluster(p, born[best].id, true);
-        counts[best]++;
-        changed = true;
+        if (!changed) break;
       }
-      if (!changed) break;
+      return blocked;
+    };
+    // Tavana hiç dayanılmayan kümede yol eskisiyle aynıdır (aynı geçişler,
+    // aynı zar): tavan yalnız aşım olacak kümeyi değiştirir.
+    let blocked = spread(true);
+    for (let round = 0; blocked && round < 4; round++) {
+      // Tavanın geri çevirdiği artık bölge kendi devlet(ler)ini kurar.
+      let grew = false;
+      for (const part of unownedParts(cluster, graph)) {
+        if (part.length < FILL_SPLIT_MIN) continue;
+        const k = Math.max(1, Math.round(part.length / target), Math.ceil(part.length / FILL_MAX));
+        const partSeeds = pickSpreadSeeds(world, part, k);
+        const inPart = new Set(part);
+        const partQuota = Math.ceil(part.length / k) + 2;
+        const grown = growRegions(graph, partSeeds, {
+          canEnter: (p) => p.owner === -1 && inPart.has(p),
+          stepCost: (p) => p.moveCost + rng.range(0, 2.0),
+          budget: () => partQuota,
+        });
+        const first = born.length;
+        for (const seed of partSeeds) {
+          const nation = makeNation(seed, role, 0, false);
+          index.set(nation.id, born.length);
+          born.push(nation);
+          counts.push(0);
+        }
+        for (const [province, region] of grown.assignment) {
+          claimCluster(province, born[first + region].id, true);
+          counts[first + region]++;
+        }
+        grew = true;
+      }
+      blocked = spread(true);
+      if (!grew) break;
     }
+    // Tavanın bıraktığı 1-2 province'lik artık mikro devlet kurmaz: tavansız katılır.
+    if (blocked) spread(false);
     // Hiçbir komşusu doldurulmamış artık (kopuk cep) ilk devlete yazılır.
     for (const p of cluster) {
       if (p.owner === -1) claimCluster(p, born[0].id, true);
     }
   }
+}
+
+/** Kümenin sahipsiz kalan province'leri, kara komşuluğuyla bitişik parçalar hâlinde. */
+function unownedParts(cluster, graph) {
+  const rest = new Set(cluster.filter((p) => p.owner === -1));
+  const seen = new Set();
+  const parts = [];
+  for (const start of rest) {
+    if (seen.has(start)) continue;
+    const part = [start];
+    seen.add(start);
+    for (let head = 0; head < part.length; head++) {
+      for (const n of graph.neighbors(part[head])) {
+        if (!rest.has(n) || seen.has(n)) continue;
+        seen.add(n);
+        part.push(n);
+      }
+    }
+    parts.push(part);
+  }
+  return parts;
 }
 
 /** Kümenin içinde birbirinden uzak `count` tohum: devletler üst üste doğmasın. */

@@ -177,10 +177,30 @@ kıyıları onlarca değersiz province ve kopuk doldurma devleti üretiyordu (36
 **Ölçüm (sürüm 2):** `audit:geography -- --earth` ve `audit:province -- --earth`
 bulgusuz (16/16 deniz, 19/19 iklim, 38 geçit). `audit:world -- --earth`:
 koloni 11-12 province, doğu devi Avrupa'nın 1.8-2.6 katı nüfus; iki eski
-bulgu kapandı. Kalan: çekirdek bandı (≤ 35) bir tohumda 36. Bu doldurma
-algoritmasının eski sınırıdır, kalibrasyonun değil (10 tohumda 35'i aşan:
-prosedürel 1 (46), Earth sürüm 1 3, sürüm 2 4); kökten çözüm nations.js
-doldurmasını, dolayısıyla prosedürel dünyayı da değiştirir.
+bulgu kapandı. Çekirdek bandı (≤ 35) aşımı doldurmanın eski sınırıydı,
+kalibrasyonun değil (10 tohumda 35'i aşan: prosedürel 1 (46), Earth sürüm 1
+3, sürüm 2 4); doldurma tavanıyla kapandı (aşağıda).
+
+## Doldurma tavanı (2026-11-16, nations.js — prosedürel dünyayı da etkiler)
+
+Kota yalnız ilk büyümeyi tutuyordu; kota dışı artıklar en küçük komşu devlete
+TAVANSIZ katılıyordu. Kota büyümesi bir tohumu kuşatıp kalan bölgeyi tek
+komşuya bırakınca artıkların hepsi ona akıyordu (Earth'te 70'lik Kanada
+kümesi 26 → 45; 160×96 prosedürelde tohumların ~%40'ında bant aşımı, en çok
+48). Artık bir devleti 32'nin üstüne taşıyamaz; tavana çarpan ≥ 3 province'lik
+artık bölge kendi devletini kurar, 1-2'lik artık komşuya katılır.
+
+- Tavana dayanılmayan kümede yol eskisiyle aynı (aynı geçiş, aynı zar): 36
+  tohumun 26'sı bit bit aynı, değişen 10'u tam aşım olanlar; aşımdan sonra
+  en büyük çekirdek 32-34, hiçbir tohumda 35 üstü yok. 78×62 (audit:borders,
+  audit:determinism) ve standart denetim tohumları etkilenmez.
+- `audit:world` (prosedürel ve `-- --earth`), `audit:province`: bulgusuz.
+- Eşli sınır ölçüsü, 160×96 × 45 yıl, aşım olan 5 tohum + kontrol BORDER2
+  (`BORDERS_SIZE=160x96`, aynı anda en çok 3 koşu): savaş + talep payı
+  ort. %12.42 → %13.28 (+0.87 puan; tohum başına −0.5…+2.4, placebo
+  gürültüsü −2.3…+6.2), ulus toplamı 45 yıl sonra 435 → 440 (başlangıç
+  404 → 413, bölünen devletler), en yüksek tohum %16.1; TEST 1-3 hepsinde
+  temiz. Kontrol BORDER2 45 yıl sonra birebir aynı.
 
 **Kayıt:** kural sürümü `genOptions.earthRules` ile kayda girer (province
 üretecinin `provinceGen` deseni). Alanı olmayan eski Earth kaydı sürüm 1

@@ -21,9 +21,13 @@ const SEEDS = (process.argv[3] ?? 'BORDER1,BORDER2,BORDER3').split(',');
 
 section(`SINIR DEGISIMI DENETIMI — ${YEARS} yil × ${SEEDS.length} tohum`);
 
+// Boy: harness varsayılanı 78x62. BORDERS_SIZE=160x96 standart dünyada ölçer
+// (doldurma tavanı gibi yalnız büyük haritada beliren değişikliklerin eşli kıyası).
+const SIZE = (process.env.BORDERS_SIZE ?? '').split('x').map(Number).filter(Boolean);
+
 /** Bir tohumun tam kosusu; donen sayilar tohumlar arasi karsilastirilabilir. */
 function runSeed(seed) {
-  const game = headless(seed);
+  const game = headless(seed, SIZE.length === 2 ? { cols: SIZE[0], rows: SIZE[1] } : {});
   const world = game.world;
   const before = world.provinces.map((province) => province.owner);
   // Başlangıç sahibinin ana halkı: toprak sonunda KENDİ halkının devletine
