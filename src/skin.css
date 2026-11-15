@@ -68,8 +68,13 @@
   /* PANEL YÜZEYİ = DÖŞENEN DOKU (Kerem 2026-11-15: "arayüz arka planı düz
      renk değil textureli olsun"). 9 dilimin ortası (fill) gerilir: ince
      doku orada büyüyüp pikselli leke olmuştu. Artık çerçeve ortasız çizilir,
-     yüzey 1:1 döşenen dokudur (ChatGPT, kaynak assets/incoming/panel-doku-*;
-     dikişsiz ve tonlu hâli scratchpad make_tile ile). Açık tema light.css'te. */
+     yüzey 1:1 döşenen dokudur (ChatGPT, kaynak assets/incoming/panel-doku-*).
+     Desenin ÖLÇEĞİ yazıdan uzak tutulur: ilk hâlde enerjinin neredeyse tamamı
+     1.5 px altındaydı (yazı çizgisinin ölçeği) ve açık temanın 6 px'lik
+     örgüsü yazının arkasında tel örgü gibi duruyordu (Kerem: "epey kötü").
+     Şimdi ince desen std ~0.8, malzeme hissi 4-120 px'lik yumuşak bulutta;
+     koyuda fırça izi yatayda yumuşatılmış çizgi. Süzgeçler sarmal: dikişsiz.
+     Açık tema light.css'te. */
   --sk-cerceve-kenar: url('../assets/ui/skin/cerceve.webp') 52 / 13px / 0 stretch;
   --sk-doku: url('../assets/ui/skin/panel-doku.webp');
   --sk-doku-renk: #161e23;
