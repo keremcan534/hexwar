@@ -793,8 +793,8 @@ function componentsLocal(mask, cols, rows, want) {
   return { label, sizes };
 }
 
-/** Çok kaynaklı BFS: her kareye karşı kütleye olan hex mesafesi. */
-function distanceField(land, cols, rows, fromLand) {
+/** Çok kaynaklı BFS: her kareye karşı kütleye olan hex mesafesi (Earth de kullanır). */
+export function distanceField(land, cols, rows, fromLand) {
   const total = cols * rows;
   const dist = new Int16Array(total).fill(-1);
   let queue = [];

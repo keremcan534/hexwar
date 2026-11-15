@@ -2045,6 +2045,13 @@ body.screen-open .layer-menu { display: none; }
   background: none;
   cursor: var(--cur-pointer);
 }
+/* Earth seçiliyken boy ve kıta kaydırıcıları anlamsız: söner, tıklanmaz
+   (değer yerinde kalır, Procedural'a dönünce aynen gelir). */
+.menu-field input[type="range"]:disabled {
+  opacity: 0.32;
+  cursor: default;
+  pointer-events: none;
+}
 
 .field input[type="range"]::-webkit-slider-runnable-track,
 .menu-field input[type="range"]::-webkit-slider-runnable-track {
@@ -6655,6 +6662,10 @@ body:is(.screen-open, .notify-quiet) .notify-tray { display: inline-flex; }
 .menu-credits { gap: var(--sp-4); }
 
 .menu-field { display: grid; gap: var(--sp-1); }
+/* Kaydırıcının 28 px'lik gövdesi alanlar arasına görünür boşluk koyuyor;
+   düğme sırası (World seçimi) o boşluğu kendisi taşımalı, yoksa alttaki
+   etikete yapışık okunuyor. */
+.menu-setup .menu-chips { margin-bottom: var(--sp-2); }
 
 .menu-field > span {
   display: flex;

@@ -162,8 +162,12 @@ export function generateNations(world, options = {}) {
   const graph = {
     neighbors: (province) => province.neighbors.map((i) => world.provinces[i]),
   };
-  const anchorTileOf = (zone) => {
-    const anchor = anchors[zone];
+  // Earth: büyük güç bölgenin ortasından değil rolünün gerçek yerinden büyür
+  // (denizci imparatorluk İngiltere, kuzey imparatorluğu Moskova...). Prosedürel
+  // dünyada rol çapası yoktur, davranış aynıdır.
+  const roleAnchors = world.roleAnchors ?? {};
+  const anchorTileOf = (zone, role) => {
+    const anchor = (role && roleAnchors[role]) || anchors[zone];
     if (!anchor) return world.tiles[Math.floor(world.tiles.length / 2)];
     const col = Math.min(world.cols - 1, Math.max(0, Math.floor(anchor.u * world.cols)));
     const row = Math.min(world.rows - 1, Math.max(0, Math.floor(anchor.v * world.rows)));
@@ -230,7 +234,7 @@ export function generateNations(world, options = {}) {
   };
 
   for (const spec of specs) {
-    const anchorTile = anchorTileOf(spec.zone);
+    const anchorTile = anchorTileOf(spec.zone, spec.role);
     const candidates = world.provinces.filter((province) => (
       province.owner === -1
       && province.zone === spec.zone

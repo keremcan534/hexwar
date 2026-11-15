@@ -25,6 +25,7 @@ import {
 } from '../game/save.js';
 import { campaignSaveState, gameDate } from './hud.js';
 import { worldRows } from '../world/worldgen.js';
+import { EARTH_COLS, EARTH_ROWS } from '../world/earth.js';
 import { MenuMusic } from './menuMusic.js';
 import { END_YEAR, ERA_NAME, START_YEAR } from '../game/calendar.js';
 import { randomSeed } from '../core/rng.js';
@@ -266,6 +267,8 @@ export class MainMenu {
       previewSeed: $('menu-preview-seed'),
       previewStats: $('menu-preview-stats'),
       presets: [...document.querySelectorAll('#menu .mm-seg[data-preset]')],
+      mapChoices: [...document.querySelectorAll('#menu [data-map-choice]')],
+      seedLabel: $('menu-seed-label'),
       nav: $('menu-rail'),
       resume: $('menu-resume'),
       resumeNote: $('menu-resume-note'),
@@ -324,6 +327,8 @@ export class MainMenu {
 
     // Sahne yapıcıda seçilir: menü açıldığında resim çoktan yüklenmeye
     // başlamış olsun, perde boş bir kare göstermesin.
+    // Dünya türü: üretilen gezegen ya da gerçek Dünya (world/earth.js).
+    this.mapKind = 'procedural';
     this.setScene(nextSceneIndex());
     this.buildThemeChips();
     this.bind();
@@ -478,6 +483,15 @@ export class MainMenu {
       };
     }
     el.seed.addEventListener('input', () => this.schedulePreview());
+    // Earth'te coğrafya sabittir: boy, kıta ve kara seçenekleri söner (değerleri
+    // yerinde kalır, Generated'a dönünce aynen gelir); tohum siyaseti çizer.
+    for (const chip of el.mapChoices) {
+      chip.onclick = () => {
+        this.mapKind = chip.dataset.mapChoice;
+        this.syncLabels();
+        this.schedulePreview(0);
+      };
+    }
     if (el.volume) {
       el.volume.oninput = () => {
         this.music.setVolume(Number(el.volume.value) / 100);
@@ -535,6 +549,9 @@ export class MainMenu {
 
   currentOptions() {
     const { el } = this;
+    // Earth: boy ve kıta veriden gelir (worldgen); seçenek genOptions'a girer,
+    // kayıt aynı dünyayı geri kurar.
+    if (this.mapKind === 'earth') return { map: 'earth' };
     const cols = Number(el.size.value);
     return {
       cols,
@@ -548,7 +565,16 @@ export class MainMenu {
   syncPresets() {
     const { el } = this;
     const value = { size: el.size, cont: el.cont, land: el.land, nations: el.nations };
+    for (const chip of el.mapChoices) {
+      const on = chip.dataset.mapChoice === this.mapKind;
+      chip.classList.toggle('on', on);
+      chip.setAttribute('aria-pressed', on ? 'true' : 'false');
+    }
+    const earth = this.mapKind === 'earth';
     for (const seg of el.presets) {
+      const fixed = earth && seg.dataset.preset !== 'nations';
+      seg.closest('.mm-choice')?.classList.toggle('is-off', fixed);
+      for (const button of seg.querySelectorAll('button')) button.disabled = fixed;
       const now = Number(value[seg.dataset.preset].value);
       for (const button of seg.querySelectorAll('button[data-value]')) {
         const on = Math.abs(Number(button.dataset.value) - now) < 1e-6;
@@ -597,7 +623,7 @@ export class MainMenu {
     el.previewBox.classList.add('is-busy');
     el.previewStatus.textContent = 'Generating';
     el.previewSeed.textContent = `seed ${seed}`;
-    el.previewStats.textContent = `${options.cols} × ${options.rows}`;
+    el.previewStats.textContent = options.map === 'earth' ? `${EARTH_COLS} × ${EARTH_ROWS} · Earth` : `${options.cols} × ${options.rows}`;
     this.previewWorker.postMessage({ id, seed, options });
   }
 
@@ -655,7 +681,7 @@ export class MainMenu {
     ctx.fillStyle = vignette;
     ctx.fillRect(0, 0, W, H);
     el.previewStatus.textContent = '';
-    el.previewStats.textContent = `${cols} × ${rows} · ${Math.round(data.land * 100)}% land`;
+    el.previewStats.textContent = `${cols} × ${rows}${this.mapKind === 'earth' ? ' · Earth' : ''} · ${Math.round(data.land * 100)}% land`;
     canvas.classList.remove('is-fresh');
     void canvas.offsetWidth;
     canvas.classList.add('is-fresh');
@@ -697,10 +723,13 @@ export class MainMenu {
 
   syncLabels() {
     const { el } = this;
+    const earth = this.mapKind === 'earth';
     const cols = Number(el.size.value);
-    el.sizeLabel.textContent = `${cols} × ${worldRows(cols)}`;
-    el.contLabel.textContent = Number(el.cont.value).toFixed(2);
-    el.landLabel.textContent = Number(el.land.value).toFixed(2);
+    for (const input of [el.size, el.cont, el.land]) input.disabled = earth;
+    if (el.seedLabel) el.seedLabel.textContent = earth ? 'Political seed' : 'World seed';
+    el.sizeLabel.textContent = earth ? `${EARTH_COLS} × ${EARTH_ROWS} · Earth` : `${cols} × ${worldRows(cols)}`;
+    el.contLabel.textContent = earth ? 'Earth' : Number(el.cont.value).toFixed(2);
+    el.landLabel.textContent = earth ? 'Earth' : Number(el.land.value).toFixed(2);
     const nations = Number(el.nations.value);
     el.nationsLabel.textContent = nations > 0 ? String(nations) : 'automatic';
     this.syncPresets();

@@ -249,6 +249,35 @@ export function generateRivers(world) {
   return world.rivers;
 }
 
+/**
+ * Hazır nehir kenarlarını yazar (Earth: Natural Earth nehirleri, işleme
+ * betiğinde hex kenarına oturtuldu). generateRivers ile aynı çıktı:
+ * `tile.river`, `tile.riverMask`, `world.rivers`. RNG çekmez.
+ * @param edges [{ a: kare indeksi, dir: DIRS yönü, flow: 0..1 }]
+ */
+export function applyRivers(world, edges, systems = 0) {
+  const { tiles } = world;
+  for (const t of tiles) {
+    t.river = false;
+    t.riverMask = 0;
+  }
+  const out = [];
+  for (const e of edges) {
+    const ta = tiles[e.a];
+    const tb = ta && world.get(ta.q + DIRS[e.dir][0], ta.r + DIRS[e.dir][1]);
+    // Kıyıya ya da göle düşen kenar nehir değildir (veri maskesiyle aynı kural).
+    if (!tb || ta.terrain.water || tb.terrain.water) continue;
+    const b = tb.row * world.cols + tb.col;
+    out.push({ a: e.a, b, dir: e.dir, flow: e.flow });
+    ta.riverMask |= 1 << e.dir;
+    tb.riverMask |= 1 << ((e.dir + 3) % 6);
+    ta.river = true;
+    tb.river = true;
+  }
+  world.rivers = { edges: out, systems, threshold: 0 };
+  return world.rivers;
+}
+
 /** Kenar başına göreli akış (0..1), kare indeksi*6 + yön; nehir değilse 0. */
 export function riverFlowTable(world) {
   if (world.rivers?.flowTable) return world.rivers.flowTable;

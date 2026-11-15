@@ -488,6 +488,9 @@
 #menu .mm-seg button.on { border-image: var(--sk-dugme-secili); color: #1c1306; text-shadow: 0 1px 0 rgba(255, 240, 200, 0.5); }
 #menu .mm-seg button.on small { color: #4a3816; }
 #menu .mm-seg[data-preset="nations"] button { align-items: center; }
+/* Earth seçiliyken coğrafya seçenekleri söner (değerleri yerinde kalır). */
+#menu .mm-choice.is-off { opacity: 0.38; }
+#menu .mm-choice.is-off .mm-seg button { cursor: var(--cur-no); }
 
 #menu .mm-fine summary {
   color: var(--mm-dim);

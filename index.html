@@ -376,8 +376,15 @@
       <form class="menu-view menu-setup hidden" id="menu-setup" onsubmit="return false">
         <div class="mm-setup">
           <div class="mm-setup-form">
+            <div class="mm-choice" data-tip="setup" data-tip-arg="map">
+              <span class="mm-label">World</span>
+              <span class="mm-seg" id="menu-map">
+                <button type="button" data-map-choice="procedural">Generated</button>
+                <button type="button" data-map-choice="earth">Earth</button>
+              </span>
+            </div>
             <label class="mm-seed" data-tip="setup" data-tip-arg="seed">
-              <span class="mm-label">World seed</span>
+              <span class="mm-label" id="menu-seed-label">World seed</span>
               <span class="mm-seed-row">
                 <input type="text" id="menu-seed" placeholder="" autocomplete="off" spellcheck="false" />
                 <button type="button" class="mm-dice" id="menu-dice" title="Roll a new seed" aria-label="Roll a new seed"><svg viewBox="0 0 20 20" aria-hidden="true"><rect x="3.2" y="3.2" width="13.6" height="13.6" rx="2.6"/><circle cx="7" cy="7" r="1.1"/><circle cx="13" cy="13" r="1.1"/><circle cx="13" cy="7" r="1.1"/><circle cx="7" cy="13" r="1.1"/><circle cx="10" cy="10" r="1.1"/></svg></button>
@@ -494,6 +501,13 @@
 
       <div class="menu-view menu-credits hidden" id="menu-credits-view">
         <p class="menu-note"><b>Imperial Eye</b></p>
+        <p class="menu-note">
+          Earth map data: <b>Natural Earth</b> coastlines, lakes, rivers and
+          glaciers (public domain); <b>NOAA ETOPO1</b> relief, Amante &amp;
+          Eakins 2009 (public domain); Köppen-Geiger climate 1901–1930 by
+          Beck et al. (2023), <i>Scientific Data</i> 10, 724, licensed
+          CC&nbsp;BY&nbsp;4.0 — all reduced to the hex grid.
+        </p>
         <p class="menu-note" id="menu-credits-music"></p>
         <div class="menu-setup-buttons">
           <button type="button" class="menu-btn" data-menu-back>Back</button>

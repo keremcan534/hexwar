@@ -12,8 +12,9 @@ import { classify, SEA_LEVEL, TERRAIN } from './terrain.js';
 import { DIRS, SQRT3, hexDistance, hexToPixel, offsetToAxial, wrapCol } from '../core/hex.js';
 import { generateCultures, mixCultures } from './cultures.js';
 import { generateProvinces, PROVINCE_GEN_LATEST } from './provinces-gen.js';
-import { generateRivers } from './rivers.js';
+import { applyRivers, generateRivers } from './rivers.js';
 import { buildGeography, zoneAnchors } from './geography.js';
+import { EARTH_COLS, EARTH_ROWS, earthData } from './earth.js';
 
 /** Hex dış yarıçapı (dünya birimi). Ekran ölçeği kamera zoom'undan gelir. */
 export const HEX_SIZE = 26;
@@ -109,11 +110,19 @@ export class World {
 
 export function generateWorld(seed, options = {}) {
   const opt = { ...DEFAULT_OPTIONS, ...options };
+  // EARTH (bkz. earth.js): coğrafya gerçek Dünya ve sabittir, boy veriden
+  // gelir (kaydırıcı yok sayılır); tohum yalnız siyaseti çizer. Alan yoksa
+  // prosedürel dünya: eski kayıtlar ve audit tohumları birebir aynı kalır.
+  const earth = opt.map === 'earth';
+  if (earth) {
+    opt.cols = EARTH_COLS;
+    opt.rows = EARTH_ROWS;
+  }
   const rng = makeRng(seed);
   const world = new World(opt.cols, opt.rows, seed);
 
   // Fiziksel coğrafya kendi rng dalını kullanır; iklim/kültür akışı kaymaz.
-  const geo = buildGeography(seed, opt.cols, opt.rows, {
+  const geo = earth ? earthData() : buildGeography(seed, opt.cols, opt.rows, {
     targetLand: Math.min(0.55, Math.max(0.15, TARGET_LAND + opt.landBias)),
     continentality: opt.continentality,
   });
@@ -129,10 +138,13 @@ export function generateWorld(seed, options = {}) {
   // Kara yüksekliği SIRALAMAYLA eşlenir: tepe/yayla/ova oranları coğrafya
   // alanının dağılımından bağımsız kalsın (dağ zinciri nerede olursa olsun
   // dünyanın %11'i dağ). Sıralama yalnız kara karelerinden kurulur.
-  const landHeights = [];
-  for (let i = 0; i < total; i++) if (geo.land[i]) landHeights.push(geo.height[i]);
-  landHeights.sort((a, b) => a - b);
-  const landSorted = Float32Array.from(landHeights);
+  let landSorted = null;
+  if (!earth) {
+    const landHeights = [];
+    for (let i = 0; i < total; i++) if (geo.land[i]) landHeights.push(geo.height[i]);
+    landHeights.sort((a, b) => a - b);
+    landSorted = Float32Array.from(landHeights);
+  }
 
   for (let row = 0; row < opt.rows; row++) {
     for (let col = 0; col < opt.cols; col++) {
@@ -143,32 +155,44 @@ export function generateWorld(seed, options = {}) {
       const isLand = geo.land[idx] === 1;
 
       let elevation;
-      if (isLand) {
-        const lr = rankOf(landSorted, geo.height[idx]);
-        // Kare eğri: alçak arazi bol, yüksek zirve seyrek.
-        elevation = SEA_LEVEL + Math.pow(lr, 2) * (1 - SEA_LEVEL);
+      let temperature;
+      let moisture;
+      let terrain;
+      if (earth) {
+        // Gerçek ölçüden (earthTerrain.classifyEarth): Köppen iklimi + engebe
+        // sıralaması, classify ile aynı eşikler. Gürültü yok.
+        elevation = geo.elevation[idx];
+        temperature = geo.temperature[idx];
+        moisture = geo.moisture[idx];
+        terrain = geo.terrain[idx];
       } else {
-        elevation = SEA_LEVEL - shelfDepth(geo.toLand[idx], depthNoise, u, v);
+        if (isLand) {
+          const lr = rankOf(landSorted, geo.height[idx]);
+          // Kare eğri: alçak arazi bol, yüksek zirve seyrek.
+          elevation = SEA_LEVEL + Math.pow(lr, 2) * (1 - SEA_LEVEL);
+        } else {
+          elevation = SEA_LEVEL - shelfDepth(geo.toLand[idx], depthNoise, u, v);
+        }
+
+        // Sıcaklık: enleme bağlı (kutuplar soğuk) + yükseklik cezası + biraz gürültü.
+        const latitude = Math.abs(v - 0.5) * 2;
+        temperature = 1 - Math.pow(latitude, 1.25);
+        temperature -= Math.max(0, elevation - SEA_LEVEL) * 0.7;
+        temperature += (fbm(tempNoise, u * 3, v * 3, { octaves: 3, periodX: 3 }) - 0.5) * 0.18;
+        temperature = Math.min(1, Math.max(0, temperature));
+
+        // fbm değerleri ortalamaya toplanır; kontrastı açmazsak her yer aynı biyom olur.
+        moisture = (fbm(moistNoise, u * 5, v * 5, { octaves: 5, periodX: 5 }) - 0.5) * 1.9 + 0.5;
+        // Kutuplar kuru, ekvator nemli; ~30. enlemde (at enlemleri) kurak kuşak -> çöller.
+        const horseLat = Math.exp(-Math.pow((latitude - 0.36) / 0.12, 2));
+        moisture *= 0.8 + (1 - latitude) * 0.4 - horseLat * 0.4;
+        // Karasallık: denizden uzak iç bölge kurur. Çöl/bozkır artık rastgele
+        // değil, coğrafyanın sonucudur (geniş kıta içi = kurak kuşak).
+        if (isLand) moisture -= 0.12 * (1 - Math.exp(-geo.toWater[idx] / 9));
+        moisture = Math.min(1, Math.max(0, moisture));
+
+        terrain = classify(elevation, moisture, temperature);
       }
-
-      // Sıcaklık: enleme bağlı (kutuplar soğuk) + yükseklik cezası + biraz gürültü.
-      const latitude = Math.abs(v - 0.5) * 2;
-      let temperature = 1 - Math.pow(latitude, 1.25);
-      temperature -= Math.max(0, elevation - SEA_LEVEL) * 0.7;
-      temperature += (fbm(tempNoise, u * 3, v * 3, { octaves: 3, periodX: 3 }) - 0.5) * 0.18;
-      temperature = Math.min(1, Math.max(0, temperature));
-
-      // fbm değerleri ortalamaya toplanır; kontrastı açmazsak her yer aynı biyom olur.
-      let moisture = (fbm(moistNoise, u * 5, v * 5, { octaves: 5, periodX: 5 }) - 0.5) * 1.9 + 0.5;
-      // Kutuplar kuru, ekvator nemli; ~30. enlemde (at enlemleri) kurak kuşak -> çöller.
-      const horseLat = Math.exp(-Math.pow((latitude - 0.36) / 0.12, 2));
-      moisture *= 0.8 + (1 - latitude) * 0.4 - horseLat * 0.4;
-      // Karasallık: denizden uzak iç bölge kurur. Çöl/bozkır artık rastgele
-      // değil, coğrafyanın sonucudur (geniş kıta içi = kurak kuşak).
-      if (isLand) moisture -= 0.12 * (1 - Math.exp(-geo.toWater[idx] / 9));
-      moisture = Math.min(1, Math.max(0, moisture));
-
-      const terrain = classify(elevation, moisture, temperature);
       const pixel = hexToPixel(q, r, HEX_SIZE);
 
       const tile = {
@@ -193,8 +217,10 @@ export function generateWorld(seed, options = {}) {
 
   markCoasts(world);
   // Nehirler araziden türer, RNG çekmez: province üreteci v2 onları sınır
-  // olarak kullanır, v1 dünyası birebir aynı kalır (bkz. rivers.js).
-  generateRivers(world);
+  // olarak kullanır, v1 dünyası birebir aynı kalır (bkz. rivers.js). Earth'te
+  // gerçek nehirler veride hazırdır (Natural Earth, hex kenarına oturtulmuş).
+  if (earth) applyRivers(world, geo.rivers, geo.build?.riverSystems ?? 0);
+  else generateRivers(world);
   labelContinents(world);
   generateCultures(world, rng);
   // Province bölümlemesi kültürden sonra: küme, üye çoğunluğunun kültürüne
@@ -208,11 +234,15 @@ export function generateWorld(seed, options = {}) {
   // Arketip ülke yerleşimi bölge çapalarını arar (bkz. nations.js). Çapa
   // şablon noktası değil GERÇEK kara ağırlık merkezidir: bükülme sonrası
   // bölge nereye kaydıysa oraya.
-  world.macroAnchors = zoneAnchors(geo.zones, opt.cols, opt.rows, geo.anchors);
+  // Earth'te çapalar gerçek yerlerdir (scripts/earth/curation.mjs): bölge
+  // kuzey Amerika ile Avustralya'yı birlikte taşıyabilir, ağırlık merkezi
+  // okyanusa düşerdi. Arketip ayrıca ROL çapasından büyür (nations.js).
+  world.macroAnchors = earth ? { ...geo.anchors } : zoneAnchors(geo.zones, opt.cols, opt.rows, geo.anchors);
+  if (earth) world.roleAnchors = { ...geo.roleAnchors };
   // Coğrafya karnesi: denetim betikleri ve hata ayıklama okur, oyun okumaz.
-  world.geo = {
-    stats: geo.stats, score: geo.score, reasons: geo.reasons, attempt: geo.attempt,
-  };
+  world.geo = earth
+    ? { stats: geo.stats, score: null, reasons: [], attempt: 1, earth: geo.build }
+    : { stats: geo.stats, score: geo.score, reasons: geo.reasons, attempt: geo.attempt };
   // Kaydı aynı ayarlarla geri kurabilmek için üretim seçenekleri saklanır.
   world.genOptions = { ...opt };
   computeBounds(world);

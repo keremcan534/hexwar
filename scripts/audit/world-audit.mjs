@@ -16,10 +16,12 @@ import { initProvinces } from '../../src/game/provinces.js';
 import { finding, n0, reportFindings, section, sub } from './harness.mjs';
 
 const SEEDS = ['world-audit-1', 'world-audit-2', 'world-audit-3'];
+// --earth: aynı rol ve bant ölçütleri gerçek Dünya haritasında (tohum = siyaset).
+const EARTH = process.argv.includes('--earth');
 
 for (const seed of SEEDS) {
-  section(`MAKRO DUNYA — ${seed} (${STANDARD_COLS}x${STANDARD_ROWS})`);
-  const world = generateWorld(seed, { cols: STANDARD_COLS, rows: STANDARD_ROWS });
+  section(`MAKRO DUNYA — ${seed} (${EARTH ? 'Earth ' : ''}${STANDARD_COLS}x${STANDARD_ROWS})`);
+  const world = generateWorld(seed, EARTH ? { map: 'earth' } : { cols: STANDARD_COLS, rows: STANDARD_ROWS });
   generateNations(world, { seed: `${seed}-nations` });
   initProvinces(world);
   const nations = world.nations;
