@@ -72,8 +72,10 @@
      Desenin ÖLÇEĞİ yazıdan uzak tutulur: ilk hâlde enerjinin neredeyse tamamı
      1.5 px altındaydı (yazı çizgisinin ölçeği) ve açık temanın 6 px'lik
      örgüsü yazının arkasında tel örgü gibi duruyordu (Kerem: "epey kötü").
-     Şimdi ince desen std ~0.8, malzeme hissi 4-120 px'lik yumuşak bulutta;
-     koyuda fırça izi yatayda yumuşatılmış çizgi. Süzgeçler sarmal: dikişsiz.
+     Şimdi ince desen std ~0.8, malzeme hissi 4-120 px'lik yumuşak bulutta.
+     Koyu yüzey YÖNSÜZ mat çeliktir: yatayda yumuşatılmış fırça izi camdaki
+     silecek izi gibi okundu (Kerem); yön taşıyan desen panele konmaz.
+     Süzgeçler sarmal: dikişsiz.
      Açık tema light.css'te. */
   --sk-cerceve-kenar: url('../assets/ui/skin/cerceve.webp') 52 / 13px / 0 stretch;
   --sk-doku: url('../assets/ui/skin/panel-doku.webp');
