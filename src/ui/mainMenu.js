@@ -28,14 +28,23 @@ import { campaignSaveState, gameDate } from './hud.js';
 import { worldRows } from '../world/worldgen.js';
 import { MenuMusic } from './menuMusic.js';
 import { MenuMotion } from './menuMotion.js';
-import { ERA_NAME, START_YEAR } from '../game/calendar.js';
+import { END_YEAR, ERA_NAME, START_YEAR } from '../game/calendar.js';
+import { randomSeed } from '../core/rng.js';
+import { mountFlag } from '../render/flagWave.js';
+import { nationRoster } from '../game/nationBrief.js';
 
 /**
  * Oyunun adı. Menüde tek yerden yazılır; başlığı değiştirmek için markup'a
  * ya da CSS'e dokunmak gerekmez.
  */
 export const GAME_TITLE = 'Imperial Eye';
-export const GAME_EYEBROW = `${ERA_NAME} · ${START_YEAR}`;
+export const GAME_EYEBROW = `${ERA_NAME} · ${START_YEAR} – ${END_YEAR}`;
+
+/**
+ * Önizleme haritasının en-boy oranı: hex sütunu √3, satırı 1.5 birim.
+ * 160 × 96'lık dünya 1.92:1'lik bir dikdörtgendir, 5:3 değil.
+ */
+const hexAspect = (cols, rows) => (cols * Math.sqrt(3)) / (rows * 1.5);
 /** Alt şeritteki sürüm künyesi. Kayıt biçimi sürümü de burada okunur. */
 export const BUILD_LABEL = `v0.1.0 · save ${SAVE_VERSION}`;
 
@@ -244,8 +253,22 @@ export class MainMenu {
       art: $('menu-art'),
       live: $('menu-live'),
       title: $('menu-title'),
-      eyebrow: document.querySelector('.menu-eyebrow'),
+      eyebrow: document.querySelector('.mm-eyebrow'),
       tagline: $('menu-tagline'),
+      sceneLabel: $('menu-scene-label'),
+      sceneCount: $('menu-scene-count'),
+      scenePrev: $('menu-scene-prev'),
+      ctaFlag: $('menu-cta-flag'),
+      ctaKicker: $('menu-cta-kicker'),
+      track: $('menu-track'),
+      dice: $('menu-dice'),
+      preview: $('menu-preview'),
+      previewBox: $('menu-preview-box'),
+      previewStatus: $('menu-preview-status'),
+      previewSeed: $('menu-preview-seed'),
+      previewStats: $('menu-preview-stats'),
+      presets: [...document.querySelectorAll('#menu .mm-seg[data-preset]')],
+      nav: $('menu-rail'),
       resume: $('menu-resume'),
       resumeNote: $('menu-resume-note'),
       create: $('menu-create'),
@@ -336,6 +359,9 @@ export class MainMenu {
     // Metin sahneye bağlı: tek bir cümle sekiz resmin sekizinde birden durmuyor.
     this.motion?.setScene(scene);
     if (tagline && scene.tagline) tagline.textContent = scene.tagline;
+    // Müze künyesi: sahnenin adı ve sırası.
+    if (this.el.sceneLabel) this.el.sceneLabel.textContent = scene.label;
+    if (this.el.sceneCount) this.el.sceneCount.textContent = `${this.sceneIndex + 1} / ${SCENES.length}`;
     if (root) root.dataset.theme = scene.theme;
     this.syncThemeChips();
   }
@@ -431,6 +457,28 @@ export class MainMenu {
     // Sahne düğmesi: bir sonraki sahneye geçer. Temayı denemek için ayarlara
     // girmek gerekmesin.
     if (el.sceneBtn) el.sceneBtn.onclick = () => this.setScene(this.sceneIndex + 1);
+    if (el.scenePrev) el.scenePrev.onclick = () => this.setScene(this.sceneIndex - 1);
+
+    // KURULUM: adlandırılmış seçenekler kaydırıcıları yazar (kaydırıcılar
+    // "Fine tune" altında, değerin tek kaynağı onlardır). Her değişiklik
+    // önizlemeyi yeniden ister; önizleme işçide koşar, menü donmaz.
+    for (const seg of el.presets) {
+      const input = { size: el.size, cont: el.cont, land: el.land, nations: el.nations }[seg.dataset.preset];
+      for (const button of seg.querySelectorAll('button[data-value]')) {
+        button.onclick = () => {
+          input.value = button.dataset.value;
+          this.syncLabels();
+          this.schedulePreview(0);
+        };
+      }
+    }
+    if (el.dice) {
+      el.dice.onclick = () => {
+        el.seed.value = randomSeed();
+        this.schedulePreview(0);
+      };
+    }
+    el.seed.addEventListener('input', () => this.schedulePreview());
     if (el.volume) {
       el.volume.oninput = () => {
         this.music.setVolume(Number(el.volume.value) / 100);
@@ -439,7 +487,7 @@ export class MainMenu {
       };
     }
 
-    const sync = () => this.syncLabels();
+    const sync = () => { this.syncLabels(); this.schedulePreview(); };
     for (const input of [el.size, el.cont, el.land, el.nations]) input.oninput = sync;
     // Enter tohum alanında dünyayı kurar: kaydırıcılara dokunmayan oyuncu
     // düğmeyi aramak zorunda kalmasın.
@@ -458,9 +506,192 @@ export class MainMenu {
       if (event.key === 'Escape' && this.view !== 'actions') {
         event.preventDefault();
         this.showView('actions');
+        return;
+      }
+      // Ana listede ↑↓ kart ve satırlar arasında gezer (Enter düğmenin işi).
+      if (this.view === 'actions' && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
+        const stops = [el.cta, ...el.nav.querySelectorAll('.mm-item')]
+          .filter((b) => !b.hidden && b.offsetParent !== null);
+        const at = stops.indexOf(document.activeElement);
+        const next = event.key === 'ArrowDown' ? (at + 1) % stops.length : (at - 1 + stops.length) % stops.length;
+        stops[at < 0 ? 0 : next]?.focus();
+        event.preventDefault();
+        return;
+      }
+      // Kurulumda Enter dünyayı kurar (bir düğmenin ya da metin alanının
+      // üstünde değilse: oradaki Enter o öğenindir).
+      if (this.view === 'setup' && event.key === 'Enter' && !event.repeat
+        && !event.target.closest?.('button, summary, input[type="range"]')) {
+        event.preventDefault();
+        this.build();
       }
     });
     this.syncLabels();
+  }
+
+  /** Kurulumdaki tohum: alan boşsa açılışta çekilen rastgele tohum. */
+  currentSeed() {
+    return this.el.seed.value.trim() || this.pendingSeed || (this.pendingSeed = randomSeed());
+  }
+
+  currentOptions() {
+    const { el } = this;
+    const cols = Number(el.size.value);
+    return {
+      cols,
+      rows: worldRows(cols),
+      continentality: Number(el.cont.value),
+      landBias: Number(el.land.value),
+    };
+  }
+
+  /** Seçili seçenek düğmeleri kaydırıcının değerinden okunur (tek kaynak). */
+  syncPresets() {
+    const { el } = this;
+    const value = { size: el.size, cont: el.cont, land: el.land, nations: el.nations };
+    for (const seg of el.presets) {
+      const now = Number(value[seg.dataset.preset].value);
+      for (const button of seg.querySelectorAll('button[data-value]')) {
+        const on = Math.abs(Number(button.dataset.value) - now) < 1e-6;
+        button.classList.toggle('on', on);
+        button.setAttribute('aria-pressed', on ? 'true' : 'false');
+      }
+    }
+  }
+
+  /**
+   * CANLI ÖNİZLEME. Dünya işçide üretilir (ui/menuPreviewWorker.js); iş
+   * sürerken yeni bir istek gelirse eski işçi kapatılır — 2 sn'lik eski bir
+   * dünyanın bitmesini beklemek, sürgüyü çeken oyuncuya geç cevap demekti.
+   */
+  schedulePreview(delay = 380) {
+    if (this.view !== 'setup') return;
+    clearTimeout(this.previewTimer);
+    this.previewTimer = setTimeout(() => this.runPreview(), delay);
+  }
+
+  runPreview() {
+    const { el } = this;
+    if (!el.preview || this.view !== 'setup') return;
+    const seed = this.currentSeed();
+    const options = this.currentOptions();
+    const id = (this.previewId = (this.previewId ?? 0) + 1);
+    if (this.previewBusy && this.previewWorker) {
+      this.previewWorker.terminate();
+      this.previewWorker = null;
+    }
+    if (!this.previewWorker) {
+      try {
+        this.previewWorker = new Worker(new URL('./menuPreviewWorker.js', import.meta.url), { type: 'module' });
+      } catch {
+        el.previewStatus.textContent = 'Preview unavailable';
+        return;
+      }
+      this.previewWorker.onmessage = (event) => this.drawPreview(event.data);
+      this.previewWorker.onerror = () => {
+        this.previewBusy = false;
+        el.previewBox.classList.remove('is-busy');
+        el.previewStatus.textContent = 'Preview unavailable';
+      };
+    }
+    this.previewBusy = true;
+    el.previewBox.classList.add('is-busy');
+    el.previewStatus.textContent = 'Surveying…';
+    el.previewSeed.textContent = `seed ${seed}`;
+    el.previewStats.textContent = `${options.cols} × ${options.rows}`;
+    this.previewWorker.postMessage({ id, seed, options });
+  }
+
+  drawPreview(data) {
+    if (data.id !== this.previewId) return;
+    const { el } = this;
+    this.previewBusy = false;
+    el.previewBox.classList.remove('is-busy');
+    if (data.error) {
+      el.previewStatus.textContent = 'Preview unavailable';
+      return;
+    }
+    const { cols, rows, pixels } = data;
+    // Kareler gerçek altıgen çizilir (tek satırlar yarım hex sağa: oyunun
+    // "odd-r" düzeni). Kare başına bir pikseli büyütmek basamaklı, bulanık
+    // bir resim veriyordu; böyle önizleme haritanın kendisinin minyatürüdür.
+    const canvas = el.preview;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const cssW = Math.max(1, Math.round(canvas.getBoundingClientRect().width));
+    const W = Math.round(cssW * dpr);
+    const hexW = W / (cols + 0.5);
+    const hexH = (hexW * 2) / Math.sqrt(3);
+    const H = Math.round(hexH * (0.75 * rows + 0.25));
+    canvas.width = W;
+    canvas.height = H;
+    canvas.style.aspectRatio = `${hexAspect(cols, rows)}`;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#0b2430';
+    ctx.fillRect(0, 0, W, H);
+    // Komşu altıgenler arasında saç teli boşluk kalmasın: yarım piksel taşma.
+    const hw = hexW / 2 + 0.35;
+    const q = hexH / 4 + 0.25;
+    for (let r = 0; r < rows; r++) {
+      const y = hexH / 2 + r * hexH * 0.75;
+      const shift = r & 1 ? hexW / 2 : 0;
+      for (let c = 0; c < cols; c++) {
+        const i = (r * cols + c) * 4;
+        const x = hexW / 2 + c * hexW + shift;
+        ctx.fillStyle = `rgb(${pixels[i]},${pixels[i + 1]},${pixels[i + 2]})`;
+        ctx.beginPath();
+        ctx.moveTo(x, y - 2 * q);
+        ctx.lineTo(x + hw, y - q);
+        ctx.lineTo(x + hw, y + q);
+        ctx.lineTo(x, y + 2 * q);
+        ctx.lineTo(x - hw, y + q);
+        ctx.lineTo(x - hw, y - q);
+        ctx.closePath();
+        ctx.fill();
+      }
+    }
+    // Atlas levhası: kenarlara doğru hafif karartma.
+    const vignette = ctx.createRadialGradient(W / 2, H / 2, Math.min(W, H) * 0.35, W / 2, H / 2, Math.max(W, H) * 0.62);
+    vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+    vignette.addColorStop(1, 'rgba(0, 0, 0, 0.38)');
+    ctx.fillStyle = vignette;
+    ctx.fillRect(0, 0, W, H);
+    el.previewStatus.textContent = '';
+    el.previewStats.textContent = `${cols} × ${rows} · ${Math.round(data.land * 100)}% land`;
+    canvas.classList.remove('is-fresh');
+    void canvas.offsetWidth;
+    canvas.classList.add('is-fresh');
+  }
+
+  stopPreview() {
+    clearTimeout(this.previewTimer);
+    this.previewWorker?.terminate();
+    this.previewWorker = null;
+    this.previewBusy = false;
+  }
+
+  /**
+   * Birincil kart: kampanya varsa onun kimliği (dalgalanan bayrak, ulus,
+   * tarih, sıra), yoksa yeni kampanya. Eski "Continue Campaign · seed X"
+   * düğmesi oyuncuya neye döneceğini söylemiyordu.
+   */
+  syncCta() {
+    const { el, game } = this;
+    const nation = this.resumable ? game.world?.nations?.[game.turns?.playerNation] : null;
+    el.cta.classList.toggle('is-campaign', Boolean(nation));
+    if (nation) {
+      const roster = nationRoster(game.world);
+      const row = roster.find((r) => r.id === nation.id);
+      el.ctaKicker.textContent = 'Continue campaign';
+      el.ctaLabel.textContent = nation.fullName ?? nation.name;
+      el.ctaNote.textContent = [sessionLabel(game).split(' · ').pop(), row ? `rank ${row.rank} of ${roster.length}` : '']
+        .filter(Boolean).join(' · ');
+      mountFlag(el.ctaFlag, nation, 72, 48);
+    } else {
+      el.ctaKicker.textContent = 'New campaign';
+      el.ctaLabel.textContent = 'Begin Campaign';
+      el.ctaNote.textContent = 'a fresh world on the standard map';
+      el.ctaFlag.textContent = '';
+    }
   }
 
   syncLabels() {
@@ -471,6 +702,7 @@ export class MainMenu {
     el.landLabel.textContent = Number(el.land.value).toFixed(2);
     const nations = Number(el.nations.value);
     el.nationsLabel.textContent = nations > 0 ? String(nations) : 'automatic';
+    this.syncPresets();
   }
 
   /** Sessiz düğmesinin görünümü tek yerden yazılır; durum müzikte tutulur. */
@@ -482,6 +714,8 @@ export class MainMenu {
     mute.setAttribute('aria-pressed', muted ? 'true' : 'false');
     mute.setAttribute('aria-label', muted ? 'Unmute menu music' : 'Mute menu music');
     mute.title = muted ? 'Music off' : `Music: ${this.music.trackTitle}`;
+    // Çalan parçanın adı sütunun altında: müzik bir kayıt gibi anılır.
+    if (this.el.track) this.el.track.textContent = muted ? 'Music off' : (this.music.trackTitle ?? '');
   }
 
   syncVolume() {
@@ -557,13 +791,13 @@ export class MainMenu {
   build() {
     const { el } = this;
     if (!this.confirmDiscard(el.build, 'build')) return;
-    const cols = Number(el.size.value);
     const nations = Number(el.nations.value);
-    this.game.newWorld(el.seed.value.trim() || undefined, {
-      cols,
-      rows: worldRows(cols),
-      continentality: Number(el.cont.value),
-      landBias: Number(el.land.value),
+    // Önizlenen dünya kurulur: alan boşken çekilen rastgele tohum da aynıdır.
+    const seed = this.currentSeed();
+    this.pendingSeed = null;
+    this.stopPreview();
+    this.game.newWorld(seed, {
+      ...this.currentOptions(),
       nationCount: nations > 0 ? nations : null,
     });
     this.close();
@@ -656,8 +890,18 @@ export class MainMenu {
     for (const item of [el.create, el.settings, el.credits]) {
       item.classList.toggle('is-active', item === owner);
     }
-    if (view === 'setup') el.seed.focus();
-    else if (view === 'actions') el.cta.focus();
+    if (view === 'setup') {
+      // Alan boşken kurulacak dünyanın tohumu şimdiden çekilir ve yazılır:
+      // önizleme ile "Generate World" aynı dünyayı gösterir.
+      if (!this.pendingSeed) this.pendingSeed = randomSeed();
+      el.seed.placeholder = `${this.pendingSeed} · random`;
+      this.syncPresets();
+      this.schedulePreview(0);
+      el.seed.focus();
+    } else {
+      this.stopPreview();
+      if (view === 'actions') el.cta.focus();
+    }
     if (view === 'options') { this.syncVolume(); this.syncMotionNote(); }
   }
 
@@ -681,12 +925,14 @@ export class MainMenu {
     this.el.resumeNote.textContent = session;
     this.el.load.hidden = !info;
     this.el.loadNote.textContent = info ? saveLabel(info) : '';
-    // Alt şeritteki tek birincil eylem duruma göre ad değiştirir.
-    this.el.ctaLabel.textContent = this.resumable ? 'Continue Campaign' : 'Begin Campaign';
-    this.el.ctaNote.textContent = this.resumable
-      ? session
-      : 'a fresh world at the standard size';
+    // Birincil kart duruma göre: kampanyanın kimliği ya da yeni kampanya.
+    this.syncCta();
 
+    // Açılış sahnesi: kimlik, kart ve satırlar sırayla belirir (yalnız açılırken;
+    // hareket kapalıysa CSS hiçbirini oynatmaz).
+    this.el.root.classList.add('is-entering');
+    clearTimeout(this.enterTimer);
+    this.enterTimer = setTimeout(() => this.el.root.classList.remove('is-entering'), 2400);
     this.el.root.classList.remove('hidden');
     this.el.root.setAttribute('aria-hidden', 'false');
     document.body.classList.add('menu-open');
@@ -710,6 +956,7 @@ export class MainMenu {
     if (!this.open_) return;
     this.open_ = false;
     this.disarmDiscard();
+    this.stopPreview();
     // Başka bir yoldan çıkış (yeni dünya, yükleme) eski hızı taşımaz.
     if (this.resumeSpeed) this.resumeSpeed = 0;
     this.el.root.classList.add('hidden');
