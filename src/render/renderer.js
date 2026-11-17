@@ -5842,9 +5842,15 @@ export class Renderer {
     // Geçiş 0.6'dan itibaren işler ki 0.68 eşiğinin altına inerken etiketler
     // "pat" diye silinmesin — hedef alfa 0'a düşer, erime payı kalır.
     if (z >= 0.6 && world.provinces?.length && this.showsPolitics()) {
-      const zoomAlpha = Math.min(0.85, Math.max(0, (z - 0.68) * 4));
+      const zoomAlpha = Math.min(0.92, Math.max(0, (z - 0.68) * 4));
       const refFont = `400 small-caps 100px ${FONT_DISPLAY}`;
-      const size = 10.5;
+      // 10.5 px sabit punto small-caps'te küçük harfleri ~5 px'e indiriyordu:
+      // orta zoomda state adları ülke renginin üstünde okunmuyordu (Kerem'e
+      // gösterilen kusur 5). Punto zoomla 12 → 15 px açılır; kutu ve aralık
+      // aynı oranda büyür.
+      const size = 12 + 3 * ramp(z, 0.75, 1.9);
+      const track = size * 0.1;
+      const boxH = Math.round(size * 1.45);
       const visible = [];
       for (const pr of world.provinces) {
         if (!pr.name) continue;
@@ -5867,32 +5873,36 @@ export class Renderer {
       // Font kare başına TEK kez kurulur (yüzlerce state'te atama başına
       // maliyet ölçülebilir). Döngü içindeki hiçbir yardımcı ctx.font'u
       // değiştirmemeli — measureLabel bu yüzden durumu geri yazar.
-      ctx.font = `400 small-caps ${size}px ${FONT_DISPLAY}`;
-      ctx.letterSpacing = '1.1px';
+      ctx.font = `400 small-caps ${size.toFixed(1)}px ${FONT_DISPLAY}`;
+      ctx.letterSpacing = track.toFixed(2) + 'px';
+      ctx.lineJoin = 'round';
+      const half = boxH / 2;
       for (const { pr, p, more } of visible) {
         const key = 'p' + pr.center.q + ':' + pr.center.r;
-        const w = (this.measureLabel(ctx, refFont, pr.name) * size) / 100 + pr.name.length * 1.1;
+        const w = (this.measureLabel(ctx, refFont, pr.name) * size) / 100 + pr.name.length * track;
         const rx = p.x - w / 2 - 3;
-        const below = underCounter(rx, p.y - 8, w + 6, 16);
-        // +12: giriş histerezisi kutuyu %15 büyütür; dibine yapışık ad hep çarpışıyordu.
-        if (below !== null) p.y = below + 12;
-        const ry = p.y - 8;
+        const below = underCounter(rx, p.y - half, w + 6, boxH);
+        // Giriş histerezisi kutuyu %15 büyütür; dibine yapışık ad hep çarpışıyordu.
+        if (below !== null) p.y = below + half + 4;
+        const ry = p.y - half;
         anchorJump(key, pr.center.x);
-        const fits = zoomAlpha > 0 && admits(key, rx, ry, w + 6, 16);
-        if (fits) placed.push({ x: rx, y: ry, w: w + 6, h: 16 });
+        const fits = zoomAlpha > 0 && admits(key, rx, ry, w + 6, boxH);
+        if (fits) placed.push({ x: rx, y: ry, w: w + 6, h: boxH });
         const a = fade(key, fits ? zoomAlpha : 0);
         if (a <= 0.01) continue;
         ctx.globalAlpha = a;
-        ctx.lineWidth = ink ? ink.state.width : 1.6;
-        ctx.strokeStyle = ink ? ink.state.stroke : 'rgba(8, 11, 11, 0.32)';
+        // Koyu hale harfi zeminden ayırır: 1.6 px / %32'lik kontur açık
+        // ülke renginde (kum, açık yeşil) yazıyı eritiyordu.
+        ctx.lineWidth = ink ? ink.state.width : size * 0.22;
+        ctx.strokeStyle = ink ? ink.state.stroke : 'rgba(10, 12, 12, 0.5)';
         around(p.k, p.x, p.y);
         ctx.strokeText(pr.name, p.x, p.y);
-        ctx.fillStyle = ink ? ink.state.fill : 'rgba(226, 219, 198, 0.92)';
+        ctx.fillStyle = ink ? ink.state.fill : 'rgba(236, 228, 206, 0.96)';
         ctx.fillText(pr.name, p.x, p.y);
         if (!more) continue;
         for (const mx of more) {
-          if (collides(mx - w / 2 - 3, ry, w + 6, 16)) continue;
-          placed.push({ x: mx - w / 2 - 3, y: ry, w: w + 6, h: 16 });
+          if (collides(mx - w / 2 - 3, ry, w + 6, boxH)) continue;
+          placed.push({ x: mx - w / 2 - 3, y: ry, w: w + 6, h: boxH });
           around(p.k, mx, p.y);
           ctx.strokeText(pr.name, mx, p.y);
           ctx.fillText(pr.name, mx, p.y);
@@ -5907,8 +5917,13 @@ export class Renderer {
     // 0.98-1.12, hepsi 1.22-1.36 bandında erir; fade artığı için tarama
     // 0.72'den başlar.
     if (z >= 0.72 && world.cities?.length) {
-      const capFont = `600 small-caps 11.5px ${FONT_DISPLAY}`;
-      const cityFont = `italic 400 10px ${FONT_DISPLAY}`;
+      // State adlarıyla aynı kural: punto zoomla açılır, koyu hale okutur.
+      const grow = ramp(z, 0.9, 2.0);
+      const capSize = 12.5 + 2 * grow;
+      const citySize = 11.5 + 2 * grow;
+      const capFont = `600 small-caps ${capSize.toFixed(1)}px ${FONT_DISPLAY}`;
+      const cityFont = `italic 500 ${citySize.toFixed(1)}px ${FONT_DISPLAY}`;
+      const boxH = Math.round(capSize * 1.35);
       const capTarget = ramp(z, 0.78, 0.92) * 0.95;
       const majorTarget = ramp(z, 0.98, 1.12) * 0.85;
       const allTarget = ramp(z, 1.22, 1.36) * 0.85;
@@ -5930,31 +5945,36 @@ export class Renderer {
         let ly = p.y + HEX_SIZE * z * 0.68;
         const refFont = isCapital
           ? `600 small-caps 100px ${FONT_DISPLAY}`
-          : `italic 400 100px ${FONT_DISPLAY}`;
-        const size = isCapital ? 11.5 : 10;
+          : `italic 500 100px ${FONT_DISPLAY}`;
+        const size = isCapital ? capSize : citySize;
         const w = (this.measureLabel(ctx, refFont, name) * size) / 100;
         const rx = p.x - w / 2 - 2;
-        const below = underCounter(rx, ly - 8, w + 4, 15);
-        if (below !== null) ly = below + 12;
-        const ry = ly - 8;
+        const half = boxH / 2;
+        const below = underCounter(rx, ly - half, w + 4, boxH);
+        if (below !== null) ly = below + half + 4;
+        const ry = ly - half;
         anchorJump(key, city.tile.x);
-        const fits = target > 0 && admits(key, rx, ry, w + 4, 15);
-        if (fits) placed.push({ x: rx, y: ry, w: w + 4, h: 15 });
+        const fits = target > 0 && admits(key, rx, ry, w + 4, boxH);
+        if (fits) placed.push({ x: rx, y: ry, w: w + 4, h: boxH });
         const a = fade(key, fits ? target : 0);
         if (a <= 0.01) continue;
         ctx.globalAlpha = a;
         ctx.font = isCapital ? capFont : cityFont;
-        ctx.lineWidth = (isCapital ? 1.9 : 1.6) * (ink ? ink.city.widthK : 1);
-        ctx.strokeStyle = ink ? ink.city.stroke : 'rgba(6, 10, 10, 0.4)';
+        ctx.lineJoin = 'round';
+        // Stil mürekkebi eski punto oranını korur (atlas açık kâğıt halesi).
+        ctx.lineWidth = ink
+          ? (isCapital ? 1.9 / 11.5 : 1.6 / 10) * size * ink.city.widthK
+          : size * 0.22;
+        ctx.strokeStyle = ink ? ink.city.stroke : 'rgba(8, 11, 11, 0.55)';
         around(p.k, p.x, p.y);
         ctx.strokeText(name, p.x, ly);
         ctx.fillStyle = ink
           ? (isCapital ? ink.city.capital : ink.city.fill)
-          : (isCapital ? 'rgba(240, 231, 208, 0.95)' : 'rgba(223, 214, 192, 0.85)');
+          : (isCapital ? 'rgba(244, 235, 212, 0.98)' : 'rgba(232, 223, 200, 0.94)');
         ctx.fillText(name, p.x, ly);
         for (let i = 1; i < xs.length; i++) {
-          if (collides(xs[i] - w / 2 - 2, ry, w + 4, 15)) continue;
-          placed.push({ x: xs[i] - w / 2 - 2, y: ry, w: w + 4, h: 15 });
+          if (collides(xs[i] - w / 2 - 2, ry, w + 4, boxH)) continue;
+          placed.push({ x: xs[i] - w / 2 - 2, y: ry, w: w + 4, h: boxH });
           around(p.k, xs[i], p.y);
           ctx.strokeText(name, xs[i], ly);
           ctx.fillText(name, xs[i], ly);

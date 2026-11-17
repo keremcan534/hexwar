@@ -108,7 +108,10 @@ HoiS hoiSample(int layer, vec2 o, float px, float macroBias, float coarseW) {
   vec4 c = textureLod(uHoiTex, vec3(o.yx / tc, float(layer)), lc);
   float m = hoiMean(layer);
   // Düzenli desenin (tarla, kumul) kaba kopyası yakında dev dikdörtgen okunur.
-  if (layer >= HK_FIELDS || layer == HK_DESERT) coarseW *= 1.0 - smoothstep(0.0, 0.5, macroBias);
+  // Tarlada hiç yoktur: orta zoomda 14 hexlik döşemenin parselleri iki hex
+  // boyunda bloklu yorgan çiziyordu (vic3 ile aynı kusur, 2026-11-16).
+  if (layer >= HK_FIELDS) coarseW = 0.0;
+  else if (layer == HK_DESERT) coarseW *= 1.0 - smoothstep(0.0, 0.5, macroBias);
   HoiS s;
   s.a = m + (f.r - m) * 0.75 + (c.r - m) * 0.55 * coarseW;
   s.h = mix(f.g, f.g * 0.6 + c.g * 0.4, coarseW);
