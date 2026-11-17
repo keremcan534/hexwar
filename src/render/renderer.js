@@ -305,6 +305,15 @@ const SURFACE_CHARACTER = {
 const SURFACE_DEFAULT = { relief: 0.5, grain: 0.2, warm: 0 };
 
 /** Şehir ve birim aynı karede: biri yukarı, biri aşağı kaydırılır. */
+/**
+ * Nehir kalınlık kademeleri: akış eşikleri ve CSS piksel kalınlığı (yakında
+ * zoomla %45'e dek açılır). Kaynak kolu ince, ana kol kalın; eskiden üç sabit
+ * kalınlık vardı ve nehir boydan boya aynı kablo gibi duruyordu.
+ */
+const RIVER_FLOW_STEPS = [0.14, 0.28, 0.45, 0.65];
+const RIVER_WIDTH_NEAR = [1.1, 1.6, 2.2, 2.9, 3.7];
+const RIVER_WIDTH_FAR = [0.9, 1.2, 1.6, 2.1, 2.7];
+
 const CITY_OFFSET = 0.3;
 const UNIT_ON_CITY_OFFSET = 0.22;
 
@@ -3326,18 +3335,27 @@ export class Renderer {
     }
     const P = world.wrapWidth || 0;
     const shifts = (this.riverShifts ??= []);
-    const paths = [new Path2D(), new Path2D(), new Path2D()];
-    const used = [0, 0, 0];
+    // Beş kademe: kaynaktan ağza nehir İNCELİR. Üç sabit kalınlık nehri boydan
+    // boya aynı kalınlıkta bir kablo gibi gösteriyordu (2026-11-16 incelemesi).
+    const K = RIVER_FLOW_STEPS.length + 1;
+    const paths = (this.riverPaths ??= []);
+    const used = (this.riverUsed ??= []);
+    for (let b = 0; b < K; b++) {
+      paths[b] = new Path2D();
+      used[b] = 0;
+    }
     for (const g of geo) {
       // Uzak dokuda kaynak kolları atılır: 1 pikselin altında kılçık olurlar.
       if (far && g.flow < 0.18) continue;
       if (!this.copyShifts(g.bbox, rect, P, shifts).length) continue;
-      const b = g.flow < 0.3 ? 0 : g.flow < 0.65 ? 1 : 2;
+      let b = 0;
+      while (b < K - 1 && g.flow >= RIVER_FLOW_STEPS[b]) b++;
       for (const dx of shifts) appendPts(paths[b], g.pts, false, dx);
       used[b]++;
     }
     const z = far ? 0 : Math.max(0, Math.min(1, (scale - 0.45) / 1.2));
-    const widths = far ? [1.1, 1.7, 2.6] : [1.4 + 0.6 * z, 2.2 + 1.0 * z, 3.2 + 1.5 * z];
+    const grow = far ? 1 : 1 + 0.45 * z;
+    const widths = far ? RIVER_WIDTH_FAR : RIVER_WIDTH_NEAR;
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -3346,17 +3364,19 @@ export class Renderer {
     // çizilmiş"); koyu kenar nehri araziye gömer. Statik katmana pişer, kare
     // başına maliyet yok. Uzak dokuda kenar yok (1 pikselin altında çamur).
     if (!far) {
-      ctx.strokeStyle = 'rgba(22, 34, 40, 0.5)';
-      for (let b = 0; b < 3; b++) {
+      ctx.strokeStyle = 'rgba(16, 26, 32, 0.46)';
+      for (let b = 0; b < K; b++) {
         if (!used[b]) continue;
-        ctx.lineWidth = (widths[b] + 1.6) / scale;
+        ctx.lineWidth = (widths[b] * grow + 1.4) / scale;
         ctx.stroke(paths[b]);
       }
     }
-    ctx.strokeStyle = 'rgba(88, 142, 178, 0.95)';
-    for (let b = 0; b < 3; b++) {
+    // Su tonu deniz ailesinden: açık "arayüz mavisi" (88,142,178) nehri
+    // haritanın üstünde yüzdürüyordu; bir tık derin ve kısık ton araziye oturur.
+    ctx.strokeStyle = 'rgba(74, 124, 154, 0.96)';
+    for (let b = 0; b < K; b++) {
       if (!used[b]) continue;
-      ctx.lineWidth = widths[b] / scale;
+      ctx.lineWidth = (widths[b] * grow) / scale;
       ctx.stroke(paths[b]);
     }
     ctx.restore();

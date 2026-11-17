@@ -46,6 +46,7 @@ uniform vec4 uVicSnow;       // x eşik, y yumuşaklık, z sırt payı, w eğim 
 uniform vec4 uVicRock;       // x eğim başı, y eğim sonu, z kaya payı, w -
 uniform vec4 uVicFarm;       // x tarla payı, y yama eşiği, z kasaba yarıçapı (hex), w kasaba büyümesi
 uniform vec4 uVicZoom;       // x solgun başı, y solgun sonu, z yakın başı, w yakın sonu
+uniform vec2 uVicFar;        // siyasi uzak zoomun ışık alt/üst sınırı (yakına solgunla açılır)
 uniform float uVicDebug;     // 0 kapalı; 1 kar örtüsü, 2 kaya, 3 tarla, 4 kasaba (gri zemin üstünde)
 
 const float VIC_TEX = 512.0;
@@ -314,7 +315,7 @@ vec3 gfxLand(GfxLand L) {
     }
     // SİYASİ: ton ve doygunluk ülkenin, parlaklık arazinin (sınırlı).
     float k = mix(uVicLight.y, uVicLight.x, emerge);
-    float hill = gfxHillshade(N, L.Ldir, k, mix(0.93, uVicLight.z, emerge), mix(1.10, uVicLight.w, emerge));
+    float hill = gfxHillshade(N, L.Ldir, k, mix(uVicFar.x, uVicLight.z, emerge), mix(uVicFar.y, uVicLight.w, emerge));
     float subL = gfxLuma(palSmooth);
     // Biyom parlaklığı TERRAIN_SHADE × 0.22'nin sürekli karşılığı (orman bir tık
     // koyu, kar bir tık açık); kar yakında biraz daha öne çıkar.
@@ -453,10 +454,10 @@ const TUNE = {
   // 1.5 / 0.64..1.42). Ton ve doygunluk yine ülkenin: komşular ayrışır,
   // suluboya yok — yalnız parlaklık araziden.
   // 2026-11-16: siyasi kipte doku kalktı; ışığı yalnız yükseklik taşır.
-  // Kazanç bir tık indi, aralık açıldı ve uzak kazanç yükseldi (1.3 / 0.6 /
+  // Kazanç bir tık indi, aralık açıldı ve uzak kazanç yükseldi (1.3 / 1.0 /
   // 0.56..1.46): sırt ve vadi gölgeli rölyef haritası gibi keskin okunur.
   reliefNear: 1.3,
-  reliefFar: 0.6,
+  reliefFar: 1.0,
   lightLo: 0.56,
   lightHi: 1.46,
   // Arazi kipi ışığı.
@@ -489,6 +490,12 @@ const TUNE = {
   townGrow: 0.42,
   // Zoom solgunu: arazi 0.3 → 1.0 belirir (eskiden 0.45 → 1.6: orta zoomda
   // arazi hiç görünmüyordu), yakın ayrıntı 1.4 → 3.0.
+  // Uzak zoomun (z0 altı) siyasi ışık sınırları; yakına zoom solgunuyla
+  // lightLo/lightHi'ye açılır. 0.93..1.10 uzak haritayı dümdüz bırakıyordu
+  // (sıradağ seçilmiyordu); 0.80..1.18 + uzak kazanç 1.0 rölyefi okutur,
+  // 2x büyütmede benek yok (2026-11-18 ölçümü, sheet-farz).
+  farLo: 0.80,
+  farHi: 1.18,
   z0: 0.3,
   z1: 1.0,
   zn0: 1.4,
@@ -617,6 +624,7 @@ const VIC3 = registerGfxStyle({
       uVicRock: [t.rockS0, t.rockS1, t.rockAmt, 0],
       uVicFarm: [t.farm, t.farmAt, t.townR, t.townGrow],
       uVicZoom: [t.z0, t.z1, t.zn0, t.zn1],
+      uVicFar: [t.farLo, t.farHi],
       uVicFringe: [t.fringePx, t.fringe, t.fringeSat, t.fringeCoast],
       uVicDebug: t.debug,
     };
