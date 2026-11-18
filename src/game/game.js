@@ -1693,6 +1693,7 @@ export class Game {
           hovered: this.hovered,
           selectedUnit: this.selectedUnit,
           playerNation: this.turns.playerNation,
+          paused: !this.clock?.speed,
           activeGeneral: this.activeGeneral,
           front: this.frontTiles(),
           fronts: this.playerFronts(),

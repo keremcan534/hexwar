@@ -16,6 +16,7 @@ import { DEVELOPMENT_MAX, RESOURCES } from '../game/econ/defs.js';
 import { controllerOf, isOccupied } from '../game/control.js';
 import { WaterLayer } from './water.js';
 import { SeaLayer } from './seaLayer.js';
+import { MiniLayer } from './miniatures.js';
 import { zoneStatus } from '../game/navy.js';
 import { LandMaterial } from './material.js';
 import { SurfaceGL } from './surfaceGL.js';
@@ -634,6 +635,8 @@ export class Renderer {
     this.ctx = canvas.getContext('2d', { alpha: true });
     this.camera = camera;
     this.dpr = 1;
+    /** Yakın zoomun birim minyatürleri (bkz. miniatures.js). */
+    this.minis = new MiniLayer(this);
     // Kunyeler gelince pisirilmis sayaclar gecersizdir: onbellek bosaltilir
     // ve bir kare istenir, yoksa plakalar ilk zoom degisimine kadar cikmaz.
     loadUnitPlates(() => {
@@ -1120,7 +1123,7 @@ export class Renderer {
     // zamandan bağımsızdır (uSeaMaterial 0), zincir aynı kareyi boşuna
     // yeniden çiziyordu (ölçüldü: duraklatılmış haritada 5 sn'de 35 tam kare).
     if (this.glWater() && this.waterAnimatedMode()) return true;
-    return this.water.animatedThisFrame
+    return this.water.animatedThisFrame || this.minis.live
       || this.labelFadePending === true || this.waterSkipped === true;
   }
 
@@ -1136,6 +1139,8 @@ export class Renderer {
    */
   canDrawWaterOnly() {
     if (!this.glWater() || !this.waterAnimatedMode() || this.gfx.style) return false;
+    // Figürlerin kare sırası geldi: bu tik 2B katmanı da yenilesin.
+    if (this.minis.due()) return false;
     if (this.labelFadePending === true || this.waterSkipped === true || this.hasPendingJobs()) return false;
     const rest = performance.now() - Math.max(this.zoomStamp?.at ?? 0, this.moveStamp?.at ?? 0);
     return rest > 600;
@@ -2233,6 +2238,7 @@ export class Renderer {
     }
     // Geçen zaman kare sayısından bağımsız: animasyon her FPS'te aynı hızda akar.
     this.waterTime = performance.now() / 1000;
+    this.minis.frameStart(state.paused);
     // Su önce çizilir: ayrı bir tuval olduğu için sıra bileşimi değiştirmez,
     // ama kamera değerleri Canvas2D karesiyle BİREBİR aynı kalır.
     if (this.glWater()) {
@@ -2560,6 +2566,7 @@ export class Renderer {
       this.drawOffensiveArrows(ctx, world, state.playerNation);
       if (marks) {
         this.drawUnitCounters(ctx, world, state.selectedUnit, rect, state.playerNation);
+        this.minis.drawFleets(ctx, world, rect, state.playerNation, this.mapMode === 'seas');
         this.sea.drawFleets(ctx, world, rect, state.playerNation, this.mapMode === 'seas');
         if (this.mapMode === 'seas') this.sea.drawSeaInfo(ctx, world, rect, state.playerNation);
         this.drawBattles(ctx, world, rect);
@@ -2626,6 +2633,7 @@ export class Renderer {
     if (armySelected || this.camera.zoom >= 0.9) this.drawVictoryPoints(ctx, world, rect);
     if (this.mapMode !== 'geography') {
       this.drawUnitCounters(ctx, world, state.selectedUnit, rect, state.playerNation);
+      this.minis.drawFleets(ctx, world, rect, state.playerNation, this.mapMode === 'seas');
       this.sea.drawFleets(ctx, world, rect, state.playerNation, this.mapMode === 'seas');
       if (this.mapMode === 'seas') this.sea.drawSeaInfo(ctx, world, rect, state.playerNation);
       this.drawBattles(ctx, world, rect);
@@ -4864,6 +4872,9 @@ export class Renderer {
     const T = U ? null : ctx.getTransform();
     const sd = 1 / this.dpr;
     const boxes = (this.counterRects ??= []);
+    // Yakın zoomda sayaç figüre erir; figürler döngü sonunda arkadan öne basılır.
+    const miniBlend = this.minis.blendAt(zoom);
+    this.minis.begin(world, zoom, miniBlend);
 
     for (const unit of world.units) {
       const tile = unit.tile;
@@ -4880,6 +4891,15 @@ export class Renderer {
         sides.set(unit.nationId, side);
       }
       if (!this.counterVisible(side)) continue;
+      this.minis.want(stack, zoom);
+      const mini = miniBlend > 0 ? this.minis.stack(ctx, stack, nation) : null;
+      if (mini) {
+        const plate = this.minis.plate(unit, stack, nation, side, stack.includes(selectedUnit), zoom,
+          (u) => compactMen(menUnderArms(u)));
+        if (T) boxes.push({ x: (T.a * plate.left + T.e) * sd, y: (T.d * plate.top + T.f) * sd, w: T.a * plate.w * sd, h: T.d * plate.h * sd });
+        if (U) this.minis.flush(ctx);
+        if (miniBlend >= 1) continue;
+      }
       const ze = this.counterZoom(side);
       const k = ze / zoom;
       const width = HEX_SIZE * 1.56 * k;
@@ -4928,11 +4948,14 @@ export class Renderer {
         continue;
       }
 
-      if (T) boxes.push({ x: (T.a * left + T.e) * sd, y: (T.d * top + T.f) * sd, w: T.a * width * sd, h: T.d * height * sd });
+      if (T && !mini) boxes.push({ x: (T.a * left + T.e) * sd, y: (T.d * top + T.f) * sd, w: T.a * width * sd, h: T.d * height * sd });
       const sprite = this.unitSprite(unit, nation, Math.min(stack.length, 9), unit === selectedUnit, side, ze);
+      if (mini) ctx.globalAlpha = this.minis.counterAlpha;
       ctx.drawImage(sprite.canvas, left - sprite.margin * k, top - sprite.margin * k, sprite.w * k, sprite.h * k);
       this.drawCounterState(ctx, world, stack, left, top, width, height, zoom);
+      ctx.globalAlpha = 1;
     }
+    this.minis.flush(ctx);
   }
 
   /**
