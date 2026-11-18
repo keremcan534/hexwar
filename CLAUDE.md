@@ -51,6 +51,11 @@ Mimari ve tasarım kararları için [README.md](README.md).
 - Yazı tipleri yereldir: EB Garamond ("HW Display") + Source Sans 3 ("HW UI"),
   `assets/fonts/` (OFL), `src/fonts.css`. Tuvalde aile adı elle yazılmaz,
   `src/render/fonts.js` sabitleri kullanılır; yoksa harita eski fontta kalır.
+- Deniz `src/render/ocean/` (ham WebGL2, üç FFT kaskadı + LEAN eğim momentleri,
+  kıyıda Saint-Venant çözücüsü `shallow.js`, gemi izi Kelvin deseni). Kendi kare
+  döngüsü yok, `lab/entegre.js` oyunun karesine bağlar; yol `lab/dev-kanca.js`te
+  seçilir: `?deniz=eski` three.js denizi, `?deniz=0` kapalı. Karo boyları ve desen
+  ölçekleri dünya genişliğini tam böler (`wk`), yoksa tarih çizgisinde desen sıçrar.
 - Oyuncuya birim başına iş çıkaran her özellik, `orders.js` üzerinden
   devredilebilir olmalı. Mikro yönetim, oyuncunun sahip olduğu nesne sayısıyla
   büyüyen tek maliyettir; kırk fabrikada kırk tık ise o mekanik politikaya
