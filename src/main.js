@@ -27,6 +27,7 @@ import { SettingsPanel } from './ui/settingsPanel.js';
 import { currentTheme, initTheme, mountThemeSettings, setTheme } from './ui/theme.js';
 import './ui/gfxStyleMenu.js';
 import { materials } from './render/textures.js';
+import { LivingWorld } from './render/living/index.js';
 
 // Yüzey dokuları bir kez üretilip CSS'e verilir. Çalışma anında hesaplandığı
 // için depoda ikili dosya, indirilen görsel ya da derleme adımı yok
@@ -55,6 +56,8 @@ initTheme();
 
 const canvas = document.getElementById('map');
 const game = new Game(canvas);
+// Takvimle değişen harita: mevsim, hava, şehir maketleri, gemi ve tren.
+game.living = new LivingWorld(game);
 const hud = new Hud(game);
 new Notifications(game);
 // Sag ust: ulusal hareketler (bildirim kartlari sag alttaki sayaca indi).
