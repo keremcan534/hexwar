@@ -37,7 +37,7 @@ import {
 import { attackerCount, hostile, relation, warBlockers } from '../../src/game/diplomacy.js';
 import { allianceAppeal, allianceVerdict, alliesOf } from '../../src/game/alliances.js';
 import {
-  autonomyOf, defendersOf, guaranteesGiven, napsOf, regardOf, relationsBreakdown, vassalTreatyOf,
+  autonomyOf, defendersOf, guaranteesGiven, lastDeedTurn, napsOf, regardOf, relationsBreakdown, vassalTreatyOf,
 } from '../../src/game/relations.js';
 import {
   answerPendingDelegated, giveGuarantee, guaranteeBlockers, proposeNap, resolvePending, sendEnvoy, setOddsProbe,
@@ -257,7 +257,11 @@ function runSeed(seed) {
         const joined = hostile(world, id, aggressor);
         const called = (world.diplo?.pending ?? []).some((rec) => rec.kind === 'call' && rec.to === id && rec.aggressor === aggressor);
         const excused = excuseThen != null || excuseOf(id, aggressor) != null;
-        if (joined || called || excused) accounted++;
+        // Fırsatçı lider çağrıyı bilerek reddeder: bedeli o hafta kurbanın defterine
+        // yazılmış olmalı. Kaydı olmayan gelmeme hâlâ ihlaldir.
+        const deserted = bond === 'ally' && (lastDeedTurn(world, defender, id, 'refused_call') ?? -Infinity) >= at - 1;
+        if (deserted && !joined) bump(levers, 'call-deserted');
+        if (joined || called || excused || deserted) accounted++;
         else {
           unaccounted++;
           if (unaccounted <= 3) {
@@ -361,7 +365,7 @@ console.log(`  savunucu muhasebesi: ${rows.reduce((s, r) => s + r.accounted, 0)}
 
 sub('KALDIRAÇ SAĞLIĞI');
 const leverKeys = ['guarantees', 'pacts', 'denunciations', 'demands', 'yields', 'refusal→war', 'back-downs',
-  'autonomy≥50', 'autonomy80', 'vassal-call-joins', 'breakaways', 'abandoned', 'alliances-formed', 'alliances-ended',
+  'autonomy≥50', 'autonomy80', 'vassal-call-joins', 'call-deserted', 'breakaways', 'abandoned', 'alliances-formed', 'alliances-ended',
   'flip:guarantor', 'flip:bond', 'flip:pact-skip'];
 console.log(table(leverKeys.map((k) => ({ k, ...Object.fromEntries(rows.map((r) => [r.seed, r.levers[k] ?? 0])) })), [
   { label: 'kaldıraç', get: (r) => r.k, right: false },

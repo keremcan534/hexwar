@@ -34,13 +34,11 @@ const EXPECT = {
   opportunist: { metric: 'allianceLoss', dir: 1 },
   conciliator: { metric: 'alliances', dir: 1 },
   isolationist: { metric: 'alliances', dir: -1 },
-  pragmatist: { metric: 'concessions', dir: 1 },
 };
 
 const METRIC_TEXT = {
   offensives: 'saldırı savaşı',
   allianceLoss: 'bozulan ittifak + reddedilen çağrı',
-  concessions: 'talepte verme + geri adım',
   alliances: 'kurulan ittifak',
 };
 
@@ -98,7 +96,6 @@ async function worker() {
     warWeeks: m.warsEnded ? m.warWeekSum / m.warsEnded : 0,
     yields: titled(/cedes .* without a war/),
     backDowns: titled(/backs down over/),
-    concessions: titled(/cedes .* without a war/) + titled(/backs down over/),
     demands: titled(/ demands .* from /),
     alive,
     leaders: m.leaders, deaths: m.deaths, elections: m.elections, coups: m.coups,

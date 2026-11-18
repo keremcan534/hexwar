@@ -580,7 +580,6 @@ export function demandVerdict(world, b, a, province, turn = world.turn ?? 0) {
   push('Their exhaustion', b.politics?.exhaustion ?? 0);
   push('Relations', regardOf(world, b.id, a.id, turn) / READ.DEMAND_DIV);
   if (province && province.culture === b.culture) push('Their own people live there', -1);
-  push(leverLabel(b, 'yieldBias'), leverOf(b, 'yieldBias'));
   let sum = 0;
   for (const part of parts) sum += part.value;
   return { yield: sum >= 0, sum, threshold: 0, parts };
@@ -702,7 +701,7 @@ function followThrough(game, a, b, province) {
   const world = game.world;
   const turn = turnOf(game);
   const ratio = nationStrength(world, a) / Math.max(1, backedStrength(world, b.id, a.id, turn));
-  if (ratio >= DEMAND.FOLLOW_RATIO * leverOf(a, 'followRatio') && !warBlockers(world, a.id, b.id, turn, 'demand').length
+  if (ratio >= DEMAND.FOLLOW_RATIO && !warBlockers(world, a.id, b.id, turn, 'demand').length
     && declareWar(game, a.id, b.id, { reason: 'demand', goal: province.id })) {
     removeTreaty(a, 'CB', b.id);
     return 'war';

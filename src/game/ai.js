@@ -202,8 +202,8 @@ function diplomacy(game, nation, rng) {
       if ((offerCost(world, offer) > 0 || stale) && ripe) {
         offerPeace(game, nation, foe, offer, rng);
       }
-    } else if (score <= PEACE_LOSS_SCORE + leverOf(nation, 'sueScore')
-      || myPower < nationStrength(world, foe) * 0.6 * leverOf(nation, 'sueRatio')
+    } else if (score <= PEACE_LOSS_SCORE
+      || myPower < nationStrength(world, foe) * 0.6
       // TESLİM (redesign D5, P1'de uyur): yorgunluğu 0.85'e varan ülke kaybetmese
       // de teslim teklifiyle gelir. `exhaustion` yazılana dek 0 okunur, dal kapalı.
       || (nation.politics?.exhaustion ?? 0) >= EXHAUSTION_SURRENDER) {

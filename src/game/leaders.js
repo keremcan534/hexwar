@@ -47,7 +47,6 @@ function hardShare(axis, nation, via) {
   const nationalist = party === 'nationalist';
   const liberal = party === 'liberal';
   if (axis === 'war') return 0.45 + temper + (coup ? 0.3 : 0) + (nationalist ? 0.2 : 0) - (liberal ? 0.15 : 0);
-  if (axis === 'table') return 0.4 - temper / 2 - (coup ? 0.25 : 0) - (nationalist ? 0.15 : 0) + (liberal ? 0.15 : 0);
   if (axis === 'word') return 0.35 + (coup ? 0.2 : 0) - (party === 'conservative' ? 0.15 : 0);
   return 0.5 + (liberal ? 0.2 : 0) - (nationalist ? 0.2 : 0); // company: conciliator sert kutuptur
 }

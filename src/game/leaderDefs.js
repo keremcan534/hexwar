@@ -24,15 +24,11 @@ const NEUTRAL = {
   desert: 0, // 1: güçlü saldırgan karşısında müttefik çağrısına gelmez
   allianceBias: 0, // ittifak çekiciliğine eklenir
   napBias: 0, // pakt hükmüne eklenir
-  followRatio: 1, // reddedilen talebi savaşla izleme eşiği (DEMAND.FOLLOW_RATIO)
-  yieldBias: 0, // talebin hükmüne eklenir: artı verir, eksi direnir
-  sueScore: 0, // barış isteme eşiğine eklenir (ai.PEACE_LOSS_SCORE)
-  sueRatio: 1, // güç oranıyla barış isteme eşiği
-  tolerance: 0, // barış masasında kabul toleransına eklenir (warscore puanı)
 };
 
 /**
- * ÖZELLİKLER. Dört eksen; lider en çok üç eksende kutup taşır, kalanında nötrdür. `line` oyuncuya basılan cümledir (cümle testi):
+ * ÖZELLİKLER. Üç eksen; her lider savaş ve ortaklık eksenlerinde birer kutup,
+ * sözünde ise fırsatçılık taşıyabilir: iki ya da üç özellik. `line` oyuncuya basılan cümledir (cümle testi):
  * özelliğin HANGİ kararı NASIL değiştirdiğini söyler.
  */
 export const TRAITS = {
@@ -61,11 +57,6 @@ export const TRAITS = {
     line: 'Wants no entanglements: alliances weigh −1.5, though a quiet border pact still weighs +0.5.',
     levers: { allianceBias: -1.5, napBias: 0.5 },
   },
-  pragmatist: {
-    axis: 'table', name: 'Pragmatist',
-    line: 'Yields what cannot be held, backs down from a bad bluff, and sues for peace once the war score reaches −15.',
-    levers: { followRatio: 1.35, yieldBias: 0.8, sueScore: 15, sueRatio: 1.25, tolerance: 10 },
-  },
 };
 
 export const TRAIT_IDS = Object.keys(TRAITS);
@@ -79,12 +70,13 @@ export const TRAIT_IDS = Object.keys(TRAITS);
  * kaldıraçla: kin sıralaması ve eski düşmana düşük savaş eşiği): saldırı sayısı
  * ve hedefler nötr dünyayla birebir aynı kaldı. "Hardliner" ilk altı tohumda
  * geçti, görmediği altı tohumda tekrarlanmadı (barış skoru +0.6, 3/6 tohum).
+ * "Pragmatist" 12 tohumun yalnız 7'sinde iz bıraktı (eşik 8): bütün liderlere
+ * zorlansa da beş tohumda 30 yılda tek talep verilmedi, tek geri adım atılmadı.
  */
 export const AXES = {
   war: ['warlike', 'cautious'],
   word: ['opportunist'],
   company: ['conciliator', 'isolationist'],
-  table: ['pragmatist'],
 };
 
 /** Denetim tezgâhı: bütün liderlere zorlanan özellikler (HX_LEADER_TRAIT). */
