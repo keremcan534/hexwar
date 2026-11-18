@@ -34,6 +34,8 @@ import { RESOURCES, RESOURCE_IDS } from '../game/econ/defs.js';
 import { glyph } from './icons/glyphs.js';
 import { esc, kpi as kitKpi, kpiRow as kitKpiRow, panel as kitPanel, tipAttr } from './kit.js';
 import { diplomacyArt, eventArt, gaugeArt, resourceArt } from './icons/art.js';
+import { leaderView } from '../game/leaders.js';
+import { leaderByline, leaderPhoto, leaderStrip } from './leaderPortrait.js';
 
 const tip = (text) => tipAttr({ text });
 // Düğme ve başlık içindeki resim metin boyunda ('inline': negatif kenarlı
@@ -154,9 +156,10 @@ function requestRow(req) {
   const buttons = req.options.map((o) => `<button type="button" class="k-btn sm${o.choice === 'join' || o.choice === 'accept' ? ' primary' : ''}${o.choice === 'yield' ? ' danger' : ''}" data-dip-act="req" data-dip-arg="${req.id}:${o.choice}"${o.enabled ? tip(`${o.label}\n${o.tip}`) : ` disabled${tip(`${o.label}\n${o.tip}`)}`}>${esc(o.label)}</button>`).join('');
   const show = req.tile ? `<button type="button" class="k-btn sm" data-dip-act="tile" data-dip-arg="${req.tile.q},${req.tile.r}"${tip('Show the province on the map.')}>Show</button>` : '';
   return `<div class="dip-req k-${req.kind}">
-    <span class="flag" data-flag-nation="${req.flag}" data-flag-w="30" data-flag-h="20" data-flag-style="crest"></span>
+    ${req.leader ? leaderPhoto(req.leader, 'sm') : `<span class="flag" data-flag-nation="${req.flag}" data-flag-w="30" data-flag-h="20" data-flag-style="crest"></span>`}
     <div class="dip-req-main">
       <b>${dart(req.topic)}${esc(req.title)}</b>
+      ${leaderByline(req.leader)}
       <small>${esc(req.body)}</small>
       <small class="dip-req-meta"><em>${req.weeksLeft} w</em> · if unanswered: ${esc(req.onTimeout)}</small>
     </div>
@@ -421,6 +424,7 @@ export function renderDossierScreen(screens, me) {
   // Ulusun harita rengi panelin vurgusudur: oyuncu dosyayı haritadaki lekesiyle eşler.
   return `<div class="dsr" style="--nc:${esc(target.color ?? '#8a7a55')}">
       ${dossierHead(ctx)}
+      ${leaderStrip(leaderView(world, target, turn), target.leader)}
       ${dossierActions(ctx)}
       ${offer ? screens.peaceOfferCard(offer) : ''}
       ${dossierRelations(ctx)}
@@ -761,6 +765,7 @@ function dossierRecord({ world, target }) {
       allied: `allied with ${other}`,
       alliance_broken: `broke with ${other}`,
       honored_call: `honored the call of ${other}`,
+      refused_call: `left to fight alone by ${other}`,
     }[m.kind] ?? `${esc(m.kind)} ${other}`;
     return `<li><em>${chronicleYear(m.turn)}</em><span>${text}</span></li>`;
   }).join('');

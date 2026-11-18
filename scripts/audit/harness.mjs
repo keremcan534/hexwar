@@ -23,6 +23,7 @@ import { fundFloor } from '../../src/game/econ/investment.js';
 import { applyDefaultDelegation } from '../../src/game/delegation.js';
 import { EVENT_CARDS, resolveCard } from '../../src/game/eventCards.js';
 import { DIP_AI, DIP_ARM_IDS } from '../../src/game/dipDefs.js';
+import { LEADER_TEST, TRAITS } from '../../src/game/leaderDefs.js';
 
 /**
  * DİPLOMASİ KOLLARI (şartname §13.1): `DIP_ARMS=all` (varsayılan) · `none` ·
@@ -37,6 +38,15 @@ import { DIP_AI, DIP_ARM_IDS } from '../../src/game/dipDefs.js';
       if (!DIP_ARM_IDS.includes(id)) throw new Error(`DIP_ARMS: bilinmeyen kol "${id}" (${DIP_ARM_IDS.join(', ')})`);
     }
     for (const id of DIP_ARM_IDS) DIP_AI[id] = on.has(id);
+  }
+  // HX_LEADER_TRAIT=warlike,vengeful: bütün liderlere aynı özellikler zorlanır
+  // (audit:leaders): bir özelliğin bütün menzili, tohum gürültüsüne karşı.
+  const forced = (process.env.HX_LEADER_TRAIT ?? '').trim();
+  if (forced) {
+    LEADER_TEST.force = forced === 'neutral' ? [] : forced.split(',').map((id) => id.trim());
+    for (const id of LEADER_TEST.force) {
+      if (!TRAITS[id]) throw new Error(`HX_LEADER_TRAIT: bilinmeyen özellik "${id}"`);
+    }
   }
 }
 

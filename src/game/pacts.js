@@ -39,6 +39,7 @@ import {
   ALLIANCE_RULES, DEMAND, DIP_AI, ENVOY, FAITHLESS, GUARANTEE, NAP, QUARTER, QUARTER_OFFSET, READ, RIVAL,
   WAR_GATE,
 } from './dipDefs.js';
+import { leverLabel, leverOf } from './leaderDefs.js';
 
 export { noteDiplomacy } from './relations.js';
 
@@ -126,7 +127,8 @@ export function aggressionOdds(world, attacker, target, { myPower, tension, turn
   const own = nationStrength(world, target);
   const ratio = myPower / Math.max(1, own + WAR_GATE.ALLY_WEIGHT * (allied + extra));
   const regard = regardOf(world, attacker.id, target.id, turn);
-  const needed = WAR_GATE.THRESHOLD * tension.threshold;
+  // Liderin mizacı istenen üstünlüğü oynatır: Tehdit sütunu aynı sayıyı okur.
+  const needed = WAR_GATE.THRESHOLD * tension.threshold * leverOf(attacker, 'warRatio');
   return {
     ratio,
     needed,
@@ -373,6 +375,7 @@ export function napVerdict(world, ev, other, turn = world.turn ?? 0) {
   if (busy) push('Busy elsewhere', 1);
   if (hasClaimOn(world, ev.id, other.id)) push('We claim their land', -1.5);
   push('Their infamy', -clamp(((other.infamy ?? 0) - 8) / 7, 0, 2));
+  push(leverLabel(ev, 'napBias'), leverOf(ev, 'napBias'));
   let sum = 0;
   for (const part of parts) sum += part.value;
   return { accept: sum >= NAP.VERDICT, sum, threshold: NAP.VERDICT, parts };
@@ -577,6 +580,7 @@ export function demandVerdict(world, b, a, province, turn = world.turn ?? 0) {
   push('Their exhaustion', b.politics?.exhaustion ?? 0);
   push('Relations', regardOf(world, b.id, a.id, turn) / READ.DEMAND_DIV);
   if (province && province.culture === b.culture) push('Their own people live there', -1);
+  push(leverLabel(b, 'yieldBias'), leverOf(b, 'yieldBias'));
   let sum = 0;
   for (const part of parts) sum += part.value;
   return { yield: sum >= 0, sum, threshold: 0, parts };
@@ -607,7 +611,7 @@ export function issueDemand(game, a, bId, provinceId) {
     const delegated = Boolean(b.delegation?.diplomacy);
     announce(game, b, {
       kind: 'CRISIS', tier: TIER.MAJOR, key: `demand:${rec.id}`, halt: !delegated, ttl: 0,
-      tile: province.center ?? null,
+      tile: province.center ?? null, leader: a.id,
       title: `${a.name} demands ${provinceLabel(province)}`,
       detail: `Yield it, or refuse and they hold a free cause for war for a year. Unanswered in ${DEMAND.WINDOW} weeks, the cabinet decides as ${a.name} expects: ${verdict.yield ? 'yield' : 'refuse'} (${verdictParts(verdict)}). Answer in Diplomacy (P).`,
     });
@@ -657,7 +661,7 @@ function applyYield(game, a, b, province) {
     actors: [a.id, b.id], at: centerOf(province), key: `demand:${a.id}:${province.id}`,
   });
   tellPlayer(game, a.id, {
-    kind: 'DIPLOMACY', tier: TIER.MAJOR, key: `demand-out:${b.id}`, tile: province.center ?? null,
+    kind: 'DIPLOMACY', tier: TIER.MAJOR, key: `demand-out:${b.id}`, tile: province.center ?? null, leader: b.id,
     title: `${b.name} yields ${provinceLabel(province)}`,
     detail: `It is ours without a war: infamy +${infamy.toFixed(1)}, prestige +${DEMAND.PRESTIGE}, and a truce of ${Math.max(DEMAND.TRUCE, truceLengthFor(rec?.wars ?? 1))} weeks.`,
   });
@@ -683,7 +687,7 @@ function refuseDemand(game, a, b, province) {
   (a.treaties ??= []).push({ type: 'CB', partner: b.id, since: turn, expires: turn + DEMAND.CB_WEEKS, province: province.id });
   if (a.id === playerOf(game)) {
     announce(game, a, {
-      kind: 'DIPLOMACY', tier: TIER.MAJOR, key: `demand-out:${b.id}`, tile: province.center ?? null,
+      kind: 'DIPLOMACY', tier: TIER.MAJOR, key: `demand-out:${b.id}`, tile: province.center ?? null, leader: b.id,
       title: `${b.name} refuses to yield ${provinceLabel(province)}`,
       detail: `We hold a free cause for war against them for ${DEMAND.CB_WEEKS} weeks. If we let it lapse, we have backed down.`,
     });
@@ -698,7 +702,7 @@ function followThrough(game, a, b, province) {
   const world = game.world;
   const turn = turnOf(game);
   const ratio = nationStrength(world, a) / Math.max(1, backedStrength(world, b.id, a.id, turn));
-  if (ratio >= DEMAND.FOLLOW_RATIO && !warBlockers(world, a.id, b.id, turn, 'demand').length
+  if (ratio >= DEMAND.FOLLOW_RATIO * leverOf(a, 'followRatio') && !warBlockers(world, a.id, b.id, turn, 'demand').length
     && declareWar(game, a.id, b.id, { reason: 'demand', goal: province.id })) {
     removeTreaty(a, 'CB', b.id);
     return 'war';
@@ -795,12 +799,12 @@ export function proposeAlliance(game, me, targetId) {
     const worst = [...verdict.parts].sort((x, y) => x.value - y.value)[0];
     const reason = verdict.blockers[0]
       ?? (worst && worst.value < 0 ? `${worst.label} ${signedText(worst.value)}` : `${verdict.sum.toFixed(1)} of ${verdict.threshold}: they see no reason`);
-    game.turns?.addLog?.(`${target?.name ?? 'They'} decline the alliance: ${reason}.`, { kind: 'DIPLOMACY', key: `ally-no:${targetId}` });
+    game.turns?.addLog?.(`${target?.name ?? 'They'} decline the alliance: ${reason}.`, { kind: 'DIPLOMACY', key: `ally-no:${targetId}`, leader: targetId });
     return { ok: false, reason };
   }
   if (!formAlliance(world, me.id, targetId, turn)) return { ok: false, reason: 'The alliance could not be formed' };
   announce(game, me, {
-    kind: 'PEACE', tier: TIER.MAJOR, key: `ally:${targetId}`,
+    kind: 'PEACE', tier: TIER.MAJOR, key: `ally:${targetId}`, leader: targetId,
     title: `Alliance with ${target.name}`, detail: 'An attack on one is a call to the other.',
   });
   noteDiplomacy(game, {
@@ -1203,7 +1207,7 @@ function aiDenounce(game, turn) {
       if (!partner?.alive) continue;
       // Şöhretli oyuncunun paktların arkasına saklanma açığı kapanır: 26
       // hafta sonra koalisyon kurulabilir.
-      if (regardOf(world, nation.id, partner.id, turn) < READ.BREAK || nation.rivalId === partner.id
+      if (regardOf(world, nation.id, partner.id, turn) < READ.BREAK + leverOf(nation, 'breakLine') || nation.rivalId === partner.id
         || (partner.infamy ?? 0) >= NAP.AI_DENOUNCE_INFAMY) {
         denounceNap(game, nation, partner.id);
       }
@@ -1324,7 +1328,7 @@ function aiPacts(game, turn) {
     const why = foes.length ? ` They are at war with ${foes.slice(0, 2).join(', ')}.`
       : rivalAlive ? ` Their eyes are on their rival ${nameOf(world, nation.rivalId)}.` : '';
     announce(game, me, {
-      kind: 'DIPLOMACY', tier: TIER.IMPORTANT, key: `dip-req:${rec.id}`, ttl: 0,
+      kind: 'DIPLOMACY', tier: TIER.IMPORTANT, key: `dip-req:${rec.id}`, ttl: 0, leader: nation.id,
       title: `${nation.name} proposes a non-aggression pact`,
       detail: `Five years in which neither of us may declare war.${why} Answer in Diplomacy (P) within ${rec.expires - turn} weeks.`,
     });
@@ -1368,7 +1372,7 @@ function guaranteeRequests(game, turn) {
     if (!DIP_AI.proposals || !proposalGate(world, player, s.id, 'GUARANTEE', turn)) continue;
     const rec = pushProposal(world, { treaty: 'GUARANTEE', from: s.id, to: player, threat: threat.id }, turn);
     announce(game, me, {
-      kind: 'DIPLOMACY', tier: TIER.IMPORTANT, key: `dip-req:${rec.id}`, ttl: 0,
+      kind: 'DIPLOMACY', tier: TIER.IMPORTANT, key: `dip-req:${rec.id}`, ttl: 0, leader: s.id,
       title: `${s.name} asks us to guarantee its independence`,
       detail: `${threat.name} has ×${threatOdds.ratio.toFixed(1)} of the ×${threatOdds.needed.toFixed(1)} it needs to attack them; with us behind them ×${withUs.toFixed(1)}. Cost ${GUARANTEE.COST} PP + ${GUARANTEE.UPKEEP} a week. Answer in Diplomacy (P) within ${rec.expires - turn} weeks.`,
     });

@@ -43,6 +43,7 @@ import {
   classIndexOf, fleetEquivalent, fleetStrength, isObsolete, scrapShips, shipsOf, subsOf, surfaceOf,
 } from './navy.js';
 import { DEMAND, DIP_AI, WAR_GATE } from './dipDefs.js';
+import { leverOf } from './leaderDefs.js';
 import { cbOf, napBetween, removeTreaty } from './relations.js';
 import {
   aggressionOdds, answerPendingDelegated, demandBlockers, demandCandidates, grudgeOf, hasOddsProbe, issueDemand,
@@ -201,8 +202,8 @@ function diplomacy(game, nation, rng) {
       if ((offerCost(world, offer) > 0 || stale) && ripe) {
         offerPeace(game, nation, foe, offer, rng);
       }
-    } else if (score <= PEACE_LOSS_SCORE
-      || myPower < nationStrength(world, foe) * 0.6
+    } else if (score <= PEACE_LOSS_SCORE + leverOf(nation, 'sueScore')
+      || myPower < nationStrength(world, foe) * 0.6 * leverOf(nation, 'sueRatio')
       // TESLİM (redesign D5, P1'de uyur): yorgunluğu 0.85'e varan ülke kaybetmese
       // de teslim teklifiyle gelir. `exhaustion` yazılana dek 0 okunur, dal kapalı.
       || (nation.politics?.exhaustion ?? 0) >= EXHAUSTION_SURRENDER) {
@@ -231,7 +232,7 @@ function diplomacy(game, nation, rng) {
   // Dünya gerilimi (barut fıçısı): ilan zarı ve güç eşiği gevşer; zar sayısı
   // değişmez (tek çekiliş) ki gerilimsiz yıllarda determinizm aynı kalsın.
   const tension = worldWarTension(world, game.turns.turn);
-  if (rng() > DECLARE_CHANCE * tension.declare) return;
+  if (rng() > DECLARE_CHANCE * tension.declare * leverOf(nation, 'declare')) return;
   // Hazırlık kapıları (alay, ikmal, istikrar, irade, SG, yorgunluk, şöhret,
   // iki cephe) zardan SONRA ve saf okumadır: kapı sırası zar dizisini
   // değiştirmez (pacts.warReadiness; Tehdit sütunu aynı listeyi basar).

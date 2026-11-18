@@ -15,6 +15,7 @@ import { annexInfamy } from './infamy.js';
 import { POPULATION_SCALE } from './populationScale.js';
 import { deed } from './relations.js';
 import { TOOK_LAND_MAX } from './dipDefs.js';
+import { leverOf } from './leaderDefs.js';
 
 /** Warscore 0-100 arasıdır; 100 tam teslimiyet demektir. */
 export const MAX_WAR_SCORE = 100;
@@ -628,7 +629,9 @@ export function acceptanceTolerance(world, receiverId, proposerId) {
   //
   // Kazanan taraf ustunlugunun en az %40'ini masada ister.
   const lead = warExpectation(world, receiverId, proposerId);
-  return lead > 0 ? Math.min(raw, lead * 0.6) : raw;
+  // Liderin mizacı toleransı oynatır; tavan yine kazanılan üstünlüğü korur.
+  const tempered = Math.max(0, raw + leverOf(receiver, 'tolerance'));
+  return lead > 0 ? Math.min(tempered, lead * 0.6) : tempered;
 }
 
 /**

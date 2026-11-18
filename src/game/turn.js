@@ -46,6 +46,7 @@ import {
   runProvinces, setProvinceOwner,
 } from './provinces.js';
 import { initPolitics, runPolitics } from './politics.js';
+import { runLeaders, seedLeaders } from './leaders.js';
 import { runNavy } from './navy.js';
 import { runSeaLanes } from './seaLanes.js';
 import { runResettlements } from './culturePolicy.js';
@@ -214,6 +215,7 @@ export class TurnManager {
       nation.economy.soldiers = provinceSoldiers(world, nation.id);
     }
     initPolitics(world);
+    seedLeaders(world);
     initBattles(world);
     initCommand(world);
     seedGenerals(world, this.rng);
@@ -669,6 +671,8 @@ export class TurnManager {
     // Siyaset ekonomiden SONRA: istikrar ve parti desteği bu haftanın
     // tüketim malını, gıdasını ve savaşını okur.
     runPolitics(this.game);
+    // Seçim ve hükûmet değişimi bu hafta yazıldı: lider onlardan okur.
+    runLeaders(this.game);
     runAgenda(this.game);
     runEventCards(this.game);
     yield* pause('politics');
