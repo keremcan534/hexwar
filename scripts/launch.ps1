@@ -39,8 +39,9 @@ $server = $null
 if (-not (Test-Server $port)) {
   $node = Get-Command node -ErrorAction SilentlyContinue
   if (-not $node) {
-    Show-Error 'Node.js was not found. Install it from https://nodejs.org and try again.'
-    exit 1
+    # GitHub'dan indirilen kaynak zip'i Node'suz makineye de düşer.
+    & (Join-Path $PSScriptRoot 'release\play.ps1')
+    exit
   }
   $env:PORT = "$port"
   $server = Start-Process -FilePath $node.Source -ArgumentList 'scripts/dev-server.mjs' `

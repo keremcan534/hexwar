@@ -1,0 +1,36 @@
+IMPERIAL EYE - NASIL OYNANIR
+============================
+
+BAŞLATMA
+1. Zip dosyasına sağ tıkla > Özellikler. Altta "Engellemeyi kaldır" kutusu
+   varsa işaretle > Tamam. (Windows'un uyarı göstermesini önler.)
+2. Zip dosyasına sağ tıkla > Tümünü ayıkla > Ayıkla.
+3. Çıkan klasörde "Imperial Eye" dosyasına çift tıkla. Oyun tam ekran açılır.
+
+Windows mavi bir uyarı gösterirse: "Ek bilgi" > "Yine de çalıştır".
+Kurulum yok, internet gerekmez. Windows 10/11 ve Chrome ya da Edge yeterli.
+
+KONTROLLER
+Sol tık            seç (sürükle: kutu seçimi)
+Sağ tık            seçili birlikleri yürüt
+WASD / oklar       haritayı kaydır (orta tuşla sürükleme de olur)
+Fare tekerleği     yakınlaş / uzaklaş
+Boşluk             duraklat / sürdür
++ ve -             oyun hızı
+F1-F10             üst sekmeler
+P                  diplomasi
+M                  deniz haritası ve donanma
+Esc                açık paneli kapat
+F11                tam ekran / pencere
+Alt+F4             oyundan çık
+
+KAYITLAR
+Kayıtlar bu bilgisayarda kalır; yeni sürümü başka klasöre çıkarsan da görünür.
+Başka bilgisayara taşımak için: Settings > Export save / Import save.
+
+SORUN OLURSA
+Şu dosyayı gönder: %LOCALAPPDATA%\ImperialEye\oyna.log
+(Windows gezgininin adres çubuğuna yapıştırıp Enter'a basman yeterli.)
+
+KALDIRMAK
+Oyun klasörünü sil. Kayıtları da silmek için: %LOCALAPPDATA%\ImperialEye
