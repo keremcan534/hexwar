@@ -28,6 +28,7 @@ import {
   deed, guaranteesGiven, hostileWithAnyone, napsOf, noteDiplomacy, regardOf, removePair, removeTreaty,
 } from './relations.js';
 import { AUTONOMY, DIP_AI } from './dipDefs.js';
+import { stanceOfTreaty } from './policyDefs.js';
 
 export const ANNEX = {
   POWER_BASE: 40,
@@ -130,6 +131,7 @@ export function autonomyBreakdown(world, vassal, turn = world.turn ?? 0) {
     { label: `Their strength (×${ratio.toFixed(2)} of ours)`, value: AUTONOMY.POWER * Math.min(AUTONOMY.POWER_CAP, ratio) },
     { label: 'How they regard us', value: -AUTONOMY.REGARD * regard },
     { label: 'Our war exhaustion', value: AUTONOMY.EXHAUSTION * exhaustion },
+    { label: stanceOfTreaty(treaty).name, value: stanceOfTreaty(treaty).autonomy },
   ].filter((p) => Math.abs(p.value) >= 0.05);
   let sum = 0;
   for (const part of parts) sum += part.value;

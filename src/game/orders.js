@@ -10,8 +10,26 @@
 import { runUnitAI } from './ai.js';
 import { clearDirective } from './movement.js';
 import { isMoving } from './units.js';
+import { POLICY_AREAS, POLICY_ORDER } from './policyDefs.js';
 
 export const ORDER = { AUTO: 'auto', HOLD: 'hold' };
+
+/**
+ * SÜREKLİ POLİTİKA EMRİ. Birimin AUTO/HOLD emrinin ulus düzeyindeki karşılığı:
+ * vassal, işgal, kamp ve kaynaşma kararlarını kabineye bırakmak tek anahtardır
+ * (ev ödevi testi: kırk vassalda kırk tık olmaz). AUTO, YZ'nin kullandığı
+ * `policies.runPolicyAI`'ı oyuncu için çalıştırır; sert uçlar orada kapalıdır.
+ */
+export function policyOrder(nation, area) {
+  return nation?.policies?.orders?.[area] === POLICY_ORDER.AUTO ? POLICY_ORDER.AUTO : POLICY_ORDER.HOLD;
+}
+
+export function setPolicyOrder(nation, area, mode) {
+  if (!POLICY_AREAS[area] || !Object.values(POLICY_ORDER).includes(mode)) return false;
+  const plans = (nation.policies ??= {});
+  plans.orders = { ...(plans.orders ?? {}), [area]: mode };
+  return true;
+}
 
 export function setOrder(unit, type, target = null) {
   // HOLD ve AUTO oyuncunun onceki hedefini gecersiz kilar: "dur" diyen de

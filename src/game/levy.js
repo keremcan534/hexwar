@@ -20,6 +20,10 @@ import { mod } from './modifiers.js';
 import { CULTURE, cultureMix, foreignManpowerShare, isAccepted, isHomeRule } from './culture.js';
 import { claimSoldiers, releaseSoldiers } from './provinces.js';
 import { focusBonus } from './focus.js';
+import { CAMP_REGIMES } from './policyDefs.js';
+
+/** Rejimin kuraya açtığı mahkûm payı (yalnız Penal Battalions). */
+const penalShare = (nation) => CAMP_REGIMES[nation.policies?.campRegime]?.penal ?? 0;
 
 const clamp01 = (value) => Math.max(0, Math.min(1, value));
 
@@ -84,10 +88,13 @@ export function culturePools(world, cluster, nation) {
     // Home Rule halkı kendi milisini tutar: askerinin yarısını gönderir
     // (TASARIM D1; vatandaş tam, tebaa vatandaşlık yasasının payı kadar).
     const willing = isAccepted(nation, row.id) ? (isHomeRule(nation, row.id) ? HOME_RULE_LEVY : 1) : foreign;
+    // Ceza taburları: mahkûm vatandaşlık yasasına değil rejime tabidir.
+    const penal = econ.camp === nation.id && !isAccepted(nation, row.id)
+      ? Math.max(0, econ.population) * row.share * penalShare(nation) : 0;
     return {
       id: row.id,
       share: row.share,
-      pool: people * row.share * willing,
+      pool: Math.max(people * row.share * willing, penal),
       held: Math.max(0, levied[row.id] ?? 0),
       levied: isLevied(nation, row.id),
     };

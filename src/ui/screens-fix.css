@@ -6,6 +6,24 @@
    (ui/theme.js) taban renklerini bu katmanın ÜSTÜNE kopyalar; burada yazılan
    bir yazı rengi tabandakine yenilebilir. */
 
+/* Devlet politikaları: merdivenler sertten iyiye tek bakışta okunsun. */
+.k-policies .k-seg { grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); margin-bottom: 4px; }
+.k-policies .k-sub { margin: 6px 0 3px; font-size: 11px; font-weight: 600; letter-spacing: .04em; color: var(--text-faint); }
+.k-policies .k-prow { grid-template-columns: minmax(0, 1.5fr) minmax(0, .8fr) minmax(0, 1.1fr); }
+.k-policies .k-empty { margin: 4px 0; padding: 6px 0; }
+/* Tek başlıklı ince tablo; geniş panelde iki tablo yan yana (Kerem: boşluk israfı). */
+.k-pol-duo { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 0 18px; align-items: start; }
+.k-pol-tr { display: grid; grid-template-columns: var(--cols); align-items: center; gap: 8px; min-height: 26px; border-bottom: 1px solid rgba(174, 139, 74, .1); font-size: 12px; font-variant-numeric: tabular-nums; }
+.k-pol-tr > span { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: right; }
+.k-pol-tr > span.n { font-weight: 600; text-align: left; }
+.k-pol-tr.head { min-height: 20px; font-size: 10.5px; letter-spacing: .03em; color: var(--text-faint); }
+.k-pol-tr.head > span.n { font-weight: 400; }
+.k-pol-tr .k-btn { width: 100%; min-height: 21px; padding: 0 6px; font-size: 11px; line-height: 19px; }
+.k-pol-stats { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 5px; margin-bottom: 6px; }
+.k-pol-stat { display: flex; flex-direction: column; min-width: 0; padding: 3px 8px; border-left: 2px solid rgba(174, 139, 74, .28); line-height: 1.25; }
+.k-pol-stat small { font-size: 10.5px; color: var(--text-faint); white-space: nowrap; }
+.k-pol-stat b { font-size: 13px; font-weight: 600; white-space: nowrap; }
+
 /* Factories · üretim hatları: ekonomi yasasının dört seçeneği tek sırada.
    Kaplamanın 2×2 ızgarası yasa satırında dört düğmeyi solda sıkıştırıyor,
    sağında boş bir kutu bırakıyordu (Kerem). */

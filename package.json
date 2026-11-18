@@ -42,6 +42,7 @@
     "audit:snapshot": "node scripts/audit/snapshot.mjs",
     "audit:econ": "node scripts/audit/econ-audit.mjs",
     "audit:diplomacy": "node scripts/audit/diplomacy-audit.mjs",
+    "audit:policies": "node scripts/audit/policy-audit.mjs",
     "audit:military-industry": "node scripts/audit/military-industry-audit.mjs"
   }
 }

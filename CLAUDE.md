@@ -117,6 +117,13 @@ savaş + talep payı ±4 puan, ulus toplamı ±8, tohum %33 altı, TEST 1-3.
 Son ölçüm %13.26 → %14.30, 254 → 246 ulus, en yüksek %20.2: dördü de tamam.
 YZ-YZ paktı ve ilişkinin savaş eşiği ölçülüp silindi (karar döndürmediler).
 
+**Devlet politikaları (2026-11-18, TASARIM §18).** Vassal merdiveni, işgal
+yasaları, ceza state'i, kültür kaynaşması: sabitler `policyDefs.js`, haftalık
+`policies.js`, kamp ve kaynaşma `culturePolicy.js`, ekran `ui/policyScreen.js`
+(döküm `policyView.js`), devir `orders.setPolicyOrder`. Ölçü `npm run
+audit:policies`; sınır tabanı `POLICY_ARMS=none`. Haftalık şöhret 0.05'in altında
+birikmez, ilişki kaydı 0.5'in altında budanır: küçük bedeli toplu yaz.
+
 **Ekonomi = TEK ÇUBUK (2026-10-15, TASARIM §1, §5-§7).** Altın, vergi,
 borç, enflasyon, iflas, binalar ve inşaat kuyruğu YOK. State çıktısı
 (`econ/output.js`) = el (0.6 × işçi) + sanayi (0.2 × işçi × (kalkınma−1));

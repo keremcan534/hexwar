@@ -214,6 +214,9 @@ const NATION_FIELDS = [
   // edilen rakip ve kilidi. Türetilemez; yokken (eski kayıt) boş defter ve
   // atanmış rakip — bugünkü dünya. Yüklemede derin kopyalanır (aşağıda).
   'regard', 'envoys', 'rivalChosen', 'rivalLockUntil',
+  // Politika paketi (policies.js): doktrin, işgal yasası, kamp rejimi ve halkları,
+  // kaynaşma, sürekli emirler. Yokken (eski kayıt) bugünkü dünya: kayıt sürümü aynı.
+  'policies',
 ];
 
 export function serialize(game) {
@@ -630,6 +633,7 @@ export function deserialize(game, data) {
     nation.memory = (saved.memory ?? []).map((entry) => ({ ...entry }));
     // Diplomasi: NATION_FIELDS takma adla atadı; derin kopya (aynı yükü iki
     // kez deserialize eden betiklerde canlı duruma sızmasın).
+    nation.policies = saved.policies ? JSON.parse(JSON.stringify(saved.policies)) : undefined;
     nation.regard = copyRegard(saved.regard);
     nation.envoys = [...(saved.envoys ?? [])];
     nation.rivalChosen = saved.rivalChosen ?? null;

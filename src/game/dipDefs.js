@@ -101,6 +101,13 @@ export const DEEDS = {
   embargoed_us: { d: -20, label: 'Embargoes us' },
   named_rival: { d: -20, label: 'Named us their rival' },
   declined_offer: { d: -10, label: 'Rebuffed our proposal' },
+  // Politika paketi (policyDefs.js): üç ayda bir, biriken katsayıyla yazılır.
+  // Haftalık küçük kayıt REGARD.PRUNE (0.5) altında kalıp budanıyordu (ölçüldü:
+  // kaçırma kolunda ilişki hiç düşmedi). Denge değeri haftalık katsayı ÷ 0.01.
+  abused_us: { d: -1, label: 'Bleeds us as their vassal' },
+  aided_us: { d: 1, label: 'Treats us well as their vassal' },
+  plundered_us: { d: -1, label: 'Plunders our occupied land' },
+  interned_kin: { d: -1, label: 'Holds our people in penal states' },
 };
 
 /** Toprak kaybı kaydı province başına −10, tek barışta en çok 4 province (−40). */

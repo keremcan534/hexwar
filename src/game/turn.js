@@ -49,6 +49,7 @@ import { initPolitics, runPolitics } from './politics.js';
 import { runNavy } from './navy.js';
 import { runSeaLanes } from './seaLanes.js';
 import { runResettlements } from './culturePolicy.js';
+import { occupationAftermath, runPolicies } from './policies.js';
 import { runMovements } from './movements.js';
 import { releaseCasualties } from './levy.js';
 import { updatePockets } from './pockets.js';
@@ -408,6 +409,7 @@ export class TurnManager {
     setProvinceOwner(world, province, nationId);
     // Yeni tebaa hemen sadık olmaz; kontrol düşük başlar.
     province.econ.control = 25;
+    occupationAftermath(province, nationId);
     clearBrokenMark(province.econ);
     this.game.renderer.invalidateTiles(members);
     return true;
@@ -644,6 +646,8 @@ export class TurnManager {
     runProvinces(this.game);
     // İskân göçü (culturePolicy): boşalmış province'ler kendi halkımızla dolar.
     runResettlements(this.game);
+    // Politika paketi: vassal duruşları, işgal yasaları, ceza kampları, kaynaşma.
+    runPolicies(this.game);
     // Ulusal hareketler kumelerin bu haftaki huzursuzlugunu okur; kopus
     // sahiplik degistirdigi icin isciler bundan SONRA dagitilir.
     runMovements(this.game);

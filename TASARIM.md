@@ -435,3 +435,72 @@ savaş desteği, parti, seçim, gündem, olay) → muharebe → eleme → emirle
 - Dünya ticareti kapanır: Σ ithalat = Σ ihracat (miktar ve değer — IC, fondan fona; değer sınaması 2026-10-14'te harness.scanInvariants'a eklendi).
 - Nüfus, insan gücü, stok negatif olmaz; hiçbir sayı NaN olmaz.
 - Aynı tohum aynı oyunu üretir.
+
+## 18. Devlet politikaları (2026-11-18)
+
+Kerem: "vassallara işkence etme gelsin, nüfusunu aç bırakıp IC alma, pop kaçırma,
+işgal edilen yerler için politikalar, bir state'i hapishaneye dönüştürme, tersi
+veya nötrü daha iyi davranmalar, kültür birleştirme". Dört karar da ULUS
+düzeyindedir (ev ödevi testi) ve tek ekrandadır (`ui/policyScreen.js`, döküm
+`game/policyView.js`; Politics ve Cultures'tan açılır). Sabitler `policyDefs.js`,
+haftalık giriş `policies.runPolicies` (province fazı), kamp ve kaynaşma
+`culturePolicy.js`. Her alan `orders.setPolicyOrder` ile kabineye devredilir;
+kabine sert uçlara gitmez, kamp açmaz, Total Plunder seçmez. Kayıt sürümü 28
+kalır: alanlar yokken bugünkü dünya işler.
+
+**Vassal merdiveni** (doktrin tek karar, 15 SG; vassal başına elle duruş istisna,
+26 hafta bekleme). Haraç vassalın çıktısının payıdır ve faturaya girer:
+
+| Duruş | Haraç | Kanal | Özerklik | Şöhret/hafta |
+|---|---|---|---|---|
+| Asset Stripping | %10 | çeyrekte 2 state bir kademe sökülür, bedelin %25'i efendiye | +22 | 0.22 |
+| Labour Deportation | %7.5 | nüfusun haftada %0.15'i efendiye (yolda %10 ölür; kamp varsa kampa) | +18 | 0.18 |
+| Grain Requisition | %15 | hasadın %40'ı efendiye, nüfus haftada %0.08-0.16 erir | +16 | 0.16 |
+| Forced Levy | %7.5 | savaşta 8 haftada bir vassal insanından kura alayı (en çok 4) | +12 | 0.11 |
+| Industrial Levy | %22 | ikmal krizine itebilir | +10 | 0.09 |
+| Resource Extraction | %10 | gıda dışı yatakların %30'u efendiye | +8 | 0.07 |
+| Standard Tribute | %7.5 | antlaşma | 0 | 0 |
+| Protectorate | %5 | istikrar +5, büyüme +%10, huzursuzluk −%15 | −8 | 0 |
+| Development Partnership | %3 | efendi çıktısının %6'sı vassal fonuna, yatırım +%25, tavan +2 | +4 | 0 |
+| Self-Government | %2 | istikrar +6, çıktı +%5 | +20 | 0 |
+
+Bedel gecikir: sert duruş ilişki defterini kirletir (denge katsayı ÷ 0.01), ilişki
+özerkliği yükseltir, 80'de vassal efendi sendelerken kopar. Şöhret sayıları haftalık
+sönmeye göre seçildi (`0.05 + 0.012 × şöhret`): 0.05'in altı hiç birikmiyordu.
+
+**İşgal yasaları** (10 SG, 13 hafta bekleme; işgal edilen state'in işgücü çıktısından):
+Total Plunder %50 (direniş +2.0, nüfus haftada −%0.08, yılda kademe sökümü, emek taşınır,
+şöhret 0.05/state) · Requisition %28 (+0.9, 0.02) · Military Government %10 (+0.2) ·
+Civil Administration %4 (−0.8; barışta alınırsa uyum +30). Direniş geliri %70'e dek
+keser, garnizonu yıpratır, sahibin huzursuzluğuna biner; barışta alınan state'e şikâyet
+olarak geçer, sert yasa uyumu −10/−20 düşürür.
+
+**Ceza state'i** (60 SG + 6 şöhret; en çok 1 + state/12, tavan 3; başkent, kendi
+yurdumuz ve Full Citizenship'te yok). Halk başına tek kutu: işaretli halk her state'ten
+haftada %0.4 taşınır (yolda %3 ölür, kamp başına 1.2 milyon tavan). Sürgün gibi kriz
+kapısı vardır: savaş, Residency yasası ya da Agitation'a varmış hareket. Rejim ulusun
+tek kararıdır: Detention (yılda %1.5 ölüm, 100 bin mahkûm başına 0.15 IC) · Forced Labour
+(%6.1, 0.60) · Penal Battalions (%3.1, 0.18, mahkûmun %25'i kuraya girer) · Labour to
+Exhaustion (%16.7, 1.08). Bedel: haftalık şöhret, state'te huzursuzluk +4, halkın yaşadığı
+her yerde pay × 2, hareketine haftalık ilerleme, soydaş devletlerin defteri, ulusal
+istikrar −1.5/kamp; kamp düşmana düşerse +12 şöhret. Toptan yok etme seçeneği yine yoktur:
+ölüm rejimin bedelidir, amacı değil.
+
+**Kaynaşma** (120 SG; barış, istikrar ≥ %50, okuryazarlık ≥ %15, payı ≥ %3, Home Rule'suz
+hak sahibi halk). Halkın payı haftada `%0.25 × (0.6 + okuryazarlık)` ana halka geçer, ana
+yurt kilidini aşar, talebi söner; pay %2'nin altına inince halk ana halka karışır, yurdu
+bizim yurdumuz olur, prestij +5.
+
+**Ölçüm** (`npm run audit:policies`, 3 tohum, eşli kol, eşik max(2 × dürtü, %5), her
+tohumda aynı yön): 25 kaldıracın 25'i çalışıyor. En ince pay Development Partnership
+(küçük vassalın kalkınması, 10 yılda +%6.3; tohum başına +1.6 / +16.7 / +0.5: kademe bedeli
+karesel olduğu için para yıllarca birikir). Düzeltilen ölü kanallar: alay tek state'ten
+toplanamıyordu, haftalık küçük ilişki kaydı defterde budanıyordu (0.5 altı), küçük şöhret
+sönmenin altında kalıyordu.
+
+*Sınır ölçüsü* (`POLICY_ARMS=none` ile `all`, 78×62, BORDER1-6 × 45 yıl; `none` taban commit
+ile 10 yılda bayt bayt aynı): savaş + talep payı ortalaması %12.80 → %9.88 (−2.92; sınır ±4),
+nihai ulus toplamı 238 → 230 (−8; sınır ±8, **tam sınırda**), en yüksek tohum %13.1
+(≤ 33), savaş 431 → 453, TEST 1-3 DOĞRU. Placebo (`none` + `HX_PLACEBO=1`): %12.88, 239 ulus,
+479 savaş; tohum başına savaş payı −6.9…+4.9 puan, ulus −3…+2. YZ kullanımı (BORDER1-3 × 45 yıl):
+sonda 0-3 kamp, kampanya başına 7-11 kaynaşma, ulusların %7-14'ü Requisition'da.
