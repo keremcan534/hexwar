@@ -454,8 +454,8 @@ export function refuseDemand(game, nation, cultureId) {
 
 /**
  * Krize duruşla cevap. YZ krizi açıldığı hafta cevaplar; oyuncunun kabinesi
- * 13 hafta bekler ve ASLA reddetmez (toprak ve hak kaybı oyuncunun kararıdır):
- * gücü yettikçe taviz, yetmezse "evet".
+ * 13 hafta bekler, aynı duruşu okur ama ASLA reddetmez (hak kaybı oyuncunun
+ * kararıdır): Repress gücü yettikçe taviz, yetmezse "evet" der.
  */
 export function answerCrisis(game, nation, cultureId, choice = { player: false }) {
   // Açık cevap (ekran ve denetim): 'grant' · 'concessions' · 'refuse'.
@@ -486,13 +486,9 @@ export function answerCrisis(game, nation, cultureId, choice = { player: false }
   if (kind === 'independence' && atWarNow && exhaustion < 0.85) {
     return cheapConcession && grantConcessions(game, nation, cultureId) ? 'concessions' : null;
   }
-  if (player) {
-    if (cheapConcession && grantConcessions(game, nation, cultureId)) return 'concessions';
-    grant();
-    return 'grant';
-  }
   let answer;
   if (stance === 'accommodate') answer = 'grant';
+  else if (stance === 'repress' && player) answer = cheapConcession ? 'concessions' : 'grant';
   else if (stance === 'repress') {
     answer = kind === 'homeRule'
       ? (exhaustion >= 0.6 || (nation.stability ?? 0.6) < 0.45 ? 'grant' : 'refuse')

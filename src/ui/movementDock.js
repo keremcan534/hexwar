@@ -54,7 +54,7 @@ function etaLabel(weeks, turn) {
 const STANCES = [
   ['accommodate', 'Accommodate', 'Grant rights early and say yes to their demands.'],
   ['balance', 'Balance', 'Grant rights at Insurgency, buy time with concessions, say yes when it must.'],
-  ['repress', 'Repress', 'Rights only for the largest peoples; martial law early; refuse demands while the state is strong.'],
+  ['repress', 'Repress', 'Rights only for the largest peoples; martial law early; buy time with concessions while you can afford them.'],
 ];
 
 export class MovementDock {

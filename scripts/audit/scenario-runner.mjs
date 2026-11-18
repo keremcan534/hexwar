@@ -16,9 +16,9 @@
 // KORUMALIDIR: API yoksa kosu `{ skip }` doner, asla sessizce bos kol kosmaz.
 //   `{ course: {x,y}, budget }`         politics.setCourse (D4, P7)
 //   `{ nationalities: 'repress'|... }`  politics.nationalities (D1, P4; culture.standingOf ile tanınır)
+//   `{ nationalitiesWorld: 'repress'|... }`  ayni durus BUTUN uluslarda (her hafta, yeni doganlar dahil)
 //   `{ grant: 'subject'|'none' }`       culture.acceptCulture, %15-25'lik tebaa halka BIR KEZ hak
-//   `{ warLawLock: 'on'|'off' }`        savasta yasa kilidi: 'on' zorla dususu geri yazar,
-//                                       'off' eski kurali (WS < sart − 0.1 → bir kademe in) uygular
+//   `{ warLawLock: 'on'|'off' }`        politics.WAR_LAW_LOCK.enabled (D5): oyunun kendi bayragi
 //   `{ tier3: 'base'|'redesign' }`      LAWS 3. kademe esikleri 0.8/0.7 ↔ 0.65/0.6 + needsTotalWar
 //   `{ levee: true|false }`             mobilization.LEVEE.enabled (D6, P6)
 //   `{ consent: true|false }`           provinces.CONSENT.enabled (D8, P9)
@@ -152,6 +152,27 @@ const MUTATIONS = {
       }
     }
   },
+  /** Tebaa halka hak verir ve Home Rule krizini açar: kabinenin cevabı sınanır. */
+  openHomeRuleCrisis(game, { nationId }) {
+    const nation = game.world.nations[nationId];
+    const row = subjectPeople(game.world, nation) ?? subjectPeople(game.world, nation, 0.08, 1);
+    nation.power = Math.max(nation.power ?? 0, 400);
+    if (!row || !culture.acceptCulture(game, nation, row.id)) {
+      throw new Error(`kriz acilamadi: ${nation.name}`);
+    }
+    const state = nation.movements[row.id];
+    state.progress = 100;
+    state.crisis = { kind: 'homeRule', since: game.turns.turn };
+  },
+  /** Yasayı bir kez yazar: kol boyunca yeniden yazılmaz, oyun düşürebilsin diye. */
+  setLaw(game, { nationId, law, index }) {
+    game.world.nations[nationId].politics.laws[law] = index;
+  },
+  /** İradeyi tavanda tutar: kilidin sınandığı koşul (irade, yasanın şartının altında). */
+  pinWill(game, { nationId, will }) {
+    const nation = game.world.nations[nationId];
+    nation.warSupport = Math.min(nation.warSupport ?? will, will);
+  },
   /** Teçhizat stoğunu sıfırlar. */
   stripEquipment(game, { nationId }) {
     const stock = game.world.nations[nationId].economy.stock;
@@ -183,52 +204,6 @@ const TIER3 = {
 /** Kaldıracın bir kez uygulanan durumu (hak verilen halk gibi): kol boyunca sabit. */
 const leverState = new Map();
 
-/**
- * Savaşta yasa kilidi, bütün dünyada (u5 'lock' kolunun öykünmesi). Tur
- * öncesi yasalar ve kilitler okunur; tur sonrası:
- *   on  — savaştaki ulusun kilidi değişmeden inen kademesi geri yazılır
- *         (runPolitics'in zorla düşüşü; seçilen düşüş kilidi değiştirir)
- *   off — eski kural uygulanır: savaş desteği şartın 0.1 altındaysa kademe
- *         iner (src kilitliyse bu kol kilidin YOKLUĞUNU öykünür; kilitsiz
- *         src'de zaten aynı şeyi yapar)
- */
-function warLawLockHooks(game, mode) {
-  const world = game.world;
-  let before = new Map();
-  const atWar = (nation) => (nation.economy?.warFronts ?? 0) > 0;
-  return {
-    before() {
-      before = new Map(world.nations.filter((n) => n.alive && n.politics).map((n) => [n.id, {
-        laws: { conscription: lawIndex(n, 'conscription'), economy: lawIndex(n, 'economy') },
-        locks: { conscription: n.politics.lawLocks?.conscription ?? 0, economy: n.politics.lawLocks?.economy ?? 0 },
-      }]));
-    },
-    after() {
-      for (const nation of world.nations) {
-        if (!nation.alive || !nation.politics || !atWar(nation)) continue;
-        for (const id of ['conscription', 'economy']) {
-          const was = before.get(nation.id);
-          if (mode === 'on') {
-            if (!was) continue;
-            const forced = lawIndex(nation, id) < was.laws[id]
-              && (nation.politics.lawLocks?.[id] ?? 0) === was.locks[id];
-            if (forced) nation.politics.laws[id] = was.laws[id];
-          } else {
-            let index = lawIndex(nation, id);
-            while (index > 0) {
-              const option = LAWS[id].options[index];
-              const ok = !option.warSupport || (nation.warSupport ?? 0) >= option.warSupport - 0.1 || option.atWarOr;
-              if (ok) break;
-              index--;
-            }
-            nation.politics.laws[id] = index;
-          }
-        }
-      }
-    },
-  };
-}
-
 /** Süreç düzeyi sabit kaldıraçları: kol başında bir kez (LAWS, LEVEE, CONSENT). */
 function applyConstants(levers) {
   for (const l of levers ?? []) {
@@ -239,6 +214,8 @@ function applyConstants(levers) {
       LAWS.economy.options[3].warSupport = t.economy;
       LAWS.conscription.options[3].needsTotalWar = t.needsTotalWar;
       LAWS.economy.options[3].needsTotalWar = t.needsTotalWar;
+    } else if (l.warLawLock) {
+      politics.WAR_LAW_LOCK.enabled = l.warLawLock === 'on';
     } else if (l.levee !== undefined) {
       if (!mobilization.LEVEE) throw new LeverMissing('mobilization.LEVEE yok (D6, P6)');
       mobilization.LEVEE.enabled = Boolean(l.levee);
@@ -261,6 +238,10 @@ function applyLevers(game, nation, levers) {
     } else if (l.nationalities) {
       if (typeof culture.standingOf !== 'function') throw new LeverMissing('culture.standingOf yok: milliyetler politikasi henuz okunmuyor (D1, P4)');
       nation.politics.nationalities = l.nationalities;
+    } else if (l.nationalitiesWorld) {
+      for (const other of game.world.nations) {
+        if (other.politics) other.politics.nationalities = l.nationalitiesWorld;
+      }
     } else if (l.grant) {
       if (l.grant === 'none' || leverState.has(index)) continue;
       const row = subjectPeople(game.world, nation) ?? subjectPeople(game.world, nation, 0.08, 1);
@@ -325,8 +306,6 @@ for (const m of spec.mutations ?? []) {
 }
 applyConstants(spec.levers);
 applyLevers(game, nation, spec.levers);
-const warLock = (spec.levers ?? []).find((l) => l.warLawLock)?.warLawLock ?? null;
-const hooks = warLock ? warLawLockHooks(game, warLock) : null;
 const measure = new Set(spec.measure ?? []);
 if (measure.has('peoples')) { installClaimTracker(); drainClaims(); }
 
@@ -339,10 +318,15 @@ const violations = [];
 const weeks = spec.weeks ?? 0;
 const step = spec.peaceful ? runPeaceful : run;
 const invasionAcc = { weeks: 0, warWeeks: 0, occupied: 0 };
+// Yasa kilidi: yalnız İLK savaş sayılır. Barışta yasa zaten düşer; sonraki savaş
+// düşmüş yasayla başlar ve kilidin tutup tutmadığını söylemez.
+const lawHold = { weeks: 0, held: 0, open: true, started: false };
+// Kol boyunca hak verilen halklar: kaldıraç öncesi kabuller sayılmaz, yeni doğan
+// ulusun doğuştan listesi de.
+const rightsSeen = new Map(game.world.nations.map((n) => [n.id, (n.accepted ?? []).length]));
+let rightsGranted = 0;
 for (let i = 0; i < weeks; i++) {
-  hooks?.before();
   step(game, 1);
-  hooks?.after();
   // Yasa şartı (savaş desteği) düşürürse kaldıraç her hafta yeniden yazılır.
   if (spec.reapply !== false) applyLevers(game, nation, spec.levers);
   for (const m of spec.repeatMutations ?? []) {
@@ -357,6 +341,23 @@ for (let i = 0; i < weeks; i++) {
       invasionAcc.warWeeks++;
       invasionAcc.occupied += nation.economy?.occupiedShare ?? 0;
     }
+  }
+  if (measure.has('worldPeoples')) {
+    for (const n of game.world.nations) {
+      const now = (n.accepted ?? []).length;
+      const was = rightsSeen.get(n.id) ?? now;
+      if (now > was) rightsGranted += now - was;
+      rightsSeen.set(n.id, now);
+    }
+  }
+  if (measure.has('lawHold') && lawHold.open) {
+    const fighting = game.world.nations.some((o) => o.alive && o.id !== nation.id
+      && game.world.relations[nation.id]?.[o.id]?.state === 'war');
+    if (fighting) {
+      lawHold.started = true;
+      lawHold.weeks++;
+      if (lawIndex(nation, 'conscription') >= 2) lawHold.held++;
+    } else if (lawHold.started) lawHold.open = false;
   }
   if (measure.has('warlaws')) {
     const turn = game.world.turn;
@@ -406,6 +407,27 @@ if (measure.has('warlaws')) {
     spells: lengths.length,
     lengthP50: lengths.length ? lengths[Math.floor((lengths.length - 1) / 2)] : 0,
   };
+}
+if (measure.has('cabinet')) out.cabinet = { homeRule: (nation.homeRule ?? []).length };
+if (measure.has('worldPeoples')) {
+  let pop = 0;
+  let foreign = 0;
+  for (const p of world.provinces) {
+    if (p.owner < 0 || !p.econ) continue;
+    pop += p.econ.population;
+    foreign += culture.foreignShareOf(p, world.nations[p.owner]) * p.econ.population;
+  }
+  const alive = world.nations.filter((n) => n.alive);
+  out.worldPeoples = {
+    rightsGranted,
+    uprisings: world.uprisings ?? 0,
+    seceded: (world.breakaways?.secession ?? 0) + (world.breakaways?.war ?? 0),
+    subjectShare: pop ? foreign / pop : 0,
+    stability: alive.reduce((sum, n) => sum + (n.stability ?? 0), 0) / Math.max(1, alive.length),
+  };
+}
+if (measure.has('lawHold')) {
+  out.lawHold = { weeks: lawHold.weeks, held: lawHold.weeks ? lawHold.held / lawHold.weeks : NaN };
 }
 if (measure.has('support')) out.support = { ...(nation.politics?.support ?? {}) };
 if (measure.has('peoples')) {

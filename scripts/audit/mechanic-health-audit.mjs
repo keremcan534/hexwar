@@ -87,12 +87,25 @@ const LEVERS = [
   // --- yeniden tasarım (redesign §5 tablo) ---
   // Rota (D4): köşe partinin desteği; kapı Δ ≥ +10 puan VE ≥ 2× gürültü.
   { id: 'course', kind: 'course', requires: 'course', lo: { x: -1, y: 1 }, hi: { x: 1, y: -1 }, budget: 0.30, weeks: 156, metric: 'support.nationalist', minAbs: 10, measure: ['support'], note: 'Course toward the Liberal corner vs the Nationalist corner, High funding, 156 w → nationalist support' },
-  // Milliyetler (D1): 2× gürültünün altındaysa duruş SİLİNİR (redesign D1).
-  { id: 'nationalities', kind: 'nationalities', requires: 'nationalities', lo: 'repress', hi: 'accommodate', weeks: 260, metric: 'stability', extra: ['subjectShare', 'peopleLost'], measure: ['peoples'], asPlayer: false, nation: 'subject-people', onFail: 'the stance is deleted (redesign D1)', note: 'Repress vs Accommodate, 260 w → stability' },
-  // Hak verme: %15-25'lik tebaa halka bir kez hak, AUTO kapalı.
-  { id: 'grant-citizenship', kind: 'grant', lo: 'none', hi: 'subject', weeks: 260, metric: 'output', extra: ['unrest', 'manpower'], nation: 'subject-people', note: '15–25% subject people granted vs not, 260 w → national output' },
-  // Savaşta yasa kilidi (D5): dünya, savaşlı koşu.
-  { id: 'war-law-lock', kind: 'warLawLock', lo: 'off', hi: 'on', weeks: 260, metric: 'extensiveAtWar', extra: ['warLengthP50'], world: true, peaceful: false, asPlayer: false, measure: ['warlaws'], note: 'War-law lock off vs on (all nations), 260 w → Extensive share of nation-war-weeks' },
+  // Milliyetler (D1): 2× gürültünün altındaysa duruş SİLİNİR (redesign D1). Duruş
+  // hareketin eşiklerinde karar verir: barışçı beş yılda hiçbir eşik görülmez ve
+  // istikrar iki uçta da aynı kalır (%0.2). Ölçü savaşlı dünyada, Büyük Savaş'a
+  // dek ve duruşun doğrudan seçtiği şeyde: kaç halka hak verildiği. Ayaklanma
+  // sayısı ek ölçüttür: az sayıdadır, yönü tohuma ve pencereye göre değişir.
+  { id: 'nationalities', kind: 'nationalitiesWorld', requires: 'nationalities', lo: 'repress', hi: 'accommodate', weeks: 780, metric: 'rightsGranted', extra: ['uprisings', 'seceded', 'worldSubjectShare', 'worldStability'], peaceful: false, asPlayer: false, measure: ['worldPeoples'], onFail: 'the stance is deleted (redesign D1)', note: 'Repress vs Accommodate (all nations), 780 w with wars → peoples granted citizenship' },
+  // Oyuncunun kabinesi de duruşu okur: 13 haftada cevaplanmayan Home Rule krizi.
+  { id: 'cabinet-stance', kind: 'nationalities', requires: 'nationalities', lo: 'repress', hi: 'accommodate', weeks: 26, metric: 'homeRulePeoples', mutations: [{ name: 'openHomeRuleCrisis' }], measure: ['cabinet'], nation: 'subject-people', note: 'Player cabinet under Repress vs Accommodate, unanswered Home Rule crisis, 26 w → peoples given Home Rule' },
+  // Hak verme: %15-25'lik tebaa halka bir kez hak, AUTO kapalı. Oyunun verdiği
+  // söz "saflara katılırlar ve yatışırlar"dır (culture.acceptCulture): beklenen
+  // ölçüt asker havuzudur. Çıktı rıza kanalından dolaylı gelir, ek ölçüt kalır.
+  { id: 'grant-citizenship', kind: 'grant', lo: 'none', hi: 'subject', weeks: 260, metric: 'manpower', extra: ['unrest', 'output'], nation: 'subject-people', note: '15–25% subject people granted vs not, 260 w → manpower' },
+  // Savaşta yasa kilidi (D5) bir GÜVENCEDİR, dünya ortalamasını oynatan kol değil:
+  // iradenin yeniden tasarımından beri koşulu (savaşta irade, şartın 0.1 altında)
+  // ulus-savaş-haftalarının yalnız %0.9'unda doğuyor. Altı tohum × 45 yıl, bayrak
+  // açık/kapalı: savaşta zorla düşüş 0 ↔ 19, Extensive payı %75.0 ↔ %74.0 (yön
+  // tohumdan tohuma değişir). Dünya ortalaması kilidi göremez; ölçü koşulu kurar:
+  // işgal edilen, iradesi şartın altına çivilenmiş ulus Extensive'i tutuyor mu?
+  { id: 'war-law-lock', kind: 'warLawLock', lo: 'off', hi: 'on', weeks: 78, metric: 'lawHeldAtWar', extra: ['lawHoldWeeks'], peaceful: false, asPlayer: false, mutations: [{ name: 'forceInvasion' }, { name: 'setLaw', args: { law: 'conscription', index: 2 } }, { name: 'pinWill', args: { will: 0.3 } }], repeatMutations: [{ name: 'pinWill', args: { will: 0.3 } }], measure: ['lawHold'], note: 'War-law lock off vs on, invaded nation on Extensive with war support pinned at 30%, 78 w → share of its first war spent on Extensive' },
   // 3. kademe eşikleri (D5): yalnız raporlanır, sınır bandı audit:borders'ta.
   { id: 'tier3', kind: 'tier3', lo: 'base', hi: 'redesign', weeks: 260, metric: 'tmTweShare', extra: ['warLengthP50', 'extensiveAtWar'], world: true, peaceful: false, asPlayer: false, measure: ['warlaws'], reportOnly: true, note: 'Tier-3 thresholds 0.8/0.7 vs 0.65/0.6 + total war (all nations), 260 w → TM+TWE share of war weeks' },
   // Call to Arms (D6): işgal edilen savunan; 2× gürültünün altındaysa levée KESİLİR.
@@ -131,6 +144,14 @@ function metricOf(out, metric) {
     case 'support.nationalist': return out.support?.nationalist ?? NaN;
     case 'subjectShare': return out.peoples?.subjectShare ?? NaN;
     case 'peopleLost': return out.peoples?.lost ?? NaN;
+    case 'rightsGranted': return out.worldPeoples?.rightsGranted ?? NaN;
+    case 'uprisings': return out.worldPeoples?.uprisings ?? NaN;
+    case 'seceded': return out.worldPeoples?.seceded ?? NaN;
+    case 'worldSubjectShare': return out.worldPeoples?.subjectShare ?? NaN;
+    case 'worldStability': return out.worldPeoples?.stability ?? NaN;
+    case 'homeRulePeoples': return out.cabinet?.homeRule ?? NaN;
+    case 'lawHeldAtWar': return out.lawHold?.held ?? NaN;
+    case 'lawHoldWeeks': return out.lawHold?.weeks ?? NaN;
     case 'extensiveAtWar': return out.warlaws?.extensiveAtWar ?? NaN;
     case 'tmTweShare': return out.warlaws ? (out.warlaws.tmShare + out.warlaws.tweShare) / 2 : NaN;
     case 'warLengthP50': return out.warlaws?.lengthP50 ?? NaN;
@@ -163,6 +184,7 @@ for (const lever of LEVERS) {
           peaceful: lever.peaceful !== false, asPlayer: lever.asPlayer ?? true,
           nation: lever.nation ?? 'median', levers, measure: ['unrest', ...(lever.measure ?? [])],
           mutations: noisy ? [...mutations, nudge] : mutations,
+          repeatMutations: lever.repeatMutations,
           label: `${lever.id}:${JSON.stringify(end)}${noisy ? ':nudge' : ''}`,
         },
       });
