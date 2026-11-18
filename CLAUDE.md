@@ -31,8 +31,8 @@ Mimari ve tasarım kararları için [README.md](README.md).
   `assets/incoming/arayuz-doku-sayfasi.webp`). Kaplamasız karşılaştırma: `?skin=0`.
   Teknoloji resimleri `assets/tech/<id>.webp`; görünmeleri için `src/ui/icons/art.js`
   `TECH_ART` kümesine eklenir (yoksa dalın amblemi), masa zemini `--tech-backdrop`.
-  Arayüz sesleri dosyasızdır (`src/ui/uiSound.js` SOUNDS tarifleri, Web Audio);
-  sesi düğmenin rolü seçer, yeni ses = yeni tarif.
+  Arayüz sesleri kayıttır (`assets/audio/ui`, Kenney CC0; `src/ui/uiSound.js`
+  SAMPLES); sesi düğmenin rolü seçer, SOUNDS tarifleri yalnız yedektir.
 - İki tema: koyu (varsayılan) ve "Açık çelik" (Settings → appearance,
   denetim için `?theme=light`). Açık tema ELLE YAZILMAZ: `src/ui/theme.js`
   kuralları tarar, renkleri OKLab'da çevirip `light-*` katmanlarına yazar; yeni

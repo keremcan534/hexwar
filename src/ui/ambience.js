@@ -34,6 +34,8 @@ const LAYERS = ['wind', 'ocean', 'war-rain', 'front', 'naval'];
 const VOLUME_KEY = 'hexwar:ambience-volume';
 const MUTE_KEY = 'hexwar:ambience-muted';
 const DEFAULT_VOLUME = 60;
+/** Karışımdaki yeri: kayıtlı kaydırıcı değerleri de kısılsın diye düzeyin üstünde. */
+const MIX_TRIM = 0.55;
 
 /** Hedef hesabı en sık bu aralıkla: kamera kaydırması kare başına tetikler. */
 const UPDATE_MS = 250;
@@ -300,7 +302,7 @@ export class Ambience {
     // Çalacak dosya yoksa (temiz kopya) bağlam boşa dönmesin: sessizlik
     // yolu onu askıya alır ve bir daha uyandırmaz.
     const hidden = document.visibilityState === 'hidden';
-    const level = this.muted || hidden || !ready ? 0 : (this.volume / 100) * this.duck;
+    const level = this.muted || hidden || !ready ? 0 : (this.volume / 100) * this.duck * MIX_TRIM;
     if (level !== this.sentLevel) {
       this.sentLevel = level;
       this.master.gain.setTargetAtTime(level, now, DUCK_TAU);

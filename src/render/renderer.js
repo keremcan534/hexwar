@@ -47,6 +47,24 @@ function ownerOf(tile, world) {
 export const DATA_MODES = new Set(['diplomacy', 'unrest', 'industry', 'infamy']);
 
 /**
+ * Halk ısı haritası: state'teki payın alt eşikleri ve kademe renkleri. Ölçek
+ * her halkta aynıdır (koyu mor → sarı): halkın kendi rengiyle boyamak soluk
+ * tonlu halklarda kademeleri ayırt edilmez yapıyordu. Küçük paylar sık aralıklı,
+ * çünkü sorulan çoğu zaman diasporanın nereye yayıldığıdır.
+ */
+export const CULTURE_HEAT_STOPS = [0.01, 0.05, 0.1, 0.2, 0.35, 0.5, 0.7, 0.9];
+export const CULTURE_HEAT_COLORS = ['#420a68', '#6a176e', '#932667', '#bc3754', '#dd513a', '#f37819', '#fca50a', '#f6d746'];
+/** Payın kademesi; eşiğin altındaki pay için -1. */
+export function cultureHeatStep(share) {
+  for (let i = CULTURE_HEAT_STOPS.length - 1; i >= 0; i--) if (share >= CULTURE_HEAT_STOPS[i]) return i;
+  return -1;
+}
+/** Bundan küçük halk kütlesi haritada ad almaz. */
+const CULTURE_LABEL_MIN_HEXES = 6;
+/** Isı haritasında state payının sayıyla yazılmaya başladığı zoom. */
+const CULTURE_SHARE_MIN_ZOOM = 0.42;
+
+/**
  * Diplomasi kipi: bakılan ülkeye göre herkesin yeri. Birim taraf renkleriyle
  * aynı aile (yeşil biz, mavi müttefik, kırmızı düşman), harita için
  * doygunluğu kısılmış. Sıra lejantın sırasıdır.
@@ -1220,9 +1238,23 @@ export class Renderer {
     return false;
   }
 
+  /**
+   * Çizim ölçeği (Settings → Graphics → Render scale). Yalnız arka tamponu
+   * küçültür: kamera ve isabet sınaması CSS pikselinde kaldığı için tıklama,
+   * etiket yeri ve arayüz değişmez; tarayıcı tuvali pencereye geri büyütür.
+   */
+  setRenderScale(scale) {
+    const next = Math.max(0.5, Math.min(1, Number(scale) || 1));
+    if (next === (this.renderScale ?? 1)) return;
+    this.renderScale = next;
+    this.resize();
+    this.invalidateCache();
+    this.requestFrame?.();
+  }
+
   resize() {
     const rect = this.canvas.getBoundingClientRect();
-    const dpr = Math.min(MAX_DPR, window.devicePixelRatio || 1);
+    const dpr = Math.min(MAX_DPR, window.devicePixelRatio || 1) * (this.renderScale ?? 1);
     this.waterGL?.resize(rect.width, rect.height, dpr);
     this.dpr = dpr;
     this.canvas.width = Math.round(rect.width * dpr);
@@ -3014,11 +3046,12 @@ export class Renderer {
     const key = `${id}:${world.turn ?? 0}`;
     if (this.cultureHi?.key !== key || this.cultureHi.mesh !== mesh) {
       const index = this.meshIndex(mesh);
-      const buckets = Array.from({ length: 6 }, () => new Path2D());
+      const buckets = CULTURE_HEAT_STOPS.map(() => new Path2D());
       const none = new Path2D();
       for (const [pid, entry] of index.provinces) {
         const share = world.provinces?.[pid]?.cultures?.find((row) => row.id === id)?.share ?? 0;
-        const path = share >= 0.01 ? buckets[Math.min(5, Math.floor(share * 6))] : none;
+        const step = cultureHeatStep(share);
+        const path = step >= 0 ? buckets[step] : none;
         for (const rid of entry.regions) {
           for (const loop of this.regionLoops(mesh.regions[rid])) appendPts(path, loop, true, 0);
         }
@@ -3030,13 +3063,17 @@ export class Renderer {
     for (const dx of P ? [-P, 0, P] : [0]) {
       ctx.save();
       ctx.translate(dx, 0);
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = 'rgba(6, 9, 11, 0.66)';
+      ctx.fillStyle = 'rgb(20, 23, 27)';
+      ctx.strokeStyle = 'rgb(20, 23, 27)';
+      // Aynı renkte ince kontur: komşu state'lerin arasında saç teli açılmasın.
+      ctx.lineWidth = 1 / this.camera.zoom;
       ctx.fill(this.cultureHi.none);
-      ctx.fillStyle = culture.color;
+      ctx.stroke(this.cultureHi.none);
       this.cultureHi.buckets.forEach((path, i) => {
-        ctx.globalAlpha = 0.32 + 0.12 * i;
+        ctx.fillStyle = CULTURE_HEAT_COLORS[i];
+        ctx.strokeStyle = CULTURE_HEAT_COLORS[i];
         ctx.fill(path);
+        ctx.stroke(path);
       });
       ctx.restore();
     }
@@ -5428,31 +5465,67 @@ export class Renderer {
    * Su ve kendi toprağımız geçilir, yabancı toprakta durulur. Tavan çağıran
    * yerden gelir: daha fazlası adı kıyıdan koparıp açık denize düşürür.
    */
-  seaRun(world, owner, row, col, dir, reach = 3) {
+  seaRun(world, same, row, col, dir, reach = 3) {
     if (col == null) return 0;
     let n = 0;
     for (let i = 1; i <= reach; i++) {
       const tile = world.tileAt(col + dir * i, row);
       if (!tile) break;
-      if (!tile.terrain.water && ownerOf(tile, world) !== owner) break;
+      if (!tile.terrain.water && !same(tile)) break;
       n = i;
     }
     return n;
   }
 
+  /**
+   * Kültür kipinin ad birimleri: aynı halkın kara komşuluğuyla bitişik kütleleri.
+   * Halk denizle bölünebildiği için ülke gibi tek ad almaz; her anlamlı kütle
+   * kendi adını taşır, kırıntılar (en büyük kütlenin %15'i altı) yazılmaz.
+   */
+  cultureBlobs(world) {
+    const blobOf = new Map();
+    const blobs = [];
+    for (const start of world.tiles) {
+      if (!start || start.terrain.water || start.culture < 0 || blobOf.has(start)) continue;
+      const id = blobs.length;
+      const part = [start];
+      blobOf.set(start, id);
+      for (let head = 0; head < part.length; head++) {
+        for (const next of world.neighbors(part[head])) {
+          if (next.terrain.water || next.culture !== start.culture || blobOf.has(next)) continue;
+          blobOf.set(next, id);
+          part.push(next);
+        }
+      }
+      blobs.push({ culture: start.culture, n: part.length, ref: start });
+    }
+    const largest = new Map();
+    for (const blob of blobs) largest.set(blob.culture, Math.max(largest.get(blob.culture) ?? 0, blob.n));
+    for (const blob of blobs) blob.named = blob.n >= CULTURE_LABEL_MIN_HEXES && blob.n >= largest.get(blob.culture) * 0.15;
+    return { blobOf, blobs };
+  }
+
   buildLabelLayout(world) {
     const P = world.wrapWidth || 0;
     const acc = new Map();
+    // Kültür kipinde ad birimi ülke değil halk kütlesidir; yerleşim aynı kalır.
+    const peoples = this.mapMode === 'cultures' ? this.cultureBlobs(world) : null;
+    const groupOf = peoples
+      ? (tile) => {
+        const id = peoples.blobOf.get(tile) ?? -1;
+        return id >= 0 && peoples.blobs[id].named ? id : -1;
+      }
+      : (tile) => ownerOf(tile, world);
     for (const t of world.tiles) {
       if (!t || t.terrain.water) continue;
-      const owner = ownerOf(t, world);
+      const owner = groupOf(t);
       if (owner < 0) continue;
       let a = acc.get(owner);
       if (!a) {
         a = { n: 0, sx: 0, sy: 0, sxx: 0, syy: 0, sxy: 0, rows: new Map() };
         acc.set(owner, a);
       }
-      const cap = world.nations[owner].capital;
+      const cap = peoples ? peoples.blobs[owner].ref : world.nations[owner].capital;
       let dx = t.x - cap.x;
       if (P) dx -= P * Math.round(dx / P);
       const x = cap.x + dx;
@@ -5472,8 +5545,10 @@ export class Renderer {
 
     const list = [];
     for (const [owner, a] of acc) {
-      const nation = world.nations[owner];
+      const cultureId = peoples ? peoples.blobs[owner].culture : null;
+      const nation = peoples ? world.cultures[cultureId] : world.nations[owner];
       if (!nation) continue;
+      const same = (tile) => groupOf(tile) === owner;
       const mx = a.sx / a.n;
       const my = a.sy / a.n;
       const cxx = a.sxx / a.n - mx * mx;
@@ -5510,8 +5585,8 @@ export class Renderer {
         landMin = band.min;
         landMax = band.max;
         const reach = Math.min(3, Math.ceil(band.count / 2));
-        band.min -= this.seaRun(world, owner, band.row, band.cols.get(band.min), -1, reach) * HEX_STEP;
-        band.max += this.seaRun(world, owner, band.row, band.cols.get(band.max), 1, reach) * HEX_STEP;
+        band.min -= this.seaRun(world, same, band.row, band.cols.get(band.min), -1, reach) * HEX_STEP;
+        band.max += this.seaRun(world, same, band.row, band.cols.get(band.max), 1, reach) * HEX_STEP;
       }
       const bx = band ? (landMin + landMax) / 2 : mx;
       const by = band ? band.y : my;
@@ -5551,7 +5626,8 @@ export class Renderer {
       const size = Math.max(11, Math.min(32, 8.5 + Math.sqrt(a.n) * 1.15));
       list.push({
         x, y, tilt, size, spacing: size * 0.12, avail, vertical,
-        name, flag: nation.flag, priority: a.n,
+        name, flag: peoples ? null : nation.flag, priority: a.n,
+        key: peoples ? `c${owner}` : name, culture: cultureId,
       });
     }
     list.sort((a, b) => b.priority - a.priority);
@@ -5618,10 +5694,12 @@ export class Renderer {
     // kopyalar "rastgele isim yağmuru" gibi okunuyordu.
     const gestureIdle = performance.now()
       - Math.max(this.zoomStamp.at, this.moveStamp.at) > 250;
+    const peopleLabels = this.mapMode === 'cultures';
     if (!this.labelLayout || this.labelLayout.world !== world
+      || this.labelLayout.peoples !== peopleLabels
       || (this.labelsDirty && gestureIdle
         && performance.now() - (this.labelLayoutAt ?? 0) > 700)) {
-      this.labelLayout = { world, list: this.buildLabelLayout(world) };
+      this.labelLayout = { world, peoples: peopleLabels, list: this.buildLabelLayout(world) };
       this.labelLayoutAt = performance.now();
       this.labelsDirty = false;
     }
@@ -5741,9 +5819,14 @@ export class Renderer {
     // Yakında kimliği state adları, bayraklar ve sınır rengi verir.
     const countryAlpha = z <= 0.85 ? 1 : Math.max(0, 1 - (z - 0.85) / 0.45);
     const countryFont = `600 100px ${FONT_DISPLAY}`;
+    const heatCulture = peopleLabels ? this.cultureHighlight ?? null : null;
     for (const L of this.labelLayout.list) {
-      const key = 'n' + L.name;
-      if (countryAlpha <= 0 && !this.labelAlpha.has(key)) continue;
+      const key = 'n' + L.key;
+      // Halk adı yakında da kalır (o kipte kimliği başka hiçbir şey vermez);
+      // ısı haritası açıkken yalnız seçili halk konuşur.
+      const groupAlpha = !peopleLabels ? countryAlpha
+        : heatCulture == null || heatCulture === L.culture ? 1 : 0;
+      if (groupAlpha <= 0 && !this.labelAlpha.has(key)) continue;
       const w100 = this.measureLabel(ctx, countryFont, L.name);
       const cos = Math.abs(Math.cos(L.tilt));
       const sin = Math.abs(Math.sin(L.tilt));
@@ -5801,9 +5884,9 @@ export class Renderer {
       // Küçük ulus keskin eşikte değil 8.5-10 px bandında erir.
       const sizeFactor = ramp(size, 8.5, 10);
       anchorJump(key, L.x);
-      const fits = sizeFactor > 0.04 && admits(key, rx, ry, bw, bh);
+      const fits = groupAlpha > 0 && sizeFactor > 0.04 && admits(key, rx, ry, bw, bh);
       if (fits) placed.push({ x: rx, y: ry, w: bw, h: bh });
-      const a = fade(key, fits ? countryAlpha * sizeFactor : 0);
+      const a = fade(key, fits ? groupAlpha * sizeFactor : 0);
       if (a <= 0.01) continue;
 
       for (let i = 0; i < xs.length; i++) {
@@ -5851,6 +5934,27 @@ export class Renderer {
     // adları sayacın tam ortasına basılıyordu (Lundholm, Keshvale...).
     const counters = this.counterRects ?? [];
     for (const c of counters) placed.push(c);
+
+    // Isı haritasında her state'in payı sayıyla da okunur: renk kademesi
+    // "%20 ile %34 arası" der, oyuncunun sorduğu ise "burada kaç".
+    if (heatCulture != null && z >= CULTURE_SHARE_MIN_ZOOM) {
+      ctx.font = `700 12px ${FONT_UI}`;
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = 'rgba(6, 8, 10, 0.85)';
+      ctx.fillStyle = 'rgba(255, 248, 232, 0.96)';
+      for (const pr of world.provinces ?? []) {
+        const share = pr.cultures?.find((row) => row.id === heatCulture)?.share ?? 0;
+        if (share < CULTURE_HEAT_STOPS[0]) continue;
+        const p = cam.worldToScreenWrapped(pr.center.x, pr.center.y);
+        if (p.x < -24 || p.x > cam.viewWidth + 24 || p.y < -12 || p.y > cam.viewHeight + 12) continue;
+        const text = `${Math.round(share * 100)}%`;
+        if (collides(p.x - 16, p.y - 8, 32, 16)) continue;
+        placed.push({ x: p.x - 16, y: p.y - 8, w: 32, h: 16 });
+        ctx.strokeText(text, p.x, p.y);
+        ctx.fillText(text, p.x, p.y);
+      }
+    }
     const underCounter = (rx, ry, rw, rh) => {
       for (const c of counters) {
         if (rx < c.x + c.w && rx + rw > c.x && ry < c.y + c.h && ry + rh > c.y) return c.y + c.h;

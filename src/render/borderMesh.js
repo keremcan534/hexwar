@@ -113,7 +113,7 @@ const MEANDER_CLAMP = 17;
 /** Açık zincirde uçlara doğru sönme boyu: kavşak yerinde kalır, komşular buluşur. */
 const SHAPE_TAPER = 26;
 /** Kıvrım genliği: süzgecin sildiği düzensizliğin yerine konuma bağlı olanı. */
-const MEANDER_AMP = 6;
+const MEANDER_AMP = 13;
 
 // Ara tamponlar: zincir başına dizi ayırmak kurulumun üçte birini
 // tahsisata harcıyordu.
@@ -209,8 +209,12 @@ function valueNoise(x, y, period) {
   return (a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy) * 2 - 1;
 }
 
-/** Oktavlar: [hücre boyu, genlik, y kayması] — ~3 hexlik kıvrım, ~1 hexlik dalga, kırık. */
-const MEANDER_OCTAVES = [[130, 0.62, 0], [48, 0.34, 17.3], [21, 0.2, -41.9]];
+/**
+ * Oktavlar: [hücre boyu, genlik, y kayması] — ~3 hexlik kıvrım, ~1 hexlik dalga,
+ * kırık, diş. Son iki oktav gerçek sınırların girintisini verir; hücre boyu
+ * örnek aralığının (SHAPE_STEP) iki katının altına inerse diş örtüşmeye döner.
+ */
+const MEANDER_OCTAVES = [[130, 0.55, 0], [48, 0.36, 17.3], [21, 0.3, -41.9], [10, 0.2, 63.7]];
 
 /** Hücre boyları sarmal periyoduna tam bölünecek biçimde yuvarlanır. */
 function meanderNoise(x, y, P) {

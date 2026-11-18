@@ -263,7 +263,9 @@ export class Game {
     this.clock.haltedBy = null;
     const t0 = performance.now();
     this.world = generateWorld(seed, options);
-    generateNations(this.world, { seed: `${seed}-nations`, count: options.nationCount ?? null });
+    generateNations(this.world, {
+      seed: `${seed}-nations`, count: options.nationCount ?? null, total: options.nationTotal ?? null,
+    });
     this.world.genTime = performance.now() - t0;
 
     this.selected = null;
@@ -1647,6 +1649,18 @@ export class Game {
     this.camera.centerOn(nation.capital.x, nation.capital.y);
     this.selected = nation.capital;
     this.emit('select', nation.capital);
+    this.requestRender();
+  }
+
+  /**
+   * Kaybolan kamerayı oyuncunun başkentine döndürür (Home, minimap düğmesi).
+   * Seçim değişmez: açık panel ve kültür ısı haritası yerinde kalır.
+   */
+  focusCapital() {
+    const capital = this.world?.nations?.[this.turns.playerNation]?.capital;
+    if (!capital) return;
+    this.camera.zoom = Math.min(this.camera.maxZoom, Math.max(this.camera.zoom, 0.9));
+    this.camera.centerOn(capital.x, capital.y);
     this.requestRender();
   }
 

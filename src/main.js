@@ -21,6 +21,9 @@ import { EventCards } from './ui/eventCard.js';
 import { Ambience } from './ui/ambience.js';
 import { UiSound } from './ui/uiSound.js';
 import { DiscoveryCard } from './ui/discoveryCard.js';
+import { KpiMotion } from './ui/kpiMotion.js';
+import { Minimap } from './ui/minimap.js';
+import { SettingsPanel } from './ui/settingsPanel.js';
 import { currentTheme, initTheme, mountThemeSettings, setTheme } from './ui/theme.js';
 import './ui/gfxStyleMenu.js';
 import { materials } from './render/textures.js';
@@ -132,9 +135,16 @@ mountThemeSettings();
 game.theme = { set: setTheme, get: currentTheme };
 // Keşif kartı: oyuncunun araştırması bitince resimli kart (ui/discoveryCard.js).
 new DiscoveryCard(game, { screens: hud.screens, sound: game.uiSound });
+// Gösterge kartlarında yanan meşale ve kıvılcım (bkz. ui/kpiMotion.js).
+new KpiMotion();
+new Minimap(game);
 
 // Geliştirici performans kaplaması: F3 ya da ?perf=1 (bkz. ui/perfOverlay.js).
 new PerfOverlay(game);
+
+// Ayarlar penceresi: öteki modüller kurulduktan SONRA, onların denetimlerini
+// devralır (bkz. ui/settingsPanel.js). Konsoldan: game.settings.state().
+game.settings = new SettingsPanel(game, { menu });
 
 // Ağır tek-seferlik işler (su dokuları, uzak-zoom dünya dokusu) menü perdesi
 // arkasında dilim dilim ısıtılır: ilk harita karesi senkron pişirme ödemesin

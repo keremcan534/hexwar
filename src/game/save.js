@@ -506,7 +506,9 @@ export function deserialize(game, data) {
   // Halk izi de aynı ayrı dünyada sınanır: alt halk geçişi (world/peoples.js)
   // ulus üretiminin içindedir, bölümleme izi onu görmez.
   if (Number.isFinite(data.cultureChecksum)) {
-    generateNations(fresh, { seed: `${data.seed}-nations`, count: options.nationCount ?? null });
+    generateNations(fresh, {
+      seed: `${data.seed}-nations`, count: options.nationCount ?? null, total: options.nationTotal ?? null,
+    });
     if (data.cultureChecksum !== cultureChecksum(fresh)) return false;
   }
 

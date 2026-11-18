@@ -130,9 +130,9 @@ function linkButton(screen, label) {
  * sütunundaki bayrak barış masasını açar — ekran açıkken üstteki savaş
  * çipleri gizlidir (overview.css), onların işini bu bayraklar görür.
  */
-function relationColumn(world, label, icon, tone, ids, empty, scores = null) {
-  const shown = ids.slice(0, 2);
-  const rest = ids.slice(2);
+function relationColumn(world, label, ids, empty, scores = null) {
+  const shown = ids.slice(0, 4);
+  const rest = ids.slice(4);
   const flags = shown.map((id) => {
     const nation = world.nations[id];
     const score = scores?.[id];
@@ -144,13 +144,13 @@ function relationColumn(world, label, icon, tone, ids, empty, scores = null) {
         ? `<small class="nov-war-score ${score > 8 ? 'pos' : score < -8 ? 'neg' : ''}">${score >= 0 ? '+' : ''}${score}</small>` : ''}</button>`;
   }).join('');
   const more = rest.length
-    ? `<small class="nov-rel-more" ${tip(rest.map((id) => world.nations[id].name).join('\n'))}>+${rest.length} more</small>`
-    : '<small class="nov-rel-more">&nbsp;</small>';
-  return `<div class="nov-rel tone-${tone}">
-      <span class="nov-rel-badge">${glyph(icon)}</span>
-      <b>${label}</b>
-      <div class="nov-rel-flags">${flags || `<em>${empty}</em>`}</div>
-      ${more}
+    ? `<small class="nov-rel-more" ${tip(rest.map((id) => world.nations[id].name).join('\n'))}>+${rest.length}</small>`
+    : '';
+  // Defter satırı: sol başlık, sağda bayraklar. Üç eşit kutu ve renkli rozet
+  // boş kampanyada koca bir şablon gibi duruyordu (Kerem: "aşırı ai").
+  return `<div class="nov-rel">
+      <b>${label}${ids.length ? `<span>${ids.length}</span>` : ''}</b>
+      <div class="nov-rel-flags">${flags || `<em>${empty}</em>`}${more}</div>
     </div>`;
 }
 
@@ -207,9 +207,9 @@ export function renderNationOverview(game, me) {
   const diplomacy = `<section class="nov-panel nov-relations">
       ${panelHead('scroll', 'Diplomacy &amp; Relations', linkButton('diplomacy', 'View Diplomacy'))}
       <div class="nov-rel-cols">
-        ${relationColumn(world, 'Allies', 'handshake', 'ally', relations.allies, 'No allies')}
-        ${relationColumn(world, 'Rivals', 'swords', 'rival', relations.rivals, 'No rivals')}
-        ${relationColumn(world, 'At War', 'flag', 'war', relations.wars, 'At peace', relations.warScores)}
+        ${relationColumn(world, 'Allies', relations.allies, 'None signed')}
+        ${relationColumn(world, 'Rivals', relations.rivals, 'None declared')}
+        ${relationColumn(world, 'At war with', relations.wars, 'Nobody', relations.warScores)}
       </div>
     </section>`;
 

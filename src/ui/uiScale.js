@@ -22,8 +22,29 @@ const BASE_H = 1080;
 // daha da büyütmek yerine ekranı geniş kullanır.
 const MAX_SCALE = 2;
 
+// Oyuncunun çarpanı (Settings → Display → Interface scale). Bu modül ilk boyamadan
+// önce çalıştığı için değeri kendi anahtarında tutar: ayar penceresi kurulana
+// dek beklenseydi HUD yanlış ölçekte ölçülüp bir kez sıçrardı.
+const FACTOR_KEY = 'hexwar:ui-scale-factor';
+export const UI_FACTOR_MIN = 0.75;
+export const UI_FACTOR_MAX = 1.5;
+// Büyütme HUD'un sığdığı en dar düzenin altına inemez: 1280x720'de %150 üst
+// çubuğu ve pencereleri ekrandan taşırırdı.
+const MIN_VIRTUAL_W = 1280;
+const MIN_VIRTUAL_H = 720;
+
 let scale = 1;
+let factor = readFactor();
 const listeners = new Set();
+
+function readFactor() {
+  try {
+    const n = Number(localStorage.getItem(FACTOR_KEY));
+    return n >= UI_FACTOR_MIN && n <= UI_FACTOR_MAX ? n : 1;
+  } catch {
+    return 1;
+  }
+}
 
 /**
  * Pencere ölçüsünden çarpan. Hem en hem boy oranının küçüğü: sanal pencere
@@ -70,10 +91,35 @@ export function onUiScale(fn) {
   return () => listeners.delete(fn);
 }
 
+/** Oyuncunun çarpanı (1 = pencereye göre otomatik ölçek). */
+export function uiScaleFactor() {
+  return factor;
+}
+
+/** Çarpanı yazar ve hemen uygular; yerleşim ölçenler onUiScale ile haber alır. */
+export function setUiScaleFactor(next) {
+  factor = Math.max(UI_FACTOR_MIN, Math.min(UI_FACTOR_MAX, Number(next) || 1));
+  try {
+    localStorage.setItem(FACTOR_KEY, String(factor));
+  } catch {
+    // Depo kapalıysa tercih yalnız bu oturumda yaşar.
+  }
+  apply();
+  return factor;
+}
+
+/** Otomatik ölçek × oyuncunun çarpanı, sığma tavanıyla. */
+function withFactor(auto, width, height) {
+  if (factor === 1 || !(width > 0) || !(height > 0)) return auto;
+  const roof = Math.max(auto, Math.min(width / MIN_VIRTUAL_W, height / MIN_VIRTUAL_H));
+  return Math.min(roof, Math.floor(auto * factor * 100) / 100);
+}
+
 function apply() {
   // Elle sınama: ?ui=1.25 çarpanı sabitler (1080p makinede 1440p düzenini görmek için).
   const forced = Number(new URLSearchParams(location.search).get('ui'));
-  const next = forced >= 1 && forced <= 3 ? forced : computeUiScale(window.innerWidth, window.innerHeight);
+  const next = forced >= 1 && forced <= 3 ? forced
+    : withFactor(computeUiScale(window.innerWidth, window.innerHeight), window.innerWidth, window.innerHeight);
   if (next === scale && document.documentElement.style.getPropertyValue('--ui')) return;
   scale = next;
   document.documentElement.style.setProperty('--ui', String(next));

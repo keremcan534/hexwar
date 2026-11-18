@@ -45,6 +45,43 @@ const RELIEFS = [
   ['focus', 'Integration focus'],
 ];
 
+/**
+ * Dünyanın halk atlası (kültür harita kipinin lejantı): her halkın nüfusu,
+ * dünya payı, yaşadığı state ve ülkeler, ana halkı olduğu uluslar. Nüfusa göre
+ * sıralı; nüfusu kalmamış halk listeye girmez.
+ */
+export function cultureAtlas(world) {
+  const byId = new Map();
+  let total = 0;
+  for (const province of world.provinces ?? []) {
+    const people = province.econ?.population ?? 0;
+    const mix = province.cultures?.length ? province.cultures : [{ id: province.culture, share: 1 }];
+    for (const { id, share } of mix) {
+      const culture = world.cultures?.[id];
+      if (!culture || share <= 0) continue;
+      let row = byId.get(id);
+      if (!row) {
+        row = { id, name: culture.name, color: culture.color, family: culture.family, population: 0, states: 0, hostMap: new Map() };
+        byId.set(id, row);
+      }
+      const count = people * share;
+      row.population += count;
+      total += count;
+      if (share >= 0.01) row.states++;
+      if (province.owner >= 0) row.hostMap.set(province.owner, (row.hostMap.get(province.owner) ?? 0) + count);
+    }
+  }
+  const rows = [...byId.values()].filter((row) => row.population > 0).map(({ hostMap, ...row }) => ({
+    ...row,
+    worldShare: total > 0 ? row.population / total : 0,
+    primaryOf: world.nations.filter((nation) => nation.alive && nation.culture === row.id).map((nation) => nation.name),
+    hosts: [...hostMap].map(([owner, count]) => ({ id: owner, name: world.nations[owner]?.name ?? '?', share: count / row.population }))
+      .sort((a, b) => b.share - a.share || a.id - b.id),
+  }));
+  rows.sort((a, b) => b.population - a.population || a.id - b.id);
+  return { rows, total };
+}
+
 function atPeace(world, nation) {
   const row = world.relations?.[nation.id];
   if (!row) return true;

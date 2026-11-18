@@ -19,8 +19,10 @@ import { areasOfScreen, isDelegated } from '../game/delegation.js';
 import { flagDataUrl } from '../render/flagPainter.js';
 import { mountFlag } from '../render/flagWave.js';
 import {
-  DATA_MODES, DIPLOMACY_COLORS, INFAMY_RAMP, UNREST_RAMP, developmentShade, diplomacyStanding, rampColor,
+  CULTURE_HEAT_COLORS, CULTURE_HEAT_STOPS, DATA_MODES, DIPLOMACY_COLORS, INFAMY_RAMP, UNREST_RAMP,
+  developmentShade, diplomacyStanding, rampColor,
 } from '../render/renderer.js';
+import { cultureAtlas } from '../game/peoplesView.js';
 import { bindMacroCards } from './macroCard.js';
 import { armDisband, armyPanelHtml, commandCardsHtml, generalPickerHtml } from './armyPanel.js';
 import { LEAVE_MS, hidePanel, motionOn, panelOpen, togglePanel } from './motion.js';
@@ -440,8 +442,8 @@ export class Hud {
       this.disarmGenerate();
     };
 
-    // Kültür dağılımı çipi kip ve vurgu değişince eşitlenir.
-    game.on('mapmode', () => this.syncCultureChip());
+    // Kültür lejantı kip ve seçili halk değişince eşitlenir.
+    game.on('mapmode', () => this.showModeLegend());
     // Harita modları: sağ alt köşedeki düğme kümesi
     for (const btn of document.querySelectorAll('.mode-btn[data-mode]')) {
       btn.onclick = () => {
@@ -461,6 +463,15 @@ export class Hud {
     }
     // Diplomasi lejantındaki "kendi ilişkilerime dön" düğmesi.
     el.modeLegend.addEventListener('click', (event) => {
+      const pick = event.target.closest?.('[data-culture-pick]');
+      if (pick) {
+        this.showCulture(Number(pick.dataset.culturePick));
+        return;
+      }
+      if (event.target.closest?.('[data-culture-clear]')) {
+        this.showCulture(null);
+        return;
+      }
       if (!event.target.closest?.('[data-focus-reset]')) return;
       game.renderer.setDiplomacyFocus(null);
       this.showModeLegend();
@@ -564,7 +575,7 @@ export class Hud {
         rows,
         continentality: Number(el.inCont.value),
         landBias: Number(el.inLand.value),
-        nationCount: nations > 0 ? nations : null,
+        nationTotal: nations > 0 ? nations : null,
       });
       hidePanel(el.settings);
       this.picker?.open();
@@ -639,6 +650,12 @@ export class Hud {
     game.on('world', (world) => { this.onWorld(world); this.showWars(); });
     game.on('select', (tile) => {
       this.showTile(tile);
+      // Kültür kipinde bir halkın toprağına tıklamak onun ısı haritasını açar;
+      // aynı halka ya da denize tıklamak kapatır.
+      if (game.renderer.mapMode === 'cultures') {
+        const id = tile && !tile.terrain.water && tile.culture >= 0 ? tile.culture : null;
+        this.showCulture(id === game.renderer.cultureHighlight ? null : id);
+      }
       // Diplomasi kipinde bir ülkeye tıklamak haritayı ONUN gözünden boyar
       // (Paradox'un diplomasi haritası): kimle savaşta, kimin müttefiki.
       if (tile && game.renderer.mapMode === 'diplomacy') {
@@ -942,6 +959,11 @@ export class Hud {
       if (event.key === '-' || event.key === '_' || event.code === 'NumpadSubtract') {
         event.preventDefault();
         if (!this.clockLocked()) this.game.stepSpeed(-1);
+        return;
+      }
+      if (event.code === 'Home') {
+        event.preventDefault();
+        this.game.focusCapital();
         return;
       }
       if (event.code === 'KeyM') {
@@ -1755,6 +1777,10 @@ export class Hud {
   refreshDataMode() {
     const renderer = this.game.renderer;
     const mode = renderer?.mapMode;
+    if (mode === 'cultures') {
+      this.showModeLegend();
+      return;
+    }
     if (!DATA_MODES.has(mode) && mode !== 'population') return;
     renderer.refreshModeColors();
     if (DATA_MODES.has(mode)) this.showModeLegend();
@@ -1771,6 +1797,11 @@ export class Hud {
     const world = game.world;
     const mode = game.renderer?.mapMode;
     if (!legend) return;
+    if (world && mode === 'cultures') {
+      this.showCultureLegend(legend);
+      return;
+    }
+    legend.classList.remove('is-cultures');
     if (!world || !DATA_MODES.has(mode)) {
       togglePanel(legend, false);
       return;
@@ -1830,6 +1861,46 @@ export class Hud {
           .map(([t, label]) => chip(rampColor(INFAMY_RAMP, t), label)).join('');
     }
     if (legend.innerHTML !== html) legend.innerHTML = html;
+    togglePanel(legend, true);
+  }
+
+  /**
+   * Kültür kipinin lejantı: halk seçili değilken bütün halkların listesi,
+   * seçiliyken o halkın künyesi ve ısı ölçeği. Sayılar game/peoplesView'dan.
+   */
+  showCultureLegend(legend) {
+    const { game } = this;
+    const atlas = cultureAtlas(game.world);
+    const row = atlas.rows.find((item) => item.id === game.renderer.cultureHighlight);
+    const pct = (share) => `${(share * 100).toFixed(share < 0.1 ? 1 : 0)}%`;
+    let html;
+    if (row) {
+      const hosts = row.hosts.slice(0, 4).map((host) => `<li><span>${escapeHtml(host.name)}</span>
+        <i><b style="width:${Math.round(host.share * 100)}%"></b></i><em>${pct(host.share)}</em></li>`).join('');
+      const scale = CULTURE_HEAT_COLORS.map((color, index) => `<span style="background:${color}"><small>${Math.round(CULTURE_HEAT_STOPS[index] * 100)}</small></span>`).join('');
+      html = `<header><b><i class="cl-swatch" style="background:${row.color}"></i>${escapeHtml(row.name)}</b>
+          <button type="button" data-culture-clear>All cultures</button></header>
+        <dl class="cl-facts">
+          <div><dt>People</dt><dd>${formatPopulation(row.population)}<small>${pct(row.worldShare)} of the world</small></dd></div>
+          <div><dt>Family</dt><dd>${escapeHtml(row.family ?? '—')}</dd></div>
+          <div><dt>Homeland of</dt><dd>${row.primaryOf.length ? row.primaryOf.map(escapeHtml).join(', ') : 'no nation'}</dd></div>
+          <div><dt>Lives in</dt><dd>${row.states} states<small>${row.hosts.length} ${row.hosts.length === 1 ? 'country' : 'countries'}</small></dd></div>
+        </dl>
+        <ul class="cl-hosts">${hosts}</ul>
+        <div class="cl-scale" aria-label="Share of each state, percent">${scale}</div>`;
+    } else {
+      const rows = atlas.rows.map((item) => `<button type="button" class="cl-row" data-culture-pick="${item.id}">
+          <i class="cl-swatch" style="background:${item.color}"></i><span>${escapeHtml(item.name)}</span>
+          <em>${formatPopulation(item.population)}</em><small>${pct(item.worldShare)}</small></button>`).join('');
+      html = `<header><b>Cultures</b><small>click a people to see where they live</small></header>
+        <div class="cl-list">${rows}</div>`;
+    }
+    legend.classList.add('is-cultures');
+    // Haftalık tazeleme listeyi yeniden yazar: oyuncunun kaydırdığı yer kaybolmasın.
+    const top = legend.querySelector('.cl-list')?.scrollTop ?? 0;
+    if (legend.innerHTML !== html) legend.innerHTML = html;
+    const list = legend.querySelector('.cl-list');
+    if (list) list.scrollTop = top;
     togglePanel(legend, true);
   }
 
@@ -2001,6 +2072,9 @@ export class Hud {
           .join(' · ')
         : world.cultures[tile.culture].name;
       stats.push(['Culture', label]);
+      // Karedeki halk ile ülkenin ana halkı ayrı şeylerdir: yan yana okunsun.
+      const primary = nation ? world.cultures?.[nation.culture]?.name : null;
+      if (primary) stats.push(['Primary culture', `${primary} (${nation.name})`]);
       // Dil satırı kalktı (Kerem: "language önemsiz"); dil ailesi kültür
       // kartının ipucunda kalabilir, panelde yer kaplamaz.
     }
@@ -2390,7 +2464,7 @@ export class Hud {
     return mix.map((row) => `<button type="button" class="pv-cult" data-culture-hi="${row.id}">${escapeHtml(world.cultures[row.id]?.name ?? '?')}</button>${mix.length > 1 ? ` ${Math.round(row.share * 100)}%` : ''}`).join(' · ');
   }
 
-  /** Kültür haritasında bir halkın dağılımını açar (çip ✕ ile kapanır). */
+  /** Kültür haritasında bir halkın ısı haritasını açar (null: bütün halklar). */
   showCulture(id) {
     const game = this.game;
     game.renderer.cultureHighlight = id;
@@ -2398,32 +2472,6 @@ export class Hud {
     if (game.renderer.mapMode !== 'cultures' && btn) btn.click();
     else game.emit('mapmode', 'cultures');
     game.requestRender();
-  }
-
-  /** Dağılım çipi: hangi halk gösteriliyor, kapat. */
-  syncCultureChip() {
-    const game = this.game;
-    let chip = document.getElementById('culture-chip');
-    if (!chip) {
-      chip = document.createElement('div');
-      chip.id = 'culture-chip';
-      chip.className = 'culture-chip';
-      chip.hidden = true;
-      document.body.appendChild(chip);
-      chip.addEventListener('click', (event) => {
-        if (!event.target.closest('[data-culture-clear]')) return;
-        game.renderer.cultureHighlight = null;
-        this.syncCultureChip();
-        game.requestRender();
-      });
-    }
-    const id = game.renderer.cultureHighlight;
-    const culture = id != null ? game.world?.cultures?.[id] : null;
-    const on = Boolean(culture) && game.renderer.mapMode === 'cultures';
-    chip.hidden = !on;
-    if (on) {
-      chip.innerHTML = `<i style="background:${culture.color}"></i><b>${escapeHtml(culture.name)}</b><span>share in every province, ours and abroad</span><button type="button" data-culture-clear aria-label="Clear">${glyph('close', 'ctl')}</button>`;
-    }
   }
 
   /** Ordu karti: tip, mevcut, STR/ORG, bilesim, dagitma. */

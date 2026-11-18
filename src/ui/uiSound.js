@@ -1,10 +1,8 @@
 // ARAYÜZ SESLERİ — düğme tıkı, sekme mandalı, onay mührü, ret, keşif çanı.
 //
-// Neden kodla üretiliyor (dosya yok): ses dosyası lisans ister (bkz.
-// ambience.js lisans notu) ve her biri ayrı ağ isteğidir. Bu sesler 30-1400
-// ms'lik kısa darbeler; Web Audio'nun gürültü + süzgeç + zarfıyla birkaç
-// düğümde kurulur. Tarifler bağlam ve hedef alır: aynı tarif çevrimdışı
-// bağlamda WAV'a dökülüp dinletilebilir (bkz. renderSound).
+// Sesler kayıttır (assets/audio/ui, Kenney, CC0): kodla sentezlenen tıklar
+// oyuncuya yapay geliyordu (Kerem 2026-11-18). Dosyalar ilk tıkta yüklenir; o
+// ana kadar ve dosya okunamazsa aşağıdaki tarifler çalar, arayüz sessiz kalmaz.
 //
 // Neden ayrı ses düzeyi: arayüz sesi zevk meselesidir; müzik ve ambiyansla
 // birlikte kısılmak zorunda olmamalı. Settings'te kendi satırı var.
@@ -20,6 +18,20 @@ const MUTE_KEY = 'hexwar:ui-muted';
 const DEFAULT_VOLUME = 55;
 /** Aynı ses bu aralıktan sık çalmaz: hızlı tıklama makineli tüfeğe dönmesin. */
 const MIN_GAP_S = 0.03;
+
+/**
+ * Rol başına kayıtlar ve düzeyleri. Birden çok kayıt aynı düğmenin art arda
+ * basılınca makine gibi tekrar etmesini önler.
+ */
+const SAMPLES = {
+  click: { files: ['click-1', 'click-2', 'click-3'], gain: 0.6 },
+  tab: { files: ['tab-1', 'tab-2'], gain: 0.55 },
+  confirm: { files: ['confirm-1', 'confirm-2'], gain: 0.75 },
+  deny: { files: ['deny'], gain: 0.7 },
+  discovery: { files: ['discovery'], gain: 0.7 },
+};
+/** Perde oynaması: aynı kayıt bile her basışta birebir aynı duyulmasın. */
+const PITCH_SPREAD = 0.035;
 
 const NOISE = new WeakMap();
 
@@ -168,7 +180,37 @@ export class UiSound {
     this.master = this.ctx.createGain();
     this.master.connect(this.ctx.destination);
     this.apply();
+    this.loadSamples();
     return this.ctx;
+  }
+
+  /** Kayıtlar arka planda çözülür; okunamayan rol tarifiyle çalmaya devam eder. */
+  loadSamples() {
+    this.buffers = {};
+    for (const [name, { files }] of Object.entries(SAMPLES)) {
+      Promise.all(files.map(async (file) => {
+        const response = await fetch(`assets/audio/ui/${file}.ogg`);
+        if (!response.ok) throw new Error(file);
+        return this.ctx.decodeAudioData(await response.arrayBuffer());
+      })).then((list) => { this.buffers[name] = list; }).catch(() => {});
+    }
+  }
+
+  /** Rolün kaydını çalar; bir önceki kayıt üst üste gelmesin diye atlanır. */
+  playSample(name, when) {
+    const list = this.buffers?.[name];
+    if (!list?.length) return false;
+    let index = Math.floor(Math.random() * list.length);
+    if (list.length > 1 && index === this.lastSample?.[name]) index = (index + 1) % list.length;
+    (this.lastSample ??= {})[name] = index;
+    const source = this.ctx.createBufferSource();
+    source.buffer = list[index];
+    source.playbackRate.value = 1 + (Math.random() - 0.5) * 2 * PITCH_SPREAD;
+    const gain = this.ctx.createGain();
+    gain.gain.value = SAMPLES[name].gain;
+    source.connect(gain).connect(this.master);
+    source.start(when);
+    return true;
   }
 
   apply() {
@@ -185,7 +227,7 @@ export class UiSound {
     const now = ctx.currentTime;
     if (now - (this.last[name] ?? -1) < MIN_GAP_S) return;
     this.last[name] = now;
-    recipe(ctx, this.master, now + 0.005);
+    if (!this.playSample(name, now + 0.002)) recipe(ctx, this.master, now + 0.005);
   }
 
   /** Sesi düğmenin rolü seçer; yakalama evresinde, düğmenin kendi işinden önce. */

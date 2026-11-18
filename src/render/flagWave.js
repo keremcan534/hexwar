@@ -2,7 +2,12 @@
 //
 // Bayrak tarifi (world/flags.js) ve çizimi (flagPainter.js) DEĞİŞMEZ. Bu modül
 // yalnız çizilmiş yüzeyi deforme eder: kaynak bir kez pişirilir, her karede
-// dikey şeritler halinde kaydırılarak çizilir.
+// yeniden örneklenir.
+//
+// Asıl yol GERÇEK BEZ: Blender'da simüle edilen hareket bir atlasa pişirilmiştir
+// (scripts/art/flag-cloth.py). Bayraklar ulus başına üretildiği için görüntü
+// değil adres pişirilir; her piksel bayrağın neresine baktığını atlastan okur.
+// WebGL ya da atlas yoksa aşağıdaki şerit warp devreye girer.
 //
 // Neden şerit warp da CSS dönüşümü değil: bayrağı bütün olarak eğmek ya da
 // döndürmek "sallanan karton tabela" veriyor. Bez izlenimi ancak YÜZEYİN
@@ -61,6 +66,278 @@ const BANNER = {
 };
 
 const FRINGE_COLORS = ['#f4dc98', '#d2a552', '#94702f', '#e6c06c'];
+
+// <cloth-atlas> scripts/art/flag-cloth.py yazar; elle değiştirme.
+const CLOTH = {
+  frames: 48, columns: 8, rows: 6,
+  cellW: 256, cellH: 204, gutter: 2,
+  width: 2064, height: 1236,
+  loopSeconds: 4.0, still: 22,
+  // Çerçevenin durağan bez koordinatındaki yeri (u, v birimi).
+  x0: 0.00000, y0: -0.02106, spanU: 0.96970, spanV: 1.15910,
+  // R, G kanallarının çözüm aralığı.
+  duMin: -0.00391, duMax: 0.13235, dvMin: -0.27829, dvMax: 0.04901,
+};
+// </cloth-atlas>
+
+/** Kıvrım ışığının üssü: küçük bayrakta kıvrım az pikselde okunmak zorunda. */
+const CLOTH_LIGHT = { wave: 2.6, banner: 2.4 };
+
+const CLOTH_VERT = `
+attribute vec2 aPos;
+varying vec2 vP;
+void main() {
+  vP = vec2(aPos.x * 0.5 + 0.5, 0.5 - aPos.y * 0.5);
+  gl_Position = vec4(aPos, 0.0, 1.0);
+}`;
+
+const CLOTH_FRAG = `
+precision highp float;
+varying vec2 vP;
+uniform sampler2D uAtlas;
+uniform sampler2D uSrc;
+uniform vec4 uBox;
+uniform vec4 uRest;
+uniform vec4 uDelta;
+uniform vec4 uCells;
+uniform vec2 uCell;
+uniform vec2 uInset;
+uniform vec2 uTap;
+uniform float uMix;
+uniform float uEdge;
+uniform float uLight;
+
+vec4 texel(vec2 f, vec2 at) {
+  return texture2D(uAtlas, at + clamp(f, uInset, 1.0 - uInset) * uCell);
+}
+
+vec4 cloth(vec2 f) {
+  vec4 a = texel(f, uCells.xy);
+  vec4 b = texel(f, uCells.zw);
+  float wa = a.a * (1.0 - uMix);
+  float wb = b.a * uMix;
+  float w = wa + wb;
+  if (w < 0.002) return vec4(0.0);
+  // Ağırlık örtüden: siluetin dışına düşen karenin adresi anlamsızdır ve
+  // kenarda bayrağın başka bir yerini sızdırırdı.
+  vec3 t = (a.rgb * wa + b.rgb * wb) / w;
+  vec2 uv = uRest.xy + f * uRest.zw + uDelta.xy + t.rg * uDelta.zw;
+  vec4 c = texture2D(uSrc, uv);
+  float lit = pow(t.b * 2.0, uLight);
+  float cover = clamp((w - 0.5) / uEdge + 0.5, 0.0, 1.0);
+  // Kaynak önçarpımlı: ışık rengi alfanın üstüne taşırırsa saçak aralarında
+  // geçersiz piksel ve parlak kenar doğar.
+  return vec4(min(c.rgb * lit, vec3(c.a)), c.a) * cover;
+}
+
+void main() {
+  vec2 f = (vP - uBox.xy) / uBox.zw;
+  // Döndürülmüş dört örnek: atlas bayraktan büyük olduğunda kenar ve kıvrım
+  // kıpırdarken karıncalanmasın. Mipmap olmaz, hücreler birbirine sızardı.
+  gl_FragColor = 0.25 * (
+    cloth(f + uTap * vec2(-0.375, -0.125)) + cloth(f + uTap * vec2(0.125, -0.375))
+    + cloth(f + uTap * vec2(0.375, 0.125)) + cloth(f + uTap * vec2(-0.125, 0.375)));
+}`;
+
+/**
+ * Bütün bayrakların ortak GL yüzeyi. Bayrak başına bağlam açılamaz: tarayıcı
+ * sayfa başına ~16 bağlam tanır ve harita katmanları da oradan yer.
+ */
+const cloth = {
+  state: 'idle',     // idle | loading | ready | failed
+  canvas: null,
+  gl: null,
+  u: null,
+  atlas: null,
+  generation: 0,     // bağlam düşünce eski dokular geçersizleşir
+};
+
+function clothShader(gl, type, text) {
+  const shader = gl.createShader(type);
+  gl.shaderSource(shader, text);
+  gl.compileShader(shader);
+  return shader;
+}
+
+/** Program ve geometri; bağlam geri geldiğinde de buradan yeniden kurulur. */
+function clothProgram(gl) {
+  const program = gl.createProgram();
+  gl.attachShader(program, clothShader(gl, gl.VERTEX_SHADER, CLOTH_VERT));
+  gl.attachShader(program, clothShader(gl, gl.FRAGMENT_SHADER, CLOTH_FRAG));
+  gl.linkProgram(program);
+  if (!gl.getProgramParameter(program, gl.LINK_STATUS)) return false;
+  gl.useProgram(program);
+  gl.bindBuffer(gl.ARRAY_BUFFER, gl.createBuffer());
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
+  const at = gl.getAttribLocation(program, 'aPos');
+  gl.enableVertexAttribArray(at);
+  gl.vertexAttribPointer(at, 2, gl.FLOAT, false, 0, 0);
+  const u = {};
+  for (const name of ['uBox', 'uCells', 'uTap', 'uMix', 'uEdge', 'uLight']) {
+    u[name] = gl.getUniformLocation(program, name);
+  }
+  gl.uniform1i(gl.getUniformLocation(program, 'uAtlas'), 0);
+  gl.uniform1i(gl.getUniformLocation(program, 'uSrc'), 1);
+  gl.uniform4f(gl.getUniformLocation(program, 'uRest'), CLOTH.x0, CLOTH.y0, CLOTH.spanU, CLOTH.spanV);
+  gl.uniform4f(gl.getUniformLocation(program, 'uDelta'),
+    CLOTH.duMin, CLOTH.dvMin, CLOTH.duMax - CLOTH.duMin, CLOTH.dvMax - CLOTH.dvMin);
+  gl.uniform2f(gl.getUniformLocation(program, 'uCell'), CLOTH.cellW / CLOTH.width, CLOTH.cellH / CLOTH.height);
+  gl.uniform2f(gl.getUniformLocation(program, 'uInset'), 0.5 / CLOTH.cellW, 0.5 / CLOTH.cellH);
+  gl.disable(gl.BLEND);
+  gl.disable(gl.DEPTH_TEST);
+  gl.enable(gl.SCISSOR_TEST);
+  gl.clearColor(0, 0, 0, 0);
+  cloth.u = u;
+  return true;
+}
+
+function clothTexture(gl, unit) {
+  const tex = gl.createTexture();
+  gl.activeTexture(unit);
+  gl.bindTexture(gl.TEXTURE_2D, tex);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  return tex;
+}
+
+/**
+ * Atlas RENK değil VERİDİR: önçarpım ya da renk uzayı çevirisi adresleri bozar
+ * ve bayrak kayar. Saydam piksellerdeki adresler de korunmalı, kenar örneği
+ * onlardan okur; bu yüzden `Image` değil ayarlı `createImageBitmap`.
+ */
+async function loadClothAtlas() {
+  const url = new URL('../../assets/flag/cloth-atlas.png', import.meta.url);
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`atlas ${response.status}`);
+  const bitmap = await createImageBitmap(await response.blob(), {
+    premultiplyAlpha: 'none', colorSpaceConversion: 'none',
+  });
+  const { gl } = cloth;
+  if (!gl || gl.isContextLost()) { bitmap.close(); return; }
+  cloth.atlas = clothTexture(gl, gl.TEXTURE0);
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+  gl.pixelStorei(gl.UNPACK_COLORSPACE_CONVERSION_WEBGL, gl.NONE);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, bitmap);
+  bitmap.close();
+  cloth.state = 'ready';
+  // Hareket kapalı bayraklar atlası beklerken şerit görünümünde basılmıştı.
+  for (const flag of parked) blit(flag);
+  startClock();
+}
+
+function clothFailed(reason) {
+  cloth.state = 'failed';
+  console.warn('[flagWave] bez atlası kullanılamıyor, şerit görünümü:', reason);
+}
+
+/** İlk hareketli bayrakta bir kez kurulur; başarısızsa şerit warp sürer. */
+function ensureCloth() {
+  if (cloth.state !== 'idle') return;
+  cloth.state = 'loading';
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 256;
+  const gl = canvas.getContext('webgl', {
+    alpha: true, premultipliedAlpha: true, antialias: false, depth: false, stencil: false,
+  });
+  if (!gl || !clothProgram(gl)) {
+    clothFailed('WebGL yok');
+    return;
+  }
+  cloth.canvas = canvas;
+  cloth.gl = gl;
+  canvas.addEventListener('webglcontextlost', (event) => {
+    // preventDefault olmadan tarayıcı bağlamı bir daha geri vermez.
+    event.preventDefault();
+    cloth.state = 'loading';
+    cloth.generation++;
+  });
+  canvas.addEventListener('webglcontextrestored', () => {
+    if (!clothProgram(gl)) { clothFailed('bağlam geri gelmedi'); return; }
+    loadClothAtlas().catch((err) => clothFailed(err.message));
+  });
+  loadClothAtlas().catch((err) => clothFailed(err.message));
+}
+
+/** Pişmiş bayrak GL dokusuna yalnız ilk çizimde çıkar. */
+function clothSource(flag) {
+  const { gl } = cloth;
+  if (flag.tex && flag.texGen === cloth.generation) {
+    gl.activeTexture(gl.TEXTURE1);
+    gl.bindTexture(gl.TEXTURE_2D, flag.tex);
+    return;
+  }
+  flag.tex = clothTexture(gl, gl.TEXTURE1);
+  flag.texGen = cloth.generation;
+  // Saçağın ip aralarında süzme koyu hale bırakmasın.
+  gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, true);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, flag.src);
+}
+
+function releaseClothSource(flag) {
+  if (flag.tex && flag.texGen === cloth.generation) cloth.gl?.deleteTexture(flag.tex);
+  flag.tex = null;
+}
+
+/**
+ * Atlasın `frame` anını bayrağın tuvaline basar. Komşu iki kare adres uzayında
+ * karışır: görüntüyü karıştırmak armada çift kontur bırakırdı.
+ */
+function drawClothFrame(flag, frame) {
+  if (cloth.state !== 'ready' || !flagWaveDebug.useCloth) return false;
+  const { gl, canvas, u } = cloth;
+  const cw = flag.canvas.width;
+  const ch = flag.canvas.height;
+  if (cw > canvas.width || ch > canvas.height) {
+    canvas.width = Math.max(cw, canvas.width);
+    canvas.height = Math.max(ch, canvas.height);
+  }
+  // Sancakta kare kaynağın (bez + saçak) ölçüsüyle tuvale oturur; künyede
+  // tuvalin kendisidir, kap sabit ölçülü ve taşmaya kapalıdır.
+  let bx = 0;
+  let by = 0;
+  let bw = cw;
+  let bh = ch;
+  if (flag.style === 'banner') {
+    const { src, geo } = flag;
+    bw = src.width * CLOTH.spanU;
+    bh = src.height * CLOTH.spanV;
+    bx = -CLOTH.x0 * src.width;
+    by = geo.oy - geo.F + CLOTH.y0 * src.height;
+  }
+  const whole = Math.floor(frame);
+  const a = ((whole % CLOTH.frames) + CLOTH.frames) % CLOTH.frames;
+  const b = (a + 1) % CLOTH.frames;
+  const pitchX = (CLOTH.cellW + CLOTH.gutter) / CLOTH.width;
+  const pitchY = (CLOTH.cellH + CLOTH.gutter) / CLOTH.height;
+
+  gl.viewport(0, canvas.height - ch, cw, ch);
+  gl.scissor(0, canvas.height - ch, cw, ch);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  clothSource(flag);
+  gl.uniform4f(u.uBox, bx / cw, by / ch, bw / cw, bh / ch);
+  gl.uniform4f(u.uCells,
+    (a % CLOTH.columns) * pitchX, Math.floor(a / CLOTH.columns) * pitchY,
+    (b % CLOTH.columns) * pitchX, Math.floor(b / CLOTH.columns) * pitchY);
+  gl.uniform1f(u.uMix, frame - whole);
+  // Örnek yayılımı en az bir atlas tekseli: 8 bit adresin basamağı da süzülür.
+  gl.uniform2f(u.uTap, Math.max(1 / bw, 1 / CLOTH.cellW), Math.max(1 / bh, 1 / CLOTH.cellH));
+  // Atlas büyütülürse örtü geçişi de büyür; kenar bir buçuk piksele sıkıştırılır.
+  gl.uniform1f(u.uEdge, Math.min(1, (0.75 * CLOTH.cellW) / bw));
+  gl.uniform1f(u.uLight, flag.style === 'banner' ? CLOTH_LIGHT.banner : CLOTH_LIGHT.wave);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+  flag.ctx.clearRect(0, 0, cw, ch);
+  flag.ctx.drawImage(canvas, 0, 0, cw, ch, 0, 0, cw, ch);
+  return true;
+}
+
+/** Her ulus döngünün başka yerinde: yan yana iki bayrak aynı anda dalgalanmasın. */
+function clothPhase(nation) {
+  return ((Number(nation.id) || 0) * 0.61803398875) % 1;
+}
 
 /**
  * KUMAŞ DOKUSU: çalışma anında üretilen düz dokuma (bez ayağı), gri ve
@@ -182,7 +459,13 @@ function shown(flag) {
  * sabitleri konsoldan kurcalamak ve hareketi kapalı makinede efekti bir kez
  * görebilmek içindir.
  */
-export const flagWaveDebug = { tune: TUNE, forceMotion: false };
+export const flagWaveDebug = {
+  tune: TUNE,
+  forceMotion: false,
+  useCloth: true,
+  cloth,
+  drawClothFrame: (flag, frame) => drawClothFrame(flag, frame),
+};
 
 /**
  * Hareket OYUNUN ayarıdır (Settings → Interface animations, kök
@@ -414,6 +697,11 @@ function bakeCrest(flag) {
 
 /** Hareketsiz durum: kaynağı olduğu gibi bas (sancak donmuş bir an çizer). */
 function blit(flag) {
+  if (!flag.fixed && drawClothFrame(flag, CLOTH.still)) {
+    // Duran bayrak bir daha çizilmez: dokusu GPU'da boşuna beklemesin.
+    releaseClothSource(flag);
+    return;
+  }
   if (flag.style === 'banner') {
     drawBanner(flag, BANNER.stillTime);
     return;
@@ -496,11 +784,14 @@ function draw(flag, time) {
   // yeniliyor, ayrı bir sökme çağrısına bel bağlanamaz.
   if (!flag.canvas.isConnected) {
     live.delete(flag);
+    releaseClothSource(flag);
     if (seen) seen.unobserve(flag.canvas);
     if (!live.size) stopClock();
     return false;
   }
   if (!shown(flag)) return false;
+  const turn = time / CLOTH.loopSeconds + flag.phase;
+  if (drawClothFrame(flag, (turn - Math.floor(turn)) * CLOTH.frames)) return true;
   if (flag.style === 'banner') return drawBanner(flag, time);
 
   const { ctx, src, w, h, strips, amp } = flag;
@@ -584,7 +875,9 @@ export function mountFlag(host, nation, cssW, cssH, style = 'wave') {
       lums: new Float32Array(n + 1), hollows: new Float32Array(n + 1),
     };
     canvasW = w + F + 2 * dpr;
-    canvasH = Math.ceil(top + h + F + A + D * 1.6 + 2 * dpr);
+    // Simüle bez şerit dalgadan fazla sarkar; pay iki yolun büyüğüne göre.
+    const clothBottom = top - F + (CLOTH.y0 + CLOTH.spanV) * (h + 2 * F);
+    canvasH = Math.ceil(Math.max(top + h + F + A + D * 1.6, clothBottom) + 2 * dpr);
     canvas.style.marginTop = `${-top / dpr}px`;
   } else {
     canvas.style.marginTop = '';
@@ -615,7 +908,9 @@ export function mountFlag(host, nation, cssW, cssH, style = 'wave') {
   if (host.__flag) {
     live.delete(host.__flag);
     parked.delete(host.__flag);
+    releaseClothSource(host.__flag);
   }
+  if (!fixed) ensureCloth();
   flag = {
     canvas, ctx: canvas.getContext('2d'), src,
     nation, w, h, strips, style, geo,
@@ -624,6 +919,9 @@ export function mountFlag(host, nation, cssW, cssH, style = 'wave') {
     tiny,
     fixed,
     visible: true,
+    phase: clothPhase(nation),
+    tex: null,
+    texGen: -1,
   };
   host.__flag = flag;
   canvas.__flag = flag;

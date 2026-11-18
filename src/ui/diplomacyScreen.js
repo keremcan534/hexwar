@@ -719,7 +719,11 @@ function dossierProfile({ world, me, target, view }) {
     const cls = d.label === 'may attack' ? 'may' : d.label === 'able, not ready' ? 'able' : 'safe';
     return `<span class="dsr-threat">${nationLink(me, d.id, d.name)}<span class="dip-threat ${cls}"${tip(`${d.name} against ${target.name}\n${d.text}`)}>${esc(d.label === 'able, not ready' ? 'able · not ready' : d.label)}</span></span>`;
   };
+  const primary = world.cultures?.[target.culture];
+  const accepted = (target.accepted ?? []).filter((id) => id !== target.culture)
+    .map((id) => world.cultures?.[id]?.name).filter(Boolean);
   const rows = [
+    wide('Primary culture', primary ? `${esc(primary.name)}${accepted.length ? `<small>accepts ${esc(accepted.join(', '))}</small>` : ''}` : none('none')),
     pair('Population', esc(formatPopulation(populationOf(world, target))), 'Territory', `${target.tiles}<small>hexes</small>`),
     pair('Cities', String(cities), 'Infamy', `${(target.infamy ?? 0).toFixed(1)}<small>of ${INFAMY_COALITION}</small>`,
       '', tip(`Infamy\nAt ${INFAMY_COALITION} other nations can form a coalition against them.`)),

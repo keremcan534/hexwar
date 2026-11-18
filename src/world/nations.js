@@ -137,6 +137,7 @@ export function generateNations(world, options = {}) {
   const {
     seed = world.seed + '-nations',
     count = null,
+    total = null,
   } = options;
 
   const rng = makeRng(seed);
@@ -156,8 +157,11 @@ export function generateNations(world, options = {}) {
   // güçleri kurar; artan toprak sahipsiz bırakılmaz, doldurma geçişinde sınır
   // devletlerine ve kabile birliklerine bağlanır (bkz. fillRemaining).
   // `count` (menü kaydıracı) plan listesini kırpar: büyükler önce doğar.
+  // `total` oyuncunun seçtiği TOPLAM ülke sayısıdır: büyük güç planı ondan
+  // kalabalık olamaz, gerisini fitNationTotal tamamlar.
   const plan = archetypePlan(rng);
-  const specs = count != null ? plan.slice(0, Math.max(1, count)) : plan;
+  const cut = total != null ? Math.min(count ?? Infinity, Math.max(1, total)) : count;
+  const specs = cut != null ? plan.slice(0, Math.max(1, cut)) : plan;
   const anchors = world.macroAnchors ?? {};
   const graph = {
     neighbors: (province) => province.neighbors.map((i) => world.provinces[i]),
@@ -280,7 +284,10 @@ export function generateNations(world, options = {}) {
     }
   }
 
+  const greatPowers = nations.length;
   fillRemaining(world, nations, rng, { graph, makeNation, claimCluster });
+  // Seçim yoksa hiç zar çekilmez: varsayılan dünya bit bit aynı kalır.
+  if (total != null) fitNationTotal(world, nations, total, greatPowers, rng, { graph, makeNation, claimCluster });
   // Ana halk ve imparatorlukların alt halkları (redesign D3). İkisi de ana zar
   // akışından çekmez: ad, renk ve sınır aşağıdaki geçişlerde bit bit aynı kalır.
   assignPrimaryCultures(world, nations);
@@ -696,6 +703,144 @@ function fillRemaining(world, nations, rng, { graph, makeNation, claimCluster })
       if (p.owner === -1) claimCluster(p, born[0].id, true);
     }
   }
+}
+
+/** Seçilebilecek en az ülke: tek ülkeli dünyada savaş ve diplomasi olmaz. */
+export const NATION_TOTAL_MIN = 2;
+/** Bölünecek çekirdeğin en küçük boyu: iki yarısı da en az iki state tutsun. */
+const SPLIT_MIN_CORE = 4;
+
+/**
+ * TOPLAM ÜLKE SAYISI. "Great powers" ayarı yalnız planı kırpıyordu, doldurma
+ * devletleri boşluğu yine kapatıyordu (ölçüldü: 6 seçilince 47, 16 seçilince 55
+ * ülke). Sayı burada, dünya dolduktan SONRA tutturulur: fazlası en küçükten
+ * komşusuna katılır, eksiği en büyük çekirdek ikiye bölünerek açılır. Üretilen
+ * sınırlar aynı kaldığı için coğrafya ve bölge rolleri bozulmaz.
+ */
+function fitNationTotal(world, nations, total, greatPowers, rng, tools) {
+  const held = new Map(nations.map((nation) => [nation.id, []]));
+  for (const province of world.provinces) {
+    if (province.owner >= 0) held.get(province.owner).push(province);
+  }
+  const target = Math.max(NATION_TOTAL_MIN, Math.round(total));
+  while (held.size > target) absorbSmallest(world, held, greatPowers, tools);
+  while (held.size < target && splitLargest(world, nations, held, greatPowers, rng, tools));
+
+  // Katılan ülkeler diziden çıkar; kimlikler dizin olduğu için yeniden yazılır.
+  const kept = nations.filter((nation) => held.has(nation.id));
+  if (kept.length === nations.length) return;
+  const remap = new Map(kept.map((nation, index) => [nation.id, index]));
+  for (const province of world.provinces) {
+    if (province.owner >= 0) province.owner = remap.get(province.owner);
+    if (province.coreOf >= 0) province.coreOf = remap.get(province.coreOf) ?? -1;
+  }
+  for (const tile of world.tiles) {
+    if (tile.owner >= 0) tile.owner = remap.get(tile.owner);
+  }
+  kept.forEach((nation, index) => { nation.id = index; });
+  nations.length = 0;
+  nations.push(...kept);
+}
+
+/**
+ * En küçük ülke en küçük komşusuna katılır: boylar birbirine yakın büyür.
+ * Büyük güçler ancak doldurma devleti kalmayınca sıraya girer.
+ */
+function absorbSmallest(world, held, greatPowers, { claimCluster }) {
+  let victim = -1;
+  let victimRank = Infinity;
+  for (const [id, list] of held) {
+    // Toprak bulamamış "büyük güç" korunmaz: tek state'lik imparatorluk olmasın.
+    const rank = list.length + (id < greatPowers && list.length >= SPLIT_MIN_CORE ? 1e6 : 0);
+    if (rank < victimRank) { victim = id; victimRank = rank; }
+  }
+  const lands = held.get(victim);
+  let host = -1;
+  let hostSize = Infinity;
+  for (const province of lands) {
+    for (const index of province.neighbors) {
+      const owner = world.provinces[index].owner;
+      if (owner < 0 || owner === victim) continue;
+      const size = held.get(owner).length;
+      if (size < hostSize || (size === hostSize && owner < host)) { host = owner; hostSize = size; }
+    }
+  }
+  // Komşusu olmayan ada devleti en yakın ülkenin deniz aşırı toprağı olur.
+  const overseas = host < 0;
+  if (overseas) {
+    let best = Infinity;
+    const from = lands[0]?.center;
+    for (const other of world.provinces) {
+      if (!from || other.owner < 0 || other.owner === victim) continue;
+      const d = world.wrapDistance(from.q, from.r, other.center.q, other.center.r);
+      if (d < best) { best = d; host = other.owner; }
+    }
+  }
+  for (const province of lands) {
+    claimCluster(province, host, !overseas && province.coreOf === victim);
+    held.get(host).push(province);
+  }
+  held.delete(victim);
+}
+
+/** Ülkenin tek parça en büyük çekirdeği (koloniler bölünmez, anavatanda kalır). */
+function largestCore(list, id, graph) {
+  const core = new Set(list.filter((province) => province.coreOf === id));
+  const seen = new Set();
+  let best = [];
+  for (const start of core) {
+    if (seen.has(start)) continue;
+    const part = [start];
+    seen.add(start);
+    for (let head = 0; head < part.length; head++) {
+      for (const next of graph.neighbors(part[head])) {
+        if (!core.has(next) || seen.has(next)) continue;
+        seen.add(next);
+        part.push(next);
+      }
+    }
+    if (part.length > best.length) best = part;
+  }
+  return best;
+}
+
+/**
+ * En büyük çekirdek ikiye bölünür; başkentli yarı eski ülkede kalır. Büyük
+ * güçler indirimli sayılır: önce doldurma devletleri parçalansın.
+ * @returns {boolean} bölünecek ülke bulundu mu
+ */
+function splitLargest(world, nations, held, greatPowers, rng, { graph, makeNation, claimCluster }) {
+  let chosen = null;
+  let score = 0;
+  for (const [id, list] of held) {
+    const core = largestCore(list, id, graph);
+    if (core.length < SPLIT_MIN_CORE) continue;
+    const value = core.length * (id < greatPowers ? 0.6 : 1);
+    if (value > score) { score = value; chosen = { id, core }; }
+  }
+  if (!chosen) return false;
+  const { id, core } = chosen;
+  const capital = core.find((province) => province.center === nations[id].capital);
+  const ordered = capital ? [capital, ...core.filter((province) => province !== capital)] : core;
+  const seeds = pickSpreadSeeds(world, ordered, 2);
+  const inCore = new Set(core);
+  const { assignment } = growRegions(graph, seeds, {
+    canEnter: (province) => inCore.has(province),
+    stepCost: (province) => province.moveCost + rng.range(0, 2.0),
+    budget: () => Math.ceil(core.length / 2) + 1,
+  });
+  const role = FILL_ROLE[seeds[1].zone] ?? FILL_ROLE_ISLAND;
+  const born = makeNation(seeds[1], role, 0, false);
+  const lands = [];
+  for (const [province, region] of assignment) {
+    if (region !== 1) continue;
+    claimCluster(province, born.id, true);
+    lands.push(province);
+  }
+  const moved = new Set(lands);
+  held.set(id, held.get(id).filter((province) => !moved.has(province)));
+  held.set(born.id, lands);
+  return true;
 }
 
 /** Kümenin sahipsiz kalan province'leri, kara komşuluğuyla bitişik parçalar hâlinde. */

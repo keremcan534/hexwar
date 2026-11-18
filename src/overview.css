@@ -333,43 +333,35 @@ body:has(#screen[data-screen='nation']:not(.hidden)) :is(#war-bar, #battle-strip
   transform: translateY(-50%);
 }
 
-/* İlişkiler: üç sütun, rozet + iki bayrak yuvası + "+N" satırı. */
+/* İlişkiler: antlaşma defteri gibi üç satır; başlık solda, bayraklar sağda. */
 .nov-relations { display: flex; flex-direction: column; }
 .nov-rel-cols {
   flex: 1;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  margin: 10px 10px 12px;
-  border-radius: 2px;
-  background: rgba(3, 7, 9, 0.35);
-  box-shadow: inset 0 0 0 1px rgba(201, 168, 102, 0.1);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-evenly;
+  margin: 4px 18px 10px;
 }
 .nov-rel {
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
-  justify-items: center;
-  gap: 5px;
-  padding: 10px 6px 8px;
+  grid-template-columns: 138px minmax(0, 1fr);
+  align-items: center;
+  gap: 14px;
   min-width: 0;
+  min-height: 48px;
 }
-.nov-rel + .nov-rel { border-left: 1px solid rgba(201, 168, 102, 0.16); }
-.nov-rel b { color: var(--nov-ink); font-size: 16px; font-weight: 400; }
-.nov-rel-badge {
-  display: grid;
-  place-items: center;
-  width: 42px;
-  height: 42px;
-  border-radius: 50%;
-  --tone: var(--nov-gold);
-  background: radial-gradient(circle at 50% 35%, color-mix(in srgb, var(--tone) 38%, #10191c), #0a1113 75%);
-  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.8), inset 0 0 0 2px color-mix(in srgb, var(--tone) 70%, #000), 0 0 14px color-mix(in srgb, var(--tone) 30%, transparent);
+.nov-rel + .nov-rel { border-top: 1px solid rgba(201, 168, 102, 0.16); }
+.nov-rel b {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  color: var(--nov-ink);
+  font-size: 17px;
+  font-weight: 400;
 }
-.nov-rel-badge .glyph { width: 24px; height: 24px; color: color-mix(in srgb, var(--tone) 55%, #fff6dc); }
-.nov-rel.tone-ally .nov-rel-badge { --tone: #6f9a5c; }
-.nov-rel.tone-rival .nov-rel-badge { --tone: #b4513f; }
-.nov-rel.tone-war .nov-rel-badge { --tone: #c9a35c; }
-.nov-rel-flags { display: flex; align-items: center; justify-content: center; gap: 8px; min-height: 38px; }
-.nov-rel-flags em { color: var(--nov-dim); font-size: 13px; font-style: italic; }
+.nov-rel b span { color: var(--nov-gold); font-family: var(--font-ui); font-size: 14px; font-variant-numeric: tabular-nums; }
+.nov-rel-flags { display: flex; align-items: center; gap: 10px; min-width: 0; min-height: 38px; }
+.nov-rel-flags em { color: var(--nov-dim); font-size: 14.5px; font-style: normal; }
 .nov-rel-flag {
   display: grid;
   place-items: center;

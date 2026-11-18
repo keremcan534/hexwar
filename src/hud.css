@@ -23,10 +23,14 @@
 /* Bütçe (ölçüldü, başsız tarayıcı): on sekme = dolgu + madalyon + aralık +
    max(ad, defter yuvası). Yuva genişlikleri madalyon payı kadar daralır;
    arma şeridin üstüne sarktığı için şerit onun sağından başlar. */
-:root { --tabbar-height: 50px; --tab-medal: 38px; --tab-pad-l: 8px; --led-w: 96px; }
-@media (max-width: 1899px) { :root { --tabbar-height: 48px; --tab-medal: 34px; --tab-pad-l: 6px; --led-w: 80px; --led-extra: 0px; } }
-@media (max-width: 1599px) { :root { --tabbar-height: 44px; --tab-medal: 28px; --tab-pad-l: 4px; --led-w: 66px; --led-extra: 8px; } }
-@media (max-width: 1899px) { .tab-bar { padding-left: 86px; } }
+/* Paradox düzeni (Kerem 2026-11-18: "üst kısım minnak, kalınlaştırıp sola"):
+   şerit armanın yanından başlar, içeriği kadar uzar; sekme iri madalyon + değer.
+   Sekmenin adı bilgi kartındadır. */
+:root { --tabbar-height: 84px; --tab-medal: 52px; --tab-pad-l: 4px; --led-w: 76px; --led-extra: 0px; }
+@media (max-width: 1365px) { :root { --tabbar-height: 76px; --tab-medal: 44px; --led-w: 68px; } }
+.tab-bar { width: fit-content; max-width: 100%; padding-left: 104px; padding-right: 10px; }
+@media (min-width: 1900px) { .tab-bar { padding-left: 122px; } }
+.tab-list { flex: 0 1 auto; justify-content: flex-start; }
 
 /* Defter yuvası her genişlikte KOMPAKT: madalyonla daralan yuvada adı
    ("Bramho…", "Cons…") yalnız kesik okunuyordu; ad sekmenin bilgi
@@ -42,42 +46,34 @@
 .tab-bar .tab-tools .screen-auto:empty { display: none; }
 
 .tab-bar [data-screen] {
-  /* Madalyon solda iki satırı boydan kaplar; ad üstte, defter altta. */
-  grid-template-columns: var(--tab-medal) auto;
-  grid-template-rows: 1fr 1fr;
-  column-gap: 8px;
+  /* Madalyon üstte, haftalık değer altında. */
+  grid-template-columns: var(--led-w);
+  grid-template-rows: var(--tab-medal) 18px;
+  column-gap: 0;
   row-gap: 3px;
-  align-content: stretch;
-  justify-items: start;
-  padding: 4px 12px 4px var(--tab-pad-l);
+  align-content: center;
+  justify-items: center;
+  padding: 4px var(--tab-pad-l) 3px;
 }
 .tab-bar [data-screen] .tab-head { display: contents; }
 .tab-bar [data-screen] .tab-ico {
   grid-column: 1;
-  grid-row: 1 / span 2;
+  grid-row: 1;
   align-self: center;
   width: var(--tab-medal);
   height: var(--tab-medal);
 }
+/* Ad ekran okuyucuda kalır, görünürde bilgi kartına taşındı. */
 .tab-bar [data-screen] > .tab-head > b,
 .tab-bar [data-screen] > b {
-  grid-column: 2;
-  grid-row: 1;
-  align-self: end;
-  color: inherit;
-  font-size: 14.5px;
-  line-height: 1;
-  letter-spacing: 0.06em;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
-.tab-bar [data-screen] .tab-led { grid-column: 2; grid-row: 2; align-self: start; justify-self: stretch; }
-@media (max-width: 1899px) {
-  .tab-bar [data-screen] { column-gap: 7px; padding: 4px 9px 4px var(--tab-pad-l); }
-  .tab-bar [data-screen] > .tab-head > b, .tab-bar [data-screen] > b { font-size: 13.5px; letter-spacing: 0.03em; }
-}
-@media (max-width: 1599px) {
-  .tab-bar [data-screen] { column-gap: 5px; padding: 3px 5px 3px var(--tab-pad-l); }
-  .tab-bar [data-screen] > .tab-head > b, .tab-bar [data-screen] > b { font-size: 12px; letter-spacing: 0.01em; }
-}
+.tab-bar [data-screen] .tab-led { grid-column: 1; grid-row: 2; align-self: center; justify-self: stretch; }
 
 .tab-medal {
   display: block;
@@ -104,11 +100,11 @@
 
 /* Otomatik portföyün lambası madalyonun omzunda: sekmenin köşesinde değil. */
 .tab-bar [data-screen].is-auto::before {
-  top: 5px;
+  top: 6px;
   right: auto;
-  left: calc(var(--tab-pad-l) + var(--tab-medal) - 7px);
-  width: 7px;
-  height: 7px;
+  left: calc(50% + var(--tab-medal) / 2 - 11px);
+  width: 9px;
+  height: 9px;
   z-index: 2;
   border: 1px solid #050708;
 }
@@ -274,6 +270,20 @@
   -webkit-mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.16) 24%, rgba(0, 0, 0, 0.62) 52%, #000 82%);
   mask-image: linear-gradient(90deg, transparent 0%, rgba(0, 0, 0, 0.16) 24%, rgba(0, 0, 0, 0.62) 52%, #000 82%);
 }
+/* Meşalenin başı resmin üst kenarında: ortalı kadraj alevi kartın dışında bırakıyordu. */
+.k-kpi[data-kpi="unrest"] > .k-kpi-art { background-position: right top; }
+/* Canlı katman (ui/kpiMotion.js): resmin üstünde, yazının altında. Resmin maskesi
+   burada yok: meşaleler kartın ortasında durur ve maskeyle sönük kalıyordu. */
+.k-kpi > .k-kpi-fx {
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  z-index: -1;
+  width: calc(100% - 6px);
+  height: calc(100% - 6px);
+  pointer-events: none;
+  mix-blend-mode: screen;
+}
 .k-kpi > .k-kpi-art.is-pano {
   background-image: var(--screen-photo);
   background-size: var(--kw, 1500px) auto;
@@ -297,7 +307,8 @@
 .tech-inspector,
 .tq-queue,
 .k-kpi,
-.map-modes {
+.map-modes,
+.minimap {
   border-image: var(--sk-cerceve-kenar);
   background: var(--panel-tone), var(--sk-doku) 0 0 / 1254px 1254px repeat, var(--sk-doku-renk);
 }

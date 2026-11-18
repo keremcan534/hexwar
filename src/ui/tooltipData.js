@@ -737,10 +737,10 @@ export function registerTooltips(game) {
     const table = {
       map: ['World', 'Procedural draws a new planet from the seed. Earth is the real world around 1900 — coastlines, mountains, rivers and climate from public map data — with Europe, Anatolia, India and East Asia drawn larger for play. On Earth the seed still decides every nation, border, name and people.'],
       seed: ['World seed', 'Any text. The same seed always draws the same world, nations and opening economy — share it to share a map. Blank picks a random one. On Earth the land is fixed and the seed draws the politics.'],
-      size: ['Map size', `Hex columns; rows follow the aspect. ${STANDARD_COLS} × ${STANDARD_ROWS} is the standard world the game is balanced on.`],
+      size: ['World size', `Hex columns; rows follow the aspect. ${STANDARD_COLS} × ${STANDARD_ROWS} is the standard world the game is balanced on. Larger worlds take longer to play through each week.`],
       cont: ['Continentality', 'How the land clumps: low values scatter islands and peninsulas, high values fuse them into a few large continents.'],
       land: ['Land ratio', `Nudges the share of land. 0.00 is the standard ${Math.round(TARGET_LAND * 100)}% land; negative drowns the coasts, positive raises them.`],
-      nations: ['Great powers', 'How many nations are seeded as great powers. Automatic lets the generator decide from the land available.'],
+      nations: ['Countries', 'How many countries share the world when the campaign opens. Automatic lets the land decide. Few countries means large empires; many means a patchwork of small states. A tiny world can run out of land before the highest counts.'],
     };
     const row = table[field];
     return row ? { type: 'simple', title: row[0], text: row[1] } : null;

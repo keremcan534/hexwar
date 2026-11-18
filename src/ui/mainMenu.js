@@ -826,7 +826,7 @@ export class MainMenu {
     this.stopPreview();
     this.game.newWorld(seed, {
       ...this.currentOptions(),
-      nationCount: nations > 0 ? nations : null,
+      nationTotal: nations > 0 ? nations : null,
     });
     this.close();
     this.onWorldBuilt?.();

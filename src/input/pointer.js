@@ -26,6 +26,10 @@ const MARQUEE_MIN = 10;
 const FLICK_IDLE_MS = 80;
 /** İki tık bu kadar ms içinde ve aynı yerdeyse çift tıktır. */
 const DOUBLE_TAP_MS = 320;
+/** Kenar kaydırmayı başlatan pencere kenarı şeridi (CSS piksel). */
+const EDGE_BAND = 6;
+/** Kenar kaydırma hızı, %100 ayarda (CSS piksel / sn). */
+const EDGE_SPEED = 720;
 
 /** Değiştirici tuşlar: oyun katmanı olay nesnesini görmez, yalnız bunu. */
 function modsOf(e) {
@@ -52,6 +56,10 @@ export class PointerController {
     this.marquee = null;     // { id, start, current, active } — kutu secimi
     this.longPress = 0;
     this.lastTap = null;     // { t, x, y } — çift tık algısı
+    // Oyuncu ayarları (ui/settingsPanel.js yazar).
+    this.zoomSpeed = 1;
+    this.invertZoom = false;
+    this.edge = { on: false, speed: 1, dx: 0, dy: 0, last: 0, gate: null };
 
     el.style.touchAction = 'none';
     el.addEventListener('pointerdown', this.onDown, { passive: false });
@@ -343,7 +351,8 @@ export class PointerController {
   onWheel = (e) => {
     e.preventDefault();
     const p = this.localPos(e);
-    const factor = Math.pow(0.999, e.deltaY * (e.deltaMode === 1 ? 16 : 1));
+    const feel = this.zoomSpeed * (this.invertZoom ? -1 : 1);
+    const factor = Math.pow(0.999, feel * e.deltaY * (e.deltaMode === 1 ? 16 : 1));
     this.camera.zoomAt(p.x, p.y, factor);
     this.handlers.onChange?.();
   };
@@ -353,14 +362,66 @@ export class PointerController {
     this.lastMid = null;
   }
 
+  /**
+   * Kenar kaydırma. İmleç pencerenin kenarında çoğu zaman tuvalin değil üst
+   * çubuğun ya da rıhtımın üstündedir; bu yüzden pencere düzeyinde izlenir.
+   * Kapalıyken dinleyici yoktur. Sürekli rAF açmaz: kare zinciri yalnız imleç
+   * kenardayken update()'in true dönmesiyle sürer.
+   */
+  setEdgeScroll(on) {
+    const edge = this.edge;
+    if (edge.on === Boolean(on)) return;
+    edge.on = Boolean(on);
+    const verb = edge.on ? 'addEventListener' : 'removeEventListener';
+    window[verb]('pointermove', this.noteEdge, { capture: true, passive: true });
+    window[verb]('blur', this.leaveEdge);
+    document.documentElement[verb]('pointerleave', this.leaveEdge);
+    if (!edge.on) this.leaveEdge();
+  }
+
+  noteEdge = (e) => {
+    if (e.pointerType !== 'mouse') return;
+    const edge = this.edge;
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    edge.dx = e.clientX < EDGE_BAND ? 1 : e.clientX >= w - EDGE_BAND ? -1 : 0;
+    edge.dy = e.clientY < EDGE_BAND ? 1 : e.clientY >= h - EDGE_BAND ? -1 : 0;
+    if (edge.dx || edge.dy) this.handlers.onChange?.();
+  };
+
+  leaveEdge = () => {
+    this.edge.dx = 0;
+    this.edge.dy = 0;
+    this.edge.last = 0;
+  };
+
+  /** Bu karenin kenar kayması; kamera oynadıysa true. */
+  stepEdge() {
+    const edge = this.edge;
+    const busy = this.pointers.size > 0 || this.marquee || this.rightDrag;
+    if (!edge.on || (!edge.dx && !edge.dy) || busy || edge.gate?.() === false) {
+      edge.last = 0;
+      return false;
+    }
+    const now = performance.now();
+    // Kare hızından bağımsız: 30 ve 144 Hz'te aynı hız. Tavan, takılan karenin
+    // kamerayı tek adımda fırlatmaması içindir.
+    const ms = edge.last ? Math.min(50, now - edge.last) : 16;
+    edge.last = now;
+    const step = (EDGE_SPEED * edge.speed * ms) / 1000;
+    this.camera.panByScreen(edge.dx * step, edge.dy * step);
+    return true;
+  }
+
   /** Her karede çağrılır; parmak kalktıktan sonraki kaymayı sürdürür. */
   update() {
-    if (this.pointers.size > 0) return false;
+    const edging = this.stepEdge();
+    if (this.pointers.size > 0) return edging;
     const v = this.velocity;
     if (Math.abs(v.x) < 0.05 && Math.abs(v.y) < 0.05) {
       v.x = 0;
       v.y = 0;
-      return false;
+      return edging;
     }
     this.camera.panByScreen(v.x, v.y);
     v.x *= 0.9;
