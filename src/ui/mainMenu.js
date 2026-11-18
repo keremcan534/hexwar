@@ -288,7 +288,6 @@ export class MainMenu {
       setup: $('menu-setup'),
       options: $('menu-options'),
       creditsView: $('menu-credits-view'),
-      creditsMusic: $('menu-credits-music'),
       back: $('menu-back'),
       build: $('menu-build'),
       seed: $('menu-seed'),
@@ -749,11 +748,10 @@ export class MainMenu {
   }
 
   syncVolume() {
-    const { volume, volumeLabel, creditsMusic } = this.el;
+    const { volume, volumeLabel } = this.el;
     const level = Math.round(this.music.level * 100);
     if (volume && Number(volume.value) !== level) volume.value = String(level);
     if (volumeLabel) volumeLabel.textContent = this.music.muted ? 'off' : `${level}%`;
-    if (creditsMusic) creditsMusic.textContent = `Menu music: ${this.music.trackList}.`;
   }
 
   /**

@@ -25,9 +25,12 @@ New-Item -ItemType Directory -Force -Path $game | Out-Null
 
 try {
   # assets/incoming kaynak sayfalardır: oyun okumaz, paketin yarısını tutar.
+  # Raftaki dinamik müzik ve eski menü parçaları da oyuna bağlı değildir.
   $archive = Join-Path $stage 'oyun.zip'
   & git -C $repo archive --format=zip -o $archive $full -- `
-    index.html src assets lab vendor scripts/release scripts/desktop/imperial-eye.ico ':(exclude)assets/incoming'
+    index.html src assets lab vendor scripts/release scripts/desktop/imperial-eye.ico ':(exclude)assets/incoming' `
+    ':(exclude)assets/audio/orchestra' ':(exclude)assets/music/imperia.mp3' ':(exclude)assets/music/faded-rose.mp3' `
+    ':(exclude)src/audio' ':(exclude)src/ui/gameMusic.js'
   if ($LASTEXITCODE -ne 0) { throw 'git archive başarısız oldu' }
   [IO.Compression.ZipFile]::ExtractToDirectory($archive, $game)
 

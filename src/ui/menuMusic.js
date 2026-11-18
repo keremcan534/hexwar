@@ -12,10 +12,9 @@
 //
 // Katman notu: DOM'a dokunur (Audio elemanı), oyun durumuna dokunmaz.
 
-const TRACKS = [
-  { src: 'assets/music/imperia.mp3', title: 'Imperia' },
-  { src: 'assets/music/faded-rose.mp3', title: 'Faded Rose' },
-];
+import { TRACKS as MUSIC } from './musicTracks.js';
+
+const TRACKS = [MUSIC.ageOfWonder];
 
 const MUTE_KEY = 'hexwar:menu-muted';
 const VOLUME_KEY = 'hexwar:menu-volume';
@@ -27,7 +26,7 @@ export class MenuMusic {
   constructor() {
     this.audio = new Audio();
     this.audio.preload = 'auto';
-    // Liste kendi içinde döner; tek parça loop'u birkaç dakikada bıktırıyor.
+    // Parça bitince next() onu baştan yükler.
     this.audio.loop = false;
     this.audio.volume = 0;
     this.index = 0;
@@ -38,7 +37,8 @@ export class MenuMusic {
     this.unlocked = false;
     this.audio.addEventListener('ended', () => this.next());
     // Kaynak bulunamazsa (dosya taşınmış) menü çalışmaya devam etmeli.
-    this.audio.addEventListener('error', () => { if (this.wanted) this.next(); });
+    // Tek parça varken yeniden denemek hata döngüsü kurardı.
+    this.audio.addEventListener('error', () => { if (this.wanted && TRACKS.length > 1) this.next(); });
     this.load(0);
   }
 
@@ -51,9 +51,9 @@ export class MenuMusic {
     return TRACKS[this.index].title;
   }
 
-  /** Künyede geçen parça listesi. */
-  get trackList() {
-    return TRACKS.map((track) => track.title).join(' · ');
+  /** Kaydırıcının düzeyi, parçanın kayıt yüksekliğine göre eşitlenmiş. */
+  get output() {
+    return this.level * TRACKS[this.index].gain;
   }
 
   /**
@@ -71,7 +71,7 @@ export class MenuMusic {
     }
     clearInterval(this.fade);
     this.fade = 0;
-    this.audio.volume = this.muted ? 0 : this.level;
+    this.audio.volume = this.muted ? 0 : this.output;
     if (this.muted) this.audio.pause();
     else if (this.wanted && this.audio.paused) this.attempt();
   }
@@ -85,10 +85,10 @@ export class MenuMusic {
 
   attempt() {
     const promise = this.audio.play();
-    if (!promise?.catch) { this.fadeTo(this.level); return; }
+    if (!promise?.catch) { this.fadeTo(this.output); return; }
     promise.then(() => {
       this.unlocked = true;
-      this.fadeTo(this.level);
+      this.fadeTo(this.output);
     }).catch(() => {
       // Otomatik oynatma politikası: ilk kullanıcı hareketinde tekrar denenir.
       if (this.unlocked) return;
@@ -113,8 +113,6 @@ export class MenuMusic {
     this.fadeTo(0, () => {
       this.audio.pause();
       this.audio.currentTime = 0;
-      // Bir sonraki açılış listenin başındaki parçayla değil, sıradakiyle
-      // gelsin: aynı melodi her açılışta tekrar etmesin.
       this.load(this.index + 1);
     });
   }

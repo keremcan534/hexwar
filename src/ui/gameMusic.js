@@ -1,3 +1,5 @@
+// RAFTA (2026-11-18): oyuna bağlı değil, oyun müziği ui/soundtrack.js'tedir.
+//
 // Oyun müziği yönetmeni: oyunun hâline göre hangi parçanın, hangi düzeyde
 // çalacağını seçer (bkz. src/audio/*: savaş, barış/gerilim, seferberlik, devlet,
 // deniz, kargaşa + olay müzikleri).
