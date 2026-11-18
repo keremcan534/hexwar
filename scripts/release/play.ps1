@@ -144,9 +144,25 @@ $types = @{
 $rootPrefix = [IO.Path]::GetFullPath($root).TrimEnd('\') + '\'
 $iconFile = Join-Path $root 'scripts\desktop\imperial-eye.ico'
 
+# Tarayıcı müziği çaldıkça okur: dosya bu döngüde yazılsa parça bitene dek oyunun
+# öteki dosyaları beklerdi. Büyük dosya arka planda akar, döngü serbest kalır.
+$streamFrom = 1MB
+$streams = New-Object System.Collections.ArrayList
+
+function Close-FinishedStreams {
+  for ($i = $streams.Count - 1; $i -ge 0; $i--) {
+    $stream = $streams[$i]
+    if (-not $stream.Copy.IsCompleted) { continue }
+    $streams.RemoveAt($i)
+    $stream.Source.Dispose()
+    try { $stream.Response.Close() } catch { }
+  }
+}
+
 function Send-GameFile($context) {
   $request = $context.Request
   $response = $context.Response
+  $streaming = $false
   try {
     # İkinci kopya portta kendi sunucusunu bu işaretten tanır.
     $response.AddHeader('X-Imperial-Eye', '1')
@@ -158,19 +174,27 @@ function Send-GameFile($context) {
     # index.html'e dokunmadan pencereye oyunun simgesi: tarayıcı kökten kendisi ister.
     if ($relative -eq 'favicon.ico') { $file = $iconFile }
     if (-not [IO.File]::Exists($file)) { $response.StatusCode = 404; return }
-    $bytes = [IO.File]::ReadAllBytes($file)
     $type = $types[[IO.Path]::GetExtension($file)]
     if (-not $type) { $type = 'application/octet-stream' }
     $response.ContentType = $type
     # Yeni sürüm aynı kökene çıkar: önbellekte eski modül kalmasın.
     $response.AddHeader('Cache-Control', 'no-cache')
-    $response.ContentLength64 = $bytes.Length
-    if ($request.HttpMethod -ne 'HEAD') { $response.OutputStream.Write($bytes, 0, $bytes.Length) }
+    $size = ([IO.FileInfo] $file).Length
+    $response.ContentLength64 = $size
+    if ($request.HttpMethod -eq 'HEAD') { return }
+    if ($size -ge $streamFrom) {
+      $source = [IO.File]::OpenRead($file)
+      [void] $streams.Add(@{ Copy = $source.CopyToAsync($response.OutputStream); Source = $source; Response = $response })
+      $streaming = $true
+      return
+    }
+    $bytes = [IO.File]::ReadAllBytes($file)
+    $response.OutputStream.Write($bytes, 0, $bytes.Length)
   } catch {
     Write-Log "istek yanıtlanamadı: $($request.Url.AbsolutePath): $($_.Exception.Message)"
     try { $response.StatusCode = 500 } catch { }
   } finally {
-    try { $response.Close() } catch { }
+    if (-not $streaming) { try { $response.Close() } catch { } }
   }
 }
 
@@ -290,6 +314,7 @@ $reason = ''
 $pending = $server.GetContextAsync()
 try {
   while (-not $reason) {
+    Close-FinishedStreams
     if ($pending.Wait($tick)) {
       Send-GameFile $pending.Result
       $pending = $server.GetContextAsync()
