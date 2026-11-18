@@ -3,7 +3,7 @@
 import { join } from 'node:path';
 
 /** Duraklatılmış dünyada da yürüyüş ve ateş canlandırması görünsün. */
-const LIVE = `(() => { const m = game.renderer.minis; const start = m.frameStart; m.frameStart = function () { start.call(this, false); }; })()`;
+const LIVE = `(() => { const m = game.renderer.minis; const start = m.frameStart; m.frameStart = function (_, selection, hovered) { start.call(this, false, selection, hovered); }; })()`;
 
 export default async function plan(hx) {
   await hx.inject(join(hx.probes, 'minis-scene.js'));

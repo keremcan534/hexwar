@@ -128,10 +128,10 @@ void main() {
       + texture(uNoise, r * 3.0 + wind * 2.0 - warp * 0.21 + vec2(uTime * 0.0016, 0.0)).g * 0.38;
     float cover = smoothstep(0.56, 0.72, d) * uOn.y;
     // Yalnız gölge çizilir; bulutun kendisi haritanın önüne geçmez.
-    over(acc, vec3(0.055, 0.085, 0.125), cover * 0.13);
+    over(acc, vec3(0.055, 0.085, 0.125), cover * 0.05);
     if (front > 0.0) {
       float broken = smoothstep(0.10, 0.90, front * (0.62 + d * 0.9));
-      over(acc, vec3(0.34, 0.38, 0.44), broken * 0.20);
+      over(acc, vec3(0.34, 0.38, 0.44), broken * 0.08);
     }
   }
 

@@ -1538,7 +1538,7 @@ export class Hud {
    * fareyle tutmuyordu (Kerem 2026-11-15: "saati mouse ile seçemiyorum").
    * Kadranın üst yarısı beş dilime bölünür: imleç hangi dilimdeyse o hızın
    * lambası yanar (data-hover), tık o hıza geçer. Ortadaki topuz duraklatır.
-   * Geometri CSS'tekiyle aynı oranlardır (topuz merkezi 42/50 yükseklikte);
+   * Geometri CSS'tekiyle aynı oranlardır (topuz merkezi 46/58 yükseklikte, yay 57:45 basık);
    * oranla okunduğu için kasanın zoom'u ve arayüz ölçeği hesabı bozmaz.
    */
   bindDialSectors() {
@@ -1548,11 +1548,11 @@ export class Hud {
     const speeds = [1, 2, 4, 6, 8];
     const pick = (event) => {
       const r = dial.getBoundingClientRect();
-      const dx = event.clientX - (r.left + r.width / 2);
-      const dy = event.clientY - (r.top + r.height * (42 / 50));
+      const dx = (event.clientX - (r.left + r.width / 2)) * (45 / 57);
+      const dy = event.clientY - (r.top + r.height * (46 / 58));
       if (Math.hypot(dx, dy) < r.height * 0.3 || dy > r.height * 0.12) return null;
       const deg = (Math.atan2(dx, -dy) * 180) / Math.PI;
-      return speeds[Math.max(0, Math.min(4, Math.round((deg + 60) / 30)))];
+      return speeds[Math.max(0, Math.min(4, Math.round((deg + 72) / 36)))];
     };
     dial.addEventListener('pointermove', (event) => {
       const speed = pick(event);

@@ -17562,20 +17562,20 @@ button.dip-war.dip-conflict.on { border-left-color: var(--gold-bright); }
 .turn-control {
   --needle: -90deg;
   position: relative;
-  gap: 12px;
+  gap: 8px;
   height: 62px;
-  padding: 0 12px;
+  padding: 0 9px;
   border-radius: 0;
   background: none;
   border-image: var(--sk-cerceve-kucuk);
   box-shadow: none;
   filter: drop-shadow(0 4px 6px rgba(0, 0, 0, 0.6));
 }
-.turn-control:has(.time-notch.active[data-speed="1"]) { --needle: -60deg; }
-.turn-control:has(.time-notch.active[data-speed="2"]) { --needle: -30deg; }
+.turn-control:has(.time-notch.active[data-speed="1"]) { --needle: -72deg; }
+.turn-control:has(.time-notch.active[data-speed="2"]) { --needle: -36deg; }
 .turn-control:has(.time-notch.active[data-speed="4"]) { --needle: 0deg; }
-.turn-control:has(.time-notch.active[data-speed="6"]) { --needle: 30deg; }
-.turn-control:has(.time-notch.active[data-speed="8"]) { --needle: 60deg; }
+.turn-control:has(.time-notch.active[data-speed="6"]) { --needle: 36deg; }
+.turn-control:has(.time-notch.active[data-speed="8"]) { --needle: 72deg; }
 .turn-control.is-paused { --needle: -90deg; }
 
 /* Takvim yaprağı: duvar takvimi gibi kırmızı ay bandı, iki pirinç halka. */
@@ -17628,7 +17628,7 @@ button.dip-war.dip-conflict.on { border-left-color: var(--gold-bright); }
 /* Yıl + durum satırı. */
 .turn-control .turn-badge {
   flex: none;
-  width: 80px;
+  width: 68px;
   align-items: flex-start;
   gap: 5px;
   padding: 0;
@@ -17643,27 +17643,28 @@ button.dip-war.dip-conflict.on { border-left-color: var(--gold-bright); }
   text-shadow: 0 1px 0 #000, 0 -1px 0 rgba(255, 236, 190, 0.15), 0 0 14px rgba(214, 186, 120, 0.22);
 }
 .turn-control .turn-status {
-  max-width: 80px;
+  max-width: 68px;
   color: #9fb9a0;
   font-size: var(--fs-label);
   font-weight: 700;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
 }
 .turn-control.is-paused .turn-status { color: #e0a54c; }
 
-/* Kadran: yarım daire yüz, yayda beş lamba, ibre, ortada topuz. */
-.tc-dial { position: relative; flex: none; width: 78px; height: 50px; }
+/* Kadran: yarım daire yüz, beş geniş hız dilimi, ibre, ortada topuz. Dilimin tıklama alanı
+   clip-path'in kendisidir: yaydaki küçük lambalar fareyle zor vuruluyordu. */
+.tc-dial { position: relative; flex: none; width: 116px; height: 58px; }
 .tc-face {
   position: absolute;
-  top: 4px;
-  left: 1px;
-  right: 1px;
-  height: 76px;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 92px;
   border-radius: 50%;
   background: radial-gradient(circle at 50% 50%, #1b2427 0%, #0d1214 62%, #0a0e10 63%);
   box-shadow: 0 0 0 2px #8a6d36, 0 0 0 3px #050708, inset 0 0 0 1px rgba(226, 200, 138, 0.25), inset 0 6px 12px rgba(0, 0, 0, 0.8);
-  clip-path: inset(0 0 34px 0);
+  clip-path: inset(-4px -4px 42px -4px);
   pointer-events: none;
 }
 .tc-dial .time-controls {
@@ -17676,44 +17677,47 @@ button.dip-war.dip-conflict.on { border-left-color: var(--gold-bright); }
   background: none;
   box-shadow: none;
 }
-.tc-dial .time-btn.time-notch {
+.tc-dial .time-btn.time-notch,
+.tc-dial .time-btn.time-notch.active {
   position: absolute;
-  top: 42px;
-  left: 50%;
-  width: 16px;
-  height: 16px;
-  margin: -8px 0 0 -8px;
+  inset: 0;
+  width: auto;
+  height: auto;
+  margin: 0;
   padding: 0;
   border: 0;
-  background: none;
+  border-radius: 0;
+  background: linear-gradient(180deg, #43361f, #261d11);
   box-shadow: none;
-  transform: rotate(var(--a)) translateY(-31px) rotate(calc(-1 * var(--a)));
+  transform: none;
 }
-.tc-dial .time-notch:nth-child(1) { --a: -60deg; }
-.tc-dial .time-notch:nth-child(2) { --a: -30deg; }
-.tc-dial .time-notch:nth-child(3) { --a: 0deg; }
-.tc-dial .time-notch:nth-child(4) { --a: 30deg; }
-.tc-dial .time-notch:nth-child(5) { --a: 60deg; }
+.tc-dial .time-notch:nth-child(1) { clip-path: polygon(1.0px 44.8px, 1.4px 40.5px, 2.4px 36.3px, 3.8px 32.1px, 5.7px 28.1px, 8.1px 24.2px, 11.0px 20.5px, 37.4px 34.1px, 35.1px 37.6px, 33.6px 41.5px, 33.0px 45.5px); --lx: 19.0px; --ly: 35.8px; }
+.tc-dial .time-notch:nth-child(2) { clip-path: polygon(12.8px 18.6px, 16.3px 15.3px, 20.2px 12.3px, 24.5px 9.6px, 29.1px 7.2px, 33.9px 5.2px, 39.0px 3.6px, 49.7px 26.2px, 45.3px 27.9px, 41.4px 30.3px, 38.2px 33.2px); --lx: 33.9px; --ly: 19.3px; }
+.tc-dial .time-notch:nth-child(3) { clip-path: polygon(41.8px 2.9px, 47.1px 1.8px, 52.5px 1.2px, 58.0px 1.0px, 63.5px 1.2px, 68.9px 1.8px, 74.2px 2.9px, 65.1px 25.9px, 60.4px 25.1px, 55.6px 25.1px, 50.9px 25.9px); --lx: 58.0px; --ly: 13.0px; }
+.tc-dial .time-notch:nth-child(4) { clip-path: polygon(77.0px 3.6px, 82.1px 5.2px, 86.9px 7.2px, 91.5px 9.6px, 95.8px 12.3px, 99.7px 15.3px, 103.2px 18.6px, 77.8px 33.2px, 74.6px 30.3px, 70.7px 27.9px, 66.3px 26.2px); --lx: 82.1px; --ly: 19.3px; }
+.tc-dial .time-notch:nth-child(5) { clip-path: polygon(105.0px 20.5px, 107.9px 24.2px, 110.3px 28.1px, 112.2px 32.1px, 113.6px 36.3px, 114.6px 40.5px, 115.0px 44.8px, 83.0px 45.5px, 82.4px 41.5px, 80.9px 37.6px, 78.6px 34.1px); --lx: 97.0px; --ly: 35.8px; }
 .tc-dial .time-notch i { display: none; }
 .tc-dial .time-notch::before {
-  content: "";
+  content: attr(data-speed);
   position: absolute;
-  inset: 4px;
-  border-radius: 50%;
-  background: radial-gradient(circle at 40% 35%, #5c4a2a, #241c10);
-  box-shadow: 0 0 0 1px #050708, inset 0 1px 1px rgba(255, 230, 180, 0.2);
+  left: var(--lx);
+  top: var(--ly);
+  transform: translate(-50%, -50%);
+  color: #c9b27f;
+  font: 700 13px/1 var(--font-ui);
+  font-variant-numeric: lining-nums;
 }
-.tc-dial .time-notch.lit::before {
-  background: radial-gradient(circle at 40% 35%, #fff4cf, #f0c463 55%, #b07a24);
-  box-shadow: 0 0 0 1px #050708, 0 0 7px rgba(246, 200, 100, 0.75);
-}
-.tc-dial .time-notch:hover::before { box-shadow: 0 0 0 1px #050708, 0 0 0 2px rgba(226, 200, 138, 0.7); }
+.tc-dial .time-btn.time-notch:hover { background: linear-gradient(180deg, #6d5730, #43341c); }
+.tc-dial .time-notch:hover::before { color: #f6e7bd; }
+.tc-dial .time-btn.time-notch.lit { background: linear-gradient(180deg, #f6dc98, #c08f42); }
+.tc-dial .time-btn.time-notch.lit:hover { background: linear-gradient(180deg, #ffeab2, #d6a552); }
+.tc-dial .time-notch.lit::before { color: #2a1e12; }
 .tc-needle {
   position: absolute;
-  top: 15px;
+  top: 25px;
   left: 50%;
   width: 3px;
-  height: 27px;
+  height: 21px;
   margin-left: -1.5px;
   border-radius: 2px 2px 0 0;
   background: linear-gradient(90deg, #8a6d36, #f3dca3, #8a6d36);
@@ -17727,11 +17731,11 @@ button.dip-war.dip-conflict.on { border-left-color: var(--gold-bright); }
 .turn-control .tc-dial .time-btn.time-pause,
 .turn-control.is-paused .tc-dial .time-btn.time-pause {
   position: absolute;
-  top: 42px;
+  top: 46px;
   left: 50%;
-  width: 26px;
-  height: 26px;
-  margin: -13px 0 0 -13px;
+  width: 32px;
+  height: 32px;
+  margin: -16px 0 0 -16px;
   padding: 0;
   border: 0;
   border-radius: 50%;
@@ -17741,13 +17745,15 @@ button.dip-war.dip-conflict.on { border-left-color: var(--gold-bright); }
 }
 .turn-control .tc-dial .time-btn.time-pause:hover { filter: brightness(1.12); }
 .turn-control .tc-dial .time-btn.time-pause::after { display: none; }
-.turn-control .tc-dial .time-btn.time-pause svg { width: 12px; height: 12px; }
+.turn-control .tc-dial .time-btn.time-pause svg { width: 15px; height: 15px; }
 .turn-control.is-paused .tc-dial .time-pause .ico-play { color: #2a1e12; filter: none; }
 
 /* Dar pencerede kasa orantılı küçülür: iç ölçüler kadranın geometrisine
    bağlı olduğu için tek tek değil, bütün olarak. */
 @media (max-width: 1899px) { .turn-control { zoom: 0.92; } }
+@media (max-width: 1699px) { .turn-control { zoom: 0.88; } }
 @media (max-width: 1599px) { .turn-control { zoom: 0.84; } }
+@media (max-width: 1439px) { .turn-control { zoom: 0.8; } }
 
 /* Ekran kartı sikkesi: ikon diskin tamamını doldurur (eskiden 54 px yuvada
    46 px, koyu boşlukta kalıyordu). */

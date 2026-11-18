@@ -97,6 +97,12 @@ export const BAKE = {
   coastRamp: 0.85,
   /** Denizin kıyıdan uzaklaştıkça indiği sığ eksi yükseklik. */
   seaDip: 0.04,
+  /**
+   * Kıyı şeridi (hex): ova burada hiç eğim taşımıyor, kara denize dümdüz bir levha gibi
+   * iniyordu. Şerit boyunca tepe dalgası ve yer yer yalı yar; kapı da ışığı açar.
+   */
+  coastBand: 3.2, coastHillAmp: 0.075, coastBluff: 0.085, coastBluffCell: 3.4,
+  coastBluffRamp: 0.38, coastGate: 0.5,
 };
 
 /** 19'lu komşuluk (eksenel uzaklık ≤ 2): σ=0.45 hex Gauss'u kesmeden taşır. */
@@ -680,6 +686,8 @@ export function* terrainBakeJob(world, opts = {}) {
   const wave1 = P.gullyWave * HEX_STEP;
   const ridgeWarpAmp = P.ridgeWarp * HEX_STEP;
   const ramp = P.coastRamp * HEX_STEP;
+  const bluffRamp = P.coastBluffRamp * HEX_STEP;
+  const oBluff = octave(spanX, P.coastBluffCell, seed, 71);
   // Sırt toplamının ortalaması: ayrıntı ortalaması sıfır olsun ki dağın
   // ORTALAMA yüksekliği değişmesin (yalnız sırt ve vadi eklensin).
   const ridgeMean = estimateRidgeMean(oR, P.ridgeOctaves);
@@ -738,9 +746,22 @@ export function* terrainBakeJob(world, opts = {}) {
         }
       }
       const rp = dist >= ramp ? 1 : 1 - (1 - dist / ramp) ** 2;
-      out[o] = Math.max(0, e + detail) * rp;
-      out[o + 1] = e * rp;
-      out[o + 2] = clamp(r + 0.5 * hi, 0, 1);
+      let bluff = 0;
+      let shoreGate = 0;
+      const shore = dist / HEX_STEP;
+      if (shore < P.coastBand) {
+        const fade = 1 - smoothstep(P.coastBand * 0.4, P.coastBand, shore);
+        // Her sahil yar değil: uzun kumsallarla kayalık kesimler sırayla gelsin.
+        const rocky = smoothstep(-0.2, 0.4, noiseAt(oBluff, wx, wy));
+        const roll = noiseAt(oHill1, wx, wy) * 0.7 + noiseAt(oHill2, wx, wy) * 0.3;
+        detail += roll * P.coastHillAmp * fade * (0.45 + 0.55 * rocky);
+        const rb = dist >= bluffRamp ? 1 : 1 - (1 - dist / bluffRamp) ** 2;
+        bluff = P.coastBluff * rocky * fade * rb;
+        shoreGate = P.coastGate * fade * (0.5 + 0.5 * rocky);
+      }
+      out[o] = Math.max(0, e + detail) * rp + bluff;
+      out[o + 1] = e * rp + bluff;
+      out[o + 2] = clamp(Math.max(r + 0.5 * hi, shoreGate), 0, 1);
     }
     if ((j & 3) === 3) yield 'detail';
   }

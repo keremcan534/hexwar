@@ -26,10 +26,23 @@ const FOREVER = 1e7;
 const FADE_OUT = 2.6;
 /** Bir deniz muharebesi haftalık sonuçtur; ekranda bu kadar saniye yaşar. */
 const NAVAL_SECONDS = 18;
-/** Düşen şehrin yangın evreleri (hafta). */
-const FIRE_FULL = 8;
-const FIRE_DOWN = 40;
-const FIRE_OUT = 80;
+/**
+ * Düşen şehrin yangın evreleri (hafta). Yangın kısa sürer ve şehirde kalır: province'e
+ * yayılan alev cepheyi, birimleri ve sınırları örtüyordu (Kerem 2026-11-18).
+ */
+const FIRE_FULL = 2;
+const FIRE_DOWN = 8;
+const FIRE_OUT = 14;
+/** Province'i dolduran akışkan yangın kapalı. */
+const FLUID_FIRE = false;
+/**
+ * Haritada alev, duman ve yanık iz yok (Kerem 2026-11-18: "alevi kaldır"): cepheyi ve
+ * birimleri örtüyordu. Muharebe yalnız top çakmasıyla okunur.
+ */
+const BURNING = false;
+/** Yanık iz haritanın okunurluğunu bozmayacak kadar açık kalır. */
+const BURN_CAP = 0.26;
+const CRATER_CAP = 0.3;
 /** Barıştan sonra izin tamamen silindiği süre: gölgelendirici de 312'de bitirir. */
 const SCAR_LIFE = 312;
 const MAX_EDGES = 2400;
@@ -131,8 +144,8 @@ class ScarField {
   mark(tile, turn, burn, crater, ruin) {
     if (tile.terrain?.water) return;
     const rec = this.records.get(tile) ?? { burn: 0, crater: 0, ruin: 0, last: turn };
-    rec.burn = clamp01(rec.burn + burn);
-    rec.crater = clamp01(rec.crater + crater);
+    rec.burn = Math.min(BURN_CAP, rec.burn + burn);
+    rec.crater = Math.min(CRATER_CAP, rec.crater + crater);
     rec.ruin = clamp01(rec.ruin + ruin);
     rec.last = turn;
     this.records.set(tile, rec);
@@ -285,7 +298,7 @@ export class WarFx {
   updateSims(world, cam) {
     const sim = this.layer.sim;
     if (!sim) return;
-    const on = !this.renderer.waterGL?.view3d && cam.zoom >= SIM_ZOOM;
+    const on = FLUID_FIRE && !this.renderer.waterGL?.view3d && cam.zoom >= SIM_ZOOM;
     const P = world.wrapWidth;
     const away = (tile) => {
       let dx = tile.x - cam.x;
@@ -475,12 +488,14 @@ export class WarFx {
 
   /** Muharebe karesi ağır, komşuları hafif iz alır: savaş alanı hex sınırı tanımaz. */
   scarBattle(world, tile, power, turn) {
+    if (!BURNING) return;
     const scars = this.scars;
-    scars.mark(tile, turn, 0.07 + 0.1 * power, 0.08 + 0.14 * power, tile.city ? 0.1 + 0.12 * power : 0);
-    for (const near of world.neighbors(tile)) scars.mark(near, turn, 0.02 + 0.03 * power, 0.012 + 0.035 * power, 0);
+    scars.mark(tile, turn, 0.02 + 0.03 * power, 0.03 + 0.05 * power, tile.city ? 0.1 + 0.12 * power : 0);
+    for (const near of world.neighbors(tile)) scars.mark(near, turn, 0.004 + 0.008 * power, 0.004 + 0.01 * power, 0);
   }
 
   syncCities(world, turn, now) {
+    if (!BURNING) return;
     for (const city of world.cities ?? []) {
       const holder = controllerOf(city.tile);
       const before = this.cityHolder.get(city);
@@ -489,7 +504,7 @@ export class WarFx {
       if (before === undefined || before === holder || holder < 0 || before < 0) continue;
       if (!atWar(world, holder, before)) continue;
       this.fires.set(city, { city, tile: city.tile, fell: turn, start: now, end: FOREVER, seed: hash(city.id, 7) });
-      this.scars.mark(city.tile, turn, 0.8, 0.4, 0.9);
+      this.scars.mark(city.tile, turn, 0.2, 0.15, 0.7);
     }
     const besieged = new Set();
     for (const rec of this.battles.values()) if (rec.end === FOREVER && rec.tile.city) besieged.add(rec.tile.city);
@@ -501,14 +516,10 @@ export class WarFx {
     for (const fire of this.fires.values()) {
       fire.besieged = besieged.has(fire.city);
       const age = fire.fell < 0 ? Infinity : turn - fire.fell;
-      if (age === 3) {
-        const id = fire.tile.provinceId;
-        for (const i of world.provinces?.[id]?.tileIdx ?? []) this.scars.mark(world.tiles[i], turn, 0.55, 0.05, 0);
-      }
       const burning = age < FIRE_FULL ? 1
         : age < FIRE_DOWN ? 1 - ((age - FIRE_FULL) / (FIRE_DOWN - FIRE_FULL)) * 0.82
           : age < FIRE_OUT ? 0.18 * (1 - (age - FIRE_DOWN) / (FIRE_OUT - FIRE_DOWN)) : 0;
-      fire.level = Math.max(burning, fire.besieged ? 0.55 : 0);
+      fire.level = Math.max(burning, fire.besieged ? 0.4 : 0);
       if (fire.level <= 0.01 && fire.end === FOREVER) fire.end = now + FADE_OUT;
       else if (fire.level > 0.01) fire.end = FOREVER;
     }
@@ -584,8 +595,9 @@ export class WarFx {
     this.frontRow = last;
     if (last < world.rows) return;
     this.frontRow = -1;
-    this.layer.upload(FX.FRONT, next.data, next.count);
-    this.frontCount = next.count;
+    // Cephe artık renderer.drawWarFrontline'ın net çizgisidir; kor ışığı çizilmez.
+    this.frontCount = BURNING ? next.count : 0;
+    this.layer.upload(FX.FRONT, next.data, this.frontCount);
     this.fighting = this.frontFighting;
     this.frontFighting = new Set();
     next.reset();
@@ -635,14 +647,14 @@ export class WarFx {
     const y = tile.y;
     this.addAnchor(x, y);
     const spread = HEX_SIZE * 0.72;
-    b[FX.GLOW].push(x, y, HEX_SIZE * (1.5 + power), HEX_SIZE * (1.15 + power * 0.8), seed, power, 1, 0, start, end);
+    // Muharebe yeri top çakmasıyla okunur; duman ince kalır, birimleri örtmez.
+    b[FX.GLOW].push(x, y, HEX_SIZE * (0.8 + power * 0.5), HEX_SIZE * (0.62 + power * 0.4), seed, power * 0.7, 1, 0, start, end);
     b[FX.POINT].push(x, y, 9 + power * 9, 0, seed, 0.45 + power * 0.55, 0, 0, start, end);
-    const smokes = 1 + Math.round(power * 2);
-    for (let i = 0; i < smokes; i++) {
-      const s = hash(seed, i + 1);
+    if (BURNING && power > 0.45) {
+      const s = hash(seed, 1);
       const a = s * Math.PI * 2;
       b[FX.SMOKE].push(x + Math.cos(a) * spread * 0.6, y + Math.sin(a) * spread * 0.4,
-        HEX_SIZE * (2.4 + power * 1.2), HEX_SIZE * (2.6 + power * 1.6), s, power, 1, 0, start, end);
+        HEX_SIZE * (1.2 + power * 0.5), HEX_SIZE * (1.4 + power * 0.7), s, power * 0.45, 1, 0, start, end);
     }
     const bursts = 1 + Math.round(power * 5);
     for (let i = 0; i < bursts; i++) {
@@ -658,6 +670,8 @@ export class WarFx {
 
   /** Hedefe akan üç köşeli işaret; çıkış karesi hedefin sarmal kopyasına taşınır. */
   pushArrow(from, to, power, side, start, end, seed) {
+    // Muharebede akan işaretler birimlerin üstüne biniyordu; yön cephe hattından okunur.
+    if (!BURNING) return;
     const P = this.world.wrapWidth;
     let dx = to.x - from.x;
     if (P) dx -= P * Math.round(dx / P);
@@ -703,32 +717,28 @@ export class WarFx {
     const x = tile.x;
     const y = tile.y;
     this.addAnchor(x, y);
-    const size = HEX_SIZE * (0.72 + level * 0.62);
-    b[FX.GLOW].push(x, y - size * 0.25, HEX_SIZE * (1.7 + level * 1.5), HEX_SIZE * (1.3 + level * 1.1), seed, 0.5 + level * 0.5, 0, 0, start, end);
-    b[FX.POINT].push(x, y, 7 + level * 8, 0, seed, 0.5 + level * 0.5, 1, 0, start, end);
+    // Şehir hafifçe yanar: alev şehir işaretinin boyunda, duman tek ince sütun.
+    const size = HEX_SIZE * (0.26 + level * 0.2);
+    b[FX.GLOW].push(x, y - size * 0.25, HEX_SIZE * (0.6 + level * 0.45), HEX_SIZE * (0.46 + level * 0.34), seed, 0.3 + level * 0.35, 0, 0, start, end);
+    b[FX.POINT].push(x, y, 5 + level * 5, 0, seed, 0.4 + level * 0.4, 1, 0, start, end);
     // Kara duman alevden önce çizilir: alev sütunun dibinden çıkıyor görünür.
-    const plumes = level > 0.5 ? 2 : 1;
-    for (let i = 0; i < plumes; i++) {
-      const s = hash(seed, i + 3);
-      b[FX.SMOKE].push(x + (s - 0.5) * HEX_SIZE * 0.7, y - HEX_SIZE * 0.08,
-        HEX_SIZE * (3.2 + level * 1.8), HEX_SIZE * (4.6 + level * 4.4), s, level, 0, 0.5 + level * 0.5, start, end);
-    }
-    // Akışkan yuvası bu yangını çiziyorsa gürültü alevi üst üste binmesin.
-    if (fire.simSlot >= 0) return;
+    const plume = hash(seed, 3);
+    b[FX.SMOKE].push(x + (plume - 0.5) * HEX_SIZE * 0.3, y - HEX_SIZE * 0.08,
+      HEX_SIZE * (1 + level * 0.5), HEX_SIZE * (1.8 + level * 1.4), plume, level * 0.55, 0, 0.3 + level * 0.3, start, end);
     // Alçak ateş yatağı dilleri birleştirir: yan yana dizilmiş mum gibi durmasınlar.
-    const beds = 1 + Math.round(level * 3);
+    const beds = level > 0.5 ? 2 : 1;
     for (let i = 0; i < beds; i++) {
       const s = hash(seed, i + 21);
       const a = (i / beds) * Math.PI * 2 + s * 2;
-      b[FX.FLAME].push(x + Math.cos(a) * HEX_SIZE * 0.42, y + Math.sin(a) * HEX_SIZE * 0.2 + HEX_SIZE * 0.12,
-        size * (1.05 + s * 0.45), size * (0.95 + s * 0.4), s, level * 0.8, 0, 0, start, end);
+      b[FX.FLAME].push(x + Math.cos(a) * HEX_SIZE * 0.16, y + Math.sin(a) * HEX_SIZE * 0.08 + HEX_SIZE * 0.05,
+        size * (1.05 + s * 0.45), size * (0.95 + s * 0.4), s, level * 0.7, 0, 0, start, end);
     }
-    const tongues = 2 + Math.round(level * 4);
+    const tongues = 1 + Math.round(level * 2);
     const order = [];
     for (let i = 0; i < tongues; i++) {
       const s = hash(seed, i + 41);
       const a = (i / tongues) * Math.PI * 2 + s * 1.4;
-      const r = i === 0 ? 0 : HEX_SIZE * (0.3 + s * 0.28);
+      const r = i === 0 ? 0 : HEX_SIZE * (0.12 + s * 0.12);
       order.push({ x: x + Math.cos(a) * r, y: y + Math.sin(a) * r * 0.62, s, main: i === 0 });
     }
     // Arkadaki dil önce: öndeki alev onun üstünü örter.
@@ -761,6 +771,7 @@ export class WarFx {
       const sx = at.x + (s - 0.5) * HEX_SIZE * 0.5;
       const sy = at.y + (hash(s, 2) - 0.5) * HEX_SIZE * 0.4;
       b[FX.SHIP].push(sx, sy, HEX_SIZE * 1.15, HEX_SIZE * 0.42, s, 1, (s - 0.5) * 1.1, 0, start, end);
+      if (!BURNING) return;
       b[FX.SMOKE].push(sx, sy, HEX_SIZE * 3, HEX_SIZE * 4.2, s, 1, 0, 0.8, start, end);
       b[FX.FLAME].push(sx - HEX_SIZE * 0.12, sy, HEX_SIZE * 0.72, HEX_SIZE * 1.05, s, 0.85, 0, 0, start, end);
       b[FX.FLAME].push(sx + HEX_SIZE * 0.2, sy, HEX_SIZE * 0.5, HEX_SIZE * 0.78, hash(s, 5), 0.7, 0, 0, start, end);
@@ -787,8 +798,8 @@ export class WarFx {
     const detail = smooth(DETAIL_FROM, DETAIL_TO, cam.zoom);
     const tilted = r.waterGL?.view3d ?? null;
     const ground = !tilted;
-    const scarsOn = ground && detail > 0 && this.scars.records.size > 0;
-    const frontOn = ground && detail > 0 && this.frontCount > 0;
+    const scarsOn = BURNING && ground && detail > 0 && this.scars.records.size > 0;
+    const frontOn = BURNING && ground && detail > 0 && this.frontCount > 0;
     const visible = this.anchorCount > 0 ? this.anyVisible(cam) : false;
     if (!visible && !scarsOn && !frontOn) {
       this.layer.show(false);

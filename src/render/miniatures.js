@@ -28,10 +28,14 @@ const BAKE_BUDGET_MS = 1.2;
 const GLIDE_MS = 1100;
 
 /**
- * Ekrandaki figür bütçesi. Maliyetin tamamı drawImage sayısıdır (figür başına ~4 µs): cephe
- * ekranı doldurduğunda yığın başına figür azalır, kare süresi kalabalıkla büyümez.
+ * Yığın tek figürle görünür: beş küçük er yan yana cephede birbirine karışıyordu.
+ * Küçük türler daha çok büyür, tank ile piyade ekranda yakın boyda okunur.
  */
-const FIGURE_BUDGET = 400;
+const FIGURE_SCALE = { infantry: 1.9, cavalry: 1.5, artillery: 1.4, armor: 1.3 };
+/** Yığında birden çok tür varsa görünen: en ağır kol. */
+const KIND_ORDER = ['armor', 'artillery', 'cavalry', 'infantry'];
+/** Kaidenin kenarı: kim olduğu renk görmeyen göze de taraf çizgisiyle söylenir. */
+const BASE_RIM = { own: '#8ad680', ally: '#84b8f0', hostile: '#f05c46', other: '#c4c4ba' };
 
 const FPS = { idle: 5, walk: 10, fire: 11 };
 /** Muharebede tek figürün ateş döngüsü (sn): ateş kareleri + nişanda bekleme. */
@@ -43,16 +47,6 @@ const FLASH_POWER = { 1: 1, 2: 0.45 };
 const KIND_OF = { INFANTRY: 'infantry', CAVALRY: 'cavalry', ARTILLERY: 'artillery', ARMOR: 'armor' };
 const MINI_KINDS = ['infantry', 'cavalry', 'artillery', 'armor', 'warship', 'submarine', 'transport'];
 
-/** Yerel birlik düzeni (dünya birimi): f yürüyüş yönü, s yanal. */
-const LINE = [[0, 0], [0.4, -8.5], [0.4, 8.5], [-5.5, -4.2], [-5.5, 4.2], [-6, -12.5], [-6, 12.5]];
-const COLUMN = [[0, -3.4], [0, 3.4], [-8, -3.4], [-8, 3.4], [8, -3.4], [8, 3.4], [-16, 0]];
-const WIDE = [[0, 0], [-11, -13], [-11, 13]];
-/** Karışık yığında tür gruplarının yeri. */
-const GROUP_SPOTS = [
-  [[0, 0]],
-  [[3, -9], [-5, 11]],
-  [[5, 0], [-7, -14], [-7, 14]],
-];
 const SQUASH = 0.72;
 const HEADINGS = Array.from({ length: 8 }, (_, i) => [Math.cos(i * Math.PI / 4), Math.sin(i * Math.PI / 4)]);
 
@@ -63,6 +57,11 @@ const SIDE_RING = {
   other: 'rgba(196, 196, 186, 0.34)',
 };
 const PLATE = { w: 50, h: 22 };
+/**
+ * Kaide ve zemin halkası (dünya birimi). baseShare kaidenin figür boyuna oranı, bodyShare
+ * gövdenin yarı eni (ad kutusu için), headShare ayaktan başa olan pay.
+ */
+const RING = { pad: 3, drop: 2, minRadius: 10, baseShare: 0.19, baseSquash: 0.5, bodyShare: 0.3, headShare: 0.82 };
 
 /** Filo devriyesi: gemiler bölgenin derin noktası çevresinde ağır bir elips çizer. */
 const PATROL = { rx: 40, ry: 21, step: 30, speed: 0.05, perNation: 3 };
@@ -92,7 +91,8 @@ function hslRgb(h, s, l) {
  * parlaklık dar bir banda sıkışır: hem kumaş kalır hem uluslar birbirinden ayrılır.
  */
 function clothTint(nation, base, share) {
-  const rgb = hslRgb(nation.hue ?? 0, Math.min(1, (nation.sat ?? 50) / 100), Math.min(1, (nation.light ?? 50) / 100));
+  // Doygunluk artırılır: soluk üniforma haritanın üstünde kaybolup gidiyordu.
+  const rgb = hslRgb(nation.hue ?? 0, Math.min(1, ((nation.sat ?? 50) / 100) * 1.45), Math.min(1, (nation.light ?? 50) / 100));
   const mixed = rgb.map((v, i) => v * (1 - share) + base[i] * share);
   const luma = mixed[0] * 0.3 + mixed[1] * 0.59 + mixed[2] * 0.11;
   const target = Math.max(0.44, Math.min(0.68, luma));
@@ -202,7 +202,9 @@ class TintBook {
 export class MiniLayer {
   constructor(renderer) {
     this.renderer = renderer;
-    this.enabled = !(typeof location !== 'undefined' && /[?&]minis=0\b/.test(location.search));
+    // ?minis=0 ölçüm tabanıdır: oyuncunun kayıtlı ayarı onu ezmesin.
+    this.forcedOff = typeof location !== 'undefined' && /[?&]minis=0\b/.test(location.search);
+    this.enabled = !this.forcedOff;
     this.atlases = new Map();
     this.books = new Map();
     this.tints = new Map();
@@ -226,13 +228,60 @@ export class MiniLayer {
     this.battles = null;
     this.blend = 0;
     this.counterAlpha = 1;
-    this.stacksSeen = 0;
-    this.stacksShown = 0;
+    this.plateAlpha = 0;
+    /** Bu geçişte figürlerin altına serilen kaideler. */
+    this.bases = [];
+    this.lastBase = null;
+    this.selection = null;
+    this.hovered = null;
+    /** Bu geçişte zemin halkası alan yığınlar; sayaç çerçevesi onları atlar. */
+    this.rings = [];
+    this.ringed = new Set();
+    /** Son yığının ekranda kapladığı alan: adlar figürün üstüne yazılmasın. */
+    this.foot = { left: 0, top: 0, right: 0 };
+    /** Bu karede tıklanabilen levha ve figür alanları (dünya birimi). */
+    this.hits = [];
+  }
+
+  /**
+   * Noktanın altındaki yığın: önce levha, sonra figürler. Levha sayacın merkezinden
+   * uzakta durduğu için sayacın tıklama yarıçapı ona hiç ulaşmıyordu.
+   */
+  unitAt(x, y) {
+    const pad = 3 / Math.max(0.01, this.zoom ?? 1);
+    let body = null;
+    for (let i = this.hits.length - 1; i >= 0; i--) {
+      const h = this.hits[i];
+      const mid = (h.left + h.right) / 2;
+      let dx = x - mid;
+      if (this.P) dx -= this.P * Math.round(dx / this.P);
+      const px = mid + dx;
+      if (px >= h.left - pad && px <= h.right + pad && y >= h.top - pad && y <= h.bottom + pad) return h.unit;
+      if (!body && px >= h.footLeft && px <= h.footRight && y >= h.footTop && y < h.top) body = h.unit;
+    }
+    return body;
+  }
+
+  /**
+   * Seçim kutusunun değdiği yığınlar. Levha hexin merkezinden uzakta durur: yalnız merkeze
+   * bakan kutu, levhaların üstünden geçse de birimi seçmiyordu.
+   */
+  stacksInBox(x0, y0, x1, y1) {
+    const found = new Set();
+    const midX = (x0 + x1) / 2;
+    for (const h of this.hits) {
+      const left = Math.min(h.left, h.footLeft);
+      const right = Math.max(h.right, h.footRight);
+      const shift = this.P ? this.P * Math.round((midX - (left + right) / 2) / this.P) : 0;
+      if (left + shift > x1 || right + shift < x0 || h.footTop > y1 || h.bottom < y0) continue;
+      for (const unit of h.stack) found.add(unit);
+    }
+    return found;
   }
 
   /** Harita görünümünü değiştiren anahtar: pişmiş katmanlar da bilsin. */
   setEnabled(on) {
-    this.enabled = !!on;
+    this.enabled = !!on && !this.forcedOff;
     this.renderer.invalidateCache();
     this.renderer.requestFrame?.();
   }
@@ -248,11 +297,12 @@ export class MiniLayer {
   }
 
   /** Tam karenin başı: canlılık bu karede yeniden hesaplanır. */
-  frameStart(paused) {
+  frameStart(paused, selection = null, hovered = null) {
     this.paused = !!paused;
+    this.selection = selection;
+    this.hovered = hovered;
+    this.hits.length = 0;
     this.live = false;
-    this.stacksShown = this.stacksSeen;
-    this.stacksSeen = 0;
   }
 
   atlas(kind) {
@@ -288,7 +338,7 @@ export class MiniLayer {
     const stamp = `${nation.hue}|${nation.sat}|${nation.light}`;
     let row = this.tints.get(key);
     if (!row || row.stamp !== stamp) {
-      const color = naval ? clothTint(nation, NAVAL_GREY, 0.62) : clothTint(nation, FIELD_DRAB, 0.26);
+      const color = naval ? clothTint(nation, NAVAL_GREY, 0.62) : clothTint(nation, FIELD_DRAB, 0.08);
       let id = this.tintIds.get(color);
       if (id === undefined) {
         id = this.tintIds.size;
@@ -364,6 +414,11 @@ export class MiniLayer {
     // kaldığında geçiş bandı bulanık bir yığın gibi okunuyordu.
     this.blend = smoothstep(0, 0.6, blend);
     this.counterAlpha = 1 - smoothstep(0.45, 1, blend);
+    // Levha sayaç çekilirken gelir: ikisi aynı anda görünse bilgi iki kez yazılıyordu.
+    this.plateAlpha = smoothstep(0.55, 1, blend);
+    this.rings.length = 0;
+    this.bases.length = 0;
+    this.ringed.clear();
     this.now = performance.now();
     this.time = this.now / 1000;
     this.P = world.wrapWidth || 0;
@@ -469,7 +524,9 @@ export class MiniLayer {
   figure(kind, tint, anim, dir, x, y, phase) {
     const atlas = this.atlas(kind);
     if (!atlas) return;
-    const { worldSize, anchor, muzzles, glow } = atlas.meta;
+    const { anchor, muzzles, glow } = atlas.meta;
+    const scale = FIGURE_SCALE[kind] ?? 1;
+    const worldSize = atlas.meta.worldSize * scale;
     const kindIdx = MINI_KINDS.indexOf(kind);
     const book = this.bookFor(worldSize * this.zoom * this.renderer.dpr);
     const frame = this.frameFor(anim, phase);
@@ -501,7 +558,7 @@ export class MiniLayer {
       const power = FLASH_POWER[frame - MINI_ATLAS.anims.fire.start];
       if (power) {
         for (const [u, v, angle, reach] of muzzles[dir]) {
-          this.flash(x + worldSize * (u - anchor[0]), y + worldSize * (v - anchor[1]), angle, reach, glow, power);
+          this.flash(x + worldSize * (u - anchor[0]), y + worldSize * (v - anchor[1]), angle, reach, glow * scale, power);
         }
       }
     }
@@ -526,7 +583,6 @@ export class MiniLayer {
   stack(ctx, stack, nation) {
     const unit = stack[0];
     const tile = unit.tile;
-    this.stacksSeen++;
     const groups = this.composition(stack);
     if (!groups.length) return null;
     for (let g = 0; g < groups.length; g++) if (!this.atlas(groups[g].kind)) return null;
@@ -537,61 +593,86 @@ export class MiniLayer {
     const anim = this.poseAnim;
     const dir = this.poseDir;
     const [hx, hy] = HEADINGS[dir];
-    const spots = GROUP_SPOTS[groups.length - 1];
-    const seed = hash01(unit.id);
-    for (let g = 0; g < groups.length; g++) {
-      const group = groups[g];
-      const tint = this.tintOf(nation, group.kind);
-      const [gf, gs] = spots[g];
-      const list = group.kind === 'infantry' ? (anim === 'walk' ? COLUMN : LINE) : WIDE;
-      for (let i = 0; i < group.figures; i++) {
-        const [f, s] = list[i % list.length];
-        const jitter = hash01(unit.id * 31 + i * 7 + g * 3);
-        const fx = x + (f + gf) * hx - (s + gs) * hy + (jitter - 0.5) * 2.2;
-        const fy = y + ((f + gf) * hy + (s + gs) * hx) * SQUASH + ((jitter * 7) % 1 - 0.5) * 1.4;
-        if (group.kind === 'transport' && anim === 'walk') this.straightWake(ctx, fx, fy, hx, hy);
-        this.figure(group.kind, tint, anim, dir, fx, fy, (seed + jitter * 0.73 + i * 0.137) % 1);
-      }
-    }
+    const { kind } = groups[0];
+    const { worldSize, anchor } = this.atlas(kind).meta;
+    const size = worldSize * (FIGURE_SCALE[kind] ?? 1);
+    if (kind === 'transport' && anim === 'walk') this.straightWake(ctx, x, y, hx, hy);
+    const rx = Math.max(RING.minRadius, size * RING.baseShare);
+    const ry = rx * RING.baseSquash;
+    if (kind !== 'transport') {
+      this.lastBase = { x, y: y + RING.drop, rx, ry, rim: BASE_RIM.other };
+      this.bases.push(this.lastBase);
+    } else this.lastBase = null;
+    this.figure(kind, this.tintOf(nation, kind), anim, dir, x, y, hash01(unit.id));
+    const reach = size * RING.bodyShare;
+    this.foot.left = x - reach;
+    this.foot.right = x + reach;
+    this.foot.top = y - size * anchor[1] * RING.headShare;
+    this.ring(stack, tile, x, y, rx + RING.pad, ry + RING.pad * SQUASH);
     this.atX = x;
     this.atY = y;
     return this;
   }
 
+  /** Seçili ya da imleç altındaki yığının zemin halkası kuyruğa girer. */
+  ring(stack, tile, x, y, rx, ry) {
+    const selected = this.selection?.length ? stack.some((u) => this.selection.includes(u)) : false;
+    for (const member of stack) this.ringed.add(member);
+    if (!selected && this.hovered !== tile) return;
+    this.rings.push({
+      x,
+      y: y + RING.drop,
+      rx,
+      ry,
+      selected,
+    });
+  }
+
   /**
-   * Yığının tür bileşimi: ağır kollar önde sayılır, en fazla üç grup. Figür sayısı zoomla
-   * artar; uzakta beş er değil iki er okunur ve kalabalık cephe kare bütçesini aşmaz.
+   * Halka figürlerin ALTINA, zemine yatar. Sayaç boyundaki dikdörtgen çerçeve figürün
+   * üstünden geçip onu kafese alıyordu; çizgi kalınlığı zoomdan bağımsız kalır.
    */
+  drawRings(ctx, alpha) {
+    const unit = 1 / this.zoom;
+    // Dolgu yok: koyu disk haritada delik gibi duruyordu. Halka tarafın rengidir, ince koyu
+    // astar onu ulusun kendi renginde arazide de okutur.
+    for (const b of this.bases) {
+      ctx.globalAlpha = alpha * this.blend;
+      ctx.beginPath();
+      ctx.ellipse(b.x, b.y, b.rx, b.ry, 0, 0, Math.PI * 2);
+      ctx.lineWidth = 3.4 * unit;
+      ctx.strokeStyle = 'rgba(8, 10, 12, 0.5)';
+      ctx.stroke();
+      ctx.lineWidth = 1.8 * unit;
+      ctx.strokeStyle = b.rim;
+      ctx.stroke();
+    }
+    for (const r of this.rings) {
+      // Halka sayaç çekilirken gelir: geçiş bandında çerçeveyle üst üste binmesin.
+      ctx.globalAlpha = alpha * this.plateAlpha * (r.selected ? 1 : 0.55);
+      ctx.beginPath();
+      ctx.ellipse(r.x, r.y, r.rx, r.ry, 0, 0, Math.PI * 2);
+      ctx.lineWidth = 3 * unit;
+      ctx.strokeStyle = 'rgba(8, 10, 12, 0.42)';
+      ctx.stroke();
+      ctx.lineWidth = (r.selected ? 1.5 : 1) * unit;
+      ctx.strokeStyle = r.selected ? '#f4dea0' : 'rgba(255, 255, 255, 0.85)';
+      ctx.stroke();
+    }
+    ctx.globalAlpha = alpha;
+  }
+
+  /** Yığını temsil eden tek figür: en ağır kol, denizdeyse nakliye gemisi. */
   composition(stack) {
     const unit = stack[0];
-    const band = this.zoom < 1.6 ? 0 : this.zoom < 2.2 ? 1 : this.zoom < 3 ? 2 : 3;
-    const cap = Math.max(1, Math.floor(FIGURE_BUDGET / Math.max(1, this.stacksShown)));
     const memo = this.compositions.get(unit.id);
-    if (memo && memo.len === stack.length && memo.band === band && memo.cap === cap
-      && memo.embarked === unit.embarked && this.tick - memo.tick < 90) return memo.groups;
-    const counts = new Map();
+    if (memo && memo.len === stack.length && memo.embarked === unit.embarked && this.tick - memo.tick < 90) return memo.groups;
+    const kinds = new Set(stack.map((member) => KIND_OF[member.type.id]));
     const embarked = unit.embarked && unit.tile?.terrain?.water;
-    for (const member of stack) {
-      const kind = embarked ? 'transport' : KIND_OF[member.type.id];
-      if (kind) counts.set(kind, (counts.get(kind) ?? 0) + 1);
-    }
-    const groups = [];
-    for (const kind of ['armor', 'artillery', 'cavalry', 'infantry', 'transport']) {
-      const n = counts.get(kind);
-      if (!n) continue;
-      let figures;
-      if (kind === 'infantry') figures = [2, 3, 4, 5][band] - (counts.size > 1 ? 1 : 0);
-      else if (kind === 'cavalry') figures = [1, 1, 2, 3][band] - (counts.size > 2 ? 1 : 0);
-      else figures = band < 1 ? 1 : Math.min(n, counts.size > 1 ? 1 : 2);
-      groups.push({ kind, figures: Math.max(1, figures) });
-      if (groups.length === 3) break;
-    }
-    // Bütçe darsa önce ağır kol kalır, her gruba düşen figür eşit kısılır.
-    groups.length = Math.min(groups.length, cap);
-    const share = Math.max(1, Math.floor(cap / groups.length));
-    for (const group of groups) group.figures = Math.min(group.figures, share);
+    const kind = embarked ? 'transport' : KIND_ORDER.find((name) => kinds.has(name));
+    const groups = kind ? [{ kind }] : [];
     if (this.compositions.size > 4000) this.compositions.clear();
-    this.compositions.set(unit.id, { len: stack.length, band, cap, embarked: unit.embarked, tick: this.tick, groups });
+    this.compositions.set(unit.id, { len: stack.length, embarked: unit.embarked, tick: this.tick, groups });
     return groups;
   }
 
@@ -602,6 +683,9 @@ export class MiniLayer {
     if (!n && !this.plateQueue.length) return;
     this.lastDraw = this.now;
     const alpha = ctx.globalAlpha;
+    this.drawRings(ctx, alpha);
+    this.rings.length = 0;
+    this.bases.length = 0;
     ctx.globalAlpha = alpha * this.blend;
     const live = this.order;
     live.length = n;
@@ -613,11 +697,12 @@ export class MiniLayer {
         f.x - f.size * f.ax, f.y - f.size * f.ay, f.size, f.size);
     }
     this.drawGlows(ctx, alpha);
-    for (const p of this.plateQueue) {
-      ctx.globalAlpha = alpha * this.blend;
-      ctx.drawImage(p.sprite, p.left, p.top, p.w, p.h);
-      ctx.globalAlpha = alpha;
-      this.renderer.drawCounterState(ctx, this.world, p.stack, p.left, p.top, p.w, p.h, this.zoom);
+    if (this.plateAlpha > 0.01) {
+      for (const p of this.plateQueue) {
+        ctx.globalAlpha = alpha * this.plateAlpha;
+        ctx.drawImage(p.sprite, p.left, p.top, p.w, p.h);
+        this.renderer.drawCounterState(ctx, this.world, p.stack, p.left, p.top, p.w, p.h, this.zoom);
+      }
     }
     ctx.globalAlpha = alpha;
     this.count = 0;
@@ -650,6 +735,7 @@ export class MiniLayer {
   /** Yakın zoomda sayacın bilgisi: bayrak, mevcut, güç ve düzen çubukları. */
   plate(unit, stack, nation, side, selected, zoom, labelOf) {
     const count = Math.min(9, stack.length);
+    if (this.lastBase) this.lastBase.rim = BASE_RIM[side] ?? BASE_RIM.other;
     let memo = this.plateMemo.get(unit.id);
     if (!memo || memo.hp !== unit.hp || memo.org !== unit.organization || memo.count !== count
       || memo.selected !== selected || memo.side !== side || memo.nation !== nation.id) {
@@ -671,6 +757,20 @@ export class MiniLayer {
     const h = PLATE.h / zoom;
     const rect = { sprite: memo.sprite, stack, left: this.atX - w / 2, top: this.atY + HEX_SIZE * 0.52, w, h };
     this.plateQueue.push(rect);
+    // Eğik kamerada levha dünya koordinatında değildir: orada sayacın yarıçapı geçerli kalır.
+    if (!this.renderer.upright && this.plateAlpha > 0.2) {
+      this.hits.push({
+        unit,
+        stack,
+        left: rect.left,
+        right: rect.left + w,
+        top: rect.top,
+        bottom: rect.top + h,
+        footLeft: this.foot.left,
+        footRight: this.foot.right,
+        footTop: this.foot.top,
+      });
+    }
     return rect;
   }
 

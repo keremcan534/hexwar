@@ -143,7 +143,7 @@ Haberlerin karşılığı (sayfa · satır · sütun → gazetedeki olay):
 | 2 · 3 sol | bağımsızlık | 4 · 3 sol | saray, mutlakiyet |
 | 2 · 3 sağ | grev | 4 · 3 sağ | general haberi |
 
-## 4. Lider portreleri: 5 sayfa, 250 yüz
+## 5. Lider portreleri: 5 sayfa, 250 yüz
 
 Her ülkenin başında adı, yüzü ve kişiliği olan bir lider var. Portre gelene dek
 erkek liderler subay vesikalıklarını taşıyor, kadın liderlerde yalnız baş harfler

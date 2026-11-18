@@ -5,7 +5,7 @@
  * çizgisi ve yazı boyuyla kurulur. Açık tema çevirisine girmez (theme.js KEEP_SEL).
  */
 
-.gz-card, .gz-layer {
+.gz-layer {
   --gz-paper: #e4dcc8;
   --gz-paper-edge: #d3c9b1;
   --gz-ink: #1b1813;
@@ -13,92 +13,56 @@
   --gz-rule: rgba(27, 24, 19, 0.62);
 }
 
-/* ---------------------------------------------------------- KÖŞE KARTI --- */
-.gz-card {
-  position: fixed;
-  left: var(--sp-3);
-  bottom: var(--sp-3);
-  z-index: var(--z-sheet);
-  width: 292px;
-  color: var(--gz-ink);
-  background: var(--gz-paper);
-  box-shadow: 0 1px 0 var(--gz-paper-edge), 0 10px 26px rgba(0, 0, 0, 0.6);
-  animation: gz-drop 260ms ease-out;
-}
-@keyframes gz-drop {
-  from { opacity: 0; transform: translateY(10px); }
-  to { opacity: 1; transform: none; }
-}
-@media (prefers-reduced-motion: reduce) { .gz-card { animation: none; } }
-body:is(.menu-open, .picker-open) .gz-card { display: none; }
-/* Sol alttaki seçim penceresi açıksa kart onun yanına çekilir, üstüne binmez;
-   alttaki komutan şeridinin de üstünde kalır. */
-body:has(#sheet > .sheet-body:not(:empty)) .gz-card {
-  left: calc(min(var(--sheet-width), 100vw / var(--ui) - var(--sp-4)) + var(--sp-2) * 2);
-  bottom: 132px;
-}
-
-.gz-card-open {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  width: 100%;
-  padding: 9px 11px 11px;
+/* ------------------------------------------------------- SEKME DÜĞMESİ --- */
+/* Gazete kendiliğinden açılmaz: sekme şeridinin sonunda durur, yeni sayı sayılır. */
+.tab-bar .tab-paper {
+  position: relative;
+  display: inline-grid;
+  flex: none;
+  grid-template-columns: var(--led-w);
+  grid-template-rows: var(--tab-medal) 18px;
+  row-gap: 3px;
+  align-content: center;
+  justify-items: center;
+  margin-left: 6px;
+  padding: 4px var(--tab-pad-l) 3px;
   border: 0;
   background: none;
-  color: inherit;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
+  color: #d6ccb4;
+  cursor: var(--cur-pointer);
 }
-.gz-card-open:focus-visible { outline: 2px solid var(--gz-ink); outline-offset: -3px; }
-.gz-card-mast {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-  /* Kapatma düğmesinin altına yazı girmesin. */
-  padding-right: 22px;
-  padding-bottom: 4px;
-  border-bottom: 2px solid var(--gz-ink);
+.tab-paper-ico {
+  display: grid;
+  place-items: center;
+  width: var(--tab-medal);
+  height: var(--tab-medal);
+  border-radius: 50%;
+  background: radial-gradient(circle at 38% 30%, #34302a, #0f1011 74%);
+  box-shadow: inset 0 0 0 2px #9c8048, inset 0 0 0 3px rgba(0, 0, 0, 0.65), 0 2px 3px rgba(0, 0, 0, 0.75);
 }
-.gz-card-mast b {
-  overflow: hidden;
-  font-family: "HW Display", serif;
-  font-size: 17px;
-  font-weight: 700;
-  line-height: 1.1;
+.tab-paper-ico svg {
+  width: 58%;
+  height: 58%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.3;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.tab-paper small {
+  align-self: center;
+  color: #c9b98f;
+  font: 600 12px/18px var(--font-ui);
   white-space: nowrap;
-  text-overflow: ellipsis;
 }
-.gz-card-mast small {
-  flex: none;
-  font-family: "HW Display", serif;
-  font-size: 12px;
-  font-style: italic;
-  color: var(--gz-ink-2);
-}
-.gz-card .gz-photo { height: 92px; }
-.gz-card-open strong {
-  font-family: "HW Display", serif;
-  font-size: 19px;
-  font-weight: 700;
-  line-height: 1.12;
-}
-.gz-card-deck {
-  font-family: "HW Display", serif;
-  font-size: 14px;
-  line-height: 1.25;
-  color: var(--gz-ink-2);
-}
-.gz-card-x {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  width: 20px;
-  height: 20px;
-  padding: 0;
-}
+.tab-bar .tab-paper:hover { color: #fff2d6; }
+.tab-paper:hover .tab-paper-ico { box-shadow: inset 0 0 0 2px #f1d99c, inset 0 0 0 3px rgba(0, 0, 0, 0.65), 0 2px 3px rgba(0, 0, 0, 0.75); }
+.tab-bar .tab-paper:focus-visible { outline: 2px solid #f1d99c; outline-offset: -2px; }
+.tab-bar .tab-paper.on { color: #f8e4ab; }
+.tab-paper.on .tab-paper-ico { box-shadow: inset 0 0 0 2px #f1d99c, 0 0 8px rgba(241, 217, 156, 0.55); }
+.tab-paper.has-new small { color: #f6dc97; font-weight: 700; }
+.tab-bar .tab-paper:disabled { color: #6f6a5e; cursor: var(--cur-no); }
+.tab-paper:disabled small { color: #6f6a5e; }
 
 /* ------------------------------------------------------------ ÖN SAYFA --- */
 .gz-layer {

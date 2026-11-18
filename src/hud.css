@@ -141,6 +141,18 @@
 /* Yüzde yalnız darlıkta ve üstüne gelince (iki sıralı tepside hep açık
    yüzde alt sıranın madalyonuna biniyordu); halka oranı zaten gösterir. */
 .tb-resi b { bottom: -7px; font-size: 10.5px; line-height: 11px; }
+/* Dar pencerede tepsi daralır: saat kasası kaynak madalyonlarının üstüne biniyordu. */
+@media (max-width: 1439px) {
+  .tb-res { grid-template-columns: repeat(4, 24px); gap: 4px; }
+  .tb-resi { width: 24px; height: 24px; }
+  .tb-resi .art-sm { width: 18px; height: 18px; }
+}
+/* Gösterge şeridi kutusundan taşıp saat kasasının altına giriyordu (ölçüldü: 1920'de 13,
+   1600'de 21, 1366'da 34, 1280'de 77 px): içerik kutuya sığacak kadar küçülür. */
+@media (max-width: 1920px) { .top-stats { zoom: 0.98; } }
+@media (max-width: 1699px) { .top-stats { zoom: 0.96; } }
+@media (max-width: 1439px) { .top-stats { zoom: 0.92; } }
+@media (max-width: 1319px) { .top-stats { zoom: 0.84; } }
 
 /* --- 4. Tarih plakası --------------------------------------------------- */
 .tc-cal {
@@ -181,11 +193,8 @@
 .tc-dial[data-hover="4"] .time-notch[data-speed="4"]::before,
 .tc-dial[data-hover="6"] .time-notch[data-speed="6"]::before,
 .tc-dial[data-hover="8"] .time-notch[data-speed="8"]::before {
-  box-shadow: 0 0 0 1px #050708, 0 0 0 2.5px #f3dca3, 0 0 9px rgba(246, 210, 130, 0.8);
+  color: #fff4cf;
 }
-/* Lamba hedefi biraz büyür (yayda komşusuyla çakışmadan). */
-.tc-dial .time-btn.time-notch { width: 18px; height: 18px; margin: -9px 0 0 -9px; }
-.tc-dial .time-notch::before { inset: 3px; }
 
 /* --- 2. AUTO kartı (gösterge şeridinin son kartı) ----------------------- */
 .k-kpis.has-auto {

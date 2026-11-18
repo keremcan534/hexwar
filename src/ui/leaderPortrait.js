@@ -10,6 +10,7 @@
 
 import { calendarYear } from '../game/calendar.js';
 import { esc, tipAttr } from './kit.js';
+import { liderYedekYuzu } from './icons/subaylar.js';
 
 /** Dilimlenip oyuna giren sayfalar. Yeni sayfa = buraya tek satır. */
 const READY_SHEETS = new Set([]);
@@ -31,7 +32,8 @@ function photoSrc(leader, sinceYear) {
   const sheet = sheetOf(leader, sinceYear);
   if (READY_SHEETS.has(sheet)) return `assets/leaders/${sheet}-${two(leader.face)}.webp`;
   if (leader.female) return null;
-  return `assets/icons/officers/photo/p${two(((leader.face - 1) % 50) + 1)}.webp`;
+  // Ad da karışır: rol başına yüz aralığı dar, komşu ülkelerin lideri aynı yüzü almasın.
+  return liderYedekYuzu([...leader.name].reduce((h, c) => (Math.imul(h, 31) + c.charCodeAt(0)) | 0, leader.face));
 }
 
 const initials = (name) => name.split(/\s+/).map((word) => word[0]).slice(0, 2).join('');

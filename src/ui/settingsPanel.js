@@ -16,6 +16,7 @@
 // Katman notu: ui katmanı. Simülasyona yalnız game'in açık kapılarından değer.
 
 import { gfxStyleOptions } from '../render/gfx/index.js';
+import { LIVING_LAYERS, livingFlags } from '../render/living/flags.js';
 import { setUiMotion, uiMotion } from './mainMenu.js';
 import { panelOpen } from './motion.js';
 import { UI_FACTOR_MAX, UI_FACTOR_MIN, setUiScaleFactor, uiScaleFactor } from './uiScale.js';
@@ -207,6 +208,16 @@ export class SettingsPanel {
         write: (v) => { const film = $('map-film'); if (film) film.style.display = v ? '' : 'none'; },
       },
       {
+        id: 'minis', tab: 'graphics', sec: 'Map', label: '3D units', kind: 'toggle', def: true,
+        tip: 'Close to the map, armies and fleets appear as animated 3D miniatures. Off keeps the flat counters at every zoom, which is also lighter on the computer.',
+        write: (v) => {
+          const box = $('opt-3d-units');
+          if (box) box.checked = v;
+          r.minis.setEnabled(v);
+          game.requestRender();
+        },
+      },
+      {
         id: 'frameCap', tab: 'graphics', sec: 'Performance', label: 'Frame rate cap', kind: 'choice', def: 0,
         choices: [{ v: 0, label: 'Off' }, { v: 120, label: '120' }, { v: 60, label: '60' }, { v: 30, label: '30' }],
         tip: 'Limits how many map frames are drawn per second, to keep a laptop cool and quiet. Weekly turn processing is never slowed by the cap.',
@@ -242,6 +253,17 @@ export class SettingsPanel {
       layer('provinceBorders', 'opt-province-borders', 'Province borders', 'The lines between states inside a nation.', true),
       layer('grid', 'opt-grid', 'Hex grid', 'Outlines every hex on the map.', false),
       layer('plates', 'opt-front-plates', 'Front strength', 'Plates over each front showing its general and how many men hold it.', true),
+      {
+        id: 'occupation', tab: 'map', sec: 'Map layers', label: 'Occupied land shading', kind: 'toggle', def: true,
+        tip: 'Tints and hatches land held by an enemy army in the colour of the occupier.',
+        write: (v) => { r.setOccupationShade(v); game.requestRender(); },
+      },
+      ...LIVING_LAYERS.map(({ key, label }) => ({
+        id: `living-${key}`, tab: 'map', sec: 'Living world', label, kind: 'toggle', def: true, stored: false,
+        tip: 'Visual only: it never changes the rules of the game.',
+        read: () => livingFlags.stored(key),
+        write: (v) => { livingFlags.set(key, v); game.requestRender(); },
+      })),
       {
         id: 'minimap', tab: 'map', sec: 'Map layers', label: 'Minimap', kind: 'toggle', def: true,
         tip: 'The small world map in the bottom right corner.',
@@ -892,6 +914,8 @@ export class SettingsPanel {
         this.paint(def);
       });
     }
+    // Harita katmanları menüsündeki kutu aynı ayarı yazar.
+    $('opt-3d-units')?.addEventListener('change', (event) => this.commit(this.byId.get('minis'), event.target.checked));
     $('opt-live-sea')?.addEventListener('change', (event) => {
       const live = event.target.checked;
       if (live === (this.sea !== 'low')) return;

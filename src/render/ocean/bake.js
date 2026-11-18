@@ -5,6 +5,8 @@
 // değildir: şelf genişliği, sığlık, resif ve bank gürültüyle kırılır. Eşit
 // aralıklı bant "her kıyıyı saran hale" okunur ve oyuncu onu haritada görür.
 
+import { LINE_COAST, coastMesh, smoothLandAt } from '../borderMesh.js';
+
 const HEAD = `#version 300 es
 precision highp float;
 precision highp int;
@@ -204,6 +206,90 @@ export function signedCoast(cache) {
   return out;
 }
 
+/** Kıyı alanının kaba rastere göre inceltilmesi (eksen başına). */
+const COAST_FINE = 2;
+/** Kesin uzaklığın hesaplandığı şerit (ince teksel). */
+const COAST_REACH = 4;
+
+/**
+ * Kıyı eğrisine kesin işaretli uzaklık. Kaba kara maskesi hex başına dört teksellik ikili
+ * rasterdir: deniz karayı onun basamaklarında kesiyor, kıvrımlı kıyı çizgisinin altında
+ * dolgu dümdüz yatay ve dikey kenarlarla bitiyordu. Şerit dışı kaba alandan büyütülür.
+ */
+function preciseCoast(cache) {
+  const coarse = signedCoast(cache);
+  const { w, h, width, height, x0, y0, world } = cache;
+  const W = w * COAST_FINE;
+  const H = h * COAST_FINE;
+  const dx = width / W;
+  const dy = height / H;
+  const out = new Float32Array(W * H);
+  for (let j = 0; j < H; j++) {
+    const v = (j + 0.5) / COAST_FINE - 0.5;
+    const iy = Math.floor(v);
+    const fy = v - iy;
+    const y0i = Math.max(0, iy);
+    const y1i = Math.min(h - 1, iy + 1);
+    for (let i = 0; i < W; i++) {
+      const u = (i + 0.5) / COAST_FINE - 0.5;
+      const ix = Math.floor(u);
+      const fx = u - ix;
+      const x0i = (ix + w) % w;
+      const x1i = (ix + 1) % w;
+      const a = coarse[y0i * w + x0i] + (coarse[y0i * w + x1i] - coarse[y0i * w + x0i]) * fx;
+      const b = coarse[y1i * w + x0i] + (coarse[y1i * w + x1i] - coarse[y1i * w + x0i]) * fx;
+      out[j * W + i] = a + (b - a) * fy;
+    }
+  }
+
+  const near = new Float32Array(W * H).fill(Infinity);
+  const reach = Math.max(dx, dy) * COAST_REACH;
+  const mesh = coastMesh(world);
+  for (const ch of mesh.chains) {
+    // Harita kenarı zinciri yumuşatılmaz: orada kıyı yok.
+    if (ch.cls !== LINE_COAST || ch.S === ch.H) continue;
+    const S = ch.S;
+    const n = S.length / 2;
+    const segs = ch.closed ? n : n - 1;
+    for (let k = 0; k < segs; k++) {
+      const m = (k + 1) % n;
+      const ax = S[k * 2];
+      const ay = S[k * 2 + 1];
+      const ex = S[m * 2] - ax;
+      const ey = S[m * 2 + 1] - ay;
+      const ee = ex * ex + ey * ey;
+      const i0 = Math.floor((Math.min(ax, ax + ex) - reach - x0) / dx);
+      const i1 = Math.ceil((Math.max(ax, ax + ex) + reach - x0) / dx);
+      const j0 = Math.max(0, Math.floor((Math.min(ay, ay + ey) - reach - y0) / dy));
+      const j1 = Math.min(H - 1, Math.ceil((Math.max(ay, ay + ey) + reach - y0) / dy));
+      for (let j = j0; j <= j1; j++) {
+        const py = y0 + (j + 0.5) * dy - ay;
+        for (let i = i0; i <= i1; i++) {
+          // Zincir açılmış koordinattadır: teksel konumu zincirle aynı turda alınır.
+          const px = x0 + (i + 0.5) * dx - ax;
+          const t = ee > 1e-9 ? Math.max(0, Math.min(1, (px * ex + py * ey) / ee)) : 0;
+          const qx = px - ex * t;
+          const qy = py - ey * t;
+          const d = qx * qx + qy * qy;
+          const o = j * W + (((i % W) + W) % W);
+          if (d < near[o]) near[o] = d;
+        }
+      }
+    }
+  }
+  const limit = reach * reach;
+  for (let j = 0; j < H; j++) {
+    const y = y0 + (j + 0.5) * dy;
+    for (let i = 0; i < W; i++) {
+      const o = j * W + i;
+      if (near[o] > limit) continue;
+      const d = Math.sqrt(near[o]);
+      out[o] = smoothLandAt(mesh, x0 + (i + 0.5) * dx, y) ? -d : d;
+    }
+  }
+  return { data: out, w: W, h: H };
+}
+
 export class OceanBake {
   constructor(kit) {
     this.kit = kit;
@@ -231,9 +317,9 @@ export class OceanBake {
   bakeWorld(cache, hexStep) {
     const { kit } = this;
     const { gl } = kit;
-    const signed = signedCoast(cache);
-    const coast = kit.texture(cache.w, cache.h, 'r16f', {
-      data: signed, format: gl.RED, type: gl.FLOAT, filter: 'linear', wrapX: 'repeat', wrapY: 'clamp',
+    const signed = preciseCoast(cache);
+    const coast = kit.texture(signed.w, signed.h, 'r16f', {
+      data: signed.data, format: gl.RED, type: gl.FLOAT, filter: 'linear', wrapX: 'repeat', wrapY: 'clamp',
     });
     const W = 1600;
     const H = Math.round((W * cache.height) / cache.width);

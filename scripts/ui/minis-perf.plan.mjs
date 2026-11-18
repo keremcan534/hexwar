@@ -5,7 +5,7 @@ import { join } from 'node:path';
 export default async function plan(hx) {
   await hx.inject(join(hx.probes, 'minis-scene.js'));
   // En kötü durum ölçülür: duraklatılmış dünyada da yürüyüş ve ateş canlandırması açık kalır.
-  await hx.ev(`(() => { const m = game.renderer.minis; if (m) { const start = m.frameStart; m.frameStart = function () { start.call(this, false); }; } })()`);
+  await hx.ev(`(() => { const m = game.renderer.minis; if (m) { const start = m.frameStart; m.frameStart = function (_, selection, hovered) { start.call(this, false, selection, hovered); }; } })()`);
   const scene = await hx.ev('__minisScene({ radius: 13, perTile: 3 })');
   const out = { scene, zooms: [] };
   for (const zoom of [0.3, 0.7, 1.0, 1.3, 1.6, 2.2, 3.5]) {

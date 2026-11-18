@@ -332,6 +332,10 @@ export class Game {
     // Yarıçap çizilen sayaçtan gelir: sayaç ekranda tavanlıdır (bkz.
     // renderer.counterZoom); çizilmeyen sayaç (uzakta üçüncü taraf) tıklanmaz.
     const renderer = this.renderer;
+    // Yakın zoomda birimin levhası ve figürleri de tıklanır.
+    const at = this.camera.screenToWorld(sx, sy);
+    const mini = renderer.minis?.unitAt(at.x, at.y);
+    if (mini) return mini;
     const hitRadius = Math.max(9, HEX_SIZE * 0.92 * renderer.counterZoom());
     const player = this.turns.playerNation;
     // Taraf yalnız üçüncü taraf gizliyken sorulur (her fare hareketinde koşar).
@@ -746,10 +750,14 @@ export class Game {
     // ortaya en yakını zaten içindedir). Kameraya en yakın kopyaya bakınca
     // dar dünyada tekrarlanan banttaki ordular seçilemiyordu.
     const midX = rect.x + rect.w / 2;
+    // Yakın zoomda kutu, birimin göründüğü yere (figür ve levha) de değerse seçer.
+    const from = this.camera.screenToWorld(rect.x, rect.y);
+    const to = this.camera.screenToWorld(rect.x + rect.w, rect.y + rect.h);
+    const shown = this.renderer.minis?.stacksInBox(from.x, from.y, to.x, to.y);
     for (const unit of this.world.units) {
       if (unit.nationId !== this.turns.playerNation || unit.hp <= 0) continue;
       const p = this.camera.worldToScreenNear(unit.tile.x, unit.tile.y, midX);
-      if (p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h) {
+      if (shown?.has(unit) || (p.x >= rect.x && p.x <= rect.x + rect.w && p.y >= rect.y && p.y <= rect.y + rect.h)) {
         picked.push(unit);
       }
     }

@@ -114,6 +114,13 @@ const MEANDER_CLAMP = 17;
 const SHAPE_TAPER = 26;
 /** Kıvrım genliği: süzgecin sildiği düzensizliğin yerine konuma bağlı olanı. */
 const MEANDER_AMP = 13;
+/**
+ * Kıyıda süzgeç dar, kıvrım geniş: sınırın süzgeci kıyıya uygulanınca eğri hex yolundan
+ * %11 kısa kalıyor, koy ve burun silinip sahil cetvelle çekilmiş gibi duruyordu.
+ * Üst sınır yine MEANDER_CLAMP: hiçbir hex merkezi denize geçmez.
+ */
+const COAST_SIGMA = 12;
+const COAST_MEANDER_AMP = 20;
 
 // Ara tamponlar: zincir başına dizi ayırmak kurulumun üçte birini
 // tahsisata harcıyordu.
@@ -288,8 +295,9 @@ function clampToPath(H, closed, seg, x, y, limit) {
 /**
  * Hex kenarı yolundan doğal sınır eğrisi (bkz. EĞRİ BİÇİMİ). Açık zincirin
  * uçları birebir H'nin uçlarıdır. `P`: sarmal periyodu (gürültü sarması).
+ * `coast`: kara-deniz zinciri (bkz. COAST_SIGMA).
  */
-function shapeChain(H, closed, P) {
+function shapeChain(H, closed, P, coast = false) {
   const m = H.length / 2;
   if (m < 2) return H;
   const segs = closed ? m : m - 1;
@@ -333,7 +341,8 @@ function shapeChain(H, closed, P) {
   // Gerçek çekirdek örnek başına 31 dokunuştu ve tam kurulumun en büyük
   // kalemiydi. Küçük kapalı halkada (tek hexlik ada) süzgeç halkanın boyuna
   // göre daralır: yoksa ada noktaya büzülür.
-  const sigma = closed ? Math.min(SHAPE_SIGMA, total / 10) : SHAPE_SIGMA;
+  const shapeSigma = coast ? COAST_SIGMA : SHAPE_SIGMA;
+  const sigma = closed ? Math.min(shapeSigma, total / 10) : shapeSigma;
   const ss = sigma / (total / count);
   const rb = Math.max(1, Math.round((Math.sqrt(4 * ss * ss + 1) - 1) / 2));
   for (let k = 0; k < n; k++) {
@@ -385,7 +394,7 @@ function shapeChain(H, closed, P) {
     }
     const x = out[k * 2];
     const y = out[k * 2 + 1];
-    const off = MEANDER_AMP * w * meanderNoise(x, y, P);
+    const off = (coast ? COAST_MEANDER_AMP : MEANDER_AMP) * w * meanderNoise(x, y, P);
     GX[k] = x - ty * off;
     GY[k] = y + tx * off;
     D[k] += Math.abs(off);
@@ -621,7 +630,7 @@ export function buildBorderMesh(world, groupOf, keys = null) {
     // zincirleri yumuşar ve kıvrılır. Kıyı da artık yumuşak: hex dişli
     // sahil, yumuşak sınırların yanında haritanın en petek parçasıydı.
     if (land || ch.pos === SEA || ch.neg === SEA) {
-      ch.S = shapeChain(ch.H, ch.closed, P);
+      ch.S = shapeChain(ch.H, ch.closed, P, !land);
     } else {
       ch.S = ch.H;
     }

@@ -1,21 +1,14 @@
-// GAZETE — köşedeki kart, açılan ön sayfa, Chronicle arşivi.
+// GAZETE — sekme şeridindeki düğme, açılan ön sayfa, Chronicle arşivi.
 //
 // Yazı işleri (game/press.js) her hafta dünyayı okur; burası yalnız basılan
-// sayıyı gösterir. Saate dokunmaz: kart oyunu durdurmaz, ön sayfa açıkken de
-// zaman akar. 4x'te bir ay bir saniyedir; aylık sayı kartı her ay yenilense
-// köşe titrerdi, bu yüzden olağan kart duvar saatiyle seyreltilir. Arşiv eksiksiz
-// kalır: kartı görünmeyen sayı Chronicle'dan okunur.
+// sayıyı gösterir. Saate dokunmaz, ön sayfa açıkken de zaman akar. Gazete oyuncu
+// isteyince açılır (Kerem 2026-11-18): yeni sayılar düğmede sayılır, ekrana çıkmaz.
 
 import { pressIssue, pressWeek } from '../game/press.js';
 import { composeIssue } from '../game/pressText.js';
 import { glyph } from './icons/glyphs.js';
 import { onEscape } from './hud.js';
 import { esc } from './kit.js';
-
-/** Olağan kart bu kadar görünür kalır; üstüne gelinince süre durur. */
-const CARD_MS = 14000;
-/** İki olağan kart arasındaki en kısa süre. Olağanüstü sayı bunu beklemez. */
-const CARD_GAP_MS = 45000;
 
 /** Sansürcünün sildiği yer: metinde boşluk kalır, altı okunmaz. */
 const inked = (text) => esc(text).replaceAll('[[cut]]', '<span class="gz-cut" role="img" aria-label="removed by the censor"></span>');
@@ -63,17 +56,21 @@ function pageHtml(view) {
 export class Newspaper {
   constructor(game) {
     this.game = game;
-    this.card = null;
     this.layer = null;
-    this.cardTimer = 0;
-    this.lastCardAt = -Infinity;
+    this.unread = 0;
+    this.button = document.getElementById('btn-newspaper');
+    this.note = this.button?.querySelector('small') ?? null;
+    if (this.button) this.button.onclick = () => this.toggleLatest();
 
     game.on('turn', () => {
-      const issue = pressWeek(game);
-      if (issue) this.arrive(issue);
+      if (pressWeek(game)) this.unread++;
+      this.sync();
     });
-    game.on('world', () => { this.closeCard(); this.closePage(); });
-    game.on('victory', () => this.closeCard());
+    game.on('world', () => {
+      this.closePage();
+      this.unread = 0;
+      this.sync();
+    });
     // Esc sırası (hud.js): açık gazete seçimden önce kapanır.
     onEscape(game, () => {
       if (!this.layer) return false;
@@ -93,49 +90,24 @@ export class Newspaper {
     });
   }
 
-  /** Yeni sayı: olağanüstü sayı hep görünür, olağan olan sırasını bekler. */
-  arrive(issue) {
-    const now = performance.now();
-    if (!issue.x && (this.card || now - this.lastCardAt < CARD_GAP_MS)) return;
-    this.lastCardAt = now;
-    this.showCard(issue);
+  /** Düğme son sayıyı açar; gazete açıksa kapatır. */
+  toggleLatest() {
+    if (this.layer) {
+      this.closePage();
+      return;
+    }
+    const latest = this.game.world?.press?.issues?.at(-1);
+    if (latest) this.openIssue(latest.n);
   }
 
-  showCard(issue) {
-    this.closeCard();
-    const view = composeIssue(issue);
-    const card = document.createElement('aside');
-    card.className = `gz-card${view.extra ? ' is-extra' : ''}`;
-    card.setAttribute('aria-label', `${view.paper}: ${view.lead.head}`);
-    card.innerHTML = `<button type="button" class="gz-card-open" data-gz-open>
-        <span class="gz-card-mast"><b>${esc(view.paper)}</b><small>${view.extra ? esc(view.extraLabel) : esc(view.date)}</small></span>
-        ${view.photo ? `<span class="gz-photo" style="background-image:url('assets/${esc(view.photo)}')" aria-hidden="true"></span>` : ''}
-        <strong>${esc(view.lead.head)}</strong>
-        ${view.lead.deck ? `<span class="gz-card-deck">${inked(view.lead.deck)}</span>` : ''}
-      </button>
-      <button type="button" class="icon-btn gz-card-x" data-gz-close aria-label="Close">${glyph('close', 'ctl')}</button>`;
-    card.addEventListener('click', (event) => {
-      if (event.target.closest('[data-gz-close]')) { this.closeCard(); return; }
-      if (event.target.closest('[data-gz-open]')) { this.closeCard(); this.openIssue(issue.n); }
-    });
-    // Okurken kart kaçmasın.
-    card.addEventListener('pointerenter', () => clearTimeout(this.cardTimer));
-    card.addEventListener('pointerleave', () => this.armCard(issue));
-    document.body.append(card);
-    this.card = card;
-    this.armCard(issue);
-  }
-
-  /** Olağanüstü sayı okunana dek durur; olağan kart kendiliğinden çekilir. */
-  armCard(issue) {
-    clearTimeout(this.cardTimer);
-    if (!issue.x) this.cardTimer = setTimeout(() => this.closeCard(), CARD_MS);
-  }
-
-  closeCard() {
-    clearTimeout(this.cardTimer);
-    this.card?.remove();
-    this.card = null;
+  /** Düğmenin yazısı: okunmamış sayı varsa kaç tane, yoksa adı. */
+  sync() {
+    if (!this.button) return;
+    const any = Boolean(this.game.world?.press?.issues?.length);
+    this.button.disabled = !any;
+    this.button.classList.toggle('has-new', this.unread > 0);
+    this.button.classList.toggle('on', Boolean(this.layer));
+    if (this.note) this.note.textContent = this.unread > 0 ? `${this.unread} new` : 'Paper';
   }
 
   openIssue(number) {
@@ -168,11 +140,14 @@ export class Newspaper {
     });
     document.body.append(layer);
     this.layer = layer;
+    this.unread = 0;
+    this.sync();
     layer.querySelector('.gz-page')?.focus({ preventScroll: true });
   }
 
   closePage() {
     this.layer?.remove();
     this.layer = null;
+    this.sync();
   }
 }

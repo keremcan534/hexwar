@@ -443,12 +443,13 @@ vec3 landColor(vec2 world, vec2 cell, vec2 raw, vec2 fill, vec3 Ldir) {
     // Isgal de bolgeye aittir: tarama, dolgunun okundugu hexten gelir.
     vec4 ov = texelFetch(uOverlay, ivec2(fill), 0);
     if (ov.a > 0.5) {
-      col = mix(col, ov.rgb, 0.46);
+      // Hafif: koyu murekkep isgal edilen topragi kapkara birakiyordu.
+      col = mix(col, ov.rgb, 0.18);
       float sp = 9.0 * uDpr;
       float wd = 2.2 * uDpr;
       float f = mod(gl_FragCoord.x + gl_FragCoord.y, sp);
       float line = 1.0 - smoothstep(wd * 0.5 - 0.9, wd * 0.5 + 0.9, abs(f - sp * 0.5));
-      col = mix(col, vec3(0.839, 0.784, 0.659), line * 0.5);
+      col = mix(col, ov.rgb, line * 0.42);
     }
   }
 #endif

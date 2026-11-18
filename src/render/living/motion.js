@@ -14,9 +14,11 @@ const HEX_STEP = SQRT3 * HEX_SIZE;
 
 /** Ekrandaki azami gemi: yoğun ticarette deniz otoyola dönmesin. */
 const MAX_SHIPS = 54;
-const MAX_TRAINS = 40;
-/** Demiryolu kuran kalkınma (devData.js'in "ray" eşiğiyle aynı aile). */
-export const RAIL_DEVELOPMENT = 4;
+const MAX_TRAINS = 70;
+/** Bu kalkınmadan sonra province hatta bağlanır: ağ, ülke kalkındıkça gözle görülür büyür. */
+export const RAIL_DEVELOPMENT = 3;
+/** Her ülkenin en gelişmiş bu kadar province'i eşiğe bakmadan hatlıdır: 1900'de raysız devlet yoktu. */
+const RAIL_TRUNK = 5;
 /** Hat başına en uzak komşu (hex). */
 const RAIL_REACH = 10;
 
@@ -284,39 +286,53 @@ function landCost(world, owner) {
   };
 }
 
-/** Kalkınmış province'ler arası hat planı: düğüm başına en yakın iki komşu. */
-function railPlan(world) {
-  const nodes = [];
+/** Ülke başına hatlı province'ler: başkent, ana hat ve kalkınma eşiğini geçenler. */
+function railNodes(world) {
+  const byOwner = new Map();
   for (const p of world.provinces ?? []) {
     if (!p.center || p.owner < 0) continue;
-    if ((p.econ?.development ?? 0) >= RAIL_DEVELOPMENT) nodes.push(p);
+    if (!byOwner.has(p.owner)) byOwner.set(p.owner, []);
+    byOwner.get(p.owner).push(p);
   }
+  const dev = (p) => p.econ?.development ?? 0;
+  for (const [owner, list] of byOwner) {
+    const capital = world.nations[owner]?.capital?.provinceId;
+    list.sort((x, y) => dev(y) - dev(x) || x.id - y.id);
+    byOwner.set(owner, list.filter((p, i) => i < RAIL_TRUNK || dev(p) >= RAIL_DEVELOPMENT || p.id === capital));
+  }
+  return byOwner;
+}
+
+/** Hat planı: düğüm başına en yakın iki komşu; menzilde komşusu olmayan en yakınına bağlanır. */
+function railPlan(world) {
   const P = world.wrapWidth || 0;
   const reach = RAIL_REACH * HEX_STEP;
   const pairs = new Map();
-  for (const a of nodes) {
-    const near = [];
-    for (const b of nodes) {
-      if (a === b || a.owner !== b.owner) continue;
-      let dx = Math.abs(a.center.x - b.center.x);
-      if (P) dx = Math.min(dx, P - dx);
-      const d = Math.hypot(dx, a.center.y - b.center.y);
-      if (d <= reach) near.push([d, b]);
-    }
-    near.sort((x, y) => x[0] - y[0] || x[1].id - y[1].id);
-    for (const [, b] of near.slice(0, 2)) {
-      const key = a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
-      if (!pairs.has(key)) pairs.set(key, a.id < b.id ? [a, b] : [b, a]);
+  for (const nodes of railNodes(world).values()) {
+    for (const a of nodes) {
+      const near = [];
+      for (const b of nodes) {
+        if (a === b) continue;
+        let dx = Math.abs(a.center.x - b.center.x);
+        if (P) dx = Math.min(dx, P - dx);
+        near.push([Math.hypot(dx, a.center.y - b.center.y), b]);
+      }
+      near.sort((x, y) => x[0] - y[0] || x[1].id - y[1].id);
+      const inReach = near.filter(([d]) => d <= reach).slice(0, 2);
+      for (const [, b] of inReach.length ? inReach : near.slice(0, 1)) {
+        const key = a.id < b.id ? `${a.id}:${b.id}` : `${b.id}:${a.id}`;
+        if (!pairs.has(key)) pairs.set(key, a.id < b.id ? [a, b] : [b, a]);
+      }
     }
   }
   return [...pairs.values()];
 }
 
-/** Hatların imzası: kalkınma ve sahiplik değişmedikçe ağ yeniden kurulmaz. */
+/** Hatların imzası: düğümler ve sahipleri değişmedikçe ağ yeniden kurulmaz. */
 function railKey(world) {
   let h = 0;
-  for (const p of world.provinces ?? []) {
-    if ((p.econ?.development ?? 0) >= RAIL_DEVELOPMENT) h = (Math.imul(h, 31) + p.id * 7 + p.owner + 11) | 0;
+  for (const nodes of railNodes(world).values()) {
+    for (const p of nodes) h = (Math.imul(h, 31) + p.id * 7 + p.owner + 11) | 0;
   }
   return h;
 }
@@ -454,7 +470,8 @@ export class LivingMotion {
     // Trenler: her ağ parçasında kullanılmamış hatlardan yürüyerek hat çıkar.
     const used = new Set();
     const trains = [];
-    const starts = [...links.keys()].sort((x, y) => x - y);
+    // Karışık sıra: bütçe düşük kimlikli province'lerde, yani tek bölgede tükenmesin.
+    const starts = [...links.keys()].sort((x, y) => hash01(x, 5, 9) - hash01(y, 5, 9) || x - y);
     for (const start of starts) {
       for (const first of links.get(start)) {
         if (used.has(first.edge) || trains.length >= MAX_TRAINS) continue;

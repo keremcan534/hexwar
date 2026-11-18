@@ -1433,7 +1433,13 @@ export class Renderer {
 
   /** İşgal taraması hangi kiplerde çizilir: siyaset ve diplomasi (savaşın hâli). */
   occupationMode() {
-    return this.mapMode === 'political' || this.mapMode === 'diplomacy';
+    return this.showOccupation !== false && (this.mapMode === 'political' || this.mapMode === 'diplomacy');
+  }
+
+  /** Ayarlar: işgal taraması açık/kapalı. Pişmiş katmanlar da yeniden çizilir. */
+  setOccupationShade(on) {
+    this.showOccupation = !!on;
+    this.invalidateCache();
   }
 
   /**
@@ -2238,7 +2244,7 @@ export class Renderer {
     }
     // Geçen zaman kare sayısından bağımsız: animasyon her FPS'te aynı hızda akar.
     this.waterTime = performance.now() / 1000;
-    this.minis.frameStart(state.paused);
+    this.minis.frameStart(state.paused, state.selection, state.hovered);
     // Su önce çizilir: ayrı bir tuval olduğu için sıra bileşimi değiştirmez,
     // ama kamera değerleri Canvas2D karesiyle BİREBİR aynı kalır.
     if (this.glWater()) {
@@ -2559,6 +2565,7 @@ export class Renderer {
       // Coğrafya kipi fiziksel dünyayı yalnız başına gösterir: ordu, cephe ve
       // muharebe de siyasettir (bkz. mapMode yorumu).
       this.drawFronts(ctx, world, state);
+      this.drawWarFrontline(ctx, world, state.playerNation);
       this.drawCommandLines(ctx, world, state);
       // Seçimin TAMAMI parlar: yalnız ilk tümen geçtiğinde çoklu seçimde
       // diğer tümenlerin oku sönük kalıyordu (seçili olduğu okunmuyordu).
@@ -3184,11 +3191,12 @@ export class Renderer {
     }
     for (const [controller, group] of groups) {
       ctx.save();
-      ctx.globalAlpha = 0.46;
+      ctx.globalAlpha = 0.18;
       const holder = world.nations[controller];
-      ctx.fillStyle = holder ? this.nationInk(holder) : '#999';
+      const ink = holder ? this.nationInk(holder) : '#999';
+      ctx.fillStyle = ink;
       ctx.fill(group.path);
-      ctx.globalAlpha = 1;
+      ctx.globalAlpha = 0.42;
       ctx.clip(group.path);
       ctx.beginPath();
       const height = group.maxY - group.minY;
@@ -3198,7 +3206,7 @@ export class Renderer {
         ctx.lineTo(x + height, group.maxY);
       }
       ctx.lineWidth = 2.2 / scale;
-      ctx.strokeStyle = 'rgba(214, 200, 168, 0.5)';
+      ctx.strokeStyle = ink;
       ctx.stroke();
       ctx.restore();
     }
@@ -3724,15 +3732,22 @@ export class Renderer {
     ctx.lineWidth = 2.5 / zoom;
     ctx.strokeStyle = '#e5ca84';
     const U = this.upright;
+    const base = ctx.globalAlpha;
     for (const unit of selection) {
       if (!unit?.tile) continue;
+      // Figürü çizilen birimin seçimi zemin halkasıdır (miniatures.js); çerçeve yalnız
+      // sayaçla birlikte görünür ve sayaç erirken o da erir.
+      const fade = this.minis.ringed.has(unit) ? this.minis.counterAlpha : 1;
+      if (fade <= 0.01) continue;
       if (U && !U.pin(ctx, unit.tile.x, unit.tile.y)) continue;
       const y = unit.tile.y + (unit.tile.city ? HEX_SIZE * UNIT_ON_CITY_OFFSET : 0);
       const frame = roundedRectPath(
         new Path2D(), unit.tile.x - width / 2, y - height / 2, width, height, 3 / zoom,
       );
+      ctx.globalAlpha = base * fade;
       ctx.stroke(frame);
     }
+    ctx.globalAlpha = base;
   }
 
   /** Sürüklenen seçim kutusu (masaüstünde klasör seçer gibi). */
@@ -3784,7 +3799,7 @@ export class Renderer {
         ctx.globalAlpha = 1;
       }
       this.drawFrontEdges(ctx, world, tiles, state.playerNation, {
-        color: glow, attack, active: isActive,
+        color: glow, active: isActive,
         // Çizilmiş cephe barışta da görünür: oyuncu o sınırı bu generale verdi.
         facing: general.line?.facing ? new Set(general.line.facing) : null,
       });
@@ -3792,6 +3807,78 @@ export class Renderer {
       // cephedeki tümen sayacının altında kalıyordu.
       this.frontBadges.push({ general, at: this.frontAnchor(tiles), glow, isActive });
     }
+  }
+
+  /**
+   * Savaşan iki tarafın denetim sınırı: bütün savaşlarda tek bakışta okunan kalın hat.
+   * Generale atanmış cephe çizgisi yalnız oyuncunun kendi sektörünü gösteriyor, yabancı
+   * savaşta harita üzerinde hiçbir hat kalmıyordu. Yol haftada bir kurulur.
+   */
+  warFrontPaths(world, playerNation) {
+    const mesh = this.mesh?.world === world ? this.mesh : null;
+    const key = `${world.turn ?? 0}|${world.battleSystem?.battles?.length ?? 0}|${playerNation}`;
+    const kept = this.warFrontCache;
+    if (kept?.world === world && kept.key === key && kept.mesh === mesh) return kept;
+    const ours = new Path2D();
+    const theirs = new Path2D();
+    const pairs = new Map();
+    let count = 0;
+    for (const tile of world.tiles) {
+      if (!tile || tile.terrain?.water) continue;
+      const a = controllerOf(tile);
+      if (a < 0) continue;
+      for (let d = 0; d < 6; d++) {
+        const near = world.get(tile.q + DIRS[d][0], tile.r + DIRS[d][1]);
+        if (!near || near.terrain?.water) continue;
+        const b = controllerOf(near);
+        // Kenar iki kareden de görülür: küçük kimlikli taraf yazar.
+        if (b <= a) continue;
+        const pair = a * 65536 + b;
+        let war = pairs.get(pair);
+        if (war === undefined) {
+          war = atWar(world, a, b);
+          pairs.set(pair, war);
+        }
+        if (!war) continue;
+        const path = a === playerNation || b === playerNation ? ours : theirs;
+        const pts = mesh ? cellEdge(mesh, tile.row * world.cols + tile.col, d) : [
+          HEX_CORNERS[d][0] * HEX_SIZE, HEX_CORNERS[d][1] * HEX_SIZE,
+          HEX_CORNERS[(d + 1) % 6][0] * HEX_SIZE, HEX_CORNERS[(d + 1) % 6][1] * HEX_SIZE,
+        ];
+        path.moveTo(tile.x + pts[0], tile.y + pts[1]);
+        for (let i = 1; i < pts.length / 2; i++) path.lineTo(tile.x + pts[i * 2], tile.y + pts[i * 2 + 1]);
+        count++;
+      }
+    }
+    this.warFrontCache = { world, key, mesh, ours, theirs, count };
+    return this.warFrontCache;
+  }
+
+  drawWarFrontline(ctx, world, playerNation) {
+    const { ours, theirs, count } = this.warFrontPaths(world, playerNation);
+    if (!count) return;
+    const zoom = this.camera.zoom;
+    // Çizgi ekranda sabit kalınlıkta: uzakta ince ama seçilir, yakında haritayı kesmez.
+    const px = Math.min(1.2, 0.72 + zoom * 0.35) / zoom;
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 6.5 * px;
+    ctx.strokeStyle = 'rgba(8, 8, 10, 0.72)';
+    ctx.stroke(theirs);
+    ctx.lineWidth = 3 * px;
+    ctx.strokeStyle = '#f2a83c';
+    ctx.stroke(theirs);
+    ctx.lineWidth = 8 * px;
+    ctx.strokeStyle = 'rgba(8, 8, 10, 0.8)';
+    ctx.stroke(ours);
+    ctx.lineWidth = 4.4 * px;
+    ctx.strokeStyle = '#ff4630';
+    ctx.stroke(ours);
+    ctx.lineWidth = 1.2 * px;
+    ctx.strokeStyle = '#ffe2bc';
+    ctx.stroke(ours);
+    ctx.restore();
   }
 
   /**
@@ -3854,7 +3941,8 @@ export class Renderer {
     const zoom = this.camera.zoom;
     const P = world.wrapWidth;
     const arrows = new Map();
-    for (const unit of world.units) {
+    // Yalnız seçili ordu: her tümenin oku cepheyi ve birimleri örtüyordu.
+    for (const unit of this.minis.selection ?? []) {
       if (unit.nationId !== playerNation || unit.type?.domain !== 'land' || unit.hp <= 0) continue;
       const end = unit.directive ? world.get(unit.directive.q, unit.directive.r)
         : unit.path?.[unit.path.length - 1];
@@ -3869,7 +3957,7 @@ export class Renderer {
     }
     if (!arrows.size) return;
     ctx.save();
-    for (const { from, to, count } of arrows.values()) {
+    for (const { from, to } of arrows.values()) {
       let dx = to.x - from.x;
       if (P) dx -= P * Math.round(dx / P);
       const dy = to.y - from.y;
@@ -3885,16 +3973,16 @@ export class Renderer {
       const bend = Math.min(len * 0.18, HEX_SIZE * 1.2);
       const cx = (sx + ex) / 2 - uy * bend;
       const cy = (sy + ey) / 2 + ux * bend;
-      const width = Math.max(HEX_SIZE * 0.18, (5 + Math.min(4, count) * 1.2) / zoom);
+      const width = 2.2 / zoom;
       ctx.beginPath();
       ctx.moveTo(sx, sy);
-      ctx.quadraticCurveTo(cx, cy, ex - ux * width * 1.4, ey - uy * width * 1.4);
+      ctx.quadraticCurveTo(cx, cy, ex - ux * width * 3, ey - uy * width * 3);
       ctx.lineCap = 'round';
-      ctx.lineWidth = width + 3 / zoom;
-      ctx.strokeStyle = 'rgba(40, 8, 4, 0.5)';
+      ctx.lineWidth = width + 2 / zoom;
+      ctx.strokeStyle = 'rgba(10, 8, 6, 0.6)';
       ctx.stroke();
       ctx.lineWidth = width;
-      ctx.strokeStyle = 'rgba(214, 72, 52, 0.78)';
+      ctx.strokeStyle = '#ffd9a6';
       ctx.stroke();
       // Ok başı: eğrinin son teğeti yönünde.
       const tx = ex - cx;
@@ -3902,16 +3990,16 @@ export class Renderer {
       const tl = Math.hypot(tx, ty) || 1;
       const hx = tx / tl;
       const hy = ty / tl;
-      const head = width * 2.4;
+      const head = 9 / zoom;
       ctx.beginPath();
       ctx.moveTo(ex, ey);
       ctx.lineTo(ex - hx * head - hy * head * 0.75, ey - hy * head + hx * head * 0.75);
       ctx.lineTo(ex - hx * head + hy * head * 0.75, ey - hy * head - hx * head * 0.75);
       ctx.closePath();
-      ctx.fillStyle = 'rgba(232, 92, 66, 0.92)';
+      ctx.fillStyle = '#ffd9a6';
       ctx.fill();
-      ctx.lineWidth = 1.2 / zoom;
-      ctx.strokeStyle = 'rgba(40, 8, 4, 0.7)';
+      ctx.lineWidth = 1 / zoom;
+      ctx.strokeStyle = 'rgba(10, 8, 6, 0.7)';
       ctx.stroke();
     }
     ctx.restore();
@@ -3990,15 +4078,13 @@ export class Renderer {
    * kendisi) kalın çizgi, her kenarın ortasında düşmana dönük diş. Taarruzda
    * dişler büyür. `gap`: kimsenin tutmadığı sınır, kesik ve dişsiz.
    */
-  drawFrontEdges(ctx, world, tiles, playerNation, { color = '#8fcdef', attack = false, active = false, gap = false, facing = null } = {}) {
+  drawFrontEdges(ctx, world, tiles, playerNation, { color = '#8fcdef', active = false, gap = false, facing = null } = {}) {
     if (!tiles?.length || playerNation == null || playerNation < 0) return;
     const zoom = this.camera.zoom;
     const mesh = this.mesh?.world === world ? this.mesh : null;
     const P = world.wrapWidth || 0;
     const line = new Path2D();
-    const teeth = new Path2D();
     let edges = 0;
-    const tooth = HEX_SIZE * (attack ? 0.3 : 0.2);
     for (const tile of tiles) {
       if (tile.terrain?.water) continue;
       for (let d = 0; d < 6; d++) {
@@ -4018,22 +4104,6 @@ export class Renderer {
         line.moveTo(tile.x + pts[0], tile.y + pts[1]);
         for (let i = 1; i < m; i++) line.lineTo(tile.x + pts[i * 2], tile.y + pts[i * 2 + 1]);
         edges++;
-        if (gap) continue;
-        // Diş: kenar ortasından düşman merkezine doğru küçük üçgen.
-        const mid = Math.floor(m / 2);
-        const mx = tile.x + pts[mid * 2];
-        const my = tile.y + pts[mid * 2 + 1];
-        let dx = near.x - tile.x;
-        if (P) dx -= P * Math.round(dx / P);
-        const dy = near.y - tile.y;
-        const len = Math.hypot(dx, dy) || 1;
-        const ux = dx / len;
-        const uy = dy / len;
-        const half = tooth * 0.75;
-        teeth.moveTo(mx - uy * half, my + ux * half);
-        teeth.lineTo(mx + ux * tooth, my + uy * tooth);
-        teeth.lineTo(mx + uy * half, my - ux * half);
-        teeth.closePath();
       }
     }
     if (!edges) return;
@@ -4048,19 +4118,12 @@ export class Renderer {
       ctx.restore();
       return;
     }
-    const width = (active ? 5 : 3.6) / zoom;
-    ctx.lineWidth = width + 3 / zoom;
-    ctx.strokeStyle = 'rgba(6, 10, 14, 0.65)';
-    ctx.stroke(line);
-    ctx.lineWidth = width;
+    // İnce: savaşta asıl hat drawWarFrontline'dır, bu çizgi generalin sektörünü anar.
+    // Dişler yakın zoomda birimlerden büyüyordu.
+    ctx.lineWidth = (active ? 3 : 1.8) / zoom;
     ctx.strokeStyle = color;
-    ctx.globalAlpha = active ? 1 : 0.85;
+    ctx.globalAlpha = active ? 0.95 : 0.6;
     ctx.stroke(line);
-    ctx.fillStyle = color;
-    ctx.fill(teeth);
-    ctx.lineWidth = 1 / zoom;
-    ctx.strokeStyle = 'rgba(6, 10, 14, 0.7)';
-    ctx.stroke(teeth);
     ctx.restore();
   }
 
@@ -4896,7 +4959,18 @@ export class Renderer {
       if (mini) {
         const plate = this.minis.plate(unit, stack, nation, side, stack.includes(selectedUnit), zoom,
           (u) => compactMen(menUnderArms(u)));
-        if (T) boxes.push({ x: (T.a * plate.left + T.e) * sd, y: (T.d * plate.top + T.f) * sd, w: T.a * plate.w * sd, h: T.d * plate.h * sd });
+        // Kutu figürleri de kapsar: şehir ve state adı askerin üstüne yazılmasın.
+        if (T) {
+          const { left: footL, right: footR, top: footT } = this.minis.foot;
+          const boxL = Math.min(plate.left, footL);
+          const boxR = Math.max(plate.left + plate.w, footR);
+          boxes.push({
+            x: (T.a * boxL + T.e) * sd,
+            y: (T.d * footT + T.f) * sd,
+            w: T.a * (boxR - boxL) * sd,
+            h: T.d * (plate.top + plate.h - footT) * sd,
+          });
+        }
         if (U) this.minis.flush(ctx);
         if (miniBlend >= 1) continue;
       }
@@ -5429,7 +5503,8 @@ export class Renderer {
     if (!attackers.length) return;
     const zoom = this.camera.zoom;
     const P = world.wrapWidth;
-    const size = Math.max(HEX_SIZE * 0.5, 15 / zoom);
+    // Ekranda sabit ve küçük: yakın zoomda figürlerden büyüyordu.
+    const size = 7 / zoom;
     const seen = new Set();
     for (const army of attackers) {
       const from = army.tile;
