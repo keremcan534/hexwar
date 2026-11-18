@@ -16,6 +16,7 @@
     "diagnose:war": "node scripts/war-tempo-diagnostic.mjs",
     "audit:all": "node scripts/audit/run-all.mjs",
     "audit:determinism": "node scripts/audit/determinism-audit.mjs",
+    "audit:music": "node scripts/audit/music-audit.mjs",
     "audit:wrap": "node scripts/audit/wrap-audit.mjs",
     "audit:scale": "node scripts/audit/scale-audit.mjs",
     "audit:province": "node scripts/audit/province-audit.mjs",
