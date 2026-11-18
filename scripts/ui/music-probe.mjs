@@ -115,7 +115,8 @@ export default async function (hx) {
   await mark('dünya olayı');
   await hx.ev('__m.powderKeg(true)');
   await expect('dünya olayı vurgusu', { moment: 'worldShock', section: 'worldShock' });
-  await expect('tedirgin barış', { mood: 'uneasy', moment: null }, 20000);
+  // Başsız yazılım çiziminde ilk kareler ana iş parçacığını ~13 sn tutabiliyor.
+  await expect('tedirgin barış', { mood: 'uneasy', moment: null }, 45000);
   await hx.sleep(4000);
 
   const first = await hx.ev('__m.pickEnemy()');
@@ -144,14 +145,14 @@ export default async function (hx) {
   await hx.ev(`__m.powderKeg(false); __m.restore(${me}); __m.restore(${first}); __m.occupy(${first}, ${me});`);
   await mark('kaybedilen barış');
   const lost = await hx.ev(`__m.sign(${first}, ${me}, true)`);
-  await expect('kaybedilen barış vurgusu', { moment: 'peaceLost', section: 'climbLast' });
+  await expect('kaybedilen barış vurgusu', { moment: 'peaceLost', section: 'sorrowEnd' });
   await expect('barışa dönüş', { mood: 'peace', moment: null }, 30000);
   await hx.ev(`__m.restore(${me})`);
   await hx.sleep(4000);
 
   const second = await hx.ev('__m.pickEnemy()');
   await hx.ev(`__m.ultimatum(${second}); __m.startWar(${second})`);
-  await expect('ikinci savaş', { section: 'warOutbreak' });
+  await expect('ikinci savaş', { section: 'legionOutbreak' });
   await hx.sleep(4000);
   await hx.ev(`__m.occupy(${me}, ${second})`);
   await mark('kazanılan barış');
@@ -188,7 +189,7 @@ export default async function (hx) {
 
   await mark('kampanya kaybedildi');
   await hx.ev(`game.emit('victory', { nation: game.world.nations[${third}], score: 1, board: [] })`);
-  await expect('kampanya yenilgisi', { moment: 'campaignLost', section: 'climbOutro' });
+  await expect('kampanya yenilgisi', { moment: 'campaignLost', section: 'sorrowFinal' });
   await hx.sleep(5000);
   await hx.ev('game.music.moment = null');
   await mark('kampanya kazanıldı');

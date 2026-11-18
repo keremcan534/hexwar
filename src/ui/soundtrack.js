@@ -15,7 +15,7 @@
 
 import { onPeace } from '../game/peace.js';
 import { readMusicState } from './musicMood.js';
-import { FADES, isWarMood, MOMENTS, MOODS, SECTIONS } from './musicScore.js';
+import { FADES, isWarMood, MOMENTS, MOODS, OUTBREAKS, SECTIONS } from './musicScore.js';
 import { TRACKS } from './musicTracks.js';
 
 const TICK_MS = 250;
@@ -168,6 +168,7 @@ export class Soundtrack {
     this.moment = null;
     this.momentAt = {};
     this.cursor = {};
+    this.outbreaks = 0;
     this.lastSection = null;
     this.edges = null;
     this.lastRead = 0;
@@ -331,7 +332,7 @@ export class Soundtrack {
     this.mood = mood;
     this.moment = null;
     if (isWarMood(mood) && !isWarMood(previous)) {
-      this.playSection(SECTIONS.warOutbreak, FADES.hit);
+      this.playSection(SECTIONS[OUTBREAKS[this.outbreaks++ % OUTBREAKS.length]], FADES.hit);
       return;
     }
     let fade = FADES.calm;

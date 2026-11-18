@@ -14,7 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { headless, section, sub, finding, reportFindings } from './harness.mjs';
 import { declareWarNow, warBlockers } from '../../src/game/diplomacy.js';
 import { readMusicState, warMood } from '../../src/ui/musicMood.js';
-import { FADES, MOMENTS, MOODS, SECTIONS } from '../../src/ui/musicScore.js';
+import { FADES, MOMENTS, MOODS, OUTBREAKS, SECTIONS } from '../../src/ui/musicScore.js';
 
 const SEED = 'music-audit';
 const WEEKS = 40;
@@ -78,6 +78,14 @@ for (const [id, mood] of Object.entries(MOODS)) {
 for (const [id, moment] of Object.entries(MOMENTS)) {
   if (!SECTIONS[moment.section]) finding('YUKSEK', `vurgu ${id}`, 'bölüm var', moment.section);
   if (!FADES[moment.fade]) finding('YUKSEK', `vurgu ${id}`, 'geçiş var', moment.fade);
+}
+for (const id of OUTBREAKS) {
+  if (!SECTIONS[id]) finding('YUKSEK', 'savaş patlayışı', 'bölüm var', id);
+}
+// Kullanılmayan bölüm, partisyonla oyunun ayrıştığının işaretidir.
+const used = new Set([...OUTBREAKS, ...Object.values(MOODS).flatMap((m) => m.list), ...Object.values(MOMENTS).map((m) => m.section)]);
+for (const id of Object.keys(SECTIONS)) {
+  if (!used.has(id)) finding('ORTA', `bölüm ${id}`, 'bir listede ya da vurguda kullanılır', 'kullanılmıyor');
 }
 console.log(`  ${cuts} bölüm, ${Object.keys(MOODS).length} ruh hâli, ${Object.keys(MOMENTS).length} vurgu`);
 
