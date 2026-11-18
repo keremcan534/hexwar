@@ -48,6 +48,13 @@ Mimari ve tasarım kararları için [README.md](README.md).
   hız düğmesinden döndürür, JS yalnız `.active`/`.lit` yazar (hud.js
   `renderDate` tarihi yaprağa böler). Resmi gelmemiş teknoloji satırının
   teknik çizimini gösterir (glyphs.js `sketch`, art.js `FOLDER_SKETCH`).
+- Yaşayan dünya `src/render/living/`: mevsim kara malzemesinin içinde
+  (`seasonGLSL.js`, iklim yükseklik dokusunun boş kanallarında, `climate.js`);
+  buz, bulut, cephe, gece, maket, duman, gemi ve tren `#map-living` tuvalinde
+  (denizin üstü, mürekkebin altı). Yalnız görseldir: dünyaya yazmaz, oyunun
+  zarını tüketmez. Her katmanın bayrağı `flags.js` (`LIVING_LAYERS`,
+  `?living=0`). Maketler `scripts/art/bake_living.py` ile Blender'da pişer,
+  çıktı `assets/living/` + `atlasMeta.js`. Denetim: `game.living.debug.day`.
 - Yazı tipleri yereldir: EB Garamond ("HW Display") + Source Sans 3 ("HW UI"),
   `assets/fonts/` (OFL), `src/fonts.css`. Tuvalde aile adı elle yazılmaz,
   `src/render/fonts.js` sabitleri kullanılır; yoksa harita eski fontta kalır.

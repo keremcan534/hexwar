@@ -25,6 +25,8 @@ import { HEX_SIZE } from '../world/worldgen.js';
 import { makeRng, fbm } from './textures.js';
 import { GpuTimer } from './gpuTimer.js';
 import { TERRAIN_GLSL } from './gfx/terrainGLSL.js';
+import { SEASON_GLSL, SEASON_UNIFORMS } from './living/seasonGLSL.js';
+import { buildClimateRaster } from './living/climate.js';
 
 const HEX_STEP = SQRT3 * HEX_SIZE;
 const ROW_H = HEX_SIZE * 1.5;
@@ -47,7 +49,8 @@ const COMMON_UNIFORMS = ['uViewport', 'uDpr', 'uCam', 'uZoom', 'uTime', 'uWrap',
   'uOwner', 'uChar', 'uElev', 'uElevSize',
   'uLandRelief', 'uLandGrain', 'uGrade', 'uSeaMaterial',
   'uOverlay', 'uOverlayOn', 'uDataMode',
-  'uSegHead', 'uSegData', 'uSegW', 'uRemap', 'uSegOn', 'uRegion', 'uHexBlend', 'uBand', 'uBandOn'];
+  'uSegHead', 'uSegData', 'uSegW', 'uRemap', 'uSegOn', 'uRegion', 'uHexBlend', 'uBand', 'uBandOn',
+  ...SEASON_UNIFORMS];
 /** Yalnız stil programlarının ortak parçası (gfx/terrainGLSL.js). */
 const GFX_UNIFORMS = ['uGfx', 'uTerrH', 'uBiome', 'uGfxHex', 'uGfxHexOn',
   'uTerrTexel', 'uBiomeTexel', 'uHeightScale'];
@@ -475,11 +478,11 @@ vec3 landColor(vec2 world, vec2 cell, vec2 raw, vec2 fill, vec3 Ldir) {
 }
 
 vec3 seaColor(vec2 world, vec2 cell, vec3 Ldir);
-
+${SEASON_GLSL}
 /** Pikselin yuzeyi: kara mi deniz mi, karar etkin hexten (yumusak kiyi). */
 vec3 surfaceAt(vec2 world, vec2 cell, vec2 raw, vec2 fill, vec3 Ldir) {
   if (texelFetch(uHex, ivec2(fill), 0).r >= 0.5) return seaColor(world, fill, Ldir);
-  return landColor(world, cell, raw, fill, Ldir);
+  return seasonLand(landColor(world, cell, raw, fill, Ldir), world, Ldir);
 }
 
 #ifdef GFX_MESH
@@ -1272,13 +1275,12 @@ export class SurfaceGL {
     // Yükseklik: material.js'in zaten kurduğu yumuşatılmış raster (hex başına
     // 4 teksel). LINEAR örneklenir ve eğim shader'da alınır — kabartma böylece
     // ekran çözünürlüğünden bağımsız olur, önceden pişmiş bir gölge değildir.
-    const surf = coast.surface;
-    const elev = new Uint8Array(surf.length);
-    for (let i = 0; i < surf.length; i++) {
-      elev[i] = Math.max(0, Math.min(255, Math.round(surf[i] * 255)));
-    }
+    // Boş üç kanal iklimi taşır (bkz. living/climate.js): stil programlarında
+    // mevsim için ayrılacak doku birimi kalmadı.
+    const climate = buildClimateRaster(world, coast.w, coast.h, coast.surface);
+    this.climate = { ...climate, dist, distMax: DIST_MAX };
     if (this.elevTex) gl.deleteTexture(this.elevTex);
-    this.elevTex = this.makeTex(gl.R8, gl.RED, coast.w, coast.h, elev,
+    this.elevTex = this.makeTex(gl.RGBA8, gl.RGBA, coast.w, coast.h, climate.data,
       gl.LINEAR, gl.REPEAT, gl.CLAMP_TO_EDGE);
     this.elevSize = { w: coast.w, h: coast.h };
 
@@ -1456,6 +1458,15 @@ export class SurfaceGL {
     gl.uniform1f(u.uOverlayOn, this.overlayOn && this.overlayTex ? 1 : 0);
     gl.uniform1f(u.uDataMode, this.seaMaterial ? 0 : 1);
     gl.uniform2f(u.uElevSize, this.elevSize.w, this.elevSize.h);
+    // Mevsim: living/index.js her kare yazar; yazılmadıysa katman kapalıdır.
+    const season = this.season;
+    gl.uniform1f(u.uSeasonOn, season?.on ? 1 : 0);
+    if (season?.on) {
+      gl.uniform1f(u.uSeasonS, season.S);
+      gl.uniform1f(u.uSeasonCool, season.cool);
+      gl.uniform1f(u.uSeasonCap, season.cap);
+      gl.uniform1f(u.uSeasonLeaf, season.leaf);
+    }
 
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.hexTex);
