@@ -37,6 +37,8 @@ const CAUSES = [
   ['levy', 'Unequal levy'],
   ['reservation', 'Reservation'],
   ['forced', 'Forced assimilation'],
+  ['camp', 'Penal state'],
+  ['resistance', 'Occupation resistance'],
 ];
 /** Eksi yönde yatıştıranlar. */
 const RELIEFS = [

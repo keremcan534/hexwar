@@ -30,6 +30,12 @@ import { canSpend, spend } from './econ/investment.js';
 import { POP_UNIT } from './econ/defs.js';
 import { formatPopulation } from './economy.js';
 import { money } from './money.js';
+import { lawIndex } from './laws.js';
+import { controllerOf } from './control.js';
+import { deed } from './relations.js';
+import {
+  CAMP, CAMP_REGIMES, DEFAULT_REGIME, FUSION,
+} from './policyDefs.js';
 
 // Rezervasyon ve zorla asimilasyonun huzursuzluk/erime sabitleri
 // culture.CULTURE'dadır (RESERVATION_UNREST, FORCED_UNREST, FORCED_RATE):
@@ -90,7 +96,7 @@ function removeCulture(world, nation, province, cultureId) {
 }
 
 /** Province'e bir halktan nüfus ekler (payı birleştirerek). */
-function addCulture(province, cultureId, people) {
+export function addCulture(province, cultureId, people) {
   if (!(people > 0)) return;
   const before = Math.max(0, province.econ.population ?? 0);
   const after = before + people;
@@ -103,7 +109,7 @@ function addCulture(province, cultureId, people) {
 }
 
 /** Çoğunluk değiştiyse kareleri yeniden boyar; boyanacak kareleri döndürür. */
-function settleMajority(world, province) {
+export function settleMajority(world, province) {
   province.cultures.sort((a, b) => b.share - a.share || a.id - b.id);
   const before = province.culture;
   province.culture = province.cultures[0]?.id ?? before;
@@ -421,6 +427,378 @@ export function setForcedAssimilation(world, nation, cultureId, on) {
   if (!list.includes(cultureId)) return false;
   nation.forcedAssimilation = list.filter((id) => id !== cultureId);
   return true;
+}
+
+// ---------------------------------------------------------- CEZA KAMPLARI ---
+//
+// Toplamanın (rezervasyon) devlet eliyle işletilen hâli (TASARIM §18). Kamp bir
+// STATE'tir ve rejim ulusun tek kararıdır: kamp kamp ayar yoktur. Oraya hangi
+// halkların gönderileceği de halk başına tek kutudur. Amaç emek ve askerdir;
+// ölüm oranı rejimin bedelidir, başlı başına bir seçenek değildir: "toptan yok
+// etme bilinçli olarak yoktur" kuralı burada da geçerlidir.
+
+const plansOf = (nation) => (nation.policies ??= {});
+
+export function campRegimeOf(nation) {
+  return CAMP_REGIMES[nation?.policies?.campRegime] ?? CAMP_REGIMES[DEFAULT_REGIME];
+}
+
+/** Ulusun kamp state'leri (kimlik sırasıyla). */
+export function campsOf(world, nation) {
+  return ownProvinces(world, nation).filter((province) => province.econ.camp === nation.id);
+}
+
+/** Kamp tavanı: 1 + her 12 state için bir, en çok 3. */
+export function campCap(world, nation) {
+  return Math.min(CAMP.MAX, 1 + Math.floor(ownProvinces(world, nation).length / CAMP.PER_STATES));
+}
+
+/** Kampın halk satırları: kamp state'inde hakkı olmayan herkes mahkûmdur. */
+function inmateRows(province, nation) {
+  return (province.cultures ?? []).filter((row) => !isAccepted(nation, row.id));
+}
+
+/** Kampın mahkûm sayısı. */
+export function inmatesOf(province, nation) {
+  return inmateRows(province, nation)
+    .reduce((sum, row) => sum + Math.round((province.econ.population ?? 0) * row.share), 0);
+}
+
+export function campBlockers(world, nation, province) {
+  if (province?.owner !== nation.id || !province.econ) return ['Not one of our states.'];
+  if (province.econ.camp === nation.id) return ['Already a penal state.'];
+  const out = [];
+  if (nation.capital?.provinceId === province.id) out.push('The capital cannot be a penal state.');
+  if (province.homeland === nation.culture) out.push('This is the homeland of our own people.');
+  if (province.tileIdx?.some((idx) => controllerOf(world.tiles[idx]) !== nation.id)) out.push('The state is under occupation.');
+  if (lawIndex(nation, 'citizenship') >= 2) out.push('Full Citizenship forbids it: the law treats every people alike.');
+  if (campsOf(world, nation).length >= campCap(world, nation)) out.push(`We hold as many penal states as we can run (${campCap(world, nation)}).`);
+  if ((nation.power ?? 0) < CAMP.POWER) out.push(`Needs ${CAMP.POWER} political power.`);
+  return out;
+}
+
+/** Bir state'i ceza kampına çevirir. Bedeli SG ve şöhret, sonrası haftalık. */
+export function openCamp(game, nation, provinceId) {
+  const province = game.world.provinces?.[provinceId];
+  if (campBlockers(game.world, nation, province).length) return false;
+  nation.power -= CAMP.POWER;
+  addInfamy(nation, CAMP.OPEN_INFAMY);
+  province.econ.camp = nation.id;
+  plansOf(nation).campCount = campsOf(game.world, nation).length;
+  if (nation.id === game.turns?.playerNation) {
+    announce(game, nation, {
+      kind: 'CRISIS', tier: TIER.MAJOR, key: `camp-${provinceId}`,
+      title: `${stateName(province)} becomes a penal state`,
+      detail: 'Choose which peoples are sent there. The world is already watching.',
+    });
+  }
+  game.emit?.('provinces', null);
+  return true;
+}
+
+/** Kampı kapatır: mahkûmlar olduğu yerde serbest kalır. Bedeli yoktur. */
+export function closeCamp(game, nation, provinceId) {
+  const province = game.world.provinces?.[provinceId];
+  if (province?.econ?.camp !== nation.id) return false;
+  clearCamp(province);
+  plansOf(nation).campCount = campsOf(game.world, nation).length;
+  game.emit?.('provinces', null);
+  return true;
+}
+
+function clearCamp(province) {
+  delete province.econ.camp;
+  delete province.econ.campWorkers;
+}
+
+function stateName(province) {
+  return province?.name ?? `State ${province?.id ?? '?'}`;
+}
+
+/**
+ * Bir halkı kampa göndermenin kapısı. Sürgün gibi kriz ister: hareketi
+ * ilerlemiş halk, savaş hâli ya da hak tanımayan Residency yasası. Sakin bir
+ * barışta ucuz bir azınlık düğmesi olmasın.
+ */
+export function intakeBlockers(world, nation, cultureId) {
+  if (cultureId === nation.culture) return ['They are our own people.'];
+  if (isAccepted(nation, cultureId)) return ['They are citizens: the law protects them.'];
+  const out = [];
+  if (!campsOf(world, nation).length) out.push('We hold no penal state.');
+  if (!ownProvinces(world, nation).some((p) => peopleIn(p, cultureId) > 0)) out.push('They live nowhere in our lands.');
+  const progress = nation.movements?.[cultureId]?.progress ?? 0;
+  const crisis = progress >= CAMP.CRISIS_PROGRESS || brokenProvinces(world, nation, cultureId).length > 0;
+  if (!crisis && lawIndex(nation, 'citizenship') !== 0 && !((nation.economy?.warFronts ?? 0) > 0)) {
+    out.push(`Needs war, the Residency law, or a movement at Agitation (${CAMP.CRISIS_PROGRESS}%).`);
+  }
+  return out;
+}
+
+/** Halkın kutusunu çevirir. Açmak şöhrettir; kapatmak sevkiyatı durdurur. */
+export function setCampIntake(world, nation, cultureId, on) {
+  const plans = plansOf(nation);
+  const list = plans.intake ?? [];
+  if (on) {
+    if (list.includes(cultureId) || intakeBlockers(world, nation, cultureId).length) return false;
+    plans.intake = [...list, cultureId].sort((a, b) => a - b);
+    addInfamy(nation, CAMP.INTAKE_INFAMY);
+    return true;
+  }
+  if (!list.includes(cultureId)) return false;
+  plans.intake = list.filter((id) => id !== cultureId);
+  return true;
+}
+
+export function setCampRegime(nation, regimeId) {
+  if (!CAMP_REGIMES[regimeId]) return false;
+  plansOf(nation).campRegime = regimeId;
+  return true;
+}
+
+/** Province'ten bir halkın `people` kişisini çıkarır; payları korur. */
+export function takePeople(province, cultureId, people) {
+  const econ = province.econ;
+  const before = Math.max(0, econ.population ?? 0);
+  const rows = province.cultures ?? [];
+  const row = rows.find((item) => item.id === cultureId);
+  // Silah altındaki nüfusun içindedir: asker sayısının altına inilmez.
+  const room = Math.max(0, before - Math.max(1, econ.soldiers ?? 0));
+  const taken = Math.min(people, row ? before * row.share : 0, room);
+  if (!(taken > 0)) return 0;
+  const after = before - taken;
+  province.cultures = rows.map((item) => ({
+    id: item.id,
+    share: (item.share * before - (item.id === cultureId ? taken : 0)) / after,
+  })).filter((item) => item.share > 1e-6);
+  econ.population = Math.round(after);
+  return taken;
+}
+
+/**
+ * NÜFUSU TAŞIR: kaynağın halklarından `share` kadarı hedeflere (nüfusları
+ * oranında) gider, yolda `loss` payı ölür. Vassal kaçırma ve işgal emeğinin
+ * ortak yolu.
+ * @returns {{moved:number, dead:number, tiles:object[]}}
+ */
+export function movePeople(world, source, targets, share, loss = 0) {
+  const result = { moved: 0, dead: 0, tiles: [] };
+  if (!targets.length || !(share > 0)) return result;
+  const weight = targets.reduce((sum, p) => sum + Math.max(1, p.econ.population ?? 0), 0);
+  for (const row of [...(source.cultures ?? [])]) {
+    const taken = takePeople(source, row.id, Math.round((source.econ.population ?? 0) * row.share * share));
+    if (!(taken > 0)) continue;
+    const arrive = taken * (1 - loss);
+    result.moved += arrive;
+    result.dead += taken - arrive;
+    for (const target of targets) {
+      addCulture(target, row.id, Math.round(arrive * Math.max(1, target.econ.population ?? 0) / weight));
+    }
+  }
+  for (const target of targets) result.tiles.push(...settleMajority(world, target));
+  result.tiles.push(...settleMajority(world, source));
+  return result;
+}
+
+/** İşaretli halkın her state'ten kamplara haftalık sevkiyatı. */
+function runIntake(world, nation, camps, tiles) {
+  const open = camps.filter((camp) => inmatesOf(camp, nation) < CAMP.CAPACITY);
+  if (!open.length) return 0;
+  let dead = 0;
+  for (const cultureId of nation.policies?.intake ?? []) {
+    for (const province of ownProvinces(world, nation)) {
+      if (province.econ.camp === nation.id) continue;
+      const people = peopleIn(province, cultureId);
+      if (people < 1) continue;
+      const taken = takePeople(province, cultureId, Math.ceil(people * CAMP.INTAKE));
+      if (!(taken > 0)) continue;
+      dead += taken * CAMP.TRANSIT_LOSS;
+      const arrive = taken * (1 - CAMP.TRANSIT_LOSS);
+      for (const camp of open) addCulture(camp, cultureId, Math.round(arrive / open.length));
+      tiles.push(...settleMajority(world, province));
+    }
+  }
+  for (const camp of open) tiles.push(...settleMajority(world, camp));
+  return dead;
+}
+
+/** Düşman eline geçen kamp kapanır; dünya içeride olanı öğrenir. */
+function exposeLostCamps(game) {
+  const world = game.world;
+  for (const province of world.provinces ?? []) {
+    const holder = province.econ?.camp;
+    if (!(holder >= 0)) continue;
+    const held = province.owner === holder
+      && province.tileIdx.some((idx) => controllerOf(world.tiles[idx]) === holder);
+    if (held) continue;
+    clearCamp(province);
+    const nation = world.nations[holder];
+    if (!nation?.alive) continue;
+    addInfamy(nation, CAMP.EXPOSED_INFAMY);
+    plansOf(nation).campCount = campsOf(world, nation).length;
+    if (holder === game.turns?.playerNation) {
+      announce(game, nation, {
+        kind: 'CRISIS', tier: TIER.MAJOR, key: `camp-lost-${province.id}`,
+        title: `${stateName(province)} falls and the penal state is exposed`,
+        detail: `The world sees what was done there: infamy +${CAMP.EXPOSED_INFAMY}.`,
+      });
+    }
+  }
+}
+
+/** Haftalık kamp işleyişi: kayıp kamplar, sevkiyat, rejimin bedeli ve getirisi. */
+export function runCamps(game) {
+  const world = game.world;
+  exposeLostCamps(game);
+  const turn = game.turns?.turn ?? world.turn ?? 0;
+  const tiles = [];
+  for (const nation of world.nations) {
+    if (!nation.alive || !nation.policies) continue;
+    const camps = campsOf(world, nation);
+    nation.policies.campCount = camps.length;
+    if (!camps.length) continue;
+    const regime = campRegimeOf(nation);
+    let dead = runIntake(world, nation, camps, tiles);
+    let units = 0;
+    const held = new Set(nation.policies.intake ?? []);
+    for (const camp of camps) {
+      let inmates = 0;
+      for (const row of inmateRows(camp, nation)) {
+        const people = peopleIn(camp, row.id);
+        dead += takePeople(camp, row.id, people * regime.mortality);
+        inmates += people;
+        held.add(row.id);
+      }
+      const inmateUnits = unitOf(inmates);
+      units += inmateUnits;
+      camp.econ.campWorkers = inmateUnits * regime.output;
+    }
+    nation.policies.campDeaths = (nation.policies.campDeaths ?? 0) + dead;
+    addInfamy(nation, (CAMP.INFAMY_BASE * camps.length + CAMP.INFAMY_PER_UNIT * units) * regime.severity);
+    for (const cultureId of [...held].sort((a, b) => a - b)) {
+      const state = (nation.movements ??= {})[cultureId] ?? (nation.movements[cultureId] = { progress: 0 });
+      state.progress = Math.min(99, (state.progress ?? 0) + CAMP.MOVEMENT * regime.severity);
+      // Üç ayda bir, biriken ölçekle: haftalık küçük kayıt defterde budanır.
+      if (turn % CAMP.REGARD_WEEKS !== 0) continue;
+      for (const kin of world.nations) {
+        if (kin.alive && kin.id !== nation.id && kin.culture === cultureId) {
+          deed(world, kin.id, nation.id, 'interned_kin', turn, CAMP.KIN_REGARD * regime.severity * CAMP.REGARD_WEEKS);
+        }
+      }
+    }
+  }
+  if (tiles.length) game.renderer?.invalidateTiles?.(tiles.filter(Boolean));
+}
+
+// ----------------------------------------------------- KÜLTÜR KAYNAŞMASI ---
+//
+// Asimilasyon yukarıdan aşağıdır, kaynaşma ortaklıktır: yalnız hak sahibi bir
+// halk, barışta ve sakin bir devlette, yıllar içinde ana halka karışır. Ana
+// yurt kilidini aşar çünkü halk artık devletin kendisidir.
+
+function nationalShare(world, nation, cultureId) {
+  let people = 0;
+  let total = 0;
+  for (const province of ownProvinces(world, nation)) {
+    total += province.econ.population ?? 0;
+    people += peopleIn(province, cultureId);
+  }
+  return total > 0 ? people / total : 0;
+}
+
+export function fusionBlockers(world, nation, cultureId) {
+  if (cultureId === nation.culture) return ['They are already our people.'];
+  if (!isAccepted(nation, cultureId)) return ['Only an accepted people can fuse with ours.'];
+  const out = [];
+  if (nation.policies?.fusion) out.push('A fusion is already under way.');
+  if (nation.homeRule?.includes(cultureId)) out.push('They rule themselves: Home Rule must end first.');
+  if (nation.movements?.[cultureId]?.crisis) out.push('Their demands are on the table.');
+  const share = nationalShare(world, nation, cultureId);
+  if (share < FUSION.MIN_SHARE) out.push(`Too few of them: ${(share * 100).toFixed(1)}% of the population, ${Math.round(FUSION.MIN_SHARE * 100)}% needed.`);
+  if ((nation.stability ?? 0) < FUSION.MIN_STABILITY) out.push(`Stability must be ${Math.round(FUSION.MIN_STABILITY * 100)}% or more.`);
+  if ((nation.economy?.literacy ?? 0) < FUSION.MIN_LITERACY) out.push(`Literacy must be ${Math.round(FUSION.MIN_LITERACY * 100)}% or more.`);
+  if ((nation.economy?.warFronts ?? 0) > 0) out.push('Not while we are at war.');
+  if ((nation.power ?? 0) < FUSION.POWER) out.push(`Needs ${FUSION.POWER} political power.`);
+  return out;
+}
+
+export function startFusion(game, nation, cultureId) {
+  const world = game.world;
+  if (fusionBlockers(world, nation, cultureId).length) return false;
+  nation.power -= FUSION.POWER;
+  plansOf(nation).fusion = {
+    culture: cultureId,
+    since: game.turns?.turn ?? world.turn ?? 0,
+    from: nationalShare(world, nation, cultureId),
+  };
+  return true;
+}
+
+/** Vazgeçmek bedavadır; karışmış olan karışmıştır. */
+export function cancelFusion(nation) {
+  if (!nation.policies?.fusion) return false;
+  nation.policies.fusion = null;
+  return true;
+}
+
+function finishFusion(game, nation, cultureId) {
+  const world = game.world;
+  const tiles = [];
+  for (const province of ownProvinces(world, nation)) {
+    const row = province.cultures?.find((item) => item.id === cultureId);
+    if (row) {
+      province.cultures = province.cultures.filter((item) => item.id !== cultureId);
+      const host = province.cultures.find((item) => item.id === nation.culture);
+      if (host) host.share += row.share;
+      else province.cultures.push({ id: nation.culture, share: row.share });
+      tiles.push(...settleMajority(world, province));
+    }
+    if (province.homeland === cultureId) province.homeland = nation.culture;
+  }
+  nation.accepted = (nation.accepted ?? []).filter((id) => id !== cultureId);
+  if (nation.homeRule?.includes(cultureId)) nation.homeRule = nation.homeRule.filter((id) => id !== cultureId);
+  if (nation.movements) delete nation.movements[cultureId];
+  nation.prestige = (nation.prestige ?? 0) + FUSION.PRESTIGE;
+  const plans = plansOf(nation);
+  plans.fused = [...(plans.fused ?? []), cultureId];
+  plans.fusion = null;
+  if (nation.id === game.turns?.playerNation) {
+    announce(game, nation, {
+      kind: 'POLITICS', tier: TIER.MAJOR, key: `fused-${cultureId}`,
+      title: `The ${nameOf(world, cultureId)} and our people are now one`,
+      detail: `Their homeland is ours by birth and they ask for nothing apart. Prestige +${FUSION.PRESTIGE}.`,
+    });
+  }
+  return tiles;
+}
+
+/** Haftalık kaynaşma: pay ana halka geçer, talep söner, eşikte biter. */
+export function runFusions(game) {
+  const world = game.world;
+  const tiles = [];
+  for (const nation of world.nations) {
+    const plan = nation.policies?.fusion;
+    if (!nation.alive || !plan) continue;
+    const cultureId = plan.culture;
+    if (!isAccepted(nation, cultureId)) {
+      nation.policies.fusion = null;
+      continue;
+    }
+    const rate = FUSION.RATE * (0.6 + Math.max(0, Math.min(1, nation.economy?.literacy ?? 0)));
+    for (const province of ownProvinces(world, nation)) {
+      const row = province.cultures?.find((item) => item.id === cultureId);
+      if (!row) continue;
+      const moved = row.share * rate;
+      row.share -= moved;
+      const host = province.cultures.find((item) => item.id === nation.culture);
+      if (host) host.share += moved;
+      else province.cultures.push({ id: nation.culture, share: moved });
+      tiles.push(...settleMajority(world, province));
+    }
+    const state = nation.movements?.[cultureId];
+    if (state) state.progress = Math.max(0, (state.progress ?? 0) - FUSION.DEMAND_FADE);
+    if (nationalShare(world, nation, cultureId) < FUSION.FINISH_SHARE) tiles.push(...finishFusion(game, nation, cultureId));
+  }
+  if (tiles.length) game.renderer?.invalidateTiles?.(tiles.filter(Boolean));
 }
 
 // ------------------------------------------------- OYUN EYLEMLERİ (ekran) ---
