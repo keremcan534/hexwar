@@ -18,6 +18,7 @@ import { NationPicker } from './ui/nationPicker.js';
 import { PerfOverlay } from './ui/perfOverlay.js';
 import { Soundtrack } from './ui/soundtrack.js';
 import { EventCards } from './ui/eventCard.js';
+import { Newspaper } from './ui/newspaper.js';
 import { Ambience } from './ui/ambience.js';
 import { UiSound } from './ui/uiSound.js';
 import { DiscoveryCard } from './ui/discoveryCard.js';
@@ -65,6 +66,8 @@ new UnitHover(game);
 game.frontPlates = new FrontPlates(game);
 // Seçenekli olay kartları: açılınca saati durdurur (bkz. ui/eventCard.js).
 new EventCards(game);
+// Dönem gazetesi: ayda bir ve büyük olayda köşede kart (bkz. ui/newspaper.js).
+game.newspaper = new Newspaper(game);
 
 // Sürekli uyarı şeridi: baloncuktan farkı, DURUM sürdükçe durmasıdır.
 // Haftalık kapanışta ve dünya değişince yeniden ölçülür; içerik değişmediyse

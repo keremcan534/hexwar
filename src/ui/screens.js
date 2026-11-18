@@ -34,6 +34,7 @@ import {
   setStance, unassignGeneral,
 } from '../game/command.js';
 import { militaryScreen } from './militaryScreen.js';
+import { pressArchivePanel } from './newspaperArchive.js';
 import { levyView, setLevied } from '../game/levy.js';
 import { rulingParty } from '../game/politics.js';
 import { TIER, announce, chronicleYear, ensureChronicle, memoryOf } from '../game/chronicle.js';
@@ -1095,6 +1096,7 @@ export class Screens {
       <div class="k-split chron-split">
         ${kitPanel('Chronicle', timeline, { sub: '' })}
         <div class="k-stack">
+          ${pressArchivePanel(world)}
           ${kitPanel('Great powers', `<ol class="chron-powers">${powers}</ol>`, { sub: `hegemony score · the leader in ${END_YEAR} wins` })}
           ${kitPanel('The last two years', trends, { sub: `${history.length} weeks` })}
         </div>

@@ -31,6 +31,7 @@
     "audit:military-strategy": "node scripts/audit/military-strategy-audit.mjs",
     "audit:tech-effect": "node scripts/audit/tech-effect-audit.mjs",
     "audit:events": "node scripts/audit/event-communication-audit.mjs",
+    "audit:press": "node scripts/audit/press-audit.mjs",
     "audit:mechanics": "node scripts/audit/mechanic-health-audit.mjs",
     "audit:culture-unrest": "node scripts/audit/culture-unrest-audit.mjs",
     "audit:homeland": "node scripts/audit/homeland-audit.mjs",

@@ -282,6 +282,8 @@ export function serialize(game) {
     // bayrakları kurulamaz: yazılmazsa başlamış olay yüklemede yeniden ateşlenir.
     worldEvents: world.worldEvents ?? null,
     formedNations: world.formedNations ?? null,
+    // Gazete arşivi (press.js): basılmış sayılar türetilemez. Simülasyon okumaz.
+    press: world.press ?? null,
     battleSystem: {
       nextId: world.battleSystem?.nextId ?? 1,
       // Aktif muharebeler ARTIK kayda girer. Eskiden bilerek dusuruluyordu
@@ -836,6 +838,8 @@ export function deserialize(game, data) {
   navy.evasions = Array.isArray(data.navyEvasions) ? data.navyEvasions : [];
   refreshSeaLanes(world);
   game.setSpeed(0);
+  // Olaylardan ÖNCE: `turn` olayı gazeteyi çağırır, arşiv yerinde olmalı.
+  world.press = data.press ?? null;
 
   game.selected = null;
   game.activeGeneral = null;

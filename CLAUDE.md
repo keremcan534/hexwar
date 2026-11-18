@@ -191,6 +191,13 @@ başka yerde yıl ya da kampanya uzunluğu yazılmaz). Ekranlar sayı üretmez; 
 değiştirici toplamına yazılır (`modifiers.js MODIFIER_KEYS`): yeni anahtarın
 okuyucusu yoksa `audit:tech-effect` yakalar.
 
+Dönem gazetesi (yalnız okur, simülasyon `world.press`'i okumaz): yazı işleri
+`src/game/press.js` (haftalık fark, ay başı ve olağanüstü sayı), metin
+`src/game/pressText.js` (dokuz dil paketi, beş rejim sesi, olay masaları), ekran
+`src/ui/newspaper.js` + `newspaperArchive.js`. Kayda metin değil olgu girer. Kanıt:
+`npm run audit:press [YIL] [TOHUM]` (gazeteli/gazetesiz parmak izi, manşet tekrarı);
+sayılar `scripts/audit/_tmp/press/` altına düz metin yazılır, gözle okunur.
+
 Yeni kampanyada AUTO açık başlar (`delegation.DEFAULT_AUTO_AREAS`; diplomasi
 hariç). Kayıt sürümü 28'dir (halklar doğuşta; eski kayıtlar temiz
 reddedilir, menü onları "devam et" diye sunmaz). Kayıtlar yuvalıdır:
