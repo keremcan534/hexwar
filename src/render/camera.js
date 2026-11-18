@@ -12,38 +12,66 @@ export class Camera {
     this.viewHeight = 1;
     this.bounds = null;   // { minX, minY, maxX, maxY }
     this.wrapX = null;    // silindir periyodu (dünya birimi) ya da null
+    this.pendingFit = null; // pencere görünene dek ertelenen sığdırmanın payı
   }
 
   setViewport(width, height) {
     this.viewWidth = width;
     this.viewHeight = height;
+    this.refreshMinZoom();
+    if (this.pendingFit !== null) this.fitZoom(this.pendingFit);
     this.clamp();
   }
 
   setBounds(bounds, wrapWidth = null) {
     this.bounds = bounds;
     this.wrapX = wrapWidth;
-    const worldW = bounds.maxX - bounds.minX;
-    const worldH = bounds.maxY - bounds.minY;
+    this.refreshMinZoom();
+    this.clamp();
+  }
+
+  /**
+   * Gizli pencere 0×0 ölçülür. O ölçüden çıkan zoom 0 pencere açılınca da
+   * düzelmiyor, konum NaN oluyor, harita boş kalıp her karede hata atıyordu:
+   * ölçü gelene dek son geçerli zoom değerleri korunur.
+   */
+  hasViewport() {
+    return this.viewWidth > 0 && this.viewHeight > 0;
+  }
+
+  refreshMinZoom() {
+    if (!this.bounds || !this.hasViewport()) return;
+    const worldW = this.bounds.maxX - this.bounds.minX;
+    const worldH = this.bounds.maxY - this.bounds.minY;
     // Sarmalda genişlik sınırlamaz: tüm yükseklik görünecek kadar uzaklaşılır.
     const fit = this.wrapX
       ? this.viewHeight / worldH
       : Math.min(this.viewWidth / worldW, this.viewHeight / worldH);
     this.minZoom = Math.min(0.9, fit * 0.9);
-    this.clamp();
   }
 
   /** Dünyayı ekrana sığdır ve ortala. Sarmalda yalnız yükseklik esas alınır. */
   fit(padding = 0.92) {
     if (!this.bounds) return;
+    this.x = (this.bounds.minX + this.bounds.maxX) / 2;
+    this.y = (this.bounds.minY + this.bounds.maxY) / 2;
+    this.fitZoom(padding);
+    this.clamp();
+  }
+
+  // Ertelenen sığdırma merkezi yeniden yazmaz: pencere gizliyken kamera bir
+  // yere odaklandıysa (centerOn) açılışta o bakış korunur.
+  fitZoom(padding) {
+    if (!this.hasViewport()) {
+      this.pendingFit = padding;
+      return;
+    }
+    this.pendingFit = null;
     const w = this.bounds.maxX - this.bounds.minX;
     const h = this.bounds.maxY - this.bounds.minY;
     this.zoom = (this.wrapX
       ? this.viewHeight / h
       : Math.min(this.viewWidth / w, this.viewHeight / h)) * padding;
-    this.x = (this.bounds.minX + this.bounds.maxX) / 2;
-    this.y = (this.bounds.minY + this.bounds.maxY) / 2;
-    this.clamp();
   }
 
   centerOn(worldX, worldY) {
