@@ -21,6 +21,7 @@
     "audit:province": "node scripts/audit/province-audit.mjs",
     "audit:world": "node scripts/audit/world-audit.mjs",
     "audit:save": "node scripts/audit/save-audit.mjs",
+    "audit:replay": "node scripts/audit/replay-audit.mjs",
     "audit:geography": "node scripts/audit/geography-audit.mjs",
     "audit:culture": "node scripts/audit/culture-audit.mjs",
     "audit:peace-stakes": "node scripts/audit/peace-stakes-audit.mjs",

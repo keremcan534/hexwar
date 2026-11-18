@@ -57,6 +57,7 @@ import { controllerOf, setController } from './control.js';
 import { runNationalEvents, runWorldStories } from './events.js';
 import { expireTreaties, updateWarBalance } from './peace.js';
 import { isAllied } from './alliances.js';
+import { beginReplay, recordReplay } from './replay.js';
 
 const isAlliedTo = (world, a, b) => b >= 0 && isAllied(world.nations[a], b);
 import { isNode, nodeNeighbors, nodeOf } from '../world/provinceGraph.js';
@@ -229,6 +230,16 @@ export class TurnManager {
         nation.economy.outputAvg = nation.economy.ic.output;
       }
     }
+    // Tekrarın ilk karesi: kuruluş bittikten sonraki harita.
+    beginReplay(world);
+  }
+
+  /**
+   * Haftalık tekrar kaydı (replay.js). Yöntem, çünkü denetim kaydediciyi
+   * kapatıp simülasyonun aynı kaldığını kanıtlar (audit:replay).
+   */
+  recordReplay() {
+    recordReplay(this.world);
   }
 
   /**
@@ -699,6 +710,11 @@ export class TurnManager {
     // Dunya haberleri: buyuk guc giris/cikisi, sanayi liderligi, cokus.
     // Gecis tetikler; ic frekansi 13 hafta (bkz. events.runWorldStories).
     runWorldStories(this.game);
+    mark('stories');
+    // Sınırlar haftanın son hâlinde: barışlar imzalandı, elenenler devredildi.
+    this.phase = 'replay';
+    this.recordReplay();
+    mark('replay');
     // Bundan sonrası atomik kuyruk (zafer, autosave). İş kaydı burada
     // bırakılır ki kuyruktaki autosave → endTurn zinciri hâlâ çalışan
     // üretece yeniden girmeye kalkmasın (TypeError: already running).

@@ -53,6 +53,7 @@ import { depositsOf } from '../game/econ/deposits.js';
 import { kpiArt, resourceArt } from './icons/art.js';
 import { TAB_GLYPH, TERM_GLYPH, glyph } from './icons/glyphs.js';
 import { motionOn } from './motion.js';
+import { syncChronicleReplay } from './replayPlayer.js';
 import { localRect, toLocal } from './uiScale.js';
 import { formatPopulation, populationOf } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS } from '../game/econ/defs.js';
@@ -453,6 +454,7 @@ export class Screens {
   }
 
   close() {
+    syncChronicleReplay(this.game, null);
     this.heightFor = null;
     this.el.root.style.minHeight = '';
     if (this.active === 'peace') this.restoreMapMode();
@@ -589,6 +591,7 @@ export class Screens {
     // Gövde her tazelemede baştan kurulduğu için bayrak kapları da yenidir;
     // canvas'lar burada takılır (kopan eskiler kendi kendini siler).
     hydrateFlags(this.el.body, this.game.world.nations);
+    syncChronicleReplay(this.game, this.el.body.querySelector('[data-replay-mount]'));
     this.restoreScroll(scroll);
     this.lockHeight();
     refreshTooltips();
@@ -1093,7 +1096,10 @@ export class Screens {
 
     return `${kpis}
       <div class="k-split chron-split">
-        ${kitPanel('Chronicle', timeline, { sub: '' })}
+        <div class="k-stack">
+          ${kitPanel('The age in motion', '<div class="replay-mount" data-replay-mount></div>', { sub: 'the borders, month by month' })}
+          ${kitPanel('Chronicle', timeline, { sub: '' })}
+        </div>
         <div class="k-stack">
           ${kitPanel('Great powers', `<ol class="chron-powers">${powers}</ol>`, { sub: `hegemony score · the leader in ${END_YEAR} wins` })}
           ${kitPanel('The last two years', trends, { sub: `${history.length} weeks` })}

@@ -16,6 +16,10 @@ import { formatPopulation } from '../game/economy.js';
 import { IC_SCALE } from '../game/econ/defs.js';
 import { money } from '../game/money.js';
 import { techStanding } from '../game/identity.js';
+import { ReplayPlayer } from './replayPlayer.js';
+
+/** Açık kapanış sayfasının tekrarı: sayfa kapanınca döngüsü de durmalı. */
+let epilogueReplay = null;
 
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => (
   { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
@@ -118,6 +122,8 @@ function verdict(nation, result, board, rank) {
 export function closeEndScreen() {
   const host = document.getElementById('epilogue');
   if (!host) return false;
+  epilogueReplay?.destroy();
+  epilogueReplay = null;
   host.remove();
   // Sayfa açılmadan önce odak haritadaydı; kaybolan düğmede kalmasın.
   document.activeElement?.blur?.();
@@ -192,6 +198,7 @@ export function showEndScreen(game, result, { onMenu = null } = {}) {
         <p>${esc(judged.line)}</p>
       </div>
       <p class="epilogue-line">${esc(closingLine(nation, opening, board))}</p>
+      <div class="epilogue-replay" data-epilogue-replay></div>
       <section class="epilogue-metrics">${metrics}</section>
       ${tallyLine}
       <section class="epilogue-timeline">
@@ -207,6 +214,9 @@ export function showEndScreen(game, result, { onMenu = null } = {}) {
       </footer>
     </article>`;
   document.body.append(host);
+  // Kampanyanın ödülü: sayfa açılınca sınırlar 1900'den bugüne akar.
+  epilogueReplay = new ReplayPlayer(game, { autoplay: true });
+  epilogueReplay.attach(host.querySelector('[data-epilogue-replay]'));
   host.querySelector('[data-epilogue-close]').onclick = () => closeEndScreen();
   const menu = host.querySelector('[data-epilogue-menu]');
   if (menu) {
