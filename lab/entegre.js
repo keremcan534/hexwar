@@ -1,23 +1,32 @@
-// Yeni denizi OYUNA bağlar — geliştirici sürümü.
+// Denizi OYUNA bağlar.
 //
 // index.html'de main.js'ten SONRA yüklenir; modüller sırayla çalıştığı için
-// bu dosya çalıştığında `window.game` hazırdır. `?deniz=0` ile açılırsa hiçbir
-// şey yapmaz (tampon kancası da kurulmaz, bkz. dev-kanca.js): oyun bugünkü
-// hâliyle çalışır. Geri dönüş bu kadar.
+// bu dosya çalıştığında `window.game` hazırdır. Üç yol var:
+//
+//   yeni    FFT okyanusu (src/render/ocean). Varsayılan.
+//   eski    three.js Gerstner denizi (lab/deniz.js). `?deniz=eski` ya da donanım
+//           kayan nokta hedefi vermiyorsa. Yeni yolun yedeği budur.
+//   kapalı  `?deniz=0`: hiçbir şey kurulmaz, oyun kendi Canvas2D/GL denizini çizer.
+//           WebGL2 hiç yoksa da oyun buraya kendiliğinden düşer.
 //
 // Üç sözleşme:
 //   1. Kendi kare döngüsü YOK (CLAUDE.md). Katman oyunun karesinden hemen sonra
 //      çizilir; su animasyonu oyunun kısılmış su zamanlayıcısıyla akar.
 //   2. Açılışı YAVAŞLATMAZ. Kıyı alanı menü perdesi arkasında dilim dilim
 //      ısıtılıyor (main.js); burada zorla bitirilmez, hazır olması beklenir.
-//      three.js de dinamik yüklenir — bayrak kapalıyken 687 KB hiç inmez.
 //   3. Sahiplik değişimi TEK BOĞAZDAN yakalanır: oyun siyasi renkleri
 //      tazelediğinde her zaman waterGL.updateOwners'tan geçer. Kara oyunun
 //      kendi çizimi olduğu için orada yapılacak tek iş arka dokuyu tazelemek.
 
 const ANAHTAR = 'hexwar.dev.deniz.v1';
+const yol = window.__denizYolu ?? 'eski';
 
-if (new URLSearchParams(location.search).get('deniz') !== '0') {
+if (yol === 'yeni') {
+  yeniDeniz().catch((e) => {
+    console.error('[okyanus] kurulamadı, eski deniz devrede:', e);
+    baslat().catch((e2) => console.error('[deniz] kurulamadı:', e2));
+  });
+} else if (yol === 'eski') {
   baslat().catch((e) => console.error('[deniz] kurulamadı:', e));
 }
 
@@ -35,6 +44,24 @@ function bekle(kosul, azamiMs = 60000) {
 
 function oku() {
   try { return JSON.parse(localStorage.getItem(ANAHTAR) || 'null'); } catch { return null; }
+}
+
+/** Yeni okyanus: oyunun karesine bağlanır, Settings kalitesini izler. */
+async function yeniDeniz() {
+  const game = window.game;
+  if (!game || !game.renderer) return;
+  const { okyanusKur } = await import('../src/render/ocean/oceanApi.js');
+  await bekle(() => game.world && game.renderer.material?.cache?.toLand);
+  const api = okyanusKur(game);
+  const asilKare = game.frame;
+  game.frame = (ts = performance.now()) => {
+    asilKare(ts);
+    api.ciz(ts);
+  };
+  game.on('world', () => game.requestRender());
+  addEventListener('resize', () => { api.boyutla(); game.requestRender(); });
+  window.deniz = api;
+  game.requestRender();
 }
 
 async function baslat() {
