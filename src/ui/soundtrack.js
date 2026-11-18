@@ -1,114 +1,193 @@
-// Oyun içi müzik: üç kayıttan hangisinin çalacağını oyunun hâli seçer.
-//
-//   savaş ilanı (ültimatom) ve savaş   Vanguard
-//   barış          The Climb ve Age of Wonder sırayla, aralarında sessizlik
-//   kazanılan barış ya da zafer   The Climb baştan, sonuna dek
+// Oyun içi müzik yönetmeni: oyunun hâli hangi bölümün çalacağını seçer.
+// Hangi bölümün hangi duyguyu taşıdığı musicScore.js'te, hâlin okunuşu
+// musicMood.js'tedir.
 //
 // Neden böyle kuruldu:
-// - Audio elemanı dosyayı akıtır: beş-altı dakikalık kayıtlar Web Audio
-//   tamponuna çözülseler parça başına ~100 MB bellek tutardı.
-// - Savaş anında gelir; barışa dönüş birkaç saniye oturunca olur. Haftanın
-//   kapanışında durum bir an gidip geldiğinde müzik savrulmasın.
-// - Parça aralarındaki sessizlik kasıtlı: aynı üç kayıt saatlerce döner, ara
-//   vermeden çalınca kısa sürede bıktırır.
+// - Kayıtlar Blob olarak bir kez alınır: bölüm başına atlamak için sunucu
+//   Range ister, dev sunucusu ve başlatıcı vermez. Audio elemanı Blob'u yine
+//   akıtır; tampona çözülse parça başına ~100 MB bellek tutardı.
+// - Kazanç düğümleri Web Audio'da: geçişler eşit güç eğrisiyle örnek hassasiyetinde
+//   gider, Audio.volume adımları duyulmaz.
+// - Gerilim anında yükselir, birkaç saniye oturunca iner. Haftanın kapanışında
+//   durum bir an gidip geldiğinde müzik savrulmasın.
 //
 // Katman notu: ui katmanı; oyun durumunu okur, oyuna yazmaz.
 
-import { atWar, hostileNations, inCrisis } from '../game/diplomacy.js';
 import { onPeace } from '../game/peace.js';
+import { readMusicState } from './musicMood.js';
+import { FADES, isWarMood, MOMENTS, MOODS, SECTIONS } from './musicScore.js';
 import { TRACKS } from './musicTracks.js';
 
-const FADE_MS = 2500;
-const FADE_STEP_MS = 50;
+const TICK_MS = 250;
+/** Aynı hafta dilimlenirken durum okuması kare bütçesini yemesin. */
+const READ_EVERY_MS = 1500;
 const SETTLE_MS = 8000;
-const GAP_MS = { war: 6000, peace: 25000 };
+const TURN_MS = 10000;
+const MISSING_RETRY_S = 8;
+const DECK_COUNT = 3;
 
-/** Tek kaydın çalımı: geçişte iki deste bir an üst üste duyulur, sert kesme olmaz. */
-class Deck {
-  constructor(track, level, onEnd) {
-    this.track = track;
-    this.level = level;
-    this.fade = 0;
-    this.timer = 0;
-    this.stopped = false;
-    this.audio = new Audio(track.src);
-    this.audio.preload = 'auto';
-    this.audio.volume = 0;
-    this.audio.addEventListener('ended', onEnd);
-    // Dosya bulunamazsa oyun sürer: sıradaki deneme aradaki sessizlikten sonra.
-    this.audio.addEventListener('error', () => { if (!this.stopped) onEnd(); });
+/** Kayıtları bir kez indirir; dosya yoksa oyun sessiz sürer. */
+class Library {
+  constructor() {
+    this.urls = new Map();
   }
 
+  url(track) {
+    if (!this.urls.has(track.id)) {
+      this.urls.set(track.id, fetch(track.src)
+        .then((res) => (res.ok ? res.blob() : null))
+        .then((blob) => (blob ? URL.createObjectURL(blob) : null))
+        .catch(() => null));
+    }
+    return this.urls.get(track.id);
+  }
+}
+
+/** Tek bölümün çalımı: geçişte iki deste bir an üst üste duyulur. */
+class Deck {
+  constructor(ctx, output, owner) {
+    this.ctx = ctx;
+    this.owner = owner;
+    this.audio = new Audio();
+    this.audio.preload = 'auto';
+    this.gain = ctx.createGain();
+    this.gain.gain.value = 0;
+    ctx.createMediaElementSource(this.audio).connect(this.gain).connect(output);
+    this.section = null;
+    this.url = null;
+    this.ticket = 0;
+    this.busy = false;
+    this.ending = false;
+    this.wantsPlay = false;
+    this.stopTimer = 0;
+    this.audio.addEventListener('ended', () => owner.sectionEnding(this));
+    // Dosya bozuksa oyun sürer: sıradaki deneme aradaki sessizlikten sonra.
+    this.audio.addEventListener('error', () => { if (this.busy) owner.sectionEnding(this); });
+  }
+
+  /** settingsPanel düzey değişince buradan ister. */
   apply() {
-    this.audio.volume = Math.max(0, Math.min(1, this.level() * this.track.gain * this.fade));
+    this.owner.applyLevel();
+  }
+
+  /** Eşit güç eğrisi: geçişin ortasında toplam ses düzeyi çukura düşmez. */
+  fadeTo(target, seconds) {
+    const param = this.gain.gain;
+    const now = this.ctx.currentTime;
+    const from = param.value;
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(from, now);
+    if (seconds <= 0.02 || Math.abs(target - from) < 0.0005) {
+      param.setValueAtTime(target, now);
+      return;
+    }
+    const size = Math.max(16, Math.round(seconds * 60));
+    const curve = new Float32Array(size);
+    for (let i = 0; i < size; i++) {
+      const x = (i / (size - 1)) * (Math.PI / 2);
+      curve[i] = target > from
+        ? from + (target - from) * Math.sin(x)
+        : target + (from - target) * Math.cos(x);
+    }
+    param.setValueCurveAtTime(curve, now + 0.005, seconds);
+  }
+
+  async begin(section, url, fadeIn) {
+    const ticket = ++this.ticket;
+    clearTimeout(this.stopTimer);
+    this.section = section;
+    this.busy = true;
+    this.ending = false;
+    this.wantsPlay = true;
+    this.fadeTo(0, 0);
+    const { audio } = this;
+    if (this.url !== url) {
+      this.url = url;
+      audio.src = url;
+    }
+    // Yarıda kesilen önceki yükleme aynı dosyadaysa üst veri hâlâ yolda olabilir.
+    if (audio.readyState < 1) {
+      await once(audio, 'loadedmetadata');
+      if (ticket !== this.ticket) return;
+    }
+    audio.currentTime = section.from;
+    await once(audio, 'seeked');
+    if (ticket !== this.ticket) return;
+    this.fadeTo(section.track.gain, fadeIn);
+    this.play();
   }
 
   play() {
-    this.audio.play()?.catch?.(() => {
-      // Tarayıcı dokunuştan önce sesi engeller (?seed= ile doğrudan açılış).
-      if (this.stopped) return;
-      const retry = () => { if (!this.stopped) this.audio.play().catch(() => {}); };
-      document.addEventListener('pointerdown', retry, { once: true });
-      document.addEventListener('keydown', retry, { once: true });
-    });
+    if (!this.wantsPlay || document.hidden) return;
+    this.audio.play()?.catch?.(() => this.owner.waitForGesture());
   }
 
-  fadeTo(target, done) {
-    clearInterval(this.timer);
-    const from = this.fade;
-    const steps = Math.max(1, Math.round(FADE_MS / FADE_STEP_MS));
-    let step = 0;
-    this.timer = setInterval(() => {
-      step++;
-      this.fade = from + (target - from) * Math.min(1, step / steps);
-      this.apply();
-      if (step >= steps) {
-        clearInterval(this.timer);
-        done?.();
-      }
-    }, FADE_STEP_MS);
-  }
-
-  stop() {
-    this.stopped = true;
-    this.fadeTo(0, () => {
+  release(seconds) {
+    this.ending = true;
+    this.wantsPlay = false;
+    const ticket = ++this.ticket;
+    this.fadeTo(0, seconds);
+    clearTimeout(this.stopTimer);
+    this.stopTimer = setTimeout(() => {
+      if (ticket !== this.ticket) return;
       this.audio.pause();
-      this.audio.removeAttribute('src');
-      this.audio.load();
-    });
+      this.busy = false;
+      this.section = null;
+    }, seconds * 1000 + 120);
   }
 }
+
+function once(target, type) {
+  return new Promise((resolve) => {
+    const done = () => {
+      target.removeEventListener(type, done);
+      target.removeEventListener('error', done);
+      resolve();
+    };
+    target.addEventListener(type, done);
+    target.addEventListener('error', done);
+  });
+}
+
+const between = ([min, max]) => min + Math.random() * (max - min);
 
 export class Soundtrack {
   constructor(game, menu) {
     this.game = game;
     this.menu = menu;
+    this.library = new Library();
+    this.ctx = null;
+    this.master = null;
+    this.decks = [];
+    this.current = null;
     this.active = false;
-    this.deck = null;
+    this.ended = false;
     this.mood = null;
     this.wantMood = null;
     this.wantSince = 0;
-    this.moment = false;
+    this.moment = null;
+    this.momentAt = {};
+    this.cursor = {};
+    this.lastSection = null;
+    this.edges = null;
+    this.lastRead = 0;
+    this.run = 0;
     this.gapTimer = 0;
-    // Menü Age of Wonder ile kapanır: oyun aynı parçayla açılmasın.
-    this.lastPeace = TRACKS.ageOfWonder;
+    this.soonTimer = 0;
 
     // Menü kapanınca müzik gelir, açılınca menünün kendi müziğine yer açar.
     new MutationObserver(() => this.syncMenu()).observe(document.body, { attributes: true, attributeFilter: ['class'] });
     game.on('turn', () => this.evaluate());
     game.on('battles', () => this.soon());
     game.on('diplomacy', () => this.soon());
+    // Durmuş saatte verilen ilan haftayı beklemesin.
     game.on('notify', ({ entry, repeated } = {}) => {
-      if (!repeated && entry?.kind === 'WAR') this.soon();
+      if (!repeated && ['WAR', 'CRISIS', 'PEACE', 'CONQUEST'].includes(entry?.kind)) this.soon();
     });
-    game.on('victory', () => this.playMoment());
-    onPeace((ev) => this.onPeace(ev));
-    document.addEventListener('visibilitychange', () => {
-      if (!this.deck) return;
-      if (document.hidden) this.deck.audio.pause();
-      else if (this.active) this.deck.play();
-    });
-    setInterval(() => this.active && this.tick(), 1000);
+    game.on('victory', (result) => this.onVictory(result));
+    onPeace((_game, event) => this.onPeace(event));
+    document.addEventListener('visibilitychange', () => this.syncVisibility());
+    setInterval(() => this.active && this.tick(), TICK_MS);
     this.mountSettings();
     this.syncMenu();
   }
@@ -117,117 +196,254 @@ export class Soundtrack {
     return this.game.world?.nations?.[this.game.turns?.playerNation] ?? null;
   }
 
+  /** settingsPanel `game.music.deck?.apply()` çağırır. */
+  get deck() {
+    return this.current;
+  }
+
   /** Ayar menü müziğiyle ortak (hexwar:menu-volume / hexwar:menu-muted). */
   outputLevel() {
     const m = this.menu?.music;
     return !m || m.muted ? 0 : m.level;
   }
 
+  applyLevel() {
+    if (!this.master) return;
+    this.sentLevel = this.outputLevel();
+    this.master.gain.setTargetAtTime(this.sentLevel, this.ctx.currentTime, 0.03);
+  }
+
+  ensureAudio() {
+    if (this.ctx) return;
+    this.ctx = new AudioContext();
+    this.master = this.ctx.createGain();
+    this.master.gain.value = this.outputLevel();
+    this.master.connect(this.ctx.destination);
+    for (let i = 0; i < DECK_COUNT; i++) this.decks.push(new Deck(this.ctx, this.master, this));
+    if (this.ctx.state !== 'running') this.waitForGesture();
+  }
+
+  /** Tarayıcı dokunuştan önce sesi engeller (?seed= ile doğrudan açılış). */
+  waitForGesture() {
+    if (this.waiting) return;
+    this.waiting = true;
+    const retry = () => {
+      this.waiting = false;
+      document.removeEventListener('pointerdown', retry);
+      document.removeEventListener('keydown', retry);
+      this.ctx?.resume();
+      if (this.active) this.current?.play();
+    };
+    document.addEventListener('pointerdown', retry);
+    document.addEventListener('keydown', retry);
+  }
+
+  syncVisibility() {
+    if (!this.ctx) return;
+    if (document.hidden) {
+      for (const deck of this.decks) deck.audio.pause();
+      this.ctx.suspend();
+    } else if (this.active) {
+      this.ctx.resume();
+      for (const deck of this.decks) deck.play();
+    }
+  }
+
   syncMenu() {
     const inMenu = document.body.classList.contains('menu-open');
     if (inMenu && this.active) {
       this.active = false;
+      this.run++;
       clearTimeout(this.gapTimer);
-      this.deck?.stop();
-      this.deck = null;
+      clearTimeout(this.soonTimer);
+      this.current?.release(FADES.open.out);
+      this.current = null;
       this.mood = null;
       this.wantMood = null;
-      this.moment = false;
+      this.moment = null;
     } else if (!inMenu && !this.active && this.player) {
       this.active = true;
+      this.ensureAudio();
+      this.ctx.resume();
+      this.applyLevel();
+      // Savaş anında gecikmesin diye üç kayıt da baştan hazırlanır.
+      for (const track of Object.values(TRACKS)) this.library.url(track);
+      this.ended = Boolean(this.game.turns?.victory);
+      this.edges = null;
       this.evaluate(true);
     }
-  }
-
-  readMood() {
-    const { world } = this.game;
-    const me = this.player;
-    if (!world || !me) return null;
-    // İlan savaşı hemen başlatmaz, ültimatom haftaları açar: müzik ilanla gelir.
-    const tense = hostileNations(world, me.id).some((o) => atWar(world, me.id, o.id) || inCrisis(world, me.id, o.id));
-    return tense ? 'war' : 'peace';
   }
 
   /** Olay sonrası kısa gecikmeyle bir kez değerlendir (hafta dilimlenirken çok kez gelir). */
   soon() {
     clearTimeout(this.soonTimer);
-    this.soonTimer = setTimeout(() => this.evaluate(), 400);
+    this.soonTimer = setTimeout(() => this.evaluate(true), 400);
   }
 
   evaluate(force = false) {
     if (!this.active) return;
     // Haftalık kapanış karelere dilimlenir; yarım hâli okumayalım.
     if (this.game.turns?.turnJob) return this.soon();
-    const mood = this.readMood();
-    if (!mood) return;
+    const now = performance.now();
+    if (!force && now - this.lastRead < READ_EVERY_MS) return;
+    this.lastRead = now;
+    const { world, turns } = this.game;
+    const state = readMusicState(world, turns?.playerNation, turns?.turn ?? 0, this.wantMood);
+    if (!state) return;
+    this.noticeEdges(world, state);
+    const mood = this.ended ? 'epilogue' : state.mood;
     if (mood !== this.wantMood) {
       this.wantMood = mood;
-      this.wantSince = performance.now();
+      this.wantSince = now;
     }
-    this.tick(force);
+    this.settle(force && this.mood === null);
   }
 
-  tick(force = false) {
+  /** Bir önceki okumadan bu yana olan olaylar; kayıt yüklenince sayaç sıfırlanır. */
+  noticeEdges(world, state) {
+    const before = this.edges;
+    this.edges = { world, ...state };
+    if (!before || before.world !== world || this.ended) return;
+    if (state.capitalOccupied && !before.capitalOccupied) this.playMoment('capitalFall');
+    else if (!state.capitalOccupied && before.capitalOccupied) this.playMoment('capitalTaken');
+    else if (state.capitalsHeld > before.capitalsHeld) this.playMoment('capitalTaken');
+    const fresh = state.fired.some((id) => !before.fired.includes(id));
+    if (fresh && !isWarMood(this.mood)) this.playMoment('worldShock');
+  }
+
+  settle(force = false) {
     const want = this.wantMood;
     if (!want || want === this.mood) return;
-    if (want === 'peace') {
-      if (!force && performance.now() - this.wantSince < SETTLE_MS) return;
-      // Kazanılan barışın parçası yarıda kesilmez; bitince barış sırası gelir.
-      if (this.moment) {
-        this.mood = 'peace';
-        return;
-      }
+    const outbreak = isWarMood(want) && !isWarMood(this.mood);
+    // Vurgu sürerken yatak değişmez; biterken istenen hâle dönülür. Savaşın
+    // patlaması ise başkent düşüşü dışında her vurgunun önüne geçer.
+    if (this.moment && !(outbreak && MOMENTS[this.moment].priority < 4)) return;
+    if (!force && this.mood !== null) {
+      const rising = MOODS[want].rank > MOODS[this.mood].rank;
+      const dwell = performance.now() - this.wantSince;
+      if (!rising && dwell < (isWarMood(want) && isWarMood(this.mood) ? TURN_MS : SETTLE_MS)) return;
     }
-    this.enter(want);
+    this.enterMood(want);
   }
 
-  enter(mood) {
-    clearTimeout(this.gapTimer);
+  enterMood(mood) {
+    const previous = this.mood;
     this.mood = mood;
-    this.moment = false;
-    this.switchTo(mood === 'war' ? TRACKS.vanguard : this.nextPeaceTrack());
-  }
-
-  nextPeaceTrack() {
-    this.lastPeace = this.lastPeace === TRACKS.theClimb ? TRACKS.ageOfWonder : TRACKS.theClimb;
-    return this.lastPeace;
-  }
-
-  switchTo(track) {
-    this.deck?.stop();
-    const deck = new Deck(track, () => this.outputLevel(), () => this.onEnded(deck));
-    this.deck = deck;
-    deck.fadeTo(1);
-    if (!document.hidden) deck.play();
-  }
-
-  onEnded(deck) {
-    if (deck !== this.deck) return;
-    this.deck = null;
-    if (this.moment) {
-      this.moment = false;
-      this.mood = null;
-      this.evaluate(true);
+    this.moment = null;
+    if (isWarMood(mood) && !isWarMood(previous)) {
+      this.playSection(SECTIONS.warOutbreak, FADES.hit);
       return;
     }
-    const mood = this.mood;
-    this.gapTimer = setTimeout(() => {
-      if (this.active && this.mood === mood && !this.deck) this.enter(mood);
-    }, GAP_MS[mood] ?? GAP_MS.peace);
+    let fade = FADES.calm;
+    if (previous === null) fade = FADES.open;
+    else if (isWarMood(mood) && isWarMood(previous)) fade = FADES.turn;
+    else if (MOODS[mood].rank > MOODS[previous].rank) fade = FADES.rise;
+    this.playSection(this.pick(mood), fade);
+  }
+
+  /** Listeyi sırayla döner; aynı bölüm art arda iki kez çalmaz. */
+  pick(mood) {
+    const { list } = MOODS[mood];
+    let index = this.cursor[mood] ?? 0;
+    if (list[index % list.length] === this.lastSection?.id) index++;
+    this.cursor[mood] = index + 1;
+    return SECTIONS[list[index % list.length]];
+  }
+
+  freeDeck() {
+    return this.decks.find((deck) => !deck.busy)
+      ?? this.decks.find((deck) => deck.ending)
+      ?? this.decks.find((deck) => deck !== this.current);
+  }
+
+  async playSection(section, fade) {
+    const run = ++this.run;
+    clearTimeout(this.gapTimer);
+    const url = await this.library.url(section.track);
+    if (run !== this.run || !this.active) return;
+    if (!url) {
+      this.scheduleNext(MISSING_RETRY_S);
+      return;
+    }
+    const previous = this.current;
+    const deck = this.freeDeck();
+    previous?.release(fade.out);
+    this.current = deck;
+    this.lastSection = section;
+    deck.begin(section, url, fade.in);
+  }
+
+  scheduleNext(seconds) {
+    clearTimeout(this.gapTimer);
+    this.gapTimer = setTimeout(() => this.next(), seconds * 1000);
+  }
+
+  /** Bölüm ya da vurgu bitti: istenen hâlin sıradaki bölümüne geç. */
+  next() {
+    if (!this.active) return;
+    this.moment = null;
+    this.mood = this.wantMood ?? this.mood ?? 'peace';
+    this.playSection(this.pick(this.mood), FADES.resume);
+  }
+
+  sectionEnding(deck) {
+    if (deck !== this.current || deck.ending || !deck.section) return;
+    const { tail } = deck.section;
+    deck.release(tail);
+    this.current = null;
+    const gap = this.moment ? 0.4 : between(MOODS[this.mood ?? 'peace'].gap);
+    this.scheduleNext(tail + gap);
+  }
+
+  tick() {
+    // Parçalar arası sessizlikte deste yoktur; ayar değişikliği yine de işlensin.
+    if (this.outputLevel() !== this.sentLevel) this.applyLevel();
+    const deck = this.current;
+    if (deck?.section && !deck.ending && deck.audio.currentTime >= deck.section.to - deck.section.tail) {
+      this.sectionEnding(deck);
+    }
+    this.settle();
+  }
+
+  playMoment(id) {
+    const def = MOMENTS[id];
+    if (!this.active || !def) return;
+    const active = this.moment ? MOMENTS[this.moment] : null;
+    if (active && active.priority >= def.priority) return;
+    const now = performance.now();
+    if (now - (this.momentAt[id] ?? -Infinity) < def.cooldown * 1000) return;
+    this.momentAt[id] = now;
+    this.moment = id;
+    this.playSection(SECTIONS[def.section], FADES[def.fade]);
   }
 
   onPeace({ a, b, loser, white } = {}) {
     const id = this.game.turns?.playerNation;
-    if ((a !== id && b !== id) || white || loser === id) return;
-    this.playMoment();
+    if (a !== id && b !== id) return;
+    if (white || loser === null || loser === undefined) this.playMoment('peaceWhite');
+    else this.playMoment(loser === id ? 'peaceLost' : 'peaceWon');
   }
 
-  playMoment() {
-    if (!this.active) return;
-    clearTimeout(this.gapTimer);
-    this.moment = true;
-    this.lastPeace = TRACKS.theClimb;
-    if (this.deck?.track !== TRACKS.theClimb) this.switchTo(TRACKS.theClimb);
+  onVictory(result) {
+    this.ended = true;
+    this.wantMood = 'epilogue';
+    this.mood = 'epilogue';
+    this.playMoment(result?.nation?.id === this.game.turns?.playerNation ? 'campaignWon' : 'campaignLost');
+  }
+
+  /** Denetim ve konsol için: şu an ne çalıyor. */
+  describe() {
+    const deck = this.current;
+    return {
+      mood: this.mood,
+      want: this.wantMood,
+      moment: this.moment,
+      section: deck?.section?.id ?? null,
+      track: deck?.section?.track.id ?? null,
+      at: deck ? deck.audio.currentTime : null,
+      level: this.outputLevel(),
+      context: this.ctx?.state ?? null,
+    };
   }
 
   /** Oyun içi ayar paneline "Music" çubuğu: menüdeki müzik ayarıyla aynı değer. */
@@ -249,12 +465,12 @@ export class Soundtrack {
     };
     input.addEventListener('input', () => {
       this.menu?.music?.setVolume(Number(input.value) / 100);
-      this.deck?.apply();
+      this.applyLevel();
       paint();
     });
     paint();
     // Menüdeki çubuk değişirse oyun müziği de izlesin.
-    document.getElementById('menu-volume')?.addEventListener('input', () => { this.deck?.apply(); paint(); });
-    document.getElementById('menu-mute')?.addEventListener('click', () => setTimeout(() => { this.deck?.apply(); paint(); }));
+    document.getElementById('menu-volume')?.addEventListener('input', () => { this.applyLevel(); paint(); });
+    document.getElementById('menu-mute')?.addEventListener('click', () => setTimeout(() => { this.applyLevel(); paint(); }));
   }
 }

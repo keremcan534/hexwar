@@ -32,6 +32,7 @@ MÜZİK
 'Age of Wonder' by Scott Buckley - released under CC-BY 4.0. www.scottbuckley.com.au
 'Vanguard' by Scott Buckley - released under CC-BY 4.0. www.scottbuckley.com.au
 'The Climb' by Scott Buckley - released under CC-BY 4.0. www.scottbuckley.com.au
+Oyun içindeki bölümler bu kayıtlardan kesilip geçişlerle birleştirilmiştir.
 
 SORUN OLURSA
 Şu dosyayı gönder: %LOCALAPPDATA%\ImperialEye\oyna.log
