@@ -228,6 +228,36 @@ if ($reuse) {
   exit 0
 }
 
+# Windows arka plandaki sürecin penceresini öne almaz: cmd > gizli powershell >
+# tarayıcı zincirinde oyun, üstünde Gezgin açıkken arkada kalabiliyor.
+$focusPending = $false
+$altUsed = $false
+try {
+  Add-Type -Namespace ImperialEye -Name Focus -MemberDefinition @'
+[DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+[DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+[DllImport("user32.dll")] public static extern void SwitchToThisWindow(IntPtr hWnd, bool altTab);
+[DllImport("user32.dll")] public static extern void keybd_event(byte vk, byte scan, uint flags, UIntPtr extra);
+'@
+  $focusPending = $true
+} catch {
+  Write-Log "pencere öne alma kurulamadı: $($_.Exception.Message)"
+}
+
+function Send-WindowToFront([IntPtr] $handle) {
+  if ([ImperialEye.Focus]::GetForegroundWindow() -eq $handle) { return $true }
+  [ImperialEye.Focus]::SwitchToThisWindow($handle, $true)
+  if ([ImperialEye.Focus]::GetForegroundWindow() -eq $handle) { return $true }
+  # Son çare, bir kez: tek Alt vuruşu ön plan kilidini açar.
+  if (-not $script:altUsed) {
+    $script:altUsed = $true
+    [ImperialEye.Focus]::keybd_event(0x12, 0, 0, [UIntPtr]::Zero)
+    [ImperialEye.Focus]::keybd_event(0x12, 0, 2, [UIntPtr]::Zero)
+    [void][ImperialEye.Focus]::SetForegroundWindow($handle)
+  }
+  return ([ImperialEye.Focus]::GetForegroundWindow() -eq $handle)
+}
+
 $tracked = $null
 $fallback = $null
 if ($browser) {
@@ -278,7 +308,18 @@ try {
       if (-not $handoffChecked) { $handoffChecked = $true; $heir = Find-ProfileBrowser }
       if ($heir) { $tracked = $heir } else { $reason = 'tarayıcı kapandı' }
     } elseif ($tracked.MainWindowHandle -ne [IntPtr]::Zero) {
+      if (-not $windowSeenAt) { $firstWindowAt = $now }
       $windowSeenAt = $now
+      # Yalnız açılışta: oyuncu sonradan başka pencereye geçerse geri çekilmez.
+      if ($focusPending) {
+        if (Send-WindowToFront $tracked.MainWindowHandle) {
+          $focusPending = $false
+          Write-Log 'pencere önde'
+        } elseif (($now - $firstWindowAt).TotalSeconds -gt 8) {
+          $focusPending = $false
+          Write-Log 'pencere öne alınamadı'
+        }
+      }
     } elseif ($windowSeenAt) {
       # Tarayıcı arka planda kalsa da oyun bitmiştir: sunucu onu beklemez.
       if (($now - $windowSeenAt).TotalSeconds -gt 5) { $reason = 'pencere kapandı, tarayıcı arkada kaldı' }
