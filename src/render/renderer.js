@@ -19,6 +19,7 @@ import { SeaLayer } from './seaLayer.js';
 import { zoneStatus } from '../game/navy.js';
 import { LandMaterial } from './material.js';
 import { SurfaceGL } from './surfaceGL.js';
+import { WarFx } from './warFx.js';
 import { terrainBakeJob } from './terrainBake.js';
 import { getGfxStyle, gfxStyleNames, readGfxParam } from './gfx/index.js';
 import {
@@ -897,6 +898,7 @@ export class Renderer {
     if (!canvas) return false;
     this.waterGL = SurfaceGL.create(canvas);
     if (!this.waterGL) return false;
+    this.warFx = WarFx.attach(this, canvas);
     // BAĞLAM KAYBI (bkz. SurfaceGL): kayıpta glWater() yanlışa döner ve
     // zemin Canvas2D'den boyanır; geri gelince dünya dokuları yeniden yüklenir.
     // İki yönde de bütün önbellekler baştan kurulur: GL kipinde pişen katmanlar
@@ -1125,6 +1127,7 @@ export class Renderer {
   drawWaterOnly() {
     this.waterTime = performance.now() / 1000;
     this.waterGL.draw(this.camera, this.waterTime);
+    this.warFx?.frame(this.renderWorld, this.viewPlayer);
   }
 
   /**
@@ -2241,6 +2244,7 @@ export class Renderer {
       if (this.gfx.style) this.gfxFrame(world);
       this.waterGL.draw(cam, this.waterTime);
     }
+    this.warFx?.frame(world, state.playerNation);
     this.water.animatedThisFrame = false;
     // Kopya döngüsünden önce sıfırlanır; yakın dal atlarsa yeniden kurar.
     this.waterSkipped = false;
