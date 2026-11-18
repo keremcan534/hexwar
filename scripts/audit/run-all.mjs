@@ -19,6 +19,7 @@ const AUDITS = [
   ['military-industry', 'Sanayi savas gucune donusuyor mu (yedek, hat, tuketim mali)'],
   ['tech-effect', 'Degistirici anahtarlarinin okuyucusu'],
   ['save', 'Kayit / yukleme'],
+  ['replay', 'Tekrar kaydi: kare dogrulugu, kayit boyu, hafta yuku'],
   ['war-outcome', 'Savas sonucu ve toprak devri'],
   ['war-pressure', 'Stratejik baski: savas suresi, sohret, cullanma'],
   ['war-declaration-guard', 'Savas ilani nihai kapisi'],

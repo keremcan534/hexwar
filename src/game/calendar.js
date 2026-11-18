@@ -39,6 +39,27 @@ export function calendarYear(turn) {
   return dateOfTurn(turn).getUTCFullYear();
 }
 
+/** Takvim ayının sırası (START_YEAR Ocak'ı = 0): tekrar kaydının zaman ekseni. */
+export function monthOfTurn(turn) {
+  const date = dateOfTurn(turn);
+  return (date.getUTCFullYear() - START_YEAR) * 12 + date.getUTCMonth();
+}
+
+const MONTH_NAMES = [
+  'January', 'February', 'March', 'April', 'May', 'June', 'July',
+  'August', 'September', 'October', 'November', 'December',
+];
+
+/** Ay sırasının takvim yılı. */
+export function yearOfMonth(month) {
+  return START_YEAR + Math.floor(month / 12);
+}
+
+/** Ay sırasının etiketi: "March 1917". */
+export function monthLabel(month) {
+  return `${MONTH_NAMES[((month % 12) + 12) % 12]} ${yearOfMonth(month)}`;
+}
+
 /** Kural yılı: 365 günlük sabit yıl (teknoloji ve birim takvimi). */
 export function yearOfTurn(turn) {
   return START_YEAR + Math.floor((Math.max(1, turn ?? 1) - 1) * DAYS_PER_TURN / 365);

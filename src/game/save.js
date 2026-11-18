@@ -26,6 +26,7 @@ import { ensureProvinces, refreshProvinceOwner } from './provinces.js';
 import { ensurePolitics } from './politics.js';
 import { ensureDelegation, restoreDelegation } from './delegation.js';
 import { copyDiplo, copyRegard } from './relations.js';
+import { restoreReplay, serializeReplay } from './replay.js';
 
 /** Barış teklifinin tam kopyası (listeler ayrı dizi; canlı oyunla paylaşılmaz). */
 function copyPeaceOffer(entry) {
@@ -134,6 +135,11 @@ function copyPeaceOffer(entry) {
 // kaydının kültür satırları, ana yurtları ve ulus dizinleri yanlış halklara
 // otururdu. Eski kayıtlar TEMİZ REDDEDİLİR. Yeni ulus alanı `homeRule`
 // (özerk halklar, accepted'ın alt kümesi).
+//
+// 28+: TEKRAR KAYDI (replay.js). `replay` alanı eklendi, sürüm ARTMADI: alan
+// isteğe bağlıdır, simülasyon onu okumaz. Alanı olmayan kayıt aynen yüklenir ve
+// tekrar yükleme ayından başlar; sürümü artırmak bütün v28 kampanyalarını
+// reddederdi.
 export const SAVE_VERSION = 28;
 /** Göçü bilinen eski sürümler: deserialize bunları da kabul eder. */
 const MIGRATABLE_VERSIONS = new Set([]);
@@ -282,6 +288,8 @@ export function serialize(game) {
     // bayrakları kurulamaz: yazılmazsa başlamış olay yüklemede yeniden ateşlenir.
     worldEvents: world.worldEvents ?? null,
     formedNations: world.formedNations ?? null,
+    // Sınır tarihi (replay.js): geçmiş türetilemez, yazılmazsa tekrar kaybolur.
+    replay: serializeReplay(world),
     battleSystem: {
       nextId: world.battleSystem?.nextId ?? 1,
       // Aktif muharebeler ARTIK kayda girer. Eskiden bilerek dusuruluyordu
@@ -835,6 +843,8 @@ export function deserialize(game, data) {
   navy.reports = Array.isArray(data.navyReports) ? data.navyReports : [];
   navy.evasions = Array.isArray(data.navyEvasions) ? data.navyEvasions : [];
   refreshSeaLanes(world);
+  // Sahipler ve uluslar yerine oturduktan sonra: eski kayıtta buradan başlar.
+  restoreReplay(world, data.replay);
   game.setSpeed(0);
 
   game.selected = null;

@@ -90,6 +90,7 @@ varsayılmaz, ÖLÇÜLÜR:
     npm run audit:tech-effect  # her değiştirici anahtarının bir okuyucusu var mı
     npm run audit:military-industry  # yedek, seferberlik, hat kullanımı, zırh/hava, tüketim malı
     npm run audit:diplomacy    # sözler, talepler, vassal özerkliği (--active: oyuncu kaldıraçları, --size=160x96)
+    npm run audit:replay       # tekrar kaydı: kare doğruluğu, kayıt boyu, hafta yükü, simülasyon aynı mı
     npm run audit:all          # bütün batarya
 
 Kaos tabanı: `HX_PLACEBO=1` (harness; kural aynı, tur zarından bir sayı
@@ -200,3 +201,10 @@ zaman uyumsuzdur ve `{ok, reason}` döner; ekran `screens.render_saves`. Donanma
 (bölümleme), `src/game/navy.js` (dağıtım, hâkimiyet, muharebe, abluka,
 gemi sınıfı), `src/game/seaLanes.js` (ticaret yolları, denizaltı akını),
 `src/render/seaLayer.js` (Seas kipi, M), `src/ui/navyDock.js` (panel).
+
+Kampanya tekrarı: `src/game/replay.js` ayda bir province sahipliğini ve savaş,
+barış, doğuş, yıkılış farkını sıkıştırılmış metne yazar (yalnız okur, zar
+çekmez; `world.replay`, kayıtta isteğe bağlı alan). Oynatıcı
+`src/ui/replayPlayer.js` (kapanış sayfası + Chronicle), harita
+`src/render/replayMap.js`, WebM `src/ui/webmVideo.js`. Tam kampanya ölçümü:
+`node scripts/audit/replay-audit.mjs REPLAY1 full 160 96`.
