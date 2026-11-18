@@ -596,8 +596,8 @@ export class WarFxGL {
   }
 
   /**
-   * Alev dokusu ilk yangında yüklenir: barışta açılış bedeli olmasın. Dosya yoksa
-   * (depoda değildir, bkz. scripts/fx/bake-fire-atlas.mjs) GPU alevi sürer.
+   * Alev dokusu ilk yangında yüklenir: barışta açılış bedeli olmasın. Dosya yüklenemezse
+   * GPU alevi sürer (doku: scripts/fx/bake-fire-atlas.mjs).
    */
   async loadAtlas() {
     if (this.atlasAsked) return;

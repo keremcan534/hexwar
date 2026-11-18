@@ -2,8 +2,8 @@
 //
 //   node scripts/fx/bake-fire-atlas.mjs "<video.mp4>"
 //
-// Çıktı: assets/fx/fire-atlas.webp (8×8 kare, 256 px). Depoya girmez: kaynak
-// videonun lisansı belirsiz (bkz. .gitignore). Doku yoksa oyun GPU alevine düşer.
+// Çıktı: assets/fx/fire-atlas.webp (8×8 kare, 256 px). Doku yüklenemezse oyun GPU
+// alevine düşer.
 import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';

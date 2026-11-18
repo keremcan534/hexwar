@@ -18,7 +18,3 @@ astra6.zip
 # Depoya girmez; yayindan once CC0/lisansli kayitlarla degistirilmeli
 # (bkz. src/ui/ambience.js basligi).
 assets/audio/ambience/
-
-# Harita alevinin gercek goruntu dokusu: kaynak videonun lisansi belirsiz. Depoya
-# girmez; yayindan once lisansli bir kayitla yeniden uretilmeli (scripts/fx/bake-fire-atlas.mjs).
-assets/fx/fire-atlas.webp
