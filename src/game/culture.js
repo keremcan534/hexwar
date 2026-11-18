@@ -57,6 +57,7 @@ import { eraProgress } from './calendar.js';
 import { isOccupied } from './control.js';
 import { worldNationalism } from './worldEvents.js';
 import { deport, deportBlockers } from './culturePolicy.js';
+import { CAMP, FUSION, OCCUPATION } from './policyDefs.js';
 
 export const CULTURE = {
   /** Huzursuzluk olcegi 0-10 (nufus ekranindaki militanlikla ayni dil). */
@@ -261,6 +262,18 @@ function levyGrievance(province, nation) {
   return share * CULTURE.LEVY_GRIEVANCE;
 }
 
+/** Kamp ve kaynaşmanın state'e bindirdiği huzursuzluk (unrestBreakdown `camp`). */
+function campUnrest(province, nation) {
+  const plans = nation?.policies;
+  if (!plans) return 0;
+  let sum = province.econ?.camp >= 0 ? CAMP.UNREST : 0;
+  for (const row of province.cultures ?? []) {
+    if (plans.intake?.includes(row.id)) sum += row.share * CAMP.KIN_UNREST;
+    if (plans.fusion?.culture === row.id) sum += row.share * FUSION.UNREST;
+  }
+  return sum;
+}
+
 /** Kabulun ardindan gelen milliyetci tepki hala suruyor mu? */
 function backlashOf(nation, turn) {
   const until = nation?.cultureBacklashUntil ?? 0;
@@ -336,15 +349,20 @@ export function unrestBreakdown(world, province, nation, { occupied = 0, turn = 
   for (const id of nation.forcedAssimilation ?? []) {
     forced += (province.cultures?.find((row) => row.id === id)?.share ?? 0) * CULTURE.FORCED_UNREST;
   }
+  // CEZA KAMPI ve KAYNAŞMA (policyDefs.js): kampın kendi state'i kaynar, oraya
+  // gönderilen halk yaşadığı her yerde homurdanır; kaynaşan halk da az biraz.
+  const camp = campUnrest(province, nation);
+  // İşgal direnişi (policies.runOccupation) sahibinin state'inde söner, birden değil.
+  const resistance = Math.max(0, econ.resistance ?? 0) / 100 * OCCUPATION.RESIST_UNREST;
   const policy = Math.max(0.2, 1 + mod(nation, 'unrest'));
   const target = Math.max(0, Math.min(
     CULTURE.MAX_UNREST,
     // `levee` 0 iken toplam bit bit aynıdır (x + 0 === x): P1 dikişi davranışı değiştirmez.
     (culture + grievance + conquest + war + occupation + backlash + levy + reservation + forced + levee
-      - welfare - rights - focus) * policy,
+      + camp + resistance - welfare - rights - focus) * policy,
   ));
   return {
-    target, culture, grievance, conquest, war, levee, occupation, backlash, levy, reservation, forced, welfare, rights, focus, policy, foreign, era,
+    target, culture, grievance, conquest, war, levee, occupation, backlash, levy, reservation, forced, camp, resistance, welfare, rights, focus, policy, foreign, era,
   };
 }
 

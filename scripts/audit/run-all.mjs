@@ -28,6 +28,7 @@ const AUDITS = [
   ['homeland', 'Ana yurt kilidi, cesitlilik, birakma ve cikis kapilari (kampanya, 6+1 tohum)'],
   ['peace-stakes', 'Baris masasi kabul toleransi'],
   ['diplomacy', 'Diplomasi: taahhutler, talepler, vassal ozerkligi'],
+  ['policy', 'Politika paketi: vassal, isgal, ceza state, kaynasma kaldiraclari'],
 ];
 
 const filter = process.argv.slice(2).map((s) => s.toLowerCase());

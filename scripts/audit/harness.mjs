@@ -23,6 +23,7 @@ import { fundFloor } from '../../src/game/econ/investment.js';
 import { applyDefaultDelegation } from '../../src/game/delegation.js';
 import { EVENT_CARDS, resolveCard } from '../../src/game/eventCards.js';
 import { DIP_AI, DIP_ARM_IDS } from '../../src/game/dipDefs.js';
+import { POLICY_AI, POLICY_ARM_IDS } from '../../src/game/policyDefs.js';
 
 /**
  * DİPLOMASİ KOLLARI (şartname §13.1): `DIP_ARMS=all` (varsayılan) · `none` ·
@@ -37,6 +38,22 @@ import { DIP_AI, DIP_ARM_IDS } from '../../src/game/dipDefs.js';
       if (!DIP_ARM_IDS.includes(id)) throw new Error(`DIP_ARMS: bilinmeyen kol "${id}" (${DIP_ARM_IDS.join(', ')})`);
     }
     for (const id of DIP_ARM_IDS) DIP_AI[id] = on.has(id);
+  }
+}
+
+/**
+ * POLİTİKA KOLLARI: `POLICY_ARMS=all` (varsayılan) · `none` · virgüllü liste
+ * (vassals, occupation, camps, fusion). `none` paketten önceki dünyadır:
+ * YZ duruş seçmez, işgal yasası işlemez; sınır ölçüsünün tabanı budur.
+ */
+{
+  const arms = (process.env.POLICY_ARMS ?? 'all').trim();
+  if (arms && arms !== 'all') {
+    const on = new Set(arms === 'none' ? [] : arms.split(',').map((id) => id.trim()));
+    for (const id of on) {
+      if (!POLICY_ARM_IDS.includes(id)) throw new Error(`POLICY_ARMS: bilinmeyen kol "${id}" (${POLICY_ARM_IDS.join(', ')})`);
+    }
+    for (const id of POLICY_ARM_IDS) POLICY_AI[id] = on.has(id);
   }
 }
 

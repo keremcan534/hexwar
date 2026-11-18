@@ -60,6 +60,7 @@ import {
   bindStateScreens, constructionKey, declareEmbargo, holdConstructionOrder, embargoBlockers, industryKey, renderBudget, renderConstruction,
   renderCultures, renderIndustry, renderPolitics, renderPopulation, renderTrade,
 } from './stateScreens.js';
+import { bindPolicyScreen, renderPolicies } from './policyScreen.js';
 import { quietScroll, refreshTooltips } from './tooltip.js';
 import { renderNationOverview, trackOverviewEvents } from './nationOverview.js';
 import { autoPill as pillHtml, kpi as kitKpi, kpiRow as kitKpiRow, panel as kitPanel, spark as kitSpark, tipAttr } from './kit.js';
@@ -92,6 +93,7 @@ const TAB_MEDALS = new Set([
 export const CONFIRM_MS = 8000;
 
 const TITLES = {
+  policies: 'State Policies',
   nation: 'Nation Overview',
   construction: 'Development',
   industry: 'Industry & Production',
@@ -1384,6 +1386,10 @@ export class Screens {
     return renderCultures(this.game, me, this.uc);
   }
 
+  render_policies(me) {
+    return renderPolicies(this.game, me, this.uc);
+  }
+
   render_population(me) {
     return renderPopulation(this.game, me, this.uc);
   }
@@ -1732,6 +1738,7 @@ export class Screens {
 
     if (this.active === 'military') this.bindMilitary();
     bindStateScreens(this);
+    bindPolicyScreen(this);
     if (this.active === 'diplomacy' || this.active === 'dossier') bindDiplomacyScreen(this);
     for (const btn of this.el.body.querySelectorAll('[data-embargo]')) {
       btn.onclick = () => {

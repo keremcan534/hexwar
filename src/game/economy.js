@@ -36,6 +36,7 @@ import { clearTrade, computeBlockades, ensureMarket } from './econ/trade.js';
 import { closeWeek, emptyLedger, openWeek, settle } from './treasury.js';
 import { occupiedShareOf } from './provinces.js';
 import { treatiesOf } from './peace.js';
+import { stanceOfTreaty, vassalTreaty } from './policyDefs.js';
 import {
   START_DEVELOPMENT, START_DEVELOPMENT_CAP, START_FORT, START_LITERACY, START_STOCK,
 } from './era.js';
@@ -280,6 +281,20 @@ export function runNationEconomy(game, nation, ctx) {
     economy.concessionOut = { partner: treaty.partner, resources: out };
     break;
   }
+  // Vassal duruşu: efendi yatakların ve hasadın payını alır (policyDefs.js).
+  economy.stanceOut = null;
+  const overlordTreaty = vassalTreaty(nation, turn);
+  const stance = overlordTreaty ? stanceOfTreaty(overlordTreaty) : null;
+  if (stance?.resources || stance?.food) {
+    const out = {};
+    for (const id of RESOURCE_IDS) {
+      const share = id === 'FOOD' ? (stance.food ?? 0) : (stance.resources ?? 0);
+      if (!(share > 0)) continue;
+      out[id] = produced[id] * share;
+      produced[id] -= out[id];
+    }
+    economy.stanceOut = { partner: overlordTreaty.partner, resources: out };
+  }
   const needs = emptyResourceMap();
   // İşgal altındaki halkı işgalci besler: o pay da ithal edilince savaştaki
   // gerçek iflasların neredeyse hepsi borç tavanına dayanmış gıda ithalatıydı.
@@ -364,12 +379,13 @@ export function finishEconomy(game, ctx) {
   clearTrade(world, turn);
   // İmtiyaz akışı alana bir sonraki haftanın üretimine yazılır.
   for (const nation of world.nations) {
-    const flow = nation.economy?.concessionOut;
-    const holder = flow ? world.nations[flow.partner]?.economy : null;
-    if (!holder) continue;
-    holder.concessionIn ??= {};
-    for (const [id, amount] of Object.entries(flow.resources)) {
-      holder.concessionIn[id] = (holder.concessionIn[id] ?? 0) + amount;
+    for (const flow of [nation.economy?.concessionOut, nation.economy?.stanceOut]) {
+      const holder = flow ? world.nations[flow.partner]?.economy : null;
+      if (!holder) continue;
+      holder.concessionIn ??= {};
+      for (const [id, amount] of Object.entries(flow.resources)) {
+        holder.concessionIn[id] = (holder.concessionIn[id] ?? 0) + amount;
+      }
     }
   }
   const raised = [];

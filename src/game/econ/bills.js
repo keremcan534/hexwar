@@ -14,6 +14,7 @@ import { BILL_CAP, POP_UNIT, SUPPLY } from './defs.js';
 import { lawOption } from '../laws.js';
 import { mod } from '../modifiers.js';
 import { eraProgress } from '../calendar.js';
+import { stanceOfTreaty } from '../policyDefs.js';
 
 /**
  * Ulusun kara alayı ve gemi sayısı (gemiler filodadır, haritada değil).
@@ -78,7 +79,8 @@ export function billsOf(world, nation, output, turn = world.turn ?? 0) {
   const treaties = [];
   let treaty = 0;
   for (const entry of nation.treaties ?? []) {
-    const share = TREATY_SHARE[entry.type];
+    // Haracın payı vassal duruşudur (policyDefs.js VASSAL_STANCES).
+    const share = entry.type === 'VASSALIZE' ? stanceOfTreaty(entry).tribute : TREATY_SHARE[entry.type];
     if (!share || (entry.until ?? Infinity) <= turn || !world.nations?.[entry.partner]?.alive) continue;
     const due = share * Math.max(0, output);
     treaties.push({ partner: entry.partner, owed: due });

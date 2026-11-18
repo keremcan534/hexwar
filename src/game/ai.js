@@ -8,6 +8,7 @@ import {
 import { manageMobilization, mobilizationRifleReserve } from './mobilization.js';
 import { manageAcceptance, manageBrokenProvinces } from './culture.js';
 import { manageMovements } from './movements.js';
+import { runPolicyAI } from './policies.js';
 import {
   buildOffer, demandLimit, occupiedProvincesOf, offerCost, offerMeetsExpectation, provinceKeyOf,
   signPeace, suggestWarGoal, warScore,
@@ -816,6 +817,8 @@ export function runNationAI(game, nation, rng) {
   manageBrokenProvinces(game, nation);
   // Ulusal hareketler: taviz, sikiyonetim, vassal, katliam — oyuncuyla ayni kapi.
   manageMovements(game, nation);
+  // Vassal duruşu, işgal yasası, kamp ve kaynaşma: çeyrekte bir (policies.js).
+  runPolicyAI(game, nation);
   // State odakları: çeyrekte bir, boş yuvaya (stateFocus.js autoFocus).
   if (((game.turns?.turn ?? world.turn ?? 0) + nation.id) % 13 === 0) autoFocus(world, nation);
   supplyAI(game, nation);
@@ -924,6 +927,10 @@ export function runDelegatedAI(game, nation, rng) {
       }[moved.action];
       if (lines) noteDelegated(game, nation, 'reforms', lines[0], lines[1]);
     }
+  }
+  // Politika alanları kendi sürekli emriyle devredilir (orders.setPolicyOrder).
+  for (const note of runPolicyAI(game, nation, { cabinet: true })) {
+    noteDelegated(game, nation, 'reforms', note, 'Standing policy order.');
   }
   if (delegationActive(nation, 'recruitment', turn)) {
     const mobilizedBefore = Boolean(nation.mobilization?.active);

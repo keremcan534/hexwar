@@ -32,7 +32,8 @@ export function provinceOutputBase(province) {
     work,
     status,
     // Rıza (provinces.js CONSENT): tebaa ve Home Rule halkının sakladığı pay.
-    hand: HAND_OUTPUT * work * status * (econ.consent ?? 1),
+    // Ceza kampının zorla çalıştırılan mahkûmları rızaya bakmaz (culturePolicy.runCamps).
+    hand: HAND_OUTPUT * work * status * (econ.consent ?? 1) + HAND_OUTPUT * (econ.campWorkers ?? 0) * status,
     industry: INDUSTRY_PER_DEV * work * Math.max(0, (econ.development ?? 1) - 1) * status * (econ.consent ?? 1),
   };
 }

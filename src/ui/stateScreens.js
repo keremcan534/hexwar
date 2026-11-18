@@ -1547,8 +1547,14 @@ export function renderCultures(game, me, state) {
         ${panel('National movements', moveCards || empty('No movement is growing. One rises where an unaccepted people is the majority and their unrest stays above 6.'), { sub: view.movements.length ? 'act before they break away' : 'peoples without rights organise here' })}
         ${focusCard(world, me)}
         ${panel('Citizenship', lawCard(world, me, 'citizenship', state.confirm, { compact: true }))}
+        ${policiesLink('Penal states and the fusion of peoples are set in State Policies.')}
       </div>
     </div>`;
+}
+
+/** Politika ekranına geçiş: Politics ve Cultures aynı kapıyı gösterir. */
+function policiesLink(text) {
+  return panel('State policies', `<div class="k-pol-act"><span class="k-pol-what"><small>${esc(text)}</small></span><span class="k-pol-btn"><button type="button" class="k-btn sm" data-open-screen="policies">Open</button></span></div>`);
 }
 
 /** Halklar tablosunun sıralanabilir sütunları (kit.sortHead); hareketi olmayan halk sonda. */
@@ -1877,6 +1883,7 @@ export function renderPolitics(game, me, state) {
     right: autoPill(DELEGATION_AREAS.agenda, { on: isDelegated(me, 'agenda'), last: lastDelegatedAction(me, 'agenda') }),
   })}
         ${panel('Advisors', `<div class="k-seats">${seats}</div>`, { sub: 'one per seat · 50 political power' })}
+        ${policiesLink('How vassals, occupied land and penal states are run.')}
       </div>
     </div>`;
 }
