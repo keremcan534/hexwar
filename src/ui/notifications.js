@@ -6,6 +6,7 @@ import { battleAt } from '../game/battles.js';
 import { NOTIFY_GLYPH, glyph } from './icons/glyphs.js';
 import { onEscape } from './hud.js';
 import { refreshTooltipsWithin } from './tooltip.js';
+import { leaderPhoto } from './leaderPortrait.js';
 
 /**
  * Tepside tutulan kart sayısı. Gizli kartın süresi işlemez (bkz. syncTimers):
@@ -226,8 +227,10 @@ export class Notifications {
       ? `<b class="notify-title">${escapeHtml(entry.title)}</b>`
       : '';
     const body = entry.title ? (entry.body ?? '') : entry.text;
+    // Lider konuşuyorsa kartın yüzü odur (kart sonradan açılsa da aynı kişi kalsın diye kurulurken okunur).
+    const speaker = entry.leader != null ? this.game.world?.nations?.[entry.leader]?.leader : null;
     card.innerHTML = `
-      <span class="notify-icon" aria-hidden="true">${glyph(NOTIFY_GLYPH[entry.kind] ?? 'info')}
+      <span class="notify-icon${speaker ? ' has-leader' : ''}" aria-hidden="true">${speaker ? leaderPhoto(speaker, 'xs') : glyph(NOTIFY_GLYPH[entry.kind] ?? 'info')}
         <b class="notify-count${entry.count > 1 ? ' shown' : ''}">${entry.count > 1 ? entry.count : ''}</b>
       </span>
       <span class="notify-text">

@@ -44,6 +44,7 @@ import {
   classIndexOf, fleetEquivalent, fleetStrength, isObsolete, scrapShips, shipsOf, subsOf, surfaceOf,
 } from './navy.js';
 import { DEMAND, DIP_AI, WAR_GATE } from './dipDefs.js';
+import { leverOf } from './leaderDefs.js';
 import { cbOf, napBetween, removeTreaty } from './relations.js';
 import {
   aggressionOdds, answerPendingDelegated, demandBlockers, demandCandidates, grudgeOf, hasOddsProbe, issueDemand,
@@ -232,7 +233,7 @@ function diplomacy(game, nation, rng) {
   // Dünya gerilimi (barut fıçısı): ilan zarı ve güç eşiği gevşer; zar sayısı
   // değişmez (tek çekiliş) ki gerilimsiz yıllarda determinizm aynı kalsın.
   const tension = worldWarTension(world, game.turns.turn);
-  if (rng() > DECLARE_CHANCE * tension.declare) return;
+  if (rng() > DECLARE_CHANCE * tension.declare * leverOf(nation, 'declare')) return;
   // Hazırlık kapıları (alay, ikmal, istikrar, irade, SG, yorgunluk, şöhret,
   // iki cephe) zardan SONRA ve saf okumadır: kapı sırası zar dizisini
   // değiştirmez (pacts.warReadiness; Tehdit sütunu aynı listeyi basar).

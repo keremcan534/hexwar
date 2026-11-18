@@ -361,6 +361,53 @@ biri — 0.5'te 12 province'lik yabancı vassal tek başına 18 yazıyordu, eşi
 yukarıdaki özerklik): sınır dinamiğine yeni kanal açmak önce audit:borders
 ile ölçülmeli.
 
+## 12b. Liderler
+
+Her ulusun başında adı, portresi ve iki-üç kişilik özelliği olan bir lider vardır
+(`leaders.js` yaşam döngüsü, `leaderDefs.js` özellikler ve kaldıraçlar,
+`ui/leaderPortrait.js` çizim). Oyuncunun lider için tek bir işi yoktur: lider
+yönetilmez, tanınır (ev ödevi testi). Özelliğin bilgi kartı hangi kararı nasıl
+değiştirdiğini tek cümleyle söyler (cümle testi). Lider konuşmaz: ittifak, tehdit
+ve barış masası için yazılan repliklerin hepsi Kerem'in isteğiyle kaldırıldı
+(2026-11-18); ekranlar portreyi, adı ve özellikleri gösterir.
+
+- **Değişim:** ölüm (yıllık `0.006 × 1.085^(yaş−40)`, çeyrekte bir bakılır), seçim
+  (iktidar partisi değişir ya da iki dönem dolar), darbe (istikrar < %30 ya da
+  yorgunluk ≥ %55, en az iki yıllık görev, çeyrekte %5) ve devrim ya da anayasa
+  değişikliği. Değişim `politics.ruling` ve `politics.government` farkından okunur;
+  mutlakiyette hanedan soyadını ve bir huyu geçirir. Kayıt v28 kalır: alan yoksa
+  lider tohumdan kurulur.
+- **Oyun zarı çekilmez:** her sonuç tohum + ulus + lider sırası + haftadan özetlenir.
+  `DIP_AI.leaders` kapalıyken dünya parmak izi liderlerden öncekiyle bit bit aynıdır
+  (FP1, FP2 × 10 yıl). Sınır ölçüsünün tabanı bu koldur.
+- **Özellikler** mevcut eşikleri oynatır, yeni karar ya da ikinci ilişki sayacı açmaz:
+
+| Özellik | Etki | Ölçüt (taban) | Etki | Std. hata | Aynı yönde |
+|---|---|---|---|---|---|
+| Warlike | savaş eşiği ×0.78, ilan zarı ×2 | saldırı savaşı (13.2) | +5.4 | 1.5 | 10/12 |
+| Cautious | savaş eşiği ×1.3, ilan zarı ×0.5 | saldırı savaşı (13.2) | −5.4 | 1.5 | 11/12 |
+| Opportunist | güçlü saldırganda çağrıya gelmez, ittifak çizgisi −5 | bozulan ittifak + reddedilen çağrı (5.7) | +28.0 | 1.1 | 12/12 |
+| Conciliator | ittifak ve pakt hükmü +1 | kurulan ittifak (36.3) | +7.3 | 1.7 | 10/12 |
+| Isolationist | ittifak −1.5, pakt +0.5 | kurulan ittifak (36.3) | −28.5 | 1.7 | 12/12 |
+
+**Ölçüm** (`npm run audit:leaders`, 78×62, 12 tohum × 30 yıl): özellik bütün liderlere
+zorlanır, nötr dünyayla eşli karşılaştırılır; gürültü iki `HX_PLACEBO` kolunun
+farkıdır. Geçme şartı: beklenen yön, |etki| ≥ 2 × std. hata, tohumların en az üçte
+ikisi aynı yönde. Tek bir kampanyada Warlike, Cautious ve Conciliator'ın etkisi
+tohum gürültüsünün (5.1 ve 5.9) altında ya da yanında kalabilir; ayrışma ortalamadadır.
+Kampanya başına ortalama 30 ölüm, 40 seçim, 9 darbe ya da devrim.
+
+**Ölçülüp silinenler:** Faithful (bozulan ittifak farkı 0), Vengeful ve Forgiving (kin
+sıralaması da eski düşmana düşük savaş eşiği de 6 tohum × 30 yılda tek kararı
+değiştirmedi), Hardliner (görmediği 6 tohumda tekrarlanmadı: +0.6, 3/6), Pragmatist
+(12 tohumun 7'sinde iz bıraktı, eşik 8).
+
+**Sınır ölçüsü** (audit:borders, 78×62, BORDER1-6 × 45 yıl; lider kolu kapalı → açık):
+savaş + talep payı %12.80 → %10.26 (−2.54; sınır ±4), ulus toplamı 238 → 236 (−2;
+sınır ±8), en yüksek tohum %14.6 (≤ 33), TEST 1-3 doğru, savaş 431 → 388. Placebo:
+%12.87, 239 ulus, 479 savaş; tohum başına pay −6.9…+4.9 puan oynuyor, lider kolu
+−9.8…+7.5.
+
 ## 13. Teknoloji
 
 5 dal (Sanayi, Altyapı, Ordu, Donanma, Toplum) × 2 klasör × 5 kademe, Ordu'da

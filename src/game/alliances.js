@@ -17,7 +17,10 @@
 import { IC_SCALE } from './econ/defs.js';
 import { TIER, announce, remember } from './chronicle.js';
 import { calendarYear } from './calendar.js';
-import { atWar, attackerCount, declareWar, hostile, relation, warBlockers } from './diplomacy.js';
+import {
+  atWar, attackerCount, declareWar, hostile, nationStrength, relation, warBlockers,
+} from './diplomacy.js';
+import { leverLabel, leverOf } from './leaderDefs.js';
 import { treatiesOf } from './peace.js';
 import {
   ALLIANCE_RULES, CALL, DIP_AI, READ,
@@ -148,6 +151,8 @@ export function allianceAppeal(world, evaluator, other, turn = world.turn ?? 0) 
   score -= wars * 0.5;
   // İlişki defteri (R1): +40 elçi = +1.6.
   if (DIP_AI.relations) score += regardOf(world, evaluator.id, other.id, turn) / READ.ALLIANCE_DIV;
+  // Liderin ortaklığa yatkınlığı (allianceVerdict aynı sırayla toplar).
+  score += leverOf(evaluator, 'allianceBias');
   return score;
 }
 
@@ -232,6 +237,7 @@ export function allianceVerdict(world, evaluator, other, turn = world.turn ?? 0)
   const wars = relation(world, evaluator.id, other.id)?.wars ?? 0;
   if (wars) push(`Past wars ×${wars}`, -wars * 0.5);
   if (DIP_AI.relations) push('Relations', regardOf(world, evaluator.id, other.id, turn) / READ.ALLIANCE_DIV);
+  push(leverLabel(evaluator, 'allianceBias'), leverOf(evaluator, 'allianceBias'));
   let sum = 0;
   for (const part of parts) sum += part.value;
   // Kayan nokta: parçalar appeal'deki sırayla eklendi; sıfır parçalar
@@ -326,7 +332,7 @@ export function breakAllianceBy(game, me, partnerId, { ai = false, cause = null 
     });
   } else if (partnerId === player) {
     announce(game, partner, {
-      kind: 'DIPLOMACY', tier: TIER.MAJOR, key: `ally:${me.id}`,
+      kind: 'DIPLOMACY', tier: TIER.MAJOR, key: `ally:${me.id}`, leader: me.id,
       title: `${me.name} ends our alliance`,
       detail: why ? `Their reason: ${why.theirs}.` : 'They gave no reason.',
     });
@@ -359,7 +365,7 @@ export function reviewAlliances(game) {
         cause = breakCause(world, nation, partner, turn);
       } else if (DIP_AI.relations) {
         const regard = regardOf(world, nation.id, partnerId, turn);
-        if (regard < READ.BREAK) {
+        if (regard < READ.BREAK + leverOf(nation, 'breakLine')) {
           cause = breakCause(world, nation, partner, turn) ?? {
             key: 'relations',
             ours: `our relations have soured (${Math.round(regard)})`,
@@ -419,7 +425,7 @@ function proposeAllianceToPlayer(game, nation, turn) {
   const reasons = verdict.parts.filter((p) => p.value > 0)
     .map((p) => `${p.label} ${p.value >= 0 ? '+' : '−'}${Math.abs(p.value).toFixed(1)}`).join(', ');
   announce(game, player, {
-    kind: 'DIPLOMACY', tier: TIER.IMPORTANT, key: `dip-req:${rec.id}`, ttl: 0,
+    kind: 'DIPLOMACY', tier: TIER.IMPORTANT, key: `dip-req:${rec.id}`, ttl: 0, leader: nation.id,
     title: `${nation.name} proposes an alliance`,
     detail: `${reasons ? `Their reasons: ${reasons}. ` : ''}An attack on one becomes a call to the other. Answer in Diplomacy (P) within ${rec.expires - turn} weeks.`,
   });
@@ -489,6 +495,21 @@ export function callAlliesToWar(game, aggressorId, defenderId, warAt = undefined
       callPlayer(game, ally, defender, aggressor, bond, warAt, turn);
       continue;
     }
+    // Fırsatçı lider, saldırgan ikisinden de ağır basıyorsa müttefiğini yalnız
+    // bırakır; bedeli oyuncunun reddiyle aynı deftere yazılır.
+    if (bond === 'ally' && leverOf(ally, 'desert') > 0 && aggressor
+      && nationStrength(world, aggressor) > nationStrength(world, ally) + nationStrength(world, defender)) {
+      deed(world, defenderId, id, 'refused_call', turn);
+      remember(defender, turn, 'refused_call', id);
+      if (defenderId === player) {
+        announce(game, defender, {
+          kind: 'DIPLOMACY', tier: TIER.MAJOR, key: `ally-call:${id}`, leader: id,
+          title: `${ally.name} leaves us to fight alone`,
+          detail: `${ally.name} will not march against ${aggressor.name}. The alliance may not survive it.`,
+        });
+      }
+      continue;
+    }
     // Muttefigin ultimatomu saldirganinkiyle ayni hafta biter: cephe birlikte acilir.
     if (declareWar(game, id, aggressorId, { reason: 'alliance', calledBy: defenderId, warAt })) {
       remember(ally, turn, 'honored_call', defenderId);
@@ -524,7 +545,7 @@ function callPlayer(game, me, defender, aggressor, bond, warAt, turn) {
   });
   const delegated = Boolean(me.delegation?.diplomacy);
   announce(game, me, {
-    kind: 'WAR', tier: TIER.MAJOR, key: `call:${aggressor.id}`, halt: !delegated,
+    kind: 'WAR', tier: TIER.MAJOR, key: `call:${aggressor.id}`, halt: !delegated, leader: defender.id,
     title: `${defender.name} calls us to arms against ${aggressor.name}`,
     detail: `Join free, as a defender: no political power, no war of aggression. Or stay out: ${stayOutCost(bond, defender.name)}. Answer in Diplomacy (P) — ${Math.max(1, rec.expires - turn)} weeks.`,
   });

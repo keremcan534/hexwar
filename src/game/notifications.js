@@ -135,6 +135,8 @@ export class NotificationCenter {
       body: meta.body ?? null,
       tile: meta.tile ?? null,
       report: meta.report ?? null,
+      // Konuşan liderin ulusu: kart ikon yerine onun portresini taşır.
+      leader: meta.leader ?? null,
       turn: this.game.turns?.turn ?? 0,
       count: 1,
       at: now,

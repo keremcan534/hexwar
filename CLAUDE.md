@@ -193,6 +193,12 @@ kültürlü ulus state'lerinin %46 yerine %36'sını tutuyor). Batarya temiz.
 Hex düğümlü hareket grafı: `src/world/provinceGraph.js`; kümeye oyuncu
 "state" der.
 
+**Liderler (2026-11-18, TASARIM §12b).** `leaders.js` yaşam döngüsü, `leaderDefs.js`
+özellikler (`leverOf`), `ui/leaderPortrait.js` çizim. Lider konuşmaz (Kerem). Yeni
+özellik `npm run audit:leaders`ten geçmeden kalmaz; kol `DIP_AI.leaders` kapalıyken
+parmak izi liderlerden öncekiyle aynı olmalı. Portre sayfası dilimlenince adı
+`leaderPortrait.js` `READY_SHEETS`e yazılır (`assets/leaders/<sayfa>-NN.webp`).
+
 Sistemlerin kod yeri: ekonomi `src/game/economy.js` (sıra ve çubuk) +
 `src/game/econ/*` (output, bills, investment, industry, resources, trade),
 siyaset `politics.js` (+ `laws.js`, `modifiers.js`, `agenda.js`,

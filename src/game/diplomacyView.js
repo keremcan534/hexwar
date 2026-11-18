@@ -134,7 +134,9 @@ function requestView(world, me, rec, turn) {
   const topic = rec.kind === 'call' ? ({ guarantor: 'guarantee', overlord: 'vassal', vassal: 'vassal' }[rec.via] ?? 'alliance')
     : rec.kind === 'proposal' ? ({ ALLIANCE: 'alliance', NAP: 'pact' }[rec.treaty] ?? 'guarantee')
       : 'demand';
-  const base = { id: rec.id, kind: rec.kind, topic, flag: from?.id ?? null, weeksLeft };
+  const base = {
+    id: rec.id, kind: rec.kind, topic, flag: from?.id ?? null, weeksLeft, leader: from?.leader ?? null,
+  };
   if (rec.kind === 'call') {
     const aggressor = world.nations[rec.aggressor];
     const startsIn = Math.max(0, (rec.warAt ?? turn) - turn);

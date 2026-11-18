@@ -26,6 +26,7 @@ export const DIP_AI = {
   envoys: true,     // YZ elçi gönderir
   proposals: true,  // YZ → oyuncu bekleyen teklifler (ittifak, pakt, garanti isteği)
   passage: true,    // aynı cephedekilere geçiş + withdrawTrespassers / ikmal / runPassages düzeltmesi
+  leaders: true,    // liderin kişiliği YZ eşiklerini oynatır (leaderDefs.leverOf); kapalıyken lider yalnız yüz ve sestir
 };
 
 /** Kol adları (tezgâh ve denetim listesi için). */

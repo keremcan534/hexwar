@@ -142,3 +142,49 @@ Haberlerin karşılığı (sayfa · satır · sütun → gazetedeki olay):
 | 2 · 2 sağ | seçim | 4 · 2 sağ | yeniden silahlanma |
 | 2 · 3 sol | bağımsızlık | 4 · 3 sol | saray, mutlakiyet |
 | 2 · 3 sağ | grev | 4 · 3 sağ | general haberi |
+
+## 4. Lider portreleri: 5 sayfa, 250 yüz
+
+Her ülkenin başında adı, yüzü ve kişiliği olan bir lider var. Portre gelene dek
+erkek liderler subay vesikalıklarını taşıyor, kadın liderlerde yalnız baş harfler
+görünüyor. Sayfalar general sayfalarıyla aynı biçimde: 10 sütun × 5 satır, hücre
+sırası soldan sağa, yukarıdan aşağıya. Oyun fotoğrafa sepya baskıyı kendi uygular,
+sen renkli ya da gri üretebilirsin.
+
+Dosya adları: `lider-hukumdar.webp`, `lider-devlet-1.webp`, `lider-devlet-2.webp`,
+`lider-asker.webp`, `lider-devrimci.webp`
+
+Aynı istemi yalnız kıyafet satırını değiştirerek beş kez kullan:
+
+> One image, 2000×1000, a strict grid of 10 columns × 5 rows of 50 different
+> head-and-shoulders formal studio portraits, each cell the same size, no gutters
+> and no captions. Every person is an invented individual who does not resemble any
+> real historical figure, and each is clearly different from the others: vary face
+> shape, nose, ears, skin tone, hair, baldness, moustache, beard and spectacles, and
+> include faces from Europe, the Middle East, Central Asia, East Asia, South Asia,
+> Africa and Latin America. Same neutral grey studio backdrop, same soft window
+> light from the left, head centred in the upper half of the cell, shoulders square
+> to the camera, composed and dignified expression.
+>
+> `lider-hukumdar` kıyafet: Rows 1 to 4 are reigning kings, emperors, princes, khans
+> and emirs aged 25 to 70, in ceremonial court dress with sashes, orders, epaulettes,
+> fur collars and robes of state, some in jewelled turbans or kalpaks. Row 5 is ten
+> reigning queens and empresses aged 25 to 70, in high-collared court gowns with
+> pearls, tiaras and an order on a sash.
+>
+> `lider-devlet-1` kıyafet: civilian prime ministers and presidents of 1900-1918,
+> men aged 45 to 75, in black frock coats, wing collars and cravats, with watch
+> chains, pince-nez, full beards and waxed moustaches, a few in a fez or turban.
+>
+> `lider-devlet-2` kıyafet: civilian prime ministers and presidents of 1919-1945,
+> men aged 45 to 75, in dark double-breasted lounge suits, soft collars and striped
+> ties, with round spectacles, clipped moustaches or clean-shaven, hair brushed back.
+>
+> `lider-asker` kıyafet: marshals and heads of military juntas, men aged 45 to 68, in
+> heavy dress uniforms with gold braid, high collars, rows of medals and peaked caps
+> or kepis, hard and unsmiling.
+>
+> `lider-devrimci` kıyafet: Rows 1 to 4 are revolutionary party chairmen aged 30 to
+> 58, in plain dark tunics buttoned to the neck, leather coats, worn jackets and
+> workers' caps, unshaven, with an intense stare. Row 5 is ten women revolutionary
+> leaders aged 30 to 55, in plain dark dresses or tunics with their hair pinned back.

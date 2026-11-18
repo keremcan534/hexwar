@@ -71,6 +71,7 @@ import { SAVE_VERSION, exportSaveText, importSaveText, readableVersion } from '.
 import { LEGACY_SLOT, MAX_MANUAL, deleteSave, listSaves, manualCount } from '../game/saveStore.js';
 import { diplomacyView } from '../game/diplomacyView.js';
 import { bindDiplomacyScreen, renderDiplomacyScreen, renderDossierScreen } from './diplomacyScreen.js';
+import { leaderByline, leaderPhoto } from './leaderPortrait.js';
 import { warOverview, worldConflicts } from '../game/warView.js';
 import { conflictDetailHtml, conflictFocusTile } from './warDetail.js';
 
@@ -798,6 +799,7 @@ export class Screens {
         allied: `allied with ${other}`,
         alliance_broken: `broke with ${other}`,
         honored_call: `honored the call of ${other}`,
+        refused_call: `left to fight alone by ${other}`,
       }[m.kind] ?? `${m.kind} ${other}`;
       return `<li><em>${year}</em> ${text}</li>`;
     }).join('');
@@ -934,6 +936,7 @@ export class Screens {
         style="width:${budget > 0 ? Math.min(100, (cost / budget) * 100).toFixed(1) : (cost > 0 ? 100 : 0)}%"></i></div>
       <p class="hint ${acceptable ? '' : 'res-warn'}">${acceptable
     ? 'They will sign this treaty.' : esc(refusal)}</p>
+      <div class="ldr-table">${leaderPhoto(target.leader, 'sm')}${leaderByline(target.leader)}</div>
       <div class="row-buttons">
         <button class="k-btn primary" data-sign-peace="1" ${acceptable ? '' : 'disabled'}>
           ${offer.demands.length || offer.concessions.length ? 'Sign treaty' : 'Sign white peace'}</button>
@@ -1008,6 +1011,7 @@ export class Screens {
     return `<div class="card peace-offer">
       <div class="card-head"><h3>${esc(from.name)} proposes peace</h3>
         <small>their war score ${warScore(world, entry.from, this.me.id)} · costs you ${cost}</small></div>
+      <div class="ldr-table">${leaderPhoto(from.leader, 'sm')}${leaderByline(from.leader)}</div>
       ${white ? '<p class="hint">A white peace: the borders stay exactly where they are.</p>' : ''}
       ${tileLine(offer.demands, 'They annex')}
       ${tileLine(offer.concessions, 'They cede to us')}

@@ -380,6 +380,7 @@ export function declareWar(game, a, b, options = {}) {
       // haberi yok değil. Saldırıya uğramak ya da devredilmiş diplomasinin
       // ilanı ise durdurur (Kerem: "oyun aşırı fazla duruyor").
       halt: !(manual && !attacked),
+      leader: attacked ? other.id : null,
       title: attacked
         ? `${other.name} declares war on us — ${weeks} weeks to prepare`
         : `War declared on ${other.name} — armies march in ${weeks} weeks`,

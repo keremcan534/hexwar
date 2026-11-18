@@ -27,6 +27,7 @@ import { ensurePolitics } from './politics.js';
 import { ensureDelegation, restoreDelegation } from './delegation.js';
 import { copyDiplo, copyRegard } from './relations.js';
 import { restoreReplay, serializeReplay } from './replay.js';
+import { copyLeader } from './leaders.js';
 
 /** Barış teklifinin tam kopyası (listeler ayrı dizi; canlı oyunla paylaşılmaz). */
 function copyPeaceOffer(entry) {
@@ -343,6 +344,10 @@ export function serialize(game) {
         // toprak kaybetti" tarihi silinirdi.
         rivalId: n.rivalId ?? null,
         memory: (n.memory ?? []).map((entry) => ({ ...entry })),
+        // Lider: kişiliği YZ kararını okur, kayıttan aynı dönmeli.
+        leader: copyLeader(n.leader),
+        leaderCount: n.leaderCount ?? 0,
+        leaderPast: (n.leaderPast ?? []).map((entry) => ({ ...entry })),
         rallyPoint: n.rallyPoint ?? null,
         // AUTO anahtarlari ve her alanin son otomatik eylemi. Turetilemez
         // veri: yazilmazsa yuklenen oyun butun devirleri kapali baslatir ve
@@ -631,6 +636,10 @@ export function deserialize(game, data) {
     nation.opening = saved.opening ? { ...saved.opening } : null;
     nation.rivalId = saved.rivalId ?? null;
     nation.memory = (saved.memory ?? []).map((entry) => ({ ...entry }));
+    // Liderden önceki v28 kayıtta yok: runLeaders ilk haftada tohumdan kurar.
+    nation.leader = copyLeader(saved.leader);
+    nation.leaderCount = saved.leaderCount ?? 0;
+    nation.leaderPast = (saved.leaderPast ?? []).map((entry) => ({ ...entry }));
     // Diplomasi: NATION_FIELDS takma adla atadı; derin kopya (aynı yükü iki
     // kez deserialize eden betiklerde canlı duruma sızmasın).
     nation.policies = saved.policies ? JSON.parse(JSON.stringify(saved.policies)) : undefined;
