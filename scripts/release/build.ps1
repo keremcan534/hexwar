@@ -11,7 +11,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-Add-Type -AssemblyName System.IO.Compression.FileSystem
+Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
 
 $repo = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $full = (& git -C $repo rev-parse --verify "$Commit^{commit}").Trim()
@@ -50,7 +50,24 @@ try {
   New-Item -ItemType Directory -Force -Path $outDir | Out-Null
   $zip = Join-Path $outDir "ImperialEye-$Label.zip"
   if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip }
-  [IO.Compression.ZipFile]::CreateFromDirectory((Join-Path $stage 'paket'), $zip, [IO.Compression.CompressionLevel]::Optimal, $false)
+  # CreateFromDirectory Windows PowerShell'de girdi adlarını ters bölüyle yazar;
+  # zip standardı düz bölü ister, başka açıcılar klasörleri dosya adı sanır.
+  $base = (Get-Item -LiteralPath (Join-Path $stage 'paket')).FullName
+  $stream = [IO.File]::Open($zip, [IO.FileMode]::CreateNew)
+  $package = New-Object IO.Compression.ZipArchive($stream, [IO.Compression.ZipArchiveMode]::Create)
+  try {
+    foreach ($file in Get-ChildItem -LiteralPath $base -Recurse -File) {
+      $name = $file.FullName.Substring($base.Length + 1).Replace('\', '/')
+      $entry = $package.CreateEntry($name, [IO.Compression.CompressionLevel]::Optimal)
+      $entry.LastWriteTime = $file.LastWriteTime
+      $reader = $file.OpenRead()
+      $writer = $entry.Open()
+      try { $reader.CopyTo($writer) } finally { $writer.Dispose(); $reader.Dispose() }
+    }
+  } finally {
+    $package.Dispose()
+    $stream.Dispose()
+  }
 
   $info = Get-Item -LiteralPath $zip
   "{0}  {1:N1} MB  commit {2}" -f $info.FullName, ($info.Length / 1MB), $full.Substring(0, 7)
