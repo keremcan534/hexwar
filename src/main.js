@@ -110,6 +110,7 @@ const menu = new MainMenu(game, {
   onWorldBuilt: () => picker.open(),
   onOpen: () => picker.close(),
 });
+picker.onBack = () => menu.returnFromPicker();
 if (!seed) menu.open();
 else picker.open();
 hud.bindMenu(menu);

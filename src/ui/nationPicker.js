@@ -14,6 +14,7 @@
 //
 // Katman: ui. Oyun durumuna yalnız game üzerinden erişir.
 
+import { onEscape } from './hud.js';
 import { emblemArt, gaugeArt, resourceArt } from './icons/art.js';
 import { nationBrief, nationRoster } from '../game/nationBrief.js';
 import { formatPopulation } from '../game/economy.js';
@@ -43,6 +44,7 @@ const ratioShare = (ratio) => (Number.isFinite(ratio) && ratio > 0
 export class NationPicker {
   constructor(game) {
     this.game = game;
+    this.onBack = null;
     this.open_ = false;
     this.candidate = null;
     this.filter = '';
@@ -90,6 +92,11 @@ export class NationPicker {
     game.on('clock', (clock) => {
       if (this.open_ && clock?.speed > 0) this.confirm();
     });
+    onEscape(game, () => {
+      if (!this.open_ || !this.onBack) return false;
+      this.onBack();
+      return true;
+    });
   }
 
   get isOpen() { return this.open_; }
@@ -132,6 +139,10 @@ export class NationPicker {
     }
     if (event.target.closest('[data-play]')) {
       this.confirm();
+      return;
+    }
+    if (event.target.closest('[data-back]')) {
+      this.onBack?.();
       return;
     }
     if (event.target.closest('[data-suggested]')) {
@@ -258,6 +269,7 @@ export class NationPicker {
       </div>
       <div class="np-actions">
         <button class="np-play" data-play="1">Play as ${esc(brief.name)}<kbd>Enter</kbd></button>
+        <button class="np-alt" data-back="1">Main menu<kbd>Esc</kbd></button>
         ${brief.suggested ? '' : '<button class="np-alt" data-suggested="1">Back to suggested</button>'}
       </div>`;
     // Bayrak dalgalanır (künyedeki aynı bez: flagWave); kap her adayda yenidir.

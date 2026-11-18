@@ -999,6 +999,16 @@ export class MainMenu {
     this.game.requestRender();
   }
 
+  /**
+   * Ülke seçiminden dönüş. Kurulan dünya henüz kampanya değil: "Continue"
+   * sunulsaydı oyuncu ülke seçmeden önerilen ülkeyle oyuna düşerdi.
+   */
+  returnFromPicker() {
+    this.resumable = false;
+    this.setScene(nextSceneIndex());
+    this.open();
+  }
+
   /** Menüyü tekrar açar: oyun içi ayarlar panelindeki "Ana Menü" düğmesi. */
   reopen() {
     this.resumable = true;
