@@ -15,11 +15,13 @@ const units = (nation) => Math.max(1, (nation.economy?.population ?? 0) / 100000
 
 /**
  * `cost` SG, `cooldown` hafta, `available` koşul, `weight` YZ ağırlığı,
- * `apply` etki (cümle döner).
+ * `apply` etki (cümle döner). `short` karar kartının tek satırı (ekran metni,
+ * motor okumaz); tam açıklama `desc`, bilgi kartında.
  */
 export const DECISIONS = {
   industrial_subsidies: {
     name: 'Industrial Subsidies', cost: 75, cooldown: 104,
+    short: 'Investment +30% · 2 yr',
     desc: 'Investment +30% for two years: every IC put into development goes further.',
     available: () => true,
     weight: (nation) => ((nation.economy?.consumer?.ratio ?? 1) < 1.05 ? 1.6 : 0.8),
@@ -31,6 +33,7 @@ export const DECISIONS = {
   },
   war_bonds: {
     name: 'War Bonds', cost: 50, cooldown: 52,
+    short: 'Output +8% · 1 yr',
     desc: 'Patriotic savers fund the war: output +8% for a year, then −2% for four years as the bonds are repaid; war support +3 for half a year.',
     available: (nation) => atWar(nation),
     weight: (nation) => (inSupplyCrisis(nation) ? 2.5 : 1),
@@ -44,6 +47,7 @@ export const DECISIONS = {
   },
   requisition: {
     name: 'Requisition Arms', cost: 40, cooldown: 52,
+    short: 'Rifles now · Stability −3',
     desc: 'Seize hunting rifles and old muskets: rifles for the depot, stability −3 for half a year.',
     available: (nation) => atWar(nation),
     weight: (nation) => ((nation.economy?.stock?.rifles ?? 0) < 20 ? 2.5 : 0.3),
@@ -56,6 +60,7 @@ export const DECISIONS = {
   },
   military_drills: {
     name: 'Grand Manoeuvres', cost: 50, cooldown: 104,
+    short: 'Org +15% · Training +15%',
     desc: 'Organisation recovery +15% and training speed +15% for a year.',
     available: () => true,
     // Barış ağırlığı YZ tabanının (0.5) altında: manevra savaşta ya da askerî
@@ -68,6 +73,7 @@ export const DECISIONS = {
   },
   land_grants: {
     name: 'Land Grants', cost: 60, cooldown: 156,
+    short: 'Growth +15% · Stability +2',
     desc: 'Population growth +15% for two years, stability +2.',
     available: () => true,
     weight: () => 0.7,
@@ -78,6 +84,7 @@ export const DECISIONS = {
   },
   gendarmerie: {
     name: 'Expand the Gendarmerie', cost: 50, cooldown: 104,
+    short: 'Unrest −20% · Stability +2',
     desc: 'Unrest −20% for a year, stability +2; liberals resent it.',
     available: () => true,
     weight: (nation) => ((nation.politics?.stabilityTarget ?? 0.6) < 0.45 ? 1.8 : 0.3),
@@ -90,6 +97,7 @@ export const DECISIONS = {
   },
   national_census: {
     name: 'National Census', cost: 40, cooldown: 260,
+    short: 'Output +3% · 2 yr',
     desc: 'Output +3% for two years.',
     available: () => true,
     weight: () => 1,
@@ -100,6 +108,7 @@ export const DECISIONS = {
   },
   royal_amnesty: {
     name: 'Amnesty and Festivities', cost: 60, cooldown: 104,
+    short: 'Stability +6 · ½ yr',
     desc: 'Stability +6 for half a year.',
     available: () => true,
     weight: (nation) => ((nation.stability ?? 0.6) < 0.45 ? 2 : 0.2),
@@ -110,6 +119,7 @@ export const DECISIONS = {
   },
   patriotic_press: {
     name: 'Patriotic Press', cost: 50, cooldown: 104,
+    short: 'War support +8 · 1 yr',
     desc: 'War support +8 for a year.',
     available: () => true,
     weight: (nation) => (atWar(nation) && (nation.warSupport ?? 0.5) < 0.5 ? 2.2 : 0.3),
@@ -122,6 +132,7 @@ export const DECISIONS = {
   // ikmal krizinden çıkışın siyasi bedeli.
   requisition_economy: {
     name: 'Requisition the Economy', cost: 80, cooldown: 156,
+    short: 'Bill ceiling 75% · Stability −5',
     desc: 'The state takes what the army needs: the bill ceiling rises from 60% to 75% of output for half a year; stability −5.',
     available: (nation) => inSupplyCrisis(nation)
       || (nation.economy?.bills?.owed ?? 0) > 0.5 * (nation.economy?.ic?.output ?? Infinity),
@@ -133,6 +144,7 @@ export const DECISIONS = {
   },
   research_grants: {
     name: 'Research Grants', cost: 60, cooldown: 104,
+    short: 'Research +15% · 2 yr',
     desc: 'Research +15% for two years.',
     available: () => true,
     weight: () => 0.9,

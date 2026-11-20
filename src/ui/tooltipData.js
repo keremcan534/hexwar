@@ -709,6 +709,8 @@ export function registerTooltips(game) {
       politics: ['Politics', `Government, laws, advisors, agenda and decisions. Laws, advisors and decisions are paid in ${term('power', 'political power')}.`, 'F8'],
       technology: ['Technology', `The research tree, the queue and what each technology does — bought with ${term('research', 'research points')}.`, 'F9'],
       chronicle: ['Chronicle', 'The history of your nation, event by event.', 'F10'],
+      diplomacy: ['Diplomacy', 'Relations, alliances, guarantees, demands and wars with every nation.', 'P'],
+      policies: ['State Policies', 'How vassals, occupied land and penal states are run, and the fusion of peoples.', ''],
     };
     const row = TAB[screen];
     if (!row) return null;

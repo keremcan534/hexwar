@@ -26,14 +26,14 @@ import { cultureAtlas } from '../game/peoplesView.js';
 import { bindMacroCards } from './macroCard.js';
 import { armDisband, armyPanelHtml, commandCardsHtml, generalPickerHtml } from './armyPanel.js';
 import { LEAVE_MS, hidePanel, motionOn, panelOpen, togglePanel } from './motion.js';
-import { Screens } from './screens.js';
+import { Screens, TAB_KEYS } from './screens.js';
 import { TabLedger } from './tabLedger.js';
 import { closeEndScreen, showEndScreen } from './endScreen.js';
 import { formatPopulation } from '../game/economy.js';
 import { RESOURCES, RESOURCE_IDS, DEVELOPMENT_MAX } from '../game/econ/defs.js';
 import { developmentCap, fundFloor, investmentTarget, levelCost } from '../game/econ/investment.js';
 import { inSupplyCrisis } from '../game/econ/bills.js';
-import { emblemArt, gaugeArt, resourceArt } from './icons/art.js';
+import { emblemArt, gaugeArt, resourceArt, realArt } from './icons/art.js';
 import { glyph } from './icons/glyphs.js';
 import { provideTooltip, quietScroll, refreshTooltips } from './tooltip.js';
 import { CURRENCY, meter as kitMeter, money, pips as kitPips, tipAttr } from './kit.js';
@@ -126,11 +126,24 @@ function miniCell(icon, label, value, attrs = '', cls = '') {
       <span class="tb-mini-ico">${icon}</span><b>${value}</b><small>${label}</small></span>`;
 }
 
-/** `extra`: değerin altına giren ek satır (Output hücresinin çubuğu). */
-function statCell(icon, label, value, attrs = '', cls = '', ring = null, extra = '') {
-  return `<span class="tb-gauge${cls ? ` ${cls}` : ''}"${stopAttr(attrs)} ${attrs}>
-      <span class="tb-socket">${ring ? ringSvg(ring.share, ring.tone) : ''}<span class="tb-ico">${icon}</span></span>
+/** Doluluk şeridi: kartın dibinde ince çubuk (eski yuvanın halkası). */
+function fillBar(share, tone = '') {
+  const f = Math.max(0, Math.min(1, share ?? 0));
+  return `<span class="tb-fill ${tone}" aria-hidden="true"><i style="width:${(f * 100).toFixed(1)}%"></i></span>`;
+}
+
+/**
+ * Ana gösterge FOTOĞRAF KARTIDIR (Kerem 2026-11-20: "logo değil arka plan, ekranlardaki
+ * kare kartlar gibi"; ardından "ikonları da ekle, eskisini"): zemin assets/kpi'nin resmi,
+ * solda eski madalyon yuvasında, yanında değer; doluluk halkası dipte şerit oldu.
+ * `extra`: değerin altına giren ek satır (Output hücresinin çubuğu).
+ */
+function statCell(photo, icon, label, value, attrs = '', cls = '', ring = null, extra = '') {
+  return `<span class="tb-gauge tb-card${cls ? ` ${cls}` : ''}"${stopAttr(attrs)} ${attrs}>
+      <span class="tb-photo" style="background-image:url(assets/kpi/${photo}.webp)" aria-hidden="true"></span>
+      <span class="tb-socket"><span class="tb-ico">${icon}</span></span>
       <span class="tb-gv"><small>${label}</small><b>${value}</b>${extra}</span>
+      ${ring ? fillBar(ring.share, ring.tone) : ''}
     </span>`;
 }
 
@@ -162,18 +175,6 @@ function outputBar(alloc, crisis) {
   return `<span class="tb-bar" aria-hidden="true" style="display:flex;gap:1px;height:3px;margin-top:2px;overflow:hidden;border-radius:1px;background:rgba(0,0,0,.5)${pulse}">${segments}</span>`;
 }
 
-/**
- * Sekme kısayolları: künyelerin soldan sağa sırası, on sekme F1-F10.
- * Cultures sonradan eklenince tablo dokuz tuşta kalmıştı: F7 yedinci sekmeyi
- * (Cultures) değil Politics'i açıyordu, Cultures'ın tuşu yoktu. Diplomasi
- * (sekmesi yok) P'ye geçti; F11/F12 tarayıcınındır. Kimlikler eski adlarını
- * taşır (kayıt, devir tablosu, ekran kancaları onlara bağlı): 'construction'
- * künyede Development, 'budget' Economy yazar (Tek Çubuk, 2026-10-15).
- */
-const TAB_KEYS = {
-  F1: 'construction', F2: 'industry', F3: 'trade', F4: 'budget', F5: 'military',
-  F6: 'population', F7: 'cultures', F8: 'politics', F9: 'technology', F10: 'chronicle',
-};
 
 /** Klavyeyle kamera kaydirma. Sol surukleme kutu secimine ayrildi. */
 const PAN_STEP = 90;
@@ -1577,8 +1578,8 @@ export class Hud {
     for (const cell of root.querySelectorAll('[data-k]')) {
       const key = cell.dataset.k;
       const value = Number(cell.dataset.v);
-      const ring = cell.querySelector('.tb-ring .val');
-      const dash = ring?.getAttribute('stroke-dasharray');
+      const ring = cell.querySelector('.tb-fill > i');
+      const dash = ring?.style.width;
       const old = prev.get(key);
       prev.set(key, { value, dash });
       // Yeniden doğan hücrenin etiketi, havadaki fark sönene dek gizli kalır;
@@ -1587,10 +1588,10 @@ export class Hud {
       if (!old) continue;
       if (ring && old.dash && old.dash !== dash) {
         ring.style.transition = 'none';
-        ring.style.strokeDasharray = old.dash;
+        ring.style.width = old.dash;
         ring.getBoundingClientRect();
         ring.style.transition = '';
-        ring.style.strokeDasharray = dash;
+        ring.style.width = dash;
       }
       const delta = value - old.value;
       if (!calm || Math.abs(delta) < Number(cell.dataset.eps || 0) || delta === 0) continue;
@@ -2904,13 +2905,13 @@ function resourcesHtml(nation) {
   // düzendir (econ/bills.supplyFactor), oyuncu onu ekran açmadan görmeli.
   const output = nation.economy?.ic?.output ?? 0;
   const crisis = inSupplyCrisis(nation);
-  const cells = statCell(gaugeArt('output'), 'Output',
+  const cells = statCell('output', realArt('output', 'sm'), 'Output',
     `<span class="${crisis ? 'res-neg' : ''}">${outputLabel(output)}</span><em class="stat-flow">IC</em>`,
     `data-tip="topbar-output" ${track('out', output, Math.max(0.5, output * 0.02))}`, `tb-hero${crisis ? ' tb-crisis' : ''}`,
     null, outputBar(nation.economy?.alloc, crisis))
-    + statCell(gaugeArt('power'), 'Power', `${Math.round(nation.power ?? 0)}<em class="stat-flow res-pos">+${power.total.toFixed(1)}</em>`,
+    + statCell('political-power', realArt('power', 'sm'), 'Power', `${Math.round(nation.power ?? 0)}<em class="stat-flow res-pos">+${power.total.toFixed(1)}</em>`,
       `data-tip="power" ${track('power', nation.power ?? 0, 25)}`, '', { share: (nation.power ?? 0) / 500, tone: 'gold' })
-    + statCell(gaugeArt('stability'), 'Stability', `<span class="${stabilityClass}">${stability}%</span>`,
+    + statCell('stability', realArt('stability', 'sm'), 'Stability', `<span class="${stabilityClass}">${stability}%</span>`,
       `role="button" data-why="stability" data-tip="stability" ${track('stab', stability, 1)}`, 'stat-why',
       { share: stability / 100, tone: tone(stability, 45, 30) })
     // Yorgunluk iradenin yanında: savaşın bedeli ekran açmadan okunsun
@@ -2918,11 +2919,11 @@ function resourcesHtml(nation) {
     // kısaltması okunmuyordu; sargılı miğfer yorgunluğun kendi resmidir.
     // Göstergeler hud-photo setinden (art.gaugeArt); teknoloji dallarının
     // amblemleri ayrı dosyalardır, burada değişmeleri o ekranı değiştirmez.
-    + statCell(gaugeArt('war_support'), 'War Sup.', `${warSupport}%${exhaustion >= 5
+    + statCell('war-support', realArt('war-support', 'sm'), 'War Sup.', `${warSupport}%${exhaustion >= 5
       ? `<em class="stat-flow ${exhaustion >= 60 ? 'res-neg' : exhaustion >= 45 ? 'res-warn' : ''}" title="War exhaustion">${gaugeArt('exhaustion', 'inline')}${exhaustion}%</em>` : ''}`,
     `data-tip="warsupport" ${track('ws', warSupport, 1)}`, '',
       { share: warSupport / 100, tone: 'war' })
-    + statCell(gaugeArt('infamy'), 'Infamy', `<span class="${infamyClass}">${infamy.toFixed(1)}</span>`,
+    + statCell('infamy', realArt('infamy', 'sm'), 'Infamy', `<span class="${infamyClass}">${infamy.toFixed(1)}</span>`,
       `data-tip="infamy" ${track('inf', infamy, 0.5, -1)}`, '',
       { share: infamy / INFAMY_COALITION, tone: infamy >= INFAMY_COALITION ? 'neg' : infamy >= INFAMY_COALITION * 0.6 ? 'warn' : 'dim' });
   // KARTUŞ: beş ana gösterge sekme künyeleriyle aynı pirinç çerçevede.

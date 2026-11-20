@@ -25,7 +25,7 @@ import { DiscoveryCard } from './ui/discoveryCard.js';
 import { KpiMotion } from './ui/kpiMotion.js';
 import { Minimap } from './ui/minimap.js';
 import { SettingsPanel } from './ui/settingsPanel.js';
-import { currentTheme, initTheme, mountThemeSettings, setTheme } from './ui/theme.js';
+import { currentAccent, currentTheme, initTheme, mountThemeSettings, setAccent, setTheme } from './ui/theme.js';
 import './ui/gfxStyleMenu.js';
 import { materials } from './render/textures.js';
 import { LivingWorld } from './render/living/index.js';
@@ -138,7 +138,7 @@ game.uiSound = new UiSound();
 // Görünüm satırı (koyu / açık çelik): Settings'te grafik stilinin altına.
 // Konsoldan sınama için oyuna bağlı: game.theme.set('light').
 mountThemeSettings();
-game.theme = { set: setTheme, get: currentTheme };
+game.theme = { set: setTheme, get: currentTheme, setAccent, accent: currentAccent };
 // Keşif kartı: oyuncunun araştırması bitince resimli kart (ui/discoveryCard.js).
 new DiscoveryCard(game, { screens: hud.screens, sound: game.uiSound });
 // Gösterge kartlarında yanan meşale ve kıvılcım (bkz. ui/kpiMotion.js).

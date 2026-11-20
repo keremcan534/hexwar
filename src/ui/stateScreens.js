@@ -46,6 +46,7 @@ import {
 } from '../game/politics.js';
 import { agendaView, chooseAgenda } from '../game/agenda.js';
 import { decisionsView, takeDecision } from '../game/decisions.js';
+import { ADVISOR_CAT, DECISION_CAT, LAW_CAT, catAttr } from './catColors.js';
 import { acceptCulture, revokeCulture } from '../game/culture.js';
 import { blockadeCause, blockadeTip } from './navyText.js';
 import { releasePeople } from '../game/nationBirth.js';
@@ -58,8 +59,7 @@ import { GOALS, goalMet } from '../game/hegemony.js';
 import { nationManpower } from '../game/recruitment.js';
 import { describeEffects, mod } from '../game/modifiers.js';
 import {
-  autoPill, badge, blockedAttr, chain, empty, esc, kpi, kpiRow, ledger, meter, money, nextSort, num, panel, pct, pips, pts,
-  segmented, short, signed, signedMoney, sortHead, sortLabel, sortRows, spark, tipAttr, tone,
+  autoPill, badge, blockedAttr, chain, empty, esc, kpi, kpiRow, ledger, meter, money, nextSort, num, panel, pct, pips, pts, segmented, short, signed, signedMoney, sortHead, sortLabel, sortRows, spark, tipAttr, tone, effectChips,
 } from './kit.js';
 import { glyph } from './icons/glyphs.js';
 import {
@@ -103,7 +103,7 @@ function lawCard(world, nation, lawId, confirm, { compact = false } = {}) {
       arg: `${lawId}:${index}`,
     };
   });
-  return `<div class="k-law${compact ? ' compact' : ''}">
+  return `<div class="k-law${compact ? ' compact' : ''}"${catAttr(LAW_CAT[lawId])}>
     <span class="k-law-art"${tipAttr('law', lawId)}>${lawArt(lawId, compact ? 'md' : 'lg')}</span>
     <div class="k-law-main">
       <div class="k-law-head"${tipAttr('law', lawId)}>
@@ -579,12 +579,12 @@ export function renderBudget(game, me, state) {
   return `${kpis}
     ${crisis ? `<div class="k-alert neg"><b>Supply crisis</b> — the bills owe ${money(bills.owed, 1)} a week but only ${money(bills.room, 1)} fit under the ceiling: every bill is paid ${pct(bills.s)}. Reinforcement, training and order recover slower and stability falls until they fit. Shrink the army, lower the education law or take Requisition the Economy.</div>` : ''}
     ${hero}
-    <div class="k-cols-2">
+    <div class="k-cols-3 ec-cols">
       ${panel('Bills', `${billsTable}${warLine}`)}
       ${panel('Development fund', fundBody)}
-    </div>
     ${panel('Economic laws', `<div class="k-laws">${lawCard(world, me, 'economy', state.confirm, { compact: true })}${lawCard(world, me, 'labour', state.confirm, { compact: true })}${lawCard(world, me, 'education', state.confirm, { compact: true })}</div>${educ}`,
-    { sub: `${governmentView(world, me).lawCost} political power per change` })}`;
+    { sub: `${governmentView(world, me).lawCost} political power per change` })}
+    </div>`;
 }
 
 // ================================================================== TRADE ===
@@ -820,7 +820,20 @@ export function renderIndustry(game, me, state) {
   // kalıcı bir "seçili satır" gürültüdür.
   const cursor = lineCursor(me, state, split).id;
   const highlight = state.lineKeyboard && state.kbScreen === 'industry' ? cursor : null;
-  const rows = EQUIPMENT_IDS.map((id) => lineRow(me, id, { split, view, logistics, ironclad, cursor: highlight })).join('');
+  // Kapalı hatlar (1900'de tank, uçak) tek satırda toplanır: her biri tam satır tutup tabloyu
+  // pencereden taşırıyordu (Kerem: "gereksiz yerlerde gereksiz bilgi"). Satır hâlâ teknolojiye
+  // götürür; nedeni düğmenin bilgi kartında.
+  const usable = EQUIPMENT_IDS.filter((id) => split.alloc[id]?.usable);
+  const locked = EQUIPMENT_IDS.filter((id) => !split.alloc[id]?.usable);
+  const lockedRow = locked.length ? `<div class="pl-row pl-locked-sum"><span class="pl-lock-label">Not open yet</span><span class="pl-lock-list">${locked.map((id) => {
+    const lock = lineLock(me, id);
+    const techId = id === 'ships' ? null : unlockTechOf(EQUIPMENT[id]?.unit);
+    const plain = lock.text.replace(/<[^>]+>/g, '');
+    return techId
+      ? `<button class="k-btn sm" data-uc-goto-tech="${esc(techId)}"${tipAttr({ text: `${EQUIPMENT[id].name}\n${plain}\nClick to see it in Technology.` })}>${equipmentArt(id, 'xs', ironclad)}${esc(EQUIPMENT[id].name)}</button>`
+      : `<span class="pl-lock-chip"${tipAttr({ text: `${EQUIPMENT[id].name}\n${plain}` })}>${equipmentArt(id, 'xs', ironclad)}${esc(EQUIPMENT[id].name)}</span>`;
+  }).join('')}</span></div>` : '';
+  const rows = usable.map((id) => lineRow(me, id, { split, view, logistics, ironclad, cursor: highlight })).join('') + lockedRow;
   // Çekilmeyen payın iki kaynağı: bütün hatlar durmuş ya da tersane tavanı
   // (gemi hattının tavanı aşan payı öteki hatlara geçmez, bkz. lineAllocation).
   // Bu pay boşa gitmez: halkın ve kalkınmanın payında kalır (splitOutput).
@@ -836,11 +849,13 @@ export function renderIndustry(game, me, state) {
   const bulk = `<button class="k-btn sm pl-bulk" data-uc-lines-auto${anyManual
     ? tipAttr({ text: 'All lines to Auto\nThe ministry makes what the army lacks again; your own priorities are dropped.' })
     : ` disabled${tipAttr({ text: 'All lines to Auto\nEvery line is already on Auto.' })}`}>All to Auto</button>`;
-  const body = `<div class="pl-top">
+  // Ordu payı yasası sağ üst panelde: orada yalnız tüketim malı cümlesi vardı ve panel
+  // boş duruyordu, hat tablosu da altında pencereden taşıyordu.
+  const armyShare = `<div class="pl-top">
       ${lawCard(world, me, 'economy', state.confirm, { compact: true })}
       ${total}
-    </div>
-    ${splitBar(split, idleText)}
+    </div>`;
+  const body = `${splitBar(split, idleText)}
     <div class="pl-table">
       <div class="pl-row head">
         <span${tipAttr({ text: 'Lines\n↑ ↓ pick a line for the keyboard.' })}>Line <kbd class="k-key">↑↓</kbd></span>
@@ -858,7 +873,7 @@ export function renderIndustry(game, me, state) {
   return `${kpis}
     <div class="k-split wide-left">
       ${panel('Output', chains, { cls: 'ec-chainpanel' })}
-      ${panel('Consumer goods', `${settled ? consumerBar : ''}${consumerNote}`, { sub: 'the people\'s share of output' })}
+      ${panel('Army and people', `${armyShare}${settled ? consumerBar : ''}${consumerNote}`, { sub: 'how output is shared', cls: 'ip-share' })}
     </div>
     ${panel('Production lines', body, { cls: 'pl-panel' })}`;
 }
@@ -1536,25 +1551,21 @@ export function renderCultures(game, me, state) {
   }).join('');
 
   return `${kpis}
-    <div class="k-split wide-left k-cult">
+    <div class="k-split wide-left k-cult k-cult3">
       <div class="k-stack">
         ${panel('Peoples', `<div class="k-ptable">${peopleHead}${peopleRows}</div>`, { sub: sortLabel(psort, PEOPLE_COLS) ?? '' })}
-        ${panel('Restless states', restlessRows ? `<div class="k-rtable">${restlessRows}</div>${view.restlessMore ? `<small class="k-more">and ${view.restlessMore} calmer state${view.restlessMore === 1 ? '' : 's'}</small>` : ''}` : empty('Every state is calm.'), { sub: `out of 10 · revolt at ${view.revoltAt} · ${glyph('up', 'ctl')} rising ${glyph('down', 'ctl')} settling`, right: 'cause · compliance' })}
+        ${restlessRows ? panel('Restless states', `<div class="k-rtable">${restlessRows}</div>${view.restlessMore ? `<small class="k-more">and ${view.restlessMore} calmer state${view.restlessMore === 1 ? '' : 's'}</small>` : ''}`, { sub: `out of 10 · revolt at ${view.revoltAt} · ${glyph('up', 'ctl')} rising ${glyph('down', 'ctl')} settling`, right: 'cause · compliance' }) : ''}
+        ${panel('Citizenship', lawCard(world, me, 'citizenship', state.confirm, { compact: true }))}
       </div>
       <div class="k-stack">
         ${detail ? peopleCard(world, me, detail, state, acceptTip) : ''}
         ${settle.emptied.length || settle.ongoing ? resettleCard(settle) : ''}
+      </div>
+      <div class="k-stack">
         ${panel('National movements', moveCards || empty('No movement is growing. One rises where an unaccepted people is the majority and their unrest stays above 6.'), { sub: view.movements.length ? 'act before they break away' : 'peoples without rights organise here' })}
         ${focusCard(world, me)}
-        ${panel('Citizenship', lawCard(world, me, 'citizenship', state.confirm, { compact: true }))}
-        ${policiesLink('Penal states and the fusion of peoples are set in State Policies.')}
       </div>
     </div>`;
-}
-
-/** Politika ekranına geçiş: Politics ve Cultures aynı kapıyı gösterir. */
-function policiesLink(text) {
-  return panel('State policies', `<div class="k-pol-act"><span class="k-pol-what"><small>${esc(text)}</small></span><span class="k-pol-btn"><button type="button" class="k-btn sm" data-open-screen="policies">Open</button></span></div>`);
 }
 
 /** Halklar tablosunun sıralanabilir sütunları (kit.sortHead); hareketi olmayan halk sonda. */
@@ -1764,7 +1775,7 @@ export function renderPolitics(game, me, state) {
     kpi({ label: 'Government', cls: 'is-text', value: esc(view.government.name), sub: view.nextElection ? `election in ${Math.max(0, view.nextElection - turn)} weeks` : 'no elections', tip: { text: `${view.government.name}\n${view.government.desc}` } }),
     kpi({
       label: 'Legitimacy', value: view.legitimacy.gap > 0 ? pts(-view.legitimacy.hit) : 'full',
-      sub: view.legitimacy.gap > 0 ? `the people want the ${esc(PARTIES[view.legitimacy.leader].name)}` : 'the people back the cabinet',
+      sub: view.legitimacy.gap > 0 ? `the people want the ${esc(PARTIES[view.legitimacy.leader].name)}` : '',
       tip: { text: 'Legitimacy\nIf the people want another party than the one in government, stability pays for it every week.' },
     }),
   ]);
@@ -1816,9 +1827,13 @@ export function renderPolitics(game, me, state) {
   const parties = view.support.map((party) => {
     const appoint = !party.appointBlockers.includes('Decided by elections') && !party.ruling;
     const confirming = state.confirm === `gov:${party.id}`;
-    return `<div class="k-party${party.ruling ? ' ruling' : ''}"${tipAttr('party', party.id)}>
+    // Etkiler kartın üstünde renkli çip (Kerem: "partilerin modifierleri eksik gibi"): iki
+    // etkileri vardı ama dar düzende gizlenmişti; iktidar olmayan partinin etkisi de yazılır,
+    // seçim yaparken neyin değişeceği görünsün.
+    return `<div class="k-party${party.ruling ? ' ruling' : ''}" style="--party:${party.color}"${tipAttr('party', party.id)}>
       <i class="k-party-color" style="background:${party.color}"></i>
       <span class="k-party-name"><b>${esc(party.name)}</b>${party.ruling ? badge('in government', 'gold') : ''}<small>${describeEffects(party.effects).join(' · ')}</small></span>
+      <span class="k-party-fx">${effectChips(party.effects)}</span>
       <span class="k-party-sup">${meter(party.support / 100, { tone: 'party' })}<b>${Math.round(party.support)}%</b></span>
       <span class="k-party-acts">
         ${appoint ? `<button class="k-btn sm${confirming ? ' confirming' : ''}" data-uc-appoint="${party.id}"${blockedAttr(party.appointBlockers)}>${confirming ? 'Confirm' : 'Appoint · 80'}</button>` : ''}
@@ -1832,7 +1847,7 @@ export function renderPolitics(game, me, state) {
 
   const seats = view.advisors.map((seat) => {
     const others = seat.candidates.filter((c) => c.id !== seat.hired?.id);
-    return `<div class="k-seat">
+    return `<div class="k-seat"${catAttr(ADVISOR_CAT[seat.slot])}>
       <small class="k-seat-name">${esc(seat.name)}</small>
       ${seat.hired ? `<div class="k-seat-who"${tipAttr('advisor', `${seat.slot}:${seat.hired.id}`)}><b>${esc(seat.hired.title)}</b><span>${esc(seat.hired.name)}</span>
           <small>${describeEffects(seat.hired.effects).join(' · ')}</small>
@@ -1854,36 +1869,58 @@ export function renderPolitics(game, me, state) {
   // tamamı bilgi kartında. Eski kutucuk üç satırdı ve ekranı taşırıyordu.
   // Kapalı karar da aynı kartı açar (engeller kartın altında): yalnız engel
   // listesi gösterilseydi kesilen etki metni hiçbir yerde okunamazdı.
-  const decisionTiles = decisions.map((decision) => `<button class="k-dec slim" data-uc-decision="${decision.id}"${decision.blockers.length ? ' disabled aria-disabled="true"' : ''}${tipAttr('decision', decision.id)}>
-      <b>${esc(decision.name)}</b><span class="k-cost">${decision.cost}</span><small>${esc(decision.desc)}</small></button>`).join('');
+  // KARAR KARTI (Kerem: "decision kısmı hızlıca dandik tasarlanmış"): konunun rengi, ad,
+  // renkli kısa etki, sağda bedel. Alınamıyorsa nedeni bedelin altında tek söz (PP yetmiyor,
+  // bekleme, yalnız savaşta); barışta açılmayanlar sona iner ve tek satırdır. Tamamı kartta.
+  // Kısa etki " · " ile parçalanır: işaretli parça renkli çip (azalması iyi olan Unrest
+  // tersine döner), süre ("2 yr") sönük yazı.
+  const fxLine = (text) => String(text).split(' · ').map((part) => {
+    const sign = /[+−-]\d/.exec(part)?.[0][0];
+    if (!sign) return /yr|wk/.test(part) ? `<em>${esc(part)}</em>` : `<span class="k-fx">${esc(part)}</span>`;
+    const good = (sign === '+') !== /^(Unrest|Consumer|Import|Law change)/.test(part);
+    return `<span class="k-fx ${good ? 'good' : 'bad'}">${esc(part)}</span>`;
+  }).join('');
+  const decisionCard = (decision) => {
+    const closed = decision.blockers.includes('Not available now');
+    const wait = decision.blockers.find((b) => b.startsWith('Again in'));
+    const short = !closed && !wait && decision.blockers.some((b) => b.startsWith('Needs'));
+    const why = closed ? (decision.id === 'requisition_economy' ? 'in crisis' : 'at war')
+      : wait ? `${wait.replace(/\D+/g, '')} wk` : short ? `${Math.floor(me.power ?? 0)}/${decision.cost}` : 'PP';
+    const state = closed ? ' is-closed' : wait ? ' is-wait' : short ? ' is-short' : '';
+    return `<button class="k-dec card${state}" data-uc-decision="${decision.id}"${catAttr(DECISION_CAT[decision.id])}${decision.blockers.length ? ' disabled aria-disabled="true"' : ''}${tipAttr('decision', decision.id)}>
+      <b>${esc(decision.name)}</b><span class="k-dec-fx">${fxLine(decision.short ?? '')}</span><span class="k-dec-cost">${decision.cost}<small>${esc(why)}</small></span></button>`;
+  };
+  // Şimdi hiç açılamayacak kararlar (barışta savaş tahvili) ızgarada yer tutmaz: başlıkta
+  // sayıları, adları bilgi kartında. Panel kaymadan sığar (iç içe kaydırma yasak).
+  const closedDecisions = decisions.filter((d) => d.blockers.includes('Not available now'));
+  const decisionTiles = decisions.filter((d) => !closedDecisions.includes(d)).map(decisionCard).join('');
+  const decisionNote = closedDecisions.length
+    ? `<small class="k-head-note"${tipAttr({ text: `Not open now\n${closedDecisions.map((d) => `${d.name} — ${d.id === 'requisition_economy' ? 'in a supply crisis' : 'at war'}`).join('\n')}` })}>+${closedDecisions.length} at war</small>` : '';
 
   // DÜZEN: tam genişlik, iki sütun. Eski düzen yedi paneli alt alta diziyordu
   // ve 1080p'de 500px taşıyordu; gövde `overflow: hidden` olduğu için
   // Danışmanlar ve Kararlar fareyle HİÇ görülemiyordu (ölçüldü).
   return `${kpis}
-    <div class="k-split k-pol">
+    <div class="k-split k-pol k-pol3">
       <div class="k-stack">
-        ${panel('Parties', `<div class="k-pol-top">${courseSquare(view.course)}${hemicycle(view.support)}</div><div class="k-parties">${parties}</div>${regimes ? `<div class="k-actions">${regimes}</div>` : ''}`, { sub: esc(view.government.desc) })}
-        ${panel('Laws', `<div class="k-laws">${laws}</div>`, { sub: `${view.lawCost} political power per change · 26-week lock` })}
-        ${panel('Decisions', `<div class="k-decs">${decisionTiles}</div>`)}
-      </div>
-      <div class="k-stack">
-        <div class="k-cols-2 k-pol-why">
-          ${panel('Stability', parts(view.stabilityParts), { right: `→ ${pct(view.stabilityTarget)}`, tip: 'stability' })}
-          ${panel('War support', parts(view.warSupportParts), { right: `→ ${pct(view.warSupportTarget)}`, tip: 'warsupport' })}
-        </div>
+        ${panel('Parties', `<div class="k-pol-top">${courseSquare(view.course)}${hemicycle(view.support)}</div><div class="k-parties">${parties}</div>${regimes ? `<div class="k-actions">${regimes}</div>` : ''}`, { tip: { text: `Parties\n${view.government.desc}` } })}
         ${view.exhaustion > 0.005 || view.exhaustionParts.length ? panel('War exhaustion', `${parts(view.exhaustionParts.map((part) => ({ ...part, value: -part.value })))}
           <p class="k-pol-ladder">${view.exhaustionLadder.map((step) => `<span class="${step.passed ? 'passed' : ''}">${Math.round(step.at * 100)}% ${esc(step.text)}</span>`).join(' · ')}</p>`, {
     // Üst çubukta "War Sup." hücresindeki yorgunluk aynı miğferle yazılır.
     icon: gaugeArt('exhaustion', 'sm'),
     right: `${pct(view.exhaustion)} → ${pct(view.exhaustionTarget)}`,
   }) : ''}
+      </div>
+      <div class="k-stack">
+        ${panel('Laws', `<div class="k-laws">${laws}</div>`, { right: `<small class="k-head-note">${view.lawCost} PP</small>`, tip: { text: `Laws\n${view.lawCost} political power per change; a changed law is locked for 26 weeks.` } })}
+        ${panel('Decisions', `<div class="k-decs">${decisionTiles}</div>`, { right: decisionNote })}
+      </div>
+      <div class="k-stack">
         ${panel('National agenda', agendaBody + (recent ? `<ul class="k-log">${recent}</ul>` : ''), {
     // Gündemin AUTO anahtarı kendi panelinde: başlıktaki hap Government'ın.
     right: autoPill(DELEGATION_AREAS.agenda, { on: isDelegated(me, 'agenda'), last: lastDelegatedAction(me, 'agenda') }),
   })}
-        ${panel('Advisors', `<div class="k-seats">${seats}</div>`, { sub: 'one per seat · 50 political power' })}
-        ${policiesLink('How vassals, occupied land and penal states are run.')}
+        ${panel('Advisors', `<div class="k-seats">${seats}</div>`, { right: '<small class="k-head-note">50 PP</small>', tip: { text: 'Advisors\nOne per seat; hiring costs 50 political power.' } })}
       </div>
     </div>`;
 }

@@ -86,10 +86,39 @@ const AUTO_SCOPE = {
   research: 'Next research',
   diplomacy: 'Foreign ministry',
 };
-/** assets/icons/tabs-medal/ altında madalyonu olan ekranlar (sekme yüzü). */
+/**
+ * Sekme kısayolları: künyelerin soldan sağa sırası, on sekme F1-F10.
+ * Cultures sonradan eklenince tablo dokuz tuşta kalmıştı: F7 yedinci sekmeyi
+ * (Cultures) değil Politics'i açıyordu, Cultures'ın tuşu yoktu. Diplomasi
+ * (sekmesi yok) P'ye geçti; F11/F12 tarayıcınındır. Kimlikler eski adlarını
+ * taşır (kayıt, devir tablosu, ekran kancaları onlara bağlı): 'construction'
+ * künyede Development, 'budget' Economy yazar (Tek Çubuk, 2026-10-15).
+ * Sekme karesinin köşesinde tuşu yazılıdır (Kerem 2026-11-20: "F1-F5 tuşlarına atanabilir";
+ * atanmışlardı ama hiçbir yerde görünmüyordu).
+ */
+export const TAB_KEYS = {
+  F1: 'construction', F2: 'industry', F3: 'trade', F4: 'budget', F5: 'military',
+  F6: 'population', F7: 'cultures', F8: 'politics', F9: 'technology', F10: 'chronicle',
+};
+
+// Diplomasinin tuşu P'dir (hud.js), F tablosunda değil.
+const KEY_OF_TAB = { ...Object.fromEntries(Object.entries(TAB_KEYS).map(([key, screen]) => [screen, key])), diplomacy: 'P' };
+
+/** Sekme karesinin fotoğrafı (assets/kpi; ekranın kendi gösterge kartlarından). */
+const TAB_PHOTOS = {
+  construction: 'invested', industry: 'industry', trade: 'exports', budget: 'bills',
+  military: 'standing-army', population: 'population', cultures: 'peoples',
+  politics: 'government', technology: 'researching', chronicle: 'entries',
+  diplomacy: 'allies', policies: 'commitments',
+};
+
+/**
+ * Sekme yüzü olan ekranlar: assets/icons/tabs-flat (2026-11-20, tek nesne dökme pirinç;
+ * eski alçı figürlü madalyonlar assets/icons/tabs-medal'da duruyor, Kerem: "AI gibi").
+ */
 const TAB_MEDALS = new Set([
   'construction', 'industry', 'trade', 'budget', 'military', 'population',
-  'cultures', 'politics', 'technology', 'chronicle', 'diplomacy', 'navy',
+  'cultures', 'politics', 'technology', 'chronicle', 'diplomacy', 'navy', 'policies',
 ]);
 
 /** İki-tık onayının ömrü (bkz. Screens.armConfirm). */
@@ -266,9 +295,14 @@ export class Screens {
       if (!btn.querySelector('.tab-ico')) {
         const screen = btn.dataset.screen;
         const face = TAB_MEDALS.has(screen)
-          ? `<img class="tab-medal" src="assets/icons/tabs-medal/${screen}.png" alt="" draggable="false">`
+          ? `<img class="tab-medal" src="assets/icons/tabs-flat/${screen}.webp" alt="" draggable="false">`
           : glyph(TAB_GLYPH[screen] ?? 'info');
         btn.insertAdjacentHTML('afterbegin', `<i class="tab-ico">${face}</i>`);
+        // Sekme fotoğraflı bir karedir (Kerem 2026-11-20: "kare içine arka plan tarzında"):
+        // ekranın gösterge kartlarıyla aynı resim seti, madalyon önünde durur.
+        const photo = TAB_PHOTOS[screen];
+        if (photo) btn.insertAdjacentHTML('afterbegin', `<span class="tab-photo" style="background-image:url(assets/kpi/${photo}.webp)" aria-hidden="true"></span>`);
+        if (KEY_OF_TAB[screen]) btn.insertAdjacentHTML('beforeend', `<kbd class="tab-key" aria-hidden="true">${KEY_OF_TAB[screen]}</kbd>`);
       }
     }
     document.getElementById('screen-close').onclick = () => this.close();
@@ -1102,13 +1136,15 @@ export class Screens {
     const trends = `<div class="chron-trends">${trend('Population', 'population')}${trend('Output', 'output')}${trend('Industry', 'ic')}${trend('Development fund', 'fund')}</div>`;
 
     return `${kpis}
-      <div class="k-split chron-split">
+      <div class="k-split chron-split chron3">
         <div class="k-stack">
           ${kitPanel('The age in motion', '<div class="replay-mount" data-replay-mount></div>', { sub: 'the borders, month by month' })}
-          ${kitPanel('Chronicle', timeline, { sub: '' })}
         </div>
         <div class="k-stack">
           ${pressArchivePanel(world)}
+          ${kitPanel('Chronicle', timeline, { sub: '' })}
+        </div>
+        <div class="k-stack">
           ${kitPanel('Great powers', `<ol class="chron-powers">${powers}</ol>`, { sub: `hegemony score · the leader in ${END_YEAR} wins` })}
           ${kitPanel('The last two years', trends, { sub: `${history.length} weeks` })}
         </div>

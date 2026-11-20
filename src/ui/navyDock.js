@@ -15,8 +15,11 @@
 
 import {
   NAVY_PRIORITIES, NAVY_STEPS, SCRAP_REFUND, WITHDRAW_WEEKS, EVADE_RATIO, actionId, dayMonth, navalAction,
-  navyView, resetZonePriorities, scrapGroup, scrapObsolete, seaZoneMarks, setZonePriority,
+  navyView, pinAdmiral, resetZonePriorities, scrapGroup, scrapObsolete, seaZoneMarks, setZonePriority,
 } from '../game/navy.js';
+import { BRANCH, createGeneral, generalCost, officersOf } from '../game/command.js';
+import { pay } from '../game/cities.js';
+import { subayPortresi } from './icons/subaylar.js';
 import { linePriorityOf } from '../game/econ/industry.js';
 import { laneCutsView } from '../game/seaLanes.js';
 import { SHIP_CLASSES, UNIT_TYPES, shipClassOf } from '../game/units.js';
@@ -70,7 +73,8 @@ export class NavyDock {
     this.confirmScrap = false;
     this.confirmTimer = 0;
     this.confirmKey = null;
-    this.fleetOpen = false;
+    // Filo açık başlar: gemi silmek kapalı bir başlığın altındaydı ve bulunmuyordu (Kerem).
+    this.fleetOpen = true;
     this.whereMax = 0;
     this.wasOn = false;
     this.lastActionId = null;
@@ -85,6 +89,7 @@ export class NavyDock {
     // satırları yeniden kurar, imleç yerinde durdukça önizleme geri yazılır.
     this.root.addEventListener('pointerover', (event) => this.onOver(event));
     this.root.addEventListener('pointerleave', () => this.hover(null, null));
+    this.root.addEventListener('change', (event) => this.onChange(event));
     // Filo katının açık/kapalı hâli tazelemeden sağ çıksın ('toggle' kabarmaz).
     this.root.addEventListener('toggle', (event) => {
       if (event.target.matches?.('.nd-fleet')) this.fleetOpen = event.target.open;
@@ -219,7 +224,9 @@ export class NavyDock {
     if (!view.total && !view.rows.length && !view.subs) {
       return `${head}<p class="nd-empty">No coast, no navy.</p>`;
     }
-    return `${head}<div class="nd-body">${this.warHtml(view)}${this.whereHtml(view)}${this.ordersHtml(view)}${this.tradeHtml(view)}${this.subsHtml(view)}${this.fleetHtml(view)}</div>${this.lastHtml_(view)}`;
+    // Gemiler ve amiraller en üstte: oyuncunun en sık aradığı iki iş (silmek, atamak)
+    // eskiden panelin dibinde, kapalı bir başlığın altındaydı.
+    return `${head}<div class="nd-body">${this.warHtml(view)}${this.fleetHtml(view)}${this.admiralsHtml(view)}${this.whereHtml(view)}${this.ordersHtml(view)}${this.tradeHtml(view)}${this.subsHtml(view)}</div>${this.lastHtml_(view)}`;
   }
 
   headHtml(view) {
@@ -642,6 +649,44 @@ export class NavyDock {
     </details>`;
   }
 
+  /**
+   * AMİRALLER: kim hangi denizde. Atama eskiden yalnız otomatikti ve hiçbir yerde
+   * görünmüyordu (Kerem: "amiral atamayı bulamadım"). Liste Auto'da kalabilir ya da
+   * bir denize bağlanır (navy.pinAdmiral); amiral yoksa buradan yetiştirilir.
+   */
+  admiralsHtml(view) {
+    const me = this.me();
+    const admirals = officersOf(me, BRANCH.NAVY);
+    const seas = view.rows.map((row) => row.zone);
+    const nameOf = (zoneId) => seas.find((zone) => zone.id === zoneId)?.name
+      ?? this.game.world.seaZones?.zones?.[zoneId]?.name ?? `sea ${zoneId}`;
+    const cost = Math.round(generalCost(me).ic);
+    const create = `<button class="k-btn xs" type="button" data-nd-newadm${tipAttr({ text: `Create admiral\nTrains a new admiral for ${cost} IC from the development fund. Each addition to the staff costs more.` })}>Create admiral · ${cost} IC</button>`;
+    const rows = admirals.map((admiral) => {
+      const where = admiral.seaZone != null ? `commands ${esc(nameOf(admiral.seaZone))}` : 'no fleet at sea';
+      const options = seas.map((zone) => `<option value="${zone.id}"${admiral.seaPin === zone.id ? ' selected' : ''}>${esc(zone.name)}</option>`).join('');
+      return `<div class="nd-adm">
+        <span class="nd-adm-face">${subayPortresi(admiral)}</span>
+        <span class="nd-adm-id"><b>${esc(admiral.name)}</b><small>skill ${admiral.skill} · ${where}</small></span>
+        <select class="nd-adm-sea" data-nd-adm="${admiral.id}"${tipAttr({ text: 'Sea\nAuto: the admiralty sends the admiral to the busiest sea each week. Pick a sea to keep him there.' })}>
+          <option value=""${admiral.seaPin == null ? ' selected' : ''}>Auto</option>${options}
+        </select>
+      </div>`;
+    }).join('');
+    const empty = admirals.length ? '' : '<p class="nd-adm-empty">No admirals. A fleet without one fights without a commander\'s bonus.</p>';
+    return `<section class="nd-adms"><div class="nd-adms-head"><h4 class="nd-sec">Admirals <small>${admirals.length}</small></h4>${create}</div>${rows}${empty}</section>`;
+  }
+
+  onChange(event) {
+    const select = event.target.closest?.('[data-nd-adm]');
+    const nation = this.me();
+    if (!select || !nation) return;
+    const zone = select.value === '' ? null : Number(select.value);
+    pinAdmiral(nation, Number(select.dataset.ndAdm), zone);
+    this.refresh();
+    this.game.requestRender();
+  }
+
   /** LAST SEA ACTION: sabit yükseklik (jitter kuralı); iki son kayıt. */
   lastHtml_(view) {
     const actions = view.actions;
@@ -931,6 +976,16 @@ export class NavyDock {
     const nation = this.me();
     if (!nation) return;
     const t = event.target;
+    if (t.closest?.('[data-nd-newadm]')) {
+      if (!pay(nation, generalCost(nation))) {
+        this.flash('The development fund cannot pay for another admiral yet.');
+        return;
+      }
+      const admiral = createGeneral(this.game.world, nation, this.game.turns.rng, { branch: BRANCH.NAVY });
+      this.game.turns?.addLog(`Admiral ${admiral.name} joined the staff.`, { kind: 'COMMANDER' });
+      this.refresh();
+      return;
+    }
     const pri = t.closest?.('[data-nd-pri]');
     if (pri) {
       const [zoneText, step] = pri.dataset.ndPri.split(':');

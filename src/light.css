@@ -80,6 +80,11 @@
   filter: contrast(0.92) brightness(1.06);
 }
 :root[data-ui-theme="light"] .k-kpi:hover > .k-kpi-art { opacity: 0.64; }
+/* Üst çubuğun fotoğraf kartları da aynı baskıyla (hud.css "ÜST ÇUBUK FOTOĞRAF KARTLARI"). */
+:root[data-ui-theme="light"] .tb-photo { mix-blend-mode: luminosity; opacity: 0.5; filter: contrast(0.92) brightness(1.06); }
+:root[data-ui-theme="light"] .tb-card:hover .tb-photo { opacity: 0.64; }
+:root[data-ui-theme="light"] .tab-photo { mix-blend-mode: luminosity; opacity: 0.55; }
+:root[data-ui-theme="light"] .tab-bar [data-screen]:is(:hover, .active) .tab-photo { opacity: 0.7; }
 :root[data-ui-theme="light"] :is(.k-kpi-body b, .k-kpi-body small, .k-kpi-body em) { text-shadow: 0 1px 0 rgba(255, 252, 245, 0.55); }
 /* Yazının doğrudan fotoğraf üstünde durduğu dar ekranlar: örtü daha kapalı. */
 :root[data-ui-theme="light"] #screen:is([data-screen="dossier"], [data-screen="peace"], [data-screen="construction"]) {
@@ -141,3 +146,21 @@
 :root[data-ui-theme="light"] .art-item {
   background: radial-gradient(circle at 50% 50%, rgba(255, 250, 240, 0.38) 0%, rgba(255, 250, 240, 0.1) 48%, transparent 71%);
 }
+
+/* Kategori düğmeleri açık temada da koyu emaye: yazı beyaz kalır (hud.css "KATEGORİ RENKLERİ"). */
+:root[data-ui-theme="light"] [data-cat="military"] { --cat-btn: url('../assets/ui/skin/kat/military-acik.webp') 16 fill / 5px / 0 stretch; }
+:root[data-ui-theme="light"] [data-cat="industry"] { --cat-btn: url('../assets/ui/skin/kat/industry-acik.webp') 16 fill / 5px / 0 stretch; }
+:root[data-ui-theme="light"] [data-cat="people"] { --cat-btn: url('../assets/ui/skin/kat/people-acik.webp') 16 fill / 5px / 0 stretch; }
+:root[data-ui-theme="light"] [data-cat="development"] { --cat-btn: url('../assets/ui/skin/kat/development-acik.webp') 16 fill / 5px / 0 stretch; }
+:root[data-ui-theme="light"] [data-cat="economy"] { --cat-btn: url('../assets/ui/skin/kat/economy-acik.webp') 16 fill / 5px / 0 stretch; }
+:root[data-ui-theme="light"] [data-cat="trade"] { --cat-btn: url('../assets/ui/skin/kat/trade-acik.webp') 16 fill / 5px / 0 stretch; }
+:root[data-ui-theme="light"] [data-cat="policy"] { --cat-btn: url('../assets/ui/skin/kat/policy-acik.webp') 16 fill / 5px / 0 stretch; }
+:root[data-ui-theme="light"] [data-cat="research"] { --cat-btn: url('../assets/ui/skin/kat/research-acik.webp') 16 fill / 5px / 0 stretch; }
+:root[data-ui-theme="light"] [data-cat="diplomacy"] { --cat-btn: url('../assets/ui/skin/kat/diplomacy-acik.webp') 16 fill / 5px / 0 stretch; }
+:root[data-ui-theme="light"] [data-cat="politics"] { --cat-btn: url('../assets/ui/skin/kat/politics-acik.webp') 16 fill / 5px / 0 stretch; }
+:root[data-ui-theme="light"] [data-cat="culture"] { --cat-btn: url('../assets/ui/skin/kat/culture-acik.webp') 16 fill / 5px / 0 stretch; }
+:root[data-ui-theme="light"] [data-cat="chronicle"] { --cat-btn: url('../assets/ui/skin/kat/chronicle-acik.webp') 16 fill / 5px / 0 stretch; }
+:root[data-ui-theme="light"] :is([data-cat] :is(.k-seg-b.on, .k-btn.primary, .k-btn.on, .mil-tabs > button.active),
+    :is(.k-seg-b.on, .k-btn.primary, .k-btn.on, .mil-tabs > button.active)[data-cat]) { color: #ffffff; text-shadow: 0 1px 1px rgba(0, 0, 0, 0.6); }
+:root[data-ui-theme="light"] .k-fx.good { color: #2f7a26; }
+:root[data-ui-theme="light"] .k-fx.bad { color: #b0402c; }

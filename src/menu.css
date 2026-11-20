@@ -602,3 +602,15 @@
   #menu .mm-column { padding-top: clamp(28px, 6vh, 64px); }
   #menu .mm-rule { margin: 14px 0 18px; }
 }
+
+/* Oyun logosu (2026-11-20, assets/menu/logo.webp; eski amblem eye-mark.png duruyor).
+   Logo adı kendisi yazar: başlık ekran okuyucu için kalır, gözle görünmez. */
+#menu .mm-brand:has(.mm-logo-full) { flex-direction: column; align-items: flex-start; gap: 6px; }
+#menu .mm-logo.mm-logo-full {
+  width: auto;
+  height: clamp(170px, 24vh, 260px);
+  filter: drop-shadow(0 10px 22px rgba(0, 0, 0, 0.8));
+}
+#menu .mm-brand:has(.mm-logo-full) #menu-title {
+  position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap;
+}

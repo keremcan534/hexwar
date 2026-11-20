@@ -879,8 +879,33 @@ function assignAdmirals(nation) {
   const counts = new Map();
   for (const ship of surfaceOf(nation)) if (ship.at >= 0) counts.set(ship.at, (counts.get(ship.at) ?? 0) + 1);
   const zones = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0] - b[0]).map(([zoneId]) => zoneId);
-  admirals.forEach((admiral, index) => { admiral.seaZone = zones[index] ?? null; });
+  // Oyuncunun elle bağladığı amiral denizinde kalır; kalanlar en kalabalık boş denizlere.
+  // YZ bağlamaz: bağ yoksa dağıtım eskisinin aynısıdır (zar çekilmez, sıra aynı).
+  const taken = new Set();
+  for (const admiral of admirals) {
+    if (admiral.seaPin == null) continue;
+    admiral.seaZone = admiral.seaPin;
+    taken.add(admiral.seaPin);
+  }
+  const free = zones.filter((zoneId) => !taken.has(zoneId));
+  let next = 0;
+  for (const admiral of admirals) {
+    if (admiral.seaPin == null) admiral.seaZone = free[next++] ?? null;
+  }
   return new Map(admirals.filter((a) => a.seaZone != null).map((a) => [a.seaZone, a]));
+}
+
+/** Amirali bir denize elle bağlar; zoneId null ise yeniden otomatiğe bırakır. */
+export function pinAdmiral(nation, admiralId, zoneId) {
+  const admiral = officersOf(nation, BRANCH.NAVY).find((a) => a.id === admiralId);
+  if (!admiral) return false;
+  if (zoneId == null) {
+    delete admiral.seaPin;
+  } else {
+    admiral.seaPin = zoneId;
+    admiral.seaZone = zoneId;
+  }
+  return true;
 }
 
 /** Bölge → ulus → {strength, ships}. Yalnız varmış (at ≥ 0) gemiler. */

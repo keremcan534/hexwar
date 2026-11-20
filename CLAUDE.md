@@ -40,8 +40,17 @@ Mimari ve tasarım kararları için [README.md](README.md).
   levhadaki yazı) `src/light.css`'te, açık doku seti `assets/ui/skin/acik/`.
   Harita ve ana menü çevrilmez; haritanın ya da bir resmin üstüne koyu bir ışık
   katmanı yazarsan seçicisini `theme.js` KEEP_SEL'e ekle. İkon resimlerinin
-  doygunluğu %22 kısıktır (styles.css `.art-item img`, `.art-emblem img`):
-  sarılık orada ayarlanır.
+  doygunluğu %34 kısıktır (styles.css `.art-item img`, `.art-emblem img`; sekme
+  madalyonu hud.css `.tab-medal`): sarılık orada ayarlanır. Koyu temada pirinç
+  bandındaki YAZI fildişine çekilir (`theme.js darkTextColor`, `BRASS_TEXT_*`;
+  `color: var(--gold…)` de çözülür): pirinç yalnız malzemedir (çerçeve, düğme, doku).
+  Uyarı kehribarı (doygunluk ≥0.12) bandın dışındadır.
+  Temadan bağımsız ikinci eksen VURGU RENGİDİR (Settings → Display → Accent colour,
+  denetim `?accent=steel`): Brass, Steel blue, Silver, Verdigris. Renkli bildirimler
+  `theme.js accentColor` ile OKLCH'de döner (yalnız pirinç bandı; tehlike kırmızısı,
+  olumlu yeşil, uyarı kehribarı ve harita aynı kalır); dokular
+  `scripts/art/accent-skin.py` ile `assets/ui/skin/<vurgu>/` altına üretilir, bağları
+  `src/accent.css` (katman accent-fix). Yeni doku eklersen betiği yeniden koş.
 - Gösterge ikonu (üst çubuk `.tb-socket`, ekran kartı `.k-kpi-ico`) tırtıllı
   pirinç bir sikkedir: malzemesi skin.css'te, ikon ortada ve diski doldurur.
   Saat birimi takvim yaprağı + telgraf kadranıdır; ibreyi CSS `:has()` seçili
@@ -55,6 +64,16 @@ Mimari ve tasarım kararları için [README.md](README.md).
   zarını tüketmez. Her katmanın bayrağı `flags.js` (`LIVING_LAYERS`,
   `?living=0`). Maketler `scripts/art/bake_living.py` ile Blender'da pişer,
   çıktı `assets/living/` + `atlasMeta.js`. Denetim: `game.living.debug.day`.
+- Bilgi kartı (tooltip) tek bakış düzenindedir (`tooltip.js render`): başlık + değer,
+  metnin İLK CÜMLESİ ana fikir, etkiler işaretinden renklenir, kalan cümleler ve
+  dipnot kesik çizginin altında sönük ek bilgi. Sağlayıcı yazarken ilk cümle tek
+  başına anlamlı olmalı. Sekme madalyonlarının emaye rengi ekrana özgüdür
+  (`scripts/art/emboss-icons.py` TAB_ENAMEL), tuşları `screens.js TAB_KEYS`.
+- Seçili düğme her yerde pirinç DEĞİLDİR: konusu olan satır/kart `data-cat` taşır
+  (`src/ui/catColors.js`: yasa, danışman, karar, birlik kolu, komutan dalı, politika) ve
+  seçili hâli o kategorinin emaye dokusudur (`assets/ui/skin/kat/`, `scripts/art/accent-skin.py`
+  CATEGORIES). Yeni seçim grubu eklersen bir kategoriye bağla. Gösterge kartlarının ve üst
+  çubuğun madalyonları ultra gerçekçi settir (`assets/icons/kpi-real`, `art.js REAL_KPI`).
 - Yazı tipleri yereldir: EB Garamond ("HW Display") + Source Sans 3 ("HW UI"),
   `assets/fonts/` (OFL), `src/fonts.css`. Tuvalde aile adı elle yazılmaz,
   `src/render/fonts.js` sabitleri kullanılır; yoksa harita eski fontta kalır.
@@ -86,6 +105,15 @@ Arayüz iki sondayla doğrulanır (konsola yapıştır ya da başsız CDP ile en
 `scripts/ui/layout-probe.js` → `__layoutProbe()` (ulaşılamayan içerik, taşma,
 yan yana sütun simetrisi; 1920/1600/1366/1280'de hepsi boş olmalı) ve
 `scripts/ui/jitter-probe.js` → `__jitDump()` (8x akarken kayma/açılıp kapanma).
+
+Kullanılabilirlik (2026-11-19, Kerem: kaydırma, örtü, boşluk, uzun metin):
+`node scripts/ui/hx.mjs --plan scripts/ui/usability.plan.mjs --gpu --w 1536 --h 864`
+bütün ekranları gezer, `scripts/ui/usability-probe.js` bulguları işaretleyip çeker.
+Kurallar: örtülen denetim ve örtüşen yüzer panel 0; ekran pencereye YERLEŞİMLE sığar
+(sütun, sıkı kart, tekrarı kaldırma). İç içe kayan küçük kutu YASAK: denendi, Kerem
+"daracık alan, sinir bozucu" dedi. Yalnız doğası liste olan büyük alan kayar (state
+tablosu, ulus listesi). Hedef boylar 1920×1080, 1536×864 (125% dizüstü, Kerem'in
+ekranı) ve 1366×768. Alçak pencere sıkılaştırması `hud.css` §8.
 
 ## Mekanik eklemeden önce
 

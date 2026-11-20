@@ -69,6 +69,20 @@ const KEY_LIST = [
 ];
 
 const pct = (v) => `${Math.round(v)}%`;
+
+/**
+ * Ekran açılışı ayrı bir anahtardır: "Interface animations" bayrak dalgasını da
+ * kapatıyor; Kerem yalnız sekme açılışını istemeyebilir. Kök özniteliği CSS'i yönetir.
+ */
+const SCREEN_ANIM_KEY = 'hexwar.ui.screenAnim';
+function screenAnim() {
+  try { return localStorage.getItem(SCREEN_ANIM_KEY) ?? 'on'; } catch { return 'on'; }
+}
+function setScreenAnim(value) {
+  try { localStorage.setItem(SCREEN_ANIM_KEY, value); } catch { /* yalnız bu oturum */ }
+  document.documentElement.dataset.screenAnim = value;
+}
+document.documentElement.dataset.screenAnim = screenAnim();
 const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
 
 function readStore() {
@@ -164,6 +178,13 @@ export class SettingsPanel {
         write: (v) => game.theme?.set(v),
       },
       {
+        id: 'accent', tab: 'display', sec: 'Picture', label: 'Accent colour', kind: 'choice', def: 'brass', stored: false,
+        choices: [{ v: 'brass', label: 'Brass' }, { v: 'steel', label: 'Steel blue' }, { v: 'silver', label: 'Silver' }, { v: 'verdigris', label: 'Verdigris' }],
+        tip: 'The metal of buttons, frames and highlights. Warnings, map and pictures keep their colours.',
+        read: () => game.theme?.accent?.() ?? 'brass',
+        write: (v) => game.theme?.setAccent?.(v),
+      },
+      {
         id: 'brightness', tab: 'display', sec: 'Picture', label: 'Brightness', kind: 'range',
         min: 70, max: 130, step: 1, def: 100, fmt: pct, live: true,
         tip: 'Lightens or darkens the whole picture, map and interface alike.',
@@ -230,6 +251,12 @@ export class SettingsPanel {
         write: (v) => setUiMotion(v ? 'on' : 'off'),
       },
       {
+        id: 'screen-anim', tab: 'graphics', sec: 'Performance', label: 'Screen opening fade', kind: 'toggle', def: true, stored: false,
+        tip: 'A short fade when a screen or tab opens. Off opens it at once.',
+        read: () => screenAnim() !== 'off',
+        write: (v) => setScreenAnim(v ? 'on' : 'off'),
+      },
+      {
         id: 'perf', tab: 'graphics', sec: 'Performance', label: 'Performance overlay', kind: 'toggle', def: false,
         tip: 'Shows frame rate and frame times in the top right corner. Shortcut: Shift + F3.',
         read: () => Boolean($('perf-overlay')),
@@ -258,17 +285,17 @@ export class SettingsPanel {
         tip: 'Tints and hatches land held by an enemy army in the colour of the occupier.',
         write: (v) => { r.setOccupationShade(v); game.requestRender(); },
       },
+      {
+        id: 'minimap', tab: 'map', sec: 'Map layers', label: 'Minimap', kind: 'toggle', def: true,
+        tip: 'The small world map in the bottom right corner.',
+        write: (v) => { const box = $('minimap'); if (box) box.style.display = v ? '' : 'none'; },
+      },
       ...LIVING_LAYERS.map(({ key, label }) => ({
         id: `living-${key}`, tab: 'map', sec: 'Living world', label, kind: 'toggle', def: true, stored: false,
         tip: 'Visual only: it never changes the rules of the game.',
         read: () => livingFlags.stored(key),
         write: (v) => { livingFlags.set(key, v); game.requestRender(); },
       })),
-      {
-        id: 'minimap', tab: 'map', sec: 'Map layers', label: 'Minimap', kind: 'toggle', def: true,
-        tip: 'The small world map in the bottom right corner.',
-        write: (v) => { const box = $('minimap'); if (box) box.style.display = v ? '' : 'none'; },
-      },
 
       // --- Controls ---
       {

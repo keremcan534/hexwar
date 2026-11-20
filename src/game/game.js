@@ -317,11 +317,10 @@ export class Game {
     for (const battle of battles) {
       const tile = this.world.get(battle.q, battle.r);
       if (!tile) continue;
-      const p = this.camera.worldToScreenNear(tile.x, tile.y - HEX_SIZE * 0.8, sx);
-      const hit = far
-        ? Math.hypot(p.x - sx, p.y - sy) <= 10
-        : Math.abs(p.x - sx) <= 39 && Math.abs(p.y - sy) <= 13;
-      if (hit) return battle;
+      // İğne saldırı yönüne göre kayar: yerini son karede çizen renderer bilir.
+      const pin = this.renderer.battlePins?.get(battle.id) ?? { x: tile.x, y: tile.y - HEX_SIZE * 0.8 };
+      const p = this.camera.worldToScreenNear(pin.x, pin.y, sx);
+      if (Math.hypot(p.x - sx, p.y - sy) <= (far ? 11 : 18)) return battle;
     }
     return null;
   }
@@ -366,6 +365,10 @@ export class Game {
     // Muharebe künyesine tık muharebe penceresini açar; seçim değişmez.
     const battle = this.battleAtScreen(sx, sy);
     if (battle) {
+      // Basma hissi: iğne kısa bir an çöker (renderer.drawBattleBalloon) ve tık sesi.
+      this.renderer.pressBattle = { id: battle.id, t: performance.now() };
+      this.uiSound?.play?.('click');
+      this.requestRender();
       this.emit('inspect', battle.id);
       return;
     }
@@ -1529,6 +1532,15 @@ export class Game {
   }
 
   handleHover(sx, sy) {
+    // Muharebe iğnesi: imleç üstündeyse iğne büyür ve imleç el olur.
+    const battle = this.battleAtScreen(sx, sy);
+    const hoverId = battle?.id ?? null;
+    if (hoverId !== this.renderer.hoverBattleId) {
+      this.renderer.hoverBattleId = hoverId;
+      const canvas = document.getElementById('map');
+      if (canvas) canvas.style.cursor = hoverId != null ? 'var(--cur-pointer, pointer)' : '';
+      this.requestRender();
+    }
     // Birim künyesi: imleç bir yığının üstündeyse onu, değilse boşu duyurur
     // (yalnız değişince; künye imleci kendi izler).
     const hit = this.unitAtScreen(sx, sy);

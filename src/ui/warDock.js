@@ -58,6 +58,8 @@ export class WarDock {
     if (typeof ResizeObserver === 'function') new ResizeObserver(() => this.measure()).observe(this.root);
     // Açık ayrıntı kartının çatışma anahtarı (satıra tıklayınca panelin yanında).
     this.openKey = null;
+    // Başka ülkelerin savaşları kapalı başlar: başlıkta sayısı zaten yazıyor (Kerem).
+    this.worldOpen = false;
     for (const name of ['turn', 'peace', 'diplomacy', 'world', 'player']) {
       game.on?.(name, () => {
         // Hafta kapanışı sürerken olaylar dilim dilim gelir; 'turn' sonda tazeler.
@@ -69,6 +71,11 @@ export class WarDock {
   }
 
   onClick(event) {
+    if (event.target.closest('[data-wd-world]')) {
+      this.worldOpen = !this.worldOpen;
+      this.refresh(true);
+      return;
+    }
     if (event.target.closest('[data-wd-toggle]')) {
       this.collapsed = !this.collapsed;
       try { localStorage.setItem(STORE_KEY, this.collapsed ? '1' : '0'); } catch { /* özel pencere */ }
@@ -258,6 +265,7 @@ export class WarDock {
     }).join('');
     const more = conflicts.length > WORLD_ROWS
       ? `<small class="wd-more">+${conflicts.length - WORLD_ROWS} more: ${esc(conflicts.slice(WORLD_ROWS).map((c) => `${nameOf(c.lead[0])} vs ${nameOf(c.lead[1])}`).join(', '))}</small>` : '';
-    return `<div class="wd-sec${mine ? ' split' : ''}">Elsewhere in the world</div>${rows}${more}`;
+    const head = `<button type="button" class="wd-sec wd-world-head${mine ? ' split' : ''}" data-wd-world aria-expanded="${this.worldOpen}">Elsewhere in the world <small>${conflicts.length}</small><i aria-hidden="true">${this.worldOpen ? '▾' : '▸'}</i></button>`;
+    return this.worldOpen ? `${head}${rows}${more}` : head;
   }
 }

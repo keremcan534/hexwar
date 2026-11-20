@@ -40,7 +40,7 @@ function wrapDx(world, a, b) {
   return dx;
 }
 
-/** Ağırlık merkezine en yakın cephe karesi (renderer.frontAnchor ile aynı kural, sarmal farkıyla). */
+/** Ağırlık merkezine en yakın cephe karesi (sarmal farkıyla): levha her hafta zıplamasın. */
 function anchorOf(world, tiles) {
   const base = tiles[0];
   let sx = 0;

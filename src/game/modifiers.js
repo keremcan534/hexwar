@@ -12,19 +12,20 @@
 
 /**
  * Anahtar → { okuyucu, ekran etiketi, biçim }. Biçim: 'pct' yüzde, 'pts'
- * puan (istikrar/savaş desteği 0-100 ölçeğinde), 'num' düz sayı.
+ * puan (istikrar/savaş desteği 0-100 ölçeğinde), 'num' düz sayı. `lower`:
+ * azalması iyidir (ekran eksiyi yeşil yazar; motor okumaz).
  */
 export const MODIFIER_KEYS = {
   ic: { label: 'Industrial capacity', format: 'pct' }, // econ/output
   lineEfficiency: { label: 'Production efficiency cap', format: 'pct' }, // econ/industry
   lineGain: { label: 'Production efficiency growth', format: 'pct' }, // econ/industry
-  consumerNeed: { label: 'Consumer goods need', format: 'pct' }, // econ/industry
+  consumerNeed: { label: 'Consumer goods need', format: 'pct', lower: true }, // econ/industry
   food: { label: 'Food output', format: 'pct' }, // econ/resources
   resources: { label: 'Deposit output', format: 'pct' }, // econ/resources
   output: { label: 'National output', format: 'pct' }, // econ/output
   // Alıcı sırasında ağırlık: çekici satıcı talebin büyük payını alır (econ/trade).
   exportIncome: { label: 'Export appeal', format: 'pct' }, // econ/trade
-  importCost: { label: 'Import cost', format: 'pct' }, // econ/trade
+  importCost: { label: 'Import cost', format: 'pct', lower: true }, // econ/trade
   investment: { label: 'Investment efficiency', format: 'pct' }, // econ/investment
   developmentCap: { label: 'Development cap', format: 'num' }, // econ/investment
   growth: { label: 'Population growth', format: 'pct' }, // provinces
@@ -33,8 +34,8 @@ export const MODIFIER_KEYS = {
   stability: { label: 'Stability', format: 'pts' }, // politics
   warSupport: { label: 'War support', format: 'pts' }, // politics
   power: { label: 'Political power', format: 'num' }, // politics
-  lawCost: { label: 'Law change cost', format: 'pct' }, // politics
-  unrest: { label: 'Unrest', format: 'pct' }, // culture
+  lawCost: { label: 'Law change cost', format: 'pct', lower: true }, // politics
+  unrest: { label: 'Unrest', format: 'pct', lower: true }, // culture
   assimilation: { label: 'Assimilation', format: 'pct' }, // culture
   manpower: { label: 'Manpower', format: 'pct' }, // recruitment
   training: { label: 'Training speed', format: 'pct' }, // recruitment
@@ -46,7 +47,7 @@ export const MODIFIER_KEYS = {
   shipClass: { label: 'Warship class (new hulls; older ones obsolete)', short: 'Warship class', format: 'num' }, // navy
   armor: { label: 'Armour strength', format: 'pct' }, // battles (ARMOR)
   air: { label: 'Air wing strength', format: 'pct' }, // battles (AIRCRAFT)
-  upkeep: { label: 'Army supply cost', format: 'pct' }, // econ/bills
+  upkeep: { label: 'Army supply cost', format: 'pct', lower: true }, // econ/bills
   // Faturaların çıktıdan alabileceği payın tavanı (Requisition the Economy).
   obligationCap: { label: 'Bill ceiling', format: 'pct' }, // econ/bills
   infamyDecay: { label: 'Infamy decay', format: 'pct' }, // infamy
@@ -122,6 +123,18 @@ export function modifierBreakdown(nation, key) {
 }
 
 /** Etkiler nesnesini okunur satırlara çevirir ("+10% Industrial capacity"). */
+/** Etkiler ekran parçası olarak: metin ve iyi mi (kutup `lower` ile döner). */
+export function effectParts(effects, { short = false } = {}) {
+  const parts = [];
+  for (const [key, value] of Object.entries(effects ?? {})) {
+    const meta = MODIFIER_KEYS[key];
+    if (!meta || !value) continue;
+    const [text] = describeEffects({ [key]: value }, { short });
+    parts.push({ text, good: meta.format === 'flag' ? true : (value > 0) !== !!meta.lower });
+  }
+  return parts;
+}
+
 export function describeEffects(effects, { short = false } = {}) {
   const lines = [];
   for (const [key, value] of Object.entries(effects ?? {})) {

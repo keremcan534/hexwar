@@ -200,14 +200,16 @@ export function renderPolicies(game, me, state) {
     kpi({ label: 'Held in penal states', value: formatPopulation(view.camps.inmates), sub: view.camps.camps.length ? `${formatPopulation(view.camps.weeklyDeaths)} deaths a week` : 'none', cls: view.camps.inmates ? 'warn' : '' }),
   ]);
   return `${kpis}
-    <div class="k-split k-policies">
+    <div class="k-split k-policies" data-cat="policy">
       <div class="k-stack">
         ${vassalPanel(view, state, orderOf('vassals'))}
         ${occupationPanel(view, state, orderOf('occupation'))}
-        ${fusionPanel(view, state, orderOf('fusion'))}
       </div>
       <div class="k-stack">
         ${campPanel(view, state, orderOf('camps'))}
+        ${/* Kaynaşma sağda: solda üç panel 1536x864'te pencereden taşıyordu, ceza state'lerinin
+              sütunu yarı boştu (2026-11-20, ölçüldü). */''}
+        ${fusionPanel(view, state, orderOf('fusion'))}
       </div>
     </div>`;
 }

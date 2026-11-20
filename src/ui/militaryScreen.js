@@ -16,6 +16,7 @@ import { formatPopulation } from '../game/economy.js';
 import { SUPPLY } from '../game/econ/defs.js';
 import { UNIT_CATEGORIES } from '../game/military.js';
 import { subayPortresi } from './icons/subaylar.js';
+import { ARM_CAT, BRANCH_CAT, catAttr } from './catColors.js';
 
 function esc(s) {
   return String(s).replace(/[&<>"']/g, (c) => (
@@ -287,9 +288,9 @@ ${note}` })}>
   return `<aside class="mil-col mil-command">
     ${band('Command', `${roster.army.length} generals · ${roster.navy.length} admirals`)}
     <nav class="mil-tabs">
-      <button data-military-branch="army" class="${branch === 'army' ? 'active' : ''}"
+      <button data-military-branch="army"${catAttr(BRANCH_CAT.army)} class="${branch === 'army' ? 'active' : ''}"
         aria-pressed="${branch === 'army'}">Generals</button>
-      <button data-military-branch="navy" class="${branch === 'navy' ? 'active' : ''}"
+      <button data-military-branch="navy"${catAttr(BRANCH_CAT.navy)} class="${branch === 'navy' ? 'active' : ''}"
         aria-pressed="${branch === 'navy'}">Admirals</button>
     </nav>
     ${/* Eylemler listenin ÜSTÜNDE: altta dururken 1366'da ekranın görünür
@@ -360,7 +361,7 @@ function buildRow(option, ironclad) {
     : `Order one ${option.name} regiment\n${option.weeks} weeks · ${formatPopulation(option.manpower)} men · ${supply} IC a week in supply`
       + `\nRaised in ${option.source?.province ?? '—'} (pool ${formatPopulation(option.sourcePool)})`
       + (fill < 1 ? `\nShort of equipment: it marches out at about ${Math.round(Math.max(0.1, fill) * 100)}% strength and fills up as equipment arrives.` : '');
-  return `<div class="mil-unit ${blocked ? 'is-blocked' : ''}">
+  return `<div class="mil-unit ${blocked ? 'is-blocked' : ''}"${catAttr(ARM_CAT[option.category])}>
     <i class="mil-unit-mark" aria-hidden="true">${counter(option.id)}</i>
     <div class="mil-unit-id">
       <b>${esc(option.name)}<small>${esc(option.role)}</small></b>
@@ -481,7 +482,7 @@ function buildColumn(state, options, summary, logistics = [], levy = null, stats
     return true;
   });
   const tabs = UNIT_CATEGORIES.map(([id, label]) => `
-    <button data-military-category="${id}" class="${category === id ? 'active' : ''}"
+    <button data-military-category="${id}"${catAttr(ARM_CAT[id])} class="${category === id ? 'active' : ''}"
       aria-pressed="${category === id}">${esc(label)}</button>`).join('');
   STAT_MAX = {
     attack: Math.max(1, ...options.map((o) => o.attack)),

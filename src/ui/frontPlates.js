@@ -546,13 +546,6 @@ export class FrontPlates {
       push(s.x, s.y - HEX_SIZE * 0.8 * zoom, far ? 20 : 80, far ? 20 : 28);
       push(s.x, s.y, hex + 8, hex + 8);
     }
-    for (const badge of r.frontBadges ?? []) {
-      const at = badge.at;
-      const rad = Math.max(HEX_SIZE * 0.24 * zoom, 8);
-      const s = cam.worldToScreenWrapped(at.x - HEX_SIZE * 0.8, at.y - HEX_SIZE * 0.8);
-      // En çok üç rozet yan yana (renderer.drawFrontBadges).
-      push(s.x + rad * 2.5, s.y, rad * 2.5 * 3 + 6, rad * 2 + 6);
-    }
     if (game.selected) {
       const s = cam.worldToScreenWrapped(game.selected.x, game.selected.y);
       push(s.x, s.y, hex, hex);

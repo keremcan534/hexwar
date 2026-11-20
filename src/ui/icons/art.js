@@ -351,7 +351,9 @@ export function categorySketch(categoryId, cls = '') {
 /** Teknoloji resmi; yoksa satırının teknik çizimi. Boyutu çağıranın kabı belirler. */
 export function techArt(techId, categoryId, folder = null) {
   if (!TECH_ART.has(techId)) return sketch(FOLDER_SKETCH[folder] ?? CATEGORY_SKETCH[categoryId] ?? 'gear');
-  return `<img class="tech-art" src="assets/tech/${techId}.webp" alt="" draggable="false" loading="lazy">`;
+  // 2026-11-20 seti (assets/tech-flat; dökme pirinç, scripts/art/emboss-icons.py). Eski resimler
+  // assets/tech'te duruyor: alçı figürlü sahneler "AI gibi" okunuyordu (Kerem).
+  return `<img class="tech-art" src="assets/tech-flat/${techId}.webp" alt="" draggable="false" loading="lazy">`;
 }
 
 /**
@@ -359,6 +361,28 @@ export function techArt(techId, categoryId, folder = null) {
  * Population, Manpower. Amblem sınıfı: üst çubuğun amblem yuvası ölçüsünü
  * (`.tb-ico .art-emblem`) ve çift gölgesini aynen alsın.
  */
+/**
+ * ULTRA GERÇEKÇİ GÖSTERGE MADALYONLARI (assets/icons/kpi-real; kaynak assets/incoming/arayuz/
+ * gosterge-gercek-1..3, dilim scripts/art/slice-sheets.py gosterge-gercek). Kerem 2026-11-20:
+ * "buradaki ikonların ultrarealistik versiyonları gerekli". Kart etiketinin anahtarı (kpiKey)
+ * → dosya. Eski alçı/boya setleri yerinde duruyor; burada yoksa kartın kendi ikonu kalır.
+ */
+const REAL_KPI = {
+  output: 'output', 'political-power': 'power', power: 'power', stability: 'stability',
+  'war-support': 'war_support', infamy: 'infamy', exhaustion: 'exhaustion', population: 'population',
+  manpower: 'manpower', invested: 'invested', industry: 'industry', 'consumer-goods': 'consumer_goods',
+  exports: 'exports', bills: 'bills', 'development-fund': 'development_fund', supply: 'supply',
+  literacy: 'literacy', 'standing-army': 'standing_army', peoples: 'peoples',
+  'full-citizens': 'full_citizens', unrest: 'unrest', researching: 'researching', allies: 'allies',
+  'army-draws': 'army_draws', officers: 'officers',
+};
+
+/** Gerçek madalyon; anahtarın resmi yoksa ''. */
+export function realArt(key, size = 'md') {
+  const file = REAL_KPI[key];
+  return file ? `<span class="art art-${size} art-real"><img src="assets/icons/kpi-real/${file}.webp" alt="" draggable="false" loading="lazy"></span>` : '';
+}
+
 export function gaugeArt(id, size = 'sm') {
   const file = GAUGE_FILE[id];
   return file ? img(file, id, `art-${size} art-emblem`) : '';

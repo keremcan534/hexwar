@@ -14,6 +14,7 @@ import { glyph, stars } from './icons/glyphs.js';
 import { esc, tipAttr } from './kit.js';
 import { refreshTooltips } from './tooltip.js';
 import { localRect, toLocal } from './uiScale.js';
+import { subayPortresi } from './icons/subaylar.js';
 
 /**
  * Güç oranı yazısı: bir taraf sıfıra inince "1000000.00 : 1" basıyordu.
@@ -22,6 +23,17 @@ import { localRect, toLocal } from './uiScale.js';
 const fmtRatio = (r) => (!Number.isFinite(r) || r >= 99 ? '99+' : r < 0.01 ? '0' : r.toFixed(1));
 
 const pct = (v) => `${Math.round(v * 100)}%`;
+
+/**
+ * Arazi şeridi (HOI4 penceresinin üstündeki manzara): dönem fotoğrafı araziye göre.
+ * Ad eşleşmezse açık arazi.
+ */
+const TERRAIN_PHOTO = [
+  [/mountain|peak|hill|snow/i, 'valley-town'],
+  [/city|town|capital/i, 'burning-street'],
+  [/beach|coast|marsh|island/i, 'coast-fort'],
+];
+const terrainPhoto = (name) => `assets/menu/${(TERRAIN_PHOTO.find(([re]) => re.test(name)) ?? [null, 'field-road'])[1]}.jpg`;
 const mult = (v) => `×${v.toFixed(2)}`;
 
 export class BattlePanel {
@@ -57,6 +69,34 @@ export class BattlePanel {
       this.open(id);
     });
 
+    // Başlıktan sürüklenir (Kerem: "savaş paneli sürüklenemiyor"); yeri oturum boyunca
+    // kalır, haftalık tazeleme onu sıfırlamaz.
+    this.pos = null;
+    this.root.addEventListener('pointerdown', (event) => {
+      const head = event.target.closest('.bp-head');
+      if (!head || event.target.closest('button') || event.button !== 0) return;
+      const box = this.root.getBoundingClientRect();
+      const start = { x: event.clientX, y: event.clientY, left: box.left, top: box.top };
+      this.root.setPointerCapture(event.pointerId);
+      this.root.classList.add('dragging');
+      const move = (e) => {
+        const left = Math.max(0, Math.min(innerWidth - 80, start.left + e.clientX - start.x));
+        const top = Math.max(0, Math.min(innerHeight - 40, start.top + e.clientY - start.y));
+        this.pos = { left: toLocal(left), top: toLocal(top) };
+        this.place();
+      };
+      const up = () => {
+        this.root.classList.remove('dragging');
+        this.root.removeEventListener('pointermove', move);
+        this.root.removeEventListener('pointerup', up);
+        this.root.removeEventListener('pointercancel', up);
+      };
+      this.root.addEventListener('pointermove', move);
+      this.root.addEventListener('pointerup', up);
+      this.root.addEventListener('pointercancel', up);
+      event.preventDefault();
+    });
+
     this.root.addEventListener('click', (event) => {
       if (event.target.closest('[data-battle-close]')) this.close();
       const focus = event.target.closest('[data-battle-focus]');
@@ -84,6 +124,9 @@ export class BattlePanel {
 
   /** Oyuncunun süren muharebeleri: en çok altı çip, gerisi "+N". */
   refreshStrip() {
+    // Şerit haritanın üstünü örtüyordu (Kerem); her muharebenin artık kendi iğnesi var.
+    this.strip.hidden = true;
+    if (this.strip) return;
     // Şerit savaş çubuğunun HEMEN altında: çubuk mutlak konumlu ve yüksekliği
     // çip sayısıyla değişir; sabit bir üst değer çiplerin üstüne biniyordu.
     const bar = document.getElementById('war-bar');
@@ -155,6 +198,14 @@ export class BattlePanel {
     this.strip.style.maxWidth = strip.width ? `${Math.max(120, Math.floor(toLocal(me.left - strip.left) - 8))}px` : '';
   }
 
+  /** Sürüklenmiş yer: sağdan değil soldan ve üstten konumlanır. */
+  place() {
+    if (!this.pos) return;
+    this.root.style.left = `${this.pos.left}px`;
+    this.root.style.top = `${this.pos.top}px`;
+    this.root.style.right = 'auto';
+  }
+
   refresh() {
     if (this.root.hidden || this.battleId == null) return;
     const world = this.game.world;
@@ -162,31 +213,37 @@ export class BattlePanel {
     if (battle) this.last = battleView(world, battle, this.game.turns.playerNation);
     if (!this.last) { this.close(); return; }
     this.root.innerHTML = this.html(this.last, !battle);
+    this.place();
     this.fit();
   }
 
+  /** Komutan kartı: portre, bayrak şeridi, ad ve yıldız (HOI4'te pencerenin iki ucu). */
+  commander(side, key) {
+    const g = side.general;
+    const face = g ? subayPortresi({ id: g.id, branch: g.branch }) : '<b class="bp-noface">?</b>';
+    const tip = g ? `${g.name}\nSkill ${g.skill}/${MAX_SKILL}${g.traits.length ? ` · ${g.traits.join(', ')}` : ''}` : `${side.name}\nNo commander leads this side.`;
+    return `<figure class="bp-cmd ${key}"${tipAttr({ text: tip })}>
+        <span class="bp-face">${face}</span>
+        <i class="bp-flagbar" style="background:${esc(side.color)}"></i>
+        <figcaption><b>${esc(g ? g.name.split(' ').pop() : 'No commander')}</b>${g ? `<span class="bp-stars">${stars(g.skill, MAX_SKILL)}</span>` : ''}</figcaption>
+      </figure>`;
+  }
+
+  /** Bir tarafın tümen listesi (HOI4'ün alt yarısı): her satır tür, insan, örgüt ve güç. */
   side(view, side, key) {
-    const general = side.general
-      ? `<span class="bp-gen"${tipAttr({ text: `${side.general.name}\nSkill ${side.general.skill}/5${side.general.traits.length ? ` · ${side.general.traits.join(', ')}` : ''}` })}>${esc(side.general.name)} <em>${stars(side.general.skill, MAX_SKILL)}</em></span>`
-      : '<span class="bp-gen none">no commander</span>';
-    const divisions = side.divisions.map((d) => `<div class="bp-div"${tipAttr({ text: `${d.name} division\n${formatPopulation(d.men)} men · strength ${pct(d.strength)} · organisation ${Math.round(d.organization)}%${d.entrenchment > 0.005 ? ` · dug in +${pct(d.entrenchment)}` : ''}` })}>
+    const rows = side.divisions.map((d) => `<div class="bp-div"${tipAttr({ text: `${d.name} division\n${formatPopulation(d.men)} men · strength ${pct(d.strength)} · organisation ${Math.round(d.organization)}%${d.entrenchment ? ` · dug in ${Math.round(d.entrenchment * 100)}%` : ''}` })}>
         <i class="bp-glyph">${esc(d.glyph)}</i>
+        <span class="bp-dname">${esc(d.name)}</span>
+        <span class="bp-dmen">${formatPopulation(d.men)}</span>
         <span class="bp-bars"><b class="org" style="width:${Math.max(0, Math.min(100, d.organization)).toFixed(0)}%"></b><b class="str" style="width:${(d.strength * 100).toFixed(0)}%"></b></span>
       </div>`).join('');
     const factors = side.factors.map((f) => `<li${tipAttr({ text: `${f.label}\n${f.tip}` })}><span>${esc(f.label)}</span><b class="${f.value >= 1 ? 'pos' : 'neg'}">${mult(f.value)}</b></li>`).join('')
       || '<li class="none"><span>No modifiers</span></li>';
     return `<section class="bp-side ${key}${view.mine === key ? ' mine' : ''}">
-      <header><i class="bp-flag" style="background:${esc(side.color)}"></i><b>${esc(side.name)}</b><small>${key === 'attacker' ? 'attacking' : 'defending'}${view.mine === key ? ' · you' : ''}</small></header>
-      ${general}
-      <div class="bp-stats">
-        <span${tipAttr({ text: 'Men in the battle' })}><small>Men</small><b>${formatPopulation(side.men)}</b></span>
-        <span${tipAttr({ text: `Organisation: a division breaks and retreats at ${BREAK_ORGANIZATION}%` })}><small>Org</small><b>${Math.round(side.organization)}%</b></span>
-        <span${tipAttr({ text: 'Strength left' })}><small>Str</small><b>${pct(side.strength)}</b></span>
-        <span${tipAttr({ text: key === 'attacker' ? 'Divisions in the assault / combat width (more with attacks from several sides)' : 'Divisions defending / stack limit' })}><small>Width</small><b>${esc(side.width)}</b></span>
-      </div>
-      <div class="bp-divs">${divisions}</div>
+      <h4>${side.divisions.length} ${side.divisions.length === 1 ? 'division' : 'divisions'}<small${tipAttr({ text: key === 'attacker' ? 'Divisions in the assault / combat width' : 'Divisions defending / stack limit' })}>${esc(side.width)}</small></h4>
+      <div class="bp-divs">${rows}</div>
       <ul class="bp-factors">${factors}</ul>
-      <p class="bp-loss">Losses so far <b>${formatPopulation(side.losses)}</b></p>
+      <p class="bp-loss">Lost <b>${formatPopulation(side.losses)}</b> men</p>
     </section>`;
   }
 
@@ -206,20 +263,40 @@ export class BattlePanel {
       const breaker = f.likely === 'attacker' ? 'defender' : 'attacker';
       const weeks = Math.min(breaker === 'defender' ? f.defenderBreaks : f.attackerBreaks, f.roundsLeft);
       const good = we ? f.likely === we : null;
-      forecast = `<p class="bp-forecast ${good == null ? '' : good ? 'good' : 'bad'}"${tipAttr({ text: `Forecast\nIf the dice stay average: organisation lost per week against what each side has left. A division breaks and retreats at ${BREAK_ORGANIZATION}%. The battle ends by week ${MAX_ROUNDS} at the latest.` })}>
-        <b>${esc(nameOf(breaker))}'s line breaks in ~${Math.max(1, weeks)} ${weeks === 1 ? 'week' : 'weeks'}</b>
-        · ${esc(nameOf(f.likely))} is likely to win</p>`;
+      forecast = `<p class="bp-forecast ${good == null ? '' : good ? 'good' : 'bad'}"${tipAttr({ text: 'Forecast\nIf the dice stay average: organisation lost per week against what each side has left.' })}>
+        <b>${esc(nameOf(breaker))}'s line breaks in ~${Math.max(1, weeks)} ${weeks === 1 ? 'week' : 'weeks'}</b> · ${esc(nameOf(f.likely))} is likely to win</p>`;
     }
+    // Başlık oyuncunun gözünden: HOI4'te "Attack" ya da "Defense".
+    const title = we === 'attacker' ? 'Attack' : we === 'defender' ? 'Defense' : 'Battle';
+    const orgA = Math.max(0, Math.min(100, a.organization));
+    const orgD = Math.max(0, Math.min(100, d.organization));
     return `<header class="bp-head">
-        <div><small>${view.river ? 'River crossing · ' : ''}${esc(view.terrain)} · defence +${pct(view.defense)}</small>
-          <h3>Battle of ${esc(view.name)}</h3></div>
-        <span class="bp-round"${tipAttr({ text: 'One round a week; the battle ends after 20 at most.' })}>${over ? 'Over' : `Week ${view.round} / ${view.maxRounds}`}</span>
-        <button class="bp-btn" data-battle-focus aria-label="Show on the map"${tipAttr({ text: 'Show on the map' })}>${glyph('locate', 'ctl')}</button>
-        <button class="bp-btn" data-battle-close aria-label="Close"${tipAttr({ text: 'Close · Esc' })}>${glyph('close', 'ctl')}</button>
+        <img class="bp-emb" src="assets/icons/war-map/attack.webp" alt="" draggable="false">
+        <div class="bp-title"><h3>${title} · ${esc(view.name)}</h3><small>${over ? 'Over' : `Week ${view.round} of ${view.maxRounds}`}</small></div>
+        <img class="bp-emb" src="assets/icons/war-map/defend.webp" alt="" draggable="false">
+        <span class="bp-tools">
+          <button class="bp-btn" data-battle-focus aria-label="Show on the map"${tipAttr({ text: 'Show on the map' })}>${glyph('locate', 'ctl')}</button>
+          <button class="bp-btn" data-battle-close aria-label="Close"${tipAttr({ text: 'Close · Esc' })}>${glyph('close', 'ctl')}</button>
+        </span>
       </header>
-      <div class="bp-balance"${tipAttr({ text: `Combat power\nThe battle's own scales: strength × terrain × river × plan × commander × doctrine × supplies. ${view.ratio.toFixed(2)} : 1 for the attacker.` })}>
-        <span class="bp-ratio">${fmtRatio(view.mine ? (view.mine === 'attacker' ? view.ratio : 1 / Math.max(1e-6, view.ratio)) : view.ratio)} : 1<small>${view.mine ? 'you : them' : 'attacker : defender'}</small></span>
-        <span class="bp-power"><i style="width:${(share * 100).toFixed(1)}%;background:${esc(a.color)}"></i><i style="width:${((1 - share) * 100).toFixed(1)}%;background:${esc(d.color)}"></i></span>
+      <div class="bp-banner" style="background-image:url(${terrainPhoto(view.terrain)})">
+        <span>${view.river ? '<b>River crossing</b> · ' : ''}${esc(view.terrain)} · defence +${pct(view.defense)}</span>
+      </div>
+      <div class="bp-duel">
+        ${this.commander(a, 'attacker')}
+        <div class="bp-mid">
+          <div class="bp-names"><b>${esc(a.name)}</b><b>${esc(d.name)}</b></div>
+          <div class="bp-power"${tipAttr({ text: `Combat power\nStrength × terrain × river × plan × commander × doctrine × supplies. ${view.ratio.toFixed(2)} : 1 for the attacker.` })}>
+            <i class="att" style="width:${(share * 100).toFixed(1)}%;--side:${esc(a.color)}"></i><i class="def" style="width:${((1 - share) * 100).toFixed(1)}%;--side:${esc(d.color)}"></i>
+            <em>${fmtRatio(view.ratio)} : 1</em>
+          </div>
+          <div class="bp-nums">
+            <span${tipAttr({ text: 'Men in the attack' })}><small>Men</small><b>${formatPopulation(a.men)}</b></span>
+            <span class="org"${tipAttr({ text: `Organisation: a division breaks and retreats at ${BREAK_ORGANIZATION}%` })}><small>Org</small><b>${Math.round(orgA)}% · ${Math.round(orgD)}%</b></span>
+            <span${tipAttr({ text: 'Men in the defence' })}><small>Men</small><b>${formatPopulation(d.men)}</b></span>
+          </div>
+        </div>
+        ${this.commander(d, 'defender')}
       </div>
       ${forecast}
       <div class="bp-sides">${this.side(view, a, 'attacker')}${this.side(view, d, 'defender')}</div>`;

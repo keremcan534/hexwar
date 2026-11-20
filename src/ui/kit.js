@@ -20,7 +20,8 @@ export function esc(s) {
 // Ortak para birimi oyun katmanında tanımlıdır (game/money.js): oyunun kendi
 // cümleleri de aynı sembolü yazar. Kit yalnız yeniden dışa aktarır.
 export { CURRENCY, money, signedMoney } from '../game/money.js';
-import { kpiArt, kpiKey } from './icons/art.js';
+import { kpiArt, kpiKey, realArt } from './icons/art.js';
+import { effectParts } from '../game/modifiers.js';
 
 export const num = (value, digits = 1) => (Number.isFinite(value) ? value.toFixed(digits) : '—');
 export const signed = (value, digits = 1) => `${value >= 0 ? '+' : '−'}${Math.abs(value ?? 0).toFixed(digits)}`;
@@ -58,9 +59,11 @@ export function kpi({ icon = '', label, value, sub = '', tip = null, arg = '', c
   // Kartın arkası görsel (Kerem 2026-11-15: "şu kutuların arkası görsel
   // olabilir"): kendi resmi ya da ekranın fotoğrafından panorama (art.kpiArt).
   const key = kpiKey(label);
+  // Gerçek madalyonu olan kart onu taşır (ikonsuz kartlar da: Army draws, Officers).
+  const face = realArt(key) || icon;
   return `<div class="k-kpi ${cls}" data-kpi="${esc(key)}"${tipAttr(tip, arg)}>
     ${kpiArt(key)}
-    ${icon ? `<span class="k-kpi-ico">${icon}</span>` : ''}
+    ${face ? `<span class="k-kpi-ico${realArt(key) ? ' is-real' : ''}">${face}</span>` : ''}
     <span class="k-kpi-body">
       <small>${esc(label)}</small>
       <b>${value}</b>
@@ -68,6 +71,14 @@ export function kpi({ icon = '', label, value, sub = '', tip = null, arg = '', c
     </span>
     ${meter != null ? `<i class="k-kpi-meter ${meterTone}"><i style="width:${Math.round(Math.max(0, Math.min(1, meter)) * 100)}%"></i></i>` : ''}
   </div>`;
+}
+
+/**
+ * Değiştiriciler renkli çip dizisi: iyi yeşil, kötü kırmızı (Kerem: "bonuslar renkli").
+ * Parti, danışman ve karar kartları aynı dili konuşur.
+ */
+export function effectChips(effects, { short = true } = {}) {
+  return effectParts(effects, { short }).map((part) => `<span class="k-fx ${part.good ? 'good' : 'bad'}">${esc(part.text)}</span>`).join('');
 }
 
 export function kpiRow(items) {

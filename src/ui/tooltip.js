@@ -74,6 +74,68 @@ function esc(s) {
  * `footer` ham HTML'dir (tipTerm terimleri buradan girer); satır etiketleri
  * kaçırılır, yalnız `labelHtml` verilen satır terim taşıyabilir.
  */
+/*
+ * TEK BAKIŞTA OKUNAN KART (Kerem 2026-11-20: "tooltipler kısa, net, anlaşılır; bonuslar renkli,
+ * ekstra şeyler çizgili, tekte anlaşılır"). 832 kartın 98'i 30 kelimeyi aşıyordu (en uzunu 172).
+ * Metinler tek tek yazılmadan bütün kartlar aynı düzene girer: başlık + değer, TEK cümle ana fikir,
+ * renkli etkiler, formül; kalan cümleler ve dipnot kesik çizginin altında sönük "ek bilgi" olur.
+ */
+
+/** Ana fikir bu kadar kelimeyi aşmayan metinde bölünmez: kısa metin zaten tek bakışta okunur. */
+const LEAD_WORDS = 25;
+
+/** HTML'i etiket ve metin parçalarına ayırır; değişiklik yalnız metin parçasına uygulanır. */
+function mapText(html, fn) {
+  return String(html).split(/(<[^>]+>)/).map((part, i) => (i % 2 ? part : fn(part))).join('');
+}
+
+/**
+ * Metindeki işaretli sayılar: yüzde değişiklik bonus (yeşil) ya da ceza (kırmızı), diğer işaretli
+ * sayılar yalnız kalın. Ardından "dearer/cost/upkeep" gibi bir bedel sözü geliyorsa anlam tersine
+ * döner ("imports +50% dearer" kötüdür).
+ */
+const COST_WORD = /^\s*(dearer|costlier|cost|costs|slower|upkeep|infamy|unrest|exhaustion|attrition|price|prices|tension|resentment)\b/i;
+function toneNumbers(html) {
+  return mapText(html, (text) => text.replace(/([+−-])(\d+(?:[.,]\d+)*)(%?)/g, (match, sign, num, pct, at, whole) => {
+    // Kısa çizgi sözcük içindeyse (Saint-Venant, 1914-18) sayı değildir.
+    if (sign === '-' && at > 0 && /[\w\d]/.test(whole[at - 1])) return match;
+    if (!pct) return `<b class="tip-num">${match}</b>`;
+    let good = sign === '+';
+    if (COST_WORD.test(whole.slice(at + match.length))) good = !good;
+    return `<b class="${good ? 'tip-pos' : 'tip-neg'}">${match}</b>`;
+  }));
+}
+
+/** İlk cümle ve kalanı. Sınır: metin parçasında [.!?] + boşluk + büyük harf ya da etiket. */
+function splitLead(html) {
+  const plain = String(html).replace(/<[^>]+>/g, ' ');
+  if (plain.trim().split(/\s+/).length <= LEAD_WORDS) return [html, ''];
+  const parts = String(html).split(/(<[^>]+>)/);
+  let pos = 0;
+  for (let i = 0; i < parts.length; i++) {
+    if (i % 2 === 0) {
+      const m = /[.!?](\s+)(?=[A-Z0-9"“(]|$)/.exec(parts[i]);
+      if (m && (m.index + 1 < parts[i].length)) {
+        const cut = pos + m.index + 1;
+        const rest = String(html).slice(cut).trim();
+        if (rest) return [String(html).slice(0, cut), rest];
+      }
+    }
+    pos += parts[i].length;
+  }
+  return [html, ''];
+}
+
+/** Etki satırının tonu verilmemişse işaretten: "+4% Land attack" yeşil, "−3%" kırmızı. */
+function effectTone(row) {
+  if (row.tone) return row.tone;
+  const v = String(row.value ?? '').trim();
+  if (/^\+\s*0*[.,]?0*%?$/.test(v)) return '';
+  if (v.startsWith('+')) return 'good';
+  if (v.startsWith('−') || v.startsWith('-')) return 'bad';
+  return '';
+}
+
 function render(data) {
   if (!data) return '';
   const label = (row) => row.labelHtml ?? esc(row.label);
@@ -85,8 +147,10 @@ function render(data) {
   const effects = (data.effects ?? []).map((row) => `
     <div class="tip-effect">
       <span>${label(row)}</span>
-      <b class="${row.tone ?? ''}">${esc(String(row.value))}</b>
+      <b class="${effectTone(row)}">${esc(String(row.value))}</b>
     </div>`).join('');
+  const [lead, more] = data.text ? splitLead(data.text) : ['', ''];
+  const extra = [more, data.footer].filter(Boolean).map((part) => `<p>${toneNumbers(part)}</p>`).join('');
   // Başlıksız kart (yalnız açıklama cümlesi) boş bir başlık şeridi taşımaz.
   const head = data.title || data.value != null ? `
     <div class="tip-head">
@@ -95,10 +159,10 @@ function render(data) {
     </div>` : '';
   return `${head}
     ${data.note ? `<div class="tip-note">${data.note}</div>` : ''}
-    ${data.text ? `<p class="tip-text">${data.text}</p>` : ''}
+    ${lead ? `<p class="tip-text tip-lead">${toneNumbers(lead)}</p>` : ''}
     ${effects ? `<div class="tip-block"><small>${esc(data.effectsLabel ?? 'Effects')}</small>${effects}</div>` : ''}
     ${rows ? `<div class="tip-block"><small>${esc(data.rowsLabel ?? 'Why')}</small>${rows}</div>` : ''}
-    ${data.footer ? `<p class="tip-foot">${data.footer}</p>` : ''}`;
+    ${extra ? `<div class="tip-extra">${extra}</div>` : ''}`;
 }
 
 /* ==========================================================================

@@ -224,3 +224,13 @@
 
 /* Taşınan eski satırlar: modüller onlara yazmayı sürdürür, görünmezler. */
 #settings > .opt-legacy { display: none; }
+
+/* Map sekmesi iki sütun: harita katmanları ve yaşayan dünya birlikte 15 anahtar; tek
+   sütunda 1920x1080'de bile 249 px kayıyordu. Bölüm başlığı sütun arasında bölünmez. */
+#opt-pane-map:not([hidden]) { column-count: 2; column-gap: 28px; }
+#opt-pane-map .opt-sec { break-after: avoid; }
+#opt-pane-map .opt-sec:first-child { margin-top: 10px; }
+#opt-pane-map .opt-row { break-inside: avoid; grid-template-columns: minmax(0, 1fr) minmax(0, 48%); }
+@media (max-height: 900px) {
+  .opt-row { min-height: 40px; padding-top: 3px; padding-bottom: 3px; }
+}

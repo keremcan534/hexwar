@@ -18,7 +18,7 @@
        tabanı (ikisi de ui/theme.js, aynı anda yalnız biri takılır). Önemli
        (!important) bildirimlerde katman sırası tersine döner; o yüzden imp
        katmanları önde. */
-    @layer dark-imp-base, dark-imp-skin, light-imp-base, light-imp-skin, base, skin, dark-base, dark-skin, light-base, light-skin, light-fix;
+    @layer dark-imp-base, dark-imp-skin, light-imp-base, light-imp-skin, base, skin, dark-base, dark-skin, light-base, light-skin, light-fix, accent-fix;
     @import url('src/fonts.css') layer(base);
     @import url('src/styles.css') layer(base);
     @import url('src/overview.css') layer(base);
@@ -38,6 +38,7 @@
     @import url('src/menu.css') layer(skin);
     @import url('src/settings.css') layer(skin);
     @import url('src/light.css') layer(light-fix);
+    @import url('src/accent.css') layer(accent-fix);
   </style>
 </head>
 <body>
@@ -108,10 +109,10 @@
             <button class="time-btn time-notch" data-speed="8" aria-label="Fastest" data-tip="time" data-tip-arg="8"><i></i></button>
           </span>
           <i class="tc-needle" aria-hidden="true"></i>
-          <button class="time-btn time-pause active" id="btn-pause" aria-label="Pause or resume" data-tip="time" data-tip-arg="0"><svg class="ico-pause" viewBox="0 0 16 16" aria-hidden="true"><path class="bar" d="M5.8 4v8M10.2 4v8"/></svg><svg class="ico-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3.4 12.2 8l-6.7 4.6z"/></svg></button>
+          <button class="time-btn time-pause active" id="btn-pause" aria-label="Pause or resume" data-tip="time" data-tip-arg="0"><img class="ico-pause ui-art" src="assets/icons/ui-art/pause.webp" alt="" aria-hidden="true" draggable="false"><img class="ico-play ui-art" src="assets/icons/ui-art/play.webp" alt="" aria-hidden="true" draggable="false"></button>
         </span>
       </div>
-      <button class="icon-btn" id="btn-settings" aria-label="Settings" title="Settings"><svg viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></svg></button>
+      <button class="icon-btn" id="btn-settings" aria-label="Settings" title="Settings"><img class="ui-art" src="assets/icons/ui-art/menu.webp" alt="" aria-hidden="true" draggable="false"></button>
     </div>
   </header>
 
@@ -136,8 +137,10 @@
       <button data-screen="politics" data-tip="tab" data-tip-arg="politics"><b>Politics</b></button>
       <button data-screen="technology" data-tip="tab" data-tip-arg="technology"><b>Technology</b></button>
       <button data-screen="chronicle" data-tip="tab" data-tip-arg="chronicle"><b>Chronicle</b></button>
+      <button data-screen="diplomacy" data-tip="tab" data-tip-arg="diplomacy"><b>Diplomacy</b></button>
+      <button data-screen="policies" data-tip="tab" data-tip-arg="policies"><b>State Policies</b></button>
     </div>
-    <button type="button" class="tab-paper" id="btn-newspaper" aria-label="Newspaper" disabled data-tip="text" data-tip-text="Newspaper&#10;The latest issue. Back issues are kept in the Chronicle."><span class="tab-paper-ico"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5.5h13v13a1.5 1.5 0 0 0 1.5 1.5H6a2 2 0 0 1-2-2zM17 9h3v9.5a1.5 1.5 0 0 1-3 0M7 8.5h7M7 12h3M7 15h3M12.5 12H14v3h-1.5z"/></svg></span><small>Paper</small></button>
+    <button type="button" class="tab-paper" id="btn-newspaper" aria-label="Newspaper" disabled data-tip="text" data-tip-text="Newspaper&#10;The latest issue. Back issues are kept in the Chronicle."><span class="tab-photo" style="background-image:url(assets/kpi/movements.webp)" aria-hidden="true"></span><span class="tab-paper-ico"><img class="ui-art" src="assets/icons/ui-art/paper.webp" alt="" aria-hidden="true" draggable="false"></span><small>Paper</small></button>
     <div class="tab-tools">
       <div class="screen-auto" id="screen-auto"></div>
       <button class="icon-btn tab-close" id="screen-close" aria-label="Close" data-tip="text" data-tip-text="Close (Esc)"><svg class="glyph ctl" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11"/></svg></button>
@@ -188,7 +191,7 @@
       <button class="mode-btn" data-mode="unrest" aria-label="Unrest map" data-tip="mapmode" data-tip-arg="unrest"><img class="mode-art is-object" src="assets/icons/history-photo/revolution.png" alt="" draggable="false"></button>
       <button class="mode-btn" data-mode="industry" aria-label="Industry map" data-tip="mapmode" data-tip-arg="industry"><img class="mode-art" src="assets/icons/tabs-medal/industry.png" alt="" draggable="false"></button>
       <button class="mode-btn" data-mode="infamy" aria-label="Infamy map" data-tip="mapmode" data-tip-arg="infamy"><img class="mode-art is-object" src="assets/icons/hud-photo/infamy.png" alt="" draggable="false"></button>
-      <button class="mode-btn" id="btn-layers" aria-label="Map layers" data-tip="mapmode" data-tip-arg="layers"><svg viewBox="0 0 16 16"><path d="M8 2 14 5.2 8 8.4 2 5.2zM2 8.4 8 11.6l6-3.2M2 11.2 8 14.4l6-3.2"/></svg></button>
+      <button class="mode-btn" id="btn-layers" aria-label="Map layers" data-tip="mapmode" data-tip-arg="layers"><img class="mode-art ui-art" src="assets/icons/ui-art/layers.webp" alt="" aria-hidden="true" draggable="false"></button>
     </div>
   </div>
 

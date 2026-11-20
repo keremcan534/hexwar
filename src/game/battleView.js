@@ -70,7 +70,7 @@ function sideOf(world, battle, units, defending, relief, target, breakthrough = 
     nationId,
     name: nation?.name ?? '?',
     color: nation?.color ?? '#888',
-    general: general ? { name: general.name, skill: general.skill, traits: [...(general.traits ?? [])] } : null,
+    general: general ? { id: general.id, branch: general.branch, name: general.name, skill: general.skill, traits: [...(general.traits ?? [])] } : null,
     power: sidePower(world, units, defending, relief, target, breakthrough),
     men,
     strength: men > 0 ? strength / men : 0,

@@ -81,7 +81,21 @@ const P = {
 };
 
 /** Çizgi ikon. `cls` boyut ve renk sınıfı için (varsayılan 1em). */
+/**
+ * Resmi olan çizgi ikonlar (assets/icons/ui-art, kaynak assets/incoming/arayuz/
+ * kucuk-simgeler.webp; Kerem: "Paint'ten yapılmış gibi duruyor"). Aynı sınıfla <img>
+ * döner: boyu .glyph kurallarından gelir. Resmi olmayan ad çizgi ikonda kalır.
+ */
+const GLYPH_ART = {
+  star: 'star_empty', 'star-on': 'star', close: 'close', menu: 'menu', bell: 'bell', home: 'home',
+  locate: 'locate', hourglass: 'hourglass', swords: 'swords', advance: 'advance', halt: 'halt', check: 'check',
+};
+
 export function glyph(name, cls = '') {
+  const art = GLYPH_ART[name];
+  if (art) {
+    return `<img class="glyph glyph-art${cls ? ` ${cls}` : ''}" src="assets/icons/ui-art/${art}.webp" alt="" aria-hidden="true" draggable="false">`;
+  }
   const path = P[name] ?? P.info;
   return `<svg class="glyph${cls ? ` ${cls}` : ''}" viewBox="0 0 24 24" fill="none" stroke="currentColor"
     stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${path}</svg>`;

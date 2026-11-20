@@ -16,6 +16,12 @@ import { MINI_ATLAS } from './miniAtlas.js';
 /** Sayaçtan minyatüre geçiş bandı (zoom): altında sayaç, üstünde figür. */
 export const MINI_ZOOM_IN = 1.15;
 export const MINI_ZOOM_FULL = 1.55;
+/**
+ * Figür bu zooma kadar büyür, sonra ekranda sabit kalır (HOI4 ölçeği). 1.55'te durunca
+ * figür ~45 px'e iniyor, atlasın 160 px'lik çiziminin yarısından azı kullanılıyor ve
+ * bulanık okunuyordu; 2.2'de piyade hücresi ~125 px, çizim kendi çözünürlüğüne yakın.
+ */
+const MINI_ZOOM_HOLD = 2.2;
 /** Atlas bu zoomdan itibaren inmeye başlar: geçiş bandına girildiğinde hazır olsun. */
 const PRELOAD_ZOOM = 0.85;
 /** Figür karesinin yenilenme aralığı; arada haritanın 2B katmanı boşta kalır. */
@@ -56,7 +62,7 @@ const SIDE_RING = {
   hostile: 'rgba(240, 92, 70, 0.8)',
   other: 'rgba(196, 196, 186, 0.34)',
 };
-const PLATE = { w: 50, h: 22 };
+const PLATE = { w: 64, h: 27 };
 /**
  * Kaide ve zemin halkası (dünya birimi). baseShare kaidenin figür boyuna oranı, bodyShare
  * gövdenin yarı eni (ad kutusu için), headShare ayaktan başa olan pay.
@@ -91,11 +97,12 @@ function hslRgb(h, s, l) {
  * parlaklık dar bir banda sıkışır: hem kumaş kalır hem uluslar birbirinden ayrılır.
  */
 function clothTint(nation, base, share) {
-  // Doygunluk artırılır: soluk üniforma haritanın üstünde kaybolup gidiyordu.
-  const rgb = hslRgb(nation.hue ?? 0, Math.min(1, ((nation.sat ?? 50) / 100) * 1.45), Math.min(1, (nation.light ?? 50) / 100));
+  // Ton ülkenin, açıklık haritadan belirgin biçimde koyu: aynı renkteki ülke zemininde
+  // açık ve doygun üniforma kayboluyordu (Kerem). Kontur ve kaide tarafı ayrıca söyler.
+  const rgb = hslRgb(nation.hue ?? 0, Math.min(1, ((nation.sat ?? 50) / 100) * 1.2), Math.min(1, (nation.light ?? 50) / 100));
   const mixed = rgb.map((v, i) => v * (1 - share) + base[i] * share);
   const luma = mixed[0] * 0.3 + mixed[1] * 0.59 + mixed[2] * 0.11;
-  const target = Math.max(0.44, Math.min(0.68, luma));
+  const target = Math.max(0.26, Math.min(0.4, luma * 0.62));
   const gain = target / Math.max(0.05, luma);
   return `rgb(${mixed.map((v) => Math.round(Math.min(1, v * gain) * 255)).join(',')})`;
 }
@@ -168,6 +175,16 @@ class TintBook {
     this.scratch.height = cell;
     this.sctx = this.scratch.getContext('2d');
     this.sctx.imageSmoothingQuality = 'high';
+    // Genişletilmiş maske ve kontur için ara tuvaller.
+    this.maskCanvas = document.createElement('canvas');
+    this.maskCanvas.width = cell;
+    this.maskCanvas.height = cell;
+    this.mctx = this.maskCanvas.getContext('2d');
+    this.mctx.imageSmoothingQuality = 'high';
+    this.lineCanvas = document.createElement('canvas');
+    this.lineCanvas.width = cell;
+    this.lineCanvas.height = cell;
+    this.lctx = this.lineCanvas.getContext('2d');
   }
 
   page(index) {
@@ -338,7 +355,7 @@ export class MiniLayer {
     const stamp = `${nation.hue}|${nation.sat}|${nation.light}`;
     let row = this.tints.get(key);
     if (!row || row.stamp !== stamp) {
-      const color = naval ? clothTint(nation, NAVAL_GREY, 0.62) : clothTint(nation, FIELD_DRAB, 0.08);
+      const color = naval ? clothTint(nation, NAVAL_GREY, 0.62) : clothTint(nation, FIELD_DRAB, 0.28);
       let id = this.tintIds.get(color);
       if (id === undefined) {
         id = this.tintIds.size;
@@ -351,7 +368,9 @@ export class MiniLayer {
   }
 
   bookFor(px) {
-    const cell = px > 100 ? 160 : px > 50 ? 80 : 40;
+    // Hücre ekrandaki boydan HİÇ küçük olmaz: 88 px'lik figür 80'lik hücreden büyütülünce
+    // bulanık ve pikselli görünüyordu (Kerem: "üniteler 144p"). Büyükten küçültmek nettir.
+    const cell = px > 80 ? 160 : px > 40 ? 80 : 40;
     let book = this.books.get(cell);
     if (!book) {
       book = new TintBook(cell);
@@ -387,11 +406,28 @@ export class MiniLayer {
     s.fillRect(0, 0, cell, cell);
     s.globalCompositeOperation = 'destination-in';
     s.drawImage(atlas.base, sx, sy, C, C, 0, 0, cell, cell);
-    s.drawImage(atlas.mask, frame * M, dir * M, M, M, 0, 0, cell, cell);
+    // Maske birleşimi: dört yöne yarım hücre pikseli kaydırılmış dört kopya.
+    const mk = book.mctx;
+    const d = Math.max(0.6, cell / 160);
+    mk.globalCompositeOperation = 'copy';
+    mk.drawImage(atlas.mask, frame * M, dir * M, M, M, 0, 0, cell, cell);
+    mk.globalCompositeOperation = 'source-over';
+    for (const [ox, oy] of [[d, 0], [-d, 0], [0, d], [0, -d]]) mk.drawImage(atlas.mask, frame * M, dir * M, M, M, ox, oy, cell, cell);
+    s.drawImage(book.maskCanvas, 0, 0);
+    // Kontur: siluetin koyu kopyası dört yöne bir piksel kaydırılır, figür üstüne gelir.
+    const ln = book.lctx;
+    ln.globalCompositeOperation = 'copy';
+    ln.drawImage(atlas.base, sx, sy, C, C, 0, 0, cell, cell);
+    ln.globalCompositeOperation = 'source-in';
+    ln.fillStyle = 'rgba(8, 10, 12, 0.85)';
+    ln.fillRect(0, 0, cell, cell);
+    ln.globalCompositeOperation = 'source-over';
     const local = slot % book.perPage;
     const x = (local % book.cols) * cell;
     const y = Math.floor(local / book.cols) * cell;
     g.clearRect(x, y, cell, cell);
+    const o = Math.max(0.75, cell / 120);
+    for (const [ox, oy] of [[o, 0], [-o, 0], [0, o], [0, -o]]) g.drawImage(book.lineCanvas, x + ox, y + oy);
     g.drawImage(atlas.base, sx, sy, C, C, x, y, cell, cell);
     g.globalCompositeOperation = 'source-atop';
     g.drawImage(scratch, x, y);
@@ -410,6 +446,9 @@ export class MiniLayer {
     this.plateQueue.length = 0;
     this.world = world;
     this.zoom = zoom;
+    // HOI4 ölçeği (Kerem): figür tam belirdiği zoomdan sonra büyümez, ekranda aynı
+    // boyda kalır. Yakında harita açılır, figürler birbirine ve okların üstüne binmez.
+    this.fit = Math.min(1, MINI_ZOOM_HOLD / Math.max(0.01, zoom));
     // Önce figür belirir, sayaç onun üstünden sonra çekilir: ikisi birden yarı saydam
     // kaldığında geçiş bandı bulanık bir yığın gibi okunuyordu.
     this.blend = smoothstep(0, 0.6, blend);
@@ -525,7 +564,7 @@ export class MiniLayer {
     const atlas = this.atlas(kind);
     if (!atlas) return;
     const { anchor, muzzles, glow } = atlas.meta;
-    const scale = FIGURE_SCALE[kind] ?? 1;
+    const scale = (FIGURE_SCALE[kind] ?? 1) * (this.fit ?? 1);
     const worldSize = atlas.meta.worldSize * scale;
     const kindIdx = MINI_KINDS.indexOf(kind);
     const book = this.bookFor(worldSize * this.zoom * this.renderer.dpr);
@@ -595,9 +634,9 @@ export class MiniLayer {
     const [hx, hy] = HEADINGS[dir];
     const { kind } = groups[0];
     const { worldSize, anchor } = this.atlas(kind).meta;
-    const size = worldSize * (FIGURE_SCALE[kind] ?? 1);
+    const size = worldSize * (FIGURE_SCALE[kind] ?? 1) * (this.fit ?? 1);
     if (kind === 'transport' && anim === 'walk') this.straightWake(ctx, x, y, hx, hy);
-    const rx = Math.max(RING.minRadius, size * RING.baseShare);
+    const rx = Math.max(RING.minRadius * (this.fit ?? 1), size * RING.baseShare);
     const ry = rx * RING.baseSquash;
     if (kind !== 'transport') {
       this.lastBase = { x, y: y + RING.drop, rx, ry, rim: BASE_RIM.other };
@@ -691,16 +730,24 @@ export class MiniLayer {
     live.length = n;
     for (let i = 0; i < n; i++) live[i] = this.queue[i];
     live.sort(byDepth);
+    // Küçültme yüksek kalitede: varsayılan 'low' iki kat küçültmede kenarı tırtıklıyordu.
+    const smoothing = ctx.imageSmoothingQuality;
+    ctx.imageSmoothingQuality = 'high';
     for (let i = 0; i < n; i++) {
       const f = live[i];
       ctx.drawImage(f.image, f.sx, f.sy, f.cell, f.cell,
         f.x - f.size * f.ax, f.y - f.size * f.ay, f.size, f.size);
     }
+    ctx.imageSmoothingQuality = smoothing;
     this.drawGlows(ctx, alpha);
     if (this.plateAlpha > 0.01) {
+      // Levha ekran pikseline oturur: yarım piksel kayınca yazı bulanıklaşıyordu.
+      const m = ctx.getTransform();
       for (const p of this.plateQueue) {
         ctx.globalAlpha = alpha * this.plateAlpha;
-        ctx.drawImage(p.sprite, p.left, p.top, p.w, p.h);
+        const left = (Math.round(m.a * p.left + m.e) - m.e) / m.a;
+        const top = (Math.round(m.d * p.top + m.f) - m.f) / m.d;
+        ctx.drawImage(p.sprite, left, top, p.w, p.h);
         this.renderer.drawCounterState(ctx, this.world, p.stack, p.left, p.top, p.w, p.h, this.zoom);
       }
     }
@@ -714,9 +761,27 @@ export class MiniLayer {
   drawGlows(ctx, alpha) {
     if (!this.glowCount) return;
     this.flares ??= flareSprites();
+    // Namlu ışığı kareleri (assets/fx/muzzle-strip.webp, ChatGPT sayfası; siyah zemin,
+    // eklemeli çizim): yüklenince çizilen alev dilinin yerini alır.
+    if (!this.muzzle) {
+      this.muzzle = { image: null };
+      const image = new Image();
+      image.decoding = 'async';
+      image.addEventListener('load', () => { this.muzzle.image = image; }, { once: true });
+      image.src = new URL('../../assets/fx/muzzle-strip.webp', import.meta.url).href;
+    }
+    const strip = this.muzzle.image;
     ctx.globalCompositeOperation = 'lighter';
     for (let i = 0; i < this.glowCount; i++) {
       const g = this.glows[i];
+      if (strip) {
+        // Güç sönerken kare ilerler: tutuşma, parlama, sönme.
+        const frame = Math.max(0, Math.min(7, Math.round((1 - g.p) * 7)));
+        const size = g.r * 2.2 * (0.6 + 0.4 * Math.max(0.42, g.reach));
+        ctx.globalAlpha = Math.min(1, (0.55 + 0.45 * g.p) * this.blend * alpha);
+        ctx.drawImage(strip, frame * 128, 0, 128, 128, g.x - size / 2, g.y - size / 2, size, size);
+        continue;
+      }
       const sprite = this.flares[Math.abs(Math.floor(this.time * 24) + (g.x | 0)) % this.flares.length];
       // Kameraya bakan namluda alev kısalır: izdüşüm boyu atlastan gelir.
       const length = g.r * 2.5 * (0.7 + 0.3 * g.p) * Math.max(0.42, g.reach);
@@ -755,7 +820,9 @@ export class MiniLayer {
     }
     const w = PLATE.w / zoom;
     const h = PLATE.h / zoom;
-    const rect = { sprite: memo.sprite, stack, left: this.atX - w / 2, top: this.atY + HEX_SIZE * 0.52, w, h };
+    // Figürün ayağının hemen altında: eskiden yarım hex aşağıda, çoğu zaman komşu karenin
+    // üstündeydi ve hangi kareye ait olduğu okunmuyordu.
+    const rect = { sprite: memo.sprite, stack, left: this.atX - w / 2, top: this.atY + 6 / zoom, w, h };
     this.plateQueue.push(rect);
     // Eğik kamerada levha dünya koordinatında değildir: orada sayacın yarıçapı geçerli kalır.
     if (!this.renderer.upright && this.plateAlpha > 0.2) {
@@ -790,32 +857,34 @@ export class MiniLayer {
       g.lineTo(0.5, h - 0.5); g.lineTo(0.5, 4); g.closePath();
     } else g.roundRect(0.5, 0.5, w - 1, h - 1, 2);
     g.fill();
-    g.lineWidth = selected ? 1.6 : 1;
+    g.lineWidth = selected ? 2 : 1.4;
     g.strokeStyle = selected ? '#f4dea0' : SIDE_RING[side] ?? SIDE_RING.other;
     g.stroke();
-    const flag = this.renderer.flagSprite(nation, 15, 10);
-    if (flag) g.drawImage(flag, 3, 2.5, 15, 10);
-    g.font = `800 10px ${FONT_UI}`;
+    const flag = this.renderer.flagSprite(nation, 18, 12);
+    if (flag) g.drawImage(flag, 4, 3, 18, 12);
+    // Tümen sayısı solda büyük rozet: aynı karede kaç tümen olduğu tek bakışta okunur.
+    const many = stackLen > 1;
+    g.font = `800 13px ${FONT_UI}`;
     g.textAlign = 'right';
     g.textBaseline = 'middle';
-    g.fillStyle = '#f0e2bd';
-    g.fillText(label, w - (stackLen > 1 ? 13 : 3), 8);
-    if (stackLen > 1) {
+    g.fillStyle = '#f6ead0';
+    g.fillText(label, w - (many ? 17 : 4), 9.5);
+    if (many) {
       g.fillStyle = '#e5ca84';
-      g.fillRect(w - 11, 2.5, 8.5, 10);
+      g.fillRect(w - 15, 2.5, 12, 14);
       g.fillStyle = '#0b1117';
       g.textAlign = 'center';
-      g.font = `800 9px ${FONT_UI}`;
-      g.fillText(String(stackLen), w - 6.7, 8);
+      g.font = `800 11px ${FONT_UI}`;
+      g.fillText(String(stackLen), w - 9, 10);
     }
     const bar = (y, value, color) => {
       g.fillStyle = '#05090c';
-      g.fillRect(3, y, w - 6, 2);
+      g.fillRect(4, y, w - 8, 2.5);
       g.fillStyle = color;
-      g.fillRect(3, y, (w - 6) * value, 2);
+      g.fillRect(4, y, (w - 8) * value, 2.5);
     };
-    bar(14.5, strength, strength > 0.5 ? '#8fae70' : strength > 0.25 ? '#c79a4e' : '#b8604a');
-    bar(17.5, org, org > 0.35 ? '#8a9ba1' : org > 0.15 ? '#c79a4e' : '#b8604a');
+    bar(18.5, strength, strength > 0.5 ? '#8fae70' : strength > 0.25 ? '#c79a4e' : '#b8604a');
+    bar(22, org, org > 0.35 ? '#8a9ba1' : org > 0.15 ? '#c79a4e' : '#b8604a');
     return canvas;
   }
 

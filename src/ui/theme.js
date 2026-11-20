@@ -27,7 +27,21 @@ const LABEL = { dark: 'Dark', light: 'Light' };
 const LAYER_OF = { base: 'light-base', skin: 'light-skin' };
 const IMPORTANT_LAYER_OF = { base: 'light-imp-base', skin: 'light-imp-skin' };
 /** Elle yazılmış açık tema kuralları: zaten açık, taranmaz. */
-const SKIP_LAYERS = new Set(['light-fix']);
+const SKIP_LAYERS = new Set(['light-fix', 'accent-fix']);
+
+// --- Vurgu rengi ---------------------------------------------------------------
+//
+// Temadan bağımsız ikinci eksen (Vic3'teki gibi): arayüzün pirinç tonu başka bir metale
+// döner. Yalnız pirinç bandı döner (ton 38-124, doygunluk 0.19 altı); kırmızı tehlike,
+// yeşil olumlu, parlak kehribar uyarı ve harita kendi rengini korur. Açıklık aynı kalır:
+// yazının zeminle karşıtlığı değişmez. Resim dokuları scripts/art/accent-skin.py ile
+// aynı formülle döner (src/accent.css).
+
+const ACCENT_KEY = 'hexwar:ui-accent';
+export const ACCENTS = ['brass', 'steel', 'silver', 'verdigris'];
+export const ACCENT_LABEL = { brass: 'Brass', steel: 'Steel blue', silver: 'Silver', verdigris: 'Verdigris' };
+/** ton (derece), doygunluk çarpanı: accent-skin.py ile aynı. */
+const ACCENT_SPEC = { steel: [248, 0.95], silver: [250, 0.12], verdigris: [192, 0.85] };
 
 // --- Renk uzayı -------------------------------------------------------------
 
@@ -206,6 +220,18 @@ export function lightColor(r, g, b, a, role = 'paint') {
   return [...inGamut(L2, C2, h2), a];
 }
 
+/** Pirinci vurgu tonuna döndürür; başka renk aynen döner. */
+export function accentColor(r, g, b, a, accent) {
+  const spec = ACCENT_SPEC[accent];
+  if (!spec) return [r, g, b, a];
+  const [L, C, h] = toOklch(r, g, b);
+  const w = smoothstep(38, 50, h) * (1 - smoothstep(112, 124, h))
+    * smoothstep(0.012, 0.03, C) * (1 - smoothstep(0.15, 0.19, C));
+  if (w <= 0.001) return [r, g, b, a];
+  const dh = ((((spec[0] - h + 180) % 360) + 360) % 360) - 180;
+  return [...inGamut(L, C + (C * spec[1] - C) * w, h + dh * w), a];
+}
+
 const NAMED = {
   white: [255, 255, 255], black: [0, 0, 0], silver: [192, 192, 192], gray: [128, 128, 128],
   grey: [128, 128, 128], red: [255, 0, 0], green: [0, 128, 0], blue: [0, 0, 255],
@@ -267,8 +293,19 @@ export function lightValue(value, role = 'paint') {
     const c = parseColor(match);
     if (!c || c.some((x) => !Number.isFinite(x))) return match;
     if (c[3] <= 0) return match;
-    return formatColor(lightColor(c[0] / 255, c[1] / 255, c[2] / 255, c[3], role));
+    return formatColor(mapColor(c[0] / 255, c[1] / 255, c[2] / 255, c[3], role));
   });
+}
+
+/**
+ * Tam çevirinin rengi: açık temada lightColor, sonra vurgu; koyu temada vurgu, sonra
+ * yazı tabanı (koyu temanın yazı kaldırması vurguyla da sürsün).
+ */
+function mapColor(r, g, b, a, role) {
+  let c = current === 'light' ? lightColor(r, g, b, a, role) : [r, g, b, a];
+  c = accentColor(c[0], c[1], c[2], c[3], accent);
+  if (current !== 'light' && role === 'text') c = darkTextColor(c[0], c[1], c[2], c[3]) ?? c;
+  return c;
 }
 
 // --- Kuralları tarama ---------------------------------------------------------
@@ -445,15 +482,29 @@ const TEXT_FLOOR = 0.76;
 /** Mürekkep: pirinç/kâğıt zemin üstündeki koyu yazı. Ona dokunulmaz. */
 const INK_L = 0.32;
 
-/** Bir yazı rengini tabana çeker; tabanın üstündeyse ya da mürekkepse aynen döner. */
+/**
+ * YAZI SARIDAN ARINIR (Kerem 2026-11-20: "oyun arayüzü aşırı sarımtırak"). Pirinç bandındaki
+ * yazı (ton 72-105, doygunluk 0.035-0.112: #c9b98f etiket, #e8cf8f değer, --gold-bright)
+ * fildişine çekilir; pirinç malzemede kalır (çerçeve, düğme, doku, ikon). Uyarı kehribarı
+ * (#d6a24c, #e8b04a: doygunluk 0.12-0.13) bandın dışındadır, anlam rengi olarak durur.
+ */
+const BRASS_TEXT_HUE = [72, 105];
+const BRASS_TEXT_C = [0.035, 0.112];
+const IVORY_C = (C) => 0.012 + C * 0.18;
+
+/** Bir yazı rengini tabana çeker, pirinç sarısını alır; dokunacak bir şey yoksa null. */
 export function darkTextColor(r, g, b, a) {
   const [L, C, h] = toOklch(r, g, b);
   if (L < INK_L) return null;
+  const brass = h >= BRASS_TEXT_HUE[0] && h <= BRASS_TEXT_HUE[1] && C >= BRASS_TEXT_C[0] && C <= BRASS_TEXT_C[1];
   const eff = a * L + (1 - a) * DARK_BG_L;
-  if (eff >= TEXT_FLOOR) return null;
-  // Sıkıştırarak kaldır: tabanın altındaki fark %30'a iner ama sıra kalır.
+  if (eff >= TEXT_FLOOR && !brass) return null;
+  const C2 = brass ? IVORY_C(C) : Math.min(C, 0.16);
+  // Tabanın üstündeki yazı yalnız sarısını bırakır; altındaki sıkıştırılarak kalkar
+  // (fark %30'a iner ama sıra kalır).
+  if (eff >= TEXT_FLOOR) return [...inGamut(L, C2, h), a];
   const L2 = TEXT_FLOOR - (TEXT_FLOOR - eff) * 0.3;
-  return [...inGamut(L2, Math.min(C, 0.16), h), 1];
+  return [...inGamut(L2, C2, h), 1];
 }
 
 function darkTextValue(value) {
@@ -467,6 +518,19 @@ function darkTextValue(value) {
 
 /** Yazı rengi taşıyan özellikler; değişkenlerden yalnız yazı adı taşıyanlar. */
 const TEXT_PROP = /^(color|-webkit-text-fill-color)$/;
+/**
+ * Yazıya pirinç değişkeniyle verilen renk (`color: var(--gold-bright)`, ~290 yer): değişken
+ * kökte çözülüp yazı katmanına düz renk olarak yazılır. Değişkenin kendisine dokunulmaz,
+ * çerçeve ve düğmeler aynı değişkenden pirinç kalır.
+ */
+const BRASS_TEXT_VAR = /^var\(\s*(--(?:gold|gold-bright|gold-dark|sk-brass|sk-brass-hi|sk-brass-mid|line-brass|frame-brass))\s*\)$/;
+let rootVars = null;
+function resolveBrassVar(value) {
+  const m = BRASS_TEXT_VAR.exec(value.trim());
+  if (!m) return null;
+  rootVars ??= getComputedStyle(document.documentElement);
+  return rootVars.getPropertyValue(m[1]).trim() || null;
+}
 const TEXT_VAR = /^--(text|sk-text)(-|$)/;
 const DARK_LAYER_OF = { base: 'dark-base', skin: 'dark-skin' };
 const DARK_IMPORTANT_LAYER_OF = { base: 'dark-imp-base', skin: 'dark-imp-skin' };
@@ -483,7 +547,10 @@ function darkDecls(style) {
     // Bütün yazı rengi bildirimleri kopyalanır, kaldırılmasa da: kopya katmanı
     // üstte olduğundan kopyalanmayan bir bildirim (ör. seçili hâlin beyazı)
     // kendi katmanındaki yarışı kopyaya kaybederdi.
-    const next = hasColor(value) ? darkTextValue(value) : value;
+    const literal = TEXT_PROP.test(prop) ? resolveBrassVar(value) : null;
+    const source = literal ?? value;
+    const lifted0 = hasColor(source) ? darkTextValue(source) : source;
+    const next = literal && lifted0 === literal ? value : lifted0;
     if (next !== value) lifted++;
     const line = `${prop}: ${next}`;
     if (style.getPropertyPriority(prop)) important.push(`${line} !important`); else normal.push(line);
@@ -517,6 +584,7 @@ function darkRules(rules) {
 }
 
 function buildDarkSheets() {
+  rootVars = null;
   const groups = [];
   for (const sheet of document.styleSheets) {
     if (sheet.ownerNode?.dataset?.lightCopy) continue;
@@ -543,6 +611,7 @@ function buildDarkSheets() {
 // --- Uygulama ---------------------------------------------------------------
 
 let current = 'dark';
+let accent = 'brass';
 let copies = [];
 let observer = null;
 let rebuildTimer = 0;
@@ -575,7 +644,22 @@ export function onThemeChange(fn) { listeners.add(fn); return () => listeners.de
  */
 /** Temanın üst katman kopyaları: açıkta renk çevirisi, koyuda yazı tabanı. */
 function sheetsFor(theme) {
-  return theme === 'light' ? buildSheets() : buildDarkSheets();
+  return theme === 'light' || accent !== 'brass' ? buildSheets() : buildDarkSheets();
+}
+
+export function currentAccent() { return accent; }
+
+/** Vurgu rengini uygular ve hatırlar; temayla aynı kopyaları yeniden kurar. */
+export function setAccent(name, { persist = true } = {}) {
+  accent = ACCENTS.includes(name) ? name : 'brass';
+  document.documentElement.dataset.uiAccent = accent;
+  adopt(sheetsFor(current));
+  watchHead();
+  if (persist) {
+    try { localStorage.setItem(ACCENT_KEY, accent); } catch { /* yalnız bu oturum */ }
+  }
+  for (const fn of listeners) fn(current);
+  return accent;
 }
 
 export function setTheme(name, { persist = true } = {}) {
@@ -596,6 +680,11 @@ export function setTheme(name, { persist = true } = {}) {
 /** Açılışta kayıtlı tema; ?theme=light|dark denetim için kaydı ezmeden zorlar. */
 export function initTheme() {
   const forced = new URLSearchParams(location.search).get('theme');
+  // Vurgu temadan önce okunur: tema ilk kopyaları kurarken onu da bilsin.
+  const forcedAccent = new URLSearchParams(location.search).get('accent');
+  try { accent = forcedAccent ?? localStorage.getItem(ACCENT_KEY) ?? 'brass'; } catch { accent = forcedAccent ?? 'brass'; }
+  if (!ACCENTS.includes(accent)) accent = 'brass';
+  document.documentElement.dataset.uiAccent = accent;
   let stored = null;
   try { stored = localStorage.getItem(KEY); } catch { /* yok */ }
   const theme = setTheme(forced ?? stored ?? 'dark', { persist: !forced });

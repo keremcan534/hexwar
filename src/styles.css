@@ -12097,11 +12097,11 @@ button.uc-agenda:hover { border-color: var(--gold); }
   border-radius: 50%;
   background: radial-gradient(circle at 50% 50%, rgba(206, 214, 222, 0.2) 0%, rgba(206, 214, 222, 0.07) 48%, transparent 71%);
 }
-.art-item img { filter: saturate(0.78) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.85)); }
+.art-item img { filter: saturate(0.66) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.85)); }
 
 .art-unit img { filter: drop-shadow(0 1px 1px rgba(0, 0, 0, 0.6)); }
 /* Amblem: çerçevesiz gravür nesnesi; koyu zeminde kopmasın diye çift gölge. */
-.art-emblem img { filter: saturate(0.78) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 4px rgba(0, 0, 0, 0.35)); }
+.art-emblem img { filter: saturate(0.66) drop-shadow(0 1px 1px rgba(0, 0, 0, 0.8)) drop-shadow(0 0 4px rgba(0, 0, 0, 0.35)); }
 /* Metin satırı içi (general özellikleri): satır yüksekliğini itmesin. */
 .art-inline { width: 1.5em; height: 1.5em; margin: -0.3em 0.15em -0.25em 0; }
 

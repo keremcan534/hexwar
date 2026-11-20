@@ -1,0 +1,94 @@
+/* VURGU RENGİ (2026-11-20, Kerem: "genel sarı tema var, düğmeler mavi olabilsin; Vic3'te
+   tema değişimi vardı"). Renkli bildirimler src/ui/theme.js'te OKLCH'de çevrilir; buradakiler
+   yalnız resim dokularıdır: scripts/art/accent-skin.py pirinç pikselleri vurgu tonuna döndürür
+   (assets/ui/skin/<vurgu>/ ve <vurgu>-acik/). Katman en üsttedir (accent-fix), taranmaz. */
+:root[data-ui-accent="steel"] {
+  --sk-dugme: url('../assets/ui/skin/steel/dugme.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-ustunde: url('../assets/ui/skin/steel/dugme-ustunde.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-basili: url('../assets/ui/skin/steel/dugme-basili.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-kapali-cerceve: url('../assets/ui/skin/steel/dugme-kapali.webp') 16 / 5px / 0 stretch;
+  --sk-dugme-secili: url('../assets/ui/skin/steel/dugme-secili.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-tehlike: url('../assets/ui/skin/steel/dugme-tehlike.webp') 16 fill / 5px / 0 stretch;
+  --sk-cerceve-kucuk: url('../assets/ui/skin/steel/cerceve.webp') 52 fill / 13px / 0 stretch;
+  --sk-baslik: url('../assets/ui/skin/steel/baslik.webp') 4 6 14 6 fill / 2px 3px 5px 3px / 0 stretch;
+  --sk-yuva: url('../assets/ui/skin/steel/yuva.webp') 16 fill / 6px / 0 stretch;
+  --sk-img-cerceve: url('../assets/ui/skin/steel/cerceve.webp');
+  --sk-img-yuva: url('../assets/ui/skin/steel/yuva.webp');
+  --sk-cerceve-kenar: url('../assets/ui/skin/steel/cerceve.webp') 52 / 13px / 0 stretch;
+  --sk-doku: url('../assets/ui/skin/steel/panel-doku.webp');
+}
+:root[data-ui-theme="light"][data-ui-accent="steel"] {
+  --sk-dugme: url('../assets/ui/skin/steel-acik/dugme.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-ustunde: url('../assets/ui/skin/steel-acik/dugme-ustunde.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-basili: url('../assets/ui/skin/steel-acik/dugme-basili.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-kapali-cerceve: url('../assets/ui/skin/steel-acik/dugme-kapali.webp') 16 / 5px / 0 stretch;
+  --sk-dugme-secili: url('../assets/ui/skin/steel-acik/dugme-secili.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-tehlike: url('../assets/ui/skin/steel-acik/dugme-tehlike.webp') 16 fill / 5px / 0 stretch;
+  --sk-cerceve-kucuk: url('../assets/ui/skin/steel-acik/cerceve.webp') 52 fill / 13px / 0 stretch;
+  --sk-baslik: url('../assets/ui/skin/steel-acik/baslik.webp') 4 6 14 6 fill / 2px 3px 5px 3px / 0 stretch;
+  --sk-yuva: url('../assets/ui/skin/steel-acik/yuva.webp') 16 fill / 6px / 0 stretch;
+  --sk-img-cerceve: url('../assets/ui/skin/steel-acik/cerceve.webp');
+  --sk-img-yuva: url('../assets/ui/skin/steel-acik/yuva.webp');
+  --sk-cerceve-kenar: url('../assets/ui/skin/steel-acik/cerceve.webp') 52 / 13px / 0 stretch;
+  --sk-doku: url('../assets/ui/skin/steel-acik/panel-doku.webp');
+}
+:root[data-ui-accent="silver"] {
+  --sk-dugme: url('../assets/ui/skin/silver/dugme.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-ustunde: url('../assets/ui/skin/silver/dugme-ustunde.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-basili: url('../assets/ui/skin/silver/dugme-basili.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-kapali-cerceve: url('../assets/ui/skin/silver/dugme-kapali.webp') 16 / 5px / 0 stretch;
+  --sk-dugme-secili: url('../assets/ui/skin/silver/dugme-secili.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-tehlike: url('../assets/ui/skin/silver/dugme-tehlike.webp') 16 fill / 5px / 0 stretch;
+  --sk-cerceve-kucuk: url('../assets/ui/skin/silver/cerceve.webp') 52 fill / 13px / 0 stretch;
+  --sk-baslik: url('../assets/ui/skin/silver/baslik.webp') 4 6 14 6 fill / 2px 3px 5px 3px / 0 stretch;
+  --sk-yuva: url('../assets/ui/skin/silver/yuva.webp') 16 fill / 6px / 0 stretch;
+  --sk-img-cerceve: url('../assets/ui/skin/silver/cerceve.webp');
+  --sk-img-yuva: url('../assets/ui/skin/silver/yuva.webp');
+  --sk-cerceve-kenar: url('../assets/ui/skin/silver/cerceve.webp') 52 / 13px / 0 stretch;
+  --sk-doku: url('../assets/ui/skin/silver/panel-doku.webp');
+}
+:root[data-ui-theme="light"][data-ui-accent="silver"] {
+  --sk-dugme: url('../assets/ui/skin/silver-acik/dugme.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-ustunde: url('../assets/ui/skin/silver-acik/dugme-ustunde.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-basili: url('../assets/ui/skin/silver-acik/dugme-basili.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-kapali-cerceve: url('../assets/ui/skin/silver-acik/dugme-kapali.webp') 16 / 5px / 0 stretch;
+  --sk-dugme-secili: url('../assets/ui/skin/silver-acik/dugme-secili.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-tehlike: url('../assets/ui/skin/silver-acik/dugme-tehlike.webp') 16 fill / 5px / 0 stretch;
+  --sk-cerceve-kucuk: url('../assets/ui/skin/silver-acik/cerceve.webp') 52 fill / 13px / 0 stretch;
+  --sk-baslik: url('../assets/ui/skin/silver-acik/baslik.webp') 4 6 14 6 fill / 2px 3px 5px 3px / 0 stretch;
+  --sk-yuva: url('../assets/ui/skin/silver-acik/yuva.webp') 16 fill / 6px / 0 stretch;
+  --sk-img-cerceve: url('../assets/ui/skin/silver-acik/cerceve.webp');
+  --sk-img-yuva: url('../assets/ui/skin/silver-acik/yuva.webp');
+  --sk-cerceve-kenar: url('../assets/ui/skin/silver-acik/cerceve.webp') 52 / 13px / 0 stretch;
+  --sk-doku: url('../assets/ui/skin/silver-acik/panel-doku.webp');
+}
+:root[data-ui-accent="verdigris"] {
+  --sk-dugme: url('../assets/ui/skin/verdigris/dugme.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-ustunde: url('../assets/ui/skin/verdigris/dugme-ustunde.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-basili: url('../assets/ui/skin/verdigris/dugme-basili.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-kapali-cerceve: url('../assets/ui/skin/verdigris/dugme-kapali.webp') 16 / 5px / 0 stretch;
+  --sk-dugme-secili: url('../assets/ui/skin/verdigris/dugme-secili.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-tehlike: url('../assets/ui/skin/verdigris/dugme-tehlike.webp') 16 fill / 5px / 0 stretch;
+  --sk-cerceve-kucuk: url('../assets/ui/skin/verdigris/cerceve.webp') 52 fill / 13px / 0 stretch;
+  --sk-baslik: url('../assets/ui/skin/verdigris/baslik.webp') 4 6 14 6 fill / 2px 3px 5px 3px / 0 stretch;
+  --sk-yuva: url('../assets/ui/skin/verdigris/yuva.webp') 16 fill / 6px / 0 stretch;
+  --sk-img-cerceve: url('../assets/ui/skin/verdigris/cerceve.webp');
+  --sk-img-yuva: url('../assets/ui/skin/verdigris/yuva.webp');
+  --sk-cerceve-kenar: url('../assets/ui/skin/verdigris/cerceve.webp') 52 / 13px / 0 stretch;
+  --sk-doku: url('../assets/ui/skin/verdigris/panel-doku.webp');
+}
+:root[data-ui-theme="light"][data-ui-accent="verdigris"] {
+  --sk-dugme: url('../assets/ui/skin/verdigris-acik/dugme.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-ustunde: url('../assets/ui/skin/verdigris-acik/dugme-ustunde.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-basili: url('../assets/ui/skin/verdigris-acik/dugme-basili.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-kapali-cerceve: url('../assets/ui/skin/verdigris-acik/dugme-kapali.webp') 16 / 5px / 0 stretch;
+  --sk-dugme-secili: url('../assets/ui/skin/verdigris-acik/dugme-secili.webp') 16 fill / 5px / 0 stretch;
+  --sk-dugme-tehlike: url('../assets/ui/skin/verdigris-acik/dugme-tehlike.webp') 16 fill / 5px / 0 stretch;
+  --sk-cerceve-kucuk: url('../assets/ui/skin/verdigris-acik/cerceve.webp') 52 fill / 13px / 0 stretch;
+  --sk-baslik: url('../assets/ui/skin/verdigris-acik/baslik.webp') 4 6 14 6 fill / 2px 3px 5px 3px / 0 stretch;
+  --sk-yuva: url('../assets/ui/skin/verdigris-acik/yuva.webp') 16 fill / 6px / 0 stretch;
+  --sk-img-cerceve: url('../assets/ui/skin/verdigris-acik/cerceve.webp');
+  --sk-img-yuva: url('../assets/ui/skin/verdigris-acik/yuva.webp');
+  --sk-cerceve-kenar: url('../assets/ui/skin/verdigris-acik/cerceve.webp') 52 / 13px / 0 stretch;
+  --sk-doku: url('../assets/ui/skin/verdigris-acik/panel-doku.webp');
+}
