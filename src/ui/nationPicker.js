@@ -269,7 +269,7 @@ export class NationPicker {
       </div>
       <div class="np-actions">
         <button class="np-play" data-play="1">Play as ${esc(brief.name)}<kbd>Enter</kbd></button>
-        <button class="np-alt" data-back="1">Main menu<kbd>Esc</kbd></button>
+        <button class="np-alt" data-back="1">Back<kbd>Esc</kbd></button>
         ${brief.suggested ? '' : '<button class="np-alt" data-suggested="1">Back to suggested</button>'}
       </div>`;
     // Bayrak dalgalanır (künyedeki aynı bez: flagWave); kap her adayda yenidir.

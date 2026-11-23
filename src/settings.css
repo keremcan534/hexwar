@@ -234,3 +234,7 @@
 @media (max-height: 900px) {
   .opt-row { min-height: 40px; padding-top: 3px; padding-bottom: 3px; }
 }
+
+/* Ana menüden açılınca pencere ve perdesi menünün (z 20) üstüne çıkar. */
+body.settings-over-menu #settings,
+body.settings-over-menu .opt-scrim { z-index: calc(var(--z-menu) + 2); }

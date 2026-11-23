@@ -27,6 +27,7 @@ import { campaignSaveState, gameDate } from './hud.js';
 import { worldRows } from '../world/worldgen.js';
 import { EARTH_COLS, EARTH_ROWS } from '../world/earth.js';
 import { MenuMusic } from './menuMusic.js';
+import { showPanel } from './motion.js';
 import { END_YEAR, ERA_NAME, START_YEAR } from '../game/calendar.js';
 import { randomSeed } from '../core/rng.js';
 import { flagDataUrl } from '../render/flagPainter.js';
@@ -412,7 +413,16 @@ export class MainMenu {
       this.onWorldBuilt?.();
     };
     el.create.onclick = () => this.showView('setup');
-    el.settings.onclick = () => this.showView('options');
+    // Menüdeki Settings oyunun TAM ayar penceresidir (Kerem 2026-11-23: "ana menüde settings
+    // var ama boş"): menünün kendi altı satırlık görünümü yerine yedi sekme açılır. Pencere
+    // menünün üstüne çıkar (body.settings-over-menu); kayıt dosyası düğmeleri onun Game
+    // sekmesine taşınmıştır (settingsPanel.build).
+    el.settings.onclick = () => {
+      const panel = document.getElementById('settings');
+      if (!panel) { this.showView('options'); return; }
+      document.body.classList.add('settings-over-menu');
+      showPanel(panel);
+    };
     el.credits.onclick = () => this.showView('credits');
     el.back.onclick = () => this.showView('actions');
     el.drawerClose.onclick = () => this.showView('actions');
@@ -423,6 +433,7 @@ export class MainMenu {
         this.resume();
         return;
       }
+      this.pickerFrom = 'actions';
       this.game.newWorld();
       this.close();
       this.onWorldBuilt?.();
@@ -823,6 +834,9 @@ export class MainMenu {
     // Önizlenen dünya kurulur: alan boşken çekilen rastgele tohum da aynıdır.
     const seed = this.currentSeed();
     this.pendingSeed = null;
+    // Ülke seçiminden "Back" buraya döner, kurulan dünyanın tohumuyla (returnFromPicker).
+    this.pickerFrom = 'setup';
+    this.lastSeed = seed;
     this.stopPreview();
     this.game.newWorld(seed, {
       ...this.currentOptions(),
@@ -1007,6 +1021,13 @@ export class MainMenu {
     this.resumable = false;
     this.setScene(nextSceneIndex());
     this.open();
+    // Geri, gelinen yere döner (Kerem 2026-11-23: "ülke seçme ekranından geriye gidemiyorum"):
+    // dünya kurulum ekranından kurulduysa oraya, kaydırıcılar ve tohum yerinde. Eskiden en
+    // baştaki menüye atıyor, harita ayarları kayboluyordu.
+    if (this.pickerFrom === 'setup') {
+      if (this.lastSeed && !this.el.seed?.value) this.pendingSeed = this.lastSeed;
+      this.showView('setup');
+    }
   }
 
   /** Menüyü tekrar açar: oyun içi ayarlar panelindeki "Ana Menü" düğmesi. */

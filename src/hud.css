@@ -1640,3 +1640,104 @@ button.nd-coast:hover { text-decoration: underline; }
   filter: drop-shadow(0 3px 3px rgba(0, 0, 0, 0.7));
   pointer-events: none;
 }
+
+/* --- SAAT BLOĞU: GERÇEK MASA ALETLERİ (URETIM-LISTESI §23, assets/ui/clock/; Kerem
+   2026-11-23: "sağ üstteki saat yerini ChatGPT'ye ultrarealistik yaptıralım") ----------
+   CSS ile boyanmış kasa, takvim, kadran ve topuz yerine resimleri: ceviz plaka (9 dilim,
+   vida köşeleri), pirinç tutacaklı takvim yaprağı, fildişi telgraf kadranı, mavi çelik ibre,
+   dökme pirinç oynat/duraklat düğmesi. Resimlerde YAZI YOK: ay, gün, yıl ve hız rakamları
+   koddan gelir (hud.js renderDate). İbre yine :has ile seçili hıza döner; çentik açıları
+   kadran resminin kendi çentikleridir (±74°, ±36.5°, 0°; ölçüldü). Kadran 100×58, pivot
+   (50, 53.8): resmin alt ortasındaki topuz. */
+.turn-control {
+  padding: 0 14px;
+  border-image: url('../assets/ui/clock/plate.webp') 60 fill / 14px / 0 stretch;
+}
+.turn-control:has(.time-notch.active[data-speed="1"]) { --needle: -74deg; }
+.turn-control:has(.time-notch.active[data-speed="2"]) { --needle: -36.5deg; }
+.turn-control:has(.time-notch.active[data-speed="6"]) { --needle: 36.5deg; }
+.turn-control:has(.time-notch.active[data-speed="8"]) { --needle: 74deg; }
+/* Takvim: kırmızı bant %6.5-27, yaprak %27-88.5 (resimden ölçüldü). */
+.tc-cal {
+  width: 44px;
+  height: 52px;
+  border-radius: 0;
+  background: url('../assets/ui/clock/calendar.webp') center / 100% 100% no-repeat;
+  box-shadow: none;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.6));
+}
+.tc-month {
+  height: 10.6px;
+  margin: 3.4px 4.4px 0;
+  border-radius: 0;
+  background: none;
+  box-shadow: none;
+  color: #f8ecd8;
+  font: 700 8.5px/1 var(--font-ui);
+  letter-spacing: 0.12em;
+  text-shadow: 0 1px 0 rgba(60, 10, 4, 0.8);
+}
+.tc-day {
+  flex: none;
+  height: 31.8px;
+  margin: 0 5px;
+  color: #23180c;
+  font: 600 21px/1 var(--font-display);
+  text-shadow: 0 1px 0 rgba(255, 248, 228, 0.6);
+}
+.turn-control .turn-badge b { text-shadow: 0 1px 0 #000, 0 0 10px rgba(0, 0, 0, 0.6); }
+.tc-dial {
+  width: 100px;
+  height: 58px;
+  margin-top: -3px;
+  background: url('../assets/ui/clock/dial.webp') center / 100% 100% no-repeat;
+  filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.55));
+}
+.tc-face { display: none; }
+.tc-dial .time-btn.time-notch,
+.tc-dial .time-btn.time-notch.active,
+.tc-dial .time-btn.time-notch.lit { background: none; }
+.tc-dial .time-btn.time-notch:hover,
+.tc-dial .time-btn.time-notch.lit:hover { background: rgba(70, 44, 12, 0.14); }
+/* Rakam kadranın mürekkebidir; seçilen hıza kadar olanlar kızıl emaye. */
+.tc-dial .time-notch::before { color: #3a2c18; font: 700 11px/1 var(--font-ui); text-shadow: none; }
+.tc-dial .time-notch:hover::before { color: #120c04; }
+.tc-dial .time-notch.lit::before { color: #a8321f; }
+.tc-dial .time-notch.active::before { font-size: 12.5px; }
+.tc-dial[data-hover="1"] .time-notch[data-speed="1"]::before,
+.tc-dial[data-hover="2"] .time-notch[data-speed="2"]::before,
+.tc-dial[data-hover="4"] .time-notch[data-speed="4"]::before,
+.tc-dial[data-hover="6"] .time-notch[data-speed="6"]::before,
+.tc-dial[data-hover="8"] .time-notch[data-speed="8"]::before { color: #120c04; }
+.tc-needle {
+  top: 15.7px;
+  width: 6px;
+  height: 41px;
+  margin-left: -3px;
+  border-radius: 0;
+  background: url('../assets/ui/clock/needle.webp') center / 100% 100% no-repeat;
+  box-shadow: none;
+  filter: drop-shadow(1px 2px 1px rgba(0, 0, 0, 0.5));
+  transform-origin: 50% 93%;
+}
+/* Oynat/duraklat: kadranın topuzunun üstüne oturan dökme pirinç düğme. */
+.turn-control .tc-dial .time-btn.time-pause,
+.turn-control.is-paused .tc-dial .time-btn.time-pause {
+  top: 53.8px;
+  width: 24px;
+  height: 24px;
+  margin: -12px 0 0 -12px;
+  background: url('../assets/ui/clock/pause.webp') center / contain no-repeat;
+  box-shadow: none;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.6));
+}
+.turn-control.is-paused .tc-dial .time-btn.time-pause { background-image: url('../assets/ui/clock/play.webp'); }
+.turn-control .tc-dial .time-btn.time-pause:hover { filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.6)) brightness(1.12); }
+.turn-control .tc-dial .time-btn.time-pause img.ui-art,
+.turn-control.is-paused .tc-dial .time-pause img.ico-play,
+.turn-control.is-paused .tc-dial .time-pause img.ico-pause { display: none; }
+.turn-control .tc-dial .time-notch:nth-child(1) { clip-path: polygon(3.0px 53.8px, 3.2px 49.0px, 4.0px 44.3px, 5.2px 39.7px, 6.8px 35.2px, 9.0px 30.9px, 11.5px 26.9px, 39.4px 46.4px, 38.6px 47.5px, 38.1px 48.7px, 37.6px 49.9px, 37.3px 51.2px, 37.1px 52.5px, 37.0px 53.8px); --lx: 21.2px; --ly: 45.6px; }
+.turn-control .tc-dial .time-notch:nth-child(2) { clip-path: polygon(11.5px 26.9px, 14.6px 22.9px, 18.1px 19.3px, 22.0px 16.0px, 26.3px 13.3px, 30.8px 10.9px, 35.5px 9.1px, 46.0px 41.5px, 44.7px 42.0px, 43.4px 42.6px, 42.3px 43.4px, 41.2px 44.3px, 40.2px 45.3px, 39.4px 46.4px); --lx: 32.2px; --ly: 29.7px; }
+.turn-control .tc-dial .time-notch:nth-child(3) { clip-path: polygon(35.5px 9.1px, 40.2px 7.9px, 45.1px 7.1px, 50.0px 6.8px, 54.9px 7.1px, 59.8px 7.9px, 64.5px 9.1px, 54.0px 41.5px, 52.7px 41.1px, 51.4px 40.9px, 50.0px 40.8px, 48.6px 40.9px, 47.3px 41.1px, 46.0px 41.5px); --lx: 50.0px; --ly: 23.8px; }
+.turn-control .tc-dial .time-notch:nth-child(4) { clip-path: polygon(64.5px 9.1px, 69.2px 10.9px, 73.7px 13.3px, 78.0px 16.0px, 81.9px 19.3px, 85.4px 22.9px, 88.5px 26.9px, 60.6px 46.4px, 59.8px 45.3px, 58.8px 44.3px, 57.7px 43.4px, 56.6px 42.6px, 55.3px 42.0px, 54.0px 41.5px); --lx: 67.8px; --ly: 29.7px; }
+.turn-control .tc-dial .time-notch:nth-child(5) { clip-path: polygon(88.5px 26.9px, 91.0px 30.9px, 93.2px 35.2px, 94.8px 39.7px, 96.0px 44.3px, 96.8px 49.0px, 97.0px 53.8px, 63.0px 53.8px, 62.9px 52.5px, 62.7px 51.2px, 62.4px 49.9px, 61.9px 48.7px, 61.4px 47.5px, 60.6px 46.4px); --lx: 78.8px; --ly: 45.6px; }

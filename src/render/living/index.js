@@ -28,6 +28,14 @@ const TAU = Math.PI * 2;
 
 /** Gece-gündüzün bir turu (gerçek saniye): oyun hızından bağımsız, sakin. */
 const DAY_CYCLE_S = 280;
+
+/**
+ * Sabit gün saati (Kerem 2026-11-23: "dünya saatini ayarlardan sabit olarak ayarlayabilelim").
+ * Döngüde güneş gerçek zamanla batıya kayar ve gece haritanın üstünden geçer. Sabit kipte
+ * güneşin boylamı KAMERAYA bağlanır: oyuncu nereye bakarsa orası seçtiği saattedir. Değer,
+ * bakılan boylamla güneş arasındaki açı (radyan): sabahleyin güneş doğudadır (boylam büyük).
+ */
+export const TIME_OF_DAY = { cycle: null, day: 0, dawn: 1.6, dusk: -1.6, night: Math.PI };
 const FRONT_LIFE_S = 260;
 const FRONT_SPEED = 8.5;
 
@@ -67,6 +75,8 @@ export class LivingWorld {
     this.motion = new LivingMotion();
     /** Görüntü denetimi: game.living.debug.day = 15 (yılın günü), sunLon, time (sn). */
     this.debug = { day: null, sunLon: null, time: null };
+    /** Settings → Graphics → Time of day (TIME_OF_DAY anahtarı). */
+    this.timeOfDay = 'cycle';
     this.season = { on: false, S: 0, cool: 0, cap: 0, leaf: 0 };
     this.sites = [];
     this.siteWorld = null;
@@ -439,6 +449,14 @@ export class LivingWorld {
     }
   }
 
+  /** Sabit gün saati ya da döngü; kare hemen tazelenir. */
+  setTimeOfDay(mode) {
+    this.timeOfDay = Object.hasOwn(TIME_OF_DAY, mode) ? mode : 'cycle';
+    this.lastDraw = 0;
+    this.lastCam.x = NaN;
+    this.game.requestRender?.();
+  }
+
   // ----------------------------------------------------------------- kare ---
 
   frame() {
@@ -495,7 +513,10 @@ export class LivingWorld {
     const spanX = world.cols * HEX_STEP;
     const spanY = world.rows * ROW_H;
     const nightOn = livingFlags.on('nightLights');
-    const sunLon = this.debug.sunLon ?? ((-time / DAY_CYCLE_S) * TAU);
+    const fixedSun = TIME_OF_DAY[this.timeOfDay] ?? null;
+    const sunLon = this.debug.sunLon ?? (fixedSun != null
+      ? (cam.x / spanX) * TAU + fixedSun
+      : (-time / DAY_CYCLE_S) * TAU);
     const frontsOn = livingFlags.on('fronts');
     this.updateFronts(world, time, frontsOn);
 

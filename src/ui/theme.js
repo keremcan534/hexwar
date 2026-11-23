@@ -352,7 +352,7 @@ const hasColor = (value) => { COLOR_RE.lastIndex = 0; return COLOR_RE.test(value
  * beyazı bir sise boğuluyor, pencerenin çevresi büyük, parlak, gri bir alana
  * dönüyordu.
  */
-const KEEP_SEL = /(^|[\s>+~(,])(#menu(?![\w-])|\.menu(?![\w])|\.menu-|#map(?![\w])|#map-|\.map-film(?![\w-])|\.tc-(cal|month|day)(?![\w-])|\.gz-(?!row|archive))|^body::before$/;
+const KEEP_SEL = /(^|[\s>+~(,])(#menu(?![\w-])|\.menu(?![\w])|\.menu-|#map(?![\w])|#map-|\.map-film(?![\w-])|\.tc-(cal|month|day|dial)(?![\w-])|\.gz-(?!row|archive))|^body::before$/;
 
 /** Seçici listesini üst düzey virgüllerden böler (:is(a, b) içini bölmez). */
 function splitSelectors(text) {

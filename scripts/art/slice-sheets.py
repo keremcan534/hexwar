@@ -31,7 +31,7 @@ SHEETS = [
     ('arayuz/arma-1-cilali.webp', 'assets/ui/crest', '2x3', 720, 'eagle,wheat,shield,gear,sabres,anchor'),
     ('arayuz/arma-2-cilali.webp', 'assets/ui/crest', '2x3', 720, 'corner,divider,finial,keystone,pendant,wings'),
     # §23 saat bloğu: ceviz plaka, takvim yaprağı, telgraf kadranı, ibre, oynat/duraklat.
-    ('arayuz/saat-blogu.webp', 'assets/ui/clock', '3x2', 720, 'plate,calendar,dial,needle,play,pause'),
+    ('arayuz/saat-blogu.webp', 'assets/ui/clock', '', 720, 'plate,calendar,dial,needle,play,pause'),
     ('arayuz/sekme-simgeleri.webp', 'assets/icons/tabs-flat', '4x3', 192, 'construction,industry,trade,budget,military,population,cultures,politics,technology,chronicle,diplomacy,navy'),
     ('tech/teknoloji-sanayi-altyapi.webp', 'assets/tech-flat', '5x4', 256, 'electric_motors,assembly_line,mass_production,machine_tools,flow_production,electric_steel,refined_petroleum,industrial_chemistry,light_alloys,synthetic_fuel,trunk_lines,motor_lorries,paved_highways,electrified_railways,motorised_logistics,steam_threshers,agricultural_colleges,tractors,hybrid_crops,mechanised_agriculture'),
     ('tech/teknoloji-ordu.webp', 'assets/tech-flat', '4x4', 256, 'fire_and_movement,trench_warfare,infiltration_tactics,combined_arms,mobile_warfare,smokeless_powder,light_machine_guns,landships,light_tanks,medium_tanks,observation_balloons,military_aviation,fighter_aircraft,metal_airframes,close_air_support,monoplane_fighters'),

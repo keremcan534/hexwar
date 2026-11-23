@@ -235,6 +235,13 @@ export class SettingsPanel {
         write: (v) => { const film = $('map-film'); if (film) film.style.display = v ? '' : 'none'; },
       },
       {
+        id: 'timeOfDay', tab: 'graphics', sec: 'Map', label: 'Time of day', kind: 'choice', def: 'cycle',
+        choices: [{ v: 'cycle', label: 'Cycle' }, { v: 'day', label: 'Day' }, { v: 'dawn', label: 'Dawn' },
+          { v: 'dusk', label: 'Dusk' }, { v: 'night', label: 'Night' }],
+        tip: 'Cycle lets day and night pass over the map. The others hold that hour wherever you look.',
+        write: (v) => game.living?.setTimeOfDay?.(v),
+      },
+      {
         id: 'minis', tab: 'graphics', sec: 'Map', label: '3D units', kind: 'toggle', def: true,
         tip: 'Close to the map, armies and fleets appear as animated 3D miniatures. Off keeps the flat counters at every zoom, which is also lighter on the computer.',
         write: (v) => {
@@ -437,6 +444,24 @@ export class SettingsPanel {
     }
     controls.append(keys);
 
+    // Kayıt dosyası (ana menünün eski Settings görünümünden taşındı): menüdeki Settings artık
+    // bu pencereyi açtığı için dışa/içe aktarma da burada. Düğmelerin olayları mainMenu'nündür,
+    // düğüm taşınınca da onlarda kalır; yalnız görünüşleri bu pencerenin düğmesi olur.
+    const exportBtn = $('menu-export');
+    const importBtn = $('menu-import');
+    if (exportBtn && importBtn) {
+      gamePane.append(el('h3', 'opt-sec', 'Save file'));
+      const row = el('div', 'action-row opt-save-file');
+      exportBtn.className = 'action';
+      importBtn.className = 'action';
+      row.append(exportBtn, importBtn);
+      const file = $('menu-import-file');
+      if (file) row.append(file);
+      gamePane.append(row);
+      const note = $('menu-save-note');
+      if (note) { note.className = 'hint'; gamePane.append(note); }
+    }
+
     this.legacy = el('div', 'opt-legacy');
     this.root.append(this.legacy);
     this.showTab('display');
@@ -553,7 +578,10 @@ export class SettingsPanel {
       if (open === this.wasOpen) return;
       this.wasOpen = open;
       if (open) this.onOpen();
-      else this.disarmReset();
+      else {
+        this.disarmReset();
+        document.body.classList.remove('settings-over-menu');
+      }
     }).observe(root, { attributes: true, attributeFilter: ['class'] });
 
     $('opt-scrim').addEventListener('click', () => this.close());
